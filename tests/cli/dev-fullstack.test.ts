@@ -23,7 +23,7 @@ const FIXTURE_ROOT = path.join(process.cwd(), ".tmp-dev-fx");
 function makeFixture(kind: "fullstack" | "frontend", base = "/api"): { root: string, port: number } {
 	fs.mkdirSync(FIXTURE_ROOT, { recursive: true });
 	const root = fs.mkdtempSync(path.join(FIXTURE_ROOT, `dev-${kind}-`));
-	const port = 21000 + Math.floor(Math.random() * 20000);
+	const port = 21000 + Math.floor(Math.random() * 1000); // 并行测试端口区间不得重叠（playground-oj 设计 §10）
 	fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({ type: "module" }));
 	fs.mkdirSync(path.join(root, "modules/src"), { recursive: true });
 	fs.writeFileSync(path.join(root, "modules/src/entry.ts"), "export default {};\n");

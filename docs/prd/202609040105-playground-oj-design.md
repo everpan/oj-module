@@ -147,3 +147,4 @@ apps/playground-oj/                    # ram init 生成骨架（D5），模块�
 - **F2 已知限制（2026-09-04 评审）**：menus→async-routes 的输出在 UI 被模块路由遮蔽（`filterBackendRoutes` 丢弃碰撞顶级路径 + 后端路由组件只 glob runtime pages + 角色过滤实为 B16 模块级 requiredRoles）。本期降级为 API 级演示；UI 可观测化（runtime 支持后端路由解析模块组件）下次演进。
 - **authProvider 失去验证载体（2026-09-04 评审）**：playground-oj 用 oj 内置 auth，login 模块退化纯页面；authProvider 为 runtime 特性非 ram 功能，同族注入机制的验证载体转移至 D9（system/notification/upload）。
 - **fake 既有失真不跟进（2026-09-04 评审）**：fake role-list 读 GET body 过滤（永远 undefined）——真实实现按 query 过滤，属 fake 失真，不对齐。
+- **oj-process 测试 flaky 根因（2026-09-04 vendor 收尾时发现）**：抓到真实失败签名——`健康检查超时（3s）`，桩 stderr 为空且未退出，即**子进程活着但 3s 内未完成 node 启动+listen**（83 文件并行时机器负载高，node 冷启动可超 3s；测试注入的 timeoutMs 3000 假设「裸机时序」）。修复：健康路径两例 timeoutMs 3000→10000（对齐生产默认）。期间曾收窄三文件随机端口区间（oj-process/dev-fullstack/preview 原为 20000/21000/23000+0–20000 互相重叠，确定性复现证明碰撞可致「ready 误 resolve 串台」）——区间收窄保留为卫生措施，但非本次失败的根因。教训：**计时假设要在目标并发度下校准；抓到错误原文再下结论**。

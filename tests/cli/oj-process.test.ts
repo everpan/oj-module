@@ -18,7 +18,8 @@ const FIXTURE_ROOT = path.join(process.cwd(), ".tmp-oj-fx");
 function makeFixture(mode: "healthy" | "exit" | "silent"): { root: string, configPath: string, port: number } {
 	fs.mkdirSync(FIXTURE_ROOT, { recursive: true });
 	const root = fs.mkdtempSync(path.join(FIXTURE_ROOT, `oj-${mode}-`));
-	const port = 20000 + Math.floor(Math.random() * 20000);
+	// 并行测试端口区间不得重叠（2026-09-04 flaky 根因，见 playground-oj 设计 §10）
+	const port = 20000 + Math.floor(Math.random() * 1000);
 	const configPath = path.join(root, "api/config.yaml");
 	fs.mkdirSync(path.dirname(configPath), { recursive: true });
 	fs.writeFileSync(configPath, `server:\n  host: 127.0.0.1\n  port: ${port}\n  base: /api\n`);
@@ -63,7 +64,8 @@ describe("startOj 子进程编排", () => {
 		const apiSrc = path.join(root, "api/src");
 		fs.mkdirSync(apiSrc, { recursive: true });
 
-		const proc = startOj(configPath, "/api", apiSrc, { intervalMs: 20, timeoutMs: 3000 });
+		// timeoutMs 对齐生产默认：全量并行时 node 子进程冷启动可超 3s（§10 flaky 根因）
+		const proc = startOj(configPath, "/api", apiSrc, { intervalMs: 20, timeoutMs: 10000 });
 		await proc.ready;
 
 		const args = JSON.parse(fs.readFileSync(path.join(root, "oj-args.json"), "utf-8")) as string[];
@@ -95,7 +97,7 @@ describe("startOj 子进程编排", () => {
 
 	it("extraArgs 透传（preview 的 --app-path 场景）", async () => {
 		const { root, configPath } = makeFixture("healthy");
-		const proc = startOj(configPath, "/api", path.join(root, "api/src"), { intervalMs: 20, timeoutMs: 3000 }, ["--app-path", "/tmp/site"]);
+		const proc = startOj(configPath, "/api", path.join(root, "api/src"), { intervalMs: 20, timeoutMs: 10000 }, ["--app-path", "/tmp/site"]);
 		await proc.ready;
 		const args = JSON.parse(fs.readFileSync(path.join(root, "oj-args.json"), "utf-8")) as string[];
 		expect(args.slice(-2)).toEqual(["--app-path", "/tmp/site"]);

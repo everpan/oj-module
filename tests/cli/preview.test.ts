@@ -23,7 +23,7 @@ const FIXTURE_ROOT = path.join(process.cwd(), ".tmp-preview-fx");
 function makeFixture(base = "/api"): { root: string, configPath: string, siteDir: string, apiDist: string, port: number } {
 	fs.mkdirSync(FIXTURE_ROOT, { recursive: true });
 	const root = fs.mkdtempSync(path.join(FIXTURE_ROOT, "preview-"));
-	const port = 23000 + Math.floor(Math.random() * 20000);
+	const port = 23000 + Math.floor(Math.random() * 1000); // 并行测试端口区间不得重叠（playground-oj 设计 §10）
 	fs.mkdirSync(path.join(root, "bin"), { recursive: true });
 	fs.writeFileSync(path.join(root, "bin/oj"), "#!/bin/sh\nexit 0\n");
 	fs.chmodSync(path.join(root, "bin/oj"), 0o755);
