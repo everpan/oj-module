@@ -1,6 +1,6 @@
 import type { MenuItemType } from "../api/system/menu/types";
-import type { NotificationItem } from "../layout/widgets/notification/types";
 import type { FetchAddRoleItemBody, FetchAddRoleItemData, FetchDeleteRoleItemBody, FetchDeleteRoleItemData, FetchMenuByRoleIdData, FetchMenuByRoleIdQuery, FetchRoleListData, FetchRoleListQuery, FetchRoleMenuData, FetchUpdateRoleItemBody, FetchUpdateRoleItemData } from "../api/system/role/api/client";
+import type { NotificationItem } from "../layout/widgets/notification/types";
 /**
  * 系统 API provider（D9）：模块经 ctx.register.systemApi 接管角色/菜单类
  * 内置 API。系统角色/菜单/通知/上传这些原本硬编码在 runtime 根级路径的

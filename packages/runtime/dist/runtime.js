@@ -160,7 +160,7 @@ function getAppInfo() {
 			"version": "0.1.1",
 			"license": "MIT"
 		},
-		"lastBuildTime": "2026-09-04 12:29:18"
+		"lastBuildTime": "2026-09-04 16:15:14"
 	};
 }
 var init_get_app_info = __esmMin((() => {}));
@@ -4694,16 +4694,6 @@ var init_global_search = __esmMin((() => {
 	searchHistoryLocalStorageKey = `__search-history-${location.hostname}__`;
 }));
 //#endregion
-//#region src/utils/request/envelope.ts
-/**
-* AC-D16：oj 信封解包——fetch* 直返业务 data。
-* 失败路径（非 2xx）由 ky hooks + error-response 统一承载，不进入本函数。
-*/
-async function unwrap(promise) {
-	return (await promise).data;
-}
-var init_envelope = __esmMin((() => {}));
-//#endregion
 //#region src/store/api-provider.ts
 function registerSystemApiProvider(moduleName, provider) {
 	if (systemCurrent) {
@@ -4756,6 +4746,16 @@ function unregisterApiProviders(moduleName) {
 var systemCurrent, notificationsCurrent, uploadCurrent;
 var init_api_provider = __esmMin((() => {}));
 //#endregion
+//#region src/utils/request/envelope.ts
+/**
+* AC-D16：oj 信封解包——fetch* 直返业务 data。
+* 失败路径（非 2xx）由 ky hooks + error-response 统一承载，不进入本函数。
+*/
+async function unwrap(promise) {
+	return (await promise).data;
+}
+var init_envelope = __esmMin((() => {}));
+//#endregion
 //#region src/api/notifications/index.ts
 function fetchNotifications() {
 	const p = getNotificationsApiProvider();
@@ -4763,9 +4763,9 @@ function fetchNotifications() {
 	return unwrap(request.get("notifications").json());
 }
 var init_notifications = __esmMin((() => {
+	init_api_provider();
 	init_request();
 	init_envelope();
-	init_api_provider();
 }));
 //#endregion
 //#region src/layout/widgets/notification/index.tsx
@@ -7668,8 +7668,8 @@ var init_module_loader = __esmMin((() => {
 	init_add_route_id_by_path();
 	init_resolve_layout();
 	init_access();
-	init_auth_provider();
 	init_api_provider();
+	init_auth_provider();
 	init_user();
 	init_scoped();
 	init_keep_alive();
@@ -8950,9 +8950,9 @@ function fetchLine(data) {
 }
 //#endregion
 //#region src/api/system/menu/index.ts
+init_api_provider();
 init_request();
 init_envelope();
-init_api_provider();
 function fetchMenuList(data) {
 	const p = getSystemApiProvider();
 	if (p) return p.fetchMenuList(data);

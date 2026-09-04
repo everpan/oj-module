@@ -1,6 +1,6 @@
 import type { AppRouteRecordRaw } from "../router/types";
-import type { AuthProvider } from "../store/auth-provider";
 import type { NotificationsApiProvider, SystemApiProvider, UploadApiProvider } from "../store/api-provider";
+import type { AuthProvider } from "../store/auth-provider";
 /** 模块上下文 — 主框架向模块注入的能力 */
 export interface ModuleContext {
     /** 当前模块的元信息 */
