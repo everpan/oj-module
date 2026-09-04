@@ -1,0 +1,601 @@
+openapi: 3.1.0
+info:
+  title: system api
+  version: 0.0.0
+paths:
+  /system/menu-by-role-id:
+    get:
+      operationId: fetchMenuByRoleId
+      description: 按角色 id 查绑定的菜单 id 列表
+      parameters:
+        - name: id
+          in: query
+          required: true
+          schema:
+            type: number
+      responses:
+        "200":
+          description: 成功（oj 信封：code=0）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                  msg:
+                    type: string
+                  data:
+                    type: array
+                    items:
+                      type: number
+        default:
+          description: 业务错误（oj 信封：code 非 0，HTTP status=code）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                  msg:
+                    type: string
+                required:
+                  - code
+  /system/menu-item:
+    delete:
+      operationId: fetchDeleteMenuItem
+      description: 删除菜单
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: number
+      responses:
+        "200":
+          description: 成功（oj 信封：code=0）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                  msg:
+                    type: string
+                  data:
+                    type: string
+        default:
+          description: 业务错误（oj 信封：code 非 0，HTTP status=code）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                  msg:
+                    type: string
+                required:
+                  - code
+    post:
+      operationId: fetchAddMenuItem
+      description: 新增菜单
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                parentId:
+                  type: number
+                id:
+                  type: number
+                menuType:
+                  type: number
+                name:
+                  type: string
+              required:
+                - parentId
+                - id
+                - menuType
+                - name
+              additionalProperties: false
+      responses:
+        "200":
+          description: 成功（oj 信封：code=0）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                  msg:
+                    type: string
+                  data:
+                    type: string
+        default:
+          description: 业务错误（oj 信封：code 非 0，HTTP status=code）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                  msg:
+                    type: string
+                required:
+                  - code
+    put:
+      operationId: fetchUpdateMenuItem
+      description: 修改菜单
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                parentId:
+                  type: number
+                id:
+                  type: number
+                menuType:
+                  type: number
+                name:
+                  type: string
+              required:
+                - parentId
+                - id
+                - menuType
+                - name
+              additionalProperties: false
+      responses:
+        "200":
+          description: 成功（oj 信封：code=0）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                  msg:
+                    type: string
+                  data:
+                    type: string
+        default:
+          description: 业务错误（oj 信封：code 非 0，HTTP status=code）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                  msg:
+                    type: string
+                required:
+                  - code
+  /system/menu-list:
+    get:
+      operationId: fetchMenuList
+      description: 菜单列表
+      responses:
+        "200":
+          description: 成功（oj 信封：code=0）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                  msg:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      list:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            parentId:
+                              type: number
+                            id:
+                              type: number
+                            menuType:
+                              type: number
+                            name:
+                              type: string
+                          required:
+                            - parentId
+                            - id
+                            - menuType
+                            - name
+                          additionalProperties: false
+                      total:
+                        type: number
+                      current:
+                        type: number
+                    required:
+                      - list
+                      - total
+                    additionalProperties: false
+        default:
+          description: 业务错误（oj 信封：code 非 0，HTTP status=code）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                  msg:
+                    type: string
+                required:
+                  - code
+  /system/role-item:
+    delete:
+      operationId: fetchDeleteRoleItem
+      description: 删除角色
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: number
+      responses:
+        "200":
+          description: 成功（oj 信封：code=0）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                  msg:
+                    type: string
+                  data:
+                    type: number
+        default:
+          description: 业务错误（oj 信封：code 非 0，HTTP status=code）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                  msg:
+                    type: string
+                required:
+                  - code
+    post:
+      operationId: fetchAddRoleItem
+      description: 新增角色
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                id:
+                  type: number
+                name:
+                  type: string
+                code:
+                  type: string
+                status:
+                  anyOf:
+                    - type: number
+                      const: 1
+                    - type: number
+                      const: 0
+                remark:
+                  type: string
+                menus:
+                  type: array
+                  items:
+                    type: number
+              required:
+                - name
+                - code
+                - status
+              additionalProperties: false
+      responses:
+        "200":
+          description: 成功（oj 信封：code=0）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                  msg:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: number
+                      name:
+                        type: string
+                      code:
+                        type: string
+                      status:
+                        anyOf:
+                          - type: number
+                            const: 1
+                          - type: number
+                            const: 0
+                      remark:
+                        type: string
+                      menus:
+                        type: array
+                        items:
+                          type: number
+                    required:
+                      - name
+                      - code
+                      - status
+                    additionalProperties: false
+        default:
+          description: 业务错误（oj 信封：code 非 0，HTTP status=code）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                  msg:
+                    type: string
+                required:
+                  - code
+    put:
+      operationId: fetchUpdateRoleItem
+      description: 修改角色
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                id:
+                  type: number
+                name:
+                  type: string
+                code:
+                  type: string
+                status:
+                  anyOf:
+                    - type: number
+                      const: 1
+                    - type: number
+                      const: 0
+                remark:
+                  type: string
+                menus:
+                  type: array
+                  items:
+                    type: number
+              required:
+                - name
+                - code
+                - status
+              additionalProperties: false
+      responses:
+        "200":
+          description: 成功（oj 信封：code=0）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                  msg:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: number
+                      name:
+                        type: string
+                      code:
+                        type: string
+                      status:
+                        anyOf:
+                          - type: number
+                            const: 1
+                          - type: number
+                            const: 0
+                      remark:
+                        type: string
+                      menus:
+                        type: array
+                        items:
+                          type: number
+                    required:
+                      - name
+                      - code
+                      - status
+                    additionalProperties: false
+        default:
+          description: 业务错误（oj 信封：code 非 0，HTTP status=code）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                  msg:
+                    type: string
+                required:
+                  - code
+  /system/role-list:
+    get:
+      operationId: fetchRoleList
+      description: 角色列表（分页）
+      parameters:
+        - name: name
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: code
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: status
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: number
+                const: 1
+              - type: number
+                const: 0
+        - name: current
+          in: query
+          required: false
+          schema:
+            type: number
+        - name: pageSize
+          in: query
+          required: false
+          schema:
+            type: number
+      responses:
+        "200":
+          description: 成功（oj 信封：code=0）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                  msg:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      list:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: number
+                            createTime:
+                              type: number
+                            updateTime:
+                              type: number
+                            name:
+                              type: string
+                            code:
+                              type: string
+                            status:
+                              anyOf:
+                                - type: number
+                                  const: 1
+                                - type: number
+                                  const: 0
+                            remark:
+                              type: string
+                          required:
+                            - id
+                            - createTime
+                            - updateTime
+                            - name
+                            - code
+                            - status
+                            - remark
+                          additionalProperties: false
+                      total:
+                        type: number
+                      pageSize:
+                        type: number
+                      current:
+                        type: number
+                    required:
+                      - list
+                      - total
+                      - pageSize
+                      - current
+                    additionalProperties: false
+        default:
+          description: 业务错误（oj 信封：code 非 0，HTTP status=code）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                  msg:
+                    type: string
+                required:
+                  - code
+  /system/role-menu:
+    get:
+      operationId: fetchRoleMenu
+      description: 菜单权限列表（扁平，前端转树）
+      responses:
+        "200":
+          description: 成功（oj 信封：code=0）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                  msg:
+                    type: string
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        parentId:
+                          type: number
+                        id:
+                          type: number
+                        menuType:
+                          type: number
+                        name:
+                          type: string
+                      required:
+                        - parentId
+                        - id
+                        - menuType
+                        - name
+                      additionalProperties: false
+        default:
+          description: 业务错误（oj 信封：code 非 0，HTTP status=code）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                  msg:
+                    type: string
+                required:
+                  - code

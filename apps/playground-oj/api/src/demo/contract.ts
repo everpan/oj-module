@@ -1,10 +1,8 @@
 import { defineApi, z } from "@react-antd-module/contract";
 
 /**
- * demo 模块契约（模块目标试点，Task 5.2）。
- *
- * 纯前端工程无后端：`ram dev` 下由契约驱动 mock（Task 4.2）按 data schema
- * 生成示例数据兜底——本文件即 demo 页列表的「后端」。
+ * demo 模块契约（uni-dev 形态，apiPrefix 字面等于 "/demo"，AC-D9）。
+ * 由前端试点契约迁移而来：原 mock 驱动改为由 oj 后端实现（P4 落地 handler）。
  */
 export const getTodoList = defineApi({
 	apiPrefix: "/demo",

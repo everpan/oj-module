@@ -1,0 +1,6 @@
+[
+	{
+		"method": "GET",
+		"pattern": "notification/notifications"
+	}
+]

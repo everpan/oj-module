@@ -1,0 +1,10 @@
+[
+	{
+		"method": "GET",
+		"pattern": "home/pie"
+	},
+	{
+		"method": "POST",
+		"pattern": "home/line"
+	}
+]

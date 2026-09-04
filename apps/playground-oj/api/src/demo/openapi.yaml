@@ -1,0 +1,65 @@
+openapi: 3.1.0
+info:
+  title: demo api
+  version: 0.0.0
+paths:
+  /demo/todos:
+    get:
+      operationId: getTodoList
+      description: 演示待办列表
+      parameters:
+        - name: keyword
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: 成功（oj 信封：code=0）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                  msg:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      list:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: number
+                            title:
+                              type: string
+                            done:
+                              type: boolean
+                          required:
+                            - id
+                            - title
+                            - done
+                          additionalProperties: false
+                      total:
+                        type: number
+                    required:
+                      - list
+                      - total
+                    additionalProperties: false
+        default:
+          description: 业务错误（oj 信封：code 非 0，HTTP status=code）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                  msg:
+                    type: string
+                required:
+                  - code

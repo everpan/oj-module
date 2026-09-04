@@ -1,0 +1,100 @@
+openapi: 3.1.0
+info:
+  title: home api
+  version: 0.0.0
+paths:
+  /home/line:
+    post:
+      operationId: fetchLine
+      description: 首页折线图数据
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                range:
+                  type: string
+              required:
+                - range
+              additionalProperties: false
+      responses:
+        "200":
+          description: 成功（oj 信封：code=0）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                  msg:
+                    type: string
+                  data:
+                    type: array
+                    items:
+                      type: number
+        default:
+          description: 业务错误（oj 信封：code 非 0，HTTP status=code）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                  msg:
+                    type: string
+                required:
+                  - code
+  /home/pie:
+    get:
+      operationId: fetchPie
+      description: 首页饼图数据
+      parameters:
+        - name: by
+          in: query
+          required: true
+          schema:
+            type:
+              - string
+              - number
+      responses:
+        "200":
+          description: 成功（oj 信封：code=0）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                  msg:
+                    type: string
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        value:
+                          type: number
+                        code:
+                          type: string
+                      required:
+                        - value
+                        - code
+                      additionalProperties: false
+        default:
+          description: 业务错误（oj 信封：code 非 0，HTTP status=code）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                  msg:
+                    type: string
+                required:
+                  - code

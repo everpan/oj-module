@@ -1,0 +1,36 @@
+openapi: 3.1.0
+info:
+  title: personal-center api
+  version: 0.0.0
+paths:
+  /personal-center/upload:
+    post:
+      operationId: upload
+      description: 头像/附件上传，返回资源 URL
+      responses:
+        "200":
+          description: 成功（oj 信封：code=0）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                  msg:
+                    type: string
+                  data:
+                    type: string
+        default:
+          description: 业务错误（oj 信封：code 非 0，HTTP status=code）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                  msg:
+                    type: string
+                required:
+                  - code

@@ -1,0 +1,42 @@
+[
+	{
+		"method": "DELETE",
+		"pattern": "system/menu-item"
+	},
+	{
+		"method": "DELETE",
+		"pattern": "system/role-item"
+	},
+	{
+		"method": "GET",
+		"pattern": "system/menu-by-role-id"
+	},
+	{
+		"method": "GET",
+		"pattern": "system/menu-list"
+	},
+	{
+		"method": "GET",
+		"pattern": "system/role-list"
+	},
+	{
+		"method": "GET",
+		"pattern": "system/role-menu"
+	},
+	{
+		"method": "POST",
+		"pattern": "system/menu-item"
+	},
+	{
+		"method": "POST",
+		"pattern": "system/role-item"
+	},
+	{
+		"method": "PUT",
+		"pattern": "system/menu-item"
+	},
+	{
+		"method": "PUT",
+		"pattern": "system/role-item"
+	}
+]
