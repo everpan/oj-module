@@ -1,8 +1,8 @@
 {
 	"name": "@react-antd-module/shell",
 	"type": "module",
-	"version": "0.1.1",
-	"description": "预构建宿主站点（dist + importmap），由 ram dev / ram build 使用",
+	"version": "0.1.2",
+	"description": "\u9884\u6784\u5efa\u5bbf\u4e3b\u7ad9\u70b9\uff08dist + importmap\uff09\uff0c\u7531 ram dev / ram build \u4f7f\u7528",
 	"license": "MIT",
 	"publishConfig": {
 		"registry": "https://registry.npmjs.org/",
