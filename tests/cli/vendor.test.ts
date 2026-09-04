@@ -1,9 +1,12 @@
+import type { Buffer } from "node:buffer";
+import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { parseVendorArgs } from "../../packages/cli/src/args";
-import { pickAsset, readLocalVersion, resolveTriplet } from "../../packages/cli/src/vendor";
+import { fetchLatestRelease, installFromRelease, pickAsset, readLocalVersion, resolveTriplet } from "../../packages/cli/src/vendor";
 
 /**
  * ram vendor 子命令（docs/prd/202609040905-vendor-download-design.md）：
@@ -66,6 +69,79 @@ describe("readLocalVersion（V4 标记文件）", () => {
 		expect(readLocalVersion(bin)).toBeNull();
 		fs.writeFileSync(path.join(bin, ".oj-version"), "v0.1.0\n");
 		expect(readLocalVersion(bin)).toBe("v0.1.0");
+		fs.rmSync(dir, { recursive: true, force: true });
+	});
+});
+
+function fakeRelease(tag: string) {
+	return { tag_name: tag, assets: [{ name: `oj-${tag}-aarch64-apple-darwin.tar.gz`, browser_download_url: "https://fake/x" }] };
+}
+
+describe("fetchLatestRelease（V3/V6 认证与错误）", () => {
+	const okResp = () => new Response(JSON.stringify(fakeRelease("v9.9.9")), { status: 200 });
+
+	it("匿名成功返回 release JSON", async () => {
+		const r = await fetchLatestRelease({ fetchFn: async () => okResp(), token: "" });
+		expect(r.tag_name).toBe("v9.9.9");
+	});
+
+	it("有 token 时带 Authorization 头", async () => {
+		let seen: string | undefined;
+		await fetchLatestRelease({
+			token: "tk",
+			fetchFn: async (_url, init) => {
+				seen = init?.headers?.Authorization;
+				return okResp();
+			},
+		});
+		expect(seen).toBe("Bearer tk");
+	});
+
+	it.each([403, 404])("hTTP %i → 人话报错提示 GITHUB_TOKEN", async (status) => {
+		await expect(fetchLatestRelease({ fetchFn: async () => new Response("x", { status }), token: "" }))
+			.rejects
+			.toThrowError(/GITHUB_TOKEN/);
+	});
+});
+
+describe("installFromRelease（下载→校验→解包→标记）", () => {
+	// 真 tar 造 fixture：一个含 oj 假二进制的顶层目录，与上游包结构一致
+	function makeFixture(dir: string): { tarBytes: Buffer, hex: string } {
+		const src = path.join(dir, "pkg");
+		fs.mkdirSync(src, { recursive: true });
+		fs.writeFileSync(path.join(src, "oj"), "#!/bin/sh\necho oj\n");
+		const tarPath = path.join(dir, "a.tar.gz");
+		execFileSync("tar", ["-czf", tarPath, "-C", dir, "pkg"]);
+		const tarBytes = fs.readFileSync(tarPath);
+		return { tarBytes, hex: createHash("sha256").update(tarBytes).digest("hex") };
+	}
+
+	it("全流程：解包出 bin/oj、写 .oj-version、sha256 不符即拒", async () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ram-vendor-io-"));
+		const { tarBytes, hex } = makeFixture(dir);
+		const asset = { name: "oj-v1.0.0-aarch64-apple-darwin.tar.gz", browser_download_url: "https://fake/oj.tar.gz" };
+		const sums = { name: `${asset.name}.sha256`, browser_download_url: "https://fake/oj.tar.gz.sha256" };
+		let servedSum = `${hex}  ${asset.name}\n`;
+		const fetchFn: typeof fetch = async (url) => {
+			const u = String(url);
+			if (u.endsWith(".sha256"))
+				return new Response(servedSum, { status: 200 });
+			return new Response(new Uint8Array(tarBytes), { status: 200 });
+		};
+		const bin = path.join(dir, "bin");
+
+		await installFromRelease(asset, sums, "v1.0.0", bin, { fetchFn, token: "" });
+		expect(fs.readFileSync(path.join(bin, "oj"), "utf-8")).toContain("echo oj");
+		expect(fs.readFileSync(path.join(bin, ".oj-version"), "utf-8").trim()).toBe("v1.0.0");
+		expect(fs.statSync(path.join(bin, "oj")).mode & 0o111).not.toBe(0);
+
+		// 篡改场景：sums 与实际不符 → 报错且 bin/ 不留 oj
+		servedSum = `${"0".repeat(64)}  ${asset.name}\n`;
+		fs.rmSync(bin, { recursive: true, force: true });
+		await expect(installFromRelease(asset, sums, "v1.0.0", bin, { fetchFn, token: "" }))
+			.rejects
+			.toThrowError(/sha256/);
+		expect(fs.existsSync(path.join(bin, "oj"))).toBe(false);
 		fs.rmSync(dir, { recursive: true, force: true });
 	});
 });
