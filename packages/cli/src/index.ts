@@ -1,13 +1,14 @@
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
-import { parseApiArgs, parseInitArgs } from "./args";
+import { parseApiArgs, parseInitArgs, parseVendorArgs } from "./args";
 import { buildBackend, buildModules } from "./build";
 import { devServer } from "./dev";
 import { mergeManifests, printInfo } from "./info";
 import { initProject } from "./init";
 import { previewServer } from "./preview";
 import { usageText } from "./usage";
+import { vendorCommand } from "./vendor";
 
 const [command] = process.argv.slice(2);
 
@@ -45,6 +46,11 @@ async function main() {
 		case "info":
 			await printInfo(projectRoot);
 			break;
+		case "vendor": {
+			const { force } = parseVendorArgs(process.argv.slice(3));
+			await vendorCommand(projectRoot, { force });
+			break;
+		}
 		case "api": {
 			const { dir, check, docs } = parseApiArgs(process.argv.slice(3));
 			// S5：显式目录必须先存在——否则静默在错的目录下生成/对账

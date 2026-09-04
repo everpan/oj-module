@@ -6,7 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { parseVendorArgs } from "../../packages/cli/src/args";
-import { fetchLatestRelease, installFromRelease, pickAsset, readLocalVersion, resolveTriplet } from "../../packages/cli/src/vendor";
+import { fetchLatestRelease, installFromRelease, pickAsset, readLocalVersion, RELEASE_API, resolveTriplet, vendorCommand } from "../../packages/cli/src/vendor";
 
 /**
  * ram vendor 子命令（docs/prd/202609040905-vendor-download-design.md）：
@@ -142,6 +142,79 @@ describe("installFromRelease（下载→校验→解包→标记）", () => {
 			.rejects
 			.toThrowError(/sha256/);
 		expect(fs.existsSync(path.join(bin, "oj"))).toBe(false);
+		fs.rmSync(dir, { recursive: true, force: true });
+	});
+});
+
+describe("vendorCommand（US-1..US-4 编排）", () => {
+	function setup(tag = "v0.2.0") {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ram-vendor-cmd-"));
+		const src = path.join(dir, "pkg");
+		fs.mkdirSync(src, { recursive: true });
+		fs.writeFileSync(path.join(src, "oj"), "#!/bin/sh\necho oj\n");
+		execFileSync("tar", ["-czf", path.join(dir, "a.tar.gz"), "-C", dir, "pkg"]);
+		const tarBytes = fs.readFileSync(path.join(dir, "a.tar.gz"));
+		const hex = createHash("sha256").update(tarBytes).digest("hex");
+		const name = `oj-${tag}-aarch64-apple-darwin.tar.gz`;
+		const release = {
+			tag_name: tag,
+			assets: [
+				{ name, browser_download_url: "https://fake/oj" },
+				{ name: `${name}.sha256`, browser_download_url: "https://fake/oj.tar.gz.sha256" },
+			],
+		};
+		let downloads = 0;
+		const fetchFn: typeof fetch = async (url) => {
+			const u = String(url);
+			if (u === RELEASE_API)
+				return new Response(JSON.stringify(release), { status: 200 });
+			downloads++;
+			if (u.endsWith(".sha256"))
+				return new Response(`${hex}  ${name}\n`, { status: 200 });
+			return new Response(new Uint8Array(tarBytes), { status: 200 });
+		};
+		return { dir, bin: path.join(dir, "bin"), fetchFn, count: () => downloads };
+	}
+
+	// ponytail: fixture 依赖系统 tar，win CI 暂无；win 实机验证属设计 §5 范围外
+	const macOnly = process.platform === "darwin" ? it : it.skip;
+
+	macOnly("US-1 全新安装 → US-2 幂等跳过 → US-4 --force 重装", async () => {
+		const { dir, bin, fetchFn, count } = setup();
+		const logs: string[] = [];
+		const log = (m: string) => logs.push(m);
+
+		await vendorCommand(dir, { force: false }, { fetchFn, token: "", log });
+		expect(fs.existsSync(path.join(bin, "oj"))).toBe(true);
+		const after1 = count();
+
+		await vendorCommand(dir, { force: false }, { fetchFn, token: "", log }); // US-2
+		expect(count()).toBe(after1);
+		expect(logs.at(-1)).toMatch(/已是最新 v0\.2\.0/);
+
+		await vendorCommand(dir, { force: true }, { fetchFn, token: "", log }); // US-4
+		expect(count()).toBeGreaterThan(after1);
+		fs.rmSync(dir, { recursive: true, force: true });
+	});
+
+	macOnly("US-3 本地旧版 → 更新到最新", async () => {
+		const { dir, bin, fetchFn } = setup("v0.2.0");
+		fs.mkdirSync(bin, { recursive: true });
+		fs.writeFileSync(path.join(bin, "oj"), "old");
+		fs.writeFileSync(path.join(bin, ".oj-version"), "v0.1.0\n");
+		await vendorCommand(dir, { force: false }, { fetchFn, token: "", log: () => {} });
+		expect(fs.readFileSync(path.join(bin, ".oj-version"), "utf-8").trim()).toBe("v0.2.0");
+		expect(fs.readFileSync(path.join(bin, "oj"), "utf-8")).toContain("echo oj");
+		fs.rmSync(dir, { recursive: true, force: true });
+	});
+
+	it("release 缺 .sha256 资产 → 人话报错（V7 必做，结构异常）", async () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ram-vendor-nosum-"));
+		const release = { tag_name: "v1", assets: [{ name: "oj-v1-aarch64-apple-darwin.tar.gz", browser_download_url: "https://fake/x" }] };
+		const fetchFn: typeof fetch = async () => new Response(JSON.stringify(release), { status: 200 });
+		await expect(vendorCommand(dir, { force: false }, { fetchFn, token: "", log: () => {} }))
+			.rejects
+			.toThrowError(/sha256/);
 		fs.rmSync(dir, { recursive: true, force: true });
 	});
 });

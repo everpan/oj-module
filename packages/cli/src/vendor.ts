@@ -150,3 +150,31 @@ export async function installFromRelease(
 		fs.rmSync(tmp, { force: true });
 	}
 }
+
+/**
+ * US-1..US-4 编排：查最新 release → 本地已是最新则跳过（--force 除外）
+ * → 选本平台资产 + 同名 .sha256 → 安装 → 报告版本。
+ */
+export async function vendorCommand(
+	projectRoot: string,
+	opts: { force: boolean },
+	deps: VendorDeps & { log?: (msg: string) => void } = {},
+): Promise<void> {
+	const log = deps.log ?? console.log;
+	const release = await fetchLatestRelease(deps);
+	const binDir = path.join(projectRoot, "bin");
+	const local = readLocalVersion(binDir);
+	if (!opts.force && local === release.tag_name) {
+		log(`[ram] oj 已是最新 ${release.tag_name}，跳过。`);
+		return;
+	}
+	const asset = pickAsset(release.assets, release.tag_name, process.platform, process.arch);
+	const sums = release.assets.find(a => a.name === `${asset.name}.sha256`);
+	if (!sums) {
+		throw new Error(
+			`[ram] release（${release.tag_name}）缺少校验文件 ${asset.name}.sha256，release 结构异常，拒绝安装。`,
+		);
+	}
+	await installFromRelease(asset, sums, release.tag_name, binDir, deps);
+	log(`[ram] oj ${local ? `${local} → ` : ""}${release.tag_name} 安装完成：${path.join(binDir, ojBinName(process.platform))}`);
+}
