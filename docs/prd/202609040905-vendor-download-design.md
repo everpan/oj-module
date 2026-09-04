@@ -128,6 +128,6 @@ vendorCommand(projectRoot, { force }, deps?)
 ## 7. 总结
 
 - **关键过程**：brainstorming 两轮问答定案（独立子命令 / 检查+按需更新）→ 设计文档 → 用户告知发版后实测 API，修正两处假设（Windows 资产为 zip、`.sha256` 资产已存在，V7 由"可选"转正为"必做"）→ writing-plans 产出四任务计划 → feat/cli-vendor 分支 TDD 执行（纯函数层 → IO 层 → 编排注册 → 真机回归）。
-- **验证**：tests/cli/vendor.test.ts 19 用例全绿；真机回归真实 release v0.1.0 通过 US-1（下载安装）、US-2（幂等跳过）、oj 可执行；US-3/US-4 由注入式测试覆盖。
+- **验证**：tests/cli/vendor.test.ts 19 用例全绿；真机回归真实 release 通过 US-1（下载安装 v0.1.0）、US-2（幂等跳过）、US-3（v0.1.1 发布后实测：内置 tar.gz 装 v0.1.0 → `ram vendor` 更新 → `oj --version` 实为 0.1.1）；US-4 由注入式测试覆盖。
 - **耗时**：约 45 分钟（设计定稿 → 计划 → 实现 → 回归）。
 - **遗留**：darwin-x64 / linux-arm64 上游暂无资产（US-6 报错路径兜底）；Windows 实机未验证（设计 §5 范围外）。
