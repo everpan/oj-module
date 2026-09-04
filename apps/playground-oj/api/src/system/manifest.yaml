@@ -1,0 +1,7 @@
+name: system
+desc: 系统管理模块（角色/菜单/权限，P2-3 自管数据层）
+version: 0.1.0
+tables: # 与 schema.yaml 双向一致（S005，§4.2）
+  - roles
+  - menus
+  - role_menu

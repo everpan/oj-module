@@ -1,0 +1,36 @@
+# 声明式表结构（§4.2 / D1-C）：归属图 + SchemaRegistry 列白名单的源。
+# 安全前向（加表/加可空列/加索引）由 reconcile 自动收敛（dev 启动 / oj migrate）；
+# 类型变更、删列、改名走 migrations/ 手写迁移。列类型最小集：
+# integer | bigint | text | boolean | double | blob
+tables:
+  roles:
+    pk: id
+    columns:
+      id: {type: integer, autoincrement: true}
+      name: {type: text, null: false}
+      code: {type: text, null: false}
+      status: {type: integer, null: false}
+      remark: {type: text, null: false}
+      create_time: {type: integer, null: false}
+      update_time: {type: integer, null: false}
+  menus:
+    pk: id
+    columns:
+      id: {type: integer, autoincrement: true}
+      parent_id: {type: integer, null: false}
+      name: {type: text, null: false}
+      path: {type: text, null: false}
+      component: {type: text, null: false}
+      icon: {type: text, null: false}
+      sort: {type: integer, null: false}
+      type: {type: text, null: false}
+      permission: {type: text, null: false}
+      status: {type: integer, null: false}
+      create_time: {type: integer, null: false}
+      update_time: {type: integer, null: false}
+  role_menu:
+    pk: id
+    columns:
+      id: {type: integer, autoincrement: true}
+      role: {type: text, null: false}
+      menu_id: {type: integer, null: false}
