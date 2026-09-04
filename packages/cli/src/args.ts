@@ -21,3 +21,11 @@ export function parseApiArgs(argv: string[]): { dir: string, check: boolean, doc
 	const dir = argv.find(a => !a.startsWith("--")) ?? "";
 	return { dir, check, docs };
 }
+
+/**
+ * `ram vendor [--force]`：检查并按需更新 oj vendor
+ * （docs/prd/202609040905-vendor-download-design.md V1/V2）。
+ */
+export function parseVendorArgs(argv: string[]): { force: boolean } {
+	return { force: argv.includes("--force") };
+}
