@@ -10,7 +10,9 @@
 
 目标：新增 `ram vendor` 子命令，从 <https://github.com/everpan/only-js/releases> 获取**最新 release**，按当前平台下载对应资产安装到工程 `bin/`。init 的内置 tar.gz 路径**完全不动**（离线兜底）。
 
-资产命名约定（用户确认）：`oj-<version>-<target-triplet>.tar.gz`，如 `oj-v0.1.0-aarch64-apple-darwin.tar.gz`（tag 带 `v` 前缀，资产名与 tag 同形）。
+资产命名约定（用户确认 + 发版后实测）：`oj-<tag>-<triplet>.<ext>`，tag 带 `v` 前缀；**ext 按平台分：unix 为 `tar.gz`，Windows 为 `zip`**。每个资产附带同名 `.sha256` 文件（标准 `sha256sum` 格式：`<hex>  <filename>`）。
+
+发版实测（v0.1.0）：已上架 `aarch64-apple-darwin.tar.gz`、`x86_64-pc-windows-msvc.zip`、`x86_64-unknown-linux-gnu.tar.gz`；darwin-x64 / linux-arm64 暂无资产，映射保留、缺资产时走 US-6 报错路径。
 
 ## 2. 决策表
 
@@ -22,8 +24,8 @@
 | V4 | 本地版本记录 | 安装后写标记文件 `bin/.oj-version`（内容即版本串） | 不依赖 `oj --version` 输出格式（未验证过） |
 | V5 | 平台映射 | `process.platform/arch` → Rust target triplet，见 §4 表 | 与上游资产命名一致 |
 | V6 | 认证 | `GITHUB_TOKEN` 存在则带 `Authorization: Bearer`，否则匿名 | 仓库当前 404（疑似私有/未发版），两种都支持 |
-| V7 | 完整性校验 | 若 release 含同名 `.sha256` 资产则下载校验；没有则跳过 | 上游暂无 sums 文件，有了自动生效，零前瞻代码 |
-| V8 | 解包 | 系统 `tar -xzf --strip-components=1`，chmod 755 | 复用 init 同款（init.ts L75），不加依赖 |
+| V7 | 完整性校验 | **必做**：下载同名 `.sha256` 资产（`sha256sum` 格式，取首段 hex），与下载文件实际 sha256 比对，不符即删临时文件报错 | 上游已随 v0.1.0 提供 sums；沿用 vendor-meta.ts 的防篡改语义 |
+| V8 | 解包 | 系统 `tar -xzf --strip-components=1`（unix）；Windows 用系统 `tar -xf`（Win10+ 自带 bsdtar，可读 zip）；chmod 755（win 跳过） | 复用 init 同款（init.ts L75），不加依赖 |
 | V9 | 下载 | Node 原生 `fetch` + 流式写临时文件，成功后原子 rename | 零新依赖 |
 
 ## 3. 用户故事与用例（BDD）
@@ -94,9 +96,9 @@ Then 人话报错，提示可设置 GITHUB_TOKEN
 vendorCommand(projectRoot, { force }, deps?) 
   ├── resolveTriplet(platform, arch)        # 纯函数，全分支可测
   ├── fetchLatestRelease(deps.fetch)        # 注入 fetch，规避 happy-dom 垫片问题
-  ├── pickAsset(assets, tag, triplet)       # 纯函数：匹配 oj-<tag>-<triplet>.tar.gz
+  ├── pickAsset(assets, tag, triplet)       # 纯函数：匹配 oj-<tag>-<triplet>.<tar.gz|zip>，win32 选 zip
   ├── readLocalVersion(binDir)              # 读 bin/.oj-version，bin/oj 缺失视为未安装
-  └── install(assetUrl, binDir, deps)       # 下载→(可选).sha256 校验→tar 解包→chmod→写标记
+  └── install(assetUrl, binDir, deps)       # 下载→.sha256 校验→tar 解包→chmod→写标记
 ```
 
 **错误处理**：所有失败路径抛 `[ram] 前缀人话 Error`，由 index.ts 现有 catch 统一出口；临时文件在 finally 中清理。
@@ -114,11 +116,11 @@ vendorCommand(projectRoot, { force }, deps?)
 - 启动时自动检查更新 / 版本提醒
 - Windows 实机验证（映射正确性靠单测，实机待有用户再说）
 - 断点续传、下载进度条
-- 上游 sums 文件的格式假设（只在存在 `.sha256` 资产时做 hex 比对）
 
 ## 6. 问题记录
 
 | 分类 | 问题 | 处置 |
 |------|------|------|
-| 待验证 | `everpan/only-js` 当前 API 404（私有或未发版） | V6 双模认证覆盖；发版后回归验证 US-1 |
+| ~~待验证~~ 已闭环 | `everpan/only-js` 曾 API 404 | 2026-09-04 已发 v0.1.0，匿名 API 可读，资产命名/`.sha256` 格式均与设计一致（Windows 为 zip，已修正 V7/V8） |
 | 待验证 | oj 是否支持 `--version` 输出 | 不依赖，用 V4 标记文件 |
+| 反常识 | Windows 资产用 zip 而非 tar.gz（Rust 社区惯例） | pickAsset 按平台选扩展名，勿写死 tar.gz |
