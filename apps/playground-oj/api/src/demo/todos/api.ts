@@ -1,12 +1,26 @@
-// ram-api:stub getTodoList sha256:b9a60daaf0f1b6cb11276c303e120a76b9c3556ac190e8203627059cd715b127
-function get(): void {
-	json.ok({
-		list: [{
-			id: 1,
-			title: "示例",
-			done: true,
-		}],
-		total: 1,
-	});
-}
-export default { get };
+// GET /api/demo/todos —— 演示待办列表（真实化 P3-2，AC-D9 apiPrefix=/demo）。
+// Bearer 守卫保护；keyword 模糊过滤 title；snake_case → camelCase，done 映射布尔。
+export default {
+	async get() {
+		const kw = http.query.keyword;
+		const where = kw ? "WHERE title LIKE ?" : "";
+		const params = kw ? [`%${kw}%`] : [];
+		try {
+			const totalRows = await db.query(`SELECT COUNT(*) AS c FROM todos ${where}`, params);
+			const total = Number(totalRows[0]?.c ?? 0);
+			const rows = await db.query(
+				`SELECT id, title, done, create_time, update_time FROM todos ${where} ORDER BY id ASC`,
+				params,
+			);
+			const list = rows.map(r => ({
+				id: Number(r.id),
+				title: String(r.title),
+				done: Number(r.done) === 1,
+			}));
+			json.ok({ list, total });
+		}
+		catch (e) {
+			json.fail(500, String(e));
+		}
+	},
+};

@@ -23,9 +23,15 @@ tables:
       component: {type: text, null: false}
       icon: {type: text, null: false}
       sort: {type: integer, null: false}
-      type: {type: text, null: false}
+      menu_type: {type: integer, null: false}
       permission: {type: text, null: false}
       status: {type: integer, null: false}
+      current_active_menu: {type: text, null: false}
+      iframe_link: {type: text, null: false}
+      keep_alive: {type: integer, null: false}
+      external_link: {type: text, null: false}
+      hide_in_menu: {type: integer, null: false}
+      ignore_access: {type: integer, null: false}
       create_time: {type: integer, null: false}
       update_time: {type: integer, null: false}
   role_menu:

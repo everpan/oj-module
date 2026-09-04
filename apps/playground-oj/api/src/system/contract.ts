@@ -32,12 +32,26 @@ const roleForm = z.object({
 	menus: z.array(z.number()).optional(),
 });
 
-/** 菜单项（role-menu 返回的扁平列表，前端 handleTree 转树） */
+/** 菜单项（与框架内置 MenuItemType 线协议对齐；parentId 为字符串） */
 const menuItem = z.object({
-	parentId: z.number(),
+	parentId: z.string(),
 	id: z.number(),
-	menuType: z.number(),
+	menuType: z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3)]),
 	name: z.string(),
+	path: z.string(),
+	component: z.string(),
+	order: z.number(),
+	icon: z.string(),
+	currentActiveMenu: z.string(),
+	iframeLink: z.string(),
+	keepAlive: z.number(),
+	externalLink: z.string(),
+	hideInMenu: z.number(),
+	ignoreAccess: z.number(),
+	permission: z.string(),
+	status: z.number(),
+	createTime: z.number(),
+	updateTime: z.number(),
 });
 
 /* 获取角色列表（分页） */

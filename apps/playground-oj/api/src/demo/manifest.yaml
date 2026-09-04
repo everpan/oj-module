@@ -1,3 +1,5 @@
 name: demo
 desc: 演示模块（todos 等，P3 接数据层）
 version: 0.1.0
+tables:
+  - todos

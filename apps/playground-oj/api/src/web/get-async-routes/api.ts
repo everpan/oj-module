@@ -21,7 +21,7 @@ export default {
 		try {
 			const placeholders = roles.map(() => "?").join(",");
 			const rows = await db.query(
-				`SELECT m.id, m.parent_id, m.name, m.path, m.icon, m.sort, m.type
+				`SELECT m.id, m.parent_id, m.name, m.path, m.icon, m.sort, m.menu_type
          FROM menus m
          JOIN role_menu rm ON rm.menu_id = m.id
          WHERE rm.role IN (${placeholders}) AND m.status = 1
