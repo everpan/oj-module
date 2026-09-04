@@ -122,5 +122,12 @@ vendorCommand(projectRoot, { force }, deps?)
 | 分类 | 问题 | 处置 |
 |------|------|------|
 | ~~待验证~~ 已闭环 | `everpan/only-js` 曾 API 404 | 2026-09-04 已发 v0.1.0，匿名 API 可读，资产命名/`.sha256` 格式均与设计一致（Windows 为 zip，已修正 V7/V8） |
-| 待验证 | oj 是否支持 `--version` 输出 | 不依赖，用 V4 标记文件 |
+| ~~待验证~~ 已闭环 | oj 是否支持 `--version` 输出 | 支持，但输出为 `oj 0.1.0`（无 `v` 前缀，需二次解析）；仍采用 V4 标记文件，更简单 |
 | 反常识 | Windows 资产用 zip 而非 tar.gz（Rust 社区惯例） | pickAsset 按平台选扩展名，勿写死 tar.gz |
+
+## 7. 总结
+
+- **关键过程**：brainstorming 两轮问答定案（独立子命令 / 检查+按需更新）→ 设计文档 → 用户告知发版后实测 API，修正两处假设（Windows 资产为 zip、`.sha256` 资产已存在，V7 由"可选"转正为"必做"）→ writing-plans 产出四任务计划 → feat/cli-vendor 分支 TDD 执行（纯函数层 → IO 层 → 编排注册 → 真机回归）。
+- **验证**：tests/cli/vendor.test.ts 19 用例全绿；真机回归真实 release v0.1.0 通过 US-1（下载安装）、US-2（幂等跳过）、oj 可执行；US-3/US-4 由注入式测试覆盖。
+- **耗时**：约 45 分钟（设计定稿 → 计划 → 实现 → 回归）。
+- **遗留**：darwin-x64 / linux-arm64 上游暂无资产（US-6 报错路径兜底）；Windows 实机未验证（设计 §5 范围外）。
