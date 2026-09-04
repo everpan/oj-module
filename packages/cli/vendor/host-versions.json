@@ -10,6 +10,8 @@
 		"react-router/dom": "7.18.2",
 		"@tanstack/react-query": "5.102.8",
 		"@react-antd-module/runtime": "0.1.0",
+		"@react-antd-module/contract": "0.1.0",
+		"@react-antd-module/contract/errors": "0.1.0",
 		"antd": "6.6.1",
 		"antd/locale/en_US": "6.6.1",
 		"antd/locale/zh_CN": "6.6.1",
