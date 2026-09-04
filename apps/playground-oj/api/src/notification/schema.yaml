@@ -1,0 +1,11 @@
+# 声明式表结构（§4.2 / D1-C）：notification 模块自有表 notifications。
+tables:
+  notifications:
+    pk: id
+    columns:
+      id: {type: integer, autoincrement: true}
+      avatar: {type: text, null: false}
+      date: {type: text, null: false}
+      is_read: {type: integer, null: false}
+      message: {type: text, null: false}
+      title: {type: text, null: false}

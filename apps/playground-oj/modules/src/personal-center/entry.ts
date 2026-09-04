@@ -1,5 +1,5 @@
-import type { AppRouteRecordRaw, ModuleDefinition } from "@react-antd-module/runtime";
-import { ProfileCardIcon, RiAccountCircleLine, RiUserSettingsLine } from "@react-antd-module/runtime";
+import type { AppRouteRecordRaw, ModuleDefinition, UploadApiProvider } from "@react-antd-module/runtime";
+import { ProfileCardIcon, RiAccountCircleLine, RiUserSettingsLine, useAuthStore } from "@react-antd-module/runtime";
 
 import { createElement, lazy } from "react";
 
@@ -44,6 +44,20 @@ const mod: ModuleDefinition = {
 	i18n: {
 		"zh-CN": () => import("./locales/zh-CN.json"),
 		"en-US": () => import("./locales/en-US.json"),
+	},
+	lifecycle: {
+		// P4-3：接管头像上传端点（D9）。antd Upload 直连 action，headers 在上传瞬间
+		// 取当前 token 注入 Bearer（token 存 runtime auth store，跨渲染期读 getState）。
+		async onInit(ctx) {
+			const provider: UploadApiProvider = {
+				action: "/api/personal-center/upload",
+				headers: (): Record<string, string> => {
+					const token = useAuthStore.getState().token;
+					return token ? { Authorization: `Bearer ${token}` } : {};
+				},
+			};
+			ctx.register.uploadApi(provider);
+		},
 	},
 };
 

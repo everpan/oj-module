@@ -1,10 +1,10 @@
 import type { EChartsOption } from "echarts";
-import { fetchLine } from "@react-antd-module/runtime";
 import { Card, Radio } from "antd";
 import ReactECharts from "echarts-for-react";
 import { useEffect, useState } from "react";
-
 import { useTranslation } from "react-i18next";
+
+import { fetchLine } from "../../api/client";
 
 export default function LineChart() {
 	const { t } = useTranslation();
