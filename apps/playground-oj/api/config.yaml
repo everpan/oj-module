@@ -1,0 +1,14 @@
+# oj 服务配置（devkit 手册 §10）。
+# 本文件由 ram init 生成；config 内相对路径相对本文件所在目录。
+server:
+  host: 127.0.0.1 # 显式钉死：oj 默认绑 [::1]，localhost 解析序在反代下有坑
+  port: 9779 # 避开 playground/其他 oj 工程的 9778（F11）
+  base: /api
+  public_key_path: ./config/public.pem
+  certificate_path: ./config/cert.jws
+db:
+  default: 'sqlite://db.sqlite' # 相对 config 目录；缺文件自动建空库
+auth:
+  jwt_secret: 1d643a39b1f93a41eb0d82848e6ad5503dff265f8b92e61dff6f7b813bd48411 # init 随机生成；生产必须更换
+  access_token_duration: 2h
+  refresh_token_duration: 720h

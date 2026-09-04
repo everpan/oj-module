@@ -1,0 +1,3 @@
+name: web
+desc: 'uni-dev 演示后端模块（登录链 + 业务端点）'
+version: 0.1.0

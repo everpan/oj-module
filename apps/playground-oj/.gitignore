@@ -1,0 +1,12 @@
+node_modules/
+bin/
+.ram-tmp-*
+api/db.sqlite
+api/db.sqlite-shm
+api/db.sqlite-wal
+api/logs/
+api/dist/
+modules/dist/
+# 证书按工程现铸（ram init 本地生成），含私钥不入库
+api/config/*.pem
+api/config/cert.jws

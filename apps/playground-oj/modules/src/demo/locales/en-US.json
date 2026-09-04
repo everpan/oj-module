@@ -1,0 +1,10 @@
+{
+	"menu": {
+		"demo": "Demo"
+	},
+	"page": {
+		"title": "uni-dev Demo",
+		"loaded": "Module loaded",
+		"hello": "Backend says"
+	}
+}

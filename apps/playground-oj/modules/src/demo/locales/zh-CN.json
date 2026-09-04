@@ -1,0 +1,10 @@
+{
+	"menu": {
+		"demo": "演示模块"
+	},
+	"page": {
+		"title": "uni-dev 演示",
+		"loaded": "模块加载成功",
+		"hello": "后端响应"
+	}
+}

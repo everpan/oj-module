@@ -1,0 +1,26 @@
+{
+	"name": "playground-oj",
+	"type": "module",
+	"private": true,
+	"scripts": {
+		"dev": "ram dev",
+		"build": "ram build",
+		"preview": "ram preview",
+		"info": "ram info",
+		"typecheck": "tsc --noEmit -p tsconfig.json"
+	},
+	"devDependencies": {
+		"@ant-design/icons": "catalog:",
+		"@react-antd-module/cli": "workspace:*",
+		"@react-antd-module/contract": "workspace:*",
+		"@react-antd-module/runtime": "workspace:*",
+		"@react-antd-module/shell": "workspace:*",
+		"@types/react": "catalog:",
+		"antd": "catalog:",
+		"react": "catalog:",
+		"react-dom": "catalog:",
+		"react-i18next": "catalog:",
+		"react-router": "catalog:",
+		"typescript": "catalog:"
+	}
+}
