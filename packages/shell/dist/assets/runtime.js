@@ -160,7 +160,7 @@ function getAppInfo() {
 			"version": "0.1.1",
 			"license": "MIT"
 		},
-		"lastBuildTime": "2026-09-04 11:18:43"
+		"lastBuildTime": "2026-09-04 12:29:18"
 	};
 }
 var init_get_app_info = __esmMin((() => {}));
@@ -4704,13 +4704,68 @@ async function unwrap(promise) {
 }
 var init_envelope = __esmMin((() => {}));
 //#endregion
+//#region src/store/api-provider.ts
+function registerSystemApiProvider(moduleName, provider) {
+	if (systemCurrent) {
+		console.warn(`[api] 重复的系统 API provider 忽略：已由模块 "${systemCurrent.moduleName}" 提供，忽略 "${moduleName}"（先到先得）。`);
+		return;
+	}
+	systemCurrent = {
+		moduleName,
+		provider
+	};
+}
+function getSystemApiProvider() {
+	return systemCurrent?.provider;
+}
+function registerNotificationsApiProvider(moduleName, provider) {
+	if (notificationsCurrent) {
+		console.warn(`[api] 重复的通知 provider 忽略：已由模块 "${notificationsCurrent.moduleName}" 提供，忽略 "${moduleName}"（先到先得）。`);
+		return;
+	}
+	notificationsCurrent = {
+		moduleName,
+		provider
+	};
+}
+function getNotificationsApiProvider() {
+	return notificationsCurrent?.provider;
+}
+function registerUploadApiProvider(moduleName, provider) {
+	if (uploadCurrent) {
+		console.warn(`[api] 重复的上传 provider 忽略：已由模块 "${uploadCurrent.moduleName}" 提供，忽略 "${moduleName}"（先到先得）。`);
+		return;
+	}
+	uploadCurrent = {
+		moduleName,
+		provider
+	};
+}
+function getUploadApiProvider() {
+	return uploadCurrent?.provider;
+}
+/**
+* 卸载模块时复位其登记的全部 API provider（系统/通知/上传）。以 moduleName
+* 作命名隔离——不同模块各自登记互不干扰，卸载只清自己的。
+*/
+function unregisterApiProviders(moduleName) {
+	if (systemCurrent?.moduleName === moduleName) systemCurrent = void 0;
+	if (notificationsCurrent?.moduleName === moduleName) notificationsCurrent = void 0;
+	if (uploadCurrent?.moduleName === moduleName) uploadCurrent = void 0;
+}
+var systemCurrent, notificationsCurrent, uploadCurrent;
+var init_api_provider = __esmMin((() => {}));
+//#endregion
 //#region src/api/notifications/index.ts
 function fetchNotifications() {
+	const p = getNotificationsApiProvider();
+	if (p) return p.fetchNotifications();
 	return unwrap(request.get("notifications").json());
 }
 var init_notifications = __esmMin((() => {
 	init_request();
 	init_envelope();
+	init_api_provider();
 }));
 //#endregion
 //#region src/layout/widgets/notification/index.tsx
@@ -7407,6 +7462,15 @@ function createModuleContext(definition) {
 			},
 			authProvider: (provider) => {
 				registerAuthProvider(definition.name, provider);
+			},
+			systemApi: (provider) => {
+				registerSystemApiProvider(definition.name, provider);
+			},
+			notificationsApi: (provider) => {
+				registerNotificationsApiProvider(definition.name, provider);
+			},
+			uploadApi: (provider) => {
+				registerUploadApiProvider(definition.name, provider);
 			}
 		},
 		registerSlot: (slotName, node) => {
@@ -7579,6 +7643,7 @@ async function unloadModule(name) {
 	}
 	removeModuleSlots(name);
 	unregisterAuthProvider(name);
+	unregisterApiProviders(name);
 	modules.delete(name);
 }
 /**
@@ -7604,6 +7669,7 @@ var init_module_loader = __esmMin((() => {
 	init_resolve_layout();
 	init_access();
 	init_auth_provider();
+	init_api_provider();
 	init_user();
 	init_scoped();
 	init_keep_alive();
@@ -8886,25 +8952,34 @@ function fetchLine(data) {
 //#region src/api/system/menu/index.ts
 init_request();
 init_envelope();
+init_api_provider();
 function fetchMenuList(data) {
+	const p = getSystemApiProvider();
+	if (p) return p.fetchMenuList(data);
 	return unwrap(request.get("menu-list", {
 		searchParams: data,
 		ignoreLoading: true
 	}).json());
 }
 function fetchAddMenuItem(data) {
+	const p = getSystemApiProvider();
+	if (p) return p.fetchAddMenuItem(data);
 	return unwrap(request.post("menu-item", {
 		json: data,
 		ignoreLoading: true
 	}).json());
 }
 function fetchUpdateMenuItem(data) {
+	const p = getSystemApiProvider();
+	if (p) return p.fetchUpdateMenuItem(data);
 	return unwrap(request.put("menu-item", {
 		json: data,
 		ignoreLoading: true
 	}).json());
 }
 function fetchDeleteMenuItem(id) {
+	const p = getSystemApiProvider();
+	if (p) return p.fetchDeleteMenuItem(id);
 	return unwrap(request.delete("menu-item", {
 		json: id,
 		ignoreLoading: true
@@ -8926,7 +9001,7 @@ async function toApiError(e) {
 	} catch {}
 	return e;
 }
-async function fetchAddRoleItem(body) {
+async function fetchAddRoleItem$1(body) {
 	const client = ensureReq();
 	try {
 		const env = await client.post(`role-item`, {
@@ -8939,7 +9014,7 @@ async function fetchAddRoleItem(body) {
 		throw await toApiError(e);
 	}
 }
-async function fetchDeleteRoleItem(body) {
+async function fetchDeleteRoleItem$1(body) {
 	const client = ensureReq();
 	try {
 		const env = await client.delete(`role-item`, {
@@ -8952,7 +9027,7 @@ async function fetchDeleteRoleItem(body) {
 		throw await toApiError(e);
 	}
 }
-async function fetchMenuByRoleId(query) {
+async function fetchMenuByRoleId$1(query) {
 	const client = ensureReq();
 	try {
 		const env = await client.get(`menu-by-role-id`, { searchParams: query }).json();
@@ -8962,7 +9037,7 @@ async function fetchMenuByRoleId(query) {
 		throw await toApiError(e);
 	}
 }
-async function fetchRoleList(query) {
+async function fetchRoleList$1(query) {
 	const client = ensureReq();
 	try {
 		const env = await client.get(`role-list`, {
@@ -8975,7 +9050,7 @@ async function fetchRoleList(query) {
 		throw await toApiError(e);
 	}
 }
-async function fetchRoleMenu() {
+async function fetchRoleMenu$1() {
 	const client = ensureReq();
 	try {
 		const env = await client.get(`role-menu`, { ignoreLoading: true }).json();
@@ -8985,7 +9060,7 @@ async function fetchRoleMenu() {
 		throw await toApiError(e);
 	}
 }
-async function fetchUpdateRoleItem(body) {
+async function fetchUpdateRoleItem$1(body) {
 	const client = ensureReq();
 	try {
 		const env = await client.put(`role-item`, {
@@ -8997,6 +9072,27 @@ async function fetchUpdateRoleItem(body) {
 	} catch (e) {
 		throw await toApiError(e);
 	}
+}
+//#endregion
+//#region src/api/system/role/index.ts
+init_api_provider();
+async function fetchRoleList(query) {
+	return getSystemApiProvider()?.fetchRoleList(query) ?? fetchRoleList$1(query);
+}
+async function fetchAddRoleItem(body) {
+	return getSystemApiProvider()?.fetchAddRoleItem(body) ?? fetchAddRoleItem$1(body);
+}
+async function fetchUpdateRoleItem(body) {
+	return getSystemApiProvider()?.fetchUpdateRoleItem(body) ?? fetchUpdateRoleItem$1(body);
+}
+async function fetchDeleteRoleItem(body) {
+	return getSystemApiProvider()?.fetchDeleteRoleItem(body) ?? fetchDeleteRoleItem$1(body);
+}
+async function fetchRoleMenu() {
+	return getSystemApiProvider()?.fetchRoleMenu() ?? fetchRoleMenu$1();
+}
+async function fetchMenuByRoleId(query) {
+	return getSystemApiProvider()?.fetchMenuByRoleId(query) ?? fetchMenuByRoleId$1(query);
 }
 //#endregion
 //#region src/hooks/use-access/constants.ts
@@ -9103,7 +9199,11 @@ function BasicContent(props) {
 }
 //#endregion
 //#region src/components/basic-form/form-items/form-avatar-item.tsx
+init_api_provider();
 function FormAvatarItem({ value, onChange }) {
+	const uploadProvider = getUploadApiProvider();
+	const uploadAction = uploadProvider?.action ?? `/api/upload`;
+	const uploadHeaders = uploadProvider?.headers() ?? { authorization: "authorization-text" };
 	return /* @__PURE__ */ jsx(Fragment$1, { children: /* @__PURE__ */ jsxs("div", {
 		className: "flex items-center gap-5",
 		children: [/* @__PURE__ */ jsx(Avatar, {
@@ -9119,8 +9219,8 @@ function FormAvatarItem({ value, onChange }) {
 				accept: "image/*",
 				showUploadList: false,
 				name: "file",
-				action: `/api/upload`,
-				headers: { authorization: "authorization-text" },
+				action: uploadAction,
+				headers: uploadHeaders,
 				onChange: (info) => {
 					if (info.file.status === "done") {
 						window.$message?.success(`${info.file.name} file uploaded successfully`);

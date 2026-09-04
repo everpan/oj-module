@@ -13,6 +13,12 @@ import i18next from "i18next";
 import { addRouteIdByPath } from "#src/router/utils/add-route-id-by-path";
 import { resolveRouteLayouts } from "#src/router/utils/resolve-layout";
 import { useAccessStore } from "#src/store/access";
+import {
+	registerNotificationsApiProvider,
+	registerSystemApiProvider,
+	registerUploadApiProvider,
+	unregisterApiProviders,
+} from "#src/store/api-provider";
 import { registerAuthProvider, unregisterAuthProvider } from "#src/store/auth-provider";
 import { useUserStore } from "#src/store/user";
 import { createScopedRequest } from "#src/utils/request/scoped";
@@ -49,6 +55,17 @@ function createModuleContext(definition: ModuleDefinition): ModuleContext {
 			// 模块卸载时由 unloadModule 经 unregisterAuthProvider 自动注销
 			authProvider: (provider: AuthProvider) => {
 				registerAuthProvider(definition.name, provider);
+			},
+			// D9：接管系统/通知/上传 API；闭包 definition.name，模块卸载时
+			// 由 unloadModule 经 unregisterApiProviders 自动注销（命名隔离）
+			systemApi: (provider) => {
+				registerSystemApiProvider(definition.name, provider);
+			},
+			notificationsApi: (provider) => {
+				registerNotificationsApiProvider(definition.name, provider);
+			},
+			uploadApi: (provider) => {
+				registerUploadApiProvider(definition.name, provider);
 			},
 		},
 		registerSlot: (slotName: string, node: React.ReactNode) => {
@@ -308,6 +325,7 @@ export async function unloadModule(name: string): Promise<void> {
 	}
 	removeModuleSlots(name);
 	unregisterAuthProvider(name);
+	unregisterApiProviders(name);
 	modules.delete(name);
 }
 

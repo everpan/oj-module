@@ -1,5 +1,6 @@
 import type { AppRouteRecordRaw } from "../router/types";
 import type { AuthProvider } from "../store/auth-provider";
+import type { NotificationsApiProvider, SystemApiProvider, UploadApiProvider } from "../store/api-provider";
 /** 模块上下文 — 主框架向模块注入的能力 */
 export interface ModuleContext {
     /** 当前模块的元信息 */
@@ -19,6 +20,12 @@ export interface ModuleContext {
         apiPrefix: (prefix: string) => void;
         /** 接管登录/登出/用户信息（P5）；先到先得，模块卸载时自动注销 */
         authProvider: (provider: AuthProvider) => void;
+        /** 接管系统角色/菜单类 API（D9）；先到先得，模块卸载时自动注销 */
+        systemApi: (provider: SystemApiProvider) => void;
+        /** 接管通知拉取 API（D9）；先到先得，模块卸载时自动注销 */
+        notificationsApi: (provider: NotificationsApiProvider) => void;
+        /** 接管头像/附件上传端点（D9）；先到先得，模块卸载时自动注销 */
+        uploadApi: (provider: UploadApiProvider) => void;
     };
     /** 注册布局插槽节点（US-8 L2），卸载模块时自动清理 */
     registerSlot: (slotName: string, node: React.ReactNode) => void;

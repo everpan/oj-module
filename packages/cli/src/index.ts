@@ -52,7 +52,7 @@ async function main() {
 			break;
 		}
 		case "api": {
-			const { dir, check, docs } = parseApiArgs(process.argv.slice(3));
+			const { dir, check, docs, exempt } = parseApiArgs(process.argv.slice(3));
 			// S5：显式目录必须先存在——否则静默在错的目录下生成/对账
 			if (dir && !fs.existsSync(path.resolve(dir)))
 				throw new Error(`[ram-api] 项目目录不存在：${dir}`);
@@ -65,7 +65,8 @@ async function main() {
 			}
 			if (check) {
 				const { checkApi } = await import("./contract/check");
-				const { violations, hints } = await checkApi({ cwd: apiRoot });
+				// --exempt <path>：相对路径按项目根解析；缺省回退 api/.ram-api-exempt.json
+				const { violations, hints } = await checkApi({ cwd: apiRoot, exempt: exempt ? path.resolve(projectRoot, exempt) : undefined });
 				for (const v of violations)
 					console[v.level === "error" ? "error" : "warn"](`${v.level === "error" ? "✗" : "⚠"} ${v.message}`);
 				for (const h of hints)

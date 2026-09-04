@@ -75,8 +75,16 @@ export type {
 
 // 路由类型（模块声明 routes 时要用）
 export type { AppRouteRecordRaw, RouteMeta } from "./router/types";
+// 系统/通知/上传 API provider 注入契约（D9）：模块经 ctx.register.{systemApi,
+// notificationsApi, uploadApi} 实现，覆盖内置 root 级端点
+export type {
+	NotificationsApiProvider,
+	SystemApiProvider,
+	UploadApiProvider,
+} from "./store/api-provider";
 // store
 export { useAuthStore } from "./store/auth";
+
 // 认证 provider 注入契约（P5）：模块经 ctx.register.authProvider 实现
 export type { AuthProvider } from "./store/auth-provider";
 

@@ -514,6 +514,45 @@ importers:
         specifier: 'catalog:'
         version: 6.0.3
 
+  apps/playground-oj:
+    devDependencies:
+      '@ant-design/icons':
+        specifier: 'catalog:'
+        version: 6.3.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@react-antd-module/cli':
+        specifier: workspace:*
+        version: link:../../packages/cli
+      '@react-antd-module/contract':
+        specifier: workspace:*
+        version: link:../../packages/contract
+      '@react-antd-module/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+      '@react-antd-module/shell':
+        specifier: workspace:*
+        version: link:../../packages/shell
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.2.18
+      antd:
+        specifier: 'catalog:'
+        version: 6.6.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      react:
+        specifier: 'catalog:'
+        version: 19.2.8
+      react-dom:
+        specifier: 'catalog:'
+        version: 19.2.8(react@19.2.8)
+      react-i18next:
+        specifier: 'catalog:'
+        version: 17.0.12(i18next@26.4.0(typescript@6.0.3))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3)
+      react-router:
+        specifier: 'catalog:'
+        version: 7.18.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
+
   docs:
     devDependencies:
       vitepress:

@@ -12,14 +12,30 @@ export function parseInitArgs(argv: string[]): { dest: string, yes: boolean } {
 }
 
 /**
- * `ram api [dir] [--check] [--docs]`：位置参数为项目目录（缺省 cwd），
- * 与 parseInitArgs 同一约定（docs/prd/202609032019-ram-api-cwd.md）。
+ * `ram api [dir] [--check] [--docs] [--exempt <path>]`：位置参数为项目目录
+ * （缺省 cwd），与 parseInitArgs 同一约定（docs/prd/202609032019-ram-api-cwd.md）。
+ * 注意：`--exempt` 的「值」不得以 `--` 开头，否则会被误判为 dir——故逐项扫描，
+ * 消费掉 `--exempt` 紧随的值，避免被 dir 解析吞噬（P6 同款坑）。
  */
-export function parseApiArgs(argv: string[]): { dir: string, check: boolean, docs: boolean } {
-	const check = argv.includes("--check");
-	const docs = argv.includes("--docs");
-	const dir = argv.find(a => !a.startsWith("--")) ?? "";
-	return { dir, check, docs };
+export function parseApiArgs(argv: string[]): { dir: string, check: boolean, docs: boolean, exempt?: string } {
+	const flags = new Set<string>();
+	const positionals: string[] = [];
+	let exempt: string | undefined;
+	for (let i = 0; i < argv.length; i++) {
+		const a = argv[i];
+		if (a === "--exempt") {
+			exempt = argv[i + 1];
+			i++; // 跳过紧随的值，不被当 dir
+			continue;
+		}
+		if (a.startsWith("--")) {
+			flags.add(a);
+			continue;
+		}
+		positionals.push(a);
+	}
+	const dir = positionals[0] ?? "";
+	return { dir, check: flags.has("--check"), docs: flags.has("--docs"), exempt };
 }
 
 /**

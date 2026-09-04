@@ -3,6 +3,8 @@ import { UploadOutlined } from "@ant-design/icons";
 import { Avatar, Button, Upload } from "antd";
 import ImgCrop from "antd-img-crop";
 
+import { getUploadApiProvider } from "#src/store/api-provider";
+
 interface FormAvatarItemProps {
 	value?: string
 	onChange?: (value: any) => void
@@ -14,6 +16,11 @@ export function FormAvatarItem({ value, onChange }: FormAvatarItemProps) {
 	// const onSelect: TreeProps["onSelect"] = (selectedKeys) => {
 	// 	onChange?.(selectedKeys);
 	// };
+
+	// D9：未注册 uploadProvider 时回落内置 root 级 /upload + 死头（沿用现状）。
+	const uploadProvider = getUploadApiProvider();
+	const uploadAction = uploadProvider?.action ?? `${import.meta.env.VITE_API_BASE_URL}/upload`;
+	const uploadHeaders = uploadProvider?.headers() ?? { authorization: "authorization-text" };
 
 	return (
 		<>
@@ -30,10 +37,8 @@ export function FormAvatarItem({ value, onChange }: FormAvatarItemProps) {
 						accept="image/*"
 						showUploadList={false}
 						name="file"
-						action={`${import.meta.env.VITE_API_BASE_URL}/upload`}
-						headers={{
-							authorization: "authorization-text",
-						}}
+						action={uploadAction}
+						headers={uploadHeaders}
 						onChange={(info) => {
 							// if (info.file.status !== 'uploading') {
 							// 	console.log(info.file, info.fileList);

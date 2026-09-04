@@ -35,6 +35,7 @@ export type { Manifest, ManifestModuleEntry, ModuleInstance, } from "./module-lo
 export type { AppRouteRecordRaw, RouteMeta } from "./router/types";
 export { useAuthStore } from "./store/auth";
 export type { AuthProvider } from "./store/auth-provider";
+export type { NotificationsApiProvider, SystemApiProvider, UploadApiProvider, } from "./store/api-provider";
 export { useUserStore } from "./store/user";
 export type { AppInfo } from "./types/app-info";
 export { getAllExpandedKeys } from "./utils/get-all-expanded-keys";

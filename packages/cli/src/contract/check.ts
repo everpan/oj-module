@@ -30,6 +30,61 @@ export interface CheckResult {
 	hints: string[]
 }
 
+/**
+ * D12/F19：`ram api --check` 豁免清单（api/.ram-api-exempt.json）。
+ * - modules：整模块跳过 route 双向对账（与 dist 对账）。
+ * - paths：路径前缀跳过；`/xxx/*` 为「一层通配」，否则为精确前缀匹配。
+ * 仅用于降级（error→skip），绝不引入新错误；缺省/损坏一律回退空豁免。
+ */
+export interface ApiExemption {
+	modules: string[]
+	paths: string[]
+}
+
+/**
+ * 加载豁免清单：默认 `<cwd>/api/.ram-api-exempt.json`；`opts.exempt` 为绝对/相对
+ * 路径时覆盖默认。文件缺失或 JSON 损坏 → 空豁免 `{}`（绝不抛错）。
+ */
+export function loadExemption(opts: { cwd: string, exempt?: string }): ApiExemption {
+	const file = opts.exempt ?? join(opts.cwd, "api/.ram-api-exempt.json");
+	if (!existsSync(file))
+		return { modules: [], paths: [] };
+	try {
+		const parsed = JSON.parse(readFileSync(file, "utf8")) as Partial<ApiExemption>;
+		return {
+			modules: Array.isArray(parsed?.modules) ? parsed.modules.map(String) : [],
+			paths: Array.isArray(parsed?.paths) ? parsed.paths.map(String) : [],
+		};
+	}
+	catch {
+		return { modules: [], paths: [] };
+	}
+}
+
+/** 路由身份串（如 "order/list"、"auth/login"）的模块段 = 首段 */
+function moduleOf(relPath: string): string {
+	return relPath.split("/")[0] ?? "";
+}
+
+/**
+ * 判断 `routePath`（带前导斜杠，如 "/auth/login" 或 "/web/user-info"）是否命中
+ * 豁免路径项 `p`（如 "/auth/*"）。
+ * - `p` 以 `/*` 结尾：base=p 去尾，要求 routePath === `${base}/<单段>`（一层通配）。
+ * - 否则：精确前缀匹配（routePath 等于 p 或以 `p + "/"` 开头）。
+ */
+function matchExemptPath(routePath: string, p: string): boolean {
+	if (!p.startsWith("/"))
+		p = `/${p}`;
+	if (p.endsWith("/*")) {
+		const base = p.slice(0, -2); // "/auth"
+		if (!routePath.startsWith(`${base}/`))
+			return false;
+		const rest = routePath.slice(base.length + 1); // "login"
+		return rest.length > 0 && !rest.includes("/");
+	}
+	return routePath === p || routePath.startsWith(`${p}/`);
+}
+
 /** oj 方法名 → HTTP 动词（emit-stub 的反向映射） */
 const VERB_OF: Record<string, IrEndpoint["method"]> = {
 	get: "GET",
@@ -118,8 +173,8 @@ function routeLabel(dir: string, tail?: string): string {
 	return tail ? `${dir}/${tail}` : dir;
 }
 
-/** ② route 双向对账：契约路由表 vs AST 扫描的 handler 表 */
-function reconcileRoutes(contractIr: IrEndpoint[], handlers: HandlerRow[]): CheckViolation[] {
+/** ② route 双向对账：契约路由表 vs AST 扫描的 handler 表（D12/F19：豁免降级） */
+function reconcileRoutes(contractIr: IrEndpoint[], handlers: HandlerRow[], exemption: ApiExemption): CheckViolation[] {
 	const violations: CheckViolation[] = [];
 	const key = (method: string, dir: string) => `${method} ${dir}`;
 
@@ -154,6 +209,12 @@ function reconcileRoutes(contractIr: IrEndpoint[], handlers: HandlerRow[]): Chec
 	}
 	for (const [k, h] of handlerMap) {
 		if (!contractMap.has(k)) {
+			// D12/F19：整模块豁免，或路径命中豁免前缀 → 视为已覆盖，跳过未登记报错
+			const mod = moduleOf(h.dir);
+			if (exemption.modules.includes(mod))
+				continue;
+			if (exemption.paths.some(p => matchExemptPath(`/${h.dir}`, p)))
+				continue;
 			violations.push({
 				level: "error",
 				kind: "route-unregistered",
@@ -173,8 +234,9 @@ function parseRoutesJs(text: string): { method: string, pattern: string }[] {
 	return rows;
 }
 
-/** ram api --check 主入口 */
-export async function checkApi(opts: { cwd: string }): Promise<CheckResult> {
+/** ram api --check 主入口。opts.exempt 为可选豁免清单路径（覆盖默认 api/.ram-api-exempt.json） */
+export async function checkApi(opts: { cwd: string, exempt?: string }): Promise<CheckResult> {
+	const exemption = loadExemption(opts);
 	const contracts = discoverContracts(opts.cwd);
 	if (contracts.length === 0) {
 		throw new Error(`[ram-api] ${opts.cwd} 下没有发现契约文件——默认发现：api/src/*/contract.ts（uni-dev）与 modules/src/*/api/contract.ts（纯前端）。`);
@@ -227,7 +289,7 @@ export async function checkApi(opts: { cwd: string }): Promise<CheckResult> {
 	if (contracts.some(c => c.kind === "uni-dev")) {
 		const apiSrcDir = join(opts.cwd, "api/src");
 		const handlers = walkApiFiles(apiSrcDir).flatMap(f => scanHandlerFile(f, apiSrcDir));
-		violations.push(...reconcileRoutes(uniDevIr, handlers));
+		violations.push(...reconcileRoutes(uniDevIr, handlers, exemption));
 	}
 
 	// ③ routes.js diff
@@ -247,11 +309,21 @@ export async function checkApi(opts: { cwd: string }): Promise<CheckResult> {
 	}
 	else {
 		const contractRows = uniDevIr.map(ep => ({ method: ep.method, pattern: ep.fullPath.replace(/^\//, "") }));
-		const toSet = (rows: { method: string, pattern: string }[]) => new Set(rows.map(r => `${r.method} ${r.pattern}`));
-		const distSet = toSet(distRows);
-		const contractSet = toSet(contractRows);
+		const keyOf = (r: { method: string, pattern: string }) => `${r.method} ${r.pattern}`;
+		const contractSet = new Set(contractRows.map(keyOf));
+		const distSet = new Set(distRows.map(keyOf));
 		const missingInDist = [...contractSet].filter(r => !distSet.has(r));
-		const extraInDist = [...distSet].filter(r => !contractSet.has(r));
+		// D12/F19：dist 行命中豁免（整模块或路径前缀）→ 不报 "dist 多"
+		const isExemptRow = (r: { method: string, pattern: string }) => {
+			const mod = moduleOf(r.pattern);
+			const hitModule = exemption.modules.includes(mod);
+			const hitPath = exemption.paths.some(p => matchExemptPath(`/${r.pattern}`, p));
+			return hitModule || hitPath;
+		};
+		const extraInDist = distRows
+			.filter(r => !contractSet.has(keyOf(r)))
+			.filter(r => !isExemptRow(r))
+			.map(keyOf);
 		if (missingInDist.length || extraInDist.length) {
 			violations.push({
 				level: "error",
