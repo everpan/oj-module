@@ -19,15 +19,18 @@ export default {
 			for (const r of rows)
 				map.set(Number(r.day), Number(r.v));
 
-			const out: number[] = [];
-			for (let d = start; d <= today; d++)
-				out.push(map.get(d) ?? 0);
+			let out: number[] = Array.from({ length: today - start + 1 }, (_, i) => {
+				const d = start + i;
+				return map.get(d) ?? 0;
+			});
 
 			// 懒补数（F6）：窗口内完全无 seed（seed 随时间变旧）时，回落确定式趋势，
 			// 保证图表非空；有 seed 时仅对缺失日补 0（上面 ?? 0 已处理）。
 			if (out.every(v => v === 0)) {
-				for (let d = start; d <= today; d++)
-					out.push(50 + Math.round(40 * Math.sin(d / 3)) + (d % 7) * 3);
+				out = Array.from({ length: today - start + 1 }, (_, i) => {
+					const d = start + i;
+					return 50 + Math.round(40 * Math.sin(d / 3)) + (d % 7) * 3;
+				});
 			}
 			json.ok(out);
 		}

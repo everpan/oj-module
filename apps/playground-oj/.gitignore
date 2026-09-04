@@ -6,6 +6,8 @@ api/db.sqlite-shm
 api/db.sqlite-wal
 api/logs/
 api/dist/
+# ram api --docs 生成的文档站（可经 `pnpm exec ram api --docs` 复跑）
+api/docs/
 modules/dist/
 # 证书按工程现铸（ram init 本地生成），含私钥不入库
 api/config/*.pem

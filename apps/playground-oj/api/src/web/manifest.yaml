@@ -1,3 +1,7 @@
 name: web
 desc: 'uni-dev 演示后端模块（登录链 + 业务端点）'
 version: 0.1.0
+# P5 修复（S003 闸门）：get-async-routes 跨模块读 system 的 menus/role_menu，
+# 必须声明 deps 才能通过 oj build 的 ownership_guard 强校验（dev 期仅 warn）。
+deps:
+  system: ^0.1.0
