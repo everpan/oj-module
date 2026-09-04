@@ -519,6 +519,9 @@ importers:
       '@ant-design/icons':
         specifier: 'catalog:'
         version: 6.3.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@ant-design/pro-components':
+        specifier: 'catalog:'
+        version: 3.1.12-0(antd@6.6.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(supports-color@7.2.0)
       '@react-antd-module/cli':
         specifier: workspace:*
         version: link:../../packages/cli
@@ -531,15 +534,36 @@ importers:
       '@react-antd-module/shell':
         specifier: workspace:*
         version: link:../../packages/shell
+      '@tanstack/react-query':
+        specifier: 'catalog:'
+        version: 5.102.8(react@19.2.8)
       '@types/react':
         specifier: 'catalog:'
         version: 19.2.18
+      '@types/react-dom':
+        specifier: 'catalog:'
+        version: 19.2.5(@types/react@19.2.18)
       antd:
         specifier: 'catalog:'
         version: 6.6.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      clsx:
+        specifier: 'catalog:'
+        version: 2.1.1
+      echarts:
+        specifier: 'catalog:'
+        version: 6.1.0
+      echarts-for-react:
+        specifier: 'catalog:'
+        version: 3.0.6(echarts@6.1.0)(react@19.2.8)
+      i18next:
+        specifier: 'catalog:'
+        version: 26.4.0(typescript@6.0.3)
       react:
         specifier: 'catalog:'
         version: 19.2.8
+      react-countup:
+        specifier: 'catalog:'
+        version: 6.5.3(react@19.2.8)
       react-dom:
         specifier: 'catalog:'
         version: 19.2.8(react@19.2.8)

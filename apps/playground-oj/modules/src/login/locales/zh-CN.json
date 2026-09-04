@@ -1,0 +1,10 @@
+{
+	"page": {
+		"title": "模块登录",
+		"subtitle": "这是 login 模块参考实现（内容区由模块提供，外壳由框架提供）",
+		"username": "用户名",
+		"password": "密码",
+		"submit": "登 录",
+		"success": "登录成功"
+	}
+}

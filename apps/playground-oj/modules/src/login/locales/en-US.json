@@ -1,0 +1,10 @@
+{
+	"page": {
+		"title": "Module Login",
+		"subtitle": "Reference login module (content area by module, shell by framework)",
+		"username": "Username",
+		"password": "Password",
+		"submit": "Sign in",
+		"success": "Signed in"
+	}
+}

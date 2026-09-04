@@ -1,10 +1,15 @@
 {
 	"menu": {
-		"demo": "Demo"
+		"demo": "Demo Module",
+		"todos": "Todo List",
+		"detail": "Demo Detail",
+		"about": "Demo About"
 	},
 	"page": {
-		"title": "uni-dev Demo",
+		"title": "Vertical Slice Demo",
 		"loaded": "Module loaded",
-		"hello": "Backend says"
+		"detail": "Demo Detail Page",
+		"about": "Demo About Page",
+		"todos": "Contract-driven todo list"
 	}
 }

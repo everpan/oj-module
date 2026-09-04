@@ -5,6 +5,9 @@
 		"module": "ESNext",
 		"moduleResolution": "bundler",
 		"resolveJsonModule": true,
+		// 模块工程经 dist 消费 @react-antd-module/contract，其类型指向 src/*.ts
+		// （含 .ts 扩展名 import），需放开以通过类型解析（与应用根 tsconfig 一致）
+		"allowImportingTsExtensions": true,
 		"strict": true,
 		"noFallthroughCasesInSwitch": true,
 		"noEmit": true,
@@ -17,6 +20,7 @@
 	"include": [
 		"modules",
 		"modules.config.ts",
+		"vite-env.d.ts",
 		"global.d.ts"
 	]
 }
