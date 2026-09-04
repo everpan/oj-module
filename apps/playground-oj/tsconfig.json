@@ -18,6 +18,7 @@
 		"skipLibCheck": true
 	},
 	"include": [
+		"api",
 		"modules",
 		"modules.config.ts",
 		"vite-env.d.ts",
