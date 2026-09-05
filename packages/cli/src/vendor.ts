@@ -17,6 +17,7 @@ import { pipeline } from "node:stream/promises";
 export interface ReleaseAsset {
 	name: string
 	browser_download_url: string
+	size?: number
 }
 
 export interface Release {
@@ -97,7 +98,7 @@ function authHeaders(token: string): Record<string, string> {
 	return headers;
 }
 
-/** 网络层异常（DNS/超时等）undici 只抛 TypeError: fetch failed，真实原因在 cause —— 取出来给人话与代理指引 */
+/** 网络层异常（DNS/超时等）undici 只抛 TypeError: fetch failed，真实原因在 cause —— 取出 cause 与失败 URL，给人话与代理指引（URL 可直接拿去 curl 验证连通性） */
 async function fetchGuarded(fetchFn: FetchLike, url: string, token: string): Promise<Response> {
 	try {
 		return await fetchFn(url, { headers: authHeaders(token) });
@@ -105,11 +106,17 @@ async function fetchGuarded(fetchFn: FetchLike, url: string, token: string): Pro
 	catch (err) {
 		const cause = err instanceof Error && err.cause instanceof Error ? err.cause.message : String(err);
 		throw new Error(
-			`[ram] 网络请求失败：${cause}\n`
+			`[ram] 网络请求失败：${cause}\nURL：${url}\n`
 			+ "若本机直连 github 受限，请带代理重试（Node ≥ 24）：\n"
 			+ "  NODE_USE_ENV_PROXY=1 HTTPS_PROXY=http://127.0.0.1:7890 ram vendor",
 		);
 	}
+}
+
+function formatSize(bytes: number): string {
+	return bytes >= 1024 * 1024
+		? `${(bytes / 1024 / 1024).toFixed(1)} MB`
+		: `${Math.max(1, Math.round(bytes / 1024))} KB`;
 }
 
 export async function fetchLatestRelease(deps: VendorDeps = {}): Promise<Release> {
@@ -133,14 +140,16 @@ export async function installFromRelease(
 	sumsAsset: ReleaseAsset,
 	tag: string,
 	binDir: string,
-	deps: VendorDeps = {},
+	deps: VendorDeps & { log?: (msg: string) => void } = {},
 ): Promise<void> {
 	const { fetchFn, token } = resolveDeps(deps);
+	const log = deps.log ?? (() => {});
 	const tmp = path.join(os.tmpdir(), `ram-oj-${process.pid}-${Date.now()}`);
 	try {
+		log(`[ram] 下载 ${asset.name}${asset.size ? `（${formatSize(asset.size)}）` : ""} …`);
 		const res = await fetchGuarded(fetchFn, asset.browser_download_url, token);
 		if (!res.ok || !res.body)
-			throw new Error(`[ram] 下载失败（HTTP ${res.status}）：${asset.name}`);
+			throw new Error(`[ram] 下载失败（HTTP ${res.status}）：${asset.name}\nURL：${asset.browser_download_url}`);
 		await pipeline(Readable.fromWeb(res.body as import("node:stream/web").ReadableStream), fs.createWriteStream(tmp));
 
 		const sumsRes = await fetchGuarded(fetchFn, sumsAsset.browser_download_url, token);
@@ -153,8 +162,10 @@ export async function installFromRelease(
 				`[ram] sha256 校验失败：${asset.name}\n期望 ${expectHex}\n实际 ${actualHex}\n文件可能被篡改或下载不完整，请重试。`,
 			);
 		}
+		log("[ram] sha256 校验通过");
 
 		fs.mkdirSync(binDir, { recursive: true });
+		log(`[ram] 解包 → ${binDir}`);
 		execFileSync("tar", [asset.name.endsWith(".zip") ? "-xf" : "-xzf", tmp, "--strip-components=1", "-C", binDir]);
 		const ojBin = path.join(binDir, ojBinName(process.platform));
 		if (process.platform !== "win32")
@@ -176,6 +187,7 @@ export async function vendorCommand(
 	deps: VendorDeps & { log?: (msg: string) => void } = {},
 ): Promise<void> {
 	const log = deps.log ?? console.log;
+	log(`[ram] 查询最新 release（${RELEASE_API}）…`);
 	const release = await fetchLatestRelease(deps);
 	const binDir = path.join(projectRoot, "bin");
 	const local = readLocalVersion(binDir);
@@ -183,6 +195,10 @@ export async function vendorCommand(
 		log(`[ram] oj 已是最新 ${release.tag_name}，跳过。`);
 		return;
 	}
+	if (opts.force && local === release.tag_name)
+		log(`[ram] 本地已是 ${release.tag_name}，--force 重装。`);
+	else
+		log(`[ram] 本地 ${local ?? "未安装"} → 最新 ${release.tag_name}`);
 	const asset = pickAsset(release.assets, release.tag_name, process.platform, process.arch);
 	const sums = release.assets.find(a => a.name === `${asset.name}.sha256`);
 	if (!sums) {
@@ -190,6 +206,6 @@ export async function vendorCommand(
 			`[ram] release（${release.tag_name}）缺少校验文件 ${asset.name}.sha256，release 结构异常，拒绝安装。`,
 		);
 	}
-	await installFromRelease(asset, sums, release.tag_name, binDir, deps);
+	await installFromRelease(asset, sums, release.tag_name, binDir, { ...deps, log });
 	log(`[ram] oj ${local ? `${local} → ` : ""}${release.tag_name} 安装完成：${path.join(binDir, ojBinName(process.platform))}`);
 }

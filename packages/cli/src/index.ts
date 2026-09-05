@@ -95,6 +95,7 @@ async function main() {
 }
 
 main().catch((error: unknown) => {
-	console.error(`[ram] ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+	// Error 的 message 已是人话（含修复指引）；堆栈默认是噪音，RAM_DEBUG=1 才输出
+	console.error(`[ram] ${error instanceof Error ? (process.env.RAM_DEBUG ? error.stack : error.message) : String(error)}`);
 	process.exit(1);
 });

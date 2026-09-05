@@ -103,7 +103,7 @@ describe("fetchLatestRelease（V3/V6 认证与错误）", () => {
 			.toThrowError(/GITHUB_TOKEN/);
 	});
 
-	it("网络层 fetch failed → 报错带 cause 与代理提示（不裸抛 TypeError）", async () => {
+	it("网络层 fetch failed → 报错带失败 URL、cause 与代理提示（不裸抛 TypeError，URL 可直接验证连通性）", async () => {
 		const boom = Object.assign(new TypeError("fetch failed"), {
 			cause: new Error("Connect Timeout Error (attempted address: github.com:443, timeout: 10000ms)"),
 		});
@@ -111,7 +111,7 @@ describe("fetchLatestRelease（V3/V6 认证与错误）", () => {
 			throw boom;
 		}, token: "" }))
 			.rejects
-			.toThrowError(/Connect Timeout[\s\S]*HTTPS_PROXY/);
+			.toThrowError(/Connect Timeout[\s\S]*releases\/latest[\s\S]*HTTPS_PROXY/);
 	});
 });
 
@@ -170,7 +170,7 @@ describe("vendorCommand（US-1..US-4 编排）", () => {
 		const release = {
 			tag_name: tag,
 			assets: [
-				{ name, browser_download_url: "https://fake/oj" },
+				{ name, browser_download_url: "https://fake/oj", size: 15 * 1024 * 1024 },
 				{ name: `${name}.sha256`, browser_download_url: "https://fake/oj.tar.gz.sha256" },
 			],
 		};
@@ -197,6 +197,13 @@ describe("vendorCommand（US-1..US-4 编排）", () => {
 
 		await vendorCommand(dir, { force: false }, { fetchFn, token: "", log });
 		expect(fs.existsSync(path.join(bin, "oj"))).toBe(true);
+		// 分步人话日志：查询 → 下载（含体积）→ 校验 → 解包 → 完成
+		const joined = logs.join("\n");
+		expect(joined).toMatch(/查询最新 release/);
+		expect(joined).toMatch(/oj-v0\.2\.0-aarch64-apple-darwin\.tar\.gz（\d+(\.\d+)? (KB|MB)）/);
+		expect(joined).toMatch(/sha256 校验通过/);
+		expect(joined).toMatch(/解包/);
+		expect(joined).toMatch(/安装完成/);
 		const after1 = count();
 
 		await vendorCommand(dir, { force: false }, { fetchFn, token: "", log }); // US-2
