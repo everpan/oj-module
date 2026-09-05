@@ -97,9 +97,24 @@ function authHeaders(token: string): Record<string, string> {
 	return headers;
 }
 
+/** 网络层异常（DNS/超时等）undici 只抛 TypeError: fetch failed，真实原因在 cause —— 取出来给人话与代理指引 */
+async function fetchGuarded(fetchFn: FetchLike, url: string, token: string): Promise<Response> {
+	try {
+		return await fetchFn(url, { headers: authHeaders(token) });
+	}
+	catch (err) {
+		const cause = err instanceof Error && err.cause instanceof Error ? err.cause.message : String(err);
+		throw new Error(
+			`[ram] 网络请求失败：${cause}\n`
+			+ "若本机直连 github 受限，请带代理重试（Node ≥ 24）：\n"
+			+ "  NODE_USE_ENV_PROXY=1 HTTPS_PROXY=http://127.0.0.1:7890 ram vendor",
+		);
+	}
+}
+
 export async function fetchLatestRelease(deps: VendorDeps = {}): Promise<Release> {
 	const { fetchFn, token } = resolveDeps(deps);
-	const res = await fetchFn(RELEASE_API, { headers: authHeaders(token) });
+	const res = await fetchGuarded(fetchFn, RELEASE_API, token);
 	if (!res.ok) {
 		throw new Error(
 			`[ram] 查询最新 release 失败（HTTP ${res.status}）。\n${
@@ -123,12 +138,12 @@ export async function installFromRelease(
 	const { fetchFn, token } = resolveDeps(deps);
 	const tmp = path.join(os.tmpdir(), `ram-oj-${process.pid}-${Date.now()}`);
 	try {
-		const res = await fetchFn(asset.browser_download_url, { headers: authHeaders(token) });
+		const res = await fetchGuarded(fetchFn, asset.browser_download_url, token);
 		if (!res.ok || !res.body)
 			throw new Error(`[ram] 下载失败（HTTP ${res.status}）：${asset.name}`);
 		await pipeline(Readable.fromWeb(res.body as import("node:stream/web").ReadableStream), fs.createWriteStream(tmp));
 
-		const sumsRes = await fetchFn(sumsAsset.browser_download_url, { headers: authHeaders(token) });
+		const sumsRes = await fetchGuarded(fetchFn, sumsAsset.browser_download_url, token);
 		if (!sumsRes.ok)
 			throw new Error(`[ram] 下载校验文件失败（HTTP ${sumsRes.status}）：${sumsAsset.name}`);
 		const expectHex = (await sumsRes.text()).trim().split(/\s+/)[0];

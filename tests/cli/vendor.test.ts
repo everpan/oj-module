@@ -102,6 +102,17 @@ describe("fetchLatestRelease（V3/V6 认证与错误）", () => {
 			.rejects
 			.toThrowError(/GITHUB_TOKEN/);
 	});
+
+	it("网络层 fetch failed → 报错带 cause 与代理提示（不裸抛 TypeError）", async () => {
+		const boom = Object.assign(new TypeError("fetch failed"), {
+			cause: new Error("Connect Timeout Error (attempted address: github.com:443, timeout: 10000ms)"),
+		});
+		await expect(fetchLatestRelease({ fetchFn: async () => {
+			throw boom;
+		}, token: "" }))
+			.rejects
+			.toThrowError(/Connect Timeout[\s\S]*HTTPS_PROXY/);
+	});
 });
 
 describe("installFromRelease（下载→校验→解包→标记）", () => {

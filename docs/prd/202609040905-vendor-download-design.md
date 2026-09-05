@@ -124,6 +124,7 @@ vendorCommand(projectRoot, { force }, deps?)
 | ~~待验证~~ 已闭环 | `everpan/only-js` 曾 API 404 | 2026-09-04 已发 v0.1.0，匿名 API 可读，资产命名/`.sha256` 格式均与设计一致（Windows 为 zip，已修正 V7/V8） |
 | ~~待验证~~ 已闭环 | oj 是否支持 `--version` 输出 | 支持，但输出为 `oj 0.1.0`（无 `v` 前缀，需二次解析）；仍采用 V4 标记文件，更简单 |
 | 反常识 | Windows 资产用 zip 而非 tar.gz（Rust 社区惯例） | pickAsset 按平台选扩展名，勿写死 tar.gz |
+| 反常识（与 curl 等业界工具默认行为不符） | Node ≥18 内置 fetch（undici）不读 `HTTPS_PROXY` 等代理环境变量，直连 github.com 资产域名超时即裸抛 `TypeError: fetch failed`，真实原因藏在 `err.cause`（2026-09-05 实测：api.github.com 可达、下载域名 `read ETIMEDOUT`） | 2026-09-05 修复：fetchGuarded 收敛 fetchLatestRelease/installFromRelease 两处调用，网络层异常转人话（含 cause + `NODE_USE_ENV_PROXY=1 HTTPS_PROXY=... ram vendor` 指引，Node ≥ 24 原生支持）；不带代理实测复现报错、带代理实测安装 v0.1.2 成功。未引 undici ProxyAgent 依赖（YAGNI） |
 
 ## 7. 总结
 
