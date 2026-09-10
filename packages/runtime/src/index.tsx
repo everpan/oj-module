@@ -49,7 +49,7 @@ function renderModuleLoadError(error: unknown) {
 			</p>
 			<p>
 				更多说明见文档：
-				<code>docs/prd/module-development-guide.md</code>
+				<code>docs/archive/prd/module-development-guide.md</code>
 			</p>
 		</div>,
 	);
