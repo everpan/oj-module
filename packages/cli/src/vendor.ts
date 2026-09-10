@@ -1,8 +1,9 @@
 /**
- * `ram vendor` —— oj vendor 按平台联网下载（设计 V1–V9）。
+ * `ram vendor [tag] [--force]` —— oj vendor 按平台联网下载（设计 V1–V9）。
  *
- * 从 everpan/only-js 最新 release 取本平台资产，sha256 校验后装进工程
- * bin/。init 的内置 tar.gz 是离线兜底，本命令是联网更新通道，两者独立。
+ * 从 everpan/only-js 的 release 取本平台资产，sha256 校验后装进工程 bin/。
+ * tag 缺省追最新 release（/releases/latest），显式指定则按 tag 下载；
+ * init 也走同一通道补装（无内置 tar.gz 兜底）。
  */
 
 import { execFileSync } from "node:child_process";
@@ -75,8 +76,6 @@ export function readLocalVersion(binDir: string, platform: NodeJS.Platform = pro
 	return fs.readFileSync(marker, "utf-8").trim() || null;
 }
 
-export const RELEASE_API = "https://api.github.com/repos/everpan/only-js/releases/latest";
-
 export type FetchLike = (url: string, init?: { headers?: Record<string, string> }) => Promise<Response>;
 
 export interface VendorDeps {
@@ -119,13 +118,40 @@ function formatSize(bytes: number): string {
 		: `${Math.max(1, Math.round(bytes / 1024))} KB`;
 }
 
+export const RELEASE_LATEST_API = "https://api.github.com/repos/everpan/only-js/releases/latest";
+
+export function releaseApiUrl(tag: string): string {
+	return `https://api.github.com/repos/everpan/only-js/releases/tags/${tag}`;
+}
+
+/** 查询最新 release（tag 缺省路径）。 */
 export async function fetchLatestRelease(deps: VendorDeps = {}): Promise<Release> {
 	const { fetchFn, token } = resolveDeps(deps);
-	const res = await fetchGuarded(fetchFn, RELEASE_API, token);
+	const res = await fetchGuarded(fetchFn, RELEASE_LATEST_API, token);
 	if (!res.ok) {
 		throw new Error(
 			`[ram] 查询最新 release 失败（HTTP ${res.status}）。\n${
-				token ? "已携带 GITHUB_TOKEN，请确认其有 everpan/only-js 读权限。" : "若仓库为私有或触发限流，请设置 GITHUB_TOKEN 后重试。"}`,
+				token
+					? "已携带 GITHUB_TOKEN，请确认其有 everpan/only-js 读权限。"
+					: "若仓库为私有或触发限流，请设置 GITHUB_TOKEN 后重试。"}`,
+		);
+	}
+	return await res.json() as Release;
+}
+
+/** 按指定 tag 查询 release（`ram vendor <tag>` 显式指定版本时）。 */
+export async function fetchRelease(tag: string, deps: VendorDeps = {}): Promise<Release> {
+	const { fetchFn, token } = resolveDeps(deps);
+	const url = releaseApiUrl(tag);
+	const res = await fetchGuarded(fetchFn, url, token);
+	if (!res.ok) {
+		throw new Error(
+			`[ram] 查询 release ${tag} 失败（HTTP ${res.status}）。\n${
+				res.status === 404
+					? "该 tag 尚未发布 release——请确认上游 everpan/only-js 已发布对应版本。"
+					: token
+						? "已携带 GITHUB_TOKEN，请确认其有 everpan/only-js 读权限。"
+						: "若仓库为私有或触发限流，请设置 GITHUB_TOKEN 后重试。"}`,
 		);
 	}
 	return await res.json() as Release;
@@ -178,27 +204,29 @@ export async function installFromRelease(
 }
 
 /**
- * US-1..US-4 编排：查最新 release → 本地已是最新则跳过（--force 除外）
- * → 选本平台资产 + 同名 .sha256 → 安装 → 报告版本。
+ * US-1..US-4 编排：查 release（tag 缺省追 latest，显式指定按 tag）
+ * → 本地已是该版本则跳过（--force 除外）→ 选本平台资产 + 同名 .sha256
+ * → 安装 → 报告版本。
  */
 export async function vendorCommand(
 	projectRoot: string,
-	opts: { force: boolean },
+	opts: { force: boolean, tag?: string },
 	deps: VendorDeps & { log?: (msg: string) => void } = {},
 ): Promise<void> {
 	const log = deps.log ?? console.log;
-	log(`[ram] 查询最新 release（${RELEASE_API}）…`);
-	const release = await fetchLatestRelease(deps);
+	const source = opts.tag ? `release ${opts.tag}` : "最新 release";
+	log(`[ram] 查询${source}…`);
+	const release = opts.tag ? await fetchRelease(opts.tag, deps) : await fetchLatestRelease(deps);
 	const binDir = path.join(projectRoot, "bin");
 	const local = readLocalVersion(binDir);
 	if (!opts.force && local === release.tag_name) {
-		log(`[ram] oj 已是最新 ${release.tag_name}，跳过。`);
+		log(`[ram] oj 已是 ${release.tag_name}，跳过。`);
 		return;
 	}
 	if (opts.force && local === release.tag_name)
 		log(`[ram] 本地已是 ${release.tag_name}，--force 重装。`);
 	else
-		log(`[ram] 本地 ${local ?? "未安装"} → 最新 ${release.tag_name}`);
+		log(`[ram] 本地 ${local ?? "未安装"} → ${release.tag_name}`);
 	const asset = pickAsset(release.assets, release.tag_name, process.platform, process.arch);
 	const sums = release.assets.find(a => a.name === `${asset.name}.sha256`);
 	if (!sums) {

@@ -182,16 +182,6 @@ import logo from "#src/assets/svg/logo.svg?url";
 
 因为 [React Icons](https://react-icons.github.io/react-icons/) 无法进行项目管理，项目自定义的本地图标无法使用 [React Icons](https://react-icons.github.io/react-icons/) 的方式进行引用，你必须引入另一种本地图标解决方案，而 Iconfify 不存在这个问题。
 
-为了解决这个缺点，`src/icons/create-icon.ts` 是一个好的参考。
-
-```ts
-import { createIconifyIcon } from "#src/icons/create-icon";
-
-export const MoonIcon = createIconifyIcon("svg:moon");
-export const SunIcon = createIconifyIcon("svg:sun");
-export const FollowSystemIcon = createIconifyIcon("svg:follow-system");
-```
-
 ## 推荐学习资源
 
 - [Web 端使用-iconfont](https://www.iconfont.cn/help/detail?helptype=code)

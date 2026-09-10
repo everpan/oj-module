@@ -10,7 +10,6 @@
  * 由宿主的 importmap 提供，模块应直接 import 它们，不要从 runtime 转出。
  */
 import "./styles/index.css";
-export * from "./api/home";
 export * from "./api/system/menu";
 export * from "./api/system/role";
 export * from "./api/user";

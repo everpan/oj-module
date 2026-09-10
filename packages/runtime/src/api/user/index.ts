@@ -12,6 +12,9 @@ export * from "./types";
  * 旧的 normalize/mapAuth 信封归一层已删除。
  * 保留的唯一边界映射：auth 载荷 snake_case（access_token）→ camelCase（token），
  * 属字段映射而非信封归一，3 行收口在 fetch 函数内。
+ * auth 载荷形状以 devkit 手册 §8 为准：
+ * data = { access_token, refresh_token, expires_in(秒), user:{id, roles} }，
+ * refresh 响应同形且旧 refresh 立即失效（轮换）——expires_in/user 目前未消费。
  */
 
 /** oj 信封（线格式） */

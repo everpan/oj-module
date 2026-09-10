@@ -19,7 +19,7 @@ import process from "node:process";
 import { proxyApi } from "./dev-proxy";
 import { resolveLayout } from "./layout";
 import { startOj } from "./oj";
-import { readOjServerField } from "./oj-config";
+import { readOjApiPrefix } from "./oj-config";
 import { createStaticHandler, decodeReqPath, listenOnFreePort } from "./static-handler";
 
 const DEFAULT_PORT = 4173;
@@ -45,7 +45,7 @@ export async function previewServer(projectRoot: string, opts: PreviewOptions = 
 
 	// fail-fast 四查：缺一即提示对应补救（init 幂等补缺 / ram build 产物）
 	if (!existsSync(ojBin))
-		throw new Error(`[ram] 缺少 ${ojBin}。\n请重跑 ram init 幂等补缺（不会覆盖 config 与用户代码）。`);
+		throw new Error(`[ram] 缺少 ${ojBin}。\n请重跑 ram init 或 ram vendor（联网下载 oj，不覆盖 config 与用户代码）。`);
 	if (!existsSync(configPath))
 		throw new Error(`[ram] 缺少 ${configPath}。\n请重跑 ram init 生成后端配置。`);
 	if (!existsSync(path.join(siteDir, "index.html")))
@@ -59,7 +59,7 @@ export async function previewServer(projectRoot: string, opts: PreviewOptions = 
 	console.log("[ram] oj migrate（应用待执行迁移）…");
 	execOj(["migrate", "-c", configPath, "-d", apiDist]);
 
-	const base = readOjServerField(configPath, "base") ?? "/api";
+	const base = readOjApiPrefix(configPath);
 	const starter = opts.ojStarter ?? ((cfg: string, b: string, apiPath: string, extraArgs: string[]) =>
 		startOj(cfg, b, apiPath, undefined, extraArgs));
 	const extraArgs = opts.ojStatic ? ["--app-path", siteDir] : [];
@@ -85,7 +85,7 @@ export async function previewServer(projectRoot: string, opts: PreviewOptions = 
 			return;
 		}
 		const rel = normalize(urlPath).replace(/^(\.\.[/\\])+/, "");
-		// 反代前缀跟随 config 的 server.base（F2）
+		// 反代前缀跟随 config 的 server.api_prefix（F2）
 		if (rel.startsWith(`${base}/`)) {
 			void proxyApi(ojTarget)(req, res);
 			return;

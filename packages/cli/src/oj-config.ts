@@ -3,7 +3,7 @@
  *
  * 只读 `server:` 顶层块下的标量字段，用行级正则而非 YAML 解析器——不为
  * 一个端口引依赖。config 由 `ram init` 生成，字段 miss 即被手改：直接报错，
- * 绝不静默回落（oj 代码默认端口是 778，回落 9778 会与实际监听错位，
+ * 绝不静默回落（oj 代码默认端口是 9778，回落错值会与实际监听错位，
  * 审阅记录二）。
  */
 
@@ -29,13 +29,22 @@ export function readOjServerField(configPath: string, field: string): string | u
 	return undefined;
 }
 
+/**
+ * API 基础前缀（devkit 手册 §10：新键 `api_prefix`，旧键 `base` 仅兼容，
+ * 并存会被 oj 报 duplicate field 拒启——故优先读新键，旧工程回落 `base`）。
+ */
+export function readOjApiPrefix(configPath: string): string {
+	const prefix = readOjServerField(configPath, "api_prefix") ?? readOjServerField(configPath, "base");
+	return prefix ?? "/api";
+}
+
 export function readOjPort(configPath: string): number {
 	const raw = readOjServerField(configPath, "port");
 	const port = raw === undefined ? Number.NaN : Number(raw);
 	if (!Number.isInteger(port) || port <= 0) {
 		throw new Error(
 			`[ram] ${configPath} 缺少合法的 server.port。\n`
-			+ "该文件由 ram init 生成，手动改动后请保留端口配置（oj 代码默认 778）。",
+			+ "该文件由 ram init 生成，手动改动后请保留端口配置（oj 代码默认 9778）。",
 		);
 	}
 	return port;

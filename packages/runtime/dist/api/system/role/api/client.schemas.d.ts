@@ -53,10 +53,24 @@ export declare const schemas: {
     };
     fetchRoleMenu: {
         data: z.ZodArray<z.ZodObject<{
-            parentId: z.ZodNumber;
+            parentId: z.ZodString;
             id: z.ZodNumber;
-            menuType: z.ZodNumber;
+            menuType: z.ZodUnion<readonly [z.ZodLiteral<0>, z.ZodLiteral<1>, z.ZodLiteral<2>, z.ZodLiteral<3>]>;
             name: z.ZodString;
+            path: z.ZodString;
+            component: z.ZodString;
+            order: z.ZodNumber;
+            icon: z.ZodString;
+            currentActiveMenu: z.ZodString;
+            iframeLink: z.ZodString;
+            keepAlive: z.ZodNumber;
+            externalLink: z.ZodString;
+            hideInMenu: z.ZodNumber;
+            ignoreAccess: z.ZodNumber;
+            permission: z.ZodString;
+            status: z.ZodNumber;
+            createTime: z.ZodNumber;
+            updateTime: z.ZodNumber;
         }, z.core.$strip>>;
     };
     fetchUpdateRoleItem: {

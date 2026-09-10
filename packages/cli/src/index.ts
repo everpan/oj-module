@@ -47,8 +47,8 @@ async function main() {
 			await printInfo(projectRoot);
 			break;
 		case "vendor": {
-			const { force } = parseVendorArgs(process.argv.slice(3));
-			await vendorCommand(projectRoot, { force });
+			const { force, tag } = parseVendorArgs(process.argv.slice(3));
+			await vendorCommand(projectRoot, { force, tag });
 			break;
 		}
 		case "api": {

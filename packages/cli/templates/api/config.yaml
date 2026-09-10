@@ -3,7 +3,7 @@
 server:
   host: 127.0.0.1 # 显式钉死：oj 默认绑 [::1]，localhost 解析序在反代下有坑
   port: 9778
-  base: /api
+  api_prefix: /api # 新键名（旧键 base 仅兼容；手册 §10）
   public_key_path: ./config/public.pem
   certificate_path: ./config/cert.jws
 db:
@@ -12,3 +12,7 @@ auth:
   jwt_secret: __JWT_SECRET__ # init 随机生成；生产必须更换
   access_token_duration: 2h
   refresh_token_duration: 720h
+  anonymous_paths: # auth 端点是业务路由，必须显式匿名（手册 §8）
+    - /auth/login
+    - /auth/refresh
+    - /auth/logout

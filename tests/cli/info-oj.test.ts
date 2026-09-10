@@ -8,7 +8,7 @@ import { PROJECT_ROOT } from "../helpers/paths";
 /**
  * P6 Task 10：info 扩展（观测后端）+ usage 契约。
  *  - usage 文本含 init / dev / build / preview / info / merge 行
- *  - info 追加后端段：`bin/oj -V` 现场版本 vs ram 内置（vendor-meta）、
+ *  - info 追加后端段：`bin/oj -V` 现场版本 vs 安装标记（bin/.oj-version，vendor 下载时写入）、
  *    `GET /api/health` 证书状态、解析出的 port/base
  *  - 任一不可达仅告警不失败（报障输出要能拿全其它信息）
  */
@@ -61,7 +61,7 @@ describe("ram info 后端段（桩注入）", () => {
 			}));
 
 			const out = logs.join("\n");
-			expect(out).toMatch(/内置.*0\.1\.0/);
+			expect(out).toMatch(/安装标记.*未知/);
 			expect(out).toMatch(/现场.*oj 0\.1\.0/);
 			expect(out).toMatch(/9778/);
 			expect(out).toMatch(/\/api/);
@@ -99,6 +99,24 @@ describe("ram info 后端段（桩注入）", () => {
 			const out = logs.join("\n");
 			expect(out).toMatch(/9778/);
 			expect(out).toMatch(/无法探测|未运行/);
+		}
+		finally {
+			fs.rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it("安装标记与现场版本不一致 → drift 告警（ram vendor --force 提示）", async () => {
+		const root = fs.mkdtempSync(path.join(path.dirname(PROJECT_ROOT), ".tmp-info-fx-"));
+		try {
+			fs.mkdirSync(path.join(root, "bin"), { recursive: true });
+			fs.writeFileSync(path.join(root, "bin/oj"), "#!/bin/sh\necho oj\n");
+			fs.writeFileSync(path.join(root, "bin/.oj-version"), "v9.9.9\n");
+
+			await printInfo(root, stubObservability("oj 0.1.0", null));
+
+			const out = logs.join("\n");
+			expect(out).toMatch(/安装标记.*v9\.9\.9/);
+			expect(out).toMatch(/\[!\] 现场版本与安装标记/);
 		}
 		finally {
 			fs.rmSync(root, { recursive: true, force: true });

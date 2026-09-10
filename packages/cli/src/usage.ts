@@ -12,7 +12,7 @@ export function usageText(): string {
   ram preview [port] [--oj-static]    生产形态预览（migrate → oj server + 静态兜底）
   ram api [dir] [--check] [--docs] [--exempt <path>]  契约代码生成（client/routes/openapi/stub）；--check 三重对账（可用 --exempt 指定豁免清单覆盖默认 api/.ram-api-exempt.json）；--docs 出自包含文档站（单文件离线可看）
   ram info                            输出版本矩阵与模块清单（报障用，US-7）
-  ram vendor [--force]                检查并按需更新 oj vendor（GitHub releases 按平台下载）
+  ram vendor [tag] [--force]           下载/重装 oj vendor（tag 缺省取最新 release，形如 v0.1.11）
   ram merge <out.json> <in1.json> [in2.json ...]  合并多团队清单（R12）
 `;
 }

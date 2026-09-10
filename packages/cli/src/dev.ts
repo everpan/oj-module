@@ -31,7 +31,7 @@ import { loadProjectMocks, mockStatusCode } from "./dev-mock";
 import { createReloadHub, proxyApi, sseScript } from "./dev-proxy";
 import { resolveLayout } from "./layout";
 import { startOj } from "./oj";
-import { readOjServerField } from "./oj-config";
+import { readOjApiPrefix } from "./oj-config";
 import { createStaticHandler, decodeReqPath, listenOnFreePort } from "./static-handler";
 
 const DEFAULT_PORT = 5174;
@@ -88,10 +88,10 @@ export async function devServer(projectRoot: string, opts: DevOptions = {}): Pro
 	const configPath = resolve(projectRoot, "api/config.yaml");
 	let oj: OjProcess | undefined;
 	let ojTarget: string | undefined;
-	// 反代前缀跟随 config 的 server.base（F2：改 base 后硬编码 /api 会静默失效）
+	// 反代前缀跟随 config 的 server.api_prefix（F2：改前缀后硬编码 /api 会静默失效）
 	let apiBase = "/api";
 	if (!opts.frontendOnly && existsSync(configPath)) {
-		apiBase = readOjServerField(configPath, "base") ?? "/api";
+		apiBase = readOjApiPrefix(configPath);
 		const starter = opts.ojStarter ?? ((cfg: string, b: string, apiSrc: string) => startOj(cfg, b, apiSrc));
 		oj = starter(configPath, apiBase, resolve(projectRoot, "api/src"));
 		try {
@@ -123,7 +123,7 @@ export async function devServer(projectRoot: string, opts: DevOptions = {}): Pro
 			res.end("400 Bad Request: malformed URL encoding");
 			return;
 		}
-		// API 前缀跟随 config 的 server.base：全栈形态反代 oj；纯前端形态走工程 mock（历史行为不变）
+		// API 前缀跟随 config 的 server.api_prefix：全栈形态反代 oj；纯前端形态走工程 mock（历史行为不变）
 		if (urlPath.startsWith(`${apiBase}/`)) {
 			if (ojTarget) {
 				void proxyApi(ojTarget)(req, res);

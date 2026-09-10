@@ -10,33 +10,55 @@ import { PROJECT_ROOT } from "../helpers/paths";
  * 设计 §3：`ram init` 产物契约（TDD）。
  *
  * 覆盖：全树关键文件、config.yaml 关键字段（host 127.0.0.1 / port 9778 /
- * base /api / auth 段 jwt_secret 非占位符）、证书三件套、bin/oj 可执行
- * （vendor tar.gz 在仓内）、非空目录守卫、幂等补缺（config 永不覆盖）。
+ * api_prefix /api / auth 段 jwt_secret 非占位符）、证书三件套、bin/oj 可执行
+ * （oj 经 release 联网下载，测试注入桩安装器）、非空目录守卫、幂等补缺
+ * （config 永不覆盖）。
  */
 
 function tmpRoot(): string {
 	return fs.mkdtempSync(path.join(os.tmpdir(), "ram-init-"));
 }
 
+/** 桩 oj 安装器：模拟 release 下载产物（二进制 + 版本标记 + devkit） */
+function fakeOjInstall(binDir: string): Promise<void> {
+	fs.mkdirSync(path.join(binDir, "devkit"), { recursive: true });
+	fs.writeFileSync(path.join(binDir, "oj"), "#!/bin/sh\necho oj\n");
+	fs.chmodSync(path.join(binDir, "oj"), 0o755);
+	fs.writeFileSync(path.join(binDir, ".oj-version"), "v0.1.0\n");
+	fs.writeFileSync(path.join(binDir, "devkit/SKILL.md"), "skill\n");
+	fs.writeFileSync(path.join(binDir, "devkit/api-manual.md"), "manual\n");
+	fs.writeFileSync(path.join(binDir, "devkit/global.d.ts"), "types\n");
+	return Promise.resolve();
+}
+
+const initOpts = { yes: true, ojInstaller: fakeOjInstall } as const;
+
 describe("initProject", () => {
 	it("按设计 §3 生成全栈工程全树", async () => {
 		const dest = path.join(tmpRoot(), "demo-proj");
-		await initProject(dest, { yes: true });
+		await initProject(dest, initOpts);
 
 		// 后端（语义断言：模板可能被 lint 重排格式，键值契约不变）
 		const config = path.join(dest, "api/config.yaml");
 		expect(readOjServerField(config, "host")).toBe("127.0.0.1");
 		expect(readOjPort(config)).toBe(9778);
-		expect(readOjServerField(config, "base")).toBe("/api");
+		expect(readOjServerField(config, "api_prefix")).toBe("/api");
 		expect(readOjServerField(config, "public_key_path")).toBe("./config/public.pem");
 		expect(readOjServerField(config, "certificate_path")).toBe("./config/cert.jws");
 		const configText = fs.readFileSync(config, "utf-8");
 		expect(configText).toContain("auth:");
 		expect(configText).not.toContain("__JWT_SECRET__");
-		// oj 已弃用根 seed.sql：users 表种子放模块级（实现期发现，见偏差记录）；
+		// users 表归属 _platform 伪模块（§3-D2 归属图单源，参考 oj sample）；
 		// DDL 归 migrations（S006 seed 纪律：seed 只放数据，oj build 检查）
-		expect(fs.existsSync(path.join(dest, "api/src/web/seed.sql"))).toBe(true);
-		expect(fs.existsSync(path.join(dest, "api/src/web/migrations/0001__create_users.sql"))).toBe(true);
+		expect(fs.existsSync(path.join(dest, "api/src/_platform/seed.sql"))).toBe(true);
+		expect(fs.existsSync(path.join(dest, "api/src/_platform/migrations/0001__create_users.sql"))).toBe(true);
+		expect(fs.existsSync(path.join(dest, "api/src/_platform/schema.yaml"))).toBe(true);
+		// auth 模块（§8：auth 端点是业务路由；anonymous_paths 显式匿名）
+		expect(fs.existsSync(path.join(dest, "api/src/auth/manifest.yaml"))).toBe(true);
+		expect(fs.existsSync(path.join(dest, "api/src/auth/login/api.ts"))).toBe(true);
+		expect(fs.existsSync(path.join(dest, "api/src/auth/refresh/api.ts"))).toBe(true);
+		expect(fs.existsSync(path.join(dest, "api/src/auth/logout/api.ts"))).toBe(true);
+		expect(fs.readFileSync(path.join(dest, "api/src/auth/manifest.yaml"), "utf-8")).toMatch(/_platform:\s*\^?0\.1\.0/);
 		expect(fs.existsSync(path.join(dest, "api/src/web/manifest.yaml"))).toBe(true);
 		expect(fs.readFileSync(path.join(dest, "api/src/web/manifest.yaml"), "utf-8")).toMatch(/^name:\s*web/m);
 
@@ -44,10 +66,11 @@ describe("initProject", () => {
 		for (const name of ["private.pem", "public.pem", "cert.jws"])
 			expect(fs.existsSync(path.join(dest, "api/config", name))).toBe(true);
 
-		// bin/oj（vendor 解压 + 可执行）
+		// bin/oj（桩安装器模拟 release 产物：可执行 + 版本标记）
 		const oj = path.join(dest, "bin/oj");
 		expect(fs.existsSync(oj)).toBe(true);
 		expect(fs.statSync(oj).mode & 0o111).not.toBe(0);
+		expect(fs.readFileSync(path.join(dest, "bin/.oj-version"), "utf-8").trim()).toBe("v0.1.0");
 
 		// devkit 拷贝
 		expect(fs.existsSync(path.join(dest, ".claude/skills/oj-api-dev/SKILL.md"))).toBe(true);
@@ -77,13 +100,13 @@ describe("initProject", () => {
 
 		await expect(initProject(dest)).rejects.toThrowError(/非空/);
 
-		await initProject(dest, { yes: true });
+		await initProject(dest, initOpts);
 		const configPath = path.join(dest, "api/config.yaml");
 		const configBefore = fs.readFileSync(configPath, "utf-8");
 		const tampered = `${configBefore}# tampered\n`;
 		fs.writeFileSync(configPath, tampered);
 
-		await initProject(dest, { yes: true });
+		await initProject(dest, initOpts);
 
 		expect(fs.readFileSync(configPath, "utf-8")).toBe(tampered); // 永不覆盖
 		expect(fs.readFileSync(path.join(dest, "user-file.txt"), "utf-8")).toBe("keep");
@@ -98,7 +121,7 @@ describe("initProject", () => {
 			dependencies: { "@react-antd-module/cli": "^0.1.0" },
 		}, null, 2));
 
-		await initProject(dest, { yes: true });
+		await initProject(dest, initOpts);
 
 		const pkg = JSON.parse(fs.readFileSync(path.join(dest, "package.json"), "utf-8"));
 		expect(pkg.name).toBe("my-app"); // 既有字段不动
@@ -124,7 +147,7 @@ describe("initProject", () => {
 			"",
 		].join("\n"));
 
-		await initProject(dest, { yes: true });
+		await initProject(dest, initOpts);
 
 		const yaml = fs.readFileSync(path.join(dest, "pnpm-workspace.yaml"), "utf-8");
 		expect(yaml).toMatch(/^\s+esbuild:\s*true$/m); // 占位被填成 true
@@ -136,13 +159,13 @@ describe("initProject", () => {
 		const destA = path.join(tmpRoot(), "proj-a");
 		fs.mkdirSync(destA, { recursive: true });
 		fs.writeFileSync(path.join(destA, "pnpm-workspace.yaml"), "packages: []\n");
-		await initProject(destA, { yes: true });
+		await initProject(destA, initOpts);
 		expect(fs.readFileSync(path.join(destA, "pnpm-workspace.yaml"), "utf-8")).toMatch(/allowBuilds:\n\s+esbuild:\s*true/);
 
 		const destB = path.join(tmpRoot(), "proj-b");
 		fs.mkdirSync(destB, { recursive: true });
 		fs.writeFileSync(path.join(destB, "pnpm-workspace.yaml"), "allowBuilds:\n  esbuild: false\n");
-		await initProject(destB, { yes: true });
+		await initProject(destB, initOpts);
 		expect(fs.readFileSync(path.join(destB, "pnpm-workspace.yaml"), "utf-8")).toContain("esbuild: false"); // 用户显式选择不动
 	});
 
@@ -174,7 +197,7 @@ describe("initProject", () => {
 
 	it("全新工程落 pnpm-workspace.yaml（pnpm v11 esbuild 构建审批）", async () => {
 		const dest = path.join(tmpRoot(), "demo-proj");
-		await initProject(dest, { yes: true });
+		await initProject(dest, initOpts);
 		const yaml = fs.readFileSync(path.join(dest, "pnpm-workspace.yaml"), "utf-8");
 		expect(yaml).toMatch(/allowBuilds:\n\s+esbuild:\s*true/);
 	});

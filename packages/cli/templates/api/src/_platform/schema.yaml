@@ -1,0 +1,10 @@
+# 框架级共有表上收 _platform 伪模块（§3-D2）：归属图单源，杜绝「散在模块 seed」。
+# 与 manifest.tables 双向一致（S005）；auth 模块跨模块读 users 经 deps 声明。
+tables:
+  users:
+    pk: id
+    columns:
+      id: {type: integer, autoincrement: true}
+      username: {type: text, null: false}
+      password_hash: {type: text, null: false}
+      roles: {type: text, null: false}

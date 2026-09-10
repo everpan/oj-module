@@ -52,7 +52,6 @@ react-antd-admin
 │   │   ├── use-language                   # 获取语言
 │   │   ├── use-preferences                # 获取偏好设置
 │   ├── icons                              # 图标
-│   │   ├── create-icon.ts                 # 手动加载本地图标（暂未使用）
 │   │   ├── local-icons.ts                 # 导出本地 SVG 图标
 │   │   ├── ri.ts                          # Remix Icon
 │   │   ├── menu-icons.ts                  # 菜单图标
@@ -92,7 +91,6 @@ react-antd-admin
 │   │   └── terms-of-service               # 服务条款页面
 │   ├── plugins	                           # App 插件
 │   │   └── loading.ts                     # 应用加载动画
-│   │   └── loading2.ts                    # 应用加载动画 2
 │   ├── router                             # 路由
 │   │   ├── constants.ts                   # 路由常量
 │   │   ├── extra-info                     # 路由配置信息，比如路由的顺序
@@ -133,7 +131,6 @@ react-antd-admin
 │       ├── is                             # 常见判断变量类型的方法
 │       ├── is-dark-theme                  # 判断是否是暗黑主题
 │       ├── is-light-theme                 # 判断是否是亮色主题
-│       ├── is-mac-os                      # 判断是否是 macOS 系统
 │       ├── is-windows-os                  # 判断是否是 Windows 系统
 │       ├── progress                       # 进度条
 │       ├── remember-route                 # 记住路由

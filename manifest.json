@@ -36,6 +36,11 @@
 			"enabled": true
 		},
 		{
+			"name": "login",
+			"entry": "/modules/login/entry.ts",
+			"enabled": true
+		},
+		{
 			"name": "system",
 			"entry": "/modules/system/entry.ts",
 			"enabled": true

@@ -14,8 +14,8 @@ import http from "node:http";
 import path from "node:path";
 import { loadModulesConfig } from "./config";
 import { mergeModuleManifests } from "./manifest";
-import { readOjServerField } from "./oj-config";
-import { VENDOR_SHA256, VENDOR_TARBALL_NAME } from "./vendor-meta";
+import { readOjApiPrefix, readOjServerField } from "./oj-config";
+import { readLocalVersion } from "./vendor";
 import { readHostVersions, resolveShellDist } from "./versions";
 
 function readPkgVersion(pkgJsonPath: string): string {
@@ -79,7 +79,7 @@ export function realOjObservability(projectRoot: string): OjObservability {
 			// 穿透调用方的 .catch（throw 发生在 Promise 构造之前）——必须就地兜住
 			try {
 				const port = readOjServerField(configPath, "port");
-				const base = readOjServerField(configPath, "base") ?? "/api";
+				const base = readOjApiPrefix(configPath);
 				return port ? probeOjHealth(base, Number(port)) : Promise.resolve(null);
 			}
 			catch {
@@ -123,7 +123,8 @@ export async function printInfo(projectRoot: string, oj: OjObservability = realO
 	const configPath = path.join(projectRoot, "api/config.yaml");
 	const ojBin = path.join(projectRoot, "bin/oj");
 	if (fs.existsSync(configPath) || fs.existsSync(ojBin)) {
-		const vendorVersion = VENDOR_TARBALL_NAME.replace(/^oj-v|\.tar\.gz$/g, "");
+		// 安装标记（ram vendor/init 下载时写入）；bin/oj 存在但无标记 → 未知
+		const markerVersion = readLocalVersion(path.join(projectRoot, "bin"));
 		const siteVersion = oj.ojVersion() ?? `${ojBin} 无法探测（缺失或不可执行）`;
 		const readConfig = (field: string) => {
 			try {
@@ -134,19 +135,22 @@ export async function printInfo(projectRoot: string, oj: OjObservability = realO
 			}
 		};
 		const port = readConfig("port") ?? "（config.yaml 缺失或未配置）";
-		const base = readConfig("base") ?? "/api";
+		const base = readConfig("api_prefix") ?? readConfig("base") ?? "/api";
 
 		const health = await oj.ojHealth().catch(() => null);
 		const certLine = health
 			? `证书状态:  ${health.certificate_status ?? "unknown"}（到期 ${health.certificate_expiry ?? "unknown"}）`
 			: "证书状态:  无法探测（服务未运行时属正常；ram dev/preview 起服后可测）";
 
-		const drift = siteVersion.includes(vendorVersion)
+		const markerShort = markerVersion?.replace(/^v/, "");
+		const drift = markerShort && siteVersion.includes(markerShort)
 			? ""
-			: `\n  [!] 现场版本与 ram 内置（${vendorVersion}，sha256 前 8 位 ${VENDOR_SHA256.slice(0, 8)}）不一致，请核对`;
+			: markerShort
+				? `\n  [!] 现场版本与安装标记（${markerVersion}）不一致，请核对（ram vendor --force 重装）`
+				: "";
 		backendBlock = `
 后端（oj）:
-  内置版本:  ${vendorVersion}（${VENDOR_TARBALL_NAME}）
+  安装标记:  ${markerVersion ?? "未知（缺 bin/.oj-version，ram vendor 重装）"}
   现场版本:  ${siteVersion}${drift}
   端口/base: ${port} / ${base}（api/config.yaml）
   ${certLine}

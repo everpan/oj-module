@@ -1,0 +1,5 @@
+name: auth
+desc: JWT 鉴权端点（业务路由）：login/refresh/logout；Bearer 守卫由 oj-auth 提供
+version: 0.1.0
+deps: # login/refresh 读 _platform.users（ownership_guard: deny 下必须声明，§3）
+  _platform: ^0.1.0

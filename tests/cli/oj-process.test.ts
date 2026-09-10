@@ -5,7 +5,8 @@ import { startOj } from "../../packages/cli/src/oj";
 
 /**
  * 设计 §4（P3）：oj 子进程编排（不依赖真二进制，桩 bin/oj）。
- *  - spawn 参数：server -c <abs config> -b /api --api-path <abs api/src>，
+ *  - spawn 参数：server -c <abs config> -b /api --api-path <abs api/src>
+ *    --console-log（oj 新版终端默认静默，只落 logs/，ram 透传管道须显式打开），
  *    端口经 readOjPort 从 config 读取（T3）
  *  - 健康：桩监听并 200 {base}/health → ready resolve
  *  - 秒退：ready 拒绝且 stderr 尾部在错误信息里（人话报错）
@@ -75,6 +76,7 @@ describe("startOj 子进程编排", () => {
 		expect(path.isAbsolute(cfgFlag)).toBe(true);
 		expect(cfgFlag).toBe(configPath);
 		expect(args[args.indexOf("-b") + 1]).toBe("/api");
+		expect(args).toContain("--console-log");
 		expect(path.isAbsolute(apiFlag)).toBe(true);
 		expect(apiFlag).toBe(apiSrc);
 		expect(proc.port).toBe(port);

@@ -6,17 +6,34 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { parseVendorArgs } from "../../packages/cli/src/args";
-import { fetchLatestRelease, installFromRelease, pickAsset, readLocalVersion, RELEASE_API, resolveTriplet, vendorCommand } from "../../packages/cli/src/vendor";
+import { fetchLatestRelease, fetchRelease, installFromRelease, pickAsset, readLocalVersion, RELEASE_LATEST_API, releaseApiUrl, resolveTriplet, vendorCommand } from "../../packages/cli/src/vendor";
 
 /**
  * ram vendor 子命令（docs/prd/202609040905-vendor-download-design.md）：
- * 从 everpan/only-js 最新 release 按平台下载 oj，sha256 校验后装进 bin/。
+ * 从 everpan/only-js release（缺省最新，可显式指定 tag）按平台下载 oj，
+ * sha256 校验后装进 bin/。
  */
+
+describe("release URL 构造", () => {
+	it("latest 与按 tag 两条查询通道", () => {
+		expect(RELEASE_LATEST_API).toBe("https://api.github.com/repos/everpan/only-js/releases/latest");
+		expect(releaseApiUrl("v0.1.11")).toBe("https://api.github.com/repos/everpan/only-js/releases/tags/v0.1.11");
+	});
+});
 
 describe("parseVendorArgs", () => {
 	it("无参数 force=false；--force 任意位置生效", () => {
 		expect(parseVendorArgs([])).toEqual({ force: false });
 		expect(parseVendorArgs(["--force"])).toEqual({ force: true });
+	});
+
+	it("位置参数为 tag：v 前缀可选（0.1.12 → v0.1.12）", () => {
+		expect(parseVendorArgs(["v0.1.12"])).toEqual({ force: false, tag: "v0.1.12" });
+		expect(parseVendorArgs(["0.1.12", "--force"])).toEqual({ force: true, tag: "v0.1.12" });
+	});
+
+	it("非法 tag 形状 → 报错（防误把目录当版本）", () => {
+		expect(() => parseVendorArgs(["abc"])).toThrowError(/非法版本号/);
 	});
 });
 
@@ -77,17 +94,17 @@ function fakeRelease(tag: string) {
 	return { tag_name: tag, assets: [{ name: `oj-${tag}-aarch64-apple-darwin.tar.gz`, browser_download_url: "https://fake/x" }] };
 }
 
-describe("fetchLatestRelease（V3/V6 认证与错误）", () => {
+describe("fetchRelease（V3/V6 认证与错误）", () => {
 	const okResp = () => new Response(JSON.stringify(fakeRelease("v9.9.9")), { status: 200 });
 
 	it("匿名成功返回 release JSON", async () => {
-		const r = await fetchLatestRelease({ fetchFn: async () => okResp(), token: "" });
+		const r = await fetchRelease("v9.9.9", { fetchFn: async _url => okResp(), token: "" });
 		expect(r.tag_name).toBe("v9.9.9");
 	});
 
 	it("有 token 时带 Authorization 头", async () => {
 		let seen: string | undefined;
-		await fetchLatestRelease({
+		await fetchRelease("v9.9.9", {
 			token: "tk",
 			fetchFn: async (_url, init) => {
 				seen = init?.headers?.Authorization;
@@ -97,10 +114,16 @@ describe("fetchLatestRelease（V3/V6 认证与错误）", () => {
 		expect(seen).toBe("Bearer tk");
 	});
 
-	it.each([403, 404])("hTTP %i → 人话报错提示 GITHUB_TOKEN", async (status) => {
-		await expect(fetchLatestRelease({ fetchFn: async () => new Response("x", { status }), token: "" }))
+	it("hTTP 403 → 人话报错提示 GITHUB_TOKEN", async () => {
+		await expect(fetchRelease("v9.9.9", { fetchFn: async () => new Response("x", { status: 403 }), token: "" }))
 			.rejects
 			.toThrowError(/GITHUB_TOKEN/);
+	});
+
+	it("hTTP 404 → 人话报错提示 tag 未发布", async () => {
+		await expect(fetchRelease("v9.9.9", { fetchFn: async () => new Response("x", { status: 404 }), token: "" }))
+			.rejects
+			.toThrowError(/尚未发布/);
 	});
 
 	it("网络层 fetch failed → 报错带失败 URL、cause 与代理提示（不裸抛 TypeError，URL 可直接验证连通性）", async () => {
@@ -177,7 +200,7 @@ describe("vendorCommand（US-1..US-4 编排）", () => {
 		let downloads = 0;
 		const fetchFn: typeof fetch = async (url) => {
 			const u = String(url);
-			if (u === RELEASE_API)
+			if (u.startsWith("https://api.github.com/repos/everpan/only-js/releases/"))
 				return new Response(JSON.stringify(release), { status: 200 });
 			downloads++;
 			if (u.endsWith(".sha256"))
@@ -199,7 +222,7 @@ describe("vendorCommand（US-1..US-4 编排）", () => {
 		expect(fs.existsSync(path.join(bin, "oj"))).toBe(true);
 		// 分步人话日志：查询 → 下载（含体积）→ 校验 → 解包 → 完成
 		const joined = logs.join("\n");
-		expect(joined).toMatch(/查询最新 release/);
+		expect(joined).toMatch(/查询.*release/);
 		expect(joined).toMatch(/oj-v0\.2\.0-aarch64-apple-darwin\.tar\.gz（\d+(\.\d+)? (KB|MB)）/);
 		expect(joined).toMatch(/sha256 校验通过/);
 		expect(joined).toMatch(/解包/);
@@ -208,7 +231,7 @@ describe("vendorCommand（US-1..US-4 编排）", () => {
 
 		await vendorCommand(dir, { force: false }, { fetchFn, token: "", log }); // US-2
 		expect(count()).toBe(after1);
-		expect(logs.at(-1)).toMatch(/已是最新 v0\.2\.0/);
+		expect(logs.at(-1)).toMatch(/已是 v0\.2\.0/);
 
 		await vendorCommand(dir, { force: true }, { fetchFn, token: "", log }); // US-4
 		expect(count()).toBeGreaterThan(after1);

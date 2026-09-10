@@ -23,7 +23,15 @@
 ```bash
 ram dev [port]   # 启动开发服务器（默认 5174）：宿主代理 + 本地模块重建
 ram build        # 构建模块产物与 dist/modules.json
+ram init [dir] [--yes]        # 脚手架：模板工程 + 证书签发 + 联网下载 oj 到 bin/
+ram vendor [tag] [--force]    # 下载/重装 oj vendor（tag 缺省取最新 release，形如 v0.1.11）
+ram preview [port] [--oj-static]   # 生产形态预览：oj migrate + release + 静态兜底
+ram info        # 输出报障所需的版本矩阵与后端观测
+ram api [dir]   # 契约产物生成（client/openapi/mock stub）
+ram merge <out> <in...>  # 合并多份 modules.json
 ```
+
+> `ram init` / `ram vendor` 需要访问 GitHub（下载 oj 发行包，sha256 校验）；直连受限时带代理：`NODE_USE_ENV_PROXY=1 HTTPS_PROXY=... ram vendor`。已装版本记录在 `bin/.oj-version`，`ram info` 可查。
 
 ### `ram build`
 

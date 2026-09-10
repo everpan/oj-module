@@ -17,7 +17,6 @@
 // 构建后由 scripts/inline-css.mjs 内联回 runtime.js（importmap 链路无 CSS 模块概念）。
 import "./styles/index.css";
 
-export * from "./api/home";
 export * from "./api/system/menu";
 export * from "./api/system/role";
 export * from "./api/user";

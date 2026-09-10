@@ -2,7 +2,7 @@
 if (typeof document !== "undefined" && !document.querySelector("style[data-ram-runtime-css]")) {
 	const s = document.createElement("style");
 	s.setAttribute("data-ram-runtime-css", "");
-	s.textContent = "\n@layer properties, reset, antd;\n/*! tailwindcss v4.3.3 | MIT License | https://tailwindcss.com */\n@layer reset{\n/* stylelint-disable */\nhtml,\nbody {\n  width: 100%;\n  height: 100%;\n}\ninput::-ms-clear,\ninput::-ms-reveal {\n  display: none;\n}\n*,\n*::before,\n*::after {\n  box-sizing: border-box;\n}\nhtml {\n  font-family: sans-serif;\n  line-height: 1.15;\n  -webkit-text-size-adjust: 100%;\n  -ms-text-size-adjust: 100%;\n  -ms-overflow-style: scrollbar;\n  -webkit-tap-highlight-color: rgba(0, 0, 0, 0);\n}\n\nbody {\n  margin: 0;\n}\n[tabindex='-1']:focus {\n  outline: none;\n}\nhr {\n  box-sizing: content-box;\n  height: 0;\n  overflow: visible;\n}\nh1,\nh2,\nh3,\nh4,\nh5,\nh6 {\n  margin-top: 0;\n  margin-bottom: 0.5em;\n  font-weight: 500;\n}\np {\n  margin-top: 0;\n  margin-bottom: 1em;\n}\nabbr[title],\nabbr[data-original-title] {\n  -webkit-text-decoration: underline dotted;\n  text-decoration: underline dotted;\n  border-bottom: 0;\n  cursor: help;\n}\naddress {\n  margin-bottom: 1em;\n  font-style: normal;\n  line-height: inherit;\n}\ninput[type='text'],\ninput[type='password'],\ninput[type='number'],\ntextarea {\n  -webkit-appearance: none;\n}\nol,\nul,\ndl {\n  margin-top: 0;\n  margin-bottom: 1em;\n}\nol ol,\nul ul,\nol ul,\nul ol {\n  margin-bottom: 0;\n}\ndt {\n  font-weight: 500;\n}\ndd {\n  margin-bottom: 0.5em;\n  margin-left: 0;\n}\nblockquote {\n  margin: 0 0 1em;\n}\ndfn {\n  font-style: italic;\n}\nb,\nstrong {\n  font-weight: bolder;\n}\nsmall {\n  font-size: 80%;\n}\nsub,\nsup {\n  position: relative;\n  font-size: 75%;\n  line-height: 0;\n  vertical-align: baseline;\n}\nsub {\n  bottom: -0.25em;\n}\nsup {\n  top: -0.5em;\n}\npre,\ncode,\nkbd,\nsamp {\n  font-size: 1em;\n  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace;\n}\npre {\n  margin-top: 0;\n  margin-bottom: 1em;\n  overflow: auto;\n}\nfigure {\n  margin: 0 0 1em;\n}\nimg {\n  vertical-align: middle;\n  border-style: none;\n}\na,\narea,\nbutton,\n[role='button'],\ninput:not([type='range']),\nlabel,\nselect,\nsummary,\ntextarea {\n  touch-action: manipulation;\n}\ntable {\n  border-collapse: collapse;\n}\ncaption {\n  padding-top: 0.75em;\n  padding-bottom: 0.3em;\n  text-align: left;\n  caption-side: bottom;\n}\ninput,\nbutton,\nselect,\noptgroup,\ntextarea {\n  margin: 0;\n  color: inherit;\n  font-size: inherit;\n  font-family: inherit;\n  line-height: inherit;\n}\nbutton,\ninput {\n  overflow: visible;\n}\nbutton,\nselect {\n  text-transform: none;\n}\nbutton,\nhtml [type='button'],\n[type='reset'],\n[type='submit'] {\n  -webkit-appearance: button;\n}\nbutton::-moz-focus-inner,\n[type='button']::-moz-focus-inner,\n[type='reset']::-moz-focus-inner,\n[type='submit']::-moz-focus-inner {\n  padding: 0;\n  border-style: none;\n}\ninput[type='radio'],\ninput[type='checkbox'] {\n  box-sizing: border-box;\n  padding: 0;\n}\ninput[type='date'],\ninput[type='time'],\ninput[type='datetime-local'],\ninput[type='month'] {\n  -webkit-appearance: listbox;\n}\ntextarea {\n  overflow: auto;\n  resize: vertical;\n}\nfieldset {\n  min-width: 0;\n  margin: 0;\n  padding: 0;\n  border: 0;\n}\nlegend {\n  display: block;\n  width: 100%;\n  max-width: 100%;\n  margin-bottom: 0.5em;\n  padding: 0;\n  color: inherit;\n  font-size: 1.5em;\n  line-height: inherit;\n  white-space: normal;\n}\nprogress {\n  vertical-align: baseline;\n}\n[type='number']::-webkit-inner-spin-button,\n[type='number']::-webkit-outer-spin-button {\n  height: auto;\n}\n[type='search'] {\n  outline-offset: -2px;\n  -webkit-appearance: none;\n}\n[type='search']::-webkit-search-cancel-button,\n[type='search']::-webkit-search-decoration {\n  -webkit-appearance: none;\n}\n::-webkit-file-upload-button {\n  font: inherit;\n  -webkit-appearance: button;\n}\noutput {\n  display: inline-block;\n}\nsummary {\n  display: list-item;\n}\ntemplate {\n  display: none;\n}\n[hidden] {\n  display: none !important;\n}\n}\n@layer simplebar{\n[data-simplebar]{position:relative;flex-direction:column;flex-wrap:wrap;justify-content:flex-start;align-content:flex-start;align-items:flex-start}.simplebar-wrapper{overflow:hidden;width:inherit;height:inherit;max-width:inherit;max-height:inherit}.simplebar-mask{direction:inherit;position:absolute;overflow:hidden;padding:0;margin:0;left:0;top:0;bottom:0;right:0;width:auto!important;height:auto!important;z-index:0}.simplebar-offset{direction:inherit!important;box-sizing:inherit!important;resize:none!important;position:absolute;top:0;left:0;bottom:0;right:0;padding:0;margin:0;-webkit-overflow-scrolling:touch}.simplebar-content-wrapper{direction:inherit;box-sizing:border-box!important;position:relative;display:block;height:100%;width:auto;max-width:100%;max-height:100%;overflow:auto;scrollbar-width:none;-ms-overflow-style:none}.simplebar-content-wrapper::-webkit-scrollbar,.simplebar-hide-scrollbar::-webkit-scrollbar{display:none;width:0;height:0}.simplebar-content:after,.simplebar-content:before{content:' ';display:table}.simplebar-placeholder{max-height:100%;max-width:100%;width:100%;pointer-events:none}.simplebar-height-auto-observer-wrapper{box-sizing:inherit!important;height:100%;width:100%;max-width:1px;position:relative;float:left;max-height:1px;overflow:hidden;z-index:-1;padding:0;margin:0;pointer-events:none;flex-grow:inherit;flex-shrink:0;flex-basis:0}.simplebar-height-auto-observer{box-sizing:inherit;display:block;opacity:0;position:absolute;top:0;left:0;height:1000%;width:1000%;min-height:1px;min-width:1px;overflow:hidden;pointer-events:none;z-index:-1}.simplebar-track{z-index:1;position:absolute;right:0;bottom:0;pointer-events:none;overflow:hidden}[data-simplebar].simplebar-dragging{pointer-events:none;-webkit-touch-callout:none;-webkit-user-select:none;-khtml-user-select:none;-moz-user-select:none;-ms-user-select:none;user-select:none}[data-simplebar].simplebar-dragging .simplebar-content{pointer-events:none;-webkit-touch-callout:none;-webkit-user-select:none;-khtml-user-select:none;-moz-user-select:none;-ms-user-select:none;user-select:none}[data-simplebar].simplebar-dragging .simplebar-track{pointer-events:all}.simplebar-scrollbar{position:absolute;left:0;right:0;min-height:10px}.simplebar-scrollbar:before{position:absolute;content:'';background:#000;border-radius:7px;left:2px;right:2px;opacity:0;transition:opacity .2s .5s linear}.simplebar-scrollbar.simplebar-visible:before{opacity:.5;transition-delay:0s;transition-duration:0s}.simplebar-track.simplebar-vertical{top:0;width:11px}.simplebar-scrollbar:before{top:2px;bottom:2px;left:2px;right:2px}.simplebar-track.simplebar-horizontal{left:0;height:11px}.simplebar-track.simplebar-horizontal .simplebar-scrollbar{right:auto;left:0;top:0;bottom:0;min-height:0;min-width:10px;width:auto}[data-simplebar-direction=rtl] .simplebar-track.simplebar-vertical{right:auto;left:0}.simplebar-dummy-scrollbar-size{direction:rtl;position:fixed;opacity:0;visibility:hidden;height:500px;width:500px;overflow-y:hidden;overflow-x:scroll;-ms-overflow-style:scrollbar!important}.simplebar-dummy-scrollbar-size>div{width:200%;height:200%;margin:10px 0}.simplebar-hide-scrollbar{position:fixed;left:0;visibility:hidden;overflow-y:scroll;scrollbar-width:none;-ms-overflow-style:none}\n}\n@layer simplebar {\n  .simplebar-scrollbar:before {\n    background-color: #909399;\n  }\n\n  .simplebar-content {\n    height: 100%;\n  }\n}\n\n#root {\n  height: 100vh;\n}\n\nimg {\n  max-width: 100%;\n  height: auto;\n}\n\nhtml.color-blind-mode {\n  --tw-invert: invert(100%);\n  filter: var(--tw-blur, ) var(--tw-brightness, ) var(--tw-contrast, ) var(--tw-grayscale, ) var(--tw-hue-rotate, ) var(--tw-invert, ) var(--tw-saturate, ) var(--tw-sepia, ) var(--tw-drop-shadow, );\n}\n\nhtml.gray-mode {\n  --tw-grayscale: grayscale(100%);\n  filter: var(--tw-blur, ) var(--tw-brightness, ) var(--tw-contrast, ) var(--tw-grayscale, ) var(--tw-hue-rotate, ) var(--tw-invert, ) var(--tw-saturate, ) var(--tw-sepia, ) var(--tw-drop-shadow, );\n}\n\n@layer theme {\n  :root, :host {\n    --font-sans: -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, \"Helvetica Neue\", \"Noto Sans\", Arial,\n    sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\";\n    --spacing: .25rem;\n    --container-md: 28rem;\n    --text-xs: .75rem;\n    --text-xs--line-height: calc(1 / .75);\n    --text-sm: .875rem;\n    --text-sm--line-height: calc(1.25 / .875);\n    --text-base: 1rem;\n    --text-base--line-height: calc(1.5 / 1);\n    --text-lg: 1.125rem;\n    --text-lg--line-height: calc(1.75 / 1.125);\n    --text-xl: 1.25rem;\n    --text-xl--line-height: calc(1.75 / 1.25);\n    --text-2xl: 1.5rem;\n    --text-2xl--line-height: calc(2 / 1.5);\n    --text-3xl: 1.875rem;\n    --text-3xl--line-height: calc(2.25 / 1.875);\n    --text-4xl: 2.25rem;\n    --text-4xl--line-height: calc(2.5 / 2.25);\n    --font-weight-medium: 500;\n    --font-weight-semibold: 600;\n    --font-weight-bold: 700;\n    --tracking-tight: -.025em;\n    --radius-sm: .25rem;\n    --radius-md: .375rem;\n    --radius-xl: .75rem;\n    --ease-in: cubic-bezier(.4, 0, 1, 1);\n    --ease-in-out: cubic-bezier(.4, 0, .2, 1);\n    --animate-spin: spin 1s linear infinite;\n    --default-transition-duration: .15s;\n    --default-transition-timing-function: cubic-bezier(.4, 0, .2, 1);\n    --animate-wiggle: wiggle 1s both;\n    --animate-bounce-in-down-out-up: bounce-in-down-out-up 4s ease-in-out 0s infinite;\n  }\n}\n\n@layer base, components;\n\n@layer utilities {\n  .visible {\n    visibility: visible;\n  }\n\n  .absolute {\n    position: absolute;\n  }\n\n  .fixed {\n    position: fixed;\n  }\n\n  .relative {\n    position: relative;\n  }\n\n  .static {\n    position: static;\n  }\n\n  .top-0 {\n    top: 0;\n  }\n\n  .top-1 {\n    top: var(--spacing);\n  }\n\n  .top-1\\.5 {\n    top: calc(var(--spacing) * 1.5);\n  }\n\n  .top-2 {\n    top: calc(var(--spacing) * 2);\n  }\n\n  .top-3 {\n    top: calc(var(--spacing) * 3);\n  }\n\n  .right-2 {\n    right: calc(var(--spacing) * 2);\n  }\n\n  .right-3 {\n    right: calc(var(--spacing) * 3);\n  }\n\n  .right-4 {\n    right: calc(var(--spacing) * 4);\n  }\n\n  .bottom-0 {\n    bottom: 0;\n  }\n\n  .bottom-3 {\n    bottom: calc(var(--spacing) * 3);\n  }\n\n  .left-0 {\n    left: 0;\n  }\n\n  .left-1 {\n    left: var(--spacing);\n  }\n\n  .left-1\\/2 {\n    left: 50%;\n  }\n\n  .left-3 {\n    left: calc(var(--spacing) * 3);\n  }\n\n  .z-10 {\n    z-index: 10;\n  }\n\n  .container {\n    width: 100%;\n  }\n\n  @media (min-width: 480px) {\n    .container {\n      max-width: 480px;\n    }\n  }\n\n  @media (min-width: 576px) {\n    .container {\n      max-width: 576px;\n    }\n  }\n\n  @media (min-width: 768px) {\n    .container {\n      max-width: 768px;\n    }\n  }\n\n  @media (min-width: 992px) {\n    .container {\n      max-width: 992px;\n    }\n  }\n\n  @media (min-width: 1200px) {\n    .container {\n      max-width: 1200px;\n    }\n  }\n\n  @media (min-width: 1600px) {\n    .container {\n      max-width: 1600px;\n    }\n  }\n\n  .m-0 {\n    margin: 0;\n  }\n\n  .m-152 {\n    margin: calc(var(--spacing) * 152);\n  }\n\n  .mx-3 {\n    margin-inline: calc(var(--spacing) * 3);\n  }\n\n  .mx-4 {\n    margin-inline: calc(var(--spacing) * 4);\n  }\n\n  .my-0 {\n    margin-block: 0;\n  }\n\n  .my-1 {\n    margin-block: var(--spacing);\n  }\n\n  .my-4 {\n    margin-block: calc(var(--spacing) * 4);\n  }\n\n  .my-8 {\n    margin-block: calc(var(--spacing) * 8);\n  }\n\n  .-mt-1 {\n    margin-top: calc(var(--spacing) * -1);\n  }\n\n  .mt-0 {\n    margin-top: 0;\n  }\n\n  .mt-2 {\n    margin-top: calc(var(--spacing) * 2);\n  }\n\n  .mt-2\\.5 {\n    margin-top: calc(var(--spacing) * 2.5);\n  }\n\n  .mt-4 {\n    margin-top: calc(var(--spacing) * 4);\n  }\n\n  .mt-6 {\n    margin-top: calc(var(--spacing) * 6);\n  }\n\n  .mr-2 {\n    margin-right: calc(var(--spacing) * 2);\n  }\n\n  .mr-3 {\n    margin-right: calc(var(--spacing) * 3);\n  }\n\n  .mr-8 {\n    margin-right: calc(var(--spacing) * 8);\n  }\n\n  .mr-17 {\n    margin-right: calc(var(--spacing) * 17);\n  }\n\n  .mb-0 {\n    margin-bottom: 0;\n  }\n\n  .mb-2 {\n    margin-bottom: calc(var(--spacing) * 2);\n  }\n\n  .mb-3 {\n    margin-bottom: calc(var(--spacing) * 3);\n  }\n\n  .mb-5 {\n    margin-bottom: calc(var(--spacing) * 5);\n  }\n\n  .ml-2 {\n    margin-left: calc(var(--spacing) * 2);\n  }\n\n  .ml-4 {\n    margin-left: calc(var(--spacing) * 4);\n  }\n\n  .box-border {\n    box-sizing: border-box;\n  }\n\n  .line-clamp-2 {\n    -webkit-line-clamp: 2;\n    -webkit-box-orient: vertical;\n    display: -webkit-box;\n    overflow: hidden;\n  }\n\n  .block {\n    display: block;\n  }\n\n  .flex {\n    display: flex;\n  }\n\n  .hidden {\n    display: none;\n  }\n\n  .inline {\n    display: inline;\n  }\n\n  .inline-block {\n    display: inline-block;\n  }\n\n  .table {\n    display: table;\n  }\n\n  .aspect-square {\n    aspect-ratio: 1;\n  }\n\n  .size-5 {\n    width: calc(var(--spacing) * 5);\n    height: calc(var(--spacing) * 5);\n  }\n\n  .h-2 {\n    height: calc(var(--spacing) * 2);\n  }\n\n  .h-5 {\n    height: calc(var(--spacing) * 5);\n  }\n\n  .h-10 {\n    height: calc(var(--spacing) * 10);\n  }\n\n  .h-64 {\n    height: calc(var(--spacing) * 64);\n  }\n\n  .h-\\[0\\.63em\\] {\n    height: .63em;\n  }\n\n  .h-full {\n    height: 100%;\n  }\n\n  .h-screen {\n    height: 100vh;\n  }\n\n  .w-1 {\n    width: var(--spacing);\n  }\n\n  .w-1\\/3 {\n    width: 33.3333%;\n  }\n\n  .w-2 {\n    width: calc(var(--spacing) * 2);\n  }\n\n  .w-2\\/5 {\n    width: 40%;\n  }\n\n  .w-7 {\n    width: calc(var(--spacing) * 7);\n  }\n\n  .w-7\\/12 {\n    width: 58.3333%;\n  }\n\n  .w-10 {\n    width: calc(var(--spacing) * 10);\n  }\n\n  .w-11 {\n    width: calc(var(--spacing) * 11);\n  }\n\n  .w-12 {\n    width: calc(var(--spacing) * 12);\n  }\n\n  .w-40 {\n    width: calc(var(--spacing) * 40);\n  }\n\n  .w-72 {\n    width: calc(var(--spacing) * 72);\n  }\n\n  .w-full {\n    width: 100%;\n  }\n\n  .min-w-0 {\n    min-width: 0;\n  }\n\n  .flex-1 {\n    flex: 1;\n  }\n\n  .flex-auto {\n    flex: auto;\n  }\n\n  .flex-shrink {\n    flex-shrink: 1;\n  }\n\n  .flex-shrink-0, .shrink-0 {\n    flex-shrink: 0;\n  }\n\n  .flex-grow, .grow {\n    flex-grow: 1;\n  }\n\n  .border-collapse {\n    border-collapse: collapse;\n  }\n\n  .-translate-x-1 {\n    --tw-translate-x: calc(var(--spacing) * -1);\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .-translate-x-1\\/2 {\n    --tw-translate-x: calc(calc(1 / 2 * 100%) * -1);\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .scale-75 {\n    --tw-scale-x: 75%;\n    --tw-scale-y: 75%;\n    --tw-scale-z: 75%;\n    scale: var(--tw-scale-x) var(--tw-scale-y);\n  }\n\n  .transform {\n    transform: var(--tw-rotate-x, ) var(--tw-rotate-y, ) var(--tw-rotate-z, ) var(--tw-skew-x, ) var(--tw-skew-y, );\n  }\n\n  .animate-spin {\n    animation: var(--animate-spin);\n  }\n\n  .cursor-help {\n    cursor: help;\n  }\n\n  .cursor-pointer {\n    cursor: pointer;\n  }\n\n  .resize {\n    resize: both;\n  }\n\n  .list-none {\n    list-style-type: none;\n  }\n\n  .flex-col {\n    flex-direction: column;\n  }\n\n  .flex-row-reverse {\n    flex-direction: row-reverse;\n  }\n\n  .flex-wrap {\n    flex-wrap: wrap;\n  }\n\n  .items-center {\n    align-items: center;\n  }\n\n  .justify-between {\n    justify-content: space-between;\n  }\n\n  .justify-center {\n    justify-content: center;\n  }\n\n  .justify-start {\n    justify-content: flex-start;\n  }\n\n  .gap-1 {\n    gap: var(--spacing);\n  }\n\n  .gap-2 {\n    gap: calc(var(--spacing) * 2);\n  }\n\n  .gap-3 {\n    gap: calc(var(--spacing) * 3);\n  }\n\n  .gap-5 {\n    gap: calc(var(--spacing) * 5);\n  }\n\n  .gap-x-3 {\n    column-gap: calc(var(--spacing) * 3);\n  }\n\n  .gap-y-5 {\n    row-gap: calc(var(--spacing) * 5);\n  }\n\n  .overflow-hidden {\n    overflow: hidden;\n  }\n\n  .overflow-x-hidden {\n    overflow-x: hidden;\n  }\n\n  .overflow-y-auto {\n    overflow-y: auto;\n  }\n\n  .rounded {\n    border-radius: .25rem;\n  }\n\n  .rounded-full {\n    border-radius: 3.40282e38px;\n  }\n\n  .rounded-md {\n    border-radius: var(--radius-md);\n  }\n\n  .rounded-none {\n    border-radius: 0;\n  }\n\n  .rounded-sm {\n    border-radius: var(--radius-sm);\n  }\n\n  .rounded-r-xl {\n    border-top-right-radius: var(--radius-xl);\n    border-bottom-right-radius: var(--radius-xl);\n  }\n\n  .border {\n    border-style: var(--tw-border-style);\n    border-width: 1px;\n  }\n\n  .border-t {\n    border-top-style: var(--tw-border-style);\n    border-top-width: 1px;\n  }\n\n  .border-r {\n    border-right-style: var(--tw-border-style);\n    border-right-width: 1px;\n  }\n\n  .border-l {\n    border-left-style: var(--tw-border-style);\n    border-left-width: 1px;\n  }\n\n  .\\!border-none {\n    --tw-border-style: none !important;\n    border-style: none !important;\n  }\n\n  .border-t-\\[\\#303030\\] {\n    border-top-color: #303030;\n  }\n\n  .border-t-colorBorderSecondary {\n    border-top-color: var(--oo-colorBorderSecondary);\n  }\n\n  .border-r-\\[\\#303030\\] {\n    border-right-color: #303030;\n  }\n\n  .border-r-colorBorderSecondary {\n    border-right-color: var(--oo-colorBorderSecondary);\n  }\n\n  .border-l-colorBorderSecondary {\n    border-left-color: var(--oo-colorBorderSecondary);\n  }\n\n  .bg-\\[\\#F3F4F5\\] {\n    background-color: #f3f4f5;\n  }\n\n  .bg-blue-500, .bg-blue-500\\/20 {\n    background-color: rgb(var(--oo-blue-5));\n  }\n\n  @supports (color: color-mix(in lab, red, red)) {\n    .bg-blue-500\\/20 {\n      background-color: color-mix(in oklab, rgb(var(--oo-blue-5)) 20%, transparent);\n    }\n  }\n\n  .bg-blue-600 {\n    background-color: rgb(var(--oo-blue-6));\n  }\n\n  .bg-colorBgContainer {\n    background-color: var(--oo-colorBgContainer);\n  }\n\n  .bg-colorBgLayout {\n    background-color: var(--oo-colorBgLayout);\n  }\n\n  .bg-gray-100 {\n    background-color: #f5f5f5;\n  }\n\n  .bg-primary {\n    background-color: rgb(var(--oo-colorPrimary));\n  }\n\n  .bg-primaryActive {\n    background-color: rgb(var(--oo-colorPrimaryActive));\n  }\n\n  .object-cover {\n    object-fit: cover;\n  }\n\n  .p-0 {\n    padding: 0;\n  }\n\n  .p-1 {\n    padding: var(--spacing);\n  }\n\n  .p-2 {\n    padding: calc(var(--spacing) * 2);\n  }\n\n  .p-4 {\n    padding: calc(var(--spacing) * 4);\n  }\n\n  .px-0 {\n    padding-inline: 0;\n  }\n\n  .px-1 {\n    padding-inline: var(--spacing);\n  }\n\n  .px-1\\.5 {\n    padding-inline: calc(var(--spacing) * 1.5);\n  }\n\n  .px-2 {\n    padding-inline: calc(var(--spacing) * 2);\n  }\n\n  .px-2\\.75 {\n    padding-inline: calc(var(--spacing) * 2.75);\n  }\n\n  .px-3 {\n    padding-inline: calc(var(--spacing) * 3);\n  }\n\n  .px-4 {\n    padding-inline: calc(var(--spacing) * 4);\n  }\n\n  .px-6 {\n    padding-inline: calc(var(--spacing) * 6);\n  }\n\n  .px-9 {\n    padding-inline: calc(var(--spacing) * 9);\n  }\n\n  .px-10 {\n    padding-inline: calc(var(--spacing) * 10);\n  }\n\n  .px-\\[11px\\] {\n    padding-inline: 11px;\n  }\n\n  .py-1 {\n    padding-block: var(--spacing);\n  }\n\n  .py-1\\.5 {\n    padding-block: calc(var(--spacing) * 1.5);\n  }\n\n  .py-2 {\n    padding-block: calc(var(--spacing) * 2);\n  }\n\n  .py-2\\.5 {\n    padding-block: calc(var(--spacing) * 2.5);\n  }\n\n  .py-4 {\n    padding-block: calc(var(--spacing) * 4);\n  }\n\n  .py-10 {\n    padding-block: calc(var(--spacing) * 10);\n  }\n\n  .pb-4 {\n    padding-bottom: calc(var(--spacing) * 4);\n  }\n\n  .pl-2 {\n    padding-left: calc(var(--spacing) * 2);\n  }\n\n  .text-center {\n    text-align: center;\n  }\n\n  .font-sans {\n    font-family: var(--font-sans);\n  }\n\n  .text-3xl {\n    font-size: var(--text-3xl);\n    line-height: var(--tw-leading, var(--text-3xl--line-height));\n  }\n\n  .text-lg {\n    font-size: var(--text-lg);\n    line-height: var(--tw-leading, var(--text-lg--line-height));\n  }\n\n  .text-sm {\n    font-size: var(--text-sm);\n    line-height: var(--tw-leading, var(--text-sm--line-height));\n  }\n\n  .text-xl {\n    font-size: var(--text-xl);\n    line-height: var(--tw-leading, var(--text-xl--line-height));\n  }\n\n  .text-xs {\n    font-size: var(--text-xs);\n    line-height: var(--tw-leading, var(--text-xs--line-height));\n  }\n\n  .text-\\[4rem\\] {\n    font-size: 4rem;\n  }\n\n  .leading-9 {\n    --tw-leading: calc(var(--spacing) * 9);\n    line-height: calc(var(--spacing) * 9);\n  }\n\n  .leading-none {\n    --tw-leading: 1;\n    line-height: 1;\n  }\n\n  .font-bold {\n    --tw-font-weight: var(--font-weight-bold);\n    font-weight: var(--font-weight-bold);\n  }\n\n  .font-medium {\n    --tw-font-weight: var(--font-weight-medium);\n    font-weight: var(--font-weight-medium);\n  }\n\n  .font-semibold {\n    --tw-font-weight: var(--font-weight-semibold);\n    font-weight: var(--font-weight-semibold);\n  }\n\n  .tracking-tight {\n    --tw-tracking: var(--tracking-tight);\n    letter-spacing: var(--tracking-tight);\n  }\n\n  .text-colorBgContainer {\n    color: var(--oo-colorBgContainer);\n  }\n\n  .text-colorBgContainer\\! {\n    color: var(--oo-colorBgContainer) !important;\n  }\n\n  .text-colorText {\n    color: var(--oo-colorText);\n  }\n\n  .text-colorText\\! {\n    color: var(--oo-colorText) !important;\n  }\n\n  .text-colorTextSecondary {\n    color: var(--oo-colorTextSecondary);\n  }\n\n  .text-colorTextTertiary {\n    color: var(--oo-colorTextTertiary);\n  }\n\n  .lowercase {\n    text-transform: lowercase;\n  }\n\n  .uppercase {\n    text-transform: uppercase;\n  }\n\n  .underline {\n    text-decoration-line: underline;\n  }\n\n  .opacity-50 {\n    opacity: .5;\n  }\n\n  .opacity-80 {\n    opacity: .8;\n  }\n\n  .opacity-90 {\n    opacity: .9;\n  }\n\n  .outline, .outline-1 {\n    outline-style: var(--tw-outline-style);\n    outline-width: 1px;\n  }\n\n  .outline-2 {\n    outline-style: var(--tw-outline-style);\n    outline-width: 2px;\n  }\n\n  .outline-blue-600 {\n    outline-color: rgb(var(--oo-blue-6));\n  }\n\n  .outline-gray-300 {\n    outline-color: #d9d9d9;\n  }\n\n  .filter {\n    filter: var(--tw-blur, ) var(--tw-brightness, ) var(--tw-contrast, ) var(--tw-grayscale, ) var(--tw-hue-rotate, ) var(--tw-invert, ) var(--tw-saturate, ) var(--tw-sepia, ) var(--tw-drop-shadow, );\n  }\n\n  .transition {\n    transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --tw-gradient-from, --tw-gradient-via, --tw-gradient-to, opacity, box-shadow, transform, translate, scale, rotate, filter, -webkit-backdrop-filter, backdrop-filter, display, content-visibility, overlay, pointer-events;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .transition-all {\n    transition-property: all;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .duration-300 {\n    --tw-duration: .3s;\n    transition-duration: .3s;\n  }\n\n  .ease-in {\n    --tw-ease: var(--ease-in);\n    transition-timing-function: var(--ease-in);\n  }\n\n  .ease-in-out {\n    --tw-ease: var(--ease-in-out);\n    transition-timing-function: var(--ease-in-out);\n  }\n\n  @media (hover: hover) {\n    .group-hover\\:animate-wiggle:is(:where(.group):hover *) {\n      animation: var(--animate-wiggle);\n    }\n\n    .group-hover\\:opacity-100:is(:where(.group):hover *) {\n      opacity: 1;\n    }\n  }\n\n  .before\\:absolute:before {\n    content: var(--tw-content);\n    position: absolute;\n  }\n\n  .before\\:top-1\\/2:before {\n    content: var(--tw-content);\n    top: 50%;\n  }\n\n  .before\\:left-1\\/2:before {\n    content: var(--tw-content);\n    left: 50%;\n  }\n\n  .before\\:h-0:before {\n    content: var(--tw-content);\n    height: 0;\n  }\n\n  .before\\:w-0:before {\n    content: var(--tw-content);\n    width: 0;\n  }\n\n  .before\\:rounded-sm:before {\n    content: var(--tw-content);\n    border-radius: var(--radius-sm);\n  }\n\n  .before\\:opacity-0:before {\n    content: var(--tw-content);\n    opacity: 0;\n  }\n\n  .before\\:outline:before {\n    content: var(--tw-content);\n    outline-style: var(--tw-outline-style);\n    outline-width: 1px;\n  }\n\n  .before\\:outline-2:before {\n    content: var(--tw-content);\n    outline-style: var(--tw-outline-style);\n    outline-width: 2px;\n  }\n\n  .before\\:outline-transparent:before {\n    content: var(--tw-content);\n    outline-color: #0000;\n  }\n\n  .before\\:transition-all:before {\n    content: var(--tw-content);\n    transition-property: all;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .before\\:duration-300:before {\n    content: var(--tw-content);\n    --tw-duration: .3s;\n    transition-duration: .3s;\n  }\n\n  .before\\:content-\\[\\'\\'\\]:before {\n    --tw-content: \"\";\n    content: var(--tw-content);\n  }\n\n  .last\\:mr-auto:last-child {\n    margin-right: auto;\n  }\n\n  @media (hover: hover) {\n    .hover\\:bg-gray-100:hover {\n      background-color: #f5f5f5;\n    }\n\n    .hover\\:text-colorText:hover {\n      color: var(--oo-colorText);\n    }\n  }\n\n  .before\\:hover\\:top-0:before {\n    content: var(--tw-content);\n  }\n\n  @media (hover: hover) {\n    .before\\:hover\\:top-0:before:hover {\n      top: 0;\n    }\n  }\n\n  .before\\:hover\\:left-0:before {\n    content: var(--tw-content);\n  }\n\n  @media (hover: hover) {\n    .before\\:hover\\:left-0:before:hover {\n      left: 0;\n    }\n  }\n\n  .before\\:hover\\:h-full:before {\n    content: var(--tw-content);\n  }\n\n  @media (hover: hover) {\n    .before\\:hover\\:h-full:before:hover {\n      height: 100%;\n    }\n  }\n\n  .before\\:hover\\:w-full:before {\n    content: var(--tw-content);\n  }\n\n  @media (hover: hover) {\n    .before\\:hover\\:w-full:before:hover {\n      width: 100%;\n    }\n  }\n\n  .before\\:hover\\:p-1:before {\n    content: var(--tw-content);\n  }\n\n  @media (hover: hover) {\n    .before\\:hover\\:p-1:before:hover {\n      padding: var(--spacing);\n    }\n  }\n\n  .before\\:hover\\:opacity-100:before {\n    content: var(--tw-content);\n  }\n\n  @media (hover: hover) {\n    .before\\:hover\\:opacity-100:before:hover {\n      opacity: 1;\n    }\n  }\n\n  .before\\:hover\\:outline-blue-600:before {\n    content: var(--tw-content);\n  }\n\n  @media (hover: hover) {\n    .before\\:hover\\:outline-blue-600:before:hover {\n      outline-color: rgb(var(--oo-blue-6));\n    }\n  }\n\n  @media (prefers-reduced-motion: no-preference) {\n    .motion-safe\\:animate-bounce-in-down-out-up {\n      animation: var(--animate-bounce-in-down-out-up);\n    }\n  }\n\n  @media (min-width: 576px) {\n    .sm\\:mx-auto {\n      margin-inline: auto;\n    }\n  }\n\n  @media (min-width: 768px) {\n    .md\\:mr-2\\.5 {\n      margin-right: calc(var(--spacing) * 2.5);\n    }\n\n    .md\\:block {\n      display: block;\n    }\n\n    .md\\:w-3\\/12 {\n      width: 25%;\n    }\n\n    .md\\:w-96 {\n      width: calc(var(--spacing) * 96);\n    }\n\n    .md\\:max-w-md {\n      max-width: var(--container-md);\n    }\n\n    .md\\:bg-colorBgLayout {\n      background-color: var(--oo-colorBgLayout);\n    }\n\n    .md\\:px-4 {\n      padding-inline: calc(var(--spacing) * 4);\n    }\n\n    .md\\:pb-0 {\n      padding-bottom: 0;\n    }\n\n    .md\\:text-sm {\n      font-size: var(--text-sm);\n      line-height: var(--tw-leading, var(--text-sm--line-height));\n    }\n  }\n\n  @media (min-width: 992px) {\n    .lg\\:text-2xl {\n      font-size: var(--text-2xl);\n      line-height: var(--tw-leading, var(--text-2xl--line-height));\n    }\n\n    .lg\\:text-4xl {\n      font-size: var(--text-4xl);\n      line-height: var(--tw-leading, var(--text-4xl--line-height));\n    }\n\n    .lg\\:text-base {\n      font-size: var(--text-base);\n      line-height: var(--tw-leading, var(--text-base--line-height));\n    }\n  }\n\n  @media (min-width: 1200px) {\n    .xl\\:w-2\\/12 {\n      width: 16.6667%;\n    }\n\n    .xl\\:px-8 {\n      padding-inline: calc(var(--spacing) * 8);\n    }\n  }\n\n  .dark\\:bg-\\[\\#26313C\\]:where(.dark, .dark *) {\n    background-color: #26313c;\n  }\n\n  .dark\\:bg-black:where(.dark, .dark *) {\n    background-color: #000;\n  }\n\n  .dark\\:bg-gray-700:where(.dark, .dark *) {\n    background-color: #434343;\n  }\n\n  .dark\\:outline-blue-700:where(.dark, .dark *) {\n    outline-color: rgb(var(--oo-blue-7));\n  }\n\n  .dark\\:outline-gray-700:where(.dark, .dark *) {\n    outline-color: #434343;\n  }\n\n  @media (hover: hover) {\n    .dark\\:hover\\:bg-gray-700:where(.dark, .dark *):hover {\n      background-color: #434343;\n    }\n  }\n\n  .dark\\:before\\:hover\\:outline-blue-700:where(.dark, .dark *):before {\n    content: var(--tw-content);\n  }\n\n  @media (hover: hover) {\n    .dark\\:before\\:hover\\:outline-blue-700:where(.dark, .dark *):before:hover {\n      outline-color: rgb(var(--oo-blue-7));\n    }\n  }\n\n  .en-US\\:gap-y-3:where(:lang(en-US)) {\n    row-gap: calc(var(--spacing) * 3);\n  }\n\n  .en-US\\:text-\\[9rem\\]:where(:lang(en-US)) {\n    font-size: 9rem;\n  }\n\n  .zh-CN\\:hidden:where(:lang(zh-CN)) {\n    display: none;\n  }\n}\n\n@keyframes fade-in {\n  from {\n    opacity: 0;\n  }\n\n  to {\n    opacity: 1;\n  }\n}\n\n@keyframes fade-out {\n  from {\n    opacity: 1;\n  }\n\n  to {\n    opacity: 0;\n  }\n}\n\n@keyframes slide-in {\n  from {\n    transform: translateX(-30px);\n  }\n\n  to {\n    transform: translateX(0);\n  }\n}\n\n@keyframes slide-out {\n  from {\n    transform: translateX(0);\n  }\n\n  to {\n    transform: translateX(30px);\n  }\n}\n\n@keyframes slide-top-in {\n  from {\n    transform: translateY(-10%);\n  }\n\n  to {\n    transform: translateY(0);\n  }\n}\n\n@keyframes slide-top-out {\n  from {\n    transform: translateY(0);\n  }\n\n  to {\n    transform: translateY(-10%);\n  }\n}\n\n@keyframes slide-bottom-in {\n  from {\n    transform: translateY(10%);\n  }\n\n  to {\n    transform: translateY(0);\n  }\n}\n\n@keyframes slide-bottom-out {\n  from {\n    transform: translateY(0);\n  }\n\n  to {\n    transform: translateY(10%);\n  }\n}\n\n@keyframes fade-slide {\n  0% {\n    opacity: 0;\n    transform: translate(-30px);\n  }\n\n  50% {\n    opacity: 1;\n  }\n\n  100% {\n    opacity: 0;\n    transform: translate(30px);\n  }\n}\n\n@keyframes fade-up {\n  0% {\n    opacity: 0;\n    transform: translateY(10%);\n  }\n\n  50% {\n    opacity: 1;\n  }\n\n  100% {\n    opacity: 0;\n    transform: translateY(-10%);\n  }\n}\n\n@keyframes fade-down {\n  0% {\n    opacity: 0;\n    transform: translateY(-10%);\n  }\n\n  50% {\n    opacity: 1;\n  }\n\n  100% {\n    opacity: 0;\n    transform: translateY(10%);\n  }\n}\n\n.fade-slide {\n  animation: 3s linear infinite fade-slide;\n}\n\n.fade {\n  animation: 3s linear infinite alternate fade-in;\n}\n\n.fade-up {\n  animation: 3s infinite fade-up;\n}\n\n.fade-down {\n  animation: 3s infinite fade-down;\n}\n\n@keyframes zoom-in {\n  0% {\n    transform: scale(.8);\n  }\n\n  100% {\n    opacity: 1;\n    transform: scale(1);\n  }\n}\n\n@keyframes zoom-out {\n  0% {\n    transform: scale(1);\n  }\n\n  100% {\n    opacity: 1;\n    transform: scale(1.25);\n  }\n}\n\n@keyframes fade-zoom {\n  0% {\n    opacity: 0;\n    transform: scale(.8);\n  }\n\n  50% {\n    opacity: 1;\n    transform: scale(1);\n  }\n\n  100% {\n    opacity: 0;\n    transform: scale(1.25);\n  }\n}\n\n.fade-zoom {\n  animation: 3s infinite fade-zoom;\n}\n\n.keepalive-fade.active {\n  animation: .3s ease-in-out fade-in;\n}\n\n.keepalive-fade.inactive {\n  animation: .3s ease-in-out fade-out;\n}\n\n.keepalive-fade-slide.active {\n  animation: .3s ease-in-out fade-in, .3s ease-in-out slide-in;\n}\n\n.keepalive-fade-slide.inactive {\n  animation: .3s ease-in-out fade-out, .3s ease-in-out slide-out;\n}\n\n.keepalive-fade-up.active {\n  animation: .3s ease-in-out fade-in, .3s ease-in-out slide-bottom-in;\n}\n\n.keepalive-fade-up.inactive {\n  animation: .3s ease-in-out fade-out, .3s ease-in-out slide-top-out;\n}\n\n.keepalive-fade-down.active {\n  animation: .3s ease-in-out fade-in, .3s ease-in-out slide-top-in;\n}\n\n.keepalive-fade-down.inactive {\n  animation: .3s ease-in-out fade-out, .3s ease-in-out slide-bottom-out;\n}\n\n.keepalive-fade-zoom.active {\n  animation: .3s ease-in-out zoom-in, .3s ease-in-out zoom-in;\n}\n\n.keepalive-fade-zoom.inactive {\n  animation: .3s ease-in-out zoom-out, .3s ease-in-out fade-out;\n}\n\n@property --tw-blur {\n  syntax: \"*\";\n  inherits: false\n}\n\n@property --tw-brightness {\n  syntax: \"*\";\n  inherits: false\n}\n\n@property --tw-contrast {\n  syntax: \"*\";\n  inherits: false\n}\n\n@property --tw-grayscale {\n  syntax: \"*\";\n  inherits: false\n}\n\n@property --tw-hue-rotate {\n  syntax: \"*\";\n  inherits: false\n}\n\n@property --tw-invert {\n  syntax: \"*\";\n  inherits: false\n}\n\n@property --tw-opacity {\n  syntax: \"*\";\n  inherits: false\n}\n\n@property --tw-saturate {\n  syntax: \"*\";\n  inherits: false\n}\n\n@property --tw-sepia {\n  syntax: \"*\";\n  inherits: false\n}\n\n@property --tw-drop-shadow {\n  syntax: \"*\";\n  inherits: false\n}\n\n@property --tw-drop-shadow-color {\n  syntax: \"*\";\n  inherits: false\n}\n\n@property --tw-drop-shadow-alpha {\n  syntax: \"<percentage>\";\n  inherits: false;\n  initial-value: 100%;\n}\n\n@property --tw-drop-shadow-size {\n  syntax: \"*\";\n  inherits: false\n}\n\n@property --tw-translate-x {\n  syntax: \"*\";\n  inherits: false;\n  initial-value: 0;\n}\n\n@property --tw-translate-y {\n  syntax: \"*\";\n  inherits: false;\n  initial-value: 0;\n}\n\n@property --tw-translate-z {\n  syntax: \"*\";\n  inherits: false;\n  initial-value: 0;\n}\n\n@property --tw-scale-x {\n  syntax: \"*\";\n  inherits: false;\n  initial-value: 1;\n}\n\n@property --tw-scale-y {\n  syntax: \"*\";\n  inherits: false;\n  initial-value: 1;\n}\n\n@property --tw-scale-z {\n  syntax: \"*\";\n  inherits: false;\n  initial-value: 1;\n}\n\n@property --tw-rotate-x {\n  syntax: \"*\";\n  inherits: false\n}\n\n@property --tw-rotate-y {\n  syntax: \"*\";\n  inherits: false\n}\n\n@property --tw-rotate-z {\n  syntax: \"*\";\n  inherits: false\n}\n\n@property --tw-skew-x {\n  syntax: \"*\";\n  inherits: false\n}\n\n@property --tw-skew-y {\n  syntax: \"*\";\n  inherits: false\n}\n\n@property --tw-border-style {\n  syntax: \"*\";\n  inherits: false;\n  initial-value: solid;\n}\n\n@property --tw-leading {\n  syntax: \"*\";\n  inherits: false\n}\n\n@property --tw-font-weight {\n  syntax: \"*\";\n  inherits: false\n}\n\n@property --tw-tracking {\n  syntax: \"*\";\n  inherits: false\n}\n\n@property --tw-outline-style {\n  syntax: \"*\";\n  inherits: false;\n  initial-value: solid;\n}\n\n@property --tw-duration {\n  syntax: \"*\";\n  inherits: false\n}\n\n@property --tw-ease {\n  syntax: \"*\";\n  inherits: false\n}\n\n@property --tw-content {\n  syntax: \"*\";\n  inherits: false;\n  initial-value: \"\";\n}\n\n@keyframes spin {\n  to {\n    transform: rotate(360deg);\n  }\n}\n\n@keyframes wiggle {\n  0%, 100% {\n    transform-origin: top;\n  }\n\n  15% {\n    transform: rotateZ(10deg);\n  }\n\n  30% {\n    transform: rotateZ(-10deg);\n  }\n\n  45% {\n    transform: rotateZ(5deg);\n  }\n\n  60% {\n    transform: rotateZ(-5deg);\n  }\n\n  75% {\n    transform: rotateZ(2deg);\n  }\n}\n\n@keyframes bounce-in-down-out-up {\n  0% {\n    transform: translateY(0);\n  }\n\n  50% {\n    transform: translateY(-20px);\n  }\n\n  100% {\n    transform: translateY(0);\n  }\n}\n\n@layer properties {\n  @supports (((-webkit-hyphens: none)) and (not (margin-trim: inline))) or ((-moz-orient: inline) and (not (color: rgb(from red r g b)))) {\n    *, :before, :after, ::backdrop {\n      --tw-blur: initial;\n      --tw-brightness: initial;\n      --tw-contrast: initial;\n      --tw-grayscale: initial;\n      --tw-hue-rotate: initial;\n      --tw-invert: initial;\n      --tw-opacity: initial;\n      --tw-saturate: initial;\n      --tw-sepia: initial;\n      --tw-drop-shadow: initial;\n      --tw-drop-shadow-color: initial;\n      --tw-drop-shadow-alpha: 100%;\n      --tw-drop-shadow-size: initial;\n      --tw-translate-x: 0;\n      --tw-translate-y: 0;\n      --tw-translate-z: 0;\n      --tw-scale-x: 1;\n      --tw-scale-y: 1;\n      --tw-scale-z: 1;\n      --tw-rotate-x: initial;\n      --tw-rotate-y: initial;\n      --tw-rotate-z: initial;\n      --tw-skew-x: initial;\n      --tw-skew-y: initial;\n      --tw-border-style: solid;\n      --tw-leading: initial;\n      --tw-font-weight: initial;\n      --tw-tracking: initial;\n      --tw-outline-style: solid;\n      --tw-duration: initial;\n      --tw-ease: initial;\n      --tw-content: \"\";\n    }\n  }\n}\n/*$vite$:1*/";
+	s.textContent = "\n@layer properties, reset, antd;\n/*! tailwindcss v4.3.3 | MIT License | https://tailwindcss.com */\n@layer reset{\n/* stylelint-disable */\nhtml,\nbody {\n  width: 100%;\n  height: 100%;\n}\ninput::-ms-clear,\ninput::-ms-reveal {\n  display: none;\n}\n*,\n*::before,\n*::after {\n  box-sizing: border-box;\n}\nhtml {\n  font-family: sans-serif;\n  line-height: 1.15;\n  -webkit-text-size-adjust: 100%;\n  -ms-text-size-adjust: 100%;\n  -ms-overflow-style: scrollbar;\n  -webkit-tap-highlight-color: rgba(0, 0, 0, 0);\n}\n\nbody {\n  margin: 0;\n}\n[tabindex='-1']:focus {\n  outline: none;\n}\nhr {\n  box-sizing: content-box;\n  height: 0;\n  overflow: visible;\n}\nh1,\nh2,\nh3,\nh4,\nh5,\nh6 {\n  margin-top: 0;\n  margin-bottom: 0.5em;\n  font-weight: 500;\n}\np {\n  margin-top: 0;\n  margin-bottom: 1em;\n}\nabbr[title],\nabbr[data-original-title] {\n  -webkit-text-decoration: underline dotted;\n  text-decoration: underline dotted;\n  border-bottom: 0;\n  cursor: help;\n}\naddress {\n  margin-bottom: 1em;\n  font-style: normal;\n  line-height: inherit;\n}\ninput[type='text'],\ninput[type='password'],\ninput[type='number'],\ntextarea {\n  -webkit-appearance: none;\n}\nol,\nul,\ndl {\n  margin-top: 0;\n  margin-bottom: 1em;\n}\nol ol,\nul ul,\nol ul,\nul ol {\n  margin-bottom: 0;\n}\ndt {\n  font-weight: 500;\n}\ndd {\n  margin-bottom: 0.5em;\n  margin-left: 0;\n}\nblockquote {\n  margin: 0 0 1em;\n}\ndfn {\n  font-style: italic;\n}\nb,\nstrong {\n  font-weight: bolder;\n}\nsmall {\n  font-size: 80%;\n}\nsub,\nsup {\n  position: relative;\n  font-size: 75%;\n  line-height: 0;\n  vertical-align: baseline;\n}\nsub {\n  bottom: -0.25em;\n}\nsup {\n  top: -0.5em;\n}\npre,\ncode,\nkbd,\nsamp {\n  font-size: 1em;\n  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace;\n}\npre {\n  margin-top: 0;\n  margin-bottom: 1em;\n  overflow: auto;\n}\nfigure {\n  margin: 0 0 1em;\n}\nimg {\n  vertical-align: middle;\n  border-style: none;\n}\na,\narea,\nbutton,\n[role='button'],\ninput:not([type='range']),\nlabel,\nselect,\nsummary,\ntextarea {\n  touch-action: manipulation;\n}\ntable {\n  border-collapse: collapse;\n}\ncaption {\n  padding-top: 0.75em;\n  padding-bottom: 0.3em;\n  text-align: left;\n  caption-side: bottom;\n}\ninput,\nbutton,\nselect,\noptgroup,\ntextarea {\n  margin: 0;\n  color: inherit;\n  font-size: inherit;\n  font-family: inherit;\n  line-height: inherit;\n}\nbutton,\ninput {\n  overflow: visible;\n}\nbutton,\nselect {\n  text-transform: none;\n}\nbutton,\nhtml [type='button'],\n[type='reset'],\n[type='submit'] {\n  -webkit-appearance: button;\n}\nbutton::-moz-focus-inner,\n[type='button']::-moz-focus-inner,\n[type='reset']::-moz-focus-inner,\n[type='submit']::-moz-focus-inner {\n  padding: 0;\n  border-style: none;\n}\ninput[type='radio'],\ninput[type='checkbox'] {\n  box-sizing: border-box;\n  padding: 0;\n}\ninput[type='date'],\ninput[type='time'],\ninput[type='datetime-local'],\ninput[type='month'] {\n  -webkit-appearance: listbox;\n}\ntextarea {\n  overflow: auto;\n  resize: vertical;\n}\nfieldset {\n  min-width: 0;\n  margin: 0;\n  padding: 0;\n  border: 0;\n}\nlegend {\n  display: block;\n  width: 100%;\n  max-width: 100%;\n  margin-bottom: 0.5em;\n  padding: 0;\n  color: inherit;\n  font-size: 1.5em;\n  line-height: inherit;\n  white-space: normal;\n}\nprogress {\n  vertical-align: baseline;\n}\n[type='number']::-webkit-inner-spin-button,\n[type='number']::-webkit-outer-spin-button {\n  height: auto;\n}\n[type='search'] {\n  outline-offset: -2px;\n  -webkit-appearance: none;\n}\n[type='search']::-webkit-search-cancel-button,\n[type='search']::-webkit-search-decoration {\n  -webkit-appearance: none;\n}\n::-webkit-file-upload-button {\n  font: inherit;\n  -webkit-appearance: button;\n}\noutput {\n  display: inline-block;\n}\nsummary {\n  display: list-item;\n}\ntemplate {\n  display: none;\n}\n[hidden] {\n  display: none !important;\n}\n}\n@layer simplebar{\n[data-simplebar]{position:relative;flex-direction:column;flex-wrap:wrap;justify-content:flex-start;align-content:flex-start;align-items:flex-start}.simplebar-wrapper{overflow:hidden;width:inherit;height:inherit;max-width:inherit;max-height:inherit}.simplebar-mask{direction:inherit;position:absolute;overflow:hidden;padding:0;margin:0;left:0;top:0;bottom:0;right:0;width:auto!important;height:auto!important;z-index:0}.simplebar-offset{direction:inherit!important;box-sizing:inherit!important;resize:none!important;position:absolute;top:0;left:0;bottom:0;right:0;padding:0;margin:0;-webkit-overflow-scrolling:touch}.simplebar-content-wrapper{direction:inherit;box-sizing:border-box!important;position:relative;display:block;height:100%;width:auto;max-width:100%;max-height:100%;overflow:auto;scrollbar-width:none;-ms-overflow-style:none}.simplebar-content-wrapper::-webkit-scrollbar,.simplebar-hide-scrollbar::-webkit-scrollbar{display:none;width:0;height:0}.simplebar-content:after,.simplebar-content:before{content:' ';display:table}.simplebar-placeholder{max-height:100%;max-width:100%;width:100%;pointer-events:none}.simplebar-height-auto-observer-wrapper{box-sizing:inherit!important;height:100%;width:100%;max-width:1px;position:relative;float:left;max-height:1px;overflow:hidden;z-index:-1;padding:0;margin:0;pointer-events:none;flex-grow:inherit;flex-shrink:0;flex-basis:0}.simplebar-height-auto-observer{box-sizing:inherit;display:block;opacity:0;position:absolute;top:0;left:0;height:1000%;width:1000%;min-height:1px;min-width:1px;overflow:hidden;pointer-events:none;z-index:-1}.simplebar-track{z-index:1;position:absolute;right:0;bottom:0;pointer-events:none;overflow:hidden}[data-simplebar].simplebar-dragging{pointer-events:none;-webkit-touch-callout:none;-webkit-user-select:none;-khtml-user-select:none;-moz-user-select:none;-ms-user-select:none;user-select:none}[data-simplebar].simplebar-dragging .simplebar-content{pointer-events:none;-webkit-touch-callout:none;-webkit-user-select:none;-khtml-user-select:none;-moz-user-select:none;-ms-user-select:none;user-select:none}[data-simplebar].simplebar-dragging .simplebar-track{pointer-events:all}.simplebar-scrollbar{position:absolute;left:0;right:0;min-height:10px}.simplebar-scrollbar:before{position:absolute;content:'';background:#000;border-radius:7px;left:2px;right:2px;opacity:0;transition:opacity .2s .5s linear}.simplebar-scrollbar.simplebar-visible:before{opacity:.5;transition-delay:0s;transition-duration:0s}.simplebar-track.simplebar-vertical{top:0;width:11px}.simplebar-scrollbar:before{top:2px;bottom:2px;left:2px;right:2px}.simplebar-track.simplebar-horizontal{left:0;height:11px}.simplebar-track.simplebar-horizontal .simplebar-scrollbar{right:auto;left:0;top:0;bottom:0;min-height:0;min-width:10px;width:auto}[data-simplebar-direction=rtl] .simplebar-track.simplebar-vertical{right:auto;left:0}.simplebar-dummy-scrollbar-size{direction:rtl;position:fixed;opacity:0;visibility:hidden;height:500px;width:500px;overflow-y:hidden;overflow-x:scroll;-ms-overflow-style:scrollbar!important}.simplebar-dummy-scrollbar-size>div{width:200%;height:200%;margin:10px 0}.simplebar-hide-scrollbar{position:fixed;left:0;visibility:hidden;overflow-y:scroll;scrollbar-width:none;-ms-overflow-style:none}\n}\n@layer simplebar {\n  .simplebar-scrollbar:before {\n    background-color: #909399;\n  }\n\n  .simplebar-content {\n    height: 100%;\n  }\n}\n\n#root {\n  height: 100vh;\n}\n\nimg {\n  max-width: 100%;\n  height: auto;\n}\n\nhtml.color-blind-mode {\n  --tw-invert: invert(100%);\n  filter: var(--tw-blur, ) var(--tw-brightness, ) var(--tw-contrast, ) var(--tw-grayscale, ) var(--tw-hue-rotate, ) var(--tw-invert, ) var(--tw-saturate, ) var(--tw-sepia, ) var(--tw-drop-shadow, );\n}\n\nhtml.gray-mode {\n  --tw-grayscale: grayscale(100%);\n  filter: var(--tw-blur, ) var(--tw-brightness, ) var(--tw-contrast, ) var(--tw-grayscale, ) var(--tw-hue-rotate, ) var(--tw-invert, ) var(--tw-saturate, ) var(--tw-sepia, ) var(--tw-drop-shadow, );\n}\n\n@layer theme {\n  :root, :host {\n    --font-sans: -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, \"Helvetica Neue\", \"Noto Sans\", Arial,\n    sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\";\n    --spacing: .25rem;\n    --container-md: 28rem;\n    --text-xs: .75rem;\n    --text-xs--line-height: calc(1 / .75);\n    --text-sm: .875rem;\n    --text-sm--line-height: calc(1.25 / .875);\n    --text-base: 1rem;\n    --text-base--line-height: calc(1.5 / 1);\n    --text-lg: 1.125rem;\n    --text-lg--line-height: calc(1.75 / 1.125);\n    --text-xl: 1.25rem;\n    --text-xl--line-height: calc(1.75 / 1.25);\n    --text-2xl: 1.5rem;\n    --text-2xl--line-height: calc(2 / 1.5);\n    --text-3xl: 1.875rem;\n    --text-3xl--line-height: calc(2.25 / 1.875);\n    --text-4xl: 2.25rem;\n    --text-4xl--line-height: calc(2.5 / 2.25);\n    --font-weight-medium: 500;\n    --font-weight-semibold: 600;\n    --font-weight-bold: 700;\n    --tracking-tight: -.025em;\n    --radius-sm: .25rem;\n    --radius-md: .375rem;\n    --radius-xl: .75rem;\n    --ease-in: cubic-bezier(.4, 0, 1, 1);\n    --ease-in-out: cubic-bezier(.4, 0, .2, 1);\n    --animate-spin: spin 1s linear infinite;\n    --default-transition-duration: .15s;\n    --default-transition-timing-function: cubic-bezier(.4, 0, .2, 1);\n    --animate-wiggle: wiggle 1s both;\n    --animate-bounce-in-down-out-up: bounce-in-down-out-up 4s ease-in-out 0s infinite;\n  }\n}\n\n@layer base, components;\n\n@layer utilities {\n  .visible {\n    visibility: visible;\n  }\n\n  .absolute {\n    position: absolute;\n  }\n\n  .fixed {\n    position: fixed;\n  }\n\n  .relative {\n    position: relative;\n  }\n\n  .static {\n    position: static;\n  }\n\n  .top-0 {\n    top: 0;\n  }\n\n  .top-1 {\n    top: var(--spacing);\n  }\n\n  .top-1\\.5 {\n    top: calc(var(--spacing) * 1.5);\n  }\n\n  .top-2 {\n    top: calc(var(--spacing) * 2);\n  }\n\n  .top-3 {\n    top: calc(var(--spacing) * 3);\n  }\n\n  .right-2 {\n    right: calc(var(--spacing) * 2);\n  }\n\n  .right-3 {\n    right: calc(var(--spacing) * 3);\n  }\n\n  .right-4 {\n    right: calc(var(--spacing) * 4);\n  }\n\n  .bottom-0 {\n    bottom: 0;\n  }\n\n  .bottom-3 {\n    bottom: calc(var(--spacing) * 3);\n  }\n\n  .left-0 {\n    left: 0;\n  }\n\n  .left-1 {\n    left: var(--spacing);\n  }\n\n  .left-1\\/2 {\n    left: 50%;\n  }\n\n  .left-3 {\n    left: calc(var(--spacing) * 3);\n  }\n\n  .z-10 {\n    z-index: 10;\n  }\n\n  .container {\n    width: 100%;\n  }\n\n  @media (min-width: 480px) {\n    .container {\n      max-width: 480px;\n    }\n  }\n\n  @media (min-width: 576px) {\n    .container {\n      max-width: 576px;\n    }\n  }\n\n  @media (min-width: 768px) {\n    .container {\n      max-width: 768px;\n    }\n  }\n\n  @media (min-width: 992px) {\n    .container {\n      max-width: 992px;\n    }\n  }\n\n  @media (min-width: 1200px) {\n    .container {\n      max-width: 1200px;\n    }\n  }\n\n  @media (min-width: 1600px) {\n    .container {\n      max-width: 1600px;\n    }\n  }\n\n  .m-0 {\n    margin: 0;\n  }\n\n  .m-152 {\n    margin: calc(var(--spacing) * 152);\n  }\n\n  .mx-3 {\n    margin-inline: calc(var(--spacing) * 3);\n  }\n\n  .mx-4 {\n    margin-inline: calc(var(--spacing) * 4);\n  }\n\n  .mx-auto {\n    margin-inline: auto;\n  }\n\n  .my-0 {\n    margin-block: 0;\n  }\n\n  .my-1 {\n    margin-block: var(--spacing);\n  }\n\n  .my-4 {\n    margin-block: calc(var(--spacing) * 4);\n  }\n\n  .my-8 {\n    margin-block: calc(var(--spacing) * 8);\n  }\n\n  .-mt-1 {\n    margin-top: calc(var(--spacing) * -1);\n  }\n\n  .mt-0 {\n    margin-top: 0;\n  }\n\n  .mt-2 {\n    margin-top: calc(var(--spacing) * 2);\n  }\n\n  .mt-2\\.5 {\n    margin-top: calc(var(--spacing) * 2.5);\n  }\n\n  .mt-4 {\n    margin-top: calc(var(--spacing) * 4);\n  }\n\n  .mt-6 {\n    margin-top: calc(var(--spacing) * 6);\n  }\n\n  .mr-2 {\n    margin-right: calc(var(--spacing) * 2);\n  }\n\n  .mr-3 {\n    margin-right: calc(var(--spacing) * 3);\n  }\n\n  .mr-8 {\n    margin-right: calc(var(--spacing) * 8);\n  }\n\n  .mr-17 {\n    margin-right: calc(var(--spacing) * 17);\n  }\n\n  .mb-0 {\n    margin-bottom: 0;\n  }\n\n  .mb-2 {\n    margin-bottom: calc(var(--spacing) * 2);\n  }\n\n  .mb-3 {\n    margin-bottom: calc(var(--spacing) * 3);\n  }\n\n  .mb-5 {\n    margin-bottom: calc(var(--spacing) * 5);\n  }\n\n  .mb-6 {\n    margin-bottom: calc(var(--spacing) * 6);\n  }\n\n  .ml-2 {\n    margin-left: calc(var(--spacing) * 2);\n  }\n\n  .ml-4 {\n    margin-left: calc(var(--spacing) * 4);\n  }\n\n  .box-border {\n    box-sizing: border-box;\n  }\n\n  .line-clamp-2 {\n    -webkit-line-clamp: 2;\n    -webkit-box-orient: vertical;\n    display: -webkit-box;\n    overflow: hidden;\n  }\n\n  .block {\n    display: block;\n  }\n\n  .flex {\n    display: flex;\n  }\n\n  .hidden {\n    display: none;\n  }\n\n  .inline {\n    display: inline;\n  }\n\n  .inline-block {\n    display: inline-block;\n  }\n\n  .table {\n    display: table;\n  }\n\n  .aspect-square {\n    aspect-ratio: 1;\n  }\n\n  .size-5 {\n    width: calc(var(--spacing) * 5);\n    height: calc(var(--spacing) * 5);\n  }\n\n  .h-2 {\n    height: calc(var(--spacing) * 2);\n  }\n\n  .h-5 {\n    height: calc(var(--spacing) * 5);\n  }\n\n  .h-10 {\n    height: calc(var(--spacing) * 10);\n  }\n\n  .h-64 {\n    height: calc(var(--spacing) * 64);\n  }\n\n  .h-\\[0\\.63em\\] {\n    height: .63em;\n  }\n\n  .h-full {\n    height: 100%;\n  }\n\n  .h-screen {\n    height: 100vh;\n  }\n\n  .w-1 {\n    width: var(--spacing);\n  }\n\n  .w-1\\/3 {\n    width: 33.3333%;\n  }\n\n  .w-2 {\n    width: calc(var(--spacing) * 2);\n  }\n\n  .w-2\\/5 {\n    width: 40%;\n  }\n\n  .w-7 {\n    width: calc(var(--spacing) * 7);\n  }\n\n  .w-7\\/12 {\n    width: 58.3333%;\n  }\n\n  .w-10 {\n    width: calc(var(--spacing) * 10);\n  }\n\n  .w-11 {\n    width: calc(var(--spacing) * 11);\n  }\n\n  .w-12 {\n    width: calc(var(--spacing) * 12);\n  }\n\n  .w-40 {\n    width: calc(var(--spacing) * 40);\n  }\n\n  .w-72 {\n    width: calc(var(--spacing) * 72);\n  }\n\n  .w-full {\n    width: 100%;\n  }\n\n  .max-w-90 {\n    max-width: calc(var(--spacing) * 90);\n  }\n\n  .min-w-0 {\n    min-width: 0;\n  }\n\n  .flex-1 {\n    flex: 1;\n  }\n\n  .flex-auto {\n    flex: auto;\n  }\n\n  .flex-shrink {\n    flex-shrink: 1;\n  }\n\n  .flex-shrink-0, .shrink-0 {\n    flex-shrink: 0;\n  }\n\n  .flex-grow, .grow {\n    flex-grow: 1;\n  }\n\n  .border-collapse {\n    border-collapse: collapse;\n  }\n\n  .-translate-x-1 {\n    --tw-translate-x: calc(var(--spacing) * -1);\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .-translate-x-1\\/2 {\n    --tw-translate-x: calc(calc(1 / 2 * 100%) * -1);\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .scale-75 {\n    --tw-scale-x: 75%;\n    --tw-scale-y: 75%;\n    --tw-scale-z: 75%;\n    scale: var(--tw-scale-x) var(--tw-scale-y);\n  }\n\n  .transform {\n    transform: var(--tw-rotate-x, ) var(--tw-rotate-y, ) var(--tw-rotate-z, ) var(--tw-skew-x, ) var(--tw-skew-y, );\n  }\n\n  .animate-spin {\n    animation: var(--animate-spin);\n  }\n\n  .cursor-help {\n    cursor: help;\n  }\n\n  .cursor-pointer {\n    cursor: pointer;\n  }\n\n  .resize {\n    resize: both;\n  }\n\n  .list-none {\n    list-style-type: none;\n  }\n\n  .flex-col {\n    flex-direction: column;\n  }\n\n  .flex-row-reverse {\n    flex-direction: row-reverse;\n  }\n\n  .flex-wrap {\n    flex-wrap: wrap;\n  }\n\n  .items-center {\n    align-items: center;\n  }\n\n  .justify-between {\n    justify-content: space-between;\n  }\n\n  .justify-center {\n    justify-content: center;\n  }\n\n  .justify-start {\n    justify-content: flex-start;\n  }\n\n  .gap-1 {\n    gap: var(--spacing);\n  }\n\n  .gap-2 {\n    gap: calc(var(--spacing) * 2);\n  }\n\n  .gap-3 {\n    gap: calc(var(--spacing) * 3);\n  }\n\n  .gap-5 {\n    gap: calc(var(--spacing) * 5);\n  }\n\n  .gap-x-3 {\n    column-gap: calc(var(--spacing) * 3);\n  }\n\n  .gap-y-5 {\n    row-gap: calc(var(--spacing) * 5);\n  }\n\n  .overflow-hidden {\n    overflow: hidden;\n  }\n\n  .overflow-x-hidden {\n    overflow-x: hidden;\n  }\n\n  .overflow-y-auto {\n    overflow-y: auto;\n  }\n\n  .rounded {\n    border-radius: .25rem;\n  }\n\n  .rounded-full {\n    border-radius: 3.40282e38px;\n  }\n\n  .rounded-md {\n    border-radius: var(--radius-md);\n  }\n\n  .rounded-none {\n    border-radius: 0;\n  }\n\n  .rounded-sm {\n    border-radius: var(--radius-sm);\n  }\n\n  .rounded-r-xl {\n    border-top-right-radius: var(--radius-xl);\n    border-bottom-right-radius: var(--radius-xl);\n  }\n\n  .border {\n    border-style: var(--tw-border-style);\n    border-width: 1px;\n  }\n\n  .border-t {\n    border-top-style: var(--tw-border-style);\n    border-top-width: 1px;\n  }\n\n  .border-r {\n    border-right-style: var(--tw-border-style);\n    border-right-width: 1px;\n  }\n\n  .border-l {\n    border-left-style: var(--tw-border-style);\n    border-left-width: 1px;\n  }\n\n  .\\!border-none {\n    --tw-border-style: none !important;\n    border-style: none !important;\n  }\n\n  .border-t-\\[\\#303030\\] {\n    border-top-color: #303030;\n  }\n\n  .border-t-colorBorderSecondary {\n    border-top-color: var(--oo-colorBorderSecondary);\n  }\n\n  .border-r-\\[\\#303030\\] {\n    border-right-color: #303030;\n  }\n\n  .border-r-colorBorderSecondary {\n    border-right-color: var(--oo-colorBorderSecondary);\n  }\n\n  .border-l-colorBorderSecondary {\n    border-left-color: var(--oo-colorBorderSecondary);\n  }\n\n  .bg-\\[\\#F3F4F5\\] {\n    background-color: #f3f4f5;\n  }\n\n  .bg-blue-500, .bg-blue-500\\/20 {\n    background-color: rgb(var(--oo-blue-5));\n  }\n\n  @supports (color: color-mix(in lab, red, red)) {\n    .bg-blue-500\\/20 {\n      background-color: color-mix(in oklab, rgb(var(--oo-blue-5)) 20%, transparent);\n    }\n  }\n\n  .bg-blue-600 {\n    background-color: rgb(var(--oo-blue-6));\n  }\n\n  .bg-colorBgContainer {\n    background-color: var(--oo-colorBgContainer);\n  }\n\n  .bg-colorBgLayout {\n    background-color: var(--oo-colorBgLayout);\n  }\n\n  .bg-gray-100 {\n    background-color: #f5f5f5;\n  }\n\n  .bg-primary {\n    background-color: rgb(var(--oo-colorPrimary));\n  }\n\n  .bg-primaryActive {\n    background-color: rgb(var(--oo-colorPrimaryActive));\n  }\n\n  .object-cover {\n    object-fit: cover;\n  }\n\n  .p-0 {\n    padding: 0;\n  }\n\n  .p-1 {\n    padding: var(--spacing);\n  }\n\n  .p-2 {\n    padding: calc(var(--spacing) * 2);\n  }\n\n  .p-4 {\n    padding: calc(var(--spacing) * 4);\n  }\n\n  .px-0 {\n    padding-inline: 0;\n  }\n\n  .px-1 {\n    padding-inline: var(--spacing);\n  }\n\n  .px-1\\.5 {\n    padding-inline: calc(var(--spacing) * 1.5);\n  }\n\n  .px-2 {\n    padding-inline: calc(var(--spacing) * 2);\n  }\n\n  .px-2\\.75 {\n    padding-inline: calc(var(--spacing) * 2.75);\n  }\n\n  .px-3 {\n    padding-inline: calc(var(--spacing) * 3);\n  }\n\n  .px-4 {\n    padding-inline: calc(var(--spacing) * 4);\n  }\n\n  .px-6 {\n    padding-inline: calc(var(--spacing) * 6);\n  }\n\n  .px-9 {\n    padding-inline: calc(var(--spacing) * 9);\n  }\n\n  .px-10 {\n    padding-inline: calc(var(--spacing) * 10);\n  }\n\n  .px-\\[11px\\] {\n    padding-inline: 11px;\n  }\n\n  .py-1 {\n    padding-block: var(--spacing);\n  }\n\n  .py-1\\.5 {\n    padding-block: calc(var(--spacing) * 1.5);\n  }\n\n  .py-2 {\n    padding-block: calc(var(--spacing) * 2);\n  }\n\n  .py-2\\.5 {\n    padding-block: calc(var(--spacing) * 2.5);\n  }\n\n  .py-4 {\n    padding-block: calc(var(--spacing) * 4);\n  }\n\n  .py-10 {\n    padding-block: calc(var(--spacing) * 10);\n  }\n\n  .pb-4 {\n    padding-bottom: calc(var(--spacing) * 4);\n  }\n\n  .pl-2 {\n    padding-left: calc(var(--spacing) * 2);\n  }\n\n  .text-center {\n    text-align: center;\n  }\n\n  .font-sans {\n    font-family: var(--font-sans);\n  }\n\n  .text-3xl {\n    font-size: var(--text-3xl);\n    line-height: var(--tw-leading, var(--text-3xl--line-height));\n  }\n\n  .text-lg {\n    font-size: var(--text-lg);\n    line-height: var(--tw-leading, var(--text-lg--line-height));\n  }\n\n  .text-sm {\n    font-size: var(--text-sm);\n    line-height: var(--tw-leading, var(--text-sm--line-height));\n  }\n\n  .text-xl {\n    font-size: var(--text-xl);\n    line-height: var(--tw-leading, var(--text-xl--line-height));\n  }\n\n  .text-xs {\n    font-size: var(--text-xs);\n    line-height: var(--tw-leading, var(--text-xs--line-height));\n  }\n\n  .text-\\[4rem\\] {\n    font-size: 4rem;\n  }\n\n  .leading-9 {\n    --tw-leading: calc(var(--spacing) * 9);\n    line-height: calc(var(--spacing) * 9);\n  }\n\n  .leading-none {\n    --tw-leading: 1;\n    line-height: 1;\n  }\n\n  .font-bold {\n    --tw-font-weight: var(--font-weight-bold);\n    font-weight: var(--font-weight-bold);\n  }\n\n  .font-medium {\n    --tw-font-weight: var(--font-weight-medium);\n    font-weight: var(--font-weight-medium);\n  }\n\n  .font-semibold {\n    --tw-font-weight: var(--font-weight-semibold);\n    font-weight: var(--font-weight-semibold);\n  }\n\n  .tracking-tight {\n    --tw-tracking: var(--tracking-tight);\n    letter-spacing: var(--tracking-tight);\n  }\n\n  .text-colorBgContainer {\n    color: var(--oo-colorBgContainer);\n  }\n\n  .text-colorBgContainer\\! {\n    color: var(--oo-colorBgContainer) !important;\n  }\n\n  .text-colorText {\n    color: var(--oo-colorText);\n  }\n\n  .text-colorText\\! {\n    color: var(--oo-colorText) !important;\n  }\n\n  .text-colorTextSecondary {\n    color: var(--oo-colorTextSecondary);\n  }\n\n  .text-colorTextTertiary {\n    color: var(--oo-colorTextTertiary);\n  }\n\n  .lowercase {\n    text-transform: lowercase;\n  }\n\n  .uppercase {\n    text-transform: uppercase;\n  }\n\n  .underline {\n    text-decoration-line: underline;\n  }\n\n  .opacity-50 {\n    opacity: .5;\n  }\n\n  .opacity-80 {\n    opacity: .8;\n  }\n\n  .opacity-90 {\n    opacity: .9;\n  }\n\n  .outline, .outline-1 {\n    outline-style: var(--tw-outline-style);\n    outline-width: 1px;\n  }\n\n  .outline-2 {\n    outline-style: var(--tw-outline-style);\n    outline-width: 2px;\n  }\n\n  .outline-blue-600 {\n    outline-color: rgb(var(--oo-blue-6));\n  }\n\n  .outline-gray-300 {\n    outline-color: #d9d9d9;\n  }\n\n  .filter {\n    filter: var(--tw-blur, ) var(--tw-brightness, ) var(--tw-contrast, ) var(--tw-grayscale, ) var(--tw-hue-rotate, ) var(--tw-invert, ) var(--tw-saturate, ) var(--tw-sepia, ) var(--tw-drop-shadow, );\n  }\n\n  .transition {\n    transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --tw-gradient-from, --tw-gradient-via, --tw-gradient-to, opacity, box-shadow, transform, translate, scale, rotate, filter, -webkit-backdrop-filter, backdrop-filter, display, content-visibility, overlay, pointer-events;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .transition-all {\n    transition-property: all;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .duration-300 {\n    --tw-duration: .3s;\n    transition-duration: .3s;\n  }\n\n  .ease-in {\n    --tw-ease: var(--ease-in);\n    transition-timing-function: var(--ease-in);\n  }\n\n  .ease-in-out {\n    --tw-ease: var(--ease-in-out);\n    transition-timing-function: var(--ease-in-out);\n  }\n\n  @media (hover: hover) {\n    .group-hover\\:animate-wiggle:is(:where(.group):hover *) {\n      animation: var(--animate-wiggle);\n    }\n\n    .group-hover\\:opacity-100:is(:where(.group):hover *) {\n      opacity: 1;\n    }\n  }\n\n  .before\\:absolute:before {\n    content: var(--tw-content);\n    position: absolute;\n  }\n\n  .before\\:top-1\\/2:before {\n    content: var(--tw-content);\n    top: 50%;\n  }\n\n  .before\\:left-1\\/2:before {\n    content: var(--tw-content);\n    left: 50%;\n  }\n\n  .before\\:h-0:before {\n    content: var(--tw-content);\n    height: 0;\n  }\n\n  .before\\:w-0:before {\n    content: var(--tw-content);\n    width: 0;\n  }\n\n  .before\\:rounded-sm:before {\n    content: var(--tw-content);\n    border-radius: var(--radius-sm);\n  }\n\n  .before\\:opacity-0:before {\n    content: var(--tw-content);\n    opacity: 0;\n  }\n\n  .before\\:outline:before {\n    content: var(--tw-content);\n    outline-style: var(--tw-outline-style);\n    outline-width: 1px;\n  }\n\n  .before\\:outline-2:before {\n    content: var(--tw-content);\n    outline-style: var(--tw-outline-style);\n    outline-width: 2px;\n  }\n\n  .before\\:outline-transparent:before {\n    content: var(--tw-content);\n    outline-color: #0000;\n  }\n\n  .before\\:transition-all:before {\n    content: var(--tw-content);\n    transition-property: all;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .before\\:duration-300:before {\n    content: var(--tw-content);\n    --tw-duration: .3s;\n    transition-duration: .3s;\n  }\n\n  .before\\:content-\\[\\'\\'\\]:before {\n    --tw-content: \"\";\n    content: var(--tw-content);\n  }\n\n  .last\\:mr-auto:last-child {\n    margin-right: auto;\n  }\n\n  @media (hover: hover) {\n    .hover\\:bg-gray-100:hover {\n      background-color: #f5f5f5;\n    }\n\n    .hover\\:text-colorText:hover {\n      color: var(--oo-colorText);\n    }\n  }\n\n  .before\\:hover\\:top-0:before {\n    content: var(--tw-content);\n  }\n\n  @media (hover: hover) {\n    .before\\:hover\\:top-0:before:hover {\n      top: 0;\n    }\n  }\n\n  .before\\:hover\\:left-0:before {\n    content: var(--tw-content);\n  }\n\n  @media (hover: hover) {\n    .before\\:hover\\:left-0:before:hover {\n      left: 0;\n    }\n  }\n\n  .before\\:hover\\:h-full:before {\n    content: var(--tw-content);\n  }\n\n  @media (hover: hover) {\n    .before\\:hover\\:h-full:before:hover {\n      height: 100%;\n    }\n  }\n\n  .before\\:hover\\:w-full:before {\n    content: var(--tw-content);\n  }\n\n  @media (hover: hover) {\n    .before\\:hover\\:w-full:before:hover {\n      width: 100%;\n    }\n  }\n\n  .before\\:hover\\:p-1:before {\n    content: var(--tw-content);\n  }\n\n  @media (hover: hover) {\n    .before\\:hover\\:p-1:before:hover {\n      padding: var(--spacing);\n    }\n  }\n\n  .before\\:hover\\:opacity-100:before {\n    content: var(--tw-content);\n  }\n\n  @media (hover: hover) {\n    .before\\:hover\\:opacity-100:before:hover {\n      opacity: 1;\n    }\n  }\n\n  .before\\:hover\\:outline-blue-600:before {\n    content: var(--tw-content);\n  }\n\n  @media (hover: hover) {\n    .before\\:hover\\:outline-blue-600:before:hover {\n      outline-color: rgb(var(--oo-blue-6));\n    }\n  }\n\n  @media (prefers-reduced-motion: no-preference) {\n    .motion-safe\\:animate-bounce-in-down-out-up {\n      animation: var(--animate-bounce-in-down-out-up);\n    }\n  }\n\n  @media (min-width: 576px) {\n    .sm\\:mx-auto {\n      margin-inline: auto;\n    }\n  }\n\n  @media (min-width: 768px) {\n    .md\\:mr-2\\.5 {\n      margin-right: calc(var(--spacing) * 2.5);\n    }\n\n    .md\\:block {\n      display: block;\n    }\n\n    .md\\:w-3\\/12 {\n      width: 25%;\n    }\n\n    .md\\:w-96 {\n      width: calc(var(--spacing) * 96);\n    }\n\n    .md\\:max-w-md {\n      max-width: var(--container-md);\n    }\n\n    .md\\:bg-colorBgLayout {\n      background-color: var(--oo-colorBgLayout);\n    }\n\n    .md\\:px-4 {\n      padding-inline: calc(var(--spacing) * 4);\n    }\n\n    .md\\:pb-0 {\n      padding-bottom: 0;\n    }\n\n    .md\\:text-sm {\n      font-size: var(--text-sm);\n      line-height: var(--tw-leading, var(--text-sm--line-height));\n    }\n  }\n\n  @media (min-width: 992px) {\n    .lg\\:text-2xl {\n      font-size: var(--text-2xl);\n      line-height: var(--tw-leading, var(--text-2xl--line-height));\n    }\n  }\n\n  @media (min-width: 1200px) {\n    .xl\\:w-2\\/12 {\n      width: 16.6667%;\n    }\n\n    .xl\\:px-8 {\n      padding-inline: calc(var(--spacing) * 8);\n    }\n  }\n\n  .dark\\:bg-\\[\\#26313C\\]:where(.dark, .dark *) {\n    background-color: #26313c;\n  }\n\n  .dark\\:bg-black:where(.dark, .dark *) {\n    background-color: #000;\n  }\n\n  .dark\\:bg-gray-700:where(.dark, .dark *) {\n    background-color: #434343;\n  }\n\n  .dark\\:outline-blue-700:where(.dark, .dark *) {\n    outline-color: rgb(var(--oo-blue-7));\n  }\n\n  .dark\\:outline-gray-700:where(.dark, .dark *) {\n    outline-color: #434343;\n  }\n\n  @media (hover: hover) {\n    .dark\\:hover\\:bg-gray-700:where(.dark, .dark *):hover {\n      background-color: #434343;\n    }\n  }\n\n  .dark\\:before\\:hover\\:outline-blue-700:where(.dark, .dark *):before {\n    content: var(--tw-content);\n  }\n\n  @media (hover: hover) {\n    .dark\\:before\\:hover\\:outline-blue-700:where(.dark, .dark *):before:hover {\n      outline-color: rgb(var(--oo-blue-7));\n    }\n  }\n\n  .en-US\\:gap-y-3:where(:lang(en-US)) {\n    row-gap: calc(var(--spacing) * 3);\n  }\n\n  .en-US\\:text-\\[9rem\\]:where(:lang(en-US)) {\n    font-size: 9rem;\n  }\n\n  .zh-CN\\:hidden:where(:lang(zh-CN)) {\n    display: none;\n  }\n}\n\n@keyframes fade-in {\n  from {\n    opacity: 0;\n  }\n\n  to {\n    opacity: 1;\n  }\n}\n\n@keyframes fade-out {\n  from {\n    opacity: 1;\n  }\n\n  to {\n    opacity: 0;\n  }\n}\n\n@keyframes slide-in {\n  from {\n    transform: translateX(-30px);\n  }\n\n  to {\n    transform: translateX(0);\n  }\n}\n\n@keyframes slide-out {\n  from {\n    transform: translateX(0);\n  }\n\n  to {\n    transform: translateX(30px);\n  }\n}\n\n@keyframes slide-top-in {\n  from {\n    transform: translateY(-10%);\n  }\n\n  to {\n    transform: translateY(0);\n  }\n}\n\n@keyframes slide-top-out {\n  from {\n    transform: translateY(0);\n  }\n\n  to {\n    transform: translateY(-10%);\n  }\n}\n\n@keyframes slide-bottom-in {\n  from {\n    transform: translateY(10%);\n  }\n\n  to {\n    transform: translateY(0);\n  }\n}\n\n@keyframes slide-bottom-out {\n  from {\n    transform: translateY(0);\n  }\n\n  to {\n    transform: translateY(10%);\n  }\n}\n\n@keyframes fade-slide {\n  0% {\n    opacity: 0;\n    transform: translate(-30px);\n  }\n\n  50% {\n    opacity: 1;\n  }\n\n  100% {\n    opacity: 0;\n    transform: translate(30px);\n  }\n}\n\n@keyframes fade-up {\n  0% {\n    opacity: 0;\n    transform: translateY(10%);\n  }\n\n  50% {\n    opacity: 1;\n  }\n\n  100% {\n    opacity: 0;\n    transform: translateY(-10%);\n  }\n}\n\n@keyframes fade-down {\n  0% {\n    opacity: 0;\n    transform: translateY(-10%);\n  }\n\n  50% {\n    opacity: 1;\n  }\n\n  100% {\n    opacity: 0;\n    transform: translateY(10%);\n  }\n}\n\n.fade-slide {\n  animation: 3s linear infinite fade-slide;\n}\n\n.fade {\n  animation: 3s linear infinite alternate fade-in;\n}\n\n.fade-up {\n  animation: 3s infinite fade-up;\n}\n\n.fade-down {\n  animation: 3s infinite fade-down;\n}\n\n@keyframes zoom-in {\n  0% {\n    transform: scale(.8);\n  }\n\n  100% {\n    opacity: 1;\n    transform: scale(1);\n  }\n}\n\n@keyframes zoom-out {\n  0% {\n    transform: scale(1);\n  }\n\n  100% {\n    opacity: 1;\n    transform: scale(1.25);\n  }\n}\n\n@keyframes fade-zoom {\n  0% {\n    opacity: 0;\n    transform: scale(.8);\n  }\n\n  50% {\n    opacity: 1;\n    transform: scale(1);\n  }\n\n  100% {\n    opacity: 0;\n    transform: scale(1.25);\n  }\n}\n\n.fade-zoom {\n  animation: 3s infinite fade-zoom;\n}\n\n.keepalive-fade.active {\n  animation: .3s ease-in-out fade-in;\n}\n\n.keepalive-fade.inactive {\n  animation: .3s ease-in-out fade-out;\n}\n\n.keepalive-fade-slide.active {\n  animation: .3s ease-in-out fade-in, .3s ease-in-out slide-in;\n}\n\n.keepalive-fade-slide.inactive {\n  animation: .3s ease-in-out fade-out, .3s ease-in-out slide-out;\n}\n\n.keepalive-fade-up.active {\n  animation: .3s ease-in-out fade-in, .3s ease-in-out slide-bottom-in;\n}\n\n.keepalive-fade-up.inactive {\n  animation: .3s ease-in-out fade-out, .3s ease-in-out slide-top-out;\n}\n\n.keepalive-fade-down.active {\n  animation: .3s ease-in-out fade-in, .3s ease-in-out slide-top-in;\n}\n\n.keepalive-fade-down.inactive {\n  animation: .3s ease-in-out fade-out, .3s ease-in-out slide-bottom-out;\n}\n\n.keepalive-fade-zoom.active {\n  animation: .3s ease-in-out zoom-in, .3s ease-in-out zoom-in;\n}\n\n.keepalive-fade-zoom.inactive {\n  animation: .3s ease-in-out zoom-out, .3s ease-in-out fade-out;\n}\n\n@property --tw-blur {\n  syntax: \"*\";\n  inherits: false\n}\n\n@property --tw-brightness {\n  syntax: \"*\";\n  inherits: false\n}\n\n@property --tw-contrast {\n  syntax: \"*\";\n  inherits: false\n}\n\n@property --tw-grayscale {\n  syntax: \"*\";\n  inherits: false\n}\n\n@property --tw-hue-rotate {\n  syntax: \"*\";\n  inherits: false\n}\n\n@property --tw-invert {\n  syntax: \"*\";\n  inherits: false\n}\n\n@property --tw-opacity {\n  syntax: \"*\";\n  inherits: false\n}\n\n@property --tw-saturate {\n  syntax: \"*\";\n  inherits: false\n}\n\n@property --tw-sepia {\n  syntax: \"*\";\n  inherits: false\n}\n\n@property --tw-drop-shadow {\n  syntax: \"*\";\n  inherits: false\n}\n\n@property --tw-drop-shadow-color {\n  syntax: \"*\";\n  inherits: false\n}\n\n@property --tw-drop-shadow-alpha {\n  syntax: \"<percentage>\";\n  inherits: false;\n  initial-value: 100%;\n}\n\n@property --tw-drop-shadow-size {\n  syntax: \"*\";\n  inherits: false\n}\n\n@property --tw-translate-x {\n  syntax: \"*\";\n  inherits: false;\n  initial-value: 0;\n}\n\n@property --tw-translate-y {\n  syntax: \"*\";\n  inherits: false;\n  initial-value: 0;\n}\n\n@property --tw-translate-z {\n  syntax: \"*\";\n  inherits: false;\n  initial-value: 0;\n}\n\n@property --tw-scale-x {\n  syntax: \"*\";\n  inherits: false;\n  initial-value: 1;\n}\n\n@property --tw-scale-y {\n  syntax: \"*\";\n  inherits: false;\n  initial-value: 1;\n}\n\n@property --tw-scale-z {\n  syntax: \"*\";\n  inherits: false;\n  initial-value: 1;\n}\n\n@property --tw-rotate-x {\n  syntax: \"*\";\n  inherits: false\n}\n\n@property --tw-rotate-y {\n  syntax: \"*\";\n  inherits: false\n}\n\n@property --tw-rotate-z {\n  syntax: \"*\";\n  inherits: false\n}\n\n@property --tw-skew-x {\n  syntax: \"*\";\n  inherits: false\n}\n\n@property --tw-skew-y {\n  syntax: \"*\";\n  inherits: false\n}\n\n@property --tw-border-style {\n  syntax: \"*\";\n  inherits: false;\n  initial-value: solid;\n}\n\n@property --tw-leading {\n  syntax: \"*\";\n  inherits: false\n}\n\n@property --tw-font-weight {\n  syntax: \"*\";\n  inherits: false\n}\n\n@property --tw-tracking {\n  syntax: \"*\";\n  inherits: false\n}\n\n@property --tw-outline-style {\n  syntax: \"*\";\n  inherits: false;\n  initial-value: solid;\n}\n\n@property --tw-duration {\n  syntax: \"*\";\n  inherits: false\n}\n\n@property --tw-ease {\n  syntax: \"*\";\n  inherits: false\n}\n\n@property --tw-content {\n  syntax: \"*\";\n  inherits: false;\n  initial-value: \"\";\n}\n\n@keyframes spin {\n  to {\n    transform: rotate(360deg);\n  }\n}\n\n@keyframes wiggle {\n  0%, 100% {\n    transform-origin: top;\n  }\n\n  15% {\n    transform: rotateZ(10deg);\n  }\n\n  30% {\n    transform: rotateZ(-10deg);\n  }\n\n  45% {\n    transform: rotateZ(5deg);\n  }\n\n  60% {\n    transform: rotateZ(-5deg);\n  }\n\n  75% {\n    transform: rotateZ(2deg);\n  }\n}\n\n@keyframes bounce-in-down-out-up {\n  0% {\n    transform: translateY(0);\n  }\n\n  50% {\n    transform: translateY(-20px);\n  }\n\n  100% {\n    transform: translateY(0);\n  }\n}\n\n@layer properties {\n  @supports (((-webkit-hyphens: none)) and (not (margin-trim: inline))) or ((-moz-orient: inline) and (not (color: rgb(from red r g b)))) {\n    *, :before, :after, ::backdrop {\n      --tw-blur: initial;\n      --tw-brightness: initial;\n      --tw-contrast: initial;\n      --tw-grayscale: initial;\n      --tw-hue-rotate: initial;\n      --tw-invert: initial;\n      --tw-opacity: initial;\n      --tw-saturate: initial;\n      --tw-sepia: initial;\n      --tw-drop-shadow: initial;\n      --tw-drop-shadow-color: initial;\n      --tw-drop-shadow-alpha: 100%;\n      --tw-drop-shadow-size: initial;\n      --tw-translate-x: 0;\n      --tw-translate-y: 0;\n      --tw-translate-z: 0;\n      --tw-scale-x: 1;\n      --tw-scale-y: 1;\n      --tw-scale-z: 1;\n      --tw-rotate-x: initial;\n      --tw-rotate-y: initial;\n      --tw-rotate-z: initial;\n      --tw-skew-x: initial;\n      --tw-skew-y: initial;\n      --tw-border-style: solid;\n      --tw-leading: initial;\n      --tw-font-weight: initial;\n      --tw-tracking: initial;\n      --tw-outline-style: solid;\n      --tw-duration: initial;\n      --tw-ease: initial;\n      --tw-content: \"\";\n    }\n  }\n}\n/*$vite$:1*/";
 	document.head.appendChild(s);
 }
 import ky from "ky";
@@ -10,10 +10,10 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { Link, Navigate, Outlet, createBrowserRouter, matchRoutes, useLocation, useMatches, useNavigate, useOutlet, useSearchParams } from "react-router";
 import { ErrorBoundary } from "react-error-boundary";
-import { AntDesignOutlined, ApartmentOutlined, AppstoreOutlined, ArrowDownOutlined, ArrowLeftOutlined, ArrowUpOutlined, BellOutlined, CloseOutlined, CloudOutlined, ContainerOutlined, CopyOutlined, CopyrightOutlined, DownOutlined, EnterOutlined, EyeOutlined, FileTextOutlined, FullscreenExitOutlined, FullscreenOutlined, HomeOutlined, LeftOutlined, LoadingOutlined, LockOutlined, LogoutOutlined, MenuFoldOutlined, MenuOutlined, MenuUnfoldOutlined, NodeExpandOutlined, QuestionCircleOutlined, RedoOutlined, ReloadOutlined, RocketOutlined, SafetyOutlined, SearchOutlined, SettingOutlined, SisternodeOutlined, SubnodeOutlined, SwapOutlined, TeamOutlined, TranslationOutlined, UploadOutlined, UserOutlined, VerticalAlignBottomOutlined, VerticalAlignMiddleOutlined, VerticalAlignTopOutlined } from "@ant-design/icons";
+import { AntDesignOutlined, ApartmentOutlined, AppstoreOutlined, ArrowDownOutlined, ArrowLeftOutlined, ArrowUpOutlined, BellOutlined, CloseOutlined, CloudOutlined, ContainerOutlined, CopyOutlined, CopyrightOutlined, DownOutlined, EnterOutlined, EyeOutlined, FileTextOutlined, FullscreenExitOutlined, FullscreenOutlined, HomeOutlined, LoadingOutlined, LockOutlined, LogoutOutlined, MenuFoldOutlined, MenuOutlined, MenuUnfoldOutlined, NodeExpandOutlined, QuestionCircleOutlined, RedoOutlined, ReloadOutlined, RocketOutlined, SafetyOutlined, SearchOutlined, SettingOutlined, SisternodeOutlined, SubnodeOutlined, SwapOutlined, TeamOutlined, TranslationOutlined, UploadOutlined, UserOutlined, VerticalAlignBottomOutlined, VerticalAlignMiddleOutlined, VerticalAlignTopOutlined } from "@ant-design/icons";
 import { Avatar, Badge, Breadcrumb, Button, Checkbox, Col, ColorPicker, ConfigProvider, Divider, Drawer, Dropdown, Empty, FloatButton, Form, Grid, Input, InputNumber, List, Menu, Modal, Popover, Result, Row, Select, Slider, Space, Spin, Switch, Tabs, Tooltip, Tree, Typography, Upload, Watermark, message, theme } from "antd";
-import { Fragment, Suspense, cloneElement, createContext, createElement, forwardRef, isValidElement, lazy, use, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Trans, initReactI18next, useTranslation } from "react-i18next";
+import { Fragment, Suspense, cloneElement, createElement, forwardRef, isValidElement, lazy, use, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { initReactI18next, useTranslation } from "react-i18next";
 import { Fragment as Fragment$1, jsx, jsxs } from "react/jsx-runtime";
 import "antd/locale/en_US";
 import "antd/locale/zh_CN";
@@ -21,12 +21,10 @@ import i18next from "i18next";
 import { clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { flushSync } from "react-dom";
-import { AnimatePresence, motion } from "motion/react";
-import { ProFormCaptcha, ProTable } from "@ant-design/pro-components";
-import { useCountDown, useDebounceFn, useFullscreen, useKeyPress, useLocalStorageState, useResponsive, useSize, useToggle } from "ahooks";
 import NProgress from "nprogress";
 import "nprogress/nprogress.css";
 import { ThemeProvider, createUseStyles } from "react-jss";
+import { useDebounceFn, useFullscreen, useKeyPress, useLocalStorageState, useResponsive, useSize, useToggle } from "ahooks";
 import { useSpinDelay } from "spin-delay";
 import SimpleBar from "simplebar-react";
 import { KeepAlive, useKeepAliveContext, useKeepAliveRef } from "keepalive-for-react";
@@ -37,6 +35,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { useShallow } from "zustand/shallow";
 import { ContractApiError } from "@react-antd-module/contract/errors";
 import ImgCrop from "antd-img-crop";
+import { ProTable } from "@ant-design/pro-components";
 //#region \0rolldown/runtime.js
 var __defProp = Object.defineProperty;
 var __esmMin = (fn, res, err) => () => {
@@ -56,6 +55,58 @@ var __exportAll = (all, no_symbols) => {
 	if (!no_symbols) __defProp(target, Symbol.toStringTag, { value: "Module" });
 	return target;
 };
+//#endregion
+//#region src/store/api-provider.ts
+function registerSystemApiProvider(moduleName, provider) {
+	if (systemCurrent) {
+		console.warn(`[api] 重复的系统 API provider 忽略：已由模块 "${systemCurrent.moduleName}" 提供，忽略 "${moduleName}"（先到先得）。`);
+		return;
+	}
+	systemCurrent = {
+		moduleName,
+		provider
+	};
+}
+function getSystemApiProvider() {
+	return systemCurrent?.provider;
+}
+function registerNotificationsApiProvider(moduleName, provider) {
+	if (notificationsCurrent) {
+		console.warn(`[api] 重复的通知 provider 忽略：已由模块 "${notificationsCurrent.moduleName}" 提供，忽略 "${moduleName}"（先到先得）。`);
+		return;
+	}
+	notificationsCurrent = {
+		moduleName,
+		provider
+	};
+}
+function getNotificationsApiProvider() {
+	return notificationsCurrent?.provider;
+}
+function registerUploadApiProvider(moduleName, provider) {
+	if (uploadCurrent) {
+		console.warn(`[api] 重复的上传 provider 忽略：已由模块 "${uploadCurrent.moduleName}" 提供，忽略 "${moduleName}"（先到先得）。`);
+		return;
+	}
+	uploadCurrent = {
+		moduleName,
+		provider
+	};
+}
+function getUploadApiProvider() {
+	return uploadCurrent?.provider;
+}
+/**
+* 卸载模块时复位其登记的全部 API provider（系统/通知/上传）。以 moduleName
+* 作命名隔离——不同模块各自登记互不干扰，卸载只清自己的。
+*/
+function unregisterApiProviders(moduleName) {
+	if (systemCurrent?.moduleName === moduleName) systemCurrent = void 0;
+	if (notificationsCurrent?.moduleName === moduleName) notificationsCurrent = void 0;
+	if (uploadCurrent?.moduleName === moduleName) uploadCurrent = void 0;
+}
+var systemCurrent, notificationsCurrent, uploadCurrent;
+var init_api_provider = __esmMin((() => {}));
 //#endregion
 //#region src/router/extra-info/route-path.ts
 /**
@@ -87,7 +138,7 @@ var init_extra_info = __esmMin((() => {
 //#endregion
 //#region src/utils/request/constants.ts
 var AUTH_HEADER, LANG_HEADER, REFRESH_TOKEN_PATH, AUTH_LOGIN_PATH;
-var init_constants$4 = __esmMin((() => {
+var init_constants$3 = __esmMin((() => {
 	AUTH_HEADER = "Authorization";
 	LANG_HEADER = "X-Lang";
 	REFRESH_TOKEN_PATH = "auth/refresh";
@@ -122,7 +173,7 @@ function fetchRefreshToken(data) {
 }
 var init_user$1 = __esmMin((() => {
 	init_request();
-	init_constants$4();
+	init_constants$3();
 	init_types();
 }));
 //#endregion
@@ -134,7 +185,7 @@ var init_undraw_bug_fixing = __esmMin((() => {
 //#endregion
 //#region src/layout/widgets/preferences/blocks/layout/constants.ts
 var SIDE_NAVIGATION, TOP_NAVIGATION, TWO_COLUMN_NAVIGATION, MIXED_NAVIGATION;
-var init_constants$3 = __esmMin((() => {
+var init_constants$2 = __esmMin((() => {
 	SIDE_NAVIGATION = "side-navigation";
 	TOP_NAVIGATION = "top-navigation";
 	TWO_COLUMN_NAVIGATION = "two-column-navigation";
@@ -160,7 +211,7 @@ function getAppInfo() {
 			"version": "0.1.1",
 			"license": "MIT"
 		},
-		"lastBuildTime": "2026-09-04 12:29:18"
+		"lastBuildTime": "2026-09-10 16:20:44"
 	};
 }
 var init_get_app_info = __esmMin((() => {}));
@@ -176,7 +227,7 @@ var init_get_app_namespace = __esmMin((() => {
 //#region src/store/preferences/index.ts
 var DEFAULT_PREFERENCES, usePreferencesStore;
 var init_preferences$3 = __esmMin((() => {
-	init_constants$3();
+	init_constants$2();
 	init_get_app_namespace();
 	DEFAULT_PREFERENCES = {
 		watermark: false,
@@ -2868,225 +2919,6 @@ var init_fullscreen_layout = __esmMin((() => {
 	init_theme_button();
 }));
 //#endregion
-//#region src/constants/regular-expressions.ts
-var USERNAME_REGEXP, MOBILE_PHONE_REGEXP;
-var init_regular_expressions = __esmMin((() => {
-	USERNAME_REGEXP = /^[\w-]{4,16}$/;
-	MOBILE_PHONE_REGEXP = /^(?:(?:\+|00)86)?1\d{10}$/;
-}));
-//#endregion
-//#region src/constants/rules.ts
-/**
-* 用户名规则验证函数
-*/
-function USERNAME_RULES(t) {
-	return [{
-		required: true,
-		message: t("form.username.required")
-	}, {
-		pattern: USERNAME_REGEXP,
-		message: t("form.username.invalid")
-	}];
-}
-/**
-* 密码规则验证函数
-*
-*/
-function PASSWORD_RULES(t) {
-	return [{
-		required: true,
-		message: t("form.password.required")
-	}, {
-		pattern: /^(?=.*\d)(?=.*[a-z])[\w~!@#$%^&*+.\-]{8,16}$/i,
-		message: t("form.password.invalid")
-	}];
-}
-/**
-* 返回手机验证规则对象
-*
-*/
-function MOBILE_PHONE_RULES(t) {
-	return [{
-		required: true,
-		message: t("form.mobile.required")
-	}, {
-		pattern: MOBILE_PHONE_REGEXP,
-		message: t("form.mobile.invalid")
-	}];
-}
-var init_rules = __esmMin((() => {
-	init_regular_expressions();
-}));
-//#endregion
-//#region src/pages/login/form-mode-context.ts
-var FormModeContext;
-var init_form_mode_context = __esmMin((() => {
-	FormModeContext = createContext({
-		formMode: "login",
-		setFormMode: () => {}
-	});
-}));
-//#endregion
-//#region src/pages/login/components/code-login.tsx
-function CodeLogin() {
-	const [loading, setLoading] = useState(false);
-	const [codeLoginForm] = Form.useForm();
-	const { t } = useTranslation();
-	const { setFormMode } = use(FormModeContext);
-	const handleFinish = async () => {
-		setLoading(true);
-		setTimeout(() => {
-			setLoading(false);
-			window.$message?.success(t("common.success"));
-		}, 1e3);
-	};
-	return /* @__PURE__ */ jsxs(Fragment$1, { children: [/* @__PURE__ */ jsx(Space, {
-		orientation: "vertical",
-		children: /* @__PURE__ */ jsx(Title$3, {
-			level: 3,
-			children: t("authority.codeLogin")
-		})
-	}), /* @__PURE__ */ jsxs(Form, {
-		name: "codeLoginForm",
-		form: codeLoginForm,
-		layout: "vertical",
-		initialValues: FORM_INITIAL_VALUES$3,
-		onFinish: handleFinish,
-		children: [
-			/* @__PURE__ */ jsx(Form.Item, {
-				label: t("authority.mobile"),
-				name: "phoneNumber",
-				rules: MOBILE_PHONE_RULES(t),
-				children: /* @__PURE__ */ jsx(InputNumber, {
-					controls: false,
-					className: "w-full",
-					placeholder: t("form.mobile.required")
-				})
-			}),
-			/* @__PURE__ */ jsx(ProFormCaptcha, {
-				label: t("authority.code"),
-				placeholder: t("form.code.required"),
-				captchaTextRender: (timing, count) => {
-					return timing ? t("authority.sendText", { second: count }) : t("authority.sendCode");
-				},
-				onGetCaptcha: () => {
-					window.$message?.success(t("common.success"));
-					return Promise.resolve();
-				},
-				rules: [{ required: true }],
-				phoneName: "phoneNumber",
-				name: "captcha"
-			}),
-			/* @__PURE__ */ jsx(Form.Item, { children: /* @__PURE__ */ jsx(Button, {
-				block: true,
-				type: "primary",
-				htmlType: "submit",
-				loading,
-				children: t("authority.login")
-			}) }),
-			/* @__PURE__ */ jsx("div", {
-				className: "text-sm text-center",
-				children: /* @__PURE__ */ jsx(BasicButton, {
-					type: "link",
-					icon: /* @__PURE__ */ jsx(LeftOutlined, {}),
-					className: "px-1",
-					onPointerDown: () => {
-						setFormMode("login");
-					},
-					children: t("common.back")
-				})
-			})
-		]
-	})] });
-}
-var Title$3, FORM_INITIAL_VALUES$3;
-var init_code_login = __esmMin((() => {
-	init_basic_button();
-	init_rules();
-	init_form_mode_context();
-	({Title: Title$3} = Typography);
-	FORM_INITIAL_VALUES$3 = {
-		phoneNumber: "",
-		captcha: ""
-	};
-}));
-//#endregion
-//#region src/pages/login/components/forgot-password.tsx
-function ForgotPassword() {
-	const [targetDate, setTargetDate] = useState(0);
-	const [countdown] = useCountDown({
-		targetDate,
-		onEnd: () => {
-			setTargetDate(0);
-		}
-	});
-	const [loading, setLoading] = useState(false);
-	const [forgotForm] = Form.useForm();
-	const { t } = useTranslation();
-	const { setFormMode } = use(FormModeContext);
-	const handleFinish = async () => {
-		setLoading(true);
-		setTargetDate(Date.now() + 3e4);
-		setTimeout(() => {
-			setLoading(false);
-		}, 1e3);
-	};
-	return /* @__PURE__ */ jsxs(Fragment$1, { children: [/* @__PURE__ */ jsxs(Space, {
-		orientation: "vertical",
-		children: [/* @__PURE__ */ jsx(Title$2, {
-			level: 3,
-			children: t("authority.forgotPassword")
-		}), /* @__PURE__ */ jsx("p", {
-			className: "text-xs opacity-80",
-			children: t("authority.forgotPasswordSubtitle")
-		})]
-	}), /* @__PURE__ */ jsxs(Form, {
-		name: "forgotForm",
-		form: forgotForm,
-		layout: "vertical",
-		initialValues: FORM_INITIAL_VALUES$2,
-		onFinish: handleFinish,
-		children: [
-			/* @__PURE__ */ jsx(Form.Item, {
-				label: t("authority.email"),
-				name: "email",
-				rules: [{ required: true }, {
-					type: "email",
-					message: t("form.email.invalid")
-				}],
-				children: /* @__PURE__ */ jsx(Input, { placeholder: t("form.email.required") })
-			}),
-			/* @__PURE__ */ jsx(Form.Item, { children: /* @__PURE__ */ jsx(Button, {
-				block: true,
-				type: "primary",
-				htmlType: "submit",
-				loading,
-				disabled: countdown > 0,
-				children: countdown > 0 ? t("authority.retryAfterText", { count: Math.floor(countdown / 1e3) }) : t("authority.sendResetLink")
-			}) }),
-			/* @__PURE__ */ jsx("div", {
-				className: "text-sm text-center",
-				children: /* @__PURE__ */ jsx(BasicButton, {
-					type: "link",
-					icon: /* @__PURE__ */ jsx(LeftOutlined, {}),
-					className: "px-1",
-					onPointerDown: () => {
-						setFormMode("login");
-					},
-					children: t("common.back")
-				})
-			})
-		]
-	})] });
-}
-var Title$2, FORM_INITIAL_VALUES$2;
-var init_forgot_password = __esmMin((() => {
-	init_basic_button();
-	init_form_mode_context();
-	({Title: Title$2} = Typography);
-	FORM_INITIAL_VALUES$2 = { email: "" };
-}));
-//#endregion
 //#region src/utils/get-redirect-path.ts
 /**
 * redirect 参数解析出口（P3，login 模块化）。
@@ -3102,277 +2934,73 @@ function getRedirectPath(search) {
 }
 var init_get_redirect_path = __esmMin((() => {}));
 //#endregion
-//#region src/pages/login/components/password-login.tsx
-function PasswordLogin() {
+//#region src/pages/login/index.tsx
+var login_exports = /* @__PURE__ */ __exportAll({ default: () => Login$1 });
+function Login$1() {
 	const [loading, setLoading] = useState(false);
-	const [passwordLoginForm] = Form.useForm();
 	const { t } = useTranslation();
-	const [messageLoadingApi, contextLoadingHolder] = message.useMessage();
 	const [searchParams] = useSearchParams();
 	const navigate = useNavigate();
 	const login = useAuthStore((state) => state.login);
-	const { setFormMode } = use(FormModeContext);
 	const handleFinish = async (values) => {
 		setLoading(true);
-		messageLoadingApi?.loading(t("authority.loginInProgress"), 0);
 		login(values).then(() => {
-			messageLoadingApi?.destroy();
-			window.$message?.success(t("authority.loginSuccess"));
 			navigate(getRedirectPath(searchParams));
 		}).catch(() => {}).finally(() => {
-			messageLoadingApi?.destroy();
-			setTimeout(() => {
-				window.$message?.destroy();
-				setLoading(false);
-			}, 1e3);
+			setLoading(false);
 		});
 	};
-	return /* @__PURE__ */ jsxs(Fragment$1, { children: [
-		contextLoadingHolder,
-		/* @__PURE__ */ jsxs(Space, {
-			orientation: "vertical",
-			children: [/* @__PURE__ */ jsxs("h2", {
-				className: "text-colorText mb-3 text-3xl font-bold leading-9 tracking-tight lg:text-4xl",
-				children: [t("authority.welcomeBack"), "\xA0 👏"]
-			}), /* @__PURE__ */ jsx("p", {
-				className: "lg:text-base text-sm text-colorTextSecondary",
-				children: t("authority.loginDescription")
-			})]
-		}),
-		/* @__PURE__ */ jsxs(Form, {
-			name: "passwordLoginForm",
-			form: passwordLoginForm,
+	return /* @__PURE__ */ jsxs("div", {
+		className: "w-full max-w-90 mx-auto",
+		children: [/* @__PURE__ */ jsx("h2", {
+			className: "text-colorText mb-6 text-3xl font-bold tracking-tight",
+			children: t("authority.welcomeBack")
+		}), /* @__PURE__ */ jsxs(Form, {
+			name: "builtinLoginForm",
 			layout: "vertical",
-			initialValues: FORM_INITIAL_VALUES$1,
+			initialValues: FORM_INITIAL_VALUES,
 			onFinish: handleFinish,
 			children: [
 				/* @__PURE__ */ jsx(Form.Item, {
 					label: t("authority.username"),
 					name: "username",
-					rules: USERNAME_RULES(t),
-					children: /* @__PURE__ */ jsx(Input, { placeholder: t("form.username.required") })
+					rules: [{
+						required: true,
+						message: t("form.username.required")
+					}],
+					children: /* @__PURE__ */ jsx(Input, {
+						autoFocus: true,
+						placeholder: t("form.username.required")
+					})
 				}),
 				/* @__PURE__ */ jsx(Form.Item, {
 					label: t("authority.password"),
 					name: "password",
-					rules: PASSWORD_RULES(t),
+					rules: [{
+						required: true,
+						message: t("form.password.required")
+					}],
 					children: /* @__PURE__ */ jsx(Input.Password, { placeholder: t("form.password.required") })
 				}),
-				/* @__PURE__ */ jsxs(Form.Item, { children: [/* @__PURE__ */ jsxs("div", {
-					className: "flex justify-between mb-5 -mt-1 text-sm",
-					children: [/* @__PURE__ */ jsx(BasicButton, {
-						type: "link",
-						className: "p-0",
-						onPointerDown: () => {
-							setFormMode("codeLogin");
-						},
-						children: t("authority.codeLogin")
-					}), /* @__PURE__ */ jsx(BasicButton, {
-						type: "link",
-						className: "p-0",
-						onPointerDown: () => {
-							setFormMode("forgotPassword");
-						},
-						children: t("authority.forgotPassword")
-					})]
-				}), /* @__PURE__ */ jsx(Button, {
+				/* @__PURE__ */ jsx(Form.Item, { children: /* @__PURE__ */ jsx(Button, {
 					block: true,
 					type: "primary",
 					htmlType: "submit",
 					loading,
 					children: t("authority.login")
-				})] }),
-				/* @__PURE__ */ jsxs("div", {
-					className: "text-sm text-center",
-					children: [t("authority.noAccountYet"), /* @__PURE__ */ jsx(BasicButton, {
-						type: "link",
-						className: "px-1",
-						onPointerDown: () => {
-							setFormMode("register");
-						},
-						children: t("authority.goToRegister")
-					})]
-				})
+				}) })
 			]
-		})
-	] });
+		})]
+	});
 }
-var FORM_INITIAL_VALUES$1;
-var init_password_login = __esmMin((() => {
-	init_basic_button();
-	init_rules();
+var FORM_INITIAL_VALUES;
+var init_login = __esmMin((() => {
 	init_auth();
 	init_get_redirect_path();
-	init_form_mode_context();
-	FORM_INITIAL_VALUES$1 = {
+	FORM_INITIAL_VALUES = {
 		username: "admin",
 		password: "123456789admin"
 	};
-}));
-//#endregion
-//#region src/pages/login/components/register-password.tsx
-function RegisterPassword() {
-	const [loading] = useState(false);
-	const [registerForm] = Form.useForm();
-	const { t } = useTranslation();
-	const { setFormMode } = use(FormModeContext);
-	const handleFinish = async () => {
-		window.$message?.success("注册成功");
-	};
-	return /* @__PURE__ */ jsxs(Fragment$1, { children: [/* @__PURE__ */ jsxs(Space, {
-		orientation: "vertical",
-		children: [/* @__PURE__ */ jsx(Title$1, {
-			level: 3,
-			children: "Hello, Welcome to"
-		}), /* @__PURE__ */ jsx(Title$1, {
-			className: "mt-0",
-			level: 5,
-			children: "React Antd Admin"
-		})]
-	}), /* @__PURE__ */ jsxs(Form, {
-		name: "registerForm",
-		form: registerForm,
-		layout: "vertical",
-		initialValues: FORM_INITIAL_VALUES,
-		onFinish: handleFinish,
-		children: [
-			/* @__PURE__ */ jsx(Form.Item, {
-				label: t("authority.username"),
-				name: "username",
-				rules: USERNAME_RULES(t),
-				children: /* @__PURE__ */ jsx(Input, { placeholder: t("form.username.required") })
-			}),
-			/* @__PURE__ */ jsx(Form.Item, {
-				label: t("authority.password"),
-				name: "password",
-				rules: PASSWORD_RULES(t),
-				children: /* @__PURE__ */ jsx(Input.Password, { placeholder: t("form.password.required") })
-			}),
-			/* @__PURE__ */ jsx(Form.Item, {
-				name: "confirm",
-				label: t("authority.confirmPassword"),
-				dependencies: ["password"],
-				hasFeedback: true,
-				rules: [{
-					required: true,
-					message: t("form.confirmPassword.required")
-				}, ({ getFieldValue }) => ({ validator(_, value) {
-					if (!value || getFieldValue("password") === value) return Promise.resolve();
-					return Promise.reject(new Error(t("form.confirmPassword.invalid")));
-				} })],
-				children: /* @__PURE__ */ jsx(Input.Password, { placeholder: t("form.confirmPassword.required") })
-			}),
-			/* @__PURE__ */ jsx(Form.Item, {
-				rules: [() => ({ validator(_, value) {
-					return value !== true ? Promise.reject(new Error(t("form.agree.required"))) : Promise.resolve();
-				} })],
-				name: "termsAgreement",
-				valuePropName: "checked",
-				children: /* @__PURE__ */ jsx(Checkbox, { children: /* @__PURE__ */ jsx("div", {
-					className: "flex flex-wrap text-xs",
-					children: /* @__PURE__ */ jsx(Trans, {
-						i18nKey: "authority.agree",
-						components: [/* @__PURE__ */ jsx(Link, {
-							to: "/terms-of-service",
-							target: "_blank"
-						}, 0), /* @__PURE__ */ jsx(Link, {
-							to: "/privacy-policy",
-							target: "_blank"
-						}, 1)]
-					})
-				}) })
-			}),
-			/* @__PURE__ */ jsx(Form.Item, { children: /* @__PURE__ */ jsx(Button, {
-				block: true,
-				type: "primary",
-				htmlType: "submit",
-				loading,
-				children: t("authority.register")
-			}) }),
-			/* @__PURE__ */ jsxs("div", {
-				className: "text-sm text-center",
-				children: [t("authority.alreadyHaveAnAccount"), /* @__PURE__ */ jsx(BasicButton, {
-					type: "link",
-					className: "px-1",
-					onPointerDown: () => {
-						setFormMode("login");
-					},
-					children: t("authority.goToLogin")
-				})]
-			})
-		]
-	})] });
-}
-var Title$1, FORM_INITIAL_VALUES;
-var init_register_password = __esmMin((() => {
-	init_basic_button();
-	init_rules();
-	init_form_mode_context();
-	({Title: Title$1} = Typography);
-	FORM_INITIAL_VALUES = {
-		username: "",
-		password: "",
-		confirmPassword: ""
-	};
-}));
-//#endregion
-//#region src/pages/login/constants.ts
-var FORM_COMPONENT_MAP;
-var init_constants$2 = __esmMin((() => {
-	init_code_login();
-	init_forgot_password();
-	init_password_login();
-	init_register_password();
-	FORM_COMPONENT_MAP = {
-		login: createElement(PasswordLogin),
-		register: createElement(RegisterPassword),
-		forgotPassword: createElement(ForgotPassword),
-		codeLogin: createElement(CodeLogin)
-	};
-}));
-//#endregion
-//#region src/pages/login/index.tsx
-var login_exports = /* @__PURE__ */ __exportAll({ default: () => Login$1 });
-/**
-* 内置登录页（P2）：只剩**内容区**（表单卡片 + formMode 切换）。
-*
-* 视口 / 品牌区 / 工具区 / 页脚已由框架级 FullscreenLayout 兜住
-*（见 router/routes/core/auth.ts），本页不再 import 任何布局资源——
-* 与外部 login 模块的写法完全同构。
-*/
-function Login$1() {
-	const [formMode, setFormMode] = useState("login");
-	const providedValue = useMemo(() => ({
-		formMode,
-		setFormMode
-	}), [formMode, setFormMode]);
-	return /* @__PURE__ */ jsx(FormModeContext, {
-		value: providedValue,
-		children: /* @__PURE__ */ jsx(AnimatePresence, {
-			mode: "wait",
-			initial: false,
-			children: /* @__PURE__ */ jsx(motion.div, {
-				initial: {
-					x: 30,
-					opacity: 0
-				},
-				animate: {
-					x: 0,
-					opacity: 1
-				},
-				exit: {
-					x: 0,
-					opacity: 0
-				},
-				transition: { duration: .3 },
-				children: FORM_COMPONENT_MAP[formMode]
-			}, formMode)
-		})
-	});
-}
-var init_login = __esmMin((() => {
-	init_constants$2();
-	init_form_mode_context();
 }));
 //#endregion
 //#region src/router/routes/core/auth.ts
@@ -4210,7 +3838,7 @@ function useLayout() {
 }
 var init_use_layout = __esmMin((() => {
 	init_use_device_type();
-	init_constants$3();
+	init_constants$2();
 	init_preferences$3();
 }));
 //#endregion
@@ -4704,58 +4332,6 @@ async function unwrap(promise) {
 }
 var init_envelope = __esmMin((() => {}));
 //#endregion
-//#region src/store/api-provider.ts
-function registerSystemApiProvider(moduleName, provider) {
-	if (systemCurrent) {
-		console.warn(`[api] 重复的系统 API provider 忽略：已由模块 "${systemCurrent.moduleName}" 提供，忽略 "${moduleName}"（先到先得）。`);
-		return;
-	}
-	systemCurrent = {
-		moduleName,
-		provider
-	};
-}
-function getSystemApiProvider() {
-	return systemCurrent?.provider;
-}
-function registerNotificationsApiProvider(moduleName, provider) {
-	if (notificationsCurrent) {
-		console.warn(`[api] 重复的通知 provider 忽略：已由模块 "${notificationsCurrent.moduleName}" 提供，忽略 "${moduleName}"（先到先得）。`);
-		return;
-	}
-	notificationsCurrent = {
-		moduleName,
-		provider
-	};
-}
-function getNotificationsApiProvider() {
-	return notificationsCurrent?.provider;
-}
-function registerUploadApiProvider(moduleName, provider) {
-	if (uploadCurrent) {
-		console.warn(`[api] 重复的上传 provider 忽略：已由模块 "${uploadCurrent.moduleName}" 提供，忽略 "${moduleName}"（先到先得）。`);
-		return;
-	}
-	uploadCurrent = {
-		moduleName,
-		provider
-	};
-}
-function getUploadApiProvider() {
-	return uploadCurrent?.provider;
-}
-/**
-* 卸载模块时复位其登记的全部 API provider（系统/通知/上传）。以 moduleName
-* 作命名隔离——不同模块各自登记互不干扰，卸载只清自己的。
-*/
-function unregisterApiProviders(moduleName) {
-	if (systemCurrent?.moduleName === moduleName) systemCurrent = void 0;
-	if (notificationsCurrent?.moduleName === moduleName) notificationsCurrent = void 0;
-	if (uploadCurrent?.moduleName === moduleName) uploadCurrent = void 0;
-}
-var systemCurrent, notificationsCurrent, uploadCurrent;
-var init_api_provider = __esmMin((() => {}));
-//#endregion
 //#region src/api/notifications/index.ts
 function fetchNotifications() {
 	const p = getNotificationsApiProvider();
@@ -4763,9 +4339,9 @@ function fetchNotifications() {
 	return unwrap(request.get("notifications").json());
 }
 var init_notifications = __esmMin((() => {
+	init_api_provider();
 	init_request();
 	init_envelope();
-	init_api_provider();
 }));
 //#endregion
 //#region src/layout/widgets/notification/index.tsx
@@ -5205,7 +4781,7 @@ function PreferencesLayout() {
 }
 var init_layout = __esmMin((() => {
 	init_icons();
-	init_constants$3();
+	init_constants$2();
 	init_preferences$3();
 	init_cn();
 }));
@@ -7668,8 +7244,8 @@ var init_module_loader = __esmMin((() => {
 	init_add_route_id_by_path();
 	init_resolve_layout();
 	init_access();
-	init_auth_provider();
 	init_api_provider();
+	init_auth_provider();
 	init_user();
 	init_scoped();
 	init_keep_alive();
@@ -8870,7 +8446,7 @@ var isRefreshing, refreshSubscribers;
 var init_refresh = __esmMin((() => {
 	init_user$1();
 	init_auth();
-	init_constants$4();
+	init_constants$3();
 	init_go_login();
 	init_header_safe();
 	isRefreshing = false;
@@ -8883,7 +8459,7 @@ function isAnonymousApi(url) {
 }
 var anonymousApiPaths;
 var init_whitelist = __esmMin((() => {
-	init_constants$4();
+	init_constants$3();
 	anonymousApiPaths = [AUTH_LOGIN_PATH];
 }));
 //#endregion
@@ -8893,7 +8469,7 @@ var init_request = __esmMin((() => {
 	init_extra_info();
 	init_auth();
 	init_preferences$3();
-	init_constants$4();
+	init_constants$3();
 	init_error_response();
 	init_global_progress();
 	init_go_login();
@@ -8939,20 +8515,10 @@ var init_request = __esmMin((() => {
 	request = ky.create(defaultConfig);
 }));
 //#endregion
-//#region src/api/home.ts
-init_request();
-init_envelope();
-function fetchPie(data) {
-	return unwrap(request.get("home/pie", { searchParams: data }).json());
-}
-function fetchLine(data) {
-	return unwrap(request.post("home/line", { json: data }).json());
-}
-//#endregion
 //#region src/api/system/menu/index.ts
+init_api_provider();
 init_request();
 init_envelope();
-init_api_provider();
 function fetchMenuList(data) {
 	const p = getSystemApiProvider();
 	if (p) return p.fetchMenuList(data);
@@ -27549,4 +27115,4 @@ init_ri();
 init_menu_icons();
 init_tree();
 //#endregion
-export { AccessControl, AccessControlRoles, BasicButton, BasicContent, BasicTable, EmbeddedIcon, ExternalIcon, FormAvatarItem, FormTreeItem, Iframe, LayoutCenterIcon, LayoutEffects, LayoutLeftIcon, LayoutRightIcon, MixedNavigationIcon, OutsidePageIcon, ProfileCardIcon, RiAccountCircleLine, RiContrastFill, RiFullscreenExitLine, RiFullscreenLine, RiMailCheckLine, RiMoonIcon, RiReactjsLine, RiSunIcon, RiUserSettingsLine, ServerErrorIcon, SideNavigationIcon, TopNavigationIcon, TwoColumnNavigationIcon, accessControlCodes, defineModule, fetchAddMenuItem, fetchAddRoleItem, fetchAsyncRoutes, fetchDeleteMenuItem, fetchDeleteRoleItem, fetchLine, fetchLogin, fetchLogout, fetchMenuByRoleId, fetchMenuList, fetchPie, fetchRefreshToken, fetchRoleList, fetchRoleMenu, fetchUpdateMenuItem, fetchUpdateRoleItem, fetchUserInfo, filterTree, getAllExpandedKeys, getAppInfo, getBooleanOptions, getModule, getModules, getRedirectPath, getRegisteredApiPrefix, getRegisteredStore, getRoutes, getYesNoOptions, handleTree, loadAll, mapTree, menuIcons, permissionPrefix, setupI18n, traverseTreeValues, unloadModule, useAccess, useAuthStore, usePreferences, useSlotNodes, useUserStore, external_exports as z };
+export { AccessControl, AccessControlRoles, BasicButton, BasicContent, BasicTable, EmbeddedIcon, ExternalIcon, FormAvatarItem, FormTreeItem, Iframe, LayoutCenterIcon, LayoutEffects, LayoutLeftIcon, LayoutRightIcon, MixedNavigationIcon, OutsidePageIcon, ProfileCardIcon, RiAccountCircleLine, RiContrastFill, RiFullscreenExitLine, RiFullscreenLine, RiMailCheckLine, RiMoonIcon, RiReactjsLine, RiSunIcon, RiUserSettingsLine, ServerErrorIcon, SideNavigationIcon, TopNavigationIcon, TwoColumnNavigationIcon, accessControlCodes, defineModule, fetchAddMenuItem, fetchAddRoleItem, fetchAsyncRoutes, fetchDeleteMenuItem, fetchDeleteRoleItem, fetchLogin, fetchLogout, fetchMenuByRoleId, fetchMenuList, fetchRefreshToken, fetchRoleList, fetchRoleMenu, fetchUpdateMenuItem, fetchUpdateRoleItem, fetchUserInfo, filterTree, getAllExpandedKeys, getAppInfo, getBooleanOptions, getModule, getModules, getRedirectPath, getRegisteredApiPrefix, getRegisteredStore, getRoutes, getYesNoOptions, handleTree, loadAll, mapTree, menuIcons, permissionPrefix, setupI18n, traverseTreeValues, unloadModule, useAccess, useAuthStore, usePreferences, useSlotNodes, useUserStore, external_exports as z };

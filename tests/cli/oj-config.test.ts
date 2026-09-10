@@ -2,12 +2,12 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { readOjPort, readOjServerField } from "../../packages/cli/src/oj-config";
+import { readOjApiPrefix, readOjPort, readOjServerField } from "../../packages/cli/src/oj-config";
 
 /**
  * 设计 §4：ram 用正则从 api/config.yaml 读 server 段字段（不为 YAML 解析
  * 引依赖）。config 由 ram init 生成，miss 即被手改——直接报错而非静默回落
- * （oj 代码默认 778，静默回落只会与实际监听端口错位，审阅记录二）。
+ * （oj 代码默认 9778，静默回落只会与实际监听端口错位，审阅记录二）。
  */
 describe("readOjPort", () => {
 	it("读取 server.port（init 模板形态）", () => {
@@ -40,6 +40,23 @@ describe("readOjServerField", () => {
 	it("miss 返回 undefined", () => {
 		const file = writeConfig("server:\n  port: 9778\n");
 		expect(readOjServerField(file, "host")).toBeUndefined();
+	});
+});
+
+describe("readOjApiPrefix", () => {
+	it("优先读新键 api_prefix（devkit 手册 §10）", () => {
+		const file = writeConfig("server:\n  api_prefix: /v1/api\n  base: /old\n");
+		expect(readOjApiPrefix(file)).toBe("/v1/api");
+	});
+
+	it("旧工程回落兼容键 base", () => {
+		const file = writeConfig("server:\n  base: \"/api\"\n  port: 9778\n");
+		expect(readOjApiPrefix(file)).toBe("/api");
+	});
+
+	it("两键皆缺 → 默认 /api", () => {
+		const file = writeConfig("server:\n  port: 9778\n");
+		expect(readOjApiPrefix(file)).toBe("/api");
 	});
 });
 

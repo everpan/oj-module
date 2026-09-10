@@ -1,0 +1,5 @@
+name: _platform
+desc: 框架级共有表（users 鉴权）——普通模块、无路由（参考 sample/src/_platform）
+version: 0.1.0
+tables:
+  - users

@@ -4,6 +4,8 @@ import { HomeOutlined } from "@ant-design/icons";
 
 import { createElement, lazy } from "react";
 
+import { bindRequest } from "./api/client";
+
 const Home = lazy(() => import("./pages/index"));
 
 const routes: AppRouteRecordRaw[] = [
@@ -36,6 +38,14 @@ const mod: ModuleDefinition = {
 	i18n: {
 		"zh-CN": () => import("./locales/zh-CN.json"),
 		"en-US": () => import("./locales/en-US.json"),
+	},
+	lifecycle: {
+		async onInit(ctx) {
+			// scoped request 边界：home 图表接口收敛在 /home 前缀内（D11）；
+			// 绑定后 pages/components 才能经 api/client 发请求（AC-D8）
+			ctx.register.apiPrefix("/home");
+			bindRequest(ctx.utils.request);
+		},
 	},
 };
 

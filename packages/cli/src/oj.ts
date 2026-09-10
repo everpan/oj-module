@@ -41,7 +41,9 @@ export function startOj(
 	const healthUrl = `http://127.0.0.1:${port}${base}/health`;
 
 	let stderrTail = "";
-	const child = spawn(binPath, ["server", "-c", configPath, "-b", base, "--api-path", apiSrcPath, ...extraArgs], {
+	// --console-log：oj 新版终端默认静默（console_log 缺省 false，只落 logs/），
+	// ram dev/preview 的 [oj] 透传管道必须显式打开终端输出才能看到日志（手册 §10）。
+	const child = spawn(binPath, ["server", "-c", configPath, "-b", base, "--api-path", apiSrcPath, "--console-log", ...extraArgs], {
 		stdio: ["ignore", "pipe", "pipe"],
 	});
 	child.stdout?.on("data", (chunk: Buffer) => {
