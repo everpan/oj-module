@@ -82,6 +82,10 @@ describe("initProject", () => {
 		expect(fs.existsSync(path.join(dest, "modules.config.ts"))).toBe(true);
 		expect(fs.existsSync(path.join(dest, "tsconfig.json"))).toBe(true);
 		expect(fs.existsSync(path.join(dest, ".gitignore"))).toBe(true);
+		// env.d.ts 提供 import.meta.env 类型，否则生成 client 会让 typecheck 报 TS2339
+		expect(fs.existsSync(path.join(dest, "env.d.ts"))).toBe(true);
+		const tsconfig = JSON.parse(fs.readFileSync(path.join(dest, "tsconfig.json"), "utf-8"));
+		expect(tsconfig.include).toContain("env.d.ts");
 		const pkg = JSON.parse(fs.readFileSync(path.join(dest, "package.json"), "utf-8"));
 		expect(pkg.scripts.dev).toContain("ram dev");
 		expect(pkg.scripts.preview).toContain("ram preview");
@@ -91,6 +95,8 @@ describe("initProject", () => {
 				expect(String(spec)).not.toMatch(/workspace:|catalog:/);
 		}
 		expect(pkg.devDependencies["@react-antd-module/cli"]).not.toBe("*");
+		// contract 必须显式声明：ram api 在 Node 侧求值契约时按裸说明符解析它
+		expect(pkg.devDependencies["@react-antd-module/contract"]).not.toBe("*");
 	});
 
 	it("非空目录无 yes → 拒绝；yes → 幂等补缺且 config.yaml 永不覆盖", async () => {

@@ -17,6 +17,7 @@
 	"include": [
 		"modules",
 		"modules.config.ts",
-		"global.d.ts"
+		"global.d.ts",
+		"env.d.ts"
 	]
 }

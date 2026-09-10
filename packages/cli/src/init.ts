@@ -241,6 +241,11 @@ function generatePackageJson(cliRoot: string, destDir: string, projectName: stri
 
 	const devDeps: Record<string, string> = {
 		"@react-antd-module/cli": cliPkg.version,
+		// contract 必须显式声明：uni-dev 工程的 contract.ts 直接 import 它，
+		// `ram api` 在 Node 侧求值契约时需从工程 node_modules 解析真实现
+		// （evaluateContract 把裸说明符 external）。此前漏声明导致外部工程
+		// `ram api` 直接报 Cannot find package '@react-antd-module/contract'。
+		"@react-antd-module/contract": pin("@react-antd-module/contract"),
 		"@react-antd-module/runtime": pin("@react-antd-module/runtime"),
 		"@react-antd-module/shell": shellVersion,
 		"@ant-design/icons": pin("@ant-design/icons"),

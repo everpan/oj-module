@@ -65,8 +65,22 @@ export async function evaluateContract(
 			logLevel: "silent",
 		});
 		const bundled = path.join(outDir, "entry.js");
-		const mod = await import(pathToFileURL(bundled).href) as Record<string, unknown>;
-		return mod;
+		try {
+			const mod = await import(pathToFileURL(bundled).href) as Record<string, unknown>;
+			return mod;
+		}
+		catch (e) {
+			const msg = e instanceof Error ? e.message : String(e);
+			// 最常见的外部工程缺依赖：给出可操作修复，而不是裸 ERR_MODULE_NOT_FOUND
+			if (msg.includes("@react-antd-module/contract")) {
+				throw new Error(
+					"[ram-api] 契约求值需要工程 node_modules 里能解析 @react-antd-module/contract，但当前工程未安装它。\n"
+					+ "修复：把 \"@react-antd-module/contract\" 加进工程 devDependencies（版本与 shell 对齐）后重跑 pnpm install；"
+					+ "新工程由 ram init 自动声明。",
+				);
+			}
+			throw e;
+		}
 	}
 	finally {
 		fs.rmSync(outDir, { recursive: true, force: true });
