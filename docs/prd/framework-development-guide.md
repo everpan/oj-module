@@ -840,13 +840,17 @@ pnpm test tests/shell/shell-importmap.test.ts  # 门禁实现一致性
 ## 附录 A：发布清单（含 staged publishing 踩坑）
 
 ```bash
-# 0) 确认四个包版本对齐（如 0.1.3），工作区干净
-# 1) 重建产物并同步 vendor
+# 0) 确认要发的包与版本；工作区干净
+#    注意：不要求四包锁定同一版本。若只升了部分包（例：runtime/cli/shell 0.1.4、
+#    contract 仍 0.1.3），就不能用 `pnpm -r publish`——未升版的包版本已存在会 403。
+# 1) 重建产物并同步 vendor（shell 构建内含 runtime 重建）
 pnpm --filter @react-antd-module/shell build
 node packages/cli/scripts/sync-host-versions.mjs
 # 2) 提交（pnpm publish 默认要求工作区干净）
-# 3) 拓扑序发布到官方源；本地无法生成 provenance，需显式关闭
-pnpm -r publish --access public --no-provenance --no-git-checks
+# 3) 按依赖序逐包发布（runtime → cli → shell；contract 无改动则跳过）
+for p in runtime cli shell; do
+  pnpm --filter "@react-antd-module/$p" publish --access public --no-provenance --no-git-checks
+done
 # 4) 复核（务必查 registry，不要只看 CLI 的 ✅）
 for p in contract cli runtime shell; do
   curl -s "https://registry.npmjs.org/@react-antd-module%2f$p" \
@@ -856,9 +860,11 @@ done
 
 **真实踩坑记录**：
 
+- **选择性发布**：`pnpm -r publish` 仅在四包都升版时可用；部分升版时必须 `--filter` 逐包发，且按依赖序（`shell` 依赖 `cli` + `runtime`，最后发）。
 - 发布后**立刻**读 registry 可能仍是旧版本/404（CDN 传播延迟），不要据此判断失败。
 - `pnpm publish` 遇到「版本已存在」会打印 `409 previously staged version` / `403 previously published versions`，其实是**已经发布成功**的报错文案，不要误判为卡在 stage；到 npmjs Staged Packages 页面确认即可。
 - **顺序很重要**：`contract` 未公开时，新发布的 `runtime` 其 peer 依赖 `contract@<新版本>` 会悬空，消费者直接装不上。
+- `cli` 版本会被 `ram init` 直接钉进新工程，且其 `templates/`（含 `env.d.ts`）随之分发；发 cli 前建议按 [`framework-verification-playbook.md`](./framework-verification-playbook.md) 从零跑一遍。
 
 ## 附录 B：排障速查表
 

@@ -48,7 +48,7 @@ pnpm dev            # 前端 devServer(5174) + oj 后端，api/src 保存即热�
 
 > `ram init` 是**幂等补缺**：对已有工程重跑只补缺失文件。首次会联网下载 oj 二进制到 `bin/oj`（sha256 校验），并用 `oj-cert gen` 现场签发本地 dev 证书。
 >
-> ⚠️ **若 `ram build` / `ram dev` 报 `Failed to initialize a JsRuntime: No such file or directory`**：这是**发布版 oj 二进制**的已知缺陷（CI 构建把构建机路径烤进了二进制，`bin/oj --version` 仍正常）。处置：换成自建 oj（`cargo build --release` 后把 `target/release/oj` 覆盖到 `bin/oj`）。完整判定与复现见 [`framework-verification-playbook.md`](./framework-verification-playbook.md) §3。
+> ⚠️ **若 `ram build` / `ram dev` 报 `Failed to initialize a JsRuntime: No such file or directory`**：这是**发布版 oj 二进制**的已知缺陷（CI 构建把构建机路径烤进了二进制，`bin/oj --version` 仍正常）。处置：换成自建 oj（`cargo build --release` 后把 `target/release/oj` 覆盖到 `bin/oj`）。**cli ≥ 0.1.4 会在 `ram init` / `ram vendor` 安装后自动做这项自检并打印告警**，无须等到 `ram build` 才发现。完整判定与复现见 [`framework-verification-playbook.md`](./framework-verification-playbook.md) §3。
 
 ### 1.1 脚手架目录
 
@@ -597,7 +597,7 @@ pnpm preview      # = ram preview：oj migrate（ver 门禁）→ 起 server + �
 
 | 症状 | 原因 | 处理 |
 | --- | --- | --- |
-| `Failed to initialize a JsRuntime: No such file or directory` | 发布版 oj 二进制烤了构建机路径 | 用自建 oj 覆盖 `bin/oj`（见 §1 提示与验证手册 §3） |
+| `Failed to initialize a JsRuntime: No such file or directory` | 发布版 oj 二进制烤了构建机路径 | 用自建 oj 覆盖 `bin/oj`（cli ≥ 0.1.4 在 `ram init`/`ram vendor` 时已自动告警，见 §1 提示与验证手册 §3） |
 | `ram api` 报 `Cannot find package '@react-antd-module/contract'` | 工程缺 `contract` 依赖（旧版 init 生成） | 加进 devDependencies 后 `pnpm install`（新版 init 已内置） |
 | `typecheck` 报 `Property 'env' does not exist on type 'ImportMeta'` | 缺 `env.d.ts` | 补 `env.d.ts` 并加进 tsconfig `include`（新版 init 已内置） |
 | 登录 401，且 msg 不是 `invalid credentials` | `/auth/*` 未在 `anonymous_paths` | 补进 `api/config.yaml` 后重启 |

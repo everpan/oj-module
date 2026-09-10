@@ -9,9 +9,9 @@
 | 项 | 值 |
 | --- | --- |
 | 日期 | 2026-09-11 |
-| 框架包版本 | `contract`/`runtime`/`shell`/`cli` 均 `0.1.3` |
-| oj | `0.1.11`（**自建**，见 §4 高危检查点） |
-| 结果 | 全链路通过；发现并修复 2 个脚手架缺陷（缺 `contract` 依赖、缺 `env.d.ts`） |
+| 框架包版本 | 首次全链路：四包均 `0.1.3`；其后发布 `runtime`/`cli`/`shell` `0.1.4`（`contract` 保持 `0.1.3`）——**0.1.4 尚未按本手册复跑**，复跑后请更新本行 |
+| oj | `0.1.11`（**自建**，见 §3 高危检查点） |
+| 结果 | 0.1.3 全链路通过；发现并修复 2 个脚手架缺陷（缺 `contract` 依赖、缺 `env.d.ts`），并给 cli 增加 oj 二进制自检探针（0.1.4 起随 `ram vendor`/`ram init` 自动执行） |
 
 ---
 
@@ -38,6 +38,7 @@ node "$RAM_REPO/packages/cli/bin/ram.mjs" init my-books --yes
 - [ ] 目录齐全：`api/src/{_platform,auth,web}`、`modules/src/demo`、`modules.config.ts`、`tsconfig.json`、`global.d.ts`、`env.d.ts`、`bin/oj`、`bin/.oj-version`、`.claude/skills/oj-api-dev/`
 - [ ] `package.json` 的 devDependencies **包含** `@react-antd-module/{cli,contract,runtime,shell}`，且值**不是 `*`**
 - [ ] 若出现「`@types/react` / `typescript` 回退 `*`」告警 → 记下，安装后必须钉版
+- [ ] **未出现「oj 二进制自检失败」告警**（cli ≥ 0.1.4 安装后自动冒烟）；若出现，按 §3 换自建二进制
 
 ## 2. 安装依赖
 
@@ -82,6 +83,10 @@ printf 'name: web\ndesc: probe\nversion: 0.1.0\n' > /tmp/_oj_probe/src/web/manif
 **处置**：用**自建** oj 覆盖 `bin/oj`（`cargo build --release`，产物在
 `only-js/target/release/oj`），然后重跑这些检查点直到通过。上游修复前，
 release 二进制不可用于外部工程。
+
+> **自 cli 0.1.4 起已自动化**：`ram vendor` / `ram init` 安装后（以及「已是该版本，跳过」时）
+> 会自动执行等价的 `probeOjRuntime` 冒烟；失败打印人话告警与处置指引，**不阻断**安装
+> （便于用户直接替换 `bin/oj`）。本节手工探针用于 CI 与不经 cli 的场景。
 
 > 完整根因与修复方案（可转上游）：[`oj-release-binary-defect-report.md`](./oj-release-binary-defect-report.md)。
 
@@ -173,6 +178,7 @@ pnpm exec ram preview    # oj migrate（verify 门禁）→ server + 静态兜�
 | 现象 | 根因 | 处置 |
 | --- | --- | --- |
 | `Failed to initialize a JsRuntime: No such file or directory` | release oj 二进制烤了构建机路径 | 用自建 oj 覆盖 `bin/oj`（§3）；上游修复前不用 release |
+| `ram init` / `ram vendor` 末尾出现「oj 二进制自检失败」告警 | 同上，cli ≥ 0.1.4 的安装后冒烟主动暴露 | 按 §3 换自建二进制；告警不阻断，`ram init` 仍已产出工程 |
 | `ram api` 报 `Cannot find package '@react-antd-module/contract'` | 工程 devDeps 缺 `contract` | 新版 `ram init` 已内置；旧工程手动加并 `pnpm install` |
 | `typecheck` 报 `Property 'env' does not exist on type 'ImportMeta'` | 缺 `env.d.ts` / 未进 tsconfig include | 新版 `ram init` 已内置；旧工程补 `env.d.ts` 并加进 `include` |
 | `@types/react` / `typescript` 为 `*` | 宿主 versions.json 未收录 | 安装后钉成实际版本 |
