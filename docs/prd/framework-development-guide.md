@@ -878,6 +878,7 @@ done
 
 - **实战演练（从零搭 oj 前后端应用）**：[`oj-fullstack-tutorial.md`](./oj-fullstack-tutorial.md)
 - **端到端验证手册（升级后复跑）**：[`framework-verification-playbook.md`](./framework-verification-playbook.md)
+- **oj release 二进制缺陷报告（可转上游）**：[`oj-release-binary-defect-report.md`](./oj-release-binary-defect-report.md)
 - 模块开发（面向模块作者）：[`module-development-guide.md`](../archive/prd/module-development-guide.md)
 - 框架 npm 包化交接与设计取舍：[`handover-framework-npm-package.md`](../archive/prd/handover-framework-npm-package.md)
 - 模块化改造总览：[`modular-refactoring.md`](../archive/prd/modular-refactoring.md)

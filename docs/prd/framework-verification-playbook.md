@@ -83,6 +83,8 @@ printf 'name: web\ndesc: probe\nversion: 0.1.0\n' > /tmp/_oj_probe/src/web/manif
 `only-js/target/release/oj`），然后重跑这些检查点直到通过。上游修复前，
 release 二进制不可用于外部工程。
 
+> 完整根因与修复方案（可转上游）：[`oj-release-binary-defect-report.md`](./oj-release-binary-defect-report.md)。
+
 > 通过后可继续；否则后面的 `ram build` / `ram dev` 必然失败。
 
 ## 4. 契约 → 前端 client
