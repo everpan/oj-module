@@ -6,7 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { parseVendorArgs } from "../../packages/cli/src/args";
-import { fetchLatestRelease, fetchRelease, installFromRelease, pickAsset, readLocalVersion, RELEASE_LATEST_API, releaseApiUrl, resolveTriplet, vendorCommand } from "../../packages/cli/src/vendor";
+import { fetchLatestRelease, fetchRelease, installFromRelease, pickAsset, probeOjRuntime, readLocalVersion, RELEASE_LATEST_API, releaseApiUrl, resolveTriplet, vendorCommand } from "../../packages/cli/src/vendor";
 
 /**
  * ram vendor 子命令（docs/prd/202609040905-vendor-download-design.md）：
@@ -180,6 +180,28 @@ describe("installFromRelease（下载→校验→解包→标记）", () => {
 	});
 });
 
+describe("probeOjRuntime（发布二进制可用性冒烟）", () => {
+	// 假二进制用 sh 脚本，win 不适用
+	const posixOnly = process.platform === "win32" ? it.skip : it;
+
+	posixOnly("正常二进制 → ok；JsRuntime ENOENT → 失败并带原始输出", () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ram-oj-probe-"));
+		const bin = path.join(dir, "bin");
+		fs.mkdirSync(bin, { recursive: true });
+		const fake = path.join(bin, "oj");
+		fs.writeFileSync(fake, "#!/bin/sh\nexit 0\n");
+		fs.chmodSync(fake, 0o755);
+		expect(probeOjRuntime(bin)).toEqual({ ok: true, detail: "" });
+
+		fs.writeFileSync(fake, "#!/bin/sh\necho 'Failed to initialize a JsRuntime: No such file or directory (os error 2)' >&2\nexit 1\n");
+		fs.chmodSync(fake, 0o755);
+		const bad = probeOjRuntime(bin);
+		expect(bad.ok).toBe(false);
+		expect(bad.detail).toContain("JsRuntime");
+		fs.rmSync(dir, { recursive: true, force: true });
+	});
+});
+
 describe("vendorCommand（US-1..US-4 编排）", () => {
 	function setup(tag = "v0.2.0") {
 		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ram-vendor-cmd-"));
@@ -246,6 +268,24 @@ describe("vendorCommand（US-1..US-4 编排）", () => {
 		await vendorCommand(dir, { force: false }, { fetchFn, token: "", log: () => {} });
 		expect(fs.readFileSync(path.join(bin, ".oj-version"), "utf-8").trim()).toBe("v0.2.0");
 		expect(fs.readFileSync(path.join(bin, "oj"), "utf-8")).toContain("echo oj");
+		fs.rmSync(dir, { recursive: true, force: true });
+	});
+
+	macOnly("安装后探针判定二进制不可用 → 打人话报错但安装仍算完成（不抛错）", async () => {
+		const { dir, fetchFn } = setup("v0.3.0");
+		const logs: string[] = [];
+		await vendorCommand(dir, { force: false }, {
+			fetchFn,
+			token: "",
+			log: m => logs.push(m),
+			probe: () => ({ ok: false, detail: "Failed to initialize a JsRuntime: No such file or directory (os error 2)" }),
+		});
+		expect(fs.existsSync(path.join(dir, "bin", "oj"))).toBe(true);
+		const joined = logs.join("\n");
+		expect(joined).toMatch(/自检失败/);
+		expect(joined).toMatch(/JsRuntime/);
+		expect(joined).toMatch(/cargo build --release/);
+		expect(joined).toMatch(/oj-release-binary-defect-report/);
 		fs.rmSync(dir, { recursive: true, force: true });
 	});
 

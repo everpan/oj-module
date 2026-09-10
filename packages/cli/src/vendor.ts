@@ -6,6 +6,7 @@
  * init 也走同一通道补装（无内置 tar.gz 兜底）。
  */
 
+import type { Buffer } from "node:buffer";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
@@ -78,9 +79,64 @@ export function readLocalVersion(binDir: string, platform: NodeJS.Platform = pro
 
 export type FetchLike = (url: string, init?: { headers?: Record<string, string> }) => Promise<Response>;
 
+export interface OjProbeResult {
+	ok: boolean
+	/** 失败时的原始输出（stderr/stdout 合并），供人话报错展示首行 */
+	detail: string
+}
+
+/**
+ * oj 二进制可用性冒烟：对最小 api 目录跑一次 `oj build`，验证 JsRuntime 能初始化。
+ *
+ * 背景：官方 release 由 CI 构建，`extension!` 的 `dir` 形式把**构建机绝对路径**
+ * 编译进二进制（`LoadedFromFsDuringSnapshot`），在非构建机上 `JsRuntime::new`
+ * 读盘 ENOENT。`oj --version` 走 Rust 侧仍正常，故只能在会初始化 JsRuntime 的
+ * 命令上暴露——这里在安装时即探一次，给人话报错，而不是等用户 `ram build` 才 panic。
+ *
+ * 注意：探针目录必须含至少一个 `api.ts`，空目录 `oj build` 不会初始化 JsRuntime。
+ * 详见 docs/prd/oj-release-binary-defect-report.md。
+ *
+ * 非致命：安装仍算完成（用户可自行替换 bin/oj），调用方决定如何呈现。
+ */
+export function probeOjRuntime(binDir: string, platform: NodeJS.Platform = process.platform): OjProbeResult {
+	const ojBin = path.join(binDir, ojBinName(platform));
+	const work = fs.mkdtempSync(path.join(os.tmpdir(), "ram-oj-probe-"));
+	try {
+		const epDir = path.join(work, "src", "web", "hello");
+		fs.mkdirSync(epDir, { recursive: true });
+		fs.writeFileSync(path.join(epDir, "api.ts"), "export default { get() { json.ok({ ok: true }); } };\n");
+		fs.writeFileSync(path.join(work, "src", "web", "manifest.yaml"), "name: web\ndesc: probe\nversion: 0.1.0\n");
+		execFileSync(ojBin, ["build", "-d", path.join(work, "src"), "-o", path.join(work, "out")], { stdio: "pipe" });
+		return { ok: true, detail: "" };
+	}
+	catch (e) {
+		const err = e as { stdout?: Buffer | string, stderr?: Buffer | string, message?: string };
+		const text = `${err.stdout?.toString() ?? ""}${err.stderr?.toString() ?? ""}`.trim() || (err.message ?? String(e));
+		return { ok: false, detail: text };
+	}
+	finally {
+		fs.rmSync(work, { recursive: true, force: true });
+	}
+}
+
+/** 探针失败时的人话报错（安装时打印，不阻断——用户可自行替换 bin/oj） */
+function reportProbeFailure(log: (msg: string) => void, detail: string): void {
+	const firstLine = detail.split("\n").map(l => l.trim()).find(Boolean) ?? "(无输出)";
+	log("");
+	log("[ram] ⚠️ oj 二进制自检失败：JsRuntime 无法初始化，release 产物有缺陷");
+	log(`[ram]    原始输出：${firstLine}`);
+	log("[ram]    原因：官方 release 由 CI 构建，JS 扩展源码路径被烤进二进制，非构建机上找不到文件。");
+	log("[ram]    影响：ram dev / ram build / ram preview 都会失败（oj --version 仍正常，故不易察觉）。");
+	log("[ram]    处置：换用本地自建二进制——cargo build --release -p oj 后覆盖本工程 bin/oj。");
+	log("[ram]    详见 docs/prd/oj-release-binary-defect-report.md");
+	log("");
+}
+
 export interface VendorDeps {
 	fetchFn?: FetchLike
 	token?: string
+	/** 安装后冒烟（测试注入）；默认 probeOjRuntime */
+	probe?: (binDir: string) => OjProbeResult
 }
 
 function resolveDeps(deps: VendorDeps): Required<VendorDeps> {
@@ -214,6 +270,7 @@ export async function vendorCommand(
 	deps: VendorDeps & { log?: (msg: string) => void } = {},
 ): Promise<void> {
 	const log = deps.log ?? console.log;
+	const probe = deps.probe ?? probeOjRuntime;
 	const source = opts.tag ? `release ${opts.tag}` : "最新 release";
 	log(`[ram] 查询${source}…`);
 	const release = opts.tag ? await fetchRelease(opts.tag, deps) : await fetchLatestRelease(deps);
@@ -221,6 +278,9 @@ export async function vendorCommand(
 	const local = readLocalVersion(binDir);
 	if (!opts.force && local === release.tag_name) {
 		log(`[ram] oj 已是 ${release.tag_name}，跳过。`);
+		const result = probe(binDir);
+		if (!result.ok)
+			reportProbeFailure(log, result.detail);
 		return;
 	}
 	if (opts.force && local === release.tag_name)
@@ -236,4 +296,8 @@ export async function vendorCommand(
 	}
 	await installFromRelease(asset, sums, release.tag_name, binDir, { ...deps, log });
 	log(`[ram] oj ${local ? `${local} → ` : ""}${release.tag_name} 安装完成：${path.join(binDir, ojBinName(process.platform))}`);
+	// 安装后冒烟：release 二进制可能因构建机路径被烤进而不可用（见 probeOjRuntime）
+	const result = probe(binDir);
+	if (!result.ok)
+		reportProbeFailure(log, result.detail);
 }
