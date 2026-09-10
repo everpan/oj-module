@@ -67,11 +67,16 @@ strings bin/oj | grep -c "/Users/runner"        # 期望：0（>0 高度可疑�
 Failed to initialize a JsRuntime: No such file or directory (os error 2)
 ```
 
-`./bin/oj --version` **仍会成功**（Rust 侧），所以必须向下走一步才会暴露：
+`./bin/oj --version` **仍会成功**（Rust 侧），所以必须向下走一步才会暴露。
+**最小复现探针**（必须有至少一个 `api.ts`，否则 `oj build` 不会初始化 JsRuntime）：
 
 ```bash
-# 最小复现：对空目录做一次 build（会初始化 JsRuntime）
-mkdir -p /tmp/_oj_probe/src && ./bin/oj build -d /tmp/_oj_probe/src -o /tmp/_oj_probe/out 2>&1 | head -5
+rm -rf /tmp/_oj_probe && mkdir -p /tmp/_oj_probe/src/web/hello
+printf 'export default { get() { json.ok({ ok: true }); } };\n' > /tmp/_oj_probe/src/web/hello/api.ts
+printf 'name: web\ndesc: probe\nversion: 0.1.0\n' > /tmp/_oj_probe/src/web/manifest.yaml
+./bin/oj build -d /tmp/_oj_probe/src -o /tmp/_oj_probe/out 2>&1 | head -5
+# 坏二进制：Failed to initialize a JsRuntime: No such file or directory (os error 2)
+# 好二进制：oj build: web v0.1.0 → ... (1 api file(s))
 ```
 
 **处置**：用**自建** oj 覆盖 `bin/oj`（`cargo build --release`，产物在
@@ -183,8 +188,11 @@ export VERIFY_DIR=/tmp/ram-verify RAM_REPO=/Users/ever/git/web/react-antd-module
 rm -rf "$VERIFY_DIR" && mkdir -p "$VERIFY_DIR" && cd "$VERIFY_DIR"
 node "$RAM_REPO/packages/cli/bin/ram.mjs" init my-books --yes
 cd my-books && pnpm install
-./bin/oj --version && mkdir -p /tmp/_oj_probe/src \
-  && ./bin/oj build -d /tmp/_oj_probe/src -o /tmp/_oj_probe/out   # §3 探针
+./bin/oj --version
+rm -rf /tmp/_oj_probe && mkdir -p /tmp/_oj_probe/src/web/hello \
+  && printf 'export default { get() { json.ok({ ok: true }); } };\n' > /tmp/_oj_probe/src/web/hello/api.ts \
+  && printf 'name: web\nversion: 0.1.0\n' > /tmp/_oj_probe/src/web/manifest.yaml \
+  && ./bin/oj build -d /tmp/_oj_probe/src -o /tmp/_oj_probe/out   # §3 探针（坏二进制约在此 panic）
 # …补 books 后端 + 契约 → pnpm exec ram api → 补前端 → 
 pnpm exec ram build && pnpm exec tsc --noEmit -p tsconfig.json && pnpm exec ram dev
 ```
