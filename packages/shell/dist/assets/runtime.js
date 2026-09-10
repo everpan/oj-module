@@ -211,7 +211,7 @@ function getAppInfo() {
 			"version": "0.1.3",
 			"license": "MIT"
 		},
-		"lastBuildTime": "2026-09-11 00:50:20"
+		"lastBuildTime": "2026-09-11 01:06:39"
 	};
 }
 var init_get_app_info = __esmMin((() => {}));
