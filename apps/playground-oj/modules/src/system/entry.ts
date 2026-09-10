@@ -99,6 +99,7 @@ const mod: ModuleDefinition = {
 		// 经生成的 uni-dev client 派发；消费点（role/menu 页）经 getSystemApiProvider
 		// 委托，未注册时回落内置实现。先到先得，模块卸载时自动注销。
 		async onInit(ctx) {
+			ctx.register.apiPrefix("/system");
 			systemClient.bindRequest(ctx.utils.request);
 			// D9 边界：provider 各方法按本模块契约（playground-oj system）严格定型，
 			// 整体以 SystemApiProvider 接入。框架自带 FetchRoleMenuData 仍是 3 字段投影、

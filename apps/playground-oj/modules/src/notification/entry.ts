@@ -18,6 +18,7 @@ export default defineModule({
 	routes: [],
 	lifecycle: {
 		async onInit(ctx) {
+			ctx.register.apiPrefix("/notification");
 			notificationClient.bindRequest(ctx.utils.request);
 			const provider: NotificationsApiProvider = {
 				fetchNotifications: () => notificationClient.fetchNotifications(),

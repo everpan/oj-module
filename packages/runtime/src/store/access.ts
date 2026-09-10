@@ -29,6 +29,16 @@ const initialState: AccessState = {
 	isAccessChecked: false,
 };
 
+/**
+ * 最近一次 setAccessStore 登记的路由快照。
+ *
+ * 模块路由一经登记即持续可用（与宿主用户体系解耦，module-loader loadAll
+ * 尾部登记；模块是受信 bundle，登出不撤销信任）。reset() 若只清不还，
+ * 宿主链（shell 无 AuthGuard）没有任何机制重登记——logout 后重新登录，
+ * 侧栏菜单永远空白（2026-09-10 playground 回归）。
+ */
+let lastRegisteredRoutes: AppRouteRecordRaw[] = [];
+
 interface AccessAction {
 	setAccessStore: (routes: AppRouteRecordRaw[]) => AccessState
 	reset: () => void
@@ -51,6 +61,7 @@ export const useAccessStore = create<AccessState & AccessAction>(set => ({
 			flatRouteList,
 			isAccessChecked: true,
 		};
+		lastRegisteredRoutes = routes;
 		set(() => newState);
 		return newState;
 	},
@@ -59,5 +70,10 @@ export const useAccessStore = create<AccessState & AccessAction>(set => ({
 		/* 移除动态路由 */
 		router._internalSetRoutes(rootRoute);
 		set(initialState);
+		/* 按快照重登记模块路由，恢复「登记即持续可用」不变量。App 链随后由
+		 * AuthGuard 以最新用户角色重新合并覆盖；宿主链则依赖此处。 */
+		if (lastRegisteredRoutes.length > 0) {
+			useAccessStore.getState().setAccessStore(lastRegisteredRoutes);
+		}
 	},
 }));

@@ -23,6 +23,7 @@ import {
 	LayoutEffects,
 	loadAll,
 	setupI18n,
+	useAuthStore,
 	usePreferences,
 	useUserStore,
 } from "@react-antd-module/runtime";
@@ -47,7 +48,7 @@ const queryClient = new QueryClient();
 // （UserIcon 人形图标）。播种演示用户（与 App 链 fake 数据一致），
 // 保持两链显示同构——playground 显示差异调查
 // docs/prd/202609011045-playground-display-parity-plan.md 差异项 3
-useUserStore.setState({
+const DEMO_USER = {
 	id: "1",
 	avatar: "https://avatars.githubusercontent.com/u/47056890",
 	username: "Admin",
@@ -55,6 +56,19 @@ useUserStore.setState({
 	phoneNumber: "",
 	description: "manager",
 	roles: ["admin"],
+};
+
+useUserStore.setState(DEMO_USER);
+
+/**
+ * 登录/登出都会经 auth store reset() 清空 user store；宿主链无 AuthGuard
+ * 重新拉取 userInfo，播种丢失后头部用户名/角色恒为空。这里在 token 变化
+ * 时重播种演示用户（模块路由的重登记由 access store reset() 快照机制负责）。
+ */
+useAuthStore.subscribe((state, prev) => {
+	if (state.token !== prev.token) {
+		useUserStore.setState(DEMO_USER);
+	}
 });
 
 // i18n 由 runtime 的 setupI18n 统一初始化：装载框架 translation 命名空间

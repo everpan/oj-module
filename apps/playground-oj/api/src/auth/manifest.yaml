@@ -1,0 +1,3 @@
+name: auth
+desc: 登录链端点（login/refresh/logout，devkit 手册 §8 业务路由参考实现）
+version: 0.1.0

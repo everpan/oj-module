@@ -12,3 +12,8 @@ auth:
   jwt_secret: 1d643a39b1f93a41eb0d82848e6ad5503dff265f8b92e61dff6f7b813bd48411 # init 随机生成；生产必须更换
   access_token_duration: 2h
   refresh_token_duration: 720h
+  # auth 端点是业务路由，必须显式匿名，否则被自家 Bearer 守卫拦成 401（devkit 手册 §8）
+  anonymous_paths:
+    - /auth/login
+    - /auth/refresh
+    - /auth/logout

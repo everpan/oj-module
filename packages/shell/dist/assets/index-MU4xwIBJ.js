@@ -1,5 +1,5 @@
 import { StyleProvider } from "@ant-design/cssinjs";
-import { LayoutEffects, getRoutes, loadAll, setupI18n, usePreferences, useUserStore } from "@react-antd-module/runtime";
+import { LayoutEffects, getRoutes, loadAll, setupI18n, useAuthStore, usePreferences, useUserStore } from "@react-antd-module/runtime";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { App, ConfigProvider, theme } from "antd";
 import { useEffect, useState } from "react";
@@ -132,7 +132,7 @@ ${offenders.join("\n")}\n修复建议：该来源不在宿主内置白名单中�
 //#endregion
 //#region src/host.tsx
 var queryClient = new QueryClient();
-useUserStore.setState({
+var DEMO_USER = {
 	id: "1",
 	avatar: "https://avatars.githubusercontent.com/u/47056890",
 	username: "Admin",
@@ -140,6 +140,15 @@ useUserStore.setState({
 	phoneNumber: "",
 	description: "manager",
 	roles: ["admin"]
+};
+useUserStore.setState(DEMO_USER);
+/**
+* 登录/登出都会经 auth store reset() 清空 user store；宿主链无 AuthGuard
+* 重新拉取 userInfo，播种丢失后头部用户名/角色恒为空。这里在 token 变化
+* 时重播种演示用户（模块路由的重登记由 access store reset() 快照机制负责）。
+*/
+useAuthStore.subscribe((state, prev) => {
+	if (state.token !== prev.token) useUserStore.setState(DEMO_USER);
 });
 var i18nReady = false;
 function ensureI18n() {

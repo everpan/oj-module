@@ -3,6 +3,11 @@
 //
 // 下面为 src/bridge/bootstrap.js 在运行时注入的全局对象提供类型声明，
 // 使 sample/src 中的业务代码在编辑器内不报 TS 错误。
+//
+// ext_boot.js（config.yaml 同目录，可选）在运行时补充的全局**不在本文件声明** ——
+// 它们是项目自定义的，框架无法预知。用 ext_boot.js 增补了全局（如 `json.page()`）后，
+// 在业务项目里另建一个 .d.ts 自行声明（并加进 tsconfig 的 include），否则编辑器报
+// TS2339 "Property 'page' does not exist"。运行时不受影响——类型只影响编辑器与 tsc。
 
 // JSON 反序列化后可能出现的值（SQL 行 / KV / fetch body 等）。
 type Json = string | number | boolean | null | Json[] | { [k: string]: Json };
@@ -154,6 +159,25 @@ interface EsApi {
   del(index: string, id: string): Promise<Json>;
 }
 
+// jwt.* ：JWT 签发/验签（secret/alg/durations 由 config auth: 注入；未配置调用报
+// jwt not configured）。iat/exp 由 Rust 补（JS 不可控有效期），exp 取 access 时长。
+interface JwtApi {
+  // payload 至少含 sub；roles 可选（缺省空数组）。返回签名 token。
+  sign(payload: { sub: string; roles?: string[] }): string;
+  // 验签 + exp（leeway 0）；篡改/过期/算法不符直接抛错。
+  verify(token: string): { sub: string; roles: string[]; iat: number; exp: number };
+  // 配置的有效期（秒；getter 惰性求值）。
+  readonly accessDuration: number;
+  readonly refreshDuration: number;
+}
+
+// bcrypt.* ：密码哈希（Rust 侧 spawn_blocking，CPU 密集不卡 isolate）。
+interface BcryptApi {
+  hash(password: string, cost?: number): Promise<string>;
+  // 非法 hash 返回 false（不抛错）。
+  verify(password: string, hash: string): Promise<boolean>;
+}
+
 declare global {
   interface Function {
     route?: string;
@@ -174,6 +198,15 @@ declare global {
   // 默认（"default"）数据库实例。
   const db: DBInstance;
   const cert: CertApi;
+  const jwt: JwtApi;
+  const bcrypt: BcryptApi;
+
+  // crypto 增补（bootstrap 对原生 crypto 做 Object.assign 合并，原生成员保留）：
+  // sha256Hex = 十六进制摘要；randomHex = nBytes 字节随机数的 hex（默认 32 字节）。
+  interface Crypto {
+    sha256Hex(s: string): string;
+    randomHex(nBytes?: number): string;
+  }
 
   // ---- oj test L1 测试 SDK（oj test 运行时注入；仅测试文件使用） ----
   // 进程内 HTTP 派发助手，对标 Go Fiber app.Test：client.get/post/... 触发真实
@@ -196,8 +229,8 @@ declare global {
     patch(path: string, opts?: ClientOptions): Promise<ClientResp>;
     head(path: string, opts?: ClientOptions): Promise<ClientResp>;
     options(path: string, opts?: ClientOptions): Promise<ClientResp>;
-    // 登录助手：POST /auth/login → 返回 access_token（失败抛错）。
-    login(username: string, password: string): Promise<string>;
+    // 登录助手：POST /auth/login → 返回 access_token（失败抛错）。headers 透传（如租户头）。
+    login(username: string, password: string, headers?: Record<string, string>): Promise<string>;
   }
   const client: Client;
 

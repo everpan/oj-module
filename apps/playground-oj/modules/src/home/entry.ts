@@ -42,6 +42,7 @@ const mod: ModuleDefinition = {
 		// P4-1：home 图表走本模块契约（apiPrefix=/home）。页面直接 import 本模块
 		// client，这里把模块级 request 能力注入 client（AC-D8 能力持有者）。
 		async onInit(ctx) {
+			ctx.register.apiPrefix("/home");
 			homeClient.bindRequest(ctx.utils.request);
 		},
 	},

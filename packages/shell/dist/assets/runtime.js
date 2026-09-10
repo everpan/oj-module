@@ -211,7 +211,7 @@ function getAppInfo() {
 			"version": "0.1.1",
 			"license": "MIT"
 		},
-		"lastBuildTime": "2026-09-10 16:20:44"
+		"lastBuildTime": "2026-09-11 00:32:37"
 	};
 }
 var init_get_app_info = __esmMin((() => {}));
@@ -8143,7 +8143,7 @@ var init_resolve_login_route = __esmMin((() => {
 }));
 //#endregion
 //#region src/store/access.ts
-var initialState$1, useAccessStore;
+var initialState$1, lastRegisteredRoutes, useAccessStore;
 var init_access = __esmMin((() => {
 	init_router();
 	init_constants();
@@ -8158,6 +8158,7 @@ var init_access = __esmMin((() => {
 		flatRouteList: flattenRoutes(baseRoutes),
 		isAccessChecked: false
 	};
+	lastRegisteredRoutes = [];
 	useAccessStore = create((set) => ({
 		...initialState$1,
 		setAccessStore: (routes) => {
@@ -8170,12 +8171,14 @@ var init_access = __esmMin((() => {
 				flatRouteList,
 				isAccessChecked: true
 			};
+			lastRegisteredRoutes = routes;
 			set(() => newState);
 			return newState;
 		},
 		reset: () => {
 			router._internalSetRoutes(rootRoute);
 			set(initialState$1);
+			if (lastRegisteredRoutes.length > 0) useAccessStore.getState().setAccessStore(lastRegisteredRoutes);
 		}
 	}));
 }));
