@@ -112,5 +112,21 @@ const IconContext = ctxMod.default ?? ctxMod.IconContext;
 if (!IconContext || typeof IconContext.Provider !== "object" || typeof IconContext.Consumer !== "object")
 	throw new Error("IconContext 资产未导出有效的 React Context（default 应为 IconContext）");
 
-console.warn("E2E PASS · shell antd 资产可加载，ConfigProvider/Card/Tag 渲染正常，IconContext 修复有效");
+// 图标子路径 default 的硬验证：antd 内部用默认导入引用图标
+// （`import CloseOutlined from "@ant-design/icons/es/icons/CloseOutlined"`）。
+// 若该深路径被错映射到父包 icons.js，default 会退化成通用 `<Icon />` 壳，
+// 渲染出空的 `<span class="anticon">`——正是 tabbar 关闭 × 丢失的表现。
+// 故这里按 importmap 语义加载并渲染，必须产出真实 <svg>（回归守卫）。
+const closeMod = await import("@ant-design/icons/es/icons/CloseOutlined");
+const CloseOutlined = closeMod.default;
+const iconBox = document.createElement("div");
+document.body.appendChild(iconBox);
+createRoot(iconBox).render(React.createElement(CloseOutlined));
+await new Promise(r => setTimeout(r, 100));
+if (!iconBox.querySelector("svg"))
+	throw new Error(`图标子路径 default 未渲染出 svg（default 应指向具名图标组件）：${iconBox.innerHTML}`);
+if (!iconBox.querySelector(".anticon-close"))
+	throw new Error(`CloseOutlined 缺少 .anticon-close 类（default 可能落到了通用 Icon 壳）：${iconBox.innerHTML}`);
+
+console.warn("E2E PASS · shell antd 资产可加载，ConfigProvider/Card/Tag 渲染正常，IconContext / 图标子路径 default 修复有效");
 process.exit(0);

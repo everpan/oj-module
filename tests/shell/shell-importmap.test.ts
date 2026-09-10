@@ -53,6 +53,37 @@ describe("shell 产物与 importmap（P4.3 / B11）", () => {
 });
 
 /**
+ * 图标子路径默认导出（回归：tabbar 关闭 × 丢失）。
+ *
+ * antd 6 内部用**默认导入**引用图标：
+ *   `import CloseOutlined from "@ant-design/icons/es/icons/CloseOutlined"`
+ * 若这类深路径被错映射到父包资产 icons.js，default 会退化成 `@ant-design/icons`
+ * 的 default —— 通用 `<Icon />` 壳（无 icon prop），渲染出空的
+ * `<span class="anticon">`：关闭 ×、Typography 复制、Tabs 更多菜单等一起消失。
+ *
+ * 守卫：每个图标深路径必须映射到「按名取父包具名导出修正 default」的独立 shim，
+ * 其源码须含该图标名（证明 default 指向具名图标组件而非通用壳）。
+ */
+describe("图标子路径默认导出（回归守卫）", () => {
+	it("图标深路径映射到按名修正 default 的 shim，而非父包 icons.js", () => {
+		const importmap = readImportmap();
+		const iconEntries = Object.entries(importmap)
+			.filter(([spec]) => spec.startsWith("@ant-design/icons/es/icons/"));
+		expect(iconEntries.length, "importmap 应包含 antd 使用的图标深路径").toBeGreaterThan(0);
+		for (const [spec, url] of iconEntries) {
+			expect(url, `${spec} 不得回退到父包 icons.js（其 default 为通用 Icon 壳）`).not.toBe("/assets/icons.js");
+			const file = path.join(SHELL_DIST, url.replace(/^\//, ""));
+			expect(fs.existsSync(file), `${spec} → ${url} 文件缺失`).toBe(true);
+			const name = spec.split("/").pop()!;
+			expect(
+				fs.readFileSync(file, "utf-8"),
+				`${spec} 的 shim 应按名取图标组件修正 default（见 buildIconsSubpathAsset）`,
+			).toContain(`["${name}"]`);
+		}
+	});
+});
+
+/**
  * 共享资产可加载性（R14 / A22 / A23）。
  *
  * 产物「看着正常」不等于能加载：文件在、体积对、构建退出码 0，全都不足以证明可用。

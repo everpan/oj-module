@@ -401,6 +401,50 @@ async function buildAntdSubpathAsset(spec: string) {
 	await repairDynamicRequires(name, spec, shim);
 }
 
+/**
+ * 为 `@ant-design/icons/es/icons/<Name>` 构建「default 指向具名图标」的 shim 资产。
+ *
+ * 背景（tabbar 关闭图标 × 丢失根因）：antd 内部用**默认导入**引用图标
+ * （`import CloseOutlined from "@ant-design/icons/es/icons/CloseOutlined"`），
+ * 而这类深路径此前被 SUBPATH_PARENT_REEXPORTS 直接映射到父包资产 icons.js。
+ * icons.js 的 default 是 `@ant-design/icons` 的 default —— 通用 `<Icon />` 壳
+ * （无 icon prop），于是所有 antd 内部图标都渲染成空的 `<span class="anticon">`
+ * （关闭 ×、Typography 复制、Tabs 更多菜单等一起丢）。
+ *
+ * 子路径模块本身 default 导出各自的图标组件，故这里按末段名取父包具名导出修正
+ * default（与 antd 子路径同思路）。单例不受影响：`@ant-design/icons` 在 shim 内
+ * 是共享依赖 → external → importmap → 同一份 icons.js 实例（D5）。
+ */
+async function buildIconsSubpathAsset(spec: string) {
+	const name = subpathAssetName(spec);
+	const last = spec.split("/").pop() || "";
+	const shim = [
+		"import * as __icons from \"@ant-design/icons\";\n",
+		`const __d = __icons[${JSON.stringify(last)}] ?? __icons.default;\n`,
+		"export default __d;\n",
+	].join("");
+	const shimPath = resolve(shellDir, `.ram-shim-${name}.mjs`);
+	writeFileSync(shimPath, shim);
+	try {
+		await esbuild({
+			entryPoints: [shimPath],
+			bundle: true,
+			format: "esm",
+			platform: "browser",
+			target: "es2020",
+			define: { "process.env.NODE_ENV": JSON.stringify("production") },
+			plugins: [makeExternalShared(spec)],
+			outfile: resolve(assetsDir, `${name}.js`),
+			sourcemap: "external",
+			logLevel: "warning",
+		});
+	}
+	finally {
+		rmSync(shimPath, { force: true });
+	}
+	await repairDynamicRequires(name, spec, shim);
+}
+
 async function autoGenerateSubpathAssets(base: Record<string, string>): Promise<Record<string, string>> {
 	const map: Record<string, string> = { ...base };
 	const maxIter = 20;
@@ -424,6 +468,26 @@ async function autoGenerateSubpathAssets(base: Record<string, string>): Promise<
 				if (!parent)
 					continue; // 与共享表无关，交给浏览器/其它机制
 				if (SUBPATH_PARENT_REEXPORTS.has(parent.specifier) && parent.asset) {
+					if (parent.specifier === "@ant-design/icons" && spec.includes("/es/icons/")) {
+						// 图标深路径不能用父包资产 icons.js 兜底：父包 default 是通用
+						// `<Icon />` 壳，而 antd 用默认导入取图标 → 渲染成空的
+						// `<span class="anticon">`（关闭 × 丢失）。改为按名修正 default
+						// 的 shim（见 buildIconsSubpathAsset）。
+						const name = subpathAssetName(spec);
+						if (!existsSync(resolve(assetsDir, `${name}.js`))) {
+							try {
+								await buildIconsSubpathAsset(spec);
+								console.log(`[shell] 自动构建图标子路径共享资产 ${name} ← ${spec}`);
+							}
+							catch (e) {
+								console.warn(`[shell] 跳过无法构建的图标子路径 ${spec}：${(e as Error).message}`);
+								continue;
+							}
+						}
+						map[spec] = `/assets/${name}.js`;
+						changed = true;
+						continue;
+					}
 					if (parent.specifier === "antd") {
 						// antd 子路径（antd/es/*）不能用父包资产 antd.js 兜底：父包
 						// default 是整包命名空间，默认导入子路径会拿到命名空间而非组件，
