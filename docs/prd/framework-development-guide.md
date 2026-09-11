@@ -38,7 +38,8 @@
 cli ──► runtime ──► (宿主产物 shell-dist ／ 模块工程)
 ```
 
-- 两包 **lockstep 发版**：`cli` 对 `runtime` 写 `workspace:*`，发布时被 pnpm 改写成**精确版本号**（不是 `^` 范围）。
+- **版本策略**：`cli` 对 `runtime` 写 `workspace:*`，发布时被 pnpm 改写成**精确版本号**（不是 `^` 范围）——这条已由 `tests/cli/release-manifest.test.ts` 真跑 `pnpm pack` 守护（**用 `npm publish` 会漏出 `workspace:*`，务必走 `pnpm publish`**）。
+- ⚠️ **两包版本尚未对齐**：当前 `cli@0.1.5` / `runtime@0.1.4`（历史漂移遗留）。目标 lockstep（同版本号），下次发版统一（设计文档 §10 O1）；在未对齐前，`cli` 精确依赖 `runtime@0.1.4` 仍可独立工作。
 - **依赖方向只有这一条边，没有环**：宿主产物随 `cli` 发布，`ojm dev/build` 直接从 cli 包内 `shell-dist` 取宿主，不再有「先 build 宿主才能用 cli」的顺序约束。
 - 手工重建顺序：`runtime` → `cli` 的 `build:shell`（会**顺带重建 runtime**，产出 `packages/cli/shell-dist`）→ `cli` 的 `prepack`（同步 `vendor/host-versions.json`，并断言宿主 runtime 版本 == `packages/runtime` 版本）。
 
@@ -915,7 +916,8 @@ P3 把命令与内部前缀从 `ram` 全改为 `ojm`，但**兼容读旧名**—
 
 ```bash
 # 0) 确认要发的包与版本；工作区干净
-#    两包 lockstep：cli 对 runtime 写精确版本，二者同版本号一起发
+#    两包独立版本，但 cli 对 runtime 写精确版本（发布由 pnpm 改写 workspace:*）；
+#    目标同版本号（见 §0.3 的版本策略说明）
 # 1) 重建产物并同步 vendor（cli 的 build:shell 内含 runtime 重建）
 pnpm --filter @oj-module/cli build:shell
 node packages/cli/scripts/sync-host-versions.mjs
@@ -938,7 +940,7 @@ done
 
 **真实踩坑记录**：
 
-- **选择性发布**：两包 lockstep（同版本号），通常一起发；若只发其中一个，必须用 `--filter` 逐包发，且**先 `runtime` 后 `cli`**（cli 精确依赖 runtime）。
+- **选择性发布**：两包可独立发版（当前 `cli@0.1.5` / `runtime@0.1.4` 未对齐，目标同版本号），通常一起发；若只发其中一个，必须用 `--filter` 逐包发，且**先 `runtime` 后 `cli`**（cli 精确依赖 runtime）。
 - 发布后**立刻**读 registry 可能仍是旧版本/404（CDN 传播延迟），不要据此判断失败。
 - `pnpm publish` 遇到「版本已存在」会打印 `409 previously staged version` / `403 previously published versions`，其实是**已经发布成功**的报错文案，不要误判为卡在 stage；到 npmjs Staged Packages 页面确认即可。
 - **顺序很重要**：`runtime` 未公开时，新发布的 `cli` 其精确依赖 `runtime@<新版本>` 会悬空，消费者直接装不上。

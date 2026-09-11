@@ -201,10 +201,10 @@ devDependencies 由 4 个框架包降为 2 个：
 | R3 | `Symbol.for` 换名 → 存量产物定义不被新 codegen 识别 | IR 双符号识别 |
 | R4 | `.ram-api-exempt.json` 改名 → 存量工程豁免失效、`--check` 误报 | 双名读取 |
 | R5 | cli 内嵌 `shell-dist`，可能发布未构建 / 跨版本宿主 | `prepack` 断言：`shell-dist/` 存在，且其 runtime 版本 == `dependencies["@oj-module/runtime"]` 精确版本，不符即失败 |
-| R6 | 单 cli 包同时暴露 Node 工具 API 与浏览器产物，模块误 import 拉进 vite/esbuild | `exports` 硬分区；新增门禁测试：`modules/**`、`templates/modules/**` 不得 import `@oj-module/cli/*` |
-| R7 | 改名面广，测试/模板/docs 三处不同步 | 全仓 `grep -rn "@oj-module\|\bram\b"` 作机械判据；CI 加"零残留"断言 |
+| R6 | 单 cli 包同时暴露 Node 工具 API 与浏览器产物，模块误 import 拉进 vite/esbuild | `exports` 硬分区**尚未落实**（无 `browser`/`node` 条件）；当前由门禁测试兜住：`apps/*/modules/src`、根 `modules/src`、`templates/modules/src` 零 `import @oj-module/cli/*`（独立评审补了根 `modules/src`；`browser` 条件列为待办） |
+| R7 | 改名面广，测试/模板/docs 三处不同步 | 全仓 `grep -rn "@react-antd-module"` 已有**零残留测试**（`docs/archive` 与两份迁移记录文档豁免）；`ram` 字样因兼容 shim 必须保留，无法做零残留判据——改为「兼容表 + 守卫用例」覆盖 |
 | R8 | US-7「runtime 包无 `.ts`」被 contract 误破 | D5：contract 编成 dist；`npm pack --dry-run` 断言无 `.ts`、无 `src/` |
-| R9 | 两包版本再次漂移 | cli 对 runtime 精确版本 + lockstep 发布；新增断言测试 |
+| R9 | 两包版本再次漂移 | cli 对 runtime 写 `workspace:*`（发布转精确版本），`release-manifest.test.ts` 真跑 `pnpm pack` 断言 tarball 内为精确版本；lockstep 未落实（当前 `cli@0.1.5` / `runtime@0.1.4`，见 O1） |
 
 ---
 
@@ -284,7 +284,7 @@ Feature: 品牌零残留
 
 | # | 事项 | 处置建议 |
 |---|------|----------|
-| O1 | 两包是否强制同版本号（lockstep）还是允许 cli 快于 runtime | 建议 lockstep；cli 对 runtime 精确版本已能兜住，lockstep 进一步简化心智 |
+| O1 | 两包是否强制同版本号（lockstep）还是允许 cli 快于 runtime | **仍待决**：建议 lockstep；cli 对 runtime 精确版本已能兜住。当前实际为 `cli@0.1.5` / `runtime@0.1.4`（历史漂移遗留，P2/P3 均未 bump），下次发版统一（独立评审 P1） |
 | O2 | `ram` 别名保留多久 | 建议保留到下一个 major（0.x → 1.0） |
 | O3 | `docs/archive/` 内历史文档是否回写改名 | 不回写（历史留痕）；仅当前文档与 `docs/prd/framework-development-guide.md` 更新 |
 | O4 | 是否顺手把 `runtime` 包名改为更中性的 `framework` | 不建议：公共契约改名收益低、成本高 |
@@ -482,7 +482,36 @@ Feature: 品牌零残留
 **遗留（不阻塞发布）**
 
 - `apps/playground/docs/api/index.html`、`apps/playground-oj/api/docs/index.html` 是 `ojm api --docs` 生成的离线 redoc 单文件；已核查**不含旧品牌文本**（首轮 grep 的 `ram` 命中全是 redoc 供应商代码里的 `parameter` / `frame` 等子串），无需重新生成。
-- 手册 `framework-development-guide.md` 的深层章节仍以「宿主」为叙事主体（该概念本身仍成立，宿主只是从独立包变为 cli 内置 `shell-dist`），且已核查无 `packages/shell` / `@oj-module/shell` 等事实性错误；若要改成语义更精确的「cli 内置 shell-dist」，作为独立文档任务。
+- ~~手册深层章节仍以「宿主」为叙事主体~~ → **已改写**：`framework-development-guide.md` 逐句核对（见 §12「手册改写」）。
+- 两包版本未对齐（`cli@0.1.5` / `runtime@0.1.4`）：属 §10 O1 待决项，下次发版统一；`cli` 的精确依赖仍指向 `runtime@0.1.4`，功能不受影响。
+
+---
+
+### 独立评审与采纳 — 2026-09-11
+
+P3–P5 完成后，请**架构评审**（独立上下文，只读）与**开发评审**（独立上下文，只读）各出一份报告，结论：**架构成立、可合并**；原 `cli ↔ shell` 环在代码层确实消除（`shell/scripts/build.mts` 相对 import cli 内部；`resolveShellDist` 单实现无回退）。下表为采纳情况。
+
+| # | 来源 | 发现 | 处置 |
+|---|---|---|---|
+| 1 | 架构 P1 | `npm publish` 会把 `workspace:*` 原样发布（`pnpm` 才改写），而守卫测试**接受** `workspace:*`，等于没守护 | ✅ 采纳：新增 `tests/cli/release-manifest.test.ts`，真跑 `pnpm pack` 解 tarball manifest，断言无 `workspace:`、runtime 为精确版本、无 `.map`、bin 双入口；守卫测试注释指向它 |
+| 2 | 架构 P1 | R6「exports 硬分区」实为测试约束，且守卫漏了根 `modules/src`（vite alias 也把它当模块树） | ✅ 采纳：模块 import 守卫补根 `modules/src` 树；「硬分区」表述降级（见 §7 R6 备注） |
+| 3 | 架构 P1 | lockstep 声称与实际不符（`cli@0.1.5` / `runtime@0.1.4`）且无守卫 | ✅ 部分采纳：文档改为「目标同版本号 + 当前未对齐」，并入 §10 O1；**未**强行 bump（发布决策，需另行确认） |
+| 4 | 架构 P2 | `"./shell-dist": "./shell-dist"` 是死出口（目录不可 import，无消费者） | ✅ 采纳：删除该 export，保留 `./shell-dist/*` |
+| 5 | 架构 P2 | `API_DEF_LEGACY` 扩进 runtime 公共出口属过度设计 | ✅ 采纳：从 runtime 出口移除，改由 `cli/src/contract/ir.ts` 自行声明旧符号（公共出口不变） |
+| 6 | 架构 P2 | runtime 已发布 `imports` 仍声明 `#modules/*`、`#manifest.json`（逃出包边界） | ⏸ 暂缓：runtime 源码仍有 2 个白名单反向依赖文件，构建期解析依赖它，需单独验证（避免为洁癖打破构建） |
+| 7 | 架构 P2 | 根 `pnpm build` 读 `packages/cli/shell-dist`（app→cli 产物的隐式边） | ⏸ 记录：这是「根 App 复用宿主产物」的既有设计，非本次引入 |
+| 8 | 架构 P2 | R7「CI 零残留」无测试；CI 触发分支不含 `refactor/*` | ✅ 部分采纳：新增 `@react-antd-module` 零残留测试（`docs/archive` 与迁移记录文档豁免）；CI 分支策略属仓库配置，记录待办 |
+| 9 | 开发 P1 | `check.ts` 的 stub **报错分支**（`update && !prefixUpgrade`）零覆盖——改坏 `prefixUpgrade` 会静默放过过期 stub | ✅ 采纳：`contract-check.test.ts` 增「契约变更 → stub 过期报 error」用例锁定该分支 |
+| 10 | 开发 P2 | `check.ts` 忽略 `action === "create"`，删掉 stub 仍 `--check` 通过 | ✅ 采纳：stub 缺失改判 `artifact-stale` error，并补用例 |
+| 11 | 开发 P2 | CRLF 检出（Windows `autocrlf`）会使指纹哈希通过、字节比较失败 → 误报「待更新」 | ✅ 采纳：`emit-stub.ts` 逐字节比较前统一 LF（`toLf`），并补 CRLF 用例 |
+| 12 | 开发 P2 | 守卫按数组下标断言 `files` 顺序，耦合 npm 实现细节；`resolveExemptPath` 损坏 JSON 分支无测试 | ⏸ 保留断言（npm「后者优先」是已实测的发布契约，去掉就没人防 10.8MB 回归）；损坏 JSON 已在 `contract-exempt.test.ts` 覆盖新名场景 |
+| 13 | 自行发现（E2E） | `check.ts` 的 `parseRoutesJs` 把 oj 的短方法名 `del` 大写成 `DEL`，与契约 `DELETE` 不等 → 任何 DELETE 端点都误报 `routes-js-drift`（playground-oj 实测） | ✅ 采纳：按同文件 `VERB_OF` 口径归一（`del` → `DELETE`），并补 DELETE 用例 |
+
+**评审给出的「可合并」结论与本次处置一致**；未采纳项均已在表内写明理由或转待决。
+
+**手册改写（§12）**
+
+`framework-development-guide.md` 不再有「独立 shell/contract 包」「`ram` 命令」口径：文首声明升级为「P1–P3 已全量落实」；术语表补 `ojm`/宿主/`SHARED_DEPS`；§2.10 修正 runtime 构建链；§4.2 目录树补 `bin/ram.mjs`、`shell/`、`shell-dist/`；§4.3 钉版来源与 dev 静态解析次序改成与代码一致；§4.5 边界改为「只有 cli→runtime 一条边 + prepack R5 断言」；新增 §4.9 改名与兼容读取表；附录 A 增「发布内容演练」与 sourcemap `files` 取反踩坑；附录 B 补 3 条排障。
 
 ---
 
@@ -504,3 +533,7 @@ Feature: 品牌零残留
 | A38 | **机械改名要“改源码 + 重跑生成器”双向对齐，不能只改一边** | 生成的 `client.ts`/`stub` 也含品牌文本与指纹头。只机械替换磁盘文件的话，下次 codegen 会与已提交内容分叉（`--check` 报 `artifact-stale`）。**验证手法**：改完源码后重跑 `ojm api`（与 `gen-internal-role-client.ts`），若输出「写入 0 / 跳过（未变）」，即证明机械替换与生成器输出逐字节一致。 |
 | A39 | **MAC 上 `grep -E '\bram\b'` 不可靠** | BSD grep 的 ERE 不支持 `\b` 词边界（静默不匹配），用它做「零残留」判据会漏。**对策**：改名扫描用 ripgrep（`\b` 受支持）或 `perl -ne '/\bram\b/'`；`git grep -E` 同理不可靠。 |
 | A40 | **改名让 `--check` 对旧指纹头误报「生成物过期」** | 双前缀读取后，旧 `ram-api:stub` 文件指纹匹配但内容（头文本）与新建期望不一致 → `planStubWrites` 判 `update`，而 `check.ts` 把 `update` 一律当过期 error。结果是存量工程升级后首次 `ojm api --check` 对每个 stub 报「stub 待随契约更新」，与 BDD「不产生误报」冲突（手动 E2E 才暴露，单测只断言了 action）。**对策**：区分「纯前缀升级」——旧头 + 正文与新内容逐字节一致时打 `prefixUpgrade` 标记，`runApi` 刷头、`check` 忽略。教训：兼容读旧名时，要想清楚「读旧名成功」之后各下游对状态的判定是否仍成立。 |
+| A41 | **`workspace:*` 只有 pnpm 发布路径会改写** | `pnpm pack/publish` 把 `workspace:*` 改写为精确版本，而 `npm publish` **原样发布**——消费者拿到 `"@oj-module/runtime": "workspace:*"` 直接装不上。守卫测试若只断言「不是 `^`/`~`」等于放行。**对策**：`tests/cli/release-manifest.test.ts` 真跑 `pnpm pack` 解出 tarball 内 manifest 断言无 `workspace:`；文档明确「必须走 `pnpm publish`」。 |
+| A42 | **oj 路由表用短方法名（`del`），直接大写会与契约 `DELETE` 不等** | `routes.js` 里是 `method: "del"`；`check.ts` 的 `parseRoutesJs` 若只做 `toUpperCase()` 得到 `DEL`，而契约 IR 是 `DELETE` → 任何 DELETE 端点都误报 `routes-js-drift`（playground-oj 实测）。同文件的 `VERB_OF` 早已有 `del: "DELETE"` 映射，属实现不一致。**对策**：`parseRoutesJs` 也走 `VERB_OF` 归一。 |
+| A43 | **CRLF 检出会让指纹「哈希通过、字节比较失败」** | 指纹哈希走 `hashContent`（内部把 CRLF 归一为 LF），但 `existing === content` 与 `isPrefixOnlyUpgrade` 是逐字节比较。Windows `core.autocrlf=true` 检出后每个 stub 都被判「待更新」（`--check` 恒红）。**对策**：比较前统一 LF（`toLf`）。 |
+| A44 | **`check` 只认 `update`/`skip`，删掉的 stub 静默通过** | `planStubWrites` 的 `create`（文件不存在）此前被 `check` 忽略，而 client/routes/openapi 的同类缺失是 error → 删掉 stub 后 `--check` 仍绿。**对策**：`create` 也判 `artifact-stale`（「stub 缺失」），与其余生成物口径一致。 |
