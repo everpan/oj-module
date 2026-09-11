@@ -1,0 +1,10 @@
+{
+	"accountSecurity": "账户安全",
+	"generalSettings": "通用设置",
+	"notificationSettings": "通知设置",
+	"menu": {
+		"personalCenter": "个人中心",
+		"profile": "我的资料",
+		"settings": "设置"
+	}
+}

@@ -602,7 +602,6 @@ function assertSharedExportsComplete(): void {
 function packageNameOf(specifier: string): string {
 	return specifier.startsWith("@") ? specifier.split("/").slice(0, 2).join("/") : specifier.split("/")[0];
 }
-
 function installedVersion(specifier: string): string | undefined {
 	try {
 		const resolved = import.meta.resolve(specifier, pathToFileURL(resolve(shellDir, "package.json")).href);
@@ -623,12 +622,36 @@ function installedVersion(specifier: string): string | undefined {
 	}
 }
 
+/** 纯类型/工具包包没有 JS 入口，import.meta.resolve 裸说明符会失败——直解 package.json */
+function installedPkgVersion(name: string): string | undefined {
+	try {
+		const pkgJson = createRequire(resolve(shellDir, "package.json")).resolve(`${name}/package.json`);
+		return JSON.parse(readFileSync(pkgJson, "utf-8")).version;
+	}
+	catch {
+		return undefined;
+	}
+}
+
+/**
+ * 工程侧 tooling 钉版（202609112006-T5）：矩阵本是运行时共享包真源，
+ * 但 ojm init 的 devDeps 还需要 typescript/@types/react 这类纯工具链版本——
+ * 不进 SHARED_DEPS（不进 importmap），但同样按实际安装版本写进矩阵，
+ * 让模板钉版不再回退 "*"。
+ */
+const TOOLING_DEPS = ["typescript", "@types/react"];
+
 function writeVersionsJson() {
 	const versions: Record<string, string> = {};
 	for (const dep of SHARED_DEPS) {
 		const version = installedVersion(dep.specifier);
 		if (version)
 			versions[dep.specifier] = version;
+	}
+	for (const name of TOOLING_DEPS) {
+		const version = installedPkgVersion(name);
+		if (version)
+			versions[name] = version;
 	}
 	writeFileSync(resolve(distDir, "versions.json"), `${JSON.stringify(versions, null, 2)}\n`);
 	console.log(`[shell] 版本矩阵已生成（${Object.keys(versions).length} 项） → dist/versions.json`);

@@ -15,3 +15,8 @@ interface ImportMetaEnv {
 interface ImportMeta {
 	readonly env: ImportMetaEnv
 }
+
+interface Window {
+	/** ant design message instance（runtime antd-app 注入，模块内可直接用） */
+	$message?: import("antd/es/message/interface").MessageInstance
+}

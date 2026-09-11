@@ -1,0 +1,5 @@
+name: personal-center
+desc: 个人中心模块（头像上传等）
+version: 0.1.0
+deps: # upload 回写 _platform.users（ownership_guard: deny 下必须声明，S003）
+  _platform: ^0.1.0

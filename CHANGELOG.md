@@ -7,6 +7,16 @@
 
 ## [Unreleased]
 
+### Added
+
+- `ojm init` 模板新增 **personal-center 模块**（前端 my-profile/settings 页 + 后端 `POST /api/personal-center/upload` 头像上传）——runtime 用户菜单固定导航 `/personal-center/my-profile`，此前脚手架工程点击必落空。配套：`users` 表新增 `avatar_base64` 列（`_platform` 迁移 0002）、`user-info` 改为 db 回读头像、模板 `env.d.ts` 补 `window.$message` 全局类型。设计见 [`docs/prd/202609112006-init-template-personal-center-design.md`](docs/prd/202609112006-init-template-personal-center-design.md)。
+- 宿主版本矩阵（`versions.json`）收录 tooling 项 `typescript` / `@types/react`——`ojm init` 生成的 devDependencies 全部钉版，不再有 `*` 回退告警。
+
+### Fixed
+
+- `ojm init` 生成 devDeps 缺 `@ant-design/pro-components`（personal-center 的 ProForm 类型来源），已补钉版。
+- `apps/playground-oj`：`personal-center/upload` 回写不存在的 `users.avatar_base64` 列（上传必 500），补迁移与 `user-info` 回读。
+
 ### Changed
 
 - `ojm vendor` / `ojm init`：oj 二进制下载源从 GitHub releases 切换为 **npm 包 `@oj-bin/oj`**（临时目录 `npm i` 后拷贝 `bin/` 进工程，零污染用户工程）。平台选择、完整性校验（npm dist.integrity）、registry 镜像均由 npm 承担；`GITHUB_TOKEN` 与代理指引随之退役。设计见 [`docs/prd/202609111926-vendor-npm-install-design.md`](docs/prd/202609111926-vendor-npm-install-design.md)。

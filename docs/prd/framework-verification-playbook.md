@@ -59,7 +59,7 @@ node "$OJM_REPO/packages/cli/bin/ojm.mjs" init my-books --yes
 **检查点**
 
 - [ ] 退出码 0，末行提示 `登录 admin / 123456`
-- [ ] 目录齐全：`api/src/{_platform,auth,web,notifications}`、`api/.ojm-api-exempt.json`、`modules/src/{demo,home,login}`、`modules.config.ts`、`tsconfig.json`、`global.d.ts`、`env.d.ts`、`bin/oj`、`bin/.oj-version`、`.claude/skills/oj-api-dev/`（npm 通道安装时 `bin/` 还含 `plugins/` 与 `devkit/`）
+- [ ] 目录齐全：`api/src/{_platform,auth,web,notifications,personal-center}`、`api/.ojm-api-exempt.json`、`modules/src/{demo,home,login,personal-center}`、`modules.config.ts`、`tsconfig.json`、`global.d.ts`、`env.d.ts`、`bin/oj`、`bin/.oj-version`、`.claude/skills/oj-api-dev/`（npm 通道安装时 `bin/` 还含 `plugins/` 与 `devkit/`）
 - [ ] `package.json` 的 devDependencies **包含** `@oj-module/{cli,runtime}`（两包时代；`contract` 是 runtime 子路径、shell 已并入 cli），且值**不是 `*`**
 - [ ] 若出现「`@types/react` / `typescript` 回退 `*`」告警 → 记下，安装后必须钉版
 - [ ] **未出现「oj 二进制自检失败」告警**（cli ≥ 0.1.4 安装后自动冒烟）；若出现，按 §3 换自建二进制

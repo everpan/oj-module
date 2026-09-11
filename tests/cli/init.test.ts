@@ -11,7 +11,7 @@ import { PROJECT_ROOT } from "../helpers/paths";
  *
  * 覆盖：全树关键文件、config.yaml 关键字段（host 127.0.0.1 / port 9778 /
  * api_prefix /api / auth 段 jwt_secret 非占位符）、证书三件套、bin/oj 可执行
- * （oj 经 release 联网下载，测试注入桩安装器）、非空目录守卫、幂等补缺
+ * （oj 经 npm 包 @oj-bin/oj 联网安装，测试注入桩安装器）、非空目录守卫、幂等补缺
  * （config 永不覆盖）。
  */
 
@@ -19,7 +19,7 @@ function tmpRoot(): string {
 	return fs.mkdtempSync(path.join(os.tmpdir(), "ojm-init-"));
 }
 
-/** 桩 oj 安装器：模拟 release 下载产物（二进制 + 版本标记 + devkit） */
+/** 桩 oj 安装器：模拟 @oj-bin/oj 安装产物（二进制 + 版本标记 + devkit） */
 function fakeOjInstall(binDir: string): Promise<void> {
 	fs.mkdirSync(path.join(binDir, "devkit"), { recursive: true });
 	fs.writeFileSync(path.join(binDir, "oj"), "#!/bin/sh\necho oj\n");
@@ -66,7 +66,7 @@ describe("initProject", () => {
 		for (const name of ["private.pem", "public.pem", "cert.jws"])
 			expect(fs.existsSync(path.join(dest, "api/config", name))).toBe(true);
 
-		// bin/oj（桩安装器模拟 release 产物：可执行 + 版本标记）
+		// bin/oj（桩安装器模拟 @oj-bin/oj 产物：可执行 + 版本标记）
 		const oj = path.join(dest, "bin/oj");
 		expect(fs.existsSync(oj)).toBe(true);
 		expect(fs.statSync(oj).mode & 0o111).not.toBe(0);
@@ -92,6 +92,23 @@ describe("initProject", () => {
 		const modulesConfig = fs.readFileSync(path.join(dest, "modules.config.ts"), "utf-8");
 		expect(modulesConfig).toContain("\"home\"");
 		expect(modulesConfig).toContain("\"login\"");
+		// personal-center（设计 T1）：runtime user-menu 固定导航 /personal-center/my-profile，
+		// 模板缺它则点击落空（与缺 home/login 同型）
+		expect(modulesConfig).toContain("\"personal-center\"");
+		expect(fs.existsSync(path.join(dest, "modules/src/personal-center/entry.ts"))).toBe(true);
+		expect(fs.existsSync(path.join(dest, "modules/src/personal-center/pages/my-profile/index.tsx"))).toBe(true);
+		expect(fs.existsSync(path.join(dest, "modules/src/personal-center/pages/settings/index.tsx"))).toBe(true);
+		expect(fs.existsSync(path.join(dest, "modules/src/personal-center/locales/zh-CN.json"))).toBe(true);
+		expect(fs.existsSync(path.join(dest, "modules/src/personal-center/locales/en-US.json"))).toBe(true);
+		// 后端（T2）：manifest + contract + upload handler；生成物（routes.json/openapi.yaml）不进模板
+		expect(fs.existsSync(path.join(dest, "api/src/personal-center/manifest.yaml"))).toBe(true);
+		expect(fs.existsSync(path.join(dest, "api/src/personal-center/contract.ts"))).toBe(true);
+		expect(fs.existsSync(path.join(dest, "api/src/personal-center/upload/api.ts"))).toBe(true);
+		expect(fs.existsSync(path.join(dest, "api/src/personal-center/routes.json"))).toBe(false);
+		// 头像上传链路（T3）：users 表补 avatar_base64 列，user-info 返回它
+		expect(fs.existsSync(path.join(dest, "api/src/_platform/migrations/0002__add_users_avatar_base64.sql"))).toBe(true);
+		expect(fs.readFileSync(path.join(dest, "api/src/_platform/schema.yaml"), "utf-8")).toContain("avatar_base64");
+		expect(fs.readFileSync(path.join(dest, "api/src/web/user-info/api.ts"), "utf-8")).toContain("avatar_base64");
 		expect(fs.existsSync(path.join(dest, "modules.config.ts"))).toBe(true);
 		expect(fs.existsSync(path.join(dest, "tsconfig.json"))).toBe(true);
 		expect(fs.existsSync(path.join(dest, ".gitignore"))).toBe(true);
@@ -124,6 +141,12 @@ describe("initProject", () => {
 		// home 首页图表演示的依赖：运行时走宿主 importmap，工程侧只需类型 → devDeps 须钉版
 		for (const dep of ["echarts", "echarts-for-react", "react-countup", "dayjs"])
 			expect(pkg.devDependencies[dep]).not.toBe("*");
+		// personal-center 的 ProForm 依赖（T6）：importmap 供运行时，工程侧钉类型
+		expect(pkg.devDependencies["@ant-design/pro-components"]).toBeTruthy();
+		expect(pkg.devDependencies["@ant-design/pro-components"]).not.toBe("*");
+		// tooling 钉版（T5）：矩阵收录 typescript/@types/react，不再回退 "*"
+		expect(pkg.devDependencies.typescript).not.toBe("*");
+		expect(pkg.devDependencies["@types/react"]).not.toBe("*");
 	});
 
 	it("非空目录无 yes → 拒绝；yes → 幂等补缺且 config.yaml 永不覆盖", async () => {
@@ -222,7 +245,7 @@ describe("initProject", () => {
 			path.join(PROJECT_ROOT, "packages/cli/vendor/host-versions.json"),
 			"utf-8",
 		));
-		for (const key of ["react", "antd", "react-router", "@oj-module/runtime"])
+		for (const key of ["react", "antd", "react-router", "@oj-module/runtime", "typescript", "@types/react"])
 			expect(bundled.matrix[key]).toBeTruthy();
 	});
 

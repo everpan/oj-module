@@ -61,6 +61,8 @@
 		"react-countup": "6.5.3",
 		"simplebar-react": "3.3.2",
 		"spin-delay": "2.0.1",
-		"tailwind-merge": "3.6.0"
+		"tailwind-merge": "3.6.0",
+		"typescript": "6.0.3",
+		"@types/react": "19.2.18"
 	}
 }

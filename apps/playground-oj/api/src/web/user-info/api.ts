@@ -10,7 +10,7 @@ export default {
 		}
 		try {
 			const rows = await db.query(
-				"SELECT id, username, roles FROM users WHERE id = ?",
+				"SELECT id, username, roles, avatar_base64 FROM users WHERE id = ?",
 				[Number(uid)],
 			);
 			const row = rows[0];
@@ -29,7 +29,7 @@ export default {
 			}
 			json.ok({
 				id: String(row.id),
-				avatar: "",
+				avatar: String(row.avatar_base64 ?? ""),
 				username: String(row.username),
 				email: "",
 				phoneNumber: "",

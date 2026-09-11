@@ -23,5 +23,11 @@ export default {
 			entry: "modules/src/login/entry.ts",
 			enabled: true,
 		},
+		{
+			// 个人中心：runtime 用户菜单固定导航 /personal-center/my-profile，缺则点击落空
+			name: "personal-center",
+			entry: "modules/src/personal-center/entry.ts",
+			enabled: true,
+		},
 	],
 };

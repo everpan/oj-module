@@ -8,3 +8,4 @@ tables:
       username: {type: text, null: false}
       password_hash: {type: text, null: false}
       roles: {type: text, null: false}
+      avatar_base64: {type: text, null: false}

@@ -236,6 +236,8 @@ function generatePackageJson(cliRoot: string, projectName: string) {
 		// 需从工程 node_modules 解析真实现（evaluateContract 把裸说明符 external）。
 		"@oj-module/runtime": pin("@oj-module/runtime"),
 		"@ant-design/icons": pin("@ant-design/icons"),
+		// personal-center 的 ProForm 用到——仅取**类型**（运行时由宿主 importmap 提供单例）
+		"@ant-design/pro-components": pin("@ant-design/pro-components"),
 		"@types/react": pin("@types/react"),
 		"antd": pin("antd"),
 		// home 首页图表演示用到——仅取**类型**（运行时由宿主 importmap 提供单例）
