@@ -102,3 +102,13 @@ Then 覆盖：两种工程形态（uni-dev / 纯前端）、契约发现规则�
 - **耗时**：2026-09-11 23:24 设计落档 → 2026-09-12 00:08 验证收尾，约 45 分钟。
 - **未做**（刻意排除）：产物协议 `modules.json` 与 `dist/modules/<n>/<v>/` 不改名（T5）；
   `docs/archive/**` 与历史 PRD 不动（T8）；`.ram-api-exempt.json` 回退保留（T7）。
+
+## 7. 发布结果（v0.1.8，2026-09-12）
+
+| 包 | 版本 | registry 复核 |
+|---|---|---|
+| `@oj-module/runtime` | 0.1.8 | 重发 409「previously staged」确证 → packument 约 3 分钟后含 0.1.8 |
+| `@oj-module/cli` | 0.1.8 | 重发 403「previously published」确证 → `dist-tags.latest=0.1.8` |
+
+发布顺序 runtime → cli（lockstep，`pnpm publish`，cli 依赖被改写为精确 `0.1.8`）。
+**git tag**：`v0.1.8`（已推 origin，随 `feat/ojm` 分支同推）。
