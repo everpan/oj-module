@@ -6,7 +6,7 @@
 > **想直接上手做项目**：看配套实战演练 [`oj-fullstack-tutorial.md`](./oj-fullstack-tutorial.md)（从零搭一个 oj 前后端应用）。
 > 面向「业务模块作者」的手册是 [`module-development-guide.md`](../archive/prd/module-development-guide.md)，两本手册读者不同，不要混读。
 >
-> ⚠️ **结构变更**：本手册已按 P1 包合并更新（原 4 包 contract / runtime / shell / cli → 2 包 runtime / cli）。**依据与迁移记录见 [`202609110947-oj-module-two-package-consolidation-design.md`](./202609110947-oj-module-two-package-consolidation-design.md)**（§12 实施记录、§13 陷阱）。深层章节若仍有「四包」口吻，以本页与设计文档为准。
+> ⚠️ **结构变更（已全量落实）**：本手册已按两轮改造逐句核对——**P1/P2 包合并与 scope 改名**（原 4 包 contract / runtime / shell / cli → 2 包 `runtime` / `cli`，`@react-antd-module` → `@oj-module`），以及 **P3 命令与内部前缀改名**（`ram` → `ojm`，内部 `ram-*` → `ojm-*`，**兼容读旧名**）。全文已无「独立 shell/contract 包」「`ram` 命令」口径；依据与迁移记录见 [`202609110947-oj-module-two-package-consolidation-design.md`](./202609110947-oj-module-two-package-consolidation-design.md)（§12 实施记录、§13 陷阱 A27–A40）。
 
 ---
 
@@ -58,9 +58,12 @@ pnpm --filter @oj-module/cli build:shell    # 内含 runtime 构建 + host.js + 
 | **apiPrefix** | 模块的 API 前缀（如 `/home`）；模块必须 `ctx.register.apiPrefix` 登记，请求只能落在该前缀内 |
 | **oj** | 后端框架（Rust + JS bridge），业务代码写在 `api/src/<模块>/<端点>/api.ts` |
 | **信封（envelope）** | oj 统一响应格式 `{ code, msg, data }`，`code=0` 表示成功 |
+| **`ojm`（命令）** | cli 的唯一命令名（`ojm dev/build/api/...`）。旧名 `ram` 是**弃用别名**：打印更名警告后转发，下个 major 移除（P3） |
+| **宿主（host）** | 预构建的静态站点骨架。**不再是独立包**：源码在 `packages/cli/shell/`，产物在 `packages/cli/shell-dist/`，随 cli 发布（P1） |
 | **importmap** | 浏览器原生机制，把裸说明符（`react`、`antd`）映射到宿主预构建的单份资产 |
+| **`SHARED_DEPS`** | 共享依赖单一来源（`packages/cli/src/shared-deps.ts`）：同时生成宿主入口、importmap、external 判定、版本门禁 |
 | **单例（singleton）** | 全站只有一份 react / antd / runtime 实例；多份会导致 Context 撕裂、`instanceof` 失效 |
-| **dist** | 构建产物。`packages/runtime/dist` 与 `packages/cli/shell-dist` 都**随仓库提交** |
+| **dist** | 构建产物。`packages/runtime/dist` 与 `packages/cli/shell-dist` 都**随仓库提交**（`.gitignore` 开例外）；`shell-dist/**/*.map` 除外，且不发 npm 包 |
 
 ### 0.5 环境准备与「5 分钟跑起来」
 
@@ -537,12 +540,15 @@ fetchPie({ by: "all" });  // 落在 /home/*，越界会被拒
 
 ```bash
 pnpm --filter @oj-module/runtime build
-# = vite build → tsc -p tsconfig.dts.json → rewrite-dts-specifiers.mjs → inline-css.mjs
+# = vite build && tsc -p tsconfig.contract.json && tsc -p tsconfig.dts.json \
+#   && node scripts/rewrite-dts-specifiers.mjs && node scripts/inline-css.mjs
+#   顺序有讲究：contract 的 d.ts 必须先于主 d.ts 产出（主 d.ts 会引用 ./contract 子路径）
 ```
 
 - **裸说明符一律 external**（交给宿主 importmap）；`#src/*`、`~icons/*`、`zod` 例外，构建期内联。
 - 构建期注入 `VITE_*`（读仓库根 `.env`）与 `__APP_INFO__`，让产物**自包含**，宿主无需再 define。
-- 产物必须能 `import` 即得完整样式（`styles/index.css` 被内联回 `runtime.js`）。
+- contract 子路径编成 `dist/contract/`（`index` / `errors` / `define-api` / `scoped-request-like`），`exports` 开 `./contract` 与 `./contract/errors`。
+- 产物必须能 `import` 即得完整样式（`styles/index.css` 被内联回 `runtime.js`，DOM 标记 `data-ojm-runtime-css`）。
 - **`dist/` 必须提交**。
 
 ### 2.11 本地验证
@@ -557,9 +563,10 @@ pnpm test tests/shell/shell-importmap.test.ts      # runtime.js 与包 dist 一�
 ### 2.12 常见坑
 
 - **改源码忘重建 dist**：host/模块拿到的还是旧 `runtime.js`，表现为「方法不存在」。
-- 往 `src/index.ts` 加浏览器专用重依赖会破坏「产物自携带」假设；先想清楚是否该走 shell 共享依赖。
+- 往 `src/index.ts` 加浏览器专用重依赖会破坏「产物自携带」假设；先想清楚是否该走宿主共享依赖（`SHARED_DEPS`）。
 - 删掉 `styles/index.css` 的 import 会让宿主链路视觉崩坏（`runtime-bundle-css` 测试守护）。
 - 模块里误写 `#src/*` 会在构建期报错，改用 runtime 出口。
+- 用旧 runtime 产物定义的端点打的是 `Symbol.for("ram.api.def")`：codegen 双符号识别仍能认出（P3 兼容），但**新代码一律用新符号**，别手动写旧符号。
 
 ---
 
@@ -611,7 +618,7 @@ packages/cli/shell-dist/   # 【随仓库提交】build.mts 的产物
 
 ### 3.4 共享依赖的单一来源
 
-`packages/cli/src/shared-deps.ts` 的 `SHARED_DEPS` 同时生成「shell 预构建入口」「importmap」「external 判定」「版本校验」——**任何一侧手写清单都会漂移**。
+`packages/cli/src/shared-deps.ts` 的 `SHARED_DEPS` 同时生成「宿主预构建入口」「importmap」「external 判定」「版本校验」——**任何一侧手写清单都会漂移**。
 
 ```ts
 // packages/cli/src/shared-deps.ts（节选）
@@ -761,47 +768,61 @@ node tests/e2e/verify-shell-iconcontext.mjs   # 已构建资产真实可加载 +
 
 ```
 packages/cli/
-├── bin/ojm.mjs            # 可执行入口
+├── bin/ojm.mjs            # 可执行入口（唯一命令名）
+├── bin/ram.mjs            # 弃用别名 shim：stderr 警告后转发 ojm（下个 major 移除）
 ├── src/index.ts           # 命令分发（build/init/preview/dev/info/vendor/api/merge）
 ├── src/args.ts            # 参数解析（纯函数，便于测试）
 ├── src/usage.ts           # 用法文本
 ├── src/build.ts           # 模块构建 + 全站合并 + 元数据/清单
 ├── src/dev.ts             # 开发服务器装配（静态/SPA/注入、oj 反代、SSE 刷新、watch）
-├── src/static-handler.ts  # 静态/SPA/importmap 注入（dev 钉死 hostRoots=shell dist）
-├── src/dev-proxy.ts       # /api 反代与 SSE
+├── src/static-handler.ts  # 静态/SPA/importmap 注入（dev 的 hostRoots 钉死 cli 内置 shell-dist）
+├── src/dev-proxy.ts       # /api 反代与 SSE（/__ojm_reload）
 ├── src/oj.ts / oj-config.ts / oj-cert.ts  # oj 后端进程生命周期
 ├── src/preview.ts         # 生产形态预览
 ├── src/init.ts            # 工程脚手架（模板 + 钉版）
 ├── src/vendor.ts          # oj vendor 下载（缺省 latest，可指定 tag）
-├── src/shared-deps.ts     # 【共享依赖单一来源】importmap/入口/external/版本门禁
-├── src/versions.ts        # 宿主版本矩阵校验（checkSharedVersions）
-├── src/esm-exports.ts     # 构建后导出/裸说明符/动态 require 检查（与 shell 复用）
+├── src/shared-deps.ts     # 【共享依赖单一来源】importmap/宿主入口/external/版本门禁
+├── src/versions.ts        # 宿主版本矩阵校验 + resolveShellDist（定位包内 shell-dist）
+├── src/esm-exports.ts     # 构建后导出/裸说明符/动态 require 检查（宿主构建与 tests/shell 共用）
 ├── src/contract/          # 契约代码生成：IR / emit-* / check / mock / docs / watch
 ├── src/manifest.ts        # 清单合并与解析
 ├── src/info.ts            # ojm info（版本矩阵 + 模块清单，报障用）
+├── shell/                 # 宿主源码（host.tsx / csp / trust / preload / scripts/build.mts）
+├── shell-dist/            # 【随仓库提交】宿主预构建产物（importmap + 共享资产 + versions.json）
 ├── templates/             # 工程脚手架模板（api/ modules/ 配置/ tsconfig…）
+├── scripts/               # sync-host-versions.mjs（prepack：同步矩阵 + R5 断言）
 └── vendor/host-versions.json  # 随包内置的宿主版本矩阵（prepack 自动同步）
 ```
 
 ### 4.3 `ojm` 命令详解
 
-**`ojm init [dir] [--yes]`** —— 幂等补缺脚手架，复制 `templates/` 并按当前 shell 版本钉共享依赖。
+> 命令名统一为 `ojm`；旧名 `ram` 保留为弃用别名（打印警告后转发）。下面的 `ojm ...` 写 `ram ...` 也能跑通，但请尽早改掉。
+
+**`ojm init [dir] [--yes]`** —— 幂等补缺脚手架，复制 `templates/`，并按下表钉死依赖版本。
+
+| 依赖 | 钉版来源 |
+| --- | --- |
+| `@oj-module/cli` | cli 自身 `package.json` 版本 |
+| `@oj-module/runtime` 与其余共享依赖 | 宿主版本矩阵 `shell-dist/versions.json`（该文件不可达时回退 `vendor/host-versions.json`） |
 
 ```bash
 ojm init my-app --yes
 # 产出：api/（oj 后端模板）、modules/（模块模板）、modules.config.ts、tsconfig.json…
+# 含 api/.ojm-api-exempt.json（内置 auth/web/notifications handler 有意无契约）
 ```
 
 **`ojm dev [port]`** —— 开发服务器（默认 5174）。
 
 ```bash
-ojm dev        # /api 反代 oj；模块源码变更 → 重建 → SSE 刷新；静态解析 modules/dist 优先、shell dist 兜底
+ojm dev        # /api 反代 oj；模块源码变更 → 重建 → SSE 刷新（/__ojm_reload）
+# 静态解析：模块空间（/modules.json、/modules/*）取本地模块产物；
+#          宿主空间（/、/index.html、SPA 回落）钉死取 cli 内置 shell-dist
 ```
 
 **`ojm build`** —— 构建后端（`oj build`，零 DB 副作用）+ 前端全站合并。
 
 ```bash
-ojm build      # 只有 build 会清场合并，产物在 modules/dist（含 shell dist 拷贝）
+ojm build      # 只有 build 会清场合并，产物在 modules/dist（含宿主站点全量拷贝）
 ```
 
 **`ojm preview [port] [--oj-static]`** —— 生产形态预览（migrate → oj server + 静态兜底）。
@@ -845,9 +866,10 @@ uni-dev 形态要求字面相等（AC-D9），请改 apiPrefix 或移动契约�
 
 ### 4.5 与其它包的边界
 
-- **`shared-deps.ts` 是跨包单一来源**：shell 构建、importmap、版本门禁都从它生成；改这里等于同时改多包行为。
-- **`prepack` 会跑 `scripts/sync-host-versions.mjs`**：从 shell dist + shell 版本生成 `vendor/host-versions.json`，发布 cli 前自动执行。
-- `esm-exports.ts` 同时被 shell 构建和 `tests/shell` 使用，**不要在两处各写一份正则**。
+- **只有一个依赖边**：`cli → runtime`（`workspace:*`，发布转精确版本）。宿主产物（`shell-dist/`）与工具链同在 cli 包内，因此不存在「先构建 shell 才能用 cli」的顺序约束，也没有任何 `node_modules`/monorepo 路径回退。
+- **`shared-deps.ts` 是跨包单一来源**：宿主构建（`build:shell`）、importmap、版本门禁都从它生成；改这里等于同时改「宿主产物」与「模块构建 external 集合」。
+- **`prepack` 会跑 `scripts/sync-host-versions.mjs`**：从 `shell-dist/versions.json` 生成 `vendor/host-versions.json`，并断言**宿主 runtime 版本 == `packages/runtime` 版本**（设计 R5），不符即发布失败——防止发出「类型来自新版、实现来自旧宿主」的组合。
+- `esm-exports.ts` 同时被宿主构建和 `tests/shell` 使用，**不要在两处各写一份正则**。
 
 ### 4.6 新增一个 `ojm` 子命令的清单
 
@@ -865,9 +887,27 @@ pnpm test tests/shell/shell-importmap.test.ts  # 门禁实现一致性
 
 ### 4.8 常见坑
 
-- dev 服务器静态解析必须正确区分「本地模块产物」与「宿主 dist」；`hostRoots` 钉死 shell dist，避免 `ojm build` 的合并残留反向遮蔽宿主。
-- 报错面向人话（默认不打印堆栈）；`OJM_DEBUG=1` 才输出堆栈。
+- dev 服务器静态解析必须正确区分「本地模块产物」与「宿主产物」；`hostRoots` 钉死 cli 内置 `shell-dist`，避免 `ojm build` 的合并残留反向遮蔽宿主。
+- 报错面向人话（默认不打印堆栈）；`OJM_DEBUG=1` 才输出堆栈（旧名 `RAM_DEBUG` 一并读）。
 - 改了契约文件后忘了重跑 `ojm api`，前端 client 会与后端漂移；CI 用 `ojm api --check` 兜底。
+
+### 4.9 命令与内部前缀改名（P3）与兼容读取
+
+P3 把命令与内部前缀从 `ram` 全改为 `ojm`，但**兼容读旧名**——存量工程升级后不需要手改即可继续跑：
+
+| 旧名（存量工程/产物） | 新名 | 兼容策略 |
+| --- | --- | --- |
+| 命令 `ram`、`bin/ram.mjs` | `ojm`、`bin/ojm.mjs` | `package.json#bin` 双提供；`ram` shim 打印更名警告后转发，**下个 major 移除** |
+| `api/.ram-api-exempt.json` | `api/.ojm-api-exempt.json` | 双名读取（新名优先、旧名回退）；`ojm init` 只产新名 |
+| stub 指纹头 `// ram-api:stub …` | `// ojm-api:stub …` | 读双前缀、写新前缀；「纯前缀升级」不计过期，`--check` 不误报，重跑即刷成新头 |
+| `Symbol.for("ram.api.def")` | `Symbol.for("ojm.api.def")` | IR **双符号**识别；`defineApi` 新写只发新符号 |
+| 环境变量 `RAM_DEBUG` | `OJM_DEBUG` | 双读（新名优先） |
+| 日志/报错前缀 `[ram]`、`[ram-api]` | `[ojm]`、`[ojm-api]` | 纯文本，无兼容 |
+| `.ram-tmp-*`、`.ram-shim-*`、`data-ram-css`、`data-ram-runtime-css` | `ojm-*`、`data-ojm-*` | 瞬时文件 / DOM 标记，无兼容 |
+| 自动子路径资产名（`ram-antd-es-modal.js`、`ram--ant-design-icons-*`） | `ojm-*` | 宿主重建即改名，importmap 同步生成 |
+| dev SSE 端点 `/__ram_reload(.js)` | `/__ojm_reload(.js)` | 同一次构建内自洽，无兼容 |
+
+> 存量工程升级后建议跑一次 `ojm api`（把旧 stub 指纹头刷成新名）与 `ojm api --check`（应 `0 error`）。守卫用例见 `tests/cli/rename-compat.test.ts` 与 `tests/cli/package-guards.test.ts`。
 
 ---
 
@@ -879,6 +919,11 @@ pnpm test tests/shell/shell-importmap.test.ts  # 门禁实现一致性
 # 1) 重建产物并同步 vendor（cli 的 build:shell 内含 runtime 重建）
 pnpm --filter @oj-module/cli build:shell
 node packages/cli/scripts/sync-host-versions.mjs
+# 1b) 发布内容演练（不产生 tarball）——两包各断言一次
+cd packages/cli && npm pack --dry-run --json --ignore-scripts | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const f=JSON.parse(s)[0].files.map(x=>x.path);console.log('maps',f.filter(x=>/\.map\$/.test(x)).length,'assets',f.filter(x=>x.startsWith('shell-dist/assets/')).length,'bin',f.includes('bin/ojm.mjs'),f.includes('bin/ram.mjs'))})" && cd ../..
+cd packages/runtime && npm pack --dry-run --json | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const f=JSON.parse(s)[0].files.map(x=>x.path);console.log('non-dts .ts',f.filter(x=>/\.tsx?\$/.test(x)&&!/\.d\.ts\$/.test(x)).length,'src/',f.filter(x=>/(^|\/)src\//.test(x)).length)})" && cd ../..
+#    期望：cli → maps 0 / assets 119 / bin[ojm]=true bin[ram]=true
+#          runtime → non-dts .ts 0 / src/ 0
 # 2) 提交（pnpm publish 默认要求工作区干净）
 # 3) 按依赖序逐包发布（runtime → cli）
 for p in runtime cli; do
@@ -898,24 +943,29 @@ done
 - `pnpm publish` 遇到「版本已存在」会打印 `409 previously staged version` / `403 previously published versions`，其实是**已经发布成功**的报错文案，不要误判为卡在 stage；到 npmjs Staged Packages 页面确认即可。
 - **顺序很重要**：`runtime` 未公开时，新发布的 `cli` 其精确依赖 `runtime@<新版本>` 会悬空，消费者直接装不上。
 - **宿主完整性卡口**：`cli` 的 `prepack` 会断言 `shell-dist` 存在且其 runtime 版本 == `packages/runtime` 版本（设计 R5），不满足直接失败——防止发布出「类型来自新版、实现来自旧宿主」的组合。
-- `cli` 版本会被 `ojm init` 直接钉进新工程，且其 `templates/`（含 `env.d.ts`）随之分发；发 cli 前建议按 [`framework-verification-playbook.md`](./framework-verification-playbook.md) 从零跑一遍。
+- **sourcemap 不发版，且 `files` 取反有顺序语义**：`cli` 的 `package.json#files` 靠 `"!shell-dist/**/*.map"` 排除 117 个 `.map`。npm 按 `files` 出现顺序应用模式、**后者优先**，所以这条取反必须排在 `"shell-dist"` **之后**才生效（排前面等于没写，包体 3.85MB → 10.8MB）；因排序与 `jsonc/sort-array-values` 冲突，已对该文件单独关掉排序规则。另注意 **`files` 白名单内的文件无法被 `.npmignore` 排除**，别再尝试加 `.npmignore`（P5 实测）。
+- `cli` 版本会被 `ojm init` 直接钉进新工程，且其 `templates/`（含 `env.d.ts`、`api/.ojm-api-exempt.json`）随之分发；发 cli 前建议按 [`framework-verification-playbook.md`](./framework-verification-playbook.md) 从零跑一遍。
 
 ## 附录 B：排障速查表
 
 | 症状 | 常见原因 | 处理 |
 | --- | --- | --- |
 | `模块 "x" 尚未登记 API 前缀` | `onInit` 里漏了 `ctx.register.apiPrefix` | 补登记，再 `bindRequest` |
-| `方法不存在` / 行为与源码不符 | 改了 runtime 源码没重建 dist | `pnpm --filter @oj-module/runtime build` |
-| 页面图标空白（关闭 ×、复制） | 图标深路径 default 退化 | 见 [3.6](#36-深路径兜底最容易踩的坑)，重建 shell |
-| 整页白屏 + `does not provide an export named` | 共享资产零具名导出（A22） | 重建 shell，查 `tests/shell/shell-importmap.test.ts` |
+| `方法不存在` / 行为与源码不符 | 改了 runtime 源码没重建 dist | `pnpm --filter @oj-module/runtime build`（或 `cli build:shell`，内含此步） |
+| 页面图标空白（关闭 ×、复制） | 图标深路径 default 退化 | 见 [3.6](#36-深路径兜底最容易踩的坑)，重建宿主 `pnpm --filter @oj-module/cli build:shell` |
+| 整页白屏 + `does not provide an export named` | 共享资产零具名导出（A22） | 重建宿主，查 `tests/shell/shell-importmap.test.ts` |
 | 整页白屏 + `Failed to resolve module specifier` | 裸说明符未被 importmap 覆盖 | 在 `SHARED_DEPS` 登记该深路径 |
 | 组件拿到 `undefined` / React #130 | 子路径 default 是命名空间 | 用「修正 default」的 shim（见 3.6） |
 | `Cannot read properties of undefined (reading 'Provider')` | IconContext 深路径被错映射 | 单独登记 `@ant-design/icons/es/components/Context` |
 | 登录后菜单空白 | 宿主链无 AuthGuard 且路由被清 | 见 access store reset 快照（2.8） |
 | `ojm api --check` 报 drift | 改了契约没重跑生成 | `ojm api` 后重新提交 |
+| 执行 `ram ...` 打印「已更名为 ojm」 | 存量 scripts 仍用旧命令 | 改用 `ojm ...`（别名仍可用，下个 major 移除） |
+| 存量工程首次 `ojm api --check` 报 stub 待更新 | 旧指纹头 `// ram-api:stub` | 跑一次 `ojm api` 刷成新头即可；纯前缀升级不再误报（P3） |
+| 本地 `.bin/ojm` 不存在 / `pnpm install` 说 up to date | workspace 包 `bin` 变更不会触发 app 的 `.bin` 重建 | 删掉该 app 的 `node_modules` 再 `pnpm install`（陷阱 A36） |
 
 ## 附录 C：相关文档索引
 
+- **双包整合与改名（本手册的结构依据）**：[`202609110947-oj-module-two-package-consolidation-design.md`](./202609110947-oj-module-two-package-consolidation-design.md)（§12 实施记录、§13 陷阱 A27–A40）
 - **实战演练（从零搭 oj 前后端应用）**：[`oj-fullstack-tutorial.md`](./oj-fullstack-tutorial.md)
 - **端到端验证手册（升级后复跑）**：[`framework-verification-playbook.md`](./framework-verification-playbook.md)
 - **oj release 二进制缺陷报告（可转上游）**：[`oj-release-binary-defect-report.md`](./oj-release-binary-defect-report.md)
