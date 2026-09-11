@@ -1,0 +1,10 @@
+{
+	"page": {
+		"title": "登录",
+		"subtitle": "脚手架种子账号：admin / 123456",
+		"username": "用户名",
+		"password": "密码",
+		"submit": "登 录",
+		"success": "登录成功"
+	}
+}

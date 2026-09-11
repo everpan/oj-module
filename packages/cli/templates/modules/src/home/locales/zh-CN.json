@@ -1,0 +1,13 @@
+{
+	"menu": { "home": "首页" },
+	"page": {
+		"title": "首页",
+		"welcome": "欢迎使用 react-antd-module 脚手架",
+		"subtitle": "前端模块 + oj 后端 + 契约，一条链跑通全栈"
+	},
+	"tip": {
+		"dev": { "title": "开发", "text": "编辑 api/src 保存即热更；新增模块目录需重启 ram dev" },
+		"contract": { "title": "契约", "text": "改契约后重跑 ram api 生成前端 client 与接口文档" },
+		"build": { "title": "构建", "text": "ram build 产出后端 routes.js 并合并完整站点到 modules/dist" }
+	}
+}

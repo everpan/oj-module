@@ -78,7 +78,20 @@ describe("initProject", () => {
 		expect(fs.existsSync(path.join(dest, "global.d.ts"))).toBe(true);
 
 		// 前端模块与工程文件
+		// home 提供 /home：shell 预构建把 VITE_BASE_HOME_PATH 定为 /home，
+		// 登录回跳 / logo / tabbar 均指向它，缺则落错误边界
+		expect(fs.existsSync(path.join(dest, "modules/src/home/entry.ts"))).toBe(true);
+		expect(fs.existsSync(path.join(dest, "modules/src/home/pages/index.tsx"))).toBe(true);
 		expect(fs.existsSync(path.join(dest, "modules/src/demo/entry.ts"))).toBe(true);
+		// login 模块提供 /login：shell 宿主不挂 runtime 内置 baseRoutes，
+		// 缺它则登出/回跳登录无路由可跳
+		const loginEntry = path.join(dest, "modules/src/login/entry.ts");
+		expect(fs.existsSync(loginEntry)).toBe(true);
+		expect(fs.existsSync(path.join(dest, "modules/src/login/pages/login.tsx"))).toBe(true);
+		expect(fs.readFileSync(loginEntry, "utf-8")).toContain("path: \"/login\"");
+		const modulesConfig = fs.readFileSync(path.join(dest, "modules.config.ts"), "utf-8");
+		expect(modulesConfig).toContain("\"home\"");
+		expect(modulesConfig).toContain("\"login\"");
 		expect(fs.existsSync(path.join(dest, "modules.config.ts"))).toBe(true);
 		expect(fs.existsSync(path.join(dest, "tsconfig.json"))).toBe(true);
 		expect(fs.existsSync(path.join(dest, ".gitignore"))).toBe(true);
@@ -86,11 +99,16 @@ describe("initProject", () => {
 		expect(fs.existsSync(path.join(dest, "env.d.ts"))).toBe(true);
 		const tsconfig = JSON.parse(fs.readFileSync(path.join(dest, "tsconfig.json"), "utf-8"));
 		expect(tsconfig.include).toContain("env.d.ts");
-		// api/.ram-api-exempt.json：内置 auth/web handler 有意无契约，ram api --check 需豁免清单
+		// api/.ram-api-exempt.json：内置 auth/web/notifications handler 有意无契约，ram api --check 需豁免清单
 		expect(fs.existsSync(path.join(dest, "api/.ram-api-exempt.json"))).toBe(true);
 		const exempt = JSON.parse(fs.readFileSync(path.join(dest, "api/.ram-api-exempt.json"), "utf-8"));
 		expect(exempt.modules).toContain("web");
+		expect(exempt.modules).toContain("notifications");
 		expect(exempt.paths).toContain("/auth/*");
+		// notifications 模块：root 级 /api/notifications（runtime 通知铃兜底），需表 + handler
+		expect(fs.existsSync(path.join(dest, "api/src/notifications/api.ts"))).toBe(true);
+		expect(fs.readFileSync(path.join(dest, "api/src/notifications/manifest.yaml"), "utf-8")).toMatch(/tables:[\t\v\f\r \xA0\u1680\u2000-\u200A\u2028\u2029\u202F\u205F\u3000\uFEFF]*\n\s*-\s*notifications/);
+		expect(fs.existsSync(path.join(dest, "api/src/notifications/migrations/0001__create_notifications.sql"))).toBe(true);
 		const pkg = JSON.parse(fs.readFileSync(path.join(dest, "package.json"), "utf-8"));
 		expect(pkg.scripts.dev).toContain("ram dev");
 		expect(pkg.scripts.preview).toContain("ram preview");

@@ -1,0 +1,5 @@
+name: notifications
+desc: 通知模块（参考 playground notification，供 runtime 通知铃 root 级 /api/notifications）
+version: 0.1.0
+tables:
+  - notifications

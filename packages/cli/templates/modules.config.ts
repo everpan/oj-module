@@ -7,8 +7,20 @@ export default {
 	baseUrl: "",
 	modules: [
 		{
+			// /home 必须是首个模块：shell 的 "/" → VITE_BASE_HOME_PATH（=/home）重定向
+			name: "home",
+			entry: "modules/src/home/entry.ts",
+			enabled: true,
+		},
+		{
 			name: "demo",
 			entry: "modules/src/demo/entry.ts",
+			enabled: true,
+		},
+		{
+			// /login 路由由模块提供：shell 宿主不挂 runtime 内置 baseRoutes
+			name: "login",
+			entry: "modules/src/login/entry.ts",
 			enabled: true,
 		},
 	],

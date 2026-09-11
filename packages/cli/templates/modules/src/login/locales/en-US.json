@@ -1,0 +1,10 @@
+{
+	"page": {
+		"title": "Sign in",
+		"subtitle": "Scaffold seed account: admin / 123456",
+		"username": "Username",
+		"password": "Password",
+		"submit": "Sign in",
+		"success": "Signed in"
+	}
+}

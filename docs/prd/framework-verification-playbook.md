@@ -9,9 +9,9 @@
 | 项 | 值 |
 | --- | --- |
 | 日期 | 2026-09-11 |
-| 框架包版本 | `cli`/`runtime`/`shell` `0.1.4` + `contract` `0.1.3`（四包已按本手册复跑） |
+| 框架包版本 | `cli` `0.1.5`（本次模板修复：home/login 前端模块 + notifications 端点 + 豁免清单）+ `runtime`/`shell` `0.1.4` + `contract` `0.1.3`（四包均已按本手册复跑） |
 | oj | `0.1.12`（**官方 release**）——v0.1.11 及更早的 release 二进制有构建机路径缺陷，v0.1.12 已修复（见 §3） |
-| 结果 | 全链路通过（§1–§7）：release 二进制在非构建机可用，`ram dev` / `ram preview` 均正常。发现并修复 1 个脚手架缺陷（模板缺 `api/.ram-api-exempt.json`，导致全新工程 `ram api --check` 报 6 个 `handler 未登记`，见 §4）与 2 处手册判据过期（§3 泄漏计数、§4 未注明豁免文件） |
+| 结果 | 全链路通过（§1–§7）：release 二进制在非构建机可用，`ram dev` / `ram preview` 均正常。发现并修复 4 个脚手架缺陷（模板缺 `api/.ram-api-exempt.json` → `ram api --check` 误报；模板缺 `modules/src/login` → `/login` 无路由可跳；模板缺 root 级 `api/src/notifications` → 通知铃 404；模板缺 `modules/src/home` → 登录回跳 `/home` 落错误边界，见 §4/§5）与 2 处手册判据过期（§3 泄漏计数、§4 未注明豁免文件） |
 
 <details>
 <summary>上一次基线（0.1.3 / oj 0.1.11 自建）</summary>
@@ -47,7 +47,7 @@ node "$RAM_REPO/packages/cli/bin/ram.mjs" init my-books --yes
 **检查点**
 
 - [ ] 退出码 0，末行提示 `登录 admin / 123456`
-- [ ] 目录齐全：`api/src/{_platform,auth,web}`、`api/.ram-api-exempt.json`、`modules/src/demo`、`modules.config.ts`、`tsconfig.json`、`global.d.ts`、`env.d.ts`、`bin/oj`、`bin/.oj-version`、`.claude/skills/oj-api-dev/`
+- [ ] 目录齐全：`api/src/{_platform,auth,web,notifications}`、`api/.ram-api-exempt.json`、`modules/src/{demo,home,login}`、`modules.config.ts`、`tsconfig.json`、`global.d.ts`、`env.d.ts`、`bin/oj`、`bin/.oj-version`、`.claude/skills/oj-api-dev/`
 - [ ] `package.json` 的 devDependencies **包含** `@react-antd-module/{cli,contract,runtime,shell}`，且值**不是 `*`**
 - [ ] 若出现「`@types/react` / `typescript` 回退 `*`」告警 → 记下，安装后必须钉版
 - [ ] **未出现「oj 二进制自检失败」告警**（cli ≥ 0.1.4 安装后自动冒烟）；若出现，按 §3 换自建二进制
@@ -135,7 +135,7 @@ pnpm exec ram api
 > { "modules": ["web"], "paths": ["/auth/*"] }
 > ```
 >
-> **新版 `ram init` 已内置该文件**（此前版本缺失，属已修复的脚手架缺陷；随下个 cli 版本发布）。
+> **`ram init` 自 cli 0.1.5 起已内置该文件**（更早版本缺失，属已修复的脚手架缺陷）。
 > 旧脚手架/旧工程若缺，手工补上即可——否则 §4/§8 的 `--check` 检查点会因 6 个
 > `handler 未登记` 失败。补上后 `--check` 输出 `0 error / 0 warn`。
 > 豁免只做 error→skip 降级，不会引入新错误。
@@ -154,10 +154,11 @@ pnpm exec tsc --noEmit -p tsconfig.json     # typecheck
 
 **检查点**
 
-- [ ] `ram build`：`oj build` 列出 4 个模块（`_platform/auth/books/web`），其中 books `2 api file(s)`
+- [ ] `ram build`：`oj build` 列出 5 个模块（`_platform/auth/books/notifications/web`），其中 books `2 api file(s)`、notifications `1 api file(s)`
 - [ ] 输出「已合并宿主站点 → modules/dist」「构建 books@0.1.0」「清单已生成」
 - [ ] `modules/dist/` 含 `index.html`、`assets/`、`modules/`、`modules.json`、`versions.json`
 - [ ] `modules/dist/modules/books/0.1.0/entry.js` 存在（带 `integrity`）
+- [ ] `modules.json` 含 `home` / `demo` / `login` / `books`（**`home` / `login` 不可少**：shell 预构建把 `VITE_BASE_HOME_PATH` 定为 `/home` 且不挂 runtime 内置登录兜底，缺则登录回跳 / 登出 / 点 logo 落错误边界）
 - [ ] `modules.json` 中 books 条目 `peerRuntime` 与宿主 runtime 版本相容
 - [ ] **typecheck 0 error**（含生成的 `client.ts`）
 
@@ -173,16 +174,20 @@ curl -s "http://127.0.0.1:9778/api/books/list?keyword=设计" -H "authorization:
 curl -s -X POST http://127.0.0.1:9778/api/books/create -H "authorization: Bearer $TOKEN" \
   -H 'content-type: application/json' -d '{"title":"重构","author":"Martin Fowler","year":2019}'
 curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:9778/api/books/list   # 期望 401
+curl -s http://127.0.0.1:9778/api/notifications -H "authorization: Bearer $TOKEN"  # 通知铃兜底（期望数组）
 ```
 
 **检查点**
 
 - [ ] dev 日志：`seed ok module="books"`、路由表含 `GET /api/books/list` / `POST /api/books/create`、`oj server listening`
 - [ ] 登录返回 `code:0` 且 `data.access_token` 非空
+- [ ] 登录成功后回跳 `/home` 正常渲染（不落 React Router 错误边界）
 - [ ] 列表过滤返回 1 条（`设计数据密集型应用`）
 - [ ] 新增返回 `{"ok":true}`，全量列表变 4 条
+- [ ] `GET /api/notifications`（带 token）返回 `code:0` + 数组（runtime 通知铃 root 级兜底；缺端点会 404 `no route matched`）
 - [ ] 无 token 返回 **401**
 - [ ] `http://localhost:5174/` 200，importmap 含 `@react-antd-module/runtime`，`/modules/books/0.1.0/entry.js` 200
+- [ ] `/modules/login/0.1.0/entry.js` 200，且 `/login` 能渲染模块登录页（登出后可跳回；缺 login 模块则落空）
 
 用完停服：`pkill -f "ram dev"; pkill -f "bin/oj"`。
 
@@ -211,7 +216,10 @@ pnpm exec ram preview    # oj migrate（verify 门禁）→ server + 静态兜�
 | --- | --- | --- |
 | `Failed to initialize a JsRuntime: No such file or directory` | ≤ v0.1.11 的 release oj 二进制烤了构建机路径（v0.1.12 已修复） | 用 ≥ v0.1.12 的 release（`ram vendor`）；旧版用自建 oj 覆盖 `bin/oj`（§3） |
 | `ram init` / `ram vendor` 末尾出现「oj 二进制自检失败」告警 | release 二进制缺陷，cli ≥ 0.1.4 的安装后冒烟主动暴露 | 同上；v0.1.12 起不应再出现。告警不阻断，`ram init` 仍已产出工程 |
-| `ram api --check` 报 `handler 未登记`（`auth/*`、`web/*`） | 内置模块有意无契约，而工程缺豁免清单 | 新版 `ram init` 已内置 `api/.ram-api-exempt.json`；旧工程手工补（`{"modules":["web"],"paths":["/auth/*"]}`，§4） |
+| `ram api --check` 报 `handler 未登记`（`auth/*`、`web/*`） | 内置模块有意无契约，而工程缺豁免清单 | cli ≥ 0.1.5 的 `ram init` 已内置 `api/.ram-api-exempt.json`；旧工程手工补（`{"modules":["web"],"paths":["/auth/*"]}`，§4） |
+| 登出 / 回跳登录落空，`/login` 空白或 404 | 工程缺 `login` 模块——shell 宿主只消费模块路由，不挂 runtime 内置登录兜底 | 保留 `modules.config.ts` 的 `login` 模块（cli ≥ 0.1.5 的 `ram init` 已内置 `modules/src/login`，§5） |
+| 登录后 / 点 logo 跳 `/home` 落 React Router 错误边界 | shell 预构建把 `VITE_BASE_HOME_PATH` 定为 `/home`，而工程缺 home 模块 | 保留 `modules.config.ts` 的 `home` 模块（cli ≥ 0.1.5 的 `ram init` 已内置 `modules/src/home`，§5） |
+| 通知铃请求 404 / `no route matched` | 缺 root 级 `/api/notifications` 端点（runtime 未注册 provider 时走内置兜底） | cli ≥ 0.1.5 的 `ram init` 已内置 `api/src/notifications`（root 级 handler + 表，参考 playground notification，§5） |
 | `ram api` 报 `Cannot find package '@react-antd-module/contract'` | 工程 devDeps 缺 `contract` | 新版 `ram init` 已内置；旧工程手动加并 `pnpm install` |
 | `typecheck` 报 `Property 'env' does not exist on type 'ImportMeta'` | 缺 `env.d.ts` / 未进 tsconfig include | 新版 `ram init` 已内置；旧工程补 `env.d.ts` 并加进 `include` |
 | `@types/react` / `typescript` 为 `*` | 宿主 versions.json 未收录 | 安装后钉成实际版本 |

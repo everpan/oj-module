@@ -1,7 +1,7 @@
 {
 	"name": "@react-antd-module/cli",
 	"type": "module",
-	"version": "0.1.4",
+	"version": "0.1.5",
 	"description": "React Antd Admin 模块工程命令行工具",
 	"license": "MIT",
 	"exports": {

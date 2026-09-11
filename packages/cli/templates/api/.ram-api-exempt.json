@@ -1,4 +1,4 @@
 {
-	"modules": ["web"],
+	"modules": ["web", "notifications"],
 	"paths": ["/auth/*"]
 }

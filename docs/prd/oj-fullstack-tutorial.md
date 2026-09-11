@@ -67,12 +67,15 @@ my-books/
 │   └── src/               # 后端模块源码
 │       ├── _platform/     # 框架级共有表（users）——普通模块但无路由
 │       ├── auth/          # login/refresh/logout（业务路由）+ _shared/session.ts
-│       └── web/           # 框架内置端点的参考实现：
-│           ├── hello/             # 演示业务端点（Bearer 保护）
-│           ├── user-info/         # 当前用户信息
-│           └── get-async-routes/  # 动态路由/菜单
+│       ├── web/           # 框架内置端点的参考实现：
+│       │   ├── hello/             # 演示业务端点（Bearer 保护）
+│       │   ├── user-info/         # 当前用户信息
+│       │   └── get-async-routes/  # 动态路由/菜单
+│       └── notifications/ # root 级 /api/notifications（runtime 通知铃兜底，表 + 种子）
 ├── modules/               # 前端
+│   ├── src/home/          # 首页模块：提供 /home（shell 预构建的 HOME 目标）
 │   ├── src/demo/          # 演示模块（entry.ts / pages / locales）
+│   ├── src/login/         # 登录模块：提供 /login 路由（shell 不挂内置登录兜底）
 │   └── dist/              # 构建产物（完整站点，dev/build 后出现）
 └── bin/oj                 # oj 可执行文件（init 下载，不入库）
 ```
@@ -411,7 +414,13 @@ pnpm exec ram api --check     # 生成物同步 / route 双向 / routes.js 无 d
 export default {
   baseUrl: "",
   modules: [
+    // home 必须保留且尽量靠前：shell 预构建把 "/" → VITE_BASE_HOME_PATH（=/home）
+    // 重定向，缺 /home 路由会让登录回跳 / 点 logo 落错误边界。
+    { name: "home", entry: "modules/src/home/entry.ts", enabled: true },
     { name: "demo", entry: "modules/src/demo/entry.ts", enabled: true },
+    // login 必须保留：shell 宿主只消费模块路由，不挂 runtime 内置 baseRoutes，
+    // 缺它 `/login` 无路由可跳（登出/回跳登录会落空）。
+    { name: "login", entry: "modules/src/login/entry.ts", enabled: true },
     { name: "books", entry: "modules/src/books/entry.ts", enabled: true }, // 新增
   ],
 };
@@ -602,6 +611,7 @@ pnpm preview      # = ram preview：oj migrate（ver 门禁）→ 起 server + �
 | `typecheck` 报 `Property 'env' does not exist on type 'ImportMeta'` | 缺 `env.d.ts` | 补 `env.d.ts` 并加进 tsconfig `include`（新版 init 已内置） |
 | 登录 401，且 msg 不是 `invalid credentials` | `/auth/*` 未在 `anonymous_paths` | 补进 `api/config.yaml` 后重启 |
 | 新增了模块目录但接口 404 | 目录镜像路由未生效 | **重启** `ram dev`（改 api.ts 才免重启） |
+| 通知铃请求 `/api/notifications` 404（`no route matched`） | 缺 root 级端点——runtime 未注册 provider 时走内置兜底 | cli ≥ 0.1.5 的 `ram init` 已内置 `api/src/notifications`（参考 playground notification）；旧工程补该模块 |
 | DELETE 请求 405 | 方法名写成了 `delete` | 改为 `del` |
 | `ram api` 报 apiPrefix 与目录名不符 | 违反 AC-D9 | 改 `apiPrefix` 或移动契约目录 |
 | 契约改了但前端类型没变 | 忘了重跑生成 | `ram api`；CI 用 `--check` 兜底 |
