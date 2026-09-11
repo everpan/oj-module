@@ -127,4 +127,63 @@ export default [
 			expect.objectContaining({ level: "error", kind: "routes-js-drift" }),
 		]));
 	});
+
+	it("③routes.js 的短方法名 del 归一为 DELETE（DELETE 端点不误报 drift）", async () => {
+		const cwd = mkdtempSync(join(process.cwd(), "node_modules/.cache/ojm-check-del-"));
+		tmpDirs.push(cwd);
+		mkdirSync(join(cwd, "api/src/order"), { recursive: true });
+		writeFileSync(join(cwd, "api/src/order/contract.ts"), `
+import { defineApi, z } from "@oj-module/runtime/contract";
+
+export const deleteOrder = defineApi({
+	apiPrefix: "/order",
+	route: "/item/{id}",
+	method: "DELETE",
+	params: z.object({ id: z.number() }),
+});
+`);
+		await runApi({ cwd });
+		mkdirSync(join(cwd, "api/dist/order-0.1.0"), { recursive: true });
+		writeFileSync(join(cwd, "api/dist/order-0.1.0/routes.js"), `// 由 oj build 生成；勿手改。
+export default [
+  { method: "del", pattern: "order/item/{id}", file: "item/api.js" },
+];
+`);
+		const { violations } = await checkApi({ cwd });
+		expect(violations.find(v => v.kind === "routes-js-drift")).toBeUndefined();
+	});
+
+	it("stub 缺失 → error artifact-stale（缺失同样算过期，不再静默放过）", async () => {
+		const cwd = makeProject();
+		await runApi({ cwd });
+		rmSync(join(cwd, "api/src/order/list/api.ts"), { force: true });
+		rmSync(join(cwd, "api/src/order/item/api.ts"), { force: true });
+		const { violations } = await checkApi({ cwd });
+		const stale = violations.filter(v => v.kind === "artifact-stale");
+		expect(stale.some(v => v.level === "error" && v.message.includes("stub 缺失"))).toBe(true);
+	});
+
+	it("契约变更 → stub 过期报 error artifact-stale（锁住 update 报错分支）", async () => {
+		const cwd = makeProject();
+		await runApi({ cwd });
+		// 契约加字段：client/routes/openapi 与 stub 示例值都会变，stub 必须也在报错之列
+		writeFileSync(join(cwd, "api/src/order/contract.ts"), `
+import { defineApi, z } from "@oj-module/runtime/contract";
+
+export const getOrderList = defineApi({
+	apiPrefix: "/order",
+	route: "/list",
+	data: z.object({ list: z.array(z.object({ id: z.number() })), total: z.number(), page: z.number() }),
+});
+
+export const getOrderDetail = defineApi({
+	apiPrefix: "/order",
+	route: "/item/{id}",
+	params: z.object({ id: z.number() }),
+	data: z.object({ id: z.number() }),
+});
+`);
+		const { violations } = await checkApi({ cwd });
+		expect(violations.some(v => v.kind === "artifact-stale" && v.message.includes("stub 待随契约更新"))).toBe(true);
+	});
 });

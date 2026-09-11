@@ -1,5 +1,11 @@
 import type { ApiDefinitionInput } from "@oj-module/runtime/contract";
-import { API_DEF, API_DEF_LEGACY } from "@oj-module/runtime/contract";
+import { API_DEF } from "@oj-module/runtime/contract";
+
+/**
+ * 旧端点品牌标记（`ram.api.def`）：存量工程若仍装着旧 runtime 产物，其端点打旧符号。
+ * 只读兼容识别，故意不进 runtime 公共出口（兼容专用、且下个 major 会随之移除）。
+ */
+const API_DEF_LEGACY = Symbol.for("ram.api.def");
 
 /**
  * AC-D12：契约 IR 构建 + schema 白名单。

@@ -12,7 +12,6 @@
 		"./config": "./src/config.ts",
 		"./manifest": "./src/manifest.ts",
 		"./info": "./src/info.ts",
-		"./shell-dist": "./shell-dist",
 		"./shell-dist/*": "./shell-dist/*"
 	},
 	"bin": {

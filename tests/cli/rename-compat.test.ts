@@ -6,7 +6,10 @@ import { checkApi, loadExemption } from "../../packages/cli/src/contract/check";
 import { planStubWrites } from "../../packages/cli/src/contract/emit-stub";
 import { buildIr } from "../../packages/cli/src/contract/ir";
 import { runApi } from "../../packages/cli/src/contract/run";
-import { API_DEF, API_DEF_LEGACY, defineApi, z } from "../../packages/runtime/contract";
+import { API_DEF, defineApi, z } from "../../packages/runtime/contract";
+
+/** 旧品牌符号：runtime 不再公开它，测试按兼容约定自行声明 */
+const API_DEF_LEGACY = Symbol.for("ram.api.def");
 
 /**
  * P3 改名兼容读取三连（设计 §7 R2/R3/R4）：
@@ -104,6 +107,23 @@ describe("r2：stub 指纹头双前缀接受", () => {
 		expect(item?.action).toBe("update");
 		expect(item?.prefixUpgrade).toBeFalsy();
 		expect(item?.content).toContain("page");
+	});
+
+	it("crlf 检出的 stub 不误报：新头 CRLF → 字节一致 skip；旧头 CRLF → 纯前缀升级", async () => {
+		const first = await planStubWrites(ir, { apiSrcDir: "api/src", eslintFix: identityFix, readFile: () => undefined });
+		const base = first.find(w => w.filePath === FILE)!.content;
+
+		// Windows core.autocrlf=true 检出：文件变 CRLF，内容其实没变 → 零写入
+		const crlf = new Map([[FILE, base.replaceAll("\n", "\r\n")]]);
+		const same = await planStubWrites(ir, { apiSrcDir: "api/src", eslintFix: identityFix, readFile: p => crlf.get(p) });
+		expect(same.find(w => w.filePath === FILE)?.action).toBe("skip");
+
+		// 旧头 + CRLF：仍识别为纯前缀升级（比较前统一 LF）
+		const legacyCrlf = new Map([[FILE, base.replace("// ojm-api:stub", "// ram-api:stub").replaceAll("\n", "\r\n")]]);
+		const up = await planStubWrites(ir, { apiSrcDir: "api/src", eslintFix: identityFix, readFile: p => legacyCrlf.get(p) });
+		const item = up.find(w => w.filePath === FILE);
+		expect(item?.action).toBe("update");
+		expect(item?.prefixUpgrade).toBe(true);
 	});
 
 	it("checkApi：存量旧头 stub 不误报过期，重跑后刷为新头", async () => {

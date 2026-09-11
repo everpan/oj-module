@@ -21,10 +21,11 @@ function readJson<T = any>(p: string): T {
 const cliPkg = readJson(`${CLI_DIR}/package.json`);
 
 describe("cli↔runtime 依赖钉版（R9）", () => {
-	it("dependencies 声明 @oj-module/runtime（发布转精确版本）", () => {
+	it("dependencies 声明 @oj-module/runtime（仓内 workspace:*，发布转精确版本）", () => {
 		const spec = cliPkg.dependencies?.["@oj-module/runtime"];
 		expect(spec, "cli 必须直接依赖 runtime").toBeTruthy();
-		// 仓内是 workspace:*（发布时 pnpm 改写为精确版本）；显式 ^/~ 会允许漂移，禁止
+		// 仓内是 workspace:*（pnpm 发布时改写为精确版本）；显式 ^/~ 会允许漂移，禁止。
+		// 「发布产物里不得残留 workspace:」由 release-manifest.test.ts 真跑 pnpm pack 守护。
 		expect(spec).not.toMatch(/^[\^~]/);
 		expect(spec).toMatch(/^(?:workspace:\*|\d+\.\d+\.\d+)/);
 	});
@@ -98,6 +99,8 @@ describe("模块源码不得 import cli（R6）", () => {
 	const moduleRoots = [
 		path.join(PROJECT_ROOT, "apps/playground/modules/src"),
 		path.join(PROJECT_ROOT, "apps/playground-oj/modules/src"),
+		// 根 App 链自己的模块目录（架构评审：vite alias 也把它当模块树，此前漏检）
+		path.join(PROJECT_ROOT, "modules/src"),
 		path.join(CLI_DIR, "templates/modules/src"),
 	];
 
@@ -120,5 +123,42 @@ describe("模块源码不得 import cli（R6）", () => {
 			}
 		}
 		expect(offenders, `模块源码不得 import cli：${offenders.join(", ")}`).toEqual([]);
+	});
+});
+
+describe("旧 scope 零残留（R7）", () => {
+	// 允许留旧名的例外：历史归档（下方跳过 docs/archive）、记录本次迁移的设计文档与手册，
+	// 以及本测试自身（断言里含旧 scope 字面量）
+	const EXEMPT = new Set([
+		path.join(PROJECT_ROOT, "docs/prd/202609110947-oj-module-two-package-consolidation-design.md"),
+		path.join(PROJECT_ROOT, "docs/prd/framework-development-guide.md"),
+		path.join(PROJECT_ROOT, "tests/cli/package-guards.test.ts"),
+	]);
+	const SKIP_DIRS = new Set(["node_modules", ".git", "dist", "build", "shell-dist", "coverage", "analyzer", ".e2e-legacy", "playwright-report", "test-results"]);
+	const TEXT = /\.(?:ts|tsx|js|jsx|mjs|cjs|json|yaml|yml|md|html|txt|sql|css)$/;
+
+	function walk(dir: string, hit: string[]): void {
+		for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+			const full = path.join(dir, entry.name);
+			if (entry.isDirectory()) {
+				if (SKIP_DIRS.has(entry.name))
+					continue;
+				// docs/archive 保留历史改名痕迹，不回写
+				if (path.relative(PROJECT_ROOT, full) === "docs/archive")
+					continue;
+				walk(full, hit);
+				continue;
+			}
+			if (!TEXT.test(entry.name) || EXEMPT.has(full))
+				continue;
+			if (fs.readFileSync(full, "utf-8").includes("@react-antd-module"))
+				hit.push(path.relative(PROJECT_ROOT, full));
+		}
+	}
+
+	it("全仓零 @react-antd-module（docs/archive 与迁移设计文档除外）", () => {
+		const offenders: string[] = [];
+		walk(PROJECT_ROOT, offenders);
+		expect(offenders, `旧 scope 残留：${offenders.join(", ")}`).toEqual([]);
 	});
 });

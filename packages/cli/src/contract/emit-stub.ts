@@ -191,7 +191,7 @@ export async function planStubWrites(ir: IrEndpoint[], opts: PlanStubOptions): P
 			});
 			continue;
 		}
-		if (existing === content) {
+		if (toLf(existing) === toLf(content)) {
 			writes.push({ filePath, content, action: "skip", reason: "契约未变，产物字节一致（零写入）" });
 			continue;
 		}
@@ -212,11 +212,20 @@ export async function planStubWrites(ir: IrEndpoint[], opts: PlanStubOptions): P
 	return writes;
 }
 
-/** 旧指纹头（存量生成物）→ 换成新头后与期望内容逐字节一致 ⇔ 纯前缀升级 */
+/**
+ * 旧指纹头（存量生成物）→ 换成新头后与期望内容一致 ⇔ 纯前缀升级。
+ * 比较前统一 LF：Windows `core.autocrlf=true` 检出会把 stub 变成 CRLF，
+ * 而指纹哈希本就按 LF 归一（hashContent）——若这里按字节比会误报「待更新」。
+ */
 function isPrefixOnlyUpgrade(existing: string, content: string): boolean {
 	if (!LEGACY_FINGERPRINT_HEAD.test(existing))
 		return false;
-	return existing.replace(LEGACY_FINGERPRINT_HEAD, "// ojm-api:stub ") === content;
+	return toLf(existing.replace(LEGACY_FINGERPRINT_HEAD, "// ojm-api:stub ")) === toLf(content);
+}
+
+/** 换行归一（CRLF → LF），供逐字节比较使用（与 hashContent 的归一保持一致） */
+function toLf(text: string): string {
+	return text.replaceAll("\r\n", "\n");
 }
 
 /** 落盘：仅 create/update 写文件（父目录递归创建）；skip 零写入 */

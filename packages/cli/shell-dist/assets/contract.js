@@ -10,7 +10,6 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
 var contract_exports = {};
 __export(contract_exports, {
   API_DEF: () => API_DEF,
-  API_DEF_LEGACY: () => API_DEF_LEGACY,
   ContractApiError: () => ContractApiError,
   defineApi: () => defineApi,
   z: () => external_exports
@@ -44,7 +43,6 @@ function validateDefinition(def) {
     fail(route, "HEAD \u7AEF\u70B9\u65E0\u54CD\u5E94\u4F53\uFF0C\u4E0D\u80FD\u58F0\u660E data schema\u2014\u2014\u9700\u8981\u54CD\u5E94\u4F53\u8BF7\u6539\u7528 GET\u3002");
 }
 var API_DEF = /* @__PURE__ */ Symbol.for("ojm.api.def");
-var API_DEF_LEGACY = /* @__PURE__ */ Symbol.for("ram.api.def");
 function defineApi(def) {
   validateDefinition(def);
   Object.defineProperty(def, API_DEF, { value: true, enumerable: false });
@@ -18933,7 +18931,6 @@ function date4(params) {
 var ojm_shim_contract_default = void 0 ?? contract_exports;
 export {
   API_DEF,
-  API_DEF_LEGACY,
   ContractApiError,
   ojm_shim_contract_default as default,
   defineApi,

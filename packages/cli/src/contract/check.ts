@@ -244,8 +244,12 @@ function reconcileRoutes(contractIr: IrEndpoint[], handlers: HandlerRow[], exemp
 /** routes.js（oj build 产物）行解析：`{ method: "get", pattern: "order/list", ... }` */
 function parseRoutesJs(text: string): { method: string, pattern: string }[] {
 	const rows: { method: string, pattern: string }[] = [];
-	for (const m of text.matchAll(/\{\s*method:\s*"(\w+)",\s*pattern:\s*"([^"]+)"/g))
-		rows.push({ method: m[1].toUpperCase(), pattern: m[2] });
+	for (const m of text.matchAll(/\{\s*method:\s*"(\w+)",\s*pattern:\s*"([^"]+)"/g)) {
+		// oj 的路由表用短方法名（DELETE → "del"）；与契约 IR 的 HTTP 名对齐（同 VERB_OF 口径），
+		// 否则 uni-dev 工程里任何 DELETE 端点都会被误报 routes-js-drift。
+		const method = VERB_OF[m[1].toLowerCase()] ?? m[1].toUpperCase() as string;
+		rows.push({ method, pattern: m[2] });
+	}
 	return rows;
 }
 
@@ -284,12 +288,21 @@ export async function checkApi(opts: { cwd: string, exempt?: string }): Promise<
 				});
 			}
 		}
-		// stub 待更新（指纹匹配但契约已变）也属生成物过期。
+		// stub 生成物：缺失（create）与待更新（update，指纹匹配但契约已变）都属过期。
 		// 纯指纹头前缀升级（旧 ram-api:stub → 新 ojm-api:stub，正文未变）不算过期：
 		// 存量工程升级后首次 --check 不应因改名误报（R2 平滑升级）。
 		if (found.kind === "uni-dev") {
 			const stubWrites = await planStubWrites(ir, { apiSrcDir: join(opts.cwd, "api/src") });
 			for (const w of stubWrites) {
+				if (w.action === "create") {
+					violations.push({
+						level: "error",
+						kind: "artifact-stale",
+						message: `[ojm-api] stub 缺失：${relative(opts.cwd, w.filePath)}——请重跑 ojm api 生成。`,
+						filePath: w.filePath,
+					});
+					continue;
+				}
 				if (w.action === "update" && !w.prefixUpgrade) {
 					violations.push({
 						level: "error",
