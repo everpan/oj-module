@@ -272,9 +272,9 @@ Feature: 品牌零残留
 | **P0** | 前置 | 确认 `@oj-module` scope（已完成）；建分支 | scope 可发布 |
 | **P1** | 包合并（结构） | contract 并入 runtime 子路径 + dist 构建；shell 迁入 cli；`resolveShellDist` 三处收敛；exports/files/bin 调整 | ✅ **完成 2026-09-11**（见 §12）；`typecheck` + 550 用例全绿 + `build:shell` 门禁通过 + playground `ram build` 端到端通过 |
 | **P2** | 改名（scope） | 机械替换包名、import、模板、工程、根配置、测试、文档 | ✅ **完成 2026-09-11**（见 §12）；全仓 `@react-antd-module` 零命中；typecheck + lint + 550 用例 + 产物重建全部通过 |
-| **P3** | 改名（bin + 内部前缀 + 兼容） | 双 bin；`.ojm-api-exempt.json`；指纹头双前缀；`Symbol.for` 双符号；日志前缀 | 存量工程升级演练通过 |
-| **P4** | 守卫与验收 | 新增 §8.2 守卫测试；改造 §8.1 既有测试；`prepack` 断言 | 全部 BDD 场景通过；`pnpm test` 全绿 |
-| **P5** | 发布演练 | `npm pack --dry-run` 校验两包内容；playground 与 playground-oj 端到端 | 两包同版本号发布演练成功；外部工程 2 包安装可用 |
+| **P3** | 改名（bin + 内部前缀 + 兼容） | 双 bin；`.ojm-api-exempt.json`；指纹头双前缀；`Symbol.for` 双符号；日志前缀 | ✅ **完成 2026-09-11**（见 §12）；存量兼容三连（旧 exempt / 旧指纹头 / 旧 Symbol）有单测；`ram` 别名实测打印警告并转发 |
+| **P4** | 守卫与验收 | 新增 §8.2 守卫测试；改造 §8.1 既有测试；`prepack` 断言 | ✅ **完成 2026-09-11**（见 §12）；新增 18 条守卫/兼容用例；`pnpm lint` 0 error |
+| **P5** | 发布演练 | `npm pack --dry-run` 校验两包内容；playground 与 playground-oj 端到端 | ✅ **完成 2026-09-11**（见 §12）；两包 pack 演练通过（顺手修掉 sourcemap 误发布），两 playground `ojm build` + `ojm dev` 端到端通过 |
 
 每个 Phase 独立建分支、独立评审与回滚。
 
@@ -383,7 +383,101 @@ Feature: 品牌零残留
 
 ---
 
-## 13 反常识 / 陷阱记录（P1 / P2 新增）
+### P3 命令与内部前缀改名 — 完成 2026-09-11
+
+**范围**：命令 `ram` → `ojm`（双 bin + 弃用别名）；内部 `ram-` 前缀全改（文件名、指纹头、Symbol、日志前缀、临时文件/DOM 标记、esbuild 插件与命名空间、自动生成的子路径资产名前缀），并**兼容读旧名**。
+
+**落地结果**
+
+| 项 | 结果 |
+|---|---|
+| bin | `bin/ojm.mjs`（主入口，原 `ram.mjs` 内容）；`bin/ram.mjs` 改为 6 行 shim：stderr 打印更名警告后 `import("./ojm.mjs")` 原地转发；`package.json#bin` 同时提供 `ojm` + `ram` |
+| 机械替换面 | 127 个文件（`\bram\b` → `ojm`，`__ram_reload` → `__ojm_reload`，`RAM_DEBUG` → `OJM_DEBUG`）；`docs/archive`、设计文档、生成物（`build/`、`shell-dist/`、`dist/`、redoc 文档站）排除 |
+| 豁免清单 | 模板 `templates/api/.ram-api-exempt.json` → `.ojm-api-exempt.json`；`apps/playground-oj/api/` 同步 `git mv`；`loadExemption` 新增 `resolveExemptPath`：新名优先、旧名回退（R4） |
+| stub 指纹 | 写 `// ojm-api:stub`；读正则 `(?:ojm\|ram)-api:stub`（R2）——旧头不会被判「人工编辑」，且重跑会把旧头刷成新头 |
+| 端点品牌 | `API_DEF = Symbol.for("ojm.api.def")`；新增只读 `API_DEF_LEGACY = Symbol.for("ram.api.def")` 并从 `contract` 子路径导出；`buildIr` 双符号识别（R3）；`defineApi` 新写只发新符号 |
+| 日志/报错前缀 | `[ram]` → `[ojm]`、`[ram-api]` → `[ojm-api]`（纯文本，无兼容） |
+| 瞬时/内部标识 | `.ram-shim-*`/`.ram-tmp-*`/`data-ram-css`/`data-ram-runtime-css` → `ojm`；esbuild 插件 `ram-external-shared`、`ram-contract-runtime-guard`、`ram-*-stub`、命名空间 `ram-stub`、`ram:collect-chunks` → `ojm-*`；`.gitignore` 的 `.ram-tmp-*` → `.ojm-tmp-*` |
+| 自动子路径资产名 | `subpathAssetName()` 前缀 `ram-` → `ojm-`（`ojm-antd-es-modal.js`、`ojm--ant-design-icons-*` 等）；`shell-dist` 全量重建 |
+| 生成物重跑 | runtime 内置 role client（`scripts/gen-internal-role-client.ts`）、`apps/{playground,playground-oj}`（`ojm api`）重跑均 0 写入，证明机械替换与生成器输出一致 |
+| 额外改名（§6.2/6.3 未列，按「全改」精神补） | `__ram_reload(.js)` → `__ojm_reload(.js)`（dev SSE 端点）；`RAM_DEBUG` → `OJM_DEBUG`（旧名回退读）；`playbook` 的 `RAM_REPO` → `OJM_REPO` |
+
+**验证（全部通过）**
+
+- `pnpm typecheck`；`pnpm lint` **0 error / 63 warning**（与 P2 基线一致）
+- `pnpm exec vitest run`：**89 文件 / 568 用例全绿**（P2 为 87/550，新增 2 文件 18 用例）
+- `pnpm --filter @oj-module/cli build:shell`：119 资产门禁通过，子路径资产名为 `ojm-*`
+- 根 `pnpm build`：importmap 118 键注入成功
+- `pnpm --filter playground build`、`pnpm --filter playground-oj build`（含 oj 后端 7 模块）：全通
+- `ojm dev 5188`：HTTP 200，importmap 三键指向 `runtime.js`/`contract.js`/`contract-errors.js`，日志「宿主来自 @oj-module/cli 内置 shell-dist」
+- `node bin/ram.mjs`（无参）：stderr 打印更名警告、stdout 为 `ojm` 用法、exit 0；`node bin/ojm.mjs` 无警告
+
+**关键过程与耗时**
+
+- 耗时约 **40 分钟**（10:28–11:0x），大头在产物链重建与一次 lint 返工。
+- 返工点：`usage.ts` 用模板字符串承载用法文本，新增的「`ram` 是弃用别名」一句里含反引号 → 截断模板字面量（TS1005）。改为普通文本。
+- lint 返工：P2 把根 `.gitignore` 的 `bin/` 锚定为 `/bin/`（修 A33）后，`apps/*/bin/**` 不再被根 `.gitignore` 命中；而 eslint 只读根 `.gitignore`（不读 `apps/*/` 内的嵌套 `.gitignore`），于是把联网落盘的 `bin/devkit/global.d.ts` 当源码 lint → 一次冒出 343 error。**对策**：eslint `ignores` 补 `apps/*/bin/**`。见 §13 A35。
+
+**与 P2 遗留文档债的关系**
+
+- P2 记录的「手册深层章节仍以宿主/shell 叙事」仍未重写；本次仅顺带修掉 `packages/cli/README.md`、`packages/cli/shell/README.md`、`packages/runtime/README.md` 里与双包/命名直接冲突的段落（`@oj-module/shell` 消费者、`ram` 命令、`.bin` 提示）。
+
+---
+
+### P4 守卫与验收 — 完成 2026-09-11
+
+**范围**：把 §8.2 的守卫落成测试；确认 §8.1 既有测试已在 P1/P2 改造完毕（复核通过，无需再改）。
+
+**落地结果**
+
+| 新增用例 | 断言 |
+|---|---|
+| `tests/cli/package-guards.test.ts`（8） | cli `dependencies["@oj-module/runtime"]` 非 `^`/`~`（R9）；`shell-dist/versions.json` 的 runtime/contract/contract-errors 版本 == `packages/runtime` 版本（D12）；`bin` 双入口且文件存在；`ram` shim 含更名警告与转发；`versions.json` 覆盖全部硬共享；runtime `files == ["dist"]` 且 dist 无裸 `.ts`（R8/US-7）；cli `files` 含 `bin`/`shell-dist`/`src`/`templates`/`vendor` 且含 sourcemap 取反模式；模块源码（两 playground + 模板）零 `import @oj-module/cli`（R6） |
+| `tests/cli/rename-compat.test.ts`（10） | R4 旧名豁免读取 + 新名优先 + 双缺失空豁免；R2 旧指纹头被判 update（契约变/未变两种）且**不**放大权限（内容被改仍 skip）；R3 `defineApi` 只发新符号、`buildIr` 认旧符号、无符号被忽略；R1 usage 用 `ojm` 并标注 `ram` 弃用 |
+
+**既有测试改造复核（§8.1）**
+
+- 表格中 7 项在 P1/P2 已完成：`runtime-declarations`（exports 三子路径 + contract dist）、`monorepo-layout`（包路径）、`vertical-slice`/`uni-dev-smoke`（路径与 `@oj-module/cli` 内置宿主）、`shared-deps`、`tests/shell/*`、`tests/playground/*`、`contract-emit-client`。
+- 本次仅随改名更新断言文本与夹具：`contract-emit-stub`（指纹前缀）、`contract-exempt`（豁免文件名默认值）、`init`（`.ojm-api-exempt.json`）、`cli-build`（`.bin/ojm`）、`uni-dev-smoke`（`OJM` 常量 + `bin/ojm.mjs`）等。
+- `prepack` R5 断言（宿主 runtime 版本 == `packages/runtime` 版本 + shell-dist 必须存在）在 P1 已落在 `scripts/sync-host-versions.mjs`，本次复核通过。
+
+**验证（全部通过）**
+
+- `pnpm lint`：0 error / 63 warning；`pnpm typecheck` 干净；`pnpm exec vitest run` 89 文件 / 568 用例全绿。
+
+---
+
+### P5 发布演练 — 完成 2026-09-11
+
+**范围**：`npm pack --dry-run` 校验两包内容；两 playground 端到端；外部工程可用性以 BDD 场景回归。
+
+**pack 演练结果**
+
+| 包 | 条目 | 体积 | 关键断言 |
+|---|---|---|---|
+| `@oj-module/runtime` | 184 | ~305 KB | 无 `src/`；无非 `.d.ts` 的 `.ts`；`exports` 三子路径声明文件齐全 |
+| `@oj-module/cli` | 199 | ~3.85 MB | `bin/{ojm,ram}.mjs`、`shell-dist/index.html`+`versions.json`、119 个资产、`templates/api/.ojm-api-exempt.json` 均在；**0 个 `.map`** |
+
+**演练发现并修复：sourcemap 会被误发布**
+
+- 现象：首次 pack 出 117 个 `shell-dist/assets/*.map`，体积 10.8 MB（3 倍）。
+- 根因：设计 P4.4 要求「`.map` 不发版」，但排除依据只是仓库**根** `.gitignore`；npm 的 `gitignore-fallback` 只读**包根**的忽略文件，`packages/cli` 没有 `.npmignore` → 不生效。又因 npm 规则「列入 `files` 的文件无法被 `.npmignore` 排除」，补 `.npmignore` 亦无效。
+- 修复：`package.json#files` 用取反模式 `"!shell-dist/**/*.map"`。**但顺序有语义**：npm 按出现顺序应用模式、**后者优先**，取反项必须排在 `shell-dist` **之后**才生效（实测排前面 117 个 map 照发，排后面 0 个）。该顺序与 `jsonc/sort-array-values` 的字典序要求冲突 → 对 `packages/cli/package.json` 单独关掉该规则，并在守卫用例中断言取反项位于 `shell-dist` 之后。见 §13 A34。
+- 结果：cli pack 由 316 条 / 10.8 MB → 199 条 / 3.85 MB。
+
+**端到端（全部通过）**
+
+- `pnpm --filter playground build`（`ojm build`）与 `pnpm --filter playground-oj build`（oj 后端 7 模块 + 前端 11 模块）
+- `ojm dev 5188`：HTTP 200 + 118 键 importmap + 三键新资产；退出无孤儿进程
+- BDD 场景回归：`ram dev`（存量 scripts 写法）实测打印警告并转发；旧 `.ram-api-exempt.json` + 旧 `ram-api:stub` 由 P4 单测覆盖「不误报 + 新头升级」
+
+**遗留（不阻塞发布）**
+
+- `apps/playground/docs/api/index.html`、`apps/playground-oj/api/docs/index.html` 是 `ojm api --docs` 生成的离线 redoc 单文件，内含旧品牌文本；重新生成需联网 CDN，留待下次按需复跑。
+
+---
+
+## 13 反常识 / 陷阱记录（P1–P5 新增）
 
 | # | 现象 | 说明与对策 |
 |---|---|---|
@@ -394,3 +488,9 @@ Feature: 品牌零残留
 | A31 | **构建产物目录改名会让 lint 忽略失效** | `.gitignore` 的 `dist/**` 与 eslint 默认忽略都按目录名匹配；新名 `shell-dist` 不在其中。而 `lint-staged` 对**所有** staged 文件跑 `eslint --fix` —— 会把预构建产物当源码重排。**对策**：新增产物目录名时，同步补 `.gitignore` 白名单与 eslint `ignores`。 |
 | A32 | **改名后要重建的不止 `packages/*/dist`** | 「嵌了裸说明符」的产物还有根 `build/`（主应用 chunk + 注入的 importmap）与 `apps/*/modules/dist`（模块产物）。只重建 runtime/shell 的话，`inject-importmap` 的「裸说明符必须被 importmap 全覆盖」门禁会立刻报红——表现为 `tests/cli/prod-importmap.test.ts` 失败（该测试在 **import 期**执行 `main()`，一旦门禁抛错就 `process.exit(1)`，整文件 9 个用例一起消失）。**对策**：改名后的重建顺序 = runtime → `cli build:shell` → `apps/*` 模块产物 → 根 `pnpm build`。 |
 | A33 | **「已跟踪但被 .gitignore 命中」的文件会卡死 lint-staged** | `.gitignore` 的 `bin/` 未锚定根目录，连带命中 `packages/cli/bin/`（`ram.mjs` 是历史上 `git add -f` 强加进来的）。lint-staged 跑完 task 后要 `git add` 这些路径，git 以「paths are ignored」拒绝 → 提交整体失败，且 lint-staged 默认只报 `failed due to a git error`，真实原因要 `npx lint-staged --debug` 才看得到（现象是进入暂存阶段才失败）。**对策**：忽略规则锚定根目录（`/bin/`）；不要 `git add -f` 造出「跟踪且忽略」的文件。 |
+| A34 | **`files` 白名单里的文件无法被 `.npmignore` 排除，且取反模式有顺序语义** | 想不发布 `shell-dist/**/*.map`，加 `packages/cli/.npmignore` 完全无效（117 个 map、10.8 MB 照发）。npm 规则：`package.json#files` 列出的目录/文件优先级最高，`.npmignore`/`.gitignore` 只能过滤**未被 `files` 显式包含**的路径；而 `gitignore-fallback` 只读**包根**的忽略文件（仓库根 `.gitignore` 不管用）。**对策**：用 `files` 内的取反模式 `"!shell-dist/**/*.map"`，且**必须排在 `shell-dist` 之后**——npm 按顺序应用、后者优先，排前面不生效（实测 117 → 排后 0）。副作用：与 `jsonc/sort-array-values` 的字典序冲突，需对该文件关掉排序规则（`eslint.config.js` 里已单独配置）。 |
+| A35 | **eslint 只读根 `.gitignore`，不读子目录 `.gitignore`** | P2 把根 `.gitignore` 的 `bin/` 锚成 `/bin/`（修 A33）后，`apps/playground-oj/bin/` 虽仍被该工程的 `.gitignore` 忽略（git 层面干净），但 eslint 的 gitignore 集成只看根文件 → 把联网落盘的 `bin/devkit/global.d.ts` 当源码 lint，一次 343 error。**对策**：eslint `ignores` 补 `apps/*/bin/**`。教训：改 `.gitignore` 的锚定/范围时，要同步核对 eslint 的忽略面（反之亦然）。 |
+| A36 | **`pnpm install` 不会因 workspace 包 `bin` 字段变化而重建 app 的 `.bin`** | cli 的 `bin` 从 `{ram}` 改成 `{ojm, ram}` 后，`apps/playground/node_modules/.bin/` 里仍只有 `ram`；`pnpm install` 甚至 `--force` 都报 “Already up to date”，删掉 `.bin` 目录也不重建。**对策**：删掉该 app 的整个 `node_modules` 再 install（会重新解析 bin 并创建 shim）。否则依赖 `.bin/ojm` 的用例会以 ENOENT 失败。 |
+| A37 | **模板字面量里写反引号会截断字符串** | `usage.ts` 的用法文本是模板字面量；新增一句「`ram` 是 `ojm` 的弃用别名」里的反引号把字符串提前闭合 → `TS1005`。**对策**：模板文本里不要用反引号，或转义 `\``。 |
+| A38 | **机械改名要“改源码 + 重跑生成器”双向对齐，不能只改一边** | 生成的 `client.ts`/`stub` 也含品牌文本与指纹头。只机械替换磁盘文件的话，下次 codegen 会与已提交内容分叉（`--check` 报 `artifact-stale`）。**验证手法**：改完源码后重跑 `ojm api`（与 `gen-internal-role-client.ts`），若输出「写入 0 / 跳过（未变）」，即证明机械替换与生成器输出逐字节一致。 |
+| A39 | **MAC 上 `grep -E '\bram\b'` 不可靠** | BSD grep 的 ERE 不支持 `\b` 词边界（静默不匹配），用它做「零残留」判据会漏。**对策**：改名扫描用 ripgrep（`\b` 受支持）或 `perl -ne '/\bram\b/'`；`git grep -E` 同理不可靠。 |
