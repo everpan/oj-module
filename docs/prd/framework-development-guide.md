@@ -6,7 +6,8 @@
 > **想直接上手做项目**：看配套实战演练 [`oj-fullstack-tutorial.md`](./oj-fullstack-tutorial.md)（从零搭一个 oj 前后端应用）。
 > 面向「业务模块作者」的手册是 [`module-development-guide.md`](../archive/prd/module-development-guide.md)，两本手册读者不同，不要混读。
 >
-> ⚠️ **结构变更（已全量落实）**：本手册已按两轮改造逐句核对——**P1/P2 包合并与 scope 改名**（原 4 包 contract / runtime / shell / cli → 2 包 `runtime` / `cli`，`@react-antd-module` → `@oj-module`），以及 **P3 命令与内部前缀改名**（`ram` → `ojm`，内部 `ram-*` → `ojm-*`，**兼容读旧名**）。全文已无「独立 shell/contract 包」「`ram` 命令」口径；依据与迁移记录见 [`202609110947-oj-module-two-package-consolidation-design.md`](./202609110947-oj-module-two-package-consolidation-design.md)（§12 实施记录、§13 陷阱 A27–A40）。
+> ⚠️ **结构变更（已全量落实）**：本手册已按两轮改造逐句核对——**P1/P2 包合并与 scope 改名**（原 4 包 contract / runtime / shell / cli → 2 包 `runtime` / `cli`，`@react-antd-module` → `@oj-module`），以及 **P3 命令与内部前缀改名**（`ram` → `ojm`，内部 `ram-*` → `ojm-*`，**兼容读旧名**）。全文已无「独立 shell/contract 包」「`ram` 命令」口径；依据与迁移记录见 [`202609110947-oj-module-two-package-consolidation-design.md`](./202609110947-oj-module-two-package-consolidation-design.md)（§12 实施记录、§13 陷阱 A27–A46）。
+> 旧 scope 的 4 个包（`@react-antd-module/{runtime,cli,contract,shell}`）已在 npm 全量 **deprecate**，安装时会提示迁移到 `@oj-module/*`；两包当前同版 **`0.1.5`**。
 
 ---
 

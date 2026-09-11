@@ -36,6 +36,11 @@ export default defineConfig({
 	resolve: {
 		alias: [
 			{ find: "#src", replacement: path.resolve("packages/runtime/src") },
+			// App 链入口（packages/runtime/src/index.tsx）import "#manifest.json"。
+			// 该说明符原先由 runtime 包的 `imports` 映射到 ../../manifest.json——但那是
+			// **仓库内 App 链**的解析需求，不该写进对外发布的包（会指向包外路径）。
+			// 现改由本仓库 vite 配置解析，runtime 包只保留 `#src/*`（评审 R6/边界）。
+			{ find: "#manifest.json", replacement: path.resolve("manifest.json") },
 			// monorepo 内将包名直指 runtime 源码，模块工程与宿主同源编译（P3.2）
 			// 注意 alias 是**前缀匹配**：更具体的 /contract 子路径必须排在前面，
 			// 否则会被 runtime 主入口规则错误改写为 ".../src/index.ts/contract"

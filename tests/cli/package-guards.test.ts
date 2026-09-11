@@ -93,6 +93,31 @@ describe("发布内容守卫（R8 / US-7）", () => {
 		expect(cliPkg.files).toContain("!shell-dist/**/*.map");
 		expect(cliPkg.files.indexOf("!shell-dist/**/*.map")).toBeGreaterThan(cliPkg.files.indexOf("shell-dist"));
 	});
+
+	it("runtime 的 imports 不逃出包边界（只留 #src/*）", () => {
+		const pkg = readJson<{ imports?: Record<string, string> }>(RUNTIME_PKG);
+		// #modules/*、#manifest.json 曾指向 ../../（包外路径），已迁到仓库 vite 配置解析
+		expect(Object.keys(pkg.imports ?? {})).toEqual(["#src/*"]);
+	});
+});
+
+describe("cli 的 Node/浏览器边界（R6 硬分区）", () => {
+	const NODE_ONLY = [".", "./build", "./shared-deps", "./esm-exports", "./config", "./manifest", "./info"];
+
+	it("node-only 子路径挂 browser 守护条件，shell-dist 浏览器资产不加", () => {
+		for (const key of NODE_ONLY) {
+			const entry = cliPkg.exports[key];
+			expect(entry, `${key} 缺 browser 条件`).toMatchObject({ browser: "./src/browser-guard.ts" });
+			expect(String(entry.default), `${key} 的 default 应指向 src 源码`).toMatch(/^\.\/src\/.+\.ts$/);
+		}
+		// shell-dist/* 就是浏览器资产（经 HTTP 路径消费），不应被拦
+		expect(cliPkg.exports["./shell-dist/*"]).toBe("./shell-dist/*");
+		expect(fs.existsSync(path.join(CLI_DIR, "src/browser-guard.ts"))).toBe(true);
+	});
+
+	it("浏览器条件指向的守护模块确实抛错（误用即刻可见）", async () => {
+		await expect(import("../../packages/cli/src/browser-guard.ts")).rejects.toThrow(/Node 工具链包/);
+	});
 });
 
 describe("模块源码不得 import cli（R6）", () => {

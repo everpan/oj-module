@@ -201,7 +201,7 @@ devDependencies 由 4 个框架包降为 2 个：
 | R3 | `Symbol.for` 换名 → 存量产物定义不被新 codegen 识别 | IR 双符号识别 |
 | R4 | `.ram-api-exempt.json` 改名 → 存量工程豁免失效、`--check` 误报 | 双名读取 |
 | R5 | cli 内嵌 `shell-dist`，可能发布未构建 / 跨版本宿主 | `prepack` 断言：`shell-dist/` 存在，且其 runtime 版本 == `dependencies["@oj-module/runtime"]` 精确版本，不符即失败 |
-| R6 | 单 cli 包同时暴露 Node 工具 API 与浏览器产物，模块误 import 拉进 vite/esbuild | `exports` 硬分区**尚未落实**（无 `browser`/`node` 条件）；当前由门禁测试兜住：`apps/*/modules/src`、根 `modules/src`、`templates/modules/src` 零 `import @oj-module/cli/*`（独立评审补了根 `modules/src`；`browser` 条件列为待办） |
+| R6 | 单 cli 包同时暴露 Node 工具 API 与浏览器产物，模块误 import 拉进 vite/esbuild | **已硬化**：cli `exports` 的 Node-only 子路径（`.`/`build`/`shared-deps`/`esm-exports`/`config`/`manifest`/`info`）挂 `browser` 条件 → `./src/browser-guard.ts`（浏览器打包即显式抛错），`./shell-dist/*` 作为浏览器资产不加；另加门禁测试：`apps/*/modules/src`、根 `modules/src`、`templates/modules/src` 零 `import @oj-module/cli/*` |
 | R7 | 改名面广，测试/模板/docs 三处不同步 | 全仓 `grep -rn "@react-antd-module"` 已有**零残留测试**（`docs/archive` 与两份迁移记录文档豁免）；`ram` 字样因兼容 shim 必须保留，无法做零残留判据——改为「兼容表 + 守卫用例」覆盖 |
 | R8 | US-7「runtime 包无 `.ts`」被 contract 误破 | D5：contract 编成 dist；`npm pack --dry-run` 断言无 `.ts`、无 `src/` |
 | R9 | 两包版本再次漂移 | cli 对 runtime 写 `workspace:*`（发布转精确版本），`release-manifest.test.ts` 真跑 `pnpm pack` 断言两包 manifest 无 `workspace:`/`catalog:` 字面量与精确版本；**lockstep 已落实：两包同版 `0.1.5`** |
@@ -495,11 +495,11 @@ P3–P5 完成后，请**架构评审**（独立上下文，只读）与**开发
 | # | 来源 | 发现 | 处置 |
 |---|---|---|---|
 | 1 | 架构 P1 | `npm publish` 会把 `workspace:*` 原样发布（`pnpm` 才改写），而守卫测试**接受** `workspace:*`，等于没守护 | ✅ 采纳：新增 `tests/cli/release-manifest.test.ts`，真跑 `pnpm pack` 解 tarball manifest，断言无 `workspace:`、runtime 为精确版本、无 `.map`、bin 双入口；守卫测试注释指向它 |
-| 2 | 架构 P1 | R6「exports 硬分区」实为测试约束，且守卫漏了根 `modules/src`（vite alias 也把它当模块树） | ✅ 采纳：模块 import 守卫补根 `modules/src` 树；「硬分区」表述降级（见 §7 R6 备注） |
+| 2 | 架构 P1 | R6「exports 硬分区」实为测试约束，且守卫漏了根 `modules/src`（vite alias 也把它当模块树） | ✅ 采纳并硬化：守卫补根 `modules/src`；`exports` 加 `browser` 条件 → `browser-guard.ts`（见「旧 scope 下架与边界收尾」4b） |
 | 3 | 架构 P1 | lockstep 声称与实际不符（`cli@0.1.5` / `runtime@0.1.4`）且无守卫 | ✅ 采纳：两包对齐并同发 `0.1.5`（见下「v0.1.5 发布」）；O1 由待决转为已决 |
 | 4 | 架构 P2 | `"./shell-dist": "./shell-dist"` 是死出口（目录不可 import，无消费者） | ✅ 采纳：删除该 export，保留 `./shell-dist/*` |
 | 5 | 架构 P2 | `API_DEF_LEGACY` 扩进 runtime 公共出口属过度设计 | ✅ 采纳：从 runtime 出口移除，改由 `cli/src/contract/ir.ts` 自行声明旧符号（公共出口不变） |
-| 6 | 架构 P2 | runtime 已发布 `imports` 仍声明 `#modules/*`、`#manifest.json`（逃出包边界） | ⏸ 暂缓：runtime 源码仍有 2 个白名单反向依赖文件，构建期解析依赖它，需单独验证（避免为洁癖打破构建） |
+| 6 | 架构 P2 | runtime 已发布 `imports` 仍声明 `#modules/*`、`#manifest.json`（逃出包边界） | ✅ 已处理：核清 `#modules/*` 是死配置、`#manifest.json` 只服务仓库 App 链（不在 lib/dts 产物内）→ 二者从包内删除，App 链改由仓库 vite alias 解析；加门禁断言（见「旧 scope 下架与边界收尾」4a） |
 | 7 | 架构 P2 | 根 `pnpm build` 读 `packages/cli/shell-dist`（app→cli 产物的隐式边） | ⏸ 记录：这是「根 App 复用宿主产物」的既有设计，非本次引入 |
 | 8 | 架构 P2 | R7「CI 零残留」无测试；CI 触发分支不含 `refactor/*` | ✅ 部分采纳：新增 `@react-antd-module` 零残留测试（`docs/archive` 与迁移记录文档豁免）；CI 分支策略属仓库配置，记录待办 |
 | 9 | 开发 P1 | `check.ts` 的 stub **报错分支**（`update && !prefixUpgrade`）零覆盖——改坏 `prefixUpgrade` 会静默放过过期 stub | ✅ 采纳：`contract-check.test.ts` 增「契约变更 → stub 过期报 error」用例锁定该分支 |
@@ -539,6 +539,38 @@ P3–P5 完成后，请**架构评审**（独立上下文，只读）与**开发
 **外部安装冒烟**：干净目录 `npm install @oj-module/cli@0.1.5 @oj-module/runtime@0.1.5` → 231 包安装成功；两包版本正确，`runtime/dist/contract/*`、`cli/bin/{ojm,ram}.mjs`、`cli/shell-dist/{index.html,versions.json,assets}` 均在。**BDD「外部工程 2 包安装可用」至此闭环。**
 
 **两点实测坑**：见 §13 A45（安装源≠发布源）、A46（发布确认手段）。
+
+---
+
+### 旧 scope 下架与边界收尾 — 完成 2026-09-11
+
+**（一）旧 scope 全量 deprecate**（npm：`npm deprecate <pkg>@* <msg> --registry https://registry.npmjs.org`）
+
+| 旧包 | 版本 | 迁移指引 |
+|---|---|---|
+| `@react-antd-module/runtime` | 0.1.0–0.1.4 全部 | → `@oj-module/runtime@0.1.5` |
+| `@react-antd-module/cli` | 0.1.0–0.1.5 全部 | → `@oj-module/cli@0.1.5`（命令 `ojm`，`ram` 为弃用别名） |
+| `@react-antd-module/contract` | 0.1.3 全部 | → `@oj-module/runtime/contract` 子路径 |
+| `@react-antd-module/shell` | 0.1.0–0.1.4 全部 | → 宿主并入 `@oj-module/cli` 包内 `shell-dist/` |
+
+复核：四包所有版本的 `deprecated` 字段均已写入（读 packument 验证）。旧包不删除、不打新版本，安装时 npm 会打印迁移提示。
+
+**（二）4a：runtime 发布包的 `imports` 不再逃出包边界**
+
+`packages/runtime/package.json#imports` 原有 `#modules/*`、`#manifest.json` 指向 `../../`（包外路径）。核查：`#modules/*` 已无任何 src/dist 引用（历史白名单失效）；`#manifest.json` 只被 **App 链入口** `src/index.tsx` 使用，而该文件不在 lib 产物（`build.lib.entry = src/index.ts`）也不在 dts 构建（`include` 仅 `src/index.ts` + `src/types`）内 —— 它只服务仓库自己的 `index.html`。故：
+
+- 删除 `imports` 中两条包外映射，只留 `#src/*`；
+- 把 App 链的解析需求移到**仓库自己的 vite 配置**：`vite.config.ts` 增 `{ find: "#manifest.json", replacement: path.resolve("manifest.json") }`；
+- 新增门禁断言：runtime `imports` 的键必须恰为 `["#src/*"]`。
+
+验证：`pnpm typecheck`、runtime build、根 `pnpm build`（App 链仍能解析并打入 manifest）、`tests/module/module-bootstrap.test.ts`（该测试本就断言 `#manifest.json` 只允许出现在 `index.tsx`）全部通过。
+
+**（三）4b：R6 从「测试兜底」升级为 exports 硬分区**
+
+新增 `packages/cli/src/browser-guard.ts`（顶层 throw + `export {}`）。cli `exports` 的 7 个 Node-only 子路径改为：
+`{ "browser": "./src/browser-guard.ts", "default": "./src/<原有>.ts" }`。浏览器打包器（默认含 `browser` 条件）一旦解析到即**显式报错**；Node/tsx 与 TS（不认 `browser` 条件）仍走 `default`，CLI 自身与测试不受影响。`./shell-dist/*` 是浏览器资产，保持不加守护。守卫用例：断言 7 个子路径的 `browser` 条件、`shell-dist/*` 未被拦，并实测 import 守护模块会抛错。
+
+> 注：4a/4b 均为**下个版本**才触达消费者（`0.1.5` 已发布）；本条记录以便发版时随 CHANGELOG 说明。
 
 ---
 

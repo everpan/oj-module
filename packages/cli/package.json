@@ -5,13 +5,34 @@
 	"description": "React Antd Admin 模块工程命令行工具（含预构建宿主 shell-dist）",
 	"license": "MIT",
 	"exports": {
-		".": "./src/index.ts",
-		"./build": "./src/build.ts",
-		"./shared-deps": "./src/shared-deps.ts",
-		"./esm-exports": "./src/esm-exports.ts",
-		"./config": "./src/config.ts",
-		"./manifest": "./src/manifest.ts",
-		"./info": "./src/info.ts",
+		".": {
+			"browser": "./src/browser-guard.ts",
+			"default": "./src/index.ts"
+		},
+		"./build": {
+			"browser": "./src/browser-guard.ts",
+			"default": "./src/build.ts"
+		},
+		"./shared-deps": {
+			"browser": "./src/browser-guard.ts",
+			"default": "./src/shared-deps.ts"
+		},
+		"./esm-exports": {
+			"browser": "./src/browser-guard.ts",
+			"default": "./src/esm-exports.ts"
+		},
+		"./config": {
+			"browser": "./src/browser-guard.ts",
+			"default": "./src/config.ts"
+		},
+		"./manifest": {
+			"browser": "./src/browser-guard.ts",
+			"default": "./src/manifest.ts"
+		},
+		"./info": {
+			"browser": "./src/browser-guard.ts",
+			"default": "./src/info.ts"
+		},
 		"./shell-dist/*": "./shell-dist/*"
 	},
 	"bin": {

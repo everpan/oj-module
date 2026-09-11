@@ -5,9 +5,7 @@
 	"description": "React Antd Admin \u6846\u67b6\u8fd0\u884c\u65f6\uff0c\u4f9b\u6a21\u5757\u5de5\u7a0b\u6d88\u8d39",
 	"license": "MIT",
 	"imports": {
-		"#src/*": "./src/*",
-		"#modules/*": "../../modules/*",
-		"#manifest.json": "../../manifest.json"
+		"#src/*": "./src/*"
 	},
 	"exports": {
 		".": {
