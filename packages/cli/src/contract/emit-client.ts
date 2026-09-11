@@ -164,8 +164,8 @@ function ensureReq(): ScopedRequestLike {
 }`;
 
 	return `${BANNER}
-import { ContractApiError } from "@react-antd-module/contract/errors";
-import type { ScopedRequestLike } from "@react-antd-module/contract/errors";
+import { ContractApiError } from "@react-antd-module/runtime/contract/errors";
+import type { ScopedRequestLike } from "@react-antd-module/runtime/contract/errors";
 ${target === "internal" ? "import { request } from \"#src/utils/request\";\n" : ""}import type { z } from "${zImport(target)}";
 import type { schemas } from "./client.schemas";
 

@@ -10,25 +10,32 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { SHARED_DEPS } from "./shared-deps";
+
+/** cli 包根（本文件位于 <cliRoot>/src/） */
+const CLI_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 /** 读取宿主 shell 产物中的共享依赖实际版本表 */
 export function readHostVersions(shellDist: string): Record<string, string> {
 	return JSON.parse(fs.readFileSync(path.join(shellDist, "versions.json"), "utf-8"));
 }
 
-/** 定位 shell 预构建产物：npm 依赖优先，monorepo dogfooding 回退 workspace */
-export function resolveShellDist(projectRoot: string): string {
-	const fromNodeModules = path.join(projectRoot, "node_modules/@react-antd-module/shell/dist");
-	if (fs.existsSync(fromNodeModules))
-		return fromNodeModules;
-	const fromWorkspace = path.join(projectRoot, "../../packages/shell/dist");
-	if (fs.existsSync(fromWorkspace))
-		return fromWorkspace;
+/**
+ * 定位预构建宿主产物。
+ *
+ * P1：宿主已并入 cli 包（`<cliRoot>/shell-dist`）——不再查工程 node_modules
+ * 里的独立 shell 包，也没有 monorepo 路径回退。安装/检出 cli 即自带宿主，
+ * 消除「先 build 宿主才能用 cli」的隐性顺序约束（原 cli↔shell 环的一半）。
+ */
+export function resolveShellDist(): string {
+	const dir = path.join(CLI_ROOT, "shell-dist");
+	if (fs.existsSync(dir))
+		return dir;
 	throw new Error(
-		"找不到 @react-antd-module/shell 的预构建产物（dist）。\n"
-		+ "请先构建宿主：pnpm --filter @react-antd-module/shell build",
+		"找不到 cli 内置的预构建宿主（shell-dist）。\n"
+		+ "源码形态请先构建：pnpm --filter @react-antd-module/cli build:shell",
 	);
 }
 

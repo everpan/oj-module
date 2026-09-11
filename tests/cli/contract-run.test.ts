@@ -17,7 +17,7 @@ function makeProject(): string {
 	tmpDirs.push(dir);
 	mkdirSync(join(dir, "api/src/order"), { recursive: true });
 	writeFileSync(join(dir, "api/src/order/contract.ts"), `
-import { defineApi, z } from "@react-antd-module/contract";
+import { defineApi, z } from "@react-antd-module/runtime/contract";
 
 export const getOrderList = defineApi({
 	apiPrefix: "/order",
@@ -36,7 +36,7 @@ export const getOrderDetail = defineApi({
 `);
 	mkdirSync(join(dir, "modules/src/demo/api"), { recursive: true });
 	writeFileSync(join(dir, "modules/src/demo/api/contract.ts"), `
-import { defineApi, z } from "@react-antd-module/contract";
+import { defineApi, z } from "@react-antd-module/runtime/contract";
 
 export const getDashboard = defineApi({
 	apiPrefix: "/demo",
@@ -101,7 +101,7 @@ describe("runApi（AC-D7 编排 + 幂等写盘）", () => {
 	it("uni-dev 契约 apiPrefix 与目录名不符 → 人话报错（AC-D9 字面相等约束）", async () => {
 		const cwd = makeProject();
 		writeFileSync(join(cwd, "api/src/order/contract.ts"), `
-import { defineApi } from "@react-antd-module/contract";
+import { defineApi } from "@react-antd-module/runtime/contract";
 export const ep = defineApi({ apiPrefix: "/billing", route: "/x" });
 `);
 		await expect(runApi({ cwd })).rejects.toThrowError(/apiPrefix.*billing.*order|字面相等/);

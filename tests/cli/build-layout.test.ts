@@ -19,8 +19,8 @@ export default defineModule({ name: "fx", description: "fixture", version: "0.1.
 
 function makeFixture(kind: "new" | "legacy"): string {
 	fs.mkdirSync(FIXTURE_ROOT, { recursive: true });
-	// 夹具根 = 仓库根下两层（.tmp-fx/<rand>）：resolveShellDist 的 workspace
-	// 回退按 ../../packages/shell/dist 解析，恰好命中仓库根
+	// 夹具根落在仓库根下的临时目录：宿主产物已并入 cli（resolveShellDist 走包内
+	// shell-dist），不再依赖夹具相对仓库根的层级
 	const root = fs.mkdtempSync(path.join(FIXTURE_ROOT, `build-${kind}-`));
 	const modulesDir = kind === "new" ? path.join(root, "modules/src") : path.join(root, "modules");
 	fs.mkdirSync(modulesDir, { recursive: true });

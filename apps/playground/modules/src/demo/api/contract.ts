@@ -1,4 +1,4 @@
-import { defineApi, z } from "@react-antd-module/contract";
+import { defineApi, z } from "@react-antd-module/runtime/contract";
 
 /**
  * demo 模块契约（模块目标试点，Task 5.2）。

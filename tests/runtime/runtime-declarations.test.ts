@@ -37,10 +37,16 @@ describe("runtime 包元数据定稿（P3.5）", () => {
 		expect(readRuntimePkg().private).toBeUndefined();
 	});
 
-	it("files 含 dist 且 exports 仅开放主入口", () => {
+	it("files 含 dist 且 exports 开放主入口 + contract 子路径（P1 契约并入）", () => {
 		const pkg = readRuntimePkg();
 		expect(pkg.files).toContain("dist");
-		expect(Object.keys(pkg.exports)).toEqual(["."]);
+		expect(Object.keys(pkg.exports)).toEqual([".", "./contract", "./contract/errors"]);
+	});
+
+	it("contract 子路径产物齐全（dist/contract，US-7：包内无 .ts 源）", () => {
+		for (const rel of ["contract/index.js", "contract/index.d.ts", "contract/errors.js", "contract/errors.d.ts"])
+			expect(fs.existsSync(path.join(RUNTIME_DIST, rel)), `缺少 ${rel}`).toBe(true);
+		expect(fs.existsSync(path.join(PROJECT_ROOT, "packages/runtime/contract/index.ts"))).toBe(true); // 源仍在仓内
 	});
 
 	it("peerDependencies 覆盖 dist/runtime.js 全部 bare 外部导入（防漂移）", () => {
@@ -53,9 +59,13 @@ describe("runtime 包元数据定稿（P3.5）", () => {
 			.map(m => m[1])
 			.filter(spec => !spec.startsWith(".") && !spec.startsWith("/"));
 		// bare 说明符归一为包名：react/jsx-runtime → react，@dnd-kit/core 保持
-		const packages = new Set(specifiers.map(spec =>
-			spec.startsWith("@") ? spec.split("/").slice(0, 2).join("/") : spec.split("/")[0],
-		));
+		// 自引用子路径（@react-antd-module/runtime/contract/errors）由本包 exports
+		// 提供，不属于 peerDependencies（不能声明自己）
+		const packages = new Set(
+			specifiers
+				.map(spec => spec.startsWith("@") ? spec.split("/").slice(0, 2).join("/") : spec.split("/")[0])
+				.filter(name => name !== "@react-antd-module/runtime"),
+		);
 
 		const uncovered = [...packages].filter(name => !peers.has(name));
 		expect(uncovered, `产物裸导入未声明进 peerDependencies：${uncovered.join(", ")}`).toEqual([]);

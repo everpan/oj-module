@@ -33,27 +33,13 @@ import { resolveLayout } from "./layout";
 import { startOj } from "./oj";
 import { readOjApiPrefix } from "./oj-config";
 import { createStaticHandler, decodeReqPath, listenOnFreePort } from "./static-handler";
+import { resolveShellDist } from "./versions";
 
 const DEFAULT_PORT = 5174;
 
-function resolveShellDist(projectRoot: string): string {
-	// 1) 外部工程：shell 作为 npm 依赖安装到 node_modules
-	const fromNodeModules = resolve(projectRoot, "node_modules/@react-antd-module/shell/dist");
-	if (existsSync(fromNodeModules))
-		return fromNodeModules;
-	// 2) monorepo dogfooding：回退到 workspace 源码树
-	const fromWorkspace = resolve(projectRoot, "../../packages/shell/dist");
-	if (existsSync(fromWorkspace))
-		return fromWorkspace;
-	throw new Error(
-		"找不到 @react-antd-module/shell 的预构建产物（dist）。\n"
-		+ "请先构建宿主：pnpm --filter @react-antd-module/shell build",
-	);
-}
-
 export interface DevOptions {
 	port?: number
-	/** 注入桩 shell dist（测试）；默认解析 shell 包 dist */
+	/** 注入桩 shell dist（测试）；默认解析 cli 内置 shell-dist */
 	shellDist?: string
 	/** 注入重建函数（测试）；默认 buildModules（不合并全站，产物只写模块） */
 	buildModulesFn?: (projectRoot: string) => Promise<unknown>
@@ -65,7 +51,7 @@ export interface DevOptions {
 
 export async function devServer(projectRoot: string, opts: DevOptions = {}): Promise<http.Server> {
 	const layout = resolveLayout(projectRoot);
-	const shellDist = opts.shellDist ?? resolveShellDist(projectRoot);
+	const shellDist = opts.shellDist ?? resolveShellDist();
 	const localDist = layout.distDir;
 	const build = opts.buildModulesFn ?? ((root: string) => buildModules(root));
 
@@ -184,7 +170,7 @@ export async function devServer(projectRoot: string, opts: DevOptions = {}): Pro
 	else
 		console.log("[ram] 纯前端形态（无 api/config.yaml）：/api 由 mock/ 提供");
 
-	console.log("[ram] 宿主来自 @react-antd-module/shell（importmap 单例），模块来自本地 dist/");
+	console.log("[ram] 宿主来自 @react-antd-module/cli 内置 shell-dist（importmap 单例），模块来自本地 dist/");
 
 	if (!ojTarget && mocks.length)
 		console.log(`[ram] 工程 mock：${mocks.length} 条路由（mock/ 目录，重启生效）`);

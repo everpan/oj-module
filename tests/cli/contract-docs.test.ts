@@ -19,7 +19,7 @@ function makeProject(): string {
 	tmpDirs.push(dir);
 	mkdirSync(join(dir, "api/src/order"), { recursive: true });
 	writeFileSync(join(dir, "api/src/order/contract.ts"), `
-import { defineApi, z } from "@react-antd-module/contract";
+import { defineApi, z } from "@react-antd-module/runtime/contract";
 export const getOrderDetail = defineApi({
 	apiPrefix: "/order",
 	route: "/item/{id}",
@@ -55,7 +55,7 @@ describe("runApiDocs（R5 redoc 文档站）", () => {
 		tmpDirs.push(dir);
 		mkdirSync(join(dir, "modules/src/demo/api"), { recursive: true });
 		writeFileSync(join(dir, "modules/src/demo/api/contract.ts"), `
-import { defineApi, z } from "@react-antd-module/contract";
+import { defineApi, z } from "@react-antd-module/runtime/contract";
 export const getDashboard = defineApi({
 	apiPrefix: "/demo",
 	route: "/dashboard",
@@ -71,7 +71,7 @@ export const getDashboard = defineApi({
 		const cwd = makeProject();
 		mkdirSync(join(cwd, "api/src/stock"), { recursive: true });
 		writeFileSync(join(cwd, "api/src/stock/contract.ts"), `
-import { defineApi, z } from "@react-antd-module/contract";
+import { defineApi, z } from "@react-antd-module/runtime/contract";
 export const getStock = defineApi({
 	apiPrefix: "/stock",
 	route: "/list",

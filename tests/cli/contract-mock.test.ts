@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { exampleFromSchema, loadContractMocks, matchContractRoute, resolveMock } from "../../packages/cli/src/contract/mock";
-import { z } from "../../packages/contract/src";
+import { z } from "../../packages/runtime/contract";
 
 /**
  * AC-D14 纯前端契约 mock：routes.json/schema 示例值驱动；
@@ -129,7 +129,7 @@ describe("loadContractMocks（dev 启动装载）", () => {
 		tmpDirs.push(dir);
 		mkdirSync(join(dir, "modules/src/demo/api"), { recursive: true });
 		writeFileSync(join(dir, "modules/src/demo/api/contract.ts"), `
-import { defineApi, z } from "@react-antd-module/contract";
+import { defineApi, z } from "@react-antd-module/runtime/contract";
 export const getDashboard = defineApi({
 	apiPrefix: "/demo",
 	route: "/dashboard",

@@ -19,11 +19,11 @@ bin/
 /dist
 # workspace 子包的构建产物（packages/*/dist、apps/*/dist）
 dist/
-# shell 是「预构建宿主」，其 dist 为随仓库分发的预置产物（非本地构建输出），需纳入版本管理
-!packages/shell/dist/
-!packages/shell/dist/**
+# cli 内置的「预构建宿主」（shell-dist）为随仓库分发的预置产物（非本地构建输出），需纳入版本管理
+!packages/cli/shell-dist/
+!packages/cli/shell-dist/**
 # P4.4 sourcemap hidden 的 .map 仅供内部栈解析，不发版不入库
-packages/shell/dist/**/*.map
+packages/cli/shell-dist/**/*.map
 # runtime 的发布产物（dist/runtime.js）随仓库分发
 !packages/runtime/dist/
 !packages/runtime/dist/**

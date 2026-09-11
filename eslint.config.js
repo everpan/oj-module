@@ -69,6 +69,9 @@ export default antfu({
 		"**/api/client.schemas.ts",
 		"**/openapi.yaml",
 		"**/routes.json",
+		// P1：宿主预构建产物并入 cli 后目录名为 shell-dist（不叫 dist，
+		// 不在 antfu 默认忽略内）。生成资产绝不能被 eslint --fix 改写
+		"**/shell-dist/**",
 	],
 	rules: {
 		"style/quotes": ["error", "double"],

@@ -13,13 +13,21 @@
 		".": {
 			"types": "./dist/index.d.ts",
 			"default": "./dist/runtime.js"
+		},
+		"./contract": {
+			"types": "./dist/contract/index.d.ts",
+			"default": "./dist/contract/index.js"
+		},
+		"./contract/errors": {
+			"types": "./dist/contract/errors.d.ts",
+			"default": "./dist/contract/errors.js"
 		}
 	},
 	"files": [
 		"dist"
 	],
 	"scripts": {
-		"build": "vite build && tsc -p tsconfig.dts.json && node scripts/rewrite-dts-specifiers.mjs && node scripts/inline-css.mjs"
+		"build": "vite build && tsc -p tsconfig.contract.json && tsc -p tsconfig.dts.json && node scripts/rewrite-dts-specifiers.mjs && node scripts/inline-css.mjs"
 	},
 	"peerDependencies": {
 		"@ant-design/icons": "catalog:",
@@ -27,7 +35,6 @@
 		"@dnd-kit/core": "catalog:",
 		"@dnd-kit/sortable": "catalog:",
 		"@dnd-kit/utilities": "catalog:",
-		"@react-antd-module/contract": "workspace:*",
 		"ahooks": "catalog:",
 		"antd": "catalog:",
 		"antd-img-crop": "catalog:",

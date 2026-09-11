@@ -455,8 +455,8 @@ export async function buildBackend(projectRoot: string): Promise<boolean> {
  * （shell 每次重构建生成新哈希文件名）；devServer 热重建路径不合并——
  * dev 的 / 与 /assets/* 直接服务 shell dist，合并产物无人消费。
  */
-function mergeShellSite(projectRoot: string, distDir: string): void {
-	const shellDist = resolveShellDist(projectRoot);
+function mergeShellSite(distDir: string): void {
+	const shellDist = resolveShellDist();
 	fs.rmSync(distDir, { recursive: true, force: true });
 	fs.mkdirSync(path.dirname(distDir), { recursive: true });
 	fs.cpSync(shellDist, distDir, { recursive: true });
@@ -483,10 +483,10 @@ export async function buildModules(
 	const baseUrl = config.baseUrl ?? "";
 
 	if (opts.mergeSite)
-		mergeShellSite(projectRoot, outDir);
+		mergeShellSite(outDir);
 
 	// P4.5 / C4 / D12：构建前先过版本矩阵门禁，版本漂移直接拒绝
-	checkSharedVersions(projectRoot, resolveShellDist(projectRoot));
+	checkSharedVersions(projectRoot, resolveShellDist());
 
 	warnUnsharedDeps(projectRoot);
 

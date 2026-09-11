@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { assertTrustedModules, TRUSTED_ORIGINS } from "../../packages/shell/src/trust";
+import { assertTrustedModules, TRUSTED_ORIGINS } from "../../packages/cli/shell/src/trust";
 
 /** 便捷构造：显式控制 entry/css/chunks 三个 URL 载体 */
 function mod(entry: string, css: string[], chunkUrls: string[], name = "order") {

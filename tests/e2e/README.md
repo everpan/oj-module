@@ -11,7 +11,7 @@
 | legacy（411e353b worktree） | legacy | 3333 | fake 预填，自动提交 | `pnpm test:e2e:legacy` |
 
 - workers=1 串行：tabbar/menu 用例有全局 UI 状态；`reuseExistingServer: false`，跑前确保 5174/3333 无残留进程（`lsof -iTCP:5174 -iTCP:3333 -sTCP:LISTEN`）。
-- playground 的 `ram dev` 需要 shell/playground 产物先行构建：`pnpm --filter @react-antd-module/shell build && pnpm --filter playground build`。
+- playground 的 `ram dev` 需要宿主/playground 产物先行构建：`pnpm --filter @react-antd-module/cli build:shell && pnpm --filter playground build`。
 
 ## legacy worktree 建法（一次性）
 

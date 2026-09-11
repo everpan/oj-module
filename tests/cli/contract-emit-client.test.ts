@@ -1,6 +1,6 @@
-import type { ScopedRequestLike } from "@react-antd-module/contract";
+import type { ScopedRequestLike } from "@react-antd-module/runtime/contract";
 import type { Plugin } from "esbuild";
-import type { ResponsePromiseLike } from "../../packages/contract/src/scoped-request-like";
+import type { ResponsePromiseLike } from "../../packages/runtime/contract/scoped-request-like";
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -10,7 +10,7 @@ import { build } from "esbuild";
 import { describe, expect, it } from "vitest";
 import { emitClient } from "../../packages/cli/src/contract/emit-client";
 import { buildIr } from "../../packages/cli/src/contract/ir";
-import { defineApi, z } from "../../packages/contract/src";
+import { defineApi, z } from "../../packages/runtime/contract";
 
 /**
  * AC-D5/D6/D8/D15：client.ts + client.schemas.ts 发射器。
@@ -64,7 +64,7 @@ const runtimeStub: Plugin = {
 		b.onResolve({ filter: /^@react-antd-module\/runtime$/ }, () => ({ path: "runtime-stub", namespace: "ram-stub" }));
 		b.onLoad({ filter: /.*/, namespace: "ram-stub" }, () => ({
 			contents: "export { z } from \"zod\";",
-			resolveDir: join(repoRoot, "packages/contract"), // 根 package.json 无 zod 直依，从 contract 包解析
+			resolveDir: join(repoRoot, "packages/runtime"), // 根 package.json 无 zod 直依，从 runtime 包（contract 所在包）解析
 		}));
 	},
 };

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { emitSchemaSource } from "../../packages/cli/src/contract/emit-schema";
-import { z } from "../../packages/contract/src";
+import { z } from "../../packages/runtime/contract";
 
 /** 把发射文本还原为 zod schema（测试内 eval，z 注入） */
 function rebuild<T = z.ZodType>(src: string): T {

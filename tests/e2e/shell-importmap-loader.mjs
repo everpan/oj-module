@@ -1,6 +1,6 @@
 /**
  * 自定义 ESM 解析钩子：把 importmap 里登记的裸说明符重定向到
- * shell 构建产物（packages/shell/dist/<url>），让 node 能按浏览器
+ * shell 构建产物（packages/cli/shell-dist/<url>），让 node 能按浏览器
  * 的 importmap 语义加载「已构建」的宿主资产，从而真实复现生产链路。
  *
  * 仅拦截 importmap 内登记的说明符；其余裸说明符（react 子路径之外的
@@ -11,7 +11,7 @@ import path from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
 
-const SHELL_DIST = path.resolve(process.env.SHELL_DIST_DIR ?? "packages/shell/dist");
+const SHELL_DIST = path.resolve(process.env.SHELL_DIST_DIR ?? "packages/cli/shell-dist");
 const html = fs.readFileSync(path.join(SHELL_DIST, "index.html"), "utf8");
 const m = html.match(/<script type="importmap"[^>]*>([\s\S]*?)<\/script>/);
 if (!m)

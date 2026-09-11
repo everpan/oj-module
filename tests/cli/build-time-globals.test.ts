@@ -21,7 +21,7 @@ import { PLAYGROUND_DIR, PROJECT_ROOT } from "../helpers/paths";
 const RUNTIME_PKG_DIR = path.join(PROJECT_ROOT, "packages/runtime");
 const RUNTIME_VITE_CONFIG = path.join(RUNTIME_PKG_DIR, "vite.config.ts");
 const RUNTIME_DIST_JS = path.join(RUNTIME_PKG_DIR, "dist/runtime.js");
-const SHELL_RUNTIME_JS = path.join(PROJECT_ROOT, "packages/shell/dist/assets/runtime.js");
+const SHELL_RUNTIME_JS = path.join(PROJECT_ROOT, "packages/cli/shell-dist/assets/runtime.js");
 
 /** 已知的构建期注入全局：产物里若还留着裸标识符，就是没人注入 */
 const BUILD_TIME_GLOBALS = ["__APP_INFO__"];

@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { collectPreloads } from "../../packages/shell/src/preload";
+import { collectPreloads } from "../../packages/cli/shell/src/preload";
 import { PROJECT_ROOT } from "../helpers/paths";
 
 const MODULES = [
@@ -60,5 +60,5 @@ describe("host L2 完整性预加载（P5.7）", () => {
 });
 
 function await_source(): string {
-	return fs.readFileSync(path.join(PROJECT_ROOT, "packages/shell/src/host.tsx"), "utf-8");
+	return fs.readFileSync(path.join(PROJECT_ROOT, "packages/cli/shell/src/host.tsx"), "utf-8");
 }

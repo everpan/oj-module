@@ -118,8 +118,9 @@ describe("initProject", () => {
 				expect(String(spec)).not.toMatch(/workspace:|catalog:/);
 		}
 		expect(pkg.devDependencies["@react-antd-module/cli"]).not.toBe("*");
-		// contract 必须显式声明：ram api 在 Node 侧求值契约时按裸说明符解析它
-		expect(pkg.devDependencies["@react-antd-module/contract"]).not.toBe("*");
+		// runtime 必须显式声明：ram api 在 Node 侧求值契约时按裸说明符解析
+		// `@react-antd-module/runtime/contract[/errors]`（P1 起 contract 并入 runtime）
+		expect(pkg.devDependencies["@react-antd-module/runtime"]).not.toBe("*");
 		// home 首页图表演示的依赖：运行时走宿主 importmap，工程侧只需类型 → devDeps 须钉版
 		for (const dep of ["echarts", "echarts-for-react", "react-countup", "dayjs"])
 			expect(pkg.devDependencies[dep]).not.toBe("*");
@@ -162,7 +163,8 @@ describe("initProject", () => {
 		expect(pkg.scripts.preview).toContain("ram preview");
 		expect(pkg.dependencies["@react-antd-module/cli"]).toBe("^0.1.0"); // 既有依赖不动
 		expect(pkg.devDependencies["@react-antd-module/runtime"]).toBeTruthy();
-		expect(pkg.devDependencies["@react-antd-module/shell"]).toBeTruthy();
+		// P1：shell 不再是独立包（宿主产物并入 cli），工程 devDeps 不应再出现它
+		expect(pkg.devDependencies["@react-antd-module/shell"]).toBeUndefined();
 		// pnpm v11 构建审批只读 pnpm-workspace.yaml 的 allowBuilds 映射
 		expect(fs.readFileSync(path.join(dest, "pnpm-workspace.yaml"), "utf-8")).toMatch(/^\s+esbuild:\s*true$/m);
 	});
@@ -201,20 +203,18 @@ describe("initProject", () => {
 		expect(fs.readFileSync(path.join(destB, "pnpm-workspace.yaml"), "utf-8")).toContain("esbuild: false"); // 用户显式选择不动
 	});
 
-	it("发布实测 bug2：shell dist 不可达 → 回退 cli 内置矩阵钉版（发布包形态）", () => {
-		// 伪造「发布包」cliRoot：无 ../shell/dist 兄弟目录，只有 package.json + vendor
+	it("发布实测 bug2：shell-dist 不可达 → 回退 cli 内置矩阵钉版（发布包形态）", () => {
+		// 伪造「发布包」cliRoot：无 shell-dist/ 产物，只有 package.json + vendor
 		const fakeCli = path.join(tmpRoot(), "cli");
 		fs.mkdirSync(path.join(fakeCli, "vendor"), { recursive: true });
 		fs.writeFileSync(path.join(fakeCli, "package.json"), JSON.stringify({ name: "@react-antd-module/cli", version: "9.9.9" }));
 		fs.writeFileSync(path.join(fakeCli, "vendor/host-versions.json"), JSON.stringify({
-			shellVersion: "0.1.0",
 			matrix: { "react": "19.2.0", "antd": "6.0.0", "@react-antd-module/runtime": "0.1.0" },
 		}));
 
-		const { matrix, shellVersion } = resolveVersionMatrix(fakeCli, path.join(tmpRoot(), "dest"));
+		const { matrix } = resolveVersionMatrix(fakeCli);
 		expect(matrix.react).toBe("19.2.0");
 		expect(matrix["@react-antd-module/runtime"]).toBe("0.1.0");
-		expect(shellVersion).toBe("0.1.0"); // 锁步：shell 钉到内置矩阵记录的版本
 	});
 
 	it("cli 内置版本矩阵真实存在且含核心项（发布内容物契约）", () => {
@@ -222,7 +222,6 @@ describe("initProject", () => {
 			path.join(PROJECT_ROOT, "packages/cli/vendor/host-versions.json"),
 			"utf-8",
 		));
-		expect(bundled.shellVersion).toBeTruthy();
 		for (const key of ["react", "antd", "react-router", "@react-antd-module/runtime"])
 			expect(bundled.matrix[key]).toBeTruthy();
 	});

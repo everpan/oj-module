@@ -134,12 +134,8 @@ describe.skipIf(process.env.CI || ojBusy)("uni-dev e2e 冒烟（真二进制）"
 	}, 240_000);
 
 	it("dev：登录链经反代全通（首跑闭环）", async () => {
-		// 真工程里 shell dist 由 pnpm 安装进 node_modules（pnpm 即 symlink）；
-		// 冒烟不跑 install，直接 symlink 本仓产物，等价于已安装形态
-		const shellLink = path.join(root, "node_modules/@react-antd-module/shell");
-		fs.mkdirSync(path.dirname(shellLink), { recursive: true });
-		fs.symlinkSync(path.join(PROJECT_ROOT, "packages/shell"), shellLink, "dir");
-
+		// P1：宿主产物并入 cli，ram dev 从 cli 包内 shell-dist 取宿主——
+		// 工程 node_modules 不再需要 shell 包，冒烟无需任何 symlink 模拟安装
 		const { proc, port } = startRam(["dev"]);
 		const devPort = await port();
 

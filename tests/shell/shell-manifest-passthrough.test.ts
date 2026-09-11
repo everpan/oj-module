@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { extractRuntimeVersion, toLoaderManifest } from "../../packages/shell/src/manifest";
+import { extractRuntimeVersion, toLoaderManifest } from "../../packages/cli/shell/src/manifest";
 
 /**
  * P7.7 / 评审 F1+F2：宿主不得裁剪 modules.json 字段——enabled（US-9 下线）、

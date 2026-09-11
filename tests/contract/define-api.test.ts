@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ContractApiError, defineApi, z } from "../../packages/contract/src";
+import { ContractApiError, defineApi, z } from "../../packages/runtime/contract";
 
 /**
  * AC-D11/AC-D4/AC-D12：契约 DSL 定义期校验。

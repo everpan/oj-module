@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import { emitOpenapiYaml, emitRoutesJson } from "../../packages/cli/src/contract/emit-meta";
 import { buildIr } from "../../packages/cli/src/contract/ir";
-import { defineApi, z } from "../../packages/contract/src";
+import { defineApi, z } from "../../packages/runtime/contract";
 
 /**
  * AC-D1/D9：routes.json（ram dev mock 消费，规范化同 oj routes.js）与

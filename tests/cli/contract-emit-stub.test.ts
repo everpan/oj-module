@@ -2,7 +2,7 @@ import type { StubWrite } from "../../packages/cli/src/contract/emit-stub";
 import { describe, expect, it } from "vitest";
 import { planStubWrites } from "../../packages/cli/src/contract/emit-stub";
 import { buildIr } from "../../packages/cli/src/contract/ir";
-import { defineApi, z } from "../../packages/contract/src";
+import { defineApi, z } from "../../packages/runtime/contract";
 
 /**
  * AC-D10 §9.1：handler stub 发射 + 指纹幂等。

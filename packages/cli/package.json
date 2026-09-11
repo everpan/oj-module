@@ -2,7 +2,7 @@
 	"name": "@react-antd-module/cli",
 	"type": "module",
 	"version": "0.1.5",
-	"description": "React Antd Admin 模块工程命令行工具",
+	"description": "React Antd Admin 模块工程命令行工具（含预构建宿主 shell-dist）",
 	"license": "MIT",
 	"exports": {
 		".": "./src/index.ts",
@@ -11,23 +11,27 @@
 		"./esm-exports": "./src/esm-exports.ts",
 		"./config": "./src/config.ts",
 		"./manifest": "./src/manifest.ts",
-		"./info": "./src/info.ts"
+		"./info": "./src/info.ts",
+		"./shell-dist": "./shell-dist",
+		"./shell-dist/*": "./shell-dist/*"
 	},
 	"bin": {
 		"ram": "./bin/ram.mjs"
 	},
 	"files": [
 		"bin",
+		"shell-dist",
 		"src",
 		"templates",
 		"vendor"
 	],
 	"scripts": {
+		"build:shell": "tsx shell/scripts/build.mts",
 		"prepack": "node scripts/sync-host-versions.mjs"
 	},
 	"dependencies": {
 		"@faker-js/faker": "catalog:",
-		"@react-antd-module/contract": "workspace:*",
+		"@react-antd-module/runtime": "workspace:*",
 		"@redocly/cli": "catalog:",
 		"esbuild": "catalog:",
 		"tsx": "catalog:",
@@ -35,6 +39,41 @@
 		"vite": "catalog:",
 		"yaml": "catalog:",
 		"zod": "catalog:"
+	},
+	"devDependencies": {
+		"@ant-design/cssinjs": "catalog:",
+		"@ant-design/icons": "catalog:",
+		"@ant-design/pro-components": "catalog:",
+		"@dnd-kit/core": "catalog:",
+		"@dnd-kit/sortable": "catalog:",
+		"@dnd-kit/utilities": "catalog:",
+		"@tanstack/react-query": "catalog:",
+		"@vitejs/plugin-react": "catalog:",
+		"ahooks": "catalog:",
+		"antd": "catalog:",
+		"antd-img-crop": "catalog:",
+		"clsx": "catalog:",
+		"dayjs": "catalog:",
+		"echarts": "catalog:",
+		"echarts-for-react": "catalog:",
+		"i18next": "catalog:",
+		"keepalive-for-react": "catalog:",
+		"ky": "catalog:",
+		"motion": "catalog:",
+		"nprogress": "catalog:",
+		"pinyin-pro": "catalog:",
+		"react": "catalog:",
+		"react-countup": "catalog:",
+		"react-dom": "catalog:",
+		"react-error-boundary": "catalog:",
+		"react-i18next": "catalog:",
+		"react-jss": "catalog:",
+		"react-router": "catalog:",
+		"simplebar-react": "catalog:",
+		"spin-delay": "catalog:",
+		"tailwind-merge": "catalog:",
+		"use-sync-external-store": "catalog:",
+		"zustand": "catalog:"
 	},
 	"publishConfig": {
 		"registry": "https://registry.npmjs.org/",

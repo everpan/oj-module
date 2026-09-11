@@ -82,7 +82,7 @@
 		"@iconify-json/ri": "catalog:",
 		"@iconify/tools": "catalog:",
 		"@playwright/test": "catalog:",
-		"@react-antd-module/contract": "workspace:*",
+		"@react-antd-module/runtime": "workspace:*",
 		"@svgr/plugin-jsx": "catalog:",
 		"@svgr/plugin-svgo": "catalog:",
 		"@tailwindcss/vite": "catalog:",

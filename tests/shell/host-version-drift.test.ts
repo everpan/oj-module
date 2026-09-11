@@ -8,7 +8,7 @@ import { PROJECT_ROOT } from "../helpers/paths";
 /**
  * 宿主与框架的共享依赖版本必须一致（A25）。
  *
- * 宿主（packages/shell）把共享依赖预打包并经 importmap 提供给框架 runtime 与
+ * 宿主（P1 起并入 cli，预构建产物 shell-dist/）把共享依赖预打包并经 importmap 提供给框架 runtime 与
  * 外部模块，它写进 `dist/versions.json` 的版本按 D12/C4 是外部模块工程必须
  * 严格相等的对齐基准。两侧各自声明就会漂移，而且**没有任何报错**——
  * 实测曾漂移到 3 个大版本（cssinjs 1.x/2.x、i18next 25/26、react-i18next 16/17），
@@ -18,7 +18,7 @@ import { PROJECT_ROOT } from "../helpers/paths";
  * 这个测试兜住「catalog 漏改 / 有人直接写死版本 / 装出第二份」。
  */
 
-const SHELL_DIR = path.join(PROJECT_ROOT, "packages/shell");
+const SHELL_DIR = path.join(PROJECT_ROOT, "packages/cli");
 
 /** 说明符 → 包名（深路径取包名段） */
 function packageNameOf(specifier: string): string {
@@ -85,7 +85,7 @@ describe("宿主与框架共享依赖版本一致（A25）", () => {
 		const manifests = [
 			"package.json",
 			"packages/runtime/package.json",
-			"packages/shell/package.json",
+			"packages/cli/package.json",
 			"apps/playground/package.json",
 		];
 		const hardcoded: string[] = [];

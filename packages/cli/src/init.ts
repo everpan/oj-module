@@ -93,7 +93,7 @@ export async function initProject(destDir: string, opts: InitOptions = {}): Prom
 	const pkgPath = path.join(destDir, "package.json");
 	if (fs.existsSync(pkgPath)) {
 		const before = fs.readFileSync(pkgPath, "utf-8");
-		const merged = mergePackageJson(JSON.parse(before), generatePackageJson(cliRoot, destDir, projectName));
+		const merged = mergePackageJson(JSON.parse(before), generatePackageJson(cliRoot, projectName));
 		const after = `${JSON.stringify(merged, null, "\t")}\n`;
 		if (after !== before) {
 			fs.writeFileSync(pkgPath, after);
@@ -106,7 +106,7 @@ export async function initProject(destDir: string, opts: InitOptions = {}): Prom
 	else {
 		fs.writeFileSync(
 			pkgPath,
-			`${JSON.stringify(generatePackageJson(cliRoot, destDir, projectName), null, "\t")}\n`,
+			`${JSON.stringify(generatePackageJson(cliRoot, projectName), null, "\t")}\n`,
 		);
 		report.created.push("package.json");
 	}
@@ -194,29 +194,19 @@ function ensureAllowBuilds(destDir: string, report: InitReport): void {
 
 /**
  * 依赖版本钉死（审阅记录二 F5）：workspace 协议与 catalog 协议在外部工程
- * 不可解析，@react-antd-module 系未发版前外部 init 不可用——cli/runtime/shell
- * 取真实安装版本，共享依赖取宿主 versions.json（版本矩阵真源），缺项回退
- * "*" 并告警。
+ * 不可解析——cli/runtime 取真实安装/包版本，共享依赖取宿主 versions.json
+ * （版本矩阵真源），缺项回退 "*" 并告警。
+ *
+ * 钉版数据源（P1 起宿主并入 cli）：cli 内置 `shell-dist/versions.json`
+ * （构建产物）→ cli 内置 `vendor/host-versions.json`（prepack 同步的快照，
+ * shell-dist 尚未构建时兜底）。
  */
-/**
- * 钉版数据源：目标工程 node_modules 的 shell dist → monorepo 兄弟目录 →
- * cli 内置 vendor/host-versions.json（发布包形态，prepack 时同步）。
- * 0.1.0 发布实测：外部工程 init 时尚未 install，前两个候选都 miss，
- * 直接 throw 让 init 不可用——内置矩阵是发布包的兜底真源。
- */
-export function resolveVersionMatrix(cliRoot: string, destDir: string): { matrix: Record<string, string>, shellVersion: string } {
-	const candidates = [
-		path.join(destDir, "node_modules/@react-antd-module/shell/dist"),
-		path.join(cliRoot, "..", "shell/dist"),
-	];
-	for (const candidate of candidates) {
-		if (fs.existsSync(candidate)) {
-			const shellPkg = JSON.parse(fs.readFileSync(path.join(candidate, "..", "package.json"), "utf-8"));
-			return { matrix: readHostVersions(candidate), shellVersion: shellPkg.version };
-		}
-	}
+export function resolveVersionMatrix(cliRoot: string): { matrix: Record<string, string> } {
+	const shellDist = path.join(cliRoot, "shell-dist");
+	if (fs.existsSync(path.join(shellDist, "versions.json")))
+		return { matrix: readHostVersions(shellDist) };
 	const bundled = JSON.parse(fs.readFileSync(path.join(cliRoot, "vendor/host-versions.json"), "utf-8"));
-	return { matrix: bundled.matrix, shellVersion: bundled.shellVersion };
+	return { matrix: bundled.matrix };
 }
 
 /** 合并补缺：scripts/devDependencies 只补缺失键，既有内容不动 */
@@ -227,8 +217,8 @@ function mergePackageJson(existing: Record<string, any>, generated: Record<strin
 	return merged;
 }
 
-function generatePackageJson(cliRoot: string, destDir: string, projectName: string) {
-	const { matrix: hostVersions, shellVersion } = resolveVersionMatrix(cliRoot, destDir);
+function generatePackageJson(cliRoot: string, projectName: string) {
+	const { matrix: hostVersions } = resolveVersionMatrix(cliRoot);
 	const cliPkg = JSON.parse(fs.readFileSync(path.join(cliRoot, "package.json"), "utf-8"));
 
 	const pin = (name: string): string => {
@@ -241,13 +231,10 @@ function generatePackageJson(cliRoot: string, destDir: string, projectName: stri
 
 	const devDeps: Record<string, string> = {
 		"@react-antd-module/cli": cliPkg.version,
-		// contract 必须显式声明：uni-dev 工程的 contract.ts 直接 import 它，
-		// `ram api` 在 Node 侧求值契约时需从工程 node_modules 解析真实现
-		// （evaluateContract 把裸说明符 external）。此前漏声明导致外部工程
-		// `ram api` 直接报 Cannot find package '@react-antd-module/contract'。
-		"@react-antd-module/contract": pin("@react-antd-module/contract"),
+		// runtime 必须显式声明：uni-dev 工程的 contract.ts 与生成 client 直接 import
+		// `@react-antd-module/runtime/contract[/errors]`，`ram api` 在 Node 侧求值契约时
+		// 需从工程 node_modules 解析真实现（evaluateContract 把裸说明符 external）。
 		"@react-antd-module/runtime": pin("@react-antd-module/runtime"),
-		"@react-antd-module/shell": shellVersion,
 		"@ant-design/icons": pin("@ant-design/icons"),
 		"@types/react": pin("@types/react"),
 		"antd": pin("antd"),

@@ -1,0 +1,17 @@
+{
+	"extends": "../../tsconfig.json",
+	"compilerOptions": {
+		"rootDir": "contract",
+		"paths": {},
+		"types": [],
+		"declaration": true,
+		"declarationMap": false,
+		"emitDeclarationOnly": false,
+		"noEmit": false,
+		"outDir": "dist/contract",
+		// contract 源码用 `.ts` 扩展名互引（tsx/esbuild 消费期约定）；
+		// 编译成 dist 后 Node ESM 要求显式扩展 → 该选项把 import 改写成 `.js`
+		"rewriteRelativeImportExtensions": true
+	},
+	"include": ["contract"]
+}

@@ -11,8 +11,11 @@ export const PROJECT_ROOT = path.resolve(__dirname, "../..");
 /** 框架源码目录 */
 export const RUNTIME_DIR = path.join(PROJECT_ROOT, "packages/runtime/src");
 
-/** 预构建宿主（shell）产物目录 */
-export const SHELL_DIST_DIR = path.join(PROJECT_ROOT, "packages/shell/dist");
+/** 预构建宿主产物目录（P1 起宿主并入 cli，产物在其 shell-dist/） */
+export const SHELL_DIST_DIR = path.join(PROJECT_ROOT, "packages/cli/shell-dist");
+
+/** 预构建宿主源码目录（构建脚本 + host.tsx 等） */
+export const SHELL_SRC_DIR = path.join(PROJECT_ROOT, "packages/cli/shell");
 
 /** 模块目录 */
 export const MODULES_DIR = path.join(PROJECT_ROOT, "modules");

@@ -46,7 +46,7 @@ function resolveShell() {
 	if (!existsSync(htmlPath)) {
 		// eslint-disable-next-line no-console
 		console.log("[test] 构建 shell（缺失 dist）…");
-		execFileSync("pnpm", ["--filter", "@react-antd-module/shell", "build"], {
+		execFileSync("pnpm", ["--filter", "@react-antd-module/cli", "build:shell"], {
 			cwd: PROJECT_ROOT,
 			stdio: "inherit",
 		});

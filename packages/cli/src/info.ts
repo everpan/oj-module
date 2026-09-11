@@ -96,11 +96,11 @@ export async function printInfo(projectRoot: string, oj: OjObservability = realO
 	let shellDist = "";
 	let hostVersions: Record<string, string> = {};
 	try {
-		shellDist = resolveShellDist(projectRoot);
+		shellDist = resolveShellDist();
 		hostVersions = readHostVersions(shellDist);
 	}
 	catch {
-		console.warn("[ram] 未找到 shell 预构建产物，共享依赖版本矩阵不可得");
+		console.warn("[ram] 未找到 cli 内置宿主（shell-dist），共享依赖版本矩阵不可得");
 	}
 
 	let moduleLines = "（modules.config.ts 加载失败或无模块）";

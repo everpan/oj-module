@@ -8,8 +8,8 @@ import { build as esbuild } from "esbuild";
  * AC-D13：契约求值——复用 build.ts 的 `readModuleDefinition` 同款链路
  * （esbuild bundle → 工程内临时目录 → 真 import()），但 stub 策略不同：
  *
- * - `@react-antd-module/contract` 保持 external，Node 侧命中**真实现**
- *   （微包零浏览器依赖，其 zod 与浏览器侧 runtime re-export 同源钉版，
+ * - `@react-antd-module/runtime/contract` 保持 external，Node 侧命中**真实现**
+ *   （contract 子路径零浏览器依赖，其 zod 与浏览器侧 runtime re-export 同源钉版，
  *   版本一致性由 pnpm catalog + 版本矩阵门禁保证）；
  * - `@react-antd-module/runtime` 若被契约误 import，替换为空壳 stub 并告警
  *   ——runtime 入口是浏览器代码（React/import.meta.env/localStorage），
@@ -72,10 +72,10 @@ export async function evaluateContract(
 		catch (e) {
 			const msg = e instanceof Error ? e.message : String(e);
 			// 最常见的外部工程缺依赖：给出可操作修复，而不是裸 ERR_MODULE_NOT_FOUND
-			if (msg.includes("@react-antd-module/contract")) {
+			if (msg.includes("@react-antd-module/runtime/contract")) {
 				throw new Error(
-					"[ram-api] 契约求值需要工程 node_modules 里能解析 @react-antd-module/contract，但当前工程未安装它。\n"
-					+ "修复：把 \"@react-antd-module/contract\" 加进工程 devDependencies（版本与 shell 对齐）后重跑 pnpm install；"
+					"[ram-api] 契约求值需要工程 node_modules 里能解析 @react-antd-module/runtime/contract，但当前工程未安装它。\n"
+					+ "修复：把 \"@react-antd-module/runtime\" 加进工程 devDependencies（版本与宿主对齐）后重跑 pnpm install；"
 					+ "新工程由 ram init 自动声明。",
 				);
 			}

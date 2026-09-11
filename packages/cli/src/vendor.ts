@@ -139,7 +139,8 @@ export interface VendorDeps {
 	probe?: (binDir: string) => OjProbeResult
 }
 
-function resolveDeps(deps: VendorDeps): Required<VendorDeps> {
+/** 只解析 fetchFn / token 两项；probe 由调用方各自 `deps.probe ?? probeOjRuntime` 兜底 */
+function resolveDeps(deps: VendorDeps): { fetchFn: FetchLike, token: string } {
 	return {
 		fetchFn: deps.fetchFn ?? (globalThis.fetch as FetchLike),
 		token: deps.token ?? process.env.GITHUB_TOKEN ?? "",

@@ -10,7 +10,7 @@
  *   5. 注入 importmap 至 build/index.html（须先于任何 module script）；
  *   6. 门禁：裸说明符未覆盖 / 动态 require 未垫 / runtime 导出面缺失即 fail。
  *
- * 前置：`pnpm --filter @react-antd-module/shell build` 至少跑过一次（共享资产
+ * 前置：`pnpm --filter @react-antd-module/cli build:shell` 至少跑过一次（共享资产
  * 确定性产物，无需每次重建）。
  */
 import { copyFileSync, existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -19,7 +19,7 @@ import process from "node:process";
 import { collectDynamicRequires, collectUnresolvedSpecifiers } from "../packages/cli/src/esm-exports";
 
 const root = resolve(import.meta.dirname, "..");
-const shellDist = resolve(root, "packages/shell/dist");
+const shellDist = resolve(root, "packages/cli/shell-dist");
 const buildDir = resolve(root, "build");
 const buildAssets = resolve(buildDir, "assets");
 
@@ -30,7 +30,7 @@ const RUNTIME_CRITICAL_EXPORTS = new Set(["loadAll", "getRoutes"]);
 export function extractImportmap(html: string): Record<string, string> {
 	const match = html.match(/<script type="importmap"[^>]*>([\s\S]*?)<\/script>/);
 	if (!match)
-		throw new Error("index.html 中未找到 importmap——请先构建 shell：pnpm --filter @react-antd-module/shell build");
+		throw new Error("index.html 中未找到 importmap——请先构建宿主：pnpm --filter @react-antd-module/cli build:shell");
 	return JSON.parse(match[1]).imports;
 }
 
@@ -83,7 +83,7 @@ function detectBase(html: string): string {
 
 function main() {
 	if (!existsSync(resolve(shellDist, "index.html")) || !existsSync(resolve(shellDist, "assets")))
-		throw new Error(`缺少 shell 共享资产（${shellDist}）——请先执行：pnpm --filter @react-antd-module/shell build`);
+		throw new Error(`缺少宿主共享资产（${shellDist}）——请先执行：pnpm --filter @react-antd-module/cli build:shell`);
 	if (!existsSync(resolve(buildDir, "index.html")))
 		throw new Error(`缺少主应用构建产物（${buildDir}）——请先执行 pnpm build:framework`);
 

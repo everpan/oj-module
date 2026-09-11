@@ -363,9 +363,9 @@ importers:
       '@playwright/test':
         specifier: 'catalog:'
         version: 1.62.1
-      '@react-antd-module/contract':
+      '@react-antd-module/runtime':
         specifier: workspace:*
-        version: link:packages/contract
+        version: link:packages/runtime
       '@svgr/plugin-jsx':
         specifier: 'catalog:'
         version: 8.1.0(@svgr/core@8.1.0(supports-color@7.2.0)(typescript@6.0.3))(supports-color@7.2.0)
@@ -483,15 +483,9 @@ importers:
       '@react-antd-module/cli':
         specifier: workspace:*
         version: link:../../packages/cli
-      '@react-antd-module/contract':
-        specifier: workspace:*
-        version: link:../../packages/contract
       '@react-antd-module/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
-      '@react-antd-module/shell':
-        specifier: workspace:*
-        version: link:../../packages/shell
       '@types/react':
         specifier: 'catalog:'
         version: 19.2.18
@@ -525,15 +519,9 @@ importers:
       '@react-antd-module/cli':
         specifier: workspace:*
         version: link:../../packages/cli
-      '@react-antd-module/contract':
-        specifier: workspace:*
-        version: link:../../packages/contract
       '@react-antd-module/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
-      '@react-antd-module/shell':
-        specifier: workspace:*
-        version: link:../../packages/shell
       '@tanstack/react-query':
         specifier: 'catalog:'
         version: 5.102.8(react@19.2.8)
@@ -588,9 +576,9 @@ importers:
       '@faker-js/faker':
         specifier: 'catalog:'
         version: 10.6.0
-      '@react-antd-module/contract':
+      '@react-antd-module/runtime':
         specifier: workspace:*
-        version: link:../contract
+        version: link:../runtime
       '@redocly/cli':
         specifier: 'catalog:'
         version: 2.51.0
@@ -612,12 +600,106 @@ importers:
       zod:
         specifier: 'catalog:'
         version: 4.5.4
-
-  packages/contract:
-    dependencies:
-      zod:
+    devDependencies:
+      '@ant-design/cssinjs':
         specifier: 'catalog:'
-        version: 4.5.4
+        version: 2.1.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@ant-design/icons':
+        specifier: 'catalog:'
+        version: 6.3.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@ant-design/pro-components':
+        specifier: 'catalog:'
+        version: 3.1.12-0(antd@6.6.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(supports-color@7.2.0)
+      '@dnd-kit/core':
+        specifier: 'catalog:'
+        version: 6.3.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@dnd-kit/sortable':
+        specifier: 'catalog:'
+        version: 10.0.0(@dnd-kit/core@6.3.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react@19.2.8)
+      '@dnd-kit/utilities':
+        specifier: 'catalog:'
+        version: 3.2.2(react@19.2.8)
+      '@tanstack/react-query':
+        specifier: 'catalog:'
+        version: 5.102.8(react@19.2.8)
+      '@vitejs/plugin-react':
+        specifier: 'catalog:'
+        version: 6.1.0(vite@8.2.2(@types/node@25.9.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.12)(yaml@2.9.0))
+      ahooks:
+        specifier: 'catalog:'
+        version: 3.9.7(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      antd:
+        specifier: 'catalog:'
+        version: 6.6.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      antd-img-crop:
+        specifier: 'catalog:'
+        version: 4.30.0(antd@6.6.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      clsx:
+        specifier: 'catalog:'
+        version: 2.1.1
+      dayjs:
+        specifier: 'catalog:'
+        version: 1.11.23
+      echarts:
+        specifier: 'catalog:'
+        version: 6.1.0
+      echarts-for-react:
+        specifier: 'catalog:'
+        version: 3.0.6(echarts@6.1.0)(react@19.2.8)
+      i18next:
+        specifier: 'catalog:'
+        version: 26.4.0(typescript@6.0.3)
+      keepalive-for-react:
+        specifier: 'catalog:'
+        version: 5.0.11(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      ky:
+        specifier: 'catalog:'
+        version: 2.0.2
+      motion:
+        specifier: 'catalog:'
+        version: 12.43.0(@emotion/is-prop-valid@0.7.3)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      nprogress:
+        specifier: 'catalog:'
+        version: 0.2.0
+      pinyin-pro:
+        specifier: 'catalog:'
+        version: 3.29.3
+      react:
+        specifier: 'catalog:'
+        version: 19.2.8
+      react-countup:
+        specifier: 'catalog:'
+        version: 6.5.3(react@19.2.8)
+      react-dom:
+        specifier: 'catalog:'
+        version: 19.2.8(react@19.2.8)
+      react-error-boundary:
+        specifier: 'catalog:'
+        version: 6.1.3(@types/react@19.2.18)(react@19.2.8)
+      react-i18next:
+        specifier: 'catalog:'
+        version: 17.0.12(i18next@26.4.0(typescript@6.0.3))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3)
+      react-jss:
+        specifier: 'catalog:'
+        version: 10.10.0(react@19.2.8)
+      react-router:
+        specifier: 'catalog:'
+        version: 7.18.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      simplebar-react:
+        specifier: 'catalog:'
+        version: 3.3.2(react@19.2.8)
+      spin-delay:
+        specifier: 'catalog:'
+        version: 2.0.1(react@19.2.8)
+      tailwind-merge:
+        specifier: 'catalog:'
+        version: 3.6.0
+      use-sync-external-store:
+        specifier: 'catalog:'
+        version: 1.6.0(react@19.2.8)
+      zustand:
+        specifier: 'catalog:'
+        version: 5.0.15(@types/react@19.2.18)(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8))
 
   packages/runtime:
     dependencies:
@@ -636,9 +718,6 @@ importers:
       '@dnd-kit/utilities':
         specifier: 'catalog:'
         version: 3.2.2(react@19.2.8)
-      '@react-antd-module/contract':
-        specifier: workspace:*
-        version: link:../contract
       ahooks:
         specifier: 'catalog:'
         version: 3.9.7(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -712,127 +791,6 @@ importers:
       unplugin-icons:
         specifier: 'catalog:'
         version: 23.0.1(@svgr/core@8.1.0(supports-color@7.2.0)(typescript@6.0.3))(@vue/compiler-sfc@3.5.42)
-
-  packages/shell:
-    dependencies:
-      '@react-antd-module/cli':
-        specifier: workspace:*
-        version: link:../cli
-      '@react-antd-module/runtime':
-        specifier: workspace:*
-        version: link:../runtime
-    devDependencies:
-      '@ant-design/cssinjs':
-        specifier: 'catalog:'
-        version: 2.1.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      '@ant-design/icons':
-        specifier: 'catalog:'
-        version: 6.3.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      '@ant-design/pro-components':
-        specifier: 'catalog:'
-        version: 3.1.12-0(antd@6.6.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(supports-color@7.2.0)
-      '@dnd-kit/core':
-        specifier: 'catalog:'
-        version: 6.3.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      '@dnd-kit/sortable':
-        specifier: 'catalog:'
-        version: 10.0.0(@dnd-kit/core@6.3.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react@19.2.8)
-      '@dnd-kit/utilities':
-        specifier: 'catalog:'
-        version: 3.2.2(react@19.2.8)
-      '@tanstack/react-query':
-        specifier: 'catalog:'
-        version: 5.102.8(react@19.2.8)
-      '@vitejs/plugin-react':
-        specifier: 'catalog:'
-        version: 6.1.0(vite@8.2.2(@types/node@25.9.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.12)(yaml@2.9.0))
-      ahooks:
-        specifier: 'catalog:'
-        version: 3.9.7(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      antd:
-        specifier: 'catalog:'
-        version: 6.6.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      antd-img-crop:
-        specifier: 'catalog:'
-        version: 4.30.0(antd@6.6.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      clsx:
-        specifier: 'catalog:'
-        version: 2.1.1
-      dayjs:
-        specifier: 'catalog:'
-        version: 1.11.23
-      echarts:
-        specifier: 'catalog:'
-        version: 6.1.0
-      echarts-for-react:
-        specifier: 'catalog:'
-        version: 3.0.6(echarts@6.1.0)(react@19.2.8)
-      esbuild:
-        specifier: 'catalog:'
-        version: 0.28.2
-      i18next:
-        specifier: 'catalog:'
-        version: 26.4.0(typescript@6.0.3)
-      keepalive-for-react:
-        specifier: 'catalog:'
-        version: 5.0.11(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      ky:
-        specifier: 'catalog:'
-        version: 2.0.2
-      motion:
-        specifier: 'catalog:'
-        version: 12.43.0(@emotion/is-prop-valid@0.7.3)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      nprogress:
-        specifier: 'catalog:'
-        version: 0.2.0
-      pinyin-pro:
-        specifier: 'catalog:'
-        version: 3.29.3
-      react:
-        specifier: 'catalog:'
-        version: 19.2.8
-      react-countup:
-        specifier: 'catalog:'
-        version: 6.5.3(react@19.2.8)
-      react-dom:
-        specifier: 'catalog:'
-        version: 19.2.8(react@19.2.8)
-      react-error-boundary:
-        specifier: 'catalog:'
-        version: 6.1.3(@types/react@19.2.18)(react@19.2.8)
-      react-i18next:
-        specifier: 'catalog:'
-        version: 17.0.12(i18next@26.4.0(typescript@6.0.3))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3)
-      react-jss:
-        specifier: 'catalog:'
-        version: 10.10.0(react@19.2.8)
-      react-router:
-        specifier: 'catalog:'
-        version: 7.18.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      simplebar-react:
-        specifier: 'catalog:'
-        version: 3.3.2(react@19.2.8)
-      spin-delay:
-        specifier: 'catalog:'
-        version: 2.0.1(react@19.2.8)
-      tailwind-merge:
-        specifier: 'catalog:'
-        version: 3.6.0
-      tsx:
-        specifier: 'catalog:'
-        version: 4.23.12
-      typescript:
-        specifier: 'catalog:'
-        version: 6.0.3
-      use-sync-external-store:
-        specifier: 'catalog:'
-        version: 1.6.0(react@19.2.8)
-      vite:
-        specifier: 'catalog:'
-        version: 8.2.2(@types/node@25.9.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.12)(yaml@2.9.0)
-      zustand:
-        specifier: 'catalog:'
-        version: 5.0.15(@types/react@19.2.18)(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8))
 
 packages:
 

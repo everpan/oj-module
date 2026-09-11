@@ -8,7 +8,7 @@ import { afterEach, beforeAll, describe, expect, it } from "vitest";
  *
  * 根因：运行时 `NotificationPopup`（layout-header → ContainerLayout）用
  * `createUseStyles(({ token }) => …)` 读取 react-jss 主题里的 antd token，
- * 而 token 由 `JSSThemeProvider` 注入。但宿主 dev 入口（packages/shell/src/host.tsx）
+ * 而 token 由 `JSSThemeProvider` 注入。但宿主 dev 入口（packages/cli/shell/src/host.tsx）
  * 只挂了裸 `ConfigProvider`，从未挂 `JSSThemeProvider`。当 /demo 路由解析到
  * ContainerLayout（默认布局）时，header 的 NotificationPopup 因 theme 缺失而崩溃。
  *
@@ -106,7 +106,7 @@ describe("containerLayout 自带 JSSThemeProvider（Error 2 回归）", () => {
 		document.body.appendChild(root);
 
 		// 关键：只挂裸 ConfigProvider，故意不挂 JSSThemeProvider，
-		// 复刻 packages/shell/src/host.tsx 的接线。修复前这里会抛
+		// 复刻 packages/cli/shell/src/host.tsx 的接线。修复前这里会抛
 		// `Cannot read properties of undefined (reading 'colorBorder')`。
 		// 用 data router（createMemoryRouter + RouterProvider）提供 react-router
 		// 数据路由上下文（ContainerLayout 内部 useMatches / useOutlet 需要）。

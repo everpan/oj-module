@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildIr, splitRoute } from "../../packages/cli/src/contract/ir";
-import { defineApi, z } from "../../packages/contract/src";
+import { defineApi, z } from "../../packages/runtime/contract";
 
 /**
  * AC-D12：IR 构建 + schema 白名单。

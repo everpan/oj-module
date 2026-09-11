@@ -1,4 +1,4 @@
-import type { ScopedRequestLike } from "@react-antd-module/contract/errors";
+import type { ScopedRequestLike } from "@react-antd-module/runtime/contract/errors";
 
 /**
  * home 模块自有接口客户端（由 runtime api/home.ts 模块化而来）。

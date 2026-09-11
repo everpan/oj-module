@@ -19,7 +19,7 @@ allowBuilds:
 
 # 共享依赖版本单一真相（设计文档 §4.3 / C4 / D12）。
 #
-# 宿主（packages/shell）把共享依赖预打包并经 importmap 提供给框架 runtime 与
+# 宿主（cli 内置 shell-dist）把共享依赖预打包并经 importmap 提供给框架 runtime 与
 # 外部模块，它写进 dist/versions.json 的版本是外部工程必须严格相等的对齐基准。
 # 一旦宿主与框架各自声明，就会漂移且不报错——实测已漂移到 3 个大版本
 # （cssinjs 1.x/2.x、i18next 25/26、react-i18next 16/17），宿主把旧版本当成

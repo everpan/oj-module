@@ -2,11 +2,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { generateCsp } from "../../packages/shell/src/csp";
+import { generateCsp } from "../../packages/cli/shell/src/csp";
 import { PROJECT_ROOT } from "../helpers/paths";
 
-const BUILD_SCRIPT = path.join(PROJECT_ROOT, "packages/shell/scripts/build.mts");
-const SHELL_HTML = path.join(PROJECT_ROOT, "packages/shell/index.html");
+const BUILD_SCRIPT = path.join(PROJECT_ROOT, "packages/cli/shell/scripts/build.mts");
+const SHELL_HTML = path.join(PROJECT_ROOT, "packages/cli/shell/index.html");
 
 const NONCE = "abc123";
 

@@ -3,7 +3,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { IFRAME_ALLOWED_HOSTS } from "#src/utils/iframe-guard";
-import { generateCsp } from "../../packages/shell/src/csp";
+import { generateCsp } from "../../packages/cli/shell/src/csp";
 import { PROJECT_ROOT } from "../helpers/paths";
 
 /** 扫描仓库内全部 iframeLink 字面量（模块 entry + fake 后端数据） */

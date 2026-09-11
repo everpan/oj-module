@@ -1,4 +1,4 @@
-import { defineApi, z } from "@react-antd-module/contract";
+import { defineApi, z } from "@react-antd-module/runtime/contract";
 
 /**
  * personal-center 模块契约（uni-dev 形态，apiPrefix 字面等于 "/personal-center"，AC-D9）。

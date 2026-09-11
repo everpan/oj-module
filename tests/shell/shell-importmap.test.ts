@@ -13,7 +13,7 @@ import {
 import { SHARED_DEPS } from "../../packages/cli/src/shared-deps";
 import { PROJECT_ROOT } from "../helpers/paths";
 
-const SHELL_DIST = path.join(PROJECT_ROOT, "packages/shell/dist");
+const SHELL_DIST = path.join(PROJECT_ROOT, "packages/cli/shell-dist");
 const RUNTIME_DIST_JS = path.join(PROJECT_ROOT, "packages/runtime/dist/runtime.js");
 
 function readImportmap(): Record<string, string> {
