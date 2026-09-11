@@ -26,11 +26,11 @@ function collectRuntimeSources(): Map<string, string> {
 }
 
 describe("框架内置兜底页（切断 framework → modules 反向依赖）", () => {
-	it("runtime 源码中不得出现对 #modules/exception 的引用", () => {
+	it("runtime 源码中不得出现对 #web/exception 的引用", () => {
 		const offenders: string[] = [];
 
 		for (const [relativePath, content] of collectRuntimeSources()) {
-			if (content.includes("#modules/exception")) {
+			if (content.includes("#web/exception")) {
 				offenders.push(relativePath);
 			}
 		}
@@ -88,7 +88,7 @@ describe("框架内置兜底页（切断 framework → modules 反向依赖）",
 describe("exception 模块降级为可选覆盖", () => {
 	it("exception 模块仍可独立提供 /exception/* 演示路由（仅使用相对引用）", () => {
 		const entry = fs.readFileSync(
-			path.join(RUNTIME_DIR, "../../../modules/exception/entry.ts"),
+			path.join(RUNTIME_DIR, "../../../web/exception/entry.ts"),
 			"utf-8",
 		);
 

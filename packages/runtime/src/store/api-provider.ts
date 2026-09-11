@@ -13,7 +13,7 @@ import type {
 	FetchRoleMenuData,
 	FetchUpdateRoleItemBody,
 	FetchUpdateRoleItemData,
-} from "#src/api/system/role/api/client";
+} from "#src/api/system/role/client/api";
 import type { NotificationItem } from "#src/layout/widgets/notification/types";
 
 /**

@@ -26,7 +26,7 @@
 1. **构建产物单文件化**（`packages/cli/src/build.ts`）：`rolldownOptions.output.codeSplitting: false`
    → 每个模块产出自包含的 `entry.js`，消除代码分割导致的孤儿 chunk 与 `import.meta.url` 运行时取块，
    修复「模块入口可解析、依赖可读」的集成缺口（直接命中会导致 `loadAll` 失败 / 404）。
-2. **页面组件静态导入**（`apps/playground/modules/demo/entry.ts`）：`DemoPage` 由 `React.lazy` 改为静态 `import`
+2. **页面组件静态导入**（`apps/playground/web/demo/entry.ts`）：`DemoPage` 由 `React.lazy` 改为静态 `import`
    → 修复 happy-dom 下 lazy + keepalive 的空渲染，确保模块页面内容可渲染。
 3. **index 子路由保留**（`packages/runtime/src/router/utils/resolve-layout.ts`）：`resolveRouteLayouts` 递归包裹布局时
    保留 `index: true` 子路由，使 `/demo` 的叶子为 index 路由（无 `hasChildren`），`AuthGuard` 不会误判 404。

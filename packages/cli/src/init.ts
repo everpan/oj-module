@@ -1,7 +1,7 @@
 /**
  * `ojm init` —— 前后端一体化工程脚手架（设计 §3，D1/D3/D6/D10）。
  *
- * 产物：api/（oj 后端 + 现场签发证书 + seed）、modules/src/（前端模块）、
+ * 产物：api/（oj 后端 + 现场签发证书 + seed）、web/src/（前端模块）、
  * bin/（从 everpan/only-js 最新 release 联网下载：oj + plugins + devkit）、
  * 工程配置文件。
  *

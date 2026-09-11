@@ -54,7 +54,7 @@ describe("checkApi（AC-D10 三重校验）", () => {
 	it("①生成物过期（磁盘被改）→ error artifact-stale", async () => {
 		const cwd = makeProject();
 		await runApi({ cwd });
-		writeFileSync(join(cwd, "modules/src/order/api/client.ts"), "// 人改了生成物\n");
+		writeFileSync(join(cwd, "web/src/order/client/api.ts"), "// 人改了生成物\n");
 		const { violations } = await checkApi({ cwd });
 		expect(violations).toEqual(expect.arrayContaining([
 			expect.objectContaining({ level: "error", kind: "artifact-stale" }),

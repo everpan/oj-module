@@ -37,7 +37,7 @@ pnpm check:circular-deps  # Check for circular dependencies
 
 - `packages/runtime/` → `@oj-module/runtime`：**浏览器面**——框架运行时（路由/布局/store/请求/组件/module-loader）+ 契约 DSL 子路径（`./contract`、`./contract/errors`，编译进 `dist/contract`）
 - `packages/cli/` → `@oj-module/cli`：**Node 工具链面**——`ojm dev / build / info / merge / api / vendor`，以及预构建宿主（源码 `shell/`、产物 `shell-dist/`）
-- `modules/`：自带模块（dogfooding）；`apps/playground/`、`apps/playground-oj/`：模拟外部模块工程
+- `web/`：自带模块（dogfooding）；`apps/playground/`、`apps/playground-oj/`：模拟外部模块工程
 
 依赖方向只有一条边：`cli → runtime`（精确版本，lockstep 发版）。宿主产物随 cli 发布，`ojm dev/build` 直接从 cli 包内 `shell-dist` 取宿主，不再依赖独立的 shell 包或 monorepo 路径回退。
 
@@ -47,13 +47,13 @@ pnpm check:circular-deps  # Check for circular dependencies
 
 App bootstrap order matters: i18n setup first, then loading animation, then module loading（`loadAll`），then React root render. The app is wrapped in `TanstackQuery` provider at the top level. 生产环境清单经 `fetch(BASE_URL + manifest.json)` 运行时获取（产物由 `scripts/build-modules.ts` 生成），dev 环境 import 根 `manifest.json`。
 
-### Module System (`modules/` + `packages/runtime/src/module-loader/`)
+### Module System (`web/` + `packages/runtime/src/module-loader/`)
 
-Feature pages are organized as independent modules under `modules/`. Each module is self-contained and can be developed and released independently.
+Feature pages are organized as independent modules under `web/`. Each module is self-contained and can be developed and released independently.
 
 **Module structure:**
 ```
-modules/<name>/
+web/<name>/
 ├── entry.ts          # Single source of truth: name, description, version, routes, i18n, lifecycle
 ├── pages/            # Page components
 └── locales/          # i18n resources (zh-CN.json, en-US.json)
@@ -84,7 +84,7 @@ Routes are organized into three categories:
 
 - **Core routes** (`packages/runtime/src/router/routes/core/`): Auth pages (login), fallback. Always present.
 - **External routes** (`packages/runtime/src/router/routes/external/`): Public pages like privacy-policy, terms-of-service. No auth check, no user info request.
-- **Module routes** (`modules/*/entry.ts`): Feature pages loaded via `module-loader` from `manifest.json`.
+- **Module routes** (`web/*/entry.ts`): Feature pages loaded via `module-loader` from `manifest.json`.
 
 Permission routes come from two sources, toggled by `enableBackendAccess` / `enableFrontendAccess` preferences:
 

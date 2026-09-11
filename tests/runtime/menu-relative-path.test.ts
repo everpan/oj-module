@@ -74,7 +74,7 @@ describe("菜单生成器：相对 path 解析为绝对路径", () => {
 		// 直接读 playground demo entry 源码校验其相对 path 声明仍在，
 		// 生成器必须对其产出可导航 key
 		const { readFileSync } = await import("node:fs");
-		const source = readFileSync(path.join(PLAYGROUND_DIR, "modules/src/demo/entry.ts"), "utf-8");
+		const source = readFileSync(path.join(PLAYGROUND_DIR, "web/src/demo/entry.ts"), "utf-8");
 		expect(source).toContain("path: \"detail\"");
 
 		const routes = [

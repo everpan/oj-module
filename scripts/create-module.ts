@@ -33,7 +33,7 @@ async function main() {
 		process.exit(1);
 	}
 
-	const moduleDir = path.join(PROJECT_ROOT, "modules", moduleName);
+	const moduleDir = path.join(PROJECT_ROOT, "web", moduleName);
 	if (fs.existsSync(moduleDir)) {
 		console.error(`\n✖ 模块目录已存在: ${moduleDir}`);
 		process.exit(1);
@@ -145,14 +145,14 @@ export default mod;
 	const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf-8"));
 	manifest.modules.push({
 		name: moduleName,
-		entry: `/modules/${moduleName}/entry.ts`,
+		entry: `/web/${moduleName}/entry.ts`,
 		enabled: true,
 	});
 	fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, "\t")}\n`);
 
-	console.log(`\n✔ 模块已创建: modules/${moduleName}/`);
+	console.log(`\n✔ 模块已创建: web/${moduleName}/`);
 	console.log("  目录结构:");
-	console.log(`    modules/${moduleName}/`);
+	console.log(`    web/${moduleName}/`);
 	console.log("    ├── entry.ts");
 	console.log("    ├── pages/");
 	console.log("    │   └── index.tsx");

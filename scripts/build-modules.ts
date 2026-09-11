@@ -56,7 +56,7 @@ async function buildModule(moduleDir: string) {
 
 async function main() {
 	const targetModule = process.argv.find(arg => arg.startsWith("--module="))?.split("=")[1];
-	const modulesDir = path.resolve("modules");
+	const modulesDir = path.resolve("web");
 	const built: NonNullable<Awaited<ReturnType<typeof buildModule>>>[] = [];
 
 	if (targetModule) {
@@ -83,7 +83,7 @@ async function main() {
 
 	// P7.15 / 评审 P5：产出生产清单 build/module-manifest.json——entry 指向版本化
 	// 构建产物（相对路径，由 runtime 启动时按 base 补齐），替代根 manifest.json
-	// 中的开发态源码路径（/modules/<name>/entry.ts，生产环境 404）。
+	// 中的开发态源码路径（/web/<name>/entry.ts，生产环境 404）。
 	// 命名不能叫 manifest.json：vite build 会把 public/manifest.json（PWA 清单）
 	// 拷进 build/ 覆盖同名文件，运行时 fetch 到 PWA 内容直接启动失败。
 	const prodManifest = {

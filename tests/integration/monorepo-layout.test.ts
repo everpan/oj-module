@@ -41,7 +41,7 @@ describe("monorepo 目录布局", () => {
 	it("框架反向依赖模块的文件不得超出白名单", () => {
 		const offenders = collectFiles(RUNTIME_DIR)
 			.filter(file => /\.tsx?$/.test(file))
-			.filter(file => /["']#modules\//.test(fs.readFileSync(file, "utf-8")))
+			.filter(file => /["']#web\//.test(fs.readFileSync(file, "utf-8")))
 			.map(file => path.relative(RUNTIME_DIR, file).split(path.sep).join("/"))
 			.filter(file => !REVERSE_DEPENDENCY_WHITELIST.includes(file));
 

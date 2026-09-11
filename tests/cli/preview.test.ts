@@ -9,7 +9,7 @@ import { previewServer } from "../../packages/cli/src/preview";
 
 /**
  * 设计 §6（P4）：ojm preview。
- *  - fail-fast 四查：bin/oj、api/config.yaml、modules/dist/index.html、
+ *  - fail-fast 四查：bin/oj、api/config.yaml、web/dist/index.html、
  *    api/dist/manifests.yaml，缺一即人话报错指向 ojm init / ojm build
  *  - migrate 非零退出 → 透传报错、不起 server（失败即退）
  *  - 成功路径：migrate → server 顺序，参数全绝对路径；默认无 --app-path，
@@ -30,9 +30,9 @@ function makeFixture(base = "/api"): { root: string, configPath: string, siteDir
 	fs.mkdirSync(path.join(root, "api/dist"), { recursive: true });
 	fs.writeFileSync(path.join(root, "api/dist/manifests.yaml"), "modules: []\n");
 	fs.writeFileSync(path.join(root, "api/config.yaml"), `server:\n  host: 127.0.0.1\n  port: ${port}\n  base: ${base}\n`);
-	// 新布局标记（modules/src 存在 → distDir = modules/dist）
-	fs.mkdirSync(path.join(root, "modules/src"), { recursive: true });
-	const siteDir = path.join(root, "modules/dist");
+	// 新布局标记（web/src 存在 → distDir = web/dist）
+	fs.mkdirSync(path.join(root, "web/src"), { recursive: true });
+	const siteDir = path.join(root, "web/dist");
 	fs.mkdirSync(siteDir, { recursive: true });
 	fs.writeFileSync(path.join(siteDir, "index.html"), "<html><head><title>site</title></head><body>site</body></html>");
 	fs.writeFileSync(path.join(siteDir, "modules.json"), "[]\n");
@@ -82,7 +82,7 @@ describe("previewServer fail-fast 四查", () => {
 	const cases = [
 		{ name: "缺 bin/oj → 指向 ojm init", remove: (root: string) => fs.rmSync(path.join(root, "bin/oj")), hint: /init/ },
 		{ name: "缺 api/config.yaml → 指向 ojm init", remove: (root: string) => fs.rmSync(path.join(root, "api/config.yaml")), hint: /init/ },
-		{ name: "缺 index.html → 指向 ojm build", remove: (root: string) => fs.rmSync(path.join(root, "modules/dist/index.html")), hint: /build/ },
+		{ name: "缺 index.html → 指向 ojm build", remove: (root: string) => fs.rmSync(path.join(root, "web/dist/index.html")), hint: /build/ },
 		{ name: "缺 manifests.yaml → 指向 ojm build", remove: (root: string) => fs.rmSync(path.join(root, "api/dist/manifests.yaml")), hint: /build/ },
 	];
 	for (const c of cases) {

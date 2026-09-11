@@ -150,10 +150,10 @@ export const getTodoList = defineApi({
 ```bash
 cd apps/playground-oj
 pnpm exec ojm api         # 也可 npx ojm api；仓库内用 node ../../packages/cli/bin/ojm.mjs api
-# 产物：modules/src/demo/api/client.ts（+ client.schemas.ts）、api/src/demo/routes.json、openapi.yaml
+# 产物：web/src/demo/client/api.ts（+ api.schemas.ts）、api/src/demo/routes.json、openapi.yaml
 ```
 
-**④ 在模块里注入请求能力** —— `modules/src/demo/entry.ts`（`defineModule` 的 `lifecycle.onInit`）：
+**④ 在模块里注入请求能力** —— `web/src/demo/entry.ts`（`defineModule` 的 `lifecycle.onInit`）：
 
 ```ts
 import { defineModule } from "@oj-module/runtime";
@@ -287,13 +287,13 @@ matchit 约束：参数段必须整段为 {name} 或 {*name}，需要前缀/后�
 
 | 产物 | 落点（uni-dev 形态） | 用途 |
 | --- | --- | --- |
-| `client.ts` | `modules/src/<模块>/api/` | 前端调用函数（`getTodoList(...)`） |
-| `client.schemas.ts` | `modules/src/<模块>/api/` | zod schema，DEV 期响应校验 |
+| `client.ts` | `web/src/<模块>/client/` | 前端调用函数（`getTodoList(...)`） |
+| `api.schemas.ts` | `web/src/<模块>/client/` | zod schema，DEV 期响应校验 |
 | `routes.json` | `api/src/<模块>/` | 路由清单（对账用） |
 | `openapi.yaml` | `api/src/<模块>/` | 接口文档 |
 | stub `api.ts` | `api/src/<模块>/<端点>/` | 端点骨架（仅在缺失时新建） |
 
-**生成的 `client.ts` 长什么样**（`modules/src/demo/api/client.ts` 摘录）：
+**生成的 `client.ts` 长什么样**（`web/src/demo/client/api.ts` 摘录）：
 
 ```ts
 import { ContractApiError } from "@oj-module/runtime/contract/errors";
@@ -465,7 +465,7 @@ export default defineModule({
 | `apiPrefix` | `(prefix: string) => void` | 登记 API 前缀，之后才能发请求 | `ctx.register.apiPrefix("/demo")` |
 | `store` | `(name, store) => void` | 注册模块自己的 zustand store | `ctx.register.store("demo", useDemoStore)` |
 | `authProvider` | `(provider) => void` | 接管登录/登出/用户信息（先到先得） | 见 `module-development-guide.md` §3.6 |
-| `systemApi` | `(provider) => void` | 接管角色/菜单类 API | 见 `apps/playground-oj/modules/src/system` |
+| `systemApi` | `(provider) => void` | 接管角色/菜单类 API | 见 `apps/playground-oj/web/src/system` |
 | `notificationsApi` | `(provider) => void` | 接管通知拉取 | 见 `.../notification` |
 | `uploadApi` | `(provider) => void` | 接管头像/附件上传端点 | 见 `.../personal-center` |
 | `registerSlot` | `(slotName, node) => void` | 注册布局插槽节点，卸载自动清理 | `ctx.registerSlot("header-right", <MyBtn/>)` |
@@ -670,7 +670,7 @@ react-router  react-router/dom  @tanstack/react-query
 
 **怎么查**：`pnpm exec ojm info` 打印「共享依赖版本矩阵（宿主 versions.json）」；权威清单见 `packages/cli/src/shared-deps.ts`（源码，含 `hard` 标记与深路径条目）与 `packages/cli/vendor/host-versions.json`（发布包内置的版本矩阵）。
 
-> **类型从哪来**：矩阵只保证**运行时**由宿主 importmap 提供单例，工程 `node_modules` 里不一定有这些包。外部工程若要 `tsc` 通过，须把用到的包加进**自己的 `devDependencies`**（版本对齐宿主矩阵）。`ojm init` 生成的工程已为脚手架模板用到的那些（antd / react / @ant-design/icons / react-router / react-i18next / **echarts / echarts-for-react / react-countup / dayjs**）钉好版本——图表演示见模板 `modules/src/home`。
+> **类型从哪来**：矩阵只保证**运行时**由宿主 importmap 提供单例，工程 `node_modules` 里不一定有这些包。外部工程若要 `tsc` 通过，须把用到的包加进**自己的 `devDependencies`**（版本对齐宿主矩阵）。`ojm init` 生成的工程已为脚手架模板用到的那些（antd / react / @ant-design/icons / react-router / react-i18next / **echarts / echarts-for-react / react-countup / dayjs**）钉好版本——图表演示见模板 `web/src/home`。
 
 ### 3.5 硬共享 vs 软共享
 
@@ -790,7 +790,7 @@ packages/cli/
 ├── src/info.ts            # ojm info（版本矩阵 + 模块清单，报障用）
 ├── shell/                 # 宿主源码（host.tsx / csp / trust / preload / scripts/build.mts）
 ├── shell-dist/            # 【随仓库提交】宿主预构建产物（importmap + 共享资产 + versions.json）
-├── templates/             # 工程脚手架模板（api/ modules/ 配置/ tsconfig…）
+├── templates/             # 工程脚手架模板（api/ web/ 配置/ tsconfig…）
 ├── scripts/               # sync-host-versions.mjs（prepack：同步矩阵 + R5 断言）
 └── vendor/host-versions.json  # 随包内置的宿主版本矩阵（prepack 自动同步）
 ```
@@ -808,7 +808,7 @@ packages/cli/
 
 ```bash
 ojm init my-app --yes
-# 产出：api/（oj 后端模板）、modules/（模块模板）、modules.config.ts、tsconfig.json…
+# 产出：api/（oj 后端模板）、web/（模块模板）、web.config.ts、tsconfig.json…
 # 含 api/.ojm-api-exempt.json（内置 auth/web/notifications handler 有意无契约）
 ```
 
@@ -823,7 +823,7 @@ ojm dev        # /api 反代 oj；模块源码变更 → 重建 → SSE 刷新�
 **`ojm build`** —— 构建后端（`oj build`，零 DB 副作用）+ 前端全站合并。
 
 ```bash
-ojm build      # 只有 build 会清场合并，产物在 modules/dist（含宿主站点全量拷贝）
+ojm build      # 只有 build 会清场合并，产物在 web/dist（含宿主站点全量拷贝）
 ```
 
 **`ojm preview [port] [--oj-static]`** —— 生产形态预览（migrate → oj server + 静态兜底）。
@@ -849,12 +849,15 @@ ojm vendor v0.1.11      # 指定 tag
 
 ### 4.4 契约代码生成的发现规则
 
+> 新人向全链路机制（evaluate → IR → 四产物 → stub → `--check` → 豁免清单）见
+> [`ojm-api-codegen-guide.md`](./ojm-api-codegen-guide.md)。
+
 `ojm api` 发现两档（缺省并扫，见 `src/contract/run.ts`）：
 
 | 形态 | 契约位置 | 产物落点 |
 | --- | --- | --- |
-| **uni-dev**（前后端一体，推荐） | `api/src/<模块>/contract.ts` | client/schemas → `modules/src/<模块>/api/`；routes.json/openapi.yaml → 契约旁；stub → oj 目录镜像树 |
-| 纯前端 | `modules/src/<模块>/api/contract.ts` | 四产物全部落契约同目录，无 stub |
+| **uni-dev**（前后端一体，推荐） | `api/src/<模块>/contract.ts` | client/schemas → `web/src/<模块>/client/`；routes.json/openapi.yaml → 契约旁；stub → oj 目录镜像树 |
+| 纯前端 | `web/src/<模块>/client/contract.ts` | 四产物全部落契约同目录，无 stub |
 
 **硬约束（AC-D9）**：uni-dev 形态下 `apiPrefix` 必须**字面等于**目录名，不符时人话报错：
 

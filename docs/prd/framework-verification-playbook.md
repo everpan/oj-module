@@ -21,7 +21,7 @@
 | 日期 | 2026-09-11 |
 | 框架包版本 | `cli` `0.1.5`（本次模板修复：home/login 前端模块 + notifications 端点 + 豁免清单；home 用统计卡片 + 折线/柱/饼图演示共享依赖矩阵）+ `runtime`/`shell` `0.1.4` + `contract` `0.1.3`（四包均已按本手册复跑） |
 | oj | `0.1.12`（**官方 release**）——v0.1.11 及更早的 release 二进制有构建机路径缺陷，v0.1.12 已修复（见 §3） |
-| 结果 | 全链路通过（§1–§7）：release 二进制在非构建机可用，`ojm dev` / `ojm preview` 均正常。发现并修复 4 个脚手架缺陷（模板缺 `api/.ojm-api-exempt.json` → `ojm api --check` 误报；模板缺 `modules/src/login` → `/login` 无路由可跳；模板缺 root 级 `api/src/notifications` → 通知铃 404；模板缺 `modules/src/home` → 登录回跳 `/home` 落错误边界，见 §4/§5）与 2 处手册判据过期（§3 泄漏计数、§4 未注明豁免文件） |
+| 结果 | 全链路通过（§1–§7）：release 二进制在非构建机可用，`ojm dev` / `ojm preview` 均正常。发现并修复 4 个脚手架缺陷（模板缺 `api/.ojm-api-exempt.json` → `ojm api --check` 误报；模板缺 `web/src/login` → `/login` 无路由可跳；模板缺 root 级 `api/src/notifications` → 通知铃 404；模板缺 `web/src/home` → 登录回跳 `/home` 落错误边界，见 §4/§5）与 2 处手册判据过期（§3 泄漏计数、§4 未注明豁免文件） |
 
 </details>
 
@@ -59,7 +59,7 @@ node "$OJM_REPO/packages/cli/bin/ojm.mjs" init my-books --yes
 **检查点**
 
 - [ ] 退出码 0，末行提示 `登录 admin / 123456`
-- [ ] 目录齐全：`api/src/{_platform,auth,web,notifications,personal-center}`、`api/.ojm-api-exempt.json`、`modules/src/{demo,home,login,personal-center}`、`modules.config.ts`、`tsconfig.json`、`global.d.ts`、`env.d.ts`、`bin/oj`、`bin/.oj-version`、`.claude/skills/oj-api-dev/`（npm 通道安装时 `bin/` 还含 `plugins/` 与 `devkit/`）
+- [ ] 目录齐全：`api/src/{_platform,auth,web,notifications,personal-center}`、`api/.ojm-api-exempt.json`、`web/src/{demo,home,login,personal-center}`、`web.config.ts`、`tsconfig.json`、`global.d.ts`、`env.d.ts`、`bin/oj`、`bin/.oj-version`、`.claude/skills/oj-api-dev/`（npm 通道安装时 `bin/` 还含 `plugins/` 与 `devkit/`）
 - [ ] `package.json` 的 devDependencies **包含** `@oj-module/{cli,runtime}`（两包时代；`contract` 是 runtime 子路径、shell 已并入 cli），且值**不是 `*`**
 - [ ] 若出现「`@types/react` / `typescript` 回退 `*`」告警 → 记下，安装后必须钉版
 - [ ] **未出现「oj 二进制自检失败」告警**（cli ≥ 0.1.4 安装后自动冒烟）；若出现，按 §3 换自建二进制
@@ -133,7 +133,7 @@ pnpm exec ojm api
 **检查点**
 
 - [ ] 输出「契约 1 份；写入 4 个文件」
-- [ ] 产物存在：`modules/src/books/api/client.ts`、`client.schemas.ts`、`api/src/books/routes.json`、`api/src/books/openapi.yaml`
+- [ ] 产物存在：`web/src/books/client/api.ts`、`api.schemas.ts`、`api/src/books/routes.json`、`api/src/books/openapi.yaml`
 - [ ] `client.ts` 导出 `listBooks` / `ListBooksQuery` / `ListBooksData`（命名 = Pascal(端点名) + Query/Body/Data）
 - [ ] 工程根存在 `api/.ojm-api-exempt.json`（见下）
 - [ ] `pnpm exec ojm api --check` 退出码 0（无 drift）
@@ -156,8 +156,8 @@ pnpm exec ojm api
 
 ## 5. 前端模块
 
-补 `modules/src/books/{entry.ts,locales/*,pages/index.tsx}` 并注册进
-`modules.config.ts`（照抄 tutorial 第 5 节），然后：
+补 `web/src/books/{entry.ts,locales/*,pages/index.tsx}` 并注册进
+`web.config.ts`（照抄 tutorial 第 5 节），然后：
 
 ```bash
 pnpm exec ojm build
@@ -167,9 +167,9 @@ pnpm exec tsc --noEmit -p tsconfig.json     # typecheck
 **检查点**
 
 - [ ] `ojm build`：`oj build` 列出 5 个模块（`_platform/auth/books/notifications/web`），其中 books `2 api file(s)`、notifications `1 api file(s)`
-- [ ] 输出「已合并宿主站点 → modules/dist」「构建 books@0.1.0」「清单已生成」
-- [ ] `modules/dist/` 含 `index.html`、`assets/`、`modules/`、`modules.json`、`versions.json`
-- [ ] `modules/dist/modules/books/0.1.0/entry.js` 存在（带 `integrity`）
+- [ ] 输出「已合并宿主站点 → web/dist」「构建 books@0.1.0」「清单已生成」
+- [ ] `web/dist/` 含 `index.html`、`assets/`、`modules/`、`modules.json`、`versions.json`
+- [ ] `web/dist/modules/books/0.1.0/entry.js` 存在（带 `integrity`）
 - [ ] `modules.json` 含 `home` / `demo` / `login` / `books`（**`home` / `login` 不可少**：shell 预构建把 `VITE_BASE_HOME_PATH` 定为 `/home` 且不挂 runtime 内置登录兜底，缺则登录回跳 / 登出 / 点 logo 落错误边界）
 - [ ] `modules.json` 中 books 条目 `peerRuntime` 与宿主 runtime 版本相容
 - [ ] **typecheck 0 error**（含生成的 `client.ts`）
@@ -232,8 +232,8 @@ pnpm exec ojm preview    # oj migrate（verify 门禁）→ server + 静态兜�
 | `Failed to initialize a JsRuntime: No such file or directory` | ≤ v0.1.11 的 release oj 二进制烤了构建机路径（v0.1.12 已修复） | 用 ≥ v0.1.12 的 release（`ojm vendor`）；旧版用自建 oj 覆盖 `bin/oj`（§3） |
 | `ojm init` / `ojm vendor` 末尾出现「oj 二进制自检失败」告警 | release 二进制缺陷，cli ≥ 0.1.4 的安装后冒烟主动暴露 | 同上；v0.1.12 起不应再出现。告警不阻断，`ojm init` 仍已产出工程 |
 | `ojm api --check` 报 `handler 未登记`（`auth/*`、`web/*`） | 内置模块有意无契约，而工程缺豁免清单 | cli ≥ 0.1.5 的 `ojm init` 已内置 `api/.ojm-api-exempt.json`；旧工程手工补（`{"modules":["web"],"paths":["/auth/*"]}`，§4） |
-| 登出 / 回跳登录落空，`/login` 空白或 404 | 工程缺 `login` 模块——shell 宿主只消费模块路由，不挂 runtime 内置登录兜底 | 保留 `modules.config.ts` 的 `login` 模块（cli ≥ 0.1.5 的 `ojm init` 已内置 `modules/src/login`，§5） |
-| 登录后 / 点 logo 跳 `/home` 落 React Router 错误边界 | shell 预构建把 `VITE_BASE_HOME_PATH` 定为 `/home`，而工程缺 home 模块 | 保留 `modules.config.ts` 的 `home` 模块（cli ≥ 0.1.5 的 `ojm init` 已内置 `modules/src/home`，§5） |
+| 登出 / 回跳登录落空，`/login` 空白或 404 | 工程缺 `login` 模块——shell 宿主只消费模块路由，不挂 runtime 内置登录兜底 | 保留 `web.config.ts` 的 `login` 模块（cli ≥ 0.1.5 的 `ojm init` 已内置 `web/src/login`，§5） |
+| 登录后 / 点 logo 跳 `/home` 落 React Router 错误边界 | shell 预构建把 `VITE_BASE_HOME_PATH` 定为 `/home`，而工程缺 home 模块 | 保留 `web.config.ts` 的 `home` 模块（cli ≥ 0.1.5 的 `ojm init` 已内置 `web/src/home`，§5） |
 | 通知铃请求 404 / `no route matched` | 缺 root 级 `/api/notifications` 端点（runtime 未注册 provider 时走内置兜底） | cli ≥ 0.1.5 的 `ojm init` 已内置 `api/src/notifications`（root 级 handler + 表，参考 playground notification，§5） |
 | `ojm api` 报 `Cannot find package '@oj-module/runtime/contract'` | 工程 devDeps 缺 `contract` | 新版 `ojm init` 已内置；旧工程手动加并 `pnpm install` |
 | `typecheck` 报 `Property 'env' does not exist on type 'ImportMeta'` | 缺 `env.d.ts` / 未进 tsconfig include | 新版 `ojm init` 已内置；旧工程补 `env.d.ts` 并加进 `include` |

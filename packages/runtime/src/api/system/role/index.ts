@@ -10,7 +10,7 @@ import type {
 	FetchRoleMenuData,
 	FetchUpdateRoleItemBody,
 	FetchUpdateRoleItemData,
-} from "./api/client";
+} from "./client/api";
 import { getSystemApiProvider } from "#src/store/api-provider";
 import {
 	fetchAddRoleItem as builtinFetchAddRoleItem,
@@ -19,7 +19,7 @@ import {
 	fetchRoleList as builtinFetchRoleList,
 	fetchRoleMenu as builtinFetchRoleMenu,
 	fetchUpdateRoleItem as builtinFetchUpdateRoleItem,
-} from "./api/client";
+} from "./client/api";
 
 // D9：消费点委托。未注册 systemProvider 时回落到内置 root 级实现（client.ts）。
 export async function fetchRoleList(query: FetchRoleListQuery): Promise<FetchRoleListData> {

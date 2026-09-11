@@ -76,7 +76,7 @@ describe("createContractRegen（去抖 + 容错）", () => {
 		const regen = createContractRegen(cwd, { debounceMs: 10 });
 		regen();
 		await settle();
-		expect(existsSync(join(cwd, "modules/src/order/api/client.ts"))).toBe(true);
+		expect(existsSync(join(cwd, "web/src/order/client/api.ts"))).toBe(true);
 		// 再次触发（契约未变）→ 幂等零写入
 		const written: string[] = [];
 		const regen2 = createContractRegen(cwd, { debounceMs: 10, onRegenerated: r => written.push(...r.written) });

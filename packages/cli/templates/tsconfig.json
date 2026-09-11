@@ -15,8 +15,8 @@
 		"skipLibCheck": true
 	},
 	"include": [
-		"modules",
-		"modules.config.ts",
+		"web",
+		"web.config.ts",
 		"global.d.ts",
 		"env.d.ts"
 	]

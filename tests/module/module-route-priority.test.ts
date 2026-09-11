@@ -48,7 +48,7 @@ describe("模块路由优先级", () => {
 
 		const globPatterns = globMatch![1];
 		expect(globPatterns, "应搜索框架自身 /src/pages/ 目录").toContain("/src/pages/");
-		expect(globPatterns, "框架不得直接 glob 收录模块页面 /modules/").not.toContain("/modules/");
+		expect(globPatterns, "框架不得直接 glob 收录模块页面 /web/").not.toContain("/web/");
 	});
 
 	it("每个模块的 entry.ts 中引用的页面组件文件必须存在", () => {

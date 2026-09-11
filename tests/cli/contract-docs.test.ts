@@ -53,8 +53,8 @@ describe("runApiDocs（R5 redoc 文档站）", () => {
 	it("纯前端形态（无 api/src）→ 落 docs/api/", async () => {
 		const dir = mkdtempSync(join(process.cwd(), "node_modules/.cache/ojm-docs-fe-"));
 		tmpDirs.push(dir);
-		mkdirSync(join(dir, "modules/src/demo/api"), { recursive: true });
-		writeFileSync(join(dir, "modules/src/demo/api/contract.ts"), `
+		mkdirSync(join(dir, "web/src/demo/client"), { recursive: true });
+		writeFileSync(join(dir, "web/src/demo/client/contract.ts"), `
 import { defineApi, z } from "@oj-module/runtime/contract";
 export const getDashboard = defineApi({
 	apiPrefix: "/demo",

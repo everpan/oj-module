@@ -6,7 +6,7 @@ exports[`emitClient（AC-D5/D6/D8/D15） > 快照：module 目标双产物（bin
 import { ContractApiError } from "@oj-module/runtime/contract/errors";
 import type { ScopedRequestLike } from "@oj-module/runtime/contract/errors";
 import type { z } from "@oj-module/runtime";
-import type { schemas } from "./client.schemas";
+import type { schemas } from "./api.schemas";
 
 /** oj 信封（AC-D16）：code=0 成功；非 0 时 HTTP status=code，由 toApiError 归一为 ContractApiError */
 interface OjEnvelope<T> { code: number, msg?: string, data?: T }
@@ -52,7 +52,7 @@ export async function getOrderList(query: GetOrderListQuery): Promise<GetOrderLi
 			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
 		const data = env.data as GetOrderListData;
 		if (import.meta.env.DEV) {
-			const { schemas } = await import("./client.schemas");
+			const { schemas } = await import("./api.schemas");
 			const r = schemas.getOrderList.data.safeParse(data);
 			if (!r.success)
 				throw new ContractApiError(-1, \`[契约违例] getOrderList 响应与契约不符：\${r.error.issues.map(i => \`\${i.path.join(".") || "(root)"}: \${i.message}\`).join("; ")}\`);
@@ -76,7 +76,7 @@ export async function getOrderDetail(params: GetOrderDetailParams): Promise<GetO
 			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
 		const data = env.data as GetOrderDetailData;
 		if (import.meta.env.DEV) {
-			const { schemas } = await import("./client.schemas");
+			const { schemas } = await import("./api.schemas");
 			const r = schemas.getOrderDetail.data.safeParse(data);
 			if (!r.success)
 				throw new ContractApiError(-1, \`[契约违例] getOrderDetail 响应与契约不符：\${r.error.issues.map(i => \`\${i.path.join(".") || "(root)"}: \${i.message}\`).join("; ")}\`);
@@ -100,7 +100,7 @@ export async function createOrder(body: CreateOrderBody): Promise<CreateOrderDat
 			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
 		const data = env.data as CreateOrderData;
 		if (import.meta.env.DEV) {
-			const { schemas } = await import("./client.schemas");
+			const { schemas } = await import("./api.schemas");
 			const r = schemas.createOrder.data.safeParse(data);
 			if (!r.success)
 				throw new ContractApiError(-1, \`[契约违例] createOrder 响应与契约不符：\${r.error.issues.map(i => \`\${i.path.join(".") || "(root)"}: \${i.message}\`).join("; ")}\`);
@@ -125,7 +125,7 @@ export async function updateOrder(input: { params: UpdateOrderParams, body: Upda
 			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
 		const data = env.data as UpdateOrderData;
 		if (import.meta.env.DEV) {
-			const { schemas } = await import("./client.schemas");
+			const { schemas } = await import("./api.schemas");
 			const r = schemas.updateOrder.data.safeParse(data);
 			if (!r.success)
 				throw new ContractApiError(-1, \`[契约违例] updateOrder 响应与契约不符：\${r.error.issues.map(i => \`\${i.path.join(".") || "(root)"}: \${i.message}\`).join("; ")}\`);

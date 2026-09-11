@@ -23,7 +23,7 @@ describe("build-modules 真实 import 解析元数据（P3.4 / B10）", () => {
 	});
 
 	it("解析 playground demo 模块元数据（含 peerRuntime）", async () => {
-		const definition = await readModuleDefinition(path.join(PLAYGROUND_DIR, "modules/src/demo/entry.ts"), PROJECT_ROOT);
+		const definition = await readModuleDefinition(path.join(PLAYGROUND_DIR, "web/src/demo/entry.ts"), PROJECT_ROOT);
 		expect(definition.name).toBe("demo");
 		expect(definition.version).toBe("0.1.0");
 		// `^0.0.0` 在 semver 下等价于「恰好 0.0.0」，宿主一升级就误判不兼容，

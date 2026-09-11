@@ -47,7 +47,7 @@ export default defineConfig({
 			{ find: "@oj-module/runtime/contract/errors", replacement: path.resolve("packages/runtime/contract/errors.ts") },
 			{ find: "@oj-module/runtime/contract", replacement: path.resolve("packages/runtime/contract/index.ts") },
 			{ find: "@oj-module/runtime", replacement: path.resolve("packages/runtime/src/index.ts") },
-			{ find: "#modules", replacement: path.resolve("modules") },
+			{ find: "#web", replacement: path.resolve("web") },
 			// 见上方 test.deps：让 pro-components 走「已构建」的干净 ESM 资产
 			{ find: /^@ant-design\/pro-.*$/, replacement: path.resolve("packages/cli/shell-dist/assets/pro-components.js") },
 		],

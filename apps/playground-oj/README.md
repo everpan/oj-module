@@ -7,7 +7,7 @@
 ```bash
 pnpm install
 pnpm dev        # 开发：前端 devServer + oj 后端（api/src 保存即热更）
-pnpm build      # 构建：oj build + 前端全站合并到 modules/dist
+pnpm build      # 构建：oj build + 前端全站合并到 web/dist
 pnpm preview    # 预览：oj migrate + server（release 产物）
 ```
 
@@ -19,8 +19,8 @@ pnpm preview    # 预览：oj migrate + server（release 产物）
 bin/           oj 二进制（init 解压，不入库）
 api/src/       后端模块源码（目录镜像路由：api/src/<模块>/<路径>/api.ts）
 api/dist/      oj build 产物
-modules/src/   前端模块源码
-modules/dist/  构建产物（完整站点）
+web/src/   前端模块源码
+web/dist/  构建产物（完整站点）
 ```
 
 ## 注意

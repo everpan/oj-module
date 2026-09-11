@@ -103,7 +103,7 @@ export async function printInfo(projectRoot: string, oj: OjObservability = realO
 		console.warn("[ojm] 未找到 cli 内置宿主（shell-dist），共享依赖版本矩阵不可得");
 	}
 
-	let moduleLines = "（modules.config.ts 加载失败或无模块）";
+	let moduleLines = "（web.config.ts 加载失败或无模块）";
 	try {
 		const config = await loadModulesConfig(projectRoot);
 		moduleLines = config.modules

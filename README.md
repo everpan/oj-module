@@ -69,10 +69,10 @@ In one sentence: after the modularization refactor, the project forms a micro-fr
 
 ## Modular Architecture
 
-Feature pages are organized as independent modules under `modules/`. Each module is self-contained with its own routes, pages, i18n resources, and lifecycle hooks.
+Feature pages are organized as independent modules under `web/`. Each module is self-contained with its own routes, pages, i18n resources, and lifecycle hooks.
 
 ```
-modules/
+web/
 ├── home/              # Home page module
 │   ├── entry.ts       # Single source of truth: name, version, routes, i18n
 │   ├── pages/         # Page components
@@ -139,7 +139,7 @@ Open your browser and enter [http://localhost:3333](http://localhost:3333) to se
 pnpm create-module
 ```
 
-This launches an interactive wizard that scaffolds a new module under `modules/` with entry.ts, pages directory, and i18n resources.
+This launches an interactive wizard that scaffolds a new module under `web/` with entry.ts, pages directory, and i18n resources.
 
 ### Build modules independently
 

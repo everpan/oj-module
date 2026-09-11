@@ -12,11 +12,11 @@ import { PROJECT_ROOT } from "../helpers/paths";
  *
  * 这组断言守护两条规则（D11 scoped request 收敛）：
  * 1. 凡绑定 scoped request 的模块，entry.ts 必须登记 apiPrefix；
- * 2. 登记的前缀必须覆盖其 api/client.ts 发出的全部请求路径（防越界）。
+ * 2. 登记的前缀必须覆盖其 client/api.ts 发出的全部请求路径（防越界）。
  */
 
 const OJ_APP = path.join(PROJECT_ROOT, "apps/playground-oj");
-const OJ_MODULES = path.join(OJ_APP, "modules/src");
+const OJ_MODULES = path.join(OJ_APP, "web/src");
 
 interface ModuleEntry {
 	name: string
@@ -25,28 +25,28 @@ interface ModuleEntry {
 }
 
 function readModuleEntries(): ModuleEntry[] {
-	const config = fs.readFileSync(path.join(OJ_APP, "modules.config.ts"), "utf-8");
+	const config = fs.readFileSync(path.join(OJ_APP, "web.config.ts"), "utf-8");
 	const re = /name:\s*["']([^"']+)["'],\s*entry:\s*["']([^"']+)["']/g;
 	const entries = [...config.matchAll(re)].map(m => ({
 		name: m[1]!,
 		entry: m[2]!,
 		enabled: true,
 	}));
-	expect(entries.length, "modules.config.ts 应登记模块清单").toBeGreaterThan(0);
+	expect(entries.length, "web.config.ts 应登记模块清单").toBeGreaterThan(0);
 	return entries;
 }
 
-/** 模块目录下全部 api/client*.ts 的文件路径 */
+/** 模块目录下全部 client/api*.ts 的文件路径 */
 function clientFiles(moduleDir: string): string[] {
-	const apiDir = path.join(moduleDir, "api");
+	const apiDir = path.join(moduleDir, "client");
 	if (!fs.existsSync(apiDir))
 		return [];
 	return fs.readdirSync(apiDir)
-		.filter(name => /^client[\w.-]*\.ts$/.test(name))
+		.filter(name => /^api[\w.-]*\.ts$/.test(name))
 		.map(name => path.join(apiDir, name));
 }
 
-/** 从 client.ts 提取 scoped 请求路径的首段（如 `home/line` → "home"） */
+/** 从 api.ts 提取 scoped 请求路径的首段（如 `home/line` → "home"） */
 function clientPathSegments(clientPath: string): string[] {
 	const src = fs.readFileSync(clientPath, "utf-8");
 	const re = /\.(?:get|post|put|patch|del|delete)\(\s*`([^`$]+)`/g;

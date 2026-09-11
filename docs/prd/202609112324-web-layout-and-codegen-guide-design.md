@@ -22,7 +22,7 @@
 | T3 | 兼容策略 | 硬切换：layout.ts 只认 `web/src` + `web/dist`，删 legacy 分支 | 用户指定；存量工程须自行迁移 |
 | T4 | 配置文件名 | `modules.config.ts` → `web.config.ts`（导出结构不变，仍叫 `modules` 列表） | 与目录改名配套 |
 | T5 | 产物协议 | `modules.json`、`dist` 内 `modules/<name>/<version>/` **不改名** | build 产物与 shell-dist 运行时的内部 wire 协议，改名收益低 diff 大（用户确认） |
-| T6 | 生成目录名 | `web/src/<m>/api/` → `web/src/<m>/client/`（含纯前端契约 `client/contract.ts`） | 用户指定 client；与后端 `api/` 消歧 |
+| T6 | 生成目录名 | `web/src/<m>/api/` → `web/src/<m>/client/`，且生成物 `client.ts`/`client.schemas.ts` → `client/api.ts`/`client/api.schemas.ts`（含纯前端契约 `client/contract.ts`；runtime 内部 role client 同规迁移） | 用户指定：目录 client + 文件 api.js 形态（`client/api.js`），与后端 `api/` 消歧 |
 | T7 | 豁免旧名回退 | `.ram-api-exempt.json` 只读回退（R4）不动 | 与本批改名无关 |
 | T8 | 历史文档 | `docs/archive/**` 与带日期历史 PRD 不改；只更新 living 文档（CLAUDE.md、README、framework-development-guide、oj-fullstack-tutorial、playbook） | 历史记录保持原样 |
 | T9 | 新人指南 | 新增 `docs/prd/ojm-api-codegen-guide.md`：契约 → evaluate → IR → 四产物 → stub → `--check` 全链路 | 供新人学习，与 tutorial 互补（tutorial 讲用法，guide 讲机制） |
@@ -53,11 +53,12 @@ And 全仓 grep "modules/" 不再命中源码与 living 文档（产物协议 mo
 ```gherkin
 Given uni-dev 工程（api/src/<m>/contract.ts）
 When 执行 ojm api
-Then client.ts / client.schemas.ts 落 web/src/<m>/client/
+Then api.ts / api.schemas.ts 落 web/src/<m>/client/
 And routes.json / openapi.yaml 落契约旁（不变）
 Given 纯前端工程
 Then 契约位于 web/src/<m>/client/contract.ts，四产物落同目录
-And 模块源码导入为 ./client/client（ playground-oj 与模板全部更新）
+And 模块源码导入为 ./client/api（playground-oj 与模板全部更新）
+And runtime 内部 role client 迁至 packages/runtime/src/api/system/role/client/{api.ts,api.schemas.ts}
 ```
 
 ### US-4 新人指南
@@ -71,12 +72,12 @@ Then 覆盖：两种工程形态（uni-dev / 纯前端）、契约发现规则�
 
 | # | 任务 | 状态 |
 |---|------|------|
-| 1 | 本设计文档 | 进行中 |
-| 2 | 豁免文件 `_comment` + check.ts 警示注释 | 待做 |
-| 3 | modules → web 硬切换（含 web.config.ts、layout.ts 删 legacy） | 待做 |
-| 4 | 生成目录 api/ → client/（含模块导入更新） | 待做 |
-| 5 | ojm-api-codegen-guide.md 新人指南 | 待做 |
-| 6 | typecheck/lint/test 验证 + 文档收尾 | 待做 |
+| 1 | 本设计文档 | ✅ 完成 |
+| 2 | 豁免文件 `_comment` + check.ts 警示注释 | ✅ 完成 |
+| 3 | modules → web 硬切换（含 web.config.ts、layout.ts 删 legacy） | ✅ 完成（补 flat 分支撑根仓平铺形态，见 R5） |
+| 4 | 生成目录 api/ → client/（文件为 api.ts/api.schemas.ts，含模块导入更新） | ✅ 完成 |
+| 5 | ojm-api-codegen-guide.md 新人指南 | ✅ 完成 |
+| 6 | typecheck/lint/test 验证 + 文档收尾 | ✅ 完成 |
 
 ## 5. 风险与反常识记录
 
@@ -84,7 +85,20 @@ Then 覆盖：两种工程形态（uni-dev / 纯前端）、契约发现规则�
 - **R2**：改名后工程里存在两个 "web"——`web/`（前端源码）与 `api/src/web`（oj 后端 web 模块，提供 user-info 等）。不同目录不冲突，但豁免清单 `"modules": ["web"]` 指的是后者，指南文档需点明。
 - **R3**：layout.ts 删 legacy 分支后，存量 `modules/` 工程跑 `ojm dev/build` 会报「未发现 web/src」类人话错误——报错文案需显式提示迁移（`modules/` → `web/`，`modules.config.ts` → `web.config.ts`）。
 - **R4**：`ojm api` 发现规则变更后，存量工程 `modules/src/<m>/api/contract.ts` 不再被发现；报错文案同样提示迁移。
+- **R5（反常识，实现中暴露）**：框架根仓自身是**平铺** `web/<name>/`（无 src/dist 分层），`readModuleDefinition` 的裸说明符扫描复用 `resolveLayout`（B10）——硬切换若只认 `web/src` 会把根仓打成「存量工程」。layout.ts 因此保留 `kind: "flat"` 分支（平铺 `web/` → 产物 `build/`），这不是 legacy 复活，是框架仓自身形态。
+- **R6（反常规，实现中暴露）**：eslint 对生成物的忽略按**路径**登记（`**/api/client.ts`），目录改名后忽略静默失效、生成物被 lint 报错。已同步为 `**/client/api.ts`；今后生成物改名必须连带 eslint.config.js。
 
-## 6. 总结（完成后回填）
+## 6. 总结
 
-（待回填：关键过程与耗时）
+- **关键过程**：设计文档先行 → 豁免 `_comment`（零代码）→ 目录 `git mv` 平移 →
+  CLI 源码（layout/config/run/emit-client/check）改名 → 生成物实跑再生
+  （playground-oj `ojm api` 幂等 0 写入，证明手工改名与生成器输出逐字节一致；
+  runtime role client 由 gen 脚本重生成）→ 测试与 living 文档同步 → 全量验证。
+- **验证结果**：typecheck 干净；vitest 92 文件 573 用例全绿（含重建的 emit-client 快照）；
+  eslint 0 error（63 个存量 warning 与本次无关）；playground-oj `ojm api --check`
+  0 error/0 warn；playground 与 playground-oj `ojm build`、根仓 `pnpm build:modules` 均通过。
+- **暴露的两个反常规问题**（已记入 §5）：根仓平铺 `web/` 形态差点被硬切换误杀（R5）；
+  eslint 生成物忽略按路径登记、改名即失效（R6）。
+- **耗时**：2026-09-11 23:24 设计落档 → 2026-09-12 00:08 验证收尾，约 45 分钟。
+- **未做**（刻意排除）：产物协议 `modules.json` 与 `dist/modules/<n>/<v>/` 不改名（T5）；
+  `docs/archive/**` 与历史 PRD 不动（T8）；`.ram-api-exempt.json` 回退保留（T7）。

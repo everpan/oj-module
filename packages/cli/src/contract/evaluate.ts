@@ -33,7 +33,7 @@ export async function evaluateContract(
 	projectRoot: string,
 ): Promise<Record<string, unknown>> {
 	if (!fs.existsSync(contractFile)) {
-		throw new Error(`[ojm-api] 契约文件不存在：${contractFile}——请检查路径（默认发现：api/src/*/contract.ts 或 modules/src/*/api/contract.ts）。`);
+		throw new Error(`[ojm-api] 契约文件不存在：${contractFile}——请检查路径（默认发现：api/src/*/contract.ts 或 web/src/*/client/contract.ts）。`);
 	}
 
 	// 必须落在工程目录内（而非 os.tmpdir）：bundle 外部化的依赖在 import() 时

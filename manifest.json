@@ -2,47 +2,47 @@
 	"modules": [
 		{
 			"name": "home",
-			"entry": "/modules/home/entry.ts",
+			"entry": "/web/home/entry.ts",
 			"enabled": true
 		},
 		{
 			"name": "about",
-			"entry": "/modules/about/entry.ts",
+			"entry": "/web/about/entry.ts",
 			"enabled": true
 		},
 		{
 			"name": "personal-center",
-			"entry": "/modules/personal-center/entry.ts",
+			"entry": "/web/personal-center/entry.ts",
 			"enabled": true
 		},
 		{
 			"name": "route-nest",
-			"entry": "/modules/route-nest/entry.ts",
+			"entry": "/web/route-nest/entry.ts",
 			"enabled": true
 		},
 		{
 			"name": "outside",
-			"entry": "/modules/outside/entry.ts",
+			"entry": "/web/outside/entry.ts",
 			"enabled": true
 		},
 		{
 			"name": "access",
-			"entry": "/modules/access/entry.ts",
+			"entry": "/web/access/entry.ts",
 			"enabled": true
 		},
 		{
 			"name": "exception",
-			"entry": "/modules/exception/entry.ts",
+			"entry": "/web/exception/entry.ts",
 			"enabled": true
 		},
 		{
 			"name": "login",
-			"entry": "/modules/login/entry.ts",
+			"entry": "/web/login/entry.ts",
 			"enabled": true
 		},
 		{
 			"name": "system",
-			"entry": "/modules/system/entry.ts",
+			"entry": "/web/system/entry.ts",
 			"enabled": true
 		}
 	]

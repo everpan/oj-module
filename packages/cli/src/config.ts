@@ -8,7 +8,7 @@ export interface ModuleConfigEntry {
 	enabled?: boolean
 }
 
-/** modules.config.ts 的结构 */
+/** web.config.ts 的结构 */
 export interface ModulesConfig {
 	/** 产物 URL 前缀，留空表示同源相对路径 */
 	baseUrl?: string
@@ -20,13 +20,13 @@ const DEFAULT_CONFIG: Required<Pick<ModulesConfig, "baseUrl">> = {
 };
 
 /**
- * 加载模块工程的 modules.config.ts。
+ * 加载模块工程的 web.config.ts。
  *
  * 用 tsx 真实 import，而不是正则解析——这样配置文件里可以写注释、
  * 用变量、做条件判断，且类型错误会直接暴露（B10 的正则方案做不到）。
  */
 export async function loadModulesConfig(projectRoot: string): Promise<Required<ModulesConfig>> {
-	const configPath = path.join(projectRoot, "modules.config.ts");
+	const configPath = path.join(projectRoot, "web.config.ts");
 
 	let mod: { default?: ModulesConfig };
 	try {

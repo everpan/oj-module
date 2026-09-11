@@ -67,7 +67,7 @@ react-antd-module 是基于 [`react-antd-admin`](https://github.com/condorherobl
 
 8. 类型驱动的模块契约（defineModule 强类型）
    模块入口通过 defineModule({ name, version, routes, config, lifecycle, apiPrefix }) 强类型声明，路由、i18n、生命周期、依赖在编译期即受约束。模块间不互相
-   import，仅靠契约通信，天然支持"仓库级模块（/modules/*）与工程内模块（modules/src）同源 dogfooding"的开发模式。
+   import，仅靠契约通信，天然支持"仓库级模块（/web/*）与工程内模块（web/src）同源 dogfooding"的开发模式。
 
 9. 防御式、字符集无关的请求层（健壮性的解耦体现）
    本次修复新增的 setHeaderSafe 封装，把 Authorization / X-Lang 等非 Latin1 值自动百分号编码，使 ky
@@ -81,10 +81,10 @@ react-antd-module 是基于 [`react-antd-admin`](https://github.com/condorherobl
 
 ## 模块化架构
 
-业务页面以独立模块的形式组织在 `modules/` 目录下。每个模块自包含路由、页面、国际化资源和生命周期钩子。
+业务页面以独立模块的形式组织在 `web/` 目录下。每个模块自包含路由、页面、国际化资源和生命周期钩子。
 
 ```
-modules/
+web/
 ├── home/              # 首页模块
 │   ├── entry.ts       # 唯一真实来源：名称、版本、路由、国际化
 │   ├── pages/         # 页面组件

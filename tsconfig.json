@@ -37,7 +37,7 @@
 		"packages/runtime/contract",
 		"packages/cli/src",
 		"apps/playground",
-		"modules",
+		"web",
 		"fake",
 		"tests",
 		"e2e",

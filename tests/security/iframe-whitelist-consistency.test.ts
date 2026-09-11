@@ -8,7 +8,7 @@ import { PROJECT_ROOT } from "../helpers/paths";
 
 /** 扫描仓库内全部 iframeLink 字面量（模块 entry + fake 后端数据） */
 function collectIframeLinks(): { file: string, url: string }[] {
-	const roots = ["modules", "fake"];
+	const roots = ["web", "fake"];
 	const found: { file: string, url: string }[] = [];
 	const walk = (dir: string) => {
 		for (const name of fs.readdirSync(dir)) {

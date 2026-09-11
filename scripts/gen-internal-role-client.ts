@@ -1,6 +1,6 @@
 /**
  * 一次性脚本（Task 5.1）：为框架内部 system/role 契约生成 internal 目标 client。
- * ojm api 的发现机制只覆盖 api/src 与 modules/src，runtime 树内契约由本脚本手工驱动。
+ * ojm api 的发现机制只覆盖 api/src 与 web/src，runtime 树内契约由本脚本手工驱动。
  * 用法：pnpm tsx scripts/gen-internal-role-client.ts
  */
 import fs from "node:fs";
@@ -17,9 +17,9 @@ const exports_ = await evaluateContract(path.join(roleDir, "contract.ts"), cwd);
 const ir = buildIr(exports_);
 const files = emitClient(ir, { target: "internal" });
 
-const outDir = path.join(roleDir, "api");
+const outDir = path.join(roleDir, "client");
 fs.mkdirSync(outDir, { recursive: true });
 for (const [name, content] of Object.entries(files)) {
 	fs.writeFileSync(path.join(outDir, name), content);
-	console.log(`written: packages/runtime/src/api/system/role/api/${name}`);
+	console.log(`written: packages/runtime/src/api/system/role/client/${name}`);
 }

@@ -14,7 +14,7 @@ import { devServer } from "../../packages/cli/src/dev";
  *  - 纯前端模式（无 api/config.yaml）：mock 行为不变（回归）
  *  - 宿主 HTML（/ 与 SPA 深链接）注入外链 /__ojm_reload.js（CSP 无 nonce 可用）
  *  - /__ojm_reload.js 外链脚本、/__ojm_reload SSE 通道
- *  - watch 随布局（新布局 modules/src）：变更 → 重建（可注入）→ SSE 广播 reload
+ *  - watch 随布局（新布局 web/src）：变更 → 重建（可注入）→ SSE 广播 reload
  *  - server.close() 回收 oj 子进程
  */
 
@@ -25,8 +25,8 @@ function makeFixture(kind: "fullstack" | "frontend", base = "/api"): { root: str
 	const root = fs.mkdtempSync(path.join(FIXTURE_ROOT, `dev-${kind}-`));
 	const port = 21000 + Math.floor(Math.random() * 1000); // 并行测试端口区间不得重叠（playground-oj 设计 §10）
 	fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({ type: "module" }));
-	fs.mkdirSync(path.join(root, "modules/src"), { recursive: true });
-	fs.writeFileSync(path.join(root, "modules/src/entry.ts"), "export default {};\n");
+	fs.mkdirSync(path.join(root, "web/src"), { recursive: true });
+	fs.writeFileSync(path.join(root, "web/src/entry.ts"), "export default {};\n");
 	const shellDist = path.join(root, "shell-dist");
 	fs.mkdirSync(shellDist, { recursive: true });
 	fs.writeFileSync(path.join(shellDist, "index.html"), "<html><head><title>stub</title></head><body><div id=\"app\"></div></body></html>");
@@ -177,7 +177,7 @@ describe("devServer 全栈接线", () => {
 		await stopServer(server);
 	});
 
-	it("watch 随布局（modules/src）：变更 → 注入重建 → SSE 广播 reload", async () => {
+	it("watch 随布局（web/src）：变更 → 注入重建 → SSE 广播 reload", async () => {
 		const { root, port } = makeFixture("frontend");
 		const builds: string[] = [];
 		const server = await devServer(root, {
@@ -209,7 +209,7 @@ describe("devServer 全栈接线", () => {
 			check();
 		});
 
-		fs.writeFileSync(path.join(root, "modules/src/touch.ts"), "export {};\n");
+		fs.writeFileSync(path.join(root, "web/src/touch.ts"), "export {};\n");
 
 		await new Promise<void>((resolve, reject) => {
 			const started = Date.now();

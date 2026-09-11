@@ -2,13 +2,13 @@ import type { IrEndpoint } from "./ir";
 import { emitSchemaSource } from "./emit-schema";
 
 /**
- * AC-D5/D6/D8/D15：client.ts + client.schemas.ts 发射器。
+ * AC-D5/D6/D8/D15：api.ts + api.schemas.ts 发射器。
  *
  * 生成物约定：
  * - module 目标：bindRequest(ctx.utils.request) 能力持有者（AC-D8，零新增 runtime 导出）
  * - internal 目标：直接 import runtime 全局 request（生成物落 runtime src 树内，走 #src alias）
  * - 信封解包内联 + 业务错误归一 ContractApiError（§6.2）
- * - DEV 下动态 import("./client.schemas") safeParse 校验（AC-D15）；生产构建该分支
+ * - DEV 下动态 import("./api.schemas") safeParse 校验（AC-D15）；生产构建该分支
  *   被 import.meta.env.DEV 常量消除，zod 随之摇出产物
  * - raw 端点：不解包不校验，原样透传 Response（escape hatch）
  */
@@ -122,7 +122,7 @@ function emitEndpoint(ep: IrEndpoint): string {
 	const devValidate = ep.dataSchema
 		? `
 		if (import.meta.env.DEV) {
-			const { schemas } = await import("./client.schemas");
+			const { schemas } = await import("./api.schemas");
 			const r = schemas.${ep.name}.data.safeParse(data);
 			if (!r.success)
 				throw new ContractApiError(-1, \`[契约违例] ${ep.name} 响应与契约不符：\${r.error.issues.map(i => \`\${i.path.join(".") || "(root)"}: \${i.message}\`).join("; ")}\`);
@@ -167,7 +167,7 @@ function ensureReq(): ScopedRequestLike {
 import { ContractApiError } from "@oj-module/runtime/contract/errors";
 import type { ScopedRequestLike } from "@oj-module/runtime/contract/errors";
 ${target === "internal" ? "import { request } from \"#src/utils/request\";\n" : ""}import type { z } from "${zImport(target)}";
-import type { schemas } from "./client.schemas";
+import type { schemas } from "./api.schemas";
 
 /** oj 信封（AC-D16）：code=0 成功；非 0 时 HTTP status=code，由 toApiError 归一为 ContractApiError */
 interface OjEnvelope<T> { code: number, msg?: string, data?: T }
@@ -226,8 +226,8 @@ ${entries.join("\n")}
 `;
 }
 
-/** 发射双产物：client.ts（类型 + 请求函数）与 client.schemas.ts（DEV 校验 schema） */
-export function emitClient(ir: IrEndpoint[], opts: { target: "module" | "internal" }): { "client.ts": string, "client.schemas.ts": string } {
+/** 发射双产物：api.ts（类型 + 请求函数）与 api.schemas.ts（DEV 校验 schema） */
+export function emitClient(ir: IrEndpoint[], opts: { target: "module" | "internal" }): { "api.ts": string, "api.schemas.ts": string } {
 	if (ir.length === 0)
 		throw new Error("[ojm-api] client 发射失败：IR 为空——契约文件里没有 defineApi 端点，无需生成。");
 	const sections: string[] = [emitPrelude(opts.target)];
@@ -238,7 +238,7 @@ export function emitClient(ir: IrEndpoint[], opts: { target: "module" | "interna
 		sections.push(emitEndpoint(ep));
 	}
 	return {
-		"client.ts": `${sections.join("\n\n")}\n`,
-		"client.schemas.ts": emitSchemas(ir, opts.target),
+		"api.ts": `${sections.join("\n\n")}\n`,
+		"api.schemas.ts": emitSchemas(ir, opts.target),
 	};
 }

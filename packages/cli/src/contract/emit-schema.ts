@@ -1,7 +1,7 @@
 /**
  * 白名单 schema → TS 源码发射器（AC-D12/D6）。
  *
- * 生成物（client.schemas.ts）里的 schema 是**重新发射的源码**而非跨树
+ * 生成物（api.schemas.ts）里的 schema 是**重新发射的源码**而非跨树
  * import——前端模块因此保持自包含，不直接依赖契约源文件。
  * 只处理 AC-D12 白名单内的 def.type（IR 构建期已拦截白名单外 schema），
  * 遇到意料外结构时报人话错误而非静默错发。

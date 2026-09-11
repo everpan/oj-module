@@ -16,9 +16,9 @@ import { buildIr } from "./ir";
  *
  * 发现两档（缺省并扫）：
  * - uni-dev：`api/src/<模块>/contract.ts` → client 双产物写到对应前端模块
- *   `modules/src/<模块>/api/`（模块名 = apiPrefix 去首斜杠，AC-D9 字面相等，
+ *   `web/src/<模块>/client/`（模块名 = apiPrefix 去首斜杠，AC-D9 字面相等，
  *   不符即人话报错）；routes.json/openapi.yaml 写契约旁；stub 写 oj 目录镜像树。
- * - 纯前端：`modules/src/<模块>/api/contract.ts` → 四产物全部落契约同目录，无 stub。
+ * - 纯前端：`web/src/<模块>/client/contract.ts` → 四产物全部落契约同目录，无 stub。
  *
  * 幂等：内容无变化不写盘（读旧比对），RunResult 报告 written/skipped。
  */
@@ -33,12 +33,12 @@ export interface RunResult {
 export interface DiscoveredContract {
 	/** contract.ts 绝对路径 */
 	path: string
-	/** 模块名（uni-dev = api/src 下一级目录名；纯前端 = modules/src 下一级目录名） */
+	/** 模块名（uni-dev = api/src 下一级目录名；纯前端 = web/src 下一级目录名） */
 	module: string
 	kind: "uni-dev" | "frontend"
 }
 
-/** 发现契约文件：api/src/<m>/contract.ts + modules/src/<m>/api/contract.ts */
+/** 发现契约文件：api/src/<m>/contract.ts + web/src/<m>/client/contract.ts */
 export function discoverContracts(cwd: string): DiscoveredContract[] {
 	const found: DiscoveredContract[] = [];
 	const apiSrc = join(cwd, "api/src");
@@ -51,12 +51,12 @@ export function discoverContracts(cwd: string): DiscoveredContract[] {
 				found.push({ path: p, module: entry.name, kind: "uni-dev" });
 		}
 	}
-	const modulesSrc = join(cwd, "modules/src");
+	const modulesSrc = join(cwd, "web/src");
 	if (existsSync(modulesSrc)) {
 		for (const entry of readdirSync(modulesSrc, { withFileTypes: true })) {
 			if (!entry.isDirectory())
 				continue;
-			const p = join(modulesSrc, entry.name, "api", "contract.ts");
+			const p = join(modulesSrc, entry.name, "client", "contract.ts");
 			if (existsSync(p))
 				found.push({ path: p, module: entry.name, kind: "frontend" });
 		}
@@ -78,18 +78,18 @@ function writeIfChanged(path: string, content: string, result: RunResult): void 
 /** 单份契约的四产物落盘路径（run 与 --check 共用，DRY） */
 export function artifactPaths(found: DiscoveredContract, cwd: string): { client: string, schemas: string, routes: string, openapi: string } {
 	if (found.kind === "uni-dev") {
-		const moduleApiDir = join(cwd, "modules/src", found.module, "api");
+		const moduleClientDir = join(cwd, "web/src", found.module, "client");
 		return {
-			client: join(moduleApiDir, "client.ts"),
-			schemas: join(moduleApiDir, "client.schemas.ts"),
+			client: join(moduleClientDir, "api.ts"),
+			schemas: join(moduleClientDir, "api.schemas.ts"),
 			routes: join(dirname(found.path), "routes.json"),
 			openapi: join(dirname(found.path), "openapi.yaml"),
 		};
 	}
 	const dir = dirname(found.path);
 	return {
-		client: join(dir, "client.ts"),
-		schemas: join(dir, "client.schemas.ts"),
+		client: join(dir, "api.ts"),
+		schemas: join(dir, "api.schemas.ts"),
 		routes: join(dir, "routes.json"),
 		openapi: join(dir, "openapi.yaml"),
 	};
@@ -120,8 +120,8 @@ async function runOne(found: DiscoveredContract, cwd: string, result: RunResult)
 	const openapi = emitOpenapiYaml(ir, { title: `${found.module} api`, version: "0.0.0" });
 
 	const paths = artifactPaths(found, cwd);
-	writeIfChanged(paths.client, client["client.ts"], result);
-	writeIfChanged(paths.schemas, client["client.schemas.ts"], result);
+	writeIfChanged(paths.client, client["api.ts"], result);
+	writeIfChanged(paths.schemas, client["api.schemas.ts"], result);
 	writeIfChanged(paths.routes, routesJson, result);
 	writeIfChanged(paths.openapi, openapi, result);
 	if (found.kind === "uni-dev") {
@@ -138,7 +138,7 @@ async function runOne(found: DiscoveredContract, cwd: string, result: RunResult)
 export async function runApi(opts: { cwd: string }): Promise<RunResult> {
 	const contracts = discoverContracts(opts.cwd);
 	if (contracts.length === 0) {
-		throw new Error(`[ojm-api] ${opts.cwd} 下没有发现契约文件——默认发现：api/src/*/contract.ts（uni-dev）与 modules/src/*/api/contract.ts（纯前端），请确认目录结构。`);
+		throw new Error(`[ojm-api] ${opts.cwd} 下没有发现契约文件——默认发现：api/src/*/contract.ts（uni-dev）与 web/src/*/client/contract.ts（纯前端）。存量工程请迁移：modules/ → web/、模块内 api/ → client/（生成物与契约同迁）。`);
 	}
 	const result: RunResult = { contracts: contracts.length, written: [], skipped: [], stubs: { created: 0, updated: 0, skipped: 0 } };
 	for (const found of contracts)
@@ -154,7 +154,7 @@ export async function runApi(opts: { cwd: string }): Promise<RunResult> {
 export async function runApiDocs(cwd: string, opts: { redocBin?: string, fetchJs?: (url: string) => Promise<string> } = {}): Promise<string> {
 	const contracts = discoverContracts(cwd);
 	if (contracts.length === 0) {
-		throw new Error(`[ojm-api] ${cwd} 下没有发现契约文件——默认发现：api/src/*/contract.ts（uni-dev）与 modules/src/*/api/contract.ts（纯前端）。`);
+		throw new Error(`[ojm-api] ${cwd} 下没有发现契约文件——默认发现：api/src/*/contract.ts（uni-dev）与 web/src/*/client/contract.ts（纯前端）。`);
 	}
 
 	// 聚合：逐契约 IR → openapi doc → paths 合并（operation 打模块 tag）

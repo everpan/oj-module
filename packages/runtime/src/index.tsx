@@ -71,7 +71,7 @@ async function setupApp() {
 		 * 不再每次鉴权都动态 import 清单——router 域与模块清单彻底解耦。
 		 * P7.15 / 评审 P5：生产环境改为运行时 fetch module-manifest.json（由
 		 * scripts/build-modules.ts 产出，指向构建产物 entry.js），不再把
-		 * 开发态源码路径（/modules/<name>/entry.ts）打进 bundle。
+		 * 开发态源码路径（/web/<name>/entry.ts）打进 bundle。
 		 * 命名避开 public/manifest.json（PWA 清单）——同名会被 vite build
 		 * 的 public 拷贝覆盖，fetch 拿到 PWA 内容导致启动失败。
 		 * @en Modules load once at bootstrap (P5.5/O5): the auth guard only

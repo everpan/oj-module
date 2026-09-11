@@ -39,10 +39,10 @@ ojm merge <out> <in...>  # 合并多份 modules.json
 
 ### `ojm build`
 
-读取 `modules.config.ts`，逐个模块构建：
+读取 `web.config.ts`，逐个模块构建（硬切换后只认 web/src + web/dist 布局）：
 
 ```
-dist/
+web/dist/
 ├── modules.json                              # 模块清单（供宿主 fetch）
 └── modules/<name>/<version>/
     ├── entry.js                              # 模块入口
@@ -65,23 +65,23 @@ dist/
    |---|---|
    | `/`、`/index.html` | `@oj-module/cli/shell-dist/index.html`（含 importmap） |
    | `/assets/*` | `@oj-module/cli/shell-dist/assets/*` |
-   | `/modules.json` | 本地 `dist/modules.json` |
-   | `/modules/*` | 本地 `dist/modules/*` |
+   | `/modules.json` | 本地 `web/dist/modules.json` |
+   | `/modules/*` | 本地 `web/dist/modules/*` |
 
-4. 监听 `modules/` 变更并增量重建（防抖 300ms）。
+4. 监听 `web/src/` 变更并增量重建（防抖 300ms）。
 
 > 当前为「保存即重建 + 手动刷新」。完整 HMR（react-refresh preamble、dev-runtime 映射）在后续阶段接入。
 
 ## 配置文件
 
-工程根目录的 `modules.config.ts`：
+工程根目录的 `web.config.ts`：
 
 ```ts
 export default {
   /** 产物 URL 前缀，留空表示同源相对路径；跨源时填 CDN 绝对地址 */
   baseUrl: "",
   modules: [
-    { name: "demo", entry: "./modules/demo/entry.ts", enabled: true },
+    { name: "demo", entry: "./web/src/demo/entry.ts", enabled: true },
   ],
 };
 ```

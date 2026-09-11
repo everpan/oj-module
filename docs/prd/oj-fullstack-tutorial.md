@@ -55,7 +55,7 @@ pnpm dev            # 前端 devServer(5174) + oj 后端，api/src 保存即热�
 ```
 my-books/
 ├── package.json           # scripts: dev/build/preview/info/typecheck（都委托给 ojm）
-├── modules.config.ts      # 前端模块清单（name + entry）
+├── web.config.ts      # 前端模块清单（name + entry）
 ├── pnpm-workspace.yaml    # allowBuilds: esbuild
 ├── tsconfig.json
 ├── global.d.ts            # 后端 oj 全局（db/json/http…）的类型声明
@@ -72,7 +72,7 @@ my-books/
 │       │   ├── user-info/         # 当前用户信息
 │       │   └── get-async-routes/  # 动态路由/菜单
 │       └── notifications/ # root 级 /api/notifications（runtime 通知铃兜底，表 + 种子）
-├── modules/               # 前端
+├── web/                   # 前端
 │   ├── src/home/          # 首页模块：提供 /home（shell 预构建的 HOME 目标）
 │   ├── src/demo/          # 演示模块（entry.ts / pages / locales）
 │   ├── src/login/         # 登录模块：提供 /login 路由（shell 不挂内置登录兜底）
@@ -92,7 +92,7 @@ my-books/
 {
   "scripts": {
     "dev": "ojm dev",         // 开发：前端 + oj，热更
-    "build": "ojm build",     // 构建：oj build + 前端全站合并到 modules/dist
+    "build": "ojm build",     // 构建：oj build + 前端全站合并到 web/dist
     "preview": "ojm preview",  // 预览：oj migrate → 起 server + 静态兜底
     "info": "ojm info",       // 版本矩阵 + 模块清单
     "typecheck": "tsc --noEmit -p tsconfig.json"
@@ -207,7 +207,7 @@ deps:
 
 - **查当前版本**：`pnpm exec ojm info` → 「共享依赖版本矩阵」；或看 `packages/cli/vendor/host-versions.json`。
 - **要让 `tsc` 通过**：矩阵只保证**运行时**由宿主提供，工程 `node_modules` 不一定有这些包 → 把用到的包加进**自己的 `devDependencies`**（版本对齐宿主）。`ojm init` 已为模板用到的那些钉好版本（antd / react / icons / react-router / react-i18next / echarts / echarts-for-react / react-countup / dayjs）。
-- 脚手架 `modules/src/home` 的统计卡片 + 折线 / 柱 / 饼图就是矩阵演示（`react-countup` + `echarts` + `echarts-for-react` + `dayjs`）。
+- 脚手架 `web/src/home` 的统计卡片 + 折线 / 柱 / 饼图就是矩阵演示（`react-countup` + `echarts` + `echarts-for-react` + `dayjs`）。
 - 完整矩阵（含深路径条目与按包新增的步骤）见 [`framework-development-guide.md`](./framework-development-guide.md) §3.4。
 
 ---
@@ -407,8 +407,8 @@ export const createBook = defineApi({
 ```bash
 pnpm exec ojm api
 # 产物（uni-dev 形态）：
-#   modules/src/books/api/client.ts          前端调用函数 + 类型
-#   modules/src/books/api/client.schemas.ts  zod schema（DEV 校验用）
+#   web/src/books/client/api.ts          前端调用函数 + 类型
+#   web/src/books/client/api.schemas.ts  zod schema（DEV 校验用）
 #   api/src/books/routes.json                路由清单
 #   api/src/books/openapi.yaml               接口文档
 ```
@@ -427,7 +427,7 @@ pnpm exec ojm api --check     # 生成物同步 / route 双向 / routes.js 无 d
 
 ### 5.1 注册模块
 
-`modules.config.ts`：
+`web.config.ts`：
 
 ```ts
 export default {
@@ -435,12 +435,12 @@ export default {
   modules: [
     // home 必须保留且尽量靠前：shell 预构建把 "/" → VITE_BASE_HOME_PATH（=/home）
     // 重定向，缺 /home 路由会让登录回跳 / 点 logo 落错误边界。
-    { name: "home", entry: "modules/src/home/entry.ts", enabled: true },
-    { name: "demo", entry: "modules/src/demo/entry.ts", enabled: true },
+    { name: "home", entry: "web/src/home/entry.ts", enabled: true },
+    { name: "demo", entry: "web/src/demo/entry.ts", enabled: true },
     // login 必须保留：shell 宿主只消费模块路由，不挂 runtime 内置 baseRoutes，
     // 缺它 `/login` 无路由可跳（登出/回跳登录会落空）。
-    { name: "login", entry: "modules/src/login/entry.ts", enabled: true },
-    { name: "books", entry: "modules/src/books/entry.ts", enabled: true }, // 新增
+    { name: "login", entry: "web/src/login/entry.ts", enabled: true },
+    { name: "books", entry: "web/src/books/entry.ts", enabled: true }, // 新增
   ],
 };
 ```
@@ -492,7 +492,7 @@ export default defineModule({
 });
 ```
 
-### 5.3 文案 `modules/src/books/locales/zh-CN.json`
+### 5.3 文案 `web/src/books/locales/zh-CN.json`
 
 ```json
 {
@@ -508,7 +508,7 @@ export default defineModule({
 
 （`en-US.json` 同结构。）
 
-### 5.4 页面 `modules/src/books/pages/index.tsx`
+### 5.4 页面 `web/src/books/pages/index.tsx`
 
 ```tsx
 import type { ListBooksData } from "../api/client";
@@ -606,13 +606,13 @@ pnpm exec ojm info          # 版本矩阵 + 模块清单
 ## 7. 构建与部署
 
 ```bash
-pnpm build        # = ojm build：oj build（生成 routes.js）+ 前端全站合并到 modules/dist
+pnpm build        # = ojm build：oj build（生成 routes.js）+ 前端全站合并到 web/dist
 pnpm preview      # = ojm preview：oj migrate（ver 门禁）→ 起 server + 静态兜底
 ```
 
 产物与要点：
 
-- `modules/dist/` 是**完整站点**（含 shell 拷贝的 `index.html` / `assets/` / `modules.json` / `versions.json`）；
+- `web/dist/` 是**完整站点**（含 shell 拷贝的 `index.html` / `assets/` / `modules.json` / `versions.json`）；
 - `api/dist/` 是 oj build 产物（release 下**只有 routes.js 路由，目录镜像不存在**）；
 - 生产清单：
   - `api/config.yaml` 的 `jwt_secret` **必须更换**；证书用 `oj-cert gen` 重新签发；

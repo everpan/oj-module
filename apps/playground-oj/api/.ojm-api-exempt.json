@@ -1,4 +1,5 @@
 {
+	"_comment": "ojm api --check 豁免清单（D12/F19）：把契约与 oj 路由对账中「确认无害」的差异降级为 skip。modules=整模块跳过双向对账（值是 oj 后端模块名，即 api/src/<模块> 的目录名）；paths=按路径跳过，'/xxx/*' 为一层通配（只盖 /xxx/<单段>），其余为精确前缀匹配。仅降级 error→skip，绝不引入新错误；文件缺失或 JSON 损坏时静默按空豁免处理。注意：本文件是严格 JSON，写 // 注释会导致解析失败、豁免静默全失效——说明请写在本 _comment 字段。",
 	"modules": ["web"],
 	"paths": ["/auth/*"]
 }

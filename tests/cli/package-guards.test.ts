@@ -96,7 +96,7 @@ describe("发布内容守卫（R8 / US-7）", () => {
 
 	it("runtime 的 imports 不逃出包边界（只留 #src/*）", () => {
 		const pkg = readJson<{ imports?: Record<string, string> }>(RUNTIME_PKG);
-		// #modules/*、#manifest.json 曾指向 ../../（包外路径），已迁到仓库 vite 配置解析
+		// #web/*、#manifest.json 曾指向 ../../（包外路径），已迁到仓库 vite 配置解析
 		expect(Object.keys(pkg.imports ?? {})).toEqual(["#src/*"]);
 	});
 });
@@ -122,11 +122,11 @@ describe("cli 的 Node/浏览器边界（R6 硬分区）", () => {
 
 describe("模块源码不得 import cli（R6）", () => {
 	const moduleRoots = [
-		path.join(PROJECT_ROOT, "apps/playground/modules/src"),
-		path.join(PROJECT_ROOT, "apps/playground-oj/modules/src"),
+		path.join(PROJECT_ROOT, "apps/playground/web/src"),
+		path.join(PROJECT_ROOT, "apps/playground-oj/web/src"),
 		// 根 App 链自己的模块目录（架构评审：vite alias 也把它当模块树，此前漏检）
-		path.join(PROJECT_ROOT, "modules/src"),
-		path.join(CLI_DIR, "templates/modules/src"),
+		path.join(PROJECT_ROOT, "web/src"),
+		path.join(CLI_DIR, "templates/web/src"),
 	];
 
 	function collect(dir: string): string[] {

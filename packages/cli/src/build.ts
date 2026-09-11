@@ -467,7 +467,7 @@ function mergeShellSite(distDir: string): void {
 /**
  * 构建模块工程。
  *
- * 产出（目录随布局：新布局 modules/dist，旧布局 dist/）：
+ * 产出（web 布局：web/dist）：
  *   <dist>/modules/<name>/<version>/{entry.js, chunk-*.js, *.css}
  *   <dist>/modules.json
  *
@@ -504,7 +504,7 @@ export async function buildModules(
 
 		if (definition.name !== item.name) {
 			throw new Error(
-				`模块名不一致：modules.config.ts 中为 "${item.name}"，entry.ts 中为 "${definition.name}"`,
+				`模块名不一致：web.config.ts 中为 "${item.name}"，entry.ts 中为 "${definition.name}"`,
 			);
 		}
 

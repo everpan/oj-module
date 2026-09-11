@@ -31,7 +31,7 @@ function collectTsFiles(dir: string, out: string[] = []): string[] {
 describe("模块包名化（P3.2 / D3）", () => {
 	it("modules 与 playground 模块源码零 #src import", () => {
 		const offenders: string[] = [];
-		for (const dir of [MODULES_DIR, path.join(PLAYGROUND_DIR, "modules")]) {
+		for (const dir of [MODULES_DIR, path.join(PLAYGROUND_DIR, "web")]) {
 			for (const file of collectTsFiles(dir)) {
 				if (fs.readFileSync(file, "utf-8").includes("from \"#src/")) {
 					offenders.push(file);
@@ -43,7 +43,7 @@ describe("模块包名化（P3.2 / D3）", () => {
 
 	it("每个模块 entry 均从包名导入框架契约", () => {
 		const missing: string[] = [];
-		for (const dir of [MODULES_DIR, path.join(PLAYGROUND_DIR, "modules")]) {
+		for (const dir of [MODULES_DIR, path.join(PLAYGROUND_DIR, "web")]) {
 			for (const name of fs.readdirSync(dir)) {
 				const entry = path.join(dir, name, "entry.ts");
 				if (fs.existsSync(entry) && !fs.readFileSync(entry, "utf-8").includes(RUNTIME_PACKAGE)) {
@@ -67,8 +67,8 @@ describe("模块包名化（P3.2 / D3）", () => {
 		expect(buildScript).toContain(RUNTIME_PACKAGE);
 	});
 
-	it("modules/ 纳入根 tsconfig include（B8：模块源码参与全量类型检查）", () => {
+	it("web/ 纳入根 tsconfig include（B8：模块源码参与全量类型检查）", () => {
 		const tsconfig = JSON.parse(fs.readFileSync(path.join(PROJECT_ROOT, "tsconfig.json"), "utf-8"));
-		expect(tsconfig.include).toContain("modules");
+		expect(tsconfig.include).toContain("web");
 	});
 });

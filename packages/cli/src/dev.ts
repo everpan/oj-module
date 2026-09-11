@@ -215,7 +215,7 @@ export async function devServer(projectRoot: string, opts: DevOptions = {}): Pro
 		watch(layout.watchTarget, { recursive: true }, (_event, filename) => {
 			if (!filename)
 				return;
-			// 契约文件变更：先 runApi 重生成 client（落 modules 树 → 二次触发本 watch 走重建）
+			// 契约文件变更：先 runApi 重生成 client（落 web 树 → 二次触发本 watch 走重建）
 			if (filename.endsWith("contract.ts"))
 				regenContracts();
 			trigger();

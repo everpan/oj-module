@@ -16,7 +16,7 @@ import { PROJECT_ROOT } from "../helpers/paths";
  */
 
 const PLAYGROUND = path.join(PROJECT_ROOT, "apps/playground");
-const PLAYGROUND_MODULES = path.join(PLAYGROUND, "modules");
+const PLAYGROUND_MODULES = path.join(PLAYGROUND, "web");
 
 function collectFiles(dir: string): string[] {
 	if (!fs.existsSync(dir))
@@ -30,12 +30,12 @@ function collectFiles(dir: string): string[] {
 
 describe("模块工程只含模块", () => {
 	it("playground 存在且具备最小工程结构（uni-dev 新布局）", () => {
-		for (const file of ["package.json", "modules.config.ts"]) {
+		for (const file of ["package.json", "web.config.ts"]) {
 			expect(fs.existsSync(path.join(PLAYGROUND, file)), `应存在 ${file}`).toBe(true);
 		}
 		expect(fs.existsSync(PLAYGROUND_MODULES), "应存在 modules/").toBe(true);
-		// D11 一次性迁移：modules/src/ 源码目录存在，legacy 的 modules/<name>/ 直挂不存在
-		expect(fs.existsSync(path.join(PLAYGROUND_MODULES, "src")), "应存在 modules/src/（新布局）").toBe(true);
+		// D11 一次性迁移：web/src/ 源码目录存在，legacy 的 modules/<name>/ 直挂不存在
+		expect(fs.existsSync(path.join(PLAYGROUND_MODULES, "src")), "应存在 web/src/（新布局）").toBe(true);
 		expect(
 			fs.existsSync(path.join(PLAYGROUND_MODULES, "demo")),
 			"legacy 布局 modules/demo/ 应已删除（D11 迁移）",

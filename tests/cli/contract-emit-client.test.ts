@@ -13,7 +13,7 @@ import { buildIr } from "../../packages/cli/src/contract/ir";
 import { defineApi, z } from "../../packages/runtime/contract";
 
 /**
- * AC-D5/D6/D8/D15：client.ts + client.schemas.ts 发射器。
+ * AC-D5/D6/D8/D15：api.ts + api.schemas.ts 发射器。
  * 快照锁定生成物形态；行为测试把生成文本落盘 → esbuild bundle → 真实 import
  * 跑在 stub ScopedRequestLike 上，断言 URL 插值 / query / body / 信封解包 /
  * 业务错误归一 ContractApiError / DEV 校验 / raw 通道 / 产物 zod 排除。
@@ -72,11 +72,11 @@ const runtimeStub: Plugin = {
 /** 生成物落盘到 repo 内临时目录（node_modules/.cache 下，保证 workspace 依赖可解析）→ bundle → import */
 async function bundleClient(files: Record<string, string>, dev: boolean) {
 	const dir = mkdtempSync(join(repoRoot, "node_modules/.cache/ojm-client-test-"));
-	writeFileSync(join(dir, "client.ts"), files["client.ts"]);
-	writeFileSync(join(dir, "client.schemas.ts"), files["client.schemas.ts"]);
+	writeFileSync(join(dir, "api.ts"), files["api.ts"]);
+	writeFileSync(join(dir, "api.schemas.ts"), files["api.schemas.ts"]);
 	const outdir = join(dir, "out");
 	await build({
-		entryPoints: [join(dir, "client.ts")],
+		entryPoints: [join(dir, "api.ts")],
 		bundle: true,
 		format: "esm",
 		splitting: true,
@@ -85,7 +85,7 @@ async function bundleClient(files: Record<string, string>, dev: boolean) {
 		plugins: [runtimeStub],
 		logLevel: "silent",
 	});
-	const mod = await import(pathToFileURL(join(outdir, "client.js")).href);
+	const mod = await import(pathToFileURL(join(outdir, "api.js")).href);
 	return { mod, outdir };
 }
 
@@ -128,23 +128,23 @@ const ok = (data: unknown) => ({ code: 0, msg: "ok", data });
 describe("emitClient（AC-D5/D6/D8/D15）", () => {
 	it("快照：module 目标双产物（bindRequest 持有者 + 类型推导 + DEV 校验 + raw 通道）", () => {
 		const files = emitClient(ir, { target: "module" });
-		expect(files["client.ts"]).toMatchSnapshot();
-		expect(files["client.schemas.ts"]).toMatchSnapshot();
+		expect(files["api.ts"]).toMatchSnapshot();
+		expect(files["api.schemas.ts"]).toMatchSnapshot();
 	});
 
 	it("internal 目标：无 bindRequest，直接绑 #src/utils/request", () => {
 		const files = emitClient(ir, { target: "internal" });
-		expect(files["client.ts"]).not.toContain("bindRequest");
-		expect(files["client.ts"]).toContain("import { request } from \"#src/utils/request\"");
+		expect(files["api.ts"]).not.toContain("bindRequest");
+		expect(files["api.ts"]).toContain("import { request } from \"#src/utils/request\"");
 	});
 
 	it("internal 目标：z 直取 zod（runtime 树内自引包名成环）；module 目标走 runtime re-export", () => {
 		const internal = emitClient(ir, { target: "internal" });
-		expect(internal["client.ts"]).toContain("from \"zod\"");
-		expect(internal["client.schemas.ts"]).toContain("import { z } from \"zod\"");
+		expect(internal["api.ts"]).toContain("from \"zod\"");
+		expect(internal["api.schemas.ts"]).toContain("import { z } from \"zod\"");
 		const module_ = emitClient(ir, { target: "module" });
-		expect(module_["client.ts"]).toContain("from \"@oj-module/runtime\"");
-		expect(module_["client.schemas.ts"]).toContain("import { z } from \"@oj-module/runtime\"");
+		expect(module_["api.ts"]).toContain("from \"@oj-module/runtime\"");
+		expect(module_["api.schemas.ts"]).toContain("import { z } from \"@oj-module/runtime\"");
 	});
 
 	it("ignoreLoading 契约开关透传为请求 options", () => {
@@ -157,7 +157,7 @@ describe("emitClient（AC-D5/D6/D8/D15）", () => {
 			}),
 		});
 		const files = emitClient(withFlag, { target: "module" });
-		expect(files["client.ts"]).toContain("{ ignoreLoading: true }");
+		expect(files["api.ts"]).toContain("{ ignoreLoading: true }");
 	});
 
 	it("未 bindRequest 即调用 → 人话报错指路 entry.ts onInit", async () => {
@@ -239,12 +239,12 @@ describe("emitClient（AC-D5/D6/D8/D15）", () => {
 		});
 		const files = emitClient(ir2, { target: "module" });
 		// F7 形态断言：raw 端点的 params 槽保留在 schemas（client 类型引用不断链）
-		expect(files["client.schemas.ts"]).toContain("downloadFile");
-		expect(files["client.schemas.ts"]).not.toContain("downloadFile: {\n\t\tdata");
+		expect(files["api.schemas.ts"]).toContain("downloadFile");
+		expect(files["api.schemas.ts"]).not.toContain("downloadFile: {\n\t\tdata");
 
 		const dir = mkdtempSync(join(repoRoot, "node_modules/.cache/ojm-tsc-test-"));
-		writeFileSync(join(dir, "client.ts"), files["client.ts"]);
-		writeFileSync(join(dir, "client.schemas.ts"), files["client.schemas.ts"]);
+		writeFileSync(join(dir, "api.ts"), files["api.ts"]);
+		writeFileSync(join(dir, "api.schemas.ts"), files["api.schemas.ts"]);
 		// 与 apps/playground/typings.d.ts 同款最小 ImportMeta.env 声明（模块工程无 vite 依赖的形态）
 		writeFileSync(join(dir, "typings.d.ts"), "interface ImportMeta { readonly env: { readonly DEV: boolean } }\n");
 		writeFileSync(join(dir, "tsconfig.json"), JSON.stringify({
@@ -263,7 +263,7 @@ describe("emitClient（AC-D5/D6/D8/D15）", () => {
 					"@oj-module/runtime": [join(repoRoot, "packages/runtime/dist/index.d.ts")],
 				},
 			},
-			include: ["client.ts", "client.schemas.ts", "typings.d.ts"],
+			include: ["api.ts", "api.schemas.ts", "typings.d.ts"],
 		}));
 		const tscPkg = createRequire(join(repoRoot, "packages/cli/index.js")).resolve("typescript/package.json");
 		const tscBin = join(tscPkg, "..", "bin", "tsc");
@@ -281,12 +281,12 @@ describe("emitClient（AC-D5/D6/D8/D15）", () => {
 		expect(calls[0].url).toBe("order/file/a/b%20c.png");
 	});
 
-	it("生产构建（DEV=false）：zod 与 client.schemas 被摇出产物（AC-D15）", async () => {
+	it("生产构建（DEV=false）：zod 与 api.schemas 被摇出产物（AC-D15）", async () => {
 		const { outdir } = await bundleClient(emitClient(ir, { target: "module" }), false);
 		const outFiles = readdirSync(outdir).filter(f => f.endsWith(".js"));
-		expect(outFiles).toEqual(["client.js"]);
-		const code = readFileSync(join(outdir, "client.js"), "utf8");
-		expect(code).not.toContain("client.schemas");
+		expect(outFiles).toEqual(["api.js"]);
+		const code = readFileSync(join(outdir, "api.js"), "utf8");
+		expect(code).not.toContain("api.schemas");
 		expect(code).not.toContain("_zod");
 	});
 });

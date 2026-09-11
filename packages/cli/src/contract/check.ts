@@ -45,6 +45,9 @@ export interface ApiExemption {
  * 加载豁免清单：默认 `<cwd>/api/.ojm-api-exempt.json`（新名），缺失时回退旧名
  * `api/.ram-api-exempt.json`（R4：存量工程豁免不因改名失效）；`opts.exempt` 为
  * 绝对/相对路径时覆盖默认。文件缺失或 JSON 损坏 → 空豁免 `{}`（绝不抛错）。
+ * 反常识坑：清单是严格 JSON.parse——写 `//` 注释会解析失败、静默回退空豁免
+ * （豁免全失效且无报错）；说明文字请放 `_comment` 字段（本加载器只读
+ * modules/paths，多余字段天然忽略）。
  */
 export function loadExemption(opts: { cwd: string, exempt?: string }): ApiExemption {
 	const file = resolveExemptPath(opts.cwd, opts.exempt);
@@ -258,7 +261,7 @@ export async function checkApi(opts: { cwd: string, exempt?: string }): Promise<
 	const exemption = loadExemption(opts);
 	const contracts = discoverContracts(opts.cwd);
 	if (contracts.length === 0) {
-		throw new Error(`[ojm-api] ${opts.cwd} 下没有发现契约文件——默认发现：api/src/*/contract.ts（uni-dev）与 modules/src/*/api/contract.ts（纯前端）。`);
+		throw new Error(`[ojm-api] ${opts.cwd} 下没有发现契约文件——默认发现：api/src/*/contract.ts（uni-dev）与 web/src/*/client/contract.ts（纯前端）。存量工程请迁移：modules/ → web/、模块内 api/ → client/。`);
 	}
 	const violations: CheckViolation[] = [];
 	const hints: string[] = [];
@@ -273,8 +276,8 @@ export async function checkApi(opts: { cwd: string, exempt?: string }): Promise<
 		const paths = artifactPaths(found, opts.cwd);
 		const client = emitClient(ir, { target: "module" });
 		const expected: [string, string][] = [
-			[paths.client, client["client.ts"]],
-			[paths.schemas, client["client.schemas.ts"]],
+			[paths.client, client["api.ts"]],
+			[paths.schemas, client["api.schemas.ts"]],
 			[paths.routes, emitRoutesJson(ir)],
 			[paths.openapi, emitOpenapiYaml(ir, { title: `${found.module} api`, version: "0.0.0" })],
 		];

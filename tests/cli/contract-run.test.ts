@@ -7,7 +7,7 @@ import { runApi } from "../../packages/cli/src/contract/run";
  * AC-D7：`ojm api` 编排（discover → evaluate → IR → 发射 → 幂等写盘）。
  * 端到端夹具：tmp 工程（node_modules/.cache 下，workspace 依赖可解析）
  * 各含一份 uni-dev 契约（api/src/order/contract.ts）与纯前端契约
- * （modules/src/demo/api/contract.ts），断言四产物路径 + 关键内容 + 二次运行零写入。
+ * （web/src/demo/client/contract.ts），断言四产物路径 + 关键内容 + 二次运行零写入。
  */
 
 const tmpDirs: string[] = [];
@@ -34,8 +34,8 @@ export const getOrderDetail = defineApi({
 	data: z.object({ id: z.number(), order_no: z.string() }),
 });
 `);
-	mkdirSync(join(dir, "modules/src/demo/api"), { recursive: true });
-	writeFileSync(join(dir, "modules/src/demo/api/contract.ts"), `
+	mkdirSync(join(dir, "web/src/demo/client"), { recursive: true });
+	writeFileSync(join(dir, "web/src/demo/client/contract.ts"), `
 import { defineApi, z } from "@oj-module/runtime/contract";
 
 export const getDashboard = defineApi({
@@ -57,11 +57,11 @@ describe("runApi（AC-D7 编排 + 幂等写盘）", () => {
 		const cwd = makeProject();
 		const result = await runApi({ cwd });
 
-		// client 双产物 → modules/src/order/api/（模块名 = apiPrefix 去首斜杠，AC-D9）
-		const client = readFileSync(join(cwd, "modules/src/order/api/client.ts"), "utf8");
+		// client 双产物 → web/src/order/client/（模块名 = apiPrefix 去首斜杠，AC-D9）
+		const client = readFileSync(join(cwd, "web/src/order/client/api.ts"), "utf8");
 		expect(client).toContain("export function bindRequest");
 		expect(client).toContain("export async function getOrderList");
-		expect(existsSync(join(cwd, "modules/src/order/api/client.schemas.ts"))).toBe(true);
+		expect(existsSync(join(cwd, "web/src/order/client/api.schemas.ts"))).toBe(true);
 
 		// routes.json / openapi.yaml → 契约同目录
 		const routes = JSON.parse(readFileSync(join(cwd, "api/src/order/routes.json"), "utf8")) as { method: string, pattern: string }[];
@@ -81,9 +81,9 @@ describe("runApi（AC-D7 编排 + 幂等写盘）", () => {
 	it("纯前端契约：四产物全部落契约同目录（无 stub）", async () => {
 		const cwd = makeProject();
 		await runApi({ cwd });
-		const dir = join(cwd, "modules/src/demo/api");
-		expect(readFileSync(join(dir, "client.ts"), "utf8")).toContain("export async function getDashboard");
-		expect(existsSync(join(dir, "client.schemas.ts"))).toBe(true);
+		const dir = join(cwd, "web/src/demo/client");
+		expect(readFileSync(join(dir, "api.ts"), "utf8")).toContain("export async function getDashboard");
+		expect(existsSync(join(dir, "api.schemas.ts"))).toBe(true);
 		expect(JSON.parse(readFileSync(join(dir, "routes.json"), "utf8"))).toEqual([{ method: "GET", pattern: "demo/dashboard" }]);
 		expect(readFileSync(join(dir, "openapi.yaml"), "utf8")).toContain("/demo/dashboard");
 		// 纯前端形态不生成 oj stub

@@ -159,8 +159,8 @@ describe.skipIf(process.env.CI || ojBusy)("uni-dev e2e 冒烟（真二进制）"
 
 	it("build：后端与全站产物齐备", () => {
 		runRam(["build"]);
-		expect(fs.existsSync(path.join(root, "modules/dist/index.html"))).toBe(true);
-		expect(fs.existsSync(path.join(root, "modules/dist/modules.json"))).toBe(true);
+		expect(fs.existsSync(path.join(root, "web/dist/index.html"))).toBe(true);
+		expect(fs.existsSync(path.join(root, "web/dist/modules.json"))).toBe(true);
 		expect(fs.existsSync(path.join(root, "api/dist/manifests.yaml"))).toBe(true);
 	}, 240_000);
 

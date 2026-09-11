@@ -80,26 +80,26 @@ describe("initProject", () => {
 		// 前端模块与工程文件
 		// home 提供 /home：shell 预构建把 VITE_BASE_HOME_PATH 定为 /home，
 		// 登录回跳 / logo / tabbar 均指向它，缺则落错误边界
-		expect(fs.existsSync(path.join(dest, "modules/src/home/entry.ts"))).toBe(true);
-		expect(fs.existsSync(path.join(dest, "modules/src/home/pages/index.tsx"))).toBe(true);
-		expect(fs.existsSync(path.join(dest, "modules/src/demo/entry.ts"))).toBe(true);
+		expect(fs.existsSync(path.join(dest, "web/src/home/entry.ts"))).toBe(true);
+		expect(fs.existsSync(path.join(dest, "web/src/home/pages/index.tsx"))).toBe(true);
+		expect(fs.existsSync(path.join(dest, "web/src/demo/entry.ts"))).toBe(true);
 		// login 模块提供 /login：shell 宿主不挂 runtime 内置 baseRoutes，
 		// 缺它则登出/回跳登录无路由可跳
-		const loginEntry = path.join(dest, "modules/src/login/entry.ts");
+		const loginEntry = path.join(dest, "web/src/login/entry.ts");
 		expect(fs.existsSync(loginEntry)).toBe(true);
-		expect(fs.existsSync(path.join(dest, "modules/src/login/pages/login.tsx"))).toBe(true);
+		expect(fs.existsSync(path.join(dest, "web/src/login/pages/login.tsx"))).toBe(true);
 		expect(fs.readFileSync(loginEntry, "utf-8")).toContain("path: \"/login\"");
-		const modulesConfig = fs.readFileSync(path.join(dest, "modules.config.ts"), "utf-8");
+		const modulesConfig = fs.readFileSync(path.join(dest, "web.config.ts"), "utf-8");
 		expect(modulesConfig).toContain("\"home\"");
 		expect(modulesConfig).toContain("\"login\"");
 		// personal-center（设计 T1）：runtime user-menu 固定导航 /personal-center/my-profile，
 		// 模板缺它则点击落空（与缺 home/login 同型）
 		expect(modulesConfig).toContain("\"personal-center\"");
-		expect(fs.existsSync(path.join(dest, "modules/src/personal-center/entry.ts"))).toBe(true);
-		expect(fs.existsSync(path.join(dest, "modules/src/personal-center/pages/my-profile/index.tsx"))).toBe(true);
-		expect(fs.existsSync(path.join(dest, "modules/src/personal-center/pages/settings/index.tsx"))).toBe(true);
-		expect(fs.existsSync(path.join(dest, "modules/src/personal-center/locales/zh-CN.json"))).toBe(true);
-		expect(fs.existsSync(path.join(dest, "modules/src/personal-center/locales/en-US.json"))).toBe(true);
+		expect(fs.existsSync(path.join(dest, "web/src/personal-center/entry.ts"))).toBe(true);
+		expect(fs.existsSync(path.join(dest, "web/src/personal-center/pages/my-profile/index.tsx"))).toBe(true);
+		expect(fs.existsSync(path.join(dest, "web/src/personal-center/pages/settings/index.tsx"))).toBe(true);
+		expect(fs.existsSync(path.join(dest, "web/src/personal-center/locales/zh-CN.json"))).toBe(true);
+		expect(fs.existsSync(path.join(dest, "web/src/personal-center/locales/en-US.json"))).toBe(true);
 		// 后端（T2）：manifest + contract + upload handler；生成物（routes.json/openapi.yaml）不进模板
 		expect(fs.existsSync(path.join(dest, "api/src/personal-center/manifest.yaml"))).toBe(true);
 		expect(fs.existsSync(path.join(dest, "api/src/personal-center/contract.ts"))).toBe(true);
@@ -109,7 +109,7 @@ describe("initProject", () => {
 		expect(fs.existsSync(path.join(dest, "api/src/_platform/migrations/0002__add_users_avatar_base64.sql"))).toBe(true);
 		expect(fs.readFileSync(path.join(dest, "api/src/_platform/schema.yaml"), "utf-8")).toContain("avatar_base64");
 		expect(fs.readFileSync(path.join(dest, "api/src/web/user-info/api.ts"), "utf-8")).toContain("avatar_base64");
-		expect(fs.existsSync(path.join(dest, "modules.config.ts"))).toBe(true);
+		expect(fs.existsSync(path.join(dest, "web.config.ts"))).toBe(true);
 		expect(fs.existsSync(path.join(dest, "tsconfig.json"))).toBe(true);
 		expect(fs.existsSync(path.join(dest, ".gitignore"))).toBe(true);
 		// env.d.ts 提供 import.meta.env 类型，否则生成 client 会让 typecheck 报 TS2339

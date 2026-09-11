@@ -19,8 +19,8 @@
 	},
 	"include": [
 		"api",
-		"modules",
-		"modules.config.ts",
+		"web",
+		"web.config.ts",
 		"vite-env.d.ts",
 		"global.d.ts"
 	]
