@@ -273,7 +273,7 @@ Feature: 品牌零残留
 | **P1** | 包合并（结构） | contract 并入 runtime 子路径 + dist 构建；shell 迁入 cli；`resolveShellDist` 三处收敛；exports/files/bin 调整 | ✅ **完成 2026-09-11**（见 §12）；`typecheck` + 550 用例全绿 + `build:shell` 门禁通过 + playground `ram build` 端到端通过 |
 | **P2** | 改名（scope） | 机械替换包名、import、模板、工程、根配置、测试、文档 | ✅ **完成 2026-09-11**（见 §12）；全仓 `@react-antd-module` 零命中；typecheck + lint + 550 用例 + 产物重建全部通过 |
 | **P3** | 改名（bin + 内部前缀 + 兼容） | 双 bin；`.ojm-api-exempt.json`；指纹头双前缀；`Symbol.for` 双符号；日志前缀 | ✅ **完成 2026-09-11**（见 §12）；存量兼容三连（旧 exempt / 旧指纹头 / 旧 Symbol）有单测；`ram` 别名实测打印警告并转发 |
-| **P4** | 守卫与验收 | 新增 §8.2 守卫测试；改造 §8.1 既有测试；`prepack` 断言 | ✅ **完成 2026-09-11**（见 §12）；新增 18 条守卫/兼容用例；`pnpm lint` 0 error |
+| **P4** | 守卫与验收 | 新增 §8.2 守卫测试；改造 §8.1 既有测试；`prepack` 断言 | ✅ **完成 2026-09-11**（见 §12）；新增 20 条守卫/兼容用例；`pnpm lint` 0 error |
 | **P5** | 发布演练 | `npm pack --dry-run` 校验两包内容；playground 与 playground-oj 端到端 | ✅ **完成 2026-09-11**（见 §12）；两包 pack 演练通过（顺手修掉 sourcemap 误发布），两 playground `ojm build` + `ojm dev` 端到端通过 |
 
 每个 Phase 独立建分支、独立评审与回滚。
@@ -405,7 +405,7 @@ Feature: 品牌零残留
 **验证（全部通过）**
 
 - `pnpm typecheck`；`pnpm lint` **0 error / 63 warning**（与 P2 基线一致）
-- `pnpm exec vitest run`：**89 文件 / 568 用例全绿**（P2 为 87/550，新增 2 文件 18 用例）
+- `pnpm exec vitest run`：**87 文件 / 550 用例全绿**（与 P2 同基线：改名未增删用例）
 - `pnpm --filter @oj-module/cli build:shell`：119 资产门禁通过，子路径资产名为 `ojm-*`
 - 根 `pnpm build`：importmap 118 键注入成功
 - `pnpm --filter playground build`、`pnpm --filter playground-oj build`（含 oj 后端 7 模块）：全通
@@ -433,7 +433,13 @@ Feature: 品牌零残留
 | 新增用例 | 断言 |
 |---|---|
 | `tests/cli/package-guards.test.ts`（8） | cli `dependencies["@oj-module/runtime"]` 非 `^`/`~`（R9）；`shell-dist/versions.json` 的 runtime/contract/contract-errors 版本 == `packages/runtime` 版本（D12）；`bin` 双入口且文件存在；`ram` shim 含更名警告与转发；`versions.json` 覆盖全部硬共享；runtime `files == ["dist"]` 且 dist 无裸 `.ts`（R8/US-7）；cli `files` 含 `bin`/`shell-dist`/`src`/`templates`/`vendor` 且含 sourcemap 取反模式；模块源码（两 playground + 模板）零 `import @oj-module/cli`（R6） |
-| `tests/cli/rename-compat.test.ts`（10） | R4 旧名豁免读取 + 新名优先 + 双缺失空豁免；R2 旧指纹头被判 update（契约变/未变两种）且**不**放大权限（内容被改仍 skip）；R3 `defineApi` 只发新符号、`buildIr` 认旧符号、无符号被忽略；R1 usage 用 `ojm` 并标注 `ram` 弃用 |
+| `tests/cli/rename-compat.test.ts`（12） | R4 旧名豁免读取 + 新名优先 + 双缺失空豁免；R2 旧指纹头被判 update（契约变/未变两种）且**不**放大权限（内容被改仍 skip）；纯前缀升级 `prefixUpgrade=true` 且 `checkApi` 不误报过期、重跑刷为新头；R3 `defineApi` 只发新符号、`buildIr` 认旧符号、无符号被忽略；R1 usage 用 `ojm` 并标注 `ram` 弃用 |
+
+**兼容语义补强（E2E 暴露）**
+
+- 纯指纹头前缀差异（旧 `ram-api:stub` + 正文与新生成内容逐字节一致）不再计入 `--check` 过期：`planStubWrites` 打 `prefixUpgrade` 标记，`check.ts` 忽略该 update；`ojm api` 仍把它刷成新头。
+- 否则存量工程升级后首次 `ojm api --check` 会对每个 stub 报 `stub 待随契约更新`（BDD 要求「不产生误报」）。
+- 实测：旧名豁免 + 旧指纹头工程 `ojm api --check` → `0 error / 0 warn`、exit 0；随后 `ojm api` 首行变为 `// ojm-api:stub …`。
 
 **既有测试改造复核（§8.1）**
 
@@ -443,7 +449,9 @@ Feature: 品牌零残留
 
 **验证（全部通过）**
 
-- `pnpm lint`：0 error / 63 warning；`pnpm typecheck` 干净；`pnpm exec vitest run` 89 文件 / 568 用例全绿。
+- `pnpm lint`：0 error / 63 warning；`pnpm typecheck` 干净；`pnpm exec vitest run` 89 文件 / 570 用例全绿。
+- 兼容语义补强后重跑：`rename-compat` 12 条（含前缀升级 E2E）全绿。
+
 
 ---
 
@@ -494,3 +502,4 @@ Feature: 品牌零残留
 | A37 | **模板字面量里写反引号会截断字符串** | `usage.ts` 的用法文本是模板字面量；新增一句「`ram` 是 `ojm` 的弃用别名」里的反引号把字符串提前闭合 → `TS1005`。**对策**：模板文本里不要用反引号，或转义 `\``。 |
 | A38 | **机械改名要“改源码 + 重跑生成器”双向对齐，不能只改一边** | 生成的 `client.ts`/`stub` 也含品牌文本与指纹头。只机械替换磁盘文件的话，下次 codegen 会与已提交内容分叉（`--check` 报 `artifact-stale`）。**验证手法**：改完源码后重跑 `ojm api`（与 `gen-internal-role-client.ts`），若输出「写入 0 / 跳过（未变）」，即证明机械替换与生成器输出逐字节一致。 |
 | A39 | **MAC 上 `grep -E '\bram\b'` 不可靠** | BSD grep 的 ERE 不支持 `\b` 词边界（静默不匹配），用它做「零残留」判据会漏。**对策**：改名扫描用 ripgrep（`\b` 受支持）或 `perl -ne '/\bram\b/'`；`git grep -E` 同理不可靠。 |
+| A40 | **改名让 `--check` 对旧指纹头误报「生成物过期」** | 双前缀读取后，旧 `ram-api:stub` 文件指纹匹配但内容（头文本）与新建期望不一致 → `planStubWrites` 判 `update`，而 `check.ts` 把 `update` 一律当过期 error。结果是存量工程升级后首次 `ojm api --check` 对每个 stub 报「stub 待随契约更新」，与 BDD「不产生误报」冲突（手动 E2E 才暴露，单测只断言了 action）。**对策**：区分「纯前缀升级」——旧头 + 正文与新内容逐字节一致时打 `prefixUpgrade` 标记，`runApi` 刷头、`check` 忽略。教训：兼容读旧名时，要想清楚「读旧名成功」之后各下游对状态的判定是否仍成立。 |
