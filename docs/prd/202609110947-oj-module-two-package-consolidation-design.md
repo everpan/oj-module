@@ -481,7 +481,8 @@ Feature: 品牌零残留
 
 **遗留（不阻塞发布）**
 
-- `apps/playground/docs/api/index.html`、`apps/playground-oj/api/docs/index.html` 是 `ojm api --docs` 生成的离线 redoc 单文件，内含旧品牌文本；重新生成需联网 CDN，留待下次按需复跑。
+- `apps/playground/docs/api/index.html`、`apps/playground-oj/api/docs/index.html` 是 `ojm api --docs` 生成的离线 redoc 单文件；已核查**不含旧品牌文本**（首轮 grep 的 `ram` 命中全是 redoc 供应商代码里的 `parameter` / `frame` 等子串），无需重新生成。
+- 手册 `framework-development-guide.md` 的深层章节仍以「宿主」为叙事主体（该概念本身仍成立，宿主只是从独立包变为 cli 内置 `shell-dist`），且已核查无 `packages/shell` / `@oj-module/shell` 等事实性错误；若要改成语义更精确的「cli 内置 shell-dist」，作为独立文档任务。
 
 ---
 
