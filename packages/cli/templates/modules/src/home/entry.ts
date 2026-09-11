@@ -11,8 +11,10 @@ const Home = lazy(() => import("./pages/index"));
  * （登录成功回跳、logo 点击、tabbar 首页、403/404 回首页都指向它）。
  * 工程缺 `/home` 路由时这些跳转会落到错误边界。
  *
- * 结构对齐 apps/playground-oj/modules/src/home；页面只依赖脚手架共享依赖
- * （antd / runtime / react-i18next），不引入 echarts 等额外图表库。
+ * 结构对齐 apps/playground-oj/modules/src/home；页面用统计卡片 + 折线/柱/饼图
+ * 演示宿主共享依赖矩阵（echarts / echarts-for-react / react-countup / dayjs /
+ * antd / @ant-design/icons / react-i18next，均由宿主 importmap 提供单例）。
+ * 图表数据为静态演示值——真实业务走模块契约 + `ram api` 生成的 client。
  */
 export default defineModule({
 	name: "home",

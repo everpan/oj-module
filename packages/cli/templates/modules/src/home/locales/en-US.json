@@ -1,13 +1,32 @@
 {
 	"menu": { "home": "Home" },
-	"page": {
-		"title": "Home",
-		"welcome": "Welcome to the react-antd-module scaffold",
-		"subtitle": "Frontend modules + oj backend + contracts, one chain end to end"
-	},
-	"tip": {
-		"dev": { "title": "Develop", "text": "Editing api/src hot-reloads; adding a module directory needs a ram dev restart" },
-		"contract": { "title": "Contract", "text": "Re-run ram api after contract changes to regenerate the client and docs" },
-		"build": { "title": "Build", "text": "ram build emits backend routes.js and merges the full site into modules/dist" }
-	}
+	"newVisits": "New Visits",
+	"messages": "Messages",
+	"purchases": "Purchases",
+	"shoppings": "Shoppings",
+	"sales": "Sales",
+	"thisWeek": "This Week",
+	"thisMonth": "This Month",
+	"thisYear": "This Year",
+	"monday": "Monday",
+	"tuesday": "Tuesday",
+	"wednesday": "Wednesday",
+	"thursday": "Thursday",
+	"friday": "Friday",
+	"saturday": "Saturday",
+	"sunday": "Sunday",
+	"views": "Views",
+	"directAccess": "Direct Access",
+	"emailMarketing": "Email Marketing",
+	"affiliateAdvertise": "Affiliate Advertise",
+	"videoAdvertise": "Video Advertise",
+	"salesCategoryProportion": "Sales Category Proportion",
+	"electronics": "Electronics",
+	"homeGoods": "Home Goods",
+	"apparelAccessories": "Apparel Accessories",
+	"foodBeverages": "Food Beverages",
+	"beautySkincare": "Beauty Skincare",
+	"allChannels": "All Channels",
+	"online": "Online",
+	"site": "Site"
 }

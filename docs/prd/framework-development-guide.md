@@ -632,6 +632,35 @@ export const SHARED_DEPS: SharedDepEntry[] = [
 
 > 漏改任一处，`tests/shell/host-version-drift.test.ts` 与 `tests/shell/version-gate.test.ts` 会红。
 
+#### 3.4.1 矩阵全集：模块能 import 的裸说明符
+
+模块**只允许 import 三类东西**：`@react-antd-module/runtime`、本矩阵内的包、自身相对路径（`#src/*` 等框架内部路径构建期会拦）。矩阵全集如下：
+
+**硬共享**（模块不得自带；工程 `devDependencies` 版本须与宿主严格相等）：
+
+```
+react  react/jsx-runtime  react/jsx-dev-runtime  react-dom  react-dom/client
+react-router  react-router/dom  @tanstack/react-query
+@react-antd-module/runtime  @react-antd-module/contract/errors
+@react-antd-module/contract   # 仅 Node 侧 codegen 用，浏览器无人 import
+```
+
+**软共享**（默认也由宿主 importmap 提供，scopes 允许多版本兜底）：
+
+| 分类 | 裸说明符 |
+| --- | --- |
+| UI | `antd`、`antd/locale/zh_CN`、`antd/locale/en_US`、`antd/es/locale/zh_CN`、`@ant-design/icons`、`@ant-design/icons/es/components/Context`、`@ant-design/cssinjs`、`@ant-design/pro-components`、`antd-img-crop` |
+| i18n | `i18next`、`react-i18next` |
+| 状态 | `zustand`（含 `/middleware` `/shallow` `/vanilla` `/react` `/react/shallow` `/vanilla/shallow`）、`use-sync-external-store/shim` |
+| 时间 | `dayjs`（含 `/plugin/{advancedFormat,customParseFormat,isoWeek,localeData,quarterOfYear,relativeTime,weekday,weekOfYear,weekYear}`） |
+| 图表 | `echarts`、`echarts/charts`、`echarts/features.js`、`echarts-for-react` |
+| 动画 / 交互 | `motion`、`motion/react`、`@dnd-kit/core`、`@dnd-kit/sortable`、`@dnd-kit/utilities`、`keepalive-for-react`、`simplebar-react`、`react-jss`、`clsx`、`tailwind-merge`、`nprogress`、`nprogress/nprogress.css`、`spin-delay`、`react-error-boundary`、`react-countup` |
+| 工具 | `ahooks`、`ky`、`pinyin-pro` |
+
+**怎么查**：`pnpm exec ram info` 打印「共享依赖版本矩阵（宿主 versions.json）」；权威清单见 `packages/cli/src/shared-deps.ts`（源码，含 `hard` 标记与深路径条目）与 `packages/cli/vendor/host-versions.json`（发布包内置的版本矩阵）。
+
+> **类型从哪来**：矩阵只保证**运行时**由宿主 importmap 提供单例，工程 `node_modules` 里不一定有这些包。外部工程若要 `tsc` 通过，须把用到的包加进**自己的 `devDependencies`**（版本对齐宿主矩阵）。`ram init` 生成的工程已为脚手架模板用到的那些（antd / react / @ant-design/icons / react-router / react-i18next / **echarts / echarts-for-react / react-countup / dayjs**）钉好版本——图表演示见模板 `modules/src/home`。
+
 ### 3.5 硬共享 vs 软共享
 
 | | `hard: true` | `soft`（`hard: false`） |

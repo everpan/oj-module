@@ -191,6 +191,25 @@ deps:
 | `seed.sql` | **每次启动重放**（仅 default 库且为 sqlite）；必须幂等 |
 | `schema.yaml` | 加表/加可空列由 reconcile 自动收敛；**类型变更/改名走 migrations** |
 
+### 2.7 模块能 import 什么：共享依赖矩阵
+
+前端模块**只允许 import 三类东西**：`@react-antd-module/runtime`、**宿主共享依赖矩阵内的包**、模块自身相对路径（框架内部 `#src/*` 构建期会拦）。
+
+矩阵内的包由宿主 importmap 提供**单例**——react / antd / runtime 全站同一实例，避免「双 React」与 Context 撕裂，所以模块工程**不得自带**这些运行时代码。常用清单：
+
+| 分类 | 可 import 的裸说明符 |
+| --- | --- |
+| 硬共享（必须单例） | `react`、`react-dom`、`react-router`、`@tanstack/react-query`、`@react-antd-module/runtime`、`@react-antd-module/contract/errors` |
+| UI | `antd`（含 `locale/*`、`es/locale/zh_CN` 子路径）、`@ant-design/icons`、`@ant-design/cssinjs`、`@ant-design/pro-components`、`antd-img-crop` |
+| i18n / 状态 | `i18next`、`react-i18next`、`zustand`（含子路径）、`use-sync-external-store/shim` |
+| 时间 / 图表 / 交互 | `dayjs`（含 `/plugin/*`）、`echarts`、`echarts/charts`、`echarts/features.js`、`echarts-for-react`、`motion`、`@dnd-kit/*`、`keepalive-for-react`、`simplebar-react`、`nprogress`、`react-countup`、`react-error-boundary`、`react-jss`、`clsx`、`tailwind-merge`、`spin-delay` |
+| 工具 | `ahooks`、`ky`、`pinyin-pro` |
+
+- **查当前版本**：`pnpm exec ram info` → 「共享依赖版本矩阵」；或看 `packages/cli/vendor/host-versions.json`。
+- **要让 `tsc` 通过**：矩阵只保证**运行时**由宿主提供，工程 `node_modules` 不一定有这些包 → 把用到的包加进**自己的 `devDependencies`**（版本对齐宿主）。`ram init` 已为模板用到的那些钉好版本（antd / react / icons / react-router / react-i18next / echarts / echarts-for-react / react-countup / dayjs）。
+- 脚手架 `modules/src/home` 的统计卡片 + 折线 / 柱 / 饼图就是矩阵演示（`react-countup` + `echarts` + `echarts-for-react` + `dayjs`）。
+- 完整矩阵（含深路径条目与按包新增的步骤）见 [`framework-development-guide.md`](./framework-development-guide.md) §3.4。
+
 ---
 
 ## 3. 后端：新增 `books` 业务模块

@@ -120,6 +120,9 @@ describe("initProject", () => {
 		expect(pkg.devDependencies["@react-antd-module/cli"]).not.toBe("*");
 		// contract 必须显式声明：ram api 在 Node 侧求值契约时按裸说明符解析它
 		expect(pkg.devDependencies["@react-antd-module/contract"]).not.toBe("*");
+		// home 首页图表演示的依赖：运行时走宿主 importmap，工程侧只需类型 → devDeps 须钉版
+		for (const dep of ["echarts", "echarts-for-react", "react-countup", "dayjs"])
+			expect(pkg.devDependencies[dep]).not.toBe("*");
 	});
 
 	it("非空目录无 yes → 拒绝；yes → 幂等补缺且 config.yaml 永不覆盖", async () => {

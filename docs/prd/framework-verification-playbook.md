@@ -9,7 +9,7 @@
 | 项 | 值 |
 | --- | --- |
 | 日期 | 2026-09-11 |
-| 框架包版本 | `cli` `0.1.5`（本次模板修复：home/login 前端模块 + notifications 端点 + 豁免清单）+ `runtime`/`shell` `0.1.4` + `contract` `0.1.3`（四包均已按本手册复跑） |
+| 框架包版本 | `cli` `0.1.5`（本次模板修复：home/login 前端模块 + notifications 端点 + 豁免清单；home 用统计卡片 + 折线/柱/饼图演示共享依赖矩阵）+ `runtime`/`shell` `0.1.4` + `contract` `0.1.3`（四包均已按本手册复跑） |
 | oj | `0.1.12`（**官方 release**）——v0.1.11 及更早的 release 二进制有构建机路径缺陷，v0.1.12 已修复（见 §3） |
 | 结果 | 全链路通过（§1–§7）：release 二进制在非构建机可用，`ram dev` / `ram preview` 均正常。发现并修复 4 个脚手架缺陷（模板缺 `api/.ram-api-exempt.json` → `ram api --check` 误报；模板缺 `modules/src/login` → `/login` 无路由可跳；模板缺 root 级 `api/src/notifications` → 通知铃 404；模板缺 `modules/src/home` → 登录回跳 `/home` 落错误边界，见 §4/§5）与 2 处手册判据过期（§3 泄漏计数、§4 未注明豁免文件） |
 
@@ -181,7 +181,7 @@ curl -s http://127.0.0.1:9778/api/notifications -H "authorization: Bearer $TOKEN
 
 - [ ] dev 日志：`seed ok module="books"`、路由表含 `GET /api/books/list` / `POST /api/books/create`、`oj server listening`
 - [ ] 登录返回 `code:0` 且 `data.access_token` 非空
-- [ ] 登录成功后回跳 `/home` 正常渲染（不落 React Router 错误边界）
+- [ ] 登录成功后回跳 `/home` 正常渲染（不落 React Router 错误边界），页面含统计卡片 + 折线/柱/饼图（共享依赖矩阵演示）
 - [ ] 列表过滤返回 1 条（`设计数据密集型应用`）
 - [ ] 新增返回 `{"ok":true}`，全量列表变 4 条
 - [ ] `GET /api/notifications`（带 token）返回 `code:0` + 数组（runtime 通知铃 root 级兜底；缺端点会 404 `no route matched`）

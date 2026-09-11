@@ -251,7 +251,12 @@ function generatePackageJson(cliRoot: string, destDir: string, projectName: stri
 		"@ant-design/icons": pin("@ant-design/icons"),
 		"@types/react": pin("@types/react"),
 		"antd": pin("antd"),
+		// home 首页图表演示用到——仅取**类型**（运行时由宿主 importmap 提供单例）
+		"dayjs": pin("dayjs"),
+		"echarts": pin("echarts"),
+		"echarts-for-react": pin("echarts-for-react"),
 		"react": pin("react"),
+		"react-countup": pin("react-countup"),
 		"react-dom": pin("react-dom"),
 		"react-i18next": pin("react-i18next"),
 		"react-router": pin("react-router"),
