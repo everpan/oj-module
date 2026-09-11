@@ -608,6 +608,19 @@ P3–P5 完成后，请**架构评审**（独立上下文，只读）与**开发
 
 **git tag**：`v0.1.6`（指向本次发布的提交）。
 
+**发布结果（2026-09-11 v0.1.7，同命令，顺序 runtime → cli）**
+
+| 包 | 版本 | registry 复核 |
+|---|---|---|
+| `@oj-module/runtime` | 0.1.7 | `dist-tags.latest=0.1.7`；tarball 200 |
+| `@oj-module/cli` | 0.1.7 | `dist-tags.latest=0.1.7`；tarball 200；`dependencies["@oj-module/runtime"]="0.1.7"`（精确 lockstep） |
+
+**外部安装冒烟**：干净目录 `npm install @oj-module/cli@0.1.7`（`--registry=registry.npmjs.org --prefer-online`）成功；cli 精确带 runtime `0.1.7`，`ojm --help` 正常。
+
+**传播观察**：runtime packument 约 1 分钟内可见；cli packument 延迟更久（>2 分钟仍是 `latest=0.1.6`），用「重发同版本 → `403 previously published versions: 0.1.7`」确认已入 registry（A46 对策），随后 packument 与 tarball 均转 200/最新。cli 侧 `pnpm --filter publish` 重发时报 "no new packages" 属 pnpm 本地判定，直进包目录 `pnpm publish` 才打到 registry 拿到 403 确证。
+
+**git tag**：`v0.1.7`（内容：vendor 下载源切 npm `@oj-bin/oj`、init 模板补 personal-center + tooling 钉版、宿主链暗黑 footer 露白修复——详见 CHANGELOG）。
+
 ---
 
 ## 13 反常识 / 陷阱记录（P1–P5 新增）
