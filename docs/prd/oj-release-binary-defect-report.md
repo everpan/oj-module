@@ -3,6 +3,12 @@
 > **受众**：only-js 维护者（可直接作为 issue 正文）。
 > **状态**：已在本机（macOS arm64）对官方 release 产物复现确认。
 > **严重级别**：阻断级（Blocker）。
+>
+> **✅ 已修复（2026-09-11，v0.1.12）**：v0.1.12 的 release 产物把扩展 JS 源内嵌进二进制
+> （`ext:bridge_ext/bootstrap.js` 不再指向构建机路径）。已按本报告 §4 与
+> `framework-verification-playbook.md` 全链路复验：最小 JsRuntime 探针通过、
+> `strings` 无泄漏的 `only-js/**/*.js` 构建路径、`ram init → build → dev → preview` 全绿。
+> 下文保留为根因分析记录。
 
 ---
 

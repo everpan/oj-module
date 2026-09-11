@@ -86,6 +86,11 @@ describe("initProject", () => {
 		expect(fs.existsSync(path.join(dest, "env.d.ts"))).toBe(true);
 		const tsconfig = JSON.parse(fs.readFileSync(path.join(dest, "tsconfig.json"), "utf-8"));
 		expect(tsconfig.include).toContain("env.d.ts");
+		// api/.ram-api-exempt.json：内置 auth/web handler 有意无契约，ram api --check 需豁免清单
+		expect(fs.existsSync(path.join(dest, "api/.ram-api-exempt.json"))).toBe(true);
+		const exempt = JSON.parse(fs.readFileSync(path.join(dest, "api/.ram-api-exempt.json"), "utf-8"));
+		expect(exempt.modules).toContain("web");
+		expect(exempt.paths).toContain("/auth/*");
 		const pkg = JSON.parse(fs.readFileSync(path.join(dest, "package.json"), "utf-8"));
 		expect(pkg.scripts.dev).toContain("ram dev");
 		expect(pkg.scripts.preview).toContain("ram preview");

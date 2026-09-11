@@ -9,9 +9,21 @@
 | 项 | 值 |
 | --- | --- |
 | 日期 | 2026-09-11 |
-| 框架包版本 | 首次全链路：四包均 `0.1.3`；其后发布 `runtime`/`cli`/`shell` `0.1.4`（`contract` 保持 `0.1.3`）——**0.1.4 尚未按本手册复跑**，复跑后请更新本行 |
+| 框架包版本 | `cli`/`runtime`/`shell` `0.1.4` + `contract` `0.1.3`（四包已按本手册复跑） |
+| oj | `0.1.12`（**官方 release**）——v0.1.11 及更早的 release 二进制有构建机路径缺陷，v0.1.12 已修复（见 §3） |
+| 结果 | 全链路通过（§1–§7）：release 二进制在非构建机可用，`ram dev` / `ram preview` 均正常。发现并修复 1 个脚手架缺陷（模板缺 `api/.ram-api-exempt.json`，导致全新工程 `ram api --check` 报 6 个 `handler 未登记`，见 §4）与 2 处手册判据过期（§3 泄漏计数、§4 未注明豁免文件） |
+
+<details>
+<summary>上一次基线（0.1.3 / oj 0.1.11 自建）</summary>
+
+| 项 | 值 |
+| --- | --- |
+| 日期 | 2026-09-11 |
+| 框架包版本 | 首次全链路：四包均 `0.1.3`；其后发布 `runtime`/`cli`/`shell` `0.1.4`（`contract` 保持 `0.1.3`） |
 | oj | `0.1.11`（**自建**，见 §3 高危检查点） |
 | 结果 | 0.1.3 全链路通过；发现并修复 2 个脚手架缺陷（缺 `contract` 依赖、缺 `env.d.ts`），并给 cli 增加 oj 二进制自检探针（0.1.4 起随 `ram vendor`/`ram init` 自动执行） |
+
+</details>
 
 ---
 
@@ -35,7 +47,7 @@ node "$RAM_REPO/packages/cli/bin/ram.mjs" init my-books --yes
 **检查点**
 
 - [ ] 退出码 0，末行提示 `登录 admin / 123456`
-- [ ] 目录齐全：`api/src/{_platform,auth,web}`、`modules/src/demo`、`modules.config.ts`、`tsconfig.json`、`global.d.ts`、`env.d.ts`、`bin/oj`、`bin/.oj-version`、`.claude/skills/oj-api-dev/`
+- [ ] 目录齐全：`api/src/{_platform,auth,web}`、`api/.ram-api-exempt.json`、`modules/src/demo`、`modules.config.ts`、`tsconfig.json`、`global.d.ts`、`env.d.ts`、`bin/oj`、`bin/.oj-version`、`.claude/skills/oj-api-dev/`
 - [ ] `package.json` 的 devDependencies **包含** `@react-antd-module/{cli,contract,runtime,shell}`，且值**不是 `*`**
 - [ ] 若出现「`@types/react` / `typescript` 回退 `*`」告警 → 记下，安装后必须钉版
 - [ ] **未出现「oj 二进制自检失败」告警**（cli ≥ 0.1.4 安装后自动冒烟）；若出现，按 §3 换自建二进制
@@ -53,14 +65,16 @@ cd my-books && pnpm install
 - [ ] `pnpm exec ram info` 输出宿主版本矩阵 + 模块清单，无报错
 - [ ] 处理 §1 的 `*` 告警：把 `@types/react` / `typescript` 钉成实际安装版本
 
-## 3. ⚠️ oj 二进制可用性（**高危检查点，最容易整条链路失败**）
+## 3. oj 二进制可用性（检查点）
 
 ```bash
-./bin/oj --version                              # 期望：oj 0.1.11
-strings bin/oj | grep -c "/Users/runner"        # 期望：0（>0 高度可疑）
+./bin/oj --version                              # 期望：oj 0.1.12（或更高）
+strings bin/oj | grep -oE '/Users/runner/work/only-js/only-js/[^"]*\.js'
+# 期望：**空**（无泄漏的 JS 构建路径）。注意：`grep -c "/Users/runner"` 不再适用于判据——
+# 即便修复后仍会命中 cargo registry 的 panic 路径（如 h2/unsafe-libyaml），属正常。
 ```
 
-**已知缺陷**：GitHub release 的 oj 二进制由 CI 构建，JS 扩展源码被标记为
+**已知缺陷（v0.1.12 已修复）**：GitHub release 的 oj 二进制曾由 CI 构建，JS 扩展源码被标记为
 `LoadedFromFsDuringSnapshot` 且把**构建机路径**烤进二进制；在非 CI 机器上
 初始化 JS 运行时报：
 
@@ -68,7 +82,10 @@ strings bin/oj | grep -c "/Users/runner"        # 期望：0（>0 高度可疑�
 Failed to initialize a JsRuntime: No such file or directory (os error 2)
 ```
 
-`./bin/oj --version` **仍会成功**（Rust 侧），所以必须向下走一步才会暴露。
+`./bin/oj --version` **仍会成功**（Rust 侧），所以 v0.1.12 之前必须向下走一步才会暴露。
+**v0.1.12 起 JS 源已内嵌进二进制**（`ext:bridge_ext/bootstrap.js` 不再指向构建机路径），
+release 产物在非构建机可用。
+
 **最小复现探针**（必须有至少一个 `api.ts`，否则 `oj build` 不会初始化 JsRuntime）：
 
 ```bash
@@ -76,13 +93,13 @@ rm -rf /tmp/_oj_probe && mkdir -p /tmp/_oj_probe/src/web/hello
 printf 'export default { get() { json.ok({ ok: true }); } };\n' > /tmp/_oj_probe/src/web/hello/api.ts
 printf 'name: web\ndesc: probe\nversion: 0.1.0\n' > /tmp/_oj_probe/src/web/manifest.yaml
 ./bin/oj build -d /tmp/_oj_probe/src -o /tmp/_oj_probe/out 2>&1 | head -5
-# 坏二进制：Failed to initialize a JsRuntime: No such file or directory (os error 2)
-# 好二进制：oj build: web v0.1.0 → ... (1 api file(s))
+# 期望：oj build: web v0.1.0 → ... (1 api file(s))
+# 坏二进制（≤ v0.1.11）：Failed to initialize a JsRuntime: No such file or directory (os error 2)
 ```
 
-**处置**：用**自建** oj 覆盖 `bin/oj`（`cargo build --release`，产物在
-`only-js/target/release/oj`），然后重跑这些检查点直到通过。上游修复前，
-release 二进制不可用于外部工程。
+**处置**：优先 `ram vendor` 拉 **≥ v0.1.12** 的 release。若仍报 ENOENT（版本过旧或未换包），
+用**自建** oj 覆盖 `bin/oj`（`cargo build --release`，产物在 `only-js/target/release/oj`），
+然后重跑这些检查点直到通过。
 
 > **自 cli 0.1.4 起已自动化**：`ram vendor` / `ram init` 安装后（以及「已是该版本，跳过」时）
 > 会自动执行等价的 `probeOjRuntime` 冒烟；失败打印人话告警与处置指引，**不阻断**安装
@@ -106,7 +123,22 @@ pnpm exec ram api
 - [ ] 输出「契约 1 份；写入 4 个文件」
 - [ ] 产物存在：`modules/src/books/api/client.ts`、`client.schemas.ts`、`api/src/books/routes.json`、`api/src/books/openapi.yaml`
 - [ ] `client.ts` 导出 `listBooks` / `ListBooksQuery` / `ListBooksData`（命名 = Pascal(端点名) + Query/Body/Data）
+- [ ] 工程根存在 `api/.ram-api-exempt.json`（见下）
 - [ ] `pnpm exec ram api --check` 退出码 0（无 drift）
+
+> **全新工程注意（已记录在案的脚手架缺陷）**：`ram api --check` 会把脚手架自带的
+> `auth/*`（login/refresh/logout）与 `web/*`（hello/user-info/get-async-routes）handler
+> 判为「未登记」并各报 error——这些内置端点有意不写业务契约，需在工程根
+> `api/.ram-api-exempt.json` 声明豁免（与 `apps/playground-oj` 同款）：
+>
+> ```json
+> { "modules": ["web"], "paths": ["/auth/*"] }
+> ```
+>
+> **新版 `ram init` 已内置该文件**（此前版本缺失，属已修复的脚手架缺陷；随下个 cli 版本发布）。
+> 旧脚手架/旧工程若缺，手工补上即可——否则 §4/§8 的 `--check` 检查点会因 6 个
+> `handler 未登记` 失败。补上后 `--check` 输出 `0 error / 0 warn`。
+> 豁免只做 error→skip 降级，不会引入新错误。
 
 > 若报 `Cannot find package '@react-antd-module/contract'` → 见 §7 排障（脚手架/依赖问题）。
 
@@ -167,7 +199,7 @@ pnpm exec ram preview    # oj migrate（verify 门禁）→ server + 静态兜�
 - [ ] `ram init` 成功，且 devDeps **含 `contract`**、**含 `env.d.ts`**
 - [ ] `pnpm install` 成功，4 包版本一致
 - [ ] oj 二进制通过 §3 探针（JsRuntime 能初始化）
-- [ ] `ram api` 生成 4 产物；`--check` 无 drift
+- [ ] `ram api` 生成 4 产物；`--check` 无 drift（内置 `auth`/`web` 需 `api/.ram-api-exempt.json` 豁免，见 §4）
 - [ ] `ram build` 产出 4 后端模块 + 合并站点 + `modules.json`
 - [ ] `typecheck` 0 error
 - [ ] `ram dev`：登录 / 列表 / 新增 / 401 全对
@@ -177,8 +209,9 @@ pnpm exec ram preview    # oj migrate（verify 门禁）→ server + 静态兜�
 
 | 现象 | 根因 | 处置 |
 | --- | --- | --- |
-| `Failed to initialize a JsRuntime: No such file or directory` | release oj 二进制烤了构建机路径 | 用自建 oj 覆盖 `bin/oj`（§3）；上游修复前不用 release |
-| `ram init` / `ram vendor` 末尾出现「oj 二进制自检失败」告警 | 同上，cli ≥ 0.1.4 的安装后冒烟主动暴露 | 按 §3 换自建二进制；告警不阻断，`ram init` 仍已产出工程 |
+| `Failed to initialize a JsRuntime: No such file or directory` | ≤ v0.1.11 的 release oj 二进制烤了构建机路径（v0.1.12 已修复） | 用 ≥ v0.1.12 的 release（`ram vendor`）；旧版用自建 oj 覆盖 `bin/oj`（§3） |
+| `ram init` / `ram vendor` 末尾出现「oj 二进制自检失败」告警 | release 二进制缺陷，cli ≥ 0.1.4 的安装后冒烟主动暴露 | 同上；v0.1.12 起不应再出现。告警不阻断，`ram init` 仍已产出工程 |
+| `ram api --check` 报 `handler 未登记`（`auth/*`、`web/*`） | 内置模块有意无契约，而工程缺豁免清单 | 新版 `ram init` 已内置 `api/.ram-api-exempt.json`；旧工程手工补（`{"modules":["web"],"paths":["/auth/*"]}`，§4） |
 | `ram api` 报 `Cannot find package '@react-antd-module/contract'` | 工程 devDeps 缺 `contract` | 新版 `ram init` 已内置；旧工程手动加并 `pnpm install` |
 | `typecheck` 报 `Property 'env' does not exist on type 'ImportMeta'` | 缺 `env.d.ts` / 未进 tsconfig include | 新版 `ram init` 已内置；旧工程补 `env.d.ts` 并加进 `include` |
 | `@types/react` / `typescript` 为 `*` | 宿主 versions.json 未收录 | 安装后钉成实际版本 |
