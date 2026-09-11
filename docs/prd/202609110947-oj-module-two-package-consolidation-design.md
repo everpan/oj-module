@@ -574,6 +574,31 @@ P3–P5 完成后，请**架构评审**（独立上下文，只读）与**开发
 
 ---
 
+### v0.1.6 发布准备（首发 4a/4b 与评审期缺陷修复）— 2026-09-11
+
+**内容**：4a（runtime `imports` 收窄，不再逃出包边界）+ 4b（cli `exports` 加 `browser` 硬分区）+ 评审期修复的四项缺陷（stub 缺失/过期判定、CRLF 归一、`routes.js` 的 `del` 归一）。
+
+**对齐**：两包 `0.1.5 → 0.1.6`（lockstep）；重建 runtime dist、`shell-dist`（`versions.json` 记 runtime `0.1.6`）、`vendor/host-versions.json`、根 `build/`；prepack R5 断言通过。
+
+**发布前守卫**（`pnpm pack` 实测，非 dry-run 推断）
+
+| 检查 | `@oj-module/runtime` | `@oj-module/cli` |
+|---|---|---|
+| 版本 | 0.1.6 | 0.1.6 |
+| 包管理协议泄漏（`workspace:`/`catalog:`/`link:`/`file:`） | 无 | 无 |
+| sourcemap | 0 | 0 |
+| lockstep 依赖 | — | `@oj-module/runtime: 0.1.6`（精确） |
+| exports | `[".","./contract","./contract/errors"]` | 7 个 Node-only 子路径挂 `browser: ./src/browser-guard.ts`；`./shell-dist/*` 不拦 |
+| 关键文件 | `dist/contract/*` | `bin/{ojm,ram}.mjs`、`shell-dist/index.html`、`templates/api/.ojm-api-exempt.json`、`src/browser-guard.ts` |
+
+**守门测试增强**：`release-manifest.test.ts` 的版本断言改为读源 `package.json`（发版不再需要改测试），并新增 **lockstep 断言**——cli 发布的 runtime 精确依赖必须等于 runtime 包版本。
+
+**验证**：`typecheck` 干净；`lint` 0 error；根 `pnpm build` 通过；**88 文件 / 556 用例全绿**。
+
+**发布命令**（runtime → cli）：`pnpm --filter "@oj-module/<pkg>" publish --access public --no-provenance --no-git-checks`。
+
+---
+
 ## 13 反常识 / 陷阱记录（P1–P5 新增）
 
 | # | 现象 | 说明与对策 |

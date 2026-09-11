@@ -1,8 +1,8 @@
 {
 	"name": "@oj-module/runtime",
 	"type": "module",
-	"version": "0.1.5",
-	"description": "React Antd Admin \u6846\u67b6\u8fd0\u884c\u65f6\uff0c\u4f9b\u6a21\u5757\u5de5\u7a0b\u6d88\u8d39",
+	"version": "0.1.6",
+	"description": "React Antd Admin 框架运行时，供模块工程消费",
 	"license": "MIT",
 	"imports": {
 		"#src/*": "./src/*"

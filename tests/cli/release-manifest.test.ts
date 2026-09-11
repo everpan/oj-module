@@ -18,6 +18,11 @@ import { PROJECT_ROOT } from "../helpers/paths";
 
 const outDir = fs.mkdtempSync(path.join(os.tmpdir(), "ojm-pack-guard-"));
 
+/** 源包版本（发布演练断言 tarball 版本与之相等，避免每次发版改测试） */
+function sourceVersion(pkgDir: string): string {
+	return (JSON.parse(fs.readFileSync(path.join(PROJECT_ROOT, pkgDir, "package.json"), "utf-8")) as { version: string }).version;
+}
+
 afterAll(() => {
 	fs.rmSync(outDir, { recursive: true, force: true });
 });
@@ -58,7 +63,7 @@ describe("发布清单（走真实 pnpm pack 路径）", () => {
 	it("runtime：协议已改写、peer 为真实范围、包内无 .ts 源", () => {
 		const tgz = pack("packages/runtime", "oj-module-runtime-");
 		const { json } = manifestOf(tgz);
-		expect(json.version).toBe("0.1.5");
+		expect(json.version).toBe(sourceVersion("packages/runtime"));
 		expect(protocolLeaks(json), "runtime manifest 残留包管理协议").toEqual([]);
 		// catalog: 必须被改写成真实 semver 范围
 		for (const [, range] of Object.entries(json.peerDependencies ?? {}))
@@ -70,14 +75,16 @@ describe("发布清单（走真实 pnpm pack 路径）", () => {
 		expect(entries).toContain("package/dist/contract/index.js");
 	});
 
-	it("cli：无 workspace 协议、runtime 精确版本、无 sourcemap、bin 双入口", () => {
+	it("cli：无 workspace 协议、runtime 精确且 lockstep、无 sourcemap、bin 双入口", () => {
 		const tgz = pack("packages/cli", "oj-module-cli-");
 		const { raw, json } = manifestOf(tgz);
-		expect(json.version).toBe("0.1.5");
+		expect(json.version).toBe(sourceVersion("packages/cli"));
 		// 关键断言：npm 发布路径会原样保留 workspace:*，pnpm 才改写
 		expect(raw).not.toContain("workspace:");
 		expect(protocolLeaks(json), "cli manifest 残留包管理协议").toEqual([]);
-		expect(json.dependencies?.["@oj-module/runtime"]).toMatch(/^\d+\.\d+\.\d+/);
+		// lockstep：cli 发布的精确依赖版本必须等于 runtime 包版本（不允许漂移）
+		expect(json.dependencies?.["@oj-module/runtime"]).toBe(sourceVersion("packages/runtime"));
+		expect(json.version).toBe(sourceVersion("packages/runtime"));
 		expect(json.bin).toMatchObject({ ojm: "./bin/ojm.mjs", ram: "./bin/ram.mjs" });
 
 		const entries = entriesOf(tgz);

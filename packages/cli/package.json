@@ -1,7 +1,7 @@
 {
 	"name": "@oj-module/cli",
 	"type": "module",
-	"version": "0.1.5",
+	"version": "0.1.6",
 	"description": "React Antd Admin 模块工程命令行工具（含预构建宿主 shell-dist）",
 	"license": "MIT",
 	"exports": {
