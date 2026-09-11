@@ -941,7 +941,7 @@ done
 **真实踩坑记录**：
 
 - **选择性发布**：两包 lockstep（同版本号，当前 `0.1.6`），通常一起发；若只发其中一个，必须用 `--filter` 逐包发，且**先 `runtime` 后 `cli`**（cli 精确依赖 runtime）。
-- 发布后**立刻**读 registry 可能仍是旧版本/404（CDN 传播延迟），不要据此判断失败。
+- 发布后**立刻**读 registry 可能仍是旧版本/404（CDN 传播延迟），不要据此判断失败。注意**元数据与 tarball 是两条缓存链**：`npm view` 可能已显示新版本，而 `.tgz` 仍 404（实测约 90s），此间 `npm install` 会报 `ETARGET` 或 tarball 404。确认发布请同时看 `dist-tags.latest` **与** tarball 状态（`curl -sL -o /dev/null -w '%{http_code}' <dist.tarball>`）；安装侧用 `--prefer-online`/新 cache 排除本地 packument 缓存。
 - **安装源与发布源不是同一个**：仓库 `.npmrc` 把 `registry` 指向镜像加速（npmmirror），**发布**则走各包 `publishConfig.registry`（`registry.npmjs.org`）。所以 `npm view <pkg>`（读镜像）可能一直 404，别用它判断发布结果——**最可靠的确认是再发一次同版本**，返回 `403 You cannot publish over the previously published versions: x.y.z` 即已发布成功；或直接 `curl https://registry.npmjs.org/<scoped>%2f<name>` 看 HTTP 200。
 - `pnpm publish` 遇到「版本已存在」会打印 `409 previously staged version` / `403 previously published versions`，其实是**已经发布成功**的报错文案，不要误判为卡在 stage；到 npmjs Staged Packages 页面确认即可。
 - **顺序很重要**：`runtime` 未公开时，新发布的 `cli` 其精确依赖 `runtime@<新版本>` 会悬空，消费者直接装不上。

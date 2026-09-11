@@ -595,7 +595,18 @@ P3–P5 完成后，请**架构评审**（独立上下文，只读）与**开发
 
 **验证**：`typecheck` 干净；`lint` 0 error；根 `pnpm build` 通过；**88 文件 / 556 用例全绿**。
 
-**发布命令**（runtime → cli）：`pnpm --filter "@oj-module/<pkg>" publish --access public --no-provenance --no-git-checks`。
+**发布结果（2026-09-11，`pnpm --filter "@oj-module/<pkg>" publish --access public --no-provenance --no-git-checks`，顺序 runtime → cli）**
+
+| 包 | 版本 | registry 复核 |
+|---|---|---|
+| `@oj-module/runtime` | 0.1.6 | `dist-tags.latest=0.1.6`；`exports=[".","./contract","./contract/errors"]` |
+| `@oj-module/cli` | 0.1.6 | `dist-tags.latest=0.1.6`；`dependencies["@oj-module/runtime"]="0.1.6"`；`exports["."].browser="./src/browser-guard.ts"`；bin 双入口 |
+
+**外部安装冒烟**：干净目录 `npm install @oj-module/cli@0.1.6 @oj-module/runtime@0.1.6` 成功；两包版本正确、`cli→runtime` 精确 `0.1.6`、`browser-guard.ts`/`shell-dist/index.html`/`dist/contract/index.js` 均在。
+
+**新坑（见 §13 A47）**：本次 registry 的**元数据先可见、tarball blob 后到**（`npm view` 已报 0.1.6 而 `.tgz` 仍 404，约 90s 后转 200），期间 `npm install` 会以 `ETARGET` 或 tarball 404 失败——这不是发布失败，等待传播后重试即可（用 `--prefer-online` / 新 cache 避开本地 packument 缓存）。另：pnpm 重发同版本返回的是 `409 Cannot publish over previously staged version`（`0.1.5` 时为 `403 previously published`），两种文案都表示「该版本已成功进入 registry」。
+
+**git tag**：`v0.1.6`（指向本次发布的提交）。
 
 ---
 
@@ -623,3 +634,4 @@ P3–P5 完成后，请**架构评审**（独立上下文，只读）与**开发
 | A44 | **`check` 只认 `update`/`skip`，删掉的 stub 静默通过** | `planStubWrites` 的 `create`（文件不存在）此前被 `check` 忽略，而 client/routes/openapi 的同类缺失是 error → 删掉 stub 后 `--check` 仍绿。**对策**：`create` 也判 `artifact-stale`（「stub 缺失」），与其余生成物口径一致。 |
 | A45 | **安装源 ≠ 发布源** | 仓库 `.npmrc` 的 `registry=https://registry.npmmirror.com` 只用于**安装加速**；**发布**走各包 `publishConfig.registry`（`registry.npmjs.org`）。于是 `npm view <新包>`（读镜像）会 404 甚至长期 404，容易被误判成「发布失败」。**对策**：判断发布结果不要读镜像；用 `curl https://registry.npmjs.org/<scope>%2f<name>` 看 200，或干脆再发一次同版本。 |
 | A46 | **发布后立刻读 registry 会 404（CDN 传播）** | 新 scope 首发尤其明显：`pnpm publish` 已打印 ✅，但 `npm view` / `curl registry.npmjs.org` 仍 `404 Not found`（实测约 1 分钟后 200）。**对策**：最可靠的确认是**重发同版本**——返回 `403 You cannot publish over the previously published versions: x.y.z` 即证明已发布成功（本次即用此法确认，且不会产生副作用）。另注意 `provenance=true` 写在本仓 `.npmrc`，本地发布需 `--no-provenance` 覆盖，否则会因无 CI OIDC 而失败。 |
+| A47 | **registry 元数据与 tarball blob 的传播不同步** | `0.1.6` 发布后 `npm view <pkg>@0.1.6` 立刻可见（packument 的 `latest` 已指向 0.1.6），但 `.tgz` 仍返回 `404 {"error":"Not found"}` 约 90 秒；期间 `npm install <pkg>@0.1.6` 会在 `ETARGET`（本地 packument 缓存）与 tarball 404 之间随机失败。**对策**：①发布确认要同时看 packument **与** tarball（`curl -sL -o /dev/null -w '%{http_code}' <dist.tarball>`）；②安装侧用 `--prefer-online` 或新 `--cache` 排除本地缓存误判；③`pnpm` 重发同版本的报错文案有两种：`403 previously published`（走直发）与 `409 Cannot publish over previously staged version`（走 staged 通道）——**两者都表示版本已进 registry**，不要据 409 判定失败。 |
