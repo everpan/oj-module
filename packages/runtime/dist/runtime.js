@@ -208,10 +208,10 @@ function getAppInfo() {
 	return {
 		"pkg": {
 			"name": "@oj-module/runtime",
-			"version": "0.1.4",
+			"version": "0.1.5",
 			"license": "MIT"
 		},
-		"lastBuildTime": "2026-09-11 11:13:48"
+		"lastBuildTime": "2026-09-11 11:18:41"
 	};
 }
 var init_get_app_info = __esmMin((() => {}));

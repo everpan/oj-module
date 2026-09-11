@@ -38,8 +38,7 @@
 cli ──► runtime ──► (宿主产物 shell-dist ／ 模块工程)
 ```
 
-- **版本策略**：`cli` 对 `runtime` 写 `workspace:*`，发布时被 pnpm 改写成**精确版本号**（不是 `^` 范围）——这条已由 `tests/cli/release-manifest.test.ts` 真跑 `pnpm pack` 守护（**用 `npm publish` 会漏出 `workspace:*`，务必走 `pnpm publish`**）。
-- ⚠️ **两包版本尚未对齐**：当前 `cli@0.1.5` / `runtime@0.1.4`（历史漂移遗留）。目标 lockstep（同版本号），下次发版统一（设计文档 §10 O1）；在未对齐前，`cli` 精确依赖 `runtime@0.1.4` 仍可独立工作。
+- **版本策略（lockstep 已落实）**：两包同为 **`0.1.5`**（`@oj-module` scope 下的首次发布）；`cli` 对 `runtime` 写 `workspace:*`，发布时被 pnpm 改写成**精确版本 `0.1.5`**（不是 `^` 范围）——由 `tests/cli/release-manifest.test.ts` 真跑 `pnpm pack` 守护（**用 `npm publish` 会漏出 `workspace:*` / `catalog:` 字面量，务必走 `pnpm publish`**）。后续发版保持两包同版本号。
 - **依赖方向只有这一条边，没有环**：宿主产物随 `cli` 发布，`ojm dev/build` 直接从 cli 包内 `shell-dist` 取宿主，不再有「先 build 宿主才能用 cli」的顺序约束。
 - 手工重建顺序：`runtime` → `cli` 的 `build:shell`（会**顺带重建 runtime**，产出 `packages/cli/shell-dist`）→ `cli` 的 `prepack`（同步 `vendor/host-versions.json`，并断言宿主 runtime 版本 == `packages/runtime` 版本）。
 
@@ -940,8 +939,9 @@ done
 
 **真实踩坑记录**：
 
-- **选择性发布**：两包可独立发版（当前 `cli@0.1.5` / `runtime@0.1.4` 未对齐，目标同版本号），通常一起发；若只发其中一个，必须用 `--filter` 逐包发，且**先 `runtime` 后 `cli`**（cli 精确依赖 runtime）。
+- **选择性发布**：两包 lockstep（同版本号，当前 `0.1.5`），通常一起发；若只发其中一个，必须用 `--filter` 逐包发，且**先 `runtime` 后 `cli`**（cli 精确依赖 runtime）。
 - 发布后**立刻**读 registry 可能仍是旧版本/404（CDN 传播延迟），不要据此判断失败。
+- **安装源与发布源不是同一个**：仓库 `.npmrc` 把 `registry` 指向镜像加速（npmmirror），**发布**则走各包 `publishConfig.registry`（`registry.npmjs.org`）。所以 `npm view <pkg>`（读镜像）可能一直 404，别用它判断发布结果——**最可靠的确认是再发一次同版本**，返回 `403 You cannot publish over the previously published versions: x.y.z` 即已发布成功；或直接 `curl https://registry.npmjs.org/<scoped>%2f<name>` 看 HTTP 200。
 - `pnpm publish` 遇到「版本已存在」会打印 `409 previously staged version` / `403 previously published versions`，其实是**已经发布成功**的报错文案，不要误判为卡在 stage；到 npmjs Staged Packages 页面确认即可。
 - **顺序很重要**：`runtime` 未公开时，新发布的 `cli` 其精确依赖 `runtime@<新版本>` 会悬空，消费者直接装不上。
 - **宿主完整性卡口**：`cli` 的 `prepack` 会断言 `shell-dist` 存在且其 runtime 版本 == `packages/runtime` 版本（设计 R5），不满足直接失败——防止发布出「类型来自新版、实现来自旧宿主」的组合。

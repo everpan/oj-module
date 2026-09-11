@@ -204,7 +204,8 @@ devDependencies 由 4 个框架包降为 2 个：
 | R6 | 单 cli 包同时暴露 Node 工具 API 与浏览器产物，模块误 import 拉进 vite/esbuild | `exports` 硬分区**尚未落实**（无 `browser`/`node` 条件）；当前由门禁测试兜住：`apps/*/modules/src`、根 `modules/src`、`templates/modules/src` 零 `import @oj-module/cli/*`（独立评审补了根 `modules/src`；`browser` 条件列为待办） |
 | R7 | 改名面广，测试/模板/docs 三处不同步 | 全仓 `grep -rn "@react-antd-module"` 已有**零残留测试**（`docs/archive` 与两份迁移记录文档豁免）；`ram` 字样因兼容 shim 必须保留，无法做零残留判据——改为「兼容表 + 守卫用例」覆盖 |
 | R8 | US-7「runtime 包无 `.ts`」被 contract 误破 | D5：contract 编成 dist；`npm pack --dry-run` 断言无 `.ts`、无 `src/` |
-| R9 | 两包版本再次漂移 | cli 对 runtime 写 `workspace:*`（发布转精确版本），`release-manifest.test.ts` 真跑 `pnpm pack` 断言 tarball 内为精确版本；lockstep 未落实（当前 `cli@0.1.5` / `runtime@0.1.4`，见 O1） |
+| R9 | 两包版本再次漂移 | cli 对 runtime 写 `workspace:*`（发布转精确版本），`release-manifest.test.ts` 真跑 `pnpm pack` 断言两包 manifest 无 `workspace:`/`catalog:` 字面量与精确版本；**lockstep 已落实：两包同版 `0.1.5`** |
+| R10 | 走 `npm publish` 会把 `workspace:` / `catalog:` 字面量发出去 | `release-manifest.test.ts` 覆盖两包的发布态 manifest；文档（手册附录 A）明确必须走 `pnpm publish` |
 
 ---
 
@@ -284,7 +285,7 @@ Feature: 品牌零残留
 
 | # | 事项 | 处置建议 |
 |---|------|----------|
-| O1 | 两包是否强制同版本号（lockstep）还是允许 cli 快于 runtime | **仍待决**：建议 lockstep；cli 对 runtime 精确版本已能兜住。当前实际为 `cli@0.1.5` / `runtime@0.1.4`（历史漂移遗留，P2/P3 均未 bump），下次发版统一（独立评审 P1） |
+| O1 | 两包是否强制同版本号（lockstep）还是允许 cli 快于 runtime | **已决（2026-09-11）**：采用 lockstep，两包同版 `0.1.5` 一起发布（`@oj-module` scope 首次发布）；`cli` 对 `runtime` 精确依赖 `0.1.5` |
 | O2 | `ram` 别名保留多久 | 建议保留到下一个 major（0.x → 1.0） |
 | O3 | `docs/archive/` 内历史文档是否回写改名 | 不回写（历史留痕）；仅当前文档与 `docs/prd/framework-development-guide.md` 更新 |
 | O4 | 是否顺手把 `runtime` 包名改为更中性的 `framework` | 不建议：公共契约改名收益低、成本高 |
@@ -483,7 +484,7 @@ Feature: 品牌零残留
 
 - `apps/playground/docs/api/index.html`、`apps/playground-oj/api/docs/index.html` 是 `ojm api --docs` 生成的离线 redoc 单文件；已核查**不含旧品牌文本**（首轮 grep 的 `ram` 命中全是 redoc 供应商代码里的 `parameter` / `frame` 等子串），无需重新生成。
 - ~~手册深层章节仍以「宿主」为叙事主体~~ → **已改写**：`framework-development-guide.md` 逐句核对（见 §12「手册改写」）。
-- 两包版本未对齐（`cli@0.1.5` / `runtime@0.1.4`）：属 §10 O1 待决项，下次发版统一；`cli` 的精确依赖仍指向 `runtime@0.1.4`，功能不受影响。
+- 两包版本：**已对齐 `0.1.5`**（lockstep，见 §12「v0.1.5 发布」）。
 
 ---
 
@@ -495,7 +496,7 @@ P3–P5 完成后，请**架构评审**（独立上下文，只读）与**开发
 |---|---|---|---|
 | 1 | 架构 P1 | `npm publish` 会把 `workspace:*` 原样发布（`pnpm` 才改写），而守卫测试**接受** `workspace:*`，等于没守护 | ✅ 采纳：新增 `tests/cli/release-manifest.test.ts`，真跑 `pnpm pack` 解 tarball manifest，断言无 `workspace:`、runtime 为精确版本、无 `.map`、bin 双入口；守卫测试注释指向它 |
 | 2 | 架构 P1 | R6「exports 硬分区」实为测试约束，且守卫漏了根 `modules/src`（vite alias 也把它当模块树） | ✅ 采纳：模块 import 守卫补根 `modules/src` 树；「硬分区」表述降级（见 §7 R6 备注） |
-| 3 | 架构 P1 | lockstep 声称与实际不符（`cli@0.1.5` / `runtime@0.1.4`）且无守卫 | ✅ 部分采纳：文档改为「目标同版本号 + 当前未对齐」，并入 §10 O1；**未**强行 bump（发布决策，需另行确认） |
+| 3 | 架构 P1 | lockstep 声称与实际不符（`cli@0.1.5` / `runtime@0.1.4`）且无守卫 | ✅ 采纳：两包对齐并同发 `0.1.5`（见下「v0.1.5 发布」）；O1 由待决转为已决 |
 | 4 | 架构 P2 | `"./shell-dist": "./shell-dist"` 是死出口（目录不可 import，无消费者） | ✅ 采纳：删除该 export，保留 `./shell-dist/*` |
 | 5 | 架构 P2 | `API_DEF_LEGACY` 扩进 runtime 公共出口属过度设计 | ✅ 采纳：从 runtime 出口移除，改由 `cli/src/contract/ir.ts` 自行声明旧符号（公共出口不变） |
 | 6 | 架构 P2 | runtime 已发布 `imports` 仍声明 `#modules/*`、`#manifest.json`（逃出包边界） | ⏸ 暂缓：runtime 源码仍有 2 个白名单反向依赖文件，构建期解析依赖它，需单独验证（避免为洁癖打破构建） |
@@ -512,6 +513,32 @@ P3–P5 完成后，请**架构评审**（独立上下文，只读）与**开发
 **手册改写（§12）**
 
 `framework-development-guide.md` 不再有「独立 shell/contract 包」「`ram` 命令」口径：文首声明升级为「P1–P3 已全量落实」；术语表补 `ojm`/宿主/`SHARED_DEPS`；§2.10 修正 runtime 构建链；§4.2 目录树补 `bin/ram.mjs`、`shell/`、`shell-dist/`；§4.3 钉版来源与 dev 静态解析次序改成与代码一致；§4.5 边界改为「只有 cli→runtime 一条边 + prepack R5 断言」；新增 §4.9 改名与兼容读取表；附录 A 增「发布内容演练」与 sourcemap `files` 取反踩坑；附录 B 补 3 条排障。
+
+---
+
+### v0.1.5 发布（lockstep 对齐 + `@oj-module` 首发）— 完成 2026-09-11
+
+**前置对齐**：`packages/runtime` 版本 `0.1.4` → **`0.1.5`**，与 `cli@0.1.5` 对齐（§10 O1 由待决转已决）。重建链：runtime dist（`getAppInfo` 内嵌版本）→ `cli build:shell`（`shell-dist/versions.json` 记 runtime `0.1.5`）→ `sync-host-versions.mjs`（vendor 快照 + R5 断言）→ 根 `pnpm build`。
+
+**发布前守卫**
+
+| 检查 | 结果 |
+|---|---|
+| `pnpm pack` 两包 manifest（`tests/cli/release-manifest.test.ts`） | 无 `workspace:`/`catalog:`/`link:`/`file:` 字面量；cli→runtime 为精确 `0.1.5`；runtime 25 条 peer 全为真实 semver 范围 |
+| cli tarball | 0 个 `.map`；含 `shell-dist/index.html`、`templates/api/.ojm-api-exempt.json`；bin 双入口（`ojm` + `ram`） |
+| runtime tarball | 无 `src/`、无非 `.d.ts` 的 `.ts`；`dist/contract/*` 齐全 |
+| prepack R5 | 宿主 runtime 版本 == `packages/runtime` 版本 == `0.1.5` |
+
+**发布**（`@oj-module` scope 首次）：`pnpm --filter "@oj-module/<pkg>" publish --access public --no-provenance --no-git-checks`，顺序 **runtime → cli**（先发 runtime，避免 cli 的精确依赖悬空）。
+
+| 包 | 版本 | registry 复核 |
+|---|---|---|
+| `@oj-module/runtime` | 0.1.5 | `dist-tags.latest=0.1.5`；`exports=[".","./contract","./contract/errors"]`；peer 已改写；dep `zod:^4.5.4` |
+| `@oj-module/cli` | 0.1.5 | `dist-tags.latest=0.1.5`；`dependencies["@oj-module/runtime"]="0.1.5"`；bin 双入口 |
+
+**外部安装冒烟**：干净目录 `npm install @oj-module/cli@0.1.5 @oj-module/runtime@0.1.5` → 231 包安装成功；两包版本正确，`runtime/dist/contract/*`、`cli/bin/{ojm,ram}.mjs`、`cli/shell-dist/{index.html,versions.json,assets}` 均在。**BDD「外部工程 2 包安装可用」至此闭环。**
+
+**两点实测坑**：见 §13 A45（安装源≠发布源）、A46（发布确认手段）。
 
 ---
 
@@ -537,3 +564,5 @@ P3–P5 完成后，请**架构评审**（独立上下文，只读）与**开发
 | A42 | **oj 路由表用短方法名（`del`），直接大写会与契约 `DELETE` 不等** | `routes.js` 里是 `method: "del"`；`check.ts` 的 `parseRoutesJs` 若只做 `toUpperCase()` 得到 `DEL`，而契约 IR 是 `DELETE` → 任何 DELETE 端点都误报 `routes-js-drift`（playground-oj 实测）。同文件的 `VERB_OF` 早已有 `del: "DELETE"` 映射，属实现不一致。**对策**：`parseRoutesJs` 也走 `VERB_OF` 归一。 |
 | A43 | **CRLF 检出会让指纹「哈希通过、字节比较失败」** | 指纹哈希走 `hashContent`（内部把 CRLF 归一为 LF），但 `existing === content` 与 `isPrefixOnlyUpgrade` 是逐字节比较。Windows `core.autocrlf=true` 检出后每个 stub 都被判「待更新」（`--check` 恒红）。**对策**：比较前统一 LF（`toLf`）。 |
 | A44 | **`check` 只认 `update`/`skip`，删掉的 stub 静默通过** | `planStubWrites` 的 `create`（文件不存在）此前被 `check` 忽略，而 client/routes/openapi 的同类缺失是 error → 删掉 stub 后 `--check` 仍绿。**对策**：`create` 也判 `artifact-stale`（「stub 缺失」），与其余生成物口径一致。 |
+| A45 | **安装源 ≠ 发布源** | 仓库 `.npmrc` 的 `registry=https://registry.npmmirror.com` 只用于**安装加速**；**发布**走各包 `publishConfig.registry`（`registry.npmjs.org`）。于是 `npm view <新包>`（读镜像）会 404 甚至长期 404，容易被误判成「发布失败」。**对策**：判断发布结果不要读镜像；用 `curl https://registry.npmjs.org/<scope>%2f<name>` 看 200，或干脆再发一次同版本。 |
+| A46 | **发布后立刻读 registry 会 404（CDN 传播）** | 新 scope 首发尤其明显：`pnpm publish` 已打印 ✅，但 `npm view` / `curl registry.npmjs.org` 仍 `404 Not found`（实测约 1 分钟后 200）。**对策**：最可靠的确认是**重发同版本**——返回 `403 You cannot publish over the previously published versions: x.y.z` 即证明已发布成功（本次即用此法确认，且不会产生副作用）。另注意 `provenance=true` 写在本仓 `.npmrc`，本地发布需 `--no-provenance` 覆盖，否则会因无 CI OIDC 而失败。 |
