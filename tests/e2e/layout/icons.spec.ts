@@ -40,7 +40,7 @@ test.describe("icons-images", () => {
 	});
 
 	// I3：favicon——宿主 HTML 声明图标且资源可达（曾整链缺失：shell/index.html
-	// 无 link、dist 无文件、ram dev 无路由）
+	// 无 link、dist 无文件、ojm dev 无路由）
 	test("I3: favicon 声明且可加载", async ({ page }) => {
 		const link = page.locator("link[rel~=\"icon\"]").first();
 		await expect(link).toHaveCount(1);

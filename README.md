@@ -52,7 +52,7 @@ react-antd-module is a modular, middle-and-back-office solution built on top of 
    The modular loading chain is controlled on three layers: who may be loaded, whether the load is tampered with, and whether it is injected.
 
 6. Version-matrix gate and peerRuntime contract (anti-drift)
-   `checkSharedVersions` compares the host's `versions.json` against each module's `peerRuntime`; shared-dependency version drift is rejected outright at the `ram build` stage. Modules and host align via a "version contract", avoiding the hidden incompatibility of "host upgraded antd while the module still runs the old antd single instance".
+   `checkSharedVersions` compares the host's `versions.json` against each module's `peerRuntime`; shared-dependency version drift is rejected outright at the `ojm build` stage. Modules and host align via a "version contract", avoiding the hidden incompatibility of "host upgraded antd while the module still runs the old antd single instance".
 
 7. Heterogeneous auth-backend adaptation (normalization, zero module changes)
    The request layer `request/index.ts` uses a whitelist (`isAnonymousApi` / `anonymousApiPrefix`) to distinguish anonymous channels; it normalizes envelopes uniformly (oj's `code/data/access_token` snake_case → `code/result/token` camelCase), so consumers (auth-guard, refresh, user store) integrate different auth backends with zero changes. Modules may also register their own auth provider, with the framework falling back to the built-in `auth/login` — auth capability is decoupled from the modular system.

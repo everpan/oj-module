@@ -5,7 +5,7 @@ import { buildIr } from "../../packages/cli/src/contract/ir";
 import { defineApi, z } from "../../packages/runtime/contract";
 
 /**
- * AC-D1/D9：routes.json（ram dev mock 消费，规范化同 oj routes.js）与
+ * AC-D1/D9：routes.json（ojm dev mock 消费，规范化同 oj routes.js）与
  * openapi.yaml（文档站源）发射器。字节稳定是硬要求（提交产物，diff 即评审）。
  */
 

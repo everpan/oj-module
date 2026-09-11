@@ -35,5 +35,11 @@ export interface ApiDefinitionInput {
  * 不与契约文件里导出的普通 schema/常量混淆。
  */
 export declare const API_DEF: unique symbol;
+/**
+ * 旧品牌标记（`ram.api.def`）：**只读兼容**——存量工程若仍装着旧 runtime
+ * 产物，其端点打的是旧符号；新 codegen 必须同时认（设计 §7 R3）。
+ * `defineApi` 新写只发 `API_DEF`，此常量仅供 IR 识别。
+ */
+export declare const API_DEF_LEGACY: unique symbol;
 /** 定义一个契约端点：定义期校验后原样返回（描述符 .route 等可枚举，供 codegen/mock 遍历） */
 export declare function defineApi<D extends ApiDefinitionInput>(def: D): D;

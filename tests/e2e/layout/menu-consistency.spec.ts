@@ -91,7 +91,7 @@ test.describe("menu-consistency", () => {
 
 	// M3：深链接直达（设计矩阵 M2 的「直接 URL 访问」路径，审查补充）。
 	// 点击导航与直接加载走的是不同机制：直接加载时选中态依赖 useMatches 的
-	// match.id（偏差 1 修复点）与 ram dev 的 SPA history fallback——此用例
+	// match.id（偏差 1 修复点）与 ojm dev 的 SPA history fallback——此用例
 	// 让这两处回归可见。URL 集合 = 初始落地页 + M1 式点击导航到的每个叶子。
 	test("M3: 菜单路由深链接直达且高亮不落 404", async ({ page }) => {
 		const { allowBlankRoutes } = getEnv();

@@ -129,12 +129,12 @@ function w(r, e) {
   return t.displayName = `withErrorBoundary(${o})`, t;
 }
 
-// shell/.ram-shim-react-error-boundary.mjs
-var ram_shim_react_error_boundary_default = void 0 ?? react_error_boundary_exports;
+// shell/.ojm-shim-react-error-boundary.mjs
+var ojm_shim_react_error_boundary_default = void 0 ?? react_error_boundary_exports;
 export {
   m as ErrorBoundary,
   h as ErrorBoundaryContext,
-  ram_shim_react_error_boundary_default as default,
+  ojm_shim_react_error_boundary_default as default,
   S as getErrorMessage,
   k as useErrorBoundary,
   w as withErrorBoundary

@@ -13199,8 +13199,8 @@ var ReorderItem = /* @__PURE__ */ forwardRef3(ReorderItemComponent);
 var motion2 = motion;
 var m2 = m;
 
-// shell/.ram-shim-motion-react.mjs
-var ram_shim_motion_react_default = void 0 ?? react_exports;
+// shell/.ojm-shim-motion-react.mjs
+var ojm_shim_motion_react_default = void 0 ?? react_exports;
 export {
   AnimatePresence,
   AnimateSharedLayout,
@@ -13335,7 +13335,7 @@ export {
   createScopedAnimate,
   cubicBezier,
   cubicBezierAsString,
-  ram_shim_motion_react_default as default,
+  ojm_shim_motion_react_default as default,
   defaultEasing,
   defaultOffset,
   defaultTransformValue,

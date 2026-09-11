@@ -1,6 +1,6 @@
 # __PROJECT_NAME__
 
-前后端一体化工程（前端模块 + oj 后端），由 `ram init` 生成。
+前后端一体化工程（前端模块 + oj 后端），由 `ojm init` 生成。
 
 ## 快速开始
 
@@ -26,7 +26,7 @@ modules/dist/  构建产物（完整站点）
 ## 注意
 
 - 改 `api/src` 下的 api.ts 保存即生效；**新增/删除后端模块目录、改
-  schema/migrations/config.yaml 需重启 `ram dev`**（oj 热更边界）。
+  schema/migrations/config.yaml 需重启 `ojm dev`**（oj 热更边界）。
 - 后端开发请用 `/oj-api-dev` skill（`.claude/skills/oj-api-dev/`），
   手册按章节按需读。
 - `api/config.yaml` 的证书为 init 现场签发的本地 dev 证书，不构成信任边界；

@@ -22,9 +22,9 @@ var ContractApiError = class extends Error {
   }
 };
 
-// shell/.ram-shim-contract-errors.mjs
-var ram_shim_contract_errors_default = void 0 ?? errors_exports;
+// shell/.ojm-shim-contract-errors.mjs
+var ojm_shim_contract_errors_default = void 0 ?? errors_exports;
 export {
   ContractApiError,
-  ram_shim_contract_errors_default as default
+  ojm_shim_contract_errors_default as default
 };

@@ -2,7 +2,7 @@
  * oj config.yaml 的极简读取（设计 §4）。
  *
  * 只读 `server:` 顶层块下的标量字段，用行级正则而非 YAML 解析器——不为
- * 一个端口引依赖。config 由 `ram init` 生成，字段 miss 即被手改：直接报错，
+ * 一个端口引依赖。config 由 `ojm init` 生成，字段 miss 即被手改：直接报错，
  * 绝不静默回落（oj 代码默认端口是 9778，回落错值会与实际监听错位，
  * 审阅记录二）。
  */
@@ -43,8 +43,8 @@ export function readOjPort(configPath: string): number {
 	const port = raw === undefined ? Number.NaN : Number(raw);
 	if (!Number.isInteger(port) || port <= 0) {
 		throw new Error(
-			`[ram] ${configPath} 缺少合法的 server.port。\n`
-			+ "该文件由 ram init 生成，手动改动后请保留端口配置（oj 代码默认 9778）。",
+			`[ojm] ${configPath} 缺少合法的 server.port。\n`
+			+ "该文件由 ojm init 生成，手动改动后请保留端口配置（oj 代码默认 9778）。",
 		);
 	}
 	return port;

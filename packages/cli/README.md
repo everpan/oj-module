@@ -1,6 +1,6 @@
 # @oj-module/cli
 
-模块工程命令行工具 `ram`。让外部团队只维护模块代码，框架与宿主全部来自 npm。
+模块工程命令行工具 `ojm`。让外部团队只维护模块代码，框架与宿主全部来自 npm。
 
 ## 安装
 
@@ -8,32 +8,36 @@
 {
   "devDependencies": {
     "@oj-module/cli": "^x.y.z",
-    "@oj-module/runtime": "^x.y.z",
-    "@oj-module/shell": "^x.y.z"
+    "@oj-module/runtime": "^x.y.z"
   },
   "scripts": {
-    "dev": "ram dev",
-    "build": "ram build"
+    "dev": "ojm dev",
+    "build": "ojm build"
   }
 }
 ```
 
+> 只需两个框架包（P1 起合为双包）：`@oj-module/cli`（Node 工具链 + 内置预构建宿主 `shell-dist`）
+> 与 `@oj-module/runtime`（浏览器运行时 + `contract` 子路径）。
+
 ## 命令
 
 ```bash
-ram dev [port]   # 启动开发服务器（默认 5174）：宿主代理 + 本地模块重建
-ram build        # 构建模块产物与 dist/modules.json
-ram init [dir] [--yes]        # 脚手架：模板工程 + 证书签发 + 联网下载 oj 到 bin/
-ram vendor [tag] [--force]    # 下载/重装 oj vendor（tag 缺省取最新 release，形如 v0.1.11）
-ram preview [port] [--oj-static]   # 生产形态预览：oj migrate + release + 静态兜底
-ram info        # 输出报障所需的版本矩阵与后端观测
-ram api [dir]   # 契约产物生成（client/openapi/mock stub）
-ram merge <out> <in...>  # 合并多份 modules.json
+ojm dev [port]   # 启动开发服务器（默认 5174）：宿主代理 + 本地模块重建
+ojm build        # 构建模块产物与 dist/modules.json
+ojm init [dir] [--yes]        # 脚手架：模板工程 + 证书签发 + 联网下载 oj 到 bin/
+ojm vendor [tag] [--force]    # 下载/重装 oj vendor（tag 缺省取最新 release，形如 v0.1.11）
+ojm preview [port] [--oj-static]   # 生产形态预览：oj migrate + release + 静态兜底
+ojm info        # 输出报障所需的版本矩阵与后端观测
+ojm api [dir]   # 契约产物生成（client/openapi/mock stub）
+ojm merge <out> <in...>  # 合并多份 modules.json
 ```
 
-> `ram init` / `ram vendor` 需要访问 GitHub（下载 oj 发行包，sha256 校验）；直连受限时带代理：`NODE_USE_ENV_PROXY=1 HTTPS_PROXY=... ram vendor`。已装版本记录在 `bin/.oj-version`，`ram info` 可查。
+> `ojm init` / `ojm vendor` 需要访问 GitHub（下载 oj 发行包，sha256 校验）；直连受限时带代理：`NODE_USE_ENV_PROXY=1 HTTPS_PROXY=... ojm vendor`。已装版本记录在 `bin/.oj-version`，`ojm info` 可查。
+>
+> **别名**：`ram` 是 `ojm` 的弃用别名（打印更名警告后转发），供存量工程 scripts 平滑升级，将在下个 major 移除。
 
-### `ram build`
+### `ojm build`
 
 读取 `modules.config.ts`，逐个模块构建：
 
@@ -51,16 +55,16 @@ dist/
 - 模块元信息（`name` / `version` / `peerRuntime`）通过 esbuild 打包后真实 `import()` entry 读取，而非正则解析——因此配置文件里可以写注释、用变量、做条件判断；
 - 读取元信息时 `@oj-module/runtime` 被替换为只读占位模块，避免在 Node 下加载含 Vite 专有 svg 导入的框架运行时。
 
-### `ram dev`
+### `ojm dev`
 
-1. 定位 `@oj-module/shell` 的预构建 `dist`（先找 `node_modules`，monorepo dogfooding 时回退到 workspace）；
-2. 先跑一次 `ram build`；
+1. 直接取本包内置的预构建宿主 `shell-dist`（随 cli 发布，**不再**查询 `node_modules/@oj-module/shell`，也无 monorepo 路径回退）；
+2. 先跑一次 `ojm build`；
 3. 起静态服务器：
 
    | 路由 | 来源 |
    |---|---|
-   | `/`、`/index.html` | shell `dist/index.html`（含 importmap） |
-   | `/assets/*` | shell `dist/assets/*` |
+   | `/`、`/index.html` | `@oj-module/cli/shell-dist/index.html`（含 importmap） |
+   | `/assets/*` | `@oj-module/cli/shell-dist/assets/*` |
    | `/modules.json` | 本地 `dist/modules.json` |
    | `/modules/*` | 本地 `dist/modules/*` |
 
@@ -88,7 +92,7 @@ export default {
 
 ```ts
 // 共享依赖表 —— importmap / external / 版本校验的单一常量源
-import { HARD_SHARED_DEPS, isSharedDep, SHARED_DEPS, SOFT_SHARED_DEPS } from "@oj-module/cli/shared-deps";
+import { generateImportmap, generateShellEntries, isSharedDep, SHARED_DEPS } from "@oj-module/cli/shared-deps";
 
 // 配置加载
 import { loadModulesConfig, resolveModuleEntry } from "@oj-module/cli/config";
@@ -98,4 +102,4 @@ import { loadModulesConfig, resolveModuleEntry } from "@oj-module/cli/config";
 
 ## 实现说明
 
-`bin/ram.mjs` 通过 `--import tsx` 让 Node 直接执行 TypeScript 源码，因此包发布时带 `src/` 而不是编译产物。
+`bin/ojm.mjs` 通过 `--import tsx` 让 Node 直接执行 TypeScript 源码，因此包发布时带 `src/` 而不是编译产物；`bin/ram.mjs` 是等价的弃用别名 shim。

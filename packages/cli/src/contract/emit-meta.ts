@@ -5,9 +5,9 @@ import { z } from "zod";
 /**
  * AC-D1/D9：routes.json 与 openapi.yaml 发射器。
  *
- * - routes.json：ram dev mock 消费；格式 = oj routes.js 规范化
+ * - routes.json：ojm dev mock 消费；格式 = oj routes.js 规范化
  *   （去 apiPrefix 首斜杠、不含 base、含模块段），method+pattern 排序保证字节稳定。
- * - openapi.yaml：OpenAPI 3.1，文档站（ram api docs）与外部评审的单一来源。
+ * - openapi.yaml：OpenAPI 3.1，文档站（ojm api docs）与外部评审的单一来源。
  *   z.date() 无法进 JSON Schema——先降级为 datetime string（线上传输本就是 ISO 串）。
  * 两者都是提交产物：同输入必须字节稳定，diff 即可评审。
  */

@@ -92,7 +92,7 @@ describe("构建期全局自包含（A26）", () => {
 		const config = path.join(PLAYGROUND_DIR, "vite.config.ts");
 		expect(
 			fs.existsSync(config),
-			"外部模块工程不应需要 vite 配置（ram build 以编程式 build() 驱动）",
+			"外部模块工程不应需要 vite 配置（ojm build 以编程式 build() 驱动）",
 		).toBe(false);
 	});
 });

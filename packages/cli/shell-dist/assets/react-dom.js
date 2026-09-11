@@ -217,7 +217,7 @@ var require_react_dom = __commonJS({
   }
 });
 
-// shell/.ram-shim-react-dom.mjs
+// shell/.ojm-shim-react-dom.mjs
 var __m = __toESM(require_react_dom(), 1);
 var __DOM_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE2 = __m["__DOM_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE"];
 var createPortal2 = __m["createPortal"];
@@ -233,11 +233,11 @@ var unstable_batchedUpdates2 = __m["unstable_batchedUpdates"];
 var useFormState2 = __m["useFormState"];
 var useFormStatus2 = __m["useFormStatus"];
 var version2 = __m["version"];
-var ram_shim_react_dom_default = __m.default ?? __m;
+var ojm_shim_react_dom_default = __m.default ?? __m;
 export {
   __DOM_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE2 as __DOM_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE,
   createPortal2 as createPortal,
-  ram_shim_react_dom_default as default,
+  ojm_shim_react_dom_default as default,
   flushSync2 as flushSync,
   preconnect2 as preconnect,
   prefetchDNS2 as prefetchDNS,

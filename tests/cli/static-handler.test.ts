@@ -9,20 +9,20 @@ import { createStaticHandler } from "../../packages/cli/src/static-handler";
 
 /**
  * 集中审阅（2026-09-01）两项确认的静态层缺陷：
- *  - F11：dev 跑过 `ram build` 后，localDist 里的合并残留（index.html/assets/
+ *  - F11：dev 跑过 `ojm build` 后，localDist 里的合并残留（index.html/assets/
  *    versions.json）会反向遮蔽 shell dist——宿主内容必须只从 hostRoots 读，
  *    localDist 仅服务模块空间（/modules/* 与 /modules.json）
  *  - F1：畸形 URL（%ZZ）的 decodeURIComponent 抛 URIError 穿透成
  *    uncaughtException 崩进程——必须回 400 且服务继续
  */
 
-const FIXTURE_ROOT = fs.mkdtempSync(path.join(os.tmpdir(), "ram-static-fx-"));
+const FIXTURE_ROOT = fs.mkdtempSync(path.join(os.tmpdir(), "ojm-static-fx-"));
 
 function makeRoots() {
 	const local = path.join(FIXTURE_ROOT, `local-${Date.now()}-${Math.random()}`);
 	const shell = path.join(FIXTURE_ROOT, `shell-${Date.now()}-${Math.random()}`);
 	fs.mkdirSync(path.join(local, "modules/demo/0.1.0"), { recursive: true });
-	// 模拟 ram build 的合并残留：宿主文件被拷进 localDist
+	// 模拟 ojm build 的合并残留：宿主文件被拷进 localDist
 	fs.writeFileSync(path.join(local, "index.html"), "<html><body>STALE-MERGED</body></html>");
 	fs.writeFileSync(path.join(local, "modules.json"), "[]\n");
 	fs.writeFileSync(path.join(local, "modules/demo/0.1.0/entry.js"), "export {};\n");

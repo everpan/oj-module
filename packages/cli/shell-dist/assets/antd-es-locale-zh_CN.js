@@ -250,8 +250,8 @@ var localeValues = {
 };
 var zh_CN_default6 = localeValues;
 
-// shell/.ram-shim-antd-es-locale-zh_CN.mjs
-var ram_shim_antd_es_locale_zh_CN_default = zh_CN_default6 ?? zh_CN_exports;
+// shell/.ojm-shim-antd-es-locale-zh_CN.mjs
+var ojm_shim_antd_es_locale_zh_CN_default = zh_CN_default6 ?? zh_CN_exports;
 export {
-  ram_shim_antd_es_locale_zh_CN_default as default
+  ojm_shim_antd_es_locale_zh_CN_default as default
 };

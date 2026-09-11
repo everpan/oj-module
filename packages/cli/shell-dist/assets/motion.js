@@ -9640,8 +9640,8 @@ function distance2D(a, b) {
   return Math.sqrt(xDelta ** 2 + yDelta ** 2);
 }
 
-// shell/.ram-shim-motion.mjs
-var ram_shim_motion_default = void 0 ?? es_exports;
+// shell/.ojm-shim-motion.mjs
+var ojm_shim_motion_default = void 0 ?? es_exports;
 export {
   AsyncMotionValueAnimation,
   DOMKeyframesResolver,
@@ -9755,7 +9755,7 @@ export {
   createScopedAnimate,
   cubicBezier,
   cubicBezierAsString,
-  ram_shim_motion_default as default,
+  ojm_shim_motion_default as default,
   defaultEasing,
   defaultOffset,
   defaultTransformValue,

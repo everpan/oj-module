@@ -113,14 +113,14 @@ var require_localeData = __commonJS({
   }
 });
 
-// shell/.ram-shim-dayjs-plugin-localeData.mjs
-var ram_shim_dayjs_plugin_localeData_exports = {};
-__export(ram_shim_dayjs_plugin_localeData_exports, {
-  default: () => ram_shim_dayjs_plugin_localeData_default
+// shell/.ojm-shim-dayjs-plugin-localeData.mjs
+var ojm_shim_dayjs_plugin_localeData_exports = {};
+__export(ojm_shim_dayjs_plugin_localeData_exports, {
+  default: () => ojm_shim_dayjs_plugin_localeData_default
 });
 var __ns = __toESM(require_localeData(), 1);
-__reExport(ram_shim_dayjs_plugin_localeData_exports, __toESM(require_localeData(), 1));
-var ram_shim_dayjs_plugin_localeData_default = __ns.default ?? __ns;
+__reExport(ojm_shim_dayjs_plugin_localeData_exports, __toESM(require_localeData(), 1));
+var ojm_shim_dayjs_plugin_localeData_default = __ns.default ?? __ns;
 export {
-  ram_shim_dayjs_plugin_localeData_default as default
+  ojm_shim_dayjs_plugin_localeData_default as default
 };

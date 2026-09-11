@@ -3563,8 +3563,8 @@ var DragOverlay = /* @__PURE__ */ React2.memo((_ref) => {
   }, children) : null));
 });
 
-// shell/.ram-shim-dnd-kit-core.mjs
-var ram_shim_dnd_kit_core_default = void 0 ?? core_esm_exports;
+// shell/.ojm-shim-dnd-kit-core.mjs
+var ojm_shim_dnd_kit_core_default = void 0 ?? core_esm_exports;
 export {
   AutoScrollActivator,
   DndContext,
@@ -3580,7 +3580,7 @@ export {
   applyModifiers,
   closestCenter,
   closestCorners,
-  ram_shim_dnd_kit_core_default as default,
+  ojm_shim_dnd_kit_core_default as default,
   defaultAnnouncements,
   defaultCoordinates,
   defaultDropAnimationConfiguration as defaultDropAnimation,

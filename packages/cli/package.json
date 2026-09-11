@@ -16,6 +16,7 @@
 		"./shell-dist/*": "./shell-dist/*"
 	},
 	"bin": {
+		"ojm": "./bin/ojm.mjs",
 		"ram": "./bin/ram.mjs"
 	},
 	"files": [

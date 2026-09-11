@@ -13,8 +13,8 @@ import { createContext } from "react";
 var IconContext = /* @__PURE__ */ createContext({});
 var Context_default = IconContext;
 
-// shell/.ram-shim-icons-es-components-Context.mjs
-var ram_shim_icons_es_components_Context_default = Context_default ?? Context_exports;
+// shell/.ojm-shim-icons-es-components-Context.mjs
+var ojm_shim_icons_es_components_Context_default = Context_default ?? Context_exports;
 export {
-  ram_shim_icons_es_components_Context_default as default
+  ojm_shim_icons_es_components_Context_default as default
 };

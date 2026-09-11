@@ -698,13 +698,13 @@ function isAfter(a, b) {
   return a.data.current.sortable.index < b.data.current.sortable.index;
 }
 
-// shell/.ram-shim-dnd-kit-sortable.mjs
-var ram_shim_dnd_kit_sortable_default = void 0 ?? sortable_esm_exports;
+// shell/.ojm-shim-dnd-kit-sortable.mjs
+var ojm_shim_dnd_kit_sortable_default = void 0 ?? sortable_esm_exports;
 export {
   SortableContext,
   arrayMove,
   arraySwap,
-  ram_shim_dnd_kit_sortable_default as default,
+  ojm_shim_dnd_kit_sortable_default as default,
   defaultAnimateLayoutChanges,
   defaultNewIndexGetter,
   hasSortableData,

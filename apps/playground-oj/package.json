@@ -3,10 +3,10 @@
 	"type": "module",
 	"private": true,
 	"scripts": {
-		"dev": "ram dev",
-		"build": "ram build",
-		"preview": "ram preview",
-		"info": "ram info",
+		"dev": "ojm dev",
+		"build": "ojm build",
+		"preview": "ojm preview",
+		"info": "ojm info",
 		"typecheck": "tsc --noEmit -p tsconfig.json"
 	},
 	"devDependencies": {

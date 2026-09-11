@@ -1,9 +1,9 @@
 /**
- * `ram preview` —— 生产形态预览（设计 §6）。
+ * `ojm preview` —— 生产形态预览（设计 §6）。
  *
  * 职责：校验产物（fail-fast 四查）→ `oj migrate`（失败即退，不起 server）
- * → `oj server`（release/js，仅 API）→ ram 静态层兜底（SPA 回退，无 SSE
- * 注入、不设 no-store）。默认静态归 ram（与 oj 手册 §13「SPA 回退经前置
+ * → `oj server`（release/js，仅 API）→ ojm 静态层兜底（SPA 回退，无 SSE
+ * 注入、不设 no-store）。默认静态归 ojm（与 oj 手册 §13「SPA 回退经前置
  * 反代补」一致）；`--oj-static` 切换为 oj `--app-path` 直出（真 exercise
  * oj 静态层，history 深链接 404 是已知限制）。
  *
@@ -43,20 +43,20 @@ export async function previewServer(projectRoot: string, opts: PreviewOptions = 
 	const configPath = path.join(projectRoot, "api", "config.yaml");
 	const apiDist = path.join(projectRoot, "api", "dist");
 
-	// fail-fast 四查：缺一即提示对应补救（init 幂等补缺 / ram build 产物）
+	// fail-fast 四查：缺一即提示对应补救（init 幂等补缺 / ojm build 产物）
 	if (!existsSync(ojBin))
-		throw new Error(`[ram] 缺少 ${ojBin}。\n请重跑 ram init 或 ram vendor（联网下载 oj，不覆盖 config 与用户代码）。`);
+		throw new Error(`[ojm] 缺少 ${ojBin}。\n请重跑 ojm init 或 ojm vendor（联网下载 oj，不覆盖 config 与用户代码）。`);
 	if (!existsSync(configPath))
-		throw new Error(`[ram] 缺少 ${configPath}。\n请重跑 ram init 生成后端配置。`);
+		throw new Error(`[ojm] 缺少 ${configPath}。\n请重跑 ojm init 生成后端配置。`);
 	if (!existsSync(path.join(siteDir, "index.html")))
-		throw new Error(`[ram] ${siteDir} 缺少 index.html。\n请先 ram build（构建模块并合并全站）。`);
+		throw new Error(`[ojm] ${siteDir} 缺少 index.html。\n请先 ojm build（构建模块并合并全站）。`);
 	if (!existsSync(path.join(apiDist, "manifests.yaml")))
-		throw new Error(`[ram] ${apiDist} 缺少 manifests.yaml。\n请先 ram build（后端 oj build 产物）。`);
+		throw new Error(`[ojm] ${apiDist} 缺少 manifests.yaml。\n请先 ojm build（后端 oj build 产物）。`);
 
 	const execOj = opts.execOj ?? ((args: string[]) => execFileSync(ojBin, args, { stdio: "inherit" }));
 
-	// D8：先迁移再起服务；migrate 非零退出 → 透传 stderr、ram 非零退出、不起 server
-	console.log("[ram] oj migrate（应用待执行迁移）…");
+	// D8：先迁移再起服务；migrate 非零退出 → 透传 stderr、ojm 非零退出、不起 server
+	console.log("[ojm] oj migrate（应用待执行迁移）…");
 	execOj(["migrate", "-c", configPath, "-d", apiDist]);
 
 	const base = readOjApiPrefix(configPath);
@@ -72,7 +72,7 @@ export async function previewServer(projectRoot: string, opts: PreviewOptions = 
 		await oj.stop().catch(() => {});
 		throw error;
 	}
-	console.log(`[ram] oj 后端已就绪（release/js）：${base} → http://127.0.0.1:${oj.port}`);
+	console.log(`[ojm] oj 后端已就绪（release/js）：${base} → http://127.0.0.1:${oj.port}`);
 
 	const ojTarget = `http://127.0.0.1:${oj.port}`;
 	const serveStatic = createStaticHandler({ roots: [siteDir], reload: null, noStore: false });
@@ -97,18 +97,18 @@ export async function previewServer(projectRoot: string, opts: PreviewOptions = 
 		void oj.stop();
 	});
 	process.once("SIGINT", () => {
-		console.log("\n[ram] 正在退出…");
+		console.log("\n[ojm] 正在退出…");
 		void oj.stop();
 		server.close(() => process.exit(0));
 		setTimeout(() => process.exit(0), 1500).unref();
 	});
 
 	const actualPort = await listenOnFreePort(server, opts.port ?? DEFAULT_PORT);
-	console.log(`\n[ram] preview 已启动：http://localhost:${actualPort}`);
+	console.log(`\n[ojm] preview 已启动：http://localhost:${actualPort}`);
 	if (opts.ojStatic)
-		console.log(`[ram] --oj-static：oj 已挂静态直出 http://127.0.0.1:${oj.port}（history 深链接 404 为已知限制；ram 本口仍提供 SPA 兜底 + /api 反代）`);
+		console.log(`[ojm] --oj-static：oj 已挂静态直出 http://127.0.0.1:${oj.port}（history 深链接 404 为已知限制；ojm 本口仍提供 SPA 兜底 + /api 反代）`);
 	else
-		console.log(`[ram] 静态兜底：ram（SPA 回退）+ ${base} 反代 oj`);
+		console.log(`[ojm] 静态兜底：ojm（SPA 回退）+ ${base} 反代 oj`);
 
 	return server;
 }

@@ -25,9 +25,9 @@ function clsx() {
 }
 var clsx_default = clsx;
 
-// shell/.ram-shim-clsx.mjs
-var ram_shim_clsx_default = clsx_default ?? clsx_exports;
+// shell/.ojm-shim-clsx.mjs
+var ojm_shim_clsx_default = clsx_default ?? clsx_exports;
 export {
   clsx,
-  ram_shim_clsx_default as default
+  ojm_shim_clsx_default as default
 };

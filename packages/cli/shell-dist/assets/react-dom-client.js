@@ -12096,15 +12096,15 @@ var require_client = __commonJS({
   }
 });
 
-// shell/.ram-shim-react-dom-client.mjs
+// shell/.ojm-shim-react-dom-client.mjs
 var __m = __toESM(require_client(), 1);
 var createRoot2 = __m["createRoot"];
 var hydrateRoot2 = __m["hydrateRoot"];
 var version2 = __m["version"];
-var ram_shim_react_dom_client_default = __m.default ?? __m;
+var ojm_shim_react_dom_client_default = __m.default ?? __m;
 export {
   createRoot2 as createRoot,
-  ram_shim_react_dom_client_default as default,
+  ojm_shim_react_dom_client_default as default,
   hydrateRoot2 as hydrateRoot,
   version2 as version
 };

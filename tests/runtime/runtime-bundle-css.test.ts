@@ -14,7 +14,7 @@ import { PROJECT_ROOT } from "../helpers/paths";
  * dist/runtime.js）则完全没有布局工具类——框架 chrome flex 失效、元素纵向
  * 堆叠、header 操作按钮溢出到页签栏带区（视觉崩坏 + 点击被页签元素拦截）。
  *
- * 契约：runtime 产物必须自包含 CSS（style 注入，marker=data-ram-runtime-css），
+ * 契约：runtime 产物必须自包含 CSS（style 注入，marker=data-ojm-runtime-css），
  * 任何宿主 import 即得完整样式，不得依赖使用方构建链兜底。
  */
 describe("runtime 产物自携带 CSS（宿主链路自包含）", () => {
@@ -24,7 +24,7 @@ describe("runtime 产物自携带 CSS（宿主链路自包含）", () => {
 	);
 
 	it("tailwind 工具类随产物内联注入", () => {
-		expect(bundle).toContain("data-ram-runtime-css");
+		expect(bundle).toContain("data-ojm-runtime-css");
 		// 布局 chrome 最基础的工具类必须真实编译进产物（而非 cn() 里的类名字符串）
 		expect(bundle).toMatch(/\.flex\s*\{[^}]*display\s*:\s*flex/);
 		expect(bundle).toMatch(/\.items-center\s*\{/);

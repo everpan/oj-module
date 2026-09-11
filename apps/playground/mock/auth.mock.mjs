@@ -1,6 +1,6 @@
 // playground 工程 mock：login 模块自有认证接口（模块命名空间 /login，
 // 与框架内置 auth/* 无交集）。AC-D16：oj 信封 {code,msg,data}，
-// HTTP 状态 = code（0→200，由 ram dev mock 服务按信封 code 置状态）。
+// HTTP 状态 = code（0→200，由 ojm dev mock 服务按信封 code 置状态）。
 export default [
 	{
 		url: "/login/login",

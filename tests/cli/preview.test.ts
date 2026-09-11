@@ -8,13 +8,13 @@ import { afterAll, describe, expect, it } from "vitest";
 import { previewServer } from "../../packages/cli/src/preview";
 
 /**
- * 设计 §6（P4）：ram preview。
+ * 设计 §6（P4）：ojm preview。
  *  - fail-fast 四查：bin/oj、api/config.yaml、modules/dist/index.html、
- *    api/dist/manifests.yaml，缺一即人话报错指向 ram init / ram build
+ *    api/dist/manifests.yaml，缺一即人话报错指向 ojm init / ojm build
  *  - migrate 非零退出 → 透传报错、不起 server（失败即退）
  *  - 成功路径：migrate → server 顺序，参数全绝对路径；默认无 --app-path，
  *    --oj-static 时传 --app-path <siteDir>（oj 静态直出，已知深链接 404 限制）
- *  - 默认 ram 静态层：/ 与深链接回落 index.html、不注入 SSE；/api/* 反代 oj
+ *  - 默认 ojm 静态层：/ 与深链接回落 index.html、不注入 SSE；/api/* 反代 oj
  */
 
 const FIXTURE_ROOT = path.join(process.cwd(), ".tmp-preview-fx");
@@ -80,10 +80,10 @@ afterAll(() => {
 
 describe("previewServer fail-fast 四查", () => {
 	const cases = [
-		{ name: "缺 bin/oj → 指向 ram init", remove: (root: string) => fs.rmSync(path.join(root, "bin/oj")), hint: /init/ },
-		{ name: "缺 api/config.yaml → 指向 ram init", remove: (root: string) => fs.rmSync(path.join(root, "api/config.yaml")), hint: /init/ },
-		{ name: "缺 index.html → 指向 ram build", remove: (root: string) => fs.rmSync(path.join(root, "modules/dist/index.html")), hint: /build/ },
-		{ name: "缺 manifests.yaml → 指向 ram build", remove: (root: string) => fs.rmSync(path.join(root, "api/dist/manifests.yaml")), hint: /build/ },
+		{ name: "缺 bin/oj → 指向 ojm init", remove: (root: string) => fs.rmSync(path.join(root, "bin/oj")), hint: /init/ },
+		{ name: "缺 api/config.yaml → 指向 ojm init", remove: (root: string) => fs.rmSync(path.join(root, "api/config.yaml")), hint: /init/ },
+		{ name: "缺 index.html → 指向 ojm build", remove: (root: string) => fs.rmSync(path.join(root, "modules/dist/index.html")), hint: /build/ },
+		{ name: "缺 manifests.yaml → 指向 ojm build", remove: (root: string) => fs.rmSync(path.join(root, "api/dist/manifests.yaml")), hint: /build/ },
 	];
 	for (const c of cases) {
 		it(c.name, async () => {
@@ -141,7 +141,7 @@ describe("previewServer 编排", () => {
 		expect(s.base).toBe("/api");
 		expect(path.isAbsolute(s.apiPath)).toBe(true);
 		expect(s.apiPath).toBe(apiDist);
-		expect(s.extraArgs).toEqual([]); // 默认静态归 ram，不给 oj --app-path
+		expect(s.extraArgs).toEqual([]); // 默认静态归 ojm，不给 oj --app-path
 	});
 
 	it("--oj-static：--app-path <siteDir> 绝对路径", async () => {
@@ -163,7 +163,7 @@ describe("previewServer 编排", () => {
 	});
 });
 
-describe("previewServer ram 静态层", () => {
+describe("previewServer ojm 静态层", () => {
 	it("/ 与深链接回落 index.html、无 SSE 注入；/api/* 反代桩 oj", async () => {
 		const { root, siteDir } = makeFixture();
 		const up = stubOjUpstream();
@@ -180,7 +180,7 @@ describe("previewServer ram 静态层", () => {
 		expect(index.status).toBe(200);
 		expect(index.headers["content-type"]).toContain("text/html");
 		expect(index.text).toContain("site");
-		expect(index.text).not.toContain("__ram_reload"); // 生产形态无 SSE 注入
+		expect(index.text).not.toContain("__ojm_reload"); // 生产形态无 SSE 注入
 
 		const deep = await get(devPort, "/some/deep/route", { Accept: "text/html" });
 		expect(deep.status).toBe(200);

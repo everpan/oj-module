@@ -99,13 +99,13 @@ var require_dist = __commonJS({
   }
 });
 
-// shell/.ram-shim-spin-delay.mjs
+// shell/.ojm-shim-spin-delay.mjs
 var __m = __toESM(require_dist(), 1);
 var defaultOptions2 = __m["defaultOptions"];
 var useSpinDelay2 = __m["useSpinDelay"];
-var ram_shim_spin_delay_default = __m.default ?? __m;
+var ojm_shim_spin_delay_default = __m.default ?? __m;
 export {
-  ram_shim_spin_delay_default as default,
+  ojm_shim_spin_delay_default as default,
   defaultOptions2 as defaultOptions,
   useSpinDelay2 as useSpinDelay
 };

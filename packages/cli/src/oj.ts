@@ -42,7 +42,7 @@ export function startOj(
 
 	let stderrTail = "";
 	// --console-log：oj 新版终端默认静默（console_log 缺省 false，只落 logs/），
-	// ram dev/preview 的 [oj] 透传管道必须显式打开终端输出才能看到日志（手册 §10）。
+	// ojm dev/preview 的 [oj] 透传管道必须显式打开终端输出才能看到日志（手册 §10）。
 	const child = spawn(binPath, ["server", "-c", configPath, "-b", base, "--api-path", apiSrcPath, "--console-log", ...extraArgs], {
 		stdio: ["ignore", "pipe", "pipe"],
 	});
@@ -78,17 +78,17 @@ export function startOj(
 		pollTimer.unref();
 		child.once("exit", (code) => {
 			finish(new Error(
-				`[ram] oj 进程异常退出（code ${code}）。\n`
+				`[ojm] oj 进程异常退出（code ${code}）。\n`
 				+ `stderr 尾部：\n${stderrTail.trim() || "（无输出）"}`,
 			));
 		});
 		// spawn 本身失败（如 ENOENT）只发 error 不发 exit，必须单独兜住
 		child.once("error", (err) => {
-			finish(new Error(`[ram] 无法启动 oj（${binPath}）：${err.message}`));
+			finish(new Error(`[ojm] 无法启动 oj（${binPath}）：${err.message}`));
 		});
 		const timeout = setTimeout(() => {
 			finish(new Error(
-				`[ram] oj 健康检查超时（${Math.round(timeoutMs / 1000)}s）：${healthUrl} 一直不可达。\n`
+				`[ojm] oj 健康检查超时（${Math.round(timeoutMs / 1000)}s）：${healthUrl} 一直不可达。\n`
 				+ `stderr 尾部：\n${stderrTail.trim() || "（无输出）"}`,
 			));
 		}, timeoutMs);

@@ -1,7 +1,7 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
 exports[`planStubWrites（AC-D10 §9.1 五场景） > handler 不存在 → action create：oj 模板（默认导出 + .route 赋值 + json.ok 示例值） 1`] = `
-"// ram-api:stub createOrder,deleteOrder,getOrderDetail sha256:c95724be844d22c606eccda7ede0eb7bce83f46be641218cedd55d66d93c30e0
+"// ojm-api:stub createOrder,deleteOrder,getOrderDetail sha256:c95724be844d22c606eccda7ede0eb7bce83f46be641218cedd55d66d93c30e0
 function get(): void {
 	json.ok({
 		id: 1,

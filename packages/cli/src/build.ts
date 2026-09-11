@@ -121,13 +121,13 @@ export const z = new Proxy({}, { get: () => _fn });
  * 实体路径依赖 import.meta.url，在 vitest 等变换环境下拿不到合法的 file URL。
  */
 const runtimeStubPlugin: EsbuildPlugin = {
-	name: "ram-runtime-stub",
+	name: "ojm-runtime-stub",
 	setup(b) {
 		b.onResolve({ filter: /^@oj-module\/runtime$/ }, () => ({
 			path: "@oj-module/runtime",
-			namespace: "ram-runtime-stub",
+			namespace: "ojm-runtime-stub",
 		}));
-		b.onLoad({ filter: /.*/, namespace: "ram-runtime-stub" }, () => ({
+		b.onLoad({ filter: /.*/, namespace: "ojm-runtime-stub" }, () => ({
 			contents: RUNTIME_STUB_SOURCE,
 			loader: "js",
 			resolveDir: process.cwd(),
@@ -144,16 +144,16 @@ const runtimeStubPlugin: EsbuildPlugin = {
  * 空模块两条路都堵死（P3.4）。
  */
 const dynamicImportStubPlugin: EsbuildPlugin = {
-	name: "ram-dynamic-import-stub",
+	name: "ojm-dynamic-import-stub",
 	setup(b) {
 		// esbuild 的 onResolve 不支持按 kind 过滤，在回调里判断后放行其余 resolver
 		b.onResolve({ filter: /^\./ }, (args) => {
 			if (args.kind === "dynamic-import") {
-				return { path: args.path, namespace: "ram-dynamic-stub" };
+				return { path: args.path, namespace: "ojm-dynamic-stub" };
 			}
 			return null;
 		});
-		b.onLoad({ filter: /.*/, namespace: "ram-dynamic-stub" }, () => ({
+		b.onLoad({ filter: /.*/, namespace: "ojm-dynamic-stub" }, () => ({
 			contents: "export default {};",
 			loader: "js",
 		}));
@@ -161,7 +161,7 @@ const dynamicImportStubPlugin: EsbuildPlugin = {
 };
 
 /**
- * 元数据读取封闭性（P3 验收发现）：裸导入全部桩化，`ram init` 产出的外部工程
+ * 元数据读取封闭性（P3 验收发现）：裸导入全部桩化，`ojm init` 产出的外部工程
  * 尚未安装依赖（@oj-module/* 未发布），真实 import() 会
  * ERR_MODULE_NOT_FOUND；读元数据只需要 defineModule 入参，共享依赖执行与否无关。
  *
@@ -241,10 +241,10 @@ function collectBareImportedNames(...roots: string[]): Map<string, string[]> {
 /** 每次元数据读取一个实例：modulesSrc 扫描出的「裸说明符 → 具名导入列表」 */
 function makeBareImportStubPlugin(namesBySpec: Map<string, string[]>): EsbuildPlugin {
 	return {
-		name: "ram-bare-import-stub",
+		name: "ojm-bare-import-stub",
 		setup(b) {
-			b.onResolve({ filter: /^[^./#]/ }, args => ({ path: args.path, namespace: "ram-bare-stub" }));
-			b.onLoad({ filter: /.*/, namespace: "ram-bare-stub" }, (args) => {
+			b.onResolve({ filter: /^[^./#]/ }, args => ({ path: args.path, namespace: "ojm-bare-stub" }));
+			b.onLoad({ filter: /.*/, namespace: "ojm-bare-stub" }, (args) => {
 				const names = namesBySpec.get(args.path) ?? [];
 				return {
 					contents: [
@@ -302,7 +302,7 @@ function sha384(file: string): string {
 export async function readModuleDefinition(entryFile: string, projectRoot: string) {
 	// 必须落在工程目录内（而非 os.tmpdir），否则 bundle 外部化的共享依赖
 	// （react / antd …）在 import() 时无法从 /tmp 解析到 node_modules。
-	const outDir = fs.mkdtempSync(path.join(projectRoot, ".ram-tmp-"));
+	const outDir = fs.mkdtempSync(path.join(projectRoot, ".ojm-tmp-"));
 	try {
 		// entry 可能登记在 modulesSrc 之外（playground 登记仓库级模块），
 		// entry 所在目录同样入扫，保证其相对导入图的具名导入都被种子
@@ -351,7 +351,7 @@ function warnUnsharedDeps(projectRoot: string) {
 
 	if (unshared.length) {
 		console.warn(
-			`[ram] ⚠️ 以下运行时依赖不在共享表内，会被打进模块产物：${unshared.join(", ")}\n`
+			`[ojm] ⚠️ 以下运行时依赖不在共享表内，会被打进模块产物：${unshared.join(", ")}\n`
 			+ "     若它应与宿主共用，请加入 SHARED_DEPS 并在宿主 importmap 中映射（设计文档 C8）",
 		);
 	}
@@ -409,7 +409,7 @@ function assertResolvableSpecifiers(
 
 	if (deepPathErrors.length > 0) {
 		throw new Error(
-			`[ram] 模块 "${moduleName}" 的产物含 importmap 无法解析的深路径说明符：\n`
+			`[ojm] 模块 "${moduleName}" 的产物含 importmap 无法解析的深路径说明符：\n`
 			+ `${deepPathErrors.join("\n")}\n`
 			+ "共享表只提供精确键（importmap 无前缀通配）。修复建议：改从包根导入"
 			+ "（如 dayjs 插件改在宿主侧注册），或联系框架方在 SHARED_DEPS 增补该深路径条目。",
@@ -418,7 +418,7 @@ function assertResolvableSpecifiers(
 
 	if (unsharedWarnings.size > 0) {
 		console.warn(
-			`[ram] ⚠️ 模块 "${moduleName}" import 了共享表外的三方库：${[...unsharedWarnings].join(", ")}\n`
+			`[ojm] ⚠️ 模块 "${moduleName}" import 了共享表外的三方库：${[...unsharedWarnings].join(", ")}\n`
 			+ "     它们会被打进模块产物。若应与宿主共用，请加入 SHARED_DEPS（设计文档 C8）",
 		);
 	}
@@ -427,7 +427,7 @@ function assertResolvableSpecifiers(
 /**
  * 构建后端（api/src 存在时编排 `bin/oj build`，D8）。
  *
- * 绝不在此处跑 migrate：oj build 本身零磁盘副作用，`ram build` 保持零 DB
+ * 绝不在此处跑 migrate：oj build 本身零磁盘副作用，`ojm build` 保持零 DB
  * 副作用（CI/无 DB 环境可跑）；迁移由 preview 在起服务前应用（设计 §6）。
  * 无后端源码返回 false（纯前端工程跳过）。
  */
@@ -439,18 +439,18 @@ export async function buildBackend(projectRoot: string): Promise<boolean> {
 	const oj = path.join(projectRoot, "bin/oj");
 	if (!fs.existsSync(oj)) {
 		throw new Error(
-			`[ram] 找到 api/src 但缺少 ${oj}。\n`
-			+ "请重跑 ram init 幂等补缺（不会覆盖 config 与用户代码）。",
+			`[ojm] 找到 api/src 但缺少 ${oj}。\n`
+			+ "请重跑 ojm init 幂等补缺（不会覆盖 config 与用户代码）。",
 		);
 	}
 	const apiDist = path.join(projectRoot, "api/dist");
-	console.log("[ram] oj build（后端）…");
+	console.log("[ojm] oj build（后端）…");
 	execFileSync(oj, ["build", "-d", apiSrc, "-o", apiDist], { stdio: "inherit" });
 	return true;
 }
 
 /**
- * 全站合并（仅 `ram build` 调用，设计 §5）：清场后拷 shell dist 全量，
+ * 全站合并（仅 `ojm build` 调用，设计 §5）：清场后拷 shell dist 全量，
  * 再由模块构建写入 modules.json 与 modules/。清场防旧哈希资产无限累积
  * （shell 每次重构建生成新哈希文件名）；devServer 热重建路径不合并——
  * dev 的 / 与 /assets/* 直接服务 shell dist，合并产物无人消费。
@@ -460,7 +460,7 @@ function mergeShellSite(distDir: string): void {
 	fs.rmSync(distDir, { recursive: true, force: true });
 	fs.mkdirSync(path.dirname(distDir), { recursive: true });
 	fs.cpSync(shellDist, distDir, { recursive: true });
-	console.log(`[ram] 已合并宿主站点 → ${distDir}`);
+	console.log(`[ojm] 已合并宿主站点 → ${distDir}`);
 }
 
 /**
@@ -470,7 +470,7 @@ function mergeShellSite(distDir: string): void {
  *   <dist>/modules/<name>/<version>/{entry.js, chunk-*.js, *.css}
  *   <dist>/modules.json
  *
- * opts.mergeSite 仅 `ram build` 传 true：清场 + 拷 shell dist 全量；
+ * opts.mergeSite 仅 `ojm build` 传 true：清场 + 拷 shell dist 全量；
  * devServer 热重建默认 false，只写模块产物。
  */
 export async function buildModules(
@@ -494,7 +494,7 @@ export async function buildModules(
 
 	for (const item of config.modules) {
 		if (item.enabled === false) {
-			console.log(`[ram] 跳过已禁用模块 ${item.name}`);
+			console.log(`[ojm] 跳过已禁用模块 ${item.name}`);
 			continue;
 		}
 
@@ -511,7 +511,7 @@ export async function buildModules(
 		const emitted = new Map<string, { fileName: string, type: "chunk" | "asset", isEntry: boolean, isDynamicEntry: boolean }>();
 
 		const collectChunks: Plugin = {
-			name: "ram:collect-chunks",
+			name: "ojm:collect-chunks",
 			writeBundle(_options, bundle) {
 				for (const [fileName, output] of Object.entries(bundle)) {
 					emitted.set(fileName, {
@@ -524,7 +524,7 @@ export async function buildModules(
 			},
 		};
 
-		console.log(`[ram] 构建 ${definition.name}@${definition.version} ...`);
+		console.log(`[ojm] 构建 ${definition.name}@${definition.version} ...`);
 
 		await build({
 			root: projectRoot,
@@ -588,7 +588,7 @@ export async function buildModules(
 		const lazyChunks = chunks.filter(c => c.lazy);
 		if (lazyChunks.length > 0) {
 			console.warn(
-				`[ram] 模块 "${definition.name}" 含 ${lazyChunks.length} 个 lazy chunk，`
+				`[ojm] 模块 "${definition.name}" 含 ${lazyChunks.length} 个 lazy chunk，`
 				+ "它们在 L2 完整性档位下不受保护（§4.7 D7）：\n"
 				+ `${lazyChunks.map(c => `  · ${c.url}`).join("\n")}\n`
 				+ "若这些 chunk 也要求完整性，请升级到 L3（Service Worker）或使用逃生通道（§4.7）。",
@@ -617,7 +617,7 @@ export async function buildModules(
 	const manifestPath = path.join(outDir, "modules.json");
 	fs.mkdirSync(outDir, { recursive: true });
 	fs.writeFileSync(manifestPath, `${JSON.stringify(built, null, 2)}\n`);
-	console.log(`[ram] 清单已生成 → ${manifestPath}`);
+	console.log(`[ojm] 清单已生成 → ${manifestPath}`);
 
 	return built;
 }

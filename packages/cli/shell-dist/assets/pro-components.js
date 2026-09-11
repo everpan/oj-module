@@ -44355,8 +44355,8 @@ var version2 = {
   "@ant-design/pro-components": "3.0.0"
 };
 
-// shell/.ram-shim-pro-components.mjs
-var ram_shim_pro_components_default = void 0 ?? es_exports;
+// shell/.ojm-shim-pro-components.mjs
+var ojm_shim_pro_components_default = void 0 ?? es_exports;
 export {
   BaseProList,
   SchemaForm_default as BetaSchemaForm,
@@ -44514,7 +44514,7 @@ export {
   dateArrayFormatter,
   dateFormatterMap,
   deDEIntl,
-  ram_shim_pro_components_default as default,
+  ojm_shim_pro_components_default as default,
   defaultRenderText,
   editableRowByKey,
   enGBIntl,

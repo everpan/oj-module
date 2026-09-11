@@ -8,7 +8,7 @@ import { PLAYGROUND_DIST_DIR } from "../helpers/paths";
 /**
  * playground 无后端鉴权回归测试（模块与宿主用户体系解耦）。
  *
- * 这是“左侧菜单空白 / 模块页面不可见”缺陷的回归护栏：在 ram dev 这类纯静态宿主
+ * 这是“左侧菜单空白 / 模块页面不可见”缺陷的回归护栏：在 ojm dev 这类纯静态宿主
  * 下没有后端，AuthGuard 的 fetchUserInfo 永远失败，原本 `wholeMenus` 从不被填充、
  * 且未登录会被重定向到登录页，导致菜单空白。
  *
@@ -136,7 +136,7 @@ describe("playground 无后端鉴权", () => {
 			).toBe(true);
 
 			// 注意：此处【不】播种 useAuthStore / useUserStore / useAccessStore.setAccessStore，
-			// 完全模拟“无后端、未登录”的 ram dev 场景。
+			// 完全模拟“无后端、未登录”的 ojm dev 场景。
 
 			const { default: App } = await import("#src/app");
 			const { TanstackQuery } = await import("#src/components/tanstack-query");

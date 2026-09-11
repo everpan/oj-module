@@ -1,5 +1,5 @@
 # oj 服务配置（devkit 手册 §10）。
-# 本文件由 ram init 生成；config 内相对路径相对本文件所在目录。
+# 本文件由 ojm init 生成；config 内相对路径相对本文件所在目录。
 server:
   host: 127.0.0.1 # 显式钉死：oj 默认绑 [::1]，localhost 解析序在反代下有坑
   port: 9778

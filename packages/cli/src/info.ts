@@ -1,5 +1,5 @@
 /**
- * `ram info`（设计文档 §1 / US-7，P7.11）：一键输出报障所需的版本矩阵。
+ * `ojm info`（设计文档 §1 / US-7，P7.11）：一键输出报障所需的版本矩阵。
  *
  * 模块开发者怀疑 runtime 有 bug 时，把本命令输出直接粘贴给框架团队即可
  * 复现环境——代替「拿不到框架源码」的自行翻查（O4 已定：包内不发源码/map）。
@@ -100,7 +100,7 @@ export async function printInfo(projectRoot: string, oj: OjObservability = realO
 		hostVersions = readHostVersions(shellDist);
 	}
 	catch {
-		console.warn("[ram] 未找到 cli 内置宿主（shell-dist），共享依赖版本矩阵不可得");
+		console.warn("[ojm] 未找到 cli 内置宿主（shell-dist），共享依赖版本矩阵不可得");
 	}
 
 	let moduleLines = "（modules.config.ts 加载失败或无模块）";
@@ -123,7 +123,7 @@ export async function printInfo(projectRoot: string, oj: OjObservability = realO
 	const configPath = path.join(projectRoot, "api/config.yaml");
 	const ojBin = path.join(projectRoot, "bin/oj");
 	if (fs.existsSync(configPath) || fs.existsSync(ojBin)) {
-		// 安装标记（ram vendor/init 下载时写入）；bin/oj 存在但无标记 → 未知
+		// 安装标记（ojm vendor/init 下载时写入）；bin/oj 存在但无标记 → 未知
 		const markerVersion = readLocalVersion(path.join(projectRoot, "bin"));
 		const siteVersion = oj.ojVersion() ?? `${ojBin} 无法探测（缺失或不可执行）`;
 		const readConfig = (field: string) => {
@@ -140,24 +140,24 @@ export async function printInfo(projectRoot: string, oj: OjObservability = realO
 		const health = await oj.ojHealth().catch(() => null);
 		const certLine = health
 			? `证书状态:  ${health.certificate_status ?? "unknown"}（到期 ${health.certificate_expiry ?? "unknown"}）`
-			: "证书状态:  无法探测（服务未运行时属正常；ram dev/preview 起服后可测）";
+			: "证书状态:  无法探测（服务未运行时属正常；ojm dev/preview 起服后可测）";
 
 		const markerShort = markerVersion?.replace(/^v/, "");
 		const drift = markerShort && siteVersion.includes(markerShort)
 			? ""
 			: markerShort
-				? `\n  [!] 现场版本与安装标记（${markerVersion}）不一致，请核对（ram vendor --force 重装）`
+				? `\n  [!] 现场版本与安装标记（${markerVersion}）不一致，请核对（ojm vendor --force 重装）`
 				: "";
 		backendBlock = `
 后端（oj）:
-  安装标记:  ${markerVersion ?? "未知（缺 bin/.oj-version，ram vendor 重装）"}
+  安装标记:  ${markerVersion ?? "未知（缺 bin/.oj-version，ojm vendor 重装）"}
   现场版本:  ${siteVersion}${drift}
   端口/base: ${port} / ${base}（api/config.yaml）
   ${certLine}
 `;
 	}
 
-	console.log(`ram info（报障请完整粘贴以下输出）
+	console.log(`ojm info（报障请完整粘贴以下输出）
 ================================
 cli:     ${cliVersion}
 runtime: ${runtimeVersion}（本地安装）
@@ -171,10 +171,10 @@ ${moduleLines}${backendBlock}
 `);
 }
 
-/** `ram merge`（R12 接线，P7.15）：合并多份 modules.json，同名模块显式拒绝 */
+/** `ojm merge`（R12 接线，P7.15）：合并多份 modules.json，同名模块显式拒绝 */
 export async function mergeManifests(outFile: string, inputs: string[]): Promise<void> {
 	if (!outFile || inputs.length === 0)
-		throw new Error("用法：ram merge <out.json> <in1.json> [in2.json ...]（至少一份输入清单）");
+		throw new Error("用法：ojm merge <out.json> <in1.json> [in2.json ...]（至少一份输入清单）");
 
 	const sources = inputs.map(file => ({
 		source: file,
@@ -183,5 +183,5 @@ export async function mergeManifests(outFile: string, inputs: string[]): Promise
 	const merged = mergeModuleManifests(sources);
 	fs.mkdirSync(path.dirname(outFile), { recursive: true });
 	fs.writeFileSync(outFile, `${JSON.stringify(merged, null, 2)}\n`);
-	console.log(`[ram] 已合并 ${inputs.length} 份清单（${merged.length} 个模块）→ ${outFile}`);
+	console.log(`[ojm] 已合并 ${inputs.length} 份清单（${merged.length} 个模块）→ ${outFile}`);
 }

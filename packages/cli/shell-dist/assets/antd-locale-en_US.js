@@ -361,14 +361,14 @@ var require_en_US7 = __commonJS({
   }
 });
 
-// shell/.ram-shim-antd-locale-en_US.mjs
-var ram_shim_antd_locale_en_US_exports = {};
-__export(ram_shim_antd_locale_en_US_exports, {
-  default: () => ram_shim_antd_locale_en_US_default
+// shell/.ojm-shim-antd-locale-en_US.mjs
+var ojm_shim_antd_locale_en_US_exports = {};
+__export(ojm_shim_antd_locale_en_US_exports, {
+  default: () => ojm_shim_antd_locale_en_US_default
 });
 var __ns = __toESM(require_en_US7(), 1);
-__reExport(ram_shim_antd_locale_en_US_exports, __toESM(require_en_US7(), 1));
-var ram_shim_antd_locale_en_US_default = __ns.default ?? __ns;
+__reExport(ojm_shim_antd_locale_en_US_exports, __toESM(require_en_US7(), 1));
+var ojm_shim_antd_locale_en_US_default = __ns.default ?? __ns;
 export {
-  ram_shim_antd_locale_en_US_default as default
+  ojm_shim_antd_locale_en_US_default as default
 };

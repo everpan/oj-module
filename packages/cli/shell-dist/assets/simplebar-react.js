@@ -1112,8 +1112,8 @@ var SimpleBar = React.forwardRef(function(_a, ref) {
 });
 SimpleBar.displayName = "SimpleBar";
 
-// shell/.ram-shim-simplebar-react.mjs
-var ram_shim_simplebar_react_default = SimpleBar ?? dist_exports;
+// shell/.ojm-shim-simplebar-react.mjs
+var ojm_shim_simplebar_react_default = SimpleBar ?? dist_exports;
 export {
-  ram_shim_simplebar_react_default as default
+  ojm_shim_simplebar_react_default as default
 };

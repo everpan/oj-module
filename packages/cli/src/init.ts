@@ -1,5 +1,5 @@
 /**
- * `ram init` —— 前后端一体化工程脚手架（设计 §3，D1/D3/D6/D10）。
+ * `ojm init` —— 前后端一体化工程脚手架（设计 §3，D1/D3/D6/D10）。
  *
  * 产物：api/（oj 后端 + 现场签发证书 + seed）、modules/src/（前端模块）、
  * bin/（从 everpan/only-js 最新 release 联网下载：oj + plugins + devkit）、
@@ -35,7 +35,7 @@ export async function initProject(destDir: string, opts: InitOptions = {}): Prom
 	const existing = fs.readdirSync(destDir);
 	if (existing.length > 0 && !opts.yes) {
 		throw new Error(
-			`[ram] 目标目录非空（${destDir}）。\n`
+			`[ojm] 目标目录非空（${destDir}）。\n`
 			+ "init 只做幂等补缺、不会覆盖已有文件；确认继续请加 --yes。",
 		);
 	}
@@ -116,11 +116,11 @@ export async function initProject(destDir: string, opts: InitOptions = {}): Prom
 	// 的「已存在即跳过」会把审批挡在门外（0.1.0 发布实测）——必须合并
 	ensureAllowBuilds(destDir, report);
 
-	console.log(`[ram] init 完成：${destDir}`);
-	console.log(`[ram]   新增 ${report.created.length} 项，跳过（已存在）${report.skipped.length} 项`);
+	console.log(`[ojm] init 完成：${destDir}`);
+	console.log(`[ojm]   新增 ${report.created.length} 项，跳过（已存在）${report.skipped.length} 项`);
 	for (const item of report.skipped)
-		console.log(`[ram]   · 跳过 ${item}`);
-	console.log("[ram] 下一步：pnpm install && pnpm dev（登录 admin / 123456）");
+		console.log(`[ojm]   · 跳过 ${item}`);
+	console.log("[ojm] 下一步：pnpm install && pnpm dev（登录 admin / 123456）");
 }
 
 /** 递归拷贝模板；文本文件做占位符替换；已存在的目标文件一律跳过 */
@@ -225,14 +225,14 @@ function generatePackageJson(cliRoot: string, projectName: string) {
 		const version = hostVersions[name];
 		if (version)
 			return version;
-		console.warn(`[ram] ⚠️ ${name} 未在宿主 versions.json 中，模板回退 "*"（安装后请手动钉版本）`);
+		console.warn(`[ojm] ⚠️ ${name} 未在宿主 versions.json 中，模板回退 "*"（安装后请手动钉版本）`);
 		return "*";
 	};
 
 	const devDeps: Record<string, string> = {
 		"@oj-module/cli": cliPkg.version,
 		// runtime 必须显式声明：uni-dev 工程的 contract.ts 与生成 client 直接 import
-		// `@oj-module/runtime/contract[/errors]`，`ram api` 在 Node 侧求值契约时
+		// `@oj-module/runtime/contract[/errors]`，`ojm api` 在 Node 侧求值契约时
 		// 需从工程 node_modules 解析真实现（evaluateContract 把裸说明符 external）。
 		"@oj-module/runtime": pin("@oj-module/runtime"),
 		"@ant-design/icons": pin("@ant-design/icons"),
@@ -253,7 +253,7 @@ function generatePackageJson(cliRoot: string, projectName: string) {
 	const unpinned = Object.entries(devDeps).filter(([, v]) => v === "*");
 	if (unpinned.length > 0) {
 		console.warn(
-			`[ram] ⚠️ 以下依赖未在宿主 versions.json 中，请安装后手动钉版本：${unpinned.map(([n]) => n).join(", ")}`,
+			`[ojm] ⚠️ 以下依赖未在宿主 versions.json 中，请安装后手动钉版本：${unpinned.map(([n]) => n).join(", ")}`,
 		);
 	}
 
@@ -262,10 +262,10 @@ function generatePackageJson(cliRoot: string, projectName: string) {
 		type: "module",
 		private: true,
 		scripts: {
-			dev: "ram dev",
-			build: "ram build",
-			preview: "ram preview",
-			info: "ram info",
+			dev: "ojm dev",
+			build: "ojm build",
+			preview: "ojm preview",
+			info: "ojm info",
 			typecheck: "tsc --noEmit -p tsconfig.json",
 		},
 		devDependencies: devDeps,

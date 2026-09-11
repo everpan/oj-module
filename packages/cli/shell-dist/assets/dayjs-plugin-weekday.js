@@ -50,14 +50,14 @@ var require_weekday = __commonJS({
   }
 });
 
-// shell/.ram-shim-dayjs-plugin-weekday.mjs
-var ram_shim_dayjs_plugin_weekday_exports = {};
-__export(ram_shim_dayjs_plugin_weekday_exports, {
-  default: () => ram_shim_dayjs_plugin_weekday_default
+// shell/.ojm-shim-dayjs-plugin-weekday.mjs
+var ojm_shim_dayjs_plugin_weekday_exports = {};
+__export(ojm_shim_dayjs_plugin_weekday_exports, {
+  default: () => ojm_shim_dayjs_plugin_weekday_default
 });
 var __ns = __toESM(require_weekday(), 1);
-__reExport(ram_shim_dayjs_plugin_weekday_exports, __toESM(require_weekday(), 1));
-var ram_shim_dayjs_plugin_weekday_default = __ns.default ?? __ns;
+__reExport(ojm_shim_dayjs_plugin_weekday_exports, __toESM(require_weekday(), 1));
+var ojm_shim_dayjs_plugin_weekday_default = __ns.default ?? __ns;
 export {
-  ram_shim_dayjs_plugin_weekday_default as default
+  ojm_shim_dayjs_plugin_weekday_default as default
 };

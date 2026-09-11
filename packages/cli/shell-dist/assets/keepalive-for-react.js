@@ -268,11 +268,11 @@ var ct = (e) => {
 var st = ct;
 var Ir = le;
 
-// shell/.ram-shim-keepalive-for-react.mjs
-var ram_shim_keepalive_for_react_default = void 0 ?? dist_exports;
+// shell/.ojm-shim-keepalive-for-react.mjs
+var ojm_shim_keepalive_for_react_default = void 0 ?? dist_exports;
 export {
   je as KeepAlive,
-  ram_shim_keepalive_for_react_default as default,
+  ojm_shim_keepalive_for_react_default as default,
   We as useEffectOnActive,
   ot as useEffectOnCreate,
   b as useKeepAliveContext,

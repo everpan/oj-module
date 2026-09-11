@@ -697,8 +697,8 @@ var EChartsReact = (
 );
 var esm_default = EChartsReact;
 
-// shell/.ram-shim-echarts-for-react.mjs
-var ram_shim_echarts_for_react_default = esm_default ?? esm_exports;
+// shell/.ojm-shim-echarts-for-react.mjs
+var ojm_shim_echarts_for_react_default = esm_default ?? esm_exports;
 export {
-  ram_shim_echarts_for_react_default as default
+  ojm_shim_echarts_for_react_default as default
 };

@@ -256,7 +256,7 @@ export async function loadAll(manifest: Manifest): Promise<ModuleInstance[]> {
 	/**
 	 * 模块路由与宿主用户体系解耦（模块独立运行方案）：模块经清单信任校验后
 	 * 即注册进 access store，使菜单/路由表在「无后端鉴权」场景（playground /
-	 * ram dev）下立即可用，无需等待后端 userInfo。模块是受信 bundle（P5.5/O5），
+	 * ojm dev）下立即可用，无需等待后端 userInfo。模块是受信 bundle（P5.5/O5），
 	 * 默认可访问。对完整应用：模块路由由「加载完成」前置到注册，不再依赖登录
 	 * 后才注入；生产自身路由仍由 AuthGuard 走原鉴权流程，不受影响。
 	 */
@@ -299,7 +299,7 @@ export function getRoutes(): AppRouteRecordRaw[] {
 	}
 	// 菜单选中态依赖 useMatches 的 match.id（=path）。在出口统一补 id，
 	// host.tsx 等不经 auth-guard 的链路也能拿到（此前仅 auth-guard 补，
-	// 导致 ram dev 下菜单无高亮）；auth-guard 重复调用是幂等的。
+	// 导致 ojm dev 下菜单无高亮）；auth-guard 重复调用是幂等的。
 	return addRouteIdByPath(routes);
 }
 

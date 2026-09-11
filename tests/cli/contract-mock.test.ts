@@ -125,7 +125,7 @@ describe("resolveMock（手写优先，契约兜底）", () => {
 
 describe("loadContractMocks（dev 启动装载）", () => {
 	it("从契约求值出 mock 路由表（跳过 raw 端点）", async () => {
-		const dir = mkdtempSync(join(process.cwd(), "node_modules/.cache/ram-mock-test-"));
+		const dir = mkdtempSync(join(process.cwd(), "node_modules/.cache/ojm-mock-test-"));
 		tmpDirs.push(dir);
 		mkdirSync(join(dir, "modules/src/demo/api"), { recursive: true });
 		writeFileSync(join(dir, "modules/src/demo/api/contract.ts"), `

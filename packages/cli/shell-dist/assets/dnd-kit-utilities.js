@@ -308,13 +308,13 @@ function findFirstFocusableNode(element) {
   return element.querySelector(SELECTOR);
 }
 
-// shell/.ram-shim-dnd-kit-utilities.mjs
-var ram_shim_dnd_kit_utilities_default = void 0 ?? utilities_esm_exports;
+// shell/.ojm-shim-dnd-kit-utilities.mjs
+var ojm_shim_dnd_kit_utilities_default = void 0 ?? utilities_esm_exports;
 export {
   CSS,
   add,
   canUseDOM,
-  ram_shim_dnd_kit_utilities_default as default,
+  ojm_shim_dnd_kit_utilities_default as default,
   findFirstFocusableNode,
   getEventCoordinates,
   getOwnerDocument,

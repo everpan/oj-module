@@ -42,12 +42,12 @@ describe("usage 契约", () => {
 	it("包含全部六条子命令行", () => {
 		const text = usageText();
 		for (const cmd of ["init", "dev", "build", "preview", "info", "merge"]) {
-			expect(text).toMatch(new RegExp(`ram ${cmd}`));
+			expect(text).toMatch(new RegExp(`ojm ${cmd}`));
 		}
 	});
 });
 
-describe("ram info 后端段（桩注入）", () => {
+describe("ojm info 后端段（桩注入）", () => {
 	it("版本行 + 证书行 + port/base 齐全", async () => {
 		const root = fs.mkdtempSync(path.join(path.dirname(PROJECT_ROOT), ".tmp-info-fx-"));
 		try {
@@ -105,7 +105,7 @@ describe("ram info 后端段（桩注入）", () => {
 		}
 	});
 
-	it("安装标记与现场版本不一致 → drift 告警（ram vendor --force 提示）", async () => {
+	it("安装标记与现场版本不一致 → drift 告警（ojm vendor --force 提示）", async () => {
 		const root = fs.mkdtempSync(path.join(path.dirname(PROJECT_ROOT), ".tmp-info-fx-"));
 		try {
 			fs.mkdirSync(path.join(root, "bin"), { recursive: true });
@@ -130,7 +130,7 @@ describe("ram info 后端段（桩注入）", () => {
 			fs.writeFileSync(path.join(root, "bin/oj"), "not-executable");
 
 			// 不注入桩：走 realOjObservability，ojHealth 内部读 config 会 ENOENT——
-			// 同步 throw 不得穿透 .catch 让 ram info 崩掉
+			// 同步 throw 不得穿透 .catch 让 ojm info 崩掉
 			await expect(printInfo(root)).resolves.toBeUndefined();
 
 			const out = logs.join("\n");

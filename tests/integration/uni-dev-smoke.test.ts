@@ -12,14 +12,14 @@ import { PROJECT_ROOT } from "../helpers/paths";
  * P6 Task 10：uni-dev 全链真二进制冒烟（设计 §9 首跑登录闭环 + §6 preview）。
  *
  * init → dev（真 oj）→ POST /api/auth/login（admin/123456）→ user-info →
- * 收尾 → build → preview（migrate → oj release/js + ram 静态兜底）→
+ * 收尾 → build → preview（migrate → oj release/js + ojm 静态兜底）→
  * GET / 200 → 带 token /api/web/hello 200 → 收尾。
  *
  * 依赖本仓 vendor tarball 与 shell dist，CI 无产物环境跳过；
  * 端口 9778 被残留实例占用时直接失败并提示（不静默换端）。
  */
 
-const RAM = path.join(PROJECT_ROOT, "packages/cli/bin/ram.mjs");
+const OJM = path.join(PROJECT_ROOT, "packages/cli/bin/ojm.mjs");
 const ojBusy = await new Promise<boolean>((resolve) => {
 	const req = http.get({ host: "127.0.0.1", port: 9778, path: "/api/health", timeout: 500 }, (res) => {
 		res.resume();
@@ -33,7 +33,7 @@ const ojBusy = await new Promise<boolean>((resolve) => {
 });
 
 describe.skipIf(process.env.CI || ojBusy)("uni-dev e2e 冒烟（真二进制）", () => {
-	const root = fs.mkdtempSync(path.join(os.tmpdir(), "ram-smoke-"));
+	const root = fs.mkdtempSync(path.join(os.tmpdir(), "ojm-smoke-"));
 	const procs: ChildProcess[] = [];
 
 	afterAll(() => {
@@ -51,7 +51,7 @@ describe.skipIf(process.env.CI || ojBusy)("uni-dev e2e 冒烟（真二进制）"
 		catch {
 			return;
 		}
-		// 3s 还不退就 SIGKILL（bin/ram.mjs 转发信号给内层，正常 1.5s 内退出）
+		// 3s 还不退就 SIGKILL（bin/ojm.mjs 转发信号给内层，正常 1.5s 内退出）
 		setTimeout(() => {
 			try {
 				process.kill(-proc.pid!, "SIGKILL");
@@ -63,7 +63,7 @@ describe.skipIf(process.env.CI || ojBusy)("uni-dev e2e 冒烟（真二进制）"
 	}
 
 	function runRam(args: string[], timeout = 240_000): string {
-		return execFileSync(process.execPath, [RAM, ...args], {
+		return execFileSync(process.execPath, [OJM, ...args], {
 			cwd: root,
 			timeout,
 			stdio: "pipe",
@@ -71,7 +71,7 @@ describe.skipIf(process.env.CI || ojBusy)("uni-dev e2e 冒烟（真二进制）"
 	}
 
 	function startRam(args: string[]): { proc: ChildProcess, port: () => Promise<number> } {
-		const proc = spawn(process.execPath, [RAM, ...args], {
+		const proc = spawn(process.execPath, [OJM, ...args], {
 			cwd: root,
 			detached: true,
 			stdio: ["ignore", "pipe", "pipe"],
@@ -127,14 +127,14 @@ describe.skipIf(process.env.CI || ojBusy)("uni-dev e2e 冒烟（真二进制）"
 
 	it("init：全栈工程落盘", () => {
 		const out = runRam(["init", "--yes"]);
-		expect(out).not.toMatch(/\[ram\].*失败/);
+		expect(out).not.toMatch(/\[ojm\].*失败/);
 		expect(fs.existsSync(path.join(root, "bin/oj"))).toBe(true);
 		expect(fs.existsSync(path.join(root, "api/config.yaml"))).toBe(true);
 		expect(fs.existsSync(path.join(root, "api/config/cert.jws"))).toBe(true);
 	}, 240_000);
 
 	it("dev：登录链经反代全通（首跑闭环）", async () => {
-		// P1：宿主产物并入 cli，ram dev 从 cli 包内 shell-dist 取宿主——
+		// P1：宿主产物并入 cli，ojm dev 从 cli 包内 shell-dist 取宿主——
 		// 工程 node_modules 不再需要 shell 包，冒烟无需任何 symlink 模拟安装
 		const { proc, port } = startRam(["dev"]);
 		const devPort = await port();

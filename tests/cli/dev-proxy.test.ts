@@ -9,7 +9,7 @@ import { createReloadHub, proxyApi, sseScript } from "../../packages/cli/src/dev
  *  - 反代：method/自定义头/body/查询串保真，状态与响应头透传，
  *    hop-by-hop 头剥离（含 connection 命名头），Host 改写为上游
  *  - 上游拒连 → 502 JSON（人话信封），不是连接挂死
- *  - SSE：外链 /__ram_reload.js + 同源 EventSource（shell CSP 无 nonce 可用），
+ *  - SSE：外链 /__ojm_reload.js + 同源 EventSource（shell CSP 无 nonce 可用），
  *    connect 即收 retry: 与心跳，broadcast 广播 event: reload
  */
 
@@ -119,7 +119,7 @@ describe("createReloadHub SSE 刷新通道", () => {
 
 		const open = () => {
 			const chunks: string[] = [];
-			const req = http.request({ host: "127.0.0.1", port, path: "/__ram_reload" }, (res) => {
+			const req = http.request({ host: "127.0.0.1", port, path: "/__ojm_reload" }, (res) => {
 				res.setEncoding("utf-8");
 				res.on("data", chunk => chunks.push(chunk));
 			});
@@ -147,9 +147,9 @@ describe("createReloadHub SSE 刷新通道", () => {
 });
 
 describe("sseScript 外链脚本", () => {
-	it("引用同源 /__ram_reload，收 reload 事件刷新页面；是纯 JS 无内联 HTML（不依赖 CSP nonce）", () => {
+	it("引用同源 /__ojm_reload，收 reload 事件刷新页面；是纯 JS 无内联 HTML（不依赖 CSP nonce）", () => {
 		const script = sseScript();
-		expect(script).toContain("new EventSource(\"/__ram_reload\")");
+		expect(script).toContain("new EventSource(\"/__ojm_reload\")");
 		expect(script).toContain("reload");
 		expect(script).not.toContain("<script");
 	});

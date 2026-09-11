@@ -84,7 +84,7 @@ const VALID_ID = /^[A-Z_$][\w$]*$/i;
  */
 function makeExternalShared(currentPkg: string): import("esbuild").Plugin {
 	return {
-		name: "ram-external-shared",
+		name: "ojm-external-shared",
 		setup(b) {
 			b.onResolve({ filter: /.*/ }, (args) => {
 				if (isSharedDep(args.path) && args.path !== currentPkg)
@@ -97,7 +97,7 @@ function makeExternalShared(currentPkg: string): import("esbuild").Plugin {
 
 /** 把一份入口 shim 打成自包含 ESM 资产 */
 async function bundleShim(name: string, pkg: string, shim: string, banner?: string) {
-	const shimPath = resolve(shellDir, `.ram-shim-${name}.mjs`);
+	const shimPath = resolve(shellDir, `.ojm-shim-${name}.mjs`);
 	writeFileSync(shimPath, shim);
 	try {
 		await esbuild({
@@ -226,7 +226,7 @@ function starShim(pkg: string): string {
 
 /**
  * 共享样式依赖（如 `nprogress/nprogress.css`）：生成一段自执行的 JS 垫片，
- * 把 CSS 文本包进 <style> 注入 <head>（用 data-ram-css 标记去重，避免重复注入）。
+ * 把 CSS 文本包进 <style> 注入 <head>（用 data-ojm-css 标记去重，避免重复注入）。
  * 该垫片经 importmap 解析（`nprogress/nprogress.css` → /assets/nprogress-css.js），
  * 因此宿主/模块侧 `import "nprogress/nprogress.css"` 这类副作用导入即可生效。
  */
@@ -237,9 +237,9 @@ async function buildCssEntry(entry: { name: string, pkg: string }) {
 	const css = readFileSync(cssPath, "utf-8");
 	const shim = [
 		`const __css = ${JSON.stringify(css)};\n`,
-		`if (!document.querySelector('style[data-ram-css=${JSON.stringify(entry.pkg)}]')) {\n`,
+		`if (!document.querySelector('style[data-ojm-css=${JSON.stringify(entry.pkg)}]')) {\n`,
 		"  const __s = document.createElement(\"style\");\n",
-		`  __s.setAttribute("data-ram-css", ${JSON.stringify(entry.pkg)});\n`,
+		`  __s.setAttribute("data-ojm-css", ${JSON.stringify(entry.pkg)});\n`,
 		"  __s.textContent = __css;\n",
 		"  document.head.appendChild(__s);\n",
 		"}\n",
@@ -322,9 +322,9 @@ const SUBPATH_PARENT_REEXPORTS = new Set([
 /** 捕获三种裸导入形式：from "…" / import("…") / 副作用 import "…" */
 const BARE_IMPORT_RE = /\bimport\s*\(\s*["']([^"']+)["']\s*\)|\bfrom\s+["']([^"']+)["']|\bimport\s+["']([^"']+)["']/g;
 
-/** 自动生成的子路径资产名统一加 ram- 前缀，避免与 SHARED_DEPS 显式资产名冲突 */
+/** 自动生成的子路径资产名统一加 ojm- 前缀，避免与 SHARED_DEPS 显式资产名冲突 */
 function subpathAssetName(spec: string): string {
-	return `ram-${spec.replace(/[^a-z0-9]+/gi, "-")}`;
+	return `ojm-${spec.replace(/[^a-z0-9]+/gi, "-")}`;
 }
 
 /** 为单个非父包透传的子路径构建独立 ESM（或 CSS）共享资产 */
@@ -335,7 +335,7 @@ async function buildSubpathAsset(spec: string) {
 		return;
 	}
 	const shim = starShim(spec);
-	const shimPath = resolve(shellDir, `.ram-shim-${name}.mjs`);
+	const shimPath = resolve(shellDir, `.ojm-shim-${name}.mjs`);
 	writeFileSync(shimPath, shim);
 	try {
 		await esbuild({
@@ -381,7 +381,7 @@ async function buildAntdSubpathAsset(spec: string) {
 		`const __d = __antd[${JSON.stringify(Cap)}] ?? __antd[${JSON.stringify(last)}] ?? __antd.default;\n`,
 		"export default __d;\n",
 	].join("");
-	const shimPath = resolve(shellDir, `.ram-shim-${name}.mjs`);
+	const shimPath = resolve(shellDir, `.ojm-shim-${name}.mjs`);
 	writeFileSync(shimPath, shim);
 	try {
 		await esbuild({
@@ -425,7 +425,7 @@ async function buildIconsSubpathAsset(spec: string) {
 		`const __d = __icons[${JSON.stringify(last)}] ?? __icons.default;\n`,
 		"export default __d;\n",
 	].join("");
-	const shimPath = resolve(shellDir, `.ram-shim-${name}.mjs`);
+	const shimPath = resolve(shellDir, `.ojm-shim-${name}.mjs`);
 	writeFileSync(shimPath, shim);
 	try {
 		await esbuild({

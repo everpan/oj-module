@@ -9,7 +9,7 @@ import { mintDevCert } from "../../packages/cli/src/oj-cert";
 /**
  * D6 / PR0：oj dev 证书现场签发工具。
  *
- * oj 证书无任何绕过开关（devkit 手册 §10），三件套必须在 `ram init` 时
+ * oj 证书无任何绕过开关（devkit 手册 §10），三件套必须在 `ojm init` 时
  * 按工程现场生成：私钥不随 npm 分发、不跨工程共享密钥对。
  * 这里锁三件事：JWS 结构（RS256 紧凑三段 + exp/nbf）、PEM 格式、签名可验。
  */

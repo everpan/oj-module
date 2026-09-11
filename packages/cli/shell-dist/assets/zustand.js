@@ -19,14 +19,14 @@ __reExport(esm_exports, react_star);
 import * as vanilla_star from "zustand/vanilla";
 import * as react_star from "zustand/react";
 
-// shell/.ram-shim-zustand.mjs
+// shell/.ojm-shim-zustand.mjs
 var create2 = esm_exports["create"];
 var createStore2 = esm_exports["createStore"];
 var useStore2 = esm_exports["useStore"];
-var ram_shim_zustand_default = esm_exports.default ?? esm_exports;
+var ojm_shim_zustand_default = esm_exports.default ?? esm_exports;
 export {
   create2 as create,
   createStore2 as createStore,
-  ram_shim_zustand_default as default,
+  ojm_shim_zustand_default as default,
   useStore2 as useStore
 };

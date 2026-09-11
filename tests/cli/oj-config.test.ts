@@ -5,8 +5,8 @@ import { describe, expect, it } from "vitest";
 import { readOjApiPrefix, readOjPort, readOjServerField } from "../../packages/cli/src/oj-config";
 
 /**
- * 设计 §4：ram 用正则从 api/config.yaml 读 server 段字段（不为 YAML 解析
- * 引依赖）。config 由 ram init 生成，miss 即被手改——直接报错而非静默回落
+ * 设计 §4：ojm 用正则从 api/config.yaml 读 server 段字段（不为 YAML 解析
+ * 引依赖）。config 由 ojm init 生成，miss 即被手改——直接报错而非静默回落
  * （oj 代码默认 9778，静默回落只会与实际监听端口错位，审阅记录二）。
  */
 describe("readOjPort", () => {

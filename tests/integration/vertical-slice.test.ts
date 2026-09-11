@@ -5,10 +5,10 @@
  *  1. shell 预构建产物含手写 importmap，且覆盖全部硬共享依赖；
  *  2. 宿主 host chunk 与 demo 模块的所有共享裸说明符都能经 importmap 解析；
  *  3. 单例必要条件：宿主与模块对 react / @oj-module/runtime 等命中同一 URL；
- *  4. ram build 产物：modules.json 字段完整、integrity 与文件一致、无 blob/data import、
+ *  4. ojm build 产物：modules.json 字段完整、integrity 与文件一致、无 blob/data import、
  *     模块内无共享依赖实现代码（react 未被打进模块）。
  *
- * 运行前若产物不存在会自动构建（shell 预构建 + playground ram build）。
+ * 运行前若产物不存在会自动构建（shell 预构建 + playground ojm build）。
  */
 
 import { execFileSync } from "node:child_process";
@@ -180,7 +180,7 @@ describe("p1 垂直切片：importmap 与单例", () => {
 	});
 });
 
-describe("p1 垂直切片：ram build 产物契约", () => {
+describe("p1 垂直切片：ojm build 产物契约", () => {
 	beforeAll(async () => {
 		await resolvePlayground();
 	});

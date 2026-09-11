@@ -295,16 +295,16 @@ var require_nprogress = __commonJS({
   }
 });
 
-// shell/.ram-shim-nprogress.mjs
-var ram_shim_nprogress_exports = {};
-__export(ram_shim_nprogress_exports, {
-  default: () => ram_shim_nprogress_default
+// shell/.ojm-shim-nprogress.mjs
+var ojm_shim_nprogress_exports = {};
+__export(ojm_shim_nprogress_exports, {
+  default: () => ojm_shim_nprogress_default
 });
 var __ns = __toESM(require_nprogress(), 1);
-__reExport(ram_shim_nprogress_exports, __toESM(require_nprogress(), 1));
-var ram_shim_nprogress_default = __ns.default ?? __ns;
+__reExport(ojm_shim_nprogress_exports, __toESM(require_nprogress(), 1));
+var ojm_shim_nprogress_default = __ns.default ?? __ns;
 export {
-  ram_shim_nprogress_default as default
+  ojm_shim_nprogress_default as default
 };
 /*! Bundled license information:
 

@@ -106777,8 +106777,8 @@ if (false) {
   false ? warning_default2(majorVersion >= 18, "version", `antd v6 no longer supports React versions below 18. Please upgrade to React 18 or higher.`) : void 0;
 }
 
-// shell/.ram-shim-antd.mjs
-var ram_shim_antd_default = void 0 ?? es_exports;
+// shell/.ojm-shim-antd.mjs
+var ojm_shim_antd_default = void 0 ?? es_exports;
 export {
   affix_default as Affix,
   alert_default as Alert,
@@ -106852,7 +106852,7 @@ export {
   typography_default as Typography,
   upload_default as Upload,
   watermark_default as Watermark,
-  ram_shim_antd_default as default,
+  ojm_shim_antd_default as default,
   message_default as message,
   notification_default2 as notification,
   theme_default3 as theme,

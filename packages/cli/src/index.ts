@@ -55,33 +55,34 @@ async function main() {
 			const { dir, check, docs, exempt } = parseApiArgs(process.argv.slice(3));
 			// S5：显式目录必须先存在——否则静默在错的目录下生成/对账
 			if (dir && !fs.existsSync(path.resolve(dir)))
-				throw new Error(`[ram-api] 项目目录不存在：${dir}`);
+				throw new Error(`[ojm-api] 项目目录不存在：${dir}`);
 			const apiRoot = dir ? path.resolve(dir) : projectRoot;
 			if (docs) {
 				const { runApiDocs } = await import("./contract/run");
 				const out = await runApiDocs(apiRoot);
-				console.log(`[ram-api] 文档站已生成：${path.relative(projectRoot, out)}（浏览器直接打开即可）`);
+				console.log(`[ojm-api] 文档站已生成：${path.relative(projectRoot, out)}（浏览器直接打开即可）`);
 				break;
 			}
 			if (check) {
 				const { checkApi } = await import("./contract/check");
-				// --exempt <path>：相对路径按项目根解析；缺省回退 api/.ram-api-exempt.json
+				// --exempt <path>：相对路径按项目根解析；缺省回退 api/.ojm-api-exempt.json
+				// （旧名 api/.ram-api-exempt.json 仍被读取，R4）
 				const { violations, hints } = await checkApi({ cwd: apiRoot, exempt: exempt ? path.resolve(projectRoot, exempt) : undefined });
 				for (const v of violations)
 					console[v.level === "error" ? "error" : "warn"](`${v.level === "error" ? "✗" : "⚠"} ${v.message}`);
 				for (const h of hints)
 					console.log(h);
 				if (violations.length === 0)
-					console.log("[ram-api] --check 通过：生成物同步、route 双向对账、routes.js 均无 drift。");
+					console.log("[ojm-api] --check 通过：生成物同步、route 双向对账、routes.js 均无 drift。");
 				const errors = violations.filter(v => v.level === "error").length;
-				console.log(`[ram-api] --check 结果：${errors} error / ${violations.length - errors} warn`);
+				console.log(`[ojm-api] --check 结果：${errors} error / ${violations.length - errors} warn`);
 				if (errors > 0)
 					process.exit(1);
 				break;
 			}
 			const { runApi } = await import("./contract/run");
 			const result = await runApi({ cwd: apiRoot });
-			console.log(`[ram-api] 契约 ${result.contracts} 份；写入 ${result.written.length} 个文件，跳过（未变）${result.skipped.length} 个；stub 新建 ${result.stubs.created} / 更新 ${result.stubs.updated} / 跳过 ${result.stubs.skipped}`);
+			console.log(`[ojm-api] 契约 ${result.contracts} 份；写入 ${result.written.length} 个文件，跳过（未变）${result.skipped.length} 个；stub 新建 ${result.stubs.created} / 更新 ${result.stubs.updated} / 跳过 ${result.stubs.skipped}`);
 			for (const p of result.written)
 				console.log(`  + ${path.relative(apiRoot, p)}`);
 			break;
@@ -95,7 +96,8 @@ async function main() {
 }
 
 main().catch((error: unknown) => {
-	// Error 的 message 已是人话（含修复指引）；堆栈默认是噪音，RAM_DEBUG=1 才输出
-	console.error(`[ram] ${error instanceof Error ? (process.env.RAM_DEBUG ? error.stack : error.message) : String(error)}`);
+	// Error 的 message 已是人话（含修复指引）；堆栈默认是噪音，OJM_DEBUG=1 才输出
+	// （旧名 RAM_DEBUG 一并读，兼容既有排障习惯）
+	console.error(`[ojm] ${error instanceof Error ? ((process.env.OJM_DEBUG ?? process.env.RAM_DEBUG) ? error.stack : error.message) : String(error)}`);
 	process.exit(1);
 });

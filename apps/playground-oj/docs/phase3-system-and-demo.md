@@ -8,12 +8,12 @@
 
 | 步骤 | 动作 | 关键产物 | 验证 |
 |---|---|---|---|
-| P3-1a | 契约 `menuItem` 扩到 18 字段（对齐 `MenuItemType`），`menuType` 改 `0\|1\|2\|3` 联合 | `api/src/system/contract.ts` + `ram api` 重生 `client.*` | `ram api --check` 绿 |
+| P3-1a | 契约 `menuItem` 扩到 18 字段（对齐 `MenuItemType`），`menuType` 改 `0\|1\|2\|3` 联合 | `api/src/system/contract.ts` + `ojm api` 重生 `client.*` | `ojm api --check` 绿 |
 | P3-1b | `menus` 表扩列：`type`→`menu_type`（0 菜单/1 目录）+ UI 列；同步 `schema.yaml`/`seed.sql`/`get-async-routes` | `migrations/0001`、`schema.yaml`、`seed.sql`、`api/src/web/get-async-routes/api.ts` | `oj migrate` 建表；seed 落库 |
 | P3-1c | 实现 6 个 handler：role-list（分页过滤）/role-item（增改删+绑菜单）/role-menu（扁平全字段）/menu-by-role-id/ menu-list / menu-item（增改删） | `api/src/system/{role-list,role-item,role-menu,menu-by-role-id,menu-list,menu-item}/api.ts` | 冒烟逐项 PASS |
 | P3-1d | `entry.ts` `onInit` 用 `bindRequest(ctx.utils.request)` + `ctx.register.systemApi(provider)` 接管系统 API | `modules/src/system/entry.ts` | 消费点经 `getSystemApiProvider` 委托 |
 | P3-1e | 框架对齐：runtime `role` 契约 `menuItem` 扩到 18 字段 + 重建 runtime dist（消除 D9 边界类型差） | `packages/runtime/src/api/system/role/contract.ts` + `packages/runtime/dist/**` | typecheck 通过 |
-| P3-1f | `pnpm typecheck` + `ram api --check` 绿 | — | 0 error / 0 warn |
+| P3-1f | `pnpm typecheck` + `ojm api --check` 绿 | — | 0 error / 0 warn |
 | P3-1g | system CRUD 冒烟（增删改 + 角色绑菜单 + 跨重启持久化） | `scripts/smoke-system.py` | 全 PASS |
 | P3-2a | demo 数据层：manifest 加 `tables:[todos]` + `schema.yaml` + 迁移 + seed | `api/src/demo/{manifest.yaml,schema.yaml,migrations/0001__create_todos.sql,seed.sql}` | `oj migrate` demo:1 |
 | P3-2b | `todos` handler 真实化（keyword 过滤 title，done 映射布尔） | `api/src/demo/todos/api.ts` | 冒烟 PASS |
@@ -29,7 +29,7 @@ system 角色/菜单类端点原本硬编码在 runtime 根级（`/role-list` �
 
 ### 契约扩列（P3-1a）
 
-复制进来的菜单页消费完整 `MenuItemType`（18 字段），故把契约 `menuItem` 从 4 字段扩到 18 字段，并把 `menuType` 设为 `z.union([0,1,2,3])` 以对齐 `MenuItemType.menuType` 的字面量联合类型。改契约后 `ram api` 重生 `modules/src/system/api/client.schemas.ts`，handler 的 DEV 校验随之收紧。
+复制进来的菜单页消费完整 `MenuItemType`（18 字段），故把契约 `menuItem` 从 4 字段扩到 18 字段，并把 `menuType` 设为 `z.union([0,1,2,3])` 以对齐 `MenuItemType.menuType` 的字面量联合类型。改契约后 `ojm api` 重生 `modules/src/system/api/client.schemas.ts`，handler 的 DEV 校验随之收紧。
 
 ### 表扩列（P3-1b）
 
@@ -125,7 +125,7 @@ demo 是 route-only 模块（P2 已建极简 manifest）。P3-2 给它接真实�
 
 - P3-1 六项 system 端点经 D9 接管，CRUD 往返落 `system` 表，角色绑菜单（按 CODE）、跨 `oj` 重启持久化均验证通过。
 - P3-2 demo `todos` 接真实数据层，keyword 过滤 + Bearer 守卫生效；页面因契约稳定**零改动**，印证 uni-dev 契约的价值。
-- `ram api --check` 0 error / 0 warn；`pnpm typecheck` 通过；框架 `role` 契约 `menuItem` 与 `MenuItemType` 完成同构对齐并重建 dist。
+- `ojm api --check` 0 error / 0 warn；`pnpm typecheck` 通过；框架 `role` 契约 `menuItem` 与 `MenuItemType` 完成同构对齐并重建 dist。
 - 至此"模块页面 → runtime 委托入口 → 模块 D9 provider → 契约生成 client → oj 后端"的全链路闭环打通，为 P4 业务模块（notification/upload）复用同一 D9 模式铺路。
 
 ## 反常规 / 反常识点（供 P6 汇总）

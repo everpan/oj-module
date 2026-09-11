@@ -6810,13 +6810,13 @@ function useTheme(options) {
   };
 }
 
-// shell/.ram-shim-ahooks.mjs
-var ram_shim_ahooks_default = void 0 ?? es_exports;
+// shell/.ojm-shim-ahooks.mjs
+var ojm_shim_ahooks_default = void 0 ?? es_exports;
 export {
   clearCache,
   configResponsive,
   createUpdateEffect,
-  ram_shim_ahooks_default as default,
+  ojm_shim_ahooks_default as default,
   useAntdTable_default as useAntdTable,
   useAsyncEffect_default as useAsyncEffect,
   useBoolean,

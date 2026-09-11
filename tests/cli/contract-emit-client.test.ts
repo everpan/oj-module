@@ -61,8 +61,8 @@ const ir = buildIr({
 const runtimeStub: Plugin = {
 	name: "runtime-stub",
 	setup(b) {
-		b.onResolve({ filter: /^@oj-module\/runtime$/ }, () => ({ path: "runtime-stub", namespace: "ram-stub" }));
-		b.onLoad({ filter: /.*/, namespace: "ram-stub" }, () => ({
+		b.onResolve({ filter: /^@oj-module\/runtime$/ }, () => ({ path: "runtime-stub", namespace: "ojm-stub" }));
+		b.onLoad({ filter: /.*/, namespace: "ojm-stub" }, () => ({
 			contents: "export { z } from \"zod\";",
 			resolveDir: join(repoRoot, "packages/runtime"), // 根 package.json 无 zod 直依，从 runtime 包（contract 所在包）解析
 		}));
@@ -71,7 +71,7 @@ const runtimeStub: Plugin = {
 
 /** 生成物落盘到 repo 内临时目录（node_modules/.cache 下，保证 workspace 依赖可解析）→ bundle → import */
 async function bundleClient(files: Record<string, string>, dev: boolean) {
-	const dir = mkdtempSync(join(repoRoot, "node_modules/.cache/ram-client-test-"));
+	const dir = mkdtempSync(join(repoRoot, "node_modules/.cache/ojm-client-test-"));
 	writeFileSync(join(dir, "client.ts"), files["client.ts"]);
 	writeFileSync(join(dir, "client.schemas.ts"), files["client.schemas.ts"]);
 	const outdir = join(dir, "out");
@@ -242,7 +242,7 @@ describe("emitClient（AC-D5/D6/D8/D15）", () => {
 		expect(files["client.schemas.ts"]).toContain("downloadFile");
 		expect(files["client.schemas.ts"]).not.toContain("downloadFile: {\n\t\tdata");
 
-		const dir = mkdtempSync(join(repoRoot, "node_modules/.cache/ram-tsc-test-"));
+		const dir = mkdtempSync(join(repoRoot, "node_modules/.cache/ojm-tsc-test-"));
 		writeFileSync(join(dir, "client.ts"), files["client.ts"]);
 		writeFileSync(join(dir, "client.schemas.ts"), files["client.schemas.ts"]);
 		// 与 apps/playground/typings.d.ts 同款最小 ImportMeta.env 声明（模块工程无 vite 依赖的形态）

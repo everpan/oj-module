@@ -1,5 +1,5 @@
 /* eslint-disable */
-// 生成物：ram api 从契约生成，勿手改（改动请改契约文件后重跑 ram api）
+// 生成物：ojm api 从契约生成，勿手改（改动请改契约文件后重跑 ojm api）
 import { ContractApiError } from "@oj-module/runtime/contract/errors";
 import type { ScopedRequestLike } from "@oj-module/runtime/contract/errors";
 import { request } from "#src/utils/request";

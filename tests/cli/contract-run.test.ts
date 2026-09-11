@@ -4,7 +4,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import { runApi } from "../../packages/cli/src/contract/run";
 
 /**
- * AC-D7：`ram api` 编排（discover → evaluate → IR → 发射 → 幂等写盘）。
+ * AC-D7：`ojm api` 编排（discover → evaluate → IR → 发射 → 幂等写盘）。
  * 端到端夹具：tmp 工程（node_modules/.cache 下，workspace 依赖可解析）
  * 各含一份 uni-dev 契约（api/src/order/contract.ts）与纯前端契约
  * （modules/src/demo/api/contract.ts），断言四产物路径 + 关键内容 + 二次运行零写入。
@@ -13,7 +13,7 @@ import { runApi } from "../../packages/cli/src/contract/run";
 const tmpDirs: string[] = [];
 
 function makeProject(): string {
-	const dir = mkdtempSync(join(process.cwd(), "node_modules/.cache/ram-run-test-"));
+	const dir = mkdtempSync(join(process.cwd(), "node_modules/.cache/ojm-run-test-"));
 	tmpDirs.push(dir);
 	mkdirSync(join(dir, "api/src/order"), { recursive: true });
 	writeFileSync(join(dir, "api/src/order/contract.ts"), `
@@ -70,7 +70,7 @@ describe("runApi（AC-D7 编排 + 幂等写盘）", () => {
 
 		// stub → oj 目录镜像树（带指纹，json.ok 预填示例值）
 		const stub = readFileSync(join(cwd, "api/src/order/list/api.ts"), "utf8");
-		expect(stub).toMatch(/^\/\/ ram-api:stub getOrderList sha256:[0-9a-f]{64}/);
+		expect(stub).toMatch(/^\/\/ ojm-api:stub getOrderList sha256:[0-9a-f]{64}/);
 		expect(stub).toContain("json.ok({");
 		expect(existsSync(join(cwd, "api/src/order/item/api.ts"))).toBe(true);
 

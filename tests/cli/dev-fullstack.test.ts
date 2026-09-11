@@ -8,12 +8,12 @@ import { afterAll, describe, expect, it } from "vitest";
 import { devServer } from "../../packages/cli/src/dev";
 
 /**
- * 设计 §4（P3）：ram dev 全栈接线。
+ * 设计 §4（P3）：ojm dev 全栈接线。
  *  - 全栈模式（工程有 api/config.yaml）：/api/* 反代 oj，不进 mock；
  *    ojStarter 收到绝对路径 config/base/apiSrc
  *  - 纯前端模式（无 api/config.yaml）：mock 行为不变（回归）
- *  - 宿主 HTML（/ 与 SPA 深链接）注入外链 /__ram_reload.js（CSP 无 nonce 可用）
- *  - /__ram_reload.js 外链脚本、/__ram_reload SSE 通道
+ *  - 宿主 HTML（/ 与 SPA 深链接）注入外链 /__ojm_reload.js（CSP 无 nonce 可用）
+ *  - /__ojm_reload.js 外链脚本、/__ojm_reload SSE 通道
  *  - watch 随布局（新布局 modules/src）：变更 → 重建（可注入）→ SSE 广播 reload
  *  - server.close() 回收 oj 子进程
  */
@@ -153,7 +153,7 @@ describe("devServer 全栈接线", () => {
 		await stopServer(server);
 	});
 
-	it("宿主 HTML（/ 与深链接）注入外链 /__ram_reload.js；脚本端点 text/javascript", async () => {
+	it("宿主 HTML（/ 与深链接）注入外链 /__ojm_reload.js；脚本端点 text/javascript", async () => {
 		const { root, port } = makeFixture("frontend");
 		const server = await devServer(root, {
 			port,
@@ -166,10 +166,10 @@ describe("devServer 全栈接线", () => {
 			const res = await get(devPort, reqPath, { Accept: "text/html" });
 			expect(res.status).toBe(200);
 			expect(res.headers["content-type"]).toContain("text/html");
-			expect(res.text).toContain("/__ram_reload.js");
+			expect(res.text).toContain("/__ojm_reload.js");
 		}
 
-		const script = await get(devPort, "/__ram_reload.js");
+		const script = await get(devPort, "/__ojm_reload.js");
 		expect(script.status).toBe(200);
 		expect(script.headers["content-type"]).toContain("text/javascript");
 		expect(script.text).toContain("EventSource");
@@ -190,7 +190,7 @@ describe("devServer 全栈接线", () => {
 		const devPort = (server.address() as AddressInfo).port;
 
 		const chunks: string[] = [];
-		const sseReq = http.get({ host: "127.0.0.1", port: devPort, path: "/__ram_reload" }, (res) => {
+		const sseReq = http.get({ host: "127.0.0.1", port: devPort, path: "/__ojm_reload" }, (res) => {
 			res.setEncoding("utf-8");
 			res.on("data", chunk => chunks.push(chunk));
 		});

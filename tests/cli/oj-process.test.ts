@@ -6,7 +6,7 @@ import { startOj } from "../../packages/cli/src/oj";
 /**
  * 设计 §4（P3）：oj 子进程编排（不依赖真二进制，桩 bin/oj）。
  *  - spawn 参数：server -c <abs config> -b /api --api-path <abs api/src>
- *    --console-log（oj 新版终端默认静默，只落 logs/，ram 透传管道须显式打开），
+ *    --console-log（oj 新版终端默认静默，只落 logs/，ojm 透传管道须显式打开），
  *    端口经 readOjPort 从 config 读取（T3）
  *  - 健康：桩监听并 200 {base}/health → ready resolve
  *  - 秒退：ready 拒绝且 stderr 尾部在错误信息里（人话报错）

@@ -160,14 +160,14 @@ var require_customParseFormat = __commonJS({
   }
 });
 
-// shell/.ram-shim-dayjs-plugin-customParseFormat.mjs
-var ram_shim_dayjs_plugin_customParseFormat_exports = {};
-__export(ram_shim_dayjs_plugin_customParseFormat_exports, {
-  default: () => ram_shim_dayjs_plugin_customParseFormat_default
+// shell/.ojm-shim-dayjs-plugin-customParseFormat.mjs
+var ojm_shim_dayjs_plugin_customParseFormat_exports = {};
+__export(ojm_shim_dayjs_plugin_customParseFormat_exports, {
+  default: () => ojm_shim_dayjs_plugin_customParseFormat_default
 });
 var __ns = __toESM(require_customParseFormat(), 1);
-__reExport(ram_shim_dayjs_plugin_customParseFormat_exports, __toESM(require_customParseFormat(), 1));
-var ram_shim_dayjs_plugin_customParseFormat_default = __ns.default ?? __ns;
+__reExport(ojm_shim_dayjs_plugin_customParseFormat_exports, __toESM(require_customParseFormat(), 1));
+var ojm_shim_dayjs_plugin_customParseFormat_default = __ns.default ?? __ns;
 export {
-  ram_shim_dayjs_plugin_customParseFormat_default as default
+  ojm_shim_dayjs_plugin_customParseFormat_default as default
 };

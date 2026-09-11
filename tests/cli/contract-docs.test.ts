@@ -4,7 +4,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import { inlineRedocScript, runApiDocs } from "../../packages/cli/src/contract/run";
 
 /**
- * R5：`ram api --docs`——聚合全部契约的 OpenAPI → redoc 渲染静态站。
+ * R5：`ojm api --docs`——聚合全部契约的 OpenAPI → redoc 渲染静态站。
  * uni-dev 形态落 `api/docs/index.html`；纯前端形态落 `docs/api/index.html`。
  * 202609032041：产物自包含——CDN 外链 redoc bundle 内联进 HTML（fetchJs 注入 stub，测试不落网）。
  */
@@ -15,7 +15,7 @@ const stubFetchJs = async (_url: string) => "/* redoc bundle stub */";
 const tmpDirs: string[] = [];
 
 function makeProject(): string {
-	const dir = mkdtempSync(join(process.cwd(), "node_modules/.cache/ram-docs-test-"));
+	const dir = mkdtempSync(join(process.cwd(), "node_modules/.cache/ojm-docs-test-"));
 	tmpDirs.push(dir);
 	mkdirSync(join(dir, "api/src/order"), { recursive: true });
 	writeFileSync(join(dir, "api/src/order/contract.ts"), `
@@ -51,7 +51,7 @@ describe("runApiDocs（R5 redoc 文档站）", () => {
 	}, 120_000);
 
 	it("纯前端形态（无 api/src）→ 落 docs/api/", async () => {
-		const dir = mkdtempSync(join(process.cwd(), "node_modules/.cache/ram-docs-fe-"));
+		const dir = mkdtempSync(join(process.cwd(), "node_modules/.cache/ojm-docs-fe-"));
 		tmpDirs.push(dir);
 		mkdirSync(join(dir, "modules/src/demo/api"), { recursive: true });
 		writeFileSync(join(dir, "modules/src/demo/api/contract.ts"), `

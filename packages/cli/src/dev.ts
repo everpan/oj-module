@@ -1,5 +1,5 @@
 /**
- * `ram dev` —— 全栈开发服务器（设计 §4）。
+ * `ojm dev` —— 全栈开发服务器（设计 §4）。
  *
  * 职责是「装配」：按工程布局解析各协作方（shell dist、oj、mock、watch），
  * 组装一个 http server。具体能力各自独立：
@@ -10,7 +10,7 @@
  *   - 工程 mock 约定    → dev-mock.ts
  *
  * 两种形态（按 api/config.yaml 是否存在自动判定）：
- *   全栈   /api/* 反代 oj（oj 自带热更，ram 不重启它），模块源码变更 → 重建 → SSE 刷新
+ *   全栈   /api/* 反代 oj（oj 自带热更，ojm 不重启它），模块源码变更 → 重建 → SSE 刷新
  *   纯前端 /api/* 走工程 mock（mock/*.mock.mjs 约定，未命中 404），行为与历史版本一致
  *
  * 测试经 DevOptions 注入桩（shell dist / 重建函数 / ojStarter）。
@@ -56,7 +56,7 @@ export async function devServer(projectRoot: string, opts: DevOptions = {}): Pro
 	const build = opts.buildModulesFn ?? ((root: string) => buildModules(root));
 
 	// 1) 先把本地模块构建一次
-	console.log("[ram] 构建本地模块…");
+	console.log("[ojm] 构建本地模块…");
 	await build(projectRoot);
 
 	// 工程 mock（可选约定 mock/*.mock.mjs）：纯前端形态的 /api 边界
@@ -67,7 +67,7 @@ export async function devServer(projectRoot: string, opts: DevOptions = {}): Pro
 		contractMocks = await loadContractMocks(projectRoot);
 	}
 	catch (error) {
-		console.error(`[ram-api] 契约 mock 装载失败（不影响 dev 启动）：${error instanceof Error ? error.message : String(error)}`);
+		console.error(`[ojm-api] 契约 mock 装载失败（不影响 dev 启动）：${error instanceof Error ? error.message : String(error)}`);
 	}
 
 	// 2) oj 后端（工程有 api/config.yaml 时全栈形态；桩可注入）
@@ -94,7 +94,7 @@ export async function devServer(projectRoot: string, opts: DevOptions = {}): Pro
 	const hub = createReloadHub();
 
 	// 3) 静态半边（dev：模块产物优先，shell dist 兜底；no-store；注入刷新通道）
-	// hostRoots 钉死 shell dist：ram build 的合并残留不得反向遮蔽宿主（F11）
+	// hostRoots 钉死 shell dist：ojm build 的合并残留不得反向遮蔽宿主（F11）
 	const serveStatic = createStaticHandler({
 		roots: [localDist, shellDist],
 		hostRoots: [shellDist],
@@ -152,7 +152,7 @@ export async function devServer(projectRoot: string, opts: DevOptions = {}): Pro
 		void oj?.stop();
 	});
 	process.once("SIGINT", () => {
-		console.log("\n[ram] 正在退出…");
+		console.log("\n[ojm] 正在退出…");
 		// 顺序很重要：SSE 连接永不结束，server.close 必须在 hub 销毁客户端之后
 		hub.close();
 		void oj?.stop();
@@ -163,19 +163,19 @@ export async function devServer(projectRoot: string, opts: DevOptions = {}): Pro
 
 	// 端口被占用时自动顺延，避免 `EADDRINUSE` 直接让 `pnpm dev` 以非零码退出
 	const actualPort = await listenOnFreePort(server, opts.port ?? DEFAULT_PORT);
-	console.log(`\n[ram] 开发服务器已启动：http://localhost:${actualPort}`);
+	console.log(`\n[ojm] 开发服务器已启动：http://localhost:${actualPort}`);
 
 	if (ojTarget)
-		console.log(`[ram] oj 后端已就绪：${apiBase} → ${ojTarget}（api.ts 保存即热更）`);
+		console.log(`[ojm] oj 后端已就绪：${apiBase} → ${ojTarget}（api.ts 保存即热更）`);
 	else
-		console.log("[ram] 纯前端形态（无 api/config.yaml）：/api 由 mock/ 提供");
+		console.log("[ojm] 纯前端形态（无 api/config.yaml）：/api 由 mock/ 提供");
 
-	console.log("[ram] 宿主来自 @oj-module/cli 内置 shell-dist（importmap 单例），模块来自本地 dist/");
+	console.log("[ojm] 宿主来自 @oj-module/cli 内置 shell-dist（importmap 单例），模块来自本地 dist/");
 
 	if (!ojTarget && mocks.length)
-		console.log(`[ram] 工程 mock：${mocks.length} 条路由（mock/ 目录，重启生效）`);
+		console.log(`[ojm] 工程 mock：${mocks.length} 条路由（mock/ 目录，重启生效）`);
 
-	console.log(`[ram] 修改 ${layout.modulesSrc} 下的源码会触发重建并自动刷新浏览器。\n`);
+	console.log(`[ojm] 修改 ${layout.modulesSrc} 下的源码会触发重建并自动刷新浏览器。\n`);
 
 	// 4) 监听模块源码（watchTarget 纯源码目录，永不落产物 → 无自触发循环）
 	const { createContractRegen } = await import("./contract/watch");
@@ -184,13 +184,13 @@ export async function devServer(projectRoot: string, opts: DevOptions = {}): Pro
 	const regenContracts = createContractRegen(projectRoot, {
 		onRegenerated: (result) => {
 			if (result.written.length > 0)
-				console.log(`[ram-api] 契约产物已更新 ${result.written.length} 个文件——模块重建将自动触发。`);
+				console.log(`[ojm-api] 契约产物已更新 ${result.written.length} 个文件——模块重建将自动触发。`);
 			loadContractMocks(projectRoot).then(
 				(routes) => {
 					contractMocks = routes;
 				},
 				(error: unknown) => {
-					console.error(`[ram-api] 契约 mock 表重载失败（沿用旧表）：${error instanceof Error ? error.message : String(error)}`);
+					console.error(`[ojm-api] 契约 mock 表重载失败（沿用旧表）：${error instanceof Error ? error.message : String(error)}`);
 				},
 			);
 		},
@@ -201,13 +201,13 @@ export async function devServer(projectRoot: string, opts: DevOptions = {}): Pro
 			clearTimeout(timer);
 		timer = setTimeout(async () => {
 			try {
-				console.log("[ram] 检测到模块源码变更，重建中…");
+				console.log("[ojm] 检测到模块源码变更，重建中…");
 				await build(projectRoot);
 				hub.broadcast();
-				console.log("[ram] 重建完成，已通知浏览器刷新。");
+				console.log("[ojm] 重建完成，已通知浏览器刷新。");
 			}
 			catch (err) {
-				console.error("[ram] 重建失败：", err);
+				console.error("[ojm] 重建失败：", err);
 			}
 		}, 300);
 	};
@@ -222,7 +222,7 @@ export async function devServer(projectRoot: string, opts: DevOptions = {}): Pro
 		});
 	}
 	catch {
-		// 某些平台不支持 recursive，退化为不自动重建（手动 ram build 仍可用）
+		// 某些平台不支持 recursive，退化为不自动重建（手动 ojm build 仍可用）
 	}
 	// uni-dev 契约在 api/src（不在模块 watch 范围内），单独挂 watcher
 	try {
@@ -235,7 +235,7 @@ export async function devServer(projectRoot: string, opts: DevOptions = {}): Pro
 		}
 	}
 	catch {
-		// 同上：平台不支持 recursive 时退化为手动 ram api
+		// 同上：平台不支持 recursive 时退化为手动 ojm api
 	}
 
 	return server;

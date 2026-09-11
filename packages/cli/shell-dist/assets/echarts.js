@@ -82822,8 +82822,8 @@ use(installAxisBreak);
 use(installLegacyGridContainLabel);
 use(installScatterJitter);
 
-// shell/.ram-shim-echarts.mjs
-var ram_shim_echarts_default = void 0 ?? echarts_exports2;
+// shell/.ojm-shim-echarts.mjs
+var ojm_shim_echarts_default = void 0 ?? echarts_exports2;
 export {
   Axis_default as Axis,
   Chart_default as ChartView,
@@ -82836,7 +82836,7 @@ export {
   color_exports as color,
   connect,
   dataTool,
-  ram_shim_echarts_default as default,
+  ojm_shim_echarts_default as default,
   dependencies,
   disConnect,
   disconnect,

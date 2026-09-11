@@ -209,7 +209,7 @@ export function AuthGuard({ children }: AuthGuardProps) {
 		/**
 		 * 模块路由解耦注册：模块加载后即把模块路由并入菜单/路由表，使菜单与
 		 * 模块页面在「无后端鉴权」的模块独立运行场景下立即可用（playground /
-		 * ram dev）。模块是受信 bundle，无需等待后端 userInfo。已注册则跳过，
+		 * ojm dev）。模块是受信 bundle，无需等待后端 userInfo。已注册则跳过，
 		 * 避免每次路由变更重复合并。生产自身路由仍由下方登录分支拉取。
 		 */
 		const moduleRoutes = getModuleRoutes(); // id 已在 getRoutes() 出口统一补齐（偏差 1）

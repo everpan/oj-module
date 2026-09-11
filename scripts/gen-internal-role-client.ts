@@ -1,6 +1,6 @@
 /**
  * 一次性脚本（Task 5.1）：为框架内部 system/role 契约生成 internal 目标 client。
- * ram api 的发现机制只覆盖 api/src 与 modules/src，runtime 树内契约由本脚本手工驱动。
+ * ojm api 的发现机制只覆盖 api/src 与 modules/src，runtime 树内契约由本脚本手工驱动。
  * 用法：pnpm tsx scripts/gen-internal-role-client.ts
  */
 import fs from "node:fs";

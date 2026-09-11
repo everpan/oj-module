@@ -6,7 +6,7 @@
 
 | | |
 |---|---|
-| 消费者 | 模块工程（`entry.ts` 与页面代码）、预构建宿主 `@oj-module/shell` |
+| 消费者 | 模块工程（`entry.ts` 与页面代码）、宿主（`@oj-module/cli` 内置 `shell-dist`） |
 | 产物 | `dist/runtime.js`（单文件 ESM）。`dist/runtime.d.ts` 尚未产出，类型出口在 P3 随出口冻结一起收敛 |
 | 加载方式 | 由宿主 importmap 映射为 `/assets/runtime.js`，全站唯一实例（单例，见设计文档 D5） |
 

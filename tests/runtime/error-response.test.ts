@@ -7,7 +7,7 @@ const messageError = vi.hoisted(() => vi.fn());
 vi.mock("#src/utils/static-antd", () => ({ message: { error: messageError } }));
 
 /**
- * 错误响应体不保证是 JSON（ram dev 404 纯文本、网关 502 HTML 都是常态）。
+ * 错误响应体不保证是 JSON（ojm dev 404 纯文本、网关 502 HTML 都是常态）。
  * BDD 用例见 docs/prd/202608312235-error-response-non-json-fix.md。
  */
 describe("handleErrorResponse 错误体解析", () => {

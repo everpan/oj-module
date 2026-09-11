@@ -57,7 +57,7 @@ react-antd-module 是基于 [`react-antd-admin`](https://github.com/condorherobl
   模块化加载链路在"谁能被加载、加载是否被篡改、加载是否被注入"三层都受控。
 
 6. 版本矩阵门禁与 peerRuntime 契约（防漂移）
-   checkSharedVersions 比对宿主 versions.json 与模块的 peerRuntime，共享依赖版本漂移在 ram build 阶段直接拒绝。模块与宿主以"版本契约"对齐，避免"宿主升了
+   checkSharedVersions 比对宿主 versions.json 与模块的 peerRuntime，共享依赖版本漂移在 ojm build 阶段直接拒绝。模块与宿主以"版本契约"对齐，避免"宿主升了
    antd、模块还是旧 antd 单例"的隐性不兼容。
 
 7. 异构认证后端适配（归一，模块零改动）

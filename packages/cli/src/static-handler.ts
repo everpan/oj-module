@@ -25,9 +25,9 @@ const MIME: Record<string, string> = {
 };
 
 export interface ReloadChannel {
-	/** /__ram_reload.js 的脚本文本（外链，不依赖 CSP nonce） */
+	/** /__ojm_reload.js 的脚本文本（外链，不依赖 CSP nonce） */
 	script: string
-	/** GET /__ram_reload 的 SSE handler */
+	/** GET /__ojm_reload 的 SSE handler */
 	handler: (req: http.IncomingMessage, res: http.ServerResponse) => void
 }
 
@@ -36,7 +36,7 @@ export interface StaticHandlerOptions {
 	roots: string[]
 	/**
 	 * 宿主内容专用根（可选）：`/`、`/index.html`、SPA 回落及一切非模块空间
-	 * 路径只从这里读。dev 必须传 [shellDist]——`ram build` 的合并残留
+	 * 路径只从这里读。dev 必须传 [shellDist]——`ojm build` 的合并残留
 	 * （index.html/assets/versions.json 拷贝）留在 localDist，多根解析会让
 	 * 陈旧拷贝反向遮蔽 shell dist（集中审阅 F11）。preview 不传（单根即合并站点）。
 	 */
@@ -68,9 +68,9 @@ export function decodeReqPath(url: string): string | null {
 
 /** CSP `script-src 'self' + nonce` 不给内联脚本发 nonce → 刷新逻辑必须外链 */
 function injectReloadScript(html: string): string {
-	if (html.includes("/__ram_reload.js"))
+	if (html.includes("/__ojm_reload.js"))
 		return html;
-	return html.replace("</head>", "<script src=\"/__ram_reload.js\" defer></script></head>");
+	return html.replace("</head>", "<script src=\"/__ojm_reload.js\" defer></script></head>");
 }
 
 export function createStaticHandler(opts: StaticHandlerOptions): (req: http.IncomingMessage, res: http.ServerResponse) => void {
@@ -118,11 +118,11 @@ export function createStaticHandler(opts: StaticHandlerOptions): (req: http.Inco
 		const rel = normalize(urlPath).replace(/^(\.\.[/\\])+/, "");
 
 		if (opts.reload) {
-			if (rel === "/__ram_reload") {
+			if (rel === "/__ojm_reload") {
 				opts.reload.handler(req, res);
 				return;
 			}
-			if (rel === "/__ram_reload.js") {
+			if (rel === "/__ojm_reload.js") {
 				res.writeHead(200, { "content-type": MIME[".js"] });
 				res.end(opts.reload.script);
 				return;
@@ -161,7 +161,7 @@ export function listenOnFreePort(server: http.Server, startPort: number, maxTrie
 		const attempt = (port: number) => {
 			server.once("error", (err: NodeJS.ErrnoException) => {
 				if (err.code === "EADDRINUSE" && port - startPort < maxTries) {
-					console.warn(`[ram] 端口 ${port} 已被占用，改用 ${port + 1}`);
+					console.warn(`[ojm] 端口 ${port} 已被占用，改用 ${port + 1}`);
 					attempt(port + 1);
 				}
 				else {

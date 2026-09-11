@@ -515,11 +515,11 @@ var require_build = __commonJS({
   }
 });
 
-// shell/.ram-shim-react-countup.mjs
+// shell/.ojm-shim-react-countup.mjs
 var __m = __toESM(require_build(), 1);
 var useCountUp2 = __m["useCountUp"];
-var ram_shim_react_countup_default = __m.default ?? __m;
+var ojm_shim_react_countup_default = __m.default ?? __m;
 export {
-  ram_shim_react_countup_default as default,
+  ojm_shim_react_countup_default as default,
   useCountUp2 as useCountUp
 };

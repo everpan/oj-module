@@ -499,12 +499,12 @@ function ssrSafe(config, isSSR = typeof window === "undefined") {
   };
 }
 
-// shell/.ram-shim-zustand-middleware.mjs
-var ram_shim_zustand_middleware_default = void 0 ?? middleware_exports;
+// shell/.ojm-shim-zustand-middleware.mjs
+var ojm_shim_zustand_middleware_default = void 0 ?? middleware_exports;
 export {
   combine,
   createJSONStorage,
-  ram_shim_zustand_middleware_default as default,
+  ojm_shim_zustand_middleware_default as default,
   devtools,
   persist,
   redux,

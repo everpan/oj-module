@@ -6,7 +6,7 @@ import { evaluateContract } from "../../packages/cli/src/contract/evaluate";
 import { buildIr } from "../../packages/cli/src/contract/ir";
 
 /**
- * runtime internal 契约（system/role）不在 ram api 发现范围内（生成由
+ * runtime internal 契约（system/role）不在 ojm api 发现范围内（生成由
  * scripts/gen-internal-role-client.ts 手工驱动），漂移没有 --check 门禁——
  * 本测试即其防漂移卡口：契约改动未重生成则红。
  */
@@ -14,7 +14,7 @@ import { buildIr } from "../../packages/cli/src/contract/ir";
 const repoRoot = process.cwd();
 const roleDir = join(repoRoot, "packages/runtime/src/api/system/role");
 
-describe("system/role internal 契约生成物保鲜（ram api 发现范围外的门禁补偿）", () => {
+describe("system/role internal 契约生成物保鲜（ojm api 发现范围外的门禁补偿）", () => {
 	it("api/client.ts 与 client.schemas.ts 和契约同步", async () => {
 		const exports_ = await evaluateContract(join(roleDir, "contract.ts"), repoRoot);
 		const files = emitClient(buildIr(exports_), { target: "internal" });

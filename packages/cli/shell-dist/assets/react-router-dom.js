@@ -9899,12 +9899,12 @@ function getRSCStream() {
   return rscStream;
 }
 
-// shell/.ram-shim-react-router-dom.mjs
-var ram_shim_react_router_dom_default = void 0 ?? dom_export_exports;
+// shell/.ojm-shim-react-router-dom.mjs
+var ojm_shim_react_router_dom_default = void 0 ?? dom_export_exports;
 export {
   HydratedRouter,
   RouterProvider2 as RouterProvider,
-  ram_shim_react_router_dom_default as default,
+  ojm_shim_react_router_dom_default as default,
   RSCHydratedRouter as unstable_RSCHydratedRouter,
   createCallServer as unstable_createCallServer,
   getRSCStream as unstable_getRSCStream

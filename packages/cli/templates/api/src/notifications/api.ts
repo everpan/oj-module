@@ -6,7 +6,7 @@
 // is_read(0/1) 映射为布尔 isRead；Bearer 守卫保护。
 //
 // 注意：root 级路径无法写进业务契约（defineApi 要求 route 以 "/" 开头），
-// 故本模块已在 api/.ram-api-exempt.json 豁免，ram api --check 不会误报。
+// 故本模块已在 api/.ojm-api-exempt.json 豁免，ojm api --check 不会误报。
 export default {
 	async get() {
 		try {

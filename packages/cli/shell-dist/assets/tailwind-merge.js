@@ -3349,11 +3349,11 @@ var mergeArrayProperties = (baseObject, mergeObject, key) => {
 var extendTailwindMerge = (configExtension, ...createConfig) => typeof configExtension === "function" ? createTailwindMerge(getDefaultConfig, configExtension, ...createConfig) : createTailwindMerge(() => mergeConfigs(getDefaultConfig(), configExtension), ...createConfig);
 var twMerge = /* @__PURE__ */ createTailwindMerge(getDefaultConfig);
 
-// shell/.ram-shim-tailwind-merge.mjs
-var ram_shim_tailwind_merge_default = void 0 ?? bundle_mjs_exports;
+// shell/.ojm-shim-tailwind-merge.mjs
+var ojm_shim_tailwind_merge_default = void 0 ?? bundle_mjs_exports;
 export {
   createTailwindMerge,
-  ram_shim_tailwind_merge_default as default,
+  ojm_shim_tailwind_merge_default as default,
   extendTailwindMerge,
   fromTheme,
   getDefaultConfig,

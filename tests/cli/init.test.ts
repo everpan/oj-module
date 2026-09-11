@@ -7,7 +7,7 @@ import { readOjPort, readOjServerField } from "../../packages/cli/src/oj-config"
 import { PROJECT_ROOT } from "../helpers/paths";
 
 /**
- * 设计 §3：`ram init` 产物契约（TDD）。
+ * 设计 §3：`ojm init` 产物契约（TDD）。
  *
  * 覆盖：全树关键文件、config.yaml 关键字段（host 127.0.0.1 / port 9778 /
  * api_prefix /api / auth 段 jwt_secret 非占位符）、证书三件套、bin/oj 可执行
@@ -16,7 +16,7 @@ import { PROJECT_ROOT } from "../helpers/paths";
  */
 
 function tmpRoot(): string {
-	return fs.mkdtempSync(path.join(os.tmpdir(), "ram-init-"));
+	return fs.mkdtempSync(path.join(os.tmpdir(), "ojm-init-"));
 }
 
 /** 桩 oj 安装器：模拟 release 下载产物（二进制 + 版本标记 + devkit） */
@@ -99,9 +99,9 @@ describe("initProject", () => {
 		expect(fs.existsSync(path.join(dest, "env.d.ts"))).toBe(true);
 		const tsconfig = JSON.parse(fs.readFileSync(path.join(dest, "tsconfig.json"), "utf-8"));
 		expect(tsconfig.include).toContain("env.d.ts");
-		// api/.ram-api-exempt.json：内置 auth/web/notifications handler 有意无契约，ram api --check 需豁免清单
-		expect(fs.existsSync(path.join(dest, "api/.ram-api-exempt.json"))).toBe(true);
-		const exempt = JSON.parse(fs.readFileSync(path.join(dest, "api/.ram-api-exempt.json"), "utf-8"));
+		// api/.ojm-api-exempt.json：内置 auth/web/notifications handler 有意无契约，ojm api --check 需豁免清单
+		expect(fs.existsSync(path.join(dest, "api/.ojm-api-exempt.json"))).toBe(true);
+		const exempt = JSON.parse(fs.readFileSync(path.join(dest, "api/.ojm-api-exempt.json"), "utf-8"));
 		expect(exempt.modules).toContain("web");
 		expect(exempt.modules).toContain("notifications");
 		expect(exempt.paths).toContain("/auth/*");
@@ -110,15 +110,15 @@ describe("initProject", () => {
 		expect(fs.readFileSync(path.join(dest, "api/src/notifications/manifest.yaml"), "utf-8")).toMatch(/tables:[\t\v\f\r \xA0\u1680\u2000-\u200A\u2028\u2029\u202F\u205F\u3000\uFEFF]*\n\s*-\s*notifications/);
 		expect(fs.existsSync(path.join(dest, "api/src/notifications/migrations/0001__create_notifications.sql"))).toBe(true);
 		const pkg = JSON.parse(fs.readFileSync(path.join(dest, "package.json"), "utf-8"));
-		expect(pkg.scripts.dev).toContain("ram dev");
-		expect(pkg.scripts.preview).toContain("ram preview");
+		expect(pkg.scripts.dev).toContain("ojm dev");
+		expect(pkg.scripts.preview).toContain("ojm preview");
 		// 版本钉死：不允许 workspace:/catalog: 逃逸进外部工程
 		for (const deps of [pkg.dependencies ?? {}, pkg.devDependencies ?? {}]) {
 			for (const spec of Object.values(deps))
 				expect(String(spec)).not.toMatch(/workspace:|catalog:/);
 		}
 		expect(pkg.devDependencies["@oj-module/cli"]).not.toBe("*");
-		// runtime 必须显式声明：ram api 在 Node 侧求值契约时按裸说明符解析
+		// runtime 必须显式声明：ojm api 在 Node 侧求值契约时按裸说明符解析
 		// `@oj-module/runtime/contract[/errors]`（P1 起 contract 并入 runtime）
 		expect(pkg.devDependencies["@oj-module/runtime"]).not.toBe("*");
 		// home 首页图表演示的依赖：运行时走宿主 importmap，工程侧只需类型 → devDeps 须钉版
@@ -159,8 +159,8 @@ describe("initProject", () => {
 		const pkg = JSON.parse(fs.readFileSync(path.join(dest, "package.json"), "utf-8"));
 		expect(pkg.name).toBe("my-app"); // 既有字段不动
 		expect(pkg.scripts.dev).toBe("custom-dev"); // 既有 script 不覆盖
-		expect(pkg.scripts.build).toContain("ram build"); // 缺的补上
-		expect(pkg.scripts.preview).toContain("ram preview");
+		expect(pkg.scripts.build).toContain("ojm build"); // 缺的补上
+		expect(pkg.scripts.preview).toContain("ojm preview");
 		expect(pkg.dependencies["@oj-module/cli"]).toBe("^0.1.0"); // 既有依赖不动
 		expect(pkg.devDependencies["@oj-module/runtime"]).toBeTruthy();
 		// P1：shell 不再是独立包（宿主产物并入 cli），工程 devDeps 不应再出现它

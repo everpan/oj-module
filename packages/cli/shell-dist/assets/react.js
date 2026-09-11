@@ -481,7 +481,7 @@ var require_react = __commonJS({
   }
 });
 
-// shell/.ram-shim-react.mjs
+// shell/.ojm-shim-react.mjs
 var __m = __toESM(require_react(), 1);
 var Activity2 = __m["Activity"];
 var Children2 = __m["Children"];
@@ -527,7 +527,7 @@ var useState2 = __m["useState"];
 var useSyncExternalStore2 = __m["useSyncExternalStore"];
 var useTransition2 = __m["useTransition"];
 var version2 = __m["version"];
-var ram_shim_react_default = __m.default ?? __m;
+var ojm_shim_react_default = __m.default ?? __m;
 export {
   Activity2 as Activity,
   Children2 as Children,
@@ -547,7 +547,7 @@ export {
   createContext2 as createContext,
   createElement2 as createElement,
   createRef2 as createRef,
-  ram_shim_react_default as default,
+  ojm_shim_react_default as default,
   forwardRef2 as forwardRef,
   isValidElement2 as isValidElement,
   lazy2 as lazy,

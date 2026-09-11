@@ -7,7 +7,7 @@ import { isSharedDep } from "../../packages/cli/src/shared-deps";
 import { PROJECT_ROOT } from "../helpers/paths";
 
 /**
- * P1：`ram build` 的产出契约。
+ * P1：`ojm build` 的产出契约。
  *
  * 核心验证三件事：
  *   1. 共享依赖被 external，产物里只剩裸说明符（设计文档 D2）
@@ -34,7 +34,7 @@ function specifiersOf(file: string): string[] {
 		.filter(s => !s.startsWith(".") && !s.startsWith("/"));
 }
 
-describe("ram build 产出模块 chunk", () => {
+describe("ojm build 产出模块 chunk", () => {
 	// modules.json 单条清单（只含本测试消费的字段）
 	interface ModuleManifest {
 		name: string
@@ -52,7 +52,7 @@ describe("ram build 产出模块 chunk", () => {
 	}
 
 	beforeAll(() => {
-		execFileSync("./node_modules/.bin/ram", ["build"], { cwd: PLAYGROUND, stdio: "pipe" });
+		execFileSync("./node_modules/.bin/ojm", ["build"], { cwd: PLAYGROUND, stdio: "pipe" });
 	}, 120_000);
 
 	it("生成 modules.json 且字段完整", () => {

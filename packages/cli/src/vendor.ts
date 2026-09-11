@@ -1,5 +1,5 @@
 /**
- * `ram vendor [tag] [--force]` —— oj vendor 按平台联网下载（设计 V1–V9）。
+ * `ojm vendor [tag] [--force]` —— oj vendor 按平台联网下载（设计 V1–V9）。
  *
  * 从 everpan/only-js 的 release 取本平台资产，sha256 校验后装进工程 bin/。
  * tag 缺省追最新 release（/releases/latest），显式指定则按 tag 下载；
@@ -39,7 +39,7 @@ export function resolveTriplet(platform: string, arch: string): string {
 	const triplet = TRIPLETS[`${platform}:${arch}`];
 	if (!triplet) {
 		throw new Error(
-			`[ram] 暂不支持的平台组合：${platform}/${arch}。\n`
+			`[ojm] 暂不支持的平台组合：${platform}/${arch}。\n`
 			+ `已支持：${Object.keys(TRIPLETS).map(k => k.replace(":", "/")).join("、")}`,
 		);
 	}
@@ -57,7 +57,7 @@ export function pickAsset(assets: ReleaseAsset[], tag: string, platform: string,
 	if (!hit) {
 		const names = assets.map(a => a.name).filter(n => !n.endsWith(".sha256"));
 		throw new Error(
-			`[ram] 最新 release（${tag}）没有本平台资产 ${want}。\n可用资产：\n  ${names.join("\n  ")}`,
+			`[ojm] 最新 release（${tag}）没有本平台资产 ${want}。\n可用资产：\n  ${names.join("\n  ")}`,
 		);
 	}
 	return hit;
@@ -91,7 +91,7 @@ export interface OjProbeResult {
  * 背景：官方 release 由 CI 构建，`extension!` 的 `dir` 形式把**构建机绝对路径**
  * 编译进二进制（`LoadedFromFsDuringSnapshot`），在非构建机上 `JsRuntime::new`
  * 读盘 ENOENT。`oj --version` 走 Rust 侧仍正常，故只能在会初始化 JsRuntime 的
- * 命令上暴露——这里在安装时即探一次，给人话报错，而不是等用户 `ram build` 才 panic。
+ * 命令上暴露——这里在安装时即探一次，给人话报错，而不是等用户 `ojm build` 才 panic。
  *
  * 注意：探针目录必须含至少一个 `api.ts`，空目录 `oj build` 不会初始化 JsRuntime。
  * 详见 docs/prd/oj-release-binary-defect-report.md。
@@ -100,7 +100,7 @@ export interface OjProbeResult {
  */
 export function probeOjRuntime(binDir: string, platform: NodeJS.Platform = process.platform): OjProbeResult {
 	const ojBin = path.join(binDir, ojBinName(platform));
-	const work = fs.mkdtempSync(path.join(os.tmpdir(), "ram-oj-probe-"));
+	const work = fs.mkdtempSync(path.join(os.tmpdir(), "ojm-oj-probe-"));
 	try {
 		const epDir = path.join(work, "src", "web", "hello");
 		fs.mkdirSync(epDir, { recursive: true });
@@ -123,12 +123,12 @@ export function probeOjRuntime(binDir: string, platform: NodeJS.Platform = proce
 function reportProbeFailure(log: (msg: string) => void, detail: string): void {
 	const firstLine = detail.split("\n").map(l => l.trim()).find(Boolean) ?? "(无输出)";
 	log("");
-	log("[ram] ⚠️ oj 二进制自检失败：JsRuntime 无法初始化，release 产物有缺陷");
-	log(`[ram]    原始输出：${firstLine}`);
-	log("[ram]    原因：官方 release 由 CI 构建，JS 扩展源码路径被烤进二进制，非构建机上找不到文件。");
-	log("[ram]    影响：ram dev / ram build / ram preview 都会失败（oj --version 仍正常，故不易察觉）。");
-	log("[ram]    处置：换用本地自建二进制——cargo build --release -p oj 后覆盖本工程 bin/oj。");
-	log("[ram]    详见 docs/prd/oj-release-binary-defect-report.md");
+	log("[ojm] ⚠️ oj 二进制自检失败：JsRuntime 无法初始化，release 产物有缺陷");
+	log(`[ojm]    原始输出：${firstLine}`);
+	log("[ojm]    原因：官方 release 由 CI 构建，JS 扩展源码路径被烤进二进制，非构建机上找不到文件。");
+	log("[ojm]    影响：ojm dev / ojm build / ojm preview 都会失败（oj --version 仍正常，故不易察觉）。");
+	log("[ojm]    处置：换用本地自建二进制——cargo build --release -p oj 后覆盖本工程 bin/oj。");
+	log("[ojm]    详见 docs/prd/oj-release-binary-defect-report.md");
 	log("");
 }
 
@@ -162,9 +162,9 @@ async function fetchGuarded(fetchFn: FetchLike, url: string, token: string): Pro
 	catch (err) {
 		const cause = err instanceof Error && err.cause instanceof Error ? err.cause.message : String(err);
 		throw new Error(
-			`[ram] 网络请求失败：${cause}\nURL：${url}\n`
+			`[ojm] 网络请求失败：${cause}\nURL：${url}\n`
 			+ "若本机直连 github 受限，请带代理重试（Node ≥ 24）：\n"
-			+ "  NODE_USE_ENV_PROXY=1 HTTPS_PROXY=http://127.0.0.1:7890 ram vendor",
+			+ "  NODE_USE_ENV_PROXY=1 HTTPS_PROXY=http://127.0.0.1:7890 ojm vendor",
 		);
 	}
 }
@@ -187,7 +187,7 @@ export async function fetchLatestRelease(deps: VendorDeps = {}): Promise<Release
 	const res = await fetchGuarded(fetchFn, RELEASE_LATEST_API, token);
 	if (!res.ok) {
 		throw new Error(
-			`[ram] 查询最新 release 失败（HTTP ${res.status}）。\n${
+			`[ojm] 查询最新 release 失败（HTTP ${res.status}）。\n${
 				token
 					? "已携带 GITHUB_TOKEN，请确认其有 everpan/only-js 读权限。"
 					: "若仓库为私有或触发限流，请设置 GITHUB_TOKEN 后重试。"}`,
@@ -196,14 +196,14 @@ export async function fetchLatestRelease(deps: VendorDeps = {}): Promise<Release
 	return await res.json() as Release;
 }
 
-/** 按指定 tag 查询 release（`ram vendor <tag>` 显式指定版本时）。 */
+/** 按指定 tag 查询 release（`ojm vendor <tag>` 显式指定版本时）。 */
 export async function fetchRelease(tag: string, deps: VendorDeps = {}): Promise<Release> {
 	const { fetchFn, token } = resolveDeps(deps);
 	const url = releaseApiUrl(tag);
 	const res = await fetchGuarded(fetchFn, url, token);
 	if (!res.ok) {
 		throw new Error(
-			`[ram] 查询 release ${tag} 失败（HTTP ${res.status}）。\n${
+			`[ojm] 查询 release ${tag} 失败（HTTP ${res.status}）。\n${
 				res.status === 404
 					? "该 tag 尚未发布 release——请确认上游 everpan/only-js 已发布对应版本。"
 					: token
@@ -227,28 +227,28 @@ export async function installFromRelease(
 ): Promise<void> {
 	const { fetchFn, token } = resolveDeps(deps);
 	const log = deps.log ?? (() => {});
-	const tmp = path.join(os.tmpdir(), `ram-oj-${process.pid}-${Date.now()}`);
+	const tmp = path.join(os.tmpdir(), `ojm-oj-${process.pid}-${Date.now()}`);
 	try {
-		log(`[ram] 下载 ${asset.name}${asset.size ? `（${formatSize(asset.size)}）` : ""} …`);
+		log(`[ojm] 下载 ${asset.name}${asset.size ? `（${formatSize(asset.size)}）` : ""} …`);
 		const res = await fetchGuarded(fetchFn, asset.browser_download_url, token);
 		if (!res.ok || !res.body)
-			throw new Error(`[ram] 下载失败（HTTP ${res.status}）：${asset.name}\nURL：${asset.browser_download_url}`);
+			throw new Error(`[ojm] 下载失败（HTTP ${res.status}）：${asset.name}\nURL：${asset.browser_download_url}`);
 		await pipeline(Readable.fromWeb(res.body as import("node:stream/web").ReadableStream), fs.createWriteStream(tmp));
 
 		const sumsRes = await fetchGuarded(fetchFn, sumsAsset.browser_download_url, token);
 		if (!sumsRes.ok)
-			throw new Error(`[ram] 下载校验文件失败（HTTP ${sumsRes.status}）：${sumsAsset.name}`);
+			throw new Error(`[ojm] 下载校验文件失败（HTTP ${sumsRes.status}）：${sumsAsset.name}`);
 		const expectHex = (await sumsRes.text()).trim().split(/\s+/)[0];
 		const actualHex = createHash("sha256").update(fs.readFileSync(tmp)).digest("hex");
 		if (actualHex !== expectHex) {
 			throw new Error(
-				`[ram] sha256 校验失败：${asset.name}\n期望 ${expectHex}\n实际 ${actualHex}\n文件可能被篡改或下载不完整，请重试。`,
+				`[ojm] sha256 校验失败：${asset.name}\n期望 ${expectHex}\n实际 ${actualHex}\n文件可能被篡改或下载不完整，请重试。`,
 			);
 		}
-		log("[ram] sha256 校验通过");
+		log("[ojm] sha256 校验通过");
 
 		fs.mkdirSync(binDir, { recursive: true });
-		log(`[ram] 解包 → ${binDir}`);
+		log(`[ojm] 解包 → ${binDir}`);
 		execFileSync("tar", [asset.name.endsWith(".zip") ? "-xf" : "-xzf", tmp, "--strip-components=1", "-C", binDir]);
 		const ojBin = path.join(binDir, ojBinName(process.platform));
 		if (process.platform !== "win32")
@@ -273,30 +273,30 @@ export async function vendorCommand(
 	const log = deps.log ?? console.log;
 	const probe = deps.probe ?? probeOjRuntime;
 	const source = opts.tag ? `release ${opts.tag}` : "最新 release";
-	log(`[ram] 查询${source}…`);
+	log(`[ojm] 查询${source}…`);
 	const release = opts.tag ? await fetchRelease(opts.tag, deps) : await fetchLatestRelease(deps);
 	const binDir = path.join(projectRoot, "bin");
 	const local = readLocalVersion(binDir);
 	if (!opts.force && local === release.tag_name) {
-		log(`[ram] oj 已是 ${release.tag_name}，跳过。`);
+		log(`[ojm] oj 已是 ${release.tag_name}，跳过。`);
 		const result = probe(binDir);
 		if (!result.ok)
 			reportProbeFailure(log, result.detail);
 		return;
 	}
 	if (opts.force && local === release.tag_name)
-		log(`[ram] 本地已是 ${release.tag_name}，--force 重装。`);
+		log(`[ojm] 本地已是 ${release.tag_name}，--force 重装。`);
 	else
-		log(`[ram] 本地 ${local ?? "未安装"} → ${release.tag_name}`);
+		log(`[ojm] 本地 ${local ?? "未安装"} → ${release.tag_name}`);
 	const asset = pickAsset(release.assets, release.tag_name, process.platform, process.arch);
 	const sums = release.assets.find(a => a.name === `${asset.name}.sha256`);
 	if (!sums) {
 		throw new Error(
-			`[ram] release（${release.tag_name}）缺少校验文件 ${asset.name}.sha256，release 结构异常，拒绝安装。`,
+			`[ojm] release（${release.tag_name}）缺少校验文件 ${asset.name}.sha256，release 结构异常，拒绝安装。`,
 		);
 	}
 	await installFromRelease(asset, sums, release.tag_name, binDir, { ...deps, log });
-	log(`[ram] oj ${local ? `${local} → ` : ""}${release.tag_name} 安装完成：${path.join(binDir, ojBinName(process.platform))}`);
+	log(`[ojm] oj ${local ? `${local} → ` : ""}${release.tag_name} 安装完成：${path.join(binDir, ojBinName(process.platform))}`);
 	// 安装后冒烟：release 二进制可能因构建机路径被烤进而不可用（见 probeOjRuntime）
 	const result = probe(binDir);
 	if (!result.ok)

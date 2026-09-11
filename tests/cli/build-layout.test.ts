@@ -7,7 +7,7 @@ import { PROJECT_ROOT } from "../helpers/paths";
 /**
  * 设计 §5（D8/D11）：build 的布局感知与职责边界。
  *  - buildModules 产物随布局：新布局 modules/dist，旧布局 dist/
- *  - 全站合并（mergeSite）只属 `ram build`：先清场再拷 shell dist，防旧哈希资产累积
+ *  - 全站合并（mergeSite）只属 `ojm build`：先清场再拷 shell dist，防旧哈希资产累积
  *  - buildBackend 编排 `bin/oj build`：绝对路径、绝不 migrate（零 DB 副作用）
  */
 

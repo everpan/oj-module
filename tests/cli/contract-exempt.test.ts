@@ -5,7 +5,7 @@ import { checkApi } from "../../packages/cli/src/contract/check";
 import { runApi } from "../../packages/cli/src/contract/run";
 
 /**
- * D12 / F19：`ram api --check` 豁免清单（api/.ram-api-exempt.json）。
+ * D12 / F19：`ojm api --check` 豁免清单（api/.ojm-api-exempt.json）。
  * - modules：整模块跳过 route 双向对账。
  * - paths：路径前缀跳过（/* 一层通配）；既作用于 handler 未登记，也作用于 dist 多。
  * 仅降级，绝不引入新错误；非豁免项目行为不变。
@@ -14,7 +14,7 @@ import { runApi } from "../../packages/cli/src/contract/run";
 const tmpDirs: string[] = [];
 
 function makeProject(): string {
-	const dir = mkdtempSync(join(process.cwd(), "node_modules/.cache/ram-exempt-test-"));
+	const dir = mkdtempSync(join(process.cwd(), "node_modules/.cache/ojm-exempt-test-"));
 	tmpDirs.push(dir);
 	mkdirSync(join(dir, "api/src/order"), { recursive: true });
 	// 一个合法契约（让 discoverContracts 不抛；并提供非豁免回归基线）
@@ -30,7 +30,7 @@ export const getOrderList = defineApi({
 	return dir;
 }
 
-function writeExempt(cwd: string, obj: unknown, name = ".ram-api-exempt.json"): void {
+function writeExempt(cwd: string, obj: unknown, name = ".ojm-api-exempt.json"): void {
 	writeFileSync(join(cwd, "api", name), typeof obj === "string" ? obj : JSON.stringify(obj));
 }
 
@@ -139,7 +139,7 @@ export default { get(): void { json.ok({}); } };
 		const { violations } = await checkApi({ cwd, exempt: join(cwd, "nope.json") });
 		expect(violations.find(v => v.kind === "route-unregistered")?.message).toContain("web/user-info");
 		// 损坏 JSON：默认路径写坏文件 → 不抛异常，按空豁免处理（web 仍报 error）
-		writeFileSync(join(cwd, "api/.ram-api-exempt.json"), "{ not json");
+		writeFileSync(join(cwd, "api/.ojm-api-exempt.json"), "{ not json");
 		await expect(checkApi({ cwd })).resolves.toBeDefined();
 		const broken = await checkApi({ cwd });
 		expect(broken.violations.find(v => v.kind === "route-unregistered")?.message).toContain("web/user-info");

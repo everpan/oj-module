@@ -96,7 +96,7 @@ ASSERT admin(4) != common(2): True  →  PASS
 
 - 全部 7 步完成，P2-4 冒烟断言通过：两账号 user-info（roles 差异）+ async-routes（树节点数 4 vs 2）均可断言。
 - system 三张表经 `oj migrate` 建好，seed 落库（8 项 role_menu：admin 全量 / common 子集）。
-- `ram api --check` 仍 0 error / 0 warn（web 模块整体豁免契约对账）。
+- `ojm api --check` 仍 0 error / 0 warn（web 模块整体豁免契约对账）。
 - 登录链路完成"模块化登录页 → runtime 默认链 → oj 内置 auth + web 端点"的闭环，为后续 P3 系统 CRUD、P4 业务模块真实化铺好数据底座。
 
 ## 反常规 / 反常识点（供 P6 汇总）

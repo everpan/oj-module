@@ -1,7 +1,7 @@
 # playground-oj P0 spike 记录（2026-09-04）
 
-## 1. ram init 骨架
-- `node packages/cli/bin/ram.mjs init apps/playground-oj --yes` 通过：生成 22 项（bin/oj 解包、证书签发、web 模板、modules/src/demo、pnpm-workspace.yaml 跳过因 allowBuilds 已含 esbuild）。
+## 1. ojm init 骨架
+- `node packages/cli/bin/ojm.mjs init apps/playground-oj --yes` 通过：生成 22 项（bin/oj 解包、证书签发、web 模板、modules/src/demo、pnpm-workspace.yaml 跳过因 allowBuilds 已含 esbuild）。
 - 平台硬限 darwin arm64（init.ts:32），本机满足。
 
 ## 2. 端口与依赖（P0-1）
@@ -17,9 +17,9 @@
 
 ## 4. spike 待确认项（后续 phase 闭环）
 - **schema.yaml 强制程度**：本工程 web 仅用 migrations 建表、manifest 未声明 `tables:` 即启动正常 → schema.yaml 非启动强需；但 `oj build --check` 的 S005 要求 `manifest.tables` 与 `schema.yaml` 双向一致。=> P2 的 system 等「有表模块」建议同时补 `schema.yaml` + `manifest.tables`，避免 S 门禁告警。dev 用 `auto` 迁移、preview 用 `verify`。
-- **oj build --check S 门禁**：本工程尚未跑（待 P5 `ram build` 触发）；初判跑 S001–S007 结构检查，违规 fail build。
-- **contract.ts 进 dist 无害**：待 P1-D 写入契约后，`ram build` 验证契约文件无路由导出 → 不产生路由 → 属死代码无害（设计 §7 验收项）。
+- **oj build --check S 门禁**：本工程尚未跑（待 P5 `ojm build` 触发）；初判跑 S001–S007 结构检查，违规 fail build。
+- **contract.ts 进 dist 无害**：待 P1-D 写入契约后，`ojm build` 验证契约文件无路由导出 → 不产生路由 → 属死代码无害（设计 §7 验收项）。
 
 ## 5. 已知注意
-- 手动直跑 oj 仅用于 spike；`ram dev` 自行 spawn oj（同 9779），须先杀手动进程避免端口冲突。
+- 手动直跑 oj 仅用于 spike；`ojm dev` 自行 spawn oj（同 9779），须先杀手动进程避免端口冲突。
 - oj 缺省终端静默（console_log false），日志落 `api/logs/`；spike 用 `--console-log` 或看 health 即可。

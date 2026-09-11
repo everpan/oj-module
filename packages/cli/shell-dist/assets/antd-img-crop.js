@@ -1470,10 +1470,10 @@ var ImgCrop = forwardRef((props, cropperRef) => {
   return jsxs(Fragment, { children: [getNewUpload(children), jsx(AntModal, Object.assign({}, modalProps, modalBaseProps, { open: modalOpen, title, onCancel: onCancel.current, onOk: onOk.current, wrapClassName, destroyOnHidden: true }, isGeThan(version, "6.3.1") ? { mask: { closable: false } } : { maskClosable: true }, { children: jsx(EasyCrop$1, { ref: easyCropRef, cropperRef, zoomSlider, rotationSlider, aspectSlider, showReset, resetBtnText, modalImage, aspect, minZoom, maxZoom, minAspect, maxAspect, cropShape, showGrid, cropperProps }) }))] });
 });
 
-// shell/.ram-shim-antd-img-crop.mjs
-var ram_shim_antd_img_crop_default = ImgCrop ?? antd_img_crop_esm_exports;
+// shell/.ojm-shim-antd-img-crop.mjs
+var ojm_shim_antd_img_crop_default = ImgCrop ?? antd_img_crop_esm_exports;
 export {
-  ram_shim_antd_img_crop_default as default
+  ojm_shim_antd_img_crop_default as default
 };
 /*! Bundled license information:
 

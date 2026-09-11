@@ -18,7 +18,7 @@ export interface ProjectLayout {
 	kind: "new" | "legacy"
 	/** 模块源码目录（watch 与 build 的 entry 来源） */
 	modulesSrc: string
-	/** 产物目录：dev 写 modules.json + modules/；ram build 合并全站于此 */
+	/** 产物目录：dev 写 modules.json + modules/；ojm build 合并全站于此 */
 	distDir: string
 	/** fs.watch 目标（纯源码，永不落产物） */
 	watchTarget: string

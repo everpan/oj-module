@@ -60,14 +60,14 @@ var require_weekOfYear = __commonJS({
   }
 });
 
-// shell/.ram-shim-dayjs-plugin-weekOfYear.mjs
-var ram_shim_dayjs_plugin_weekOfYear_exports = {};
-__export(ram_shim_dayjs_plugin_weekOfYear_exports, {
-  default: () => ram_shim_dayjs_plugin_weekOfYear_default
+// shell/.ojm-shim-dayjs-plugin-weekOfYear.mjs
+var ojm_shim_dayjs_plugin_weekOfYear_exports = {};
+__export(ojm_shim_dayjs_plugin_weekOfYear_exports, {
+  default: () => ojm_shim_dayjs_plugin_weekOfYear_default
 });
 var __ns = __toESM(require_weekOfYear(), 1);
-__reExport(ram_shim_dayjs_plugin_weekOfYear_exports, __toESM(require_weekOfYear(), 1));
-var ram_shim_dayjs_plugin_weekOfYear_default = __ns.default ?? __ns;
+__reExport(ojm_shim_dayjs_plugin_weekOfYear_exports, __toESM(require_weekOfYear(), 1));
+var ojm_shim_dayjs_plugin_weekOfYear_default = __ns.default ?? __ns;
 export {
-  ram_shim_dayjs_plugin_weekOfYear_default as default
+  ojm_shim_dayjs_plugin_weekOfYear_default as default
 };

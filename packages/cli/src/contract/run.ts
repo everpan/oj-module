@@ -12,7 +12,7 @@ import { evaluateContract } from "./evaluate";
 import { buildIr } from "./ir";
 
 /**
- * AC-D7：`ram api` 编排——discover → evaluate → IR → 发射 → 幂等写盘。
+ * AC-D7：`ojm api` 编排——discover → evaluate → IR → 发射 → 幂等写盘。
  *
  * 发现两档（缺省并扫）：
  * - uni-dev：`api/src/<模块>/contract.ts` → client 双产物写到对应前端模块
@@ -100,12 +100,12 @@ export async function irOf(found: DiscoveredContract, cwd: string) {
 	const exports = await evaluateContract(found.path, cwd);
 	const ir = buildIr(exports);
 	if (ir.length === 0)
-		throw new Error(`[ram-api] ${found.path} 没有 defineApi 端点——契约文件至少导出一个端点，否则请删除该文件。`);
+		throw new Error(`[ojm-api] ${found.path} 没有 defineApi 端点——契约文件至少导出一个端点，否则请删除该文件。`);
 	if (found.kind === "uni-dev") {
 		// AC-D9：uni-dev 形态 apiPrefix 字面等于 oj 模块段（= 目录名）
 		for (const ep of ir) {
 			if (ep.apiPrefix !== `/${found.module}`) {
-				throw new Error(`[ram-api] ${found.path} 端点 "${ep.name}" apiPrefix "${ep.apiPrefix}" 与目录名 "${found.module}" 不符——uni-dev 形态要求字面相等（AC-D9），请改 apiPrefix 或移动契约目录。`);
+				throw new Error(`[ojm-api] ${found.path} 端点 "${ep.name}" apiPrefix "${ep.apiPrefix}" 与目录名 "${found.module}" 不符——uni-dev 形态要求字面相等（AC-D9），请改 apiPrefix 或移动契约目录。`);
 			}
 		}
 	}
@@ -134,11 +134,11 @@ async function runOne(found: DiscoveredContract, cwd: string, result: RunResult)
 	}
 }
 
-/** ram api 主入口：发现全部契约并逐一生成产物 */
+/** ojm api 主入口：发现全部契约并逐一生成产物 */
 export async function runApi(opts: { cwd: string }): Promise<RunResult> {
 	const contracts = discoverContracts(opts.cwd);
 	if (contracts.length === 0) {
-		throw new Error(`[ram-api] ${opts.cwd} 下没有发现契约文件——默认发现：api/src/*/contract.ts（uni-dev）与 modules/src/*/api/contract.ts（纯前端），请确认目录结构。`);
+		throw new Error(`[ojm-api] ${opts.cwd} 下没有发现契约文件——默认发现：api/src/*/contract.ts（uni-dev）与 modules/src/*/api/contract.ts（纯前端），请确认目录结构。`);
 	}
 	const result: RunResult = { contracts: contracts.length, written: [], skipped: [], stubs: { created: 0, updated: 0, skipped: 0 } };
 	for (const found of contracts)
@@ -147,14 +147,14 @@ export async function runApi(opts: { cwd: string }): Promise<RunResult> {
 }
 
 /**
- * R5：`ram api --docs`——聚合全部契约的 OpenAPI → redoc 渲染静态站。
+ * R5：`ojm api --docs`——聚合全部契约的 OpenAPI → redoc 渲染静态站。
  * uni-dev 形态（存在 api/src 契约）落 `api/docs/index.html`，纯前端落 `docs/api/index.html`；
  * 聚合 spec 同目录落 `openapi.yaml`（评审可直读）。redoc CLI 缺失时人话报错。
  */
 export async function runApiDocs(cwd: string, opts: { redocBin?: string, fetchJs?: (url: string) => Promise<string> } = {}): Promise<string> {
 	const contracts = discoverContracts(cwd);
 	if (contracts.length === 0) {
-		throw new Error(`[ram-api] ${cwd} 下没有发现契约文件——默认发现：api/src/*/contract.ts（uni-dev）与 modules/src/*/api/contract.ts（纯前端）。`);
+		throw new Error(`[ojm-api] ${cwd} 下没有发现契约文件——默认发现：api/src/*/contract.ts（uni-dev）与 modules/src/*/api/contract.ts（纯前端）。`);
 	}
 
 	// 聚合：逐契约 IR → openapi doc → paths 合并（operation 打模块 tag）
@@ -165,7 +165,7 @@ export async function runApiDocs(cwd: string, opts: { redocBin?: string, fetchJs
 		for (const [p, methods] of Object.entries(doc.paths)) {
 			for (const [method, op] of Object.entries(methods)) {
 				if (paths[p]?.[method])
-					throw new Error(`[ram-api] 聚合冲突：${method.toUpperCase()} ${p} 被多个契约声明——请检查各模块 apiPrefix 是否撞车。`);
+					throw new Error(`[ojm-api] 聚合冲突：${method.toUpperCase()} ${p} 被多个契约声明——请检查各模块 apiPrefix 是否撞车。`);
 				op.tags = [found.module];
 				(paths[p] ??= {})[method] = op;
 			}
@@ -184,14 +184,14 @@ export async function runApiDocs(cwd: string, opts: { redocBin?: string, fetchJs
 	}
 	catch (error) {
 		const stderr = (error as { stderr?: string }).stderr?.trim();
-		throw new Error(`[ram-api] redoc 渲染失败${stderr ? `：${stderr.split("\n").pop()}` : ""}——请确认 @redocly/cli 已安装（pnpm install）；若刚装依赖，重试即可。`);
+		throw new Error(`[ojm-api] redoc 渲染失败${stderr ? `：${stderr.split("\n").pop()}` : ""}——请确认 @redocly/cli 已安装（pnpm install）；若刚装依赖，重试即可。`);
 	}
 	// 202609032041：redocly 产物外链 CDN redoc bundle（离线/内网白页）——内联成单文件自包含页
 	try {
 		writeFileSync(outPath, await inlineRedocScript(readFileSync(outPath, "utf8"), opts.fetchJs ?? fetchRedocBundle));
 	}
 	catch (error) {
-		throw new Error(`[ram-api] 内联 redoc bundle 失败（${error instanceof Error ? error.message : String(error)}）——构建机需能访问 cdn.redocly.com；离线环境请先在有网机器生成。`);
+		throw new Error(`[ojm-api] 内联 redoc bundle 失败（${error instanceof Error ? error.message : String(error)}）——构建机需能访问 cdn.redocly.com；离线环境请先在有网机器生成。`);
 	}
 	return outPath;
 }
@@ -225,11 +225,11 @@ function defaultRedocBin(): string {
 		pkgPath = require.resolve("@redocly/cli/package.json");
 	}
 	catch {
-		throw new Error("[ram-api] 找不到 @redocly/cli——请先 pnpm install 安装依赖（ram api --docs 的文档渲染器）。");
+		throw new Error("[ojm-api] 找不到 @redocly/cli——请先 pnpm install 安装依赖（ojm api --docs 的文档渲染器）。");
 	}
 	const pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as { bin?: string | Record<string, string> };
 	const binRel = typeof pkg.bin === "string" ? pkg.bin : pkg.bin?.redocly;
 	if (!binRel)
-		throw new Error("[ram-api] @redocly/cli 的 package.json 没有 bin 入口——依赖损坏，请重装。");
+		throw new Error("[ojm-api] @redocly/cli 的 package.json 没有 bin 入口——依赖损坏，请重装。");
 	return join(dirname(pkgPath), binRel);
 }

@@ -3,7 +3,7 @@ import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 /**
- * `ram dev` 工程 mock 约定（docs/prd/202609010056-playground-full-modules-plan.md）。
+ * `ojm dev` 工程 mock 约定（docs/prd/202609010056-playground-full-modules-plan.md）。
  *
  * 模块工程根下的 `mock/*.mock.mjs`（或 .mock.js）每个文件 default 导出路由数组：
  *
@@ -12,7 +12,7 @@ import { pathToFileURL } from "node:url";
  *   ]
  *
  * dev 服务器将其挂到同源 `/api` 前缀下（url 不含前缀），url+method 精确匹配。
- * 无 mock 目录时零行为变化——mock 是可选的演示能力，ram 不引入任何运行时依赖。
+ * 无 mock 目录时零行为变化——mock 是可选的演示能力，ojm 不引入任何运行时依赖。
  */
 
 export interface MockRouteContext {

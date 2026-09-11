@@ -366,14 +366,14 @@ var require_zh_CN7 = __commonJS({
   }
 });
 
-// shell/.ram-shim-antd-locale-zh_CN.mjs
-var ram_shim_antd_locale_zh_CN_exports = {};
-__export(ram_shim_antd_locale_zh_CN_exports, {
-  default: () => ram_shim_antd_locale_zh_CN_default
+// shell/.ojm-shim-antd-locale-zh_CN.mjs
+var ojm_shim_antd_locale_zh_CN_exports = {};
+__export(ojm_shim_antd_locale_zh_CN_exports, {
+  default: () => ojm_shim_antd_locale_zh_CN_default
 });
 var __ns = __toESM(require_zh_CN7(), 1);
-__reExport(ram_shim_antd_locale_zh_CN_exports, __toESM(require_zh_CN7(), 1));
-var ram_shim_antd_locale_zh_CN_default = __ns.default ?? __ns;
+__reExport(ojm_shim_antd_locale_zh_CN_exports, __toESM(require_zh_CN7(), 1));
+var ojm_shim_antd_locale_zh_CN_default = __ns.default ?? __ns;
 export {
-  ram_shim_antd_locale_zh_CN_default as default
+  ojm_shim_antd_locale_zh_CN_default as default
 };

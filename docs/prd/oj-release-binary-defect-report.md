@@ -7,7 +7,7 @@
 > **✅ 已修复（2026-09-11，v0.1.12）**：v0.1.12 的 release 产物把扩展 JS 源内嵌进二进制
 > （`ext:bridge_ext/bootstrap.js` 不再指向构建机路径）。已按本报告 §4 与
 > `framework-verification-playbook.md` 全链路复验：最小 JsRuntime 探针通过、
-> `strings` 无泄漏的 `only-js/**/*.js` 构建路径、`ram init → build → dev → preview` 全绿。
+> `strings` 无泄漏的 `only-js/**/*.js` 构建路径、`ojm init → build → dev → preview` 全绿。
 > 下文保留为根因分析记录。
 
 ---
@@ -24,7 +24,7 @@ Failed to initialize a JsRuntime: No such file or directory (os error 2)
 
 ## 2. 影响面
 
-- 任何用 `ram init` / `ram vendor` 拉取官方二进制的工程：`ram build` / `ram dev` / `ram preview` 必然失败。
+- 任何用 `ojm init` / `ojm vendor` 拉取官方二进制的工程：`ojm build` / `ojm dev` / `ojm preview` 必然失败。
 - 仅 Rust 侧命令看起来正常（`oj --version` 成功），**掩盖问题**，排查成本高。
 - 唯一可用规避：改用本地 `cargo build --release` 的产物（本机路径存在，故能跑）。
 
@@ -33,7 +33,7 @@ Failed to initialize a JsRuntime: No such file or directory (os error 2)
 | 项 | 值 |
 | --- | --- |
 | 平台 | macOS / `aarch64-apple-darwin` |
-| 产物 | `oj-v0.1.11-aarch64-apple-darwin.tar.gz`（经 `ram vendor v0.1.11` 下载，sha256 校验通过） |
+| 产物 | `oj-v0.1.11-aarch64-apple-darwin.tar.gz`（经 `ojm vendor v0.1.11` 下载，sha256 校验通过） |
 | 版本 | `oj 0.1.11` |
 | deno_core | 0.411.0 |
 
@@ -42,7 +42,7 @@ Failed to initialize a JsRuntime: No such file or directory (os error 2)
 ```bash
 # 1) 取官方 release 产物（或任意已下载的 bin/oj）
 mkdir -p /tmp/oj-repro && cd /tmp/oj-repro
-node <ram-cli>/bin/ram.mjs vendor v0.1.11      # 产出 ./bin/oj
+node <ojm-cli>/bin/ojm.mjs vendor v0.1.11      # 产出 ./bin/oj
 
 # 2) 构造最小后端模块
 mkdir -p src/web/hello
@@ -179,7 +179,7 @@ ExtensionFileSource::new(
 - [ ] §4 探针在**源文件被挪走**后通过
 - [ ] `strings dist/oj | grep -c "$GITHUB_WORKSPACE"` 归零（至少不再出现 `*_bootstrap.js` 路径）
 - [ ] 三平台矩阵均执行 §8.1 门禁
-- [ ] 外部工程 `ram init → ram api → ram build → ram dev` 全链路通过（对照 `framework-verification-playbook.md` §3 / §8）
+- [ ] 外部工程 `ojm init → ojm api → ojm build → ojm dev` 全链路通过（对照 `framework-verification-playbook.md` §3 / §8）
 
 ## 10. 附录：本仓库侧的规避
 
@@ -191,8 +191,8 @@ cargo build --release -p oj
 cp target/release/oj <project>/bin/oj && chmod +x <project>/bin/oj
 ```
 
-本仓库已验证：覆盖为自建产物后，`ram build` 与 `ram dev` 全链路通过（见 `docs/prd/framework-verification-playbook.md`）。
+本仓库已验证：覆盖为自建产物后，`ojm build` 与 `ojm dev` 全链路通过（见 `docs/prd/framework-verification-playbook.md`）。
 
-另：`@oj-module/cli` **0.1.4 起**已在 `ram vendor` / `ram init` 安装后自动执行等价的
+另：`@oj-module/cli` **0.1.4 起**已在 `ojm vendor` / `ojm init` 安装后自动执行等价的
 `probeOjRuntime` 冒烟（对最小 api 目录跑 `oj build`），失败打印人话告警并指向本报告——
-即上游修复前，下游至少不会在 `ram build` 时才撞到裸 panic。上游修复后该告警自然消失。
+即上游修复前，下游至少不会在 `ojm build` 时才撞到裸 panic。上游修复后该告警自然消失。

@@ -14,7 +14,7 @@ import { emitSchemaSource } from "./emit-schema";
  */
 
 const BANNER = `/* eslint-disable */
-// 生成物：ram api 从契约生成，勿手改（改动请改契约文件后重跑 ram api）`;
+// 生成物：ojm api 从契约生成，勿手改（改动请改契约文件后重跑 ojm api）`;
 
 type Slot = "params" | "query" | "body";
 
@@ -84,7 +84,7 @@ function emitTypes(ep: IrEndpoint): string[] {
 function emitEndpoint(ep: IrEndpoint): string {
 	const method = KY_METHOD[ep.method];
 	if (!method) {
-		throw new Error(`[ram-api] client 发射失败：端点 "${ep.name}" 方法 OPTIONS 不在支持范围（ky 无 options 方法）——契约里请改用其他方法。`);
+		throw new Error(`[ojm-api] client 发射失败：端点 "${ep.name}" 方法 OPTIONS 不在支持范围（ky 无 options 方法）——契约里请改用其他方法。`);
 	}
 	const slots = slotsOf(ep);
 	const prefix = argPrefix(slots);
@@ -156,7 +156,7 @@ export function bindRequest(r: ScopedRequestLike): void {
 
 function ensureReq(): ScopedRequestLike {
 	if (!req)
-		throw new ContractApiError(-1, "[ram-api] 请求未绑定——请在模块 entry.ts 的 onInit 里调用 bindRequest(ctx.utils.request)。");
+		throw new ContractApiError(-1, "[ojm-api] 请求未绑定——请在模块 entry.ts 的 onInit 里调用 bindRequest(ctx.utils.request)。");
 	return req;
 }`
 		: `function ensureReq(): ScopedRequestLike {
@@ -229,7 +229,7 @@ ${entries.join("\n")}
 /** 发射双产物：client.ts（类型 + 请求函数）与 client.schemas.ts（DEV 校验 schema） */
 export function emitClient(ir: IrEndpoint[], opts: { target: "module" | "internal" }): { "client.ts": string, "client.schemas.ts": string } {
 	if (ir.length === 0)
-		throw new Error("[ram-api] client 发射失败：IR 为空——契约文件里没有 defineApi 端点，无需生成。");
+		throw new Error("[ojm-api] client 发射失败：IR 为空——契约文件里没有 defineApi 端点，无需生成。");
 	const sections: string[] = [emitPrelude(opts.target)];
 	for (const ep of ir) {
 		const types = emitTypes(ep);

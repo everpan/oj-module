@@ -19,9 +19,9 @@ function useShallow(selector) {
   };
 }
 
-// shell/.ram-shim-zustand-react-shallow.mjs
-var ram_shim_zustand_react_shallow_default = void 0 ?? shallow_exports;
+// shell/.ojm-shim-zustand-react-shallow.mjs
+var ojm_shim_zustand_react_shallow_default = void 0 ?? shallow_exports;
 export {
-  ram_shim_zustand_react_shallow_default as default,
+  ojm_shim_zustand_react_shallow_default as default,
   useShallow
 };

@@ -14432,8 +14432,8 @@ function getHydrationData({
   return hydrationData;
 }
 
-// shell/.ram-shim-react-router.mjs
-var ram_shim_react_router_default = void 0 ?? development_exports;
+// shell/.ojm-shim-react-router.mjs
+var ojm_shim_react_router_default = void 0 ?? development_exports;
 export {
   Await,
   BrowserRouter,
@@ -14515,7 +14515,7 @@ export {
   createStaticHandler2 as createStaticHandler,
   createStaticRouter,
   data,
-  ram_shim_react_router_default as default,
+  ojm_shim_react_router_default as default,
   generatePath,
   href,
   isCookie,

@@ -98,7 +98,7 @@ export function checkSharedVersions(projectRoot: string, shellDist: string): voi
 
 	if (errors.length > 0) {
 		throw new Error(
-			`[ram] 版本矩阵门禁（C4/D12）校验失败：\n${errors.join("\n")}\n`
+			`[ojm] 版本矩阵门禁（C4/D12）校验失败：\n${errors.join("\n")}\n`
 			+ "设计文档：docs/archive/prd/202608291025-framework-npm-package-design.md §4.3",
 		);
 	}

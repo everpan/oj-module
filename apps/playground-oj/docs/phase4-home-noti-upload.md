@@ -2,7 +2,7 @@
 
 > 阶段目标（计划 §5）：home 模块饼图/折线图走真实统计端点；notification 模块经 D9 注入通知列表端点；personal-center 头像上传走 multipart → base64 写库回显。
 >
-> 完成标准：home 图表、通知列表、头像上传回显三模块端到端通过（`ram api --check` 绿 + `pnpm typecheck` 通过 + 三模块冒烟全 PASS）。
+> 完成标准：home 图表、通知列表、头像上传回显三模块端到端通过（`ojm api --check` 绿 + `pnpm typecheck` 通过 + 三模块冒烟全 PASS）。
 
 ## 执行步骤
 
@@ -18,7 +18,7 @@
 | P4-3a | `web` 迁移补 `avatar_base64` 列 | `api/src/web/migrations/0002__add_avatar_base64.sql` | `oj migrate` web:2 |
 | P4-3b | `upload` handler：multipart → base64 → 写 `users.avatar_base64`（按 `http.user.id`） | `api/src/personal-center/upload/api.ts` | 冒烟 data URL |
 | P4-3c | `entry.ts` 注册 `uploadApi` provider（`action=/api/personal-center/upload`，headers 带真 Bearer） | `modules/src/personal-center/entry.ts` | form-avatar-item 经 registry 取 action/headers |
-| P4-3/1/2 | `ram api --check` + `pnpm typecheck` 绿；三模块冒烟 | 终端 | 0 error / 0 warn |
+| P4-3/1/2 | `ojm api --check` + `pnpm typecheck` 绿；三模块冒烟 | 终端 | 0 error / 0 warn |
 
 ## P4-1：home 图表（饼图 / 折线）真实化
 
@@ -146,7 +146,7 @@ P4 FULL CHECKS PASSED (home pie/line, notification, upload multipart)
 - P4-1 home 饼图/折线接真实统计端点：聚合 + 时间窗口补全 + 全 0 合成回退，前端改从生成 `client` 导入，契约驱动。
 - P4-2 notification 复用 P3 的 D9 模式，单方法 `notificationsApi` provider 注册，`??` 回落消费点。
 - P4-3 personal-center 头像走 multipart→base64 写 `users.avatar_base64`，`uploadApi` provider 经 registry 暴露 action/headers（Bearer 由 auth store 动态提供）。
-- `ram api --check` 0 error / 0 warn；`pnpm typecheck` 通过；三模块无 Bearer 均 401、有 Bearer 均 200，端到端闭环。
+- `ojm api --check` 0 error / 0 warn；`pnpm typecheck` 通过；三模块无 Bearer 均 401、有 Bearer 均 200，端到端闭环。
 
 ## 反常规 / 反常识点（供 P6 汇总）
 

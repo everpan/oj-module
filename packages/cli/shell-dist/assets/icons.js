@@ -34104,8 +34104,8 @@ function create(options = {}) {
 // ../../node_modules/.pnpm/@ant-design+icons@6.3.2_react-dom@19.2.8_react@19.2.8__react@19.2.8/node_modules/@ant-design/icons/es/index.js
 var IconProvider = Context_default.Provider;
 
-// shell/.ram-shim-icons.mjs
-var ram_shim_icons_default = Icon_default ?? es_exports;
+// shell/.ojm-shim-icons.mjs
+var ojm_shim_icons_default = Icon_default ?? es_exports;
 export {
   AccountBookFilled_default as AccountBookFilled,
   AccountBookOutlined_default as AccountBookOutlined,
@@ -34955,7 +34955,7 @@ export {
   ZoomInOutlined_default as ZoomInOutlined,
   ZoomOutOutlined_default as ZoomOutOutlined,
   create as createFromIconfontCN,
-  ram_shim_icons_default as default,
+  ojm_shim_icons_default as default,
   getTwoToneColor,
   setTwoToneColor
 };

@@ -6,7 +6,7 @@ node_modules
 .pnp.js
 .claude/
 
-# 仓库根的 oj vendor 二进制（`ram init`/`ram vendor` 落盘）；锚定根目录，
+# 仓库根的 oj vendor 二进制（`ojm init`/`ojm vendor` 落盘）；锚定根目录，
 # 不要误伤 packages/cli/bin（cli 的可执行入口要随包发布）
 /bin/
 
@@ -54,8 +54,8 @@ yarn.lock
 analyzer
 TODO.md
 
-# ram CLI 临时构建产物（读取模块定义时生成的临时 bundle）
-.ram-tmp-*
+# ojm CLI 临时构建产物（读取模块定义时生成的临时 bundle）
+.ojm-tmp-*
 
 # e2e
 .e2e-legacy/

@@ -2299,12 +2299,12 @@ var hasLoadedNamespace = instance.hasLoadedNamespace;
 var loadNamespaces = instance.loadNamespaces;
 var loadLanguages = instance.loadLanguages;
 
-// shell/.ram-shim-i18next.mjs
-var ram_shim_i18next_default = instance ?? i18next_exports;
+// shell/.ojm-shim-i18next.mjs
+var ojm_shim_i18next_default = instance ?? i18next_exports;
 export {
   changeLanguage,
   createInstance,
-  ram_shim_i18next_default as default,
+  ojm_shim_i18next_default as default,
   dir,
   exists,
   getFixedT,

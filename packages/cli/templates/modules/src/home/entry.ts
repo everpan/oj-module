@@ -14,7 +14,7 @@ const Home = lazy(() => import("./pages/index"));
  * 结构对齐 apps/playground-oj/modules/src/home；页面用统计卡片 + 折线/柱/饼图
  * 演示宿主共享依赖矩阵（echarts / echarts-for-react / react-countup / dayjs /
  * antd / @ant-design/icons / react-i18next，均由宿主 importmap 提供单例）。
- * 图表数据为静态演示值——真实业务走模块契约 + `ram api` 生成的 client。
+ * 图表数据为静态演示值——真实业务走模块契约 + `ojm api` 生成的 client。
  */
 export default defineModule({
 	name: "home",

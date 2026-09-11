@@ -20,7 +20,7 @@ import { build as esbuild } from "esbuild";
 /** runtime 误 import 的空壳 stub（任何具名导出都给占位函数，防 esbuild 报 missing export） */
 const RUNTIME_GUARD_STUB = `
 const warn = (name) => {
-	console.warn("[ram-api] 契约文件不应 import @oj-module/runtime（浏览器代码），已用空壳替代：" + name);
+	console.warn("[ojm-api] 契约文件不应 import @oj-module/runtime（浏览器代码），已用空壳替代：" + name);
 };
 const _fn = (...a) => { warn("value"); return a[a.length - 1]; };
 export const defineModule = _fn;
@@ -33,12 +33,12 @@ export async function evaluateContract(
 	projectRoot: string,
 ): Promise<Record<string, unknown>> {
 	if (!fs.existsSync(contractFile)) {
-		throw new Error(`[ram-api] 契约文件不存在：${contractFile}——请检查路径（默认发现：api/src/*/contract.ts 或 modules/src/*/api/contract.ts）。`);
+		throw new Error(`[ojm-api] 契约文件不存在：${contractFile}——请检查路径（默认发现：api/src/*/contract.ts 或 modules/src/*/api/contract.ts）。`);
 	}
 
 	// 必须落在工程目录内（而非 os.tmpdir）：bundle 外部化的依赖在 import() 时
 	// 需要从工程 node_modules 解析（同 build.ts readModuleDefinition 的理由）
-	const outDir = fs.mkdtempSync(path.join(projectRoot, ".ram-tmp-"));
+	const outDir = fs.mkdtempSync(path.join(projectRoot, ".ojm-tmp-"));
 	try {
 		await esbuild({
 			entryPoints: [contractFile],
@@ -48,13 +48,13 @@ export async function evaluateContract(
 			platform: "node",
 			packages: "external",
 			plugins: [{
-				name: "ram-contract-runtime-guard",
+				name: "ojm-contract-runtime-guard",
 				setup(build) {
 					build.onResolve({ filter: /^@oj-module\/runtime$/ }, () => ({
-						path: "ram-runtime-guard-stub",
-						namespace: "ram-stub",
+						path: "ojm-runtime-guard-stub",
+						namespace: "ojm-stub",
 					}));
-					build.onLoad({ filter: /.*/, namespace: "ram-stub" }, () => ({
+					build.onLoad({ filter: /.*/, namespace: "ojm-stub" }, () => ({
 						contents: RUNTIME_GUARD_STUB,
 						loader: "js",
 					}));
@@ -74,9 +74,9 @@ export async function evaluateContract(
 			// 最常见的外部工程缺依赖：给出可操作修复，而不是裸 ERR_MODULE_NOT_FOUND
 			if (msg.includes("@oj-module/runtime/contract")) {
 				throw new Error(
-					"[ram-api] 契约求值需要工程 node_modules 里能解析 @oj-module/runtime/contract，但当前工程未安装它。\n"
+					"[ojm-api] 契约求值需要工程 node_modules 里能解析 @oj-module/runtime/contract，但当前工程未安装它。\n"
 					+ "修复：把 \"@oj-module/runtime\" 加进工程 devDependencies（版本与宿主对齐）后重跑 pnpm install；"
-					+ "新工程由 ram init 自动声明。",
+					+ "新工程由 ojm init 自动声明。",
 				);
 			}
 			throw e;

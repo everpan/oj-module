@@ -4,8 +4,8 @@
 	"private": true,
 	"description": "模拟外部开发者的模块工程 —— 只含模块，框架通过 npm 安装",
 	"scripts": {
-		"dev": "ram dev 5174",
-		"build": "ram build",
+		"dev": "ojm dev 5174",
+		"build": "ojm build",
 		"typecheck": "tsc --noEmit -p tsconfig.json"
 	},
 	"devDependencies": {

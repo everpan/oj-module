@@ -9,7 +9,7 @@ const TARGETS = {
 		webServer: {
 			command: "pnpm --filter playground dev",
 			url: "http://localhost:5174",
-			// ram dev 端口被占会顺延（HANDOFF §8 坑），不复用、撞车即报错
+			// ojm dev 端口被占会顺延（HANDOFF §8 坑），不复用、撞车即报错
 			reuseExistingServer: false,
 			timeout: 120_000,
 		},

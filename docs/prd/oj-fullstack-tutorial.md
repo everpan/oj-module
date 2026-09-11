@@ -34,10 +34,10 @@
 ## 1. 创建工程
 
 ```bash
-# 方式一：用发布到 npm 的脚手架（包内 bin 名是 ram）
-npx --yes --package @oj-module/cli ram init my-books --yes
+# 方式一：用发布到 npm 的脚手架（包内 bin 名是 ojm）
+npx --yes --package @oj-module/cli ojm init my-books --yes
 # 方式二：本仓库内直接用源码
-node packages/cli/bin/ram.mjs init my-books --yes
+node packages/cli/bin/ojm.mjs init my-books --yes
 
 cd my-books
 pnpm install
@@ -46,15 +46,15 @@ pnpm dev            # 前端 devServer(5174) + oj 后端，api/src 保存即热�
 
 浏览器打开 `http://localhost:5174`，用脚手架种子账号登录：`admin / 123456`（见 `api/src/_platform/seed.sql`）。
 
-> `ram init` 是**幂等补缺**：对已有工程重跑只补缺失文件。首次会联网下载 oj 二进制到 `bin/oj`（sha256 校验），并用 `oj-cert gen` 现场签发本地 dev 证书。
+> `ojm init` 是**幂等补缺**：对已有工程重跑只补缺失文件。首次会联网下载 oj 二进制到 `bin/oj`（sha256 校验），并用 `oj-cert gen` 现场签发本地 dev 证书。
 >
-> ⚠️ **若 `ram build` / `ram dev` 报 `Failed to initialize a JsRuntime: No such file or directory`**：这是**发布版 oj 二进制**的已知缺陷（CI 构建把构建机路径烤进了二进制，`bin/oj --version` 仍正常）。处置：换成自建 oj（`cargo build --release` 后把 `target/release/oj` 覆盖到 `bin/oj`）。**cli ≥ 0.1.4 会在 `ram init` / `ram vendor` 安装后自动做这项自检并打印告警**，无须等到 `ram build` 才发现。完整判定与复现见 [`framework-verification-playbook.md`](./framework-verification-playbook.md) §3。
+> ⚠️ **若 `ojm build` / `ojm dev` 报 `Failed to initialize a JsRuntime: No such file or directory`**：这是**发布版 oj 二进制**的已知缺陷（CI 构建把构建机路径烤进了二进制，`bin/oj --version` 仍正常）。处置：换成自建 oj（`cargo build --release` 后把 `target/release/oj` 覆盖到 `bin/oj`）。**cli ≥ 0.1.4 会在 `ojm init` / `ojm vendor` 安装后自动做这项自检并打印告警**，无须等到 `ojm build` 才发现。完整判定与复现见 [`framework-verification-playbook.md`](./framework-verification-playbook.md) §3。
 
 ### 1.1 脚手架目录
 
 ```
 my-books/
-├── package.json           # scripts: dev/build/preview/info/typecheck（都委托给 ram）
+├── package.json           # scripts: dev/build/preview/info/typecheck（都委托给 ojm）
 ├── modules.config.ts      # 前端模块清单（name + entry）
 ├── pnpm-workspace.yaml    # allowBuilds: esbuild
 ├── tsconfig.json
@@ -91,10 +91,10 @@ my-books/
 ```jsonc
 {
   "scripts": {
-    "dev": "ram dev",         // 开发：前端 + oj，热更
-    "build": "ram build",     // 构建：oj build + 前端全站合并到 modules/dist
-    "preview": "ram preview",  // 预览：oj migrate → 起 server + 静态兜底
-    "info": "ram info",       // 版本矩阵 + 模块清单
+    "dev": "ojm dev",         // 开发：前端 + oj，热更
+    "build": "ojm build",     // 构建：oj build + 前端全站合并到 modules/dist
+    "preview": "ojm preview",  // 预览：oj migrate → 起 server + 静态兜底
+    "info": "ojm info",       // 版本矩阵 + 模块清单
     "typecheck": "tsc --noEmit -p tsconfig.json"
   }
 }
@@ -205,8 +205,8 @@ deps:
 | 时间 / 图表 / 交互 | `dayjs`（含 `/plugin/*`）、`echarts`、`echarts/charts`、`echarts/features.js`、`echarts-for-react`、`motion`、`@dnd-kit/*`、`keepalive-for-react`、`simplebar-react`、`nprogress`、`react-countup`、`react-error-boundary`、`react-jss`、`clsx`、`tailwind-merge`、`spin-delay` |
 | 工具 | `ahooks`、`ky`、`pinyin-pro` |
 
-- **查当前版本**：`pnpm exec ram info` → 「共享依赖版本矩阵」；或看 `packages/cli/vendor/host-versions.json`。
-- **要让 `tsc` 通过**：矩阵只保证**运行时**由宿主提供，工程 `node_modules` 不一定有这些包 → 把用到的包加进**自己的 `devDependencies`**（版本对齐宿主）。`ram init` 已为模板用到的那些钉好版本（antd / react / icons / react-router / react-i18next / echarts / echarts-for-react / react-countup / dayjs）。
+- **查当前版本**：`pnpm exec ojm info` → 「共享依赖版本矩阵」；或看 `packages/cli/vendor/host-versions.json`。
+- **要让 `tsc` 通过**：矩阵只保证**运行时**由宿主提供，工程 `node_modules` 不一定有这些包 → 把用到的包加进**自己的 `devDependencies`**（版本对齐宿主）。`ojm init` 已为模板用到的那些钉好版本（antd / react / icons / react-router / react-i18next / echarts / echarts-for-react / react-countup / dayjs）。
 - 脚手架 `modules/src/home` 的统计卡片 + 折线 / 柱 / 饼图就是矩阵演示（`react-countup` + `echarts` + `echarts-for-react` + `dayjs`）。
 - 完整矩阵（含深路径条目与按包新增的步骤）见 [`framework-development-guide.md`](./framework-development-guide.md) §3.4。
 
@@ -336,7 +336,7 @@ export default {
 ### 3.4 重启边界（最容易卡住新人的一点）
 
 - 改 `api/src/**/api.ts` 的内容 → **保存即生效**（oj 热更）。
-- **新增/删除后端模块目录**、改 `schema.yaml` / `migrations/` / `config.yaml` → **必须重启 `ram dev`**。
+- **新增/删除后端模块目录**、改 `schema.yaml` / `migrations/` / `config.yaml` → **必须重启 `ojm dev`**。
 
 所以：加完 `api/src/books/` 目录后，先 `Ctrl-C` 再 `pnpm dev`。
 
@@ -405,7 +405,7 @@ export const createBook = defineApi({
 生成前端 client 与文档：
 
 ```bash
-pnpm exec ram api
+pnpm exec ojm api
 # 产物（uni-dev 形态）：
 #   modules/src/books/api/client.ts          前端调用函数 + 类型
 #   modules/src/books/api/client.schemas.ts  zod schema（DEV 校验用）
@@ -416,10 +416,10 @@ pnpm exec ram api
 对账（CI 会跑）：
 
 ```bash
-pnpm exec ram api --check     # 生成物同步 / route 双向 / routes.js 无 drift
+pnpm exec ojm api --check     # 生成物同步 / route 双向 / routes.js 无 drift
 ```
 
-> 契约里 `apiPrefix` 写错（比如 `/book`）时 `ram api` 会直接报错并给出修复指引——这是**故意**的强约束，保证前后端前缀永远一致。
+> 契约里 `apiPrefix` 写错（比如 `/book`）时 `ojm api` 会直接报错并给出修复指引——这是**故意**的强约束，保证前后端前缀永远一致。
 
 ---
 
@@ -597,8 +597,8 @@ export default function BooksPage() {
 **契约维度的自查**：
 
 ```bash
-pnpm exec ram api --check
-pnpm exec ram info          # 版本矩阵 + 模块清单
+pnpm exec ojm api --check
+pnpm exec ojm info          # 版本矩阵 + 模块清单
 ```
 
 ---
@@ -606,8 +606,8 @@ pnpm exec ram info          # 版本矩阵 + 模块清单
 ## 7. 构建与部署
 
 ```bash
-pnpm build        # = ram build：oj build（生成 routes.js）+ 前端全站合并到 modules/dist
-pnpm preview      # = ram preview：oj migrate（ver 门禁）→ 起 server + 静态兜底
+pnpm build        # = ojm build：oj build（生成 routes.js）+ 前端全站合并到 modules/dist
+pnpm preview      # = ojm preview：oj migrate（ver 门禁）→ 起 server + 静态兜底
 ```
 
 产物与要点：
@@ -625,15 +625,15 @@ pnpm preview      # = ram preview：oj migrate（ver 门禁）→ 起 server + �
 
 | 症状 | 原因 | 处理 |
 | --- | --- | --- |
-| `Failed to initialize a JsRuntime: No such file or directory` | 发布版 oj 二进制烤了构建机路径 | 用自建 oj 覆盖 `bin/oj`（cli ≥ 0.1.4 在 `ram init`/`ram vendor` 时已自动告警，见 §1 提示与验证手册 §3） |
-| `ram api` 报 `Cannot find package '@oj-module/runtime/contract'` | 工程缺 `contract` 依赖（旧版 init 生成） | 加进 devDependencies 后 `pnpm install`（新版 init 已内置） |
+| `Failed to initialize a JsRuntime: No such file or directory` | 发布版 oj 二进制烤了构建机路径 | 用自建 oj 覆盖 `bin/oj`（cli ≥ 0.1.4 在 `ojm init`/`ojm vendor` 时已自动告警，见 §1 提示与验证手册 §3） |
+| `ojm api` 报 `Cannot find package '@oj-module/runtime/contract'` | 工程缺 `contract` 依赖（旧版 init 生成） | 加进 devDependencies 后 `pnpm install`（新版 init 已内置） |
 | `typecheck` 报 `Property 'env' does not exist on type 'ImportMeta'` | 缺 `env.d.ts` | 补 `env.d.ts` 并加进 tsconfig `include`（新版 init 已内置） |
 | 登录 401，且 msg 不是 `invalid credentials` | `/auth/*` 未在 `anonymous_paths` | 补进 `api/config.yaml` 后重启 |
-| 新增了模块目录但接口 404 | 目录镜像路由未生效 | **重启** `ram dev`（改 api.ts 才免重启） |
-| 通知铃请求 `/api/notifications` 404（`no route matched`） | 缺 root 级端点——runtime 未注册 provider 时走内置兜底 | cli ≥ 0.1.5 的 `ram init` 已内置 `api/src/notifications`（参考 playground notification）；旧工程补该模块 |
+| 新增了模块目录但接口 404 | 目录镜像路由未生效 | **重启** `ojm dev`（改 api.ts 才免重启） |
+| 通知铃请求 `/api/notifications` 404（`no route matched`） | 缺 root 级端点——runtime 未注册 provider 时走内置兜底 | cli ≥ 0.1.5 的 `ojm init` 已内置 `api/src/notifications`（参考 playground notification）；旧工程补该模块 |
 | DELETE 请求 405 | 方法名写成了 `delete` | 改为 `del` |
-| `ram api` 报 apiPrefix 与目录名不符 | 违反 AC-D9 | 改 `apiPrefix` 或移动契约目录 |
-| 契约改了但前端类型没变 | 忘了重跑生成 | `ram api`；CI 用 `--check` 兜底 |
+| `ojm api` 报 apiPrefix 与目录名不符 | 违反 AC-D9 | 改 `apiPrefix` 或移动契约目录 |
+| 契约改了但前端类型没变 | 忘了重跑生成 | `ojm api`；CI 用 `--check` 兜底 |
 | 迁移账本落后 / 启动被拒（M004） | release `verify` 门禁 | `oj migrate -c api/config.yaml -d api/dist` |
 | `schema.yaml` 与 `manifest.tables` 不一致 | 违反 S005 | 双向补齐 |
 | 页面图标/关闭 × 空白 | 共享资产图标 default 退化 | 见手册第 3 章 3.6，重建 shell |
@@ -646,11 +646,11 @@ pnpm preview      # = ram preview：oj migrate（ver 门禁）→ 起 server + �
 pnpm dev                 # 开发（前端 + oj，热更）
 pnpm build               # 构建后端 + 前端全站合并
 pnpm preview             # migrate + 生产形态预览
-pnpm exec ram api        # 契约 → client/schemas/routes/openapi/stub
-pnpm exec ram api --check# 契约三重对账
-pnpm exec ram api --docs # 生成自包含接口文档站
-pnpm exec ram vendor     # 下载/重装 oj（缺省最新 release）
-pnpm exec ram info       # 版本矩阵 + 模块清单
+pnpm exec ojm api        # 契约 → client/schemas/routes/openapi/stub
+pnpm exec ojm api --check# 契约三重对账
+pnpm exec ojm api --docs # 生成自包含接口文档站
+pnpm exec ojm vendor     # 下载/重装 oj（缺省最新 release）
+pnpm exec ojm info       # 版本矩阵 + 模块清单
 ```
 
 **后端手册**：`bin/devkit/api-manual.md`（按章节读：§3 归属/§4 请求响应/§6 上传/§8 鉴权/§10 配置）。

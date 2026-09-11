@@ -58512,8 +58512,8 @@ function install27(registers) {
   registers.registerSeriesModel(CustomSeries_default);
 }
 
-// shell/.ram-shim-echarts-charts.mjs
-var ram_shim_echarts_charts_default = void 0 ?? charts_exports;
+// shell/.ojm-shim-echarts-charts.mjs
+var ojm_shim_echarts_charts_default = void 0 ?? charts_exports;
 export {
   install2 as BarChart,
   install19 as BoxplotChart,
@@ -58538,7 +58538,7 @@ export {
   install25 as ThemeRiverChart,
   install10 as TreeChart,
   install11 as TreemapChart,
-  ram_shim_echarts_charts_default as default
+  ojm_shim_echarts_charts_default as default
 };
 /*! Bundled license information:
 

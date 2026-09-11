@@ -5,7 +5,7 @@ import { checkApi } from "../../packages/cli/src/contract/check";
 import { runApi } from "../../packages/cli/src/contract/run";
 
 /**
- * AC-D10：`ram api --check` 三重校验——
+ * AC-D10：`ojm api --check` 三重校验——
  * ①生成物同步（内存重生成 vs 磁盘逐字节 diff）
  * ②route 双向对账（AST 扫 oj api.ts：default 导出方法名 + 语句起始 .route 赋值）
  * ③routes.js diff（release 路由表 vs routes.json）
@@ -14,7 +14,7 @@ import { runApi } from "../../packages/cli/src/contract/run";
 const tmpDirs: string[] = [];
 
 function makeProject(withContract = true): string {
-	const dir = mkdtempSync(join(process.cwd(), "node_modules/.cache/ram-check-test-"));
+	const dir = mkdtempSync(join(process.cwd(), "node_modules/.cache/ojm-check-test-"));
 	tmpDirs.push(dir);
 	mkdirSync(join(dir, "api/src/order"), { recursive: true });
 	if (withContract) {
@@ -44,7 +44,7 @@ afterAll(() => {
 });
 
 describe("checkApi（AC-D10 三重校验）", () => {
-	it("全通过：ram api 生成后 check 零违规", async () => {
+	it("全通过：ojm api 生成后 check 零违规", async () => {
 		const cwd = makeProject();
 		await runApi({ cwd });
 		const { violations } = await checkApi({ cwd });
@@ -59,7 +59,7 @@ describe("checkApi（AC-D10 三重校验）", () => {
 		expect(violations).toEqual(expect.arrayContaining([
 			expect.objectContaining({ level: "error", kind: "artifact-stale" }),
 		]));
-		expect(violations.find(v => v.kind === "artifact-stale")?.message).toContain("ram api");
+		expect(violations.find(v => v.kind === "artifact-stale")?.message).toContain("ojm api");
 	});
 
 	it("②契约端点无 handler → warn 未实现；handler 未登记契约 → error", async () => {

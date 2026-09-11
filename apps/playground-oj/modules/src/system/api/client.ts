@@ -1,5 +1,5 @@
 /* eslint-disable */
-// 生成物：ram api 从契约生成，勿手改（改动请改契约文件后重跑 ram api）
+// 生成物：ojm api 从契约生成，勿手改（改动请改契约文件后重跑 ojm api）
 import { ContractApiError } from "@oj-module/runtime/contract/errors";
 import type { ScopedRequestLike } from "@oj-module/runtime/contract/errors";
 import type { z } from "@oj-module/runtime";
@@ -17,7 +17,7 @@ export function bindRequest(r: ScopedRequestLike): void {
 
 function ensureReq(): ScopedRequestLike {
 	if (!req)
-		throw new ContractApiError(-1, "[ram-api] 请求未绑定——请在模块 entry.ts 的 onInit 里调用 bindRequest(ctx.utils.request)。");
+		throw new ContractApiError(-1, "[ojm-api] 请求未绑定——请在模块 entry.ts 的 onInit 里调用 bindRequest(ctx.utils.request)。");
 	return req;
 }
 

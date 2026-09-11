@@ -24027,15 +24027,15 @@ function installScatterJitter(registers) {
   registers.registerLayout(registers.PRIORITY.VISUAL.POST_CHART_LAYOUT, jitterLayout());
 }
 
-// shell/.ram-shim-echarts-features.mjs
-var ram_shim_echarts_features_default = void 0 ?? features_exports;
+// shell/.ojm-shim-echarts-features.mjs
+var ojm_shim_echarts_features_default = void 0 ?? features_exports;
 export {
   installAxisBreak as AxisBreak,
   installLabelLayout as LabelLayout,
   installLegacyGridContainLabel as LegacyGridContainLabel,
   installScatterJitter as ScatterJitter,
   installUniversalTransition as UniversalTransition,
-  ram_shim_echarts_features_default as default
+  ojm_shim_echarts_features_default as default
 };
 /*! Bundled license information:
 

@@ -6,13 +6,13 @@ import { createContractRegen } from "../../packages/cli/src/contract/watch";
 /**
  * AC-D7 watch 集成：契约变更 → 去抖合并 → runApi 重生成 → 产物落 modules 树
  * （既有模块 watch 捕获产物变更 → 重建 + SSE，复用不新造）。
- * 失败不崩 dev server：[ram-api] 前缀人话错误。
+ * 失败不崩 dev server：[ojm-api] 前缀人话错误。
  */
 
 const tmpDirs: string[] = [];
 
 function makeProject(): string {
-	const dir = mkdtempSync(join(process.cwd(), "node_modules/.cache/ram-watch-test-"));
+	const dir = mkdtempSync(join(process.cwd(), "node_modules/.cache/ojm-watch-test-"));
 	tmpDirs.push(dir);
 	mkdirSync(join(dir, "api/src/order"), { recursive: true });
 	writeFileSync(join(dir, "api/src/order/contract.ts"), `
@@ -62,13 +62,13 @@ describe("createContractRegen（去抖 + 容错）", () => {
 		expect(run).toHaveBeenCalledTimes(2);
 	});
 
-	it("runApi 抛错 → onError 收到 [ram-api] 人话，不抛出", async () => {
+	it("runApi 抛错 → onError 收到 [ojm-api] 人话，不抛出", async () => {
 		const onError = vi.fn();
 		const regen = createContractRegen("/nonexistent-project", { debounceMs: 10, onError });
 		regen();
 		await new Promise(r => setTimeout(r, 100));
 		expect(onError).toHaveBeenCalledTimes(1);
-		expect(String(onError.mock.calls[0][0])).toContain("ram-api");
+		expect(String(onError.mock.calls[0][0])).toContain("ojm-api");
 	});
 
 	it("真实 runApi：契约变更后 client.ts 落到模块树", async () => {

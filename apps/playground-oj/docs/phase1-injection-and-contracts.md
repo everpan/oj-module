@@ -2,9 +2,9 @@
 
 > 配套计划：`docs/prd/202609041045-playground-oj-plan.md` §1 P1、§3 P1-A~P1-D。
 > 本阶段目标：让 playground-oj 具备「自包含」的两套能力——① 运行时把原来硬编码在
-> root 级的内部 API（角色/菜单/通知/上传）通过注册表注入给模块（D9）；② 用 `ram api`
+> root 级的内部 API（角色/菜单/通知/上传）通过注册表注入给模块（D9）；② 用 `ojm api`
 > 契约机制从 `api/src/<模块>/contract.ts` 生成前端 client 与 oj handler stub，并对齐校验。
-> 完成后：`runtime-exports` 冻结断言仍绿、`ram api --check` 0/0、11 模块 typecheck 通过。
+> 完成后：`runtime-exports` 冻结断言仍绿、`ojm api --check` 0/0、11 模块 typecheck 通过。
 
 ---
 
@@ -13,9 +13,9 @@
 | 子阶段 | 关键动作 | 产物 / 验证 |
 | --- | --- | --- |
 | P1-A | 运行时 D9 注入机制（仿 `authProvider`） | `store/api-provider.ts` + 4 个消费点委托 + 注册表接线；25 单测绿 |
-| P1-B | `ram api --check` 豁免清单 | `contract/check.ts` 支持 `--exempt` + `web`/`auth` 豁免；6 单测绿 |
+| P1-B | `ojm api --check` 豁免清单 | `contract/check.ts` 支持 `--exempt` + `web`/`auth` 豁免；6 单测绿 |
 | P1-C | 自包含拷贝 10 模块 + notification 壳 | 11 个 entry；playground-oj typecheck 通过 |
-| P1-D | 契约层 + `ram api` 生成 | 5 份契约四产物 + stub；`ram api --check` 0/0 |
+| P1-D | 契约层 + `ojm api` 生成 | 5 份契约四产物 + stub；`ojm api --check` 0/0 |
 
 > P1-B 由子代理先行落地（CLI 豁免），P1-A/C/D 由主链路监督执行。
 
@@ -67,11 +67,11 @@
 
 ---
 
-## 3. P1-B：`ram api --check` 豁免清单
+## 3. P1-B：`ojm api --check` 豁免清单
 
-- 缺口 D12/F19：oj 内置 `auth/*` 与 playground 的 `web` 模块没有对应契约文件，但 `ram api
+- 缺口 D12/F19：oj 内置 `auth/*` 与 playground 的 `web` 模块没有对应契约文件，但 `ojm api
   --check` 的「route 双向对账 / routes.js drift」会把它判成 `route-unregistered` 错误。
-- 实现：`contract/check.ts` 读 `api/.ram-api-exempt.json`（缺省回退 `{}`），`modules` 命中整模块、
+- 实现：`contract/check.ts` 读 `api/.ojm-api-exempt.json`（缺省回退 `{}`），`modules` 命中整模块、
   `paths` 前缀（`/auth/*` 一层通配）命中则降级跳过。CLI 增 `--exempt <path>` 可选覆盖。
 - 测试 `tests/cli/contract-exempt.test.ts` 6 例覆盖豁免生效路径。
 
@@ -106,15 +106,15 @@
 
 ---
 
-## 5. P1-D：契约层 + `ram api` 生成
+## 5. P1-D：契约层 + `ojm api` 生成
 
 ### 5.1 契约形态（uni-dev）
-- 文件位置：`api/src/<模块>/contract.ts`；`ram api` 据此生成：
+- 文件位置：`api/src/<模块>/contract.ts`；`ojm api` 据此生成：
   - 前端 client：`modules/src/<模块>/api/{client.ts, client.schemas.ts}`（target=`module`，
     导出 `bindRequest(ctx.utils.request)`）。
   - 契约旁：`routes.json` + `openapi.yaml`。
   - oj handler stub：`api/src/<模块>/api/<路由>/api.ts`（POST/PUT/DEL 同路由合并到一个 stub）。
-- **AC-D9**：每个端点 `apiPrefix` 字面等于 `/<目录名>`，否则 `ram api` 人话报错。
+- **AC-D9**：每个端点 `apiPrefix` 字面等于 `/<目录名>`，否则 `ojm api` 人话报错。
 - demo 由「前端试点契约」迁移为 uni-dev 形态（删 `modules/src/demo/api/contract.ts`，
   建 `api/src/demo/contract.ts`）。
 
@@ -129,7 +129,7 @@
 
 ### 5.3 验证
 - 生成 5 份契约四产物 + 11 个 stub（唯一路由数）。
-- `ram api --check`：**0 error / 0 warn**（`web` 豁免；未实现端点已是 stub 不告警；
+- `ojm api --check`：**0 error / 0 warn**（`web` 豁免；未实现端点已是 stub 不告警；
   `api/dist/**/routes.js` 缺失仅 hint）。
 - playground-oj typecheck 通过（生成 client 被 `/* eslint-disable */` 覆盖、tsconfig 已纳入 `api`）。
 
@@ -137,7 +137,7 @@
 - 契约 schema **白名单**不含 `z.any()`（`upload.body: z.any()` 直接报错）。文件上传走 multipart，
   不在 JSON 契约内 → 删掉 body schema。
 - 生成的 oj stub 缩进超一格（4 tab vs 3 tab），`eslint --fix` 即可；修正后指纹变更，被视为
-  「人工已编辑」——恰是 P4 落地 handler 的预期状态，`ram api` 不再覆盖。
+  「人工已编辑」——恰是 P4 落地 handler 的预期状态，`ojm api` 不再覆盖。
 
 ---
 

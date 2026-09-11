@@ -1,5 +1,5 @@
 import type { ApiDefinitionInput } from "@oj-module/runtime/contract";
-import { API_DEF } from "@oj-module/runtime/contract";
+import { API_DEF, API_DEF_LEGACY } from "@oj-module/runtime/contract";
 
 /**
  * AC-D12：契约 IR 构建 + schema 白名单。
@@ -62,7 +62,7 @@ interface ZodLike { _zod?: { def?: Record<string, unknown> } }
 function defOf(schema: unknown, where: string): Record<string, unknown> {
 	const def = (schema as ZodLike)?._zod?.def;
 	if (!def || typeof def.type !== "string") {
-		throw new Error(`[ram-api] 契约 schema 白名单校验失败（${where}）：不是 zod schema——契约只接受 @oj-module/runtime/contract 导出的 z 构建的 schema。`);
+		throw new Error(`[ojm-api] 契约 schema 白名单校验失败（${where}）：不是 zod schema——契约只接受 @oj-module/runtime/contract 导出的 z 构建的 schema。`);
 	}
 	return def;
 }
@@ -75,15 +75,15 @@ export function assertWhitelisted(schema: unknown, where: string): void {
 	const def = defOf(schema, where);
 	const type = def.type as string;
 	if (!ALLOWED_TYPES.has(type)) {
-		throw new Error(`[ram-api] 契约 schema 超出白名单（${where}）：类型 "${type}" 不支持。白名单：${[...ALLOWED_TYPES].join("/")}；transform/refine/coerce/pipe/lazy 无法进入契约（无法转 OpenAPI 与保真发射），请改用纯数据结构约束。`);
+		throw new Error(`[ojm-api] 契约 schema 超出白名单（${where}）：类型 "${type}" 不支持。白名单：${[...ALLOWED_TYPES].join("/")}；transform/refine/coerce/pipe/lazy 无法进入契约（无法转 OpenAPI 与保真发射），请改用纯数据结构约束。`);
 	}
 	if (def.coerce === true) {
-		throw new Error(`[ram-api] 契约 schema 超出白名单（${where}）：z.coerce.* 不支持——params/query 请直接声明语义类型（如 z.number()），URL 序列化由生成物负责。`);
+		throw new Error(`[ojm-api] 契约 schema 超出白名单（${where}）：z.coerce.* 不支持——params/query 请直接声明语义类型（如 z.number()），URL 序列化由生成物负责。`);
 	}
 	for (const check of (def.checks as unknown[]) ?? []) {
 		const checkName = (check as ZodLike)?._zod?.def?.check as string | undefined;
 		if (checkName && !ALLOWED_CHECKS.has(checkName)) {
-			throw new Error(`[ram-api] 契约 schema 超出白名单（${where}）：约束 "${checkName}" 不支持（refine/superRefine 属 custom 校验，无法转 OpenAPI）。`);
+			throw new Error(`[ojm-api] 契约 schema 超出白名单（${where}）：约束 "${checkName}" 不支持（refine/superRefine 属 custom 校验，无法转 OpenAPI）。`);
 		}
 	}
 	if (type === "object") {
@@ -128,7 +128,9 @@ function paramNamesOf(route: string): string[] {
 export function buildIr(exports: Record<string, unknown>): IrEndpoint[] {
 	const endpoints: IrEndpoint[] = [];
 	for (const [name, value] of Object.entries(exports)) {
-		if ((value as Record<PropertyKey, unknown>)?.[API_DEF] !== true)
+		// 双符号识别（R3）：新契约打 ojm.api.def，存量（旧 runtime 产物）打 ram.api.def
+		const brand = value as Record<PropertyKey, unknown> | undefined;
+		if (brand?.[API_DEF] !== true && brand?.[API_DEF_LEGACY] !== true)
 			continue;
 		const def = value as ApiDefinitionInput;
 		// schema 白名单（报错文案含端点名 + 字段路径）
@@ -142,11 +144,11 @@ export function buildIr(exports: Record<string, unknown>): IrEndpoint[] {
 		if (def.params) {
 			const shape = (def.params as unknown as ZodLike)?._zod?.def?.shape as Record<string, unknown> | undefined;
 			if (!shape) {
-				throw new Error(`[ram-api] 契约端点 "${name}"：params 必须是 z.object（收到非 object schema）——params 与 route 参数段一一对应。`);
+				throw new Error(`[ojm-api] 契约端点 "${name}"：params 必须是 z.object（收到非 object schema）——params 与 route 参数段一一对应。`);
 			}
 			const missing = paramNames.filter(p => !(p in shape));
 			if (missing.length) {
-				throw new Error(`[ram-api] 契约端点 "${name}"：params schema 缺 route 参数段 ${missing.map(p => `{${p}}`).join("、")} 的键——两者须一一对应（缺省 params 则参数段全按 string 声明，二选一）。`);
+				throw new Error(`[ojm-api] 契约端点 "${name}"：params schema 缺 route 参数段 ${missing.map(p => `{${p}}`).join("、")} 的键——两者须一一对应（缺省 params 则参数段全按 string 声明，二选一）。`);
 			}
 		}
 		endpoints.push({
@@ -174,7 +176,7 @@ export function buildIr(exports: Record<string, unknown>): IrEndpoint[] {
 		const key = `${ep.apiPrefix}|${dir}|${ep.method}`;
 		const existing = seen.get(key);
 		if (existing) {
-			throw new Error(`[ram-api] 契约路由冲突："${existing}" 与 "${ep.name}" 都映射到 ${ep.apiPrefix}/${dir}/api.ts 的 ${ep.method}——同一目录同一方法只能有一个端点（oj 一文件一方法一 handler），请调整 route 拆目录。`);
+			throw new Error(`[ojm-api] 契约路由冲突："${existing}" 与 "${ep.name}" 都映射到 ${ep.apiPrefix}/${dir}/api.ts 的 ${ep.method}——同一目录同一方法只能有一个端点（oj 一文件一方法一 handler），请调整 route 拆目录。`);
 		}
 		seen.set(key, ep.name);
 	}

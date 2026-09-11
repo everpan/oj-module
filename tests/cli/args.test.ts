@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { parseApiArgs, parseInitArgs } from "../../packages/cli/src/args";
 
 /**
- * P6 实现期发现：`ram init --yes` 原先直接取 argv[3] 当目标目录，
+ * P6 实现期发现：`ojm init --yes` 原先直接取 argv[3] 当目标目录，
  * flag 被误当路径（目录建成 `--yes`）。抽取纯函数解析：dest 取首个
  * 非flag 参数，`--yes` 是开关。
  */
@@ -22,7 +22,7 @@ describe("parseInitArgs", () => {
 });
 
 /**
- * ram api 指定项目目录（docs/prd/202609032019-ram-api-cwd.md）：
+ * ojm api 指定项目目录（docs/prd/202609032019-ojm-api-cwd.md）：
  * 位置参数取首个非 flag 参数为项目目录，flag 任意位置生效。
  */
 describe("parseApiArgs", () => {

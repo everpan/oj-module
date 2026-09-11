@@ -25152,8 +25152,8 @@ function segment(word, options) {
   return middlewareOutputFormat(segments, { format: options.format, separator: options.separator });
 }
 
-// shell/.ram-shim-pinyin-pro.mjs
-var ram_shim_pinyin_pro_default = void 0 ?? esm_exports;
+// shell/.ojm-shim-pinyin-pro.mjs
+var ojm_shim_pinyin_pro_default = void 0 ?? esm_exports;
 export {
   OutputFormat,
   addDict,
@@ -25161,7 +25161,7 @@ export {
   clearCustomDict,
   convert,
   customPinyin,
-  ram_shim_pinyin_pro_default as default,
+  ojm_shim_pinyin_pro_default as default,
   getFinalParts,
   getInitialAndFinal,
   getNumOfTone,

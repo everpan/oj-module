@@ -30,7 +30,7 @@ export function mergeModuleManifests(sources: ManifestSource[]): ManifestModule[
 			const owner = seen.get(mod.name);
 			if (owner) {
 				throw new Error(
-					`[ram] 清单合并失败：模块 "${mod.name}" 在 ${owner} 与 ${source} 中重复声明。\n`
+					`[ojm] 清单合并失败：模块 "${mod.name}" 在 ${owner} 与 ${source} 中重复声明。\n`
 					+ "同名模块只能存在一份，请合并或更名后重新发布。",
 				);
 			}

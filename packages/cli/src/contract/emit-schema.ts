@@ -12,7 +12,7 @@ interface ZodDef { [key: string]: unknown }
 function defOf(schema: unknown): ZodDef {
 	const def = (schema as { _zod?: { def?: ZodDef } })?._zod?.def;
 	if (!def)
-		throw new Error("[ram-api] schema 发射失败：不是 zod schema（白名单校验应已在 IR 阶段拦截，此为内部不一致）。");
+		throw new Error("[ojm-api] schema 发射失败：不是 zod schema（白名单校验应已在 IR 阶段拦截，此为内部不一致）。");
 	return def;
 }
 
@@ -67,13 +67,13 @@ function emitChecks(type: string, def: ZodDef): string {
 					const pattern = cd.pattern as RegExp;
 					// 评审 F10：flags 丢失即语义削弱——不可保真，拒绝而非静默降级
 					if (pattern.flags && pattern.flags !== "u")
-						throw new Error(`[ram-api] schema 发射失败：regex /${pattern.source}/${pattern.flags} 带 flags 无法保真发射（白名单只支持无 flags 形态）。`);
+						throw new Error(`[ojm-api] schema 发射失败：regex /${pattern.source}/${pattern.flags} 带 flags 无法保真发射（白名单只支持无 flags 形态）。`);
 					out += `.regex(/${pattern.source}/)`;
 					break;
 				}
 				const method = STRING_FORMAT_METHOD[cd.format as string];
 				if (!method) {
-					throw new Error(`[ram-api] schema 发射失败：string format "${String(cd.format)}" 不在可保真映射（${Object.keys(STRING_FORMAT_METHOD).join("/")}）——静默放宽校验违背白名单「检出即报错」，请改用已支持格式或纯 string。`);
+					throw new Error(`[ojm-api] schema 发射失败：string format "${String(cd.format)}" 不在可保真映射（${Object.keys(STRING_FORMAT_METHOD).join("/")}）——静默放宽校验违背白名单「检出即报错」，请改用已支持格式或纯 string。`);
 				}
 				out += `.${method}()`;
 				break;
@@ -123,11 +123,11 @@ export function emitSchemaSource(schema: unknown): string {
 		case "default": {
 			const value = def.defaultValue;
 			if (typeof value === "function" || JSON.stringify(value) === undefined) {
-				throw new Error("[ram-api] schema 发射失败：default 值必须是 JSON 可序列化字面量（函数/undefined 不支持）。");
+				throw new Error("[ojm-api] schema 发射失败：default 值必须是 JSON 可序列化字面量（函数/undefined 不支持）。");
 			}
 			return `${emitSchemaSource(def.innerType)}.default(${JSON.stringify(value)})`;
 		}
 		default:
-			throw new Error(`[ram-api] schema 发射失败：类型 "${type}" 不在白名单（应在 IR 阶段被拦截，此为内部不一致）。`);
+			throw new Error(`[ojm-api] schema 发射失败：类型 "${type}" 不在白名单（应在 IR 阶段被拦截，此为内部不一致）。`);
 	}
 }

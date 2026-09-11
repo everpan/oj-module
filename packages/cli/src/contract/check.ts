@@ -9,13 +9,13 @@ import { splitRoute } from "./ir";
 import { artifactPaths, discoverContracts, irOf } from "./run";
 
 /**
- * AC-D10：`ram api --check` 三重校验（纯对账不写盘）——
+ * AC-D10：`ojm api --check` 三重校验（纯对账不写盘）——
  * ① 生成物同步：内存重生成 vs 磁盘逐字节 diff（含 stub 待更新）
  * ② route 双向对账：AST 扫 oj api.ts（default 导出方法名 + 语句起始 `.route = "..."` 赋值）
  *    vs 契约路由表：未实现 warn / 未登记 error / 参数段不一致 error
  * ③ routes.js diff：release 路由表（oj build 产物）vs routes.json；无 dist 给提示不判违规
  *
- * 原则：check 永不修文件——修复动作永远由人执行（重跑 ram api / 补 handler / oj build）。
+ * 原则：check 永不修文件——修复动作永远由人执行（重跑 ojm api / 补 handler / oj build）。
  */
 
 export interface CheckViolation {
@@ -31,7 +31,7 @@ export interface CheckResult {
 }
 
 /**
- * D12/F19：`ram api --check` 豁免清单（api/.ram-api-exempt.json）。
+ * D12/F19：`ojm api --check` 豁免清单（api/.ojm-api-exempt.json）。
  * - modules：整模块跳过 route 双向对账（与 dist 对账）。
  * - paths：路径前缀跳过；`/xxx/*` 为「一层通配」，否则为精确前缀匹配。
  * 仅用于降级（error→skip），绝不引入新错误；缺省/损坏一律回退空豁免。
@@ -42,11 +42,12 @@ export interface ApiExemption {
 }
 
 /**
- * 加载豁免清单：默认 `<cwd>/api/.ram-api-exempt.json`；`opts.exempt` 为绝对/相对
- * 路径时覆盖默认。文件缺失或 JSON 损坏 → 空豁免 `{}`（绝不抛错）。
+ * 加载豁免清单：默认 `<cwd>/api/.ojm-api-exempt.json`（新名），缺失时回退旧名
+ * `api/.ram-api-exempt.json`（R4：存量工程豁免不因改名失效）；`opts.exempt` 为
+ * 绝对/相对路径时覆盖默认。文件缺失或 JSON 损坏 → 空豁免 `{}`（绝不抛错）。
  */
 export function loadExemption(opts: { cwd: string, exempt?: string }): ApiExemption {
-	const file = opts.exempt ?? join(opts.cwd, "api/.ram-api-exempt.json");
+	const file = resolveExemptPath(opts.cwd, opts.exempt);
 	if (!existsSync(file))
 		return { modules: [], paths: [] };
 	try {
@@ -59,6 +60,20 @@ export function loadExemption(opts: { cwd: string, exempt?: string }): ApiExempt
 	catch {
 		return { modules: [], paths: [] };
 	}
+}
+
+/** 豁免清单文件名（新名优先；旧名只读回退）。`init` 只产新名。 */
+const EXEMPT_FILE = "api/.ojm-api-exempt.json";
+const EXEMPT_FILE_LEGACY = "api/.ram-api-exempt.json";
+
+function resolveExemptPath(cwd: string, exempt?: string): string {
+	if (exempt)
+		return exempt;
+	const next = join(cwd, EXEMPT_FILE);
+	if (existsSync(next))
+		return next;
+	const legacy = join(cwd, EXEMPT_FILE_LEGACY);
+	return existsSync(legacy) ? legacy : next;
 }
 
 /** 路由身份串（如 "order/list"、"auth/login"）的模块段 = 首段 */
@@ -194,7 +209,7 @@ function reconcileRoutes(contractIr: IrEndpoint[], handlers: HandlerRow[], exemp
 			violations.push({
 				level: "warn",
 				kind: "route-not-implemented",
-				message: `[ram-api] 契约端点 "${ep.name}"（${ep.method} ${routeLabel(ep.dir, ep.tail)}）未实现——oj 树缺少 handler；重跑 ram api 生成 stub 或手动实现。`,
+				message: `[ojm-api] 契约端点 "${ep.name}"（${ep.method} ${routeLabel(ep.dir, ep.tail)}）未实现——oj 树缺少 handler；重跑 ojm api 生成 stub 或手动实现。`,
 			});
 			continue;
 		}
@@ -202,7 +217,7 @@ function reconcileRoutes(contractIr: IrEndpoint[], handlers: HandlerRow[], exemp
 			violations.push({
 				level: "error",
 				kind: "route-params-mismatch",
-				message: `[ram-api] 参数段不一致（${ep.method} ${ep.dir}）：契约 route 尾巴 "${ep.tail ?? ""}" vs handler .route "${handler.tail ?? ""}"——契约 route 是唯一手写事实源（AC-D10），请改 handler 的 .route 字面量对齐。`,
+				message: `[ojm-api] 参数段不一致（${ep.method} ${ep.dir}）：契约 route 尾巴 "${ep.tail ?? ""}" vs handler .route "${handler.tail ?? ""}"——契约 route 是唯一手写事实源（AC-D10），请改 handler 的 .route 字面量对齐。`,
 				filePath: handler.filePath,
 			});
 		}
@@ -218,7 +233,7 @@ function reconcileRoutes(contractIr: IrEndpoint[], handlers: HandlerRow[], exemp
 			violations.push({
 				level: "error",
 				kind: "route-unregistered",
-				message: `[ram-api] handler 未登记（${h.method} ${routeLabel(h.dir, h.tail)}）——oj 路由表存在但契约没有对应端点，请补契约或删除该 handler。`,
+				message: `[ojm-api] handler 未登记（${h.method} ${routeLabel(h.dir, h.tail)}）——oj 路由表存在但契约没有对应端点，请补契约或删除该 handler。`,
 				filePath: h.filePath,
 			});
 		}
@@ -234,12 +249,12 @@ function parseRoutesJs(text: string): { method: string, pattern: string }[] {
 	return rows;
 }
 
-/** ram api --check 主入口。opts.exempt 为可选豁免清单路径（覆盖默认 api/.ram-api-exempt.json） */
+/** ojm api --check 主入口。opts.exempt 为可选豁免清单路径（覆盖默认 api/.ojm-api-exempt.json） */
 export async function checkApi(opts: { cwd: string, exempt?: string }): Promise<CheckResult> {
 	const exemption = loadExemption(opts);
 	const contracts = discoverContracts(opts.cwd);
 	if (contracts.length === 0) {
-		throw new Error(`[ram-api] ${opts.cwd} 下没有发现契约文件——默认发现：api/src/*/contract.ts（uni-dev）与 modules/src/*/api/contract.ts（纯前端）。`);
+		throw new Error(`[ojm-api] ${opts.cwd} 下没有发现契约文件——默认发现：api/src/*/contract.ts（uni-dev）与 modules/src/*/api/contract.ts（纯前端）。`);
 	}
 	const violations: CheckViolation[] = [];
 	const hints: string[] = [];
@@ -264,7 +279,7 @@ export async function checkApi(opts: { cwd: string, exempt?: string }): Promise<
 				violations.push({
 					level: "error",
 					kind: "artifact-stale",
-					message: `[ram-api] 生成物过期或缺失：${relative(opts.cwd, p)}——请重跑 ram api 使其与契约同步。`,
+					message: `[ojm-api] 生成物过期或缺失：${relative(opts.cwd, p)}——请重跑 ojm api 使其与契约同步。`,
 					filePath: p,
 				});
 			}
@@ -277,7 +292,7 @@ export async function checkApi(opts: { cwd: string, exempt?: string }): Promise<
 					violations.push({
 						level: "error",
 						kind: "artifact-stale",
-						message: `[ram-api] stub 待随契约更新：${relative(opts.cwd, w.filePath)}——请重跑 ram api。`,
+						message: `[ojm-api] stub 待随契约更新：${relative(opts.cwd, w.filePath)}——请重跑 ojm api。`,
 						filePath: w.filePath,
 					});
 				}
@@ -305,7 +320,7 @@ export async function checkApi(opts: { cwd: string, exempt?: string }): Promise<
 		}
 	}
 	if (distRows.length === 0) {
-		hints.push("[ram-api] 未发现 api/dist/**/routes.js——release 路由表对账跳过；发布前请先 oj build 再跑 ram api --check。");
+		hints.push("[ojm-api] 未发现 api/dist/**/routes.js——release 路由表对账跳过；发布前请先 oj build 再跑 ojm api --check。");
 	}
 	else {
 		const contractRows = uniDevIr.map(ep => ({ method: ep.method, pattern: ep.fullPath.replace(/^\//, "") }));
@@ -328,7 +343,7 @@ export async function checkApi(opts: { cwd: string, exempt?: string }): Promise<
 			violations.push({
 				level: "error",
 				kind: "routes-js-drift",
-				message: `[ram-api] routes.js 与契约路由表不一致——${[
+				message: `[ojm-api] routes.js 与契约路由表不一致——${[
 					missingInDist.length ? `dist 缺：${missingInDist.join(", ")}` : "",
 					extraInDist.length ? `dist 多：${extraInDist.join(", ")}` : "",
 				].filter(Boolean).join("；")}。请重跑 oj build 后再对账。`,

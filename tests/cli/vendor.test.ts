@@ -9,7 +9,7 @@ import { parseVendorArgs } from "../../packages/cli/src/args";
 import { fetchLatestRelease, fetchRelease, installFromRelease, pickAsset, probeOjRuntime, readLocalVersion, RELEASE_LATEST_API, releaseApiUrl, resolveTriplet, vendorCommand } from "../../packages/cli/src/vendor";
 
 /**
- * ram vendor 子命令（docs/prd/202609040905-vendor-download-design.md）：
+ * ojm vendor 子命令（docs/prd/202609040905-vendor-download-design.md）：
  * 从 everpan/only-js release（缺省最新，可显式指定 tag）按平台下载 oj，
  * sha256 校验后装进 bin/。
  */
@@ -78,7 +78,7 @@ describe("pickAsset（资产匹配）", () => {
 
 describe("readLocalVersion（V4 标记文件）", () => {
 	it("bin/oj 缺失 → null；有 oj 无标记 → null；两者俱在 → 版本串", () => {
-		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ram-vendor-"));
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ojm-vendor-"));
 		const bin = path.join(dir, "bin");
 		expect(readLocalVersion(bin)).toBeNull();
 		fs.mkdirSync(bin, { recursive: true });
@@ -151,7 +151,7 @@ describe("installFromRelease（下载→校验→解包→标记）", () => {
 	}
 
 	it("全流程：解包出 bin/oj、写 .oj-version、sha256 不符即拒", async () => {
-		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ram-vendor-io-"));
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ojm-vendor-io-"));
 		const { tarBytes, hex } = makeFixture(dir);
 		const asset = { name: "oj-v1.0.0-aarch64-apple-darwin.tar.gz", browser_download_url: "https://fake/oj.tar.gz" };
 		const sums = { name: `${asset.name}.sha256`, browser_download_url: "https://fake/oj.tar.gz.sha256" };
@@ -185,7 +185,7 @@ describe("probeOjRuntime（发布二进制可用性冒烟）", () => {
 	const posixOnly = process.platform === "win32" ? it.skip : it;
 
 	posixOnly("正常二进制 → ok；JsRuntime ENOENT → 失败并带原始输出", () => {
-		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ram-oj-probe-"));
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ojm-oj-probe-"));
 		const bin = path.join(dir, "bin");
 		fs.mkdirSync(bin, { recursive: true });
 		const fake = path.join(bin, "oj");
@@ -204,7 +204,7 @@ describe("probeOjRuntime（发布二进制可用性冒烟）", () => {
 
 describe("vendorCommand（US-1..US-4 编排）", () => {
 	function setup(tag = "v0.2.0") {
-		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ram-vendor-cmd-"));
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ojm-vendor-cmd-"));
 		const src = path.join(dir, "pkg");
 		fs.mkdirSync(src, { recursive: true });
 		fs.writeFileSync(path.join(src, "oj"), "#!/bin/sh\necho oj\n");
@@ -290,7 +290,7 @@ describe("vendorCommand（US-1..US-4 编排）", () => {
 	});
 
 	it("release 缺 .sha256 资产 → 人话报错（V7 必做，结构异常）", async () => {
-		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ram-vendor-nosum-"));
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ojm-vendor-nosum-"));
 		const release = { tag_name: "v1", assets: [{ name: "oj-v1-aarch64-apple-darwin.tar.gz", browser_download_url: "https://fake/x" }] };
 		const fetchFn: typeof fetch = async () => new Response(JSON.stringify(release), { status: 200 });
 		await expect(vendorCommand(dir, { force: false }, { fetchFn, token: "", log: () => {} }))

@@ -7,7 +7,7 @@ import { useTranslation } from "react-i18next";
 
 /**
  * 折线图：演示 `echarts` + `echarts-for-react` + `dayjs`（共享依赖）。
- * 数据为静态演示值——真实业务请走模块契约 + `ram api` 生成的 client
+ * 数据为静态演示值——真实业务请走模块契约 + `ojm api` 生成的 client
  * （参考 `demo` 模块的裸 fetch 与教程里 books 模块的契约式接法）。
  */
 const WEEK = [820, 932, 901, 934, 1290, 1330, 1320];

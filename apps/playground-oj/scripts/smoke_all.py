@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""playground-oj 集成冒烟：给定 ram 服务基址（如 http://127.0.0.1:4173），
+"""playground-oj 集成冒烟：给定 ojm 服务基址（如 http://127.0.0.1:4173），
 对全部模块端点做端到端校验。dev / preview 两态共用此脚本。
 返回非 0 即失败（供 smoke.sh 判定）。
 """

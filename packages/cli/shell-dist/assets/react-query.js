@@ -3006,8 +3006,8 @@ function useInfiniteQuery(options, queryClient) {
   return useBaseQuery(options, InfiniteQueryObserver, queryClient);
 }
 
-// shell/.ram-shim-react-query.mjs
-var ram_shim_react_query_default = void 0 ?? modern_exports;
+// shell/.ojm-shim-react-query.mjs
+var ojm_shim_react_query_default = void 0 ?? modern_exports;
 export {
   CancelledError,
   HydrationBoundary,
@@ -3026,7 +3026,7 @@ export {
   QueryObserver,
   dataTagErrorSymbol,
   dataTagSymbol,
-  ram_shim_react_query_default as default,
+  ojm_shim_react_query_default as default,
   defaultScheduler,
   defaultShouldDehydrateMutation,
   defaultShouldDehydrateQuery,

@@ -21,7 +21,7 @@ function readPkg(name: string) {
  */
 describe("供应链加固（P6.6）", () => {
 	// P7.10 决策翻转：P6.6 曾定「shell 保持 private 以 dist 交付」，但外部工程的
-	// ram dev/build 需要宿主产物，不发布则 US-1/US-2 第一步即失败（评审 F5）。
+	// ojm dev/build 需要宿主产物，不发布则 US-1/US-2 第一步即失败（评审 F5）。
 	// P1 起宿主并入 cli（shell-dist/ 随 cli 发布），发布面收敛为 runtime + cli 两包
 	it.each(["runtime", "cli"])("%s 包 publishConfig 锁定官方 registry 且公开访问", (name) => {
 		const pkg = readPkg(name);

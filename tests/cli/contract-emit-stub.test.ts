@@ -56,7 +56,7 @@ describe("planStubWrites（AC-D10 §9.1 五场景）", () => {
 		const item = writes.find(w => w.filePath === "api/src/order/item/api.ts");
 		expect(item?.content).toMatchSnapshot();
 		// 指纹行 + oj 惯例（语句起始 .route 赋值、json.ok 收口、示例值含 min 约束）
-		expect(item?.content).toMatch(/^\/\/ ram-api:stub .+ sha256:[0-9a-f]{64}\n/);
+		expect(item?.content).toMatch(/^\/\/ ojm-api:stub .+ sha256:[0-9a-f]{64}\n/);
 		expect(item?.content).toContain("get.route = \"{id}\";");
 		expect(item?.content).toContain("json.ok({");
 		expect(item?.content).toContain("amount: 0");

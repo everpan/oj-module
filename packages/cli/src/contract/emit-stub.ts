@@ -46,7 +46,11 @@ const OJ_METHOD: Record<string, string> = {
 	HEAD: "head",
 };
 
-const FINGERPRINT_RE = /^\/\/ ram-api:stub (.+) sha256:([0-9a-f]{64})\r?\n/;
+/**
+ * 指纹头前缀：新写用 `ojm-api:stub`；读兼容旧 `ram-api:stub`（存量生成物）——
+ * 否则升级后旧 stub 会被判为「人工编辑」而永不随契约更新（R2）。
+ */
+const FINGERPRINT_RE = /^\/\/ (?:ojm|ram)-api:stub (.+) sha256:([0-9a-f]{64})\r?\n/;
 
 /** 哈希输入归一：LF + 行尾空白剔除（跨机器/lint 稳定） */
 export function hashContent(body: string): string {
@@ -115,7 +119,7 @@ function exampleSourceFromSchema(schema: unknown): string {
 function emitHandler(ep: IrEndpoint): string {
 	const method = OJ_METHOD[ep.method];
 	if (!method)
-		throw new Error(`[ram-api] stub 发射失败：端点 "${ep.name}" 方法 ${ep.method} 不在 oj 支持范围。`);
+		throw new Error(`[ojm-api] stub 发射失败：端点 "${ep.name}" 方法 ${ep.method} 不在 oj 支持范围。`);
 	const { tail } = splitRoute(ep.route);
 	const body = ep.raw
 		? "\t// TODO: raw 端点（二进制/流）——请自行实现响应写回\n\tjson.fail(501, \"not implemented\");"
@@ -164,7 +168,7 @@ export async function planStubWrites(ir: IrEndpoint[], opts: PlanStubOptions): P
 		const filePath = `${opts.apiSrcDir}/${rel}`;
 		// 模板天然 lint-clean（F6）→ 直接哈希发射内容；注入缝仅供测试/特殊工程对齐
 		const body = await fix(emitStubBody(endpoints), filePath);
-		const fingerprint = `// ram-api:stub ${endpoints.map(e => e.name).sort().join(",")} sha256:${hashContent(body)}\n`;
+		const fingerprint = `// ojm-api:stub ${endpoints.map(e => e.name).sort().join(",")} sha256:${hashContent(body)}\n`;
 		const content = fingerprint + body;
 
 		const existing = readFile(filePath);
@@ -178,7 +182,7 @@ export async function planStubWrites(ir: IrEndpoint[], opts: PlanStubOptions): P
 				filePath,
 				content,
 				action: "skip",
-				reason: "文件已被人工编辑（指纹缺失或不匹配）——工具永不覆盖人的劳动成果；如契约新增 method 未实现，ram api --check 会对账报出。",
+				reason: "文件已被人工编辑（指纹缺失或不匹配）——工具永不覆盖人的劳动成果；如契约新增 method 未实现，ojm api --check 会对账报出。",
 			});
 			continue;
 		}

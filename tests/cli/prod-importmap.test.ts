@@ -47,7 +47,7 @@ describe("parseExportNames", () => {
 });
 
 describe("findRuntimeChunk", () => {
-	const dir = join(tmpdir(), "ram-test-runtime-chunk");
+	const dir = join(tmpdir(), "ojm-test-runtime-chunk");
 
 	afterEach(() => {
 		rmSync(dir, { recursive: true, force: true });

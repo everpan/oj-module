@@ -7,7 +7,7 @@
  * - createReloadHub：同源 EventSource 刷新通道。shell CSP 是
  *   `script-src 'self' + nonce`，dev server 无法给注入的内联脚本发 nonce
  *   （index.html 由 shell 预构建，nonce 每次构建随机），因此刷新逻辑走
- *   外链脚本 /__ram_reload.js + 同源 SSE（事件 `reload`）。
+ *   外链脚本 /__ojm_reload.js + 同源 SSE（事件 `reload`）。
  */
 
 import http from "node:http";
@@ -30,7 +30,7 @@ function respondBadGateway(res: http.ServerResponse, target: string, error: stri
 	res.writeHead(502, { "content-type": "application/json; charset=utf-8" });
 	res.end(JSON.stringify({
 		code: 502,
-		message: `[ram] oj 上游不可达（${target}）：${error}`,
+		message: `[ojm] oj 上游不可达（${target}）：${error}`,
 		success: false,
 		result: null,
 	}));
@@ -75,7 +75,7 @@ export function proxyApi(target: string): (req: http.IncomingMessage, res: http.
 export interface ReloadHub {
 	/** 通知所有已连接浏览器刷新（模块重建完成后调用） */
 	broadcast: () => void
-	/** 挂载为 GET /__ram_reload 的 handler */
+	/** 挂载为 GET /__ojm_reload 的 handler */
 	handler: (req: http.IncomingMessage, res: http.ServerResponse) => void
 	/** 停止心跳并断开所有客户端（dev server 关闭时调用） */
 	close: () => void
@@ -119,10 +119,10 @@ export function createReloadHub(opts: { heartbeatMs?: number } = {}): ReloadHub 
 	};
 }
 
-/** /__ram_reload.js 的脚本体：外链服务（content-type: text/javascript） */
+/** /__ojm_reload.js 的脚本体：外链服务（content-type: text/javascript） */
 export function sseScript(): string {
 	return [
-		"const es = new EventSource(\"/__ram_reload\");",
+		"const es = new EventSource(\"/__ojm_reload\");",
 		"es.addEventListener(\"reload\", () => location.reload());",
 		"",
 	].join("\n");
