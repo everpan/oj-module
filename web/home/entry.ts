@@ -4,7 +4,7 @@ import { HomeOutlined } from "@ant-design/icons";
 
 import { createElement, lazy } from "react";
 
-import { bindRequest } from "./api/client";
+import { bindRequest } from "./client/api";
 
 const Home = lazy(() => import("./pages/index"));
 
