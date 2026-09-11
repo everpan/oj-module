@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 
 import { useTranslation } from "react-i18next";
 
-import { fetchLine } from "../../api/client";
+import { fetchLine } from "../../client/api";
 
 export default function LineChart() {
 	const { t } = useTranslation();

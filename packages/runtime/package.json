@@ -1,7 +1,7 @@
 {
 	"name": "@oj-module/runtime",
 	"type": "module",
-	"version": "0.1.7",
+	"version": "0.1.8",
 	"description": "React Antd Admin 框架运行时，供模块工程消费",
 	"license": "MIT",
 	"imports": {

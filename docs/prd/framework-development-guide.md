@@ -39,7 +39,7 @@
 cli ──► runtime ──► (宿主产物 shell-dist ／ 模块工程)
 ```
 
-- **版本策略（lockstep 已落实）**：两包同为 **`0.1.6`**（`@oj-module` scope 首发为 0.1.5，其后按 lockstep 递增）；`cli` 对 `runtime` 写 `workspace:*`，发布时被 pnpm 改写成**精确版本 `0.1.6`**（不是 `^` 范围）——由 `tests/cli/release-manifest.test.ts` 真跑 `pnpm pack` 守护（**用 `npm publish` 会漏出 `workspace:*` / `catalog:` 字面量，务必走 `pnpm publish`**）。后续发版保持两包同版本号。
+- **版本策略（lockstep 已落实）**：两包同为 **`0.1.8`**（`@oj-module` scope 首发为 0.1.5，其后按 lockstep 递增）；`cli` 对 `runtime` 写 `workspace:*`，发布时被 pnpm 改写成**精确版本 `0.1.8`**（不是 `^` 范围）——由 `tests/cli/release-manifest.test.ts` 真跑 `pnpm pack` 守护（**用 `npm publish` 会漏出 `workspace:*` / `catalog:` 字面量，务必走 `pnpm publish`**）。后续发版保持两包同版本号。
 - **依赖方向只有这一条边，没有环**：宿主产物随 `cli` 发布，`ojm dev/build` 直接从 cli 包内 `shell-dist` 取宿主，不再有「先 build 宿主才能用 cli」的顺序约束。
 - 手工重建顺序：`runtime` → `cli` 的 `build:shell`（会**顺带重建 runtime**，产出 `packages/cli/shell-dist`）→ `cli` 的 `prepack`（同步 `vendor/host-versions.json`，并断言宿主 runtime 版本 == `packages/runtime` 版本）。
 

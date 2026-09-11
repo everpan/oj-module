@@ -208,10 +208,10 @@ function getAppInfo() {
 	return {
 		"pkg": {
 			"name": "@oj-module/runtime",
-			"version": "0.1.7",
+			"version": "0.1.8",
 			"license": "MIT"
 		},
-		"lastBuildTime": "2026-09-11 22:03:28"
+		"lastBuildTime": "2026-09-12 00:19:59"
 	};
 }
 var init_get_app_info = __esmMin((() => {}));
@@ -8571,7 +8571,7 @@ function fetchDeleteMenuItem(id) {
 	}).json());
 }
 //#endregion
-//#region src/api/system/role/api/client.ts
+//#region src/api/system/role/client/api.ts
 init_request();
 function ensureReq() {
 	return request;

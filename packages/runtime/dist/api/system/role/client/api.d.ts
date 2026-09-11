@@ -1,5 +1,5 @@
 import type { z } from "zod";
-import type { schemas } from "./client.schemas";
+import type { schemas } from "./api.schemas";
 export type FetchAddRoleItemBody = z.input<(typeof schemas)["fetchAddRoleItem"]["body"]>;
 export type FetchAddRoleItemData = z.infer<(typeof schemas)["fetchAddRoleItem"]["data"]>;
 export declare function fetchAddRoleItem(body: FetchAddRoleItemBody): Promise<FetchAddRoleItemData>;

@@ -1,4 +1,4 @@
-import type { FetchAddRoleItemBody, FetchAddRoleItemData, FetchDeleteRoleItemBody, FetchDeleteRoleItemData, FetchMenuByRoleIdData, FetchMenuByRoleIdQuery, FetchRoleListData, FetchRoleListQuery, FetchRoleMenuData, FetchUpdateRoleItemBody, FetchUpdateRoleItemData } from "./api/client";
+import type { FetchAddRoleItemBody, FetchAddRoleItemData, FetchDeleteRoleItemBody, FetchDeleteRoleItemData, FetchMenuByRoleIdData, FetchMenuByRoleIdQuery, FetchRoleListData, FetchRoleListQuery, FetchRoleMenuData, FetchUpdateRoleItemBody, FetchUpdateRoleItemData } from "./client/api";
 export declare function fetchRoleList(query: FetchRoleListQuery): Promise<FetchRoleListData>;
 export declare function fetchAddRoleItem(body: FetchAddRoleItemBody): Promise<FetchAddRoleItemData>;
 export declare function fetchUpdateRoleItem(body: FetchUpdateRoleItemBody): Promise<FetchUpdateRoleItemData>;

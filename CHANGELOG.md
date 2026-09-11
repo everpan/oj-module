@@ -5,6 +5,18 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 设计依据、迁移记录与陷阱清单见 [`docs/prd/202609110947-oj-module-two-package-consolidation-design.md`](docs/prd/202609110947-oj-module-two-package-consolidation-design.md)。
 
+## [0.1.8] - 2026-09-12
+
+### Changed
+
+- **模块工程布局硬切换 `modules/` → `web/`**：模块工程（`ojm init` 模板、playground）源码目录改为 `web/src` + `web/dist` 配对，配置文件 `modules.config.ts` 更名 `web.config.ts`；`layout.ts` 删除 legacy 分支，存量 `modules/` 工程会得到人话迁移报错。产物协议不变（`modules.json`、`dist/modules/<name>/<version>/` 照旧）。框架根仓平铺 `web/<name>/` 形态由 layout `flat` 分支支撑。设计见 [`docs/prd/202609112324-web-layout-and-codegen-guide-design.md`](docs/prd/202609112324-web-layout-and-codegen-guide-design.md)。
+- **`ojm api` 生成目录 `api/` → `client/`**：生成物由 `web/src/<模块>/api/{client.ts,client.schemas.ts}` 调整为 `web/src/<模块>/client/{api.ts,api.schemas.ts}`，与后端顶层 `api/` 消歧；纯前端契约位置同步为 `web/src/<模块>/client/contract.ts`；runtime 内部 role client 同规迁移。契约发现、`--check` 对账与报错文案全部跟随。
+
+### Added
+
+- `api/.ojm-api-exempt.json` 新增 `_comment` 自说明字段（作用、`modules`/`paths` 配法、一层通配语义）。注意：豁免清单为严格 JSON，写 `//` 注释会解析失败并**静默回退空豁免**——说明文字一律走 `_comment`。
+- 新增新人指南 [`docs/prd/ojm-api-codegen-guide.md`](docs/prd/ojm-api-codegen-guide.md)：契约 → evaluate → IR → 四产物 → stub → `--check` 三重对账 → 豁免清单全链路机制与排错速查。
+
 ## [0.1.7] - 2026-09-11
 
 ### Added
@@ -69,6 +81,7 @@
 
 `@react-antd-module/{contract,runtime,cli,shell}` 的 0.1.x 系列为迁移前的四包形态（`contract` 0.1.3 / `runtime` 0.1.4 / `shell` 0.1.4 / `cli` 0.1.5），对应提交与开发方式见 [`docs/prd/framework-development-guide.md`](docs/prd/framework-development-guide.md)。自 `@oj-module` 首发起沿用 `0.1.5` 版本号，并进入双包 lockstep。
 
+[0.1.8]: https://www.npmjs.com/package/@oj-module/cli/v/0.1.8
 [0.1.7]: https://www.npmjs.com/package/@oj-module/cli/v/0.1.7
 [0.1.6]: https://www.npmjs.com/package/@oj-module/cli/v/0.1.6
 [0.1.5]: https://www.npmjs.com/package/@oj-module/cli/v/0.1.5
