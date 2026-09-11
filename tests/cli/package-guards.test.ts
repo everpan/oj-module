@@ -152,11 +152,12 @@ describe("模块源码不得 import cli（R6）", () => {
 });
 
 describe("旧 scope 零残留（R7）", () => {
-	// 允许留旧名的例外：历史归档（下方跳过 docs/archive）、记录本次迁移的设计文档与手册，
+	// 允许留旧名的例外：历史归档（下方跳过 docs/archive）、记录本次迁移的设计文档/手册/CHANGELOG，
 	// 以及本测试自身（断言里含旧 scope 字面量）
 	const EXEMPT = new Set([
 		path.join(PROJECT_ROOT, "docs/prd/202609110947-oj-module-two-package-consolidation-design.md"),
 		path.join(PROJECT_ROOT, "docs/prd/framework-development-guide.md"),
+		path.join(PROJECT_ROOT, "CHANGELOG.md"),
 		path.join(PROJECT_ROOT, "tests/cli/package-guards.test.ts"),
 	]);
 	const SKIP_DIRS = new Set(["node_modules", ".git", "dist", "build", "shell-dist", "coverage", "analyzer", ".e2e-legacy", "playwright-report", "test-results"]);
