@@ -19,7 +19,7 @@ function makeProject(): string {
 	mkdirSync(join(dir, "api/src/order"), { recursive: true });
 	// 一个合法契约（让 discoverContracts 不抛；并提供非豁免回归基线）
 	writeFileSync(join(dir, "api/src/order/contract.ts"), `
-import { defineApi, z } from "@react-antd-module/runtime/contract";
+import { defineApi, z } from "@oj-module/runtime/contract";
 
 export const getOrderList = defineApi({
 	apiPrefix: "/order",

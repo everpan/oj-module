@@ -16,7 +16,7 @@ function makeProject(): string {
 	tmpDirs.push(dir);
 	mkdirSync(join(dir, "api/src/order"), { recursive: true });
 	writeFileSync(join(dir, "api/src/order/contract.ts"), `
-import { defineApi, z } from "@react-antd-module/runtime/contract";
+import { defineApi, z } from "@oj-module/runtime/contract";
 export const getOrderList = defineApi({
 	apiPrefix: "/order",
 	route: "/list",

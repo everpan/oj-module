@@ -129,7 +129,7 @@ describe("loadContractMocks（dev 启动装载）", () => {
 		tmpDirs.push(dir);
 		mkdirSync(join(dir, "modules/src/demo/api"), { recursive: true });
 		writeFileSync(join(dir, "modules/src/demo/api/contract.ts"), `
-import { defineApi, z } from "@react-antd-module/runtime/contract";
+import { defineApi, z } from "@oj-module/runtime/contract";
 export const getDashboard = defineApi({
 	apiPrefix: "/demo",
 	route: "/dashboard",

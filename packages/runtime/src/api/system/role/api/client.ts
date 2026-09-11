@@ -1,7 +1,7 @@
 /* eslint-disable */
 // 生成物：ram api 从契约生成，勿手改（改动请改契约文件后重跑 ram api）
-import { ContractApiError } from "@react-antd-module/runtime/contract/errors";
-import type { ScopedRequestLike } from "@react-antd-module/runtime/contract/errors";
+import { ContractApiError } from "@oj-module/runtime/contract/errors";
+import type { ScopedRequestLike } from "@oj-module/runtime/contract/errors";
 import { request } from "#src/utils/request";
 import type { z } from "zod";
 import type { schemas } from "./client.schemas";

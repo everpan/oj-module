@@ -117,10 +117,10 @@ describe("initProject", () => {
 			for (const spec of Object.values(deps))
 				expect(String(spec)).not.toMatch(/workspace:|catalog:/);
 		}
-		expect(pkg.devDependencies["@react-antd-module/cli"]).not.toBe("*");
+		expect(pkg.devDependencies["@oj-module/cli"]).not.toBe("*");
 		// runtime 必须显式声明：ram api 在 Node 侧求值契约时按裸说明符解析
-		// `@react-antd-module/runtime/contract[/errors]`（P1 起 contract 并入 runtime）
-		expect(pkg.devDependencies["@react-antd-module/runtime"]).not.toBe("*");
+		// `@oj-module/runtime/contract[/errors]`（P1 起 contract 并入 runtime）
+		expect(pkg.devDependencies["@oj-module/runtime"]).not.toBe("*");
 		// home 首页图表演示的依赖：运行时走宿主 importmap，工程侧只需类型 → devDeps 须钉版
 		for (const dep of ["echarts", "echarts-for-react", "react-countup", "dayjs"])
 			expect(pkg.devDependencies[dep]).not.toBe("*");
@@ -151,7 +151,7 @@ describe("initProject", () => {
 		fs.writeFileSync(path.join(dest, "package.json"), JSON.stringify({
 			name: "my-app",
 			scripts: { dev: "custom-dev" },
-			dependencies: { "@react-antd-module/cli": "^0.1.0" },
+			dependencies: { "@oj-module/cli": "^0.1.0" },
 		}, null, 2));
 
 		await initProject(dest, initOpts);
@@ -161,10 +161,10 @@ describe("initProject", () => {
 		expect(pkg.scripts.dev).toBe("custom-dev"); // 既有 script 不覆盖
 		expect(pkg.scripts.build).toContain("ram build"); // 缺的补上
 		expect(pkg.scripts.preview).toContain("ram preview");
-		expect(pkg.dependencies["@react-antd-module/cli"]).toBe("^0.1.0"); // 既有依赖不动
-		expect(pkg.devDependencies["@react-antd-module/runtime"]).toBeTruthy();
+		expect(pkg.dependencies["@oj-module/cli"]).toBe("^0.1.0"); // 既有依赖不动
+		expect(pkg.devDependencies["@oj-module/runtime"]).toBeTruthy();
 		// P1：shell 不再是独立包（宿主产物并入 cli），工程 devDeps 不应再出现它
-		expect(pkg.devDependencies["@react-antd-module/shell"]).toBeUndefined();
+		expect(pkg.devDependencies["@oj-module/shell"]).toBeUndefined();
 		// pnpm v11 构建审批只读 pnpm-workspace.yaml 的 allowBuilds 映射
 		expect(fs.readFileSync(path.join(dest, "pnpm-workspace.yaml"), "utf-8")).toMatch(/^\s+esbuild:\s*true$/m);
 	});
@@ -177,7 +177,7 @@ describe("initProject", () => {
 			"allowBuilds:",
 			"  esbuild: set this to true or false",
 			"minimumReleaseAgeExclude:",
-			"  - \"@react-antd-module/cli@0.1.0\"",
+			"  - \"@oj-module/cli@0.1.0\"",
 			"",
 		].join("\n"));
 
@@ -186,7 +186,7 @@ describe("initProject", () => {
 		const yaml = fs.readFileSync(path.join(dest, "pnpm-workspace.yaml"), "utf-8");
 		expect(yaml).toMatch(/^\s+esbuild:\s*true$/m); // 占位被填成 true
 		expect(yaml).toContain("minimumReleaseAgeExclude"); // 既有段保留
-		expect(yaml).toContain("@react-antd-module/cli@0.1.0");
+		expect(yaml).toContain("@oj-module/cli@0.1.0");
 	});
 
 	it("pnpm-workspace.yaml 无 allowBuilds 段 → 追加；显式 false → 尊重不动", async () => {
@@ -207,14 +207,14 @@ describe("initProject", () => {
 		// 伪造「发布包」cliRoot：无 shell-dist/ 产物，只有 package.json + vendor
 		const fakeCli = path.join(tmpRoot(), "cli");
 		fs.mkdirSync(path.join(fakeCli, "vendor"), { recursive: true });
-		fs.writeFileSync(path.join(fakeCli, "package.json"), JSON.stringify({ name: "@react-antd-module/cli", version: "9.9.9" }));
+		fs.writeFileSync(path.join(fakeCli, "package.json"), JSON.stringify({ name: "@oj-module/cli", version: "9.9.9" }));
 		fs.writeFileSync(path.join(fakeCli, "vendor/host-versions.json"), JSON.stringify({
-			matrix: { "react": "19.2.0", "antd": "6.0.0", "@react-antd-module/runtime": "0.1.0" },
+			matrix: { "react": "19.2.0", "antd": "6.0.0", "@oj-module/runtime": "0.1.0" },
 		}));
 
 		const { matrix } = resolveVersionMatrix(fakeCli);
 		expect(matrix.react).toBe("19.2.0");
-		expect(matrix["@react-antd-module/runtime"]).toBe("0.1.0");
+		expect(matrix["@oj-module/runtime"]).toBe("0.1.0");
 	});
 
 	it("cli 内置版本矩阵真实存在且含核心项（发布内容物契约）", () => {
@@ -222,7 +222,7 @@ describe("initProject", () => {
 			path.join(PROJECT_ROOT, "packages/cli/vendor/host-versions.json"),
 			"utf-8",
 		));
-		for (const key of ["react", "antd", "react-router", "@react-antd-module/runtime"])
+		for (const key of ["react", "antd", "react-router", "@oj-module/runtime"])
 			expect(bundled.matrix[key]).toBeTruthy();
 	});
 

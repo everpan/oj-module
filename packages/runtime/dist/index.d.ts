@@ -1,5 +1,5 @@
 /**
- * `@react-antd-module/runtime` 主入口。
+ * `@oj-module/runtime` 主入口。
  *
  * 这是模块工程**唯一**应该 import 的框架入口（设计文档 D3 / §4.3）。
  * 出口已于 P3.1 依据 P1 的实际用量冻结（tests/runtime-exports.test.ts

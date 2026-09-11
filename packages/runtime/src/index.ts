@@ -1,5 +1,5 @@
 /**
- * `@react-antd-module/runtime` 主入口。
+ * `@oj-module/runtime` 主入口。
  *
  * 这是模块工程**唯一**应该 import 的框架入口（设计文档 D3 / §4.3）。
  * 出口已于 P3.1 依据 P1 的实际用量冻结（tests/runtime-exports.test.ts
@@ -102,6 +102,6 @@ export { getRedirectPath } from "./utils/get-redirect-path";
 // 工具与常量
 export * from "./utils/tree";
 
-// zod re-export（AC-D15）：契约 schema 书写入口——模块 `import { z } from "@react-antd-module/runtime"`，
-// zod 打进 runtime dist（构建期 external 白名单放行），不进宿主 importmap；与 @react-antd-module/runtime/contract 同源钉版
+// zod re-export（AC-D15）：契约 schema 书写入口——模块 `import { z } from "@oj-module/runtime"`，
+// zod 打进 runtime dist（构建期 external 白名单放行），不进宿主 importmap；与 @oj-module/runtime/contract 同源钉版
 export { z } from "zod";

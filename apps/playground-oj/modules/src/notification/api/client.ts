@@ -1,8 +1,8 @@
 /* eslint-disable */
 // 生成物：ram api 从契约生成，勿手改（改动请改契约文件后重跑 ram api）
-import { ContractApiError } from "@react-antd-module/runtime/contract/errors";
-import type { ScopedRequestLike } from "@react-antd-module/runtime/contract/errors";
-import type { z } from "@react-antd-module/runtime";
+import { ContractApiError } from "@oj-module/runtime/contract/errors";
+import type { ScopedRequestLike } from "@oj-module/runtime/contract/errors";
+import type { z } from "@oj-module/runtime";
 import type { schemas } from "./client.schemas";
 
 /** oj 信封（AC-D16）：code=0 成功；非 0 时 HTTP status=code，由 toApiError 归一为 ContractApiError */

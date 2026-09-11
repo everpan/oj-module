@@ -193,6 +193,6 @@ cp target/release/oj <project>/bin/oj && chmod +x <project>/bin/oj
 
 本仓库已验证：覆盖为自建产物后，`ram build` 与 `ram dev` 全链路通过（见 `docs/prd/framework-verification-playbook.md`）。
 
-另：`@react-antd-module/cli` **0.1.4 起**已在 `ram vendor` / `ram init` 安装后自动执行等价的
+另：`@oj-module/cli` **0.1.4 起**已在 `ram vendor` / `ram init` 安装后自动执行等价的
 `probeOjRuntime` 冒烟（对最小 api 目录跑 `oj build`），失败打印人话告警并指向本报告——
 即上游修复前，下游至少不会在 `ram build` 时才撞到裸 panic。上游修复后该告警自然消失。

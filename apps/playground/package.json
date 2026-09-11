@@ -10,8 +10,8 @@
 	},
 	"devDependencies": {
 		"@ant-design/icons": "catalog:",
-		"@react-antd-module/cli": "workspace:*",
-		"@react-antd-module/runtime": "workspace:*",
+		"@oj-module/cli": "workspace:*",
+		"@oj-module/runtime": "workspace:*",
 		"@types/react": "catalog:",
 		"antd": "catalog:",
 		"react": "catalog:",

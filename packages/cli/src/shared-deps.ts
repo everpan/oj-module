@@ -33,15 +33,15 @@ export const SHARED_DEPS: SharedDepEntry[] = [
 	{ specifier: "react-router/dom", asset: "react-router-dom", hard: true },
 	{ specifier: "@tanstack/react-query", asset: "react-query", hard: true },
 	// runtime 由 shell 直接拷贝其 dist/runtime.js
-	{ specifier: "@react-antd-module/runtime", asset: "runtime", hard: true },
+	{ specifier: "@oj-module/runtime", asset: "runtime", hard: true },
 	// 契约主入口（含 zod re-export）。并入 runtime 子路径后仍单独成资产：
 	// 浏览器侧生成的 client 不 import 它（只 import 下方 zod-free 出口），
 	// 但模块运行期若 import 契约入口，缺条目会产出无法解析的裸说明符。
-	{ specifier: "@react-antd-module/runtime/contract", asset: "contract", hard: true },
+	{ specifier: "@oj-module/runtime/contract", asset: "contract", hard: true },
 	// zod-free 子路径出口（评审 F3）：生成 client 浏览器侧只 import
 	// ContractApiError/ScopedRequestLike，instanceof 要求宿主与模块单实例 →
 	// 硬共享；zod 不随该资产（AC-D15 零成本承诺）
-	{ specifier: "@react-antd-module/runtime/contract/errors", asset: "contract-errors", hard: true },
+	{ specifier: "@oj-module/runtime/contract/errors", asset: "contract-errors", hard: true },
 	// —— 软共享 ——
 	// 注：@rc-component/form（antd 6 Form 底层）曾尝试单例化以修 my-profile
 	// 崩溃（React #130），假说未证实——多副本并非充分根因，已回退；见
@@ -127,7 +127,7 @@ export function isSharedDep(id: string): boolean {
  */
 export function generateShellEntries(): { name: string, pkg: string }[] {
 	return SHARED_DEPS
-		.filter(dep => dep.asset && dep.specifier !== "@react-antd-module/runtime")
+		.filter(dep => dep.asset && dep.specifier !== "@oj-module/runtime")
 		.map(dep => ({ name: dep.asset!, pkg: dep.specifier }));
 }
 

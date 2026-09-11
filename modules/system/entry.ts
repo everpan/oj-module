@@ -1,4 +1,4 @@
-import type { AppRouteRecordRaw, ModuleDefinition } from "@react-antd-module/runtime";
+import type { AppRouteRecordRaw, ModuleDefinition } from "@oj-module/runtime";
 
 import { ApartmentOutlined, MenuOutlined, SettingOutlined, TeamOutlined, UserOutlined } from "@ant-design/icons";
 import { createElement, lazy } from "react";

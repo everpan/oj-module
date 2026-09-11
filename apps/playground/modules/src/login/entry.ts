@@ -1,5 +1,5 @@
-import type { AuthType, UserInfoType } from "@react-antd-module/runtime";
-import { defineModule } from "@react-antd-module/runtime";
+import type { AuthType, UserInfoType } from "@oj-module/runtime";
+import { defineModule } from "@oj-module/runtime";
 import { lazy } from "react";
 
 /**

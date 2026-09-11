@@ -1,4 +1,4 @@
-import { BasicContent } from "@react-antd-module/runtime";
+import { BasicContent } from "@oj-module/runtime";
 import { Alert, Card, List, Tag } from "antd";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";

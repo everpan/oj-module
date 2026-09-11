@@ -5,7 +5,7 @@
  *   index.html                  —— importmap 由 cli 的 SHARED_DEPS 单一来源生成（P4.1/P4.3）
  *   assets/<name>.js            —— 各共享依赖的单入口自包含 ESM
  *   assets/index-<hash>.js      —— 宿主应用（host.tsx，external 全部共享依赖）
- *   assets/runtime.js           —— 拷贝自 @react-antd-module/runtime 的 dist
+ *   assets/runtime.js           —— 拷贝自 @oj-module/runtime 的 dist
  *
  * 关键：每个共享依赖单独打包、相互 external（经 importmap 解析），
  * 从而宿主与模块命中同一份 react / antd / runtime 实例（单例，D5）。
@@ -36,8 +36,8 @@ import { defaultTrustedOrigins, generateCsp, generateNonce } from "../src/csp";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const shellDir = resolve(__dirname, "..");
-// 预构建宿主产物落在 cli 包根的 shell-dist/（原 @react-antd-module/shell 的 dist），
-// 随 cli 一起发布，外部工程经 `@react-antd-module/cli/shell-dist` 消费
+// 预构建宿主产物落在 cli 包根的 shell-dist/（原 @oj-module/shell 的 dist），
+// 随 cli 一起发布，外部工程经 `@oj-module/cli/shell-dist` 消费
 const distDir = resolve(shellDir, "..", "shell-dist");
 const assetsDir = resolve(distDir, "assets");
 
@@ -556,7 +556,7 @@ async function buildHost() {
 /**
  * 导出完整性门禁（设计文档 R14 落地）。
  *
- * 实现在 `@react-antd-module/cli/esm-exports`，与 CI 测试共用同一份判定逻辑：
+ * 实现在 `@oj-module/cli/esm-exports`，与 CI 测试共用同一份判定逻辑：
  * importmap 给出的每个资产都必须**静态**提供消费方 import 的具名导出，
  * 缺一个就是浏览器里的 "does not provide an export named 'x'" + 整页白屏。
  */
@@ -640,7 +640,7 @@ async function main() {
 	// runtime 完整构建（js + d.ts）：shell 直接拷贝其 dist/runtime.js。
 	// 注意不可只跑 vite build —— emptyOutDir 会清掉 dist 里的 d.ts 声明树。
 	console.log("[shell] 构建 runtime（完整：js + d.ts）");
-	execSync("pnpm --filter @react-antd-module/runtime build", {
+	execSync("pnpm --filter @oj-module/runtime build", {
 		cwd: resolve(shellDir, "../../.."),
 		stdio: "inherit",
 	});

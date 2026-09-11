@@ -24,7 +24,7 @@ const versionsPath = path.join(shellDist, "versions.json");
 if (!fs.existsSync(path.join(shellDist, "index.html")) || !fs.existsSync(versionsPath)) {
 	throw new Error(
 		`[prepack] cli 内置宿主产物缺失（${shellDist}）——\n`
-		+ "请先构建宿主：pnpm --filter @react-antd-module/cli build:shell",
+		+ "请先构建宿主：pnpm --filter @oj-module/cli build:shell",
 	);
 }
 
@@ -35,12 +35,12 @@ const matrix = JSON.parse(fs.readFileSync(versionsPath, "utf-8"));
 const runtimePkgPath = path.join(cliRoot, "..", "runtime", "package.json");
 if (fs.existsSync(runtimePkgPath)) {
 	const runtimeVersion = JSON.parse(fs.readFileSync(runtimePkgPath, "utf-8")).version;
-	const hostRuntime = matrix["@react-antd-module/runtime"];
+	const hostRuntime = matrix["@oj-module/runtime"];
 	if (hostRuntime !== runtimeVersion) {
 		throw new Error(
 			`[prepack] 宿主产物的 runtime 版本（${hostRuntime ?? "缺失"}）`
 			+ `≠ packages/runtime 版本（${runtimeVersion}）——\n`
-			+ "请重建宿主：pnpm --filter @react-antd-module/cli build:shell",
+			+ "请重建宿主：pnpm --filter @oj-module/cli build:shell",
 		);
 	}
 }

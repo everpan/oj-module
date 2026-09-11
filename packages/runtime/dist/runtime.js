@@ -33,7 +33,7 @@ import { DndContext, PointerSensor, closestCenter, useSensor } from "@dnd-kit/co
 import { SortableContext, horizontalListSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useShallow } from "zustand/shallow";
-import { ContractApiError } from "@react-antd-module/runtime/contract/errors";
+import { ContractApiError } from "@oj-module/runtime/contract/errors";
 import ImgCrop from "antd-img-crop";
 import { ProTable } from "@ant-design/pro-components";
 //#region \0rolldown/runtime.js
@@ -207,11 +207,11 @@ var init_constants$2 = __esmMin((() => {
 function getAppInfo() {
 	return {
 		"pkg": {
-			"name": "@react-antd-module/runtime",
+			"name": "@oj-module/runtime",
 			"version": "0.1.4",
 			"license": "MIT"
 		},
-		"lastBuildTime": "2026-09-11 10:02:45"
+		"lastBuildTime": "2026-09-11 10:17:20"
 	};
 }
 var init_get_app_info = __esmMin((() => {}));

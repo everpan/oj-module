@@ -6,7 +6,7 @@
 		"moduleResolution": "bundler",
 		"resolveJsonModule": true,
 		// 工程内契约/模块文件使用 `.ts` 扩展名 import，需放开以通过类型解析
-		// （契约类型由 @react-antd-module/runtime/contract 的 dist d.ts 提供）
+		// （契约类型由 @oj-module/runtime/contract 的 dist d.ts 提供）
 		"allowImportingTsExtensions": true,
 		"strict": true,
 		"noFallthroughCasesInSwitch": true,

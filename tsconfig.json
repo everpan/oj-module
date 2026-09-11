@@ -8,7 +8,7 @@
 			"#src/*": [
 				"./packages/runtime/src/*"
 			],
-			"@react-antd-module/runtime": [
+			"@oj-module/runtime": [
 				"./packages/runtime/src/index.ts"
 			],
 			"#*": [

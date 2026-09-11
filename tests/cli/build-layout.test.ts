@@ -13,7 +13,7 @@ import { PROJECT_ROOT } from "../helpers/paths";
 
 const FIXTURE_ROOT = path.join(PROJECT_ROOT, ".tmp-fx");
 
-const ENTRY = `import { defineModule } from "@react-antd-module/runtime";
+const ENTRY = `import { defineModule } from "@oj-module/runtime";
 export default defineModule({ name: "fx", description: "fixture", version: "0.1.0" });
 `;
 
@@ -55,7 +55,7 @@ describe("readModuleDefinition 元数据读取封闭性（外部工程未装依�
 			"import React from \"react\";",
 			"import * as ReactDOM from \"react-dom\";",
 			"import { Button } from \"antd\";",
-			"import { defineModule } from \"@react-antd-module/runtime\";",
+			"import { defineModule } from \"@oj-module/runtime\";",
 			"import { missing } from \"no-such-pkg-xyz\";",
 			"export default defineModule({",
 			"  name: \"fx\",",

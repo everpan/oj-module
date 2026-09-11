@@ -41,7 +41,7 @@ home 页的饼图/折线原是前端 `mock` 数据。P4-1 把它接成 oj 后端
 
 ### 前端接驳（P4-1d）
 
-`pie-chart.tsx` / `line-chart.tsx` 原从 `@react-antd-module/runtime` 导入 `fetchPie`/`fetchLine`——改为从本模块 `./api/client` 导入（契约生成物），`entry.ts` `onInit` 调 `homeClient.bindRequest(ctx.utils.request)`。与 P3 的 D9 不同：home 不是 runtime 内置端点，前端**直接持有**生成的 client，无需 registry 委托。
+`pie-chart.tsx` / `line-chart.tsx` 原从 `@oj-module/runtime` 导入 `fetchPie`/`fetchLine`——改为从本模块 `./api/client` 导入（契约生成物），`entry.ts` `onInit` 调 `homeClient.bindRequest(ctx.utils.request)`。与 P3 的 D9 不同：home 不是 runtime 内置端点，前端**直接持有**生成的 client，无需 registry 委托。
 
 ## P4-2：notification 通知（D9 注入）
 

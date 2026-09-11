@@ -170,7 +170,7 @@ export async function devServer(projectRoot: string, opts: DevOptions = {}): Pro
 	else
 		console.log("[ram] 纯前端形态（无 api/config.yaml）：/api 由 mock/ 提供");
 
-	console.log("[ram] 宿主来自 @react-antd-module/cli 内置 shell-dist（importmap 单例），模块来自本地 dist/");
+	console.log("[ram] 宿主来自 @oj-module/cli 内置 shell-dist（importmap 单例），模块来自本地 dist/");
 
 	if (!ojTarget && mocks.length)
 		console.log(`[ram] 工程 mock：${mocks.length} 条路由（mock/ 目录，重启生效）`);

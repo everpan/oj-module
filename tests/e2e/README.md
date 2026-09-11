@@ -11,7 +11,7 @@
 | legacy（411e353b worktree） | legacy | 3333 | fake 预填，自动提交 | `pnpm test:e2e:legacy` |
 
 - workers=1 串行：tabbar/menu 用例有全局 UI 状态；`reuseExistingServer: false`，跑前确保 5174/3333 无残留进程（`lsof -iTCP:5174 -iTCP:3333 -sTCP:LISTEN`）。
-- playground 的 `ram dev` 需要宿主/playground 产物先行构建：`pnpm --filter @react-antd-module/cli build:shell && pnpm --filter playground build`。
+- playground 的 `ram dev` 需要宿主/playground 产物先行构建：`pnpm --filter @oj-module/cli build:shell && pnpm --filter playground build`。
 
 ## legacy worktree 建法（一次性）
 
@@ -26,7 +26,7 @@ prepare 必失败，因此 legacy webServer 命令带 `--config.verify-deps-befo
 
 ## 约定（审查 spec 时对照）
 
-1. **spec 零 import 源码**：不得 import `#src/*` / `@react-antd-module/*`。只通过
+1. **spec 零 import 源码**：不得 import `#src/*` / `@oj-module/*`。只通过
    DOM / URL / localStorage 观测——这是「架构变动后基线仍可跑」的前提。
 2. **语义选择器**：`header / aside / main / footer / .ant-menu-root / .ant-tabs-tab`；
    组件类名仅用 antd 公共类（`.ant-menu-item-selected` 等），不依赖业务类名。

@@ -14,7 +14,7 @@ import { isSharedDep, SHARED_DEPS } from "./shared-deps";
 import { checkSharedVersions, resolveShellDist } from "./versions";
 
 /**
- * `@react-antd-module/runtime` 的只读占位源码（设计文档 B10 / §4.3）。
+ * `@oj-module/runtime` 的只读占位源码（设计文档 B10 / §4.3）。
  *
  * 读取模块定义时只需要 entry 顶层调用 `defineModule({ name, version, ... })` 的
  * 结果，而绝不需要真正加载框架运行时（其产物含 Vite 专有的 `?react`/`?url` svg
@@ -116,15 +116,15 @@ export const z = new Proxy({}, { get: () => _fn });
 `;
 
 /**
- * esbuild 插件：把 `@react-antd-module/runtime` 解析到一个内联的只读占位虚拟模块，
+ * esbuild 插件：把 `@oj-module/runtime` 解析到一个内联的只读占位虚拟模块，
  * 避免真正加载框架运行时（含 svg）。用虚拟模块而非 alias 指向实体文件，是因为
  * 实体路径依赖 import.meta.url，在 vitest 等变换环境下拿不到合法的 file URL。
  */
 const runtimeStubPlugin: EsbuildPlugin = {
 	name: "ram-runtime-stub",
 	setup(b) {
-		b.onResolve({ filter: /^@react-antd-module\/runtime$/ }, () => ({
-			path: "@react-antd-module/runtime",
+		b.onResolve({ filter: /^@oj-module\/runtime$/ }, () => ({
+			path: "@oj-module/runtime",
 			namespace: "ram-runtime-stub",
 		}));
 		b.onLoad({ filter: /.*/, namespace: "ram-runtime-stub" }, () => ({
@@ -162,7 +162,7 @@ const dynamicImportStubPlugin: EsbuildPlugin = {
 
 /**
  * 元数据读取封闭性（P3 验收发现）：裸导入全部桩化，`ram init` 产出的外部工程
- * 尚未安装依赖（@react-antd-module/* 未发布），真实 import() 会
+ * 尚未安装依赖（@oj-module/* 未发布），真实 import() 会
  * ERR_MODULE_NOT_FOUND；读元数据只需要 defineModule 入参，共享依赖执行与否无关。
  *
  * - 值统一为「自引用可调用代理」：任意属性链访问/调用都安全（JSX 元素在
@@ -347,7 +347,7 @@ function warnUnsharedDeps(projectRoot: string) {
 
 	const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
 	const deps = Object.keys(pkg.dependencies ?? {});
-	const unshared = deps.filter(dep => !isSharedDep(dep) && !dep.startsWith("@react-antd-module/"));
+	const unshared = deps.filter(dep => !isSharedDep(dep) && !dep.startsWith("@oj-module/"));
 
 	if (unshared.length) {
 		console.warn(

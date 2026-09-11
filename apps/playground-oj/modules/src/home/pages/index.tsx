@@ -1,6 +1,6 @@
 import type { ColProps } from "antd";
 
-import { BasicContent } from "@react-antd-module/runtime";
+import { BasicContent } from "@oj-module/runtime";
 import { Col, Row } from "antd";
 
 import BarChart from "./components/bar-chart";

@@ -25,7 +25,7 @@
 
 system 角色/菜单类端点原本硬编码在 runtime 根级（`/role-list` 等）。D9 让模块通过注册表接管这些端点，收敛到自身 `apiPrefix`（此处 `/system`），消费点（role/menu 页）在运行时经 `getSystemApiProvider()` 委托，未注册时回落内置实现。
 
-页面（`modules/src/system/pages/*`）仍从 `@react-antd-module/runtime` 导入 `fetchRoleList`/`fetchMenuList` 等——这些是"委托入口"，内部 `getSystemApiProvider()?.xxx() ?? builtinXxx()`。模块只要在 `onInit` 注册 provider，页面零改动即走模块后端。
+页面（`modules/src/system/pages/*`）仍从 `@oj-module/runtime` 导入 `fetchRoleList`/`fetchMenuList` 等——这些是"委托入口"，内部 `getSystemApiProvider()?.xxx() ?? builtinXxx()`。模块只要在 `onInit` 注册 provider，页面零改动即走模块后端。
 
 ### 契约扩列（P3-1a）
 

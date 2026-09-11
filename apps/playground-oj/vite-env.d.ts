@@ -1,5 +1,5 @@
 /// <reference types="vite/client" />
-// playground-oj 是模块工程：运行时经 dist（非源码）消费 @react-antd-module/runtime，
+// playground-oj 是模块工程：运行时经 dist（非源码）消费 @oj-module/runtime，
 // 而 runtime dist 不携带以下全局类型（源码里才有），故在此补齐，使 copied 模块
 // 的 fetch* 返回类型 / import.meta.env / 全局 $message 在本地可解析。
 

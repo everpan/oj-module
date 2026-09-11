@@ -1,10 +1,12 @@
-# 框架开发手册：四个 npm 包（新人上手版）
+# 框架开发手册：两个 npm 包（新人上手版）
 
 > **读者**：刚加入、需要维护「框架本体」的同学。默认你会 React + TypeScript，能读 Vite / esbuild 配置；**不要求**你了解本仓库历史。
 > **目标**：读完能独立完成「定位改动落在哪个包 → 写代码 → 本地验证 → 提交前重建产物」。
-> **范围**：只讲 4 个对外发布的包 —— `contract` / `runtime` / `shell` / `cli`，每包一章。
+> **范围**：只讲 2 个对外发布的包 —— `runtime`（含 `runtime/contract` 子路径）与 `cli`（含预构建宿主 `shell-dist`），每包一章。
 > **想直接上手做项目**：看配套实战演练 [`oj-fullstack-tutorial.md`](./oj-fullstack-tutorial.md)（从零搭一个 oj 前后端应用）。
 > 面向「业务模块作者」的手册是 [`module-development-guide.md`](../archive/prd/module-development-guide.md)，两本手册读者不同，不要混读。
+>
+> ⚠️ **结构变更**：本手册已按 P1 包合并更新（原 4 包 contract / runtime / shell / cli → 2 包 runtime / cli）。**依据与迁移记录见 [`202609110947-oj-module-two-package-consolidation-design.md`](./202609110947-oj-module-two-package-consolidation-design.md)**（§12 实施记录、§13 陷阱）。深层章节若仍有「四包」口吻，以本页与设计文档为准。
 
 ---
 
@@ -14,40 +16,36 @@
 
 | 你的需求 / 症状 | 去哪个包 | 章节 |
 | --- | --- | --- |
-| 定义一个新接口、改接口参数/返回值形状 | `contract` | [第 1 章](#第-1-章-react-antd-modulecontract契约层) |
+| 定义一个新接口、改接口参数/返回值形状 | `runtime/contract` | [第 1 章](#第-1-章-oj-moduleruntimecontract契约层) |
 | 页面报「尚未登记 API 前缀」/ 请求被拦 | `runtime`（模块侧）+ `cli`（校验） | [2.9](#29-请求收敛scoped-request) |
-| 菜单不显示、路由 404、页签异常 | `runtime` | [第 2 章](#第-2-章-react-antd-moduleruntime运行时框架) |
-| 页面样式丢失、图标空白、组件拿到 `undefined` | `shell` | [第 3 章](#第-3-章-react-antd-moduleshell预构建宿主) |
-| `ram dev`/`build`/`api` 行为不对 | `cli` | [第 4 章](#第-4-章-react-antd-modulecli工程工具链ram) |
+| 菜单不显示、路由 404、页签异常 | `runtime` | [第 2 章](#第-2-章-oj-moduleruntime运行时框架) |
+| 页面样式丢失、图标空白、组件拿到 `undefined` | `cli`（内置宿主 `shell-dist`） | [第 3 章](#第-3-章-oj-modulecli预构建宿主) |
+| `ram dev`/`build`/`api` 行为不对 | `cli` | [第 4 章](#第-4-章-oj-modulecli工程工具链ram) |
 | 发布新版本 | — | [附录 A](#附录-a发布清单含-staged-publishing-踩坑) |
 
-### 0.2 四个包各干什么
+### 0.2 两个包各干什么
 
 | 包 | 一句话职责 | 谁消费它 |
 | --- | --- | --- |
-| `@react-antd-module/contract` | API 契约 DSL：`defineApi` + `z`(zod) + `ContractApiError` | cli（代码生成）、runtime（re-export `z`）、模块工程 |
-| `@react-antd-module/runtime` | 运行时框架：模块加载/生命周期、路由、布局、状态、请求收敛 | 宿主 shell、模块工程（`import { ... } from "@react-antd-module/runtime"`） |
-| `@react-antd-module/shell` | 预构建宿主：importmap + 共享依赖单例 + `host.js` | `apps/*` 与外部模块工程（经 cli 拷贝进 `modules/dist`） |
-| `@react-antd-module/cli` | 工程工具链：`ram dev/build/preview/api/vendor/...` | 模块工程（开发、构建、发布） |
+| `@oj-module/runtime` | **浏览器面**：运行时框架（模块加载/生命周期、路由、布局、状态、请求收敛）+ 契约 DSL 子路径 `./contract`、`./contract/errors`（`defineApi` / `z` / `ContractApiError`） | 宿主产物、模块工程（`import { ... } from "@oj-module/runtime"`） |
+| `@oj-module/cli` | **Node 工具链面**：`ram dev/build/preview/api/vendor/...` + 预构建宿主（源码 `shell/`、产物 `shell-dist/`，含 importmap 与共享依赖单例） | 模块工程（开发、构建、发布） |
 
-一句话记忆：**contract 定义边界 → runtime 跑在浏览器里组装页面 → shell 负责「同一份依赖、同一份实例」地把它发出去 → cli 让你一条命令就能开发/构建/发布。**
+一句话记忆：**runtime（含契约层）跑在浏览器里组装页面；cli 既提供开发/构建工具链，也把「同一份依赖、同一份实例」的宿主产物发出去。**
 
 ### 0.3 依赖关系与构建顺序
 
 ```
-contract ──► runtime ──┐
-    │                  ├──► shell ──► (apps / 外部工程)
-    └──────► cli ──────┘
+cli ──► runtime ──► (宿主产物 shell-dist ／ 模块工程)
 ```
 
-- 包内 `workspace:*` 依赖在**发布时**会被 pnpm 改写成具体版本号（如 `@react-antd-module/contract: 0.1.3`）。
-- 因此 `contract` 必须最先发布；`shell` 依赖 `cli` + `runtime`，最后发布。`pnpm -r publish` 会自动按拓扑排序。
-- 手工重建顺序：`contract`（无构建）→ `runtime` → `shell`（会**顺带重建 runtime**）→ `cli`（`prepack` 同步 `vendor/host-versions.json`）。
+- 两包 **lockstep 发版**：`cli` 对 `runtime` 写 `workspace:*`，发布时被 pnpm 改写成**精确版本号**（不是 `^` 范围）。
+- **依赖方向只有这一条边，没有环**：宿主产物随 `cli` 发布，`ram dev/build` 直接从 cli 包内 `shell-dist` 取宿主，不再有「先 build 宿主才能用 cli」的顺序约束。
+- 手工重建顺序：`runtime` → `cli` 的 `build:shell`（会**顺带重建 runtime**，产出 `packages/cli/shell-dist`）→ `cli` 的 `prepack`（同步 `vendor/host-versions.json`，并断言宿主 runtime 版本 == `packages/runtime` 版本）。
 
 ```bash
-# 只有改了 runtime 源码时才需要重建 runtime；shell 构建内部已经包含这一步
-pnpm --filter @react-antd-module/runtime build   # src → dist/runtime.js + dist/index.d.ts
-pnpm --filter @react-antd-module/shell build     # 内含 runtime 构建 + host.js + importmap + 共享资产
+# 只有改了 runtime 源码时才需要重建 runtime；cli 的 build:shell 内部已包含这一步
+pnpm --filter @oj-module/runtime build      # src → dist/runtime.js + dist/index.d.ts + dist/contract/*
+pnpm --filter @oj-module/cli build:shell    # 内含 runtime 构建 + host.js + importmap + 共享资产
 ```
 
 ### 0.4 术语表（第一次见的名词都在这）
@@ -62,7 +60,7 @@ pnpm --filter @react-antd-module/shell build     # 内含 runtime 构建 + host.
 | **信封（envelope）** | oj 统一响应格式 `{ code, msg, data }`，`code=0` 表示成功 |
 | **importmap** | 浏览器原生机制，把裸说明符（`react`、`antd`）映射到宿主预构建的单份资产 |
 | **单例（singleton）** | 全站只有一份 react / antd / runtime 实例；多份会导致 Context 撕裂、`instanceof` 失效 |
-| **dist** | 构建产物。`packages/runtime/dist` 与 `packages/shell/dist` 都**随仓库提交** |
+| **dist** | 构建产物。`packages/runtime/dist` 与 `packages/cli/shell-dist` 都**随仓库提交** |
 
 ### 0.5 环境准备与「5 分钟跑起来」
 
@@ -89,14 +87,14 @@ pnpm dev            # = ram dev，默认 http://localhost:5174
 
 ### 0.6 通用红线（动手前先记住）
 
-1. **共享依赖只能有一个版本**：安装走 `catalog:`，产物走 shell 的 importmap 单例。私自写死 `react@18` 会导致「双 React」崩溃（详见第 3 章）。
-2. **`packages/runtime/dist`、`packages/shell/dist` 随仓库分发**，`.gitignore` 为它们开了例外。**改了源码必须重建并提交 dist**，否则本地/CI 跑的是旧产物（历史上多次出现「方法不存在」）。
-3. **不要绕过门禁**：shell 的导出完整性检查、动态 require 检查、版本矩阵校验都是硬门，失败要查根因，别 `--no-verify` 或注释断言。
+1. **共享依赖只能有一个版本**：安装走 `catalog:`，产物走宿主（cli 内置 `shell-dist`）的 importmap 单例。私自写死 `react@18` 会导致「双 React」崩溃（详见第 3 章）。
+2. **`packages/runtime/dist`、`packages/cli/shell-dist` 随仓库分发**，`.gitignore` 为它们开了例外。**改了源码必须重建并提交 dist**，否则本地/CI 跑的是旧产物（历史上多次出现「方法不存在」）。
+3. **不要绕过门禁**：宿主的导出完整性检查、动态 require 检查、版本矩阵校验都是硬门，失败要查根因，别 `--no-verify` 或注释断言。
 4. **改公开出口是破坏性变更**：runtime 出口有「冻结契约」测试（`tests/runtime/runtime-exports.test.ts`），加/删导出会让它红，属预期。
 
 ### 0.7 跟着做：从契约到页面（端到端 15 分钟）
 
-下面这条链路是本仓库最核心的工作流，四个包都会经过一遍。我们新增一个 `GET /api/demo/todos` 接口并渲染它（仓库里已有同名实现，可对照 `apps/playground-oj/api/src/demo/`）。
+下面这条链路是本仓库最核心的工作流，两个包都会经过一遍。我们新增一个 `GET /api/demo/todos` 接口并渲染它（仓库里已有同名实现，可对照 `apps/playground-oj/api/src/demo/`）。
 
 **① 写后端实现（oj）** —— `apps/playground-oj/api/src/demo/todos/api.ts`：
 
@@ -125,7 +123,7 @@ export default {
 **② 写契约** —— `apps/playground-oj/api/src/demo/contract.ts`：
 
 ```ts
-import { defineApi, z } from "@react-antd-module/contract";
+import { defineApi, z } from "@oj-module/runtime/contract";
 
 export const getTodoList = defineApi({
   apiPrefix: "/demo",                 // uni-dev 形态：必须字面等于目录名 "demo"
@@ -154,7 +152,7 @@ pnpm exec ram api         # 也可 npx ram api；仓库内用 node ../../package
 **④ 在模块里注入请求能力** —— `modules/src/demo/entry.ts`（`defineModule` 的 `lifecycle.onInit`）：
 
 ```ts
-import { defineModule } from "@react-antd-module/runtime";
+import { defineModule } from "@oj-module/runtime";
 import { bindRequest } from "./api/client";
 
 export default defineModule({
@@ -188,7 +186,9 @@ export default function DemoPage() {
 
 ---
 
-## 第 1 章 `@react-antd-module/contract`：契约层
+## 第 1 章 `@oj-module/runtime/contract`：契约层
+
+> P1 起 contract 并入 runtime 包、作为子路径出口（`./contract`、`./contract/errors`）：源码在 `packages/runtime/contract/`，产物在 `packages/runtime/dist/contract/`。原独立 `@oj-module/contract` 包已取消。
 
 ### 1.1 职责
 
@@ -197,14 +197,14 @@ export default function DemoPage() {
 ### 1.2 目录速查
 
 ```
-packages/contract/
-├── src/index.ts               # 公开出口（defineApi / z / ContractApiError / ScopedRequestLike）
-├── src/define-api.ts          # defineApi + 定义期校验
-├── src/errors.ts              # ContractApiError
-└── src/scoped-request-like.ts # 生成 client 依赖的最小 request 结构类型
+packages/runtime/contract/
+├── index.ts               # 公开出口（defineApi / z / ContractApiError / ScopedRequestLike）
+├── define-api.ts          # defineApi + 定义期校验
+├── errors.ts              # ContractApiError（zod-free 子路径出口的载体）
+└── scoped-request-like.ts # 生成 client 依赖的最小 request 结构类型
 ```
 
-无构建脚本；`package.json` 的 `exports` 直接指向 `./src/*.ts`（消费方按 TS 源码解析）。`files: ["src"]`。
+由 `packages/runtime/tsconfig.contract.json` 编成 `dist/contract/*.js + *.d.ts`；`runtime` 的 `exports` 开放 `./contract` 与 `./contract/errors` 两个子路径。**`./contract/errors` 刻意 zod-free**（zod 只随 runtime dist 走，见 `@oj-module/runtime` 的 `z` re-export）。
 
 ### 1.3 完整字段说明
 
@@ -228,7 +228,7 @@ packages/contract/
 `apps/playground-oj/api/src/home/contract.ts`（可直接照抄改写）：
 
 ```ts
-import { defineApi, z } from "@react-antd-module/contract";
+import { defineApi, z } from "@oj-module/runtime/contract";
 
 /** 饼图单项：value 数值 + code 维度键 */
 const pieData = z.object({ value: z.number(), code: z.string() });
@@ -292,9 +292,9 @@ matchit 约束：参数段必须整段为 {name} 或 {*name}，需要前缀/后�
 **生成的 `client.ts` 长什么样**（`modules/src/demo/api/client.ts` 摘录）：
 
 ```ts
-import { ContractApiError } from "@react-antd-module/contract/errors";
-import type { ScopedRequestLike } from "@react-antd-module/contract/errors";
-import type { z } from "@react-antd-module/runtime";
+import { ContractApiError } from "@oj-module/runtime/contract/errors";
+import type { ScopedRequestLike } from "@oj-module/runtime/contract/errors";
+import type { z } from "@oj-module/runtime";
 import type { schemas } from "./client.schemas";
 
 interface OjEnvelope<T> { code: number, msg?: string, data?: T }
@@ -331,7 +331,7 @@ export async function getTodoList(query: GetTodoListQuery): Promise<GetTodoListD
 所有请求失败最终都会归一成 `ContractApiError`，含 `code`（oj 信封 code 或 `-1`）与 `msg`：
 
 ```tsx
-import { ContractApiError } from "@react-antd-module/contract/errors";
+import { ContractApiError } from "@oj-module/runtime/contract/errors";
 
 try {
   await getTodoList({ keyword: "" });
@@ -345,7 +345,7 @@ catch (e) {
 }
 ```
 
-> `instanceof` 要求**单例**：`@react-antd-module/contract/errors` 是硬共享依赖（宿主 importmap 提供），不要在模块里自带副本。
+> `instanceof` 要求**单例**：`@oj-module/runtime/contract/errors` 是硬共享依赖（宿主 importmap 提供），不要在模块里自带副本。
 
 ### 1.8 改动落点
 
@@ -368,7 +368,7 @@ pnpm test tests/cli          # cli 的 contract-* 用例大量消费本包（含
 
 ---
 
-## 第 2 章 `@react-antd-module/runtime`：运行时框架
+## 第 2 章 `@oj-module/runtime`：运行时框架
 
 ### 2.1 职责
 
@@ -406,7 +406,7 @@ packages/runtime/
 
 ```ts
 import { FileTextOutlined, HomeOutlined } from "@ant-design/icons";
-import { defineModule } from "@react-antd-module/runtime";
+import { defineModule } from "@oj-module/runtime";
 import { createElement } from "react";
 import { Navigate } from "react-router";
 
@@ -450,7 +450,7 @@ export default defineModule({
 });
 ```
 
-**只允许 import 三类东西**：`@react-antd-module/runtime`、共享依赖（react / antd / icons…，由宿主 importmap 提供）、模块自身的相对路径。**不出现任何 `#src/*` 或框架内部路径**（构建期会拦）。
+**只允许 import 三类东西**：`@oj-module/runtime`、共享依赖（react / antd / icons…，由宿主 importmap 提供）、模块自身的相对路径。**不出现任何 `#src/*` 或框架内部路径**（构建期会拦）。
 
 ### 2.5 `ModuleContext.register` 全解
 
@@ -502,7 +502,7 @@ beforeInit → onInit → onActivate → onDeactivate → onDestroy
 框架用 zustand；模块常直接消费：
 
 ```tsx
-import { useUserStore, useAuthStore, usePreferences } from "@react-antd-module/runtime";
+import { useUserStore, useAuthStore, usePreferences } from "@oj-module/runtime";
 
 const user = useUserStore(s => s.username);
 const isDark = usePreferences(s => s.isDark);
@@ -536,7 +536,7 @@ fetchPie({ by: "all" });  // 落在 /home/*，越界会被拒
 ### 2.10 构建与 dist 约定
 
 ```bash
-pnpm --filter @react-antd-module/runtime build
+pnpm --filter @oj-module/runtime build
 # = vite build → tsc -p tsconfig.dts.json → rewrite-dts-specifiers.mjs → inline-css.mjs
 ```
 
@@ -550,7 +550,7 @@ pnpm --filter @react-antd-module/runtime build
 ```bash
 pnpm test tests/runtime                            # 运行时单测全家桶
 pnpm test tests/runtime/runtime-exports.test.ts    # 出口冻结契约
-pnpm --filter @react-antd-module/runtime build     # 必须能过
+pnpm --filter @oj-module/runtime build     # 必须能过
 pnpm test tests/shell/shell-importmap.test.ts      # runtime.js 与包 dist 一致性
 ```
 
@@ -563,7 +563,9 @@ pnpm test tests/shell/shell-importmap.test.ts      # runtime.js 与包 dist 一�
 
 ---
 
-## 第 3 章 `@react-antd-module/shell`：预构建宿主
+## 第 3 章 `@oj-module/cli`：预构建宿主
+
+> P1 起宿主并入 cli：源码在 `packages/cli/shell/`，产物在 `packages/cli/shell-dist/`（随 cli 发布）。本章讲的就是这两块；cli 的工具链部分见第 4 章。
 
 ### 3.1 职责
 
@@ -572,18 +574,19 @@ pnpm test tests/shell/shell-importmap.test.ts      # runtime.js 与包 dist 一�
 ### 3.2 目录与产物
 
 ```
-packages/shell/
+packages/cli/shell/
 ├── src/host.tsx           # 宿主入口：拉 modules.json → 校验信任 → 注入 CSS/preload → loadAll → RouterProvider
 ├── src/manifest.ts        # 清单字段转换 + runtime 版本提取
 ├── src/preload.ts         # modulepreload 收集（带 sha384 integrity）
 ├── src/trust.ts           # 来源白名单（信任根）
 ├── src/csp.ts             # CSP 生成（构建期 nonce）
 ├── scripts/build.mts      # 【核心】预构建脚本
-└── dist/                  # 【随仓库提交】
-    ├── index.html         #   importmap + CSP
-    ├── assets/*.js        #   每共享依赖一个单入口 ESM + ram-* 子路径 shim + host.js/runtime.js
-    ├── modules.json       #   由 cli 产出（模块清单）
-    └── versions.json      #   版本矩阵（外部工程必须严格对齐）
+└── index.html             # 宿主模板（CSP / importmap 占位，构建期注入）
+
+packages/cli/shell-dist/   # 【随仓库提交】build.mts 的产物
+├── index.html             #   importmap + CSP
+├── assets/*.js            #   每共享依赖一个单入口 ESM + ram-* 子路径 shim + host.js/runtime.js
+└── versions.json          #   版本矩阵（外部工程必须严格对齐）
 ```
 
 ### 3.3 importmap 是什么
@@ -596,7 +599,7 @@ packages/shell/
   "imports": {
     "react": "/assets/react.js",
     "antd": "/assets/antd.js",
-    "@react-antd-module/runtime": "/assets/runtime.js",
+    "@oj-module/runtime": "/assets/runtime.js",
     "antd/es/modal": "/assets/ram-antd-es-modal.js",
     "@ant-design/icons/es/icons/CloseOutlined": "/assets/ram--ant-design-icons-es-icons-CloseOutlined.js"
   }
@@ -615,8 +618,8 @@ packages/shell/
 export const SHARED_DEPS: SharedDepEntry[] = [
   { specifier: "react", asset: "react", hard: true },
   { specifier: "react-dom", asset: "react-dom", hard: true },
-  { specifier: "@react-antd-module/runtime", asset: "runtime", hard: true },
-  { specifier: "@react-antd-module/contract/errors", asset: "contract-errors", hard: true },
+  { specifier: "@oj-module/runtime", asset: "runtime", hard: true },
+  { specifier: "@oj-module/runtime/contract/errors", asset: "contract-errors", hard: true },
   { specifier: "antd", asset: "antd", hard: false },
   { specifier: "@ant-design/icons", asset: "icons", hard: false },
   { specifier: "zustand", asset: "zustand", hard: false },
@@ -634,15 +637,15 @@ export const SHARED_DEPS: SharedDepEntry[] = [
 
 #### 3.4.1 矩阵全集：模块能 import 的裸说明符
 
-模块**只允许 import 三类东西**：`@react-antd-module/runtime`、本矩阵内的包、自身相对路径（`#src/*` 等框架内部路径构建期会拦）。矩阵全集如下：
+模块**只允许 import 三类东西**：`@oj-module/runtime`、本矩阵内的包、自身相对路径（`#src/*` 等框架内部路径构建期会拦）。矩阵全集如下：
 
 **硬共享**（模块不得自带；工程 `devDependencies` 版本须与宿主严格相等）：
 
 ```
 react  react/jsx-runtime  react/jsx-dev-runtime  react-dom  react-dom/client
 react-router  react-router/dom  @tanstack/react-query
-@react-antd-module/runtime  @react-antd-module/contract/errors
-@react-antd-module/contract   # 仅 Node 侧 codegen 用，浏览器无人 import
+@oj-module/runtime  @oj-module/runtime/contract/errors
+@oj-module/runtime/contract   # 仅 Node 侧 codegen 用，浏览器无人 import
 ```
 
 **软共享**（默认也由宿主 importmap 提供，scopes 允许多版本兜底）：
@@ -684,7 +687,7 @@ import CloseOutlined from "@ant-design/icons/es/icons/CloseOutlined";
 若直接把这类深路径映射到 `/assets/icons.js`，`CloseOutlined` 会变成那个通用壳，渲染出**空的** `<span class="anticon">` —— 表现为页签关闭 `×` 消失、Typography 复制图标空白、Tabs「更多」图标空白。修复是生成按名取用的 shim（`buildIconsSubpathAsset`）：
 
 ```js
-// packages/shell/dist/assets/ram--ant-design-icons-es-icons-CloseOutlined.js
+// packages/cli/shell-dist/assets/ram--ant-design-icons-es-icons-CloseOutlined.js
 import * as __icons from "@ant-design/icons";
 const __d = __icons["CloseOutlined"] ?? __icons.default;
 export default __d;
@@ -707,7 +710,7 @@ fetch modules.json + versions.json（并行）
 ```
 
 ```tsx
-// packages/shell/src/host.tsx（节选）
+// packages/cli/shell/src/host.tsx（节选）
 const [res, versionsRes] = await Promise.all([
   fetch(`${base}modules.json`),
   fetch(`${base}versions.json`).catch(() => null),
@@ -733,7 +736,7 @@ setRouter(createBrowserRouter([{ path: "/", element: <><LayoutEffects /><Outlet 
 ### 3.9 本地验证
 
 ```bash
-pnpm --filter @react-antd-module/shell build
+pnpm --filter @oj-module/cli build:shell
 pnpm test tests/shell
 node tests/e2e/verify-shell-iconcontext.mjs   # 已构建资产真实可加载 + IconContext/图标 default
 ```
@@ -741,12 +744,14 @@ node tests/e2e/verify-shell-iconcontext.mjs   # 已构建资产真实可加载 +
 ### 3.10 常见坑
 
 - 新增共享依赖漏了三处同步（见 3.4）。
-- 忘了 `packages/shell/dist` 随源码提交（改 `build.mts`/`host.tsx` 后必须重建）。
+- 忘了 `packages/cli/shell-dist` 随源码提交（改 `build.mts`/`host.tsx` 后必须重建）。
 - `index.html` 的 nonce 每次构建都会变，属正常 diff。
 
 ---
 
-## 第 4 章 `@react-antd-module/cli`：工程工具链（`ram`）
+## 第 4 章 `@oj-module/cli`：工程工具链（`ram`）
+
+> P1 起 cli 还承载预构建宿主（见第 3 章）。依赖方向只有 `cli → runtime` 一条边，宿主产物就放在 cli 包内 `shell-dist/`。
 
 ### 4.1 职责
 
@@ -870,29 +875,29 @@ pnpm test tests/shell/shell-importmap.test.ts  # 门禁实现一致性
 
 ```bash
 # 0) 确认要发的包与版本；工作区干净
-#    注意：不要求四包锁定同一版本。若只升了部分包（例：runtime/cli/shell 0.1.4、
-#    contract 仍 0.1.3），就不能用 `pnpm -r publish`——未升版的包版本已存在会 403。
-# 1) 重建产物并同步 vendor（shell 构建内含 runtime 重建）
-pnpm --filter @react-antd-module/shell build
+#    两包 lockstep：cli 对 runtime 写精确版本，二者同版本号一起发
+# 1) 重建产物并同步 vendor（cli 的 build:shell 内含 runtime 重建）
+pnpm --filter @oj-module/cli build:shell
 node packages/cli/scripts/sync-host-versions.mjs
 # 2) 提交（pnpm publish 默认要求工作区干净）
-# 3) 按依赖序逐包发布（runtime → cli → shell；contract 无改动则跳过）
-for p in runtime cli shell; do
-  pnpm --filter "@react-antd-module/$p" publish --access public --no-provenance --no-git-checks
+# 3) 按依赖序逐包发布（runtime → cli）
+for p in runtime cli; do
+  pnpm --filter "@oj-module/$p" publish --access public --no-provenance --no-git-checks
 done
 # 4) 复核（务必查 registry，不要只看 CLI 的 ✅）
-for p in contract cli runtime shell; do
-  curl -s "https://registry.npmjs.org/@react-antd-module%2f$p" \
+for p in runtime cli; do
+  curl -s "https://registry.npmjs.org/@oj-module%2f$p" \
     | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>console.log(Object.keys(JSON.parse(s).versions).join(' ')))"
 done
 ```
 
 **真实踩坑记录**：
 
-- **选择性发布**：`pnpm -r publish` 仅在四包都升版时可用；部分升版时必须 `--filter` 逐包发，且按依赖序（`shell` 依赖 `cli` + `runtime`，最后发）。
+- **选择性发布**：两包 lockstep（同版本号），通常一起发；若只发其中一个，必须用 `--filter` 逐包发，且**先 `runtime` 后 `cli`**（cli 精确依赖 runtime）。
 - 发布后**立刻**读 registry 可能仍是旧版本/404（CDN 传播延迟），不要据此判断失败。
 - `pnpm publish` 遇到「版本已存在」会打印 `409 previously staged version` / `403 previously published versions`，其实是**已经发布成功**的报错文案，不要误判为卡在 stage；到 npmjs Staged Packages 页面确认即可。
-- **顺序很重要**：`contract` 未公开时，新发布的 `runtime` 其 peer 依赖 `contract@<新版本>` 会悬空，消费者直接装不上。
+- **顺序很重要**：`runtime` 未公开时，新发布的 `cli` 其精确依赖 `runtime@<新版本>` 会悬空，消费者直接装不上。
+- **宿主完整性卡口**：`cli` 的 `prepack` 会断言 `shell-dist` 存在且其 runtime 版本 == `packages/runtime` 版本（设计 R5），不满足直接失败——防止发布出「类型来自新版、实现来自旧宿主」的组合。
 - `cli` 版本会被 `ram init` 直接钉进新工程，且其 `templates/`（含 `env.d.ts`）随之分发；发 cli 前建议按 [`framework-verification-playbook.md`](./framework-verification-playbook.md) 从零跑一遍。
 
 ## 附录 B：排障速查表
@@ -900,7 +905,7 @@ done
 | 症状 | 常见原因 | 处理 |
 | --- | --- | --- |
 | `模块 "x" 尚未登记 API 前缀` | `onInit` 里漏了 `ctx.register.apiPrefix` | 补登记，再 `bindRequest` |
-| `方法不存在` / 行为与源码不符 | 改了 runtime 源码没重建 dist | `pnpm --filter @react-antd-module/runtime build` |
+| `方法不存在` / 行为与源码不符 | 改了 runtime 源码没重建 dist | `pnpm --filter @oj-module/runtime build` |
 | 页面图标空白（关闭 ×、复制） | 图标深路径 default 退化 | 见 [3.6](#36-深路径兜底最容易踩的坑)，重建 shell |
 | 整页白屏 + `does not provide an export named` | 共享资产零具名导出（A22） | 重建 shell，查 `tests/shell/shell-importmap.test.ts` |
 | 整页白屏 + `Failed to resolve module specifier` | 裸说明符未被 importmap 覆盖 | 在 `SHARED_DEPS` 登记该深路径 |

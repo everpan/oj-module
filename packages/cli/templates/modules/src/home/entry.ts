@@ -1,5 +1,5 @@
 import { HomeOutlined } from "@ant-design/icons";
-import { defineModule } from "@react-antd-module/runtime";
+import { defineModule } from "@oj-module/runtime";
 import { createElement, lazy } from "react";
 
 const Home = lazy(() => import("./pages/index"));

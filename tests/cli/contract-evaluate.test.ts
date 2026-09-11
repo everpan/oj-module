@@ -8,7 +8,7 @@ const FIXTURE = path.join(__dirname, "fixtures/order.contract.ts");
 
 /**
  * AC-D13：契约求值——esbuild bundle + 真 import()，契约只 import
- * @react-antd-module/runtime/contract（真实现，零浏览器依赖）；误 import runtime
+ * @oj-module/runtime/contract（真实现，零浏览器依赖）；误 import runtime
  * 时用空壳 stub 并告警（浏览器代码进 Node 必炸）。
  */
 describe("evaluateContract（AC-D13）", () => {

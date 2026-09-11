@@ -6,7 +6,7 @@
 
 ## 2. 端口与依赖（P0-1）
 - `api/config.yaml` port 9778 → **9779**（F11，避开 playground 9778）。host 127.0.0.1、base /api 维持。
-- `package.json` devDependencies 改回 `workspace:*`/`catalog:`（照 playground），并补 `@react-antd-module/contract`（否则 demo 契约 typecheck 挂）。`pnpm install` 通过（lockfile 1139 条目 supply-chain 通过，hooks 设置）。
+- `package.json` devDependencies 改回 `workspace:*`/`catalog:`（照 playground），并补 `@oj-module/runtime/contract`（否则 demo 契约 typecheck 挂）。`pnpm install` 通过（lockfile 1139 条目 supply-chain 通过，hooks 设置）。
 
 ## 3. 后端登录冒烟（P0-2，直跑 oj 无需前端）
 - `./bin/oj server -c api/config.yaml --api-path api/src -b /api` 起服，health 200，certificate valid（2036 到期）。

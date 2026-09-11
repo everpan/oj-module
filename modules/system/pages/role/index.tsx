@@ -1,8 +1,8 @@
 import type { ActionType, ProColumns, ProCoreActionType } from "@ant-design/pro-components";
-import type { RoleItemType } from "@react-antd-module/runtime";
+import type { RoleItemType } from "@oj-module/runtime";
 import { PlusCircleOutlined } from "@ant-design/icons";
 
-import { accessControlCodes, BasicButton, BasicContent, BasicTable, fetchDeleteRoleItem, fetchMenuByRoleId, fetchRoleList, fetchRoleMenu, handleTree, useAccess } from "@react-antd-module/runtime";
+import { accessControlCodes, BasicButton, BasicContent, BasicTable, fetchDeleteRoleItem, fetchMenuByRoleId, fetchRoleList, fetchRoleMenu, handleTree, useAccess } from "@oj-module/runtime";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Button, Popconfirm } from "antd";
 import { useRef, useState } from "react";

@@ -59,12 +59,12 @@ describe("runtime 包元数据定稿（P3.5）", () => {
 			.map(m => m[1])
 			.filter(spec => !spec.startsWith(".") && !spec.startsWith("/"));
 		// bare 说明符归一为包名：react/jsx-runtime → react，@dnd-kit/core 保持
-		// 自引用子路径（@react-antd-module/runtime/contract/errors）由本包 exports
+		// 自引用子路径（@oj-module/runtime/contract/errors）由本包 exports
 		// 提供，不属于 peerDependencies（不能声明自己）
 		const packages = new Set(
 			specifiers
 				.map(spec => spec.startsWith("@") ? spec.split("/").slice(0, 2).join("/") : spec.split("/")[0])
-				.filter(name => name !== "@react-antd-module/runtime"),
+				.filter(name => name !== "@oj-module/runtime"),
 		);
 
 		const uncovered = [...packages].filter(name => !peers.has(name));

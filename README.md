@@ -169,14 +169,14 @@ pnpm preview
 
 The manifest is hosted as a same-origin static file and is **not signed** (O3 already decided: same org, different teams — the cost of signing outweighs the benefit). The trust root degrades to "single CI egress + manifest and artifacts in separate directories with separate publish credentials + `moduleOrigins` source whitelist + L2 integrity + CSP". **Residual risk accepted: credentials that can write to the manifest directory are equivalent to being able to inject arbitrary module code** — ensure only CI can write to the manifest directory.
 
-### Publish checklist (@react-antd-module/runtime / cli)
+### Publish checklist (@oj-module/runtime / cli)
 
 - Installation uses `.npmrc` mirror acceleration; **publishing** is locked to the official registry via each package's `publishConfig.registry` to prevent mis-publishing
 - Enable **2FA** on the npm account (account settings, one-time)
-- Unified publish command: `pnpm --filter @react-antd-module/<pkg> publish --provenance --access public`
+- Unified publish command: `pnpm --filter @oj-module/<pkg> publish --provenance --access public`
 - CI install unified as `pnpm install --frozen-lockfile`; lockfile changes must pass review
 - Periodically run `npm audit signatures` to verify the dependency signature chain
-- Anti-typosquat: external teams should verify the `@react-antd-module/*` scope spelling when installing (official source is the only publisher)
+- Anti-typosquat: external teams should verify the `@oj-module/*` scope spelling when installing (official source is the only publisher)
 
 ## Credits
 

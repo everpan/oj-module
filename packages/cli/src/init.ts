@@ -230,11 +230,11 @@ function generatePackageJson(cliRoot: string, projectName: string) {
 	};
 
 	const devDeps: Record<string, string> = {
-		"@react-antd-module/cli": cliPkg.version,
+		"@oj-module/cli": cliPkg.version,
 		// runtime 必须显式声明：uni-dev 工程的 contract.ts 与生成 client 直接 import
-		// `@react-antd-module/runtime/contract[/errors]`，`ram api` 在 Node 侧求值契约时
+		// `@oj-module/runtime/contract[/errors]`，`ram api` 在 Node 侧求值契约时
 		// 需从工程 node_modules 解析真实现（evaluateContract 把裸说明符 external）。
-		"@react-antd-module/runtime": pin("@react-antd-module/runtime"),
+		"@oj-module/runtime": pin("@oj-module/runtime"),
 		"@ant-design/icons": pin("@ant-design/icons"),
 		"@types/react": pin("@types/react"),
 		"antd": pin("antd"),

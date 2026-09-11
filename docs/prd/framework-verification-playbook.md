@@ -40,7 +40,7 @@ rm -rf "$VERIFY_DIR" && mkdir -p "$VERIFY_DIR" && cd "$VERIFY_DIR"
 ## 1. 脚手架（`ram init`）
 
 ```bash
-# 用源码 CLI（验证当前代码）；若验证发布包，改 `npx --package @react-antd-module/cli ram init`
+# 用源码 CLI（验证当前代码）；若验证发布包，改 `npx --package @oj-module/cli ram init`
 node "$RAM_REPO/packages/cli/bin/ram.mjs" init my-books --yes
 ```
 
@@ -48,7 +48,7 @@ node "$RAM_REPO/packages/cli/bin/ram.mjs" init my-books --yes
 
 - [ ] 退出码 0，末行提示 `登录 admin / 123456`
 - [ ] 目录齐全：`api/src/{_platform,auth,web,notifications}`、`api/.ram-api-exempt.json`、`modules/src/{demo,home,login}`、`modules.config.ts`、`tsconfig.json`、`global.d.ts`、`env.d.ts`、`bin/oj`、`bin/.oj-version`、`.claude/skills/oj-api-dev/`
-- [ ] `package.json` 的 devDependencies **包含** `@react-antd-module/{cli,contract,runtime,shell}`，且值**不是 `*`**
+- [ ] `package.json` 的 devDependencies **包含** `@oj-module/{cli,contract,runtime,shell}`，且值**不是 `*`**
 - [ ] 若出现「`@types/react` / `typescript` 回退 `*`」告警 → 记下，安装后必须钉版
 - [ ] **未出现「oj 二进制自检失败」告警**（cli ≥ 0.1.4 安装后自动冒烟）；若出现，按 §3 换自建二进制
 
@@ -61,7 +61,7 @@ cd my-books && pnpm install
 **检查点**
 
 - [ ] `node_modules/.bin/ram`、`node_modules/.bin/tsc` 存在
-- [ ] 安装日志里 4 个 `@react-antd-module/*` 版本与 `versions.json` 一致
+- [ ] 安装日志里 4 个 `@oj-module/*` 版本与 `versions.json` 一致
 - [ ] `pnpm exec ram info` 输出宿主版本矩阵 + 模块清单，无报错
 - [ ] 处理 §1 的 `*` 告警：把 `@types/react` / `typescript` 钉成实际安装版本
 
@@ -140,7 +140,7 @@ pnpm exec ram api
 > `handler 未登记` 失败。补上后 `--check` 输出 `0 error / 0 warn`。
 > 豁免只做 error→skip 降级，不会引入新错误。
 
-> 若报 `Cannot find package '@react-antd-module/contract'` → 见 §7 排障（脚手架/依赖问题）。
+> 若报 `Cannot find package '@oj-module/runtime/contract'` → 见 §7 排障（脚手架/依赖问题）。
 
 ## 5. 前端模块
 
@@ -186,7 +186,7 @@ curl -s http://127.0.0.1:9778/api/notifications -H "authorization: Bearer $TOKEN
 - [ ] 新增返回 `{"ok":true}`，全量列表变 4 条
 - [ ] `GET /api/notifications`（带 token）返回 `code:0` + 数组（runtime 通知铃 root 级兜底；缺端点会 404 `no route matched`）
 - [ ] 无 token 返回 **401**
-- [ ] `http://localhost:5174/` 200，importmap 含 `@react-antd-module/runtime`，`/modules/books/0.1.0/entry.js` 200
+- [ ] `http://localhost:5174/` 200，importmap 含 `@oj-module/runtime`，`/modules/books/0.1.0/entry.js` 200
 - [ ] `/modules/login/0.1.0/entry.js` 200，且 `/login` 能渲染模块登录页（登出后可跳回；缺 login 模块则落空）
 
 用完停服：`pkill -f "ram dev"; pkill -f "bin/oj"`。
@@ -220,7 +220,7 @@ pnpm exec ram preview    # oj migrate（verify 门禁）→ server + 静态兜�
 | 登出 / 回跳登录落空，`/login` 空白或 404 | 工程缺 `login` 模块——shell 宿主只消费模块路由，不挂 runtime 内置登录兜底 | 保留 `modules.config.ts` 的 `login` 模块（cli ≥ 0.1.5 的 `ram init` 已内置 `modules/src/login`，§5） |
 | 登录后 / 点 logo 跳 `/home` 落 React Router 错误边界 | shell 预构建把 `VITE_BASE_HOME_PATH` 定为 `/home`，而工程缺 home 模块 | 保留 `modules.config.ts` 的 `home` 模块（cli ≥ 0.1.5 的 `ram init` 已内置 `modules/src/home`，§5） |
 | 通知铃请求 404 / `no route matched` | 缺 root 级 `/api/notifications` 端点（runtime 未注册 provider 时走内置兜底） | cli ≥ 0.1.5 的 `ram init` 已内置 `api/src/notifications`（root 级 handler + 表，参考 playground notification，§5） |
-| `ram api` 报 `Cannot find package '@react-antd-module/contract'` | 工程 devDeps 缺 `contract` | 新版 `ram init` 已内置；旧工程手动加并 `pnpm install` |
+| `ram api` 报 `Cannot find package '@oj-module/runtime/contract'` | 工程 devDeps 缺 `contract` | 新版 `ram init` 已内置；旧工程手动加并 `pnpm install` |
 | `typecheck` 报 `Property 'env' does not exist on type 'ImportMeta'` | 缺 `env.d.ts` / 未进 tsconfig include | 新版 `ram init` 已内置；旧工程补 `env.d.ts` 并加进 `include` |
 | `@types/react` / `typescript` 为 `*` | 宿主 versions.json 未收录 | 安装后钉成实际版本 |
 | 登录 401 且非 `invalid credentials` | `/auth/*` 不在 `anonymous_paths` | 补进 `api/config.yaml` 后重启 |

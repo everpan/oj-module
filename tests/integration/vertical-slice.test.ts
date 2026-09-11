@@ -4,7 +4,7 @@
  * 验证：
  *  1. shell 预构建产物含手写 importmap，且覆盖全部硬共享依赖；
  *  2. 宿主 host chunk 与 demo 模块的所有共享裸说明符都能经 importmap 解析；
- *  3. 单例必要条件：宿主与模块对 react / @react-antd-module/runtime 等命中同一 URL；
+ *  3. 单例必要条件：宿主与模块对 react / @oj-module/runtime 等命中同一 URL；
  *  4. ram build 产物：modules.json 字段完整、integrity 与文件一致、无 blob/data import、
  *     模块内无共享依赖实现代码（react 未被打进模块）。
  *
@@ -46,7 +46,7 @@ function resolveShell() {
 	if (!existsSync(htmlPath)) {
 		// eslint-disable-next-line no-console
 		console.log("[test] 构建 shell（缺失 dist）…");
-		execFileSync("pnpm", ["--filter", "@react-antd-module/cli", "build:shell"], {
+		execFileSync("pnpm", ["--filter", "@oj-module/cli", "build:shell"], {
 			cwd: PROJECT_ROOT,
 			stdio: "inherit",
 		});
@@ -168,7 +168,7 @@ describe("p1 垂直切片：importmap 与单例", () => {
 	});
 
 	it("单例必要条件：宿主与模块对 react / runtime 等命中同一 URL", () => {
-		for (const dep of ["react", "@react-antd-module/runtime", "antd", "react-i18next"]) {
+		for (const dep of ["react", "@oj-module/runtime", "antd", "react-i18next"]) {
 			const hostUrl = resolveViaImportmap(dep, importmap);
 			const moduleUrl = resolveViaImportmap(dep, importmap);
 			expect(hostUrl, `宿主 ${dep} 未映射`).not.toBeNull();

@@ -35,8 +35,8 @@ pnpm check:circular-deps  # Check for circular dependencies
 
 框架整合为**两个包**（按运行环境切分）：
 
-- `packages/runtime/` → `@react-antd-module/runtime`：**浏览器面**——框架运行时（路由/布局/store/请求/组件/module-loader）+ 契约 DSL 子路径（`./contract`、`./contract/errors`，编译进 `dist/contract`）
-- `packages/cli/` → `@react-antd-module/cli`：**Node 工具链面**——`ram dev / build / info / merge / api / vendor`，以及预构建宿主（源码 `shell/`、产物 `shell-dist/`）
+- `packages/runtime/` → `@oj-module/runtime`：**浏览器面**——框架运行时（路由/布局/store/请求/组件/module-loader）+ 契约 DSL 子路径（`./contract`、`./contract/errors`，编译进 `dist/contract`）
+- `packages/cli/` → `@oj-module/cli`：**Node 工具链面**——`ram dev / build / info / merge / api / vendor`，以及预构建宿主（源码 `shell/`、产物 `shell-dist/`）
 - `modules/`：自带模块（dogfooding）；`apps/playground/`、`apps/playground-oj/`：模拟外部模块工程
 
 依赖方向只有一条边：`cli → runtime`（精确版本，lockstep 发版）。宿主产物随 cli 发布，`ram dev/build` 直接从 cli 包内 `shell-dist` 取宿主，不再依赖独立的 shell 包或 monorepo 路径回退。

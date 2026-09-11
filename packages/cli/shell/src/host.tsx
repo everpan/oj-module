@@ -26,7 +26,7 @@ import {
 	useAuthStore,
 	usePreferences,
 	useUserStore,
-} from "@react-antd-module/runtime";
+} from "@oj-module/runtime";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { App as AntdApp, ConfigProvider, theme } from "antd";
 import { useEffect, useState } from "react";

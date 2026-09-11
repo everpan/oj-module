@@ -1,7 +1,7 @@
-import type { AppRouteRecordRaw, ModuleDefinition } from "@react-antd-module/runtime";
+import type { AppRouteRecordRaw, ModuleDefinition } from "@oj-module/runtime";
 import { AntDesignOutlined, ContainerOutlined } from "@ant-design/icons";
 
-import { EmbeddedIcon, ExternalIcon, Iframe, OutsidePageIcon, RiReactjsLine } from "@react-antd-module/runtime";
+import { EmbeddedIcon, ExternalIcon, Iframe, OutsidePageIcon, RiReactjsLine } from "@oj-module/runtime";
 import { createElement } from "react";
 import { Outlet } from "react-router";
 

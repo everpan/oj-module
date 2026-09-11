@@ -63,7 +63,7 @@ async function main() {
 	}
 
 	// 页面组件（P7.13：现行契约——从 runtime 包导入，禁用 #src/*）
-	const pageContent = `import { BasicContent } from "@react-antd-module/runtime";
+	const pageContent = `import { BasicContent } from "@oj-module/runtime";
 
 export default function ${modulePascalName}() {
 	return <BasicContent>${description}</BasicContent>;
@@ -99,7 +99,7 @@ export default function ${modulePascalName}() {
 	// P7.13 / 评审 F10：模板对齐现行契约——
 	// 包导入（非 #src/*）、handle.layout 显式声明（不再由模块自挂布局组件）、
 	// icon 为 ReactNode（非字符串）
-	const entryContent = `import type { AppRouteRecordRaw, ModuleDefinition } from "@react-antd-module/runtime";
+	const entryContent = `import type { AppRouteRecordRaw, ModuleDefinition } from "@oj-module/runtime";
 
 import { AppstoreOutlined } from "@ant-design/icons";
 

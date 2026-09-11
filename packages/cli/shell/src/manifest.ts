@@ -1,4 +1,4 @@
-import type { Manifest } from "@react-antd-module/runtime";
+import type { Manifest } from "@oj-module/runtime";
 import type { HostModule } from "./preload";
 
 /**
@@ -23,5 +23,5 @@ export function toLoaderManifest(list: HostModule[], runtimeVersion?: string): M
 
 /** 从 shell dist 的 versions.json 提取 runtime 版本（P7.6 宿主侧真源） */
 export function extractRuntimeVersion(versions: Record<string, string> | null | undefined): string | undefined {
-	return versions?.["@react-antd-module/runtime"];
+	return versions?.["@oj-module/runtime"];
 }

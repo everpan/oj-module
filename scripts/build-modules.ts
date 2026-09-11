@@ -37,7 +37,7 @@ async function buildModule(moduleDir: string) {
 			emptyOutDir: true,
 			rollupOptions: {
 				external: (id) => {
-					if (id === "@react-antd-module/runtime") {
+					if (id === "@oj-module/runtime") {
 						// 框架运行时由宿主 importmap 提供（P3.2）
 						return true;
 					}

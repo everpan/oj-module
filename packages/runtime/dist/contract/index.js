@@ -1,5 +1,5 @@
 /**
- * @react-antd-module/runtime/contract —— API 契约 DSL（AC-D11）。
+ * @oj-module/runtime/contract —— API 契约 DSL（AC-D11）。
  *
  * 零浏览器依赖（Node codegen 与浏览器运行时双安全）：
  * - defineApi：契约端点定义（含定义期校验）

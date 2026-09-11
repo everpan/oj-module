@@ -1,5 +1,5 @@
-import type { AppRouteRecordRaw, ModuleDefinition } from "@react-antd-module/runtime";
-import { ProfileCardIcon, RiAccountCircleLine, RiUserSettingsLine } from "@react-antd-module/runtime";
+import type { AppRouteRecordRaw, ModuleDefinition } from "@oj-module/runtime";
+import { ProfileCardIcon, RiAccountCircleLine, RiUserSettingsLine } from "@oj-module/runtime";
 
 import { createElement, lazy } from "react";
 

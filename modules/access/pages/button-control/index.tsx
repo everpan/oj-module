@@ -1,5 +1,5 @@
-import type { LoginInfo } from "@react-antd-module/runtime";
-import { AccessControl, accessControlCodes, AccessControlRoles, BasicContent, useAccess, useAuthStore, useUserStore } from "@react-antd-module/runtime";
+import type { LoginInfo } from "@oj-module/runtime";
+import { AccessControl, accessControlCodes, AccessControlRoles, BasicContent, useAccess, useAuthStore, useUserStore } from "@oj-module/runtime";
 
 import { Alert, Button, Card, Typography } from "antd";
 import { useTranslation } from "react-i18next";

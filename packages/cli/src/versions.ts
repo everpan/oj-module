@@ -35,7 +35,7 @@ export function resolveShellDist(): string {
 		return dir;
 	throw new Error(
 		"找不到 cli 内置的预构建宿主（shell-dist）。\n"
-		+ "源码形态请先构建：pnpm --filter @react-antd-module/cli build:shell",
+		+ "源码形态请先构建：pnpm --filter @oj-module/cli build:shell",
 	);
 }
 

@@ -1,4 +1,4 @@
-import type { ScopedRequestLike } from "@react-antd-module/runtime/contract";
+import type { ScopedRequestLike } from "@oj-module/runtime/contract";
 import type { Plugin } from "esbuild";
 import type { ResponsePromiseLike } from "../../packages/runtime/contract/scoped-request-like";
 import { execFileSync } from "node:child_process";
@@ -57,11 +57,11 @@ const ir = buildIr({
 	}),
 });
 
-/** 测试替身：把 "@react-antd-module/runtime" 替换为仅导出 z 的桩（生产上由 runtime re-export，Task 4.1） */
+/** 测试替身：把 "@oj-module/runtime" 替换为仅导出 z 的桩（生产上由 runtime re-export，Task 4.1） */
 const runtimeStub: Plugin = {
 	name: "runtime-stub",
 	setup(b) {
-		b.onResolve({ filter: /^@react-antd-module\/runtime$/ }, () => ({ path: "runtime-stub", namespace: "ram-stub" }));
+		b.onResolve({ filter: /^@oj-module\/runtime$/ }, () => ({ path: "runtime-stub", namespace: "ram-stub" }));
 		b.onLoad({ filter: /.*/, namespace: "ram-stub" }, () => ({
 			contents: "export { z } from \"zod\";",
 			resolveDir: join(repoRoot, "packages/runtime"), // 根 package.json 无 zod 直依，从 runtime 包（contract 所在包）解析
@@ -143,8 +143,8 @@ describe("emitClient（AC-D5/D6/D8/D15）", () => {
 		expect(internal["client.ts"]).toContain("from \"zod\"");
 		expect(internal["client.schemas.ts"]).toContain("import { z } from \"zod\"");
 		const module_ = emitClient(ir, { target: "module" });
-		expect(module_["client.ts"]).toContain("from \"@react-antd-module/runtime\"");
-		expect(module_["client.schemas.ts"]).toContain("import { z } from \"@react-antd-module/runtime\"");
+		expect(module_["client.ts"]).toContain("from \"@oj-module/runtime\"");
+		expect(module_["client.schemas.ts"]).toContain("import { z } from \"@oj-module/runtime\"");
 	});
 
 	it("ignoreLoading 契约开关透传为请求 options", () => {
@@ -260,7 +260,7 @@ describe("emitClient（AC-D5/D6/D8/D15）", () => {
 				// 仓根 node_modules 未链接 runtime（pnpm 只链接声明依赖）——paths 直指 dist 声明
 				// （TS 6 已弃 baseUrl；paths 值用绝对路径免 baseUrl）
 				paths: {
-					"@react-antd-module/runtime": [join(repoRoot, "packages/runtime/dist/index.d.ts")],
+					"@oj-module/runtime": [join(repoRoot, "packages/runtime/dist/index.d.ts")],
 				},
 			},
 			include: ["client.ts", "client.schemas.ts", "typings.d.ts"],

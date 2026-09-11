@@ -1,4 +1,4 @@
-import type { AppRouteRecordRaw, ModuleDefinition } from "@react-antd-module/runtime";
+import type { AppRouteRecordRaw, ModuleDefinition } from "@oj-module/runtime";
 import {
 	AppstoreOutlined,
 	IssuesCloseOutlined,
@@ -6,7 +6,7 @@ import {
 	StopOutlined,
 } from "@ant-design/icons";
 
-import { ServerErrorIcon } from "@react-antd-module/runtime";
+import { ServerErrorIcon } from "@oj-module/runtime";
 import { createElement, lazy } from "react";
 
 const exceptionPath = "/exception";

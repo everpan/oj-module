@@ -1,4 +1,4 @@
-import { defineApi, z } from "@react-antd-module/runtime/contract";
+import { defineApi, z } from "@oj-module/runtime/contract";
 
 /**
  * notification 模块契约（uni-dev 形态，apiPrefix 字面等于 "/notification"，AC-D9）。

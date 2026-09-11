@@ -1,4 +1,4 @@
-# @react-antd-module/runtime
+# @oj-module/runtime
 
 框架运行时。模块工程**唯一**应该 import 的框架入口。
 
@@ -6,7 +6,7 @@
 
 | | |
 |---|---|
-| 消费者 | 模块工程（`entry.ts` 与页面代码）、预构建宿主 `@react-antd-module/shell` |
+| 消费者 | 模块工程（`entry.ts` 与页面代码）、预构建宿主 `@oj-module/shell` |
 | 产物 | `dist/runtime.js`（单文件 ESM）。`dist/runtime.d.ts` 尚未产出，类型出口在 P3 随出口冻结一起收敛 |
 | 加载方式 | 由宿主 importmap 映射为 `/assets/runtime.js`，全站唯一实例（单例，见设计文档 D5） |
 
@@ -19,7 +19,7 @@
 ```jsonc
 {
   "devDependencies": {
-    "@react-antd-module/runtime": "^x.y.z"
+    "@oj-module/runtime": "^x.y.z"
   }
 }
 ```
@@ -34,11 +34,11 @@ import type {
   AppRouteRecordRaw,
   ModuleDefinition,
   RouteMeta,
-} from "@react-antd-module/runtime";
+} from "@oj-module/runtime";
 import {
   BasicContent,
   defineModule,
-} from "@react-antd-module/runtime";
+} from "@oj-module/runtime";
 
 // 宿主侧模块加载（模块工程一般不需要）
 import {
@@ -48,7 +48,7 @@ import {
   getRegisteredStore,
   getRoutes,
   loadAll,
-} from "@react-antd-module/runtime";
+} from "@oj-module/runtime";
 ```
 
 > `antd`、`react`、`react-router`、`@tanstack/react-query` 等共享依赖**不从 runtime 转出**。模块请直接 import 这些包，由 importmap 命中宿主提供的同一份实例。
@@ -56,8 +56,8 @@ import {
 ## 模块定义示例
 
 ```ts
-import type { AppRouteRecordRaw, ModuleDefinition } from "@react-antd-module/runtime";
-import { defineModule } from "@react-antd-module/runtime";
+import type { AppRouteRecordRaw, ModuleDefinition } from "@oj-module/runtime";
+import { defineModule } from "@oj-module/runtime";
 import { lazy } from "react";
 
 const routes: AppRouteRecordRaw[] = [
@@ -94,11 +94,11 @@ export default defineModule({
 
 ```bash
 # 只出 JS（shell 构建链路走这条，当前唯一可用的构建）
-pnpm --filter @react-antd-module/runtime exec vite build
+pnpm --filter @oj-module/runtime exec vite build
 
 # vite build + tsc 出 d.ts + 重写 d.ts 里的 #src/* 说明符
 # ⚠️ 目前 tsc 声明阶段仍有 3 处 declaration-emit 报错，属 P3 待办
-pnpm --filter @react-antd-module/runtime build
+pnpm --filter @oj-module/runtime build
 ```
 
 `dist/` 是**随仓库分发的预置产物**（`.gitignore` 中已显式放行），改动 runtime 源码后需要重新构建并提交。

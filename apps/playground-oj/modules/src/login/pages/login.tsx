@@ -1,4 +1,4 @@
-import { getRedirectPath, useAuthStore } from "@react-antd-module/runtime";
+import { getRedirectPath, useAuthStore } from "@oj-module/runtime";
 import { Alert, Button, Form, Input, Typography } from "antd";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";

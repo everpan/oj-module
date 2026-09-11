@@ -164,8 +164,8 @@ function ensureReq(): ScopedRequestLike {
 }`;
 
 	return `${BANNER}
-import { ContractApiError } from "@react-antd-module/runtime/contract/errors";
-import type { ScopedRequestLike } from "@react-antd-module/runtime/contract/errors";
+import { ContractApiError } from "@oj-module/runtime/contract/errors";
+import type { ScopedRequestLike } from "@oj-module/runtime/contract/errors";
 ${target === "internal" ? "import { request } from \"#src/utils/request\";\n" : ""}import type { z } from "${zImport(target)}";
 import type { schemas } from "./client.schemas";
 
@@ -193,7 +193,7 @@ async function toApiError(e: unknown): Promise<unknown> {
 
 /** z 导入来源：模块走 runtime re-export（AC-D15）；internal 在 runtime 树内，自引包名成环，直取 zod */
 function zImport(target: "module" | "internal"): string {
-	return target === "internal" ? "zod" : "@react-antd-module/runtime";
+	return target === "internal" ? "zod" : "@oj-module/runtime";
 }
 
 function emitSchemas(ir: IrEndpoint[], target: "module" | "internal"): string {

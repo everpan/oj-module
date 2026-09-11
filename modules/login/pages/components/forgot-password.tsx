@@ -1,6 +1,6 @@
 import { LeftOutlined } from "@ant-design/icons";
 
-import { BasicButton } from "@react-antd-module/runtime";
+import { BasicButton } from "@oj-module/runtime";
 import { useCountDown } from "ahooks";
 import {
 	Button,

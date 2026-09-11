@@ -42,7 +42,7 @@ describe("宿主与框架共享依赖版本一致（A25）", () => {
 
 		for (const dep of SHARED_DEPS) {
 			const pkgName = packageNameOf(dep.specifier);
-			if (pkgName.startsWith("@react-antd-module"))
+			if (pkgName.startsWith("@oj-module"))
 				continue;
 
 			const shellVersion = installedVersion(SHELL_DIR, dep.specifier);
@@ -71,7 +71,7 @@ describe("宿主与框架共享依赖版本一致（A25）", () => {
 
 		const undeclared = SHARED_DEPS
 			.map(dep => packageNameOf(dep.specifier))
-			.filter(name => !name.startsWith("@react-antd-module"))
+			.filter(name => !name.startsWith("@oj-module"))
 			.filter((name, i, all) => all.indexOf(name) === i)
 			.filter(name => !(name in declared));
 
@@ -94,8 +94,8 @@ describe("宿主与框架共享依赖版本一致（A25）", () => {
 			const pkg = JSON.parse(fs.readFileSync(path.join(PROJECT_ROOT, rel), "utf-8"));
 			const all = { ...pkg.dependencies, ...pkg.devDependencies, ...pkg.peerDependencies };
 			for (const dep of SHARED_DEPS) {
-				// @react-antd-module/* 是本仓 workspace 包，必须用 workspace:*，不进 catalog
-				if (packageNameOf(dep.specifier).startsWith("@react-antd-module"))
+				// @oj-module/* 是本仓 workspace 包，必须用 workspace:*，不进 catalog
+				if (packageNameOf(dep.specifier).startsWith("@oj-module"))
 					continue;
 				const range = all[dep.specifier];
 				if (range && range !== "catalog:")

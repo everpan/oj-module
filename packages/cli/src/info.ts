@@ -90,8 +90,8 @@ export function realOjObservability(projectRoot: string): OjObservability {
 }
 
 export async function printInfo(projectRoot: string, oj: OjObservability = realOjObservability(projectRoot)): Promise<void> {
-	const cliVersion = readPkgVersion(path.join(projectRoot, "node_modules/@react-antd-module/cli/package.json"));
-	const runtimeVersion = readPkgVersion(path.join(projectRoot, "node_modules/@react-antd-module/runtime/package.json"));
+	const cliVersion = readPkgVersion(path.join(projectRoot, "node_modules/@oj-module/cli/package.json"));
+	const runtimeVersion = readPkgVersion(path.join(projectRoot, "node_modules/@oj-module/runtime/package.json"));
 
 	let shellDist = "";
 	let hostVersions: Record<string, string> = {};
@@ -161,7 +161,7 @@ export async function printInfo(projectRoot: string, oj: OjObservability = realO
 ================================
 cli:     ${cliVersion}
 runtime: ${runtimeVersion}（本地安装）
-shell:   ${hostVersions["@react-antd-module/runtime"] ?? "unknown"}（宿主 dist 内建，${shellDist || "未找到"}）
+shell:   ${hostVersions["@oj-module/runtime"] ?? "unknown"}（宿主 dist 内建，${shellDist || "未找到"}）
 
 共享依赖版本矩阵（宿主 versions.json）:
 ${matrix || "  （不可得）"}

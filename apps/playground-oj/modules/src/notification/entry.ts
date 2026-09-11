@@ -1,6 +1,6 @@
-import type { NotificationsApiProvider } from "@react-antd-module/runtime";
+import type { NotificationsApiProvider } from "@oj-module/runtime";
 
-import { defineModule } from "@react-antd-module/runtime";
+import { defineModule } from "@oj-module/runtime";
 
 import * as notificationClient from "./api/client";
 

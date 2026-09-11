@@ -1,4 +1,4 @@
-import { getAppInfo } from "@react-antd-module/runtime";
+import { getAppInfo } from "@oj-module/runtime";
 
 // P6.5：devDependencies 不再注入应用元信息（清单入 bundle 属信息
 // 泄露），此数组恒为空，about 页对应卡片随之自动隐藏。

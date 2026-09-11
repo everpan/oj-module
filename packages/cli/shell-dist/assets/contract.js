@@ -6,7 +6,7 @@ var __export = (target, all) => {
 };
 var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
 
-// ../runtime/contract/index.ts
+// ../runtime/dist/contract/index.js
 var contract_exports = {};
 __export(contract_exports, {
   API_DEF: () => API_DEF,
@@ -15,7 +15,7 @@ __export(contract_exports, {
   z: () => external_exports
 });
 
-// ../runtime/contract/define-api.ts
+// ../runtime/dist/contract/define-api.js
 var PARAM_SEGMENT = /^\{\*?[a-z_]\w*\}$/i;
 function fail(route, reason) {
   throw new Error(`[\u5951\u7EA6] \u7AEF\u70B9\u5B9A\u4E49\u975E\u6CD5\uFF08route: ${route}\uFF09\uFF1A${reason}`);
@@ -49,7 +49,7 @@ function defineApi(def) {
   return def;
 }
 
-// ../runtime/contract/errors.ts
+// ../runtime/dist/contract/errors.js
 var ContractApiError = class extends Error {
   constructor(code, msg) {
     super(msg);

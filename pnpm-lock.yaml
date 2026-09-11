@@ -360,12 +360,12 @@ importers:
       '@iconify/tools':
         specifier: 'catalog:'
         version: 5.0.14
+      '@oj-module/runtime':
+        specifier: workspace:*
+        version: link:packages/runtime
       '@playwright/test':
         specifier: 'catalog:'
         version: 1.62.1
-      '@react-antd-module/runtime':
-        specifier: workspace:*
-        version: link:packages/runtime
       '@svgr/plugin-jsx':
         specifier: 'catalog:'
         version: 8.1.0(@svgr/core@8.1.0(supports-color@7.2.0)(typescript@6.0.3))(supports-color@7.2.0)
@@ -480,10 +480,10 @@ importers:
       '@ant-design/icons':
         specifier: 'catalog:'
         version: 6.3.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      '@react-antd-module/cli':
+      '@oj-module/cli':
         specifier: workspace:*
         version: link:../../packages/cli
-      '@react-antd-module/runtime':
+      '@oj-module/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
       '@types/react':
@@ -516,10 +516,10 @@ importers:
       '@ant-design/pro-components':
         specifier: 'catalog:'
         version: 3.1.12-0(antd@6.6.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(supports-color@7.2.0)
-      '@react-antd-module/cli':
+      '@oj-module/cli':
         specifier: workspace:*
         version: link:../../packages/cli
-      '@react-antd-module/runtime':
+      '@oj-module/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
       '@tanstack/react-query':
@@ -576,7 +576,7 @@ importers:
       '@faker-js/faker':
         specifier: 'catalog:'
         version: 10.6.0
-      '@react-antd-module/runtime':
+      '@oj-module/runtime':
         specifier: workspace:*
         version: link:../runtime
       '@redocly/cli':

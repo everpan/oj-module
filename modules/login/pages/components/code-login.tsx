@@ -1,7 +1,7 @@
 import { LeftOutlined } from "@ant-design/icons";
 import { ProFormCaptcha } from "@ant-design/pro-components";
 
-import { BasicButton } from "@react-antd-module/runtime";
+import { BasicButton } from "@oj-module/runtime";
 import {
 	Button,
 	Form,

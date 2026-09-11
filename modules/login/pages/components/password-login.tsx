@@ -1,6 +1,6 @@
-import type { LoginInfo } from "@react-antd-module/runtime";
+import type { LoginInfo } from "@oj-module/runtime";
 
-import { BasicButton, getRedirectPath, useAuthStore } from "@react-antd-module/runtime";
+import { BasicButton, getRedirectPath, useAuthStore } from "@oj-module/runtime";
 
 import {
 	Button,

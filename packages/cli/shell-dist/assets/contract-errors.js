@@ -6,7 +6,7 @@ var __export = (target, all) => {
 };
 var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
 
-// ../runtime/contract/errors.ts
+// ../runtime/dist/contract/errors.js
 var errors_exports = {};
 __export(errors_exports, {
   ContractApiError: () => ContractApiError

@@ -6,14 +6,14 @@ import { MODULES_DIR, PLAYGROUND_DIR, PROJECT_ROOT } from "../helpers/paths";
 
 /**
  * P3.2 包名化契约（设计文档 D3）：模块工程只允许
- * `import ... from "@react-antd-module/runtime"` 取用框架能力，
+ * `import ... from "@oj-module/runtime"` 取用框架能力，
  * 禁止任何 `#src/*` 框架内部路径（那是宿主工程的私有别名）。
  *
  * 「模块 import 的符号是否都在冻结出口里」由 tsc 保证：
  * tsconfig paths 将包名直指 `packages/runtime/src/index.ts`，
  * 出口外符号会在 typecheck 阶段报错（与 tests/runtime-exports.test.ts 闭环）。
  */
-const RUNTIME_PACKAGE = "@react-antd-module/runtime";
+const RUNTIME_PACKAGE = "@oj-module/runtime";
 
 function collectTsFiles(dir: string, out: string[] = []): string[] {
 	for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -56,10 +56,10 @@ describe("模块包名化（P3.2 / D3）", () => {
 
 	it("monorepo 解析：包名直指 runtime 源码（tsconfig paths + vite alias）", () => {
 		const tsconfig = fs.readFileSync(path.join(PROJECT_ROOT, "tsconfig.json"), "utf-8");
-		expect(tsconfig).toContain("\"@react-antd-module/runtime\"");
+		expect(tsconfig).toContain("\"@oj-module/runtime\"");
 
 		const viteConfig = fs.readFileSync(path.join(PROJECT_ROOT, "vite.config.ts"), "utf-8");
-		expect(viteConfig).toContain("@react-antd-module/runtime");
+		expect(viteConfig).toContain("@oj-module/runtime");
 	});
 
 	it("模块独立构建将包名视为 external（由宿主 importmap 提供）", () => {

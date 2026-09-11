@@ -9,7 +9,7 @@
 
 ## 1. 背景与动机
 
-现行框架分为 4 个 npm 包（`@react-antd-module/{contract,runtime,cli,shell}`）。四包版本已各自漂移（cli 0.1.5 / contract 0.1.3 / runtime 0.1.4 / shell 0.1.4），而设计文档 D12 要求「模块工程里硬共享依赖版本与宿主**严格相等**」——版本漂移与严格相等门禁直接冲突，漂移后的旧版本会被门禁当成"真相"强加给下游（同 A25 教训）。
+现行框架分为 4 个 npm 包（`@oj-module/{contract,runtime,cli,shell}`）。四包版本已各自漂移（cli 0.1.5 / contract 0.1.3 / runtime 0.1.4 / shell 0.1.4），而设计文档 D12 要求「模块工程里硬共享依赖版本与宿主**严格相等**」——版本漂移与严格相等门禁直接冲突，漂移后的旧版本会被门禁当成"真相"强加给下游（同 A25 教训）。
 
 本次整合触发三个动机 + 一个品牌动作：
 
@@ -18,7 +18,7 @@
 | M1 | 精简发布与版本管理 | 4 个包 4 个版本号、4 次发版、跨包版本对齐靠人为约束 |
 | M2 | 消除 cli↔shell 隐性环 | **未声明**的互依 + 「先 build shell 才能用 cli」的顺序约束（详见 §2.2） |
 | M3 | 降低外部工程安装负担 | 外部工程 devDeps 需装 4 个框架包 |
-| M4 | 品牌改名 | `@react-antd-module` → `@oj-module`；命令 `ram` → `ojm` |
+| M4 | 品牌改名 | `@oj-module` → `@oj-module`；命令 `ram` → `ojm` |
 
 ---
 
@@ -45,8 +45,8 @@ cli      ←─ shell          （shell 构建 import cli/shared-deps、cli/esm-
 shell    ←─ cli            ← 未声明！
 ```
 
-- **shell → cli**（已声明）：`packages/shell/scripts/build.mts` 从 `@react-antd-module/cli/shared-deps` 取共享表、从 `cli/esm-exports` 取导出完整性门禁。
-- **cli → shell**（**未声明**）：`packages/cli/src/dev.ts:41`、`versions.ts:22`、`init.ts:209` 靠路径查找 `node_modules/@react-antd-module/shell/dist`，monorepo 下回退 `../../packages/shell/dist`。
+- **shell → cli**（已声明）：`packages/shell/scripts/build.mts` 从 `@oj-module/cli/shared-deps` 取共享表、从 `cli/esm-exports` 取导出完整性门禁。
+- **cli → shell**（**未声明**）：`packages/cli/src/dev.ts:41`、`versions.ts:22`、`init.ts:209` 靠路径查找 `node_modules/@oj-module/shell/dist`，monorepo 下回退 `../../packages/shell/dist`。
 
 环未在 package.json 表达，靠 workspace 提升 + 路径回退兜住，并强制「先 build shell 才能用 cli」。
 
@@ -159,7 +159,7 @@ devDependencies 由 4 个框架包降为 2 个：
 
 ---
 
-## 6. 改名迁移（`@react-antd-module` → `@oj-module`，`ram` → `ojm`）
+## 6. 改名迁移（`@oj-module` → `@oj-module`，`ram` → `ojm`）
 
 ### 6.1 scope 层（机械、面广）
 
@@ -202,7 +202,7 @@ devDependencies 由 4 个框架包降为 2 个：
 | R4 | `.ram-api-exempt.json` 改名 → 存量工程豁免失效、`--check` 误报 | 双名读取 |
 | R5 | cli 内嵌 `shell-dist`，可能发布未构建 / 跨版本宿主 | `prepack` 断言：`shell-dist/` 存在，且其 runtime 版本 == `dependencies["@oj-module/runtime"]` 精确版本，不符即失败 |
 | R6 | 单 cli 包同时暴露 Node 工具 API 与浏览器产物，模块误 import 拉进 vite/esbuild | `exports` 硬分区；新增门禁测试：`modules/**`、`templates/modules/**` 不得 import `@oj-module/cli/*` |
-| R7 | 改名面广，测试/模板/docs 三处不同步 | 全仓 `grep -rn "@react-antd-module\|\bram\b"` 作机械判据；CI 加"零残留"断言 |
+| R7 | 改名面广，测试/模板/docs 三处不同步 | 全仓 `grep -rn "@oj-module\|\bram\b"` 作机械判据；CI 加"零残留"断言 |
 | R8 | US-7「runtime 包无 `.ts`」被 contract 误破 | D5：contract 编成 dist；`npm pack --dry-run` 断言无 `.ts`、无 `src/` |
 | R9 | 两包版本再次漂移 | cli 对 runtime 精确版本 + lockstep 发布；新增断言测试 |
 
@@ -244,7 +244,7 @@ Feature: 双包整合后外部工程形态
     Given 工程已安装 @oj-module/cli
     When 执行 ojm dev
     Then 宿主来自 cli 包内 shell-dist，不查询 node_modules/@oj-module/shell
-    And 日志中无「找不到 @react-antd-module/shell 的预构建产物」
+    And 日志中无「找不到 @oj-module/shell 的预构建产物」
 
 Feature: 兼容存量工程
   Scenario: 命令行层平滑升级
@@ -259,7 +259,7 @@ Feature: 兼容存量工程
 
 Feature: 品牌零残留
   Scenario: 迁移完成判据
-    When 全仓 grep "@react-antd-module"
+    When 全仓 grep "@oj-module"
     Then 零命中（docs/archive 历史文档除外）
 ```
 
@@ -271,7 +271,7 @@ Feature: 品牌零残留
 |-------|------|----------|----------|
 | **P0** | 前置 | 确认 `@oj-module` scope（已完成）；建分支 | scope 可发布 |
 | **P1** | 包合并（结构） | contract 并入 runtime 子路径 + dist 构建；shell 迁入 cli；`resolveShellDist` 三处收敛；exports/files/bin 调整 | ✅ **完成 2026-09-11**（见 §12）；`typecheck` + 550 用例全绿 + `build:shell` 门禁通过 + playground `ram build` 端到端通过 |
-| **P2** | 改名（scope） | 机械替换包名、import、模板、工程、根配置、测试、文档 | 全仓 `grep @react-antd-module` 零命中 |
+| **P2** | 改名（scope） | 机械替换包名、import、模板、工程、根配置、测试、文档 | ✅ **完成 2026-09-11**（见 §12）；全仓 `@react-antd-module` 零命中；typecheck + lint + 550 用例 + 产物重建全部通过 |
 | **P3** | 改名（bin + 内部前缀 + 兼容） | 双 bin；`.ojm-api-exempt.json`；指纹头双前缀；`Symbol.for` 双符号；日志前缀 | 存量工程升级演练通过 |
 | **P4** | 守卫与验收 | 新增 §8.2 守卫测试；改造 §8.1 既有测试；`prepack` 断言 | 全部 BDD 场景通过；`pnpm test` 全绿 |
 | **P5** | 发布演练 | `npm pack --dry-run` 校验两包内容；playground 与 playground-oj 端到端 | 两包同版本号发布演练成功；外部工程 2 包安装可用 |
@@ -306,7 +306,7 @@ Feature: 品牌零残留
 
 ### P1 包合并（结构）— 完成 2026-09-11
 
-**范围**：contract 并入 runtime 子路径（编成 dist）；shell 源码/构建迁入 cli（产物 `shell-dist/`）；`resolveShellDist` 三处收敛为包内定位；exports/files/bin 与根配置同步。**说明符仍为旧 scope**（`@react-antd-module`），改名留给 P2。
+**范围**：contract 并入 runtime 子路径（编成 dist）；shell 源码/构建迁入 cli（产物 `shell-dist/`）；`resolveShellDist` 三处收敛为包内定位；exports/files/bin 与根配置同步。**说明符仍为旧 scope**（`@oj-module`），改名留给 P2。
 
 **落地结果**
 
@@ -327,7 +327,7 @@ Feature: 品牌零残留
 
 - `pnpm typecheck`
 - `pnpm exec vitest run`：87 文件 / **550 用例全绿**
-- `pnpm --filter @react-antd-module/cli build:shell`：共享资产门禁通过（119 资产：裸说明符 0 未覆盖、具名导出 0 缺失、动态 require 0 未覆盖）
+- `pnpm --filter @oj-module/cli build:shell`：共享资产门禁通过（119 资产：裸说明符 0 未覆盖、具名导出 0 缺失、动态 require 0 未覆盖）
 - `pnpm --filter playground build`（`ram build`）：宿主合并 + 版本门禁 + 10 个模块产物 + modules.json 全通
 - `ram dev`：HTTP 200，importmap 三键（`runtime`、`runtime/contract`、`runtime/contract/errors`）均由 cli 内置 `shell-dist` 提供，日志确认为内置宿主
 
@@ -336,26 +336,60 @@ Feature: 品牌零残留
 - 耗时约 **25 分钟**（09:49–10:14，含 3 轮构建/测试返工）。分三个阶段：contract 归并 → shell 迁入 → 守卫与验证。
 - 返工点：
   1. `buildHost()` 的 vite `outDir` 仍写死 `"dist"`（相对 shellDir），产物落错目录 → 改为绝对 `distDir`。
-  2. 用 `import.meta.resolve("@react-antd-module/runtime")` 取 runtime 产物，在 **tsx** 下命中根 tsconfig `paths`，解析成 `src/index.ts` —— 拷进宿主的 `runtime.js` 只有 4KB TS 源码。改回显式相对路径。
-  3. 契约子路径引发 30 个用例失败：根 `node_modules` 失去 `@react-antd-module/*`（原为 contract）**且** tsconfig `paths` 让 esbuild 内联契约源码、把 `zod` 裸露成裸说明符。修复 = 去掉 contract 的 tsconfig `paths` + 根 devDeps 恢复 `@react-antd-module/runtime` + 修一处测试夹具 `resolveDir`（仍指向已删除的 `packages/contract`）。
+  2. 用 `import.meta.resolve("@oj-module/runtime")` 取 runtime 产物，在 **tsx** 下命中根 tsconfig `paths`，解析成 `src/index.ts` —— 拷进宿主的 `runtime.js` 只有 4KB TS 源码。改回显式相对路径。
+  3. 契约子路径引发 30 个用例失败：根 `node_modules` 失去 `@oj-module/*`（原为 contract）**且** tsconfig `paths` 让 esbuild 内联契约源码、把 `zod` 裸露成裸说明符。修复 = 去掉 contract 的 tsconfig `paths` + 根 devDeps 恢复 `@oj-module/runtime` + 修一处测试夹具 `resolveDir`（仍指向已删除的 `packages/contract`）。
 
 **偏离设计的记录**
 
 | # | 设计原文 | 实际 |
 |---|---|---|
 | 1 | §5.2「runtime 产物定位改 `import.meta.resolve`」 | **未采纳**，改显式相对路径（理由见返工点 2）。已回写 §5.2 的教训到 §13 |
-| 2 | §4.2 未提根 devDeps | **根 package.json 必须保留 `@react-antd-module/runtime`**：测试夹具在 `node_modules/.cache` 下建临时工程，裸说明符需从仓库根解析 |
+| 2 | §4.2 未提根 devDeps | **根 package.json 必须保留 `@oj-module/runtime`**：测试夹具在 `node_modules/.cache` 下建临时工程，裸说明符需从仓库根解析 |
 | 3 | — | 顺带修复既有类型错误 `packages/cli/src/vendor.ts` 的 `resolveDeps` 返回类型（声明 `Required<VendorDeps>` 却漏 `probe`，由 commit `bd09be3` 引入，与本次合并无关） |
 | 4 | §6.1 文档改名归 P2 | README / 手册 / CLAUDE.md 的**说明符文本**与 `ram→ojm` 一律留给 P2；P1 只更新了 `CLAUDE.md` 的结构段 |
 
+### P2 scope 改名 — 完成 2026-09-11
+
+**范围**：`@react-antd-module` → `@oj-module`（包名、源码 import、模板、工程 devDeps、根配置、测试断言与夹具、文档）。命令 `ram` 与内部 `ram-` 前缀按计划留给 P3。
+
+**落地结果**
+
+| 项 | 结果 |
+|---|---|
+| 包名 | `@oj-module/runtime`、`@oj-module/cli` |
+| 机械替换命中的文件 | 167 个（排除 `docs/archive`、`**/dist/**`、`build/`、`pnpm-lock.yaml`、`shell-dist/`） |
+| 生成产物重建 | `shell-dist`（importmap 三键 → `@oj-module/runtime`、`.../contract`、`.../contract/errors`；`versions.json` 62 项）；根 `build/`（importmap 118 键）；`apps/playground*` 模块产物 |
+| 模板与脚手架 | `templates/modules/src/**` 的 `defineModule` import、`init.ts` 生成的 devDeps（`@oj-module/cli` + `@oj-module/runtime`） |
+| 文档 | 手册 `framework-development-guide.md` 的导读/包表/依赖图/构建顺序/契约章/宿主章/发布清单已改写为「两包」；`framework-verification-playbook.md`、`oj-fullstack-tutorial.md` 说明符同步；`apps/playground-oj` 的 phase 文档同步；`docs/archive` 保留历史 |
+| 版本号 | **未 bump**（改名即新包名，0.1.4 可复用）；是否 lockstep 同版本发版见 O1 |
+
+**验证（全部通过）**
+
+- 全仓 `@react-antd-module` 零命中（含 `pnpm-lock.yaml` 与 `build/`）
+- `pnpm typecheck`、`pnpm lint`（0 error / 63 既有 warning）
+- `pnpm exec vitest run`：87 文件 / **550 用例全绿**
+- `pnpm --filter @oj-module/cli build:shell`：共享资产门禁通过（119 资产）
+- `pnpm build`（主应用 + 模块 + importmap 注入）：118 键注入成功
+- `pnpm --filter playground build` 与 `ram dev`：HTTP 200，importmap 三键均为新 scope
+
+**关键过程与耗时**
+
+- 耗时约 **12 分钟**（10:15–10:27），机械替换 + 产物重建 + 一轮门禁返工。
+- 返工点：**根 `build/`（主应用产物）未随改名重建**，其裸说明符仍是旧 scope，与新建的 shell importmap 不匹配 → `inject-importmap` 门禁报红，连带 `tests/cli/prod-importmap.test.ts`（在 import 期执行 main）失败。重建 `pnpm build` 后恢复。见 §13 A32。
+
+**仍欠的文档债**（不阻塞 P2）
+
+- 手册 `framework-development-guide.md` 的深层章节（3.4–3.8、2.x、附录 B）仍以「宿主/shell」为叙事主体，未逐句改写为「cli 内置 shell-dist」；已在文首加「结构变更」提示指向本文档。完整重写列为后续文档任务。
+
 ---
 
-## 13 反常识 / 陷阱记录（P1 新增）
+## 13 反常识 / 陷阱记录（P1 / P2 新增）
 
 | # | 现象 | 说明与对策 |
 |---|---|---|
-| A27 | **tsconfig `paths` 会污染 esbuild 的 `packages:"external"`** | `evaluateContract` 用 esbuild + `packages:"external"`，本意让 `@react-antd-module/runtime/contract` 保持 external。但 esbuild 会读 `tsconfig.json` 的 `paths`，把包名改写成仓内相对文件后再内联 → 契约源码进 bundle，其 `import { z } from "zod"` 变成裸说明符，从夹具目录解析失败。**对策**：不要给「应由 Node/包解析」的说明符加 tsconfig `paths`。 |
-| A28 | **tsx 下 `import.meta.resolve` 同样命中 tsconfig `paths`** | 在 `build.mts` 里 `import.meta.resolve("@react-antd-module/runtime")` 得到的是 `src/index.ts` 而非 `dist/runtime.js`（tsx 读根 tsconfig paths）。**对策**：构建脚本取跨包产物用显式相对路径，不用 `import.meta.resolve`。 |
-| A29 | **vite alias 是前缀匹配** | `{ find: "@react-antd-module/runtime" }` 会连带改写 `@react-antd-module/runtime/contract`，得到 `.../src/index.ts/contract`。**对策**：更具体的子路径别名必须排在前面（`vite.config.ts` 已按此排序）。 |
-| A30 | **测试夹具依赖仓库根 `node_modules` 的框架包** | 夹具建在 `<repo>/node_modules/.cache/**`，靠 Node 上溯到 `<repo>/node_modules` 解析裸说明符。根 package.json 一旦不再声明 `@react-antd-module/runtime`，大量 CLI 契约用例会以「Cannot find package」失败，且报错发生在夹具而非断言处，定位成本高。 |
+| A27 | **tsconfig `paths` 会污染 esbuild 的 `packages:"external"`** | `evaluateContract` 用 esbuild + `packages:"external"`，本意让 `@oj-module/runtime/contract` 保持 external。但 esbuild 会读 `tsconfig.json` 的 `paths`，把包名改写成仓内相对文件后再内联 → 契约源码进 bundle，其 `import { z } from "zod"` 变成裸说明符，从夹具目录解析失败。**对策**：不要给「应由 Node/包解析」的说明符加 tsconfig `paths`。 |
+| A28 | **tsx 下 `import.meta.resolve` 同样命中 tsconfig `paths`** | 在 `build.mts` 里 `import.meta.resolve("@oj-module/runtime")` 得到的是 `src/index.ts` 而非 `dist/runtime.js`（tsx 读根 tsconfig paths）。**对策**：构建脚本取跨包产物用显式相对路径，不用 `import.meta.resolve`。 |
+| A29 | **vite alias 是前缀匹配** | `{ find: "@oj-module/runtime" }` 会连带改写 `@oj-module/runtime/contract`，得到 `.../src/index.ts/contract`。**对策**：更具体的子路径别名必须排在前面（`vite.config.ts` 已按此排序）。 |
+| A30 | **测试夹具依赖仓库根 `node_modules` 的框架包** | 夹具建在 `<repo>/node_modules/.cache/**`，靠 Node 上溯到 `<repo>/node_modules` 解析裸说明符。根 package.json 一旦不再声明 `@oj-module/runtime`，大量 CLI 契约用例会以「Cannot find package」失败，且报错发生在夹具而非断言处，定位成本高。 |
 | A31 | **构建产物目录改名会让 lint 忽略失效** | `.gitignore` 的 `dist/**` 与 eslint 默认忽略都按目录名匹配；新名 `shell-dist` 不在其中。而 `lint-staged` 对**所有** staged 文件跑 `eslint --fix` —— 会把预构建产物当源码重排。**对策**：新增产物目录名时，同步补 `.gitignore` 白名单与 eslint `ignores`。 |
+| A32 | **改名后要重建的不止 `packages/*/dist`** | 「嵌了裸说明符」的产物还有根 `build/`（主应用 chunk + 注入的 importmap）与 `apps/*/modules/dist`（模块产物）。只重建 runtime/shell 的话，`inject-importmap` 的「裸说明符必须被 importmap 全覆盖」门禁会立刻报红——表现为 `tests/cli/prod-importmap.test.ts` 失败（该测试在 **import 期**执行 `main()`，一旦门禁抛错就 `process.exit(1)`，整文件 9 个用例一起消失）。**对策**：改名后的重建顺序 = runtime → `cli build:shell` → `apps/*` 模块产物 → 根 `pnpm build`。 |

@@ -1,4 +1,4 @@
-import { defineApi, z } from "@react-antd-module/runtime/contract";
+import { defineApi, z } from "@oj-module/runtime/contract";
 
 /**
  * system 模块契约（uni-dev 形态，apiPrefix 字面等于 "/system"，AC-D9）。

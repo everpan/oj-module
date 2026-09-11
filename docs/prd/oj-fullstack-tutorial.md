@@ -35,7 +35,7 @@
 
 ```bash
 # 方式一：用发布到 npm 的脚手架（包内 bin 名是 ram）
-npx --yes --package @react-antd-module/cli ram init my-books --yes
+npx --yes --package @oj-module/cli ram init my-books --yes
 # 方式二：本仓库内直接用源码
 node packages/cli/bin/ram.mjs init my-books --yes
 
@@ -193,13 +193,13 @@ deps:
 
 ### 2.7 模块能 import 什么：共享依赖矩阵
 
-前端模块**只允许 import 三类东西**：`@react-antd-module/runtime`、**宿主共享依赖矩阵内的包**、模块自身相对路径（框架内部 `#src/*` 构建期会拦）。
+前端模块**只允许 import 三类东西**：`@oj-module/runtime`、**宿主共享依赖矩阵内的包**、模块自身相对路径（框架内部 `#src/*` 构建期会拦）。
 
 矩阵内的包由宿主 importmap 提供**单例**——react / antd / runtime 全站同一实例，避免「双 React」与 Context 撕裂，所以模块工程**不得自带**这些运行时代码。常用清单：
 
 | 分类 | 可 import 的裸说明符 |
 | --- | --- |
-| 硬共享（必须单例） | `react`、`react-dom`、`react-router`、`@tanstack/react-query`、`@react-antd-module/runtime`、`@react-antd-module/contract/errors` |
+| 硬共享（必须单例） | `react`、`react-dom`、`react-router`、`@tanstack/react-query`、`@oj-module/runtime`、`@oj-module/runtime/contract/errors` |
 | UI | `antd`（含 `locale/*`、`es/locale/zh_CN` 子路径）、`@ant-design/icons`、`@ant-design/cssinjs`、`@ant-design/pro-components`、`antd-img-crop` |
 | i18n / 状态 | `i18next`、`react-i18next`、`zustand`（含子路径）、`use-sync-external-store/shim` |
 | 时间 / 图表 / 交互 | `dayjs`（含 `/plugin/*`）、`echarts`、`echarts/charts`、`echarts/features.js`、`echarts-for-react`、`motion`、`@dnd-kit/*`、`keepalive-for-react`、`simplebar-react`、`nprogress`、`react-countup`、`react-error-boundary`、`react-jss`、`clsx`、`tailwind-merge`、`spin-delay` |
@@ -366,7 +366,7 @@ curl -s -X POST http://127.0.0.1:9778/api/books/create \
 `api/src/books/contract.ts`：
 
 ```ts
-import { defineApi, z } from "@react-antd-module/contract";
+import { defineApi, z } from "@oj-module/runtime/contract";
 
 /**
  * books 模块契约（uni-dev 形态）。
@@ -449,7 +449,7 @@ export default {
 
 ```ts
 import { BookOutlined } from "@ant-design/icons";
-import { defineModule } from "@react-antd-module/runtime";
+import { defineModule } from "@oj-module/runtime";
 import { createElement, lazy } from "react";
 
 import { bindRequest } from "./api/client";
@@ -512,7 +512,7 @@ export default defineModule({
 
 ```tsx
 import type { ListBooksData } from "../api/client";
-import { BasicContent, BasicTable } from "@react-antd-module/runtime";
+import { BasicContent, BasicTable } from "@oj-module/runtime";
 import { Button, Card, Form, Input, InputNumber, Modal, Space, message } from "antd";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -626,7 +626,7 @@ pnpm preview      # = ram preview：oj migrate（ver 门禁）→ 起 server + �
 | 症状 | 原因 | 处理 |
 | --- | --- | --- |
 | `Failed to initialize a JsRuntime: No such file or directory` | 发布版 oj 二进制烤了构建机路径 | 用自建 oj 覆盖 `bin/oj`（cli ≥ 0.1.4 在 `ram init`/`ram vendor` 时已自动告警，见 §1 提示与验证手册 §3） |
-| `ram api` 报 `Cannot find package '@react-antd-module/contract'` | 工程缺 `contract` 依赖（旧版 init 生成） | 加进 devDependencies 后 `pnpm install`（新版 init 已内置） |
+| `ram api` 报 `Cannot find package '@oj-module/runtime/contract'` | 工程缺 `contract` 依赖（旧版 init 生成） | 加进 devDependencies 后 `pnpm install`（新版 init 已内置） |
 | `typecheck` 报 `Property 'env' does not exist on type 'ImportMeta'` | 缺 `env.d.ts` | 补 `env.d.ts` 并加进 tsconfig `include`（新版 init 已内置） |
 | 登录 401，且 msg 不是 `invalid credentials` | `/auth/*` 未在 `anonymous_paths` | 补进 `api/config.yaml` 后重启 |
 | 新增了模块目录但接口 404 | 目录镜像路由未生效 | **重启** `ram dev`（改 api.ts 才免重启） |

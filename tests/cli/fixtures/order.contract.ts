@@ -1,4 +1,4 @@
-import { defineApi, z } from "@react-antd-module/runtime/contract";
+import { defineApi, z } from "@oj-module/runtime/contract";
 
 export const OrderItem = z.object({
 	id: z.number(),

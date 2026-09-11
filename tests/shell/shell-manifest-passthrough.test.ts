@@ -33,7 +33,7 @@ describe("清单字段透传（P7.7）", () => {
 	});
 
 	it("extractRuntimeVersion 从 versions.json 提取 runtime 版本", () => {
-		expect(extractRuntimeVersion({ "@react-antd-module/runtime": "1.2.0", "react": "19.2.8" })).toBe("1.2.0");
+		expect(extractRuntimeVersion({ "@oj-module/runtime": "1.2.0", "react": "19.2.8" })).toBe("1.2.0");
 		expect(extractRuntimeVersion(null)).toBeUndefined();
 		expect(extractRuntimeVersion({})).toBeUndefined();
 	});

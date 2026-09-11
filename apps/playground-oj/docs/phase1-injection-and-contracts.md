@@ -83,7 +83,7 @@
 - 根仓 `modules/*` 8 个：`about` `access` `exception` `home` `outside` `personal-center`
   `route-nest` `system`。
 - `apps/playground/modules/src` 的 `demo` `login`（替换 init 生成的纯 demo）。
-- 根仓模块已统一 `import ... from "@react-antd-module/runtime"`，无 `#src/*` alias，故拷贝后
+- 根仓模块已统一 `import ... from "@oj-module/runtime"`，无 `#src/*` alias，故拷贝后
   在 playground-oj（依赖 `workspace:*` runtime）可直接解析。
 
 ### 4.2 补齐依赖
@@ -101,7 +101,7 @@
 - 修复：新增 `apps/playground-oj/vite-env.d.ts`，手工声明 `import.meta.env`、
   `Window.$message/$modal/$notification`、以及运行时全局 `ListData`/`OjEnvelope`/
   `ApiTableRequest`/`Recordable`；`tsconfig.json` 放开 `allowImportingTsExtensions`
-  （runtime dist 引用的 `@react-antd-module/contract` 类型指向 `src/*.ts` 含 `.ts` 扩展名）。
+  （runtime dist 引用的 `@oj-module/runtime/contract` 类型指向 `src/*.ts` 含 `.ts` 扩展名）。
 - 结果：`pnpm --filter playground-oj typecheck` 通过。
 
 ---

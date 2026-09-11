@@ -1,4 +1,4 @@
-import { defineApi, z } from "@react-antd-module/runtime/contract";
+import { defineApi, z } from "@oj-module/runtime/contract";
 
 /**
  * 框架内部 system/role 契约（AC-D1 试点，internal 目标）。

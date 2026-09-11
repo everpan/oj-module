@@ -12,8 +12,8 @@
 	"devDependencies": {
 		"@ant-design/icons": "catalog:",
 		"@ant-design/pro-components": "catalog:",
-		"@react-antd-module/cli": "workspace:*",
-		"@react-antd-module/runtime": "workspace:*",
+		"@oj-module/cli": "workspace:*",
+		"@oj-module/runtime": "workspace:*",
 		"@tanstack/react-query": "catalog:",
 		"@types/react": "catalog:",
 		"@types/react-dom": "catalog:",

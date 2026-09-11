@@ -1,5 +1,5 @@
 import { StyleProvider } from "@ant-design/cssinjs";
-import { LayoutEffects, getRoutes, loadAll, setupI18n, useAuthStore, usePreferences, useUserStore } from "@react-antd-module/runtime";
+import { LayoutEffects, getRoutes, loadAll, setupI18n, useAuthStore, usePreferences, useUserStore } from "@oj-module/runtime";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { App, ConfigProvider, theme } from "antd";
 import { useEffect, useState } from "react";
@@ -59,7 +59,7 @@ function toLoaderManifest(list, runtimeVersion) {
 }
 /** 从 shell dist 的 versions.json 提取 runtime 版本（P7.6 宿主侧真源） */
 function extractRuntimeVersion(versions) {
-	return versions?.["@react-antd-module/runtime"];
+	return versions?.["@oj-module/runtime"];
 }
 //#endregion
 //#region shell/src/preload.ts

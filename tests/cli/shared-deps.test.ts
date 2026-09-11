@@ -21,7 +21,7 @@ describe("共享依赖单一常量源（P4.1 / B11）", () => {
 	});
 
 	it("硬共享含 @tanstack/react-query（B12）与 react 全家", () => {
-		for (const specifier of ["react", "react-dom", "react-router", "@tanstack/react-query", "@react-antd-module/runtime"]) {
+		for (const specifier of ["react", "react-dom", "react-router", "@tanstack/react-query", "@oj-module/runtime"]) {
 			expect(isSharedDep(specifier), specifier).toBe(true);
 		}
 	});
@@ -48,7 +48,7 @@ describe("共享依赖单一常量源（P4.1 / B11）", () => {
 describe("生成器（P4.1）", () => {
 	it("shell 预构建入口排除 runtime（由 shell 拷贝其 dist）", () => {
 		const entries = generateShellEntries();
-		expect(entries.find(e => e.pkg === "@react-antd-module/runtime")).toBeUndefined();
+		expect(entries.find(e => e.pkg === "@oj-module/runtime")).toBeUndefined();
 		expect(entries.length).toBeGreaterThan(10);
 	});
 

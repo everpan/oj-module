@@ -22,7 +22,7 @@ node packages/cli/bin/ram.mjs init apps/playground-oj --yes
 
 ### 步骤 2：端口与依赖改写（P0-1）
 - `api/config.yaml`：`server.port: 9778 → 9779`（F11）。
-- `package.json` devDependencies：照 `apps/playground` 改回 `workspace:*`/`catalog:`，并补 `@react-antd-module/contract`（否则 demo 契约 typecheck 挂）。
+- `package.json` devDependencies：照 `apps/playground` 改回 `workspace:*`/`catalog:`，并补 `@oj-module/runtime/contract`（否则 demo 契约 typecheck 挂）。
 - **关键坑**：init 把模板 `pnpm-workspace.yaml` 拷进 `apps/playground-oj/`，会遮蔽 root 的 `catalog:`（从子目录跑 `pnpm install` 报 `No catalog entry '@ant-design/icons'`）。解决：**删除本地 `pnpm-workspace.yaml`**，归 root catalog 管辖（root 已有 `allowBuilds.esbuild: true`）。
 
 ### 步骤 3：后端登录冒烟（P0-2，直跑 oj 无需前端）

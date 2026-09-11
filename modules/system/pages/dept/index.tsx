@@ -1,4 +1,4 @@
-import { BasicContent } from "@react-antd-module/runtime";
+import { BasicContent } from "@oj-module/runtime";
 
 import { useState } from "react";
 

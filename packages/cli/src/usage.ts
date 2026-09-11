@@ -3,7 +3,7 @@
  */
 
 export function usageText(): string {
-	return `@react-antd-module/cli
+	return `@oj-module/cli
 
 用法:
   ram init [dir] [--yes]              前后端一体化工程脚手架（幂等补缺）

@@ -1,5 +1,5 @@
 {
-	"name": "@react-antd-module/cli",
+	"name": "@oj-module/cli",
 	"type": "module",
 	"version": "0.1.5",
 	"description": "React Antd Admin 模块工程命令行工具（含预构建宿主 shell-dist）",
@@ -31,7 +31,7 @@
 	},
 	"dependencies": {
 		"@faker-js/faker": "catalog:",
-		"@react-antd-module/runtime": "workspace:*",
+		"@oj-module/runtime": "workspace:*",
 		"@redocly/cli": "catalog:",
 		"esbuild": "catalog:",
 		"tsx": "catalog:",

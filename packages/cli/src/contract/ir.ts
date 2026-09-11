@@ -1,5 +1,5 @@
-import type { ApiDefinitionInput } from "@react-antd-module/runtime/contract";
-import { API_DEF } from "@react-antd-module/runtime/contract";
+import type { ApiDefinitionInput } from "@oj-module/runtime/contract";
+import { API_DEF } from "@oj-module/runtime/contract";
 
 /**
  * AC-D12：契约 IR 构建 + schema 白名单。
@@ -62,7 +62,7 @@ interface ZodLike { _zod?: { def?: Record<string, unknown> } }
 function defOf(schema: unknown, where: string): Record<string, unknown> {
 	const def = (schema as ZodLike)?._zod?.def;
 	if (!def || typeof def.type !== "string") {
-		throw new Error(`[ram-api] 契约 schema 白名单校验失败（${where}）：不是 zod schema——契约只接受 @react-antd-module/runtime/contract 导出的 z 构建的 schema。`);
+		throw new Error(`[ram-api] 契约 schema 白名单校验失败（${where}）：不是 zod schema——契约只接受 @oj-module/runtime/contract 导出的 z 构建的 schema。`);
 	}
 	return def;
 }

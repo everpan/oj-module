@@ -1,4 +1,4 @@
-import { BasicContent, useAuthStore } from "@react-antd-module/runtime";
+import { BasicContent, useAuthStore } from "@oj-module/runtime";
 import { Card, Tag, Typography } from "antd";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";

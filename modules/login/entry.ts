@@ -1,4 +1,4 @@
-import { defineModule } from "@react-antd-module/runtime";
+import { defineModule } from "@oj-module/runtime";
 
 import { lazy } from "react";
 
