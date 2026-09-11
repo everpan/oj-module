@@ -63,7 +63,7 @@ export default antfu({
 	react: true,
 	markdown: false,
 	ignores: [
-		// ram api 生成物（banner 注明勿手改），不参与 lint——
+		// ojm api 生成物（banner 注明勿手改），不参与 lint——
 		// yaml/json 经 eslint 重排版会导致 --check 永久误报 artifact-stale
 		"**/api/client.ts",
 		"**/api/client.schemas.ts",
@@ -72,6 +72,9 @@ export default antfu({
 		// P1：宿主预构建产物并入 cli 后目录名为 shell-dist（不叫 dist，
 		// 不在 antfu 默认忽略内）。生成资产绝不能被 eslint --fix 改写
 		"**/shell-dist/**",
+		// playground 工程里由 `ojm vendor/init` 联网落盘的 oj 二进制与 devkit
+		// （未入库，由 apps/*/.gitignore 忽略；eslint 只读根 .gitignore，需显式排除）
+		"apps/*/bin/**",
 	],
 	rules: {
 		"style/quotes": ["error", "double"],
