@@ -5,7 +5,7 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 设计依据、迁移记录与陷阱清单见 [`docs/prd/202609110947-oj-module-two-package-consolidation-design.md`](docs/prd/202609110947-oj-module-two-package-consolidation-design.md)。
 
-## [Unreleased]
+## [0.1.7] - 2026-09-11
 
 ### Added
 
@@ -69,5 +69,6 @@
 
 `@react-antd-module/{contract,runtime,cli,shell}` 的 0.1.x 系列为迁移前的四包形态（`contract` 0.1.3 / `runtime` 0.1.4 / `shell` 0.1.4 / `cli` 0.1.5），对应提交与开发方式见 [`docs/prd/framework-development-guide.md`](docs/prd/framework-development-guide.md)。自 `@oj-module` 首发起沿用 `0.1.5` 版本号，并进入双包 lockstep。
 
+[0.1.7]: https://www.npmjs.com/package/@oj-module/cli/v/0.1.7
 [0.1.6]: https://www.npmjs.com/package/@oj-module/cli/v/0.1.6
 [0.1.5]: https://www.npmjs.com/package/@oj-module/cli/v/0.1.5
