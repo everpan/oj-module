@@ -85,4 +85,13 @@ export default antfu({
 		"style/jsx-indent-props": ["error", "tab"],
 		"react-hooks/exhaustive-deps": "off",
 	},
-}, runtimeNoModulesGuard);
+}, runtimeNoModulesGuard, {
+	// cli package.json 的 `files` 数组顺序有语义：npm 按出现顺序应用模式，
+	// **后者优先**，故取反模式 `!shell-dist/**/*.map` 必须排在 `shell-dist` 之后
+	// 才能生效（P5 实测：排在前面时 117 个 sourcemap 照发）。sort-array-values
+	// 会强制按字典序把它排到最前，与语义冲突，这里关掉该文件的排序检查。
+	files: ["packages/cli/package.json"],
+	rules: {
+		"jsonc/sort-array-values": "off",
+	},
+});

@@ -88,8 +88,9 @@ describe("发布内容守卫（R8 / US-7）", () => {
 	it("cli files 含内置宿主 shell-dist 与 bin，且排除 shell-dist 的 sourcemap", () => {
 		expect(cliPkg.files).toEqual(expect.arrayContaining(["bin", "shell-dist", "src", "templates", "vendor"]));
 		// sourcemap 仅供内部栈解析不发版；npm 的 files 白名单无法被 .npmignore 排除，
-		// 必须用取反模式（P4.4）
+		// 必须用取反模式，且 **npm 按顺序应用、后者优先** → 取反须排在 shell-dist 之后
 		expect(cliPkg.files).toContain("!shell-dist/**/*.map");
+		expect(cliPkg.files.indexOf("!shell-dist/**/*.map")).toBeGreaterThan(cliPkg.files.indexOf("shell-dist"));
 	});
 });
 

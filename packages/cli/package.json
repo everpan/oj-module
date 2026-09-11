@@ -24,7 +24,8 @@
 		"shell-dist",
 		"src",
 		"templates",
-		"vendor"
+		"vendor",
+		"!shell-dist/**/*.map"
 	],
 	"scripts": {
 		"build:shell": "tsx shell/scripts/build.mts",
