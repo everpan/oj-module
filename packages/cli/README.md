@@ -26,14 +26,14 @@
 ojm dev [port]   # 启动开发服务器（默认 5174）：宿主代理 + 本地模块重建
 ojm build        # 构建模块产物与 dist/modules.json
 ojm init [dir] [--yes]        # 脚手架：模板工程 + 证书签发 + 联网下载 oj 到 bin/
-ojm vendor [tag] [--force]    # 下载/重装 oj vendor（tag 缺省取最新 release，形如 v0.1.11）
+ojm vendor [tag] [--force]    # 下载/重装 oj vendor（经 npm 包 @oj-bin/oj，tag 缺省取最新版本，形如 v0.1.13）
 ojm preview [port] [--oj-static]   # 生产形态预览：oj migrate + release + 静态兜底
 ojm info        # 输出报障所需的版本矩阵与后端观测
 ojm api [dir]   # 契约产物生成（client/openapi/mock stub）
 ojm merge <out> <in...>  # 合并多份 modules.json
 ```
 
-> `ojm init` / `ojm vendor` 需要访问 GitHub（下载 oj 发行包，sha256 校验）；直连受限时带代理：`NODE_USE_ENV_PROXY=1 HTTPS_PROXY=... ojm vendor`。已装版本记录在 `bin/.oj-version`，`ojm info` 可查。
+> `ojm init` / `ojm vendor` 需要访问 npm registry（经 `npm i @oj-bin/oj` 安装 oj 到 `bin/`，走 `.npmrc` 镜像配置）。已装版本记录在 `bin/.oj-version`，`ojm info` 可查。
 >
 > **别名**：`ram` 是 `ojm` 的弃用别名（打印更名警告后转发），供存量工程 scripts 平滑升级，将在下个 major 移除。
 

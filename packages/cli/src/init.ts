@@ -21,7 +21,7 @@ import { readHostVersions } from "./versions";
 export interface InitOptions {
 	/** 跳过非空目录确认（自动化/测试用） */
 	yes?: boolean
-	/** 注入桩 oj 安装器（测试）；默认 vendorCommand 联网下载（sha256 校验） */
+	/** 注入桩 oj 安装器（测试）；默认 vendorCommand 经 npm 包 @oj-bin/oj 联网安装 */
 	ojInstaller?: (binDir: string) => Promise<void>
 }
 

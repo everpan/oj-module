@@ -12,7 +12,7 @@ export function usageText(): string {
   ojm preview [port] [--oj-static]    生产形态预览（migrate → oj server + 静态兜底）
   ojm api [dir] [--check] [--docs] [--exempt <path>]  契约代码生成（client/routes/openapi/stub）；--check 三重对账（可用 --exempt 指定豁免清单覆盖默认 api/.ojm-api-exempt.json）；--docs 出自包含文档站（单文件离线可看）
   ojm info                            输出版本矩阵与模块清单（报障用，US-7）
-  ojm vendor [tag] [--force]           下载/重装 oj vendor（tag 缺省取最新 release，形如 v0.1.11）
+  ojm vendor [tag] [--force]           下载/重装 oj vendor（经 npm 包 @oj-bin/oj，tag 缺省取最新版本，形如 v0.1.13）
   ojm merge <out.json> <in1.json> [in2.json ...]  合并多团队清单（R12）
 
 别名: ram 是 ojm 的弃用别名（打印更名警告后转发），将在下个 major 移除。

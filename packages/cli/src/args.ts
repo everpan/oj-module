@@ -39,9 +39,9 @@ export function parseApiArgs(argv: string[]): { dir: string, check: boolean, doc
 }
 
 /**
- * `ojm vendor [tag] [--force]`：下载/更新 oj vendor。
- * tag 缺省用钉定版本（vendor.ts RELEASE_TAG）；形如 `v0.1.11` 或 `0.1.11`
- * （自动补 v 前缀）。非法 tag 形状即报错（防误把目录当版本）。
+ * `ojm vendor [tag] [--force]`：下载/更新 oj vendor（npm 包 @oj-bin/oj）。
+ * tag 缺省追 npm latest；形如 `v0.1.13` 或 `0.1.13`（自动补 v 前缀，装包时去掉）。
+ * 非法 tag 形状即报错（防误把目录当版本）。
  */
 export function parseVendorArgs(argv: string[]): { force: boolean, tag?: string } {
 	const tag = argv.find(a => !a.startsWith("--") && a !== "--");

@@ -5,6 +5,12 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 设计依据、迁移记录与陷阱清单见 [`docs/prd/202609110947-oj-module-two-package-consolidation-design.md`](docs/prd/202609110947-oj-module-two-package-consolidation-design.md)。
 
+## [Unreleased]
+
+### Changed
+
+- `ojm vendor` / `ojm init`：oj 二进制下载源从 GitHub releases 切换为 **npm 包 `@oj-bin/oj`**（临时目录 `npm i` 后拷贝 `bin/` 进工程，零污染用户工程）。平台选择、完整性校验（npm dist.integrity）、registry 镜像均由 npm 承担；`GITHUB_TOKEN` 与代理指引随之退役。设计见 [`docs/prd/202609111926-vendor-npm-install-design.md`](docs/prd/202609111926-vendor-npm-install-design.md)。
+
 ## [0.1.6] - 2026-09-11
 
 ### Added

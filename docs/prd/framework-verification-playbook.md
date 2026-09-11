@@ -9,12 +9,24 @@
 | 项 | 值 |
 | --- | --- |
 | 日期 | 2026-09-11 |
+| 框架包版本 | `cli`/`runtime` `0.1.6`（本次验证跑在 `refactor/vendor-npm-install` 分支源码 CLI 上：**vendor 下载源从 GitHub releases 切换为 npm 包 `@oj-bin/oj`**，见 `202609111926-vendor-npm-install-design.md`） |
+| oj | `0.1.13`（**npm `@oj-bin/oj` 通道**首验：`ojm init` 临时目录 `npm i` → 落盘 `bin/oj` + `bin/plugins/` + `bin/devkit/`，无构建机路径泄漏，探针通过） |
+| 结果 | 全链路通过（§1–§7）。发现并修正 3 处手册判据过期（§1/§2/§8 的四包时代 devDeps 表述 → 两包时代只有 `cli`+`runtime`；§6 curl 直打 `/login` 404 系 SPA 回落需 `Accept: text/html`，非缺陷，已补判据说明）。`@types/react`/`typescript` 回退 `*` 告警依旧，安装后需钉版（本次钉 `19.3.0` / `7.0.2`） |
+
+<details>
+<summary>上一次基线（0.1.6 四包收尾 / oj 0.1.12 GitHub release 通道）</summary>
+
+| 项 | 值 |
+| --- | --- |
+| 日期 | 2026-09-11 |
 | 框架包版本 | `cli` `0.1.5`（本次模板修复：home/login 前端模块 + notifications 端点 + 豁免清单；home 用统计卡片 + 折线/柱/饼图演示共享依赖矩阵）+ `runtime`/`shell` `0.1.4` + `contract` `0.1.3`（四包均已按本手册复跑） |
 | oj | `0.1.12`（**官方 release**）——v0.1.11 及更早的 release 二进制有构建机路径缺陷，v0.1.12 已修复（见 §3） |
 | 结果 | 全链路通过（§1–§7）：release 二进制在非构建机可用，`ojm dev` / `ojm preview` 均正常。发现并修复 4 个脚手架缺陷（模板缺 `api/.ojm-api-exempt.json` → `ojm api --check` 误报；模板缺 `modules/src/login` → `/login` 无路由可跳；模板缺 root 级 `api/src/notifications` → 通知铃 404；模板缺 `modules/src/home` → 登录回跳 `/home` 落错误边界，见 §4/§5）与 2 处手册判据过期（§3 泄漏计数、§4 未注明豁免文件） |
 
+</details>
+
 <details>
-<summary>上一次基线（0.1.3 / oj 0.1.11 自建）</summary>
+<summary>更早基线（0.1.3 / oj 0.1.11 自建）</summary>
 
 | 项 | 值 |
 | --- | --- |
@@ -47,8 +59,8 @@ node "$OJM_REPO/packages/cli/bin/ojm.mjs" init my-books --yes
 **检查点**
 
 - [ ] 退出码 0，末行提示 `登录 admin / 123456`
-- [ ] 目录齐全：`api/src/{_platform,auth,web,notifications}`、`api/.ojm-api-exempt.json`、`modules/src/{demo,home,login}`、`modules.config.ts`、`tsconfig.json`、`global.d.ts`、`env.d.ts`、`bin/oj`、`bin/.oj-version`、`.claude/skills/oj-api-dev/`
-- [ ] `package.json` 的 devDependencies **包含** `@oj-module/{cli,contract,runtime,shell}`，且值**不是 `*`**
+- [ ] 目录齐全：`api/src/{_platform,auth,web,notifications}`、`api/.ojm-api-exempt.json`、`modules/src/{demo,home,login}`、`modules.config.ts`、`tsconfig.json`、`global.d.ts`、`env.d.ts`、`bin/oj`、`bin/.oj-version`、`.claude/skills/oj-api-dev/`（npm 通道安装时 `bin/` 还含 `plugins/` 与 `devkit/`）
+- [ ] `package.json` 的 devDependencies **包含** `@oj-module/{cli,runtime}`（两包时代；`contract` 是 runtime 子路径、shell 已并入 cli），且值**不是 `*`**
 - [ ] 若出现「`@types/react` / `typescript` 回退 `*`」告警 → 记下，安装后必须钉版
 - [ ] **未出现「oj 二进制自检失败」告警**（cli ≥ 0.1.4 安装后自动冒烟）；若出现，按 §3 换自建二进制
 
@@ -61,7 +73,7 @@ cd my-books && pnpm install
 **检查点**
 
 - [ ] `node_modules/.bin/ojm`、`node_modules/.bin/tsc` 存在
-- [ ] 安装日志里 4 个 `@oj-module/*` 版本与 `versions.json` 一致
+- [ ] 安装日志里 `@oj-module/{cli,runtime}` 版本与 `versions.json` 一致
 - [ ] `pnpm exec ojm info` 输出宿主版本矩阵 + 模块清单，无报错
 - [ ] 处理 §1 的 `*` 告警：把 `@types/react` / `typescript` 钉成实际安装版本
 
@@ -97,7 +109,7 @@ printf 'name: web\ndesc: probe\nversion: 0.1.0\n' > /tmp/_oj_probe/src/web/manif
 # 坏二进制（≤ v0.1.11）：Failed to initialize a JsRuntime: No such file or directory (os error 2)
 ```
 
-**处置**：优先 `ojm vendor` 拉 **≥ v0.1.12** 的 release。若仍报 ENOENT（版本过旧或未换包），
+**处置**：优先 `ojm vendor` 拉 **≥ v0.1.12**（下载源为 npm 包 `@oj-bin/oj`）。若仍报 ENOENT（版本过旧或未换包），
 用**自建** oj 覆盖 `bin/oj`（`cargo build --release`，产物在 `only-js/target/release/oj`），
 然后重跑这些检查点直到通过。
 
@@ -189,6 +201,9 @@ curl -s http://127.0.0.1:9778/api/notifications -H "authorization: Bearer $TOKEN
 - [ ] `http://localhost:5174/` 200，importmap 含 `@oj-module/runtime`，`/modules/books/0.1.0/entry.js` 200
 - [ ] `/modules/login/0.1.0/entry.js` 200，且 `/login` 能渲染模块登录页（登出后可跳回；缺 login 模块则落空）
 
+> **curl 打路由路径 404 不是缺陷**：SPA history 回落要求 `Accept: text/html`（浏览器天然带），
+> curl 默认 `*/*` 不触发回落。curl 验证请带 `-H 'Accept: text/html'`。
+
 用完停服：`pkill -f "ojm dev"; pkill -f "bin/oj"`。
 
 ## 7. 预览（可选，验证 release 形态）
@@ -202,7 +217,7 @@ pnpm exec ojm preview    # oj migrate（verify 门禁）→ server + 静态兜�
 ## 8. 一次通过判据（汇总清单）
 
 - [ ] `ojm init` 成功，且 devDeps **含 `contract`**、**含 `env.d.ts`**
-- [ ] `pnpm install` 成功，4 包版本一致
+- [ ] `pnpm install` 成功，`cli`/`runtime` 两包版本一致
 - [ ] oj 二进制通过 §3 探针（JsRuntime 能初始化）
 - [ ] `ojm api` 生成 4 产物；`--check` 无 drift（内置 `auth`/`web` 需 `api/.ojm-api-exempt.json` 豁免，见 §4）
 - [ ] `ojm build` 产出 4 后端模块 + 合并站点 + `modules.json`
