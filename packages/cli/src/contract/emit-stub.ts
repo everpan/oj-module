@@ -25,6 +25,8 @@ export interface StubWrite {
 	content: string
 	action: "create" | "update" | "skip"
 	reason?: string
+	/** update 的纯前缀升级（旧 ram-api:stub → 新 ojm-api:stub，正文未变）：--check 不报过期 */
+	prefixUpgrade?: boolean
 }
 
 export interface PlanStubOptions {
@@ -51,6 +53,9 @@ const OJ_METHOD: Record<string, string> = {
  * 否则升级后旧 stub 会被判为「人工编辑」而永不随契约更新（R2）。
  */
 const FINGERPRINT_RE = /^\/\/ (?:ojm|ram)-api:stub (.+) sha256:([0-9a-f]{64})\r?\n/;
+
+/** 旧指纹头（存量产物）：仅前缀不同时判为可升级，不作内容过期 */
+const LEGACY_FINGERPRINT_HEAD = /^\/\/ ram-api:stub /;
 
 /** 哈希输入归一：LF + 行尾空白剔除（跨机器/lint 稳定） */
 export function hashContent(body: string): string {
@@ -190,9 +195,28 @@ export async function planStubWrites(ir: IrEndpoint[], opts: PlanStubOptions): P
 			writes.push({ filePath, content, action: "skip", reason: "契约未变，产物字节一致（零写入）" });
 			continue;
 		}
+		// 仅指纹头前缀差异（旧 `ram-api:stub` → 新 `ojm-api:stub`），正文逐字节一致：
+		// 升级而非契约变更。runApi 落盘刷头；--check 不得当过期误报（R2 平滑升级）。
+		if (isPrefixOnlyUpgrade(existing, content)) {
+			writes.push({
+				filePath,
+				content,
+				action: "update",
+				prefixUpgrade: true,
+				reason: "仅指纹头前缀升级（ram-api:stub → ojm-api:stub），正文未变",
+			});
+			continue;
+		}
 		writes.push({ filePath, content, action: "update", reason: "指纹匹配（stub 未被人编辑），随契约变更更新" });
 	}
 	return writes;
+}
+
+/** 旧指纹头（存量生成物）→ 换成新头后与期望内容逐字节一致 ⇔ 纯前缀升级 */
+function isPrefixOnlyUpgrade(existing: string, content: string): boolean {
+	if (!LEGACY_FINGERPRINT_HEAD.test(existing))
+		return false;
+	return existing.replace(LEGACY_FINGERPRINT_HEAD, "// ojm-api:stub ") === content;
 }
 
 /** 落盘：仅 create/update 写文件（父目录递归创建）；skip 零写入 */

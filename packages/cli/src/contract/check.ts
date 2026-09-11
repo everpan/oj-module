@@ -284,11 +284,13 @@ export async function checkApi(opts: { cwd: string, exempt?: string }): Promise<
 				});
 			}
 		}
-		// stub 待更新（指纹匹配但契约已变）也属生成物过期
+		// stub 待更新（指纹匹配但契约已变）也属生成物过期。
+		// 纯指纹头前缀升级（旧 ram-api:stub → 新 ojm-api:stub，正文未变）不算过期：
+		// 存量工程升级后首次 --check 不应因改名误报（R2 平滑升级）。
 		if (found.kind === "uni-dev") {
 			const stubWrites = await planStubWrites(ir, { apiSrcDir: join(opts.cwd, "api/src") });
 			for (const w of stubWrites) {
-				if (w.action === "update") {
+				if (w.action === "update" && !w.prefixUpgrade) {
 					violations.push({
 						level: "error",
 						kind: "artifact-stale",

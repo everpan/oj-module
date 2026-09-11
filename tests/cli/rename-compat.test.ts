@@ -1,10 +1,11 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 
-import { loadExemption } from "../../packages/cli/src/contract/check";
+import { checkApi, loadExemption } from "../../packages/cli/src/contract/check";
 import { planStubWrites } from "../../packages/cli/src/contract/emit-stub";
 import { buildIr } from "../../packages/cli/src/contract/ir";
+import { runApi } from "../../packages/cli/src/contract/run";
 import { API_DEF, API_DEF_LEGACY, defineApi, z } from "../../packages/runtime/contract";
 
 /**
@@ -75,13 +76,58 @@ describe("r2：stub 指纹头双前缀接受", () => {
 		expect(item?.content).toMatch(/^\/\/ ojm-api:stub /);
 	});
 
-	it("旧前缀且契约未变 → 仍升级为 update（把旧头刷成新头）", async () => {
+	it("旧前缀且契约未变 → 仍升级为 update（把旧头刷成新头），标记 prefixUpgrade", async () => {
 		const first = await planStubWrites(ir, { apiSrcDir: "api/src", eslintFix: identityFix, readFile: () => undefined });
 		const files = new Map(first.filter(w => w.action !== "skip").map(w => [w.filePath, w.content] as const));
 		files.set(FILE, files.get(FILE)!.replace("// ojm-api:stub", "// ram-api:stub"));
 
 		const second = await planStubWrites(ir, { apiSrcDir: "api/src", eslintFix: identityFix, readFile: p => files.get(p) });
-		expect(second.find(w => w.filePath === FILE)?.action).toBe("update");
+		const item = second.find(w => w.filePath === FILE);
+		expect(item?.action).toBe("update");
+		// 纯前缀升级：--check 不当过期误报（见下方 checkApi 用例）
+		expect(item?.prefixUpgrade).toBe(true);
+	});
+
+	it("旧前缀 + 契约真变更 → update 且非 prefixUpgrade（check 仍报过期）", async () => {
+		const first = await planStubWrites(ir, { apiSrcDir: "api/src", eslintFix: identityFix, readFile: () => undefined });
+		const files = new Map(first.filter(w => w.action !== "skip").map(w => [w.filePath, w.content] as const));
+		files.set(FILE, files.get(FILE)!.replace("// ojm-api:stub", "// ram-api:stub"));
+		const ir2 = buildIr({
+			getOrderList: defineApi({
+				apiPrefix: "/order",
+				route: "/list",
+				data: z.object({ total: z.number(), page: z.number() }),
+			}),
+		});
+		const second = await planStubWrites(ir2, { apiSrcDir: "api/src", eslintFix: identityFix, readFile: p => files.get(p) });
+		const item = second.find(w => w.filePath === FILE);
+		expect(item?.action).toBe("update");
+		expect(item?.prefixUpgrade).toBeFalsy();
+		expect(item?.content).toContain("page");
+	});
+
+	it("checkApi：存量旧头 stub 不误报过期，重跑后刷为新头", async () => {
+		const cwd = makeTmp();
+		mkdirSync(join(cwd, "api/src/order"), { recursive: true });
+		writeFileSync(join(cwd, "api/src/order/contract.ts"), `
+import { defineApi, z } from "@oj-module/runtime/contract";
+export const getOrderList = defineApi({
+	apiPrefix: "/order",
+	route: "/list",
+	data: z.object({ total: z.number() }),
+});
+`);
+		await runApi({ cwd });
+		const stubPath = join(cwd, "api/src/order/list/api.ts");
+		// 模拟存量工程：旧指纹头 + 旧名豁免清单
+		writeFileSync(join(cwd, "api/.ram-api-exempt.json"), JSON.stringify({ modules: [] }));
+		writeFileSync(stubPath, readFileSync(stubPath, "utf-8").replace("// ojm-api:stub", "// ram-api:stub"));
+
+		const { violations } = await checkApi({ cwd });
+		expect(violations.filter(v => v.level === "error")).toEqual([]);
+
+		await runApi({ cwd });
+		expect(readFileSync(stubPath, "utf-8")).toMatch(/^\/\/ ojm-api:stub /);
 	});
 
 	it("旧前缀 + 内容被人改过 → 仍判人工编辑（skip），兼容不放大权限", async () => {
