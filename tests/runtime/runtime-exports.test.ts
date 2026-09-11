@@ -68,6 +68,9 @@ describe("runtime 主入口出口白名单 (P3.1)", () => {
 			"AccessControl",
 			"FormAvatarItem",
 			"FormTreeItem",
+			// AntdApp：宿主链必须用它（--oo-* 变量同步 + StaticAntd），
+			// 误用 antd 原生 App 则暗黑模式 footer 露白（设计 202609112121）
+			"AntdApp",
 		] as const) {
 			expect(Runtime[key], key).toBeDefined();
 		}

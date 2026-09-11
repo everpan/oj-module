@@ -35,6 +35,7 @@ export const Iframe = _fn;
 export const AccessControl = _fn;
 export const FormAvatarItem = _fn;
 export const FormTreeItem = _fn;
+export const AntdApp = _fn;
 // api
 export const fetchPie = _fn;
 export const fetchLine = _fn;

@@ -1,7 +1,7 @@
 import { StyleProvider } from "@ant-design/cssinjs";
-import { LayoutEffects, getRoutes, loadAll, setupI18n, useAuthStore, usePreferences, useUserStore } from "@oj-module/runtime";
+import { AntdApp, LayoutEffects, getRoutes, loadAll, setupI18n, useAuthStore, usePreferences, useUserStore } from "@oj-module/runtime";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { App, ConfigProvider, theme } from "antd";
+import { ConfigProvider, theme } from "antd";
 import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { Navigate, Outlet, RouterProvider, createBrowserRouter } from "react-router";
@@ -230,6 +230,12 @@ function Boot() {
 * 此前硬编码 defaultAlgorithm——切暗黑后侧栏（tailwind dark: 类）变暗而
 * antd 组件仍亮色，顶栏图标白色融进白底「消失」——playground 全量模块
 * 暗黑对比（docs/prd/202609010056-playground-full-modules-plan.md）暴露。
+*
+* AntdApp 必须来自 @oj-module/runtime 而非 antd：runtime 版在 antd App
+* 之上做两件事（设计 202609112121-shell-dark-css-vars-design）——
+* ① 把 token 同步为 :root 的 `--oo-*` 变量（tailwind 语义色工具类的唯一
+*   来源，缺则暗黑模式 footer 等透明露白）；② StaticAntd 挂载
+*   window.$message/$modal/$notification。
 */
 function HostProviders() {
 	const { isDark, themeColorPrimary, themeRadius, sideCollapsedWidth } = usePreferences();
@@ -251,7 +257,7 @@ function HostProviders() {
 					collapsedWidth: sideCollapsedWidth
 				} }
 			},
-			children: /* @__PURE__ */ jsx(App, { children: /* @__PURE__ */ jsx(QueryClientProvider, {
+			children: /* @__PURE__ */ jsx(AntdApp, { children: /* @__PURE__ */ jsx(QueryClientProvider, {
 				client: queryClient,
 				children: /* @__PURE__ */ jsx(Boot, {})
 			}) })

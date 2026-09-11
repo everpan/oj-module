@@ -14,6 +14,7 @@
 
 ### Fixed
 
+- **宿主链暗黑模式 footer 露白**：shell 宿主（`host.tsx`）误用 antd 原生 `App`，从未写入 `--oo-*` 主题变量（tailwind 语义色工具类的唯一来源）——亮色下透明≈白不可见，暗黑模式暴露。宿主改用 runtime 导出的 `AntdApp`（变量同步 + `window.$message/$modal/$notification` 静态函数一并补齐）。设计见 [`docs/prd/202609112121-shell-dark-css-vars-design.md`](docs/prd/202609112121-shell-dark-css-vars-design.md)。
 - `ojm init` 生成 devDeps 缺 `@ant-design/pro-components`（personal-center 的 ProForm 类型来源），已补钉版。
 - `apps/playground-oj`：`personal-center/upload` 回写不存在的 `users.avatar_base64` 列（上传必 500），补迁移与 `user-info` 回读。
 

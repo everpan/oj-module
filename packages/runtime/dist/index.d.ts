@@ -14,6 +14,7 @@ export * from "./api/system/menu";
 export * from "./api/system/role";
 export * from "./api/user";
 export { AccessControl } from "./components/access-control";
+export { AntdApp } from "./components/antd-app";
 export { BasicButton } from "./components/basic-button";
 export { BasicContent } from "./components/basic-content";
 export * from "./components/basic-form";

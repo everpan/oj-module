@@ -11,7 +11,7 @@ import { persist } from "zustand/middleware";
 import { Link, Navigate, Outlet, createBrowserRouter, matchRoutes, useLocation, useMatches, useNavigate, useOutlet, useSearchParams } from "react-router";
 import { ErrorBoundary } from "react-error-boundary";
 import { AntDesignOutlined, ApartmentOutlined, AppstoreOutlined, ArrowDownOutlined, ArrowLeftOutlined, ArrowUpOutlined, BellOutlined, CloseOutlined, CloudOutlined, ContainerOutlined, CopyOutlined, CopyrightOutlined, DownOutlined, EnterOutlined, EyeOutlined, FileTextOutlined, FullscreenExitOutlined, FullscreenOutlined, HomeOutlined, LoadingOutlined, LockOutlined, LogoutOutlined, MenuFoldOutlined, MenuOutlined, MenuUnfoldOutlined, NodeExpandOutlined, QuestionCircleOutlined, RedoOutlined, ReloadOutlined, RocketOutlined, SafetyOutlined, SearchOutlined, SettingOutlined, SisternodeOutlined, SubnodeOutlined, SwapOutlined, TeamOutlined, TranslationOutlined, UploadOutlined, UserOutlined, VerticalAlignBottomOutlined, VerticalAlignMiddleOutlined, VerticalAlignTopOutlined } from "@ant-design/icons";
-import { Avatar, Badge, Breadcrumb, Button, Checkbox, Col, ColorPicker, ConfigProvider, Divider, Drawer, Dropdown, Empty, FloatButton, Form, Grid, Input, InputNumber, List, Menu, Modal, Popover, Result, Row, Select, Slider, Space, Spin, Switch, Tabs, Tooltip, Tree, Typography, Upload, Watermark, message, theme } from "antd";
+import { App, Avatar, Badge, Breadcrumb, Button, Checkbox, Col, ColorPicker, ConfigProvider, Divider, Drawer, Dropdown, Empty, FloatButton, Form, Grid, Input, InputNumber, List, Menu, Modal, Popover, Result, Row, Select, Slider, Space, Spin, Switch, Tabs, Tooltip, Tree, Typography, Upload, Watermark, message, notification, theme } from "antd";
 import { Fragment, Suspense, cloneElement, createElement, forwardRef, isValidElement, lazy, use, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { initReactI18next, useTranslation } from "react-i18next";
 import { Fragment as Fragment$1, jsx, jsxs } from "react/jsx-runtime";
@@ -211,7 +211,7 @@ function getAppInfo() {
 			"version": "0.1.6",
 			"license": "MIT"
 		},
-		"lastBuildTime": "2026-09-11 20:13:15"
+		"lastBuildTime": "2026-09-11 21:38:07"
 	};
 }
 var init_get_app_info = __esmMin((() => {}));
@@ -8253,10 +8253,26 @@ var init_auth = __esmMin((() => {
 }));
 //#endregion
 //#region src/utils/static-antd/index.ts
-var message$1, resetFns;
+/**
+* @see https://ant.design/components/app
+* @see https://ant.design/docs/blog/why-not-static
+*/
+function StaticAntd() {
+	const staticFunctions = App.useApp();
+	message$1 = staticFunctions.message;
+	notification$1 = staticFunctions.notification;
+	modal = staticFunctions.modal;
+	window.$message = message$1;
+	window.$modal = modal;
+	window.$notification = notification$1;
+	return null;
+}
+var message$1, notification$1, resetFns, modal;
 var init_static_antd = __esmMin((() => {
 	message$1 = message;
+	notification$1 = notification;
 	({...resetFns} = Modal);
+	modal = resetFns;
 }));
 //#endregion
 //#region src/utils/request/error-response.ts
@@ -8747,6 +8763,155 @@ function AccessControl({ type = "code", codes, children, fallback }) {
 	if (!type || type === "code") return hasAccessByCodes(codes) ? children : fallback;
 	if (type === "role") return hasAccessByRoles(codes) ? children : fallback;
 	return fallback;
+}
+//#endregion
+//#region src/components/antd-app/constants.ts
+var colors = [
+	"blue",
+	"purple",
+	"cyan",
+	"green",
+	"magenta",
+	"pink",
+	"red",
+	"orange",
+	"yellow",
+	"volcano",
+	"geekblue",
+	"gold",
+	"lime"
+];
+var brandColors = [
+	"colorPrimary",
+	"colorPrimaryBg",
+	"colorPrimaryBgHover",
+	"colorPrimaryBorder",
+	"colorPrimaryBorderHover",
+	"colorPrimaryHover",
+	"colorPrimaryActive",
+	"colorPrimaryTextHover",
+	"colorPrimaryText",
+	"colorPrimaryTextActive"
+];
+var successColors = [
+	"colorSuccess",
+	"colorSuccessBg",
+	"colorSuccessBgHover",
+	"colorSuccessBorder",
+	"colorSuccessBorderHover",
+	"colorSuccessHover",
+	"colorSuccessActive",
+	"colorSuccessTextHover",
+	"colorSuccessText",
+	"colorSuccessTextActive"
+];
+var warningColors = [
+	"colorWarning",
+	"colorWarningBg",
+	"colorWarningBgHover",
+	"colorWarningBorder",
+	"colorWarningBorderHover",
+	"colorWarningHover",
+	"colorWarningActive",
+	"colorWarningTextHover",
+	"colorWarningText",
+	"colorWarningTextActive"
+];
+var errorColors = [
+	"colorError",
+	"colorErrorBg",
+	"colorErrorBgHover",
+	"colorErrorBorder",
+	"colorErrorBorderHover",
+	"colorErrorHover",
+	"colorErrorActive",
+	"colorErrorTextHover",
+	"colorErrorText",
+	"colorErrorTextActive"
+];
+var infoColors = [
+	"colorInfo",
+	"colorInfoBg",
+	"colorInfoBgHover",
+	"colorInfoBorder",
+	"colorInfoBorderHover",
+	"colorInfoHover",
+	"colorInfoActive",
+	"colorInfoTextHover",
+	"colorInfoText",
+	"colorInfoTextActive"
+];
+var functionalColors = [
+	...successColors,
+	...warningColors,
+	...errorColors,
+	...infoColors
+];
+var neutralColors = [
+	"colorText",
+	"colorTextSecondary",
+	"colorTextTertiary",
+	"colorTextQuaternary",
+	"colorBgContainer",
+	"colorBgElevated",
+	"colorBgLayout",
+	"colorBgSpotlight",
+	"colorBgMask",
+	"colorBorder",
+	"colorBorderSecondary",
+	"colorFill",
+	"colorFillSecondary",
+	"colorFillTertiary",
+	"colorFillQuaternary"
+];
+var productLevelColorSystem = [...brandColors, ...functionalColors];
+var baseColorPalettes = colors.flatMap((color) => [color, ...Array.from({ length: 10 }, (_, i) => `${color}-${i + 1}`)]);
+//#endregion
+//#region src/components/antd-app/utils.ts
+/**
+* 16 进制颜色值转 RGB 颜色值，因为 16 进制的颜色值在 tailwind 中不支持透明度，比如无法使用 bg-blue-500/20
+* @see https://tailwindcss.com/docs/customizing-colors#using-css-variables
+*/
+function hexToRGB(hex) {
+	hex = hex.replace("#", "");
+	return `${Number.parseInt(hex.substring(0, 2), 16)} ${Number.parseInt(hex.substring(2, 4), 16)} ${Number.parseInt(hex.substring(4, 6), 16)}`;
+}
+function isRGBColor(color) {
+	return color.trim().startsWith("rgb");
+}
+function getCSSVariablesByTokens(tokens) {
+	return Object.entries(tokens).reduce((acc, [key, value]) => {
+		if (productLevelColorSystem.includes(key)) return `${acc}--oo-${key}:${hexToRGB(value)};`;
+		if (neutralColors.includes(key)) return `${acc}--oo-${key}:${isRGBColor(value) ? value : `rgb(${hexToRGB(value)})`};`;
+		return baseColorPalettes.includes(key) ? `${acc}--oo-${key}:${hexToRGB(value)};` : acc;
+	}, "");
+}
+//#endregion
+//#region src/components/antd-app/setup-antd-theme.ts
+/**
+* Setup antd theme tokens to html
+* @see https://ant.design/docs/spec/colors
+*/
+function setupAntdThemeTokensToHtml(antdTokens) {
+	const cssVariablesString = getCSSVariablesByTokens(antdTokens);
+	const styleId = "antd-theme-tokens";
+	const styleSheet = document.querySelector(`#${styleId}`) || document.createElement("style");
+	styleSheet.id = styleId;
+	styleSheet.textContent = `:root { ${cssVariablesString} }`;
+	document.head.appendChild(styleSheet);
+}
+//#endregion
+//#region src/components/antd-app/index.tsx
+init_static_antd();
+function AntdApp({ children }) {
+	const { token: antdTokens } = theme.useToken();
+	useEffect(() => {
+		setupAntdThemeTokensToHtml(antdTokens);
+	}, [antdTokens]);
+	return /* @__PURE__ */ jsxs(App, {
+		className: "h-full",
+		children: [/* @__PURE__ */ jsx(StaticAntd, {}), children]
+	});
 }
 //#endregion
 //#region src/components/basic-content/index.tsx
@@ -27118,4 +27283,4 @@ init_ri();
 init_menu_icons();
 init_tree();
 //#endregion
-export { AccessControl, AccessControlRoles, BasicButton, BasicContent, BasicTable, EmbeddedIcon, ExternalIcon, FormAvatarItem, FormTreeItem, Iframe, LayoutCenterIcon, LayoutEffects, LayoutLeftIcon, LayoutRightIcon, MixedNavigationIcon, OutsidePageIcon, ProfileCardIcon, RiAccountCircleLine, RiContrastFill, RiFullscreenExitLine, RiFullscreenLine, RiMailCheckLine, RiMoonIcon, RiReactjsLine, RiSunIcon, RiUserSettingsLine, ServerErrorIcon, SideNavigationIcon, TopNavigationIcon, TwoColumnNavigationIcon, accessControlCodes, defineModule, fetchAddMenuItem, fetchAddRoleItem, fetchAsyncRoutes, fetchDeleteMenuItem, fetchDeleteRoleItem, fetchLogin, fetchLogout, fetchMenuByRoleId, fetchMenuList, fetchRefreshToken, fetchRoleList, fetchRoleMenu, fetchUpdateMenuItem, fetchUpdateRoleItem, fetchUserInfo, filterTree, getAllExpandedKeys, getAppInfo, getBooleanOptions, getModule, getModules, getRedirectPath, getRegisteredApiPrefix, getRegisteredStore, getRoutes, getYesNoOptions, handleTree, loadAll, mapTree, menuIcons, permissionPrefix, setupI18n, traverseTreeValues, unloadModule, useAccess, useAuthStore, usePreferences, useSlotNodes, useUserStore, external_exports as z };
+export { AccessControl, AccessControlRoles, AntdApp, BasicButton, BasicContent, BasicTable, EmbeddedIcon, ExternalIcon, FormAvatarItem, FormTreeItem, Iframe, LayoutCenterIcon, LayoutEffects, LayoutLeftIcon, LayoutRightIcon, MixedNavigationIcon, OutsidePageIcon, ProfileCardIcon, RiAccountCircleLine, RiContrastFill, RiFullscreenExitLine, RiFullscreenLine, RiMailCheckLine, RiMoonIcon, RiReactjsLine, RiSunIcon, RiUserSettingsLine, ServerErrorIcon, SideNavigationIcon, TopNavigationIcon, TwoColumnNavigationIcon, accessControlCodes, defineModule, fetchAddMenuItem, fetchAddRoleItem, fetchAsyncRoutes, fetchDeleteMenuItem, fetchDeleteRoleItem, fetchLogin, fetchLogout, fetchMenuByRoleId, fetchMenuList, fetchRefreshToken, fetchRoleList, fetchRoleMenu, fetchUpdateMenuItem, fetchUpdateRoleItem, fetchUserInfo, filterTree, getAllExpandedKeys, getAppInfo, getBooleanOptions, getModule, getModules, getRedirectPath, getRegisteredApiPrefix, getRegisteredStore, getRoutes, getYesNoOptions, handleTree, loadAll, mapTree, menuIcons, permissionPrefix, setupI18n, traverseTreeValues, unloadModule, useAccess, useAuthStore, usePreferences, useSlotNodes, useUserStore, external_exports as z };

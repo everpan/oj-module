@@ -21,6 +21,11 @@ export * from "./api/system/menu";
 export * from "./api/system/role";
 export * from "./api/user";
 export { AccessControl } from "./components/access-control";
+// AntdApp：antd App 包裹 + --oo-* 主题变量同步 + StaticAntd（$message 等）。
+// 宿主链（shell host.tsx）必须用它而非 antd 原生 App，否则暗黑模式
+// tailwind 语义色（bg-colorBgContainer 等）变量缺失，footer 露白
+// （设计 202609112121-shell-dark-css-vars-design）
+export { AntdApp } from "./components/antd-app";
 export { BasicButton } from "./components/basic-button";
 // 组件
 export { BasicContent } from "./components/basic-content";
