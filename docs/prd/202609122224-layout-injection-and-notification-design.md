@@ -303,7 +303,7 @@ packages/cli/templates/
 | 4 | playground-oj 同步升级（§4.6） | 同分支 | ✅ 完成 |
 | 5 | cli 模板 notification 模块（§4.5，含表/种子迁移） | 同分支 | ✅ 完成 |
 | 6 | 冻结核对（runtime-exports 快照 + RUNTIME_STUB_SOURCE）+ dist 重建 + §9 回填 | 同分支 | ✅ 完成 |
-| 7 | 集中审查：对全部变更派审查代理复核，按意见修复后收尾 | 同分支 | 未开始 |
+| 7 | 集中审查：对全部变更派审查代理复核，按意见修复后收尾 | 同分支 | ✅ 完成 |
 
 ### Phase 1: runtime 布局注册表
 
@@ -370,7 +370,15 @@ packages/cli/templates/
 
 ### Phase 7: 集中审查
 
-（待执行）
+**执行小结**（2026-09-13 00:55，耗时约 20 分钟）：
+
+- 审查代理全量复核 `19f783f..HEAD`（7 实现 + 7 docs 提交），逐焦点核对：正确性（注册表边界、container 闭包、popup 只读推导漏路径）、契约一致性（playground↔模板逐字节同构、id 同步清单全落实、routesCurrent 已入卸载清理）、冻结与测试（两道冻结绿、21 新用例无自欺）、风格。结论：**通过**，无 P0/P1。
+- 两条 P2 提示性发现，按审查建议均**不处理**（记录备查）：
+  - P2-1：弹层打开期间 provider 卸载 → stale 写一次，失败被 `.catch` 吞掉，崩溃面为零——属 §7「不热回落」同类再解析语义的 UI 侧表现，真有热卸载诉求时再在 handler 重读 provider 判空（一行）。
+  - P2-2：`Number(id)` 对非数字字符串产出 NaN——本仓两端后端均整数自增 id 无触达路径，NaN→null 经 DEV zod 校验兜底报错；`id: string | number` 保留是给纯前端数据源的余地。
+- 文档核对：provider 专题指南（docs/202609130035-provider-guide.md）说法与代码事实逐条相符；§11 七阶段小结与实际提交一一对应。
+- 报告存档：/tmp/ojm-phase7-review.md（会话外不持久，要点已摘录本节）。
+
 
 ## 10. 评审记录（2026-09-12 23:00）
 
