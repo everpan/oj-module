@@ -283,7 +283,7 @@ packages/cli/templates/
 | 1 | runtime 布局注册表（§4.1）：layout-registry + resolve-layout 委托 + ctx.register.layout + 卸载清理 + 类型模板联合 + warn-once | feat/layout-injection | ✅ 完成 |
 | 2 | routesApi provider 补缺（§4.2） | 同分支 | ✅ 完成 |
 | 3 | 通知 provider 互动（§4.4）：四方法 + container 接线 + 20x 残留删除 + 只读降级 | 同分支 | ✅ 完成 |
-| 4 | playground-oj 同步升级（§4.6） | 同分支 | 未开始 |
+| 4 | playground-oj 同步升级（§4.6） | 同分支 | ✅ 完成 |
 | 5 | cli 模板 notification 模块（§4.5，含表/种子迁移） | 同分支 | 未开始 |
 | 6 | 冻结核对（runtime-exports 快照 + RUNTIME_STUB_SOURCE）+ dist 重建 + §9 回填 | 同分支 | 未开始 |
 | 7 | 集中审查：对全部变更派审查代理复核，按意见修复后收尾 | 同分支 | 未开始 |
@@ -322,7 +322,14 @@ packages/cli/templates/
 
 ### Phase 4: playground-oj 同步升级
 
-（待执行）
+**执行小结**（2026-09-13 00:15，耗时约 25 分钟）：
+
+- 实现与 §4.6 一致：契约 `notificationItem` 补 `id`、新增 `markRead`/`markAllRead`/`clearAll` 三写端点；列表端点补 `id: Number(r.id)`（评审 A4）；entry provider 四方法（写方法 `.then(() => {})` 收型为 void）；`ojm api` 重跑刷新 client/routes.json/openapi.yaml；playground-oj typecheck 干净。
+- **契约反常识记录（重要）**：`z.null()` 超出契约 schema 白名单（string/number/boolean/date/object/array/enum/literal/union/optional/nullable/default）——**void 端点不能声明 `data: z.null()`，须省略 `data`**（codegen 对无 data 端点返回 `unknown`，由 provider 侧收型）。设计 §4.5 模板契约同样适用，已预期。
+- 关键过程：runtime dist 重建后 `shell-importmap` 测试（sha256 一致性守护）红灯 → `pnpm --filter @oj-module/cli build:shell` 重建 shell-dist 转绿；dist 与 shell-dist 作为独立 chore 提交（两者必须同提交，否则测试在单独检出时不一致）。
+- 偏差记录：设计 §4.6 说「三端点定义与 oj 实现」未指明 data 声明方式，实现期由白名单错误驱动定为「省略 data」，比设计多走一步。
+- 全量 592 测试绿（95 文件）。
+- 提交：`feat(playground-oj): phase 4 通知模块同步升级（G6 dogfooding）` + `chore: 重建 runtime dist 与 shell-dist`。
 
 ### Phase 5: cli 模板 notification 模块
 
