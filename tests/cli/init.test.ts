@@ -144,6 +144,10 @@ describe("initProject", () => {
 			expect(notificationEntry).toContain(name);
 		expect(fs.existsSync(path.join(dest, "web/src/notification/client/api.ts"))).toBe(true);
 		expect(fs.existsSync(path.join(dest, "web/src/notification/client/api.schemas.ts"))).toBe(true);
+		// web.config.ts 必须登记 notification：未登记的模块不加载，provider 不注册，
+		// 通知铃将永远停留在内置只读兜底（BDD 5.4#2 的前提）
+		expect(modulesConfig).toContain("\"notification\"");
+		expect(modulesConfig).toContain("web/src/notification/entry.ts");
 		const pkg = JSON.parse(fs.readFileSync(path.join(dest, "package.json"), "utf-8"));
 		expect(pkg.scripts.dev).toContain("ojm dev");
 		expect(pkg.scripts.preview).toContain("ojm preview");

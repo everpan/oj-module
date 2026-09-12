@@ -29,5 +29,12 @@ export default {
 			entry: "web/src/personal-center/entry.ts",
 			enabled: true,
 		},
+		{
+			// 通知：onInit 注册 notificationsApi provider（四方法全必填），
+			// 通知铃的互动（单条已读/全部已读/清空）由此生效；未登记则永远回落内置只读兜底
+			name: "notification",
+			entry: "web/src/notification/entry.ts",
+			enabled: true,
+		},
 	],
 };
