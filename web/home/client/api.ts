@@ -30,6 +30,11 @@ let req: ScopedRequestLike | undefined;
  * 重复构造幂等安全（前缀重复登记同值、request 重绑同值）。
  */
 export function createHomeClient(ctx: ModuleContext) {
+	// 跨模块认领护栏（DEV）：名实不符说明别的模块在替本模块创建 client，会共享
+	// request 单槽、卸载互相耦合；跨模块需求应由本模块创建后经 provider 暴露。
+	if (import.meta.env.DEV && ctx.module.name !== API_PREFIX.slice(1)) {
+		console.warn(`[ojm-api] 模块 "${ctx.module.name}" 正在认领 ${API_PREFIX} 的 client——跨模块认领会共享 request 单槽、卸载互相耦合；应由 "${API_PREFIX.slice(1)}" 模块在自身 onInit 创建，跨模块需求经 provider 暴露。`);
+	}
 	ctx.register.apiPrefix(API_PREFIX);
 	bindRequest(ctx.utils.request);
 	return { fetchPie, fetchLine };

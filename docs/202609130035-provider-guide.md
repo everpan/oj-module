@@ -169,6 +169,8 @@ export default defineModule({
 ```
 
 > **不是每个模块都要创建 client。** 判断标准只有一个：模块代码里有没有人 import `./client/api`——有，就在 onInit 里 `create<Module>Client(ctx)` 一次；没有（纯静态页、或像 personal-center 那样上传走 antd Upload 直连 action 不经生成 client），就什么都不用写，`lifecycle` 甚至可以整个省略。生成了 `client/` 目录但没人 import 它，不创建也不会有任何报错——只有真去调裸函数时才抛「请求未绑定」。
+>
+> **只能认领自己的 client。** 工厂构造时会核对 `ctx.module.name` 与契约前缀：在 A 模块的 onInit 里创建 B 模块的 client，DEV 控制台会警告「模块 A 正在认领 /b 的 client」。这不是多管闲事——跨模块认领会共享同一个 request 单槽（后创建者覆盖先创建者），且 A 被卸载时 B 的 client 会跟着断线。如果你确实需要别家的接口，正路是：让那个模块在自己的 onInit 创建 client、经 provider 把能力暴露出来（见 §2 的注册表），你来消费 provider——而不是直接 import 它的 client。
 
 ### 3.2 案例 B：接管头像上传（最简单的练手入口）
 
@@ -332,6 +334,7 @@ ctx.register.routesApi({
 | 改了契约，前端类型没变 | 没重新生成 | 跑 `pnpm ojm api`；生成是确定的，diff 里应该只看到你改的那部分 |
 | 接口调用报「请求未绑定」 | entry 的 onInit 里没调 `createXxxClient(ctx)`（旧写法是 `bindRequest`） | onInit 里先 `const client = createXxxClient(ctx)` 再发请求；一模块一 client |
 | 在页面/组件里又 create 了一个 client | 创建只该发生在 onInit 一次，重复创建会把 request 槽覆盖 | 页面里直接 import 裸 export 函数调用，不要再创建 |
+| 控制台警告「模块 A 正在认领 /b 的 client」 | A 的 onInit 里创建了 B 模块的 client——共享 request 单槽、卸载互相耦合 | 由 B 在自身 onInit 创建并经 provider 暴露能力，A 消费 provider（§3.1 引文） |
 | `ojm api` 报「schema 超出白名单」 | 契约里写了 `z.null()` 或 transform/refine 这类 | 不返回数据的接口干脆别写 `data`；校验放后端做 |
 | 下线模块后页面没变 | 画好的页面不自动换 | 刷新页面 |
 | 后端菜单用了我的布局名，页面却没外壳 | 注册那个布局的模块没加载 | 看控制台的 `[layout] 未知名布局` 提醒 |

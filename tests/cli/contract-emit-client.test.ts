@@ -7,7 +7,7 @@ import { createRequire } from "node:module";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { build } from "esbuild";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { emitClient } from "../../packages/cli/src/contract/emit-client";
 import { buildIr } from "../../packages/cli/src/contract/ir";
 import { defineApi, z } from "../../packages/runtime/contract";
@@ -327,6 +327,7 @@ describe("工厂（create<Module>Client，构造即 install，BDD §4）", () =>
 		const { mod } = await bundleClient(emitClient(ir, { target: "module", module: "order" }), true);
 		const registeredPrefixes: string[] = [];
 		const ctx = {
+			module: { name: "order", version: "0.0.0" },
 			register: { apiPrefix: (p: string) => { registeredPrefixes.push(p); } },
 			utils: { request: req },
 		};
@@ -340,5 +341,35 @@ describe("工厂（create<Module>Client，构造即 install，BDD §4）", () =>
 
 	it("5.6#6 module 目标缺模块名 → 发射期人话报错（R1 防漏传）", () => {
 		expect(() => emitClient(ir, { target: "module" } as never)).toThrow(/模块名/);
+	});
+
+	it("5.7#7 跨模块认领护栏：DEV 下 ctx.module.name 与 API_PREFIX 不符 → console.warn 指路；名实相符不警告", async () => {
+		const { req } = stubRequest(() => ok({ list: [], total: 0 }));
+		const { mod } = await bundleClient(emitClient(ir, { target: "module", module: "order" }), true);
+		const warn = vi.fn();
+		const original = console.warn;
+		console.warn = warn;
+		try {
+			// 模块名与契约前缀不符 = 跨模块认领（共享 request 单槽、卸载互相耦合）
+			mod.createOrderClient({
+				module: { name: "other", version: "0.0.1" },
+				register: { apiPrefix: () => {} },
+				utils: { request: req },
+			});
+			expect(warn).toHaveBeenCalledOnce();
+			expect(warn.mock.calls[0]![0]).toContain("\"other\"");
+			expect(warn.mock.calls[0]![0]).toContain("/order");
+			// 名实相符（本模块自己创建）→ 不警告
+			warn.mockClear();
+			mod.createOrderClient({
+				module: { name: "order", version: "0.0.1" },
+				register: { apiPrefix: () => {} },
+				utils: { request: req },
+			});
+			expect(warn).not.toHaveBeenCalled();
+		}
+		finally {
+			console.warn = original;
+		}
 	});
 });
