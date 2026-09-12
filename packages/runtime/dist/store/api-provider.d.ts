@@ -1,6 +1,7 @@
 import type { MenuItemType } from "../api/system/menu/types";
 import type { FetchAddRoleItemBody, FetchAddRoleItemData, FetchDeleteRoleItemBody, FetchDeleteRoleItemData, FetchMenuByRoleIdData, FetchMenuByRoleIdQuery, FetchRoleListData, FetchRoleListQuery, FetchRoleMenuData, FetchUpdateRoleItemBody, FetchUpdateRoleItemData } from "../api/system/role/client/api";
 import type { NotificationItem } from "../layout/widgets/notification/types";
+import type { AppRouteRecordRaw } from "../router/types";
 /**
  * 系统 API provider（D9）：模块经 ctx.register.systemApi 接管角色/菜单类
  * 内置 API。系统角色/菜单/通知/上传这些原本硬编码在 runtime 根级路径的
@@ -23,9 +24,16 @@ export interface SystemApiProvider {
     fetchUpdateMenuItem: (data: MenuItemType) => Promise<string>;
     fetchDeleteMenuItem: (id: number) => Promise<string>;
 }
-/** 通知 provider（D9）：模块经 ctx.register.notificationsApi 接管通知拉取 */
+/**
+ * 通知 provider（D9 + G4）：模块经 ctx.register.notificationsApi 接管通知。
+ * 四方法全必填——「接管通知 API」是全量接管（读 + 三个写），不做部分托管；
+ * 老 bundle 只有 fetchNotifications 的版本漂移由消费点运行时防御（评审 P2-7）。
+ */
 export interface NotificationsApiProvider {
     fetchNotifications: () => Promise<NotificationItem[]>;
+    markRead: (id: string | number) => Promise<void>;
+    markAllRead: () => Promise<void>;
+    clearAll: () => Promise<void>;
 }
 /** 上传 provider（D9）：模块经 ctx.register.uploadApi 接管头像/附件上传端点 */
 export interface UploadApiProvider {
@@ -34,14 +42,25 @@ export interface UploadApiProvider {
     /** 每次上传动态取请求头（如注入 Bearer）；返回普通对象 */
     headers: () => Record<string, string>;
 }
+/** 动态路由 provider（G2）：模块经 ctx.register.routesApi 接管后端动态路由拉取 */
+export interface RoutesApiProvider {
+    /**
+     * 返回后端动态路由。component 解析边界（评审 P0-2）：返回的路由按框架
+     * pages glob 解析 component（generate-routes-from-backend.ts），模块自有
+     * 组件的后端路由不在本契约内——请走模块路由（N7）。
+     */
+    fetchAsyncRoutes: () => Promise<AppRouteRecordRaw[]>;
+}
 export declare function registerSystemApiProvider(moduleName: string, provider: SystemApiProvider): void;
 export declare function getSystemApiProvider(): SystemApiProvider | undefined;
 export declare function registerNotificationsApiProvider(moduleName: string, provider: NotificationsApiProvider): void;
 export declare function getNotificationsApiProvider(): NotificationsApiProvider | undefined;
 export declare function registerUploadApiProvider(moduleName: string, provider: UploadApiProvider): void;
 export declare function getUploadApiProvider(): UploadApiProvider | undefined;
+export declare function registerRoutesApiProvider(moduleName: string, provider: RoutesApiProvider): void;
+export declare function getRoutesApiProvider(): RoutesApiProvider | undefined;
 /**
- * 卸载模块时复位其登记的全部 API provider（系统/通知/上传）。以 moduleName
+ * 卸载模块时复位其登记的全部 API provider（系统/通知/上传/动态路由）。以 moduleName
  * 作命名隔离——不同模块各自登记互不干扰，卸载只清自己的。
  */
 export declare function unregisterApiProviders(moduleName: string): void;

@@ -1,5 +1,5 @@
 import type { AppRouteRecordRaw } from "../router/types";
-import type { NotificationsApiProvider, SystemApiProvider, UploadApiProvider } from "../store/api-provider";
+import type { NotificationsApiProvider, RoutesApiProvider, SystemApiProvider, UploadApiProvider } from "../store/api-provider";
 import type { AuthProvider } from "../store/auth-provider";
 /** 模块上下文 — 主框架向模块注入的能力 */
 export interface ModuleContext {
@@ -26,6 +26,14 @@ export interface ModuleContext {
         notificationsApi: (provider: NotificationsApiProvider) => void;
         /** 接管头像/附件上传端点（D9）；先到先得，模块卸载时自动注销 */
         uploadApi: (provider: UploadApiProvider) => void;
+        /**
+         * 注册布局名（G1）：新名字供 handle.layout 引用，或覆盖内建名
+         * （container/parent/fullscreen，覆盖 = 自担 chrome 全部职责）。
+         * 先到先得，模块卸载时自动注销（再解析语义，不热回落见 N8）
+         */
+        layout: (name: string, component: React.ComponentType) => void;
+        /** 接管后端动态路由拉取（G2）；先到先得，模块卸载时自动注销 */
+        routesApi: (provider: RoutesApiProvider) => void;
     };
     /** 注册布局插槽节点（US-8 L2），卸载模块时自动清理 */
     registerSlot: (slotName: string, node: React.ReactNode) => void;

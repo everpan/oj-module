@@ -96,16 +96,30 @@ function registerUploadApiProvider(moduleName, provider) {
 function getUploadApiProvider() {
 	return uploadCurrent?.provider;
 }
+function registerRoutesApiProvider(moduleName, provider) {
+	if (routesCurrent) {
+		console.warn(`[api] 重复的动态路由 provider 忽略：已由模块 "${routesCurrent.moduleName}" 提供，忽略 "${moduleName}"（先到先得）。`);
+		return;
+	}
+	routesCurrent = {
+		moduleName,
+		provider
+	};
+}
+function getRoutesApiProvider() {
+	return routesCurrent?.provider;
+}
 /**
-* 卸载模块时复位其登记的全部 API provider（系统/通知/上传）。以 moduleName
+* 卸载模块时复位其登记的全部 API provider（系统/通知/上传/动态路由）。以 moduleName
 * 作命名隔离——不同模块各自登记互不干扰，卸载只清自己的。
 */
 function unregisterApiProviders(moduleName) {
 	if (systemCurrent?.moduleName === moduleName) systemCurrent = void 0;
 	if (notificationsCurrent?.moduleName === moduleName) notificationsCurrent = void 0;
 	if (uploadCurrent?.moduleName === moduleName) uploadCurrent = void 0;
+	if (routesCurrent?.moduleName === moduleName) routesCurrent = void 0;
 }
-var systemCurrent, notificationsCurrent, uploadCurrent;
+var systemCurrent, notificationsCurrent, uploadCurrent, routesCurrent;
 var init_api_provider = __esmMin((() => {}));
 //#endregion
 //#region src/router/extra-info/route-path.ts
@@ -163,6 +177,8 @@ function fetchLogout(data) {
 	return request.post("auth/logout", { json: { refresh_token: data?.refreshToken ?? "" } }).json().then(() => {});
 }
 function fetchAsyncRoutes() {
+	const p = getRoutesApiProvider();
+	if (p) return p.fetchAsyncRoutes();
 	return request.get("web/get-async-routes").json().then((env) => env.data ?? []);
 }
 function fetchUserInfo() {
@@ -172,6 +188,7 @@ function fetchRefreshToken(data) {
 	return request.post(REFRESH_TOKEN_PATH, { json: { refresh_token: data.refreshToken } }).json().then((env) => mapAuthPayload(env.data));
 }
 var init_user$1 = __esmMin((() => {
+	init_api_provider();
 	init_request();
 	init_constants$3();
 	init_types();
@@ -211,7 +228,7 @@ function getAppInfo() {
 			"version": "0.1.8",
 			"license": "MIT"
 		},
-		"lastBuildTime": "2026-09-12 00:19:59"
+		"lastBuildTime": "2026-09-12 23:53:41"
 	};
 }
 var init_get_app_info = __esmMin((() => {}));
@@ -3302,6 +3319,33 @@ function useCurrentRoute() {
 }
 var init_use_current_route = __esmMin((() => {}));
 //#endregion
+//#region src/layout/layout-registry.ts
+function registerLayout(moduleName, name, component) {
+	const current = registrations.get(name);
+	if (current) {
+		console.warn(`[layout] 重复的布局名 "${name}" 忽略：已由模块 "${current.moduleName}" 提供，忽略 "${moduleName}"（先到先得）。`);
+		return;
+	}
+	registrations.set(name, {
+		moduleName,
+		component
+	});
+}
+function getRegisteredLayout(name) {
+	return registrations.get(name)?.component;
+}
+/**
+* 卸载模块时清掉其登记的全部布局（以 moduleName 隔离，不影响其他模块）。
+* 只影响「再解析」语义——已注入运行中 router 的路由不热回落（设计文档 N8）。
+*/
+function unregisterLayouts(moduleName) {
+	for (const [name, registration] of registrations) if (registration.moduleName === moduleName) registrations.delete(name);
+}
+var registrations;
+var init_layout_registry = __esmMin((() => {
+	registrations = /* @__PURE__ */ new Map();
+}));
+//#endregion
 //#region src/components/jss-theme-provider/index.tsx
 /**
 * JSSThemeProvider 组件
@@ -4362,6 +4406,7 @@ var init_notification = __esmMin((() => {
 		const [open, action] = useToggle();
 		const classes = useStyles$5();
 		const { t } = useTranslation();
+		const readOnly = !onEventChange;
 		const close = () => {
 			action.set(false);
 		};
@@ -4370,12 +4415,15 @@ var init_notification = __esmMin((() => {
 			close();
 		};
 		const handleMakeAll = () => {
+			if (readOnly) return;
 			onEventChange && onEventChange("makeAll");
 		};
 		const handleClear = () => {
+			if (readOnly) return;
 			onEventChange && onEventChange("clear");
 		};
 		const handleClick = (item) => {
+			if (readOnly) return;
 			onEventChange && onEventChange("read", item);
 		};
 		dot = useMemo(() => {
@@ -4396,7 +4444,7 @@ var init_notification = __esmMin((() => {
 					children: [/* @__PURE__ */ jsx("div", { children: t("widgets.notifications") }), /* @__PURE__ */ jsx(Tooltip, {
 						title: notifications?.length ? t("widgets.markAllAsRead") : null,
 						children: /* @__PURE__ */ jsx(BasicButton, {
-							disabled: !notifications?.length,
+							disabled: readOnly || !notifications?.length,
 							onClick: handleMakeAll,
 							type: "text",
 							icon: /* @__PURE__ */ jsx(RiMailCheckLine, {})
@@ -4406,7 +4454,7 @@ var init_notification = __esmMin((() => {
 				footer: /* @__PURE__ */ jsxs("div", {
 					className: "flex items-center justify-between",
 					children: [/* @__PURE__ */ jsx(BasicButton, {
-						disabled: !notifications?.length,
+						disabled: readOnly || !notifications?.length,
 						type: "text",
 						onClick: handleClear,
 						children: t("widgets.clearNotifications")
@@ -4462,24 +4510,48 @@ var init_notification = __esmMin((() => {
 }));
 //#endregion
 //#region src/layout/widgets/notification/notification-container.tsx
+/**
+* 通知容器（G4）：拉取列表 + 接线互动事件。
+*
+* - 互动可用的前提：注册了 provider 且四方法齐全；否则降级只读
+*   （popup 按 onEventChange 是否存在推导，评审 A3——不加新 prop）；
+* - 写操作成功后重拉刷新；**重拉失败不清空现有列表**（评审 b4）；
+* - 20x 复制残留已删除（评审 b4，同一 id 复制 20 份会让 markRead 语义失真）；
+* - viewAll 不接线（N3，模板无通知中心页）。
+*/
 function NotificationContainer({ ...restProps }) {
 	const [notifications, setNotifications] = useState([]);
-	useEffect(() => {
+	const provider = getNotificationsApiProvider();
+	const staleSafe = provider;
+	const interactive = Boolean(staleSafe?.fetchNotifications && staleSafe.markRead && staleSafe.markAllRead && staleSafe.clearAll);
+	if (provider && !interactive && !warnedStaleProviders.has("notifications")) {
+		warnedStaleProviders.add("notifications");
+		console.warn("[notification] 已注册的通知 provider 缺少写方法（markRead/markAllRead/clearAll），疑似老版本模块 bundle；通知降级为只读展示。");
+	}
+	const reload = useCallback(() => {
 		fetchNotifications().then((res) => {
-			const list = Array.isArray(res) ? res : [];
-			setNotifications(Array.from({ length: 20 }).flatMap(() => list));
-		}).catch(() => {
-			setNotifications([]);
-		});
+			setNotifications(Array.isArray(res) ? res : []);
+		}).catch(() => {});
 	}, []);
+	useEffect(() => {
+		reload();
+	}, [reload]);
 	return /* @__PURE__ */ jsx(NotificationPopup, {
 		notifications,
+		onEventChange: interactive ? (event, item) => {
+			const p = provider;
+			if (!p) return;
+			(event === "read" ? () => p.markRead(item.id) : event === "makeAll" ? () => p.markAllRead() : event === "clear" ? () => p.clearAll() : void 0)?.().then(reload).catch(() => {});
+		} : void 0,
 		...restProps
 	});
 }
+var warnedStaleProviders;
 var init_notification_container = __esmMin((() => {
 	init_notifications();
+	init_api_provider();
 	init_notification();
+	warnedStaleProviders = /* @__PURE__ */ new Set();
 }));
 //#endregion
 //#region src/layout/widgets/preferences/switch-item.tsx
@@ -6840,13 +6912,25 @@ var init_parent_layout = __esmMin((() => {}));
 //#endregion
 //#region src/router/utils/resolve-layout.ts
 /**
-* 根据路由 `handle.layout` 解析所用布局组件（P2.2，设计文档 D9）。
+* 根据路由 `handle.layout` 解析所用布局组件（P2.2，设计文档 D9；G1 模块登记优先）。
 *
 * 未声明即 `none` 是 D9 的目标态（P2.7 dogfooding 验证后自迁移期默认 `container` 翻转）：
 * 布局必须显式声明，框架不做隐式推导；后端下发的父级路由需在 handle 中携带 layout。
+*
+* 非内建且模块注册表未命中的名字 warn-once 一次并回落 Outlet——
+* 后端下发了模块布局名而提供方模块未加载时，这条 warn 是唯一线索（评审 A6）。
 */
 function resolveLayoutComponent(handle) {
-	return handle?.layout && layoutRegistry[handle.layout] || Outlet;
+	const name = handle?.layout;
+	if (!name) return Outlet;
+	const registered = getRegisteredLayout(name);
+	if (registered) return registered;
+	if (layoutRegistry[name]) return layoutRegistry[name];
+	if (!warnedUnknownLayouts.has(name)) {
+		warnedUnknownLayouts.add(name);
+		console.warn(`[layout] 未知名布局 "${name}"：既非内建（container/parent/fullscreen），也无模块登记，回落 Outlet。`);
+	}
+	return Outlet;
 }
 /**
 * 递归为缺少 Component 的父级路由按 `handle.layout` 注入布局组件（P2.7，US-8）。
@@ -6867,16 +6951,18 @@ function resolveRouteLayouts(routes) {
 		} : resolved;
 	});
 }
-var layoutRegistry;
+var layoutRegistry, warnedUnknownLayouts;
 var init_resolve_layout = __esmMin((() => {
 	init_container_layout();
 	init_fullscreen_layout();
+	init_layout_registry();
 	init_parent_layout();
 	layoutRegistry = {
 		parent: ParentLayout,
 		container: ContainerLayout,
 		fullscreen: FullscreenLayout
 	};
+	warnedUnknownLayouts = /* @__PURE__ */ new Set();
 }));
 //#endregion
 //#region src/utils/request/scoped.ts
@@ -7047,6 +7133,12 @@ function createModuleContext(definition) {
 			},
 			uploadApi: (provider) => {
 				registerUploadApiProvider(definition.name, provider);
+			},
+			routesApi: (provider) => {
+				registerRoutesApiProvider(definition.name, provider);
+			},
+			layout: (name, component) => {
+				registerLayout(definition.name, name, component);
 			}
 		},
 		registerSlot: (slotName, node) => {
@@ -7220,6 +7312,7 @@ async function unloadModule(name) {
 	removeModuleSlots(name);
 	unregisterAuthProvider(name);
 	unregisterApiProviders(name);
+	unregisterLayouts(name);
 	modules.delete(name);
 }
 /**
@@ -7241,6 +7334,7 @@ function getAllRoutePathKeys() {
 }
 var modules, registeredStores, registeredApiPrefixes;
 var init_module_loader = __esmMin((() => {
+	init_layout_registry();
 	init_add_route_id_by_path();
 	init_resolve_layout();
 	init_access();
