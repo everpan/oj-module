@@ -6,11 +6,17 @@ import { z } from "@oj-module/runtime";
 export const schemas = {
 	fetchNotifications: {
 		data: z.array(z.object({
+	id: z.number(),
 	avatar: z.string(),
 	date: z.string(),
 	isRead: z.boolean().optional(),
 	message: z.string(),
 	title: z.string(),
 })),
+	},
+	markRead: {
+		body: z.object({
+	id: z.number(),
+}),
 	},
 };
