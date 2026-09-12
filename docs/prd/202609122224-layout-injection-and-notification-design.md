@@ -281,7 +281,7 @@ packages/cli/templates/
 | Phase | 内容 | 分支 | 状态 |
 | --- | --- | --- | --- |
 | 1 | runtime 布局注册表（§4.1）：layout-registry + resolve-layout 委托 + ctx.register.layout + 卸载清理 + 类型模板联合 + warn-once | feat/layout-injection | ✅ 完成 |
-| 2 | routesApi provider 补缺（§4.2） | 同分支 | 未开始 |
+| 2 | routesApi provider 补缺（§4.2） | 同分支 | ✅ 完成 |
 | 3 | 通知 provider 互动（§4.4）：四方法 + container 接线 + 20x 残留删除 + 只读降级 | 同分支 | 未开始 |
 | 4 | playground-oj 同步升级（§4.6） | 同分支 | 未开始 |
 | 5 | cli 模板 notification 模块（§4.5，含表/种子迁移） | 同分支 | 未开始 |
@@ -300,7 +300,13 @@ packages/cli/templates/
 
 ### Phase 2: routesApi provider 补缺
 
-（待执行）
+**执行小结**（2026-09-12 23:35，耗时约 15 分钟）：
+
+- TDD 先红后绿：`tests/runtime/routes-api.test.ts` 4 用例（BDD 5.2 三用例 + 先到先得告警）；`#src/utils/request` 打桩避免回落用例真发请求。
+- 实现与 §4.2 零偏差：`RoutesApiProvider`（契约含 component 解析边界注释，N7）、委托收进 `#src/api/user/fetchAsyncRoutes`（auth-guard 消费点不动）、`ctx.register.routesApi` 接线、`unregisterApiProviders` 扩为四注册表同清。
+- 关键过程：mock 首次写成直接返回信封对象而非 `{json()}` 响应壳，红→修→绿；与既有 api-provider 测试同构，无新增模式。
+- 偏差记录：无。全量 144 测试绿（28 文件），typecheck 干净。
+- 提交：`feat(runtime): phase 2 routesApi provider（G2）`。
 
 ### Phase 3: 通知 provider 互动
 
