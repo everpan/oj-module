@@ -16,6 +16,7 @@ import { resolveRouteLayouts } from "#src/router/utils/resolve-layout";
 import { useAccessStore } from "#src/store/access";
 import {
 	registerNotificationsApiProvider,
+	registerRoutesApiProvider,
 	registerSystemApiProvider,
 	registerUploadApiProvider,
 	unregisterApiProviders,
@@ -67,6 +68,11 @@ function createModuleContext(definition: ModuleDefinition): ModuleContext {
 			},
 			uploadApi: (provider) => {
 				registerUploadApiProvider(definition.name, provider);
+			},
+			// G2：接管后端动态路由拉取；闭包 definition.name，模块卸载时
+			// 由 unloadModule 经 unregisterApiProviders 自动注销（命名隔离）
+			routesApi: (provider) => {
+				registerRoutesApiProvider(definition.name, provider);
 			},
 			// G1：注册布局名（含覆盖内建名）；闭包 definition.name，模块卸载时
 			// 由 unloadModule 经 unregisterLayouts 自动注销（命名隔离）

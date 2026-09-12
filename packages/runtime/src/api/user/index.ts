@@ -1,6 +1,7 @@
 import type { AppRouteRecordRaw } from "#src/router/types";
 import type { AuthType, LoginInfo, UserInfoType } from "./types";
 
+import { getRoutesApiProvider } from "#src/store/api-provider";
 import { request } from "#src/utils/request";
 import { REFRESH_TOKEN_PATH } from "#src/utils/request/constants";
 
@@ -43,7 +44,12 @@ export function fetchLogout(data?: { readonly refreshToken?: string }): Promise<
 	return request.post("auth/logout", { json: { refresh_token: data?.refreshToken ?? "" } }).json().then(() => {});
 }
 
+// G2：消费点委托（与 #src/api/notifications 同模式）。未注册 routesApi
+// provider 时回落内置 web/get-async-routes。
 export function fetchAsyncRoutes(): Promise<AppRouteRecordRaw[]> {
+	const p = getRoutesApiProvider();
+	if (p)
+		return p.fetchAsyncRoutes();
 	return request
 		.get("web/get-async-routes")
 		.json<OjEnvelope<AppRouteRecordRaw[]>>()

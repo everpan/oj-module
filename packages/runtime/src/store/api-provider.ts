@@ -15,6 +15,7 @@ import type {
 	FetchUpdateRoleItemData,
 } from "#src/api/system/role/client/api";
 import type { NotificationItem } from "#src/layout/widgets/notification/types";
+import type { AppRouteRecordRaw } from "#src/router/types";
 
 /**
  * 系统 API provider（D9）：模块经 ctx.register.systemApi 接管角色/菜单类
@@ -52,6 +53,16 @@ export interface UploadApiProvider {
 	headers: () => Record<string, string>
 }
 
+/** 动态路由 provider（G2）：模块经 ctx.register.routesApi 接管后端动态路由拉取 */
+export interface RoutesApiProvider {
+	/**
+	 * 返回后端动态路由。component 解析边界（评审 P0-2）：返回的路由按框架
+	 * pages glob 解析 component（generate-routes-from-backend.ts），模块自有
+	 * 组件的后端路由不在本契约内——请走模块路由（N7）。
+	 */
+	fetchAsyncRoutes: () => Promise<AppRouteRecordRaw[]>
+}
+
 /**
  * 模块作用域注册表。刻意不用 zustand（同 auth-provider）：provider 只在
  * store action / 守卫 effect 中被读（非渲染期），模块作用域单一 provider
@@ -65,6 +76,7 @@ interface Registration<T> {
 let systemCurrent: Registration<SystemApiProvider> | undefined;
 let notificationsCurrent: Registration<NotificationsApiProvider> | undefined;
 let uploadCurrent: Registration<UploadApiProvider> | undefined;
+let routesCurrent: Registration<RoutesApiProvider> | undefined;
 
 export function registerSystemApiProvider(moduleName: string, provider: SystemApiProvider): void {
 	if (systemCurrent) {
@@ -111,8 +123,23 @@ export function getUploadApiProvider(): UploadApiProvider | undefined {
 	return uploadCurrent?.provider;
 }
 
+export function registerRoutesApiProvider(moduleName: string, provider: RoutesApiProvider): void {
+	if (routesCurrent) {
+		console.warn(
+			`[api] 重复的动态路由 provider 忽略：已由模块 "${routesCurrent.moduleName}" 提供，`
+			+ `忽略 "${moduleName}"（先到先得）。`,
+		);
+		return;
+	}
+	routesCurrent = { moduleName, provider };
+}
+
+export function getRoutesApiProvider(): RoutesApiProvider | undefined {
+	return routesCurrent?.provider;
+}
+
 /**
- * 卸载模块时复位其登记的全部 API provider（系统/通知/上传）。以 moduleName
+ * 卸载模块时复位其登记的全部 API provider（系统/通知/上传/动态路由）。以 moduleName
  * 作命名隔离——不同模块各自登记互不干扰，卸载只清自己的。
  */
 export function unregisterApiProviders(moduleName: string): void {
@@ -122,4 +149,6 @@ export function unregisterApiProviders(moduleName: string): void {
 		notificationsCurrent = undefined;
 	if (uploadCurrent?.moduleName === moduleName)
 		uploadCurrent = undefined;
+	if (routesCurrent?.moduleName === moduleName)
+		routesCurrent = undefined;
 }

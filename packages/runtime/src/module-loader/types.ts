@@ -1,6 +1,7 @@
 import type { AppRouteRecordRaw } from "#src/router/types";
 import type {
 	NotificationsApiProvider,
+	RoutesApiProvider,
 	SystemApiProvider,
 	UploadApiProvider,
 } from "#src/store/api-provider";
@@ -37,6 +38,8 @@ export interface ModuleContext {
 		 * 先到先得，模块卸载时自动注销（再解析语义，不热回落见 N8）
 		 */
 		layout: (name: string, component: React.ComponentType) => void
+		/** 接管后端动态路由拉取（G2）；先到先得，模块卸载时自动注销 */
+		routesApi: (provider: RoutesApiProvider) => void
 	}
 	/** 注册布局插槽节点（US-8 L2），卸载模块时自动清理 */
 	registerSlot: (slotName: string, node: React.ReactNode) => void
