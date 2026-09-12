@@ -122,10 +122,28 @@ describe("initProject", () => {
 		expect(exempt.modules).toContain("web");
 		expect(exempt.modules).toContain("notifications");
 		expect(exempt.paths).toContain("/auth/*");
-		// notifications 模块：root 级 /api/notifications（runtime 通知铃兜底），需表 + handler
+		// notifications 模块（root 级兜底，只读）：runtime 通知铃未接 provider 时的
+		// 回落端点。G5 起不再持有表结构/种子（迁归 notification 模块，评审 b3 决策），
+		// 但查询须返回 id（G4 NotificationItem.id 必填）
 		expect(fs.existsSync(path.join(dest, "api/src/notifications/api.ts"))).toBe(true);
-		expect(fs.readFileSync(path.join(dest, "api/src/notifications/manifest.yaml"), "utf-8")).toMatch(/tables:[\t\v\f\r \xA0\u1680\u2000-\u200A\u2028\u2029\u202F\u205F\u3000\uFEFF]*\n\s*-\s*notifications/);
-		expect(fs.existsSync(path.join(dest, "api/src/notifications/migrations/0001__create_notifications.sql"))).toBe(true);
+		expect(fs.existsSync(path.join(dest, "api/src/notifications/migrations/0001__create_notifications.sql"))).toBe(false);
+		expect(fs.readFileSync(path.join(dest, "api/src/notifications/api.ts"), "utf-8")).toContain("id: Number(r.id)");
+		// notification 模块（G5 契约化通知互动，对齐 playground-oj 形态）：
+		// 表/种子归属本模块 + 四端点（读/单条已读/全部已读/清空）
+		expect(fs.readFileSync(path.join(dest, "api/src/notification/manifest.yaml"), "utf-8")).toContain("notifications");
+		expect(fs.existsSync(path.join(dest, "api/src/notification/migrations/0001__create_notifications.sql"))).toBe(true);
+		expect(fs.existsSync(path.join(dest, "api/src/notification/seed.sql"))).toBe(true);
+		for (const ep of ["notifications/api.ts", "notifications/read/api.ts", "notifications/read-all/api.ts", "notifications/clear/api.ts"])
+			expect(fs.existsSync(path.join(dest, `api/src/notification/${ep}`))).toBe(true);
+		const notificationContract = fs.readFileSync(path.join(dest, "api/src/notification/contract.ts"), "utf-8");
+		for (const name of ["markRead", "markAllRead", "clearAll"])
+			expect(notificationContract).toContain(name);
+		// web 侧：entry 注册四方法 provider + ojm api 生成 client 签入模板（评审 b5）
+		const notificationEntry = fs.readFileSync(path.join(dest, "web/src/notification/entry.ts"), "utf-8");
+		for (const name of ["fetchNotifications", "markRead", "markAllRead", "clearAll"])
+			expect(notificationEntry).toContain(name);
+		expect(fs.existsSync(path.join(dest, "web/src/notification/client/api.ts"))).toBe(true);
+		expect(fs.existsSync(path.join(dest, "web/src/notification/client/api.schemas.ts"))).toBe(true);
 		const pkg = JSON.parse(fs.readFileSync(path.join(dest, "package.json"), "utf-8"));
 		expect(pkg.scripts.dev).toContain("ojm dev");
 		expect(pkg.scripts.preview).toContain("ojm preview");

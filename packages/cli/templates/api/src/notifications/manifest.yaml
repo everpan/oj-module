@@ -1,5 +1,5 @@
 name: notifications
-desc: 通知模块（参考 playground notification，供 runtime 通知铃 root 级 /api/notifications）
+desc: 通知兜底（runtime 通知铃未接 provider 时的 root 级 /api/notifications 只读回落；表结构/种子归 notification 模块）
 version: 0.1.0
-tables:
-  - notifications
+deps: # root 兜底只读查询 notifications 表（S003：跨模块表须声明依赖，同库只读先例见 personal-center → _platform）
+  notification: ^0.1.0

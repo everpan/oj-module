@@ -1,4 +1,4 @@
-# 声明本模块拥有的表（与 manifest.tables 双向一致，S005）。
+# 声明式表结构（§4.2 / D1-C）：notification 模块自有表 notifications。
 tables:
   notifications:
     pk: id
