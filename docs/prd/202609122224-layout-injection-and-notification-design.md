@@ -284,7 +284,7 @@ packages/cli/templates/
 | 2 | routesApi provider 补缺（§4.2） | 同分支 | ✅ 完成 |
 | 3 | 通知 provider 互动（§4.4）：四方法 + container 接线 + 20x 残留删除 + 只读降级 | 同分支 | ✅ 完成 |
 | 4 | playground-oj 同步升级（§4.6） | 同分支 | ✅ 完成 |
-| 5 | cli 模板 notification 模块（§4.5，含表/种子迁移） | 同分支 | 未开始 |
+| 5 | cli 模板 notification 模块（§4.5，含表/种子迁移） | 同分支 | ✅ 完成 |
 | 6 | 冻结核对（runtime-exports 快照 + RUNTIME_STUB_SOURCE）+ dist 重建 + §9 回填 | 同分支 | 未开始 |
 | 7 | 集中审查：对全部变更派审查代理复核，按意见修复后收尾 | 同分支 | 未开始 |
 
@@ -333,7 +333,13 @@ packages/cli/templates/
 
 ### Phase 5: cli 模板 notification 模块
 
-（待执行）
+**执行小结**（2026-09-13 00:30，耗时约 40 分钟）：
+
+- TDD 先红后绿：`tests/cli/init.test.ts` 断言改写（root 兜底不再持表/种子 + notification 模块四端点 + web entry/client 断言）先红；新增 `tests/cli/template-notification.test.ts`（BDD 5.4#1：模板 api 复制到临时目录跑 `runApi` + `checkApi`，error 级违规为零；评审 b5：签入 client 与现场生成物**逐字节一致**——顺带证明模板与 playground-oj 契约生成确定性相同）。
+- **评审 b3 遗留问题闭环**：oj 工具链**确有**跨模块表所有权校验（uni-dev-smoke 真二进制 S003 报错：`notifications` 模块查询属于 `notification` 的表须声明依赖）。处置按 S003 机制提示「同库只读 = deps 声明」：root 兜底 manifest 补 `deps: { notification: ^0.1.0 }`（personal-center → _platform 同款先例）。设计文档「是否被校验未确认」落地为「已确认，S003」。
+- 关键过程：migration/seed 用 `git mv` 保留历史；生成物（routes.json/openapi.yaml）不进模板（对齐 personal-center 先例），client 签入。
+- 偏差记录：无（S003 deps 属设计已预期的实现期验证步骤）。全量 594 测试绿（96 文件，含 uni-dev-smoke 真二进制 4 用例）。
+- 提交：`feat(cli): phase 5 模板 notification 契约模块（G5）`。
 
 ### Phase 6: 冻结核对 + dist 重建 + 文档收尾
 
