@@ -168,6 +168,8 @@ export default defineModule({
 写契约（contract.ts）→ 写实现（api.ts）→ pnpm ojm api 生成调用代码 → entry.ts 里 create client + 注册
 ```
 
+> **不是每个模块都要创建 client。** 判断标准只有一个：模块代码里有没有人 import `./client/api`——有，就在 onInit 里 `create<Module>Client(ctx)` 一次；没有（纯静态页、或像 personal-center 那样上传走 antd Upload 直连 action 不经生成 client），就什么都不用写，`lifecycle` 甚至可以整个省略。生成了 `client/` 目录但没人 import 它，不创建也不会有任何报错——只有真去调裸函数时才抛「请求未绑定」。
+
 ### 3.2 案例 B：接管头像上传（最简单的练手入口）
 
 `uploadApi` 只要两个字段，不用写契约、不用生成代码，最适合拿来练手。目标：让用户头像传到你模块的接口。
