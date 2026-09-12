@@ -11,6 +11,7 @@
 | v1.0 | 2026-09-12 22:24 | 初版（脑暴结论：方案 A 布局注册表 + routesApi + 通知 provider 互动 + 模板模块） |
 | v1.1 | 2026-09-12 23:00 | 双角色评审修订：砍 G3 积木导出（→N6）、补 routesApi 契约边界、修正时序与降级语义、补实现期陷阱（§10 评审记录） |
 | v1.2 | 2026-09-12 23:15 | 阶段规划（§11）：每阶段执行完毕小结追加到 §11，最后集中审查（Phase 7） |
+| v1.3 | 2026-09-12 23:30 | 实施启动：TDD 先行（Phase 1 用例已落 `tests/runtime/layout-registry.test.ts`），进入 Phase 1 运行时布局注册表实现 |
 
 ## 1. 背景与问题
 
@@ -279,7 +280,7 @@ packages/cli/templates/
 
 | Phase | 内容 | 分支 | 状态 |
 | --- | --- | --- | --- |
-| 1 | runtime 布局注册表（§4.1）：layout-registry + resolve-layout 委托 + ctx.register.layout + 卸载清理 + 类型模板联合 + warn-once | feat/layout-injection | 未开始 |
+| 1 | runtime 布局注册表（§4.1）：layout-registry + resolve-layout 委托 + ctx.register.layout + 卸载清理 + 类型模板联合 + warn-once | feat/layout-injection | ✅ 完成 |
 | 2 | routesApi provider 补缺（§4.2） | 同分支 | 未开始 |
 | 3 | 通知 provider 互动（§4.4）：四方法 + container 接线 + 20x 残留删除 + 只读降级 | 同分支 | 未开始 |
 | 4 | playground-oj 同步升级（§4.6） | 同分支 | 未开始 |
@@ -289,7 +290,13 @@ packages/cli/templates/
 
 ### Phase 1: runtime 布局注册表
 
-（待执行）
+**执行小结**（2026-09-12 23:20，耗时约 35 分钟）：
+
+- TDD 先红后绿：`tests/runtime/layout-registry.test.ts` 8 用例（BDD 5.1 七用例 + resolveRouteLayouts 走同一注册表 1 用例），用例间 `unregisterLayouts` 复位，与评审 A5 一致。
+- 实现与 §4.1 设计零偏差：`layout-registry.ts`（模块作用域 Map，先到先得警告含落败模块名、`unregisterLayouts` 按 moduleName 清理）、`resolve-layout.ts`（模块登记 → 内建表 → warn-once → Outlet 三级）、`RouteMeta.layout` 模板联合放宽（评审 P2-6）、module-loader `ctx.register.layout` 接线 + `unloadModule` 注销。
+- 关键过程：typecheck 暴露测试构造路由缺 `handle.title`（`AppRouteRecordRaw` 强制 NonIndexRouteMeta），补全后绿；eslint 自动修复 import 排序/引号。
+- 偏差记录：无。全量 140 测试绿（27 文件）；`pnpm-workspace.yaml` 有一条 catalog 未使用 lint 报错为分支既有问题，与本阶段无关。
+- 提交：`feat(runtime): phase 1 布局注册表（G1）`。commitlint 报 subject-case（"Phase" 大写）→ 改小写通过，记入工程反常识清单（commit subject 首词须小写）。
 
 ### Phase 2: routesApi provider 补缺
 
