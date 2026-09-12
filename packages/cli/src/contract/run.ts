@@ -115,7 +115,7 @@ export async function irOf(found: DiscoveredContract, cwd: string) {
 async function runOne(found: DiscoveredContract, cwd: string, result: RunResult): Promise<void> {
 	const ir = await irOf(found, cwd);
 
-	const client = emitClient(ir, { target: "module" });
+	const client = emitClient(ir, { target: "module", module: found.module });
 	const routesJson = emitRoutesJson(ir);
 	const openapi = emitOpenapiYaml(ir, { title: `${found.module} api`, version: "0.0.0" });
 

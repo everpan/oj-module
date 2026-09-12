@@ -274,7 +274,7 @@ export async function checkApi(opts: { cwd: string, exempt?: string }): Promise<
 
 		// ① 生成物同步：内存重生成 vs 磁盘逐字节
 		const paths = artifactPaths(found, opts.cwd);
-		const client = emitClient(ir, { target: "module" });
+		const client = emitClient(ir, { target: "module", module: found.module });
 		const expected: [string, string][] = [
 			[paths.client, client["api.ts"]],
 			[paths.schemas, client["api.schemas.ts"]],

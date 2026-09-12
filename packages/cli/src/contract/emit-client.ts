@@ -34,6 +34,11 @@ function pascal(name: string): string {
 	return name.charAt(0).toUpperCase() + name.slice(1);
 }
 
+/** 模块目录名 → PascalCase（连字符分段首字母大写拼接）：personal-center → PersonalCenter */
+function pascalModuleName(module: string): string {
+	return module.split("-").map(pascal).join("");
+}
+
 function slotsOf(ep: IrEndpoint): Slot[] {
 	const slots: Slot[] = [];
 	if (ep.paramNames.length > 0)
@@ -145,28 +150,49 @@ function emitEndpoint(ep: IrEndpoint): string {
 }`;
 }
 
-function emitPrelude(target: "module" | "internal"): string {
+function emitPrelude(target: "module" | "internal", module?: string, endpointNames: string[] = []): string {
 	const binding = target === "module"
 		? `let req: ScopedRequestLike | undefined;
 
-/** 模块入口 onInit 里调用：bindRequest(ctx.utils.request)（AC-D8 能力持有者） */
+/** 本模块 API 前缀（ojm api 从契约抽取，唯一真源，勿手改） */
+export const API_PREFIX = "/${module}";
+
+/**
+ * 模块 entry 的 onInit 里一行创建（构造即 install）：完成 apiPrefix 登记 +
+ * scoped request 绑定，返回绑好前缀的端点函数集合。一模块一 client；
+ * 重复构造幂等安全（前缀重复登记同值、request 重绑同值）。
+ */
+export function create${pascalModuleName(module!)}Client(ctx: ModuleContext) {
+	ctx.register.apiPrefix(API_PREFIX);
+	bindRequest(ctx.utils.request);
+	return { ${endpointNames.join(", ")} };
+}
+
+/**
+ * @deprecated 请改用 create${pascalModuleName(module!)}Client(ctx)——工厂构造即完成
+ * 前缀登记 + request 绑定，不会出现「登记了前缀没绑 request」的半接线状态。
+ */
 export function bindRequest(r: ScopedRequestLike): void {
 	req = r;
 }
 
 function ensureReq(): ScopedRequestLike {
 	if (!req)
-		throw new ContractApiError(-1, "[ojm-api] 请求未绑定——请在模块 entry.ts 的 onInit 里调用 bindRequest(ctx.utils.request)。");
+		throw new ContractApiError(-1, "[ojm-api] 请求未绑定——请在模块 entry.ts 的 onInit 里调用 create${pascalModuleName(module!)}Client(ctx)（或 bindRequest(ctx.utils.request)）。");
 	return req;
 }`
 		: `function ensureReq(): ScopedRequestLike {
 	return request;
 }`;
 
+	const ctxImport = target === "module"
+		? "import type { ModuleContext } from \"@oj-module/runtime\";\n"
+		: "";
+
 	return `${BANNER}
 import { ContractApiError } from "@oj-module/runtime/contract/errors";
 import type { ScopedRequestLike } from "@oj-module/runtime/contract/errors";
-${target === "internal" ? "import { request } from \"#src/utils/request\";\n" : ""}import type { z } from "${zImport(target)}";
+${ctxImport}${target === "internal" ? "import { request } from \"#src/utils/request\";\n" : ""}import type { z } from "${zImport(target)}";
 import type { schemas } from "./api.schemas";
 
 /** oj 信封（AC-D16）：code=0 成功；非 0 时 HTTP status=code，由 toApiError 归一为 ContractApiError */
@@ -226,11 +252,17 @@ ${entries.join("\n")}
 `;
 }
 
-/** 发射双产物：api.ts（类型 + 请求函数）与 api.schemas.ts（DEV 校验 schema） */
-export function emitClient(ir: IrEndpoint[], opts: { target: "module" | "internal" }): { "api.ts": string, "api.schemas.ts": string } {
+/** 发射双产物：api.ts（类型 + 请求函数 + 工厂）与 api.schemas.ts（DEV 校验 schema） */
+export function emitClient(ir: IrEndpoint[], opts: { target: "module" | "internal", module?: string }): { "api.ts": string, "api.schemas.ts": string } {
 	if (ir.length === 0)
 		throw new Error("[ojm-api] client 发射失败：IR 为空——契约文件里没有 defineApi 端点，无需生成。");
-	const sections: string[] = [emitPrelude(opts.target)];
+	if (opts.target === "module" && !opts.module) {
+		throw new Error(
+			"[ojm-api] client 发射失败：module 目标需要模块名——"
+			+ "emitClient(ir, { target: \"module\", module })（工厂名 create<Module>Client 与 API_PREFIX 都依赖它）。",
+		);
+	}
+	const sections: string[] = [emitPrelude(opts.target, opts.module, ir.map(ep => ep.name))];
 	for (const ep of ir) {
 		const types = emitTypes(ep);
 		if (types.length)

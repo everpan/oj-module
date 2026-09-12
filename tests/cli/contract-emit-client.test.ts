@@ -127,7 +127,7 @@ const ok = (data: unknown) => ({ code: 0, msg: "ok", data });
 
 describe("emitClient（AC-D5/D6/D8/D15）", () => {
 	it("快照：module 目标双产物（bindRequest 持有者 + 类型推导 + DEV 校验 + raw 通道）", () => {
-		const files = emitClient(ir, { target: "module" });
+		const files = emitClient(ir, { target: "module", module: "order" });
 		expect(files["api.ts"]).toMatchSnapshot();
 		expect(files["api.schemas.ts"]).toMatchSnapshot();
 	});
@@ -142,7 +142,7 @@ describe("emitClient（AC-D5/D6/D8/D15）", () => {
 		const internal = emitClient(ir, { target: "internal" });
 		expect(internal["api.ts"]).toContain("from \"zod\"");
 		expect(internal["api.schemas.ts"]).toContain("import { z } from \"zod\"");
-		const module_ = emitClient(ir, { target: "module" });
+		const module_ = emitClient(ir, { target: "module", module: "order" });
 		expect(module_["api.ts"]).toContain("from \"@oj-module/runtime\"");
 		expect(module_["api.schemas.ts"]).toContain("import { z } from \"@oj-module/runtime\"");
 	});
@@ -156,12 +156,12 @@ describe("emitClient（AC-D5/D6/D8/D15）", () => {
 				ignoreLoading: true,
 			}),
 		});
-		const files = emitClient(withFlag, { target: "module" });
+		const files = emitClient(withFlag, { target: "module", module: "order" });
 		expect(files["api.ts"]).toContain("{ ignoreLoading: true }");
 	});
 
 	it("未 bindRequest 即调用 → 人话报错指路 entry.ts onInit", async () => {
-		const { mod } = await bundleClient(emitClient(ir, { target: "module" }), true);
+		const { mod } = await bundleClient(emitClient(ir, { target: "module", module: "order" }), true);
 		await expect(mod.getOrderList({ page: 1 })).rejects.toThrowError(/bindRequest/);
 	});
 
@@ -175,7 +175,7 @@ describe("emitClient（AC-D5/D6/D8/D15）", () => {
 				return ok({ id: 2 });
 			throw new Error(`未预期调用: ${call.url}`);
 		});
-		const { mod } = await bundleClient(emitClient(ir, { target: "module" }), true);
+		const { mod } = await bundleClient(emitClient(ir, { target: "module", module: "order" }), true);
 		mod.bindRequest(req);
 
 		const list = await mod.getOrderList({ page: 1 });
@@ -194,7 +194,7 @@ describe("emitClient（AC-D5/D6/D8/D15）", () => {
 
 	it("dev 下响应违例 → ContractApiError(code=-1)，人话含端点名与字段路径", async () => {
 		const { req } = stubRequest(() => ok({ id: "七", order_no: 7 }));
-		const { mod } = await bundleClient(emitClient(ir, { target: "module" }), true);
+		const { mod } = await bundleClient(emitClient(ir, { target: "module", module: "order" }), true);
 		mod.bindRequest(req);
 		const err = await mod.getOrderDetail({ id: 7 }).catch((e: unknown) => e);
 		expect(err).toMatchObject({ name: "ContractApiError", code: -1 });
@@ -208,7 +208,7 @@ describe("emitClient（AC-D5/D6/D8/D15）", () => {
 				response: new Response(JSON.stringify({ code: 1001, msg: "订单不存在" }), { status: 400 }),
 			});
 		});
-		const { mod } = await bundleClient(emitClient(ir, { target: "module" }), true);
+		const { mod } = await bundleClient(emitClient(ir, { target: "module", module: "order" }), true);
 		mod.bindRequest(req);
 		const err = await mod.getOrderDetail({ id: 404 }).catch((e: unknown) => e);
 		expect(err).toMatchObject({ name: "ContractApiError", code: 1001, msg: "订单不存在" });
@@ -216,7 +216,7 @@ describe("emitClient（AC-D5/D6/D8/D15）", () => {
 
 	it("评审 F13：2xx 但信封 code!==0 → 同样归一 ContractApiError（防漂移）", async () => {
 		const { req } = stubRequest(() => ({ code: 500, msg: "静默业务错误", data: { id: 7, order_no: "A7" } }));
-		const { mod } = await bundleClient(emitClient(ir, { target: "module" }), true);
+		const { mod } = await bundleClient(emitClient(ir, { target: "module", module: "order" }), true);
 		mod.bindRequest(req);
 		const err = await mod.getOrderDetail({ id: 7 }).catch((e: unknown) => e);
 		expect(err).toMatchObject({ name: "ContractApiError", code: 500, msg: "静默业务错误" });
@@ -237,7 +237,7 @@ describe("emitClient（AC-D5/D6/D8/D15）", () => {
 				data: z.object({ total: z.number() }),
 			}),
 		});
-		const files = emitClient(ir2, { target: "module" });
+		const files = emitClient(ir2, { target: "module", module: "order" });
 		// F7 形态断言：raw 端点的 params 槽保留在 schemas（client 类型引用不断链）
 		expect(files["api.schemas.ts"]).toContain("downloadFile");
 		expect(files["api.schemas.ts"]).not.toContain("downloadFile: {\n\t\tdata");
@@ -273,7 +273,7 @@ describe("emitClient（AC-D5/D6/D8/D15）", () => {
 
 	it("raw 端点：不解包不校验，原样返回 Response；catch-all 逐段编码", async () => {
 		const { req, calls } = stubRequest(() => new Response("bin"));
-		const { mod } = await bundleClient(emitClient(ir, { target: "module" }), true);
+		const { mod } = await bundleClient(emitClient(ir, { target: "module", module: "order" }), true);
 		mod.bindRequest(req);
 		const res = await mod.downloadFile({ path: "a/b c.png" });
 		expect(res).toBeInstanceOf(Response);
@@ -282,11 +282,63 @@ describe("emitClient（AC-D5/D6/D8/D15）", () => {
 	});
 
 	it("生产构建（DEV=false）：zod 与 api.schemas 被摇出产物（AC-D15）", async () => {
-		const { outdir } = await bundleClient(emitClient(ir, { target: "module" }), false);
+		const { outdir } = await bundleClient(emitClient(ir, { target: "module", module: "order" }), false);
 		const outFiles = readdirSync(outdir).filter(f => f.endsWith(".js"));
 		expect(outFiles).toEqual(["api.js"]);
 		const code = readFileSync(join(outdir, "api.js"), "utf8");
 		expect(code).not.toContain("api.schemas");
 		expect(code).not.toContain("_zod");
+	});
+});
+
+describe("工厂（create<Module>Client，构造即 install，BDD §4）", () => {
+	it("5.1#1 module 目标：生成 API_PREFIX 常量 + createOrderClient 工厂（登记前缀 + 绑定 request + 返回端点函数）", () => {
+		const files = emitClient(ir, { target: "module", module: "order" });
+		expect(files["api.ts"]).toContain("export const API_PREFIX = \"/order\";");
+		expect(files["api.ts"]).toContain("export function createOrderClient(ctx: ModuleContext)");
+		// 工厂体内：登记前缀（唯一真源常量）+ 绑定 scoped request
+		expect(files["api.ts"]).toContain("ctx.register.apiPrefix(API_PREFIX);");
+		expect(files["api.ts"]).toContain("bindRequest(ctx.utils.request);");
+		// 返回对象覆盖全部端点函数
+		for (const name of ["getOrderList", "getOrderDetail", "createOrder", "updateOrder", "downloadFile"])
+			expect(files["api.ts"]).toContain(name);
+	});
+
+	it("5.2#2 连字符模块名 camelize：personal-center → createPersonalCenterClient", () => {
+		const files = emitClient(ir, { target: "module", module: "personal-center" });
+		expect(files["api.ts"]).toContain("export const API_PREFIX = \"/personal-center\";");
+		expect(files["api.ts"]).toContain("export function createPersonalCenterClient(ctx: ModuleContext)");
+	});
+
+	it("5.3#3 bindRequest 保留导出且标 @deprecated（指路工厂）", () => {
+		const files = emitClient(ir, { target: "module", module: "order" });
+		expect(files["api.ts"]).toContain("@deprecated");
+		expect(files["api.ts"]).toMatch(/export function bindRequest\(/);
+	});
+
+	it("5.4#4 internal 目标：不含 API_PREFIX 与工厂（无 ctx 可收，形状不变）", () => {
+		const files = emitClient(ir, { target: "internal" });
+		expect(files["api.ts"]).not.toContain("API_PREFIX");
+		expect(files["api.ts"]).not.toContain("createOrderClient");
+	});
+
+	it("5.5#5 行为：工厂构造即接线——apiPrefix 已登记、端点经 factory 调用打到 stub", async () => {
+		const { req, calls } = stubRequest(() => ok({ list: [], total: 0 }));
+		const { mod } = await bundleClient(emitClient(ir, { target: "module", module: "order" }), true);
+		const registeredPrefixes: string[] = [];
+		const ctx = {
+			register: { apiPrefix: (p: string) => { registeredPrefixes.push(p); } },
+			utils: { request: req },
+		};
+		const client = mod.createOrderClient(ctx);
+		expect(registeredPrefixes).toEqual(["/order"]);
+		const data = await client.getOrderList({ page: 1, size: 10 });
+		expect(data).toEqual({ list: [], total: 0 });
+		expect(calls[0].url).toBe("order/list");
+		expect(calls[0].options?.searchParams).toEqual({ page: 1, size: 10 });
+	});
+
+	it("5.6#6 module 目标缺模块名 → 发射期人话报错（R1 防漏传）", () => {
+		expect(() => emitClient(ir, { target: "module" } as never)).toThrow(/模块名/);
 	});
 });
