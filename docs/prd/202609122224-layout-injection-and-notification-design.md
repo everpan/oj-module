@@ -282,7 +282,7 @@ packages/cli/templates/
 | --- | --- | --- | --- |
 | 1 | runtime 布局注册表（§4.1）：layout-registry + resolve-layout 委托 + ctx.register.layout + 卸载清理 + 类型模板联合 + warn-once | feat/layout-injection | ✅ 完成 |
 | 2 | routesApi provider 补缺（§4.2） | 同分支 | ✅ 完成 |
-| 3 | 通知 provider 互动（§4.4）：四方法 + container 接线 + 20x 残留删除 + 只读降级 | 同分支 | 未开始 |
+| 3 | 通知 provider 互动（§4.4）：四方法 + container 接线 + 20x 残留删除 + 只读降级 | 同分支 | ✅ 完成 |
 | 4 | playground-oj 同步升级（§4.6） | 同分支 | 未开始 |
 | 5 | cli 模板 notification 模块（§4.5，含表/种子迁移） | 同分支 | 未开始 |
 | 6 | 冻结核对（runtime-exports 快照 + RUNTIME_STUB_SOURCE）+ dist 重建 + §9 回填 | 同分支 | 未开始 |
@@ -310,7 +310,15 @@ packages/cli/templates/
 
 ### Phase 3: 通知 provider 互动
 
-（待执行）
+**执行小结**（2026-09-12 23:55，耗时约 35 分钟）：
+
+- TDD 先红后绿：`tests/runtime/notification-interaction.test.tsx` 7 用例（BDD 5.3 #1-#7，#8 属模板契约 zod 守护不在 runtime 测），happy-dom 真渲染弹层走完整点击链路；§5.3 全表覆盖。
+- 实现与 §4.4 零偏差：`NotificationItem.id` 必填、`NotificationsApiProvider` 四方法全必填、container 接 `onEventChange`（写成功 → reload；写失败/重拉失败均不清列表）、popup 按回调存在性推导只读态（不加 prop，评审 A3）、老 bundle 漂移一次性 warn + 只读降级（评审 P2-7）、20x 残留删除（评审 b4）。
+- 关键过程（两处测试基建坑，已解决）：① popup 的 JSS `useStyles` 依赖 `JSSThemeProvider` 注入 token，测试需手动复刻 `ConfigProvider > JSSThemeProvider` 接线（生产环境由 ContainerLayout 自供）；② `vi.mock` 的 `fetchNotifications` 默认返回 undefined → `reload` 里 `.then` 崩，补 `beforeEach` 默认实现。
+- id 同步清单偏差：设计 §4.4 写「仓内 web/ dogfooding 模块」需补 id——实际仓内 `web/` 无通知数据源（通知走 fake/ 与内置回落），真实同步面只有 `fake/notification.fake.ts`（已补 id 1-4）与 api-provider 旧测试桩（已补）。
+- TS 反常识记录：类型级「四方法必填」无法防御运行时老 bundle（TS2774 甚至报「条件恒真」），漂移检查需 `as Partial<T>` 降级后逐方法 typeof——**类型契约 ≠ 运行时形状，跨版本边界必须 typeof 兜底**。
+- 全量 151 测试绿（29 文件），typecheck 干净。
+- 提交：`feat(runtime): phase 3 通知 provider 互动（G4）`。
 
 ### Phase 4: playground-oj 同步升级
 
