@@ -31,6 +31,12 @@ export interface ModuleContext {
 		notificationsApi: (provider: NotificationsApiProvider) => void
 		/** 接管头像/附件上传端点（D9）；先到先得，模块卸载时自动注销 */
 		uploadApi: (provider: UploadApiProvider) => void
+		/**
+		 * 注册布局名（G1）：新名字供 handle.layout 引用，或覆盖内建名
+		 * （container/parent/fullscreen，覆盖 = 自担 chrome 全部职责）。
+		 * 先到先得，模块卸载时自动注销（再解析语义，不热回落见 N8）
+		 */
+		layout: (name: string, component: React.ComponentType) => void
 	}
 	/** 注册布局插槽节点（US-8 L2），卸载模块时自动清理 */
 	registerSlot: (slotName: string, node: React.ReactNode) => void

@@ -4,6 +4,7 @@ import type { AppRouteRecordRaw, RouteMeta } from "#src/router/types";
 import { Outlet } from "react-router";
 import ContainerLayout from "#src/layout/container-layout";
 import FullscreenLayout from "#src/layout/fullscreen-layout";
+import { getRegisteredLayout } from "#src/layout/layout-registry";
 import ParentLayout from "#src/layout/parent-layout";
 
 /**
@@ -13,6 +14,8 @@ import ParentLayout from "#src/layout/parent-layout";
  * - `"container"` → ContainerLayout（整站 chrome：header / sidebar / tabbar / footer）
  * - `"fullscreen"` → FullscreenLayout（全屏外壳：视口 + 品牌区 + 工具区 + 页脚，无 chrome）
  * - `"none"` / 未声明 → Outlet（无 chrome，页面 / 子路由直接渲染）
+ *
+ * 模块登记优先于内建表（G1）：模块可注册新名或覆盖内建名。
  */
 const layoutRegistry: Record<string, ComponentType> = {
 	parent: ParentLayout,
@@ -20,14 +23,35 @@ const layoutRegistry: Record<string, ComponentType> = {
 	fullscreen: FullscreenLayout,
 };
 
+/** 未知名布局名的 warn-once 去重集（resolveLayoutComponent 会被反复调用，不去重会刷屏） */
+const warnedUnknownLayouts = new Set<string>();
+
 /**
- * 根据路由 `handle.layout` 解析所用布局组件（P2.2，设计文档 D9）。
+ * 根据路由 `handle.layout` 解析所用布局组件（P2.2，设计文档 D9；G1 模块登记优先）。
  *
  * 未声明即 `none` 是 D9 的目标态（P2.7 dogfooding 验证后自迁移期默认 `container` 翻转）：
  * 布局必须显式声明，框架不做隐式推导；后端下发的父级路由需在 handle 中携带 layout。
+ *
+ * 非内建且模块注册表未命中的名字 warn-once 一次并回落 Outlet——
+ * 后端下发了模块布局名而提供方模块未加载时，这条 warn 是唯一线索（评审 A6）。
  */
 export function resolveLayoutComponent(handle?: Partial<RouteMeta>): ComponentType {
-	return (handle?.layout && layoutRegistry[handle.layout]) || Outlet;
+	const name = handle?.layout;
+	if (!name)
+		return Outlet;
+	const registered = getRegisteredLayout(name);
+	if (registered)
+		return registered;
+	if (layoutRegistry[name])
+		return layoutRegistry[name];
+	if (!warnedUnknownLayouts.has(name)) {
+		warnedUnknownLayouts.add(name);
+		console.warn(
+			`[layout] 未知名布局 "${name}"：既非内建（container/parent/fullscreen），`
+			+ "也无模块登记，回落 Outlet。",
+		);
+	}
+	return Outlet;
 }
 
 /**

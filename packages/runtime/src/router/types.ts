@@ -51,9 +51,11 @@ export interface RouteMeta {
 	 * - `"parent"`：套父级布局（自身含 Outlet，用于嵌套菜单场景）
 	 * - `"fullscreen"`：套全屏外壳（视口 + 品牌区 + 角落工具 + 页脚，无 chrome），登录页用（P1）
 	 * - `"none"`：不套任何布局，页面/子路由直接渲染
+	 * - 其他字符串：模块经 `ctx.register.layout` 登记的名字（含覆盖内建名）。
+	 *   模板联合保留内建名补全，未知名运行时 warn-once 并回落 Outlet（G1，评审 P2-6）
 	 * @default "container"（迁移期向后兼容，目标在 P2.7 补全显式声明后改为 `"none"`）
 	 */
-	layout?: "container" | "parent" | "fullscreen" | "none"
+	layout?: "container" | "parent" | "fullscreen" | "none" | (string & {})
 
 	/**
 	 * 登录页标记（login 模块化，P1）：声明在 `path: "/login"` 的模块路由上，

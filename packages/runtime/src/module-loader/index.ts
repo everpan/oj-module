@@ -10,6 +10,7 @@ import type {
 
 import i18next from "i18next";
 
+import { registerLayout, unregisterLayouts } from "#src/layout/layout-registry";
 import { addRouteIdByPath } from "#src/router/utils/add-route-id-by-path";
 import { resolveRouteLayouts } from "#src/router/utils/resolve-layout";
 import { useAccessStore } from "#src/store/access";
@@ -66,6 +67,11 @@ function createModuleContext(definition: ModuleDefinition): ModuleContext {
 			},
 			uploadApi: (provider) => {
 				registerUploadApiProvider(definition.name, provider);
+			},
+			// G1：注册布局名（含覆盖内建名）；闭包 definition.name，模块卸载时
+			// 由 unloadModule 经 unregisterLayouts 自动注销（命名隔离）
+			layout: (name: string, component: React.ComponentType) => {
+				registerLayout(definition.name, name, component);
 			},
 		},
 		registerSlot: (slotName: string, node: React.ReactNode) => {
@@ -326,6 +332,7 @@ export async function unloadModule(name: string): Promise<void> {
 	removeModuleSlots(name);
 	unregisterAuthProvider(name);
 	unregisterApiProviders(name);
+	unregisterLayouts(name);
 	modules.delete(name);
 }
 
