@@ -30,11 +30,13 @@ const useStyles = createUseStyles(({ token }) => (
 	}
 ));
 
-type NotificationEventType = "viewAll" | "makeAll" | "clear" | "read";
+export type NotificationEventType = "viewAll" | "makeAll" | "clear" | "read";
 
 interface Props extends ButtonProps {
 	/**
-	 * 显示圆点
+	 * 互动事件回调。存在即可互动；缺省（未注册 provider / provider 缺写方法的
+	 * 老 bundle 漂移）时整体只读——「全部已读」「清空」禁用、单条点击 no-op
+	 * （评审 A3：不加 disabled/readOnly 新 prop，由回调存在性推导）。
 	 */
 	onEventChange?: (event: NotificationEventType, item?: NotificationItem) => void
 	/**
@@ -51,6 +53,8 @@ export const NotificationPopup: React.FC<Props> = ({ dot, notifications, onEvent
 	const [open, action] = useToggle();
 	const classes = useStyles();
 	const { t } = useTranslation();
+	// 只读态由回调存在性推导（评审 A3）：互动按钮禁用、单条点击 no-op
+	const readOnly = !onEventChange;
 
 	const close = () => {
 		action.set(false);
@@ -62,14 +66,20 @@ export const NotificationPopup: React.FC<Props> = ({ dot, notifications, onEvent
 	};
 
 	const handleMakeAll = () => {
+		if (readOnly)
+			return;
 		onEventChange && onEventChange("makeAll");
 	};
 
 	const handleClear = () => {
+		if (readOnly)
+			return;
 		onEventChange && onEventChange("clear");
 	};
 
 	const handleClick = (item: NotificationItem) => {
+		if (readOnly)
+			return;
 		onEventChange && onEventChange("read", item);
 	};
 
@@ -98,7 +108,7 @@ export const NotificationPopup: React.FC<Props> = ({ dot, notifications, onEvent
 							<div>{t("widgets.notifications")}</div>
 							<Tooltip title={notifications?.length ? t("widgets.markAllAsRead") : null}>
 								<BasicButton
-									disabled={!notifications?.length}
+									disabled={readOnly || !notifications?.length}
 									onClick={handleMakeAll}
 									type="text"
 									icon={<RiMailCheckLine />}
@@ -109,7 +119,7 @@ export const NotificationPopup: React.FC<Props> = ({ dot, notifications, onEvent
 					footer={(
 						<div className="flex items-center justify-between">
 							<BasicButton
-								disabled={!notifications?.length}
+								disabled={readOnly || !notifications?.length}
 								type="text"
 								onClick={handleClear}
 							>

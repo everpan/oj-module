@@ -40,9 +40,16 @@ export interface SystemApiProvider {
 	fetchDeleteMenuItem: (id: number) => Promise<string>
 }
 
-/** 通知 provider（D9）：模块经 ctx.register.notificationsApi 接管通知拉取 */
+/**
+ * 通知 provider（D9 + G4）：模块经 ctx.register.notificationsApi 接管通知。
+ * 四方法全必填——「接管通知 API」是全量接管（读 + 三个写），不做部分托管；
+ * 老 bundle 只有 fetchNotifications 的版本漂移由消费点运行时防御（评审 P2-7）。
+ */
 export interface NotificationsApiProvider {
 	fetchNotifications: () => Promise<NotificationItem[]>
+	markRead: (id: string | number) => Promise<void>
+	markAllRead: () => Promise<void>
+	clearAll: () => Promise<void>
 }
 
 /** 上传 provider（D9）：模块经 ctx.register.uploadApi 接管头像/附件上传端点 */

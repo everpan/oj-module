@@ -40,7 +40,10 @@ function systemProvider(tag: string): SystemApiProvider {
 
 function notificationsProvider(tag: string): NotificationsApiProvider {
 	return {
-		fetchNotifications: vi.fn().mockResolvedValue([{ title: `n:${tag}` } as any]),
+		fetchNotifications: vi.fn().mockResolvedValue([{ id: 1, title: `n:${tag}` } as any]),
+		markRead: vi.fn().mockResolvedValue(undefined),
+		markAllRead: vi.fn().mockResolvedValue(undefined),
+		clearAll: vi.fn().mockResolvedValue(undefined),
 	};
 }
 
@@ -137,7 +140,7 @@ describe("notifications api provider 注册表（D9）", () => {
 		registerNotificationsApiProvider("notif", p);
 		const r = await fetchNotifications();
 		expect(p.fetchNotifications).toHaveBeenCalled();
-		expect(r).toEqual([{ title: "n:del" }]);
+		expect(r).toEqual([{ id: 1, title: "n:del" }]);
 		unregisterApiProviders("notif");
 	});
 });
