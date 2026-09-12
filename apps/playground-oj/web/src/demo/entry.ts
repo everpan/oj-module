@@ -3,7 +3,7 @@ import { defineModule } from "@oj-module/runtime";
 import { createElement } from "react";
 import { Navigate } from "react-router";
 
-import { bindRequest } from "./client/api";
+import { createDemoClient } from "./client/api";
 import DemoAboutPage from "./pages/about";
 import DemoDetailPage from "./pages/detail";
 import DemoPage from "./pages/index";
@@ -80,9 +80,9 @@ export default defineModule({
 	},
 	lifecycle: {
 		onInit: async (ctx) => {
-			// D11 前缀收敛 + AC-D8：生成 client 的请求能力由宿主注入
-			ctx.register.apiPrefix("/demo");
-			bindRequest(ctx.utils.request);
+			// D11 前缀收敛 + AC-D8：构造即接线——登记 /demo 前缀 + 绑定 scoped
+			// request；页面用 client 裸 export 函数发请求
+			createDemoClient(ctx);
 		},
 	},
 });

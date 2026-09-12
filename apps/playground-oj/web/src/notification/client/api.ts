@@ -2,6 +2,7 @@
 // 生成物：ojm api 从契约生成，勿手改（改动请改契约文件后重跑 ojm api）
 import { ContractApiError } from "@oj-module/runtime/contract/errors";
 import type { ScopedRequestLike } from "@oj-module/runtime/contract/errors";
+import type { ModuleContext } from "@oj-module/runtime";
 import type { z } from "@oj-module/runtime";
 import type { schemas } from "./api.schemas";
 
@@ -10,14 +11,31 @@ interface OjEnvelope<T> { code: number, msg?: string, data?: T }
 
 let req: ScopedRequestLike | undefined;
 
-/** 模块入口 onInit 里调用：bindRequest(ctx.utils.request)（AC-D8 能力持有者） */
+/** 本模块 API 前缀（ojm api 从契约抽取，唯一真源，勿手改） */
+export const API_PREFIX = "/notification";
+
+/**
+ * 模块 entry 的 onInit 里一行创建（构造即 install）：完成 apiPrefix 登记 +
+ * scoped request 绑定，返回绑好前缀的端点函数集合。一模块一 client；
+ * 重复构造幂等安全（前缀重复登记同值、request 重绑同值）。
+ */
+export function createNotificationClient(ctx: ModuleContext) {
+	ctx.register.apiPrefix(API_PREFIX);
+	bindRequest(ctx.utils.request);
+	return { clearAll, fetchNotifications, markAllRead, markRead };
+}
+
+/**
+ * @deprecated 请改用 createNotificationClient(ctx)——工厂构造即完成
+ * 前缀登记 + request 绑定，不会出现「登记了前缀没绑 request」的半接线状态。
+ */
 export function bindRequest(r: ScopedRequestLike): void {
 	req = r;
 }
 
 function ensureReq(): ScopedRequestLike {
 	if (!req)
-		throw new ContractApiError(-1, "[ojm-api] 请求未绑定——请在模块 entry.ts 的 onInit 里调用 bindRequest(ctx.utils.request)。");
+		throw new ContractApiError(-1, "[ojm-api] 请求未绑定——请在模块 entry.ts 的 onInit 里调用 createNotificationClient(ctx)（或 bindRequest(ctx.utils.request)）。");
 	return req;
 }
 

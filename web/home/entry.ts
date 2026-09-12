@@ -4,7 +4,7 @@ import { HomeOutlined } from "@ant-design/icons";
 
 import { createElement, lazy } from "react";
 
-import { bindRequest } from "./client/api";
+import { createHomeClient } from "./client/api";
 
 const Home = lazy(() => import("./pages/index"));
 
@@ -42,9 +42,9 @@ const mod: ModuleDefinition = {
 	lifecycle: {
 		async onInit(ctx) {
 			// scoped request 边界：home 图表接口收敛在 /home 前缀内（D11）；
-			// 绑定后 pages/components 才能经 api/client 发请求（AC-D8）
-			ctx.register.apiPrefix("/home");
-			bindRequest(ctx.utils.request);
+			// 构造即接线（登记前缀 + 绑定 request，AC-D8），绑定后 pages/components
+			// 才能经 api/client 发请求
+			createHomeClient(ctx);
 		},
 	},
 };

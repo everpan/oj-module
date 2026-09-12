@@ -89,3 +89,22 @@ export function createNotificationClient(ctx: ModuleContext) {
 ## 7. 执行计划
 
 1. 本文档（docs before code）→ 2. TDD：emit-client 用例先红后绿 + run.ts 接线 → 3. 重跑生成 + 迁移 7 entry + 指南 → 4. 全量验证（含 uni-dev-smoke 真二进制）→ 5. 提交并追加执行小结
+
+## 8. 执行小结（2026-09-13）
+
+| 阶段 | 状态 | 关键过程 | 耗时 |
+| --- | --- | --- | --- |
+| 1 设计文档 + 架构师评审 | ✅ | R1-R4 全部纳入本文；评审结论「可开工」 | ~30m |
+| 2 Phase A codegen 工厂（TDD） | ✅ | 6 条新用例先红后绿（快照 `vitest -u` 一次预期内刷新）；`emitClient` 签名加 module、`run.ts`/`check.ts` 两处 call site 接线 | ~40m |
+| 3 Phase B 重跑生成 + 迁移 + 指南 | ✅ | playground-oj 5 client 重跑（`pnpm ojm api`）；playground demo 重跑；模板 client 经 temp-copy `runApi` 重生成签回；7 处 entry 全部迁至 `create<Module>Client(ctx)`；根仓 `web/home/client/api.ts` 为手写同规 client，手工对齐（API_PREFIX + 工厂 + @deprecated bindRequest）；指南按 R4 改写（§2 表格、§3.1④、§3.4、踩坑表新增「请求未绑定」行） | ~25m |
+| 4 Phase C 全量验证 | ✅ | 600 tests 全绿（96 文件，含 uni-dev-smoke 真二进制）、typecheck 净、check:circular-deps 净 | ~10m |
+| 5 提交收尾 | ✅ | 见 git log | — |
+
+**验证结果**：`pnpm test` 600/600 绿（Phase A +6 用例）；`pnpm typecheck` 净；`pnpm check:circular-deps` 净；`pnpm lint` 剩 1 个**与本特性无关的存量 error**（`pnpm-workspace.yaml:108` catalog 项 `vitepress:default` 未被引用，p1 包合并 commit b3c11e7 引入），63 个 warning 亦全为存量。
+
+**与计划的偏差**：
+- 迁移 grep 实核结果与设计 §5 清单一致（7 处 entry，无出入）；
+- playground（非 oj）demo client 属 frontend 契约形态，同样重跑生成（清单原文只点模板与 playground-oj，实际多覆盖 1 处，属 grep「以实际为准」范围）；
+- 反常识记录：模板 client 不能直接在 templates/ 内跑 `ojm api`（生成物会落 `templates/web/...` 之外的相对路径、且 `--check` 流以 temp-copy 为准）——须 temp-copy `templates/api` 后 `runApi` 再签回，与 `template-notification.test.ts` 同一口径。
+
+**遗留**：无。BDD §4 七条用例全部落地并转绿。

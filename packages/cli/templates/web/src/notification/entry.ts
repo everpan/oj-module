@@ -2,7 +2,7 @@ import type { NotificationsApiProvider } from "@oj-module/runtime";
 
 import { defineModule } from "@oj-module/runtime";
 
-import * as notificationClient from "./client/api";
+import { createNotificationClient } from "./client/api";
 
 /**
  * notification 模块（G5 模板形态，对齐 apps/playground-oj/web/src/notification）。
@@ -19,13 +19,11 @@ export default defineModule({
 	routes: [],
 	lifecycle: {
 		async onInit(ctx) {
-			// 登记本模块的 API 前缀：此后 ctx.utils.request 被圈在 /notification 下——
-			// 请求自动走 /api/notification/...；越界调别家模块/root 级接口、或 "../"
-			// 向外穿越，都会在发请求前被客户端拒绝（前缀收敛，D11）。
-			// 必须与契约里 defineApi 的 apiPrefix 一致，生成 client 的相对路由才拼得对。
-			ctx.register.apiPrefix("/notification");
-			// 把圈好前缀的 request 交给生成 client，之后的接口调用都带 /notification 前缀
-			notificationClient.bindRequest(ctx.utils.request);
+			// 构造即接线：createNotificationClient 登记契约前缀 /notification
+			// （唯一真源在 client/api.ts 的 API_PREFIX）+ 绑定圈好前缀的 scoped
+			// request（越界/穿越发请求前即拒绝，前缀收敛 D11），返回的 client
+			// 方法都自动带 /api/notification/ 前缀。
+			const notificationClient = createNotificationClient(ctx);
 			const provider: NotificationsApiProvider = {
 				fetchNotifications: () => notificationClient.fetchNotifications(),
 				markRead: id => notificationClient.markRead({ id: Number(id) }).then(() => {}),

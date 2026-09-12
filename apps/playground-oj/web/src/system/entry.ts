@@ -3,7 +3,7 @@ import type { AppRouteRecordRaw, ModuleDefinition, SystemApiProvider } from "@oj
 import { ApartmentOutlined, MenuOutlined, SettingOutlined, TeamOutlined, UserOutlined } from "@ant-design/icons";
 import { createElement, lazy } from "react";
 
-import * as systemClient from "./client/api";
+import { createSystemClient } from "./client/api";
 
 const User = lazy(() => import("./pages/user"));
 const Dept = lazy(() => import("./pages/dept"));
@@ -99,8 +99,9 @@ const mod: ModuleDefinition = {
 		// 经生成的 uni-dev client 派发；消费点（role/menu 页）经 getSystemApiProvider
 		// 委托，未注册时回落内置实现。先到先得，模块卸载时自动注销。
 		async onInit(ctx) {
-			ctx.register.apiPrefix("/system");
-			systemClient.bindRequest(ctx.utils.request);
+			// 构造即接线：createSystemClient 登记契约前缀 /system + 绑定 scoped
+			// request（D11 前缀收敛），返回的 client 即下方 provider 的派发目标。
+			const systemClient = createSystemClient(ctx);
 			// D9 边界：provider 各方法按本模块契约（playground-oj system）严格定型，
 			// 整体以 SystemApiProvider 接入。框架自带 FetchRoleMenuData 仍是 3 字段投影、
 			// MenuItemType.status 为字面量 1，本模块返回 18 字段全量菜单，故在此吸收边界类型差。
