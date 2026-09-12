@@ -28,6 +28,10 @@
 | `ctx.register.routesApi` | 登录后从后端拿菜单/路由 | 1 个方法：返回路由列表 | 自带的 `web/get-async-routes` |
 | `ctx.register.layout("名字", 组件)` | 换页面外壳（布局） | 一个 React 组件 | 自带的三种外壳（见第五节） |
 | `ctx.registerSlot(位置, 节点)` | 往页面头部塞自定义内容 | 一个 React 节点 | 空着 |
+| `ctx.register.apiPrefix("/你的前缀")` | 圈定本模块 API 的家（不是抢活，是报户口） | 一个 `/` 开头的路径 | —（不登记就用不了 scoped request） |
+| `ctx.register.store(名字, store)` | 注册额外的 zustand store | 一个 store 实例 | — |
+
+> `apiPrefix` 怎么理解：它是**前缀收敛**——登记后 `ctx.utils.request` 只会往 `/api/你的前缀/...` 发请求，想调别家模块或 root 级接口、`../` 往外穿越，发出去之前就会被拒。值必须和契约里 `defineApi` 的 `apiPrefix` 一字不差。
 
 > **一条铁规矩：要抢就全抢。** 每个入口的方法一个都不能少——不能说「通知我只做读取，写操作还用框架的」。接口以后升级加了新方法时，老模块会和新框架对不上，这种升级要发版说明里专门提醒。
 
@@ -130,8 +134,13 @@ export default defineModule({
 	routes: [],                       // 没有页面
 	lifecycle: {
 		async onInit(ctx) {
+			// 登记本模块的 API 前缀：此后 ctx.utils.request 被圈在 /notification 下——
+			// 请求自动走 /api/notification/...；越界调别家模块/root 级接口、或 "../"
+			// 向外穿越，都会在发请求前被客户端拒绝（前缀收敛，D11）。
+			// 必须与契约里 defineApi 的 apiPrefix 一致，生成 client 的相对路由才拼得对。
 			ctx.register.apiPrefix("/notification");
-			notificationClient.bindRequest(ctx.utils.request);  // 让生成的代码走你的模块前缀
+			// 把圈好前缀的 request 交给生成 client，之后的接口调用都带 /notification 前缀
+			notificationClient.bindRequest(ctx.utils.request);
 			ctx.register.notificationsApi({
 				fetchNotifications: () => notificationClient.fetchNotifications(),
 				markRead: id => notificationClient.markRead({ id: Number(id) }).then(() => {}),
