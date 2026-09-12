@@ -270,9 +270,26 @@ packages/cli/templates/
 4. 出口冻结核对（如需）与各包 dist 重建（runtime dist 随仓库提交，勿忘）
 5. 文档收尾：§9 补「实现记录与耗时」段落
 
-## 9. 总结（实现完成后回填）
+## 9. 总结（实现完成回填）
 
-（待实现完成后补充：关键过程、耗时、偏差记录）
+**实现记录**（2026-09-12 23:20 → 2026-09-13 00:40，共约 7 阶段、2 小时 20 分钟）：
+
+| 阶段 | 交付 | 测试增量 |
+| --- | --- | --- |
+| 1 布局注册表 | `layout-registry.ts` + resolve-layout 委托 + ctx.register.layout + warn-once + 模板联合类型 | +8（BDD 5.1） |
+| 2 routesApi | RoutesApiProvider + fetchAsyncRoutes 委托 + 卸载清理 | +4（BDD 5.2） |
+| 3 通知互动 | id 必填 + 四方法 provider + container 接线 + 只读降级 + 漂移防御 + 20x 删除 | +7（BDD 5.3） |
+| 4 playground-oj | 契约四端点 + id 返回 + entry 四方法 + ojm api 重跑 | 0（dogfooding，typecheck 守护） |
+| 5 模板模块 | notification 契约模块 + 表/种子迁移 + root 只读兜底 + client 签入 | init 断言改写 + 2（BDD 5.4#1/b5） |
+| 6 冻结/dist | 两道冻结零变更；dist + shell-dist 重建 | 0 |
+| 附带 | provider 专题新人文档 `docs/202609130035-provider-guide.md` | — |
+
+关键过程：全程 TDD 先红后绿（6 个测试文件、21 个新用例）；每阶段独立提交 + 文档 §11 小结。评审 b3（跨模块表所有权）经 uni-dev-smoke 真二进制验证闭环为 oj S003 规则，root 兜底按「同库只读 = deps 声明」处置。
+
+主要反常识记录（实现期发现，已写入各阶段小结）：① commitlint subject 首词大写即拒（"Phase"→"phase"）；② 契约 void 端点不能 `data: z.null()`（白名单外），须省略 data；③ 类型契约 ≠ 运行时形状，跨版本边界必须 typeof 兜底（TS2774 反向报警为证）；④ dist 构建内嵌 `lastBuildTime`，重复构建产生时间戳噪声需还原。
+
+总偏差：3 处（id 同步面收窄、void data 声明方式、S003 deps 声明），均为设计预留的实现期决策点，无方向性偏离。遗留已知限制见 §7（merge 盲区、不热回落、onInit 残留、叶子静默），均为评审确认接受项。
+
 
 ## 11. 阶段规划与执行小结（v1.2）
 
@@ -285,7 +302,7 @@ packages/cli/templates/
 | 3 | 通知 provider 互动（§4.4）：四方法 + container 接线 + 20x 残留删除 + 只读降级 | 同分支 | ✅ 完成 |
 | 4 | playground-oj 同步升级（§4.6） | 同分支 | ✅ 完成 |
 | 5 | cli 模板 notification 模块（§4.5，含表/种子迁移） | 同分支 | ✅ 完成 |
-| 6 | 冻结核对（runtime-exports 快照 + RUNTIME_STUB_SOURCE）+ dist 重建 + §9 回填 | 同分支 | 未开始 |
+| 6 | 冻结核对（runtime-exports 快照 + RUNTIME_STUB_SOURCE）+ dist 重建 + §9 回填 | 同分支 | ✅ 完成 |
 | 7 | 集中审查：对全部变更派审查代理复核，按意见修复后收尾 | 同分支 | 未开始 |
 
 ### Phase 1: runtime 布局注册表
@@ -343,7 +360,13 @@ packages/cli/templates/
 
 ### Phase 6: 冻结核对 + dist 重建 + 文档收尾
 
-（待执行）
+**执行小结**（2026-09-13 00:40，耗时约 15 分钟）：
+
+- **两道冻结均无需变更且保持绿**：本轮新增能力全部经由既有公开面送达模块——`ctx.register.layout`/`routesApi` 走 `ModuleContext.register`（类型早已公开），`NotificationsApiProvider` 是既有接口的方法扩展而非新出口；`registerLayout` 等注册表函数只被 module-loader 内部与测试经 `#src` alias 消费，不进包公开出口。`tests/runtime/runtime-exports.test.ts`（10 用例）与 `RUNTIME_STUB_SOURCE` 覆盖检查双双原样通过。
+- dist 核对：Phase 4 已重建并提交（随 shell-dist 同提交，sha256 配对）；本轮复跑构建仅 `lastBuildTime` 时间戳差异，已还原避免噪声。`shell-importmap` sha256 测试绿。
+- 偏差记录：`pnpm-workspace.yaml` 的 `vitepress:default` catalog 未使用 lint 报错为分支既有问题（main 上即存在），不在本计划范围。
+- 全量 594 测试绿（96 文件）。
+
 
 ### Phase 7: 集中审查
 
