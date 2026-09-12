@@ -1,8 +1,8 @@
-# 布局注入与通知互动设计（layout 注册表 + routesApi 补缺 + 通知 provider 互动 + 模板实现）
+# 布局注入与通知互动设计（layout 注册表 + routesApi 补缺 + 通知 provider 互动 + 模板模块）
 
-> 日期：2026-09-12 22:24
-> 状态：设计已评审（脑暴结论经用户逐层确认），待实现
-> 范围：`packages/runtime`（布局注册表 / api-provider 扩展 / 出口积木）、`packages/cli/templates`（通知模块）、`apps/playground-oj`（dogfooding 同步升级）
+> 日期：2026-09-12 22:24（评审修订：同日 23:00）
+> 状态：设计经双角色评审（架构师 + 工程师）修订后通过，待实现。评审处置记录见 §10
+> 范围：`packages/runtime`（布局注册表 / api-provider 扩展）、`packages/cli/templates`（通知模块）、`apps/playground-oj`（dogfooding 同步升级）
 
 ## 1. 背景与问题
 
@@ -18,51 +18,64 @@ layout 的外部依赖分数据依赖与 UI 组成两类。注入机制已存在
 | 头像/附件上传 | ✅ 已委托 | `ctx.register.uploadApi` |
 | header 操作区 UI | ✅ 插槽 `useSlotNodes("header-actions")` | `ctx.registerSlot` |
 | **动态菜单/路由数据** | ❌ 硬编码：`auth-guard.tsx` 直调 `fetchAsyncRoutes()`（`web/get-async-routes`） | 无 |
-| **整套布局 UI** | ❌ 不可替换：`resolve-layout.ts` 的 `layoutRegistry` 是模块级私有常量 | 无 |
+| **整套布局 UI** | ⚠️ 半可替换（见下） | 无 |
+
+「整套布局 UI」严格说半可替换：模块声明 `handle.layout: "none"` + 父路由自带 wrapper Component，**今天就能给自己的路由换任意 chrome**。真正不可做的是两点：
+
+- (a) 覆盖**内建名**的语义——让别人写的 `"container"` 解析到自己的组件；
+- (b) 替换**别的模块 / 后端下发路由**的布局。
+
+G1 的价值正是这两点（评审 P2-8 修正）。
 
 ### 1.2 通知互动缺口（比预想大）
 
 1. `NotificationPopup` 的 UI 早已定义 4 个互动事件（`read` / `makeAll` / `clear` / `viewAll`，`widgets/notification/index.tsx:33`），但 `NotificationContainer` 未传 `onEventChange` —— 「全部已读」「清空」按钮是摆设；
 2. `NotificationItem` 无 `id` 字段（DB 表有 `id` 列），单条已读无处下手；
 3. `NotificationsApiProvider` 只有 `fetchNotifications`，无任何写操作；
-4. cli 模板侧只有 root 级只读兜底端点（`api/src/notifications`，已豁免契约检查），无 notification web 模块；playground-oj 有模块但契约也只读。
+4. cli 模板侧只有 root 级只读兜底端点（`api/src/notifications`，已豁免契约检查），无 notification web 模块；playground-oj 有模块但契约也只读；
+5. `NotificationContainer` 有 20x 复制残留（`notification-container.tsx:19` 的 `Array.from({length:20}).flatMap(() => list)`），接 id/markRead 前必须先删，否则同一 id 复制 20 份（评审工程 b4）。
 
 ### 1.3 关键时序事实（设计成立的前提）
 
-模块 `onInit` 在 `loadAll` 内完成，**早于**全部布局解析点：
+模块 `onInit` 在 `loadAll` 内被**整体 await**（`module-loader/index.ts:236-238`），而全部布局解析点都更晚：
 
-- `module-loader/index.ts:297` —— `resolveRouteLayouts()` 在收集模块路由时执行；
-- `generate-routes-from-backend.ts:106` —— 后端动态路由到达时执行。
+- `module-loader/index.ts:263 → :297` —— loadAll 结束后 `getRoutes()` 内 `resolveRouteLayouts()`；
+- `generate-routes-from-backend.ts:106` —— 登录后守卫内，后端动态路由到达时。
 
-因此「注册先于解析」天然成立，**不需要** manifest priority 字段、两阶段 loadAll 或「特权模块」概念；「先到先得 + 重复警告」即优先级语义（与现有 4 个 provider 一致）。
+因此「onInit 内（含 await 之后）完成的注册先于一切解析」天然成立，**不需要** manifest priority 字段、两阶段 loadAll 或「特权模块」概念；「先到先得 + 重复警告」即优先级语义（与现有 4 个 provider 一致）。
 
 ## 2. 目标与非目标
 
 ### 2.1 目标（SMART）
 
-- G1：模块可经 `ctx.register.layout(name, component)` 注册新布局名或覆盖内建名（`container` / `fullscreen` / `parent`），覆盖在路由解析前生效；
+- G1：模块可经 `ctx.register.layout(name, component)` 注册新布局名或覆盖内建名（`container` / `fullscreen` / `parent`），覆盖在路由解析前生效。**覆盖内建名 = 自担 chrome 全部职责**（keepAlive 页签缓存、通知铃、header-actions 插槽、preferences 抽屉等内建 chrome 能力全部失效需自建），适用于 intentionally 更简的 chrome；
 - G2：`fetchAsyncRoutes` 增加 provider 委托缺口闭合（`ctx.register.routesApi`），layout 链路零硬编码外部 API；
-- G3：runtime 公开出口补齐「模块能造出等价 container」的最小积木集（tabs store / keep-alive 等）；
 - G4：通知 provider 扩展为全必填四方法（读 + 单条已读 + 全部已读 + 清空），`NotificationContainer` 接线互动事件；
 - G5：cli 模板新增 uni-dev notification 模块（契约 + 端点 + web 模块注册 provider），`ojm init` 出来的工程开箱即有完整通知互动；
 - G6：playground-oj 同步升级（契约加写端点、provider 补写方法），作为 dogfooding 验证。
 
+> 原 G3（导出布局积木）经评审**砍掉**（评审 P0-1/A2）：无真实消费者背书；「模块能造出等价 container」需要的公开面（useTabsStore/KeepAliveLayer/LayoutTabbar/useMenu/JSSThemeProvider/…）恰是否决方案 C 的论据，从侧门重新引入不可接受。积木导出后置：等第一个真实需要等价 container 的模块出现时，按需逐个导出（届时每个导出有消费者背书）。
+
 ### 2.2 非目标（明确不做）
 
 - N1：layout 物理剥离为独立模块（方案 C）——内部 store 耦合面过大，解耦收益由注册表已全拿到；
-- N2：manifest priority / 两阶段 loadAll / 特权模块概念——先到先得已覆盖；
+- N2：manifest priority / 两阶段 loadAll / 特权模块概念——先到先得已覆盖（其 merge 场景局限见 §7）；
 - N3：`viewAll` 事件接线——模板无通知中心页（YAGNI），事件保留不接线；
-- N4：root 级内置回落端点加写操作——无 provider 时互动按钮禁用即可；
-- N5：widget 级更多插槽（header-left / sidebar-top 等）——现有 `header-actions` 够用，失控风险大于收益。
+- N4：root 级内置回落端点加写操作——无 provider 时互动降级只读即可；
+- N5：widget 级更多插槽（header-left / sidebar-top 等）——现有 `header-actions` 够用，失控风险大于收益；
+- N6：布局积木导出（原 G3，评审后置，理由见上）；
+- N7：routesApi 下发「模块自有组件」的路由——provider 返回的路由按框架 pages glob 解析 component（评审 P0-2，见 §4.2）；模块自有组件路由请走模块路由而非 routesApi；
+- N8：运行中布局热回落——模块卸载不提供已注入路由的布局回落（评审 P1-5，见 §7）。
 
-## 3. 方案取舍记录（脑暴结论）
+## 3. 方案取舍记录（脑暴 + 评审结论）
 
 | 方案 | 结论 | 理由 |
 | --- | --- | --- |
 | A. 开放布局注册表 `ctx.register.layout` | ✅ 采纳 | `resolve-layout.ts` 已是注册表结构，与 authProvider/apiProvider 同构，无加载顺序问题 |
 | B. widget 级插槽扩展 | ❌ 排除 | 只满足定制不满足整套替换，插槽数量失控 |
 | C. layout 物理剥离为模块 + 优先级 | ❌ 排除 | `ContainerLayout` 耦合 tabs/preferences/keep-alive/menu 大量内部 store，公开面失控；bootstrap 引入特权层 |
-| provider 写方法可选 | ❌ 排除 | 违背 D9「全量接管，不做部分托管」；存量 provider 仅 playground-oj 一处，同 PR 升级可控 |
+| D. 声明式 `defineModule({ layouts: { container: X } })`（评审 P1-3 补充） | ❌ 本轮排除，记录备选 | 优势真实存在：构建期可见（`ojm merge`/`build` 可静态检测同名冲突）、无注册时序约束、卸载清理天然等价。本轮仍选 A 的原因：与现有 4 个 provider 注册表同构（一致性）；defineModule 契约面不动（cli `readModuleDefinition` 无需改）；命令式的 merge 盲区用「构建期警告」后续增强对冲成本更低。若未来做构建期冲突检测，D 是升级路径 |
+| provider 写方法可选 | ❌ 排除 | 违背 D9「全量接管，不做部分托管」；存量仓内 provider 仅 playground-oj 一处，同 PR 升级可控；仓外老 bundle 用运行时存在性检查防御（§4.4） |
 | `NotificationItem.id` 可选 | ❌ 排除 | 单条已读的前提；两个后端实现同 PR 补齐 |
 
 ## 4. 设计
@@ -87,9 +100,16 @@ export function unregisterLayouts(moduleName: string): void  // onDestroy 清理
 ```
 
 - `resolve-layout.ts`：`resolveLayoutComponent` 改为「先 `getRegisteredLayout(name)`，落空回落内建 `layoutRegistry`」；内建常量保持私有；
-- `module-loader/index.ts`：`ctx.register.layout(name, component)` 挂到 register 上；卸载路径调 `unregisterLayouts(definition.name)`；
-- 时序约束写进文档：布局必须在 `onInit` **同步**注册（`await` 之后的注册可能晚于路由解析，不保证生效——与 `apiPrefix` 登记同一约束）；
-- `handle.layout` 的类型从字面量联合放宽为 `string`（模块自定义名），内建三名保留文档与校验提示。
+- `module-loader/index.ts`：`ctx.register.layout(name, component)` 挂到 register 上；卸载路径（`unloadModule`，与 `unregisterApiProviders` 同点，`module-loader/index.ts:328`）调 `unregisterLayouts(definition.name)`；
+- **时序约束**（评审 P1-4/A1 修正）：注册必须在 `onInit` 返回的 promise resolve 前完成（同步或 await 之后均可——loadAll 整体 await onInit，解析点全在其后）；`onInit` 之外的延迟注册（fire-and-forget、`onActivate`）不保证生效。因此布局组件可以 `await import("./layout")` 动态分包后再注册；
+- **类型放宽**（评审 P2-6）：`handle.layout` 从字面量联合改为模板联合，保留内建名补全：
+
+```ts
+layout?: "container" | "parent" | "fullscreen" | "none" | (string & {})
+```
+
+- **未知名 warn-once**（评审 P2-6/A6）：`resolveLayoutComponent` 对「非内建且注册表落空」的名字 `console.warn` 一次（warn-once 去重——该函数在 `getRoutes()` 里反复调用）。warn 放 `resolveLayoutComponent` 而非 `resolveRouteLayouts`，两条解析路径（模块路由 + 后端路由 `generate-routes-from-backend.ts:106`）都覆盖。已知限制：`resolveRouteLayouts` 只解析「无 Component 且有 children」的节点，叶子页面写错 layout 名永远静默——文档知情接受；
+- **覆盖 container 的连带消失清单**（评审 b6）：通知铃挂在 LayoutHeader、header-actions 插槽、preferences 抽屉、keepAlive 页签缓存等都在内建 chrome 里，覆盖者不重建即整体消失。覆盖前请确认这是意图。
 
 ### 4.2 routesApi provider 补缺（G2）
 
@@ -97,16 +117,18 @@ export function unregisterLayouts(moduleName: string): void  // onDestroy 清理
 
 ```ts
 export interface RoutesApiProvider {
+	/**
+	 * 返回后端动态路由。component 解析边界（评审 P0-2）：返回的路由按框架
+	 * pages glob 解析 component（generate-routes-from-backend.ts），模块自有
+	 * 组件的后端路由不在本契约内——请走模块路由（N7）。
+	 */
 	fetchAsyncRoutes: () => Promise<AppRouteRecordRaw[]>
 }
 ```
 
 - 委托收进 `#src/api/user` 的 `fetchAsyncRoutes` 内部（与 `#src/api/notifications` 的委托模式一致：provider 优先，回落内置 `web/get-async-routes`）；`auth-guard.tsx` 消费点不动；
-- `module-loader` 挂 `ctx.register.routesApi(provider)`；`unregisterApiProviders` 同步清理。
-
-### 4.3 公开出口积木（G3）
-
-以「模块能造出等价 container」为准补最小集，逐一核对后定稿（候选：`useTabsStore`、`KeepAliveLayer`、`useLayout`）。每加一个导出同步更新 `tests/runtime/runtime-exports.test.ts` 冻结快照——红灯是预期行为，改动需在提交信息中说明。
+- `module-loader` 挂 `ctx.register.routesApi(provider)`；`unregisterApiProviders` 同步清理；
+- `AppRouteRecordRaw` 已是公开类型（`runtime/src/index.ts:81`），无出口缺口。
 
 ### 4.4 通知 provider 互动（G4）
 
@@ -132,11 +154,11 @@ export interface NotificationsApiProvider {
 }
 ```
 
-- `NotificationContainer` 接 `onEventChange`：`read` → `markRead(item.id)`；`makeAll` → `markAllRead()`；`clear` → `clearAll()`；成功后重新拉取刷新列表；
-- 未注册 provider（内置回落）：写操作不存在，互动按钮禁用（`disabled`），`dot` 与列表展示不受影响；
+- `NotificationContainer` 接 `onEventChange`：`read` → `markRead(item.id)`；`makeAll` → `markAllRead()`；`clear` → `clearAll()`；成功后重新拉取刷新列表（把 useEffect 内联 fetch 提成可复用 `reload`；**重拉失败不清空现有列表**，评审 b4）；同时删除 20x 复制残留；
+- **只读降级**（评审 A3/P2-7）：`NotificationPopup` 内部按 `onEventChange` 是否存在推导只读态（不加新 prop）——container 在以下两种情形不传 `onEventChange`：(a) 未注册 provider（内置回落）；(b) provider 存在但缺写方法（仓外老 bundle 版本漂移，`p.markAllRead is not a function` 防御，接线时一次性检查四方法存在性 + console.warn once）。只读态下「全部已读」「清空」按钮禁用、单条点击 no-op，`dot` 与列表展示不受影响；
 - `viewAll` 不接线（N3）。
 
-**契约兼容**：`id` 必填是破坏性变更——存量 provider 仅 playground-oj 一处，同 PR 升级；根仓 `web/` dogfooding 模块与 `fake/` mock 同步补 `id`。
+**契约兼容**：`id` 必填是公开类型的破坏性变更，发版说明标注（runtime 与 playground-oj 同版本发布）。**id 同步清单**（评审 A4）：仓内 `web/` dogfooding 模块、`fake/` mock、playground-oj 端点（`api/src/notification/notifications/api.ts` 查了 id 没返回，补 `id: Number(r.id)`）、模板 root 兜底端点（`templates/api/src/notifications/api.ts` 同款补 id）——HTTP 载荷无 TS 保护（BDD 5.3#6 已修正为契约 DEV 校验守护）。
 
 ### 4.5 cli 模板通知模块（G5）
 
@@ -146,23 +168,23 @@ export interface NotificationsApiProvider {
 packages/cli/templates/
 ├── api/src/notification/
 │   ├── contract.ts            # fetchNotifications + markRead + markAllRead + clearAll 四端点
-│   ├── notifications/api.ts   # GET 列表（is_read 0/1 ↔ isRead 布尔，含 id）
+│   ├── notifications/api.ts         # GET 列表（含 id；is_read 0/1 ↔ isRead 布尔）
 │   ├── notifications/read/api.ts      # POST 单条已读（body: { id }）
 │   ├── notifications/read-all/api.ts  # POST 全部已读
 │   ├── notifications/clear/api.ts     # POST 清空
-│   ├── migrations/0001__create_notifications.sql  # 复用现有表结构
-│   └── seed.sql
+│   ├── migrations/0001__create_notifications.sql  # 表结构迁移至此模块
+│   └── seed.sql                     # 种子迁移至此模块
 └── web/src/notification/
     ├── entry.ts               # 无页面路由；onInit 注册 apiPrefix + bindRequest + notificationsApi
-    └── client/                # ojm api 生成物（不手改）
+    └── client/                # ojm api 生成物，签入模板（与 playground-oj 一致，评审 b5）
 ```
 
-- 现有 root 级 `api/src/notifications/api.ts`（豁免兜底）**保留不动**——它是 runtime 内置回落的对端；
-- `ojm init` 的钉版与豁免清单不变（新模块走标准契约流，无需豁免）。
+- **表与种子归属**（评审 b3）：现有 root 级 `api/src/notifications/`（豁免兜底）与新 `api/src/notification/` 都声明 `notifications` 表会产生双 migration + 种子 id 冲突（INSERT OR IGNORE 先跑者赢，后者种子静默丢失）。决策：**migration/seed 迁归新 notification 模块**；root 兜底只保留只读查询端点（不再持有表结构与种子）。模板面向新工程，无存量迁移负担。跨模块表所有权是否被 oj 工具链校验未确认——实现期第一件事验证；
+- `ojm init` 的钉版与豁免清单：root 兜底目录维持既有豁免；新模块走标准契约流，无需豁免。
 
 ### 4.6 playground-oj 同步升级（G6）
 
-- `api/src/notification/contract.ts`：`notificationItem` 加 `id`；补 `markRead` / `markAllRead` / `clearAll` 三端点定义与 oj 实现；
+- `api/src/notification/contract.ts`：`notificationItem` 加 `id`；补 `markRead` / `markAllRead` / `clearAll` 三端点定义与 oj 实现（`notifications/api.ts` 补 `id: Number(r.id)`）；
 - `web/src/notification/entry.ts`：provider 补三个写方法，委托生成 client；
 - 重跑 `ojm api` 刷新生成物与 `routes.json` / `openapi.yaml`。
 
@@ -173,11 +195,12 @@ packages/cli/templates/
 | # | Given | When | Then |
 | --- | --- | --- | --- |
 | 1 | 无模块登记 | `resolveLayoutComponent({layout:"container"})` | 返回内建 ContainerLayout |
-| 2 | 模块 A 在 onInit 登记 `layout("container", X)` | 同上解析 | 返回 X |
+| 2 | 模块 A 在 onInit 登记 `layout("container", X)`（允许 await 之后） | 同上解析 | 返回 X |
 | 3 | 模块 A 已登记 `"container"`，模块 B 再登记 | B 的登记 | console.warn 忽略，解析仍得 X |
 | 4 | 模块 A 登记新名 `"pro"` | `resolveLayoutComponent({layout:"pro"})` | 返回 A 的组件 |
-| 5 | 模块 A 卸载（onDestroy） | 再解析 `"container"` | 回落内建 ContainerLayout |
+| 5 | 模块 A 登记后卸载（unregisterLayouts） | 再调 `resolveLayoutComponent({layout:"container"})` | 回落内建 ContainerLayout（纯函数语义；运行中已注入路由不热回落，见 §7） |
 | 6 | 未声明 layout | `resolveLayoutComponent({})` | 返回 Outlet（现状不变） |
+| 7 | `layout: "contaienr"`（拼错的非内建名） | 解析 | warn-once 一次，返回 Outlet |
 
 ### 5.2 routesApi 委托
 
@@ -192,43 +215,71 @@ packages/cli/templates/
 | # | Given | When | Then |
 | --- | --- | --- | --- |
 | 1 | 已注册完整 provider | 点「全部已读」 | 调 `markAllRead`，列表重拉，dot 消失 |
-| 2 | 已注册完整 provider | 点单条通知 | 调 `markRead(item.id)`，该项 isRead=true |
-| 3 | 已注册完整 provider | 点「清空」 | 调 `clearAll`，列表为空 |
-| 4 | 未注册 provider（内置回落） | 打开通知弹层 | 列表只读展示，互动按钮禁用 |
+| 2 | 已注册完整 provider | 点单条通知 | 调 `markRead(item.id)`，重拉后该项 isRead=true |
+| 3 | 已注册完整 provider | 点「清空」 | 调 `clearAll`，重拉后列表为空 |
+| 4 | 未注册 provider（内置回落） | 打开通知弹层 | 列表只读展示，互动按钮禁用、单条点击 no-op |
 | 5 | provider 写方法 reject | 任一互动 | 列表保持原状，不崩溃（错误提示归 provider） |
-| 6 | 旧数据无 `id` | 渲染 | TS 编译期即报错（类型必填），无运行时分支 |
+| 6 | provider 缺写方法（老 bundle 漂移） | container 接线时 | 一次性 console.warn + 降级只读（同 #4） |
+| 7 | 互动成功后的重拉失败 | 重拉 reject | 现有列表保持，不清空 |
+| 8 | 后端返回缺 id 的项 | DEV 环境 | 契约 client 的 zod 校验抛 ContractApiError（HTTP 载荷无 TS 保护，以此守护） |
 
 ### 5.4 模板通知模块
 
 | # | Given | When | Then |
 | --- | --- | --- | --- |
-| 1 | `ojm init` 新工程 | `ojm api --check` | 0 error（notification 走标准契约流） |
+| 1 | `ojm init` 新工程 | `ojm api --check` | 0 error（notification 走标准契约流，豁免清单不新增） |
 | 2 | 新工程启动 | 登录后点通知铃 → 全部已读 | DB `is_read` 全置 1，dot 消失 |
 | 3 | 新工程启动 | 点「清空」 | notifications 表清空，弹层列表为空 |
+| 4 | 新工程初始化 | 跑迁移与种子 | notifications 表由 notification 模块创建并播种，root 兜底端点可查询（无双份种子） |
 
 ## 6. 测试落点
 
-- `tests/runtime/layout-registry.test.ts`：用例表 5.1 全覆盖（纯函数 + 注册表，无渲染）；
+- `tests/runtime/layout-registry.test.ts`：用例表 5.1 全覆盖（纯函数 + 注册表，无渲染）。**用例间隔离**：注册表是模块级 Map，每个用例前后 unregister/复位，否则互相污染（评审 A5）；
 - `tests/runtime/` 内补 routesApi 委托用例（表 5.2）；
 - `tests/runtime/` 内补 NotificationContainer 互动用例（表 5.3，happy-dom）；
-- `tests/runtime/runtime-exports.test.ts`：冻结快照随 G3 更新（预期红灯 → 更新快照）；
+- **两道出口冻结**（评审 A5）：`tests/runtime/runtime-exports.test.ts` 快照 + `packages/cli/src/build.ts` 的 `RUNTIME_STUB_SOURCE`（后者由 `runtime-exports.test.ts:141-151`「cli 的 runtime stub 覆盖全部运行时出口」守护）。本轮若新增运行时导出（type-only 导出编译期擦除，是否计入实现期核对），两处同步；
+- 现有 `tests/runtime/resolve-layout.test.ts` 四条断言在内建作回落时保持绿，不受影响；
 - `tests/cli/`：模板快照/清单类测试若涉及 templates 文件清单，同步更新。
 
 ## 7. 陷阱与反常规记录（实现期持续追加）
 
-- ⚠️ `handle.layout` 类型放宽为 `string` 后，内建三名的拼写错误不再有 TS 兜底——考虑在 `resolveRouteLayouts` 时对未知名 `console.warn` 一次（实现期定夺）；
-- ⚠️ 布局注册必须同步完成于 `onInit`：`await bindRequest(...)` 之后再 `register.layout` 的写法可能错过路由解析窗口，文档需显式提示；
+- ⚠️ **merge 场景覆盖胜者不可推理**（评审 P1-3）：加载顺序 = manifest 顺序 = `ojm merge` 命令行参数顺序（`cli/src/manifest.ts:24-41` 按 source 顺序 push，无冲突检测）。两团队 merge 参数顺序不同 → container 覆盖胜者不同，差异只在浏览器 console.warn 可见，构建期零信号。已知限制，本轮接受；对冲（entry 元数据 `provides` 自声明 + merge 构建期警告，或升级方案 D 声明式字段）列为后续可选增强；
+- ⚠️ **卸载不热回落**（评审 P1-5/b1）：已注入运行中 router 实例的路由，其 Component 在解析时已固化为模块组件，`unregisterLayouts` 只影响后续解析，既有路由树不动——已打开页面会继续渲染已卸载模块的 chrome 直至整页刷新。已知限制（N8）；
+- ⚠️ **onInit 抛错注册残留**（评审 b2）：onInit 先注册 layout 后抛错 → 模块标 error 不产路由，但注册表登记残留。现有 api provider 注册同款问题，属一致的历史行为，新注册表照搬继承，不本轮修；
+- ⚠️ **布局注册的时序约束**：必须在 onInit 返回前完成（await 之后合法）；onInit 之外的延迟注册不保证生效（评审 P1-4/A1）；
+- ⚠️ **叶子节点 layout 名静默**：`resolveRouteLayouts` 只解析「无 Component 且有 children」的节点，叶子页面写错 layout 名永远静默（评审 A6）——warn-once 只覆盖经解析函数的节点；
+- ⚠️ **模板双模块同表冲突**（评审 b3）：migration/seed 已决策归 notification 模块；跨模块表所有权是否被 oj 工具链校验未确认，实现期第一件事验证；
+- ⚠️ **20x 复制残留**（评审 b4）：接 id 前必须先删 `notification-container.tsx:19` 的 `Array.from({length:20})`；
 - ⚠️ `NotificationItem.id` 必填是公开类型的破坏性变更，发版说明需标注（runtime 与 playground-oj 必须同版本发布）；
-- ⚠️ 覆盖 `container` 的模块自担 keepAlive / 页签缓存职责——G3 积木导出前，覆盖者无法造出等价物，文档需标注该前置依赖。
+- ⚠️ 覆盖 `container` 的连带消失清单：keepAlive 页签缓存、通知铃、header-actions 插槽、preferences 抽屉等内建 chrome 全部失效需自建（评审 b6，已写入 §4.1）。
 
 ## 8. 实施顺序（依赖拓扑）
 
-1. runtime：布局注册表（4.1）→ routesApi（4.2）→ 通知 provider 扩展 + container 接线（4.4）→ 出口积木（4.3）
+1. runtime：布局注册表（4.1）→ routesApi（4.2）→ 通知 provider 扩展 + container 接线 + 20x 残留删除（4.4）
 2. playground-oj 同步升级（4.6）——验证 4.4 的 provider 契约
-3. cli 模板 notification 模块（4.5）
-4. 冻结出口快照与各包 dist 重建（runtime dist 随仓库提交，勿忘）
-5. 文档收尾：本文件补「实现记录与耗时」段落
+3. cli 模板 notification 模块（4.5，含表/种子迁移）
+4. 出口冻结核对（如需）与各包 dist 重建（runtime dist 随仓库提交，勿忘）
+5. 文档收尾：本文件 §9 补「实现记录与耗时」段落
 
 ## 9. 总结（实现完成后回填）
 
 （待实现完成后补充：关键过程、耗时、偏差记录）
+
+## 10. 评审记录（2026-09-12 23:00）
+
+双角色评审（架构师 / 工程师），结论均为**有条件通过**，条件已全部落实于上文：
+
+| 来源 | 意见 | 处置 |
+| --- | --- | --- |
+| 架构 P0-1 + 工程 A2 | G3 积木导出与方案 C 排除理由自相矛盾，无消费者背书 | ✅ 砍 G3 → N6，后置到真实需求出现 |
+| 架构 P0-2 | routesApi 契约未定义 component 解析边界 | ✅ 方案 a：契约显式声明按 pages glob 解析 + N7 |
+| 架构 P1-3 | 第四方案（声明式 layouts 字段）漏评；merge 场景覆盖胜者不可推理 | ✅ §3 补评估记录（备选升级路径）；merge 盲区入 §7 已知限制 |
+| 架构 P1-4 + 工程 A1 | 「同步注册」约束与事实不符 | ✅ 改为「onInit 返回前完成」（§4.1/§7） |
+| 架构 P1-5 + 工程 b1 | 卸载不热回落被用例掩盖 | ✅ N8 + BDD 5.1#5 改写 + §7 |
+| 架构 P2-6 + 工程 A6 | 类型放宽对冲应在设计期定死 | ✅ 模板联合 + warn-once 于 resolveLayoutComponent（§4.1） |
+| 架构 P2-7 | 仓外老 bundle provider 缺写方法的运行时防御 | ✅ 四方法存在性检查 + 降级只读（§4.4、BDD 5.3#6） |
+| 架构 P2-8 | 「整套布局不可替换」表述失准 | ✅ §1.1 改写，G1 价值聚焦 (a)(b) |
+| 工程 A3 | 「按钮禁用」在现有 props 上表达不了 | ✅ popup 按 onEventChange 存在性推导只读态（§4.4） |
+| 工程 A4 | root 兜底/fake/playground 端点查 id 未返回 | ✅ id 同步清单（§4.4）；BDD 5.3#6 → #8 改为契约 DEV 校验守护 |
+| 工程 A5 | 漏第二道冻结 RUNTIME_STUB_SOURCE；注册表测试需隔离 | ✅ §6 补 |
+| 工程 b2/b3/b4/b5/b6 | 注册残留 / 种子冲突 / 20x 复制 / client 签入 / 连带消失清单 | ✅ §7 + §4.1/§4.4/§4.5 落实 |
