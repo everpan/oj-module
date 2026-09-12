@@ -1,8 +1,16 @@
 # 布局注入与通知互动设计（layout 注册表 + routesApi 补缺 + 通知 provider 互动 + 模板模块）
 
-> 日期：2026-09-12 22:24（评审修订：同日 23:00）
-> 状态：设计经双角色评审（架构师 + 工程师）修订后通过，待实现。评审处置记录见 §10
+> 日期：2026-09-12 22:24（评审修订：同日 23:00；阶段规划：23:15）
+> 状态：评审修订版通过，阶段化实施中（feat/layout-injection）
 > 范围：`packages/runtime`（布局注册表 / api-provider 扩展）、`packages/cli/templates`（通知模块）、`apps/playground-oj`（dogfooding 同步升级）
+
+## 修订版本
+
+| 版本 | 日期 | 内容 |
+| --- | --- | --- |
+| v1.0 | 2026-09-12 22:24 | 初版（脑暴结论：方案 A 布局注册表 + routesApi + 通知 provider 互动 + 模板模块） |
+| v1.1 | 2026-09-12 23:00 | 双角色评审修订：砍 G3 积木导出（→N6）、补 routesApi 契约边界、修正时序与降级语义、补实现期陷阱（§10 评审记录） |
+| v1.2 | 2026-09-12 23:15 | 阶段规划（§11）：每阶段执行完毕小结追加到 §11，最后集中审查（Phase 7） |
 
 ## 1. 背景与问题
 
@@ -259,11 +267,55 @@ packages/cli/templates/
 2. playground-oj 同步升级（4.6）——验证 4.4 的 provider 契约
 3. cli 模板 notification 模块（4.5，含表/种子迁移）
 4. 出口冻结核对（如需）与各包 dist 重建（runtime dist 随仓库提交，勿忘）
-5. 文档收尾：本文件 §9 补「实现记录与耗时」段落
+5. 文档收尾：§9 补「实现记录与耗时」段落
 
 ## 9. 总结（实现完成后回填）
 
 （待实现完成后补充：关键过程、耗时、偏差记录）
+
+## 11. 阶段规划与执行小结（v1.2）
+
+> 规则：每阶段执行完成后，把该阶段的**关键过程、耗时、偏差**追加到对应小节末尾；状态在规划表内更新。全部阶段完成后进入 Phase 7 集中审查。
+
+| Phase | 内容 | 分支 | 状态 |
+| --- | --- | --- | --- |
+| 1 | runtime 布局注册表（§4.1）：layout-registry + resolve-layout 委托 + ctx.register.layout + 卸载清理 + 类型模板联合 + warn-once | feat/layout-injection | 未开始 |
+| 2 | routesApi provider 补缺（§4.2） | 同分支 | 未开始 |
+| 3 | 通知 provider 互动（§4.4）：四方法 + container 接线 + 20x 残留删除 + 只读降级 | 同分支 | 未开始 |
+| 4 | playground-oj 同步升级（§4.6） | 同分支 | 未开始 |
+| 5 | cli 模板 notification 模块（§4.5，含表/种子迁移） | 同分支 | 未开始 |
+| 6 | 冻结核对（runtime-exports 快照 + RUNTIME_STUB_SOURCE）+ dist 重建 + §9 回填 | 同分支 | 未开始 |
+| 7 | 集中审查：对全部变更派审查代理复核，按意见修复后收尾 | 同分支 | 未开始 |
+
+### Phase 1: runtime 布局注册表
+
+（待执行）
+
+### Phase 2: routesApi provider 补缺
+
+（待执行）
+
+### Phase 3: 通知 provider 互动
+
+（待执行）
+
+### Phase 4: playground-oj 同步升级
+
+（待执行）
+
+### Phase 5: cli 模板 notification 模块
+
+（待执行）
+
+### Phase 6: 冻结核对 + dist 重建 + 文档收尾
+
+（待执行）
+
+### Phase 7: 集中审查
+
+（待执行）
+
+## 10. 评审记录（2026-09-12 23:00）
 
 ## 10. 评审记录（2026-09-12 23:00）
 
