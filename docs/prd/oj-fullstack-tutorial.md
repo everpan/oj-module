@@ -452,7 +452,7 @@ import { BookOutlined } from "@ant-design/icons";
 import { defineModule } from "@oj-module/runtime";
 import { createElement, lazy } from "react";
 
-import { bindRequest } from "./api/client";
+import { createBooksClient } from "./client/api";
 
 const Books = lazy(() => import("./pages/index"));
 
@@ -485,8 +485,8 @@ export default defineModule({
   },
   lifecycle: {
     async onInit(ctx) {
-      ctx.register.apiPrefix("/books");   // ① 先登记前缀
-      bindRequest(ctx.utils.request);     // ② 把 scoped request 交给生成的 client
+      // 构造即接线：登记契约前缀 /books + 把 scoped request 交给生成的 client
+      createBooksClient(ctx);
     },
   },
 });

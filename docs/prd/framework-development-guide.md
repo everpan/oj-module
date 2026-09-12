@@ -157,7 +157,7 @@ pnpm exec ojm api         # 也可 npx ojm api；仓库内用 node ../../package
 
 ```ts
 import { defineModule } from "@oj-module/runtime";
-import { bindRequest } from "./api/client";
+import { createDemoClient } from "./client/api";
 
 export default defineModule({
   name: "demo",
@@ -165,8 +165,9 @@ export default defineModule({
   routes: [/* ...见 2.4... */],
   lifecycle: {
     async onInit(ctx) {
-      ctx.register.apiPrefix("/demo");   // ① 先登记前缀
-      bindRequest(ctx.utils.request);    // ② 再把 scoped request 交给生成的 client
+      // 构造即接线：登记契约前缀 /demo（唯一真源在生成物的 API_PREFIX）+ 绑定
+      // scoped request（AC-D8）；一模块一 client
+      createDemoClient(ctx);
     },
   },
 });
@@ -287,24 +288,35 @@ matchit 约束：参数段必须整段为 {name} 或 {*name}，需要前缀/后�
 
 | 产物 | 落点（uni-dev 形态） | 用途 |
 | --- | --- | --- |
-| `client.ts` | `web/src/<模块>/client/` | 前端调用函数（`getTodoList(...)`） |
+| `api.ts` | `web/src/<模块>/client/` | 前端调用函数（`getTodoList(...)`，含 `create<Module>Client(ctx)` 工厂） |
 | `api.schemas.ts` | `web/src/<模块>/client/` | zod schema，DEV 期响应校验 |
 | `routes.json` | `api/src/<模块>/` | 路由清单（对账用） |
 | `openapi.yaml` | `api/src/<模块>/` | 接口文档 |
 | stub `api.ts` | `api/src/<模块>/<端点>/` | 端点骨架（仅在缺失时新建） |
 
-**生成的 `client.ts` 长什么样**（`web/src/demo/client/api.ts` 摘录）：
+**生成的 `api.ts` 长什么样**（`web/src/demo/client/api.ts` 摘录）：
 
 ```ts
 import { ContractApiError } from "@oj-module/runtime/contract/errors";
 import type { ScopedRequestLike } from "@oj-module/runtime/contract/errors";
+import type { ModuleContext } from "@oj-module/runtime";
 import type { z } from "@oj-module/runtime";
-import type { schemas } from "./client.schemas";
+import type { schemas } from "./api.schemas";
 
 interface OjEnvelope<T> { code: number, msg?: string, data?: T }
 let req: ScopedRequestLike | undefined;
 
-/** 模块入口 onInit 里调用：bindRequest(ctx.utils.request) */
+/** 本模块 API 前缀（ojm api 从契约抽取，唯一真源，勿手改） */
+export const API_PREFIX = "/demo";
+
+/** 模块 entry 的 onInit 里一行创建：构造即登记前缀 + 绑定 scoped request */
+export function createDemoClient(ctx: ModuleContext) {
+  ctx.register.apiPrefix(API_PREFIX);
+  bindRequest(ctx.utils.request);
+  return { getTodoList };
+}
+
+/** @deprecated 请改用 createDemoClient(ctx) */
 export function bindRequest(r: ScopedRequestLike): void { req = r; }
 
 export type GetTodoListQuery = z.input<(typeof schemas)["getTodoList"]["query"]>;
@@ -318,7 +330,7 @@ export async function getTodoList(query: GetTodoListQuery): Promise<GetTodoListD
       throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
     const data = env.data as GetTodoListData;
     if (import.meta.env.DEV) {                       // DEV 才做响应校验，生产零成本
-      const { schemas } = await import("./client.schemas");
+      const { schemas } = await import("./api.schemas");
       const r = schemas.getTodoList.data.safeParse(data);
       if (!r.success) throw new ContractApiError(-1, `[契约违例] …${r.error.message}`);
     }
@@ -414,7 +426,7 @@ import { defineModule } from "@oj-module/runtime";
 import { createElement } from "react";
 import { Navigate } from "react-router";
 
-import { bindRequest } from "./api/client";
+import { createDemoClient } from "./client/api";
 import DemoPage from "./pages/index";
 
 export default defineModule({
@@ -447,8 +459,8 @@ export default defineModule({
   },
   lifecycle: {
     async onInit(ctx) {
-      ctx.register.apiPrefix("/demo");   // ① 先登记前缀（D11）
-      bindRequest(ctx.utils.request);    // ② 再把 scoped request 交给生成的 client（AC-D8）
+      // 构造即接线：登记契约前缀（D11）+ 绑定 scoped request（AC-D8）；一模块一 client
+      createDemoClient(ctx);
     },
   },
 });
@@ -528,12 +540,11 @@ Uncaught Error: [module] 模块 "home" 尚未登记 API 前缀：
 ```ts
 // entry.ts
 async onInit(ctx) {
-  ctx.register.apiPrefix("/home");
-  homeClient.bindRequest(ctx.utils.request);   // 生成的 client 持有 scoped request
+  createHomeClient(ctx);   // 构造即登记 /home 前缀 + 让生成的 client 持有 scoped request
 }
 
 // 页面里
-import { fetchPie } from "../api/client";
+import { fetchPie } from "../client/api";
 fetchPie({ by: "all" });  // 落在 /home/*，越界会被拒
 ```
 
@@ -956,7 +967,7 @@ done
 
 | 症状 | 常见原因 | 处理 |
 | --- | --- | --- |
-| `模块 "x" 尚未登记 API 前缀` | `onInit` 里漏了 `ctx.register.apiPrefix` | 补登记，再 `bindRequest` |
+| `模块 "x" 尚未登记 API 前缀` | `onInit` 里没调 `create<Module>Client(ctx)`（工厂构造即登记前缀） | onInit 里补 `create<Module>Client(ctx)` |
 | `方法不存在` / 行为与源码不符 | 改了 runtime 源码没重建 dist | `pnpm --filter @oj-module/runtime build`（或 `cli build:shell`，内含此步） |
 | 页面图标空白（关闭 ×、复制） | 图标深路径 default 退化 | 见 [3.6](#36-深路径兜底最容易踩的坑)，重建宿主 `pnpm --filter @oj-module/cli build:shell` |
 | 整页白屏 + `does not provide an export named` | 共享资产零具名导出（A22） | 重建宿主，查 `tests/shell/shell-importmap.test.ts` |

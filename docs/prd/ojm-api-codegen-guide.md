@@ -40,7 +40,8 @@ uni-dev 形态有硬约束（AC-D9）：契约里每个端点的 `apiPrefix` 必
 3. **IR 归一**（ir.ts）：方法缺省推导、`apiPrefix + route` 拼全路径、参数段提取
    （`{id}` / `*` catch-all）、zod schema 过白名单（只保留可安全发射的类型与约束）。
 4. **发射**：
-   - `emitClient` → `api.ts`（类型 + 请求函数，含 `bindRequest` 注入缝）与
+   - `emitClient` → `api.ts`（类型 + 请求函数，含 `create<Module>Client(ctx)` 工厂——
+     构造即登记 apiPrefix + 绑定 request；旧 `bindRequest` 保留为 @deprecated 逃生口）与
      `api.schemas.ts`（zod schema，DEV 下 `safeParse` 校验响应；生产构建被摇树移除）
    - `emit-meta` → `routes.json`（路由表）与 `openapi.yaml`（评审可读）
    - `emit-stub` → 后端 handler 骨架（仅 uni-dev），按 oj 目录镜像路由落位
@@ -50,8 +51,9 @@ uni-dev 形态有硬约束（AC-D9）：契约里每个端点的 `apiPrefix` 必
 ## 4. 生成物使用契约
 
 - `web/src/<模块>/client/api.ts` 的函数**直接 import 调用**；首次使用前在模块
-  `entry.ts` 的 `lifecycle.onInit` 里 `bindRequest(ctx.utils.request)` 注入请求能力，
-  未注入就调用会人话报错指路。
+  `entry.ts` 的 `lifecycle.onInit` 里 `const client = create<Module>Client(ctx)`（构造即
+  登记 apiPrefix + 绑定 request，前缀唯一真源是生成物的 `API_PREFIX` 常量），
+  未创建就调用会人话报错指路。一模块一 client。
 - **生成物勿手改**：`api.ts`/`api.schemas.ts`/`routes.json`/`openapi.yaml` 重跑即覆盖
   （eslint 已忽略这些路径）。改需求 = 改契约，重跑 `ojm api`。
 - **stub 例外**：`api/src/**/api.ts` 的 stub 文件头带指纹
@@ -94,5 +96,5 @@ uni-dev 形态有硬约束（AC-D9）：契约里每个端点的 `apiPrefix` 必
 | `apiPrefix 与目录名不符` | AC-D9 字面相等约束 | 改 apiPrefix 或移动契约目录 |
 | `--check` 报 artifact-stale | 改了契约没重跑 | 重跑 `ojm api` |
 | `--check` 报 handler 未登记 | 内置/手写 handler 无契约 | 补契约，或登记豁免清单 |
-| 调用函数报「未 bindRequest」 | entry.ts 未注入请求能力 | 见 §4 `lifecycle.onInit` |
+| 调用函数报「请求未绑定」 | entry.ts 的 onInit 里没调 `create<Module>Client(ctx)` | 见 §4 `lifecycle.onInit` |
 | 豁免写了 `//` 注释后全部失效 | 严格 JSON 解析失败静默回退 | 注释写进 `_comment` 字段 |

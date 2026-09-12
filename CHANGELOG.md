@@ -5,6 +5,16 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 设计依据、迁移记录与陷阱清单见 [`docs/prd/202609110947-oj-module-two-package-consolidation-design.md`](docs/prd/202609110947-oj-module-two-package-consolidation-design.md)。
 
+## [Unreleased]
+
+### Added
+
+- **`ojm api` 生成 client 工厂化（create<Module>Client(ctx)，构造即 install）**：生成物 `web/src/<模块>/client/api.ts` 新增 `API_PREFIX` 常量（契约前缀唯一真源，与契约 `defineApi` 的 `apiPrefix` 天然一致）与 `create<Module>Client(ctx)` 工厂——模块 entry 的 `onInit` 里一行 `const client = createNotificationClient(ctx)` 即完成 apiPrefix 登记 + scoped request 绑定，不再手写 `ctx.register.apiPrefix(...)` + `bindRequest(...)` 两行样板，杜绝「登记了前缀没绑 request」的半接线状态。重复构造幂等安全；一模块一 client。模板、playground/playground-oj、根仓 `web/home` 已全部迁移；新人上手见 [`docs/202609130035-provider-guide.md`](docs/202609130035-provider-guide.md)。设计见 [`docs/prd/202609130128-client-factory-design.md`](docs/prd/202609130128-client-factory-design.md)。
+
+### Deprecated
+
+- 生成 client 的 `bindRequest(ctx.utils.request)` 标记 `@deprecated`（保留作逃生口）——请改用 `create<Module>Client(ctx)`。**属生成物形状破坏性变更**：外部工程升级 cli 后重跑 `ojm api` 需同步改 entry（当前无外部工程，影响面为本仓库，已完成迁移）。
+
 ## [0.1.8] - 2026-09-12
 
 ### Changed

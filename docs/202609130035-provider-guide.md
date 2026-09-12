@@ -140,7 +140,9 @@ export default defineModule({
 			// ② 把圈好前缀的 ctx.utils.request 绑给生成 client（此后请求自动走
 			//    /api/notification/...；越界调别家模块/root 级接口、或 "../" 向外
 			//    穿越，发请求前即被客户端拒绝——前缀收敛，D11）。
-			// 必须在 onInit 里创建；一模块一 client。
+			// 只在 onInit 里创建一次（一模块一 client）；页面/组件/事件回调里不要
+			// 再创建——直接 import 本文件导出的裸函数调用即可，request 绑定自此
+			// 一直有效（创建不是「每次请求都要做」的事，是「启动时接线一次」）。
 			const notificationClient = createNotificationClient(ctx);
 			ctx.register.notificationsApi({
 				fetchNotifications: () => notificationClient.fetchNotifications(),
@@ -327,6 +329,7 @@ ctx.register.routesApi({
 | 铃铛按钮全灰 | 没注册通知 provider，或者只写了拉列表一个方法 | 4 个方法补齐；老模块见 4.5 |
 | 改了契约，前端类型没变 | 没重新生成 | 跑 `pnpm ojm api`；生成是确定的，diff 里应该只看到你改的那部分 |
 | 接口调用报「请求未绑定」 | entry 的 onInit 里没调 `createXxxClient(ctx)`（旧写法是 `bindRequest`） | onInit 里先 `const client = createXxxClient(ctx)` 再发请求；一模块一 client |
+| 在页面/组件里又 create 了一个 client | 创建只该发生在 onInit 一次，重复创建会把 request 槽覆盖 | 页面里直接 import 裸 export 函数调用，不要再创建 |
 | `ojm api` 报「schema 超出白名单」 | 契约里写了 `z.null()` 或 transform/refine 这类 | 不返回数据的接口干脆别写 `data`；校验放后端做 |
 | 下线模块后页面没变 | 画好的页面不自动换 | 刷新页面 |
 | 后端菜单用了我的布局名，页面却没外壳 | 注册那个布局的模块没加载 | 看控制台的 `[layout] 未知名布局` 提醒 |
