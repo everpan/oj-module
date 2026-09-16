@@ -95,10 +95,12 @@ describe("宿主与框架共享依赖版本一致（A25）", () => {
 			const all = { ...pkg.dependencies, ...pkg.devDependencies, ...pkg.peerDependencies };
 			for (const dep of SHARED_DEPS) {
 				// @oj-module/* 是本仓 workspace 包，必须用 workspace:*，不进 catalog
+				// （pnpm 拒绝 workspace: 协议作 catalog 值，M1 T7 实测；
+				// 同规则的 @plane/kit 亦如此，故按「值」放行而非按包名前缀）
 				if (packageNameOf(dep.specifier).startsWith("@oj-module"))
 					continue;
 				const range = all[dep.specifier];
-				if (range && range !== "catalog:")
+				if (range && range !== "catalog:" && range !== "workspace:*")
 					hardcoded.push(`  · ${rel} → ${dep.specifier}: ${range}`);
 			}
 		}

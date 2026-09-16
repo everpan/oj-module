@@ -30,6 +30,8 @@ allowBuilds:
 # 语法注记：默认 catalog 的键是 `catalog:`；`catalogs:` 是**命名** catalog 的容器，
 # 写成 catalogs 会被 pnpm 当成命名 catalog 而报「expected an object」。
 catalog:
+  # 注：pnpm 拒绝 workspace: 协议作 catalog 值（ERR_PNPM_CATALOG_ENTRY_INVALID_WORKSPACE_SPEC），
+  # 仓内 workspace 包（@oj-module/runtime / @plane/kit）一律在消费方写 workspace:*，不经 catalog。
   '@ant-design/cssinjs': ^2.1.2
   '@ant-design/icons': ^6.2.3
   '@ant-design/pro-components': ^3.1.12-0
@@ -105,7 +107,6 @@ catalog:
   vite-plugin-checker: ^0.13.0
   vite-plugin-fake-server: ^2.2.4
   vite-plugin-svgr: ^5.2.0
-  vitepress: ^1.6.4
   vitest: ^4.1.6
   yaml: ^2.9.0
   # AC-D12/AC-D15：契约机制钉 zod v4；非 importmap 共享条目，但 contract 微包、

@@ -1,0 +1,28 @@
+{
+	"name": "@plane/kit",
+	"type": "module",
+	"version": "0.1.9",
+	"description": "ojm 首方共享 UI 包（登录/注册/profile 立即可用），宿主 importmap 单例供给",
+	"license": "MIT",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"default": "./dist/kit.js"
+		}
+	},
+	"files": [
+		"dist"
+	],
+	"scripts": {
+		"build": "vite build && tsc -p tsconfig.dts.json"
+	},
+	"peerDependencies": {
+		"antd": "catalog:",
+		"react": "catalog:",
+		"react-dom": "catalog:"
+	},
+	"publishConfig": {
+		"registry": "https://registry.npmjs.org/",
+		"access": "public"
+	}
+}

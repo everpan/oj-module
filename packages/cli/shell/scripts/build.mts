@@ -668,6 +668,15 @@ async function main() {
 		stdio: "inherit",
 	});
 
+	// @plane/kit 共享资产经 esbuild 从包入口（dist/kit.js）打包，须先构建。
+	// 刻意不拷贝 dist 进 assets：与共享依赖同链路（external 共享包 + importmap），
+	// 而非 runtime 特例（整 dist 拷贝）
+	console.log("[shell] 构建 @plane/kit（共享 UI 包）");
+	execSync("pnpm --filter @plane/kit build", {
+		cwd: resolve(shellDir, "../../.."),
+		stdio: "inherit",
+	});
+
 	await buildSharedEntries();
 
 	// 拷贝 runtime 产物到宿主 assets。

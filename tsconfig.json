@@ -11,6 +11,9 @@
 			"@oj-module/runtime": [
 				"./packages/runtime/src/index.ts"
 			],
+			"@plane/kit": [
+				"./packages/kit/src/index.ts"
+			],
 			"#*": [
 				"./*"
 			]
@@ -35,6 +38,7 @@
 	"include": [
 		"packages/runtime/src",
 		"packages/runtime/contract",
+		"packages/kit/src",
 		"packages/cli/src",
 		"apps/playground",
 		"web",

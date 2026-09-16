@@ -42,6 +42,9 @@ export const SHARED_DEPS: SharedDepEntry[] = [
 	// ContractApiError/ScopedRequestLike，instanceof 要求宿主与模块单实例 →
 	// 硬共享；zod 不随该资产（AC-D15 零成本承诺）
 	{ specifier: "@oj-module/runtime/contract/errors", asset: "contract-errors", hard: true },
+	// 首方共享 UI 包（M1 T7）：登录/注册/profile 组件，模块与宿主命中同一份
+	// 组件实现（单例语义与 React context 同级——多副本会产生两份 antd 上下文树）
+	{ specifier: "@plane/kit", asset: "kit", hard: true },
 	// —— 软共享 ——
 	// 注：@rc-component/form（antd 6 Form 底层）曾尝试单例化以修 my-profile
 	// 崩溃（React #130），假说未证实——多副本并非充分根因，已回退；见
