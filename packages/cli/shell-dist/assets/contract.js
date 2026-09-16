@@ -25,6 +25,8 @@ function validateDefinition(def) {
   if (!apiPrefix?.startsWith("/")) {
     throw new Error(`[\u5951\u7EA6] apiPrefix \u5FC5\u987B\u4EE5 "/" \u5F00\u5934\uFF08\u6536\u5230: ${apiPrefix}\uFF09\u2014\u2014\u5982 "/order"\uFF1Buni-dev \u5F62\u6001\u8BF7\u4E0E oj \u6A21\u5757\u6BB5\u540D\u4FDD\u6301\u4E00\u81F4\uFF08AC-D9\uFF09\u3002`);
   }
+  if (def.urlPrefix !== void 0 && !def.urlPrefix.startsWith("/"))
+    fail(route, `urlPrefix \u5FC5\u987B\u4EE5 "/" \u5F00\u5934\uFF08\u6536\u5230: ${def.urlPrefix}\uFF09\u3002`);
   if (!route?.startsWith("/"))
     fail(route, `route \u5FC5\u987B\u4EE5 "/" \u5F00\u5934\uFF08\u6536\u5230: ${route}\uFF09\uFF0C\u4E14\u4E00\u5F8B\u76F8\u5BF9 apiPrefix\u2014\u2014\u4E0D\u652F\u6301 oj \u7684\u6839\u7EDD\u5BF9\u5199\u6CD5\uFF08\u6A21\u5757\u624B\u518C D11 \u524D\u7F00\u6536\u655B\uFF09\u3002`);
   if (route.split("/").some((seg) => seg === ".." || seg === "." || seg === "\\"))

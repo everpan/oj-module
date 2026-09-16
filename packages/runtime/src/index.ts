@@ -92,6 +92,9 @@ export { useAuthStore } from "./store/auth";
 // 认证 provider 注入契约（P5）：模块经 ctx.register.authProvider 实现
 export type { AuthProvider } from "./store/auth-provider";
 
+// 请求头 provider 注入契约（D-M9）：模块经 ctx.register.headerProvider 实现
+export type { HeaderProvider } from "./store/header-provider";
+
 export { useUserStore } from "./store/user";
 
 export type { AppInfo } from "./types/app-info";

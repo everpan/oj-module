@@ -3,6 +3,7 @@ import type { Options } from "ky";
 import ky from "ky";
 import { isLoginPathname } from "#src/router/extra-info";
 import { useAuthStore } from "#src/store/auth";
+import { currentHeaderProvider } from "#src/store/header-provider";
 import { usePreferencesStore } from "#src/store/preferences";
 
 import { AUTH_HEADER, LANG_HEADER, REFRESH_TOKEN_PATH } from "./constants";
@@ -38,6 +39,13 @@ const defaultConfig: Options = {
 				}
 				// 语言等所有的接口都需要携带
 				setHeaderSafe(request.headers, LANG_HEADER, usePreferencesStore.getState().language);
+				// D-M9：模块注册的惰性请求头（租户等）——追加式合并，未注册时请求照发
+				const headerProvider = currentHeaderProvider();
+				if (headerProvider) {
+					for (const [name, value] of Object.entries(headerProvider())) {
+						setHeaderSafe(request.headers, name, value);
+					}
+				}
 			},
 		],
 		afterResponse: [

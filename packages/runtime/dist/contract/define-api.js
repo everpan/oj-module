@@ -8,6 +8,8 @@ function validateDefinition(def) {
     if (!apiPrefix?.startsWith("/")) {
         throw new Error(`[契约] apiPrefix 必须以 "/" 开头（收到: ${apiPrefix}）——如 "/order"；uni-dev 形态请与 oj 模块段名保持一致（AC-D9）。`);
     }
+    if (def.urlPrefix !== undefined && !def.urlPrefix.startsWith("/"))
+        fail(route, `urlPrefix 必须以 "/" 开头（收到: ${def.urlPrefix}）。`);
     if (!route?.startsWith("/"))
         fail(route, `route 必须以 "/" 开头（收到: ${route}），且一律相对 apiPrefix——不支持 oj 的根绝对写法（模块手册 D11 前缀收敛）。`);
     if (route.split("/").some(seg => seg === ".." || seg === "." || seg === "\\"))

@@ -1,5 +1,6 @@
 import type { AppRouteRecordRaw } from "#src/router/types";
 import type { AuthProvider } from "#src/store/auth-provider";
+import type { HeaderProvider } from "#src/store/header-provider";
 import type {
 	Manifest,
 	ManifestModuleEntry,
@@ -22,6 +23,7 @@ import {
 	unregisterApiProviders,
 } from "#src/store/api-provider";
 import { registerAuthProvider, unregisterAuthProvider } from "#src/store/auth-provider";
+import { registerHeaderProvider, unregisterHeaderProvider } from "#src/store/header-provider";
 import { useUserStore } from "#src/store/user";
 import { createScopedRequest } from "#src/utils/request/scoped";
 import { getAllRoutePaths, getKeepAliveExcludes } from "./keep-alive";
@@ -57,6 +59,11 @@ function createModuleContext(definition: ModuleDefinition): ModuleContext {
 			// 模块卸载时由 unloadModule 经 unregisterAuthProvider 自动注销
 			authProvider: (provider: AuthProvider) => {
 				registerAuthProvider(definition.name, provider);
+			},
+			// D-M9：注入惰性请求头；闭包 definition.name，模块卸载时由
+			// unloadModule 经 unregisterHeaderProvider 自动注销（命名隔离）
+			headerProvider: (provider: HeaderProvider) => {
+				registerHeaderProvider(definition.name, provider);
 			},
 			// D9：接管系统/通知/上传 API；闭包 definition.name，模块卸载时
 			// 由 unloadModule 经 unregisterApiProviders 自动注销（命名隔离）
@@ -337,6 +344,7 @@ export async function unloadModule(name: string): Promise<void> {
 	}
 	removeModuleSlots(name);
 	unregisterAuthProvider(name);
+	unregisterHeaderProvider(name);
 	unregisterApiProviders(name);
 	unregisterLayouts(name);
 	modules.delete(name);

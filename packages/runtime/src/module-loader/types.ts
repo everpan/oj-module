@@ -6,6 +6,7 @@ import type {
 	UploadApiProvider,
 } from "#src/store/api-provider";
 import type { AuthProvider } from "#src/store/auth-provider";
+import type { HeaderProvider } from "#src/store/header-provider";
 
 /** 模块上下文 — 主框架向模块注入的能力 */
 export interface ModuleContext {
@@ -26,6 +27,8 @@ export interface ModuleContext {
 		apiPrefix: (prefix: string) => void
 		/** 接管登录/登出/用户信息（P5）；先到先得，模块卸载时自动注销 */
 		authProvider: (provider: AuthProvider) => void
+		/** 注入惰性求值的自定义请求头（D-M9）；先到先得，模块卸载时自动注销 */
+		headerProvider: (provider: HeaderProvider) => void
 		/** 接管系统角色/菜单类 API（D9）；先到先得，模块卸载时自动注销 */
 		systemApi: (provider: SystemApiProvider) => void
 		/** 接管通知拉取 API（D9）；先到先得，模块卸载时自动注销 */

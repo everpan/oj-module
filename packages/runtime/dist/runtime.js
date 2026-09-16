@@ -228,7 +228,7 @@ function getAppInfo() {
 			"version": "0.1.8",
 			"license": "MIT"
 		},
-		"lastBuildTime": "2026-09-12 23:53:41"
+		"lastBuildTime": "2026-09-16 16:26:44"
 	};
 }
 var init_get_app_info = __esmMin((() => {}));
@@ -3123,22 +3123,22 @@ var init_routes = __esmMin((() => {
 //#endregion
 //#region src/store/auth-provider.ts
 function registerAuthProvider(moduleName, provider) {
-	if (current) {
-		console.warn(`[auth] 重复的认证 provider 忽略：已由模块 "${current.moduleName}" 提供，忽略 "${moduleName}"（先到先得，与 login 路由去重同一规则）。`);
+	if (current$1) {
+		console.warn(`[auth] 重复的认证 provider 忽略：已由模块 "${current$1.moduleName}" 提供，忽略 "${moduleName}"（先到先得，与 login 路由去重同一规则）。`);
 		return;
 	}
-	current = {
+	current$1 = {
 		moduleName,
 		provider
 	};
 }
 function getAuthProvider() {
-	return current?.provider;
+	return current$1?.provider;
 }
 function unregisterAuthProvider(moduleName) {
-	if (current?.moduleName === moduleName) current = void 0;
+	if (current$1?.moduleName === moduleName) current$1 = void 0;
 }
-var current;
+var current$1;
 var init_auth_provider = __esmMin((() => {}));
 //#endregion
 //#region src/store/user.ts
@@ -6965,6 +6965,26 @@ var init_resolve_layout = __esmMin((() => {
 	warnedUnknownLayouts = /* @__PURE__ */ new Set();
 }));
 //#endregion
+//#region src/store/header-provider.ts
+function registerHeaderProvider(moduleName, provider) {
+	if (current) {
+		console.warn(`[header] 重复的请求头 provider 忽略：已由模块 "${current.moduleName}" 提供，忽略 "${moduleName}"（先到先得，与 authProvider 同一规则）。`);
+		return;
+	}
+	current = {
+		moduleName,
+		provider
+	};
+}
+function currentHeaderProvider() {
+	return current?.provider;
+}
+function unregisterHeaderProvider(moduleName) {
+	if (current?.moduleName === moduleName) current = void 0;
+}
+var current;
+var init_header_provider = __esmMin((() => {}));
+//#endregion
 //#region src/utils/request/scoped.ts
 /** 仅暴露安全子集：callable + HTTP verb 工厂；不给 create/extend（可绕过 hooks） */
 function createScopedRequest(moduleName, getPrefix, underlying = request) {
@@ -7124,6 +7144,9 @@ function createModuleContext(definition) {
 			},
 			authProvider: (provider) => {
 				registerAuthProvider(definition.name, provider);
+			},
+			headerProvider: (provider) => {
+				registerHeaderProvider(definition.name, provider);
 			},
 			systemApi: (provider) => {
 				registerSystemApiProvider(definition.name, provider);
@@ -7311,6 +7334,7 @@ async function unloadModule(name) {
 	}
 	removeModuleSlots(name);
 	unregisterAuthProvider(name);
+	unregisterHeaderProvider(name);
 	unregisterApiProviders(name);
 	unregisterLayouts(name);
 	modules.delete(name);
@@ -7340,6 +7364,7 @@ var init_module_loader = __esmMin((() => {
 	init_access();
 	init_api_provider();
 	init_auth_provider();
+	init_header_provider();
 	init_user();
 	init_scoped();
 	init_keep_alive();
@@ -8581,6 +8606,7 @@ var defaultConfig, request;
 var init_request = __esmMin((() => {
 	init_extra_info();
 	init_auth();
+	init_header_provider();
 	init_preferences$3();
 	init_constants$3();
 	init_error_response();
@@ -8601,6 +8627,8 @@ var init_request = __esmMin((() => {
 					setHeaderSafe(request.headers, AUTH_HEADER, `Bearer ${token}`);
 				}
 				setHeaderSafe(request.headers, LANG_HEADER, usePreferencesStore.getState().language);
+				const headerProvider = currentHeaderProvider();
+				if (headerProvider) for (const [name, value] of Object.entries(headerProvider())) setHeaderSafe(request.headers, name, value);
 			}],
 			afterResponse: [async ({ request, options, response }) => {
 				if (!options.ignoreLoading) globalProgress.done();
