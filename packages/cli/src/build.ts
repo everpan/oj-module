@@ -6,6 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
+import tailwindcss from "@tailwindcss/vite";
 import { build as esbuild } from "esbuild";
 import { build } from "vite";
 import { loadModulesConfig, resolveModuleEntry } from "./config";
@@ -320,7 +321,9 @@ export async function readModuleDefinition(entryFile: string, projectRoot: strin
 			plugins: [runtimeStubPlugin, dynamicImportStubPlugin, makeBareImportStubPlugin(bareNames)],
 			outdir: outDir,
 			jsx: "automatic",
-			loader: { ".ts": "ts", ".tsx": "tsx", ".json": "json" },
+			// 元数据读取不需要 css：empty 装载器把 `import "./styles.css"` 抹成空模块，
+			// 避免裸导入桩拦截 css 内部的 `@import "tailwindcss"`（js 桩无法注入 css）
+			loader: { ".ts": "ts", ".tsx": "tsx", ".json": "json", ".css": "empty" },
 			logLevel: "silent",
 		});
 		const bundled = path.join(outDir, "entry.js");
@@ -530,7 +533,9 @@ export async function buildModules(
 		await build({
 			root: projectRoot,
 			logLevel: "warn",
-			plugins: [collectChunks],
+			// §4.1-④：tailwind 模块管线——模块内 import 的 css 经 @tailwindcss/vite
+			// 编译，产物由宿主 <link> 注入（R16）；模块无 css 入口时插件不产生任何产物
+			plugins: [collectChunks, tailwindcss()],
 			// Spike A 坑 2：lib 模式不替换 process.env.NODE_ENV，
 			// 浏览器顶层求值会抛 process is not defined（风险 R15）
 			define: { "process.env.NODE_ENV": JSON.stringify("production") },

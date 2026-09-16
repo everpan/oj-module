@@ -1,0 +1,7 @@
+/* 模块 tailwind 入口（templates/web/src/styles.css）：
+   与 runtime 的 tailwind.css 对齐——禁 preflight、layer 顺序一致，避免每模块重复 base；
+   prefix(tw) 隔离模块工具类（v4 前缀仅允许小写字母，类形如 tw:flex） */
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme) prefix(tw);
+@import "tailwindcss/utilities.css" layer(utilities) prefix(tw);
+/* ponytail: source 根与 prefix 以首个真实模块（T11 login）落地时校准，此处为模板缺省 */
