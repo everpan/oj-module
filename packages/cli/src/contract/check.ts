@@ -5,7 +5,7 @@ import ts from "typescript";
 import { emitClient } from "./emit-client";
 import { emitOpenapiYaml, emitRoutesJson } from "./emit-meta";
 import { planStubWrites } from "./emit-stub";
-import { splitRoute } from "./ir";
+import { splitRoute, wirePrefixOf } from "./ir";
 import { artifactPaths, discoverContracts, irOf } from "./run";
 
 /**
@@ -216,7 +216,14 @@ function reconcileRoutes(contractIr: IrEndpoint[], handlers: HandlerRow[], exemp
 			});
 			continue;
 		}
-		if ((ep.tail ?? "") !== (handler.tail ?? "")) {
+		// D-M8：handler .route 两种形态皆合法——相对尾巴（oj 原生，与契约 route 尾巴比对）
+		// 与绝对挂载（uni-dev 存量：.route 含命名空间段）。绝对形态与契约 wirePrefix+route
+		// 全路径直接比对（urlPrefix 映射时即线上前缀）。
+		const contractAbs = `${wirePrefixOf(ep)}${ep.route}`;
+		const tailMatch = (handler.tail ?? "").startsWith("/")
+			? handler.tail === contractAbs
+			: (ep.tail ?? "") === (handler.tail ?? "");
+		if (!tailMatch) {
 			violations.push({
 				level: "error",
 				kind: "route-params-mismatch",

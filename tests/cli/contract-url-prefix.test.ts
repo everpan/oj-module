@@ -1,6 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { afterAll, describe, expect, it } from "vitest";
+import { checkApi } from "../../packages/cli/src/contract/check";
 import { emitClient } from "../../packages/cli/src/contract/emit-client";
 import { buildIr, wirePrefixOf } from "../../packages/cli/src/contract/ir";
+import { runApi } from "../../packages/cli/src/contract/run";
 import { defineApi } from "../../packages/runtime/contract";
 
 /**
@@ -63,5 +67,54 @@ describe("urlPrefix 前缀映射（D-M8）", () => {
 		});
 		expect(() => emitClient(ir, { target: "module", module: "workitems" }))
 			.toThrowError(/线上前缀不一致/);
+	});
+});
+
+const tmpDirs: string[] = [];
+
+afterAll(() => {
+	for (const d of tmpDirs)
+		rmSync(d, { recursive: true, force: true });
+});
+
+/** spike 形状：api/src/workitems/{contract.ts,api.ts}，handler .route 绝对挂载（含线上命名空间段） */
+function makeSpikeProject(absRoute: string): string {
+	const dir = mkdtempSync(join(process.cwd(), "node_modules/.cache/ojm-url-prefix-test-"));
+	tmpDirs.push(dir);
+	mkdirSync(join(dir, "api/src/workitems"), { recursive: true });
+	writeFileSync(join(dir, "api/src/workitems/contract.ts"), `
+import { defineApi, z } from "@oj-module/runtime/contract";
+
+export const listProjectIssues = defineApi({
+	apiPrefix: "/workitems",
+	urlPrefix: "/workspaces",
+	route: "/{slug}/projects/{project_id}/issues",
+	data: z.object({ list: z.array(z.object({ id: z.string() })) }),
+});
+`);
+	writeFileSync(join(dir, "api/src/workitems/api.ts"), `
+function list(): void {
+	json.ok({ list: [] });
+}
+list.route = "${absRoute}";
+export default { get: list };
+`);
+	return dir;
+}
+
+describe("checkApi 对账：绝对挂载 .route（D-M8）", () => {
+	it("handler .route 绝对形态 = wirePrefix + route 全路径 → 零违规", async () => {
+		const cwd = makeSpikeProject("/workspaces/{slug}/projects/{project_id}/issues");
+		await runApi({ cwd });
+		const { violations } = await checkApi({ cwd });
+		expect(violations).toEqual([]);
+	});
+
+	it("handler .route 绝对形态但参数段不符 → 仍报 route-params-mismatch", async () => {
+		const cwd = makeSpikeProject("/workspaces/{slug}/projects/{pid}/issues");
+		const { violations } = await checkApi({ cwd });
+		expect(violations).toEqual(expect.arrayContaining([
+			expect.objectContaining({ level: "error", kind: "route-params-mismatch" }),
+		]));
 	});
 });
