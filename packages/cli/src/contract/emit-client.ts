@@ -1,5 +1,6 @@
 import type { IrEndpoint } from "./ir";
 import { emitSchemaSource } from "./emit-schema";
+import { wirePrefixOf } from "./ir";
 
 /**
  * AC-D5/D6/D8/D15：api.ts + api.schemas.ts 发射器。
@@ -150,12 +151,15 @@ function emitEndpoint(ep: IrEndpoint): string {
 }`;
 }
 
-function emitPrelude(target: "module" | "internal", module?: string, endpointNames: string[] = []): string {
+function emitPrelude(target: "module" | "internal", module?: string, endpointNames: string[] = [], wirePrefix?: string): string {
 	const binding = target === "module"
 		? `let req: ScopedRequestLike | undefined;
 
-/** 本模块 API 前缀（ojm api 从契约抽取，唯一真源，勿手改） */
-export const API_PREFIX = "/${module}";
+/** 线上 API 前缀（ojm api 从契约抽取，唯一真源，勿手改）：请求基址 + 前缀登记用 */
+export const API_PREFIX = "${wirePrefix ?? `/${module}`}";
+
+/** 认领身份前缀（契约 apiPrefix，字面等于模块目录名）：跨模块认领护栏对比基准 */
+export const MODULE_PREFIX = "/${module}";
 
 /**
  * 模块 entry 的 onInit 里一行创建（构造即 install）：完成 apiPrefix 登记 +
@@ -163,11 +167,13 @@ export const API_PREFIX = "/${module}";
  * 重复构造幂等安全（前缀重复登记同值、request 重绑同值）。
  */
 export function create${pascalModuleName(module!)}Client(ctx: ModuleContext) {
-	// 跨模块认领护栏（DEV）：工厂知道自己该属于谁（API_PREFIX），ctx 又带
-	// module.name——名实不符说明别的模块在替本模块创建 client，会共享 request
+	// 跨模块认领护栏（DEV）：工厂知道自己该属于谁（MODULE_PREFIX = 契约 apiPrefix），
+	// ctx 又带 module.name——名实不符说明别的模块在替本模块创建 client，会共享 request
 	// 单槽、卸载互相耦合；跨模块需求应由本模块创建后经 provider 暴露。
-	if (import.meta.env.DEV && ctx.module.name !== API_PREFIX.slice(1)) {
-		console.warn(\`[ojm-api] 模块 "\${ctx.module.name}" 正在认领 \${API_PREFIX} 的 client——跨模块认领会共享 request 单槽、卸载互相耦合；应由 "\${API_PREFIX.slice(1)}" 模块在自身 onInit 创建，跨模块需求经 provider 暴露。\`);
+	// 注意对比基准是 MODULE_PREFIX（目录名）而非 API_PREFIX——D-M8 映射时线上前缀
+	// 属于别的命名空间，认领身份仍按目录名。
+	if (import.meta.env.DEV && ctx.module.name !== MODULE_PREFIX.slice(1)) {
+		console.warn(\`[ojm-api] 模块 "\${ctx.module.name}" 正在认领 \${MODULE_PREFIX} 的 client——跨模块认领会共享 request 单槽、卸载互相耦合；应由 "\${MODULE_PREFIX.slice(1)}" 模块在自身 onInit 创建，跨模块需求经 provider 暴露。\`);
 	}
 	ctx.register.apiPrefix(API_PREFIX);
 	bindRequest(ctx.utils.request);
@@ -268,7 +274,16 @@ export function emitClient(ir: IrEndpoint[], opts: { target: "module" | "interna
 			+ "emitClient(ir, { target: \"module\", module })（工厂名 create<Module>Client 与 API_PREFIX 都依赖它）。",
 		);
 	}
-	const sections: string[] = [emitPrelude(opts.target, opts.module, ir.map(ep => ep.name))];
+	// D-M8：模块目标的登记前缀 = 线上前缀（scoped request 基座）；一模块一登记值，
+	// 混用不同线上前缀的端点在此拦截（register.apiPrefix 每模块只收一个值）。
+	const wirePrefixes = new Set(ir.map(ep => wirePrefixOf(ep)));
+	if (opts.target === "module" && wirePrefixes.size > 1) {
+		throw new Error(
+			`[ojm-api] client 发射失败：模块 "${opts.module}" 的端点线上前缀不一致（${[...wirePrefixes].join(" / ")}）`
+			+ "——register.apiPrefix 一模块一值，urlPrefix 映射须整模块一致（不同前缀请拆模块）。",
+		);
+	}
+	const sections: string[] = [emitPrelude(opts.target, opts.module, ir.map(ep => ep.name), wirePrefixes.size === 1 ? wirePrefixes.values().next().value : undefined)];
 	for (const ep of ir) {
 		const types = emitTypes(ep);
 		if (types.length)

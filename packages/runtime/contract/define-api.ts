@@ -13,6 +13,12 @@ export type HttpMethod = "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "HEAD" | 
 export interface ApiDefinitionInput {
 	/** 模块 API 前缀（"/" 开头）；uni-dev 形态字面等于 oj 模块段名（AC-D9） */
 	apiPrefix: string
+	/**
+	 * 线上 URL 前缀（"/" 开头，D-M8）：存量 oj 后端 URL 命名空间与目录名错位时
+	 * 显式声明（如目录 workitems、URL /workspaces/{slug}/...）。缺省 = apiPrefix。
+	 * 认领/护栏身份仍按 apiPrefix（目录名）；线上前缀不一致的同模块端点混用报错。
+	 */
+	urlPrefix?: string
 	/** 相对 apiPrefix 的路由（"/" 开头），支持 `{id}` / `{*path}` 参数段 */
 	route: string
 	/** HTTP 方法，缺省 "GET"（IR 层归一） */
@@ -45,6 +51,8 @@ function validateDefinition(def: ApiDefinitionInput): void {
 	if (!apiPrefix?.startsWith("/")) {
 		throw new Error(`[契约] apiPrefix 必须以 "/" 开头（收到: ${apiPrefix}）——如 "/order"；uni-dev 形态请与 oj 模块段名保持一致（AC-D9）。`);
 	}
+	if (def.urlPrefix !== undefined && !def.urlPrefix.startsWith("/"))
+		fail(route, `urlPrefix 必须以 "/" 开头（收到: ${def.urlPrefix}）。`);
 	if (!route?.startsWith("/"))
 		fail(route, `route 必须以 "/" 开头（收到: ${route}），且一律相对 apiPrefix——不支持 oj 的根绝对写法（模块手册 D11 前缀收敛）。`);
 	if (route.split("/").some(seg => seg === ".." || seg === "." || seg === "\\"))

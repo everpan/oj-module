@@ -305,7 +305,11 @@ describe("工厂（create<Module>Client，构造即 install，BDD §4）", () =>
 	});
 
 	it("5.2#2 连字符模块名 camelize：personal-center → createPersonalCenterClient", () => {
-		const files = emitClient(ir, { target: "module", module: "personal-center" });
+		// D-M8：线上前缀以契约为真源——契约 apiPrefix 与模块名一致时生成物形态不变
+		const pc = buildIr({
+			listCenterFeed: defineApi({ apiPrefix: "/personal-center", route: "/feed" }),
+		});
+		const files = emitClient(pc, { target: "module", module: "personal-center" });
 		expect(files["api.ts"]).toContain("export const API_PREFIX = \"/personal-center\";");
 		expect(files["api.ts"]).toContain("export function createPersonalCenterClient(ctx: ModuleContext)");
 	});

@@ -47,10 +47,12 @@ export interface IrEndpoint {
 	/** 契约文件里的导出名，如 "getOrderDetail" */
 	name: string
 	apiPrefix: string
+	/** 线上前缀（D-M8）：缺省 = apiPrefix */
+	urlPrefix?: string
 	/** 相对 apiPrefix 的 route，如 "/item/{id}" */
 	route: string
 	method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "HEAD" | "OPTIONS"
-	/** apiPrefix + route，如 "/order/item/{id}" */
+	/** wirePrefixOf(api) + route，如 "/order/item/{id}" */
 	fullPath: string
 	/** 参数段名（catch-all 去 *），如 ["id"] */
 	paramNames: string[]
@@ -112,6 +114,11 @@ export function assertWhitelisted(schema: unknown, where: string): void {
  * route →（目录镜像 + `.route` 尾巴）切分（AC-D10 §4 算法，stub 生成与
  * --check 对账共用同一实现）：静态前缀段 → 目录；自首个参数段起的尾巴 → `.route`。
  */
+/** 线上前缀（D-M8）：urlPrefix 声明时取之（URL 命名空间 ≠ 目录名），否则回落 apiPrefix */
+export function wirePrefixOf(api: { apiPrefix: string, urlPrefix?: string }): string {
+	return api.urlPrefix ?? api.apiPrefix;
+}
+
 export function splitRoute(route: string): { dir: string, tail?: string } {
 	const segs = route.split("/").filter(Boolean);
 	const firstParam = segs.findIndex(seg => seg.startsWith("{"));
@@ -160,10 +167,11 @@ export function buildIr(exports: Record<string, unknown>): IrEndpoint[] {
 		endpoints.push({
 			name,
 			apiPrefix: def.apiPrefix,
+			urlPrefix: def.urlPrefix,
 			route: def.route,
 			method: def.method ?? "GET",
 			// apiPrefix "/" 为框架内部根级端点（如 runtime 自带 role-list）——拼出 "//" 即错
-			fullPath: def.apiPrefix === "/" ? def.route : `${def.apiPrefix}${def.route}`,
+			fullPath: wirePrefixOf(def) === "/" ? def.route : `${wirePrefixOf(def)}${def.route}`,
 			paramNames,
 			querySchema: def.query,
 			paramsSchema: def.params,
