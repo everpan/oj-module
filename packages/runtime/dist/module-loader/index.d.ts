@@ -5,6 +5,7 @@ export declare function getModules(): ModuleInstance[];
 export declare function getModule(name: string): ModuleInstance | undefined;
 export declare function getRoutes(): AppRouteRecordRaw[];
 export declare function getRegisteredStore<T = unknown>(name: string): T | undefined;
+/** 首个登记的前缀（一模块可登记多个）；未登记返回 undefined */
 export declare function getRegisteredApiPrefix(moduleName: string): string | undefined;
 /**
  * 卸载模块：执行 onDestroy 生命周期 → 清理其布局插槽（US-8）→ 移除实例。

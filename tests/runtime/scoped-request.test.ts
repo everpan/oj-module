@@ -90,6 +90,14 @@ describe("scoped request 单元（P6.3）", () => {
 		const scoped = createScopedRequest("m1", () => "/order-api", fakeRequest);
 		expect(() => scoped("/order-api")).not.toThrow();
 	});
+
+	// 一模块可登记多个前缀（多个生成 client 各登记一个）：命中任一放行
+	it("多前缀：命中任一即放行，未登记的仍拒绝", () => {
+		const scoped = createScopedRequest("m1", () => ["/a", "/b"], fakeRequest);
+		expect(() => scoped("/a/x")).not.toThrow();
+		expect(() => scoped("/b/x")).not.toThrow();
+		expect(() => scoped("/c/x")).toThrow(/越界/);
+	});
 });
 
 describe("scoped request 模块集成（P6.3 / D11）", () => {
@@ -105,5 +113,46 @@ describe("scoped request 模块集成（P6.3 / D11）", () => {
 		const result = getRegisteredStore<{ inPrefixPassed: boolean, outOfBoundBlocked: boolean }>("scoped-result");
 		expect(result?.inPrefixPassed).toBe(true);
 		expect(result?.outOfBoundBlocked).toBe(true);
+	});
+});
+
+/**
+ * 回归（2026-09-17）：登记集合曾是单值 Map（后者覆盖前者），一个模块里
+ * 有两个生成 client（如 /auth + /users）时，先登记的前缀丢失 → 该 client
+ * 的请求全被守卫以「请求越界」拒绝。登记改为追加去重后，两个前缀都必须放行。
+ */
+describe("scoped request 一模块多 apiPrefix（2026-09-17 回归）", () => {
+	beforeAll(async () => {
+		const { loadAll, unloadModule } = await import("#src/module-loader");
+		const multi = `${PROJECT_ROOT}/tests/fixtures/scoped-multi-prefix-entry.tsx`;
+		const dup = `${PROJECT_ROOT}/tests/fixtures/scoped-dup-prefix-entry.tsx`;
+		await unloadModule("scoped-multi");
+		await unloadModule("scoped-dup");
+		await loadAll({
+			modules: [
+				{ name: "scoped-multi", entry: pathToFileURL(multi).href },
+				{ name: "scoped-dup", entry: pathToFileURL(dup).href },
+			],
+		});
+	});
+
+	it("登记 /auth + /users 后两个前缀都放行，其余越界", async () => {
+		const { getRegisteredStore } = await import("#src/module-loader");
+		const result = getRegisteredStore<{
+			authPassed: boolean
+			usersPassed: boolean
+			otherBlocked: boolean
+		}>("scoped-multi-result");
+		expect(result?.authPassed, "/auth 前缀应放行（不被 /users 覆盖）").toBe(true);
+		expect(result?.usersPassed, "/users 前缀应放行").toBe(true);
+		expect(result?.otherBlocked, "/other 仍应越界拒绝").toBe(true);
+	});
+
+	// 报错文案由 prefixes.join("、") 拼出，即登记集合的可观测快照
+	it("同一前缀重复登记去重（不产生 /dup、/dup）", async () => {
+		const { getRegisteredStore } = await import("#src/module-loader");
+		const result = getRegisteredStore<{ message: string }>("scoped-dup-result");
+		expect(result?.message).toContain("登记前缀 /dup 内");
+		expect(result?.message).not.toContain("/dup、/dup");
 	});
 });

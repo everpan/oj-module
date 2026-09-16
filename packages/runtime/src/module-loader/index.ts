@@ -32,7 +32,9 @@ import { registerSlot, removeModuleSlots } from "./slots";
 
 const modules = new Map<string, ModuleInstance>();
 const registeredStores = new Map<string, unknown>();
-const registeredApiPrefixes = new Map<string, string>();
+// 一模块可登记多个前缀（多个生成 client 各自登记一次，如 /auth + /users），
+// 因此按模块存集合而非单值；登记顺序即数组顺序（getRegisteredApiPrefix 取首个）
+const registeredApiPrefixes = new Map<string, string[]>();
 
 function createModuleContext(definition: ModuleDefinition): ModuleContext {
 	return {
@@ -52,8 +54,14 @@ function createModuleContext(definition: ModuleDefinition): ModuleContext {
 			store: (name: string, store: unknown) => {
 				registeredStores.set(name, store);
 			},
+			// 追加而非覆盖：一模块可有多个生成 client（各登记一个前缀，如
+			// /auth + /users），覆盖会让先登记的 client 请求被守卫拒绝。
+			// 同一前缀重复登记（重入/HMR）去重，不产生重复项。
 			apiPrefix: (prefix: string) => {
-				registeredApiPrefixes.set(definition.name, prefix);
+				const prefixes = registeredApiPrefixes.get(definition.name) ?? [];
+				if (!prefixes.includes(prefix))
+					prefixes.push(prefix);
+				registeredApiPrefixes.set(definition.name, prefixes);
 			},
 			// P5：接管登录链路；闭包 definition.name，模块拿不到别人的名字，
 			// 模块卸载时由 unloadModule 经 unregisterAuthProvider 自动注销
@@ -326,8 +334,9 @@ export function getRegisteredStore<T = unknown>(name: string): T | undefined {
 	return registeredStores.get(name) as T | undefined;
 }
 
+/** 首个登记的前缀（一模块可登记多个）；未登记返回 undefined */
 export function getRegisteredApiPrefix(moduleName: string): string | undefined {
-	return registeredApiPrefixes.get(moduleName);
+	return registeredApiPrefixes.get(moduleName)?.[0];
 }
 
 /**

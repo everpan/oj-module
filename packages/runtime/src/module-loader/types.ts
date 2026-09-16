@@ -23,7 +23,10 @@ export interface ModuleContext {
 	register: {
 		/** 注册额外的 Zustand store */
 		store: (name: string, store: unknown) => void
-		/** 注册 API 路由前缀 */
+		/**
+		 * 注册 API 路由前缀（追加语义：一模块可登记多个，重复登记同值无副作用）。
+		 * `ctx.utils.request` 放行命中其中任一前缀的 URL
+		 */
 		apiPrefix: (prefix: string) => void
 		/** 接管登录/登出/用户信息（P5）；先到先得，模块卸载时自动注销 */
 		authProvider: (provider: AuthProvider) => void

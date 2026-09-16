@@ -228,7 +228,7 @@ function getAppInfo() {
 			"version": "0.1.9",
 			"license": "MIT"
 		},
-		"lastBuildTime": "2026-09-16 17:16:57"
+		"lastBuildTime": "2026-09-17 02:59:12"
 	};
 }
 var init_get_app_info = __esmMin((() => {}));
@@ -6989,16 +6989,19 @@ var init_header_provider = __esmMin((() => {}));
 /** 仅暴露安全子集：callable + HTTP verb 工厂；不给 create/extend（可绕过 hooks） */
 function createScopedRequest(moduleName, getPrefix, underlying = request) {
 	function guard(rawUrl) {
-		const prefix = getPrefix();
-		if (!prefix) throw new Error(`[module] 模块 "${moduleName}" 尚未登记 API 前缀：请先在生命周期中调用 ctx.register.apiPrefix("/your-prefix") 再发起请求。`);
+		const registered = getPrefix();
+		const prefixes = (Array.isArray(registered) ? registered : [registered]).filter((prefix) => typeof prefix === "string" && prefix.length > 0);
+		if (prefixes.length === 0) throw new Error(`[module] 模块 "${moduleName}" 尚未登记 API 前缀：请先在生命周期中调用 ctx.register.apiPrefix("/your-prefix") 再发起请求。`);
 		let pathname;
 		try {
 			pathname = new URL(rawUrl, "http://scoped.local").pathname;
 		} catch {
 			pathname = rawUrl;
 		}
-		const boundary = prefix.endsWith("/") ? prefix.slice(0, -1) : prefix;
-		if (pathname !== boundary && !pathname.startsWith(`${boundary}/`)) throw new Error(`[module] 模块 "${moduleName}" 请求越界：${rawUrl} 不在其登记前缀 ${prefix} 内。请调整接口路径，或登记正确前缀（D11 安全收敛）。`);
+		if (!prefixes.some((prefix) => {
+			const boundary = prefix.endsWith("/") ? prefix.slice(0, -1) : prefix;
+			return pathname === boundary || pathname.startsWith(`${boundary}/`);
+		})) throw new Error(`[module] 模块 "${moduleName}" 请求越界：${rawUrl} 不在其登记前缀 ${prefixes.join("、")} 内。请调整接口路径，或登记正确前缀（D11 安全收敛）。`);
 	}
 	/**
 	* P7.2：剥离逐请求 prefix/prefixUrl——ky 2.x 允许逐请求覆盖默认 prefix，
@@ -7140,7 +7143,9 @@ function createModuleContext(definition) {
 				registeredStores.set(name, store);
 			},
 			apiPrefix: (prefix) => {
-				registeredApiPrefixes.set(definition.name, prefix);
+				const prefixes = registeredApiPrefixes.get(definition.name) ?? [];
+				if (!prefixes.includes(prefix)) prefixes.push(prefix);
+				registeredApiPrefixes.set(definition.name, prefixes);
 			},
 			authProvider: (provider) => {
 				registerAuthProvider(definition.name, provider);
@@ -7319,8 +7324,9 @@ function getRoutes() {
 function getRegisteredStore(name) {
 	return registeredStores.get(name);
 }
+/** 首个登记的前缀（一模块可登记多个）；未登记返回 undefined */
 function getRegisteredApiPrefix(moduleName) {
-	return registeredApiPrefixes.get(moduleName);
+	return registeredApiPrefixes.get(moduleName)?.[0];
 }
 /**
 * 卸载模块：执行 onDestroy 生命周期 → 清理其布局插槽（US-8）→ 移除实例。
