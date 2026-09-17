@@ -600,6 +600,9 @@ if (typeof document !== "undefined" && !document.querySelector("style[data-ojm-e
   .top-11 {
     top: calc(var(--spacing) * 11);
   }
+  .top-28 {
+    top: calc(var(--spacing) * 28);
+  }
   .top-\\[-10px\\] {
     top: -10px;
   }
@@ -4066,9 +4069,6 @@ if (typeof document !== "undefined" && !document.querySelector("style[data-ojm-e
   .\\!border-subtle {
     border-color: var(--border-subtle) !important;
   }
-  .border-\\[var\\(--border-color\\)\\] {
-    border-color: var(--border-color);
-  }
   .border-accent-strong {
     border-color: var(--border-accent-strong);
   }
@@ -4230,9 +4230,6 @@ if (typeof document !== "undefined" && !document.querySelector("style[data-ojm-e
   }
   .bg-\\[\\#f59e0b\\] {
     background-color: #f59e0b;
-  }
-  .bg-\\[var\\(--bg-secondary\\)\\] {
-    background-color: var(--bg-secondary);
   }
   .bg-\\[var\\(--illustration-fill-quaternary\\)\\] {
     background-color: var(--illustration-fill-quaternary);
@@ -5580,12 +5577,6 @@ if (typeof document !== "undefined" && !document.querySelector("style[data-ojm-e
   .text-\\[\\#387ED1\\] {
     color: #387ED1;
   }
-  .text-\\[var\\(--text-color\\)\\] {
-    color: var(--text-color);
-  }
-  .text-\\[var\\(--text-secondary\\)\\] {
-    color: var(--text-secondary);
-  }
   .text-accent-primary {
     color: var(--txt-accent-primary);
   }
@@ -6338,6 +6329,14 @@ if (typeof document !== "undefined" && !document.querySelector("style[data-ojm-e
     &:is(:where(.group):hover *) {
       @media (hover: hover) {
         display: inline-flex;
+      }
+    }
+  }
+  .group-hover\\:translate-x-0 {
+    &:is(:where(.group):hover *) {
+      @media (hover: hover) {
+        --tw-translate-x: calc(var(--spacing) * 0);
+        translate: var(--tw-translate-x) var(--tw-translate-y);
       }
     }
   }
@@ -7285,13 +7284,6 @@ if (typeof document !== "undefined" && !document.querySelector("style[data-ojm-e
         @supports (color: color-mix(in lab, red, red)) {
           background-color: color-mix(in oklab, var(--bg-accent-primary) 20%, transparent) !important;
         }
-      }
-    }
-  }
-  .hover\\:bg-\\[var\\(--bg-secondary\\)\\] {
-    &:hover {
-      @media (hover: hover) {
-        background-color: var(--bg-secondary);
       }
     }
   }

@@ -29,6 +29,13 @@ describe("shell CSP（P6.2）", () => {
 		expect(generateCsp([], NONCE)).not.toContain("strict-dynamic");
 	});
 
+	it("放行 WASM 编译与内联 wasm 取数（模块可带 WASM 依赖，如 react-pdf 的 yoga），但不放 eval", () => {
+		const csp = generateCsp(["https://modules.cdn.example.com"], NONCE);
+		expect(csp).toMatch(/script-src [^;]*'wasm-unsafe-eval'/);
+		expect(csp).toMatch(/connect-src [^;]*\bdata:( |;|$)/);
+		expect(csp).not.toMatch(/script-src [^;]*'unsafe-eval'/);
+	});
+
 	it("锁定基线：default-src none；style 允许 inline（antd cssinjs）；object/base/form 收敛", () => {
 		const csp = generateCsp([], NONCE);
 		expect(csp).toContain("default-src 'none'");

@@ -26,11 +26,14 @@ export function generateCsp(trustedOrigins: string[], nonce: string): string {
 	const cdn = trustedOrigins.join(" ");
 	const directives = [
 		"default-src 'none'",
-		`script-src 'self' ${cdn} 'nonce-${nonce}'`.replace(/\s+/g, " ").trim(),
+		// 'wasm-unsafe-eval'：仅放行 wasm 编译（@react-pdf/renderer 的 yoga-layout
+		// 排版引擎为 WASM-only），不开 eval——用户批准的窄口径（M5d 导出解锁）
+		`script-src 'self' ${cdn} 'wasm-unsafe-eval' 'nonce-${nonce}'`.replace(/\s+/g, " ").trim(),
 		"script-src-attr 'none'",
 		// P7.4：跨源模块的 fetch 与 CSS <link> 同样需要信任源，
 		// 否则脚本可加载而样式/请求被拦（此前只加了 script-src）
-		`connect-src 'self' ${cdn}`.replace(/\s+/g, " ").trim(),
+		// data:：yoga wasm 以 data URL 内联，编译期需 connect-src 放行取数
+		`connect-src 'self' data: ${cdn}`.replace(/\s+/g, " ").trim(),
 		// antd CSS-in-JS 必需（cssinjs 动态插 <style>）
 		`style-src 'self' ${cdn} 'unsafe-inline'`.replace(/\s+/g, " ").trim(),
 		"img-src 'self' data: https:",
