@@ -555,7 +555,26 @@ export async function buildModules(
 				outDir: moduleOutDir,
 				emptyOutDir: true,
 				sourcemap: false,
-				minify: false,
+				/**
+				 * 模块产物压缩（2026-09-17 由 `false` 改为 `true`）。
+				 *
+				 * 本行原为 `false` **且无注释**（同文件其余设置都带 rationale）—— 经查出自
+				 * 2026-08-31 的调试提交 `1bf3200`，疑似调试期临时值遗留。实测代价极大：
+				 * 仅这一项就让 planning 的 gzip 从 186,730 → **75,872（−59.4%）**、
+				 * workitems 88,351 → **40,113（−54.6%）**（同一份产物只做压缩，未改任何配置）。
+				 * 背景：曾评估「把重复的生成 client 提成共享资产来省体积」，实测 gzip 净变化
+				 * 仅 −364 B（生成 client 压缩率 6.8%，且重复内容已被同一 bundle 内的 gzip
+				 * 滑窗吃掉）⇒ **真正的杠杆是压缩，不是去重**（见 oj-module 台账 T54）。
+				 *
+				 * ⚠️ **本项只作用于「模块产物」**，与宿主共享资产无关：`shell-dist/assets/*.js`
+				 * 由 `shell/scripts/build.mts` 自己的 esbuild 构建，且 `esm-exports.ts` 的
+				 * 导出面解析**依赖资产顶格输出**（其文件头写明「`minify: false` 下顶层语句
+				 * 一律顶格输出」）⇒ **不要**顺手把共享资产也压了，那会让导入完整性门禁失效。
+				 *
+				 * 代价（已知并接受）：生产产物栈不可读（`sourcemap: false` 保持不变 —— 开
+				 * sourcemap 会额外部署 .map 文件，属另一个决策）。
+				 */
+				minify: true,
 				lib: {
 					entry: entryFile,
 					formats: ["es"],
