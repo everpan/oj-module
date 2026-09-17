@@ -10,7 +10,10 @@
  *   外链脚本 /__ojm_reload.js + 同源 SSE（事件 `reload`）。
  */
 
+import type { Buffer } from "node:buffer";
+import type { Duplex } from "node:stream";
 import http from "node:http";
+import net from "node:net";
 
 /** RFC 7230 §6.1：hop-by-hop 头只作用于单条连接，代理必须剥离 */
 const HOP_BY_HOP = new Set([
@@ -69,6 +72,53 @@ export function proxyApi(target: string): (req: http.IncomingMessage, res: http.
 				res.destroy();
 		});
 		req.pipe(proxied);
+	};
+}
+
+/**
+ * WebSocket 升级请求的**原始字节隧道**（M5b，协作编辑器）。
+ *
+ * `proxyApi` 是纯 HTTP 反代——而 `upgrade` 是 hop-by-hop 头，且 Node 为协议升级
+ * 单发 `server.on("upgrade")` 事件，HTTP 请求处理器根本收不到。不隧道化则 dev 形态
+ * 下浏览器到 `/api/realtime/ws` 的 WS 永远握不上手（M5b 实测假红：协作 provider
+ * 全部 offline、标题/锁控制帧发不出、编辑器不挂载）。
+ *
+ * 做法：把 upgrade 请求的**初始字节**（请求行 + 头 + 可能已到的 body 分片）原样
+ * 发给上游，之后双向 pipe——WS 帧是流，代理不做任何解析。Host 与 proxyApi 同口径
+ * 改写为上游。生产形态浏览器与 oj 同源直连，不走这里。
+ */
+export function proxyWsUpgrade(
+	target: string,
+): (req: http.IncomingMessage, socket: Duplex, head: Buffer) => void {
+	const upstream = new URL(target);
+	return (req, socket, head) => {
+		const port = Number(upstream.port) || (upstream.protocol === "https:" ? 443 : 80);
+		const upstreamSocket = net.connect({ host: upstream.hostname, port }, () => {
+			const headerLines = Object.entries(req.headers)
+				.map(([name, value]) => `${name}: ${Array.isArray(value) ? value.join(", ") : value}`)
+				.join("\r\n");
+			upstreamSocket.write(`${req.method ?? "GET"} ${req.url} HTTP/1.1\r\n${headerLines}\r\n\r\n`);
+			if (head.length > 0)
+				upstreamSocket.write(head);
+			upstreamSocket.pipe(socket);
+			socket.pipe(upstreamSocket);
+		});
+		upstreamSocket.on("error", (err) => {
+			// 上游拒连：握手尚未响应时还能说人话（与 proxyApi 的 502 信封同形），
+			// 已经 pipe 起来就只能掐线
+			if (socket.writable && !socket.destroyed) {
+				socket.end(
+					`HTTP/1.1 502 Bad Gateway\r\ncontent-type: application/json\r\n\r\n${
+						JSON.stringify({ code: 502, message: `[ojm] WS 上游不可达（${target}）：${err.message}`, success: false, result: null })
+					}`,
+				);
+			}
+			socket.destroy();
+			upstreamSocket.destroy();
+		});
+		socket.on("error", () => {
+			upstreamSocket.destroy();
+		});
 	};
 }
 

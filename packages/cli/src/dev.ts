@@ -28,7 +28,7 @@ import process from "node:process";
 import { buildModules } from "./build";
 import { loadContractMocks, resolveMock } from "./contract/mock";
 import { loadProjectMocks, mockStatusCode } from "./dev-mock";
-import { createReloadHub, proxyApi, sseScript } from "./dev-proxy";
+import { createReloadHub, proxyApi, proxyWsUpgrade, sseScript } from "./dev-proxy";
 import { resolveLayout } from "./layout";
 import { startOj } from "./oj";
 import { readOjApiPrefix } from "./oj-config";
@@ -144,6 +144,18 @@ export async function devServer(projectRoot: string, opts: DevOptions = {}): Pro
 		}
 
 		serveStatic(req, res);
+	});
+
+	// WebSocket 升级走独立事件通道（M5b，协作编辑器 /api/realtime/ws）：
+	// proxyApi 是纯 HTTP 反代，Node 把协议升级单发 upgrade 事件，不隧道化则 dev 形态
+	// 下 WS 永远握不上手。仅隧道 API 前缀；其余 upgrade 一律掐断。
+	server.on("upgrade", (req, socket, head) => {
+		const urlPath = decodeReqPath(req.url ?? "/");
+		if (!ojTarget || urlPath === null || !urlPath.startsWith(`${apiBase}/`)) {
+			socket.destroy();
+			return;
+		}
+		proxyWsUpgrade(ojTarget)(req, socket, head);
 	});
 
 	// 退出回收：server 关闭 → SSE 通道 + oj 子进程一并回收（SIGINT 走同一路径）

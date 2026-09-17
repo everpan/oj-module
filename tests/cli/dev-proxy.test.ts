@@ -1,8 +1,9 @@
 import type { AddressInfo } from "node:net";
 import { Buffer } from "node:buffer";
 import http from "node:http";
-import { describe, expect, it } from "vitest";
-import { createReloadHub, proxyApi, sseScript } from "../../packages/cli/src/dev-proxy";
+import net from "node:net";
+import { describe, expect, it, vi } from "vitest";
+import { createReloadHub, proxyApi, proxyWsUpgrade, sseScript } from "../../packages/cli/src/dev-proxy";
 
 /**
  * 设计 §4（P3）：/api 反代与 SSE 刷新通道（纯 node:stdlib）。
@@ -152,5 +153,62 @@ describe("sseScript 外链脚本", () => {
 		expect(script).toContain("new EventSource(\"/__ojm_reload\")");
 		expect(script).toContain("reload");
 		expect(script).not.toContain("<script");
+	});
+});
+
+/**
+ * M5b（协作编辑器）：WebSocket 升级请求的原始字节隧道。
+ * proxyApi 是纯 HTTP 反代、Node 为协议升级单发 upgrade 事件——不隧道化则 dev 形态
+ * 下 /api/realtime/ws 永远握不上手（实测假红：协作 provider 全 offline）。
+ */
+describe("proxyWsUpgrade", () => {
+	it("升级请求原样透传：101 握手 + 双向字节流（不做任何 WS 解析）", async () => {
+		// 桩上游：接受任意 upgrade，回 101，然后把收到的字节回显
+		const upstream = http.createServer();
+		upstream.on("upgrade", (_req, socket, head) => {
+			socket.write("HTTP/1.1 101 Switching Protocols\r\nupgrade: websocket\r\nconnection: Upgrade\r\n\r\n");
+			if (head.length > 0)
+				socket.write(head);
+			socket.on("data", d => socket.write(`echo:${String(d)}`));
+		});
+		const upstreamPort = await listen(upstream);
+		const dev = http.createServer();
+		dev.on("upgrade", proxyWsUpgrade(`http://127.0.0.1:${upstreamPort}`));
+		const devPort = await listen(dev);
+
+		const ws = net.connect(devPort, "127.0.0.1");
+		const got: string[] = [];
+		ws.on("data", (d: Buffer) => got.push(String(d)));
+		ws.write(
+			"GET /api/realtime/ws HTTP/1.1\r\nhost: dev\r\nupgrade: websocket\r\nconnection: Upgrade\r\nsec-websocket-key: a2V5\r\nsec-websocket-version: 13\r\n\r\n",
+		);
+		await vi.waitFor(() => expect(got.join("")).toContain("101 Switching Protocols"));
+		ws.write("client-hello");
+		await vi.waitFor(() => expect(got.join("")).toContain("echo:client-hello"));
+		ws.destroy();
+		dev.close();
+		upstream.close();
+	});
+
+	it("上游拒连：握手期回 502 JSON 人话信封（与 proxyApi 同形），不挂死", async () => {
+		const dev = http.createServer();
+		dev.on("upgrade", proxyWsUpgrade("http://127.0.0.1:1")); // 端口 1 必拒
+		const devPort = await listen(dev);
+
+		const ws = net.connect(devPort, "127.0.0.1");
+		const got: string[] = [];
+		ws.on("data", (d: Buffer) => got.push(String(d)));
+		ws.on("close", () => {
+			ws.destroy();
+		});
+		ws.write(
+			"GET /api/realtime/ws HTTP/1.1\r\nhost: dev\r\nupgrade: websocket\r\nconnection: Upgrade\r\nsec-websocket-key: a2V5\r\nsec-websocket-version: 13\r\n\r\n",
+		);
+		await vi.waitFor(() => {
+			expect(got.join("")).toContain("502");
+			expect(got.join("")).toContain("WS 上游不可达");
+		});
+		ws.destroy();
+		dev.close();
 	});
 });
