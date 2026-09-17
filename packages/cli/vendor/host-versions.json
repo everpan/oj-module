@@ -12,6 +12,7 @@
 		"@oj-module/runtime/contract": "0.1.9",
 		"@oj-module/runtime/contract/errors": "0.1.9",
 		"@plane/kit": "0.1.9",
+		"@plane/editor": "0.1.9",
 		"antd": "6.6.1",
 		"antd/locale/en_US": "6.6.1",
 		"antd/locale/zh_CN": "6.6.1",

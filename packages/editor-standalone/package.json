@@ -1,0 +1,22 @@
+{
+	"name": "@plane/editor",
+	"type": "module",
+	"version": "0.1.9",
+	"description": "ojm 首方共享编辑器包（RichText / LiteText / Document 三种非协作编辑器）。自包含 ESM 资产（除 React 家族外零裸说明符）+ 样式自注入，宿主经 importmap 单例供给。",
+	"license": "AGPL-3.0",
+	"exports": {
+		".": {
+			"default": "./dist/editor.js"
+		}
+	},
+	"files": [
+		"dist"
+	],
+	"scripts": {
+		"build:asset": "node scripts/inline-css.mjs"
+	},
+	"publishConfig": {
+		"registry": "https://registry.npmjs.org/",
+		"access": "public"
+	}
+}

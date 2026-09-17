@@ -570,6 +570,9 @@ importers:
       '@oj-module/runtime':
         specifier: workspace:*
         version: link:../runtime
+      '@plane/editor':
+        specifier: workspace:*
+        version: link:../editor-standalone
       '@plane/kit':
         specifier: workspace:*
         version: link:../kit
@@ -700,6 +703,8 @@ importers:
       zustand:
         specifier: 'catalog:'
         version: 5.0.15(@types/react@19.2.18)(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8))
+
+  packages/editor-standalone: {}
 
   packages/kit:
     dependencies:

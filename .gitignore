@@ -30,6 +30,12 @@ packages/cli/shell-dist/**/*.map
 !packages/runtime/dist/
 !packages/runtime/dist/**
 
+# editor 首方共享包的发布产物（dist/editor.js）随仓库分发。它无法在 oj-module 侧
+# 重建——打包需要 plane 大仓的编辑器源码；由 plane 侧
+# oj-app/tools/editor-spike 产出、oj-app/scripts/install-ojm.sh 拷入后入库
+!packages/editor-standalone/dist/
+!packages/editor-standalone/dist/**
+
 # misc
 .DS_Store
 .env.local

@@ -46,6 +46,19 @@ export const SHARED_DEPS: SharedDepEntry[] = [
 	// 组件实现（单例语义与 React context 同级——多副本会产生两份 antd 上下文树）
 	{ specifier: "@plane/kit", asset: "kit", hard: true },
 	// —— 软共享 ——
+	/**
+	 * 首方共享编辑器包（M3 G1）：RichText / LiteText / Document 三种**非协作**
+	 * 编辑器，自包含 ESM 资产（除 React 家族外零裸说明符）+ 样式自注入。
+	 *
+	 * 为什么是软共享（与 @plane/kit 的 hard: true 不同）：
+	 *   - 无单例语义。kit 必须唯一是因为多副本 = 两份 antd 上下文树；编辑器资产
+	 *     把 @tiptap/*、@plane/ui 等**全部内联**在自身里，跨边界穿过的只有 React
+	 *     家族（那是独立的硬共享条目），多一份编辑器副本不会拆散任何 context。
+	 *   - 不是每个模块都用编辑器。软共享的语义正是「默认由宿主提供，允许 importmap
+	 *     scopes 多版本共存兜底（C7）」——缺席时模块可自带副本而不硬失败。
+	 *     代价：多副本会重复约 5.4 MB 资产，故 scopes 只作兜底、默认仍走宿主。
+	 */
+	{ specifier: "@plane/editor", asset: "editor", hard: false },
 	// 注：@rc-component/form（antd 6 Form 底层）曾尝试单例化以修 my-profile
 	// 崩溃（React #130），假说未证实——多副本并非充分根因，已回退；见
 	// docs/prd/202609010056-playground-full-modules-plan.md 差异项 D2。

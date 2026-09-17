@@ -54,6 +54,7 @@
 	"dependencies": {
 		"@faker-js/faker": "catalog:",
 		"@oj-module/runtime": "workspace:*",
+		"@plane/editor": "workspace:*",
 		"@plane/kit": "workspace:*",
 		"@redocly/cli": "catalog:",
 		"@tailwindcss/vite": "catalog:",
