@@ -36,11 +36,13 @@ export { BasicTable } from "./components/basic-table";
 export type { BasicTableProps } from "./components/basic-table";
 export { Iframe } from "./components/iframe";
 
+export { PageError } from "./components/page-error";
 export * from "./constants/options";
+
 // hooks 与权限常量（use-access 内部已 re-export constants）
 export * from "./hooks/use-access";
-
 export { usePreferences } from "./hooks/use-preferences";
+
 // 图标（unplugin-icons 构建期内联；包装导出保证声明零泄漏）
 export * from "./icons";
 // 全局副作用（标题/暗色类/NProgress，不含守卫）——宿主链路与 LayoutRoot 共用（偏差 4）
@@ -48,7 +50,6 @@ export { LayoutEffects } from "./layout/layout-effects";
 // i18n 初始化（宿主链路必需：shell 曾以空 resources 自行 init，导致框架
 // translation 命名空间（preferences/common 等）丢失——e2e 基线偏差 2）
 export { setupI18n } from "./locales";
-
 // 模块加载（宿主消费外部模块时使用；模块工程一般不直接调用）
 export {
 	getModule,
@@ -64,6 +65,7 @@ export {
 export { defineModule } from "./module-loader/define-module";
 
 export { useSlotNodes } from "./module-loader/slots";
+
 export type {
 	ModuleConfig,
 	ModuleContext,
@@ -76,9 +78,9 @@ export type {
 	ManifestModuleEntry,
 	ModuleInstance,
 } from "./module-loader/types";
-
 // 路由类型（模块声明 routes 时要用）
 export type { AppRouteRecordRaw, RouteMeta } from "./router/types";
+
 // 系统/通知/上传 API provider 注入契约（D9）：模块经 ctx.register.{systemApi,
 // notificationsApi, uploadApi} 实现，覆盖内置 root 级端点
 export type {
@@ -88,7 +90,6 @@ export type {
 } from "./store/api-provider";
 // store
 export { useAuthStore } from "./store/auth";
-
 // 认证 provider 注入契约（P5）：模块经 ctx.register.authProvider 实现
 export type { AuthProvider } from "./store/auth-provider";
 
@@ -109,6 +110,14 @@ export { getRedirectPath } from "./utils/get-redirect-path";
 
 // 工具与常量
 export * from "./utils/tree";
+
+// 页面级错误边界（增量⑥）：宿主壳链此前只有 `<LayoutEffects /> + <Outlet />`，
+// 容器布局（layout:"container"）**不经过** LayoutRoot，模块页面抛错即整页白屏
+// （React Router 默认 ErrorBoundary → 空 DOM）。这里把 LayoutRoot 内部同一对
+// 组合（ErrorBoundary + PageError）作为公共出口暴露，供宿主壳与模块自绘子树
+// 显式包裹。react-error-boundary 是共享依赖（SHARED_DEPS），经 importmap 解析，
+// 宿主与 runtime 命中同一实例。
+export { ErrorBoundary } from "react-error-boundary";
 
 // zod re-export（AC-D15）：契约 schema 书写入口——模块 `import { z } from "@oj-module/runtime"`，
 // zod 打进 runtime dist（构建期 external 白名单放行），不进宿主 importmap；与 @oj-module/runtime/contract 同源钉版

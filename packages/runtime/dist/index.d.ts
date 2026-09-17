@@ -21,6 +21,8 @@ export * from "./components/basic-form";
 export { BasicTable } from "./components/basic-table";
 export type { BasicTableProps } from "./components/basic-table";
 export { Iframe } from "./components/iframe";
+export { ErrorBoundary } from "react-error-boundary";
+export { PageError } from "./components/page-error";
 export * from "./constants/options";
 export * from "./hooks/use-access";
 export { usePreferences } from "./hooks/use-preferences";

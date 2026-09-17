@@ -20,9 +20,11 @@ import type { HostModule } from "./preload";
 import { StyleProvider } from "@ant-design/cssinjs";
 import {
 	AntdApp,
+	ErrorBoundary,
 	getRoutes,
 	LayoutEffects,
 	loadAll,
+	PageError,
 	setupI18n,
 	useAuthStore,
 	usePreferences,
@@ -172,11 +174,17 @@ function Boot() {
 							// 全局副作用与 <Outlet /> 并列挂载：LayoutEffects 不含
 							// AuthGuard（宿主免登录），但暗色类/动态标题/NProgress
 							// 必须与 App 链路同源（偏差 4）
+							//
+							// 页面级错误边界（增量⑥）：模块路由默认 layout:"container"，
+							// **不经过** runtime 的 LayoutRoot（其自带 ErrorBoundary）——
+							// 模块页面渲染抛错时只剩 React Router 默认 ErrorBoundary，
+							// 表现为整页白屏。宿主链在此与 LayoutRoot 同构地包一层
+							// （ErrorBoundary + PageError，两者均自 runtime 出口取得）。
 							element: (
-								<>
+								<ErrorBoundary FallbackComponent={PageError}>
 									<LayoutEffects />
 									<Outlet />
-								</>
+								</ErrorBoundary>
 							),
 							// 落地 `/` 时跳到首个模块路由，确保模块 ContainerLayout 立即渲染
 							// （否则根 Outlet 无匹配子路由会空白）。等同全量 App 的

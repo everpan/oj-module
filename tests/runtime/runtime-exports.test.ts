@@ -72,6 +72,11 @@ describe("runtime 主入口出口白名单 (P3.1)", () => {
 			// AntdApp：宿主链必须用它（--oo-* 变量同步 + StaticAntd），
 			// 误用 antd 原生 App 则暗黑模式 footer 露白（设计 202609112121）
 			"AntdApp",
+			// 增量⑥：页面级错误边界出口——宿主壳链（shell host.tsx）与模块
+			// 自绘子树显式包裹；layout:"container" 不经 LayoutRoot，
+			// 无此出口则模块页面抛错 = 整页白屏
+			"ErrorBoundary",
+			"PageError",
 		] as const) {
 			expect(Runtime[key], key).toBeDefined();
 		}

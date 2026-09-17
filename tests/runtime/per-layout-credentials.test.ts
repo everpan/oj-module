@@ -51,7 +51,9 @@ beforeEach(() => {
 	}));
 	registerHeaderProvider("m-layout", () => layout === "admin"
 		? { Authorization: `Bearer ${localStorage.getItem(ADMIN_KEY) ?? ""}` }
-		: {});
+		// 显式断言：三元两分支归一后 `{}` 被推成 `{ Authorization?: undefined }`，
+		// 不满足 HeaderProvider 的 Record<string, string>（tsc --noEmit 长红）
+		: {} as Record<string, string>);
 });
 
 afterEach(() => {

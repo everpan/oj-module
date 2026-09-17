@@ -37,6 +37,9 @@ export const AccessControl = _fn;
 export const FormAvatarItem = _fn;
 export const FormTreeItem = _fn;
 export const AntdApp = _fn;
+// 页面级错误边界（增量⑥）：宿主壳与模块自绘子树包裹用
+export const ErrorBoundary = _fn;
+export const PageError = _fn;
 // api
 export const fetchPie = _fn;
 export const fetchLine = _fn;

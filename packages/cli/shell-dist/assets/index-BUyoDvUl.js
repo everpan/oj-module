@@ -1,11 +1,11 @@
 import { StyleProvider } from "@ant-design/cssinjs";
-import { AntdApp, LayoutEffects, getRoutes, loadAll, setupI18n, useAuthStore, usePreferences, useUserStore } from "@oj-module/runtime";
+import { AntdApp, ErrorBoundary, LayoutEffects, PageError, getRoutes, loadAll, setupI18n, useAuthStore, usePreferences, useUserStore } from "@oj-module/runtime";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ConfigProvider, theme } from "antd";
 import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { Navigate, Outlet, RouterProvider, createBrowserRouter } from "react-router";
-import { Fragment, jsx, jsxs } from "react/jsx-runtime";
+import { jsx, jsxs } from "react/jsx-runtime";
 //#region \0vite/modulepreload-polyfill.js
 (function polyfill() {
 	const relList = document.createElement("link").relList;
@@ -197,7 +197,10 @@ function Boot() {
 				if (cancelled) return;
 				setRouter(createBrowserRouter([{
 					path: "/",
-					element: /* @__PURE__ */ jsxs(Fragment, { children: [/* @__PURE__ */ jsx(LayoutEffects, {}), /* @__PURE__ */ jsx(Outlet, {})] }),
+					element: /* @__PURE__ */ jsxs(ErrorBoundary, {
+						FallbackComponent: PageError,
+						children: [/* @__PURE__ */ jsx(LayoutEffects, {}), /* @__PURE__ */ jsx(Outlet, {})]
+					}),
 					children: [{
 						index: true,
 						element: /* @__PURE__ */ jsx(Navigate, {

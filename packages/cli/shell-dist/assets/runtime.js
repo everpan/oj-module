@@ -9,7 +9,7 @@ import ky from "ky";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { Link, Navigate, Outlet, createBrowserRouter, matchRoutes, useLocation, useMatches, useNavigate, useOutlet, useSearchParams } from "react-router";
-import { ErrorBoundary } from "react-error-boundary";
+import { ErrorBoundary, ErrorBoundary as ErrorBoundary$1 } from "react-error-boundary";
 import { AntDesignOutlined, ApartmentOutlined, AppstoreOutlined, ArrowDownOutlined, ArrowLeftOutlined, ArrowUpOutlined, BellOutlined, CloseOutlined, CloudOutlined, ContainerOutlined, CopyOutlined, CopyrightOutlined, DownOutlined, EnterOutlined, EyeOutlined, FileTextOutlined, FullscreenExitOutlined, FullscreenOutlined, HomeOutlined, LoadingOutlined, LockOutlined, LogoutOutlined, MenuFoldOutlined, MenuOutlined, MenuUnfoldOutlined, NodeExpandOutlined, QuestionCircleOutlined, RedoOutlined, ReloadOutlined, RocketOutlined, SafetyOutlined, SearchOutlined, SettingOutlined, SisternodeOutlined, SubnodeOutlined, SwapOutlined, TeamOutlined, TranslationOutlined, UploadOutlined, UserOutlined, VerticalAlignBottomOutlined, VerticalAlignMiddleOutlined, VerticalAlignTopOutlined } from "@ant-design/icons";
 import { App, Avatar, Badge, Breadcrumb, Button, Checkbox, Col, ColorPicker, ConfigProvider, Divider, Drawer, Dropdown, Empty, FloatButton, Form, Grid, Input, InputNumber, List, Menu, Modal, Popover, Result, Row, Select, Slider, Space, Spin, Switch, Tabs, Tooltip, Tree, Typography, Upload, Watermark, message, notification, theme } from "antd";
 import { Fragment, Suspense, cloneElement, createElement, forwardRef, isValidElement, lazy, use, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -228,7 +228,7 @@ function getAppInfo() {
 			"version": "0.1.9",
 			"license": "MIT"
 		},
-		"lastBuildTime": "2026-09-17 02:59:12"
+		"lastBuildTime": "2026-09-17 09:01:23"
 	};
 }
 var init_get_app_info = __esmMin((() => {}));
@@ -8105,7 +8105,7 @@ var init_guard = __esmMin((() => {
 * @en Root layout component
 */
 function LayoutRoot() {
-	return /* @__PURE__ */ jsxs(ErrorBoundary, {
+	return /* @__PURE__ */ jsxs(ErrorBoundary$1, {
 		FallbackComponent: PageError,
 		children: [/* @__PURE__ */ jsx(LayoutEffects, {}), /* @__PURE__ */ jsx(AuthGuard, { children: /* @__PURE__ */ jsx(Outlet, {}) })]
 	});
@@ -27395,6 +27395,7 @@ var external_exports = /* @__PURE__ */ __exportAll({
 init_user$1();
 init_basic_button();
 init_iframe();
+init_page_error();
 init_use_preferences();
 init_icons();
 init_layout_effects();
@@ -27411,4 +27412,4 @@ init_ri();
 init_menu_icons();
 init_tree();
 //#endregion
-export { AccessControl, AccessControlRoles, AntdApp, BasicButton, BasicContent, BasicTable, EmbeddedIcon, ExternalIcon, FormAvatarItem, FormTreeItem, Iframe, LayoutCenterIcon, LayoutEffects, LayoutLeftIcon, LayoutRightIcon, MixedNavigationIcon, OutsidePageIcon, ProfileCardIcon, RiAccountCircleLine, RiContrastFill, RiFullscreenExitLine, RiFullscreenLine, RiMailCheckLine, RiMoonIcon, RiReactjsLine, RiSunIcon, RiUserSettingsLine, ServerErrorIcon, SideNavigationIcon, TopNavigationIcon, TwoColumnNavigationIcon, accessControlCodes, defineModule, fetchAddMenuItem, fetchAddRoleItem, fetchAsyncRoutes, fetchDeleteMenuItem, fetchDeleteRoleItem, fetchLogin, fetchLogout, fetchMenuByRoleId, fetchMenuList, fetchRefreshToken, fetchRoleList, fetchRoleMenu, fetchUpdateMenuItem, fetchUpdateRoleItem, fetchUserInfo, filterTree, getAllExpandedKeys, getAppInfo, getBooleanOptions, getModule, getModules, getRedirectPath, getRegisteredApiPrefix, getRegisteredStore, getRoutes, getYesNoOptions, handleTree, loadAll, mapTree, menuIcons, permissionPrefix, setupI18n, traverseTreeValues, unloadModule, useAccess, useAuthStore, usePreferences, useSlotNodes, useUserStore, external_exports as z };
+export { AccessControl, AccessControlRoles, AntdApp, BasicButton, BasicContent, BasicTable, EmbeddedIcon, ErrorBoundary, ExternalIcon, FormAvatarItem, FormTreeItem, Iframe, LayoutCenterIcon, LayoutEffects, LayoutLeftIcon, LayoutRightIcon, MixedNavigationIcon, OutsidePageIcon, PageError, ProfileCardIcon, RiAccountCircleLine, RiContrastFill, RiFullscreenExitLine, RiFullscreenLine, RiMailCheckLine, RiMoonIcon, RiReactjsLine, RiSunIcon, RiUserSettingsLine, ServerErrorIcon, SideNavigationIcon, TopNavigationIcon, TwoColumnNavigationIcon, accessControlCodes, defineModule, fetchAddMenuItem, fetchAddRoleItem, fetchAsyncRoutes, fetchDeleteMenuItem, fetchDeleteRoleItem, fetchLogin, fetchLogout, fetchMenuByRoleId, fetchMenuList, fetchRefreshToken, fetchRoleList, fetchRoleMenu, fetchUpdateMenuItem, fetchUpdateRoleItem, fetchUserInfo, filterTree, getAllExpandedKeys, getAppInfo, getBooleanOptions, getModule, getModules, getRedirectPath, getRegisteredApiPrefix, getRegisteredStore, getRoutes, getYesNoOptions, handleTree, loadAll, mapTree, menuIcons, permissionPrefix, setupI18n, traverseTreeValues, unloadModule, useAccess, useAuthStore, usePreferences, useSlotNodes, useUserStore, external_exports as z };
