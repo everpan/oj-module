@@ -34,6 +34,10 @@ export interface EditorRefApi {
   blur: () => void;
   /** 清空内容；`emitUpdate=false` 时不触发 onChange */
   clearEditor: (emitUpdate?: boolean) => void;
+  /** 当前 Markdown 复制进剪贴板（上游同名，M5d 复制面用） */
+  copyMarkdownToClipboard: () => void;
+  /** 工具栏命令执行（上游同名；`extraProps` 随 itemKey 而异，如 text-color 带 `color`） */
+  executeMenuItemCommand: (props: { itemKey: string } & Record<string, unknown>) => void;
   focus: (args?: unknown) => void;
   getDocument: () => {
     binary: Uint8Array | null;
@@ -48,6 +52,8 @@ export interface EditorRefApi {
   insertText: (contentHTML: string, insertOnNextLine?: boolean) => void;
   /** 编辑器是否已无未落库内容（可安全离开） */
   isEditorReadyToDiscard: () => boolean;
+  /** 工具栏命令激活态（上游同名；与 executeMenuItemCommand 同参） */
+  isMenuItemActive: (props: { itemKey: string } & Record<string, unknown>) => boolean;
   onDocumentInfoChange: (callback: (documentInfo: unknown) => void) => () => void;
   onHeadingChange: (callback: (headings: unknown[]) => void) => () => void;
   onStateChange: (callback: () => void) => () => void;
@@ -109,6 +115,118 @@ export type ILiteTextEditorProps = IEditorProps;
 export type IRichTextEditorProps = IEditorProps & { dragDropEnabled?: boolean };
 export type IDocumentEditorProps = IEditorProps;
 
+/**
+ * oj realtime 配置（M5b，上游 `TRealtimeConfig` 的 oj 面）。给出 `oj` 即装配
+ * OjRelayProvider（首帧 JWT auth；慢路径 ref:"rest" 经 fetchState 走 REST 回拉）；
+ * 缺省走上游 HocuspocusProvider 分支——oj 资产里该分支是**死 shim**（构造即 throw），
+ * oj 会话**必须**给 `oj`。
+ */
+export type TRealtimeConfig = {
+  url: string;
+  oj?: {
+    authToken: string;
+    fetchState?: () => Promise<Uint8Array | null>;
+  };
+};
+
+/** 协作用户面（上游 `TUserDetails` 同名字段） */
+export type TUserDetails = {
+  color: string;
+  id: string;
+  name: string;
+};
+
+/** 协作生命周期阶段（上游 `CollabStage`，字段名照抄） */
+export type CollabStage =
+  | { kind: "initial" }
+  | { kind: "connecting" }
+  | { kind: "awaiting-sync" }
+  | { kind: "synced" }
+  | { kind: "reconnecting"; attempt: number }
+  | { kind: "disconnected"; error: { type: string; message: string; code?: number } };
+
+/** 协作状态（上游 `CollaborationState` 同名字段） */
+export type CollaborationState = {
+  stage: CollabStage;
+  isServerSynced: boolean;
+  isServerDisconnected: boolean;
+};
+
+/** serverHandler（上游 `TServerHandler` 同名） */
+export type TServerHandler = {
+  onStateChange: (state: CollaborationState) => void;
+};
+
+/**
+ * 服务端控制帧（oj 线协议）。`on("message")` 事件透出的是**原串**（未解析），
+ * 解析与帧型校验归使用方——`OjControlFrame` 在此仅作文档面（oj-app 消费侧
+ * `parseControlFrame` 拥有真正的解析实现）。
+ */
+export type OjControlFrame = { type: "title"; name: string } | { type: "lock"; locked: boolean };
+
+/**
+ * oj realtime 中继 provider（`/api/realtime/ws` 真面的 HocuspocusProvider 兼容子面）。
+ * 详情页装配协作编辑器之外，再自建一个实例作「页面事件」控制通道：
+ * `on("message")` 收 title/lock 广播帧，`configuration.websocketProvider.webSocket`
+ * 发控制帧文本（`{type:"title",name}` / `{type:"lock"}` / `{type:"unlock"}`）。
+ */
+export declare class OjRelayProvider {
+  constructor(cfg: {
+    name: string; // page_id
+    token: string; // jwt access token
+    url: string; // ws(s)://…/api/realtime/ws
+    fetchState?: () => Promise<Uint8Array | null>;
+    onAuthenticationFailed?: () => void;
+    onConnect?: () => void;
+    onStatus?: (e: { status: "connecting" | "connected" | "disconnected" }) => void;
+    onSynced?: () => void;
+  });
+  document: unknown;
+  configuration: {
+    websocketProvider: {
+      shouldConnect: boolean;
+      webSocket?: WebSocket;
+      connect: () => void;
+      disconnect: () => void;
+      destroy: () => void;
+    };
+  };
+  get isSynced(): boolean;
+  on(event: "message", handler: (raw?: string) => void): void;
+  on(event: "close" | "synced" | string, handler: (e?: unknown) => void): void;
+  off(event: string, handler: (e?: unknown) => void): void;
+  destroy(): void;
+}
+
+/** 协作文档编辑器 props（上游 `ICollaborativeDocumentEditorProps` 的 M5 消费子集） */
+export interface ICollaborativeDocumentEditorProps extends Omit<IEditorProps, "initialValue" | "value" | "onEnterKeyPress"> {
+  editable?: boolean;
+  realtimeConfig?: TRealtimeConfig;
+  serverHandler?: TServerHandler;
+  user?: TUserDetails;
+  /** 页面属性事件（标题编辑器 onUpdate 等；M5b 标题走自持 WS 控制帧，不接此 prop） */
+  updatePageProperties?: (pageIds: string | string[], actionType: string, data: unknown, performAction?: boolean) => void;
+  isFetchingFallbackBinary?: boolean;
+}
+
+/** 工具栏条目（上游 `ToolbarMenuItem` 同名字段；`icon` 是资产内的 React 组件） */
+export type ToolbarMenuItem = {
+  itemKey: string;
+  renderKey: string;
+  name: string;
+  icon: React.ComponentType<{ className?: string }>;
+  shortcut?: string[];
+  editors: string[];
+  extraProps?: Record<string, unknown>;
+};
+
+/** 工具栏常量（上游 `apps/web` pages 工具栏消费的同一份；`document` 族归 pages） */
+export declare const TOOLBAR_ITEMS: Record<"lite" | "document" | "sticky", Record<string, ToolbarMenuItem[]>>;
+/** 排版下拉条目（text / h1–h6） */
+export declare const TYPOGRAPHY_ITEMS: ToolbarMenuItem[];
+/** 编辑器 8 色板（key 顺序即上游；textColor/backgroundColor 是资产 CSS 变量） */
+export declare const COLORS_LIST: { key: string; label: string; textColor: string; backgroundColor: string }[];
+
 type RefComponent<P> = React.ForwardRefExoticComponent<
   P & React.RefAttributes<EditorRefApi>
 >;
@@ -119,3 +237,5 @@ export declare const RichTextEditorWithRef: RefComponent<IRichTextEditorProps>;
 export declare const LiteTextEditorWithRef: RefComponent<ILiteTextEditorProps>;
 /** 文档编辑器（pages 模块用，M5 才接协作） */
 export declare const DocumentEditorWithRef: RefComponent<IDocumentEditorProps>;
+/** 协作文档编辑器（pages 详情用；realtimeConfig.oj 必给，见 TRealtimeConfig 注记） */
+export declare const CollaborativeDocumentEditorWithRef: RefComponent<ICollaborativeDocumentEditorProps>;
