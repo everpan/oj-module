@@ -36,4 +36,19 @@ describe("build-modules 真实 import 解析元数据（P3.4 / B10）", () => {
 			.rejects
 			.toThrow(/name 或 version/);
 	});
+
+	/**
+	 * 回归：模块**顶层**调用被桩化的裸依赖，且是柯里化工厂（zustand v5 的
+	 * `create()(initializer)` 形态）。桩此前的 `apply: () => undefined` 让第二次调用
+	 * 抛 `(0, import_x.create)(...) is not a function` → 元数据读取失败 → `ojm dev`
+	 * 起不来。桩改为可链式（`apply: () => value`）后本用例通过。
+	 */
+	it("顶层柯里化裸依赖调用不炸元数据读取（桩可链式）", async () => {
+		const definition = await readModuleDefinition(
+			path.join(PROJECT_ROOT, "tests/fixtures/entry-chainable-stub.ts"),
+			PROJECT_ROOT,
+		);
+		expect(definition.name).toBe("chainable-stub");
+		expect(definition.version).toBe("0.0.0");
+	});
 });

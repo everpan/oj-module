@@ -253,7 +253,16 @@ function makeBareImportStubPlugin(namesBySpec: Map<string, string[]>): EsbuildPl
 				const names = namesBySpec.get(args.path) ?? [];
 				return {
 					contents: [
-						"const value = new Proxy(function () {}, { get: () => value, apply: () => undefined });",
+						// `apply` 返回 value（自身）而非 undefined：桩必须**可无限链式调用**。
+						// 反例（真踩过）：zustand v5 是柯里化 API——`create()(initializer)`
+						// 先调一次取工厂、再调一次取 store，且**都在模块顶层求值**。
+						// 若 apply 返回 undefined，元数据读取即抛
+						// `(0, import_zustand.create)(...) is not a function`，
+						// 整个 `ojm dev/build` 起不来（模块代码本身完全合法）。
+						// 同类形态：`axios.create(...)`、`i18next.createInstance(...)`、
+						// `createTheme(...)` 等顶层库工厂。桩只在元数据读取期跑，放宽只会
+						// 把「崩溃」变成「无害空转」。
+						"const value = new Proxy(function () {}, { get: () => value, apply: () => value });",
 						`const names = ${JSON.stringify(names)};`,
 						"module.exports = new Proxy({}, {",
 						"\tget: () => value,",
