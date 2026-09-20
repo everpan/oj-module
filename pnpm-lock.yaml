@@ -704,6 +704,22 @@ importers:
         specifier: 'catalog:'
         version: 5.0.15(@types/react@19.2.18)(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8))
 
+  packages/core:
+    dependencies:
+      i18next:
+        specifier: ^25.10.0 || ^26
+        version: 26.4.0(typescript@6.0.3)
+    devDependencies:
+      ky:
+        specifier: 'catalog:'
+        version: 2.0.2
+      react:
+        specifier: 'catalog:'
+        version: 19.2.8
+      react-router:
+        specifier: 'catalog:'
+        version: 7.18.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+
   packages/editor-standalone: {}
 
   packages/kit:

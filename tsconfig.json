@@ -38,6 +38,8 @@
 	"include": [
 		"packages/runtime/src",
 		"packages/runtime/contract",
+		"packages/core/src",
+		"packages/core/tests",
 		"packages/kit/src",
 		"packages/cli/src",
 		"apps/playground",

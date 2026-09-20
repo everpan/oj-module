@@ -1,0 +1,33 @@
+{
+	"name": "@oj-module/core",
+	"type": "module",
+	"version": "0.1.0",
+	"description": "框架核心蒸馏：模块加载引擎 + 注册原语（零 zustand / 零 antd / 零 UI 意见），宿主经 importmap 消费",
+	"license": "MIT",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"default": "./dist/core.js"
+		}
+	},
+	"files": [
+		"dist"
+	],
+	"scripts": {
+		"build": "vite build && tsc -p tsconfig.dts.json"
+	},
+	"peerDependencies": {
+		"i18next": "^25.10.0 || ^26",
+		"react": "^19",
+		"react-router": "^7 || ^8"
+	},
+	"devDependencies": {
+		"ky": "catalog:",
+		"react": "catalog:",
+		"react-router": "catalog:"
+	},
+	"publishConfig": {
+		"registry": "https://registry.npmjs.org/",
+		"access": "public"
+	}
+}
