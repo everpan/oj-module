@@ -84,7 +84,7 @@ describe("loadAll 引擎（全生命周期 + 三处事件化）", () => {
 			name: "a",
 			lifecycleSource: [
 				"beforeInit: (ctx) => { globalThis.__order.push('beforeInit'); ctx.register.apiPrefix('/auth'); ctx.register.store('aStore', { v: 1 }); }",
-				"onInit: (ctx) => { globalThis.__order.push('onInit'); ctx.register.menu([{ title: 'm', path: '/a' }]); ctx.registerSlot('header-actions', 'A'); }",
+				"onInit: (ctx) => { globalThis.__order.push('onInit'); ctx.register.menu((p) => [{ key: 'a', name: 'A', href: '/w/' + (p.workspaceSlug || '-') + '/p/' + (p.projectId || '-'), icon: null, access: [], shouldRender: true, sortOrder: 1, i18n_key: 'sidebar.a' }]); ctx.registerSlot('header-actions', 'A'); }",
 			].join(", "),
 		}]));
 		off();
@@ -93,7 +93,10 @@ describe("loadAll 引擎（全生命周期 + 三处事件化）", () => {
 		expect(ready).toHaveLength(1);
 		expect(ready[0]).toContain("/a");
 		expect(getRegisteredStore<{ v: number }>("aStore")?.v).toBe(1);
-		expect(getRegisteredMenus()).toEqual([{ title: "m", path: "/a" }]);
+		// 菜单贡献是工厂：同一份注册在两次不同 params 下现算出两个 href（PRD §5.1 的渲染期现算）
+		expect(getRegisteredMenus({ workspaceSlug: "acme", projectId: "p1" })[0]!.href).toBe("/w/acme/p/p1");
+		expect(getRegisteredMenus({ workspaceSlug: "beta", projectId: "p2" })[0]!.href).toBe("/w/beta/p/p2");
+		expect(getRegisteredMenus({ workspaceSlug: "acme", projectId: "p1" })[0]!.key).toBe("a");
 		expect(getSlotNodes("header-actions")).toEqual(["A"]);
 		expect(result[0]!.status).toBe("loaded");
 	});
@@ -135,7 +138,7 @@ describe("loadAll 引擎（全生命周期 + 三处事件化）", () => {
 	it("unloadModule 清理：路由、插槽、菜单全退场", async () => {
 		await loadAll(manifest([{
 			name: "a",
-			lifecycleSource: "onInit: (ctx) => { ctx.register.menu([{ title: 'm' }]); ctx.registerSlot('s', 'N'); }",
+			lifecycleSource: "onInit: (ctx) => { ctx.register.menu(() => [{ key: 'm', name: 'M', href: '/m', icon: null, access: [], shouldRender: true, sortOrder: 1, i18n_key: 'm' }]); ctx.registerSlot('s', 'N'); }",
 		}]));
 		expect(getModule("a")?.status).toBe("loaded");
 		await unloadModule("a");

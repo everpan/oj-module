@@ -82,7 +82,7 @@ function createModuleContext(definition: ModuleDefinition): ModuleContext {
 			notificationsApi: provider => registerNotificationsApiProvider(definition.name, provider),
 			uploadApi: provider => registerUploadApiProvider(definition.name, provider),
 			layout: (name, component) => registerLayout(definition.name, name, component),
-			menu: items => registerModuleMenu(definition.name, items),
+			menu: factory => registerModuleMenu(definition.name, factory),
 		},
 		registerSlot: (slotName, node) => registerSlot(definition.name, slotName, node),
 	};

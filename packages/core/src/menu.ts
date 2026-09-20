@@ -1,41 +1,42 @@
-import type { ReactNode } from "react";
+import type { ElementType } from "react";
 
 /**
- * 菜单贡献项（TNavigationItem 对齐，shape 收敛于 R1c 菜单工厂；PRD §4）。
- * ctx.register.menu(...) 贡献，宿主菜单工厂消费；卸载按 moduleName 清理。
+ * 菜单工厂入参（PRD §5.1）：上游 href 渲染期现算（组件内 `useParams()`），故贡献面是函数而非
+ * 静态数组——静态数组把 workspaceSlug/projectId 烤死在注册时刻（v1 菜单 path-as-key 病根，PRD §1）。
+ */
+export interface MenuFactoryParams {
+	workspaceSlug?: string
+	projectId?: string
+}
+
+/**
+ * 菜单项（shape 采上游 TNavigationItem，字段同名同义；PRD §5.1）。`access` 只声明
+ * `readonly unknown[]`——上游枚举 ↔ oj roles 的映射表归 plane-runtime 门禁层，core 不引该意见。
  */
 export interface NavigationItem {
-	/** 稳定 id（缺省由菜单工厂按 path 生成） */
-	id?: string
-	title: ReactNode
-	/** i18n 键（宿主菜单工厂翻译） */
-	translateTitle?: string
-	icon?: ReactNode
-	color?: string
-	/** 目标路径（外部链接时为 URL） */
-	path?: string
-	/** 排序（小者在前） */
-	sortOrder?: number
-	hideInMenu?: boolean
-	children?: NavigationItem[]
+	key: string
+	name: string
+	href: string
+	icon: ElementType
+	access: readonly unknown[]
+	shouldRender: boolean
+	sortOrder: number
+	i18n_key: string
 	[key: string]: unknown
 }
 
-interface MenuRegistration {
-	moduleName: string
-	items: NavigationItem[]
+export type MenuFactory = (params: MenuFactoryParams) => NavigationItem[];
+
+const registrations = new Map<string, { moduleName: string, factory: MenuFactory }>();
+
+/** 登记/覆盖本模块的菜单工厂（重复调用覆盖旧值） */
+export function registerModuleMenu(moduleName: string, factory: MenuFactory): void {
+	registrations.set(moduleName, { moduleName, factory });
 }
 
-const registrations = new Map<string, MenuRegistration>();
-
-/** 供模块上下文调用：登记/覆盖本模块的菜单项（重复调用覆盖旧值） */
-export function registerModuleMenu(moduleName: string, items: NavigationItem[]): void {
-	registrations.set(moduleName, { moduleName, items });
-}
-
-/** 全部模块菜单项（按登记顺序聚合；排序归宿主菜单工厂） */
-export function getRegisteredMenus(): NavigationItem[] {
-	return Array.from(registrations.values()).flatMap(r => r.items);
+/** 全部模块菜单项（按登记顺序聚合）。工厂每次调用现算——params 一变即得新 href；filter/sort 归宿主工厂（PRD §5.1）。 */
+export function getRegisteredMenus(params: MenuFactoryParams = {}): NavigationItem[] {
+	return Array.from(registrations.values()).flatMap(r => r.factory(params));
 }
 
 /** 卸载模块时清理其菜单贡献 */

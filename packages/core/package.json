@@ -1,7 +1,7 @@
 {
 	"name": "@oj-module/core",
 	"type": "module",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"description": "框架核心蒸馏：模块加载引擎 + 注册原语（零 zustand / 零 antd / 零 UI 意见），宿主经 importmap 消费",
 	"license": "MIT",
 	"exports": {
@@ -14,7 +14,8 @@
 		"dist"
 	],
 	"scripts": {
-		"build": "vite build && tsc -p tsconfig.dts.json"
+		"build": "vite build && tsc -p tsconfig.dts.json",
+		"test": "vitest run"
 	},
 	"peerDependencies": {
 		"i18next": "^25.10.0 || ^26",

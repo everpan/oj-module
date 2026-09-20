@@ -1,6 +1,6 @@
 import type { ComponentType, ReactNode } from "react";
 
-import type { NavigationItem } from "./menu";
+import type { MenuFactory } from "./menu";
 import type {
 	AuthProvider,
 	HeaderProvider,
@@ -45,8 +45,8 @@ export interface ModuleContext {
 		notificationsApi: (provider: NotificationsApiProvider) => void
 		uploadApi: (provider: UploadApiProvider) => void
 		layout: (name: string, component: ComponentType) => void
-		/** 菜单贡献（v1 无，core 新增） */
-		menu: (items: NavigationItem[]) => void
+		/** 菜单贡献（v1 无，core 新增）：贡献**工厂**而非静态数组，href 渲染期现算（PRD §5.1） */
+		menu: (factory: MenuFactory) => void
 	}
 	registerSlot: (slotName: string, node: ReactNode) => void
 }
