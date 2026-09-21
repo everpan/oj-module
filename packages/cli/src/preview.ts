@@ -17,6 +17,7 @@ import http from "node:http";
 import path, { normalize } from "node:path";
 import process from "node:process";
 import { proxyApi } from "./dev-proxy";
+import { loadHtmlTransform } from "./html-transform";
 import { resolveLayout } from "./layout";
 import { startOj } from "./oj";
 import { readOjApiPrefix } from "./oj-config";
@@ -53,6 +54,9 @@ export async function previewServer(projectRoot: string, opts: PreviewOptions = 
 	if (!existsSync(path.join(apiDist, "manifests.yaml")))
 		throw new Error(`[ojm] ${apiDist} 缺少 manifests.yaml。\n请先 ojm build（后端 oj build 产物）。`);
 
+	// htmlTransform（web.config.ts，可选）先于起进程校验：配置坏了不该留下 oj 孤儿
+	const transform = await loadHtmlTransform(projectRoot);
+
 	const execOj = opts.execOj ?? ((args: string[]) => execFileSync(ojBin, args, { stdio: "inherit" }));
 
 	// D8：先迁移再起服务；migrate 非零退出 → 透传 stderr、ojm 非零退出、不起 server
@@ -75,7 +79,8 @@ export async function previewServer(projectRoot: string, opts: PreviewOptions = 
 	console.log(`[ojm] oj 后端已就绪（release/js）：${base} → http://127.0.0.1:${oj.port}`);
 
 	const ojTarget = `http://127.0.0.1:${oj.port}`;
-	const serveStatic = createStaticHandler({ roots: [siteDir], reload: null, noStore: false });
+	// 生产形态下按路由改写 title/OG（transform 已在起进程前加载校验）
+	const serveStatic = createStaticHandler({ roots: [siteDir], reload: null, noStore: false, transform });
 
 	const server = http.createServer((req, res) => {
 		const urlPath = decodeReqPath(req.url ?? "/");

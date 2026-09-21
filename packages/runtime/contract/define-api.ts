@@ -10,6 +10,30 @@ import type { z } from "zod";
 
 export type HttpMethod = "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "HEAD" | "OPTIONS";
 
+/**
+ * multipart/form-data 的文件部件：**只声明名字与形态**。
+ *
+ * 二进制刻意不进 zod（JSON Schema 无 binary 类型，且字节由运行时的 FormData
+ * 组装）：oj 侧按 `http.files`（元数据 { field, filename, content_type, size }）
+ * 与 `http.file(i)`（字节）读取。
+ */
+export interface ApiFormFile {
+	/** 表单字段名（= FormData 的 append key = oj 侧 http.files[].field） */
+	name: string
+	/** true = 必传；缺省可选（可选文件不 append 部件，oj 侧自然缺省） */
+	required?: boolean
+	/** true = 同名多文件：生成 client 接受数组并逐个 append（oj 侧 http.files 多条） */
+	multiple?: boolean
+}
+
+/** multipart/form-data 请求体：文本部件走 zod，文件部件只声明形态（与 body 互斥） */
+export interface ApiFormInput {
+	/** 文本部件 schema（z.object——字段名即部件名；进 OpenAPI 的 multipart JSON schema） */
+	fields?: z.ZodType
+	/** 文件部件（与 fields 至少声明其一） */
+	files?: ApiFormFile[]
+}
+
 export interface ApiDefinitionInput {
 	/** 模块 API 前缀（"/" 开头）；uni-dev 形态字面等于 oj 模块段名（AC-D9） */
 	apiPrefix: string
@@ -27,8 +51,13 @@ export interface ApiDefinitionInput {
 	query?: z.ZodType
 	/** 路径参数 schema（与 route 参数段一一对应） */
 	params?: z.ZodType
-	/** 请求体 schema */
+	/** 请求体 schema（JSON；与 form 互斥） */
 	body?: z.ZodType
+	/**
+	 * multipart/form-data 请求体（与 body 互斥）：文本部件写进 form.fields（zod），
+	 * 文件部件只声明名字——二进制无法保真进 JSON Schema，FormData 由生成 client 组装。
+	 */
+	form?: ApiFormInput
 	/** 响应信封 data 部分的 schema；与 response:"raw" 互斥 */
 	data?: z.ZodType
 	/** "raw" = 二进制/非信封逃生口：不解包、不校验、不进 mock 生成 */
@@ -63,6 +92,21 @@ function validateDefinition(def: ApiDefinitionInput): void {
 	}
 	if (def.data && def.response === "raw")
 		fail(route, "data schema 与 response:\"raw\" 互斥——raw 端点不解包信封，不需要 data schema。");
+	if (def.form && def.body)
+		fail(route, "form 与 body 互斥——一个端点只有一种请求体形态：multipart/form-data（form）与 JSON（body）声明其一，文本字段请写进 form.fields。");
+	if (def.form) {
+		const files = def.form.files ?? [];
+		if (!def.form.fields && files.length === 0)
+			fail(route, "form 至少需要 fields 或一项 files——空 multipart 请求体无意义；无请求体请删掉 form（改用 query/params）。");
+		const seen = new Set<string>();
+		for (const file of files) {
+			if (!file?.name)
+				fail(route, "form.files 每项必须有 name——它既是 FormData 的 append key，也是 oj 侧 http.files[].field 的字段名。");
+			if (seen.has(file.name))
+				fail(route, `form.files 字段名 "${file.name}" 重复——同名多文件请用 multiple: true。`);
+			seen.add(file.name);
+		}
+	}
 	if (def.response !== undefined && def.response !== "raw")
 		fail(route, `response 仅支持 "raw"（收到: ${String(def.response)}）。`);
 	// 评审 F9：方法面在定义期封顶，而不是延迟到 codegen 才炸

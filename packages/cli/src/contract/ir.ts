@@ -43,6 +43,24 @@ const ALLOWED_CHECKS = new Set([
 	"string_format",
 ]);
 
+/** multipart 文件部件（DSL 声明归一：required/multiple 显式化，发射器不再看 undefined） */
+export interface IrFormFile {
+	name: string
+	required: boolean
+	multiple: boolean
+}
+
+/**
+ * multipart 请求体：文本部件保留 schema（转 JSON Schema / 发射 api.schemas 用），
+ * 文件部件只有名字与形态——binary 刻意不进 schema（FormData 由生成 client 组装）。
+ */
+export interface IrForm {
+	fieldsSchema?: unknown
+	/** 文本部件名（shape 键序 = 契约声明序：FormData append 与 OpenAPI 键序都据此，保字节稳定） */
+	fieldNames: string[]
+	files: IrFormFile[]
+}
+
 export interface IrEndpoint {
 	/** 契约文件里的导出名，如 "getOrderDetail" */
 	name: string
@@ -59,6 +77,8 @@ export interface IrEndpoint {
 	querySchema?: unknown
 	paramsSchema?: unknown
 	bodySchema?: unknown
+	/** multipart/form-data 请求体（与 bodySchema 互斥，定义期已拦截） */
+	form?: IrForm
 	dataSchema?: unknown
 	raw: boolean
 	ignoreLoading?: boolean
@@ -152,6 +172,25 @@ export function buildIr(exports: Record<string, unknown>): IrEndpoint[] {
 			if (schema)
 				assertWhitelisted(schema, `${name}.${slot}`);
 		}
+		// multipart/form-data（与 body 互斥，定义期已拦截）：文本部件走同一套 schema 白名单；
+		// 文件部件只有名字/形态，二进制刻意不进 schema（JSON Schema 无 binary、FormData 由 client 组装）
+		let form: IrForm | undefined;
+		if (def.form) {
+			let fieldNames: string[] = [];
+			if (def.form.fields) {
+				assertWhitelisted(def.form.fields, `${name}.form.fields`);
+				const fieldsDef = defOf(def.form.fields, `${name}.form.fields`);
+				if (fieldsDef.type !== "object") {
+					throw new Error(`[ojm-api] 契约端点 "${name}"：form.fields 必须是 z.object（收到类型 "${String(fieldsDef.type)}"）——文本部件按字段名进 multipart 表单（OpenAPI 同形）；单个非对象值请改用 body（JSON）。`);
+				}
+				fieldNames = Object.keys(fieldsDef.shape as Record<string, unknown>);
+			}
+			form = {
+				fieldsSchema: def.form.fields,
+				fieldNames,
+				files: (def.form.files ?? []).map(f => ({ name: f.name, required: f.required === true, multiple: f.multiple === true })),
+			};
+		}
 		const paramNames = paramNamesOf(def.route);
 		// 评审 F8：params schema 键必须覆盖 route 参数段——否则生成物 URL 插值出 undefined
 		if (def.params) {
@@ -176,6 +215,7 @@ export function buildIr(exports: Record<string, unknown>): IrEndpoint[] {
 			querySchema: def.query,
 			paramsSchema: def.params,
 			bodySchema: def.body,
+			form,
 			dataSchema: def.data,
 			raw: def.response === "raw",
 			ignoreLoading: def.ignoreLoading,

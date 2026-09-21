@@ -12,6 +12,11 @@ export interface RequestCall {
         /** 与 ky SearchParamsOption 的 Record 形态对齐——宽于它则真 ky 实例无法赋给本接口 */
         searchParams?: Record<string, string | number | boolean>;
         json?: unknown;
+        /**
+         * multipart/form-data 请求体（form 端点）：由生成 client 组装 FormData，
+         * content-type 交运行时（ky 按 boundary 自动补 multipart/form-data）。
+         */
+        body?: FormData;
         ignoreLoading?: boolean;
     }): ResponsePromiseLike;
 }

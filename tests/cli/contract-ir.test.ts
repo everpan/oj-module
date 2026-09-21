@@ -67,6 +67,55 @@ describe("buildIr（AC-D12）", () => {
 	});
 });
 
+describe("buildIr：multipart/form-data（form 槽）", () => {
+	it("归一：文本部件名保序（FormData/OpenAPI 键序同源）+ 文件部件 required/multiple 显式化", () => {
+		const [ep] = buildIr({
+			up: defineApi({
+				apiPrefix: "/o",
+				route: "/up",
+				method: "POST",
+				form: {
+					fields: z.object({ kind: z.string(), note: z.string().optional() }),
+					files: [{ name: "avatar", required: true }, { name: "gallery", multiple: true }],
+				},
+			}),
+		});
+		expect(ep.form?.fieldNames).toEqual(["kind", "note"]);
+		// binary 不进 schema：文件部件只有名字与形态
+		expect(ep.form?.files).toEqual([
+			{ name: "avatar", required: true, multiple: false },
+			{ name: "gallery", required: false, multiple: true },
+		]);
+		expect(ep.form?.fieldsSchema).toBeDefined();
+	});
+
+	it("纯文件 form：无 fields → 无 schema、字段名空表（zod 表达不了二进制）", () => {
+		const [ep] = buildIr({
+			up: defineApi({ apiPrefix: "/o", route: "/up", method: "POST", form: { files: [{ name: "file", required: true }] } }),
+		});
+		expect(ep.form?.fieldsSchema).toBeUndefined();
+		expect(ep.form?.fieldNames).toEqual([]);
+		expect(ep.form?.files).toEqual([{ name: "file", required: true, multiple: false }]);
+	});
+
+	it("form.fields 非 z.object → 人话报错（键即部件名）", () => {
+		expect(() => buildIr({
+			up: defineApi({ apiPrefix: "/o", route: "/up", method: "POST", form: { fields: z.string(), files: [{ name: "f" }] } }),
+		})).toThrowError(/form\.fields 必须是 z\.object/);
+	});
+
+	it("form.fields 走同一套 schema 白名单（transform 进不去，报错含 form.fields 路径）", () => {
+		expect(() => buildIr({
+			up: defineApi({
+				apiPrefix: "/o",
+				route: "/up",
+				method: "POST",
+				form: { fields: z.object({ note: z.string().transform(s => s) }) },
+			}),
+		})).toThrowError(/up\.form\.fields\.note/);
+	});
+});
+
 describe("splitRoute（route → 目录镜像 + .route 尾巴）", () => {
 	it.each([
 		["/list", { dir: "list", tail: undefined }],

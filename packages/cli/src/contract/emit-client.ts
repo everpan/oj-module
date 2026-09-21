@@ -1,5 +1,5 @@
 import type { IrEndpoint } from "./ir";
-import { emitSchemaSource } from "./emit-schema";
+import { emitSchemaSource, keyOf } from "./emit-schema";
 import { wirePrefixOf } from "./ir";
 
 /**
@@ -17,9 +17,9 @@ import { wirePrefixOf } from "./ir";
 const BANNER = `/* eslint-disable */
 // 生成物：ojm api 从契约生成，勿手改（改动请改契约文件后重跑 ojm api）`;
 
-type Slot = "params" | "query" | "body";
+type Slot = "params" | "query" | "body" | "form";
 
-const SLOT_TYPE_SUFFIX: Record<Slot, string> = { params: "Params", query: "Query", body: "Body" };
+const SLOT_TYPE_SUFFIX: Record<Slot, string> = { params: "Params", query: "Query", body: "Body", form: "Form" };
 
 const KY_METHOD: Record<IrEndpoint["method"], string> = {
 	GET: "get",
@@ -48,6 +48,8 @@ function slotsOf(ep: IrEndpoint): Slot[] {
 		slots.push("query");
 	if (ep.bodySchema)
 		slots.push("body");
+	if (ep.form)
+		slots.push("form"); // 与 body 互斥（定义期已拦截），故二者不同时出现
 	return slots;
 }
 
@@ -79,12 +81,77 @@ function emitTypes(ep: IrEndpoint): string[] {
 			lines.push(`export type ${pascal(ep.name)}Params = { ${ep.paramNames.map(n => `${n}: string`).join(", ")} };`);
 			continue;
 		}
+		// form 槽不是单个 schema（文本部件 + 文件部件两截），单独发射
+		if (slot === "form") {
+			lines.push(emitFormType(ep));
+			continue;
+		}
 		// 请求槽用 z.input（带 .default() 的字段入参可选）；data 用 z.infer（输出型）
 		lines.push(`export type ${pascal(ep.name)}${SLOT_TYPE_SUFFIX[slot]} = z.input<(typeof schemas)["${ep.name}"]["${slot}"]>;`);
 	}
 	if (ep.dataSchema)
 		lines.push(`export type ${pascal(ep.name)}Data = z.infer<(typeof schemas)["${ep.name}"]["data"]>;`);
 	return lines;
+}
+
+/**
+ * multipart 入参类型：文本部件取 api.schemas 的 form 槽（z.input，与 body 同款推导），
+ * 文件部件是**二进制**——只能声明 File/Blob（multiple → 数组），不进 zod/JSON Schema。
+ */
+function emitFormType(ep: IrEndpoint): string {
+	const form = ep.form!;
+	const members: string[] = [];
+	if (form.fieldsSchema)
+		members.push(`\tfields: z.input<(typeof schemas)["${ep.name}"]["form"]>`);
+	if (form.files.length) {
+		const files = form.files
+			.map(f => `${keyOf(f.name)}${f.required ? "" : "?"}: ${f.multiple ? "Array<File | Blob>" : "File | Blob"}`)
+			.join(", ");
+		members.push(`\tfiles: { ${files} }`);
+	}
+	return `export type ${pascal(ep.name)}Form = {\n${members.join("\n")}\n};`;
+}
+
+/**
+ * multipart/form-data 组装函数：文本部件逐个 append（undefined 缺省不 append，
+ * 与 oj 侧 http.body 缺省同义），文件部件按 multiple 展开。**不设 content-type**——
+ * ky 见到 FormData 自补 `multipart/form-data; boundary=…`，手写反而丢 boundary。
+ *
+ * 文本部件的取值：标量 `String(v)`；对象/数组 `JSON.stringify(v)`——多部件文本只能是字符串，
+ * 直接 `String({a:1})` 会静默变成 `[object Object]`，宁可发一份可解析的 JSON 文本。
+ */
+function emitFormBuilder(ep: IrEndpoint): string {
+	const form = ep.form!;
+	const lines = [
+		`function build${pascal(ep.name)}Form(input: ${pascal(ep.name)}Form): FormData {`,
+		"\tconst fd = new FormData();",
+	];
+	for (const name of form.fieldNames) {
+		const access = `input.fields.${keyOf(name)}`;
+		lines.push(`\tif (${access} !== undefined) {`);
+		lines.push(`\t\tconst v = ${access};`);
+		// 文本部件只能是字符串：对象/数组 JSON 化（直接 String() 会静默变 [object Object]）
+		lines.push(
+			`\t\tfd.append(${JSON.stringify(name)}, v !== null && typeof v === "object" ? JSON.stringify(v) : String(v));`,
+		);
+		lines.push("\t}");
+	}
+	for (const file of form.files) {
+		const access = `input.files.${keyOf(file.name)}`;
+		if (file.multiple) {
+			lines.push(`\tfor (const file of ${access}${file.required ? "" : " ?? []"})`);
+			lines.push(`\t\tfd.append(${JSON.stringify(file.name)}, file);`);
+		}
+		else if (file.required) {
+			lines.push(`\tfd.append(${JSON.stringify(file.name)}, ${access});`);
+		}
+		else {
+			lines.push(`\tif (${access} !== undefined)`);
+			lines.push(`\t\tfd.append(${JSON.stringify(file.name)}, ${access});`);
+		}
+	}
+	lines.push("\treturn fd;", "}");
+	return lines.join("\n");
 }
 
 function emitEndpoint(ep: IrEndpoint): string {
@@ -111,6 +178,9 @@ function emitEndpoint(ep: IrEndpoint): string {
 		optParts.push(`searchParams: ${prefix}query as Record<string, string | number | boolean>`);
 	if (ep.bodySchema)
 		optParts.push(`json: ${prefix}body`);
+	// multipart：请求体是就地组装的 FormData（json 通道与 form 互斥）
+	if (ep.form)
+		optParts.push(`body: build${pascalName}Form(${prefix}form)`);
 	if (ep.ignoreLoading)
 		optParts.push("ignoreLoading: true");
 	const opts = optParts.length ? `, { ${optParts.join(", ")} }` : "";
@@ -246,6 +316,9 @@ function emitSchemas(ir: IrEndpoint[], target: "module" | "internal"): string {
 				slots.push(`\t\tquery: ${emitSchemaSource(ep.querySchema)},`);
 			if (ep.bodySchema)
 				slots.push(`\t\tbody: ${emitSchemaSource(ep.bodySchema)},`);
+			// form 槽只发射文本部件（files 是二进制，无 schema）；api.ts 的 Form 类型据此推导
+			if (ep.form?.fieldsSchema)
+				slots.push(`\t\tform: ${emitSchemaSource(ep.form.fieldsSchema)},`);
 			if (!ep.raw && ep.dataSchema)
 				slots.push(`\t\tdata: ${emitSchemaSource(ep.dataSchema)},`);
 			if (slots.length === 0)
@@ -288,6 +361,8 @@ export function emitClient(ir: IrEndpoint[], opts: { target: "module" | "interna
 		const types = emitTypes(ep);
 		if (types.length)
 			sections.push(types.join("\n"));
+		if (ep.form)
+			sections.push(emitFormBuilder(ep));
 		sections.push(emitEndpoint(ep));
 	}
 	return {

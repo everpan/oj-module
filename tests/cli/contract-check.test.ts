@@ -163,6 +163,29 @@ export default [
 		expect(stale.some(v => v.level === "error" && v.message.includes("stub 缺失"))).toBe(true);
 	});
 
+	it("multipart（form 槽）契约：生成 + stub 落盘后 --check 零违规", async () => {
+		const cwd = mkdtempSync(join(process.cwd(), "node_modules/.cache/ojm-check-form-"));
+		tmpDirs.push(cwd);
+		mkdirSync(join(cwd, "api/src/personal-center"), { recursive: true });
+		writeFileSync(join(cwd, "api/src/personal-center/contract.ts"), `
+import { defineApi, z } from "@oj-module/runtime/contract";
+
+export const uploadAvatar = defineApi({
+	apiPrefix: "/personal-center",
+	route: "/upload",
+	method: "POST",
+	form: {
+		fields: z.object({ note: z.string().optional() }),
+		files: [{ name: "avatar", required: true }, { name: "gallery", multiple: true }],
+	},
+	data: z.string(),
+});
+`);
+		await runApi({ cwd });
+		const { violations } = await checkApi({ cwd });
+		expect(violations).toEqual([]);
+	});
+
 	it("契约变更 → stub 过期报 error artifact-stale（锁住 update 报错分支）", async () => {
 		const cwd = makeProject();
 		await runApi({ cwd });

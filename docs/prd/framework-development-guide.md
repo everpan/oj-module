@@ -222,7 +222,8 @@ packages/runtime/contract/
 | `method` | | HTTP 方法，缺省 `"GET"` | `"POST"` |
 | `query` | | 查询参数 schema（URL 序列化由生成物负责） | `z.object({ by: z.string() })` |
 | `params` | | 路径参数 schema，须与 route 参数段一一对应 | `z.object({ id: z.string() })` |
-| `body` | | 请求体 schema | `z.object({ range: z.string() })` |
+| `body` | | 请求体 schema（JSON） | `z.object({ range: z.string() })` |
+| `form` | | **上传**：`multipart/form-data` 请求体。`fields` 是文本部件的 zod，`files` 只声明 `name`/`required`/`multiple`（二进制不进 schema）；与 `body` 互斥 | `{ fields: z.object({ note: z.string().optional() }), files: [{ name: "avatar", required: true }] }` |
 | `data` | | 响应信封 `data` 部分的 schema | `z.array(pieData)` |
 | `response` | | 仅支持 `"raw"`：二进制/非信封逃生口，不解包、不校验、不进 mock | `response: "raw"` |
 | `ignoreLoading` | | `true` 表示该请求不触发全局加载条 | `ignoreLoading: true` |
@@ -271,6 +272,23 @@ defineApi({ apiPrefix: "/home", route: "/{id}.json" }); // 参数段混字面（
 defineApi({ apiPrefix: "/h", route: "/x", data: z.string(), response: "raw" }); // 二者互斥
 defineApi({ apiPrefix: "/h", route: "/x", method: "OPTIONS" });  // 不支持 OPTIONS
 defineApi({ apiPrefix: "/h", route: "/x", method: "HEAD", data: z.string() }); // HEAD 无响应体
+defineApi({ apiPrefix: "/h", route: "/x", body: z.object({}), form: { files: [{ name: "f" }] } }); // body 与 form 互斥
+defineApi({ apiPrefix: "/h", route: "/x", form: {} });                            // form 既无 fields 也无 files
+defineApi({ apiPrefix: "/h", route: "/x", form: { files: [{ name: "f" }, { name: "f" }] } }); // 文件字段名重复（要用 multiple: true）
+```
+
+上传端点的调用形态（生成 client 内部组装 `FormData`，文本部件标量 `String()`、对象/数组
+`JSON.stringify()`；**不要**手写 `content-type`——运行时见到 `FormData` 会自补 boundary）：
+
+```ts
+export const uploadAvatar = defineApi({
+	apiPrefix: "/personal-center", route: "/upload", method: "POST",
+	form: { fields: z.object({ note: z.string().optional() }), files: [{ name: "avatar", required: true }, { name: "gallery", multiple: true }] },
+	data: z.string(),                     // 上传端点照例带响应 data（form 与 data 可并存）
+});
+
+await uploadAvatar({ fields: { note: "合同扫描件" }, files: { avatar: file, gallery: [f1, f2] } });
+// 后端侧：http.files（元数据）/ http.file(i)（字节）读文件，文本部件落 http.body.<name>
 ```
 
 错误消息都带修复指引，例如：
@@ -381,6 +399,11 @@ pnpm test tests/cli          # cli 的 contract-* 用例大量消费本包（含
 - 改了 `defineApi` 校验规则后，**cli 的 contract 代码生成快照会变**（`tests/cli/__snapshots__`），需一并更新。
 - 本包版本会写进 runtime 的 `peerDependencies`；contract 未发布会导致下游装不上（见附录 A 的真实事故）。
 - `route` 一律**相对 apiPrefix**，不支持 oj 的根绝对写法；想写 `/api/xxx` 会被校验拦下。
+- **上传文件写 `form`，不要写 `body`**：`body` 走 `json:`（`content-type: application/json`），
+  文件塞不进去；`form` 与 `body` 互斥，文件部件只在 `files` 里声明名字/必填/多值（二进制不进
+  zod、也不进 JSON Schema / OpenAPI 的 schema 部分）。
+- 文本部件里塞对象/数组：生成物会 `JSON.stringify`（不是 `[object Object]`），后端从
+  `http.body.<name>` 拿到的是 **JSON 文本**——要结构自己 parse，或改用 JSON 端点的 `body`。
 
 ---
 
@@ -838,6 +861,25 @@ ojm build      # 只有 build 会清场合并，产物在 web/dist（含宿主�
 ```
 
 **`ojm preview [port] [--oj-static]`** —— 生产形态预览（migrate → oj server + 静态兜底）。
+两者都支持 `web.config.ts` 的 **`htmlTransform`**（按路由注入 HTML，见下）：
+
+```ts
+// web.config.ts —— 可选：指定一个模块，其 default 导出即变换函数
+export default { baseUrl: "...", modules: [...], htmlTransform: "./html-transform.ts" };
+
+// html-transform.ts（工程根）
+export default async (path: string, html: string) => ({
+	html: html.replace("<title>", `<title>${await titleOf(path)} · `),
+	cacheControl: "public, max-age=60",   // 可选：逐路由缓存策略
+});
+```
+
+- 生效范围：`/`、`/index.html` 与 SPA 回落的深链接（`path` 已是**解码后**的请求路径）；
+  顺序 = transform → dev 的 reload 注入，`ojm dev` 照旧热更。
+- **未配置时输出与历史逐字节一致**；变换抛错/返回非字符串 → 打日志并回退原文（不会 500）；
+  非 HTML 资产一律不经钩子。配置的模块缺失或 default 不是函数 → **启动即报错**。
+- **`--oj-static` 例外**：该模式静态由 oj 二进制直出，不经本钩子（生产 SEO 要在 oj 托管侧
+  用 `server.html_meta` / `server.html_meta_handler`，见 oj devkit 手册）。
 
 **`ojm api [dir] [--check] [--docs] [--exempt <path>]`** —— 契约代码生成与对账。
 
@@ -905,6 +947,9 @@ pnpm test tests/shell/shell-importmap.test.ts  # 门禁实现一致性
 - dev 服务器静态解析必须正确区分「本地模块产物」与「宿主产物」；`hostRoots` 钉死 cli 内置 `shell-dist`，避免 `ojm build` 的合并残留反向遮蔽宿主。
 - 报错面向人话（默认不打印堆栈）；`OJM_DEBUG=1` 才输出堆栈（旧名 `RAM_DEBUG` 一并读）。
 - 改了契约文件后忘了重跑 `ojm api`，前端 client 会与后端漂移；CI 用 `ojm api --check` 兜底。
+- **IM 链接预览/爬虫只看到默认标题**：客户端改 `document.title` 对爬虫无效——配
+  `web.config.ts` 的 `htmlTransform`（见 §4.3）；`preview --oj-static` 模式下该钩子不生效，
+  生产要在 oj 托管侧做（`server.html_meta_handler`）。
 
 ### 4.9 命令与内部前缀改名（P3）与兼容读取
 

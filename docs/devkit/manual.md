@@ -279,9 +279,38 @@ export const listBooks = defineApi({
 
 // 另两个按需字段：
 //   params: z.object({ id: z.number() })  —— 与 route 的 {id} 参数段一一对应
-//   body: z.object({ title: z.string() }) —— 请求体
+//   body: z.object({ title: z.string() }) —— 请求体（JSON）
 //   response: "raw"                       —— 二进制/非信封逃生口，与 data 互斥
 ```
+
+**上传文件（multipart/form-data）** —— `form`，与 `body` 互斥：文本字段走
+`form.fields`（zod，字段名即表单部件名），文件部件只声明 `name` / `required` /
+`multiple`（二进制进不了 JSON Schema，也不进白名单）：
+
+```ts
+export const uploadAvatar = defineApi({
+	apiPrefix: "/personal-center",
+	route: "/upload",
+	method: "POST",
+	form: {
+		fields: z.object({ note: z.string().optional() }),
+		files: [{ name: "avatar", required: true }, { name: "gallery", multiple: true }],
+	},
+	data: z.string(),                 // 上传端点照例可以带响应 data
+});
+
+// 调用形态（生成 client 内部组装 FormData）：
+// await uploadAvatar({ fields: { note: "合同扫描件" },
+//                      files: { avatar: file, gallery: [f1, f2] } });
+```
+
+**不要手写 `content-type`**：运行时（ky）见到 `FormData` 会自己补
+`multipart/form-data; boundary=…`。后端 handler 侧用 `http.files`（元数据）/`http.file(i)`
+（字节）读文件，文本字段落 `http.body.<name>`。
+
+文本字段的取值：标量按 `String()` 发；**对象/数组自动 `JSON.stringify`**（多部件文本只能是
+字符串，直接 `String({a:1})` 会静默变 `[object Object]`）。后端从 `http.body.<name>` 拿到的是
+JSON 文本，需要结构就自己 `JSON.parse`（或干脆用单独的 JSON 端点发结构化数据）。
 
 **定义期就会抛错**的写法（早炸好过晚炸）：
 
@@ -290,7 +319,8 @@ export const listBooks = defineApi({
 - `data` 与 `response: "raw"` 同时出现；
 - `response` 取 `"raw"` 以外的值；
 - `method: "OPTIONS"`（不在支持范围）；
-- `method: "HEAD"` 且声明了 `data`（HEAD 无响应体）。
+- `method: "HEAD"` 且声明了 `data`（HEAD 无响应体）；
+- `form` 与 `body` 同时出现；`form` 既无 `fields` 也无 `files`；`form.files` 缺 `name` 或字段名重复（重名要用 `multiple: true`）；`form.fields` 不是 `z.object`。
 
 `data` 过**类型白名单**：不返回数据的接口**直接省略 `data`**，
 写 `z.null()` 或 transform / refine 会被拒。校验放后端做。
@@ -344,7 +374,7 @@ const booksClient = createBooksClient(ctx);
 生成是**幂等**的：内容逐字节比对，无变化不写盘，重复跑 `ojm api` 的 git diff 为空。
 
 命名规则：生成的函数名 = 契约导出名（`listBooks`）；类型名 = 导出名 PascalCase +
-`Query` / `Body` / `Data`（`ListBooksQuery`、`CreateBookBody`、`ListBooksData`）。
+`Query` / `Body` / `Form` / `Data`（`ListBooksQuery`、`CreateBookBody`、`UploadAvatarForm`、`ListBooksData`）。
 
 ### 3.6 命令
 
@@ -663,6 +693,38 @@ pnpm exec ojm vendor # 下载/重装 oj 二进制
   目录镜像路由不生效**——所以参数路由要先 `oj build` 再测。
 - 部署包 = `config.yaml` + `dist/` + 可选 `seed.sql`。
 
+**按路由注入 HTML（`htmlTransform`，SEO / IM 链接预览）**：SPA 的服务端只有一份
+`index.html`——想让 `/issues/<id>` 这类路由带自己的 `<title>`/`og:*`（微信、Slack、飞书预览
+与不执行 JS 的爬虫只看服务端 HTML，客户端 `document.title` 无效），在 `web.config.ts` 配：
+
+```ts
+// web.config.ts
+export default { baseUrl: "...", modules: [...], htmlTransform: "./html-transform.ts" }
+```
+
+```ts
+// html-transform.ts（工程根）——default 导出即变换函数
+export default async (path: string, html: string) => {
+	if (!path.startsWith("/issues/"))
+		return html;
+	const id = path.slice("/issues/".length);
+	const name = await fetchIssueTitle(id);          // 你的取数方式
+	return {
+		html: html.replace("<title>", `<title>${escapeHtml(name)} · `),
+		cacheControl: "public, max-age=60",            // 逐路由缓存策略（可选）
+	};
+};
+```
+
+- 生效范围：`/`、`/index.html` 与 SPA history 回落的深链接（`path` 为**解码后**的请求路径）；
+  顺序是 transform → dev 的 reload 脚本注入，`ojm dev` 照旧热更。
+- 返回 `string` 或 `{ html, cacheControl? }`；**未配置时输出与历史逐字节一致**，抛错/坏返回只
+  打日志并回退原文（不会 500），非 HTML 资产完全不受影响。
+- 配置的模块缺失或 default 不是函数 → `ojm dev`/`ojm preview` **启动即报错**（不留半个 oj 进程）。
+- **`preview --oj-static` 例外**：该模式静态由 oj 二进制直出（`--app-path`），不经 ojm 静态层，
+  本钩子不生效；生产要在 oj 托管侧做同样的事，用 oj 的 `server.html_meta`（构建期 JSON）或
+  `server.html_meta_handler`（动态 handler）——见 oj devkit 手册「静态站点与 per-route meta」。
+
 > release 的 `server.migrate_on_start` 默认 `verify`：迁移账本落后会**拒绝启动**，
 > 先跑 `oj migrate -c api/config.yaml -d api/dist`。
 
@@ -702,6 +764,8 @@ pnpm exec ojm vendor # 下载/重装 oj 二进制
 | 豁免写了 `//` 注释后全部失效 | 严格 JSON 解析失败、静默回退 | 注释写进 `_comment` 字段 |
 | 新建后端模块目录后 API 404 | 目录镜像路由未热更 | **重启** `ojm dev` |
 | DELETE 返回 405 | 方法名写成了 `delete` | 改成 `del` |
+| IM 预览/爬虫只有默认标题（页面 JS 改了没用） | 服务端没做 HTML 注入 | 配 `htmlTransform`（见 §7；`preview --oj-static` 模式下要改到 oj 侧 `server.html_meta_handler`） |
+| 配了 `htmlTransform` 但没生效 | 路径写错 / default 不是函数会**启动报错**；能起来却没效果 → 检查该请求是否命中静态层（`/api` 前缀与带扩展名的资源都不过钩子） | 见 §7 的生效范围 |
 | 上传报 401 | `headers` 写成固定对象，token 过期 | 写成方法，用时现取（§4.5） |
 | 后端菜单用了我的布局名，页面却没壳 | 注册该布局的模块没加载 | 看控制台 `[layout] 未知名布局` 提醒 |
 | 后端下发的页面组件找不到 | 下发的组件名必须在框架页面目录里 | 自己模块的页面走模块 `routes` |

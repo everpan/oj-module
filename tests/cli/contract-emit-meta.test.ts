@@ -107,3 +107,51 @@ describe("emitOpenapiYaml（AC-D1）", () => {
 		expect(emitOpenapiYaml(ir, { title: "订单服务", version: "1.0.0" })).toBe(yaml);
 	});
 });
+
+/**
+ * multipart/form-data（form 槽）：独立 IR + 独立快照——无 form 的契约产物必须逐字节不变。
+ */
+const formIr = buildIr({
+	uploadAvatar: defineApi({
+		apiPrefix: "/personal-center",
+		route: "/upload",
+		method: "POST",
+		form: {
+			fields: z.object({ kind: z.string(), note: z.string().optional() }),
+			files: [{ name: "avatar", required: true }, { name: "gallery", multiple: true }],
+		},
+		data: z.object({ url: z.string() }),
+		description: "上传头像/附件",
+	}),
+});
+
+describe("emitOpenapiYaml：multipart/form-data（form 槽）", () => {
+	const yaml = emitOpenapiYaml(formIr, { title: "上传服务", version: "1.0.0" });
+	const doc = parse(yaml) as any;
+
+	it("快照 + requestBody.content[\"multipart/form-data\"]：文本部件走 JSON Schema、文件部件 binary", () => {
+		expect(yaml).toMatchSnapshot();
+		const post = doc.paths["/personal-center/upload"].post;
+		expect(post.requestBody.required).toBe(true);
+		// form 端点不经 application/json 通道
+		expect(post.requestBody.content["application/json"]).toBeUndefined();
+		const schema = post.requestBody.content["multipart/form-data"].schema;
+		expect(schema.type).toBe("object");
+		expect(schema.properties.kind).toMatchObject({ type: "string" });
+		expect(schema.properties.note).toMatchObject({ type: "string" });
+		// 文件部件：binary；multiple → array of binary
+		expect(schema.properties.avatar).toEqual({ type: "string", format: "binary" });
+		expect(schema.properties.gallery).toEqual({ type: "array", items: { type: "string", format: "binary" } });
+		// required = fields 的 required ∪ 必传文件（可选部件不进 required）
+		expect(schema.required).toEqual(["kind", "avatar"]);
+	});
+
+	it("form 与 data 不互斥：响应信封照旧带 data schema", () => {
+		const resp = doc.paths["/personal-center/upload"].post.responses["200"].content["application/json"].schema;
+		expect(resp.properties.data.properties.url.type).toBe("string");
+	});
+
+	it("字节稳定（同输入两次发射一致）", () => {
+		expect(emitOpenapiYaml(formIr, { title: "上传服务", version: "1.0.0" })).toBe(yaml);
+	});
+});

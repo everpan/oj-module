@@ -88,6 +88,34 @@ export default {
 
 `name` 必须与 `entry.ts` 中 `defineModule({ name })` 一致，不一致会直接构建失败。`enabled: false` 的模块会被跳过。
 
+### 按路由改写 HTML（`htmlTransform`，可选）
+
+模块联邦站点每条路由都出同一份 `index.html`，逐路由的 `<title>` / OpenGraph 无从表达——IM 链接预览与非 JS 爬虫只会看到默认 title。配 `htmlTransform` 指向一个模块（相对工程根的路径，或已安装的包名），`ojm dev` 与 `ojm preview` 会加载它，对 `/`、`/index.html` 与 SPA 回落的深链接统一生效：
+
+```ts
+// web.config.ts
+export default {
+  baseUrl: "",
+  modules: [/* … */],
+  htmlTransform: "./html-transform.ts",
+};
+```
+
+```ts
+// html-transform.ts —— default 导出即变换函数
+export default async function (path: string, html: string) {
+  if (path.startsWith("/share/"))
+    return html.replace("</title>", ` · 分享</title>`); // 返回新 HTML 字符串
+  return { html, cacheControl: "public, max-age=300" };   // 或 { html, cacheControl? }
+}
+```
+
+- `path` 是解码后的请求路径（查询串已剥离），`html` 是宿主原文；
+- 先变换、后注入 dev 刷新脚本，故 `ojm dev` 的热刷新不受影响；
+- 变换抛错或返回非字符串 → 回退原文，站点不 500；
+- 模块缺失或 default 不是函数 → 启动即人话报错（fail-fast）；
+- 非 HTML 资产（`/assets/*`、`/modules/*`）不受影响。
+
 ## 子出口
 
 ```ts

@@ -9,6 +9,9 @@
 
 ### Added
 
+- **静态托管的 HTML 变换钩子（`htmlTransform`）—— 按路由注入 title/OpenGraph**：此前 `static-handler` 的 `serveHtml` 是「逐字节原样送出宿主 index.html」+ dev-only 的 reload 注入，所有 SPA 路由（含公开分享页）在服务端拿到同一份 HTML ⇒ IM（微信/Slack/飞书）链接预览与不执行 JS 的爬虫只能看到默认标题。现在 `web.config.ts` 可配 `htmlTransform: "./html-transform.ts"`（相对工程根路径或包名），`ojm dev` 与 `ojm preview` 在起 oj **之前**加载并校验它，模块 default 导出 `(path, html) => string | { html, cacheControl? } | Promise<…>`（`path` 为解码后请求路径）——`/`、`/index.html` 与 SPA history 回落的深链接统一经这一个注入点，顺序为 transform → reload 脚本（dev 工具链不受影响）；返回的 `cacheControl` 逐路由覆盖 `Cache-Control`。**未配置时状态码/响应头/响应体与历史逐字节一致**；变换抛错或返回非字符串只打日志并回退原文（单条路由的坏变换不得让站点 500）；非 HTML 资产完全不受影响。
+- **契约 `form` 槽：multipart/form-data 上传**（`defineApi({ form: { fields, files } })`）——此前契约只会发 JSON 请求体，后端的 multipart 上传端点只能绕过生成 client 手写请求。现在：`form.fields` 用 zod 描述**文本部件**（字段名即表单部件名，进 OpenAPI 的 `multipart/form-data` JSON Schema），`form.files` 只声明 `name` / `required` / `multiple`（二进制刻意不进 schema）；生成 client 的调用形态 = `{ fields: {...}, files: { avatar: File|Blob, gallery?: File[] } }`，内部组装 `FormData` 并以 `body` 发送（`content-type` 交运行时按 boundary 自动补）。`form` 与 `body` 互斥、定义期即拒；`--check`、routes.json、stub 全链路跟随。无 `form` 的契约产物逐字节不变。
+
 - **`ojm api` 生成 client 工厂化（create<Module>Client(ctx)，构造即 install）**：生成物 `web/src/<模块>/client/api.ts` 新增 `API_PREFIX` 常量（契约前缀唯一真源，与契约 `defineApi` 的 `apiPrefix` 天然一致）与 `create<Module>Client(ctx)` 工厂——模块 entry 的 `onInit` 里一行 `const client = createNotificationClient(ctx)` 即完成 apiPrefix 登记 + scoped request 绑定，不再手写 `ctx.register.apiPrefix(...)` + `bindRequest(...)` 两行样板，杜绝「登记了前缀没绑 request」的半接线状态。重复构造幂等安全；一模块一 client。模板、playground/playground-oj、根仓 `web/home` 已全部迁移；新人上手见 [`docs/202609130035-provider-guide.md`](docs/202609130035-provider-guide.md)。设计见 [`docs/prd/202609130128-client-factory-design.md`](docs/prd/202609130128-client-factory-design.md)。
 
 ### Deprecated

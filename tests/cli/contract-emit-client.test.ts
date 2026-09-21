@@ -236,6 +236,18 @@ describe("emitClient（AC-D5/D6/D8/D15）", () => {
 				query: z.object({ page: z.number().default(1) }),
 				data: z.object({ total: z.number() }),
 			}),
+			// form 端点的生成物也须过 tsc：FormData 组装 + body: FormData 依赖
+			// ScopedRequestLike 的 body 槽（runtime dist 声明）
+			uploadAvatar: defineApi({
+				apiPrefix: "/order",
+				route: "/upload",
+				method: "POST",
+				form: {
+					fields: z.object({ note: z.string().optional() }),
+					files: [{ name: "avatar", required: true }, { name: "gallery", multiple: true }],
+				},
+				data: z.object({ url: z.string() }),
+			}),
 		});
 		const files = emitClient(ir2, { target: "module", module: "order" });
 		// F7 形态断言：raw 端点的 params 槽保留在 schemas（client 类型引用不断链）
@@ -288,6 +300,124 @@ describe("emitClient（AC-D5/D6/D8/D15）", () => {
 		const code = readFileSync(join(outdir, "api.js"), "utf8");
 		expect(code).not.toContain("api.schemas");
 		expect(code).not.toContain("_zod");
+	});
+});
+
+/**
+ * multipart/form-data 契约（与上面的 JSON 契约分开建模）：JSON 生成物必须逐字节不变，
+ * 故 form 用例一律独立 IR + 独立快照，不污染既有快照。
+ */
+const formIr = buildIr({
+	uploadAvatar: defineApi({
+		apiPrefix: "/personal-center",
+		route: "/upload",
+		method: "POST",
+		form: {
+			fields: z.object({ kind: z.enum(["photo", "doc"]), note: z.string().optional() }),
+			files: [{ name: "avatar", required: true }, { name: "gallery", multiple: true }],
+		},
+		data: z.string(),
+		description: "上传头像/附件，返回资源 URL",
+	}),
+	uploadInFolder: defineApi({
+		apiPrefix: "/personal-center",
+		route: "/folder/{id}/upload",
+		method: "PUT",
+		params: z.object({ id: z.number() }),
+		form: { files: [{ name: "file", required: true }] },
+		data: z.string(),
+	}),
+});
+
+describe("emitClient：multipart/form-data（form 槽）", () => {
+	it("快照：Form 类型 + FormData 组装函数 + body 走 FormData（无 json / 不设 content-type）", () => {
+		const files = emitClient(formIr, { target: "module", module: "personal-center" });
+		expect(files["api.ts"]).toMatchSnapshot();
+		expect(files["api.schemas.ts"]).toMatchSnapshot();
+	});
+
+	it("形态：文本部件走 schemas 的 form 槽；文件部件只有 File/Blob（binary 不进 zod/schemas）", () => {
+		const files = emitClient(formIr, { target: "module", module: "personal-center" });
+		const api = files["api.ts"];
+		// 单槽直接传 form 对象（{ fields, files }），多槽打包 input.form
+		expect(api).toContain("export type UploadAvatarForm = {");
+		expect(api).toContain("files: { avatar: File | Blob, gallery?: Array<File | Blob> }");
+		expect(api).toContain("body: buildUploadAvatarForm(form)");
+		expect(api).toContain("body: buildUploadInFolderForm(input.form)");
+		expect(api).not.toContain("json:");
+		// content-type 由运行时（ky 见 FormData 自补 boundary）——生成物不得插手
+		expect(api).not.toContain("content-type");
+		expect(api).not.toContain("Content-Type");
+		// 纯文件 form：无 fields → 无 form 槽 schema，但类型仍在（files 只按名字声明）
+		expect(files["api.schemas.ts"]).toContain("form: z.object({");
+		expect(files["api.schemas.ts"]).not.toContain("avatar");
+		expect(files["api.schemas.ts"]).not.toContain("gallery");
+	});
+
+	it("行为：组装 FormData——文本部件 String 化、可选缺省不 append、multiple 逐项 append", async () => {
+		const { req, calls } = stubRequest(() => ok("https://cdn.example.com/a.png"));
+		const { mod } = await bundleClient(emitClient(formIr, { target: "module", module: "personal-center" }), true);
+		mod.bindRequest(req);
+
+		const data = await mod.uploadAvatar({
+			fields: { kind: "photo" },
+			files: { avatar: new File(["bytes"], "a.png", { type: "image/png" }) },
+		});
+		expect(data).toBe("https://cdn.example.com/a.png");
+		expect(calls[0]).toMatchObject({ method: "post", url: "personal-center/upload" });
+		const options = calls[0].options!;
+		expect(options.body).toBeInstanceOf(FormData);
+		expect(options.json).toBeUndefined();
+		// 不设 headers/content-type（否则 boundary 写死会破坏 multipart）
+		expect(options).not.toHaveProperty("headers");
+		const fd = options.body as FormData;
+		expect(fd.get("kind")).toBe("photo");
+		expect(fd.has("note")).toBe(false);
+		expect((fd.get("avatar") as File).name).toBe("a.png");
+
+		await mod.uploadAvatar({
+			fields: { kind: "doc", note: "合同扫描件" },
+			files: { avatar: new File(["x"], "b.png"), gallery: [new File(["1"], "1.png"), new File(["2"], "2.png")] },
+		});
+		const fd2 = calls[1].options!.body as FormData;
+		expect(fd2.get("kind")).toBe("doc");
+		expect(fd2.get("note")).toBe("合同扫描件");
+		expect(fd2.getAll("gallery").map(f => (f as File).name)).toEqual(["1.png", "2.png"]);
+
+		// params + form 双槽：URL 插值照旧，请求体仍是 FormData
+		await mod.uploadInFolder({ params: { id: 7 }, form: { files: { file: new File(["z"], "z.bin") } } });
+		expect(calls[2].url).toBe("personal-center/folder/7/upload");
+		expect(calls[2].options!.body).toBeInstanceOf(FormData);
+	});
+
+	it("行为：非标量文本部件走 JSON.stringify（不得静默变 [object Object]）", async () => {
+		const ir = buildIr({
+			save: defineApi({
+				apiPrefix: "/personal-center",
+				route: "/save",
+				method: "POST",
+				form: { fields: z.object({ meta: z.object({ a: z.number() }), tags: z.array(z.string()) }) },
+				data: z.string(),
+			}),
+		});
+		const { req, calls } = stubRequest(() => ok("ok"));
+		const { mod } = await bundleClient(emitClient(ir, { target: "module", module: "personal-center" }), true);
+		mod.bindRequest(req);
+		await mod.save({ fields: { meta: { a: 1 }, tags: ["x", "y"] } });
+		const fd = calls[0].options!.body as FormData;
+		expect(fd.get("meta")).toBe("{\"a\":1}");
+		expect(fd.get("tags")).toBe("[\"x\",\"y\"]");
+	});
+
+	it("form 与 data 并存：响应仍解包信封并做 DEV 校验", async () => {
+		const { req } = stubRequest(() => ok({ url: 42 }));
+		const { mod } = await bundleClient(emitClient(formIr, { target: "module", module: "personal-center" }), true);
+		mod.bindRequest(req);
+		// uploadAvatar.data = z.string()，返回对象 → DEV 校验应报契约违例
+		const err = await mod.uploadAvatar({ fields: { kind: "photo" }, files: { avatar: new File(["x"], "x.png") } })
+			.catch((e: unknown) => e);
+		expect(err).toMatchObject({ name: "ContractApiError", code: -1 });
+		expect((err as Error).message).toMatch(/契约违例.*uploadAvatar/s);
 	});
 });
 

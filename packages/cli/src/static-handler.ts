@@ -7,6 +7,10 @@
  *
  * reload 通道仅 dev 传入（SSE 端点 + 外链脚本注入）；preview 传 null——
  * 生产形态零注入，缓存策略交托管层（不设 no-store）。
+ *
+ * 可选 transform 是 HTML 唯一注入点（content 级改写，如按路由写
+ * title/OpenGraph）；组合顺序为 transform → reload 脚本，故 dev 工具链不受影响。
+ * 不传 transform 时输出与历史逐字节一致（状态码/头/体全同）。
  */
 
 import type http from "node:http";
@@ -31,6 +35,23 @@ export interface ReloadChannel {
 	handler: (req: http.IncomingMessage, res: http.ServerResponse) => void
 }
 
+/**
+ * HTML 变换结果：直接返回新 HTML，或返回 { html, cacheControl? } ——
+ * 后者让「公开分享页可长缓存、后台页 no-store」这类逐路由策略可表达。
+ */
+export type HtmlTransformResult = string | { html: string, cacheControl?: string };
+
+/**
+ * HTML 变换钩子：在写出前对宿主 HTML 做 content 级改写（统一处理
+ * `/`、`/index.html` 与 SPA history 回落的深链接）。
+ * 抛错或返回非字符串都会被收敛为「回退原文」——单条路由的坏 transform
+ * 不得让站点 500。
+ */
+export type HtmlTransform = (
+	req: http.IncomingMessage,
+	html: string,
+) => HtmlTransformResult | Promise<HtmlTransformResult>;
+
 export interface StaticHandlerOptions {
 	/** 静态解析根（按序第一个命中）：dev=[模块产物 dist, shell dist]，preview=[合并站点目录] */
 	roots: string[]
@@ -45,6 +66,14 @@ export interface StaticHandlerOptions {
 	reload: ReloadChannel | null
 	/** dev true：开发态禁缓存；preview false */
 	noStore: boolean
+	/** HTML 变换（可选）；仅作用于 HTML，非 HTML 资产一律不受影响 */
+	transform?: HtmlTransform
+	/**
+	 * HTML 响应的默认 Cache-Control（显式 opt-in）。transform 返回的
+	 * cacheControl 优先于它；非 HTML 资产不受影响。缺省 = 不加此头
+	 * （与历史输出逐字节一致）。
+	 */
+	htmlCacheControl?: string
 }
 
 /** 模块空间路径：/modules.json 与 /modules/*（模块产物，localDist 优先） */
@@ -89,7 +118,7 @@ export function createStaticHandler(opts: StaticHandlerOptions): (req: http.Inco
 		}
 		return null;
 	};
-	const serveHtml = (res: http.ServerResponse) => {
+	const serveHtml = (req: http.IncomingMessage, res: http.ServerResponse) => {
 		// index.html 是宿主内容：dev 在 hostRoots（shell dist），preview 在合并站点目录
 		const htmlPath = resolveFile("index.html");
 		if (!htmlPath) {
@@ -97,9 +126,50 @@ export function createStaticHandler(opts: StaticHandlerOptions): (req: http.Inco
 			res.end("index.html not found in static roots");
 			return;
 		}
-		const html = readFileSync(htmlPath, "utf-8");
-		res.writeHead(200, { "content-type": MIME[".html"] });
-		res.end(opts.reload ? injectReloadScript(html) : html);
+		const raw = readFileSync(htmlPath, "utf-8");
+
+		// 先 content 变换、后 reload 注入：dev 刷新逻辑在改写后仍生效
+		const finalize = (html: string, cacheControl?: string) => {
+			const headers: Record<string, string> = { "content-type": MIME[".html"] };
+			const cc = cacheControl ?? opts.htmlCacheControl;
+			if (cc)
+				headers["cache-control"] = cc;
+			res.writeHead(200, headers);
+			res.end(opts.reload ? injectReloadScript(html) : html);
+		};
+
+		if (!opts.transform) {
+			finalize(raw);
+			return;
+		}
+
+		void (async () => {
+			let html = raw;
+			let cacheControl: string | undefined;
+			try {
+				const out = await opts.transform!(req, raw);
+				if (typeof out === "string") {
+					html = out;
+				}
+				else if (out && typeof out.html === "string") {
+					html = out.html;
+					cacheControl = out.cacheControl;
+				}
+				else {
+					// 边界防御：坏返回（null / 对象缺 html）不得让站点挂掉
+					console.error("[ojm] html transform 返回了非字符串、也非 { html } 的值，已回退原始 HTML");
+				}
+			}
+			catch (error) {
+				console.error(`[ojm] html transform 执行失败，已回退原始 HTML：${error instanceof Error ? error.message : String(error)}`);
+			}
+			try {
+				finalize(html, cacheControl);
+			}
+			catch (error) {
+				console.error(`[ojm] html 响应写出失败：${error instanceof Error ? error.message : String(error)}`);
+			}
+		})();
 	};
 
 	return (req, res) => {
@@ -130,7 +200,7 @@ export function createStaticHandler(opts: StaticHandlerOptions): (req: http.Inco
 		}
 
 		if (rel === "/" || rel === "/index.html") {
-			serveHtml(res);
+			serveHtml(req, res);
 			return;
 		}
 
@@ -142,7 +212,7 @@ export function createStaticHandler(opts: StaticHandlerOptions): (req: http.Inco
 
 		// SPA history fallback：深链接/刷新直达路由路径回落宿主 HTML
 		if (!extname(rel) && (req.headers.accept ?? "").includes("text/html")) {
-			serveHtml(res);
+			serveHtml(req, res);
 			return;
 		}
 

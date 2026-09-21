@@ -1,3 +1,4 @@
+import type { ApiDefinitionInput } from "../../packages/runtime/contract";
 import { describe, expect, it } from "vitest";
 import { ContractApiError, defineApi, z } from "../../packages/runtime/contract";
 
@@ -38,6 +39,54 @@ describe("defineApi（契约 DSL，AC-D11）", () => {
 		expect(() => defineApi({ apiPrefix: "/o", route: "/x", method: "HEAD", data: z.string() })).toThrowError(/HEAD/);
 		// HEAD 无 data 合法
 		expect(defineApi({ apiPrefix: "/o", route: "/x", method: "HEAD" }).method).toBe("HEAD");
+	});
+});
+
+/**
+ * multipart/form-data（form 槽）：文本部件走 zod，文件部件只声明名字/形态——
+ * 二进制刻意不进 schema（JSON Schema 无 binary，FormData 由生成 client 组装）。
+ */
+describe("defineApi：multipart（form 槽）", () => {
+	it("合法形态：fields + files 并存、纯 fields、纯 files", () => {
+		const both = defineApi({
+			apiPrefix: "/o",
+			route: "/up",
+			method: "POST",
+			form: { fields: z.object({ note: z.string() }), files: [{ name: "avatar", required: true }] },
+		});
+		expect(both.form?.files).toEqual([{ name: "avatar", required: true }]);
+		// 文件部件不需要 zod：纯文件 form 也能定义（zod 表达不了二进制）
+		const filesOnly: ApiDefinitionInput = defineApi({ apiPrefix: "/o", route: "/up", method: "POST", form: { files: [{ name: "f", multiple: true }] } });
+		expect(filesOnly.form?.fields).toBeUndefined();
+		const fieldsOnly: ApiDefinitionInput = defineApi({ apiPrefix: "/o", route: "/up", method: "POST", form: { fields: z.object({ note: z.string() }) } });
+		expect(fieldsOnly.form?.files).toBeUndefined();
+	});
+
+	it("form 与 data（响应信封）不互斥：上传端点返回资源 URL 是常态", () => {
+		const d = defineApi({ apiPrefix: "/o", route: "/up", method: "POST", form: { files: [{ name: "f" }] }, data: z.string() });
+		expect(d.data).toBeDefined();
+		expect(d.form?.files).toEqual([{ name: "f" }]);
+	});
+
+	it.each([
+		["form 与 body 并存", { apiPrefix: "/o", route: "/up", method: "POST", body: z.object({ a: z.string() }), form: { files: [{ name: "f" }] } }],
+		["空 form（既无 fields 也无 files）", { apiPrefix: "/o", route: "/up", method: "POST", form: {} }],
+		["form.files 缺 name", { apiPrefix: "/o", route: "/up", method: "POST", form: { files: [{ name: "" }] } }],
+		["form.files 字段名重复", { apiPrefix: "/o", route: "/up", method: "POST", form: { files: [{ name: "f" }, { name: "f", multiple: true }] } }],
+	])("%s → 定义期人话报错", (_label, def) => {
+		expect(() => defineApi(def as never)).toThrowError(/契约/);
+	});
+
+	it("form 与 body 互斥的报错指路（提示写进 form.fields）", () => {
+		expect(() => defineApi({
+			apiPrefix: "/o",
+			route: "/up",
+			method: "POST",
+			body: z.object({ a: z.string() }),
+			form: { files: [{ name: "f" }] },
+		})).toThrowError(/form 与 body 互斥/);
+		expect(() => defineApi({ apiPrefix: "/o", route: "/up", method: "POST", form: { files: [{ name: "f" }, { name: "f" }] } }))
+			.toThrowError(/multiple: true/);
 	});
 });
 

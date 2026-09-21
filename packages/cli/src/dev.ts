@@ -4,6 +4,7 @@
  * 职责是「装配」：按工程布局解析各协作方（shell dist、oj、mock、watch），
  * 组装一个 http server。具体能力各自独立：
  *   - 静态/SPA/注入     → static-handler.ts
+ *   - HTML 变换加载     → html-transform.ts（web.config.ts 的 htmlTransform）
  *   - /api 反代与 SSE   → dev-proxy.ts
  *   - oj 子进程生命周期 → oj.ts
  *   - 布局探测          → layout.ts
@@ -29,6 +30,7 @@ import { buildModules } from "./build";
 import { loadContractMocks, resolveMock } from "./contract/mock";
 import { loadProjectMocks, mockStatusCode } from "./dev-mock";
 import { createReloadHub, proxyApi, proxyWsUpgrade, sseScript } from "./dev-proxy";
+import { loadHtmlTransform } from "./html-transform";
 import { resolveLayout } from "./layout";
 import { startOj } from "./oj";
 import { readOjApiPrefix } from "./oj-config";
@@ -70,6 +72,9 @@ export async function devServer(projectRoot: string, opts: DevOptions = {}): Pro
 		console.error(`[ojm-api] 契约 mock 装载失败（不影响 dev 启动）：${error instanceof Error ? error.message : String(error)}`);
 	}
 
+	// htmlTransform（web.config.ts，可选）先于起进程校验：配置坏了不该留下 oj 孤儿
+	const transform = await loadHtmlTransform(projectRoot);
+
 	// 2) oj 后端（工程有 api/config.yaml 时全栈形态；桩可注入）
 	const configPath = resolve(projectRoot, "api/config.yaml");
 	let oj: OjProcess | undefined;
@@ -95,11 +100,13 @@ export async function devServer(projectRoot: string, opts: DevOptions = {}): Pro
 
 	// 3) 静态半边（dev：模块产物优先，shell dist 兜底；no-store；注入刷新通道）
 	// hostRoots 钉死 shell dist：ojm build 的合并残留不得反向遮蔽宿主（F11）
+	// transform 来自 web.config.ts（可选）：按路由改写 title/OG，先于 reload 注入
 	const serveStatic = createStaticHandler({
 		roots: [localDist, shellDist],
 		hostRoots: [shellDist],
 		reload: { script: sseScript(), handler: hub.handler },
 		noStore: true,
+		transform,
 	});
 
 	const server = http.createServer((req, res) => {

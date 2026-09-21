@@ -239,6 +239,57 @@ describe("previewServer ojm 静态层", () => {
 	});
 });
 
+describe("previewServer htmlTransform（web.config.ts）", () => {
+	const MODULES = "[{ name: \"fx\", entry: \"./web/src/fx/entry.ts\" }]";
+
+	function writeTransformConfig(root: string, spec: string) {
+		fs.writeFileSync(path.join(root, "web.config.ts"), `export default { baseUrl: "", modules: ${MODULES}, htmlTransform: "${spec}" };\n`);
+	}
+
+	it("生产形态下 / 与 SPA 深链接都拿到按路由改写的 HTML", async () => {
+		const { root, siteDir } = makeFixture();
+		writeTransformConfig(root, "./html-transform.ts");
+		fs.writeFileSync(path.join(root, "html-transform.ts"), [
+			"export default function (reqPath) {",
+			"  return \"<html><head><title>\" + reqPath + \" · oj</title></head><body>site</body></html>\";",
+			"}",
+			"",
+		].join("\n"));
+
+		const server = await previewServer(root, {
+			siteDir,
+			execOj: () => {},
+			ojStarter: () => ({ port: 1, ready: Promise.resolve(), stop: async () => {} }),
+		});
+		const devPort = (server.address() as AddressInfo).port;
+
+		const index = await get(devPort, "/");
+		expect(index.status).toBe(200);
+		expect(index.text).toContain("<title>/ · oj</title>");
+
+		const deep = await get(devPort, "/share/abc", { Accept: "text/html" });
+		expect(deep.status).toBe(200);
+		expect(deep.text).toContain("<title>/share/abc · oj</title>");
+
+		await new Promise<void>(resolve => server.close(() => resolve()));
+	});
+
+	it("配置的模块缺失 → fail-fast，且不启动 oj（不留孤儿）", async () => {
+		const { root, siteDir } = makeFixture();
+		writeTransformConfig(root, "./missing-transform.ts");
+		let started = false;
+		await expect(previewServer(root, {
+			siteDir,
+			execOj: () => {},
+			ojStarter: () => {
+				started = true;
+				return { port: 1, ready: Promise.resolve(), stop: async () => {} };
+			},
+		})).rejects.toThrowError(/无法加载 htmlTransform 模块 "\.\/missing-transform\.ts"/);
+		expect(started).toBe(false);
+	});
+});
+
 describe("previewServer oj 生命周期", () => {
 	it("f3：oj.ready 拒绝 → 回收 oj 子进程后再抛错", async () => {
 		const { root } = makeFixture();

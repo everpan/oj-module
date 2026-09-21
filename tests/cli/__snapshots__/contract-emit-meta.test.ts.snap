@@ -220,6 +220,74 @@ paths:
 "
 `;
 
+exports[`emitOpenapiYaml：multipart/form-data（form 槽） > 快照 + requestBody.content["multipart/form-data"]：文本部件走 JSON Schema、文件部件 binary 1`] = `
+"openapi: 3.1.0
+info:
+  title: 上传服务
+  version: 1.0.0
+paths:
+  /personal-center/upload:
+    post:
+      operationId: uploadAvatar
+      description: 上传头像/附件
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                kind:
+                  type: string
+                note:
+                  type: string
+                avatar:
+                  type: string
+                  format: binary
+                gallery:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+              required:
+                - kind
+                - avatar
+      responses:
+        "200":
+          description: 成功（oj 信封：code=0）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                  msg:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      url:
+                        type: string
+                    required:
+                      - url
+                    additionalProperties: false
+        default:
+          description: 业务错误（oj 信封：code 非 0，HTTP status=code）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                  msg:
+                    type: string
+                required:
+                  - code
+"
+`;
+
 exports[`emitRoutesJson（AC-D9） > 规范化 + 排序 + 字节稳定 1`] = `
 "[
 	{

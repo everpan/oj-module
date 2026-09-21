@@ -108,6 +108,41 @@ function errorResponse(): Record<string, unknown> {
 	};
 }
 
+/** 文件部件 schema（OpenAPI 3.1 binary；multiple → array of binary） */
+function filePartSchema(multiple: boolean): Record<string, unknown> {
+	const binary = { type: "string", format: "binary" };
+	return multiple ? { type: "array", items: binary } : binary;
+}
+
+/**
+ * multipart/form-data 请求体：文本部件取 form.fields 的 JSON Schema properties（键序 = 契约声明序），
+ * 文件部件按声明补 `{ type: "string", format: "binary" }`；required = fields 的 required ∪ 必传文件。
+ */
+function formRequestBody(ep: IrEndpoint): Record<string, unknown> {
+	const form = ep.form!;
+	const fields = form.fieldsSchema ? jsonSchema(form.fieldsSchema) : {};
+	const fieldProps = (fields.properties as Record<string, unknown>) ?? {};
+	const requiredFields = (fields.required as string[]) ?? [];
+	const properties: Record<string, unknown> = {};
+	// 键序固定：先文本部件（契约 shape 序），再文件部件（DSL 数组序）——字节稳定
+	for (const name of form.fieldNames)
+		properties[name] = fieldProps[name];
+	const required = [...requiredFields];
+	for (const file of form.files) {
+		properties[file.name] = filePartSchema(file.multiple);
+		if (file.required)
+			required.push(file.name);
+	}
+	return {
+		required: true,
+		content: {
+			"multipart/form-data": {
+				schema: { type: "object", properties, ...(required.length ? { required } : {}) },
+			},
+		},
+	};
+}
+
 /** openapi.yaml：OpenAPI 3.1；paths/methods 排序 + 键序固定，保证字节稳定 */
 export function emitOpenapiYaml(ir: IrEndpoint[], opts: { title: string, version: string }): string {
 	const paths: Record<string, Record<string, unknown>> = {};
@@ -122,6 +157,9 @@ export function emitOpenapiYaml(ir: IrEndpoint[], opts: { title: string, version
 			op.parameters = parameters;
 		if (ep.bodySchema)
 			op.requestBody = { required: true, content: { "application/json": { schema: jsonSchema(ep.bodySchema) } } };
+		// form 端点（与 body 互斥）：multipart/form-data 请求体（文本部件 + binary 文件部件）
+		if (ep.form)
+			op.requestBody = formRequestBody(ep);
 		op.responses = ep.raw
 			? { 200: successResponse(ep) }
 			// §6.2 错误通道入交付物（评审 F14/m9）：业务错误为 default 响应，信封 code 非 0

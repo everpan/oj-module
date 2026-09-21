@@ -9,7 +9,7 @@
  * - ScopedRequestLike：生成 client 的 request 最小结构类型
  */
 export { API_DEF, defineApi } from "./define-api.ts";
-export type { ApiDefinitionInput, HttpMethod } from "./define-api.ts";
+export type { ApiDefinitionInput, ApiFormFile, ApiFormInput, HttpMethod } from "./define-api.ts";
 export { ContractApiError } from "./errors.ts";
 export type { ScopedRequestLike } from "./scoped-request-like.ts";
 export { z } from "zod";

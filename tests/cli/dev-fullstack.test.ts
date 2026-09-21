@@ -177,6 +177,35 @@ describe("devServer 全栈接线", () => {
 		await stopServer(server);
 	});
 
+	it("web.config.ts 的 htmlTransform 在 dev 形态生效，且 reload 注入仍在", async () => {
+		const { root, port } = makeFixture("frontend");
+		fs.writeFileSync(
+			path.join(root, "web.config.ts"),
+			"export default { baseUrl: \"\", modules: [{ name: \"fx\", entry: \"./web/src/entry.ts\" }], htmlTransform: \"./html-transform.ts\" };\n",
+		);
+		fs.writeFileSync(
+			path.join(root, "html-transform.ts"),
+			"export default (reqPath, html) => html.replace(\"stub\", \"stub:\" + reqPath);\n",
+		);
+
+		const server = await devServer(root, {
+			port,
+			shellDist: path.join(root, "shell-dist"),
+			buildModulesFn: async () => {},
+		});
+		const devPort = (server.address() as AddressInfo).port;
+
+		const index = await get(devPort, "/");
+		expect(index.status).toBe(200);
+		expect(index.text).toContain("stub:/"); // transform 生效
+		expect(index.text).toContain("/__ojm_reload.js"); // 注入不被覆盖
+
+		const deep = await get(devPort, "/some/deep/route", { Accept: "text/html" });
+		expect(deep.text).toContain("stub:/some/deep/route");
+
+		await stopServer(server);
+	});
+
 	it("watch 随布局（web/src）：变更 → 注入重建 → SSE 广播 reload", async () => {
 		const { root, port } = makeFixture("frontend");
 		const builds: string[] = [];

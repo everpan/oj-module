@@ -46,6 +46,7 @@ description: 用 ojm 开发前后端一体工程时使用——新增/修改前�
 - **契约前缀（AC-D9）**：uni-dev 形态下每个端点的 `apiPrefix` 必须**字面等于**后端模块
   目录名（`api/src/order/contract.ts` → `/order`，**不是** `/api/order`），不符即人话报错。
 - **不返回数据的接口不写 `data`**：`data: z.null()` 过不了类型白名单，直接省略该字段。
+- **上传文件用契约的 `form`，不要绕过 client 手写请求**：`form: { fields: z.object({...}), files: [{ name: "avatar", required: true }] }`；`form` 与 `body` 互斥，文件部件只写 `name`/`required`/`multiple`（二进制不进 zod），`content-type` 由运行时按 boundary 自动补。
 - **前端模块的 import 只有三类**：`@oj-module/runtime`、宿主 importmap 提供的共享依赖、
   自身相对路径。共享依赖不进工程 `dependencies`（宿主提供单例，模块不得打包副本）。
 - **后端方法名是 `del`，不是 `delete`**（写成 `delete` 返回 405）。
@@ -85,6 +86,8 @@ description: 用 ojm 开发前后端一体工程时使用——新增/修改前�
 | 调用报「请求未绑定」 | onInit 里没调 `create<Module>Client(ctx)` | onInit 里先 create 再发请求 |
 | 控制台「模块 A 正在认领 /b 的 client」 | A 创建了 B 的 client | 由 B 创建并经 provider 暴露能力 |
 | `ojm api` 报「schema 超出白名单」 | 契约里写了 `z.null()` / transform / refine | 不返回数据就别写 `data`；校验放后端 |
+| 上传接口报 400「文件字段缺失」 | 文件部件名与后端 `http.files[].field` 不一致 | 契约 `form.files[].name` 对齐后端读的字段名 |
+| 上传报「Unsupported Media Type」/ 后端收不到文件 | 手写了 `content-type`（boundary 丢失） | 删掉手写的 header，交运行时按 FormData 自动补 |
 | `ojm api` 报「apiPrefix 与目录名不符」 | AC-D9 字面相等约束 | 改 `apiPrefix` 或移动契约目录 |
 | 改了契约前端类型没变 | 没重新生成 | 跑 `ojm api`；生成是确定的，diff 应只含你改的部分 |
 | 上传报 401 | `headers` 写成了固定对象，token 过期 | 写成方法，用的时候现取 |

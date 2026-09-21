@@ -20,6 +20,21 @@ function validateDefinition(def) {
     }
     if (def.data && def.response === "raw")
         fail(route, "data schema 与 response:\"raw\" 互斥——raw 端点不解包信封，不需要 data schema。");
+    if (def.form && def.body)
+        fail(route, "form 与 body 互斥——一个端点只有一种请求体形态：multipart/form-data（form）与 JSON（body）声明其一，文本字段请写进 form.fields。");
+    if (def.form) {
+        const files = def.form.files ?? [];
+        if (!def.form.fields && files.length === 0)
+            fail(route, "form 至少需要 fields 或一项 files——空 multipart 请求体无意义；无请求体请删掉 form（改用 query/params）。");
+        const seen = new Set();
+        for (const file of files) {
+            if (!file?.name)
+                fail(route, "form.files 每项必须有 name——它既是 FormData 的 append key，也是 oj 侧 http.files[].field 的字段名。");
+            if (seen.has(file.name))
+                fail(route, `form.files 字段名 "${file.name}" 重复——同名多文件请用 multiple: true。`);
+            seen.add(file.name);
+        }
+    }
     if (def.response !== undefined && def.response !== "raw")
         fail(route, `response 仅支持 "raw"（收到: ${String(def.response)}）。`);
     // 评审 F9：方法面在定义期封顶，而不是延迟到 codegen 才炸
