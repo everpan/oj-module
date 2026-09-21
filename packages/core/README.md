@@ -71,8 +71,8 @@ graph TD
     end
     BOOT -->|setUnderlyingRequest / setI18nBridge / setDevFlag / setRouteAuthzProvider| CORE
     ENG -->|onRoutesReady 事件| RR
-    REG -.被模块经 ctx.register 写.-> ENG
-    RT -.被 getRoutes 调用.-> ENG
+    REG -->|被模块经 ctx register 写| ENG
+    RT --> |被 getRoutes 调用 | ENG
 ```
 
 ---
