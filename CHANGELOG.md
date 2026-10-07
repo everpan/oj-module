@@ -5,7 +5,7 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 设计依据、迁移记录与陷阱清单见 [`docs/prd/202609110947-oj-module-two-package-consolidation-design.md`](docs/prd/202609110947-oj-module-two-package-consolidation-design.md)。
 
-## [Unreleased]
+## [0.1.11] - 2026-10-07
 
 ### Added
 
@@ -17,6 +17,19 @@
 ### Deprecated
 
 - 生成 client 的 `bindRequest(ctx.utils.request)` 标记 `@deprecated`（保留作逃生口）——请改用 `create<Module>Client(ctx)`。**属生成物形状破坏性变更**：外部工程升级 cli 后重跑 `ojm api` 需同步改 entry（当前无外部工程，影响面为本仓库，已完成迁移）。
+
+### Added
+
+- **`ojm dev` 增加 Vite 风格交互快捷键（仅 TTY）**：`r` 强制重建并热更新、`h` 显示帮助、`c` 清屏、`o` 浏览器打开、`q` 退出（后端 oj 一并终止）；`usage` 帮助文本补充快捷键映射。
+
+### Fixed
+
+- **`ojm dev` 以最新 oj 0.1.50 为唯一基线对齐**：`oj` 启动子命令 `server` → `serve`；版本门禁 `MIN_OJ_VERSION=0.1.50`；`build` 加 `--no-minify` 绕开 oj swc 把 `await X[0]` 重排、三元变 `&&` 的 bug；`ojm api` 新增后端入参 `.schema` 发射（oj 在 JS 前校验）；`init` 把 `jwt_secret` 密封为 `ENC[...]` + `secrets:` 段；`oj-cmd.ts` 透传 `test/exec/openapi/migrate/schema` 并自动补 `-c`；dev-proxy 502 信封对齐 oj 的 `{code,msg,data}`；contract `--check` 升级为四重对账（新增 WS 路由鉴权）。模板与 playground-oj 升 0.1.50。
+- **`ojm dev` 终止时后端 oj 随之消亡**：抽出 `shutdownDev`，注册 `SIGINT`/`SIGTERM` 优雅停机并加进程退出兜底同步强杀 oj，杜绝 oj 孤儿占端口；`oj` 日志透传移除冗余 `[oj]` 前缀叠加（oj 自身 tracing 已含 `[oj]`）；`usage` 过长说明改为多行展示、并修正 `--check` 文案为四重对账。
+
+### Removed
+
+- **全面移除 `ram` 命令别名**：删除 `bin/ram.mjs` 与 `package.json#bin` 的 `ram` 入口、`usage` 别名说明；存量工程 scripts 需把 `ram` 改为 `ojm`。文件层兼容（`.ram-api-exempt.json` / `ram-api:stub` 指纹头 / `Symbol.for("ram.api.def")` / `RAM_DEBUG`）仍保留，存量工程生成物无需手改。
 
 ## [0.1.8] - 2026-09-12
 

@@ -37,6 +37,21 @@ function validateDefinition(def) {
   }
   if (def.data && def.response === "raw")
     fail(route, 'data schema \u4E0E response:"raw" \u4E92\u65A5\u2014\u2014raw \u7AEF\u70B9\u4E0D\u89E3\u5305\u4FE1\u5C01\uFF0C\u4E0D\u9700\u8981 data schema\u3002');
+  if (def.form && def.body)
+    fail(route, "form \u4E0E body \u4E92\u65A5\u2014\u2014\u4E00\u4E2A\u7AEF\u70B9\u53EA\u6709\u4E00\u79CD\u8BF7\u6C42\u4F53\u5F62\u6001\uFF1Amultipart/form-data\uFF08form\uFF09\u4E0E JSON\uFF08body\uFF09\u58F0\u660E\u5176\u4E00\uFF0C\u6587\u672C\u5B57\u6BB5\u8BF7\u5199\u8FDB form.fields\u3002");
+  if (def.form) {
+    const files = def.form.files ?? [];
+    if (!def.form.fields && files.length === 0)
+      fail(route, "form \u81F3\u5C11\u9700\u8981 fields \u6216\u4E00\u9879 files\u2014\u2014\u7A7A multipart \u8BF7\u6C42\u4F53\u65E0\u610F\u4E49\uFF1B\u65E0\u8BF7\u6C42\u4F53\u8BF7\u5220\u6389 form\uFF08\u6539\u7528 query/params\uFF09\u3002");
+    const seen = /* @__PURE__ */ new Set();
+    for (const file2 of files) {
+      if (!file2?.name)
+        fail(route, "form.files \u6BCF\u9879\u5FC5\u987B\u6709 name\u2014\u2014\u5B83\u65E2\u662F FormData \u7684 append key\uFF0C\u4E5F\u662F oj \u4FA7 http.files[].field \u7684\u5B57\u6BB5\u540D\u3002");
+      if (seen.has(file2.name))
+        fail(route, `form.files \u5B57\u6BB5\u540D "${file2.name}" \u91CD\u590D\u2014\u2014\u540C\u540D\u591A\u6587\u4EF6\u8BF7\u7528 multiple: true\u3002`);
+      seen.add(file2.name);
+    }
+  }
   if (def.response !== void 0 && def.response !== "raw")
     fail(route, `response \u4EC5\u652F\u6301 "raw"\uFF08\u6536\u5230: ${String(def.response)}\uFF09\u3002`);
   if (def.method === "OPTIONS")
