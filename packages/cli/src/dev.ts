@@ -165,19 +165,24 @@ export async function devServer(projectRoot: string, opts: DevOptions = {}): Pro
 		proxyWsUpgrade(ojTarget)(req, socket, head);
 	});
 
-	// 退出回收：server 关闭 → SSE 通道 + oj 子进程一并回收（SIGINT 走同一路径）
+	// 退出回收：server 关闭 → SSE 通道 + oj 子进程一并回收
 	server.on("close", () => {
 		hub.close();
 		void oj?.stop();
 	});
-	process.once("SIGINT", () => {
-		console.log("\n[ojm] 正在退出…");
-		// 顺序很重要：SSE 连接永不结束，server.close 必须在 hub 销毁客户端之后
-		hub.close();
-		void oj?.stop();
-		server.close(() => process.exit(0));
-		// 1.5s 内没关干净也强制退（oj.stop 内部另有 3s SIGKILL 兜底）
-		setTimeout(() => process.exit(0), 1500).unref();
+
+	// 终端 Ctrl+C / `kill`（SIGINT / SIGTERM）终止 dev 进程时，后端 oj 必须随之消亡：
+	// 起一个统一优雅停机，先停 oj 再退出；并打印后端终止信息。
+	const shutdown = () => {
+		void shutdownDev(server, oj, hub);
+	};
+	process.once("SIGINT", shutdown);
+	process.once("SIGTERM", shutdown);
+
+	// 兜底：dev 进程以任何非优雅路径退出（未走 SIGINT/SIGTERM，如未捕获异常）时，
+	// 同步强杀 oj，确保它不孤儿化继续占端口（shutdownDev 已停则 kill 为 no-op）。
+	process.once("exit", () => {
+		oj?.kill?.();
 	});
 
 	// 端口被占用时自动顺延，避免 `EADDRINUSE` 直接让 `pnpm dev` 以非零码退出
@@ -258,4 +263,27 @@ export async function devServer(projectRoot: string, opts: DevOptions = {}): Pro
 	}
 
 	return server;
+}
+
+/**
+ * dev 进程优雅停机：前端（dev server）终止 → 关闭 SSE 通道 → 停止后端 oj → 退出。
+ * 抽出独立函数便于单测（注入 exit/log，避免真杀测试进程）。
+ * 顺序关键：SSE 连接永不自然结束，server.close 必须在 hub 销毁客户端之后。
+ */
+export async function shutdownDev(
+	server: http.Server,
+	oj: OjProcess | undefined,
+	hub: { close: () => void },
+	deps: { exit?: (code?: number) => void, log?: (msg: string) => void } = {},
+): Promise<void> {
+	const exit = deps.exit ?? ((code?: number) => process.exit(code));
+	const log = deps.log ?? ((msg: string) => console.log(msg));
+	log("\n[ojm] 前端服务已停止，正在终止后端 oj…");
+	// 顺序：先销毁 SSE 客户端，再关 server（否则 server.close 永不回调）
+	hub.close();
+	await oj?.stop();
+	log("[ojm] 后端 oj 已随前端一起终止。");
+	server.close(() => exit(0));
+	// 1.5s 内没关干净也强制退（oj.stop 内部另有 3s SIGKILL 兜底）
+	setTimeout(exit, 1500, 0).unref();
 }

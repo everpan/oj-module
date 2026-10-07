@@ -1,7 +1,7 @@
 /**
  * oj 子进程编排（设计 §4/§6）。
  *
- * 职责单一：spawn `oj serve`、健康轮询、stdout/stderr 透传（[oj] 前缀）、
+ * 职责单一：spawn `oj serve`、健康轮询、stdout/stderr 直接透传（oj 自带 [oj] 前缀，
  * 退出回收。不关心 who 调它（dev 直接用，preview 在 migrate 后用）。
  *
  * 子命令是 `serve` 不是 `server`：oj 0.1.50 只认 `serve`（实测 `oj server --help`
@@ -26,6 +26,8 @@ export interface OjProcess {
 	ready: Promise<void>
 	/** SIGTERM 回收，3s 不退升级 SIGKILL；已退出则立即返回 */
 	stop: () => Promise<void>
+	/** 同步强杀（SIGKILL）：仅作进程退出兜底，防 oj 孤儿化 */
+	kill: () => void
 }
 
 export interface StartOjPoll {
@@ -51,13 +53,15 @@ export function startOj(
 	const child = spawn(binPath, ["serve", "-c", configPath, "-b", base, "--api-path", apiSrcPath, "--console-log", ...extraArgs], {
 		stdio: ["ignore", "pipe", "pipe"],
 	});
+	// 直接透传 oj 的 stdout/stderr：oj 自身 tracing 已带 `[oj]` 前缀
+	// （如 `[oj] 2026-.. INFO request..`），无需再叠前缀，否则会叠成 `[oj] [oj]`。
 	child.stdout?.on("data", (chunk: Buffer) => {
-		process.stdout.write(String(chunk).replace(/^/gm, "[oj] "));
+		process.stdout.write(String(chunk));
 	});
 	child.stderr?.on("data", (chunk: Buffer) => {
 		const text = String(chunk);
 		stderrTail = (stderrTail + text).slice(-2000);
-		process.stderr.write(text.replace(/^/gm, "[oj] "));
+		process.stderr.write(text);
 	});
 
 	let settled = false;
@@ -117,5 +121,11 @@ export function startOj(
 		child.kill("SIGTERM");
 	});
 
-	return { port, ready, stop };
+	const kill = () => {
+		if (child.exitCode !== null || child.signalCode !== null)
+			return;
+		child.kill("SIGKILL");
+	};
+
+	return { port, ready, stop, kill };
 }

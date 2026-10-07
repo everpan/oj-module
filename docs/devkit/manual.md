@@ -715,6 +715,8 @@ t("menu.books")         // ❌ 会去 common namespace 找
 
 ```bash
 pnpm dev             # 开发：devServer + oj 后端（api/src 保存即热更）
+# Ctrl+C（SIGINT）/ kill（SIGTERM）终止 dev 时，前端与后端 oj 一起终止：
+# 先关 SSE 通道 → 停 oj 子进程 → 打印「后端 oj 已随前端一起终止」，不留 oj 孤儿占端口
 pnpm build           # = ojm build：oj build（生成 routes.js）+ 前端全站合并到 web/dist
 pnpm preview         # = ojm preview：oj migrate（verify 闸）→ 启动 serve + 静态兜底
 pnpm typecheck       # = tsc --noEmit

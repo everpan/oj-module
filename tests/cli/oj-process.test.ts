@@ -50,6 +50,12 @@ function makeFixture(mode: "healthy" | "exit" | "silent"): { root: string, confi
 		"} else {",
 		"\thttp.createServer((_req, res) => { res.writeHead(200, {\"content-type\": \"application/json\"}); res.end(\"{}\"); }).listen(port, \"127.0.0.1\");",
 		"}",
+		"// 模拟 oj 原生 tracing 输出：首行带 [oj] 前缀，续行裸缩进（SQL 多行场景）",
+		"if (process.env.STUB_OJ_LOG === \"1\") {",
+		"\tprocess.stdout.write(\"[oj] 2026-10-07T03:05:54.004158Z  INFO request method=GET path=/api/x status=200 ms=0\\n\");",
+		"\tprocess.stdout.write(\"  permission, status, create_time\\n\");",
+		"\tprocess.stdout.write(\"plain-console-log-from-handler\\n\");",
+		"}",
 		`process.on(\"SIGTERM\", () => { fs.writeFileSync(${stoppedFile}, \"1\"); process.exit(0); });`,
 		"",
 	].join("\n"));
@@ -126,5 +132,32 @@ describe("startOj 子进程编排", () => {
 		await proc.stop();
 		delete process.env.STUB_OJ_MODE;
 		expect(port).toBeGreaterThan(0);
+	});
+
+	it("stdout/stderr 直接透传（不叠 [oj] 前缀；oj 自身 tracing 已带 [oj]）", async () => {
+		const { root, configPath } = makeFixture("healthy");
+		process.env.STUB_OJ_LOG = "1";
+		const written: string[] = [];
+		const spy = vi.spyOn(process.stdout, "write").mockImplementation((c: unknown) => {
+			written.push(String(c));
+			return true;
+		});
+		const proc = startOj(configPath, "/api", path.join(root, "api/src"), { intervalMs: 20, timeoutMs: 10000 });
+		await proc.ready;
+		// 等 stub 的 STUB_OJ_LOG 输出被管道刷出
+		await new Promise(r => setTimeout(r, 100));
+		await proc.stop();
+		spy.mockRestore();
+		delete process.env.STUB_OJ_LOG;
+
+		const all = written.join("");
+		// 不得叠成 [oj] [oj]
+		expect(all).not.toContain("[oj] [oj]");
+		// 原生 [oj] 行原样保留
+		expect(all).toContain("[oj] 2026-10-07T03:05:54.004158Z  INFO request method=GET");
+		// 续行（原裸缩进）原样保留，未被强加 [oj] 前缀
+		expect(all).toContain("  permission, status, create_time");
+		// 裸 handler console.log 原样透传，不加 [oj] 前缀
+		expect(all).toContain("plain-console-log-from-handler");
 	});
 });

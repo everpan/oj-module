@@ -4,8 +4,8 @@ import { Buffer } from "node:buffer";
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
-import { afterAll, describe, expect, it } from "vitest";
-import { devServer } from "../../packages/cli/src/dev";
+import { afterAll, describe, expect, it, vi } from "vitest";
+import { devServer, shutdownDev } from "../../packages/cli/src/dev";
 
 /**
  * 设计 §4（P3）：ojm dev 全栈接线。
@@ -318,5 +318,66 @@ describe("devServer 全栈接线", () => {
 		expect(ok.status).toBe(200); // 进程存活，mock 仍工作
 
 		await stopServer(server);
+	});
+});
+
+describe("shutdownDev（前端终止 → 后端 oj 随之消亡）", () => {
+	it("关闭 SSE 通道、停止后端 oj、打印终止信息后退出", async () => {
+		const srv = http.createServer();
+		const hub = { close: vi.fn() };
+		let stopped = false;
+		const oj: OjProcess = {
+			port: 1,
+			ready: Promise.resolve(),
+			stop: async () => {
+				stopped = true;
+			},
+			kill: () => {},
+		};
+		const logs: string[] = [];
+		let exited: number | undefined;
+
+		await shutdownDev(srv, oj, hub, {
+			exit: (c?: number) => {
+				exited = c;
+			},
+			log: (m: string) => logs.push(m),
+		});
+
+		expect(stopped).toBe(true); // 后端 oj 已停止
+		expect(hub.close).toHaveBeenCalled(); // SSE 通道先关，server.close 才能回调
+		expect(logs.some(l => l.includes("[ojm] 前端服务已停止，正在终止后端 oj…"))).toBe(true);
+		expect(logs.some(l => l.includes("[ojm] 后端 oj 已随前端一起终止。"))).toBe(true);
+		// 未监听的 server.close 立即回调 → exit(0)
+		await new Promise(r => setTimeout(r, 10));
+		expect(exited).toBe(0);
+	});
+
+	it("devServer 注册 SIGINT / SIGTERM 优雅停机（前端进程被信号杀时 oj 一起亡）", async () => {
+		const { root, port } = makeFixture("fullstack");
+		const configPath = path.join(root, "api/config.yaml");
+		const up = stubOjUpstream();
+		const upPort = await listenOn(up.server);
+		const sigints: string[] = [];
+		const terms: string[] = [];
+		const onOnce = vi.spyOn(process, "once").mockImplementation(((ev: string, _cb: () => void) => {
+			if (ev === "SIGINT")
+				sigints.push(ev);
+			if (ev === "SIGTERM")
+				terms.push(ev);
+			return process as unknown as NodeJS.Process;
+		}) as typeof process.once);
+
+		await devServer(root, {
+			port,
+			shellDist: path.join(root, "shell-dist"),
+			buildModulesFn: async () => {},
+			ojStarter: up.starter(upPort, configPath),
+		});
+		onOnce.mockRestore();
+
+		expect(sigints).toContain("SIGINT");
+		expect(terms).toContain("SIGTERM");
+		up.server.close();
 	});
 });
