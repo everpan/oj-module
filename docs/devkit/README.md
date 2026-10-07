@@ -15,13 +15,13 @@
 ## 安装（业务工程）
 
 ```sh
-# agent 用：拷入工程的 Claude Code skill 目录
+# 本 devkit（ojm 模块开发）：拷入工程的 Claude Code skill 目录
 mkdir -p .claude/skills/ojm-module-dev
-cp devkit/SKILL.md devkit/manual.md .claude/skills/ojm-module-dev/
+cp SKILL.md manual.md .claude/skills/ojm-module-dev/
 
-# 后端 API 开发另装 oj 的 devkit
+# 后端 API 开发另装 oj 自带的 devkit（独立 skill，随 oj 二进制分发，不在此目录内）
 mkdir -p .claude/skills/oj-api-dev
-cp devkit/oj-api-dev/SKILL.md devkit/oj-api-dev/api-manual.md .claude/skills/oj-api-dev/
+# 从 oj 二进制解压出的 .claude/skills/oj-api-dev/ 拷贝 SKILL.md 与 api-manual.md
 ```
 
 安装后 Claude Code 里 `/ojm-module-dev` 触发，或直接说「用 ojm-module-dev 加个 xxx 模块」。
@@ -34,18 +34,6 @@ cp devkit/oj-api-dev/SKILL.md devkit/oj-api-dev/api-manual.md .claude/skills/oj-
 ## 更新
 
 手册与 skill 随 `@oj-module/cli` 版本一起发布；升级后覆盖工程内旧拷贝。
-源文件与反馈入口在本仓库 `docs/devkit/`。
 
-## 素材来源（维护者看）
-
-本目录由以下文档整理而成，改内容时注意同步：
-
-| 源 | 贡献 |
-|---|---|
-| `docs/202609130035-provider-guide.md` | provider 接管（覆盖框架内置功能）、案例、踩坑表、排查清单 |
-| `docs/prd/ojm-api-codegen-guide.md` | 契约 → client 生成管线、`--check` 对账、豁免清单 |
-| `docs/prd/oj-fullstack-tutorial.md` | 端到端上手流程 |
-| `docs/prd/202609130128-client-factory-design.md` | `create<Module>Client(ctx)` 工厂语义 |
-| `apps/playground-oj/docs/phase*.md` | 各阶段实战记录 |
-| `packages/cli/templates/` | 可直接抄的模板形状 |
-| `docs/prd/framework-development-guide.md` | 框架贡献者路线 |
+> 本目录（devkit）是**自包含**的：所有内容都在这 4 个文件里，不需要工程仓库里的
+> 其它文档即可读懂。维护者视角的内容来源整理在 `framework-dev.md`（仅本仓）。

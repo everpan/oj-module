@@ -424,8 +424,8 @@ export default { get };
 ```
 
 开关在 `api/config.yaml` 的 `server.schema_validation`（默认 `true`，置 `false` 为逃生门）。
-完整裁剪规则与降级表见 `ojm-api-codegen-guide.md` §4.5（白名单无 `format`/`oneOf`、
-Rust regex 不支持零宽断言、params/query 只允许扁平标量等都在生成期拦下或告警）。
+完整裁剪规则与降级表（白名单无 `format`/`oneOf`、Rust regex 不支持零宽断言、
+params/query 只允许扁平标量等）都在生成期拦下或告警，详情见 §3.3 的「定义期就会抛错」清单。
 
 ### 3.8 豁免清单 `api/.ojm-api-exempt.json`
 
@@ -842,9 +842,8 @@ export default async (path: string, html: string) => {
 
 另有：
 
-- **后端 handler 手册**：`bin/devkit/api-manual.md`——随 oj 二进制由 `ojm init`
-  解压到 `bin/`，即 `oj-api-dev` skill 的手册。写 handler 遇到 `json` / `db` / `kv` /
-  `jwt` / 租户 / 测试的问题查它。
+- **后端 handler 手册**：即 `oj-api-dev` skill 的手册（随 oj 二进制分发，独立安装，
+  不在此 devkit 目录内）。写 handler 遇到 `json` / `db` / `kv` / `jwt` / 租户 / 测试的问题查它。
 - **框架团队内部**：本目录 `framework-dev.md`（改 `packages/runtime`、`packages/cli` 用，
   业务工程不适用）。
 

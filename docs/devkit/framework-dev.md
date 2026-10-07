@@ -160,3 +160,22 @@ pnpm test tests/shell                       # 宿主全量
   并在 init 里多拷一份到 `.claude/skills/ojm-module-dev/`。
 
 在此之前，业务工程按 `README.md` 的手动拷贝方式安装。
+
+---
+
+## 附：本 devkit 内容来源（维护者看）
+
+`docs/devkit/` 是**自包含**的交付文档，业务工程拿到这 4 个文件即可读懂，不依赖工程仓库里的其它文档。
+下面的来源仅用于维护时追溯与同步，不参与交付：
+
+| 源（本仓其它位置） | 贡献到 devkit 的内容 |
+|---|---|
+| `docs/202609130035-provider-guide.md` | provider 接管（覆盖框架内置功能）、案例、踩坑表、排查清单 |
+| `docs/prd/ojm-api-codegen-guide.md` | 契约 → client 生成管线、`--check` 对账、豁免清单 |
+| `docs/prd/oj-fullstack-tutorial.md` | 端到端上手流程 |
+| `docs/prd/202609130128-client-factory-design.md` | `create<Module>Client(ctx)` 工厂语义 |
+| `apps/playground-oj/docs/phase*.md` | 各阶段实战记录 |
+| `packages/cli/templates/` | 可直接抄的模板形状 |
+| `docs/prd/framework-development-guide.md` | 框架贡献者路线（本文件） |
+
+改 devkit 内容时，若对应来源文档也变了，注意双向同步；反之在 devkit 里已改写为自包含表述的，以 devkit 为准。
