@@ -35,7 +35,7 @@ pnpm 改写成**精确版本**，不是 `^` 范围）。
   不再依赖独立 shell 包或 monorepo 路径回退。
 - **双入口别搞混**：给模块作者用的加在 `src/index.ts`；框架自己怎么启动看 `src/index.tsx`。
 - `#src/*` alias 指向 `packages/runtime/src/*`（由 `packages/runtime/package.json`
-  的 `imports` 字段与 vite alias **双声明**，A11）。
+  的 `imports` 字段与 vite alias **双声明**，即「模块仅 import 三类」不变式）。
 - 业务工程**不打包共享依赖**——宿主经 importmap 提供单例。
 
 ## §3 常用命令
@@ -99,29 +99,29 @@ pnpm test tests/shell                       # 宿主全量
 
 ### 4.4 不变式索引
 
-| 编号 | 不变式 |
+| 不变式 | 说明 |
 |---|---|
-| AC-D8 | `onInit` 里绑定 scoped request |
-| AC-D9 | uni-dev 形态 `apiPrefix` 必须字面等于目录名 |
-| A11 | `#src/*` 由 package.json `imports` 与 vite alias 双声明 |
-| B10 | 模块 name/version 从 `entry.ts` 解析（esbuild bundle + 真实 `import()`） |
-| B15 / P6.5 | 生产构建不含 fake 代码（**有测试断言产物里无 fake**） |
-| B16 | 模块级 `requiredRoles` / `requiredPermissions` 在路由**注入之前**筛掉 |
-| D9 | 布局显式声明，不做隐式推导；模块不 import 布局组件 |
-| D11 / P6.3 | `ctx.utils.request` 只拿按 `apiPrefix` 收敛的 scoped client；越界、`../` 穿越、逐请求 prefix 覆盖均被拒 |
-| P7.14 | 框架内置 `/exception/403\|404\|500` 兜底页；exception 模块仅为可选覆盖 |
-| R5 | prepack 断言宿主 runtime 版本 == `packages/runtime` 版本 |
-| R12 | `ojm merge` 合并多团队清单 |
+| scoped request 在 onInit 绑定 | `onInit` 里绑定 scoped request |
+| 契约前缀字面相等 | uni-dev 形态 `apiPrefix` 必须字面等于目录名 |
+| 模块仅 import 三类（`#src` 双声明） | `#src/*` 由 package.json `imports` 与 vite alias 双声明 |
+| 模块元信息从 entry.ts 解析 | 模块 name/version 从 `entry.ts` 解析（esbuild bundle + 真实 `import()`） |
+| 生产产物不含 fake | 生产构建不含 fake 代码（**有测试断言产物里无 fake**） |
+| 模块级权限路由注入前过滤 | 模块级 `requiredRoles` / `requiredPermissions` 在路由**注入之前**筛掉 |
+| 布局显式声明 | 布局显式声明，不做隐式推导；模块不 import 布局组件 |
+| 请求前缀收敛 | `ctx.utils.request` 只拿按 `apiPrefix` 收敛的 scoped client；越界、`../` 穿越、逐请求 prefix 覆盖均被拒 |
+| 内置异常后备页 | 框架内置 `/exception/403\|404\|500` 后备页；exception 模块仅为可选覆盖 |
+| 宿主 runtime 版本锁等 | prepack 断言宿主 runtime 版本 == `packages/runtime` 版本 |
+| merge 合并多团队清单 | `ojm merge` 合并多团队清单 |
 
 ### 4.5 守卫测试索引（改动后知道哪个会红）
 
 | 测试 | 守护内容 |
 |---|---|
 | `tests/runtime/runtime-exports.test.ts` | runtime 出口冻结（加/删导出即红） |
-| `tests/module/module-package-imports.test.ts` | 模块只 import 三类东西（A11 闭环） |
-| `tests/module/module-required-roles.test.ts` | B16 路由注入前权限过滤 |
-| `tests/runtime/scoped-request.test.ts` | D11 / P6.3 前缀收敛 |
-| `tests/shell/no-fake-in-dist.test.ts` | B15 / P6.5 生产产物无 fake |
+| `tests/module/module-package-imports.test.ts` | 模块只 import 三类东西（「模块仅 import 三类」不变式） |
+| `tests/module/module-required-roles.test.ts` | 模块级权限路由注入前过滤 |
+| `tests/runtime/scoped-request.test.ts` | 请求前缀收敛（scoped client） |
+| `tests/shell/no-fake-in-dist.test.ts` | 生产产物不含 fake |
 | `tests/shell/shell-importmap.test.ts` | 门禁一致性 + runtime.js 与包 dist 一致 + 深路径回归 |
 | `tests/shell/host-version-drift.test.ts`、`version-gate.test.ts` | 共享依赖三处同步 |
 | `tests/cli/release-manifest.test.ts` | 真跑 `pnpm pack`，守护 `workspace:*` → 精确版本改写 |
@@ -150,7 +150,7 @@ pnpm test tests/shell                       # 宿主全量
 4. **发现反常规/反常识/与业界不符的问题**，当场追加到文档并分类记录。
 5. **完工更新任务状态 + 写小结段**（关键过程与耗时）。
 
-## §7 待接线（未做）
+## §7 待对接（未做）
 
 本 devkit（`docs/devkit/`）目前只是**源文件**，还没接进发布链路：
 
