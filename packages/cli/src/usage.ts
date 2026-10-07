@@ -18,7 +18,5 @@ export function usageText(): string {
   ojm merge <out.json> <in1.json> [in2.json ...]  合并多团队清单（R12）
   ojm test|exec|openapi|migrate|schema [args...]  透传给 oj 同名子命令（自动补 -c <project>/api/config.yaml；其余参数原样转发）
       例：ojm test --anonymous / ojm migrate --db report / ojm openapi --check
-
-别名: ram 是 ojm 的弃用别名（打印更名警告后转发），将在下个 major 移除。
 `;
 }

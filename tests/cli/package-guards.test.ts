@@ -39,18 +39,10 @@ describe("cli↔runtime 依赖钉版（R9）", () => {
 	});
 });
 
-describe("cli bin 双入口（R1）", () => {
-	it("bin 同时提供 ojm 主入口与弃用 ram 别名，且文件存在", () => {
+describe("cli bin 入口", () => {
+	it("bin 提供 ojm 主入口且文件存在", () => {
 		expect(cliPkg.bin.ojm).toBe("./bin/ojm.mjs");
-		expect(cliPkg.bin.ram).toBe("./bin/ram.mjs");
 		expect(fs.existsSync(path.join(CLI_DIR, cliPkg.bin.ojm))).toBe(true);
-		expect(fs.existsSync(path.join(CLI_DIR, cliPkg.bin.ram))).toBe(true);
-	});
-
-	it("ram shim 打印更名警告并转发到 ojm", () => {
-		const shim = fs.readFileSync(path.join(CLI_DIR, cliPkg.bin.ram), "utf-8");
-		expect(shim).toContain("已更名为");
-		expect(shim).toContain("./ojm.mjs");
 	});
 });
 

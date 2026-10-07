@@ -85,7 +85,7 @@ describe("发布清单（走真实 pnpm pack 路径）", () => {
 		// lockstep：cli 发布的精确依赖版本必须等于 runtime 包版本（不允许漂移）
 		expect(json.dependencies?.["@oj-module/runtime"]).toBe(sourceVersion("packages/runtime"));
 		expect(json.version).toBe(sourceVersion("packages/runtime"));
-		expect(json.bin).toMatchObject({ ojm: "./bin/ojm.mjs", ram: "./bin/ram.mjs" });
+		expect(json.bin).toMatchObject({ ojm: "./bin/ojm.mjs" });
 
 		const entries = entriesOf(tgz);
 		expect(entries.filter(e => e.endsWith(".map")), "tarball 里出现了 sourcemap").toEqual([]);

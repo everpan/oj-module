@@ -184,12 +184,12 @@ describe("r3：端点品牌双符号识别", () => {
 	});
 });
 
-describe("r1：命令名使用 ojm（旧名不再出现在日志前缀）", () => {
-	it("usage 文本以 ojm 列命令，并标注 ram 为弃用别名", async () => {
+describe("r1：命令名使用 ojm（ram 别名已移除）", () => {
+	it("usage 文本以 ojm 列命令，且不再标注 ram 弃用别名", async () => {
 		const { usageText } = await import("../../packages/cli/src/usage");
 		const text = usageText();
 		expect(text).toMatch(/ojm dev/);
 		expect(text).toMatch(/ojm api/);
-		expect(text).toMatch(/ram 是 ojm 的弃用别名/);
+		expect(text).not.toMatch(/ram 是 ojm 的弃用别名/);
 	});
 });

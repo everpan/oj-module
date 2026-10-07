@@ -59,7 +59,7 @@ pnpm --filter @oj-module/cli build:shell    # 内含 runtime 构建 + host.js + 
 | **apiPrefix** | 模块的 API 前缀（如 `/home`）；模块必须 `ctx.register.apiPrefix` 登记，请求只能落在该前缀内 |
 | **oj** | 后端框架（Rust + JS bridge），业务代码写在 `api/src/<模块>/<端点>/api.ts` |
 | **信封（envelope）** | oj 统一响应格式 `{ code, msg, data }`，`code=0` 表示成功 |
-| **`ojm`（命令）** | cli 的唯一命令名（`ojm dev/build/api/...`）。旧名 `ram` 是**弃用别名**：打印更名警告后转发，下个 major 移除（P3） |
+| **`ojm`（命令）** | cli 的唯一命令名（`ojm dev/build/api/...`）。旧名 `ram` 已移除 |
 | **宿主（host）** | 预构建的静态站点骨架。**不再是独立包**：源码在 `packages/cli/shell/`，产物在 `packages/cli/shell-dist/`，随 cli 发布（P1） |
 | **importmap** | 浏览器原生机制，把裸说明符（`react`、`antd`）映射到宿主预构建的单份资产 |
 | **`SHARED_DEPS`** | 共享依赖单一来源（`packages/cli/src/shared-deps.ts`）：同时生成宿主入口、importmap、external 判定、版本门禁 |
@@ -804,7 +804,6 @@ node tests/e2e/verify-shell-iconcontext.mjs   # 已构建资产真实可加载 +
 ```
 packages/cli/
 ├── bin/ojm.mjs            # 可执行入口（唯一命令名）
-├── bin/ram.mjs            # 弃用别名 shim：stderr 警告后转发 ojm（下个 major 移除）
 ├── src/index.ts           # 命令分发（build/init/preview/dev/info/vendor/api/merge）
 ├── src/args.ts            # 参数解析（纯函数，便于测试）
 ├── src/usage.ts           # 用法文本
@@ -831,7 +830,7 @@ packages/cli/
 
 ### 4.3 `ojm` 命令详解
 
-> 命令名统一为 `ojm`；旧名 `ram` 保留为弃用别名（打印警告后转发）。下面的 `ojm ...` 写 `ram ...` 也能跑通，但请尽早改掉。
+> 命令名统一为 `ojm`（旧名 `ram` 已移除，请直接改用 `ojm`）。
 
 **`ojm init [dir] [--yes]`** —— 幂等补缺脚手架，复制 `templates/`，并按下表钉死依赖版本。
 
@@ -957,7 +956,7 @@ P3 把命令与内部前缀从 `ram` 全改为 `ojm`，但**兼容读旧名**—
 
 | 旧名（存量工程/产物） | 新名 | 兼容策略 |
 | --- | --- | --- |
-| 命令 `ram`、`bin/ram.mjs` | `ojm`、`bin/ojm.mjs` | `package.json#bin` 双提供；`ram` shim 打印更名警告后转发，**下个 major 移除** |
+| 命令 `ram`、`bin/ram.mjs` | `ojm`、`bin/ojm.mjs` | `ram` 别名已于下个 major **移除**；存量工程 scripts 需把 `ram` 改为 `ojm` |
 | `api/.ram-api-exempt.json` | `api/.ojm-api-exempt.json` | 双名读取（新名优先、旧名回退）；`ojm init` 只产新名 |
 | stub 指纹头 `// ram-api:stub …` | `// ojm-api:stub …` | 读双前缀、写新前缀；「纯前缀升级」不计过期，`--check` 不误报，重跑即刷成新头 |
 | `Symbol.for("ram.api.def")` | `Symbol.for("ojm.api.def")` | IR **双符号**识别；`defineApi` 新写只发新符号 |
@@ -981,9 +980,9 @@ P3 把命令与内部前缀从 `ram` 全改为 `ojm`，但**兼容读旧名**—
 pnpm --filter @oj-module/cli build:shell
 node packages/cli/scripts/sync-host-versions.mjs
 # 1b) 发布内容演练（不产生 tarball）——两包各断言一次
-cd packages/cli && npm pack --dry-run --json --ignore-scripts | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const f=JSON.parse(s)[0].files.map(x=>x.path);console.log('maps',f.filter(x=>/\.map\$/.test(x)).length,'assets',f.filter(x=>x.startsWith('shell-dist/assets/')).length,'bin',f.includes('bin/ojm.mjs'),f.includes('bin/ram.mjs'))})" && cd ../..
+cd packages/cli && npm pack --dry-run --json --ignore-scripts | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const f=JSON.parse(s)[0].files.map(x=>x.path);console.log('maps',f.filter(x=>/\.map\$/.test(x)).length,'assets',f.filter(x=>x.startsWith('shell-dist/assets/')).length,'bin',f.includes('bin/ojm.mjs'))})" && cd ../..
 cd packages/runtime && npm pack --dry-run --json | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const f=JSON.parse(s)[0].files.map(x=>x.path);console.log('non-dts .ts',f.filter(x=>/\.tsx?\$/.test(x)&&!/\.d\.ts\$/.test(x)).length,'src/',f.filter(x=>/(^|\/)src\//.test(x)).length)})" && cd ../..
-#    期望：cli → maps 0 / assets 119 / bin[ojm]=true bin[ram]=true
+#    期望：cli → maps 0 / assets 119 / bin[ojm]=true
 #          runtime → non-dts .ts 0 / src/ 0
 # 2) 提交（pnpm publish 默认要求工作区干净）
 # 3) 按依赖序逐包发布（runtime → cli）
@@ -1021,7 +1020,7 @@ done
 | `Cannot read properties of undefined (reading 'Provider')` | IconContext 深路径被错映射 | 单独登记 `@ant-design/icons/es/components/Context` |
 | 登录后菜单空白 | 宿主链无 AuthGuard 且路由被清 | 见 access store reset 快照（2.8） |
 | `ojm api --check` 报 drift | 改了契约没重跑生成 | `ojm api` 后重新提交 |
-| 执行 `ram ...` 打印「已更名为 ojm」 | 存量 scripts 仍用旧命令 | 改用 `ojm ...`（别名仍可用，下个 major 移除） |
+| 执行 `ram ...` 报错 command not found / 找不到命令 | 存量 scripts 仍用旧命令 | 改用 `ojm ...`（`ram` 别名已移除） |
 | 存量工程首次 `ojm api --check` 报 stub 待更新 | 旧指纹头 `// ram-api:stub` | 跑一次 `ojm api` 刷成新头即可；纯前缀升级不再误报（P3） |
 | 本地 `.bin/ojm` 不存在 / `pnpm install` 说 up to date | workspace 包 `bin` 变更不会触发 app 的 `.bin` 重建 | 删掉该 app 的 `node_modules` 再 `pnpm install`（陷阱 A36） |
 

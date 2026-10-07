@@ -34,8 +34,6 @@ ojm merge <out> <in...>  # 合并多份 modules.json
 ```
 
 > `ojm init` / `ojm vendor` 需要访问 npm registry（经 `npm i @oj-bin/oj` 安装 oj 到 `bin/`，走 `.npmrc` 镜像配置）。已装版本记录在 `bin/.oj-version`，`ojm info` 可查。
->
-> **别名**：`ram` 是 `ojm` 的弃用别名（打印更名警告后转发），供存量工程 scripts 平滑升级，将在下个 major 移除。
 
 ### `ojm build`
 
@@ -130,4 +128,4 @@ import { loadModulesConfig, resolveModuleEntry } from "@oj-module/cli/config";
 
 ## 实现说明
 
-`bin/ojm.mjs` 通过 `--import tsx` 让 Node 直接执行 TypeScript 源码，因此包发布时带 `src/` 而不是编译产物；`bin/ram.mjs` 是等价的弃用别名 shim。
+`bin/ojm.mjs` 通过 `--import tsx` 让 Node 直接执行 TypeScript 源码，因此包发布时带 `src/` 而不是编译产物。
