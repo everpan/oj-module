@@ -21,11 +21,13 @@ import type { ContractMockRoute } from "./contract/mock";
 import type { MockRoute } from "./dev-mock";
 import type { OjProcess } from "./oj";
 import { Buffer } from "node:buffer";
+import { spawn } from "node:child_process";
 import { existsSync, watch } from "node:fs";
-
 import http from "node:http";
+
 import { resolve } from "node:path";
 import process from "node:process";
+import readline from "node:readline";
 import { buildModules } from "./build";
 import { loadContractMocks, resolveMock } from "./contract/mock";
 import { loadProjectMocks, mockStatusCode } from "./dev-mock";
@@ -49,6 +51,12 @@ export interface DevOptions {
 	ojStarter?: (configPath: string, base: string, apiSrc: string) => OjProcess
 	/** 强制纯前端形态（不起 oj，/api 走 mock） */
 	frontendOnly?: boolean
+	/** 启用 Vite 风格快捷键（默认仅 TTY 启用；测试可强制开） */
+	keymap?: boolean
+	/** 注入键盘输入流（测试）；默认 process.stdin */
+	inputStream?: NodeJS.ReadStream
+	/** 注入浏览器打开实现（测试）；默认按平台 spawn open/xdg-open */
+	openBrowser?: (url: string) => void
 }
 
 export async function devServer(projectRoot: string, opts: DevOptions = {}): Promise<http.Server> {
@@ -262,6 +270,25 @@ export async function devServer(projectRoot: string, opts: DevOptions = {}): Pro
 		// 同上：平台不支持 recursive 时退化为手动 ojm api
 	}
 
+	// Vite 风格快捷键：r 热更新 / h 帮助 / c 清屏 / o 打开浏览器 / q 退出。
+	// 仅 TTY 默认启用（管道/CI 下不抢 stdin）；测试可经 keymap + inputStream 强制。
+	const keymapEnabled = opts.keymap ?? (process.stdin.isTTY ?? false);
+	if (keymapEnabled) {
+		setupDevKeymap({
+			server,
+			oj,
+			hub,
+			port: actualPort,
+			input: opts.inputStream,
+			openBrowser: opts.openBrowser,
+			onReload: () => {
+				void trigger();
+			},
+			onQuit: shutdown,
+		});
+		console.log("[ojm] 快捷键：r 热更新 · h 帮助 · c 清屏 · o 打开浏览器 · q 退出");
+	}
+
 	return server;
 }
 
@@ -286,4 +313,103 @@ export async function shutdownDev(
 	server.close(() => exit(0));
 	// 1.5s 内没关干净也强制退（oj.stop 内部另有 3s SIGKILL 兜底）
 	setTimeout(exit, 1500, 0).unref();
+}
+
+/**
+ * Vite 风格 dev 快捷键（默认仅在 TTY 启用，见 devServer 内的 keymapEnabled 判定）。
+ *   r  强制重建并热更新（复用 trigger）
+ *   h  显示快捷键帮助
+ *   c  清屏
+ *   o  在浏览器打开 dev 地址
+ *   q  退出（走 shutdownDev，后端 oj 一并终止）；Ctrl+C 等价
+ * 抽出独立函数便于单测（注入 input/onReload/onQuit/openBrowser/log）。
+ */
+export interface DevKeymapDeps {
+	server: http.Server
+	oj: OjProcess | undefined
+	hub: { close: () => void }
+	port: number
+	input?: NodeJS.ReadStream
+	openBrowser?: (url: string) => void
+	onReload: () => void
+	onQuit: () => void
+	log?: (msg: string) => void
+}
+
+function defaultOpenBrowser(url: string): void {
+	const args = process.platform === "darwin"
+		? ["open", url]
+		: process.platform === "win32"
+			? ["cmd", "/c", "start", "", url]
+			: ["xdg-open", url];
+	spawn(args[0], args.slice(1), { stdio: "ignore", detached: true }).unref();
+}
+
+export function setupDevKeymap(deps: DevKeymapDeps): void {
+	const input = deps.input ?? process.stdin;
+	const log = deps.log ?? ((msg: string) => console.log(msg));
+	const open = deps.openBrowser ?? defaultOpenBrowser;
+	const url = `http://localhost:${deps.port}`;
+
+	const help = () => {
+		log("");
+		log("  ojm dev 快捷键：");
+		log("    r  强制重建并热更新      h  显示本帮助");
+		log("    c  清屏                  o  在浏览器打开");
+		log("    q  退出（后端 oj 一并终止）");
+	};
+
+	const onKey = (str: string, key: readline.Key | undefined) => {
+		const k = (str || "").toLowerCase();
+		// Ctrl+C 在 raw 模式下不触发 SIGINT，需在此显式退出
+		if (key?.ctrl && (k === "c" || key.name === "c")) {
+			deps.onQuit();
+			return;
+		}
+		// 仅处理可打印单字符（箭头/功能键 str 为空，忽略）
+		if (!k)
+			return;
+		if (k === "r") {
+			log("[ojm] 手动热更新：重建中…");
+			deps.onReload();
+		}
+		else if (k === "h") {
+			help();
+		}
+		else if (k === "c") {
+			process.stdout.write("\x1Bc");
+		}
+		else if (k === "o") {
+			open(url);
+		}
+		else if (k === "q") {
+			deps.onQuit();
+		}
+	};
+
+	readline.emitKeypressEvents(input);
+	if (typeof input.setRawMode === "function") {
+		try {
+			input.setRawMode(true);
+		}
+		catch {
+			// 非 TTY（注入流）忽略
+		}
+	}
+	input.resume?.();
+	input.on("keypress", onKey);
+
+	const cleanup = () => {
+		input.removeListener("keypress", onKey);
+		if (typeof input.setRawMode === "function") {
+			try {
+				input.setRawMode(false);
+			}
+			catch {
+				// 忽略
+			}
+		}
+	};
+	deps.server.on("close", cleanup);
+	process.once("exit", cleanup);
 }
