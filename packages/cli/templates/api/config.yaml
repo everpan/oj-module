@@ -1,16 +1,16 @@
-# oj 服务配置（devkit 手册 §10）。
+# oj 服务配置（字段语义见 oj 后端开发手册 oj-api-dev / 或 oj --help）。
 # 本文件由 ojm init 生成；config 内相对路径相对本文件所在目录。
 server:
   host: 127.0.0.1 # 显式钉死：oj 默认绑 [::1]，localhost 解析序在反代下有坑
   port: 9778
-  api_prefix: /api # 新键名（旧键 base 仅兼容；手册 §10）
+  api_prefix: /api # 新键名（旧键 base 已废弃，仅兼容）
   public_key_path: ./config/public.pem
   certificate_path: ./config/cert.jws
   # ---- 静态站点与 SPA（v0.1.20 / v0.1.27）----
   # ojm preview 默认由 ojm 静态层兜底；`--oj-static` 改走 oj --app-path 直出，
   # 深链回落到 index.html 需要这一项（oj 默认 false）。
   app_spa_fallback: true
-  # ---- 迁移门禁（手册 §10）----
+  # ---- 迁移门禁 ----
   # auto = dev 缺省（启动即应用）；release 缺省是 verify（账本落后拒启，先 oj migrate）。
   # 显式写出来：dev 的隐式 DB 副作用不再靠「模式默认值」猜，release 也不会因缺省拒启。
   migrate_on_start: auto
@@ -37,7 +37,7 @@ auth:
   jwt_secret: __JWT_SECRET__ # init 随机生成；生产必须更换
   access_token_duration: 2h
   refresh_token_duration: 720h
-  anonymous_paths: # auth 端点是业务路由，必须显式匿名（手册 §8）
+  anonymous_paths: # auth 端点是业务路由，必须显式匿名（漏列则握手 401，见 ojm 开发手册 §8）
     - /auth/login
     - /auth/refresh
     - /auth/logout
