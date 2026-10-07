@@ -8,6 +8,8 @@ export function usageText(): string {
 用法:
   ojm init [dir] [--yes]              前后端一体化工程脚手架（幂等补缺）
   ojm dev [port]                      启动开发服务器（/api 反代 oj + 模块重建 + SSE 刷新）
+      开发模式快捷键（仅 TTY 终端，类 Vite）:
+        r  强制重建并热更新    h  显示帮助    c  清屏    o  浏览器打开    q  退出（后端 oj 一并终止）
   ojm build                           构建后端（oj build）与模块产物（含全站合并）
   ojm preview [port] [--oj-static]    生产形态预览（migrate → oj serve + 静态兜底）
   ojm api [dir] [--check] [--docs] [--exempt <path>]  契约代码生成（client/routes/openapi/stub）；--check 三重对账（可用 --exempt 指定豁免清单覆盖默认 api/.ojm-api-exempt.json）；--docs 出自包含文档站（单文件离线可看）

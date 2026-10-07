@@ -45,6 +45,16 @@ describe("usage 契约", () => {
 			expect(text).toMatch(new RegExp(`ojm ${cmd}`));
 		}
 	});
+
+	it("dev 用法含开发模式快捷键映射（r/h/c/o/q）", () => {
+		const text = usageText();
+		expect(text).toContain("开发模式快捷键");
+		for (const k of ["r", "h", "c", "o", "q"]) {
+			expect(text).toMatch(new RegExp(`\\b${k}\\b`));
+		}
+		expect(text).toContain("强制重建并热更新");
+		expect(text).toContain("后端 oj 一并终止");
+	});
 });
 
 describe("ojm info 后端段（桩注入）", () => {
