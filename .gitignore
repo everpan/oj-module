@@ -68,3 +68,7 @@ TODO.md
 tests/e2e/test-results/
 tests/e2e/playwright-report/
 test-results/
+
+# oj 集成测试 / 运行时临时产物
+.tmp-oj-fx/
+apps/playground-oj/logs/

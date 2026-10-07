@@ -278,3 +278,49 @@ describe("initProject", () => {
 		expect(yaml).toMatch(/allowBuilds:\n\s+esbuild:\s*true/);
 	});
 });
+
+/**
+ * 凭据密封（oj v0.1.33）：`auth.jwt_secret` 不该明文落盘。init 在 oj 就位后
+ * 现场 keygen + seal，把明文换成 `ENC[...]`，并写 `secrets:` 段指向私钥。
+ * 失败（oj 缺失/命令不支持）→ 保留明文并告警，init 不因此失败。
+ */
+describe("initProject 凭据密封", () => {
+	function sealableOj(binDir: string) {
+		return Promise.resolve().then(() => {
+			fs.mkdirSync(binDir, { recursive: true });
+			const bin = path.join(binDir, "oj");
+			fs.writeFileSync(bin, [
+				"#!/bin/sh",
+				"if [ \"$1\" = \"secret\" ] && [ \"$2\" = \"keygen\" ]; then",
+				"  printf 'PRIV\\n' > \"$4/secrets-private.pem\"",
+				"  printf 'PUB\\n' > \"$4/secrets-public.pem\"",
+				"  exit 0",
+				"fi",
+				"if [ \"$1\" = \"secret\" ] && [ \"$2\" = \"seal\" ]; then",
+				"  printf 'ENC[TESTSEALED]\\n'",
+				"  exit 0",
+				"fi",
+				"exit 0",
+			].join("\n"));
+			fs.chmodSync(bin, 0o755);
+		});
+	}
+
+	it("oj 可用 → jwt_secret 换成 ENC[...] 并写 secrets 段", async () => {
+		const dest = path.join(tmpRoot(), "seal-ok");
+		await initProject(dest, { yes: true, ojInstaller: sealableOj });
+		const config = fs.readFileSync(path.join(dest, "api/config.yaml"), "utf-8");
+		expect(config).toMatch(/jwt_secret:\s*"?ENC\[TESTSEALED\]"?/);
+		expect(config).toMatch(/secrets:/);
+		expect(config).toMatch(/private_key_path/);
+		expect(fs.existsSync(path.join(dest, "api/config/secrets-private.pem"))).toBe(true);
+	});
+
+	it("oj 不支持 secret（旧版/桩）→ 保留明文且不失败", async () => {
+		const dest = path.join(tmpRoot(), "seal-fallback");
+		await initProject(dest, initOpts);
+		const config = fs.readFileSync(path.join(dest, "api/config.yaml"), "utf-8");
+		expect(config).toMatch(/jwt_secret:\s*[0-9a-f]{32,}/);
+		expect(config).not.toMatch(/ENC\[/);
+	});
+});

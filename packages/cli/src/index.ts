@@ -10,6 +10,9 @@ import { previewServer } from "./preview";
 import { usageText } from "./usage";
 import { vendorCommand } from "./vendor";
 
+/** ojm → oj 透传子命令（其余参数原样转发，见 src/oj-cmd.ts） */
+const OJ_PASSTHROUGH = new Set(["test", "exec", "openapi", "migrate", "schema"]);
+
 const [command] = process.argv.slice(2);
 
 function usage(): never {
@@ -90,8 +93,14 @@ async function main() {
 		case "merge":
 			await mergeManifests(process.argv[3] ?? "", process.argv.slice(4));
 			break;
-		default:
+		default: {
+			if (command && OJ_PASSTHROUGH.has(command)) {
+				const { runOjSubcommand } = await import("./oj-cmd");
+				runOjSubcommand(projectRoot, command, process.argv.slice(3));
+				break;
+			}
 			usage();
+		}
 	}
 }
 

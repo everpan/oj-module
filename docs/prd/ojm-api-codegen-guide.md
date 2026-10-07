@@ -45,6 +45,7 @@ uni-dev 形态有硬约束（AC-D9）：契约里每个端点的 `apiPrefix` 必
      `api.schemas.ts`（zod schema，DEV 下 `safeParse` 校验响应；生产构建被摇树移除）
    - `emit-meta` → `routes.json`（路由表）与 `openapi.yaml`（评审可读）
    - `emit-stub` → 后端 handler 骨架（仅 uni-dev），按 oj 目录镜像路由落位
+   - `emit-oj-schema` → handler 上的 `.schema` 入参契约（见第 4.5 节）
 5. **幂等写盘**：内容逐字节比对，无变化不写盘（`written`/`skipped` 报告），重复跑
    `ojm api` 的 git diff 为空。
 
@@ -60,12 +61,59 @@ uni-dev 形态有硬约束（AC-D9）：契约里每个端点的 `apiPrefix` 必
   （`// ojm-api:stub <name> sha256:...`）。人碰过的 stub 工具**永不写永不删**——
   实现 handler 就是在 stub 里填业务逻辑。
 
-## 5. `ojm api --check` 三重对账（只读，永不修文件）
+## 4.5 入参契约落到后端：`.schema`（oj v0.1.44）
+
+契约里声明的 `params` / `query` / `body` 不只生成前端类型与校验，也会落成后端 handler 的
+`.schema`，由 oj 在 **JS 之前**校验——违反即 `400` 信封，handler 根本不会被调用：
+
+```ts
+// api/src/order/list/api.ts（ojm api 生成，勿手改正文外的部分）
+function get(): void {
+	json.ok({ /* TODO */ });
+}
+get.schema = {
+	"query": {
+		"type": "object",
+		"properties": { "page": { "type": "number", "minimum": 1 } },
+		"required": ["page"]
+	}
+};
+export default { get };
+```
+
+于是**一份契约同时给出**：前端 client 与类型、前端 DEV 期 zod 校验、后端入参校验、OpenAPI 文档。
+
+**降级规则（oj 的关键字是白名单，白名单外装配期 fail-fast，所以必须裁剪）**：
+
+| 契约写法 | 落到 `.schema` | 说明 |
+|---|---|---|
+| `z.string()` / `z.number()` / `z.boolean()` | `type` | — |
+| `z.number().int()` | `type: "integer"` | 影响 params/query 的字符串强转 |
+| `.min()` / `.max()` | `minimum` / `maximum` | array 上是 `minItems` / `maxItems` |
+| `.min()` / `.max()`（string） | `minLength` / `maxLength` | — |
+| 全字面量 `z.union([...])` | `enum` | 白名单无 `oneOf`，只能等价降级 |
+| 其它 `z.union` | 该字段不校验 | **会打 warn**，不静默丢 |
+| `.email()` / `.uuid()` / `.url()` | 跳过 | 白名单无 `format`；**会打 warn** |
+| `.regex(re)` | `pattern` | 必须是 Rust regex：`(?=)` / `(?!)` / `\1` 会在**生成期**报错 |
+| `z.date()` | `type: "string"` | JSON 无日期类型，线上是 ISO 串 |
+| `z.nullable()` | `nullable: true` | — |
+
+**params / query 只允许扁平标量**（string/number/integer/boolean/null）：HTTP 里它们只有
+字符串形态，声明 array/object 是永远无法满足的死契约——`ojm api` 在生成期就报错，不等 oj
+装配期才拒。
+
+开关在 config：`server.schema_validation`（默认 `true`，置 false 为逃生门）。
+
+## 5. `ojm api --check` 四重对账（只读，永不修文件）
 
 1. **生成物同步**：内存重生成 vs 磁盘逐字节 diff（含 stub 待更新检测）。
 2. **route 双向对账**：AST 扫后端 `api.ts`（default 导出方法名 + `.route = "..."` 赋值）
    vs 契约路由表——契约未实现 warn、handler 未登记 error、参数段不一致 error。
 3. **routes.js diff**：`oj build` 产物路由表 vs `routes.json`；无 dist 给提示不判违规。
+4. **WS 路由鉴权**：目录里的 `ws.ts` 产生 `GET {base}/<模块>/<路径>/ws`——oj v0.1.30 起
+   WS 握手过鉴权守卫，不在 `auth.anonymous_paths` 里的 WS 会让未带凭据的客户端握手 401
+   （表现为「文件在却连不上」）。只 warn（带 Bearer/Cookie 的受保护 WS 是正当用法）；
+   读不到 config 就不判。
 
 ### 豁免清单 `api/.ojm-api-exempt.json`
 

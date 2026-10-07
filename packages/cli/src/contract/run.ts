@@ -1,3 +1,4 @@
+import type { OjSchemaDiag } from "./emit-oj-schema";
 import { execFile as execFileCb } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -126,11 +127,15 @@ async function runOne(found: DiscoveredContract, cwd: string, result: RunResult)
 	writeIfChanged(paths.openapi, openapi, result);
 	if (found.kind === "uni-dev") {
 		// stub：oj 目录镜像树（人碰过的文件永不写——plan 阶段已按指纹判好）
-		const writes = await planStubWrites(ir, { apiSrcDir: join(cwd, "api/src") });
+		const diag: OjSchemaDiag = { warnings: [] };
+		const writes = await planStubWrites(ir, { apiSrcDir: join(cwd, "api/src"), diag });
 		const counts = applyStubWrites(writes);
 		result.stubs.created += counts.created;
 		result.stubs.updated += counts.updated;
 		result.stubs.skipped += counts.skipped;
+		// .schema 降级必须说出来：oj 关键字是白名单，表达不了的约束后端就不校验了
+		for (const w of diag.warnings)
+			console.warn(`[ojm-api] ⚠️ ${w}`);
 	}
 }
 

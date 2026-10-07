@@ -6,6 +6,31 @@ server:
   api_prefix: /api # 新键名（旧键 base 仅兼容；手册 §10）
   public_key_path: ./config/public.pem
   certificate_path: ./config/cert.jws
+  # ---- 静态站点与 SPA（v0.1.20 / v0.1.27）----
+  # ojm preview 默认由 ojm 静态层兜底；`--oj-static` 改走 oj --app-path 直出，
+  # 深链回落到 index.html 需要这一项（oj 默认 false）。
+  app_spa_fallback: true
+  # ---- 迁移门禁（手册 §10）----
+  # auto = dev 缺省（启动即应用）；release 缺省是 verify（账本落后拒启，先 oj migrate）。
+  # 显式写出来：dev 的隐式 DB 副作用不再靠「模式默认值」猜，release 也不会因缺省拒启。
+  migrate_on_start: auto
+  # ---- 入参契约（v0.1.44）----
+  # 契约生成的 .schema 在此生效：违反即 400 且 handler 不执行。
+  # 关掉等于退回「后端零校验」，仅在 .schema 与旧 handler 冲突时临时逃生。
+  schema_validation: true
+  # ---- 单 isolate 堆限额（v0.1.40，默认 256MiB，下限 32MiB）----
+  js_heap_limit_bytes: 268435456
+  # ---- 路由级超时（v0.1.30）：pattern 按声明序首个命中，且是含 base 的全路径 ----
+  route_timeouts: []
+  # ---- 统一响应头（v0.1.30）----
+  response_headers: {}
+  # ---- 直传路由 PUT {base}/blob/{key} 的体积上限（v0.1.30，默认 1GiB）----
+  # 与 max_upload_bytes（multipart，默认 10MB）是两套闸，别混。
+  blob_upload_max_bytes: 1073741824
+  # ---- CORS（v0.1.35）：缺这一段 = 不挂 CORS 层；credentials 必须配显式 origins ----
+  cors:
+    origins: [] # 留空 = 放行任意源；要带凭据则必须列出具体源
+    credentials: false
 db:
   default: 'sqlite://db.sqlite' # 相对 config 目录；缺文件自动建空库
 auth:

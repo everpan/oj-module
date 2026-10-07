@@ -2,7 +2,7 @@
  * `ojm preview` —— 生产形态预览（设计 §6）。
  *
  * 职责：校验产物（fail-fast 四查）→ `oj migrate`（失败即退，不起 server）
- * → `oj server`（release/js，仅 API）→ ojm 静态层兜底（SPA 回退，无 SSE
+ * → `oj serve`（release/js，仅 API）→ ojm 静态层兜底（SPA 回退，无 SSE
  * 注入、不设 no-store）。默认静态归 ojm（与 oj 手册 §13「SPA 回退经前置
  * 反代补」一致）；`--oj-static` 切换为 oj `--app-path` 直出（真 exercise
  * oj 静态层，history 深链接 404 是已知限制）。
@@ -22,6 +22,7 @@ import { resolveLayout } from "./layout";
 import { startOj } from "./oj";
 import { readOjApiPrefix } from "./oj-config";
 import { createStaticHandler, decodeReqPath, listenOnFreePort } from "./static-handler";
+import { resolveOjBin } from "./vendor";
 
 const DEFAULT_PORT = 4173;
 
@@ -40,7 +41,7 @@ export interface PreviewOptions {
 export async function previewServer(projectRoot: string, opts: PreviewOptions = {}): Promise<http.Server> {
 	const layout = resolveLayout(projectRoot);
 	const siteDir = opts.siteDir ?? layout.distDir;
-	const ojBin = path.join(projectRoot, "bin", "oj");
+	const ojBin = resolveOjBin(projectRoot);
 	const configPath = path.join(projectRoot, "api", "config.yaml");
 	const apiDist = path.join(projectRoot, "api", "dist");
 

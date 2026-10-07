@@ -1,8 +1,12 @@
 /**
  * oj 子进程编排（设计 §4/§6）。
  *
- * 职责单一：spawn `oj server`、健康轮询、stdout/stderr 透传（[oj] 前缀）、
+ * 职责单一：spawn `oj serve`、健康轮询、stdout/stderr 透传（[oj] 前缀）、
  * 退出回收。不关心 who 调它（dev 直接用，preview 在 migrate 后用）。
+ *
+ * 子命令是 `serve` 不是 `server`：oj 0.1.50 只认 `serve`（实测 `oj server --help`
+ * → unrecognized subcommand）。ojm 以最新 oj 为准，不做版本兼容分支——老版本 oj
+ * 由 `ojm vendor` 的最低版本门禁挡住（见 src/vendor.ts 的 MIN_OJ_VERSION）。
  *
  * 健康判据：GET {base}/health 状态码 <400（oj 内置匿名健康端点；2xx/3xx 均视为就绪）。
  * 秒退：ready 拒绝，错误信息带 stderr 尾部（证书缺失等常见错因可直接读出）。
@@ -14,6 +18,7 @@ import http from "node:http";
 import path from "node:path";
 import process from "node:process";
 import { readOjPort } from "./oj-config";
+import { resolveOjBin } from "./vendor";
 
 export interface OjProcess {
 	port: number
@@ -37,13 +42,13 @@ export function startOj(
 ): OjProcess {
 	const port = readOjPort(configPath);
 	// 约定：config 在 <project>/api/config.yaml，vendor 二进制在 <project>/bin/oj
-	const binPath = path.join(path.dirname(configPath), "..", "bin", "oj");
+	const binPath = resolveOjBin(path.dirname(path.dirname(configPath)));
 	const healthUrl = `http://127.0.0.1:${port}${base}/health`;
 
 	let stderrTail = "";
 	// --console-log：oj 新版终端默认静默（console_log 缺省 false，只落 logs/），
 	// ojm dev/preview 的 [oj] 透传管道必须显式打开终端输出才能看到日志（手册 §10）。
-	const child = spawn(binPath, ["server", "-c", configPath, "-b", base, "--api-path", apiSrcPath, "--console-log", ...extraArgs], {
+	const child = spawn(binPath, ["serve", "-c", configPath, "-b", base, "--api-path", apiSrcPath, "--console-log", ...extraArgs], {
 		stdio: ["ignore", "pipe", "pipe"],
 	});
 	child.stdout?.on("data", (chunk: Buffer) => {

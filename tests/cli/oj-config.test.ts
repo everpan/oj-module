@@ -25,6 +25,18 @@ describe("readOjPort", () => {
 		expect(readOjPort(file)).toBe(9778);
 	});
 
+	// 行级正则读不出流式的 server: { port: 9778 }——改真 YAML 解析后才成立
+	it("流式写法 server: { port: 9778 } 也能读（真 YAML 解析）", () => {
+		const file = writeConfig("server: { port: 9778, base: \"/api\" }\nblob:\n  port: 1\n");
+		expect(readOjPort(file)).toBe(9778);
+		expect(readOjApiPrefix(file)).toBe("/api");
+	});
+
+	it("yAML 非法 → 人话报错（不是 YAML 库原始堆栈）", () => {
+		const file = writeConfig("server:\n  port: 9778\n bad indent: [\n");
+		expect(() => readOjPort(file)).toThrowError(/config\.yaml.*解析失败|解析失败/);
+	});
+
 	it("miss 直接报错（提示 server.port，不静默回落）", () => {
 		const file = writeConfig("server:\n  host: \"127.0.0.1\"\n");
 		expect(() => readOjPort(file)).toThrowError(/server\.port/);

@@ -2,6 +2,7 @@ import type { IrEndpoint } from "./ir";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, relative, sep } from "node:path";
 import ts from "typescript";
+import { readOjAnonymousPaths } from "../oj-config";
 import { emitClient } from "./emit-client";
 import { emitOpenapiYaml, emitRoutesJson } from "./emit-meta";
 import { planStubWrites } from "./emit-stub";
@@ -20,7 +21,7 @@ import { artifactPaths, discoverContracts, irOf } from "./run";
 
 export interface CheckViolation {
 	level: "error" | "warn"
-	kind: "artifact-stale" | "route-not-implemented" | "route-unregistered" | "route-params-mismatch" | "routes-js-drift"
+	kind: "artifact-stale" | "route-not-implemented" | "route-unregistered" | "route-params-mismatch" | "routes-js-drift" | "ws-anonymous-missing"
 	message: string
 	filePath?: string
 }
@@ -187,6 +188,48 @@ function walkApiFiles(dir: string, out: string[] = []): string[] {
 	return out;
 }
 
+/** ws.ts / ws.js（目录内放即产生一条 WS 路由，文件名必须小写——oj 0.1.5 约定） */
+function walkWsFiles(dir: string, out: string[] = []): string[] {
+	if (!existsSync(dir))
+		return out;
+	for (const entry of readdirSync(dir, { withFileTypes: true })) {
+		const p = join(dir, entry.name);
+		if (entry.isDirectory())
+			walkWsFiles(p, out);
+		else if (entry.name === "ws.ts" || entry.name === "ws.js")
+			out.push(p);
+	}
+	return out;
+}
+
+/**
+ * ④WS 路由鉴权对账：oj 0.1.30 起 WS 握手过 oj-auth 守卫，不在
+ * `auth.anonymous_paths` 里的 WS，未带凭据的客户端握手即 401（表现为「文件在
+ * 却连不上」）。目录 `api/src/news/chat/ws.ts` → 路由 `<base>/news/chat/ws`。
+ *
+ * 只 warn 不 error：带 Bearer/cookie 的受保护 WS 是正当用法。
+ * 读不到 config 直接不判——缺配置时做不出有依据的断言。
+ */
+function checkWsAnonymous(wsFiles: string[], apiSrcDir: string, configPath: string): CheckViolation[] {
+	if (!existsSync(configPath) || wsFiles.length === 0)
+		return [];
+	const anonymous = readOjAnonymousPaths(configPath);
+	if (anonymous.length === 0)
+		return [];
+	return wsFiles
+		.map((file) => {
+			const relDir = relative(apiSrcDir, dirname(file)).split(sep).join("/");
+			return { file, path: `/${relDir}/ws` };
+		})
+		.filter(({ path }) => !anonymous.includes(path))
+		.map(({ file, path }) => ({
+			level: "warn" as const,
+			kind: "ws-anonymous-missing" as const,
+			filePath: file,
+			message: `[ojm-api] WS 路由 ${path} 不在 auth.anonymous_paths——oj 0.1.30 起 WS 握手过鉴权守卫，未带凭据的客户端会握手 401（表现为「文件在却连不上」）。若该 WS 本就要求鉴权（客户端带 Bearer/Cookie）可忽略本提示；否则请在 api/config.yaml 的 auth.anonymous_paths 补上 ${path}。`,
+		}));
+}
+
 function routeLabel(dir: string, tail?: string): string {
 	return tail ? `${dir}/${tail}` : dir;
 }
@@ -331,6 +374,13 @@ export async function checkApi(opts: { cwd: string, exempt?: string }): Promise<
 		const handlers = walkApiFiles(apiSrcDir).flatMap(f => scanHandlerFile(f, apiSrcDir));
 		violations.push(...reconcileRoutes(uniDevIr, handlers, exemption));
 	}
+
+	// ④ WS 路由鉴权对账（oj 0.1.30 起握手过鉴权守卫）
+	violations.push(...checkWsAnonymous(
+		walkWsFiles(join(opts.cwd, "api/src")),
+		join(opts.cwd, "api/src"),
+		join(opts.cwd, "api/config.yaml"),
+	));
 
 	// ③ routes.js diff
 	const distDir = join(opts.cwd, "api/dist");

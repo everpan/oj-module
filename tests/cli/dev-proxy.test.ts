@@ -107,6 +107,9 @@ describe("proxyApi /api 反代", () => {
 		expect(res.status).toBe(502);
 		expect(res.headers["content-type"]).toContain("application/json");
 		expect(JSON.parse(res.text)).toMatchObject({ code: 502 });
+		// 信封与 oj 一致（code/msg/data），不是前端 ApiResponse 的 message/success/result
+		expect(JSON.parse(res.text)).toMatchObject({ msg: expect.stringContaining("oj 上游不可达"), data: null });
+		expect(JSON.parse(res.text)).not.toHaveProperty("message");
 
 		proxy.close();
 	});

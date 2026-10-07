@@ -105,6 +105,25 @@ describe("ojm info 后端段（桩注入）", () => {
 		}
 	});
 
+	it("安装标记低于最低版本 → 提示 ojm vendor 升级（oj 启动子命令门禁）", async () => {
+		const root = fs.mkdtempSync(path.join(path.dirname(PROJECT_ROOT), ".tmp-info-fx-"));
+		try {
+			fs.mkdirSync(path.join(root, "bin"), { recursive: true });
+			fs.writeFileSync(path.join(root, "bin/oj"), "#!/bin/sh\necho oj\n");
+			fs.writeFileSync(path.join(root, "bin/.oj-version"), "v0.1.11\n");
+
+			await printInfo(root, stubObservability("oj 0.1.11", null));
+
+			const out = logs.join("\n");
+			expect(out).toMatch(/安装标记.*v0\.1\.11/);
+			expect(out).toMatch(/0\.1\.50/);
+			expect(out).toMatch(/ojm vendor/);
+		}
+		finally {
+			fs.rmSync(root, { recursive: true, force: true });
+		}
+	});
+
 	it("安装标记与现场版本不一致 → drift 告警（ojm vendor --force 提示）", async () => {
 		const root = fs.mkdtempSync(path.join(path.dirname(PROJECT_ROOT), ".tmp-info-fx-"));
 		try {

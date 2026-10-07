@@ -1,7 +1,7 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
 exports[`planStubWrites（AC-D10 §9.1 五场景） > handler 不存在 → action create：oj 模板（默认导出 + .route 赋值 + json.ok 示例值） 1`] = `
-"// ojm-api:stub createOrder,deleteOrder,getOrderDetail sha256:c95724be844d22c606eccda7ede0eb7bce83f46be641218cedd55d66d93c30e0
+"// ojm-api:stub createOrder,deleteOrder,getOrderDetail sha256:adb0006107f1f34478881f3e0fd39c7b6e625d9be9774cf2a58b81e34f2a3bf9
 function get(): void {
 	json.ok({
 		id: 1,
@@ -10,17 +10,56 @@ function get(): void {
 	});
 }
 get.route = "{id}";
+get.schema = {
+	"params": {
+		"type": "object",
+		"properties": {
+			"id": {
+				"type": "number"
+			}
+		},
+		"required": [
+			"id"
+		]
+	}
+};
 
 function post(): void {
 	json.ok({
 		id: 1,
 	});
 }
+post.schema = {
+	"body": {
+		"type": "object",
+		"properties": {
+			"order_no": {
+				"type": "string"
+			}
+		},
+		"required": [
+			"order_no"
+		]
+	}
+};
 
 function del(): void {
 	json.ok();
 }
 del.route = "{id}";
+del.schema = {
+	"params": {
+		"type": "object",
+		"properties": {
+			"id": {
+				"type": "number"
+			}
+		},
+		"required": [
+			"id"
+		]
+	}
+};
 export default { get, post, del };
 "
 `;

@@ -9,13 +9,14 @@
  * 用户文件永不覆盖——「重新 init 覆盖脚手架」是审阅记录二明令禁止的行为。
  */
 
+import { execFileSync } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { mintDevCert } from "./oj-cert";
-import { vendorCommand } from "./vendor";
+import { resolveOjBin, vendorCommand } from "./vendor";
 import { readHostVersions } from "./versions";
 
 export interface InitOptions {
@@ -23,12 +24,20 @@ export interface InitOptions {
 	yes?: boolean
 	/** 注入桩 oj 安装器（测试）；默认 vendorCommand 经 npm 包 @oj-bin/oj 联网安装 */
 	ojInstaller?: (binDir: string) => Promise<void>
+	/** 注入桩密封（测试）；缺省真跑 bin/oj secret keygen/seal */
+	seal?: Sealer
 }
 
 interface InitReport {
 	created: string[]
 	skipped: string[]
 }
+
+/**
+ * 凭据密封执行器：把 config.yaml 里的明文 `auth.jwt_secret` 换成 `ENC[...]`。
+ * 返回 null = 未密封（oj 缺失/不支持），调用方据此保留明文并告警。
+ */
+export type Sealer = (destDir: string, plainSecret: string) => Promise<string | null>;
 
 export async function initProject(destDir: string, opts: InitOptions = {}): Promise<void> {
 	fs.mkdirSync(destDir, { recursive: true });
@@ -73,6 +82,10 @@ export async function initProject(destDir: string, opts: InitOptions = {}): Prom
 		await installer(binDir);
 		report.created.push("bin/{oj,plugins/,devkit/}（release 下载）");
 	}
+
+	// 3.5) 凭据密封（oj v0.1.33）：把模板里的明文 jwt_secret 换成 ENC[...]。
+	//      oj 不可用/不支持 secret → 保留明文并告警（init 不因加密失败而失败）
+	await sealJwtSecret(destDir, report, opts.seal);
 
 	// 4) devkit 分发：agent skill + 全局类型
 	const devkit = path.join(binDir, "devkit");
@@ -121,6 +134,55 @@ export async function initProject(destDir: string, opts: InitOptions = {}): Prom
 	for (const item of report.skipped)
 		console.log(`[ojm]   · 跳过 ${item}`);
 	console.log("[ojm] 下一步：pnpm install && pnpm dev（登录 admin / 123456）");
+}
+
+/** 默认密封器：bin/oj secret keygen + seal（失败返回 null，不抛） */
+const defaultSealer: Sealer = async (destDir, plainSecret) => {
+	const ojBin = resolveOjBin(destDir);
+	if (!fs.existsSync(ojBin))
+		return null;
+	const keysDir = path.join(destDir, "api/config");
+	const publicKey = path.join(keysDir, "secrets-public.pem");
+	try {
+		fs.mkdirSync(keysDir, { recursive: true });
+		execFileSync(ojBin, ["secret", "keygen", "--out-dir", keysDir], { stdio: "pipe" });
+		// 明文经 stdin 传入：命令行参数会进 shell history 与 ps（手册 §10 明确要求）
+		const out = execFileSync(ojBin, ["secret", "seal", "-k", publicKey], {
+			input: plainSecret,
+			encoding: "utf-8",
+			stdio: ["pipe", "pipe", "pipe"],
+		});
+		const sealed = out.trim();
+		return sealed.startsWith("ENC[") ? sealed : null;
+	}
+	catch {
+		return null;
+	}
+};
+
+/**
+ * 把 config.yaml 的明文 `auth.jwt_secret` 换成 `ENC[...]`（oj v0.1.33 凭据密封），
+ * 并补 `secrets:` 段指向私钥。失败一律降级为明文 + 告警——init 不因加密失败而失败。
+ */
+async function sealJwtSecret(destDir: string, report: InitReport, seal: Sealer = defaultSealer): Promise<void> {
+	const configPath = path.join(destDir, "api/config.yaml");
+	if (!fs.existsSync(configPath))
+		return;
+	const text = fs.readFileSync(configPath, "utf-8");
+	const match = /^(?<indent>\s*)jwt_secret:\s*(?<value>"?[0-9a-f]{16,}"?)/m.exec(text);
+	if (!match?.groups)
+		return; // 已密封（ENC[…]）或被人工改过 → 不动
+	const plain = match.groups.value.replaceAll("\"", "");
+	const sealed = await seal(destDir, plain);
+	if (!sealed) {
+		console.warn("[ojm] ⚠️ 未能密封 jwt_secret（oj 缺失或不支持 secret）——config.yaml 里仍是明文，生产部署前请手动密封：oj secret keygen/seal（手册 §10）。");
+		return;
+	}
+	const next = text.replace(match[0], `${match.groups.indent}jwt_secret: "${sealed}"`);
+	// secrets 段：私钥只放部署机，路径相对 config 目录
+	const withSecrets = `${next.trimEnd()}\nsecrets:\n  private_key_path: ./config/secrets-private.pem\n  public_key_path: ./config/secrets-public.pem\n`;
+	fs.writeFileSync(configPath, withSecrets);
+	report.created.push("api/config/{secrets-private.pem,secrets-public.pem} + auth.jwt_secret 已密封（ENC[...]）");
 }
 
 /** 递归拷贝模板；文本文件做占位符替换；已存在的目标文件一律跳过 */

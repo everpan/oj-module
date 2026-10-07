@@ -43,6 +43,45 @@ afterAll(() => {
 		rmSync(d, { recursive: true, force: true });
 });
 
+/**
+ * ④WS 路由鉴权对账（oj 0.1.30 起 WS 握手过 oj-auth 守卫）：
+ * 目录内 `ws.ts` 产生 `GET {base}/<模块>/<路径>/ws`，不在 auth.anonymous_paths
+ * 里的 WS，未带凭据的客户端会握手 401——这是「文件在却连不上」最常见的成因。
+ */
+describe("checkApi ④WS 路由鉴权对账", () => {
+	it("ws.ts 不在匿名列表 → warn 提示加 anonymous_paths", async () => {
+		const cwd = makeProject();
+		mkdirSync(join(cwd, "api/src/news/chat"), { recursive: true });
+		writeFileSync(join(cwd, "api/src/news/chat/ws.ts"), "export default { message() { ws.send(\"pong\"); } };\n");
+		writeFileSync(join(cwd, "api/config.yaml"), "server:\n  port: 9778\nauth:\n  anonymous_paths:\n    - /auth/login\n");
+
+		const { violations } = await checkApi({ cwd });
+		expect(violations).toEqual(expect.arrayContaining([
+			expect.objectContaining({ level: "warn", kind: "ws-anonymous-missing" }),
+		]));
+		expect(violations.find(v => v.kind === "ws-anonymous-missing")!.message).toContain("/news/chat/ws");
+	});
+
+	it("ws.ts 已在匿名列表 → 无该告警", async () => {
+		const cwd = makeProject();
+		mkdirSync(join(cwd, "api/src/news/chat"), { recursive: true });
+		writeFileSync(join(cwd, "api/src/news/chat/ws.ts"), "export default { message() { ws.send(\"pong\"); } };\n");
+		writeFileSync(join(cwd, "api/config.yaml"), "server:\n  port: 9778\nauth:\n  anonymous_paths:\n    - /news/chat/ws\n");
+
+		const { violations } = await checkApi({ cwd });
+		expect(violations.filter(v => v.kind === "ws-anonymous-missing")).toEqual([]);
+	});
+
+	it("无 config.yaml → 不报（缺配置时不做无法判定的断言）", async () => {
+		const cwd = makeProject();
+		mkdirSync(join(cwd, "api/src/news"), { recursive: true });
+		writeFileSync(join(cwd, "api/src/news/ws.ts"), "export default { message() {} };\n");
+
+		const { violations } = await checkApi({ cwd });
+		expect(violations.filter(v => v.kind === "ws-anonymous-missing")).toEqual([]);
+	});
+});
+
 describe("checkApi（AC-D10 三重校验）", () => {
 	it("全通过：ojm api 生成后 check 零违规", async () => {
 		const cwd = makeProject();

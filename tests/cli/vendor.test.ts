@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { parseVendorArgs } from "../../packages/cli/src/args";
-import { NPM_PKG, probeOjRuntime, readLocalVersion, vendorCommand } from "../../packages/cli/src/vendor";
+import { isSupportedOjVersion, MIN_OJ_VERSION, NPM_PKG, probeOjRuntime, readLocalVersion, vendorCommand } from "../../packages/cli/src/vendor";
 
 /**
  * ojm vendor 子命令（docs/prd/202609111926-vendor-npm-install-design.md）：
@@ -206,5 +206,48 @@ fs.writeFileSync(path.join(bin,${JSON.stringify(ojBin)}),"#!/bin/sh\\necho oj\\n
 		expect(joined).toMatch(/cargo build --release/);
 		expect(joined).toMatch(/oj-release-binary-defect-report/);
 		fs.rmSync(dir, { recursive: true, force: true });
+	});
+
+	/**
+	 * 最低 oj 版本门禁：钉在当前最新发布版（ojm 以最新 oj 为准、不做兼容分支）。
+	 *
+	 * 历史：oj 把启动子命令从 `server` 改成了 `serve`（实测 0.1.28 及以前是
+	 * `server`，0.1.32 起是 `serve`）。改名刚发生时 npm 通道只到 0.1.32，门禁
+	 * 曾暂定 0.1.32；现 npm 已发布 0.1.50，门禁抬到当前最新。低版本 oj 装进来
+	 * 会让 ojm dev/preview 全栈形态失败，所以在 vendor 落地时就拦住。
+	 */
+	describe("最低 oj 版本门禁（MIN_OJ_VERSION）", () => {
+		it(`isSupportedOjVersion：${MIN_OJ_VERSION} 及以上通过，以下拒绝（数值比较非字符串）`, () => {
+			expect(isSupportedOjVersion("0.1.50")).toBe(true);
+			expect(isSupportedOjVersion("0.2.0")).toBe(true);
+			expect(isSupportedOjVersion("1.0.0")).toBe(true);
+			expect(isSupportedOjVersion("0.1.49")).toBe(false);
+			// 改名前的版本：0.1.32 虽已是 serve，但低于当前门禁
+			expect(isSupportedOjVersion("0.1.32")).toBe(false);
+			expect(isSupportedOjVersion("0.1.28")).toBe(false);
+			expect(isSupportedOjVersion("0.1.11")).toBe(false);
+			// 字符串比较会把 0.1.9 判成 > 0.1.50，必须按段数值比
+			expect(isSupportedOjVersion("0.1.9")).toBe(false);
+		});
+
+		it("追到的 latest 低于门禁 → 拒绝安装并给修复指引（不落盘、不调 install）", async () => {
+			const { dir, run, calls } = setup("0.1.32");
+			const logs: string[] = [];
+			await expect(vendorCommand(dir, { force: false }, { run, log: m => logs.push(m), probe: () => ({ ok: true, detail: "" }) }))
+				.rejects
+				.toThrowError(/0\.1\.50/);
+			expect(calls.some(c => c[0] === "install")).toBe(false);
+			expect(fs.existsSync(path.join(dir, "bin", "oj"))).toBe(false);
+			fs.rmSync(dir, { recursive: true, force: true });
+		});
+
+		it("显式 --tag 低于门禁 → 同样拒绝（不做兼容分支）", async () => {
+			const { dir, run, calls } = setup("0.2.0");
+			await expect(vendorCommand(dir, { force: false, tag: "v0.1.11" }, { run, log: () => {}, probe: () => ({ ok: true, detail: "" }) }))
+				.rejects
+				.toThrowError(/0\.1\.50|过低/);
+			expect(calls.some(c => c[0] === "install")).toBe(false);
+			fs.rmSync(dir, { recursive: true, force: true });
+		});
 	});
 });

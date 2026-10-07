@@ -5,9 +5,11 @@ import { startOj } from "../../packages/cli/src/oj";
 
 /**
  * 设计 §4（P3）：oj 子进程编排（不依赖真二进制，桩 bin/oj）。
- *  - spawn 参数：server -c <abs config> -b /api --api-path <abs api/src>
+ *  - spawn 参数：serve -c <abs config> -b /api --api-path <abs api/src>
  *    --console-log（oj 新版终端默认静默，只落 logs/，ojm 透传管道须显式打开），
  *    端口经 readOjPort 从 config 读取（T3）
+ *    子命令是 serve 不是 server——oj 0.1.50 已移除 server（实测 `oj server --help`
+ *    → unrecognized subcommand），ojm 按最新版对齐，不做兼容分支。
  *  - 健康：桩监听并 200 {base}/health → ready resolve
  *  - 秒退：ready 拒绝且 stderr 尾部在错误信息里（人话报错）
  *  - 永不监听：超时拒绝（测试注入 10ms/150ms 缩短）
@@ -60,7 +62,7 @@ afterAll(() => {
 });
 
 describe("startOj 子进程编排", () => {
-	it("健康路径：spawn 参数 server/-c/-b/--api-path 全按契约，ready resolve，stop() 回收", async () => {
+	it("健康路径：spawn 参数 serve/-c/-b/--api-path 全按契约，ready resolve，stop() 回收", async () => {
 		const { root, configPath, port } = makeFixture("healthy");
 		const apiSrc = path.join(root, "api/src");
 		fs.mkdirSync(apiSrc, { recursive: true });
@@ -70,7 +72,8 @@ describe("startOj 子进程编排", () => {
 		await proc.ready;
 
 		const args = JSON.parse(fs.readFileSync(path.join(root, "oj-args.json"), "utf-8")) as string[];
-		expect(args[0]).toBe("server");
+		// oj 0.1.50 子命令是 serve（server 已移除）
+		expect(args[0]).toBe("serve");
 		const cfgFlag = args[args.indexOf("-c") + 1];
 		const apiFlag = args[args.indexOf("--api-path") + 1];
 		expect(path.isAbsolute(cfgFlag)).toBe(true);

@@ -28,14 +28,17 @@ const HOP_BY_HOP = new Set([
 	"upgrade",
 ]);
 
-/** 上游拒连等人话 502：信封形态与前端 ApiResponse 的 message 字段对齐 */
+/**
+ * 上游拒连等人话 502：**信封与 oj 一致（`code`/`msg`/`data`）**。
+ * 前端 request client 只认 oj 信封，早前的 message/success/result 是另一套形状，
+ * 会让 502 被当成未知响应而不是可展示的错误。
+ */
 function respondBadGateway(res: http.ServerResponse, target: string, error: string): void {
 	res.writeHead(502, { "content-type": "application/json; charset=utf-8" });
 	res.end(JSON.stringify({
 		code: 502,
-		message: `[ojm] oj 上游不可达（${target}）：${error}`,
-		success: false,
-		result: null,
+		msg: `[ojm] oj 上游不可达（${target}）：${error}`,
+		data: null,
 	}));
 }
 

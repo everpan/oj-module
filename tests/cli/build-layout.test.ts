@@ -122,6 +122,24 @@ describe("buildBackend（oj build 编排，D8）", () => {
 		expect(path.isAbsolute(outFlag)).toBe(true);
 		expect(dirFlag).toBe(path.join(root, "api/src"));
 		expect(outFlag).toBe(path.join(root, "api/dist"));
+		// 产物一律不 minify：oj 的 swc minify 会压坏产物（await X[0] 优先级 / && 后赋值）
+		expect(args).toContain("--no-minify");
+	});
+
+	it("有 api/config.yaml → 传 -c：否则 oj build 读不到 config（tasks 目录回落默认、sql_guard 失效）", async () => {
+		const root = makeFixture();
+		makeStubOj(root);
+		fs.mkdirSync(path.join(root, "api"), { recursive: true });
+		const configPath = path.join(root, "api/config.yaml");
+		fs.writeFileSync(configPath, "server:\n  port: 9778\n");
+
+		await buildBackend(root);
+
+		const args = JSON.parse(fs.readFileSync(path.join(root, "oj-args.json"), "utf-8")) as string[];
+		expect(args).toContain("-c");
+		const cfgFlag = args[args.indexOf("-c") + 1];
+		expect(path.isAbsolute(cfgFlag)).toBe(true);
+		expect(cfgFlag).toBe(configPath);
 	});
 
 	it("bin/oj 缺失 → 人话报错指向 init 补缺", async () => {

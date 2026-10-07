@@ -1,6 +1,11 @@
 // POST /api/personal-center/upload —— 头像上传（multipart→base64，P4-3，D7/F4）。
-// antd Upload 直连本端点（不经 JSON client），文件在 http.files[0]，字节 http.file(0)。
-// 转 base64 data URL，回写 users.avatar_base64（按 http.user.id），返回该 data URL。
+// antd Upload 直连本端点（不经 JSON client），文件在 http.files[0]。
+//
+// 两条取字节路径（devkit 手册 §6 http.files，v0.1.38）：
+//   · 小文件（≤ server.max_upload_bytes，默认 10MB）：字节照常在 handler 里，http.file(0)；
+//   · 大文件（> max_upload）：服务端已流式直落 blob、字节不进 handler，此时
+//     http.file(0) 会**报错**，必须改走 files[0].key + blob.get(key)。
+// 头像通常远小于阈值，但别写成「只会一种」——换了上传组件/放开体积就会 500。
 function toBase64(bytes: Uint8Array): string {
 	const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 	let out = "";
@@ -31,10 +36,14 @@ export default {
 		}
 		try {
 			const meta = http.files[0];
-			const bytes = await http.file(0);
+			// meta.key 非空 = 已被服务端流式落 blob（大文件），取字节只能走 blob
+			const bytes = meta.key ? await blob.get(meta.key) : await http.file(0);
 			const b64 = toBase64(bytes);
 			const dataUrl = `data:${meta.content_type || "application/octet-stream"};base64,${b64}`;
 			await db.exec("UPDATE users SET avatar_base64 = ? WHERE id = ?", [dataUrl, Number(uid)]);
+			// 大文件搬运/留档用 blob（v0.1.47）：搬走用 blob.move，别 get + put（字节进 V8）
+			if (meta.key)
+				await blob.del(meta.key);
 			json.ok(dataUrl);
 		}
 		catch (e) {

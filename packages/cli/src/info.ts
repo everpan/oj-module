@@ -15,7 +15,7 @@ import path from "node:path";
 import { loadModulesConfig } from "./config";
 import { mergeModuleManifests } from "./manifest";
 import { readOjApiPrefix, readOjServerField } from "./oj-config";
-import { readLocalVersion } from "./vendor";
+import { isSupportedOjVersion, MIN_OJ_VERSION, readLocalVersion, resolveOjBin } from "./vendor";
 import { readHostVersions, resolveShellDist } from "./versions";
 
 function readPkgVersion(pkgJsonPath: string): string {
@@ -70,7 +70,7 @@ function probeOjHealth(base: string, port: number): Promise<Record<string, unkno
 
 /** CLI 默认观测：真跑 `bin/oj -V` 与真探 /health */
 export function realOjObservability(projectRoot: string): OjObservability {
-	const ojBin = path.join(projectRoot, "bin/oj");
+	const ojBin = resolveOjBin(projectRoot);
 	const configPath = path.join(projectRoot, "api/config.yaml");
 	return {
 		ojVersion: () => (fs.existsSync(ojBin) ? probeOjVersion(ojBin) : null),
@@ -121,7 +121,7 @@ export async function printInfo(projectRoot: string, oj: OjObservability = realO
 	// ---- 后端（oj）观测段：工程有 config.yaml 或 bin/oj 才展示；观测不可达仅降级不失败 ----
 	let backendBlock = "";
 	const configPath = path.join(projectRoot, "api/config.yaml");
-	const ojBin = path.join(projectRoot, "bin/oj");
+	const ojBin = resolveOjBin(projectRoot);
 	if (fs.existsSync(configPath) || fs.existsSync(ojBin)) {
 		// 安装标记（ojm vendor/init 下载时写入）；bin/oj 存在但无标记 → 未知
 		const markerVersion = readLocalVersion(path.join(projectRoot, "bin"));
@@ -148,10 +148,15 @@ export async function printInfo(projectRoot: string, oj: OjObservability = realO
 			: markerShort
 				? `\n  [!] 现场版本与安装标记（${markerVersion}）不一致，请核对（ojm vendor --force 重装）`
 				: "";
+		// 最低版本门禁：ojm 只与 >= MIN_OJ_VERSION 的 oj 组合可用（子命令 serve 等契约）
+		const outdated = markerShort && !isSupportedOjVersion(markerShort)
+			? `\n  [!] 低于 ojm 要求的最低版本 v${MIN_OJ_VERSION}（oj v0.1.32 起启动子命令 server → serve）——请升级：ojm vendor v${MIN_OJ_VERSION}`
+			: "";
 		backendBlock = `
 后端（oj）:
   安装标记:  ${markerVersion ?? "未知（缺 bin/.oj-version，ojm vendor 重装）"}
-  现场版本:  ${siteVersion}${drift}
+  现场版本:  ${siteVersion}${drift}${outdated}
+  版本要求:  >= v${MIN_OJ_VERSION}（ojm 以最新 oj 为准，不做兼容分支）
   端口/base: ${port} / ${base}（api/config.yaml）
   ${certLine}
 `;

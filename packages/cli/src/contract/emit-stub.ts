@@ -1,7 +1,9 @@
+import type { OjSchemaDiag } from "./emit-oj-schema";
 import type { IrEndpoint } from "./ir";
 import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
+import { emitOjSchemaLine } from "./emit-oj-schema";
 import { keyOf } from "./emit-schema";
 import { splitRoute } from "./ir";
 
@@ -36,6 +38,8 @@ export interface PlanStubOptions {
 	readFile?: (path: string) => string | undefined
 	/** 格式化注入缝（测试/特殊工程）；缺省恒等——模板本身天然 lint-clean（F6） */
 	eslintFix?: (code: string, filePath: string) => Promise<string>
+	/** 收集 .schema 降级诊断（契约里 oj 表达不了的约束会记在这里，不静默丢） */
+	diag?: OjSchemaDiag
 }
 
 /** oj 方法名映射（DELETE → del） */
@@ -121,7 +125,7 @@ function exampleSourceFromSchema(schema: unknown): string {
 	}
 }
 
-function emitHandler(ep: IrEndpoint): string {
+function emitHandler(ep: IrEndpoint, diag?: OjSchemaDiag): string {
 	const method = OJ_METHOD[ep.method];
 	if (!method)
 		throw new Error(`[ojm-api] stub 发射失败：端点 "${ep.name}" 方法 ${ep.method} 不在 oj 支持范围。`);
@@ -130,18 +134,20 @@ function emitHandler(ep: IrEndpoint): string {
 		? "\t// TODO: raw 端点（二进制/流）——请自行实现响应写回\n\tjson.fail(501, \"not implemented\");"
 		: `\tjson.ok(${ep.dataSchema ? exampleSourceFromSchema(ep.dataSchema) : ""});`;
 	const routeLine = tail ? `${method}.route = "${tail}";\n` : "";
+	// 入参契约（oj v0.1.44）：声明了就落到 handler 上，由 oj 在 JS 之前校验
+	const schemaLine = emitOjSchemaLine(ep, method, diag);
 	return `function ${method}(): void {
 ${body}
 }
-${routeLine}`;
+${routeLine}${schemaLine}`;
 }
 
 /** 同目录多端点归并一个 api.ts；方法按 HTTP 序排列保证字节稳定 */
 const METHOD_ORDER = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"];
 
-function emitStubBody(endpoints: IrEndpoint[]): string {
+function emitStubBody(endpoints: IrEndpoint[], diag?: OjSchemaDiag): string {
 	const sorted = [...endpoints].sort((a, b) => METHOD_ORDER.indexOf(a.method) - METHOD_ORDER.indexOf(b.method));
-	const handlers = sorted.map(emitHandler).join("\n");
+	const handlers = sorted.map(ep => emitHandler(ep, diag)).join("\n");
 	const names = sorted.map(ep => OJ_METHOD[ep.method]).join(", ");
 	return `${handlers}export default { ${names} };\n`;
 }
@@ -172,7 +178,7 @@ export async function planStubWrites(ir: IrEndpoint[], opts: PlanStubOptions): P
 	for (const [rel, endpoints] of [...groups.entries()].sort()) {
 		const filePath = `${opts.apiSrcDir}/${rel}`;
 		// 模板天然 lint-clean（F6）→ 直接哈希发射内容；注入缝仅供测试/特殊工程对齐
-		const body = await fix(emitStubBody(endpoints), filePath);
+		const body = await fix(emitStubBody(endpoints, opts.diag), filePath);
 		const fingerprint = `// ojm-api:stub ${endpoints.map(e => e.name).sort().join(",")} sha256:${hashContent(body)}\n`;
 		const content = fingerprint + body;
 

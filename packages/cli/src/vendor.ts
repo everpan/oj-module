@@ -17,8 +17,63 @@ import process from "node:process";
 
 export const NPM_PKG = "@oj-bin/oj";
 
-function ojBinName(platform: string): string {
+/**
+ * ojm 支持的最低 oj 版本 = **当前最新发布版**。
+ *
+ * 政策：ojm 以最新 oj 为准、不做版本兼容分支，所以门禁直接钉在最新发布版上，
+ * 低于它的组合不保证可用（也不提供绕过开关）。oj 每发新版，同步抬高此常量。
+ *
+ * 历史（实测，逐个下 @oj-bin/oj@<v> 跑 `oj --help`）：
+ *   0.1.13 / 0.1.16 / 0.1.19 / 0.1.24 / 0.1.26 / 0.1.28 → 启动子命令 `server`
+ *   0.1.32 起 → `serve`
+ * 即 `server` → `serve` 的改名落在 (0.1.28, 0.1.32]。改名刚发生时 npm 通道只到
+ * 0.1.32，门禁曾暂定 0.1.32（否则 vendor/init 没有可用来源）；现 npm 已发布
+ * 0.1.50，门禁即抬到当前最新。
+ */
+export const MIN_OJ_VERSION = "0.1.50";
+
+/** 按段数值比较（字符串比较会把 0.1.9 判成大于 0.1.50）；非数字段按 0 处理 */
+export function isSupportedOjVersion(version: string): boolean {
+	const parse = (v: string) => v.replace(/^v/, "").split(".").map(n => Number.parseInt(n, 10) || 0);
+	const [major = 0, minor = 0, patch = 0] = parse(version);
+	const [minMajor = 0, minMinor = 0, minPatch = 0] = parse(MIN_OJ_VERSION);
+	if (major !== minMajor)
+		return major > minMajor;
+	if (minor !== minMinor)
+		return minor > minMinor;
+	return patch >= minPatch;
+}
+
+/** 低于门禁的人话报错（不提供绕过开关：ojm 只保证与 >= MIN_OJ_VERSION 的 oj 组合可用） */
+function assertMinVersion(version: string, source: "latest" | "tag"): void {
+	if (isSupportedOjVersion(version))
+		return;
+	const how = source === "latest"
+		? `上游 ${NPM_PKG} 的 latest 是 v${version}，低于 ojm 要求的最低版本 v${MIN_OJ_VERSION}。`
+		: `指定的 oj 版本 v${version} 低于 ojm 要求的最低版本 v${MIN_OJ_VERSION}。`;
+	throw new Error(
+		`[ojm] ${how}\n`
+		+ "原因：oj v0.1.32 起启动子命令由 `server` 改为 `serve`；ojm 以最新发布版为准、不做兼容分支。\n"
+		+ `处置：${source === "latest"
+			? `等上游发布 >= ${MIN_OJ_VERSION} 的版本，或把 @oj-module/cli 降级到与该 oj 匹配的旧版。`
+			: `改用 \`ojm vendor v${MIN_OJ_VERSION}\`（或更高版本）。`}\n`
+			+ `当前要求：oj >= v${MIN_OJ_VERSION}。`,
+	);
+}
+
+export function ojBinName(platform: string = process.platform): string {
 	return platform === "win32" ? "oj.exe" : "oj";
+}
+
+/**
+ * 工程内 oj 二进制路径的**唯一口径**（<projectRoot>/bin/oj）。
+ *
+ * 早前 oj.ts / preview.ts / build.ts / info.ts 各拼一遍，拼法还不一致
+ * （有的从 config 路径往上两级，有的从 projectRoot 起）；oj 与 plugins 必须
+ * 整套同版本，路径算错会拿到半新半旧的组合。统一到这里。
+ */
+export function resolveOjBin(projectRoot: string): string {
+	return path.join(projectRoot, "bin", ojBinName());
 }
 
 /** 本地版本只认 .oj-version 标记；bin/oj 缺失或标记缺失都视为未安装（N6，格式 vX.Y.Z） */
@@ -168,6 +223,8 @@ export async function vendorCommand(
 	const version = opts.tag
 		? opts.tag.replace(/^v/, "")
 		: runNpm(run, ["view", NPM_PKG, "version"], projectRoot, "查询最新版本").trim();
+	// 门禁先于一切副作用：版本不合格就不该下载、不该动 bin/
+	assertMinVersion(version, opts.tag ? "tag" : "latest");
 	log(opts.tag ? `[ojm] 目标版本 v${version}` : "[ojm] 查询最新版本…");
 	const binDir = path.join(projectRoot, "bin");
 	const local = readLocalVersion(binDir);
