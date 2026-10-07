@@ -98,6 +98,7 @@ description: 用 ojm 开发前后端一体工程时使用——新增/修改前�
 | DELETE 返回 405 | 方法名写成了 `delete` | 改成 `del` |
 | 页面无侧边栏/页签、keepAlive 失效 | 路由 handle 没写 `layout: "container"` | 补上 |
 | 登录 401 且 msg 不是 `invalid credentials` | `/auth/*` 不在 `anonymous_paths` | 加进 `api/config.yaml`，重启 |
+| WS 连接 401（「文件在却连不上」） | 模块写了 `ws.ts`，但其 `/ws` 路由不在 `anonymous_paths`（oj v0.1.30+ WS 握手也过鉴权） | 匿名 WS 加进 `anonymous_paths`；受保护 WS 带 Bearer/Cookie 是正当用法。`ojm api --check` 会对此 warn |
 | 登出/回登录页落空，或登录后落错误边界 | 工程缺 `login` / `home` 模块 | 在 `web.config.ts` 保留两者 |
 | 通知铃 404 `no route matched` | 缺 root 级 `/api/notifications` | 补 `api/src/notifications` 模块 |
 

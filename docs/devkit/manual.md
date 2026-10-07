@@ -22,7 +22,7 @@
 ├── global.d.ts            # 后端 oj 全局对象（db/json/http…）类型声明
 ├── env.d.ts               # ImportMeta.env 类型补丁
 ├── api/
-│   ├── config.yaml        # oj 服务配置（端口、db、auth）
+│   ├── config.yaml        # oj 服务配置（端口、db、auth、secrets）
 │   ├── config/            # dev 证书（public.pem / cert.jws）
 │   ├── .ojm-api-exempt.json
 │   └── src/
@@ -380,12 +380,20 @@ const booksClient = createBooksClient(ctx);
 
 ```bash
 pnpm exec ojm api          # 生成
-pnpm exec ojm api --check  # 三重对账（只读，永不修文件）
+pnpm exec ojm api --check  # 四重对账（只读，永不修文件）
 pnpm exec ojm api --docs   # 聚合 OpenAPI → redoc 静态站
 ```
 
-`--check` 对三件事：生成物同步（内存重生成 vs 磁盘逐字节 diff）、
-route 双向对账（AST 扫后端 `api.ts` vs 契约路由表）、`routes.js` diff。
+`--check` 对四件事（只读，绝不写盘、绝不修文件）：
+
+1. **生成物同步**：内存重生成 vs 磁盘逐字节 diff（含 stub 待更新检测）；
+2. **route 双向对账**：AST 扫后端 `api.ts`（default 导出方法名 + `.route = "..."`
+   赋值）vs 契约路由表——契约未实现 warn、handler 未登记 error、参数段不一致 error；
+3. **`routes.js` diff**：`oj build` 产物路由表 vs `routes.json`；无 dist 给提示不判违规；
+4. **WS 路由鉴权**：目录里的 `ws.ts` 会产生 `GET {base}/<模块>/<路径>/ws`——oj v0.1.30 起
+   WS 握手也过鉴权守卫，不在 `auth.anonymous_paths` 里的 WS 会让未带凭据的客户端握手 401
+   （表现为「文件在却连不上」）。只 warn（带 Bearer/Cookie 的受保护 WS 是正当用法）；
+   读不到 config 就不判。
 
 `ojm dev` 内置契约 watch：契约文件变更 → 自动重跑生成 → 产物落 `web/` 树
 触发模块重建 + 浏览器刷新。
@@ -393,7 +401,33 @@ route 双向对账（AST 扫后端 `api.ts` vs 契约路由表）、`routes.js` 
 > ⚠️ **新模块目录的诞生不在 watch 范围**——新建模块的 `contract.ts` 要先重启
 > `ojm dev`（目录注册发生在启动期），之后该模块的契约改动才走热更。
 
-### 3.7 豁免清单 `api/.ojm-api-exempt.json`
+### 3.7 后端入参契约（`.schema`，v0.1.44）
+
+契约里声明的 `params` / `query` / `body` 不只生成前端类型与校验——`ojm api` 还会把
+它们落成后端 handler 上的 `.schema`，由 oj 在 **JS 之前**校验：违反即 `400` 信封，
+handler 根本不会被调用。于是**一份契约同时给出**：前端 client 与类型、前端 DEV 期 zod
+校验、后端入参校验、OpenAPI 文档。
+
+```ts
+// api/src/order/list/api.ts（ojm api 生成，勿手改正文外的部分）
+function get(): void {
+	json.ok({ /* TODO */ });
+}
+get.schema = {
+	"query": {
+		"type": "object",
+		"properties": { "page": { "type": "number", "minimum": 1 } },
+		"required": ["page"]
+	}
+};
+export default { get };
+```
+
+开关在 `api/config.yaml` 的 `server.schema_validation`（默认 `true`，置 `false` 为逃生门）。
+完整裁剪规则与降级表见 `ojm-api-codegen-guide.md` §4.5（白名单无 `format`/`oneOf`、
+Rust regex 不支持零宽断言、params/query 只允许扁平标量等都在生成期拦下或告警）。
+
+### 3.8 豁免清单 `api/.ojm-api-exempt.json`
 
 把"确认无害"的对账差异从 error 降级为 skip（**只降级，绝不引入新错误**）：
 
@@ -682,7 +716,7 @@ t("menu.books")         // ❌ 会去 common namespace 找
 ```bash
 pnpm dev             # 开发：devServer + oj 后端（api/src 保存即热更）
 pnpm build           # = ojm build：oj build（生成 routes.js）+ 前端全站合并到 web/dist
-pnpm preview         # = ojm preview：oj migrate（verify 闸）→ server + 静态兜底
+pnpm preview         # = ojm preview：oj migrate（verify 闸）→ 启动 serve + 静态兜底
 pnpm typecheck       # = tsc --noEmit
 pnpm exec ojm info   # 版本矩阵 + 模块清单（报障用）
 pnpm exec ojm vendor # 下载/重装 oj 二进制
@@ -692,6 +726,10 @@ pnpm exec ojm vendor # 下载/重装 oj 二进制
 - `api/dist/` = oj build 产物。**release 下只有 `routes.js` 里的路由存在，
   目录镜像路由不生效**——所以参数路由要先 `oj build` 再测。
 - 部署包 = `config.yaml` + `dist/` + 可选 `seed.sql`。
+- **`oj` 子命令透传**：`ojm` 直接转发 `oj` 的 `test` / `exec` / `openapi` / `migrate` /
+  `schema` 子命令，并自动补 `-c api/config.yaml`（config 在 `api/` 下，相对 CWD 会读不到）。
+  例如 `ojm migrate -d api/dist`、`ojm schema diff` 等价于带绝对 `-c` 的 `oj` 调用——
+  不用再手敲 `-c`。
 
 **按路由注入 HTML（`htmlTransform`，SEO / IM 链接预览）**：SPA 的服务端只有一份
 `index.html`——想让 `/issues/<id>` 这类路由带自己的 `<title>`/`og:*`（微信、Slack、飞书预览
@@ -726,7 +764,7 @@ export default async (path: string, html: string) => {
   `server.html_meta_handler`（动态 handler）——见 oj devkit 手册「静态站点与 per-route meta」。
 
 > release 的 `server.migrate_on_start` 默认 `verify`：迁移账本落后会**拒绝启动**，
-> 先跑 `oj migrate -c api/config.yaml -d api/dist`。
+> 先跑 `ojm migrate -d api/dist`（透传自动补 `-c api/config.yaml`）。
 
 ---
 
@@ -775,7 +813,7 @@ export default async (path: string, html: string) => {
 | 登录后 / 点 logo 落 React Router 错误边界 | 工程缺 `home` 模块 | 在 `web.config.ts` 保留 `home`（尽量靠前） |
 | 通知铃 404 `no route matched` | 缺 root 级 `/api/notifications` | 补 `api/src/notifications` 模块 |
 | `@types/react` / `typescript` 装成 `*` | 宿主 versions.json 未列 | 安装后按实际版本钉死（`*` 不可复现） |
-| 迁移账本落后、服务拒绝启动 | release `verify` 闸 | 先 `oj migrate -c api/config.yaml -d api/dist` |
+| 迁移账本落后、服务拒绝启动 | release `verify` 闸 | 先 `ojm migrate -d api/dist`（透传自动补 `-c`） |
 | `seed.sql` 没生效 / 语法错 | 按 `;` 朴素切分，注释里有分号 | 去掉注释里的分号字面量 |
 | 页面图标 / 关闭 × 空白 | 共享资源图标默认值回归 | 重建宿主 shell |
 | curl 访问 SPA 路由返回 404 | SPA history 回落要求 `Accept: text/html` | 加 `-H 'Accept: text/html'`（浏览器自带，不是 bug） |
