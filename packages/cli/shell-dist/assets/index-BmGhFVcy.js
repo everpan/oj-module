@@ -5,7 +5,7 @@ import { ConfigProvider, theme } from "antd";
 import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { Navigate, Outlet, RouterProvider, createBrowserRouter } from "react-router";
-import { jsx, jsxs } from "react/jsx-runtime";
+import { jsxDEV } from "react/jsx-dev-runtime";
 //#region \0vite/modulepreload-polyfill.js
 (function polyfill() {
 	const relList = document.createElement("link").relList;
@@ -131,6 +131,7 @@ ${offenders.join("\n")}\n修复建议：该来源不在宿主内置白名单中�
 }
 //#endregion
 //#region shell/src/host.tsx
+var _jsxFileName = "/Users/ever/git/only-js/oj-module/packages/cli/shell/src/host.tsx";
 var queryClient = new QueryClient();
 var DEMO_USER = {
 	id: "1",
@@ -197,16 +198,32 @@ function Boot() {
 				if (cancelled) return;
 				setRouter(createBrowserRouter([{
 					path: "/",
-					element: /* @__PURE__ */ jsxs(ErrorBoundary, {
+					element: /* @__PURE__ */ jsxDEV(ErrorBoundary, {
 						FallbackComponent: PageError,
-						children: [/* @__PURE__ */ jsx(LayoutEffects, {}), /* @__PURE__ */ jsx(Outlet, {})]
-					}),
+						children: [/* @__PURE__ */ jsxDEV(LayoutEffects, {}, void 0, false, {
+							fileName: _jsxFileName,
+							lineNumber: 185,
+							columnNumber: 10
+						}, this), /* @__PURE__ */ jsxDEV(Outlet, {}, void 0, false, {
+							fileName: _jsxFileName,
+							lineNumber: 186,
+							columnNumber: 10
+						}, this)]
+					}, void 0, true, {
+						fileName: _jsxFileName,
+						lineNumber: 184,
+						columnNumber: 9
+					}, this),
 					children: [{
 						index: true,
-						element: /* @__PURE__ */ jsx(Navigate, {
+						element: /* @__PURE__ */ jsxDEV(Navigate, {
 							to: getRoutes()[0]?.path ?? "/",
 							replace: true
-						})
+						}, void 0, false, {
+							fileName: _jsxFileName,
+							lineNumber: 193,
+							columnNumber: 33
+						}, this)
 					}, ...getRoutes()]
 				}]));
 			} catch (e) {
@@ -217,15 +234,27 @@ function Boot() {
 			cancelled = true;
 		};
 	}, []);
-	if (error) return /* @__PURE__ */ jsxs("div", {
+	if (error) return /* @__PURE__ */ jsxDEV("div", {
 		style: { padding: 24 },
 		children: ["模块加载失败：", error]
-	});
-	if (!router) return /* @__PURE__ */ jsx("div", {
+	}, void 0, true, {
+		fileName: _jsxFileName,
+		lineNumber: 212,
+		columnNumber: 4
+	}, this);
+	if (!router) return /* @__PURE__ */ jsxDEV("div", {
 		style: { padding: 24 },
 		children: "宿主初始化中…"
-	});
-	return /* @__PURE__ */ jsx(RouterProvider, { router });
+	}, void 0, false, {
+		fileName: _jsxFileName,
+		lineNumber: 219,
+		columnNumber: 10
+	}, this);
+	return /* @__PURE__ */ jsxDEV(RouterProvider, { router }, void 0, false, {
+		fileName: _jsxFileName,
+		lineNumber: 221,
+		columnNumber: 9
+	}, this);
 }
 /**
 * 主题边界：ConfigProvider 响应 preferences 的暗黑/主色/圆角，与 App 链
@@ -242,10 +271,10 @@ function Boot() {
 */
 function HostProviders() {
 	const { isDark, themeColorPrimary, themeRadius, sideCollapsedWidth } = usePreferences();
-	return /* @__PURE__ */ jsx(StyleProvider, {
+	return /* @__PURE__ */ jsxDEV(StyleProvider, {
 		layer: true,
 		hashPriority: "high",
-		children: /* @__PURE__ */ jsx(ConfigProvider, {
+		children: /* @__PURE__ */ jsxDEV(ConfigProvider, {
 			theme: {
 				cssVar: {},
 				hashed: false,
@@ -260,13 +289,37 @@ function HostProviders() {
 					collapsedWidth: sideCollapsedWidth
 				} }
 			},
-			children: /* @__PURE__ */ jsx(AntdApp, { children: /* @__PURE__ */ jsx(QueryClientProvider, {
+			children: /* @__PURE__ */ jsxDEV(AntdApp, { children: /* @__PURE__ */ jsxDEV(QueryClientProvider, {
 				client: queryClient,
-				children: /* @__PURE__ */ jsx(Boot, {})
-			}) })
-		})
-	});
+				children: /* @__PURE__ */ jsxDEV(Boot, {}, void 0, false, {
+					fileName: _jsxFileName,
+					lineNumber: 261,
+					columnNumber: 7
+				}, this)
+			}, void 0, false, {
+				fileName: _jsxFileName,
+				lineNumber: 260,
+				columnNumber: 6
+			}, this) }, void 0, false, {
+				fileName: _jsxFileName,
+				lineNumber: 259,
+				columnNumber: 5
+			}, this)
+		}, void 0, false, {
+			fileName: _jsxFileName,
+			lineNumber: 241,
+			columnNumber: 4
+		}, this)
+	}, void 0, false, {
+		fileName: _jsxFileName,
+		lineNumber: 240,
+		columnNumber: 3
+	}, this);
 }
 var rootElement = document.getElementById("root");
-if (rootElement) createRoot(rootElement).render(/* @__PURE__ */ jsx(HostProviders, {}));
+if (rootElement) createRoot(rootElement).render(/* @__PURE__ */ jsxDEV(HostProviders, {}, void 0, false, {
+	fileName: _jsxFileName,
+	lineNumber: 271,
+	columnNumber: 33
+}, void 0));
 //#endregion

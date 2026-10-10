@@ -41,6 +41,17 @@ const shellDir = resolve(__dirname, "..");
 const distDir = resolve(shellDir, "..", "shell-dist");
 const assetsDir = resolve(distDir, "assets");
 
+/**
+ * import-is-undefined 静默（202610101439 告警治理，见 docs/prd 同名文档）。
+ *
+ * 共享资产垫片的 default 兜底（`export default (__ns.default ?? __ns)`）是**有意
+ * 的 CJS/ESM interop 特性探测**，但 esbuild 静态解析 external 目标、确知其为
+ * 「无 default 导出的 ESM」后，对 `.default`/`["default"]` 访问一律报
+ * import-is-undefined——共享表 121 个资产刷 31 条误报，淹没真实告警。
+ * 只静默这一个种类；require 垫片缺失等真实门禁告警不受影响。
+ */
+const ASSET_BUILD_LOG_OVERRIDE: Record<string, "silent"> = { "import-is-undefined": "silent" };
+
 function injectImportmap(map: Record<string, string>) {
 	return {
 		name: "inject-importmap",
@@ -112,6 +123,7 @@ async function bundleShim(name: string, pkg: string, shim: string, banner?: stri
 			outfile: resolve(assetsDir, `${name}.js`),
 			sourcemap: "external",
 			logLevel: "warning",
+			logOverride: ASSET_BUILD_LOG_OVERRIDE,
 			banner: banner ? { js: banner } : undefined,
 		});
 	}
@@ -349,6 +361,7 @@ async function buildSubpathAsset(spec: string) {
 			outfile: resolve(assetsDir, `${name}.js`),
 			sourcemap: "external",
 			logLevel: "warning",
+			logOverride: ASSET_BUILD_LOG_OVERRIDE,
 		});
 	}
 	finally {
@@ -395,6 +408,7 @@ async function buildAntdSubpathAsset(spec: string) {
 			outfile: resolve(assetsDir, `${name}.js`),
 			sourcemap: "external",
 			logLevel: "warning",
+			logOverride: ASSET_BUILD_LOG_OVERRIDE,
 		});
 	}
 	finally {
@@ -439,6 +453,7 @@ async function buildIconsSubpathAsset(spec: string) {
 			outfile: resolve(assetsDir, `${name}.js`),
 			sourcemap: "external",
 			logLevel: "warning",
+			logOverride: ASSET_BUILD_LOG_OVERRIDE,
 		});
 	}
 	finally {
