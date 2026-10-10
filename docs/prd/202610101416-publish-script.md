@@ -92,6 +92,16 @@ publish cli → registry 轮询复核（最长 3 分钟）`。任一步失败即
 
 | # | 任务 | 状态 |
 |---|---|---|
-| 1 | scripts/publish-packages.mjs 实现场景 1–4 | 待办 |
-| 2 | 脚本自检：--dry-run 在干净树跑通 | 待办 |
-| 3 | docs/devkit/framework-dev.md §5 指向脚本 | 待办 |
+| 1 | scripts/publish-packages.mjs 实现场景 1–4 | ✅ |
+| 2 | 脚本自检：--dry-run 在干净树跑通 | ✅ |
+| 3 | docs/devkit/framework-dev.md §5 指向脚本 | ✅ |
+
+## 总结
+
+- **关键过程**：文档（BDD 四场景）→ 脚本实现 → `--dry-run` 自检暴露缺陷：
+  dry-run 未发布任何东西，registry 复核却照常轮询一个不存在的新版本 → 必然超时失败。
+  修复：复核整步在 dry-run 下跳过（复核对象仅是本轮发布物）。修复后 dry-run 全流程跑通
+  （lockstep 校验 → 构建 → 351 项守卫测试 → 跳过发布 → 跳过复核）。
+- **耗时**：约 20 分钟（含两次全量构建与守卫测试、一次 3 分钟超时暴露）。
+- **分类记录（反常识）**：自检即 `--dry-run`，它同时是场景 4 的可执行用例——
+  脚本的端到端验证不需要 mock 发布，dry-run 路径覆盖除 publish/复核外的全部逻辑。

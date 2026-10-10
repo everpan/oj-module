@@ -120,36 +120,42 @@ else {
 }
 
 // ── 5. registry 复核（官方源轮询，容忍 CDN 传播延迟）────────────
-console.log(`\n== 5/5 registry 复核（${REGISTRY}，最长 3 分钟）==`);
-const deadline = Date.now() + 180_000;
-for (const pkg of PUBLISH_ORDER) {
-	const name = `@oj-module/${pkg}`;
-	const url = `${REGISTRY}/${name.replace("/", "%2F")}`;
-	for (;;) {
-		try {
-			const res = await fetch(url);
-			if (res.ok) {
-				const doc = await res.json();
-				const tagOk = doc["dist-tags"]?.[TAG] === target;
-				const hasVersion = Boolean(doc.versions?.[target]);
-				const tarball = doc.versions?.[target]?.dist?.tarball;
-				const tarballOk = tarball ? (await fetch(tarball, { method: "HEAD" })).ok : false;
-				if (tagOk && hasVersion && tarballOk) {
-					console.log(`✓ ${name}@${target} dist-tag=${TAG} 且 tarball 可达`);
-					break;
+// ponytail: 复核对象只是「本轮刚发的版本」，dry-run 无发布物，整步跳过
+if (DRY_RUN) {
+	console.log("\n== 5/5 registry 复核（--dry-run 跳过，无发布物）==");
+}
+else {
+	console.log(`\n== 5/5 registry 复核（${REGISTRY}，最长 3 分钟）==`);
+	const deadline = Date.now() + 180_000;
+	for (const pkg of PUBLISH_ORDER) {
+		const name = `@oj-module/${pkg}`;
+		const url = `${REGISTRY}/${name.replace("/", "%2F")}`;
+		for (;;) {
+			try {
+				const res = await fetch(url);
+				if (res.ok) {
+					const doc = await res.json();
+					const tagOk = doc["dist-tags"]?.[TAG] === target;
+					const hasVersion = Boolean(doc.versions?.[target]);
+					const tarball = doc.versions?.[target]?.dist?.tarball;
+					const tarballOk = tarball ? (await fetch(tarball, { method: "HEAD" })).ok : false;
+					if (tagOk && hasVersion && tarballOk) {
+						console.log(`✓ ${name}@${target} dist-tag=${TAG} 且 tarball 可达`);
+						break;
+					}
+					console.log(`… ${name} 传播中（tag=${tagOk} version=${hasVersion} tarball=${tarballOk}），10s 后重试`);
 				}
-				console.log(`… ${name} 传播中（tag=${tagOk} version=${hasVersion} tarball=${tarballOk}），10s 后重试`);
+				else {
+					console.log(`… ${name} ${res.status}（CDN 传播中），10s 后重试`);
+				}
 			}
-			else {
-				console.log(`… ${name} ${res.status}（CDN 传播中），10s 后重试`);
+			catch {
+				console.log(`… ${name} 拉取失败（网络/CDN），10s 后重试`);
 			}
+			if (Date.now() > deadline)
+				fail(`${name} 复核超时——可能已发布但传播缓慢；手动查 ${url} 确认，勿直接重发新版本。`);
+			await new Promise(r => setTimeout(r, 10_000));
 		}
-		catch {
-			console.log(`… ${name} 拉取失败（网络/CDN），10s 后重试`);
-		}
-		if (Date.now() > deadline)
-			fail(`${name} 复核超时——可能已发布但传播缓慢；手动查 ${url} 确认，勿直接重发新版本。`);
-		await new Promise(r => setTimeout(r, 10_000));
 	}
 }
 
