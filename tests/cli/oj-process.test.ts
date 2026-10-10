@@ -31,6 +31,7 @@ function makeFixture(mode: "healthy" | "exit" | "silent"): { root: string, confi
 	const binDir = path.join(root, "bin");
 	fs.mkdirSync(binDir, { recursive: true });
 	const argsFile = JSON.stringify(path.join(root, "oj-args.json"));
+	const envFile = JSON.stringify(path.join(root, "oj-env.json"));
 	const stoppedFile = JSON.stringify(path.join(root, "oj-stopped"));
 	fs.writeFileSync(path.join(binDir, "oj"), [
 		"#!/usr/bin/env node",
@@ -38,6 +39,7 @@ function makeFixture(mode: "healthy" | "exit" | "silent"): { root: string, confi
 		"import http from \"node:http\";",
 		"const argv = process.argv.slice(2);",
 		`fs.writeFileSync(${argsFile}, JSON.stringify(argv));`,
+		`fs.writeFileSync(${envFile}, JSON.stringify({ ojPluginsDir: process.env.OJ_PLUGINS_DIR ?? null }));`,
 		"const mode = process.env.STUB_OJ_MODE ?? \"healthy\";",
 		"if (mode === \"exit\") {",
 		"\tconsole.error(\"boom-fatal: certificate not found\");",
@@ -112,6 +114,37 @@ describe("startOj 子进程编排", () => {
 		await proc.ready;
 		const args = JSON.parse(fs.readFileSync(path.join(root, "oj-args.json"), "utf-8")) as string[];
 		expect(args.slice(-2)).toEqual(["--app-path", "/tmp/site"]);
+		await proc.stop();
+	});
+
+	it("bin/plugins 存在 → spawn 注入 OJ_PLUGINS_DIR（不依赖 oj 的 current_exe 启发式）", async () => {
+		const { root, configPath } = makeFixture("healthy");
+		fs.mkdirSync(path.join(root, "bin/plugins/x86_64-unknown-linux-gnu"), { recursive: true });
+		const proc = startOj(configPath, "/api", path.join(root, "api/src"), { intervalMs: 20, timeoutMs: 10000 });
+		await proc.ready;
+		const env = JSON.parse(fs.readFileSync(path.join(root, "oj-env.json"), "utf-8")) as { ojPluginsDir: string | null };
+		// 指向 base 目录，<triple> 子目录由 oj 的 resolve_plugins_dir 拼接
+		expect(env.ojPluginsDir).toBe(path.join(root, "bin", "plugins"));
+		await proc.stop();
+	});
+
+	it("config 顶层声明 plugins_dir → 不注入（env 优先级高于 toml，注入会静默覆盖用户配置）", async () => {
+		const { root, configPath } = makeFixture("healthy");
+		fs.mkdirSync(path.join(root, "bin/plugins/x86_64-unknown-linux-gnu"), { recursive: true });
+		fs.appendFileSync(configPath, "plugins_dir: ./custom\n");
+		const proc = startOj(configPath, "/api", path.join(root, "api/src"), { intervalMs: 20, timeoutMs: 10000 });
+		await proc.ready;
+		const env = JSON.parse(fs.readFileSync(path.join(root, "oj-env.json"), "utf-8")) as { ojPluginsDir: string | null };
+		expect(env.ojPluginsDir).toBeNull();
+		await proc.stop();
+	});
+
+	it("bin/plugins 缺失 → 不注入（保持 oj 原行为，不生「plugins dir not found」次生错误）", async () => {
+		const { root, configPath } = makeFixture("healthy");
+		const proc = startOj(configPath, "/api", path.join(root, "api/src"), { intervalMs: 20, timeoutMs: 10000 });
+		await proc.ready;
+		const env = JSON.parse(fs.readFileSync(path.join(root, "oj-env.json"), "utf-8")) as { ojPluginsDir: string | null };
+		expect(env.ojPluginsDir).toBeNull();
 		await proc.stop();
 	});
 

@@ -46,6 +46,25 @@ export function readOjApiPrefix(configPath: string): string {
 }
 
 /**
+ * 顶层 `plugins_dir`（oj 插件目录发现第二优先级）。miss/空/非标量返回 undefined——
+ * 调用方据此决定是否注入 OJ_PLUGINS_DIR 环境变量（env 优先级高于 toml，
+ * 用户显式声明 toml 路径时 ojm 不得注入覆盖）。
+ */
+export function readOjPluginsDir(configPath: string): string | undefined {
+	let doc: unknown;
+	try {
+		doc = parse(fs.readFileSync(configPath, "utf-8"));
+	}
+	catch {
+		return undefined;
+	}
+	const value = (doc as { plugins_dir?: unknown } | null | undefined)?.plugins_dir;
+	if (typeof value !== "string" || !value.trim())
+		return undefined;
+	return value;
+}
+
+/**
  * `auth.anonymous_paths` 的匿名路径列表（相对 base，不含 base 本身）。
  *
  * 条目两种形态：裸字符串，或 `{ path, one_layer }`（oj 侧尾 `/*` 是严格一层）。

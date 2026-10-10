@@ -14,10 +14,11 @@
 
 import type { Buffer } from "node:buffer";
 import { spawn } from "node:child_process";
+import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
 import process from "node:process";
-import { readOjPort } from "./oj-config";
+import { readOjPluginsDir, readOjPort } from "./oj-config";
 import { resolveOjBin } from "./vendor";
 
 export interface OjProcess {
@@ -44,14 +45,29 @@ export function startOj(
 ): OjProcess {
 	const port = readOjPort(configPath);
 	// 约定：config 在 <project>/api/config.yaml，vendor 二进制在 <project>/bin/oj
-	const binPath = resolveOjBin(path.dirname(path.dirname(configPath)));
+	const projectRoot = path.dirname(path.dirname(configPath));
+	const binPath = resolveOjBin(projectRoot);
 	const healthUrl = `http://127.0.0.1:${port}${base}/health`;
+
+	// 插件目录发现显式化：oj 的 resolve_plugins_dir 依赖 current_exe() 启发式，而
+	// Linux glibc 发行包的 bin/oj 是 ld-linux 启动器（exec 加载器而非二进制），
+	// current_exe() 指向 bin/lib/ld-linux-*.so.2 → 插件目录解析落空 → 零插件加载，
+	// config 声明 [auth] 时 oj serve 即 fail fast「no auth plugin loaded」。
+	// ojm 既拥有 bin/plugins 布局，直接注入 OJ_PLUGINS_DIR（oj 发现优先级最高项）。
+	// 注入条件：用户未在 toml 显式声明 plugins_dir（env 优先级更高，注入会覆盖），
+	// 且 bin/plugins 确实存在（缺失时保持 oj 原行为，不生次生错误）。
+	const pluginsDir = path.join(projectRoot, "bin", "plugins");
+	const env: NodeJS.ProcessEnv | undefined
+		= !readOjPluginsDir(configPath) && fs.existsSync(pluginsDir)
+			? { ...process.env, OJ_PLUGINS_DIR: pluginsDir }
+			: undefined;
 
 	let stderrTail = "";
 	// --console-log：oj 新版终端默认静默（console_log 缺省 false，只落 logs/），
 	// ojm dev/preview 的 [oj] 透传管道必须显式打开终端输出才能看到日志（手册 §10）。
 	const child = spawn(binPath, ["serve", "-c", configPath, "-b", base, "--api-path", apiSrcPath, "--console-log", ...extraArgs], {
 		stdio: ["ignore", "pipe", "pipe"],
+		...(env ? { env } : {}),
 	});
 	// 直接透传 oj 的 stdout/stderr：oj 自身 tracing 已带 `[oj]` 前缀
 	// （如 `[oj] 2026-.. INFO request..`），无需再叠前缀，否则会叠成 `[oj] [oj]`。
