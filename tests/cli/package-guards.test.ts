@@ -39,6 +39,41 @@ describe("cli↔runtime 依赖钉版（R9）", () => {
 	});
 });
 
+describe("私域 workspace 包不得进 dependencies（202610101405 修复）", () => {
+	// @plane/editor、@plane/kit 是仓内私域包（未发布 npm）。pnpm 发布把 workspace:*
+	// 一律改写为精确版本并放行，泄漏到发布产物后消费端安装直接 404（实锤 bug）。
+	// 二者代码经 prepack 打包进 shell-dist 资产，对已发布源码零运行时 import，
+	// 因此只允许出现在 devDependencies。
+	const PRIVATE_PKGS = ["@plane/editor", "@plane/kit"];
+
+	it("cli dependencies 不含任何 @plane/*（私域包未发布 npm）", () => {
+		for (const pkg of PRIVATE_PKGS)
+			expect(cliPkg.dependencies?.[pkg], `${pkg} 不得在 dependencies（安装即 404）`).toBeUndefined();
+	});
+
+	it("cli 已发布源码对 @plane/* 零运行时 import", () => {
+		const srcDir = path.join(CLI_DIR, "src");
+		const offenders: string[] = [];
+		const walk = (dir: string) => {
+			for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+				const full = path.join(dir, entry.name);
+				if (entry.isDirectory()) {
+					walk(full);
+					continue;
+				}
+				if (!/\.tsx?$/.test(entry.name))
+					continue;
+				const srcText = fs.readFileSync(full, "utf-8");
+				// import/require 说明符（排除 shared-deps.ts 的 importmap 键字符串）
+				if (/from\s+["']@plane\//.test(srcText) || /(?:import|require)\(\s*["']@plane\//.test(srcText))
+					offenders.push(path.relative(PROJECT_ROOT, full));
+			}
+		};
+		walk(srcDir);
+		expect(offenders, `cli/src 运行时 import 私域包：${offenders.join(", ")}`).toEqual([]);
+	});
+});
+
 describe("cli bin 入口", () => {
 	it("bin 提供 ojm 主入口且文件存在", () => {
 		expect(cliPkg.bin.ojm).toBe("./bin/ojm.mjs");

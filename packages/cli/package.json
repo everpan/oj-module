@@ -1,7 +1,7 @@
 {
 	"name": "@oj-module/cli",
 	"type": "module",
-	"version": "0.1.11",
+	"version": "0.1.12",
 	"description": "React Antd Admin 模块工程命令行工具（含预构建宿主 shell-dist）",
 	"license": "MIT",
 	"exports": {
@@ -53,8 +53,6 @@
 	"dependencies": {
 		"@faker-js/faker": "catalog:",
 		"@oj-module/runtime": "workspace:*",
-		"@plane/editor": "workspace:*",
-		"@plane/kit": "workspace:*",
 		"@redocly/cli": "catalog:",
 		"@tailwindcss/vite": "catalog:",
 		"esbuild": "catalog:",
@@ -72,6 +70,8 @@
 		"@dnd-kit/core": "catalog:",
 		"@dnd-kit/sortable": "catalog:",
 		"@dnd-kit/utilities": "catalog:",
+		"@plane/editor": "workspace:*",
+		"@plane/kit": "workspace:*",
 		"@tanstack/react-query": "catalog:",
 		"@vitejs/plugin-react": "catalog:",
 		"ahooks": "catalog:",

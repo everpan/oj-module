@@ -570,12 +570,6 @@ importers:
       '@oj-module/runtime':
         specifier: workspace:*
         version: link:../runtime
-      '@plane/editor':
-        specifier: workspace:*
-        version: link:../editor-standalone
-      '@plane/kit':
-        specifier: workspace:*
-        version: link:../kit
       '@redocly/cli':
         specifier: 'catalog:'
         version: 2.51.0
@@ -622,6 +616,12 @@ importers:
       '@dnd-kit/utilities':
         specifier: 'catalog:'
         version: 3.2.2(react@19.2.8)
+      '@plane/editor':
+        specifier: workspace:*
+        version: link:../editor-standalone
+      '@plane/kit':
+        specifier: workspace:*
+        version: link:../kit
       '@tanstack/react-query':
         specifier: 'catalog:'
         version: 5.102.8(react@19.2.8)
