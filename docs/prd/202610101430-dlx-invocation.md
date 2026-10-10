@@ -57,6 +57,28 @@ pnpm dlx @oj-module/cli@0.1.12 --help
 首次较慢属正常；esbuild 的 approve-builds 警告不阻断（运行时经 optional dep 回退
 解析平台二进制）。
 
+## 发布后实测排障（202610101456 补充）
+
+0.1.12 发布后用户实测 `pnpm dlx @oj-module/cli -h` 仍装 0.1.8。排查结论：
+**官方源 registry.npmjs.org 与 npmmirror 的 latest 均已是 0.1.12，是用户环境
+配置的 registry（公司内网代理源）上 latest 停留在 0.1.8**——dlx 日志里的
+`resolved 227` 证明做了真实解析，结果来自那个滞后的源。
+
+### 现象 → 对策
+
+| 现象 | 对策 |
+|---|---|
+| `pnpm dlx @oj-module/cli` 装出旧版 | 显式版本：`pnpm dlx @oj-module/cli@0.1.12 -h`（绕过 dist-tag，最稳） |
+| 内网源长期滞后 | 临时：`pnpm --registry=https://registry.npmmirror.com dlx @oj-module/cli -h`；治本：`pnpm config set registry https://registry.npmmirror.com` |
+| 诊断当前源 | `pnpm config get registry`，再 `npm view @oj-module/cli dist-tags --registry=<该源>` 对比官方源 |
+| `Choose which packages to build` 交互提示卡住 dlx | 直接回车（不选）跳过：esbuild 无 postinstall 也能工作；工程内彻底放行：`pnpm-workspace.yaml` 加 `onlyBuiltDependencies: [esbuild]`；CI 非交互环境自动不构建，不卡 |
+
+### 反常识记录（追加）
+
+- **dlx 不缓存解析结果**：每次执行都重新 resolve（日志 `resolved N`），所以
+  "重试还是旧版" 不是缓存问题，而是**解析源上的 dist-tags 就是旧的**。
+  这与 `npm install` 的 packument 缓存（有 TTL）不同，别用清缓存的思路排查 dlx。
+
 ## 任务
 
 | # | 任务 | 状态 |
