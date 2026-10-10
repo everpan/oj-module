@@ -57,27 +57,53 @@ pnpm dlx @oj-module/cli@0.1.12 --help
 首次较慢属正常；esbuild 的 approve-builds 警告不阻断（运行时经 optional dep 回退
 解析平台二进制）。
 
-## 发布后实测排障（202610101456 补充）
+## 发布后实测排障（202610101456 初判，202610101503 修正）
 
-0.1.12 发布后用户实测 `pnpm dlx @oj-module/cli -h` 仍装 0.1.8。排查结论：
-**官方源 registry.npmjs.org 与 npmmirror 的 latest 均已是 0.1.12，是用户环境
-配置的 registry（公司内网代理源）上 latest 停留在 0.1.8**——dlx 日志里的
-`resolved 227` 证明做了真实解析，结果来自那个滞后的源。
+0.1.12 发布后用户实测 `pnpm dlx @oj-module/cli -h` 仍装 0.1.8，且
+`pnpm config get registry` 就是官方源——**初判「镜像/内网源滞后」错误，已推翻**。
+
+### 真正根因：pnpm ≥11 默认 minimumReleaseAge=1440（供应链保护）
+
+[pnpm 11.0 起](https://pnpm.io/blog/releases/11.0) 默认开启
+`minimumReleaseAge: 1440`（分钟，1 天）：发布时间不足 1 天的版本**不参与裸版本号
+解析**。完整因果链（两个时点同一根因）：
+
+```
+pnpm dlx @oj-module/cli            ← 裸版本号
+  → latest 是 0.1.12，但发布仅 26 分钟 < 1 天 → 按「未成熟」跳过
+  → 取次新成熟版本 0.1.11 → 其依赖 @plane/editor@0.1.10 在 npm 404
+  → 解析回退（backtrack）到 0.1.8 → 装出旧版
+```
+
+用户首次报障（当时 latest=0.1.11）同理：0.1.11 的 @plane 依赖 404 → 回退 0.1.8。
+**消费端日志 + 本机空白目录实测双重确证**；`minimumReleaseAge: 0` 后同一命令
+立即解析 0.1.12。
+
+时序：0.1.12 发布于 2026-10-10T06:36Z，**2026-10-11T06:36Z（北京时间 14:36）后
+裸版本号自动指向 0.1.12，无需任何操作**。
 
 ### 现象 → 对策
 
 | 现象 | 对策 |
 |---|---|
-| `pnpm dlx @oj-module/cli` 装出旧版 | 显式版本：`pnpm dlx @oj-module/cli@0.1.12 -h`（绕过 dist-tag，最稳） |
-| 内网源长期滞后 | 临时：`pnpm --registry=https://registry.npmmirror.com dlx @oj-module/cli -h`；治本：`pnpm config set registry https://registry.npmmirror.com` |
-| 诊断当前源 | `pnpm config get registry`，再 `npm view @oj-module/cli dist-tags --registry=<该源>` 对比官方源 |
+| 新发布版本 24h 内裸版本号装出旧版 | 正常现象（pnpm≥11 供应链保护）。急用显式版本：`pnpm dlx @oj-module/cli@0.1.12 -h`（会写入 minimumReleaseAgeExclude，属预期） |
+| 想立即让 latest 生效 | 工程 `pnpm-workspace.yaml`：`minimumReleaseAgeExclude: ["@oj-module/cli", "@oj-module/runtime"]`；或测试环境 `minimumReleaseAge: 0` |
 | `Choose which packages to build` 交互提示卡住 dlx | 直接回车（不选）跳过：esbuild 无 postinstall 也能工作；工程内彻底放行：`pnpm-workspace.yaml` 加 `onlyBuiltDependencies: [esbuild]`；CI 非交互环境自动不构建，不卡 |
 
-### 反常识记录（追加）
+### 反常识记录（修正初判）
 
-- **dlx 不缓存解析结果**：每次执行都重新 resolve（日志 `resolved N`），所以
-  "重试还是旧版" 不是缓存问题，而是**解析源上的 dist-tags 就是旧的**。
-  这与 `npm install` 的 packument 缓存（有 TTL）不同，别用清缓存的思路排查 dlx。
+- **初判「解析源滞后」错误**：registry 是官方源、dist-tags 正确、dlx 每次都重新
+  resolve——但「重新 resolve」不等于「拿到新版本」，年龄门禁在解析阶段就过滤了。
+  教训：看到「装出版本低于 latest」先查 `npm view <pkg> time` 算包龄，再怀疑源。
+- **显式版本 vs 裸版本号行为不同**：`pkg@x.y.z` 明确指定版本会绕过年龄门禁
+  （非 strict 模式自动记入 exclude）；裸 `pkg` / `@latest` 被门禁拦。
+- **依赖 404 会触发静默回退**：解析器对依赖树失败的候选版本不是报错而是回退到
+  更老版本——0.1.11 的 @plane 404 让解析一路退到 0.1.8，表面「装成功」实则退化，
+  极具迷惑性。
+
+参考：[pnpm 11.0 release notes](https://pnpm.io/blog/releases/11.0)、
+[minimumReleaseAge 默认 1 天的行为讨论](https://knowledgeforagents.com/problems/75022a60-7841-4024-958d-f3487c3a8379)、
+[v12 strict 模式回归 issue](https://github.com/pnpm/pnpm/issues/14409)。
 
 ## 任务
 

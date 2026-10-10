@@ -160,3 +160,12 @@ else {
 }
 
 console.log(`\n完成：${PUBLISH_ORDER.map(p => `@oj-module/${p}@${target}`).join("、")}${DRY_RUN ? "（dry-run，未发布）" : ""}`);
+
+// pnpm ≥11 默认 minimumReleaseAge=1440（1 天）：裸版本号解析会跳过「未成熟」版本，
+// 期间消费端 pnpm i @oj-module/cli 可能装出更老的版本（依赖 404 时还会静默回退）。
+// 显式版本（pkg@x.y.z）不受限。见 docs/prd/202610101430-dlx-invocation.md 排障节。
+if (!DRY_RUN) {
+	const matureAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+	console.log(`\n注意：pnpm ≥11 默认 minimumReleaseAge=1 天——裸版本号安装约在 ${matureAt.toISOString()} 后自动指向 ${target}；`);
+	console.log(`在此之前消费端可用 pnpm i @oj-module/cli@${target} 显式指定（此现象非发布问题，勿重发版本）。`);
+}
