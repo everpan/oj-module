@@ -129,6 +129,9 @@ pnpm test tests/shell                       # 宿主全量
 
 ## §5 发布（lockstep，别用 npm publish）
 
+**一键发布**：`node scripts/publish-packages.mjs`（lockstep 四包校验 → 构建 → 守卫测试 →
+runtime → cli → registry 复核；`--dry-run` 只演练）。下面的手动步骤是它的展开参考。
+
 - 两包**同版本号**（当前 `0.1.8`），后续发版保持 lockstep。
 - **必须 `pnpm publish`**——用 `npm publish` 会漏出 `workspace:*` / `catalog:` 字面量。
 - **顺序：先 `runtime` 后 `cli`**。`runtime` 未公开时，新 `cli` 的精确依赖会悬空，
