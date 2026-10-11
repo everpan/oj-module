@@ -1,10 +1,13 @@
 // 发布 @oj-module/* 包：lockstep 门禁 → 产物重建 → 守卫测试 → 按依赖序发布 → registry 复核。
 //
-// 用法：node scripts/publish-packages.mjs [--dry-run] [--skip-tests] [--tag <tag>] [--otp <code>]
+// 用法：node scripts/publish-packages.mjs [--dry-run] [--skip-tests] [--tag <tag>] [--otp <code>] [--web-2fa]
 //   --dry-run     只构建 + 守卫测试，不发布（也不要求登录）
 //   --skip-tests  跳过守卫测试（应急；发布前须手动补跑 pnpm vitest run tests/cli）
 //   --tag <tag>   dist-tag，默认 latest
-//   --otp <code>  npm 2FA 验证码（开启双因素认证时必填）；省略则在发布前交互索取
+//   --otp <code>  npm 2FA 验证码（TOTP 类账户开启双因素认证时必填）；省略则在发布前交互索取
+//   --web-2fa     npm 2FA 为「web 验证」（浏览器审批）模式：发布时 npm 弹浏览器让你批准，
+//                 不传 --otp、也不索取验证码；脚本直接 pnpm publish 并等待浏览器审批完成。
+//                 与 --otp 互斥，同时给则忽略 --otp。
 //
 // 流程来源：docs/prd/framework-development-guide.md 附录 A（发布 runbook）。
 // 设计文档：docs/prd/202610101416-publish-script.md（事故背景见
@@ -15,8 +18,10 @@
 // 反常识点（runbook 实测踩坑，勿"优化"掉）：
 //   - 必须 pnpm publish：npm publish 会把 workspace:*/catalog: 字面量发出去；
 //   - 必须 --no-provenance：本仓 .npmrc 写了 provenance=true，本地无 CI OIDC 会失败；
-//   - 必须 --otp（开启 2FA 时）：传入 `npm publish` 的 `EOTP` 拦截；省略则交互索取，
+//   - 必须 --otp（TOTP 类 2FA 开启时）：传入 `npm publish` 的 `EOTP` 拦截；省略则交互索取，
 //     验证码失效/被拒时脚本会自动重新索取并重试该包（最多 3 次）；未开 2FA 时该参数被忽略；
+//   - web 验证类 2FA：改用 --web-2fa。此时 npm 发布时弹浏览器审批，脚本不传 --otp、不索取验证码，
+//     阻塞等待浏览器批准后继续；若审批超时/失败，按发布失败处理（无验证码可重输，重跑本命令即可）；
 //   - 发布走各包 publishConfig.registry（官方源，与 .npmrc 安装源相同），复核只查官方 registry——
 //     复核只查官方 registry，镜像可能一直 404 属正常；
 //   - 发布后用 403 "previously published versions" 重发确认的办法已被
@@ -51,6 +56,7 @@ const DRY_RUN = flag("--dry-run");
 const SKIP_TESTS = flag("--skip-tests");
 const TAG = opt("--tag") ?? "latest";
 const OTP = opt("--otp");
+const WEB_2FA = flag("--web-2fa");
 
 function fail(msg) {
 	console.error(`\n✗ ${msg}`);
@@ -150,23 +156,35 @@ if (DRY_RUN) {
 }
 else {
 	console.log(`\n== 4/5 发布（runtime → cli，tag=${TAG}）==`);
-	let otp = OTP;
-	if (!otp)
-		otp = await askOtp();
-	for (const pkg of PUBLISH_ORDER) {
-		let attempts = 0;
-		for (;;) {
-			const res = publishPkg(pkg, otp);
-			if (res === true)
-				break;
-			// 2FA 验证码失效/被拒：重新索取后重试（最多 3 次），避免整轮前功尽弃
-			if (res.needOtp && attempts < 3) {
-				attempts++;
-				console.error(`\n✗ ${pkg} 发布被 2FA 拦截（otp 无效或过期），请重新输入（第 ${attempts} 次重试）`);
-				otp = await askOtp();
-				continue;
+	if (WEB_2FA) {
+		console.log("ⓘ web 2FA 模式：发布时 npm 将弹出浏览器验证，请在浏览器中批准；脚本阻塞等待审批完成。");
+		console.log("  无需输入 otp 验证码；若审批超时/被拒，按发布失败处理，重跑本命令即可。");
+		for (const pkg of PUBLISH_ORDER) {
+			// web 验证：不传 --otp，由 npm 浏览器流接管；失败无验证码可重输，直接判定
+			const res = publishPkg(pkg, undefined);
+			if (res !== true)
+				fail(`${pkg} 发布失败（web 2FA 未通过或网络错误，见上方输出；可重试本命令）。`);
+		}
+	}
+	else {
+		let otp = OTP;
+		if (!otp)
+			otp = await askOtp();
+		for (const pkg of PUBLISH_ORDER) {
+			let attempts = 0;
+			for (;;) {
+				const res = publishPkg(pkg, otp);
+				if (res === true)
+					break;
+				// 2FA 验证码失效/被拒：重新索取后重试（最多 3 次），避免整轮前功尽弃
+				if (res.needOtp && attempts < 3) {
+					attempts++;
+					console.error(`\n✗ ${pkg} 发布被 2FA 拦截（otp 无效或过期），请重新输入（第 ${attempts} 次重试）`);
+					otp = await askOtp();
+					continue;
+				}
+				fail(`${pkg} 发布失败（见上方输出）`);
 			}
-			fail(`${pkg} 发布失败（见上方输出）`);
 		}
 	}
 }
