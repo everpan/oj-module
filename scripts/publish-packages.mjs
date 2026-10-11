@@ -68,8 +68,10 @@ function run(cmd, cmdArgs, cwd = ROOT) {
 	execFileSync(cmd, cmdArgs, { cwd, stdio: "inherit" });
 }
 
-// 发布（带 2FA）：捕获输出以便识别 otp 失效并重试；成功/失败都回显，不让终端静默
-function publishPkg(pkg, otp) {
+// 发布（带 2FA）：捕获输出以便识别 otp 失效并重试；成功/失败都回显，不让终端静默。
+// interactive=true 时改用 stdio:"inherit"——web 验证类 2FA 需要可交互终端（TTY）来弹
+// 浏览器审批，管道 stdio 会触发 ERR_PNPM_OTP_NON_INTERACTIVE。
+function publishPkg(pkg, otp, interactive = false) {
 	const cmdArgs = [
 		"-C",
 		`packages/${pkg}`,
@@ -82,12 +84,18 @@ function publishPkg(pkg, otp) {
 		...(otp ? ["--otp", otp] : []),
 	];
 	console.log(`$ pnpm ${cmdArgs.join(" ")}`);
+	const opts = interactive ? { cwd: ROOT } : { cwd: ROOT, encoding: "utf-8" };
 	try {
-		const out = execFileSync("pnpm", cmdArgs, { cwd: ROOT, encoding: "utf-8" });
-		process.stdout.write(out);
+		const out = execFileSync("pnpm", cmdArgs, opts);
+		if (!interactive && out)
+			process.stdout.write(out);
 		return true;
 	}
 	catch (err) {
+		if (interactive) {
+			// 交互模式下报错已直接落到终端，无需回显；web 验证无验证码可重输，按失败处理
+			return { needOtp: false };
+		}
 		const out = (err.stdout?.toString() ?? "") + (err.stderr?.toString() ?? "");
 		process.stderr.write(out);
 		// npm 2FA 拦截：EOTP / "one-time pass" / "otp"；其余错误按失败处理
@@ -160,8 +168,9 @@ else {
 		console.log("ⓘ web 2FA 模式：发布时 npm 将弹出浏览器验证，请在浏览器中批准；脚本阻塞等待审批完成。");
 		console.log("  无需输入 otp 验证码；若审批超时/被拒，按发布失败处理，重跑本命令即可。");
 		for (const pkg of PUBLISH_ORDER) {
-			// web 验证：不传 --otp，由 npm 浏览器流接管；失败无验证码可重输，直接判定
-			const res = publishPkg(pkg, undefined);
+			// web 验证：不传 --otp、改用交互式 stdio（inherit），由 pnpm 浏览器流接管；
+			// 失败无验证码可重输，直接判定
+			const res = publishPkg(pkg, undefined, true);
 			if (res !== true)
 				fail(`${pkg} 发布失败（web 2FA 未通过或网络错误，见上方输出；可重试本命令）。`);
 		}
