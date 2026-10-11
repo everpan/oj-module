@@ -1,7 +1,7 @@
 {
 	"name": "@oj-module/core",
 	"type": "module",
-	"version": "0.1.1",
+	"version": "0.1.13",
 	"description": "框架核心蒸馏：模块加载引擎 + 注册原语（零 zustand / 零 antd / 零 UI 意见），宿主经 importmap 消费",
 	"license": "MIT",
 	"exports": {
