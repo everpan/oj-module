@@ -135,7 +135,13 @@ export async function printInfo(projectRoot: string, oj: OjObservability = realO
 			}
 		};
 		const port = readConfig("port") ?? "（config.yaml 缺失或未配置）";
-		const base = readConfig("api_prefix") ?? readConfig("base") ?? "/api";
+		let base = "/api";
+		try {
+			base = readOjApiPrefix(configPath);
+		}
+		catch {
+			base = "/api";
+		}
 
 		const health = await oj.ojHealth().catch(() => null);
 		const certLine = health

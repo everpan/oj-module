@@ -91,7 +91,7 @@ export async function previewServer(projectRoot: string, opts: PreviewOptions = 
 			return;
 		}
 		const rel = normalize(urlPath).replace(/^(\.\.[/\\])+/, "");
-		// 反代前缀跟随 config 的 server.api_prefix（F2）
+		// 反代前缀跟随 config 的 mounts:（api 挂载 prefix；F2）
 		if (rel.startsWith(`${base}/`)) {
 			void proxyApi(ojTarget)(req, res);
 			return;

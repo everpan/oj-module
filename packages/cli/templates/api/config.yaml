@@ -1,15 +1,23 @@
 # oj 服务配置（字段语义见 oj 后端开发手册 oj-api-dev / 或 oj --help）。
 # 本文件由 ojm init 生成；config 内相对路径相对本文件所在目录。
+# 更多能力见手册 §10：vars / broker / tasks / oidc / ws / html_meta / secrets。
+
+# 站点挂载（oj v0.1.58 起顶层扁平表：一行=一个 URL 前缀+一个目录，api/web 恰好其一）。
+# 被删除的 server.api_prefix / app_spa_fallback 已由 mounts 取代；
+# ojm dev/preview 的 SPA 深链回落由 ojm 自建静态层负责，无需 oj 的 spa。
+mounts:
+  - prefix: /api # api 挂载：/api/<module>/...（目录相对 config 所在目录 → api/src）
+    api: src
+  # 生产若由 oj 直出前端（不走 ojm 静态层），取消下一行注释并先 build 出 web/dist：
+  # - prefix: "/"
+  #   web: "../web/dist"   # 相对 api/config.yaml → 项目根/web/dist
+  #   spa: true
+
 server:
   host: 127.0.0.1 # 显式钉死：oj 默认绑 [::1]，localhost 解析序在反代下有坑
   port: 9778
-  api_prefix: /api # 新键名（旧键 base 已废弃，仅兼容）
   public_key_path: ./config/public.pem
   certificate_path: ./config/cert.jws
-  # ---- 静态站点与 SPA（v0.1.20 / v0.1.27）----
-  # ojm preview 默认由 ojm 静态层兜底；`--oj-static` 改走 oj --app-path 直出，
-  # 深链回落到 index.html 需要这一项（oj 默认 false）。
-  app_spa_fallback: true
   # ---- 迁移门禁 ----
   # auto = dev 缺省（启动即应用）；release 缺省是 verify（账本落后拒启，先 oj migrate）。
   # 显式写出来：dev 的隐式 DB 副作用不再靠「模式默认值」猜，release 也不会因缺省拒启。

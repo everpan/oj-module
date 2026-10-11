@@ -37,12 +37,35 @@ export function readOjServerField(configPath: string, field: string): string | u
 }
 
 /**
- * API 基础前缀（devkit 手册 §10：新键 `api_prefix`，旧键 `base` 仅兼容，
- * 并存会被 oj 报 duplicate field 拒启——故优先读新键，旧工程回落 `base`）。
+ * API 挂载前缀（devkit 手册 §10 mounts，v0.1.58 起）。
+ *
+ * 旧 `server.api_prefix` / `server.base` 已被 mounts 取代（出现即被 oj 拒启），
+ * 故这里只认 mounts：返回首个含 `api:` 条目的 `prefix`；没有挂载则回落 `/api`。
+ * ojm dev/preview 据此给反代判定 API 路由，不影响 oj 自身（其经 `-b/--api-path`
+ * CLI 折叠 upsert 同名挂载，与配置文件一致）。
  */
 export function readOjApiPrefix(configPath: string): string {
-	const prefix = readOjServerField(configPath, "api_prefix") ?? readOjServerField(configPath, "base");
-	return prefix ?? "/api";
+	let doc: unknown;
+	try {
+		doc = parse(fs.readFileSync(configPath, "utf-8"));
+	}
+	catch (error) {
+		throw new Error(
+			`[ojm] ${configPath} 解析失败（不是合法 YAML）：${(error as Error).message}\n`
+			+ "该文件由 ojm init 生成，改动后请用 YAML 语法检查确认缩进与引号。",
+		);
+	}
+	const mounts = (doc as { mounts?: unknown } | null | undefined)?.mounts;
+	if (Array.isArray(mounts)) {
+		for (const entry of mounts) {
+			if (entry && typeof entry === "object" && "api" in entry) {
+				const prefix = (entry as { prefix?: unknown }).prefix;
+				if (typeof prefix === "string")
+					return prefix;
+			}
+		}
+	}
+	return "/api";
 }
 
 /**
