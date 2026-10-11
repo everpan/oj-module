@@ -122,14 +122,17 @@ function publishArgs(pkg, { otp } = {}) {
 /** 发布单个包。成功返回 true；失败返回 { needOtp }（web 验证模式恒为 false）。 */
 function publishPkg(pkg, { otp, interactive = false } = {}) {
 	try {
-		const out = pnpm(publishArgs(pkg, { otp }), interactive ? {} : { encoding: "utf-8" });
+		// 交互（web 2FA）模式必须用 stdio:"inherit" 把真实 TTY 交给 pnpm——
+		// 否则 pnpm 看到的是管道、判定为非交互终端，抛出 ERR_PNPM_OTP_NON_INTERACTIVE
+		// 导致浏览器审批根本弹不出来、发布静默失败（runtime 此前只能靠手动终端发布即源于此）。
+		const out = pnpm(publishArgs(pkg, { otp }), interactive ? { stdio: "inherit" } : { encoding: "utf-8" });
 		if (!interactive && out)
 			process.stdout.write(out);
 		return true;
 	}
 	catch (err) {
 		if (interactive) {
-			// 交互模式报错已直接落到终端，无需回显；web 验证无验证码可重输，按失败处理
+			// 交互模式报错已直接落到终端（inherit），无需回显；web 验证无验证码可重输，按失败处理
 			return { needOtp: false };
 		}
 		const out = (err.stdout?.toString() ?? "") + (err.stderr?.toString() ?? "");
