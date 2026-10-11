@@ -42,6 +42,27 @@ const distDir = resolve(shellDir, "..", "shell-dist");
 const assetsDir = resolve(distDir, "assets");
 
 /**
+ * @plane/kit、@plane/editor 不再声明为 cli 的依赖（解耦：避免 cli 发布包泄漏对
+ * 私域包的解析）。构建期直接从 monorepo 同级包目录解析/打包这两个共享资产，
+ * 而非经 cli 的 node_modules。宿主工程消费的是 cli 预置的 shell-dist 资产，
+ * 经 importmap 命中 /assets/{kit,editor}.js，不依赖 cli 声明这两个包。
+ * shellDir = packages/cli/shell，故 ../../kit = packages/kit、../../editor-standalone = packages/editor-standalone。
+ */
+function planeSiblingDir(specifier: string): string | undefined {
+	if (specifier === "@plane/kit")
+		return resolve(shellDir, "../../kit");
+	if (specifier === "@plane/editor")
+		return resolve(shellDir, "../../editor-standalone");
+	return undefined;
+}
+function planeSiblingEntry(specifier: string): string | undefined {
+	const dir = planeSiblingDir(specifier);
+	if (!dir)
+		return undefined;
+	return specifier === "@plane/kit" ? resolve(dir, "dist/kit.js") : resolve(dir, "dist/editor.js");
+}
+
+/**
  * import-is-undefined 静默（202610101439 告警治理，见 docs/prd 同名文档）。
  *
  * 共享资产垫片的 default 兜底（`export default (__ns.default ?? __ns)`）是**有意
@@ -120,6 +141,9 @@ async function bundleShim(name: string, pkg: string, shim: string, banner?: stri
 			// Spike A 坑 2：浏览器顶层求值会抛 process is not defined（风险 R15）
 			define: { "process.env.NODE_ENV": JSON.stringify("production") },
 			plugins: [makeExternalShared(pkg)],
+			// @plane/kit、@plane/editor 已解耦出 cli 依赖：构建期从 monorepo 同级包
+			// 目录解析入口（不再经 cli node_modules），其余共享依赖仍走原解析
+			...(planeSiblingEntry(pkg) ? { alias: { [pkg]: planeSiblingEntry(pkg)! } } : {}),
 			outfile: resolve(assetsDir, `${name}.js`),
 			sourcemap: "external",
 			logLevel: "warning",
@@ -186,7 +210,9 @@ async function repairDynamicRequires(name: string, pkg: string, shim: string): P
  */
 async function resolveExportNames(pkg: string): Promise<string[] | null> {
 	try {
-		const mod = await import(pkg);
+		// @plane/kit、@plane/editor 已解耦出 cli 依赖：从 monorepo 同级包入口读取导出名
+		const target = planeSiblingEntry(pkg) ?? pkg;
+		const mod = await import(target);
 		if (!mod || typeof mod !== "object")
 			return null;
 		const names = Object.keys(mod)
@@ -618,6 +644,17 @@ function packageNameOf(specifier: string): string {
 	return specifier.startsWith("@") ? specifier.split("/").slice(0, 2).join("/") : specifier.split("/")[0];
 }
 function installedVersion(specifier: string): string | undefined {
+	// @plane/kit、@plane/editor 已解耦出 cli 依赖：版本直接读 monorepo 同级包 package.json
+	const planeDir = planeSiblingDir(specifier);
+	if (planeDir) {
+		try {
+			const parsed = JSON.parse(readFileSync(resolve(planeDir, "package.json"), "utf-8"));
+			return typeof parsed.version === "string" ? parsed.version : undefined;
+		}
+		catch {
+			return undefined;
+		}
+	}
 	try {
 		const resolved = import.meta.resolve(specifier, pathToFileURL(resolve(shellDir, "package.json")).href);
 		let dir = resolve(fileURLToPath(resolved), "..");

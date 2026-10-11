@@ -39,7 +39,7 @@ function makeFixture(kind: "fullstack" | "frontend", base = "/api"): { root: str
 	].join("\n"));
 	if (kind === "fullstack") {
 		fs.mkdirSync(path.join(root, "api/src"), { recursive: true });
-		fs.writeFileSync(path.join(root, "api/config.yaml"), `server:\n  host: 127.0.0.1\n  port: ${port}\n  base: ${base}\n`);
+		fs.writeFileSync(path.join(root, "api/config.yaml"), `server:\n  host: 127.0.0.1\n  port: ${port}\nmounts:\n  - prefix: ${base}\n    api: src\n`);
 	}
 	return { root, port };
 }

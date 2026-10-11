@@ -29,7 +29,7 @@ function makeFixture(base = "/api"): { root: string, configPath: string, siteDir
 	fs.chmodSync(path.join(root, "bin/oj"), 0o755);
 	fs.mkdirSync(path.join(root, "api/dist"), { recursive: true });
 	fs.writeFileSync(path.join(root, "api/dist/manifests.yaml"), "modules: []\n");
-	fs.writeFileSync(path.join(root, "api/config.yaml"), `server:\n  host: 127.0.0.1\n  port: ${port}\n  base: ${base}\n`);
+	fs.writeFileSync(path.join(root, "api/config.yaml"), `server:\n  host: 127.0.0.1\n  port: ${port}\nmounts:\n  - prefix: ${base}\n    api: src\n`);
 	// 新布局标记（web/src 存在 → distDir = web/dist）
 	fs.mkdirSync(path.join(root, "web/src"), { recursive: true });
 	const siteDir = path.join(root, "web/dist");

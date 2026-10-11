@@ -72,6 +72,12 @@ describe("宿主与框架共享依赖版本一致（A25）", () => {
 		const undeclared = SHARED_DEPS
 			.map(dep => packageNameOf(dep.specifier))
 			.filter(name => !name.startsWith("@oj-module"))
+			// @plane/kit、@plane/editor 是 monorepo 同级包（packages/kit、
+			// packages/editor-standalone），cli 解耦后不再把它们写进 dependencies/
+			// devDependencies，而是由 shell/scripts/build.mts 经 planeSiblingEntry
+			// 从同级 dist 直接解析并预打包进 shell-dist。它们本就不在 cli 的 npm
+			// 依赖声明里，故从「未声明」断言中放行（与 @oj-module 同级包同理）。
+			.filter(name => !name.startsWith("@plane"))
 			.filter((name, i, all) => all.indexOf(name) === i)
 			.filter(name => !(name in declared));
 

@@ -39,16 +39,22 @@ describe("cli↔runtime 依赖钉版（R9）", () => {
 	});
 });
 
-describe("私域 workspace 包不得进 dependencies（202610101405 修复）", () => {
-	// @plane/editor、@plane/kit 是仓内私域包（未发布 npm）。pnpm 发布把 workspace:*
-	// 一律改写为精确版本并放行，泄漏到发布产物后消费端安装直接 404（实锤 bug）。
-	// 二者代码经 prepack 打包进 shell-dist 资产，对已发布源码零运行时 import，
-	// 因此只允许出现在 devDependencies。
-	const PRIVATE_PKGS = ["@plane/editor", "@plane/kit"];
+describe("cli 不得声明 @plane/kit / @plane/editor 为依赖（解耦）", () => {
+	// @plane/kit、@plane/editor 现已发布（见发布脚本 LOCKSTEP 守卫与各自
+	// publishConfig.registry）。它们与 cli 的解耦方式：构建期（build:shell）从
+	// monorepo 同级包目录解析并打包进 shell-dist 资产，cli 的 package.json 不声明
+	// 它们为任何依赖；宿主工程经 cli 预置的 shell-dist 资产（importmap 命中
+	// /assets/{kit,editor}.js）消费，无需在宿主安装。cli 已发布源码对二者零运行时 import。
+	const PLANE_PKGS = ["@plane/editor", "@plane/kit"];
 
-	it("cli dependencies 不含任何 @plane/*（私域包未发布 npm）", () => {
-		for (const pkg of PRIVATE_PKGS)
-			expect(cliPkg.dependencies?.[pkg], `${pkg} 不得在 dependencies（安装即 404）`).toBeUndefined();
+	it("cli dependencies 与 devDependencies 均不含 @plane/kit、@plane/editor", () => {
+		for (const pkg of PLANE_PKGS) {
+			expect(cliPkg.dependencies?.[pkg], `${pkg} 不得在 dependencies`).toBeUndefined();
+			expect(
+				cliPkg.devDependencies?.[pkg],
+				`${pkg} 不得在 devDependencies（解耦后由 monorepo 同级包解析）`,
+			).toBeUndefined();
+		}
 	});
 
 	it("cli 已发布源码对 @plane/* 零运行时 import", () => {

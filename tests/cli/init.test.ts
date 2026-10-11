@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { initProject, resolveVersionMatrix } from "../../packages/cli/src/init";
-import { readOjPort, readOjServerField } from "../../packages/cli/src/oj-config";
+import { readOjApiPrefix, readOjPort, readOjServerField } from "../../packages/cli/src/oj-config";
 import { PROJECT_ROOT } from "../helpers/paths";
 
 /**
@@ -42,7 +42,7 @@ describe("initProject", () => {
 		const config = path.join(dest, "api/config.yaml");
 		expect(readOjServerField(config, "host")).toBe("127.0.0.1");
 		expect(readOjPort(config)).toBe(9778);
-		expect(readOjServerField(config, "api_prefix")).toBe("/api");
+		expect(readOjApiPrefix(config)).toBe("/api"); // mounts 模型：api 挂载 prefix
 		expect(readOjServerField(config, "public_key_path")).toBe("./config/public.pem");
 		expect(readOjServerField(config, "certificate_path")).toBe("./config/cert.jws");
 		const configText = fs.readFileSync(config, "utf-8");

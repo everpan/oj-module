@@ -56,17 +56,17 @@ describe("readOjServerField", () => {
 });
 
 describe("readOjApiPrefix", () => {
-	it("优先读新键 api_prefix（devkit 手册 §10）", () => {
-		const file = writeConfig("server:\n  api_prefix: /v1/api\n  base: /old\n");
+	it("读 mounts 中首个含 api: 条目的 prefix（devkit 手册 §10 mounts 模型）", () => {
+		const file = writeConfig("mounts:\n  - prefix: /v1/api\n    api: src\n");
 		expect(readOjApiPrefix(file)).toBe("/v1/api");
 	});
 
-	it("旧工程回落兼容键 base", () => {
-		const file = writeConfig("server:\n  base: \"/api\"\n  port: 9778\n");
+	it("mounts 无 api 条目 → 回落 /api", () => {
+		const file = writeConfig("mounts:\n  - prefix: \"/\"\n    web: ../web/dist\n    spa: true\n");
 		expect(readOjApiPrefix(file)).toBe("/api");
 	});
 
-	it("两键皆缺 → 默认 /api", () => {
+	it("无 mounts → 默认 /api", () => {
 		const file = writeConfig("server:\n  port: 9778\n");
 		expect(readOjApiPrefix(file)).toBe("/api");
 	});

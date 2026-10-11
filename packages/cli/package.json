@@ -70,8 +70,6 @@
 		"@dnd-kit/core": "catalog:",
 		"@dnd-kit/sortable": "catalog:",
 		"@dnd-kit/utilities": "catalog:",
-		"@plane/editor": "workspace:*",
-		"@plane/kit": "workspace:*",
 		"@tanstack/react-query": "catalog:",
 		"@vitejs/plugin-react": "catalog:",
 		"ahooks": "catalog:",
