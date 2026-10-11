@@ -21,14 +21,10 @@ node_modules
 /dist
 # workspace 子包的构建产物（packages/*/dist、apps/*/dist）
 dist/
-# cli 内置的「预构建宿主」（shell-dist）为随仓库分发的预置产物（非本地构建输出），需纳入版本管理
-!packages/cli/shell-dist/
-!packages/cli/shell-dist/**
-# P4.4 sourcemap hidden 的 .map 仅供内部栈解析，不发版不入库
-packages/cli/shell-dist/**/*.map
-# runtime 的发布产物（dist/runtime.js）随仓库分发
-!packages/runtime/dist/
-!packages/runtime/dist/**
+# cli 内置的「预构建宿主」shell-dist 改为构建期生成、不入库（pnpm publish 前由
+# 发布脚本 step 2 重建；测试由 tests/global-setup.ts 在缺失时自举 build:shell）
+packages/cli/shell-dist/
+# runtime 的发布产物（dist/runtime.js）改为构建期生成、不入库（同上）
 
 # editor 首方共享包的发布产物（dist/editor.js）随仓库分发。它无法在 oj-module 侧
 # 重建——打包需要 plane 大仓的编辑器源码；由 plane 侧

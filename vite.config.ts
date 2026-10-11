@@ -179,6 +179,9 @@ export default defineConfig({
 			"tests/e2e/**",
 		],
 		setupFiles: ["./packages/runtime/src/setupTests.ts"],
+		// 混合 gitignore 方案自举：shell-dist 缺失时自动 build:shell（详见
+		// tests/global-setup.ts）；存在则跳过，不拖慢常规测试。
+		globalSetup: ["./tests/global-setup.ts"],
 		// pro-components 是 CJS（"type":"module" 却用 exports.x），vitest 的模块
 		// 求值器会按 ESM 直读而报 "exports is not defined"。这里把它指向「已构建」
 		// 的 shell 资产 pro-components.js（esbuild 已做 CJS→ESM 互操作，是干净的
