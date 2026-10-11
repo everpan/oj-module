@@ -53,7 +53,7 @@
 
 ```bash
 export VERIFY_DIR=/tmp/ojm-verify
-export OJM_REPO=/Users/ever/git/web/react-antd-module   # 按实际改
+export OJM_REPO=/Users/ever/git/only-js/oj-module   # 按实际改
 rm -rf "$VERIFY_DIR" && mkdir -p "$VERIFY_DIR" && cd "$VERIFY_DIR"
 ```
 
@@ -259,7 +259,7 @@ pnpm exec ojm preview    # oj migrate（verify 门禁）→ server + 静态兜�
 
 ```bash
 set -e
-export VERIFY_DIR=/tmp/ojm-verify OJM_REPO=/Users/ever/git/web/react-antd-module
+export VERIFY_DIR=/tmp/ojm-verify OJM_REPO=/Users/ever/git/only-js/oj-module
 rm -rf "$VERIFY_DIR" && mkdir -p "$VERIFY_DIR" && cd "$VERIFY_DIR"
 node "$OJM_REPO/packages/cli/bin/ojm.mjs" init my-books --yes
 cd my-books && pnpm install
