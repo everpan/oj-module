@@ -1,20 +1,23 @@
 // 发布 @oj-module/* 包：lockstep 门禁 → 产物重建 → 守卫测试 → 按依赖序发布 → registry 复核。
 //
-// 用法：node scripts/publish-packages.mjs [--dry-run] [--skip-tests] [--tag <tag>]
+// 用法：node scripts/publish-packages.mjs [--dry-run] [--skip-tests] [--tag <tag>] [--otp <code>]
 //   --dry-run     只构建 + 守卫测试，不发布（也不要求登录）
 //   --skip-tests  跳过守卫测试（应急；发布前须手动补跑 pnpm vitest run tests/cli）
 //   --tag <tag>   dist-tag，默认 latest
+//   --otp <code>  npm 2FA 验证码（开启双因素认证时必填）；省略则在发布前交互索取
 //
 // 流程来源：docs/prd/framework-development-guide.md 附录 A（发布 runbook）。
 // 设计文档：docs/prd/202610101416-publish-script.md（事故背景见
 // docs/prd/202610101405-cli-publish-private-deps-fix.md）。
 // 发布仓库：registry.npmjs.org（用户指定；与各包 publishConfig.registry 一致，
-// 与 .npmrc 安装镜像 npmmirror 互不影响）。
+// 与 .npmrc 安装源（同为官方源）一致）。
 //
 // 反常识点（runbook 实测踩坑，勿"优化"掉）：
 //   - 必须 pnpm publish：npm publish 会把 workspace:*/catalog: 字面量发出去；
 //   - 必须 --no-provenance：本仓 .npmrc 写了 provenance=true，本地无 CI OIDC 会失败；
-//   - 发布走各包 publishConfig.registry（官方源），与 .npmrc 安装镜像（npmmirror）无关——
+//   - 必须 --otp（开启 2FA 时）：传入 `npm publish` 的 `EOTP` 拦截；省略则交互索取，
+//     验证码失效/被拒时脚本会自动重新索取并重试该包（最多 3 次）；未开 2FA 时该参数被忽略；
+//   - 发布走各包 publishConfig.registry（官方源，与 .npmrc 安装源相同），复核只查官方 registry——
 //     复核只查官方 registry，镜像可能一直 404 属正常；
 //   - 发布后用 403 "previously published versions" 重发确认的办法已被
 //     registry 轮询取代（本脚本自动处理 CDN 传播延迟）。
@@ -22,6 +25,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
+import readline from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -46,6 +50,7 @@ function opt(name) {
 const DRY_RUN = flag("--dry-run");
 const SKIP_TESTS = flag("--skip-tests");
 const TAG = opt("--tag") ?? "latest";
+const OTP = opt("--otp");
 
 function fail(msg) {
 	console.error(`\n✗ ${msg}`);
@@ -55,6 +60,46 @@ function fail(msg) {
 function run(cmd, cmdArgs, cwd = ROOT) {
 	console.log(`$ ${cmd} ${cmdArgs.join(" ")}`);
 	execFileSync(cmd, cmdArgs, { cwd, stdio: "inherit" });
+}
+
+// 发布（带 2FA）：捕获输出以便识别 otp 失效并重试；成功/失败都回显，不让终端静默
+function publishPkg(pkg, otp) {
+	const cmdArgs = [
+		"-C",
+		`packages/${pkg}`,
+		"publish",
+		"--access",
+		"public",
+		"--no-provenance",
+		"--no-git-checks",
+		...(TAG !== "latest" ? ["--tag", TAG] : []),
+		...(otp ? ["--otp", otp] : []),
+	];
+	console.log(`$ pnpm ${cmdArgs.join(" ")}`);
+	try {
+		const out = execFileSync("pnpm", cmdArgs, { cwd: ROOT, encoding: "utf-8" });
+		process.stdout.write(out);
+		return true;
+	}
+	catch (err) {
+		const out = (err.stdout?.toString() ?? "") + (err.stderr?.toString() ?? "");
+		process.stderr.write(out);
+		// npm 2FA 拦截：EOTP / "one-time pass" / "otp"；其余错误按失败处理
+		if (/EOTP|one-time pass|otp/i.test(out))
+			return { needOtp: true };
+		return { needOtp: false };
+	}
+}
+
+// 交互索取 npm 2FA 验证码（输入不回显由终端控制，这里只负责读取）
+async function askOtp() {
+	const rl = readline.createInterface({ input: process.stdin, output: process.stderr });
+	try {
+		return (await rl.question("请输入 npm 2FA 验证码（otp）：")).trim();
+	}
+	finally {
+		rl.close();
+	}
 }
 
 function readVersion(rel) {
@@ -105,17 +150,24 @@ if (DRY_RUN) {
 }
 else {
 	console.log(`\n== 4/5 发布（runtime → cli，tag=${TAG}）==`);
+	let otp = OTP;
+	if (!otp)
+		otp = await askOtp();
 	for (const pkg of PUBLISH_ORDER) {
-		run("pnpm", [
-			"-C",
-			`packages/${pkg}`,
-			"publish",
-			"--access",
-			"public",
-			"--no-provenance",
-			"--no-git-checks",
-			...(TAG !== "latest" ? ["--tag", TAG] : []),
-		]);
+		let attempts = 0;
+		for (;;) {
+			const res = publishPkg(pkg, otp);
+			if (res === true)
+				break;
+			// 2FA 验证码失效/被拒：重新索取后重试（最多 3 次），避免整轮前功尽弃
+			if (res.needOtp && attempts < 3) {
+				attempts++;
+				console.error(`\n✗ ${pkg} 发布被 2FA 拦截（otp 无效或过期），请重新输入（第 ${attempts} 次重试）`);
+				otp = await askOtp();
+				continue;
+			}
+			fail(`${pkg} 发布失败（见上方输出）`);
+		}
 	}
 }
 
