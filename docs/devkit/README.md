@@ -6,6 +6,12 @@
 它补的是 `oj-api-dev`（oj 后端 API 开发）之外的另一半：**前端模块、契约、
 前后端对接**。
 
+> **oj v0.1.58 起站点挂载迁移**：`server.api_prefix` / `app_path` / `app_prefix` /
+> `static_sites` / `app_spa_fallback` 这五个站点键已被删除，改由顶层 **`mounts:`** 扁平表
+> 承载（一行=一个 URL 前缀+一个目录，`api`/`web` 恰好其一）。旧键出现即被 `oj serve` fail-fast 拒绝。
+> 仓库内 `ojm init` 模板已是 `mounts:`；oj 侧挂载、密钥信封、vars、cors、schema 校验等完整用法见
+> [`docs/oj-api-dev/`](../oj-api-dev/README.md)。
+
 | 文件 | 用途 |
 |---|---|
 | `SKILL.md` | Claude Code 等 agent 的 skill 入口：工作流、红线、新模块 checklist、陷阱速查，按章节号引用手册 |
@@ -19,9 +25,10 @@
 mkdir -p .claude/skills/ojm-module-dev
 cp SKILL.md manual.md .claude/skills/ojm-module-dev/
 
-# 后端 API 开发另装 oj 自带的 devkit（独立 skill，随 oj 二进制分发，不在此目录内）
+# 后端 API 开发另装 oj 自带的 devkit（独立 skill，随 oj 二进制分发，不在此目录内）。
+# 仓库里也同步了一份权威副本在 docs/oj-api-dev/（随 oj 版本更新，覆盖时以 oj 源为准）：
 mkdir -p .claude/skills/oj-api-dev
-# 从 oj 二进制解压出的 .claude/skills/oj-api-dev/ 拷贝 SKILL.md 与 api-manual.md
+cp ../oj-api-dev/SKILL.md ../oj-api-dev/api-manual.md .claude/skills/oj-api-dev/
 ```
 
 安装后 Claude Code 里 `/ojm-module-dev` 触发，或直接说「用 ojm-module-dev 加个 xxx 模块」。

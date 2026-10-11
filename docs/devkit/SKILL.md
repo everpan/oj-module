@@ -7,8 +7,10 @@ description: 用 ojm 开发前后端一体工程时使用——新增/修改前�
 
 本 skill 与参考手册 `manual.md` 同目录。**按章节号按需读章，不要盲读全文。**
 
-后端 handler 本身的写法（`json` 信封、`db` 查询、`manifest.yaml`、`oj test`）属于
-**`oj-api-dev` skill** 的范围——本 skill 只讲它到前端这一侧的对接。
+后端 handler 本身的写法（`json` 信封、`db` 查询、`manifest.yaml`、`oj test`）、
+站点挂载（`mounts`）、密钥信封（`secrets`）、vars、cors、schema 校验、broker/tasks/oidc/ws 等
+属于 **`oj-api-dev` skill** 的范围——仓库内同步副本在 [`docs/oj-api-dev/`](../oj-api-dev/README.md)，
+本 skill 只讲它到前端这一侧的对接。
 
 ## 工作流
 
@@ -101,6 +103,8 @@ description: 用 ojm 开发前后端一体工程时使用——新增/修改前�
 | WS 连接 401（「文件在却连不上」） | 模块写了 `ws.ts`，但其 `/ws` 路由不在 `anonymous_paths`（oj v0.1.30+ WS 握手也过鉴权） | 匿名 WS 加进 `anonymous_paths`；受保护 WS 带 Bearer/Cookie 是正当用法。`ojm api --check` 会对此 warn |
 | 登出/回登录页落空，或登录后落错误边界 | 工程缺 `login` / `home` 模块 | 在 `web.config.ts` 保留两者 |
 | 通知铃 404 `no route matched` | 缺 root 级 `/api/notifications` | 补 `api/src/notifications` 模块 |
+| `oj serve` 启动即退，报 `config uses removed server.* site keys (v0.1.58): api_prefix` | 用了 oj v0.1.58 起删除的旧站点键（`api_prefix`/`app_path`/`app_prefix`/`static_sites`/`app_spa_fallback`） | 改 `server.api_prefix: /api` 为顶层 `mounts: [{prefix: "/api", api: "src"}]`；迁移完整 YAML 由报错给出 |
+| 改完 `mounts:` 仍全 404 | `api:` 指向目录不是 oj 启动目录下的 `src` | `mounts[].api` 写 `"src"`，`-c` 指向 `api/config.yaml`（ojm dev/preview 已内置） |
 
 ## 手册
 

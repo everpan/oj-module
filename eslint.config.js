@@ -75,6 +75,9 @@ export default antfu({
 		// playground 工程里由 `ojm vendor/init` 联网落盘的 oj 二进制与 devkit
 		// （未入库，由 apps/*/.gitignore 忽略；eslint 只读根 .gitignore，需显式排除）
 		"apps/*/bin/**",
+		// 从 oj 二进制分发同步的权威后端 devkit——必须保持与源逐字节一致，
+		// 不得被 eslint --fix 改写（含 .d.ts 的类型习惯，如 shorthand method 签名）
+		"docs/oj-api-dev/**",
 	],
 	rules: {
 		"style/quotes": ["error", "double"],

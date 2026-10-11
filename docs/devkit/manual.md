@@ -22,7 +22,7 @@
 ├── global.d.ts            # 后端 oj 全局对象（db/json/http…）类型声明
 ├── env.d.ts               # ImportMeta.env 类型补丁
 ├── api/
-│   ├── config.yaml        # oj 服务配置（端口、db、auth、secrets）
+│   ├── config.yaml        # oj 服务配置（端口、db、auth、secrets）；站点挂载见顶层 mounts:（v0.1.58 起替代 server.api_prefix）
 │   ├── config/            # dev 证书（public.pem / cert.jws）
 │   ├── .ojm-api-exempt.json
 │   └── src/
@@ -821,6 +821,8 @@ export default async (path: string, html: string) => {
 | `seed.sql` 没生效 / 语法错 | 按 `;` 朴素切分，注释里有分号 | 去掉注释里的分号字面量 |
 | 页面图标 / 关闭 × 空白 | 共享资源图标默认值回归 | 重建宿主 shell |
 | curl 访问 SPA 路由返回 404 | SPA history 回落要求 `Accept: text/html` | 加 `-H 'Accept: text/html'`（浏览器自带，不是 bug） |
+| `oj serve` 启动即退，报 `config uses removed server.* site keys (v0.1.58): api_prefix`（或 `app_path` / `app_prefix` / `static_sites` / `app_spa_fallback`） | 用了 oj v0.1.58 起删除的旧站点键 | 改 `server.api_prefix: /api` 为顶层 `mounts: [{prefix: "/api", api: "src"}]`（一行=一个 URL 前缀+一个目录，`api`/`web` 恰好其一）；迁移完整 YAML 由报错信息给出；详见后端 devkit「mounts 迁移」 |
+| 改完 `mounts:` 仍报 `no route matched`（/api/* 全 404） | `api:` 指向的目录不是 oj 启动目录下的 `src`（相对 config 所在目录） | `mounts[].api` 写 `"src"`，且 `oj serve` 的 `-c` 指向 `api/config.yaml`（ojm dev/preview 已内置正确路径） |
 
 ---
 
@@ -842,10 +844,20 @@ export default async (path: string, html: string) => {
 
 另有：
 
-- **后端 handler 手册**：即 `oj-api-dev` skill 的手册（随 oj 二进制分发，独立安装，
-  不在此 devkit 目录内）。写 handler 遇到 `json` / `db` / `kv` / `jwt` / 租户 / 测试的问题查它。
+- **后端 handler 手册**：即 `oj-api-dev` skill 的手册——仓库内已同步到
+  [`docs/oj-api-dev/`](../oj-api-dev/README.md)（权威源随 oj 二进制分发在
+  `~/.local/share/oj/devkit`，随 oj 版本更新，同步时以之覆盖本目录）。
+  写 handler 遇到 `json` / `db` / `kv` / `jwt` / 租户 / 测试的问题查它；
+  站点挂载（`mounts`）、密钥信封（`secrets`）、配置变量（`vars`）、跨域（`cors`）、
+  schema 校验（`schema_validation`）、`broker` / `tasks` / `oidc` / `ws` 等 oj 侧能力也都在这套手册里。
 - **框架团队内部**：本目录 `framework-dev.md`（改 `packages/runtime`、`packages/cli` 用，
   业务工程不适用）。
+
+> **oj v0.1.58 起的关键变更**：站点挂载从 `server.*` 的旧键（`api_prefix` / `app_path` /
+> `app_prefix` / `static_sites` / `app_spa_fallback`）迁到顶层 **`mounts:`** 扁平表
+> （一行=一个 URL 前缀+一个目录，`api`/`web` 恰好其一）。旧键出现即被 `oj serve` fail-fast 拒绝。
+> ojm 模板 `api/config.yaml` 已落到 `mounts:`，`ojm dev/preview` 的 SPA 深链回落由 ojm 自建静态层负责，
+> 不需要 oj 的 spa。详细迁移规则、vars/secrets/cors/schema 用法见 `docs/oj-api-dev/` 手册。
 
 ---
 
