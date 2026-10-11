@@ -26,6 +26,9 @@
 //     复核只查官方 registry，镜像可能一直 404 属正常；
 //   - 发布后用 403 "previously published versions" 重发确认的办法已被
 //     registry 轮询取代（本脚本自动处理 CDN 传播延迟）。
+//   - 幂等：第 4 步发布前先查官方源，目标版本已存在则跳过该包。这样「runtime 已发、
+//     cli 因 web 2FA 第二次审批未通过而失败」等情况，重跑本命令会跳过已发布的包、
+//     只补发失败的包，不会卡在「版本已存在」报错。
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -116,6 +119,17 @@ async function askOtp() {
 	}
 }
 
+/** 目标版本是否已发布到官方源（幂等跳过，避免「runtime 已发、cli 失败」后重跑卡在已存在版本） */
+async function isPublished(name, version) {
+	try {
+		const res = await fetch(`${REGISTRY}/${name.replace("/", "%2F")}/${version}`);
+		return res.ok;
+	}
+	catch {
+		return false;
+	}
+}
+
 function readVersion(rel) {
 	return JSON.parse(fs.readFileSync(path.join(ROOT, rel), "utf-8")).version;
 }
@@ -164,22 +178,25 @@ if (DRY_RUN) {
 }
 else {
 	console.log(`\n== 4/5 发布（runtime → cli，tag=${TAG}）==`);
-	if (WEB_2FA) {
-		console.log("ⓘ web 2FA 模式：发布时 npm 将弹出浏览器验证，请在浏览器中批准；脚本阻塞等待审批完成。");
-		console.log("  无需输入 otp 验证码；若审批超时/被拒，按发布失败处理，重跑本命令即可。");
-		for (const pkg of PUBLISH_ORDER) {
+	for (const pkg of PUBLISH_ORDER) {
+		const name = `@oj-module/${pkg}`;
+		// 幂等：已发布的目标版本直接跳过，使「部分发布失败」后可安全重跑
+		if (await isPublished(name, target)) {
+			console.log(`ⓘ ${name}@${target} 已发布，跳过`);
+			continue;
+		}
+		if (WEB_2FA) {
 			// web 验证：不传 --otp、改用交互式 stdio（inherit），由 pnpm 浏览器流接管；
-			// 失败无验证码可重输，直接判定
+			// 每个包需各自在浏览器批准一次。失败无验证码可重输，按发布失败处理（重跑会跳过已发布的包）
+			console.log(`ⓘ web 2FA：请在浏览器中批准 ${name}@${target} 的发布（脚本阻塞等待审批）`);
 			const res = publishPkg(pkg, undefined, true);
 			if (res !== true)
-				fail(`${pkg} 发布失败（web 2FA 未通过或网络错误，见上方输出；可重试本命令）。`);
+				fail(`${pkg} 发布失败（web 2FA 未通过或网络错误；可重跑本命令，已发布的包会自动跳过）。`);
 		}
-	}
-	else {
-		let otp = OTP;
-		if (!otp)
-			otp = await askOtp();
-		for (const pkg of PUBLISH_ORDER) {
+		else {
+			let otp = OTP;
+			if (!otp)
+				otp = await askOtp();
 			let attempts = 0;
 			for (;;) {
 				const res = publishPkg(pkg, otp);
@@ -192,7 +209,7 @@ else {
 					otp = await askOtp();
 					continue;
 				}
-				fail(`${pkg} 发布失败（见上方输出）`);
+				fail(`${pkg} 发布失败（见上方输出）；已发布的包重跑本命令会自动跳过。`);
 			}
 		}
 	}
