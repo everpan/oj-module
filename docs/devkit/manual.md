@@ -866,17 +866,20 @@ t("menu.books")         // ❌ 会去 common namespace 找
 import { useTabsStore } from "@oj-module/runtime";
 
 const setTableTitle = useTabsStore(s => s.setTableTitle);
-const resetTableTitle = useTabsStore(s => s.resetTableTitle);
 const { pathname } = useLocation();
 
 useEffect(() => {
 	if (doc?.name) setTableTitle(pathname, doc.name);
-	return () => resetTableTitle(pathname); // 离开页面还原静态标题，避免串到下一个页面
-}, [doc?.name, pathname, setTableTitle, resetTableTitle]);
+}, [doc?.name, pathname, setTableTitle]);
 ```
 
-两点约束：路径必须与导航路径**逐字一致**（尾斜杠会被 `removeTrailingSlash` 归一，含尾斜杠匹配不上）；
-`setTableTitle` 只改**已打开**的页签，故要在页面渲染后（数据就绪时）调用，不能提前于路由挂载。
+三点约束：
+
+1. 路径必须与导航路径**逐字一致**——页签 key 是 `removeTrailingSlash(location.pathname)` 归一后的值；
+2. `setTableTitle` 只改**已打开**的页签，故要在页面渲染后（数据就绪时）调用，不能提前于路由挂载；
+3. 只在页签 key 与内容**一一对应**时这样用（如 `/doc/:id`——一个 id 一个页签）。若同一路径会被
+   复用展示不同内容（列表页/`index` 路由），离开时必须 `resetTableTitle(pathname)`，否则再进来看到
+   上一个内容的标题。
 
 推荐形态（照 `web/src/home/pages/`、`web/src/personal-center/pages/my-profile/` 抄）：
 `BasicContent` 包一层 → 搜索区 + `BasicTable` → 新增/编辑用 antd `Modal` + `Form`
