@@ -231,7 +231,7 @@ export default defineModule({
 > `node_modules/@oj-module/runtime/dist/index.d.ts`——直接 Read 它，或在编辑器里
 > 对 `from "@oj-module/runtime"` 用「跳转到定义 / 自动补全」。**别靠猜**：
 > `BasicContent` / `BasicTable` / `AccessControl` / `useAuthStore` / `useUserStore` /
-> `usePreferences` 都在里面（详见 §6.3）。猜不到的常见后果是白白退回 antd 原生
+> `usePreferences` / `useTabsStore` 都在里面（详见 §6.3）。猜不到的常见后果是白白退回 antd 原生
 > `Table` 重新造轮子。
 
 ---
@@ -857,6 +857,26 @@ t("menu.books")         // ❌ 会去 common namespace 找
 | `AccessControl` | 按角色/权限控制按钮可见性 |
 | `window.$message` | 全局 toast（runtime 的 antd-app 注入，模块内直接用，**无需 import**） |
 | `useAuthStore` / `useUserStore` / `usePreferences` | 读 token / 用户 / 偏好 |
+| `useTabsStore` | 页签（`setTableTitle(routePath, title)` / `resetTableTitle(routePath)`） |
+
+**页签标题跟随内容**：页签文案默认取路由 `handle.title`（静态 i18n key），要让它跟随当前文档名等
+**运行期数据**，在页面里把数据拿到后覆盖：
+
+```tsx
+import { useTabsStore } from "@oj-module/runtime";
+
+const setTableTitle = useTabsStore(s => s.setTableTitle);
+const resetTableTitle = useTabsStore(s => s.resetTableTitle);
+const { pathname } = useLocation();
+
+useEffect(() => {
+	if (doc?.name) setTableTitle(pathname, doc.name);
+	return () => resetTableTitle(pathname); // 离开页面还原静态标题，避免串到下一个页面
+}, [doc?.name, pathname, setTableTitle, resetTableTitle]);
+```
+
+两点约束：路径必须与导航路径**逐字一致**（尾斜杠会被 `removeTrailingSlash` 归一，含尾斜杠匹配不上）；
+`setTableTitle` 只改**已打开**的页签，故要在页面渲染后（数据就绪时）调用，不能提前于路由挂载。
 
 推荐形态（照 `web/src/home/pages/`、`web/src/personal-center/pages/my-profile/` 抄）：
 `BasicContent` 包一层 → 搜索区 + `BasicTable` → 新增/编辑用 antd `Modal` + `Form`

@@ -113,9 +113,11 @@ describe("runtime 主入口出口白名单 (P3.1)", () => {
 		expect(Runtime.setupI18n).toBeTypeOf("function");
 	});
 
-	it("store：user / auth", () => {
+	it("store：user / auth / tabs", () => {
 		expect(Runtime.useUserStore).toBeTypeOf("function");
 		expect(Runtime.useAuthStore).toBeTypeOf("function");
+		// 模块自设页签标题（P3.5）：与 tabs store 的 setTableTitle/resetTableTitle 配对
+		expect(Runtime.useTabsStore).toBeTypeOf("function");
 	});
 
 	it("图标：本地图标 + Ri 常用图标（构建期内联，声明零泄漏）", () => {

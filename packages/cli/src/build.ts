@@ -72,6 +72,7 @@ export const permissionPrefix = "permission:button";
 // store
 export const useAuthStore = _fn;
 export const useUserStore = _fn;
+export const useTabsStore = _fn;
 // 图标
 export const menuIcons = _obj;
 export const EmbeddedIcon = _fn;

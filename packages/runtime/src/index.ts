@@ -96,6 +96,9 @@ export type { AuthProvider } from "./store/auth-provider";
 // 请求头 provider 注入契约（D-M9）：模块经 ctx.register.headerProvider 实现
 export type { HeaderProvider } from "./store/header-provider";
 
+// 模块自设页签标题（P3.5）：模块无法改路由表标题时，用 setTableTitle(路由路径, 标题) 覆盖页签文案
+export { useTabsStore } from "./store/tabs";
+
 export { useUserStore } from "./store/user";
 
 export type { AppInfo } from "./types/app-info";
