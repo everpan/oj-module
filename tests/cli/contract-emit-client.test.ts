@@ -202,16 +202,54 @@ describe("emitClient（AC-D5/D6/D8/D15）", () => {
 		expect((err as Error).message).toContain("id");
 	});
 
-	it("业务错误（信封 code!=0）→ ContractApiError(code, msg)", async () => {
+	/**
+	 * 造真实 ky HTTPError 形态：ky 2.x 构造 HTTPError 前已把原 response 体读干
+	 * （error.data 是解析结果，error.response.json()/clone() 一律失效）。返回前自证夹具。
+	 */
+	async function kyHttpError(body: string, init: ResponseInit, data: unknown): Promise<Error> {
+		const res = new Response(body, init);
+		await res.text(); // 消费体 → bodyUsed=true（复现真实形态）
+		expect(res.bodyUsed).toBe(true);
+		// 自证：体确已不可再读——旧 res.clone().json() 在此形态下必抛（浏览器 TypeError / happy-dom DOMException），被静默吞掉
+		expect(() => res.clone()).toThrow();
+		return Object.assign(new Error(`Request failed with status code ${res.status} ${res.statusText}`.trim()), { response: res, data });
+	}
+
+	it("业务错误（信封 code!=0）→ ContractApiError(code, msg)：真实 ky 形态（体已消费，信封在 error.data）", async () => {
+		const envelope = { code: 1001, msg: "订单不存在" };
+		const httpError = await kyHttpError(JSON.stringify(envelope), { status: 400 }, envelope);
 		const { req } = stubRequest(() => {
-			throw Object.assign(new Error("HTTP Error"), {
-				response: new Response(JSON.stringify({ code: 1001, msg: "订单不存在" }), { status: 400 }),
-			});
+			throw httpError;
 		});
 		const { mod } = await bundleClient(emitClient(ir, { target: "module", module: "order" }), true);
 		mod.bindRequest(req);
 		const err = await mod.getOrderDetail({ id: 404 }).catch((e: unknown) => e);
 		expect(err).toMatchObject({ name: "ContractApiError", code: 1001, msg: "订单不存在" });
+	});
+
+	it("信封缺 msg → 回退 response.statusText（乐观锁 409 真实案例）", async () => {
+		const httpError = await kyHttpError("", { status: 409, statusText: "Conflict" }, { code: 409 });
+		const { req } = stubRequest(() => {
+			throw httpError;
+		});
+		const { mod } = await bundleClient(emitClient(ir, { target: "module", module: "order" }), true);
+		mod.bindRequest(req);
+		const err = await mod.getOrderDetail({ id: 1 }).catch((e: unknown) => e);
+		expect(err).toMatchObject({ name: "ContractApiError", code: 409, msg: "Conflict" });
+	});
+
+	it("非信封错误体（纯文本 / code 非 number / 无 data）→ 原错误原样透传，不误判 ContractApiError", async () => {
+		for (const data of ["Internal Server Error", { code: "1001", msg: "脏值" }, undefined]) {
+			const httpError = await kyHttpError("boom", { status: 500 }, data);
+			const { req } = stubRequest(() => {
+				throw httpError;
+			});
+			const { mod } = await bundleClient(emitClient(ir, { target: "module", module: "order" }), true);
+			mod.bindRequest(req);
+			const err = await mod.getOrderDetail({ id: 1 }).catch((e: unknown) => e);
+			expect((err as Error).name).toBe("Error");
+			expect((err as Error).message).toContain("status code 500");
+		}
 	});
 
 	it("评审 F13：2xx 但信封 code!==0 → 同样归一 ContractApiError（防漂移）", async () => {
