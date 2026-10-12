@@ -5,6 +5,17 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 设计依据、迁移记录与陷阱清单见 [`docs/prd/202609110947-oj-module-two-package-consolidation-design.md`](docs/prd/202609110947-oj-module-two-package-consolidation-design.md)。
 
+## [0.1.15] - 2026-10-12
+
+### Added
+
+- **运行时导出 `useTabsStore`——模块可自设页签标题**：此前页签文案只能取路由 `handle.title`（静态 i18n key），无法跟随运行期数据（如当前文档名）。现在 `@oj-module/runtime` 导出 `useTabsStore`（`setTableTitle(routePath, title)` / `resetTableTitle(routePath)`），页面拿到数据后用 `useTabsStore(s => s.setTableTitle)` 覆盖已打开页签的文案；列表页 / `index` 路由复用同一路径展示不同内容时，离开须 `resetTableTitle` 复位。用法见 `docs/devkit/manual.md` §6.3；出口白名单测试已覆盖（`tests/runtime/runtime-exports.test.ts`）。
+
+### Dependencies
+
+- 四包 lockstep 升至 `0.1.15`（`@oj-module/runtime` / `@oj-module/cli` / `@plane/kit` / `@plane/editor`）；`@oj-module/core` 不在锁步组，维持 `0.1.13`。
+- 宿主共享依赖钉版快照见 `packages/cli/shell-dist/versions.json`（66 项）；关键项：`react` 19.2.8 / `react-dom` 19.2.8 / `react-router` 7.18.2 / `@tanstack/react-query` 5.102.8 / `antd` 6.6.1 / `i18next` 26.4.0 / `react-i18next` 17.0.12 / `zustand` 5.0.15 / `dayjs` 1.11.23 / `echarts` 6.1.0 / `motion` 12.43.0。`oj` 最低版本门禁 `MIN_OJ_VERSION = 0.1.50` 不变。完整矩阵以 `pnpm exec ojm info` 为准。
+
 ## [0.1.11] - 2026-10-07
 
 ### Added

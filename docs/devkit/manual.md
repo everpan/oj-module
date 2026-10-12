@@ -227,6 +227,37 @@ export default defineModule({
 `react-countup`、`ahooks`、`ky`、`clsx`、`tailwind-merge`、`pinyin-pro`。
 查实际矩阵：`pnpm exec ojm info`。
 
+### 2.7 本版本共享依赖钉版（0.1.15 快照）
+
+宿主经 importmap 提供以下单例（模块 `devDependencies` 须对齐，供 `tsc` 用）；完整 66 项矩阵以
+`pnpm exec ojm info` 或 `packages/cli/shell-dist/versions.json`（构建期生成）为准。
+
+| 包 | 钉版 |
+| --- | --- |
+| `react` / `react-dom` | 19.2.8 |
+| `react-router` | 7.18.2 |
+| `@tanstack/react-query` | 5.102.8 |
+| `antd` | 6.6.1 |
+| `@ant-design/icons` | 6.3.2 |
+| `@ant-design/pro-components` | 3.1.12-0 |
+| `i18next` / `react-i18next` | 26.4.0 / 17.0.12 |
+| `zustand` | 5.0.15 |
+| `dayjs` | 1.11.23 |
+| `echarts` / `echarts-for-react` | 6.1.0 / 3.0.6 |
+| `motion` | 12.43.0 |
+| `@dnd-kit/core` | 6.3.1 |
+| `keepalive-for-react` | 5.0.11 |
+| `simplebar-react` | 3.3.2 |
+| `nprogress` | 0.2.0 |
+| `react-countup` | 6.5.3 |
+| `ahooks` | 3.9.7 |
+| `ky` | 2.0.2 |
+| `clsx` / `tailwind-merge` | 2.1.1 / 3.6.0 |
+| `pinyin-pro` | 3.29.3 |
+
+框架包版本：`@oj-module/runtime` / `@oj-module/cli` / `@plane/kit` / `@plane/editor` 均为 `0.1.15`
+（lockstep）；`oj` 二进制最低版本门禁 `MIN_OJ_VERSION = 0.1.50`。
+
 > **`@oj-module/runtime` 到底导出哪些东西？** 权威清单随包发布在
 > `node_modules/@oj-module/runtime/dist/index.d.ts`——直接 Read 它，或在编辑器里
 > 对 `from "@oj-module/runtime"` 用「跳转到定义 / 自动补全」。**别靠猜**：

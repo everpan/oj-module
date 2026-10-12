@@ -19,7 +19,7 @@
 
 > ⚠️ 那两份 guide 有**已知陈旧处**，以源码为准：
 > dev 端口实际是 **3333**（guide 写的 5173 已过时）；包版本以
-> `packages/*/package.json` 为准（guide 内部 0.1.6 / 0.1.8 不一致，实际 **0.1.8**）。
+> `packages/*/package.json` 为准（guide 内部 0.1.6 / 0.1.8 不一致，实际 **0.1.15**）。
 
 ## §2 两包结构与依赖方向
 
@@ -132,7 +132,7 @@ pnpm test tests/shell                       # 宿主全量
 **一键发布**：`node scripts/publish-packages.mjs`（lockstep 四包校验 → 构建 → 守卫测试 →
 runtime → cli → registry 复核；`--dry-run` 只演练）。下面的手动步骤是它的展开参考。
 
-- 两包**同版本号**（当前 `0.1.8`），后续发版保持 lockstep。
+- 两包**同版本号**（当前 `0.1.15`），后续发版保持 lockstep。
 - **必须 `pnpm publish`**——用 `npm publish` 会漏出 `workspace:*` / `catalog:` 字面量。
 - **顺序：先 `runtime` 后 `cli`**。`runtime` 未公开时，新 `cli` 的精确依赖会悬空，
   消费者直接装不上。
