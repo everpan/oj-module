@@ -153,16 +153,21 @@ runtime → cli → registry 复核；`--dry-run` 只演练）。下面的手动
 4. **发现反常规/反常识/与业界不符的问题**，当场追加到文档并分类记录。
 5. **完工更新任务状态 + 写小结段**（关键过程与耗时）。
 
-## §7 待对接（未做）
+## §7 接入发布链路（已完成）
 
-本 devkit（`docs/devkit/`）目前只是**源文件**，还没接进发布链路：
+本 devkit（`docs/devkit/`）已接进发布链路，业务工程 `ojm init` 自动拿到：
 
-- `packages/cli/src/init.ts` 的分发逻辑（约 77–87 行）现在只拷 `bin/devkit/`
-  里的 **oj** devkit 到 `.claude/skills/oj-api-dev/`；
-- 要让业务工程自动拿到本 skill，需把 `docs/devkit/` 归置进 cli 包，
-  并在 init 里多拷一份到 `.claude/skills/ojm-module-dev/`。
+- `packages/cli/scripts/sync-devkit.mjs`（cli 的 `prepack` 第一步）：把仓库
+  `docs/devkit/` 归置进 cli 包 `packages/cli/devkit/`，随 `@oj-module/cli` 发布
+  （`package.json#files` 白名单已含 `devkit`）；
+- `packages/cli/src/init.ts` 第 4b 步：从 cli 包内置 devkit 多拷一份到
+  工程的 `.claude/skills/ojm-module-dev/`（拷 `SKILL.md` / `manual.md` /
+  `README.md`，已存在则幂等跳过）。
 
-在此之前，业务工程按 `README.md` 的手动拷贝方式安装。
+`packages/cli/devkit/` 是发布副本、由 prepack 生成，已加进 `.gitignore` 不入库；
+源仍是仓库根 `docs/devkit/`，改文档只动那里一处。
+
+> 历史记录：此处原为「待对接（未做）」，上述两步落地后即完成。
 
 ---
 

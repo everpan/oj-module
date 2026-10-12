@@ -100,6 +100,19 @@ export async function initProject(destDir: string, opts: InitOptions = {}): Prom
 		report.skipped.push(".claude/skills/oj-api-dev（bin/devkit 缺失，跳过）");
 	}
 
+	// 4b) ojm 模块开发 skill 分发：从 cli 包内置 devkit（prepack 同步的
+	//     docs/devkit）拷到 .claude/skills/ojm-module-dev/；已存在则幂等跳过。
+	const cliDevkit = path.join(cliRoot, "devkit");
+	if (fs.existsSync(path.join(cliDevkit, "SKILL.md"))) {
+		const ojmSkillDir = path.join(destDir, ".claude/skills/ojm-module-dev");
+		fs.mkdirSync(ojmSkillDir, { recursive: true });
+		for (const name of ["SKILL.md", "manual.md", "README.md"])
+			copyIfAbsent(path.join(cliDevkit, name), path.join(ojmSkillDir, name), report);
+	}
+	else {
+		report.skipped.push(".claude/skills/ojm-module-dev（cli 内置 devkit 缺失，跳过）");
+	}
+
 	// 5) package.json：不存在则生成；已存在则合并补缺（scripts/devDeps/pnpm
 	// 只补缺失键，既有内容永不覆盖——0.1.0 发布实测：用户常先建最小
 	// package.json 装 cli，整体跳过会让 pnpm dev 无脚本可用）

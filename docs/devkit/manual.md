@@ -600,20 +600,91 @@ export default {
 
 ## §5 布局与插槽
 
+布局决定一个路由「页面之外」长什么样：有没有顶栏、侧边栏、页签、页脚。框架内置四种布局，
+模块用路由 `handle.layout` 选用，也可以自己注册新布局或覆盖内置布局。
+
+> **适配总纲**：模块只负责**内容区**（`<Outlet/>` 渲染的页面），外壳由布局提供。
+> 写页面时把它塞进 `BasicContent` 再进主内容滚动区——不要自己开第二根滚动条、
+> 也不要把可滚动高度写死，外壳的顶栏 / 页签 / 页脚高度是可变的。
+
 ### 5.1 内置布局
 
-| 名字 | 用途 |
+| 名字 | 组件 | 用途 / 何时用 |
+|---|---|---|
+| `container` | `ContainerLayout` | **有页面的业务路由必写**。完整外壳：顶栏 + 侧边/顶部导航 + 页签（keepAlive）+ 主内容 + 可选页脚 + 回到顶部 + 水印 |
+| `parent` | `ParentLayout` | 嵌套父级，自身只渲染 `<Outlet/>`（不挂任何 chrome），用于「菜单分组 / 多级路由」的父节点 |
+| `fullscreen` | `FullscreenLayout` | 全屏外壳：占满视口 + 品牌区（logo + 应用标题）+ 右上角工具（布局预览/主题/语言）+ 横幅 + 页脚，**无侧边栏/页签**。登录页即用它 |
+| `none` | 裸 `<Outlet/>` | 不挂任何外壳，页面裸渲染。**不写 `layout` 时运行时回落为此值** |
+
+> 红线（见 SKILL.md）：有页面的路由 handle 忘写 `layout: "container"`，页面会**裸奔**
+> （无侧边栏/页签/顶栏），且 `keepAlive` 失效。
+>
+> 迁移说明：类型定义里 `handle.layout` 当前标了默认 `"container"` 仅为向后兼容，
+> **目标态是改为 `"none"`**——不要依赖默认值，每个路由都显式写 `layout`。
+
+### 5.2 路由如何选布局
+
+```ts
+// web/src/<模块>/entry.ts
+routes: [
+	{
+		path: "books",
+		handle: { layout: "container", title: "books:menu.books" }, // ✅ 有页面 → container
+		children: [{ index: true, Component: () => import("./pages/books-list") }],
+	},
+	{
+		path: "settings",
+		handle: { layout: "parent" }, // 父级只做分组，不挂 chrome
+		children: [/* … */],
+	},
+],
+```
+
+- `handle.layout` 接受内建四名，或模块经 `ctx.register.layout` 登记的名字（含覆盖内建名）。
+- 模块路由**不再自己 import 布局组件**——框架在 module-loader 出口按 `handle.layout`
+  统一包裹（见 `resolveRouteLayouts`）：父级路由若没写 `Component` 但有 `children`，就按
+  `handle.layout` 注入布局；已写 `Component` 的页面路由不受影响。
+- 后端下发的父级路由也必须在 `handle` 里带 `layout`，否则回落裸 `<Outlet/>`。
+- 名字写错（既非内建也无模块登记）→ 控制台 warn-once 一次
+  `[layout] 未知名布局 "xxx" … 回落 Outlet`，不崩但页面没壳。
+
+### 5.3 容器外壳构成（适配必读）
+
+`container` 在一条 `h-screen flex flex-col` 里分层（响应式、可配置）。从上到下：
+
+1. **顶栏 `LayoutHeader`（高 48px）**：左侧是面包屑（侧边导航时）或顶部菜单（顶部/混合导航时）；
+   右侧操作区依次是 **header-actions 插槽节点 → 全局搜索 → 偏好设置 → 主题 → 语言 →
+   全屏 → 通知铃 → 用户菜单**；移动端最左侧多一个展开侧边栏的汉堡键。
+2. **页签 `LayoutTabbar`（高 35px，可关）**：已打开页面的标签页，**keepAlive 缓存就活在它背后**。
+3. **侧边栏 / 双列导航 / 移动抽屉**：按导航风格与设备类型切换（见 5.6）。
+4. **主内容 `LayoutContent`**：`id="__react-antd-admin_main_content"`，是唯一的滚动容器
+   （`overflow-y-auto`），页面内容应渲染在它内部。
+5. **页脚（可选，可固定）** + **回到顶部悬浮按钮**（滚动目标就是这个主内容容器）。
+
+外壳对外暴露的尺寸（CSS 变量，内容区实时同步，可直接在样式里 `var(...)` 读取）：
+
+| CSS 变量 | 含义 |
 |---|---|
-| `container` | 有侧边栏 + 页签的完整版（**有页面的路由必须显式写这行**） |
-| `parent` | 嵌套父级，不渲染自己的 UI |
-| `none` | 默认值，裸渲染（不写 `layout` 就是这个） |
-| `fullscreen` | 全屏（登录页那种） |
+| `--react-antd-admin-content-height` | 主内容区实时高度（ResizeObserver 同步） |
+| `--react-antd-admin-content-width` | 主内容区实时宽度 |
+| `--react-antd-admin-header-height` | 顶栏高度（最大化页签时退为 0） |
+| `--react-antd-admin-footer-height` | 页脚高度 |
 
-> 路由级 handle 忘写 `layout: "container"`，页面会**裸奔**且 `keepAlive` 失效。
+固定常量（参考，非变量）：`headerHeight=48`、`tabbarHeight=35`、`footerHeight=40`、`sidebarTitleHeight=52`。
 
-### 5.2 自定义布局
+**适配约定**：
+- 页面内容放进 `BasicContent`（`import { BasicContent } from "@oj-module/runtime"`），
+  它会处理内边距与背景，并自然落在主内容滚动区内。
+- 需要「固定」在内容区内的浮层（抽屉、弹层、sticky 工具条）用 `position: fixed` 时，
+  相对的是主内容容器而非整窗——高度参考 `--react-antd-admin-content-height`，
+  避免被顶栏/页签遮挡或溢出。
+- 不要自己再包一层 `overflow:auto` 的容器，否则会出现**双滚动条**、且「回到顶部」失效
+  （回到顶部按钮的滚动目标是 `#__react-antd-admin_main_content .simplebar-content-wrapper`）。
+- `ContainerLayout` **禁止用 `lazy()` 加载**（切换路由会闪屏，源码注释已标）。
 
-**① 写组件**（普通组件，留一块地方给孩子页面渲染）：
+### 5.4 自定义布局
+
+**① 写组件**（普通 React 组件，**必须渲染 `<Outlet/>`**，否则子页面无处可去）：
 
 ```tsx
 import { Outlet } from "react-router";
@@ -628,24 +699,116 @@ export default function ProLayout() {
 }
 ```
 
-**② 起名**（某模块 onInit 里）：`ctx.register.layout("pro", ProLayout);`
+**② 起名**（某模块 onInit 里，同 provider 规则——先到先得、重名 warn、onInit 结束前报名、
+模块卸载自动清理）：
 
-**③ 谁想用谁用**——任何路由（含后端下发的）在 `handle.layout` 写这个名字。
+```ts
+ctx.register.layout("pro", ProLayout);
+```
 
-**验证**：打开该路由只剩顶栏和内容区。名字写错会提醒一次
+**③ 谁想用谁用**——任何路由（含后端下发的）在 `handle.layout` 写 `"pro"`。
+
+**验证**：打开该路由只剩顶栏和内容区。名字写错会 warn-once
 `[layout] 未知名布局 "por"`，然后按"没外壳"渲染，不会崩。
 
-### 5.3 特别提醒
+> ⚠️ **把 `container` 整个换掉 = 自己背起全部家当**：页签缓存（keepAlive）、通知铃、
+> 头部操作区插槽、偏好设置抽屉、全局搜索、主题/语言切换、水印、回到顶部……全住在自带
+> 外壳里。覆盖 `container` 后这些能力**一并消失**，你得自己重建。除非你确实想要极简壳
+> （如大屏看板/嵌入式场景），否则别覆盖它——真要定制，优先用 **插槽（5.5）** 往内置
+> 外壳里加东西，而不是换掉外壳。
+>
+> 补充：布局在**路由加载那一刻**定下来，改了组件要刷新页面才看到新的。
 
-- 规矩跟 provider 一样：先到先赢、重名警告、onInit 结束前报名、卸载自动清理；
-- 布局在**路由加载那一刻**定下来，改了组件要刷新页面才看到新的；
-- ⚠️ **把 `container` 整个换掉 = 自己背起全部家当**：页签缓存、通知铃、
-  头部自定义区、主题设置抽屉……全住在自带外壳里，换壳后它们一起消失。
-  除非你就是想要个极简壳，否则别换它。
+### 5.5 布局插槽（往内置外壳注入片段）
 
-### 5.4 插槽
+`ctx.registerSlot(slotName, node)` 往布局指定位置塞一个 React 节点；不注册就是空着。
+模块卸载时节点自动消失（不会泄漏）。
 
-`ctx.registerSlot(位置, 节点)` 往页面头部塞自定义 React 节点；不注册就是空着。
+目前内置外壳开放的位置：
+
+| slotName | 位置 | 典型用途 |
+|---|---|---|
+| `"header-actions"` | 顶栏右侧、**全局搜索之前** | 跨模块的快捷操作按钮（如「新建」「刷新」「导入」） |
+
+模块侧：
+
+```ts
+ctx.registerSlot("header-actions", <Button icon={<PlusOutlined />}>新建</Button>);
+```
+
+布局侧（内置外壳已接好，模块一般不用管；自建布局时这么消费）：
+
+```tsx
+import { useSlotNodes } from "@oj-module/runtime";
+import { Fragment } from "react";
+
+const actions = useSlotNodes("header-actions"); // 订阅：注册/卸载时自动重渲染
+// <>{actions.map((node, i) => <Fragment key={i}>{node}</Fragment>)}</>
+```
+
+- 注册表按 `slotName → moduleName` 两级组织：同名重注册覆盖，卸载按模块清理。
+- 多个模块往同一插槽注册，按注册顺序渲染（无优先级数字可填，先注册者在前）。
+
+### 5.6 响应式与断点
+
+外壳与导航风格按设备类型自适应。断点（ahooks `useResponsive`）：
+
+| 断点 | 宽度 |
+|---|---|
+| `xs` | 0 |
+| `sm` | 576 |
+| `md` | 768 |
+| `lg` | 992 |
+| `xl` | 1200 |
+
+设备判定（`useDeviceType`）：
+
+- **移动端** `isMobile`：`xs && !sm`（<576）或 `sm && !md`（576–767）
+- **iPad** `isIpad`：`md && !xl`（768–1199）
+- **PC** `isPC`：`xl`（≥1200）
+
+`ContainerLayout` 的自动行为：
+- **iPad**（`lg && !xl`）→ 侧边栏自动折叠；
+- **PC**（`xl`）→ 侧边栏自动展开；
+- **移动端** → 导航风格强制为侧边导航，侧边栏收进**抽屉**（`LayoutMobileMenu`），
+  顶栏出现汉堡键展开；此刻页签/最大化态下侧边栏宽度为 0。
+
+**适配约定**：
+- 页面布局用 Tailwind 响应式工具类（`md:` / `lg:` / `xl:`）而非媒体查询写死，与外壳断点对齐。
+- 不要假设侧边栏常驻：移动端它进抽屉、iPad 默认折叠、用户也可在偏好里关掉侧边栏
+  （`sidebarEnable`）。内容区宽度随这些状态变化——靠 `--react-antd-admin-content-width`
+  取实时宽度，别硬编码。
+
+### 5.7 用户偏好（preferences）与适配
+
+用户在右上角「偏好设置」抽屉调的东西会 **localStorage 持久化**（key 带应用 namespace），
+并实时驱动外壳。模块不需、也不应去「同步」这些状态——渲染在内容区里、让外壳自己变即可。
+常用开关（默认值）：
+
+| 分组 | 关键项 | 默认 | 对适配的影响 |
+|---|---|---|---|
+| 布局 | `navigationStyle` | `side`（侧边） | 还可选 `top` / `mixed` / `two-column`——顶栏会变菜单、侧边栏形态不同 |
+| 布局 | `sidebarEnable` / `sidebarWidth` / `sideCollapsedWidth` / `sidebarCollapsed` | 开 / 210 / 56 / 关 | 内容区左缩进随它变 |
+| 页签 | `tabbarEnable` | 开 | 关掉则无页签、keepAlive 失效 |
+| 页脚 | `enableFooter` / `fixedFooter` | 开 / 固定 | 固定页脚会占内容区底部高度 |
+| 通用 | `watermark` / `enableBackTopButton` / `pageLayout` | 关 / 开 / `layout-right` | 水印铺满、回到顶部悬浮、登录页品牌区左右/居中 |
+| 主题 | `theme`(`auto`) / `themeColorPrimary` / `themeRadius` / `builtinTheme` | — | 暗色模式由外壳 `ConfigProvider` + CSS 变量统一，模块用 `bg-colorBgContainer` 等语义色即可 |
+
+> 模块读偏好用 `usePreferences`（`import { usePreferences } from "@oj-module/runtime"`），
+> 但**绝大多数情况不需要**——外壳已据偏好自适配，模块只管内容区。
+
+### 5.8 适配陷阱速查
+
+| 症状 | 原因 | 处置 |
+|---|---|---|
+| 页面无侧边栏/页签、keepAlive 失效 | 路由 handle 没写 `layout: "container"` | 补上 |
+| 出现双滚动条 / 回到顶部点了没用 | 页面里自己又包了一层 `overflow:auto` | 删掉，让内容落在主内容滚动区（`BasicContent`） |
+| 固定浮层被顶栏/页签挡住或溢出 | `position:fixed` 相对整窗算高度 | 用 `--react-antd-admin-content-height/width` 取实时高度 |
+| 移动端侧边栏「不见了」 | 移动端侧边栏进抽屉、iPad 默认折叠 | 正常；点顶栏汉堡展开；别硬编码侧栏宽度 |
+| 切路由内容闪一下 | 布局用了 `lazy()` 加载 | 改普通 import（ContainerLayout 已标禁 lazy） |
+| 覆盖 `container` 后通知铃/页签没了 | 覆盖了内置外壳，自带 chrome 全失效 | 别覆盖；要加东西用 `header-actions` 插槽 |
+| 后端下发的布局名页面没壳 | 提供该布局的模块没加载 | 看控制台 `[layout] 未知名布局` 提醒 |
+| 自定义布局里子页面空白 | 组件没渲染 `<Outlet/>` | 补 `<Outlet/>` |
 
 ---
 

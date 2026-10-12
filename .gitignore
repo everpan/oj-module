@@ -24,6 +24,8 @@ dist/
 # cli 内置的「预构建宿主」shell-dist 改为构建期生成、不入库（pnpm publish 前由
 # 发布脚本 step 2 重建；测试由 tests/global-setup.ts 在缺失时自举 build:shell）
 packages/cli/shell-dist/
+# cli 内置的 ojm 模块开发文档（docs/devkit 的发布副本）由 prepack 同步、不入库
+packages/cli/devkit/
 # runtime 的发布产物（dist/runtime.js）改为构建期生成、不入库（同上）
 
 # editor 首方共享包的发布产物（dist/editor.js）随仓库分发。它无法在 oj-module 侧

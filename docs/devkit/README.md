@@ -20,6 +20,12 @@
 
 ## 安装（业务工程）
 
+**方式一（推荐）：`ojm init` 自动分发。** 从 `@oj-module/cli` 某版本起，`ojm init`
+会把本 devkit 自动拷进工程的 `.claude/skills/ojm-module-dev/`（与 oj 后端 devkit
+一并安装，已存在则幂等跳过）。无需手动拷贝。
+
+**方式二：手动拷贝**（旧工程或不走 init 时）：
+
 ```sh
 # 本 devkit（ojm 模块开发）：拷入工程的 Claude Code skill 目录
 mkdir -p .claude/skills/ojm-module-dev
@@ -35,12 +41,15 @@ cp ../oj-api-dev/SKILL.md ../oj-api-dev/api-manual.md .claude/skills/oj-api-dev/
 
 ## 与 `ojm init` 的关系
 
-`ojm init` 目前只分发 oj 的 devkit（`.claude/skills/oj-api-dev/`）。
-把本目录接入 init 分发是**未做**的一步，见 `framework-dev.md` §7「待对接」。
+`ojm init` 已接入本 devkit 分发（`packages/cli/src/init.ts` 第 4b 步）：从 cli 包内置的
+`devkit/`（prepack 由 `docs/devkit/` 同步而来）拷 `SKILL.md` / `manual.md` / `README.md`
+到 `.claude/skills/ojm-module-dev/`。发布链路细节见 `framework-dev.md` §7。
 
 ## 更新
 
-手册与 skill 随 `@oj-module/cli` 版本一起发布；升级后覆盖工程内旧拷贝。
+手册与 skill 随 `@oj-module/cli` 版本一起发布；升级 cli 后重跑 `ojm init` 即可刷新
+（幂等跳过已存在的文件——若想强制覆盖旧拷贝，先删 `.claude/skills/ojm-module-dev/` 再 init）。
+源文件只在仓库根 `docs/devkit/` 一处维护。
 
 > 本目录（devkit）是**自包含**的：所有内容都在这 4 个文件里，不需要工程仓库里的
 > 其它文档即可读懂。维护者视角的内容来源整理在 `framework-dev.md`（仅本仓）。

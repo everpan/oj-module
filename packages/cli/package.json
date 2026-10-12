@@ -1,7 +1,7 @@
 {
 	"name": "@oj-module/cli",
 	"type": "module",
-	"version": "0.1.13",
+	"version": "0.1.14",
 	"description": "React Antd Admin 模块工程命令行工具（含预构建宿主 shell-dist）",
 	"license": "MIT",
 	"exports": {
@@ -42,13 +42,14 @@
 		"bin",
 		"shell-dist",
 		"src",
+		"devkit",
 		"templates",
 		"vendor",
 		"!shell-dist/**/*.map"
 	],
 	"scripts": {
 		"build:shell": "tsx shell/scripts/build.mts",
-		"prepack": "node scripts/sync-host-versions.mjs"
+		"prepack": "node scripts/sync-devkit.mjs && node scripts/sync-host-versions.mjs"
 	},
 	"dependencies": {
 		"@faker-js/faker": "catalog:",

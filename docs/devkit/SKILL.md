@@ -99,6 +99,11 @@ description: 用 ojm 开发前后端一体工程时使用——新增/修改前�
 | 新建后端模块目录后 API 404 | 目录镜像路由未热更 | **重启** `ojm dev` |
 | DELETE 返回 405 | 方法名写成了 `delete` | 改成 `del` |
 | 页面无侧边栏/页签、keepAlive 失效 | 路由 handle 没写 `layout: "container"` | 补上 |
+| 出现双滚动条 / 点回到顶部没反应 | 页面里自己又包了一层 `overflow:auto` | 删掉，内容塞进 `BasicContent` 落主滚动区 |
+| 固定浮层被顶栏/页签遮挡或溢出 | `position:fixed` 按整窗算高度 | 用 `--react-antd-admin-content-height/width` 取实时高度 |
+| 移动端侧边栏「不见了」 | 移动端进抽屉、iPad 默认折叠、可关 | 正常；别硬编码侧栏宽度，用 content-width |
+| 覆盖 `container` 后通知铃/页签没了 | 覆盖了内置外壳，自带 chrome 全失效 | 别覆盖；要加东西用 `header-actions` 插槽 |
+| 自定义布局里子页面空白 | 组件没渲染 `<Outlet/>` | 补 `<Outlet/>` |
 | 登录 401 且 msg 不是 `invalid credentials` | `/auth/*` 不在 `anonymous_paths` | 加进 `api/config.yaml`，重启 |
 | WS 连接 401（「文件在却连不上」） | 模块写了 `ws.ts`，但其 `/ws` 路由不在 `anonymous_paths`（oj v0.1.30+ WS 握手也过鉴权） | 匿名 WS 加进 `anonymous_paths`；受保护 WS 带 Bearer/Cookie 是正当用法。`ojm api --check` 会对此 warn |
 | 登出/回登录页落空，或登录后落错误边界 | 工程缺 `login` / `home` 模块 | 在 `web.config.ts` 保留两者 |
