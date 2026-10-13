@@ -104,7 +104,13 @@ function matchExemptPath(routePath: string, p: string): boolean {
 	return routePath === p || routePath.startsWith(`${p}/`);
 }
 
-/** oj 方法名 → HTTP 动词（emit-stub 的反向映射） */
+/**
+ * oj 方法名 → HTTP 动词（emit-stub 的反向映射）。
+ * 注意**不含 options**：契约运行时故意不表达 OPTIONS（预检请求由 fetch/CORS 层处理，
+ * 见 runtime/contract 的方法白名单）——oj 树里的 options handler 因此永不进对账表
+ * （不会被误报「未登记」）；routes.js 的 options 行经下方 parseRoutesJs 的
+ * 大写回落归一，同样不误报 drift。
+ */
 const VERB_OF: Record<string, IrEndpoint["method"]> = {
 	get: "GET",
 	post: "POST",
@@ -114,6 +120,9 @@ const VERB_OF: Record<string, IrEndpoint["method"]> = {
 	head: "HEAD",
 };
 
+/** oj v0.1.64 嵌套上限（与 oj 内省一致）；超出即 oj 启动报错，checker 不深追 */
+const MAX_GROUP_DEPTH = 4;
+
 interface HandlerRow {
 	/** HTTP 动词 */
 	method: IrEndpoint["method"]
@@ -121,15 +130,30 @@ interface HandlerRow {
 	dir: string
 	/** 语句起始 `.route = "..."` 字面量（无则目录镜像直达） */
 	tail?: string
+	/** v0.1.64：点分 handler 链（"cccc.get"；顶层动词即方法名） */
+	chain: string
+	/** v0.1.64：组前缀解析后的有效路由全路径（base 相对、无前导 /；绝对 .route 即其自身） */
+	full: string
 	filePath: string
 }
 
-/** AST 扫单个 api.ts：default 导出对象的方法名 + 顶层 .route 字面量赋值 */
-export function scanHandlerFile(filePath: string, apiSrcDir: string): HandlerRow[] {
-	const text = readFileSync(filePath, "utf8");
-	const sf = ts.createSourceFile(filePath, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+/** `a` / `a.b` 形式的属性访问 → 点分名；其余（调用/元素访问）→ undefined */
+function dottedNameOf(node: ts.Expression): string | undefined {
+	if (ts.isIdentifier(node))
+		return node.text;
+	if (ts.isPropertyAccessExpression(node)) {
+		const base = dottedNameOf(node.expression);
+		return base ? `${base}.${node.name.text}` : undefined;
+	}
+	return undefined;
+}
 
-	// 顶层 <fn>.route = "字面量"（语句起始标准赋值——oj build 同款识别口径）
+/**
+ * 语句起始的 `<路径>.route = "字面量"`（路径可为点分：`cccc.post.route`，运行时即
+ * `cccc.post` 函数对象的 `.route`——与 oj 内省读 `fn.route` 同源）。空串视同未挂
+ * （oj 口径）。oj build 只认顶层标准赋值，这里同口径且放宽到点分左值。
+ */
+function collectRouteDecls(sf: ts.SourceFile): Map<string, string> {
 	const routes = new Map<string, string>();
 	for (const stmt of sf.statements) {
 		if (!ts.isExpressionStatement(stmt) || !ts.isBinaryExpression(stmt.expression))
@@ -139,38 +163,150 @@ export function scanHandlerFile(filePath: string, apiSrcDir: string): HandlerRow
 			continue;
 		if (!ts.isPropertyAccessExpression(expr.left) || expr.left.name.text !== "route")
 			continue;
-		if (!ts.isIdentifier(expr.left.expression) || !ts.isStringLiteral(expr.right))
+		if (!ts.isStringLiteral(expr.right) || expr.right.text === "")
 			continue;
-		routes.set(expr.left.expression.text, expr.right.text);
+		const path = dottedNameOf(expr.left.expression);
+		if (path)
+			routes.set(path, expr.right.text);
 	}
+	return routes;
+}
 
-	// export default { get, post: detail, put() {} } → 方法名 → 实现函数名
-	const methods = new Map<string, string>();
+/** 顶层 `const x = { ... }` 对象字面量表：嵌套组经标识符引用时的解析依据 */
+function collectObjectDecls(sf: ts.SourceFile): Map<string, ts.ObjectLiteralExpression> {
+	const decls = new Map<string, ts.ObjectLiteralExpression>();
 	for (const stmt of sf.statements) {
-		if (!ts.isExportAssignment(stmt) || stmt.isExportEquals || !ts.isObjectLiteralExpression(stmt.expression))
+		if (!ts.isVariableStatement(stmt))
 			continue;
-		for (const prop of stmt.expression.properties) {
-			if (ts.isShorthandPropertyAssignment(prop)) {
-				methods.set(prop.name.text, prop.name.text);
-			}
-			else if (ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name)) {
-				methods.set(prop.name.text, ts.isIdentifier(prop.initializer) ? prop.initializer.text : prop.name.text);
-			}
-			else if (ts.isMethodDeclaration(prop) && ts.isIdentifier(prop.name)) {
-				methods.set(prop.name.text, prop.name.text);
-			}
+		for (const decl of stmt.declarationList.declarations) {
+			if (ts.isIdentifier(decl.name) && decl.initializer && ts.isObjectLiteralExpression(decl.initializer))
+				decls.set(decl.name.text, decl.initializer);
 		}
 	}
+	return decls;
+}
 
-	// 目录镜像：api/src/order/item/api.ts → order/item
+/** verb 键 → 实现函数名（供 `.route` 语句按函数名查找；内联写法回落键名） */
+function implNameOf(prop: ts.ObjectLiteralElementLike): string | undefined {
+	if (ts.isShorthandPropertyAssignment(prop))
+		return prop.name.text;
+	if (ts.isMethodDeclaration(prop) && prop.name)
+		return prop.name.getText();
+	if (ts.isPropertyAssignment(prop)) {
+		if (ts.isIdentifier(prop.name) && ts.isIdentifier(prop.initializer))
+			return prop.initializer.text;
+		if (prop.name)
+			return prop.name.getText();
+	}
+	return undefined;
+}
+
+/** 非 verb 键 → 子组对象字面量（内联或经标识符解析）；函数/数组/基元 → undefined */
+function groupValueOf(prop: ts.ObjectLiteralElementLike, decls: Map<string, ts.ObjectLiteralExpression>): ts.ObjectLiteralExpression | undefined {
+	if (ts.isPropertyAssignment(prop)) {
+		if (ts.isObjectLiteralExpression(prop.initializer))
+			return prop.initializer;
+		if (ts.isIdentifier(prop.initializer))
+			return decls.get(prop.initializer.text);
+		return undefined;
+	}
+	if (ts.isShorthandPropertyAssignment(prop))
+		return decls.get(prop.name.text);
+	return undefined;
+}
+
+/** default 导出对象：内联字面量或标识符（`export default api`） */
+function defaultExportObject(sf: ts.SourceFile, decls: Map<string, ts.ObjectLiteralExpression>): ts.ObjectLiteralExpression | undefined {
+	for (const stmt of sf.statements) {
+		if (!ts.isExportAssignment(stmt) || stmt.isExportEquals)
+			continue;
+		if (ts.isObjectLiteralExpression(stmt.expression))
+			return stmt.expression;
+		if (ts.isIdentifier(stmt.expression))
+			return decls.get(stmt.expression.text);
+	}
+	return undefined;
+}
+
+/** 相对路由按层前缀解析（绝对 `/` 开头即根级）；与 oj 内省 resolve 同规则 */
+function resolveRoute(own: string, prefix: string): string {
+	return own.startsWith("/") ? own : (prefix ? `${prefix}/${own}` : own);
+}
+
+/** 有效路由全路径（base 相对、无前导 /）：绝对 .route 取其自身，否则目录镜像 + 相对尾 */
+function fullPathOf(dir: string, tail: string | undefined): string {
+	if (tail?.startsWith("/"))
+		return tail.replace(/^\//, "");
+	return [dir, tail].filter(Boolean).join("/");
+}
+
+/**
+ * AST 扫单个 api.ts（v0.1.64 起支持嵌套 handler 组）：
+ * default 导出对象的键——verb 键（函数）即端点；非 verb 键（普通对象）即子组，
+ * 递归展开（上限 4 层，路径环守卫）。组级 `.route` 作整组默认前缀，动词自身
+ * `.route` 优先覆盖；文件层（`const api = {...}; api.route = ...`）同为默认前缀。
+ * 非 verb 键挂函数/数组/基元是 oj 判别红线（启动即报错），此处按「不当路由」跳过。
+ */
+export function scanHandlerFile(filePath: string, apiSrcDir: string): HandlerRow[] {
+	const text = readFileSync(filePath, "utf8");
+	const sf = ts.createSourceFile(filePath, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+	const routes = collectRouteDecls(sf);
+	const decls = collectObjectDecls(sf);
 	const relDir = relative(apiSrcDir, dirname(filePath)).split(sep).join("/");
 	const rows: HandlerRow[] = [];
-	for (const [name, fn] of methods) {
-		const method = VERB_OF[name];
-		if (!method)
-			continue; // 非动词属性（helper 挂载等）不当路由
-		const tail = routes.get(fn);
-		rows.push({ method, dir: relDir, tail: tail === "" ? undefined : tail, filePath });
+	const seen = new Set<ts.Node>();
+
+	const walk = (obj: ts.ObjectLiteralExpression, chainPrefix: string, routePrefix: string, depth: number): void => {
+		if (depth > MAX_GROUP_DEPTH || seen.has(obj))
+			return;
+		seen.add(obj);
+		for (const prop of obj.properties) {
+			const name = (prop.name && ts.isIdentifier(prop.name)) ? prop.name.text : undefined;
+			if (!name)
+				continue;
+			const chain = chainPrefix ? `${chainPrefix}.${name}` : name;
+			if (VERB_OF[name]) {
+				const fnName = implNameOf(prop) ?? name;
+				const own = routes.get(chain) ?? routes.get(fnName);
+				// 无自身 .route → 继承本层前缀（根层即目录镜像）；与 oj 内省同规则
+				const tail = own === undefined
+					? (routePrefix || undefined)
+					: resolveRoute(own, routePrefix);
+				rows.push({
+					method: VERB_OF[name],
+					dir: relDir,
+					tail,
+					chain,
+					full: fullPathOf(relDir, tail),
+					filePath,
+				});
+			}
+			else {
+				const child = groupValueOf(prop, decls);
+				if (!child)
+					continue; // 函数/数组/基元：oj 红线，checker 不当路由
+				const own = routes.get(chain);
+				const childPrefix = own === undefined
+					? (routePrefix ? `${routePrefix}/${name}` : name)
+					: resolveRoute(own, routePrefix);
+				walk(child, chain, childPrefix, depth + 1);
+			}
+		}
+		seen.delete(obj);
+	};
+
+	const root = defaultExportObject(sf, decls);
+	if (root) {
+		// 文件层 .route：default 导出为标识符时，该标识符的 .route 语句即整文件默认前缀
+		let filePrefix = "";
+		for (const stmt of sf.statements) {
+			if (ts.isExportAssignment(stmt) && !stmt.isExportEquals && ts.isIdentifier(stmt.expression)) {
+				const own = routes.get(stmt.expression.text);
+				if (own !== undefined)
+					filePrefix = resolveRoute(own, "");
+			}
+		}
+		walk(root, "", filePrefix, 1);
 	}
 	return rows;
 }
@@ -230,74 +366,119 @@ function checkWsAnonymous(wsFiles: string[], apiSrcDir: string, configPath: stri
 		}));
 }
 
-function routeLabel(dir: string, tail?: string): string {
-	return tail ? `${dir}/${tail}` : dir;
+/** 对账键（方法 + 全路径） */
+const pathKey = (method: string, path: string) => `${method} ${path}`;
+
+/** 路径段（去空串，忽略前导 /） */
+const pathSegs = (p: string) => p.split("/").filter(Boolean);
+/** 静态前缀：首个参数段（{...}）之前的路径段 */
+function staticPrefixOf(p: string): string {
+	const segs = pathSegs(p);
+	const i = segs.findIndex(s => s.startsWith("{"));
+	return segs.slice(0, i === -1 ? segs.length : i).join("/");
 }
 
-/** ② route 双向对账：契约路由表 vs AST 扫描的 handler 表（D12/F19：豁免降级） */
+/**
+ * handler 的有效 wire 全路径（带前导 /）：绝对 `.route` 即其自身；相对尾巴 = `/` + full。
+ * 用于与契约 contractAbs（wirePrefix + route）对齐比对。
+ */
+function handlerAbs(h: HandlerRow): string {
+	return h.tail?.startsWith("/") ? h.tail : `/${h.full}`;
+}
+
+/**
+ * ② route 双向对账：契约路由表 vs AST 扫描的 handler 表（D12/F19：豁免降级）。
+ *
+ * 定位分两层，先精确后模糊：
+ * ① **精确全路径匹配**（方法 + ojFull，或方法 + wire 全路径 contractAbs）——覆盖
+ *   v0.1.64 嵌套组（组名 = 虚拟路径段，全路径唯一）与绝对 `.route` 精确命中（D-M8
+ *   urlPrefix 映射）。
+ * ② **同位置参数段比对**（模糊兜底）——未精确命中时，在全 handler 里找「同方法、
+ *   静态前缀相同、段数相同、但参数名不同」的唯一一条：即「同一端点、参数段写错」，
+ *   报 route-params-mismatch（旧行为）。静态前缀/段数不同而非同位置 → 视为不同端点，
+ *   报未实现 + 未登记（避免误判 mismatch）。嵌套组（虚拟段）与绝对形态都经此口径。
+ */
 function reconcileRoutes(contractIr: IrEndpoint[], handlers: HandlerRow[], exemption: ApiExemption): CheckViolation[] {
 	const violations: CheckViolation[] = [];
-	const key = (method: string, dir: string) => `${method} ${dir}`;
 
-	const contractMap = new Map<string, IrEndpoint & { dir: string, tail?: string }>();
-	for (const ep of contractIr) {
-		const { dir, tail } = splitRoute(ep.route);
-		const dirFull = `${ep.apiPrefix.replace(/^\//, "")}${dir ? `/${dir}` : ""}`;
-		contractMap.set(key(ep.method, dirFull), { ...ep, dir: dirFull, tail });
+	// ① 精确索引：handler 全路径（绝对 .route 另按 wire 全路径索引）。
+	const byPath = new Map<string, HandlerRow>();
+	for (const h of handlers) {
+		byPath.set(pathKey(h.method, h.full), h);
+		if (h.tail?.startsWith("/"))
+			byPath.set(pathKey(h.method, h.tail), h);
 	}
-	const handlerMap = new Map<string, HandlerRow>();
-	for (const h of handlers)
-		handlerMap.set(key(h.method, h.dir), h);
 
-	for (const [k, ep] of contractMap) {
-		const handler = handlerMap.get(k);
-		if (!handler) {
-			violations.push({
-				level: "warn",
-				kind: "route-not-implemented",
-				message: `[ojm-api] 契约端点 "${ep.name}"（${ep.method} ${routeLabel(ep.dir, ep.tail)}）未实现——oj 树缺少 handler；重跑 ojm api 生成 stub 或手动实现。`,
-			});
+	const claimed = new Set<HandlerRow>();
+	for (const ep of contractIr) {
+		const { dir } = splitRoute(ep.route);
+		const dirFull = `${ep.apiPrefix.replace(/^\//, "")}${dir ? `/${dir}` : ""}`;
+		const ojFull = `${ep.apiPrefix.replace(/^\//, "")}${ep.route}`.replace(/\/+/g, "/");
+		const contractAbs = `${wirePrefixOf(ep)}${ep.route}`;
+
+		// ① 精确全路径：嵌套组 / 绝对精确命中
+		const exact = byPath.get(pathKey(ep.method, ojFull)) ?? byPath.get(pathKey(ep.method, contractAbs));
+		if (exact) {
+			claimed.add(exact);
 			continue;
 		}
-		// D-M8：handler .route 两种形态皆合法——相对尾巴（oj 原生，与契约 route 尾巴比对）
-		// 与绝对挂载（uni-dev 存量：.route 含命名空间段）。绝对形态与契约 wirePrefix+route
-		// 全路径直接比对（urlPrefix 映射时即线上前缀）。
-		const contractAbs = `${wirePrefixOf(ep)}${ep.route}`;
-		const tailMatch = (handler.tail ?? "").startsWith("/")
-			? handler.tail === contractAbs
-			: (ep.tail ?? "") === (handler.tail ?? "");
-		if (!tailMatch) {
+
+		// ② 模糊兜底：同位置（静态前缀 + 段数相同）但参数名不同的唯一 handler → mismatch
+		const candidates = handlers.filter(h =>
+			!claimed.has(h)
+			&& h.method === ep.method
+			&& handlerAbs(h) !== contractAbs
+			&& staticPrefixOf(handlerAbs(h)) === staticPrefixOf(contractAbs)
+			&& pathSegs(handlerAbs(h)).length === pathSegs(contractAbs).length,
+		);
+		if (candidates.length === 1) {
+			const h = candidates[0];
+			claimed.add(h);
 			violations.push({
 				level: "error",
 				kind: "route-params-mismatch",
-				message: `[ojm-api] 参数段不一致（${ep.method} ${ep.dir}）：契约 route 尾巴 "${ep.tail ?? ""}" vs handler .route "${handler.tail ?? ""}"——契约 route 是唯一手写事实源（AC-D10），请改 handler 的 .route 字面量对齐。`,
-				filePath: handler.filePath,
-			});
-		}
-	}
-	for (const [k, h] of handlerMap) {
-		if (!contractMap.has(k)) {
-			// D12/F19：整模块豁免，或路径命中豁免前缀 → 视为已覆盖，跳过未登记报错
-			const mod = moduleOf(h.dir);
-			if (exemption.modules.includes(mod))
-				continue;
-			if (exemption.paths.some(p => matchExemptPath(`/${h.dir}`, p)))
-				continue;
-			violations.push({
-				level: "error",
-				kind: "route-unregistered",
-				message: `[ojm-api] handler 未登记（${h.method} ${routeLabel(h.dir, h.tail)}）——oj 路由表存在但契约没有对应端点，请补契约或删除该 handler。`,
+				message: `[ojm-api] 参数段不一致（${ep.method} ${dirFull}）：契约 route "${ep.route}" vs handler .route "${h.tail ?? h.full}"——契约 route 是唯一手写事实源（AC-D10），请改 handler 的 .route 字面量对齐。`,
 				filePath: h.filePath,
 			});
+			continue;
 		}
+		violations.push({
+			level: "warn",
+			kind: "route-not-implemented",
+			message: `[ojm-api] 契约端点 "${ep.name}"（${ep.method} ${ojFull}）未实现——oj 树缺少 handler；重跑 ojm api 生成 stub 或手动实现（嵌套组形态：组名即路径段，见 oj v0.1.64）。`,
+		});
+	}
+	for (const h of handlers) {
+		if (claimed.has(h))
+			continue;
+		// D12/F19：整模块豁免，或路径命中豁免前缀 → 视为已覆盖，跳过未登记报错。
+		// 豁免路径同时按文件目录（旧口径）与有效路由全路径（v0.1.64 嵌套口径）判定。
+		const mod = moduleOf(h.dir);
+		if (exemption.modules.includes(mod))
+			continue;
+		if (exemption.paths.some(p => matchExemptPath(`/${h.dir}`, p) || matchExemptPath(`/${h.full}`, p)))
+			continue;
+		const nested = h.chain.includes(".") ? `，handler 链 ${h.chain}` : "";
+		violations.push({
+			level: "error",
+			kind: "route-unregistered",
+			message: `[ojm-api] handler 未登记（${h.method} ${h.full}${nested}）——oj 路由表存在但契约没有对应端点，请补契约或删除该 handler。`,
+			filePath: h.filePath,
+		});
 	}
 	return violations;
 }
 
-/** routes.js（oj build 产物）行解析：`{ method: "get", pattern: "order/list", ... }` */
+/**
+ * routes.js（oj build 产物）行解析：`{ method: "get", pattern: "order/list", ... }`。
+ * `options` 行直接跳过——契约不表达 OPTIONS（runtime 白名单拒绝），oj 树里合法的
+ * options handler 进了 routes.js 也不该判「dist 多」（跨仓同步：oj v0.1.64）。
+ */
 function parseRoutesJs(text: string): { method: string, pattern: string }[] {
 	const rows: { method: string, pattern: string }[] = [];
 	for (const m of text.matchAll(/\{\s*method:\s*"(\w+)",\s*pattern:\s*"([^"]+)"/g)) {
+		if (m[1].toLowerCase() === "options")
+			continue;
 		// oj 的路由表用短方法名（DELETE → "del"）；与契约 IR 的 HTTP 名对齐（同 VERB_OF 口径），
 		// 否则 uni-dev 工程里任何 DELETE 端点都会被误报 routes-js-drift。
 		const method = VERB_OF[m[1].toLowerCase()] ?? m[1].toUpperCase() as string;

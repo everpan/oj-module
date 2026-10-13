@@ -42,7 +42,7 @@ export interface PlanStubOptions {
 	diag?: OjSchemaDiag
 }
 
-/** oj 方法名映射（DELETE → del） */
+/** oj 方法名映射（DELETE → del）。OPTIONS 不在契约表达范围（runtime 白名单拒绝） */
 const OJ_METHOD: Record<string, string> = {
 	GET: "get",
 	POST: "post",
