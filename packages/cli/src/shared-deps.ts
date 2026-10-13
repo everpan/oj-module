@@ -131,6 +131,24 @@ export const SHARED_DEPS: SharedDepEntry[] = [
 	{ specifier: "simplebar-react", asset: "simplebar-react", hard: false },
 	{ specifier: "spin-delay", asset: "spin-delay", hard: false },
 	{ specifier: "tailwind-merge", asset: "tailwind-merge", hard: false },
+	/**
+	 * Markdown 编辑器（Vditor v4，M5 回升自下游 oj-wiki）：npm 包是 webpack **UMD**
+	 * 单产物（main=dist/index.js，无 ESM 出口、仅 default 导出），走 starShim + esbuild
+	 * 的既有 CJS/UMD interop 链路打包成 ESM 资产（与 react 家族同路，无需新机制）。
+	 *
+	 * 软共享：无单例语义（多副本只是重复体积，不拆 context），且不是每个模块都用。
+	 * 体积大（gzip ≈700 KiB），故**惰性生效**：importmap 只做映射，宿主 shell 自身
+	 * 不 import vditor ⇒ /assets/vditor.js 仅在模块产物真正 import 它时才被拉取，
+	 * 不进宿主首屏。
+	 *
+	 * 深路径只登记 CSS 主样式（nprogress 同款样式垫片）。vditor 其余 dist 深路径
+	 * （lute / i18n / icons / 主题 CSS…）是**运行期经 cdn 选项按需拉取的资源**而非
+	 * import 说明符，由模块侧自行处理（自注入或指向宿主可服务的路径）；若模块代码
+	 * 直接 import 它们，会命中前缀 external 但无 importmap 键 → 构建期深路径报错，
+	 * 属预期拦截（与 dayjs/plugin/* 同规则）。
+	 */
+	{ specifier: "vditor", asset: "vditor", hard: false },
+	{ specifier: "vditor/dist/index.css", asset: "vditor-index-css", hard: false },
 ];
 
 /** 判断一个裸说明符是否命中共享表（命中主包前缀的深路径也按共享处理） */

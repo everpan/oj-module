@@ -224,12 +224,25 @@ export default defineModule({
 `antd`（含 `locale/*`）、`@ant-design/icons`、`@ant-design/pro-components`、
 `i18next`、`react-i18next`、`zustand`、`dayjs`、`echarts`、`echarts-for-react`、
 `motion`、`@dnd-kit/*`、`keepalive-for-react`、`simplebar-react`、`nprogress`、
-`react-countup`、`ahooks`、`ky`、`clsx`、`tailwind-merge`、`pinyin-pro`。
+`react-countup`、`ahooks`、`ky`、`clsx`、`tailwind-merge`、`pinyin-pro`、`vditor`。
 查实际矩阵：`pnpm exec ojm info`。
 
-### 2.7 本版本共享依赖钉版（0.1.15 快照）
+#### vditor（Markdown 编辑器，软共享）
 
-宿主经 importmap 提供以下单例（模块 `devDependencies` 须对齐，供 `tsc` 用）；完整 66 项矩阵以
+模块侧写法不变：`import Vditor from "vditor"` + `import "vditor/dist/index.css"`。
+两个说明符均由宿主 importmap 供包（`/assets/vditor.js`、`/assets/vditor-index-css.js`），
+模块**不得**再把 vditor 写进 `dependencies` 自打包——放 `devDependencies` 对齐版本供 `tsc` 用。
+资产惰性加载：importmap 只做映射，宿主自身不 import vditor，`/assets/vditor.js` 仅在
+模块产物真正 import 它（进编辑器页）时才被浏览器拉取，不进宿主首屏。
+
+注意：vditor 运行期还要按需加载 lute / i18n / 图标 / 主题 CSS 等资源（默认走第三方 CDN，
+宿主 CSP 通常不放行）。这部分**不随共享资产分发**，由模块自行处理（自注入或指向宿主
+可服务的同源路径）。直接 `import "vditor/dist/..."` 其它深路径会命中前缀 external 但无
+importmap 键，构建期报错——需要新深路径请联系框架方在共享表登记。
+
+### 2.7 本版本共享依赖钉版（0.1.16 快照）
+
+宿主经 importmap 提供以下单例（模块 `devDependencies` 须对齐，供 `tsc` 用）；完整 68 项矩阵以
 `pnpm exec ojm info` 或 `packages/cli/shell-dist/versions.json`（构建期生成）为准。
 
 | 包 | 钉版 |
@@ -254,9 +267,10 @@ export default defineModule({
 | `ky` | 2.0.2 |
 | `clsx` / `tailwind-merge` | 2.1.1 / 3.6.0 |
 | `pinyin-pro` | 3.29.3 |
+| `vditor` | 4.0.0 |
 
-框架包版本：`@oj-module/runtime` / `@oj-module/cli` / `@plane/kit` / `@plane/editor` 均为 `0.1.15`
-（lockstep）；`oj` 二进制最低版本门禁 `MIN_OJ_VERSION = 0.1.50`。
+框架包版本：`@oj-module/runtime` / `@oj-module/cli` / `@plane/kit` / `@plane/editor` 均为 `0.1.16`
+（lockstep；本版实际改动仅 cli——vditor 入共享表）；`oj` 二进制最低版本门禁 `MIN_OJ_VERSION = 0.1.50`。
 
 > **`@oj-module/runtime` 到底导出哪些东西？** 权威清单随包发布在
 > `node_modules/@oj-module/runtime/dist/index.d.ts`——直接 Read 它，或在编辑器里

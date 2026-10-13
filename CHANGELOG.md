@@ -5,6 +5,17 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 设计依据、迁移记录与陷阱清单见 [`docs/prd/202609110947-oj-module-two-package-consolidation-design.md`](docs/prd/202609110947-oj-module-two-package-consolidation-design.md)。
 
+## [0.1.16] - 2026-10-13
+
+### Added
+
+- **`vditor` 入宿主共享依赖表——Markdown 编辑器与宿主单例共享**：npm 包是 webpack UMD 单产物（无 ESM 出口、仅 default 导出），shell 预构建按既有 CJS/UMD interop 链路（starShim / A22 显式转发）打成 `/assets/vditor.js`（gzip ≈110 KiB）自包含 ESM 资产；`vditor/dist/index.css` 按 `nprogress/nprogress.css` 同款样式垫片成 `/assets/vditor-index-css.js`。均为**软共享**（无单例语义），且惰性生效——importmap 只做映射，宿主自身不 import vditor，模块进编辑器页时才拉取，不进宿主首屏。模块侧写法不变：`import Vditor from "vditor"` + `import "vditor/dist/index.css"`，vditor 移入 `devDependencies` 对齐版本。注意：vditor 运行期按需拉的 lute / i18n / 图标 / 主题 CSS（默认第三方 CDN）**不随共享资产分发**，由模块自行处理；`vditor` 其余 dist 深路径仍走「前缀命中但无 importmap 键 → 构建期报错」规则。用法见 `docs/devkit/manual.md` §2.6「vditor（Markdown 编辑器，软共享）」；模块侧 external 断言见 `tests/cli/vditor-external.test.ts`。
+
+### Dependencies
+
+- 四包 lockstep 升至 `0.1.16`（发布脚本 `scripts/publish-packages.mjs` 的 lockstep 门禁要求同版；本版**实际改动仅在 `@oj-module/cli`**，runtime / kit / editor 无代码变更）；`@oj-module/core` 不在锁步组，维持 `0.1.13`。
+- 新增共享依赖钉版：`vditor` 4.0.0（软共享，入 catalog 与 cli devDependencies）；共享矩阵 66 项 → 68 项。其余钉版不变，完整矩阵以 `pnpm exec ojm info` 为准。
+
 ## [0.1.15] - 2026-10-12
 
 ### Added

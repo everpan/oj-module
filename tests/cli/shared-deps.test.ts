@@ -59,6 +59,18 @@ describe("生成器（P4.1）", () => {
 		}
 	});
 
+	it("vditor 入表：主入口与 CSS 主样式有 importmap 键（软共享）", () => {
+		// 主入口（UMD → shell 预构建为 ESM 资产）与 CSS（nprogress 同款样式垫片）
+		expect(isSharedDep("vditor")).toBe(true);
+		expect(isSharedDep("vditor/dist/index.css")).toBe(true);
+		const importmap = generateImportmap();
+		expect(importmap.vditor).toBe("/assets/vditor.js");
+		expect(importmap["vditor/dist/index.css"]).toBe("/assets/vditor-index-css.js");
+		// 软共享：模块可声明 devDependencies 对齐版本，缺席时兜底而不硬失败（C7）
+		const dep = SHARED_DEPS.find(d => d.specifier === "vditor");
+		expect(dep?.hard).toBe(false);
+	});
+
 	it("共享表条目均含必要字段", () => {
 		for (const dep of SHARED_DEPS) {
 			expect(typeof dep.specifier, JSON.stringify(dep)).toBe("string");
