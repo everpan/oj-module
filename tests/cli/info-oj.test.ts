@@ -55,6 +55,12 @@ describe("usage 契约", () => {
 		expect(text).toContain("强制重建并热更新");
 		expect(text).toContain("后端 oj 一并终止");
 	});
+
+	it("--version / -V 用法被文档化", () => {
+		const text = usageText();
+		expect(text).toContain("ojm --version | -V");
+		expect(text).toContain("显示 cli 包版本");
+	});
 });
 
 describe("ojm info 后端段（桩注入）", () => {

@@ -9,6 +9,7 @@ import { initProject } from "./init";
 import { previewServer } from "./preview";
 import { usageText } from "./usage";
 import { vendorCommand } from "./vendor";
+import { readCliVersion } from "./versions";
 
 /** ojm → oj 透传子命令（其余参数原样转发，见 src/oj-cmd.ts） */
 const OJ_PASSTHROUGH = new Set(["test", "exec", "openapi", "migrate", "schema"]);
@@ -22,6 +23,12 @@ function usage(): never {
 
 async function main() {
 	const projectRoot = process.cwd();
+
+	// 顶层 --version / -V：打印 cli 包版本（与 `ojm info` 的 cli 版本同源）
+	if (command === "--version" || command === "-V") {
+		console.log(readCliVersion());
+		return;
+	}
 
 	switch (command) {
 		case "build":

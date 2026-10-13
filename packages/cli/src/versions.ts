@@ -17,6 +17,16 @@ import { SHARED_DEPS } from "./shared-deps";
 /** cli 包根（本文件位于 <cliRoot>/src/） */
 const CLI_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 
+/** 读取 cli 包自身版本（package.json 的 version 字段）；不可读回退 unknown */
+export function readCliVersion(): string {
+	try {
+		return JSON.parse(fs.readFileSync(path.join(CLI_ROOT, "package.json"), "utf-8")).version ?? "unknown";
+	}
+	catch {
+		return "unknown";
+	}
+}
+
 /** 读取宿主 shell 产物中的共享依赖实际版本表 */
 export function readHostVersions(shellDist: string): Record<string, string> {
 	return JSON.parse(fs.readFileSync(path.join(shellDist, "versions.json"), "utf-8"));

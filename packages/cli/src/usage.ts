@@ -6,6 +6,8 @@ export function usageText(): string {
 	return `@oj-module/cli
 
 用法:
+  ojm --version | -V
+        显示 cli 包版本
   ojm init [dir] [--yes]
         前后端一体化工程脚手架（幂等补缺）
   ojm dev [port]
