@@ -81,6 +81,9 @@ export const NotificationPopup: React.FC<Props> = ({ dot, notifications, onEvent
 		if (readOnly)
 			return;
 		onEventChange && onEventChange("read", item);
+		// 深链：点击跳转到 link（标记已读后）。新标签打开避免整页刷新打断 SPA。
+		if (item.link)
+			window.open(item.link, "_blank", "noopener");
 	};
 
 	dot = useMemo(() => {

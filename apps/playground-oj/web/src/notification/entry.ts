@@ -25,9 +25,18 @@ export default defineModule({
 			const notificationClient = createNotificationClient(ctx);
 			const provider: NotificationsApiProvider = {
 				fetchNotifications: () => notificationClient.fetchNotifications(),
-				markRead: id => notificationClient.markRead({ id: Number(id) }).then(() => {}),
+				// id 现已为命名空间串（"u:<id>" / "b:<id>"），原样透传，勿再 Number
+				markRead: id => notificationClient.markRead({ id: String(id) }).then(() => {}),
 				markAllRead: () => notificationClient.markAllRead().then(() => {}),
 				clearAll: () => notificationClient.clearAll().then(() => {}),
+				// —— 发射端（跨模块原语，经 HTTP 落到后端通知模块）——
+				push: input => notificationClient
+					.push({ userId: input.userId, title: input.title, message: input.message, link: input.link, avatar: input.avatar, category: input.category })
+					.then(r => String((r as { id: string }).id)),
+				pushBroadcast: input => notificationClient
+					.pushBroadcast({ title: input.title, message: input.message, link: input.link, avatar: input.avatar, category: input.category })
+					.then(r => String((r as { id: string }).id)),
+				del: (id, userId) => notificationClient.del({ id: String(id), userId }).then(() => {}),
 			};
 			ctx.register.notificationsApi(provider);
 		},

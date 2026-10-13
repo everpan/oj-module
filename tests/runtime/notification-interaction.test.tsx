@@ -20,8 +20,8 @@ vi.mock("#src/api/notifications", () => ({
 
 const fetchMock = vi.mocked(fetchNotifications);
 
-function item(id: string | number, isRead = false) {
-	return { id, avatar: "", date: "2026-09-12", isRead, message: `m${id}`, title: `t${id}` };
+function item(id: string, isRead = false) {
+	return { id, scope: "user" as const, avatar: "", date: "2026-09-12", isRead, message: `m${id}`, title: `t${id}` };
 }
 
 function fullProvider(overrides: Partial<NotificationsApiProvider> = {}): NotificationsApiProvider {
@@ -30,6 +30,9 @@ function fullProvider(overrides: Partial<NotificationsApiProvider> = {}): Notifi
 		markRead: vi.fn().mockResolvedValue(undefined),
 		markAllRead: vi.fn().mockResolvedValue(undefined),
 		clearAll: vi.fn().mockResolvedValue(undefined),
+		push: vi.fn().mockResolvedValue("u:1"),
+		pushBroadcast: vi.fn().mockResolvedValue("b:1"),
+		del: vi.fn().mockResolvedValue(undefined),
 		...overrides,
 	};
 }

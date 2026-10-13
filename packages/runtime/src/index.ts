@@ -17,6 +17,14 @@
 // 构建后由 scripts/inline-css.mjs 内联回 runtime.js（importmap 链路无 CSS 模块概念）。
 import "./styles/index.css";
 
+// 跨模块通知发射原语（前端 facade，委托给已注册 notificationsApi provider 的发射方法）
+export { notify } from "./api/notify";
+export type {
+	NoticeCategory,
+	NoticeItem,
+	PushBroadcastInput,
+	PushInput,
+} from "./api/notify/types";
 export * from "./api/system/menu";
 export * from "./api/system/role";
 export * from "./api/user";
@@ -26,13 +34,14 @@ export { AccessControl } from "./components/access-control";
 // tailwind 语义色（bg-colorBgContainer 等）变量缺失，footer 露白
 // （设计 202609112121-shell-dark-css-vars-design）
 export { AntdApp } from "./components/antd-app";
+
 export { BasicButton } from "./components/basic-button";
 // 组件
 export { BasicContent } from "./components/basic-content";
-
 // 表单项（FormAvatarItem / FormTreeItem / TreeDataNodeWithId）
 export * from "./components/basic-form";
 export { BasicTable } from "./components/basic-table";
+
 export type { BasicTableProps } from "./components/basic-table";
 export { Iframe } from "./components/iframe";
 
@@ -42,14 +51,15 @@ export * from "./constants/options";
 // hooks 与权限常量（use-access 内部已 re-export constants）
 export * from "./hooks/use-access";
 export { usePreferences } from "./hooks/use-preferences";
-
 // 图标（unplugin-icons 构建期内联；包装导出保证声明零泄漏）
 export * from "./icons";
 // 全局副作用（标题/暗色类/NProgress，不含守卫）——宿主链路与 LayoutRoot 共用（偏差 4）
 export { LayoutEffects } from "./layout/layout-effects";
+
 // i18n 初始化（宿主链路必需：shell 曾以空 resources 自行 init，导致框架
 // translation 命名空间（preferences/common 等）丢失——e2e 基线偏差 2）
 export { setupI18n } from "./locales";
+
 // 模块加载（宿主消费外部模块时使用；模块工程一般不直接调用）
 export {
 	getModule,
@@ -63,9 +73,7 @@ export {
 
 // 模块契约
 export { defineModule } from "./module-loader/define-module";
-
 export { useSlotNodes } from "./module-loader/slots";
-
 export type {
 	ModuleConfig,
 	ModuleContext,
@@ -73,14 +81,15 @@ export type {
 	ModuleI18n,
 	ModuleLifecycle,
 } from "./module-loader/types";
+
 export type {
 	Manifest,
 	ManifestModuleEntry,
 	ModuleInstance,
 } from "./module-loader/types";
+
 // 路由类型（模块声明 routes 时要用）
 export type { AppRouteRecordRaw, RouteMeta } from "./router/types";
-
 // 系统/通知/上传 API provider 注入契约（D9）：模块经 ctx.register.{systemApi,
 // notificationsApi, uploadApi} 实现，覆盖内置 root 级端点
 export type {

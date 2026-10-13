@@ -1,21 +1,17 @@
-// GET /api/notification/notifications —— 通知列表（真实化 P4-2，AC-D9 apiPrefix=/notification）。
-// 真实化：查 notifications 表，is_read 映射布尔；Bearer 守卫保护。
-// G4：补 id（单条已读的前提，评审 A4——查了 id 必须返回）。
+// GET /api/notification/notifications —— 通知列表（按人真实通知）。
+// 合并：广播(LEFT JOIN 回执算 is_read) UNION 按人(WHERE user_id = ?)，命名空间 id。
+// Bearer 守卫保护。直接复用运行时 notify 原语 noticesFor 保证与发射端单一数据路径。
+import { noticesFor } from "@oj-module/runtime/notify";
+
 export default {
 	async get() {
+		const uid = http.user?.id;
+		if (!uid) {
+			json.fail(401, "unauthorized");
+			return;
+		}
 		try {
-			const rows = await db.query(
-				"SELECT id, avatar, date, is_read, message, title FROM notifications ORDER BY id DESC",
-				[],
-			);
-			json.ok(rows.map(r => ({
-				id: Number(r.id),
-				avatar: String(r.avatar),
-				date: String(r.date),
-				isRead: Number(r.is_read) === 1,
-				message: String(r.message),
-				title: String(r.title),
-			})));
+			json.ok(await noticesFor(uid));
 		}
 		catch (e) {
 			json.fail(500, String(e));

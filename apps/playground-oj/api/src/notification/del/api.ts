@@ -1,0 +1,31 @@
+// POST /api/notification/del —— 删除一条通知（发射原语 HTTP 入口）。
+// 按人项校验归属，非本人返回 403；广播项仅删本人回执。Bearer 守卫保护。
+import { delNotice } from "@oj-module/runtime/notify";
+
+export default {
+	async post() {
+		const uid = http.user?.id;
+		if (!uid) {
+			json.fail(401, "unauthorized");
+			return;
+		}
+		const b = (http.body ?? {}) as { id?: unknown, userId?: unknown };
+		const id = String(b.id ?? "");
+		if (!id) {
+			json.fail(400, "id is required");
+			return;
+		}
+		const target = b.userId ?? uid;
+		try {
+			const ok = await delNotice(id, target as string | number);
+			if (!ok) {
+				json.fail(403, "forbidden");
+				return;
+			}
+			json.ok(null);
+		}
+		catch (e) {
+			json.fail(500, String(e));
+		}
+	},
+};

@@ -1,3 +1,4 @@
+import type { PushBroadcastInput, PushInput } from "#src/api/notify/types";
 import type { MenuItemType } from "#src/api/system/menu/types";
 // 全部为类型导入（编译期擦除），不会在运行时与消费模块（role/menu/notifications）
 // 形成循环依赖。
@@ -42,14 +43,32 @@ export interface SystemApiProvider {
 
 /**
  * 通知 provider（D9 + G4）：模块经 ctx.register.notificationsApi 接管通知。
- * 四方法全必填——「接管通知 API」是全量接管（读 + 三个写），不做部分托管；
- * 老 bundle 只有 fetchNotifications 的版本漂移由消费点运行时防御（评审 P2-7）。
+ *
+ * 定位澄清（Part A）：这是「铃的数据通道」——消费端（读 + 三个写），供前端通知铃
+ * 接管内置通知 API。**单一 provider 槽位、先到先得是「一个铃 / 一套端点」的事实，
+ * 不是模块竞争通知归属的特权**（与 authProvider 同规则：消费位独占合理）。
+ * 框架从未提供「给某用户发通知」的原语——跨模块发射请走 notify 发射方法（见下）
+ * 或后端 api/src/_shared/notify，而非各模块自建私有表抢这一个数据源。
+ *
+ * 消费端四方法全必填——「接管通知 API」是全量接管，不做部分托管；老 bundle 只有
+ * fetchNotifications 的版本漂移由消费点运行时防御（评审 P2-7）。
+ *
+ * 发射端三方法（跨模块原语）：显式 userId，前端 provider 经 HTTP 落到后端通知模块；
+ * 后端模块请直接用 api/src/_shared/notify（db 直写，绕开 HTTP）。原语不做任何业务
+ * 判断（不判空间/角色/可见性），收件人过滤是发送方责任。
  */
 export interface NotificationsApiProvider {
 	fetchNotifications: () => Promise<NotificationItem[]>
 	markRead: (id: string | number) => Promise<void>
 	markAllRead: () => Promise<void>
 	clearAll: () => Promise<void>
+	// —— 发射端（跨模块原语，v2 契约）——
+	/** 给指定用户推按人通知，返回命名空间 id "u:<id>" */
+	push: (input: PushInput) => Promise<string>
+	/** 广播通知（全员可见，一行存储），返回命名空间 id "b:<id>" */
+	pushBroadcast: (input: PushBroadcastInput) => Promise<string>
+	/** 删通知：按人项校验归属；广播项仅删本人回执 */
+	del: (id: string, userId: string | number) => Promise<void>
 }
 
 /** 上传 provider（D9）：模块经 ctx.register.uploadApi 接管头像/附件上传端点 */

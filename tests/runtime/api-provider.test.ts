@@ -44,6 +44,9 @@ function notificationsProvider(tag: string): NotificationsApiProvider {
 		markRead: vi.fn().mockResolvedValue(undefined),
 		markAllRead: vi.fn().mockResolvedValue(undefined),
 		clearAll: vi.fn().mockResolvedValue(undefined),
+		push: vi.fn().mockResolvedValue("u:1"),
+		pushBroadcast: vi.fn().mockResolvedValue("b:1"),
+		del: vi.fn().mockResolvedValue(undefined),
 	};
 }
 

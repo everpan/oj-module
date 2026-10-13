@@ -31,9 +31,9 @@ export function createNotificationClient(ctx: ModuleContext) {
 	if (import.meta.env.DEV && ctx.module.name !== MODULE_PREFIX.slice(1)) {
 		console.warn(`[ojm-api] 模块 "${ctx.module.name}" 正在认领 ${MODULE_PREFIX} 的 client——跨模块认领会共享 request 单槽、卸载互相耦合；应由 "${MODULE_PREFIX.slice(1)}" 模块在自身 onInit 创建，跨模块需求经 provider 暴露。`);
 	}
-	ctx.register.apiPrefix(API_PREFIX);
+		ctx.register.apiPrefix(API_PREFIX);
 	bindRequest(ctx.utils.request);
-	return { clearAll, fetchNotifications, markAllRead, markRead };
+	return { clearAll, del, fetchNotifications, markAllRead, markRead, push, pushBroadcast };
 }
 
 /**
@@ -130,6 +130,49 @@ export async function markRead(body: MarkReadBody): Promise<unknown> {
 			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
 		const data = env.data as unknown;
 		return data;
+	}
+	catch (e) {
+		throw await toApiError(e);
+	}
+}
+
+export type PushBody = z.input<(typeof schemas)["push"]["body"]>;
+export type PushBroadcastBody = z.input<(typeof schemas)["pushBroadcast"]["body"]>;
+export type DelBody = z.input<(typeof schemas)["del"]["body"]>;
+
+export async function push(body: PushBody): Promise<unknown> {
+	const client = ensureReq();
+	try {
+		const env = await client.post(`notification/push`, { json: body }).json<OjEnvelope<unknown>>();
+		if (typeof env.code === "number" && env.code !== 0)
+			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
+		return env.data as unknown;
+	}
+	catch (e) {
+		throw await toApiError(e);
+	}
+}
+
+export async function pushBroadcast(body: PushBroadcastBody): Promise<unknown> {
+	const client = ensureReq();
+	try {
+		const env = await client.post(`notification/push-broadcast`, { json: body }).json<OjEnvelope<unknown>>();
+		if (typeof env.code === "number" && env.code !== 0)
+			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
+		return env.data as unknown;
+	}
+	catch (e) {
+		throw await toApiError(e);
+	}
+}
+
+export async function del(body: DelBody): Promise<unknown> {
+	const client = ensureReq();
+	try {
+		const env = await client.post(`notification/del`, { json: body }).json<OjEnvelope<unknown>>();
+		if (typeof env.code === "number" && env.code !== 0)
+			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
+		return env.data as unknown;
 	}
 	catch (e) {
 		throw await toApiError(e);

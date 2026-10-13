@@ -6,17 +6,45 @@ import { z } from "@oj-module/runtime";
 export const schemas = {
 	fetchNotifications: {
 		data: z.array(z.object({
-	id: z.number(),
+	id: z.string(),
+	scope: z.enum(["user", "broadcast"]),
 	avatar: z.string(),
 	date: z.string(),
 	isRead: z.boolean().optional(),
 	message: z.string(),
 	title: z.string(),
+	link: z.string().nullable().optional(),
+	category: z.enum(["notice", "pm", "mention"]).optional(),
 })),
 	},
 	markRead: {
 		body: z.object({
-	id: z.number(),
+	id: z.string(),
+}),
+	},
+	push: {
+		body: z.object({
+	userId: z.union([z.string(), z.number()]).optional(),
+	title: z.string(),
+	message: z.string(),
+	link: z.string().optional(),
+	avatar: z.string().optional(),
+	category: z.enum(["notice", "pm", "mention"]).optional(),
+}),
+	},
+	pushBroadcast: {
+		body: z.object({
+	title: z.string(),
+	message: z.string(),
+	link: z.string().optional(),
+	avatar: z.string().optional(),
+	category: z.enum(["notice", "pm", "mention"]).optional(),
+}),
+	},
+	del: {
+		body: z.object({
+	id: z.string(),
+	userId: z.union([z.string(), z.number()]).optional(),
 }),
 	},
 };
