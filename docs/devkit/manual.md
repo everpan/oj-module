@@ -584,6 +584,47 @@ export default defineModule({
 });
 ```
 
+**⑤ 跨模块发射原语（任何后端模块都能推通知）**
+
+通知不是「只有通知模块自己用」的功能——下单、审核、@我等其它模块也需要给某个人推一条提醒。
+把发射逻辑收敛成 `api/src/notification/_shared/notify.ts` 里的纯函数原语，其它模块**相对导入直接调用，
+无需走 HTTP**：
+
+```ts
+// 在其它模块的 handler 里
+import { pushNotice } from "../../notification/_shared/notify";
+
+export default {
+	async post() {
+		// ...业务逻辑...
+		const id = await pushNotice({ userId: 2, title: "你的订单已发货", message: "单号 SO123" });
+		json.ok({ id }); // 返回命名空间 id "u:<id>"
+	},
+};
+```
+
+原语清单（`_shared/notify.ts`，设计文档 §4.3 / §6）：
+
+| 原语 | 作用 | 返回 |
+|---|---|---|
+| `pushNotice({ userId, title, message, link?, avatar?, category? })` | 给指定用户推一条按人通知（一行 `notifications`） | 命名空间 id `"u:<id>"` |
+| `pushBroadcastNotice({ title, message, ... })` | 广播一条（一行 `notifications_broadcast`，全员可见、一行存储） | 命名空间 id `"b:<id>"` |
+| `delNotice(id, userId)` | 删按人项（校验归属，非本人返回 `false`）；广播项仅删本人回执 | `boolean`（是否命中） |
+| `noticesFor(userId)` | 合并列表：广播 LEFT JOIN 回执算 `is_read` UNION 按人 `WHERE user_id=?` | `NoticeItem[]` |
+| `markRead(id, userId)` | 按人项校验归属（非本人 `false` → 端点映射 403）；广播项 upsert 回执 | `boolean` |
+| `markAllRead(userId)` / `clearNotices(userId)` | 全部已读 / 清空（按当前用户） | `void` |
+
+约定：
+- **原语不做业务判断**（不判空间/角色/可见性），收件人过滤是发送方责任（`pushNotice` 的 `userId` 谁都能传，按人隔离靠存储 `user_id` 保证）。
+- **后端不能 `import '@oj-module/runtime'`**：oj 解析裸 specifier 以 `api/` 为项目根并钳制不越界（越界报
+  `escapes project root`）；`@oj-module/runtime` 符号链接在 `packages/runtime`，属项目根之外。原语必须落在
+  `api/src` 内（相对导入）；类型与 runtime 的 `@oj-module/runtime/notify` 保持同形即可，共享契约类型单一真源在 runtime。
+- **`_shared` 必须嵌进所属模块目录**（`api/src/notification/_shared/`），不能放 `api/src/_shared/`——oj 把
+  `api/src` 的**顶层**目录都当模块（须有 `manifest.yaml`），顶层 `_shared` 会被当成缺 manifest 的模块，
+  `oj serve` 直接退（`module '_shared' missing manifest.yaml`）。
+- **归属校验返回 403**：跨用户 `del` / `read` 他人按人项，原语返回 `false`，端点 `json.fail(403, "forbidden")`——
+  与「按人隔离」对称（A 推给 B 后 A 不可见、B 不可删/读 A 的）。
+
 **验证**：`pnpm dev` → `admin / 123456` 登录 → 右上角铃铛有蓝点 → 点开 →
 点任意一条蓝点消失 → 「全部已读」全清 → 「清空」列表变空。
 

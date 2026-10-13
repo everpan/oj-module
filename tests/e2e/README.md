@@ -12,6 +12,49 @@
 
 - workers=1 串行：tabbar/menu 用例有全局 UI 状态；`reuseExistingServer: false`，跑前确保 5174/3333 无残留进程（`lsof -iTCP:5174 -iTCP:3333 -sTCP:LISTEN`）。
 - playground 的 `ojm dev` 需要宿主/playground 产物先行构建：`pnpm --filter @oj-module/cli build:shell && pnpm --filter playground build`。
+- 通知后端语义的 API 用例另见下文「通知 API E2E（全栈形态）」：它跑在 playground-oj（5175）全栈服务上，复用一个**需手动先起**的 dev 服务，不在此双环境内。
+
+## 通知 API E2E（全栈形态 playground-oj）
+
+通知多模块的后端语义（按人隔离、跨用户 `del`/`read` → 403、广播两表+回执、命名空间 id 路由）
+**只能跑在 playground-oj 全栈形态**下——`apps/playground`（5174）是纯前端 mock，没有
+`/api/notification/*` 真实端点。用例见 `tests/e2e/api/notification.spec.ts`（11 用例，设计文档 §6）。
+
+### 跑前准备
+
+```bash
+# 1) 启动全栈 dev（真实 oj 后端 + sqlite），端口 5175；务必后台常驻
+pnpm --filter playground-oj dev 5175
+# 确认就绪：
+curl -sf -o /dev/null http://localhost:5175/api/health   # 应返回 200
+
+# 2) 另开终端跑 API 用例（playwright 复用已启动的服务，不再自起）
+pnpm test:e2e --project playground-api
+```
+
+### 跑前注意事项
+
+- **必须手动先起服务**：playgroundOj target 的 webServer 设了 `reuseExistingServer: true`，
+  playwright 不会自己拉起 `ojm dev`（其子进程 cwd 下偶发拉不起后端，且 oj 严格端口策略被占会
+  顺延到 5176，探活目标与测试目标错位）。务必先 `pnpm --filter playground-oj dev 5175` 并确认
+  `/api/health` 返回 200，再跑测试。
+- **服务需常驻**：若用 `nohup ... &` 挂在短命 shell 上，shell 退出进程即被回收，测试会
+  `ECONNREFUSED ::1:5175`。请用跨命令存活的方式（终端后台 / tmux / `run_in_background`）。
+- **只选 api project**：`--project playground-api` 跑 `tests/e2e/api/` 下全部 spec（当前仅
+  `notification.spec.ts`）。切勿在 `--project` 后追加文件名过滤——playwright 会把它当成第二个
+  `--project` 而报 `Project(s) 'notification' not found`。
+- 登录：admin/common 口令均 `12345`；`http.user.id` 为字符串，admin=1、common=2（seed 插入序）。
+- **db 会被清**：`beforeEach` 调 `clear` 清空两用户通知以保证确定性，会删掉 admin 的种子通知；
+  跑前建议备份 `apps/playground-oj/api/db.sqlite`，跑后可还原（该文件已 gitignore）。
+
+### 覆盖点（设计文档 §6）
+
+按人隔离（A push 给 B 后仅 B 可见）、跨用户 `del`/`read` → 403、广播一行全员可见且各自已读独立、
+`push`/`push-broadcast`/`del` 返回命名空间 id、`u:`/`b:` 命名空间路由互不串、未授权 401。
+
+### legacy
+
+`E2E_TARGET=legacy` 时整组跳过（legacy worktree 无 notification 模块）。
 
 ## legacy worktree 建法（一次性）
 

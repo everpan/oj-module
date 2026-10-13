@@ -110,6 +110,9 @@ description: 用 ojm 开发前后端一体工程时使用——新增/修改前�
 | 通知铃 404 `no route matched` | 缺 root 级 `/api/notifications` | 补 `api/src/notifications` 模块 |
 | `oj serve` 启动即退，报 `config uses removed server.* site keys (v0.1.58): api_prefix` | 用了 oj v0.1.58 起删除的旧站点键（`api_prefix`/`app_path`/`app_prefix`/`static_sites`/`app_spa_fallback`） | 改 `server.api_prefix: /api` 为顶层 `mounts: [{prefix: "/api", api: "src"}]`；迁移完整 YAML 由报错给出 |
 | 改完 `mounts:` 仍全 404 | `api:` 指向目录不是 oj 启动目录下的 `src` | `mounts[].api` 写 `"src"`，`-c` 指向 `api/config.yaml`（ojm dev/preview 已内置） |
+| `oj serve` 启动即退，报 `module '_shared' missing manifest.yaml` | 把共享后端代码放到了顶层 `api/src/_shared/`（oj 把 `api/src` 顶层目录都当模块，缺 `manifest.yaml`） | 嵌进所属模块目录：`api/src/<模块>/_shared/`，相对导入 |
+| 后端 `import '@oj-module/runtime/...'` 报 `escapes project root` | oj 解析裸 specifier 以 `api/` 为项目根并钳制不越界，`@oj-module/runtime` 符号链接在 `packages/runtime`（项目根外） | 后端原语/类型放 `api/src` 内相对导入；跨模块共享类型仍以 runtime 为单一真源，两端形状手动同步 |
+| 跨用户删/读他人通知不报错却像没生效 | 原语对不存在/非本人的行 `UPDATE 0` 行返回 `ok`，没区分归属 | 原语（`delNotice`/`markRead`）返回 `boolean`/`count`，端点据 `false`/`0` 映射 `json.fail(403, "forbidden")` |
 
 ## 手册
 
