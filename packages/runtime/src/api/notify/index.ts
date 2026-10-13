@@ -3,7 +3,7 @@ import type {
 	NoticeItem,
 	PushBroadcastInput,
 	PushInput,
-} from "./types";
+} from "@oj-module/runtime/notify";
 
 import { getNotificationsApiProvider } from "#src/store/api-provider";
 

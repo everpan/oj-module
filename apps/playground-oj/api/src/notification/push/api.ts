@@ -1,7 +1,7 @@
 // POST /api/notification/push —— 给指定用户推一条按人通知（发射原语 HTTP 入口）。
-// 真正逻辑在运行时 notify.pushNotice（任一后端模块也可直接 import 调用，无需走 HTTP）。
+// 真正逻辑在 _shared/notify.pushNotice（任一后端模块也可直接 import 调用，无需走 HTTP）。
 // Bearer 守卫保护；收件人过滤是发送方责任（原语不做业务判断）。
-import { pushNotice } from "@oj-module/runtime/notify";
+import { pushNotice } from "../_shared/notify";
 
 export default {
 	async post() {

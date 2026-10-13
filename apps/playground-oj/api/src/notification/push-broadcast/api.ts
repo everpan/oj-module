@@ -1,6 +1,6 @@
 // POST /api/notification/push-broadcast —— 广播一条通知（全员可见，一行存储）。
-// 真正逻辑在运行时 notify.pushBroadcastNotice。Bearer 守卫保护。
-import { pushBroadcastNotice } from "@oj-module/runtime/notify";
+// 真正逻辑在 _shared/notify.pushBroadcastNotice。Bearer 守卫保护。
+import { pushBroadcastNotice } from "../_shared/notify";
 
 export default {
 	async post() {

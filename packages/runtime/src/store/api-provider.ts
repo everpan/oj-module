@@ -1,4 +1,4 @@
-import type { PushBroadcastInput, PushInput } from "#src/api/notify/types";
+import type { PushBroadcastInput, PushInput } from "@oj-module/runtime/notify";
 import type { MenuItemType } from "#src/api/system/menu/types";
 // 全部为类型导入（编译期擦除），不会在运行时与消费模块（role/menu/notifications）
 // 形成循环依赖。

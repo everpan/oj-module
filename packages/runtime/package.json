@@ -21,15 +21,15 @@
 			"default": "./dist/contract/errors.js"
 		},
 		"./notify": {
-			"types": "./dist/api/notify/backend.d.ts",
-			"default": "./dist/api/notify/backend.js"
+			"types": "./dist/notify/index.d.ts",
+			"default": "./dist/notify/index.js"
 		}
 	},
 	"files": [
 		"dist"
 	],
 	"scripts": {
-		"build": "vite build && tsc -p tsconfig.contract.json && tsc -p tsconfig.dts.json && tsc -p tsconfig.notify.json && node scripts/rewrite-dts-specifiers.mjs && node scripts/inline-css.mjs"
+		"build": "vite build && tsc -p tsconfig.contract.json && tsc -p tsconfig.notify.json && tsc -p tsconfig.dts.json && node scripts/rewrite-dts-specifiers.mjs && node scripts/inline-css.mjs"
 	},
 	"peerDependencies": {
 		"@ant-design/icons": "catalog:",

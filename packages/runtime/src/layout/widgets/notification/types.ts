@@ -1,4 +1,4 @@
-import type { NoticeCategory } from "#src/api/notify/types";
+import type { NoticeCategory } from "@oj-module/runtime/notify";
 
 export interface NotificationItem {
 	/**

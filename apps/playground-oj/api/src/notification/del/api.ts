@@ -1,6 +1,6 @@
 // POST /api/notification/del —— 删除一条通知（发射原语 HTTP 入口）。
 // 按人项校验归属，非本人返回 403；广播项仅删本人回执。Bearer 守卫保护。
-import { delNotice } from "@oj-module/runtime/notify";
+import { delNotice } from "../_shared/notify";
 
 export default {
 	async post() {

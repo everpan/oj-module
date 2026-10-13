@@ -54,7 +54,7 @@ export const clearAll = defineApi({
 	description: "清空通知",
 });
 
-/* 推按人通知（发射原语 HTTP 入口；后端模块也可直接 import @oj-module/runtime/notify） */
+/* 推按人通知（发射原语 HTTP 入口；后端模块也可直接 import _shared/notify） */
 export const push = defineApi({
 	apiPrefix: "/notification",
 	route: "/push",

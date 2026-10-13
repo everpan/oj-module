@@ -1,16 +1,49 @@
-// 跨模块通知发射原语（服务端实现）。供任意后端模块 import，直接 db 写入两表。
-// 注意：本文件只依赖后端环境全局 `db`，不引入任何前端/react 依赖——经
-// tsconfig.notify.json 单独编译为 @oj-module/runtime/notify 子路径，供后端模块消费。
+// 跨模块通知发射原语（sample 后端实现，本地模块）。
+//
+// 设计文档 §4.3：「Sample 后端（实现）：api/src/_shared/notify.ts 用 db 直写两表，
+// 是后端模块真正 import 的原语」。oj 只把 api/src 的【顶层】目录当作模块（须有 manifest.yaml），
+// 故共享原语不能放 api/src/_shared（会被当成缺 manifest 的模块），须嵌进所属模块目录
+// （此处嵌套在 notification/ 下）。后端解析裸 specifier 以 api/ 为项目根并钳制模块不越界
+// （api-manual 第 5 章），原语用相对导入、不能 import 来自 @oj-module/runtime 的包
+// （符号链接指向 packages/runtime，越出项目根）。
 //
 // 语义：原语不做任何业务判断（不判空间/角色/可见性），收件人过滤是发送方责任。
 // 按人通知落 notifications（user_id 必填）；广播落 notifications_broadcast（一行），
 // 已读状态走 notifications_broadcast_read 回执表，避免广播按人 fan-out 的信息爆炸。
-import type {
-	NoticeCategory,
-	NoticeItem,
-	PushBroadcastInput,
-	PushInput,
-} from "./types";
+//
+// 类型与 runtime 的 @oj-module/runtime/notify 保持同形（前端契约面复用 runtime 类型）；
+// 此处本地定义以避免后端 import 越界。两处形状变更需同步。
+
+export type NoticeCategory = "notice" | "pm" | "mention";
+
+export interface NoticeItem {
+	id: string
+	scope: "user" | "broadcast"
+	avatar: string
+	date: string
+	isRead?: boolean
+	message: string
+	title: string
+	link?: string
+	category?: NoticeCategory
+}
+
+export interface PushInput {
+	userId: string | number
+	title: string
+	message: string
+	link?: string
+	avatar?: string
+	category?: NoticeCategory
+}
+
+export interface PushBroadcastInput {
+	title: string
+	message: string
+	link?: string
+	avatar?: string
+	category?: NoticeCategory
+}
 
 interface Row {
 	[k: string]: unknown
@@ -128,8 +161,11 @@ export async function noticesFor(
 	return rows.map(mapItem);
 }
 
-/** 标记已读：按人项置位；广播项 upsert 回执 */
-export async function markRead(id: string, userId: string | number): Promise<void> {
+/**
+ * 标记已读：按人项校验归属（非本人返回 false）；广播项 upsert 回执（始终 true）。
+ * 返回是否命中目标（调用方据 false 判 403，与 delNotice 对称）。
+ */
+export async function markRead(id: string, userId: string | number): Promise<boolean> {
 	const [scope, raw] = splitId(id);
 	const uid = Number(userId);
 	const now = nowStr();
@@ -138,9 +174,10 @@ export async function markRead(id: string, userId: string | number): Promise<voi
 			"INSERT OR IGNORE INTO notifications_broadcast_read (broadcast_id, user_id, read_time) VALUES (?, ?, ?)",
 			[Number(raw), uid, now],
 		);
-		return;
+		return true;
 	}
-	await db.exec("UPDATE notifications SET is_read = 1 WHERE id = ? AND user_id = ?", [Number(raw), uid]);
+	const n = await db.exec("UPDATE notifications SET is_read = 1 WHERE id = ? AND user_id = ?", [Number(raw), uid]);
+	return n > 0;
 }
 
 /** 全部已读：按人项全置位 + 广播回执全 upsert */
