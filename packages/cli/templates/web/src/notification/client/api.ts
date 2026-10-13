@@ -79,6 +79,23 @@ export async function clearAll(): Promise<unknown> {
 	}
 }
 
+export type DelBody = z.input<(typeof schemas)["del"]["body"]>;
+
+export async function del(body: DelBody): Promise<unknown> {
+	const client = ensureReq();
+	try {
+		const env = await client.post(`notification/del`, { json: body }).json<OjEnvelope<unknown>>();
+		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
+		if (typeof env.code === "number" && env.code !== 0)
+			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
+		const data = env.data as unknown;
+		return data;
+	}
+	catch (e) {
+		throw await toApiError(e);
+	}
+}
+
 export type FetchNotificationsData = z.infer<(typeof schemas)["fetchNotifications"]["data"]>;
 
 export async function fetchNotifications(): Promise<FetchNotificationsData> {
@@ -135,42 +152,33 @@ export async function markRead(body: MarkReadBody): Promise<unknown> {
 }
 
 export type PushBody = z.input<(typeof schemas)["push"]["body"]>;
-export type PushBroadcastBody = z.input<(typeof schemas)["pushBroadcast"]["body"]>;
-export type DelBody = z.input<(typeof schemas)["del"]["body"]>;
 
 export async function push(body: PushBody): Promise<unknown> {
 	const client = ensureReq();
 	try {
 		const env = await client.post(`notification/push`, { json: body }).json<OjEnvelope<unknown>>();
+		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
 		if (typeof env.code === "number" && env.code !== 0)
 			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
-		return env.data as unknown;
+		const data = env.data as unknown;
+		return data;
 	}
 	catch (e) {
 		throw await toApiError(e);
 	}
 }
+
+export type PushBroadcastBody = z.input<(typeof schemas)["pushBroadcast"]["body"]>;
 
 export async function pushBroadcast(body: PushBroadcastBody): Promise<unknown> {
 	const client = ensureReq();
 	try {
 		const env = await client.post(`notification/push-broadcast`, { json: body }).json<OjEnvelope<unknown>>();
+		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
 		if (typeof env.code === "number" && env.code !== 0)
 			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
-		return env.data as unknown;
-	}
-	catch (e) {
-		throw await toApiError(e);
-	}
-}
-
-export async function del(body: DelBody): Promise<unknown> {
-	const client = ensureReq();
-	try {
-		const env = await client.post(`notification/del`, { json: body }).json<OjEnvelope<unknown>>();
-		if (typeof env.code === "number" && env.code !== 0)
-			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
-		return env.data as unknown;
+		const data = env.data as unknown;
+		return data;
 	}
 	catch (e) {
 		throw await toApiError(e);
