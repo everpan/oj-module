@@ -5,6 +5,40 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 设计依据、迁移记录与陷阱清单见 [`docs/prd/202609110947-oj-module-two-package-consolidation-design.md`](docs/prd/202609110947-oj-module-two-package-consolidation-design.md)。
 
+## [0.1.18] - 2026-10-14
+
+### Added
+
+- **标签页关闭前守卫 `beforeClose`**：`addTab` 可给页签挂 `beforeClose: () => boolean | Promise<boolean>`（数组注册、按函数引用去重、多模块叠加），五个关闭动作（单个/右/左/其他/全部）关闭前顺序 await 守卫，任一否决或抛错即整批取消（事务式）；守卫 await 期间页签保留、组件挂载，模块可安全弹「未保存」确认框。`resetTabs`（登出/401 下线）显式绕过守卫。批量关闭精确删除批准时刻的集合（TOCTOU 防护），同一 key 并发关闭去重。用法与 14 条 BDD 用例见 `docs/prd/202610142230-tabs-before-close-bdd.md`、`docs/devkit/manual.md`「页签与未保存守卫」。
+- **`ojm api --check` 支持字符串字面量组键与模块根嵌套组 stub 去重**：连字符组名（`"push-broadcast"`）参与路由对账；handler 住在模块根单文件（DDD reshape 形态）时不再生成镜像 stub（`handler-scan.ts` 三方共用扫描器 + `implemented` 过滤）。
+
+### Changed
+
+- **BREAKING：`ojm api` 生成目录 `client` → `__client`**：发现阶段兼容旧 `client/`（deprecation 告警），生成一律写 `__client/`；存量模块请跟随改名（import 路径 `./client/api` → `./__client/api`）。
+- **BREAKING：五个页签关闭动作返回类型 `Promise<void>`**：TS 调用兼容（fire-and-forget），但状态变更由同步变异步——依赖「调用后同步读到新 openTabs」的代码需改为 await。
+- **oj 最低版本门禁 `MIN_OJ_VERSION` 0.1.50 → 0.1.69**：旧 vendored oj 会 fail-fast，`ojm vendor 0.1.69` 升级。存量工程注意 oj v0.1.58 起 `server.api_prefix/base` 已删除（改 `mounts:` 表达，见 oj devkit §3.1）。
+- **init 模板 api 层 DDD reshape（oj v0.1.64 嵌套 handler 组）**：auth（login/logout/refresh 收模块根单文件，保留 `_shared/session.ts`）、notification（按人通知 + 广播两表 + `_shared/notify` 发射原语 + push/del + 403 归属校验，全量对齐 playground-oj）、system/playground 同步。组名 = 路径段，≤4 层，`route`/`schema` 保留键，`del` 保留动词键（不能作组名）。
+
+### Dependencies
+
+- 双包 lockstep 升至 `0.1.18`（`@oj-module/runtime` + `@oj-module/cli`）；oj 最低版本门禁 0.1.69（playground-oj vendored 同步）。
+
+## [0.1.17] - 2026-10-14（补记）
+
+### Added
+
+- **通知面升级为按人真实通知 + 跨模块 push/del 原语**：`notifications` 表按人归属（user_id + link 深链 + category 类别），新增广播两表（`notifications_broadcast` / `_read`）；后端模块可 `import { pushNotice, pushBroadcastNotice, delNotice }` 直接发射，`markRead` 校验归属（非本人 403）。e2e 11 用例覆盖（`tests/e2e/notification.spec.ts`）。
+- **`ojm --version` / `-V`**：显示 cli 包版本。
+
+### Fixed
+
+- **`ojm api --check` 支持 oj 嵌套 handler 组对账**（跨仓 VERB_OF 同步，oj v0.1.64）。
+- **生成 client 的 `toApiError` 改读 ky `error.data`**（此前取错字段导致业务错误信息丢失）。
+
+### Dependencies
+
+- 双包 lockstep 升至 `0.1.17`（`@oj-module/runtime` + `@oj-module/cli`）；通知模板 client 与 host-versions 同步。
+
 ## [0.1.16] - 2026-10-13
 
 ### Added
