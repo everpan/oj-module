@@ -3,13 +3,23 @@
 		"demo": "Demo Module",
 		"todos": "Todo List",
 		"detail": "Demo Detail",
-		"about": "Demo About"
+		"about": "Demo About",
+		"guard": "Unsaved Guard"
 	},
 	"page": {
 		"title": "Vertical Slice Demo",
 		"loaded": "Module loaded",
 		"detail": "Demo Detail Page",
 		"about": "Demo About Page",
-		"todos": "Contract-driven todo list"
+		"todos": "Contract-driven todo list",
+		"guard": {
+			"title": "Tab Close Guard Demo",
+			"hint": "Type anything below to make the form dirty, then try closing this tab (including batch close via right-click) — a confirm dialog will appear first. Clear the content to release the guard.",
+			"placeholder": "Type to make the form dirty…",
+			"modalTitle": "Close tab?",
+			"modalBody": "There are unsaved changes on this page. Closing the tab will lose them.",
+			"discard": "Discard & Close",
+			"keep": "Keep Editing"
+		}
 	}
 }
