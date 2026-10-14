@@ -5,7 +5,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { emitOjSchemaLine } from "./emit-oj-schema";
 import { keyOf } from "./emit-schema";
-import { splitRoute } from "./ir";
+import { splitRoute, wirePrefixOf } from "./ir";
 
 /**
  * AC-D10 §9.1：handler stub 发射器 + 指纹幂等。
@@ -40,6 +40,12 @@ export interface PlanStubOptions {
 	eslintFix?: (code: string, filePath: string) => Promise<string>
 	/** 收集 .schema 降级诊断（契约里 oj 表达不了的约束会记在这里，不静默丢） */
 	diag?: OjSchemaDiag
+	/**
+	 * 已实现路由键（`"METHOD /abs/path"`，handler-scan 的 implementedRouteKeys 产出）。
+	 * DDD reshape（oj v0.1.64 嵌套组）后 handler 可住在模块根单文件等非镜像位置——
+	 * 这些端点跳过 stub 生成，否则镜像 stub 与真实 handler 双写同路由。
+	 */
+	implemented?: Set<string>
 }
 
 /** oj 方法名映射（DELETE → del）。OPTIONS 不在契约表达范围（runtime 白名单拒绝） */
@@ -165,8 +171,15 @@ export async function planStubWrites(ir: IrEndpoint[], opts: PlanStubOptions): P
 	const fix = opts.eslintFix ?? ((code: string) => Promise.resolve(code));
 
 	// 按（模块段 + 目录镜像）分组 → 一个 api.ts
+	// 已在别处（模块根嵌套组 / 其他文件）实现的端点不进 stub 计划。
 	const groups = new Map<string, IrEndpoint[]>();
 	for (const ep of ir) {
+		if (opts.implemented) {
+			const ojFullAbs = (ep.apiPrefix + ep.route).replace(/\/{2,}/g, "/");
+			const contractAbs = `${wirePrefixOf(ep)}${ep.route}`;
+			if ([ojFullAbs, contractAbs].some(a => opts.implemented!.has(`${ep.method} ${a}`)))
+				continue;
+		}
 		const { dir } = splitRoute(ep.route);
 		const rel = [ep.apiPrefix.replace(/^\//, ""), dir, "api.ts"].filter(Boolean).join("/");
 		const list = groups.get(rel) ?? [];

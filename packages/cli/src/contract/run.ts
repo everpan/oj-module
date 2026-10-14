@@ -10,6 +10,7 @@ import { emitClient } from "./emit-client";
 import { emitOpenapiYaml, emitRoutesJson } from "./emit-meta";
 import { applyStubWrites, planStubWrites } from "./emit-stub";
 import { evaluateContract } from "./evaluate";
+import { implementedRouteKeys } from "./handler-scan";
 import { buildIr } from "./ir";
 
 /**
@@ -126,9 +127,11 @@ async function runOne(found: DiscoveredContract, cwd: string, result: RunResult)
 	writeIfChanged(paths.routes, routesJson, result);
 	writeIfChanged(paths.openapi, openapi, result);
 	if (found.kind === "uni-dev") {
-		// stub：oj 目录镜像树（人碰过的文件永不写——plan 阶段已按指纹判好）
+		// stub：oj 目录镜像树（人碰过的文件永不写——plan 阶段已按指纹判好）。
+		// 已实现键全量扫一遍传入：嵌套组（模块根单文件）实现的端点不再生成镜像 stub。
 		const diag: OjSchemaDiag = { warnings: [] };
-		const writes = await planStubWrites(ir, { apiSrcDir: join(cwd, "api/src"), diag });
+		const apiSrcDir = join(cwd, "api/src");
+		const writes = await planStubWrites(ir, { apiSrcDir, diag, implemented: implementedRouteKeys(apiSrcDir) });
 		const counts = applyStubWrites(writes);
 		result.stubs.created += counts.created;
 		result.stubs.updated += counts.updated;

@@ -66,6 +66,18 @@ describe("planStubWrites（AC-D10 §9.1 五场景）", () => {
 		expect(writes.find(w => w.filePath === "api/src/order/list/api.ts")?.content).not.toContain(".route");
 	});
 
+	it("已实现端点（模块根嵌套组）不生成镜像 stub，未实现端点照常生成", async () => {
+		// getOrderDetail（GET /order/item/{id}）、createOrder（POST /order/item）与
+		// deleteOrder（DELETE /order/item/{id}）均已由模块根 api.ts 的嵌套组实现；
+		// getOrderList 未实现 → 仍出 stub
+		const implemented = new Set(["GET /order/item/{id}", "POST /order/item", "DELETE /order/item/{id}"]);
+		const writes = await planStubWrites(ir, { apiSrcDir: "api/src", eslintFix: identityFix, readFile: () => undefined, implemented });
+		const created = writes.filter(w => w.action === "create").map(w => w.filePath);
+		expect(created).not.toContain("api/src/order/item/api.ts");
+		expect(created).toContain("api/src/order/list/api.ts");
+		expect(writes).toHaveLength(1);
+	});
+
 	it("重跑契约未变 → 全部 skip，零写入", async () => {
 		const first = await planStubWrites(ir, { apiSrcDir: "api/src", eslintFix: identityFix, readFile: () => undefined });
 		const files = seedFiles(first);
