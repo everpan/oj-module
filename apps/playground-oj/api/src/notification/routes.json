@@ -5,6 +5,14 @@
 	},
 	{
 		"method": "POST",
+		"pattern": "notification/del"
+	},
+	{
+		"method": "POST",
+		"pattern": "notification/notifications/clear"
+	},
+	{
+		"method": "POST",
 		"pattern": "notification/notifications/read"
 	},
 	{
@@ -13,18 +21,10 @@
 	},
 	{
 		"method": "POST",
-		"pattern": "notification/notifications/clear"
-	},
-	{
-		"method": "POST",
 		"pattern": "notification/push"
 	},
 	{
 		"method": "POST",
 		"pattern": "notification/push-broadcast"
-	},
-	{
-		"method": "POST",
-		"pattern": "notification/del"
 	}
 ]

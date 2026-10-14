@@ -54,15 +54,13 @@ function ensureReq(): ScopedRequestLike {
 async function toApiError(e: unknown): Promise<unknown> {
 	if (e instanceof ContractApiError)
 		return e;
-	const res = (e as { response?: Response } | null)?.response;
-	if (res instanceof Response) {
-		try {
-			const env = await res.clone().json() as { code?: number, msg?: string } | null;
-			if (env && typeof env.code === "number")
-				return new ContractApiError(env.code, env.msg ?? res.statusText);
-		}
-		catch { /* 非 JSON 错误体——回退原错误 */ }
-	}
+	// ky 2.x 构造 HTTPError 时已用 getReader() 消费掉原 response 体（res.clone().json() 按规范抛 TypeError，
+	// 体方法一律失效），解析好的错误体在公开字段 error.data——故读 error.data，勿改回 clone().json()。
+	const err = e as { data?: { code?: unknown, msg?: string }, response?: Response } | null;
+	const res = err?.response;
+	const d = err?.data;
+	if (res instanceof Response && d && typeof d.code === "number")
+		return new ContractApiError(d.code, d.msg ?? res.statusText);
 	return e;
 }
 

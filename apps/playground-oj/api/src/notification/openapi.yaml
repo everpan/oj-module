@@ -3,6 +3,51 @@ info:
   title: notification api
   version: 0.0.0
 paths:
+  /notification/del:
+    post:
+      operationId: del
+      description: 删除通知
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                id:
+                  type: string
+                userId:
+                  type:
+                    - string
+                    - number
+              required:
+                - id
+              additionalProperties: false
+      responses:
+        "200":
+          description: 成功（oj 信封：code=0）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                  msg:
+                    type: string
+        default:
+          description: 业务错误（oj 信封：code 非 0，HTTP status=code）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                  msg:
+                    type: string
+                required:
+                  - code
   /notification/notifications:
     get:
       operationId: fetchNotifications
@@ -22,9 +67,72 @@ paths:
                   data:
                     type: array
                     items:
-                      $ref: "#/components/schemas/NotificationItem"
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        scope:
+                          type: string
+                          enum:
+                            - user
+                            - broadcast
+                        avatar:
+                          type: string
+                        date:
+                          type: string
+                        isRead:
+                          type: boolean
+                        message:
+                          type: string
+                        title:
+                          type: string
+                        link:
+                          type:
+                            - string
+                            - "null"
+                        category:
+                          type: string
+                          enum:
+                            - notice
+                            - pm
+                            - mention
+                      required:
+                        - id
+                        - scope
+                        - avatar
+                        - date
+                        - message
+                        - title
+                      additionalProperties: false
+        default:
+          description: 业务错误（oj 信封：code 非 0，HTTP status=code）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                  msg:
+                    type: string
                 required:
                   - code
+  /notification/notifications/clear:
+    post:
+      operationId: clearAll
+      description: 清空通知
+      responses:
+        "200":
+          description: 成功（oj 信封：code=0）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                  msg:
+                    type: string
         default:
           description: 业务错误（oj 信封：code 非 0，HTTP status=code）
           content:
@@ -51,7 +159,6 @@ paths:
               properties:
                 id:
                   type: string
-                  description: 命名空间 id，"u:<id>" 按人 / "b:<id>" 广播
               required:
                 - id
               additionalProperties: false
@@ -109,10 +216,39 @@ paths:
                     type: string
                 required:
                   - code
-  /notification/notifications/clear:
+  /notification/push:
     post:
-      operationId: clearAll
-      description: 清空通知
+      operationId: push
+      description: 推按人通知
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                userId:
+                  type:
+                    - string
+                    - number
+                title:
+                  type: string
+                message:
+                  type: string
+                link:
+                  type: string
+                avatar:
+                  type: string
+                category:
+                  type: string
+                  enum:
+                    - notice
+                    - pm
+                    - mention
+              required:
+                - title
+                - message
+              additionalProperties: false
       responses:
         "200":
           description: 成功（oj 信封：code=0）
@@ -127,67 +263,6 @@ paths:
                     type: string
         default:
           description: 业务错误（oj 信封：code 非 0，HTTP status=code）
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  code:
-                    type: integer
-                  msg:
-                    type: string
-                required:
-                  - code
-  /notification/push:
-    post:
-      operationId: push
-      description: 推按人通知（发射原语 HTTP 入口）
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                userId:
-                  type: string
-                  description: 收件人；缺省推给自己
-                title:
-                  type: string
-                message:
-                  type: string
-                link:
-                  type: string
-                avatar:
-                  type: string
-                category:
-                  type: string
-                  enum: [notice, pm, mention]
-              required:
-                - title
-                - message
-              additionalProperties: false
-      responses:
-        "200":
-          description: 成功（返回命名空间 id）
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  code:
-                    type: integer
-                  msg:
-                    type: string
-                  data:
-                    type: object
-                    properties:
-                      id:
-                        type: string
-                required:
-                  - code
-        default:
-          description: 业务错误
           content:
             application/json:
               schema:
@@ -202,7 +277,7 @@ paths:
   /notification/push-broadcast:
     post:
       operationId: pushBroadcast
-      description: 广播通知（全员可见，一行存储）
+      description: 广播通知
       requestBody:
         required: true
         content:
@@ -220,61 +295,13 @@ paths:
                   type: string
                 category:
                   type: string
-                  enum: [notice, pm, mention]
+                  enum:
+                    - notice
+                    - pm
+                    - mention
               required:
                 - title
                 - message
-              additionalProperties: false
-      responses:
-        "200":
-          description: 成功（返回命名空间 id）
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  code:
-                    type: integer
-                  msg:
-                    type: string
-                  data:
-                    type: object
-                    properties:
-                      id:
-                        type: string
-                required:
-                  - code
-        default:
-          description: 业务错误
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  code:
-                    type: integer
-                  msg:
-                    type: string
-                required:
-                  - code
-  /notification/del:
-    post:
-      operationId: del
-      description: 删除通知（按人项校验归属，非本人 403；广播项仅删本人回执）
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                id:
-                  type: string
-                userId:
-                  type: string
-                  description: 归属人；缺省本人
-              required:
-                - id
               additionalProperties: false
       responses:
         "200":
@@ -301,38 +328,3 @@ paths:
                     type: string
                 required:
                   - code
-components:
-  schemas:
-    NotificationItem:
-      type: object
-      properties:
-        id:
-          type: string
-          description: 命名空间 id，"u:<id>" 按人 / "b:<id>" 广播
-        scope:
-          type: string
-          enum: [user, broadcast]
-        avatar:
-          type: string
-        date:
-          type: string
-        isRead:
-          type: boolean
-        message:
-          type: string
-        title:
-          type: string
-        link:
-          type: string
-          nullable: true
-        category:
-          type: string
-          enum: [notice, pm, mention]
-      required:
-        - id
-        - scope
-        - avatar
-        - date
-        - message
-        - title
-      additionalProperties: false

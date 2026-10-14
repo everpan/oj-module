@@ -3,3 +3,5 @@ desc: 通知模块（P4 接数据层）
 version: 0.1.0
 tables:
   - notifications
+  - notifications_broadcast
+  - notifications_broadcast_read

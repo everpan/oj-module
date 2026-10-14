@@ -3,9 +3,9 @@
 server:
   host: 127.0.0.1 # 显式钉死：oj 默认绑 [::1]，localhost 解析序在反代下有坑
   port: 9779 # 避开 playground/其他 oj 工程的 9778（F11）
-  base: /api
   public_key_path: ./config/public.pem
   certificate_path: ./config/cert.jws
+# API 前缀由 ojm dev 的 -b /api 注入（oj v0.1.58 起 server.base 已删除，改 mounts: 表达）
 db:
   default: 'sqlite://db.sqlite' # 相对 config 目录；缺文件自动建空库
 auth:
