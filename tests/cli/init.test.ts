@@ -55,9 +55,9 @@ describe("initProject", () => {
 		expect(fs.existsSync(path.join(dest, "api/src/_platform/schema.yaml"))).toBe(true);
 		// auth 模块（§8：auth 端点是业务路由；anonymous_paths 显式匿名）
 		expect(fs.existsSync(path.join(dest, "api/src/auth/manifest.yaml"))).toBe(true);
-		expect(fs.existsSync(path.join(dest, "api/src/auth/login/api.ts"))).toBe(true);
-		expect(fs.existsSync(path.join(dest, "api/src/auth/refresh/api.ts"))).toBe(true);
-		expect(fs.existsSync(path.join(dest, "api/src/auth/logout/api.ts"))).toBe(true);
+		// DDD reshape：会话聚合三动词收模块根 api.ts 嵌套组（login/logout/refresh 组名=路径段）
+		expect(fs.existsSync(path.join(dest, "api/src/auth/api.ts"))).toBe(true);
+		expect(fs.existsSync(path.join(dest, "api/src/auth/_shared/session.ts"))).toBe(true);
 		expect(fs.readFileSync(path.join(dest, "api/src/auth/manifest.yaml"), "utf-8")).toMatch(/_platform:\s*\^?0\.1\.0/);
 		expect(fs.existsSync(path.join(dest, "api/src/web/manifest.yaml"))).toBe(true);
 		expect(fs.readFileSync(path.join(dest, "api/src/web/manifest.yaml"), "utf-8")).toMatch(/^name:\s*web/m);
