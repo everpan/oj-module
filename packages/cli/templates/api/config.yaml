@@ -12,6 +12,7 @@ mounts:
   # - prefix: "/"
   #   web: "../web/dist"   # 相对 api/config.yaml → 项目根/web/dist
   #   spa: true
+  # 嵌套 handler 组（oj v0.1.64）无需配置开关，组织方式见 api.ts 顶部注释。
 
 server:
   host: 127.0.0.1 # 显式钉死：oj 默认绑 [::1]，localhost 解析序在反代下有坑

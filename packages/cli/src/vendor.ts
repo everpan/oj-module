@@ -28,11 +28,12 @@ export const NPM_PKG = "@oj-bin/oj";
  *   0.1.32 起 → `serve`
  * 即 `server` → `serve` 的改名落在 (0.1.28, 0.1.32]。改名刚发生时 npm 通道只到
  * 0.1.32，门禁曾暂定 0.1.32（否则 vendor/init 没有可用来源）；现 npm 已发布
- * 0.1.50，门禁即抬到当前最新。
+ * 0.1.69（含嵌套 handler 组 v0.1.64 等，迁移指引见
+ * docs/superpowers/specs/2026-10-14-ojm-0.1.18-design.md），门禁即抬到当前最新。
  */
-export const MIN_OJ_VERSION = "0.1.50";
+export const MIN_OJ_VERSION = "0.1.69";
 
-/** 按段数值比较（字符串比较会把 0.1.9 判成大于 0.1.50）；非数字段按 0 处理 */
+/** 按段数值比较（字符串比较会把 0.1.9 判成大于 0.1.69）；非数字段按 0 处理 */
 export function isSupportedOjVersion(version: string): boolean {
 	const parse = (v: string) => v.replace(/^v/, "").split(".").map(n => Number.parseInt(n, 10) || 0);
 	const [major = 0, minor = 0, patch = 0] = parse(version);
