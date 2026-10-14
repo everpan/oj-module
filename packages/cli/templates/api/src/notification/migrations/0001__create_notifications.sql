@@ -1,4 +1,4 @@
--- notifications 模块建表：DDL 只进 migrations（S006）。is_read 用 INTEGER(0/1)。
+-- notification 模块建表（P4-2）。notifications 通知表，is_read 用 INTEGER(0/1)。
 CREATE TABLE IF NOT EXISTS notifications (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   avatar TEXT NOT NULL DEFAULT '',

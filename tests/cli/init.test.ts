@@ -128,13 +128,18 @@ describe("initProject", () => {
 		expect(fs.existsSync(path.join(dest, "api/src/notifications/api.ts"))).toBe(true);
 		expect(fs.existsSync(path.join(dest, "api/src/notifications/migrations/0001__create_notifications.sql"))).toBe(false);
 		expect(fs.readFileSync(path.join(dest, "api/src/notifications/api.ts"), "utf-8")).toContain("id: Number(r.id)");
-		// notification 模块（G5 契约化通知互动，对齐 playground-oj 形态）：
-		// 表/种子归属本模块 + 四端点（读/单条已读/全部已读/清空）
+		// notification 模块（G5 契约化通知互动 + DDD reshape）：表/种子/迁移归属本模块，
+		// handler 收模块根嵌套组单文件（notifications 含 read/read-all/clear 子组 +
+		// push + "push-broadcast" 字符串键组），_shared/notify 共享发射原语，del/ 例外保留
 		expect(fs.readFileSync(path.join(dest, "api/src/notification/manifest.yaml"), "utf-8")).toContain("notifications");
 		expect(fs.existsSync(path.join(dest, "api/src/notification/migrations/0001__create_notifications.sql"))).toBe(true);
 		expect(fs.existsSync(path.join(dest, "api/src/notification/seed.sql"))).toBe(true);
-		for (const ep of ["notifications/api.ts", "notifications/read/api.ts", "notifications/read-all/api.ts", "notifications/clear/api.ts"])
-			expect(fs.existsSync(path.join(dest, `api/src/notification/${ep}`))).toBe(true);
+		expect(fs.existsSync(path.join(dest, "api/src/notification/api.ts"))).toBe(true);
+		expect(fs.existsSync(path.join(dest, "api/src/notification/_shared/notify.ts"))).toBe(true);
+		expect(fs.existsSync(path.join(dest, "api/src/notification/del/api.ts"))).toBe(true);
+		const notificationApi = fs.readFileSync(path.join(dest, "api/src/notification/api.ts"), "utf-8");
+		for (const marker of ["notifications", "push", "push-broadcast"])
+			expect(notificationApi).toContain(marker);
 		const notificationContract = fs.readFileSync(path.join(dest, "api/src/notification/contract.ts"), "utf-8");
 		for (const name of ["markRead", "markAllRead", "clearAll"])
 			expect(notificationContract).toContain(name);

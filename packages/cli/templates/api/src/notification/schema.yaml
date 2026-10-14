@@ -1,11 +1,33 @@
-# 声明式表结构（§4.2 / D1-C）：notification 模块自有表 notifications。
+# 声明式表结构（§4.2 / D1-C）：notification 模块自有表。
+# 按人通知 notifications（user_id 归属 + link 深链 + category 类别）+ 广播两表。
 tables:
   notifications:
     pk: id
     columns:
       id: {type: integer, autoincrement: true}
+      user_id: {type: integer, null: true}
       avatar: {type: text, null: false}
       date: {type: text, null: false}
       is_read: {type: integer, null: false}
       message: {type: text, null: false}
       title: {type: text, null: false}
+      link: {type: text, null: true}
+      category: {type: text, null: false}
+  notifications_broadcast:
+    pk: id
+    columns:
+      id: {type: integer, autoincrement: true}
+      avatar: {type: text, null: false}
+      date: {type: text, null: false}
+      message: {type: text, null: false}
+      title: {type: text, null: false}
+      link: {type: text, null: true}
+      category: {type: text, null: false}
+      create_time: {type: text, null: false}
+  notifications_broadcast_read:
+    pk: id
+    columns:
+      id: {type: integer, autoincrement: true}
+      broadcast_id: {type: integer, null: false}
+      user_id: {type: integer, null: false}
+      read_time: {type: text, null: false}

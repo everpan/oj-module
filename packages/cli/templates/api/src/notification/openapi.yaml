@@ -1,0 +1,330 @@
+openapi: 3.1.0
+info:
+  title: notification api
+  version: 0.0.0
+paths:
+  /notification/del:
+    post:
+      operationId: del
+      description: 删除通知
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                id:
+                  type: string
+                userId:
+                  type:
+                    - string
+                    - number
+              required:
+                - id
+              additionalProperties: false
+      responses:
+        "200":
+          description: 成功（oj 信封：code=0）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                  msg:
+                    type: string
+        default:
+          description: 业务错误（oj 信封：code 非 0，HTTP status=code）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                  msg:
+                    type: string
+                required:
+                  - code
+  /notification/notifications:
+    get:
+      operationId: fetchNotifications
+      description: 通知列表（按人 + 广播合并）
+      responses:
+        "200":
+          description: 成功（oj 信封：code=0）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                  msg:
+                    type: string
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        scope:
+                          type: string
+                          enum:
+                            - user
+                            - broadcast
+                        avatar:
+                          type: string
+                        date:
+                          type: string
+                        isRead:
+                          type: boolean
+                        message:
+                          type: string
+                        title:
+                          type: string
+                        link:
+                          type:
+                            - string
+                            - "null"
+                        category:
+                          type: string
+                          enum:
+                            - notice
+                            - pm
+                            - mention
+                      required:
+                        - id
+                        - scope
+                        - avatar
+                        - date
+                        - message
+                        - title
+                      additionalProperties: false
+        default:
+          description: 业务错误（oj 信封：code 非 0，HTTP status=code）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                  msg:
+                    type: string
+                required:
+                  - code
+  /notification/notifications/clear:
+    post:
+      operationId: clearAll
+      description: 清空通知
+      responses:
+        "200":
+          description: 成功（oj 信封：code=0）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                  msg:
+                    type: string
+        default:
+          description: 业务错误（oj 信封：code 非 0，HTTP status=code）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                  msg:
+                    type: string
+                required:
+                  - code
+  /notification/notifications/read:
+    post:
+      operationId: markRead
+      description: 单条通知已读
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                id:
+                  type: string
+              required:
+                - id
+              additionalProperties: false
+      responses:
+        "200":
+          description: 成功（oj 信封：code=0）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                  msg:
+                    type: string
+        default:
+          description: 业务错误（oj 信封：code 非 0，HTTP status=code）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                  msg:
+                    type: string
+                required:
+                  - code
+  /notification/notifications/read-all:
+    post:
+      operationId: markAllRead
+      description: 全部通知已读
+      responses:
+        "200":
+          description: 成功（oj 信封：code=0）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                  msg:
+                    type: string
+        default:
+          description: 业务错误（oj 信封：code 非 0，HTTP status=code）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                  msg:
+                    type: string
+                required:
+                  - code
+  /notification/push:
+    post:
+      operationId: push
+      description: 推按人通知
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                userId:
+                  type:
+                    - string
+                    - number
+                title:
+                  type: string
+                message:
+                  type: string
+                link:
+                  type: string
+                avatar:
+                  type: string
+                category:
+                  type: string
+                  enum:
+                    - notice
+                    - pm
+                    - mention
+              required:
+                - title
+                - message
+              additionalProperties: false
+      responses:
+        "200":
+          description: 成功（oj 信封：code=0）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                  msg:
+                    type: string
+        default:
+          description: 业务错误（oj 信封：code 非 0，HTTP status=code）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                  msg:
+                    type: string
+                required:
+                  - code
+  /notification/push-broadcast:
+    post:
+      operationId: pushBroadcast
+      description: 广播通知
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                message:
+                  type: string
+                link:
+                  type: string
+                avatar:
+                  type: string
+                category:
+                  type: string
+                  enum:
+                    - notice
+                    - pm
+                    - mention
+              required:
+                - title
+                - message
+              additionalProperties: false
+      responses:
+        "200":
+          description: 成功（oj 信封：code=0）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                  msg:
+                    type: string
+        default:
+          description: 业务错误（oj 信封：code 非 0，HTTP status=code）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                  msg:
+                    type: string
+                required:
+                  - code

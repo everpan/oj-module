@@ -3,7 +3,7 @@ import { defineApi, z } from "@oj-module/runtime/contract";
 /**
  * notification 模块契约（uni-dev 形态，apiPrefix 字面等于 "/notification"，AC-D9）。
  * 通知读写端点——前端经 ctx.register.notificationsApi 全量接管内置通知 API（D9 + G4）：
- * 读 + 单条已读 + 全部已读 + 清空，四端点全必填；另含发射原语端点 push/push-broadcast/del。
+ * 读 + 单条已读 + 全部已读 + 清空，四端点全必填。
  */
 
 /** 通知项（id 为命名空间串："u:<id>" 按人 / "b:<id>" 广播） */
@@ -54,7 +54,7 @@ export const clearAll = defineApi({
 	description: "清空通知",
 });
 
-/* 推按人通知（发射原语 HTTP 入口） */
+/* 推按人通知（发射原语 HTTP 入口；后端模块也可直接 import _shared/notify） */
 export const push = defineApi({
 	apiPrefix: "/notification",
 	route: "/push",
