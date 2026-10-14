@@ -132,7 +132,7 @@ describe("ojm info 后端段（桩注入）", () => {
 
 			const out = logs.join("\n");
 			expect(out).toMatch(/安装标记.*v0\.1\.11/);
-			expect(out).toMatch(/0\.1\.50/);
+			expect(out).toMatch(/0\.1\.69/);
 			expect(out).toMatch(/ojm vendor/);
 		}
 		finally {

@@ -486,6 +486,21 @@ params/query 只允许扁平标量等）都在生成期拦下或告警，详情�
 
 文件缺失或损坏时静默按空豁免处理。cli ≥ 0.1.5 的 `ojm init` 已内置该文件。
 
+### 3.9 DDD 判据速查（oj v0.1.64 嵌套 handler 组）
+
+| 场景 | 形态 |
+|---|---|
+| 同聚合多动词 | 单文件嵌套组（组名 = 路径段，`const login = { async post() {...} }`） |
+| 不同聚合 | 各自目录/文件 |
+| ≤3 动词单一聚合 | 可平铺单文件 |
+
+规则与红线：组名即路径段（`login` → `POST /auth/login`，路由不变）；嵌套 ≤4 层；
+`route`/`schema` 是保留键；**`del` 是保留动词键，不能作组名**（删通知这类端点目录
+`del/` 是唯一例外形态）；组名可连字符（`"push-broadcast"`），checker 已支持字符串字面量键对账。
+
+反例信号：文件过胖 = 聚合过胖，**拆聚合而不是回退动词目录**；出现动词子目录
+（`read/api.ts` 这类）说明是旧形态，按上表 reshape。
+
 ---
 
 ## §4 接管框架内置功能（provider）
@@ -541,19 +556,31 @@ Provider 就是：「这块别用框架自带的了，换成我的实现。」�
 
 **① 契约**（`api/src/notification/contract.ts`）——见 §3.3 与 §3.4。
 
-**② handler**（`api/src/notification/notifications/read/api.ts`）：
+**② handler**（`api/src/notification/api.ts`，模块根嵌套组——组名 = 路径段，oj v0.1.64）：
 
 ```ts
-export default {
-	async post() {
-		const body = (http.body ?? {}) as { id?: unknown };
-		const id = Number(body.id);
-		if (!Number.isFinite(id)) { json.fail(400, "id is required"); return; }
-		await db.query("UPDATE notifications SET is_read = 1 WHERE id = ?", [id]);
-		json.ok(null);
+const notifications = {
+	// POST /api/notification/notifications/read —— 单条通知已读。
+	// body.id 为命名空间串 "u:<id>"（按人）/"b:<id>"（广播）；按人项校验归属，非本人 403。
+	read: {
+		async post() {
+			const uid = http.user?.id;
+			if (!uid) { json.fail(401, "unauthorized"); return; }
+			const body = (http.body ?? {}) as { id?: unknown };
+			const id = String(body.id ?? "");
+			if (!id) { json.fail(400, "id is required"); return; }
+			const ok = await markRead(id, uid);
+			if (!ok) { json.fail(403, "forbidden"); return; }
+			json.ok(null);
+		},
 	},
+	// read-all / clear 子组同理（全部已读 / 清空，按当前用户）
 };
+
+export default { notifications, /* push, "push-broadcast" 等同理 */ };
 ```
+
+> reshape 判据与嵌套组规则（保留键、层级上限）见 §3.9「DDD 判据速查」。
 
 **③ 生成**：`pnpm exec ojm api`
 
@@ -973,7 +1000,56 @@ useEffect(() => {
 
 > `window.$message` 的类型声明在工程根 `env.d.ts`——那里也放着 `ImportMeta.env` 补丁。
 
-### 6.4 `pnpm typecheck` 看不到 `api/`
+### 6.4 页签与未保存守卫（`beforeClose`，runtime ≥ 0.1.18）
+
+页签有未保存内容时，关闭前弹确认框的完整链路：`addTab` 给页签挂 `beforeClose` 守卫，
+五个关闭动作（单个/右/左/其他/全部）关闭前**顺序 await** 守卫，任一返回 false 或
+抛错则**整批取消**（事务式）。守卫 await 期间页签保留、组件保持挂载，可安全弹 Modal。
+
+```tsx
+const TAB_KEY = "/demo/guard"; // 页签 key = 路由路径
+const [confirmResolver, setConfirmResolver] = useState<((ok: boolean) => void) | null>(null);
+const addTab = useTabsStore(s => s.addTab);
+const dirty = form.isFieldsTouched();
+
+useEffect(() => {
+	addTab(TAB_KEY, {
+		key: TAB_KEY,
+		label: t("demo:menu.guard"),
+		// 守卫应是稳定引用（useCallback 包裹）；去重按函数引用，
+		// keep-alive 重挂载重复注册同一函数不会叠加
+		beforeClose: dirty
+			? () => new Promise<boolean>((resolve) => {
+					setConfirmResolver(() => resolve);
+				})
+			: null, // null 清除该页签全部守卫（含他人注册的）；undefined 不动
+	});
+}, [dirty, addTab, t]);
+
+<Modal
+	open={confirmResolver !== null}
+	onOk={() => { confirmResolver?.(true); setConfirmResolver(null); }}   // 放行关闭
+	onCancel={() => { confirmResolver?.(false); setConfirmResolver(null); }} // 取消关闭
+>
+	有未保存的修改，确定关闭吗？
+</Modal>
+```
+
+约定与陷阱：
+
+- **守卫抛错 = 取消关闭 + console.error**（fail-safe：宁可不关门也不误关丢内容）；
+  页签「怎么点都关不掉」先查控制台 `[tabs] beforeClose` 报错。
+- **批量关闭串行弹 N 个确认框是语义正确结果**（每个有未保存内容的页签都须用户裁决）；
+  任一否决整批回滚。
+- home 页（`VITE_BASE_HOME_PATH`）永不可关、不在守卫范围；`resetTabs`（登出/401 下线）
+  **显式绕过守卫**直接清空——业务守卫不得阻塞下线。
+- **登出/刷新后守卫消失需重挂**：守卫只活在内存 store；重新打开页签时由页面
+  `useEffect` 重新注册（上面的形态天然满足）。
+- 同一 key 关闭流程进行中再次触发被忽略（per-key in-flight 去重），双击不会弹两个框。
+
+可运行示例见 playground-oj `web/src/demo/pages/guard.tsx`（表单 dirty → 关页签弹确认）。
+
+### 6.5 `pnpm typecheck` 看不到 `api/`
 
 工程 `tsconfig.json` 的 `include` 只有 `web`、`web.config.ts`、`global.d.ts`、`env.d.ts`，
 **不含 `api/`**。也就是说契约与 handler 的类型错误 `pnpm typecheck` 不报，
@@ -1109,7 +1185,7 @@ export default async (path: string, html: string) => {
 | 上传 provider（action + headers 方法） | `web/src/personal-center/entry.ts` |
 | 无页面模块（`routes: []`） | 同 `web/src/notification/entry.ts` |
 | 契约写法（GET + POST、参数段） | `api/src/notification/contract.ts`、`api/src/personal-center/contract.ts` |
-| handler 写法（列表 / 写入 / 上传） | `api/src/notification/notifications/api.ts`、`.../read/api.ts` |
+| handler 写法（嵌套组列表 / 写入 / 403 归属） | `api/src/notification/api.ts`（模块根单文件，`read`/`read-all`/`clear` 子组） |
 | 生成物长什么样（含工厂） | `web/src/notification/__client/api.ts` |
 | 建表三件套 | `api/src/notification/{schema.yaml,manifest.yaml,migrations/}` |
 | 全局类型（`window.$message` 等） | 工程根 `env.d.ts` |

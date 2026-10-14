@@ -42,7 +42,7 @@ description: 用 ojm 开发前后端一体工程时使用——新增/修改前�
 - **只创建自己模块的 client**：A 模块的 onInit 里创建 B 模块的 client 会 DEV 告警。要别家接口，
   走「B 自己注册 provider、A 消费 provider」的正路。
 - **既然接管就整套接管**：`ctx.register.*Provider` 的方法一个都不能少，不做「只接管读、写还用框架的」。
-- **生成物勿手改**：`web/src/<模块>/client/**`、`routes.json`、`openapi.yaml` 重跑即覆盖
+- **生成物勿手改**：`web/src/<模块>/__client/**`、`routes.json`、`openapi.yaml` 重跑即覆盖
   （eslint 已忽略）。改需求 = 改契约，重跑 `ojm api`。唯一例外是 `api/**/api.ts` stub——
   文件头带 `// ojm-api:stub` 指纹的 stub 被人工动过后，工具**永不写永不删**。
 - **契约前缀约束**：uni-dev 形态下每个端点的 `apiPrefix` 必须**字面等于**后端模块
@@ -113,6 +113,8 @@ description: 用 ojm 开发前后端一体工程时使用——新增/修改前�
 | `oj serve` 启动即退，报 `module '_shared' missing manifest.yaml` | 把共享后端代码放到了顶层 `api/src/_shared/`（oj 把 `api/src` 顶层目录都当模块，缺 `manifest.yaml`） | 嵌进所属模块目录：`api/src/<模块>/_shared/`，相对导入 |
 | 后端 `import '@oj-module/runtime/...'` 报 `escapes project root` | oj 解析裸 specifier 以 `api/` 为项目根并钳制不越界，`@oj-module/runtime` 符号链接在 `packages/runtime`（项目根外） | 后端原语/类型放 `api/src` 内相对导入；跨模块共享类型仍以 runtime 为单一真源，两端形状手动同步 |
 | 跨用户删/读他人通知不报错却像没生效 | 原语对不存在/非本人的行 `UPDATE 0` 行返回 `ok`，没区分归属 | 原语（`delNotice`/`markRead`）返回 `boolean`/`count`，端点据 `false`/`0` 映射 `json.fail(403, "forbidden")` |
+| handler 写了动词子目录（`read/api.ts` 这类） | 旧形态（oj v0.1.64 前） | 按 manual §3.9「DDD 判据速查」reshape：同聚合多动词收模块根嵌套组，`del` 保留键例外 |
+| 页签怎么点都关不掉、无报错提示 | `beforeClose` 守卫 fail-safe 否决（守卫抛错按取消处理） | 先查控制台 `[tabs] beforeClose` 报错；确认弹窗逻辑与 `resolve(true/false)` 收口（manual §6.4） |
 
 ## 手册
 

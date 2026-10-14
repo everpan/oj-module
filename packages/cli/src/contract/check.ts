@@ -262,7 +262,7 @@ export async function checkApi(opts: { cwd: string, exempt?: string }): Promise<
 	const exemption = loadExemption(opts);
 	const contracts = discoverContracts(opts.cwd);
 	if (contracts.length === 0) {
-		throw new Error(`[ojm-api] ${opts.cwd} 下没有发现契约文件——默认发现：api/src/*/contract.ts（uni-dev）与 web/src/*/client/contract.ts（纯前端）。存量工程请迁移：modules/ → web/、模块内 api/ → client/。`);
+		throw new Error(`[ojm-api] ${opts.cwd} 下没有发现契约文件——默认发现：api/src/*/contract.ts（uni-dev）与 web/src/*/__client/contract.ts（纯前端，旧名 client/ 兼容）。存量工程请迁移：modules/ → web/、模块内 api/ → __client/（生成物与契约同迁）。`);
 	}
 	const violations: CheckViolation[] = [];
 	const hints: string[] = [];
