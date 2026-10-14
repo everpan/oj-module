@@ -39,8 +39,8 @@ describe("模板 notification 模块（G5，BDD 5.4#1）", () => {
 		const cwd = makeTemplateProject();
 		await runApi({ cwd });
 		for (const file of ["api.ts", "api.schemas.ts"]) {
-			const generated = readFileSync(join(cwd, `web/src/notification/client/${file}`), "utf-8");
-			const committed = readFileSync(join(TEMPLATES_WEB, `src/notification/client/${file}`), "utf-8");
+			const generated = readFileSync(join(cwd, `web/src/notification/__client/${file}`), "utf-8");
+			const committed = readFileSync(join(TEMPLATES_WEB, `src/notification/__client/${file}`), "utf-8");
 			expect(generated).toBe(committed);
 		}
 	});

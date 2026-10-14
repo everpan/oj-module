@@ -3,7 +3,7 @@ import type { AppRouteRecordRaw, ModuleDefinition } from "@oj-module/runtime";
 import { HomeOutlined } from "@ant-design/icons";
 import { createElement, lazy } from "react";
 
-import { createHomeClient } from "./client/api";
+import { createHomeClient } from "./__client/api";
 
 const Home = lazy(() => import("./pages/index"));
 

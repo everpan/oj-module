@@ -2,7 +2,7 @@ import { BasicContent } from "@oj-module/runtime";
 import { Alert, Card, List, Tag } from "antd";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { getTodoList } from "../client/api";
+import { getTodoList } from "../__client/api";
 
 export default function DemoPage() {
 	const { t } = useTranslation();

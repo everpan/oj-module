@@ -147,8 +147,8 @@ describe("initProject", () => {
 		const notificationEntry = fs.readFileSync(path.join(dest, "web/src/notification/entry.ts"), "utf-8");
 		for (const name of ["fetchNotifications", "markRead", "markAllRead", "clearAll"])
 			expect(notificationEntry).toContain(name);
-		expect(fs.existsSync(path.join(dest, "web/src/notification/client/api.ts"))).toBe(true);
-		expect(fs.existsSync(path.join(dest, "web/src/notification/client/api.schemas.ts"))).toBe(true);
+		expect(fs.existsSync(path.join(dest, "web/src/notification/__client/api.ts"))).toBe(true);
+		expect(fs.existsSync(path.join(dest, "web/src/notification/__client/api.schemas.ts"))).toBe(true);
 		// web.config.ts 必须登记 notification：未登记的模块不加载，provider 不注册，
 		// 通知铃将永远停留在内置只读兜底（BDD 5.4#2 的前提）
 		expect(modulesConfig).toContain("\"notification\"");

@@ -103,7 +103,7 @@ web/src/<模块名>/
 ├── entry.ts          # 元数据唯一来源（没有 package.json / meta.json）
 ├── pages/            # 页面组件（按需）
 ├── locales/          # zh-CN.json / en-US.json（按需）
-└── client/           # ojm api 生成物（勿手改）
+└── __client/         # ojm api 生成物（勿手改）
 ```
 
 ### 2.2 两步缺一不可
@@ -115,7 +115,7 @@ web/src/<模块名>/
 > 按钮安静地灰着，**全程没有一个报错**。写完模块第一件事就是检查 `web.config.ts`。
 
 **建档顺序很重要**（有接口的模块）：先写 `contract.ts` → 跑 `ojm api` → 再写 `entry.ts`。
-生成前 `import { createXxxClient } from "./client/api"` 必然 ts 报红，
+生成前 `import { createXxxClient } from "./__client/api"` 必然 ts 报红，
 那不是你写错了，是产物还没生成。完整流水线见 §3.4。
 
 ```ts
@@ -143,7 +143,7 @@ import { BookOutlined } from "@ant-design/icons";
 import { defineModule } from "@oj-module/runtime";
 import { createElement, lazy } from "react";
 
-import { createBooksClient } from "./client/api";
+import { createBooksClient } from "./__client/api";
 
 const Books = lazy(() => import("./pages/index"));
 
@@ -296,8 +296,8 @@ contract.ts ──evaluate──► IR ──emit──► 四产物 + stub
 
 | 工程形态 | 契约位置 | 产物流向 |
 |---|---|---|
-| **uni-dev**（前后端一体，推荐） | `api/src/<模块>/contract.ts` | `api.ts` / `api.schemas.ts` → `web/src/<模块>/client/`；`routes.json` / `openapi.yaml` → 契约旁；stub → `api/src/<模块>/<路径>/api.ts` |
-| 纯前端 | `web/src/<模块>/client/contract.ts` | 四产物全部落契约同目录，无 stub |
+| **uni-dev**（前后端一体，推荐） | `api/src/<模块>/contract.ts` | `api.ts` / `api.schemas.ts` → `web/src/<模块>/__client/`；`routes.json` / `openapi.yaml` → 契约旁；stub → `api/src/<模块>/<路径>/api.ts` |
+| 纯前端 | `web/src/<模块>/__client/contract.ts` | 四产物全部落契约同目录，无 stub |
 
 **硬约束**：uni-dev 形态下每个端点的 `apiPrefix` 必须**字面等于**后端目录名
 （`api/src/order/contract.ts` → `/order`），不符即人话报错。
@@ -372,7 +372,7 @@ JSON 文本，需要结构就自己 `JSON.parse`（或干脆用单独的 JSON �
 
 ### 3.4 生成物使用契约
 
-生成的 `web/src/<模块>/client/api.ts` 导出：
+生成的 `web/src/<模块>/__client/api.ts` 导出：
 
 - 裸请求函数（`fetchNotifications`、`markRead`…）——**直接 import 调用**；
 - `API_PREFIX` 常量——契约前缀的唯一真源；
@@ -394,11 +394,11 @@ const booksClient = createBooksClient(ctx);
 - 重复构造幂等安全；`onInit` 每模块只跑一次（HMR / StrictMode 不重复执行）。
 
 > **生成 ≠ 使用。** `ojm api` 为**每个** `api/src/<模块>/contract.ts` 生成
-> `web/src/<模块>/client/`，**不看有没有人 import**。所以「契约在、`client/`
-> 目录却不在」只有一种解释：那个模块的 `client/` 从没生成过（模板里的
+> `web/src/<模块>/__client/`，**不看有没有人 import**。所以「契约在、`__client/`
+> 目录却不在」只有一种解释：那个模块的 `__client/` 从没生成过（模板里的
 > personal-center 就是这样——它上传走 antd Upload 直连 `uploadApi.action`，
 > 生成出来也没人用，故模板没签回）。你在自己工程跑一次 `ojm api`，它就会出现。
-> 判断某模块**要不要用** client 的标准只有一个：代码里有没有人 import `./client/api`。
+> 判断某模块**要不要用** client 的标准只有一个：代码里有没有人 import `./__client/api`。
 > 有就在 onInit 里 `create<Module>Client(ctx)` 一次；没有就什么都不写，
 > 生成了但没人 import 也不报错。
 
@@ -409,7 +409,7 @@ const booksClient = createBooksClient(ctx);
 
 ### 3.5 生成物勿手改
 
-`client/api.ts`、`client/api.schemas.ts`、`routes.json`、`openapi.yaml`
+`__client/api.ts`、`__client/api.schemas.ts`、`routes.json`、`openapi.yaml`
 **重跑即覆盖**（eslint 已忽略这些路径）。改需求 = 改契约，重跑 `ojm api`。
 
 **唯一例外：stub。** `api/src/**/api.ts` 的 stub 文件头带指纹
@@ -562,7 +562,7 @@ export default {
 ```ts
 import type { NotificationsApiProvider } from "@oj-module/runtime";
 import { defineModule } from "@oj-module/runtime";
-import { createNotificationClient } from "./client/api";
+import { createNotificationClient } from "./__client/api";
 
 export default defineModule({
 	name: "notification",
@@ -1072,7 +1072,7 @@ export default async (path: string, html: string) => {
 | 改了契约，前端类型没变 | 没重新生成 | 跑 `ojm api`；生成确定，diff 应只含你改的部分 |
 | `ojm api` 报「schema 超出白名单」 | 契约里写了 `z.null()` / transform / refine | 不返回数据就别写 `data`；校验放后端 |
 | `ojm api` 报「apiPrefix 与目录名不符」 | 契约要求 apiPrefix 字面等于后端目录名 | 改 `apiPrefix` 或移动契约目录 |
-| `ojm api` 报「没有发现契约文件」 | 目录不符发现规则 | 按 §3.2 核对；注意 `modules/`→`web/`、`api/`→`client/` 迁移 |
+| `ojm api` 报「没有发现契约文件」 | 目录不符发现规则 | 按 §3.2 核对；注意 `modules/`→`web/`、`api/`→`__client/` 迁移（旧名 `client/` 兼容但会告警） |
 | `--check` 报 artifact-stale | 改了契约没重跑 | 重跑 `ojm api` |
 | `--check` 报 handler 未登记 | 内置/手写 handler 无契约 | 补契约，或登记豁免清单 |
 | 豁免写了 `//` 注释后全部失效 | 严格 JSON 解析失败、静默回退 | 注释写进 `_comment` 字段 |
@@ -1110,7 +1110,7 @@ export default async (path: string, html: string) => {
 | 无页面模块（`routes: []`） | 同 `web/src/notification/entry.ts` |
 | 契约写法（GET + POST、参数段） | `api/src/notification/contract.ts`、`api/src/personal-center/contract.ts` |
 | handler 写法（列表 / 写入 / 上传） | `api/src/notification/notifications/api.ts`、`.../read/api.ts` |
-| 生成物长什么样（含工厂） | `web/src/notification/client/api.ts` |
+| 生成物长什么样（含工厂） | `web/src/notification/__client/api.ts` |
 | 建表三件套 | `api/src/notification/{schema.yaml,manifest.yaml,migrations/}` |
 | 全局类型（`window.$message` 等） | 工程根 `env.d.ts` |
 

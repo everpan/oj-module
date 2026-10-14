@@ -18,9 +18,10 @@ import { buildIr } from "./ir";
  *
  * 发现两档（缺省并扫）：
  * - uni-dev：`api/src/<模块>/contract.ts` → client 双产物写到对应前端模块
- *   `web/src/<模块>/client/`（模块名 = apiPrefix 去首斜杠，AC-D9 字面相等，
+ *   `web/src/<模块>/__client/`（模块名 = apiPrefix 去首斜杠，AC-D9 字面相等，
  *   不符即人话报错）；routes.json/openapi.yaml 写契约旁；stub 写 oj 目录镜像树。
- * - 纯前端：`web/src/<模块>/client/contract.ts` → 四产物全部落契约同目录，无 stub。
+ * - 纯前端：`web/src/<模块>/__client/contract.ts` → 四产物全部落契约同目录，无 stub。
+ *   旧名 `client/` 兼容发现（deprecation 告警），生成物一律写 `__client/`。
  *
  * 幂等：内容无变化不写盘（读旧比对），RunResult 报告 written/skipped。
  */
@@ -40,7 +41,7 @@ export interface DiscoveredContract {
 	kind: "uni-dev" | "frontend"
 }
 
-/** 发现契约文件：api/src/<m>/contract.ts + web/src/<m>/client/contract.ts */
+/** 发现契约文件：api/src/<m>/contract.ts + web/src/<m>/__client/contract.ts（旧名 client/ 兼容 + 告警） */
 export function discoverContracts(cwd: string): DiscoveredContract[] {
 	const found: DiscoveredContract[] = [];
 	const apiSrc = join(cwd, "api/src");
@@ -58,9 +59,14 @@ export function discoverContracts(cwd: string): DiscoveredContract[] {
 		for (const entry of readdirSync(modulesSrc, { withFileTypes: true })) {
 			if (!entry.isDirectory())
 				continue;
-			const p = join(modulesSrc, entry.name, "client", "contract.ts");
-			if (existsSync(p))
-				found.push({ path: p, module: entry.name, kind: "frontend" });
+			const p = join(modulesSrc, entry.name, "__client", "contract.ts");
+			const legacy = join(modulesSrc, entry.name, "client", "contract.ts");
+			const hit = existsSync(p) ? p : existsSync(legacy) ? legacy : null;
+			if (hit) {
+				if (hit === legacy)
+					console.warn(`[ojm-api] 弃用：${legacy} 已改名为 __client/（框架生成物目录），请迁移；生成物不再写入 client/。`);
+				found.push({ path: hit, module: entry.name, kind: "frontend" });
+			}
 		}
 	}
 	return found.sort((a, b) => (a.path < b.path ? -1 : 1));
@@ -80,7 +86,7 @@ function writeIfChanged(path: string, content: string, result: RunResult): void 
 /** 单份契约的四产物落盘路径（run 与 --check 共用，DRY） */
 export function artifactPaths(found: DiscoveredContract, cwd: string): { client: string, schemas: string, routes: string, openapi: string } {
 	if (found.kind === "uni-dev") {
-		const moduleClientDir = join(cwd, "web/src", found.module, "client");
+		const moduleClientDir = join(cwd, "web/src", found.module, "__client");
 		return {
 			client: join(moduleClientDir, "api.ts"),
 			schemas: join(moduleClientDir, "api.schemas.ts"),
@@ -146,7 +152,7 @@ async function runOne(found: DiscoveredContract, cwd: string, result: RunResult)
 export async function runApi(opts: { cwd: string }): Promise<RunResult> {
 	const contracts = discoverContracts(opts.cwd);
 	if (contracts.length === 0) {
-		throw new Error(`[ojm-api] ${opts.cwd} 下没有发现契约文件——默认发现：api/src/*/contract.ts（uni-dev）与 web/src/*/client/contract.ts（纯前端）。存量工程请迁移：modules/ → web/、模块内 api/ → client/（生成物与契约同迁）。`);
+		throw new Error(`[ojm-api] ${opts.cwd} 下没有发现契约文件——默认发现：api/src/*/contract.ts（uni-dev）与 web/src/*/__client/contract.ts（纯前端，旧名 client/ 兼容）。存量工程请迁移：modules/ → web/、模块内 api/ → __client/（生成物与契约同迁）。`);
 	}
 	const result: RunResult = { contracts: contracts.length, written: [], skipped: [], stubs: { created: 0, updated: 0, skipped: 0 } };
 	for (const found of contracts)
@@ -162,7 +168,7 @@ export async function runApi(opts: { cwd: string }): Promise<RunResult> {
 export async function runApiDocs(cwd: string, opts: { redocBin?: string, fetchJs?: (url: string) => Promise<string> } = {}): Promise<string> {
 	const contracts = discoverContracts(cwd);
 	if (contracts.length === 0) {
-		throw new Error(`[ojm-api] ${cwd} 下没有发现契约文件——默认发现：api/src/*/contract.ts（uni-dev）与 web/src/*/client/contract.ts（纯前端）。`);
+		throw new Error(`[ojm-api] ${cwd} 下没有发现契约文件——默认发现：api/src/*/contract.ts（uni-dev）与 web/src/*/__client/contract.ts（纯前端，旧名 client/ 兼容）。`);
 	}
 
 	// 聚合：逐契约 IR → openapi doc → paths 合并（operation 打模块 tag）

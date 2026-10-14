@@ -3,7 +3,7 @@ import type { AppRouteRecordRaw, ModuleDefinition, SystemApiProvider } from "@oj
 import { ApartmentOutlined, MenuOutlined, SettingOutlined, TeamOutlined, UserOutlined } from "@ant-design/icons";
 import { createElement, lazy } from "react";
 
-import { createSystemClient } from "./client/api";
+import { createSystemClient } from "./__client/api";
 
 const User = lazy(() => import("./pages/user"));
 const Dept = lazy(() => import("./pages/dept"));

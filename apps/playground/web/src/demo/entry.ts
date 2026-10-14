@@ -3,7 +3,7 @@ import { defineModule } from "@oj-module/runtime";
 import { createElement } from "react";
 import { Navigate } from "react-router";
 
-import { createDemoClient } from "./client/api";
+import { createDemoClient } from "./__client/api";
 import DemoAboutPage from "./pages/about";
 import DemoDetailPage from "./pages/detail";
 import DemoPage from "./pages/index";

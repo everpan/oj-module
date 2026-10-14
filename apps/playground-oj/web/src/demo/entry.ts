@@ -1,11 +1,12 @@
-import { FileTextOutlined, HomeOutlined, InfoCircleOutlined } from "@ant-design/icons";
+import { FileTextOutlined, HomeOutlined, InfoCircleOutlined, SafetyOutlined } from "@ant-design/icons";
 import { defineModule } from "@oj-module/runtime";
 import { createElement } from "react";
 import { Navigate } from "react-router";
 
-import { createDemoClient } from "./client/api";
+import { createDemoClient } from "./__client/api";
 import DemoAboutPage from "./pages/about";
 import DemoDetailPage from "./pages/detail";
+import DemoGuardPage from "./pages/guard";
 import DemoPage from "./pages/index";
 
 /**
@@ -69,6 +70,16 @@ export default defineModule({
 					handle: {
 						title: "demo:menu.about",
 						icon: createElement(InfoCircleOutlined),
+					},
+				},
+				{
+					// beforeClose 未保存守卫示例（ojm 0.1.18）：表单 dirty 时关页签弹确认框
+					path: "guard",
+					Component: DemoGuardPage,
+					handle: {
+						title: "demo:menu.guard",
+						icon: createElement(SafetyOutlined),
+						keepAlive: true,
 					},
 				},
 			],

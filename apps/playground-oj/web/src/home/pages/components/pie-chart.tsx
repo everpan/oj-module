@@ -1,11 +1,11 @@
 import type { EChartsOption } from "echarts";
-import type { FetchPieData } from "../../client/api";
+import type { FetchPieData } from "../../__client/api";
 import { Card, Segmented } from "antd";
 import ReactECharts from "echarts-for-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { fetchPie } from "../../client/api";
+import { fetchPie } from "../../__client/api";
 
 /** 契约行（{value, code}）+ 展示层补的 name（DATA_KEY 翻译） */
 type PieDataType = FetchPieData[number] & { name: string };

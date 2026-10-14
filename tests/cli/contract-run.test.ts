@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterAll, describe, expect, it } from "vitest";
-import { runApi } from "../../packages/cli/src/contract/run";
+import { afterAll, describe, expect, it, vi } from "vitest";
+import { discoverContracts, runApi } from "../../packages/cli/src/contract/run";
 
 /**
  * AC-D7：`ojm api` 编排（discover → evaluate → IR → 发射 → 幂等写盘）。
@@ -57,11 +57,11 @@ describe("runApi（AC-D7 编排 + 幂等写盘）", () => {
 		const cwd = makeProject();
 		const result = await runApi({ cwd });
 
-		// client 双产物 → web/src/order/client/（模块名 = apiPrefix 去首斜杠，AC-D9）
-		const client = readFileSync(join(cwd, "web/src/order/client/api.ts"), "utf8");
+		// client 双产物 → web/src/order/__client/（模块名 = apiPrefix 去首斜杠，AC-D9）
+		const client = readFileSync(join(cwd, "web/src/order/__client/api.ts"), "utf8");
 		expect(client).toContain("export function bindRequest");
 		expect(client).toContain("export async function getOrderList");
-		expect(existsSync(join(cwd, "web/src/order/client/api.schemas.ts"))).toBe(true);
+		expect(existsSync(join(cwd, "web/src/order/__client/api.schemas.ts"))).toBe(true);
 
 		// routes.json / openapi.yaml → 契约同目录
 		const routes = JSON.parse(readFileSync(join(cwd, "api/src/order/routes.json"), "utf8")) as { method: string, pattern: string }[];
@@ -105,5 +105,56 @@ import { defineApi } from "@oj-module/runtime/contract";
 export const ep = defineApi({ apiPrefix: "/billing", route: "/x" });
 `);
 		await expect(runApi({ cwd })).rejects.toThrowError(/apiPrefix.*billing.*order|字面相等/);
+	});
+});
+
+describe("client → __client 改名（发现双形态兼容 + 发射目标）", () => {
+	it("发现 __client 优先，client 兼容并告警", () => {
+		const cwd = makeProject(); // 自带旧形态 web/src/demo/client/contract.ts
+		mkdirSync(join(cwd, "web/src/home/__client"), { recursive: true });
+		writeFileSync(join(cwd, "web/src/home/__client/contract.ts"), `
+import { defineApi, z } from "@oj-module/runtime/contract";
+export const getHome = defineApi({ apiPrefix: "/home", route: "/dashboard", data: z.object({}) });
+`);
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+		try {
+			const found = discoverContracts(cwd);
+			// 新形态：命中且无 warn
+			expect(found).toContainEqual({ path: join(cwd, "web/src/home/__client/contract.ts"), module: "home", kind: "frontend" });
+			// 旧形态：命中且 console.warn 迁移提示
+			expect(found).toContainEqual({ path: join(cwd, "web/src/demo/client/contract.ts"), module: "demo", kind: "frontend" });
+			expect(warn).toHaveBeenCalledTimes(1);
+			expect(String(warn.mock.calls[0][0])).toContain("__client");
+		}
+		finally {
+			warn.mockRestore();
+		}
+	});
+
+	it("__client 与 client 同在 → 只命中 __client（不重复、不告警）", () => {
+		const cwd = makeProject();
+		mkdirSync(join(cwd, "web/src/demo/__client"), { recursive: true });
+		writeFileSync(join(cwd, "web/src/demo/__client/contract.ts"), `
+import { defineApi, z } from "@oj-module/runtime/contract";
+export const getDashboard2 = defineApi({ apiPrefix: "/demo", route: "/dashboard", data: z.object({}) });
+`);
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+		try {
+			const found = discoverContracts(cwd).filter(f => f.module === "demo");
+			expect(found).toHaveLength(1);
+			expect(found[0].path).toBe(join(cwd, "web/src/demo/__client/contract.ts"));
+			expect(warn).not.toHaveBeenCalled();
+		}
+		finally {
+			warn.mockRestore();
+		}
+	});
+
+	it("artifactPaths：uni-dev 的 client 产物落 web/src/<m>/__client/", async () => {
+		const cwd = makeProject();
+		await runApi({ cwd });
+		expect(existsSync(join(cwd, "web/src/order/__client/api.ts"))).toBe(true);
+		expect(existsSync(join(cwd, "web/src/order/__client/api.schemas.ts"))).toBe(true);
+		expect(existsSync(join(cwd, "web/src/order/client"))).toBe(false);
 	});
 });

@@ -67,6 +67,8 @@ export default antfu({
 		// yaml/json 经 eslint 重排版会导致 --check 永久误报 artifact-stale
 		"**/client/api.ts",
 		"**/client/api.schemas.ts",
+		"**/__client/api.ts",
+		"**/__client/api.schemas.ts",
 		"**/openapi.yaml",
 		"**/routes.json",
 		// P1：宿主预构建产物并入 cli 后目录名为 shell-dist（不叫 dist，
