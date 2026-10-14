@@ -288,4 +288,28 @@ export default { upload };
 		expect(unreg).toBeDefined();
 		expect(unreg!.message).toContain("order/item/upload");
 	});
+
+	it("字符串字面量连字符组键参与对账（oj 组名允许非标识符，如 push-broadcast）", async () => {
+		const cwd = makeProjectIn("notify", `
+import { defineApi, z } from "@oj-module/runtime/contract";
+
+export const pushBroadcast = defineApi({
+	apiPrefix: "/notify",
+	route: "/push-broadcast",
+	method: "POST",
+	data: z.object({ ok: z.boolean() }),
+});
+`);
+		writeFileSync(join(cwd, "api/src/notify/api.ts"), `
+export default {
+	"push-broadcast": {
+		post: () => {
+			json.ok({ ok: true });
+		},
+	},
+};
+`);
+		const { violations } = await checkApi({ cwd });
+		expect(routeViolations(violations)).toEqual([]);
+	});
 });

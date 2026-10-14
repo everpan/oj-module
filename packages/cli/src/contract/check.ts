@@ -261,7 +261,12 @@ export function scanHandlerFile(filePath: string, apiSrcDir: string): HandlerRow
 			return;
 		seen.add(obj);
 		for (const prop of obj.properties) {
-			const name = (prop.name && ts.isIdentifier(prop.name)) ? prop.name.text : undefined;
+			// oj v0.1.64：组名可以是连字符等非标识符（"audit-log"），字符串字面量键与
+			// 标识符键同等解析。保留限制：元素访问式元数据（api["x-y"].route = ...）
+			// 仍不支持——reshape 授权形态为字符串字面量键 + 组内函数挂 .route。
+			const name = (prop.name && (ts.isIdentifier(prop.name) || ts.isStringLiteral(prop.name)))
+				? prop.name.text
+				: undefined;
 			if (!name)
 				continue;
 			const chain = chainPrefix ? `${chainPrefix}.${name}` : name;
