@@ -7,6 +7,12 @@ import { usePreferencesStore } from "#src/store/preferences";
 import { getAppNamespace } from "#src/utils/get-app-namespace";
 
 /**
+ * @zh 关闭前守卫：返回 false（或 Promise<false>）取消关闭；抛错按取消处理（fail-safe）
+ * @en Close guard: return false (or Promise<false>) to cancel the close; a thrown error is treated as cancel (fail-safe).
+ */
+export type BeforeTabCloseGuard = () => boolean | Promise<boolean>;
+
+/**
  * @zh 标签页项目属性接口
  * @en Tab item properties interface.
  */
@@ -24,6 +30,12 @@ export interface TabItemProps extends Omit<TabPaneProps, "tab"> {
 	 * @see {@link https://reactrouter.com/en/main/hooks/use-navigate#optionsstate | usenavigate - options state}
 	 */
 	historyState?: Record<string, any>
+	/**
+	 * @zh 关闭前守卫：单个或数组（顺序执行，按函数引用去重，null 清除全部守卫）。
+	 * 五个关闭动作（单个/右/左/其他/全部）关闭前 await 守卫，任一否决或抛错整批取消。
+	 * @en Guard before close: a single guard or an array (executed in order, deduped by reference; null clears all guards). All five close actions await guards before closing — any veto or thrown error cancels the whole batch.
+	 */
+	beforeClose?: BeforeTabCloseGuard | BeforeTabCloseGuard[] | null
 }
 
 export interface TabStateType extends Omit<TabItemProps, "label"> {
@@ -72,11 +84,11 @@ interface TabsAction {
 	setIsRefresh: (state: boolean) => void
 	addTab: (routePath: string, tabProps: TabStateType) => void
 	insertBeforeTab: (routePath: string, tabProps: TabStateType) => void
-	removeTab: (routePath: string) => void
-	closeRightTabs: (routePath: string) => void
-	closeLeftTabs: (routePath: string) => void
-	closeOtherTabs: (routePath: string) => void
-	closeAllTabs: () => void
+	removeTab: (routePath: string) => Promise<void>
+	closeRightTabs: (routePath: string) => Promise<void>
+	closeLeftTabs: (routePath: string) => Promise<void>
+	closeOtherTabs: (routePath: string) => Promise<void>
+	closeAllTabs: () => Promise<void>
 	setActiveKey: (routePath: string) => void
 	resetTabs: () => void
 	changeTabOrder: (from: number, to: number) => void
@@ -85,289 +97,279 @@ interface TabsAction {
 	resetTableTitle: (routePath: string) => void
 };
 
+/** 关闭流程进行中的 key（并发去重：同 key 的关闭在进行中时再次触发被忽略） */
+const closingKeys = new Set<string>();
+
 /**
  * @zh 标签页状态管理
  * @en Tab state management.
  */
 export const useTabsStore = create<TabsState & TabsAction>()(
 	persist(
-		set => ({
-			...initialState,
-
+		(set, get) => {
 			/**
-			 * @zh 设置标签页是否处于刷新状态
-			 * @en Set whether the tab is in a refresh state.
+			 * 关闭前守卫：待关闭集合里任一标签页声明了 beforeClose 且返回 false / 抛错时，整体中止。
+			 * fail-safe：守卫抛错按中止处理，防误关丢内容；console.error 留排查线索。
 			 */
-			setIsRefresh: (state: boolean) => {
-				set({ isRefresh: state });
-			},
-
-			/**
-			 * @zh 设置标签页
-			 * @en Set the tab.
-			 */
-			setActiveKey: (routePath: string) => {
-				set({ activeKey: routePath });
-			},
-
-			/**
-			 * @zh 在最前面插入标签页
-			 * @en Insert a tab at the front.
-			 */
-			insertBeforeTab: (routePath: string, tabProps: TabStateType) => {
-				set((state) => {
-					if (routePath?.length) {
-						const newMap = new Map([[routePath, tabProps]]);
-						for (const [key, value] of state.openTabs) {
-							newMap.set(key, value);
+			const guardClose = async (keys: string[]): Promise<boolean> => {
+				for (const key of keys) {
+					const fn = get().openTabs.get(key)?.beforeClose;
+					if (fn == null)
+						continue;
+					const fns = Array.isArray(fn) ? fn : [fn];
+					for (const f of fns) {
+						try {
+							if (!(await f()))
+								return false;
 						}
-						return { openTabs: newMap };
+						catch (e) {
+							console.error("[tabs] beforeClose 守卫抛错，按中止关闭处理", e);
+							return false;
+						}
 					}
-					return state;
-				});
-			},
+				}
+				return true;
+			};
 
 			/**
-			 * @zh 添加标签页
-			 * @en Add a tab.
+			 * 共用关闭路径：in-flight 去重 → 守卫 → 精确删除获批集合（TOCTOU 防护：
+			 * 不对 live state 重算，await 期间新开的 tab 不受影响）→ activeKey 修正。
 			 */
-			addTab: (routePath: string, tabProps: TabStateType) => {
-				set((state) => {
-					if (routePath?.length) {
-						const newTabs = new Map(state.openTabs);
-						/**
-						 * 1. 如果 tab 已经存在，则更新 historyState 属性，所以不去重，且 ...newTabs.get(routePath) 是为了保证首页的 closable 属性不被覆盖
-						 * 2. 如果 tab 不存在，则添加到 Map 中
-						 */
-						newTabs.set(routePath, { ...newTabs.get(routePath), ...tabProps });
-						return { openTabs: newTabs };
-					}
-					return state;
-				});
-			},
+			const guardAndClose = async (removed: string[], fallbackActive: (remaining: string[]) => string): Promise<void> => {
+				if (removed.length === 0)
+					return;
+				for (const k of removed)
+					closingKeys.add(k);
+				try {
+					if (!(await guardClose(removed)))
+						return;
+					set((state) => {
+						const toClose = new Set(removed);
+						const newTabs = new Map([...state.openTabs].filter(([k]) => !toClose.has(k)));
+						if (newTabs.size === state.openTabs.size)
+							return state;
+						const remaining = [...newTabs.keys()];
+						const newActiveKey = (toClose.has(state.activeKey) || !newTabs.has(state.activeKey))
+							? fallbackActive(remaining)
+							: state.activeKey;
+						return { openTabs: newTabs, activeKey: newActiveKey };
+					});
+				}
+				finally {
+					for (const k of removed)
+						closingKeys.delete(k);
+				}
+			};
 
-			/**
-			 * @zh 移除标签页
-			 * @en Remove a tab.
-			 */
-			removeTab: (routePath: string) => {
-				set((state) => {
+			return {
+				...initialState,
+
+				/**
+				 * @zh 设置标签页是否处于刷新状态
+				 * @en Set whether the tab is in a refresh state.
+				 */
+				setIsRefresh: (state: boolean) => {
+					set({ isRefresh: state });
+				},
+
+				/**
+				 * @zh 设置标签页
+				 * @en Set the tab.
+				 */
+				setActiveKey: (routePath: string) => {
+					set({ activeKey: routePath });
+				},
+
+				/**
+				 * @zh 在最前面插入标签页
+				 * @en Insert a tab at the front.
+				 */
+				insertBeforeTab: (routePath: string, tabProps: TabStateType) => {
+					set((state) => {
+						if (routePath?.length) {
+							const newMap = new Map([[routePath, tabProps]]);
+							for (const [key, value] of state.openTabs) {
+								newMap.set(key, value);
+							}
+							return { openTabs: newMap };
+						}
+						return state;
+					});
+				},
+
+				/**
+				 * @zh 添加标签页
+				 * @en Add a tab.
+				 */
+				addTab: (routePath: string, tabProps: TabStateType) => {
+					set((state) => {
+						if (routePath?.length) {
+							const newTabs = new Map(state.openTabs);
+							/**
+							 * 1. 如果 tab 已经存在，则更新 historyState 属性，所以不去重，且 ...newTabs.get(routePath) 是为了保证首页的 closable 属性不被覆盖
+							 * 2. 如果 tab 不存在，则添加到 Map 中
+							 * 3. beforeClose 是注册语义而非覆盖语义：数组 concat + 按引用去重
+							 *    （keep-alive 重挂载重复注册不叠加）；null 显式清除全部守卫
+							 */
+							const prev = newTabs.get(routePath);
+							const merged: TabStateType = { ...prev, ...tabProps };
+							if (tabProps.beforeClose === null) {
+								merged.beforeClose = undefined; // null = 清除该 tab 全部守卫（含他人注册的）
+							}
+							else if (prev?.beforeClose != null && tabProps.beforeClose !== undefined) {
+								const all = [
+									...(Array.isArray(prev.beforeClose) ? prev.beforeClose : [prev.beforeClose]),
+									...(Array.isArray(tabProps.beforeClose) ? tabProps.beforeClose : [tabProps.beforeClose]),
+								];
+								merged.beforeClose = all.filter((f, i, a) => a.indexOf(f) === i); // 按引用去重
+							}
+							newTabs.set(routePath, merged);
+							return { openTabs: newTabs };
+						}
+						return state;
+					});
+				},
+
+				/**
+				 * @zh 移除标签页
+				 * @en Remove a tab.
+				 */
+				removeTab: async (routePath: string) => {
 					const homePath = import.meta.env.VITE_BASE_HOME_PATH;
 
 					// 如果是首页，不允许关闭
-					if (routePath === homePath) {
-						return state;
-					}
+					if (!routePath?.length || routePath === homePath || closingKeys.has(routePath))
+						return;
 
-					const newTabs = new Map(state.openTabs);
-					newTabs.delete(routePath);
-					let newActiveKey = state.activeKey;
+					// 移除当前激活的标签页时，fallback 选剩余最后一个（home 不可删，集合必非空）
+					await guardAndClose([routePath], keys => keys.at(-1) ?? homePath);
+				},
 
-					// 移除当前激活的标签页，则选择最后一个标签页
-					if (routePath === state.activeKey) {
-						const tabsArray = Array.from(newTabs.keys());
-						newActiveKey = tabsArray.at(-1) || homePath;
-					}
+				/**
+				 * @zh 关闭右侧标签页
+				 * @en Close tabs on the right.
+				 */
+				closeRightTabs: async (routePath: string) => {
+					if (closingKeys.has(routePath))
+						return;
+					const keys = [...get().openTabs.keys()];
+					const idx = keys.indexOf(routePath);
+					if (idx < 0)
+						return;
+					// 当前激活页在关闭集合内时，锚点成为新的激活页
+					await guardAndClose(keys.slice(idx + 1), () => routePath);
+				},
 
-					// 确保至少保留首页标签
-					if (newTabs.size === 0) {
-						newTabs.set(homePath, state.openTabs.get(homePath)!);
-						newActiveKey = homePath;
-					}
-
-					return { openTabs: newTabs, activeKey: newActiveKey };
-				});
-			},
-
-			/**
-			 * @zh 关闭右侧标签页
-			 * @en Close tabs on the right.
-			 */
-			closeRightTabs: (routePath: string) => {
-				set((state) => {
-					const newTabs = new Map();
-					let found = false;
-					let activeKeyFound = false;
-					let newActiveKey = state.activeKey;
-
-					// 遍历当前所有标签页
-					for (const [key, value] of state.openTabs) {
-						// 如果已找到指定路径，停止遍历
-						if (found) {
-							break;
-						}
-						// 将当前标签页添加到新的Map中
-						newTabs.set(key, value);
-						// 如果当前key等于指定路径，标记为已找到
-						if (key === routePath) {
-							found = true;
-						}
-						// 如果当前key等于当前激活的标签页，标记activeKey已找到
-						if (key === state.activeKey) {
-							activeKeyFound = true;
-						}
-					}
-
-					// 如果当前激活的标签页被关闭，将新的激活标签页设置为指定路径
-					if (!activeKeyFound) {
-						newActiveKey = routePath;
-					}
-
-					// 返回更新后的状态
-					return { openTabs: newTabs, activeKey: newActiveKey };
-				});
-			},
-
-			/**
-			 * @zh 关闭左侧标签页
-			 * @en Close tabs on the left.
-			 */
-			closeLeftTabs: (routePath: string) => {
-				set((state) => {
-					const newTabs = new Map();
+				/**
+				 * @zh 关闭左侧标签页
+				 * @en Close tabs on the left.
+				 */
+				closeLeftTabs: async (routePath: string) => {
+					if (closingKeys.has(routePath))
+						return;
 					const homePath = import.meta.env.VITE_BASE_HOME_PATH;
-					let found = false;
-					let newActiveKey = state.activeKey;
-					let activeKeyOnRight = false;
+					const keys = [...get().openTabs.keys()];
+					const idx = keys.indexOf(routePath);
+					if (idx < 0)
+						return;
+					// home 永不在受影响集合
+					await guardAndClose(keys.slice(0, idx).filter(k => k !== homePath), () => routePath);
+				},
 
-					// 首先添加首页标签，因为它不能被删除
-					newTabs.set(homePath, state.openTabs.get(homePath)!);
-
-					// 遍历当前所有标签页
-					for (const [key, value] of state.openTabs) {
-						if (key === homePath)
-							continue; // 跳过首页，因为已经添加过了
-
-						if (found || key === routePath) {
-							newTabs.set(key, value);
-							found = true;
-						}
-
-						if (key === state.activeKey && found) {
-							activeKeyOnRight = true;
-						}
-					}
-
-					// 如果当前激活的标签页在左侧被关闭，将新的激活标签页设置为指定路径
-					if (!activeKeyOnRight) {
-						newActiveKey = routePath;
-					}
-
-					// 返回更新后的状态
-					return { openTabs: newTabs, activeKey: newActiveKey };
-				});
-			},
-
-			/**
-			 * @zh 关闭其他标签页
-			 * @en Close other tabs.
-			 */
-			closeOtherTabs: (routePath: string) => {
-				set((state) => {
-					const newTabs = new Map();
+				/**
+				 * @zh 关闭其他标签页
+				 * @en Close other tabs.
+				 */
+				closeOtherTabs: async (routePath: string) => {
+					if (closingKeys.has(routePath))
+						return;
 					const homePath = import.meta.env.VITE_BASE_HOME_PATH;
+					await guardAndClose(
+						[...get().openTabs.keys()].filter(k => k !== homePath && k !== routePath),
+						() => routePath,
+					);
+				},
 
-					// 保留首页标签
-					newTabs.set(homePath, state.openTabs.get(homePath)!);
-
-					// 保留指定的标签页
-					if (routePath !== homePath && state.openTabs.has(routePath)) {
-						newTabs.set(routePath, state.openTabs.get(routePath)!);
-					}
-
-					// 更新激活的标签页
-					let newActiveKey = state.activeKey;
-					if (!newTabs.has(state.activeKey)) {
-						newActiveKey = routePath;
-					}
-
-					return { openTabs: newTabs, activeKey: newActiveKey };
-				});
-			},
-
-			/**
-			 * @zh 关闭所有标签页
-			 * @en Close all tabs.
-			 */
-			closeAllTabs: () => {
-				set((state) => {
-					const newTabs = new Map();
+				/**
+				 * @zh 关闭所有标签页
+				 * @en Close all tabs.
+				 */
+				closeAllTabs: async () => {
 					const homePath = import.meta.env.VITE_BASE_HOME_PATH;
-					newTabs.set(homePath, state.openTabs.get(homePath)!);
-					return { openTabs: newTabs, activeKey: homePath };
-				});
-			},
+					await guardAndClose([...get().openTabs.keys()].filter(k => k !== homePath), () => homePath);
+				},
 
-			/**
-			 * @zh 更改标签页顺序
-			 * @en Change tab order.
-			 */
-			changeTabOrder: (from: number, to: number) => {
-				set((state) => {
+				/**
+				 * @zh 更改标签页顺序
+				 * @en Change tab order.
+				 */
+				changeTabOrder: (from: number, to: number) => {
+					set((state) => {
 					// 也可以使用 import { arrayMove } from "@dnd-kit/sortable"; 来交换位置
-					const newTabs = Array.from(state.openTabs.entries());
-					const [movedTab] = newTabs.splice(from, 1); // 直接解构获取移动的标签
-					newTabs.splice(to, 0, movedTab); // 插入到新位置
+						const newTabs = Array.from(state.openTabs.entries());
+						const [movedTab] = newTabs.splice(from, 1); // 直接解构获取移动的标签
+						newTabs.splice(to, 0, movedTab); // 插入到新位置
 
-					const newOpenTabs = new Map(newTabs); // 直接使用 Map 构造函数
-					return { openTabs: newOpenTabs };
-				});
-			},
+						const newOpenTabs = new Map(newTabs); // 直接使用 Map 构造函数
+						return { openTabs: newOpenTabs };
+					});
+				},
 
-			/**
-			 * @zh 切换标签页最大化状态
-			 * @en Toggle tab maximization status
-			 * @param {boolean} state - 最大化状态
-			 */
-			toggleMaximize: (state: boolean) => {
-				set({ isMaximize: state });
-			},
+				/**
+				 * @zh 切换标签页最大化状态
+				 * @en Toggle tab maximization status
+				 * @param {boolean} state - 最大化状态
+				 */
+				toggleMaximize: (state: boolean) => {
+					set({ isMaximize: state });
+				},
 
-			/**
-			 * @zh 设置标签页标题
-			 * @en Set the tab title
-			 */
-			setTableTitle: (routePath: string, title: React.ReactNode) => {
-				set((state) => {
-					const newTabs = new Map(state.openTabs);
-					const targetTab = newTabs.get(routePath);
-					if (targetTab) {
-						targetTab.newTabTitle = title;
-						newTabs.set(routePath, targetTab);
-						return { openTabs: newTabs };
-					}
-					return state;
-				});
-			},
+				/**
+				 * @zh 设置标签页标题
+				 * @en Set the tab title
+				 */
+				setTableTitle: (routePath: string, title: React.ReactNode) => {
+					set((state) => {
+						const newTabs = new Map(state.openTabs);
+						const targetTab = newTabs.get(routePath);
+						if (targetTab) {
+							targetTab.newTabTitle = title;
+							newTabs.set(routePath, targetTab);
+							return { openTabs: newTabs };
+						}
+						return state;
+					});
+				},
 
-			/**
-			 * @zh 重置标签页标题（删除自定义的标题）
-			 * @en Reset the tab title (delete custom titles)
-			 */
-			resetTableTitle: (routePath: string) => {
-				set((state) => {
-					const newTabs = new Map(state.openTabs);
-					const targetTab = newTabs.get(routePath);
-					if (targetTab) {
-						delete targetTab.newTabTitle;
-						newTabs.set(routePath, targetTab);
-						return { openTabs: newTabs };
-					}
-					return state;
-				});
-			},
+				/**
+				 * @zh 重置标签页标题（删除自定义的标题）
+				 * @en Reset the tab title (delete custom titles)
+				 */
+				resetTableTitle: (routePath: string) => {
+					set((state) => {
+						const newTabs = new Map(state.openTabs);
+						const targetTab = newTabs.get(routePath);
+						if (targetTab) {
+							delete targetTab.newTabTitle;
+							newTabs.set(routePath, targetTab);
+							return { openTabs: newTabs };
+						}
+						return state;
+					});
+				},
 
-			/**
-			 * @zh 重置所有标签页的状态
-			 * @en Reset all tab states
-			 */
-			resetTabs: () => {
-				set(() => {
-					return { ...initialState };
-				});
-			},
+				/**
+				 * @zh 重置所有标签页的状态
+				 * @en Reset all tab states
+				 */
+				resetTabs: () => {
+					set(() => {
+						return { ...initialState };
+					});
+				},
 
-		}),
+			};
+		},
 		{
 			name: getAppNamespace("tabbar"),
 			/**
