@@ -42,6 +42,7 @@ export const AntdApp = _fn;
 export const ErrorBoundary = _fn;
 export const PageError = _fn;
 // api
+export const notify = _obj;
 export const fetchPie = _fn;
 export const fetchLine = _fn;
 export const fetchLogin = _fn;

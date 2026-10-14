@@ -40,7 +40,7 @@ describe("runtime 包元数据定稿（P3.5）", () => {
 	it("files 含 dist 且 exports 开放主入口 + contract 子路径（P1 契约并入）", () => {
 		const pkg = readRuntimePkg();
 		expect(pkg.files).toContain("dist");
-		expect(Object.keys(pkg.exports)).toEqual([".", "./contract", "./contract/errors"]);
+		expect(Object.keys(pkg.exports)).toEqual([".", "./contract", "./contract/errors", "./notify"]);
 	});
 
 	it("contract 子路径产物齐全（dist/contract，US-7：包内无 .ts 源）", () => {

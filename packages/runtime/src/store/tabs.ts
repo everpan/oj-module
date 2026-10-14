@@ -82,7 +82,7 @@ type TabsState = typeof initialState;
  */
 interface TabsAction {
 	setIsRefresh: (state: boolean) => void
-	addTab: (routePath: string, tabProps: TabStateType) => void
+	addTab: (routePath: string, tabProps: Partial<TabStateType>) => void
 	insertBeforeTab: (routePath: string, tabProps: TabStateType) => void
 	removeTab: (routePath: string) => Promise<void>
 	closeRightTabs: (routePath: string) => Promise<void>
@@ -201,7 +201,7 @@ export const useTabsStore = create<TabsState & TabsAction>()(
 				 * @zh 添加标签页
 				 * @en Add a tab.
 				 */
-				addTab: (routePath: string, tabProps: TabStateType) => {
+				addTab: (routePath: string, tabProps: Partial<TabStateType>) => {
 					set((state) => {
 						if (routePath?.length) {
 							const newTabs = new Map(state.openTabs);
@@ -212,7 +212,8 @@ export const useTabsStore = create<TabsState & TabsAction>()(
 							 *    （keep-alive 重挂载重复注册不叠加）；null 显式清除全部守卫
 							 */
 							const prev = newTabs.get(routePath);
-							const merged: TabStateType = { ...prev, ...tabProps };
+							// Partial 合并后 key/label 可能缺省（与既有运行时行为一致），收敛回 TabStateType
+							const merged = { ...prev, ...tabProps } as TabStateType;
 							if (tabProps.beforeClose === null) {
 								merged.beforeClose = undefined; // null = 清除该 tab 全部守卫（含他人注册的）
 							}

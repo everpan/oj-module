@@ -32,7 +32,9 @@ describe("供应链加固（P6.6）", () => {
 
 	it(".npmrc 锁定安装源并开启 provenance", () => {
 		const npmrc = fs.readFileSync(path.join(PROJECT_ROOT, ".npmrc"), "utf-8");
-		expect(npmrc).toMatch(/registry=https:\/\/registry\.npmmirror\.com/);
+		// 安装源统一官方源（分支决策：registry 统一为官方源，发布走 publishConfig.registry）；
+		// 镜像域名校验仅保证不回落到默认源之外的不明域
+		expect(npmrc).toMatch(/registry=https:\/\/registry\.(?:npmmirror|npmjs)\.(?:com|org)/);
 		expect(npmrc).toMatch(/provenance=true/);
 	});
 
