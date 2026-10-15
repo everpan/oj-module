@@ -7,7 +7,8 @@
 //   --otp <code>  npm 2FA 验证码（TOTP 类账户开启双因素认证时必填）；省略则在发布前交互索取
 //   --web-2fa     npm 2FA 为「web 验证」（浏览器审批）模式：发布时 npm 弹浏览器让你批准，
 //                 不传 --otp、也不索取验证码；脚本直接 pnpm publish 并等待浏览器审批完成。
-//                 与 --otp 互斥，同时给则忽略 --otp。
+//                 与 --otp 互斥，同时给则忽略 --otp。此模式跳过 whoami 登录探测
+//                 （探测有误报），登录态由 pnpm publish 在发布时自行校验。
 //
 // 流程来源：docs/prd/framework-development-guide.md 附录 A（发布 runbook）。
 // 设计文档：docs/prd/202610101416-publish-script.md（事故背景见
@@ -195,7 +196,11 @@ function checkCleanTree() {
 	if (execFileSync("git", ["status", "--porcelain"], { cwd: ROOT, encoding: "utf-8" }).trim())
 		fail("工作区不干净——pnpm publish 要求干净树，请先提交全部改动。");
 }
-/** 1. 登录态 */
+/**
+ * 1. 登录态（仅 TOTP 模式执行）。web 2FA 下跳过：whoami 对 token 的探测存在误报
+ *  （token 实际有效但 --registry 探测失败会错杀发布），登录态交由 pnpm publish
+ *  自行校验——未登录会在发布步骤报明确错误，修复后重跑本命令即可（幂等跳过已发包）。
+ */
 function checkLoggedIn() {
 	try {
 		execFileSync("npm", ["whoami", `--registry=${REGISTRY}`], { stdio: "pipe" });
@@ -270,8 +275,16 @@ async function main() {
 	console.log("== 1/5 前置校验 ==");
 	const target = checkLockstep();
 	checkCleanTree();
-	if (!DRY_RUN)
+	if (DRY_RUN) {
+		// dry-run 不发布，无需登录
+	}
+	else if (WEB_2FA) {
+		// web 2FA：跳过 whoami 登录探测（存在误报），登录态由 pnpm publish 在发布时校验
+		console.log("（--web-2fa：跳过登录探测，登录态由发布步骤自行校验）");
+	}
+	else {
 		checkLoggedIn();
+	}
 
 	console.log("\n== 2/5 产物重建 ==");
 	rebuildArtifacts();
