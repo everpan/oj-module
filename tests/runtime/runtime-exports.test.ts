@@ -118,6 +118,8 @@ describe("runtime 主入口出口白名单 (P3.1)", () => {
 		expect(Runtime.useAuthStore).toBeTypeOf("function");
 		// 模块自设页签标题（P3.5）：与 tabs store 的 setTableTitle/resetTableTitle 配对
 		expect(Runtime.useTabsStore).toBeTypeOf("function");
+		// 页签 key 唯一正确取口（keepAlive 下 useLocation 是激活页位置，0.1.21）
+		expect(Runtime.useTabKey).toBeTypeOf("function");
 	});
 
 	it("图标：本地图标 + Ri 常用图标（构建期内联，声明零泄漏）", () => {

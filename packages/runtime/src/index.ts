@@ -45,10 +45,15 @@ export * from "./constants/options";
 export * from "./hooks/use-access";
 
 export { usePreferences } from "./hooks/use-preferences";
+// 模块自设页签标题（P3.5）：模块无法改路由表标题时，用 setTableTitle(页签 key, 标题) 覆盖页签文案。
+// key 一律经 useTabKey() 取（keepAlive 缓存页里 useLocation 是激活页位置，直接用它
+// 会把标题写到别家页签上）；路由 handle.title 静态标题不受影响。
+export { useTabKey } from "./hooks/use-tab-key";
 // 图标（unplugin-icons 构建期内联；包装导出保证声明零泄漏）
 export * from "./icons";
 // 全局副作用（标题/暗色类/NProgress，不含守卫）——宿主链路与 LayoutRoot 共用（偏差 4）
 export { LayoutEffects } from "./layout/layout-effects";
+
 // i18n 初始化（宿主链路必需：shell 曾以空 resources 自行 init，导致框架
 // translation 命名空间（preferences/common 等）丢失——e2e 基线偏差 2）
 export { setupI18n } from "./locales";
@@ -66,7 +71,6 @@ export {
 
 // 模块契约
 export { defineModule } from "./module-loader/define-module";
-
 export { useSlotNodes } from "./module-loader/slots";
 export type {
 	ModuleConfig,
@@ -75,6 +79,7 @@ export type {
 	ModuleI18n,
 	ModuleLifecycle,
 } from "./module-loader/types";
+
 export type {
 	Manifest,
 	ManifestModuleEntry,
@@ -83,7 +88,6 @@ export type {
 
 // 路由类型（模块声明 routes 时要用）
 export type { AppRouteRecordRaw, RouteMeta } from "./router/types";
-
 // 系统/通知/上传 API provider 注入契约（D9）：模块经 ctx.register.{systemApi,
 // notificationsApi, uploadApi} 实现，覆盖内置 root 级端点
 export type {
@@ -95,10 +99,9 @@ export type {
 export { useAuthStore } from "./store/auth";
 // 认证 provider 注入契约（P5）：模块经 ctx.register.authProvider 实现
 export type { AuthProvider } from "./store/auth-provider";
+
 // 请求头 provider 注入契约（D-M9）：模块经 ctx.register.headerProvider 实现
 export type { HeaderProvider } from "./store/header-provider";
-
-// 模块自设页签标题（P3.5）：模块无法改路由表标题时，用 setTableTitle(路由路径, 标题) 覆盖页签文案
 export { useTabsStore } from "./store/tabs";
 
 export { useUserStore } from "./store/user";

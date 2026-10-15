@@ -74,6 +74,8 @@ export const permissionPrefix = "permission:button";
 export const useAuthStore = _fn;
 export const useUserStore = _fn;
 export const useTabsStore = _fn;
+// 页签 key 唯一正确取口（keepAlive 下 useLocation 是激活页位置，0.1.21）
+export const useTabKey = _fn;
 // 图标
 export const menuIcons = _obj;
 export const EmbeddedIcon = _fn;

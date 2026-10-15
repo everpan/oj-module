@@ -1071,22 +1071,30 @@ t("menu.books")         // ❌ 会去 common namespace 找
 **运行期数据**，在页面里把数据拿到后覆盖：
 
 ```tsx
-import { useTabsStore } from "@oj-module/runtime";
+import { useTabKey, useTabsStore } from "@oj-module/runtime";
 
 const setTableTitle = useTabsStore(s => s.setTableTitle);
-const { pathname } = useLocation();
+const tabKey = useTabKey(); // 本页自己的页签 key（见下方陷阱说明，**不要**用 useLocation 现取值）
 
 useEffect(() => {
-	if (doc?.name) setTableTitle(pathname, doc.name);
-}, [doc?.name, pathname, setTableTitle]);
+	if (doc?.name) setTableTitle(tabKey, doc.name);
+}, [doc?.name, tabKey, setTableTitle]);
 ```
+
+> 陷阱（keepAlive）：开启多页签后，keepalive-for-react 把页面缓存在隐藏容器里，而
+> LocationContext 在 KeepAlive **之上**——切页签时缓存树随**激活页**位置重渲染，缓存页里的
+> `useLocation()` 返回的是别家页签的路径。用它当 key 会把本页标题写到当前激活页签上
+> （典型症状：最后打开的文档页把之后切换到的每个页签都改成自己的标题）。`useTabKey()`
+> 首渲染捕获本页真实 key，存活期内稳定，是 `setTableTitle` / `resetTableTitle` / `addTab`
+> 定位页签的**唯一**正确取口。runtime < 0.1.21 无此 hook 时，本地等价实现：首渲染
+> `useRef(removeTrailingSlash(useLocation().pathname))` 捕获一次。
 
 三点约束：
 
-1. 路径必须与导航路径**逐字一致**——页签 key 是 `removeTrailingSlash(location.pathname)` 归一后的值；
+1. 页签 key 一律经 `useTabKey()` 取（= `removeTrailingSlash(location.pathname)` 归一后的值）；
 2. `setTableTitle` 只改**已打开**的页签，故要在页面渲染后（数据就绪时）调用，不能提前于路由挂载；
 3. 只在页签 key 与内容**一一对应**时这样用（如 `/doc/:id`——一个 id 一个页签）。若同一路径会被
-   复用展示不同内容（列表页/`index` 路由），离开时必须 `resetTableTitle(pathname)`，否则再进来看到
+   复用展示不同内容（列表页/`index` 路由），离开时必须 `resetTableTitle(tabKey)`，否则再进来看到
    上一个内容的标题。
 
 推荐形态（照 `web/src/home/pages/`、`web/src/personal-center/pages/my-profile/` 抄）：
