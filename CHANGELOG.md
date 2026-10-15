@@ -25,7 +25,7 @@
 
 ### Dependencies
 
-- 双包 lockstep 升至 `0.1.20`（`@oj-module/runtime` + `@oj-module/cli`）；oj 最低版本门禁 **0.1.73**（平级 `.response` 需 v0.1.72，`del`→`delete` 操作键归一需 v0.1.73）。
+- 双包 lockstep 升至 `0.1.20`（`@oj-module/runtime` + `@oj-module/cli`）；**`@plane/kit` / `@plane/editor` 同步锁步升至 `0.1.20`**（四包 lockstep 门禁要求；二者无代码改动，纯版本对齐，`shell-dist/versions.json` 与 `vendor/host-versions.json` 随重建同步）；oj 最低版本门禁 **0.1.73**（平级 `.response` 需 v0.1.72，`del`→`delete` 操作键归一需 v0.1.73）。
 
 ## [0.1.18] - 2026-10-14
 
