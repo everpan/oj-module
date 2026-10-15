@@ -3,12 +3,15 @@ import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { checkApi } from "../../packages/cli/src/contract/check";
 import { runApi } from "../../packages/cli/src/contract/run";
+import { writeOpenapiJson } from "./_fixtures";
 
 /**
  * AC-D10：`ojm api --check` 三重校验——
  * ①生成物同步（内存重生成 vs 磁盘逐字节 diff）
  * ②route 双向对账（AST 扫 oj api.ts：default 导出方法名 + 语句起始 .route 赋值）
- * ③routes.js diff（release 路由表 vs routes.json）
+ * ③routes.js diff（release 路由表，api/dist 下各模块的 routes.js，vs openapi.json 契约路由表）
+ *
+ * 翻译层退役后，事实源即 openapi.json（oj v0.1.73 产物）。
  */
 
 const tmpDirs: string[] = [];
@@ -18,22 +21,10 @@ function makeProject(withContract = true): string {
 	tmpDirs.push(dir);
 	mkdirSync(join(dir, "api/src/order"), { recursive: true });
 	if (withContract) {
-		writeFileSync(join(dir, "api/src/order/contract.ts"), `
-import { defineApi, z } from "@oj-module/runtime/contract";
-
-export const getOrderList = defineApi({
-	apiPrefix: "/order",
-	route: "/list",
-	data: z.object({ list: z.array(z.object({ id: z.number() })), total: z.number() }),
-});
-
-export const getOrderDetail = defineApi({
-	apiPrefix: "/order",
-	route: "/item/{id}",
-	params: z.object({ id: z.number() }),
-	data: z.object({ id: z.number() }),
-});
-`);
+		writeOpenapiJson(dir, [
+			{ module: "order", route: "/list", method: "GET", data: { type: "object", properties: { list: { type: "array", items: { type: "object", properties: { id: { type: "number" } }, required: ["id"] } }, total: { type: "number" } }, required: ["list", "total"] } },
+			{ module: "order", route: "/item/{id}", method: "GET", params: { id: { type: "number" } }, data: { type: "object", properties: { id: { type: "number" }, order_no: { type: "string" } }, required: ["id", "order_no"] } },
+		]);
 	}
 	return dir;
 }
@@ -147,7 +138,7 @@ export default { get };
 		expect(violations.find(v => v.kind === "route-params-mismatch")?.message).toMatch(/\{name\}.*\{id\}|\{id\}.*\{name\}/);
 	});
 
-	it("③routes.js 与 routes.json 不一致 → error routes-js-drift；无 dist → 提示先 oj build", async () => {
+	it("③routes.js 与 openapi.json 契约路由不一致 → error routes-js-drift；无 dist → 提示先 oj build", async () => {
 		const cwd = makeProject();
 		await runApi({ cwd });
 		// 无 dist：hints 提示，非违规
@@ -167,20 +158,55 @@ export default [
 		]));
 	});
 
+	it("③模块根路径尾斜杠不误报（契约 fullPath 带 / vs dist pattern 不带）", async () => {
+		// 复现：notifications 模块 GET / → stripBase 的 `rel || "/"` 使 fullPath 为
+		// "/notifications/"，而 oj 的 routes.js pattern 为 "notifications"——直接比键必误报
+		const cwd = makeProject();
+		writeOpenapiJson(cwd, [
+			{ module: "notifications", route: "/", method: "GET", data: { type: "array", items: { type: "object", properties: { id: { type: "string" } } } } },
+			{ module: "order", route: "/list", method: "GET", data: { type: "object", properties: { list: { type: "array", items: { type: "object", properties: { id: { type: "number" } } } } } } },
+		]);
+		await runApi({ cwd });
+		mkdirSync(join(cwd, "api/dist/notifications-0.1.0"), { recursive: true });
+		writeFileSync(join(cwd, "api/dist/notifications-0.1.0/routes.js"), `export default [
+  { method: "get", pattern: "notifications", file: "api.js" },
+];
+`);
+		mkdirSync(join(cwd, "api/dist/order-0.1.0"), { recursive: true });
+		writeFileSync(join(cwd, "api/dist/order-0.1.0/routes.js"), `export default [
+  { method: "get", pattern: "order/list", file: "list/api.js" },
+];
+`);
+		const { violations } = await checkApi({ cwd });
+		expect(violations.filter(v => v.kind === "routes-js-drift")).toEqual([]);
+	});
+
+	it("③豁免模块的 dist 缺行不报（豁免对「dist 缺」与「dist 多」对称生效）", async () => {
+		const cwd = makeProject();
+		writeOpenapiJson(cwd, [
+			{ module: "order", route: "/list", method: "GET", data: { type: "object", properties: { list: { type: "array", items: { type: "object", properties: { id: { type: "number" } } } } } } },
+			{ module: "notifications", route: "/", method: "GET", data: { type: "array", items: { type: "object", properties: { id: { type: "string" } } } } },
+		]);
+		await runApi({ cwd });
+		// 豁免清单含 notifications 整模块
+		writeFileSync(join(cwd, "api/.ojm-api-exempt.json"), JSON.stringify({ modules: ["notifications"], paths: [] }));
+		// dist 只有 order——notifications 缺行但被豁免，不报
+		mkdirSync(join(cwd, "api/dist/order-0.1.0"), { recursive: true });
+		writeFileSync(join(cwd, "api/dist/order-0.1.0/routes.js"), `export default [
+  { method: "get", pattern: "order/list", file: "list/api.js" },
+];
+`);
+		const { violations } = await checkApi({ cwd });
+		expect(violations.filter(v => v.kind === "routes-js-drift")).toEqual([]);
+	});
+
 	it("③routes.js 的短方法名 del 归一为 DELETE（DELETE 端点不误报 drift）", async () => {
 		const cwd = mkdtempSync(join(process.cwd(), "node_modules/.cache/ojm-check-del-"));
 		tmpDirs.push(cwd);
 		mkdirSync(join(cwd, "api/src/order"), { recursive: true });
-		writeFileSync(join(cwd, "api/src/order/contract.ts"), `
-import { defineApi, z } from "@oj-module/runtime/contract";
-
-export const deleteOrder = defineApi({
-	apiPrefix: "/order",
-	route: "/item/{id}",
-	method: "DELETE",
-	params: z.object({ id: z.number() }),
-});
-`);
+		writeOpenapiJson(cwd, [
+			{ module: "order", route: "/item/{id}", method: "DELETE", params: { id: { type: "number" } } },
+		]);
 		await runApi({ cwd });
 		mkdirSync(join(cwd, "api/dist/order-0.1.0"), { recursive: true });
 		writeFileSync(join(cwd, "api/dist/order-0.1.0/routes.js"), `// 由 oj build 生成；勿手改。
@@ -202,24 +228,19 @@ export default [
 		expect(stale.some(v => v.level === "error" && v.message.includes("stub 缺失"))).toBe(true);
 	});
 
-	it("multipart（form 槽）契约：生成 + stub 落盘后 --check 零违规", async () => {
+	it("pOST + 响应端点：生成 + stub 落盘后 --check 零违规", async () => {
 		const cwd = mkdtempSync(join(process.cwd(), "node_modules/.cache/ojm-check-form-"));
 		tmpDirs.push(cwd);
 		mkdirSync(join(cwd, "api/src/personal-center"), { recursive: true });
-		writeFileSync(join(cwd, "api/src/personal-center/contract.ts"), `
-import { defineApi, z } from "@oj-module/runtime/contract";
-
-export const uploadAvatar = defineApi({
-	apiPrefix: "/personal-center",
-	route: "/upload",
-	method: "POST",
-	form: {
-		fields: z.object({ note: z.string().optional() }),
-		files: [{ name: "avatar", required: true }, { name: "gallery", multiple: true }],
-	},
-	data: z.string(),
-});
-`);
+		writeOpenapiJson(cwd, [
+			{
+				module: "personal-center",
+				route: "/upload",
+				method: "POST",
+				body: { type: "object", properties: { note: { type: "string" } }, required: [] },
+				data: { type: "string" },
+			},
+		]);
 		await runApi({ cwd });
 		const { violations } = await checkApi({ cwd });
 		expect(violations).toEqual([]);
@@ -229,22 +250,10 @@ export const uploadAvatar = defineApi({
 		const cwd = makeProject();
 		await runApi({ cwd });
 		// 契约加字段：client/routes/openapi 与 stub 示例值都会变，stub 必须也在报错之列
-		writeFileSync(join(cwd, "api/src/order/contract.ts"), `
-import { defineApi, z } from "@oj-module/runtime/contract";
-
-export const getOrderList = defineApi({
-	apiPrefix: "/order",
-	route: "/list",
-	data: z.object({ list: z.array(z.object({ id: z.number() })), total: z.number(), page: z.number() }),
-});
-
-export const getOrderDetail = defineApi({
-	apiPrefix: "/order",
-	route: "/item/{id}",
-	params: z.object({ id: z.number() }),
-	data: z.object({ id: z.number() }),
-});
-`);
+		writeOpenapiJson(cwd, [
+			{ module: "order", route: "/list", method: "GET", data: { type: "object", properties: { list: { type: "array", items: { type: "object", properties: { id: { type: "number" } }, required: ["id"] } }, total: { type: "number" }, page: { type: "number" } }, required: ["list", "total", "page"] } },
+			{ module: "order", route: "/item/{id}", method: "GET", params: { id: { type: "number" } }, data: { type: "object", properties: { id: { type: "number" }, order_no: { type: "string" } }, required: ["id", "order_no"] } },
+		]);
 		const { violations } = await checkApi({ cwd });
 		expect(violations.some(v => v.kind === "artifact-stale" && v.message.includes("stub 待随契约更新"))).toBe(true);
 	});

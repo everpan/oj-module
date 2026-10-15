@@ -33,7 +33,7 @@ export function createDemoClient(ctx: ModuleContext) {
 	}
 	ctx.register.apiPrefix(API_PREFIX);
 	bindRequest(ctx.utils.request);
-	return { getTodoList };
+	return { demoTodosGet };
 }
 
 /**
@@ -64,22 +64,22 @@ async function toApiError(e: unknown): Promise<unknown> {
 	return e;
 }
 
-export type GetTodoListQuery = z.input<(typeof schemas)["getTodoList"]["query"]>;
-export type GetTodoListData = z.infer<(typeof schemas)["getTodoList"]["data"]>;
+export type DemoTodosGetQuery = z.input<(typeof schemas)["demoTodosGet"]["query"]>;
+export type DemoTodosGetData = z.infer<(typeof schemas)["demoTodosGet"]["data"]>;
 
-export async function getTodoList(query: GetTodoListQuery): Promise<GetTodoListData> {
+export async function demoTodosGet(query: DemoTodosGetQuery): Promise<DemoTodosGetData> {
 	const client = ensureReq();
 	try {
-		const env = await client.get(`demo/todos`, { searchParams: query as Record<string, string | number | boolean> }).json<OjEnvelope<GetTodoListData>>();
+		const env = await client.get(`demo/todos`, { searchParams: query as Record<string, string | number | boolean> }).json<OjEnvelope<DemoTodosGetData>>();
 		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
 		if (typeof env.code === "number" && env.code !== 0)
 			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
-		const data = env.data as GetTodoListData;
+		const data = env.data as DemoTodosGetData;
 		if (import.meta.env.DEV) {
 			const { schemas } = await import("./api.schemas");
-			const r = schemas.getTodoList.data.safeParse(data);
+			const r = schemas["demoTodosGet"].data.safeParse(data);
 			if (!r.success)
-				throw new ContractApiError(-1, `[契约违例] getTodoList 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
+				throw new ContractApiError(-1, `[契约违例] demoTodosGet 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
 		}
 		return data;
 	}

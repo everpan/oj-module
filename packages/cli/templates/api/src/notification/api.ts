@@ -2,6 +2,11 @@
 // （动词键下不允许挂子组），del/ 保留独立目录——唯一例外。
 // DDD 判据：notifications 表 = 一致性边界 = 一个聚合，读/已读/清空/推送/删除都是
 // 该聚合上的操作；发射三端点是薄 HTTP 壳，真逻辑在 ./_shared/notify。
+//
+// 契约（oj v0.1.72「最新方式」）：入参挂 `.schema`（params/query/body 三通道），
+// 出参挂平级 `.response`（动词级优先于组级，组级沿嵌套继承）——oj 运行期据此校验入参、
+// 并供 `oj openapi` 生成 openapi.json → 前端 `ojm api` 生成 __client。
+// `.schema` 是 JSON Schema 严格子集（关键字白名单），union 用类型数组表达（见 userId）。
 import { clearNotices, markAllRead, markRead, noticesFor, pushBroadcastNotice, pushNotice } from "./_shared/notify";
 
 const notifications = {
@@ -86,9 +91,41 @@ const notifications = {
 	},
 };
 
+// 通知列表出参（data payload）：命名空间 id + 按人/广播 scope + 已读态 + 分类。
+// oj v0.1.72 起出参走平级 .response（.schema 只放 body 等入参）。
+notifications.get.response = {
+	type: "array",
+	items: {
+		type: "object",
+		required: ["id", "scope", "avatar", "date", "message", "title"],
+		properties: {
+			id: { type: "string" },
+			scope: { type: "string", enum: ["user", "broadcast"] },
+			avatar: { type: "string" },
+			date: { type: "string" },
+			isRead: { type: "boolean" },
+			message: { type: "string" },
+			title: { type: "string" },
+			link: { type: ["string", "null"] },
+			category: { type: "string", enum: ["notice", "pm", "mention"] },
+		},
+	},
+};
+
+// POST /api/notification/notifications/read —— body 仅需 id。
+notifications.read.post.schema = {
+	body: {
+		type: "object",
+		required: ["id"],
+		properties: { id: { type: "string" } },
+	},
+};
+
 // POST /api/notification/push —— 给指定用户推一条按人通知（发射原语 HTTP 入口）。
 // 真正逻辑在 _shared/notify.pushNotice（任一后端模块也可直接 import 调用，无需走 HTTP）。
 // Bearer 守卫保护；收件人过滤是发送方责任（原语不做业务判断）。
+// userId 类型数组 ["string","number"] 表达 z.union（oj 白名单不支持 union 关键字，
+// 用类型数组表达；handler 内 String() 归一，缺省回落当前用户）。
 const push = {
 	async post() {
 		const uid = http.user?.id;
@@ -126,6 +163,21 @@ const push = {
 	},
 };
 
+push.post.schema = {
+	body: {
+		type: "object",
+		required: ["title", "message"],
+		properties: {
+			userId: { type: ["string", "number"] },
+			title: { type: "string" },
+			message: { type: "string" },
+			link: { type: "string" },
+			avatar: { type: "string" },
+			category: { type: "string", enum: ["notice", "pm", "mention"] },
+		},
+	},
+};
+
 // POST /api/notification/push-broadcast —— 广播一条通知（全员可见，一行存储）。
 // 真正逻辑在 _shared/notify.pushBroadcastNotice。Bearer 守卫保护。
 const broadcast = {
@@ -159,6 +211,20 @@ const broadcast = {
 		catch (e) {
 			json.fail(500, String(e));
 		}
+	},
+};
+
+broadcast.post.schema = {
+	body: {
+		type: "object",
+		required: ["title", "message"],
+		properties: {
+			title: { type: "string" },
+			message: { type: "string" },
+			link: { type: "string" },
+			avatar: { type: "string" },
+			category: { type: "string", enum: ["notice", "pm", "mention"] },
+		},
 	},
 };
 

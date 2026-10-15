@@ -1,12 +1,15 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { inlineRedocScript, runApiDocs } from "../../packages/cli/src/contract/run";
+import { writeOpenapiJson } from "./_fixtures";
 
 /**
- * R5：`ojm api --docs`——聚合全部契约的 OpenAPI → redoc 渲染静态站。
+ * R5：`ojm api --docs`——聚合 openapi.json（oj v0.1.71 产物）的 paths → redoc 渲染静态站。
  * uni-dev 形态落 `api/docs/index.html`；纯前端形态落 `docs/api/index.html`。
  * 202609032041：产物自包含——CDN 外链 redoc bundle 内联进 HTML（fetchJs 注入 stub，测试不落网）。
+ *
+ * 翻译层退役后，事实源即 openapi.json，不再消费旧 contract.ts。
  */
 
 /** 内联 loader stub：假装拉到了 redoc bundle */
@@ -18,16 +21,9 @@ function makeProject(): string {
 	const dir = mkdtempSync(join(process.cwd(), "node_modules/.cache/ojm-docs-test-"));
 	tmpDirs.push(dir);
 	mkdirSync(join(dir, "api/src/order"), { recursive: true });
-	writeFileSync(join(dir, "api/src/order/contract.ts"), `
-import { defineApi, z } from "@oj-module/runtime/contract";
-export const getOrderDetail = defineApi({
-	apiPrefix: "/order",
-	route: "/item/{id}",
-	params: z.object({ id: z.number() }),
-	data: z.object({ id: z.number(), order_no: z.string() }),
-	description: "订单详情",
-});
-`);
+	writeOpenapiJson(dir, [
+		{ module: "order", route: "/item/{id}", method: "GET", params: { id: { type: "number" } }, data: { type: "object", properties: { id: { type: "number" }, order_no: { type: "string" } }, required: ["id", "order_no"] } },
+	]);
 	return dir;
 }
 
@@ -53,15 +49,9 @@ describe("runApiDocs（R5 redoc 文档站）", () => {
 	it("纯前端形态（无 api/src）→ 落 docs/api/", async () => {
 		const dir = mkdtempSync(join(process.cwd(), "node_modules/.cache/ojm-docs-fe-"));
 		tmpDirs.push(dir);
-		mkdirSync(join(dir, "web/src/demo/client"), { recursive: true });
-		writeFileSync(join(dir, "web/src/demo/client/contract.ts"), `
-import { defineApi, z } from "@oj-module/runtime/contract";
-export const getDashboard = defineApi({
-	apiPrefix: "/demo",
-	route: "/dashboard",
-	data: z.object({ visitors: z.number() }),
-});
-`);
+		writeOpenapiJson(dir, [
+			{ module: "demo", route: "/dashboard", method: "GET", data: { type: "object", properties: { visitors: { type: "number" } }, required: ["visitors"] } },
+		]);
 		const out = await runApiDocs(dir, { fetchJs: stubFetchJs });
 		expect(out).toBe(join(dir, "docs/api/index.html"));
 		expect(existsSync(out)).toBe(true);
@@ -69,16 +59,10 @@ export const getDashboard = defineApi({
 
 	it("多契约聚合一页：两份契约端点同现于单个 index.html", async () => {
 		const cwd = makeProject();
-		mkdirSync(join(cwd, "api/src/stock"), { recursive: true });
-		writeFileSync(join(cwd, "api/src/stock/contract.ts"), `
-import { defineApi, z } from "@oj-module/runtime/contract";
-export const getStock = defineApi({
-	apiPrefix: "/stock",
-	route: "/list",
-	data: z.object({ total: z.number() }),
-	description: "库存列表",
-});
-`);
+		writeOpenapiJson(cwd, [
+			{ module: "order", route: "/item/{id}", method: "GET", params: { id: { type: "number" } }, data: { type: "object", properties: { id: { type: "number" }, order_no: { type: "string" } }, required: ["id", "order_no"] } },
+			{ module: "stock", route: "/list", method: "GET", data: { type: "object", properties: { total: { type: "number" } }, required: ["total"] } },
+		]);
 		const out = await runApiDocs(cwd, { fetchJs: stubFetchJs });
 		const html = readFileSync(out, "utf8");
 		expect(html).toContain("/order/item/{id}");

@@ -23,7 +23,8 @@ function toBase64(bytes: Uint8Array): string {
 	return out;
 }
 
-export default {
+// POST /api/personal-center/upload —— 头像上传（multipart→base64，P4-3，D7/F4）。
+const handler = {
 	async post() {
 		const uid = http.user?.id;
 		if (!uid) {
@@ -51,3 +52,13 @@ export default {
 		}
 	},
 };
+
+// 出参（data payload）= 上传后返回的资源 URL（data: URL）。body 是 multipipart，
+// 不在 .schema 白名单内（前端走 antd Upload 直连，不经 JSON client），故此处只声明出参。
+// oj v0.1.72 起出参走平级 .response（与 .schema 同级，动词级优先于组级），
+// .schema 只承载入参（params/query/body）。
+handler.post.response = {
+	type: "string",
+};
+
+export default handler;

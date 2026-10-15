@@ -1,6 +1,9 @@
 // POST /api/personal-center/upload —— 头像上传（multipart→base64，P4-3，D7/F4）。
 // antd Upload 直连本端点（不经 JSON client），文件在 http.files[0]。
 //
+// 契约（v0.1.71「最新方式」）：multipart 不经 JSON client，故只声明 response（资源 URL），
+// 不挂 body/query（body 为文件流，oj 由 http.files 单独处理，不进 `.schema`）。
+//
 // 两条取字节路径（devkit 手册 §6 http.files，v0.1.38）：
 //   · 小文件（≤ server.max_upload_bytes，默认 10MB）：字节照常在 handler 里，http.file(0)；
 //   · 大文件（> max_upload）：服务端已流式直落 blob、字节不进 handler，此时
@@ -22,7 +25,9 @@ function toBase64(bytes: Uint8Array): string {
 	return out;
 }
 
-export default {
+// 上传返回资源 URL（data: 或 http(s): 串），前端经 ctx.register.uploadApi 接管 action。
+// 仅声明 response（不挂 body：multipart 由 http.files 处理）。
+const upload = {
 	async post() {
 		const uid = http.user?.id;
 		if (!uid) {
@@ -49,3 +54,8 @@ export default {
 		}
 	},
 };
+
+// oj v0.1.72 起出参走平级 .response（.schema 只放入参；body 是 multipart 不在白名单内）。
+upload.post.response = { type: "string" };
+
+export default upload;

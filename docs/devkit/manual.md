@@ -114,7 +114,7 @@ web/src/<模块名>/
 > 模板真出过这个 bug：模块文件都在，就是忘了登记，结果模块安静地没加载、
 > 按钮安静地灰着，**全程没有一个报错**。写完模块第一件事就是检查 `web.config.ts`。
 
-**建档顺序很重要**（有接口的模块）：先写 `contract.ts` → 跑 `ojm api` → 再写 `entry.ts`。
+**建档顺序很重要**（有接口的模块）：先写 handler 的 `.schema` → 跑 `oj openapi` + `ojm api` → 再写 `entry.ts`。
 生成前 `import { createXxxClient } from "./__client/api"` 必然 ts 报红，
 那不是你写错了，是产物还没生成。完整流水线见 §3.4。
 
@@ -285,90 +285,123 @@ importmap 键，构建期报错——需要新深路径请联系框架方在共�
 
 ### 3.1 一句话
 
-`ojm api` 读**契约文件**（`contract.ts`），一次性生成前端调用代码、接口元数据、
-后端 handler 骨架，让"前端调用的函数"与"后端暴露的路由"永远同源。
+新版「契约代码生成」的**唯一权威源是 `oj` handler 上的 `.schema`（入参）+ `.response`（出参）**，
+不再有 `contract.ts` / `defineApi`（旧 DSL + zod 翻译层已退役删除）。开发者在 handler 上手写
+`.schema`（JSON Schema 严格子集）与平级 `.response`（`json.ok(data)` 的 data 载荷），
+`oj v0.1.73+` 的 `oj openapi` 运行期内省并产出 `openapi.json`（OpenAPI 3.1，落工程根）；
+`ojm api` 消费它生成前端 `__client`。整条链路：
 
 ```
-contract.ts ──evaluate──► IR ──emit──► 四产物 + stub
+oj handler .schema（入参，手写）+ .response（出参，平级）——唯一权威源
+        │  oj 内省（含组级 .schema / .response 继承合并）
+        ▼
+oj openapi -c config -d api/src -b /api -o openapi.json   →  OpenAPI 3.1
+        │
+        ▼
+ojm api   →  irFromOpenapi  →  emitZodFromJsonSchema / emitClient
+        │
+        ▼
+web/<模块>/__client/{api.ts, api.schemas.ts}（+ stub / mock）
 ```
 
-### 3.2 契约 discovery 与产物落点
+`openapi.json` 即权威文档源，`ojm api --docs` 直接聚合它渲染文档站。`.schema` / `.response`
+写法、与 zod 表达力对照等后端侧细节见 `docs/oj-api-dev/`（随 oj 同步）的「入参与出参契约
+`.schema`」章节；本文只讲它到前端这一侧的对接。
 
-| 工程形态 | 契约位置 | 产物流向 |
+> 版本要求：平级 `.response` 声明位自 **oj v0.1.72** 起支持；`oj openapi` 把 `del` 动词归一为
+> `delete` 操作键自 **v0.1.73** 起（含 `del` 端点的工程须 ≥ 0.1.73，否则 `--check` 必漂移）。
+> 旧 `.schema.response` 写法继续生效（存量零破坏），新工程一律用平级 `.response`。
+
+> 旧 `contract.ts` / `defineApi` 工程：翻译层已删除，`ojm api` **不再兼容读取** `contract.ts`
+> （找不到 `openapi.json` 即报错）。迁移方法见 `docs/migration/contract-to-openapi-schema.md`。
+
+### 3.2 产物落点（新口径）
+
+| 工程形态 | 权威源 | 产物流向 |
 |---|---|---|
-| **uni-dev**（前后端一体，推荐） | `api/src/<模块>/contract.ts` | `api.ts` / `api.schemas.ts` → `web/src/<模块>/__client/`；`routes.json` / `openapi.yaml` → 契约旁；stub → `api/src/<模块>/<路径>/api.ts` |
-| 纯前端 | `web/src/<模块>/__client/contract.ts` | 四产物全部落契约同目录，无 stub |
+| **uni-dev**（前后端一体，推荐） | 后端 `api/src/<模块>/**/api.ts` 上的 `.schema` | `web/src/<模块>/__client/{api.ts, api.schemas.ts}`（由 `ojm api` 消费 `openapi.json` 生成）；stub → `api/src/<模块>/<路径>/api.ts`（未实现 handler 时补骨架） |
+| 纯前端 | 仅消费他人 `openapi.json` | `__client/` 全部落前端侧，无 stub |
 
-**硬约束**：uni-dev 形态下每个端点的 `apiPrefix` 必须**字面等于**后端目录名
-（`api/src/order/contract.ts` → `/order`），不符即人话报错。
+`openapi.json` 是项目级单文件、含全部模块，由 `oj openapi` 产出，ojm 不再自产 `routes.json` /
+`openapi.yaml`。
+
+**硬约束**：模块目录名即 API 前缀来源——`api/src/order/**` → 线上前缀 `/order`（与旧 `apiPrefix`
+字面相等约束同源，只是现在由目录名推导，不再手写字段）。不符即人话报错。
 
 > 工程里有两个 "web"：前端 `web/`，与后端 `api/src/web/`（提供 user-info 等内置接口）。
 > 豁免清单里的 `"modules": ["web"]` 指的是**后者**。
 
-### 3.3 defineApi 字段
+### 3.3 handler `.schema`（入参）+ `.response`（出参）写法（JSON Schema 子集）
+
+> 旧 `defineApi` / `contract.ts` 已删除。现在契约直接写在 oj handler 的动词上——这是唯一权威源。
+
+每个动词（含嵌套组动词、子目录 handler）挂 `.schema` 放**入参**（三通道，对应旧
+`params/query/body`）；**出参**走与 `.schema` 平级的 `.response`（oj v0.1.72+，对应旧
+`defineApi` 的 `data`）：
 
 ```ts
-import { defineApi, z } from "@oj-module/runtime/contract";
-
-const book = z.object({ id: z.number(), title: z.string() });
-
-export const listBooks = defineApi({
-	apiPrefix: "/books",              // 必填，"/" 开头
-	route: "/list",                   // 必填，"/" 开头，相对 apiPrefix
-	method: "GET",                    // 缺省 "GET"
-	query: z.object({ keyword: z.string().optional() }),
-	data: z.object({ list: z.array(book), total: z.number() }),
-	ignoreLoading: true,              // 该端点不触发全局加载条
-	description: "图书列表",           // 进 OpenAPI
-});
-
-// 另两个按需字段：
-//   params: z.object({ id: z.number() })  —— 与 route 的 {id} 参数段一一对应
-//   body: z.object({ title: z.string() }) —— 请求体（JSON）
-//   response: "raw"                       —— 二进制/非信封的例外通道，与 data 互斥
-```
-
-**上传文件（multipart/form-data）** —— `form`，与 `body` 互斥：文本字段走
-`form.fields`（zod，字段名即表单部件名），文件部件只声明 `name` / `required` /
-`multiple`（二进制进不了 JSON Schema，也不进白名单）：
-
-```ts
-export const uploadAvatar = defineApi({
-	apiPrefix: "/personal-center",
-	route: "/upload",
-	method: "POST",
-	form: {
-		fields: z.object({ note: z.string().optional() }),
-		files: [{ name: "avatar", required: true }, { name: "gallery", multiple: true }],
+// api/src/order/list/api.ts（oj v0.1.72+ 写法，.schema / .response 手写，勿由工具生成）
+function get() {
+	// ...业务逻辑，json.ok(...) / json.fail(...)
+}
+get.schema = {
+	query: {                       // 入参 query（旧 defineApi 的 query）
+		type: "object",
+		required: ["page"],
+		properties: { page: { type: "number", minimum: 1 } },
 	},
-	data: z.string(),                 // 上传端点照例可以带响应 data
-});
+};
+get.response = {                  // 出参 data 载荷（旧 defineApi 的 data），与 .schema 平级
+	type: "object",
+	properties: { list: { type: "array", items: { type: "object" } }, total: { type: "number" } },
+};
 
-// 调用形态（生成 client 内部组装 FormData）：
-// await uploadAvatar({ fields: { note: "合同扫描件" },
-//                      files: { avatar: file, gallery: [f1, f2] } });
+export default { get };
 ```
 
-**不要手写 `content-type`**：运行时（ky）见到 `FormData` 会自己补
-`multipart/form-data; boundary=…`。后端 handler 侧用 `http.files`（元数据）/`http.file(i)`
-（字节）读文件，文本字段写入 `http.body.<name>`。
+`.schema` 入参三通道：
 
-文本字段的取值：标量按 `String()` 发；**对象/数组自动 `JSON.stringify`**（多部件文本只能是
-字符串，直接 `String({a:1})` 会静默变 `[object Object]`）。后端从 `http.body.<name>` 拿到的是
-JSON 文本，需要结构就自己 `JSON.parse`（或干脆用单独的 JSON 端点发结构化数据）。
+| 通道 | 含义 | 对应旧字段 |
+|---|---|---|
+| `params` | 路径参数（与 route 的 `{id}` 段对应） | `params` |
+| `query` | URL query | `query` |
+| `body` | JSON 请求体 | `body` |
 
-**定义期就会抛错**的写法（早炸好过晚炸）：
+`.response`（平级）语义与旧 `.schema.response` 完全相同：响应 `data` 载荷（信封
+`code/msg/data` 由 oj 自动包裹），对应旧 `data`。**优先级**（高 → 低）：动词 `.response` >
+组 `.response` > 动词 `.schema.response` > 组 `.schema.response`；组级沿嵌套层层继承。
+⚠️ 保留键：组对象上的 `response` 被当声明读走，不能用来命名嵌套子组（与 `schema`/`route` 相同）。
 
-- `apiPrefix` / `route` 不以 `/` 开头；`route` 含 `../`、`./`、`\`；
-- 参数段混字面：`{id}.json` 非法（matchit 约束——参数段必须**整段**为 `{name}` 或 `{*name}`，要前后缀就拆成静态多段）；
-- `data` 与 `response: "raw"` 同时出现；
-- `response` 取 `"raw"` 以外的值；
-- `method: "OPTIONS"`（不在支持范围）；
-- `method: "HEAD"` 且声明了 `data`（HEAD 无响应体）；
-- `form` 与 `body` 同时出现；`form` 既无 `fields` 也无 `files`；`form.files` 缺 `name` 或字段名重复（重名要用 `multiple: true`）；`form.fields` 不是 `z.object`。
+**`.schema` 是 oj JSON Schema 白名单子集**，关键字仅限：
+`type / required / properties / items / additionalProperties / minimum / maximum /
+minLength / maxLength / pattern / enum / nullable / minItems / maxItems / default`。
+白名单外关键字（`$ref` / `oneOf` / `format` / `transform` 等）**fail-fast**，不静默降级。
 
-`data` 过**类型白名单**：不返回数据的接口**直接省略 `data`**，
-写 `z.null()` 或 transform / refine 会被拒。校验放后端做。
+- **`pattern` 是 Rust regex**：oj 运行期用于校验；ojm 生成前端 zod 时**不进运行时**
+  （跨语言语义漂移 + ReDoS 风险），仅发 `// @oj-warn` 注释。需严格校验请下移到 handler。
+- **`default` 不射前端 zod `.default()`**：oj 运行期不为缺参补默认值；前端若补会让可选字段
+  变必填、掩盖契约漂移。仅发 `// @oj-note` 注释。
+- **`nullable` / 类型数组**：`{ type: ["string", "null"] }` → 前端 `z.string().nullable()`；
+  表达 union（如 `z.union([z.string(), z.number()])`）用类型数组 `["string", "number"]`
+  （oj 白名单不支持 `oneOf`/`anyOf`）。
+- **`additionalProperties: false`** → 前端 `.strict()`；`true` → `.catchall(z.unknown())`。
+- 所有动态键名 / 枚举值经 `JSON.stringify` 字面量注入，防注入。
+
+**端点方法名 / 类型名来自 `operationId`**（oj 由「去 base 子路径 + 方法」派生，非字母数字转 `_`）：
+`order/list` + `get` → `order_list_get` → 前端 `orderListGet`、`OrderListGetData`、
+`OrderListGetQuery` 等。这与旧 `defineApi` 的人类命名（`listBooks`）不同，迁移时用「逐字节比对」
+识别为丢失面（见迁移指南）。
+
+**上传文件（multipart/form-data）**：当前 `ojm api` 的 openapi 流水线**不生成** form 通道的
+前端 client（文件部件是二进制，不进 JSON Schema）。惯例走 antd `Upload` **直连**后端
+（不经 JSON client），handler 用 `http.files` / `http.file(i)` 读字节，仅平级声明
+`.response`（见 `api/src/personal-center/upload/api.ts` 范本）。
+
+**不要手写 `content-type`**：运行时（ky）见到 `FormData` 会自己补 `multipart/form-data;
+boundary=…`，手写反而丢 boundary。
+
+> 不返回数据的接口：**省略 `.response`** 声明（而非写空对象）。校验一律放后端（`.schema` 在 oj
+> 侧于 handler 调用前校验入参，违反即 `400`，handler 不被调用）。
 
 ### 3.4 生成物使用契约
 
@@ -393,11 +426,11 @@ const booksClient = createBooksClient(ctx);
 - 忘创建就调裸函数 → 人话报错「请求未绑定」，指路 `create<Module>Client(ctx)`。
 - 重复构造幂等安全；`onInit` 每模块只跑一次（HMR / StrictMode 不重复执行）。
 
-> **生成 ≠ 使用。** `ojm api` 为**每个** `api/src/<模块>/contract.ts` 生成
-> `web/src/<模块>/__client/`，**不看有没有人 import**。所以「契约在、`__client/`
+> **生成 ≠ 使用。** `ojm api` 为 **openapi.json 里出现的每个模块**（`tags[0]`）生成
+> `web/src/<模块>/__client/`，**不看有没有人 import**。所以「handler 在、`__client/`
 > 目录却不在」只有一种解释：那个模块的 `__client/` 从没生成过（模板里的
-> personal-center 就是这样——它上传走 antd Upload 直连 `uploadApi.action`，
-> 生成出来也没人用，故模板没签回）。你在自己工程跑一次 `ojm api`，它就会出现。
+> personal-center 上传走 antd Upload 直连，不经过 JSON client，故没人 import 它的 `__client`）。
+> 你在自己工程跑一次 `ojm api`，它就会出现。
 > 判断某模块**要不要用** client 的标准只有一个：代码里有没有人 import `./__client/api`。
 > 有就在 onInit 里 `create<Module>Client(ctx)` 一次；没有就什么都不写，
 > 生成了但没人 import 也不报错。
@@ -409,68 +442,76 @@ const booksClient = createBooksClient(ctx);
 
 ### 3.5 生成物勿手改
 
-`__client/api.ts`、`__client/api.schemas.ts`、`routes.json`、`openapi.yaml`
-**重跑即覆盖**（eslint 已忽略这些路径）。改需求 = 改契约，重跑 `ojm api`。
+`__client/api.ts`、`__client/api.schemas.ts` **重跑即覆盖**（eslint 已忽略这些路径）。
+改需求 = 改 handler 的 `.schema`（或路由），重跑 `oj openapi` + `ojm api`。
 
 **唯一例外：stub。** `api/src/**/api.ts` 的 stub 文件头带指纹
 （`// ojm-api:stub <name> sha256:...`）。人碰过的 stub，工具**永不写永不删**——
-实现 handler 就是在 stub 里填业务逻辑。
+实现 handler 就是在 stub 里填业务逻辑（`.schema` 由开发者手写，工具不注入）。
 
 生成是**幂等**的：内容逐字节比对，无变化不写盘，重复跑 `ojm api` 的 git diff 为空。
 
-命名规则：生成的函数名 = 契约导出名（`listBooks`）；类型名 = 导出名 PascalCase +
-`Query` / `Body` / `Form` / `Data`（`ListBooksQuery`、`CreateBookBody`、`UploadAvatarForm`、`ListBooksData`）。
+命名规则：生成的函数名 = `camelCase(operationId)`（如 `orderListGet`）；类型名 =
+PascalCase(operationId) + `Query` / `Params` / `Body` / `Data`
+（`OrderListGetQuery`、`OrderListGetData` 等）。这与旧 `defineApi` 的人类导出名（`listBooks`）
+不同。
 
 ### 3.6 命令
 
 ```bash
-pnpm exec ojm api          # 生成
-pnpm exec ojm api --check  # 四重对账（只读，永不修文件）
-pnpm exec ojm api --docs   # 聚合 OpenAPI → redoc 静态站
+# 1) oj 产出 OpenAPI 规范（base 从 config 的 api 挂载前缀读；dev 用 -d api/src 内省）
+oj openapi -c api/config.yaml -d api/src -b /api -o openapi.json
+# 2) ojm 消费生成前端 __client（按 tags[0] 分组到各模块）
+pnpm exec ojm api
+# 3) 校验同步 / route 双向对账（只读）
+pnpm exec ojm api --check
+# 4) 聚合 openapi.json → redoc 静态文档站
+pnpm exec ojm api --docs
 ```
+
+> `oj openapi` 是 **oj 透传命令**（ojm 自动补 `-c api/config.yaml`），参数照 oj 原版语义。
+> 找不到 `openapi.json` 时 `ojm api` 直接报错指引先跑 `oj openapi`（旧 `contract.ts` 不兼容读取）。
 
 `--check` 对四件事（只读，绝不写盘、绝不修文件）：
 
-1. **生成物同步**：内存重生成 vs 磁盘逐字节 diff（含 stub 待更新检测）；
-2. **route 双向对账**：AST 扫后端 `api.ts`（default 导出方法名 + `.route = "..."`
-   赋值）vs 契约路由表——契约未实现 warn、handler 未登记 error、参数段不一致 error；
-3. **`routes.js` diff**：`oj build` 产物路由表 vs `routes.json`；无 dist 给提示不判违规；
+1. **生成物同步（artifact-stale）**：内存重跑 `ojm api` vs 磁盘逐字节 diff（`__client/{api.ts,api.schemas.ts}`）；
+2. **route 双向对账**：生成物端点 ⊄ handler 已实现表 → `route-not-implemented`；handler 表 ⊄ 生成物 → `route-unregistered`（参数段不一致 error）；
+3. **`routes.js` diff**：`oj build` 产物路由表 vs 生成物；无 dist 给提示不判违规；
 4. **WS 路由鉴权**：目录里的 `ws.ts` 会产生 `GET {base}/<模块>/<路径>/ws`——oj v0.1.30 起
    WS 握手也过鉴权守卫，不在 `auth.anonymous_paths` 里的 WS 会让未带凭据的客户端握手 401
    （表现为「文件在却连不上」）。只 warn（带 Bearer/Cookie 的受保护 WS 是正当用法）；
    读不到 config 就不判。
 
-`ojm dev` 内置契约 watch：契约文件变更 → 自动重跑生成 → 产物写入 `web/` 树
-触发模块重建 + 浏览器刷新。
+`ojm dev` 内置 `openapi.json` 变更 watch：规范变更 → 自动重跑 `ojm api` → 产物写入 `web/` 树
+触发模块重建 + 浏览器刷新。改完 handler `.schema` 需先重跑 `oj openapi` 更新规范。
 
-> ⚠️ **新模块目录的诞生不在 watch 范围**——新建模块的 `contract.ts` 要先重启
-> `ojm dev`（目录注册发生在启动期），之后该模块的契约改动才走热更。
+> ⚠️ **新模块目录的诞生不在 watch 范围**——新建后端模块目录要先重启
+> `ojm dev`（目录注册发生在启动期），之后该模块的 `.schema` 改动才走热更。
 
-### 3.7 后端入参契约（`.schema`，v0.1.44）
+### 3.7 后端入参契约（`.schema`，v0.1.44+ 手写）
 
-契约里声明的 `params` / `query` / `body` 不只生成前端类型与校验——`ojm api` 还会把
-它们落成后端 handler 上的 `.schema`，由 oj 在 **JS 之前**校验：违反即 `400` 信封，
-handler 根本不会被调用。于是**一份契约同时给出**：前端 client 与类型、前端 DEV 期 zod
-校验、后端入参校验、OpenAPI 文档。
+`.schema` 是**开发者手写**在 handler 动词上的（见 §3.3），oj 在 **JS 之前**校验入参：违反即
+`400` 信封，handler 根本不会被调用。于是**一份 `.schema` 同时给出**：oj 运行期入参校验、
+前端 DEV 期 zod 校验、OpenAPI 文档——前端 client 类型则来自 `oj openapi` 产出的 `openapi.json`。
 
 ```ts
-// api/src/order/list/api.ts（ojm api 生成，勿手改正文外的部分）
+// api/src/order/list/api.ts（.schema 由开发者手写，oj 运行期据此校验入参）
 function get(): void {
 	json.ok({ /* TODO */ });
 }
 get.schema = {
-	"query": {
-		"type": "object",
-		"properties": { "page": { "type": "number", "minimum": 1 } },
-		"required": ["page"]
-	}
+	query: {
+		type: "object",
+		properties: { page: { type: "number", minimum: 1 } },
+		required: ["page"],
+	},
 };
 export default { get };
 ```
 
 开关在 `api/config.yaml` 的 `server.schema_validation`（默认 `true`，置 `false` 为逃生门）。
-完整裁剪规则与降级表（白名单无 `format`/`oneOf`、Rust regex 不支持零宽断言、
-params/query 只允许扁平标量等）都在生成期拦下或告警，详情见 §3.3 的「定义期就会抛错」清单。
+白名单裁剪规则与降级（无 `format`/`oneOf`、Rust regex 不支持零宽断言、params/query 只允许扁平
+标量等）在 `oj openapi` 内省期或 ojm 生成期 fail-fast / 告警，详情见 §3.3 与 `docs/oj-api-dev/`。
 
 ### 3.8 豁免清单 `api/.ojm-api-exempt.json`
 
@@ -554,7 +595,7 @@ Provider 就是：「这块别用框架自带的了，换成我的实现。」�
 
 ### 4.4 案例：接管通知功能（标准四文件）
 
-**① 契约**（`api/src/notification/contract.ts`）——见 §3.3 与 §3.4。
+**① handler `.schema`**（`api/src/notification/api.ts` 上各动词挂的 `.schema`）——见 §3.3 与 §3.4。
 
 **② handler**（`api/src/notification/api.ts`，模块根嵌套组——组名 = 路径段，oj v0.1.64）：
 
@@ -658,7 +699,7 @@ export default {
 **加接口的通用流水线**：
 
 ```
-写契约 contract.ts → 写 handler api.ts → ojm api 生成 client → entry.ts 里 create client + 注册
+写 handler .schema → 写 handler 业务逻辑(api.ts) → oj openapi + ojm api 生成 client → entry.ts 里 create client + 注册
 ```
 
 ### 4.5 案例：接管头像上传（不写契约的最简入口）
@@ -1148,7 +1189,7 @@ export default async (path: string, html: string) => {
 | 改了契约，前端类型没变 | 没重新生成 | 跑 `ojm api`；生成确定，diff 应只含你改的部分 |
 | `ojm api` 报「schema 超出白名单」 | 契约里写了 `z.null()` / transform / refine | 不返回数据就别写 `data`；校验放后端 |
 | `ojm api` 报「apiPrefix 与目录名不符」 | 契约要求 apiPrefix 字面等于后端目录名 | 改 `apiPrefix` 或移动契约目录 |
-| `ojm api` 报「没有发现契约文件」 | 目录不符发现规则 | 按 §3.2 核对；注意 `modules/`→`web/`、`api/`→`__client/` 迁移（旧名 `client/` 兼容但会告警） |
+| `ojm api` 报错「未发现 openapi.json」 | 没跑 `oj openapi` 生成规范 | 先 `oj openapi -c api/config.yaml -d api/src -b /api -o openapi.json`，再 `ojm api`；旧 `contract.ts` 工程须先迁移（见迁移指南） |
 | `--check` 报 artifact-stale | 改了契约没重跑 | 重跑 `ojm api` |
 | `--check` 报 handler 未登记 | 内置/手写 handler 无契约 | 补契约，或登记豁免清单 |
 | 豁免写了 `//` 注释后全部失效 | 严格 JSON 解析失败、静默回退 | 注释写进 `_comment` 字段 |
@@ -1184,7 +1225,7 @@ export default async (path: string, html: string) => {
 | 接管通知 provider（四方法全量） | `web/src/notification/entry.ts` |
 | 上传 provider（action + headers 方法） | `web/src/personal-center/entry.ts` |
 | 无页面模块（`routes: []`） | 同 `web/src/notification/entry.ts` |
-| 契约写法（GET + POST、参数段） | `api/src/notification/contract.ts`、`api/src/personal-center/contract.ts` |
+| handler `.schema` 入参 + 平级 `.response` 出参写法（GET + POST、参数段） | `api/src/notification/api.ts`、模板 `packages/cli/templates/api/src/notification/api.ts` |
 | handler 写法（嵌套组列表 / 写入 / 403 归属） | `api/src/notification/api.ts`（模块根单文件，`read`/`read-all`/`clear` 子组） |
 | 生成物长什么样（含工厂） | `web/src/notification/__client/api.ts` |
 | 建表三件套 | `api/src/notification/{schema.yaml,manifest.yaml,migrations/}` |
@@ -1251,8 +1292,8 @@ export default async (path: string, html: string) => {
 - **终止语义**：`Ctrl+C`（SIGINT）/ `kill`（SIGTERM）/ `q` 退出时，ojm 会先关 SSE 通道、
   再 `SIGTERM` 停 oj 子进程、打印「后端 oj 已随前端一起终止」，不留 oj 孤儿占端口；
   极端情况下（3s 未退）升级 `SIGKILL`，并在进程退出时以 `kill()` 强杀作为最后手段，防止 oj 孤儿化。
-- 内置契约 watch：契约文件变更 → 自动重跑 `ojm api` → 产物写入 `web/` 触发模块重建 + 刷新。
-  **新模块目录的诞生不在 watch 范围**——新建模块的 `contract.ts` 要先重启 `ojm dev`。
+- 内置 `openapi.json` watch：规范变更 → 自动重跑 `ojm api` → 产物写入 `web/` 触发模块重建 + 刷新。
+  **新模块目录的诞生不在 watch 范围**——新建后端模块目录要先重启 `ojm dev`（目录注册发生在启动期）。
 
 #### `ojm build`
 
@@ -1282,7 +1323,7 @@ export default async (path: string, html: string) => {
 
 #### `ojm api [dir] [--check] [--docs] [--exempt <path>]`
 
-契约代码生成（详见 §3）：读 `contract.ts` → 生成前端 client / 后端 stub / `routes.json` / `openapi.yaml`。
+契约代码生成（详见 §3）：消费 `openapi.json`（oj v0.1.71 `oj openapi` 产物）生成前端 `__client` / 后端 stub。
 
 - `dir`：项目目录（缺省 `cwd`；显式目录必须先存在，否则报错）。
 - `--check`：**四重对账**（只读、绝不写盘）：① 生成物同步 ② route 双向对账

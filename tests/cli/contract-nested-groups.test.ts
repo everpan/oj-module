@@ -1,44 +1,41 @@
+import type { ApiSpec } from "./_fixtures";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { checkApi } from "../../packages/cli/src/contract/check";
+import { writeOpenapiJson } from "./_fixtures";
 
 /**
  * v0.1.64 跨仓同步：oj 嵌套 handler 组（非动词键 + 对象 = 子组；组级 `.route` 作
  * 整组默认前缀；动词自身 `.route` 优先；文件层 `.route` 同为默认前缀）在
  * `ojm api --check` 的 AST 对账里必须可见——否则嵌套端点被误报「未实现」、
  * 嵌套 handler 被误报「未登记」（ silent drop 的跨仓复刻）。
+ *
+ * 翻译层退役后，IR 由 openapi.json 构造（writeOpenapiJson）；handler 文件不动。
  */
 
 const tmpDirs: string[] = [];
 
-function makeProject(contract: string): string {
-	return makeProjectIn("order", contract);
-}
-
-/** 契约落指定模块目录（AC-D9：apiPrefix 必须等于契约目录名） */
-function makeProjectIn(module: string, contract: string): string {
+function makeProjectIn(module: string, specs: ApiSpec[]): string {
 	const dir = mkdtempSync(join(process.cwd(), "node_modules/.cache/ojm-nest-test-"));
 	tmpDirs.push(dir);
 	mkdirSync(join(dir, `api/src/${module}`), { recursive: true });
-	writeFileSync(join(dir, `api/src/${module}/contract.ts`), contract);
+	writeOpenapiJson(dir, specs);
 	return dir;
+}
+
+/** 契约落到 order 模块目录（AC-D9：apiPrefix 必须等于契约目录名） */
+function makeProject(specs: ApiSpec[]): string {
+	return makeProjectIn("order", specs);
 }
 
 function routeViolations(violations: { kind: string }[]): { kind: string }[] {
 	return violations.filter(v => v.kind.startsWith("route-"));
 }
 
-const ORDER_CONTRACT = `
-import { defineApi, z } from "@oj-module/runtime/contract";
-
-export const uploadAsset = defineApi({
-	apiPrefix: "/order",
-	route: "/item/upload",
-	method: "POST",
-	data: z.object({ ok: z.boolean() }),
-});
-`;
+const ORDER_SPECS: ApiSpec[] = [
+	{ module: "order", route: "/item/upload", method: "POST", data: { type: "object", properties: { ok: { type: "boolean" } }, required: ["ok"] } },
+];
 
 afterAll(() => {
 	for (const d of tmpDirs)
@@ -47,7 +44,7 @@ afterAll(() => {
 
 describe("checkApi 嵌套 handler 组对账（oj v0.1.64）", () => {
 	it("组 handler（无 .route）命中契约端点：不报未实现/未登记", async () => {
-		const cwd = makeProject(ORDER_CONTRACT);
+		const cwd = makeProject(ORDER_SPECS);
 		mkdirSync(join(cwd, "api/src/order/item"), { recursive: true });
 		writeFileSync(join(cwd, "api/src/order/item/api.ts"), `
 const upload = {
@@ -62,17 +59,9 @@ export default { upload };
 	});
 
 	it("组级 .route（绝对）作整组前缀：命中契约端点", async () => {
-		const cwd = makeProjectIn("x", `
-import { defineApi, z } from "@oj-module/runtime/contract";
-
-export const anchorUpload = defineApi({
-	apiPrefix: "/x",
-	route: "/{anchor}/upload",
-	method: "POST",
-	params: z.object({ anchor: z.string() }),
-	data: z.object({ ok: z.boolean() }),
-});
-`);
+		const cwd = makeProjectIn("x", [
+			{ module: "x", route: "/{anchor}/upload", method: "POST", params: { anchor: { type: "string" } }, data: { type: "object", properties: { ok: { type: "boolean" } }, required: ["ok"] } },
+		]);
 		mkdirSync(join(cwd, "api/src/order/item"), { recursive: true });
 		writeFileSync(join(cwd, "api/src/order/item/api.ts"), `
 const upload = {
@@ -88,16 +77,9 @@ export default { upload };
 	});
 
 	it("动词自身 .route 优先覆盖组前缀（相对形态）", async () => {
-		const cwd = makeProject(`
-import { defineApi, z } from "@oj-module/runtime/contract";
-
-export const deepThing = defineApi({
-	apiPrefix: "/order",
-	route: "/item/sub/deep/thing",
-	method: "POST",
-	data: z.object({ ok: z.boolean() }),
-});
-`);
+		const cwd = makeProject([
+			{ module: "order", route: "/item/sub/deep/thing", method: "POST", data: { type: "object", properties: { ok: { type: "boolean" } }, required: ["ok"] } },
+		]);
 		mkdirSync(join(cwd, "api/src/order/item"), { recursive: true });
 		writeFileSync(join(cwd, "api/src/order/item/api.ts"), `
 const cccc = {
@@ -114,15 +96,9 @@ export default { cccc };
 	});
 
 	it("文件层 .route（const api = {...}; api.route = ...）作默认前缀", async () => {
-		const cwd = makeProjectIn("x", `
-import { defineApi, z } from "@oj-module/runtime/contract";
-
-export const xList = defineApi({
-	apiPrefix: "/x",
-	route: "/list",
-	data: z.object({ ok: z.boolean() }),
-});
-`);
+		const cwd = makeProjectIn("x", [
+			{ module: "x", route: "/list", method: "GET", data: { type: "object", properties: { ok: { type: "boolean" } }, required: ["ok"] } },
+		]);
 		mkdirSync(join(cwd, "api/src/order"), { recursive: true });
 		writeFileSync(join(cwd, "api/src/order/api.ts"), `
 const api = {
@@ -138,21 +114,10 @@ export default api;
 	});
 
 	it("同文件同动词多 handler（顶层 + 组）各自对上，不互相遮蔽", async () => {
-		const cwd = makeProject(`
-import { defineApi, z } from "@oj-module/runtime/contract";
-
-export const getItem = defineApi({
-	apiPrefix: "/order",
-	route: "/item",
-	data: z.object({ ok: z.boolean() }),
-});
-
-export const getItemCccc = defineApi({
-	apiPrefix: "/order",
-	route: "/item/cccc",
-	data: z.object({ ok: z.boolean() }),
-});
-`);
+		const cwd = makeProject([
+			{ module: "order", route: "/item", method: "GET", data: { type: "object", properties: { ok: { type: "boolean" } }, required: ["ok"] } },
+			{ module: "order", route: "/item/cccc", method: "GET", data: { type: "object", properties: { ok: { type: "boolean" } }, required: ["ok"] } },
+		]);
 		mkdirSync(join(cwd, "api/src/order/item"), { recursive: true });
 		writeFileSync(join(cwd, "api/src/order/item/api.ts"), `
 function get(): void {
@@ -170,7 +135,7 @@ export default { get, cccc };
 	});
 
 	it("options handler：契约不表达 OPTIONS——AST 跳过不误报未登记，routes.js 行跳过不误报 drift", async () => {
-		const cwd = makeProject(ORDER_CONTRACT);
+		const cwd = makeProject(ORDER_SPECS);
 		mkdirSync(join(cwd, "api/src/order/item"), { recursive: true });
 		writeFileSync(join(cwd, "api/src/order/item/api.ts"), `
 const upload = {
@@ -196,16 +161,9 @@ export default [
 	});
 
 	it("嵌套组同形态参数段不一致 → error route-params-mismatch（旧行为保持）", async () => {
-		const cwd = makeProject(`
-import { defineApi, z } from "@oj-module/runtime/contract";
-
-export const getItemCccc = defineApi({
-	apiPrefix: "/order",
-	route: "/item/cccc/{id}",
-	params: z.object({ id: z.string() }),
-	data: z.object({ ok: z.boolean() }),
-});
-`);
+		const cwd = makeProject([
+			{ module: "order", route: "/item/cccc/{id}", method: "GET", params: { id: { type: "string" } }, data: { type: "object", properties: { ok: { type: "boolean" } }, required: ["ok"] } },
+		]);
 		mkdirSync(join(cwd, "api/src/order/item"), { recursive: true });
 		writeFileSync(join(cwd, "api/src/order/item/api.ts"), `
 const cccc = {
@@ -223,16 +181,9 @@ export default { cccc };
 	});
 
 	it("嵌套组静态前缀不同（非同名参数段）→ 未实现 + 未登记，不误判 mismatch", async () => {
-		const cwd = makeProject(`
-import { defineApi, z } from "@oj-module/runtime/contract";
-
-export const getItem = defineApi({
-	apiPrefix: "/order",
-	route: "/item/{id}",
-	params: z.object({ id: z.string() }),
-	data: z.object({ ok: z.boolean() }),
-});
-`);
+		const cwd = makeProject([
+			{ module: "order", route: "/item/{id}", method: "GET", params: { id: { type: "string" } }, data: { type: "object", properties: { ok: { type: "boolean" } }, required: ["ok"] } },
+		]);
 		mkdirSync(join(cwd, "api/src/order/item"), { recursive: true });
 		writeFileSync(join(cwd, "api/src/order/item/api.ts"), `
 const cccc = {
@@ -252,7 +203,7 @@ export default { cccc };
 	});
 
 	it("非动词键挂函数/数组（oj 红线）不被当作路由误报未登记", async () => {
-		const cwd = makeProject(ORDER_CONTRACT);
+		const cwd = makeProject(ORDER_SPECS);
 		mkdirSync(join(cwd, "api/src/order/item"), { recursive: true });
 		writeFileSync(join(cwd, "api/src/order/item/api.ts"), `
 function helper(): void {
@@ -270,7 +221,7 @@ export default { upload, helper, junk: [1, 2] };
 	});
 
 	it("嵌套 handler 未登记契约 → error route-unregistered（消息带全路径）", async () => {
-		const cwd = makeProject(ORDER_CONTRACT);
+		const cwd = makeProject(ORDER_SPECS);
 		mkdirSync(join(cwd, "api/src/order/item"), { recursive: true });
 		writeFileSync(join(cwd, "api/src/order/item/api.ts"), `
 const upload = {
@@ -290,16 +241,9 @@ export default { upload };
 	});
 
 	it("字符串字面量连字符组键参与对账（oj 组名允许非标识符，如 push-broadcast）", async () => {
-		const cwd = makeProjectIn("notify", `
-import { defineApi, z } from "@oj-module/runtime/contract";
-
-export const pushBroadcast = defineApi({
-	apiPrefix: "/notify",
-	route: "/push-broadcast",
-	method: "POST",
-	data: z.object({ ok: z.boolean() }),
-});
-`);
+		const cwd = makeProjectIn("notify", [
+			{ module: "notify", route: "/push-broadcast", method: "POST", data: { type: "object", properties: { ok: { type: "boolean" } }, required: ["ok"] } },
+		]);
 		writeFileSync(join(cwd, "api/src/notify/api.ts"), `
 export default {
 	"push-broadcast": {

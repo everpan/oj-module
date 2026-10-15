@@ -5,6 +5,28 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 设计依据、迁移记录与陷阱清单见 [`docs/prd/202609110947-oj-module-two-package-consolidation-design.md`](docs/prd/202609110947-oj-module-two-package-consolidation-design.md)。
 
+## [0.1.20] - 2026-10-15
+
+### Added
+
+- **`ojm api` 流水线迁移到 `openapi.json` 单一事实源**：`oj openapi`（oj ≥ v0.1.73）内省 handler 的 `.route`/`.schema`/`.response` 生成 `openapi.json`（OpenAPI 3.1，落于工程根），`ojm api` 消费它发射 `__client`（`api.ts` + `api.schemas.ts`）、stub、mock。契约口径由「前端 zod 反射」改为「后端 JSON Schema 白名单」，前后端单一来源对齐 oj 运行期校验。
+
+### Removed
+
+- **退役 `defineApi` DSL 与 `*.contract.ts` 翻译层**：`@oj-module/runtime/contract` 不再导出 `defineApi`/`API_DEF`/`ApiDefinitionInput`/`ApiForm*`；cli 侧 `evaluate`/`emit-meta`/`emit-schema`/`buildIr` 等 zod IR 模块删除。`packages/runtime/src/api/system/role/contract.ts` 死代码删除（保留签入 client）。
+
+### Changed
+
+- **handler 契约写法**：**入参**挂 `.schema = { params, query, body }`；**出参**挂与 `.schema` **平级**的 `.response`（oj v0.1.72+，= 旧 `data` 信封 payload；优先级：动词 `.response` > 组 `.response` > 动词 `.schema.response` > 组 `.schema.response`，旧 `.schema.response` 仍兼容）。union 用类型数组 `["string","number"]` 表达；nullable 用 `["string","null"]`。范本见 `packages/cli/templates/api/src/notification/api.ts`。
+- **`del` 动词的操作键归一（oj v0.1.73）**：`oj openapi` 生成 `delete` 操作键（旧 oj 产出非法 `"del"`）；下游 `__client` 得 `deleteXxx()` 方法名。存量工程若手工改过 `openapi.json` 的 `"del"`→`"delete"`，升级 oj 后须删手工改动重生成，否则 `--check` 漂移。
+- **迁移检查点（历史 `contract.ts` 升级）**：① 把每个 `defineApi` 端点改写为 handler `.route`+`.schema`（入参）+`.response`（出参）；② `oj openapi -c api/config.yaml -d api/src -b /api -o openapi.json`；③ `ojm api` 重生成 `__client`；④ 删除旧 `contract.ts`、web 调用点改从 `./__client/api` 导入（函数名为 `camelCase(operationId)`，非旧人类命名）。完整指南见 docs 迁移文档。
+- **playground-oj 对齐**：5 个 `contract.ts` 删除、handler 迁 `.schema`+`.response`、`openapi.json` 干净再生（去手工 `del`→`delete` 与 operationId 改名）、`__client` 重生成、web 消费点改原生 operationId 派生名；`global.d.ts` 同步 devkit 的 `Function.response` / `Object`（组级 `.route`/`.schema`/`.response`）声明；`UploadedFileMeta.key/url`、`NotificationItem.link: string|null` 类型桩修正（tsc 0 错误）。
+- **清理旧契约产物遗留**：删除 playground-oj 5 个 per-module `routes.json` + `openapi.yaml`、旧 `apps/playground` `__client` 三件套（`contract.ts`/`routes.json`/`openapi.yaml`，后者 typecheck 随修复）；`ojm dev` 的 `contract.ts` 热更监听分支移除，改监听工程根 `openapi.json` 触发 `__client` 重生成（新流水线等价物）；`--check` 的 routes.js 对账注释订正（对比对象是 openapi.json 契约路由表，非 routes.json）。`api/docs/openapi.yaml` 为 `ojm api --docs` 现行产物，保留。
+
+### Dependencies
+
+- 双包 lockstep 升至 `0.1.20`（`@oj-module/runtime` + `@oj-module/cli`）；oj 最低版本门禁 **0.1.73**（平级 `.response` 需 v0.1.72，`del`→`delete` 操作键归一需 v0.1.73）。
+
 ## [0.1.18] - 2026-10-14
 
 ### Added

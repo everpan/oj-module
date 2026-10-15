@@ -9,53 +9,20 @@ import { pathToFileURL } from "node:url";
 import { build } from "esbuild";
 import { describe, expect, it, vi } from "vitest";
 import { emitClient } from "../../packages/cli/src/contract/emit-client";
-import { buildIr } from "../../packages/cli/src/contract/ir";
-import { defineApi, z } from "../../packages/runtime/contract";
+import { mkEp } from "./_fixtures";
 
 /**
- * AC-D5/D6/D8/D15：api.ts + api.schemas.ts 发射器。
+ * AC-D5/D6/D8/D15：api.ts + api.schemas.ts 发射器（翻译层退役后，IR 由 JSON Schema 构造）。
  * 快照锁定生成物形态；行为测试把生成文本落盘 → esbuild bundle → 真实 import
  * 跑在 stub ScopedRequestLike 上，断言 URL 插值 / query / body / 信封解包 /
  * 业务错误归一 ContractApiError / DEV 校验 / raw 通道 / 产物 zod 排除。
+ *
+ * 注：openapi.json 是单一事实源，emitClient 消费的 paramsSchema/querySchema/bodySchema/
+ * dataSchema 均为 JSON Schema（oj `.schema` 白名单子集）。本测试直接构造等价 JSON Schema
+ * 的 IrEndpoint，与 `oj openapi` 产物口径一致。
  */
 
 const repoRoot = process.cwd();
-
-const ir = buildIr({
-	getOrderList: defineApi({
-		apiPrefix: "/order",
-		route: "/list",
-		query: z.object({ page: z.number().int().min(1), size: z.number().int().optional() }),
-		data: z.object({ list: z.array(z.object({ id: z.number(), order_no: z.string() })), total: z.number() }),
-		description: "订单列表",
-	}),
-	getOrderDetail: defineApi({
-		apiPrefix: "/order",
-		route: "/item/{id}",
-		params: z.object({ id: z.number() }),
-		data: z.object({ id: z.number(), order_no: z.string() }),
-	}),
-	createOrder: defineApi({
-		apiPrefix: "/order",
-		route: "/item",
-		method: "POST",
-		body: z.object({ order_no: z.string().min(1) }),
-		data: z.object({ id: z.number() }),
-	}),
-	updateOrder: defineApi({
-		apiPrefix: "/order",
-		route: "/item/{id}",
-		method: "PUT",
-		params: z.object({ id: z.number() }),
-		body: z.object({ order_no: z.string().optional() }),
-		data: z.object({ id: z.number() }),
-	}),
-	downloadFile: defineApi({
-		apiPrefix: "/order",
-		route: "/file/{*path}",
-		response: "raw",
-	}),
-});
 
 /** 测试替身：把 "@oj-module/runtime" 替换为仅导出 z 的桩（生产上由 runtime re-export，Task 4.1） */
 const runtimeStub: Plugin = {
@@ -125,6 +92,52 @@ function stubRequest(handler: (call: Call) => unknown) {
 
 const ok = (data: unknown) => ({ code: 0, msg: "ok", data });
 
+const ir = [
+	mkEp({
+		name: "getOrderList",
+		apiPrefix: "/order",
+		route: "/list",
+		query: { type: "object", properties: { page: { type: "integer", minimum: 1 }, size: { type: "integer" } }, required: ["page"] },
+		data: {
+			type: "object",
+			properties: { list: { type: "array", items: { type: "object", properties: { id: { type: "number" }, order_no: { type: "string" } }, required: ["id", "order_no"] } }, total: { type: "number" } },
+			required: ["list", "total"],
+		},
+		description: "订单列表",
+	}),
+	mkEp({
+		name: "getOrderDetail",
+		apiPrefix: "/order",
+		route: "/item/{id}",
+		params: { type: "object", properties: { id: { type: "number" } }, required: ["id"] },
+		data: { type: "object", properties: { id: { type: "number" }, order_no: { type: "string" } }, required: ["id", "order_no"] },
+	}),
+	mkEp({
+		name: "createOrder",
+		apiPrefix: "/order",
+		route: "/item",
+		method: "POST",
+		body: { type: "object", properties: { order_no: { type: "string", minLength: 1 } }, required: ["order_no"] },
+		data: { type: "object", properties: { id: { type: "number" } }, required: ["id"] },
+	}),
+	mkEp({
+		name: "updateOrder",
+		apiPrefix: "/order",
+		route: "/item/{id}",
+		method: "PUT",
+		params: { type: "object", properties: { id: { type: "number" } }, required: ["id"] },
+		body: { type: "object", properties: { order_no: { type: "string" } }, required: [] },
+		data: { type: "object", properties: { id: { type: "number" } }, required: ["id"] },
+	}),
+	mkEp({
+		name: "downloadFile",
+		apiPrefix: "/order",
+		route: "/file/{*path}",
+		raw: true,
+		params: { type: "object", properties: { path: { type: "string" } }, required: ["path"] },
+	}),
+];
+
 describe("emitClient（AC-D5/D6/D8/D15）", () => {
 	it("快照：module 目标双产物（bindRequest 持有者 + 类型推导 + DEV 校验 + raw 通道）", () => {
 		const files = emitClient(ir, { target: "module", module: "order" });
@@ -148,14 +161,9 @@ describe("emitClient（AC-D5/D6/D8/D15）", () => {
 	});
 
 	it("ignoreLoading 契约开关透传为请求 options", () => {
-		const withFlag = buildIr({
-			getSilent: defineApi({
-				apiPrefix: "/order",
-				route: "/silent",
-				data: z.object({ ok: z.boolean() }),
-				ignoreLoading: true,
-			}),
-		});
+		const withFlag = [
+			mkEp({ name: "getSilent", apiPrefix: "/order", route: "/silent", data: { type: "object", properties: { ok: { type: "boolean" } }, required: ["ok"] }, ignoreLoading: true }),
+		];
 		const files = emitClient(withFlag, { target: "module", module: "order" });
 		expect(files["api.ts"]).toContain("{ ignoreLoading: true }");
 	});
@@ -261,32 +269,22 @@ describe("emitClient（AC-D5/D6/D8/D15）", () => {
 	});
 
 	it("评审 F7/F25：raw+params 与 .default() 槽位的生成物过 tsc --noEmit", async () => {
-		const ir2 = buildIr({
-			downloadFile: defineApi({
-				apiPrefix: "/order",
-				route: "/file/{*path}",
-				params: z.object({ path: z.string() }),
-				response: "raw",
-			}),
-			getOrderList: defineApi({
-				apiPrefix: "/order",
-				route: "/list",
-				query: z.object({ page: z.number().default(1) }),
-				data: z.object({ total: z.number() }),
-			}),
-			// form 端点的生成物也须过 tsc：FormData 组装 + body: FormData 依赖
-			// ScopedRequestLike 的 body 槽（runtime dist 声明）
-			uploadAvatar: defineApi({
+		const ir2 = [
+			mkEp({ name: "downloadFile", apiPrefix: "/order", route: "/file/{*path}", raw: true, params: { type: "object", properties: { path: { type: "string" } }, required: ["path"] } }),
+			mkEp({ name: "getOrderList", apiPrefix: "/order", route: "/list", query: { type: "object", properties: { page: { type: "number" } }, required: [] }, data: { type: "object", properties: { total: { type: "number" } }, required: ["total"] } }),
+			mkEp({
+				name: "uploadAvatar",
 				apiPrefix: "/order",
 				route: "/upload",
 				method: "POST",
 				form: {
-					fields: z.object({ note: z.string().optional() }),
-					files: [{ name: "avatar", required: true }, { name: "gallery", multiple: true }],
+					fieldsSchema: { type: "object", properties: { note: { type: "string" } }, required: [] },
+					fieldNames: ["note"],
+					files: [{ name: "avatar", required: true, multiple: false }, { name: "gallery", required: false, multiple: true }],
 				},
-				data: z.object({ url: z.string() }),
+				data: { type: "string" },
 			}),
-		});
+		];
 		const files = emitClient(ir2, { target: "module", module: "order" });
 		// F7 形态断言：raw 端点的 params 槽保留在 schemas（client 类型引用不断链）
 		expect(files["api.schemas.ts"]).toContain("downloadFile");
@@ -345,27 +343,30 @@ describe("emitClient（AC-D5/D6/D8/D15）", () => {
  * multipart/form-data 契约（与上面的 JSON 契约分开建模）：JSON 生成物必须逐字节不变，
  * 故 form 用例一律独立 IR + 独立快照，不污染既有快照。
  */
-const formIr = buildIr({
-	uploadAvatar: defineApi({
+const formIr = [
+	mkEp({
+		name: "uploadAvatar",
 		apiPrefix: "/personal-center",
 		route: "/upload",
 		method: "POST",
 		form: {
-			fields: z.object({ kind: z.enum(["photo", "doc"]), note: z.string().optional() }),
-			files: [{ name: "avatar", required: true }, { name: "gallery", multiple: true }],
+			fieldsSchema: { type: "object", properties: { kind: { type: "string", enum: ["photo", "doc"] }, note: { type: "string" } }, required: ["kind"] },
+			fieldNames: ["kind", "note"],
+			files: [{ name: "avatar", required: true, multiple: false }, { name: "gallery", required: false, multiple: true }],
 		},
-		data: z.string(),
+		data: { type: "string" },
 		description: "上传头像/附件，返回资源 URL",
 	}),
-	uploadInFolder: defineApi({
+	mkEp({
+		name: "uploadInFolder",
 		apiPrefix: "/personal-center",
 		route: "/folder/{id}/upload",
 		method: "PUT",
-		params: z.object({ id: z.number() }),
-		form: { files: [{ name: "file", required: true }] },
-		data: z.string(),
+		params: { type: "object", properties: { id: { type: "number" } }, required: ["id"] },
+		form: { fieldNames: [], files: [{ name: "file", required: true, multiple: false }] },
+		data: { type: "string" },
 	}),
-});
+];
 
 describe("emitClient：multipart/form-data（form 槽）", () => {
 	it("快照：Form 类型 + FormData 组装函数 + body 走 FormData（无 json / 不设 content-type）", () => {
@@ -429,15 +430,20 @@ describe("emitClient：multipart/form-data（form 槽）", () => {
 	});
 
 	it("行为：非标量文本部件走 JSON.stringify（不得静默变 [object Object]）", async () => {
-		const ir = buildIr({
-			save: defineApi({
+		const ir = [
+			mkEp({
+				name: "save",
 				apiPrefix: "/personal-center",
 				route: "/save",
 				method: "POST",
-				form: { fields: z.object({ meta: z.object({ a: z.number() }), tags: z.array(z.string()) }) },
-				data: z.string(),
+				form: {
+					fieldsSchema: { type: "object", properties: { meta: { type: "object", properties: { a: { type: "number" } }, required: ["a"] }, tags: { type: "array", items: { type: "string" } } }, required: ["meta", "tags"] },
+					fieldNames: ["meta", "tags"],
+					files: [],
+				},
+				data: { type: "string" },
 			}),
-		});
+		];
 		const { req, calls } = stubRequest(() => ok("ok"));
 		const { mod } = await bundleClient(emitClient(ir, { target: "module", module: "personal-center" }), true);
 		mod.bindRequest(req);
@@ -451,7 +457,7 @@ describe("emitClient：multipart/form-data（form 槽）", () => {
 		const { req } = stubRequest(() => ok({ url: 42 }));
 		const { mod } = await bundleClient(emitClient(formIr, { target: "module", module: "personal-center" }), true);
 		mod.bindRequest(req);
-		// uploadAvatar.data = z.string()，返回对象 → DEV 校验应报契约违例
+		// uploadAvatar.data = string，返回对象 → DEV 校验应报契约违例
 		const err = await mod.uploadAvatar({ fields: { kind: "photo" }, files: { avatar: new File(["x"], "x.png") } })
 			.catch((e: unknown) => e);
 		expect(err).toMatchObject({ name: "ContractApiError", code: -1 });
@@ -474,9 +480,9 @@ describe("工厂（create<Module>Client，构造即 install，BDD §4）", () =>
 
 	it("5.2#2 连字符模块名 camelize：personal-center → createPersonalCenterClient", () => {
 		// D-M8：线上前缀以契约为真源——契约 apiPrefix 与模块名一致时生成物形态不变
-		const pc = buildIr({
-			listCenterFeed: defineApi({ apiPrefix: "/personal-center", route: "/feed" }),
-		});
+		const pc = [
+			mkEp({ name: "listCenterFeed", apiPrefix: "/personal-center", route: "/feed" }),
+		];
 		const files = emitClient(pc, { target: "module", module: "personal-center" });
 		expect(files["api.ts"]).toContain("export const API_PREFIX = \"/personal-center\";");
 		expect(files["api.ts"]).toContain("export function createPersonalCenterClient(ctx: ModuleContext)");

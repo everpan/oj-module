@@ -27,11 +27,14 @@ export const NPM_PKG = "@oj-bin/oj";
  *   0.1.13 / 0.1.16 / 0.1.19 / 0.1.24 / 0.1.26 / 0.1.28 → 启动子命令 `server`
  *   0.1.32 起 → `serve`
  * 即 `server` → `serve` 的改名落在 (0.1.28, 0.1.32]。改名刚发生时 npm 通道只到
- * 0.1.32，门禁曾暂定 0.1.32（否则 vendor/init 没有可用来源）；现 npm 已发布
+ * 0.1.32，门禁曾暂定 0.1.32（否则 vendor/init 没有可用来源）；后随发布进度抬到
  * 0.1.69（含嵌套 handler 组 v0.1.64 等，迁移指引见
- * docs/superpowers/specs/2026-10-14-ojm-0.1.18-design.md），门禁即抬到当前最新。
+ * docs/superpowers/specs/2026-10-14-ojm-0.1.18-design.md）；**0.1.20 抬到 0.1.73**：
+ * 平级 `.response` 出参声明位自 oj v0.1.72 起、`oj openapi` 的 `del`→`delete`
+ * 操作键归一自 v0.1.73 起，`ojm api` 的 openapi 流水线以这两者为前提
+ * （见 CHANGELOG 0.1.20 / docs/guides/api-codegen-openapi.md）。
  */
-export const MIN_OJ_VERSION = "0.1.69";
+export const MIN_OJ_VERSION = "0.1.73";
 
 /** 按段数值比较（字符串比较会把 0.1.9 判成大于 0.1.69）；非数字段按 0 处理 */
 export function isSupportedOjVersion(version: string): boolean {

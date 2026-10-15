@@ -4,7 +4,7 @@ import ReactECharts from "echarts-for-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { fetchLine } from "../../__client/api";
+import { homeLinePost } from "../../__client/api";
 
 export default function LineChart() {
 	const { t } = useTranslation();
@@ -55,7 +55,7 @@ export default function LineChart() {
 
 	useEffect(() => {
 		if (value) {
-			fetchLine({ range: value }).then((list) => {
+			homeLinePost({ range: value }).then((list) => {
 				setData(list);
 			});
 		}

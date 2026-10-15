@@ -26,18 +26,20 @@ export default defineModule({
 			// 方法都自动带 /api/notification/ 前缀。
 			const notificationClient = createNotificationClient(ctx);
 			const provider: NotificationsApiProvider = {
-				fetchNotifications: () => notificationClient.fetchNotifications(),
+				// 端点函数名由 oj operationId 派生（camelCase 子路径 + 方法），
+				// 见 __client/api.ts；provider 方法名（fetchNotifications/markRead…）不变。
+				fetchNotifications: () => notificationClient.notificationNotificationsGet(),
 				// id 为命名空间串（"u:<id>" / "b:<id>"），原样透传
-				markRead: id => notificationClient.markRead({ id: String(id) }).then(() => {}),
-				markAllRead: () => notificationClient.markAllRead().then(() => {}),
-				clearAll: () => notificationClient.clearAll().then(() => {}),
+				markRead: id => notificationClient.notificationNotificationsReadPost({ id: String(id) }).then(() => {}),
+				markAllRead: () => notificationClient.notificationNotificationsReadAllPost().then(() => {}),
+				clearAll: () => notificationClient.notificationNotificationsClearPost().then(() => {}),
 				push: input => notificationClient
-					.push({ userId: input.userId, title: input.title, message: input.message, link: input.link, avatar: input.avatar, category: input.category })
+					.notificationPushPost({ userId: input.userId, title: input.title, message: input.message, link: input.link, avatar: input.avatar, category: input.category })
 					.then(r => String((r as { id: string }).id)),
 				pushBroadcast: input => notificationClient
-					.pushBroadcast({ title: input.title, message: input.message, link: input.link, avatar: input.avatar, category: input.category })
+					.notificationPushBroadcastPost({ title: input.title, message: input.message, link: input.link, avatar: input.avatar, category: input.category })
 					.then(r => String((r as { id: string }).id)),
-				del: (id, userId) => notificationClient.del({ id: String(id), userId }).then(() => {}),
+				del: (id, userId) => notificationClient.notificationDelPost({ id: String(id), userId }).then(() => {}),
 			};
 			ctx.register.notificationsApi(provider);
 		},

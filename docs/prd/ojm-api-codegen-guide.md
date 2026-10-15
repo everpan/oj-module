@@ -4,6 +4,13 @@
 - 读者：刚接触 oj-module 工程、需要理解「契约 → 前端 client」链路的开发者
 - 关联：[[202609112324-web-layout-and-codegen-guide-design]]（本次改名决策）、[[202609030854-api-contract-design]]（契约原始设计）、`oj-fullstack-tutorial.md`（上手操作向）
 
+> ⚠️ **本文档已过时（旧口径）**：它描述的是**已退役删除**的 `contract.ts` / `defineApi` 翻译层
+> （`contract.ts` → `evaluate` → IR → `emit`）。当前架构以 **oj handler 上的 `.schema`** 为唯一权威源：
+> `oj openapi` 产出 `openapi.json` → `ojm api` 消费它生成 `__client`，翻译层已删除、`ojm api` 不再读
+> `contract.ts`。请改读 **`docs/guides/api-codegen-openapi.md`**（新口径总览）与
+> **`docs/migration/contract-to-openapi-schema.md`**（旧工程迁移方法）。存量 `contract.ts` 工程的迁移
+> 步骤见后者。
+
 > tutorial 讲「怎么用」，本文讲「它是怎么工作的」——读完应能回答：改了契约会发生什么、
 > 生成的文件能不能手改、`--check` 在对账什么、豁免清单怎么配。
 

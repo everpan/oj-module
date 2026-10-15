@@ -33,7 +33,7 @@ export function createSystemClient(ctx: ModuleContext) {
 	}
 	ctx.register.apiPrefix(API_PREFIX);
 	bindRequest(ctx.utils.request);
-	return { fetchAddMenuItem, fetchAddRoleItem, fetchDeleteMenuItem, fetchDeleteRoleItem, fetchMenuByRoleId, fetchMenuList, fetchRoleList, fetchRoleMenu, fetchUpdateMenuItem, fetchUpdateRoleItem };
+	return { systemMenuByRoleIdGet, systemMenuItemPost, systemMenuItemPut, systemMenuItemDelete, systemMenuListGet, systemRoleItemPost, systemRoleItemPut, systemRoleItemDelete, systemRoleListGet, systemRoleMenuGet };
 }
 
 /**
@@ -64,22 +64,22 @@ async function toApiError(e: unknown): Promise<unknown> {
 	return e;
 }
 
-export type FetchAddMenuItemBody = z.input<(typeof schemas)["fetchAddMenuItem"]["body"]>;
-export type FetchAddMenuItemData = z.infer<(typeof schemas)["fetchAddMenuItem"]["data"]>;
+export type SystemMenuByRoleIdGetQuery = z.input<(typeof schemas)["systemMenuByRoleIdGet"]["query"]>;
+export type SystemMenuByRoleIdGetData = z.infer<(typeof schemas)["systemMenuByRoleIdGet"]["data"]>;
 
-export async function fetchAddMenuItem(body: FetchAddMenuItemBody): Promise<FetchAddMenuItemData> {
+export async function systemMenuByRoleIdGet(query: SystemMenuByRoleIdGetQuery): Promise<SystemMenuByRoleIdGetData> {
 	const client = ensureReq();
 	try {
-		const env = await client.post(`system/menu-item`, { json: body, ignoreLoading: true }).json<OjEnvelope<FetchAddMenuItemData>>();
+		const env = await client.get(`system/menu-by-role-id`, { searchParams: query as Record<string, string | number | boolean> }).json<OjEnvelope<SystemMenuByRoleIdGetData>>();
 		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
 		if (typeof env.code === "number" && env.code !== 0)
 			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
-		const data = env.data as FetchAddMenuItemData;
+		const data = env.data as SystemMenuByRoleIdGetData;
 		if (import.meta.env.DEV) {
 			const { schemas } = await import("./api.schemas");
-			const r = schemas.fetchAddMenuItem.data.safeParse(data);
+			const r = schemas["systemMenuByRoleIdGet"].data.safeParse(data);
 			if (!r.success)
-				throw new ContractApiError(-1, `[契约违例] fetchAddMenuItem 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
+				throw new ContractApiError(-1, `[契约违例] systemMenuByRoleIdGet 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
 		}
 		return data;
 	}
@@ -88,22 +88,22 @@ export async function fetchAddMenuItem(body: FetchAddMenuItemBody): Promise<Fetc
 	}
 }
 
-export type FetchAddRoleItemBody = z.input<(typeof schemas)["fetchAddRoleItem"]["body"]>;
-export type FetchAddRoleItemData = z.infer<(typeof schemas)["fetchAddRoleItem"]["data"]>;
+export type SystemMenuItemPostBody = z.input<(typeof schemas)["systemMenuItemPost"]["body"]>;
+export type SystemMenuItemPostData = z.infer<(typeof schemas)["systemMenuItemPost"]["data"]>;
 
-export async function fetchAddRoleItem(body: FetchAddRoleItemBody): Promise<FetchAddRoleItemData> {
+export async function systemMenuItemPost(body: SystemMenuItemPostBody): Promise<SystemMenuItemPostData> {
 	const client = ensureReq();
 	try {
-		const env = await client.post(`system/role-item`, { json: body, ignoreLoading: true }).json<OjEnvelope<FetchAddRoleItemData>>();
+		const env = await client.post(`system/menu-item`, { json: body }).json<OjEnvelope<SystemMenuItemPostData>>();
 		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
 		if (typeof env.code === "number" && env.code !== 0)
 			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
-		const data = env.data as FetchAddRoleItemData;
+		const data = env.data as SystemMenuItemPostData;
 		if (import.meta.env.DEV) {
 			const { schemas } = await import("./api.schemas");
-			const r = schemas.fetchAddRoleItem.data.safeParse(data);
+			const r = schemas["systemMenuItemPost"].data.safeParse(data);
 			if (!r.success)
-				throw new ContractApiError(-1, `[契约违例] fetchAddRoleItem 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
+				throw new ContractApiError(-1, `[契约违例] systemMenuItemPost 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
 		}
 		return data;
 	}
@@ -112,22 +112,22 @@ export async function fetchAddRoleItem(body: FetchAddRoleItemBody): Promise<Fetc
 	}
 }
 
-export type FetchDeleteMenuItemBody = z.input<(typeof schemas)["fetchDeleteMenuItem"]["body"]>;
-export type FetchDeleteMenuItemData = z.infer<(typeof schemas)["fetchDeleteMenuItem"]["data"]>;
+export type SystemMenuItemPutBody = z.input<(typeof schemas)["systemMenuItemPut"]["body"]>;
+export type SystemMenuItemPutData = z.infer<(typeof schemas)["systemMenuItemPut"]["data"]>;
 
-export async function fetchDeleteMenuItem(body: FetchDeleteMenuItemBody): Promise<FetchDeleteMenuItemData> {
+export async function systemMenuItemPut(body: SystemMenuItemPutBody): Promise<SystemMenuItemPutData> {
 	const client = ensureReq();
 	try {
-		const env = await client.delete(`system/menu-item`, { json: body, ignoreLoading: true }).json<OjEnvelope<FetchDeleteMenuItemData>>();
+		const env = await client.put(`system/menu-item`, { json: body }).json<OjEnvelope<SystemMenuItemPutData>>();
 		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
 		if (typeof env.code === "number" && env.code !== 0)
 			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
-		const data = env.data as FetchDeleteMenuItemData;
+		const data = env.data as SystemMenuItemPutData;
 		if (import.meta.env.DEV) {
 			const { schemas } = await import("./api.schemas");
-			const r = schemas.fetchDeleteMenuItem.data.safeParse(data);
+			const r = schemas["systemMenuItemPut"].data.safeParse(data);
 			if (!r.success)
-				throw new ContractApiError(-1, `[契约违例] fetchDeleteMenuItem 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
+				throw new ContractApiError(-1, `[契约违例] systemMenuItemPut 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
 		}
 		return data;
 	}
@@ -136,22 +136,22 @@ export async function fetchDeleteMenuItem(body: FetchDeleteMenuItemBody): Promis
 	}
 }
 
-export type FetchDeleteRoleItemBody = z.input<(typeof schemas)["fetchDeleteRoleItem"]["body"]>;
-export type FetchDeleteRoleItemData = z.infer<(typeof schemas)["fetchDeleteRoleItem"]["data"]>;
+export type SystemMenuItemDeleteBody = z.input<(typeof schemas)["systemMenuItemDelete"]["body"]>;
+export type SystemMenuItemDeleteData = z.infer<(typeof schemas)["systemMenuItemDelete"]["data"]>;
 
-export async function fetchDeleteRoleItem(body: FetchDeleteRoleItemBody): Promise<FetchDeleteRoleItemData> {
+export async function systemMenuItemDelete(body: SystemMenuItemDeleteBody): Promise<SystemMenuItemDeleteData> {
 	const client = ensureReq();
 	try {
-		const env = await client.delete(`system/role-item`, { json: body, ignoreLoading: true }).json<OjEnvelope<FetchDeleteRoleItemData>>();
+		const env = await client.delete(`system/menu-item`, { json: body }).json<OjEnvelope<SystemMenuItemDeleteData>>();
 		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
 		if (typeof env.code === "number" && env.code !== 0)
 			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
-		const data = env.data as FetchDeleteRoleItemData;
+		const data = env.data as SystemMenuItemDeleteData;
 		if (import.meta.env.DEV) {
 			const { schemas } = await import("./api.schemas");
-			const r = schemas.fetchDeleteRoleItem.data.safeParse(data);
+			const r = schemas["systemMenuItemDelete"].data.safeParse(data);
 			if (!r.success)
-				throw new ContractApiError(-1, `[契约违例] fetchDeleteRoleItem 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
+				throw new ContractApiError(-1, `[契约违例] systemMenuItemDelete 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
 		}
 		return data;
 	}
@@ -160,22 +160,21 @@ export async function fetchDeleteRoleItem(body: FetchDeleteRoleItemBody): Promis
 	}
 }
 
-export type FetchMenuByRoleIdQuery = z.input<(typeof schemas)["fetchMenuByRoleId"]["query"]>;
-export type FetchMenuByRoleIdData = z.infer<(typeof schemas)["fetchMenuByRoleId"]["data"]>;
+export type SystemMenuListGetData = z.infer<(typeof schemas)["systemMenuListGet"]["data"]>;
 
-export async function fetchMenuByRoleId(query: FetchMenuByRoleIdQuery): Promise<FetchMenuByRoleIdData> {
+export async function systemMenuListGet(): Promise<SystemMenuListGetData> {
 	const client = ensureReq();
 	try {
-		const env = await client.get(`system/menu-by-role-id`, { searchParams: query as Record<string, string | number | boolean> }).json<OjEnvelope<FetchMenuByRoleIdData>>();
+		const env = await client.get(`system/menu-list`).json<OjEnvelope<SystemMenuListGetData>>();
 		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
 		if (typeof env.code === "number" && env.code !== 0)
 			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
-		const data = env.data as FetchMenuByRoleIdData;
+		const data = env.data as SystemMenuListGetData;
 		if (import.meta.env.DEV) {
 			const { schemas } = await import("./api.schemas");
-			const r = schemas.fetchMenuByRoleId.data.safeParse(data);
+			const r = schemas["systemMenuListGet"].data.safeParse(data);
 			if (!r.success)
-				throw new ContractApiError(-1, `[契约违例] fetchMenuByRoleId 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
+				throw new ContractApiError(-1, `[契约违例] systemMenuListGet 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
 		}
 		return data;
 	}
@@ -184,21 +183,22 @@ export async function fetchMenuByRoleId(query: FetchMenuByRoleIdQuery): Promise<
 	}
 }
 
-export type FetchMenuListData = z.infer<(typeof schemas)["fetchMenuList"]["data"]>;
+export type SystemRoleItemPostBody = z.input<(typeof schemas)["systemRoleItemPost"]["body"]>;
+export type SystemRoleItemPostData = z.infer<(typeof schemas)["systemRoleItemPost"]["data"]>;
 
-export async function fetchMenuList(): Promise<FetchMenuListData> {
+export async function systemRoleItemPost(body: SystemRoleItemPostBody): Promise<SystemRoleItemPostData> {
 	const client = ensureReq();
 	try {
-		const env = await client.get(`system/menu-list`, { ignoreLoading: true }).json<OjEnvelope<FetchMenuListData>>();
+		const env = await client.post(`system/role-item`, { json: body }).json<OjEnvelope<SystemRoleItemPostData>>();
 		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
 		if (typeof env.code === "number" && env.code !== 0)
 			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
-		const data = env.data as FetchMenuListData;
+		const data = env.data as SystemRoleItemPostData;
 		if (import.meta.env.DEV) {
 			const { schemas } = await import("./api.schemas");
-			const r = schemas.fetchMenuList.data.safeParse(data);
+			const r = schemas["systemRoleItemPost"].data.safeParse(data);
 			if (!r.success)
-				throw new ContractApiError(-1, `[契约违例] fetchMenuList 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
+				throw new ContractApiError(-1, `[契约违例] systemRoleItemPost 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
 		}
 		return data;
 	}
@@ -207,22 +207,22 @@ export async function fetchMenuList(): Promise<FetchMenuListData> {
 	}
 }
 
-export type FetchRoleListQuery = z.input<(typeof schemas)["fetchRoleList"]["query"]>;
-export type FetchRoleListData = z.infer<(typeof schemas)["fetchRoleList"]["data"]>;
+export type SystemRoleItemPutBody = z.input<(typeof schemas)["systemRoleItemPut"]["body"]>;
+export type SystemRoleItemPutData = z.infer<(typeof schemas)["systemRoleItemPut"]["data"]>;
 
-export async function fetchRoleList(query: FetchRoleListQuery): Promise<FetchRoleListData> {
+export async function systemRoleItemPut(body: SystemRoleItemPutBody): Promise<SystemRoleItemPutData> {
 	const client = ensureReq();
 	try {
-		const env = await client.get(`system/role-list`, { searchParams: query as Record<string, string | number | boolean>, ignoreLoading: true }).json<OjEnvelope<FetchRoleListData>>();
+		const env = await client.put(`system/role-item`, { json: body }).json<OjEnvelope<SystemRoleItemPutData>>();
 		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
 		if (typeof env.code === "number" && env.code !== 0)
 			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
-		const data = env.data as FetchRoleListData;
+		const data = env.data as SystemRoleItemPutData;
 		if (import.meta.env.DEV) {
 			const { schemas } = await import("./api.schemas");
-			const r = schemas.fetchRoleList.data.safeParse(data);
+			const r = schemas["systemRoleItemPut"].data.safeParse(data);
 			if (!r.success)
-				throw new ContractApiError(-1, `[契约违例] fetchRoleList 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
+				throw new ContractApiError(-1, `[契约违例] systemRoleItemPut 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
 		}
 		return data;
 	}
@@ -231,21 +231,22 @@ export async function fetchRoleList(query: FetchRoleListQuery): Promise<FetchRol
 	}
 }
 
-export type FetchRoleMenuData = z.infer<(typeof schemas)["fetchRoleMenu"]["data"]>;
+export type SystemRoleItemDeleteBody = z.input<(typeof schemas)["systemRoleItemDelete"]["body"]>;
+export type SystemRoleItemDeleteData = z.infer<(typeof schemas)["systemRoleItemDelete"]["data"]>;
 
-export async function fetchRoleMenu(): Promise<FetchRoleMenuData> {
+export async function systemRoleItemDelete(body: SystemRoleItemDeleteBody): Promise<SystemRoleItemDeleteData> {
 	const client = ensureReq();
 	try {
-		const env = await client.get(`system/role-menu`, { ignoreLoading: true }).json<OjEnvelope<FetchRoleMenuData>>();
+		const env = await client.delete(`system/role-item`, { json: body }).json<OjEnvelope<SystemRoleItemDeleteData>>();
 		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
 		if (typeof env.code === "number" && env.code !== 0)
 			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
-		const data = env.data as FetchRoleMenuData;
+		const data = env.data as SystemRoleItemDeleteData;
 		if (import.meta.env.DEV) {
 			const { schemas } = await import("./api.schemas");
-			const r = schemas.fetchRoleMenu.data.safeParse(data);
+			const r = schemas["systemRoleItemDelete"].data.safeParse(data);
 			if (!r.success)
-				throw new ContractApiError(-1, `[契约违例] fetchRoleMenu 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
+				throw new ContractApiError(-1, `[契约违例] systemRoleItemDelete 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
 		}
 		return data;
 	}
@@ -254,22 +255,22 @@ export async function fetchRoleMenu(): Promise<FetchRoleMenuData> {
 	}
 }
 
-export type FetchUpdateMenuItemBody = z.input<(typeof schemas)["fetchUpdateMenuItem"]["body"]>;
-export type FetchUpdateMenuItemData = z.infer<(typeof schemas)["fetchUpdateMenuItem"]["data"]>;
+export type SystemRoleListGetQuery = z.input<(typeof schemas)["systemRoleListGet"]["query"]>;
+export type SystemRoleListGetData = z.infer<(typeof schemas)["systemRoleListGet"]["data"]>;
 
-export async function fetchUpdateMenuItem(body: FetchUpdateMenuItemBody): Promise<FetchUpdateMenuItemData> {
+export async function systemRoleListGet(query: SystemRoleListGetQuery): Promise<SystemRoleListGetData> {
 	const client = ensureReq();
 	try {
-		const env = await client.put(`system/menu-item`, { json: body, ignoreLoading: true }).json<OjEnvelope<FetchUpdateMenuItemData>>();
+		const env = await client.get(`system/role-list`, { searchParams: query as Record<string, string | number | boolean> }).json<OjEnvelope<SystemRoleListGetData>>();
 		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
 		if (typeof env.code === "number" && env.code !== 0)
 			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
-		const data = env.data as FetchUpdateMenuItemData;
+		const data = env.data as SystemRoleListGetData;
 		if (import.meta.env.DEV) {
 			const { schemas } = await import("./api.schemas");
-			const r = schemas.fetchUpdateMenuItem.data.safeParse(data);
+			const r = schemas["systemRoleListGet"].data.safeParse(data);
 			if (!r.success)
-				throw new ContractApiError(-1, `[契约违例] fetchUpdateMenuItem 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
+				throw new ContractApiError(-1, `[契约违例] systemRoleListGet 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
 		}
 		return data;
 	}
@@ -278,22 +279,21 @@ export async function fetchUpdateMenuItem(body: FetchUpdateMenuItemBody): Promis
 	}
 }
 
-export type FetchUpdateRoleItemBody = z.input<(typeof schemas)["fetchUpdateRoleItem"]["body"]>;
-export type FetchUpdateRoleItemData = z.infer<(typeof schemas)["fetchUpdateRoleItem"]["data"]>;
+export type SystemRoleMenuGetData = z.infer<(typeof schemas)["systemRoleMenuGet"]["data"]>;
 
-export async function fetchUpdateRoleItem(body: FetchUpdateRoleItemBody): Promise<FetchUpdateRoleItemData> {
+export async function systemRoleMenuGet(): Promise<SystemRoleMenuGetData> {
 	const client = ensureReq();
 	try {
-		const env = await client.put(`system/role-item`, { json: body, ignoreLoading: true }).json<OjEnvelope<FetchUpdateRoleItemData>>();
+		const env = await client.get(`system/role-menu`).json<OjEnvelope<SystemRoleMenuGetData>>();
 		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
 		if (typeof env.code === "number" && env.code !== 0)
 			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
-		const data = env.data as FetchUpdateRoleItemData;
+		const data = env.data as SystemRoleMenuGetData;
 		if (import.meta.env.DEV) {
 			const { schemas } = await import("./api.schemas");
-			const r = schemas.fetchUpdateRoleItem.data.safeParse(data);
+			const r = schemas["systemRoleMenuGet"].data.safeParse(data);
 			if (!r.success)
-				throw new ContractApiError(-1, `[契约违例] fetchUpdateRoleItem 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
+				throw new ContractApiError(-1, `[契约违例] systemRoleMenuGet 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
 		}
 		return data;
 	}

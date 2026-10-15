@@ -1,12 +1,15 @@
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { createContractRegen } from "../../packages/cli/src/contract/watch";
+import { writeOpenapiJson } from "./_fixtures";
 
 /**
  * AC-D7 watch 集成：契约变更 → 去抖合并 → runApi 重生成 → 产物落 modules 树
  * （既有模块 watch 捕获产物变更 → 重建 + SSE，复用不新造）。
  * 失败不崩 dev server：[ojm-api] 前缀人话错误。
+ *
+ * 翻译层退役后，事实源即 openapi.json（oj v0.1.71 产物）。
  */
 
 const tmpDirs: string[] = [];
@@ -15,14 +18,9 @@ function makeProject(): string {
 	const dir = mkdtempSync(join(process.cwd(), "node_modules/.cache/ojm-watch-test-"));
 	tmpDirs.push(dir);
 	mkdirSync(join(dir, "api/src/order"), { recursive: true });
-	writeFileSync(join(dir, "api/src/order/contract.ts"), `
-import { defineApi, z } from "@oj-module/runtime/contract";
-export const getOrderList = defineApi({
-	apiPrefix: "/order",
-	route: "/list",
-	data: z.object({ list: z.array(z.object({ id: z.number() })), total: z.number() }),
-});
-`);
+	writeOpenapiJson(dir, [
+		{ module: "order", route: "/list", method: "GET", data: { type: "object", properties: { list: { type: "array", items: { type: "object", properties: { id: { type: "number" } }, required: ["id"] } }, total: { type: "number" } }, required: ["list", "total"] } },
+	]);
 	return dir;
 }
 

@@ -1,5 +1,6 @@
 import type { IrEndpoint } from "./ir";
-import { emitSchemaSource, keyOf } from "./emit-schema";
+import type { JsonSchema } from "./openapi-ir";
+import { emitZodFromJsonSchema } from "./emit-jsonschema-zod";
 import { wirePrefixOf } from "./ir";
 
 /**
@@ -40,6 +41,12 @@ function pascalModuleName(module: string): string {
 	return module.split("-").map(pascal).join("");
 }
 
+/** 对象键发射：合法标识符原样，其余 JSON 引号化（与 emit-stub 示例值同款） */
+const IDENT = /^[a-z_$][\w$]*$/i;
+function keyOf(name: string): string {
+	return IDENT.test(name) ? name : JSON.stringify(name);
+}
+
 function slotsOf(ep: IrEndpoint): Slot[] {
 	const slots: Slot[] = [];
 	if (ep.paramNames.length > 0)
@@ -65,7 +72,8 @@ function urlTemplate(ep: IrEndpoint, prefix: string): string {
 			return seg;
 		const isCatchAll = seg.startsWith("{*");
 		const key = seg.replace(/^\{\*?/, "").replace(/\}$/, "");
-		const expr = `${prefix}params.${key}`;
+		// 参数段名一律 JSON.stringify 成字符串字面量索引（防止段名含特殊字符破坏源码）
+		const expr = `${prefix}params[${JSON.stringify(key)}]`;
 		return isCatchAll
 			? `\${String(${expr}).split("/").map(encodeURIComponent).join("/")}`
 			: `\${encodeURIComponent(String(${expr}))}`;
@@ -87,10 +95,10 @@ function emitTypes(ep: IrEndpoint): string[] {
 			continue;
 		}
 		// 请求槽用 z.input（带 .default() 的字段入参可选）；data 用 z.infer（输出型）
-		lines.push(`export type ${pascal(ep.name)}${SLOT_TYPE_SUFFIX[slot]} = z.input<(typeof schemas)["${ep.name}"]["${slot}"]>;`);
+		lines.push(`export type ${pascal(ep.name)}${SLOT_TYPE_SUFFIX[slot]} = z.input<(typeof schemas)[${JSON.stringify(ep.name)}][${JSON.stringify(slot)}]>;`);
 	}
 	if (ep.dataSchema)
-		lines.push(`export type ${pascal(ep.name)}Data = z.infer<(typeof schemas)["${ep.name}"]["data"]>;`);
+		lines.push(`export type ${pascal(ep.name)}Data = z.infer<(typeof schemas)[${JSON.stringify(ep.name)}]["data"]>;`);
 	return lines;
 }
 
@@ -102,7 +110,7 @@ function emitFormType(ep: IrEndpoint): string {
 	const form = ep.form!;
 	const members: string[] = [];
 	if (form.fieldsSchema)
-		members.push(`\tfields: z.input<(typeof schemas)["${ep.name}"]["form"]>`);
+		members.push(`\tfields: z.input<(typeof schemas)[${JSON.stringify(ep.name)}]["form"]>`);
 	if (form.files.length) {
 		const files = form.files
 			.map(f => `${keyOf(f.name)}${f.required ? "" : "?"}: ${f.multiple ? "Array<File | Blob>" : "File | Blob"}`)
@@ -199,7 +207,7 @@ function emitEndpoint(ep: IrEndpoint): string {
 		? `
 		if (import.meta.env.DEV) {
 			const { schemas } = await import("./api.schemas");
-			const r = schemas.${ep.name}.data.safeParse(data);
+			const r = schemas[${JSON.stringify(ep.name)}].data.safeParse(data);
 			if (!r.success)
 				throw new ContractApiError(-1, \`[契约违例] ${ep.name} 响应与契约不符：\${r.error.issues.map(i => \`\${i.path.join(".") || "(root)"}: \${i.message}\`).join("; ")}\`);
 		}`
@@ -226,10 +234,10 @@ function emitPrelude(target: "module" | "internal", module?: string, endpointNam
 		? `let req: ScopedRequestLike | undefined;
 
 /** 线上 API 前缀（ojm api 从契约抽取，唯一真源，勿手改）：请求基址 + 前缀登记用 */
-export const API_PREFIX = "${wirePrefix ?? `/${module}`}";
+export const API_PREFIX = ${JSON.stringify(wirePrefix ?? `/${module}`)};
 
 /** 认领身份前缀（契约 apiPrefix，字面等于模块目录名）：跨模块认领护栏对比基准 */
-export const MODULE_PREFIX = "/${module}";
+export const MODULE_PREFIX = ${JSON.stringify(`/${module}`)};
 
 /**
  * 模块 entry 的 onInit 里一行创建（构造即 install）：完成 apiPrefix 登记 +
@@ -309,19 +317,19 @@ function emitSchemas(ir: IrEndpoint[], target: "module" | "internal"): string {
 			// raw 端点也保留请求槽（params/query/body 类型引用此处 schema）；
 			// 仅 data 槽与 raw 互斥（定义期已拦截 data+raw）
 			if (ep.paramsSchema)
-				slots.push(`\t\tparams: ${emitSchemaSource(ep.paramsSchema)},`);
+				slots.push(`\t\tparams: ${emitZodFromJsonSchema(ep.paramsSchema as JsonSchema, `${ep.name}.params`)},`);
 			if (ep.querySchema)
-				slots.push(`\t\tquery: ${emitSchemaSource(ep.querySchema)},`);
+				slots.push(`\t\tquery: ${emitZodFromJsonSchema(ep.querySchema as JsonSchema, `${ep.name}.query`)},`);
 			if (ep.bodySchema)
-				slots.push(`\t\tbody: ${emitSchemaSource(ep.bodySchema)},`);
+				slots.push(`\t\tbody: ${emitZodFromJsonSchema(ep.bodySchema as JsonSchema, `${ep.name}.body`)},`);
 			// form 槽只发射文本部件（files 是二进制，无 schema）；api.ts 的 Form 类型据此推导
 			if (ep.form?.fieldsSchema)
-				slots.push(`\t\tform: ${emitSchemaSource(ep.form.fieldsSchema)},`);
+				slots.push(`\t\tform: ${emitZodFromJsonSchema(ep.form.fieldsSchema as JsonSchema, `${ep.name}.form`)},`);
 			if (!ep.raw && ep.dataSchema)
-				slots.push(`\t\tdata: ${emitSchemaSource(ep.dataSchema)},`);
+				slots.push(`\t\tdata: ${emitZodFromJsonSchema(ep.dataSchema as JsonSchema, `${ep.name}.data`)},`);
 			if (slots.length === 0)
 				return "";
-			return `\t${ep.name}: {\n${slots.join("\n")}\n\t},`;
+			return `\t${JSON.stringify(ep.name)}: {\n${slots.join("\n")}\n\t},`;
 		})
 		.filter(Boolean);
 
@@ -338,7 +346,7 @@ ${entries.join("\n")}
 /** 发射双产物：api.ts（类型 + 请求函数 + 工厂）与 api.schemas.ts（DEV 校验 schema） */
 export function emitClient(ir: IrEndpoint[], opts: { target: "module" | "internal", module?: string }): { "api.ts": string, "api.schemas.ts": string } {
 	if (ir.length === 0)
-		throw new Error("[ojm-api] client 发射失败：IR 为空——契约文件里没有 defineApi 端点，无需生成。");
+		throw new Error("[ojm-api] client 发射失败：IR 为空——openapi.json 里没有任何端点（operationId + tags），无需生成；请检查 \`oj openapi\` 产物。");
 	if (opts.target === "module" && !opts.module) {
 		throw new Error(
 			"[ojm-api] client 发射失败：module 目标需要模块名——"

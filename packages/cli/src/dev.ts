@@ -25,7 +25,7 @@ import { spawn } from "node:child_process";
 import { existsSync, watch } from "node:fs";
 import http from "node:http";
 
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 import process from "node:process";
 import readline from "node:readline";
 import { buildModules } from "./build";
@@ -244,30 +244,25 @@ export async function devServer(projectRoot: string, opts: DevOptions = {}): Pro
 		}, 300);
 	};
 	try {
-		watch(layout.watchTarget, { recursive: true }, (_event, filename) => {
-			if (!filename)
-				return;
-			// 契约文件变更：先 runApi 重生成 client（落 web 树 → 二次触发本 watch 走重建）
-			if (filename.endsWith("contract.ts"))
-				regenContracts();
+		watch(layout.watchTarget, { recursive: true }, () => {
+			// 契约产物（__client）由 regenContracts 落 web 树 → 二次触发本 watch 走重建
 			trigger();
 		});
 	}
 	catch {
 		// 某些平台不支持 recursive，退化为不自动重建（手动 ojm build 仍可用）
 	}
-	// uni-dev 契约在 api/src（不在模块 watch 范围内），单独挂 watcher
+	// uni-dev 契约源在 api/src（不在模块 watch 范围内）。新流水线（oj v0.1.73）：
+	// contract.ts 已退役，dev 改 handler `.schema`/`.response` 后按约定手动重跑
+	// `oj openapi -o openapi.json`——监听工程根该文件变化触发 __client 重生成
+	// （落 web 树 → 二次触发上方 watch 走重建）。
 	try {
-		const apiSrc = `${projectRoot}/api/src`;
-		if (existsSync(apiSrc)) {
-			watch(apiSrc, { recursive: true }, (_event, filename) => {
-				if (filename?.endsWith("contract.ts"))
-					regenContracts();
-			});
-		}
+		const specPath = join(projectRoot, "openapi.json");
+		if (existsSync(specPath))
+			watch(specPath, () => regenContracts());
 	}
 	catch {
-		// 同上：平台不支持 recursive 时退化为手动 ojm api
+		// 同上：平台不支持时退化为手动 ojm api
 	}
 
 	// Vite 风格快捷键：r 热更新 / h 帮助 / c 清屏 / o 打开浏览器 / q 退出。
@@ -329,7 +324,12 @@ export interface DevKeymapDeps {
 	oj: OjProcess | undefined
 	hub: { close: () => void }
 	port: number
-	input?: NodeJS.ReadStream
+	/**
+	 * 键盘输入流：默认 `process.stdin`（TTY）；测试可注入任意 Readable（如 PassThrough）。
+	 * 宽松成 ReadableStream + 可选 setRawMode：keypress 监听与非 TTY 路径都不依赖 TTY 方法，
+	 * 而 `NodeJS.ReadStream` 强求 isTTY/setRawMode 等成员，注入流无法满足（TS2740）。
+	 */
+	input?: NodeJS.ReadableStream & { setRawMode?: (mode: boolean) => unknown }
 	openBrowser?: (url: string) => void
 	onReload: () => void
 	onQuit: () => void
@@ -346,7 +346,9 @@ function defaultOpenBrowser(url: string): void {
 }
 
 export function setupDevKeymap(deps: DevKeymapDeps): void {
-	const input = deps.input ?? process.stdin;
+	// 显式标注收敛 `??` 的联合类型（ReadStream ∩ 可选 setRawMode 的并集会让 .on 签名不可调和）
+	type KeymapInput = NodeJS.ReadableStream & { setRawMode?: (mode: boolean) => unknown };
+	const input: KeymapInput = deps.input ?? process.stdin;
 	const log = deps.log ?? ((msg: string) => console.log(msg));
 	const open = deps.openBrowser ?? defaultOpenBrowser;
 	const url = `http://localhost:${deps.port}`;

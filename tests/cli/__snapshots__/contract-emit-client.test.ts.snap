@@ -80,7 +80,7 @@ export async function getOrderList(query: GetOrderListQuery): Promise<GetOrderLi
 		const data = env.data as GetOrderListData;
 		if (import.meta.env.DEV) {
 			const { schemas } = await import("./api.schemas");
-			const r = schemas.getOrderList.data.safeParse(data);
+			const r = schemas["getOrderList"].data.safeParse(data);
 			if (!r.success)
 				throw new ContractApiError(-1, \`[契约违例] getOrderList 响应与契约不符：\${r.error.issues.map(i => \`\${i.path.join(".") || "(root)"}: \${i.message}\`).join("; ")}\`);
 		}
@@ -97,14 +97,14 @@ export type GetOrderDetailData = z.infer<(typeof schemas)["getOrderDetail"]["dat
 export async function getOrderDetail(params: GetOrderDetailParams): Promise<GetOrderDetailData> {
 	const client = ensureReq();
 	try {
-		const env = await client.get(\`order/item/\${encodeURIComponent(String(params.id))}\`).json<OjEnvelope<GetOrderDetailData>>();
+		const env = await client.get(\`order/item/\${encodeURIComponent(String(params["id"]))}\`).json<OjEnvelope<GetOrderDetailData>>();
 		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
 		if (typeof env.code === "number" && env.code !== 0)
 			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
 		const data = env.data as GetOrderDetailData;
 		if (import.meta.env.DEV) {
 			const { schemas } = await import("./api.schemas");
-			const r = schemas.getOrderDetail.data.safeParse(data);
+			const r = schemas["getOrderDetail"].data.safeParse(data);
 			if (!r.success)
 				throw new ContractApiError(-1, \`[契约违例] getOrderDetail 响应与契约不符：\${r.error.issues.map(i => \`\${i.path.join(".") || "(root)"}: \${i.message}\`).join("; ")}\`);
 		}
@@ -128,7 +128,7 @@ export async function createOrder(body: CreateOrderBody): Promise<CreateOrderDat
 		const data = env.data as CreateOrderData;
 		if (import.meta.env.DEV) {
 			const { schemas } = await import("./api.schemas");
-			const r = schemas.createOrder.data.safeParse(data);
+			const r = schemas["createOrder"].data.safeParse(data);
 			if (!r.success)
 				throw new ContractApiError(-1, \`[契约违例] createOrder 响应与契约不符：\${r.error.issues.map(i => \`\${i.path.join(".") || "(root)"}: \${i.message}\`).join("; ")}\`);
 		}
@@ -146,14 +146,14 @@ export type UpdateOrderData = z.infer<(typeof schemas)["updateOrder"]["data"]>;
 export async function updateOrder(input: { params: UpdateOrderParams, body: UpdateOrderBody }): Promise<UpdateOrderData> {
 	const client = ensureReq();
 	try {
-		const env = await client.put(\`order/item/\${encodeURIComponent(String(input.params.id))}\`, { json: input.body }).json<OjEnvelope<UpdateOrderData>>();
+		const env = await client.put(\`order/item/\${encodeURIComponent(String(input.params["id"]))}\`, { json: input.body }).json<OjEnvelope<UpdateOrderData>>();
 		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
 		if (typeof env.code === "number" && env.code !== 0)
 			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
 		const data = env.data as UpdateOrderData;
 		if (import.meta.env.DEV) {
 			const { schemas } = await import("./api.schemas");
-			const r = schemas.updateOrder.data.safeParse(data);
+			const r = schemas["updateOrder"].data.safeParse(data);
 			if (!r.success)
 				throw new ContractApiError(-1, \`[契约违例] updateOrder 响应与契约不符：\${r.error.issues.map(i => \`\${i.path.join(".") || "(root)"}: \${i.message}\`).join("; ")}\`);
 		}
@@ -164,11 +164,11 @@ export async function updateOrder(input: { params: UpdateOrderParams, body: Upda
 	}
 }
 
-export type DownloadFileParams = { path: string };
+export type DownloadFileParams = z.input<(typeof schemas)["downloadFile"]["params"]>;
 
 export function downloadFile(params: DownloadFileParams): Promise<Response> {
 	const client = ensureReq();
-	return client.get(\`order/file/\${String(params.path).split("/").map(encodeURIComponent).join("/")}\`);
+	return client.get(\`order/file/\${String(params["path"]).split("/").map(encodeURIComponent).join("/")}\`);
 }
 "
 `;
@@ -180,45 +180,50 @@ exports[`emitClient（AC-D5/D6/D8/D15） > 快照：module 目标双产物（bin
 import { z } from "@oj-module/runtime";
 
 export const schemas = {
-	getOrderList: {
+	"getOrderList": {
 		query: z.object({
-	page: z.number().int().min(1),
-	size: z.number().int().optional(),
+	"page": z.number().int().min(1),
+	"size": z.number().int().optional()
 }),
 		data: z.object({
-	list: z.array(z.object({
-		id: z.number(),
-		order_no: z.string(),
-	})),
-	total: z.number(),
+	"list": z.array(z.object({
+	"id": z.number(),
+	"order_no": z.string()
+})),
+	"total": z.number()
 }),
 	},
-	getOrderDetail: {
+	"getOrderDetail": {
 		params: z.object({
-	id: z.number(),
+	"id": z.number()
 }),
 		data: z.object({
-	id: z.number(),
-	order_no: z.string(),
+	"id": z.number(),
+	"order_no": z.string()
 }),
 	},
-	createOrder: {
+	"createOrder": {
 		body: z.object({
-	order_no: z.string().min(1),
+	"order_no": z.string().min(1)
 }),
 		data: z.object({
-	id: z.number(),
+	"id": z.number()
 }),
 	},
-	updateOrder: {
+	"updateOrder": {
 		params: z.object({
-	id: z.number(),
+	"id": z.number()
 }),
 		body: z.object({
-	order_no: z.string().optional(),
+	"order_no": z.string().optional()
 }),
 		data: z.object({
-	id: z.number(),
+	"id": z.number()
+}),
+	},
+	"downloadFile": {
+		params: z.object({
+	"path": z.string()
 }),
 	},
 };
@@ -324,7 +329,7 @@ export async function uploadAvatar(form: UploadAvatarForm): Promise<UploadAvatar
 		const data = env.data as UploadAvatarData;
 		if (import.meta.env.DEV) {
 			const { schemas } = await import("./api.schemas");
-			const r = schemas.uploadAvatar.data.safeParse(data);
+			const r = schemas["uploadAvatar"].data.safeParse(data);
 			if (!r.success)
 				throw new ContractApiError(-1, \`[契约违例] uploadAvatar 响应与契约不符：\${r.error.issues.map(i => \`\${i.path.join(".") || "(root)"}: \${i.message}\`).join("; ")}\`);
 		}
@@ -350,14 +355,14 @@ function buildUploadInFolderForm(input: UploadInFolderForm): FormData {
 export async function uploadInFolder(input: { params: UploadInFolderParams, form: UploadInFolderForm }): Promise<UploadInFolderData> {
 	const client = ensureReq();
 	try {
-		const env = await client.put(\`personal-center/folder/\${encodeURIComponent(String(input.params.id))}/upload\`, { body: buildUploadInFolderForm(input.form) }).json<OjEnvelope<UploadInFolderData>>();
+		const env = await client.put(\`personal-center/folder/\${encodeURIComponent(String(input.params["id"]))}/upload\`, { body: buildUploadInFolderForm(input.form) }).json<OjEnvelope<UploadInFolderData>>();
 		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
 		if (typeof env.code === "number" && env.code !== 0)
 			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
 		const data = env.data as UploadInFolderData;
 		if (import.meta.env.DEV) {
 			const { schemas } = await import("./api.schemas");
-			const r = schemas.uploadInFolder.data.safeParse(data);
+			const r = schemas["uploadInFolder"].data.safeParse(data);
 			if (!r.success)
 				throw new ContractApiError(-1, \`[契约违例] uploadInFolder 响应与契约不符：\${r.error.issues.map(i => \`\${i.path.join(".") || "(root)"}: \${i.message}\`).join("; ")}\`);
 		}
@@ -377,16 +382,16 @@ exports[`emitClient：multipart/form-data（form 槽） > 快照：Form 类型 +
 import { z } from "@oj-module/runtime";
 
 export const schemas = {
-	uploadAvatar: {
+	"uploadAvatar": {
 		form: z.object({
-	kind: z.enum(["photo","doc"]),
-	note: z.string().optional(),
+	"kind": z.enum(["photo", "doc"]),
+	"note": z.string().optional()
 }),
 		data: z.string(),
 	},
-	uploadInFolder: {
+	"uploadInFolder": {
 		params: z.object({
-	id: z.number(),
+	"id": z.number()
 }),
 		data: z.string(),
 	},

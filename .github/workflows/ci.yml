@@ -53,3 +53,7 @@ jobs:
         run: pnpm build
       - name: Test
         run: pnpm test
+      # cli 包内单元测试（contract/openapi 解析/发射）与根 config 隔离（node 环境、
+      # 不收 fake 目录依赖），须显式用其 config 跑——否则 38 条断言永不运行（§4.8 同款违约）
+      - name: 'Test: cli 包内单元测试'
+        run: pnpm test:cli

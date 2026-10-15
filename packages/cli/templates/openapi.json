@@ -1,0 +1,471 @@
+{
+	"openapi": "3.1.0",
+	"info": {
+		"title": "oj API",
+		"version": "0.1.0"
+	},
+	"paths": {
+		"/api/auth/login": {
+			"post": {
+				"operationId": "auth_login_post",
+				"summary": "POST api/auth/login",
+				"x-oj-file": "auth/api.ts",
+				"tags": [
+					"auth"
+				],
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				}
+			}
+		},
+		"/api/auth/logout": {
+			"post": {
+				"operationId": "auth_logout_post",
+				"summary": "POST api/auth/logout",
+				"x-oj-file": "auth/api.ts",
+				"tags": [
+					"auth"
+				],
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				}
+			}
+		},
+		"/api/auth/refresh": {
+			"post": {
+				"operationId": "auth_refresh_post",
+				"summary": "POST api/auth/refresh",
+				"x-oj-file": "auth/api.ts",
+				"tags": [
+					"auth"
+				],
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				}
+			}
+		},
+		"/api/notification/notifications": {
+			"get": {
+				"operationId": "notification_notifications_get",
+				"summary": "GET api/notification/notifications",
+				"x-oj-file": "notification/api.ts",
+				"tags": [
+					"notification"
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "array",
+											"items": {
+												"type": "object",
+												"required": [
+													"id",
+													"scope",
+													"avatar",
+													"date",
+													"message",
+													"title"
+												],
+												"properties": {
+													"id": {
+														"type": "string"
+													},
+													"scope": {
+														"type": "string",
+														"enum": [
+															"user",
+															"broadcast"
+														]
+													},
+													"avatar": {
+														"type": "string"
+													},
+													"date": {
+														"type": "string"
+													},
+													"isRead": {
+														"type": "boolean"
+													},
+													"message": {
+														"type": "string"
+													},
+													"title": {
+														"type": "string"
+													},
+													"link": {
+														"type": [
+															"string",
+															"null"
+														]
+													},
+													"category": {
+														"type": "string",
+														"enum": [
+															"notice",
+															"pm",
+															"mention"
+														]
+													}
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/notification/notifications/read": {
+			"post": {
+				"operationId": "notification_notifications_read_post",
+				"summary": "POST api/notification/notifications/read",
+				"x-oj-file": "notification/api.ts",
+				"tags": [
+					"notification"
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"required": [
+									"id"
+								],
+								"properties": {
+									"id": {
+										"type": "string"
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				}
+			}
+		},
+		"/api/notification/notifications/read-all": {
+			"post": {
+				"operationId": "notification_notifications_read_all_post",
+				"summary": "POST api/notification/notifications/read-all",
+				"x-oj-file": "notification/api.ts",
+				"tags": [
+					"notification"
+				],
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				}
+			}
+		},
+		"/api/notification/notifications/clear": {
+			"post": {
+				"operationId": "notification_notifications_clear_post",
+				"summary": "POST api/notification/notifications/clear",
+				"x-oj-file": "notification/api.ts",
+				"tags": [
+					"notification"
+				],
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				}
+			}
+		},
+		"/api/notification/push": {
+			"post": {
+				"operationId": "notification_push_post",
+				"summary": "POST api/notification/push",
+				"x-oj-file": "notification/api.ts",
+				"tags": [
+					"notification"
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"required": [
+									"title",
+									"message"
+								],
+								"properties": {
+									"userId": {
+										"type": [
+											"string",
+											"number"
+										]
+									},
+									"title": {
+										"type": "string"
+									},
+									"message": {
+										"type": "string"
+									},
+									"link": {
+										"type": "string"
+									},
+									"avatar": {
+										"type": "string"
+									},
+									"category": {
+										"type": "string",
+										"enum": [
+											"notice",
+											"pm",
+											"mention"
+										]
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				}
+			}
+		},
+		"/api/notification/push-broadcast": {
+			"post": {
+				"operationId": "notification_push_broadcast_post",
+				"summary": "POST api/notification/push-broadcast",
+				"x-oj-file": "notification/api.ts",
+				"tags": [
+					"notification"
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"required": [
+									"title",
+									"message"
+								],
+								"properties": {
+									"title": {
+										"type": "string"
+									},
+									"message": {
+										"type": "string"
+									},
+									"link": {
+										"type": "string"
+									},
+									"avatar": {
+										"type": "string"
+									},
+									"category": {
+										"type": "string",
+										"enum": [
+											"notice",
+											"pm",
+											"mention"
+										]
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				}
+			}
+		},
+		"/api/notification/del": {
+			"post": {
+				"operationId": "notification_del_post",
+				"summary": "POST api/notification/del",
+				"x-oj-file": "notification/del/api.ts",
+				"tags": [
+					"notification"
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"required": [
+									"id"
+								],
+								"properties": {
+									"id": {
+										"type": "string"
+									},
+									"userId": {
+										"type": [
+											"string",
+											"number"
+										]
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				}
+			}
+		},
+		"/api/notifications": {
+			"get": {
+				"operationId": "notifications_get",
+				"summary": "GET api/notifications",
+				"x-oj-file": "notifications/api.ts",
+				"tags": [
+					"notifications"
+				],
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				}
+			}
+		},
+		"/api/personal-center/upload": {
+			"post": {
+				"operationId": "personal_center_upload_post",
+				"summary": "POST api/personal-center/upload",
+				"x-oj-file": "personal-center/upload/api.ts",
+				"tags": [
+					"personal-center"
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "string"
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/web/get-async-routes": {
+			"get": {
+				"operationId": "web_get_async_routes_get",
+				"summary": "GET api/web/get-async-routes",
+				"x-oj-file": "web/get-async-routes/api.ts",
+				"tags": [
+					"web"
+				],
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				}
+			}
+		},
+		"/api/web/hello": {
+			"get": {
+				"operationId": "web_hello_get",
+				"summary": "GET api/web/hello",
+				"x-oj-file": "web/hello/api.ts",
+				"tags": [
+					"web"
+				],
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				}
+			}
+		},
+		"/api/web/user-info": {
+			"get": {
+				"operationId": "web_user_info_get",
+				"summary": "GET api/web/user-info",
+				"x-oj-file": "web/user-info/api.ts",
+				"tags": [
+					"web"
+				],
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				}
+			}
+		}
+	},
+	"tags": [
+		{
+			"name": "auth"
+		},
+		{
+			"name": "notification"
+		},
+		{
+			"name": "notifications"
+		},
+		{
+			"name": "personal-center"
+		},
+		{
+			"name": "web"
+		}
+	]
+}

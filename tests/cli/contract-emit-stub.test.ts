@@ -1,43 +1,49 @@
 import type { StubWrite } from "../../packages/cli/src/contract/emit-stub";
 import { describe, expect, it } from "vitest";
 import { planStubWrites } from "../../packages/cli/src/contract/emit-stub";
-import { buildIr } from "../../packages/cli/src/contract/ir";
-import { defineApi, z } from "../../packages/runtime/contract";
+import { mkEp } from "./_fixtures";
 
 /**
  * AC-D10 §9.1：handler stub 发射 + 指纹幂等。
  * 原则：人碰过的文件工具永不写、永不删；契约未变重跑零写入（git diff 为空）。
  * 测试注入确定性 fixer（identity / 空白归一），真实 ESLint fixer 由集成路径使用。
+ *
+ * 翻译层退役后，IR 由 JSON Schema 构造（mkEp）；stub 的 json.ok 示例值来自
+ * jsonSchemaToSample（确定性、零依赖）。
  */
 
 const identityFix = async (code: string) => code;
 
-const ir = buildIr({
-	getOrderDetail: defineApi({
+const ir = [
+	mkEp({
+		name: "getOrderDetail",
 		apiPrefix: "/order",
 		route: "/item/{id}",
-		params: z.object({ id: z.number() }),
-		data: z.object({ id: z.number(), order_no: z.string(), amount: z.number().min(0) }),
+		params: { type: "object", properties: { id: { type: "number" } }, required: ["id"] },
+		data: { type: "object", properties: { id: { type: "number" }, order_no: { type: "string" }, amount: { type: "number", minimum: 0 } }, required: ["id", "order_no", "amount"] },
 	}),
-	createOrder: defineApi({
+	mkEp({
+		name: "createOrder",
 		apiPrefix: "/order",
 		route: "/item",
 		method: "POST",
-		body: z.object({ order_no: z.string() }),
-		data: z.object({ id: z.number() }),
+		body: { type: "object", properties: { order_no: { type: "string" } }, required: ["order_no"] },
+		data: { type: "object", properties: { id: { type: "number" } }, required: ["id"] },
 	}),
-	deleteOrder: defineApi({
+	mkEp({
+		name: "deleteOrder",
 		apiPrefix: "/order",
 		route: "/item/{id}",
 		method: "DELETE",
-		params: z.object({ id: z.number() }),
+		params: { type: "object", properties: { id: { type: "number" } }, required: ["id"] },
 	}),
-	getOrderList: defineApi({
+	mkEp({
+		name: "getOrderList",
 		apiPrefix: "/order",
 		route: "/list",
-		data: z.object({ list: z.array(z.object({ id: z.number() })), total: z.number() }),
+		data: { type: "object", properties: { list: { type: "array", items: { type: "object", properties: { id: { type: "number" } } } }, total: { type: "number" } }, required: ["list", "total"] },
 	}),
-});
+];
 
 /** 首轮跑出的落盘内容 → 内存文件表（模拟磁盘） */
 function seedFiles(writes: StubWrite[]): Map<string, string> {
@@ -59,7 +65,8 @@ describe("planStubWrites（AC-D10 §9.1 五场景）", () => {
 		expect(item?.content).toMatch(/^\/\/ ojm-api:stub .+ sha256:[0-9a-f]{64}\n/);
 		expect(item?.content).toContain("get.route = \"{id}\";");
 		expect(item?.content).toContain("json.ok({");
-		expect(item?.content).toContain("amount: 0");
+		// amount 来自 minimum:0 → 示例值取 0；JSON.stringify 产物为带引号键、无空格
+		expect(item?.content).toContain("\"amount\":0");
 		// 同目录 GET/POST/DELETE 归并一个文件，方法排序稳定
 		expect(item?.content).toContain("export default { get, post, del };");
 		// 无参数尾巴的端点不挂 .route
@@ -90,13 +97,15 @@ describe("planStubWrites（AC-D10 §9.1 五场景）", () => {
 		const first = await planStubWrites(ir, { apiSrcDir: "api/src", eslintFix: identityFix, readFile: () => undefined });
 		const files = seedFiles(first);
 		// 契约变更：data 加字段 → 示例值变化
-		const ir2 = buildIr({
-			getOrderDetail: defineApi({
+		const ir2 = [
+			mkEp({
+				name: "getOrderDetail",
 				apiPrefix: "/order",
 				route: "/item/{id}",
-				data: z.object({ id: z.number(), order_no: z.string(), remark: z.string() }),
+				params: { type: "object", properties: { id: { type: "number" } }, required: ["id"] },
+				data: { type: "object", properties: { id: { type: "number" }, order_no: { type: "string" }, remark: { type: "string" } }, required: ["id", "order_no", "remark"] },
 			}),
-		});
+		];
 		const second = await planStubWrites(ir2, { apiSrcDir: "api/src", eslintFix: identityFix, readFile: p => files.get(p) });
 		const item = second.find(w => w.filePath === "api/src/order/item/api.ts");
 		expect(item?.action).toBe("update");
@@ -106,7 +115,7 @@ describe("planStubWrites（AC-D10 §9.1 五场景）", () => {
 	it("指纹不匹配（人已编辑）→ skip 且 reason 提示走 --check", async () => {
 		const first = await planStubWrites(ir, { apiSrcDir: "api/src", eslintFix: identityFix, readFile: () => undefined });
 		const files = seedFiles(first);
-		const edited = files.get("api/src/order/item/api.ts")!.replace("json.ok({", "// 人写的业务逻辑\n	json.ok({");
+		const edited = files.get("api/src/order/item/api.ts")!.replace("json.ok({", "// 人写的业务逻辑\n\tjson.ok({");
 		files.set("api/src/order/item/api.ts", edited);
 		const second = await planStubWrites(ir, { apiSrcDir: "api/src", eslintFix: identityFix, readFile: p => files.get(p) });
 		const item = second.find(w => w.filePath === "api/src/order/item/api.ts");

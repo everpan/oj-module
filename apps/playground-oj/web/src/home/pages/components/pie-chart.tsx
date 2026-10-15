@@ -1,14 +1,14 @@
 import type { EChartsOption } from "echarts";
-import type { FetchPieData } from "../../__client/api";
+import type { HomePieGetData } from "../../__client/api";
 import { Card, Segmented } from "antd";
 import ReactECharts from "echarts-for-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { fetchPie } from "../../__client/api";
+import { homePieGet } from "../../__client/api";
 
 /** 契约行（{value, code}）+ 展示层补的 name（DATA_KEY 翻译） */
-type PieDataType = FetchPieData[number] & { name: string };
+type PieDataType = HomePieGetData[number] & { name: string };
 
 export default function PieChart() {
 	const { t } = useTranslation();
@@ -59,7 +59,7 @@ export default function PieChart() {
 
 	useEffect(() => {
 		if (value) {
-			fetchPie({ by: value }).then((list) => {
+			homePieGet({ by: value }).then((list) => {
 				setData(
 					list.map((item) => {
 						const code = item.code as keyof typeof DATA_KEY;

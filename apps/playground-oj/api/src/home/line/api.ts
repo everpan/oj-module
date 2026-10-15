@@ -3,7 +3,8 @@
 // 逐日取 SUM(value)，缺失日补 0（F6 幂等补数）。返回 number[]（与日序对齐）。
 const RANGE_DAYS: Record<string, number> = { week: 7, month: 30, year: 365 };
 
-export default {
+// 契约（v0.1.71「最新方式」）：动词挂 `.schema` 四通道。
+const line = {
 	async post() {
 		try {
 			const range = String((http.body && (http.body as Record<string, unknown>).range) ?? "week");
@@ -39,3 +40,18 @@ export default {
 		}
 	},
 };
+
+line.post.schema = {
+	body: {
+		type: "object",
+		required: ["range"],
+		properties: { range: { type: "string" } },
+	},
+};
+
+line.post.response = {
+	type: "array",
+	items: { type: "number" },
+};
+
+export default line;

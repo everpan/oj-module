@@ -87,11 +87,17 @@ interface AuthUser {
 }
 
 // multipart 上传文件元信息。
+// 大文件（> max_upload）由服务端流式落 blob（v0.1.38）：bytes 拿不到（http.file 报错），
+// 用 key/url 取——blob.get(key) 读全文、url 直接下载/外链。
 interface UploadedFileMeta {
   field: string;
   filename: string;
   content_type: string;
   size: number;
+  // 流式大文件的 blob 对象 key（小文件为 null）。
+  key: string | null;
+  // 流式大文件的下载地址（小文件为 null）。
+  url: string | null;
 }
 
 // log.* ：结构化日志（zap SugaredLogger 风格：msg + 交替键值对）。
@@ -181,6 +187,35 @@ interface BcryptApi {
 declare global {
   interface Function {
     route?: string;
+    // oj v0.1.44+ handler 入参契约：在导出函数/动词上挂 `.schema`（JSON Schema 严格子集，
+    // 通道 params/query/body），运行期校验入参 + 供 `oj openapi` 生成 openapi.json。
+    // 类型宽松（结构化对象），具体通道由 oj 运行期内省；此处仅让 TS 不报属性不存在。
+    schema?: {
+      params?: unknown;
+      query?: unknown;
+      body?: unknown;
+      [channel: string]: unknown;
+    };
+    // oj v0.1.72+ handler 出参契约：与 `.schema` 平级声明，语义同旧 `.schema.response`
+    // （`json.ok(data)` 的 data payload；运行期不校验，只喂 `oj openapi` / client 生成）。
+    // 优先级：动词 `.response` > 组 `.response` > 动词 `.schema.response` > 组 `.schema.response`。
+    response?: Record<string, unknown>;
+  }
+
+  // 嵌套组（oj v0.1.64）：以实体对象为根的组同样可挂组级 `.route`（整组默认前缀）、
+  // 组级 `.schema`（整组默认入参契约）与组级 `.response`（整组默认出参，v0.1.72），
+  // 与 handler 级同语义。组是普通对象字面量，故在 `Object` 上声明，使
+  // `anchor.route = "/x/{anchor}/upload"` 之类不报 TS2339。
+  // 运行时：组级 `.schema` 作继承默认，动词自身 `.schema` 在其上合并（通道级
+  // required 并集 / properties 逐键覆盖）；组级 `.response` 同样沿嵌套层层继承。
+  interface Object {
+    route?: string;
+    /** 组级入参契约（v0.1.64 嵌套组）：整组默认，动词 `.schema` 在其上合并 */
+    schema?: Record<string, unknown>;
+    /** 组级出参契约（v0.1.72）：整组默认，沿嵌套继承，动词 `.response` 整体覆盖。
+     * ⚠️ 保留键：组对象上的 `response` 被当作声明读走，不能用来命名嵌套子组
+     * （子组命名为 response 会静默不产生路由，与 `schema`/`route` 相同） */
+    response?: Record<string, unknown>;
   }
 
   const json: JsonApi;

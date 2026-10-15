@@ -4,8 +4,8 @@ import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { emitOjSchemaLine } from "./emit-oj-schema";
-import { keyOf } from "./emit-schema";
 import { splitRoute, wirePrefixOf } from "./ir";
+import { jsonSchemaToSample } from "./json-schema-sample";
 
 /**
  * AC-D10 §9.1：handler stub 发射器 + 指纹幂等。
@@ -73,62 +73,9 @@ export function hashContent(body: string): string {
 	return createHash("sha256").update(norm).digest("hex");
 }
 
-/** 最小示例值源码生成（与 mock.ts 的值版有意不收敛——此处产代码模板文本） */
+/** 最小示例值源码生成：JSON Schema → 确定性示例值 → TS 字面量（JSON.stringify 即合法源码） */
 function exampleSourceFromSchema(schema: unknown): string {
-	const def = (schema as { _zod?: { def?: Record<string, unknown> } })?._zod?.def;
-	if (!def)
-		return "null";
-	switch (def.type) {
-		case "string": {
-			for (const check of (def.checks as { _zod?: { def?: Record<string, unknown> } }[]) ?? []) {
-				const format = check._zod?.def?.format as string | undefined;
-				if (format === "email")
-					return "\"user@example.com\"";
-				if (format === "uuid")
-					return "\"00000000-0000-0000-0000-000000000000\"";
-				if (format === "datetime")
-					return "\"2026-01-01T00:00:00.000Z\"";
-				if (format === "date")
-					return "\"2026-01-01\"";
-				if (format === "url")
-					return "\"https://example.com\"";
-			}
-			return "\"示例\"";
-		}
-		case "number": {
-			for (const check of (def.checks as { _zod?: { def?: Record<string, unknown> } }[]) ?? []) {
-				const cd = check._zod?.def;
-				if (cd?.check === "greater_than")
-					return String(cd.inclusive === false ? (cd.value as number) + 1 : cd.value);
-			}
-			return "1";
-		}
-		case "boolean":
-			return "true";
-		case "date":
-			return "\"2026-01-01T00:00:00.000Z\"";
-		case "literal":
-			return JSON.stringify((def.values as unknown[])[0]);
-		case "enum":
-			return JSON.stringify(Object.keys(def.entries as object)[0]);
-		case "union":
-			return exampleSourceFromSchema((def.options as unknown[])[0]);
-		case "array":
-			return `[${exampleSourceFromSchema(def.element)}]`;
-		case "object": {
-			const entries = Object.entries(def.shape as Record<string, unknown>)
-				.map(([k, v]) => `\t\t${keyOf(k)}: ${exampleSourceFromSchema(v).replaceAll("\n", "\n\t\t")},`);
-			return `{\n${entries.join("\n")}\n\t}`;
-		}
-		case "optional":
-			return exampleSourceFromSchema(def.innerType);
-		case "nullable":
-			return "null";
-		case "default":
-			return JSON.stringify(def.defaultValue);
-		default:
-			return "null";
-	}
+	return JSON.stringify(jsonSchemaToSample(schema));
 }
 
 function emitHandler(ep: IrEndpoint, diag?: OjSchemaDiag): string {

@@ -2,7 +2,8 @@
 // 按人项校验归属，非本人返回 403；广播项仅删本人回执。Bearer 守卫保护。
 import { delNotice } from "../_shared/notify";
 
-export default {
+// 契约（v0.1.71「最新方式」）：动词挂 `.schema` 四通道；union 用类型数组表达（见 userId）。
+const del = {
 	async post() {
 		const uid = http.user?.id;
 		if (!uid) {
@@ -29,3 +30,16 @@ export default {
 		}
 	},
 };
+
+del.post.schema = {
+	body: {
+		type: "object",
+		required: ["id"],
+		properties: {
+			id: { type: "string" },
+			userId: { type: ["string", "number"] },
+		},
+	},
+};
+
+export default del;

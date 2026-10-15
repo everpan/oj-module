@@ -213,21 +213,24 @@ fs.writeFileSync(path.join(bin,${JSON.stringify(ojBin)}),"#!/bin/sh\\necho oj\\n
 	 *
 	 * 历史：oj 把启动子命令从 `server` 改成了 `serve`（实测 0.1.28 及以前是
 	 * `server`，0.1.32 起是 `serve`）。改名刚发生时 npm 通道只到 0.1.32，门禁
-	 * 曾暂定 0.1.32；现 npm 已发布 0.1.69，门禁抬到当前最新。低版本 oj 装进来
-	 * 会让 ojm dev/preview 全栈形态失败，所以在 vendor 落地时就拦住。
+	 * 曾暂定 0.1.32；后抬到 0.1.69（嵌套 handler 组）；**0.1.20 抬到 0.1.73**：
+	 * `ojm api` openapi 流水线以平级 `.response`（oj v0.1.72+）与 `del`→`delete`
+	 * 操作键归一（v0.1.73+）为前提。低版本 oj 装进来会让 ojm dev/preview 全栈形态
+	 * 或 `ojm api` 契约生成失败，所以在 vendor 落地时就拦住。
 	 */
 	describe("最低 oj 版本门禁（MIN_OJ_VERSION）", () => {
 		it(`isSupportedOjVersion：${MIN_OJ_VERSION} 及以上通过，以下拒绝（数值比较非字符串）`, () => {
-			expect(isSupportedOjVersion("0.1.69")).toBe(true);
+			expect(isSupportedOjVersion("0.1.73")).toBe(true);
 			expect(isSupportedOjVersion("0.2.0")).toBe(true);
 			expect(isSupportedOjVersion("1.0.0")).toBe(true);
-			expect(isSupportedOjVersion("0.1.68")).toBe(false);
+			expect(isSupportedOjVersion("0.1.72")).toBe(false);
+			expect(isSupportedOjVersion("0.1.69")).toBe(false);
 			expect(isSupportedOjVersion("0.1.50")).toBe(false);
 			// 改名前的版本：0.1.32 虽已是 serve，但低于当前门禁
 			expect(isSupportedOjVersion("0.1.32")).toBe(false);
 			expect(isSupportedOjVersion("0.1.28")).toBe(false);
 			expect(isSupportedOjVersion("0.1.11")).toBe(false);
-			// 字符串比较会把 0.1.9 判成 > 0.1.69，必须按段数值比
+			// 字符串比较会把 0.1.9 判成 > 0.1.73，必须按段数值比
 			expect(isSupportedOjVersion("0.1.9")).toBe(false);
 		});
 
@@ -236,7 +239,7 @@ fs.writeFileSync(path.join(bin,${JSON.stringify(ojBin)}),"#!/bin/sh\\necho oj\\n
 			const logs: string[] = [];
 			await expect(vendorCommand(dir, { force: false }, { run, log: m => logs.push(m), probe: () => ({ ok: true, detail: "" }) }))
 				.rejects
-				.toThrowError(/0\.1\.69/);
+				.toThrowError(/0\.1\.73/);
 			expect(calls.some(c => c[0] === "install")).toBe(false);
 			expect(fs.existsSync(path.join(dir, "bin", "oj"))).toBe(false);
 			fs.rmSync(dir, { recursive: true, force: true });
@@ -246,7 +249,7 @@ fs.writeFileSync(path.join(bin,${JSON.stringify(ojBin)}),"#!/bin/sh\\necho oj\\n
 			const { dir, run, calls } = setup("0.2.0");
 			await expect(vendorCommand(dir, { force: false, tag: "v0.1.11" }, { run, log: () => {}, probe: () => ({ ok: true, detail: "" }) }))
 				.rejects
-				.toThrowError(/0\.1\.69|过低/);
+				.toThrowError(/0\.1\.73|过低/);
 			expect(calls.some(c => c[0] === "install")).toBe(false);
 			fs.rmSync(dir, { recursive: true, force: true });
 		});

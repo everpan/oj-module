@@ -106,16 +106,16 @@ const mod: ModuleDefinition = {
 			// 整体以 SystemApiProvider 接入。框架自带 FetchRoleMenuData 仍是 3 字段投影、
 			// MenuItemType.status 为字面量 1，本模块返回 18 字段全量菜单，故在此吸收边界类型差。
 			const provider = {
-				fetchRoleList: (q: Parameters<typeof systemClient.fetchRoleList>[0]) => systemClient.fetchRoleList(q),
-				fetchAddRoleItem: (b: Parameters<typeof systemClient.fetchAddRoleItem>[0]) => systemClient.fetchAddRoleItem(b),
-				fetchUpdateRoleItem: (b: Parameters<typeof systemClient.fetchUpdateRoleItem>[0]) => systemClient.fetchUpdateRoleItem(b),
-				fetchDeleteRoleItem: (b: Parameters<typeof systemClient.fetchDeleteRoleItem>[0]) => systemClient.fetchDeleteRoleItem(b),
-				fetchRoleMenu: () => systemClient.fetchRoleMenu(),
-				fetchMenuByRoleId: (q: Parameters<typeof systemClient.fetchMenuByRoleId>[0]) => systemClient.fetchMenuByRoleId(q),
-				fetchMenuList: () => systemClient.fetchMenuList(),
-				fetchAddMenuItem: (d: Parameters<typeof systemClient.fetchAddMenuItem>[0]) => systemClient.fetchAddMenuItem(d),
-				fetchUpdateMenuItem: (d: Parameters<typeof systemClient.fetchUpdateMenuItem>[0]) => systemClient.fetchUpdateMenuItem(d),
-				fetchDeleteMenuItem: (id: Parameters<typeof systemClient.fetchDeleteMenuItem>[0]) => systemClient.fetchDeleteMenuItem(id),
+				fetchRoleList: (q: Parameters<typeof systemClient.systemRoleListGet>[0]) => systemClient.systemRoleListGet(q),
+				fetchAddRoleItem: (b: Parameters<typeof systemClient.systemRoleItemPost>[0]) => systemClient.systemRoleItemPost(b),
+				fetchUpdateRoleItem: (b: Parameters<typeof systemClient.systemRoleItemPut>[0]) => systemClient.systemRoleItemPut(b),
+				fetchDeleteRoleItem: (b: Parameters<typeof systemClient.systemRoleItemDelete>[0]) => systemClient.systemRoleItemDelete(b),
+				fetchRoleMenu: () => systemClient.systemRoleMenuGet(),
+				fetchMenuByRoleId: (q: Parameters<typeof systemClient.systemMenuByRoleIdGet>[0]) => systemClient.systemMenuByRoleIdGet(q),
+				fetchMenuList: () => systemClient.systemMenuListGet(),
+				fetchAddMenuItem: (d: Parameters<typeof systemClient.systemMenuItemPost>[0]) => systemClient.systemMenuItemPost(d),
+				fetchUpdateMenuItem: (d: Parameters<typeof systemClient.systemMenuItemPut>[0]) => systemClient.systemMenuItemPut(d),
+				fetchDeleteMenuItem: (id: Parameters<typeof systemClient.systemMenuItemDelete>[0]) => systemClient.systemMenuItemDelete(id),
 			} as unknown as SystemApiProvider;
 			ctx.register.systemApi(provider);
 		},

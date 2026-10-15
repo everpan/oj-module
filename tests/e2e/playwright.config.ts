@@ -47,6 +47,14 @@ const TARGETS = {
 // 通知 API 走全栈形态；legacy worktree 无 notification 模块，回退到 legacy 服务（用例内 skip）
 const apiTarget = target === "legacy" ? TARGETS.legacy : TARGETS.playgroundOj;
 
+// webServer 必须在顶层（@playwright/test 1.62：Project 类型不含 webServer，
+// 且运行期只读顶层 userConfig.webServer——写在 project 里既是类型错误也是 no-op，
+// 服务从未被自动起）。按 E2E_TARGET 门控起哪些服务，避免无关形态的服务也起：
+// legacy 单服务；其余形态 layout（5174）+ 全栈 api（5175）两个 project 各一个。
+const webServers = target === "legacy"
+	? [TARGETS.legacy.webServer]
+	: [TARGETS.playground.webServer, TARGETS.playgroundOj.webServer];
+
 export default defineConfig({
 	// legacy vite dev 对 fake 端点按需编译 + 首次登录链路慢，放宽用例与断言时限
 	timeout: target === "legacy" ? 90_000 : 30_000,
@@ -54,20 +62,18 @@ export default defineConfig({
 	workers: 1, // 串行：tabbar/menu 用例有全局 UI 状态，并行会互相干扰
 	reporter: [["list"]],
 	expect: { timeout: target === "legacy" ? 15_000 : 5_000 },
-	// webServer 下沉到各 project，避免只跑某一 project 时无关服务也起
+	webServer: webServers,
 	projects: [
 		{
 			name: target,
 			testDir: "./layout",
 			use: { baseURL: TARGETS[target].baseURL, trace: "retain-on-failure" },
-			webServer: TARGETS[target].webServer,
 		},
 		// 通知多模块后端语义走真实运行服务（ojm dev 反代的 /api），与 layout UI 基线分目录
 		{
 			name: `${target}-api`,
 			testDir: "./api",
 			use: { baseURL: apiTarget.baseURL, trace: "retain-on-failure" },
-			webServer: apiTarget.webServer,
 		},
 	],
 });

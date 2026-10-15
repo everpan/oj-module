@@ -3,12 +3,15 @@ import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { checkApi } from "../../packages/cli/src/contract/check";
 import { runApi } from "../../packages/cli/src/contract/run";
+import { writeOpenapiJson } from "./_fixtures";
 
 /**
  * D12 / F19：`ojm api --check` 豁免清单（api/.ojm-api-exempt.json）。
  * - modules：整模块跳过 route 双向对账。
  * - paths：路径前缀跳过（/* 一层通配）；既作用于 handler 未登记，也作用于 dist 多。
  * 仅降级，绝不引入新错误；非豁免项目行为不变。
+ *
+ * 翻译层退役后，事实源即 openapi.json（oj v0.1.71 产物）。
  */
 
 const tmpDirs: string[] = [];
@@ -17,16 +20,10 @@ function makeProject(): string {
 	const dir = mkdtempSync(join(process.cwd(), "node_modules/.cache/ojm-exempt-test-"));
 	tmpDirs.push(dir);
 	mkdirSync(join(dir, "api/src/order"), { recursive: true });
-	// 一个合法契约（让 discoverContracts 不抛；并提供非豁免回归基线）
-	writeFileSync(join(dir, "api/src/order/contract.ts"), `
-import { defineApi, z } from "@oj-module/runtime/contract";
-
-export const getOrderList = defineApi({
-	apiPrefix: "/order",
-	route: "/list",
-	data: z.object({ list: z.array(z.object({ id: z.number() })), total: z.number() }),
-});
-`);
+	// 一个合法契约（提供非豁免回归基线）
+	writeOpenapiJson(dir, [
+		{ module: "order", route: "/list", method: "GET", data: { type: "object", properties: { list: { type: "array", items: { type: "object", properties: { id: { type: "number" } }, required: ["id"] } }, total: { type: "number" } }, required: ["list", "total"] } },
+	]);
 	return dir;
 }
 

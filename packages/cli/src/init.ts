@@ -209,6 +209,10 @@ function copyTemplates(
 		const src = path.join(srcDir, entry.name);
 		const dest = path.join(destDir, entry.name);
 		if (entry.isDirectory()) {
+			// 空目录不进工程：git 不跟踪空目录，模板里残留的空目录（如误建的
+			// api/src/_shared）会被 oj build 当作缺 manifest.yaml 的模块 fail-fast
+			if (!dirHasFiles(src))
+				continue;
 			fs.mkdirSync(dest, { recursive: true });
 			copyTemplates(src, dest, placeholders, report);
 			continue;
@@ -225,6 +229,17 @@ function copyTemplates(
 		fs.writeFileSync(dest, content);
 		report.created.push(rel);
 	}
+}
+
+/** 目录（递归）是否含至少一个文件——空目录判定供 copyTemplates 跳过用 */
+function dirHasFiles(dir: string): boolean {
+	for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+		if (entry.isFile())
+			return true;
+		if (entry.isDirectory() && dirHasFiles(path.join(dir, entry.name)))
+			return true;
+	}
+	return false;
 }
 
 function copyIfAbsent(src: string, dest: string, report: InitReport): void {
@@ -306,9 +321,9 @@ function generatePackageJson(cliRoot: string, projectName: string) {
 
 	const devDeps: Record<string, string> = {
 		"@oj-module/cli": cliPkg.version,
-		// runtime 必须显式声明：uni-dev 工程的 contract.ts 与生成 client 直接 import
-		// `@oj-module/runtime/contract[/errors]`，`ojm api` 在 Node 侧求值契约时
-		// 需从工程 node_modules 解析真实现（evaluateContract 把裸说明符 external）。
+		// runtime 必须显式声明：生成的 __client 与 web 模块直接 import
+		// `@oj-module/runtime`（契约层在 oj handler 的 .schema/.response 上，
+		// 经 openapi.json 进 client，不再经过 runtime/contract 的 Node 侧求值）。
 		"@oj-module/runtime": pin("@oj-module/runtime"),
 		"@ant-design/icons": pin("@ant-design/icons"),
 		// personal-center 的 ProForm 用到——仅取**类型**（运行时由宿主 importmap 提供单例）

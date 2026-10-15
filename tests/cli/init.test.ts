@@ -100,9 +100,10 @@ describe("initProject", () => {
 		expect(fs.existsSync(path.join(dest, "web/src/personal-center/pages/settings/index.tsx"))).toBe(true);
 		expect(fs.existsSync(path.join(dest, "web/src/personal-center/locales/zh-CN.json"))).toBe(true);
 		expect(fs.existsSync(path.join(dest, "web/src/personal-center/locales/en-US.json"))).toBe(true);
-		// 后端（T2）：manifest + contract + upload handler；生成物（routes.json/openapi.yaml）不进模板
+		// 后端（T2）：manifest + upload handler（handler `.schema` 取代旧 contract.ts）；
+		// 生成物（routes.json/openapi.yaml）不进模板，单一事实源改 openapi.json
 		expect(fs.existsSync(path.join(dest, "api/src/personal-center/manifest.yaml"))).toBe(true);
-		expect(fs.existsSync(path.join(dest, "api/src/personal-center/contract.ts"))).toBe(true);
+		expect(fs.existsSync(path.join(dest, "api/src/personal-center/contract.ts"))).toBe(false);
 		expect(fs.existsSync(path.join(dest, "api/src/personal-center/upload/api.ts"))).toBe(true);
 		expect(fs.existsSync(path.join(dest, "api/src/personal-center/routes.json"))).toBe(false);
 		// 头像上传链路（T3）：users 表补 avatar_base64 列，user-info 返回它
@@ -140,8 +141,9 @@ describe("initProject", () => {
 		const notificationApi = fs.readFileSync(path.join(dest, "api/src/notification/api.ts"), "utf-8");
 		for (const marker of ["notifications", "push", "push-broadcast"])
 			expect(notificationApi).toContain(marker);
-		const notificationContract = fs.readFileSync(path.join(dest, "api/src/notification/contract.ts"), "utf-8");
-		for (const name of ["markRead", "markAllRead", "clearAll"])
+		// 迁移后 notification 走 handler `.schema`（contract.ts 已删），已读/清空原语在 _shared/notify
+		const notificationContract = fs.readFileSync(path.join(dest, "api/src/notification/_shared/notify.ts"), "utf-8");
+		for (const name of ["markRead", "markAllRead", "clearNotices"])
 			expect(notificationContract).toContain(name);
 		// web 侧：entry 注册四方法 provider + ojm api 生成 client 签入模板（评审 b5）
 		const notificationEntry = fs.readFileSync(path.join(dest, "web/src/notification/entry.ts"), "utf-8");

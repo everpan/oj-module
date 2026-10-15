@@ -2,7 +2,7 @@ import { BasicContent } from "@oj-module/runtime";
 import { Alert, Card, List, Tag } from "antd";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { getTodoList } from "../__client/api";
+import { demoTodosGet } from "../__client/api";
 
 export default function DemoPage() {
 	const { t } = useTranslation();
@@ -10,7 +10,7 @@ export default function DemoPage() {
 	const [error, setError] = useState<string>();
 
 	useEffect(() => {
-		getTodoList({})
+		demoTodosGet({})
 			.then(res => setTodos(res.list))
 			// 契约违例等业务错误不裸奔成 unhandled rejection——展示在页面上（dev 校验反馈环可见）
 			.catch((err: unknown) => setError(String(err)));

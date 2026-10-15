@@ -1,6 +1,6 @@
 ---
 name: ojm-module-dev
-description: 用 ojm 开发前后端一体工程时使用——新增/修改前端模块（entry.ts、pages、locales）、写契约 contract.ts 与 oj handler、跑 ojm api 生成 client、注册 provider/布局/插槽、改 web.config.ts，或排查「模块没加载 / 注册不生效 / 请求未绑定 / 铃铛按钮灰」时。触发场景：建模块、加页面、加接口、接管通知或上传、换布局、ojm dev 起不来。
+description: 用 ojm 开发前后端一体工程时使用——新增/修改前端模块（entry.ts、pages、locales）、写 oj handler 的 .schema 与业务逻辑、跑 oj openapi + ojm api 生成 client、注册 provider/布局/插槽、改 web.config.ts，或排查「模块没加载 / 注册不生效 / 请求未绑定 / 铃铛按钮灰」时。触发场景：建模块、加页面、加接口、接管通知或上传、换布局、ojm dev 起不来。
 ---
 
 # ojm 模块开发
@@ -14,14 +14,14 @@ description: 用 ojm 开发前后端一体工程时使用——新增/修改前�
 
 ## 工作流
 
-1. **读章**：建模块 → 手册 §2；加接口（契约→handler→生成→对接）→ §3；
+1. **读章**：建模块 → 手册 §2；加接口（handler .schema → oj openapi → 生成 → 对接）→ §3；
    接管通知/上传/菜单 → §4；换布局或加插槽 → §5；排查 → §8。
 2. **建目录**：前端 `web/src/<模块名>/`（`entry.ts` 必备，`pages/`、`locales/` 按需）；
-   后端 `api/src/<模块名>/`（`contract.ts` + 目录镜像路由的 `api.ts`）。
+   后端 `api/src/<模块名>/`（目录镜像路由的 `api.ts`，动词挂 `.schema`）。
    `entry.ts` 是模块元数据**唯一来源**——没有单独的 `package.json` / `meta.json`。
 3. **对接四步流水线**（加接口就背这条）：
    ```
-   写契约 contract.ts → 写 handler api.ts → ojm api 生成 client → entry.ts 的 onInit 里 create<Module>Client(ctx) + 注册
+   写 handler .schema → 写 handler 业务逻辑(api.ts) → oj openapi + ojm api 生成 client → entry.ts 的 onInit 里 create<Module>Client(ctx) + 注册
    ```
 4. **登记**：往工程根 `web.config.ts` 的 `modules` 数组加一项。**漏了这步模块静默不加载、全程不报错。**
 5. **验证**：`pnpm dev`（前端 devServer **5174** + oj 后端 **9778**，端口以 `api/config.yaml` 为准）
@@ -42,13 +42,15 @@ description: 用 ojm 开发前后端一体工程时使用——新增/修改前�
 - **只创建自己模块的 client**：A 模块的 onInit 里创建 B 模块的 client 会 DEV 告警。要别家接口，
   走「B 自己注册 provider、A 消费 provider」的正路。
 - **既然接管就整套接管**：`ctx.register.*Provider` 的方法一个都不能少，不做「只接管读、写还用框架的」。
-- **生成物勿手改**：`web/src/<模块>/__client/**`、`routes.json`、`openapi.yaml` 重跑即覆盖
-  （eslint 已忽略）。改需求 = 改契约，重跑 `ojm api`。唯一例外是 `api/**/api.ts` stub——
-  文件头带 `// ojm-api:stub` 指纹的 stub 被人工动过后，工具**永不写永不删**。
-- **契约前缀约束**：uni-dev 形态下每个端点的 `apiPrefix` 必须**字面等于**后端模块
-  目录名（`api/src/order/contract.ts` → `/order`，**不是** `/api/order`），不符即人话报错。
-- **不返回数据的接口不写 `data`**：`data: z.null()` 过不了类型白名单，直接省略该字段。
-- **上传文件用契约的 `form`，不要绕过 client 手写请求**：`form: { fields: z.object({...}), files: [{ name: "avatar", required: true }] }`；`form` 与 `body` 互斥，文件部件只写 `name`/`required`/`multiple`（二进制不进 zod），`content-type` 由运行时按 boundary 自动补。
+- **生成物勿手改**：`web/src/<模块>/__client/**` 重跑即覆盖（eslint 已忽略）。改需求 = 改 handler 的
+  `.schema`，重跑 `oj openapi` + `ojm api`。`openapi.json` 由 `oj openapi` 生成（oj 内省 `.schema` 的权威产物）。
+  唯一例外是 `api/**/api.ts` stub——文件头带 `// ojm-api:stub` 指纹的 stub 被人工动过后，工具**永不写永不删**。
+- **前缀约束**：API 前缀由**后端模块目录名**推导（`api/src/order/**` → `/order`，**不是** `/api/order`）。
+  handler `.schema` / 路由须落在该目录内，否则 oj 路由表与生成物对不上、人话报错。
+- **不返回数据的接口不写 `.response`**：平级声明位直接省略即可（oj v0.1.72+；旧 `.schema.response` 通道仍兼容）；校验一律放后端。
+- **上传文件**：当前 `ojm api` 的 openapi 流水线不生成 form 通道的前端 client（文件部件不进 JSON Schema），
+  惯例走 antd `Upload` **直连**后端（不经 JSON client），handler 用 `http.files` / `http.file(i)` 读字节，
+  仅平级声明 `.response`。不要手写 `content-type`（运行时按 boundary 自动补）。
 - **前端模块的 import 只有三类**：`@oj-module/runtime`、宿主 importmap 提供的共享依赖、
   自身相对路径。共享依赖不进工程 `dependencies`（宿主提供单例，模块不得打包副本）。
 - **后端方法名是 `del`，不是 `delete`**（写成 `delete` 返回 405）。
@@ -73,7 +75,7 @@ description: 用 ojm 开发前后端一体工程时使用——新增/修改前�
 - [ ] `web.config.ts` 的 `modules` 里已登记且 `enabled: true`
 - [ ] 路由 `handle.layout` 选对了（有页面用 `"container"`；无页面模块 `routes: []`）
 - [ ] 菜单标题用命名空间语法 `"<模块名>:menu.<key>"`，且 `locales/<lang>.json` 里有这个 key
-- [ ] 有接口 → 契约写了 `apiPrefix` + `route` → `ojm api` 跑过 → onInit 里 `create<Module>Client(ctx)`
+- [ ] 有接口 → handler 动词挂了 `.schema`（入参）+ 平级 `.response`（出参，oj v0.1.72+）→ `oj openapi` + `ojm api` 跑过 → onInit 里 `create<Module>Client(ctx)`
 - [ ] 接管了某功能 → provider 方法数与类型定义**一个不差**
 - [ ] `pnpm dev` 起来后按 §8 五步排查全过
 
@@ -87,11 +89,11 @@ description: 用 ojm 开发前后端一体工程时使用——新增/修改前�
 | 铃铛按钮全灰 | 没注册通知 provider，或只写了「拉列表」一个方法 | 4 个方法补齐 |
 | 调用报「请求未绑定」 | onInit 里没调 `create<Module>Client(ctx)` | onInit 里先 create 再发请求 |
 | 控制台「模块 A 正在为 /b 路径创建 client（越界）」 | A 创建了 B 的 client | 由 B 创建并通过 provider 提供能力 |
-| `ojm api` 报「schema 超出白名单」 | 契约里写了 `z.null()` / transform / refine | 不返回数据就别写 `data`；校验放后端 |
-| 上传接口报 400「文件字段缺失」 | 文件部件名与后端 `http.files[].field` 不一致 | 契约 `form.files[].name` 对齐后端读的字段名 |
-| 上传报「Unsupported Media Type」/ 后端收不到文件 | 手写了 `content-type`（boundary 丢失） | 删掉手写的 header，交运行时按 FormData 自动补 |
-| `ojm api` 报「apiPrefix 与目录名不符」 | 契约要求 apiPrefix 字面等于后端目录名 | 改 `apiPrefix` 或移动契约目录 |
-| 改了契约前端类型没变 | 没重新生成 | 跑 `ojm api`；生成是确定的，diff 应只含你改的部分 |
+| `ojm api` 报「schema 超出白名单」 | `.schema` 写了白名单外关键字（如 `$ref`/`oneOf`/`format`）或非法类型 | 校验放后端；如需 union 用类型数组 `["string","number"]` |
+| 上传报 400「文件字段缺失」 | 后端 `http.files` 字段名与前端 FormData 不一致 | 对照 handler 读的 `http.files[0].name` / `http.body.<name>`，字段名对齐 |
+| 上传报「Unsupported Media Type」/ 后端收不到文件 | 手写了 `content-type`（boundary 丢失） | 走 antd Upload 直连，删掉手写的 header，交运行时按 FormData 自动补 |
+| `oj openapi` / `ojm api` 报路由与目录不符 | handler 路径 / 组名与模块目录约定不一致 | 后端路由 = 目录镜像（manual §1.3），嵌套组 / 动词键遵循 manual §3.9 |
+| 改了 `.schema` 前端类型没变 | 没重新生成 | 跑 `oj openapi` + `ojm api`；生成是确定的，diff 应只含你改的部分 |
 | 上传报 401 | `headers` 写成了固定对象，token 过期 | 写成方法，用的时候现取 |
 | 后端菜单用了我的布局名，页面却没壳 | 注册该布局的模块没加载 | 看控制台 `[layout] 未知名布局` 提醒 |
 | 后端下发的组件找不到 | 下发的组件名必须在框架页面目录里 | 自己模块的页面走模块 `routes`，别从后端下发 |

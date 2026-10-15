@@ -12,6 +12,7 @@ import { runApi } from "../../packages/cli/src/contract/run";
 
 const TEMPLATES_API = join(process.cwd(), "packages/cli/templates/api");
 const TEMPLATES_WEB = join(process.cwd(), "packages/cli/templates/web");
+const TEMPLATES_OPENAPI = join(process.cwd(), "packages/cli/templates/openapi.json");
 
 const tmpDirs: string[] = [];
 
@@ -19,6 +20,8 @@ function makeTemplateProject(): string {
 	const dir = mkdtempSync(join(process.cwd(), "node_modules/.cache/ojm-tpl-notif-test-"));
 	tmpDirs.push(dir);
 	cpSync(TEMPLATES_API, join(dir, "api"), { recursive: true });
+	// `ojm api` 单一事实源即 openapi.json（oj `oj openapi` 产物，落于工程根），须一并拷入临时工程根
+	cpSync(TEMPLATES_OPENAPI, join(dir, "openapi.json"));
 	return dir;
 }
 

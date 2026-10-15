@@ -14,8 +14,8 @@ export interface NotificationItem {
 	isRead?: boolean
 	message: string
 	title: string
-	/** 深链：前端点击跳转 */
-	link?: string
+	/** 深链：前端点击跳转（无深链的通知为 null） */
+	link?: string | null
 	/** 消息类别：notice=通知/广播，pm=私信，mention=@我（占位） */
 	category?: NoticeCategory
 }

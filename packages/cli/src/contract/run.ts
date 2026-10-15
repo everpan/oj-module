@@ -1,27 +1,24 @@
 import type { OjSchemaDiag } from "./emit-oj-schema";
+import type { IrEndpoint } from "./ir";
+import type { OpenApiDoc } from "./openapi-ir";
 import { execFile as execFileCb } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import process from "node:process";
 import { promisify } from "node:util";
-import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
+import { stringify as stringifyYaml } from "yaml";
 import { emitClient } from "./emit-client";
-import { emitOpenapiYaml, emitRoutesJson } from "./emit-meta";
 import { applyStubWrites, planStubWrites } from "./emit-stub";
-import { evaluateContract } from "./evaluate";
 import { implementedRouteKeys } from "./handler-scan";
-import { buildIr } from "./ir";
+import { irFromOpenapi } from "./openapi-ir";
 
 /**
- * AC-D7：`ojm api` 编排——discover → evaluate → IR → 发射 → 幂等写盘。
+ * AC-D7：`ojm api` 编排——发现 openapi.json → IR → 逐模块发射 __client → 写盘；
+ * 并为未实现的 handler 生成 stub（人碰过的文件永不写）。
  *
- * 发现两档（缺省并扫）：
- * - uni-dev：`api/src/<模块>/contract.ts` → client 双产物写到对应前端模块
- *   `web/src/<模块>/__client/`（模块名 = apiPrefix 去首斜杠，AC-D9 字面相等，
- *   不符即人话报错）；routes.json/openapi.yaml 写契约旁；stub 写 oj 目录镜像树。
- * - 纯前端：`web/src/<模块>/__client/contract.ts` → 四产物全部落契约同目录，无 stub。
- *   旧名 `client/` 兼容发现（deprecation 告警），生成物一律写 `__client/`。
+ * 单一事实源即 `openapi.json`（oj v0.1.73 `oj openapi` 产物，OpenAPI 3.1）：
+ * 项目级单文件，含全部模块。翻译层退役后不再消费旧 `contract.ts`。
  *
  * 幂等：内容无变化不写盘（读旧比对），RunResult 报告 written/skipped。
  */
@@ -33,43 +30,18 @@ export interface RunResult {
 	stubs: { created: number, updated: number, skipped: number }
 }
 
-export interface DiscoveredContract {
-	/** contract.ts 绝对路径 */
-	path: string
-	/** 模块名（uni-dev = api/src 下一级目录名；纯前端 = web/src 下一级目录名） */
-	module: string
-	kind: "uni-dev" | "frontend"
-}
+/** 发现 openapi.json（oj v0.1.73 `oj openapi` 产物）。候选位置：显式传入 > `<cwd>/openapi.json` > `<cwd>/api/openapi.json` */
+const OPENAPI_CANDIDATES = ["openapi.json", "api/openapi.json"];
 
-/** 发现契约文件：api/src/<m>/contract.ts + web/src/<m>/__client/contract.ts（旧名 client/ 兼容 + 告警） */
-export function discoverContracts(cwd: string): DiscoveredContract[] {
-	const found: DiscoveredContract[] = [];
-	const apiSrc = join(cwd, "api/src");
-	if (existsSync(apiSrc)) {
-		for (const entry of readdirSync(apiSrc, { withFileTypes: true })) {
-			if (!entry.isDirectory())
-				continue;
-			const p = join(apiSrc, entry.name, "contract.ts");
-			if (existsSync(p))
-				found.push({ path: p, module: entry.name, kind: "uni-dev" });
-		}
+function findOpenapiJson(cwd: string, explicit?: string): string | undefined {
+	if (explicit)
+		return join(cwd, explicit);
+	for (const rel of OPENAPI_CANDIDATES) {
+		const p = join(cwd, rel);
+		if (existsSync(p))
+			return p;
 	}
-	const modulesSrc = join(cwd, "web/src");
-	if (existsSync(modulesSrc)) {
-		for (const entry of readdirSync(modulesSrc, { withFileTypes: true })) {
-			if (!entry.isDirectory())
-				continue;
-			const p = join(modulesSrc, entry.name, "__client", "contract.ts");
-			const legacy = join(modulesSrc, entry.name, "client", "contract.ts");
-			const hit = existsSync(p) ? p : existsSync(legacy) ? legacy : null;
-			if (hit) {
-				if (hit === legacy)
-					console.warn(`[ojm-api] 弃用：${legacy} 已改名为 __client/（框架生成物目录），请迁移；生成物不再写入 client/。`);
-				found.push({ path: hit, module: entry.name, kind: "frontend" });
-			}
-		}
-	}
-	return found.sort((a, b) => (a.path < b.path ? -1 : 1));
+	return undefined;
 }
 
 /** 内容无变化不写盘；返回是否写入 */
@@ -83,110 +55,80 @@ function writeIfChanged(path: string, content: string, result: RunResult): void 
 	result.written.push(path);
 }
 
-/** 单份契约的四产物落盘路径（run 与 --check 共用，DRY） */
-export function artifactPaths(found: DiscoveredContract, cwd: string): { client: string, schemas: string, routes: string, openapi: string } {
-	if (found.kind === "uni-dev") {
-		const moduleClientDir = join(cwd, "web/src", found.module, "__client");
-		return {
-			client: join(moduleClientDir, "api.ts"),
-			schemas: join(moduleClientDir, "api.schemas.ts"),
-			routes: join(dirname(found.path), "routes.json"),
-			openapi: join(dirname(found.path), "openapi.yaml"),
-		};
+/** IR 按模块（apiPrefix 去首斜杠）分组，供逐模块 emitClient 落 __client */
+function groupIrByModule(ir: IrEndpoint[]): Map<string, IrEndpoint[]> {
+	const byModule = new Map<string, IrEndpoint[]>();
+	for (const ep of ir) {
+		const module = ep.apiPrefix.replace(/^\//, "");
+		const list = byModule.get(module);
+		if (list)
+			list.push(ep);
+		else
+			byModule.set(module, [ep]);
 	}
-	const dir = dirname(found.path);
-	return {
-		client: join(dir, "api.ts"),
-		schemas: join(dir, "api.schemas.ts"),
-		routes: join(dir, "routes.json"),
-		openapi: join(dir, "openapi.yaml"),
-	};
+	return byModule;
 }
 
-/** 契约 → IR（含 uni-dev 的 AC-D9 字面相等校验）；run 与 --check 共用 */
-export async function irOf(found: DiscoveredContract, cwd: string) {
-	const exports = await evaluateContract(found.path, cwd);
-	const ir = buildIr(exports);
-	if (ir.length === 0)
-		throw new Error(`[ojm-api] ${found.path} 没有 defineApi 端点——契约文件至少导出一个端点，否则请删除该文件。`);
-	if (found.kind === "uni-dev") {
-		// AC-D9：uni-dev 形态 apiPrefix 字面等于 oj 模块段（= 目录名）
-		for (const ep of ir) {
-			if (ep.apiPrefix !== `/${found.module}`) {
-				throw new Error(`[ojm-api] ${found.path} 端点 "${ep.name}" apiPrefix "${ep.apiPrefix}" 与目录名 "${found.module}" 不符——uni-dev 形态要求字面相等（AC-D9），请改 apiPrefix 或移动契约目录。`);
-			}
-		}
+/** 暴露给 check.ts 复用（同源 openapi.json 发现逻辑，DRY） */
+export { findOpenapiJson, groupIrByModule };
+
+/**
+ * openapi.json → irFromOpenapi → 逐模块 emitClient → 写 `web/src/<模块>/__client/`；
+ * 并为未实现的 handler 生成 stub（oj 目录镜像树，指纹幂等）。
+ * raw 信号 openapi.json 不携带，由 opts.rawPaths（handler-scan 补充）标记；未提供则按非 raw。
+ */
+async function runFromOpenapi(openapiPath: string, cwd: string, result: RunResult, rawPaths?: Set<string>): Promise<void> {
+	const doc = JSON.parse(readFileSync(openapiPath, "utf8")) as OpenApiDoc;
+	const ir = irFromOpenapi(doc, { rawPaths });
+	const byModule = groupIrByModule(ir);
+	result.contracts += byModule.size;
+	for (const [module, eps] of byModule) {
+		const client = emitClient(eps, { target: "module", module });
+		const clientDir = join(cwd, "web/src", module, "__client");
+		writeIfChanged(join(clientDir, "api.ts"), client["api.ts"], result);
+		writeIfChanged(join(clientDir, "api.schemas.ts"), client["api.schemas.ts"], result);
 	}
-	return ir;
-}
-
-async function runOne(found: DiscoveredContract, cwd: string, result: RunResult): Promise<void> {
-	const ir = await irOf(found, cwd);
-
-	const client = emitClient(ir, { target: "module", module: found.module });
-	const routesJson = emitRoutesJson(ir);
-	const openapi = emitOpenapiYaml(ir, { title: `${found.module} api`, version: "0.0.0" });
-
-	const paths = artifactPaths(found, cwd);
-	writeIfChanged(paths.client, client["api.ts"], result);
-	writeIfChanged(paths.schemas, client["api.schemas.ts"], result);
-	writeIfChanged(paths.routes, routesJson, result);
-	writeIfChanged(paths.openapi, openapi, result);
-	if (found.kind === "uni-dev") {
-		// stub：oj 目录镜像树（人碰过的文件永不写——plan 阶段已按指纹判好）。
-		// 已实现键全量扫一遍传入：嵌套组（模块根单文件）实现的端点不再生成镜像 stub。
+	// stub：oj 目录镜像树（人碰过的文件永不写——plan 阶段已按指纹判好）。
+	// 已实现键全量扫一遍传入：嵌套组（模块根单文件）实现的端点不再生成镜像 stub。
+	const apiSrcDir = join(cwd, "api/src");
+	if (existsSync(apiSrcDir)) {
 		const diag: OjSchemaDiag = { warnings: [] };
-		const apiSrcDir = join(cwd, "api/src");
 		const writes = await planStubWrites(ir, { apiSrcDir, diag, implemented: implementedRouteKeys(apiSrcDir) });
 		const counts = applyStubWrites(writes);
 		result.stubs.created += counts.created;
 		result.stubs.updated += counts.updated;
 		result.stubs.skipped += counts.skipped;
-		// .schema 降级必须说出来：oj 关键字是白名单，表达不了的约束后端就不校验了
 		for (const w of diag.warnings)
 			console.warn(`[ojm-api] ⚠️ ${w}`);
 	}
 }
 
-/** ojm api 主入口：发现全部契约并逐一生成产物 */
-export async function runApi(opts: { cwd: string }): Promise<RunResult> {
-	const contracts = discoverContracts(opts.cwd);
-	if (contracts.length === 0) {
-		throw new Error(`[ojm-api] ${opts.cwd} 下没有发现契约文件——默认发现：api/src/*/contract.ts（uni-dev）与 web/src/*/__client/contract.ts（纯前端，旧名 client/ 兼容）。存量工程请迁移：modules/ → web/、模块内 api/ → __client/（生成物与契约同迁）。`);
+/** ojm api 主入口：消费 openapi.json（oj v0.1.73 `oj openapi` 产物）生成 __client + stub */
+export async function runApi(opts: { cwd: string, openapi?: string, rawPaths?: Set<string> }): Promise<RunResult> {
+	const result: RunResult = { contracts: 0, written: [], skipped: [], stubs: { created: 0, updated: 0, skipped: 0 } };
+	const openapiPath = findOpenapiJson(opts.cwd, opts.openapi);
+	if (!openapiPath) {
+		throw new Error(`[ojm-api] ${opts.cwd} 下未发现 openapi.json——请先运行 oj v0.1.73 的 \`oj openapi -c config -d api/src -b /api -o openapi.json\` 生成（OpenAPI 3.1，含全部模块）。\`ojm api\` 的单一事实源即 openapi.json，不再消费旧 contract.ts。`);
 	}
-	const result: RunResult = { contracts: contracts.length, written: [], skipped: [], stubs: { created: 0, updated: 0, skipped: 0 } };
-	for (const found of contracts)
-		await runOne(found, opts.cwd, result);
+	await runFromOpenapi(openapiPath, opts.cwd, result, opts.rawPaths);
 	return result;
 }
 
 /**
- * R5：`ojm api --docs`——聚合全部契约的 OpenAPI → redoc 渲染静态站。
- * uni-dev 形态（存在 api/src 契约）落 `api/docs/index.html`，纯前端落 `docs/api/index.html`；
- * 聚合 spec 同目录落 `openapi.yaml`（评审可直读）。redoc CLI 缺失时人话报错。
+ * R5：`ojm api --docs`——聚合 openapi.json 的 paths → redoc 渲染静态站。
+ * uni-dev 形态（存在 api/src）落 `api/docs/index.html`，纯前端落 `docs/api/index.html`。
+ * redoc CLI 缺失时人话报错。
  */
 export async function runApiDocs(cwd: string, opts: { redocBin?: string, fetchJs?: (url: string) => Promise<string> } = {}): Promise<string> {
-	const contracts = discoverContracts(cwd);
-	if (contracts.length === 0) {
-		throw new Error(`[ojm-api] ${cwd} 下没有发现契约文件——默认发现：api/src/*/contract.ts（uni-dev）与 web/src/*/__client/contract.ts（纯前端，旧名 client/ 兼容）。`);
+	const openapiPath = findOpenapiJson(cwd);
+	if (!openapiPath) {
+		throw new Error(`[ojm-api] ${cwd} 下未发现 openapi.json——请先运行 \`oj openapi\` 生成（\`ojm api --docs\` 聚合其 paths 渲染文档）。`);
 	}
+	const doc = JSON.parse(readFileSync(openapiPath, "utf8")) as { paths?: Record<string, Record<string, unknown>> };
+	const paths = doc.paths ?? {};
+	const isUniDev = existsSync(join(cwd, "api/src"));
 
-	// 聚合：逐契约 IR → openapi doc → paths 合并（operation 打模块 tag）
-	const paths: Record<string, Record<string, unknown>> = {};
-	for (const found of contracts) {
-		const ir = await irOf(found, cwd);
-		const doc = parseYaml(emitOpenapiYaml(ir, { title: `${found.module} api`, version: "0.0.0" })) as { paths: Record<string, Record<string, { tags?: string[] }>> };
-		for (const [p, methods] of Object.entries(doc.paths)) {
-			for (const [method, op] of Object.entries(methods)) {
-				if (paths[p]?.[method])
-					throw new Error(`[ojm-api] 聚合冲突：${method.toUpperCase()} ${p} 被多个契约声明——请检查各模块 apiPrefix 是否撞车。`);
-				op.tags = [found.module];
-				(paths[p] ??= {})[method] = op;
-			}
-		}
-	}
-
-	const outDir = contracts.some(c => c.kind === "uni-dev") ? join(cwd, "api/docs") : join(cwd, "docs/api");
+	const outDir = isUniDev ? join(cwd, "api/docs") : join(cwd, "docs/api");
 	mkdirSync(outDir, { recursive: true });
 	const specPath = join(outDir, "openapi.yaml");
 	writeFileSync(specPath, stringifyYaml({ openapi: "3.1.0", info: { title: "API 文档", version: "0.0.0" }, paths }));

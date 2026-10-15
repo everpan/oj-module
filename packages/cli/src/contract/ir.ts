@@ -1,47 +1,11 @@
-import type { ApiDefinitionInput } from "@oj-module/runtime/contract";
-import { API_DEF } from "@oj-module/runtime/contract";
-
 /**
- * 旧端点品牌标记（`ram.api.def`）：存量工程若仍装着旧 runtime 产物，其端点打旧符号。
- * 只读兼容识别，故意不进 runtime 公共出口（兼容专用、且下个 major 会随之移除）。
- */
-const API_DEF_LEGACY = Symbol.for("ram.api.def");
-
-/**
- * AC-D12：契约 IR 构建 + schema 白名单。
+ * 统一中间表示（IR）。
  *
- * IR 是 codegen 的统一中间表示：evaluate 出的运行时对象在这里归一
- * （method 缺省、fullPath 拼接、参数段提取、目录切分），各发射器只消费 IR，
- * 不再触碰 zod 内部结构（除 emit-schema 的白名单内递归发射）。
+ * 翻译层退役后，IR 由 `openapi.json`（oj v0.1.73 `oj openapi` 产物）经
+ * `openapi-ir.ts` 构造——本模块只承载 IR 的**类型定义**与少量与路由拼接/切分
+ * 相关的纯函数（`wirePrefixOf` / `splitRoute`），供 emit-client、emit-stub、check
+ * 复用，不再包含任何 zod 求值/白名单逻辑。
  */
-
-/** schema 白名单 def.type（zod v4 `_zod.def.type`） */
-const ALLOWED_TYPES = new Set([
-	"string",
-	"number",
-	"boolean",
-	"date",
-	"object",
-	"array",
-	"enum",
-	"literal",
-	"union",
-	"optional",
-	"nullable",
-	"default",
-]);
-
-/** 白名单内 string/number 约束 check 名（zod v4 check 实例 `_zod.def.check`） */
-const ALLOWED_CHECKS = new Set([
-	"min_length",
-	"max_length",
-	"length_equals",
-	"greater_than",
-	"less_than",
-	"multiple_of",
-	"number_format",
-	"string_format",
-]);
 
 /** multipart 文件部件（DSL 声明归一：required/multiple 显式化，发射器不再看 undefined） */
 export interface IrFormFile {
@@ -51,7 +15,7 @@ export interface IrFormFile {
 }
 
 /**
- * multipart 请求体：文本部件保留 schema（转 JSON Schema / 发射 api.schemas 用），
+ * multipart 请求体：文本部件保留 schema（JSON Schema，转 api.schemas 用），
  * 文件部件只有名字与形态——binary 刻意不进 schema（FormData 由生成 client 组装）。
  */
 export interface IrForm {
@@ -62,7 +26,7 @@ export interface IrForm {
 }
 
 export interface IrEndpoint {
-	/** 契约文件里的导出名，如 "getOrderDetail" */
+	/** 端点方法名（来自 operationId 的 camelCase 推导） */
 	name: string
 	apiPrefix: string
 	/** 线上前缀（D-M8）：缺省 = apiPrefix */
@@ -77,7 +41,7 @@ export interface IrEndpoint {
 	querySchema?: unknown
 	paramsSchema?: unknown
 	bodySchema?: unknown
-	/** multipart/form-data 请求体（与 bodySchema 互斥，定义期已拦截） */
+	/** multipart/form-data 请求体（与 bodySchema 互斥） */
 	form?: IrForm
 	dataSchema?: unknown
 	raw: boolean
@@ -85,60 +49,15 @@ export interface IrEndpoint {
 	description?: string
 }
 
-interface ZodLike { _zod?: { def?: Record<string, unknown> } }
-
-function defOf(schema: unknown, where: string): Record<string, unknown> {
-	const def = (schema as ZodLike)?._zod?.def;
-	if (!def || typeof def.type !== "string") {
-		throw new Error(`[ojm-api] 契约 schema 白名单校验失败（${where}）：不是 zod schema——契约只接受 @oj-module/runtime/contract 导出的 z 构建的 schema。`);
-	}
-	return def;
-}
-
-/**
- * 递归白名单校验：拒绝 pipe/transform（def.type "pipe"）、refine（custom check）、
- * coerce（def.coerce）、lazy 等——它们无法保真反向发射为源码 / 无法转 OpenAPI。
- */
-export function assertWhitelisted(schema: unknown, where: string): void {
-	const def = defOf(schema, where);
-	const type = def.type as string;
-	if (!ALLOWED_TYPES.has(type)) {
-		throw new Error(`[ojm-api] 契约 schema 超出白名单（${where}）：类型 "${type}" 不支持。白名单：${[...ALLOWED_TYPES].join("/")}；transform/refine/coerce/pipe/lazy 无法进入契约（无法转 OpenAPI 与保真发射），请改用纯数据结构约束。`);
-	}
-	if (def.coerce === true) {
-		throw new Error(`[ojm-api] 契约 schema 超出白名单（${where}）：z.coerce.* 不支持——params/query 请直接声明语义类型（如 z.number()），URL 序列化由生成物负责。`);
-	}
-	for (const check of (def.checks as unknown[]) ?? []) {
-		const checkName = (check as ZodLike)?._zod?.def?.check as string | undefined;
-		if (checkName && !ALLOWED_CHECKS.has(checkName)) {
-			throw new Error(`[ojm-api] 契约 schema 超出白名单（${where}）：约束 "${checkName}" 不支持（refine/superRefine 属 custom 校验，无法转 OpenAPI）。`);
-		}
-	}
-	if (type === "object") {
-		for (const [key, child] of Object.entries(def.shape as Record<string, unknown>)) {
-			assertWhitelisted(child, `${where}.${key}`);
-		}
-	}
-	else if (type === "array") {
-		assertWhitelisted(def.element, `${where}[]`);
-	}
-	else if (type === "union") {
-		(def.options as unknown[]).forEach((opt, i) => assertWhitelisted(opt, `${where}<${i}>`));
-	}
-	else if (type === "optional" || type === "nullable" || type === "default") {
-		assertWhitelisted(def.innerType, where);
-	}
+/** 线上前缀（D-M8）：urlPrefix 声明时取之（URL 命名空间 ≠ 目录名），否则回落 apiPrefix */
+export function wirePrefixOf(api: { apiPrefix: string, urlPrefix?: string }): string {
+	return api.urlPrefix ?? api.apiPrefix;
 }
 
 /**
  * route →（目录镜像 + `.route` 尾巴）切分（AC-D10 §4 算法，stub 生成与
  * --check 对账共用同一实现）：静态前缀段 → 目录；自首个参数段起的尾巴 → `.route`。
  */
-/** 线上前缀（D-M8）：urlPrefix 声明时取之（URL 命名空间 ≠ 目录名），否则回落 apiPrefix */
-export function wirePrefixOf(api: { apiPrefix: string, urlPrefix?: string }): string {
-	return api.urlPrefix ?? api.apiPrefix;
-}
-
 export function splitRoute(route: string): { dir: string, tail?: string } {
 	const segs = route.split("/").filter(Boolean);
 	const firstParam = segs.findIndex(seg => seg.startsWith("{"));
@@ -148,91 +67,4 @@ export function splitRoute(route: string): { dir: string, tail?: string } {
 		dir: segs.slice(0, firstParam).join("/"),
 		tail: segs.slice(firstParam).join("/"),
 	};
-}
-
-/** 提取 route 参数段名（catch-all 去 * 前缀） */
-function paramNamesOf(route: string): string[] {
-	return route.split("/")
-		.filter(seg => seg.startsWith("{"))
-		.map(seg => seg.replace(/^\{\*?/, "").replace(/\}$/, ""));
-}
-
-/** evaluate 出的模块导出 → IR 端点数组 */
-export function buildIr(exports: Record<string, unknown>): IrEndpoint[] {
-	const endpoints: IrEndpoint[] = [];
-	for (const [name, value] of Object.entries(exports)) {
-		// 双符号识别（R3）：新契约打 ojm.api.def，存量（旧 runtime 产物）打 ram.api.def
-		const brand = value as Record<PropertyKey, unknown> | undefined;
-		if (brand?.[API_DEF] !== true && brand?.[API_DEF_LEGACY] !== true)
-			continue;
-		const def = value as ApiDefinitionInput;
-		// schema 白名单（报错文案含端点名 + 字段路径）
-		for (const slot of ["query", "params", "body", "data"] as const) {
-			const schema = def[slot];
-			if (schema)
-				assertWhitelisted(schema, `${name}.${slot}`);
-		}
-		// multipart/form-data（与 body 互斥，定义期已拦截）：文本部件走同一套 schema 白名单；
-		// 文件部件只有名字/形态，二进制刻意不进 schema（JSON Schema 无 binary、FormData 由 client 组装）
-		let form: IrForm | undefined;
-		if (def.form) {
-			let fieldNames: string[] = [];
-			if (def.form.fields) {
-				assertWhitelisted(def.form.fields, `${name}.form.fields`);
-				const fieldsDef = defOf(def.form.fields, `${name}.form.fields`);
-				if (fieldsDef.type !== "object") {
-					throw new Error(`[ojm-api] 契约端点 "${name}"：form.fields 必须是 z.object（收到类型 "${String(fieldsDef.type)}"）——文本部件按字段名进 multipart 表单（OpenAPI 同形）；单个非对象值请改用 body（JSON）。`);
-				}
-				fieldNames = Object.keys(fieldsDef.shape as Record<string, unknown>);
-			}
-			form = {
-				fieldsSchema: def.form.fields,
-				fieldNames,
-				files: (def.form.files ?? []).map(f => ({ name: f.name, required: f.required === true, multiple: f.multiple === true })),
-			};
-		}
-		const paramNames = paramNamesOf(def.route);
-		// 评审 F8：params schema 键必须覆盖 route 参数段——否则生成物 URL 插值出 undefined
-		if (def.params) {
-			const shape = (def.params as unknown as ZodLike)?._zod?.def?.shape as Record<string, unknown> | undefined;
-			if (!shape) {
-				throw new Error(`[ojm-api] 契约端点 "${name}"：params 必须是 z.object（收到非 object schema）——params 与 route 参数段一一对应。`);
-			}
-			const missing = paramNames.filter(p => !(p in shape));
-			if (missing.length) {
-				throw new Error(`[ojm-api] 契约端点 "${name}"：params schema 缺 route 参数段 ${missing.map(p => `{${p}}`).join("、")} 的键——两者须一一对应（缺省 params 则参数段全按 string 声明，二选一）。`);
-			}
-		}
-		endpoints.push({
-			name,
-			apiPrefix: def.apiPrefix,
-			urlPrefix: def.urlPrefix,
-			route: def.route,
-			method: def.method ?? "GET",
-			// apiPrefix "/" 为框架内部根级端点（如 runtime 自带 role-list）——拼出 "//" 即错
-			fullPath: wirePrefixOf(def) === "/" ? def.route : `${wirePrefixOf(def)}${def.route}`,
-			paramNames,
-			querySchema: def.query,
-			paramsSchema: def.params,
-			bodySchema: def.body,
-			form,
-			dataSchema: def.data,
-			raw: def.response === "raw",
-			ignoreLoading: def.ignoreLoading,
-			description: def.description,
-		});
-	}
-
-	// 同（目录, method）冲突：oj 中同一 api.ts 文件同一方法名只能有一个 handler
-	const seen = new Map<string, string>();
-	for (const ep of endpoints) {
-		const { dir } = splitRoute(ep.route);
-		const key = `${ep.apiPrefix}|${dir}|${ep.method}`;
-		const existing = seen.get(key);
-		if (existing) {
-			throw new Error(`[ojm-api] 契约路由冲突："${existing}" 与 "${ep.name}" 都映射到 ${ep.apiPrefix}/${dir}/api.ts 的 ${ep.method}——同一目录同一方法只能有一个端点（oj 一文件一方法一 handler），请调整 route 拆目录。`);
-		}
-		seen.set(key, ep.name);
-	}
-	return endpoints;
 }

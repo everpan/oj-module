@@ -1,15 +1,18 @@
 import type { MockRoute, MockRouteContext } from "../dev-mock";
-import { faker } from "@faker-js/faker";
+import type { OpenApiDoc } from "./openapi-ir";
+import { readFileSync } from "node:fs";
 import { matchMockRoute } from "../dev-mock";
-import { evaluateContract } from "./evaluate";
-import { buildIr } from "./ir";
-import { discoverContracts } from "./run";
+import { jsonSchemaToSample } from "./json-schema-sample";
+import { irFromOpenapi } from "./openapi-ir";
+import { findOpenapiJson } from "./run";
 
 /**
- * AC-D14 纯前端契约 mock：契约（routes.json 背后的 schema）驱动示例值响应。
+ * AC-D14 纯前端契约 mock：openapi.json（oj v0.1.73 产物）驱动示例值响应。
+ *
+ * 翻译层退役后，事实源即 openapi.json——其 data schema 是 JSON Schema 对象，
+ * 由 `jsonSchemaToSample` 生成示例值（确定性、零依赖）。
  *
  * - 段级 matcher 自研极简实现（零新依赖）：字面段 > 参数段 > catch-all
- * - 示例值语义启发：string format 命中 faker 对应器，enum 取首值，number 取 min
  * - 手写 mock 精确匹配优先，契约 pattern 兜底（resolveMock 收敛选择序）
  * - raw 端点不进 mock 生成（二进制/流无信封可造）
  */
@@ -18,90 +21,13 @@ export interface ContractMockRoute<T = unknown> {
 	method: string
 	/** 含参数段的完整 pattern，如 "/order/item/{id}" */
 	pattern: string
-	/** 负载：matcher 调用方自定（loadContractMocks 填 data schema） */
+	/** 负载：openapi.json 解出的 data JSON Schema（由 jsonSchemaToSample 造示例值） */
 	data: T
 }
 
-/** zod schema → 示例值（语义启发；seed 可复现） */
-export function exampleFromSchema(schema: unknown, opts: { seed?: number } = {}): unknown {
-	if (opts.seed !== undefined)
-		faker.seed(opts.seed);
-	return gen(schema);
-}
-
-function gen(schema: unknown): unknown {
-	const def = (schema as { _zod?: { def?: Record<string, unknown> } })?._zod?.def;
-	if (!def)
-		return null;
-	switch (def.type) {
-		case "string": {
-			let min = 0;
-			let max = Number.POSITIVE_INFINITY;
-			for (const check of (def.checks as { _zod?: { def?: Record<string, unknown> } }[]) ?? []) {
-				const cd = check._zod?.def;
-				// 评审 F4：示例值必须满足自家约束，否则 dev 校验对 mock 误报「契约违例」
-				if (cd?.check === "min_length")
-					min = Math.max(min, cd.minimum as number);
-				if (cd?.check === "max_length")
-					max = Math.min(max, cd.maximum as number);
-				const format = cd?.format as string | undefined;
-				if (format === "email")
-					return faker.internet.email();
-				if (format === "uuid")
-					return faker.string.uuid();
-				if (format === "datetime")
-					return faker.date.recent().toISOString();
-				if (format === "date")
-					return faker.date.recent().toISOString().slice(0, 10);
-				if (format === "url")
-					return faker.internet.url();
-			}
-			let word = faker.lorem.word();
-			if (word.length < min)
-				word = faker.string.alpha(Number.isFinite(min) && min > 0 ? min : 1);
-			if (word.length > max)
-				word = word.slice(0, max);
-			return word;
-		}
-		case "number": {
-			let min: number | undefined;
-			let max: number | undefined;
-			for (const check of (def.checks as { _zod?: { def?: Record<string, unknown> } }[]) ?? []) {
-				const cd = check._zod?.def;
-				if (cd?.check === "greater_than")
-					min = cd.inclusive === false ? (cd.value as number) + 1 : (cd.value as number);
-				if (cd?.check === "less_than")
-					max = cd.inclusive === false ? (cd.value as number) - 1 : (cd.value as number);
-			}
-			return faker.number.int({ min: min ?? 1, max: max ?? (min !== undefined ? min + 1000 : 1000) });
-		}
-		case "boolean":
-			return true;
-		case "date":
-			return faker.date.recent().toISOString(); // 线上传输本就是 ISO 串
-		case "literal":
-			return (def.values as unknown[])[0];
-		case "enum":
-			return Object.keys(def.entries as object)[0];
-		case "union":
-			return gen((def.options as unknown[])[0]);
-		case "array":
-			return [gen(def.element)];
-		case "object": {
-			const out: Record<string, unknown> = {};
-			for (const [k, v] of Object.entries(def.shape as Record<string, unknown>))
-				out[k] = gen(v);
-			return out;
-		}
-		case "optional":
-			return gen(def.innerType);
-		case "nullable":
-			return null;
-		case "default":
-			return def.defaultValue;
-		default:
-			return null;
-	}
+/** JSON Schema → 示例值（确定性，无外部依赖）；data 为 undefined 时返回 null */
+export function exampleFromJsonSchema(schema: unknown): unknown {
+	return jsonSchemaToSample(schema);
 }
 
 interface Seg { kind: "literal" | "param" | "catchAll", text: string }
@@ -166,21 +92,23 @@ export function resolveMock(
 	if (hit)
 		return ctx => hit.response(ctx ?? { body: {}, query: new URLSearchParams() });
 	const fallback = matchContractRoute(contract, method, apiPath);
-	if (fallback)
-		return () => ({ code: 0, msg: "ok", data: exampleFromSchema(fallback.data) });
+	if (fallback) {
+		return () => ({
+			code: 0,
+			msg: "ok",
+			data: exampleFromJsonSchema(fallback.data),
+		});
+	}
 	return undefined;
 }
 
-/** dev 启动装载：发现 + 求值全部契约 → mock 路由表（raw 端点跳过） */
+/** dev 启动装载：openapi.json 为事实源（data schema 是 JSON Schema 对象），raw 端点跳过 */
 export async function loadContractMocks(cwd: string): Promise<ContractMockRoute[]> {
-	const routes: ContractMockRoute[] = [];
-	for (const found of discoverContracts(cwd)) {
-		const ir = buildIr(await evaluateContract(found.path, cwd));
-		for (const ep of ir) {
-			if (ep.raw)
-				continue;
-			routes.push({ method: ep.method, pattern: ep.fullPath, data: ep.dataSchema });
-		}
-	}
-	return routes;
+	const openapiPath = findOpenapiJson(cwd);
+	if (!openapiPath)
+		return [];
+	const doc = JSON.parse(readFileSync(openapiPath, "utf8")) as OpenApiDoc;
+	return irFromOpenapi(doc)
+		.filter(ep => !ep.raw)
+		.map(ep => ({ method: ep.method, pattern: ep.fullPath, data: ep.dataSchema }));
 }

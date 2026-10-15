@@ -4,7 +4,7 @@
 import { z } from "@oj-module/runtime";
 
 export const schemas = {
-	upload: {
+	"personalCenterUploadPost": {
 		data: z.string(),
 	},
 };

@@ -4,7 +4,18 @@
 > **配套**：[`framework-development-guide.md`](./framework-development-guide.md)（原理）、[`oj-fullstack-tutorial.md`](./oj-fullstack-tutorial.md)（跟做）。
 > **原则**：每一步都有**可判定通过/失败的检查点**，不要只看命令退出码，要核对产物。
 
-### 最近一次基线（2026-10-11 演练，oj 0.1.60 / cli+runtime 0.1.12）
+### 最近一次基线（2026-10-15 演练，oj 0.1.74 / cli+runtime 0.1.20，openapi 流水线）
+
+| 项 | 值 |
+| --- | --- |
+| 日期 | 2026-10-15 |
+| 框架包版本 | `cli`/`runtime` `0.1.20`（源码 CLI 验证；宿主 versions.json 钉版） |
+| oj | `0.1.74`（本机安装预置进 `bin/`；npm 通道 `@oj-bin/oj` 当时 latest 仍是 0.1.71，低于 `MIN_OJ_VERSION` 门禁 0.1.73，`ojm vendor`/`ojm init` 的下载步会被门禁拦下——见 §9 新增行） |
+| 结果 | **全链路通过（§1–§7）**：`ojm init`（76 项新增，预置 bin/oj 跳过 vendor 下载）→ `pnpm install` → JsRuntime 探针通过 → books 模块（新约定 `.schema` 入参 + 平级 `.response` 出参）→ `oj openapi` 重生成 → `ojm api` 生成 `web/src/books/__client`（导出 `booksListGet`/`booksCreatePost`，`BooksListGetData` 出参类型完整）→ `ojm api --check` 0 error / 0 warn → `ojm build`（7 后端模块含 books 2 api file(s)、6 前端模块、modules.json 含 home/login/books）→ `tsc --noEmit` 0 error → `ojm dev`：migrate/seed 正常、8 个路由方法入参校验激活、登录返回 token、列表/关键字过滤/新增/无 token 401/通知兜底全对 → `ojm preview`（release 形态）：migrate 门禁过、路由来自 `api/dist/**/routes.js`、API 与静态兜底正常、带 dist 的 `--check` 三腿全过。 |
+| 新约定检查点 | 契约不再有 `contract.ts`/`routes.json`/`openapi.yaml`：handler 挂 `.schema`（params/query/body）+ 平级 `.response`（oj v0.1.72+），`oj openapi` 产出工程根 `openapi.json` 为唯一事实源；client 函数名 = `camelCase(operationId)`（如 `booksListGet`），非旧人类命名。 |
+| 演练中发现并修复 | ① npm 通道 oj 滞后于门禁（预置本机二进制绕过，init 对已有 bin/oj 跳过 vendor）；② 模板残留空目录 `api/src/_shared` 被 init 拷进工程、`oj build` 报 "module '_shared' missing manifest.yaml"——删空目录 + `copyTemplates` 加空目录跳过防护；③ `--check` 第三腿误报：契约侧 fullPath 尾斜杠（`notifications/`）vs dist pattern（`notifications`）键不等，且豁免只过滤「dist 多」不过滤「dist 缺」——双侧规范化 + 豁免对称过滤（含 2 条回归测试）；④ 未发布版本的 `pnpm install` 需 file: 链接 + 手工 symlink（catalog: 协议只对 workspace 成员解析）。 |
+
+### 历史基线（2026-10-11 演练，oj 0.1.60 / cli+runtime 0.1.12）
 
 | 项 | 值 |
 | --- | --- |
@@ -59,6 +70,10 @@ rm -rf "$VERIFY_DIR" && mkdir -p "$VERIFY_DIR" && cd "$VERIFY_DIR"
 
 需要：Node 18+、pnpm、**网络**（下载 oj 与 npm 包）。预计 5–10 分钟。
 
+> **npm 通道滞后时的两条旁路**（2026-10-15 演练实测）：
+> 1. **oj**：`MIN_OJ_VERSION` 门禁钉最新发布版（0.1.20 起为 **0.1.73**），而 npm `@oj-bin/oj` 的 latest 可能仍低于门禁 → `ojm vendor`/`ojm init` 的下载步被拦。旁路：先把本机 oj（≥ 门禁）连同 `devkit/`、`plugins/`、`.oj-version` 预置进工程 `bin/`，`ojm init` 对已有 `bin/oj` 会跳过 vendor（init.ts：bin/oj 存在即 `report.skipped`），效果等价。
+> 2. **框架包自身**：待发版本（如 0.1.20 未上 npm）`pnpm install` 会 `ERR_PNPM_NO_MATCHING_VERSION`。旁路：删 devDeps 里的 `@oj-module/cli`（CLI 用源码 bin 直跑），`@oj-module/runtime` 装好后手工 symlink 到仓库 `packages/runtime`（其内部依赖经 realpath 回落仓库 node_modules 解析，与 playground-oj 的 workspace 链接等效）。注意 `file:` 链接不行：两个包都用了 pnpm `catalog:` 协议，只对 workspace 成员解析。
+
 ## 1. 脚手架（`ojm init`）
 
 ```bash
@@ -69,10 +84,13 @@ node "$OJM_REPO/packages/cli/bin/ojm.mjs" init my-books --yes
 **检查点**
 
 - [ ] 退出码 0，末行提示 `登录 admin / 123456`
-- [ ] 目录齐全：`api/src/{_platform,auth,web,notifications,personal-center}`、`api/.ojm-api-exempt.json`、`web/src/{demo,home,login,personal-center}`、`web.config.ts`、`tsconfig.json`、`global.d.ts`、`env.d.ts`、`bin/oj`、`bin/.oj-version`、`.claude/skills/oj-api-dev/`（npm 通道安装时 `bin/` 还含 `plugins/` 与 `devkit/`）
-- [ ] `package.json` 的 devDependencies **包含** `@oj-module/{cli,runtime}`（两包时代；`contract` 是 runtime 子路径、shell 已并入 cli），且值**不是 `*`**
+- [ ] 目录齐全：`api/src/{_platform,auth,web,notifications,personal-center,notification}`、`api/.ojm-api-exempt.json`、`web/src/{demo,home,login,personal-center,notification,notifications}`、`web.config.ts`、`tsconfig.json`、`global.d.ts`、`env.d.ts`、`bin/oj`、`bin/.oj-version`、`.claude/skills/{oj-api-dev,ojm-module-dev}/`
+- [ ] **工程根有 `openapi.json`**（新流水线唯一事实源，模板随附）+ `web/src/<模块>/__client/` 预生成（`ojm api --check` 开箱即过）
+- [ ] handler 契约为新约定：动词挂 `.schema`（params/query/body 入参）+ **平级 `.response`**（出参，oj v0.1.72+）；无 `contract.ts` / `routes.json` / `openapi.yaml`
+- [ ] `package.json` 的 devDependencies **含** `@oj-module/{cli,runtime}`（两包时代；`contract` 是 runtime 子路径、shell 已并入 cli），且值**不是 `*`**
 - [ ] 若出现「`@types/react` / `typescript` 回退 `*`」告警 → 记下，安装后必须钉版
 - [ ] **未出现「oj 二进制自检失败」告警**（cli ≥ 0.1.4 安装后自动冒烟）；若出现，按 §3 换自建二进制
+- [ ] npm 通道 oj 低于门禁时按 §0 旁路 1 预置 `bin/oj` 后重跑（init 幂等）
 
 ## 2. 安装依赖
 
@@ -82,15 +100,15 @@ cd my-books && pnpm install
 
 **检查点**
 
-- [ ] `node_modules/.bin/ojm`、`node_modules/.bin/tsc` 存在
-- [ ] 安装日志里 `@oj-module/{cli,runtime}` 版本与 `versions.json` 一致
-- [ ] `pnpm exec ojm info` 输出宿主版本矩阵 + 模块清单，无报错
+- [ ] `node_modules/.bin/tsc` 存在；`@oj-module/runtime` 可解析（发行版走 npm；源码验证按 §0 旁路 2）
+- [ ] 安装日志里 `@oj-module/{cli,runtime}` 版本与 `versions.json` 一致（源码验证时 cli 以 bin 直跑、`ojm info` 显示 `cli: unknown` 属预期）
+- [ ] `pnpm exec ojm info`（或 `node "$OJM_REPO/packages/cli/bin/ojm.mjs" info`）输出宿主版本矩阵 + 模块清单，无报错
 - [ ] 处理 §1 的 `*` 告警：把 `@types/react` / `typescript` 钉成实际安装版本
 
 ## 3. oj 二进制可用性（检查点）
 
 ```bash
-./bin/oj --version                              # 期望：oj 0.1.60（或更高）
+./bin/oj --version                              # 期望：oj ≥ 0.1.73（MIN_OJ_VERSION 门禁；平级 .response 需 0.1.72+，del→delete 操作键归一需 0.1.73+）
 strings bin/oj | grep -oE '/Users/runner/work/only-js/only-js/[^"]*\.js'
 # 期望：**空**（无泄漏的 JS 构建路径）。注意：`grep -c "/Users/runner"` 不再适用于判据——
 # 即便修复后仍会命中 cargo registry 的 panic 路径（如 h2/unsafe-libyaml），属正常。
@@ -133,36 +151,41 @@ printf 'name: web\ndesc: probe\nversion: 0.1.0\n' > /tmp/_oj_probe/src/web/manif
 
 ## 4. 契约 → 前端 client
 
-在 `api/src/books/` 下补 6 个后端文件 + 1 个 `contract.ts`（照抄
-[`oj-fullstack-tutorial.md`](./oj-fullstack-tutorial.md) 第 3–4 节），然后：
+在 `api/src/books/` 下补 6 个后端文件（manifest/schema/migration/seed + 2 handler），
+handler 按**新约定**写契约——**无 `contract.ts`**：入参挂 `.schema`（params/query/body），
+出参挂**平级 `.response`**（oj v0.1.72+；范本照 `packages/cli/templates/api/src/notification/api.ts`、
+`apps/playground-oj/api/src/demo/todos/api.ts`）：
+
+```ts
+// api/src/books/list/api.ts
+const list = {
+	async get() { /* ...db.query...; json.ok(rows) */ },
+};
+list.get.schema = { query: { type: "object", properties: { keyword: { type: "string" } } } };
+list.get.response = { type: "array", items: { /* data payload */ } };
+export default list;
+```
+
+然后：
 
 ```bash
-pnpm exec ojm api
+./bin/oj openapi -c api/config.yaml -d api/src -b /api -o openapi.json   # 唯一事实源（工程根单文件）
+node "$OJM_REPO/packages/cli/bin/ojm.mjs" api                            # 或 pnpm exec ojm api
+node "$OJM_REPO/packages/cli/bin/ojm.mjs" api --check
 ```
 
 **检查点**
 
-- [ ] 输出「契约 1 份；写入 4 个文件」
-- [ ] 产物存在：`web/src/books/client/api.ts`、`api.schemas.ts`、`api/src/books/routes.json`、`api/src/books/openapi.yaml`
-- [ ] `client.ts` 导出 `listBooks` / `ListBooksQuery` / `ListBooksData`（命名 = Pascal(端点名) + Query/Body/Data）
-- [ ] 工程根存在 `api/.ojm-api-exempt.json`（见下）
-- [ ] `pnpm exec ojm api --check` 退出码 0（无 drift）
+- [ ] `oj openapi` 退出码 0，`openapi.json` 含 `/api/books/list`、`/api/books/create`
+- [ ] `ojm api` 输出「契约 N 份；写入 2 个文件」——产物 `web/src/books/__client/{api.ts, api.schemas.ts}`（**`__client` 目录名**，旧 `client/` 已改名）
+- [ ] client 导出 **operationId 派生名**：`booksListGet` / `BooksListGetQuery` / `BooksListGetData` / `booksCreatePost`（= `camelCase(路径_方法)`，**不是**旧 `defineApi` 的人类命名如 `listBooks`）
+- [ ] **出参类型存活**：`BooksListGetData` 非 `unknown`（`.response` 经 `responses.200.content` 信封进 client——新约定与旧 `.schema.response` 的等价性验证点）
+- [ ] **不生成** `api/src/books/routes.json` / `openapi.yaml`（旧产物已清理；`api/docs/openapi.yaml` 仅 `--docs` 时产生）
+- [ ] `ojm api --check` 退出码 0：`0 error / 0 warn`（无 dist 时第三腿 routes.js 对账给 hint 不判违规）
+- [ ] 工程根存在 `api/.ojm-api-exempt.json`（`{"modules":["web","notifications"],"paths":["/auth/*"]}`，内置 `auth`/`web`/`notifications` 端点有意无业务契约；init 自 cli 0.1.5 起内置）
 
-> **全新工程注意（已记录在案的脚手架缺陷）**：`ojm api --check` 会把脚手架自带的
-> `auth/*`（login/refresh/logout）与 `web/*`（hello/user-info/get-async-routes）handler
-> 判为「未登记」并各报 error——这些内置端点有意不写业务契约，需在工程根
-> `api/.ojm-api-exempt.json` 声明豁免（与 `apps/playground-oj` 同款）：
->
-> ```json
-> { "modules": ["web"], "paths": ["/auth/*"] }
-> ```
->
-> **`ojm init` 自 cli 0.1.5 起已内置该文件**（更早版本缺失，属已修复的脚手架缺陷）。
-> 旧脚手架/旧工程若缺，手工补上即可——否则 §4/§8 的 `--check` 检查点会因 6 个
-> `handler 未登记` 失败。补上后 `--check` 输出 `0 error / 0 warn`。
-> 豁免只做 error→skip 降级，不会引入新错误。
-
-> 若报 `Cannot find package '@oj-module/runtime/contract'` → 见 §7 排障（脚手架/依赖问题）。
+> `ojm api` 只认 `openapi.json`（项目根或 `api/`）：找不到即报错指引先跑 `oj openapi`。
+> 若报 `Cannot find package '@oj-module/runtime'` → 依赖未装/未链接（§0 旁路 2）。
 
 ## 5. 前端模块
 
@@ -176,13 +199,13 @@ pnpm exec tsc --noEmit -p tsconfig.json     # typecheck
 
 **检查点**
 
-- [ ] `ojm build`：`oj build` 列出 5 个模块（`_platform/auth/books/notifications/web`），其中 books `2 api file(s)`、notifications `1 api file(s)`
+- [ ] `ojm build`：`oj build` 列出全部后端模块（`_platform/auth/books/notification/notifications/personal-center/web`），其中 books `2 api file(s)`、notifications `1 api file(s)`
 - [ ] 输出「已合并宿主站点 → web/dist」「构建 books@0.1.0」「清单已生成」
 - [ ] `web/dist/` 含 `index.html`、`assets/`、`modules/`、`modules.json`、`versions.json`
 - [ ] `web/dist/modules/books/0.1.0/entry.js` 存在（带 `integrity`）
 - [ ] `modules.json` 含 `home` / `demo` / `login` / `books`（**`home` / `login` 不可少**：shell 预构建把 `VITE_BASE_HOME_PATH` 定为 `/home` 且不挂 runtime 内置登录兜底，缺则登录回跳 / 登出 / 点 logo 落错误边界）
 - [ ] `modules.json` 中 books 条目 `peerRuntime` 与宿主 runtime 版本相容
-- [ ] **typecheck 0 error**（含生成的 `client.ts`）
+- [ ] **typecheck 0 error**（含生成的 `__client/api.ts`——页面 import 的 `booksListGet`/`BooksListGetData` 等 operationId 派生名须对得上）
 
 ## 6. 运行与联调（`ojm dev`）
 
@@ -201,11 +224,11 @@ curl -s http://127.0.0.1:9778/api/notifications -H "authorization: Bearer $TOKEN
 
 **检查点**
 
-- [ ] dev 日志：`seed ok module="books"`、路由表含 `GET /api/books/list` / `POST /api/books/create`、`oj server listening`
+- [ ] dev 日志：`seed ok module="books"`、`routes: N method-row(s)`（10 个 api file）、`input contracts: 8 route-method(s) validated before reaching JS`（`.schema` 入参校验激活）、`oj serve listening`
 - [ ] 登录返回 `code:0` 且 `data.access_token` 非空
 - [ ] 登录成功后回跳 `/home` 正常渲染（不落 React Router 错误边界），页面含统计卡片 + 折线/柱/饼图（共享依赖矩阵演示）
-- [ ] 列表过滤返回 1 条（`设计数据密集型应用`）
-- [ ] 新增返回 `{"ok":true}`，全量列表变 4 条
+- [ ] 列表过滤按关键字命中（注意种子数据：`keyword=设计` 会同时命中「设计数据密集型应用」与「领域驱动设计」——用更独特的关键字如 `数据密集型` 验证单条过滤）
+- [ ] 新增返回 `{"ok":true}`（与 `create.post.response` 声明一致），全量列表变 4 条
 - [ ] `GET /api/notifications`（带 token）返回 `code:0` + 数组（runtime 通知铃 root 级兜底；缺端点会 404 `no route matched`）
 - [ ] 无 token 返回 **401**
 - [ ] `http://localhost:5174/` 200，importmap 含 `@oj-module/runtime`，`/modules/books/0.1.0/entry.js` 200
@@ -219,21 +242,26 @@ curl -s http://127.0.0.1:9778/api/notifications -H "authorization: Bearer $TOKEN
 ## 7. 预览（可选，验证 release 形态）
 
 ```bash
-pnpm exec ojm preview    # oj migrate（verify 门禁）→ server + 静态兜底
+pnpm exec ojm preview    # oj migrate（verify 门禁）→ server + 静态兜底（4173）
 ```
 
-**检查点**：migrate 成功；站点可访问；release 下路由来自 `api/dist/**/routes.js`（目录镜像不存在）。
+**检查点**：migrate 成功（账本落后会拒启，先 `oj migrate -c api/config.yaml -d api/dist`）；
+站点可访问（4173 根 200 + `/modules/books/0.1.0/entry.js` 200）；
+release 下路由来自 `api/dist/**/routes.js`（目录镜像不存在）；
+API 全链路再通一遍（登录/列表/新增）；
+**带 dist 后重跑 `ojm api --check`**——第三腿（routes.js vs openapi.json 契约路由表）此时激活，
+应 `0 error / 0 warn`（注意尾斜杠规范化与豁免对称过滤，2026-10-15 已修，见 §9）。
 
 ## 8. 一次通过判据（汇总清单）
 
-- [ ] `ojm init` 成功，且 devDeps **含 `contract`**、**含 `env.d.ts`**
-- [ ] `pnpm install` 成功，`cli`/`runtime` 两包版本一致
-- [ ] oj 二进制通过 §3 探针（JsRuntime 能初始化）
-- [ ] `ojm api` 生成 4 产物；`--check` 无 drift（内置 `auth`/`web` 需 `api/.ojm-api-exempt.json` 豁免，见 §4）
-- [ ] `ojm build` 产出 4 后端模块 + 合并站点 + `modules.json`
+- [ ] `ojm init` 成功：devDeps 含 `@oj-module/{cli,runtime}`（非 `*`）、根级 `openapi.json` + `__client` 预生成、handler 为新约定（`.schema` 入参 + 平级 `.response`，无 `contract.ts`/`routes.json`/`openapi.yaml`）、`env.d.ts` 在 include
+- [ ] `pnpm install` 成功，`cli`/`runtime` 两包版本一致（未发版按 §0 旁路 2）
+- [ ] oj 二进制通过 §3 探针（JsRuntime 能初始化），版本 ≥ 门禁 0.1.73
+- [ ] `ojm api` 生成 `web/src/books/__client`（operationId 派生名、出参类型存活）；`--check` 无 drift（内置 `auth`/`web`/`notifications` 经 `api/.ojm-api-exempt.json` 豁免，见 §4）
+- [ ] `ojm build` 产出全部后端模块 + 合并站点 + `modules.json`（含 home/login/books）
 - [ ] `typecheck` 0 error
-- [ ] `ojm dev`：登录 / 列表 / 新增 / 401 全对
-- [ ] （可选）`ojm preview` 通过 migrate 与服务
+- [ ] `ojm dev`：登录 / 列表过滤 / 新增 / 401 / 通知兜底全对
+- [ ] （可选）`ojm preview` 通过 migrate、服务与带 dist 的 `--check` 三腿
 
 ## 9. 已知坑与处置
 
@@ -254,6 +282,11 @@ pnpm exec ojm preview    # oj migrate（verify 门禁）→ server + 静态兜�
 | DELETE 请求 405 | 方法名写成 `delete` | 改为 `del` |
 | `ojm api` 报 apiPrefix 与目录名不符 | 违反 AC-D9 | 改 `apiPrefix` 或移动契约目录 |
 | 迁移账本落后拒启（M004） | release `verify` 门禁 | 先 `oj migrate -c api/config.yaml -d api/dist` |
+| `ojm init`/`ojm vendor` 报「上游 @oj-bin/oj 的 latest 是 vX，低于 ojm 要求的最低版本 v0.1.73」 | npm 通道发布滞后于 `MIN_OJ_VERSION` 门禁（门禁钉最新发布版，ojm 不做兼容分支） | 本机已装 ≥ 门禁的 oj 时：把 `bin/{oj,devkit/,plugins/,.oj-version}` 预置进工程再跑 init（bin/oj 存在即跳过 vendor）；否则等上游发布或降级 cli |
+| `pnpm install` 报 `ERR_PNPM_NO_MATCHING_VERSION ... @oj-module/cli@0.1.20` | 验证的是未发布版本，npm 上没有 | 删 devDeps 的 cli（源码 bin 直跑）+ runtime 装后手工 symlink 到仓库 `packages/runtime`；勿用 `file:`（两包的 `catalog:` 依赖只对 workspace 成员解析，报 `ERR_PNPM_SPEC_NOT_SUPPORTED_BY_ANY_RESOLVER`） |
+| `oj build` 报 `module '_shared' missing manifest.yaml` | 模板里残留**空目录**（git 不跟踪空目录，删文件不删目录），init 连空目录一起拷进工程，oj 把每个 api/src 子目录当模块 | 删模板里的空目录；cli ≥ 0.1.20 的 `copyTemplates` 已加空目录跳过防护（`dirHasFiles`） |
+| `ojm api --check` 报 `routes.js 与契约路由表不一致——dist 缺：GET notifications/` | 契约侧 fullPath 对模块根路径带尾斜杠（`stripBase` 的 `rel || "/"` → `/notifications/`），dist pattern 无斜杠（`notifications`），键不等误报；且豁免原只过滤「dist 多」 | cli ≥ 0.1.20 已修：第三腿双侧尾斜杠规范化 + 豁免对「dist 缺/dist 多」对称过滤（回归测试见 `tests/cli/contract-check.test.ts`） |
+| 手工改过 `openapi.json`（`del`→`delete`、operationId 改名）后 `--check` 漂移 | oj ≤ 0.1.72 的 `oj openapi` 产出非法 `"del"` 操作键 | 升级 oj ≥ 0.1.73（`del`→`delete` 归一）后删手工改动重生成；client 用原生 operationId 派生名 |
 
 ## 10. 复跑脚本（TL;DR）
 
@@ -261,6 +294,8 @@ pnpm exec ojm preview    # oj migrate（verify 门禁）→ server + 静态兜�
 set -e
 export VERIFY_DIR=/tmp/ojm-verify OJM_REPO=/Users/ever/git/only-js/oj-module
 rm -rf "$VERIFY_DIR" && mkdir -p "$VERIFY_DIR" && cd "$VERIFY_DIR"
+# npm 通道 oj 低于门禁时先预置（§0 旁路 1）：mkdir my-books/bin && cp ~/.local/share/oj/oj my-books/bin/oj
+#   && cp -R ~/.local/share/oj/{devkit,plugins} my-books/bin/ && printf 'v0.1.74\n' > my-books/bin/.oj-version
 node "$OJM_REPO/packages/cli/bin/ojm.mjs" init my-books --yes
 cd my-books && pnpm install
 ./bin/oj --version
@@ -268,8 +303,9 @@ rm -rf /tmp/_oj_probe && mkdir -p /tmp/_oj_probe/src/web/hello \
   && printf 'export default { get() { json.ok({ ok: true }); } };\n' > /tmp/_oj_probe/src/web/hello/api.ts \
   && printf 'name: web\nversion: 0.1.0\n' > /tmp/_oj_probe/src/web/manifest.yaml \
   && ./bin/oj build -d /tmp/_oj_probe/src -o /tmp/_oj_probe/out   # §3 探针（坏二进制约在此 panic）
-# …补 books 后端 + 契约 → pnpm exec ojm api → 补前端 → 
-pnpm exec ojm build && pnpm exec tsc --noEmit -p tsconfig.json && pnpm exec ojm dev
+# …补 books 后端（.schema 入参 + 平级 .response 出参）→ ./bin/oj openapi -c api/config.yaml -d api/src -b /api -o openapi.json
+#   → ojm api（+ --check）→ 补前端 →
+node "$OJM_REPO/packages/cli/bin/ojm.mjs" build && npx tsc --noEmit -p tsconfig.json && node "$OJM_REPO/packages/cli/bin/ojm.mjs" dev
 ```
 
 > 每次框架发版后跑一遍本文档，把 §「最近一次基线」更新为新版本与结果。

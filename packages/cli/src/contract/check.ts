@@ -1,21 +1,23 @@
 import type { HandlerRow } from "./handler-scan";
 import type { IrEndpoint } from "./ir";
+import type { OpenApiDoc } from "./openapi-ir";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, relative, sep } from "node:path";
 import { readOjAnonymousPaths } from "../oj-config";
 import { emitClient } from "./emit-client";
-import { emitOpenapiYaml, emitRoutesJson } from "./emit-meta";
 import { planStubWrites } from "./emit-stub";
 import { handlerAbs, implementedRouteKeys, pathKey, scanHandlerFile, VERB_OF, walkApiFiles } from "./handler-scan";
 import { splitRoute, wirePrefixOf } from "./ir";
-import { artifactPaths, discoverContracts, irOf } from "./run";
+import { irFromOpenapi } from "./openapi-ir";
+import { findOpenapiJson, groupIrByModule } from "./run";
 
 /**
  * AC-D10：`ojm api --check` 三重校验（纯对账不写盘）——
  * ① 生成物同步：内存重生成 vs 磁盘逐字节 diff（含 stub 待更新）
  * ② route 双向对账：AST 扫 oj api.ts（default 导出方法名 + 语句起始 `.route = "..."` 赋值）
  *    vs 契约路由表：未实现 warn / 未登记 error / 参数段不一致 error
- * ③ routes.js diff：release 路由表（oj build 产物）vs routes.json；无 dist 给提示不判违规
+ * ③ routes.js diff：release 路由表（oj build 产物，api/dist 下各模块的 routes.js）vs openapi.json
+ *   契约路由表；无 dist 给提示不判违规
  *
  * 原则：check 永不修文件——修复动作永远由人执行（重跑 ojm api / 补 handler / oj build）。
  */
@@ -181,6 +183,14 @@ function reconcileRoutes(contractIr: IrEndpoint[], handlers: HandlerRow[], exemp
 
 	const claimed = new Set<HandlerRow>();
 	for (const ep of contractIr) {
+		// D12/F19：豁免模块/路径在「契约→handler」侧同样降级——否则 openapi.json 含豁免
+		// 模块（oj 照常为其生成 path）时，根级模块路由（route="/" 但 handler .route 为
+		// 模块名）会误报 route-params-mismatch。整模块/路径前缀命中即跳过本端点全部核对。
+		const epModule = ep.apiPrefix.replace(/^\//, "");
+		if (exemption.modules.includes(epModule))
+			continue;
+		if (exemption.paths.some(p => matchExemptPath(ep.fullPath, p)))
+			continue;
 		const { dir } = splitRoute(ep.route);
 		const dirFull = `${ep.apiPrefix.replace(/^\//, "")}${dir ? `/${dir}` : ""}`;
 		const ojFull = `${ep.apiPrefix.replace(/^\//, "")}${ep.route}`.replace(/\/+/g, "/");
@@ -257,70 +267,58 @@ function parseRoutesJs(text: string): { method: string, pattern: string }[] {
 	return rows;
 }
 
+/**
+ * 新口径（Task #5）：以 openapi.json 为事实源做 --check。
+ * - ① 生成物同步：仅核对 `web/src/<模块>/__client/{api.ts,api.schemas.ts}`（routes.json/openapi.yaml
+ *   已废弃，openapi.json 即权威，ojm 不再自产）。
+ * - ② route 双向对账复用 `uniDevIr`（与旧口径同源 `IrEndpoint` 形状，reconcileRoutes 不变）。
+ * - stub 计划：openapi IR 同样喂 `planStubWrites`（handler 骨架生成；`.schema` 由开发者手写，不注入）。
+ */
+async function checkFromOpenapi(openapiPath: string, cwd: string, _exemption: ApiExemption): Promise<{ violations: CheckViolation[], uniDevIr: IrEndpoint[] }> {
+	const doc = JSON.parse(readFileSync(openapiPath, "utf8")) as OpenApiDoc;
+	const ir = irFromOpenapi(doc);
+	const violations: CheckViolation[] = [];
+	for (const [module, eps] of groupIrByModule(ir)) {
+		const client = emitClient(eps, { target: "module", module });
+		const clientDir = join(cwd, "web/src", module, "__client");
+		for (const [file, content] of [["api.ts", client["api.ts"]], ["api.schemas.ts", client["api.schemas.ts"]]] as const) {
+			const p = join(clientDir, file);
+			if (!existsSync(p) || readFileSync(p, "utf8") !== content)
+				violations.push({ level: "error", kind: "artifact-stale", message: `[ojm-api] 生成物过期或缺失：${relative(cwd, p)}——请重跑 ojm api 使其与 openapi.json 同步。`, filePath: p });
+		}
+	}
+	const apiSrcDir = join(cwd, "api/src");
+	if (existsSync(apiSrcDir)) {
+		const stubWrites = await planStubWrites(ir, { apiSrcDir, implemented: implementedRouteKeys(apiSrcDir) });
+		for (const w of stubWrites) {
+			if (w.action === "create")
+				violations.push({ level: "error", kind: "artifact-stale", message: `[ojm-api] stub 缺失：${relative(cwd, w.filePath)}——请重跑 ojm api 生成。`, filePath: w.filePath });
+			else if (w.action === "update" && !w.prefixUpgrade)
+				violations.push({ level: "error", kind: "artifact-stale", message: `[ojm-api] stub 待随契约更新：${relative(cwd, w.filePath)}——请重跑 ojm api。`, filePath: w.filePath });
+		}
+	}
+	return { violations, uniDevIr: ir };
+}
+
 /** ojm api --check 主入口。opts.exempt 为可选豁免清单路径（覆盖默认 api/.ojm-api-exempt.json） */
 export async function checkApi(opts: { cwd: string, exempt?: string }): Promise<CheckResult> {
 	const exemption = loadExemption(opts);
-	const contracts = discoverContracts(opts.cwd);
-	if (contracts.length === 0) {
-		throw new Error(`[ojm-api] ${opts.cwd} 下没有发现契约文件——默认发现：api/src/*/contract.ts（uni-dev）与 web/src/*/__client/contract.ts（纯前端，旧名 client/ 兼容）。存量工程请迁移：modules/ → web/、模块内 api/ → __client/（生成物与契约同迁）。`);
-	}
+	const openapiPath = findOpenapiJson(opts.cwd);
 	const violations: CheckViolation[] = [];
 	const hints: string[] = [];
 	const uniDevIr: IrEndpoint[] = [];
 
-	for (const found of contracts) {
-		const ir = await irOf(found, opts.cwd);
-		if (found.kind === "uni-dev")
-			uniDevIr.push(...ir);
-
-		// ① 生成物同步：内存重生成 vs 磁盘逐字节
-		const paths = artifactPaths(found, opts.cwd);
-		const client = emitClient(ir, { target: "module", module: found.module });
-		const expected: [string, string][] = [
-			[paths.client, client["api.ts"]],
-			[paths.schemas, client["api.schemas.ts"]],
-			[paths.routes, emitRoutesJson(ir)],
-			[paths.openapi, emitOpenapiYaml(ir, { title: `${found.module} api`, version: "0.0.0" })],
-		];
-		for (const [p, content] of expected) {
-			if (!existsSync(p) || readFileSync(p, "utf8") !== content) {
-				violations.push({
-					level: "error",
-					kind: "artifact-stale",
-					message: `[ojm-api] 生成物过期或缺失：${relative(opts.cwd, p)}——请重跑 ojm api 使其与契约同步。`,
-					filePath: p,
-				});
-			}
-		}
-		// stub 生成物：缺失（create）与待更新（update，指纹匹配但契约已变）都属过期。
-		// 纯指纹头前缀升级（旧 ram-api:stub → 新 ojm-api:stub，正文未变）不算过期：
-		// 存量工程升级后首次 --check 不应因改名误报（R2 平滑升级）。
-		if (found.kind === "uni-dev") {
-			const stubWrites = await planStubWrites(ir, { apiSrcDir: join(opts.cwd, "api/src"), implemented: implementedRouteKeys(join(opts.cwd, "api/src")) });
-			for (const w of stubWrites) {
-				if (w.action === "create") {
-					violations.push({
-						level: "error",
-						kind: "artifact-stale",
-						message: `[ojm-api] stub 缺失：${relative(opts.cwd, w.filePath)}——请重跑 ojm api 生成。`,
-						filePath: w.filePath,
-					});
-					continue;
-				}
-				if (w.action === "update" && !w.prefixUpgrade) {
-					violations.push({
-						level: "error",
-						kind: "artifact-stale",
-						message: `[ojm-api] stub 待随契约更新：${relative(opts.cwd, w.filePath)}——请重跑 ojm api。`,
-						filePath: w.filePath,
-					});
-				}
-			}
-		}
+	if (openapiPath) {
+		const r = await checkFromOpenapi(openapiPath, opts.cwd, exemption);
+		violations.push(...r.violations);
+		uniDevIr.push(...r.uniDevIr);
+	}
+	else {
+		throw new Error(`[ojm-api] ${opts.cwd} 下未发现 openapi.json——请先运行 oj v0.1.73 的 \`oj openapi -c config -d api/src -b /api -o openapi.json\` 生成（OpenAPI 3.1，含全部模块）。\`ojm api --check\` 的单一事实源即 openapi.json，不再消费旧 contract.ts。`);
 	}
 
 	// ② route 双向对账（仅 uni-dev——oj 树存在才有意义）
-	if (contracts.some(c => c.kind === "uni-dev")) {
+	if (existsSync(join(opts.cwd, "api/src"))) {
 		const apiSrcDir = join(opts.cwd, "api/src");
 		const handlers = walkApiFiles(apiSrcDir).flatMap(f => scanHandlerFile(f, apiSrcDir));
 		violations.push(...reconcileRoutes(uniDevIr, handlers, exemption));
@@ -349,19 +347,24 @@ export async function checkApi(opts: { cwd: string, exempt?: string }): Promise<
 		hints.push("[ojm-api] 未发现 api/dist/**/routes.js——release 路由表对账跳过；发布前请先 oj build 再跑 ojm api --check。");
 	}
 	else {
-		const contractRows = uniDevIr.map(ep => ({ method: ep.method, pattern: ep.fullPath.replace(/^\//, "") }));
+		// 尾斜杠规范化：契约侧 fullPath 对「模块根路径」带尾斜杠（stripBase 的
+		// `rel || "/"`：如 notifications 模块的 GET / → fullPath "/notifications/"），
+		// 而 oj 产出的 routes.js pattern 无尾斜杠（"notifications"）——直接比键必然误报。
+		const normPattern = (p: string) => p.replace(/^\/+/, "").replace(/\/+$/, "");
+		const contractRows = uniDevIr.map(ep => ({ method: ep.method, pattern: normPattern(ep.fullPath) }));
+		const distRowsNorm = distRows.map(r => ({ method: r.method, pattern: normPattern(r.pattern) }));
 		const keyOf = (r: { method: string, pattern: string }) => `${r.method} ${r.pattern}`;
 		const contractSet = new Set(contractRows.map(keyOf));
-		const distSet = new Set(distRows.map(keyOf));
-		const missingInDist = [...contractSet].filter(r => !distSet.has(r));
-		// D12/F19：dist 行命中豁免（整模块或路径前缀）→ 不报 "dist 多"
+		const distSet = new Set(distRowsNorm.map(keyOf));
+		// D12/F19：行命中豁免（整模块或路径前缀）→ 两个方向都不报（dist 缺 / dist 多）
 		const isExemptRow = (r: { method: string, pattern: string }) => {
 			const mod = moduleOf(r.pattern);
 			const hitModule = exemption.modules.includes(mod);
 			const hitPath = exemption.paths.some(p => matchExemptPath(`/${r.pattern}`, p));
 			return hitModule || hitPath;
 		};
-		const extraInDist = distRows
+		const missingInDist = contractRows.filter(r => !distSet.has(keyOf(r))).filter(r => !isExemptRow(r)).map(keyOf);
+		const extraInDist = distRowsNorm
 			.filter(r => !contractSet.has(keyOf(r)))
 			.filter(r => !isExemptRow(r))
 			.map(keyOf);

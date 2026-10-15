@@ -27,8 +27,12 @@ export interface OjProcess {
 	ready: Promise<void>
 	/** SIGTERM 回收，3s 不退升级 SIGKILL；已退出则立即返回 */
 	stop: () => Promise<void>
-	/** 同步强杀（SIGKILL）：仅作进程退出兜底，防 oj 孤儿化 */
-	kill: () => void
+	/**
+	 * 同步强杀（SIGKILL）：仅作进程退出兜底，防 oj 孤儿化。
+	 * 可选：唯一消费点（dev 的 process exit 兜底）按 `kill?.()` 宽容调用；
+	 * 未 spawn 真实进程的实现（测试桩）可不提供。
+	 */
+	kill?: () => void
 }
 
 export interface StartOjPoll {

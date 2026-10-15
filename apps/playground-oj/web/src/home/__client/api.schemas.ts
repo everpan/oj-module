@@ -4,19 +4,19 @@
 import { z } from "@oj-module/runtime";
 
 export const schemas = {
-	fetchLine: {
+	"homeLinePost": {
 		body: z.object({
-	range: z.string(),
+	"range": z.string()
 }),
 		data: z.array(z.number()),
 	},
-	fetchPie: {
+	"homePieGet": {
 		query: z.object({
-	by: z.union([z.string(), z.number()]),
+	"by": z.union([z.string(), z.number()]).optional()
 }),
 		data: z.array(z.object({
-	value: z.number(),
-	code: z.string(),
+	"value": z.number(),
+	"code": z.string()
 })),
 	},
 };

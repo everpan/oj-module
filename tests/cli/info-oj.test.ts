@@ -3,6 +3,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { printInfo } from "../../packages/cli/src/info";
 import { usageText } from "../../packages/cli/src/usage";
+import { MIN_OJ_VERSION } from "../../packages/cli/src/vendor";
 import { PROJECT_ROOT } from "../helpers/paths";
 
 /**
@@ -132,7 +133,7 @@ describe("ojm info 后端段（桩注入）", () => {
 
 			const out = logs.join("\n");
 			expect(out).toMatch(/安装标记.*v0\.1\.11/);
-			expect(out).toMatch(/0\.1\.69/);
+			expect(out).toMatch(new RegExp(MIN_OJ_VERSION.replace(/\./g, "\\.")));
 			expect(out).toMatch(/ojm vendor/);
 		}
 		finally {

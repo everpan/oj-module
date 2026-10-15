@@ -1,0 +1,1721 @@
+{
+	"openapi": "3.1.0",
+	"info": {
+		"title": "oj API",
+		"version": "0.1.0"
+	},
+	"paths": {
+		"/api/auth/login": {
+			"post": {
+				"operationId": "auth_login_post",
+				"summary": "POST api/auth/login",
+				"x-oj-file": "auth/api.ts",
+				"tags": [
+					"auth"
+				],
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				}
+			}
+		},
+		"/api/auth/logout": {
+			"post": {
+				"operationId": "auth_logout_post",
+				"summary": "POST api/auth/logout",
+				"x-oj-file": "auth/api.ts",
+				"tags": [
+					"auth"
+				],
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				}
+			}
+		},
+		"/api/auth/refresh": {
+			"post": {
+				"operationId": "auth_refresh_post",
+				"summary": "POST api/auth/refresh",
+				"x-oj-file": "auth/api.ts",
+				"tags": [
+					"auth"
+				],
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				}
+			}
+		},
+		"/api/demo/todos": {
+			"get": {
+				"operationId": "demo_todos_get",
+				"summary": "GET api/demo/todos",
+				"x-oj-file": "demo/todos/api.ts",
+				"tags": [
+					"demo"
+				],
+				"parameters": [
+					{
+						"name": "keyword",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"required": [
+												"list",
+												"total"
+											],
+											"properties": {
+												"list": {
+													"type": "array",
+													"items": {
+														"type": "object",
+														"required": [
+															"id",
+															"title",
+															"done"
+														],
+														"properties": {
+															"id": {
+																"type": "number"
+															},
+															"title": {
+																"type": "string"
+															},
+															"done": {
+																"type": "boolean"
+															}
+														}
+													}
+												},
+												"total": {
+													"type": "number"
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/home/line": {
+			"post": {
+				"operationId": "home_line_post",
+				"summary": "POST api/home/line",
+				"x-oj-file": "home/line/api.ts",
+				"tags": [
+					"home"
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"required": [
+									"range"
+								],
+								"properties": {
+									"range": {
+										"type": "string"
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "array",
+											"items": {
+												"type": "number"
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/home/pie": {
+			"get": {
+				"operationId": "home_pie_get",
+				"summary": "GET api/home/pie",
+				"x-oj-file": "home/pie/api.ts",
+				"tags": [
+					"home"
+				],
+				"parameters": [
+					{
+						"name": "by",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": [
+								"string",
+								"number"
+							]
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "array",
+											"items": {
+												"type": "object",
+												"required": [
+													"value",
+													"code"
+												],
+												"properties": {
+													"value": {
+														"type": "number"
+													},
+													"code": {
+														"type": "string"
+													}
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/notification/notifications": {
+			"get": {
+				"operationId": "notification_notifications_get",
+				"summary": "GET api/notification/notifications",
+				"x-oj-file": "notification/api.ts",
+				"tags": [
+					"notification"
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "array",
+											"items": {
+												"type": "object",
+												"required": [
+													"id",
+													"scope",
+													"avatar",
+													"date",
+													"message",
+													"title"
+												],
+												"properties": {
+													"id": {
+														"type": "string"
+													},
+													"scope": {
+														"type": "string",
+														"enum": [
+															"user",
+															"broadcast"
+														]
+													},
+													"avatar": {
+														"type": "string"
+													},
+													"date": {
+														"type": "string"
+													},
+													"isRead": {
+														"type": "boolean"
+													},
+													"message": {
+														"type": "string"
+													},
+													"title": {
+														"type": "string"
+													},
+													"link": {
+														"type": [
+															"string",
+															"null"
+														]
+													},
+													"category": {
+														"type": "string",
+														"enum": [
+															"notice",
+															"pm",
+															"mention"
+														]
+													}
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/notification/notifications/read": {
+			"post": {
+				"operationId": "notification_notifications_read_post",
+				"summary": "POST api/notification/notifications/read",
+				"x-oj-file": "notification/api.ts",
+				"tags": [
+					"notification"
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"required": [
+									"id"
+								],
+								"properties": {
+									"id": {
+										"type": "string"
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				}
+			}
+		},
+		"/api/notification/notifications/read-all": {
+			"post": {
+				"operationId": "notification_notifications_read_all_post",
+				"summary": "POST api/notification/notifications/read-all",
+				"x-oj-file": "notification/api.ts",
+				"tags": [
+					"notification"
+				],
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				}
+			}
+		},
+		"/api/notification/notifications/clear": {
+			"post": {
+				"operationId": "notification_notifications_clear_post",
+				"summary": "POST api/notification/notifications/clear",
+				"x-oj-file": "notification/api.ts",
+				"tags": [
+					"notification"
+				],
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				}
+			}
+		},
+		"/api/notification/push": {
+			"post": {
+				"operationId": "notification_push_post",
+				"summary": "POST api/notification/push",
+				"x-oj-file": "notification/api.ts",
+				"tags": [
+					"notification"
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"required": [
+									"title",
+									"message"
+								],
+								"properties": {
+									"userId": {
+										"type": [
+											"string",
+											"number"
+										]
+									},
+									"title": {
+										"type": "string"
+									},
+									"message": {
+										"type": "string"
+									},
+									"link": {
+										"type": "string"
+									},
+									"avatar": {
+										"type": "string"
+									},
+									"category": {
+										"type": "string",
+										"enum": [
+											"notice",
+											"pm",
+											"mention"
+										]
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				}
+			}
+		},
+		"/api/notification/push-broadcast": {
+			"post": {
+				"operationId": "notification_push_broadcast_post",
+				"summary": "POST api/notification/push-broadcast",
+				"x-oj-file": "notification/api.ts",
+				"tags": [
+					"notification"
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"required": [
+									"title",
+									"message"
+								],
+								"properties": {
+									"title": {
+										"type": "string"
+									},
+									"message": {
+										"type": "string"
+									},
+									"link": {
+										"type": "string"
+									},
+									"avatar": {
+										"type": "string"
+									},
+									"category": {
+										"type": "string",
+										"enum": [
+											"notice",
+											"pm",
+											"mention"
+										]
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				}
+			}
+		},
+		"/api/notification/del": {
+			"post": {
+				"operationId": "notification_del_post",
+				"summary": "POST api/notification/del",
+				"x-oj-file": "notification/del/api.ts",
+				"tags": [
+					"notification"
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"required": [
+									"id"
+								],
+								"properties": {
+									"id": {
+										"type": "string"
+									},
+									"userId": {
+										"type": [
+											"string",
+											"number"
+										]
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				}
+			}
+		},
+		"/api/personal-center/upload": {
+			"post": {
+				"operationId": "personal_center_upload_post",
+				"summary": "POST api/personal-center/upload",
+				"x-oj-file": "personal-center/upload/api.ts",
+				"tags": [
+					"personal-center"
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "string"
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/system/menu-by-role-id": {
+			"get": {
+				"operationId": "system_menu_by_role_id_get",
+				"summary": "GET api/system/menu-by-role-id",
+				"x-oj-file": "system/api.ts",
+				"tags": [
+					"system"
+				],
+				"parameters": [
+					{
+						"name": "id",
+						"in": "query",
+						"required": true,
+						"schema": {
+							"type": "number"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "array",
+											"items": {
+												"type": "number"
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/system/menu-item": {
+			"post": {
+				"operationId": "system_menu_item_post",
+				"summary": "POST api/system/menu-item",
+				"x-oj-file": "system/api.ts",
+				"tags": [
+					"system"
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"required": [
+									"parentId",
+									"id",
+									"menuType",
+									"name",
+									"path",
+									"component",
+									"order",
+									"icon",
+									"currentActiveMenu",
+									"iframeLink",
+									"keepAlive",
+									"externalLink",
+									"hideInMenu",
+									"ignoreAccess",
+									"permission",
+									"status",
+									"createTime",
+									"updateTime"
+								],
+								"properties": {
+									"parentId": {
+										"type": "string"
+									},
+									"id": {
+										"type": "number"
+									},
+									"menuType": {
+										"type": "integer",
+										"enum": [
+											0,
+											1,
+											2,
+											3
+										]
+									},
+									"name": {
+										"type": "string"
+									},
+									"path": {
+										"type": "string"
+									},
+									"component": {
+										"type": "string"
+									},
+									"order": {
+										"type": "number"
+									},
+									"icon": {
+										"type": "string"
+									},
+									"currentActiveMenu": {
+										"type": "string"
+									},
+									"iframeLink": {
+										"type": "string"
+									},
+									"keepAlive": {
+										"type": "number"
+									},
+									"externalLink": {
+										"type": "string"
+									},
+									"hideInMenu": {
+										"type": "number"
+									},
+									"ignoreAccess": {
+										"type": "number"
+									},
+									"permission": {
+										"type": "string"
+									},
+									"status": {
+										"type": "number"
+									},
+									"createTime": {
+										"type": "number"
+									},
+									"updateTime": {
+										"type": "number"
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "string"
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			},
+			"put": {
+				"operationId": "system_menu_item_put",
+				"summary": "PUT api/system/menu-item",
+				"x-oj-file": "system/api.ts",
+				"tags": [
+					"system"
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"required": [
+									"parentId",
+									"id",
+									"menuType",
+									"name",
+									"path",
+									"component",
+									"order",
+									"icon",
+									"currentActiveMenu",
+									"iframeLink",
+									"keepAlive",
+									"externalLink",
+									"hideInMenu",
+									"ignoreAccess",
+									"permission",
+									"status",
+									"createTime",
+									"updateTime"
+								],
+								"properties": {
+									"parentId": {
+										"type": "string"
+									},
+									"id": {
+										"type": "number"
+									},
+									"menuType": {
+										"type": "integer",
+										"enum": [
+											0,
+											1,
+											2,
+											3
+										]
+									},
+									"name": {
+										"type": "string"
+									},
+									"path": {
+										"type": "string"
+									},
+									"component": {
+										"type": "string"
+									},
+									"order": {
+										"type": "number"
+									},
+									"icon": {
+										"type": "string"
+									},
+									"currentActiveMenu": {
+										"type": "string"
+									},
+									"iframeLink": {
+										"type": "string"
+									},
+									"keepAlive": {
+										"type": "number"
+									},
+									"externalLink": {
+										"type": "string"
+									},
+									"hideInMenu": {
+										"type": "number"
+									},
+									"ignoreAccess": {
+										"type": "number"
+									},
+									"permission": {
+										"type": "string"
+									},
+									"status": {
+										"type": "number"
+									},
+									"createTime": {
+										"type": "number"
+									},
+									"updateTime": {
+										"type": "number"
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "string"
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			},
+			"delete": {
+				"operationId": "system_menu_item_delete",
+				"summary": "DELETE api/system/menu-item",
+				"x-oj-file": "system/api.ts",
+				"tags": [
+					"system"
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "number"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "string"
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/system/menu-list": {
+			"get": {
+				"operationId": "system_menu_list_get",
+				"summary": "GET api/system/menu-list",
+				"x-oj-file": "system/api.ts",
+				"tags": [
+					"system"
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"required": [
+												"list",
+												"total"
+											],
+											"properties": {
+												"list": {
+													"type": "array",
+													"items": {
+														"type": "object",
+														"required": [
+															"parentId",
+															"id",
+															"menuType",
+															"name",
+															"path",
+															"component",
+															"order",
+															"icon",
+															"currentActiveMenu",
+															"iframeLink",
+															"keepAlive",
+															"externalLink",
+															"hideInMenu",
+															"ignoreAccess",
+															"permission",
+															"status",
+															"createTime",
+															"updateTime"
+														],
+														"properties": {
+															"parentId": {
+																"type": "string"
+															},
+															"id": {
+																"type": "number"
+															},
+															"menuType": {
+																"type": "integer",
+																"enum": [
+																	0,
+																	1,
+																	2,
+																	3
+																]
+															},
+															"name": {
+																"type": "string"
+															},
+															"path": {
+																"type": "string"
+															},
+															"component": {
+																"type": "string"
+															},
+															"order": {
+																"type": "number"
+															},
+															"icon": {
+																"type": "string"
+															},
+															"currentActiveMenu": {
+																"type": "string"
+															},
+															"iframeLink": {
+																"type": "string"
+															},
+															"keepAlive": {
+																"type": "number"
+															},
+															"externalLink": {
+																"type": "string"
+															},
+															"hideInMenu": {
+																"type": "number"
+															},
+															"ignoreAccess": {
+																"type": "number"
+															},
+															"permission": {
+																"type": "string"
+															},
+															"status": {
+																"type": "number"
+															},
+															"createTime": {
+																"type": "number"
+															},
+															"updateTime": {
+																"type": "number"
+															}
+														}
+													}
+												},
+												"total": {
+													"type": "number"
+												},
+												"current": {
+													"type": "number"
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/system/role-item": {
+			"post": {
+				"operationId": "system_role_item_post",
+				"summary": "POST api/system/role-item",
+				"x-oj-file": "system/api.ts",
+				"tags": [
+					"system"
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"required": [
+									"name",
+									"code",
+									"status"
+								],
+								"properties": {
+									"id": {
+										"type": "number"
+									},
+									"name": {
+										"type": "string"
+									},
+									"code": {
+										"type": "string"
+									},
+									"status": {
+										"type": "integer",
+										"enum": [
+											0,
+											1
+										]
+									},
+									"remark": {
+										"type": "string"
+									},
+									"menus": {
+										"type": "array",
+										"items": {
+											"type": "number"
+										}
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"required": [
+												"name",
+												"code",
+												"status"
+											],
+											"properties": {
+												"id": {
+													"type": "number"
+												},
+												"name": {
+													"type": "string"
+												},
+												"code": {
+													"type": "string"
+												},
+												"status": {
+													"type": "integer",
+													"enum": [
+														0,
+														1
+													]
+												},
+												"remark": {
+													"type": "string"
+												},
+												"menus": {
+													"type": "array",
+													"items": {
+														"type": "number"
+													}
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			},
+			"put": {
+				"operationId": "system_role_item_put",
+				"summary": "PUT api/system/role-item",
+				"x-oj-file": "system/api.ts",
+				"tags": [
+					"system"
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"required": [
+									"name",
+									"code",
+									"status"
+								],
+								"properties": {
+									"id": {
+										"type": "number"
+									},
+									"name": {
+										"type": "string"
+									},
+									"code": {
+										"type": "string"
+									},
+									"status": {
+										"type": "integer",
+										"enum": [
+											0,
+											1
+										]
+									},
+									"remark": {
+										"type": "string"
+									},
+									"menus": {
+										"type": "array",
+										"items": {
+											"type": "number"
+										}
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"required": [
+												"name",
+												"code",
+												"status"
+											],
+											"properties": {
+												"id": {
+													"type": "number"
+												},
+												"name": {
+													"type": "string"
+												},
+												"code": {
+													"type": "string"
+												},
+												"status": {
+													"type": "integer",
+													"enum": [
+														0,
+														1
+													]
+												},
+												"remark": {
+													"type": "string"
+												},
+												"menus": {
+													"type": "array",
+													"items": {
+														"type": "number"
+													}
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			},
+			"delete": {
+				"operationId": "system_role_item_delete",
+				"summary": "DELETE api/system/role-item",
+				"x-oj-file": "system/api.ts",
+				"tags": [
+					"system"
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "number"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "number"
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/system/role-list": {
+			"get": {
+				"operationId": "system_role_list_get",
+				"summary": "GET api/system/role-list",
+				"x-oj-file": "system/api.ts",
+				"tags": [
+					"system"
+				],
+				"parameters": [
+					{
+						"name": "name",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "code",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "status",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "integer",
+							"enum": [
+								0,
+								1
+							]
+						}
+					},
+					{
+						"name": "current",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "number"
+						}
+					},
+					{
+						"name": "pageSize",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "number"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"required": [
+												"list",
+												"total",
+												"pageSize",
+												"current"
+											],
+											"properties": {
+												"list": {
+													"type": "array",
+													"items": {
+														"type": "object",
+														"required": [
+															"id",
+															"createTime",
+															"updateTime",
+															"name",
+															"code",
+															"status",
+															"remark"
+														],
+														"properties": {
+															"id": {
+																"type": "number"
+															},
+															"createTime": {
+																"type": "number"
+															},
+															"updateTime": {
+																"type": "number"
+															},
+															"name": {
+																"type": "string"
+															},
+															"code": {
+																"type": "string"
+															},
+															"status": {
+																"type": "integer",
+																"enum": [
+																	0,
+																	1
+																]
+															},
+															"remark": {
+																"type": "string"
+															}
+														}
+													}
+												},
+												"total": {
+													"type": "number"
+												},
+												"pageSize": {
+													"type": "number"
+												},
+												"current": {
+													"type": "number"
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/system/role-menu": {
+			"get": {
+				"operationId": "system_role_menu_get",
+				"summary": "GET api/system/role-menu",
+				"x-oj-file": "system/api.ts",
+				"tags": [
+					"system"
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "array",
+											"items": {
+												"type": "object",
+												"required": [
+													"parentId",
+													"id",
+													"menuType",
+													"name",
+													"path",
+													"component",
+													"order",
+													"icon",
+													"currentActiveMenu",
+													"iframeLink",
+													"keepAlive",
+													"externalLink",
+													"hideInMenu",
+													"ignoreAccess",
+													"permission",
+													"status",
+													"createTime",
+													"updateTime"
+												],
+												"properties": {
+													"parentId": {
+														"type": "string"
+													},
+													"id": {
+														"type": "number"
+													},
+													"menuType": {
+														"type": "integer",
+														"enum": [
+															0,
+															1,
+															2,
+															3
+														]
+													},
+													"name": {
+														"type": "string"
+													},
+													"path": {
+														"type": "string"
+													},
+													"component": {
+														"type": "string"
+													},
+													"order": {
+														"type": "number"
+													},
+													"icon": {
+														"type": "string"
+													},
+													"currentActiveMenu": {
+														"type": "string"
+													},
+													"iframeLink": {
+														"type": "string"
+													},
+													"keepAlive": {
+														"type": "number"
+													},
+													"externalLink": {
+														"type": "string"
+													},
+													"hideInMenu": {
+														"type": "number"
+													},
+													"ignoreAccess": {
+														"type": "number"
+													},
+													"permission": {
+														"type": "string"
+													},
+													"status": {
+														"type": "number"
+													},
+													"createTime": {
+														"type": "number"
+													},
+													"updateTime": {
+														"type": "number"
+													}
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/web/country-calling-codes": {
+			"get": {
+				"operationId": "web_country_calling_codes_get",
+				"summary": "GET api/web/country-calling-codes",
+				"x-oj-file": "web/country-calling-codes/api.ts",
+				"tags": [
+					"web"
+				],
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				}
+			}
+		},
+		"/api/web/get-async-routes": {
+			"get": {
+				"operationId": "web_get_async_routes_get",
+				"summary": "GET api/web/get-async-routes",
+				"x-oj-file": "web/get-async-routes/api.ts",
+				"tags": [
+					"web"
+				],
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				}
+			}
+		},
+		"/api/web/hello": {
+			"get": {
+				"operationId": "web_hello_get",
+				"summary": "GET api/web/hello",
+				"x-oj-file": "web/hello/api.ts",
+				"tags": [
+					"web"
+				],
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				}
+			}
+		},
+		"/api/web/user-info": {
+			"get": {
+				"operationId": "web_user_info_get",
+				"summary": "GET api/web/user-info",
+				"x-oj-file": "web/user-info/api.ts",
+				"tags": [
+					"web"
+				],
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				}
+			}
+		}
+	},
+	"tags": [
+		{
+			"name": "auth"
+		},
+		{
+			"name": "demo"
+		},
+		{
+			"name": "home"
+		},
+		{
+			"name": "notification"
+		},
+		{
+			"name": "personal-center"
+		},
+		{
+			"name": "system"
+		},
+		{
+			"name": "web"
+		}
+	]
+}

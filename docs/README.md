@@ -27,7 +27,7 @@
 |---|---|
 | [`202609130035-provider-guide.md`](../202609130035-provider-guide.md) | Provider 上手指南（大白话版） |
 | [`prd/framework-development-guide.md`](prd/framework-development-guide.md) | 框架开发手册：两个 npm 包（新人上手版） |
-| [`prd/ojm-api-codegen-guide.md`](prd/ojm-api-codegen-guide.md) | ojm api 契约代码生成指南（新人向） |
+| [`prd/ojm-api-codegen-guide.md`](prd/ojm-api-codegen-guide.md) | ojm api 契约代码生成指南（新人向）— **⚠️ 旧口径（contract.ts），已过时** |
 | [`prd/oj-fullstack-tutorial.md`](prd/oj-fullstack-tutorial.md) | 实战演练：从零构建一个 oj 前后端应用（books 图书管理） |
 | [`prd/framework-verification-playbook.md`](prd/framework-verification-playbook.md) | 框架端到端验证手册（可重复演练） |
 | [`prd/202610062333-oj-0.1.50-alignment-review-and-plan.md`](prd/202610062333-oj-0.1.50-alignment-review-and-plan.md) | oj 0.1.50 对齐评审与更新计划（packages/cli） |
@@ -39,6 +39,19 @@
 | [`prd/202609122224-layout-injection-and-notification-design.md`](prd/202609122224-layout-injection-and-notification-design.md) | 布局注入与通知互动设计 |
 | [`prd/202609130128-client-factory-design.md`](prd/202609130128-client-factory-design.md) | 生成 client 工厂化设计（`create<Module>Client(ctx)`，构造即 install） |
 | [`prd/oj-release-binary-defect-report.md`](prd/oj-release-binary-defect-report.md) | oj 发布二进制缺陷报告：release 产物在非构建机不可用 |
+
+---
+
+## 迁移指南 / Migration
+
+存量工程的版本升级与口径切换方法，逐步 checklist + 丢失面说明。
+
+| 文件 | 主题 |
+|---|---|
+| [`migration/contract-to-openapi-schema.md`](migration/contract-to-openapi-schema.md) | 旧 `contract.ts` / `defineApi` 工程 → 新 `openapi.json` + handler `.schema` 流水线的迁移方法论与检查清单 |
+| [`migration/oj-requirement-response-outside-schema.md`](migration/oj-requirement-response-outside-schema.md) | 上游需求留档（✅ oj v0.1.72 已实现）：响应契约可声明在 `.schema` 之外（平级 `.response`），`.schema` 只承载入参 |
+| [`migration/oj-requirement-delete-method-key.md`](migration/oj-requirement-delete-method-key.md) | 上游需求留档（✅ oj v0.1.73 已实现）：`oj openapi` 把 `del` 动词归一为 `delete` 操作键（旧版产出非法 `"del"` 致 `--check` 漂移） |
+| [`guides/api-codegen-openapi.md`](guides/api-codegen-openapi.md) | 新口径总览：`.schema` 权威源 + `openapi.json` → `__client` 的日常用法与已知限制 |
 
 ---
 

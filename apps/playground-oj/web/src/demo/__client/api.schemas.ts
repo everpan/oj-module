@@ -4,17 +4,17 @@
 import { z } from "@oj-module/runtime";
 
 export const schemas = {
-	getTodoList: {
+	"demoTodosGet": {
 		query: z.object({
-	keyword: z.string().optional(),
+	"keyword": z.string().optional()
 }),
 		data: z.object({
-	list: z.array(z.object({
-		id: z.number(),
-		title: z.string(),
-		done: z.boolean(),
-	})),
-	total: z.number(),
+	"list": z.array(z.object({
+	"id": z.number(),
+	"title": z.string(),
+	"done": z.boolean()
+})),
+	"total": z.number()
 }),
 	},
 };

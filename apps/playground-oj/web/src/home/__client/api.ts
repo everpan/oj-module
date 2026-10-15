@@ -33,7 +33,7 @@ export function createHomeClient(ctx: ModuleContext) {
 	}
 	ctx.register.apiPrefix(API_PREFIX);
 	bindRequest(ctx.utils.request);
-	return { fetchLine, fetchPie };
+	return { homeLinePost, homePieGet };
 }
 
 /**
@@ -64,22 +64,22 @@ async function toApiError(e: unknown): Promise<unknown> {
 	return e;
 }
 
-export type FetchLineBody = z.input<(typeof schemas)["fetchLine"]["body"]>;
-export type FetchLineData = z.infer<(typeof schemas)["fetchLine"]["data"]>;
+export type HomeLinePostBody = z.input<(typeof schemas)["homeLinePost"]["body"]>;
+export type HomeLinePostData = z.infer<(typeof schemas)["homeLinePost"]["data"]>;
 
-export async function fetchLine(body: FetchLineBody): Promise<FetchLineData> {
+export async function homeLinePost(body: HomeLinePostBody): Promise<HomeLinePostData> {
 	const client = ensureReq();
 	try {
-		const env = await client.post(`home/line`, { json: body }).json<OjEnvelope<FetchLineData>>();
+		const env = await client.post(`home/line`, { json: body }).json<OjEnvelope<HomeLinePostData>>();
 		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
 		if (typeof env.code === "number" && env.code !== 0)
 			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
-		const data = env.data as FetchLineData;
+		const data = env.data as HomeLinePostData;
 		if (import.meta.env.DEV) {
 			const { schemas } = await import("./api.schemas");
-			const r = schemas.fetchLine.data.safeParse(data);
+			const r = schemas["homeLinePost"].data.safeParse(data);
 			if (!r.success)
-				throw new ContractApiError(-1, `[契约违例] fetchLine 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
+				throw new ContractApiError(-1, `[契约违例] homeLinePost 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
 		}
 		return data;
 	}
@@ -88,22 +88,22 @@ export async function fetchLine(body: FetchLineBody): Promise<FetchLineData> {
 	}
 }
 
-export type FetchPieQuery = z.input<(typeof schemas)["fetchPie"]["query"]>;
-export type FetchPieData = z.infer<(typeof schemas)["fetchPie"]["data"]>;
+export type HomePieGetQuery = z.input<(typeof schemas)["homePieGet"]["query"]>;
+export type HomePieGetData = z.infer<(typeof schemas)["homePieGet"]["data"]>;
 
-export async function fetchPie(query: FetchPieQuery): Promise<FetchPieData> {
+export async function homePieGet(query: HomePieGetQuery): Promise<HomePieGetData> {
 	const client = ensureReq();
 	try {
-		const env = await client.get(`home/pie`, { searchParams: query as Record<string, string | number | boolean> }).json<OjEnvelope<FetchPieData>>();
+		const env = await client.get(`home/pie`, { searchParams: query as Record<string, string | number | boolean> }).json<OjEnvelope<HomePieGetData>>();
 		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
 		if (typeof env.code === "number" && env.code !== 0)
 			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
-		const data = env.data as FetchPieData;
+		const data = env.data as HomePieGetData;
 		if (import.meta.env.DEV) {
 			const { schemas } = await import("./api.schemas");
-			const r = schemas.fetchPie.data.safeParse(data);
+			const r = schemas["homePieGet"].data.safeParse(data);
 			if (!r.success)
-				throw new ContractApiError(-1, `[契约违例] fetchPie 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
+				throw new ContractApiError(-1, `[契约违例] homePieGet 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
 		}
 		return data;
 	}
