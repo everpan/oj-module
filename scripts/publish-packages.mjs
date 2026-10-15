@@ -48,8 +48,8 @@ const PUBLISH_ORDER = ["runtime", "cli"];
 const LOCKSTEP = {
 	"@oj-module/runtime": "packages/runtime/package.json",
 	"@oj-module/cli": "packages/cli/package.json",
-	"@plane/kit": "packages/kit/package.json",
-	"@plane/editor": "packages/editor-standalone/package.json",
+	// "@plane/kit": "packages/kit/package.json",
+	// "@plane/editor": "packages/editor-standalone/package.json",
 };
 
 const args = process.argv.slice(2);
