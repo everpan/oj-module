@@ -55,13 +55,20 @@ export default defineConfig({
 		],
 	},
 	plugins: [
-		vitePluginFakeServer({
-			basename: "/api",
-			// P6.5 / B15：mock 代码不得进入生产构建——仅当显式设置
-			// VITE_ENABLE_FAKE_PROD=1 时才打进产物（演示/脱敏交付场景）
-			enableProd: process.env.VITE_ENABLE_FAKE_PROD === "1",
-			timeout: 1000,
-		}),
+		// vitest 下排除：该插件持有 FILEHANDLE 不释放，导致 vitest 关停超时
+		// （"close timed out after 10000ms"，每次测试白等 10s）；且测试 fetch
+		// 不经 vite 中间件，mock 接口在测试下本就不可达，纯死重。
+		...(process.env.VITEST
+			? []
+			: [
+				vitePluginFakeServer({
+					basename: "/api",
+					// P6.5 / B15：mock 代码不得进入生产构建——仅当显式设置
+					// VITE_ENABLE_FAKE_PROD=1 时才打进产物（演示/脱敏交付场景）
+					enableProd: process.env.VITE_ENABLE_FAKE_PROD === "1",
+					timeout: 1000,
+				}),
+			]),
 		// https://github.com/pd4d10/vite-plugin-svgr#options
 		svgrPlugin({
 			// https://react-svgr.com/docs/options/
