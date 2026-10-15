@@ -4,7 +4,18 @@
 > **配套**：[`framework-development-guide.md`](./framework-development-guide.md)（原理）、[`oj-fullstack-tutorial.md`](./oj-fullstack-tutorial.md)（跟做）。
 > **原则**：每一步都有**可判定通过/失败的检查点**，不要只看命令退出码，要核对产物。
 
-### 最近一次基线（2026-10-15 演练，oj 0.1.74 / cli+runtime 0.1.20，openapi 流水线）
+### 最近一次基线（2026-10-15 二次演练，oj 0.1.74 / cli+runtime 0.1.20 提交态 `41fadd39`）
+
+| 项 | 值 |
+| --- | --- |
+| 日期 | 2026-10-15（当日第二次全链路演练；首次见下） |
+| 框架包版本 | `cli`/`runtime` `0.1.20`（**已提交态** `41fadd39`，含 lint 15 处修复、cli 包 vitest config 锚定 + `pnpm test:cli` 接 CI、根 tsc 23→0；源码 CLI 验证） |
+| oj | `0.1.74`（本机安装预置进 `bin/`；npm 通道 `@oj-bin/oj` 仍滞后于 `MIN_OJ_VERSION` 0.1.73 门禁，按 §0 旁路 1 绕过） |
+| 结果 | **全链路通过（§1–§7），无新问题**。`ojm init`（76 项新增）→ `pnpm install`（§0 旁路 2）→ JsRuntime 探针通过 → books 模块（新约定）→ `oj openapi` + `ojm api` + `--check` 0 error / 0 warn → `ojm build`（7 后端模块、books 2 api file(s)、modules.json 含 home/login/books）→ `tsc` 0 error → `ojm dev`：seed ok、8 路由方法入参校验、登录/过滤(1 条)/新增 `{ok:true}`/401/通知兜底全对 → `ojm preview`：migrate 门禁过、release 路由来自 `api/dist`、API 与静态兜底正常、带 dist 的三腿 `--check` 0 error / 0 warn。 |
+| 二次演练新增验证点 | **devkit 分发自包含性**（同日文档更新后）：业务工程 `.claude/skills/ojm-module-dev/` 拿到含 **§3.10 旧 `contract.ts` 工程迁移指南**的手册，grep 确认零仓库内部引用（`docs/migration`、`../oj-api-dev` 等已清）；oj 侧 devkit 落在 `.claude/skills/oj-api-dev/`，与手册内新引用一致。 |
+| 与首次演练差异 | 无功能差异；首次演练发现并修复的 4 项（npm 滞后旁路、空 `_shared` 目录、routes.js 尾斜杠误报+豁免不对称、未发版安装旁路）在提交态全部保持修复，本次复跑逐项回归通过。 |
+
+### 基线：2026-10-15 首次演练（oj 0.1.74 / cli+runtime 0.1.20 工作区态）
 
 | 项 | 值 |
 | --- | --- |
@@ -87,6 +98,7 @@ node "$OJM_REPO/packages/cli/bin/ojm.mjs" init my-books --yes
 - [ ] 目录齐全：`api/src/{_platform,auth,web,notifications,personal-center,notification}`、`api/.ojm-api-exempt.json`、`web/src/{demo,home,login,personal-center,notification,notifications}`、`web.config.ts`、`tsconfig.json`、`global.d.ts`、`env.d.ts`、`bin/oj`、`bin/.oj-version`、`.claude/skills/{oj-api-dev,ojm-module-dev}/`
 - [ ] **工程根有 `openapi.json`**（新流水线唯一事实源，模板随附）+ `web/src/<模块>/__client/` 预生成（`ojm api --check` 开箱即过）
 - [ ] handler 契约为新约定：动词挂 `.schema`（params/query/body 入参）+ **平级 `.response`**（出参，oj v0.1.72+）；无 `contract.ts` / `routes.json` / `openapi.yaml`
+- [ ] **分发的 devkit 自包含**：`.claude/skills/ojm-module-dev/` 三件套含 manual.md **§3.10 旧 contract.ts 工程迁移指南**；grep `docs/migration|docs/plans|../oj-api-dev` 应**零命中**（devkit 随 init 进业务工程，不能引用框架仓内部路径）；oj 侧 devkit 落在 `.claude/skills/oj-api-dev/`
 - [ ] `package.json` 的 devDependencies **含** `@oj-module/{cli,runtime}`（两包时代；`contract` 是 runtime 子路径、shell 已并入 cli），且值**不是 `*`**
 - [ ] 若出现「`@types/react` / `typescript` 回退 `*`」告警 → 记下，安装后必须钉版
 - [ ] **未出现「oj 二进制自检失败」告警**（cli ≥ 0.1.4 安装后自动冒烟）；若出现，按 §3 换自建二进制

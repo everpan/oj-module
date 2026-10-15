@@ -240,7 +240,7 @@ export default defineModule({
 可服务的同源路径）。直接 `import "vditor/dist/..."` 其它深路径会命中前缀 external 但无
 importmap 键，构建期报错——需要新深路径请联系框架方在共享表登记。
 
-### 2.7 本版本共享依赖钉版（0.1.16 快照）
+### 2.7 本版本共享依赖钉版（0.1.20 快照）
 
 宿主经 importmap 提供以下单例（模块 `devDependencies` 须对齐，供 `tsc` 用）；完整 68 项矩阵以
 `pnpm exec ojm info` 或 `packages/cli/shell-dist/versions.json`（构建期生成）为准。
@@ -269,8 +269,10 @@ importmap 键，构建期报错——需要新深路径请联系框架方在共�
 | `pinyin-pro` | 3.29.3 |
 | `vditor` | 4.0.0 |
 
-框架包版本：`@oj-module/runtime` / `@oj-module/cli` / `@plane/kit` / `@plane/editor` 均为 `0.1.16`
-（lockstep；本版实际改动仅 cli——vditor 入共享表）；`oj` 二进制最低版本门禁 `MIN_OJ_VERSION = 0.1.50`。
+框架包版本：`@oj-module/runtime` / `@oj-module/cli` / `@plane/kit` / `@plane/editor` 均为 `0.1.20`
+（lockstep）；`oj` 二进制最低版本门禁 `MIN_OJ_VERSION = 0.1.73`——契约流水线要求 oj ≥ 0.1.73：
+平级 `.response` 出参声明位自 v0.1.72 起、`oj openapi` 的 `del`→`delete` 操作键归一自 v0.1.73 起
+（低版本 oj 生成 `openapi.json` 会丢出参类型或产出非法 `"del"` 键，`ojm api --check` 必漂移）。
 
 > **`@oj-module/runtime` 到底导出哪些东西？** 权威清单随包发布在
 > `node_modules/@oj-module/runtime/dist/index.d.ts`——直接 Read 它，或在编辑器里
@@ -305,15 +307,16 @@ web/<模块>/__client/{api.ts, api.schemas.ts}（+ stub / mock）
 ```
 
 `openapi.json` 即权威文档源，`ojm api --docs` 直接聚合它渲染文档站。`.schema` / `.response`
-写法、与 zod 表达力对照等后端侧细节见 `docs/oj-api-dev/`（随 oj 同步）的「入参与出参契约
-`.schema`」章节；本文只讲它到前端这一侧的对接。
+写法、与 zod 表达力对照等后端侧细节见 `oj-api-dev` skill 的手册（`ojm init` 已装机在
+`.claude/skills/oj-api-dev/`，随 oj 二进制更新）的「入参与出参契约 `.schema`」章节；
+本文只讲它到前端这一侧的对接。
 
 > 版本要求：平级 `.response` 声明位自 **oj v0.1.72** 起支持；`oj openapi` 把 `del` 动词归一为
 > `delete` 操作键自 **v0.1.73** 起（含 `del` 端点的工程须 ≥ 0.1.73，否则 `--check` 必漂移）。
 > 旧 `.schema.response` 写法继续生效（存量零破坏），新工程一律用平级 `.response`。
 
 > 旧 `contract.ts` / `defineApi` 工程：翻译层已删除，`ojm api` **不再兼容读取** `contract.ts`
-> （找不到 `openapi.json` 即报错）。迁移方法见 `docs/migration/contract-to-openapi-schema.md`。
+> （找不到 `openapi.json` 即报错）。迁移方法见 **§3.10**（本手册自包含迁移指南）。
 
 ### 3.2 产物落点（新口径）
 
@@ -390,7 +393,7 @@ minLength / maxLength / pattern / enum / nullable / minItems / maxItems / defaul
 **端点方法名 / 类型名来自 `operationId`**（oj 由「去 base 子路径 + 方法」派生，非字母数字转 `_`）：
 `order/list` + `get` → `order_list_get` → 前端 `orderListGet`、`OrderListGetData`、
 `OrderListGetQuery` 等。这与旧 `defineApi` 的人类命名（`listBooks`）不同，迁移时用「逐字节比对」
-识别为丢失面（见迁移指南）。
+识别为丢失面（见 §3.10）。
 
 **上传文件（multipart/form-data）**：当前 `ojm api` 的 openapi 流水线**不生成** form 通道的
 前端 client（文件部件是二进制，不进 JSON Schema）。惯例走 antd `Upload` **直连**后端
@@ -511,7 +514,8 @@ export default { get };
 
 开关在 `api/config.yaml` 的 `server.schema_validation`（默认 `true`，置 `false` 为逃生门）。
 白名单裁剪规则与降级（无 `format`/`oneOf`、Rust regex 不支持零宽断言、params/query 只允许扁平
-标量等）在 `oj openapi` 内省期或 ojm 生成期 fail-fast / 告警，详情见 §3.3 与 `docs/oj-api-dev/`。
+标量等）在 `oj openapi` 内省期或 ojm 生成期 fail-fast / 告警，详情见 §3.3 与 `oj-api-dev` skill
+手册（`.claude/skills/oj-api-dev/`）。
 
 ### 3.8 豁免清单 `api/.ojm-api-exempt.json`
 
@@ -541,6 +545,56 @@ export default { get };
 
 反例信号：文件过胖 = 聚合过胖，**拆聚合而不是回退动词目录**；出现动词子目录
 （`read/api.ts` 这类）说明是旧形态，按上表 reshape。
+
+### 3.10 从旧 `contract.ts` / `defineApi` 工程迁移
+
+适用于 0.1.20 之前、用「`api/src/<模块>/contract.ts`（`defineApi` + zod）」声明契约的工程。
+翻译层已删除，`ojm api` 不再读取 `contract.ts`——不迁移则找不到 `openapi.json` 直接报错。
+
+**前置条件**
+
+- `oj` ≥ **0.1.73**（`oj openapi` 子命令 + 平级 `.response` + `del`→`delete` 归一；低版本会丢出参类型或产出非法方法键）
+- `@oj-module/cli` / `@oj-module/runtime` ≥ **0.1.20**（lockstep）
+- `api/config.yaml` 站点挂载已是顶层 `mounts:`（oj v0.1.58 起旧键 fail-fast）
+
+**字段映射（旧 `defineApi` → 新声明位）**
+
+| 旧 `defineApi` 字段 | 新声明位 | 说明 |
+|---|---|---|
+| `route` / `method` | handler 所在目录/文件名 + 动词函数名 | 路由由目录镜像推导，不再手写（AC-D9） |
+| `params` | `.schema.params` | 路径参数，与 route 的 `{id}` 段对应 |
+| `query` | `.schema.query` | URL query |
+| `body` | `.schema.body` | JSON 请求体 |
+| `data` | **平级 `.response`** | 出参 data 载荷（信封 `code/msg/data` 由 oj 自动包裹） |
+| `form` | —（丢失面） | 文件上传，当前流水线不生成前端 client，改 antd `Upload` 直连 |
+| `raw` | —（丢失面） | `openapi.json` 不携带 raw 标记，需人审 |
+| `ignoreLoading` | —（丢失面） | 透传标记，需人审 |
+
+**迁移步骤**
+
+1. **盘点**：列出每个 `contract.ts` 的全部端点（route / method / 入参 / data / form / raw / ignoreLoading）。
+2. **翻译**：对每个端点在对应 handler 动词上写 `.schema`（入参，JSON Schema 白名单子集）+
+   平级 `.response`（出参）。zod → JSON Schema 手工对照：`z.string()` → `{type:"string"}`、
+   `z.number()` → `{type:"number"}`、`z.enum([...])` → `{type:"string", enum:[...]}`、
+   `z.union([z.string(),z.number()])` → 类型数组 `["string","number"]`、`.nullable()` →
+   `["string","null"]`；`refine`/`transform` 必须下移到 handler 校验（丢失面）。
+3. **生成规范**：`oj openapi -c api/config.yaml -d api/src -b /api -o openapi.json`
+   （项目级单文件、含全部模块；组级 `.schema`/`.response` 已由 oj 内省期合并）。
+4. **生成 client**：`ojm api` → `web/src/<模块>/__client/{api.ts, api.schemas.ts}`。
+5. **改前端消费点**：函数名从旧人类命名（`fetchNotifications`）改为
+   `camelCase(operationId)`（`notificationNotificationsGet`）——用「逐字节比对」识别，
+   逐个改 import 与调用；`tsc --noEmit` 应收敛到 0 错误。
+6. **删旧文件**：删除各 `contract.ts`，以及旧流水线产物 `api/src/<模块>/routes.json`、
+   `api/src/<模块>/openapi.yaml`（ojm 不再自产；`api/docs/openapi.yaml` 仅 `--docs` 时生成，保留）。
+7. **对账**：`ojm api --check` 应 `0 error / 0 warn`；内置端点（`auth/*`、`web/*`、
+   `notifications`）经 `api/.ojm-api-exempt.json` 豁免（init 已内置）。
+
+**迁移后自检**
+
+- [ ] 工程根有 `openapi.json`，`--check` 零漂移
+- [ ] 每个 `__client` 的 `XxxData` 类型非 `unknown`（出参声明生效）
+- [ ] 无 `contract.ts` / per-module `routes.json` / `openapi.yaml` 残留
+- [ ] `ojm dev` 起服后接口联调通过（登录 / 列表 / 写操作 / 401）
 
 ---
 
@@ -1187,9 +1241,9 @@ export default async (path: string, html: string) => {
 | 在页面/组件里又 create 了一个 client | 创建只该发生在 onInit 一次 | 页面里直接 import 裸函数，不要再创建 |
 | 控制台「模块 A 正在为 /b 路径创建 client（越界）」 | A 创建了 B 的 client | 由 B 创建并通过 provider 提供能力 |
 | 改了契约，前端类型没变 | 没重新生成 | 跑 `ojm api`；生成确定，diff 应只含你改的部分 |
-| `ojm api` 报「schema 超出白名单」 | 契约里写了 `z.null()` / transform / refine | 不返回数据就别写 `data`；校验放后端 |
+| `ojm api` 报「schema 超出白名单」 | 契约里写了白名单外关键字（`oneOf`/`$ref`/`format` 等） | 改用白名单子集（§3.3）；union 用类型数组、nullable 用 `["string","null"]`；校验放后端 |
 | `ojm api` 报「apiPrefix 与目录名不符」 | 契约要求 apiPrefix 字面等于后端目录名 | 改 `apiPrefix` 或移动契约目录 |
-| `ojm api` 报错「未发现 openapi.json」 | 没跑 `oj openapi` 生成规范 | 先 `oj openapi -c api/config.yaml -d api/src -b /api -o openapi.json`，再 `ojm api`；旧 `contract.ts` 工程须先迁移（见迁移指南） |
+| `ojm api` 报错「未发现 openapi.json」 | 没跑 `oj openapi` 生成规范 | 先 `oj openapi -c api/config.yaml -d api/src -b /api -o openapi.json`，再 `ojm api`；旧 `contract.ts` 工程须先迁移（见 §3.10） |
 | `--check` 报 artifact-stale | 改了契约没重跑 | 重跑 `ojm api` |
 | `--check` 报 handler 未登记 | 内置/手写 handler 无契约 | 补契约，或登记豁免清单 |
 | 豁免写了 `//` 注释后全部失效 | 严格 JSON 解析失败、静默回退 | 注释写进 `_comment` 字段 |
@@ -1233,9 +1287,8 @@ export default async (path: string, html: string) => {
 
 另有：
 
-- **后端 handler 手册**：即 `oj-api-dev` skill 的手册——仓库内已同步到
-  [`docs/oj-api-dev/`](../oj-api-dev/README.md)（权威源随 oj 二进制分发在
-  `~/.local/share/oj/devkit`，随 oj 版本更新，同步时以之覆盖本目录）。
+- **后端 handler 手册**：即 `oj-api-dev` skill 的手册——`ojm init` 已装到工程的
+  `.claude/skills/oj-api-dev/`（权威源随 oj 二进制分发在 `bin/devkit/`，随 oj 版本更新）。
   写 handler 遇到 `json` / `db` / `kv` / `jwt` / 租户 / 测试的问题查它；
   站点挂载（`mounts`）、密钥信封（`secrets`）、配置变量（`vars`）、跨域（`cors`）、
   schema 校验（`schema_validation`）、`broker` / `tasks` / `oidc` / `ws` 等 oj 侧能力也都在这套手册里。
@@ -1246,7 +1299,7 @@ export default async (path: string, html: string) => {
 > `app_prefix` / `static_sites` / `app_spa_fallback`）迁到顶层 **`mounts:`** 扁平表
 > （一行=一个 URL 前缀+一个目录，`api`/`web` 恰好其一）。旧键出现即被 `oj serve` fail-fast 拒绝。
 > ojm 模板 `api/config.yaml` 已落到 `mounts:`，`ojm dev/preview` 的 SPA 深链回落由 ojm 自建静态层负责，
-> 不需要 oj 的 spa。详细迁移规则、vars/secrets/cors/schema 用法见 `docs/oj-api-dev/` 手册。
+> 不需要 oj 的 spa。详细迁移规则、vars/secrets/cors/schema 用法见 `oj-api-dev` skill 手册。
 
 ---
 
@@ -1323,7 +1376,7 @@ export default async (path: string, html: string) => {
 
 #### `ojm api [dir] [--check] [--docs] [--exempt <path>]`
 
-契约代码生成（详见 §3）：消费 `openapi.json`（oj v0.1.71 `oj openapi` 产物）生成前端 `__client` / 后端 stub。
+契约代码生成（详见 §3）：消费 `openapi.json`（oj v0.1.73+ `oj openapi` 产物）生成前端 `__client` / 后端 stub。
 
 - `dir`：项目目录（缺省 `cwd`；显式目录必须先存在，否则报错）。
 - `--check`：**四重对账**（只读、绝不写盘）：① 生成物同步 ② route 双向对账
@@ -1378,3 +1431,20 @@ export default async (path: string, html: string) => {
 | `ojm exec "<sql>"` | 在数据库上执行 SQL |
 
 `secret`（`keygen` / `seal` 等）**不在透传集合内**——它不需要 config，需直接 `./bin/oj secret ...`。
+
+---
+
+## 附录：章节目录
+
+| 章 | 内容 | 什么时候读 |
+|---|---|---|
+| §1 工程结构 | 脚手架产物、两个模块体系、目录镜像路由、重启边界、建表三件套、迁移与 seed | 新人第一遍；改后端目录结构 |
+| §2 写前端模块 | 目录、两步注册、entry.ts 形状、路由 handle、import 红线、共享依赖钉版 | 加页面 / 加模块 |
+| §3 契约与代码生成 | `.schema` 入参 + 平级 `.response` 出参、生成物契约、命令、豁免清单、DDD 判据、**§3.10 旧 contract.ts 工程迁移** | 加接口；从旧工程迁移 |
+| §4 接管框架内置功能 | provider 机制、通知 / 上传 / 菜单三案例 | 接管通知铃、头像上传、动态菜单 |
+| §5 布局与插槽 | 内置布局、容器外壳、自定义布局、插槽、响应式、偏好 | 改页面外壳 / 适配 |
+| §6 i18n 与样式 | 命名空间 i18n、样式约定 | 加文案 / 改样式 |
+| §7 构建与发布 | build / preview、htmlTransform、verify 闸 | 发布前 |
+| §8 排查 | 五步排查法、症状速查表 | 任何「没生效」 |
+| §9 参考 | 可抄的工程内文件、oj-api-dev 手册指引 | 找范本 |
+| §10 CLI 子命令参考 | ojm 原生命令 vs oj 透传命令 | 查命令用法 |

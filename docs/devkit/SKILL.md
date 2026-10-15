@@ -9,7 +9,8 @@ description: 用 ojm 开发前后端一体工程时使用——新增/修改前�
 
 后端 handler 本身的写法（`json` 信封、`db` 查询、`manifest.yaml`、`oj test`）、
 站点挂载（`mounts`）、密钥信封（`secrets`）、vars、cors、schema 校验、broker/tasks/oidc/ws 等
-属于 **`oj-api-dev` skill** 的范围——仓库内同步副本在 [`docs/oj-api-dev/`](../oj-api-dev/README.md)，
+属于 **`oj-api-dev` skill** 的范围——`ojm init` 已把它装到工程的
+`.claude/skills/oj-api-dev/`（权威源随 oj 二进制分发，随 oj 版本更新），
 本 skill 只讲它到前端这一侧的对接。
 
 ## 工作流
@@ -78,6 +79,15 @@ description: 用 ojm 开发前后端一体工程时使用——新增/修改前�
 - [ ] 有接口 → handler 动词挂了 `.schema`（入参）+ 平级 `.response`（出参，oj v0.1.72+）→ `oj openapi` + `ojm api` 跑过 → onInit 里 `create<Module>Client(ctx)`
 - [ ] 接管了某功能 → provider 方法数与类型定义**一个不差**
 - [ ] `pnpm dev` 起来后按 §8 五步排查全过
+
+## 旧工程迁移（contract.ts / defineApi → 新流水线）
+
+存量工程用 `api/src/<模块>/contract.ts`（`defineApi` + zod）声明契约——翻译层已删除，
+`ojm api` 不再读取它。迁移五步：① 盘点端点 → ② 入参译到 `.schema`、`data` 译到平级
+`.response`（zod→JSON Schema 对照表）→ ③ `oj openapi -c api/config.yaml -d api/src -b /api -o openapi.json`
+→ ④ `ojm api` + 前端调用点改 `camelCase(operationId)` → ⑤ 删 `contract.ts` 与旧产物
+（per-module `routes.json` / `openapi.yaml`），`ojm api --check` 零漂移。
+前置：oj ≥ 0.1.73、框架包 ≥ 0.1.20。完整字段映射与丢失面清单见 **manual.md §3.10**。
 
 ## 常见陷阱速查
 
