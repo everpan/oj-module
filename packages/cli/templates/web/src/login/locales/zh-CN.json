@@ -16,5 +16,11 @@
 			"mismatch": "两次输入的新密码不一致",
 			"submit": "修改并重新登录"
 		}
+	},
+	"method": {
+		"local": "账号密码",
+		"ldap": "LDAP",
+		"sso": "SSO",
+		"sso.action": "使用 SSO 登录"
 	}
 }

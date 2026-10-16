@@ -8,6 +8,11 @@ export interface AuthType {
 export interface LoginInfo {
 	username: string
 	password: string
+	/**
+	 * 登录方式：local=本地口令（默认），ldap=目录登录；sso 走重定向不参与本载荷。
+	 * 仅用于把 POST 路由到正确后端端点（auth/login vs auth/ldap-login），默认 local。
+	 */
+	method?: "local" | "ldap" | "sso"
 }
 
 export interface UserInfoType {

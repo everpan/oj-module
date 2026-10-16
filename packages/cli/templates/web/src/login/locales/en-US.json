@@ -16,5 +16,11 @@
 			"mismatch": "Passwords do not match",
 			"submit": "Change & sign in again"
 		}
+	},
+	"method": {
+		"local": "Password",
+		"ldap": "LDAP",
+		"sso": "SSO",
+		"sso.action": "Sign in with SSO"
 	}
 }

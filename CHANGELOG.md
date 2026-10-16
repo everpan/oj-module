@@ -5,6 +5,21 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 设计依据、迁移记录与陷阱清单见 [`docs/prd/202609110947-oj-module-two-package-consolidation-design.md`](docs/prd/202609110947-oj-module-two-package-consolidation-design.md)。
 
+## [0.2.3] - 2026-10-16
+
+双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步升 **0.2.3**（纯修复 + 文档，无破坏性变更）。
+
+### Fixed
+
+- **登录页不显示 LDAP/SSO 切换 tab**：模板登录页此前只渲染本地账号密码表单，从不调用后端匿名发现端点 `GET /system/login-methods`，故在系统设置开启 LDAP/SSO 后登录页毫无变化。
+  - 运行时 `LoginInfo` 新增可选 `method` 字段，`fetchLogin` 按 `method` 路由到 `auth/login` 或 `auth/ldap-login`（两者载荷同形、均匿名）。
+  - 模板登录页挂载时 `fetchLoginMethods()` 获取已启用方式；多于一种时渲染切换 tab：local/ldap 共用表单（仅 `method` 不同），sso 渲染跳转按钮（SSO 重定向端点由宿主/平台提供，模板仅负责跳转 `/auth/sso`）。
+  - 发现端点失败时回落单表单（local），不阻断登录。
+
+### Docs
+
+- 模板 README 排障示例版本号更新为 `@oj-module/cli@0.2.3`。
+
 ## [0.2.2] - 2026-10-16
 
 双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步升 **0.2.2**（纯修复 + 文档，无破坏性变更）。

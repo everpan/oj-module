@@ -34,8 +34,10 @@ function mapAuthPayload(data?: { access_token?: string, refresh_token?: string }
 }
 
 export function fetchLogin(data: LoginInfo): Promise<AuthType> {
+	// 按登录方式路由：ldap → auth/ldap-login（匿名，载荷同本地），其余 → auth/login。
+	const path = data.method === "ldap" ? "auth/ldap-login" : "auth/login";
 	return request
-		.post("auth/login", { json: data })
+		.post(path, { json: data })
 		.json<OjEnvelope<{ access_token?: string, refresh_token?: string }>>()
 		.then(env => mapAuthPayload(env.data));
 }
