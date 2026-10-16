@@ -54,6 +54,9 @@ description: 用 ojm 开发前后端一体工程时使用——新增/修改前�
   仅平级声明 `.response`。不要手写 `content-type`（运行时按 boundary 自动补）。
 - **前端模块的 import 只有三类**：`@oj-module/runtime`、宿主 importmap 提供的共享依赖、
   自身相对路径。共享依赖不进工程 `dependencies`（宿主提供单例，模块不得打包副本）。
+  **拿用户/角色等信息：读走 `useUserStore` / `useAuthStore` / `useAccess`（`AccessControl` 门禁），
+  写走契约 client（`ojm api` 生成模块自有 `__client`，或复用 runtime 导出的 `api/rbac` / `api/user`），
+  绝不 import 框架 `#src/*`**——设计动机与红线见手册 §2.8。
 - **后端方法名是 `del`，不是 `delete`**（写成 `delete` 返回 405）。
 - **加一张新表是三件套，不是只写 `schema.yaml`**：`migrations/{seq:04}__*.sql`（DDL 的真正定义（实际 SQL），
   DDL 只进 migrations）+ `schema.yaml`（声明，与 migration 逐字段一致）+ `manifest.yaml` 的 `tables:`

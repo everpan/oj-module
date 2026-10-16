@@ -320,6 +320,41 @@ importmap 键，构建期报错——需要新深路径请联系框架方在共�
 
 ---
 
+### 2.8 模块如何获取用户/角色等信息（读与写的边界）
+
+模块常要读当前用户、角色、权限，甚至写改密/改角色。**正确姿势是走框架的「公共出口 + 契约客户端」，而不是 import 框架源码**——后者会把 runtime 内部实现打进模块 bundle，造成编译夹带、双份 store / 双 React、版本不一致。本节讲清楚边界与红线。
+
+**读（用户/角色/权限）→ 用 `@oj-module/runtime` 导出的公共 hook/store**
+
+这些是框架写入的同一份 zustand 单例，模块订阅即拿到实时状态，无需自己再拉一份：
+
+- `useUserStore`：当前用户画像（`username` / `roles` / `permissions` / `email` …）；
+- `useAuthStore`：`token`、登录/登出（`login` / `logout`）；
+- `useAccess` + `AccessControl` 组件：基于 `roles` / `permissions` 的按钮/菜单门禁，别自己拿 `roles` 数组手算；
+- 其它：`usePreferences`、`useTabsStore`、`useSlotNodes`（§5.5）等。
+
+```ts
+import { useUserStore, useAccess, AccessControl } from "@oj-module/runtime";
+
+const roles = useUserStore(s => s.roles);
+// 或按权限门禁：<AccessControl permission="system:users:read"><Button>用户管理</Button></AccessControl>
+```
+
+**写（改密/改角色/改设置）→ 走契约 API client，不碰框架内部**
+
+- 框架已把 `auth/*`、`system/*`、`web/*` 等端点经 OpenAPI 契约定义，并从 `@oj-module/runtime` 导出类型化 fetch（如 `api/rbac` 的 `fetchChangePassword`、`fetchRbacUpdateUserRoles`，`api/user` 的 `fetchUserInfo`）。要调框架内置写接口，直接复用这些导出。**但更推荐模块 own 自己的契约**：在 `api/src/<模块>/contract.ts` 声明，跑 `ojm api` 生成 `web/src/<模块>/__client/api.ts`，模块经自己的 client 调框架端点——接口由契约（versioned OpenAPI）对齐，而非把框架源文件打进来。
+- 底层都走同一个 `request` 单例 + 契约 URL；模块侧请求被 `defineModule` 的 `ctx` 收敛到登记过的 `apiPrefix`，越界 / `../` 穿越 / 逐请求 prefix 覆盖均被拒（请求边界见 §2.6 + `tests/runtime/scoped-request.test.ts`）。
+
+**为什么不会「版本不一致」**
+
+宿主（cli 内置 `shell-dist`）把 `react` / `antd` / `runtime` 等共享依赖预打包、经 importmap 提供**单例**——宿主与所有模块命中同一份实例。所以模块的 `useUserStore` 和框架的是**同一个 store**，antd `ConfigProvider` 也只有一个：不会出现两份 React / 两份 store 状态不同步。共享依赖版本以 `catalog:` 单一真相钉死（见 §2.7），模块只在 `devDependencies` 对齐版本供 `tsc` 用。
+
+**红线**
+
+- **绝不 `import … from "#src/*"`**：构建期直接拦（§2.6）。模块只 import 三类（§2.6）。
+- **`@oj-module/runtime` 的出口是冻结契约**：有 `tests/runtime/runtime-exports.test.ts` 守护，加/删导出即红，属破坏性变更。要用的东西若在出口里没有，**提需求让它进公共出口**，别改成 import 框架内部——否则一发版就碎。
+- 需要框架没暴露的能力（如接管某内置功能），走 §4 的 provider 接管，而非源码 import。
+
 ## §3 契约与代码生成
 
 ### 3.1 一句话
