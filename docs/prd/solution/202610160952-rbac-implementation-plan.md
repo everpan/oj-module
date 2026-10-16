@@ -48,8 +48,8 @@
 |---|---|---|---|---|---|---|
 | A1 | 建表与迁移 | `sys_setting` / `sys_oplog` / `sys_solution_route` / `sys_role` / `sys_permission` / `sys_role_permission` / `sys_user_role`（含 `deprecated` 列）；users 增 `source`/`display_name` 迁移；**移除 `users.roles` JSON 列**（D10，含 wiki 数据迁移脚本） | AC1-7 | 已完成 | 1005 | 10min |
 | A2 | seed | 框架内置角色（superadmin/admin/editor/viewer，`builtin=1`）；**seed 默认 superadmin 账号**（D12，`must_change=1`，初始口令随机生成并打印一次） | AC1-27 | 未开始 | - | - |
-| A3 | 判权出口 | `_platform` 共享 service：`assertPermission`（四级链，DB 权威源 + 进程内缓存写时失效）、`assertSystemAdmin`、`assertSuperAdmin`（D11）；code 首段 JS 侧切好传参（三方言纪律）；顺带校验 `is_forbidden`（**A3 内补迁移 0006 加列**——A1 遗漏，实现期发现并回填设计文档 §9） | AC1-1~6, AC1-9 | 进行中 | 1014 | - |
-| A4 | 审计 | `recordOp` + `auditOp`（fire-and-forget，脱敏红线）；403 失败审计按 (user_id, code) 分钟窗口去重（AC1-29）；`sys_oplog` 带 module/version | AC1-29 | 未开始 | - | - |
+| A3 | 判权出口 | `_platform` 共享 service：`assertPermission`（四级链，DB 权威源 + 进程内缓存写时失效）、`assertSystemAdmin`、`assertSuperAdmin`（D11）；code 首段 JS 侧切好传参（三方言纪律）；顺带校验 `is_forbidden`（**A3 内补迁移 0006 加列**——A1 遗漏，实现期发现并回填设计文档 §9） | AC1-1~6, AC1-9 | 已完成 | 1014 | 12min |
+| A4 | 审计 | `recordOp` + `auditOp`（fire-and-forget，脱敏红线）；403 失败审计按 (user_id, code) 分钟窗口去重（AC1-29）；`sys_oplog` 带 module/version | AC1-29 | 进行中 | 1017 | - |
 | A5 | 查询工具 | DRY 收敛：`paginate(limit≤200, truncated)` + `likeEscape(keyword, minLen=2, maxLen=64)` 共享工具，全部列表接口复用 | AC1-22/24 | 未开始 | - | - |
 | A6 | 角色管理 API | 角色 CRUD（custom 机器名强制 `custom.<slug>`）、绑定编辑（insert-if-absent 语义、superadmin/admin/editor/viewer 不出现在绑定编辑）、deprecated 已绑定视图标灰、占用禁删、**手动摘绑定 = 紧急吊销出口**；写审计 role.create/bindings.update/delete | AC1-15~20, AC1-28, AC1-30 | 未开始 | - | - |
 | A7 | 通讯录 service | `searchContacts`（不含 email/avatar/roles，排除禁用）+ `GET /api/_platform/contacts[/:id]`（keyword≥2、限速、详情含 email/avatar） | AC1-22~25 | 未开始 | - | - |
