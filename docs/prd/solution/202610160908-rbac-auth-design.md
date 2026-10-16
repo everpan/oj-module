@@ -429,3 +429,12 @@ flowchart LR
 3. 判权 SQL 顺手加 `WHERE deprecated=0` 会破坏「升级判决不突变」——双向过滤方向必须显式钉死（工程 E2）。
 4. 卸载级联漏 `permission_code` 维度 → custom 角色残留绑定在重装解决方案时**静默复活旧授权**（工程 E4）。
 5. 先查禁用后验口令泄露账号枚举状态——本地登录先验口令（统一 401），LDAP 因 JIT 无法避免则接受并注明（安全 S8 / D14）。
+
+### 9.1 阶段 0 spike 结论（S0，2026-10-16 0958–1002，耗时约 5 分钟）
+
+**测试形态成立（工程评审 E10 关闭）**，沿用 oj-wiki 先例并落进模板：
+
+- **形态**：vitest（Node 22 内建 `node:sqlite` 内存库）+ `tests/fixture.ts` 重放 `api/src/*/migrations/*.sql` **真实迁移**建表——夹具与迁移不可能漂移；service 经 `globalThis.db`（`query/exec/tx/dialect`，与 oj 运行时注入同面）访问，**业务代码零改动即可被测**；
+- **事务能力确认**：运行时 `db.tx(fn)` 面存在（BEGIN/COMMIT/ROLLBACK 包裹回调），夹具镜像同面并实测往返（提交持久化/回滚不留痕）——D10 缓存写时失效与 §5 级联删除的事务策略可行；
+- **DDD 落点**：判权领域核心抽为纯函数 `decideAccess(roles, bindings, code)`（`src/_platform/_shared/service/guard.ts`），IO 留应用层；AC1-1~6 判定矩阵 8 断言 + 夹具冒烟 3 断言全绿（`packages/cli/templates/api/tests/guard.spec.ts`）；
+- **反常识记录**：Node 22 `globalThis.crypto`（WebCrypto）为只读，夹具无法在其上补 `sha256Hex`——oj 增补的 crypto 面（sha256Hex/md5Hex）属运行时私有，Node 侧按用例需要再单独 stub，**不可假设 `g.crypto ?? {}` 可写**。
