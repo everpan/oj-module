@@ -74,17 +74,17 @@
 | B3 | refresh token | §3.1 完整实现：不透明随机串、SHA-256 哈希存储、30d 绝对 TTL、轮换作旧、reuse 检测全族吊销+审计 | AC1-13 | 已完成 | 1048 | （随 B1-B4；补迁移 0008 三方言） |
 | B4 | access token | JWT 仅载 `sub`，15min；签发时一次 JOIN 读 `sys_user_role` 填用户资料接口（roles 走资料接口不进 claims） | AC1-13 | 已完成 | 1048 | （随 B1-B4；user-info 端点同步修） |
 | B5 | 登录限速 | (IP, username) 双维度限速 + 指数 backoff + 失败审计 | AC1-26 | 进行中 | 1054 | - |
-| B6 | 建号加固 | 拒绝 `^(ldap|sso):` 前缀用户名；口令 ≥6 | AC1-17 关联 | 进行中 | 1059 | - |
-| B7 | 账号管理 API | 4 接口（create/roles/password/forbidden）+ 保护红线（最后 superadmin、禁止操作自己、admin 不碰成员资格）+ 写审计 | AC1-7~10 | 进行中 | 1059 | - |
+| B6 | 建号加固 | 拒绝 `^(ldap|sso):` 前缀用户名；口令 ≥6 | AC1-17 关联 | 已完成 | 1059 | 20min |
+| B7 | 账号管理 API | 4 接口（create/roles/password/forbidden）+ 保护红线（最后 superadmin、禁止操作自己、admin 不碰成员资格）+ 写审计 | AC1-7~10 | 已完成 | 1059 | （随 B6 一次提交） |
 
 **DoD**：登录/刷新/改密链路 AC 全绿；集中评审合并。
 
-**阶段小结**（全部任务完成后填写）：
-- 关键过程：
-- 实际耗时：
-- 偏差与决策回填（设计文档 §9 条目号）：
-- 反常识记录：
-- 集中评审结论：
+**阶段小结**（阶段 B 全部任务完成，2026-10-16 11:25）：
+- 关键过程：B1-B4 登录链一次成型（session.ts 注入式重写：localLogin D14 顺序、must_change 限权闭环、refresh DB 轮换/reuse 全族吊销、JWT 仅 sub；补迁移 0008 三方言 + schema/manifest）；B5 限速（loginBlocked/loginFailed 指数 backoff + 节流/失败审计）；B6+B7 账号管理（users.ts service 红线 + /api/system/users 四端点）。全阶段 BDD 先行，107 测试 11 文件全绿；lint 0 错、typecheck 净
+- 实际耗时：B1-B4 30min + B5 10min + B6/B7 20min ≈ 60min
+- 偏差与决策回填（设计文档 §9 条目号）：§9.2-7/§9.2-8 待回填（JwtApi 仅 {sub,roles} 面 → must_change 走 DB 判权悬挂而非 claims 标记；AC1-10 最后-superadmin 的现实可达路径 = 禁止操作自己）
+- 反常识记录：① oj JwtApi 的 sign 面只有 sub+roles——roles 不进 claims 的约束在运行时 API 层语法级成立，限权态只能 DB 驱动 ② `http.user.id` 在 query 是字符串数字，service 一律 Number() 归一
+- 集中评审结论：待评审——本阶段 5 个 commit（783c9c51..5e8276a7），评审要点：deps 注入边界的统一口径（session/users 已一致）、must_change 悬挂拒绝只覆盖判权出口（登录可读端点不受限——登录链改造范围内的已知口径）
 
 ## 5. 阶段 C：前端页面
 
