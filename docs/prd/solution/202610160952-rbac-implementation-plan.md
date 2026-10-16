@@ -92,7 +92,7 @@
 
 | # | 任务 | 内容 | AC 锚点 | 状态 | 开始 | 耗时 |
 |---|---|---|---|---|---|---|
-| C1 | 用户管理页 | `web/system/pages/user/` 实装（Table+Modal+Form）；角色下拉按 module 分组；superadmin 相关按角色显隐 | AC1-7~10 | 未开始 | - | - |
+| C1 | 用户管理页 | `web/system/pages/user/` 实装（Table+Modal+Form）；角色下拉按 module 分组；superadmin 相关按角色显隐 | AC1-7~10 | 进行中 | 1130 | - |
 | C2 | 角色管理页 | 新建（custom.<slug>+展示名）/绑定编辑（标灰 deprecated、超集与页面门角色无入口）/删除（占用禁删）/紧急吊销 | AC1-15~20, AC1-28, AC1-30 | 未开始 | - | - |
 | C3 | 操作日志页 | 查询（action/username/module 过滤、truncated）；admin 可查（D13）；403 聚合展示 | AC1-29 | 未开始 | - | - |
 | C4 | 系统设置页 | 按 group 分 Card；`framework.site_title` 经 htmlTransform 生效；`market_cdn_url`（superadmin 可见可改） | PRD §4.3 | 未开始 | - | - |
