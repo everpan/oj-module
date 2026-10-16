@@ -13,6 +13,21 @@ pnpm preview    # 预览：oj migrate + server（release 产物）
 
 登录账号：`admin` / `123456`（见 `api/src/_platform/seed.sql`）。
 
+## 系统管理模块
+
+`web/src/system/`（用户管理 / 成员资格 / 角色权限 / 操作日志 / 站点设置 / 登录方式）
+的前端 API 客户端 `__client/` 是生成物、不随模板分发，**首次使用前生成一次**：
+
+```bash
+pnpm dev                              # 终端 A：起 oj 后端 + 前端
+bin/oj openapi -c config.yaml -d api/src -b /api -o openapi.json   # 终端 B：产出契约
+pnpm exec ojm api                     # 生成 web/src/*/__client（dev 检测到 openapi.json 变化也会自动重生成）
+```
+
+生成后重启 `pnpm dev`，「系统管理」菜单即可用（生成前该模块加载失败属预期）。
+改了 `api/src` 的 handler `.schema`/`.response` 后同样重跑这两条保持同步
+（`ojm api --check` 可对账，零漂移为发布门禁）。成员资格页仅 superadmin 可见。
+
 ## 目录
 
 ```
