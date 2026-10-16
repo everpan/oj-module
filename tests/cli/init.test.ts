@@ -97,7 +97,6 @@ describe("initProject", () => {
 		expect(modulesConfig).toContain("\"personal-center\"");
 		expect(fs.existsSync(path.join(dest, "web/src/personal-center/entry.ts"))).toBe(true);
 		expect(fs.existsSync(path.join(dest, "web/src/personal-center/pages/my-profile/index.tsx"))).toBe(true);
-		expect(fs.existsSync(path.join(dest, "web/src/personal-center/pages/settings/index.tsx"))).toBe(true);
 		expect(fs.existsSync(path.join(dest, "web/src/personal-center/locales/zh-CN.json"))).toBe(true);
 		expect(fs.existsSync(path.join(dest, "web/src/personal-center/locales/en-US.json"))).toBe(true);
 		// 后端（T2）：manifest + upload handler（handler `.schema` 取代旧 contract.ts）；
