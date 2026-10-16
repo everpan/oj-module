@@ -5,6 +5,7 @@ import type {
 	LoginMethods,
 	RbacContact,
 	RbacOplogPage,
+	RbacOplogWrite,
 	RbacPermission,
 	RbacRole,
 	RbacSettingGroup,
