@@ -3,3 +3,12 @@
 # 命令报 ERR_PNPM_IGNORED_BUILDS（0.1.0 发布实测）。
 allowBuilds:
   esbuild: true
+
+# @oj-module/cli 经 `catalog:` 拉 @redocly/cli，但 catalog 协议只作用于 workspace
+# 自有 package.json 的依赖，对 cli（外部包）的 catalog: 传递依赖无效；生成工程
+# 不钉的话会漂到 latest，新发布的版本（如 2.64.1，发布当日）会撞本机
+# minimumReleaseAge supply-chain 策略被拒（ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION）。
+# 用 override 钉死到仓库 pnpm-workspace.yaml 的 minimumReleaseAgeExclude 白名单版本
+# 2.51.0（cli 实测通过的区间 ^2.51.0 内，且发布已久、过策略）。
+overrides:
+  '@redocly/cli': 2.51.0
