@@ -221,6 +221,12 @@ function Boot() {
 							children: [
 								{ index: true, element: <Navigate to={getRoutes()[0]?.path ?? "/"} replace /> },
 								...getRoutes(),
+								// 风险项 §9.1：非管理员直达角色受限路由（如 /system/*）时，
+								// B16 过滤后该路由不在 getRoutes() 内 → React Router 无匹配
+								// 落默认「Unexpected Application Error!」。补 catch-all 渲染
+								// 框架兜底页（功能正确、观感与无权限面板同构）。后端 403 仍
+								// 是权限硬兜底，此页仅改善直链观感，不构成权限判断。
+								{ path: "*", element: <PageError /> },
 							],
 						},
 					]),
