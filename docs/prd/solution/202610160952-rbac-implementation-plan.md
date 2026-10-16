@@ -114,18 +114,18 @@
 
 | # | 任务 | 内容 | AC 锚点 | 状态 | 开始 | 耗时 |
 |---|---|---|---|---|---|---|
-| D1 | LDAP 登录 | 移植 wiki 流程 + B1 顺序 + B5 限速 + esc 红线 + 两段式配置（连接段 config.yaml / 映射段 sys_setting） | AC1-12 | 未开始 | - | - |
-| D2 | 登录方式发现 | `GET /system/login-methods`（匿名，E6 路径纪律） | C5 关联 | 未开始 | - | - |
-| D3 | 设置页 LDAP 组 | 映射段可编辑；连接段只读展示 + 可复制 YAML 片段 + 「需重启」提示；不回写 config.yaml | PRD §4.5 | 未开始 | - | - |
+| D1 | LDAP 登录 | 移植 wiki 流程 + B5 限速（DB 版 rate）+ esc 红线 + 两段式配置（连接段 config.yaml / 映射段 sys_setting）；JIT 建号 `must_change=0`（外来号无本地旧口令，悬挂期会 brick——实现期决策回填 §9.4） | AC1-12 | 进行中 | 1220 | - |
+| D2 | 登录方式发现 | `GET /system/login-methods`（匿名，E6 路径纪律） | C5 关联 | 已完成 | （C 阶段已交付，ldap.enabled 开关驱动） | - |
+| D3 | 登录页 LDAP 表单 | LDAP 标签接真实表单（复用密码登录 UI，端点换 `/auth/ldap-login`）；设置页 LDAP 映射组随 seed 自动出现（连接段只读展示列 M5 安装器期再做，PRD §4.5 设置页处理的轻量落点） | AC1-12 | 未开始 | - | - |
 
 **DoD**：`libldap.dylib` 实机 bind 通过一次真实 LDAP 登录；未配置时登录页无入口；集中评审合并。
 
-**阶段小结**（2026-10-16 1130–1540，含真机冒烟返工）：
-- 关键过程：C1→C5 按序实装，页面纯函数（roleLabel/canOperate/绑定 diff）单测先行；C5 登录页经 `login-methods` 匿名端点驱动 Tabs、must_change 内联改密闭环（改密后换发新 token 跳回 redirect）。`packages/runtime/src/api/rbac/` 新增前端 API 层 + `tests/runtime/rbac-ui-helpers.test.ts` 钉 UI 纯函数。模板 openapi.json 登记 16 新端点（checkApi 契约）、config.yaml 匿名路径补 `/system/login-methods`。收尾真机冒烟（`ojm init`+`ojm dev` 实项目 curl 全矩阵）钉出三个运行时陷阱并返工——**这是本阶段最大耗时项（≈1.5h）**：① oj 未捕获异常恒 500 不读 err.status → `_shared/respond.ts` 统一出口包裹全部 handler；② handler 相对 import 按目录解析 → 12 个 api.ts 深度修正；③ 每请求重建模块实例 → B5 节流/AC1-29 deny 聚合/access 缓存全部落库或改 DB 锚（迁移 0009 三方言）。
-- 实际耗时：页面实装 ≈3.2h；真机冒烟+返工 ≈1.6h；合计 ≈4.8h。
-- 偏差与决策回填：全部写入设计文档 §9.3（三条陷阱分类：①反常规 ②反常识 ③反常识·最重，含流程级教训「模块级可变状态一律视为单请求作用域」）；B5 行内同步标注返工。
-- 反常识记录：见设计文档 §9.3。补一条流程教训：模板 vitest 套件（service 直引）结构性覆盖不到 handler 层与模块级状态——「规格全绿、真机必坏」三类问题只有端到端冒烟能钉，uni-dev-smoke 价值实证。
-- 集中评审结论：待评审（合并 feat/ojm 前，随阶段 E 集中评审）。
+**阶段小结**（全部任务完成后填写）：
+- 关键过程：
+- 实际耗时：
+- 偏差与决策回填：
+- 反常识记录：
+- 集中评审结论：
 
 ## 7. 阶段 E：验收与收尾
 
