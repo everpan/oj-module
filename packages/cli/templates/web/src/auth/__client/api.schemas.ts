@@ -4,5 +4,10 @@
 import { z } from "@oj-module/runtime";
 
 export const schemas = {
-
+	"authPasswordPut": {
+		body: z.object({
+	"old_password": z.string().min(1),
+	"new_password": z.string().min(6)
+}),
+	},
 };

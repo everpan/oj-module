@@ -5,6 +5,16 @@
 		"username": "Username",
 		"password": "Password",
 		"submit": "Sign in",
-		"success": "Signed in"
+		"success": "Signed in",
+		"changePwd": {
+			"title": "Change Password",
+			"hint": "After first login or an admin reset, you must change your password before using the system.",
+			"old": "Current password",
+			"new": "New password",
+			"confirm": "Confirm new password",
+			"min": "At least 6 characters",
+			"mismatch": "Passwords do not match",
+			"submit": "Change & sign in again"
+		}
 	}
 }

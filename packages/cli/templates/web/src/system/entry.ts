@@ -70,9 +70,11 @@ export default defineModule({
 	description: "系统管理模块（框架管理面）",
 	version: "0.1.0",
 	peerRuntime: ">=0.0.0",
-	// 路由级门禁（B16）：非 admin 不注入 /system 路由、菜单不可见；
+	// 路由级门禁（B16）：非系统管理员不注入 /system 路由、菜单不可见；
 	// API 级 403 由 assertSystemAdmin + service 层硬 enforcement 兜底。
-	config: { requiredRoles: ["admin"] },
+	// 角色口径对齐后端 assertSystemAdmin（access.ts:90）——superadmin **或**
+	// admin 均可；seed 的 admin 账号只有 superadmin，写 ["admin"] 会把它自己挡在门外。
+	config: { requiredRoles: ["admin", "superadmin"] },
 	routes,
 	i18n: {
 		"zh-CN": () => import("./locales/zh-CN.json"),

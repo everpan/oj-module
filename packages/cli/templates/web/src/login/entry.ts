@@ -34,6 +34,23 @@ export default defineModule({
 				},
 			],
 		},
+		{
+			// 首登/重置后强制改密（must_change 悬挂期唯一可用写端）；
+			// 管理面 403 msg=password change required 时也引导至此
+			path: "/change-password",
+			handle: {
+				layout: "fullscreen",
+				hideInMenu: true,
+				title: "login:page.changePwd.title",
+			},
+			children: [
+				{
+					index: true,
+					Component: lazy(() => import("./pages/change-password")),
+					handle: { title: "login:page.changePwd.title", hideInMenu: true },
+				},
+			],
+		},
 	],
 	i18n: {
 		"zh-CN": () => import("./locales/zh-CN.json"),

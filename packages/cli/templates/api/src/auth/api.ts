@@ -61,5 +61,16 @@ const password = {
 		await respond(async () => createSession().changePassword(Number(uid), String(body.old_password ?? ""), String(body.new_password ?? "")));
 	},
 };
+// must_change 悬挂期唯一可用写端（AC1-27）；契约供 login/system 模板的改密 UI 使用
+password.put.schema = {
+	body: {
+		type: "object",
+		required: ["old_password", "new_password"],
+		properties: {
+			old_password: { type: "string", minLength: 1 },
+			new_password: { type: "string", minLength: 6 },
+		},
+	},
+};
 
 export default { login, logout, refresh, password };

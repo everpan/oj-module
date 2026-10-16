@@ -33,7 +33,7 @@ export function createAuthClient(ctx: ModuleContext) {
 	}
 	ctx.register.apiPrefix(API_PREFIX);
 	bindRequest(ctx.utils.request);
-	return { authLoginPost, authLogoutPost, authRefreshPost };
+	return { authLoginPost, authLogoutPost, authRefreshPost, authPasswordPut, authLdapLoginPost };
 }
 
 /**
@@ -98,6 +98,38 @@ export async function authRefreshPost(): Promise<unknown> {
 	const client = ensureReq();
 	try {
 		const env = await client.post(`auth/refresh`).json<OjEnvelope<unknown>>();
+		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
+		if (typeof env.code === "number" && env.code !== 0)
+			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
+		const data = env.data as unknown;
+		return data;
+	}
+	catch (e) {
+		throw await toApiError(e);
+	}
+}
+
+export type AuthPasswordPutBody = z.input<(typeof schemas)["authPasswordPut"]["body"]>;
+
+export async function authPasswordPut(body: AuthPasswordPutBody): Promise<unknown> {
+	const client = ensureReq();
+	try {
+		const env = await client.put(`auth/password`, { json: body }).json<OjEnvelope<unknown>>();
+		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
+		if (typeof env.code === "number" && env.code !== 0)
+			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
+		const data = env.data as unknown;
+		return data;
+	}
+	catch (e) {
+		throw await toApiError(e);
+	}
+}
+
+export async function authLdapLoginPost(): Promise<unknown> {
+	const client = ensureReq();
+	try {
+		const env = await client.post(`auth/ldap-login`).json<OjEnvelope<unknown>>();
 		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
 		if (typeof env.code === "number" && env.code !== 0)
 			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
