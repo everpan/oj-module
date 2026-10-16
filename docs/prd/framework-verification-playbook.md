@@ -4,7 +4,19 @@
 > **配套**：[`framework-development-guide.md`](./framework-development-guide.md)（原理）、[`oj-fullstack-tutorial.md`](./oj-fullstack-tutorial.md)（跟做）。
 > **原则**：每一步都有**可判定通过/失败的检查点**，不要只看命令退出码，要核对产物。
 
-### 最近一次基线（2026-10-15 二次演练，oj 0.1.74 / cli+runtime 0.1.20 提交态 `41fadd39`）
+### 最近一次基线（2026-10-16 复跑，oj 0.1.74 / cli+runtime 0.2.1 提交态 `34ac3d09`）
+
+| 项 | 值 |
+| --- | --- |
+| 日期 | 2026-10-16 |
+| 框架包版本 | `cli`/`runtime` `0.2.1`（**双包 lockstep**：runtime 自 0.2.0 升 0.2.1 与 cli 对齐，提交 `34ac3d09`；宿主 shell-dist 已重建，versions.json 记录 runtime 0.2.1） |
+| oj | `0.1.74`（本机预置 `bin/`，同 §0 旁路 1） |
+| 结果 | **全链路通过（§1–§6）**：`ojm init`（76 项新增）→ `pnpm install`（§0 旁路 2：本地 tgz 覆盖 cli+runtime）→ JsRuntime 探针通过 → `oj openapi` + `ojm api` + `--check` 0 error / 0 warn → `ojm build`（后端模块含 system 13 端点、modules.json 含 home/demo/login/personal-center/notification/system）→ `tsc` 0 error → `ojm dev`：seed ok、21 路由方法入参校验、登录/系统管理联调全对。`ojm preview`（§7）本次未跑（dev 已验证，避免端口冲突），列为可选。 |
+| 本次新增验证点（用户要求：验证模板内置模块） | **系统管理模板模块 + 核心模块存在性联调**：以 `admin/123456` 登录（首登 `must_change=1` → 改密 `PUT /api/auth/password` 清悬挂）→ 带 token 直打 `system/settings`(200, items.module ∈ {framework,ldap,market,sso})、`system/users`(1)、`system/roles`(4)、`system/oplog`(4 条)、`system/permissions`(200)、`system/login-methods`(200)、`notifications`(4 条) 全部 200，无 token 返回 401；`web/hello`、`web/user-info`(admin/superadmin)、`web/get-async-routes` 全部 200；`modules.json` 注册 6 模块（home/demo/login/personal-center/notification/system）且各自 `entry.js` 可达（notification 版本 0.0.2，路径非空）。 |
+| 与 0.1.20 基线差异 | 除双包升 0.2.1 与 shell-dist 重建外，无任何功能回退；本次模板已内置完整 `system` 模块（13 系统端点 + 6 页面），无需手动补 books 演示模块即可验证「模块存在」诉求。 |
+| 复跑关键坑（新增已知项，见 §9） | 登录限速：`sys_rate_window`（per-IP 30/min）+ `sys_login_throttle`（per-(IP,user) 连败阻断）在反复失败登录后会以 `401 invalid credentials` 掩盖，并非口令错误。复跑前 `DELETE FROM sys_login_throttle; DELETE FROM sys_rate_window;` 清表，或冷起新 db（`rm -f api/db.sqlite*` 后 `ojm dev` 重建 seed）即可一次性成功登录。 |
+
+### 历史基线（2026-10-15 二次演练，oj 0.1.74 / cli+runtime 0.1.20 提交态 `41fadd39`）
 
 | 项 | 值 |
 | --- | --- |
@@ -290,6 +302,7 @@ API 全链路再通一遍（登录/列表/新增）；
 | `typecheck` 报 `Property 'env' does not exist on type 'ImportMeta'` | 缺 `env.d.ts` / 未进 tsconfig include | 新版 `ojm init` 已内置；旧工程补 `env.d.ts` 并加进 `include` |
 | `@types/react` / `typescript` 为 `*` | 宿主 versions.json 未收录 | 安装后钉成实际版本 |
 | 登录 401 且非 `invalid credentials` | `/auth/*` 不在 `anonymous_paths` | 补进 `api/config.yaml` 后重启 |
+| 反复失败登录（含首登改密前）后登录恒 401 `invalid credentials`，但口令正确 | per-IP 登录限速 `sys_rate_window`（阈值 30/min，见 `api/src/auth/_shared/login-throttle.ts` 的 `rateLimit("login:ip:${ip}", 30, 60_000)`）被压满，`guardLoginThrottle` 在窗口超限时抛 401 并复用 "invalid credentials" 文案掩盖 | 复跑前清表：`sqlite3 api/db.sqlite "DELETE FROM sys_login_throttle; DELETE FROM sys_rate_window;"`；或冷起新 db（`rm -f api/db.sqlite*` 后 `ojm dev` 重建 seed）一次性成功登录 |
 | 新增后端模块目录后接口 404 | 目录镜像路由未热加载 | 重启 `ojm dev` |
 | DELETE 请求 405 | 方法名写成 `delete` | 改为 `del` |
 | `ojm api` 报 apiPrefix 与目录名不符 | 违反 AC-D9 | 改 `apiPrefix` 或移动契约目录 |
