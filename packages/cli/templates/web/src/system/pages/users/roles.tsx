@@ -40,7 +40,7 @@ export default function UserRolesPage() {
 
 	const user = usersQuery.data?.find(u => String(u.id) === uid);
 	if (usersQuery.error && isForbidden(usersQuery.error))
-		return <ForbiddenPanel t={t} />;
+		return <ForbiddenPanel t={t} error={usersQuery.error} />;
 
 	const value = selected ?? user?.roles ?? [];
 	const isSelf = String(user?.id) === me;

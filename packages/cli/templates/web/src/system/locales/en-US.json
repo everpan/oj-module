@@ -80,7 +80,12 @@
 		"selfAction": "You cannot perform this action on yourself",
 		"pwdTooShort": "Password must be at least 6 characters",
 		"usernameExists": "Username already exists",
-		"usernameReserved": "This username prefix is reserved for external identity sources"
+		"usernameReserved": "This username prefix is reserved for external identity sources",
+		"mustChange": {
+			"title": "Password change required",
+			"hint": "This account must change its password before admin features become available.",
+			"go": "Change password now"
+		}
 	},
 	"setting": {
 		"site_title": "Site Title",

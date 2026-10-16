@@ -21,7 +21,7 @@ export default function RolesPage() {
 	const permsQuery = useQuery({ queryKey: ["system", "permissions"], queryFn: systemPermissionsGet });
 
 	if ((rolesQuery.error && isForbidden(rolesQuery.error)) || (permsQuery.error && isForbidden(permsQuery.error)))
-		return <ForbiddenPanel t={t} />;
+		return <ForbiddenPanel t={t} error={rolesQuery.error ?? permsQuery.error} />;
 
 	const roleColumns = [
 		{

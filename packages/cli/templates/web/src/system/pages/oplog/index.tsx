@@ -29,7 +29,7 @@ export default function OplogPage() {
 	});
 
 	if (query.error && isForbidden(query.error))
-		return <ForbiddenPanel t={t} />;
+		return <ForbiddenPanel t={t} error={query.error} />;
 
 	const columns = [
 		{ title: t("system:oplog.columns.time"), dataIndex: "create_time", render: (ms: number) => dayjs(ms).format("YYYY-MM-DD HH:mm:ss") },

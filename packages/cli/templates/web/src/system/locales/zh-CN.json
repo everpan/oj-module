@@ -80,7 +80,12 @@
 		"selfAction": "不能对自己执行该操作",
 		"pwdTooShort": "口令至少 6 位",
 		"usernameExists": "用户名已存在",
-		"usernameReserved": "该用户名前缀为外部身份源保留"
+		"usernameReserved": "该用户名前缀为外部身份源保留",
+		"mustChange": {
+			"title": "需要先修改密码",
+			"hint": "当前账号尚未完成首次改密，管理功能暂不可用。修改完成后将自动返回。",
+			"go": "去修改密码"
+		}
 	},
 	"setting": {
 		"site_title": "站点标题",

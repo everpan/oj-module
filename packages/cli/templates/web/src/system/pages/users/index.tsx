@@ -45,7 +45,7 @@ export default function UsersPage() {
 	});
 
 	const createMut = useMutation({
-		mutationFn: (body: { username: string, password: string, displayName?: string, email?: string }) => systemUsersPost({ body }),
+		mutationFn: (body: { username: string, password: string, displayName?: string, email?: string }) => systemUsersPost(body),
 		onSuccess: () => {
 			message.success(t("system:users.createOk"));
 			setCreateOpen(false);
@@ -67,7 +67,7 @@ export default function UsersPage() {
 	});
 
 	if (usersQuery.error && isForbidden(usersQuery.error))
-		return <ForbiddenPanel t={t} />;
+		return <ForbiddenPanel t={t} error={usersQuery.error} />;
 
 	const columns = [
 		{ title: t("system:users.columns.username"), dataIndex: "username" },

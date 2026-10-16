@@ -75,7 +75,7 @@ export default function SettingsPage() {
 	const query = useQuery({ queryKey: ["system", "settings"], queryFn: systemSettingsGet });
 
 	const putMut = useMutation({
-		mutationFn: (body: { key: string, value: string }) => systemSettingsPut({ body }),
+		mutationFn: (body: { key: string, value: string }) => systemSettingsPut(body),
 		onSuccess: () => {
 			message.success(t("system:settingsPage.saved"));
 			queryClient.invalidateQueries({ queryKey: ["system", "settings"] });
@@ -84,7 +84,7 @@ export default function SettingsPage() {
 	});
 
 	if (query.error && isForbidden(query.error))
-		return <ForbiddenPanel t={t} />;
+		return <ForbiddenPanel t={t} error={query.error} />;
 
 	const groups = (query.data ?? [])
 		.map(g => ({ ...g, items: g.items.filter(i => FRAMEWORK_MODULES.has(i.module)) }))
