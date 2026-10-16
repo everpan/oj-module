@@ -1,0 +1,93 @@
+{
+	"menu": {
+		"system": "System",
+		"users": "Users",
+		"userRoles": "Membership",
+		"roles": "Roles & Permissions",
+		"oplog": "Audit Log",
+		"settings": "Site Settings",
+		"loginMethods": "Login Methods"
+	},
+	"common": {
+		"confirm": "Confirm",
+		"cancel": "Cancel",
+		"save": "Save",
+		"saved": "Saved",
+		"search": "Search",
+		"reset": "Reset",
+		"create": "Create"
+	},
+	"users": {
+		"create": "Create User",
+		"resetPwd": "Reset Password",
+		"forbidden": "Forbidden",
+		"createOk": "User created: password change required on first login",
+		"firstLoginHint": "Must change on first login",
+		"membership": "Membership",
+		"pwdPlaceholder": "At least 6 characters",
+		"columns": {
+			"username": "Username",
+			"displayName": "Display Name",
+			"email": "Email",
+			"roles": "Roles",
+			"status": "Status",
+			"actions": "Actions"
+		}
+	},
+	"userRoles": {
+		"title": "Membership",
+		"saved": "Roles updated",
+		"none": "(no roles)"
+	},
+	"rolesPage": {
+		"tabRoles": "Roles",
+		"tabPerms": "Permissions",
+		"builtin": "Built-in",
+		"deprecated": "Deprecated",
+		"holders": "Holders",
+		"permissions": "Bound Permissions",
+		"titleKey": "Title Key",
+		"readonlyHint": "Read-only view: roles and bindings are managed by solution tooling (upsertSolutionPerms)"
+	},
+	"oplog": {
+		"filterAction": "Action",
+		"filterUsername": "Username (prefix)",
+		"filterModule": "Module",
+		"filterLimit": "Limit",
+		"truncated": "Results truncated by limit; narrow your filters",
+		"columns": {
+			"time": "Time",
+			"username": "Username",
+			"action": "Action",
+			"module": "Module",
+			"target": "Target",
+			"detail": "Detail",
+			"level": "Level"
+		}
+	},
+	"settingsPage": {
+		"secretHint": "Secret items cannot be edited online",
+		"saved": "Settings saved"
+	},
+	"loginMethodsPage": {
+		"title": "Enabled login methods",
+		"methodLocal": "Local password",
+		"methodLdap": "LDAP",
+		"methodSso": "SSO"
+	},
+	"err": {
+		"forbidden": "Forbidden",
+		"selfAction": "You cannot perform this action on yourself",
+		"pwdTooShort": "Password must be at least 6 characters",
+		"usernameExists": "Username already exists",
+		"usernameReserved": "This username prefix is reserved for external identity sources"
+	},
+	"setting": {
+		"site_title": "Site Title",
+		"ldap_enabled": "Enable LDAP login",
+		"sso_enabled": "Enable SSO login",
+		"ldap_base_dn": "LDAP Base DN",
+		"ldap_uid_attr": "LDAP UID Attribute",
+		"ldap_email_attr": "LDAP Email Attribute"
+	}
+}
