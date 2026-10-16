@@ -10,6 +10,11 @@
 > 基于 0.2.0 框架基线（含后端管理面 `/api/system/*`、`/api/auth/*`）。
 > 注意：本仓 `package.json` 已在 0.2.0，但 0.2.0 未正式发版（npm 最高 0.1.21），
 > 0.2.0 的变更记录待补，本次 0.2.1 在其之上追加。
+>
+> 双包 lockstep：`@oj-module/runtime` 同步升 **0.2.1**（无功能改动，纯版本对齐，满足
+> 本仓「始终同版本号一起发布」通则）；`sync-host-versions.mjs` 的 prepack 门禁要求宿主
+> 产物里的 runtime 版本 == `packages/runtime` 版本，故发版前须 `pnpm --filter @oj-module/cli build:shell`
+> 重建 shell-dist（其 `versions.json` 记录 runtime 0.2.1）。
 
 ### Added
 

@@ -182,15 +182,14 @@ node scripts/smoke-system-admin.mjs              # 默认 http://localhost:5174
 | --- | --- | --- | --- |
 | T1 | 提交 §5 的 4 组改动 | `git status` 干净，消息合规 | ✅ 已提交（4 组 commit，消息以 `unix@vip.qq.com ai` 结尾） |
 | T2 | 设计文档收口 | `2026-10-16-1526-*.md` 的 T1–T7 勾选 + §6 评审补 R11–R13 + §7 总结（关键过程 + 耗时） | ✅ 已收口（`76731069`） |
-| T3 | 发版 `@oj-module/cli` 0.2.1（lockstep 带上 runtime 若有改动） | `change` 说明含本次新增模块与宿主修复 | 🟡 **仅准备**：cli 0.2.0→0.2.1（commit `1feeb9cc`）+ CHANGELOG 0.2.1；**未 `npm publish`**（用户指定「只准备不发」）。runtime 本分支无改动，保持 0.2.0——与 CHANGELOG「双包 lockstep」通则略有张力，见下方「发版注意」 |
+| T3 | 发版 `@oj-module/cli` 0.2.1（lockstep 带上 runtime 若有改动） | `change` 说明含本次新增模块与宿主修复 | 🟡 **仅准备未发**：cli + runtime 同步升 0.2.1（commit `1feeb9cc` + runtime 版本对齐提交），CHANGELOG 0.2.1 已含双包说明；**未 `npm publish`**（用户指定「只准备不发」）。双包 lockstep 已对齐 |
 | T4 | 冒烟复跑（用发版产物而非本地 tgz） | `scripts/smoke-system-admin.mjs` 17/17 | ✅ **17/17**（本地构建 + /tmp 临时工程 + 真 oj 0.1.74 后端；因 0.2.1 未发布，用本地 tgz 而非发版产物，结论已注明） |
 | T5 | 业务工程升级走查（oj-wiki：换 semver → `ojm init` → web.config 登记 → `oj openapi` + `ojm api` → 重启 `ojm dev`） | 升级后管理员可见「系统管理」6 页，自建 admin 页保持删除态 | 🟡 **只读走查，未改造**：oj-wiki 当前 `web.config.ts` 无 `system` 模块、`web/src/system/` 仅孤立 `__client`（无 entry/pages）；无遗留框架级 admin 页（命中项均为 wiki 自身内容管理页）。升级步骤见 §11。受「其余项目只读」约束未实际改造，验收由维护者执行 |
 | T6 | 可选加固：宿主链补 catch-all 兜底页（见 §9 风险 1） | 非管理员直达 `/system/*` 渲染框架兜底页而非 React Router 默认 404 | ✅ 已实现：`host.tsx` children 末加 `{ path: "*", element: <CatchAll /> }`（`CatchAll` 把 `PageError` 的 title 设为框架 404 文案 `exception.notFoundTitle`，i18n）；commit `2a3b356f` + `5000f0bc`；冒烟「非 admin 直达被拒」已 PASS |
 
 ### 发版注意（T3 / lockstep）
 
-- 本分支 `packages/runtime/src` **零改动**，按交接文档 §7 T3「lockstep 带上 runtime 若有改动」只升 cli → 0.2.1，runtime 留 0.2.0。
-- 但本仓 CHANGELOG 写明「双包始终同版本号一起发布」。若维护者遵循该通则，需把 runtime 也升 0.2.1（纯版本对齐、无功能改动）再发版；`sync-host-versions.mjs` 的 prepack 门禁只校验 runtime==宿主产物 runtime，不强制 cli==runtime，故仅升 cli 技术上可发。
+- 双包 lockstep 已对齐：`packages/runtime/src` 本分支无功能改动，但遵从本仓「双包始终同版本号一起发布」通则，runtime 同步升 0.2.1（纯版本对齐）；发版前须 `pnpm --filter @oj-module/cli build:shell` 重建 shell-dist，使其 `versions.json` 记录 runtime 0.2.1，否则 `sync-host-versions.mjs` prepack 门禁报错。
 - **CHANGELOG 缺口**：`package.json` 已是 0.2.0 但 CHANGELOG 最高只到 0.1.20（0.2.0 从未正式发版，npm 最高 0.1.21），0.2.0 段待补；本次 0.2.1 段已补在 0.1.20 之上。
 
 ## 8. 验收清单（规格 §7 → 证据）
