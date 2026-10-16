@@ -75,7 +75,11 @@
 			"security": "安全",
 			"login": "登录方式"
 		},
-		"superOnly": "该组仅超管可写"
+		"superOnly": "该组仅超管可写",
+		"group.ldap": "LDAP",
+		"ldap_base_dn": "Base DN",
+		"ldap_uid_attr": "UID 属性",
+		"ldap_email_attr": "邮箱属性"
 	},
 	"oplog": {
 		"actionFilter": "按操作过滤（如 auth.deny）",

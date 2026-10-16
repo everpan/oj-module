@@ -42,12 +42,24 @@ server:
     credentials: false
 db:
   default: 'sqlite://db.sqlite' # 相对 config 目录；缺文件自动建空库
+
+# ---- LDAP 连接段（D1/PRD §4.5 两段式之连接段；oj 插件严格解析本段，未知键启动 fail-fast——只写下列键）----
+# 取消注释并填值即接通目录服务；应用映射段在 DB/设置页（ldap.enabled、ldap_base_dn、
+# ldap_uid_attr、ldap_email_attr，group=ldap，即时生效）。本段改动属 restart_pending，需重启。
+# ldap:
+#  url: "ldap://127.0.0.1:389"
+#  bind_dn: ""
+#  bind_pw: ""
+#  timeout_ms: 3000
+#  start_tls: false
+#  tls_skip_verify: false
 auth:
   jwt_secret: __JWT_SECRET__ # init 随机生成；生产必须更换
   access_token_duration: 2h
   refresh_token_duration: 720h
   anonymous_paths: # auth 端点是业务路由，必须显式匿名（漏列则握手 401，见 ojm 开发手册 §8）
     - /auth/login
+    - /auth/ldap-login # D1/AC1-12：LDAP 目录登录（匿名）
     - /auth/refresh
     - /auth/logout
     # 登录页登录方式 Tabs 数据源（C5/AC2-2）：未登录即可读

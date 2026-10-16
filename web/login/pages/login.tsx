@@ -7,6 +7,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { PasswordLogin } from "./components/password-login";
 import { FORM_COMPONENT_MAP } from "./constants";
 import { FormModeContext } from "./form-mode-context";
 
@@ -14,7 +15,7 @@ import { FormModeContext } from "./form-mode-context";
  * 登录模块内容区（由 runtime 内置登录页模块化而来）：
  * 表单卡片 + formMode 切换（密码/验证码/注册/找回密码）。
  * C5：登录方式 Tabs 由后端 system/login-methods 驱动（AC2-2），
- * local = 既有表单；ldap/sso 为占位，能力随阶段 D 落地。
+ * local = 既有表单；ldap = 同形表单走 /auth/ldap-login（D3）；sso 占位待后续阶段。
  *
  * 视口 / 品牌区 / 工具区 / 页脚由框架级 FullscreenLayout 兜住
  *（handle.layout: "fullscreen"），本页零框架内部 import。
@@ -54,7 +55,9 @@ export default function Login() {
 						? FORM_COMPONENT_MAP.mustChange
 						: method === "local"
 							? FORM_COMPONENT_MAP[formMode]
-							: <p className="text-colorTextSecondary">{t(`login:method.${method}Pending`)}</p>}
+							: method === "ldap"
+								? <PasswordLogin ldap />
+								: <p className="text-colorTextSecondary">{t(`login:method.${method}Pending`)}</p>}
 				</motion.div>
 			</AnimatePresence>
 		</FormModeContext>

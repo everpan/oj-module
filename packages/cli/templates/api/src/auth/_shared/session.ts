@@ -160,6 +160,11 @@ export function createSession(deps: SessionDeps = runtimeDeps()) {
 		},
 
 		revokeAll,
+
+		/** D1：外部登录（LDAP/未来 SSO）签发出口——JIT/禁号由登录链先行处理（D14：LDAP 先查号）。 */
+		async issueExternal(uid: number): Promise<TokenBundle> {
+			return issueFor(uid);
+		},
 	};
 }
 

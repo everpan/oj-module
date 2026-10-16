@@ -77,3 +77,6 @@ export const fetchLoginMethods = () => get<LoginMethods>("system/login-methods")
 
 // ---- 登录链（B 期后端同形载荷；受限改密后端点为 auth/password） ----
 export const fetchChangePassword = (body: { old_password: string, new_password: string }) => put<AuthSessionPayload>("auth/password", body);
+
+// ---- LDAP 登录（D1/AC1-12；匿名端点，载荷与本地登录同形） ----
+export const fetchLdapLogin = (body: { username: string, password: string }) => post<AuthSessionPayload>("auth/ldap-login", body);

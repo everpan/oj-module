@@ -62,6 +62,7 @@ describe("rBAC 出口（阶段 C 增补，同 P3.1 白名单纪律）", () => {
 			"fetchRbacContactDetail",
 			"fetchLoginMethods",
 			"fetchChangePassword",
+			"fetchLdapLogin",
 		] as const)
 			expect((Runtime as Record<string, unknown>)[fn]).toBeTypeOf("function");
 		for (const fn of ["roleLabel", "canEditRoleBindings", "canDeleteRole", "canAssignRole", "bindingDiff", "groupByModule"] as const)

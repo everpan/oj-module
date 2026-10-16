@@ -75,7 +75,11 @@
 			"security": "Security",
 			"login": "Login Methods"
 		},
-		"superOnly": "Only superadmin can write this group"
+		"superOnly": "Only superadmin can write this group",
+		"group.ldap": "LDAP",
+		"ldap_base_dn": "Base DN",
+		"ldap_uid_attr": "UID attribute",
+		"ldap_email_attr": "Email attribute"
 	},
 	"oplog": {
 		"actionFilter": "Filter by action (e.g. auth.deny)",

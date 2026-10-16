@@ -1,6 +1,6 @@
 import type { LoginInfo } from "@oj-module/runtime";
 
-import { BasicButton, fetchUserInfo, getRedirectPath, useAuthStore } from "@oj-module/runtime";
+import { BasicButton, fetchLdapLogin, fetchUserInfo, getRedirectPath, useAuthStore } from "@oj-module/runtime";
 
 import {
 	Button,
@@ -12,6 +12,7 @@ import {
 import { use, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useSearchParams } from "react-router";
+
 import { PASSWORD_RULES, USERNAME_RULES } from "../../constants/rules";
 
 import { FormModeContext } from "../form-mode-context";
@@ -21,7 +22,8 @@ const FORM_INITIAL_VALUES: LoginInfo = {
 	password: "123456789admin",
 };
 
-export function PasswordLogin() {
+/** D3：ldap=true 时表单改走 /auth/ldap-login（AC1-12），隐藏本地专属入口（验证码/注册/找回）。 */
+export function PasswordLogin({ ldap = false }: { ldap?: boolean }) {
 	const [loading, setLoading] = useState(false);
 	const [passwordLoginForm] = Form.useForm();
 	const { t } = useTranslation();
@@ -35,7 +37,10 @@ export function PasswordLogin() {
 		setLoading(true);
 		messageLoadingApi?.loading(t("authority.loginInProgress"), 0);
 
-		login(values).then(async () => {
+		const attempt = ldap
+			? fetchLdapLogin(values).then(p => useAuthStore.setState({ token: p.access_token, refreshToken: p.refresh_token }))
+			: login(values);
+		attempt.then(async () => {
 			messageLoadingApi?.destroy();
 			// AC1-27：首登须改密——拿到用户信息后 mustChange=true 则切强制改密表单，不放行导航
 			const info = await fetchUserInfo().catch(() => null);
@@ -73,10 +78,10 @@ export function PasswordLogin() {
 			</Space>
 
 			<Form
-				name="passwordLoginForm"
+				name={ldap ? "ldapLoginForm" : "passwordLoginForm"}
 				form={passwordLoginForm}
 				layout="vertical"
-				initialValues={FORM_INITIAL_VALUES}
+				initialValues={ldap ? undefined : FORM_INITIAL_VALUES}
 				onFinish={handleFinish}
 			>
 				<Form.Item
@@ -96,43 +101,47 @@ export function PasswordLogin() {
 				</Form.Item>
 
 				<Form.Item>
-					<div className="flex justify-between mb-5 -mt-1 text-sm">
-						<BasicButton
-							type="link"
-							className="p-0"
-							onPointerDown={() => {
-								setFormMode("codeLogin");
-							}}
-						>
-							{t("authority.codeLogin")}
-						</BasicButton>
-						<BasicButton
-							type="link"
-							className="p-0"
-							onPointerDown={() => {
-								setFormMode("forgotPassword");
-							}}
-						>
-							{t("authority.forgotPassword")}
-						</BasicButton>
-					</div>
+					{!ldap && (
+						<div className="flex justify-between mb-5 -mt-1 text-sm">
+							<BasicButton
+								type="link"
+								className="p-0"
+								onPointerDown={() => {
+									setFormMode("codeLogin");
+								}}
+							>
+								{t("authority.codeLogin")}
+							</BasicButton>
+							<BasicButton
+								type="link"
+								className="p-0"
+								onPointerDown={() => {
+									setFormMode("forgotPassword");
+								}}
+							>
+								{t("authority.forgotPassword")}
+							</BasicButton>
+						</div>
+					)}
 					<Button block type="primary" htmlType="submit" loading={loading}>
 						{t("authority.login")}
 					</Button>
 				</Form.Item>
 
-				<div className="text-sm text-center">
-					{t("authority.noAccountYet")}
-					<BasicButton
-						type="link"
-						className="px-1"
-						onPointerDown={() => {
-							setFormMode("register");
-						}}
-					>
-						{t("authority.goToRegister")}
-					</BasicButton>
-				</div>
+				{!ldap && (
+					<div className="text-sm text-center">
+						{t("authority.noAccountYet")}
+						<BasicButton
+							type="link"
+							className="px-1"
+							onPointerDown={() => {
+								setFormMode("register");
+							}}
+						>
+							{t("authority.goToRegister")}
+						</BasicButton>
+					</div>
+				)}
 			</Form>
 		</>
 	);

@@ -78,6 +78,7 @@ export const fetchRbacContacts = _fn;
 export const fetchRbacContactDetail = _fn;
 export const fetchLoginMethods = _fn;
 export const fetchChangePassword = _fn;
+export const fetchLdapLogin = _fn;
 export const roleLabel = _fn;
 export const canEditRoleBindings = _fn;
 export const canDeleteRole = _fn;
