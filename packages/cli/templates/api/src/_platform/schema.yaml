@@ -13,6 +13,7 @@ tables:
       display_name: {type: text}
       must_change: {type: integer, null: false}
       is_forbidden: {type: integer, null: false}
+      email: {type: text}
   sys_setting:
     pk: key
     columns:
