@@ -447,4 +447,4 @@ flowchart LR
 2. **`http.user` 是可变全局，异步队列执行时再读会被后续请求覆盖**（A4 实测踩中：三个同步 auditDeny 全部记成最后一个用户）——调用入口必须同步捕获 uid 再入队。同类陷阱适用于一切 fire-and-forget 审计/日志路径。
 3. **403 审计「首条 + 计数」在并发下产生多首条，破坏 AC1-29 语义**——「查窗口→落首条→更新计数」须原子，进程内以串行队列收敛（deny 频率低，吞吐不敏感；ponytail 上限已注释）。
 4. **LIKE 转义的三方言最小公倍是 `ESCAPE '!'`**：sqlite 默认无转义符、mysql 默认 `\`、pg 默认无——统一显式 `escape '!'` + 元字符前加 `!`，`LIMIT ? OFFSET ?` 则三方言参数化通吃（A5 已钉进 query.ts 注释）。
-5. **「mysql/pg 冒烟」仓库内无执行器**（oj 运行时属机外二进制）：方言变体盲写不可验证，违反「代码不带检查即未完成」——按 §8 风险表口径移交 CI 三方言冒烟任务，阶段 A DoD 此条降级为「sqlite 全绿 + 方言差异已枚举」。
+5. **「mysql/pg 冒烟」已完成实机验证**（2026-10-16 1035–1050，macOS container CLI 启动 ojwiki-mysql 8.4 / ojwiki-pg 16 容器，7 条迁移 + seed 全量重放双绿，数据断言 4 角色/1 超管绑定/must_change=1 两边一致）。冒烟钉出的方言差异清单（已落方言覆盖文件，约定逐字同 oj-wiki 先例）：① mysql TEXT 列默认值必须表达式形式 `DEFAULT ('x')`（≥8.0.13 才允许 TEXT 带默认值）；② mysql 主键/唯一键成员不能是 TEXT → VARCHAR(255)（sqlite/pg 无此限）；③ mysql 无 `CREATE INDEX IF NOT EXISTS`（迁移账本一次应用语义兜底）；④ `INSERT OR IGNORE` 是 sqlite 专属 → seed 需 `INSERT IGNORE`（mysql）/ `ON CONFLICT DO NOTHING`（pg）方言覆盖；⑤ pg 自增用 BIGSERIAL 而非 GENERATED ALWAYS AS IDENTITY（seed 显式插 id 场景SERIAL 系才放行）。sqlite 套件 75 测试回归全绿。
