@@ -52,7 +52,7 @@
 | A4 | 审计 | `recordOp` + `auditOp`（fire-and-forget，脱敏红线）；403 失败审计按 (user_id, code) 分钟窗口去重（AC1-29）；`sys_oplog` 带 module/version | AC1-29 | 已完成 | 1017 | 8min |
 | A5 | 查询工具 | DRY 收敛：`paginate(limit≤200, truncated)` + `likeEscape(keyword, minLen=2, maxLen=64)` 共享工具，全部列表接口复用 | AC1-22/24 | 已完成 | 1020 | 10min |
 | A6 | 角色管理 API | 角色 CRUD（custom 机器名强制 `custom.<slug>`）、绑定编辑（insert-if-absent 语义、superadmin/admin/editor/viewer 不出现在绑定编辑）、deprecated 已绑定视图标灰、占用禁删、**手动摘绑定 = 紧急吊销出口**；写审计 role.create/bindings.update/delete | AC1-15~20, AC1-28, AC1-30 | 已完成 | 1023 | 25min |
-| A7 | 通讯录 service | `searchContacts`（不含 email/avatar/roles，排除禁用）+ `GET /api/_platform/contacts[/:id]`（keyword≥2、限速、详情含 email/avatar）；**补迁移 0007 加 email 列**（设计 §4B 引用而 A1 未落，同 is_forbidden 先例） | AC1-22~25 | 进行中 | 1028 | - |
+| A7 | 通讯录 service | `searchContacts`（不含 email/avatar/roles，排除禁用）+ `GET /api/_platform/contacts[/:id]`（keyword≥2、限速、详情含 email/avatar）；**补迁移 0007 加 email 列**（设计 §4B 引用而 A1 未落，同 is_forbidden 先例） | AC1-22~25 | 已完成 | 1028 | 12min |
 
 **DoD**：三方言（sqlite 起步，mysql/pg 冒烟）迁移通过；A3/A4 单测全绿；集中评审合并。
 
