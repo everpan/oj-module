@@ -47,7 +47,7 @@
 | # | 任务 | 内容 | AC 锚点 | 状态 | 开始 | 耗时 |
 |---|---|---|---|---|---|---|
 | A1 | 建表与迁移 | `sys_setting` / `sys_oplog` / `sys_solution_route` / `sys_role` / `sys_permission` / `sys_role_permission` / `sys_user_role`（含 `deprecated` 列）；users 增 `source`/`display_name` 迁移；**移除 `users.roles` JSON 列**（D10，含 wiki 数据迁移脚本） | AC1-7 | 已完成 | 1005 | 10min |
-| A2 | seed | 框架内置角色（superadmin/admin/editor/viewer，`builtin=1`）；**seed 默认 superadmin 账号**（D12，`must_change=1`，初始口令随机生成并打印一次） | AC1-27 | 未开始 | - | - |
+| A2 | seed | 框架内置角色（superadmin/admin/editor/viewer，`builtin=1`）；**seed 默认 superadmin 账号**（D12：`admin`/`123456` 固定口令 + `must_change=1` 首登强制改密）。~~原文「初始口令随机生成并打印一次」不可行：seed.sql 是静态 SQL、运行时每次启动重放，无安装期 JS 钩子——随机口令须待安装器（M5）落地，现阶段 must_change 闭环兜底默认凭据窗口（取舍见设计文档 §9.2-6）~~ | AC1-27 | 已完成 | 1010 | 15min |
 | A3 | 判权出口 | `_platform` 共享 service：`assertPermission`（四级链，DB 权威源 + 进程内缓存写时失效）、`assertSystemAdmin`、`assertSuperAdmin`（D11）；code 首段 JS 侧切好传参（三方言纪律）；顺带校验 `is_forbidden`（**A3 内补迁移 0006 加列**——A1 遗漏，实现期发现并回填设计文档 §9） | AC1-1~6, AC1-9 | 已完成 | 1014 | 12min |
 | A4 | 审计 | `recordOp` + `auditOp`（fire-and-forget，脱敏红线）；403 失败审计按 (user_id, code) 分钟窗口去重（AC1-29）；`sys_oplog` 带 module/version | AC1-29 | 已完成 | 1017 | 8min |
 | A5 | 查询工具 | DRY 收敛：`paginate(limit≤200, truncated)` + `likeEscape(keyword, minLen=2, maxLen=64)` 共享工具，全部列表接口复用 | AC1-22/24 | 已完成 | 1020 | 10min |
