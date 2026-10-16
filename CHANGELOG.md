@@ -5,6 +5,19 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 设计依据、迁移记录与陷阱清单见 [`docs/prd/202609110947-oj-module-two-package-consolidation-design.md`](docs/prd/202609110947-oj-module-two-package-consolidation-design.md)。
 
+## [0.2.2] - 2026-10-16
+
+双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步升 **0.2.2**（纯修复 + 文档，无破坏性变更）。
+
+### Fixed
+
+- **脚手架 `pnpm dev` 因 system 模块缺 `__client` 构建失败**：`web/src/system/entry.ts` 引用 `./__client/api`，但该目录此前未随模板分发、且 `ojm dev/build` 启动时不自动生成。现把 system 模块的 `__client`（`api.ts` + `api.schemas.ts`，由模板自带 `openapi.json` 经 `ojm api` 生成）提交进模板，与 auth/notification 等一致，开箱即跑。
+- **runtime 构建 TS 报错阻断 shell-dist 重建**：`layout-header` 插槽渲染 `Children.toArray(...).map(node => <Fragment key={node.key}/>)` 在 React 19 类型下 `node` 可为 `string` 无 `.key`（`TS2339`），导致 `runtime build` 失败、宿主外壳拿不到新产物。改为直接渲染 `Children.toArray(...)`（其已分配稳定 key）。
+
+### Docs
+
+- 模板 README 增补「排障 / 常见问题」：说明 `__client/` 为生成产物勿手改、报 `Could not resolve "./__client/api"` 时跑 `ojm api` 补齐；以及 `pnpm dlx @oj-module/cli@latest init` 可能因 dlx 缓存命中旧版 CLI 而生成偏旧脚手架（显式带版本号最稳）。
+
 ## [0.2.1] - 2026-10-16
 
 > 基于 0.2.0 框架基线（含后端管理面 `/api/system/*`、`/api/auth/*`）。

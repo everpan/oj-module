@@ -84,4 +84,4 @@ web/dist/  构建产物（完整站点）
   pnpm dlx @oj-module/cli@<明确版本> init <工程名> --yes   # 显式指定版本最稳
   ```
 
-  养成显式带版本号（如 `@oj-module/cli@0.2.1`）的习惯，可避免 `@latest` 缓存歧义。
+  养成显式带版本号（如 `@oj-module/cli@0.2.2`）的习惯，可避免 `@latest` 缓存歧义。
