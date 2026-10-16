@@ -73,7 +73,7 @@
 | B2 | 首登改密 | 建号默认 `must_change=1`；限权 token（仅改密端点）；自助改密（本人+旧口令）；改密/禁用级联删 refresh | AC1-27 | 已完成 | 1048 | （随 B1-B4 一次提交） |
 | B3 | refresh token | §3.1 完整实现：不透明随机串、SHA-256 哈希存储、30d 绝对 TTL、轮换作旧、reuse 检测全族吊销+审计 | AC1-13 | 已完成 | 1048 | （随 B1-B4；补迁移 0008 三方言） |
 | B4 | access token | JWT 仅载 `sub`，15min；签发时一次 JOIN 读 `sys_user_role` 填用户资料接口（roles 走资料接口不进 claims） | AC1-13 | 已完成 | 1048 | （随 B1-B4；user-info 端点同步修） |
-| B5 | 登录限速 | (IP, username) 双维度限速 + 指数 backoff + 失败审计 | AC1-26 | 进行中 | 1054 | - |
+| B5 | 登录限速 | (IP, username) 双维度限速 + 指数 backoff + 失败审计 | AC1-26 | 已完成 | 1054 | 40min（+阶段 C 真机冒烟返工：进程内 Map 被证每请求失效，落库 rework 见 §9.3-3） |
 | B6 | 建号加固 | 拒绝 `^(ldap|sso):` 前缀用户名；口令 ≥6 | AC1-17 关联 | 已完成 | 1059 | 20min |
 | B7 | 账号管理 API | 4 接口（create/roles/password/forbidden）+ 保护红线（最后 superadmin、禁止操作自己、admin 不碰成员资格）+ 写审计 | AC1-7~10 | 已完成 | 1059 | （随 B6 一次提交） |
 
@@ -92,21 +92,21 @@
 
 | # | 任务 | 内容 | AC 锚点 | 状态 | 开始 | 耗时 |
 |---|---|---|---|---|---|---|
-| C1 | 用户管理页 | `web/system/pages/user/` 实装（Table+Modal+Form）；角色下拉按 module 分组；superadmin 相关按角色显隐 | AC1-7~10 | 进行中 | 1130 | - |
-| C2 | 角色管理页 | 新建（custom.<slug>+展示名）/绑定编辑（标灰 deprecated、超集与页面门角色无入口）/删除（占用禁删）/紧急吊销 | AC1-15~20, AC1-28, AC1-30 | 未开始 | - | - |
-| C3 | 操作日志页 | 查询（action/username/module 过滤、truncated）；admin 可查（D13）；403 聚合展示 | AC1-29 | 未开始 | - | - |
-| C4 | 系统设置页 | 按 group 分 Card；`framework.site_title` 经 htmlTransform 生效；`market_cdn_url`（superadmin 可见可改） | PRD §4.3 | 未开始 | - | - |
-| C5 | 登录页 | **标签切换登录方式**（账号密码 / LDAP / SSO，`GET /system/login-methods` 匿名驱动渲染，未配置不显示对应标签，默认账号密码）；must_change 强制改密跳转 | AC1-12/27 | 未开始 | - | - |
-| C6 | 选人组件（可选） | runtime `ContactSelect` 封装 contacts 接口，供 solutions 复用 | AC1-22 | 未开始 | - | - |
+| C1 | 用户管理页 | `web/system/pages/user/` 实装（Table+Modal+Form）；角色下拉按 module 分组；superadmin 相关按角色显隐 | AC1-7~10 | 已完成 | 1130 | 45min |
+| C2 | 角色管理页 | 新建（custom.<slug>+展示名）/绑定编辑（标灰 deprecated、超集与页面门角色无入口）/删除（占用禁删）/紧急吊销 | AC1-15~20, AC1-28, AC1-30 | 已完成 | 1215 | 50min |
+| C3 | 操作日志页 | 查询（action/username/module 过滤、truncated）；admin 可查（D13）；403 聚合展示 | AC1-29 | 已完成 | 1300 | 20min |
+| C4 | 系统设置页 | 按 group 分 Card；`framework.site_title` 经 `applySiteTitle()` 生效（htmlTransform 等价面）；security 组仅 superadmin 可见可改 | PRD §4.3 | 已完成 | 1320 | 35min |
+| C5 | 登录页 | **标签切换登录方式**（`GET /system/login-methods` 匿名驱动渲染，仅 1 种方式不显示 Tabs，ldap/sso 占位 pending）；must_change 强制改密内联表单（改完携新 token 跳转回 redirect） | AC1-12/27 | 已完成 | 1400 | 60min |
+| C6 | 选人组件（可选） | runtime `ContactSelect` 封装 contacts 接口，供 solutions 复用 | AC1-22 | 跳过（可选项，无 solutions 消费方，YAGNI；接口已就绪，需要时一阶段内补） | - | - |
 
-**DoD**：四页面可用；title 设置改变浏览器标签；集中评审合并。
+**DoD**：四页面可用（C6 可选项跳过，理由见表内）；title 设置改变浏览器标签；集中评审合并。
 
-**阶段小结**（全部任务完成后填写）：
-- 关键过程：
-- 实际耗时：
-- 偏差与决策回填（设计文档 §9 条目号）：
-- 反常识记录：
-- 集中评审结论：
+**阶段小结**（2026-10-16 1130–1540，含真机冒烟返工）：
+- 关键过程：C1→C5 按序实装，页面纯函数（roleLabel/canOperate/绑定 diff）单测先行；C5 登录页经 `login-methods` 匿名端点驱动 Tabs、must_change 内联改密闭环（改密后换发新 token 跳回 redirect）。`packages/runtime/src/api/rbac/` 新增前端 API 层 + `tests/runtime/rbac-ui-helpers.test.ts` 钉 UI 纯函数。模板 openapi.json 登记 16 新端点（checkApi 契约）、config.yaml 匿名路径补 `/system/login-methods`。收尾真机冒烟（`ojm init`+`ojm dev` 实项目 curl 全矩阵）钉出三个运行时陷阱并返工——**这是本阶段最大耗时项（≈1.5h）**：① oj 未捕获异常恒 500 不读 err.status → `_shared/respond.ts` 统一出口包裹全部 handler；② handler 相对 import 按目录解析 → 12 个 api.ts 深度修正；③ 每请求重建模块实例 → B5 节流/AC1-29 deny 聚合/access 缓存全部落库或改 DB 锚（迁移 0009 三方言）。
+- 实际耗时：页面实装 ≈3.2h；真机冒烟+返工 ≈1.6h；合计 ≈4.8h。
+- 偏差与决策回填：全部写入设计文档 §9.3（三条陷阱分类：①反常规 ②反常识 ③反常识·最重，含流程级教训「模块级可变状态一律视为单请求作用域」）；B5 行内同步标注返工。
+- 反常识记录：见设计文档 §9.3。补一条流程教训：模板 vitest 套件（service 直引）结构性覆盖不到 handler 层与模块级状态——「规格全绿、真机必坏」三类问题只有端到端冒烟能钉，uni-dev-smoke 价值实证。
+- 集中评审结论：待评审（合并 feat/ojm 前，随阶段 E 集中评审）。
 
 ## 6. 阶段 D：LDAP 登录（对应 PRD M4）
 
@@ -120,12 +120,12 @@
 
 **DoD**：`libldap.dylib` 实机 bind 通过一次真实 LDAP 登录；未配置时登录页无入口；集中评审合并。
 
-**阶段小结**（全部任务完成后填写）：
-- 关键过程：
-- 实际耗时：
-- 偏差与决策回填（设计文档 §9 条目号）：
-- 反常识记录：
-- 集中评审结论：
+**阶段小结**（2026-10-16 1130–1540，含真机冒烟返工）：
+- 关键过程：C1→C5 按序实装，页面纯函数（roleLabel/canOperate/绑定 diff）单测先行；C5 登录页经 `login-methods` 匿名端点驱动 Tabs、must_change 内联改密闭环（改密后换发新 token 跳回 redirect）。`packages/runtime/src/api/rbac/` 新增前端 API 层 + `tests/runtime/rbac-ui-helpers.test.ts` 钉 UI 纯函数。模板 openapi.json 登记 16 新端点（checkApi 契约）、config.yaml 匿名路径补 `/system/login-methods`。收尾真机冒烟（`ojm init`+`ojm dev` 实项目 curl 全矩阵）钉出三个运行时陷阱并返工——**这是本阶段最大耗时项（≈1.5h）**：① oj 未捕获异常恒 500 不读 err.status → `_shared/respond.ts` 统一出口包裹全部 handler；② handler 相对 import 按目录解析 → 12 个 api.ts 深度修正；③ 每请求重建模块实例 → B5 节流/AC1-29 deny 聚合/access 缓存全部落库或改 DB 锚（迁移 0009 三方言）。
+- 实际耗时：页面实装 ≈3.2h；真机冒烟+返工 ≈1.6h；合计 ≈4.8h。
+- 偏差与决策回填：全部写入设计文档 §9.3（三条陷阱分类：①反常规 ②反常识 ③反常识·最重，含流程级教训「模块级可变状态一律视为单请求作用域」）；B5 行内同步标注返工。
+- 反常识记录：见设计文档 §9.3。补一条流程教训：模板 vitest 套件（service 直引）结构性覆盖不到 handler 层与模块级状态——「规格全绿、真机必坏」三类问题只有端到端冒烟能钉，uni-dev-smoke 价值实证。
+- 集中评审结论：待评审（合并 feat/ojm 前，随阶段 E 集中评审）。
 
 ## 7. 阶段 E：验收与收尾
 

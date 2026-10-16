@@ -39,14 +39,14 @@
 |---|---|---|
 | CLI 命令表 | `packages/cli/src/index.ts:33-111` | `init / dev / build / preview / api / info / vendor / merge` + 5 个 oj 透传。**无 `create`、无 `install`、无 `publish`** |
 | `ojm init` 模板 | `packages/cli/templates/`（60 文件） | 已含 `api/`（前后端一体）、dev 证书、devkit skill 分发、JWT 密封 |
-| `ojm build` | `packages/cli/src/build.ts:508` | `oj build`（后端 → `api/dist/<mod>-<ver>/` + `.tgz` + `manifests.yaml`）＋ 前端（→ `web/dist/modules/<name>/<ver>/entry.js` + `modules.json`），再全站合并 shell |
+| `ojm build` | `packages/cli/src/build.ts:479` | `oj build`（后端 → `api/dist/<mod>-<ver>/` + `.tgz` + `manifests.yaml`）＋ 前端（→ `web/dist/modules/<name>/<ver>/entry.js` + `modules.json`），再全站合并 shell |
 | 前端模块定义 | `packages/runtime/src/module-loader/define-module.ts:12` | `defineModule({name, version, routes, i18n, lifecycle, peerRuntime})` |
 | 前端加载 | `packages/cli/shell/src/host.tsx:93-198` | fetch `modules.json` → `loadAll` → `getRoutes()` 注入路由树 |
-| 产物完整性 | `packages/cli/src/build.ts:306-311,633-637` | 每 chunk `sha384`，写入 `modules.json.chunks[].integrity` |
+| 产物完整性 | `packages/cli/src/build.ts:309-326,643-680` | 每 chunk `sha384`，写入 `modules.json.chunks[].integrity` |
 | 路由分类 | — | **不存在** admin/settings/main 分类字段；只有 `handle.layout` / `handle.order` / `handle.hideInMenu` / `config.requiredRoles`（`packages/core/src/router/types.ts:10-25`、`packages/core/src/types.ts:55-62`） |
 | 模块注册原语 | `packages/core/src/types.ts:28-52` | `register.{store, apiPrefix, authProvider, systemApi, notificationsApi, uploadApi, layout, menu, ...}`。**无 settings 注册入口** |
-| 演示模块 | `templates/web/src/demo/`、`templates/api/src/demo/`、`templates/web.config.ts:18-22`、`apps/playground-oj/api/src/demo` | 待清理 |
-| 系统页骨架 | `web/system/entry.ts:14-35`（根仓 App 链） | 有 `handle.roles:["admin"]` 门，**页面是 stub**（`web/system/pages/user/index.tsx` 仅 `<h1>User</h1>`） |
+| 演示模块 | `templates/web/src/demo/`、`templates/api/src/demo/`、`templates/web.config.ts:15-19`、`apps/playground-oj/api/src/demo` | 待清理 |
+| 系统页骨架 | `web/system/entry.ts:13`（根仓 App 链） | `handle.roles:["admin"]` 门仍在；**阶段 C 已落六页**（user/dept/role/menu/oplog/settings，`feat/rbac-frontend` 分支），`handle.permissions` 已用 `permission:button:*` 码（验证时点 2026-10-16，原「页面是 stub」描述已过时） |
 
 ### 2.2 参照原型 `oj-wiki` 可移植资产
 
@@ -106,7 +106,7 @@
 | 3 | 从 `templates/web.config.ts` 删 `demo` 条目（`:18-22`） | 同上 |
 | 4 | 删 `apps/playground-oj/{web/src/demo, api/src/demo}` 及 `web.config.ts` 的 demo 条目 | dogfooding 靶场同步 |
 | 5 | 清理孤儿生成物 `templates/web/src/{auth,notifications,web}/__client/`（**无任何 entry.ts 消费**，全仓仅 `notification/entry.ts:5` 用自家 `__client`） | 同上 |
-| 6 | 校验：`home` 须为 `web.config.ts` 首个模块（`templates/web.config.ts:12-17`，`/` → `/home` 重定向依赖此顺序） | 测试钉死 |
+| 6 | 校验：`home` 须为 `web.config.ts` 首个模块（`templates/web.config.ts:10-14`，`/` → `/home` 重定向依赖此顺序） | 测试钉死 |
 
 **验收**：`ojm init` 新工程 `pnpm typecheck` 零错、`ojm build` 通过、`ojm info` 模块清单不含 demo。
 
@@ -176,7 +176,7 @@
 
 **设置页 UI**：`web/system/pages/settings/`，按 `group` 渲染 antd `Card`；`framework` 组固定排首位，标题「框架设置」；已安装解决方案各自一个 Card。按 `type` 选控件（`bool`→Switch、`select`→Select、其余→Input）。
 
-**首个框架设置项**：`framework.site_title`（页面 title）—— 需求明确要求；消费点 = shell `index.html` 的 `<title>`，经 `htmlTransform` 钩子注入（`templates/web.config.ts` 的 `htmlTransform` 扩展点，见 `packages/cli/src/config.ts:24`）。
+**首个框架设置项**：`framework.site_title`（页面 title）—— 需求明确要求；消费点 = shell `index.html` 的 `<title>`，经 `htmlTransform` 钩子注入（`templates/web.config.ts` 的 `htmlTransform` 扩展点，见 `packages/cli/src/config.ts:24`。注：扩展点已在 config schema 就绪，但模板 `web.config.ts` 当前未启用该字段——`site_title` 落地时需随模板新增 `html-transform.ts`）。
 
 **新增 `framework.market_cdn_url`**：解决方案市场的 CDN 基址（§5.3）。
 
@@ -245,9 +245,9 @@
 ### 4.6 解决方案市场（UI）
 
 - 路由 `/market`，`handle.layout:"container"`、`order` 排在系统之后、`handle.roles:["admin"]`。
-- 卡片列表：封面/图标、名称、标题、版本、作者、描述、大小、更新时间、状态徽标（`可安装` / `已安装` / `有更新` / `已禁用`）。
+- 卡片列表：封面/图标、名称、标题、版本、作者、描述、大小、更新时间、状态徽标（`可安装` / `已安装` / `有更新` / `已禁用`）、**信任徽标**（已签名且信任公钥已知 = 可信；未签名 / 未知发布者 = 警示，P1）。
 - 数据来源：框架后端 `GET /market/index` → 读 CDN `bundles.yaml` + `manifests.yaml`（§5.3），**同名只展示最高版本**，与本地已安装版本比对出状态。
-- 操作：安装 / 更新 / 禁用 / 启用（**admin**）；卸载（**superadmin 独占**，D6/D11，前端按角色显隐按钮）——卸载列为 M5，见风险 R4。
+- 操作：安装 / 更新 / 禁用 / 启用（**admin**）；卸载（**superadmin 独占**，D6/D11，前端按角色显隐按钮）——卸载列为 M7（见 R4）。
 - 安装按钮触发 `POST /market/install {name, version}` → 返回任务 id → 前端轮询 `GET /market/task/:id`（下载+解压+迁移是秒级~十秒级，需进度反馈）。
 
 ---
@@ -266,8 +266,8 @@ ojm build                   # 现状不变：web/dist 全站 + api/dist
 **流程**：
 
 1. 读 `web.config.ts`（`src/config.ts:37-54`）→ 定位目标模块（单模块工程取唯一条目；多模块需 `--module <name>`，与根仓 `scripts/build-modules.ts:59` 的 `--module` 对齐）
-2. **后端**：`oj build -d api/src/<mod> -o <tmp>/api --no-minify` —— ⚠️ `--no-minify` 必须保留（`src/build.ts:474-479`，oj 的 swc minify 已知会压坏产物）
-3. **前端**：复用现有单模块构建（`src/build.ts:561-617`），保留 `codeSplitting:false` 与 `sha384` integrity
+2. **后端**：`oj build -d api/src/<mod> -o <tmp>/api --no-minify` —— ⚠️ `--no-minify` 必须保留（`src/build.ts:498-504`，oj 的 swc minify 已知会压坏产物）
+3. **前端**：复用现有单模块构建（`src/build.ts:549-641`），保留 `codeSplitting:false` 与 `sha384` integrity
 4. 组装 `manifest.yaml`（§5.2）
 5. 打 `dist/<name>-<version>.tgz`（**确定性**：固定 mtime/顺序，同输入字节一致，与 oj 的 `.tgz` 惯例一致）
 6. 输出 `sha256` 并打印
@@ -418,31 +418,93 @@ solutions:
 > - **OJ-5**（远期）远程 mount：允许 `mounts[].api` 指向 URL，运行时按需拉取 —— 若就位，"CDN 远程加载"才对后端成立（见 §5.5 边界说明）
 > - **OJ-6** 迁移执行内部化：后端可触发本进程模块迁移（免外部 `oj` 子进程）
 
-**安装状态机**（M4 实现，M6 复用）：
+**安装状态机**（M4 实现，M6 复用）：在 PRD 原 7 阶段基础上细化 —— 预检前置、注册/前端落位拆分、新增**安装期冒烟**，共 10 阶段。图例见设计文档 `202610161300-solution-lifecycle-registration-design.md` §10.3。
 
+```mermaid
+stateDiagram-v2
+    [*] --> preflight
+    preflight --> downloading: 预检通过
+    downloading --> verifying: 下载完成
+    verifying --> extracting: 签名/摘要通过
+    extracting --> migrating: 解压落位 + 更新锁
+    migrating --> registering: 迁移成功
+    registering --> deploying_web: 注册完成
+    deploying_web --> reloading: 前端落位
+    reloading --> smoke: 热更 applied 含 mounts/vars
+    smoke --> done: 冒烟全过
+    preflight --> failed: 保留名/占用/兼容不符
+    downloading --> failed: 网络/CDN 错误
+    verifying --> failed: sha256/签名不符(fail-closed)
+    extracting --> failed: 解压/落位失败
+    migrating --> failed: 迁移失败(回滚目录, 不动库)
+    registering --> failed: 注册失败
+    deploying_web --> failed: 前端落位失败
+    reloading --> failed: 热更失败(旧代继续服务)
+    smoke --> failed: 冒烟失败(保留现场)
+    failed --> [*]: 可重试 / 回滚
 ```
-idle → downloading → verifying → extracting → migrating → registering → reloading → done
-                                                                                   ↘ failed（保留现场，可重试/回滚）
+
+**步骤**（按「安全顺序」重排，错序会拒启，见约束 B）：
+
+1. **预检**：`GET {cdn}/bundles.yaml` 解析目标 `(name, version)`（未指定取 `latest`）+ 兼容性门禁（`peerRuntime`/`peerOj`/`peerFramework` 不满足→拒绝给可读原因）+ 重名/保留名门禁（约束 A / §5.8.2）。
+2. **下载 + 校验**：`GET {cdn}/<file>` → 校验 `sha256`，再 Ed25519 验签（§5.7，fail-closed；任何一步失败**不落盘、不改锁、不触发热更**）。
+3. **解压**：解压到 `<共享根>/.staging/<name>-<version>/` → **原子 rename** 到 `<共享根>/<name>-<version>/`。
+4. **更新锁**：合并 `<共享根>/manifests.yaml`：upsert `<module>: <version>`（同版本重装 = no-op）。
+5. **迁移**：`oj migrate -c api/config.yaml -d <共享根>`（**约束 B：必须在注册与热更前**）。
+6. **注册**：`sys_setting` upsert `settings.items`（默认行，§4.3）；`sys_solution_route` 写入 `routes[]`（§5.2）；RBAC `sys_role`/`sys_permission`（强制 `<name>.` 前缀）+ 初始 `sys_role_permission`（insert-if-absent，§5.9）。
+7. **前端落位**：前端产物拷入站点 `web/dist/modules/<name>/<version>/`；`modules.json` upsert 条目（含 `integrity`/`css`/`chunks`/`enabled`，**不随 bundle 携带**）。
+8. **配置**：`config.yaml`：`anonymous_paths` 并入（`api.anonymous`，挂载前缀相对，E6）；`vars.ojm_solutions_gen` 自增（**约束 C 的语义计数器**）。
+9. **热更**：`POST {base}/_system/config`（空 body）→ 校验 `applied` 含 `mounts`/`vars` 且无 `restart_pending`。
+10. **安装期冒烟**：见 §5.4.1，全过才标记成功。
+11. `auditOp("solution.install", name, ...)`；前端提示刷新页面。
+
+> **注册内容汇总**（落点与时机，详见设计文档 §4）：
+
+| # | 注册项 | 落点 | 时机 |
+|---|---|---|---|
+| 1 | 后端模块 | 共享根 `manifests.yaml` + 物理目录 | 步骤 4 |
+| 2 | 路由分类 | `sys_solution_route` | 步骤 6 |
+| 3 | 业务设置 | `sys_setting` | 步骤 6 |
+| 4 | RBAC | `sys_role`/`sys_permission`/`sys_role_permission` | 步骤 6 |
+| 5 | 前端入口 | 站点 `modules.json` | 步骤 7 |
+| 6 | 前端路由 | `entry.js` `defineModule.routes`（运行时事实） | 宿主 `getRoutes()` |
+| 7 | 前端 i18n | `entry.js` `defineModule.i18n` → 宿主命名空间 `<name>`（含菜单分组标签） | 宿主加载 entry |
+| 8 | 匿名路径 | `config.yaml anonymous_paths` | 步骤 8 |
+| 9 | 兼容性 | `peerRuntime`/`peerOj`/`peerFramework` | 步骤 1 门禁 |
+
+### 5.4.1 安装期验证（双轨）
+
+PRD 原 §5.7 只覆盖**包级签名/摘要校验**（静态、安装前）；此处补齐**运行时验证**，确保「装完即真的可用」。详细规格见设计文档 §7。
+
+- **安装期自动冒烟**（步骤 10，装完即跑，失败→保留现场可重试，不静默成功）：① 后端 `GET /api/<name>/health` 或首个非匿名路由断言 200；② 前端 `modules.json` 条目 `integrity` == 本地计算 `sha384`（Node 侧可算）；③ **前端 entry 可加载**由宿主 error boundary 在用户首次进入时兜底捕获——`entry.js` 是浏览器 ESM（含 React/antd），Node 侧无法 `import()`，故该项**不进 Node 冒烟**，异常经前端日志 / 按需深度校验可见，**不阻塞安装**；④ DB 注册行数**包含**全部 manifest 声明（`sys_solution_route`/`sys_setting`/`sys_role`/`sys_permission`）——升级场景允许 `deprecated` 残留，故用「包含」而非「相等」。
+- **按需深度校验**（管理员在解决方案市场/系统页触发，输出报告）：路由可达性 / RBAC 完整性（含 `deprecated` 不静默生效）/ 设置项完整性 / 迁移账本一致性（`oj migrate verify`）/ i18n 覆盖（manifest 引用的 `title_key`/`label_key` 在命名空间 `<name>` 有值）。
+
+> 开放问题 Q-A：冒烟的 `health` 端点是否**强制**解决方案提供？暂定「不强制，缺省用首个非匿名路由兜底」，待评审确认。
+
+### 5.4.2 安装页面与进度展示（Web UI）
+
+市场卡片（§4.6）安装/更新按钮触发 `POST /market/install {name, version}` → 返回 `task_id` → 前端打开**安装进度抽屉**，轮询 `GET /market/task/:id`（每 ~800ms，下载+解压+迁移为秒级~十秒级，需进度反馈）。步骤条按 10 阶段渲染（antd `Steps`），每项状态由 `stage`/`status` 推导（`wait`/`process`/`finish`/`error`），配整体 `progress` 进度条与 `message` 详情日志。后端任务模型：
+
+```ts
+type InstallStage = "preflight"|"downloading"|"verifying"|"extracting"|"migrating"
+  |"registering"|"deploying_web"|"reloading"|"smoke"|"done"
+type SolutionInstallTask = {
+  id: string; name: string; version: string
+  status: "running"|"done"|"failed"; stage: InstallStage; progress: number
+  message: string; error?: { reason: string; retryable: boolean }
+  startedAt: number; finishedAt?: number
+}
 ```
 
-**步骤**：
+> **任务状态落点（M4 工程要点，E3）**：安装任务由 Node 侧 `ojm install` 执行，而 `GET /market/task/:id` 由 oj 运行时（`_platform/market`）提供——二者跨进程。M4 下任务状态须落**共享介质**（建议写入共享根 `.install-tasks/<id>.json`，或借 `ojm serve` 包裹层内存态），保证 oj 侧轮询可读；M6 后端原生化后内化。
 
-1. `GET {cdn}/bundles.yaml` → 解析目标 `(name, version)`；未指定 version 取 `latest`
-2. 兼容性门禁：`peerRuntime` / `peerOj` / `peerFramework` 不满足 → **拒绝并给出可读原因**（禁止静默）
-3. 重名门禁：目标后端模块名已被占用（约束 A）→ 拒绝
-4. `GET {cdn}/<file>` → 校验 `sha256`（不符即终止，**不落盘**）
-5. 解压到 `<共享根>/.staging/<name>-<version>/` → **原子 rename** 到 `<共享根>/<name>-<version>/`
-6. 合并 `<共享根>/manifests.yaml`：upsert `<module>: <version>`
-7. 前端产物拷入站点 `web/dist/modules/<name>/<version>/`；`modules.json` upsert 条目（含 `integrity`/`css`/`chunks`）
-8. 迁移：`oj migrate -c api/config.yaml -d <共享根>`（**约束 B：必须在热更前**）
-9. `sys_setting` upsert `settings.items`（默认行）；`sys_solution_route` 写入 `routes[]`
-10. `config.yaml`：`anonymous_paths` 并入（`api.anonymous`）；`vars.ojm_solutions_gen` 自增（**约束 C 的语义计数器**）
-11. `POST {base}/_system/config`（空 body）→ 校验 `applied` 含 `mounts`/`vars` 且无 `restart_pending`
-12. `auditOp("solution.install", name, ...)`；前端提示刷新页面
+> **登录端点拒装是纵深防御而非主防线（S1）**：安装器按 `api.anonymous` / 路由 path 模式（`*/login`、`*-login`、token 签发）拒装，只是 belt-and-suspenders；**真正保证是 D3——`issueTokens` 钩子不向解决方案暴露**，解决方案在运行期拿不到签发能力，`/api/wiki/session` 之类也无法自签 token。名称匹配可被绕过，故不可作为唯一控制依赖。
 
-**禁用 / 启用**：`modules.json` 条目 `enabled:false`（宿主已支持该字段，`packages/core/src/module-loader/index.ts:266-285`）+ `sys_solution_route.enabled=false`；后端保留目录但 `manifests.yaml` 移除条目（或保留 + `enabled` 标记，见开放问题 Q3）。
+失败处理：抽屉切错误态展示 `error.reason`（**可读中文 + 可操作指引**，如「签名校验失败：公钥未知，请先在框架设置配置信任公钥」，P2）；`retryable` 时显示「重试」按钮（重发 `POST`，同版本幂等，§5.4 步骤幂等规则）；重试前先清理 `.staging` 与（若已 rename）版本目录 / 恢复 `manifests.yaml` 原锁，保证可重入。详细 UI 流程图见设计文档 §10.4。
 
-**回滚**：`manifests.yaml` 指回旧版本目录（多版本目录共存，oj 原生支持）→ 步骤 10-11 → 重启/热更。
+**禁用 / 启用**（Q3 已定：**保留目录 + 标记禁用**，B3）：`modules.json` 条目 `enabled:false`（宿主已支持，`packages/core/src/module-loader/index.ts:150`）+ `sys_solution_route.enabled=false`；后端**保留目录**但 `manifests.yaml` 条目标记 `enabled=false`（不移除），不挂载、前端跳过。非破坏、随时可恢复。磁盘采用**多版本目录共存**：`<共享根>/<name>-<version>/` 天然幂等，重复安装同版本 no-op。
+
+**回滚 / 降级**：`manifests.yaml` 锁指回旧版本目录即生效（多版本共存使回滚零成本）；因 oj 迁移无 down 迁移，若目标版本 `migrations` 与当前存在差异，安装器**强告警并要求二次确认**，禁止静默降级（§5.6.5 / R12）。
 
 ---
 
@@ -494,20 +556,20 @@ bundle 的 `api/<module>-<version>/` 内自带：
 ### 5.6.2 顺序（错一步会导致服务拒启）
 
 ```
- 1  预检   —— 表冲突检测（目标 tables 与 SchemaRegistry 已有归属冲突 → 拒绝）
+ 1  预检   —— 表冲突 / 兼容 / 保留名检测（约束 A / §5.8.2）→ 拒绝，零副作用
  2  下载   —— sha256 + 签名验证（§5.7），不过即终止，不落盘
- 3  解压   —— <root>/modules/.staging/<name>-<version>/
- 4  原子落位 —— rename 到 <root>/modules/<name>-<version>/
- 5  更新锁 —— <root>/modules/manifests.yaml upsert <module>: <version>
- 6  ★迁移  —— oj migrate -c api/config.yaml -d <root>/modules
+ 3  解压   —— <root>/modules/.staging/<name>-<version>/ → 原子 rename
+ 4  更新锁 —— <root>/modules/manifests.yaml upsert <module>: <version>
+ 5  ★迁移  —— oj migrate -c api/config.yaml -d <root>/modules（约束 B：先于注册与热更）
+ 6  注册   —— sys_setting / sys_role / sys_permission / sys_role_permission / sys_solution_route
  7  前端   —— 产物落位 + modules.json upsert
- 8  注册   —— sys_setting / sys_role / sys_permission / sys_solution_route
- 9  配置   —— anonymous_paths 并入 + vars.ojm_solutions_gen++
-10  热更   —— POST {base}/_system/config
+ 8  配置   —— anonymous_paths 并入 + vars.ojm_solutions_gen++
+ 9  热更   —— POST {base}/_system/config
+10  冒烟   —— 安装期自动冒烟（§5.4.1）
 11  审计   —— auditOp("solution.install", …)
 ```
 
-**第 6 步必须早于第 10 步**：热更路径强制 `migrate verify`-only（约束 B）；而 release 模式 `migrate_on_start` 默认 `verify`，账本落后会**拒启**。
+**第 5 步必须早于第 9 步**：热更路径强制 `migrate verify`-only（约束 B）；而 release 模式 `migrate_on_start` 默认 `verify`，账本落后会**拒启**。
 → 若先改锁后迁移，热更时 `verify` 失败返回 400（旧代继续服务，不会炸）；若此时进程重启，则**直接拒启**。顺序不可交换。
 
 ### 5.6.3 谁来执行迁移
@@ -527,7 +589,7 @@ bin/oj migrate -c api/config.yaml -d <root>/modules --module <name>  # 模块绑
 |---|---|
 | 1 预检冲突 | 拒绝安装，零副作用 |
 | 2 校验失败 | 拒绝安装，零副作用（不落盘） |
-| 6 迁移失败 | **回滚**：删除版本目录 + 恢复 `manifests.yaml` 原锁；**不动数据库**（oj 迁移是前向的，无自动 down） |
+| 5 迁移失败 | **回滚**：删除版本目录 + 恢复 `manifests.yaml` 原锁；**不动数据库**（oj 迁移是前向的，无自动 down） |
 | 10 热更失败 | 旧代继续服务，保留现场可重试；绝不停机 |
 
 **数据库备份**：sqlite 可在第 6 步前自动 copy 一份 `db.sqlite.bak-<ts>`；mysql/pg **不自动备份**，安装前 UI 强制提示"请先自行备份"并需勾选确认。
@@ -698,16 +760,17 @@ manifest 的 `permissions` / `roles`（§5.2）→ 安装时按 `module=<name>` 
 | **R1** | oj 无 tar/gzip 解压（E7）→ 后端无法自完成安装 | 高 | 用户已定：扩展 oj 功能（OJ-1）。M4 先用 Node 侧 `ojm install` 落地，M6 切换；两阶段共用同一状态机与 manifest 契约 |
 | **R2** | 热更强制 `migrate verify`-only，带迁移的解决方案装配失败 | 中 | 安装流程强制「先 `oj migrate` 再热更」（约束 B）；失败时旧代继续服务，保留现场可重试 |
 | **R3** | 热更触发需语义变更（E4），易被实现者忽略导致"装了没生效" | 中 | 用 `vars.ojm_solutions_gen` 自增作为**唯一**触发手段并写进安装器；加单测：注释变更不触发、计数器变更触发 |
-| **R4** | 卸载/回滚会触及数据（表、迁移账本）不可逆 | 高 | **M4 只做安装 + 禁用/启用；卸载与回滚推迟到 M5**，且默认只卸载路由与前端，表与数据保留并显式提示 |
+| **R4** | 卸载/回滚会触及数据（表、迁移账本）不可逆 | 高 | **回滚已纳入安装/升级流程（M5）**：多版本目录共存 + 锁指回旧版本目录，零成本、非破坏；schema 差异仍受 R12 约束（禁止静默降级，§5.4 回滚）。**卸载仍推迟到 M7**：superadmin 独占、双维度级联清理 RBAC 绑定（`sys_user_role`/`sys_role_permission`）、业务表保留不删（Q4），数据不可逆风险以显式提示 + 二次确认兜住 |
 | **R5** | CDN 不可信 → 供应链投毒（伪造/替换 bundle） | 高 | **Ed25519 包签名 + fail-closed 验签（§5.7）**；sha256 强制校验；TOFU 指纹人工确认；CDN 强制 HTTPS。**验签必须 Node 侧做**（oj 无非对称能力，OJ-4） |
-| **R6** | 前端共享依赖版本漂移：`checkSharedVersions`（`src/build.ts:521`）要求与宿主**严格相等** | 中 | bundle 的 manifest 记录 `versions.json` 指纹；安装时校验 `peerRuntime`，不符拒绝并提示"需框架升级" |
+| **R6** | 前端共享依赖版本漂移：`checkSharedVersions`（`src/build.ts:545`）要求与宿主**严格相等** | 中 | bundle 的 manifest 记录 `versions.json` 指纹；安装时校验 `peerRuntime`，不符拒绝并提示"需框架升级" |
 | **R7** | `packages/core` 与 `packages/runtime` 两套 module-loader 并行，core 零消费者 | 中 | 本 PRD 的新机制（settings 注册等）**只落在 runtime**（有消费者）；core 的取舍单列议题，不阻塞本次 |
 | **R8** | 已安装解决方案的 `is_forbidden`/登录闭环：外来模块可能自己签发 token | 中 | 令牌签发收口到框架 `_platform/auth`；已安装模块**不得**自带 login 端点，仅可经 `anonymous` 白名单声明扩展登录 |
 | **R9** | 构建耗时无埋点（现状），bundle 构建 SLA 未知 | 低 | M4 加耗时埋点后再定 |
 | **R10** | `remote-web` 模式下 CDN 不可达 = 模块整体不可用，且动态 `import()` 无法带 SRI | 中 | **默认用 `download`**，`remote-web` 仅可选；装载前一次性 `fetch` 校验 `sha384`；要求 CDN 配 CORS；市场页标注该模块的装载模式 |
-| **R11** | RBAC 从 `users.roles` JSON 列迁到 `sys_user_role` 表，涉及既有数据迁移与 JWT claims 同步 | 中 | 迁移与缓存同步放在同一事务；`users.roles` 保留为只读缓存，双读一致性用单测钉死 |
+| **R11** | RBAC 从 `users.roles` JSON 列迁到 `sys_user_role` 表，涉及既有数据迁移 | 中 | **D10 已定：移除 `users.roles` 缓存列**，判权改 DB 实时查（`sys_user_role` + `sys_role_permission` 权威源）+ 进程内短 TTL 缓存、写时失效；JWT 只载 `sub`、roles 走用户资料接口，消灭双写分裂与越权窗口（§5.9.2） |
 | **R12** | 迁移不可逆（oj 无 down 迁移），降级可能崩 | 高 | 安装前强制备份提示（sqlite 自动）；`downgrade.min_version` 声明；**禁止静默降级**（§5.6.5） |
 | **R13** | 信任公钥若存 DB，DB 被篡改即可注入信任（鸡生蛋） | 中 | 生产建议写 config.yaml；存 DB 时额外校验公钥指纹与首次记录一致 |
+| **R14** | 安装期冒烟漏判/误判：装完实际不可用却通过，或健康端点缺省导致误失败 | 中 | 冒烟取多维度（后端 200 / 前端 `integrity`==sha384 / `entry.js` 可 `import` / DB 注册行数 == manifest），不依赖单一端点；健康端点暂不强求（Q12），缺省用首个非匿名路由兜底；失败一律保留现场不静默成功，另提供按需深度校验（§5.4.1）兜底 |
 
 ---
 
@@ -731,7 +794,7 @@ manifest 的 `permissions` / `roles`（§5.2）→ 安装时按 `module=<name>` 
 |---|---|---|
 | **Q1** | 框架内置模块是否也走共享根 release 形态？ | (a) **双形态并存**（选定）：框架运行时走 release 共享根，`ojm dev` 保留 dev/ts 给模块开发者；(b) 全 release；(c) 全 dev |
 | **Q2** | 已安装解决方案的前端产物放哪？ | (a) 拷入宿主站点 `web/dist/modules/`（与 shell 链一致，推荐）；(b) 独立目录 + web mount（多一层前缀） |
-| **Q3** | 禁用语义：后端是移除 `manifests.yaml` 条目还是加 `enabled` 标记？ | 影响回滚实现；倾向保留目录 + 标记 |
+| **Q3** | 禁用语义：后端是移除 `manifests.yaml` 条目还是加 `enabled` 标记？ | **已定（B3）：保留目录 + 标记禁用**——`manifests.yaml` 条目标 `enabled=false`（不移除），`sys_solution_route.enabled=false`，`modules.json` 条目标 `enabled=false`；非破坏、随时可恢复。见 §5.4 禁用/启用 |
 | **Q4** | 卸载是否删表？ | 倾向**不删**（数据不可逆），只摘路由与前端，提示运维手工处理，可构建清理工具，辅助手工处理 |
 | **Q5** | `sys_setting` 的键是否强制 `<module>.<name>` 前缀？ | 强制可避免跨模块撞键；建议强制 |
 | **Q6** | 市场是否需要「官方/第三方」分级与来源白名单？ | 现有宿主已有 `assertTrustedModules`（`shell/src/host.tsx:120`）来源白名单概念，可复用到市场 |
@@ -740,6 +803,7 @@ manifest 的 `permissions` / `roles`（§5.2）→ 安装时按 `module=<name>` 
 | **Q9** | ~~`users.roles` JSON 列是保留为缓存还是彻底移除？~~（**D10 已定**：彻底移除——判权 DB 实时查 = 撤销即强退，签发一次 JOIN 直查，无双写） | 原倾向保留只读缓存；评审后采纳移除（消灭双写分裂与越权窗口） |
 | **Q10** | 权限点粒度：是否允许解决方案在运行期动态注册权限点（非 manifest 声明）？ | 倾向**只允许 manifest 声明**（安装期确定、可审计），运行期注册推迟 |
 | **Q11** | 账号批量导入（CSV）与角色复制？ | 企业高频需求，M3 明确**暂不做**，登记管理预期；后续版本立项（见设计文档 §6 演进备注） |
+| **Q12** | 安装期冒烟的 `health` 端点是否**强制**解决方案提供？ | 暂定「不强制，缺省用首个非匿名路由兜底」；若定为强制则统一契约（§5.4.1） |
 
 ---
 
@@ -762,4 +826,4 @@ manifest 的 `permissions` / `roles`（§5.2）→ 安装时按 `module=<name>` 
 - `../oj-wiki/web/src/wiki/pages/admin-{users,configs,logs}.tsx`（前端页）
 
 **外部文档（只读）**
-- `~/.local/share/oj/devkit/api-manual.md` §mounts(2699) §release 加载(3246) §reload_api(2762) §ldap(1452-1514)
+- `~/.local/share/oj/devkit/api-manual.md` §mounts(2699) §release 加载(3246) §reload_api(2762) §ldap(至 1452，其后为 kv/redis)

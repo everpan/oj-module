@@ -451,3 +451,15 @@ flowchart LR
 6. **计划 A2 原文「seed 初始口令随机生成并打印一次」被实现期证伪**（2026-10-16 阶段 B 起步复核）：oj 的 seed 机制是**静态 SQL 文件、运行时每次启动重放**——不存在「安装期执行一次 + 打印」的 JS 钩子，随机口令无从生成也无处打印。处置：实现按 D12 取固定 `admin`/`123456` + `must_change=1`（首登强制改密闭环兜底默认凭据窗口）；「随机初始口令」随安装器（M5）落地时再评估。同类计划表述与运行时机制冲突的，一律以机制可行为准并即日回写计划。
 7. **JwtApi 的 sign 面只有 `{sub, roles?}` 两 claim**（2026-10-16 阶段 B 实现期实测 devkit global.d.ts）：B4「roles 不进 claims」在运行时 API 层语法级成立，但 AC1-27 的「限权 token」也因此**无法经自定义 claim 表达**——must_change 改判 DB 驱动：判权出口快照加 must_change 悬挂位，悬挂期 `assertPermission/assertSystemAdmin/assertSuperAdmin` 一律 403 `{code:"must_change"}`，改密端点（/auth/password）不经判权层故可用。偏差：设计原文「仅改密端点可用」——登录可读的弱端点（contacts 等）悬挂期实际仍可读，安全面可接受，已记计划 B 阶段小结。
 8. **AC1-10「最后 superadmin 保护」的现实可达路径是「禁止操作自己」**：成员资格编辑要求操作者本人是 superadmin，故「撤到 0 个 superadmin」在结构上不可能由他人触发；服务端仍保留 count≤1 兜底（防未来新出口绕过自操作拦截）。计划/AC 的提示文案按「禁止操作自己」实现。
+
+### 9.3 阶段 C 实现期发现（2026-10-16 1120–1210，feat/rbac-frontend）：三类「规格全绿、真机必坏」陷阱
+
+C 阶段验收走真实 `ojm init` + `ojm dev` 冒烟时连续钉出三个 oj 运行时反常识——**模板 vitest 套件（service 直引）结构性覆盖不到 handler/模块层，113 绿测试未暴露任何一条**：
+
+1. **【反常规】oj 对 handler 未捕获异常一律落 500 信封，不读 `err.status`**（实测：错口令登录返回 `{"code":500,"msg":"Error: invalid credentials"}`）。D14 统一 401、B5 429 `retryAfterMs`、403 `must_change`、409 `holders` 全被抹成 500。处置：新增 `_shared/respond.ts` 统一异常出口（`respond(fn)` 捕获 → `json.fail(err.status ?? 500, msg, extra)`，extra 取 error 自身可枚举属性除 status/message），**全部 handler 业务体经 respond 收口**（`respond.ts` 头注释已写明红线）。修复后真机验证：错口令 401、refresh 伪串 401、悬挂期 403 `{code:"must_change"}`、429 带 `retryAfterMs` 全对。
+2. **【反常识】oj 路由加载器把 handler 文件的相对 import 按「含 api.ts 的目录」解析**（不是按文件所在层级）。`system/roles/api.ts` 在 src 下两层，但 `../../../_platform/...` 会解析到 src 之外而加载失败（dev 日志 16 条 route error、uni-dev-smoke 登录 404 的元凶）。各目录正确深度：`api/src/system/<x>/` → `../../_platform/_shared/...`；`api/src/system/<x>/<y>/` → `../../../_platform/_shared/...`；`api/src/auth/` → `../_platform/_shared/...`；`api/src/_platform/contacts/` → `../_shared/...`；`contacts/detail/` → `../../_shared/...`。
+3. **【反常识·最重】oj 每请求重建 handler 模块实例——模块级可变状态不跨请求存活**（实测探针端点：模块级计数器三次请求恒为 1）。连锁后果与处置：
+   - **B5 登录连败节流（进程内 Map）真实运行时恒失效**——连败永不累积、429 永不触发。处置：`sys_login_throttle` + `sys_rate_window` 两张状态表（迁移 0009，三方言覆盖），`rate.ts` 全函数改 DB 驱动；真机验证连败 6 次后第 7 次起 429、`retryAfterMs` 指数 30s→60s→120s。附带收益：原「多实例换 Redis」的 ponytail 上限消除（DB 天然多实例同源）。
+   - **AC1-29 的 403 deny 分钟窗口聚合（进程内 Map）同样恒失效**（每请求恒逐条落表）。处置：聚合窗口以 `sys_oplog` 自身为锚——分钟内最近一条同 `(user_id, action='auth.deny', target=code)` 行即窗口锚点，命中只更新 `detail.count`，否则落首条；模块内串行队列保留（收敛单请求内多次 deny 的竞态），跨请求并发首条落两行的残余竞态人去重场景可容忍（已注释）。
+   - **D10 判权短 TTL 缓存恒不命中**——每请求直查 DB。正确性无损（「撤销即强退」反成平凡真），缓存/写时失效调用面保留（同请求多断言仍有意义），access.ts 头注释已注记。
+   - **教训（流程级）**：凡 oj 模块内 `let/Map/Set` 级状态一律视为「单请求作用域」；需要跨请求的状态必须落库或走 `oj` 持久面。评审 checklist 增一项「模块级可变状态 ∈ 单请求语义？」。
