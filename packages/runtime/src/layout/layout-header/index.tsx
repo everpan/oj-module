@@ -1,7 +1,7 @@
 import type { ButtonProps } from "antd";
 import { MenuFoldOutlined, MenuUnfoldOutlined } from "@ant-design/icons";
 import { theme as antdTheme, Button, ConfigProvider, theme } from "antd";
-import { Children, Fragment } from "react";
+import { Children } from "react";
 import { useDeviceType } from "#src/hooks/use-device-type";
 import { usePreferences } from "#src/hooks/use-preferences";
 import { useLayout } from "#src/layout/hooks/use-layout";
@@ -85,9 +85,9 @@ export default function LayoutHeader({ className, children }: LayoutHeaderProps)
 				</div>
 
 				<div className={cn("flex items-center min-w-0", isMobile && "overflow-x-auto")}>
-					{/* 插槽节点无稳定标识，用 Children.toArray 自动分配稳定 key（避免 index key 告警） */}
+					{/* 插槽节点无稳定 key：Children.toArray 已为每个节点自动分配稳定 key，直接渲染即可 */}
 					{/* eslint-disable-next-line react/no-children-to-array -- 插槽节点无稳定 key，toArray 分配稳定 key 最稳 */}
-					{Children.toArray(slotActions).map(node => <Fragment key={node.key ?? undefined}>{node}</Fragment>)}
+					{Children.toArray(slotActions)}
 					<GlobalSearch />
 					<Preferences {...buttonProps} />
 					<ThemeButton {...buttonProps} />
