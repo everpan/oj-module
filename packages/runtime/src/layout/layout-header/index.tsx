@@ -1,7 +1,7 @@
 import type { ButtonProps } from "antd";
 import { MenuFoldOutlined, MenuUnfoldOutlined } from "@ant-design/icons";
 import { theme as antdTheme, Button, ConfigProvider, theme } from "antd";
-import { Fragment } from "react";
+import { Children, Fragment } from "react";
 import { useDeviceType } from "#src/hooks/use-device-type";
 import { usePreferences } from "#src/hooks/use-preferences";
 import { useLayout } from "#src/layout/hooks/use-layout";
@@ -24,11 +24,6 @@ export interface LayoutHeaderProps {
 	children?: React.ReactNode
 }
 
-const buttonProps: ButtonProps = {
-	size: "large",
-	className: "px-[11px]",
-};
-
 export default function LayoutHeader({ className, children }: LayoutHeaderProps) {
 	const {
 		token: { Menu },
@@ -46,6 +41,11 @@ export default function LayoutHeader({ className, children }: LayoutHeaderProps)
 	const slotActions = useSlotNodes("header-actions");
 	const isFixedDarkTheme = isDark || (sidebarTheme === "dark" && (isMixedNav || isTopNav));
 
+	// 窄屏（如 iPhone SE 375px）：按钮缩为 middle 并收紧内边距，避免顶栏右侧溢出
+	const buttonProps: ButtonProps = isMobile
+		? { size: "middle", className: "px-2" }
+		: { size: "large", className: "px-[11px]" };
+
 	return (
 		<ConfigProvider
 			theme={{
@@ -56,7 +56,8 @@ export default function LayoutHeader({ className, children }: LayoutHeaderProps)
 		>
 			<header
 				className={cn(
-					"flex-shrink-0 flex gap-5 justify-between items-center transition-all md:px-4",
+					"flex-shrink-0 flex justify-between items-center transition-all px-2 md:px-4",
+					isMobile ? "gap-2" : "gap-5",
 					{ "overflow-hidden": isMaximize },
 					className,
 				)}
@@ -83,9 +84,10 @@ export default function LayoutHeader({ className, children }: LayoutHeaderProps)
 					{children}
 				</div>
 
-				<div className="flex items-center">
-					{/* 插槽节点无稳定标识，按注册顺序渲染 */}
-					{slotActions.map((node, index) => <Fragment key={index}>{node}</Fragment>)}
+				<div className={cn("flex items-center min-w-0", isMobile && "overflow-x-auto")}>
+					{/* 插槽节点无稳定标识，用 Children.toArray 自动分配稳定 key（避免 index key 告警） */}
+					{/* eslint-disable-next-line react/no-children-to-array -- 插槽节点无稳定 key，toArray 分配稳定 key 最稳 */}
+					{Children.toArray(slotActions).map(node => <Fragment key={node.key ?? undefined}>{node}</Fragment>)}
 					<GlobalSearch />
 					<Preferences {...buttonProps} />
 					<ThemeButton {...buttonProps} />

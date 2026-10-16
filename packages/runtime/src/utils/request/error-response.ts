@@ -1,6 +1,8 @@
 import { isObject } from "#src/utils/is";
 import { message } from "#src/utils/static-antd";
 
+import { isMustChange, openMustChangeModal } from "./must-change";
+
 /**
  * 处理错误响应
  *
@@ -24,6 +26,11 @@ export async function handleErrorResponse(response: Response) {
 	}
 
 	if (isObject(data)) {
+		// 未改密（must_change）集中拦截：不逐条 toast，改弹一次引导框
+		if (isMustChange(data)) {
+			openMustChangeModal();
+			return response;
+		}
 		// AC-D16：全站唯一信封 = oj {code,msg,data}，错误体只读 msg 键
 		const json = data as { msg?: string };
 		message.error(json.msg || response.statusText);

@@ -1,7 +1,7 @@
 {
 	"page": {
 		"title": "登录",
-		"subtitle": "脚手架种子账号：admin / 123456",
+		"subtitle": "请登录以继续使用系统",
 		"username": "用户名",
 		"password": "密码",
 		"submit": "登 录",
