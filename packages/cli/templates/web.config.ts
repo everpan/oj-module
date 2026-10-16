@@ -38,8 +38,8 @@ export default {
 		},
 		{
 			// 系统管理：用户/成员资格/角色权限/操作日志/站点设置/登录方式（oj 后端 /api/system/*）。
-			// __client 不随模板分发：init 后跑一次 `oj openapi -o openapi.json && ojm api` 生成；
-			// 生成前该模块加载失败（菜单缺失）属预期，README「系统管理模块」节有说明
+			// __client 已随模板分发（与 auth/notification 等一致），开箱即用；契约变更后重跑
+			// `oj openapi -o openapi.json && ojm api` 可刷新，README「系统管理模块」节有说明
 			name: "system",
 			entry: "web/src/system/entry.ts",
 			enabled: true,
