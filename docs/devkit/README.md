@@ -15,7 +15,7 @@
 | 文件 | 用途 |
 |---|---|
 | `SKILL.md` | Claude Code 等 agent 的 skill 入口：工作流、红线、新模块 checklist、陷阱速查，按章节号引用手册 |
-| `manual.md` | 模块开发手册（10 章）：工程结构、写模块、契约与代码生成（含 §3.10 旧 contract.ts 工程迁移指南）、provider 接管（覆盖框架内置功能）、布局、i18n、构建发布、排查、CLI 子命令参考（ojm 原生命令 vs oj 透传命令） |
+| `manual.md` | 模块开发手册（10 章）：工程结构（含 §1.7 handler 四红线——oj 运行时实测钉出，后端必读）、写模块、契约与代码生成（含 §3.10 旧 contract.ts 工程迁移指南）、provider 接管（覆盖框架内置功能）、布局、i18n、构建发布、排查、CLI 子命令参考（ojm 原生命令 vs oj 透传命令） |
 | `framework-dev.md` | 框架贡献者路线（**仅框架仓库**）：改 `packages/runtime`、`packages/cli` 时的入口与红线 |
 
 ## 安装（业务工程）

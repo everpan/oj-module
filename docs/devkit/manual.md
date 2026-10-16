@@ -92,6 +92,43 @@ api/src/<模块>/<路径...>/api.ts   →   /api/<模块>/<路径...>
 
 > `seed.sql` 按 `;` 朴素切分，**注释里不许出现分号字面量**，否则语法错。
 
+### 1.7 handler 四红线（oj 运行时实测钉出，2026-10-16 RBAC 阶段）
+
+以下四条都是真机冒烟（`ojm init` + `ojm dev`/`build`）实测钉出的 oj 运行时行为，
+**dev 模式体感正常、一到构建/并发就炸**——vitest 直引 service 的测试结构性覆盖不到，
+评审 checklist 必查。逐条展开：
+
+1. **未捕获异常恒 500，不读 `err.status`。** handler 抛出任何异常，oj 运行时一律回
+   `{"code":500,"msg":"Error: ..."}`——你在 service 层精心设计的 401/403/409 全被抹平。
+   **红线**：handler 业务体必须收口成 `json.fail(status, msg, extra?)`；模板统一约定
+   `_platform/_shared/respond.ts` 的 `respond(fn)`——service 抛 `Error & {status?, ...extra}`，
+   handler 写 `await respond(async () => { ...; return data; })` 即自动映射
+   （extra = error 的 own 可枚举属性除去 `status`/`message`，进信封 `data`）。
+2. **相对 import 按「目录」解析，不是按文件层级。** 路由加载器以**含 `api.ts` 的目录**
+   为基准解析相对路径——多写一层 `../` 在 dev 日志里是 route error（模块像没注册），
+   vitest 直引 service 永远发现不了。正确深度：
+
+   | 文件位置 | 到 `_platform/_shared` 的写法 |
+   |---|---|
+   | `api/src/system/<x>/api.ts` | `../../_platform/_shared/...` |
+   | `api/src/system/<x>/<y>/api.ts` | `../../../_platform/_shared/...` |
+   | `api/src/auth/api.ts` | `../_platform/_shared/...` |
+   | `api/src/auth/<z>/api.ts` | `../../_platform/_shared/...` |
+   | `api/src/_platform/<x>/api.ts` | `../_shared/...` |
+   | `api/src/_platform/<x>/<y>/api.ts` | `../../_shared/...` |
+3. **模块级可变状态不跨请求存活。** oj **每请求重建 handler 模块实例**（实测：模块级
+   计数器连打三次恒为初值）——`let` / `Map` / `Set` 级状态一律视为**单请求作用域**。
+   需要跨请求的状态（限速、节流、去重窗口、判权缓存）**必须落库**或走 oj 持久面。
+   模板先例：迁移 `0009__sys_throttle`（`sys_login_throttle` 连败节流 +
+   `sys_rate_window` 滑动窗口，三方言）。别想着「先内存后 Redis」——内存方案在 oj 下
+   连单实例都跑不对。
+4. **`oj build` 的 introspect 在无运行时配置的空沙箱里评估模块。** 构建期会加载
+   handler 模块提取 `.schema`，此时 `jwt` / `axis` 等运行时全局**不存在**——模块级
+   任何触碰运行时全局的语句（`createSession()`、`axis("ldap")`、`bcrypt.xxx`）
+   直接炸构建：`introspect api.ts: Error: jwt not configured`。**红线**：handler 模块
+   顶部只许 import 与纯常量声明；一切运行时全局的取用移进 handler 函数体内按需执行
+   （无状态构造是纯闭包，每请求新建零成本）。
+
 ---
 
 ## §2 写前端模块
@@ -1274,6 +1311,10 @@ export default async (path: string, html: string) => {
 | curl 访问 SPA 路由返回 404 | SPA history 回落要求 `Accept: text/html` | 加 `-H 'Accept: text/html'`（浏览器自带，不是 bug） |
 | `oj serve` 启动即退，报 `config uses removed server.* site keys (v0.1.58): api_prefix`（或 `app_path` / `app_prefix` / `static_sites` / `app_spa_fallback`） | 用了 oj v0.1.58 起删除的旧站点键 | 改 `server.api_prefix: /api` 为顶层 `mounts: [{prefix: "/api", api: "src"}]`（一行=一个 URL 前缀+一个目录，`api`/`web` 恰好其一）；迁移完整 YAML 由报错信息给出；详见后端 devkit「mounts 迁移」 |
 | 改完 `mounts:` 仍报 `no route matched`（/api/* 全 404） | `api:` 指向的目录不是 oj 启动目录下的 `src`（相对 config 所在目录） | `mounts[].api` 写 `"src"`，且 `oj serve` 的 `-c` 指向 `api/config.yaml`（ojm dev/preview 已内置正确路径） |
+| 业务错误恒返回 `{"code":500}`（401/403/409 全变 500） | handler 抛异常被 oj 一律抹成 500，不读 `err.status` | service 抛 `Error & {status}`，handler 经 `respond()` 收口（§1.7-1） |
+| dev 起不来，日志一堆 route error（Cannot find module） | handler 相对 import 多写了一层——按**目录**解析不是按文件（§1.7-2） | 按 §1.7 深度表改 |
+| 限速/节流/去重窗口在真实请求下永不累积（测试却全绿） | 模块级 `Map`/`let` 不跨请求存活——oj 每请求重建模块（§1.7-3） | 状态落库（模板 0009 先例）或走 oj 持久面 |
+| `ojm build` 报 `introspect api.ts: Error: jwt not configured`（dev 模式正常） | 模块级语句触碰运行时全局，introspect 空沙箱里炸（§1.7-4） | 移进 handler 函数体内按需执行 |
 
 ---
 
@@ -1289,6 +1330,7 @@ export default async (path: string, html: string) => {
 | 无页面模块（`routes: []`） | 同 `web/src/notification/entry.ts` |
 | handler `.schema` 入参 + 平级 `.response` 出参写法（GET + POST、参数段） | `api/src/notification/api.ts`、模板 `packages/cli/templates/api/src/notification/api.ts` |
 | handler 写法（嵌套组列表 / 写入 / 403 归属） | `api/src/notification/api.ts`（模块根单文件，`read`/`read-all`/`clear` 子组） |
+| 统一异常出口 `respond()`（service 抛 `Error & {status}` → 信封 `json.fail`） | 模板 `api/src/_platform/_shared/respond.ts` + 各 handler 用法（§1.7-1） |
 | 生成物长什么样（含工厂） | `web/src/notification/__client/api.ts` |
 | 建表三件套 | `api/src/notification/{schema.yaml,manifest.yaml,migrations/}` |
 | 全局类型（`window.$message` 等） | 工程根 `env.d.ts` |

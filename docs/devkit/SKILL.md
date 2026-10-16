@@ -60,6 +60,11 @@ description: 用 ojm 开发前后端一体工程时使用——新增/修改前�
   （与 schema 双向一致）。少一个就建不出表或启动失败。见手册 §1.5。
 - **`seed.sql` 每次启动都重放**，必须幂等（`INSERT OR IGNORE`）；它按 `;` 朴素切分，
   注释里不许出现分号字面量。
+- **handler 四红线（manual §1.7，oj 运行时实测）**：① 未捕获异常恒 500 不读
+  `err.status`——业务错误必须经 `respond()` 收口 `json.fail`；② 相对 import 按
+  **目录**解析（多一层 `../` 就 route error）；③ 模块级 `let`/`Map` 不跨请求存活
+  （oj 每请求重建模块）——跨请求状态必须落库；④ 模块级禁止触碰运行时全局
+  （`jwt`/`axis`/`bcrypt`），`oj build` introspect 空沙箱会炸。
 
 ## 重启边界（最容易卡住新人）
 
@@ -78,6 +83,7 @@ description: 用 ojm 开发前后端一体工程时使用——新增/修改前�
 - [ ] 菜单标题用命名空间语法 `"<模块名>:menu.<key>"`，且 `locales/<lang>.json` 里有这个 key
 - [ ] 有接口 → handler 动词挂了 `.schema`（入参）+ 平级 `.response`（出参，oj v0.1.72+）→ `oj openapi` + `ojm api` 跑过 → onInit 里 `create<Module>Client(ctx)`
 - [ ] 接管了某功能 → provider 方法数与类型定义**一个不差**
+- [ ] 有后端 → handler 四红线过一遍（manual §1.7：respond 收口 / import 深度 / 无模块级状态 / 无模块级运行时全局）
 - [ ] `pnpm dev` 起来后按 §8 五步排查全过
 
 ## 旧工程迁移（contract.ts / defineApi → 新流水线）
@@ -126,10 +132,15 @@ description: 用 ojm 开发前后端一体工程时使用——新增/修改前�
 | 后端 `import '@oj-module/runtime/...'` 报 `escapes project root` | oj 解析裸 specifier 以 `api/` 为项目根并钳制不越界，`@oj-module/runtime` 符号链接在 `packages/runtime`（项目根外） | 后端原语/类型放 `api/src` 内相对导入；跨模块共享类型仍以 runtime 为单一真源，两端形状手动同步 |
 | 跨用户删/读他人通知不报错却像没生效 | 原语对不存在/非本人的行 `UPDATE 0` 行返回 `ok`，没区分归属 | 原语（`delNotice`/`markRead`）返回 `boolean`/`count`，端点据 `false`/`0` 映射 `json.fail(403, "forbidden")` |
 | handler 写了动词子目录（`read/api.ts` 这类） | 旧形态（oj v0.1.64 前） | 按 manual §3.9「DDD 判据速查」reshape：同聚合多动词收模块根嵌套组，`del` 保留键例外 |
+| 业务错误恒 `{"code":500}`（401/403/409 全变 500） | handler 抛异常被 oj 一律抹 500，不读 `err.status` | service 抛 `Error & {status}`，handler 经 `respond()` 收口（manual §1.7-1） |
+| dev 日志 route error（Cannot find module）/ 端点 404 | handler 相对 import 多一层——按**目录**解析 | 按 manual §1.7 深度表改 |
+| 限速/节流/计数真实请求下永不累积（测试全绿） | 模块级 `Map`/`let` 不跨请求存活（每请求重建模块） | 状态落库（模板迁移 0009 先例）或 oj 持久面 |
+| `ojm build` 报 `introspect api.ts: jwt not configured` | 模块级语句碰运行时全局，introspect 空沙箱炸 | 移进 handler 函数体内（manual §1.7-4） |
 | 页签怎么点都关不掉、无报错提示 | `beforeClose` 守卫 fail-safe 否决（守卫抛错按取消处理） | 先查控制台 `[tabs] beforeClose` 报错；确认弹窗逻辑与 `resolve(true/false)` 收口（manual §6.4） |
 
 ## 手册
 
-`manual.md`（同目录）共 10 章：1 工程结构 / 2 写前端模块 / 3 契约与代码生成 /
-4 接管框架内置功能（provider）/ 5 布局与插槽 / 6 i18n 与样式 / 7 构建与发布 / 8 排查 /
-9 参考 / 10 CLI 子命令参考（ojm 原生命令 vs oj 透传命令的差异区分）。
+`manual.md`（同目录）共 10 章：1 工程结构（含 **§1.7 handler 四红线**——oj 运行时实测钉出，
+后端 handler 必读）/ 2 写前端模块 / 3 契约与代码生成 / 4 接管框架内置功能（provider）/
+5 布局与插槽 / 6 i18n 与样式 / 7 构建与发布 / 8 排查 / 9 参考 / 10 CLI 子命令参考
+（ojm 原生命令 vs oj 透传命令的差异区分）。
