@@ -83,7 +83,7 @@
 | C2 | 角色管理页 | 新建（custom.<slug>+展示名）/绑定编辑（标灰 deprecated、超集与页面门角色无入口）/删除（占用禁删）/紧急吊销 | AC1-15~20, AC1-28, AC1-30 | 未开始 | - | - |
 | C3 | 操作日志页 | 查询（action/username/module 过滤、truncated）；admin 可查（D13）；403 聚合展示 | AC1-29 | 未开始 | - | - |
 | C4 | 系统设置页 | 按 group 分 Card；`framework.site_title` 经 htmlTransform 生效；`market_cdn_url`（superadmin 可见可改） | PRD §4.3 | 未开始 | - | - |
-| C5 | 登录页 | 「其他登录方式」区（`GET /system/login-methods` 匿名）；must_change 强制改密跳转 | AC1-12/27 | 未开始 | - | - |
+| C5 | 登录页 | **标签切换登录方式**（账号密码 / LDAP / SSO，`GET /system/login-methods` 匿名驱动渲染，未配置不显示对应标签，默认账号密码）；must_change 强制改密跳转 | AC1-12/27 | 未开始 | - | - |
 | C6 | 选人组件（可选） | runtime `ContactSelect` 封装 contacts 接口，供 solutions 复用 | AC1-22 | 未开始 | - | - |
 
 **DoD**：四页面可用；title 设置改变浏览器标签；集中评审合并。

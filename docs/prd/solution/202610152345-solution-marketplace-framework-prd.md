@@ -239,7 +239,7 @@
 
 **设置页处理**：映射段可编辑；连接段**只读展示**当前 `config.yaml` 的 `ldap:` 状态（是否配置、url 主机部分脱敏）+ 提供可复制的 YAML 片段与「需重启生效」提示。**不允许从设置页回写 config.yaml** —— 写挂了会启动 fail-fast，属高风险面。
 
-**前端**：登录页新增「其他登录方式」区（`GET /system/login-methods`，**匿名**）。
+**前端**：登录页**标签切换登录方式**（账号密码 / LDAP / 未来 SSO）——`GET /system/login-methods`（**匿名**）返回可用方式列表驱动标签渲染；未启用 LDAP 时不出现对应标签；默认标签为账号密码。
 ⚠️ **实测约束 E6**：`anonymous_paths` 是挂载前缀相对的，安装器/框架必须写 `/system/login-methods` 与 `/system/ldap-login`，**不要写 `/api/...`**。
 
 ### 4.6 解决方案市场（UI）
