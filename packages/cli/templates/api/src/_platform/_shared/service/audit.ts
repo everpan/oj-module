@@ -1,5 +1,7 @@
 // 审计出口（AC1-29）：recordOp 落 sys_oplog；auditOp fire-and-forget（失败静默，不阻断业务）；
 // auditDeny 按 (user_id, code) 分钟窗口聚合——首条落表，窗口内只更新计数，1000 次循环不逐条落表。
+// 反常识修正：oj 每请求重建模块实例，聚合窗口状态以 sys_oplog 自身为锚（分钟内最近一条同 (user,code)
+// 的 auth.deny 行），进程内 Map 方案在真实运行时每请求恒为空、恒逐条落表（语义破坏已实测）。
 // 脱敏红线：detail 由调用方保证不含口令/密钥/token（本层只做 JSON 序列化）。
 import { moduleOf } from "./guard";
 
@@ -49,9 +51,9 @@ export function auditOp(entry: OpEntry): void {
 }
 
 const DENY_WINDOW_MS = 60_000;
-const denyWindows = new Map<string, { at: number, rowId: number, count: number }>();
-// 串行队列：deny 审计的「查窗口→落首条→更新计数」必须原子，并发进入会产生多首条（AC1-29 语义破坏）
-// ponytail: 进程内单队列；deny 频率低（人去重后），吞吐不敏感
+// 串行队列：把同请求内多次 auditDeny 的「查锚点行→更新/插入」串行化（AC1-29 同窗口只许一行首条）。
+// 跨请求并发首条可能落两行（锚点查询非原子）——人去重后并发 403 同 (user,code) 极罕见，可容忍。
+// ponytail: 模块级队列在 oj 每请求重建语义下只管得住单请求内，跨请求靠 DB 行自身作锚。
 let denyQueue: Promise<void> = Promise.resolve();
 
 /**
@@ -63,23 +65,26 @@ export function auditDeny(code: string): void {
 	denyQueue = denyQueue.then(() => recordDeny(uid, code)).catch(() => {});
 }
 
-/** 清窗口状态（测试夹具/运维排障用；与 DB 清表配套，防内存窗口指向已删行）。 */
+/** 清窗口状态：窗口锚点即 sys_oplog 行本身——测试夹具/运维直接清表即重置，本函数仅为兼容既有调用面。 */
 export function resetDenyAudit(): void {
-	denyWindows.clear();
+	// no-op（状态在 DB；详见文件头反常识修正）
 }
 
 async function recordDeny(uid: number, code: string): Promise<void> {
-	const key = `${uid}:${code}`;
 	const now = Date.now();
-	const w = denyWindows.get(key);
-	if (w && now - w.at < DENY_WINDOW_MS) {
-		w.count += 1;
-		await db.exec("update sys_oplog set detail = ? where id = ?", [JSON.stringify({ code, count: w.count }), w.rowId]);
+	// 窗口锚点 = 分钟内最近一条同 (user, code) 的 auth.deny 行；命中只更新计数，否则落首条。
+	const rows = await db.query(
+		"select id, detail from sys_oplog where user_id = ? and action = 'auth.deny' and target = ? and create_time > ? order by id desc limit 1",
+		[uid, code, now - DENY_WINDOW_MS],
+	);
+	const hit = rows[0] as { id: number, detail: string } | undefined;
+	if (hit) {
+		const count = (JSON.parse(hit.detail) as { count: number }).count + 1;
+		await db.exec("update sys_oplog set detail = ? where id = ?", [JSON.stringify({ code, count }), hit.id]);
 		return;
 	}
-	const rows = await db.query(
-		"insert into sys_oplog (create_time, user_id, username, action, module, target, detail, level) values (?, ?, ?, 'auth.deny', ?, ?, ?, 4) returning id",
+	await db.exec(
+		"insert into sys_oplog (create_time, user_id, username, action, module, target, detail, level) values (?, ?, ?, 'auth.deny', ?, ?, ?, 4)",
 		[now, uid, await usernameOf(uid), moduleOf(code), code, JSON.stringify({ code, count: 1 })],
 	);
-	denyWindows.set(key, { at: now, rowId: Number((rows[0] as { id: unknown }).id), count: 1 });
 }

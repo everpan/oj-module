@@ -449,6 +449,238 @@
 					}
 				}
 			}
+		},
+		"/api/_platform/contacts": {
+			"get": {
+				"operationId": "_platform_contacts_get",
+				"summary": "GET api/_platform/contacts",
+				"x-oj-file": "_platform/contacts/api.ts",
+				"tags": [
+					"_platform"
+				],
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				}
+			}
+		},
+		"/api/_platform/contacts/detail": {
+			"get": {
+				"operationId": "_platform_contacts_detail_get",
+				"summary": "GET api/_platform/contacts/detail",
+				"x-oj-file": "_platform/contacts/detail/api.ts",
+				"tags": [
+					"_platform"
+				],
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				}
+			}
+		},
+		"/api/system/login-methods": {
+			"get": {
+				"operationId": "system_login-methods_get",
+				"summary": "GET api/system/login-methods",
+				"x-oj-file": "system/login-methods/api.ts",
+				"tags": [
+					"system"
+				],
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				}
+			}
+		},
+		"/api/system/oplog": {
+			"get": {
+				"operationId": "system_oplog_get",
+				"summary": "GET api/system/oplog",
+				"x-oj-file": "system/oplog/api.ts",
+				"tags": [
+					"system"
+				],
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				}
+			}
+		},
+		"/api/system/permissions": {
+			"get": {
+				"operationId": "system_permissions_get",
+				"summary": "GET api/system/permissions",
+				"x-oj-file": "system/permissions/api.ts",
+				"tags": [
+					"system"
+				],
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				}
+			}
+		},
+		"/api/system/roles": {
+			"get": {
+				"operationId": "system_roles_get",
+				"summary": "GET api/system/roles",
+				"x-oj-file": "system/roles/api.ts",
+				"tags": [
+					"system"
+				],
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				}
+			},
+			"post": {
+				"operationId": "system_roles_post",
+				"summary": "POST api/system/roles",
+				"x-oj-file": "system/roles/api.ts",
+				"tags": [
+					"system"
+				],
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				}
+			},
+			"delete": {
+				"operationId": "system_roles_delete",
+				"summary": "DELETE api/system/roles",
+				"x-oj-file": "system/roles/api.ts",
+				"tags": [
+					"system"
+				],
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				}
+			}
+		},
+		"/api/system/roles/bindings": {
+			"put": {
+				"operationId": "system_roles_bindings_put",
+				"summary": "PUT api/system/roles/bindings",
+				"x-oj-file": "system/roles/bindings/api.ts",
+				"tags": [
+					"system"
+				],
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				}
+			}
+		},
+		"/api/system/settings": {
+			"get": {
+				"operationId": "system_settings_get",
+				"summary": "GET api/system/settings",
+				"x-oj-file": "system/settings/api.ts",
+				"tags": [
+					"system"
+				],
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				}
+			},
+			"put": {
+				"operationId": "system_settings_put",
+				"summary": "PUT api/system/settings",
+				"x-oj-file": "system/settings/api.ts",
+				"tags": [
+					"system"
+				],
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				}
+			}
+		},
+		"/api/system/users": {
+			"get": {
+				"operationId": "system_users_get",
+				"summary": "GET api/system/users",
+				"x-oj-file": "system/users/api.ts",
+				"tags": [
+					"system"
+				],
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				}
+			},
+			"post": {
+				"operationId": "system_users_post",
+				"summary": "POST api/system/users",
+				"x-oj-file": "system/users/api.ts",
+				"tags": [
+					"system"
+				],
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				}
+			}
+		},
+		"/api/system/users/roles": {
+			"put": {
+				"operationId": "system_users_roles_put",
+				"summary": "PUT api/system/users/roles",
+				"x-oj-file": "system/users/roles/api.ts",
+				"tags": [
+					"system"
+				],
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				}
+			}
+		},
+		"/api/system/users/password": {
+			"put": {
+				"operationId": "system_users_password_put",
+				"summary": "PUT api/system/users/password",
+				"x-oj-file": "system/users/password/api.ts",
+				"tags": [
+					"system"
+				],
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				}
+			}
+		},
+		"/api/system/users/forbidden": {
+			"put": {
+				"operationId": "system_users_forbidden_put",
+				"summary": "PUT api/system/users/forbidden",
+				"x-oj-file": "system/users/forbidden/api.ts",
+				"tags": [
+					"system"
+				],
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				}
+			}
 		}
 	},
 	"tags": [

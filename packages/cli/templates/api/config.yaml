@@ -50,3 +50,5 @@ auth:
     - /auth/login
     - /auth/refresh
     - /auth/logout
+    # 登录页登录方式 Tabs 数据源（C5/AC2-2）：未登录即可读
+    - /system/login-methods

@@ -1,9 +1,10 @@
+import { respond } from "../_platform/_shared/respond";
 // oj 嵌套 handler 组：组名 = 路径段（login → POST /api/auth/login，路由不变）。
 // 阶段 B 登录链（D14/AC1-12/13/27）：领域逻辑全在 _shared/session.ts（createSession 注入 deps），
 // handler 只编排：取参 → 调 service → json 信封；B5 限速在 login handler 挂 rate.ts。
 // refresh 存 DB（sys_refresh_token，§3.1），logout = 吊销当前串。
-import { auditOp } from "../../_platform/_shared/service/audit";
-import { loginBlocked, loginFailed, loginSucceeded, rateLimit } from "../../_platform/_shared/service/rate";
+import { auditOp } from "../_platform/_shared/service/audit";
+import { loginBlocked, loginFailed, loginSucceeded, rateLimit } from "../_platform/_shared/service/rate";
 import { createSession } from "./_shared/session";
 
 const session = createSession();
@@ -20,23 +21,25 @@ const login = {
 		const username = String(body.username ?? "");
 		const ip = await clientIp();
 		const pairKey = `${ip}|${username}`;
-		try {
-			await rateLimit(`login:ip:${ip}`, 30, 60_000);
-			loginBlocked(pairKey);
-			const r = await session.localLogin(username, String(body.password ?? ""));
-			loginSucceeded(pairKey);
-			json.ok(r);
-		}
-		catch (e) {
-			const err = e as Error & { status?: number };
-			if (err.status === 401) {
-				const fails = loginFailed(pairKey);
-				if (fails === 6)
-					auditOp({ action: "auth.login.throttle", module: "framework", target: pairKey, level: 4 });
-				auditOp({ action: "auth.login.fail", module: "framework", target: username, level: 4 });
+		await respond(async () => {
+			try {
+				await rateLimit(`login:ip:${ip}`, 30, 60_000);
+				await loginBlocked(pairKey);
+				const r = await session.localLogin(username, String(body.password ?? ""));
+				await loginSucceeded(pairKey);
+				return r;
 			}
-			throw e;
-		}
+			catch (e) {
+				const err = e as Error & { status?: number };
+				if (err.status === 401) {
+					const fails = await loginFailed(pairKey);
+					if (fails === 6)
+						auditOp({ action: "auth.login.throttle", module: "framework", target: pairKey, level: 4 });
+					auditOp({ action: "auth.login.fail", module: "framework", target: username, level: 4 });
+				}
+				throw e; // respond 收口：err.status/extra → json.fail 信封（oj 未捕获异常恒 500）
+			}
+		});
 	},
 };
 
@@ -53,7 +56,7 @@ const refresh = {
 	// POST /api/auth/refresh —— 轮换（旧串立即失效；reuse 检测在 service 内全族吊销+审计）。
 	async post() {
 		const token = String((http.body || {}).refresh_token ?? "");
-		json.ok(await session.refresh(token));
+		await respond(async () => session.refresh(token));
 	},
 };
 
@@ -66,7 +69,7 @@ const password = {
 			return;
 		}
 		const body = http.body || {};
-		json.ok(await session.changePassword(Number(uid), String(body.old_password ?? ""), String(body.new_password ?? "")));
+		await respond(async () => session.changePassword(Number(uid), String(body.old_password ?? ""), String(body.new_password ?? "")));
 	},
 };
 
