@@ -1,5 +1,12 @@
 name: _platform
-desc: 框架级共有表（users 鉴权）——普通模块、无路由（参考 sample/src/_platform）
+desc: 框架级共有表（users 鉴权 + RBAC 六表 + 设置/日志/路由注册）——普通模块、无路由（参考 sample/src/_platform）
 version: 0.1.0
 tables:
   - users
+  - sys_setting
+  - sys_oplog
+  - sys_solution_route
+  - sys_role
+  - sys_permission
+  - sys_role_permission
+  - sys_user_role
