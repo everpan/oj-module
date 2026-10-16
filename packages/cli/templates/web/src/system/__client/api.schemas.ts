@@ -33,6 +33,18 @@ export const schemas = {
 	"truncated": z.boolean()
 }),
 	},
+	"systemOplogPost": {
+		body: z.object({
+	"action": z.string().min(1),
+	"module": z.string().min(1),
+	"version": z.string().optional(),
+	"target": z.string().optional(),
+	"level": z.number().optional()
+}),
+		data: z.object({
+	"ok": z.boolean()
+}),
+	},
 	"systemPermissionsGet": {
 		data: z.array(z.object({
 	"code": z.string(),

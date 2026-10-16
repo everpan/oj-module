@@ -684,6 +684,84 @@
 						}
 					}
 				}
+			},
+			"post": {
+				"operationId": "system_oplog_post",
+				"summary": "POST api/system/oplog",
+				"x-oj-file": "system/oplog/api.ts",
+				"tags": [
+					"system"
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"required": [
+									"action",
+									"module"
+								],
+								"properties": {
+									"action": {
+										"type": "string",
+										"minLength": 1
+									},
+									"module": {
+										"type": "string",
+										"minLength": 1
+									},
+									"version": {
+										"type": "string"
+									},
+									"target": {
+										"type": "string"
+									},
+									"level": {
+										"type": "number"
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"required": [
+												"ok"
+											],
+											"properties": {
+												"ok": {
+													"type": "boolean"
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
 			}
 		},
 		"/api/system/permissions": {
