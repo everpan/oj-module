@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 // 夹具重放真实 migrations + seed.sql 文件，本 spec 即「seed 与文件不漂移」的钉子。
 import { beforeAll, describe, expect, it } from "vitest";
 
-import { ADMIN, installDb } from "./fixture";
+import { installDb } from "./fixture";
 
 const SEED = join(dirname(fileURLToPath(import.meta.url)), "..", "src", "_platform", "seed.sql");
 let dbo: ReturnType<typeof installDb>;
@@ -39,13 +39,16 @@ describe("框架内置角色（ROLES 常量单一真相，PRD §4.2）", () => {
 });
 
 describe("seed 超管（D12）", () => {
+	// AUTOINCREMENT 不复用 id（sqlite_sequence 语义），统一按 username 动态解析，不钉死 id
+	const adminId = () => (dbo.prepare("SELECT id FROM users WHERE username = 'admin'").get() as { id: number }).id;
+
 	it("admin 账号绑定 superadmin 角色（sys_user_role 权威源）", () => {
-		const row = dbo.prepare("SELECT * FROM sys_user_role WHERE user_id = ? AND role_name = 'superadmin'").get(ADMIN);
+		const row = dbo.prepare("SELECT * FROM sys_user_role WHERE user_id = ? AND role_name = 'superadmin'").get(adminId());
 		expect(row).toBeDefined();
 	});
 
 	it("must_change=1：首登强制改密（AC1-27 前提）", () => {
-		const row = dbo.prepare("SELECT must_change FROM users WHERE id = ?").get(ADMIN) as { must_change: number };
+		const row = dbo.prepare("SELECT must_change FROM users WHERE id = ?").get(adminId()) as { must_change: number };
 		expect(Number(row.must_change)).toBe(1);
 	});
 });
