@@ -178,14 +178,20 @@ node scripts/smoke-system-admin.mjs              # 默认 http://localhost:5174
 
 ## 7. 任务清单（剩余）
 
-| # | 任务 | 完成判据 |
-| --- | --- | --- |
-| T1 | 提交 §5 的 4 组改动 | `git status` 干净，消息合规 |
-| T2 | 设计文档收口 | `2026-10-16-1526-*.md` 的 T1–T7 勾选 + §6 评审补 R11–R13 + §7 总结（关键过程 + 耗时） |
-| T3 | 发版 `@oj-module/cli` 0.2.1（lockstep 带上 runtime 若有改动） | `change` 说明含本次新增模块与宿主修复 |
-| T4 | 冒烟复跑（用发版产物而非本地 tgz） | `scripts/smoke-system-admin.mjs` 17/17 |
-| T5 | 业务工程升级走查（oj-wiki：换 semver → `ojm init` → web.config 登记 → `oj openapi` + `ojm api` → 重启 `ojm dev`） | 升级后管理员可见「系统管理」6 页，自建 admin 页保持删除态 |
-| T6 | 可选加固：宿主链补 catch-all 兜底页（见 §9 风险 1） | 非管理员直达 `/system/*` 渲染框架兜底页而非 React Router 默认 404 |
+| # | 任务 | 完成判据 | 状态 |
+| --- | --- | --- | --- |
+| T1 | 提交 §5 的 4 组改动 | `git status` 干净，消息合规 | ✅ 已提交（4 组 commit，消息以 `unix@vip.qq.com ai` 结尾） |
+| T2 | 设计文档收口 | `2026-10-16-1526-*.md` 的 T1–T7 勾选 + §6 评审补 R11–R13 + §7 总结（关键过程 + 耗时） | ✅ 已收口（`76731069`） |
+| T3 | 发版 `@oj-module/cli` 0.2.1（lockstep 带上 runtime 若有改动） | `change` 说明含本次新增模块与宿主修复 | 🟡 **仅准备**：cli 0.2.0→0.2.1（commit `1feeb9cc`）+ CHANGELOG 0.2.1；**未 `npm publish`**（用户指定「只准备不发」）。runtime 本分支无改动，保持 0.2.0——与 CHANGELOG「双包 lockstep」通则略有张力，见下方「发版注意」 |
+| T4 | 冒烟复跑（用发版产物而非本地 tgz） | `scripts/smoke-system-admin.mjs` 17/17 | ✅ **17/17**（本地构建 + /tmp 临时工程 + 真 oj 0.1.74 后端；因 0.2.1 未发布，用本地 tgz 而非发版产物，结论已注明） |
+| T5 | 业务工程升级走查（oj-wiki：换 semver → `ojm init` → web.config 登记 → `oj openapi` + `ojm api` → 重启 `ojm dev`） | 升级后管理员可见「系统管理」6 页，自建 admin 页保持删除态 | 🟡 **只读走查，未改造**：oj-wiki 当前 `web.config.ts` 无 `system` 模块、`web/src/system/` 仅孤立 `__client`（无 entry/pages）；无遗留框架级 admin 页（命中项均为 wiki 自身内容管理页）。升级步骤见 §11。受「其余项目只读」约束未实际改造，验收由维护者执行 |
+| T6 | 可选加固：宿主链补 catch-all 兜底页（见 §9 风险 1） | 非管理员直达 `/system/*` 渲染框架兜底页而非 React Router 默认 404 | ✅ 已实现：`host.tsx` children 末加 `{ path: "*", element: <CatchAll /> }`（`CatchAll` 把 `PageError` 的 title 设为框架 404 文案 `exception.notFoundTitle`，i18n）；commit `2a3b356f` + `5000f0bc`；冒烟「非 admin 直达被拒」已 PASS |
+
+### 发版注意（T3 / lockstep）
+
+- 本分支 `packages/runtime/src` **零改动**，按交接文档 §7 T3「lockstep 带上 runtime 若有改动」只升 cli → 0.2.1，runtime 留 0.2.0。
+- 但本仓 CHANGELOG 写明「双包始终同版本号一起发布」。若维护者遵循该通则，需把 runtime 也升 0.2.1（纯版本对齐、无功能改动）再发版；`sync-host-versions.mjs` 的 prepack 门禁只校验 runtime==宿主产物 runtime，不强制 cli==runtime，故仅升 cli 技术上可发。
+- **CHANGELOG 缺口**：`package.json` 已是 0.2.0 但 CHANGELOG 最高只到 0.1.20（0.2.0 从未正式发版，npm 最高 0.1.21），0.2.0 段待补；本次 0.2.1 段已补在 0.1.20 之上。
 
 ## 8. 验收清单（规格 §7 → 证据）
 
@@ -194,7 +200,7 @@ node scripts/smoke-system-admin.mjs              # 默认 http://localhost:5174
 | 新 init 工程：管理员可见「系统管理」菜单 | ✅ | 冒烟「菜单含系统管理」 |
 | 6 个页面可用（用户/成员资格/角色权限/日志/设置/登录方式） | ✅ | 冒烟 5 条页面点检 + 成员资格保存回显 |
 | 非管理员访问 `/system/*` 被拒 | ✅ | 冒烟「非 admin 直达被拒（404/无权限）」+「无菜单」；后端 403 硬兜底 |
-| 业务工程两步升级补齐 UI 缺口 | ⏳ T5 未执行 | 复现手册 §6 即升级步骤 |
+| 业务工程两步升级补齐 UI 缺口 | ⏳ T5 只读走查，未改造 | oj-wiki `web.config.ts` 无 `system` 模块、`web/src/system/` 仅孤立 `__client`；升级步骤见 §11，验收待维护者执行 |
 | `pnpm build` 通过 | ✅（本次改动未触 build 链） | 待发版前复跑 |
 | `ojm api --check` 零漂移 | ✅ | 冒烟工程 `ojm api` 0 error / 0 warn |
 | 权限门禁：非 admin 落 403 而非 error boundary | ✅ | `ForbiddenPanel` + must_change 引导卡实测 |
@@ -202,7 +208,7 @@ node scripts/smoke-system-admin.mjs              # 默认 http://localhost:5174
 
 ## 9. 风险与未决项
 
-1. **非管理员直达 `/system/*` 落 React Router 默认 404 页**（"Unexpected Application Error!"），不是框架兜底页——宿主链没有 catch-all 路由。功能正确、观感欠佳；建议 0.2.1 顺手补（`host.tsx` children 末尾加 `{ path: "*", element: <PageError /> }`）。
+1. **非管理员直达 `/system/*` 落 React Router 默认 404 页**（"Unexpected Application Error!"），不是框架兜底页——宿主链没有 catch-all 路由。功能正确、观感欠佳；建议 0.2.1 顺手补（`host.tsx` children 末尾加 `{ path: "*", element: <PageError /> }`）。**✅ 已修复（T6）**：改为 `CatchAll` 组件渲染框架 404 文案（`exception.notFoundTitle`），i18n；冒烟「非 admin 直达被拒」PASS。
 2. **宿主链侧栏菜单只在 Boot 期按角色登记一次**，登录后需刷新一次才与角色一致（后端 403 兜底，非权限泄漏）。真要修，得让 `hydrateUser()` 后重跑模块路由登记。
 3. **模板 `openapi.json` 快照需随 oj 升级同步刷新**（§3.5），否则生成物标识符再次非法。
 4. **settings 页过滤规则是「`item.module` 白名单」而非键名前缀**——若后端将来给框架键新增 module 值，页面会自动漏项，需同步白名单。
@@ -214,6 +220,33 @@ node scripts/smoke-system-admin.mjs              # 默认 http://localhost:5174
 - 每次实现/重构前先建分支（本次 `feat/system-admin-web`）。
 - commit 用 conventional + 结尾 `unix@vip.qq.com ai`；格式化 tabs / 双引号 / 分号，ESLint（`@antfu`）为准，无 Prettier。
 - 完成后更新计划任务状态并补总结段落（关键过程 + 耗时）。
+
+---
+
+## 11. T5 走查：oj-wiki 升级步骤（只读，未执行）
+
+> 受本仓「其余项目只读」硬约束，以下仅记录走查结论与升级步骤，**未实际改造 oj-wiki**。
+
+### 走查结论（2026-10-16）
+
+- oj-wiki 当前 `web.config.ts` 模块清单：home / demo / login / personal-center / notification / wiki——**无 `system`**；
+- `web/src/system/` 仅有一份早先生成的孤立 `__client`（无 `entry.ts` / `pages/`），无模块消费它；
+- 无遗留框架级 admin 页：grep `admin` 命中项均为 wiki 自身的内容管理页（`wiki/pages/admin-contacts.tsx`、space 系列），与框架 system 模块无关；
+- 依赖当前为 `link:../oj-module/packages/{cli,runtime}`（pin 范围 0.1.14–0.1.21），即跟踪本地 oj-module 开发版，而非已发 semver。
+
+### 升级步骤（维护者执行；发布 0.2.1 后）
+
+1. **换 semver**：把 `@oj-module/cli` / `@oj-module/runtime` 从 `link:` 改为已发版 `0.2.1`（pnpm-workspace.yaml 的 overrides 允许范围同步放宽到 0.2.1），`pnpm install`；
+2. **补模块**：`ojm init`（或直接从 cli 模板拷 `web/src/system/`：entry + 6 页 + 2 locales）到 oj-wiki，使其拥有模块源码；
+3. **登记**：`web.config.ts` 的 `modules` 加一项 `{ name: "system", entry: "web/src/system/entry.ts", enabled: true }`（order 100 落侧栏「系统管理」）；
+4. **生成 client**：`oj openapi -o openapi.json && ojm api`（刷新那一份孤立 `__client`）；
+5. **重启**：`ojm dev`，管理员登录可见「系统管理」6 页；确认 wiki 自身 admin 页保持原状（不回归）。
+
+### 验收（§8 业务工程行）
+
+- 管理员可见「系统管理」菜单 + 6 页可用；
+- 非管理员无菜单且直达 `/system/*` 被框架兜底页/后端 403 拒绝；
+- wiki 自有内容管理页不受影响。
 
 ---
 
