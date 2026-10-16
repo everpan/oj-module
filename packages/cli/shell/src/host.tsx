@@ -61,17 +61,41 @@ const DEMO_USER = {
 	roles: ["admin"],
 };
 
-useUserStore.setState(DEMO_USER);
+/**
+ * 定角色：宿主链**没有 AuthGuard**（免登录演示能力绕开 LayoutRoot），没有任何
+ * 机制拉 `/web/user-info`，于是 user store 的 roles 恒为演示值或空——而模块路由
+ * 的角色过滤（B16，`config.requiredRoles`）与 superadmin 类前端判断都读它。
+ * 后果实测：seed 的 admin 账号（roles=["superadmin"]）被 `["admin"]` 挡在
+ * /system 路由外（404），成员资格入口也判不出来。
+ *
+ * - 有 token = 真实登录链 → 拉真实角色（must_change 悬挂期该端点仍返回 200）；
+ *   失败则清空，不让演示角色冒充真实权限（401 由请求层兜底跳登录）；
+ * - 无 token = 演示态 → 播种 DEMO_USER（与 App 链 fake 数据一致，两链显示同构）。
+ */
+async function hydrateUser(): Promise<void> {
+	if (!useAuthStore.getState().token) {
+		useUserStore.setState(DEMO_USER);
+		return;
+	}
+	try {
+		await useUserStore.getState().getUserInfo();
+	}
+	catch (e) {
+		console.warn("[shell] /web/user-info 拉取失败，角色置空", e);
+		useUserStore.getState().reset();
+	}
+}
 
 /**
- * 登录/登出都会经 auth store reset() 清空 user store；宿主链无 AuthGuard
- * 重新拉取 userInfo，播种丢失后头部用户名/角色恒为空。这里在 token 变化
- * 时重播种演示用户（模块路由的重登记由 access store reset() 快照机制负责）。
+ * 登录/登出都会经 auth store reset() 清空 user store（宿主链无 AuthGuard 重新
+ * 拉取），token 变化即重新定角色。
+ *
+ * 已知偏差：角色变化只影响渲染期判断，侧栏菜单是 Boot 期按当时角色登记的，
+ * 不登录直接进站再登录的场景菜单需刷新一次才对（后端 403 硬兜底，不是权限泄漏）。
  */
 useAuthStore.subscribe((state, prev) => {
-	if (state.token !== prev.token) {
-		useUserStore.setState(DEMO_USER);
-	}
+	if (state.token !== prev.token)
+		void hydrateUser();
 });
 
 // i18n 由 runtime 的 setupI18n 统一初始化：装载框架 translation 命名空间
@@ -157,6 +181,11 @@ function Boot() {
 				// P7.7：清单字段原样透传（enabled/dependencies/peerRuntime），
 				// loader 侧已有全部消费逻辑；裁剪曾导致 US-5/US-9 双双失效
 				const manifest = toLoaderManifest(list, runtimeVersion);
+
+				// 角色必须在 loadAll 之前就位：loadAll 尾部即用 getRoutes() 过滤
+				// 角色受限模块并登记菜单（B16），晚了就按演示角色登记，admin 自己
+				// 反而看不到 /system。
+				await hydrateUser();
 
 				// 并发加载、拓扑排序、生命周期、i18n 合并（见 runtime module-loader）
 				await loadAll(manifest);
