@@ -56,12 +56,12 @@
 
 **DoD**：三方言（sqlite 起步，mysql/pg 冒烟）迁移通过；A3/A4 单测全绿；集中评审合并。
 
-**阶段小结**（全部任务完成后填写）：
-- 关键过程：
-- 实际耗时：
-- 偏差与决策回填（设计文档 §9 条目号）：
-- 反常识记录：
-- 集中评审结论：
+**阶段小结**（阶段 A 全部任务完成，2026-10-16 10:32）：
+- 关键过程：A3 判权出口（guard 纯函数 + access DB 加载/短 TTL 缓存/写时失效，15 断言）；A4 审计（recordOp/auditOp + 403 (user,code) 分钟窗口聚合，7 断言）；A5 查询工具（paged/likePattern，7 断言）；A6 角色管理 service 全规则 + /api/system 管理域端点（11 断言）；A7 通讯录 service + /api/_platform/contacts 端点 + rate 限速工具（6 断言）。全阶段 BDD 先行（红→绿），75 测试 8 文件全绿；lint 0 错、typecheck 净
+- 实际耗时：A1 10min + A2 15min + A3 12min + A4 8min + A5 10min + A6 25min + A7 12min ≈ 92min
+- 偏差与决策回填（设计文档 §9 条目号）：§9.2/§9.3/§9.4 已回填（is_forbidden/email 列 A1 遗漏补迁移 0006/0007；http.user 可变全局须在调用入口同步捕获；403 聚合并发竞态→进程内串行队列）
+- 反常识记录：① 设计文档全篇引用 is_forbidden/email 但 A1 迁移未落列（评审两轮未检出，实现期才被测试钉出）② deny 审计并发产生多首条破坏 AC1-29 语义，须串行队列 ③ `LIMIT ? OFFSET ?` 三方言参数化通吃，但 LIKE 转义 sqlite 默认无转义符/mysql/pg 默认非 `!`，须显式 `ESCAPE '!'`（三方言同义最小公倍）
+- 集中评审结论：待评审——本阶段 7 个 commit（065c7d2c..572fe2c3）；DoD 中「mysql/pg 冒烟」仓库内无执行器（oj 运行时机外），按风险表口径移交 CI 三方言冒烟任务；评审要点：diff 全量、方言变体策略、串行队列吞吐上限
 
 ## 4. 阶段 B：登录链改造（对应 PRD M3 账号部分）
 

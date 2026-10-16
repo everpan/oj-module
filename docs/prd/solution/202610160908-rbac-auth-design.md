@@ -438,3 +438,13 @@ flowchart LR
 - **事务能力确认**：运行时 `db.tx(fn)` 面存在（BEGIN/COMMIT/ROLLBACK 包裹回调），夹具镜像同面并实测往返（提交持久化/回滚不留痕）——D10 缓存写时失效与 §5 级联删除的事务策略可行；
 - **DDD 落点**：判权领域核心抽为纯函数 `decideAccess(roles, bindings, code)`（`src/_platform/_shared/service/guard.ts`），IO 留应用层；AC1-1~6 判定矩阵 8 断言 + 夹具冒烟 3 断言全绿（`packages/cli/templates/api/tests/guard.spec.ts`）；
 - **反常识记录**：Node 22 `globalThis.crypto`（WebCrypto）为只读，夹具无法在其上补 `sha256Hex`——oj 增补的 crypto 面（sha256Hex/md5Hex）属运行时私有，Node 侧按用例需要再单独 stub，**不可假设 `g.crypto ?? {}` 可写**。
+
+### 9.2 阶段 A 实现期发现（2026-10-16 1014–1032，feat/rbac-backend，065c7d2c..572fe2c3）
+
+实现期被 BDD 测试钉出的偏差与反常识（评审两轮未检出，重申「先写用例」的价值）：
+
+1. **is_forbidden / email 列全篇引用而迁移未落**（A1 遗漏，A3/A7 实现期补迁移 0006/0007）——设计文档与 PRD 多节引用两列，A1 建表任务只落了 source/display_name/must_change；两轮专家评审 + 计划评审均未对照「引用列 vs 迁移列」。教训：AC 评审增加一道「设计引用的每列 ∈ 某迁移 DDL」机械核对。
+2. **`http.user` 是可变全局，异步队列执行时再读会被后续请求覆盖**（A4 实测踩中：三个同步 auditDeny 全部记成最后一个用户）——调用入口必须同步捕获 uid 再入队。同类陷阱适用于一切 fire-and-forget 审计/日志路径。
+3. **403 审计「首条 + 计数」在并发下产生多首条，破坏 AC1-29 语义**——「查窗口→落首条→更新计数」须原子，进程内以串行队列收敛（deny 频率低，吞吐不敏感；ponytail 上限已注释）。
+4. **LIKE 转义的三方言最小公倍是 `ESCAPE '!'`**：sqlite 默认无转义符、mysql 默认 `\`、pg 默认无——统一显式 `escape '!'` + 元字符前加 `!`，`LIMIT ? OFFSET ?` 则三方言参数化通吃（A5 已钉进 query.ts 注释）。
+5. **「mysql/pg 冒烟」仓库内无执行器**（oj 运行时属机外二进制）：方言变体盲写不可验证，违反「代码不带检查即未完成」——按 §8 风险表口径移交 CI 三方言冒烟任务，阶段 A DoD 此条降级为「sqlite 全绿 + 方言差异已枚举」。
