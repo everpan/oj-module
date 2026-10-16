@@ -1,5 +1,21 @@
 {
 	"menu": {
 		"login": "登录"
+	},
+	"method": {
+		"local": "账号密码",
+		"ldap": "LDAP",
+		"sso": "SSO",
+		"ldapPending": "LDAP 登录将在后续阶段提供",
+		"ssoPending": "SSO 登录将在后续阶段提供"
+	},
+	"mustChange": {
+		"title": "首次登录须修改口令",
+		"description": "管理员为您设置了初始口令，继续使用前请修改。",
+		"oldPassword": "初始口令",
+		"newPassword": "新口令",
+		"newPasswordRequired": "请输入新口令",
+		"min6": "新口令至少 6 位",
+		"success": "口令已更新"
 	}
 }

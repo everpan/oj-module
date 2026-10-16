@@ -57,5 +57,8 @@
 	"expandAll": "展开所有",
 	"collapseAll": "折叠所有",
 	"checkAll": "选择所有",
-	"cancelAll": "取消所有"
+	"cancelAll": "取消所有",
+	"total": "共 {total} 条",
+	"save": "保存",
+	"deleteFailed": "删除失败"
 }

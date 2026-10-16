@@ -4,13 +4,37 @@
 		"id": "Role Id",
 		"addRole": "Add Role",
 		"editRole": "Edit Role",
-		"assignMenu": "Assign Menu"
+		"assignMenu": "Assign Menu",
+		"bindings": "Bound Permissions",
+		"builtin": "Builtin",
+		"builtinNoEdit": "Builtin roles cannot be edited",
+		"machineName": "Machine Name",
+		"displayName": "Display Name",
+		"module": "Module",
+		"holders": "Holders",
+		"editBindings": "Edit Bindings",
+		"diff": "Diff",
+		"nameRequired": "Please input machine name",
+		"namePattern": "Machine name must be custom.<slug>",
+		"titleRequired": "Please input display name"
 	},
 	"user": {
 		"name": "User Name",
 		"id": "User Id",
 		"addUser": "Add User",
-		"editUser": "Edit User"
+		"editUser": "Edit User",
+		"username": "Username",
+		"displayName": "Display Name",
+		"email": "Email",
+		"roles": "Roles",
+		"mustChange": "Must Change Password",
+		"forbidden": "Forbidden",
+		"assignRoles": "Assign Roles",
+		"resetPassword": "Reset Password",
+		"initialPassword": "Initial Password",
+		"passwordMin6": "Password must be at least 6 characters",
+		"passwordReset": "Password has been reset",
+		"selfNoOp": "Current login user"
 	},
 	"menu": {
 		"system": "System Management",
@@ -35,12 +59,34 @@
 		"currentActiveMenu": "Active Path",
 		"iframeLink": "Iframe Link",
 		"externalLinkUrl": "External Link URL",
-		"parentMenu": "Parent Menu"
+		"parentMenu": "Parent Menu",
+		"oplog": "Operation Log",
+		"settings": "Settings"
 	},
 	"dept": {
 		"name": "Department Name",
 		"id": "Department Id",
 		"addDept": "Add Department",
 		"editDept": "Edit Department"
+	},
+	"setting": {
+		"group": {
+			"general": "General",
+			"security": "Security",
+			"login": "Login Methods"
+		},
+		"superOnly": "Only superadmin can write this group"
+	},
+	"oplog": {
+		"actionFilter": "Filter by action (e.g. auth.deny)",
+		"usernameFilter": "Filter by username",
+		"moduleFilter": "Filter by module",
+		"truncated": "Results truncated",
+		"time": "Time",
+		"username": "Username",
+		"action": "Action",
+		"module": "Module",
+		"target": "Target",
+		"detail": "Detail"
 	}
 }

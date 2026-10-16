@@ -1,5 +1,21 @@
 {
 	"menu": {
 		"login": "Sign in"
+	},
+	"method": {
+		"local": "Password",
+		"ldap": "LDAP",
+		"sso": "SSO",
+		"ldapPending": "LDAP login will be available in a later stage",
+		"ssoPending": "SSO login will be available in a later stage"
+	},
+	"mustChange": {
+		"title": "Password change required",
+		"description": "Your initial password was set by an administrator. Please change it before continuing.",
+		"oldPassword": "Initial password",
+		"newPassword": "New password",
+		"newPasswordRequired": "Please input new password",
+		"min6": "New password must be at least 6 characters",
+		"success": "Password updated"
 	}
 }

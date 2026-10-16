@@ -1,6 +1,6 @@
 import type { LoginInfo } from "@oj-module/runtime";
 
-import { BasicButton, getRedirectPath, useAuthStore } from "@oj-module/runtime";
+import { BasicButton, fetchUserInfo, getRedirectPath, useAuthStore } from "@oj-module/runtime";
 
 import {
 	Button,
@@ -35,8 +35,14 @@ export function PasswordLogin() {
 		setLoading(true);
 		messageLoadingApi?.loading(t("authority.loginInProgress"), 0);
 
-		login(values).then(() => {
+		login(values).then(async () => {
 			messageLoadingApi?.destroy();
+			// AC1-27：首登须改密——拿到用户信息后 mustChange=true 则切强制改密表单，不放行导航
+			const info = await fetchUserInfo().catch(() => null);
+			if (info?.mustChange) {
+				setFormMode("mustChange");
+				return;
+			}
 			window.$message?.success(t("authority.loginSuccess"));
 			navigate(getRedirectPath(searchParams));
 		}).catch(() => {

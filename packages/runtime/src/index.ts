@@ -19,6 +19,8 @@ import "./styles/index.css";
 
 // 跨模块通知发射原语（前端 facade，委托给已注册 notificationsApi provider 的发射方法）
 export { notify } from "./api/notify";
+export * from "./api/rbac";
+export * from "./api/rbac/helpers";
 export * from "./api/system/menu";
 export * from "./api/system/role";
 export * from "./api/user";

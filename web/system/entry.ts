@@ -1,12 +1,14 @@
 import type { AppRouteRecordRaw, ModuleDefinition } from "@oj-module/runtime";
 
-import { ApartmentOutlined, MenuOutlined, SettingOutlined, TeamOutlined, UserOutlined } from "@ant-design/icons";
+import { ApartmentOutlined, FileSearchOutlined, MenuOutlined, SettingOutlined, TeamOutlined, UserOutlined } from "@ant-design/icons";
 import { createElement, lazy } from "react";
 
 const User = lazy(() => import("./pages/user"));
 const Dept = lazy(() => import("./pages/dept"));
 const Role = lazy(() => import("./pages/role"));
 const Menu = lazy(() => import("./pages/menu"));
+const Oplog = lazy(() => import("./pages/oplog"));
+const Settings = lazy(() => import("./pages/settings"));
 
 const routes: AppRouteRecordRaw[] = [
 	{
@@ -74,6 +76,24 @@ const routes: AppRouteRecordRaw[] = [
 						"permission:button:update",
 						"permission:button:delete",
 					],
+				},
+			},
+			{
+				path: "/system/oplog",
+				Component: Oplog,
+				handle: {
+					icon: createElement(FileSearchOutlined),
+					title: "system:menu.oplog",
+					roles: ["admin"],
+				},
+			},
+			{
+				path: "/system/settings",
+				Component: Settings,
+				handle: {
+					icon: createElement(SettingOutlined),
+					title: "system:menu.settings",
+					roles: ["admin"],
 				},
 			},
 		],

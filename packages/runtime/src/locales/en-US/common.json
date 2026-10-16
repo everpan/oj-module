@@ -57,5 +57,8 @@
 	"expandAll": "Expand All",
 	"collapseAll": "Collapse All",
 	"checkAll": "Check All",
-	"cancelAll": "Cancel All"
+	"cancelAll": "Cancel All",
+	"total": "Total {total}",
+	"save": "Save",
+	"deleteFailed": "Delete failed"
 }

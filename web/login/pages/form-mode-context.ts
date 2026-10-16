@@ -1,6 +1,6 @@
 import { createContext } from "react";
 
-export type FormComponentMapType = "login" | "register" | "forgotPassword" | "codeLogin";
+export type FormComponentMapType = "login" | "register" | "forgotPassword" | "codeLogin" | "mustChange";
 
 export const FormModeContext = createContext<{
 	formMode: FormComponentMapType

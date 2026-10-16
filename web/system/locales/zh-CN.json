@@ -4,13 +4,37 @@
 		"id": "角色标识",
 		"addRole": "新增角色",
 		"editRole": "编辑角色",
-		"assignMenu": "分配菜单"
+		"assignMenu": "分配菜单",
+		"bindings": "绑定权限",
+		"builtin": "内置",
+		"builtinNoEdit": "内置角色不可编辑",
+		"machineName": "机器名",
+		"displayName": "展示名",
+		"module": "模块",
+		"holders": "持有人数",
+		"editBindings": "编辑绑定",
+		"diff": "变更",
+		"nameRequired": "请输入机器名",
+		"namePattern": "机器名须为 custom.<slug> 形式",
+		"titleRequired": "请输入展示名"
 	},
 	"user": {
 		"name": "用户名称",
 		"id": "用户标识",
 		"addUser": "新增用户",
-		"editUser": "编辑用户"
+		"editUser": "编辑用户",
+		"username": "用户名",
+		"displayName": "显示名",
+		"email": "邮箱",
+		"roles": "角色",
+		"mustChange": "须改密",
+		"forbidden": "禁用",
+		"assignRoles": "分配角色",
+		"resetPassword": "重置口令",
+		"initialPassword": "初始口令",
+		"passwordMin6": "口令至少 6 位",
+		"passwordReset": "口令已重置",
+		"selfNoOp": "当前登录用户"
 	},
 	"menu": {
 		"system": "系统管理",
@@ -35,12 +59,34 @@
 		"currentActiveMenu": "激活路径",
 		"iframeLink": "Iframe 链接",
 		"externalLinkUrl": "外链地址",
-		"parentMenu": "上级菜单"
+		"parentMenu": "上级菜单",
+		"oplog": "操作日志",
+		"settings": "系统设置"
 	},
 	"dept": {
 		"name": "部门名称",
 		"id": "部门标识",
 		"addDept": "新增部门",
 		"editDept": "编辑部门"
+	},
+	"setting": {
+		"group": {
+			"general": "常规",
+			"security": "安全",
+			"login": "登录方式"
+		},
+		"superOnly": "该组仅超管可写"
+	},
+	"oplog": {
+		"actionFilter": "按操作过滤（如 auth.deny）",
+		"usernameFilter": "按用户名过滤",
+		"moduleFilter": "按模块过滤",
+		"truncated": "结果已截断",
+		"time": "时间",
+		"username": "用户名",
+		"action": "操作",
+		"module": "模块",
+		"target": "对象",
+		"detail": "明细"
 	}
 }

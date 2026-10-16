@@ -42,6 +42,33 @@ vi.mock("@ant-design/pro-components", () => ({ ProTable: () => null }));
  * 由文件顶部的 `import type` 交由 `tsc --noEmit` 全量校验，
  * 并在文件尾用类型联合引用防止意外删减。
  */
+describe("rBAC 出口（阶段 C 增补，同 P3.1 白名单纪律）", () => {
+	it("api/rbac fetch 函数与 UI 纯函数", () => {
+		for (const fn of [
+			"fetchRbacRoleList",
+			"fetchRbacPermissionList",
+			"fetchRbacCreateRole",
+			"fetchRbacUpdateBindings",
+			"fetchRbacDeleteRole",
+			"fetchRbacUserList",
+			"fetchRbacCreateUser",
+			"fetchRbacUpdateUserRoles",
+			"fetchRbacAdminResetPassword",
+			"fetchRbacSetForbidden",
+			"fetchRbacOplog",
+			"fetchRbacSettings",
+			"fetchRbacUpdateSetting",
+			"fetchRbacContacts",
+			"fetchRbacContactDetail",
+			"fetchLoginMethods",
+			"fetchChangePassword",
+		] as const)
+			expect((Runtime as Record<string, unknown>)[fn]).toBeTypeOf("function");
+		for (const fn of ["roleLabel", "canEditRoleBindings", "canDeleteRole", "canAssignRole", "bindingDiff", "groupByModule"] as const)
+			expect((Runtime as Record<string, unknown>)[fn]).toBeTypeOf("function");
+	});
+});
+
 describe("runtime 主入口出口白名单 (P3.1)", () => {
 	it("模块契约 / 路由装配 / 应用元信息", () => {
 		expect(Runtime.defineModule).toBeTypeOf("function");
