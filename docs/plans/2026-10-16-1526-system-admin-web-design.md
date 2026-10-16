@@ -83,10 +83,11 @@ npm 上 `@oj-module/cli` 最高 0.1.21，0.2.0 未发布——模板 package.jso
 
 | 位置 | 动作 |
 | --- | --- |
-| `packages/cli/templates/web/src/system/**` | 新增（entry.ts + pages/×6 + locales/×2） |
+| `packages/cli/templates/api/src/system/**/api.ts` | **9 文件补 `.schema`/`.response` 契约**（round2 R9：无契约端点生成的 client 无参不可用；逻辑零改动） |
+| `packages/cli/templates/web/src/system/**` | 新增（entry.ts + pages/×6 + locales/×2 + shared.tsx） |
 | `packages/cli/templates/web.config.ts` | 登记 system 模块项 |
 | `packages/cli/templates/README.md` | 补「系统管理模块首次使用」生成说明 |
-| `docs/plans/2026-10-16-1526-*` | 本文档 + 任务状态更新 |
+| `docs/plans/2026-10-16-*` | 本文档 + 实现计划 + 任务状态更新 |
 
 不动：runtime、init.ts、api 模板（端点已有 rbac-*.spec 覆盖）。
 
@@ -156,7 +157,8 @@ Feature: 管理页门禁
 
 - [ ] T1 设计文档评审通过（本文档）
 - [ ] T2 新建分支 `feat/system-admin-web`
-- [ ] T3 `templates/web/src/system/`：entry.ts + locales + 6 页 + 无权限组件；strict 口径自查
+- [ ] T3a api 契约：system 12 端点补 `.schema`/`.response`（round2 R9；实现计划 Task 2）
+- [ ] T3 `templates/web/src/system/`：entry.ts + locales + 6 页 + 无权限组件；strict 口径自查（冒烟工程 typecheck）
 - [ ] T4 `templates/web.config.ts` 登记 + README 首次使用说明
 - [ ] T5 静态验证：模板模块 tsc strict 自查、`pnpm build`、`pnpm test:cli` 回归、`ojm api --check` 零漂移
 - [ ] T6 临时工程冒烟：按 §3.6 机制（本地 file: 依赖 + 预拷 bin/oj）init → 起后端 → 生成 `__client` → 按 §4.2/§4.3 点检 6 页
@@ -176,6 +178,13 @@ Feature: 管理页门禁
 | R6 | 工程 | 权限点 `title_key` 跨 namespace 不命中会显示裸 key | §3.5 补回退显示 code |
 | R7 | 架构 | **npm 最高 0.1.21，0.2.0 未发布**——临时工程按模板 package.json 装 0.2.0 必失败，T6 原写法不可执行 | 新增 §3.6 冒烟机制（本地 file: overrides + 预拷 bin/oj），T6 引用 |
 | R8 | 架构 | 错误透传后端英文 msg 不合 i18n 预期 | §3.4 已知码前端映射，未知透传 |
+
+### round2（2026-10-16 15:37，计划期发现）
+
+| # | 视角 | 发现 | 处置 |
+| --- | --- | --- | --- |
+| R9 | 工程 | **12 个 system handler 均无 `.schema`/`.response`**——emit-client 对无契约端点发无参函数（不传 query/body，`emit-client.ts emitEndpoint`：slots 空 → argDecl 空、opts 空），生成的 client 全部无法携带 uid/过滤参/请求体，前端页面不可用 | handler 按 manual §3.3 补契约（命名函数 + 挂属性，业务逻辑零改动）；服务层已在 listUsers/listRoles 内做 `Number(x)===1` 布尔归一，`.response` 可安全用 `boolean` |
+| R10 | 工程 | 页面行类型若模块内手写 interface 会与生成类型漂移 | 行类型从生成类型派生（`type UserRow = SystemUsersGetData[number]`），单一真源（DRY） |
 
 未采纳：合并「登录方式」进设置页（规格书明确 6 路由，维持）；临时工程改 e2e 脚本固化（冒烟属验收动作，成本不值，0.2.x 暂人工点检）。
 
