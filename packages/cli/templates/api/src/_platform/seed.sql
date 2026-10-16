@@ -1,4 +1,5 @@
 -- _platform 种子数据（只放数据，DDL 归 migrations/，S006 纪律）。
+-- 方言覆盖：seed.mysql.sql / seed.pg.sql（INSERT OR IGNORE 为 sqlite 专属语法，方言文件必胜，同迁移约定）。
 -- 注意：seed 按英文分号朴素切分语句，注释里也不要出现英文分号。
 -- 账号生命周期 D12：admin 为 seed 超管（superadmin），must_change=1 首登强制改密——
 -- 初始口令 123456 仅为开发便利，must_change 闭环兜底默认凭据窗口（口令不随机生成的取舍见计划 A2 阶段小结）
