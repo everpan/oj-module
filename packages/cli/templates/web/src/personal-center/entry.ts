@@ -1,10 +1,9 @@
 import type { AppRouteRecordRaw, ModuleDefinition, UploadApiProvider } from "@oj-module/runtime";
-import { ProfileCardIcon, RiAccountCircleLine, RiUserSettingsLine, useAuthStore } from "@oj-module/runtime";
+import { ProfileCardIcon, RiAccountCircleLine, useAuthStore } from "@oj-module/runtime";
 
 import { createElement, lazy } from "react";
 
 const MyProfile = lazy(() => import("./pages/my-profile"));
-const Settings = lazy(() => import("./pages/settings"));
 
 const routes: AppRouteRecordRaw[] = [
 	{
@@ -22,14 +21,6 @@ const routes: AppRouteRecordRaw[] = [
 				handle: {
 					title: "personal-center:menu.profile",
 					icon: createElement(ProfileCardIcon),
-				},
-			},
-			{
-				path: "/personal-center/settings",
-				Component: Settings,
-				handle: {
-					title: "personal-center:menu.settings",
-					icon: createElement(RiUserSettingsLine),
 				},
 			},
 		],

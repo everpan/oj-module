@@ -1,10 +1,6 @@
 {
-	"accountSecurity": "Account Security",
-	"generalSettings": "General Settings",
-	"notificationSettings": "Notification Settings",
 	"menu": {
 		"personalCenter": "Personal Center",
-		"profile": "My Profile",
-		"settings": "Settings"
+		"profile": "My Profile"
 	}
 }
