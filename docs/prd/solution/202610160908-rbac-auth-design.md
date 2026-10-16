@@ -469,3 +469,8 @@ C 阶段验收走真实 `ojm init` + `ojm dev` 冒烟时连续钉出三个 oj �
 1. **【反常规】`oj build` 的 introspect 会在无 jwt/config 的空沙箱里评估 handler 模块**——模块级任何触碰运行时全局的代码（`createSession()` → `runtimeDeps()` 读 `g.jwt`、`runtimeLdapGateway()` 调 `axis("ldap")`）在构建期即炸：`introspect api.ts: Error: jwt not configured`。dev 模式不受影响（运行时全局齐全），故只有 `ojm build`/preview 路径暴露——与 §9.3-2/3 同类：**handler 模块级只许声明，不许执行**。处置：session/gateway 改在 handler 内按需构造（无状态纯闭包，零成本）；评审 checklist 再增一项「模块级语句是否触碰运行时全局」。
 2. **JIT 外来号必须 `must_change=0`**（实现期决策）：AC1-27 悬挂期唯一可用写端是自助改密（本人+旧口令），而 LDAP 号占位 hash `!ldap` 恒 verify false——若 JIT 默认 must_change=1，外来号首登即永久 brick。本地建号默认 1（B6）与外来号默认 0 的分野：外来号没有「初始凭据窗口」需要兜底。
 3. **「LDAP 实机 bind」验收受阻记录**：本机 container 拉取 osixia/openldap 镜像两次均 registry connectTimeout（与 npm 镜像同源限制）——真实 bind 冒烟延后至阶段 E，前置条件：可达的 LDAP 目录（容器或客户环境）。服务层 BDD 20 断言（esc RFC 4515 样本/九步分支/JIT/竞态复用/禁号 403）+ 真机信封链（400 未启用 → 400 缺 base_dn → 502 无上游）已覆盖除真实目录交互外全路径；axis("ldap") 面本身为 wiki 生产先例直移。
+
+### 9.5 阶段 E 实现期发现（2026-10-16 1230–1240，feat/rbac-ldap）
+
+1. **insert-if-absent 的粒度取舍（AC1-15 vs AC2-1，BDD 先行钉死）**：「声明绑定不覆写管理员调整」在**绑定级** insert-if-absent 下不成立——管理员删掉绑定行后，升级重放声明会把它当作「从未插入」而复写。语义必须在**角色级**：声明绑定只在角色行创建时写一次；角色已存在则升级/重装只覆盖 title 元数据，永不补写绑定。连带边界：新版本给**既有角色**新增权限点时，权限点行照插（AC2-1），但绑定需管理员显式勾选——与 §5「新增影响：无影响（无人持有新角色）」的原始口径一致，属已接受取舍。
+2. **AC2 规则面的承载面收口**：升级/卸载规则实现在 `_shared/service/solution-perms.ts` 两个唯一出口（`upsertSolutionPerms` / `uninstallSolution`），M5 安装器必须直调，不得另写——否则「减法唯一出口」纪律出现第二写法即失效。

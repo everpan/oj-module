@@ -1,11 +1,5 @@
 # oj-bin 功能诉求（PR 文本，供手动提交）
 
-> 状态：草案 · 日期：2026-10-16 · 上游：`202610152345-solution-marketplace-framework-prd.md`（§5.4 对外依赖清单 / §6.2 R1/R5）、`202610161300-solution-lifecycle-registration-design.md`（§9.1）
-> **本仓对 oj 只读**：以下每节 = 一个可独立提交到 oj-bin 的 PR/issue 文本（标题 + 正文，可直接粘贴）。证据均以 oj 0.1.74 实测与 devkit 文档（`~/.local/share/oj/devkit/`）为准。
-> 优先级：P0 = 阻塞 M6 收敛（安装闭环后端原生化）；P1 = 显著简化；P2/P3 = 优化/远期。
-
----
-
 ## PR-1（OJ-4，P0）：crypto 新增 Ed25519 验签
 
 **标题**：`crypto: 新增非对称验签能力（Ed25519 crypto.verify）`
