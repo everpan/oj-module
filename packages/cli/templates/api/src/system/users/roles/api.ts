@@ -3,13 +3,25 @@ import { respond } from "../../../_platform/_shared/respond";
 import { assertSystemAdmin } from "../../../_platform/_shared/service/access";
 import { updateUserRoles } from "../../../_platform/_shared/service/users";
 
-export default {
-	async put() {
-		await respond(async () => {
-			await assertSystemAdmin();
-			const q = http.query as Record<string, unknown>;
-			const roles = Array.isArray(http.body?.roles) ? http.body.roles.map(String) : [];
-			return updateUserRoles(Number(http.user?.id), Number(q.uid), roles);
-		});
+async function put() {
+	await respond(async () => {
+		await assertSystemAdmin();
+		const q = http.query as Record<string, unknown>;
+		const roles = Array.isArray(http.body?.roles) ? http.body.roles.map(String) : [];
+		return updateUserRoles(Number(http.user?.id), Number(q.uid), roles);
+	});
+}
+put.schema = {
+	query: {
+		type: "object",
+		required: ["uid"],
+		properties: { uid: { type: "number" } },
+	},
+	body: {
+		type: "object",
+		required: ["roles"],
+		properties: { roles: { type: "array", items: { type: "string" } } },
 	},
 };
+
+export default { put };

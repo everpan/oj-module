@@ -3,12 +3,24 @@ import { respond } from "../../../_platform/_shared/respond";
 import { assertSystemAdmin } from "../../../_platform/_shared/service/access";
 import { setForbidden } from "../../../_platform/_shared/service/users";
 
-export default {
-	async put() {
-		await respond(async () => {
-			await assertSystemAdmin();
-			const q = http.query as Record<string, unknown>;
-			return setForbidden(Number(http.user?.id), Number(q.uid), Boolean(http.body?.forbidden));
-		});
+async function put() {
+	await respond(async () => {
+		await assertSystemAdmin();
+		const q = http.query as Record<string, unknown>;
+		return setForbidden(Number(http.user?.id), Number(q.uid), Boolean(http.body?.forbidden));
+	});
+}
+put.schema = {
+	query: {
+		type: "object",
+		required: ["uid"],
+		properties: { uid: { type: "number" } },
+	},
+	body: {
+		type: "object",
+		required: ["forbidden"],
+		properties: { forbidden: { type: "boolean" } },
 	},
 };
+
+export default { put };

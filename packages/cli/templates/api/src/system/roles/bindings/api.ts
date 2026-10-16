@@ -5,13 +5,25 @@ import { respond } from "../../../_platform/_shared/respond";
 import { assertSystemAdmin } from "../../../_platform/_shared/service/access";
 import { updateBindings } from "../../../_platform/_shared/service/roles";
 
-export default {
-	async put() {
-		await respond(async () => {
-			await assertSystemAdmin();
-			const name = String((http.query as Record<string, unknown>).name ?? "");
-			const codes = Array.isArray(http.body?.permissions) ? http.body.permissions.map(String) : [];
-			return updateBindings(name, codes);
-		});
+async function put() {
+	await respond(async () => {
+		await assertSystemAdmin();
+		const name = String((http.query as Record<string, unknown>).name ?? "");
+		const codes = Array.isArray(http.body?.permissions) ? http.body.permissions.map(String) : [];
+		return updateBindings(name, codes);
+	});
+}
+put.schema = {
+	query: {
+		type: "object",
+		required: ["name"],
+		properties: { name: { type: "string", minLength: 1 } },
+	},
+	body: {
+		type: "object",
+		required: ["permissions"],
+		properties: { permissions: { type: "array", items: { type: "string" } } },
 	},
 };
+
+export default { put };
