@@ -35,7 +35,7 @@
 
 ### 3.1 模块骨架与 client 接线
 
-- `/system` 父路由：`handle.layout = "container"`、`order = 100`、`config.requiredRoles = ["admin"]`；子路由 6 条（成员资格带 `:uid` 参数，`hideInMenu`）。
+- `/system` 父路由：`handle.layout = "container"`、`order = 100`、`config.requiredRoles = ["admin", "superadmin"]`（原写 `["admin"]`，冒烟期发现漏 `superadmin`——见 R11）；子路由 6 条（成员资格带 `:uid` 参数，`hideInMenu`）。
 - i18n：`system:` namespace，`zh-CN.json`/`en-US.json`；settings 的 `label_key`（seed 值 `system:setting.*`）落在本模块 locale。
 - client 接线：`entry.ts` onInit 里 `createSystemClient(ctx)`（登记 `/system` 前缀 + scoped request，D11），页面直接 `import { systemUsersGet, ... } from "../__client/api"`——生成函数为模块级导出，onInit 先于路由渲染完成 `req` 绑定（与 notification 模板同款模式）。
 - 方法名推导（openapi-ir `camelCaseOperationId`，实现后以真实生成物为准）：`systemUsersGet/Post`、`systemUsersForbiddenPut`、`systemUsersPasswordPut`、`systemUsersRolesPut`、`systemRolesGet`、`systemPermissionsGet`、`systemOplogGet`、`systemSettingsGet/Put`、`systemLoginMethodsGet`。
@@ -155,14 +155,14 @@ Feature: 管理页门禁
 
 ## 5. 任务清单
 
-- [ ] T1 设计文档评审通过（本文档）
-- [ ] T2 新建分支 `feat/system-admin-web`
-- [ ] T3a api 契约：system 12 端点补 `.schema`/`.response`（round2 R9；实现计划 Task 2）
-- [ ] T3 `templates/web/src/system/`：entry.ts + locales + 6 页 + 无权限组件；strict 口径自查（冒烟工程 typecheck）
-- [ ] T4 `templates/web.config.ts` 登记 + README 首次使用说明
-- [ ] T5 静态验证：模板模块 tsc strict 自查、`pnpm build`、`pnpm test:cli` 回归、`ojm api --check` 零漂移
-- [ ] T6 临时工程冒烟：按 §3.6 机制（本地 file: 依赖 + 预拷 bin/oj）init → 起后端 → 生成 `__client` → 按 §4.2/§4.3 点检 6 页
-- [ ] T7 文档收尾：任务状态 + 总结段（关键过程与耗时）
+- [x] T1 设计文档评审通过（本文档，round1 8 项调整已并入）
+- [x] T2 新建分支 `feat/system-admin-web`
+- [x] T3a api 契约：system **13** 端点补 `.schema`/`.response`（round2 R9 估 12，实为 13——含 `roles/bindings` 兄弟路由；另补 `auth/password`）
+- [x] T3 `templates/web/src/system/`：entry.ts + locales + 6 页 + 403/must_change 面板；strict 口径自查（冒烟工程 `pnpm typecheck` 通过）
+- [x] T4 `templates/web.config.ts` 登记 + README 首次使用说明
+- [x] T5 静态验证：`pnpm build` exit 0、`pnpm test:cli` 38 passed、`tests/shell`+`uni-dev-smoke` 44 passed、eslint clean、`ojm api --check` 0 error/0 warn
+- [x] T6 临时工程冒烟：真 oj 后端 + `ojm api` 生成 `__client`，浏览器点检见 §4.2/§4.3 与 `scripts/smoke-system-admin.mjs`（**17 项全 PASS**，冒烟脚本已入库可复跑）
+- [x] T7 文档收尾：任务状态 + 总结段（见 §7）+ 交接文档 `2026-10-16-1720-system-admin-web-handover.md`
 
 ## 6. 评审记录
 
@@ -188,6 +188,27 @@ Feature: 管理页门禁
 
 未采纳：合并「登录方式」进设置页（规格书明确 6 路由，维持）；临时工程改 e2e 脚本固化（冒烟属验收动作，成本不值，0.2.x 暂人工点检）。
 
+### round3（2026-10-16 17:00，临时工程冒烟期发现——**两条是框架级缺陷**）
+
+| # | 分类 | 发现 | 处置 |
+| --- | --- | --- | --- |
+| R11 | **反常识（口径不一致）** | `config.requiredRoles = ["admin"]` 与后端 `assertSystemAdmin`（`_platform/_shared/service/access.ts:90`）口径不等价：后端判「superadmin **或** admin」，而 seed 出的 admin 账号**只有 `superadmin`**（实测登录响应 `user.roles:["superadmin"]`）→ 唯一管理员被 B16 路由过滤挡在 `/system` 外（404） | 改 `["admin", "superadmin"]`；§3.1 同步。**通则：前端角色 gate 必须与后端同名判定逐字对齐** |
+| R12 | **反常规（框架缺陷）** | 预构建宿主（`shell/src/host.tsx`，`ojm dev/build` 实际跑的链）**没有 AuthGuard**，而 user store 的角色**只由 AuthGuard 的 `getUserInfo()` 填充** → 宿主链 roles 恒为空/演示值：模块角色过滤把管理员挡在 404 外、`superadmin` 判断恒 false、头部用户名空。该缺陷被本次「第一个依赖角色过滤的模板模块」暴露 | 宿主新增 `hydrateUser()`：有 token 即拉 `/web/user-info`（须在 `loadAll` **之前** await，因其尾部就按 roles 登记菜单），失败则清空、无 token 才播种 DEMO_USER。已知残留：Boot 期登记一次，登录后菜单需刷新一次 |
+| R13 | 反常规（缺能力） | `must_change` 悬挂期后端 403 拒**除改密外全部**端点（`access.ts:76`），而模板链**没有改密页**——seed admin 首登 6 页全 403，用户无出路 | login 模块补 `/change-password` 页；`ForbiddenPanel` 特判 `isMustChange` 渲染引导卡。auth 无 web 模块（无 client 宿）→ 走 runtime 全局 `fetchChangePassword` |
+| R14 | 工程 | 模板 `templates/openapi.json` 快照停留在 oj 0.1.69 时代，operationId 带连字符 → `ojm api` 产出 `systemLogin-methodsGet`（**非法 JS 标识符**） | 快照刷到 0.1.74 输出并核对 `notification/__client` 零 diff；**随 oj 升级同步刷新**列入交接文档风险项 |
+| R15 | 工程 | `templates/web.config.ts` 之外，模板 `package.json` 缺 `@tanstack/react-query`/`i18next`/`antd` 类型 → 冒烟工程 `tsc` 21 处报错 | `init.ts` 钉入 4 个 devDeps（仅取类型，运行时走宿主 importmap 单例） |
+
 ## 7. 总结
 
-（阶段完成后回填）
+**结果**：system 管理前端模板模块落地（1 entry + 6 页 + 2 locales + 13 端点契约 + 复用/新增 2 个宿主级修复），临时工程（真 oj 0.1.74 后端 + 真浏览器）按 §4.2/§4.3 点检 **17 项全 PASS**，落库证据 `user1 → editor`、`admin must_change → 0`；`pnpm build` exit 0、`test:cli` 38 passed、`ojm api --check` 0 error/0 warn。
+
+**关键过程**：
+1. 设计期三视角复审（round1）把「非 admin 直达」拆成路由级/页面级两条，补自操作防护与 403 主场景；
+2. 计划期发现 12+1 个端点全无契约（round2 R9）——这是前端可用的**前置条件**，先补契约再写页面；
+3. 实现期把页面拆薄，错误归一与面板分文件以满足 `react-refresh/only-export-components`；
+4. 冒烟期连续暴露四条真问题（R11–R14）：一条是本模块口径写错、两条是**框架宿主链的既有缺陷**（无 AuthGuard → 角色永不水合；must_change 无出路），一条是模板快照陈旧——都在冒烟工程里定位、修复、复跑验证，未以「测试手段有问题」收场；
+5. 冒烟手段最终固化为入库脚本 `scripts/smoke-system-admin.mjs`（阻断条件含 db 须为初始 seed 态）。
+
+**耗时**：15:26 设计文档 → 17:25 冒烟全绿 + 交接文档，约 **2 小时**（其中冒烟与框架缺陷定位占约 1 小时，为最大不确定项）。
+
+**未了**：改动提交（4 组）、0.2.1 发版、oj-wiki 升级走查、宿主链 catch-all 兜底页观感项——见交接文档 §5/§7/§9。
