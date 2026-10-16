@@ -3,7 +3,7 @@
 // handler 只编排：取参 → 调 service → json 信封；B5 限速在 login handler 挂 rate.ts。
 // refresh 存 DB（sys_refresh_token，§3.1），logout = 吊销当前串。
 import { auditOp } from "../../_platform/_shared/service/audit";
-import { rateLimit } from "../../_platform/_shared/service/rate";
+import { loginBlocked, loginFailed, loginSucceeded, rateLimit } from "../../_platform/_shared/service/rate";
 import { createSession } from "./_shared/session";
 
 const session = createSession();
@@ -14,20 +14,27 @@ async function clientIp(): Promise<string> {
 
 const login = {
 	// POST /api/auth/login —— 本地登录（D14：先验口令后查禁用，三种失败统一 401）。
+	// B5/AC1-26：(IP, username) 连败阈值 → 429 + 指数 backoff；粗粒度 per-IP 窗口防撞库扫描。
 	async post() {
 		const body = http.body || {};
 		const username = String(body.username ?? "");
 		const ip = await clientIp();
+		const pairKey = `${ip}|${username}`;
 		try {
-			// B5 双维度限速（IP + username），限额/backoff 随登录失败次数升级
-			await rateLimit(`login:ip:${ip}`, 20, 60_000);
-			await rateLimit(`login:u:${username}`, 5, 60_000);
-			json.ok(await session.localLogin(username, String(body.password ?? "")));
+			await rateLimit(`login:ip:${ip}`, 30, 60_000);
+			loginBlocked(pairKey);
+			const r = await session.localLogin(username, String(body.password ?? ""));
+			loginSucceeded(pairKey);
+			json.ok(r);
 		}
 		catch (e) {
 			const err = e as Error & { status?: number };
-			if (err.status === 401)
+			if (err.status === 401) {
+				const fails = loginFailed(pairKey);
+				if (fails === 6)
+					auditOp({ action: "auth.login.throttle", module: "framework", target: pairKey, level: 4 });
 				auditOp({ action: "auth.login.fail", module: "framework", target: username, level: 4 });
+			}
 			throw e;
 		}
 	},

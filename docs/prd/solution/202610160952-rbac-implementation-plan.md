@@ -69,11 +69,11 @@
 
 | # | 任务 | 内容 | AC 锚点 | 状态 | 开始 | 耗时 |
 |---|---|---|---|---|---|---|
-| B1 | 登录顺序 | 本地登录先验口令后查禁用（统一 401，D14）；LDAP 路径保持先查号并注明接受 | AC1-12 | 进行中 | 1048 | - |
-| B2 | 首登改密 | 建号默认 `must_change=1`；限权 token（仅改密端点）；自助改密（本人+旧口令）；改密/禁用级联删 refresh | AC1-27 | 未开始 | - | - |
-| B3 | refresh token | §3.1 完整实现：不透明随机串、SHA-256 哈希存储、30d 绝对 TTL、轮换作旧、reuse 检测全族吊销+审计 | AC1-13 | 未开始 | - | - |
-| B4 | access token | JWT 仅载 `sub`，15min；签发时一次 JOIN 读 `sys_user_role` 填用户资料接口（roles 走资料接口不进 claims） | AC1-13 | 未开始 | - | - |
-| B5 | 登录限速 | (IP, username) 双维度限速 + 指数 backoff + 失败审计 | AC1-26 | 未开始 | - | - |
+| B1 | 登录顺序 | 本地登录先验口令后查禁用（统一 401，D14）；LDAP 路径保持先查号并注明接受 | AC1-12 | 已完成 | 1048 | 30min |
+| B2 | 首登改密 | 建号默认 `must_change=1`；限权 token（仅改密端点）；自助改密（本人+旧口令）；改密/禁用级联删 refresh | AC1-27 | 已完成 | 1048 | （随 B1-B4 一次提交） |
+| B3 | refresh token | §3.1 完整实现：不透明随机串、SHA-256 哈希存储、30d 绝对 TTL、轮换作旧、reuse 检测全族吊销+审计 | AC1-13 | 已完成 | 1048 | （随 B1-B4；补迁移 0008 三方言） |
+| B4 | access token | JWT 仅载 `sub`，15min；签发时一次 JOIN 读 `sys_user_role` 填用户资料接口（roles 走资料接口不进 claims） | AC1-13 | 已完成 | 1048 | （随 B1-B4；user-info 端点同步修） |
+| B5 | 登录限速 | (IP, username) 双维度限速 + 指数 backoff + 失败审计 | AC1-26 | 进行中 | 1054 | - |
 | B6 | 建号加固 | 拒绝 `^(ldap|sso):` 前缀用户名；口令 ≥6 | AC1-17 关联 | 未开始 | - | - |
 | B7 | 账号管理 API | 4 接口（create/roles/password/forbidden）+ 保护红线（最后 superadmin、禁止操作自己、admin 不碰成员资格）+ 写审计 | AC1-7~10 | 未开始 | - | - |
 
