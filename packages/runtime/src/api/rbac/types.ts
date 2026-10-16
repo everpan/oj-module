@@ -74,6 +74,16 @@ export interface LoginMethods {
 	methods: Array<"local" | "ldap" | "sso">
 }
 
+/** 操作日志写端入参（POST /api/system/oplog；module 为调用方自身模块名）。脱敏红线：detail 不得含口令/密钥/token。 */
+export interface RbacOplogWrite {
+	action: string
+	module: string
+	version?: string
+	target?: string
+	detail?: unknown
+	level?: number
+}
+
 /** 登录响应（auth/login、auth/refresh、auth/password 同形） */
 export interface AuthSessionPayload {
 	access_token: string

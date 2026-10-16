@@ -91,7 +91,7 @@ export default function SettingsPage() {
 		.filter(g => g.items.length > 0);
 
 	return (
-		<Space direction="vertical" style={{ width: "100%" }}>
+		<Space direction="vertical" style={{ width: "100%", paddingTop: 16 }}>
 			{groups.map(g => (
 				<Card key={g.group} title={g.group}>
 					<Space direction="vertical" style={{ width: "100%" }}>

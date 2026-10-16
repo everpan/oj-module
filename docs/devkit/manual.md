@@ -345,6 +345,27 @@ const roles = useUserStore(s => s.roles);
 - 框架已把 `auth/*`、`system/*`、`web/*` 等端点经 OpenAPI 契约定义，并从 `@oj-module/runtime` 导出类型化 fetch（如 `api/rbac` 的 `fetchChangePassword`、`fetchRbacUpdateUserRoles`，`api/user` 的 `fetchUserInfo`）。要调框架内置写接口，直接复用这些导出。**但更推荐模块 own 自己的契约**：在 `api/src/<模块>/contract.ts` 声明，跑 `ojm api` 生成 `web/src/<模块>/__client/api.ts`，模块经自己的 client 调框架端点——接口由契约（versioned OpenAPI）对齐，而非把框架源文件打进来。
 - 底层都走同一个 `request` 单例 + 契约 URL；模块侧请求被 `defineModule` 的 `ctx` 收敛到登记过的 `apiPrefix`，越界 / `../` 穿越 / 逐请求 prefix 覆盖均被拒（请求边界见 §2.6 + `tests/runtime/scoped-request.test.ts`）。
 
+**场景：解决方案模块记录操作日志（写端，C3）**
+
+解决方案模块经常要审计自身的关键写操作（建单、改配置、删资源…）。**正确姿势：调 runtime 导出的 `fetchRbacOplogPost`，绝不在模块里 import 框架 `#src/audit` 的 `recordOp`**（那是框架内部，违反 §2.6 红线，且模块 bundle 会被夹带框架实现）。
+
+```ts
+import { fetchRbacOplogPost } from "@oj-module/runtime";
+
+// 在模块自己的写操作成功后调用；module 取本模块名（defineModule 的 name），
+// 用于后端按模块收敛查询与隔离；detail 脱敏红线：不得含口令 / 密钥 / token。
+await fetchRbacOplogPost({
+	action: "order.create",
+	module: "order",              // 本模块名，非 "framework"
+	target: String(orderId),
+	detail: { sku, qty },
+});
+```
+
+- 后端 `POST /api/system/oplog` 由框架提供，登录态即可写入（审计面向当前用户，非仅管理员）；`user_id` / `username` 由请求上下文自动落库，调用方无需传。
+- 读取走 `fetchRbacOplog`（管理面 `system/oplog` 页，admin 可见）；模块自身只写不读自己的审计流。
+- `module` 是隔离锚点：跨模块写别家审计流必须由后端按 `module` 收敛，前端传错模块名不会污染他模块数据。
+
 **为什么不会「版本不一致」**
 
 宿主（cli 内置 `shell-dist`）把 `react` / `antd` / `runtime` 等共享依赖预打包、经 importmap 提供**单例**——宿主与所有模块命中同一份实例。所以模块的 `useUserStore` 和框架的是**同一个 store**，antd `ConfigProvider` 也只有一个：不会出现两份 React / 两份 store 状态不同步。共享依赖版本以 `catalog:` 单一真相钉死（见 §2.7），模块只在 `devDependencies` 对齐版本供 `tsc` 用。

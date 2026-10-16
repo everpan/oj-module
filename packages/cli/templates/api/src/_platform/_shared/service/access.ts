@@ -64,8 +64,8 @@ function deny(): never {
 	throw Object.assign(new Error("forbidden"), { status: 403 });
 }
 
-/** 当前请求的访问快照；未认证/禁用/改密悬挂即拒（403 不泄露账号存在性）。 */
-async function currentAccess(): Promise<AccessSnapshot> {
+/** 当前请求的访问快照；未认证/禁用/改密悬挂即拒（403 不泄露账号存在性）。导出供各 handler 作「登录态即放行」判据（如操作日志写端）。 */
+export async function currentAccess(): Promise<AccessSnapshot> {
 	const uid = http.user?.id;
 	if (uid == null)
 		deny();

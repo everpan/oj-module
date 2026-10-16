@@ -115,7 +115,7 @@ export default function UsersPage() {
 	];
 
 	return (
-		<Space direction="vertical" style={{ width: "100%" }}>
+		<Space direction="vertical" style={{ width: "100%", paddingTop: 16 }}>
 			<Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
 				{t("system:users.create")}
 			</Button>

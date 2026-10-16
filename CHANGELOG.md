@@ -16,9 +16,17 @@
   - 模板登录页挂载时 `fetchLoginMethods()` 获取已启用方式；多于一种时渲染切换 tab：local/ldap 共用表单（仅 `method` 不同），sso 渲染跳转按钮（SSO 重定向端点由宿主/平台提供，模板仅负责跳转 `/auth/sso`）。
   - 发现端点失败时回落单表单（local），不阻断登录。
 
+- **移除个人中心的「设置」菜单项**：`personal-center` 模块此前挂了一个未实现的设置占位页（`/personal-center/settings` 仅渲染 `Settings` 占位内容），现移除该菜单项、路由与页面，并清理对应的 `menu.settings` 及孤儿 i18n 键（`generalSettings` / `notificationSettings` / `accountSecurity`），保留「我的资料」。
+
+- **操作日志写端（C3）+ runtime 契约**：新增 `POST /api/system/oplog`（登录态即可写入，供解决方案模块记录自身操作）；`access.ts` 导出 `currentAccess()` 作「登录态放行」判据；runtime `api/rbac` 新增 `fetchRbacOplogPost`（入参 `RbacOplogWrite`）。解决方案模块经 runtime 契约写日志，**不 import 框架 `#src/audit`**（模块边界红线）。
+
+- **系统页顶部边距**：`settings` / `users` / `roles` / `oplog` 四个页面根容器加 `paddingTop: 16`，与上方 tab 拉开间距。
+
 ### Docs
 
 - 模板 README 排障示例版本号更新为 `@oj-module/cli@0.2.3`。
+- devkit 手册 §2.8 增补「场景：解决方案模块记录操作日志」，示范 `fetchRbacOplogPost` 用法与 `module` 隔离锚点。
+- 新增设计稿 `docs/prd/20261016-solution-module-rbac-isolation-design.md`：每解决方案模块自服务角色/权限 CRUD + 跨模块隔离（服务端按 `callerModule` 收敛）+ runtime 对外 `createModuleRbac(module)` 契约。
 
 ## [0.2.2] - 2026-10-16
 

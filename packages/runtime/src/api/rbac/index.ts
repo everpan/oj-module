@@ -62,6 +62,9 @@ export function fetchRbacOplog(query: { action?: string, username?: string, modu
 	return get<RbacOplogPage>(`system/oplog?${sp.toString()}`);
 }
 
+// 写端：解决方案模块记录自身操作（module 取自身模块名；登录态即可，权限数据隔离由后端按 module 收敛）。
+export const fetchRbacOplogPost = (body: RbacOplogWrite) => post<{ ok: boolean }>("system/oplog", body);
+
 // ---- 系统设置（C4） ----
 export const fetchRbacSettings = () => get<RbacSettingGroup[]>("system/settings");
 export const fetchRbacUpdateSetting = (key: string, value: string) => put("system/settings", { key, value });

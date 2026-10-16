@@ -47,7 +47,7 @@ export default function OplogPage() {
 	];
 
 	return (
-		<Space direction="vertical" style={{ width: "100%" }}>
+		<Space direction="vertical" style={{ width: "100%", paddingTop: 16 }}>
 			<Form
 				layout="inline"
 				onFinish={values => setFilters({

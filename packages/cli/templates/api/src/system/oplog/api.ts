@@ -1,6 +1,8 @@
 import { respond } from "../../_platform/_shared/respond";
 // GET /api/system/oplog?action=&username=&module=&limit= —— 操作日志查询（AC1-29；D13 admin 可查）。
-import { assertSystemAdmin } from "../../_platform/_shared/service/access";
+// POST /api/system/oplog —— 操作日志写入（C3；登录态即可，解决方案模块记录自身操作）。
+import { assertSystemAdmin, currentAccess } from "../../_platform/_shared/service/access";
+import { recordOp } from "../../_platform/_shared/service/audit";
 import { searchOplog } from "../../_platform/_shared/service/oplog";
 
 async function get() {
@@ -50,4 +52,44 @@ get.response = {
 	},
 };
 
-export default { get };
+// POST /api/system/oplog —— 写操作日志（C3）。登录态即可（审计写入面向当前用户，非仅管理员）；
+// module 由调用方自身模块名传入（脱敏红线：detail 不得含口令/密钥/token）。
+async function post() {
+	await respond(async () => {
+		await currentAccess();
+		const body = (http.body || {}) as Record<string, unknown>;
+		const action = String(body.action ?? "");
+		const module = String(body.module ?? "");
+		if (!action || !module)
+			throw Object.assign(new Error("action and module are required"), { status: 400 });
+		await recordOp({
+			action,
+			module,
+			version: body.version == null ? undefined : String(body.version),
+			target: body.target == null ? undefined : String(body.target),
+			detail: body.detail,
+			level: typeof body.level === "number" ? body.level : undefined,
+		});
+		return { ok: true as const };
+	});
+}
+post.schema = {
+	body: {
+		type: "object",
+		required: ["action", "module"],
+		properties: {
+			action: { type: "string", minLength: 1 },
+			module: { type: "string", minLength: 1 },
+			version: { type: "string" },
+			target: { type: "string" },
+			level: { type: "number" },
+		},
+	},
+};
+post.response = {
+	type: "object",
+	required: ["ok"],
+	properties: { ok: { type: "boolean" } },
+};
+
+export default { get, post };

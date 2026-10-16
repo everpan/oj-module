@@ -67,6 +67,7 @@ export default function RolesPage() {
 
 	return (
 		<Tabs
+			style={{ paddingTop: 16 }}
 			items={[
 				{
 					key: "roles",
