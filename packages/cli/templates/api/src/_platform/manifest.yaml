@@ -10,3 +10,4 @@ tables:
   - sys_permission
   - sys_role_permission
   - sys_user_role
+  - sys_refresh_token

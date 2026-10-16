@@ -1,8 +1,7 @@
 // GET /api/web/user-info —— 前端登录链用户信息端点（Bearer 守卫保护）。
-// 按 http.user.id 查 users 表，snake_case → camelCase 映射；
-// 响应一律走 json.ok/json.fail 信封（oj 红线）；前端 runtime 适配层（D10）
-// 负责把 {code:0,data} 转成前端 {code:200,result}。
-// avatar 读 avatar_base64（personal-center 头像上传回写，_platform 0002 迁移）。
+// B4：roles 出自 sys_user_role 权威源（users.roles JSON 列已被 0003 移除，D10）——
+// 体验层角色走本资料接口，不进 JWT claims；avatar 读 avatar_base64，email 读 0007 迁移列。
+// 响应一律走 json.ok/json.fail 信封（oj 红线）。
 export default {
 	async get() {
 		const uid = http.user?.id;
@@ -12,7 +11,7 @@ export default {
 		}
 		try {
 			const rows = await db.query(
-				"SELECT id, username, roles, avatar_base64 FROM users WHERE id = ?",
+				"SELECT id, username, display_name, avatar_base64, email, must_change FROM users WHERE id = ?",
 				[Number(uid)],
 			);
 			const row = rows[0];
@@ -20,23 +19,15 @@ export default {
 				json.fail(404, "user not found");
 				return;
 			}
-			let roles: string[] = [];
-			try {
-				const parsed = JSON.parse(String(row.roles ?? "[]"));
-				if (Array.isArray(parsed))
-					roles = parsed as string[];
-			}
-			catch {
-				roles = [];
-			}
+			const roleRows = await db.query("SELECT role_name FROM sys_user_role WHERE user_id = ?", [Number(uid)]) as Array<{ role_name: string }>;
 			json.ok({
 				id: String(row.id),
 				avatar: String(row.avatar_base64 ?? ""),
 				username: String(row.username),
-				email: "",
-				phoneNumber: "",
-				description: "",
-				roles,
+				displayName: row.display_name == null ? "" : String(row.display_name),
+				email: String(row.email ?? ""),
+				roles: roleRows.map(r => r.role_name),
+				mustChange: Number(row.must_change) === 1,
 				permissions: [],
 			});
 		}

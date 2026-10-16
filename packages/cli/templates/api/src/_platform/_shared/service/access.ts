@@ -10,13 +10,15 @@ interface AccessSnapshot {
 	roles: string[]
 	bindings: Record<string, string[]>
 	forbidden: boolean
+	/** 首登/重置口令后的强制改密悬挂（D12/AC1-27）：悬挂期判权出口全拒（改密端点不经过本层） */
+	mustChange: boolean
 	at: number
 }
 
 const cache = new Map<number, AccessSnapshot>();
 
 async function loadSnapshot(userId: number): Promise<AccessSnapshot> {
-	const userRows = await db.query("select is_forbidden from users where id = ?", [userId]);
+	const userRows = await db.query("select is_forbidden, must_change from users where id = ?", [userId]);
 	const roleRows = await db.query("select role_name from sys_user_role where user_id = ?", [userId]);
 	const roles = roleRows.map((r: { role_name: string }) => r.role_name);
 	// 只捞该用户角色的绑定（参数化 IN，三方言纪律）；deprecated 不过滤（判权职责，§5）
@@ -33,6 +35,7 @@ async function loadSnapshot(userId: number): Promise<AccessSnapshot> {
 		roles,
 		bindings,
 		forbidden: Number((userRows[0] || {}).is_forbidden) === 1,
+		mustChange: Number((userRows[0] || {}).must_change) === 1,
 		at: Date.now(),
 	};
 }
@@ -59,7 +62,7 @@ function deny(): never {
 	throw Object.assign(new Error("forbidden"), { status: 403 });
 }
 
-/** 当前请求的访问快照；未认证/禁用即拒（403 不泄露账号存在性）。 */
+/** 当前请求的访问快照；未认证/禁用/改密悬挂即拒（403 不泄露账号存在性）。 */
 async function currentAccess(): Promise<AccessSnapshot> {
 	const uid = http.user?.id;
 	if (uid == null)
@@ -67,6 +70,8 @@ async function currentAccess(): Promise<AccessSnapshot> {
 	const snap = await snapshot(uid);
 	if (snap.forbidden)
 		deny();
+	if (snap.mustChange)
+		throw Object.assign(new Error("password change required"), { status: 403, code: "must_change" });
 	return snap;
 }
 

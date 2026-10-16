@@ -76,3 +76,11 @@ tables:
     columns:
       user_id: {type: integer, null: false}
       role_name: {type: text, null: false}
+  sys_refresh_token:
+    pk: token_hash
+    columns:
+      token_hash: {type: text, null: false}
+      user_id: {type: integer, null: false}
+      expires_at: {type: integer, null: false}
+      revoked: {type: integer, null: false}
+      created_at: {type: integer, null: false}
