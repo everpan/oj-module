@@ -328,8 +328,11 @@ function generatePackageJson(cliRoot: string, projectName: string) {
 		"@ant-design/icons": pin("@ant-design/icons"),
 		// personal-center 的 ProForm 用到——仅取**类型**（运行时由宿主 importmap 提供单例）
 		"@ant-design/pro-components": pin("@ant-design/pro-components"),
+		// system 模块页面数据层 + i18n 类型（TFunction）用到——仅取**类型**（运行时由宿主提供单例）
+		"@tanstack/react-query": pin("@tanstack/react-query"),
 		"@types/react": pin("@types/react"),
 		"antd": pin("antd"),
+		"i18next": pin("i18next"),
 		// home 首页图表演示用到——仅取**类型**（运行时由宿主 importmap 提供单例）
 		"dayjs": pin("dayjs"),
 		"echarts": pin("echarts"),

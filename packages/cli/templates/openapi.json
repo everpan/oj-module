@@ -5,6 +5,36 @@
 		"version": "0.1.0"
 	},
 	"paths": {
+		"/api/_platform/contacts": {
+			"get": {
+				"operationId": "_platform_contacts_get",
+				"summary": "GET api/_platform/contacts",
+				"x-oj-file": "_platform/contacts/api.ts",
+				"tags": [
+					"_platform"
+				],
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				}
+			}
+		},
+		"/api/_platform/contacts/detail": {
+			"get": {
+				"operationId": "_platform_contacts_detail_get",
+				"summary": "GET api/_platform/contacts/detail",
+				"x-oj-file": "_platform/contacts/detail/api.ts",
+				"tags": [
+					"_platform"
+				],
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				}
+			}
+		},
 		"/api/auth/login": {
 			"post": {
 				"operationId": "auth_login_post",
@@ -40,6 +70,60 @@
 				"operationId": "auth_refresh_post",
 				"summary": "POST api/auth/refresh",
 				"x-oj-file": "auth/api.ts",
+				"tags": [
+					"auth"
+				],
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				}
+			}
+		},
+		"/api/auth/password": {
+			"put": {
+				"operationId": "auth_password_put",
+				"summary": "PUT api/auth/password",
+				"x-oj-file": "auth/api.ts",
+				"tags": [
+					"auth"
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"required": [
+									"old_password",
+									"new_password"
+								],
+								"properties": {
+									"old_password": {
+										"type": "string",
+										"minLength": 1
+									},
+									"new_password": {
+										"type": "string",
+										"minLength": 6
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				}
+			}
+		},
+		"/api/auth/ldap-login": {
+			"post": {
+				"operationId": "auth_ldap_login_post",
+				"summary": "POST api/auth/ldap-login",
+				"x-oj-file": "auth/ldap-login/api.ts",
 				"tags": [
 					"auth"
 				],
@@ -405,6 +489,945 @@
 				}
 			}
 		},
+		"/api/system/login-methods": {
+			"get": {
+				"operationId": "system_login_methods_get",
+				"summary": "GET api/system/login-methods",
+				"x-oj-file": "system/login-methods/api.ts",
+				"tags": [
+					"system"
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"required": [
+												"methods"
+											],
+											"properties": {
+												"methods": {
+													"type": "array",
+													"items": {
+														"type": "string"
+													}
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/system/oplog": {
+			"get": {
+				"operationId": "system_oplog_get",
+				"summary": "GET api/system/oplog",
+				"x-oj-file": "system/oplog/api.ts",
+				"tags": [
+					"system"
+				],
+				"parameters": [
+					{
+						"name": "action",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "username",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "module",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "limit",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "number",
+							"minimum": 1,
+							"maximum": 200
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"required": [
+												"list",
+												"total",
+												"truncated"
+											],
+											"properties": {
+												"list": {
+													"type": "array",
+													"items": {
+														"type": "object",
+														"required": [
+															"id",
+															"create_time",
+															"user_id",
+															"username",
+															"action",
+															"module",
+															"version",
+															"target",
+															"detail",
+															"level"
+														],
+														"properties": {
+															"id": {
+																"type": "number"
+															},
+															"create_time": {
+																"type": "number"
+															},
+															"user_id": {
+																"type": "number"
+															},
+															"username": {
+																"type": "string"
+															},
+															"action": {
+																"type": "string"
+															},
+															"module": {
+																"type": "string"
+															},
+															"version": {
+																"type": [
+																	"string",
+																	"null"
+																]
+															},
+															"target": {
+																"type": [
+																	"string",
+																	"null"
+																]
+															},
+															"detail": {
+																"type": [
+																	"string",
+																	"null"
+																]
+															},
+															"level": {
+																"type": "number"
+															}
+														}
+													}
+												},
+												"total": {
+													"type": "number"
+												},
+												"truncated": {
+													"type": "boolean"
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/system/permissions": {
+			"get": {
+				"operationId": "system_permissions_get",
+				"summary": "GET api/system/permissions",
+				"x-oj-file": "system/permissions/api.ts",
+				"tags": [
+					"system"
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "array",
+											"items": {
+												"type": "object",
+												"required": [
+													"code",
+													"module",
+													"title_key",
+													"deprecated"
+												],
+												"properties": {
+													"code": {
+														"type": "string"
+													},
+													"module": {
+														"type": "string"
+													},
+													"title_key": {
+														"type": [
+															"string",
+															"null"
+														]
+													},
+													"deprecated": {
+														"type": "boolean"
+													}
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/system/roles": {
+			"get": {
+				"operationId": "system_roles_get",
+				"summary": "GET api/system/roles",
+				"x-oj-file": "system/roles/api.ts",
+				"tags": [
+					"system"
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "array",
+											"items": {
+												"type": "object",
+												"required": [
+													"name",
+													"module",
+													"title",
+													"description",
+													"builtin",
+													"deprecated",
+													"holders",
+													"permissions"
+												],
+												"properties": {
+													"name": {
+														"type": "string"
+													},
+													"module": {
+														"type": "string"
+													},
+													"title": {
+														"type": [
+															"string",
+															"null"
+														]
+													},
+													"description": {
+														"type": [
+															"string",
+															"null"
+														]
+													},
+													"builtin": {
+														"type": "boolean"
+													},
+													"deprecated": {
+														"type": "boolean"
+													},
+													"holders": {
+														"type": "number"
+													},
+													"permissions": {
+														"type": "array",
+														"items": {
+															"type": "string"
+														}
+													}
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			},
+			"post": {
+				"operationId": "system_roles_post",
+				"summary": "POST api/system/roles",
+				"x-oj-file": "system/roles/api.ts",
+				"tags": [
+					"system"
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"required": [
+									"name",
+									"title"
+								],
+								"properties": {
+									"name": {
+										"type": "string",
+										"pattern": "^custom\\.[a-z0-9][a-z0-9-]*$"
+									},
+									"title": {
+										"type": "string",
+										"minLength": 1
+									},
+									"permissions": {
+										"type": "array",
+										"items": {
+											"type": "string"
+										}
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"required": [
+												"name",
+												"module"
+											],
+											"properties": {
+												"name": {
+													"type": "string"
+												},
+												"module": {
+													"type": "string"
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			},
+			"delete": {
+				"operationId": "system_roles_delete",
+				"summary": "DELETE api/system/roles",
+				"x-oj-file": "system/roles/api.ts",
+				"tags": [
+					"system"
+				],
+				"parameters": [
+					{
+						"name": "name",
+						"in": "query",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"minLength": 1
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				}
+			}
+		},
+		"/api/system/roles/bindings": {
+			"put": {
+				"operationId": "system_roles_bindings_put",
+				"summary": "PUT api/system/roles/bindings",
+				"x-oj-file": "system/roles/bindings/api.ts",
+				"tags": [
+					"system"
+				],
+				"parameters": [
+					{
+						"name": "name",
+						"in": "query",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"minLength": 1
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"required": [
+									"permissions"
+								],
+								"properties": {
+									"permissions": {
+										"type": "array",
+										"items": {
+											"type": "string"
+										}
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				}
+			}
+		},
+		"/api/system/settings": {
+			"get": {
+				"operationId": "system_settings_get",
+				"summary": "GET api/system/settings",
+				"x-oj-file": "system/settings/api.ts",
+				"tags": [
+					"system"
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "array",
+											"items": {
+												"type": "object",
+												"required": [
+													"group",
+													"items"
+												],
+												"properties": {
+													"group": {
+														"type": "string"
+													},
+													"items": {
+														"type": "array",
+														"items": {
+															"type": "object",
+															"required": [
+																"key",
+																"module",
+																"group",
+																"type",
+																"value",
+																"default_value",
+																"label_key",
+																"options",
+																"secret",
+																"update_time"
+															],
+															"properties": {
+																"key": {
+																	"type": "string"
+																},
+																"module": {
+																	"type": "string"
+																},
+																"group": {
+																	"type": "string"
+																},
+																"type": {
+																	"type": "string"
+																},
+																"value": {
+																	"type": [
+																		"string",
+																		"null"
+																	]
+																},
+																"default_value": {
+																	"type": [
+																		"string",
+																		"null"
+																	]
+																},
+																"label_key": {
+																	"type": [
+																		"string",
+																		"null"
+																	]
+																},
+																"options": {
+																	"type": [
+																		"string",
+																		"null"
+																	]
+																},
+																"secret": {
+																	"type": "boolean"
+																},
+																"update_time": {
+																	"type": "number"
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			},
+			"put": {
+				"operationId": "system_settings_put",
+				"summary": "PUT api/system/settings",
+				"x-oj-file": "system/settings/api.ts",
+				"tags": [
+					"system"
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"required": [
+									"key",
+									"value"
+								],
+								"properties": {
+									"key": {
+										"type": "string",
+										"minLength": 1
+									},
+									"value": {
+										"type": "string"
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				}
+			}
+		},
+		"/api/system/users": {
+			"get": {
+				"operationId": "system_users_get",
+				"summary": "GET api/system/users",
+				"x-oj-file": "system/users/api.ts",
+				"tags": [
+					"system"
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "array",
+											"items": {
+												"type": "object",
+												"required": [
+													"id",
+													"username",
+													"display_name",
+													"email",
+													"is_forbidden",
+													"must_change",
+													"roles"
+												],
+												"properties": {
+													"id": {
+														"type": "number"
+													},
+													"username": {
+														"type": "string"
+													},
+													"display_name": {
+														"type": [
+															"string",
+															"null"
+														]
+													},
+													"email": {
+														"type": [
+															"string",
+															"null"
+														]
+													},
+													"is_forbidden": {
+														"type": "boolean"
+													},
+													"must_change": {
+														"type": "boolean"
+													},
+													"roles": {
+														"type": "array",
+														"items": {
+															"type": "string"
+														}
+													}
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			},
+			"post": {
+				"operationId": "system_users_post",
+				"summary": "POST api/system/users",
+				"x-oj-file": "system/users/api.ts",
+				"tags": [
+					"system"
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"required": [
+									"username",
+									"password"
+								],
+								"properties": {
+									"username": {
+										"type": "string",
+										"minLength": 1
+									},
+									"password": {
+										"type": "string",
+										"minLength": 6
+									},
+									"displayName": {
+										"type": "string"
+									},
+									"email": {
+										"type": "string"
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"required": [
+												"id"
+											],
+											"properties": {
+												"id": {
+													"type": "number"
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/system/users/forbidden": {
+			"put": {
+				"operationId": "system_users_forbidden_put",
+				"summary": "PUT api/system/users/forbidden",
+				"x-oj-file": "system/users/forbidden/api.ts",
+				"tags": [
+					"system"
+				],
+				"parameters": [
+					{
+						"name": "uid",
+						"in": "query",
+						"required": true,
+						"schema": {
+							"type": "number"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"required": [
+									"forbidden"
+								],
+								"properties": {
+									"forbidden": {
+										"type": "boolean"
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				}
+			}
+		},
+		"/api/system/users/password": {
+			"put": {
+				"operationId": "system_users_password_put",
+				"summary": "PUT api/system/users/password",
+				"x-oj-file": "system/users/password/api.ts",
+				"tags": [
+					"system"
+				],
+				"parameters": [
+					{
+						"name": "uid",
+						"in": "query",
+						"required": true,
+						"schema": {
+							"type": "number"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"required": [
+									"password"
+								],
+								"properties": {
+									"password": {
+										"type": "string",
+										"minLength": 6
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				}
+			}
+		},
+		"/api/system/users/roles": {
+			"put": {
+				"operationId": "system_users_roles_put",
+				"summary": "PUT api/system/users/roles",
+				"x-oj-file": "system/users/roles/api.ts",
+				"tags": [
+					"system"
+				],
+				"parameters": [
+					{
+						"name": "uid",
+						"in": "query",
+						"required": true,
+						"schema": {
+							"type": "number"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"required": [
+									"roles"
+								],
+								"properties": {
+									"roles": {
+										"type": "array",
+										"items": {
+											"type": "string"
+										}
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				}
+			}
+		},
 		"/api/web/get-async-routes": {
 			"get": {
 				"operationId": "web_get_async_routes_get",
@@ -449,256 +1472,12 @@
 					}
 				}
 			}
-		},
-		"/api/_platform/contacts": {
-			"get": {
-				"operationId": "_platform_contacts_get",
-				"summary": "GET api/_platform/contacts",
-				"x-oj-file": "_platform/contacts/api.ts",
-				"tags": [
-					"_platform"
-				],
-				"responses": {
-					"200": {
-						"description": "OK"
-					}
-				}
-			}
-		},
-		"/api/_platform/contacts/detail": {
-			"get": {
-				"operationId": "_platform_contacts_detail_get",
-				"summary": "GET api/_platform/contacts/detail",
-				"x-oj-file": "_platform/contacts/detail/api.ts",
-				"tags": [
-					"_platform"
-				],
-				"responses": {
-					"200": {
-						"description": "OK"
-					}
-				}
-			}
-		},
-		"/api/system/login-methods": {
-			"get": {
-				"operationId": "system_login-methods_get",
-				"summary": "GET api/system/login-methods",
-				"x-oj-file": "system/login-methods/api.ts",
-				"tags": [
-					"system"
-				],
-				"responses": {
-					"200": {
-						"description": "OK"
-					}
-				}
-			}
-		},
-		"/api/system/oplog": {
-			"get": {
-				"operationId": "system_oplog_get",
-				"summary": "GET api/system/oplog",
-				"x-oj-file": "system/oplog/api.ts",
-				"tags": [
-					"system"
-				],
-				"responses": {
-					"200": {
-						"description": "OK"
-					}
-				}
-			}
-		},
-		"/api/system/permissions": {
-			"get": {
-				"operationId": "system_permissions_get",
-				"summary": "GET api/system/permissions",
-				"x-oj-file": "system/permissions/api.ts",
-				"tags": [
-					"system"
-				],
-				"responses": {
-					"200": {
-						"description": "OK"
-					}
-				}
-			}
-		},
-		"/api/system/roles": {
-			"get": {
-				"operationId": "system_roles_get",
-				"summary": "GET api/system/roles",
-				"x-oj-file": "system/roles/api.ts",
-				"tags": [
-					"system"
-				],
-				"responses": {
-					"200": {
-						"description": "OK"
-					}
-				}
-			},
-			"post": {
-				"operationId": "system_roles_post",
-				"summary": "POST api/system/roles",
-				"x-oj-file": "system/roles/api.ts",
-				"tags": [
-					"system"
-				],
-				"responses": {
-					"200": {
-						"description": "OK"
-					}
-				}
-			},
-			"delete": {
-				"operationId": "system_roles_delete",
-				"summary": "DELETE api/system/roles",
-				"x-oj-file": "system/roles/api.ts",
-				"tags": [
-					"system"
-				],
-				"responses": {
-					"200": {
-						"description": "OK"
-					}
-				}
-			}
-		},
-		"/api/system/roles/bindings": {
-			"put": {
-				"operationId": "system_roles_bindings_put",
-				"summary": "PUT api/system/roles/bindings",
-				"x-oj-file": "system/roles/bindings/api.ts",
-				"tags": [
-					"system"
-				],
-				"responses": {
-					"200": {
-						"description": "OK"
-					}
-				}
-			}
-		},
-		"/api/system/settings": {
-			"get": {
-				"operationId": "system_settings_get",
-				"summary": "GET api/system/settings",
-				"x-oj-file": "system/settings/api.ts",
-				"tags": [
-					"system"
-				],
-				"responses": {
-					"200": {
-						"description": "OK"
-					}
-				}
-			},
-			"put": {
-				"operationId": "system_settings_put",
-				"summary": "PUT api/system/settings",
-				"x-oj-file": "system/settings/api.ts",
-				"tags": [
-					"system"
-				],
-				"responses": {
-					"200": {
-						"description": "OK"
-					}
-				}
-			}
-		},
-		"/api/system/users": {
-			"get": {
-				"operationId": "system_users_get",
-				"summary": "GET api/system/users",
-				"x-oj-file": "system/users/api.ts",
-				"tags": [
-					"system"
-				],
-				"responses": {
-					"200": {
-						"description": "OK"
-					}
-				}
-			},
-			"post": {
-				"operationId": "system_users_post",
-				"summary": "POST api/system/users",
-				"x-oj-file": "system/users/api.ts",
-				"tags": [
-					"system"
-				],
-				"responses": {
-					"200": {
-						"description": "OK"
-					}
-				}
-			}
-		},
-		"/api/system/users/roles": {
-			"put": {
-				"operationId": "system_users_roles_put",
-				"summary": "PUT api/system/users/roles",
-				"x-oj-file": "system/users/roles/api.ts",
-				"tags": [
-					"system"
-				],
-				"responses": {
-					"200": {
-						"description": "OK"
-					}
-				}
-			}
-		},
-		"/api/system/users/password": {
-			"put": {
-				"operationId": "system_users_password_put",
-				"summary": "PUT api/system/users/password",
-				"x-oj-file": "system/users/password/api.ts",
-				"tags": [
-					"system"
-				],
-				"responses": {
-					"200": {
-						"description": "OK"
-					}
-				}
-			}
-		},
-		"/api/system/users/forbidden": {
-			"put": {
-				"operationId": "system_users_forbidden_put",
-				"summary": "PUT api/system/users/forbidden",
-				"x-oj-file": "system/users/forbidden/api.ts",
-				"tags": [
-					"system"
-				],
-				"responses": {
-					"200": {
-						"description": "OK"
-					}
-				}
-			}
-		},
-		"/api/auth/ldap-login": {
-			"post": {
-				"operationId": "auth_ldap_login_post",
-				"summary": "POST api/auth/ldap-login",
-				"x-oj-file": "auth/ldap-login/api.ts",
-				"tags": [
-					"auth"
-				],
-				"responses": {
-					"200": {
-						"description": "OK"
-					}
-				}
-			}
 		}
 	},
 	"tags": [
+		{
+			"name": "_platform"
+		},
 		{
 			"name": "auth"
 		},
@@ -710,6 +1489,9 @@
 		},
 		{
 			"name": "personal-center"
+		},
+		{
+			"name": "system"
 		},
 		{
 			"name": "web"
