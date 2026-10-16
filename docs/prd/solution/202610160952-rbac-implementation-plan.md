@@ -114,18 +114,18 @@
 
 | # | 任务 | 内容 | AC 锚点 | 状态 | 开始 | 耗时 |
 |---|---|---|---|---|---|---|
-| D1 | LDAP 登录 | 移植 wiki 流程 + B5 限速（DB 版 rate）+ esc 红线 + 两段式配置（连接段 config.yaml / 映射段 sys_setting）；JIT 建号 `must_change=0`（外来号无本地旧口令，悬挂期会 brick——实现期决策回填 §9.4） | AC1-12 | 进行中 | 1220 | - |
+| D1 | LDAP 登录 | 移植 wiki 流程 + B5 限速（DB 版 rate，login/ldap-login 共用 login-throttle 编排）+ esc 红线 + 两段式配置（连接段 config.yaml 注释模板 / 映射段 sys_setting seed 三键）；JIT 建号 `must_change=0`（§9.4-2：外来号悬挂期会 brick） | AC1-12 | 已完成 | 1220 | 50min |
 | D2 | 登录方式发现 | `GET /system/login-methods`（匿名，E6 路径纪律） | C5 关联 | 已完成 | （C 阶段已交付，ldap.enabled 开关驱动） | - |
-| D3 | 登录页 LDAP 表单 | LDAP 标签接真实表单（复用密码登录 UI，端点换 `/auth/ldap-login`）；设置页 LDAP 映射组随 seed 自动出现（连接段只读展示列 M5 安装器期再做，PRD §4.5 设置页处理的轻量落点） | AC1-12 | 未开始 | - | - |
+| D3 | 登录页 LDAP 表单 | LDAP 标签接真实表单（PasswordLogin 加 `ldap` prop：端点换 `/auth/ldap-login`、隐藏本地专属入口）；设置页 LDAP 映射组随 seed 自动出现 + i18n（连接段只读展示列 M5 安装器期，PRD §4.5 轻量落点） | AC1-12 | 已完成 | 1230 | 30min |
 
-**DoD**：`libldap.dylib` 实机 bind 通过一次真实 LDAP 登录；未配置时登录页无入口；集中评审合并。
+**DoD**：`libldap.dylib` 实机 bind 通过一次真实 LDAP 登录（延后阶段 E，前置条件见 §9.4-3：可达 LDAP 目录）；未配置时登录页无入口（login-methods 驱动已验）；集中评审合并。
 
-**阶段小结**（全部任务完成后填写）：
-- 关键过程：
-- 实际耗时：
-- 偏差与决策回填：
-- 反常识记录：
-- 集中评审结论：
+**阶段小结**（2026-10-16 1220–1245）
+- 关键过程：BDD 先行（auth-ldap.spec 20 断言：esc RFC 4515 注入样本 8 组 + 九步分支 + JIT/竞态复用/禁号 403/落库断言）；`createLdapLogin(session, gateway)` 双注入（axis 为 oj 运行时全局，Node 侧无此面）；session 增 `issueExternal` 签发出口（D3 签发出口内部调用纪律）；B5 限速编排收敛 `login-throttle.ts`（login/ldap-login 共用，DRY）；openapi/config/seed 三处登记（匿名路径 E6 纪律）；前端 PasswordLogin 加 `ldap` prop 复用同形表单。收尾同 C 阶段真机冒烟：钉出 §9.4-1「oj build introspect 空沙箱评估模块」——模块级 createSession()/runtimeLdapGateway() 构建期即炸，移入 handler 修复后 ojm build 全链绿。
+- 实际耗时：≈70min（含 oj build 陷阱返工 20min）。
+- 偏差与决策回填：设计文档 §9.4-1/2/3（oj build introspect 空沙箱红线、JIT must_change=0 分野、实机 bind 验收延后——container 拉镜像 registry connectTimeout，前置条件记录于此，E1 验收清单须含）。
+- 反常识记录：见 §9.4；流程 checklist 再增「模块级语句是否触碰运行时全局（jwt/axis/db/bcrypt）」。
+- 集中评审结论：待评审（随阶段 E 集中评审）。
 
 ## 7. 阶段 E：验收与收尾
 

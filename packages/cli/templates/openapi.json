@@ -681,6 +681,21 @@
 					}
 				}
 			}
+		},
+		"/api/auth/ldap-login": {
+			"post": {
+				"operationId": "auth_ldap_login_post",
+				"summary": "POST api/auth/ldap-login",
+				"x-oj-file": "auth/ldap-login/api.ts",
+				"tags": [
+					"auth"
+				],
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				}
+			}
 		}
 	},
 	"tags": [

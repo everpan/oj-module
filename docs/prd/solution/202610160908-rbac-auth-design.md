@@ -463,3 +463,9 @@ C 阶段验收走真实 `ojm init` + `ojm dev` 冒烟时连续钉出三个 oj �
    - **AC1-29 的 403 deny 分钟窗口聚合（进程内 Map）同样恒失效**（每请求恒逐条落表）。处置：聚合窗口以 `sys_oplog` 自身为锚——分钟内最近一条同 `(user_id, action='auth.deny', target=code)` 行即窗口锚点，命中只更新 `detail.count`，否则落首条；模块内串行队列保留（收敛单请求内多次 deny 的竞态），跨请求并发首条落两行的残余竞态人去重场景可容忍（已注释）。
    - **D10 判权短 TTL 缓存恒不命中**——每请求直查 DB。正确性无损（「撤销即强退」反成平凡真），缓存/写时失效调用面保留（同请求多断言仍有意义），access.ts 头注释已注记。
    - **教训（流程级）**：凡 oj 模块内 `let/Map/Set` 级状态一律视为「单请求作用域」；需要跨请求的状态必须落库或走 `oj` 持久面。评审 checklist 增一项「模块级可变状态 ∈ 单请求语义？」。
+
+### 9.4 阶段 D 实现期发现（2026-10-16 1220–1240，feat/rbac-ldap）
+
+1. **【反常规】`oj build` 的 introspect 会在无 jwt/config 的空沙箱里评估 handler 模块**——模块级任何触碰运行时全局的代码（`createSession()` → `runtimeDeps()` 读 `g.jwt`、`runtimeLdapGateway()` 调 `axis("ldap")`）在构建期即炸：`introspect api.ts: Error: jwt not configured`。dev 模式不受影响（运行时全局齐全），故只有 `ojm build`/preview 路径暴露——与 §9.3-2/3 同类：**handler 模块级只许声明，不许执行**。处置：session/gateway 改在 handler 内按需构造（无状态纯闭包，零成本）；评审 checklist 再增一项「模块级语句是否触碰运行时全局」。
+2. **JIT 外来号必须 `must_change=0`**（实现期决策）：AC1-27 悬挂期唯一可用写端是自助改密（本人+旧口令），而 LDAP 号占位 hash `!ldap` 恒 verify false——若 JIT 默认 must_change=1，外来号首登即永久 brick。本地建号默认 1（B6）与外来号默认 0 的分野：外来号没有「初始凭据窗口」需要兜底。
+3. **「LDAP 实机 bind」验收受阻记录**：本机 container 拉取 osixia/openldap 镜像两次均 registry connectTimeout（与 npm 镜像同源限制）——真实 bind 冒烟延后至阶段 E，前置条件：可达的 LDAP 目录（容器或客户环境）。服务层 BDD 20 断言（esc RFC 4515 样本/九步分支/JIT/竞态复用/禁号 403）+ 真机信封链（400 未启用 → 400 缺 base_dn → 502 无上游）已覆盖除真实目录交互外全路径；axis("ldap") 面本身为 wiki 生产先例直移。
