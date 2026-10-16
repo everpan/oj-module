@@ -5,6 +5,35 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 设计依据、迁移记录与陷阱清单见 [`docs/prd/202609110947-oj-module-two-package-consolidation-design.md`](docs/prd/202609110947-oj-module-two-package-consolidation-design.md)。
 
+## [0.2.1] - 2026-10-16
+
+> 基于 0.2.0 框架基线（含后端管理面 `/api/system/*`、`/api/auth/*`）。
+> 注意：本仓 `package.json` 已在 0.2.0，但 0.2.0 未正式发版（npm 最高 0.1.21），
+> 0.2.0 的变更记录待补，本次 0.2.1 在其之上追加。
+
+### Added
+
+- **system 管理前端模板模块**：`packages/cli/templates/web/src/system/`（entry + 6 页 + 2 locales），
+  以 cli 模板模块形式随 `ojm init` 分发，补齐 0.2.0 后端管理面缺的用户/角色/权限/操作日志/站点设置/登录方式 UI。
+  - 用户管理（建号表单校验对齐后端、禁用 Switch、重置口令、本人行动作禁用）、成员资格（`superadmin` 才见入口，整集替换）、
+    角色权限（只读双表，`title_key` 跨 namespace 不命中回退 `code`）、操作日志、站点设置（按 `item.module ∈ {framework,ldap,sso}` 过滤）、登录方式（只读）。
+  - 权限三档分工：路由级 `config.requiredRoles`（B16，角色不符→404）＋ 页面级 `ForbiddenPanel`（API 403）+ 后端 `assertSystemAdmin` 硬 enforcement。`requiredRoles` 取 `["admin","superadmin"]`，对齐后端 `assertSystemAdmin` 口径。
+  - 错误归一 `errors.ts` 兼容 `ContractApiError` 与 ky `HTTPError`；`ForbiddenPanel` 特判 `must_change` 渲染改密引导卡。
+  - 13 个 system 端点补 `.schema`/`.response` 契约 + `auth/password` 补 `.schema`（业务逻辑零改动，仅挂契约属性）。
+- **login 模块改密页** `/change-password`（fullscreen + `hideInMenu`），must_change 悬挂期唯一出口；
+  走 runtime 全局 `fetchChangePassword`（auth 无 web 模块、无 client 宿主）。
+- **init devDeps 钉入** `@tanstack/react-query` / `antd` / `i18next` / `@types/react`（模板页只取类型，运行时走宿主 importmap 单例）。
+- **模板 `openapi.json` 快照刷到 oj 0.1.74**（旧快照 0.1.69 时代 operationId 带连字符 → 生成非法标识符 `systemLogin-methodsGet`）。
+
+### Fixed
+
+- **宿主链补 `user-info` 水合**（框架缺陷）：预构建宿主无 AuthGuard，user store 角色恒为空/演示值 → 模块角色过滤把管理员挡在 `/system` 外、`superadmin` 判断恒 false、侧栏用户名为空。`host.tsx` 新增 `hydrateUser()`，在 `loadAll()` 之前 await 拉真实角色（must_change 期仍 200），失败则清空、无 token 才播种 `DEMO_USER`。
+- **宿主链 catch-all 兜底页**：非管理员直达角色受限路由（如 `/system/*`）时，React Router 无匹配落默认错误页；补 `{ path: "*", element: <PageError /> }` 渲染框架兜底页（后端 403 仍为硬兜底）。
+
+### Dependencies
+
+- oj 最低版本门禁 **0.1.73**（平级 `.response` 需 v0.1.72，`del`→`delete` 操作键归一需 v0.1.73）。
+
 ## [0.1.20] - 2026-10-15
 
 ### Added
