@@ -11,6 +11,7 @@ tables:
       avatar_base64: {type: text, null: false}
       source: {type: text, null: false}
       display_name: {type: text}
+      must_change: {type: integer, null: false}
   sys_setting:
     pk: key
     columns:
