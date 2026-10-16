@@ -34,6 +34,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ConfigProvider, theme } from "antd";
 import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { useTranslation } from "react-i18next";
 
 import {
 	createBrowserRouter,
@@ -97,6 +98,22 @@ useAuthStore.subscribe((state, prev) => {
 	if (state.token !== prev.token)
 		void hydrateUser();
 });
+
+/**
+ * 直链兜底页（catch-all 路由元素）。无匹配路由时渲染框架 `PageError`，
+ * 把 title 设为框架 404 文案（`exception.notFoundTitle` = "404"），
+ * 观感与无权限面板同构，替代 React Router 默认的「Unexpected Application Error!」。
+ * 仅作观感兜底，权限判定仍由后端 403 硬执行。
+ */
+function CatchAll() {
+	const { t } = useTranslation();
+	return (
+		<PageError
+			error={{ status: 404, message: t("exception.notFoundTitle") }}
+			resetErrorBoundary={() => {}}
+		/>
+	);
+}
 
 // i18n 由 runtime 的 setupI18n 统一初始化：装载框架 translation 命名空间
 // （preferences/common 等）。此前这里以空 resources 自行 init，框架级文案
@@ -222,11 +239,11 @@ function Boot() {
 								{ index: true, element: <Navigate to={getRoutes()[0]?.path ?? "/"} replace /> },
 								...getRoutes(),
 								// 风险项 §9.1：非管理员直达角色受限路由（如 /system/*）时，
-								// B16 过滤后该路由不在 getRoutes() 内 → React Router 无匹配
-								// 落默认「Unexpected Application Error!」。补 catch-all 渲染
-								// 框架兜底页（功能正确、观感与无权限面板同构）。后端 403 仍
-								// 是权限硬兜底，此页仅改善直链观感，不构成权限判断。
-								{ path: "*", element: <PageError /> },
+								// B16 过滤后该路由不在 getRoutes() 内 → React Router 无匹配。
+								// 补 catch-all 渲染框架兜底页（替代默认「Unexpected Application
+								// Error!」），title 取框架 404 文案（exception.notFoundTitle）。
+								// 后端 403 仍是权限硬兜底，此页仅改善直链观感，不构成权限判断。
+								{ path: "*", element: <CatchAll /> },
 							],
 						},
 					]),

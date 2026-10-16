@@ -128,9 +128,10 @@ try {
 	await login(page2, "user1", "user456");
 	await page2.goto(`${BASE}/system/users`);
 	await page2.waitForTimeout(1800);
-	// B16：角色不符时 /system 路由不注入 → React Router 无匹配落 404；
-	// 若路由在而 API 403，则渲染「无权限」面板——两种都算被拒
-	const denied = (await page2.getByText(/无权限|Forbidden|404 Not Found/).count()) > 0;
+	// B16：角色不符时 /system 路由不注入 → React Router 无匹配落 catch-all
+	// 框架兜底页（title=404 / 副标题=页面不存在）；若路由在而 API 403，
+	// 则渲染「无权限」面板——两种都算被拒
+	const denied = (await page2.getByText(/无权限|Forbidden|404|页面不存在/).count()) > 0;
 	ok("非 admin 直达 /system 被拒（路由级/页面级）", denied, page2.url());
 	ok("非 admin 无系统管理菜单", (await page2.getByText(/^(系统管理|System)$/).count()) === 0);
 	await page2.close();
