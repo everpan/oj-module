@@ -67,7 +67,7 @@
 **要点**：
 
 - `ojm install <file.tgz|name[@version]>`（P1-13 瘦客户端）：登录 → `POST /api/_platform/market/install` → 轮询 task（800ms）→ 终态打印；失败输出 `lifecycle.stage.*` 双语 reason + hint + retryable（契约附录 A 十阶段文案表）。
-- 作者如何读失败（D11 失败语义三分）：锁写入前失败（preflight→extracting）= 清场重跑、零副作用，改了重装即可；锁写入后失败（registering→smoke）= 方案已生效/部分生效，按指引先禁用或回滚，修复后显式重装；升级/降级切换前对目标版本复验（D11③）。
+- 作者如何读失败（D11 失败语义三分）：锁写入前失败（preflight→extracting）= 清场重跑、零副作用，改了重装即可；migrating 失败=锁写入前段（清场重跑，零副作用），但迁移失败后**锁保持指向旧版**（账本去重保证重试幂等，见设计 D11）；锁写入后失败（registering→smoke）= 方案已生效/部分生效，按指引先禁用或回滚，修复后显式重装；升级/降级切换前对目标版本复验（D11③）。
 - 安装成功判据（验收对齐）：不重启出现菜单/路由（AC-P1-1）；带迁移模块 release 重启不拒启（AC-P1-2）；同版本重装 no-op（AC-P1-3）。
 - `ojm enable/disable <name>`：锁摘除 + sidecar + `sys_solution_route.enabled` + `modules.json.enabled` 四处同写（D12）。
 - 本地静态分发源（D7）：任意 oj 工程 `mounts` 加一行 `web:` 指向**独立分发目录**——严禁指向 `api/modules/` 或其父级（R13 泄漏红线）；索引 `bundles.yaml`/`manifests.yaml` 必须 `Cache-Control: no-cache`，tgz 内容寻址可长缓存（R15）。配好后即可 `ojm install name@version` 走真实下载/校验链。
@@ -94,7 +94,7 @@
 
 **要点**：
 
-- version 语义 = semver 优先级比较，缺段补零（`1.0` ≡ `1.0.0`，C2-02）；同名同版本重装 = no-op（AC-P1-3）。升级与降级 = 同命令不同 version（D8）；降级受迁移差异校验约束（迁移无差异才放行，D11③/OJ-9）。
+- version 语义 = semver 优先级比较，缺段补零（`1.0` ≡ `1.0.0`，C2-02）；同名同版本重装 = no-op（AC-P1-3）。升级与降级 = 同命令不同 version（D8）；降级受迁移差异校验约束（迁移无差异才放行——正式出处 R12；D11③ 是另一件事，指切换前对目标版本 sha256 复验，两码事；down 迁移增强见 OJ-9）。
 - **changelog 必填**（C2-08，R27）：string ≤2000 或 string[]（≤50 条、每条 ≤500）——市场卡片版本对比展示；建议每条对应一个用户可感知变更，不写「修复若干问题」式空条目。
 - 数据库走 `migrations/` 增量：**迁移成功后才落锁**（D11/R2 修订）；迁移失败保持锁指向不变 + 账本对账自愈（回指旧版并隔离新目录）；回滚前校验目标版本 max seq ≥ 账本 head，否则禁止回滚转人工。
 - 注册只加法 + 元数据覆盖：RBAC/路由/设置注册 upsert，声明消失标 `deprecated`（PRD §5.9.6，P1-8）——删声明不删数据；手册写明「禁用 ≠ 卸载 ≠ 清除」三态。

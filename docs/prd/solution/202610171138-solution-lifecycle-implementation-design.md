@@ -18,7 +18,7 @@
 | D3 | 共享根挂载 | 目标形态：**单 mount 指向共享根 `api/modules/`**，安装器（`_platform` 特权模块，FS 改动经 `exec.run` 外部 shell 步骤）仅在首次接入时改写一次 `config.yaml`（文本级锚点 surgical edit，禁 `yaml.stringify` 回写——OJ-3 红线；一次性注入集含：mount 行、`server.reload_api: true`；v3 起 `platform.exec` 模板不再需要——无外部安装进程）。⚠️ **C1 spike 首位裁决项**（R6）：oj 拒绝同类 api 前缀重复挂载、**空锁直接拒启**（`lock.is_empty → Err`）——共享根无法作为第二 `/api` 挂载共存，唯一自洽形态待实测裁决（候选：共享根即站点唯一 `/api` 树，安装器改写既有挂载指向，框架模块与方案共居同一锁，并处理 `oj build` save_lock 与安装器的锁互斥）；加密态 config.yaml 拒装并给可读报错 |
 | D4 | 菜单模型 | `sys_solution_route.category` 收敛为三值：`main \| admin \| hidden`。**设置内容三层嵌套**：系统设置页 → 「解决方案设置」区段 → 各方案设置分组（Card）→ 设置项。`personal` 类别移除。菜单分组标签（常规/管理）由框架 i18n 承担，方案只出页面标题（`menu.*`）与设置组标签（`settings.group.*`） |
 | D5 | 市场架构 | **编排留框架面**：安装编排 / 任务模型 / 索引聚合 / 深检后端归 `_platform`（`/api/_platform/market/*`，需平台特权：`exec.run`、共享根 FS、`reloadConfig`）；**市场展示页为解决方案**（独立仓 `../oj-market`）。✏️ v2（R9）：**编排端点 `assertSuperAdmin` 独占**（exec.run/FS/reloadConfig 特权过重，比照卸载级；admin 超集链恒通过一切权限码，权限码门控不成立），且 **`market` 恢复保留名**（撤销 v1 移出决定——任意第三方取名 `market` 可自 declare `market.*` 抢注）。市场页内 `market.view/verify` 权限码仅作前端显隐（初始绑定 admin+superadmin）；`market.install` 权限码废弃 |
-| D6 | 引导顺序 | 安装器**常驻 `_platform`**（随框架模板分发，装完框架即具备安装能力）；`ojm install` 为**瘦客户端**（登录 → 触发编排端点 → 流式展示进度，零安装逻辑）；P2 先 CLI 装 market 本身，此后一切安装/升级走市场 UI；市场自升级走 CLI（页面刷新即得新版）。market 未安装时框架管理区提供**占位引导卡**（说明需运维执行 `ojm install` + 文档入口，R26）；persona 分工（运维 CLI 引导 → admin UI 接管）写入部署手册 |
+| D6 | 引导顺序 | 安装器**常驻 `_platform`**（随框架模板分发，装完框架即具备安装能力）；`ojm install` 为**瘦客户端**（登录 → 触发编排端点 → 流式展示进度，零安装逻辑）；P2 先 CLI 装 market 本身，此后一切安装/升级走市场 UI；市场自升级走 CLI（页面刷新即得新版）。market 未安装时框架管理区提供**占位引导卡**（说明需运维执行 `ojm install` + 文档入口，R26）；persona 分工（运维 CLI 引导 → admin UI 接管）写入部署手册。✏️ v3 澄清（C5 Minor#4，对齐 R9）：管理员**可见**市场入口与卡片；**操作**（安装/回滚/禁用/卸载触发）需 superadmin（R9 `assertSuperAdmin` 独占）；后续版本可评估向 admin 开放的授权路径 |
 | D7 | CDN 本体与配置源、缓存契约 | **CDN 本体**：P1–P3 用 **oj web 静态挂载**承担——分发源=任意 oj 工程 `mounts` 加一行 `web:` 指向**独立分发目录**（严禁指向 `api/modules/` 或其父级，R13）；真实 CDN 后置。✏️ v2（R15）**缓存头契约**：`bundles.yaml`/`manifests.yaml` 必须 `Cache-Control: no-cache`（防缓存层钉死旧索引装到旧版本），tgz 内容寻址可长缓存——写入 T11 验收与 publish 手册。**配置源**：P1 CLI 读项目 `config.yaml` 的 `ojm` 段（`ojm.market.cdn`）；P2 起市场方案 sys_setting 组可改、`_platform` 编排时经参数下发安装进程，config.yaml 为默认回退 |
 | D8 | CLI 命令面最小铺开 | P1：`ojm build --bundle`、`ojm install`（升级/降级 = 同命令不同 version）、`ojm enable/disable`（sidecar 状态 + 三处 enabled 同写，T9 状态机参数化的 CLI 出口）；P3：`ojm uninstall`；GC 内建进 install。不一次铺满 |
 | D9 | 提需纪律 | 上下游缺口一律**文档化提需**（PR 格式 → 提交上游/落下游承接点 → 状态跟踪 → 方案内标注阻塞关系），绕行仅限上游官方认可的绕行（如 `exec.run` tar 三步范式），不私自 hack |
@@ -147,7 +147,7 @@ flowchart LR
         UI[卡片列表 / 安装进度抽屉<br/>版本历史抽屉 / 深检报告 / 回滚禁用动作]
     end
     subgraph FW["框架面（_platform，平台特权）"]
-        API["/api/_platform/market/*<br/>meta · index · install · task · verify<br/>assertSuperAdmin 独占（R9）"]
+        API["/api/_platform/market/*<br/>meta · index · install · task<br/>assertSuperAdmin 独占（R9）"]
         N["进程内十阶段状态机<br/>exec.run 外部 shell 步骤"]
     end
     UI -->|"assertSuperAdmin 门控<br/>（权限码不可作为门，R9）"| API
@@ -159,6 +159,7 @@ flowchart LR
 - **版本握手**（R23）：`GET /api/_platform/market/meta` 返回 `apiVersion`；market manifest 增 `peerPlatform` 范围预检校验；任务 JSON 加 `schemaVersion`
 - **契约版本化意识**：market 方案新于站点 `_platform` 时失败形态 = 预检拒绝 + 可读升级指引
 - **不可复制注记**（R29）：`oj-market` 独立仓天然对齐第三方作者视角；其代码对 `_platform` 编排调用处仍加显式「第一方专用」注记；devkit 手册增「市场编排面为第一方专用，第三方仅经 manifest/sys_setting 契约接入」
+- **verify 不在 market/\* 编排族内**（✏️ C5 评审口径统一）：唯一口径为 §4.2 `POST /api/_platform/solutions/:name/verify`——深检是 admin 域动作，不进 superadmin 独占的 market 编排面
 
 ### 5.2 market 方案的契约覆盖面（作为样例的义务）
 

@@ -222,7 +222,7 @@ getTask(id: string): TaskRecord | null
 
 ### Task P1-15：独立仓 `../oj-market` 最小形态（D2，第三方作者形态）
 
-**Files**: 新建独立仓 `../oj-market/`（脚手架对齐 `apps/playground-oj` 工程形态：api/ + web/ + web.config.ts；依赖**已发布**的 `@oj-module/*` 包，不经 monorepo 路径引用）：entry + admin 页（只读索引卡）+ hidden 详情占位 + `market:menu.*`/`market:settings.group.*` i18n + api 侧 `market_history` 迁移 + health 端点 + sys_setting 展示组；git init + 首提交（仓建立动作向用户报备）
+**Files**: 新建独立仓 `../oj-market/`（脚手架对齐 `apps/playground-oj` 工程形态：api/ + web/ + web.config.ts；依赖**已发布**的 `@oj-module/*` 包，不经 monorepo 路径引用）：entry + admin 页（只读索引卡）+ hidden 详情占位 + `market:menu.*`/`market:settings.group.*` i18n + api 侧 `market_history` 迁移 + health 端点 + sys_setting 展示组；含 R29 第一方专用代码注记（`_platform` 编排调用处）；git init + 首提交（仓建立动作向用户报备）
 - [ ] 模板套件测试：market_history 迁移往返；health 200
 - [ ] `ojm build --bundle` 出 tgz → `ojm install` → admin 菜单出卡片（真机冒烟）→ commit
 

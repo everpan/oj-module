@@ -1,6 +1,6 @@
 # 解决方案生命周期与框架注册设计
 
-> 状态：草案（脑暴产出，待评审） · 日期：2026-10-16 · 范围：`oj-module`（本仓）
+> 状态：已评审（经 [`202610171138-solution-lifecycle-implementation-design.md`](202610171138-solution-lifecycle-implementation-design.md) v3 五方评审确认；两处实质修订见 §3 / §5） · 日期：2026-10-16（P0/C6 回写 2026-10-17） · 范围：`oj-module`（本仓）
 > 上游：`202610152345-solution-marketplace-framework-prd.md`（`§5` 编译/分发/安装/升级/降级）、`202610160908-rbac-auth-design.md`（RBAC 注册与卸载级联）、`202610160952-rbac-implementation-plan.md`（实现阶段）
 > 本文是上述三份文档的**生命周期综合与注册清单补充**：把分散在 PRD §5 与各设计文档的「编译 / 安装 / 部署 / 验证 / 升级 / 降级 / 卸载」与「向框架注册的内容」收拢成一份可执行口径，并补齐 PRD 空白的**验证**环节与**前端 i18n 注册握手**。本文只出方案，不含实现。
 
@@ -12,7 +12,7 @@
 |---|---|---|---|
 | B1 | 验证覆盖度 | **安装期自动冒烟 + 按需深度校验**双轨 | 脑暴 Q1 |
 | B2 | 前端 i18n 注册 | `entry.js` 导出 `defineModule.i18n`，宿主按命名空间 `&lt;name&gt;` 并入；**同时覆盖菜单分组标签**（常规/管理/设置/个人中心） | 脑暴 Q2 |
-| B3 | 磁盘版本模型与禁用 | **多版本目录共存 + 标记禁用**；回滚＝锁指回旧版本目录（须 `downgrade.min_version` 相符且迁移无差异，否则强告警） | 脑暴 Q3 |
+| B3 | 磁盘版本模型与禁用 | **多版本目录共存 + 标记禁用**；回滚＝锁指回旧版本目录（须 `downgrade.min_version` 相符且迁移无差异，否则强告警）。✏️ 评审修订（R5/D12）：「标记禁用」收敛为**锁摘除条目 + sidecar 记录**，见 §5 | 脑暴 Q3 |
 | B4 | 「部署」口径 | 本文把**部署＝作者侧分发到 CDN**（`ojm publish`），与**安装＝运维侧装到运行中的框架**分开；二者对应 PRD §5.3 与 §5.4 两个独立流程 | 本文界定 |
 
 ---
@@ -56,7 +56,7 @@ flowchart LR
 
 ## 2. 安装流程时序
 
-安装器（M4 由 Node 侧 `ojm install` 编排，M6 收敛到 oj 原生）按以下时序落地，任何校验失败**不落盘、不改锁、不触发热更**（§5.7.5 fail-closed）。
+安装器按以下时序落地，任何校验失败**不落盘、不改锁、不触发热更**（§5.7.5 fail-closed）。
 
 ```mermaid
 sequenceDiagram
@@ -69,7 +69,7 @@ sequenceDiagram
     participant DB as 数据库
 
     U->>M: POST /market/install {name, version}
-    M->>N: 触发 Node 进程(loopback / 运维手动)
+    M->>N: 触发 oj 进程(loopback / 运维手动)
     N->>CDN: GET bundles.yaml + <file>.tgz
     N->>N: 解析目标版本 + 兼容性门禁(peerRuntime/peerOj/peerFramework)
     N->>N: sha256 比对 + Ed25519 验签(fail-closed)
@@ -91,16 +91,16 @@ sequenceDiagram
 
 ## 3. 注册顺序与幂等性
 
-注册必须按**安全顺序**进行，错序会拒启（约束 B）。同版本重装为 **no-op**（锁已含该 `<module>:<version>` 即跳过迁移/注册）；不同版本共存互不影响。
+注册必须按**安全顺序**进行，错序会拒启（约束 B）。**迁移成功后才落锁**（✏️ 2026-10-17 评审修订 R2/D11——原文「先落锁后迁移」在迁移失败/崩溃窗口会让锁指向账本落后的版本，触发 M004 拒启全站不可用；状态机入口另有「锁↔迁移账本对账自愈」，不一致自动回指旧版并隔离新目录）。同版本重装为 **no-op**（锁已含该 `<module>:<version>` 即跳过迁移/注册）；不同版本共存互不影响。
 
 ```mermaid
 flowchart TD
     S[开始安装] --> P{预检}
     P -->|保留名/占用/兼容不符| X[拒绝, 零副作用]
     P -->|通过| EX[解压 .staging → 原子 rename]
-    EX --> L[更新锁 manifests.yaml upsert &lt;module&gt;:&lt;version&gt;]
-    L --> MI[★ oj migrate 前向迁移]
-    MI --> R[注册 sys_setting / sys_role / sys_permission<br/>sys_role_permission / sys_solution_route]
+    EX --> MI[★ oj migrate 前向迁移]
+    MI -->|迁移成功| L[落锁 manifests.yaml upsert &lt;module&gt;:&lt;version&gt;]
+    L --> R[注册 sys_setting / sys_role / sys_permission<br/>sys_role_permission / sys_solution_route]
     R --> MJ[modules.json upsert + web 产物落位]
     MJ --> C[anonymous_paths 并入 + vars.ojm_solutions_gen++]
     C --> RL[POST _system/config]
@@ -131,30 +131,32 @@ flowchart TD
 
 ## 5. 版本与禁用模型（B3）
 
-磁盘采用**多版本目录共存**：`<共享根>/<name>-<version>/` 天然幂等，重复安装同一版本是 no-op；`manifests.yaml` 锁只记录「当前生效版本 + enabled 标记」。
+磁盘采用**多版本目录共存**：`<共享根>/<name>-<version>/` 天然幂等，重复安装同一版本是 no-op；`manifests.yaml` 锁保持 **oj 原生扁平格式**（`name: version`，oj 解析器不容额外键——✏️ 2026-10-17 评审修订 R5/D12，原文「锁记录 enabled 标记」会使 oj 解析失败拒启），enabled/时间戳/GC 元数据落安装器 sidecar `.solutions/state.yaml`。
 
 ```mermaid
 flowchart TD
     subgraph ROOT["共享根 api/modules/"]
-        M["manifests.yaml<br/>wiki: 0.2.0 (enabled)<br/>crm: 1.3.0 (enabled=false)"]
+        M["manifests.yaml（oj 原生扁平锁, 仅 name: version）<br/>wiki: 0.2.0<br/>crm 条目已摘除（禁用）"]
+        ST["sidecar .solutions/state.yaml<br/>enabled / 时间戳 / GC 元数据（D12）"]
         W19["wiki-0.1.9/"]
         W20["wiki-0.2.0/"]
         C13["crm-1.3.0/"]
     end
     M -. 锁指向 .-> W20
+    ST -. crm enabled=false 等元数据 .-> C13
     C13 -. 目录保留 + 摘路由/前端 .-> M
 
     UP[升级 wiki 0.1.9 → 0.2.0] -->|锁改指 0.2.0| M
     RB[回滚 0.2.0 → 0.1.9] -->|锁改指 0.1.9<br/>+ downgrade.min_version 校验 + 迁移差异强告警| M
-    DIS[禁用 crm] -->|enabled=false, 摘路由/前端, 目录与数据全保留| M
-    ENA[启用 crm] -->|enabled=true, 恢复路由/前端| M
+    DIS[禁用 crm] -->|从锁摘除 crm 条目, sidecar 记 enabled=false<br/>+ 摘路由/前端, 目录与数据全保留| M
+    ENA[启用 crm] -->|锁恢复 crm 条目, sidecar 记 enabled=true<br/>+ 恢复路由/前端| M
 ```
 
-**禁用（Q3 结论）**：保留目录与数据，仅 `manifests.yaml` 条目 `enabled=false` + `sys_solution_route.enabled=false` + `modules.json` 条目 `enabled=false`；后端路由经锁标记不挂载，前端宿主按 `enabled` 跳过。非破坏、随时可恢复。
+**禁用（Q3 结论，✏️ 2026-10-17 评审修订 R5/D12）**：锁保持 **oj 原生扁平格式**（`name: version`，oj 解析器不容额外键）；禁用 = 从锁**摘除条目**（目录保留，oj 按锁逐条装配，摘除即不挂载）+ 安装器 sidecar `.solutions/state.yaml` 记录 enabled/时间戳/GC 元数据 + `sys_solution_route.enabled=false` + `modules.json` 条目 `enabled=false`。目录与数据全保留，前端宿主按 `enabled` 跳过。非破坏、随时可恢复。
 
 **回滚（§5.6.5 / R12）**：锁指回旧版本目录即生效；因 oj 迁移无 down 迁移，若目标版本 `migrations` 与当前存在差异，安装器**强告警并要求二次确认**，禁止静默降级。多版本目录共存使回滚零成本（无需快照）。
 
-> **版本 GC（A2）**：多版本目录共存必然带来磁盘增长，需配套清理策略——按 `manifests.yaml` 未引用的版本目录做 GC，保留最近 N 个版本以便回滚（默认 N=3，可配置），详见 PRD §5.5.4（M7）。GC 不得删除当前生效版本与最近 N 个版本，且须与回滚/降级操作互斥。
+> **版本 GC（A2）**：多版本目录共存必然带来磁盘增长，需配套清理策略——按 `manifests.yaml` 未引用、**且 sidecar（`.solutions/state.yaml`）中已无记录**的版本目录做 GC（D12 下禁用方案条目已从锁摘除但目录保留，sidecar 记录仍在，不参与 GC）；保留最近 N 个版本以便回滚（默认 N=3，按 sidecar 安装时间序，可配置），详见 PRD §5.5.4（M7）。GC 不得删除当前生效版本与最近 N 个版本，且须与回滚/降级操作互斥。
 
 ---
 
@@ -203,7 +205,7 @@ flowchart TD
     A1 -. 任一失败 .-> RB[保留现场, 记录原因, 不标记成功]
 ```
 
-> 关于「health 端点是否强制」：默认用首个非匿名路由兜底（避免给解决方案强加契约）；若 manifest 声明 `health` 端点则优先打该端点。待评审确认是否**强制**要求解决方案提供 health。
+> 关于「health 端点是否强制」：**已拍板不强制**（2026-10-17，实施设计 D14）——`manifest.health` 为可选字段；缺省用首个非匿名路由兜底（避免给解决方案强加契约），若 manifest 声明 `health` 端点则优先打该端点。
 
 ### 7.2 按需深度校验（管理员在解决方案市场 / 系统页触发，输出报告）
 
@@ -274,7 +276,7 @@ flowchart TD
 
 | ID | 问题 | 备选项 |
 |---|---|---|
-| Q-A | 安装期冒烟的 `health` 端点是否**强制**解决方案提供？ | (a) 强制（统一契约）；(b) 可选，缺省用首个非匿名路由兜底（本文暂定 b） |
+| Q-A | 安装期冒烟的 `health` 端点是否**强制**解决方案提供？ | **已裁（2026-10-17，实施设计 D14）**：不强制——`manifest.health` 可选，缺省用首个非匿名路由兜底（原选项 b） |
 | Q-B | 解决方案是否需要注册**公共静态资源**（图标/封面图）？当前 manifest 有 `icon` URL 字段，但若图片随 bundle 分发，落点与 i18n 同理需宿主承接 | 建议走 CDN/绝对 URL，不进注册清单 |
 | Q-C | 是否需要注册 **webhook / 定时任务**？ | 当前范围不含；列入 M7 后置议题 |
 | Q-D | 确定性 tgz 的实现手段 | **已定**：用 Node `tar`/`tar-stream` 打包，固定 `mtime`（纪元 0 或取自版本号的可复现值）、文件按字典序排序、权限规范化（0644 文件 / 0755 目录）、不写 owner/group；保证同输入字节一致，与 oj 的 `.tgz` 惯例对齐（PRD §5.1 步骤 5） |
@@ -398,7 +400,7 @@ flowchart TD
 | 生命周期总览 | §1 | 六阶段 + 卸载的流转关系 |
 | 安装时序 | §2 | 下载→校验→迁移→注册→热更→冒烟→审计 |
 | 注册顺序 | §3 | 安全顺序 + 幂等 + 失败保留现场 |
-| 版本与禁用 | §5 | 多版本共存 + 标记禁用 + 回滚 |
+| 版本与禁用 | §5 | 多版本共存 + 锁摘除禁用 + sidecar + 回滚 |
 | 前端注册握手 | §6 | i18n 并入 + 路由分类归并 |
 | 安装期冒烟 | §7.1 | 四项自动校验 |
 | 按需深度校验 | §7.2 | 五项管理端检查 |
