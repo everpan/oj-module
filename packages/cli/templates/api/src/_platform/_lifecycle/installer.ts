@@ -383,7 +383,8 @@ export async function runInstall(req: InstallRequest): Promise<TaskRecord> {
 				r = await def.run(req);
 			}
 			catch (e) {
-				r = { stage: def.name, ok: false, retryable: true, message: `${def.name} 阶段异常：${String(e)}` };
+				const stack = e instanceof Error && e.stack !== undefined ? ` @ ${e.stack.split("\n")[1]?.trim() ?? ""}` : "";
+				r = { stage: def.name, ok: false, retryable: true, message: `${def.name} 阶段异常：${String(e)}${stack}` };
 			}
 			task.stages.push({ stage: def.name, ok: r.ok, message: r.message });
 			if (task.appliedSeq === undefined && req.outcome?.appliedSeq != null) {
