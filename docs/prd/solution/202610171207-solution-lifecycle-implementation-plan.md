@@ -152,9 +152,11 @@ scripts/lifecycle-e2e.mjs                # [新建] P1 端到端脚本（本地 
 
 **Files**: Create `steps/download.ts`、`steps/verify.ts`、`steps/extract.ts` + `buildTarCmd()` 纯命令构造；Test `templates/api/tests/lifecycle/steps-fs.spec.ts`
 **Interfaces — Produces**: 三步同签名 `(ctx) => Promise<StageResult>`；`buildListCmd(file) / buildExtractCmd(file, staging)` 返回 argv 数组（可 stub）
-- [ ] 命令构造纯函数测试（无 exec）：argv 逐字断言
-- [ ] extract 步骤集成测试：合法夹具解压后目录树断言；恶意夹具（`..`/symlink 成员）在 validate 段被拒、**零解压**
-- [ ] 跑绿 → commit
+- [x] 命令构造纯函数测试（无 exec）：argv 逐字断言
+- [x] extract 步骤集成测试：合法夹具解压后目录树断言；恶意夹具（`..`/symlink 成员）在 validate 段被拒、**零解压**
+- [x] 跑绿 → commit
+
+> **P1-6 完成（2026-10-17）**：`steps/download.ts`（fetch→fs.writeFile 落 `.staging/<archive.file>`，S1-2.3）+ `steps/verify.ts`（sha256 fail-closed 比对，C2-29；注释钉「P1 无签名阶段同信任域，仅防传输损坏」）+ `steps/extract.ts`（list→validate→extract 三步，R1；`buildListCmd`/`buildExtractCmd` argv 逐字断言、与 S1-2 exec 白名单对齐）+ 21 组用例（含真实系统 tar 集成、恶意 listing 零解压 stub 计数、两条消费方铁律①verbose/②尾部空行 trim 的专例）。三步失败 StageResult 均带附录 A/C2-29/R1 引用；archive 身份提取（`archiveFileOf`，C2-29 安全形态守卫）三步共用。详见 `task-P1-6-report.md`。
 
 ### Task P1-7：迁移步骤（R2/R14，D11 核心）
 
