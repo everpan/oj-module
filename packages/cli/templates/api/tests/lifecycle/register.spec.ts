@@ -8,7 +8,7 @@
 /* eslint-disable test/prefer-lowercase-title -- 任务/AC 编号是验收锚点，保留大写（DB/P1-5） */
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
-import { checkOccupancy, queryRegistered, registerSolution } from "../../src/_platform/_lifecycle/steps/register";
+import { checkOccupancy, queryAllRegistered, queryRegistered, registerSolution } from "../../src/_platform/_lifecycle/steps/register";
 import { installDb } from "../fixture";
 
 let dbo: ReturnType<typeof installDb>;
@@ -156,6 +156,26 @@ describe("queryRegistered：冒烟对账快照", () => {
 			roles: ["sort.a", "sort.b"],
 			permissions: [],
 		});
+	});
+});
+
+describe("queryAllRegistered：全方案快照清单（P1-14 读端点辅助）", () => {
+	it("四表并集取模块名，按 module 排序逐个快照；无任何行 → 空数组", async () => {
+		expect(await queryAllRegistered()).toEqual([]);
+		await registerSolution({ module: "b-sol", roles: [], settings: [], routes: [{ path: "/b", category: "main", order: 200 }] });
+		await registerSolution({ module: "a-sol", roles: [], settings: [{ key: "a.k", group: "g", type: "string" }], routes: [] });
+		const all = await queryAllRegistered();
+		expect(all.map(s => s.module)).toEqual(["a-sol", "b-sol"]);
+		expect(all.find(s => s.module === "a-sol")).toMatchObject({ settings: ["a.k"], routes: [] });
+		expect(all.find(s => s.module === "b-sol")).toMatchObject({ routes: ["/b"] });
+	});
+
+	it("deprecated 行不计入存在性：唯一路由被声明消失标 deprecated 后方案不再列出", async () => {
+		await registerSolution({ module: "gone-sol", roles: [], settings: [], routes: [{ path: "/gone", category: "main", order: 200 }] });
+		// 重注册去掉 /gone → 旧行 deprecated=1，方案再无任何非 deprecated 行
+		await registerSolution({ module: "gone-sol", roles: [], settings: [], routes: [] });
+		const all = await queryAllRegistered();
+		expect(all.map(s => s.module)).toEqual([]);
 	});
 });
 

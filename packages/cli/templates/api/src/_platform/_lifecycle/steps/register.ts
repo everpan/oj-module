@@ -184,3 +184,26 @@ export async function queryRegistered(name: string): Promise<SolutionSnapshot | 
 	}
 	return { module: name, routes, settings, roles, permissions };
 }
+
+/**
+ * 全方案快照清单（P1-14 读面/深检对账辅助）：四表并集取模块名（queryRegistered 同款查询范式），
+ * 按 module 排序逐个快照；deprecated 行不计入存在性（同 queryRegistered 过滤口径），无行 → 空数组。
+ */
+export async function queryAllRegistered(): Promise<SolutionSnapshot[]> {
+	const names = new Set<string>();
+	for (const table of ["sys_solution_route", "sys_setting", "sys_role", "sys_permission"]) {
+		// 表名为字面常量，无拼接注入面
+		const rows = await db.query(`select distinct module from ${table} where deprecated = 0`) as Array<{ module: string }>;
+		for (const r of rows) {
+			names.add(String(r.module));
+		}
+	}
+	const out: SolutionSnapshot[] = [];
+	for (const name of [...names].sort()) {
+		const snap = await queryRegistered(name);
+		if (snap !== null) {
+			out.push(snap);
+		}
+	}
+	return out;
+}

@@ -35,6 +35,21 @@
 				}
 			}
 		},
+		"/api/_platform/solutions/routes": {
+			"get": {
+				"operationId": "_platform_solutions_routes_get",
+				"summary": "GET api/_platform/solutions/routes",
+				"x-oj-file": "_platform/solutions/api.ts",
+				"tags": [
+					"_platform"
+				],
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				}
+			}
+		},
 		"/api/auth/login": {
 			"post": {
 				"operationId": "auth_login_post",

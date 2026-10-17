@@ -75,6 +75,13 @@ export interface RouteMeta {
 	hideInMenu?: boolean
 
 	/**
+	 * 方案路由分类（P1-14/R21 三值归并，源自 sys_solution_route.category，经
+	 * mergeSolutionCategories 注写）：main=常规组、admin=管理组、hidden=不进菜单。
+	 * 框架/后端路由未归并时缺省。
+	 */
+	category?: "main" | "admin" | "hidden"
+
+	/**
 	 * iframe链接，如果路由需要在iframe中加载外部页面时使用
 	 */
 	iframeLink?: string

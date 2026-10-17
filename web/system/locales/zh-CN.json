@@ -79,7 +79,10 @@
 		"group.ldap": "LDAP",
 		"ldap_base_dn": "Base DN",
 		"ldap_uid_attr": "UID 属性",
-		"ldap_email_attr": "邮箱属性"
+		"ldap_email_attr": "邮箱属性",
+		"solutions": "解决方案设置",
+		"saved": "已保存 {{count}} 组",
+		"saveFailed": "保存失败：{{groups}}"
 	},
 	"oplog": {
 		"actionFilter": "按操作过滤（如 auth.deny）",

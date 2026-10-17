@@ -79,7 +79,10 @@
 		"group.ldap": "LDAP",
 		"ldap_base_dn": "Base DN",
 		"ldap_uid_attr": "UID attribute",
-		"ldap_email_attr": "Email attribute"
+		"ldap_email_attr": "Email attribute",
+		"solutions": "Solution Settings",
+		"saved": "Saved {{count}} group(s)",
+		"saveFailed": "Failed to save: {{groups}}"
 	},
 	"oplog": {
 		"actionFilter": "Filter by action (e.g. auth.deny)",

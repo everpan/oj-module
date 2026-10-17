@@ -80,12 +80,15 @@ export const fetchRbacContactDetail = _fn;
 export const fetchLoginMethods = _fn;
 export const fetchChangePassword = _fn;
 export const fetchLdapLogin = _fn;
+// 方案路由归并（P1-14/R21 读端点 + 分组纯函数）
+export const fetchSolutionRoutes = _fn;
 export const roleLabel = _fn;
 export const canEditRoleBindings = _fn;
 export const canDeleteRole = _fn;
 export const canAssignRole = _fn;
 export const bindingDiff = _fn;
 export const groupByModule = _fn;
+export const groupSettingsByModule = _fn;
 // hooks 与权限常量
 export const useAccess = _fn;
 export const usePreferences = _fn;
@@ -98,6 +101,8 @@ export const AccessControlRoles = _obj;
 export const permissionPrefix = "permission:button";
 // store
 export const useAuthStore = _fn;
+// 方案路由归并 store（token 就绪自动重拉，R21）
+export const useSolutionRoutes = _fn;
 export const useUserStore = _fn;
 export const useTabsStore = _fn;
 // 页签 key 唯一正确取口（keepAlive 下 useLocation 是激活页位置，0.1.21）

@@ -70,6 +70,19 @@ export interface RbacSettingGroup {
 	items: RbacSettingItem[]
 }
 
+/** 方案路由行（GET /api/_platform/solutions/routes；P1-14/R21 前端归并数据源，登录即可只读端点） */
+export interface SolutionRouteRow {
+	path: string
+	module: string
+	category: "main" | "admin" | "hidden"
+	order: number
+	title_key: string | null
+	/** 仅供深检对比，前端不做权限级菜单过滤（R22：后端 403 硬执行） */
+	required_permission: string | null
+	/** false = 禁用：仅菜单层过滤（hideInMenu），路由可达性归装载层（D12） */
+	enabled: boolean
+}
+
 export interface LoginMethods {
 	methods: Array<"local" | "ldap" | "sso">
 }

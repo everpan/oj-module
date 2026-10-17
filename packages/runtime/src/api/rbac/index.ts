@@ -10,6 +10,7 @@ import type {
 	RbacRole,
 	RbacSettingGroup,
 	RbacUser,
+	SolutionRouteRow,
 } from "./types";
 
 import { request } from "#src/utils/request";
@@ -69,6 +70,9 @@ export const fetchRbacOplogPost = (body: RbacOplogWrite) => post<{ ok: boolean }
 // ---- 系统设置（C4） ----
 export const fetchRbacSettings = () => get<RbacSettingGroup[]>("system/settings");
 export const fetchRbacUpdateSetting = (key: string, value: string) => put("system/settings", { key, value });
+
+// ---- 方案路由（P1-14/R21 前端归并数据源；登录即可只读端点） ----
+export const fetchSolutionRoutes = () => get<SolutionRouteRow[]>("_platform/solutions/routes");
 
 // ---- 通讯录（C6 选人组件） ----
 export function fetchRbacContacts(keyword: string, limit?: number) {
