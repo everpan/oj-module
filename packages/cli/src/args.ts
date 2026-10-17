@@ -39,6 +39,29 @@ export function parseApiArgs(argv: string[]): { dir: string, check: boolean, doc
 }
 
 /**
+ * `ojm build [--bundle] [--out <dir>]`。
+ * `--bundle`：方案包构建（manifest.yaml 契约校验 → 确定性 tgz + sha256），
+ * 与站点级 `ojm build`（后端 oj build + 模块产物合并）互斥分工（devkit 手册「打包与分发」）。
+ * `--out` 的值不得以 `--` 开头（同 parseApiArgs 的消费式扫描，P6 同款坑）。
+ */
+export function parseBuildArgs(argv: string[]): { bundle: boolean, out?: string } {
+	const flags = new Set<string>();
+	let out: string | undefined;
+	for (let i = 0; i < argv.length; i++) {
+		const a = argv[i];
+		if (a === "--out") {
+			out = argv[i + 1];
+			i++; // 消费紧随的值，不被当 flag
+			continue;
+		}
+		if (a.startsWith("--")) {
+			flags.add(a);
+		}
+	}
+	return { bundle: flags.has("--bundle"), out };
+}
+
+/**
  * `ojm vendor [tag] [--force]`：下载/更新 oj vendor（npm 包 @oj-bin/oj）。
  * tag 缺省追 npm latest；形如 `v0.1.13` 或 `0.1.13`（自动补 v 前缀，装包时去掉）。
  * 非法 tag 形状即报错（防误把目录当版本）。

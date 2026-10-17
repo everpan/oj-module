@@ -15,8 +15,11 @@ export function usageText(): string {
         开发模式快捷键（仅 TTY 终端，类 Vite）:
           r  强制重建并热更新    h  显示帮助    c  清屏    o  浏览器打开
           q  退出（后端 oj 一并终止）
-  ojm build
+  ojm build [--bundle] [--out <dir>]
         构建后端（oj build）与模块产物（含全站合并）
+        --bundle   方案包构建：manifest.yaml 契约校验（C2，fail-fast）→ 确定性 tgz
+                   → dist/<name>-<version>.tgz + sha256（市场安装器的上游产物）
+        --out <dir>  --bundle 输出目录（缺省 dist/）
   ojm preview [port] [--oj-static]
         生产形态预览（migrate → oj serve + 静态兜底）
   ojm api [dir] [--check] [--docs] [--exempt <path>]

@@ -1,8 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
-import { parseApiArgs, parseInitArgs, parseVendorArgs } from "./args";
+import { parseApiArgs, parseBuildArgs, parseInitArgs, parseVendorArgs } from "./args";
 import { buildBackend, buildModules } from "./build";
+import { buildBundle } from "./bundle";
 import { devServer } from "./dev";
 import { mergeManifests, printInfo } from "./info";
 import { initProject } from "./init";
@@ -31,11 +32,18 @@ async function main() {
 	}
 
 	switch (command) {
-		case "build":
+		case "build": {
+			const { bundle, out } = parseBuildArgs(process.argv.slice(3));
+			if (bundle) {
+				// 方案包构建（P1-11）：契约校验 fail-fast → 确定性 tgz + sha256（消费方：市场安装器）
+				await buildBundle(projectRoot, { out });
+				break;
+			}
 			// 设计 §5：后端 oj build（零 DB 副作用）→ 前端全站合并（仅 build 清场合并）
 			await buildBackend(projectRoot);
 			await buildModules(projectRoot, { mergeSite: true });
 			break;
+		}
 		case "init": {
 			const { dest, yes } = parseInitArgs(process.argv.slice(3));
 			await initProject(dest ? path.resolve(dest) : projectRoot, { yes });

@@ -56,6 +56,7 @@
 - **构建即校验**：`validateContract` 全量执行 C2 规则，fail-fast，报错清单逐条带编号可读——先于打包发生，坏清单出不了包。
 - 校验范围含打包自检：tgz 成员守卫（C2-30）、分层核对（C2-31）、确定性（C2-32）均为构建期专属执行点（契约 §4.1 矩阵）。
 - 与既有命令的关系：`ojm build`（站点级，manual §7）≠ `ojm build --bundle`（方案分发产物）；bundle 内 api 部分即 `oj build` 产物原样。
+- **三个 build 辨析（2026-10-17 上游 oj 0.1.77 对账定版，手册必须原样收录）**：上游 `oj build --bundle` 产出的是**空前缀、dist 根内容**的 tarball（manifests.yaml + `<module>-<version>/`），用途是 `mounts[].api` **远程挂载源**（装配期拉取入内容寻址缓存 `<cache>/<sha256>/`，声明 sha256 为完整性锚）；本节 `ojm build --bundle` 产出的是**市场安装器消费的方案包 tgz**（单根 `<name>-<version>/` + manifest.yaml 契约全量双端校验 + 确定性 sha256）。两者**互不可替代**：远程挂载源不含契约清单与分层布局，方案包不能当挂载源；反向亦然。手搓打包的坑（上游明示）：`tar czf x.tgz dist` 多套一层 `dist/`，解压落 `<cache>/<sha256>/dist/...` 非法 dist 根——要么 `cd dist && tar czf ../x.tgz <module>-<version>/`，要么直接 `ojm build --bundle` 别手搓；per-module `*.tgz`（根是版本目录非 dist 根）同样不能当远程源。
 - 双端一致性由夹具钉死：`fixture-valid`/`fixture-invalid` 是构建器与安装器两份实现的唯一共同真源，规则漂移即 CI 红（契约 §5）。
 
 **示例位**：一次构建的终端输出（含典型违规报错样例，逐条对应 C2 编号）（P1-11 后补）。
