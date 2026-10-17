@@ -12,7 +12,7 @@
 
 | ID | 触发点 | 期望违规码 | 契约条款 | 上游依据 | 内在性说明 |
 |---|---|---|---|---|---|
-| V1 | `name: Demo`（大写） | C2-01 | §2.1 身份 name 白名单 `^[a-z][a-z0-9-]{0,63}$` | R7 预检白名单 | 大写对任意取值均违规 |
+| V1 | `name: Demo`（大写） | C2-01 | §2.1 身份 name 白名单 `^[a-z][a-z0-9-]{0,63}$`（契约 §2.1 现行式） | R7 预检白名单 | 大写对任意取值均违规 |
 | V2 | `version: 1.0.0+build.5` | C2-02 | §2.1 version 禁 `+`（oj validate_version 字符集 `[A-Za-z0-9._-]` 无 `+`） | 契约附录 B-1（oj 相容排除） | `+` 恒被 oj 拒装 |
 | V3 | `api.anonymous: [system/health]` | C2-26 | §2.4 匿名路径段内收敛（首段必须 = 本方案段；`system`/`_system` 恒非本方案段） | R8 越段匿名化 + `_system` 禁入 | `system/health` 对任意 name 均越段 |
 | V4 | `routes[0].category: personal` | C2-17 | §2.6 路由 category ∈ main\|admin\|hidden（D4 三值） | D4（PRD §5.2 五值废弃） | `personal` 为已删除值 |

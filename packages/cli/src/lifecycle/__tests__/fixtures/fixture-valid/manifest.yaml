@@ -41,6 +41,9 @@ web:
   css:
     - modules/demo-solution/0.1.0/demo-solution.css
 
+archive: # C2-29 Form A（tgz 内占位：仅 file；sha256/size/signature 由 P3 publish 填充于 Form B）
+  file: demo-solution-0.1.0.tgz
+
 permissions: # C2-15：code 强制 <name>. 前缀
   - {code: demo-solution.view, title_key: demo-solution:perm.view}
   - {code: demo-solution.manage, title_key: demo-solution:perm.manage}

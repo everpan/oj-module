@@ -4,7 +4,7 @@
 # 违规码集合 ⊇ {C2-01, C2-02, C2-16, C2-17, C2-22, C2-23, C2-26}。
 # 说明：name/version 非法会连锁触发 demo:* 命名空间字段的失配（衍生违规），
 # 衍生项不计入断言集——V1–V7 均为「对任意合法 name/version 均违规」的内在违规。
-name: Demo # V1 违 C2-01（大写，白名单 ^[a-z][a-z0-9-]*$）
+name: Demo # V1 违 C2-01（大写，白名单 ^[a-z][a-z0-9-]{0,63}$）
 version: 1.0.0+build.5 # V2 违 C2-02（`+` 为 oj validate_version 拒绝字符）
 summary: 契约非法夹具（预检负例真源）
 changelog: 负例夹具，禁止安装到任何站点

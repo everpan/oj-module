@@ -11,7 +11,7 @@
 
 | 维度 | 裁定 |
 |---|---|
-| 两层 manifest | **bundle 级 `manifest.yaml`**（tgz 内，分发与安装元信息，本文档定义）≠ **oj 模块级 `manifest.yaml`**（`api/<name>-<version>/` 内，oj 真实解析，仅 oj 原生六字段）。分层红线：bundle 字段**禁止**混入模块级文件（§3-OJ-X） |
+| 两层 manifest | **bundle 级 `manifest.yaml`**（tgz 内，分发与安装元信息，本文档定义）≠ **oj 模块级 `manifest.yaml`**（`api/<name>-<version>/` 内，oj 真实解析，仅 oj 原生七字段）。分层红线：bundle 字段**禁止**混入模块级文件（§3-OJ-X） |
 | 唯一真源 | 本文档 = 构建器与安装器的**共同上游**。任何一端改规则必须先改本文档（含规则编号），再同步两端实现与夹具——契约先行纪律（D1） |
 | 兼容底线 | bundle 契约是 oj 原生 schema 的**合法子集收紧**：凡 oj 会真实解析的字段（name/desc/version/tables/deps、模块名/版本白名单、扁平锁），契约口径必须 ⊆ oj 口径；冲突即拒装（spike S1-1.2/S1-1.3 实测 oj 拒启行为） |
 | 演进方式 | append-only：新字段走 minor 增补并保持「P1 未声明字段省略合法」；不回收字段、不改既有字段语义（semver 语义见 C2-02） |
@@ -96,12 +96,12 @@ archive:           # tgz 内为占位（Form A）；CDN 聚合为真源（Form B
 
 范围算子语法（四字段共用）：`^(>=|<=|>|<|\^|=)?<version>`（version 遵守 C2-02）。P1 语义实现集 = **精确（裸值/`=`）、`>=`、`^`**（同主版本且 ≥）；`<`/`<=` 构建期即拒（可读错误「暂不支持的范围算子」）。
 
-| 字段 | 必填 | P1 执行点 | P2+ 执行点 | 条款 |
-|---|---|---|---|---|
-| peerRuntime | ⬜ | **安装预检强制**：对宿主 `versions.json` 的 runtime 版本比对（P1-5 规则；loader 既有校验的安装期前置）；构建期校验语法 | 同 P1 | C2-09 |
-| peerOj | ⬜ | 仅语法校验，不强制（声明不生效） | 对 `oj --version` 强制 | C2-10 |
-| peerFramework | ⬜ | 仅语法校验，不强制 | 对框架版本强制 | C2-10 |
-| peerPlatform | ⬜ | 仅语法校验，不强制 | 对 `GET /api/_platform/market/meta` 的 `apiVersion` 握手强制（R23） | C2-11 |
+| 字段 | 类型 | 必填 | P1 执行点 | P2+ 执行点 | 条款 |
+|---|---|---|---|---|---|
+| peerRuntime | string（范围算子语法见上） | ⬜ | **安装预检强制**：对宿主 `versions.json` 的 runtime 版本比对（P1-5 规则；loader 既有校验的安装期前置）；构建期校验语法 | 同 P1 | C2-09 |
+| peerOj | string（同上） | ⬜ | 仅语法校验，不强制（声明不生效） | 对 `oj --version` 强制 | C2-10 |
+| peerFramework | string（同上） | ⬜ | 仅语法校验，不强制 | 对框架版本强制 | C2-10 |
+| peerPlatform | string（同上） | ⬜ | 仅语法校验，不强制 | 对 `GET /api/_platform/market/meta` 的 `apiVersion` 握手强制（R23） | C2-11 |
 
 > 设计 §1 落点 #9 与计划 P1-5 明确 peerRuntime 属 P1 预检规则；本表按字段分别标注执行点，与「P1 阶段 peerOj/peerFramework/peerPlatform 仅声明不强制」并存。
 
@@ -111,6 +111,8 @@ archive:           # tgz 内为占位（Form A）；CDN 聚合为真源（Form B
 |---|---|---|---|---|---|
 | api 段 | — | 纯前端方案（无 api 产物）可省略；省略时 §2.3/§2.4 内字段一并缺省 | ✅ | ✅ | C2-12 |
 | api.module | ⬜ | 存在时必须 `=== name`（PRD §5.2「与 name 一致」）；其余值拒绝 | ✅ | ✅ | C2-12 |
+| api.tables | ⬜ | string[]：每项 `^[a-z][a-z0-9_]{0,63}$`；存在时必须与 `api/src/<name>/schema.yaml` 的 tables 键集**逐一相等**（oj 冗余校验同源，不一致 fail-fast） | ✅ 对照 schema.yaml | ✅ 语法（oj 安装后冗余校验兜底） | C2-12a |
+| api.deps | ⬜ | map：键匹配 C2-01 语法或 `_platform`；值 = §2.2 范围算子语法；依赖存在性由 oj serve S004 检查兜底（安装器不做存在性，避免共享根状态依赖进入纯函数校验） | ✅ 语法 | ✅ 语法 | C2-12b |
 | api.prefix | ⬜ | 默认 `/api/<name>`；显式给出时须匹配 `^\/api\/[a-z][a-z0-9-]{0,63}$`，且去 `/api/` 后的首段 ∉ 保留名（§4.2）；安装期做**占用检测**（已被已装方案/框架内建占用 → 拒装并报占用者） | ✅ 语法+保留名 | ✅ 语法+保留名+占用 | C2-13 |
 | web.route_prefix | ⬜ | 默认 `/<name>`；显式给出时须匹配 `^\/[a-z][a-z0-9-]{0,63}$`，首段 ∉ 保留名；安装期占用检测 | ✅ | ✅ | C2-14 |
 
@@ -135,7 +137,7 @@ archive:           # tgz 内为占位（Form A）；CDN 聚合为真源（Form B
 
 | 字段 | 必填 | 校验规则 | 构建 | 安装 | 条款 |
 |---|---|---|---|---|---|
-| routes[] | ⬜ | 每项：`category` ∈ **`main \| admin \| hidden`**（D4 收敛；PRD §5.2 的 settings/personal 两值**废弃**）；`path` 必填 `^\/[a-z0-9]+(\/[a-z0-9\-_]+)*$`（无参数段/无通配符/无尾斜杠），本 manifest 内唯一；`order` 必填 int（**建议 ≥200**——框架项保留 <200 间隔带，设计 §3.1；越带仅构建期 lint 警告不阻断）；`title_key`：main/admin 必填、hidden 可省（`<name>:menu.*`）；`required_permission` 可选，存在时必须 ∈ permissions[].code（**R22：仅供后端深检比对，solution-routes 端点不下发、前端不做权限级菜单过滤**） | ✅ | ✅ | C2-17~21 |
+| routes[] | ⬜ | 每项：`category` ∈ **`main \| admin \| hidden`**（D4 收敛；PRD §5.2 的 settings/personal 两值**废弃**）；`path` 必填 `^\/[a-z][a-z0-9\-_]*(\/[a-z0-9\-_]+)*$`（首段首字符为字母——与 C2-13/14 前缀语法同构，兼容连字符名 `/demo-solution`；无参数段/无通配符/无尾斜杠），本 manifest 内唯一；`order` 必填 int（**建议 ≥200**——框架项保留 <200 间隔带，设计 §3.1；越带仅构建期 lint 警告不阻断）；`title_key`：main/admin 必填、hidden 可省（`<name>:menu.*`）；`required_permission` 可选，存在时必须 ∈ permissions[].code（**R22：仅供后端深检比对，solution-routes 端点不下发、前端不做权限级菜单过滤**） | ✅ | ✅ | C2-17~21 |
 
 双源一致（设计 §6.3，A1 已定）：`manifest.routes[].path` ↔ 模块 `entry.js` 的 `defineModule.routes` path——**安装期校验，默认 warn、可配 fail**；manifest.routes 只承担分类与菜单归属，不重复声明路由。
 
@@ -171,7 +173,7 @@ locales 完整性：`locales/zh-CN.json` 与 `en-US.json` 必须携带 manifest 
 |---|---|---|---|---|
 | web.entry | web 段存在时 ✅ | `^modules\/<name>\/<version>\/[a-z0-9\-._\/]+\.js$`（**版本段必须 === version**；POSIX 分隔符 R30；字符集天然拒 `..`/反斜杠/绝对路径） | 构建 ✅ / 安装 ✅（extract 段对 tgz 内成品复核存在性） | C2-27 |
 | web.css[] | ⬜ | 同 entry 语法，`.css$` 结尾 | 同上 | C2-27 |
-| web.integrity | ⬜ | `^sha384-[A-Za-z0-9+/]{64}$`；构建器对 entry 产物计算写入；**安装器重算比对，不一致拒装**（R10：integrity 必须基于包内容，防 manifest 与产物错配） | 构建 ✅ / 安装（deployWeb→smoke）✅ | C2-28 |
+| web.integrity | ⬜ | `^sha384-[A-Za-z0-9+/]{64}$`；构建器对 entry 产物计算写入；**安装器重算比对，不一致拒装**。R10 关系：P1 实现为其**子集**——无签名阶段 CDN 与安装器同信任域，计算值留痕于 modules.json；P2 验签通过后计算，承接 R10 全量语义（integrity 必须基于包内容，防 manifest 与产物错配） | 构建 ✅ / 安装（deployWeb→smoke）✅ | C2-28 |
 | archive.file | Form B ✅ | `^<name>-<version>\.tgz$` | P3 publish 填充 | C2-29 |
 | archive.sha256 | Form B ✅ | `^[a-f0-9]{64}$` | 安装期 verify 段 fail-closed 比对 | C2-29 |
 | archive.size | Form B ✅ | 正整数（字节） | 同上 | C2-29 |
@@ -238,7 +240,7 @@ oj 0.1.76 `oj/src/manifest.rs:7-22`（`Manifest` struct）+ `:25-47`（`validate
 | C2-03~08 | 身份可选字段 + changelog | ✅ | 仅 summary 非空 | — |
 | C2-09 | peerRuntime 对宿主 versions.json | 语法 | ✅ 强制比对 | — |
 | C2-10/11 | peerOj/Framework/Platform | 语法（P1） | 声明不强制（P1） | P2 meta 握手 |
-| C2-12~14 | prefix 语法/保留名 | ✅ | ✅ | 占用检测：preflight |
+| C2-12~14（含 12a/12b） | prefix 语法/保留名；api.tables 对照 schema.yaml；api.deps 语法 | ✅ | ✅ | 占用检测：preflight |
 | C2-26 | anonymous 语法/段内收敛/登录禁令 | ✅ | ✅ | config 并入校验：reload 段（R18） |
 | C2-15/16 | RBAC 前缀/悬空引用 | ✅ | ✅ | 注册 upsert：register 段（P1-8） |
 | C2-17~21 | 路由三值/path/title_key | ✅ | ✅ | 双源一致 warn 可配 fail：registering 段（A1） |
@@ -261,7 +263,7 @@ oj 0.1.76 `oj/src/manifest.rs:7-22`（`Manifest` struct）+ `:25-47`（`validate
 
 | 夹具 | 期望 | 覆盖 |
 |---|---|---|
-| `fixture-valid/` | 双端零违规 | 契约全部字段（§1 全键出现且合法；含 D4 三类路由、enum/secret 设置项、多组 settings、空 migrations 目录） |
+| `fixture-valid/` | 双端零违规 | 契约全部字段（§1 全键出现且合法；含 D4 三类路由、enum/secret 设置项、多组 settings、空 migrations 目录、archive Form A 仅 file） |
 | `fixture-invalid/` | 七码齐报：C2-01/02/16/17/22/23/26 | 每码一条内在违规，逐条对照 `fixture-invalid/EXPECTED-VIOLATIONS.md` |
 
 规则演进纪律：改任一端正则前必须先改本文档对应条款 → 同步夹具 → 双端测试全绿（夹具是两份实现唯一共同真源，计划 §1「DRY 于夹具而非运行时」）。
