@@ -36,6 +36,8 @@ function nodeFsFace(): FsFace {
 		mkdir: (path, opts) => fsp.mkdir(path, opts),
 		remove: (path, opts) => fsp.rm(path, opts),
 		rename: (oldPath, newPath) => fsp.rename(oldPath, newPath),
+		copyFile: (src, dest) => fsp.copyFile(src, dest),
+		readdir: path => fsp.readdir(path),
 	};
 }
 

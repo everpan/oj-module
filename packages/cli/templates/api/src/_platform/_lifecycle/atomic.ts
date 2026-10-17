@@ -11,6 +11,10 @@ export interface FsFace {
 	mkdir: (path: string, opts?: { recursive?: boolean }) => Promise<void>
 	remove: (path: string, opts?: { recursive?: boolean }) => Promise<void>
 	rename: (oldPath: string, newPath: string) => Promise<void>
+	/** 复制文件（R14 迁移前置备份：sqlite 库 copy 为 <db>.bak-<ts>）；两路径须同文件系统无需递归 */
+	copyFile: (src: string, dest: string) => Promise<void>
+	/** 列目录成员名（不含路径；不含 . / ..） */
+	readdir: (path: string) => Promise<string[]>
 }
 
 export function fsFace(): FsFace {
