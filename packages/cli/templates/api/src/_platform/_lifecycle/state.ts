@@ -9,7 +9,8 @@
 //       installedAt: 1730000000000
 //
 // 只保证读回本模块自己写出的内容，不引入 yaml 依赖；任何不符格式的字节一律视为
-// 损坏 → 空状态 + console.warn（不炸，write 会以 patch 为基自愈重写）。
+// 损坏 → 空状态，损坏上下文并入读结果（corruptNote/corruptReason；禁 console——release
+// isolate console 抛 BadResource，Finding A；不炸，write 会以 patch 为基自愈重写）。
 // read() 返回工厂 hydrate 时的同步快照（逐条目克隆，调用方改动不影响 store）；
 // write() 每次从盘上最新内容做读-改-写合并（多写者不丢彼此的方案键），
 // patch 值为 null 表示删除该方案键（GC/卸载的删除出口）。
@@ -30,6 +31,8 @@ export interface SolutionState {
 export interface StateStore {
 	read: () => SolutionState
 	write: (patch: Partial<SolutionState>) => Promise<void>
+	/** 最近一次盘上读到的损坏 note（null = 未损坏；诊断观测出口，禁 console——Finding A；可选，测试 stub 免实现） */
+	corruptNote?: () => string | null
 }
 
 const EMPTY: SolutionState = { solutions: {} };
@@ -50,12 +53,16 @@ function snapshot(state: SolutionState): SolutionState {
  * 需要观察外部更新的场景重建工厂即可（安装流程一次性构造，无长生命周期需求）。
  */
 export async function createStateStore(path: string): Promise<StateStore> {
-	let cache = (await readDisk(path)).state;
+	let disk = await readDisk(path);
+	let cache = disk.state;
+	let note = disk.corruptReason;
 	return {
 		read: () => snapshot(cache),
+		corruptNote: () => note,
 		async write(patch: Partial<SolutionState>): Promise<void> {
-			const disk = (await readDisk(path)).state;
-			const solutions: Record<string, SolutionEntry> = { ...disk.solutions };
+			disk = await readDisk(path);
+			note = disk.corruptReason;
+			const solutions: Record<string, SolutionEntry> = { ...disk.state.solutions };
 			// patch 值运行时放宽允许 null（类型收窄见调用侧）：null = 删除该方案键
 			const patchSolutions: Record<string, SolutionEntry | null> | undefined = patch.solutions;
 			if (patchSolutions !== undefined) {
@@ -71,26 +78,27 @@ export async function createStateStore(path: string): Promise<StateStore> {
 			const next: SolutionState = { solutions };
 			const text = serializeState(next); // 守卫先跑：任一条目非法即整次拒绝，盘与缓存都不动
 			await atomicWriteText(path, text);
+			note = null; // 写成功即自愈：损坏 note 清零（下次读以盘上真身为准）
 			cache = next;
 		},
 	};
 }
 
-async function readDisk(path: string): Promise<{ state: SolutionState, corrupted: boolean }> {
+async function readDisk(path: string): Promise<{ state: SolutionState, corrupted: boolean, corruptReason: string | null }> {
 	let text: string;
 	try {
 		text = new TextDecoder().decode(await fsFace().readFile(path));
 	}
 	catch {
 		// 不存在/不可读一律按空状态（读缺失文件不炸）
-		return { state: EMPTY, corrupted: false };
+		return { state: EMPTY, corrupted: false, corruptReason: null };
 	}
 	try {
-		return { state: parseState(text), corrupted: false };
+		return { state: parseState(text), corrupted: false, corruptReason: null };
 	}
 	catch (e) {
-		console.warn(`state: ${path} 不是本模块写出的合法状态文件，按空状态处理（${String(e)}）`);
-		return { state: EMPTY, corrupted: true };
+		// 损坏上下文并入读结果（store.corruptNote 出口；禁 console——release isolate console 抛 BadResource，Finding A）
+		return { state: EMPTY, corrupted: true, corruptReason: `${path} 不是本模块写出的合法状态文件，按空状态处理（${String(e)}）` };
 	}
 }
 

@@ -304,7 +304,7 @@ async function auditStage(req: InstallRequest): Promise<StageResult> {
 		return { stage: "audit", ok: true, message: `终态审计已落 oplog（solution.install，status=${status}；失败也审计，AC-P1-14）` };
 	}
 	catch (e) {
-		console.warn(`installer: 终态审计失败（仅日志，不阻断任务终态，附录 B-5）：${String(e)}`);
+		// 上下文随 stage message 进任务记录（禁 console——release isolate console 抛 BadResource 会毒死本 catch，Finding A）
 		return { stage: "audit", ok: true, message: `终态审计失败仅记日志：${String(e)}` };
 	}
 }
@@ -423,15 +423,23 @@ export async function runInstall(req: InstallRequest): Promise<TaskRecord> {
 			req.outcome = { ...req.outcome, status: "done" };
 		}
 		if (task.status === "done" || task.status === "partial") {
-			// 终态审计（audit 恒末位，进 stages 明细；失败仅日志不阻断）
-			const ar = await AUDIT_DEF.run(req);
-			task.stages.push({ stage: AUDIT_DEF.name, ok: ar.ok, message: ar.message });
-			// sidecar 同步（D12 元数据；done/partial 均记录——版本已实际落位，enabled 与锁一致）
+			// 终态审计（audit 恒末位，进 stages 明细；失败仅日志不阻断）。守卫兜底：审计段自身
+			// 抛错（release isolate console 通道 BadResource 等）也转 stage 明细，不击穿终态段——
+			// 否则端点 500、任务滞留 running 直到 30min sweep（Finding A）
+			try {
+				const ar = await AUDIT_DEF.run(req);
+				task.stages.push({ stage: AUDIT_DEF.name, ok: ar.ok, message: ar.message });
+			}
+			catch (e) {
+				task.stages.push({ stage: AUDIT_DEF.name, ok: true, message: `终态审计失败仅记日志：${String(e)}` });
+			}
+			// sidecar 同步（D12 元数据；done/partial 均记录——版本已实际落位，enabled 与锁一致；
+			// 写失败元数据滞后，静默降级不阻断主流程——禁 console，Finding A）
 			try {
 				await req.state.write({ solutions: { [req.name]: { version: req.version, enabled: true, installedAt: Date.now() } } });
 			}
-			catch (e) {
-				console.warn(`installer: sidecar 写入失败（元数据滞后，不影响安装主流程）：${String(e)}`);
+			catch {
+				// 写失败静默：元数据滞后不影响安装主流程（下次操作再收敛）
 			}
 			// market_history 留痕（P1-15a 缺口 A，history.ts 守卫式：表不存在/写失败静默，不阻断终态）。
 			// message 按终态生成人话（task.message 此时是末 stage 文案，对历史消费面不可读）

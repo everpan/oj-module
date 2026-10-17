@@ -14,7 +14,7 @@ import type { MigrateContext } from "../../src/_platform/_lifecycle/steps/migrat
 import * as fsp from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { parseLock } from "../../src/_platform/_lifecycle/lock";
 import { buildMigrateCmd, maxAppliedSeq, migrate, migrateSvcDirOf, parseMigrateOutput, rollbackGuard } from "../../src/_platform/_lifecycle/steps/migrate";
 
@@ -240,6 +240,25 @@ describe("migrate（stage=migrating：R14 备份 → exec → 解析 → 禁降�
 		const baks = (await fsp.readdir(root)).filter(n => n.startsWith("db.sqlite.bak-"));
 		expect(baks).toHaveLength(3);
 		expect(baks.some(n => n.endsWith(".bak-1000"))).toBe(false);
+	});
+
+	it("备份清理 readdir 失败：迁移照常 ok，清理失败 note 并入 message（禁 console——release isolate console 抛 BadResource，Finding A）", async () => {
+		const base = nodeFsFace();
+		g.fs = {
+			...base,
+			readdir: (path: string) => (path === root ? Promise.reject(new Error("readdir 炸了")) : fsp.readdir(path)),
+		};
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+		try {
+			const r = await migrate(mgCtx());
+			expect(r.ok).toBe(true);
+			expect(r.message).toContain("备份清理失败");
+			expect(r.message).toContain("readdir 炸了");
+			expect(warn).not.toHaveBeenCalled();
+		}
+		finally {
+			warn.mockRestore();
+		}
 	});
 
 	it("oj migrate 失败（exit≠0）：ok=false retryable=true，stderr 摘要入 message，state 未变", async () => {

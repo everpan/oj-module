@@ -218,6 +218,11 @@ describe("parseTarget · 安装目标解析", () => {
 		expect(parseTarget("weird.tgz")).toEqual({ kind: "file", path: "weird.tgz", name: null, version: null });
 	});
 
+	it("prerelease 文件名推导：demo-solution-1.0.0-beta.tgz → version 含 -beta 段（Finding C）", () => {
+		expect(parseTarget("demo-solution-1.0.0-beta.tgz")).toEqual({ kind: "file", path: "demo-solution-1.0.0-beta.tgz", name: "demo-solution", version: "1.0.0-beta" });
+		expect(parseTarget("demo-1.0.0-rc.1.tgz")).toEqual({ kind: "file", path: "demo-1.0.0-rc.1.tgz", name: "demo", version: "1.0.0-rc.1" });
+	});
+
 	it("cdn 名含非法形状（空名）即报错", () => {
 		expect(() => parseTarget("@0.1.0")).toThrow();
 	});

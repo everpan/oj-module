@@ -72,8 +72,8 @@ export type InstallTarget = { kind: "file", path: string, name: string | null, v
 export function parseTarget(target: string): InstallTarget {
 	if (target.endsWith(".tgz")) {
 		const stem = path.basename(target).replace(/\.tgz$/i, "");
-		// 文件名推导：<name>-<version>（版本 = 尾段点分数字开头，ojm build --bundle 产物命名）
-		const m = /^(.+)-(\d[\w.]*)$/.exec(stem);
+		// 文件名推导：<name>-<version>（版本 = 尾段点分数字开头，可带 -prerelease 段；ojm build --bundle 产物命名，Finding C）
+		const m = /^(.+)-(\d[\w.]+(?:-[\w.]+)?)$/.exec(stem);
 		return { kind: "file", path: target, name: m?.[1] ?? null, version: m?.[2] ?? null };
 	}
 	const at = target.indexOf("@");

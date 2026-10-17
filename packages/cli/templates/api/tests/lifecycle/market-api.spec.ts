@@ -16,7 +16,7 @@ import { createHash } from "node:crypto";
 import * as fsp from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readLock, writeLock } from "../../src/_platform/_lifecycle/lock";
 import { createStateStore } from "../../src/_platform/_lifecycle/state";
 import { getTask, writeTask } from "../../src/_platform/_lifecycle/tasks";
@@ -627,5 +627,25 @@ describe("P1-16 接线：marketEnv 生产口径 / exec opts 转发 / operator �
 		await api.index.get();
 		expect(last?.status).toBe(200);
 		expect(await readLock(join(sharedRoot, "manifests.yaml"))).toEqual({ "demo-solution": "0.1.0" });
+	});
+
+	it("对账自愈失败降级静默（禁 console——release isolate console 抛 BadResource 会把市场页打 500，Finding A）：index 仍 200", async () => {
+		// 锁有条目保证 reconcile 真走到 ledgerHeadOf；注入恒拒 → reconcile 拒约 → reconcileOf 降级
+		await writeLock(join(sharedRoot, "manifests.yaml"), { "demo-solution": "0.1.0" });
+		await fsp.mkdir(join(sharedRoot, "demo-solution-0.1.0"), { recursive: true });
+		const api = createMarketApi(makeEnv({
+			ledgerHeadOf: async () => {
+				throw new Error("journal 查询炸了");
+			},
+		}));
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+		try {
+			await api.index.get();
+			expect(last?.status).toBe(200);
+			expect(warn).not.toHaveBeenCalled();
+		}
+		finally {
+			warn.mockRestore();
+		}
 	});
 });

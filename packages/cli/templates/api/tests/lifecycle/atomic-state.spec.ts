@@ -1,7 +1,8 @@
 // BDD：状态文件原子写 + sidecar 状态存储（D12/D13，P1-4）。
 // atomicWriteText：同目录 tmp + rename 原子替换，一切状态落盘（state.yaml/manifests.yaml/任务文件）的底座。
 // StateStore：.solutions/state.yaml 读写；YAML 为受限子集（两层 map + 标量），
-// 只保证读回自己写出的内容；任何不符格式的字节一律视为损坏 → 空状态 + console.warn。
+// 只保证读回自己写出的内容；任何不符格式的字节一律视为损坏 → 空状态，损坏上下文并入
+// 读结果（corruptNote 出口，禁 console——release isolate console 抛 BadResource，Finding A）。
 // fs 依赖经 globalThis.fs 注入（平台 isolate 注入 FsApi；测试注入 node:fs/promises 适配）。
 import type { FsFace } from "../../src/_platform/_lifecycle/atomic";
 import * as fsp from "node:fs/promises";
@@ -141,14 +142,19 @@ describe("stateStore（D12）", () => {
 		expect(store.read().solutions.demo.version).toBe("1.0.0");
 	});
 
-	it("损坏 yaml 返回空状态 + console.warn 告警不炸", async () => {
+	it("损坏 yaml 返回空状态，损坏上下文并入读结果 corruptNote（禁 console——release isolate console 抛 BadResource，Finding A）", async () => {
 		const p = join(root, "state.yaml");
 		await fsp.writeFile(p, "solutions:\n  demo:\n    version: [broken\n");
 		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 		try {
 			const store = await createStateStore(p);
 			expect(store.read()).toEqual({ solutions: {} });
-			expect(warn).toHaveBeenCalled();
+			expect(store.corruptNote?.()).toContain("不是本模块写出的合法状态文件");
+			expect(store.corruptNote?.()).toContain("条目格式不完整或字段损坏");
+			expect(warn).not.toHaveBeenCalled();
+			// 自愈重写后 note 清零（写成功 = 盘上真身合法）
+			await store.write({ solutions: { demo: { version: "1.0.0", enabled: true, installedAt: 1 } } });
+			expect(store.corruptNote?.()).toBeNull();
 		}
 		finally {
 			warn.mockRestore();

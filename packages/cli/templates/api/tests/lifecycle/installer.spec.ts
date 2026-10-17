@@ -20,7 +20,7 @@ import { createHash } from "node:crypto";
 import * as fsp from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { atomicWriteText } from "../../src/_platform/_lifecycle/atomic";
 import { reconcile, runInstall, setEnabled, STAGES } from "../../src/_platform/_lifecycle/installer";
 import { acquireTaskLock, commitLockEntry, parseLock, readLock, serializeLock, writeLock } from "../../src/_platform/_lifecycle/lock";
@@ -251,6 +251,21 @@ describe("runInstall 全绿路径（步骤 stub，register/smoke/audit 走真实
 	});
 });
 
+describe("getTask/taskOf id 白名单（Finding B：穿越 id 不得读出 taskDir 之外）", () => {
+	it("id=../../dist/modules 形态 → null（即使穿越目标存在合法 JSON 也不可读）；合法 id 不受影响", async () => {
+		// 穿越目标预置可读 JSON：白名单缺失时 getTask 会把它当任务记录读出（红）。
+		// taskDir 须真实存在——内核路径游走要穿过它，缺失时 ../ 段直接 ENOENT（测不出穿越）
+		await fsp.mkdir(taskDir, { recursive: true });
+		await fsp.mkdir(join(root, "dist"), { recursive: true });
+		await fsp.writeFile(join(root, "dist", "modules.json"), JSON.stringify({ id: "stolen", status: "done", stages: [] }));
+		expect(await getTask(taskDir, "../../dist/modules")).toBeNull();
+		expect(await getTask(taskDir, "../sibling")).toBeNull();
+		// 合法 id 读写不受白名单影响（lock/state 键白名单同款字符集）
+		await writeTask(taskDir, { id: "t-ok", name: "demo-solution", version: "0.1.0", status: "done", stage: "done", progress: 100, message: "", stages: [], startedAt: 1 });
+		expect((await getTask(taskDir, "t-ok"))?.status).toBe("done");
+	});
+});
+
 describe("失败语义①锁前清场（D11：零改锁零改库表，可重跑）", () => {
 	it("extract 失败 → status failed + extracting 指引 key；staging 清场、锁/清单/sidecar/库表零改动", async () => {
 		const exec: ExecFace = {
@@ -294,6 +309,52 @@ describe("失败语义②锁后 partial（D11：部分生效 + 回滚指引）",
 		expect(oplog).toHaveLength(1);
 		expect(String(oplog[0]!.detail)).toContain("\"status\":\"partial\"");
 		expect(String(oplog[0]!.detail)).toContain("smoke");
+	});
+});
+
+describe("终态审计守卫（Finding A：审计失败仅日志、不阻断任务终态，附录 B-5）", () => {
+	it("audit 注入抛非审计异常 + console 通道不可用（release isolate BadResource 形态）→ runInstall 仍返回正常终态，任务不滞留 running", async () => {
+		// release isolate：console.* 自身抛 BadResource（契约 B-8）——catch 里的 console.warn 会把
+		// 「仅日志」语义毒死并击穿 runInstall 终态段，端点 500、任务滞留 running 直到 30min sweep。
+		// 以会抛的 console spy 模拟该形态（node 环境 console 不会抛，直接注入测不出此路径）
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => {
+			throw new Error("BadResource: console 通道在 release isolate 不可用");
+		});
+		try {
+			const t = await runInstall(makeReq({
+				audit: () => {
+					throw new Error("audit 后端炸了（非审计异常形态）");
+				},
+			}));
+			expect(t.status).toBe("done");
+			expect(t.stage).toBe("done");
+			const auditEntry = t.stages.find(s => s.stage === "audit");
+			expect(auditEntry?.ok).toBe(true);
+			expect(auditEntry?.message).toContain("audit 后端炸了");
+			// 任务文件终态可查（不滞留 running）
+			expect((await getTask(taskDir, t.id))?.status).toBe("done");
+		}
+		finally {
+			warn.mockRestore();
+		}
+	});
+
+	it("sidecar 写失败 → 终态 done 不变、降级路径静默（禁 console，同上 BadResource 毒终态段）", async () => {
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+		try {
+			const t = await runInstall(makeReq({
+				state: {
+					read: () => ({ solutions: {} }),
+					write: async () => { throw new Error("sidecar 盘满"); },
+				},
+			}));
+			expect(t.status).toBe("done");
+			expect(warn).not.toHaveBeenCalled();
+			expect((await getTask(taskDir, t.id))?.status).toBe("done");
+		}
+		finally {
+			warn.mockRestore();
+		}
 	});
 });
 

@@ -143,16 +143,17 @@ function isObj(v: unknown): v is Record<string, unknown> {
 	return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
-async function backupDb(dbPath: string): Promise<string> {
+/** @returns 备份路径 + 清理失败 note（null = 清理正常；note 并入迁移 message，禁 console——Finding A） */
+async function backupDb(dbPath: string): Promise<{ bak: string, pruneNote: string | null }> {
 	const f = fsFace();
 	const bak = `${dbPath}.bak-${Date.now()}`;
 	await f.copyFile(dbPath, bak);
-	await pruneBackups(dbPath, f);
-	return bak;
+	const pruneNote = await pruneBackups(dbPath, f);
+	return { bak, pruneNote };
 }
 
-/** 清理旧备份仅保留最近 KEEP_BACKUPS 份；任一失败仅告警（多留一份无害），不阻断迁移主流程 */
-async function pruneBackups(dbPath: string, f: FsFace): Promise<void> {
+/** 清理旧备份仅保留最近 KEEP_BACKUPS 份；失败不阻断迁移主流程（多留一份无害），note 上返进 message */
+async function pruneBackups(dbPath: string, f: FsFace): Promise<string | null> {
 	const slash = dbPath.lastIndexOf("/");
 	const dir = slash === -1 ? "." : dbPath.slice(0, slash);
 	const base = slash === -1 ? dbPath : dbPath.slice(slash + 1);
@@ -162,8 +163,7 @@ async function pruneBackups(dbPath: string, f: FsFace): Promise<void> {
 		entries = await f.readdir(dir);
 	}
 	catch (e) {
-		console.warn(`migrate: 备份清理失败（.bak-* 全量保留，不影响迁移）：${String(e)}`);
-		return;
+		return `备份清理失败（.bak-* 全量保留，不影响迁移）：${String(e)}`;
 	}
 	const stale = entries
 		.filter(e => e.startsWith(prefix))
@@ -196,8 +196,9 @@ export async function migrate(ctx: MigrateContext): Promise<StageResult> {
 	}
 	// 第一步 R14：前置备份——备份不可用即不迁移（fail-closed，exec 零调用，库保持原状）
 	let bak: string;
+	let pruneNote: string | null = null;
 	try {
-		bak = await backupDb(ctx.dbPath);
+		({ bak, pruneNote } = await backupDb(ctx.dbPath));
 	}
 	catch (e) {
 		return { stage: "migrating", ok: false, retryable: true, message: `迁移失败：前置备份不可用（${String(e)}）——无备份不迁移（R14），未执行 oj migrate，库保持原状` };
@@ -266,7 +267,7 @@ export async function migrate(ctx: MigrateContext): Promise<StageResult> {
 		return {
 			stage: "migrating",
 			ok: true,
-			message: `迁移完成：${parsed.output.results.length} 个模块、共 ${appliedCount} 条迁移已应用（账据 = oj migrate --format json 的 applied[]；备份 ${bak}，保留最近 ${KEEP_BACKUPS} 份；迁移成功后才允许后续落锁，D11/R2）`,
+			message: `迁移完成：${parsed.output.results.length} 个模块、共 ${appliedCount} 条迁移已应用（账据 = oj migrate --format json 的 applied[]；备份 ${bak}，保留最近 ${KEEP_BACKUPS} 份${pruneNote ? `；${pruneNote}` : ""}；迁移成功后才允许后续落锁，D11/R2）`,
 		};
 	}
 	catch (e) {

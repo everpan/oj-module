@@ -250,7 +250,8 @@ async function routeEnabledOf(name: string): Promise<boolean | null> {
 /**
  * 对账入口（P1-10 接线③，市场页刷新即对账时点）：锁 ↔ 账本 head 自愈 + enabled 不一致自动修复。
  * 账本 head 缺省 = oj journal 表查询（journalHeadOf），floor = 安装任务记录 appliedSeq（latestAppliedSeqOf）。
- * 自愈失败只记日志不阻断市场页（index 可用性优先，下次刷新重试）。
+ * 自愈失败静默降级不阻断市场页（禁 console——release isolate console 抛 BadResource 会把
+ * 市场页打 500，Finding A；index 可用性优先，下次刷新重试）。
  */
 async function reconcileOf(env: MarketEnv): Promise<void> {
 	try {
@@ -265,8 +266,8 @@ async function reconcileOf(env: MarketEnv): Promise<void> {
 			routeEnabledOf,
 		});
 	}
-	catch (e) {
-		console.warn(`market: 对账自愈失败（不阻断市场页，下次刷新重试）：${String(e)}`);
+	catch {
+		// 降级静默：对账自愈可重入（下次刷新重试），失败不外溢
 	}
 }
 

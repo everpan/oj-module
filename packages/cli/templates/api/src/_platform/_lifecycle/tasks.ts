@@ -69,8 +69,11 @@ export async function readTasks(taskDir: string): Promise<TaskRecord[]> {
 	return out;
 }
 
-/** 单条查询（轮询消费面 getTask）；缺失或损坏返回 null */
+/** 单条查询（轮询消费面 getTask）；id 不在白名单（lock/state 键同款字符集，Finding B 防穿越）、缺失或损坏返回 null */
 export async function getTask(taskDir: string, id: string): Promise<TaskRecord | null> {
+	if (!/^[\w.-]+$/.test(id)) {
+		return null;
+	}
 	try {
 		return JSON.parse(new TextDecoder().decode(await fsFace().readFile(`${taskDir}/${id}.json`))) as TaskRecord;
 	}
