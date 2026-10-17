@@ -78,8 +78,12 @@ echo "v0.1.78" > <host>/bin/.oj-version   # 本地版本标记，缺了视为未
 安装器在 `_platform` 特权模块内跑，需要 config 两段——**模板已带 exec 白名单，fs 段当前缺省缺**（P1-16 接线点，本文按保守口径手补）：
 
 ```yaml
-# 模板已带：解压/迁移两处消费的 argv 模板白名单（逐字对齐 lifecycle steps，不得增删）
+# 特权模块名单（reloading 段 server.reloadConfig 必需；缺 = NotCapable not platform-privileged）
+# root = api mount 指向的模块根（release 形态 = dist）
 platform:
+  modules: [_platform]
+  root: dist
+  # exec 白名单（模板已带：解压/迁移两处消费；逐字对齐 lifecycle steps，不得增删）
   exec:
     _platform:
       allow:
@@ -93,6 +97,8 @@ fs:
   root: .
   readonly: false
 ```
+
+> ⚠️ **模板同步纪律（真机踩坑 2026-10-17）**：`ojm init` 把模板**快照**进 `api/src`——此后 oj-module 模板的任何更新（修复/新特性）**不会自动到达已有站点**。升级宿主 = rsync 模板 `templates/api/src/` → 站点 `api/src/` → 重建 → **重启 serve**（oj 缓存已编译模块源，不重启跑的还是旧代码）。
 
 ### 3.5 构建 + 起服务（release 形态）
 
@@ -291,7 +297,7 @@ reloading   → 热更生效断言
 smoking     → 探活/integrity/注册一致性
 ```
 
-> **本实录进度注记（2026-10-17）**：验证时 P1-13b（B-11 跨层断裂修复）尚在收尾，宿主 dist 捕获到其中间态，首装停在 lock_commit（`TypeError: invalid_argument`，工作树 WIP 所致）。P1-13b 合入后按 §3.5 重建宿主、重跑 §6 即得全绿 `done`——安装链其余九段已在本机实证。安装前置条件里因此多一步（坑⑦）：宿主 `api/dist/versions.json` 需存在且含 `@oj-module/runtime` 键（C2-09 真源），P1-13b 合入前手工补：`{"@oj-module/runtime":"0.2.4"}`。
+> **终局实录（2026-10-17 22:2x，oj 0.1.78 全绿）**：`[ojm] 安装完成：demo-market 0.1.0`——十段全绿 + 幂等重装二次 done。真机到达全绿需要的宿主配置全集 = §3.4 四件套（fs jail / platform.modules+root / exec 白名单 / dist/versions.json）+ §3.2 新模板同步纪律。**已知接线缺口（P1-16 范围）**：装后 `GET /api/<name>/ping` 当前 404——安装器版本目录落 `modules/`（sharedRoot 缺省）而 release serve 读 `dist/`，市场端点/安装链全绿但路由上线需 sharedRoot 与 serve 根对齐（P1-12 B3 备案的 marketEnv 生产口径，接线后本注记删除）。
 
 ### 幂等重装（AC-P1-3）
 
