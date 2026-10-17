@@ -289,13 +289,13 @@ Ed25519 fail-closed（`crypto.verifyEd25519` isolate 内可用）+ **TOFU（CLI 
 
 | ID | 待实测/待定 | 影响 |
 |---|---|---|
-| S1-1 | **共享根唯一自洽形态裁决**（api 前缀重复拒绝 / 空锁拒启 / 安装器改写既有挂载 vs 追加 / `oj build` save_lock 与安装器锁互斥） | D3 定稿；安装器改写 config 的方式与首装 bootstrap 流程 |
-| S1-2 | `exec.run` tar 范式复验（场景 34）+ **list→validate→extract 三步范式**（`-tvzf` 识别链接类型）+ CDN 下载步骤形态（http 模块 vs `exec.run` curl） | P1 解压/下载路径 |
-| S1-3 | 进程内互斥 + `.lock` 防 `oj build` save_lock 并发（v3 单写者=oj 进程，R31 简化） | 并发安全实现选型 |
+| S1-1 | **共享根唯一自洽形态裁决**（api 前缀重复拒绝 / 空锁拒启 / 安装器改写既有挂载 vs 追加 / `oj build` save_lock 与安装器锁互斥）——**C1 已裁决（实测）：release 共享根形态自洽**——同类前缀重复启动即拒；单 api 挂载多模块合法且路由前缀来自各模块自声明；布局只能扁平 `<module>-<version>`；空锁拒启、缺锁翻 dev 模式报 name 失配；安装 = 写版本目录 → upsert 锁 → 改 config 任一语义值 → reload，无需改 mounts（详见 `202610171245-lifecycle-p0-spike-findings.md`） | D3 定稿；安装器改写 config 的方式与首装 bootstrap 流程 |
+| S1-2 | `exec.run` tar 范式复验（场景 34）+ **list→validate→extract 三步范式**（`-tvzf` 识别链接类型）+ CDN 下载步骤形态（http 模块 vs `exec.run` curl）——**C1 已裁决（实测）：exec.run tar 可用**，`-tvzf` 首列辨 `l`/`h` 且解压忠实还原链接（三步为安全必需）；下载定稿 fetch→fs.writeFile（越界 NotCapable 实测） | P1 解压/下载路径 |
+| S1-3 | 进程内互斥 + `.lock` 防 `oj build` save_lock 并发（v3 单写者=oj 进程，R31 简化）——**C1 已裁决（实测）：oj save_lock 原子（tmp+rename，728k 并发读零撕裂）但读-改-写无互斥**，`oj build` 会吞掉并发外部写（实测 erasure）⇒ 安装器写锁后必须读回校验+重试收敛；「单写者=oj 进程」假设作废 | 并发安全实现选型 |
 | S1-4 | `oj-wiki` 接入指南的范围（第三方接入改造清单） | D2 后续动作，不阻塞三期 |
-| S1-5 | 冒烟凭证形态（匿名 health / 进程内签发自检 token）+ `reload_api` 注入后 `POST /_system/config` 实测 | T7/T8 实现 |
-| S1-6 | 锁↔账本对账：M003/M004 拒启行为实测 + 对账自愈的回指规则 | D11 状态机入口实现 |
-| S1-7 | **长任务形态**：十阶段状态机在 isolate 内的承载（oj tasks 轴 / 分段执行+状态文件续跑；请求作用域纪律禁止模块级可变状态承载进度） | 状态机骨架实现 |
+| S1-5 | 冒烟凭证形态（匿名 health / 进程内签发自检 token）+ `reload_api` 注入后 `POST /_system/config` 实测——**C1 已裁决（实测）：端点在 `{mount}/_system/config`，auth 段配置时需 Bearer（401 实测）**；unchanged/applied 双形态实测；JS `server.reloadConfig()` 同 executor、五键形状；`_system/health` 匿名可用（推荐冒烟探针）；anonymous_paths 热改属 restart_pending 不可热生效；manifest 无 health 字段 | T7/T8 实现 |
+| S1-6 | 锁↔账本对账：M003/M004 拒启行为实测 + 对账自愈的回指规则——**C1 已裁决（实测）：M004/M003 均复现，exit 1、文案含下一步指引**；`oj migrate --format json` = stdout 单行 `{results:[{module,ok,applied,error?}]}`、逐模块 continue-and-collect、任一失败 exit 非 0；注意「账本超前」在 migrate 侧报 refinery missing-from-filesystem 而非 M003 | D11 状态机入口实现 |
+| S1-7 | **长任务形态**：十阶段状态机在 isolate 内的承载（oj tasks 轴 / 分段执行+状态文件续跑；请求作用域纪律禁止模块级可变状态承载进度）——**C1 已裁决（实测）：oj tasks 轴不可用**（池化任务调 exec.run 报 `NotCapable: exec requires module ownership`，且 tasks 目录站点级仅首个 api 挂载树、市场模块无法携带）⇒ 定稿「分段执行 + 状态文件续跑」，长段用 route_timeouts 提额 + exec timeoutMs≤600s | 状态机骨架实现 |
 
 ---
 
