@@ -19,7 +19,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { archiveFileOf, download } from "../../src/_platform/_lifecycle/steps/download";
-import { buildExtractCmd, buildListCmd, extract } from "../../src/_platform/_lifecycle/steps/extract";
+import { buildExtractCmd, buildListCmd, checkModuleManifest, extract } from "../../src/_platform/_lifecycle/steps/extract";
 import { verify } from "../../src/_platform/_lifecycle/steps/verify";
 
 const execFileP = promisify(execFileCb);
@@ -362,5 +362,121 @@ describe("extract（stage=extracting，R1 list→validate→extract 三步）", 
 		expect(r.ok).toBe(false);
 		expect(r.message).toContain("R1");
 		expect(exec.calls.length).toBe(1);
+	});
+});
+
+// B-11/C2-31 安装期复核：包内 api/<name>-<version>/manifest.yaml 是 oj 原生清单（desc 必填，
+// serve 装配 parse_one 消费面），与 C2 Form A 的 summary 字段由构建期映射（ojm build --bundle
+// 写入并核对）；安装期只验不写——写等于掩盖上游不一致（映射被篡改的包必须拒装）。
+// 纯函数与 packages/cli 侧 bundle.ts checkModuleManifest 双端 DRY 于夹具（preflight 同纪律）。
+describe("checkModuleManifest（C2-31 安装期复核纯函数：C2 manifest ↔ 包内 oj 原生清单）", () => {
+	const c2 = { name: "demo-solution", version: "0.1.0", summary: "演示方案 Demo — émoji 🎉" };
+	const native = { name: "demo-solution", desc: "演示方案 Demo — émoji 🎉", version: "0.1.0" };
+
+	it("合法：desc === summary（多字节逐字相等）、name/version 三方一致、七键之内 → ok", () => {
+		expect(checkModuleManifest(c2, native, "demo-solution", "0.1.0")).toEqual({ ok: true });
+	});
+
+	it("summary 缺省（C2 侧无映射真源）→ 拒", () => {
+		const r = checkModuleManifest({ name: "demo-solution", version: "0.1.0" }, native, "demo-solution", "0.1.0");
+		expect(r.ok).toBe(false);
+		expect(!r.ok && r.message).toContain("summary");
+	});
+
+	it("desc 缺失 → 拒（oj Manifest 必填字段，serve 装配即炸）", () => {
+		const r = checkModuleManifest(c2, { name: "demo-solution", version: "0.1.0" }, "demo-solution", "0.1.0");
+		expect(r.ok).toBe(false);
+		expect(!r.ok && r.message).toContain("desc");
+	});
+
+	it("desc 为空白串 → 拒（oj 原生 desc 语义：非空描述）", () => {
+		const r = checkModuleManifest(c2, { ...native, desc: "   " }, "demo-solution", "0.1.0");
+		expect(r.ok).toBe(false);
+	});
+
+	it("desc !== summary → 拒（构建期映射被篡改/上游不一致）", () => {
+		const r = checkModuleManifest(c2, { ...native, desc: "另一个描述" }, "demo-solution", "0.1.0");
+		expect(r.ok).toBe(false);
+		expect(!r.ok && r.message).toContain("desc");
+	});
+
+	it("name 或 version 与包身份不一致 → 拒", () => {
+		expect(checkModuleManifest(c2, { ...native, name: "other" }, "demo-solution", "0.1.0").ok).toBe(false);
+		expect(checkModuleManifest(c2, { ...native, version: "0.2.0" }, "demo-solution", "0.1.0").ok).toBe(false);
+	});
+
+	it("白名单外键（七键 name/desc/version/config/db/tables/deps 之外）→ 拒（OJ-X 红线）", () => {
+		const r = checkModuleManifest(c2, { ...native, evil: "x" }, "demo-solution", "0.1.0");
+		expect(r.ok).toBe(false);
+		expect(!r.ok && r.message).toContain("evil");
+	});
+
+	it("七键之内可选键（config/db/tables/deps）放行", () => {
+		const rich = { ...native, tables: ["note"], deps: { _platform: ">=0.1.0" } };
+		expect(checkModuleManifest(c2, rich, "demo-solution", "0.1.0")).toEqual({ ok: true });
+	});
+
+	it("native 非键值对象 → 拒（fail-closed 不猜）", () => {
+		for (const bad of [null, "text", 42, ["demo-solution"]]) {
+			expect(checkModuleManifest(c2, bad, "demo-solution", "0.1.0").ok).toBe(false);
+		}
+	});
+});
+
+describe("extract C2-31 安装期复核（B-11：api 段声明与包内原生清单互相钉住）", () => {
+	beforeEach(() => {
+		g.yaml = { parse: async (t: string) => JSON.parse(t) };
+	});
+
+	afterEach(() => {
+		g.yaml = undefined;
+	});
+
+	/** 组装 §2.9 单根包并 tar 真打包（含 api 模块目录：原生清单 + routes.js + 迁移 SQL） */
+	async function seedBundle(opts: { withApi?: boolean, nativeManifest?: unknown } = {}): Promise<string> {
+		const pkg = join(root, "pkg", "demo-solution-0.1.0");
+		if (opts.withApi !== false) {
+			const apiDir = join(pkg, "api", "demo-solution-0.1.0", "migrations");
+			await fsp.mkdir(apiDir, { recursive: true });
+			const nm = opts.nativeManifest ?? { name: "demo-solution", desc: "演示方案 Demo", version: "0.1.0" };
+			await fsp.writeFile(join(pkg, "api", "demo-solution-0.1.0", "manifest.yaml"), JSON.stringify(nm));
+			await fsp.writeFile(join(pkg, "api", "demo-solution-0.1.0", "routes.js"), "export {};\n");
+			await fsp.writeFile(join(pkg, "api", "demo-solution-0.1.0", "migrations", "0001__init.sql"), "CREATE TABLE note (id INTEGER PRIMARY KEY);\n");
+		}
+		await fsp.mkdir(join(pkg, "web", "modules", "demo-solution", "0.1.0"), { recursive: true });
+		await fsp.writeFile(join(pkg, "manifest.yaml"), JSON.stringify({ name: "demo-solution", version: "0.1.0", summary: "演示方案 Demo", api: { prefix: "/api/demo-solution" } }));
+		await fsp.writeFile(join(pkg, "web", "modules", "demo-solution", "0.1.0", "entry.js"), "export {};\n");
+		await fsp.mkdir(staging, { recursive: true });
+		const tgz = join(staging, FILE);
+		await execFileP("tar", ["-czf", tgz, "-C", join(root, "pkg"), "demo-solution-0.1.0"]);
+		return tgz;
+	}
+
+	function c2Manifest(): any {
+		return { name: "demo-solution", version: "0.1.0", summary: "演示方案 Demo", archive: { file: FILE, sha256: shaOf(BYTES), size: BYTES.byteLength }, api: { prefix: "/api/demo-solution" } };
+	}
+
+	it("api 段声明 + 包内原生清单合法（desc === summary）→ extract ok", async () => {
+		await seedBundle();
+		const r = await extract(exCtx({ manifest: c2Manifest(), exec: realTarExec() }));
+		expect(r.ok).toBe(true);
+		// 单根归平后 api 模块目录在 staging 根（migrate svc 物化与 lockCommit rename 的消费面）
+		await fsp.access(join(staging, "api", "demo-solution-0.1.0", "routes.js"));
+	});
+
+	it("manifest 声明 api 段而包内 api/<name>-<version>/ 缺失 → C2-31 拒（retryable=false）", async () => {
+		await seedBundle({ withApi: false });
+		const r = await extract(exCtx({ manifest: c2Manifest(), exec: realTarExec() }));
+		expect(r.ok).toBe(false);
+		expect(r.retryable).toBe(false);
+		expect(r.message).toContain("C2-31");
+	});
+
+	it("包内原生清单 desc !== summary → C2-31 拒（映射被篡改）", async () => {
+		await seedBundle({ nativeManifest: { name: "demo-solution", desc: "另一个描述", version: "0.1.0" } });
+		const r = await extract(exCtx({ manifest: c2Manifest(), exec: realTarExec() }));
+		expect(r.ok).toBe(false);
+		expect(r.retryable).toBe(false);
+		expect(r.message).toContain("C2-31");
 	});
 });

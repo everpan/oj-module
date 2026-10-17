@@ -2,7 +2,7 @@
 // deploy-web = staging/web 产物树真复制到站点 modules 目录 + modules.json 读-改-原子写 upsert
 // （D13：读者永不见半截 JSON；R30：entry/css 路径 POSIX 分隔符序列化；同名整体替换、他条目原样保留）；
 // reload = 注入 reloadConfig 面（platform 特权 API），unchanged = 改写未生效判失败（R18 终态断言），
-// expected 段键（缺省 ["mounts"]）须逐一 ∈ applied；
+// expected 段键（缺省 ["vars"]，B-11 reload 触发面）须逐一 ∈ applied；
 // smoke = 探活（health 2xx / 缺省首个非匿名路由连通即可）+ integrity（部署落位后重算 sha384 vs
 // modules.json 条目，R10 包内容口径；缺失 fail-closed）+ 注册一致性（升级态「包含非相等」：
 // 快照逐数组 ⊇ 声明，少 = 注册丢失判失败）collect-all 全败齐报。
@@ -265,12 +265,12 @@ describe("reloadAndAssert（stage=reloading：R18 unchanged=失败）", () => {
 				? async () => {
 					throw new Error("server.reloadConfig: reload in progress (busy)");
 				}
-				: async () => result ?? { generation: 8, unchanged: false, applied: ["mounts"], restart_pending: [], kept_listener: [] },
+				: async () => result ?? { generation: 8, unchanged: false, applied: ["vars"], restart_pending: [], kept_listener: [] },
 		};
 		return { manifest: solManifest(), name: "demo-solution", version: "0.1.0", state: stateStore(), reload: face };
 	}
 
-	it("成功：applied 含 mounts → ok=true，message 含 generation", async () => {
+	it("成功：applied 含 vars（缺省 expected）→ ok=true，message 含 generation", async () => {
 		const r = await reloadAndAssert(rlCtx());
 		expect(r.stage).toBe("reloading");
 		expect(r.ok).toBe(true);
@@ -291,7 +291,7 @@ describe("reloadAndAssert（stage=reloading：R18 unchanged=失败）", () => {
 	});
 
 	it("expected 段键未生效：applied 缺 vars → ok=false（R18 以实际生效值断言）", async () => {
-		const r = await reloadAndAssert({ ...rlCtx(), expected: ["mounts", "vars"] });
+		const r = await reloadAndAssert({ ...rlCtx({ generation: 8, unchanged: false, applied: ["mounts"], restart_pending: [], kept_listener: [] }), expected: ["mounts", "vars"] });
 		expect(r.ok).toBe(false);
 		expect(r.message).toContain("vars");
 	});

@@ -37,9 +37,12 @@ describe.skipIf(!smokeReady)("真机冒烟（需 OJM_SMOKE_URL/OJM_SMOKE_USER/OJ
 		const apiDist = join(project, "api/dist/demo-solution-0.1.0");
 		const { mkdirSync, writeFileSync } = await import("node:fs");
 		mkdirSync(join(apiDist, "ping"), { recursive: true });
-		mkdirSync(join(apiDist, "migrations"), { recursive: true });
+		// 迁移 SQL 随夹具 src 真源（0001__init.sql 建 note 表）；B-11 硬验收：appliedSeq > 0 可断言
+		cpSync(join(FIXTURE_VALID, "api/src/demo-solution/migrations"), join(apiDist, "migrations"), { recursive: true });
+		// schema.yaml 同随夹具真源（列集与迁移 SQL 一致）：oj migrate 在 apply 后跑 schema
+		// reconcile（migrate_cmd.rs migrate_one），声明缺列而实库多列 = Err——合成空列集会炸
 		writeFileSync(join(apiDist, "manifest.yaml"), "name: demo-solution\ndesc: manifest.yaml 契约全字段合法夹具\nversion: 0.1.0\ntables:\n  - note\n");
-		writeFileSync(join(apiDist, "schema.yaml"), "tables:\n  note: {}\n");
+		cpSync(join(FIXTURE_VALID, "api/src/demo-solution/schema.yaml"), join(apiDist, "schema.yaml"));
 		writeFileSync(join(apiDist, "routes.js"), "export {};\n");
 		writeFileSync(join(apiDist, "ping/api.js"), "export async function ping() {}\n");
 		const webDist = join(project, "web/dist/modules/demo-solution/0.1.0");
@@ -52,5 +55,7 @@ describe.skipIf(!smokeReady)("真机冒烟（需 OJM_SMOKE_URL/OJM_SMOKE_USER/OJ
 		expect(record.status).toBe("done");
 		expect(record.name).toBe("demo-solution");
 		expect(record.version).toBe("0.1.0");
+		// B-11 硬验收：迁移真实执行过（oj migrate applied 非空），非 web-only 空跑
+		expect(record.appliedSeq).toBeGreaterThan(0);
 	});
 });

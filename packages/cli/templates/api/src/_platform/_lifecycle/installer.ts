@@ -35,6 +35,7 @@ import { reloadAndAssert } from "./steps/reload";
 import { smoke } from "./steps/smoke";
 import { verify } from "./steps/verify";
 import { getTask, readTasks, sweepTimedOut, writeTask } from "./tasks";
+import { bumpInstallSeq } from "./text-edit";
 
 // db/http 为 oj isolate 注入全局（同模板 service 层惯例，register.ts/audit.ts 同款；测试由夹具装 globalThis.db）
 declare const db: { exec: (sql: string, params: unknown[]) => Promise<unknown> };
@@ -43,20 +44,18 @@ export type { InstallContext, InstallStage, StageResult, TaskRecord, TaskStatus 
 
 /**
  * 安装请求：身份 + 全部站点路径 + 注入面（DIP）。路径全部注入不硬编码站点布局（P1-9 同纪律）；
- * `dataDir`（`oj migrate -d` 实参）与 `dbPath`（R14 备份源）显式分开——oj `-d` 收目录、备份定位收
- * 库文件，推导关系由部署层（P1-16 e2e）钉口径，编排层不做隐式推导。
+ * `oj migrate -d` 实参由 migrate 段自暂存根推导（迁移服务目录，B-11——不再注入 dataDir），
+ * `dbPath`（R14 备份源）仍显式注入。
  */
 export interface InstallRequest extends InstallContext {
 	/** 分发包完整 URL（download stage；安装器不拼 URL——Form B 索引解析属市场/CLI 侧） */
 	archiveUrl: string
 	/** 共享根（manifests.yaml 所在目录 = 版本目录父级，D3 单 mount 形态） */
 	sharedRoot: string
-	/** 暂存目录（.staging；download/verify/extract 接力，lockCommit rename 源） */
+	/** 暂存目录（.staging；download/verify/extract 接力，migrate svc 物化源，lockCommit rename 源） */
 	staging: string
 	/** 任务状态目录（.install-tasks） */
 	taskDir: string
-	/** 站点数据目录（`oj migrate -d` 实参） */
-	dataDir: string
 	/** sqlite 库文件路径（R14 前置备份源；备份落同目录，保留 3 份由 migrate 段管） */
 	dbPath: string
 	/** 站点 web 模块目录（<dist>/modules） */
@@ -65,6 +64,8 @@ export interface InstallRequest extends InstallContext {
 	modulesJsonPath: string
 	/** API 前缀（smoke 探针 URL 前缀，C2-13） */
 	apiPrefix: string
+	/** 站点 config.yaml 路径（reloading 段 vars.ojm_install_seq 自增落盘处；缺省 config.yaml） */
+	configPath?: string
 	/** 注入面（DIP）：下载 / exec（tar+oj）/ 热更 / sha384（R10 integrity 重算） */
 	fetch: FetchFace
 	exec: ExecFace
@@ -78,7 +79,7 @@ export interface InstallRequest extends InstallContext {
 	query?: (name: string) => Promise<SolutionSnapshot | null>
 	/** 审计出口（缺省 auditOp；测试注入记录器） */
 	audit?: (entry: OpEntry) => void
-	/** reload 终态断言期望生效段键（缺省 ["mounts"]，同 reload.ts） */
+	/** reload 终态断言期望生效段键（缺省 ["vars"]，同 reload.ts——B-11 安装触发面） */
 	expected?: string[]
 	/** 安装器内部通道（外部调用方忽略）：终态审计读 status/failedStage/taskId + migrate 捕获 appliedSeq */
 	outcome?: { taskId?: string, status?: TaskStatus, failedStage?: InstallStage, appliedSeq?: number | null }
@@ -170,24 +171,36 @@ async function lockCommitStage(req: InstallRequest): Promise<StageResult> {
 	catch {
 		// 目标不存在 = 首装，正常路径
 	}
+	// B-11：发布面 = 包内 api 模块目录（oj 原生清单 + routes.js + migrations/，serve 装配
+	// parse_one 消费面——staging 整体发布会让版本目录缺模块清单/多 web 树）；web/ 与 C2 manifest
+	// 留在 staging（deploying_web 段消费）。无 api 段（web-only 包，extracting C2-31 已放行）
+	// 回退整体 rename——版本目录 = 包内容（无 serve 装配面的残留形态）。
+	let src = req.staging;
 	try {
-		await f.rename(req.staging, versionDir);
+		await f.readdir(`${req.staging}/api/${req.name}-${req.version}`);
+		src = `${req.staging}/api/${req.name}-${req.version}`;
+	}
+	catch {
+		// 无 api 段：整体 rename
+	}
+	try {
+		await f.rename(src, versionDir);
 	}
 	catch (e) {
-		return { stage: "lock_commit", ok: false, retryable: true, message: `生效切换失败：staging rename 失败（${String(e)}）——附录 A lock_commit：请稍后重试` };
+		return { stage: "lock_commit", ok: false, retryable: true, message: `生效切换失败：${src} rename 失败（${String(e)}）——附录 A lock_commit：请稍后重试` };
 	}
 	const c = await commitLockEntry(`${req.sharedRoot}/manifests.yaml`, req.name, req.version);
 	if (!c.ok) {
 		// 锁写失败回退 rename（锁未变则多余版本目录撤回，由锁前清场统一删；回退失败由 reconcile 兜底，D11）
 		try {
-			await f.rename(versionDir, req.staging);
+			await f.rename(versionDir, src);
 		}
 		catch {
 			// 残留版本目录不在锁内，release 装配忽略；对账自愈兜底
 		}
 		return { stage: "lock_commit", ok: false, retryable: true, message: c.message };
 	}
-	return { stage: "lock_commit", ok: true, message: `生效切换完成：${req.name}-${req.version} 就位 + ${c.message}（.bak 已备份原锁，D12）` };
+	return { stage: "lock_commit", ok: true, message: `生效切换完成：${src} → ${versionDir} 就位 + ${c.message}（.bak 已备份原锁，D12；web 树留 staging 由部署段消费）` };
 }
 
 /**
@@ -242,22 +255,41 @@ async function registerStage(req: InstallRequest): Promise<StageResult> {
 }
 
 async function deployWebStage(req: InstallRequest): Promise<StageResult> {
-	const versionDir = `${req.sharedRoot}/${req.name}-${req.version}`;
 	// R10 包内容口径：对验签后落位的 entry 产物重算 sha384 传入（防 manifest 与产物错配；
-	// 缺 web 段时 deployWeb 自行 no-op）
+	// 缺 web 段时 deployWeb 自行 no-op）。B-11 后 web 树不再随 lockCommit 进版本目录（发布面 =
+	// api 模块目录），故 stagingDir/integrity 源都在 staging。
 	const m = isObj(req.manifest) ? req.manifest : {};
 	const web = isObj(m.web) ? m.web : undefined;
 	const entry = web !== undefined && typeof web.entry === "string" ? web.entry : undefined;
 	let integrity: string | undefined;
 	if (entry !== undefined) {
 		try {
-			integrity = `sha384-${req.sha384B64(await fsFace().readFile(`${versionDir}/web/${entry}`))}`;
+			integrity = `sha384-${req.sha384B64(await fsFace().readFile(`${req.staging}/web/${entry}`))}`;
 		}
 		catch (e) {
-			return { stage: "deploying_web", ok: false, retryable: false, message: `部署失败：web.entry「${entry}」在版本目录不可读（${String(e)}）——manifest 与产物错配（R10）` };
+			return { stage: "deploying_web", ok: false, retryable: false, message: `部署失败：web.entry「${entry}」在 staging 不可读（${String(e)}）——manifest 与产物错配（R10）` };
 		}
 	}
-	return deployWeb({ ...req, stagingDir: versionDir, integrity });
+	return deployWeb({ ...req, stagingDir: req.staging, integrity });
+}
+
+/**
+ * 热更段适配（B-11 reload 触发面）：先落盘触发变更再 reloadAndAssert——reloadConfig 的
+ * unchanged 判定基于 config 文档 sha（oj-bin reload_bridge 真源），不落盘变更则热更恒
+ * unchanged 必失败。触发变更 = vars.ojm_install_seq 自增（PRD E5 实测先例：vars 段语义值
+ * 改动 applied 可热生效，无需改 mounts），经 text-edit 纯文本行操作（R18，注释/键序逐字保留）。
+ */
+async function reloadStage(req: InstallRequest): Promise<StageResult> {
+	const path = req.configPath ?? "config.yaml";
+	try {
+		const content = new TextDecoder().decode(await fsFace().readFile(path));
+		const bumped = bumpInstallSeq(content);
+		await atomicWriteText(path, bumped.content);
+	}
+	catch (e) {
+		return { stage: "reloading", ok: false, retryable: true, message: `热更失败：config.yaml 安装序号自增失败（${String(e)}）——reload unchanged 判定基于 config 文档 sha，无变更则热更不可能生效（B-11，PRD E5 口径）` };
+	}
+	return reloadAndAssert(req);
 }
 
 /** 终态审计（AC-P1-14）：done/partial 都落 oplog；自身失败仅日志（附录 B-5，不阻断任务终态） */
@@ -288,7 +320,7 @@ export const STAGES: StageDef[] = [
 	{ name: "lock_commit", run: lockCommitStage },
 	{ name: "registering", run: registerStage },
 	{ name: "deploying_web", run: deployWebStage },
-	{ name: "reloading", run: req => reloadAndAssert(req) },
+	{ name: "reloading", run: reloadStage },
 	{ name: "smoke", run: req => smoke(req) },
 	{ name: "audit", run: auditStage },
 ];

@@ -46,7 +46,6 @@ let staging: string;
 let taskDir: string;
 let siteModulesDir: string;
 let modulesJsonPath: string;
-let dataDir: string;
 let dbPath: string;
 let lockPath: string;
 let state: StateStore;
@@ -89,7 +88,7 @@ function manifestFixture(version = "0.1.0"): any {
 	};
 }
 
-/** bundle exec stub：tar list 返回 verbose listing、tar extract 真写出产物树、oj migrate 返回 S1-6 合同 JSON */
+/** bundle exec stub：tar list 返回 verbose listing、tar extract 真写出 §2.9 产物树（C2 manifest + api 模块目录 + web 树）、oj migrate 返回 S1-6 合同 JSON */
 function bundleExec(): ExecFace & { calls: string[][] } {
 	const calls: string[][] = [];
 	return {
@@ -98,14 +97,21 @@ function bundleExec(): ExecFace & { calls: string[][] } {
 			calls.push([...argv]);
 			if (argv[0] === "tar" && argv[1] === "-tvzf") {
 				const v = /demo-solution-([\w.-]+)\.tgz$/.exec(argv[2] ?? "")?.[1] ?? "0.1.0";
-				return { code: 0, stdout: `manifest.yaml\nweb/modules/demo-solution/${v}/entry.js\nweb/modules/demo-solution/${v}/main.css\n`, stderr: "" };
+				return { code: 0, stdout: `manifest.yaml\napi/demo-solution-${v}/manifest.yaml\napi/demo-solution-${v}/routes.js\napi/demo-solution-${v}/migrations/0001__init.sql\nweb/modules/demo-solution/${v}/entry.js\nweb/modules/demo-solution/${v}/main.css\n`, stderr: "" };
 			}
 			if (argv[0] === "tar" && argv[1] === "-xzf") {
 				const v = /demo-solution-([\w.-]+)\.tgz$/.exec(argv[2] ?? "")?.[1] ?? "0.1.0";
 				const dest = argv[4]!;
+				const apiDir = join(dest, "api", `demo-solution-${v}`, "migrations");
 				const dir = join(dest, "web", "modules", "demo-solution", v);
+				await fsp.mkdir(apiDir, { recursive: true });
 				await fsp.mkdir(dir, { recursive: true });
+				// C2 Form A（staging 根）
 				await fsp.writeFile(join(dest, "manifest.yaml"), `name: demo-solution\nversion: ${v}\n`);
+				// oj 原生清单（api 模块目录内，desc === summary，C2-31 消费面；JSON 文本 = g.yaml.parse stub 可解析形态）
+				await fsp.writeFile(join(dest, "api", `demo-solution-${v}`, "manifest.yaml"), JSON.stringify({ name: "demo-solution", desc: "演示方案", version: v }));
+				await fsp.writeFile(join(dest, "api", `demo-solution-${v}`, "routes.js"), "export {};\n");
+				await fsp.writeFile(join(apiDir, "0001__init.sql"), "CREATE TABLE note (id INTEGER PRIMARY KEY);\n");
 				await fsp.writeFile(join(dir, "entry.js"), ENTRY);
 				await fsp.writeFile(join(dir, "main.css"), CSS);
 				return { code: 0, stdout: "", stderr: "" };
@@ -129,14 +135,14 @@ function makeReq(overrides: Partial<InstallRequest> = {}): InstallRequest {
 		sharedRoot,
 		staging,
 		taskDir,
-		dataDir,
 		dbPath,
 		siteModulesDir,
 		modulesJsonPath,
 		apiPrefix: "/api/demo-solution",
+		configPath: join(root, "config.yaml"),
 		fetch: async () => ({ ok: true, status: 200, arrayBuffer: async () => ARCHIVE.slice().buffer }),
 		exec: bundleExec(),
-		reload: { reloadConfig: async () => ({ generation: 1, unchanged: false, applied: ["mounts"], restart_pending: [], kept_listener: [] }) },
+		reload: { reloadConfig: async () => ({ generation: 1, unchanged: false, applied: ["vars"], restart_pending: [], kept_listener: [] }) },
 		sha256Hex: d => createHash("sha256").update(d).digest("hex"),
 		sha384B64: sha384b64,
 		hostVersions: { "@oj-module/runtime": "0.1.77" },
@@ -157,10 +163,12 @@ beforeEach(async () => {
 	lockPath = join(sharedRoot, "manifests.yaml");
 	siteModulesDir = join(root, "dist", "modules");
 	modulesJsonPath = join(root, "dist", "modules.json");
-	dataDir = root;
 	dbPath = join(root, "db.sqlite");
 	await fsp.writeFile(dbPath, new TextEncoder().encode("sqlite-header\n"));
+	// 站点 config.yaml 夹具（reloading 段 vars.ojm_install_seq 自增消费面；模板 config.yaml 随发形态）
+	await fsp.writeFile(join(root, "config.yaml"), "mounts: []\nserver:\n  reload_api: true\nvars:\n  ojm_install_seq: 0\n");
 	g.fs = nodeFsFace();
+	g.yaml = { parse: async (t: string) => JSON.parse(t) };
 	g.http = {};
 	dbo = installDb();
 	state = await createStateStore(join(sharedRoot, ".solutions", "state.yaml"));
@@ -170,6 +178,7 @@ afterEach(async () => {
 	g.fs = undefined;
 	g.http = undefined;
 	g.db = undefined;
+	g.yaml = undefined;
 	await fsp.rm(root, { recursive: true, force: true });
 });
 
@@ -191,8 +200,15 @@ describe("runInstall 全绿路径（步骤 stub，register/smoke/audit 走真实
 
 		// oj 原生扁平锁（D12）：name: version 字符串表，无嵌套无额外键
 		expect(parseLock(await fsp.readFile(lockPath, "utf8"))).toEqual({ "demo-solution": "0.1.0" });
-		// 版本目录就位（锁指向的目录先于锁落盘，S1-4 同序）
-		await fsp.access(join(sharedRoot, "demo-solution-0.1.0", "manifest.yaml"));
+		// 版本目录就位（锁指向的目录先于锁落盘，S1-4 同序）。B-11：发布面 = 包内 api 模块目录
+		// （oj 原生清单 + routes.js + migrations/，serve 装配消费面），web 树不进版本目录
+		const versionDir = join(sharedRoot, "demo-solution-0.1.0");
+		await fsp.access(join(versionDir, "manifest.yaml"));
+		await fsp.access(join(versionDir, "routes.js"));
+		await fsp.access(join(versionDir, "migrations", "0001__init.sql"));
+		await expect(fsp.access(join(versionDir, "web"))).rejects.toThrow();
+		// reloading 段触发变更已落盘：vars.ojm_install_seq 自增（B-11，PRD E5 口径）
+		expect(new TextDecoder().decode(await fsp.readFile(join(root, "config.yaml")))).toContain("ojm_install_seq: 1");
 		// web 产物落位 + modules.json 条目（R10 integrity 为包内容重算值）
 		await fsp.access(join(siteModulesDir, "demo-solution", "0.1.0", "entry.js"));
 		const list = JSON.parse(await fsp.readFile(modulesJsonPath, "utf8"));
@@ -407,6 +423,25 @@ describe("扁平锁写（D12）：.bak 备份 + 写后读回收敛（S1-3）", (
 		expect(r.ok).toBe(true);
 		expect(sabotaged).toBe(1);
 		expect(await readLock(lockPath)).toEqual({ "auth": "0.1.0", "demo-solution": "0.1.0" });
+	});
+
+	// oj 真机实测（0.1.78，B-11）：readFile/remove 对缺失目标抛 TypeError "invalid_argument"
+	// （无 .code）——首装（锁/modules.json 尚不存在）不得被 ENOENT 嗅探误判为坏锁而中断
+	it("首装锁缺失：oj 语义 TypeError invalid_argument 视同 ENOENT（isMissingPath）", async () => {
+		const ojLikeFs: FsFace = {
+			...nodeFsFace(),
+			readFile: async (path) => {
+				await fsp.access(path).then(() => undefined, () => {
+					throw new TypeError("invalid_argument");
+				});
+				return fsp.readFile(path);
+			},
+		};
+		g.fs = ojLikeFs;
+		const r = await commitLockEntry(lockPath, "demo-solution", "0.1.0");
+		expect(r.ok).toBe(true);
+		expect(await readLock(lockPath)).toEqual({ "demo-solution": "0.1.0" });
+		g.fs = nodeFsFace();
 	});
 });
 

@@ -2,9 +2,9 @@
 // （platform 特权 API，oj 0.1.75 起落地；S1-5.2 实测五键形状 {generation, unchanged, applied[],
 // restart_pending[], kept_listener[]}，与 POST /_system/config 同一 executor 同一把串行锁——
 // 并发第二次触发抛 busy 409）。终态断言（R18）：unchanged = config 改写未实际生效判失败
-// （幂等回显 = 热更目标未达成，重试不自愈）；expected 段键须逐一 ∈ applied——缺省 ["mounts"]
-// （anonymous 并入即 mounts 段生效；S1-5 实测 anonymous_paths 热改属 restart_pending 不可热生效，
-// vars 类自增段可经 ctx.expected 追加断言）。
+// （幂等回显 = 热更目标未达成，重试不自愈）；expected 段键须逐一 ∈ applied——缺省 ["vars"]
+// （B-11 安装触发面 = vars.ojm_install_seq 自增，PRD E5 实测 vars 可热生效；S1-5 实测
+// anonymous_paths 热改属 restart_pending 不可热生效，mounts 断言可经 ctx.expected 覆盖）。
 // reload 面经 ctx 注入（DIP）：生产 = (globalThis as any).server.reloadConfig 包装（P1-10 接线），
 // 测试 stub 注入成功/unchanged/抛错三态。
 
@@ -26,7 +26,7 @@ export interface ReloadFace {
 export interface ReloadContext extends InstallContext {
 	/** 注入式 reload 面（生产 = platform 特权 server.reloadConfig 包装；测试 stub） */
 	reload: ReloadFace
-	/** 须实际生效的段键（R18 终态断言）；缺省 ["mounts"] */
+	/** 须实际生效的段键（R18 终态断言）；缺省 ["vars"]（B-11 安装触发面） */
 	expected?: string[]
 }
 
@@ -61,7 +61,10 @@ export async function reloadAndAssert(ctx: ReloadContext): Promise<StageResult> 
 			message: "热更失败：reloadConfig 返回 unchanged——config 改写未实际生效（R18 终态断言：幂等回显 = 热更目标未达成，重试不自愈），请检查 config 写入段后重试安装",
 		};
 	}
-	const expected = ctx.expected ?? ["mounts"];
+	// 安装路径缺省期望 vars（B-11：reload 触发变更 = vars.ojm_install_seq 自增，PRD E5 实测
+	// vars 可热生效；unchanged 判定基于 config 文档 sha，安装器 reloading 段前置落盘自增）。
+	// anonymous 并入即 mounts 段生效的语义保留——调用方经 ctx.expected 显式覆盖。
+	const expected = ctx.expected ?? ["vars"];
 	const missing = expected.filter(k => !r.applied.includes(k));
 	if (missing.length > 0) {
 		return {

@@ -48,3 +48,22 @@ export function ensureReloadApi(content: string): { content: string, changed: bo
 	}
 	return { content: insertAnchor(content, "# ojm:reload", "reload_api: true"), changed: true };
 }
+
+/**
+ * 安装序号自增（B-11 reload 触发面；PRD E5 实测先例：vars 段语义值改动可热生效，而
+ * reloadConfig 的 unchanged 判定基于 config 文档 sha——不落盘变更则热更恒 unchanged）。
+ * R18 同纪律：纯文本行操作，注释/缩进/键序逐字保留，`ojm_install_seq: N` 整行自增为 N+1
+ * （行内尾注释原样保留）。键缺失/形状不符 = 可读报错不猜位置（键随模板 config.yaml 发布；
+ * 用户删行 = 显式退出热更触发，安装器拒绝静默安装）。
+ */
+export function bumpInstallSeq(content: string): { content: string, seq: number } {
+	const lines = content.split("\n");
+	const idx = lines.findIndex(l => /^\s*ojm_install_seq\s*:\s*\d+\s*(?:#.*)?$/.test(l));
+	if (idx === -1) {
+		throw new Error("text-edit: config.yaml 缺 ojm_install_seq: N 行（vars 安装序号，模板 config.yaml 随发，勿删）——reload 热更无变更可落（unchanged 恒真），安装终止于 reloading 段");
+	}
+	const m = /^(\s*ojm_install_seq\s*:\s*)(\d+)/.exec(lines[idx]!)!;
+	const seq = Number(m[2]) + 1;
+	lines[idx] = `${m[1]}${seq}${lines[idx]!.slice(m[0].length)}`;
+	return { content: lines.join("\n"), seq };
+}

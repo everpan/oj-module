@@ -36,6 +36,10 @@ export interface StageResult {
 	retryable?: boolean
 }
 
+function isObj(v: unknown): v is Record<string, unknown> {
+	return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
 /** tar 列表命令（逐字断言）：-tvzf verbose 形态是 validateTarListing 的输入契约（铁律①） */
 export function buildListCmd(file: string): string[] {
 	return ["tar", "-tvzf", file];
@@ -86,11 +90,91 @@ export async function extract(ctx: ExtractContext): Promise<StageResult> {
 			};
 		}
 		await flattenBundleRoot(ctx.staging);
-		return { stage: "extracting", ok: true, message: `解压完成：${lines.length} 个成员 → ${ctx.staging}/（单根已归平，§2.9 布局消费点；目录 rename 由 P1-10 落锁段接管）` };
+		const c31 = await checkApiSegment(ctx);
+		if (!c31.ok) {
+			return { stage: "extracting", ok: false, retryable: false, message: c31.message };
+		}
+		return { stage: "extracting", ok: true, message: `解压完成：${lines.length} 个成员 → ${ctx.staging}/（单根已归平，§2.9 布局消费点；C2-31 复核通过；目录 rename 由 P1-10 落锁段接管）` };
 	}
 	catch (e) {
 		return { stage: "extracting", ok: false, retryable: true, message: `解压失败：${String(e)}——附录 A extracting（S1-2 exec.run tar 三步范式）` };
 	}
+}
+
+/** oj 原生模块清单七键白名单（OJ-X 红线：manifest.rs 形态 name/desc/version/config/db/tables/deps） */
+const NATIVE_KEYS = new Set(["name", "desc", "version", "config", "db", "tables", "deps"]);
+
+/**
+ * C2-31 安装期复核纯函数（双端 DRY 于夹具，preflight 同纪律；构建侧同形实现在
+ * packages/cli/src/bundle.ts checkModuleManifest）：包内 oj 原生清单 ↔ C2 Form A 逐项钉住——
+ * name/version 三方一致、desc === summary（构建期映射真源；summary 缺省/多字节/空白边界）、
+ * 七键白名单（白名单外键 = OJ-X 红线，oj 不拒但契约拒）。只验不写：安装期改写 desc 等于
+ * 掩盖上游映射被篡改，必须拒装（附录 B-11 裁决备选的落地形态：bundle 侧 ojm build --bundle
+ * 已写原生清单，安装期复核即映射消费点）。
+ */
+export function checkModuleManifest(
+	c2: unknown,
+	native: unknown,
+	name: string,
+	version: string,
+): { ok: true } | { ok: false, message: string } {
+	if (!isObj(native)) {
+		return { ok: false, message: `包内原生清单不是键值对象（实为 ${native === null ? "null" : Array.isArray(native) ? "数组" : typeof native}）` };
+	}
+	const summary = isObj(c2) && typeof c2.summary === "string" ? c2.summary : undefined;
+	if (summary === undefined || summary.trim() === "") {
+		return { ok: false, message: "C2 manifest summary 缺省或空白——desc 映射无真源（C2-31/C2-04）" };
+	}
+	const desc = native.desc;
+	if (typeof desc !== "string" || desc.trim() === "") {
+		return { ok: false, message: "包内原生清单 desc 缺失或空白（oj Manifest 必填字段，serve 装配即失败）——C2-31" };
+	}
+	if (desc !== summary) {
+		return { ok: false, message: "包内原生清单 desc 与 C2 summary 不一致（构建期映射被篡改或上游不一致，拒装）——C2-31" };
+	}
+	if (native.name !== name) {
+		return { ok: false, message: `包内原生清单 name「${String(native.name)}」与安装身份「${name}」不一致——C2-31` };
+	}
+	if (native.version !== version) {
+		return { ok: false, message: `包内原生清单 version「${String(native.version)}」与安装身份「${version}」不一致——C2-31` };
+	}
+	const extra = Object.keys(native).filter(k => !NATIVE_KEYS.has(k));
+	if (extra.length > 0) {
+		return { ok: false, message: `包内原生清单含白名单外键「${extra.join("、")}」（七键 = name/desc/version/config/db/tables/deps，OJ-X 红线）——C2-31` };
+	}
+	return { ok: true };
+}
+
+/**
+ * C2-31 安装期复核接线（extracting 段收口）：manifest 声明 api 段而包内 api/<name>-<version>/
+ * 缺失 = 结构违约；包内 api 模块目录在则必复核其原生清单（web-only 包无 api 段 → 跳过）。
+ * yaml 解析走 oj 全局（market/api.ts 同款），解析失败按复核不通过处理（fail-closed）。
+ */
+async function checkApiSegment(ctx: ExtractContext): Promise<{ ok: true } | { ok: false, message: string }> {
+	const modDir = `${ctx.staging}/api/${ctx.name}-${ctx.version}`;
+	let inner: string[];
+	try {
+		inner = await fsFace().readdir(modDir);
+	}
+	catch {
+		const declared = isObj(ctx.manifest) && ctx.manifest.api !== undefined;
+		if (!declared) {
+			return { ok: true }; // web-only 方案：无 api 段，migrate 段同步跳过
+		}
+		return { ok: false, message: `解压复核失败：manifest 声明 api 段而包内 api/${ctx.name}-${ctx.version}/ 缺失（§2.9 结构违约）——C2-31` };
+	}
+	if (!inner.includes("manifest.yaml")) {
+		return { ok: false, message: `解压复核失败：api/${ctx.name}-${ctx.version}/ 缺 manifest.yaml（oj 原生清单，oj build 产物必带）——C2-31` };
+	}
+	const g = globalThis as { yaml?: { parse: (text: string) => Promise<unknown> } };
+	let native: unknown;
+	try {
+		native = await g.yaml!.parse(new TextDecoder().decode(await fsFace().readFile(`${modDir}/manifest.yaml`)));
+	}
+	catch (e) {
+		return { ok: false, message: `解压复核失败：api/${ctx.name}-${ctx.version}/manifest.yaml 不可解析（${String(e)}）——C2-31` };
+	}
+	return checkModuleManifest(ctx.manifest, native, ctx.name, ctx.version);
 }
 
 /**

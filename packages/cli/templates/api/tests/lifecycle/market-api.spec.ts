@@ -21,7 +21,7 @@ import { readLock, writeLock } from "../../src/_platform/_lifecycle/lock";
 import { createStateStore } from "../../src/_platform/_lifecycle/state";
 import { getTask, writeTask } from "../../src/_platform/_lifecycle/tasks";
 import { invalidateAllUsers } from "../../src/_platform/_shared/service/access";
-import { createMarketApi } from "../../src/_platform/market/api";
+import { createMarketApi, parseVersionsJson, versionsJsonPathOf } from "../../src/_platform/market/api";
 import { installDb } from "../fixture";
 
 const g = globalThis as any;
@@ -88,7 +88,6 @@ let staging: string;
 let taskDir: string;
 let siteModulesDir: string;
 let modulesJsonPath: string;
-let dataDir: string;
 let dbPath: string;
 let dbo: any;
 
@@ -128,20 +127,26 @@ function nodeFsFace(): FsFace {
 	};
 }
 
-/** bundle exec stub：tar list 返回 verbose listing、tar extract 写出全量 manifest 夹具（端点要真解析）、oj migrate 返回 S1-6 合同 JSON */
+/** bundle exec stub：tar list 返回 verbose listing、tar extract 写出 §2.9 全量夹具（端点要真解析）、oj migrate 返回 S1-6 合同 JSON */
 function bundleExec(): ExecFace {
 	return {
 		run: async (argv) => {
 			if (argv[0] === "tar" && argv[1] === "-tvzf") {
 				const v = /demo-solution-([\w.-]+)\.tgz$/.exec(argv[2] ?? "")?.[1] ?? "0.1.0";
-				return { code: 0, stdout: `manifest.yaml\nweb/modules/demo-solution/${v}/entry.js\nweb/modules/demo-solution/${v}/main.css\n`, stderr: "" };
+				return { code: 0, stdout: `manifest.yaml\napi/demo-solution-${v}/manifest.yaml\napi/demo-solution-${v}/routes.js\napi/demo-solution-${v}/migrations/0001__init.sql\nweb/modules/demo-solution/${v}/entry.js\nweb/modules/demo-solution/${v}/main.css\n`, stderr: "" };
 			}
 			if (argv[0] === "tar" && argv[1] === "-xzf") {
 				const v = /demo-solution-([\w.-]+)\.tgz$/.exec(argv[2] ?? "")?.[1] ?? "0.1.0";
 				const dest = argv[4]!;
+				const apiDir = join(dest, "api", `demo-solution-${v}`, "migrations");
 				const dir = join(dest, "web", "modules", "demo-solution", v);
+				await fsp.mkdir(apiDir, { recursive: true });
 				await fsp.mkdir(dir, { recursive: true });
 				await fsp.writeFile(join(dest, "manifest.yaml"), JSON.stringify(manifestFixture(v)));
+				// oj 原生清单（api 模块目录内，desc === summary，C2-31 消费面）
+				await fsp.writeFile(join(dest, "api", `demo-solution-${v}`, "manifest.yaml"), JSON.stringify({ name: "demo-solution", desc: "演示方案", version: v }));
+				await fsp.writeFile(join(dest, "api", `demo-solution-${v}`, "routes.js"), "export {};\n");
+				await fsp.writeFile(join(apiDir, "0001__init.sql"), "CREATE TABLE note (id INTEGER PRIMARY KEY);\n");
 				await fsp.writeFile(join(dir, "entry.js"), ENTRY);
 				await fsp.writeFile(join(dir, "main.css"), CSS);
 				return { code: 0, stdout: "", stderr: "" };
@@ -155,7 +160,7 @@ function bundleExec(): ExecFace {
 }
 
 const reloadStub: ReloadFace = {
-	reloadConfig: async () => ({ generation: 1, unchanged: false, applied: ["mounts"], restart_pending: [], kept_listener: [] }),
+	reloadConfig: async () => ({ generation: 1, unchanged: false, applied: ["vars"], restart_pending: [], kept_listener: [] }),
 };
 
 function makeEnv(overrides: Partial<MarketEnv> = {}): MarketEnv {
@@ -164,11 +169,11 @@ function makeEnv(overrides: Partial<MarketEnv> = {}): MarketEnv {
 		staging,
 		taskDir,
 		statePath: join(sharedRoot, ".solutions", "state.yaml"),
-		dataDir,
 		dbPath,
 		siteModulesDir,
 		modulesJsonPath,
 		apiPrefix: "/api/demo-solution",
+		configPath: join(root, "config.yaml"),
 		cdnBase: async () => CDN,
 		fetch: cdnFetch,
 		exec: bundleExec(),
@@ -188,9 +193,10 @@ beforeEach(async () => {
 	taskDir = join(sharedRoot, ".install-tasks");
 	siteModulesDir = join(root, "dist", "modules");
 	modulesJsonPath = join(root, "dist", "modules.json");
-	dataDir = root;
 	dbPath = join(root, "db.sqlite");
 	await fsp.writeFile(dbPath, new TextEncoder().encode("sqlite-header\n"));
+	// 站点 config.yaml 夹具（reloading 段 vars.ojm_install_seq 自增消费面；模板 config.yaml 随发形态）
+	await fsp.writeFile(join(root, "config.yaml"), "mounts: []\nserver:\n  reload_api: true\nvars:\n  ojm_install_seq: 0\n");
 	g.fs = nodeFsFace();
 	dbo = installDb();
 	dbo.prepare("INSERT OR IGNORE INTO sys_user_role (user_id, role_name) VALUES (?, ?)").run(1, "superadmin");
@@ -312,14 +318,18 @@ describe("POST install（file：上传载荷，upload/api.ts 先例双路径）"
 		const exec: ExecFace = {
 			run: async (argv) => {
 				if (argv[0] === "tar" && argv[1] === "-tvzf")
-					return { code: 0, stdout: "demo-solution-0.1.0/manifest.yaml\ndemo-solution-0.1.0/web/modules/demo-solution/0.1.0/entry.js\n", stderr: "" };
+					return { code: 0, stdout: "demo-solution-0.1.0/manifest.yaml\ndemo-solution-0.1.0/api/demo-solution-0.1.0/manifest.yaml\ndemo-solution-0.1.0/api/demo-solution-0.1.0/routes.js\ndemo-solution-0.1.0/web/modules/demo-solution/0.1.0/entry.js\n", stderr: "" };
 				if (argv[0] === "tar" && argv[1] === "-xzf") {
 					// §2.9 单根布局原样解包 + flattenBundleRoot 归平（由 manifestOfUpload 调用）
 					const dest = argv[4]!;
 					const rootDir = join(dest, "demo-solution-0.1.0");
+					await fsp.mkdir(join(rootDir, "api", "demo-solution-0.1.0"), { recursive: true });
 					await fsp.mkdir(join(rootDir, "web", "modules", "demo-solution", "0.1.0"), { recursive: true });
 					const { archive: _archive, ...formA } = manifestFixture("0.1.0");
 					await fsp.writeFile(join(rootDir, "manifest.yaml"), JSON.stringify(formA));
+					// oj 原生清单（api 模块目录内，desc === summary，C2-31 消费面）
+					await fsp.writeFile(join(rootDir, "api", "demo-solution-0.1.0", "manifest.yaml"), JSON.stringify({ name: "demo-solution", desc: "演示方案", version: "0.1.0" }));
+					await fsp.writeFile(join(rootDir, "api", "demo-solution-0.1.0", "routes.js"), "export {};\n");
 					await fsp.writeFile(join(rootDir, "web", "modules", "demo-solution", "0.1.0", "entry.js"), ENTRY);
 					await fsp.writeFile(join(rootDir, "web", "modules", "demo-solution", "0.1.0", "main.css"), "/* demo */");
 					return { code: 0, stdout: "", stderr: "" };
@@ -343,10 +353,12 @@ describe("POST install（file：上传载荷，upload/api.ts 先例双路径）"
 		// verify 段对 injected sha256 fail-closed 复核同批字节（R10 语义保持）→ done
 		expect(rec?.status).toBe("done");
 		expect(rec?.stages.map(s => s.stage)).toEqual(STAGE_ORDER);
-		// 单根归平：lockCommit rename 后版本目录即包内容（manifest.yaml 在版本目录根，无嵌套包根）
+		// 单根归平 + B-11 发布面：lockCommit rename 后版本目录 = api 模块目录（原生清单在根），
+		// web 树经 deploying_web 段从 staging 复制进站点 <dist>/modules
 		const versionDir = join(root, "modules", "demo-solution-0.1.0");
 		expect(await fsp.readFile(join(versionDir, "manifest.yaml"), "utf8")).toContain("demo-solution");
-		expect(await fsp.readdir(join(versionDir, "web", "modules", "demo-solution", "0.1.0"))).toEqual(["entry.js", "main.css"]);
+		expect(await fsp.readdir(join(versionDir))).toEqual(["manifest.yaml", "routes.js"]);
+		expect(await fsp.readdir(join(siteModulesDir, "demo-solution", "0.1.0"))).toEqual(["entry.js", "main.css"]);
 	});
 
 	it("缺文件 → 400 可读失败", async () => {
@@ -480,5 +492,47 @@ describe("GET index（CDN bundles.yaml no-cache 拉取 + 本地 state 对比）"
 		}));
 		await api.index.get();
 		expect(last?.status).toBe(502);
+	});
+});
+
+describe("hostVersions 缺省接线（B-11：C2-09 比对真源 = <dist>/versions.json，ojm 宿主构建产物）", () => {
+	it("versionsJsonPathOf 布局推导：modules.json 同目录 versions.json（相对/绝对同构）", () => {
+		expect(versionsJsonPathOf("dist/modules.json")).toBe("dist/versions.json");
+		expect(versionsJsonPathOf("/site/dist/modules.json")).toBe("/site/dist/versions.json");
+		expect(versionsJsonPathOf("modules.json")).toBe("versions.json");
+	});
+
+	it("parseVersionsJson：{packageName: version} 全字符串表 → 解析；任何违约（非对象/值非字符串/坏 JSON）→ undefined（fail-closed 不猜）", () => {
+		expect(parseVersionsJson(JSON.stringify({ "@oj-module/runtime": "0.1.77", "react": "19.0.0" })))
+			.toEqual({ "@oj-module/runtime": "0.1.77", "react": "19.0.0" });
+		for (const bad of ["not-json", "[]", "42", JSON.stringify({ react: 19 }), JSON.stringify({ a: null })]) {
+			expect(parseVersionsJson(bad)).toBeUndefined();
+		}
+	});
+
+	it("集成：env 未注入 hostVersions + dist/versions.json 在盘 → install 全链 done（C2-09 比对走缺省真源）", async () => {
+		await fsp.mkdir(dirname(modulesJsonPath), { recursive: true });
+		await fsp.writeFile(join(dirname(modulesJsonPath), "versions.json"), JSON.stringify({ "@oj-module/runtime": "0.1.77" }));
+		const env = makeEnv();
+		delete (env as Partial<MarketEnv>).hostVersions;
+		const api = createMarketApi(env);
+		g.http = { user: { id: 1 }, body: { name: "demo-solution", version: "0.1.0", source: "cdn" } };
+		await api.install.post();
+		expect(last?.status).toBe(200);
+		const taskId = (last?.data as { task_id?: unknown })?.task_id as string;
+		expect((await getTask(taskDir, taskId))?.status).toBe("done");
+	});
+
+	it("集成：versions.json 缺失且未注入 → C2-09 fail-closed，install 终态 failed@preflight", async () => {
+		const env = makeEnv();
+		delete (env as Partial<MarketEnv>).hostVersions;
+		const api = createMarketApi(env);
+		g.http = { user: { id: 1 }, body: { name: "demo-solution", version: "0.1.0", source: "cdn" } };
+		await api.install.post();
+		const taskId = (last?.data as { task_id?: unknown })?.task_id as string;
+		const rec = await getTask(taskDir, taskId);
+		expect(rec?.status).toBe("failed");
+		expect(rec?.stage).toBe("preflight");
+		expect(rec?.stages[0]?.message).toContain("C2-09");
 	});
 });

@@ -30,6 +30,19 @@ export function randomId(): string {
 	throw new Error("atomic: 随机数面不可用（globalThis.crypto 缺 randomUUID/randomHex）");
 }
 
+/**
+ * 「路径不存在」判别（isolate 双端，B-11 真机实测补面）：Node/测试侧 = NotFound 且 .code
+ * 为 ENOENT；oj 真机（0.1.78 实测）= TypeError "invalid_argument"（deno ext 对缺失目标的
+ * readFile/remove 报错形态，无 .code）。前置：调用方 fs 调用形状合法（路径为字符串）——
+ * 此时 invalid_argument 只能来自缺失目标，语义等价 ENOENT。
+ */
+export function isMissingPath(e: unknown): boolean {
+	if ((e as { code?: string } | null)?.code === "ENOENT") {
+		return true;
+	}
+	return e instanceof TypeError && e.message === "invalid_argument";
+}
+
 export function fsFace(): FsFace {
 	const f = (globalThis as { fs?: Partial<FsFace> & { readDir?: (path: string) => Promise<AsyncIterable<{ name: string }>> } }).fs;
 	if (f === undefined) {

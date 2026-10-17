@@ -15,10 +15,12 @@ import type { FsFace } from "../atomic";
 import type { ExecFace } from "./extract";
 import type { InstallContext } from "./preflight";
 import { fsFace } from "../atomic";
+import { serializeLock } from "../lock";
+import { copyTree } from "./deploy-web";
 
 export interface MigrateContext extends InstallContext {
-	/** 站点数据目录（`oj migrate -d` 实参） */
-	dataDir: string
+	/** 安装暂存根（§2.9 解包产物；api/<name>-<version>/ 模块目录由此物化进迁移服务目录） */
+	staging: string
 	/** sqlite 库文件路径（R14 备份源；备份落同目录 <db>.bak-<ts>） */
 	dbPath: string
 	/** 注入式 exec 面（生产 = 平台 exec.run 包装；测试 stub 不真跑 oj，同 extract DIP） */
@@ -57,6 +59,18 @@ export interface MigrateOutput {
 /** oj migrate 命令（逐字断言）：与 platform.exec 白名单逐字对齐（S1-2/S1-6 基座），不得增删旗标 */
 export function buildMigrateCmd(dir: string, module: string): string[] {
 	return ["oj", "migrate", "--format", "json", "-d", dir, module];
+}
+
+/**
+ * 迁移服务目录布局推导（B-11 核心）：staging 的兄弟目录。D11 迁移先于落锁，模块尚不在站点锁内，
+ * sharedRoot 不可作 `-d`（oj release discover = load_lock 逐条目找 <dir>/<m>-<v>/，oj-bin
+ * manifest.rs 真源）；svc 目录以「扁平锁 manifests.yaml + <name>-<version>/ 模块目录拷贝」
+ * 物化 release 形态，oj is_release 判定（目录含 manifests.yaml 即 release，serve_cmd.rs 真源）
+ * 使 dev 站点上同样走 release discover。`-migrate` 后缀不与任何 C2-01 合法名（版本目录名形态
+ * <name>-<version>）相撞——安装器仅在此目录上跑一次 migrate 即删，无共存面。
+ */
+export function migrateSvcDirOf(staging: string): string {
+	return `${staging}-migrate`;
 }
 
 /**
@@ -170,6 +184,16 @@ async function pruneBackups(dbPath: string, f: FsFace): Promise<void> {
 }
 
 export async function migrate(ctx: MigrateContext): Promise<StageResult> {
+	const f = fsFace();
+	const modDir = `${ctx.staging}/api/${ctx.name}-${ctx.version}`;
+	try {
+		await f.readdir(modDir);
+	}
+	catch {
+		// 包内无 api 段（web-only 方案，§2.9）：无迁移可跑，C2-31 复核已在 extracting 段钉过
+		// api 段声明与包内容的一致性——这里零 exec 零备份直接放行
+		return { stage: "migrating", ok: true, message: `迁移跳过：包内无 api/${ctx.name}-${ctx.version}/ 段（web-only 方案无迁移，C2 §2.9）` };
+	}
 	// 第一步 R14：前置备份——备份不可用即不迁移（fail-closed，exec 零调用，库保持原状）
 	let bak: string;
 	try {
@@ -178,9 +202,29 @@ export async function migrate(ctx: MigrateContext): Promise<StageResult> {
 	catch (e) {
 		return { stage: "migrating", ok: false, retryable: true, message: `迁移失败：前置备份不可用（${String(e)}）——无备份不迁移（R14），未执行 oj migrate，库保持原状` };
 	}
+	// 第二步物化迁移服务目录（B-11）：staging 兄弟目录、release 形态（扁平锁 + 模块目录拷贝）；
+	// 锁恰一条目——oj 只 discover 本模块
+	const svcDir = migrateSvcDirOf(ctx.staging);
+	// 残留先清（上次崩溃遗留不污染本次输入）；oj 真机实测（0.1.78）：remove 不存在的路径即使
+	// force:true 也抛 TypeError: invalid_argument（deno ext 脚本对缺失目标的 force 语义）——
+	// 首装无残留是常态，此清除失败一律吞掉（真有阻碍物时下方 mkdir 自会报出真实错误）
 	try {
-		// 第二步 exec：成败真源 = exit code（S1-6 实测；逐模块 continue-and-collect 由 oj 保证）
-		const r = await ctx.exec.run(buildMigrateCmd(ctx.dataDir, ctx.name));
+		await f.remove(svcDir, { recursive: true, force: true });
+	}
+	catch {
+		// 目标不存在 = 首装，正常路径（installer lockCommit 同一口径）
+	}
+	try {
+		await f.mkdir(svcDir, { recursive: true });
+		await f.writeFile(`${svcDir}/manifests.yaml`, new TextEncoder().encode(serializeLock({ [ctx.name]: ctx.version })));
+		await copyTree(modDir, `${svcDir}/${ctx.name}-${ctx.version}`, f);
+	}
+	catch (e) {
+		return { stage: "migrating", ok: false, retryable: true, message: `迁移失败：迁移服务目录物化失败（${String(e)}）——附录 A migrating；备份 ${bak} 可供回退` };
+	}
+	try {
+		// 第三步 exec：成败真源 = exit code（S1-6 实测；逐模块 continue-and-collect 由 oj 保证）
+		const r = await ctx.exec.run(buildMigrateCmd(svcDir, ctx.name));
 		if (r.code !== 0) {
 			return {
 				stage: "migrating",
@@ -189,7 +233,7 @@ export async function migrate(ctx: MigrateContext): Promise<StageResult> {
 				message: `迁移失败：oj migrate exit ${r.code}（附录 A migrating：数据已保留原状，请修复后重试；备份 ${bak} 可供回退）——输出摘要：${(r.stderr || r.stdout).trim().slice(0, 500)}`,
 			};
 		}
-		// 第三步解析：exit 0 但输出违约属契约破坏，重试不自愈（retryable=false）
+		// 第四步解析：exit 0 但输出违约属契约破坏，重试不自愈（retryable=false）
 		const parsed = parseMigrateOutput(r.stdout);
 		if (!parsed.ok) {
 			return { stage: "migrating", ok: false, retryable: false, message: `迁移失败：${parsed.message}（备份 ${bak} 可供回退；附录 A migrating）` };
@@ -204,7 +248,7 @@ export async function migrate(ctx: MigrateContext): Promise<StageResult> {
 				message: `迁移失败：${failed.length} 个模块迁移未通过（附录 A migrating：数据已保留原状；备份 ${bak} 可供回退）——${failed.map(x => `${x.module}: ${String(x.error ?? "ok=false")}`).join("；").slice(0, 500)}`,
 			};
 		}
-		// 第四步禁降版红线（OJ-9，M003 同源）：目标产物 max seq < 账本 head 拒切；applied 为空
+		// 第五步禁降版红线（OJ-9，M003 同源）：目标产物 max seq < 账本 head 拒切；applied 为空
 		// （no-op 同版重装）无从判定，交由 oj 自身 M003/missing-from-filesystem 门禁兜底
 		if (ctx.ledgerHead !== undefined) {
 			const target = maxAppliedSeq(parsed.output);
@@ -226,5 +270,14 @@ export async function migrate(ctx: MigrateContext): Promise<StageResult> {
 	}
 	catch (e) {
 		return { stage: "migrating", ok: false, retryable: true, message: `迁移失败：${String(e)}（备份 ${bak} 可供回退；附录 A migrating）` };
+	}
+	finally {
+		// svc 目录运行后清场（成败皆清）：staging 本体原样保留（lock_commit 的 rename 源）
+		try {
+			await f.remove(svcDir, { recursive: true, force: true });
+		}
+		catch {
+			// 清理失败不掩盖迁移结果（svc 目录不在锁内，release 装配忽略）
+		}
 	}
 }

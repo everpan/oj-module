@@ -319,3 +319,28 @@ oj 迁移只前向、无 down：账本超前产物即 M003 拒启（`oj/src/migr
 
 ### 非目标
 不做自动数据回滚（数据迁移的逆变换不在本条范围）；不改 release 缺省 `migrate_on_start: verify` 门禁；不改账本格式。
+
+## PR-9（P1-13b）：isolate crypto 补 sha384 原语
+
+> **状态：待提（非阻塞）。** P1-13b 以纯 JS 过渡实现（`templates/api/src/_platform/_lifecycle/sha384.ts`，
+> FIPS 180-4 向量全过）先行顶住；上游落地后即替换（过渡文件头部有标注）。
+
+**标题**：`crypto: isolate 全局面补 sha384Hex（或 sha384 字节摘要）`
+
+### 背景
+oj isolate `crypto` 全局（`bootstrap.js`）现有 sha256Hex/md5Hex/randomHex/getRandomValues/aesGcm/verifyEd25519，
+无 sha384；也无 crypto.subtle 可组合。解决方案市场契约 C2-28 的 `web.integrity` 钉死
+`sha384-<base64>`（ojm build 于 Node 侧写入，安装器在 isolate 内同算法重算比对，R10 fail-closed）——
+真机（0.1.78）安装链在比对点必失败，纯 JS 实现属不得已（MB 级 web 产物上逐块 80 轮，
+BigInt 版不可接受，hi/lo 手写版为性能与正确性的平衡点）。
+
+### 诉求形态（任一即可）
+1. `crypto.sha384Hex(data: Uint8Array): string`（与 sha256Hex 同形）；
+2. `crypto.sha384(data: Uint8Array): Uint8Array` 字节面。
+
+### 验收标准
+与 Node `crypto.createHash("sha384")` 对任意长度输入逐字一致（含 128 字节块边界邻域）；
+MB 级输入耗时在 sha256Hex 同量级。
+
+### 非目标
+不要求 sha512/sha224/sha256 全家桶补齐；不改 C2-28 的 integrity 值形态。

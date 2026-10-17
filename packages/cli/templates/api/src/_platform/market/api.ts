@@ -17,6 +17,7 @@ import type { ReloadFace } from "../_lifecycle/steps/reload";
 import { fsFace } from "../_lifecycle/atomic";
 import { runInstall, setEnabled } from "../_lifecycle/installer";
 import { compareVersions } from "../_lifecycle/semver";
+import { sha384B64 } from "../_lifecycle/sha384";
 import { createStateStore } from "../_lifecycle/state";
 import { flattenBundleRoot } from "../_lifecycle/steps/extract";
 import { getTask } from "../_lifecycle/tasks";
@@ -43,9 +44,7 @@ export interface MarketEnv {
 	taskDir: string
 	/** sidecar 状态文件（.solutions/state.yaml） */
 	statePath: string
-	/** 站点数据目录（`oj migrate -d` 实参） */
-	dataDir: string
-	/** sqlite 库文件路径（R14 备份源） */
+	/** sqlite 库文件路径（R14 备份源；模板 config.yaml `sqlite://db.sqlite` → 站点根 db.sqlite） */
 	dbPath: string
 	/** 站点 web 模块目录（<dist>/modules） */
 	siteModulesDir: string
@@ -53,9 +52,11 @@ export interface MarketEnv {
 	modulesJsonPath: string
 	/** API 前缀（smoke 探针 URL 前缀） */
 	apiPrefix: string
+	/** 站点 config.yaml 路径（reloading 段 vars.ojm_install_seq 自增落盘处；缺省 config.yaml） */
+	configPath?: string
 	/** CDN 基址（缺省读 sys_setting `framework.market_cdn_url`；测试注入） */
 	cdnBase?: () => Promise<string | null>
-	/** 注入面（DIP）：缺省回落 isolate 全局 fetch / exec.run / server.reloadConfig / crypto.sha384B64 */
+	/** 注入面（DIP）：缺省回落 isolate 全局 fetch / exec.run / server.reloadConfig / 本地 sha384（过渡实现） */
 	fetch?: FetchFace
 	exec?: ExecFace
 	reload?: ReloadFace
@@ -65,10 +66,52 @@ export interface MarketEnv {
 	/** 迁移账本 head（缺省 null = 跳过禁降版判定，同 installer） */
 	ledgerHead?: number | bigint | null
 	/**
-	 * 宿主 versions.json（C2-09 peerRuntime 比对真源，键 = 包名）。缺省不注入——manifest 声明
-	 * peerRuntime 即预检 fail-closed 拒装（C2-09 语义），真源读取位由部署层（P1-16 e2e）钉定。
+	 * 宿主 versions.json（C2-09 peerRuntime 比对真源，键 = 包名）。缺省读 <dist>/versions.json
+	 * （ojm 宿主构建产物，与 modules.json 同目录，B-11 接线）；不可得 → undefined，manifest 声明
+	 * peerRuntime 即预检 fail-closed 拒装（C2-09 语义保持）。
 	 */
 	hostVersions?: Record<string, string>
+}
+
+/** 宿主 versions.json 布局推导（B-11）：与 modules.json 同目录（<dist>/versions.json） */
+export function versionsJsonPathOf(modulesJsonPath: string): string {
+	const slash = modulesJsonPath.lastIndexOf("/");
+	return slash === -1 ? "versions.json" : `${modulesJsonPath.slice(0, slash)}/versions.json`;
+}
+
+/** 宿主 versions.json 解析（纯函数）：{packageName: version} 全字符串表；任何违约 → undefined（fail-closed 不猜） */
+export function parseVersionsJson(text: string): Record<string, string> | undefined {
+	let raw: unknown;
+	try {
+		raw = JSON.parse(text);
+	}
+	catch {
+		return undefined;
+	}
+	if (!isObj(raw)) {
+		return undefined;
+	}
+	const out: Record<string, string> = {};
+	for (const [k, v] of Object.entries(raw)) {
+		if (typeof v !== "string") {
+			return undefined;
+		}
+		out[k] = v;
+	}
+	return out;
+}
+
+/** hostVersions 注入缺省：显式注入优先，否则读 <dist>/versions.json；不可得 → undefined（C2-09 fail-closed） */
+async function hostVersionsOf(env: MarketEnv): Promise<Record<string, string> | undefined> {
+	if (env.hostVersions !== undefined) {
+		return env.hostVersions;
+	}
+	try {
+		return parseVersionsJson(new TextDecoder().decode(await fsFace().readFile(versionsJsonPathOf(env.modulesJsonPath))));
+	}
+	catch {
+		return undefined;
+	}
 }
 
 /** D3 单 mount 形态的 fs 根相对保守缺省（生产口径 P1-16 e2e 钉定；全字段可覆盖） */
@@ -78,8 +121,7 @@ export function marketEnv(): MarketEnv {
 		staging: "modules/.staging",
 		taskDir: "modules/.install-tasks",
 		statePath: "modules/.solutions/state.yaml",
-		dataDir: "data",
-		dbPath: "data/db.sqlite",
+		dbPath: "db.sqlite",
 		siteModulesDir: "dist/modules",
 		modulesJsonPath: "dist/modules.json",
 		apiPrefix: "/api",
@@ -110,8 +152,8 @@ function reloadOf(env: MarketEnv): ReloadFace {
 }
 
 function sha384Of(env: MarketEnv): (data: Uint8Array) => string {
-	const g = globalThis as { crypto?: { sha384B64?: (data: Uint8Array) => string } };
-	return env.sha384B64 ?? ((data: Uint8Array) => g.crypto!.sha384B64!(data));
+	// oj isolate 无 sha384 原语（0.1.78 实测）→ 纯 JS 过渡实现兜底；isolate 原语落地后可换回
+	return env.sha384B64 ?? sha384B64;
 }
 
 function sha256Of(env: MarketEnv): (data: Uint8Array) => string {
@@ -271,18 +313,18 @@ async function installBody(env: MarketEnv): Promise<{ task_id: string }> {
 		sharedRoot: env.sharedRoot,
 		staging: env.staging,
 		taskDir: env.taskDir,
-		dataDir: env.dataDir,
 		dbPath: env.dbPath,
 		siteModulesDir: env.siteModulesDir,
 		modulesJsonPath: env.modulesJsonPath,
 		apiPrefix: env.apiPrefix,
+		configPath: env.configPath,
 		fetch: fetch as FetchFace,
 		exec: execOf(env),
 		reload: reloadOf(env),
 		sha384B64: sha384Of(env),
 		sha256Hex: env.sha256Hex,
 		ledgerHead: env.ledgerHead ?? null,
-		hostVersions: env.hostVersions,
+		hostVersions: await hostVersionsOf(env),
 	});
 	return { task_id: task.id };
 }

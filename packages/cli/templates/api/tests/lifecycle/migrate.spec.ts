@@ -15,7 +15,8 @@ import * as fsp from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { buildMigrateCmd, maxAppliedSeq, migrate, parseMigrateOutput, rollbackGuard } from "../../src/_platform/_lifecycle/steps/migrate";
+import { parseLock } from "../../src/_platform/_lifecycle/lock";
+import { buildMigrateCmd, maxAppliedSeq, migrate, migrateSvcDirOf, parseMigrateOutput, rollbackGuard } from "../../src/_platform/_lifecycle/steps/migrate";
 
 const g = globalThis as any;
 const DB_BYTES = new TextEncoder().encode("sqlite-header-bytes\n");
@@ -25,11 +26,19 @@ const OK_LINE = JSON.stringify({ results: [{ module: "demo-solution", ok: true, 
 
 let root: string;
 let dbPath: string;
+let staging: string;
 
 beforeEach(async () => {
 	root = await fsp.mkdtemp(join(tmpdir(), "ojm-migrate-"));
 	dbPath = join(root, "db.sqlite");
 	await fsp.writeFile(dbPath, DB_BYTES);
+	// §2.9 解包后的扁平 staging：api/<name>-<version>/ 为 oj build 产物模块目录（原生清单 + 迁移 SQL）
+	staging = join(root, "modules", ".staging");
+	const modDir = join(staging, "api", "demo-solution-0.1.0");
+	await fsp.mkdir(join(modDir, "migrations"), { recursive: true });
+	await fsp.writeFile(join(modDir, "manifest.yaml"), "name: demo-solution\ndesc: 演示方案\nversion: 0.1.0\n");
+	await fsp.writeFile(join(modDir, "routes.js"), "export {};\n");
+	await fsp.writeFile(join(modDir, "migrations", "0001__init.sql"), "CREATE TABLE note (id INTEGER PRIMARY KEY);\n");
 	g.fs = nodeFsFace();
 });
 
@@ -85,7 +94,7 @@ function mgCtx(overrides: Partial<MigrateContext> = {}): MigrateContext {
 		name: "demo-solution",
 		version: "0.1.0",
 		state: recordingState(),
-		dataDir: root,
+		staging,
 		dbPath,
 		exec: okExec(),
 		...overrides,
@@ -213,7 +222,7 @@ describe("migrate（stage=migrating：R14 备份 → exec → 解析 → 禁降�
 		const baks = (await fsp.readdir(root)).filter(n => n.startsWith("db.sqlite.bak-"));
 		expect(baks).toHaveLength(1);
 		expect(new Uint8Array(await fsp.readFile(join(root, baks[0]!)))).toEqual(DB_BYTES);
-		expect(exec.calls[0]).toEqual(buildMigrateCmd(root, "demo-solution"));
+		expect(exec.calls[0]).toEqual(buildMigrateCmd(migrateSvcDirOf(staging), "demo-solution"));
 		expect(state.writes).toBe(0);
 	});
 
@@ -299,5 +308,82 @@ describe("migrate（stage=migrating：R14 备份 → exec → 解析 → 禁降�
 		const r = await migrate(mgCtx({ exec }));
 		expect(r.ok).toBe(false);
 		expect(r.retryable).toBe(true);
+	});
+});
+
+// B-11：`oj migrate -d` 必须指向 oj release discover 可解析的目录——D11 迁移先于落锁，模块
+// 尚不在站点锁内，站点 sharedRoot 不可作 -d；安装器物化「迁移服务目录」（staging 兄弟目录，
+// release 形态 = 扁平锁 manifests.yaml + <name>-<version>/ 模块目录拷贝），oj is_release 判定
+// （目录含 manifests.yaml 即 release）使 dev 站点上同样走 release discover（oj-bin serve_cmd.rs
+// is_release + manifest.rs discover 真源）。运行前后svc 目录都不得残留。
+describe("迁移服务目录（B-11：-d 指向 release 形态 svc 目录，oj discover 可解析）", () => {
+	it("migrateSvcDirOf 布局推导：staging 兄弟目录 <staging>-migrate（相对/绝对路径同构）", () => {
+		expect(migrateSvcDirOf("modules/.staging")).toBe("modules/.staging-migrate");
+		expect(migrateSvcDirOf("/site/modules/.staging")).toBe("/site/modules/.staging-migrate");
+	});
+
+	it("物化 + 清场：svc 目录含扁平锁（恰一条目，D12）与模块目录全量拷贝（原生清单/迁移 SQL 随行）；exec -d 逐字指向；运行后清场", async () => {
+		// svc 目录在 migrate 返回前已被 finally 清场——物化内容须在 exec（oj migrate 视角）运行时点验证
+		let capturedDir: string | null = null;
+		let lockSeen: Record<string, string> | null = null;
+		let modFilesSeen: string[] | null = null;
+		const exec = recordingExec(async (argv) => {
+			capturedDir = argv[5] ?? null;
+			lockSeen = parseLock(await fsp.readFile(join(capturedDir!, "manifests.yaml"), "utf8"));
+			modFilesSeen = (await fsp.readdir(join(capturedDir!, "demo-solution-0.1.0"))).sort();
+			await fsp.access(join(capturedDir!, "demo-solution-0.1.0", "migrations", "0001__init.sql"));
+			return { code: 0, stdout: `${OK_LINE}\n`, stderr: "" };
+		});
+		const r = await migrate(mgCtx({ exec }));
+		expect(r.ok).toBe(true);
+		expect(capturedDir).toBe(migrateSvcDirOf(staging));
+		expect(lockSeen).toEqual({ "demo-solution": "0.1.0" });
+		expect(modFilesSeen).toEqual(["manifest.yaml", "migrations", "routes.js"]);
+		// 运行后清场：svc 目录不得残留（staging 本体原样保留，lock_commit 的 rename 源）
+		await expect(fsp.access(migrateSvcDirOf(staging))).rejects.toThrow();
+		await fsp.access(join(staging, "api", "demo-solution-0.1.0", "manifest.yaml"));
+	});
+
+	it("失败路径（exit≠0）svc 目录同样清场（finally 语义）", async () => {
+		const exec = recordingExec(async () => ({ code: 1, stdout: "", stderr: "boom" }));
+		const r = await migrate(mgCtx({ exec }));
+		expect(r.ok).toBe(false);
+		await expect(fsp.access(migrateSvcDirOf(staging))).rejects.toThrow();
+	});
+
+	it("包内无 api/<name>-<version>/ 段（web-only 方案）：跳过迁移 ok=true，exec 与 R14 备份零触发", async () => {
+		await fsp.rm(join(staging, "api"), { recursive: true });
+		const exec = okExec();
+		const r = await migrate(mgCtx({ exec }));
+		expect(r.ok).toBe(true);
+		expect(r.message).toContain("web-only");
+		expect(exec.calls.length).toBe(0);
+		const baks = (await fsp.readdir(root)).filter(n => n.startsWith("db.sqlite.bak-"));
+		expect(baks).toHaveLength(0);
+	});
+
+	it("残留 svc 目录（上次崩溃遗留）：先清后建，不污染本次迁移输入", async () => {
+		const svc = migrateSvcDirOf(staging);
+		await fsp.mkdir(join(svc, "junk"), { recursive: true });
+		await fsp.writeFile(join(svc, "manifests.yaml"), "evil: 9.9.9\n");
+		const r = await migrate(mgCtx());
+		expect(r.ok).toBe(true);
+		await expect(fsp.access(join(svc, "junk"))).rejects.toThrow();
+	});
+
+	// oj 真机实测（0.1.78）：remove 不存在的路径即使 force:true 也抛 TypeError: invalid_argument
+	// ——首装（无残留）不得被残留清除的报错挡死（真机冒烟 P1-13b 首轮失败根因）
+	it("首装无残留：oj 语义 remove(missing) 抛 invalid_argument 不阻断物化", async () => {
+		const ojLikeFs: FsFace = {
+			...nodeFsFace(),
+			remove: async (path, opts) => {
+				await fsp.access(path);
+				return fsp.rm(path, opts);
+			},
+		};
+		g.fs = ojLikeFs;
+		const r = await migrate(mgCtx());
+		expect(r.ok).toBe(true);
+		expect(r.message).toContain("迁移完成");
 	});
 });

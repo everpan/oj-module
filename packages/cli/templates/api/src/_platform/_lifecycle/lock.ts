@@ -6,7 +6,7 @@
 // 任务互斥 = mkdir EEXIST 语义（O_CREAT|O_EXCL 的 POSIX 等价原语）：.lock 目录存在即占用；
 // owner.json 落持有者与时间戳，超时（默认 30min，R13 同款阈值）判 stale 可接管（持有者崩溃自愈）。
 
-import { atomicWriteText, fsFace, randomId } from "./atomic";
+import { atomicWriteText, fsFace, isMissingPath, randomId } from "./atomic";
 
 /** 解析扁平锁文本为 {name: version} 表。任何非 `name: version` 行都算坏锁（fail-closed，不猜）。 */
 export function parseLock(text: string): Record<string, string> {
@@ -36,7 +36,7 @@ export async function readLock(lockPath: string): Promise<Record<string, string>
 		return parseLock(new TextDecoder().decode(await fsFace().readFile(lockPath)));
 	}
 	catch (e) {
-		if ((e as { code?: string }).code === "ENOENT") {
+		if (isMissingPath(e)) {
 			return {};
 		}
 		throw e;
@@ -57,7 +57,7 @@ export async function writeLock(lockPath: string, entries: Record<string, string
 		await f.copyFile(lockPath, `${lockPath}.bak`);
 	}
 	catch (e) {
-		if ((e as { code?: string }).code !== "ENOENT") {
+		if (!isMissingPath(e)) {
 			throw e;
 		}
 	}

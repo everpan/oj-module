@@ -20,7 +20,7 @@ fixtures/
 ├── README.md                          # 本文件
 ├── fixture-valid/                     # 合法样例：双端零违规
 │   ├── manifest.yaml                  # bundle 级契约（全字段合法）
-│   ├── api/src/demo-solution/         # oj 模块源（manifest/schema/ping 路由/空 migrations/）
+│   ├── api/src/demo-solution/         # oj 模块源（manifest/schema/ping 路由/0001__init.sql 建表迁移）
 │   └── web/src/demo-solution/         # entry.ts + locales（zh-CN/en-US 全 key 双语）
 └── fixture-invalid/                   # 非法样例：双端七码齐报
     ├── manifest.yaml                  # 故意触发 V1–V7

@@ -13,7 +13,7 @@
 
 import type { FsFace } from "../atomic";
 import type { InstallContext } from "./preflight";
-import { atomicWriteText, fsFace } from "../atomic";
+import { atomicWriteText, fsFace, isMissingPath } from "../atomic";
 
 /**
  * modules.json 模块条目（对齐 shell 消费面 packages/cli/shell/src/manifest.ts 透传注释与
@@ -60,7 +60,7 @@ export async function upsertModulesJson(entry: ModuleEntry, opts: { modulesJsonP
 		list = JSON.parse(new TextDecoder().decode(await f.readFile(opts.modulesJsonPath)));
 	}
 	catch (e) {
-		if ((e as { code?: string }).code === "ENOENT") {
+		if (isMissingPath(e)) {
 			list = [];
 		}
 		else if (e instanceof SyntaxError || !Array.isArray(list)) {
@@ -102,8 +102,8 @@ export interface StageResult {
 	retryable?: boolean
 }
 
-/** 递归复制目录树（readdir 成功即按目录递归、抛错即按文件复制——FsFace 无 stat 面的最小判别） */
-async function copyTree(src: string, dest: string, f: FsFace): Promise<void> {
+/** 递归复制目录树（readdir 成功即按目录递归、抛错即按文件复制——FsFace 无 stat 面的最小判别）；迁移服务目录物化复用（B-11） */
+export async function copyTree(src: string, dest: string, f: FsFace): Promise<void> {
 	const names = await f.readdir(src);
 	await f.mkdir(dest, { recursive: true });
 	for (const name of names) {

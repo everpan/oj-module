@@ -17,6 +17,7 @@ export interface TaskRecord {
 	message: string
 	stages: { stage: string, ok: boolean, message: string }[]
 	error?: { reason: string, retryable: boolean, hintKey?: string }
+	appliedSeq?: number
 	startedAt: number
 	finishedAt?: number
 }

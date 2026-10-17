@@ -33,6 +33,8 @@ server:
   route_timeouts: []
   # ---- 统一响应头（v0.1.30）----
   response_headers: {}
+  # ---- 热更端点（ojm install 的 reloading 段消费；显式关闭 = 安装器 reloading 段可读失败）----
+  reload_api: true
   # ---- 直传路由 PUT {base}/blob/{key} 的体积上限（v0.1.30，默认 1GiB）----
   # 与 max_upload_bytes（multipart，默认 10MB）是两套闸，别混。
   blob_upload_max_bytes: 1073741824
@@ -42,6 +44,21 @@ server:
     credentials: false
 db:
   default: 'sqlite://db.sqlite' # 相对 config 目录；缺文件自动建空库
+
+# ---- 安装序号（ojm install 每次安装自增一次，作为 reload 热更触发变更——unchanged 判定基于
+# config 文档 sha，无落盘变更则热更恒失败。勿删行/勿手工回写旧值。）----
+vars:
+  ojm_install_seq: 0
+
+# ---- 平台 exec 白名单（ojm install 的解压/迁移两处消费；模板逐字对齐 lifecycle steps 命令构造，
+# 不得增删——多一个 token 都会 NotCapable）----
+platform:
+  exec:
+    _platform:
+      allow:
+        - 'tar -tvzf ${path:archive}'
+        - 'tar -xzf ${path:archive} -C ${path:dest}'
+        - 'oj migrate --format json -d ${path:dir} ${raw:module}'
 
 # ---- LDAP 连接段（D1/PRD §4.5 两段式之连接段；oj 插件严格解析本段，未知键启动 fail-fast——只写下列键）----
 # 取消注释并填值即接通目录服务；应用映射段在 DB/设置页（ldap.enabled、ldap_base_dn、
