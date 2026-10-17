@@ -66,6 +66,8 @@ routes: # C2-17~21：D4 三值全覆盖；order 建议 ≥200
 
   - {path: /demo-solution/report, category: hidden, order: 210, title_key: demo-solution:menu.report}
 
+health: /demo-solution/ping # C2-33：冒烟探针（main 路由 /demo-solution 的子路径；匿名可达经 api.anonymous 声明，D14/Q-A）
+
 settings:
   groups: # C2-22~24（R24：moduleOf(key) === name）
     - group: display

@@ -1,4 +1,4 @@
-# 解决方案 bundle · manifest.yaml 契约（v1.0 定稿）
+# 解决方案 bundle · manifest.yaml 契约（v1.1）
 
 > 状态：**定稿（P0/C2 交付物）** · 日期：2026-10-17 · 分支：`feat/lifecycle-p0`
 > 上游：PRD [`202610152345-solution-marketplace-framework-prd.md`](202610152345-solution-marketplace-framework-prd.md) §5.1/§5.2/§5.8/§5.9（原稿基底）· 设计 [`202610171138-solution-lifecycle-implementation-design.md`](202610171138-solution-lifecycle-implementation-design.md) §0 D4/D7/D12、§1 预检白名单、§6.3（决策修订）· spike [`202610171245-lifecycle-p0-spike-findings.md`](202610171245-lifecycle-p0-spike-findings.md)（oj 实测）· oj 上游源码 `oj/src/manifest.rs`（0.1.76 工作区 `../oj-bin`）
@@ -64,6 +64,9 @@ routes: […]        # 可选（D4 三值）
 # ---- 设置分组（§2.7）----
 settings:
   groups: […]      # 可选
+
+# ---- 冒烟探针（§2.10）----
+health: …          # 可选（D14/Q-A：缺省首个非匿名路由兜底）
 
 # ---- 分发与签名（§2.9）----
 archive:           # tgz 内为占位（Form A）；CDN 聚合为真源（Form B）
@@ -208,6 +211,14 @@ locales 完整性：`locales/zh-CN.json` 与 `en-US.json` 必须携带 manifest 
 - C2-31：tgz 内 `api/<name>-<version>/manifest.yaml` 必须存在，且 `name ===` bundle name、`version ===` bundle version、`desc ===` bundle summary（oj 启动强校验 name==目录名，spike S1-1.3）；仅允许 oj 原生七键（§3）；**`modules.json` 不得出现在 tgz 任何位置**（PRD §5.1 硬约束：modules.json 条目由安装器在目标站点 upsert，防覆盖宿主清单）。
 - C2-32：确定性 tgz（构建期专属）：固定 mtime=0、成员字典序、权限 0644/0755、无 owner 信息——同输入两次打包 sha256 相等（P1-11 验收）。
 
+### 2.10 health（可选，D14/Q-A）
+
+| 字段 | 必填 | 校验规则 | 构建 | 安装 | 条款 |
+|---|---|---|---|---|---|
+| health | ⬜ | string；值匹配 **C2-17 path 语法**，且存在 r ∈ routes[] 使值 `=== r.path` 或以 `r.path + "/"` 开头（本方案路由或其子路径）。双端校验 = 格式 + 存在于 routes[]。**冒烟语义（设计 §4.1，D14/Q-A 拍板：health 不强制）**：smoke 优先打该端点；缺省打首个非匿名路由兜底。匿名可达性由作者经 `api.anonymous` 自行声明——health 不豁免 C2-26 段内收敛规则 | ✅ | ✅ | C2-33 |
+
+> 与 oj 的关系：oj 原生 Manifest 无 health 字段（spike S1-5.3 实测），故 health 仅存在于 bundle 级 manifest（本文档层），不进入模块级文件——与 §3 对照表相容。
+
 ---
 
 ## 3. oj 原生 Manifest struct 逐字段对照表
@@ -250,6 +261,7 @@ oj 0.1.76 `oj/src/manifest.rs:7-22`（`Manifest` struct）+ `:25-47`（`validate
 | C2-29 | archive Form B | 拒绝 Form A 携带 sha256/signature | — | sha256 比对：verify 段；验签：P2 verify 段 |
 | C2-30/31 | tgz 守卫/分层核对 | ✅（打包自检） | — | list→validate→extract + 成品核对：extract 段 |
 | C2-32 | 确定性 tgz | ✅（专属） | — | — |
+| C2-33 | health 可选：path 格式 + 存在于 routes[] | ✅ | ✅ | smoke 优先探针；缺省首个非匿名路由兜底（D14/Q-A） |
 
 ### 4.2 保留名清单（C2-01/13/14 共用）
 
@@ -311,3 +323,4 @@ stage 名 = 安装状态机 `InstallStage`（lifecycle 设计 §10.2）逐字；
 | 日期 | 版本 | 说明 |
 |---|---|---|
 | 2026-10-17 | v1.0 | C2 定稿：PRD §5.2 为底 + D4/R7/R8/R9/R24/R27/R28 修订 + changelog 增补 + oj 相容对照 + 双端执行矩阵 + 夹具两枚 |
+| 2026-10-17 | v1.1 | 增补 C2-33 health 可选字段（D14/Q-A：冒烟优先 health、缺省首个非匿名路由兜底）+ §1 顶层键/§4.1 矩阵同步 + fixture-valid 覆盖样例 |
