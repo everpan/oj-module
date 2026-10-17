@@ -7,7 +7,7 @@
 oj 迁移**只前向、无 down**：账本 seq 超过产物 migrations 最大 seq（降版部署）即 M003 拒启
 （`oj/src/migrate.rs:447-448`；文案 `oj/src/migrate.rs:479` 起）。人工回退账本须同步回退 DDL 并自担数据风险——这是官方文案的原话口径。
 
-实测（消费方仓 C1 spike S1-6，oj 0.1.76，release `migrate_on_start: verify` 缺省门禁）：
+消费方仓 spike 实测（编号 S1-6；oj 0.1.76，release `migrate_on_start: verify` 缺省门禁）：
 
 - **M003 复现**：账本 apply 到 seq 2 后把产物换回 seq 1 版本 → `oj serve` exit 1：
 

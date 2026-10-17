@@ -15,7 +15,7 @@ exec.run(["oj", "migrate", "-c", cfg, "--format", "json", "-d", dir, "<name>-<ve
   `src/bridge/exec.rs:532-539`）；
 - argv 模板须先登记进 `platform.exec.<模块>.allow` 白名单。
 
-实测（消费方仓 C1 spike S1-6，oj 0.1.76）——**该绕行已完整可用**：
+消费方仓 spike 实测（编号 S1-6；oj 0.1.76）——**该绕行已完整可用**：
 
 - `oj migrate --format json` stdout 恰一行 JSON：
 
@@ -31,7 +31,7 @@ exec.run(["oj", "migrate", "-c", cfg, "--format", "json", "-d", dir, "<name>-<ve
 - 迁移门禁语义实测：release 缺省 `migrate_on_start: verify`，账本落后 M004 拒启、账本超前 M003 拒启
   （`oj/src/migrate.rs:447-448`）——迁移与热更/装配的先后约束由框架保证。
 
-**结论**：v3 架构下 `exec.run` 子进程路径即主路径，内化（进程内触发）**降级为可选优化**——
+**结论**：消费方方案 v3 架构下 `exec.run` 子进程路径即主路径，内化（进程内触发）**降级为可选优化**——
 收益仅剩去掉子进程开销与 exit-code 契约摩擦，非阻塞。本条按「评估请求」提交。
 
 ## 诉求形态

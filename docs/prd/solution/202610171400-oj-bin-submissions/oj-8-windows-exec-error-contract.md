@@ -14,7 +14,7 @@ oj 0.1.75 起的 `exec.run` 把归档解压建立在**宿主外部命令**之上
 - 子进程 env 为**空表**（`cmd.env_clear()`，`src/bridge/exec.rs:353-359`，仅白名单透传）——不继承 PATH，解析完全依赖宿主侧；
 - 解析失败抛通用错误 `exec: command resolve failed for 'tar': …`（`src/bridge/exec.rs:323`）。
 
-实测（消费方仓 C1 spike S1-2，oj 0.1.76，macOS 宿主）：
+消费方仓 spike 实测（编号 S1-2；oj 0.1.76，macOS 宿主）：
 
 - `exec.run(["tar","-tvzf",archive])` 由宿主 PATH 解析到 `/usr/bin/tar`（bsdtar 3.5.3）执行成功；
   `-tvzf` 首列可辨 symlink（`l`）/ hardlink（`h`），解压实测忠实重建链接——
