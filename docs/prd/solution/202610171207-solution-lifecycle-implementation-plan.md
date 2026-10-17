@@ -203,7 +203,7 @@ getTask(id: string): TaskRecord | null
 - [ ] 失败测试：契约校验表驱动（缺字段/白名单/保留名/键空间 → 可读错误清单）；**确定性**：同目录两次打包 sha256 相等；夹具 bundle 与 isolate 预检**双端一致**（同一夹具跑 `validateContract` 与 `preflight` 规则互认）
 - [ ] 跑红 → 实现（tar 固定 mtime=0、字典序、0644/0755、无 owner）→ 跑绿 → commit
 
-> **上游同名辨析（2026-10-17，oj 0.1.77 对账）**：上游 `oj build --bundle` 已存在，但产物是**空前缀 dist 根 tarball**（manifests.yaml + `<module>-<version>/`），供 `mounts[].api` URL 远程挂载；本任务 `ojm build --bundle` 产物是**方案包**（单模块 tgz + C2 契约双端校验），消费方是市场安装器。二者同名不同物——devkit C5「打包与分发」章节须一句话辨析（P1-11 实现时落）。
+> **上游同名辨析（2026-10-17，oj 0.1.77 对账）**：上游 `oj build --bundle` 已存在，但产物是**空前缀 dist 根 tarball**（manifests.yaml + `<module>-<version>/`），供 `mounts[].api` URL 远程挂载（装配期拉取入内容寻址缓存 `<cache>/<sha256>/`，声明 sha256 为完整性锚）；本任务 `ojm build --bundle` 产物是**方案包**（单模块 tgz + C2 契约双端校验），消费方是市场安装器。**上游明示的坑（devkit 须落）**：`tar czf x.tgz dist` 会多一层 `dist/`，解压落到 `<cache>/<sha256>/dist/...` 非法 dist 根；per-module `*.tgz` 也不能当远程源（根是版本目录不是 dist 根）——即方案包 tgz 与远程挂载源互不可替代。devkit C5「打包与分发」章节落此辨析（P1-11 实现时一并写）。
 
 ### Task P1-12：编排端点 + 市场索引（R9，ISP）
 
@@ -275,7 +275,7 @@ getTask(id: string): TaskRecord | null
 
 **DoD**：AC-P2-1~7 绿；未签名装不上、签名不符不落盘真机演示；集中评审合并。
 
-> **上游对账评估输入（2026-10-17，oj 0.1.77）**：0.1.77 新增 `mounts[].api` 支持 `http(s)://` URL 远程挂载——装配期拉「空前缀 dist 根 tarball」入内容寻址缓存（sha256 完整性锚 + 内建 tar-slip/炸弹防护 + per-sha256 互斥）。P2 期门须评估：方案包分发是否改走/兼走该形态（URL 挂载解决取包与完整性，安装器仍持迁移/注册/锁账/sidecar——互补而非替代，不推翻 v3 架构）；若兼走，`bundles.yaml`/CDN 索引与 dist 根 tarball 的形态归一化在期门裁决。三份上游需求稿（OJ-6/8/9）0.1.77 均未采纳（源码+二进制双旁证），P1 现行路径（exec.run 迁移子进程、rollbackGuard 禁降版、Windows 文档兜底）维持不变。
+> **上游对账评估输入（2026-10-17，oj 0.1.77，含上游详细口径）**：`mounts[].api` 支持 `http(s)://` URL 指向 dist 根 tarball，装配期拉取、解压到内容寻址缓存 `<cache>/<sha256>/`（缺省 `<config_dir>/.oj-cache`），以 release 语义服务；`sha256`（64 hex）必填否则 fail-fast；解压 fail-fast 与本地 dist/ 同口径（产物根须含 manifests.yaml；tar-slip / 符号链接 / 特殊文件 / 总量 4 GiB·条目 10 万·单条 1 GiB 超预算拒启）；命中缓存按 sha256 复用、损坏自动重拉、同 URL 物化互斥串行化；`--api-path` 不接受 URL。打包 `oj build --bundle` = 整站 dist 根空前缀 tarball + 打印 sha256。P2 期门须评估：方案包分发是否改走/兼走该形态（URL 挂载解决取包与完整性，安装器仍持迁移/注册/锁账/sidecar——互补而非替代，不推翻 v3 架构）；若兼走，`bundles.yaml`/CDN 索引与 dist 根 tarball 的形态归一化在期门裁决。三份上游需求稿（OJ-6/8/9）0.1.77 未包含，且同日**上游终裁三稿均不采纳**（裁决理由与消费方处置见各稿「上游终裁」节）——P1 现行路径（exec.run 迁移子进程、rollbackGuard 禁降版、Windows 文档兜底）即长期形态。
 
 ## 5. P3 · 减法与分发（分支 `feat/lifecycle-p3`，期门细化）
 
@@ -295,7 +295,7 @@ getTask(id: string): TaskRecord | null
 | C1 裁决不利（共享根形态需安装器改写既有挂载） | D3 已列候选与迁移路径；裁决前不启动 P1-6 之后的 FS 步骤实现 |
 | 长任务形态受限（isolate 请求作用域） | S1-7 双候选都已论证；分段执行+状态文件续跑为兜底 |
 | oj build introspect 空沙箱红线（RBAC §9.4 先例） | `_lifecycle` 模块级语句禁触碰运行时全局（jwt/db/axis），全部收进函数——列入集中评审 checklist |
-| Windows tar / EPERM | OJ-8 已提需；R30 路径 POSIX 化 + 可读报错，Windows 列已知限制 |
+| Windows tar / EPERM | OJ-8 终裁未采纳（Windows exec 模板写 `cmd /c`）；R30 路径 POSIX 化 + 可读报错，Windows 列已知限制 |
 | 两运行时契约漂移 | 夹具双端测试（P1-11）为门禁 |
 
 ## 7. 阶段小结（滚动追加）
@@ -303,8 +303,8 @@ getTask(id: string): TaskRecord | null
 - **P0**（2026-10-17 1149–1422，全部完成，总耗时 ≈2.5h；分支 `feat/lifecycle-p0`，19 commits）：
   - **关键过程**：C1 spike 实测六项架构前提（共享根 release 形态成立、exec.run tar 三步范式成立、**锁原子但无互斥（实测吞写）→ 安装器写后读回收敛**、reload_api 全链路、M003/M004 拒启契约、tasks 轴 exec 恒拒 → 长任务定稿分段执行+状态文件）→ C2 契约 v1.0→v1.1（C2-01~33，oj manifest.rs 七字段逐字段对照；夹具双枚）→ C3 拍板 D14 → C5 手册提纲 → C6 基线回写（迁移后落锁、锁摘除禁用两处实质修订落基线）→ C7 三视角生命周期指南（**钉出并推动契约 v1.1 C2-33 health 缺口**）→ C4 上游三份自包含提交稿（用户选定手动提交）→ 终审三发现（F1 任务表回填/F2 迁移语义三处矛盾/F3 范围标签三处）全部收口。
   - **方法论落地**：SDD 全程——每任务「实现者→评审员→修复环→scoped 复审」四拍；评审共拦下 1 Critical（C2-17 正则自洽）+2 Important（zip-slip 之外的报告断链/复现性）+十余 Minor；两个跨任务缺口（C2-33、D11 语义反转残留）由下游任务评审钉出。
-  - **遗留（接受保留，台账已录）**：GNU tar Linux 复验（P1 T3）、C5 #3 C2-12b 提纲未点名（P1 手册回填）、R12 编号跨文档二义（既有）、health 双命名空间差异（P1-5 承接）、OJ-8 上游文本微调（随手动提交）。
-  - **上游**：OJ-8/OJ-6/OJ-9 提交稿就绪待用户手动提交；PR 文档（202610161500）已同步。
+  - **遗留（接受保留，台账已录）**：GNU tar Linux 复验（P1 T3）、C5 #3 C2-12b 提纲未点名（P1 手册回填）、R12 编号跨文档二义（既有）、health 双命名空间差异（P1-5 承接）。~~OJ-8 上游文本微调~~（已终裁关闭，2026-10-17）。
+  - **上游**：OJ-8/OJ-6/OJ-9 已提交并**终裁均未采纳**（2026-10-17；裁决理由与消费方处置见各稿「上游终裁」节）；PR 文档（202610161500）已同步终裁标注。
 - **P1**：未开始。
 - **P2**：未开始。
 - **P3**：未开始。

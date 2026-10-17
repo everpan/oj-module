@@ -45,4 +45,8 @@ oj 迁移**只前向、无 down**：账本 seq 超过产物 migrations 最大 se
 - 不改迁移账本存储格式（新增条目类型/标记可议，格式不推翻）。
 
 ---
-**对账记录**：2026-10-17 oj 0.1.77 发布（主题：`mounts[].api` URL 远程挂载 + `oj build --bundle`）——本条**未包含**（`oj migrate --help` 无 down/rollback + 源码 grep + 二进制 strings 三旁证）；本稿继续有效，消费方现行口径维持「仅迁移无差异可降级 + rollbackGuard 禁降版」红线。
+**对账记录**：2026-10-17 oj 0.1.77 发布（主题：`mounts[].api` URL 远程挂载 + `oj build --bundle`）——本条未包含（`oj migrate --help` 无 down/rollback + 源码 grep + 二进制 strings 三旁证）。
+
+**上游终裁（2026-10-17）：未采纳——前向-only 定版。**`oj migrate` 是幂等前向迁移（已应用标记去重，`s_idempotent_*` 用例已钉死），生产回滚风险高、且与「迁移即代码」的单一事实源冲突。异常场景通过**手写补偿迁移**（另一笔前向 migration）处理，而非自动 down；需要回滚预览时，用 `oj migrate --format json` 读取已应用清单后人工决策。
+
+**消费方处置**：R12 红线（降级仅「迁移无差异」才放行）+ rollbackGuard 禁降版即**终态**，不再是「待上游落地前的兜底」；方案作者文档（devkit）引导破坏性 DDL 升级的作者提供补偿迁移。本条关闭。

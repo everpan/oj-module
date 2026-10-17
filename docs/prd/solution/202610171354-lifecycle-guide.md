@@ -155,9 +155,9 @@ flowchart TD
 
 **GC（P3 起）**：旧版本目录自动清理保留最近 N=3 个，按**安装时间序**而非版本号序；当前生效版本永不清。回滚依赖旧目录还在站内——别手工去删版本目录。
 
-### 2.5 Windows 已知限制（OJ-8 / R30）
+### 2.5 Windows 已知限制（R30；OJ-8 终裁不采纳）
 
-- tar 依赖宿主 PATH：用 Git Bash 或把 `C:\Program Files\Git\usr\bin` 加入 PATH；缺失时等 OJ-8 报错契约落地前，报错可能不友好。
+- tar 依赖宿主 PATH：用 Git Bash 或把 `C:\Program Files\Git\usr\bin` 加入 PATH。**OJ-8 已终裁不采纳（2026-10-17）**——不引入 Git Bash 自动探测；上游口径为 Windows exec 模板显式写 `cmd /c tar ...`。报错不友好是长期已知限制而非待修缺陷。
 - 前端 entry 路径已强制 POSIX 分隔符序列化（R30）；目录删除遇 EPERM 给可读报错。
 - 优先 macOS / Linux 验收，Windows 是已知限制清单而非阻塞项。
 

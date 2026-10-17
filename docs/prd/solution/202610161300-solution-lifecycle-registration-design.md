@@ -34,7 +34,7 @@
 > （特权模块内进程内触发）。M4 仍走 Node 侧 `ojm install`，两阶段共用同一状态机与 manifest 契约。
 > ⚠️ **Windows 前置**：`exec.run` 的 tar 模板依赖宿主 PATH 解析，Windows 请用 **Git Bash**
 > （`C:\Program Files\Git\git-bash.exe`）或把 `C:\Program Files\Git\usr\bin` 加入 PATH；
-> 缺失时的报错契约见 **OJ-8**（`202610161500-oj-bin-feature-requests-pr.md` PR-7）。
+> 缺失时的报错契约诉求 **OJ-8 已终裁不采纳**（2026-10-17；上游口径 = Windows exec 模板显式写 `cmd /c`）；见 PR-7 终裁标注。
 
 ```mermaid
 flowchart LR
@@ -268,9 +268,9 @@ flowchart TD
 | OJ-1 | 归档解压 | 后端自完成安装 | M6 | ✅ 已落地：`exec.run` + 系统 tar + `platform.exec` 白名单（**非**内建 `fs.untar` / `axis("archive")`）；安全落位按 scenarios 场景 34 三步范式。**残余**：Windows 宿主可能无 `tar` → 见 OJ-8 |
 | OJ-2 | 配置自热更内部触发 | 免 loopback Bearer 绕行 | M6 | ✅ 已落地：`server.reloadConfig()`，限 `platform.modules` 特权模块 |
 | OJ-4 | 非对称验签 | 包签名校验 | M6 | ✅ 已落地：`crypto.verifyEd25519(pub, msg, sigB64): boolean`（同步、双层语义）。「必须 Node 侧验签」不再是能力约束 |
-| OJ-6 | 迁移执行内部化 | 后端触发本进程迁移 | M6 | ⚠️ 无内建 `migrate.run`；官方绕行 = `exec.run(["oj","migrate","-c",cfg,"--format","json","-d",dir,mod])` + 判 exit code（scenarios 场景 35 步骤 7）。已降级为可选优化 |
+| OJ-6 | 迁移执行内部化 | 后端触发本进程迁移 | M6 | ⚠️ 无内建 `migrate.run`；官方绕行 = `exec.run(["oj","migrate","-c",cfg,"--format","json","-d",dir,mod])` + 判 exit code（scenarios 场景 35 步骤 7）。已降级为可选优化；**终裁未采纳（2026-10-17）**——exec 子进程即设计意图，绕行转永久主路径 |
 | OJ-7 | 表级写守卫 | §2 模块间写隔离 | — | ❌ 未落地（0.1.76 复核）；授信基座 `http.module` 已就位。见 [`docs/prd/202610170016-oj-table-write-guard-requirement.md`](../202610170016-oj-table-write-guard-requirement.md) |
-| OJ-8 | Windows 外部命令缺失的报错契约 | 缺 `tar`/`zip` 时给 Git Bash 提示 | M6 | ❌ 待提；见 `202610161500-oj-bin-feature-requests-pr.md` PR-7 |
+| OJ-8 | Windows 外部命令缺失的报错契约 | 缺 `tar`/`zip` 时给 Git Bash 提示 | M6 | ❌ **终裁未采纳（2026-10-17）**：Windows 模板显式写 `cmd /c`；见 PR-7 终裁标注 |
 
 ### 9.2 开放问题（待评审）
 

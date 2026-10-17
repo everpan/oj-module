@@ -427,7 +427,7 @@ solutions:
 > - **OJ-6** 迁移执行内部化 → ⚠️ **无内建 API**：无 `migrate.run` 全局；官方绕行 =
 >   `exec.run(["oj","migrate","-c",cfg,"--format","json","-d",dir,mod])` + 判 exit code
 >   （scenarios 场景 35 步骤 7）。已从阻塞项降级为可选优化。
-> - **OJ-8**（新增，P1）Windows 外部命令缺失的报错契约 → ❌ **待提**：见下方 §5.6.3 说明。
+> - **OJ-8**（新增，P1）Windows 外部命令缺失的报错契约 → ❌ **终裁未采纳（2026-10-17）**：Windows exec 模板显式写 `cmd /c`；见下方 §5.6.3 说明。
 >
 > 编号说明：`OJ-7` = 表级写守卫（**仍未落地，oj 0.1.76 复核**），独立成文，见
 > [`docs/prd/202610170016-oj-table-write-guard-requirement.md`](../202610170016-oj-table-write-guard-requirement.md)。
@@ -601,7 +601,7 @@ v0.1.75 起由 `platform.exec` 授权的 `exec.run` 补上（无 shell，白名�
 > # stdout 一行 {"results":[{"module":"…","ok":true|false,"error":"…"}], "error": null}
 > # 成败真源 = 退出码：任一模块失败时 json 仍可解析，但 results[].ok=false 且进程退非 0
 > ```
-> 故 M6「后端内部化」不再受 oj 能力阻塞，仅剩子进程开销与 exit-code 契约摩擦（可选再提 OJ-6）。
+> 故 M6「后端内部化」不再受 oj 能力阻塞，仅剩子进程开销与 exit-code 契约摩擦（~~可选再提 OJ-6~~ **OJ-6 已终裁不采纳（2026-10-17）——exec 子进程即设计意图，摩擦为长期接受项**）。
 > ⚠️ **Windows 前置**：`oj` 是特判不依赖 PATH，但同批的 **`tar` 模板依赖**（子进程 env 清空、不继承 PATH）。
 > Windows 请用 **Git Bash**（`C:\Program Files\Git\git-bash.exe`）执行，或把
 > `C:\Program Files\Git\usr\bin`（GNU `tar` / `zip` / `unzip`）加入 PATH；且 Windows 自带的是

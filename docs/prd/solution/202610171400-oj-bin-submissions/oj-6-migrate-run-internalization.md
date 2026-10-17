@@ -61,4 +61,8 @@ migrate.run(opts: { dir: string; module?: string }):
 - 不改迁移账本格式与 `migrate_on_start` 门禁缺省值。
 
 ---
-**对账记录**：2026-10-17 oj 0.1.77 发布（主题：`mounts[].api` URL 远程挂载 + `oj build --bundle`）——本条**未包含**（源码 `src/bridge/` 无 migrate 面 + 二进制 strings 双旁证）；本稿继续有效，消费方现行 `exec.run` 子进程路径维持为主路径。
+**对账记录**：2026-10-17 oj 0.1.77 发布（主题：`mounts[].api` URL 远程挂载 + `oj build --bundle`）——本条未包含（源码 `src/bridge/` 无 migrate 面 + 二进制 strings 双旁证）。
+
+**上游终裁（2026-10-17）：未采纳——维持经 exec 触发。**`oj migrate` 当前即「进程内化」形态：`exec.run(["oj","migrate",...])` 经 `"oj"` 解析器映射 `current_exe`（同一份 bin/oj 二进制）拉起子进程，复用已审计的 exec 白名单 + 超时/输出上限闸门。不新增 bridge 原生 migrate.run op：迁移重、长、不可逆——独立子进程与请求运行时解耦，避免大表迁移期间长期占用 JsRuntime / DB 连接池，规避 KillSwitch 看门狗误杀，失败隔离更干净；更强内嵌诉求走 RFC 评估。
+
+**消费方处置**：`exec.run ["oj","migrate",...]` 从「官方绕行」转为**永久主路径**（P1-7 迁移步骤即此形态，不改）。本条关闭。

@@ -174,6 +174,8 @@ server.reloadConfig(): Promise<{
 
 ## PR-4（OJ-6，P1）：迁移执行内部化
 
+> **终裁（2026-10-17）：未采纳——维持经 exec 触发。**`"oj"` 解析器映射 `current_exe` 拉起同一 bin/oj 子进程，复用已审计白名单 + 超时/输出闸门；独立子进程与请求运行时解耦、防大表迁移占用 JsRuntime/DB 池、防 KillSwitch 误杀、失败隔离更干净。更强内嵌诉求走 RFC。消费方处置：exec 绕行转**永久主路径**。以下原文保留。
+>
 > **状态：⚠️ 降级为 P2 可选。无 `migrate.run` 全局 API，但已有官方绕行：**
 > `exec.run(["oj","migrate","-c",cfg,"--format","json","-d",dir,"<name>-<version>"])`（模板须先写进
 > `platform.exec.<模块>.allow`；`oj` 特判解析为 `current_exe()`，即同版本自保证），
@@ -242,6 +244,8 @@ OJ-1（解压）、PR-5（YAML/manifest 解析）、以及缓存目录与完整�
 
 ## PR-7（OJ-8，P1）：Windows 下外部命令解析失败的报错契约
 
+> **终裁（2026-10-17）：未采纳。**Windows 支持走显式模板 `cmd /c ...`（或 resolver 映射绝对路径），`cfg(windows)` BDD 已覆盖；不引入 Git Bash 自动探测——扩大解析面、与白名单显式声明安全边界冲突、跨机行为不一致。**上游口径：模板直接写 `cmd /c`，不依赖 sh 仿真层。**消费方处置：Windows 维持已知限制，P2 起如支持 Windows 安装按此口径建白名单。以下原文保留。
+>
 > **状态：P0 已决议提交（2026-10-17，提交稿见同目录 C4 提交稿 `202610171400-oj-bin-submissions/oj-8-windows-exec-error-contract.md`）。**
 > 非阻塞：macOS/Linux 先行验收（C1 spike S1-2 已实测范式成立），Windows 另有 R30 已知限制清单。
 
@@ -293,6 +297,8 @@ api-manual §6「exec」硬限制写明：超时到期先 `kill(-pgid, SIGKILL)`
 
 ## PR-8（OJ-9，P3）：down 迁移支持
 
+> **终裁（2026-10-17）：未采纳——前向-only 定版。**幂等前向 + 已应用去重是设计意图；回退 = 作者手写补偿迁移（另一笔前向 migration），回滚预览用 `oj migrate --format json` 读已应用清单人工决策。消费方处置：R12 红线（降级仅迁移无差异）即终态，devkit 引导作者提供补偿迁移。以下原文保留。
+>
 > **状态：待提（P3 前落地即可，非阻塞）。** 提交稿见同目录 C4 提交稿
 > `202610171400-oj-bin-submissions/oj-9-down-migration.md`（含 M003/M004 实测原文与源码行号）。
 

@@ -62,4 +62,8 @@ oj 0.1.75 起的 `exec.run` 把归档解压建立在**宿主外部命令**之上
 - 不要求 GNU tar 与 bsdtar 行为对齐（文档前置说明即可覆盖）。
 
 ---
-**对账记录**：2026-10-17 oj 0.1.77 发布（主题：`mounts[].api` URL 远程挂载 + `oj build --bundle`）——本条**未包含**（源码 `src/bridge/exec.rs` 无 Windows hint + 二进制 strings 双旁证）；本稿继续有效，消费方以文档兜底（lifecycle-guide §2.5「Windows 已知限制」）。
+**对账记录**：2026-10-17 oj 0.1.77 发布（主题：`mounts[].api` URL 远程挂载 + `oj build --bundle`）——本条未包含（源码 `src/bridge/exec.rs` 无 Windows hint + 二进制 strings 双旁证）。
+
+**上游终裁（2026-10-17）：未采纳。**Windows 支持经显式模板 `cmd /c ...`（或 resolver 映射到绝对路径的 cmd.exe/ping.exe）达成，exec.rs `cfg(windows)` BDD 用例已覆盖。不引入 Git Bash 自动探测：① 扩大命令解析面、引入 PATH/注入歧义；② 与「命令名由配置白名单显式声明」的安全边界冲突；③ 同一模板在有无 Git Bash 的机器上行为不一致。**上游口径：模板里直接写 `cmd /c`，不依赖 sh 仿真层。**
+
+**消费方处置**：Windows 维持已知限制（lifecycle-guide §2.5 文档兜底不变）；P2 起如支持 Windows 安装，exec 白名单与安装器 buildXxxCmd 须按上游口径提供 `cmd /c tar ...` 形态。本条关闭。
