@@ -76,6 +76,24 @@ describe("validateTarListing（R1）", () => {
 		])).toEqual({ ok: false, offender: "..\\evil" });
 	});
 
+	it("空格成员名内藏 `..` 逃逸拒绝（R1 评审构造行）", () => {
+		expect(validateTarListing([
+			"-rw-r--r--  0 ever staff    7 10 17 15:01 ./wiki-0.2.0/../../evil pwn",
+		])).toEqual({ ok: false, offender: "./wiki-0.2.0/../../evil" });
+	});
+
+	it("空格成员名以 `/` 开头的逃逸形态拒绝", () => {
+		expect(validateTarListing([
+			"-rw-r--r--  0 ever staff    7 10 17 15:01 /etc x",
+		])).toEqual({ ok: false, offender: "/etc" });
+	});
+
+	it("`tar: …` 警告杂行拒绝（tar 的 stderr 混入）", () => {
+		expect(validateTarListing([
+			"tar: ../evil",
+		])).toEqual({ ok: false, offender: "../evil" });
+	});
+
 	it("多个坏成员时报第一个 offender", () => {
 		expect(validateTarListing([
 			"-rw-r--r--  0 ever staff    7 10 17 12:00 /abs",
