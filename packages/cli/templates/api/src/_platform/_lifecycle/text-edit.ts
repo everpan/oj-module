@@ -28,3 +28,23 @@ export function insertAnchor(content: string, anchorComment: string, block: stri
 	lines.splice(index + 1, 0, ...blockLines);
 	return lines.join("\n");
 }
+
+/**
+ * D3 一次性注入集收口（P1-10，裁决 7 escape hatch；S1-1 实测定稿「安装无需改 mounts」——
+ * 注入集只剩 server.reload_api: true，R18）。纯文本判定，不引 yaml 解析：
+ * - 存在 reload_api 键：值 false → 拒绝（用户主动关闭热更端点，安装器不偷偷翻转语义值）；
+ *   其余（true 等）→ no-op 幂等；
+ * - 键不存在 → 锚点 `# ojm:reload` 下插入 `reload_api: true`（insertAnchor 语义：缩进继承、
+ *   注释逐字保留；锚点缺失 = 可读报错不猜位置——锚点随模板 config.yaml 发布，P1-16 接线点）。
+ */
+export function ensureReloadApi(content: string): { content: string, changed: boolean } {
+	const lines = content.split("\n");
+	const idx = lines.findIndex(l => /^\s*reload_api\s*:/.test(l));
+	if (idx !== -1) {
+		if (/^\s*reload_api\s*:\s*false\s*(?:#.*)?$/.test(lines[idx]!)) {
+			throw new Error("text-edit: config.yaml 显式 reload_api: false（用户关闭热更端点）——安装器拒绝偷偷翻转语义值，请人工确认后改回 true 再重试安装");
+		}
+		return { content, changed: false };
+	}
+	return { content: insertAnchor(content, "# ojm:reload", "reload_api: true"), changed: true };
+}

@@ -4,7 +4,7 @@
 // 锚点已存在=原样返回（幂等）；锚点缺失=可读错误（message 含锚点名）。
 import { describe, expect, it } from "vitest";
 
-import { hasAnchor, insertAnchor } from "../../src/_platform/_lifecycle/text-edit";
+import { ensureReloadApi, hasAnchor, insertAnchor } from "../../src/_platform/_lifecycle/text-edit";
 
 describe("insertAnchor（R18）", () => {
 	it("带注释的 config.yaml 插入后注释/缩进/空行/键序逐字保留", () => {
@@ -76,5 +76,30 @@ describe("hasAnchor（R18）", () => {
 
 	it("锚点不存在返回 false", () => {
 		expect(hasAnchor("a: 1\nb: 2", "# ojm:mount")).toBe(false);
+	});
+});
+
+describe("ensureReloadApi（P1-10，D3 一次性注入集收口：S1-1 定稿无需改 mounts）", () => {
+	it("无 reload_api 键且锚点在 → 锚点下插入 reload_api: true（缩进继承、注释逐字保留），changed=true", () => {
+		const content = "server:\n  port: 8080\n  # 用户注释保留\n  # ojm:reload\ndb:\n  default: x";
+		const r = ensureReloadApi(content);
+		expect(r.changed).toBe(true);
+		expect(r.content).toBe("server:\n  port: 8080\n  # 用户注释保留\n  # ojm:reload\n  reload_api: true\ndb:\n  default: x");
+	});
+
+	it("reload_api: true 已在 → no-op（无锚点也不报错），changed=false", () => {
+		const content = "server:\n  reload_api: true\n  port: 1";
+		const r = ensureReloadApi(content);
+		expect(r.changed).toBe(false);
+		expect(r.content).toBe(content);
+	});
+
+	it("显式 reload_api: false → 拒绝（用户主动关闭，不偷偷翻转），message 可读", () => {
+		expect(() => ensureReloadApi("server:\n  reload_api: false # 运维明确关闭"))
+			.toThrowError(/reload_api/);
+	});
+
+	it("无键且锚点缺失 → 可读报错（不猜插入位置，锚点随模板发布，P1-16 接线）", () => {
+		expect(() => ensureReloadApi("server:\n  port: 1")).toThrowError(/# ojm:reload/);
 	});
 });

@@ -5,25 +5,13 @@
 // 纯校验段：只读 ctx（state 仅 read），不写盘不写库；占用检测真源 = state.solutions 键（已装方案名）。
 // 双端 DRY 于夹具而非运行时：本实现与 Node 侧 validateContract（P1-11）由同一组夹具钉住一致性。
 
-import type { StateStore } from "../state";
+import type { InstallContext } from "../types";
 import { compareVersions } from "../semver";
 
 /**
- * 安装上下文（最小形状，随 P1-5 定型；P1-10 状态机收敛进 types.ts 时迁移）。
+ * 安装上下文（P1-10 收敛进 types.ts 单源；本模块 re-export 保持既有 `from "./preflight"` 引用面不变）。
  */
-export interface InstallContext {
-	/** 已解析的 manifest.yaml（安装器读盘解析产物；本段只读） */
-	manifest: unknown
-	/** 安装目标身份（与 manifest.name/version 同源；manifest 字段缺失/非字符串时兜底） */
-	name: string
-	version: string
-	/** 站点 sidecar 状态（.solutions/state.yaml）；占用检测真源：solutions 键 = 已装方案名 */
-	state: StateStore
-	/** 宿主 versions.json（C2-09 peerRuntime 比对真源；键 = 包名，runtime 取 @oj-module/runtime） */
-	hostVersions?: Record<string, string>
-	/** 目标站点数据库句柄（本段不消费；P1-8 register 段起使用） */
-	db?: unknown
-}
+export type { InstallContext };
 
 /** 阶段结果（各安装段通用形状，本段 stage 恒为 "preflight"；P1-10 收敛时提升为可判别联合） */
 export interface StageResult {
@@ -168,9 +156,10 @@ export async function preflight(ctx: InstallContext): Promise<StageResult> {
 	}
 
 	// ── 占用检测（C2-13/14 安装列）：方案名已被已装方案占用 → 拒装并报占用者 ──
+	// （同名命中且 ctx.reinstall = 安装器升级/重装路径放行，AC-P1-3；缺省拒装保持 P1-5 钉面）
 	const nameOcc = occupier(name);
-	if (nameOcc !== undefined) {
-		v.push({ clause: "C2-13/14", detail: `方案名已被已装方案「${nameOcc}」占用（同站方案名唯一；升级请走升级流程，P1 不含）` });
+	if (nameOcc !== undefined && ctx.reinstall !== true) {
+		v.push({ clause: "C2-13/14", detail: `方案名已被已装方案「${nameOcc}」占用（同站方案名唯一；升级/重装经安装器 runInstall 路径，AC-P1-3）` });
 	}
 
 	// ── C2-09 peerRuntime：对宿主 versions.json 的 runtime 版本强制比对（安装预检强制）──
