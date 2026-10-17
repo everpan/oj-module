@@ -180,8 +180,10 @@ scripts/lifecycle-e2e.mjs                # [新建] P1 端到端脚本（本地 
 
 **Files**: Create `steps/deploy-web.ts`、`steps/reload.ts`、`steps/smoke.ts`
 **Interfaces — Produces**: `upsertModulesJson(entry: ModuleEntry)`（读-modify-`atomicWriteText`，entry 路径 POSIX 序列化）；`reloadAndAssert()`（reloadConfig 后断言 mounts/vars 实际生效，`unchanged`=失败）；`smoke(ctx)` 四项（health 或首个非匿名路由 / integrity==sha384 / 注册一致性 `queryRegistered` / ——entry 浏览器加载不在安装器验）
-- [ ] 测试：modules.json upsert 后 JSON 完整解析（无半截）；POSIX 路径断言；reload `unchanged` 判失败；冒烟 DB 一致性升级态用「包含非相等」
-- [ ] 跑绿 → commit
+- [x] 测试：modules.json upsert 后 JSON 完整解析（无半截）；POSIX 路径断言；reload `unchanged` 判失败；冒烟 DB 一致性升级态用「包含非相等」
+- [x] 跑绿 → commit
+
+> **P1-9 完成（2026-10-17）**：`steps/deploy-web.ts`（staging `web/modules` 树 → 注入 `siteModulesDir` 一层对齐复制 + `upsertModulesJson` 读-改-`atomicWriteText` upsert（D13 读者永不见半截 JSON，损坏清单拒写；R30 entry/css POSIX 序列化；同名整体替换他条目原样保留；integrity 由 P1-10 算好传入，缺省回落 manifest.web.integrity））+ `steps/reload.ts`（注入 reloadConfig 面，R18 终态断言：`unchanged`=改写未生效判失败、expected 段键缺省 `["mounts"]` 须 ∈ applied、busy 抛错 retryable）+ `steps/smoke.ts`（collect-all 三项：探活 health 2xx / 缺省首个非匿名路由连通即可（probe URL = `<apiPrefix>/<path 去前导斜杠>`，与 C2-26 段内收敛同构）、integrity 落位重算 sha384 vs modules.json（R10；缺 integrity fail-closed；css 验落位）、注册一致性「包含非相等」（快照 ⊇ 声明，null+空声明过/null+非空败）；entry 浏览器加载不在安装器验，口径钉于注释与成功 message）+ 32 组用例（全量 327/327）。详见 `task-P1-9-report.md`。
 
 ### Task P1-10：状态机编排 + 任务注册表（D11/OCP，SRP）
 
