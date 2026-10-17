@@ -81,6 +81,9 @@
 		"ldap_uid_attr": "UID attribute",
 		"ldap_email_attr": "Email attribute",
 		"solutions": "Solution Settings",
+		"market_cdn_url": "Market CDN URL",
+		"marketAbsentTitle": "Market console not installed",
+		"marketAbsentHint": "The market console (browse/install/upgrade/rollback solutions) ships with the oj-market solution package, which is not installed on this site yet. Run the following as superadmin from the site root:",
 		"saved": "Saved {{count}} group(s)",
 		"saveFailed": "Failed to save: {{groups}}"
 	},

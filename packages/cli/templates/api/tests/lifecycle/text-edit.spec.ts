@@ -2,6 +2,7 @@
 // 约束：禁止 yaml 解析/stringify 回写——用户注释、缩进、空行、键序必须逐字保留。
 // 锚点为整行注释（如 `# ojm:mount`）；插入位置=锚点行下一行，缩进继承锚点行；
 // 锚点已存在=原样返回（幂等）；锚点缺失=可读错误（message 含锚点名）。
+import * as fsp from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 
 import { bumpInstallSeq, ensureReloadApi, hasAnchor, insertAnchor } from "../../src/_platform/_lifecycle/text-edit";
@@ -127,5 +128,23 @@ describe("bumpInstallSeq（B-11 reload 触发面：vars 安装序号自增，PRD
 
 	it("值非数字（行存在但形状不符）→ 视同缺失，可读报错不猜", () => {
 		expect(() => bumpInstallSeq("vars:\n  ojm_install_seq: abc")).toThrowError(/ojm_install_seq/);
+	});
+});
+
+describe("模板 config.yaml 随发锚点（P1-16 接线②：ensureReloadApi 键缺失插入路径的闭环依据）", () => {
+	it("模板 config.yaml 带整行 # ojm:reload 锚点；键在 → ensureReloadApi no-op", async () => {
+		const cfg = await fsp.readFile(new URL("../../config.yaml", import.meta.url), "utf8");
+		expect(hasAnchor(cfg, "# ojm:reload")).toBe(true);
+		const r = ensureReloadApi(cfg);
+		expect(r.changed).toBe(false);
+	});
+
+	it("用户删键保锚点 → ensureReloadApi 锚点下插回 reload_api: true（缩进继承）", async () => {
+		const cfg = await fsp.readFile(new URL("../../config.yaml", import.meta.url), "utf8");
+		const stripped = cfg.split("\n").filter(l => !/^\s*reload_api\s*:/.test(l)).join("\n");
+		const r = ensureReloadApi(stripped);
+		expect(r.changed).toBe(true);
+		expect(r.content).toContain("reload_api: true");
+		expect(r.content).toContain("# ojm:reload");
 	});
 });

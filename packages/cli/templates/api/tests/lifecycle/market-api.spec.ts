@@ -21,8 +21,8 @@ import { readLock, writeLock } from "../../src/_platform/_lifecycle/lock";
 import { createStateStore } from "../../src/_platform/_lifecycle/state";
 import { getTask, writeTask } from "../../src/_platform/_lifecycle/tasks";
 import { invalidateAllUsers } from "../../src/_platform/_shared/service/access";
-import { createMarketApi, parseVersionsJson, versionsJsonPathOf } from "../../src/_platform/market/api";
-import { installDb } from "../fixture";
+import { createMarketApi, marketEnv, parseVersionsJson, versionsJsonPathOf } from "../../src/_platform/market/api";
+import { installDb, MARKET_HISTORY_DDL } from "../fixture";
 
 const g = globalThis as any;
 
@@ -534,5 +534,98 @@ describe("hostVersions 缺省接线（B-11：C2-09 比对真源 = <dist>/version
 		expect(rec?.status).toBe("failed");
 		expect(rec?.stage).toBe("preflight");
 		expect(rec?.stages[0]?.message).toContain("C2-09");
+	});
+});
+
+describe("P1-16 接线：marketEnv 生产口径 / exec opts 转发 / operator 通道 / 账本真源 / index 即对账入口", () => {
+	it("marketEnv() 缺省 = oj serve release 布局：锁与版本目录在 serve 根 dist（B3），versions.json 同根推导（B4）；暂存/任务/sidecar 留根外", () => {
+		const env = marketEnv();
+		expect(env.sharedRoot).toBe("dist");
+		expect(env.siteModulesDir).toBe("dist/modules");
+		expect(env.modulesJsonPath).toBe("dist/modules.json");
+		expect(versionsJsonPathOf(env.modulesJsonPath)).toBe("dist/versions.json");
+		expect(env.staging).toBe("modules/.staging");
+		expect(env.taskDir).toBe("modules/.install-tasks");
+		expect(env.statePath).toBe("modules/.solutions/state.yaml");
+		expect(env.dbPath).toBe("db.sqlite");
+		expect(env.apiPrefix).toBe("/api");
+	});
+
+	it("平台 exec 包装转发 opts：migrate 段收到 {timeoutMs: 600000}（oj 0.1.78 缺省 30s 会杀长迁移，P1-13c 遗嘱）", async () => {
+		const seen: Array<{ argv: string[], opts?: { timeoutMs?: number } }> = [];
+		const base = bundleExec();
+		const exec: ExecFace = {
+			run: (argv, opts) => {
+				seen.push({ argv, opts });
+				return base.run(argv, opts);
+			},
+		};
+		const api = createMarketApi(makeEnv({ exec }));
+		g.http = { user: { id: 1 }, body: { name: "demo-solution", version: "0.1.0", source: "cdn" } };
+		await api.install.post();
+		expect(last?.status).toBe(200);
+		const taskId = (last?.data as { task_id?: unknown })?.task_id as string;
+		expect((await getTask(taskDir, taskId))?.status).toBe("done");
+		const mig = seen.find(c => c.argv[0] === "oj" && c.argv[1] === "migrate");
+		expect(mig).toBeDefined();
+		expect(mig?.opts).toEqual({ timeoutMs: 600000 });
+	});
+
+	it("smoke 探针同源补全：http.headers.host 在场时相对探针 URL 按请求源补全为绝对 URL（isolate fetch = deno_fetch 无同源 base，相对恒 TypeError——P1-16 接线④）", async () => {
+		const api = createMarketApi(makeEnv({}));
+		g.http = { user: { id: 1 }, body: { name: "demo-solution", version: "0.1.0", source: "cdn" }, headers: { host: "site.example:9781" } };
+		await api.install.post();
+		expect(last?.status).toBe(200);
+		const taskId = (last?.data as { task_id?: unknown })?.task_id as string;
+		expect((await getTask(taskDir, taskId))?.status).toBe("done");
+		// 夹具 manifest 无 health → 探首个非匿名路由 /demo-solution → env.apiPrefix=/api/demo-solution
+		// → 相对探针 /api/demo-solution/demo-solution 补全为请求源绝对 URL
+		expect(fetchCalls).toContain("http://site.example:9781/api/demo-solution/demo-solution");
+		// CDN 拉取（绝对 URL）不受补全影响
+		expect(fetchCalls.some(u => u.startsWith("https://cdn.example.com/"))).toBe(true);
+	});
+
+	it("ledgerHead 接真源：env.ledgerHeadOf 注入时 migrate 段按其值判禁降版（head 高于目标 seq → 拒切 failed@migrating）", async () => {
+		const api = createMarketApi(makeEnv({ ledgerHeadOf: async () => 99 }));
+		g.http = { user: { id: 1 }, body: { name: "demo-solution", version: "0.1.0", source: "cdn" } };
+		await api.install.post();
+		const taskId = (last?.data as { task_id?: unknown })?.task_id as string;
+		const rec = await getTask(taskDir, taskId);
+		expect(rec?.status).toBe("failed");
+		expect(rec?.stage).toBe("migrating");
+		expect(rec?.stages.find(s => s.stage === "migrating")?.message).toContain("禁降版");
+	});
+
+	it("operator 通道：install/enable 端点按 http.user.id 反查 username 落 market_history（uninstall 同款反查）", async () => {
+		dbo.exec(MARKET_HISTORY_DDL);
+		// 预置「已装」最小形态（enable 用例同款：单条目禁用会触发空锁拒启，S1-1.2）
+		await writeLock(join(sharedRoot, "manifests.yaml"), { "demo-solution": "0.1.0", "other": "1.0.0" });
+		const state = await createStateStore(join(sharedRoot, ".solutions", "state.yaml"));
+		await state.write({ solutions: { "demo-solution": { version: "0.1.0", enabled: true, installedAt: 1 } } });
+		const api = createMarketApi(makeEnv());
+		g.http = { user: { id: 1 }, body: { name: "demo-solution", version: "0.1.0", source: "cdn" } };
+		await api.install.post();
+		expect(last?.status).toBe(200);
+		g.http = { user: { id: 1 }, body: { name: "demo-solution", enabled: false } };
+		await api.enable.post();
+		expect(last?.data).toMatchObject({ ok: true });
+		const rows = dbo.prepare("SELECT action, operator FROM market_history ORDER BY rowid").all() as Array<{ action: string, operator: string | null }>;
+		expect(rows.find(r => r.action === "install")).toMatchObject({ operator: "admin" });
+		expect(rows.find(r => r.action === "disable")).toMatchObject({ operator: "admin" });
+	});
+
+	it("index 即对账入口（P1-10 接线③）：M004 分歧（锁指新版、账本 head 落后）经 index 刷新自愈回指旧版", async () => {
+		await writeLock(join(sharedRoot, "manifests.yaml"), { "demo-solution": "0.2.0" });
+		await fsp.writeFile(`${join(sharedRoot, "manifests.yaml")}.bak`, "demo-solution: 0.1.0\n");
+		await fsp.mkdir(join(sharedRoot, "demo-solution-0.1.0"), { recursive: true });
+		await fsp.mkdir(join(sharedRoot, "demo-solution-0.2.0"), { recursive: true });
+		// oj journal 真源形态：_oj_migrations (module, version, ...)；head=3 < 任务记录 appliedSeq=5
+		dbo.exec("CREATE TABLE _oj_migrations (module TEXT NOT NULL, version INTEGER NOT NULL, name TEXT, applied_on TEXT, checksum TEXT, PRIMARY KEY (module, version))");
+		dbo.prepare("INSERT INTO _oj_migrations (module, version) VALUES (?, ?)").run("demo-solution", 3);
+		await writeTask(taskDir, { id: "t1", name: "demo-solution", version: "0.2.0", status: "done", stage: "done", progress: 100, message: "", stages: [], startedAt: 1, appliedSeq: 5 });
+		const api = createMarketApi(makeEnv());
+		await api.index.get();
+		expect(last?.status).toBe(200);
+		expect(await readLock(join(sharedRoot, "manifests.yaml"))).toEqual({ "demo-solution": "0.1.0" });
 	});
 });

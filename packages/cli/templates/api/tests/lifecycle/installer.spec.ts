@@ -612,3 +612,79 @@ describe("任务治理（R13/B9/R31）：保留 10 条 + 超时判 failed + mess
 		expect(raw).not.toContain("abcdef123456");
 	});
 });
+
+describe("P1-16 接线：reconcile 不一致自动修复（重跑 setEnabled）+ operator 通道 + migrate opts 转发", () => {
+	it("route enabled=0 / modules.json enabled=false 分歧 + 注入 state → 自动重跑 setEnabled(true) 收敛（healed 记 enable）", async () => {
+		await writeLock(lockPath, { "demo-solution": "0.1.0", "auth": "0.1.0" });
+		await state.write({ solutions: { "demo-solution": { version: "0.1.0", enabled: true, installedAt: 1000 } } });
+		dbo.exec("INSERT INTO sys_solution_route (path, module, category, \"order\", deprecated, enabled) VALUES ('/demo-solution', 'demo-solution', 'main', 200, 0, 0)");
+		await fsp.mkdir(join(sharedRoot, "demo-solution-0.1.0"), { recursive: true });
+		await atomicWriteText(modulesJsonPath, `${JSON.stringify([{ name: "demo-solution", entry: "modules/demo-solution/0.1.0/entry.js", enabled: false }], null, 2)}\n`);
+		const report = await reconcile({
+			lockPath,
+			sharedRoot,
+			taskDir,
+			modulesJsonPath,
+			routeEnabledOf: async name => (name === "demo-solution" ? false : null),
+			ledgerHeadOf: async () => null,
+			headFloorOf: async () => null,
+			state,
+		});
+		expect(report.healed).toEqual([expect.objectContaining({ name: "demo-solution", action: "enable" })]);
+		// 四处一致收敛：route=1、modules.json enabled=true、sidecar enabled=true、锁条目原样
+		expect(dbo.prepare("SELECT enabled FROM sys_solution_route WHERE module = ?").get("demo-solution")).toMatchObject({ enabled: 1 });
+		const list = JSON.parse(await fsp.readFile(modulesJsonPath, "utf8")) as Array<{ name: string, enabled: boolean }>;
+		expect(list[0]).toMatchObject({ name: "demo-solution", enabled: true });
+		expect(state.read().solutions["demo-solution"]).toMatchObject({ enabled: true });
+		expect(await readLock(lockPath)).toEqual({ "demo-solution": "0.1.0", "auth": "0.1.0" });
+		expect(report.inconsistencies.filter(i => i.name === "demo-solution")).toHaveLength(0);
+	});
+
+	it("未注入 state（缺省）→ 维持只报不修（P1-10 既有语义不变）", async () => {
+		await writeLock(lockPath, { "demo-solution": "0.1.0", "auth": "0.1.0" });
+		await atomicWriteText(modulesJsonPath, `${JSON.stringify([{ name: "demo-solution", enabled: false }], null, 2)}\n`);
+		const report = await reconcile({
+			lockPath,
+			sharedRoot,
+			taskDir,
+			modulesJsonPath,
+			routeEnabledOf: async name => (name === "demo-solution" ? false : null),
+			ledgerHeadOf: async () => null,
+			headFloorOf: async () => null,
+		});
+		expect(report.healed).toEqual([]);
+		expect(report.inconsistencies.filter(i => i.name === "demo-solution")).toHaveLength(2);
+	});
+
+	it("operator 通道：runInstall / setEnabled 的 operator 落 market_history（缺省 null 语义不变）", async () => {
+		dbo.exec(MARKET_HISTORY_DDL);
+		await writeLock(lockPath, { "demo-solution": "0.1.0", "auth": "0.1.0" });
+		await state.write({ solutions: { "demo-solution": { version: "0.1.0", enabled: true, installedAt: 1000 } } });
+		await fsp.mkdir(join(sharedRoot, "demo-solution-0.1.0"), { recursive: true });
+		const t = await runInstall(makeReq({ operator: "admin" }));
+		expect(t.status).toBe("done");
+		const on = await setEnabled({ name: "demo-solution", enabled: true, sharedRoot, lockPath, state, modulesJsonPath, operator: "admin" });
+		expect(on.ok).toBe(true);
+		const hist = rows("SELECT action, operator FROM market_history ORDER BY id");
+		expect(hist).toEqual([
+			{ action: "install", operator: "admin" },
+			{ action: "enable", operator: "admin" },
+		]);
+	});
+
+	it("captureMigrateExec 转发 opts：migrate 段 exec.run 收到 {timeoutMs: 600000}（生产 exec 包装不丢超时）", async () => {
+		const seen: Array<{ argv: string[], opts?: { timeoutMs?: number } }> = [];
+		const base = bundleExec();
+		const exec: ExecFace = {
+			run: (argv, opts) => {
+				seen.push({ argv, opts });
+				return base.run(argv, opts);
+			},
+		};
+		const t = await runInstall(makeReq({ exec }));
+		expect(t.status).toBe("done");
+		const mig = seen.find(c => c.argv[0] === "oj" && c.argv[1] === "migrate");
+		expect(mig).toBeDefined();
+		expect(mig?.opts).toEqual({ timeoutMs: 600000 });
+	});
+});

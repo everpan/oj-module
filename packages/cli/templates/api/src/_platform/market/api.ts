@@ -6,8 +6,9 @@
 // InstallRequest 组装；任务生命周期/失败三分/终态审计全归 runInstall 状态机（P1-10），端点不重复编排。
 // CDN 基址：sys_setting `framework.market_cdn_url`（PRD §5.3，缺省空 = 市场不可用，可读错误不崩）；
 // 索引/清单拉取恒带 Cache-Control: no-cache（索引时效性）。
-// 站点路径缺省（marketEnv）：D3 单 mount 形态 fs 根相对保守值——生产口径由部署层（P1-16 e2e）
-// 钉定，编排层不隐式推导站点布局；MarketEnv 全字段可注入覆盖（测试 stub 同款）。
+// 站点路径缺省（marketEnv）：oj serve release 布局生产口径（P1-16 接线 B3/B4）——共享根 = serve
+// 挂载根 dist（锁 dist/manifests.yaml、版本目录 dist/<name>-<ver>/、versions.json 同根），
+// 暂存/任务/sidecar 留 dist 外（R13 不与装配树冲突）；全字段可注入覆盖（测试 stub 同款）。
 // file 源上传形态：照 personal-center/upload/api.ts 先例（http.files 双路径，大文件走 blob）；
 // 上传包先过 R1 三步范式（list→validate→extract）取出 manifest.yaml 供 preflight——
 // 未校验不解包，zip-slip 在信任边界外被拒。
@@ -15,7 +16,7 @@ import type { FetchFace } from "../_lifecycle/steps/download";
 import type { ExecFace } from "../_lifecycle/steps/extract";
 import type { ReloadFace } from "../_lifecycle/steps/reload";
 import { fsFace } from "../_lifecycle/atomic";
-import { runInstall, setEnabled } from "../_lifecycle/installer";
+import { latestAppliedSeqOf, reconcile, runInstall, setEnabled } from "../_lifecycle/installer";
 import { compareVersions } from "../_lifecycle/semver";
 import { sha384B64 } from "../_lifecycle/sha384";
 import { createStateStore } from "../_lifecycle/state";
@@ -66,6 +67,8 @@ export interface MarketEnv {
 	sha256Hex?: (data: Uint8Array) => string
 	/** 迁移账本 head（缺省 null = 跳过禁降版判定，同 installer） */
 	ledgerHead?: number | bigint | null
+	/** 迁移账本 head 真源（P1-16 接线①：缺省读 oj journal 表 `_oj_migrations` max(version)，查询失败 → null 不猜） */
+	ledgerHeadOf?: (name: string) => Promise<number | bigint | null>
 	/**
 	 * 宿主 versions.json（C2-09 peerRuntime 比对真源，键 = 包名）。缺省读 <dist>/versions.json
 	 * （ojm 宿主构建产物，与 modules.json 同目录，B-11 接线）；不可得 → undefined，manifest 声明
@@ -115,10 +118,10 @@ async function hostVersionsOf(env: MarketEnv): Promise<Record<string, string> | 
 	}
 }
 
-/** D3 单 mount 形态的 fs 根相对保守缺省（生产口径 P1-16 e2e 钉定；全字段可覆盖） */
+/** oj serve release 布局生产缺省（P1-16 B3/B4；全字段可覆盖） */
 export function marketEnv(): MarketEnv {
 	return {
-		sharedRoot: "modules",
+		sharedRoot: "dist",
 		staging: "modules/.staging",
 		taskDir: "modules/.install-tasks",
 		statePath: "modules/.solutions/state.yaml",
@@ -126,6 +129,7 @@ export function marketEnv(): MarketEnv {
 		siteModulesDir: "dist/modules",
 		modulesJsonPath: "dist/modules.json",
 		apiPrefix: "/api",
+		ledgerHeadOf: journalHeadOf,
 	};
 }
 
@@ -144,7 +148,23 @@ function fetchOf(env: MarketEnv): FetchInitFace {
 
 function execOf(env: MarketEnv): ExecFace {
 	const g = globalThis as { exec?: { run: ExecFace["run"] } };
-	return env.exec ?? { run: argv => g.exec!.run(argv) };
+	return env.exec ?? { run: (argv, opts) => g.exec!.run(argv, opts) };
+}
+
+/**
+ * smoke 探针同源补全（P1-16 接线④）：isolate fetch = deno_fetch（出站客户端，无同源 base），
+ * smoke 段相对探针 URL（probeUrlOf 契约形态）恒 TypeError——探活永不通过（凡带非匿名路由的方案
+ * release 必 partial，e2e 真机实测）。http.headers.host 在场时按请求源补全为绝对 URL（反代取
+ * x-forwarded-proto）；无 Host（CLI/测试注入面）原样透传。
+ */
+function withSiteOrigin(fetch: FetchInitFace): FetchFace {
+	const h = (http as { headers?: Record<string, string | undefined> }).headers ?? {};
+	const host = h.host;
+	if (!host) {
+		return fetch as FetchFace;
+	}
+	const proto = String(h["x-forwarded-proto"] ?? "http").split(",")[0]!.trim();
+	return url => fetch(/^https?:\/\//i.test(url) ? url : `${proto}://${host}${url}`) as ReturnType<FetchFace>;
 }
 
 function reloadOf(env: MarketEnv): ReloadFace {
@@ -184,6 +204,70 @@ async function fetchText(fetch: FetchInitFace, url: string): Promise<string> {
 	if (!res.ok)
 		fail(502, `索引拉取失败：${url} 返回 HTTP ${res.status}（请检查市场地址与网络）`);
 	return new TextDecoder().decode(await res.arrayBuffer());
+}
+
+/** http.user.id → username（operator 历史留痕，uninstall 端点同款反查；查询失败不阻断编排） */
+async function operatorOf(): Promise<string | null> {
+	const uid = (http as { user?: { id?: unknown } }).user?.id;
+	if (uid == null) {
+		return null;
+	}
+	try {
+		const u = await db.query("select username from users where id = ?", [uid]) as Array<{ username: string }>;
+		return u[0]?.username ?? null;
+	}
+	catch {
+		return null;
+	}
+}
+
+/** 站点迁移账本 head（oj journal 真源 `_oj_migrations`；表缺失/查询失败 → null = 跳过禁降版判定，不猜） */
+async function journalHeadOf(name: string): Promise<number | bigint | null> {
+	try {
+		const rows = await db.query("select max(version) as head from _oj_migrations where module = ?", [name]) as Array<{ head: unknown }>;
+		const head = rows[0]?.head;
+		return head == null ? null : Number(head);
+	}
+	catch {
+		return null;
+	}
+}
+
+/** sys_solution_route enabled（reconcile route 一致性面；无行/查询失败 → null 不猜） */
+async function routeEnabledOf(name: string): Promise<boolean | null> {
+	try {
+		const rows = await db.query("select enabled from sys_solution_route where module = ? and deprecated = 0 limit 1", [name]) as Array<{ enabled: unknown }>;
+		if (rows.length === 0) {
+			return null;
+		}
+		return Number(rows[0]!.enabled) === 1;
+	}
+	catch {
+		return null;
+	}
+}
+
+/**
+ * 对账入口（P1-10 接线③，市场页刷新即对账时点）：锁 ↔ 账本 head 自愈 + enabled 不一致自动修复。
+ * 账本 head 缺省 = oj journal 表查询（journalHeadOf），floor = 安装任务记录 appliedSeq（latestAppliedSeqOf）。
+ * 自愈失败只记日志不阻断市场页（index 可用性优先，下次刷新重试）。
+ */
+async function reconcileOf(env: MarketEnv): Promise<void> {
+	try {
+		await reconcile({
+			lockPath: `${env.sharedRoot}/manifests.yaml`,
+			sharedRoot: env.sharedRoot,
+			taskDir: env.taskDir,
+			modulesJsonPath: env.modulesJsonPath,
+			state: await createStateStore(env.statePath),
+			ledgerHeadOf: env.ledgerHeadOf ?? journalHeadOf,
+			headFloorOf: (name, version) => latestAppliedSeqOf(env.taskDir, name, version),
+			routeEnabledOf,
+		});
+	}
+	catch (e) {
+		console.warn(`market: 对账自愈失败（不阻断市场页，下次刷新重试）：${String(e)}`);
+	}
 }
 
 interface ResolvedBundle {
@@ -309,6 +393,7 @@ async function installBody(env: MarketEnv): Promise<{ task_id: string }> {
 		manifest,
 		name,
 		version,
+		operator: await operatorOf(),
 		state: await createStateStore(env.statePath),
 		archiveUrl,
 		sharedRoot: env.sharedRoot,
@@ -319,12 +404,12 @@ async function installBody(env: MarketEnv): Promise<{ task_id: string }> {
 		modulesJsonPath: env.modulesJsonPath,
 		apiPrefix: env.apiPrefix,
 		configPath: env.configPath,
-		fetch: fetch as FetchFace,
+		fetch: withSiteOrigin(fetch),
 		exec: execOf(env),
 		reload: reloadOf(env),
 		sha384B64: sha384Of(env),
 		sha256Hex: env.sha256Hex,
-		ledgerHead: env.ledgerHead ?? null,
+		ledgerHead: env.ledgerHeadOf ? await env.ledgerHeadOf(name) : (env.ledgerHead ?? null),
 		hostVersions: await hostVersionsOf(env),
 	});
 	return { task_id: task.id };
@@ -340,6 +425,9 @@ interface IndexRow {
 
 /** GET index 主体：CDN bundles.yaml（no-cache）⊕ 本地 sidecar state——CDN 序优先，本地独有方案殿后 */
 async function indexBody(env: MarketEnv): Promise<IndexRow[]> {
+	// 对账即服务（P1-10 接线③）：市场页刷新即对账时点——锁 ↔ 账本 head 自愈 + enabled 不一致
+	// 自动修复先行（失败只记日志，不阻断索引），失败站点的市场页每次打开都在尝试自愈
+	await reconcileOf(env);
 	const base = await cdnBaseOf(env);
 	if (base === null)
 		fail(503, "未配置市场地址（framework.market_cdn_url）——卡片区显示「未配置市场地址」（PRD §5.3）");
@@ -427,6 +515,7 @@ export function createMarketApi(env: MarketEnv) {
 						lockPath: `${env.sharedRoot}/manifests.yaml`,
 						state: await createStateStore(env.statePath),
 						modulesJsonPath: env.modulesJsonPath,
+						operator: await operatorOf(),
 					});
 				});
 			},
@@ -481,19 +570,13 @@ export function createMarketApi(env: MarketEnv) {
 					const name = String(body.name ?? "").trim();
 					if (name === "")
 						fail(400, "name is required");
-					const uid = (http as { user?: { id?: unknown } }).user?.id;
-					let operator: string | null = null;
-					if (uid != null) {
-						const u = await db.query("select username from users where id = ?", [uid]) as Array<{ username: string }>;
-						operator = u[0]?.username ?? null;
-					}
 					return await runUninstall({
 						name,
 						sharedRoot: env.sharedRoot,
 						lockPath: `${env.sharedRoot}/manifests.yaml`,
 						state: await createStateStore(env.statePath),
 						modulesJsonPath: env.modulesJsonPath,
-						operator,
+						operator: await operatorOf(),
 					});
 				});
 			},

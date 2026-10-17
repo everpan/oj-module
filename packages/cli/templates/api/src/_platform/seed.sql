@@ -11,9 +11,9 @@ INSERT OR IGNORE INTO sys_role (name, module, title, builtin) VALUES ('editor', 
 INSERT OR IGNORE INTO sys_role (name, module, title, builtin) VALUES ('viewer', 'framework', '访客', 1);
 -- seed 超管绑定（sys_user_role 唯一权威源，D10）
 INSERT OR IGNORE INTO sys_user_role (user_id, role_name) SELECT id, 'superadmin' FROM users WHERE username = 'admin';
--- 系统设置默认值（PRD §4.3；C4 设置页 / C5 登录方式发现的数据源；market.cdn_url 安全组仅 superadmin 可改）
+-- 系统设置默认值（PRD §4.3；C4 设置页 / C5 登录方式发现的数据源；framework.market_cdn_url 安全组仅 superadmin 可改）
 INSERT OR IGNORE INTO sys_setting (key, module, "group", type, value, default_value, label_key, secret, update_time) VALUES ('framework.site_title', 'framework', 'general', 'string', 'React Antd Admin', 'React Antd Admin', 'system:setting.site_title', 0, 0);
-INSERT OR IGNORE INTO sys_setting (key, module, "group", type, value, default_value, label_key, secret, update_time) VALUES ('market.cdn_url', 'market', 'security', 'string', '', '', 'system:setting.market_cdn_url', 0, 0);
+INSERT OR IGNORE INTO sys_setting (key, module, "group", type, value, default_value, label_key, secret, update_time) VALUES ('framework.market_cdn_url', 'framework', 'security', 'string', '', '', 'system:setting.market_cdn_url', 0, 0);
 INSERT OR IGNORE INTO sys_setting (key, module, "group", type, value, default_value, label_key, secret, update_time) VALUES ('ldap.enabled', 'ldap', 'login', 'bool', '0', '0', 'system:setting.ldap_enabled', 0, 0);
 INSERT OR IGNORE INTO sys_setting (key, module, "group", type, value, default_value, label_key, secret, update_time) VALUES ('sso.enabled', 'sso', 'login', 'bool', '0', '0', 'system:setting.sso_enabled', 0, 0);
 INSERT OR IGNORE INTO sys_setting (key, module, "group", type, value, default_value, label_key, secret, update_time) VALUES ('ldap_base_dn', 'ldap', 'ldap', 'string', '', '', 'system:setting.ldap_base_dn', 0, 0);

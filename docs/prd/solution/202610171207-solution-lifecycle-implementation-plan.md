@@ -260,11 +260,11 @@ getTask(id: string): TaskRecord | null
 ### Task P1-16：端到端 + 占位引导卡（R26，AC-P1 总验）
 
 **Files**: Create `scripts/lifecycle-e2e.mjs`；Modify 管理区占位卡（web/system 或 shell 空态）
-- [ ] e2e 脚本：起本地 oj 静态分发源（no-cache 头断言）→ install → 不重启出菜单 → 升级 0.2.0 → 回滚 → 禁用/启用 → AC-P1-1~20 逐条断言输出报告
-- [ ] 占位引导卡：market 未装时管理区显示 `ojm install` 指引
-- [ ] 全绿 → `pnpm typecheck && pnpm lint && pnpm test && pnpm test:cli` → commit
+- [x] e2e 脚本：起本地 oj 静态分发源（no-cache 头断言）→ install → 不重启出菜单 → 升级 0.2.0 → 回滚 → 禁用/启用 → AC-P1-1~20 逐条断言输出报告
+- [x] 占位引导卡：market 未装时管理区显示 `ojm install` 指引
+- [x] 全绿 → `pnpm typecheck && pnpm lint && pnpm test && pnpm test:cli` → commit
 
-> **状态：进行中**（2026-10-18 派发 p1-16-e2e，BASE 28a970d5）。范围：marketEnv 生产口径（sharedRoot 对齐 serve 根，修 health 404）+ hostVersions 真源（P1-12 B3/B4）、framework.market_cdn_url settings 注册（B④）、operator 透传与 install 历史 message 人话（P1-15a-port concern②③）、exec 生产包装转发 opts（P1-13c 遗嘱）、P1-10 报告五接线点（ledgerHead 真源/`# ojm:reload` 锚点随 init 发布/reconcile 入口/route-modules 自愈/消费面 i18n 核对）、e2e `scripts/lifecycle-e2e.mjs`（干净库起跑，AC-P1-1~20 逐条）、真机 AC0-7 走查、占位引导卡（R26）、长任务后台启动裁决意见。
+> **状态：已完成**（2026-10-18，`task-P1-16-report.md` 全量留痕）。e2e **AC-P1-1~20 正式轮 20/20 PASS**（`scripts/lifecycle-e2e.mjs`，报告 `logs/lifecycle-e2e-report.md`）；真机走查 AC0-7 **8/8 PASS**（真实 oj-market 0.1.0 包经修复副本 `ojm build --bundle` 产出——仓内 api 模块 manifest 尚名 demo-market、模块级 tables 缺 market_history，两项发现记入报告未改仓；留档 `logs/walkthrough-P1-16-fullchain.md`）；接线收尾四点（marketEnv 生产口径 / framework.market_cdn_url settings / operator 通道 / exec opts 转发 / P1-10 五接线点）+ smoke 探针同源补全 `withSiteOrigin()`（TDD 红→绿，isolate fetch = deno_fetch 无同源 base）；长任务裁决 = 维持现状（接口本为任务模型，POST 即返 task_id，后台化 P2 观察）。验收门：根 697+1skip ✓、templates 428 ✓、cli 152+1skip ✓、typecheck ✓；lint 触达文件全净、repo 467 pre-existing（35 文件与本任务零交集，CONCERN 留 lint-sweep 任务）。CONCERN 移交：oj-bin swc minify P0（跨 await 内联折叠，`--no-minify` 逃生门）、C2-26 anonymous 运行时接线（P2）、降级拒切安装器级校验（P2）、卸载后路由 500 打磨（P2）。
 
 **P1 DoD**：AC-P1-1~20 全绿 + 真机 kill 任一阶段自愈演示 + 集中评审合并。
 
@@ -289,17 +289,90 @@ getTask(id: string): TaskRecord | null
 
 ---
 
-## 4. P2 · 签名+市场+深检（分支 `feat/lifecycle-p2`，期门细化）
+## 4. P2 · 签名+市场+深检（分支 `feat/lifecycle-p2`，期门已细化 2026-10-18）
 
-| # | 任务 | 交付 / AC | 状态 |
+> 粗表（D1–D5）与细化任务（P2-0~P2-13）的映射：D1→P2-0/1/2/3/4/5、D2→P2-10/11（UI 主体已前移）、D3→P2-6/7、D4→P2-8/9、D5→P2-12/13。**任务表是唯一跟踪源**，本节就地更新。
+
+### 4.0 开工前置（期门硬条件）
+
+1. P1-16 回执经三证核实（台账 + git log + `task-P1-16-report.md`）并裁决完毕；
+2. P1 集中审查（`fd061926..HEAD` 全量 diff + 备案池逐条裁决）通过、`feat/lifecycle-p1` 已并入集成分支；
+3. P1 DoD 达成（AC-P1-1~20 全绿 + 真机 kill 自愈演示 + §7 P1 阶段小结）；
+4. 本节 §4.1 七条期门项逐条有裁决结论（未裁项不得开工对应任务）；
+5. 分支 `feat/lifecycle-p2` 自**合并后**的集成分支切出；派发制与纪律同 §6/交接文档 §6（SDD 子代理 sonnet、**禁并行实现代理**、逐任务台账、阶段末一次集中审查）。
+
+### 4.1 期门评审清单（开工前逐条裁决，结论留痕）
+
+| # | 议题 | 裁决 | 影响任务 |
 |---|---|---|---|
-| D1 | 签名链：`ojm` 侧 sign + isolate 侧 `verifyEd25519`（fail-closed）+ TOFU（CLI 指纹确认+审计，或 bootstrap 公钥随宿主——随 C4 裁决）+ 双 key 轮换 | AC-P2-1/2/3 | 未开始 |
-| D2 | market 实装：进度抽屉（800ms 轮询+schemaVersion）/ 版本历史抽屉 / 回滚 / 禁用启用 / 双版本卡片+changelog / 自升级 CLI 提示 | AC-P2-4 | **UI 主体已前移落地**（P1-15 f05beab + P1-15b 28b3bd2，oj-market 仓）；本行残余=schemaVersion 握手与自升级 CLI 提示 |
-| D3 | 深检端点+报告（后端四项 + 前端 i18n 项） | AC-P2-5 | 未开始 |
-| D4 | `/market/meta` + `peerPlatform` 预检 | AC-P2-6 | 未开始 |
-| D5 | 任务治理落地（保留 10 条/超时 failed/脱敏）+ CLI 引导装 market 本身 | AC-P2-7 | 未开始 |
+| G1 | **分发形态**：0.1.77 `mounts[].api` URL 挂载（dist 根 tarball + sha256 锚）是否兼作方案包通道 | **建议不兼走，留痕**：URL 挂载面向整站 dist 根、装配期直接入内容寻址缓存，跨过了安装器的 staging/验签/迁移/注册/锁账/sidecar 全链；方案包 tgz 为唯一载体。上游形态记入 devkit「打包与分发」辨析项（P1-11 已落同款辨析），不推翻 v3 架构 | 无（裁决即结案） |
+| G2 | **exec 流式（0.1.78）** 两项候选：① `onStdout` 增量刷 TaskRecord 进度 ② `h.kill()` 取消安装 | **① 采纳**（P2-12，feature-detect `exec.spawn` 存在性，缺失回落 stage 粒度）；**② 转 P3 评估并留痕**——取消须连带 staging 清理、账本对账与 D11 失败语义三分配套，成本高于本期收益，不在 P2 引入半成品取消语义 | P2-12 |
+| G3 | **TOFU 形态**（设计 D1 留的 C4 待定项） | ✅ **已裁（2026-10-18，用户）：双轨**——宿主信任库 `.solutions/trusted-keys.yaml`（可随宿主预置第一方 key 免 TOFU）+ 未知 `key_id` 首次装由 CLI/市场页展示指纹确认后入库并审计。设计文档 §0 回填为 D15（待期门通过后执行） | P2-2/3/4 |
+| G4 | **未签名/签名不符包的处理** | ✅ **已裁（2026-10-18，用户）：硬 fail-closed，不留开关**——Form B 缺 `signature`、验签不过、格式错一律拒装零落盘；无 `solution_allow_unsigned` 类逃生门（R10/契约 C2-29 原口径）。设计文档 §0 回填为 D16 | P2-3 |
+| G5 | **key 轮换/吊销语义**（R10 后半） | **建议**：信任库按 `key_id` 多键共存 = 轮换过渡期（新旧键签名包均可装）；吊销 = 从信任库移除该 `key_id`（**只阻断新装/升级，不动已装方案**，避免存量站点因吊销整体不可用）；移除动作审计留痕。设计文档 §0 回填为 D17 | P2-2/4 |
+| G6 | **oj-market 侧遗留的执行主体** | **本仓只交付契约与端点**；UI 面（IndexRow `available` 消费、operator 列、自升级提示、深检 i18n 前端执行、报告展示）记入 `../oj-market` 遗留清单，由接手代理或用户执行——该仓**只读**红线不变 | P2-7/10/11 |
+| G7 | **P1 集中审查备案池归 P2 的条目** | 待集中审查逐条裁决后**就地补录本表**（候选：P1-14 组级 `label_key` 缺口、P1-12 `task?id=` 形态校准、P1-9 完整 modules.json 条目透传、P1-6 `archive.size` 未比、P1-5 version 严于契约字面回调等；以台账为准） | 随裁决 |
 
-**DoD**：AC-P2-1~7 绿；未签名装不上、签名不符不落盘真机演示；集中评审合并。
+### 4.2 契约增补（先于一切代码，文档先行铁律）
+
+| # | 任务 | 交付 / AC | 原则 | 状态 | 开始 | 耗时 |
+|---|---|---|---|---|---|---|
+| P2-0 | C2 契约 v1.2 增补：① `archive.signature.public_key`（hex 64，P2 起 Form B 必填——**验签需要公钥，而 Form B 现只带 key_id+value，无公钥则 TOFU 无从钉定**；指纹口径 = `sha256Hex(publicKey)` 全 64，UI 分组展示）② Form B 下 `archive.signature` 由「P2 起必填」升为**必填（G4 硬 fail-closed）** ③ `verifyEd25519` 编码约束入契约（`sigBase64` 仅标准 base64、禁 base64url；`publicKey` 仅 32 字节 raw 的 hex/base64，禁 PEM/SPKI）④ TOFU 三态语义（`trusted`/`unknown`/`rejected`）与信任库形态 ⑤ 深检报告字段结构 ⑥ IndexRow 增 `available[]`（CDN 版本列表）与 `operator` 透传 | 契约文档增补 + **夹具 bundle 双端同步**（合法/非法各一，签名链夹具：已签/篡改/未知 key 三枚）+ 教学文档 §坑表与 devkit「签名与信任」章节提纲 | ISP（按消费方列字段）/ DRY（夹具双端共用） | 未开始 | — | — |
+
+### 4.3 签名链（D1）
+
+| # | 任务 | 交付 / AC | 原则 | 状态 | 开始 | 耗时 |
+|---|---|---|---|---|---|---|
+| P2-1 | 签名规范串 + 密钥工具纯函数（Node 侧）：`canonicalString(name, version, sha256)`（同 C2-29 / devkit 示例 `<name>@<version>:<sha256>`）、Ed25519 密钥对生成与加载（`crypto.generateKeyPairSync("ed25519")`）、`signCanonical(privateKey, canon) → base64`、公钥导出 32B hex | `packages/cli/src/lifecycle/sign.ts` + `keygen.ts`；测试：规范串逐字、签/验往返、与 Node `crypto.verify` 对拍、**与 isolate `crypto.verifyEd25519` 编码面兼容**（标准 base64 / raw key） | SRP / DIP（签名面可注入） | 未开始 | — | — |
+| P2-2 | 宿主信任库（isolate 侧）：`_lifecycle/trust.ts`——`.solutions/trusted-keys.yaml`（`key_id → publicKey hex`，含 bootstrap 第一方 key 合并）+ 原子写（D13）+ 损坏 fail-closed + 多 key 共存（G5 轮换）+ 移除即吊销 + 变更审计 | 测试：空库/损坏库/多 key/未知 key_id/移除后拒装/并发读不见半截 | DIP / DRY（复用 `atomicWriteText`） | 未开始 | — | — |
+| P2-3 | verify 段验签（fail-closed + TOFU 三态）：改 `_lifecycle/steps/verify.ts`——sha256 比对后算规范串 → 信任库查 key_id（**公钥取包内 `signature.public_key`，与信任库绑定比对：已信任则键必须一致，不一致=拒装**）→ `crypto.verifyEd25519`（注入面 `verifyEd25519Face`，DIP）。**双层语义**：格式错抛错（文案 `verifyEd25519: …` 起头）与验签 `false` 同为拒装但文案分码、`retryable=false`；未知 key_id → 任务终态 `needs_trust` + 指纹 + `key_id`；新增 `POST /api/_platform/market/trust`（superadmin，R9）确认入信任库后可重试 | 测试：缺 signature / alg 非 Ed25519 / 错 key / 篡改包 / 未知 key_id / 格式错抛错 —— 六码齐报且**零解压零落盘**；TOFU 确认→重试可装；拒绝→不装 | LSP（同 `(ctx) => Promise<StageResult>` 签名）/ 安全 fail-closed | 未开始 | — | — |
+| P2-4 | CLI `ojm keygen` / `ojm sign`：密钥对生成（私钥本地 PEM，0600 权限提示）、`ojm sign <tgz> --key <file> --key-id <id>` 写 Form B `archive.signature`（key_id/value/public_key/alg）并回写 `bundles.yaml` 或打印片段；`ojm build --bundle` 保持只出包不签名 | 测试：参数解析、Form B 字段齐备、`--key-id` 缺失报错、确定性（同包同 key 签名稳定） | DRY（与 P2-1 纯函数同源） | 未开始 | — | — |
+| P2-5 | 签名失败文案 + 审计 + 历史：`lifecycle.stage.verifying.*` 增签名失败码（双语，R28/C2-25 纪律）、`auditOp` 与 `market_history` 记 `key_id` + 指纹 + operator；TOFU 确认/吊销单独审计项 | 测试：文案 key 双语齐备（fail-fast 同 C2-25）、审计行字段齐、脱敏（私钥永不入日志/任务记录） | DRY（文案单一来源） | 未开始 | — | — |
+
+### 4.4 深检（D3）
+
+| # | 任务 | 交付 / AC | 原则 | 状态 | 开始 | 耗时 |
+|---|---|---|---|---|---|---|
+| P2-6 | 深检后端四项 + 端点：`POST /api/_platform/solutions/:name/verify`（**admin 域，不进 superadmin 独占的 market 编排面**——设计 §5.1 口径）。四项：① 路由可达性（进程内 fetch 各 route path；凭证形态照 S1-5 自检 token/匿名 health，**2xx/401/403 判可达、404/5xx 判异常**——待期门 G7 补裁）② RBAC 完整性（声明 ↔ `sys_permission`/`sys_role` 行）③ 设置项完整性（manifest `settings.items` ↔ `sys_setting` 行）④ 迁移账本（`oj migrate --format json` 读账本 head 比对已装版本）。报告 = `{ok, checks[], advise[]}`；纯函数优先（`diffRouteRows`/`diffPermRows`/`diffSettingRows`/`diffLedger`） | 测试：四项各一过例一异例（断言修复建议可读）、端点门（未登录 401 / 非 admin 403 / 方案未装 404） | SRP（每项一纯函数）/ ISP | 未开始 | — | — |
+| P2-7 | 深检 i18n 项 + 报告留存：i18n 覆盖**前端执行**（浏览器 i18next 已并入命名空间直接查 key，设计 §4.2）——本仓只下发「待查 key 清单」（`<name>:menu.*`/`settings.group.*`/`perm.*`/`role.*`），市场页执行并入报告（oj-market 遗留，G6）；报告落 `.solutions/verify-reports/<name>-<ts>.json`（保留 N=10）+ `GET .../verify/last` | 测试：key 清单生成（含去重/排序）、报告保留 N 与最近一次读取、损坏报告不炸 | DRY / SRP | 未开始 | — | — |
+
+### 4.5 市场契约握手与索引（D4/D2 残余）
+
+| # | 任务 | 交付 / AC | 原则 | 状态 | 开始 | 耗时 |
+|---|---|---|---|---|---|---|
+| P2-8 | `peerPlatform` 预检强制（C2-11 P2+ 执行点）+ `/market/meta` 语义化：`API_VERSION` 定 major/minor 语义（major 变更 = 不兼容，拒装并给可读升级指引）；preflight 增 `peerPlatform` 规则（真源注入 `hostPlatformVersion`，算子集同 C2-09：精确/`>=`/`^`） | 测试：兼容过 / 不兼容拒（含指引文案）/ 算子三例 / meta 版本号稳定 | DIP（版本真源注入） | 未开始 | — | — |
+| P2-9 | TaskRecord `schemaVersion`（R23）：任务 JSON 增字段（缺省回填 `1`）、消费面按版本判可读、非超级管理员可见性不变；市场 800ms 轮询旧文件不炸 | 测试：缺省回填、高版本降级提示、旧消费面兼容 | OCP | 未开始 | — | — |
+| P2-10 | IndexRow 契约扩展：`available[]`（CDN 版本列表，回滚候选不止本站已装旧版 —— P1-15b 边界缺口）+ `changelog` 透传（C2-08 P2 市场卡片消费）+ `operator`（P1-16 已补通道）；`Cache-Control: no-cache` 断言不改（R15） | 测试：聚合字段齐、no-cache 头、CDN 不可达降级 | ISP | 未开始 | — | — |
+| P2-11 | CLI 引导装 market 本身（D6）+ 自升级提示（R27）：`ojm install market`（或 `ojm install` 未装 market 时的引导位）输出可执行命令与文档入口；market 自身卡片升级按钮语义 = 「经 CLI 升级」提示。UI 面属 oj-market 遗留（G6） | 测试：引导文案双语 + 命令可复制、未装/已装两态 | — | 未开始 | — | — |
+
+### 4.6 任务治理与收官（D5）
+
+| # | 任务 | 交付 / AC | 原则 | 状态 | 开始 | 耗时 |
+|---|---|---|---|---|---|---|
+| P2-12 | 任务治理核查 + 进度粒度升级：`tasks.ts` 既有治理（保留 10 条/超时 failed/`redact`）**逐条回归验收**（P1-10 已实现，本任务核不核得住）；`exec` 流式（G2①）`onStdout` → `TaskRecord.stageProgress`（feature-detect `exec.spawn`，**双路径都要测**；缺失回落 stage 粒度）。取消安装（`h.kill()`）按 G2 转 P3 | 测试：有/无 spawn 两路径、进度字段不破坏既有消费面（配 P2-9 `schemaVersion`） | OCP / DIP | 未开始 | — | — |
+| P2-13 | P2 端到端 + 真机走查：`scripts/lifecycle-e2e.mjs` 扩展（干净库起跑，签名链三态 + 深检 + 握手 + 索引）；真机 AC0-7 **扩 P2 断言**（未签名装不上 / 签名不符不落盘 / TOFU 确认 / 吊销后拒装）；全绿 + `pnpm typecheck && pnpm lint && pnpm test && pnpm test:cli` | 测试基线不得回退：根套件 697+1skip / templates 416 / `test:cli` 152+1skip | — | 未开始 | — | — |
+
+### AC-P2 验收清单（BDD 锚点）
+
+| AC | 断言 | 锚任务 |
+|---|---|---|
+| AC-P2-1 | Form B 缺 `signature` → 拒装零落盘（硬 fail-closed，G4） | P2-3 |
+| AC-P2-2 | 签名不符（篡改 tgz / 错 key / 错 alg / 格式错）→ 拒装零落盘，真机演示 | P2-3/13 |
+| AC-P2-3 | TOFU 三态：未知 key_id → `needs_trust` + 指纹；确认后入信任库可装；拒绝不装（G3 双轨） | P2-2/3/4 |
+| AC-P2-4 | 双 key 轮换共存期旧键包可装；移除（吊销）后拒装，且不破坏已装方案（G5） | P2-2/4 |
+| AC-P2-5 | 深检四项报告齐（可达/RBAC/设置/账本）+ 修复建议，异常项可断言复现 | P2-6/7 |
+| AC-P2-6 | `peerPlatform` 不兼容拒装 + 可读升级指引；`/market/meta` 版本稳定 | P2-8 |
+| AC-P2-7 | TaskRecord 带 `schemaVersion`，旧消费面不炸 | P2-9 |
+| AC-P2-8 | IndexRow 版本列表：回滚候选含 CDN 历史版本，changelog 可见 | P2-10 |
+| AC-P2-9 | CLI 引导装 market 本身 + 自升级提示（D6/R27） | P2-11 |
+| AC-P2-10 | 市场全动作真机走查（AC0-7 + P2 扩展断言）全绿 | P2-13 |
+| AC-P2-11 | 进度粒度升级：有 `exec.spawn` 出输出级进度，无则回落 stage 级 | P2-12 |
+| AC-P2-12 | 签名失败/信任变更（`key_id`+指纹+operator）全留痕，私钥永不入日志 | P2-5 |
+| AC-P2-13 | e2e 全链绿 + 三条测试基线零回退 | P2-13 |
+
+**DoD**：AC-P2-1~13 全绿 + **未签名装不上、签名不符不落盘**真机演示 + 集中评审合并 + §7 写 P2 阶段小结（照 P0/P1 小结格式）。
+
+### 4.7 上游对账评估输入（期门读本 · 结论见 G1/G2，原文保留备查）
 
 > **上游对账评估输入（2026-10-17，oj 0.1.77，含上游详细口径）**：`mounts[].api` 支持 `http(s)://` URL 指向 dist 根 tarball，装配期拉取、解压到内容寻址缓存 `<cache>/<sha256>/`（缺省 `<config_dir>/.oj-cache`），以 release 语义服务；`sha256`（64 hex）必填否则 fail-fast；解压 fail-fast 与本地 dist/ 同口径（产物根须含 manifests.yaml；tar-slip / 符号链接 / 特殊文件 / 总量 4 GiB·条目 10 万·单条 1 GiB 超预算拒启）；命中缓存按 sha256 复用、损坏自动重拉、同 URL 物化互斥串行化；`--api-path` 不接受 URL。打包 `oj build --bundle` = 整站 dist 根空前缀 tarball + 打印 sha256。P2 期门须评估：方案包分发是否改走/兼走该形态（URL 挂载解决取包与完整性，安装器仍持迁移/注册/锁账/sidecar——互补而非替代，不推翻 v3 架构）；若兼走，`bundles.yaml`/CDN 索引与 dist 根 tarball 的形态归一化在期门裁决。三份上游需求稿（OJ-6/8/9）0.1.77 未包含，且同日**上游终裁三稿均不采纳**（裁决理由与消费方处置见各稿「上游终裁」节）——P1 现行路径（exec.run 迁移子进程、rollbackGuard 禁降版、Windows 文档兜底）即长期形态。
 
@@ -313,8 +386,9 @@ getTask(id: string): TaskRecord | null
 | U2 | GC 内建 install：state.yaml 时间序保留 N=3，与回滚靠 lock 互斥 | AC-P3-3 | 未开始 |
 | U3 | `ojm publish` + bundles.yaml/manifests.yaml 索引重算（no-cache 头） | AC-P3-4 | 未开始 |
 | U4 | `ojm uninstall` 瘦客户端 | 随 U1 | **已前移落地**（P1-15a-port 28a970d5，+4 CLI 用例） |
+| U5 | **取消安装**（`exec.spawn` 句柄 `h.kill()`，0.1.78）——P2 期门 G2 转入：须连带 staging 清理、账本对账与 D11 失败语义三分配套 | AC-P3-6（待定） | 未开始（P2-12 只做进度，不做取消） |
 
-**DoD**：AC-P3-1~5 绿；卸载重装不复活授权真机演示；集中评审合并。
+**DoD**：AC-P3-1~5 绿；卸载重装不复活授权真机演示；集中评审合并。U1 残余（级联单事务 / 业务表保留提示）与 P2 期门 G7 一并复核。
 
 ## 6. 风险与依赖
 
@@ -324,7 +398,13 @@ getTask(id: string): TaskRecord | null
 | 长任务形态受限（isolate 请求作用域） | S1-7 双候选都已论证；分段执行+状态文件续跑为兜底；0.1.78 exec 流式（onStdout 增量回调）令迁移段可在请求作用域内实时刷 TaskRecord 进度（P2 消费，形态不变） |
 | oj build introspect 空沙箱红线（RBAC §9.4 先例） | `_lifecycle` 模块级语句禁触碰运行时全局（jwt/db/axis），全部收进函数——列入集中评审 checklist |
 | Windows tar / EPERM | OJ-8 终裁未采纳（Windows exec 模板写 `cmd /c`）；R30 路径 POSIX 化 + 可读报错，Windows 列已知限制 |
-| 两运行时契约漂移 | 夹具双端测试（P1-11）为门禁 |
+| 两运行时契约漂移 | 夹具双端测试（P1-11）为门禁；P2-0 契约增补（含签名夹具三枚）后双端夹具须同步重跑 |
+| 验签双层语义被吞（`verifyEd25519` 格式错**抛错** vs 验签不过**返回 false**） | P2-3 分码处置，抛错须 try/catch 转拒装（isolate 禁 `console.*`，异常消息进任务记录）；两种均 `retryable=false` |
+| 公钥随包带来的首次绑定投毒窗口 | TOFU 指纹人工确认（G3）+ 审计；第一方 key 随宿主 bootstrap 覆盖免 TOFU；信任库绑定比对（同 key_id 换公钥=拒装） |
+| 吊销过激致存量站点不可用 | G5 语义：吊销只阻断新装/升级，不动已装方案 |
+| 深检路由可达性凭证形态 | 照 S1-5（进程内自检 token / 匿名 health）；2xx/401/403 判可达、404/5xx 判异常（期门 G7 补裁） |
+| exec 流式 feature-detect 分支漏测 | P2-12 有/无 `exec.spawn` 双路径均须用例；无 spawn 回落 stage 粒度不得破坏既有消费面 |
+| oj-market 仓只读，UI 遗留无人接手 | G6：本仓只交付契约与端点，UI 记遗留清单交用户/接手代理 |
 
 ## 7. 阶段小结（滚动追加）
 
@@ -333,6 +413,6 @@ getTask(id: string): TaskRecord | null
   - **方法论落地**：SDD 全程——每任务「实现者→评审员→修复环→scoped 复审」四拍；评审共拦下 1 Critical（C2-17 正则自洽）+2 Important（zip-slip 之外的报告断链/复现性）+十余 Minor；两个跨任务缺口（C2-33、D11 语义反转残留）由下游任务评审钉出。
   - **遗留（接受保留，台账已录）**：GNU tar Linux 复验（P1 T3）、C5 #3 C2-12b 提纲未点名（P1 手册回填）、R12 编号跨文档二义（既有）、health 双命名空间差异（P1-5 承接）。~~OJ-8 上游文本微调~~（已终裁关闭，2026-10-17）。
   - **上游**：OJ-8/OJ-6/OJ-9 已提交并**终裁均未采纳**（2026-10-17；裁决理由与消费方处置见各稿「上游终裁」节）；PR 文档（202610161500）已同步终裁标注。
-- **P1**：进行中（2026-10-17 至 10-18 凌晨，代码任务 16/17 完成）：主线 P1-1~P1-14 全部完成（semver/tgz-guard/预检/下载解压/迁移/注册/部署冒烟/编排器/编排端点/CLI/manifest 契约/前端归并；逐任务台账见 `.superpowers/sdd/202610171207-solution-lifecycle-implementation-plan/progress.md`）；市场侧 P1-15/15a/15b 由 oj-market 接手代理交付（其仓 f05beab/eb84902/28b3bd2），主线 P1-15a-port 移植归位（28a970d5）；P1-16 进行中（收官接线+e2e+真机 AC0-7）。期间两项根因修复（5366d4be schema 声明回归、66b04f20/a77eecc0 测试夹具竞态与串扰假红）、oj 0.1.78 对账（P1-13c migrate timeoutMs）、教学验证全链真机走通（202610172100）。集中审查按用户常设指令待 P1-16 归来一次执行（全量 diff + 修复波），备案池见台账。
-- **P2**：未开始。
+- **P1**：代码任务 17/17 完成（2026-10-17 至 10-18 凌晨）：主线 P1-1~P1-16 全部完成（semver/tgz-guard/预检/下载解压/迁移/注册/部署冒烟/编排器/编排端点/CLI/manifest 契约/前端归并/e2e 总验；逐任务台账见 `.superpowers/sdd/202610171207-solution-lifecycle-implementation-plan/progress.md`）；市场侧 P1-15/15a/15b 由 oj-market 接手代理交付（其仓 f05beab/eb84902/28b3bd2），主线 P1-15a-port 移植归位（28a970d5）。P1-16 收官（2026-10-18）：e2e AC-P1-1~20 20/20 PASS、oj-market 真机走查 AC0-7 8/8 PASS、验收门四绿（lint repo 基线破为 pre-existing 零交集，CONCERN 在案）。期间两项根因修复（5366d4be schema 声明回归、66b04f20/a77eecc0 测试夹具竞态与串扰假红）、oj 0.1.78 对账（P1-13c migrate timeoutMs）、教学验证全链真机走通（202610172100）。**DoD 残项**：真机 kill 任一阶段自愈演示已由 e2e AC7（M004 账本回退 → 重启对账回指）覆盖；**集中审查（`fd061926..HEAD` 全量 diff + 备案池裁决）待执行**——P2 开工前置 §4.0-2。
+- **P2**：未开始（2026-10-18 期门细化：§4 展开为 P2-0~P2-13 任务表 + G1–G7 期门清单 + AC-P2-1~13；已裁 G3 TOFU 双轨、G4 硬 fail-closed、G1 不兼走 URL 挂载、G2 进度采纳/取消转 P3）。开工前置见 §4.0（P1 集中审查通过并合并）。
 - **P3**：未开始。

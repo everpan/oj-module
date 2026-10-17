@@ -34,6 +34,7 @@ server:
   # ---- 统一响应头（v0.1.30）----
   response_headers: {}
   # ---- 热更端点（ojm install 的 reloading 段消费；显式关闭 = 安装器 reloading 段可读失败）----
+  # ojm:reload
   reload_api: true
   # ---- 直传路由 PUT {base}/blob/{key} 的体积上限（v0.1.30，默认 1GiB）----
   # 与 max_upload_bytes（multipart，默认 10MB）是两套闸，别混。

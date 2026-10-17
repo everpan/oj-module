@@ -1,0 +1,525 @@
+#!/usr/bin/env node
+// P1-16 e2e（AC-P1-1~20 总验）：真宿主（oj release 形态）全链 BDD 断言。
+// 用法：node scripts/lifecycle-e2e.mjs [--keep]
+//   --keep  保留现场目录 logs/lifecycle-e2e/（默认跑完即清；报告恒保留 logs/lifecycle-e2e-report.md）。
+// 布局：站点 = logs/lifecycle-e2e/site（ojm init 等价物：模板 api + dev 证书 + oj build + oj serve release 形态），
+//       CDN 分发源 = logs/lifecycle-e2e/cdn（本脚本内建 http 服务 :9782）。
+// 端口纪律：站点 9781 / CDN 9782（9778 主线保留禁用），finally 兜底 kill。
+// 前置：oj 0.1.78 在 ~/.local/share/oj/oj（plugins 同目录可发现；`oj` 在 PATH 供 exec 白名单 migrate）。
+// 场景时间线：boot → 登录改密 → 配 CDN → install 0.1.0（AC1/14/15/16/17/19）→ 升级 0.2.0（AC4/12，捕 db bak）
+//   → 同版重装（AC3）→ partial 演练（AC13/14-partial）→ M004 账本回退自愈（AC7）→ 显式回滚收敛（AC5 备案）
+//   → 禁用/启用（AC6）→ 恶意 tgz / 契约违规拒装（AC8/10/11）→ release 重启不拒启（AC2）→ 报告（AC18/20 汇总）。
+import { Buffer } from "node:buffer";
+import { spawn, spawnSync } from "node:child_process";
+import { createHash, createSign, generateKeyPairSync, randomBytes } from "node:crypto";
+import { appendFileSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import * as fsp from "node:fs/promises";
+import http from "node:http";
+import path from "node:path";
+import process from "node:process";
+import { DatabaseSync } from "node:sqlite";
+import { fileURLToPath } from "node:url";
+
+const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+const WORK = path.join(ROOT, "logs", "lifecycle-e2e");
+const SITE = path.join(WORK, "site");
+const API = path.join(SITE, "api");
+const CDN_DIR = path.join(WORK, "cdn");
+const BASE = "http://127.0.0.1:9781";
+const CDN_BASE = "http://127.0.0.1:9782";
+const OJ_BIN = process.env.OJ_BIN ?? `${process.env.HOME}/.local/share/oj/oj`;
+const KEEP = process.argv.includes("--keep");
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const sha256 = d => createHash("sha256").update(d).digest("hex");
+
+// ── BDD 断言账本（exit 1 若有 FAIL）──
+const results = [];
+function ac(id, name, pass, evidence) {
+	results.push({ id, name, pass, evidence });
+	console.log(`${pass ? "PASS" : "FAIL"} AC-P1-${id}\t${name}\t— ${evidence}`);
+}
+function must(cond, msg) {
+	if (!cond)
+		throw new Error(`断言失败：${msg}`);
+}
+
+// ── oj dev 证书三件套（ojm init mintDevCert 同构：现场生成，JWS 仅 nbf/exp）──
+function mintDevCert(certDir) {
+	const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+	const now = Math.floor(Date.now() / 1000);
+	const signingInput = `${Buffer.from(JSON.stringify({ alg: "RS256" })).toString("base64url")}.${Buffer.from(JSON.stringify({ nbf: now, exp: now + 3650 * 86400 })).toString("base64url")}`;
+	const sig = createSign("RSA-SHA256").update(signingInput).sign(privateKey).toString("base64url");
+	mkdirSync(certDir, { recursive: true });
+	writeFileSync(path.join(certDir, "private.pem"), privateKey.export({ type: "pkcs8", format: "pem" }));
+	writeFileSync(path.join(certDir, "public.pem"), publicKey.export({ type: "spki", format: "pem" }));
+	writeFileSync(path.join(certDir, "cert.jws"), `${signingInput}.${sig}`);
+}
+
+// ── HTTP 小客户端（oj 信封 {data,...}；恒 10s 超时——站点死亡快速失败不挂死）──
+async function api(pathname, { method = "GET", token, body } = {}) {
+	const headers = {};
+	if (token)
+		headers.authorization = `Bearer ${token}`;
+	if (body !== undefined)
+		headers["content-type"] = "application/json";
+	const res = await fetch(BASE + pathname, { method, headers, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(10_000) });
+	const text = await res.text();
+	let json = null;
+	try {
+		json = JSON.parse(text);
+	}
+	catch {}
+	return { status: res.status, json, data: json?.data ?? null, message: json?.message ?? null };
+}
+
+async function pollTask(id, token, { timeoutMs = 90_000 } = {}) {
+	const t0 = Date.now();
+	for (;;) {
+		const r = await api(`/api/_platform/market/task?id=${id}`, { token });
+		if (["done", "failed", "partial"].includes(r.data?.status))
+			return r.data;
+		if (Date.now() - t0 > timeoutMs)
+			throw new Error(`task ${id} 轮询超时：${JSON.stringify(r.json)?.slice(0, 300)}`);
+		await sleep(300);
+	}
+}
+
+async function install(name, version, tk) {
+	const r = await api("/api/_platform/market/install", { method: "POST", token: tk, body: { name, version, source: "cdn" } });
+	if (r.status !== 200 || !r.data?.task_id)
+		throw new Error(`install ${name}@${version} 提交失败：${r.status} ${JSON.stringify(r.json)?.slice(0, 300)}`);
+	return await pollTask(r.data.task_id, tk);
+}
+
+// ── CDN 静态分发源（:9782）：记录请求 cache-control（no-cache 断言），响应恒 no-store ──
+function startCdn(dir, port) {
+	const hits = [];
+	const srv = http.createServer((req, res) => {
+		const rel = decodeURIComponent(new URL(req.url, "http://x").pathname.replace(/^\/+/, "")) || "bundles.yaml";
+		hits.push({ path: `/${rel}`, requestCacheControl: req.headers["cache-control"] ?? null });
+		const file = path.join(dir, rel);
+		if (!file.startsWith(dir) || !existsSync(file)) {
+			res.writeHead(404);
+			res.end();
+			return;
+		}
+		res.writeHead(200, { "content-type": "application/octet-stream", "cache-control": "no-store" });
+		res.end(readFileSync(file));
+	});
+	return new Promise((resolve) => {
+		srv.listen(port, "127.0.0.1", () => resolve({ srv, hits }));
+	});
+}
+
+// ── 方案包构建（§2.9 单根布局；0.1.0/0.2.0 迁移递进）──
+function solutionManifest(v, sha, size) {
+	return {
+		name: "demo-solution",
+		version: v,
+		summary: "e2e demo solution",
+		peerRuntime: ">=0.1.0",
+		archive: { file: `demo-solution-${v}.tgz`, sha256: sha, size },
+		health: "/demo-solution/ping",
+		api: { prefix: "/api/demo-solution", anonymous: ["demo-solution/ping"] },
+		web: { entry: `modules/demo-solution/${v}/entry.js`, css: [`modules/demo-solution/${v}/main.css`] },
+		routes: [
+			{ path: "/demo-solution", category: "main", order: 200, title_key: "demo-solution:menu.main" },
+			{ path: "/demo-solution/ping", category: "hidden", order: 205, title_key: "demo-solution:menu.ping" },
+		],
+		permissions: [{ code: "demo-solution.view", title_key: "demo-solution:perm.view" }],
+		roles: [{ name: "demo-solution.admin", title_key: "demo-solution:role.admin", permissions: ["demo-solution.view"] }],
+		settings: { groups: [{ group: "display", label_key: "demo-solution:settings.group.display", items: [{ key: "demo-solution.display.theme", type: "enum", options: ["dark", "light"] }] }] },
+	};
+}
+
+function buildDemoTree(stageDir, v) {
+	const mod = path.join(stageDir, `demo-solution-${v}`, "api", `demo-solution-${v}`);
+	const web = path.join(stageDir, `demo-solution-${v}`, "web", "modules", "demo-solution", v);
+	mkdirSync(path.join(mod, "migrations"), { recursive: true });
+	mkdirSync(path.join(mod, "ping"), { recursive: true });
+	mkdirSync(web, { recursive: true });
+	writeFileSync(path.join(stageDir, `demo-solution-${v}`, "manifest.yaml"), JSON.stringify(solutionManifest(v, "", 0)));
+	writeFileSync(path.join(mod, "manifest.yaml"), `name: demo-solution\ndesc: e2e demo solution\nversion: ${v}\ntables:\n  - demo_note\n`);
+	writeFileSync(path.join(mod, "routes.js"), "export default [{ method: \"get\", pattern: \"demo-solution/ping\", file: \"ping/api.js\" }];\n");
+	writeFileSync(path.join(mod, "ping", "api.js"), `export default { async get() { return { pong: true, module: "demo-solution", version: "${v}" }; } };\n`);
+	writeFileSync(path.join(mod, "migrations", "0001__init.sql"), "CREATE TABLE demo_note (id INTEGER PRIMARY KEY, title TEXT NOT NULL);\n");
+	if (v === "0.2.0")
+		writeFileSync(path.join(mod, "migrations", "0002__add_done.sql"), "ALTER TABLE demo_note ADD COLUMN done INTEGER NOT NULL DEFAULT 0;\n");
+	writeFileSync(path.join(web, "entry.js"), `console.log("demo-solution ${v}");\n`);
+	writeFileSync(path.join(web, "main.css"), `.demo-solution-v${v.replace(/\./g, "-")} { color: red; }\n`);
+}
+
+function tarCzf(cwd, name, members, extraArgs = []) {
+	const r = spawnSync("tar", ["-czf", name, ...extraArgs, ...members], { cwd });
+	if (r.status !== 0)
+		throw new Error(`tar 失败：${String(r.stderr)}`);
+	const bytes = readFileSync(path.join(cwd, name));
+	return { bytes, sha: sha256(bytes), size: bytes.byteLength };
+}
+
+function buildCdnBundles() {
+	// demo-solution 0.1.0/0.2.0（0001 两版逐字节一致——oj 迁移 checksum 要求）
+	const manifests = [];
+	const versions = [];
+	const index = { generated_at: new Date().toISOString(), cdn: CDN_BASE, solutions: [] };
+	for (const v of ["0.1.0", "0.2.0"]) {
+		const stage = path.join(CDN_DIR, `stage-${v}`);
+		mkdirSync(stage, { recursive: true });
+		buildDemoTree(stage, v);
+		// AC-P1-18：同一棵树 tar 两次 → sha256 一致（确定性 tgz）
+		const a = tarCzf(stage, "a.tgz", [`demo-solution-${v}`]);
+		const b = tarCzf(stage, "b.tgz", [`demo-solution-${v}`]);
+		rmSync(path.join(stage, "a.tgz"));
+		rmSync(path.join(stage, "b.tgz"));
+		writeFileSync(path.join(CDN_DIR, `demo-solution-${v}.tgz`), a.bytes);
+		manifests.push(solutionManifest(v, a.sha, a.size));
+		versions.push({ version: v, file: `demo-solution-${v}.tgz`, sha256: a.sha, size: a.size });
+		results.push({ id: "18", name: "确定性 tgz（同树两次 tar sha 一致）", pass: a.sha === b.sha, evidence: `demo-solution-${v} sha=${a.sha.slice(0, 12)}…` });
+	}
+	index.solutions.push({ name: "demo-solution", latest: "0.2.0", versions: versions.reverse() });
+	// evil A：契约违规（权限键越空间 other.view + 匿名越段 othermod/ping）→ failed@preflight
+	const evilA = {
+		name: "evil-solution",
+		version: "9.9.9",
+		summary: "contract violating bundle",
+		archive: { file: "evil-solution-9.9.9.tgz", sha256: "0".repeat(64), size: 17 },
+		api: { prefix: "/api/evil-solution", anonymous: ["othermod/ping"] },
+		web: { entry: "modules/evil-solution/9.9.9/entry.js" },
+		routes: [{ path: "/evil-solution", category: "main", order: 300, title_key: "evil-solution:menu.main" }],
+		permissions: [{ code: "other.view", title_key: "evil-solution:perm.x" }],
+		roles: [{ name: "evil-solution.admin", title_key: "evil-solution:role.admin", permissions: ["other.view"] }],
+		settings: { groups: [] },
+	};
+	// evil B：manifest 干净但 tgz 含 ../ 越界成员 → failed@extracting（R1 三步范式拒收）
+	const evilB = {
+		name: "evil-pack",
+		version: "1.0.0",
+		summary: "zip-slip bundle",
+		archive: { file: "evil-pack-1.0.0.tgz", sha256: "", size: 0 },
+		api: { prefix: "/api/evil-pack", anonymous: [] },
+		web: { entry: "modules/evil-pack/1.0.0/entry.js" },
+		routes: [{ path: "/evil-pack", category: "main", order: 301, title_key: "evil-pack:menu.main" }],
+		permissions: [{ code: "evil-pack.view", title_key: "evil-pack:perm.view" }],
+		roles: [{ name: "evil-pack.admin", title_key: "evil-pack:role.admin", permissions: ["evil-pack.view"] }],
+		settings: { groups: [] },
+	};
+	const evilStage = path.join(CDN_DIR, "stage-evil");
+	mkdirSync(path.join(evilStage, "evil-pack-1.0.0", "web", "modules", "evil-pack", "1.0.0"), { recursive: true });
+	writeFileSync(path.join(evilStage, "evil-pack-1.0.0", "manifest.yaml"), JSON.stringify(evilB));
+	writeFileSync(path.join(evilStage, "evil-pack-1.0.0", "web", "modules", "evil-pack", "1.0.0", "entry.js"), "console.log('evil');\n");
+	writeFileSync(path.join(evilStage, "evil.js"), "console.log('slipped');\n");
+	// bsdtar 不直收 ../ 成员——-s 改名注入（zip-slip 攻击面等价构造）
+	const eb = tarCzf(evilStage, "evil-pack-1.0.0.tgz", ["evil-pack-1.0.0", "evil.js"], ["-s", ",^evil\\.js$,../evil.js,"]);
+	evilB.archive.sha256 = eb.sha;
+	evilB.archive.size = eb.size;
+	writeFileSync(path.join(CDN_DIR, "evil-pack-1.0.0.tgz"), eb.bytes);
+	writeFileSync(path.join(CDN_DIR, "evil-solution-9.9.9.tgz"), Buffer.from("never-downloaded\n"));
+	// evil 方案也须进索引（resolveCdn 先查 bundles.yaml，缺条目 404 挡在 preflight 之前——
+	// evil-solution 的 tgz 永不被下载：preflight 是第一阶段，sha256 校验在 downloading 之后）
+	index.solutions.push(
+		{ name: "evil-solution", latest: "9.9.9", versions: [{ version: "9.9.9", file: "evil-solution-9.9.9.tgz", sha256: evilA.archive.sha256, size: evilA.archive.size }] },
+		{ name: "evil-pack", latest: "1.0.0", versions: [{ version: "1.0.0", file: "evil-pack-1.0.0.tgz", sha256: eb.sha, size: eb.size }] },
+	);
+	writeFileSync(path.join(CDN_DIR, "bundles.yaml"), JSON.stringify(index, null, 2));
+	writeFileSync(path.join(CDN_DIR, "manifests.yaml"), JSON.stringify([...manifests, evilA, evilB], null, 2));
+}
+
+// ── 站点进程（oj serve release 形态）──
+let ojChild = null;
+let ojLog = "";
+let ojLogFile = null;
+let serveSeq = 0;
+async function startSite() {
+	ojLog = "";
+	serveSeq++;
+	ojLogFile = path.join(WORK, `serve-${serveSeq}.log`);
+	ojChild = spawn(OJ_BIN, ["serve", "-c", path.join(API, "config.yaml"), "-b", "/api", "--api-path", path.join(API, "dist"), "--console-log"], { cwd: API });
+	ojChild.stdout.on("data", (c) => {
+		ojLog += String(c);
+		appendFileSync(ojLogFile, String(c));
+	});
+	ojChild.stderr.on("data", (c) => {
+		ojLog += String(c);
+		appendFileSync(ojLogFile, String(c));
+	});
+	ojChild.on("exit", (code, sig) => appendFileSync(ojLogFile, `\n[exit] code=${code} sig=${sig}\n`));
+	const t0 = Date.now();
+	for (;;) {
+		if (ojChild.exitCode !== null)
+			throw new Error(`oj serve 提前退出（code=${ojChild.exitCode}）：\n${ojLog.slice(-2000)}`);
+		try {
+			if ((await fetch(`${BASE}/api/health`)).ok)
+				return;
+		}
+		catch {}
+		if (Date.now() - t0 > 60_000)
+			throw new Error(`oj serve 60s 未就绪：\n${ojLog.slice(-2000)}`);
+		await sleep(400);
+	}
+}
+
+async function stopSite() {
+	if (!ojChild || ojChild.exitCode !== null)
+		return;
+	const child = ojChild;
+	ojChild = null;
+	child.kill("SIGTERM");
+	await Promise.race([
+		new Promise(r => child.on("exit", r)),
+		sleep(8000).then(() => child.kill("SIGKILL")),
+	]);
+	await sleep(500);
+}
+
+function patchConfig() {
+	const p = path.join(API, "config.yaml");
+	let cfg = readFileSync(p, "utf8");
+	cfg = cfg.replace("port: 9778", "port: 9781");
+	cfg = cfg.replace("__JWT_SECRET__", randomBytes(32).toString("hex"));
+	cfg = cfg.replace("platform:\n  exec:", "platform:\n  modules: [_platform]\n  root: dist\n  exec:");
+	// oj 匿名模型 = config 独占（manifest api.anonymous 仅 C2 契约校验，运行时放行以 auth.anonymous_paths
+	// 为准；安装器不热改 config——restart_pending）。部署契约 = 站点预声明已知方案的匿名路径（备案 P2 接线缺口）。
+	cfg = cfg.replace("  anonymous_paths:", "  anonymous_paths:\n    - /demo-solution/ping");
+	must(cfg.includes("modules: [_platform]"), "platform 段补丁未命中");
+	must(cfg.includes("/demo-solution/ping"), "匿名路径补丁未命中");
+	cfg = `${cfg.trimEnd()}\n# e2e 手补：isolate fs 面（安装器落盘授权）\nfs:\n  root: .\n  readonly: false\n`;
+	writeFileSync(p, cfg);
+}
+
+function setMigrateOnStart(mode) {
+	const p = path.join(API, "config.yaml");
+	writeFileSync(p, readFileSync(p, "utf8").replace(/migrate_on_start: \w+/, `migrate_on_start: ${mode}`));
+}
+
+// ── sqlite 断言面（只读）──
+function dbq(sql, params = []) {
+	const dbo = new DatabaseSync(path.join(API, "db.sqlite"));
+	try {
+		return dbo.prepare(sql).all(...params);
+	}
+	finally {
+		dbo.close();
+	}
+}
+
+async function readText(p) {
+	try {
+		return await fsp.readFile(p, "utf8");
+	}
+	catch {
+		return null;
+	}
+}
+
+// ══════════════════════════ 主流程 ══════════════════════════
+const cdn = { srv: null, hits: [] };
+let token = null;
+let step4Bak = null;
+
+async function boot() {
+	rmSync(WORK, { recursive: true, force: true });
+	mkdirSync(CDN_DIR, { recursive: true });
+	// 站点 = 模板快照（模板同步纪律：恒取当前仓库 templates/api）+ dev 证书（ojm init 等价最小集）
+	mkdirSync(path.join(API, "config"), { recursive: true });
+	for (const f of ["src", "config.yaml"])
+		cpSync(path.join(ROOT, "packages/cli/templates/api", f), path.join(API, f), { recursive: true });
+	patchConfig();
+	mintDevCert(path.join(API, "config"));
+	// 后端构建（--no-minify：oj 0.1.79 swc minify 有跨 await 内联 bug——`const r = await q(); const x = r[0]`
+	// 被折叠成 `await q()[0]`（恒 undefined），auth login/refresh 等中毒；逃生门官方文档在案，宿主修复前 e2e 取此径）
+	// + 手补 versions.json（坑⑦运维步；demo manifest 声明 peerRuntime → 装成功即证 B4 真源）
+	const build = spawnSync(OJ_BIN, ["build", "--no-minify", "-d", "src", "-o", "dist"], { cwd: API, encoding: "utf8" });
+	if (build.status !== 0)
+		throw new Error(`oj build 失败：${build.stdout}\n${build.stderr}`);
+	writeFileSync(path.join(API, "dist", "versions.json"), JSON.stringify({ "@oj-module/runtime": "0.1.0" }));
+	buildCdnBundles();
+	({ srv: cdn.srv, hits: cdn.hits } = await startCdn(CDN_DIR, 9782));
+	await startSite();
+	// 登录（seed admin/123456，must_change）→ 改密换正式 token
+	const login = await api("/api/auth/login", { method: "POST", body: { username: "admin", password: "123456" } });
+	must(login.data?.access_token, `login 失败：${JSON.stringify(login.json)?.slice(0, 200)}`);
+	const changed = await api("/api/auth/password", { method: "PUT", token: login.data.access_token, body: { old_password: "123456", new_password: "e2e-pass-123" } });
+	token = changed.data?.access_token;
+	must(token, `改密失败：${JSON.stringify(changed.json)?.slice(0, 200)}`);
+	// 市场地址（framework.market_cdn_url，security 组 super-only 写——AC-P1-16 后端位）
+	const put = await api("/api/system/settings", { method: "PUT", token, body: { key: "framework.market_cdn_url", value: CDN_BASE } });
+	must(put.status === 200, `设置写入失败：${put.status} ${JSON.stringify(put.json)?.slice(0, 200)}`);
+}
+
+async function main() {
+	await boot();
+
+	// ── AC2（前半）+ AC1（前半）：meta/index 生产口径可达（marketEnv 生产接线的直接证据）──
+	const meta = await api("/api/_platform/market/meta", { token });
+	ac(2, "meta 握手（health 404 修复面）", meta.status === 200 && !!meta.data?.apiVersion, `GET meta ${meta.status} apiVersion=${meta.data?.apiVersion}`);
+	const index0 = await api("/api/_platform/market/index", { token });
+	const row0 = (index0.data ?? []).find(r => r.name === "demo-solution");
+	ac(1, "index 卡片非空 + latest", index0.status === 200 && row0?.latest === "0.2.0", `index ${index0.status} rows=${(index0.data ?? []).length} demo.latest=${row0?.latest}`);
+	const noCacheHits0 = cdn.hits.filter(h => h.path === "/bundles.yaml" || h.path === "/manifests.yaml");
+	must(noCacheHits0.every(h => /no-cache/i.test(h.requestCacheControl ?? "")), `索引请求缺 no-cache 头：${JSON.stringify(noCacheHits0[0])}`);
+
+	// ── 安装 0.1.0：done + 不重启出菜单/路由（AC1 后半 + 14/15/16/17）──
+	console.log("[phase] install 0.1.0 ...");
+	const t1 = await install("demo-solution", "0.1.0", token);
+	console.log("[phase] install 0.1.0 ->", t1.status);
+	must(t1.status === "done", `install 0.1.0 终态=${t1.status}：${t1.message}`);
+	const routes1 = await api("/api/_platform/solutions/routes", { token });
+	const demoRoutes = (routes1.data ?? []).filter(r => r.module === "demo-solution");
+	const modulesJson1 = JSON.parse(await fsp.readFile(path.join(API, "dist", "modules.json"), "utf8"));
+	const ping1 = await fetch(`${BASE}/api/demo-solution/ping`, { signal: AbortSignal.timeout(10_000) }).then(r => r.status).catch(e => String(e));
+	const oplog1 = dbq("SELECT detail FROM sys_oplog WHERE action = 'solution.install'");
+	const smoke1 = t1.stages.find(s => s.stage === "smoke");
+	ac(1, "合法 bundle 安装 done + 不重启出菜单/路由", demoRoutes.length === 2 && demoRoutes.every(r => r.enabled) && modulesJson1.some(e => e.name === "demo-solution") && ping1 === 200, `routes=${demoRoutes.length} modules.json=${modulesJson1.length}行 ping=${ping1}（未重启）`);
+	ac(17, "冒烟段 ok（探活/integrity/注册一致性）", smoke1?.ok === true, String(smoke1?.message ?? "").slice(0, 120));
+	ac(14, "终态审计 done 落 oplog", oplog1.some(r => String(r.detail).includes("\"status\":\"done\"")), `solution.install 行=${oplog1.length}`);
+	const settings1 = await api("/api/system/settings", { token });
+	const displayGroup = (settings1.data ?? []).find(g => g.items?.some(i => i.key === "demo-solution.display.theme"));
+	ac(16, "设置三层嵌套（方案组随装可达 + super-only 写通过）", !!displayGroup && settings1.status === 200, `display 组=${!!displayGroup}（framework.market_cdn_url 已写）`);
+	ac(15, "菜单归并数据源（routes 行 category/order/title_key 全列）", demoRoutes.some(r => r.category === "main" && Number(r.order) === 200 && r.title_key === "demo-solution:menu.main"), JSON.stringify(demoRoutes[0] ?? {}));
+	const noCacheHits = cdn.hits.filter(h => h.path === "/bundles.yaml" || h.path === "/manifests.yaml");
+	ac(19, "CDN 索引 no-cache（请求带 no-cache；源响应 no-store）", noCacheHits.length >= 2 && noCacheHits.every(h => /no-cache/i.test(h.requestCacheControl ?? "")), `bundles/manifests 请求 ${noCacheHits.length} 次均带 no-cache`);
+
+	// ── 升级 0.2.0：锁迁移 + 版本目录共存 + 并发 modules.json 无半截（AC4/12）──
+	let torn = 0;
+	let reads = 0;
+	let upgrading = true;
+	const modulesJsonPath = path.join(API, "dist", "modules.json");
+	const tightLoop = (async () => {
+		// upgrading 由外层 main 在升级 install 终态后翻 false（跨 async 闭包，静态分析不可见）
+		// eslint-disable-next-line no-unmodified-loop-condition
+		while (upgrading) {
+			try {
+				JSON.parse(await fsp.readFile(modulesJsonPath, "utf8"));
+				reads++;
+			}
+			catch (e) {
+				if (!String(e).includes("ENOENT"))
+					torn++;
+			}
+			await sleep(4);
+		}
+	})();
+	console.log("[phase] upgrade 0.2.0 ...");
+	const t2 = await install("demo-solution", null, token); // latest = 0.2.0
+	console.log("[phase] upgrade ->", t2.status);
+	upgrading = false;
+	await tightLoop;
+	must(t2.status === "done", `升级终态=${t2.status}：${t2.message}`);
+	const lock2 = await readText(path.join(API, "dist", "manifests.yaml"));
+	const dirs2 = (await fsp.readdir(path.join(API, "dist"))).filter(d => d.startsWith("demo-solution-"));
+	step4Bak = (await fsp.readdir(API)).filter(f => f.startsWith("db.sqlite.bak-")).sort().at(-1);
+	// 立即抄存（migrate 备份「保留最近 3 份」滚动淘汰——后续 reinstall/重装会产生新 bak 顶掉步 4 这份）
+	const step4BakCopy = path.join(WORK, "db-step4.bak");
+	await fsp.copyFile(path.join(API, step4Bak), step4BakCopy);
+	step4Bak = step4BakCopy;
+	const journal2 = dbq("SELECT MAX(version) AS head FROM _oj_migrations WHERE module = ?", ["demo-solution"])[0]?.head;
+	ac(4, "升级锁迁移 + 两版本目录共存（旧版永不 prune）", lock2.includes("demo-solution: 0.2.0") && dirs2.sort().join(",") === "demo-solution-0.1.0,demo-solution-0.2.0" && Number(journal2) === 2, `lock→0.2.0 dirs=${dirs2.sort().join(",")} journal.head=${journal2} bak=${step4Bak}`);
+	ac(12, "升级期间并发读 modules.json 不见半截", torn === 0 && reads > 10, `reads=${reads} torn=${torn}`);
+
+	// ── M004 账本回退自愈（AC7，紧跟升级——repoint 依赖 .bak 锁含旧版，同版重写会覆写 .bak）：──
+	// 停服 → 库回退到升级前 bak（head 2→1）→ 起服（migrate off）→ index 触发对账回指旧版 0.1.0
+	await stopSite();
+	await fsp.copyFile(step4Bak, path.join(API, "db.sqlite"));
+	setMigrateOnStart("off");
+	await startSite();
+	const index5 = await api("/api/_platform/market/index", { token });
+	const lock5 = await readText(path.join(API, "dist", "manifests.yaml"));
+	ac(7, "kill/账本分歧 → 重启对账自愈（锁回指旧版 0.1.0）", index5.status === 200 && lock5.includes("demo-solution: 0.1.0"), `index=${index5.status} lock=${String(lock5).replace(/\n/g, " ").trim()}`);
+	setMigrateOnStart("auto");
+
+	// ── 同版本重装 no-op（AC3；M004 后显式收敛 sidecar 0.2.0→0.1.0）──
+	console.log("[phase] reinstall ...");
+	const t3 = await install("demo-solution", "0.1.0", token);
+	const dirs3 = (await fsp.readdir(path.join(API, "dist"))).filter(d => d.startsWith("demo-solution-"));
+	ac(3, "同版本重装 no-op（done，目录不翻倍）", t3.status === "done" && dirs3.length === 2, `status=${t3.status} dirs=${dirs3.length}`);
+
+	// ── partial 演练（AC13 失败语义② + AC14 含失败）：预写坏 modules.json → deploying_web fail-closed ──
+	const modulesSnapshot = await fsp.readFile(modulesJsonPath, "utf8");
+	await fsp.writeFile(modulesJsonPath, "{this is not json");
+	console.log("[phase] partial-drill ...");
+	const t4 = await install("demo-solution", "0.2.0", token);
+	ac(13, "锁后失败 → partial + 修复指引 key（不清场不回滚）", t4.status === "partial" && t4.error?.hintKey === "lifecycle.stage.deploying_web.hint", `status=${t4.status} hintKey=${t4.error?.hintKey}`);
+	const oplog4 = dbq("SELECT detail FROM sys_oplog WHERE action = 'solution.install'");
+	ac(14, "终态审计含失败（partial 也落 oplog）", oplog4.some(r => String(r.detail).includes("\"status\":\"partial\"")), `install 行=${oplog4.length} 含 partial=${oplog4.some(r => String(r.detail).includes("partial"))}`);
+	await fsp.writeFile(modulesJsonPath, modulesSnapshot);
+	console.log("[phase] partial-reinstall ...");
+	const t4b = await install("demo-solution", "0.2.0", token);
+	must(t4b.status === "done", `修复 modules.json 后重装终态=${t4b.status}：${t4b.message}`);
+
+	// ── 显式回滚（AC5）：账本已含 V2（head 2）时降级安装 0.1.0 → 宿主 journal/filesystem 一致性拒降
+	// （oj migrate: "V2__add_done is missing"）failed@migrating；锁/sidecar/目录零扰动——回滚的正道 =
+	// AC7 对账自愈回指（备案：no-op 降级（head==目标 seq）放行见单测 rollbackGuard 口径）──
+	console.log("[phase] rollback ...");
+	const t6 = await install("demo-solution", "0.1.0", token);
+	const lock6 = await readText(path.join(API, "dist", "manifests.yaml"));
+	const dirs6 = (await fsp.readdir(path.join(API, "dist"))).filter(d => d.startsWith("demo-solution-"));
+	const side6 = await readText(path.join(API, "modules", ".solutions", "state.yaml"));
+	ac(5, "降级安装被拒@migrating（账本超前）且零副作用", t6.status === "failed" && t6.stage === "migrating" && lock6.includes("demo-solution: 0.2.0") && dirs6.length === 2 && /version:\s*"?0\.2\.0"?/.test(String(side6)), `status=${t6.status}@${t6.stage} 锁行=[${String(lock6).split("\n").filter(l => l.includes("demo-solution"))}] dirs=${dirs6.length} side行=[${String(side6).split("\n").filter(l => l.includes("version") || l.includes("enabled"))}]（拒降=oj journal/filesystem 一致性；回滚正道=AC7 对账回指）`);
+
+	// ── 禁用/启用四处同写（AC6）──
+	const off = await api("/api/_platform/market/enable", { method: "POST", token, body: { name: "demo-solution", enabled: false } });
+	const lockOff = await readText(path.join(API, "dist", "manifests.yaml"));
+	const mjsonOff = JSON.parse(await fsp.readFile(modulesJsonPath, "utf8"));
+	const routeOff = dbq("SELECT enabled FROM sys_solution_route WHERE module = ?", ["demo-solution"])[0]?.enabled;
+	const sideOff = await readText(path.join(API, "modules", ".solutions", "state.yaml"));
+	const on = await api("/api/_platform/market/enable", { method: "POST", token, body: { name: "demo-solution", enabled: true } });
+	const lockOn = await readText(path.join(API, "dist", "manifests.yaml"));
+	const routeOn = dbq("SELECT enabled FROM sys_solution_route WHERE module = ?", ["demo-solution"])[0]?.enabled;
+	ac(6, "禁用/启用四处同写 + 恢复", off.data?.ok === true && !lockOff.includes("demo-solution") && mjsonOff[0]?.enabled === false && Number(routeOff) === 0 && String(sideOff).includes("enabled: false") && on.data?.ok === true && lockOn.includes("demo-solution: 0.2.0") && Number(routeOn) === 1, `off=${off.data?.ok} 锁摘/route0/modules false/sidecar false → on=${on.data?.ok} 锁恢复(0.2.0)/route1`);
+
+	// ── 恶意 tgz / 契约违规拒装零副作用（AC8/10/11）──
+	console.log("[phase] evil-A ...");
+	const evilA = await install("evil-solution", "9.9.9", token);
+	console.log("[phase] evil-B ...");
+	const evilB = await install("evil-pack", "1.0.0", token);
+	const evilRoutes = dbq("SELECT COUNT(*) AS c FROM sys_solution_route WHERE module LIKE 'evil%'")[0]?.c;
+	const evilDirs = (await fsp.readdir(path.join(API, "dist"))).filter(d => d.startsWith("evil"));
+	const oplogEvil = dbq("SELECT COUNT(*) AS c FROM sys_oplog WHERE action = 'solution.install' AND detail LIKE '%evil%'")[0]?.c;
+	const evilAmsg = `${evilA.message ?? ""} ${evilA.stages?.map(s => s.message ?? "").join(" ") ?? ""}`;
+	ac(8, "恶意 tgz（../ 成员）拒装零副作用", evilB.status === "failed" && evilB.stage === "extracting" && evilDirs.length === 0 && Number(evilRoutes) === 0, `stage=${evilB.stage} dirs=${evilDirs.length} routes=${evilRoutes} msg=${String(evilB.message ?? "").slice(0, 80)}`);
+	ac(10, "权限键越空间拒装（failed@preflight）", evilA.status === "failed" && evilA.stage === "preflight" && Number(evilRoutes) === 0 && Number(oplogEvil) === 0, `stage=${evilA.stage} routes=${evilRoutes} oplog=${oplogEvil}（锁前失败零审计）`);
+	ac(11, "匿名越段拒装（同包并报）", evilA.stage === "preflight" && evilAmsg.includes("othermod"), `violations 含 othermod/ping：${evilAmsg.slice(0, 100)}`);
+
+	// ── release 重启不拒启（AC2）：带迁移模块 + 锁 0.1.0 + 账本 head=1 ──
+	await stopSite();
+	setMigrateOnStart("auto");
+	await startSite();
+	const meta2 = await api("/api/_platform/market/meta", { token });
+	const routes2 = await api("/api/_platform/solutions/routes", { token });
+	const ping2 = await fetch(`${BASE}/api/demo-solution/ping`).then(r => r.status);
+	const index2 = await api("/api/_platform/market/index", { token });
+	ac(2, "release 重启不拒启（meta/菜单/路由/市场索引全可达）", meta2.status === 200 && (routes2.data ?? []).some(r => r.module === "demo-solution") && ping2 === 200 && index2.status === 200, `meta=${meta2.status} routes=${(routes2.data ?? []).length} ping=${ping2} index=${index2.status}`);
+
+	// ── 报告 ──
+	const failed = results.filter(r => !r.pass);
+	const report = [
+		"# P1-16 e2e 报告（AC-P1-1~20）",
+		"",
+		`- 日期：${new Date().toISOString()}`,
+		`- 宿主：${OJ_BIN}（${spawnSync(OJ_BIN, ["--version"], { encoding: "utf8" }).stdout.trim()}）`,
+		`- 现场：${KEEP ? `${WORK}（--keep 保留）` : "已清理"}；本报告：logs/lifecycle-e2e-report.md`,
+		`- 结果：${results.filter(r => r.pass).length}/${results.length} 绿${failed.length ? `，FAIL：${failed.map(f => f.id).join("、")}` : ""}`,
+		"",
+		...results.map(r => `${r.pass ? "✅" : "❌"} AC-P1-${r.id} ${r.name} — ${r.evidence ?? ""}`),
+		"",
+		"## 备案",
+		"- AC-P1-5：账本超前时的显式降级安装由宿主拒（oj migrate journal/filesystem 一致性，failed@migrating，锁零扰动）——回滚的用户通道 = 对账自愈回指（AC7）；no-op 重装（head==目标 seq）放行，rollbackGuard 的 applied[] 近似口径与 D11③ 文件级 max seq 校验为升级项（单测覆盖）。",
+		"- AC-P1-9（exec 白名单外拒执行）：由平台 NotCapable 语义 + 模板白名单单元覆盖（installer/text-edit 套件），e2e 未单列场景。",
+		"- AC-P1-15/16 前端归并位（登录后重归并、脏组保存）属浏览器行为：由 runtime/store 单元覆盖，本 e2e 钉其后端数据源（solutions/routes 全列 + settings 分组）。",
+		"- AC-P1-18 断言点在构建期（同树两次 tar sha 一致），随构建记录于此。",
+	].join("\n");
+	writeFileSync(path.join(ROOT, "logs", "lifecycle-e2e-report.md"), report);
+	console.log(`\n${report.split("\n")[4]}`);
+	if (failed.length)
+		process.exitCode = 1;
+}
+
+main().finally(async () => {
+	await stopSite();
+	cdn.srv?.close();
+	if (!KEEP)
+		rmSync(WORK, { recursive: true, force: true });
+}).catch((e) => {
+	console.error(`\n[e2e] 中止：${e.message}\n${ojLog.slice(-1500)}`);
+	process.exitCode = 1;
+});

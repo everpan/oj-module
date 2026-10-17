@@ -84,6 +84,8 @@ export interface InstallRequest extends InstallContext {
 	expected?: string[]
 	/** 安装器内部通道（外部调用方忽略）：终态审计读 status/failedStage/taskId + migrate 捕获 appliedSeq */
 	outcome?: { taskId?: string, status?: TaskStatus, failedStage?: InstallStage, appliedSeq?: number | null }
+	/** 操作人（历史留痕；端点按 http.user 反查注入，缺省 null） */
+	operator?: string
 }
 
 /** 单个 stage 的声明式定义（OCP：新增/调整阶段只动本表与适配函数，不动遍历器） */
@@ -99,14 +101,14 @@ function isObj(v: unknown): v is Record<string, unknown> {
 	return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
-/** 捕获 oj migrate 输出的 exec 包装：成功运行后解析 applied max seq（对账 floor 依据） */
+/** 捕获 oj migrate 输出的 exec 包装：成功运行后解析 applied max seq（对账 floor 依据）；opts 原样转发（P1-13c：migrate 的 timeoutMs 不得丢失） */
 function captureMigrateExec(exec: ExecFace): { exec: ExecFace, seq: () => number | null } {
 	let seq: number | null = null;
 	return {
 		seq: () => seq,
 		exec: {
-			run: async (argv) => {
-				const r = await exec.run(argv);
+			run: async (argv, opts) => {
+				const r = await exec.run(argv, opts);
 				if (r.code === 0 && argv[0] === "oj" && argv[1] === "migrate") {
 					const p = parseMigrateOutput(r.stdout);
 					if (p.ok) {
@@ -438,7 +440,7 @@ export async function runInstall(req: InstallRequest): Promise<TaskRecord> {
 				version: req.version,
 				action: "install",
 				status: task.status,
-				operator: null,
+				operator: req.operator ?? null,
 				message: task.status === "done" ? `安装完成：${req.name}@${req.version}` : `安装部分生效（status=partial）：${req.name}@${req.version}`,
 			});
 		}
@@ -476,12 +478,14 @@ export interface ReconcileInput {
 	routeEnabledOf?: (name: string) => Promise<boolean | null>
 	/** 站点 modules.json 路径（缺省不查该项） */
 	modulesJsonPath?: string
+	/** sidecar store（注入后 route/modules enabled=false 不一致项自动重跑 setEnabled 修复；缺省只报不修） */
+	state?: StateStore
 	now?: number
 }
 
 export interface ReconcileReport {
 	checked: string[]
-	healed: { name: string, action: "repoint" | "remove", from: string, to: string | null, reason: string }[]
+	healed: { name: string, action: "repoint" | "remove" | "enable", from: string, to: string | null, reason: string }[]
 	inconsistencies: { name: string, kind: "lock_corrupt" | "modules_json" | "route_disabled", detail: string }[]
 }
 
@@ -516,7 +520,8 @@ async function writeReconcileFailed(taskDir: string, name: string, version: stri
 /**
  * 入口对账自愈（D11）：锁条目 ↔ 账本 head 一致性检查 + 自愈。锁指新版但账本 head 低于该版本
  * 要求的 floor（M004 账本落后拒启形态）→ 有 .bak 且旧版本目录俱在则回指旧版；无旧版可指则摘除
- * 条目并记 failed 任务。modules.json / route enabled 只检查报告（修复需条目数据，P1-16 接线）。
+ * 条目并记 failed 任务。modules.json / route enabled 检查报告；注入 state 时对 enabled=false
+ * 不一致项自动重跑 setEnabled(true) 四处同写收敛（P1-16 接线④；缺条目 = web 未部署不可自愈，保留报告）。
  * 对账时点顺带执行超时 running 判 failed（R13/B9/R31）。坏锁 fail-closed：只报告不猜。
  */
 export async function reconcile(input: ReconcileInput): Promise<ReconcileReport> {
@@ -566,7 +571,7 @@ export async function reconcile(input: ReconcileInput): Promise<ReconcileReport>
 			await writeReconcileFailed(input.taskDir, name, version, `${reason}：无旧版可指，已摘除`);
 		}
 	}
-	// modules.json 一致性（只报不修——修复需 web 条目数据，P1-16 接线）
+	// modules.json 一致性（enabled=false 不一致可经注入 state 自动修复，见下方接线④）
 	if (input.modulesJsonPath !== undefined) {
 		try {
 			const list: unknown = JSON.parse(new TextDecoder().decode(await fsFace().readFile(input.modulesJsonPath)));
@@ -599,6 +604,25 @@ export async function reconcile(input: ReconcileInput): Promise<ReconcileReport>
 			}
 		}
 	}
+	// route/modules enabled=false 不一致自动修复（P1-16 接线④）：注入 state 时重跑 setEnabled(true)
+	// 四处同写收敛（锁/sidecar/route/modules）。不可自愈项（缺条目 = web 未部署、坏锁、空锁拒启、
+	// 版本目录缺失）保留报告不猜；未注入 state（缺省）维持只报不修。
+	if (input.state !== undefined && input.modulesJsonPath !== undefined) {
+		const fixable = new Set(report.inconsistencies
+			.filter(i => i.name !== "*" && (i.kind === "route_disabled" || (i.kind === "modules_json" && i.detail.includes("enabled=false"))))
+			.map(i => i.name));
+		for (const name of fixable) {
+			if (lock[name] === undefined) {
+				continue;
+			}
+			const r = await setEnabled({ name, enabled: true, sharedRoot: input.sharedRoot, lockPath: input.lockPath, state: input.state, modulesJsonPath: input.modulesJsonPath, now });
+			if (!r.ok) {
+				continue;
+			}
+			report.inconsistencies = report.inconsistencies.filter(i => !(i.name === name && (i.kind === "modules_json" || i.kind === "route_disabled")));
+			report.healed.push({ name, action: "enable", from: "disabled", to: "enabled", reason: `route/modules enabled 不一致已重跑 setEnabled(true) 收敛：${r.message}` });
+		}
+	}
 	return report;
 }
 
@@ -612,6 +636,8 @@ export interface SetEnabledInput {
 	state: StateStore
 	/** 站点 modules.json 路径 */
 	modulesJsonPath: string
+	/** 操作人（历史留痕；端点按 http.user 反查注入，缺省 null） */
+	operator?: string
 	now?: number
 }
 
@@ -703,7 +729,7 @@ export async function setEnabled(input: SetEnabledInput): Promise<{ ok: boolean,
 	const msg = `${enabled ? "启用" : "禁用"}完成：锁${enabled ? "恢复" : "摘除"} + sidecar + sys_solution_route.enabled + modules.json enabled 四处同写（D12/AC-P1-6）`;
 	audit(true, msg);
 	// market_history 留痕（P1-15a 缺口 A，history.ts 守卫式：表不存在/写失败静默，不阻断开关结果）
-	await recordHistory({ solution: name, version, action: enabled ? "enable" : "disable", status: "success", operator: null, message: msg });
+	await recordHistory({ solution: name, version, action: enabled ? "enable" : "disable", status: "success", operator: input.operator ?? null, message: msg });
 	return { ok: true, message: msg };
 }
 

@@ -81,6 +81,9 @@
 		"ldap_uid_attr": "UID 属性",
 		"ldap_email_attr": "邮箱属性",
 		"solutions": "解决方案设置",
+		"market_cdn_url": "市场 CDN 地址",
+		"marketAbsentTitle": "管理市场未安装",
+		"marketAbsentHint": "管理市场（浏览/安装/升级/回滚方案）随 oj-market 方案包发布，当前站点尚未安装。可在站点根目录以 superadmin 身份运行：",
 		"saved": "已保存 {{count}} 组",
 		"saveFailed": "保存失败：{{groups}}"
 	},
