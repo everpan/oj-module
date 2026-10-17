@@ -26,6 +26,7 @@ tables:
       label_key: {type: text}
       options: {type: text}
       secret: {type: integer, null: false}
+      deprecated: {type: integer, null: false}
       update_time: {type: integer, null: false}
   sys_oplog:
     pk: id
@@ -41,14 +42,16 @@ tables:
       detail: {type: text}
       level: {type: integer, null: false}
   sys_solution_route:
-    pk: [name, version, path]
+    # 0010 重构后形状（站点级路由，path 主键；与 migrations/0010__sys_solution_route.sql 逐列一致）。
+    pk: path
     columns:
-      name: {type: text, null: false}
-      version: {type: text, null: false}
-      category: {type: text, null: false}
       path: {type: text, null: false}
+      module: {type: text, null: false}
+      category: {type: text, null: false}
       order: {type: integer, null: false}
       title_key: {type: text}
+      required_permission: {type: text}
+      deprecated: {type: integer, null: false}
       enabled: {type: integer, null: false}
   sys_role:
     pk: name
