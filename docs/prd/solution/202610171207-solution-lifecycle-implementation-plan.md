@@ -93,8 +93,9 @@ scripts/lifecycle-e2e.mjs                # [新建] P1 端到端脚本（本地 
 | C2 | manifest.yaml 契约定稿 | 契约文档（PRD §5.2 为底 + changelog 字段 + name/version 白名单 + settings key 所有权 + i18n key + 文案 key `lifecycle.stage.*` 全表）；夹具 bundle 两枚（合法/非法各一，入 `packages/cli/src/lifecycle/__tests__/fixtures/`） | ISP（契约按消费方列字段） | 未开始 | | |
 | C3 | 开放问题拍板落档 | Q-A（health 不强制）/GC N=3 时间序/菜单三值/market.view+verify 初始绑定 admin+superadmin——回写设计文档 §0 | — | 未开始 | | |
 | C4 | 上游需求提交 | `202610161500-oj-bin-feature-requests-pr.md` 追加 OJ-9（down 迁移，低优，含 D10 豁免面注记）；OJ-8/OJ-6 提交稿投 oj-bin 仓 | D9 | 未开始 | | |
-| C5 | 下游契约承接清单 | devkit 手册章节提纲：「打包与分发」「第一方特权面不可复制（R29）」「persona 部署引导」 | — | 未开始 | | |
-| C6 | 基线回写 | lifecycle 文档：§3 锁顺序→迁移后落锁、§5 禁用语义→锁摘除+sidecar、Q-A 拍板；状态行→已评审 | — | 未开始 | | |
+| C5 | 下游契约承接清单 | devkit 手册章节提纲：「打包与分发」「第一方特权面不可复制（R29）」「persona 部署引导」 | 已完成（c6d0e43d，202610171333 提纲） | | |
+| C6 | 基线回写 | lifecycle 文档：§3 锁顺序→迁移后落锁、§5 禁用语义→锁摘除+sidecar、Q-A 拍板；状态行→已评审；**并**：统一 verify 端点口径（§5.1 图移除 verify，以 §4.2 `POST /api/_platform/solutions/:name/verify` 为准）；处理工作区既有未提交改动（202610161300） | — | 未开始 | | |
+| C7 | **生命周期总览文档**（用户追加） | 面向三视角——开发者（打包/契约/发布）、运维（引导安装/升级/回滚/禁用/卸载/备份/故障恢复）、普通用户（市场页安装/菜单与设置/深检/失败语义）；基于 C2 契约 + C5 提纲 + C6 回写后口径 | `docs/prd/solution/20261017<HHmm>-lifecycle-guide.md` | 未开始 | | |
 
 **DoD**：六项产出齐 + 两枚夹具 bundle 可被后续任务直接引用 + 裁决记录无「待验证」残留。
 
