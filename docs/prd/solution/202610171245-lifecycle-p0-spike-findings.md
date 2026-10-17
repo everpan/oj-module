@@ -76,12 +76,12 @@ oj serve: manifest name "notification" != directory name "notification-0.1.0"
 
 嵌套一层（`dist/modules/wiki-0.2.0/` 带 manifest）实测：
 
-- release：启动正常、仍 7 模块、`/api/wiki/*` 404 —— **锁驱动、静默忽略嵌套目录**（锁只能指 `<mount>/<module>-<version>`，`module` 白名单禁 `/`，`oj/src/manifest.rs:31-40`）。
+- release：启动正常、仍 7 模块、`/api/wiki/*` 404 —— **锁驱动、静默忽略嵌套目录**（锁只能指 `<mount>/<module>-<version>`，`module` 白名单禁 `/`，`oj/src/manifest.rs:25-34`）。
 - dev：`oj serve: module 'modules' missing manifest.yaml`，exit 1（首层扫描，`oj/src/manifest.rs:75-107`）。
 
 结论：共享根布局**只能扁平**：`<mount>/manifests.yaml` + `<mount>/<module>-<version>/{manifest.yaml,routes.js,...}`。目录名必须恰为 `<module>-<version>` 且 manifest 的 name/version 与之逐一相符（启动强校验，`oj/src/app.rs:1557-1580`）。
 
-**补充（路由冲突语义）**：两模块声明同 method+pattern → 装配期 `route conflict` 硬失败（release 启动 `Err`，`oj/src/app.rs:1600-1602`；`serve/src/routes.rs:464,474`），运行期命中冲突路由为 500 Conflict。市场产物无法静默抢注既有路由——安装器预检仍应查重，但最坏情形是拒启/500，不是影子劫持。
+**补充（路由冲突语义）**：两模块声明同 method+pattern → 装配期 `route conflict` 硬失败（release 启动 `Err`，`oj/src/app.rs:1600-1602`；`serve/src/routes.rs:464,474`），运行期命中冲突路由为 500 Conflict（`serve/src/routes.rs:534` `Lookup::Conflict`；单测 `table_duplicate_is_conflict_500`，`serve/src/routes.rs:1470`——此句为源码走读，未实测运行期 500）。市场产物无法静默抢注既有路由——安装器预检仍应查重，但最坏情形是拒启/500，不是影子劫持。
 
 ### S1-1.4 oj build 在共享根上的行为 ✅
 
@@ -92,7 +92,7 @@ oj serve: manifest name "notification" != directory name "notification-0.1.0"
 - 退出 0；`dist/demo-0.2.0/` + `demo-0.2.0.tgz` 生成；**锁 upsert**：`demo: 0.1.0 → 0.2.0`，其余 6 条原样保留（`oj/src/build_cmd.rs:482-486`：load → insert → 原子写；oj build 从不 prune 锁内它没建的条目）。
 - `manifests.yaml` inode 变化（136029216 → 136029345，同字节数）→ **tmp+rename 原子替换**实测确认。
 - 写时序（源码 `oj/src/build_cmd.rs:472-493`）：版本目录/routes.js(3) → 锁(4) → tgz(5)。锁指向的目录先于锁落盘——安装器应采同一顺序（目录 → 锁）。
-- 运行中服务不受影响（锁只在启动/热更装配时读，无 watcher）。
+- 运行中服务不受影响：锁重写后旧路由表原样（S1-5 实测链：`/api/demo/spike` 404 → 改 config reload → 401；期间两次 `oj build` 重写锁）。源码走读：serve 侧文件 watcher 仅证书（`serve/src/certificate_watcher.rs`），锁只在启动/热更装配时读取。
 
 对 D3 的影响：安装器与 oj build 是**对等的锁写者**（都是 upsert），共享根上混用安全（并发例外见 S1-3）。
 
@@ -118,7 +118,7 @@ platform:
 
 ### S1-2.1 exec.run tar 可用 ✅
 
-`POST /platform/_platform/tlist`（handler 内 `exec.run(["tar","-tvzf",archive])`）→ 200，`{code:0,stdout:"<tar 列表>",stderr:""}`。环境为宿主 PATH 解析的 `/usr/bin/tar`（bsdtar 3.5.3；生产 Linux 为 GNU tar，首列语义一致）。
+`POST /platform/_platform/tlist`（handler 内 `exec.run(["tar","-tvzf",archive])`）→ 200，`{code:0,stdout:"<tar 列表>",stderr:""}`。环境为宿主 PATH 解析的 `/usr/bin/tar`（bsdtar 3.5.3；**GNU tar -tvzf 首列语义 P1 T3 在 Linux 复验**——见未验证清单 U2，`task-C1-report.md` §3）。
 
 ### S1-2.2 `-tvzf` 辨识链接类型 ✅（链接零容忍是硬要求）
 
@@ -187,7 +187,7 @@ hrw-r--r--   0 ever wheel  0 Oct 17 12:32 ./c.hl link to ./a.txt  ← 首列 h
 
 - 模块路由**默认匿名不可达**：无 token 一律 401（实测多路由）。
 - **`auth.anonymous_paths` 新增不可热生效**：实测改 auth 段 → reload 返回 `restart_pending:["auth"]`，路由仍 401（auth 属特权面/后端段，`oj/src/serve_cmd.rs:540-548` diff 分类）。⇒ 冒烟凭证**不能靠运行时热加匿名路径**。
-- manifest **无 health 字段**（`oj/src/manifest.rs:9-27` Manifest 结构），设计文档「manifest.health」不成立；匿名 health 只能（a）模块自带路由 + 部署期写进 anonymous_paths，或（b）直接用内建 `{base}/_system/health`（实测匿名 200、含 generation，**推荐**——零配置且能看装配代际）。
+- manifest **无 health 字段**（`oj/src/manifest.rs:7-22` Manifest 结构），设计文档「manifest.health」不成立；匿名 health 只能（a）模块自带路由 + 部署期写进 anonymous_paths，或（b）直接用内建 `{base}/_system/health`（实测匿名 200、含 generation，**推荐**——零配置且能看装配代际）。
 
 ---
 
@@ -239,7 +239,7 @@ TASK_EXEC_ERR NotCapable: exec requires module ownership (request has no module 
 
 1. **特权面在任务上下文恒不可用**：exec / `server.reloadConfig()` / 平台 fs 扩展都以「请求级模块归属」为前提，tasks/WS 无归属 → 恒拒（实测 + `src/bridge/exec.rs:282` + 手册 §10 platform「特权恒不可用」）。安装器的重活恰是 exec（tar/校验）。
 2. **tasks 目录是站点级、仅首个 api 挂载树**（`oj/src/serve_cmd.rs:96-99` `find_map` 取第一条 api 挂载；`assemble_tasking(&cfg, &dir, …)` 只扫 `<首挂载>/tasks/`）——市场安装的模块物理上无法携带任务文件（版本目录不挂 tasks）。
-3. 任务运行时无 timer 全局、单任务单线程独占，收益为零。
+3. 任务运行时无 timer 全局（手册 §6「命名 MQ 客户端与长任务」明文 `setTimeout/setInterval` 不可用）；执行形态为 TLA 模式一任务一线程、池化模式共享 worker 轮转（手册 §6「池化任务与 cron」）——无论哪种都拿不到模块归属（理由 1），收益为零。（本条为手册/源码走读，未实测 timer 缺失。）
 
 推荐形态（与设计 §P1 现方向一致，予以定稿）：
 
@@ -263,4 +263,144 @@ TASK_EXEC_ERR NotCapable: exec requires module ownership (request has no module 
 | S1-6 | `site/dist/demo-0.2.0`、`verify.yaml` | `oj serve -c verify.yaml`；`oj migrate -c base.yaml -d dist --format json` |
 | S1-7 | `site/dist/tasks/task_execprobe.ts` | 启动后 grep `TASK_EXEC` 日志 |
 
-（scratch 为一次性现场，交付后可整目录删除；本文观测原文均已在会话中留档。）
+spike 模块源码已入库为附录 A（源码在库，scratch 目录可删；未验证清单见 `task-C1-report.md` §3）。
+
+## 附录 A：spike 模块源码（实测现场入库，docs-only）
+
+### A.1 `platform-modules/_platform/manifest.yaml`
+
+```yaml
+name: _platform
+desc: C1 spike 特权探针（exec/reload/fs/download）
+version: 0.1.0
+```
+
+### A.2 `platform-modules/_platform/tlist/api.ts`（tar -tvzf 列表）
+
+```ts
+// tar -tvzf 列表（链接类型辨识实验）
+const tlist = {
+	async post() {
+		const archive = String(http.body.archive);
+		try {
+			const r = await exec.run(["tar", "-tvzf", archive], { timeoutMs: 30000 });
+			json.ok({ code: r.code, stdout: r.stdout, stderr: r.stderr });
+		}
+		catch (e) {
+			json.fail(500, String(e));
+		}
+	},
+};
+
+tlist.post.schema = {
+	body: {
+		type: "object",
+		required: ["archive"],
+		properties: { archive: { type: "string" } },
+	},
+};
+
+export default tlist;
+```
+
+### A.3 `platform-modules/_platform/txtract/api.ts`（tar -xzf 解压）
+
+```ts
+// tar -xzf 解压到指定目录（目录须已存在）
+const txtract = {
+	async post() {
+		const { archive, dest } = http.body;
+		try {
+			const r = await exec.run(["tar", "-xzf", String(archive), "-C", String(dest)], { timeoutMs: 60000 });
+			json.ok({ code: r.code, stdout: r.stdout, stderr: r.stderr });
+		}
+		catch (e) {
+			json.fail(500, String(e));
+		}
+	},
+};
+
+txtract.post.schema = {
+	body: {
+		type: "object",
+		required: ["archive", "dest"],
+		properties: { archive: { type: "string" }, dest: { type: "string" } },
+	},
+};
+
+export default txtract;
+```
+
+### A.4 `platform-modules/_platform/reload/api.ts`（JS reloadConfig）
+
+```ts
+// server.reloadConfig()（platform 特权）与 HTTP POST 同源实验
+const reload = {
+	async post() {
+		try {
+			const out = await server.reloadConfig();
+			json.ok(out);
+		}
+		catch (e) {
+			json.fail(500, String(e));
+		}
+	},
+};
+
+export default reload;
+```
+
+### A.5 `platform-modules/_platform/dl/api.ts`（fetch → fs.writeFile 下载）
+
+```ts
+// fetch 下载二进制 → fs.writeFile 落盘（isolate 内下载路径实验）
+const dl = {
+	async post() {
+		const { url, dest } = http.body;
+		try {
+			const r = await fetch(String(url));
+			if (!r.ok) {
+				json.fail(502, `fetch status ${r.status}`);
+				return;
+			}
+			const buf = new Uint8Array(await r.arrayBuffer());
+			await fs.mkdir("dl", { recursive: true });
+			await fs.writeFile(dest, buf);
+			const st = await fs.stat(dest);
+			json.ok({ size: st.size, bytes: buf.byteLength });
+		}
+		catch (e) {
+			json.fail(500, String(e));
+		}
+	},
+};
+
+dl.post.schema = {
+	body: {
+		type: "object",
+		required: ["url", "dest"],
+		properties: { url: { type: "string" }, dest: { type: "string" } },
+	},
+};
+
+export default dl;
+```
+
+### A.6 `dist/tasks/task_execprobe.ts`（S1-7 池化任务探针，置于首个 api 挂载树）
+
+```ts
+export {};
+
+// S1-7 探针：池化任务上下文里 exec.run 是否可用（手册称 tasks 无模块归属 → 恒拒）
+export async function loop_body() {
+	try {
+		const r = await exec.run(["tar", "-tzf", "/private/tmp/oj-lifecycle-spike/site/data/probe.tgz"]);
+		console.log("TASK_EXEC_OK code=" + r.code + " out=" + r.stdout.slice(0, 80));
+	}
+	catch (e) {
+		console.log("TASK_EXEC_ERR " + String(e));
+	}
+}
+```
+
+复现完整 config（mounts/fs/platform/exec/reload_api）见本文 S1-2 节实验基座 YAML 与 S1-5 节 `spike.yaml` 要点；探针 tgz 构造：常规文件 + `ln -s`（symlink）+ `ln`（hardlink）各一，`tar -czf` 打包。
