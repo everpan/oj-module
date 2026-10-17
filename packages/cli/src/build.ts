@@ -72,6 +72,7 @@ export const fetchRbacUpdateUserRoles = _fn;
 export const fetchRbacAdminResetPassword = _fn;
 export const fetchRbacSetForbidden = _fn;
 export const fetchRbacOplog = _fn;
+export const fetchRbacOplogPost = _fn;
 export const fetchRbacSettings = _fn;
 export const fetchRbacUpdateSetting = _fn;
 export const fetchRbacContacts = _fn;
