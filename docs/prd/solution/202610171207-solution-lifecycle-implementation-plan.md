@@ -171,8 +171,10 @@ scripts/lifecycle-e2e.mjs                # [新建] P1 端到端脚本（本地 
 **Files**: Create `steps/register.ts`；Modify `_shared/service/solution-perms.ts`（如需批量入口）
 **Interfaces — Consumes**: `upsertSolutionRbac()` / settings upsert / `sys_solution_route` upsert（既有出口）
 语义：#2/#3/#4 注册一次完成；声明消失标 deprecated；写 `auditOp("solution.register", ...)`；提供 `queryRegistered(name)` 供冒烟
-- [ ] 失败测试（sqlite 夹具）：注册后四表行存在；重跑幂等（行数不变）；deprecated 语义
-- [ ] 跑红 → 实现 → 跑绿 → commit
+- [x] 失败测试（sqlite 夹具）：注册后四表行存在；重跑幂等（行数不变）；deprecated 语义
+- [x] 跑红 → 实现 → 跑绿 → commit
+
+> **P1-8 完成（2026-10-17）**：`steps/register.ts`（`registerSolution` 占用预检 → `upsertSolutionPerms` 出口原样消费 → 设置/路由 upsert（存在只覆定义列，value 不复活）→ 声明消失标 deprecated 汇入清单 → `auditOp("solution.register")`；`checkOccupancy` DB 级首段占用承接 P1-5 备案③；`queryRegistered` 归一化快照过滤 deprecated 供 P1-9 冒烟）+ 迁移 0010 三方言（`sys_solution_route` 重构为 path 主键 + module/required_permission/deprecated/enabled——0004 版 (name,version,path) 主键无运行时读写，DROP 重建零损失；`sys_setting` 补 deprecated 列）+ 7 组用例。详见 `task-P1-8-report.md`。
 
 ### Task P1-9：部署/热更/冒烟步骤（R18/R30，DIP）
 
