@@ -3,10 +3,24 @@ import { Buffer } from "node:buffer";
 import { execFileSync, spawn } from "node:child_process";
 import fs from "node:fs";
 import http from "node:http";
+import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { PROJECT_ROOT } from "../helpers/paths";
+
+/** 取一个内核保证空闲的端口（listen(0) 由 OS 分配后即刻让出） */
+function getFreePort(): Promise<number> {
+	return new Promise((resolve, reject) => {
+		const srv = net.createServer();
+		srv.unref();
+		srv.on("error", reject);
+		srv.listen(0, "127.0.0.1", () => {
+			const { port } = srv.address() as { port: number };
+			srv.close(() => resolve(port));
+		});
+	});
+}
 
 /**
  * P6 Task 10：uni-dev 全链真二进制冒烟（设计 §9 首跑登录闭环 + §6 preview）。
@@ -165,7 +179,10 @@ describe.skipIf(process.env.CI || ojBusy)("uni-dev e2e 冒烟（真二进制）"
 	}, 240_000);
 
 	it("preview：migrate → 静态兜底 + 带 token 业务路由", async () => {
-		const { proc, port } = startRam(["preview"]);
+		// 显式传空闲端口：preview 缺省 4173 会被本机其他 preview 实例占用（自动顺延后
+		// 测试若仍按横幅旧端口打请求，会打到别人站点的反代上——2026-10-17 真机踩坑）
+		const reserved = await getFreePort();
+		const { proc, port } = startRam(["preview", String(reserved)]);
 		const previewPort = await port();
 
 		const index = await request(previewPort, "/");
