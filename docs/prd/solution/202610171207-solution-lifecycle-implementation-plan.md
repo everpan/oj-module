@@ -279,6 +279,8 @@ getTask(id: string): TaskRecord | null
 
 > **上游对账评估输入（2026-10-17，oj 0.1.77，含上游详细口径）**：`mounts[].api` 支持 `http(s)://` URL 指向 dist 根 tarball，装配期拉取、解压到内容寻址缓存 `<cache>/<sha256>/`（缺省 `<config_dir>/.oj-cache`），以 release 语义服务；`sha256`（64 hex）必填否则 fail-fast；解压 fail-fast 与本地 dist/ 同口径（产物根须含 manifests.yaml；tar-slip / 符号链接 / 特殊文件 / 总量 4 GiB·条目 10 万·单条 1 GiB 超预算拒启）；命中缓存按 sha256 复用、损坏自动重拉、同 URL 物化互斥串行化；`--api-path` 不接受 URL。打包 `oj build --bundle` = 整站 dist 根空前缀 tarball + 打印 sha256。P2 期门须评估：方案包分发是否改走/兼走该形态（URL 挂载解决取包与完整性，安装器仍持迁移/注册/锁账/sidecar——互补而非替代，不推翻 v3 架构）；若兼走，`bundles.yaml`/CDN 索引与 dist 根 tarball 的形态归一化在期门裁决。三份上游需求稿（OJ-6/8/9）0.1.77 未包含，且同日**上游终裁三稿均不采纳**（裁决理由与消费方处置见各稿「上游终裁」节）——P1 现行路径（exec.run 迁移子进程、rollbackGuard 禁降版、Windows 文档兜底）即长期形态。
 
+> **上游对账评估输入（2026-10-17，oj 0.1.78 = exec 流式形态）**：`exec.spawn(argv, opts?)` 返回句柄 `{rid, pid, stdout, stderr, kill, exit}`（stdout/stderr 为 `AsyncIterable<Uint8Array>`，`for await` 逐块消费、`h.exit()` 取退出码、`h.kill()` 整组击杀）；`exec.run` 扩展 `onStdout`/`onStderr` 增量回调（返回 `{code}` 不缓冲整段），**无回调时与 0.1.75 行为/返回形状完全一致**（向后兼容，0.1.75 地板不变）。共用硬限制：`timeoutMs` 缺省 **30_000**、硬上限 **600_000** 钳制；输出 **10 MiB** 上限；有界 mpsc 背压（16 槽 × 8 KiB，不消费流则子进程阻塞——消费方必须持续消费）；句柄 rid 进 resource_table，close 同步整组击杀；安全闸门（per_module 授权/argv 模板白名单/占位符）与缓冲形态一致。消费方处置：① **P1 修正项（P1-13c）**——`steps/migrate.ts` 的 `exec.run` 未传 `timeoutMs`，落在 30 s 缺省上，生产级数据迁移超 30 s 即被杀（retryable fail）；须显式传 `timeoutMs: 600_000`（平台硬上限内取满）；10 MiB 输出上限对 `migrate --format json` 量级安全，备案。② **P2 新输入**——迁移段进度可经 `onStdout` 增量刷 TaskRecord（市场进度抽屉从 stage 粒度升级到输出粒度）；`h.kill()` 为「取消安装」能力候选（P2/P3 评估，须连带暂存清理与账本对账语义）；流式为可选增强，消费前 feature-detect `exec.spawn` 存在性。③ **devkit 须落**——迁移作者约束：单次 `oj migrate` 必须在 **10 min** 内完成（exec 平台硬上限），超限迁移须作者分块；OJ-6 终裁维持不变——0.1.78 属 exec 面自身增强，无内嵌化需求。
+
 ## 5. P3 · 减法与分发（分支 `feat/lifecycle-p3`，期门细化）
 
 | # | 任务 | 交付 / AC | 状态 |
@@ -295,7 +297,7 @@ getTask(id: string): TaskRecord | null
 | 风险 | 应对 |
 |---|---|
 | C1 裁决不利（共享根形态需安装器改写既有挂载） | D3 已列候选与迁移路径；裁决前不启动 P1-6 之后的 FS 步骤实现 |
-| 长任务形态受限（isolate 请求作用域） | S1-7 双候选都已论证；分段执行+状态文件续跑为兜底 |
+| 长任务形态受限（isolate 请求作用域） | S1-7 双候选都已论证；分段执行+状态文件续跑为兜底；0.1.78 exec 流式（onStdout 增量回调）令迁移段可在请求作用域内实时刷 TaskRecord 进度（P2 消费，形态不变） |
 | oj build introspect 空沙箱红线（RBAC §9.4 先例） | `_lifecycle` 模块级语句禁触碰运行时全局（jwt/db/axis），全部收进函数——列入集中评审 checklist |
 | Windows tar / EPERM | OJ-8 终裁未采纳（Windows exec 模板写 `cmd /c`）；R30 路径 POSIX 化 + 可读报错，Windows 列已知限制 |
 | 两运行时契约漂移 | 夹具双端测试（P1-11）为门禁 |
