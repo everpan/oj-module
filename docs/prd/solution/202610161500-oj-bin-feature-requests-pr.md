@@ -1,6 +1,72 @@
 # oj-bin 功能诉求（PR 文本，供手动提交）
 
+> **编号登记**：`OJ-1`~`OJ-6` 已用于下方 PR-1~PR-5。
+> **PR-6（OJ-7）**：表级写守卫（`ownership_guard` 读写分离 + 属主侧写授权）——篇幅较大，独立成文，见
+> [`docs/prd/202610170016-oj-table-write-guard-requirement.md`](../202610170016-oj-table-write-guard-requirement.md)。
+> 提出背景：`docs/prd/20261016-solution-module-rbac-isolation-design.md` §2（模块间写隔离的结构性保证）。
+
+---
+
+## 重新评估（2026-10-17，oj 0.1.75 / 0.1.76 devkit 新文档 + 本机 oj 0.1.76 实测）
+
+oj **0.1.75** 一次性落地了本文件 6 条诉求里的 4 条（形态与提议 API 不完全一致，但语义覆盖），
+且 `scenarios.md` **场景 35「解决方案市场模块安装闭环（v0.1.75）」**就是本文件目标链路的官方范式
+（`fetch` → `sha256Hex` → `verifyEd25519` → `exec.run tar` → `yaml.parse` manifest →
+config 回写 → `oj migrate --format json` → `server.reloadConfig`），可直接照抄。
+下文 PR-1~PR-6 保留作历史存档，各条已就地标注处置。
+
+| 编号 | 原诉求 | 现状（oj 0.1.76 实测） | 处置 |
+|---|---|---|---|
+| OJ-4 / PR-1 | Ed25519 验签 | ✅ `crypto.verifyEd25519(pub, msg, sigB64): boolean` 已存在，同步返回、双层语义 | **关闭，不提交** |
+| OJ-1 / PR-2 | tgz 解压 | ✅ 无内建 `fs.untarGz`，但 `exec.run` + `platform.exec` argv 白名单 + tar 三步范式已给安全落位（scenarios 场景 34） | **关闭**；Windows 缺 tar 的报错可操作性问题另立 **PR-7（OJ-8）** |
+| OJ-2 / PR-3 | 热更进程内触发 | ✅ `server.reloadConfig()` 已存在，限 `platform.modules` 特权模块 | **关闭，不提交** |
+| OJ-3 / PR-5 | YAML 只读解析 | ✅ `yaml.parse(text)` 已存在（异步、三预算防炸弹），并额外给了 `yaml.stringify` | **关闭，不提交** |
+| OJ-6 / PR-4 | 迁移内部化 | ⚠️ 无 `migrate.run` 全局；官方路径 = `exec.run(["oj","migrate","-c",…,"--format","json","-d",…,mod])` + 判 exit code（场景 35 步骤 7） | **降级 P2**：先按官方绕行，可另提「内建化」小 PR |
+| OJ-5 / PR-6 | 远程 api mount | ❌ `mounts[].api` 仍只认本地目录（api-manual §mounts 无 URL 形态） | **维持远期**，暂不提交 |
+
+**实测证据**（`~/.local/share/oj/oj exec -e`，oj 0.1.76）：
+
+| 用例 | 结果 |
+|---|---|
+| `typeof crypto.verifyEd25519` / `yaml.parse` / `exec.run` / `server.reloadConfig` / `http.module` | `function` / `function` / `function` / `function` / `object` |
+| 正确签名 | `true` |
+| 篡改 msg / 错误公钥 / 他用密钥签名 | `false` |
+| 非法 base64 | 抛 `verifyEd25519: signature not base64: Invalid symbol 33, offset 3.` |
+| 2 字节公钥 | 抛 `verifyEd25519: public key must be 32 raw bytes (got 2)` |
+| `crypto.sha256Hex(new Uint8Array([1,2,3]))` | `039058c6…`（二进制入参可用；非 string/二进制入参现抛 `expected typed ArrayBufferView`——**0.1.75 行为变更**，老调用需自查） |
+| `await yaml.parse("a: 1\nb: [x, y]")` | `{"a":1,"b":["x","y"]}`（**须 await**，返回 Promise） |
+| 未配 `platform:` 调 `exec.run` / `server.reloadConfig` | 抛 `exec not configured (config platform.exec section missing)` / `platform not configured (config platform: section missing)`（fail-closed 生效） |
+
+> 注：§13 限制表写的 `NotCapable: platform not configured …` 与实际文案
+> `platform not configured (config platform: section missing)` 略有出入——文档仍非逐字可信，结论以实测为准。
+
+**同批落地、本文件未提但影响 M6 设计的能力**：
+
+- `platform:` 配置段（0.1.75）：特权模块名单 + `platform.root` 受控挂载根 + `trusted_paths` 授权路径根
+  → 这是安装器能回写 `config.yaml` 的前提（特权 fs = `fs.root ∪ trusted_paths`，且 `fs:` 段须已配；
+  特权模块**只能由部署方手工放入受控根**，不得来自市场安装树，装配期抢注 fail-fast）。
+- `http.module`（0.1.76）：只读模块身份 `{name, version}`，被定为框架授信依据
+  （跨模块表归属守卫 / bound_db 重定向 / 平台特权换装）——与 OJ-7 表级写守卫同源。
+
+**下游文档同步状态**（2026-10-17 已完成，本文件为唯一登记处）：
+
+| 文档 | 同步内容 |
+|---|---|
+| `docs/prd/solution/202610161300-solution-lifecycle-registration-design.md` | §1 安装行加 oj 能力复核脚注；§9.1 依赖表由 4 行扩为 6 行（补 OJ-7 / OJ-8）并逐条标状态 |
+| `docs/prd/solution/202610152345-solution-marketplace-framework-prd.md` | §2 E7 证据条标注过期；§5.4 诉求清单逐条标状态；§5.6.3 迁移执行主体加复核 + Windows 前置；§6.1 可行性表 3 行、§6.2 R1/R5、§7 M7 同步 |
+| `docs/prd/20261016-solution-module-rbac-isolation-design.md` | 头部「前提（尚未落地，需先 POC）」→ 已落地（v0.1.76）；文档关系表外部依赖 OJ-7 状态刷新 |
+| `docs/prd/202610170016-oj-table-write-guard-requirement.md` | 顶部编号接续说明补 OJ-8 与「OJ-7 为唯一遗留阻塞项」 |
+
+---
+
 ## PR-1（OJ-4，P0）：crypto 新增 Ed25519 验签
+
+> **状态：✅ 已落地（oj 0.1.75 `crypto.verifyEd25519`），不再提交。**
+> 落地形态与提议 API 一致（`verifyEd25519(publicKey, msg, sigBase64): boolean`，同步），
+> 额外给了双层语义（格式错抛错、验签不过返回 `false`）；
+> 原「现状证据（oj 0.1.74 实测）」与「兼容性：需补 global.d.ts」两项已过期
+> （声明见 devkit `global.d.ts:659`，手册 api-manual:2289-2315）。
+> 注意 0.1.75 顺带改了 `crypto.sha256Hex`：非 string/二进制入参由 `String()` 强转改为抛 TypeError。
 
 **标题**：`crypto: 新增非对称验签能力（Ed25519 crypto.verify）`
 
@@ -37,6 +103,15 @@ interface Crypto {
 
 ## PR-2（OJ-1，P0）：归档解压能力
 
+> **状态：✅ 已落地（oj 0.1.75，形态为「`exec.run` + 系统 tar」而非内建 `fs.untarGz`），不再提交。**
+> 原「安全红线」四条已由官方三步范式覆盖：`tar -tzf` 预检（仅快速失败）+ 成员名复检 →
+> 解压到 `.staging` → **解压后全量 walk 为权威校验**（symlink/hardlink/设备零容忍、组件级拒 `..`、
+> 总体积对账）→ 原子 rename；`exec.run` 无 shell、argv 模板白名单（literal 逐字 + `${path:}` jail
+> 校验 + `${raw:}` 拒 option 注入），缺省全 deny。见 scenarios 场景 34、api-manual §6「exec」。
+> **残留风险 → 已独立成 PR-7（OJ-8）**：`exec.run` 依赖宿主 PATH 能解析到 `tar`
+> （子进程 env 清空、不继承 PATH，由宿主侧解析），Windows 发行包与无 tar 的最小容器镜像无此保证，
+> 且失败时报错不可操作。处置见下方 PR-7：只要求 Windows 下报错给 Git Bash 提示，不提内建解压。
+
 **标题**：`fs: 新增 tgz 解压（fs.untarGz 或 axis("archive") 插件）`
 
 **正文**：
@@ -65,6 +140,13 @@ axis("archive").untarGz(bytes: ArrayBuffer, destDir: string): Promise<ExtractedE
 
 ## PR-3（OJ-2，P1）：配置热更进程内触发
 
+> **状态：✅ 已落地（oj 0.1.75 `server.reloadConfig()`），不再提交。**
+> 返回结构 `{generation, unchanged, applied[], restart_pending[], kept_listener[]}`——比原提议多一个
+> `unchanged`（幂等时三清单为空）；与 `POST {base}/_system/config` 同一 executor、同一把串行锁
+> （并发第二次触发 → `server.reloadConfig: reload in progress (busy)`）；`oj test` / 嵌入式抛
+> `reload not available`。门禁同原提议：限 `platform.modules` 特权模块，非特权调用被拒。
+> 见 api-manual:967、:1769-1793。
+
 **标题**：`server: 提供配置热更的进程内触发 API（免 loopback HTTP + Bearer）`
 
 ### 动机
@@ -89,6 +171,15 @@ server.reloadConfig(): Promise<{
 
 ## PR-4（OJ-6，P1）：迁移执行内部化
 
+> **状态：⚠️ 降级为 P2 可选。无 `migrate.run` 全局 API，但已有官方绕行：**
+> `exec.run(["oj","migrate","-c",cfg,"--format","json","-d",dir,"<name>-<version>"])`（模板须先写进
+> `platform.exec.<模块>.allow`；`oj` 特判解析为 `current_exe()`，即同版本自保证），
+> 输出 `{"results":[{module,ok,error?}], error}`；**成败真源是 exit code**（任一模块失败时 json 仍可解析，
+> 但 `results[].ok=false` 且进程退非 0）。大表迁移记得把 `timeoutMs` 从缺省 30s 调大（硬上限 600s）。
+> 原「红线」两条均成立且与绕行不冲突：release 默认 `migrate_on_start: verify`，账本落后拒启 M004
+> （约束 B 由框架保证，不可绕过）；oj 迁移只前向无 down，失败由安装器删版本目录 + 恢复锁。
+> 若仍要提，诉求应改写为「内建 `migrate.run` 去掉子进程开销与 exit-code 契约摩擦」，不再是阻塞项。
+
 **标题**：`migrate: 暴露进程内迁移触发（免外部 oj CLI 子进程）`
 
 ### 动机
@@ -112,6 +203,12 @@ sqlite/mysql/pg 三方言各跑通一次前向迁移；重复执行幂等（账�
 
 ## PR-5（OJ-3，P2，可选）：YAML 只读解析
 
+> **状态：✅ 已落地（oj 0.1.75 `yaml.parse` / `yaml.stringify`），不再提交。**
+> 两个差异点：**`yaml.parse` 是异步**（Rust 阻塞池执行，必须 `await`，未 await 会拿到 Promise）；
+> 有**三预算防炸弹**（输入 1 MiB / 10 万节点含 alias 展开 / 深度 128），超限抛错。
+> `yaml.stringify` 虽已提供但**禁用于 config.yaml 回写**（serde_yaml 丢注释与空白）——
+> 官方仍推荐原提议里那条「文本手术 → `yaml.parse` 语义复检 → sha256 自校验」三步法（api-manual:1748）。
+
 **标题**：`增加只读 YAML 解析能力（yaml.parse）`
 
 ### 动机
@@ -127,6 +224,9 @@ config 回写仍建议「只改目标段的文本替换 + sha256 自校验」，
 
 ## PR-6（OJ-5，P3，远期）：远程 api mount
 
+> **状态：❌ 未变（oj 0.1.76 devkit 复查：`mounts[].api` 仍只认本地目录，无 URL/远端形态），维持远期。**
+> 前置依赖里的 OJ-1 与 PR-5（YAML）已就位，剩缓存目录与完整性策略；仍建议单独立项设计后再排期。
+
 **标题**：`mounts: 支持 URL 形态的 api mount（远期）`
 
 ### 动机
@@ -134,3 +234,51 @@ config 回写仍建议「只改目标段的文本替换 + sha256 自校验」，
 
 ### 前置依赖
 OJ-1（解压）、PR-5（YAML/manifest 解析）、以及缓存目录与完整性（sha256/SRI）策略；牵涉装配期 admission gate 的扩展校验，建议单独立项设计后再排期。
+
+---
+
+## PR-7（OJ-8，P1）：Windows 下外部命令解析失败的报错契约
+
+**标题**：`exec: Windows 缺少 tar/zip 等命令时给出可操作报错（提示 Git Bash）`
+
+### 动机
+v0.1.75 的 `exec.run` 把归档解压建立在**宿主外部命令**之上（`tar -tzf` / `tar -xzf`，无 shell、
+模板首 token 为裸名、按宿主 PATH 解析）。这在 Linux/macOS 上无摩擦，但在 **Windows 上不可靠**：
+
+- Windows 10 17063+ 自带的是 `C:\Windows\System32\tar.exe`（**bsdtar**），与 GNU tar 参数/默认行为有差异
+  （如 `--exclude`、wildcards、`-C` 与打包顺序），照抄场景 34 的模板可能静默产生不同结果；
+- 更常见的形态是**根本解析不到** `tar`/`zip`/`unzip`——Windows 默认不带 `zip`/`unzip`，
+  且 `exec.run` 的**子进程 env 是空表、不继承 PATH**，完全依赖宿主侧解析；
+- 此时实现抛的是通用 `exec: command resolve failed for 'tar': …`，运维看到的是「找不到命令」，
+  但**得不到下一步该做什么**——这类报错会被当成 oj 的 bug 而非环境配置问题。
+
+### 提议（两件小事，都不改安全模型）
+
+1. **平台特化报错文案**：`exec.run` 命令解析失败时，在 `process.platform === "win32"` 下
+   追加一段可操作提示（不改变错误分类，仍为普通 `Error`）：
+   ```text
+   exec: command resolve failed for 'tar': <原始原因>
+   hint: 此命令在 Windows 上默认不可用。请改用 Git for Windows 自带的 Git Bash 执行本操作
+         （默认路径 C:\Program Files\Git\git-bash.exe），
+         或把 C:\Program Files\Git\usr\bin（GNU tar / zip / unzip 所在）加入系统 PATH 后重试。
+   ```
+   `zip` / `unzip` 缺命令同理，只换命令名。非 Windows 平台保持现有文案不变。
+2. **文档侧补一条 Windows 前置说明**：在 api-manual §6「exec」与 scenarios 场景 34 顶部注明
+   「Windows 部署请用 Git Bash 或把 Git 的 `usr/bin` 加入 PATH」，避免照抄者踩空。
+
+> 不做的事：不内置 tar、不改 `${path:}` 校验语义、不加 fallback shell。本条只解决「报错不可操作」。
+
+### 兼容性
+纯报错文案增强；仅在原本就要抛错的失败路径上加 hint，无行为分支变化、无新 API。
+
+### 验收标准
+- Windows 且 PATH 无 `tar` 时，`exec.run(["tar", ...])` 抛错**同时**含 `hint:` 段与 Git Bash 路径；
+- `zip`/`unzip` 缺失同样给出对应 hint，命令名正确插值；
+- 非 Windows 平台报错文案与现状逐字一致（无 hint 段）；
+- 错误分类不变（仍为普通 Error，非 `NotCapable`），现有 `exec: command resolve failed` 前缀保留，
+  依赖前缀匹配的调用方不受影响。
+
+### 备注：Windows 侧另一处既有差异（非本 PR 范围，记录备查）
+api-manual §6「exec」硬限制写明：超时到期先 `kill(-pgid, SIGKILL)` 整组击杀，
+**Windows 无进程组对应物，仅杀直接子进程**。故 Windows 上跑 tar 解压时若 tar 派生了孙进程，
+超时后可能残留。安装器的 `.staging` 清理逻辑不要依赖「超时即无残留」这一假设。

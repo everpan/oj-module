@@ -83,7 +83,7 @@
 | **E4** | **热更触发源是 config 文件的归一化 sha256**：加注释/空白 **不触发**（返回 `unchanged`）；必须有语义变更 | 实测仅改注释 → `{"msg":"unchanged","generation":0}` |
 | **E5** | **无需新增 mount**：把新模块目录放进**已挂载的共享根**、更新该根的 `manifests.yaml` 锁、再触发一次语义性 config 变更 → 热更后新模块路由**即时 200** | 实测：锁加 `newmod: 0.1.0` + `vars.gen` 1→2 + `POST _system/config` → `/m/newmod/hello` 由 404 变 200，全程未重启 |
 | **E6** | `auth.anonymous_paths` 是**挂载前缀相对**的：写 `/extmod/hello` 放行 `/m/extmod/hello`；写 `/m/extmod/hello`（含前缀）**不放行** | 实测对照 |
-| **E7** | oj JS 全局 **无 tar/gzip/zip 解压、无 YAML 读写**；有 `fetch(url)`、`fs.writeFile`、`axis(name)` 泛型插件轴 | `global.d.ts:239-250`（FsApi 仅 9 个方法）、`:656-658`（`axis`） |
+| **E7** | ~~oj JS 全局 **无 tar/gzip/zip 解压、无 YAML 读写**~~；有 `fetch(url)`、`fs.writeFile`、`axis(name)` 泛型插件轴 | `global.d.ts:239-250`（FsApi 仅 9 个方法）、`:656-658`（`axis`）。**⚠️ 本条基于 oj 0.1.74，已于 v0.1.75/0.1.76 过期**：解压改由 `exec.run` + 系统 tar 承担、YAML 由 `yaml.parse/stringify` 承担——见 §5.4 清单与 `docs/prd/solution/202610161500-oj-bin-feature-requests-pr.md` 的重新评估 |
 | **E8** | release 模式路由**只认 `routes.js`**，目录镜像路由不存在；`routes.js` 的 `pattern` 含模块名段、无首斜杠、不含 base | `api-manual.md:3246`；实测 `dist/web-0.1.0/routes.js` = `{method:"get", pattern:"web/hello", file:"hello/api.js"}` |
 
 ### 3.1 由 E1–E8 推导出的三条硬约束
@@ -403,20 +403,34 @@ solutions:
 
 ### 5.4 安装流程
 
-**执行主体决策**：用户选定「**扩展 oj 的功能**」。即安装器是 **oj 后端模块 `_platform/market`**；但按 E7，oj 当前**无归档解压能力**，需 oj 侧新增能力。据此分两阶段：
+**执行主体决策**：用户选定「**扩展 oj 的功能**」。即安装器是 **oj 后端模块 `_platform/market`**；
+最初按 E7 记录为「oj 无归档解压能力」，**该缺口已由 oj v0.1.75 补齐**——`exec.run`（系统 tar）+
+`platform:` 特权段，且配置自热更内部 API（`server.reloadConfig`）与验签（`crypto.verifyEd25519`）
+同批落地。据此分两阶段：
 
 | 阶段 | 执行主体 | 依赖 |
 |---|---|---|
 | **M4（落地）** | oj 后端 `_platform/market` 编排 + **`ojm install` Node 进程执行落盘** | 后端通过 loopback 回调框架自带的 Node 管理端点（`ojm serve` 包裹层），或运维手动执行 |
-| **M6（收敛）** | oj 后端原生完成（待 oj 新增 `axis("archive")` 解压能力 + 配置自热更内部 API） | **对外依赖：oj-bin 新增能力**（外部项目，本仓只读，需提需求） |
+| **M6（收敛）** | oj 后端原生完成 | 解压 = `exec.run` + tar 三步范式（scenarios 场景 34）；热更 = `server.reloadConfig()`；验签 = `crypto.verifyEd25519`；迁移 = `exec.run oj migrate --format json`（**无内建 `migrate.run`**） |
 
-> **oj 侧能力诉求清单（对外依赖，需提给 oj-bin）**
-> - **OJ-1** 归档解压：`fs.untar(bytes, dest)` 或 `axis("archive").untar(...)`（支持 `.tgz`/tar.gz）
-> - **OJ-2** 配置自热更内部触发（免 loopback Bearer 绕行），或给 `_system/config` 提供平台内部白名单
-> - **OJ-3**（可选）YAML 读取能力，便于后端读 `config.yaml` 做合并而非文本替换
-> - **OJ-4** 非对称验签：`crypto.verify(alg, pubkey, msg, sig)`。**实测 oj 的 `crypto` 只有 `sha256Hex` / `randomHex` / `getRandomValues` / `aesGcm*`（`global.d.ts:562-571`），无任何非对称能力** → 签名校验必须 Node 侧做
-> - **OJ-5**（远期）远程 mount：允许 `mounts[].api` 指向 URL，运行时按需拉取 —— 若就位，"CDN 远程加载"才对后端成立（见 §5.5 边界说明）
-> - **OJ-6** 迁移执行内部化：后端可触发本进程模块迁移（免外部 `oj` 子进程）
+> **oj 侧能力诉求清单（对外依赖，需提给 oj-bin）** — 状态复核于 oj **0.1.76**（2026-10-17，本机 `oj exec -e` 实测）
+> - **OJ-1** 归档解压 → ✅ **已落地（v0.1.75）**：形态为 `exec.run(["tar","-xzf",…])` +
+>   `platform.exec` argv 白名单，配 scenarios 场景 34 的三步安全落位（非内建 `fs.untarGz`）。
+> - **OJ-2** 配置自热更内部触发 → ✅ **已落地（v0.1.75）**：`server.reloadConfig()`，
+>   限 `platform.modules` 特权模块，与 `POST {base}/_system/config` 同一 executor 与串行锁。
+> - **OJ-3**（可选）YAML 读取 → ✅ **已落地（v0.1.75）**：`yaml.parse(text)`（**异步，须 `await`**）
+>   与 `yaml.stringify`（禁用于 config.yaml 回写，会丢注释/空白）。
+> - **OJ-4** 非对称验签 → ✅ **已落地（v0.1.75）**：`crypto.verifyEd25519(pub, msg, sigB64): boolean`
+>   （同步；格式错抛错、验签不过返回 `false`）。原文「oj 无非对称能力 → 验签必须 Node 侧做」
+>   **已过期**：M4 统一在 Node 侧验签改为实现选择，不再是能力约束。
+> - **OJ-5**（远期）远程 mount → ❌ **未变**：`mounts[].api` 仍只认本地目录。
+> - **OJ-6** 迁移执行内部化 → ⚠️ **无内建 API**：无 `migrate.run` 全局；官方绕行 =
+>   `exec.run(["oj","migrate","-c",cfg,"--format","json","-d",dir,mod])` + 判 exit code
+>   （scenarios 场景 35 步骤 7）。已从阻塞项降级为可选优化。
+> - **OJ-8**（新增，P1）Windows 外部命令缺失的报错契约 → ❌ **待提**：见下方 §5.6.3 说明。
+>
+> 编号说明：`OJ-7` = 表级写守卫（**仍未落地，oj 0.1.76 复核**），独立成文，见
+> [`docs/prd/202610170016-oj-table-write-guard-requirement.md`](../202610170016-oj-table-write-guard-requirement.md)。
 
 **安装状态机**（M4 实现，M6 复用）：在 PRD 原 7 阶段基础上细化 —— 预检前置、注册/前端落位拆分、新增**安装期冒烟**，共 10 阶段。图例见设计文档 `202610161300-solution-lifecycle-registration-design.md` §10.3。
 
@@ -515,7 +529,8 @@ type SolutionInstallTask = {
 ### 5.5.1 为什么后端不能"真远程"
 
 oj 的 `mounts[].api` 只能是**本地目录**（E2/E8：挂载根须含 `manifests.yaml`，装配期校验目录存在）。没有 URL mount。
-→ **后端产物的"远程加载"= 拉取到共享根后再挂载**，oj 侧无感知。真正的零落盘远端装载需 **OJ-5**。
+→ **后端产物的"远程加载"= 拉取到共享根后再挂载**，oj 侧无感知。真正的零落盘远端装载需 **OJ-5**
+（oj 0.1.76 复核：仍无 URL mount，维持远期）。
 
 ### 5.5.2 三种装载策略（运行时等效，只差填充方式）
 
@@ -574,8 +589,24 @@ bundle 的 `api/<module>-<version>/` 内自带：
 
 ### 5.6.3 谁来执行迁移
 
-`oj migrate` 是 **CLI 子命令**，oj 的 JS isolate 无子进程能力（E7 同源）。
-→ **M4：Node 侧 `ojm install` 调用 `bin/oj migrate`**；**M6：待 OJ-6 就位后后端内部化**。
+`oj migrate` 是 **CLI 子命令**；oj 的 JS isolate 本身**无子进程能力**（E7 同源），
+v0.1.75 起由 `platform.exec` 授权的 `exec.run` 补上（无 shell，白名单 argv 模板）。
+→ **M4：Node 侧 `ojm install` 调用 `bin/oj migrate`**；~~**M6：待 OJ-6 就位后后端内部化**~~
+→ 见下方复核。
+
+> **复核（2026-10-17，oj 0.1.76）**：OJ-6 的**内建 `migrate.run` 全局并未落地**，但 v0.1.75 的
+> `exec.run` 已给出等价绕行（`oj` 首 token 特判解析为 `current_exe()`，与 serve 进程同版本）：
+> ```bash
+> oj migrate -c <config.yaml> --format json -d <共享根> <name>-<version>
+> # stdout 一行 {"results":[{"module":"…","ok":true|false,"error":"…"}], "error": null}
+> # 成败真源 = 退出码：任一模块失败时 json 仍可解析，但 results[].ok=false 且进程退非 0
+> ```
+> 故 M6「后端内部化」不再受 oj 能力阻塞，仅剩子进程开销与 exit-code 契约摩擦（可选再提 OJ-6）。
+> ⚠️ **Windows 前置**：`oj` 是特判不依赖 PATH，但同批的 **`tar` 模板依赖**（子进程 env 清空、不继承 PATH）。
+> Windows 请用 **Git Bash**（`C:\Program Files\Git\git-bash.exe`）执行，或把
+> `C:\Program Files\Git\usr\bin`（GNU `tar` / `zip` / `unzip`）加入 PATH；且 Windows 自带的是
+> `System32\tar.exe`（**bsdtar**，与 GNU tar 参数有差异，别直接照抄 GNU 模板）。
+> 缺失时的**报错契约**见 **OJ-8**（`docs/prd/solution/202610161500-oj-bin-feature-requests-pr.md` PR-7）。
 
 ```bash
 bin/oj migrate -c api/config.yaml -d <root>/modules          # default 库
@@ -654,8 +685,12 @@ archive:
 
 ### 5.7.7 执行者
 
-**oj 无验签能力**（实测：`global.d.ts:562-571` 的 `crypto` 仅 `sha256Hex`/`randomHex`/`getRandomValues`/`aesGcm*`；`jwt.verify` 只验自家 token）。
-→ **M4 由 Node 侧 `ojm install` 验签**（sha256 部分 oj 后端也能做，但统一在 Node 侧更简洁）；**M6 待 OJ-4**。
+~~**oj 无验签能力**~~（原实测基于 oj 0.1.74：`global.d.ts:562-571` 的 `crypto` 仅 `sha256Hex`/`randomHex`/
+`getRandomValues`/`aesGcm*`；`jwt.verify` 只验自家 token）→ **已于 v0.1.75 补齐**：`crypto.verifyEd25519`
+（同步返回 boolean；格式错抛错、验签不过返回 `false`）。注意 `crypto.sha256Hex` 同批**行为变更**：
+非 string/二进制入参由 `String()` 强转改为抛 TypeError，老调用需自查。
+→ **M4 由 Node 侧 `ojm install` 验签**（sha256 部分 oj 后端也能做，但统一在 Node 侧更简洁）；
+**M6 不再依赖 OJ-4**，可直接后端验签（`scenarios.md` 场景 35 步骤 3）。
 
 ---
 
@@ -746,10 +781,10 @@ manifest 的 `permissions` / `roles`（§5.2）→ 安装时按 `module=<name>` 
 | 解决方案市场 UI | ★★★★☆ | 纯前端 + 一个后端索引接口 | CDN 可用性、版本对比 |
 | `ojm build --bundle` | ★★★★☆ | 后端 `.tgz` 与前端单文件产物均已存在，只差组装 + manifest | 确定性 tgz 需固定 mtime/顺序 |
 | CDN 分发 | ★★★★★ | 静态文件即可 | 不可用性/投毒由签名兜底（R5） |
-| 在线安装 + 热加载 | ★★★☆☆ | **E2–E5 实测全通**，路径已验证 | **oj 无解压能力（E7）**；迁移须先于热更（约束 B） |
+| 在线安装 + 热加载 | ★★★☆☆ | **E2–E5 实测全通**，路径已验证 | ~~oj 无解压能力（E7）~~ → v0.1.75 `exec.run` + tar 三步范式已覆盖；**残余：Windows 缺 `tar` → OJ-8**；迁移须先于热更（约束 B） |
 | CDN 远程加载（与共享根等效） | ★★★★☆ | **后端必然落盘**（oj 无 URL mount），等效靠"共享根 = CDN 缓存"实现；**前端远程 import 可行** | 动态 import 无 SRI；CORS；CDN 不可达即不可用（R10） |
-| 安装期数据库迁移 | ★★★☆☆ | `oj migrate -d <共享根>` 路径明确，账本按 module 区分 | 顺序敏感（错序会拒启）、**无 down 迁移**不可逆（R12）、需 Node 侧执行（OJ-6） |
-| 包签名验证 | ★★★★☆ | Ed25519 + Node `crypto.verify` 成熟；CDN 视为不可信的假设清晰 | **oj 无验签能力**，必须 Node 侧（OJ-4）；信任公钥存放有鸡生蛋问题（R13） |
+| 安装期数据库迁移 | ★★★☆☆ | `oj migrate -d <共享根>` 路径明确，账本按 module 区分 | 顺序敏感（错序会拒启）、**无 down 迁移**不可逆（R12）；~~需 Node 侧执行（OJ-6）~~ → M6 可用 `exec.run oj migrate --format json` 绕行，内建化降级为可选 |
+| 包签名验证 | ★★★★☆ | Ed25519 验签成熟；CDN 视为不可信的假设清晰 | ~~oj 无验签能力（OJ-4）~~ → v0.1.75 `crypto.verifyEd25519` 已就位（注意 `sha256Hex` 同批行为变更）；信任公钥存放有鸡生蛋问题（R13） |
 | 统一 prefix（默认业务名） | ★★★★★ | 单一共享根下天然成立；三处命名统一 | 保留名占用检测；codegen 的 `API_PREFIX` 须与之一致 |
 | 统一角色与用户管理 | ★★★★☆ | 表模型清晰；oj 无 per-route 授权故必须自建 | `users.roles` JSON → 关系表迁移（R11）；oj 守卫仍只认 JWT claims，角色须同步进 claims |
 
@@ -757,11 +792,11 @@ manifest 的 `permissions` / `roles`（§5.2）→ 安装时按 `module=<name>` 
 
 | ID | 风险 | 影响 | 缓解 |
 |---|---|---|---|
-| **R1** | oj 无 tar/gzip 解压（E7）→ 后端无法自完成安装 | 高 | 用户已定：扩展 oj 功能（OJ-1）。M4 先用 Node 侧 `ojm install` 落地，M6 切换；两阶段共用同一状态机与 manifest 契约 |
+| **R1** | ~~oj 无 tar/gzip 解压（E7）→ 后端无法自完成安装~~ | ~~高~~ **已消解** | ✅ **oj v0.1.75 已落地 `exec.run`（系统 tar）+ `platform:` 特权段**（见 OJ-1）。M4 先用 Node 侧 `ojm install` 落地，M6 切换；两阶段共用同一状态机与 manifest 契约。**残余风险**：Windows / 精简镜像宿主可能没有 `tar`，且失败报错不可操作 → 另立 **OJ-8**（待提） |
 | **R2** | 热更强制 `migrate verify`-only，带迁移的解决方案装配失败 | 中 | 安装流程强制「先 `oj migrate` 再热更」（约束 B）；失败时旧代继续服务，保留现场可重试 |
 | **R3** | 热更触发需语义变更（E4），易被实现者忽略导致"装了没生效" | 中 | 用 `vars.ojm_solutions_gen` 自增作为**唯一**触发手段并写进安装器；加单测：注释变更不触发、计数器变更触发 |
 | **R4** | 卸载/回滚会触及数据（表、迁移账本）不可逆 | 高 | **回滚已纳入安装/升级流程（M5）**：多版本目录共存 + 锁指回旧版本目录，零成本、非破坏；schema 差异仍受 R12 约束（禁止静默降级，§5.4 回滚）。**卸载仍推迟到 M7**：superadmin 独占、双维度级联清理 RBAC 绑定（`sys_user_role`/`sys_role_permission`）、业务表保留不删（Q4），数据不可逆风险以显式提示 + 二次确认兜住 |
-| **R5** | CDN 不可信 → 供应链投毒（伪造/替换 bundle） | 高 | **Ed25519 包签名 + fail-closed 验签（§5.7）**；sha256 强制校验；TOFU 指纹人工确认；CDN 强制 HTTPS。**验签必须 Node 侧做**（oj 无非对称能力，OJ-4） |
+| **R5** | CDN 不可信 → 供应链投毒（伪造/替换 bundle） | 高 | **Ed25519 包签名 + fail-closed 验签（§5.7）**；sha256 强制校验；TOFU 指纹人工确认；CDN 强制 HTTPS。~~**验签必须 Node 侧做**（oj 无非对称能力，OJ-4）~~ → **oj v0.1.75 已有 `crypto.verifyEd25519`，能力约束解除**；M4 统一在 Node 侧验签属实现选择 |
 | **R6** | 前端共享依赖版本漂移：`checkSharedVersions`（`src/build.ts:545`）要求与宿主**严格相等** | 中 | bundle 的 manifest 记录 `versions.json` 指纹；安装时校验 `peerRuntime`，不符拒绝并提示"需框架升级" |
 | **R7** | `packages/core` 与 `packages/runtime` 两套 module-loader 并行，core 零消费者 | 中 | 本 PRD 的新机制（settings 注册等）**只落在 runtime**（有消费者）；core 的取舍单列议题，不阻塞本次 |
 | **R8** | 已安装解决方案的 `is_forbidden`/登录闭环：外来模块可能自己签发 token | 中 | 令牌签发收口到框架 `_platform/auth`；已安装模块**不得**自带 login 端点，仅可经 `anonymous` 白名单声明扩展登录 |
@@ -784,7 +819,7 @@ manifest 的 `permissions` / `roles`（§5.2）→ 安装时按 `module=<name>` 
 | **M4** | LDAP 登录（移植 + esc 红线 + 两段式配置 + 登录方式发现端点） | 用 `libldap.dylib` 跑通一次真实 bind；未配置时登录页不显示入口 |
 | **M5** | `ojm build --bundle` + manifest.yaml 契约 + `ojm install` + 共享根 + **迁移链路**（§5.6）+ 热更安装（Node 侧） | **端到端验收**：本地起 CDN 目录 → 市场安装 wiki → 不重启即出现菜单与路由；带迁移的模块装得上且服务不拒启 |
 | **M6** | **包签名验证**（§5.7，Ed25519 + fail-closed + TOFU）+ 解决方案市场 UI（卡片 + 状态 + 安装按钮 + 任务进度）+ CDN 设置项 | 未签名的包**装不上**；签名不符**不落盘**；卡片只显示最高版本 |
-| **M7**（后置） | CDN 远程装载 `remote-web`（§5.5）、`ojm publish`、卸载/回滚、运行期 `ctx.register.settings`、oj 原生安装/验签/迁移能力切换 | 视 OJ-1/2/3/4/5/6 就位情况 |
+| **M7**（后置） | CDN 远程装载 `remote-web`（§5.5）、`ojm publish`、卸载/回滚、运行期 `ctx.register.settings`、oj 原生安装/验签/迁移能力切换 | 仅 `remote-web` 仍依赖 **OJ-5**（远程 URL mount，未就位）；其余各项已随 oj v0.1.75 具备条件，可提前排期 |
 
 ---
 

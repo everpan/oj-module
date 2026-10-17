@@ -29,6 +29,13 @@
 | **降级/回滚** Downgrade | 同 Install（更低 version） | 锁指回旧版目录；须 `downgrade.min_version` 相符且迁移无差异，否则**强告警**；无 down 迁移故禁止静默降级 | PRD §5.6.5 / R12 |
 | **卸载** Uninstall | superadmin 独占 | 级联清理 RBAC 双维度绑定 + 摘路由/前端；**业务表不删**（Q4） | PRD §5.9.6 / D6 |
 
+> **oj 能力复核（2026-10-17，oj 0.1.76）**：上表「安装」行里 `解压 staging` 与 `POST _system/config`
+> 两处在 M6 不必再经 Node 侧——v0.1.75 已提供 `exec.run`（系统 tar）+ `server.reloadConfig()`
+> （特权模块内进程内触发）。M4 仍走 Node 侧 `ojm install`，两阶段共用同一状态机与 manifest 契约。
+> ⚠️ **Windows 前置**：`exec.run` 的 tar 模板依赖宿主 PATH 解析，Windows 请用 **Git Bash**
+> （`C:\Program Files\Git\git-bash.exe`）或把 `C:\Program Files\Git\usr\bin` 加入 PATH；
+> 缺失时的报错契约见 **OJ-8**（`202610161500-oj-bin-feature-requests-pr.md` PR-7）。
+
 ```mermaid
 flowchart LR
     A[编译 Compile<br/>ojm build --bundle] --> B[部署/分发 Distribute<br/>ojm publish 到 CDN]
@@ -63,11 +70,11 @@ sequenceDiagram
 
     U->>M: POST /market/install {name, version}
     M->>N: 触发 Node 进程(loopback / 运维手动)
-    N->>CDN: GET bundles.yaml + &lt;file&gt;.tgz
+    N->>CDN: GET bundles.yaml + <file>.tgz
     N->>N: 解析目标版本 + 兼容性门禁(peerRuntime/peerOj/peerFramework)
     N->>N: sha256 比对 + Ed25519 验签(fail-closed)
-    N->>FS: 解压 .staging/&lt;name&gt;-&lt;version&gt;/ → 原子 rename
-    N->>DB: oj migrate -d &lt;共享根&gt;（★先于热更，约束 B）
+    N->>FS: 解压 .staging/<name>-<version>/ → 原子 rename
+    N->>DB: oj migrate -d <共享根>（★先于热更，约束 B）
     N->>DB: upsert sys_setting / sys_role / sys_permission / sys_role_permission / sys_solution_route
     N->>FS: modules.json upsert + web 产物落位
     N->>OJ: 改 config.yaml(anonymous_paths 并入 + vars.ojm_solutions_gen++)
@@ -158,8 +165,8 @@ flowchart TD
 ```mermaid
 flowchart TD
     H[宿主 shell 启动] --> F[fetch modules.json]
-    F --> L[动态 import(entry.js)]
-    L --> D[defineModule.routes → getRoutes() 注入路由树]
+    F --> L["动态 import(entry.js)"]
+    L --> D["defineModule.routes → getRoutes() 注入路由树"]
     L --> I[defineModule.i18n → 并入宿主命名空间 &lt;name&gt;]
     D --> M{按 path 归并 sys_solution_route.category}
     M -->|main| MN[常规主菜单]
@@ -169,9 +176,9 @@ flowchart TD
     M -->|hidden| HD[不入菜单]
     I --> T[菜单/设置/RBAC 标题 title_key / label_key 解析]
     ST -. 设置页 Card 来自 .-> SYS[sys_setting group]
+```
 
 > **路由双源一致性（A1）**：前端路由来自 `entry.js`（`defineModule.routes`），分类/菜单归属来自 `sys_solution_route`，二者靠 `path` 归并。安装器须做**安装期 path 一致性校验**：`manifest.routes[].path` 与 `entry.js` 实际路由 path 集合比对，不一致时**默认告警（warn），可配置升级为阻断（fail）**——避免运行时菜单错归或分类丢失。PRD §5.2 原「告警不阻断」据此收敛为可配的硬校验。
-```
 
 **i18n 覆盖到菜单分组**：`defineModule.i18n` 提供的文案须包含 `manifest.routes[].title_key` 与 `sys_setting.label_key` 的本地化，使宿主在渲染「常规主菜单 / 管理菜单 / 系统设置分组」时能解析出方案自己的标题。安装期深检（§7）会校验这些 key 在命名空间 `&lt;name&gt;` 下有值。
 
@@ -186,9 +193,9 @@ PRD §5 已覆盖安装期的**包签名 / sha256 校验**，但缺少「装完�
 ```mermaid
 flowchart TD
     V[安装期冒烟] --> A1[后端: GET /api/&lt;name&gt;/health 或首个非匿名路由 → 断言 200]
-    V --> A2[前端: modules.json 条目 integrity == 本地计算 sha384(Node 侧可算)]
-    V --> A3[前端 entry 加载: 由宿主 error boundary 兜底(浏览器侧, 非 Node import); 异常经按需深检可见, 不阻塞安装]
-    V --> A4[注册一致性: DB 中声明行全部存在(sys_solution_route/sys_setting/sys_role/sys_permission); 升级允许 deprecated 残留, 用包含非相等]
+    V --> A2["前端: modules.json 条目 integrity == 本地计算 sha384(Node 侧可算)"]
+    V --> A3["前端 entry 加载: 由宿主 error boundary 兜底(浏览器侧, 非 Node import); 异常经按需深检可见, 不阻塞安装"]
+    V --> A4["注册一致性: DB 中声明行全部存在(sys_solution_route/sys_setting/sys_role/sys_permission); 升级允许 deprecated 残留, 用包含非相等"]
     A1 --> OK[冒烟全过 → 进入 done]
     A2 --> OK
     A3 --> OK
@@ -236,8 +243,8 @@ flowchart TD
 
     subgraph UN["卸载(唯一减法出口, superadmin 独占)"]
         C1[级联删 sys_user_role 中该 module 角色行]
-        C2[级联删 sys_role_permission 中<br/>① 该 module 角色行<br/>② permission_code 属该 module 的绑定(含 custom 角色上的)]
-        C3[业务表不删(Q4), 提示运维手工处理]
+        C2["级联删 sys_role_permission 中<br/>① 该 module 角色行<br/>② permission_code 属该 module 的绑定(含 custom 角色上的)"]
+        C3["业务表不删(Q4), 提示运维手工处理"]
     end
     SR -->|superadmin 触发| UN
 ```
@@ -250,12 +257,18 @@ flowchart TD
 
 ### 9.1 对外依赖（oj-bin，本仓只读）
 
-| 编号 | 能力 | 用途 | 阶段 |
-|---|---|---|---|
-| OJ-1 | 归档解压 `fs.untar` / `axis("archive")` | 后端自完成安装 | M6 |
-| OJ-2 | 配置自热更内部触发 | 免 loopback Bearer 绕行 | M6 |
-| OJ-4 | 非对称验签 `crypto.verify` | 包签名校验（当前 Node 侧做） | M6 |
-| OJ-6 | 迁移执行内部化 | 后端触发本进程迁移 | M6 |
+> **状态复核（2026-10-17，oj 0.1.76 本机实测）**：下表 4 条里 3 条已由 oj **v0.1.75** 落地
+> （形态与提议 API 不同），1 条部分绕行。原始诉求文本与逐条复核见
+> [`docs/prd/solution/202610161500-oj-bin-feature-requests-pr.md`](202610161500-oj-bin-feature-requests-pr.md)。
+
+| 编号 | 能力 | 用途 | 阶段 | 状态（oj 0.1.76） |
+|---|---|---|---|---|
+| OJ-1 | 归档解压 | 后端自完成安装 | M6 | ✅ 已落地：`exec.run` + 系统 tar + `platform.exec` 白名单（**非**内建 `fs.untar` / `axis("archive")`）；安全落位按 scenarios 场景 34 三步范式。**残余**：Windows 宿主可能无 `tar` → 见 OJ-8 |
+| OJ-2 | 配置自热更内部触发 | 免 loopback Bearer 绕行 | M6 | ✅ 已落地：`server.reloadConfig()`，限 `platform.modules` 特权模块 |
+| OJ-4 | 非对称验签 | 包签名校验 | M6 | ✅ 已落地：`crypto.verifyEd25519(pub, msg, sigB64): boolean`（同步、双层语义）。「必须 Node 侧验签」不再是能力约束 |
+| OJ-6 | 迁移执行内部化 | 后端触发本进程迁移 | M6 | ⚠️ 无内建 `migrate.run`；官方绕行 = `exec.run(["oj","migrate","-c",cfg,"--format","json","-d",dir,mod])` + 判 exit code（scenarios 场景 35 步骤 7）。已降级为可选优化 |
+| OJ-7 | 表级写守卫 | §2 模块间写隔离 | — | ❌ 未落地（0.1.76 复核）；授信基座 `http.module` 已就位。见 [`docs/prd/202610170016-oj-table-write-guard-requirement.md`](../202610170016-oj-table-write-guard-requirement.md) |
+| OJ-8 | Windows 外部命令缺失的报错契约 | 缺 `tar`/`zip` 时给 Git Bash 提示 | M6 | ❌ 待提；见 `202610161500-oj-bin-feature-requests-pr.md` PR-7 |
 
 ### 9.2 开放问题（待评审）
 
@@ -346,7 +359,7 @@ flowchart TD
     POLL -->|status=running| POLL
     POLL -->|status=done| OK[安装完成, 提示刷新页面]
     POLL -->|status=failed| ERR[展示 error.reason]
-    ERR -->|retryable| RETRY[重试按钮 → 重新 POST(同版本幂等)]
+    ERR -->|retryable| RETRY["重试按钮 → 重新 POST(同版本幂等)"]
 ```
 
 > **任务状态落点（M4 工程要点，E3）**：安装任务由 Node 侧 `ojm install` 执行，而 `GET /market/task/:id` 由 oj 运行时（`_platform/market`）提供——二者跨进程。M4 下任务状态须落**共享介质**（建议写入共享根 `.install-tasks/<id>.json`，或借 `ojm serve` 包裹层内存态），保证 oj 侧轮询可读；M6 后端原生化后内化。
