@@ -1,0 +1,12 @@
+{
+	"menu": {
+		"demo": "Invalid Fixture",
+		"admin": "Invalid Fixture Admin"
+	},
+	"perm": {
+		"view": "View invalid fixture"
+	},
+	"role": {
+		"admin": "Invalid Fixture Admin Role"
+	}
+}

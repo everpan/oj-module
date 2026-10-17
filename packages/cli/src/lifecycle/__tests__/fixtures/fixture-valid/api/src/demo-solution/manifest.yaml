@@ -1,0 +1,9 @@
+# oj 模块级 manifest（安装后由 oj 真实解析；oj/src/manifest.rs 7-22）。
+# 与 bundle 级 manifest.yaml 分层：仅 oj 原生七键（name/desc/version/config/db/tables/deps），
+# 禁携带 bundle 字段（契约 §3 分层红线 OJ-X）。
+# 构建期核对：name === bundle name、version === bundle version、desc === bundle summary（C2-31）。
+name: demo-solution
+desc: manifest.yaml 契约全字段合法夹具
+version: 0.1.0
+tables:
+  - note

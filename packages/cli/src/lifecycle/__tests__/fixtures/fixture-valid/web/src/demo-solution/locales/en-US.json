@@ -1,0 +1,29 @@
+{
+	"menu": {
+		"main": "Lifecycle Sample",
+		"admin": "Sample Admin",
+		"report": "Sample Report"
+	},
+	"perm": {
+		"view": "View sample",
+		"manage": "Manage sample"
+	},
+	"role": {
+		"admin": "Sample Admin Role",
+		"viewer": "Sample Viewer Role"
+	},
+	"settings": {
+		"group": {
+			"display": "Display Preferences",
+			"notify": "Notification Preferences"
+		},
+		"display": {
+			"theme": "Theme",
+			"page_size": "Page Size"
+		},
+		"notify": {
+			"enabled": "Enable Notifications",
+			"webhook": "Webhook URL"
+		}
+	}
+}

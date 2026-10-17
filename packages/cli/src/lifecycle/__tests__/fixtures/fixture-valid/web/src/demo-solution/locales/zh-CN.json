@@ -1,0 +1,29 @@
+{
+	"menu": {
+		"main": "生命周期样例",
+		"admin": "样例管理",
+		"report": "样例报告"
+	},
+	"perm": {
+		"view": "查看样例",
+		"manage": "管理样例"
+	},
+	"role": {
+		"admin": "样例管理员",
+		"viewer": "样例查看者"
+	},
+	"settings": {
+		"group": {
+			"display": "显示偏好",
+			"notify": "通知偏好"
+		},
+		"display": {
+			"theme": "主题",
+			"page_size": "每页条数"
+		},
+		"notify": {
+			"enabled": "启用通知",
+			"webhook": "Webhook 地址"
+		}
+	}
+}

@@ -1,0 +1,91 @@
+# ── C2 契约合法夹具（fixture-valid）────────────────────────────────────
+# 覆盖《202610171254-lifecycle-manifest-contract》全部字段的合法样例。
+# 双端测试期望：Node 侧 validateContract 与 isolate 侧 preflight 均零违规。
+# 规则编号（C2-xx）见契约 §2/§4。
+name: demo-solution # C2-01 白名单 + 非保留名
+version: 0.1.0 # C2-02 oj 相容版本语法
+title: 生命周期样例 # C2-03
+summary: manifest.yaml 契约全字段合法夹具 # C2-04（→ oj 模块 desc）
+description: | # C2-05
+  用于 P1 双端契约测试的合成方案：覆盖身份/兼容/prefix/匿名/RBAC/
+  路由分类/设置分组/i18n/web 全部契约字段。
+icon: /icons/demo-solution.svg # C2-06
+author: oj-module # C2-07
+license: MIT
+homepage: https://example.com/demo-solution
+keywords: [fixture, lifecycle]
+
+changelog: # C2-08（R27 市场卡片版本对比）
+  - 0.1.0 首个契约夹具版本：全字段覆盖
+
+peerRuntime: '>=0.0.0' # C2-09（P1 预检对宿主 versions.json 强制）
+peerOj: '>=0.1.76' # C2-10（P1 仅声明不强制）
+peerFramework: '>=0.2.4'
+peerPlatform: '>=1.0.0' # C2-11（P2 起对 /market/meta apiVersion 强制）
+
+api:
+  module: demo-solution # C2-12（存在时必须 === name）
+  prefix: /api/demo-solution # C2-13（默认形态显式写出）
+  tables: [note] # 与 schema.yaml 表集一致（oj 冗余校验同源）
+  deps: # 键 = 模块名（C2-01 语法或 _platform）；值 = 范围算子语法
+    _platform: '>=0.1.0'
+  anonymous: # C2-26：首段 === 模块段；无登录语义端点
+    - demo-solution/ping
+
+web:
+  route_prefix: /demo-solution # C2-14
+  entry: modules/demo-solution/0.1.0/entry.js # C2-27（版本段 === version，POSIX）
+  # 构建器对 entry 产物计算写入；安装器 deployWeb→smoke 段重算比对（C2-28/R10）。
+  # 源树夹具中为格式样例值，产物级比对不在本夹具断言范围（见 README）。
+  integrity: sha384-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+  css:
+    - modules/demo-solution/0.1.0/demo-solution.css
+
+permissions: # C2-15：code 强制 <name>. 前缀
+  - {code: demo-solution.view, title_key: demo-solution:perm.view}
+  - {code: demo-solution.manage, title_key: demo-solution:perm.manage}
+
+roles: # C2-16：name=<name>.<role>；permissions ⊆ permissions[].code
+  - name: demo-solution.admin
+    title_key: demo-solution:role.admin
+    permissions: [demo-solution.view, demo-solution.manage]
+  - name: demo-solution.viewer
+    title_key: demo-solution:role.viewer
+    permissions: [demo-solution.view]
+
+routes: # C2-17~21：D4 三值全覆盖；order 建议 ≥200
+  - {path: /demo-solution, category: main, order: 200, title_key: demo-solution:menu.main}
+  - path: /admin/demo-solution
+    category: admin
+    order: 200
+    title_key: demo-solution:menu.admin
+    required_permission: demo-solution.manage # C2-21：∈ permissions[].code；R22 前端不下发
+
+  - {path: /demo-solution/report, category: hidden, order: 210, title_key: demo-solution:menu.report}
+
+settings:
+  groups: # C2-22~24（R24：moduleOf(key) === name）
+    - group: display
+      label_key: demo-solution:settings.group.display
+      items:
+        - key: demo-solution.display.theme
+          type: enum
+          default: auto
+          options: [auto, light, dark]
+          label_key: demo-solution:settings.display.theme
+        - key: demo-solution.display.page_size
+          type: int
+          default: '20'
+          label_key: demo-solution:settings.display.page_size
+    - group: notify
+      label_key: demo-solution:settings.group.notify
+      items:
+        - key: demo-solution.notify.enabled
+          type: bool
+          default: '0'
+          label_key: demo-solution:settings.notify.enabled
+        - key: demo-solution.notify.webhook
+          type: string
+          default: ''
+          secret: true
+          label_key: demo-solution:settings.notify.webhook

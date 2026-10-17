@@ -1,0 +1,9 @@
+# 声明式表结构（形态对齐 apps/playground-oj/api/src/demo/schema.yaml）。
+# 契约 C2-12：bundle manifest 的 api.tables 必须与本表 keys 一致（oj 冗余校验 fail-fast）。
+tables:
+  note:
+    pk: id
+    columns:
+      id: {type: integer, autoincrement: true}
+      title: {type: text, null: false}
+      create_time: {type: integer, null: false}

@@ -1,0 +1,40 @@
+# ── C2 契约非法夹具（fixture-invalid）──────────────────────────────────
+# 故意触发 7 条契约违规（V1–V7），逐条对照同目录 EXPECTED-VIOLATIONS.md。
+# 双端测试期望：Node 侧 validateContract 与 isolate 侧 preflight 均报告
+# 违规码集合 ⊇ {C2-01, C2-02, C2-16, C2-17, C2-22, C2-23, C2-26}。
+# 说明：name/version 非法会连锁触发 demo:* 命名空间字段的失配（衍生违规），
+# 衍生项不计入断言集——V1–V7 均为「对任意合法 name/version 均违规」的内在违规。
+name: Demo # V1 违 C2-01（大写，白名单 ^[a-z][a-z0-9-]*$）
+version: 1.0.0+build.5 # V2 违 C2-02（`+` 为 oj validate_version 拒绝字符）
+summary: 契约非法夹具（预检负例真源）
+changelog: 负例夹具，禁止安装到任何站点
+
+api:
+  prefix: /api/demo
+  anonymous:
+    - system/health # V3 违 C2-26（越段：首段 system ≠ 本方案段，R8；_system 同理禁入）
+
+routes:
+  - path: /demo
+    category: personal # V4 违 C2-17（D4 已删除该值，三值 main|admin|hidden）
+    order: 30
+    title_key: demo:menu.demo
+  - path: /demo/admin
+    category: admin
+    order: 200
+    title_key: demo:menu.admin
+
+permissions:
+  - {code: demo.view, title_key: demo:perm.view}
+
+roles:
+  - name: demo.admin
+    title_key: demo:role.admin
+    permissions: [demo.manage] # V7 违 C2-16（悬空引用：demo.manage 未在 permissions[] 声明）
+
+settings:
+  groups:
+    - group: display
+      items: # V5 违 C2-22（label_key 必填缺失）
+        - key: framework.site_title # V6 违 C2-23（moduleOf(key)=framework ≠ name，R24 越空间污染）
+          type: string
