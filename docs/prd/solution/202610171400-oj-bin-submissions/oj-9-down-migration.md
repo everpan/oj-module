@@ -43,3 +43,6 @@ oj 迁移**只前向、无 down**：账本 seq 超过产物 migrations 最大 se
 - 不做自动数据回滚：数据迁移（DML）的逆变换不在本条范围，down 仅覆盖 schema 侧或由迁移作者显式书写；
 - 不放松降版部署的缺省门禁：无 down 能力时的现状（M003 拒启）在本条落地前维持不变；
 - 不改迁移账本存储格式（新增条目类型/标记可议，格式不推翻）。
+
+---
+**对账记录**：2026-10-17 oj 0.1.77 发布（主题：`mounts[].api` URL 远程挂载 + `oj build --bundle`）——本条**未包含**（`oj migrate --help` 无 down/rollback + 源码 grep + 二进制 strings 三旁证）；本稿继续有效，消费方现行口径维持「仅迁移无差异可降级 + rollbackGuard 禁降版」红线。

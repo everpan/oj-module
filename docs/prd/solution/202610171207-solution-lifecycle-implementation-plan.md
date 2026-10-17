@@ -203,6 +203,8 @@ getTask(id: string): TaskRecord | null
 - [ ] 失败测试：契约校验表驱动（缺字段/白名单/保留名/键空间 → 可读错误清单）；**确定性**：同目录两次打包 sha256 相等；夹具 bundle 与 isolate 预检**双端一致**（同一夹具跑 `validateContract` 与 `preflight` 规则互认）
 - [ ] 跑红 → 实现（tar 固定 mtime=0、字典序、0644/0755、无 owner）→ 跑绿 → commit
 
+> **上游同名辨析（2026-10-17，oj 0.1.77 对账）**：上游 `oj build --bundle` 已存在，但产物是**空前缀 dist 根 tarball**（manifests.yaml + `<module>-<version>/`），供 `mounts[].api` URL 远程挂载；本任务 `ojm build --bundle` 产物是**方案包**（单模块 tgz + C2 契约双端校验），消费方是市场安装器。二者同名不同物——devkit C5「打包与分发」章节须一句话辨析（P1-11 实现时落）。
+
 ### Task P1-12：编排端点 + 市场索引（R9，ISP）
 
 **Files**: Create `templates/api/src/_platform/market/api.ts`；Test `templates/api/tests/lifecycle/market-api.spec.ts`
@@ -272,6 +274,8 @@ getTask(id: string): TaskRecord | null
 | D5 | 任务治理落地（保留 10 条/超时 failed/脱敏）+ CLI 引导装 market 本身 | AC-P2-7 | 未开始 |
 
 **DoD**：AC-P2-1~7 绿；未签名装不上、签名不符不落盘真机演示；集中评审合并。
+
+> **上游对账评估输入（2026-10-17，oj 0.1.77）**：0.1.77 新增 `mounts[].api` 支持 `http(s)://` URL 远程挂载——装配期拉「空前缀 dist 根 tarball」入内容寻址缓存（sha256 完整性锚 + 内建 tar-slip/炸弹防护 + per-sha256 互斥）。P2 期门须评估：方案包分发是否改走/兼走该形态（URL 挂载解决取包与完整性，安装器仍持迁移/注册/锁账/sidecar——互补而非替代，不推翻 v3 架构）；若兼走，`bundles.yaml`/CDN 索引与 dist 根 tarball 的形态归一化在期门裁决。三份上游需求稿（OJ-6/8/9）0.1.77 均未采纳（源码+二进制双旁证），P1 现行路径（exec.run 迁移子进程、rollbackGuard 禁降版、Windows 文档兜底）维持不变。
 
 ## 5. P3 · 减法与分发（分支 `feat/lifecycle-p3`，期门细化）
 

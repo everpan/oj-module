@@ -59,3 +59,6 @@ migrate.run(opts: { dir: string; module?: string }):
 - 不改 `oj migrate` CLI 的既有行为与输出格式；
 - 不做 down/回滚（另见 OJ-9 down 迁移支持，独立条目）；
 - 不改迁移账本格式与 `migrate_on_start` 门禁缺省值。
+
+---
+**对账记录**：2026-10-17 oj 0.1.77 发布（主题：`mounts[].api` URL 远程挂载 + `oj build --bundle`）——本条**未包含**（源码 `src/bridge/` 无 migrate 面 + 二进制 strings 双旁证）；本稿继续有效，消费方现行 `exec.run` 子进程路径维持为主路径。

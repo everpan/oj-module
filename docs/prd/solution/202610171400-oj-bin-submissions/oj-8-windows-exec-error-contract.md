@@ -60,3 +60,6 @@ oj 0.1.75 起的 `exec.run` 把归档解压建立在**宿主外部命令**之上
 - 不处理 Windows 超时击杀差异（api-manual §6 已注明 Windows 无进程组对应物、仅杀直接子进程——
   这是另一处已知限制，不在本条范围）；
 - 不要求 GNU tar 与 bsdtar 行为对齐（文档前置说明即可覆盖）。
+
+---
+**对账记录**：2026-10-17 oj 0.1.77 发布（主题：`mounts[].api` URL 远程挂载 + `oj build --bundle`）——本条**未包含**（源码 `src/bridge/exec.rs` 无 Windows hint + 二进制 strings 双旁证）；本稿继续有效，消费方以文档兜底（lifecycle-guide §2.5「Windows 已知限制」）。
