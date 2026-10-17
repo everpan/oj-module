@@ -4,16 +4,19 @@
 // 标识符列表前缀相等时多者大；无 prerelease > 有 prerelease。
 
 function splitVersion(v: string): { core: number[], pre: string[] | null } {
-	const [core, prePart] = v.split("-", 2);
-	const coreParts = core!.split(".");
+	const hyphen = v.indexOf("-");
+	const core = hyphen === -1 ? v : v.slice(0, hyphen);
+	const prePart = hyphen === -1 ? null : v.slice(hyphen + 1);
+	const coreParts = core.split(".");
 	const pre = prePart == null ? null : prePart.split(".");
 	return {
+		// 容错口径：非数字段（如 "1.0.x" 的 "x"）静默归零，不抛错
 		core: coreParts.map(seg => Number.parseInt(seg, 10) || 0),
 		pre,
 	};
 }
 
-function comparePrerelease(a: string[], b: string[]): -1 | 0 | 1 {
+function comparePrerelease(a: string[] | null, b: string[] | null): -1 | 0 | 1 {
 	// 无 prerelease > 有 prerelease
 	if (a === null || b === null) {
 		return a === b ? 0 : a === null ? 1 : -1;

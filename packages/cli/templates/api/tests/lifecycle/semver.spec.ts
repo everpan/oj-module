@@ -29,6 +29,9 @@ const cases: Array<[a: string, b: string, expected: -1 | 0 | 1]> = [
 	["1.0.0-alpha", "1.0.0-alpha.1", -1],
 	// 标识符内部数字段仍按数值：alpha.9 < alpha.10
 	["1.0.0-alpha.9", "1.0.0-alpha.10", -1],
+	// 多连字符 prerelease：首个 - 后整体为标识符串，不得截断静默判等
+	["1.0.0-alpha-beta", "1.0.0-alpha", 1],
+	["1.0.0-alpha-beta", "1.0.0-alpha.2", 1],
 ];
 
 describe("compareVersions（R25）", () => {
