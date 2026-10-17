@@ -61,7 +61,7 @@ packages/runtime/src/                    # 浏览器面
 └── api/                                 # [修改] solution-routes 客户端
 
 web/system/                              # 系统设置页三层嵌套改造（R20）
-apps/market/                             # [新建] 市场方案工程（模板=apps/playground-oj）
+../oj-market/                            # [新建·独立仓] 市场方案（第三方作者形态；脚手架对齐 apps/playground-oj）
 scripts/lifecycle-e2e.mjs                # [新建] P1 端到端脚本（本地 oj 分发源）
 ```
 
@@ -219,9 +219,9 @@ getTask(id: string): TaskRecord | null
 - [ ] 失败测试：三值归并/hidden 过滤/降级空表不炸/排序（框架 100 带、方案 200 起）；groupSettingsByModule 分组与 label_key
 - [ ] 跑红 → 实现 → 跑绿 → 真机冒烟（装夹具后菜单归组、设置嵌套）→ commit
 
-### Task P1-15：apps/market 最小形态（D2，复用模板）
+### Task P1-15：独立仓 `../oj-market` 最小形态（D2，第三方作者形态）
 
-**Files**: 以 `apps/playground-oj` 为模板建 `apps/market/`：entry + admin 页（只读索引卡）+ hidden 详情占位 + `market:menu.*`/`market:settings.group.*` i18n + api 侧 `market_history` 迁移 + health 端点 + sys_setting 展示组
+**Files**: 新建独立仓 `../oj-market/`（脚手架对齐 `apps/playground-oj` 工程形态：api/ + web/ + web.config.ts；依赖**已发布**的 `@oj-module/*` 包，不经 monorepo 路径引用）：entry + admin 页（只读索引卡）+ hidden 详情占位 + `market:menu.*`/`market:settings.group.*` i18n + api 侧 `market_history` 迁移 + health 端点 + sys_setting 展示组；git init + 首提交（仓建立动作向用户报备）
 - [ ] 模板套件测试：market_history 迁移往返；health 200
 - [ ] `ojm build --bundle` 出 tgz → `ojm install` → admin 菜单出卡片（真机冒烟）→ commit
 
