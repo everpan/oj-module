@@ -5,6 +5,17 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 设计依据、迁移记录与陷阱清单见 [`docs/prd/202609110947-oj-module-two-package-consolidation-design.md`](docs/prd/202609110947-oj-module-two-package-consolidation-design.md)。
 
+## [0.2.4] - 2026-10-17
+
+双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步升 **0.2.4**。本周期无代码变更，作为「解决方案全生命周期」阶段的发版基线（`../oj-market` 独立仓等下游将依赖已发布版本）。
+
+### Docs
+
+- **解决方案全生命周期实施设计 v3**：市场即样例（独立仓 `../oj-market`，第三方作者形态）、执行器换轨 oj 原生（`_platform` 进程内状态机 + `exec.run` shell 步骤）；五方专家评审 40 条发现 → 31 项处置全部闭环。
+- **实施计划（P0–P3）**：BDD 任务表、SOLID/DRY 落点、AC-P1 验收清单（20 条）。
+- **P0 spike 裁决记录**：共享根挂载形态、exec tar 三步范式、锁原子性（无互斥，安装器需读回收敛）、reload_api 全链路、M003/M004 拒启契约、长任务分段执行等六项实测闭环。
+- 文档门禁：mermaid 图块校验脚本（`pnpm check:mermaid`）。
+
 ## [0.2.3] - 2026-10-16
 
 双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步升 **0.2.3**（纯修复 + 文档，无破坏性变更）。
