@@ -17,11 +17,16 @@ const ENTRY = `import { defineModule } from "@oj-module/runtime";
 export default defineModule({ name: "fx", description: "fixture", version: "0.1.0" });
 `;
 
+// 只清理自己创建的夹具根：.tmp-fx 为并行测试文件共享（vditor-external 同用此目录），
+// 整删父目录会删掉别的 worker 还在构建的夹具（UNRESOLVED_ENTRY 间歇失败）
+const roots: string[] = [];
+
 function makeFixture(): string {
 	fs.mkdirSync(FIXTURE_ROOT, { recursive: true });
 	// 夹具根落在仓库根下的临时目录：宿主产物已并入 cli（resolveShellDist 走包内
 	// shell-dist），不再依赖夹具相对仓库根的层级
 	const root = fs.mkdtempSync(path.join(FIXTURE_ROOT, "build-"));
+	roots.push(root);
 	const modulesDir = path.join(root, "web/src");
 	fs.mkdirSync(modulesDir, { recursive: true });
 	fs.writeFileSync(path.join(modulesDir, "entry.ts"), ENTRY);
@@ -150,5 +155,6 @@ describe("buildBackend（oj build 编排，D8）", () => {
 });
 
 afterAll(() => {
-	fs.rmSync(FIXTURE_ROOT, { recursive: true, force: true });
+	for (const root of roots)
+		fs.rmSync(root, { recursive: true, force: true });
 });
