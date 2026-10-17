@@ -2,7 +2,7 @@
 
 > 状态：**P0/C7 交付物** · 日期：2026-10-17 · 分支：`feat/lifecycle-p0`
 > 定位：**面向人的入口文档**——同一套生命周期，三类读者各取所需。细节一律指向源文档，本文不复制其内容；后续 devkit 手册与运维手册以本文为母本。
-> 事实源：[实施设计 v3](202610171138-solution-lifecycle-implementation-design.md)（D/R 决策编号）· [注册清单基线](202610161300-solution-lifecycle-registration-design.md) · [manifest 契约](202610171254-lifecycle-manifest-contract.md)（C2-01~32）· [devkit 手册提纲](202610171333-lifecycle-devkit-manual-outline.md) · [P0 spike 实测](202610171245-lifecycle-p0-spike-findings.md)（S1-*）
+> 事实源：[实施设计 v3](202610171138-solution-lifecycle-implementation-design.md)（D/R 决策编号）· [注册清单基线](202610161300-solution-lifecycle-registration-design.md) · [manifest 契约](202610171254-lifecycle-manifest-contract.md)（C2-01~33）· [devkit 手册提纲](202610171333-lifecycle-devkit-manual-outline.md) · [P0 spike 实测](202610171245-lifecycle-p0-spike-findings.md)（S1-*）
 
 **阅读路径**：
 
@@ -52,7 +52,7 @@ flowchart LR
 
 ### 1.1 写 `manifest.yaml`
 
-manifest 是构建器与安装器的**共同上游**，两端同规则 fail-fast。全部规则的唯一真源是[契约文档](202610171254-lifecycle-manifest-contract.md)（条款编号 C2-01~32，改规则先改契约），此处只列骨架：
+manifest 是构建器与安装器的**共同上游**，两端同规则 fail-fast。全部规则的唯一真源是[契约文档](202610171254-lifecycle-manifest-contract.md)（条款编号 C2-01~33，改规则先改契约），此处只列骨架：
 
 | 块 | 要点 | 条款 |
 |---|---|---|
@@ -214,7 +214,7 @@ flowchart TD
 
 | 能力 | 落地期 | 说明 |
 |---|---|---|
-| manifest 契约（C2-01~32）与双端测试夹具 | P0 定稿 → P1 落地 | 构建器与安装器同规则 |
+| manifest 契约（C2-01~33）与双端测试夹具 | P0 定稿 → P1 落地 | 构建器与安装器同规则 |
 | `ojm build --bundle` 确定性 tgz + sha256 | P1 | |
 | `ojm install`（含升级/降级）与 `ojm enable/disable` | P1 | CLI 一切安装 |
 | 安装期冒烟、菜单归组、三层设置嵌套、占位引导卡 | P1 | |
