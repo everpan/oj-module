@@ -4,10 +4,13 @@
 > **PR-6（OJ-7）**：表级写守卫（`ownership_guard` 读写分离 + 属主侧写授权）——篇幅较大，独立成文，见
 > [`docs/prd/202610170016-oj-table-write-guard-requirement.md`](../202610170016-oj-table-write-guard-requirement.md)。
 > 提出背景：`docs/prd/20261016-solution-module-rbac-isolation-design.md` §2（模块间写隔离的结构性保证）。
+> **D10 豁免面注记**：`_platform` 特权模块是表级写守卫的**结构性豁免面**（生命周期实现设计
+> `202610171138-solution-lifecycle-implementation-design.md` §0 D10），随 PR 一并注明。
+> **编号追加（2026-10-17 C4）**：`OJ-9` 已占用（PR-8，down 迁移支持）。
 
 ---
 
-## 重新评估（2026-10-17，oj 0.1.75 / 0.1.76 devkit 新文档 + 本机 oj 0.1.76 实测）
+## 重新评估（2026-10-17，oj 0.1.75 / 0.1.76 devkit 新文档 + 本机 oj 0.1.76 实测；同日 C4 复核：OJ-8/OJ-6 已决议提交、新增 OJ-9）
 
 oj **0.1.75** 一次性落地了本文件 6 条诉求里的 4 条（形态与提议 API 不完全一致，但语义覆盖），
 且 `scenarios.md` **场景 35「解决方案市场模块安装闭环（v0.1.75）」**就是本文件目标链路的官方范式
@@ -21,7 +24,7 @@ config 回写 → `oj migrate --format json` → `server.reloadConfig`），可�
 | OJ-1 / PR-2 | tgz 解压 | ✅ 无内建 `fs.untarGz`，但 `exec.run` + `platform.exec` argv 白名单 + tar 三步范式已给安全落位（scenarios 场景 34） | **关闭**；Windows 缺 tar 的报错可操作性问题另立 **PR-7（OJ-8）** |
 | OJ-2 / PR-3 | 热更进程内触发 | ✅ `server.reloadConfig()` 已存在，限 `platform.modules` 特权模块 | **关闭，不提交** |
 | OJ-3 / PR-5 | YAML 只读解析 | ✅ `yaml.parse(text)` 已存在（异步、三预算防炸弹），并额外给了 `yaml.stringify` | **关闭，不提交** |
-| OJ-6 / PR-4 | 迁移内部化 | ⚠️ 无 `migrate.run` 全局；官方路径 = `exec.run(["oj","migrate","-c",…,"--format","json","-d",…,mod])` + 判 exit code（场景 35 步骤 7） | **降级 P2**：先按官方绕行，可另提「内建化」小 PR |
+| OJ-6 / PR-4 | 迁移内部化 | ⚠️ 无 `migrate.run` 全局；官方路径 = `exec.run(["oj","migrate","-c",…,"--format","json","-d",…,mod])` + 判 exit code（场景 35 步骤 7） | **P0 已决议提交**（2026-10-17，提交稿见同目录 C4 提交稿 `202610171400-oj-bin-submissions/oj-6-migrate-run-internalization.md`）；v3 下 `exec.run` 即主路径，内化降级为可选优化 |
 | OJ-5 / PR-6 | 远程 api mount | ❌ `mounts[].api` 仍只认本地目录（api-manual §mounts 无 URL 形态） | **维持远期**，暂不提交 |
 
 **实测证据**（`~/.local/share/oj/oj exec -e`，oj 0.1.76）：
@@ -239,6 +242,9 @@ OJ-1（解压）、PR-5（YAML/manifest 解析）、以及缓存目录与完整�
 
 ## PR-7（OJ-8，P1）：Windows 下外部命令解析失败的报错契约
 
+> **状态：P0 已决议提交（2026-10-17，提交稿见同目录 C4 提交稿 `202610171400-oj-bin-submissions/oj-8-windows-exec-error-contract.md`）。**
+> 非阻塞：macOS/Linux 先行验收（C1 spike S1-2 已实测范式成立），Windows 另有 R30 已知限制清单。
+
 **标题**：`exec: Windows 缺少 tar/zip 等命令时给出可操作报错（提示 Git Bash）`
 
 ### 动机
@@ -282,3 +288,28 @@ v0.1.75 的 `exec.run` 把归档解压建立在**宿主外部命令**之上（`t
 api-manual §6「exec」硬限制写明：超时到期先 `kill(-pgid, SIGKILL)` 整组击杀，
 **Windows 无进程组对应物，仅杀直接子进程**。故 Windows 上跑 tar 解压时若 tar 派生了孙进程，
 超时后可能残留。安装器的 `.staging` 清理逻辑不要依赖「超时即无残留」这一假设。
+
+---
+
+## PR-8（OJ-9，P3）：down 迁移支持
+
+> **状态：待提（P3 前落地即可，非阻塞）。** 提交稿见同目录 C4 提交稿
+> `202610171400-oj-bin-submissions/oj-9-down-migration.md`（含 M003/M004 实测原文与源码行号）。
+
+**标题**：`migrate: 支持 down 迁移（或提供账本回退原语）`
+
+### 背景
+oj 迁移只前向、无 down：账本超前产物即 M003 拒启（`oj/src/migrate.rs:447-448`），人工回退账本须同步回退 DDL 并自担数据风险（官方文案原话）。解决方案市场的「降级」动作受 R12 红线约束——仅当目标版本**迁移无差异**才放行 + 强告警二次确认 + 切换前复验，含 DDL 变更的升级一旦要回退即被 M003 卡死，「回得去」不可达。
+
+### 诉求形态（渐进两档，任一即可）
+1. **内建 down 迁移**：迁移文件支持 down 侧声明（如 `V{n}__x.down.sql`），`oj migrate --down --to <version>`（或等价 CLI/模块面）；
+2. **账本回退原语**（更小步）：`oj migrate rollback --module <m> --seq <n>`——只移除账本条目，DDL 回退责任在调用方，返回文案明示此点。
+
+### 验收标准
+模块由高版本降到低版本后，release 启动**不再 M003/M004 拒启**；down/回退逐条留痕（账本与日志可对账）；down 中途失败时账本与库状态的一致性可判定（不产生半回退模糊态）。
+
+### 降级路径
+无 down 时维持 R12 校验不变：只允许「迁移无差异」降级 + 强告警二次确认 + 切换前目标版本复验。
+
+### 非目标
+不做自动数据回滚（数据迁移的逆变换不在本条范围）；不改 release 缺省 `migrate_on_start: verify` 门禁；不改账本格式。
