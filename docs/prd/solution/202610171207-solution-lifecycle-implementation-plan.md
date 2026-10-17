@@ -239,6 +239,8 @@ getTask(id: string): TaskRecord | null
 - [ ] 前端组件测试：卡片网格渲染（含 upgradable/enabled 态）/进度抽屉终态/卸载二次确认
 - [ ] `ojm build --bundle` → `ojm install` 真机自举（市场装市场，D6 P2 步前移验证）→ commit
 
+> **状态：已完成**（2026-10-17，oj-market 仓 commit f05beab，oj-market 接手代理交付）：demo-market→oj-market 定名（非保留名 R9）、卡片网格三态/详情抽屉/安装对话框 800ms 轮询/卸载二次确认（影响面预检）/历史抽屉、market_history 迁移+历史只读端点、双语 i18n（R29 注记）；13 BDD 全绿。真机自举未跑（接手环境无 ojm CLI）——由 P1-16 真机走查收口。
+
 ### Task P1-15a：卸载服务端 + `ojm uninstall` 瘦客户端（P3 U1/U4 **前移**，用户指令）
 
 **Files**: Modify `templates/api/src/_platform/market/api.ts`（`POST /api/_platform/market/uninstall {name}`）；Create `_lifecycle/steps/uninstall.ts`（编排器）；Modify `packages/cli/src/`（`ojm uninstall <name>` 瘦客户端）；Test 两侧
@@ -246,10 +248,14 @@ getTask(id: string): TaskRecord | null
 - [ ] 失败测试：非 superadmin 403/影响面预检清单/级联单事务原子性/空锁拒卸/卸后重装复原（幂等）
 - [ ] 跑红 → 实现 → 跑绿 → 真机冒烟（装→卸→装全链）→ commit
 
+> **状态：已完成（两段）**——服务端先由 oj-market 接手代理落地其仓本地快照（eb84902，6 BDD；遵该仓只读规则），主线移植归位 **P1-15a-port**（28a970d5：templates `_lifecycle/uninstall.ts` + uninstall/uninstall-impact 两端点 + 6 用例 spec 适配 + `_lifecycle/history.ts` 守卫式共享出口）；templates/api 416 全绿。**ojm uninstall 瘦客户端**同提交补齐（缺口 B，+4 CLI 用例）。卸载历史已留痕；install/enable/disable 留痕亦由同提交补齐（operator 通道缺口感 P1-16）。P3 U1 残余：级联**单事务**与业务表保留提示留本期待门复核。
+
 ### Task P1-15b：oj-market 全功能装配收口（用户指令「所有功能」验收）
 
 **Files**: `../oj-market/` 收口：卡片动作全接线（安装/卸载/启停/回滚=同版本族降装）+ 版本历史抽屉（market_history ⊕ changelog）+ 双版本卡片（upgradable 对比）+ 任务进度 800ms 轮询与失败双语渲染 + 空态/加载/错误三态
 - [ ] 组件测试补齐；真机走查脚本化（装夹具→卡片出→禁用→启用→升级→回滚→卸载→历史留痕，全链 AC 断言）→ commit
+
+> **状态：已完成**（2026-10-17，oj-market 仓 commit 28b3bd2）：卡片动作全接线（安装/卸载/启停/回滚=RollbackDialog 从 market_history 派生候选旧版降级安装）、双版本卡片、版本历史抽屉、空/加载/错误三态；前端 22 + 后端 24 BDD 全绿。真机走查脚本 `walkthrough-market-fullchain.md`（AC0-7）已备，实跑由 P1-16 收口。边界：回滚候选仅本站已装旧版（扩 IndexRow 契约留 P2）。
 
 ### Task P1-16：端到端 + 占位引导卡（R26，AC-P1 总验）
 
@@ -257,6 +263,8 @@ getTask(id: string): TaskRecord | null
 - [ ] e2e 脚本：起本地 oj 静态分发源（no-cache 头断言）→ install → 不重启出菜单 → 升级 0.2.0 → 回滚 → 禁用/启用 → AC-P1-1~20 逐条断言输出报告
 - [ ] 占位引导卡：market 未装时管理区显示 `ojm install` 指引
 - [ ] 全绿 → `pnpm typecheck && pnpm lint && pnpm test && pnpm test:cli` → commit
+
+> **状态：进行中**（2026-10-18 派发 p1-16-e2e，BASE 28a970d5）。范围：marketEnv 生产口径（sharedRoot 对齐 serve 根，修 health 404）+ hostVersions 真源（P1-12 B3/B4）、framework.market_cdn_url settings 注册（B④）、operator 透传与 install 历史 message 人话（P1-15a-port concern②③）、exec 生产包装转发 opts（P1-13c 遗嘱）、P1-10 报告五接线点（ledgerHead 真源/`# ojm:reload` 锚点随 init 发布/reconcile 入口/route-modules 自愈/消费面 i18n 核对）、e2e `scripts/lifecycle-e2e.mjs`（干净库起跑，AC-P1-1~20 逐条）、真机 AC0-7 走查、占位引导卡（R26）、长任务后台启动裁决意见。
 
 **P1 DoD**：AC-P1-1~20 全绿 + 真机 kill 任一阶段自愈演示 + 集中评审合并。
 
@@ -286,7 +294,7 @@ getTask(id: string): TaskRecord | null
 | # | 任务 | 交付 / AC | 状态 |
 |---|---|---|---|
 | D1 | 签名链：`ojm` 侧 sign + isolate 侧 `verifyEd25519`（fail-closed）+ TOFU（CLI 指纹确认+审计，或 bootstrap 公钥随宿主——随 C4 裁决）+ 双 key 轮换 | AC-P2-1/2/3 | 未开始 |
-| D2 | market 实装：进度抽屉（800ms 轮询+schemaVersion）/ 版本历史抽屉 / 回滚 / 禁用启用 / 双版本卡片+changelog / 自升级 CLI 提示 | AC-P2-4 | **UI 主体前移至 P1-15/P1-15b（用户指令 2026-10-17）；本行残余=schemaVersion 握手与自升级 CLI 提示** |
+| D2 | market 实装：进度抽屉（800ms 轮询+schemaVersion）/ 版本历史抽屉 / 回滚 / 禁用启用 / 双版本卡片+changelog / 自升级 CLI 提示 | AC-P2-4 | **UI 主体已前移落地**（P1-15 f05beab + P1-15b 28b3bd2，oj-market 仓）；本行残余=schemaVersion 握手与自升级 CLI 提示 |
 | D3 | 深检端点+报告（后端四项 + 前端 i18n 项） | AC-P2-5 | 未开始 |
 | D4 | `/market/meta` + `peerPlatform` 预检 | AC-P2-6 | 未开始 |
 | D5 | 任务治理落地（保留 10 条/超时 failed/脱敏）+ CLI 引导装 market 本身 | AC-P2-7 | 未开始 |
@@ -301,10 +309,10 @@ getTask(id: string): TaskRecord | null
 
 | # | 任务 | 交付 / AC | 状态 |
 |---|---|---|---|
-| U1 | 卸载：影响面预检（受影响角色/用户计数）→ superadmin 二次确认 → RBAC 双维度级联**单事务** + `invalidateAllUsers` 统一失效出口（承接 rbac-isolation §8.3/8.4）+ 业务表保留提示 | AC-P3-1/2/5 | **前移至 P1-15a（用户指令 2026-10-17）** |
+| U1 | 卸载：影响面预检（受影响角色/用户计数）→ superadmin 二次确认 → RBAC 双维度级联**单事务** + `invalidateAllUsers` 统一失效出口（承接 rbac-isolation §8.3/8.4）+ 业务表保留提示 | AC-P3-1/2/5 | **前移已落地**（P1-15a + P1-15a-port：预检/superadmin 门/级联/invalidateAllUsers/四处同删/历史留痕）；残余：级联单事务与业务表保留提示留本期待门复核 |
 | U2 | GC 内建 install：state.yaml 时间序保留 N=3，与回滚靠 lock 互斥 | AC-P3-3 | 未开始 |
 | U3 | `ojm publish` + bundles.yaml/manifests.yaml 索引重算（no-cache 头） | AC-P3-4 | 未开始 |
-| U4 | `ojm uninstall` 瘦客户端 | 随 U1 | 未开始 |
+| U4 | `ojm uninstall` 瘦客户端 | 随 U1 | **已前移落地**（P1-15a-port 28a970d5，+4 CLI 用例） |
 
 **DoD**：AC-P3-1~5 绿；卸载重装不复活授权真机演示；集中评审合并。
 
@@ -325,6 +333,6 @@ getTask(id: string): TaskRecord | null
   - **方法论落地**：SDD 全程——每任务「实现者→评审员→修复环→scoped 复审」四拍；评审共拦下 1 Critical（C2-17 正则自洽）+2 Important（zip-slip 之外的报告断链/复现性）+十余 Minor；两个跨任务缺口（C2-33、D11 语义反转残留）由下游任务评审钉出。
   - **遗留（接受保留，台账已录）**：GNU tar Linux 复验（P1 T3）、C5 #3 C2-12b 提纲未点名（P1 手册回填）、R12 编号跨文档二义（既有）、health 双命名空间差异（P1-5 承接）。~~OJ-8 上游文本微调~~（已终裁关闭，2026-10-17）。
   - **上游**：OJ-8/OJ-6/OJ-9 已提交并**终裁均未采纳**（2026-10-17；裁决理由与消费方处置见各稿「上游终裁」节）；PR 文档（202610161500）已同步终裁标注。
-- **P1**：未开始。
+- **P1**：进行中（2026-10-17 至 10-18 凌晨，代码任务 16/17 完成）：主线 P1-1~P1-14 全部完成（semver/tgz-guard/预检/下载解压/迁移/注册/部署冒烟/编排器/编排端点/CLI/manifest 契约/前端归并；逐任务台账见 `.superpowers/sdd/202610171207-solution-lifecycle-implementation-plan/progress.md`）；市场侧 P1-15/15a/15b 由 oj-market 接手代理交付（其仓 f05beab/eb84902/28b3bd2），主线 P1-15a-port 移植归位（28a970d5）；P1-16 进行中（收官接线+e2e+真机 AC0-7）。期间两项根因修复（5366d4be schema 声明回归、66b04f20/a77eecc0 测试夹具竞态与串扰假红）、oj 0.1.78 对账（P1-13c migrate timeoutMs）、教学验证全链真机走通（202610172100）。集中审查按用户常设指令待 P1-16 归来一次执行（全量 diff + 修复波），备案池见台账。
 - **P2**：未开始。
 - **P3**：未开始。
