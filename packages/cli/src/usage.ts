@@ -33,6 +33,15 @@ export function usageText(): string {
         下载/重装 oj vendor（经 npm 包 @oj-bin/oj；tag 缺省取最新，形如 v0.1.13）
   ojm merge <out.json> <in1.json> [in2.json ...]
         合并多团队清单（R12）
+  ojm install <file.tgz | name[@version]> [--url <u>] [--user <u>] [--pass <p>]
+              [--name <n>] [--version <v>] [--locale <zh-CN|en-US>]
+        安装方案包到目标站点（P1-13）：本地 tgz 走 file 上传（<name>-<version>.tgz 文件名推导
+        身份，可 --name/--version 覆盖）；name[@version] 走 CDN 市场源。登录 → 提交 → 轮询任务
+        至终态并打印结果（失败附原因 + 指引，--locale 切双语）
+  ojm enable|disable <name> [--url <u>] [--user <u>] [--pass <p>]
+        启用/禁用已装方案（D12 四处同写：锁 / sidecar / sys_solution_route / modules.json）
+        站点寻址：--url/--user/--pass，或环境变量 OJM_URL / OJM_USER / OJM_PASS
+        （缺省 http://127.0.0.1:9778；凭据只走内存不落盘）
   ojm test|exec|openapi|migrate|schema [args...]
         透传给 oj 同名子命令（自动补 -c <project>/api/config.yaml；其余参数原样转发）
         例：ojm test --anonymous / ojm migrate --db report / ojm openapi --check

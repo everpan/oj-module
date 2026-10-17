@@ -317,6 +317,10 @@ stage 名 = 安装状态机 `InstallStage`（lifecycle 设计 §10.2）逐字；
 | B-5 | 语义空缺 | P1-10 内部 stage `lockCommit` 在十阶段 `InstallStage` 无对应文案 key；`audit` 失败不可见 | 附录 A 增 `lock_commit` 扩展组（D11①锁前语义）；audit 失败仅日志（不设 key） |
 | B-6 | 有意省略 | oj `db`（命名库绑定）、`config` 字段契约未承接 | P1 无使用场景，省略保持兼容（§3 对照表留痕）；需要时走 minor 增补 |
 | B-7 | 上游事实 | `sys_setting.type` 为自由字符串（`settings.ts` 直读），渲染端未按 type 分派 | 契约枚举 `{string,bool,int,float,enum,text}` 为双端校验集（C2-24）；渲染端 P1-14 对齐 |
+| B-8 | 平台缺面（P1-13 真机实测） | oj isolate 无 `structuredClone`——state.ts 快照读用它，真机 500 | 手写逐条目浅拷贝 `snapshot()` 单点替换（`_lifecycle/state.ts`） |
+| B-9 | 平台缺面（P1-13 真机实测） | oj `fs` 全局面缺 `copyFile`；目录列举叫 `readDir` 且形状为 `AsyncIterable<DirEntry>`（非 `string[]`）；`crypto` 无 `randomUUID`（仅 `randomHex`）——FsFace/crypto 增补面三处不对齐 | `atomic.ts` 单点适配：`fsFace()` 探测注入面即 passthrough，否则补 copyFile（字节中转）/ readdir（迭代收集）；`randomId()` 有 randomUUID 用之否则 randomHex(16)。copyFile 中转的 V8 常驻峰值 = 文件大小，sqlite 备份上 GB 须上游补原生 copy |
+| B-10 | 反常规（布局消费点缺失，P1-13 真机实测） | 契约 §2.9 规定 bundle tgz 为 `<name>-<version>/` 单根，但安装器全链消费**扁平** staging（verifyTarget/deployWeb 读 `${staging}/manifest.yaml`、lockCommit 整目录 rename）——测试 stub 一直写扁平布局掩盖了此断裂；且 market file 源预解包（manifestOfUpload）先归平一次后，安装器 extracting 二次解压再归平会 `rename` 撞上次产物（ENOTEMPTY） | `flattenBundleRoot()`（`steps/extract.ts`）：顶层「含 manifest.yaml 的目录」= 包根，内容上提一层；幂等，碰撞先清后搬（staging 为安装器私有暂存）；market file 源 Form A 无 sha256，上传时点补算注入 archive（verify 复核同批字节，R10 语义保持） |
+| B-11 | 跨层断裂（P1-13 真机实测，P1-16 范围） | `oj migrate` 解析版本目录根 `manifest.yaml` 要求 oj 原生 `desc` 字段，而 C2 §1 顶层键白名单拒绝 `desc`——C2-04「summary → oj 模块 desc」的映射**无任何消费点**（bundle 直拷方案清单原文），任何合法 C2 包在 migrate 段必 fail；连带：模板站点 `marketEnv` 缺 `hostVersions` 接线（任何声明 peerRuntime 的包 C2-09 fail-closed）、`oj migrate -d` 需指向含迁移树的服务目录而安装器暂存目录对 migrate 不可见 | 部署层（P1-16 e2e）钉定生产口径：bundle/publish 时写原生清单（summary→desc 落地）+ hostVersions 接线 + 暂存→migrate 可见布局；P1-13 冒烟以临时站点补线验证至 migrating 段 |
 
 ---
 

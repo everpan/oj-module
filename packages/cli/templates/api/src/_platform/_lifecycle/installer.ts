@@ -23,7 +23,7 @@ import type { SettingDecl, SolutionDecl, SolutionSnapshot } from "./steps/regist
 import type { ReloadFace } from "./steps/reload";
 import type { InstallContext, InstallStage, StageResult, TaskRecord, TaskStatus } from "./types";
 import { auditOp } from "../_shared/service/audit";
-import { atomicWriteText, fsFace } from "./atomic";
+import { atomicWriteText, fsFace, randomId } from "./atomic";
 import { acquireTaskLock, commitLockEntry, readLock, writeLock } from "./lock";
 import { deployWeb } from "./steps/deploy-web";
 import { download } from "./steps/download";
@@ -303,7 +303,7 @@ const AUDIT_DEF = STAGES[STAGES.length - 1]!;
  */
 export async function runInstall(req: InstallRequest): Promise<TaskRecord> {
 	const now = Date.now();
-	const id = `install-${now}-${crypto.randomUUID().slice(0, 8)}`;
+	const id = `install-${now}-${randomId().slice(0, 8)}`;
 	const task: TaskRecord = {
 		id,
 		name: req.name,
@@ -455,7 +455,7 @@ async function dirExists(path: string): Promise<boolean> {
 async function writeReconcileFailed(taskDir: string, name: string, version: string, reason: string): Promise<void> {
 	const now = Date.now();
 	await writeTask(taskDir, {
-		id: `reconcile-${now}-${crypto.randomUUID().slice(0, 8)}`,
+		id: `reconcile-${now}-${randomId().slice(0, 8)}`,
 		name,
 		version,
 		status: "failed",

@@ -6,7 +6,7 @@
 // 任务互斥 = mkdir EEXIST 语义（O_CREAT|O_EXCL 的 POSIX 等价原语）：.lock 目录存在即占用；
 // owner.json 落持有者与时间戳，超时（默认 30min，R13 同款阈值）判 stale 可接管（持有者崩溃自愈）。
 
-import { atomicWriteText, fsFace } from "./atomic";
+import { atomicWriteText, fsFace, randomId } from "./atomic";
 
 /** 解析扁平锁文本为 {name: version} 表。任何非 `name: version` 行都算坏锁（fail-closed，不猜）。 */
 export function parseLock(text: string): Record<string, string> {
@@ -133,7 +133,7 @@ export async function acquireTaskLock(taskDir: string, opts: TaskLockOptions = {
 	catch {
 		throw new Error(`install busy：已有安装任务持锁（${dir}）——R17/R31 互斥`);
 	}
-	await f.writeFile(`${dir}/owner.json`, new TextEncoder().encode(JSON.stringify({ holder: crypto.randomUUID(), acquiredAt: now })));
+	await f.writeFile(`${dir}/owner.json`, new TextEncoder().encode(JSON.stringify({ holder: randomId(), acquiredAt: now })));
 	return {
 		async release(): Promise<void> {
 			// 释放失败不掩盖主流程结果（.lock 残留由 stale 接管自愈）

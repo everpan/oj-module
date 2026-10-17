@@ -10,7 +10,7 @@
 //
 // 只保证读回本模块自己写出的内容，不引入 yaml 依赖；任何不符格式的字节一律视为
 // 损坏 → 空状态 + console.warn（不炸，write 会以 patch 为基自愈重写）。
-// read() 返回工厂 hydrate 时的同步快照（structuredClone，调用方改动不影响 store）；
+// read() 返回工厂 hydrate 时的同步快照（逐条目克隆，调用方改动不影响 store）；
 // write() 每次从盘上最新内容做读-改-写合并（多写者不丢彼此的方案键），
 // patch 值为 null 表示删除该方案键（GC/卸载的删除出口）。
 // fs 依赖同 atomic.ts（globalThis.fs 面）。
@@ -35,13 +35,24 @@ export interface StateStore {
 const EMPTY: SolutionState = { solutions: {} };
 
 /**
+ * 快照克隆：oj isolate 无 structuredClone（P1-13 真机冒烟实测 500，契约附录 B-8）；
+ * 状态形状是受限子集（string/bool/number 的两层 map），逐条目浅拷贝即达「调用方改动不影响 store」。
+ */
+function snapshot(state: SolutionState): SolutionState {
+	const solutions: Record<string, SolutionEntry> = {};
+	for (const [name, entry] of Object.entries(state.solutions))
+		solutions[name] = { ...entry };
+	return { solutions };
+}
+
+/**
  * 工厂为 async：构造时从盘上 hydrate 一次，之后 read() 走同步快照（平台 fs 面纯异步，同步 read 只能基于缓存）。
  * 需要观察外部更新的场景重建工厂即可（安装流程一次性构造，无长生命周期需求）。
  */
 export async function createStateStore(path: string): Promise<StateStore> {
 	let cache = (await readDisk(path)).state;
 	return {
-		read: () => structuredClone(cache),
+		read: () => snapshot(cache),
 		async write(patch: Partial<SolutionState>): Promise<void> {
 			const disk = (await readDisk(path)).state;
 			const solutions: Record<string, SolutionEntry> = { ...disk.solutions };

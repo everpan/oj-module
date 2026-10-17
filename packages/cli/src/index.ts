@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
-import { parseApiArgs, parseBuildArgs, parseInitArgs, parseVendorArgs } from "./args";
+import { parseApiArgs, parseBuildArgs, parseInitArgs, parseLifecycleArgs, parseVendorArgs } from "./args";
 import { buildBackend, buildModules } from "./build";
 import { buildBundle } from "./bundle";
 import { devServer } from "./dev";
@@ -108,6 +108,21 @@ async function main() {
 		case "merge":
 			await mergeManifests(process.argv[3] ?? "", process.argv.slice(4));
 			break;
+		case "install": {
+			// 方案包安装瘦客户端（P1-13，D6）：file 上传 / CDN 市场源 → 轮询任务至终态
+			const { positionals, url, user, pass, locale, name, version } = parseLifecycleArgs(process.argv.slice(3));
+			const { installCommand } = await import("./install");
+			await installCommand(positionals[0] ?? "", { url, user, pass, locale, name, version });
+			break;
+		}
+		case "enable":
+		case "disable": {
+			// 生命周期开关瘦客户端（P1-13，D8）：站点侧 setEnabled 四处同写
+			const { positionals, url, user, pass } = parseLifecycleArgs(process.argv.slice(3));
+			const { setEnabledCommand } = await import("./enable");
+			await setEnabledCommand(positionals[0] ?? "", command === "enable", { url, user, pass });
+			break;
+		}
 		default: {
 			if (command && OJ_PASSTHROUGH.has(command)) {
 				const { runOjSubcommand } = await import("./oj-cmd");

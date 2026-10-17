@@ -15,9 +15,10 @@ import type { FetchFace } from "../_lifecycle/steps/download";
 import type { ExecFace } from "../_lifecycle/steps/extract";
 import type { ReloadFace } from "../_lifecycle/steps/reload";
 import { fsFace } from "../_lifecycle/atomic";
-import { runInstall } from "../_lifecycle/installer";
+import { runInstall, setEnabled } from "../_lifecycle/installer";
 import { compareVersions } from "../_lifecycle/semver";
 import { createStateStore } from "../_lifecycle/state";
+import { flattenBundleRoot } from "../_lifecycle/steps/extract";
 import { getTask } from "../_lifecycle/tasks";
 import { validateTarListing } from "../_lifecycle/tgz-guard";
 import { respond } from "../_shared/respond";
@@ -113,6 +114,11 @@ function sha384Of(env: MarketEnv): (data: Uint8Array) => string {
 	return env.sha384B64 ?? ((data: Uint8Array) => g.crypto!.sha384B64!(data));
 }
 
+function sha256Of(env: MarketEnv): (data: Uint8Array) => string {
+	const g = globalThis as { crypto?: { sha256Hex?: (data: Uint8Array) => string } };
+	return env.sha256Hex ?? ((data: Uint8Array) => g.crypto!.sha256Hex!(data));
+}
+
 /** CDN 基址：注入面优先，缺省读设置表（值/缺省值俱空 = 未配置；表异常视同未配置，消费端给可读错误） */
 async function cdnBaseOf(env: MarketEnv): Promise<string | null> {
 	if (env.cdnBase) {
@@ -196,6 +202,7 @@ async function manifestOfUpload(env: MarketEnv, bytes: Uint8Array, exec: ExecFac
 	const extracted = await exec.run(["tar", "-xzf", staged, "-C", env.staging]);
 	if (extracted.code !== 0)
 		fail(400, `上传包解包失败（tar -xzf）：${(extracted.stderr || extracted.stdout).trim()}`);
+	await flattenBundleRoot(env.staging);
 	const g = globalThis as { yaml?: { parse: (text: string) => Promise<unknown> } };
 	try {
 		return await g.yaml!.parse(new TextDecoder().decode(await f.readFile(`${env.staging}/manifest.yaml`)));
@@ -236,6 +243,11 @@ async function installBody(env: MarketEnv): Promise<{ task_id: string }> {
 			fail(400, `body.name「${name}」与包内 manifest.name「${mName}」不一致——请核对分发包`);
 		if (reqVersion === null && mVersion === "")
 			fail(400, "version 不可得（body.version 与包内 manifest.version 均缺失）");
+		// Form A 补摘要（C2-29 布局消费点，P1-13 真机实测——附录 B-10）：ojm build --bundle 产物的
+		// 包内 manifest 是 Form A（archive 仅 file，sha256/size 由 P3 publish 填充于 Form B），而安装器
+		// verify 段对 archive.sha256 fail-closed。file 源字节在手——上传时点即算摘要补成可校验清单
+		// （verify 复核同批字节，R10 语义保持）；CDN 源不受影响（Form B 真源自带摘要）。
+		m.archive = { file: "upload.tgz", sha256: sha256Of(env)(bytes), size: bytes.byteLength };
 		version = reqVersion ?? mVersion;
 		archiveUrl = `${env.staging}/upload.tgz`;
 		fetch = async () => ({ ok: true, status: 200, arrayBuffer: async () => bytes.slice().buffer as ArrayBuffer });
@@ -348,6 +360,31 @@ export function createMarketApi(env: MarketEnv) {
 					if (rec === null)
 						fail(404, `任务不存在或已过期（任务文件保留最近 10 条）：${id}`);
 					return rec;
+				});
+			},
+		},
+		// POST /api/_platform/market/enable —— 生命周期开关（superadmin；P1-13 瘦客户端触发面）。
+		// 端点只做门禁 + 取参 + SetEnabledInput 组装，四处同写全归 setEnabled（D12，installer.ts 同纪律）；
+		// 领域拒绝（未装/空锁/版本目录缺失）返回 {ok:false, message} 200——操作已执行、被域逻辑拒绝，
+		// 人话在 message，CLI/市场页照 ok 位渲染。
+		enable: {
+			async post() {
+				await respond(async () => {
+					await assertSuperAdmin();
+					const body = isObj(http.body) ? http.body : {};
+					const name = String(body.name ?? "").trim();
+					if (name === "")
+						fail(400, "name is required");
+					if (typeof body.enabled !== "boolean")
+						fail(400, `enabled 必须是布尔，实为「${String(body.enabled)}」`);
+					return await setEnabled({
+						name,
+						enabled: body.enabled,
+						sharedRoot: env.sharedRoot,
+						lockPath: `${env.sharedRoot}/manifests.yaml`,
+						state: await createStateStore(env.statePath),
+						modulesJsonPath: env.modulesJsonPath,
+					});
 				});
 			},
 		},

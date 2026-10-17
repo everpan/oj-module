@@ -8,6 +8,7 @@
 // validate 段 + `-C` 限定目标目录承担，而非 tar 旗标。exec 面经 ctx 注入（DIP，测试 stub）。
 
 import type { InstallContext } from "./preflight";
+import { fsFace } from "../atomic";
 import { validateTarListing } from "../tgz-guard";
 import { archiveFileOf } from "./download";
 
@@ -84,9 +85,56 @@ export async function extract(ctx: ExtractContext): Promise<StageResult> {
 				message: `解压失败：tar 解压失败（exit ${extracted.code}）：${(extracted.stderr || extracted.stdout).trim()}（R1 三步范式第三步；附录 A extracting）`,
 			};
 		}
-		return { stage: "extracting", ok: true, message: `解压完成：${lines.length} 个成员 → ${ctx.staging}/（staging 就位即止，目录 rename 由 P1-10 落锁段接管）` };
+		await flattenBundleRoot(ctx.staging);
+		return { stage: "extracting", ok: true, message: `解压完成：${lines.length} 个成员 → ${ctx.staging}/（单根已归平，§2.9 布局消费点；目录 rename 由 P1-10 落锁段接管）` };
 	}
 	catch (e) {
 		return { stage: "extracting", ok: false, retryable: true, message: `解压失败：${String(e)}——附录 A extracting（S1-2 exec.run tar 三步范式）` };
+	}
+}
+
+/**
+ * 单根归平（契约 §2.9 布局消费点，P1-13 真机冒烟实测缺此步——附录 B-10）：`ojm build --bundle`
+ * 产物是 `<name>-<version>/` 单根 tgz，`tar -xzf -C staging` 后内容嵌在一层目录里，而安装器
+ * 全链消费扁平 staging（verifyTarget/deployWeb 读 `${staging}/manifest.yaml`，lockCommit 把
+ * staging 整体 rename 成版本目录）。归平规则：顶层「以 manifest.yaml 为首层标记」的目录 = 包根，
+ * 内容上提一层；标记不匹配（api/、web/、archive 文件）一律不动——不猜布局，宁可下游可读失败。
+ * 幂等：flat 布局无匹配目录即空操作；market file 源预解包（manifestOfUpload）与本步骤同调此函数，
+ * 二次解压重建的单根目录再次被归平。
+ */
+export async function flattenBundleRoot(staging: string): Promise<void> {
+	const f = fsFace();
+	let names: string[];
+	try {
+		names = await f.readdir(staging);
+	}
+	catch {
+		return; // staging 不可列（不存在等）交由下游可读失败
+	}
+	for (const name of names) {
+		const root = `${staging}/${name}`;
+		let inner: string[];
+		try {
+			inner = await f.readdir(root); // readdir 失败 = 普通文件（archive 等），跳过
+		}
+		catch {
+			continue;
+		}
+		if (!inner.includes("manifest.yaml")) {
+			continue;
+		}
+		for (const item of inner) {
+			const dest = `${staging}/${item}`;
+			try {
+				await f.rename(`${root}/${item}`, dest);
+			}
+			catch {
+				// 目标已在（market file 源预解包 manifestOfUpload 先归平过同一 staging，重装/重试
+				// 时上次产物尚在——附录 B-10）：staging 是安装器私有无价值暂存，先清后搬
+				await f.remove(dest, { recursive: true, force: true });
+				await f.rename(`${root}/${item}`, dest);
+			}
+		}
+		await f.remove(root, { recursive: true });
 	}
 }

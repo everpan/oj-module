@@ -17,12 +17,44 @@ export interface FsFace {
 	readdir: (path: string) => Promise<string[]>
 }
 
+/**
+ * 随机 id：oj isolate 的 crypto 增补面（api-manual §crypto）只有 randomHex，无 Web 的 randomUUID
+ * ——有 randomUUID 用之（Node 测试侧），否则 randomHex(16) 兜底（真机冒烟 P1-13 实测，附录 B-9 同源缺面）。
+ */
+export function randomId(): string {
+	const c = (globalThis as { crypto?: { randomUUID?: () => string, randomHex?: (n?: number) => string } }).crypto;
+	if (c?.randomUUID !== undefined)
+		return c.randomUUID();
+	if (c?.randomHex !== undefined)
+		return c.randomHex(16);
+	throw new Error("atomic: 随机数面不可用（globalThis.crypto 缺 randomUUID/randomHex）");
+}
+
 export function fsFace(): FsFace {
-	const f = (globalThis as { fs?: FsFace }).fs;
+	const f = (globalThis as { fs?: Partial<FsFace> & { readDir?: (path: string) => Promise<AsyncIterable<{ name: string }>> } }).fs;
 	if (f === undefined) {
 		throw new Error("atomic: 平台 fs 面不可用（globalThis.fs 未注入），无法落盘");
 	}
-	return f;
+	if (f.copyFile !== undefined && f.readdir !== undefined) {
+		return f as FsFace;
+	}
+	// oj fs 全局面缺 copyFile、目录列举叫 readDir 且形状是 AsyncIterable<DirEntry>（api-manual §fs）
+	// ——在此单点适配到生命周期代码消费的 FsFace（P1-13 真机冒烟实测缺面，契约附录 B-9）。
+	return {
+		writeFile: (path, data) => f.writeFile!(path, data),
+		readFile: path => f.readFile!(path),
+		mkdir: (path, opts) => f.mkdir!(path, opts),
+		remove: (path, opts) => f.remove!(path, opts),
+		rename: (oldPath, newPath) => f.rename!(oldPath, newPath),
+		// ponytail: copyFile 经字节中转（V8 常驻峰值 = 文件大小）；sqlite 备份上 GB 时须上游补原生 copy
+		copyFile: f.copyFile ?? (async (src, dest) => f.writeFile!(dest, await f.readFile!(src))),
+		readdir: f.readdir ?? (async (path) => {
+			const names: string[] = [];
+			for await (const e of await f.readDir!(path))
+				names.push(e.name);
+			return names;
+		}),
+	};
 }
 
 const encoder = new TextEncoder();
@@ -33,7 +65,7 @@ export async function atomicWriteText(path: string, content: string): Promise<vo
 	const slash = path.lastIndexOf("/");
 	const dir = slash === -1 ? "" : path.slice(0, slash);
 	const base = slash === -1 ? path : path.slice(slash + 1);
-	const tmp = `${dir === "" ? "" : `${dir}/`}${base}.${crypto.randomUUID()}.tmp`;
+	const tmp = `${dir === "" ? "" : `${dir}/`}${base}.${randomId()}.tmp`;
 	if (dir !== "") {
 		await f.mkdir(dir, { recursive: true });
 	}

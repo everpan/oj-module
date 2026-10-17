@@ -76,3 +76,44 @@ export function parseVendorArgs(argv: string[]): { force: boolean, tag?: string 
 		tag: tag === undefined ? undefined : (tag.startsWith("v") ? tag : `v${tag}`),
 	};
 }
+
+export interface LifecycleArgs {
+	positionals: string[]
+	url?: string
+	user?: string
+	pass?: string
+	locale?: string
+	name?: string
+	version?: string
+}
+
+/**
+ * `ojm install|enable|disable` 共用解析：位置参数（目标/方案名）+ 值式 flag。
+ * 站点寻址三件套 --url/--user/--pass（环境变量 OJM_URL/OJM_USER/OJM_PASS 兜底，见 src/site.ts）；
+ * install 专属 --name/--version（文件名身份覆盖）与 --locale（终态文案语言）。
+ * 值式 flag 逐项消费紧随的值，不被当位置参数（P6 同款坑，parseApiArgs 同纪律）。
+ */
+export function parseLifecycleArgs(argv: string[]): LifecycleArgs {
+	const valueFlags = new Set(["--url", "--user", "--pass", "--locale", "--name", "--version"]);
+	const values: Record<string, string> = {};
+	const positionals: string[] = [];
+	for (let i = 0; i < argv.length; i++) {
+		const a = argv[i]!;
+		if (valueFlags.has(a)) {
+			values[a] = argv[i + 1] ?? "";
+			i++; // 消费紧随的值
+			continue;
+		}
+		if (!a.startsWith("--"))
+			positionals.push(a);
+	}
+	return {
+		positionals,
+		url: values["--url"],
+		user: values["--user"],
+		pass: values["--pass"],
+		locale: values["--locale"],
+		name: values["--name"],
+		version: values["--version"],
+	};
+}

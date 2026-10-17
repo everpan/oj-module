@@ -266,7 +266,7 @@ describe("verify（stage=verifying，C2-29 sha256 fail-closed）", () => {
 });
 
 describe("extract（stage=extracting，R1 list→validate→extract 三步）", () => {
-	it("合法夹具集成（真实系统 tar）：解压后目录树断言，两次 exec argv 逐字对齐命令构造", async () => {
+	it("合法夹具集成（真实系统 tar）：§2.9 单根包解压后归平为扁平 staging，两次 exec argv 逐字对齐命令构造", async () => {
 		const pkg = join(root, "pkg", "demo-solution-0.1.0");
 		await fsp.mkdir(join(pkg, "src"), { recursive: true });
 		await fsp.writeFile(join(pkg, "manifest.yaml"), "name: demo-solution\n");
@@ -279,10 +279,27 @@ describe("extract（stage=extracting，R1 list→validate→extract 三步）", 
 		const r = await extract(exCtx({ exec }));
 		expect(r.stage).toBe("extracting");
 		expect(r.ok).toBe(true);
-		expect(await fsp.readFile(join(staging, "demo-solution-0.1.0", "manifest.yaml"), "utf8")).toBe("name: demo-solution\n");
-		expect(await fsp.readFile(join(staging, "demo-solution-0.1.0", "src", "entry.js"), "utf8")).toBe("export default {};\n");
+		// 单根归平（附录 B-10）：包根内容上提一层，安装器全链消费扁平 staging
+		expect(await fsp.readFile(join(staging, "manifest.yaml"), "utf8")).toBe("name: demo-solution\n");
+		expect(await fsp.readFile(join(staging, "src", "entry.js"), "utf8")).toBe("export default {};\n");
+		expect(await fsp.readdir(staging)).toEqual(["demo-solution-0.1.0.tgz", "manifest.yaml", "src"].sort());
 		expect(exec.calls[0]).toEqual(buildListCmd(tgz));
 		expect(exec.calls[1]).toEqual(buildExtractCmd(tgz, staging));
+	});
+
+	it("flat 布局包（manifest.yaml 在包根）：归平为空操作，layout 原样", async () => {
+		const flat = join(root, "flat-pkg");
+		await fsp.mkdir(flat, { recursive: true });
+		await fsp.writeFile(join(flat, "manifest.yaml"), "name: demo-solution\n");
+		await fsp.mkdir(staging, { recursive: true });
+		const tgz = join(staging, FILE);
+		await execFileP("tar", ["-czf", tgz, "-C", flat, "manifest.yaml"]);
+
+		const exec = realTarExec();
+		const r = await extract(exCtx({ exec }));
+		expect(r.ok).toBe(true);
+		expect(await fsp.readFile(join(staging, "manifest.yaml"), "utf8")).toBe("name: demo-solution\n");
+		expect(await fsp.readdir(staging)).toEqual(["demo-solution-0.1.0.tgz", "manifest.yaml"].sort());
 	});
 
 	it("恶意 listing（symlink + `..` 成员）：validate 段全拒，零解压零落盘（exec 仅 1 次列表调用）", async () => {

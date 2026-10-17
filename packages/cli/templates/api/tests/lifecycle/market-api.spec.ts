@@ -15,8 +15,9 @@ import type { MarketEnv } from "../../src/_platform/market/api";
 import { createHash } from "node:crypto";
 import * as fsp from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { readLock, writeLock } from "../../src/_platform/_lifecycle/lock";
 import { createStateStore } from "../../src/_platform/_lifecycle/state";
 import { getTask, writeTask } from "../../src/_platform/_lifecycle/tasks";
 import { invalidateAllUsers } from "../../src/_platform/_shared/service/access";
@@ -307,6 +308,47 @@ describe("POST install（file：上传载荷，upload/api.ts 先例双路径）"
 		expect(rec?.version).toBe("0.1.0");
 	});
 
+	it("Form A 包（manifest 无 archive 摘要，ojm build --bundle 产物形态）：端点补算 sha256/size 注入 archive → runInstall done（附录 B-10）", async () => {
+		const exec: ExecFace = {
+			run: async (argv) => {
+				if (argv[0] === "tar" && argv[1] === "-tvzf")
+					return { code: 0, stdout: "demo-solution-0.1.0/manifest.yaml\ndemo-solution-0.1.0/web/modules/demo-solution/0.1.0/entry.js\n", stderr: "" };
+				if (argv[0] === "tar" && argv[1] === "-xzf") {
+					// §2.9 单根布局原样解包 + flattenBundleRoot 归平（由 manifestOfUpload 调用）
+					const dest = argv[4]!;
+					const rootDir = join(dest, "demo-solution-0.1.0");
+					await fsp.mkdir(join(rootDir, "web", "modules", "demo-solution", "0.1.0"), { recursive: true });
+					const { archive: _archive, ...formA } = manifestFixture("0.1.0");
+					await fsp.writeFile(join(rootDir, "manifest.yaml"), JSON.stringify(formA));
+					await fsp.writeFile(join(rootDir, "web", "modules", "demo-solution", "0.1.0", "entry.js"), ENTRY);
+					await fsp.writeFile(join(rootDir, "web", "modules", "demo-solution", "0.1.0", "main.css"), "/* demo */");
+					return { code: 0, stdout: "", stderr: "" };
+				}
+				if (argv[0] === "oj" && argv[1] === "migrate")
+					return { code: 0, stdout: `${MIGRATE_LINE}\n`, stderr: "" };
+				return { code: 0, stdout: "", stderr: "" };
+			},
+		};
+		const api = createMarketApi(makeEnv({ exec }));
+		g.http = {
+			user: { id: 1 },
+			body: { name: "demo-solution", version: null, source: "file" },
+			files: [{ name: "demo-solution-0.1.0.tgz", content_type: "application/gzip" }],
+			file: async () => ARCHIVE,
+		};
+		await api.install.post();
+		expect(last?.status).toBe(200);
+		const taskId = (last?.data as { task_id?: unknown })?.task_id as string;
+		const rec = await getTask(taskDir, taskId);
+		// verify 段对 injected sha256 fail-closed 复核同批字节（R10 语义保持）→ done
+		expect(rec?.status).toBe("done");
+		expect(rec?.stages.map(s => s.stage)).toEqual(STAGE_ORDER);
+		// 单根归平：lockCommit rename 后版本目录即包内容（manifest.yaml 在版本目录根，无嵌套包根）
+		const versionDir = join(root, "modules", "demo-solution-0.1.0");
+		expect(await fsp.readFile(join(versionDir, "manifest.yaml"), "utf8")).toContain("demo-solution");
+		expect(await fsp.readdir(join(versionDir, "web", "modules", "demo-solution", "0.1.0"))).toEqual(["entry.js", "main.css"]);
+	});
+
 	it("缺文件 → 400 可读失败", async () => {
 		const api = createMarketApi(makeEnv());
 		g.http = { user: { id: 1 }, body: { name: "demo-solution", version: null, source: "file" } };
@@ -344,6 +386,62 @@ describe("GET task（§10.2 轮询消费面）", () => {
 		g.http = { user: { id: 1 }, query: { id: "nope" } };
 		await api.task.get();
 		expect(last?.status).toBe(404);
+	});
+});
+
+describe("POST enable（生命周期开关：P1-13 瘦客户端触发面，四处同写归 setEnabled，D12/AC-P1-6）", () => {
+	/** 预置「已装」形态：锁两条目（单条目禁用会触发空锁拒启，S1-1.2）+ sidecar + route 行 + modules.json 条目 + 版本目录 */
+	async function seedInstalled(): Promise<void> {
+		await writeLock(join(sharedRoot, "manifests.yaml"), { "demo-solution": "0.1.0", "other": "1.0.0" });
+		const state = await createStateStore(join(sharedRoot, ".solutions", "state.yaml"));
+		await state.write({ solutions: { "demo-solution": { version: "0.1.0", enabled: true, installedAt: 1 } } });
+		await fsp.mkdir(join(sharedRoot, "demo-solution-0.1.0"), { recursive: true });
+		await fsp.mkdir(dirname(modulesJsonPath), { recursive: true });
+		await fsp.writeFile(modulesJsonPath, `${JSON.stringify([{ name: "demo-solution", enabled: true, src: "modules/demo-solution/" }])}\n`);
+		dbo.prepare("INSERT INTO sys_solution_route (path, module, category) VALUES (?, ?, ?)").run("/demo-solution", "demo-solution", "main");
+	}
+
+	it("禁用再启用：锁摘除/恢复 + sidecar + sys_solution_route + modules.json 四处同写", async () => {
+		await seedInstalled();
+		const api = createMarketApi(makeEnv());
+		g.http = { user: { id: 1 }, body: { name: "demo-solution", enabled: false } };
+		await api.enable.post();
+		expect(last?.status).toBe(200);
+		expect(last?.data).toMatchObject({ ok: true });
+		// ① 锁摘除（other 条目保留——空锁拒启防线未被波及）
+		expect(await readLock(join(sharedRoot, "manifests.yaml"))).toEqual({ other: "1.0.0" });
+		// ② sidecar enabled=false，version 保留（启用恢复依据）
+		const state = await createStateStore(join(sharedRoot, ".solutions", "state.yaml"));
+		expect(state.read().solutions["demo-solution"]).toMatchObject({ version: "0.1.0", enabled: false });
+		// ③ route enabled=0
+		expect(dbo.prepare("SELECT enabled FROM sys_solution_route WHERE module = ?").get("demo-solution")).toMatchObject({ enabled: 0 });
+		// ④ modules.json enabled=false
+		const list = JSON.parse(await fsp.readFile(modulesJsonPath, "utf8")) as Array<{ name: string, enabled: boolean }>;
+		expect(list[0]).toMatchObject({ name: "demo-solution", enabled: false });
+		// 启用：从 sidecar 记录恢复锁条目
+		g.http = { user: { id: 1 }, body: { name: "demo-solution", enabled: true } };
+		await api.enable.post();
+		expect(last?.status).toBe(200);
+		expect(last?.data).toMatchObject({ ok: true });
+		expect(await readLock(join(sharedRoot, "manifests.yaml"))).toEqual({ "demo-solution": "0.1.0", "other": "1.0.0" });
+	});
+
+	it("门禁与可读失败：非 superadmin 403；name 缺失/enabled 非布尔 400；未装方案 ok:false 不崩", async () => {
+		await seedInstalled();
+		const api = createMarketApi(makeEnv());
+		g.http = { user: { id: 2 }, body: { name: "demo-solution", enabled: false } };
+		await api.enable.post();
+		expect(last?.status).toBe(403);
+		g.http = { user: { id: 1 }, body: { enabled: false } };
+		await api.enable.post();
+		expect(last?.status).toBe(400);
+		g.http = { user: { id: 1 }, body: { name: "demo-solution", enabled: "yes" } };
+		await api.enable.post();
+		expect(last?.status).toBe(400);
+		g.http = { user: { id: 1 }, body: { name: "nope", enabled: false } };
+		await api.enable.post();
+		expect(last?.status).toBe(200);
+		expect(last?.data).toMatchObject({ ok: false });
 	});
 });
 
