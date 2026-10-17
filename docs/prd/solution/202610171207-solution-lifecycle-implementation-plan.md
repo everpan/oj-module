@@ -89,13 +89,13 @@ scripts/lifecycle-e2e.mjs                # [新建] P1 端到端脚本（本地 
 
 | # | 任务 | 产出 / 验收 | 原则 | 状态 | 开始 | 耗时 |
 |---|---|---|---|---|---|---|
-| C1 | 共享根裁决 spike | 裁决记录回填设计文档 §9（S1-1/2/3/5/6/7 逐项结论）：① 单 mount 自洽形态（api 前缀重复/空锁拒启/save_lock 互斥实测）② exec.run tar list→validate→extract + 下载形态 ③ 长任务形态（tasks 轴 vs 分段）④ 冒烟凭证 ⑤ reload_api 注入实测 ⑥ M003/M004 实测与对账规则 | DIP（裁决先于实现） | 未开始 | | |
-| C2 | manifest.yaml 契约定稿 | 契约文档（PRD §5.2 为底 + changelog 字段 + name/version 白名单 + settings key 所有权 + i18n key + 文案 key `lifecycle.stage.*` 全表）；夹具 bundle 两枚（合法/非法各一，入 `packages/cli/src/lifecycle/__tests__/fixtures/`） | ISP（契约按消费方列字段） | 未开始 | | |
-| C3 | 开放问题拍板落档 | Q-A（health 不强制）/GC N=3 时间序/菜单三值/market.view+verify 初始绑定 admin+superadmin——回写设计文档 §0 | — | 未开始 | | |
-| C4 | 上游需求提交 | `202610161500-oj-bin-feature-requests-pr.md` 追加 OJ-9（down 迁移，低优，含 D10 豁免面注记）；OJ-8/OJ-6 提交稿投 oj-bin 仓 | D9 | 未开始 | | |
-| C5 | 下游契约承接清单 | devkit 手册章节提纲：「打包与分发」「第一方特权面不可复制（R29）」「persona 部署引导」 | 已完成（c6d0e43d，202610171333 提纲） | | |
-| C6 | 基线回写 | lifecycle 文档：§3 锁顺序→迁移后落锁、§5 禁用语义→锁摘除+sidecar、Q-A 拍板；状态行→已评审；**并**：统一 verify 端点口径（§5.1 图移除 verify，以 §4.2 `POST /api/_platform/solutions/:name/verify` 为准）；处理工作区既有未提交改动（202610161300） | — | 已完成（461c977+c010b202，评审 Approved） | | |
-| C7 | **生命周期总览文档**（用户追加） | 面向三视角——开发者（打包/契约/发布）、运维（引导安装/升级/回滚/禁用/卸载/备份/故障恢复）、普通用户（市场页安装/菜单与设置/深检/失败语义）；基于 C2 契约 + C5 提纲 + C6 回写后口径 | `docs/prd/solution/20261017<HHmm>-lifecycle-guide.md` | 未开始 | | |
+| C1 | 共享根裁决 spike | 裁决记录回填设计文档 §9（S1-1/2/3/5/6/7 逐项结论）：① 单 mount 自洽形态（api 前缀重复/空锁拒启/save_lock 互斥实测）② exec.run tar list→validate→extract + 下载形态 ③ 长任务形态（tasks 轴 vs 分段）④ 冒烟凭证 ⑤ reload_api 注入实测 ⑥ M003/M004 实测与对账规则 | DIP（裁决先于实现） | 已完成（2d7f1b37+9856deef，评审 ALL CLEAR；202610171245 findings 六节 + spike 源码附录 A） | 1149 | ≈65min（含评审修复环） |
+| C2 | manifest.yaml 契约定稿 | 契约文档（PRD §5.2 为底 + changelog 字段 + name/version 白名单 + settings key 所有权 + i18n key + 文案 key `lifecycle.stage.*` 全表）；夹具 bundle 两枚（合法/非法各一，入 `packages/cli/src/lifecycle/__tests__/fixtures/`） | ISP（契约按消费方列字段） | 已完成（9f63e6ed+20ab76d7，v1.1 后 b7137507；评审 ALL CLEAR；C2-01~33 + 双夹具） | 1255 | ≈31min（含评审修复环） |
+| C3 | 开放问题拍板落档 | Q-A（health 不强制）/GC N=3 时间序/菜单三值/market.view+verify 初始绑定 admin+superadmin——回写设计文档 §0 | — | 已完成（fbc36aed，评审 Approved；D14） | 1327 | ≈5min |
+| C4 | 上游需求提交 | `202610161500-oj-bin-feature-requests-pr.md` 追加 OJ-9（down 迁移，低优，含 D10 豁免面注记）；OJ-8/OJ-6 提交稿投 oj-bin 仓 | D9 | 已完成（ac4f5ad1+313bce04，评审 Approved；三份自包含提交稿在 202610171400-oj-bin-submissions/，**跨仓提交由用户手动执行**） | 1411 | ≈12min（含微调） |
+| C5 | 下游契约承接清单 | devkit 手册章节提纲：「打包与分发」「第一方特权面不可复制（R29）」「persona 部署引导」 | — | 已完成（c6d0e43d，202610171333 提纲；评审 Approved） | 1332 | ≈7min |
+| C6 | 基线回写 | lifecycle 文档：§3 锁顺序→迁移后落锁、§5 禁用语义→锁摘除+sidecar、Q-A 拍板；状态行→已评审；**并**：统一 verify 端点口径（§5.1 图移除 verify，以 §4.2 `POST /api/_platform/solutions/:name/verify` 为准）；处理工作区既有未提交改动（202610161300） | — | 已完成（461c977+c010b202，评审 Approved） | 1340 | ≈12min（含 D11 收口） |
+| C7 | **生命周期总览文档**（用户追加） | 面向三视角——开发者（打包/契约/发布）、运维（引导安装/升级/回滚/禁用/卸载/备份/故障恢复）、普通用户（市场页安装/菜单与设置/深检/失败语义）；基于 C2 契约 + C5 提纲 + C6 回写后口径 | — | 已完成（a06578ba+6ce5ec21+deb1850a，评审 Approved；202610171354 三视角指南，钉出并推动契约 v1.1 C2-33） | 1353 | ≈18min（含契约缺口联动） |
 
 **DoD**：六项产出齐 + 两枚夹具 bundle 可被后续任务直接引用 + 裁决记录无「待验证」残留。
 
@@ -188,7 +188,6 @@ getTask(id: string): TaskRecord | null
 ```
 语义：`lockCommit` 是显式 stage（位于 migrate 后——D11）；失败语义三分（锁前清场重跑 / 锁后 `status:"partial"` + 回滚指引 / 切换前 `verifyTarget()` 复验）；入口对账自愈 `reconcile()`；任务状态落 `.install-tasks/<id>.json`（保留 10 条、启动时超时 running 判 failed、message 脱敏）；升级/降级/禁用/启用 = 同表参数化（`runInstall({version})` / `setEnabled(name, bool)`：锁摘除+sidecar+route+modules 四处同写）
 - [ ] 失败测试（步骤全 stub 注入——DIP）：全绿路径 stage 顺序断言；extract 失败 → 零落盘零改锁；smoke 失败 → `partial` + 指引文案 key；对账：锁指新版账本落后 → 回指旧版；lock：并发取锁互斥、持有者崩溃后 `.lock` 过期可接管（R17/R31）
-- [ ] 跑红 → 实现 → 跑绿 → commit
 - [ ] 跑红 → 实现 → 跑绿 → commit
 
 ### Task P1-11：CLI `ojm build --bundle`（C2 契约，DRY 夹具）
@@ -291,7 +290,11 @@ getTask(id: string): TaskRecord | null
 
 ## 7. 阶段小结（滚动追加）
 
-- **P0**：未开始。
+- **P0**（2026-10-17 1149–1422，全部完成，总耗时 ≈2.5h；分支 `feat/lifecycle-p0`，19 commits）：
+  - **关键过程**：C1 spike 实测六项架构前提（共享根 release 形态成立、exec.run tar 三步范式成立、**锁原子但无互斥（实测吞写）→ 安装器写后读回收敛**、reload_api 全链路、M003/M004 拒启契约、tasks 轴 exec 恒拒 → 长任务定稿分段执行+状态文件）→ C2 契约 v1.0→v1.1（C2-01~33，oj manifest.rs 七字段逐字段对照；夹具双枚）→ C3 拍板 D14 → C5 手册提纲 → C6 基线回写（迁移后落锁、锁摘除禁用两处实质修订落基线）→ C7 三视角生命周期指南（**钉出并推动契约 v1.1 C2-33 health 缺口**）→ C4 上游三份自包含提交稿（用户选定手动提交）→ 终审三发现（F1 任务表回填/F2 迁移语义三处矛盾/F3 范围标签三处）全部收口。
+  - **方法论落地**：SDD 全程——每任务「实现者→评审员→修复环→scoped 复审」四拍；评审共拦下 1 Critical（C2-17 正则自洽）+2 Important（zip-slip 之外的报告断链/复现性）+十余 Minor；两个跨任务缺口（C2-33、D11 语义反转残留）由下游任务评审钉出。
+  - **遗留（接受保留，台账已录）**：GNU tar Linux 复验（P1 T3）、C5 #3 C2-12b 提纲未点名（P1 手册回填）、R12 编号跨文档二义（既有）、health 双命名空间差异（P1-5 承接）、OJ-8 上游文本微调（随手动提交）。
+  - **上游**：OJ-8/OJ-6/OJ-9 提交稿就绪待用户手动提交；PR 文档（202610161500）已同步。
 - **P1**：未开始。
 - **P2**：未开始。
 - **P3**：未开始。
