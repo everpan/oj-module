@@ -60,12 +60,15 @@ function nodeFsFace(): FsFace {
 }
 
 /** 记录 argv 的 exec stub（同 steps-fs 范式；handler 可模拟失败/违约输出） */
-function recordingExec(handler?: (argv: string[]) => Promise<{ code: number, stdout: string, stderr: string }>): ExecFace & { calls: string[][] } {
+function recordingExec(handler?: (argv: string[]) => Promise<{ code: number, stdout: string, stderr: string }>): ExecFace & { calls: string[][], opts: (undefined | { timeoutMs?: number })[] } {
 	const calls: string[][] = [];
+	const opts: (undefined | { timeoutMs?: number })[] = [];
 	return {
 		calls,
-		run: async (argv) => {
+		opts,
+		run: async (argv, o) => {
 			calls.push([...argv]);
+			opts.push(o);
 			return handler
 				? handler(argv)
 				: { code: 0, stdout: "", stderr: "" };
@@ -223,6 +226,8 @@ describe("migrate（stage=migrating：R14 备份 → exec → 解析 → 禁降�
 		expect(baks).toHaveLength(1);
 		expect(new Uint8Array(await fsp.readFile(join(root, baks[0]!)))).toEqual(DB_BYTES);
 		expect(exec.calls[0]).toEqual(buildMigrateCmd(migrateSvcDirOf(staging), "demo-solution"));
+		// 超时显式取平台硬上限：oj exec.run timeoutMs 缺省 30s 会杀生产级长迁移（0.1.78 文档化口径）
+		expect(exec.opts[0]).toEqual({ timeoutMs: 600_000 });
 		expect(state.writes).toBe(0);
 	});
 

@@ -223,8 +223,9 @@ export async function migrate(ctx: MigrateContext): Promise<StageResult> {
 		return { stage: "migrating", ok: false, retryable: true, message: `迁移失败：迁移服务目录物化失败（${String(e)}）——附录 A migrating；备份 ${bak} 可供回退` };
 	}
 	try {
-		// 第三步 exec：成败真源 = exit code（S1-6 实测；逐模块 continue-and-collect 由 oj 保证）
-		const r = await ctx.exec.run(buildMigrateCmd(svcDir, ctx.name));
+		// 第三步 exec：成败真源 = exit code（S1-6 实测；逐模块 continue-and-collect 由 oj 保证）。
+		// timeoutMs 显式取平台硬上限 600_000——oj 缺省 30_000 会杀生产级长迁移（0.1.78 文档化口径）
+		const r = await ctx.exec.run(buildMigrateCmd(svcDir, ctx.name), { timeoutMs: 600_000 });
 		if (r.code !== 0) {
 			return {
 				stage: "migrating",

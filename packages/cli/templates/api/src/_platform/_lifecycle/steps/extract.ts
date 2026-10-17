@@ -19,7 +19,8 @@ export interface ExecResult {
 }
 
 export interface ExecFace {
-	run: (argv: string[]) => Promise<ExecResult>
+	/** opts 透传平台 exec.run（timeoutMs 等；0.1.78 共用 opts——缺省 30s 会杀长命令） */
+	run: (argv: string[], opts?: { timeoutMs?: number }) => Promise<ExecResult>
 }
 
 export interface ExtractContext extends InstallContext {
