@@ -229,11 +229,27 @@ getTask(id: string): TaskRecord | null
 - [ ] 失败测试：三值归并/hidden 过滤/降级空表不炸/排序（框架 100 带、方案 200 起）；groupSettingsByModule 分组与 label_key
 - [ ] 跑红 → 实现 → 跑绿 → 真机冒烟（装夹具后菜单归组、设置嵌套）→ commit
 
-### Task P1-15：独立仓 `../oj-market` 最小形态（D2，第三方作者形态）
+### Task P1-15：`../oj-market` 市场应用主体（D2/D5，**用户指令 2026-10-17 扩量：完整市场功能**）
 
-**Files**: 新建独立仓 `../oj-market/`（脚手架对齐 `apps/playground-oj` 工程形态：api/ + web/ + web.config.ts；依赖**已发布**的 `@oj-module/*` 包，不经 monorepo 路径引用）：entry + admin 页（只读索引卡）+ hidden 详情占位 + `market:menu.*`/`market:settings.group.*` i18n + api 侧 `market_history` 迁移 + health 端点 + sys_setting 展示组；含 R29 第一方专用代码注记（`_platform` 编排调用处）；git init + 首提交（仓建立动作向用户报备）
-- [ ] 模板套件测试：market_history 迁移往返；health 200
-- [ ] `ojm build --bundle` 出 tgz → `ojm install` → admin 菜单出卡片（真机冒烟）→ commit
+> 脚手架与第三方作者形态已由教学验证落定（f3e4eb9，`202610172100-solution-authoring-tutorial.md`）；本任务在其上建成**功能完整的市场应用**。范围红线：签名/TOFU、深检、publish 管线仍留 P2/P3 不动。
+
+**Files**: `../oj-market/`：web/src/market（卡片网格页 + 详情抽屉 + 安装对话框/进度 + 卸载确认 + 历史页）+ api/src/market（`market_history` 迁移 + 历史读写端点 + health）+ 双语 i18n（`market:menu.*`/`market:card.*`/`market:task.*`…）+ R29 第一方专用代码注记（`_platform` 编排调用处）
+**Interfaces — Consumes**（全部已有）: `GET /api/_platform/market/index`（卡片数据源：name/latest/installed/enabled/upgradable）、`POST install`、`GET task?id=`（进度抽屉 800ms 轮询）、`POST enable`、`GET meta`
+- [ ] 模板套件测试：market_history 迁移往返；历史端点读写
+- [ ] 前端组件测试：卡片网格渲染（含 upgradable/enabled 态）/进度抽屉终态/卸载二次确认
+- [ ] `ojm build --bundle` → `ojm install` 真机自举（市场装市场，D6 P2 步前移验证）→ commit
+
+### Task P1-15a：卸载服务端 + `ojm uninstall` 瘦客户端（P3 U1/U4 **前移**，用户指令）
+
+**Files**: Modify `templates/api/src/_platform/market/api.ts`（`POST /api/_platform/market/uninstall {name}`）；Create `_lifecycle/steps/uninstall.ts`（编排器）；Modify `packages/cli/src/`（`ojm uninstall <name>` 瘦客户端）；Test 两侧
+**行为**（P3 U1 语义逐字）：影响面预检（受影响角色/用户计数，可读清单）→ superadmin 门 → RBAC 双维度级联**单事务** + `invalidateAllUsers` 统一失效出口 → 锁摘除（空锁拒写红线：摘除最后条目必须拒绝）+ sidecar/state/路由/modules.json 四处摘除（setEnabled 逆操作）→ 版本目录 GC（保留 N=0 即全删；staging/tasks 清理）→ `auditOp("solution.uninstall")` → market_history 记录
+- [ ] 失败测试：非 superadmin 403/影响面预检清单/级联单事务原子性/空锁拒卸/卸后重装复原（幂等）
+- [ ] 跑红 → 实现 → 跑绿 → 真机冒烟（装→卸→装全链）→ commit
+
+### Task P1-15b：oj-market 全功能装配收口（用户指令「所有功能」验收）
+
+**Files**: `../oj-market/` 收口：卡片动作全接线（安装/卸载/启停/回滚=同版本族降装）+ 版本历史抽屉（market_history ⊕ changelog）+ 双版本卡片（upgradable 对比）+ 任务进度 800ms 轮询与失败双语渲染 + 空态/加载/错误三态
+- [ ] 组件测试补齐；真机走查脚本化（装夹具→卡片出→禁用→启用→升级→回滚→卸载→历史留痕，全链 AC 断言）→ commit
 
 ### Task P1-16：端到端 + 占位引导卡（R26，AC-P1 总验）
 
@@ -270,7 +286,7 @@ getTask(id: string): TaskRecord | null
 | # | 任务 | 交付 / AC | 状态 |
 |---|---|---|---|
 | D1 | 签名链：`ojm` 侧 sign + isolate 侧 `verifyEd25519`（fail-closed）+ TOFU（CLI 指纹确认+审计，或 bootstrap 公钥随宿主——随 C4 裁决）+ 双 key 轮换 | AC-P2-1/2/3 | 未开始 |
-| D2 | market 实装：进度抽屉（800ms 轮询+schemaVersion）/ 版本历史抽屉 / 回滚 / 禁用启用 / 双版本卡片+changelog / 自升级 CLI 提示 | AC-P2-4 | 未开始 |
+| D2 | market 实装：进度抽屉（800ms 轮询+schemaVersion）/ 版本历史抽屉 / 回滚 / 禁用启用 / 双版本卡片+changelog / 自升级 CLI 提示 | AC-P2-4 | **UI 主体前移至 P1-15/P1-15b（用户指令 2026-10-17）；本行残余=schemaVersion 握手与自升级 CLI 提示** |
 | D3 | 深检端点+报告（后端四项 + 前端 i18n 项） | AC-P2-5 | 未开始 |
 | D4 | `/market/meta` + `peerPlatform` 预检 | AC-P2-6 | 未开始 |
 | D5 | 任务治理落地（保留 10 条/超时 failed/脱敏）+ CLI 引导装 market 本身 | AC-P2-7 | 未开始 |
@@ -285,7 +301,7 @@ getTask(id: string): TaskRecord | null
 
 | # | 任务 | 交付 / AC | 状态 |
 |---|---|---|---|
-| U1 | 卸载：影响面预检（受影响角色/用户计数）→ superadmin 二次确认 → RBAC 双维度级联**单事务** + `invalidateAllUsers` 统一失效出口（承接 rbac-isolation §8.3/8.4）+ 业务表保留提示 | AC-P3-1/2/5 | 未开始 |
+| U1 | 卸载：影响面预检（受影响角色/用户计数）→ superadmin 二次确认 → RBAC 双维度级联**单事务** + `invalidateAllUsers` 统一失效出口（承接 rbac-isolation §8.3/8.4）+ 业务表保留提示 | AC-P3-1/2/5 | **前移至 P1-15a（用户指令 2026-10-17）** |
 | U2 | GC 内建 install：state.yaml 时间序保留 N=3，与回滚靠 lock 互斥 | AC-P3-3 | 未开始 |
 | U3 | `ojm publish` + bundles.yaml/manifests.yaml 索引重算（no-cache 头） | AC-P3-4 | 未开始 |
 | U4 | `ojm uninstall` 瘦客户端 | 随 U1 | 未开始 |
