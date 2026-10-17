@@ -26,7 +26,7 @@ import { reconcile, runInstall, setEnabled, STAGES } from "../../src/_platform/_
 import { acquireTaskLock, commitLockEntry, parseLock, readLock, serializeLock, writeLock } from "../../src/_platform/_lifecycle/lock";
 import { createStateStore } from "../../src/_platform/_lifecycle/state";
 import { getTask, readTasks, redact, sweepTimedOut, writeTask } from "../../src/_platform/_lifecycle/tasks";
-import { installDb } from "../fixture";
+import { installDb, MARKET_HISTORY_DDL } from "../fixture";
 
 const g = globalThis as any;
 
@@ -485,6 +485,47 @@ describe("setEnabled 四处同写（D12/AC-P1-6）：锁摘除/恢复 + sidecar 
 		expect(r.ok).toBe(false);
 		expect(r.message).toContain("空锁");
 		expect(await readLock(lockPath)).toEqual({ "demo-solution": "0.1.0" });
+	});
+});
+
+describe("market_history 留痕（P1-15a 缺口 A）：install/enable/disable/uninstall 四类动作齐", () => {
+	/** 「已装」种子（同 seedEnabled 形状：锁双条目避开空锁拒启 + sidecar + route + 版本目录 + modules.json） */
+	async function seedHistory(): Promise<void> {
+		await writeLock(lockPath, { "demo-solution": "0.1.0", "auth": "0.1.0" });
+		await state.write({ solutions: { "demo-solution": { version: "0.1.0", enabled: true, installedAt: 1000 } } });
+		dbo.exec("INSERT INTO sys_solution_route (path, module, category, \"order\", deprecated, enabled) VALUES ('/demo-solution', 'demo-solution', 'main', 200, 0, 1)");
+		await fsp.mkdir(join(sharedRoot, "demo-solution-0.1.0"), { recursive: true });
+		await atomicWriteText(modulesJsonPath, `${JSON.stringify([{ name: "demo-solution", entry: "modules/demo-solution/0.1.0/entry.js", enabled: true }], null, 2)}\n`);
+	}
+
+	it("runInstall 终态（done）落 install 历史（守卫式：随主流程写，失败不阻断）", async () => {
+		dbo.exec(MARKET_HISTORY_DDL);
+		const t = await runInstall(makeReq());
+		expect(t.status).toBe("done");
+		const hist = rows("SELECT solution, version, action, status, operator, message FROM market_history");
+		expect(hist).toHaveLength(1);
+		expect(hist[0]).toMatchObject({ solution: "demo-solution", version: "0.1.0", action: "install", status: "done", operator: null });
+		expect(String(hist[0].message)).toContain("安装完成：demo-solution@0.1.0");
+	});
+
+	it("setEnabled 落 disable/enable 历史（status=success，message 与返回人话一致）", async () => {
+		dbo.exec(MARKET_HISTORY_DDL);
+		await seedHistory();
+		const off = await setEnabled({ name: "demo-solution", enabled: false, sharedRoot, lockPath, state, modulesJsonPath });
+		const on = await setEnabled({ name: "demo-solution", enabled: true, sharedRoot, lockPath, state, modulesJsonPath });
+		expect(off.ok).toBe(true);
+		expect(on.ok).toBe(true);
+		const hist = rows("SELECT action, status, message FROM market_history ORDER BY id");
+		expect(hist).toEqual([
+			{ action: "disable", status: "success", message: off.message },
+			{ action: "enable", status: "success", message: on.message },
+		]);
+	});
+
+	it("market_history 表不存在（站点未装市场方案）→ setEnabled 仍 ok:true（守卫式留痕静默跳过）", async () => {
+		await seedHistory();
+		const r = await setEnabled({ name: "demo-solution", enabled: false, sharedRoot, lockPath, state, modulesJsonPath });
+		expect(r.ok).toBe(true);
 	});
 });
 

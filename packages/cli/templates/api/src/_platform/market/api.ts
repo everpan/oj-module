@@ -22,6 +22,7 @@ import { createStateStore } from "../_lifecycle/state";
 import { flattenBundleRoot } from "../_lifecycle/steps/extract";
 import { getTask } from "../_lifecycle/tasks";
 import { validateTarListing } from "../_lifecycle/tgz-guard";
+import { computeUninstallImpact, runUninstall } from "../_lifecycle/uninstall";
 import { respond } from "../_shared/respond";
 import { assertSuperAdmin } from "../_shared/service/access";
 
@@ -381,7 +382,7 @@ async function indexBody(env: MarketEnv): Promise<IndexRow[]> {
 export function createMarketApi(env: MarketEnv) {
 	return {
 		// POST /api/_platform/market/install —— 安装编排（superadmin，R9）
-		install: {
+		"install": {
 			async post() {
 				await respond(async () => {
 					await assertSuperAdmin();
@@ -391,7 +392,7 @@ export function createMarketApi(env: MarketEnv) {
 		},
 		// GET /api/_platform/market/task?id= —— 任务轮询消费面（superadmin，§10.2 800ms 轮询）。
 		// 简报 `task/:id` 段参数形态在模板 http 面无先例，照 contacts/detail?id= 惯例走 query（报告备案）。
-		task: {
+		"task": {
 			async get() {
 				await respond(async () => {
 					await assertSuperAdmin();
@@ -409,7 +410,7 @@ export function createMarketApi(env: MarketEnv) {
 		// 端点只做门禁 + 取参 + SetEnabledInput 组装，四处同写全归 setEnabled（D12，installer.ts 同纪律）；
 		// 领域拒绝（未装/空锁/版本目录缺失）返回 {ok:false, message} 200——操作已执行、被域逻辑拒绝，
 		// 人话在 message，CLI/市场页照 ok 位渲染。
-		enable: {
+		"enable": {
 			async post() {
 				await respond(async () => {
 					await assertSuperAdmin();
@@ -431,7 +432,7 @@ export function createMarketApi(env: MarketEnv) {
 			},
 		},
 		// GET /api/_platform/market/meta —— 登录即可（{apiVersion}，peerPlatform 预检；非 superadmin）
-		meta: {
+		"meta": {
 			async get() {
 				await respond(async () => {
 					const uid = (http as { user?: { id?: unknown } }).user?.id;
@@ -442,11 +443,58 @@ export function createMarketApi(env: MarketEnv) {
 			},
 		},
 		// GET /api/_platform/market/index —— 市场索引聚合（superadmin，R9）
-		index: {
+		"index": {
 			async get() {
 				await respond(async () => {
 					await assertSuperAdmin();
 					return await indexBody(env);
+				});
+			},
+		},
+		// GET /api/_platform/market/uninstall-impact?name= —— 卸载影响面预检（superadmin，R9）。
+		// 返回前端二次确认所需的影响计数（角色数 + 受影响用户数），不改动任何状态。
+		"uninstall-impact": {
+			async get() {
+				await respond(async () => {
+					await assertSuperAdmin();
+					const name = String((http as { query?: Record<string, unknown> }).query?.name ?? "").trim();
+					if (name === "")
+						fail(400, "name is required");
+					return await computeUninstallImpact({
+						name,
+						sharedRoot: env.sharedRoot,
+						lockPath: `${env.sharedRoot}/manifests.yaml`,
+						state: await createStateStore(env.statePath),
+						modulesJsonPath: env.modulesJsonPath,
+					});
+				});
+			},
+		},
+		// POST /api/_platform/market/uninstall —— 卸载编排（superadmin，R9）。
+		// 端点只做门禁 + 取参 + operator 反查（历史留痕），四处同删全归 runUninstall（uninstall.ts 同纪律）；
+		// 领域拒绝（未装/空锁拒启）返回 {ok:false, message} 200——人话在 message，CLI/市场页照 ok 位渲染。
+		"uninstall": {
+			async post() {
+				await respond(async () => {
+					await assertSuperAdmin();
+					const body = isObj(http.body) ? http.body : {};
+					const name = String(body.name ?? "").trim();
+					if (name === "")
+						fail(400, "name is required");
+					const uid = (http as { user?: { id?: unknown } }).user?.id;
+					let operator: string | null = null;
+					if (uid != null) {
+						const u = await db.query("select username from users where id = ?", [uid]) as Array<{ username: string }>;
+						operator = u[0]?.username ?? null;
+					}
+					return await runUninstall({
+						name,
+						sharedRoot: env.sharedRoot,
+						lockPath: `${env.sharedRoot}/manifests.yaml`,
+						state: await createStateStore(env.statePath),
+						modulesJsonPath: env.modulesJsonPath,
+						operator,
+					});
 				});
 			},
 		},

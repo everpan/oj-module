@@ -123,6 +123,13 @@ async function main() {
 			await setEnabledCommand(positionals[0] ?? "", command === "enable", { url, user, pass });
 			break;
 		}
+		case "uninstall": {
+			// 卸载瘦客户端（P1-15a，缺口 B）：站点侧 runUninstall 四处同删 + 权限级联
+			const { positionals, url, user, pass } = parseLifecycleArgs(process.argv.slice(3));
+			const { uninstallCommand } = await import("./uninstall");
+			await uninstallCommand(positionals[0] ?? "", { url, user, pass });
+			break;
+		}
 		default: {
 			if (command && OJ_PASSTHROUGH.has(command)) {
 				const { runOjSubcommand } = await import("./oj-cmd");

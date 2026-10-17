@@ -1,0 +1,31 @@
+// market_history 留痕（P1-15a 缺口 A）：install / enable / disable / uninstall 四类动作共用的
+// 第一方市场应用自身留痕出口（前端 HistoryDrawer 消费面）。表由市场方案包自带迁移创建
+// （oj-market 0002__market_history），站点未装市场方案时表不存在——守卫式 insert 静默跳过，
+// 不阻断主流程（历史是观测面，不是业务正确性依赖；与终态审计附录 B-5 同语义）。
+// 参数化 insert，与 audit.ts 同纪律（值不拼字符串）。
+
+// db 为 oj isolate 注入全局（同模板 service 层惯例，installer.ts 同款；测试由夹具装 globalThis.db）
+declare const db: { exec: (sql: string, params: unknown[]) => Promise<unknown> };
+
+export interface HistoryRow {
+	solution: string
+	version: string
+	action: "install" | "enable" | "disable" | "uninstall"
+	status: string
+	/** 操作人（用户名；编排层可得则传，缺省 null） */
+	operator: string | null
+	message: string
+}
+
+/** 守卫式 insert：表不存在/写失败一律静默（留痕失败不影响主流程） */
+export async function recordHistory(row: HistoryRow): Promise<void> {
+	try {
+		await db.exec(
+			"insert into market_history (solution, version, action, status, operator, message, created_at) values (?, ?, ?, ?, ?, ?, ?)",
+			[row.solution, row.version, row.action, row.status, row.operator, row.message, Math.floor(Date.now() / 1000)],
+		);
+	}
+	catch {
+		// 表不存在（市场方案未装）或写失败：静默跳过，不阻断主流程
+	}
+}

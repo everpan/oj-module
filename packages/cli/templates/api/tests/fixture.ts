@@ -13,6 +13,22 @@ const SRC = join(dirname(fileURLToPath(import.meta.url)), "..", "src");
 
 export const ADMIN = 1;
 
+/**
+ * market_history 同构 DDL：表真源 = 市场方案包自带迁移（oj-market 0002__market_history），
+ * 不属平台迁移（installDb 不回放）——需要断言留痕的用例显式执行；守卫语义（表不存在静默跳过）
+ * 另有专项用例钉住。
+ */
+export const MARKET_HISTORY_DDL = `CREATE TABLE market_history (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	solution TEXT NOT NULL,
+	version TEXT NOT NULL,
+	action TEXT NOT NULL,
+	status TEXT NOT NULL,
+	operator TEXT,
+	message TEXT,
+	created_at INTEGER NOT NULL
+)`;
+
 /** 建内存库 + 注入全局；返回 DatabaseSync 供用例直插数据/断言。 */
 export function installDb(): any {
 	const dbo = new DatabaseSync(":memory:");

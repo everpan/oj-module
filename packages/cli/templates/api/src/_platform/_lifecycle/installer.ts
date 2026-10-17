@@ -24,6 +24,7 @@ import type { ReloadFace } from "./steps/reload";
 import type { InstallContext, InstallStage, StageResult, TaskRecord, TaskStatus } from "./types";
 import { auditOp } from "../_shared/service/audit";
 import { atomicWriteText, fsFace, randomId } from "./atomic";
+import { recordHistory } from "./history";
 import { acquireTaskLock, commitLockEntry, readLock, writeLock } from "./lock";
 import { deployWeb } from "./steps/deploy-web";
 import { download } from "./steps/download";
@@ -430,6 +431,16 @@ export async function runInstall(req: InstallRequest): Promise<TaskRecord> {
 			catch (e) {
 				console.warn(`installer: sidecar 写入失败（元数据滞后，不影响安装主流程）：${String(e)}`);
 			}
+			// market_history 留痕（P1-15a 缺口 A，history.ts 守卫式：表不存在/写失败静默，不阻断终态）。
+			// message 按终态生成人话（task.message 此时是末 stage 文案，对历史消费面不可读）
+			await recordHistory({
+				solution: req.name,
+				version: req.version,
+				action: "install",
+				status: task.status,
+				operator: null,
+				message: task.status === "done" ? `安装完成：${req.name}@${req.version}` : `安装部分生效（status=partial）：${req.name}@${req.version}`,
+			});
 		}
 		if (task.status === "done") {
 			task.stage = "done";
@@ -691,6 +702,8 @@ export async function setEnabled(input: SetEnabledInput): Promise<{ ok: boolean,
 	}
 	const msg = `${enabled ? "启用" : "禁用"}完成：锁${enabled ? "恢复" : "摘除"} + sidecar + sys_solution_route.enabled + modules.json enabled 四处同写（D12/AC-P1-6）`;
 	audit(true, msg);
+	// market_history 留痕（P1-15a 缺口 A，history.ts 守卫式：表不存在/写失败静默，不阻断开关结果）
+	await recordHistory({ solution: name, version, action: enabled ? "enable" : "disable", status: "success", operator: null, message: msg });
 	return { ok: true, message: msg };
 }
 

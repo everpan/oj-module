@@ -40,6 +40,8 @@ export function usageText(): string {
         至终态并打印结果（失败附原因 + 指引，--locale 切双语）
   ojm enable|disable <name> [--url <u>] [--user <u>] [--pass <p>]
         启用/禁用已装方案（D12 四处同写：锁 / sidecar / sys_solution_route / modules.json）
+  ojm uninstall <name> [--url <u>] [--user <u>] [--pass <p>]
+        卸载已装方案（P1-15a：四处同删 + 权限级联清理 + 版本目录移除；站点至少保留一个已锁模块）
         站点寻址：--url/--user/--pass，或环境变量 OJM_URL / OJM_USER / OJM_PASS
         （缺省 http://127.0.0.1:9778；凭据只走内存不落盘）
   ojm test|exec|openapi|migrate|schema [args...]
