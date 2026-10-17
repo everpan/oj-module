@@ -26,6 +26,7 @@
 | D11 | 失败语义三分（v2 新增，R4/R2） | ① **锁写入前失败**（preflight→extracting→migrating）：清场重跑（删 staging、恢复目录），零副作用；② **锁写入后失败**（registering→smoke）：方案已生效或部分生效，报「已生效/部分生效，待修复」+ 禁用/回滚指引，**重试须显式重跑注册**（同版本 no-op 跳过问题不复存在于注册段）；③ **降级/回滚/启用（锁指向切换）前**：必须对目标版本目录复验 manifest sha256（P2 起含验签），失败拒切（R11）。配合 R2：**迁移成功后才落锁**（推翻 lifecycle §3「先落锁后迁移」顺序，P0 回写基线），状态机入口加「锁↔迁移账本对账自愈」（不一致自动回指旧版并隔离新目录）；迁移失败**保持锁指新版**（账本去重保证重试幂等），回滚目录前校验目标版本 max seq ≥ 账本 head，否则禁止回滚转人工 |
 | D12 | 锁格式与状态 sidecar（v2 新增，R5） | 共享根 `manifests.yaml` **严格保持 oj 原生扁平格式**（`name: version` 字符串表——嵌套结构/额外键会解析失败拒启）；`enabled`/时间戳/GC 元数据落安装器自有 sidecar `.solutions/state.yaml`。禁用 = **从锁中摘除条目**（目录保留，oj 按锁逐条装配，摘除即不挂载）+ sidecar 记录 + `sys_solution_route.enabled=false` + `modules.json.enabled=false`；锁改写前备份原锁（`.bak`）恢复用例入验收 |
 | D13 | 状态文件原子性（v2 新增，R19） | `modules.json`/`manifests.yaml`/`state.yaml`/任务文件全部**同目录 tmp+rename 原子替换**（`.lock` 只互斥写者，防不了读者见半截 JSON）；T6 验收加「写入期间并发 fetch 不见半截」用例 |
+| D14 | 开放问题拍板 | Q-A health 不强制（缺省用首个非匿名路由兜底，`manifest.health` 为可选字段）；GC 保留 N=3，按 `.solutions/state.yaml` **安装时间序**（非 semver 序，R25）；菜单类别三值 `main \| admin \| hidden`（D4 已记，此处作为对 lifecycle 基线 §6 四分组（常规/管理/设置/个人中心）的**正式修订项**标注）；`market.view`/`market.verify` 初始 insert-if-absent 绑定 `admin`+`superadmin`，`market.install` 权限码废弃（编排端点 superadmin 独占，R9） |
 
 ---
 
@@ -234,7 +235,7 @@ P1 端到端的契约全覆盖（main/admin/hidden 三类、迁移、RBAC、sett
 |---|---|
 | C1 | 共享根裁决 spike（**首位，R6**）：单 mount 自洽形态（api 前缀重复/空锁拒启/save_lock 互斥实测）+ release 加载语义 + `exec.run` tar/下载范式复验（含 list→validate→extract）+ **长任务形态**（oj tasks 轴 vs 分段执行+状态文件续跑，S1-7）+ **冒烟凭证形态**（S1-5）+ `reload_api` 注入验证（R18）+ 锁↔账本对账与 M003/M004 拒启行为实测（R2） |
 | C2 | `manifest.yaml` 契约定稿（PRD §5.2 为底 + D4 修订 + **changelog 字段（R27）+ name/version 白名单 + settings key 所有权（R24）**） |
-| C3 | 开放问题拍板落档：Q-A health 不强制、GC 保留 N=3（时间序，R25）、菜单类别三值、**market.* 初始绑定（R9：view/verify → admin+superadmin）** |
+| C3 | ✅ **已完成**（D14 落档）：Q-A health 不强制（缺省用首个非匿名路由兜底）、GC 保留 N=3 按 `state.yaml` 安装时间序（R25）、菜单类别三值（基线 §6 四分组的正式修订项）、market.view/verify 初始绑定 admin+superadmin 且 market.install 废弃（R9） |
 | C4 | 上游需求：OJ-8/OJ-6 提交稿 + OJ-9 新增条目（含 D10 豁免面注记）→ 提交 oj-bin |
 | C5 | 下游契约承接清单（devkit 手册「打包与分发」+「第一方特权面不可复制」（R29）+ persona 部署引导章节提纲） |
 | C6 | **基线回写**：lifecycle 文档两处修订（§3 锁顺序→迁移后落锁；§5 禁用语义→锁摘除+sidecar）+ Q-A 拍板结果 |
@@ -336,5 +337,7 @@ Ed25519 fail-closed（`crypto.verifyEd25519` isolate 内可用）+ **TOFU（CLI 
 | R29 | 产品 | 次要 | 「市场即样例」第一方特权消费面未标注，第三方照抄半失效 | **已修订**：样例代码注记 + devkit 手册章节（C5） |
 | R30 | 运维 | 次要 | Windows：entry 路径反斜杠断加载；EPERM 删除语义未定义 | **已修订**：T6 POSIX 序列化 + EPERM 可读报错 |
 | R31 | 用户裁定 | 架构 | 执行器废弃 Node 安装进程，换轨 **oj 原生**：状态机跑在 `_platform` 特权模块（isolate 内），文件系统重活经 `exec.run` 外部 shell 步骤 | **已换轨（v3）**：D3/D6/D10/§2/§5.1/§6.2/§7 相应改写；R3 的 loopback 通路、R18 的 platform.exec 模板、R17 的跨进程锁随之作废或简化；M4→M6 两阶段切换不复存在；新增 S1-7 长任务形态 spike |
+
+> 追记（P0·C3）：R27 的 changelog 已在契约 C2-08 定为**必填**（commit 20ab76d7）。
 
 **未修订的补充说明**：① P1 无签名阶段 CDN 与安装器同信任域（sha256 仅防传输损坏不防投毒）——P2 验签上线前不得用于不受控分发源，已隐含于 D7/P2 顺序；② `apps/playground-oj` 作为 market 工程模板（工程评审补充，非缺陷）已写入 D2。
