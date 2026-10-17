@@ -3,7 +3,7 @@
 > 状态：**定稿（P0/C2 交付物）** · 日期：2026-10-17 · 分支：`feat/lifecycle-p0`
 > 上游：PRD [`202610152345-solution-marketplace-framework-prd.md`](202610152345-solution-marketplace-framework-prd.md) §5.1/§5.2/§5.8/§5.9（原稿基底）· 设计 [`202610171138-solution-lifecycle-implementation-design.md`](202610171138-solution-lifecycle-implementation-design.md) §0 D4/D7/D12、§1 预检白名单、§6.3（决策修订）· spike [`202610171245-lifecycle-p0-spike-findings.md`](202610171245-lifecycle-p0-spike-findings.md)（oj 实测）· oj 上游源码 `oj/src/manifest.rs`（0.1.76 工作区 `../oj-bin`）
 > 执行面：构建期 = `packages/cli/src/manifest-contract.ts`（P1-11，`ojm build --bundle` fail-fast）；安装期 = `templates/api/src/_platform/_lifecycle/steps/preflight.ts`（P1-5，可读中文 reason）。两端正则/规则**逐字一致**，由两枚夹具（`packages/cli/src/lifecycle/__tests__/fixtures/`）双端测试钉一致性（计划 §1「两运行时取舍」）。
-> 规则编号 `C2-01`–`C2-32` 是契约条款的唯一引用 ID：P1-5/P1-11 测试、夹具 EXPECTED-VIOLATIONS、评审意见均按编号引用。
+> 规则编号 `C2-01`–`C2-33` 是契约条款的唯一引用 ID：P1-5/P1-11 测试、夹具 EXPECTED-VIOLATIONS、评审意见均按编号引用。
 
 ---
 

@@ -1,6 +1,6 @@
 # lifecycle 测试夹具（C2 交付物 · 双端唯一共同真源）
 
-契约：[`docs/prd/solution/202610171254-lifecycle-manifest-contract.md`](../../../../../docs/prd/solution/202610171254-lifecycle-manifest-contract.md)（规则编号 C2-01~C2-32）。
+契约：[`docs/prd/solution/202610171254-lifecycle-manifest-contract.md`](../../../../../docs/prd/solution/202610171254-lifecycle-manifest-contract.md)（规则编号 C2-01~C2-33）。
 
 ## 用途
 
