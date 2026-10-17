@@ -143,8 +143,10 @@ scripts/lifecycle-e2e.mjs                # [新建] P1 端到端脚本（本地 
 **Interfaces — Consumes**: `compareVersions`、`StateStore`；**Produces**: `preflight(ctx: InstallContext): Promise<StageResult>`，ctx 含 `{ manifest, name, version, state, db }`
 规则（全部可读中文 reason + retryable=false）：name `^[a-z][a-z0-9-]*$`；version `^[0-9A-Za-z.+-]+$`；保留名（含 `market`）与占用拒装；`sys_solution_route`/`sys_setting` 键命名空间 `moduleOf(key)===name`；anonymous 声明条目前缀 ∈ `<name>/`；`peerRuntime` 对 versions.json
 
-- [ ] 失败测试表驱动：每条规则一拒例 + 一过例（复用 C2 夹具）
-- [ ] 跑红 → 实现 → 跑绿 → commit
+- [x] 失败测试表驱动：每条规则一拒例 + 一过例（复用 C2 夹具）
+- [x] 跑红 → 实现 → 跑绿 → commit
+
+> **P1-5 完成（2026-10-17）**：`_lifecycle/steps/preflight.ts` + 51 组用例（21 规则表行 + C2-09 算子语义 7 组 + C2 夹具 2 组）；fixture-valid 零违规、fixture-invalid 七码齐报（C2-01/02/16/17/22/23/26 同现一条 message = 收集全部违规纪律的测试证据）；ctx 较简报增补可选 `hostVersions`（C2-09 比对真源注入位，P1-10 收敛 types.ts 时一并迁移）。详见 `task-P1-5-report.md`。
 
 ### Task P1-6：下载/校验/解压步骤（S1-2，LSP）
 
