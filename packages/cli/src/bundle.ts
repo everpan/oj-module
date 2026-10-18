@@ -98,8 +98,9 @@ export async function buildBundle(projectRoot: string, opts: { out?: string } = 
 			}
 		}
 
-		// 红线自检：modules.json 禁入包任何位置（C2-31；完整性自查发生在确定性打包前的 staging 上）
-		assertNoModulesJson(root);
+		// 红线自检：modules.json 禁入包任何位置（C2-31）+ 私钥/凭证禁入（P2-4 入包红线；
+		// 完整性自查发生在确定性打包前的 staging 上）
+		assertNoForbiddenMembers(root);
 
 		// 4) 确定性打包（C2-32；symlink 等成员守卫在打包原语内，C2-30）
 		const outDir = path.resolve(projectRoot, opts.out ?? "dist");
@@ -172,8 +173,11 @@ function checkLocales(m: Record<string, unknown>, projectRoot: string, name: str
 	return [...out, ...checkLocalesComplete(m, texts["zh-CN"] ?? "", texts["en-US"] ?? "")];
 }
 
-/** staging 全树扫描：modules.json 禁入（C2-31 红线） */
-function assertNoModulesJson(root: string): void {
+/** 私钥/凭证文件名红线（P2-4 入包自检）：*.pem / *.key / .env / id_ed25519|id_rsa */
+const FORBIDDEN_MEMBER = /\.(?:pem|key)$|^\.env$|^id_(?:ed25519|rsa)$/;
+
+/** staging 全树扫描：modules.json 禁入（C2-31 红线）+ 私钥/凭证禁入（P2-4 红线） */
+function assertNoForbiddenMembers(root: string): void {
 	const visit = (dir: string) => {
 		for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
 			const p = path.join(dir, e.name);
@@ -183,6 +187,9 @@ function assertNoModulesJson(root: string): void {
 			}
 			if (e.isFile() && e.name === "modules.json") {
 				throw new Error(`[ojm] 打包自检失败（C2-31）：modules.json 禁入方案包（该清单由安装器在目标站点 upsert，防覆盖宿主清单）——位置：${p}`);
+			}
+			if (e.isFile() && FORBIDDEN_MEMBER.test(e.name)) {
+				throw new Error(`[ojm] 打包自检失败（P2-4 入包红线）：私钥/凭证文件「${e.name}」禁入方案包（*.pem / *.key / .env / id_ed25519 / id_rsa）——签名私钥永不入包，签名经 detached .sig 侧车随包分发（包内只含产物与公钥）。位置：${p}`);
 			}
 		}
 	};

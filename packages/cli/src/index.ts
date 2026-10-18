@@ -108,6 +108,22 @@ async function main() {
 		case "merge":
 			await mergeManifests(process.argv[3] ?? "", process.argv.slice(4));
 			break;
+		case "keygen": {
+			// 签名密钥对生成（P2-4，作者工具链）：缺省 ~/.ojm/keys/<id>，工程树内落盘需 --yes
+			const { parseKeygenArgs } = await import("./keygen");
+			const { keygenCommand } = await import("./keygen");
+			const { id, out, yes } = parseKeygenArgs(process.argv.slice(3));
+			keygenCommand({ id, out, yes });
+			break;
+		}
+		case "sign": {
+			// detached 侧车签名（P2-4，G4 载体）：ojm sign <tgz> [--id <publisher.id>] [--key <pem>] [--check]
+			const { parseSignArgs } = await import("./sign");
+			const { signCommand } = await import("./sign");
+			const { positionals, id, key, check } = parseSignArgs(process.argv.slice(3));
+			signCommand(positionals[0] ?? "", { id, key, check });
+			break;
+		}
 		case "install": {
 			// 方案包安装瘦客户端（P1-13，D6）：file 上传 / CDN 市场源 → 轮询任务至终态
 			const { positionals, url, user, pass, locale, name, version } = parseLifecycleArgs(process.argv.slice(3));

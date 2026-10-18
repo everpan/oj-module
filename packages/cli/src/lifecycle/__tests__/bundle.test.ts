@@ -79,6 +79,14 @@ describe("buildBundle · 正路径", () => {
 		writeFileSync(join(project, "web/dist/modules/demo-solution/0.1.0/modules.json"), "[]");
 		await expect(pack()).rejects.toThrow(/modules\.json/);
 	});
+
+	it("私钥/凭证混入包树 → 打包自检拒绝（P2-4 入包红线：*.pem/*.key/.env/id_ed25519/id_rsa）", async () => {
+		writeFileSync(join(project, "api/dist/demo-solution-0.1.0/signing.pem"), "-----BEGIN PRIVATE KEY-----\n");
+		await expect(pack()).rejects.toThrow(/私钥\/凭证/);
+		rmSync(join(project, "api/dist/demo-solution-0.1.0/signing.pem"));
+		writeFileSync(join(project, "web/dist/modules/demo-solution/0.1.0/.env"), "SECRET=1\n");
+		await expect(pack()).rejects.toThrow(/私钥\/凭证/);
+	});
 });
 
 describe("buildBundle · 校验先于打包（fail-fast）", () => {
