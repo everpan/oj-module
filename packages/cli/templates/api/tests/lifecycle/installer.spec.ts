@@ -21,14 +21,27 @@ import * as fsp from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { defaultTestKey, nodeVerifyEd25519, signedArchiveFor } from "../../../../src/lifecycle/__tests__/helpers";
 import { atomicWriteText } from "../../src/_platform/_lifecycle/atomic";
 import { reconcile, runInstall, setEnabled, STAGES } from "../../src/_platform/_lifecycle/installer";
 import { acquireTaskLock, commitLockEntry, parseLock, readLock, serializeLock, writeLock } from "../../src/_platform/_lifecycle/lock";
 import { createStateStore } from "../../src/_platform/_lifecycle/state";
 import { getTask, readTasks, redact, sweepTimedOut, writeTask } from "../../src/_platform/_lifecycle/tasks";
+import { createTrustStore } from "../../src/_platform/_lifecycle/trust";
 import { installDb, MARKET_HISTORY_DDL } from "../fixture";
 
 const g = globalThis as any;
+
+/** 共享测试 key（P2-3：夹具签名与信任库播种同一把；无私钥入仓） */
+const TEST_KEY = defaultTestKey();
+const TRUST_KEY_ID = "test.publisher";
+
+function hexToBytes(hex: string): Uint8Array {
+	const out = new Uint8Array(hex.length / 2);
+	for (let i = 0; i < out.length; i++)
+		out[i] = Number.parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+	return out;
+}
 
 const ARCHIVE = new TextEncoder().encode("demo-archive-bytes\n");
 const SHA256 = createHash("sha256").update(ARCHIVE).digest("hex");
@@ -49,6 +62,7 @@ let modulesJsonPath: string;
 let dbPath: string;
 let lockPath: string;
 let state: StateStore;
+let trustPath: string;
 let dbo: any;
 
 function nodeFsFace(): FsFace {
@@ -69,7 +83,7 @@ function manifestFixture(version = "0.1.0"): any {
 		version,
 		summary: "演示方案",
 		peerRuntime: ">=0.1.0",
-		archive: { file: `demo-solution-${version}.tgz`, sha256: SHA256, size: ARCHIVE.byteLength },
+		archive: { file: `demo-solution-${version}.tgz`, sha256: SHA256, size: ARCHIVE.byteLength, signature: signedArchiveFor(ARCHIVE, "demo-solution", version, { keyPair: TEST_KEY }).sig },
 		api: { prefix: "/api/demo-solution", anonymous: ["demo-solution/ping"] },
 		web: { entry: `modules/demo-solution/${version}/entry.js`, css: [`modules/demo-solution/${version}/main.css`] },
 		routes: [
@@ -144,6 +158,8 @@ function makeReq(overrides: Partial<InstallRequest> = {}): InstallRequest {
 		exec: bundleExec(),
 		reload: { reloadConfig: async () => ({ generation: 1, unchanged: false, applied: ["vars"], restart_pending: [], kept_listener: [] }) },
 		sha256Hex: d => createHash("sha256").update(d).digest("hex"),
+		verifyEd25519: nodeVerifyEd25519,
+		trustPath,
 		sha384B64: sha384b64,
 		hostVersions: { "@oj-module/runtime": "0.1.77" },
 		ledgerHead: null,
@@ -172,6 +188,9 @@ beforeEach(async () => {
 	g.http = {};
 	dbo = installDb();
 	state = await createStateStore(join(sharedRoot, ".solutions", "state.yaml"));
+	trustPath = join(sharedRoot, ".solutions", "trusted-keys.yaml");
+	// 播种信任库（走真实 store；key_id 与夹具签名同一把 TEST_KEY）
+	await createTrustStore(trustPath, { audit: () => {}, fingerprintOf: pk => createHash("sha256").update(hexToBytes(pk)).digest("hex") }).add(TRUST_KEY_ID, TEST_KEY.publicKeyHex);
 });
 
 afterEach(async () => {
@@ -290,6 +309,54 @@ describe("失败语义①锁前清场（D11：零改锁零改库表，可重跑�
 		expect(state.read().solutions).toEqual({});
 		// 任务文件已落（可观测）
 		expect((await getTask(taskDir, t.id))?.status).toBe("failed");
+	});
+});
+
+describe("第五终态 needs_trust（P2-3，G3 TOFU：未知 key_id 待确认，staging 不清场）", () => {
+	it("未知 key 装 → needs_trust + trust 三元组 + unknown_key 指引；锁/库表/sidecar/审计零改动，staging 留存", async () => {
+		const { generateKeyPair } = await import("../../../../src/lifecycle/keygen");
+		const { signedArchiveFor: signFor } = await import("../../../../src/lifecycle/__tests__/helpers");
+		const stranger = signFor(ARCHIVE, "demo-solution", "0.1.0", { keyPair: generateKeyPair(), keyId: "stranger.pub" });
+		const m = manifestFixture("0.1.0");
+		m.archive = { ...m.archive, signature: stranger.sig };
+		const t = await runInstall(makeReq({ manifest: m }));
+		expect(t.status).toBe("needs_trust");
+		expect(t.stage).toBe("verifying");
+		expect(t.error?.hintKey).toBe("lifecycle.stage.verifying.unknown_key");
+		expect(t.error?.retryable).toBe(false);
+		expect(t.trust).toMatchObject({ key_id: "stranger.pub", public_key: stranger.publicKeyHex });
+		expect(t.trust?.fingerprint).toMatch(/^[0-9a-f]{64}$/);
+		// 停在哪算哪：stages 止于 verifying
+		expect(t.stages.map(s => s.stage)).toEqual(["preflight", "downloading", "verifying"]);
+		// staging 不清场（file 源须重传、CDN 源重试自动重下——包体与 .sig 仍在场）
+		await expect(fsp.access(join(staging, "demo-solution-0.1.0.tgz"))).resolves.toBeUndefined();
+		// 锁/版本目录/清单/sidecar/库表/审计零改动（失败语义①同口径）
+		await expect(fsp.access(lockPath)).rejects.toThrow();
+		await expect(fsp.access(join(sharedRoot, "demo-solution-0.1.0"))).rejects.toThrow();
+		await expect(fsp.access(modulesJsonPath)).rejects.toThrow();
+		expect(rows("SELECT path FROM sys_solution_route")).toHaveLength(0);
+		expect(rows("SELECT * FROM sys_oplog")).toHaveLength(0);
+		expect(state.read().solutions).toEqual({});
+		// 任务文件落盘可观测（800ms 轮询消费面看得见待确认态）
+		const saved = await getTask(taskDir, t.id);
+		expect(saved?.status).toBe("needs_trust");
+		expect(saved?.trust?.key_id).toBe("stranger.pub");
+	});
+
+	it("TOFU 全链：确认入信任库（端点同路径 store.add）后原样重试 → done", async () => {
+		const { generateKeyPair } = await import("../../../../src/lifecycle/keygen");
+		const { signedArchiveFor: signFor } = await import("../../../../src/lifecycle/__tests__/helpers");
+		const stranger = signFor(ARCHIVE, "demo-solution", "0.1.0", { keyPair: generateKeyPair(), keyId: "stranger.pub" });
+		const m = manifestFixture("0.1.0");
+		m.archive = { ...m.archive, signature: stranger.sig };
+		const first = await runInstall(makeReq({ manifest: m }));
+		expect(first.status).toBe("needs_trust");
+		// 确认：POST /market/trust {task_id} 的服务端同路径（store.add；operator 反查留端点侧）
+		await createTrustStore(trustPath, { audit: () => {}, fingerprintOf: pk => createHash("sha256").update(hexToBytes(pk)).digest("hex") }).add("stranger.pub", stranger.publicKeyHex);
+		const second = await runInstall(makeReq({ manifest: m }));
+		expect(second.status).toBe("done");
+		expect(second.stages.map(s => s.stage)).toContain("verifying");
+		expect(parseLock(await fsp.readFile(lockPath, "utf8"))).toEqual({ "demo-solution": "0.1.0" });
 	});
 });
 

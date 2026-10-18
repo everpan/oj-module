@@ -74,6 +74,10 @@ export interface InstallRequest extends InstallContext {
 	sha384B64: (data: Uint8Array) => string
 	/** sha256 摘要面（verifying 段；缺省回落运行时全局，同 verify.ts） */
 	sha256Hex?: (data: Uint8Array) => string
+	/** 宿主信任库路径（P2-3 验签；.solutions/trusted-keys.yaml，端点注入 env.trustPath） */
+	trustPath?: string
+	/** Ed25519 验签面（P2-3；缺省回落运行时全局 crypto.verifyEd25519，同 verify.ts） */
+	verifyEd25519?: (publicKey: string, msg: string, sigBase64: string) => boolean
 	/** 迁移账本 head（rollbackGuard 真源；缺省跳过禁降版判定，同 migrate.ts） */
 	ledgerHead?: number | bigint | null
 	/** 注册快照查询（smoke；缺省回落 queryRegistered 的 db 全局） */
@@ -396,7 +400,18 @@ export async function runInstall(req: InstallRequest): Promise<TaskRecord> {
 			if (!r.ok) {
 				task.stage = def.name;
 				task.message = r.message;
-				task.error = { reason: r.message, retryable: r.retryable ?? true, hintKey: `lifecycle.stage.${def.name}.hint` };
+				// 失败文案 key（契约附录 A/A.2）：带 code（六码）走 code 级 key，否则 stage 级 .hint
+				task.error = { reason: r.message, retryable: r.retryable ?? true, hintKey: r.code !== undefined ? `lifecycle.stage.${def.name}.${r.code}` : `lifecycle.stage.${def.name}.hint` };
+				if (r.needsTrust === true && r.trust !== undefined) {
+					// 第五终态 needs_trust（P2-3，G3）：未知 key_id 待 TOFU 确认——预锁段停止，
+					// **staging 不清场**（file 源须重传、CDN 源重试自动重下，包体与 .sig 仍在场），
+					// 锁/库表/清单/sidecar/审计零改动（失败语义①同口径：什么都没装成就什么都不留）；
+					// 确认入信任库后原样重试即从 verifying 继续。
+					task.status = "needs_trust";
+					task.trust = r.trust;
+					req.outcome = { ...req.outcome, status: "needs_trust", failedStage: def.name };
+					break;
+				}
 				if (PRE_LOCK_STAGES.has(def.name)) {
 					// 失败语义①：锁前清场重跑——staging 删除；锁/库表/清单/sidecar/审计零改动
 					task.status = "failed";

@@ -68,6 +68,8 @@ export interface MarketEnv {
 	sha384B64?: (data: Uint8Array) => string
 	/** sha256 摘要面（verifying 段；缺省回落运行时全局，同 verify.ts） */
 	sha256Hex?: (data: Uint8Array) => string
+	/** Ed25519 验签面（P2-3；缺省回落运行时全局 crypto.verifyEd25519，同 verify.ts；测试注入） */
+	verifyEd25519?: (publicKey: string, msg: string, sigBase64: string) => boolean
 	/** 迁移账本 head（缺省 null = 跳过禁降版判定，同 installer） */
 	ledgerHead?: number | bigint | null
 	/** 迁移账本 head 真源（P1-16 接线①：缺省读 oj journal 表 `_oj_migrations` max(version)，查询失败 → null 不猜） */
@@ -314,6 +316,30 @@ async function uploadBytes(): Promise<Uint8Array | null> {
 }
 
 /**
+ * detached 侧车 `.sig` 上传字节（P2-3，契约 §2.11；file 源签名载体——Form A 禁带 signature 的
+ * 自引用悖论 B-2 由侧车消解，与 Form B 同源同语义）。files[1] 缺省 = 未随包上传签名 →
+ * verify 段 sig_missing（G4 硬 fail-closed，无逃生门）。JSON 形态校验留 verify 段六码分流，
+ * 此处只保「是 JSON 对象」——非 JSON 即上传错误（人话 400，不进安装器）。
+ */
+async function uploadSig(): Promise<Record<string, unknown> | null> {
+	const h = http as { files?: Array<{ key?: string }>, file?: (i: number) => Promise<Uint8Array> };
+	if (!Array.isArray(h.files) || h.files.length < 2)
+		return null;
+	const meta = h.files[1]!;
+	const bytes = meta.key ? await blob.get(meta.key) : await h.file!(1);
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(new TextDecoder().decode(bytes));
+	}
+	catch (e) {
+		return fail(400, `签名侧车文件不是合法 JSON（${String(e)}）——.sig 应为 {alg,key_id,public_key,value,canon} 对象`);
+	}
+	if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed))
+		fail(400, "签名侧车文件必须是 JSON 对象（{alg,key_id,public_key,value,canon}）");
+	return parsed as Record<string, unknown>;
+}
+
+/**
  * file 源 manifest 提取：上传包先过 R1 三步范式（tar -tvzf 列表 → validateTarListing →
  * tar -xzf -C staging）再读 manifest.yaml——未校验不解包，zip-slip 拒在信任边界外。
  * 预解包产物与安装器 extracting 段同目录幂等（staging 就位即止，rename 归 lock_commit）。
@@ -380,6 +406,12 @@ async function installBody(env: MarketEnv): Promise<{ task_id: string }> {
 		// verify 段对 archive.sha256 fail-closed。file 源字节在手——上传时点即算摘要补成可校验清单
 		// （verify 复核同批字节，R10 语义保持）；CDN 源不受影响（Form B 真源自带摘要）。
 		m.archive = { file: "upload.tgz", sha256: sha256Of(env)(bytes), size: bytes.byteLength };
+		// detached 侧车签名注入（P2-3，G4 补裁）：同目录 .sig 随 multipart 第二文件上传——
+		// 与 Form B archive.signature 同结构注入，verify 段统一验签（六码分流）
+		const sig = await uploadSig();
+		if (sig !== null) {
+			m.archive = { ...(m.archive as Record<string, unknown>), signature: sig };
+		}
 		version = reqVersion ?? mVersion;
 		archiveUrl = `${env.staging}/upload.tgz`;
 		fetch = async () => ({ ok: true, status: 200, arrayBuffer: async () => bytes.slice().buffer as ArrayBuffer });
@@ -414,8 +446,10 @@ async function installBody(env: MarketEnv): Promise<{ task_id: string }> {
 		reload: reloadOf(env),
 		sha384B64: sha384Of(env),
 		sha256Hex: env.sha256Hex,
+		verifyEd25519: env.verifyEd25519,
 		ledgerHead: env.ledgerHeadOf ? await env.ledgerHeadOf(name) : (env.ledgerHead ?? null),
 		hostVersions: await hostVersionsOf(env),
+		trustPath: env.trustPath,
 	});
 	return { task_id: task.id };
 }
@@ -538,6 +572,8 @@ export function createMarketApi(env: MarketEnv) {
 		},
 		// 信任库运维面（P2-2，C2-38/39，G3 双轨第一轨 / G5；全 superadmin，R9）：
 		// GET    /market/trust          列表（含 .bak 回落 note——损坏时运维可见）
+		// POST   /market/trust          TOFU 确认 {task_id}（P2-3）：自任务记录重取公钥复算指纹
+		//                              逐字比对后入信任库——防「人确认 A、库里落 B」混淆代理
 		// POST   /market/trust/key      新增信任（首次绑定不可改：撞绑定 409，C2-38）
 		// DELETE /market/trust/key?key_id=  吊销（G5：只阻断新装/升级，不动已装方案）
 		// 端点只做门禁 + 取参 + operator 反查；读写/原子写/首次绑定/吊销语义全归 trust.ts（ISP，同 enable/uninstall 纪律）。
@@ -548,6 +584,29 @@ export function createMarketApi(env: MarketEnv) {
 					await assertSuperAdmin();
 					const store = createTrustStore(env.trustPath);
 					return { keys: await store.list(), note: store.corruptNote?.() ?? null };
+				});
+			},
+			async post() {
+				await respond(async () => {
+					await assertSuperAdmin();
+					const body = isObj(http.body) ? http.body : {};
+					const taskId = String(body.task_id ?? "").trim();
+					if (taskId === "")
+						fail(400, "task_id is required");
+					const rec = await getTask(env.taskDir, taskId);
+					if (rec === null)
+						fail(404, `任务不存在或已过期（任务文件保留最近 10 条）：${taskId}`);
+					if (rec.status !== "needs_trust" || rec.trust === undefined)
+						fail(409, `任务 ${taskId} 不在待信任确认状态（status=${rec.status}）——无需确认`);
+					// 混淆代理防线：公钥自任务记录重取，指纹复算逐字比对（记录疑被篡改即拒，信任库零变化）
+					const raw = new Uint8Array(32);
+					for (let i = 0; i < 32; i++)
+						raw[i] = Number.parseInt(rec.trust.public_key.slice(i * 2, i * 2 + 2), 16);
+					const fp = sha256Of(env)(raw);
+					if (fp !== rec.trust.fingerprint)
+						fail(409, "任务记录内指纹与公钥不一致——记录疑被篡改，拒绝确认（信任库零变化）");
+					const result = await createTrustStore(env.trustPath).add(rec.trust.key_id, rec.trust.public_key, { operator: await operatorOf() });
+					return { result, key_id: rec.trust.key_id, fingerprint: rec.trust.fingerprint };
 				});
 			},
 			key: {

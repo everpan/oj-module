@@ -85,16 +85,18 @@ export interface LifecycleArgs {
 	locale?: string
 	name?: string
 	version?: string
+	task?: string
 }
 
 /**
  * `ojm install|enable|disable` 共用解析：位置参数（目标/方案名）+ 值式 flag。
  * 站点寻址三件套 --url/--user/--pass（环境变量 OJM_URL/OJM_USER/OJM_PASS 兜底，见 src/site.ts）；
- * install 专属 --name/--version（文件名身份覆盖）与 --locale（终态文案语言）。
+ * install 专属 --name/--version（文件名身份覆盖）与 --locale（终态文案语言）；
+ * trust 专属 --task（TOFU 确认目标任务 id，P2-3）。
  * 值式 flag 逐项消费紧随的值，不被当位置参数（P6 同款坑，parseApiArgs 同纪律）。
  */
 export function parseLifecycleArgs(argv: string[]): LifecycleArgs {
-	const valueFlags = new Set(["--url", "--user", "--pass", "--locale", "--name", "--version"]);
+	const valueFlags = new Set(["--url", "--user", "--pass", "--locale", "--name", "--version", "--task"]);
 	const values: Record<string, string> = {};
 	const positionals: string[] = [];
 	for (let i = 0; i < argv.length; i++) {
@@ -115,5 +117,6 @@ export function parseLifecycleArgs(argv: string[]): LifecycleArgs {
 		locale: values["--locale"],
 		name: values["--name"],
 		version: values["--version"],
+		task: values["--task"],
 	};
 }

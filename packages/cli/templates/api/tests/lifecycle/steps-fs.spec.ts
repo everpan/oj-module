@@ -18,9 +18,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { defaultTestKey, nodeVerifyEd25519, signedArchiveFor } from "../../../../src/lifecycle/__tests__/helpers";
 import { archiveFileOf, download } from "../../src/_platform/_lifecycle/steps/download";
 import { buildExtractCmd, buildListCmd, checkModuleManifest, extract } from "../../src/_platform/_lifecycle/steps/extract";
 import { verify } from "../../src/_platform/_lifecycle/steps/verify";
+import { createTrustStore } from "../../src/_platform/_lifecycle/trust";
 
 const execFileP = promisify(execFileCb);
 const g = globalThis as any;
@@ -28,6 +30,12 @@ const g = globalThis as any;
 const FILE = "demo-solution-0.1.0.tgz";
 const BYTES = new TextEncoder().encode("demo-archive-bytes\n");
 const shaOf = (d: Uint8Array) => createHash("sha256").update(d).digest("hex");
+
+/** 共享测试 key（进程内稳定；信任库播种 + 夹具签名同一把——无私钥入仓，P2-0 口径） */
+const TEST_KEY = defaultTestKey();
+/** 未知发布方 key（TOFU 场景；不同 key_id） */
+const STRANGER = signedArchiveFor(BYTES, "demo-solution", "0.1.0", { keyPair: TEST_KEY, keyId: "stranger.pub" });
+const STRANGER_KEY = { key_id: "stranger.pub", public_key: STRANGER.publicKeyHex };
 
 function nodeFsFace(): FsFace {
 	return {
@@ -45,18 +53,30 @@ function stateStore(): StateStore {
 	return { read: () => ({ solutions: {} }), write: async () => {} };
 }
 
-function manifest(archive: Record<string, unknown> = { file: FILE, sha256: shaOf(BYTES), size: BYTES.byteLength }): any {
+function manifest(archive: Record<string, unknown> = { file: FILE, sha256: shaOf(BYTES), size: BYTES.byteLength, signature: signedArchiveFor(BYTES, "demo-solution", "0.1.0").sig }): any {
 	return { name: "demo-solution", version: "0.1.0", archive };
 }
 
 let root: string;
 let staging: string;
+let trustPath: string;
 
 beforeEach(async () => {
 	root = await fsp.mkdtemp(join(tmpdir(), "ojm-steps-fs-"));
 	staging = join(root, "modules", ".staging");
+	trustPath = join(root, "modules", ".solutions", "trusted-keys.yaml");
 	g.fs = nodeFsFace();
+	// 播种信任库（走真实 store：序列化格式零重复）。key_id 与 signedArchiveFor 缺省 keyId 一致
+	await createTrustStore(trustPath, { audit: () => {}, fingerprintOf: pk => shaOf(hexToBytes(pk)) }).add("test.publisher", TEST_KEY.publicKeyHex);
 });
+
+/** hex → bytes（指纹面注入用） */
+function hexToBytes(hex: string): Uint8Array {
+	const out = new Uint8Array(hex.length / 2);
+	for (let i = 0; i < out.length; i++)
+		out[i] = Number.parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+	return out;
+}
 
 afterEach(async () => {
 	g.fs = undefined;
@@ -111,6 +131,8 @@ function vfCtx(overrides: Partial<VerifyContext> = {}): VerifyContext {
 		state: stateStore(),
 		staging,
 		sha256Hex: shaOf,
+		trustPath,
+		verifyEd25519: nodeVerifyEd25519,
 		...overrides,
 	};
 }
@@ -216,22 +238,23 @@ describe("download（stage=downloading，S1-2.3 fetch→fs.writeFile）", () => 
 	});
 });
 
-describe("verify（stage=verifying，C2-29 sha256 fail-closed）", () => {
+describe("verify（stage=verifying，C2-29 sha256 fail-closed + P2-3 六码验签）", () => {
 	async function seed(): Promise<void> {
 		await fsp.mkdir(staging, { recursive: true });
 		await fsp.writeFile(join(staging, FILE), BYTES);
 	}
 
-	it("成功：sha256 与索引一致 → ok=true", async () => {
+	it("成功：sha256 与索引一致 + 已信任 key 验签通过 → ok=true", async () => {
 		await seed();
 		const r = await verify(vfCtx());
 		expect(r.stage).toBe("verifying");
 		expect(r.ok).toBe(true);
+		expect(r.message).toContain("验签通过");
 	});
 
 	it("摘要不符：ok=false retryable=true，message 引 C2-29 且含实得摘要", async () => {
 		await seed();
-		const r = await verify(vfCtx({ manifest: manifest({ file: FILE, sha256: "0".repeat(64), size: 1 }) }));
+		const r = await verify(vfCtx({ manifest: manifest({ file: FILE, sha256: "0".repeat(64), size: 1, signature: signedArchiveFor(BYTES, "demo-solution", "0.1.0").sig }) }));
 		expect(r.ok).toBe(false);
 		expect(r.retryable).toBe(true);
 		expect(r.message).toContain("C2-29");
@@ -262,6 +285,94 @@ describe("verify（stage=verifying，C2-29 sha256 fail-closed）", () => {
 		expect(r.ok).toBe(false);
 		expect(r.retryable).toBe(false);
 		expect(r.message).toContain("fail-closed");
+	});
+
+	// ── P2-3 六码（契约附录 A.2；retryable 恒 false、零解压零落盘）────────────────────
+
+	it("六码数据表：sig_missing/sig_alg/sig_key/tampered/sig_format 逐码一例", async () => {
+		await seed();
+		const good = signedArchiveFor(BYTES, "demo-solution", "0.1.0").sig;
+
+		// sig_missing：无 signature
+		const noSig = await verify(vfCtx({ manifest: manifest({ file: FILE, sha256: shaOf(BYTES), size: BYTES.byteLength }) }));
+		expect(noSig).toMatchObject({ ok: false, code: "sig_missing", retryable: false });
+
+		// sig_alg：小写 ed25519 / 未知枚举
+		const badAlg = await verify(vfCtx({ manifest: manifest({ ...manifest().archive, signature: { ...good, alg: "ed25519" } }) }));
+		expect(badAlg).toMatchObject({ ok: false, code: "sig_alg", retryable: false });
+
+		// sig_key：key_id 命名空间违规（裸通用名）
+		const badNs = await verify(vfCtx({ manifest: manifest({ ...manifest().archive, signature: { ...good, key_id: "default" } }) }));
+		expect(badNs).toMatchObject({ ok: false, code: "sig_key", retryable: false });
+
+		// sig_format：public_key 非 64hex / value 含 -（base64url 特征字符）/ canon 非 v1
+		const badKey = await verify(vfCtx({ manifest: manifest({ ...manifest().archive, signature: { ...good, public_key: "abc" } }) }));
+		expect(badKey).toMatchObject({ ok: false, code: "sig_format" });
+		const b64url = await verify(vfCtx({ manifest: manifest({ ...manifest().archive, signature: { ...good, value: `${good.value.slice(0, 10)}-${good.value.slice(11)}` } }) }));
+		expect(b64url).toMatchObject({ ok: false, code: "sig_format" });
+		const badCanon = await verify(vfCtx({ manifest: manifest({ ...manifest().archive, signature: { ...good, canon: "v2" } }) }));
+		expect(badCanon).toMatchObject({ ok: false, code: "sig_format" });
+
+		// tampered：value 首字符翻转（仍是合法标准 base64）
+		const tamperedValue = (good.value[0] === "A" ? "B" : "A") + good.value.slice(1);
+		const tampered = await verify(vfCtx({ manifest: manifest({ ...manifest().archive, signature: { ...good, value: tamperedValue } }) }));
+		expect(tampered).toMatchObject({ ok: false, code: "tampered", retryable: false });
+	});
+
+	it("sig_key：已信任 key_id 但包内公钥与库绑定不一致（首次绑定不可改族）", async () => {
+		await seed();
+		// 另一把私钥冒用已信任 key_id（trusted key_id + 异公钥 = 绑定不一致）
+		const { signedArchiveFor: signFor } = await import("../../../../src/lifecycle/__tests__/helpers");
+		const { generateKeyPair } = await import("../../../../src/lifecycle/keygen");
+		const impostor = signFor(BYTES, "demo-solution", "0.1.0", { keyPair: generateKeyPair(), keyId: "test.publisher" });
+		const r = await verify(vfCtx({ manifest: manifest({ ...manifest().archive, signature: impostor.sig }) }));
+		expect(r).toMatchObject({ ok: false, code: "sig_key" });
+		expect(r.message).toContain("首次绑定不可改");
+	});
+
+	it("unknown_key → needsTrust：staging 不清场语义由编排层保证，此处返回待确认 key 信息", async () => {
+		await seed();
+		const r = await verify(vfCtx({ manifest: manifest({ ...manifest().archive, signature: STRANGER.sig }) }));
+		expect(r).toMatchObject({ ok: false, code: "unknown_key", needsTrust: true, retryable: false });
+		expect(r.trust).toMatchObject({ key_id: "stranger.pub", public_key: STRANGER.publicKeyHex });
+		expect(r.trust?.fingerprint).toMatch(/^[0-9a-f]{64}$/);
+		// 零解压：staging 仍只有原始 tgz（本步不触 extract）
+		expect(await fsp.readdir(staging)).toEqual([FILE]);
+	});
+
+	it("双层语义分码：验签面抛错 → sig_format（上游 verifyEd25519: 前缀）；返回 false → tampered", async () => {
+		await seed();
+		const throwing = await verify(vfCtx({
+			verifyEd25519: () => { throw new Error("verifyEd25519: signature not base64"); },
+		}));
+		expect(throwing).toMatchObject({ ok: false, code: "sig_format" });
+		expect(throwing.message).toContain("verifyEd25519: ");
+		const falseFace = await verify(vfCtx({ verifyEd25519: () => false }));
+		expect(falseFace).toMatchObject({ ok: false, code: "tampered" });
+	});
+
+	it("原语/信任库不可得：验签面缺失或 trustPath 缺失 → fail-closed 拒装（无静默跳过）", async () => {
+		await seed();
+		const { verifyEd25519: _drop, ...withoutFace } = vfCtx();
+		expect((g.crypto ?? {}).verifyEd25519).toBeUndefined();
+		const r1 = await verify(withoutFace as VerifyContext);
+		expect(r1).toMatchObject({ ok: false, code: "sig_format" });
+		expect(r1.message).toContain("fail-closed");
+		const { trustPath: _drop2, ...withoutTrust } = vfCtx();
+		const r2 = await verify(withoutTrust as VerifyContext);
+		expect(r2).toMatchObject({ ok: false, code: "sig_missing" });
+		expect(r2.message).toContain("信任库");
+	});
+
+	it("tOFU 全链（store 层）：未知 key 确认入信任库后同包重试即过", async () => {
+		await seed();
+		const manifestUnknown = manifest({ ...manifest().archive, signature: STRANGER.sig });
+		expect((await verify(vfCtx({ manifest: manifestUnknown }))).needsTrust).toBe(true);
+		// 确认（端点同路径：store.add）
+		await createTrustStore(trustPath, { audit: () => {} }).add(STRANGER_KEY.key_id, STRANGER_KEY.public_key);
+		const r2 = await verify(vfCtx({ manifest: manifestUnknown }));
+		expect(r2.ok).toBe(true);
+		expect(r2.message).toContain("stranger.pub");
 	});
 });
 

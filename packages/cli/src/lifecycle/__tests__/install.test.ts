@@ -205,6 +205,28 @@ describe("renderOutcome · 终态渲染（reason + retryable + hintKey 双语文
 		expect(text).toContain("boom");
 		expect(text).toContain("本次失败可重试");
 	});
+
+	it("needs_trust（P2-3 第五终态）：待信任确认渲染——非成功态、非失败崩溃，含指纹分组与确认命令", () => {
+		const text = renderOutcome(rec({
+			status: "needs_trust",
+			stage: "verifying",
+			message: "待信任确认",
+			trust: { key_id: "stranger.pub", public_key: "b".repeat(64), fingerprint: "0123456789abcdef".repeat(4) },
+			error: { reason: "unknown_key", retryable: false, hintKey: "lifecycle.stage.verifying.unknown_key" },
+		}), "zh-CN");
+		expect(text).toContain("待信任确认");
+		expect(text).toContain("stranger.pub");
+		expect(text).toContain("ojm trust confirm --task install-1-abc");
+		expect(text).toMatch(/01234567 89abcdef 01234567 89abcdef/); // 指纹 8 分组
+		expect(text).not.toContain("安装完成");
+		const en = renderOutcome(rec({
+			status: "needs_trust",
+			stage: "verifying",
+			message: "trust",
+			trust: { key_id: "stranger.pub", public_key: "b".repeat(64), fingerprint: "0123456789abcdef".repeat(4) },
+		}), "en-US");
+		expect(en).toContain("Trust confirmation required");
+	});
 });
 
 describe("parseTarget · 安装目标解析", () => {
@@ -288,6 +310,36 @@ describe("installCommand · file 源端到端（stub fetch：登录 → multipar
 			process.exitCode = exitBackup;
 		}
 		expect(logs.join("\n")).toContain("数据已保留原状，请修复后重试");
+	});
+
+	it("detached 侧车自动探测（P2-3，G4）：同目录 .sig 随 multipart 第二文件上传", async () => {
+		const tgz = join(dir, "demo-solution-0.1.0.tgz");
+		writeFileSync(tgz, "fake-tgz-bytes");
+		writeFileSync(`${tgz}.sig`, JSON.stringify({ alg: "Ed25519", key_id: "test.publisher", public_key: "a".repeat(64), value: "AAAA", canon: "v1" }));
+		const { fetchFn, calls } = fetchStub({
+			"/api/auth/login": () => ok({ access_token: "tok", refresh_token: "r", expires_in: 1 }),
+			"/api/_platform/market/install": () => ok({ task_id: "t1" }),
+			"/api/_platform/market/task": () => ok(rec()),
+		});
+		await installCommand(tgz, { url: "http://x", user: "u", pass: "p", fetchFn, sleep: async () => {} });
+		const form = calls[1]?.init?.body as FormData;
+		expect(form.get("sig")).toBeInstanceOf(File);
+		expect((form.get("sig") as File).name).toBe("demo-solution-0.1.0.tgz.sig");
+		expect(logs.join("\n")).toContain("已随包上传签名侧车");
+	});
+
+	it("无 .sig 侧车：提示将被宿主 G4 拒（不静默）", async () => {
+		const tgz = join(dir, "demo-solution-0.1.0.tgz");
+		writeFileSync(tgz, "fake-tgz-bytes");
+		const { fetchFn, calls } = fetchStub({
+			"/api/auth/login": () => ok({ access_token: "tok", refresh_token: "r", expires_in: 1 }),
+			"/api/_platform/market/install": () => ok({ task_id: "t1" }),
+			"/api/_platform/market/task": () => ok(rec()),
+		});
+		await installCommand(tgz, { url: "http://x", user: "u", pass: "p", fetchFn, sleep: async () => {} });
+		const form = calls[1]?.init?.body as FormData;
+		expect(form.get("sig")).toBeNull();
+		expect(logs.join("\n")).toContain("未发现签名侧车");
 	});
 
 	it("信封非 0：可读报错（code + msg）", async () => {

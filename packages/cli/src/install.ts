@@ -47,6 +47,25 @@ export function renderOutcome(record: TaskRecord, locale?: string): string {
 			? `[ojm] Install complete: ${record.name} ${record.version}`
 			: `[ojm] 安装完成：${record.name} ${record.version}`;
 	}
+	if (record.status === "needs_trust") {
+		// 第五终态（P2-3，G3）：未知发布方待 TOFU 确认——**非成功态、非失败崩溃**；
+		// 指纹分组展示 + 确认命令 + 重试指引（契约附录 A.2 unknown_key）
+		const t = record.trust;
+		const fp = t?.fingerprint ? (t.fingerprint.match(/.{1,8}/g) ?? []).join(" ") : "（未知）";
+		return lang === "en-US"
+			? [
+				`[ojm] Trust confirmation required (publisher: ${t?.key_id ?? "unknown"})`,
+				`Fingerprint (sha256 of public key): ${fp}`,
+				`Verify it with the publisher, then run: ojm trust confirm --task ${record.id}`,
+				"After confirming, retry the install command.",
+			].join("\n")
+			: [
+				`[ojm] 待信任确认（发布方：${t?.key_id ?? "未知"}）——安装未完成`,
+				`指纹（公钥 sha256，请与发布方公布值逐字核对）：${fp}`,
+				`确认命令：ojm trust confirm --task ${record.id}`,
+				"确认入库后重试安装命令即可继续。",
+			].join("\n");
+	}
 	const retryable = RETRYABLE_LABELS[lang][record.error?.retryable ? "yes" : "no"];
 	const stage = record.error?.hintKey?.replace(/^lifecycle\.stage\./, "").replace(/\.hint$/, "") ?? record.stage ?? "";
 	const en = lang === "en-US";
@@ -124,6 +143,16 @@ export async function installCommand(target: string, opts: InstallOptions = {}):
 			form.append("version", version);
 		form.append("source", "file");
 		form.append("file", new Blob([bytes], { type: "application/gzip" }), path.basename(parsed.path));
+		// detached 侧车签名（P2-3，G4）：同目录 <tgz>.sig 自动探测随 multipart 第二文件上传——
+		// 缺签即被宿主 G4 拒（sig_missing 人话转述），与 Form B 同一信任模型
+		const sigPath = `${parsed.path}.sig`;
+		if (fs.existsSync(sigPath)) {
+			form.append("sig", new Blob([new Uint8Array(fs.readFileSync(sigPath))], { type: "application/json" }), path.basename(sigPath));
+			console.log(`[ojm] 已随包上传签名侧车：${path.basename(sigPath)}`);
+		}
+		else {
+			console.log(`[ojm] 未发现签名侧车（${path.basename(sigPath)}）——宿主验签硬 fail-closed，未签名包将被拒（sig_missing）；签名方法见 devkit「签名与信任」`);
+		}
 		const res = await fetchFn(`${base}/api/_platform/market/install`, {
 			method: "POST",
 			headers: { authorization: `Bearer ${token}` },

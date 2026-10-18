@@ -131,10 +131,10 @@ async function main() {
 			break;
 		}
 		case "trust": {
-			// 信任库运维瘦客户端（P2-2，C2-38/39）：ls / add <key_id> <pubkey_hex> / revoke <key_id>
-			const { positionals, url, user, pass } = parseLifecycleArgs(process.argv.slice(3));
+			// 信任库运维瘦客户端（P2-2，C2-38/39）：ls / add <key_id> <pubkey_hex> / revoke <key_id> / confirm --task
+			const { positionals, url, user, pass, task } = parseLifecycleArgs(process.argv.slice(3));
 			const { trustCommand } = await import("./trust");
-			await trustCommand(positionals[0] ?? "", positionals.slice(1), { url, user, pass });
+			await trustCommand(positionals[0] ?? "", positionals.slice(1), { url, user, pass, task });
 			break;
 		}
 		default: {

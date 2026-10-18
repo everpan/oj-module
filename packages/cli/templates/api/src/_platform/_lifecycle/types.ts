@@ -32,7 +32,19 @@ export interface StageResult {
 	ok: boolean
 	message: string
 	retryable?: boolean
+	/** 签名失败六码（P2-3，契约附录 A.2；缺省 = 非签名类失败） */
+	code?: SigCode
+	/** 未知 key_id 待 TOFU 确认：任务停 needs_trust 终态，staging 不清场供确认后重试 */
+	needsTrust?: boolean
+	/** 待确认的发布方 key（TaskRecord.trust 同源；UI/CLI 展示指纹） */
+	trust?: { key_id: string, public_key: string, fingerprint: string }
 }
+
+/**
+ * 签名失败六码（契约 v1.3 附录 A.2，P2-3）：retryable 恒 false、零解压零落盘。
+ * 文案 key = `lifecycle.stage.verifying.<code>`（双语值 P2-5 落 locales）。
+ */
+export type SigCode = "sig_missing" | "sig_alg" | "sig_key" | "tampered" | "unknown_key" | "sig_format";
 
 /**
  * 安装阶段名（契约附录 A 十阶段逐字 + D11①扩展组 lock_commit + audit/done 终态）。
@@ -40,8 +52,12 @@ export interface StageResult {
  */
 export type InstallStage = "preflight" | "downloading" | "verifying" | "extracting" | "migrating" | "lock_commit" | "registering" | "deploying_web" | "reloading" | "smoke" | "audit" | "done";
 
-/** 任务状态（§10.2 三态 + partial：锁后失败部分生效——D11 失败语义②） */
-export type TaskStatus = "running" | "done" | "failed" | "partial";
+/**
+ * 任务状态（§10.2 三态 + partial：锁后失败部分生效——D11 失败语义② + needs_trust：
+ * 未知发布方 key_id 待人工 TOFU 确认——P2-3 第五终态，预锁段停止、staging 不清场，
+ * 确认入信任库后重试同一安装即可继续；一切消费面须把 needs_trust 当非成功态渲染）。
+ */
+export type TaskStatus = "running" | "done" | "failed" | "partial" | "needs_trust";
 
 /** 安装任务记录（§10.2 + stages 明细日志；落 .install-tasks/<id>.json，800ms 轮询消费面） */
 export interface TaskRecord {
@@ -57,6 +73,8 @@ export interface TaskRecord {
 	stages: { stage: InstallStage, ok: boolean, message: string }[]
 	/** 失败/partial 终态：reason + retryable + 指引文案 key（契约附录 A） */
 	error?: { reason: string, retryable: boolean, hintKey?: string }
+	/** needs_trust 终态：待确认的发布方 key（POST /market/trust {task_id} 消费；指纹供人确认） */
+	trust?: { key_id: string, public_key: string, fingerprint: string }
 	startedAt: number
 	finishedAt?: number
 	/** 本次迁移 applied max seq（migrating 段捕获；reconcile 账本对账 floor 依据） */

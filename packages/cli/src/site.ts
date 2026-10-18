@@ -11,12 +11,14 @@ export interface TaskRecord {
 	id: string
 	name: string
 	version: string
-	status: "running" | "done" | "failed" | "partial"
+	status: "running" | "done" | "failed" | "partial" | "needs_trust"
 	stage: string | null
 	progress: number
 	message: string
 	stages: { stage: string, ok: boolean, message: string }[]
 	error?: { reason: string, retryable: boolean, hintKey?: string }
+	/** needs_trust 终态：待确认发布方 key（P2-3；CLI trust confirm 展示与确认） */
+	trust?: { key_id: string, public_key: string, fingerprint: string }
 	appliedSeq?: number
 	startedAt: number
 	finishedAt?: number

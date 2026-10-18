@@ -17,17 +17,30 @@ import * as fsp from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { defaultTestKey, nodeVerifyEd25519, signedArchiveFor } from "../../../../src/lifecycle/__tests__/helpers";
 import { readLock, writeLock } from "../../src/_platform/_lifecycle/lock";
 import { createStateStore } from "../../src/_platform/_lifecycle/state";
 import { getTask, writeTask } from "../../src/_platform/_lifecycle/tasks";
+import { createTrustStore } from "../../src/_platform/_lifecycle/trust";
 import { invalidateAllUsers } from "../../src/_platform/_shared/service/access";
 import { createMarketApi, marketEnv, parseVersionsJson, versionsJsonPathOf } from "../../src/_platform/market/api";
 import { installDb, MARKET_HISTORY_DDL } from "../fixture";
+
+function hexToBytes(hex: string): Uint8Array {
+	const out = new Uint8Array(hex.length / 2);
+	for (let i = 0; i < out.length; i++)
+		out[i] = Number.parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+	return out;
+}
 
 const g = globalThis as any;
 
 const ARCHIVE = new TextEncoder().encode("demo-archive-bytes\n");
 const SHA256 = createHash("sha256").update(ARCHIVE).digest("hex");
+/** 共享测试 key（P2-3：Form B 签名与信任库播种同一把；无私钥入仓） */
+const TEST_KEY = defaultTestKey();
+/** file 源签名侧车载荷（JSON .sig 文本字节） */
+const SIG_BYTES = new TextEncoder().encode(JSON.stringify(signedArchiveFor(ARCHIVE, "demo-solution", "0.1.0", { keyPair: TEST_KEY }).sig));
 const ENTRY = new TextEncoder().encode("console.log(\"demo entry\");\n");
 const CSS = new TextEncoder().encode(".demo{color:red}\n");
 const MIGRATE_LINE = JSON.stringify({ results: [{ module: "demo-solution", ok: true, applied: [{ version: 3, name: "create_todos" }] }] });
@@ -44,7 +57,7 @@ function manifestFixture(version = "0.1.0"): any {
 		version,
 		summary: "演示方案",
 		peerRuntime: ">=0.1.0",
-		archive: { file: `demo-solution-${version}.tgz`, sha256: SHA256, size: ARCHIVE.byteLength },
+		archive: { file: `demo-solution-${version}.tgz`, sha256: SHA256, size: ARCHIVE.byteLength, signature: signedArchiveFor(ARCHIVE, "demo-solution", version, { keyPair: TEST_KEY }).sig },
 		api: { prefix: "/api/demo-solution", anonymous: ["demo-solution/ping"] },
 		web: { entry: `modules/demo-solution/${version}/entry.js`, css: [`modules/demo-solution/${version}/main.css`] },
 		routes: [
@@ -169,6 +182,7 @@ function makeEnv(overrides: Partial<MarketEnv> = {}): MarketEnv {
 		staging,
 		taskDir,
 		statePath: join(sharedRoot, ".solutions", "state.yaml"),
+		trustPath: join(sharedRoot, ".solutions", "trusted-keys.yaml"),
 		dbPath,
 		siteModulesDir,
 		modulesJsonPath,
@@ -179,6 +193,7 @@ function makeEnv(overrides: Partial<MarketEnv> = {}): MarketEnv {
 		exec: bundleExec(),
 		reload: reloadStub,
 		sha256Hex: d => createHash("sha256").update(d).digest("hex"),
+		verifyEd25519: nodeVerifyEd25519,
 		sha384B64: d => createHash("sha384").update(d).digest("base64"),
 		ledgerHead: null,
 		hostVersions: { "@oj-module/runtime": "0.1.77" },
@@ -200,6 +215,8 @@ beforeEach(async () => {
 	g.fs = nodeFsFace();
 	dbo = installDb();
 	dbo.prepare("INSERT OR IGNORE INTO sys_user_role (user_id, role_name) VALUES (?, ?)").run(1, "superadmin");
+	// 播种信任库（P2-3：Form B 签名夹具同一把 TEST_KEY；走真实 store）
+	await createTrustStore(join(sharedRoot, ".solutions", "trusted-keys.yaml"), { audit: () => {}, fingerprintOf: pk => createHash("sha256").update(hexToBytes(pk)).digest("hex") }).add("test.publisher", TEST_KEY.publicKeyHex);
 	g.yaml = { parse: async (t: string) => JSON.parse(t) };
 	g.http = { user: { id: 1 } };
 	g.json = {
@@ -303,8 +320,8 @@ describe("POST install（file：上传载荷，upload/api.ts 先例双路径）"
 		g.http = {
 			user: { id: 1 },
 			body: { name: "demo-solution", version: null, source: "file" },
-			files: [{ name: "demo-solution-0.1.0.tgz", content_type: "application/gzip" }],
-			file: async () => ARCHIVE,
+			files: [{ name: "demo-solution-0.1.0.tgz", content_type: "application/gzip" }, { name: "demo-solution-0.1.0.tgz.sig", content_type: "application/json" }],
+			file: async (i: number) => (i === 0 ? ARCHIVE : SIG_BYTES),
 		};
 		await api.install.post();
 		expect(last?.status).toBe(200);
@@ -343,8 +360,8 @@ describe("POST install（file：上传载荷，upload/api.ts 先例双路径）"
 		g.http = {
 			user: { id: 1 },
 			body: { name: "demo-solution", version: null, source: "file" },
-			files: [{ name: "demo-solution-0.1.0.tgz", content_type: "application/gzip" }],
-			file: async () => ARCHIVE,
+			files: [{ name: "demo-solution-0.1.0.tgz", content_type: "application/gzip" }, { name: "demo-solution-0.1.0.tgz.sig", content_type: "application/json" }],
+			file: async (i: number) => (i === 0 ? ARCHIVE : SIG_BYTES),
 		};
 		await api.install.post();
 		expect(last?.status).toBe(200);
@@ -366,6 +383,120 @@ describe("POST install（file：上传载荷，upload/api.ts 先例双路径）"
 		g.http = { user: { id: 1 }, body: { name: "demo-solution", version: null, source: "file" } };
 		await api.install.post();
 		expect(last?.status).toBe(400);
+	});
+
+	it("file 源缺 .sig 侧车 → runInstall 终态 failed@verifying code=sig_missing（G4 硬 fail-closed，无逃生门）", async () => {
+		const api = createMarketApi(makeEnv());
+		g.http = {
+			user: { id: 1 },
+			body: { name: "demo-solution", version: null, source: "file" },
+			files: [{ name: "demo-solution-0.1.0.tgz", content_type: "application/gzip" }],
+			file: async () => ARCHIVE,
+		};
+		await api.install.post();
+		expect(last?.status).toBe(200); // 编排返回任务 id（失败在任务终态，人话在任务记录）
+		const taskId = (last?.data as { task_id?: unknown })?.task_id as string;
+		const rec = await getTask(taskDir, taskId);
+		expect(rec?.status).toBe("failed");
+		expect(rec?.stage).toBe("verifying");
+		expect(rec?.error?.hintKey).toBe("lifecycle.stage.verifying.sig_missing");
+		expect(rec?.stages.find(s => s.stage === "verifying")?.message).toContain("sig_missing");
+		// 锁前清场（失败语义①）：staging 删、锁/库表零改
+		await expect(fsp.access(staging)).rejects.toThrow();
+		await expect(fsp.access(join(sharedRoot, "manifests.yaml"))).rejects.toThrow();
+	});
+
+	it(".sig 非 JSON → 400 可读失败（不进安装器）", async () => {
+		const api = createMarketApi(makeEnv());
+		g.http = {
+			user: { id: 1 },
+			body: { name: "demo-solution", version: null, source: "file" },
+			files: [{ name: "demo-solution-0.1.0.tgz", content_type: "application/gzip" }, { name: "x.sig", content_type: "application/json" }],
+			file: async (i: number) => (i === 0 ? ARCHIVE : new TextEncoder().encode("not json")),
+		};
+		await api.install.post();
+		expect(last?.status).toBe(400);
+		expect(String(last?.msg)).toContain("不是合法 JSON");
+	});
+});
+
+describe("POST /market/trust {task_id}（P2-3 TOFU 确认：混淆代理防线）", () => {
+	async function seedNeedsTrust(keyId: string, publicKey: string, fingerprint?: string): Promise<string> {
+		const id = `install-${Date.now()}-confirm`;
+		await writeTask(taskDir, {
+			id,
+			name: "demo-solution",
+			version: "0.1.0",
+			status: "needs_trust",
+			stage: "verifying",
+			progress: 30,
+			message: "待信任确认",
+			stages: [],
+			trust: { key_id: keyId, public_key: publicKey, fingerprint: fingerprint ?? createHash("sha256").update(hexToBytes(publicKey)).digest("hex") },
+			startedAt: Date.now(),
+			finishedAt: Date.now(),
+		});
+		return id;
+	}
+
+	it("确认成功：任务 needs_trust → 指纹复算一致 → 入信任库 added", async () => {
+		const api = createMarketApi(makeEnv());
+		const { generateKeyPair } = await import("../../../../src/lifecycle/keygen");
+		const kp = generateKeyPair();
+		const id = await seedNeedsTrust("stranger.pub", kp.publicKeyHex);
+		g.http = { user: { id: 1 }, body: { task_id: id } };
+		await api.trust.post();
+		expect(last?.status).toBe(200);
+		expect(last?.data).toMatchObject({ result: "added", key_id: "stranger.pub" });
+		// 信任库真落库
+		const keys = await createTrustStore(join(sharedRoot, ".solutions", "trusted-keys.yaml")).list();
+		expect(keys.map(k => k.key_id)).toContain("stranger.pub");
+		// 审计留痕（operator=admin，fire-and-forget 等一拍）
+		await new Promise(r => setTimeout(r, 20));
+		const oplog = dbo.prepare("select action, target from sys_oplog where action = 'solution.trust.add'").all();
+		expect(oplog).toHaveLength(1);
+	});
+
+	it("门与形态：非 superadmin 403；缺 task_id 400；任务不存在 404；非 needs_trust 409", async () => {
+		const api = createMarketApi(makeEnv());
+		g.http = { user: { id: 2 }, body: { task_id: "x" } };
+		await api.trust.post();
+		expect(last?.status).toBe(403);
+		g.http = { user: { id: 1 }, body: {} };
+		await api.trust.post();
+		expect(last?.status).toBe(400);
+		g.http = { user: { id: 1 }, body: { task_id: "install-1-nope" } };
+		await api.trust.post();
+		expect(last?.status).toBe(404);
+		// done 任务无需确认
+		await writeTask(taskDir, { id: "done-1", name: "d", version: "1.0.0", status: "done", stage: "done", progress: 100, message: "x", stages: [], startedAt: 1, finishedAt: 2 });
+		g.http = { user: { id: 1 }, body: { task_id: "done-1" } };
+		await api.trust.post();
+		expect(last?.status).toBe(409);
+	});
+
+	it("混淆代理：任务记录指纹与公钥不符 → 409 拒，信任库零变化", async () => {
+		const api = createMarketApi(makeEnv());
+		const { generateKeyPair } = await import("../../../../src/lifecycle/keygen");
+		const kp = generateKeyPair();
+		const id = await seedNeedsTrust("stranger.pub", kp.publicKeyHex, "f".repeat(64)); // 指纹造假
+		g.http = { user: { id: 1 }, body: { task_id: id } };
+		await api.trust.post();
+		expect(last?.status).toBe(409);
+		expect(String(last?.msg)).toContain("篡改");
+		const keys = await createTrustStore(join(sharedRoot, ".solutions", "trusted-keys.yaml")).list();
+		expect(keys.map(k => k.key_id)).not.toContain("stranger.pub");
+	});
+
+	it("撞绑定：key_id 已绑其他公钥 → 409 trust_bound_mismatch，库内不动", async () => {
+		const api = createMarketApi(makeEnv());
+		const { generateKeyPair } = await import("../../../../src/lifecycle/keygen");
+		const kp = generateKeyPair();
+		const id = await seedNeedsTrust("test.publisher", kp.publicKeyHex); // 已播种的 key_id
+		g.http = { user: { id: 1 }, body: { task_id: id } };
+		await api.trust.post();
+		expect(last?.status).toBe(409);
+		expect(String(last?.msg)).toContain("首次绑定不可改");
 	});
 });
 

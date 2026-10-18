@@ -125,6 +125,51 @@ describe("trustCommand · add / revoke（P2-2）", () => {
 	});
 });
 
+describe("trustCommand · confirm（P2-3 TOFU 确认链）", () => {
+	const needsTrustTask = {
+		id: "install-1-abc",
+		name: "demo-solution",
+		version: "0.1.0",
+		status: "needs_trust",
+		stage: "verifying",
+		trust: { key_id: "stranger.pub", public_key: "b".repeat(64), fingerprint: "f".repeat(64) },
+	};
+
+	it("先展示指纹再调端点：GET task → 打印 key_id + 分组指纹 → POST /market/trust {task_id}", async () => {
+		const { fetchFn, calls } = fetchStub({
+			"/api/auth/login": () => ok({ access_token: "tok", refresh_token: "r", expires_in: 1 }),
+			"/api/_platform/market/task": () => ok(needsTrustTask),
+			"/api/_platform/market/trust": () => ok({ result: "added", key_id: "stranger.pub" }),
+		});
+		await trustCommand("confirm", [], { ...SITE, task: "install-1-abc", fetchFn });
+		// 调用序：登录 → GET task → POST trust
+		expect(calls[1]?.url).toContain("/api/_platform/market/task?id=install-1-abc");
+		expect(calls[2]?.init?.method).toBe("POST");
+		expect(calls[2]?.url).toContain("/api/_platform/market/trust");
+		expect(JSON.parse(String(calls[2]?.init?.body))).toEqual({ task_id: "install-1-abc" });
+		const out = logs.join("\n");
+		expect(out).toContain("stranger.pub");
+		expect(out).toMatch(/ffffffff ffffffff ffffffff ffffffff/); // 指纹分组先于人看到
+		expect(out).toContain("已信任发布方：stranger.pub");
+		expect(out).toContain("重试安装命令即可继续");
+	});
+
+	it("任务非 needs_trust → 本地可读报错（不发确认请求）", async () => {
+		const { fetchFn, calls } = fetchStub({
+			"/api/auth/login": () => ok({ access_token: "tok", refresh_token: "r", expires_in: 1 }),
+			"/api/_platform/market/task": () => ok({ ...needsTrustTask, status: "done", trust: undefined }),
+		});
+		await expect(trustCommand("confirm", [], { ...SITE, task: "install-1-abc", fetchFn })).rejects.toThrow(/不在待信任确认状态/);
+		expect(calls).toHaveLength(2); // 登录 + GET task，无 POST
+	});
+
+	it("缺 --task → 用法报错（不发网络）", async () => {
+		const { fetchFn, calls } = fetchStub({});
+		await expect(trustCommand("confirm", [], { ...SITE, fetchFn })).rejects.toThrow(/--task/);
+		expect(calls).toHaveLength(0);
+	});
+});
+
 describe("formatFingerprint（契约 §2.11 展示口径）", () => {
 	it("64hex → 8 组 × 8 字符空格分隔", () => {
 		expect(formatFingerprint("0".repeat(64))).toBe("00000000 ".repeat(8).trim());
