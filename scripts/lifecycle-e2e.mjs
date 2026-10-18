@@ -351,7 +351,9 @@ function patchConfig() {
 	let cfg = readFileSync(p, "utf8");
 	cfg = cfg.replace("port: 9778", "port: 9781");
 	cfg = cfg.replace("__JWT_SECRET__", randomBytes(32).toString("hex"));
-	cfg = cfg.replace("platform:\n  exec:", "platform:\n  modules: [_platform]\n  root: dist\n  exec:");
+	// P3-1 在 platform: 下插入 U6 信任库加固注释块，故 `platform:\n  exec:` 字面补丁失配——改为锚定
+	// 行首 `  exec:`（config 内唯一；挂载 modules/root 供安装器 api 模块加载 + 落盘根）
+	cfg = cfg.replace(/^ {2}exec:/m, "  modules: [_platform]\n  root: dist\n  exec:");
 	// oj 匿名模型 = config 独占（manifest api.anonymous 仅 C2 契约校验，运行时放行以 auth.anonymous_paths
 	// 为准；安装器不热改 config——restart_pending）。部署契约 = 站点预声明已知方案的匿名路径（备案 P2 接线缺口）。
 	cfg = cfg.replace("  anonymous_paths:", "  anonymous_paths:\n    - /demo-solution/ping");
@@ -364,6 +366,25 @@ function patchConfig() {
 function setMigrateOnStart(mode) {
 	const p = path.join(API, "config.yaml");
 	writeFileSync(p, readFileSync(p, "utf8").replace(/migrate_on_start: \w+/, `migrate_on_start: ${mode}`));
+}
+
+// ── P3-10：启用 SPA 静态宿主（在已装 demo-solution 的真机上验证 web 路由深检全绿）──
+// 最小 SPA 外壳落 api/dist（与安装器 web 部署目标 siteModulesDir=dist/modules、modulesJsonPath=dist/modules.json
+// 同根），并把 web 挂载（prefix /, web dist, spa:true）补进 config；重启后 /modules/* 与 /modules.json
+// 由 oj 静态层真实服务，/demo-solution 经 SPA 历史回落 200 ⇒ 深检如实放行（绿）。
+function enableStaticHosting() {
+	const distDir = path.join(API, "dist");
+	mkdirSync(distDir, { recursive: true });
+	writeFileSync(path.join(distDir, "index.html"), "<!doctype html><html><head><meta charset=utf-8><title>oj</title></head><body><div id=app></div></body></html>\n");
+	const p = path.join(API, "config.yaml");
+	let cfg = readFileSync(p, "utf8");
+	// 守卫查「已生效的 web 挂载」而非字面 prefix:/（模板注释块已含 prefix:"/" 字面，会误判已启用）
+	if (!cfg.includes("web: dist")) {
+		// 在 api 挂载前插入 web 挂载（prefix / + web dist + spa）；dist 与安装器 web 部署目标
+		// siteModulesDir=dist/modules、modulesJsonPath=dist/modules.json 同根，静态层真实服务 /modules/*
+		cfg = cfg.replace("  - prefix: /api", "  - prefix: \"/\"\n    web: dist\n    spa: true\n  - prefix: /api");
+		writeFileSync(p, cfg);
+	}
 }
 
 // ── sqlite 断言面（只读）──
@@ -609,6 +630,23 @@ async function main() {
 	const indexP2 = await api("/api/_platform/market/index", { token });
 	const demoRow = (indexP2.data ?? []).find(r => r.name === "demo-solution");
 	ac("P2-7", "索引聚合（available[]/trust_state/key_id/operator）", indexP2.status === 200 && Array.isArray(demoRow?.available) && demoRow.available.length === 2 && demoRow.trust_state === "trusted" && demoRow.key_id === E2E_KEY.keyId, `available=${JSON.stringify(demoRow?.available)} trust=${demoRow?.trust_state} key=${demoRow?.key_id} operator=${demoRow?.operator}`);
+
+	// ── P3-10（P2-16#2）：深检静态托管真机增强——在已装 demo-solution 的真机上启用 SPA 静态宿主，
+	// 验证 web 路由深检全绿（诚实 404 之外 web route 可达且健康）。P2-6 已先在 API-only 形态验证
+	// 「深检如实检出 404」，此处转向静态托管形态验证「深检如实放行绿路由」——两者互补，检测能力不退化。──
+	enableStaticHosting();
+	await stopSite();
+	await startSite();
+	// 静态层真服务校验：modules.json + 已装方案 web 入口（siteModulesDir=dist/modules 与 web 挂载同根）
+	const modulesJsonStatus = await fetch(`${BASE}/modules.json`).then(r => r.status);
+	const entryStatus = await fetch(`${BASE}/modules/demo-solution/0.1.0/entry.js`).then(r => r.status);
+	const mainCssStatus = await fetch(`${BASE}/modules/demo-solution/0.1.0/main.css`).then(r => r.status);
+	// web 路由经 SPA 历史回落可达
+	const webRouteStatus = await fetch(`${BASE}/demo-solution`).then(r => r.status);
+	const verifyStatic = await api("/api/_platform/solutions/verify?name=demo-solution", { method: "POST", token });
+	const vStatic = verifyStatic.data ?? {};
+	const routeStaticErr = (vStatic.checks ?? []).filter(c => c.id === "routes" && c.severity === "error");
+	ac("P3-10", "静态托管形态 web 路由深检全绿（ok=true，无 routes anomaly）+ 静态层真实服务 web 入口", verifyStatic.status === 200 && vStatic.ok === true && routeStaticErr.length === 0 && modulesJsonStatus === 200 && entryStatus === 200 && mainCssStatus === 200 && webRouteStatus === 200, `verify=${verifyStatic.status} ok=${vStatic.ok} routesErr=${routeStaticErr.length} modules.json=${modulesJsonStatus} entry=${entryStatus} css=${mainCssStatus} /demo-solution=${webRouteStatus}`);
 
 	// ── 报告 ──
 	const failed = results.filter(r => !r.pass);

@@ -129,6 +129,24 @@ describe("路由可达性分类（verifyRouteReachability）", () => {
 	});
 });
 
+// P3-10（P2-16#2）：深检静态托管绿路径——web 路由由 SPA/静态宿主 200 即视作可达且健康（绿），
+// 与 API 路由同口径；诚实 404 之外，静态托管形态下不应误报 anomaly（检测能力不退化）。
+describe("p3-10 深检静态托管绿路径（web route 由 SPA/静态宿主 200 ⇒ 不打项）", () => {
+	const origin = { proto: "http", host: "localhost:9778" };
+	const mkWeb = (path: string, cat: "main" | "hidden" = "main", perm: string | null = null): SolutionRouteRow => ({ path, module: "demo-solution", category: cat, order: 1, title_key: null, required_permission: perm, enabled: true });
+	const okFetch = async () => ({ ok: true, status: 200, arrayBuffer: async () => new ArrayBuffer(0) });
+	it("web 路由（main）由静态宿主 200 ⇒ 不打项（绿）", async () => {
+		expect(await verifyRouteReachability(okFetch, [mkWeb("/demo-solution")], origin)).toEqual([]);
+	});
+	it("web 路由（main + hidden）同由静态宿主 200 ⇒ 全绿（ok 语义不退化）", async () => {
+		expect(await verifyRouteReachability(okFetch, [mkWeb("/demo-solution"), mkWeb("/demo-solution/ping", "hidden")], origin)).toEqual([]);
+	});
+	it("web 路由静态宿主缺失（404）⇒ error(anomaly)（与 API 路由同口径，诚实检测不退化）", async () => {
+		const f = async () => ({ ok: false, status: 404, arrayBuffer: async () => new ArrayBuffer(0) });
+		expect(await verifyRouteReachability(f, [mkWeb("/demo-solution")], origin)).toEqual([{ id: "routes", severity: "error", subject: "/demo-solution", advise_key: "lifecycle.verify.routes.anomaly" }]);
+	});
+});
+
 // ============ 纯 diff 函数 ============
 describe("RBAC 完整性 diffPermRows", () => {
 	it("声明缺失 → error", () => {
