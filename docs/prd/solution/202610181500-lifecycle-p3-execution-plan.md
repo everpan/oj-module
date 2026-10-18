@@ -40,9 +40,9 @@
 | P3-2 | U2 GC 保留 N=3（state 时间序） | `state.ts` `installer.ts` | AC-P3-3 | ✅ 完成 `f74a5b8f` |
 | P3-3 | U1① 级联单事务 | `uninstall.ts` | AC-P3-1/2 | ✅ 完成 `e4bbf19c` |
 | P3-4 | U1② 业务表保留提示 | `uninstall.ts` `market/api.ts` | AC-P3-1/2 | ✅ 完成 `fb64923f` |
-| P3-5 | U3-a `ojm publish` 命令 | `index.ts`+`publish.ts` | AC-P3-4 | ⬜ |
-| P3-6 | U3-b 索引重算 + no-cache 确认 | `market/api.ts` | AC-P3-4 | ⬜ |
-| P3-7 | U3-c 索引签名（bundles/manifests） | `market/api.ts` `sign.ts` | AC-P3-4 | ⬜ |
+| P3-5 | U3-a `ojm publish` 命令 | `index.ts`+`publish.ts` | AC-P3-4 | ✅ 完成 `b288efcc` |
+| P3-6 | U3-b 索引重算 + no-cache 确认 | `market/api.ts` | AC-P3-4 | ✅ 完成 `b288efcc` |
+| P3-7 | U3-c 索引签名（bundles/manifests） | `market/api.ts` `sign.ts` | AC-P3-4 | ✅ 完成 `b288efcc` |
 | P3-8 | U5 取消安装（h.kill + staging 清理 + 账本对账 + D11） | `installer.ts` `migrate.ts` | AC-P3-6 | ⬜ |
 | P3-9 | reconcile live 信任核对（P2-6#1） | `installer.ts` | P2 §5 | ⬜ |
 | P3-10 | 深检静态托管真机增强（P2-16#2） | `scripts/lifecycle-e2e.mjs` | P2 §5 | ⬜ |
