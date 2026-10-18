@@ -688,6 +688,8 @@ export interface ReconcileInput {
 	modulesJsonPath?: string
 	/** sidecar store（注入后 route/modules enabled=false 不一致项自动重跑 setEnabled 修复；缺省只报不修） */
 	state?: StateStore
+	/** 信任库路径（P3-9 live 信任核对：注入后 reconcile 自愈末位触发一次实时信任库核对，吊销 key 标 untrusted；缺省跳过） */
+	trustPath?: string
 	now?: number
 }
 
@@ -831,7 +833,66 @@ export async function reconcile(input: ReconcileInput): Promise<ReconcileReport>
 			report.healed.push({ name, action: "enable", from: "disabled", to: "enabled", reason: `route/modules enabled 不一致已重跑 setEnabled(true) 收敛：${r.message}` });
 		}
 	}
+	// P3-9 live 信任核对（P2-6#1，G5 口径）：reconcile 自愈末位触发一次实时信任库核对——
+	// 各已锁方案 sidecar.archive.key_id 若在信任库被吊销（get 返回 null / 公钥绑定不符），标
+	// trust_state="untrusted"（仍启用，存量可用性承诺 G5；显著告警 + 审计 + 深检标 untrusted），与
+	// P2-8 深检 live 查询口径一致。无复验真源（P1 时代无 archive 条目）/ 信任库缺失/查询失败 → 静默跳过。
+	if (input.trustPath !== undefined && input.state !== undefined) {
+		try {
+			await liveTrustReconcile(lock, input.sharedRoot, input.trustPath, input.state);
+		}
+		catch {
+			// live 核对失败不阻断 reconcile 主流程（下次刷新重试）
+		}
+	}
 	return report;
+}
+
+/**
+ * P3-9 live 信任核对（reconcile 末位调用）：遍历已锁方案，读 sidecar.archive.key_id 实时查信任库——
+ * 吊销（库无该 key / 公钥绑定不符）→ 标 untrusted（G5：放行 + 告警 + 审计 + 深检标 untrusted，
+ * 不动已装方案）；仍受信且曾被标 untrusted（历史吊销后重加）→ 恢复 trusted。仅更新 sidecar
+ * trust_state，不写锁/版本目录/route/modules（与启用期核对职责分离，P2-6）。不可自愈情形静默跳过。
+ */
+async function liveTrustReconcile(lock: Record<string, string>, sharedRoot: string, trustPath: string, state: StateStore): Promise<void> {
+	const store = createTrustStore(trustPath, { audit: () => {} });
+	for (const name of Object.keys(lock)) {
+		const entry = state.read().solutions[name];
+		const arch = entry?.archive;
+		if (!isObj(arch) || typeof arch.key_id !== "string") {
+			continue; // 无复验真源（P1 时代无 archive 条目）→ 不核对
+		}
+		let trusted: string | null = null;
+		try {
+			trusted = await store.get(arch.key_id);
+		}
+		catch {
+			continue; // 信任库查询失败（损坏等）→ 跳过该方案（下次对账重试）
+		}
+		const bound = isObj(arch.signature) && typeof arch.signature.public_key === "string" ? arch.signature.public_key : null;
+		const stillTrusted = trusted !== null && (bound === null || trusted === bound);
+		if (stillTrusted) {
+			if (entry.trust_state === "untrusted") {
+				try {
+					await state.write({ solutions: { [name]: { ...entry, trust_state: "trusted" } } });
+				}
+				catch {
+					// 写失败静默（下次对账重试）
+				}
+			}
+			continue;
+		}
+		// 已吊销：标 untrusted（G5 口径：存量可用性承诺，放行 + 显著告警 + 审计）
+		if (entry.trust_state !== "untrusted") {
+			try {
+				await state.write({ solutions: { [name]: { ...entry, trust_state: "untrusted" } } });
+				auditOp({ action: "solution.trust.recheck", module: name, target: name, detail: { key_id: arch.key_id, status: "untrusted", reason: "reconcile live 核对：发布方 key 已不在信任库（已吊销）" }, level: 4 });
+			}
+			catch {
+				// 写失败静默（下次对账重试）
+			}
+		}
+	}
 }
 
 export interface SetEnabledInput {

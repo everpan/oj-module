@@ -302,6 +302,7 @@ async function reconcileOf(env: MarketEnv): Promise<void> {
 			ledgerHeadOf: env.ledgerHeadOf ?? journalHeadOf,
 			headFloorOf: (name, version) => latestAppliedSeqOf(env.taskDir, name, version),
 			routeEnabledOf,
+			trustPath: env.trustPath,
 		});
 	}
 	catch {

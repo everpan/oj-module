@@ -670,6 +670,59 @@ describe("reconcile 入口对账自愈（D11：锁 ↔ 账本 head）", () => {
 	});
 });
 
+describe("p3-9 reconcile live 信任核对（P2-6#1，G5）：吊销 key ⇒ 标 untrusted 且仍启用", () => {
+	async function revokeKey(): Promise<void> {
+		// 吊销：只阻断新装/升级，不动已装方案（G5）；与 setEnabled 启用核对同信任库
+		await createTrustStore(trustPath, { audit: () => {}, fingerprintOf: pk => createHash("sha256").update(hexToBytes(pk)).digest("hex") }).remove(TRUST_KEY_ID);
+	}
+
+	it("reconcile 后吊销 key ⇒ 方案标 untrusted 且仍启用（存量可用性承诺 G5）", async () => {
+		await runInstall(makeReq()); // sidecar 落 archive.key_id=test.publisher + trust_state=trusted
+		await revokeKey();
+		const report = await reconcile({
+			lockPath,
+			sharedRoot,
+			taskDir,
+			ledgerHeadOf: async () => 3,
+			headFloorOf: async () => 3,
+			trustPath,
+			state,
+		});
+		expect(report.healed).toEqual([]); // 账务一致，无自愈
+		// 仍启用：锁条目 / sidecar enabled 不动（G5 存量可用性承诺）
+		expect(await readLock(lockPath)).toEqual({ "demo-solution": "0.1.0" });
+		expect(state.read().solutions["demo-solution"]?.enabled).toBe(true);
+		// live 核对标 untrusted（G5：放行 + 告警 + 审计 + 深检标 untrusted）
+		expect(state.read().solutions["demo-solution"]?.trust_state).toBe("untrusted");
+		// archive 真源保留（切换不丢复验依据）
+		expect(state.read().solutions["demo-solution"]?.archive?.sha256).toBe(SHA256);
+		// 审计留痕（solution.trust.recheck，level 4；fire-and-forget，waitFor 收敛）
+		await vi.waitFor(() => {
+			const oplog = rows("SELECT detail FROM sys_oplog WHERE action = 'solution.trust.recheck'");
+			expect(oplog).toHaveLength(1);
+			expect(String(oplog[0]!.detail)).toContain("untrusted");
+		}, { timeout: 1000 });
+	});
+
+	it("撤销吊销（key 重入信任库）⇒ 曾被标 untrusted 的方案恢复 trusted", async () => {
+		await runInstall(makeReq());
+		await revokeKey();
+		await reconcile({ lockPath, sharedRoot, taskDir, ledgerHeadOf: async () => 3, headFloorOf: async () => 3, trustPath, state });
+		expect(state.read().solutions["demo-solution"]?.trust_state).toBe("untrusted");
+		await createTrustStore(trustPath, { audit: () => {}, fingerprintOf: pk => createHash("sha256").update(hexToBytes(pk)).digest("hex") }).add(TRUST_KEY_ID, TEST_KEY.publicKeyHex);
+		await reconcile({ lockPath, sharedRoot, taskDir, ledgerHeadOf: async () => 3, headFloorOf: async () => 3, trustPath, state });
+		expect(state.read().solutions["demo-solution"]?.trust_state).toBe("trusted");
+	});
+
+	it("P1 时代条目（无 archive）→ 无复验真源，live 核对静默跳过（不误标 untrusted）", async () => {
+		await writeLock(lockPath, { "demo-solution": "0.1.0" });
+		await state.write({ solutions: { "demo-solution": { version: "0.1.0", enabled: true, installedAt: 1000 } } });
+		await revokeKey();
+		await reconcile({ lockPath, sharedRoot, taskDir, ledgerHeadOf: async () => 3, headFloorOf: async () => 3, trustPath, state });
+		expect(state.read().solutions["demo-solution"]?.trust_state).toBeUndefined();
+	});
+});
+
 describe(".install-tasks/.lock 任务互斥（R17/R31）", () => {
 	it("并发取锁互斥：持锁期间第二取锁拒绝；释放后可再取", async () => {
 		const l1 = await acquireTaskLock(taskDir);
