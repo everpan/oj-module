@@ -21,6 +21,20 @@ export interface ExecResult {
 export interface ExecFace {
 	/** opts 透传平台 exec.run（timeoutMs 等；0.1.78 共用 opts——缺省 30s 会杀长命令） */
 	run: (argv: string[], opts?: { timeoutMs?: number }) => Promise<ExecResult>
+	/**
+	 * oj 0.1.78 流式形态（P2-13 feature-detect 存在性；缺失回落 exec.run——stage 粒度，进度不增量刷）。
+	 * stdout/stderr 为 AsyncIterable<Uint8Array>（原始字节，UTF-8 切块自管）；exit() 等待退出；
+	 * 超时/超限不抛错只 code=137（v0.1.79 订正）。消费面：migrate 段进度流（h.kill() 主动取消归 P3，G2）。
+	 */
+	spawn?: (argv: string[], opts?: { timeoutMs?: number }) => Promise<ExecSpawnHandle>
+}
+
+/** exec.spawn 句柄（devkit api-manual「exec 流式形态 v0.1.78」；devkit global.d.ts 未收录，此处按契约镜像） */
+export interface ExecSpawnHandle {
+	stdout: AsyncIterable<Uint8Array>
+	stderr: AsyncIterable<Uint8Array>
+	exit: () => Promise<{ code: number }>
+	kill: () => void
 }
 
 export interface ExtractContext extends InstallContext {

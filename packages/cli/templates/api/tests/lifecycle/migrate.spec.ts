@@ -215,6 +215,94 @@ describe("maxAppliedSeq（目标产物 max seq，rollbackGuard 的 seq 来源）
 	});
 });
 
+describe("p2-13 exec.spawn 流式路径（G2①：feature-detect 双路径；onStdout 回调内自累积跨块拼接）", () => {
+	/** spawn stub：stdout 按 byteLength 切成多块（默认切在 UTF-8 双字节中文字符中间）异步吐出 */
+	function spawnExec(output: string, opts: { code?: number, sliceAt?: number[] } = {}): ExecFace & { spawnCalls: number, opts: (undefined | { timeoutMs?: number })[] } {
+		const bytes = new TextEncoder().encode(output);
+		const cuts = opts.sliceAt ?? [5, 12];
+		const chunks: Uint8Array[] = [];
+		let prev = 0;
+		for (const c of [...cuts, bytes.byteLength]) {
+			if (c > prev && c <= bytes.byteLength) {
+				chunks.push(bytes.slice(prev, c));
+				prev = c;
+			}
+		}
+		if (prev < bytes.byteLength) {
+			chunks.push(bytes.slice(prev));
+		}
+		const self = {
+			spawnCalls: 0,
+			opts: [] as (undefined | { timeoutMs?: number })[],
+			run: async (): Promise<{ code: number, stdout: string, stderr: string }> => {
+				throw new Error("spawn 在场时不得回落 exec.run");
+			},
+			spawn: async (_argv: string[], o?: { timeoutMs?: number }) => {
+				self.spawnCalls++;
+				self.opts.push(o);
+				async function* gen(list: Uint8Array[]) {
+					for (const c of list)
+						yield c;
+				}
+				return {
+					stdout: gen(chunks),
+					stderr: gen([new TextEncoder().encode("warn-line\n")]),
+					exit: async () => ({ code: opts.code ?? 0 }),
+					kill: () => {},
+				};
+			},
+		};
+		return self as unknown as ExecFace & { spawnCalls: number, opts: (undefined | { timeoutMs?: number })[] };
+	}
+
+	it("跨块拼接：S1-6 JSON 恰一行被切 3 块（含中文多字节边界）→ 解析成功、onMigrateOutput 捕获 applied max seq", async () => {
+		const seen: { frac: number }[] = [];
+		const outs: unknown[] = [];
+		const exec = spawnExec(`${OK_LINE}\n`);
+		const r = await migrate(mgCtx({
+			exec,
+			onProgress: frac => seen.push({ frac }),
+			onMigrateOutput: o => outs.push(o),
+		}));
+		expect(r.ok).toBe(true);
+		// 解析成功且 applied 捕获（跨 chunk 拼接后 parseMigrateOutput 拿到完整 JSON）
+		expect(outs).toHaveLength(1);
+		const out = outs[0] as { results: Array<{ applied: Array<{ version: number }> }> };
+		const max = Math.max(...out.results.flatMap(x => x.applied.map(a => a.version)));
+		expect(max).toBeGreaterThan(0);
+		// 进度逐块上报且单调
+		expect(seen.length).toBeGreaterThanOrEqual(3);
+		for (let i = 1; i < seen.length; i++)
+			expect(seen[i]!.frac).toBeGreaterThan(seen[i - 1]!.frac);
+		expect(seen[seen.length - 1]!.frac).toBeLessThan(1);
+	});
+
+	it("spawn 在场：argv/timeoutMs 逐字转发；stdout 与 stderr 双流消费（背压语义不悬挂）", async () => {
+		const exec = spawnExec(`${OK_LINE}\n`);
+		const r = await migrate(mgCtx({ exec }));
+		expect(r.ok).toBe(true);
+		expect(exec.spawnCalls).toBe(1);
+		expect(exec.opts[0]).toEqual({ timeoutMs: 600_000 });
+	});
+
+	it("spawn 超时/超限形态（code=137 不抛错，v0.1.79 订正）→ 迁移失败 retryable，stderr 摘要在场", async () => {
+		const exec = spawnExec("", { code: 137 });
+		const r = await migrate(mgCtx({ exec }));
+		expect(r.ok).toBe(false);
+		expect(r.retryable).toBe(true);
+		expect(r.message).toContain("137");
+		expect(r.message).toContain("warn-line");
+	});
+
+	it("无 spawn（回落 stage 粒度）：exec.run 缓冲路径照常（既有用例同路径，此处显式钉回落不炸）", async () => {
+		const exec = okExec();
+		const r = await migrate(mgCtx({ exec, onProgress: () => {
+			throw new Error("缓冲路径不得触发进度回调");
+		} }));
+		expect(r.ok).toBe(true);
+	});
+});
+
 describe("migrate（stage=migrating：R14 备份 → exec → 解析 → 禁降版守卫；绝触碰锁与 state）", () => {
 	it("成功：备份文件存在且字节一致，exec argv 逐字对齐 buildMigrateCmd，state 零写入", async () => {
 		const state = recordingState();

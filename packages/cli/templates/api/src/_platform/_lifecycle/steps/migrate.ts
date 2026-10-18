@@ -27,6 +27,10 @@ export interface MigrateContext extends InstallContext {
 	exec: ExecFace
 	/** 当前迁移账本 head（P1-10 对账产物）；缺省跳过禁降版判定 */
 	ledgerHead?: number | bigint | null
+	/** 段内进度回调（P2-13）：spawn 流式路径逐块上报 frac∈[0,1)（渐近 1 的单调分数）；缺省不报 */
+	onProgress?: (frac: number) => void
+	/** 解析成功回调（P2-13）：appliedSeq 捕获真源（installer 据此落 TaskRecord.appliedSeq）；仅解析成功时调用 */
+	onMigrateOutput?: (output: MigrateOutput) => void
 }
 
 export interface StageResult {
@@ -139,6 +143,17 @@ export function rollbackGuard(targetMaxSeq: number | bigint, ledgerHead: number 
 /** R14 清理策略：完成后仅保留最近 3 份 .bak- */
 const KEEP_BACKUPS = 3;
 
+/** 字节块拼接（P2-13 流式路径：迁移输出恰一行 JSON 非行对齐，须攒全量再一次解码——块边界可切坏 UTF-8） */
+function concatBytes(chunks: Uint8Array[]): Uint8Array {
+	const out = new Uint8Array(chunks.reduce((n, c) => n + c.byteLength, 0));
+	let off = 0;
+	for (const c of chunks) {
+		out.set(c, off);
+		off += c.byteLength;
+	}
+	return out;
+}
+
 function isObj(v: unknown): v is Record<string, unknown> {
 	return typeof v === "object" && v !== null && !Array.isArray(v);
 }
@@ -226,21 +241,56 @@ export async function migrate(ctx: MigrateContext): Promise<StageResult> {
 	}
 	try {
 		// 第三步 exec：成败真源 = exit code（S1-6 实测；逐模块 continue-and-collect 由 oj 保证）。
-		// timeoutMs 显式取平台硬上限 600_000——oj 缺省 30_000 会杀生产级长迁移（0.1.78 文档化口径）
-		const r = await ctx.exec.run(buildMigrateCmd(svcDir, ctx.name), { timeoutMs: 600_000 });
-		if (r.code !== 0) {
+		// timeoutMs 显式取平台硬上限 600_000——oj 缺省 30_000 会杀生产级长迁移（0.1.78 文档化口径）。
+		// 双路径（P2-13，G2①）：A exec.spawn 存在（feature-detect，oj 0.1.78+）→ for await 消费原始
+		// 字节，回调内自累积跨块拼接（迁移输出恰一行非行对齐）并逐块上报段内进度；stdout/stderr
+		// 都须消费（有界通道背压：不消费则子进程阻塞）。B 缺失 → exec.run 缓冲态（stage 粒度，
+		// 进度不增量刷）。流式形态超时/超限不抛错只 code=137（v0.1.79 订正）——与非零统一按失败收口。
+		const argv = buildMigrateCmd(svcDir, ctx.name);
+		let code: number;
+		let stdoutText: string;
+		let stderrTail = "";
+		const spawn = ctx.exec.spawn;
+		if (spawn !== undefined) {
+			const h = await spawn(argv, { timeoutMs: 600_000 });
+			const chunks: Uint8Array[] = [];
+			let total = 0;
+			const drainErr = (async () => {
+				const dec = new TextDecoder();
+				for await (const c of h.stderr) {
+					stderrTail += dec.decode(c, { stream: true });
+				}
+			})();
+			const dec = new TextDecoder();
+			for await (const chunk of h.stdout) {
+				chunks.push(chunk);
+				total += chunk.byteLength;
+				ctx.onProgress?.(total / (total + 4096));
+			}
+			await drainErr;
+			code = (await h.exit()).code;
+			stdoutText = dec.decode(concatBytes(chunks));
+		}
+		else {
+			const r = await ctx.exec.run(argv, { timeoutMs: 600_000 });
+			code = r.code;
+			stdoutText = r.stdout;
+			stderrTail = r.stderr;
+		}
+		if (code !== 0) {
 			return {
 				stage: "migrating",
 				ok: false,
 				retryable: true,
-				message: `迁移失败：oj migrate exit ${r.code}（附录 A migrating：数据已保留原状，请修复后重试；备份 ${bak} 可供回退）——输出摘要：${(r.stderr || r.stdout).trim().slice(0, 500)}`,
+				message: `迁移失败：oj migrate exit ${code}（附录 A migrating：数据已保留原状，请修复后重试；备份 ${bak} 可供回退）——输出摘要：${(stderrTail || stdoutText).trim().slice(0, 500)}`,
 			};
 		}
 		// 第四步解析：exit 0 但输出违约属契约破坏，重试不自愈（retryable=false）
-		const parsed = parseMigrateOutput(r.stdout);
+		const parsed = parseMigrateOutput(stdoutText);
 		if (!parsed.ok) {
 			return { stage: "migrating", ok: false, retryable: false, message: `迁移失败：${parsed.message}（备份 ${bak} 可供回退；附录 A migrating）` };
 		}
+		ctx.onMigrateOutput?.(parsed.output);
 		// 逐模块复核：exit 0 但含 ok=false 属输出自相矛盾，按失败处理（fail-closed）
 		const failed = parsed.output.results.filter(x => !x.ok);
 		if (failed.length > 0) {

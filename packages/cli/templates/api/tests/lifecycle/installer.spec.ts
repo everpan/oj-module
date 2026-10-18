@@ -257,6 +257,33 @@ describe("runInstall 全绿路径（步骤 stub，register/smoke/audit 走真实
 		expect(await getTask(taskDir, "nope")).toBeNull();
 	});
 
+	it("P2-13 spawn 流式双路径：appliedSeq 仍在（跨 chunk 拼接解析）+ 进度字段形状不变（轮询消费面兼容）", async () => {
+		const base = bundleExec();
+		const exec: ExecFace = {
+			run: base.run,
+			spawn: async (argv) => {
+				if (argv[0] === "oj" && argv[1] === "migrate") {
+					// S1-6 JSON 恰一行切成 3 块（migrate 段回调内自累积跨块拼接——installer 侧经 onMigrateOutput 捕获）
+					const bytes = new TextEncoder().encode(`${MIGRATE_LINE}\n`);
+					const chunks = [bytes.slice(0, 7), bytes.slice(7, 19), bytes.slice(19)];
+					async function* gen() {
+						for (const c of chunks)
+							yield c;
+					}
+					return { stdout: gen(), stderr: gen(), exit: async () => ({ code: 0 }), kill: () => {} };
+				}
+				throw new Error(`unexpected spawn: ${argv.join(" ")}`);
+			},
+		};
+		const t = await runInstall(makeReq({ exec }));
+		expect(t.status).toBe("done");
+		expect(t.appliedSeq).toBe(3);
+		expect(typeof t.progress).toBe("number");
+		expect(t.progress).toBe(100);
+		const saved = await getTask(taskDir, t.id);
+		expect(saved?.appliedSeq).toBe(3);
+	});
+
 	it("同版本重装幂等、不同版本目录共存（AC-P1-3）：两版本目录并存，锁指新版", async () => {
 		const first = await runInstall(makeReq({ version: "0.1.0" }));
 		expect(first.status).toBe("done");

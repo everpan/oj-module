@@ -29,7 +29,7 @@ import { acquireTaskLock, commitLockEntry, readLock, writeLock } from "./lock";
 import { deployWeb } from "./steps/deploy-web";
 import { download } from "./steps/download";
 import { extract } from "./steps/extract";
-import { maxAppliedSeq, migrate, parseMigrateOutput } from "./steps/migrate";
+import { maxAppliedSeq, migrate } from "./steps/migrate";
 import { preflight } from "./steps/preflight";
 import { registerSolution } from "./steps/register";
 import { reloadAndAssert } from "./steps/reload";
@@ -89,6 +89,8 @@ export interface InstallRequest extends InstallContext {
 	expected?: string[]
 	/** 安装器内部通道（外部调用方忽略）：终态审计读 status/failedStage/taskId + migrate 捕获 appliedSeq */
 	outcome?: { taskId?: string, status?: TaskStatus, failedStage?: InstallStage, appliedSeq?: number | null }
+	/** 安装器内部通道（P2-13）：migrating 段内进度回调（runInstall 注入；spawn 流式路径逐块触发） */
+	onProgress?: (frac: number) => void
 	/** 操作人（历史留痕；端点按 http.user 反查注入，缺省 null） */
 	operator?: string
 }
@@ -106,33 +108,16 @@ function isObj(v: unknown): v is Record<string, unknown> {
 	return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
-/** 捕获 oj migrate 输出的 exec 包装：成功运行后解析 applied max seq（对账 floor 依据）；opts 原样转发（P1-13c：migrate 的 timeoutMs 不得丢失） */
-function captureMigrateExec(exec: ExecFace): { exec: ExecFace, seq: () => number | null } {
-	let seq: number | null = null;
-	return {
-		seq: () => seq,
-		exec: {
-			run: async (argv, opts) => {
-				const r = await exec.run(argv, opts);
-				if (r.code === 0 && argv[0] === "oj" && argv[1] === "migrate") {
-					const p = parseMigrateOutput(r.stdout);
-					if (p.ok) {
-						seq = maxAppliedSeq(p.output);
-					}
-				}
-				return r;
-			},
-		},
-	};
-}
-
 async function migrateStage(req: InstallRequest): Promise<StageResult> {
-	const cap = captureMigrateExec(req.exec);
-	const r = await migrate({ ...req, exec: cap.exec });
-	if (r.ok) {
-		req.outcome = { ...req.outcome, appliedSeq: cap.seq() };
-	}
-	return r;
+	return await migrate({
+		...req,
+		// P2-13：appliedSeq 捕获改走 migrate 解析成功回调（单点真源——run/spawn 双路径都在
+		// migrate 内聚合 stdout 后解析，包装器无法再从 ExecResult 读到流式产物）
+		onMigrateOutput: (output) => {
+			req.outcome = { ...req.outcome, appliedSeq: maxAppliedSeq(output) };
+		},
+		onProgress: req.onProgress,
+	});
 }
 
 /** P2-6 复验真源：从安装清单提取包摘要 + 签名记录（随 done/partial 落 sidecar，供切换前复验） */
@@ -393,11 +378,26 @@ export async function runInstall(req: InstallRequest): Promise<TaskRecord> {
 		// 对账时点纪律（R13/B9/R31）：残留 running 超时判 failed，再开新任务
 		await sweepTimedOut(req.taskDir, now);
 		await writeTask(req.taskDir, task);
+		// P2-13 段内进度：migrating 段 spawn 流式路径逐块触发；写链串行（回调 fire-and-forget
+		// 防交错），失败静默（进度观测面不阻断安装）
+		let progressChain: Promise<void> = Promise.resolve();
 		for (let i = 0; i < PIPELINE.length; i++) {
 			const def = PIPELINE[i]!;
 			task.stage = def.name;
 			task.message = `执行中：${def.name}`;
 			await writeTask(req.taskDir, task);
+			if (def.name === "migrating") {
+				const stageIndex = i;
+				req.onProgress = (frac) => {
+					progressChain = progressChain.then(async () => {
+						task.progress = Math.round(((stageIndex + Math.min(frac, 0.99)) / STAGES.length) * 100);
+						await writeTask(req.taskDir, task);
+					}).catch(() => {});
+				};
+			}
+			else {
+				req.onProgress = undefined;
+			}
 			let r: StageResult;
 			try {
 				r = await def.run(req);
