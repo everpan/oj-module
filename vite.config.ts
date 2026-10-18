@@ -58,7 +58,7 @@ export default defineConfig({
 		// vitest 下排除：该插件持有 FILEHANDLE 不释放，导致 vitest 关停超时
 		// （"close timed out after 10000ms"，每次测试白等 10s）；且测试 fetch
 		// 不经 vite 中间件，mock 接口在测试下本就不可达，纯死重。
-		...(process.env.VITEST
+		...(process.env.VITEST || process.env.VITE_REAL_API === "1"
 			? []
 			: [
 				vitePluginFakeServer({
@@ -204,13 +204,20 @@ export default defineConfig({
 	server: {
 		port: 3333,
 		// https://vitejs.dev/config/server-options#server-proxy
-		proxy: {
-			// "/api": {
-			// 	target: "http://191.255.255.123:8888",
-			// 	changeOrigin: true,
-			// 	rewrite: path => isDev ? path.replace(/^\/api/, "") : path,
-			// },
-		},
+		// 仅演示模式（VITE_REAL_API=1）：把 /api 与方案 web 资产代理到真实 oj serve 后端；
+		// 常态 dev 不加代理，继续使用 fake-server（见上方 plugins 门控）
+		proxy: process.env.VITE_REAL_API === "1"
+			? {
+				"/api": {
+					target: process.env.VITE_PROXY_TARGET ?? "http://127.0.0.1:9781",
+					changeOrigin: true,
+				},
+				"/modules": {
+					target: process.env.VITE_PROXY_TARGET ?? "http://127.0.0.1:9781",
+					changeOrigin: true,
+				},
+			}
+			: {},
 	},
 	define: {
 		__APP_INFO__: JSON.stringify(__APP_INFO__),
