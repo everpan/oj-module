@@ -16,13 +16,13 @@ import type { FetchFace } from "../_lifecycle/steps/download";
 import type { ExecFace } from "../_lifecycle/steps/extract";
 import type { ReloadFace } from "../_lifecycle/steps/reload";
 import type { FetchInitFace } from "../_shared/site-facade";
-import { fsFace } from "../_lifecycle/atomic";
+import { atomicWriteText, fsFace } from "../_lifecycle/atomic";
 import { latestAppliedSeqOf, reconcile, runInstall, setEnabled } from "../_lifecycle/installer";
 import { compareVersions } from "../_lifecycle/semver";
 import { sha384B64 } from "../_lifecycle/sha384";
 import { createStateStore } from "../_lifecycle/state";
 import { flattenBundleRoot } from "../_lifecycle/steps/extract";
-import { getTask } from "../_lifecycle/tasks";
+import { getTask, readTasks } from "../_lifecycle/tasks";
 import { validateTarListing } from "../_lifecycle/tgz-guard";
 import { createTrustStore } from "../_lifecycle/trust";
 import { computeUninstallImpact, runUninstall } from "../_lifecycle/uninstall";
@@ -409,6 +409,17 @@ async function manifestOfUpload(env: MarketEnv, bytes: Uint8Array, exec: ExecFac
 	}
 }
 
+/**
+ * 取消安装文件握手（P3-12 端点接线，U5/P3-8 备案①落地）：oj isolate 按请求隔离，内存信号
+ * 不共享——改走任务目录下标记文件 `${taskDir}/.cancel-<name>`（跨 isolate 唯一共享面 = FS）。
+ * install/cancel 端点写标记（superadmin，R17 同名互斥保证按名寻址无歧义）；runInstall 的
+ * cancel 闭包每次探测时若旗标未置位即发起一次异步读标记（fire-and-forget，读到位翻转旗标，
+ * 下一次探测生效）——无定时器、无后台循环、无每块同步 IO。installBody 终态后清标记。
+ */
+function cancelMarkerPath(taskDir: string, name: string): string {
+	return `${taskDir}/.cancel-${name}`;
+}
+
 /** POST install 主体：门禁后组装 InstallRequest 交 runInstall（端点不重复编排），返回任务 id 供轮询 */
 async function installBody(env: MarketEnv): Promise<{ task_id: string }> {
 	const body = isObj(http.body) ? http.body : {};
@@ -475,34 +486,59 @@ async function installBody(env: MarketEnv): Promise<{ task_id: string }> {
 	// 第一方 bootstrap key 播种（P2-12，G3 双轨第一轨）：runInstall 之前——market 首装免 TOFU。
 	// key 未回填（null）或信任库已初始化 → no-op（不与运维吊销对抗）
 	await seedBootstrapKey(env.trustPath, env.bootstrapKey !== undefined ? env.bootstrapKey : BOOTSTRAP_KEY);
-	const task = await runInstall({
-		manifest,
-		name,
-		version,
-		operator: await operatorOf(),
-		state: await createStateStore(env.statePath),
-		archiveUrl,
-		sharedRoot: env.sharedRoot,
-		staging: env.staging,
-		taskDir: env.taskDir,
-		dbPath: env.dbPath,
-		siteModulesDir: env.siteModulesDir,
-		modulesJsonPath: env.modulesJsonPath,
-		apiPrefix: env.apiPrefix,
-		configPath: env.configPath,
-		fetch: withSiteOrigin(fetch),
-		exec: execOf(env),
-		reload: reloadOf(env),
-		sha384B64: sha384Of(env),
-		sha256Hex: env.sha256Hex,
-		verifyEd25519: env.verifyEd25519,
-		ledgerHead: env.ledgerHeadOf ? await env.ledgerHeadOf(name) : (env.ledgerHead ?? null),
-		hostVersions: await hostVersionsOf(env),
-		// 宿主平台编排面 API 版本（C2-11 peerPlatform 比对真源；与 meta 端点 apiVersion、_platform/manifest.yaml 版本同源，手工同步）
-		hostApiVersion: API_VERSION,
-		trustPath: env.trustPath,
-	});
-	return { task_id: task.id };
+	// U5 取消安装文件握手（P3-12）：清残留标记 → cancel 闭包「未置位则发一次异步读标记，
+	// 读到位翻转旗标」（isolate 无定时器/无共享内存，FS 是唯一跨请求通道）
+	const markerPath = cancelMarkerPath(env.taskDir, name);
+	try {
+		await fsFace().remove(markerPath, { force: true });
+	}
+	catch {}
+	let cancelled = false;
+	try {
+		const task = await runInstall({
+			manifest,
+			name,
+			version,
+			operator: await operatorOf(),
+			state: await createStateStore(env.statePath),
+			archiveUrl,
+			sharedRoot: env.sharedRoot,
+			staging: env.staging,
+			taskDir: env.taskDir,
+			dbPath: env.dbPath,
+			siteModulesDir: env.siteModulesDir,
+			modulesJsonPath: env.modulesJsonPath,
+			apiPrefix: env.apiPrefix,
+			configPath: env.configPath,
+			fetch: withSiteOrigin(fetch),
+			exec: execOf(env),
+			reload: reloadOf(env),
+			sha384B64: sha384Of(env),
+			sha256Hex: env.sha256Hex,
+			verifyEd25519: env.verifyEd25519,
+			ledgerHead: env.ledgerHeadOf ? await env.ledgerHeadOf(name) : (env.ledgerHead ?? null),
+			hostVersions: await hostVersionsOf(env),
+			// 宿主平台编排面 API 版本（C2-11 peerPlatform 比对真源；与 meta 端点 apiVersion、_platform/manifest.yaml 版本同源，手工同步）
+			hostApiVersion: API_VERSION,
+			trustPath: env.trustPath,
+			cancel: () => {
+				if (!cancelled) {
+					void fsFace().readFile(markerPath).then(() => {
+						cancelled = true;
+					}).catch(() => {});
+				}
+				return cancelled;
+			},
+		});
+		return { task_id: task.id };
+	}
+	finally {
+		cancelled = true;
+		try {
+			await fsFace().remove(markerPath, { force: true });
+		}
+		catch {}
+	}
 }
 
 interface IndexRow {
@@ -629,6 +665,29 @@ export function createMarketApi(env: MarketEnv) {
 					await assertSuperAdmin();
 					return await installBody(env);
 				});
+			},
+			// POST /api/_platform/market/install/cancel —— 取消进行中的安装（superadmin，U5/P3-12）。
+			// 按方案名寻址（R17 任务互斥：同名同时至多一个 running install）；写取消标记文件
+			// （isolate 按请求隔离，FS 是唯一跨请求通道），runInstall 的 cancel 闭包在段间/migrate
+			// spawn 逐块探测命中 → h.kill + 回退装前态（P3-8 语义）；终态 failed/partial + cancelled
+			// 标记随任务文件可查。无 running 任务 → 404。
+			cancel: {
+				async post() {
+					await respond(async () => {
+						await assertSuperAdmin();
+						const body = isObj(http.body) ? http.body : {};
+						const name = String(body.name ?? "").trim();
+						if (name === "")
+							fail(400, "name is required");
+						if (!/^[a-z][a-z0-9-]{0,63}$/.test(name))
+							fail(400, `name 非法（须 ^[a-z][a-z0-9-]{0,63}$）：${name}`);
+						const running = (await readTasks(env.taskDir)).some(t => t.name === name && t.status === "running");
+						if (!running)
+							fail(404, `「${name}」当前没有进行中的安装任务（取消只对 running 态有效）`);
+						await atomicWriteText(cancelMarkerPath(env.taskDir, name), new Date().toISOString());
+						return { ok: true, name, requested: true };
+					});
+				},
 			},
 		},
 		// GET /api/_platform/market/task?id= —— 任务轮询消费面（superadmin，§10.2 800ms 轮询）。

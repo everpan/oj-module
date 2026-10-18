@@ -331,6 +331,51 @@ describe("POST install（cdn：Form B 索引解析属市场侧，安装器不拼
 	});
 });
 
+describe("POST install/cancel（P3-12 端点接线，U5/P3-8 令牌的消费面）", () => {
+	it("无进行中安装 → 404（取消只对 running 态有效，任务终态后信号已注销）", async () => {
+		const api = createMarketApi(makeEnv());
+		g.http = { user: { id: 1 }, body: { name: "demo-solution" } };
+		await api.install.cancel.post();
+		expect(last?.status).toBe(404);
+	});
+
+	it("进行中（extracting 段门控阻塞）→ cancel 200 置位旗标 → install 终态 failed+cancelled、staging 清场", async () => {
+		let release: () => void = () => {};
+		const gate = new Promise<void>((r) => {
+			release = r;
+		});
+		const base = bundleExec(); // tar 真写出 §2.9 产物树（extract 复核不误报失败）
+		const api = createMarketApi(makeEnv({
+			exec: {
+				run: async (argv) => {
+					if (argv[0] === "tar" && argv[1] === "-xzf")
+						await gate; // extracting 段阻塞——模拟长安装窗口，取消旗标在途置位
+					return await base.run(argv);
+				},
+			},
+		}));
+		g.http = { user: { id: 1 }, body: { name: "demo-solution", version: "0.1.0", source: "cdn" } };
+		const running = api.install.post(); // 不 await——在途安装
+		await vi.waitFor(async () => {
+			// 任务文件可见（preflight 段已落盘）即可取消——不必等特定 stage
+			expect((await fsp.readdir(taskDir)).filter(f => f.endsWith(".json")).length).toBeGreaterThan(0);
+		});
+		g.http = { user: { id: 1 }, body: { name: "demo-solution" } };
+		await api.install.cancel.post();
+		expect(last?.status).toBe(200);
+		expect((last?.data as { ok?: boolean })?.ok).toBe(true);
+		release(); // 放行 extract → 下一段间探测命中旗标 → h.kill 语义（未进 migrate 即回退）
+		await running;
+		// 终态断言读最后落盘的任务记录（respond 互斥写 last，此处绕开）
+		const id = (await fsp.readdir(taskDir)).find(f => f.endsWith(".json"))!;
+		const rec = await getTask(taskDir, id.replace(/\.json$/, ""));
+		expect(rec?.status).toBe("failed");
+		expect(rec?.cancelled).toBe(true);
+		// 清场：staging 回退装前（D11①锁前语义）
+		await expect(fsp.access(staging)).rejects.toThrow();
+	});
+});
+
 describe("POST install（file：上传载荷，upload/api.ts 先例双路径）", () => {
 	it("multipart 上传 tgz → 验列解包读 manifest（version 由 manifest 兜底）→ runInstall done", async () => {
 		const api = createMarketApi(makeEnv());

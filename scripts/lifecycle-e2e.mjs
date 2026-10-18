@@ -36,7 +36,7 @@ const sha256 = d => createHash("sha256").update(d).digest("hex");
 const results = [];
 function ac(id, name, pass, evidence) {
 	results.push({ id, name, pass, evidence });
-	const tag = String(id).startsWith("P2") ? "AC-" : "AC-P1-";
+	const tag = String(id).startsWith("P2") || String(id).startsWith("P3") ? "AC-" : "AC-P1-";
 	console.log(`${pass ? "PASS" : "FAIL"} ${tag}${id}\t${name}\t— ${evidence}`);
 }
 function must(cond, msg) {
@@ -169,8 +169,15 @@ function buildDemoTree(stageDir, v) {
 	writeFileSync(path.join(mod, "routes.js"), "export default [{ method: \"get\", pattern: \"demo-solution/ping\", file: \"ping/api.js\" }];\n");
 	writeFileSync(path.join(mod, "ping", "api.js"), `export default { async get() { return { pong: true, module: "demo-solution", version: "${v}" }; } };\n`);
 	writeFileSync(path.join(mod, "migrations", "0001__init.sql"), "CREATE TABLE demo_note (id INTEGER PRIMARY KEY, title TEXT NOT NULL);\n");
-	if (v === "0.2.0")
+	// P3-12 GC 链：0001~0005 跨版本逐字节一致（oj 迁移 checksum 要求）；每版只增不改
+	if (v >= "0.2.0")
 		writeFileSync(path.join(mod, "migrations", "0002__add_done.sql"), "ALTER TABLE demo_note ADD COLUMN done INTEGER NOT NULL DEFAULT 0;\n");
+	if (v >= "0.3.0")
+		writeFileSync(path.join(mod, "migrations", "0003__add_note3.sql"), "ALTER TABLE demo_note ADD COLUMN note3 INTEGER NOT NULL DEFAULT 0;\n");
+	if (v >= "0.4.0")
+		writeFileSync(path.join(mod, "migrations", "0004__add_note4.sql"), "ALTER TABLE demo_note ADD COLUMN note4 INTEGER NOT NULL DEFAULT 0;\n");
+	if (v >= "0.5.0")
+		writeFileSync(path.join(mod, "migrations", "0005__add_note5.sql"), "ALTER TABLE demo_note ADD COLUMN note5 INTEGER NOT NULL DEFAULT 0;\n");
 	writeFileSync(path.join(web, "entry.js"), `console.log("demo-solution ${v}");\n`);
 	writeFileSync(path.join(web, "main.css"), `.demo-solution-v${v.replace(/\./g, "-")} { color: red; }\n`);
 }
@@ -647,6 +654,110 @@ async function main() {
 	const vStatic = verifyStatic.data ?? {};
 	const routeStaticErr = (vStatic.checks ?? []).filter(c => c.id === "routes" && c.severity === "error");
 	ac("P3-10", "静态托管形态 web 路由深检全绿（ok=true，无 routes anomaly）+ 静态层真实服务 web 入口", verifyStatic.status === 200 && vStatic.ok === true && routeStaticErr.length === 0 && modulesJsonStatus === 200 && entryStatus === 200 && mainCssStatus === 200 && webRouteStatus === 200, `verify=${verifyStatic.status} ok=${vStatic.ok} routesErr=${routeStaticErr.length} modules.json=${modulesJsonStatus} entry=${entryStatus} css=${mainCssStatus} /demo-solution=${webRouteStatus}`);
+
+	// ══ P3 阶段（AC-P3-1~6，P3-12）：减法与分发真机总验 ══
+	const OJM_CLI = path.join(ROOT, "packages/cli/bin/ojm.mjs");
+	const TASK_DIR = path.join(API, "modules", ".install-tasks");
+
+	// ── AC-P3-4：ojm publish 发布 0.3.0~0.6.0（索引重算 + Ed25519 签名侧车）+ 宿主验签正/反两向 ──
+	console.log("[phase] P3 publish 0.3.0~0.6.0 ...");
+	for (const v of ["0.3.0", "0.4.0", "0.5.0", "0.6.0"]) {
+		const stage = path.join(CDN_DIR, `stage-${v}`);
+		mkdirSync(stage, { recursive: true });
+		buildDemoTree(stage, v);
+		const t = tarCzf(stage, "a.tgz", [`demo-solution-${v}`]);
+		rmSync(path.join(stage, "a.tgz"));
+		writeFileSync(path.join(CDN_DIR, `demo-solution-${v}.tgz`), t.bytes);
+		// 索引追加（JSON 即 YAML；ojm publish 随后重算为确定性 YAML 并签名）
+		const bundles = JSON.parse(readFileSync(path.join(CDN_DIR, "bundles.yaml"), "utf8"));
+		const demoRowP = bundles.solutions.find(s => s.name === "demo-solution");
+		demoRowP.latest = v;
+		demoRowP.versions.unshift({ version: v, file: `demo-solution-${v}.tgz`, sha256: t.sha, size: t.size });
+		writeFileSync(path.join(CDN_DIR, "bundles.yaml"), JSON.stringify(bundles, null, 2));
+		const manifests = JSON.parse(readFileSync(path.join(CDN_DIR, "manifests.yaml"), "utf8"));
+		manifests.push(solutionManifest(v, t.sha, t.size, sigFor("demo-solution", v, t.bytes)));
+		writeFileSync(path.join(CDN_DIR, "manifests.yaml"), JSON.stringify(manifests, null, 2));
+	}
+	const pemPath = path.join(WORK, "publisher-private.pem");
+	writeFileSync(pemPath, E2E_KEY.privateKeyObj.export({ type: "pkcs8", format: "pem" }));
+	const pub = spawnSync(process.execPath, [OJM_CLI, "publish", CDN_DIR, "--id", E2E_KEY.keyId, "--key", pemPath, "--check"], { encoding: "utf8" });
+	const sigBundles = existsSync(path.join(CDN_DIR, "bundles.yaml.sig"));
+	const sigManifests = existsSync(path.join(CDN_DIR, "manifests.yaml.sig"));
+	// 宿主正向：索引签名在场且有效 → install 0.3.0 done（缺签容忍、验签不过 502 的正向面）
+	const tSigned = await install("demo-solution", "0.3.0", token);
+	ac("P3-4", "ojm publish 索引重算+签名（.sig 侧车 + --check 自检）+ 宿主验签装成功", pub.status === 0 && sigBundles && sigManifests && tSigned.status === "done", `publish exit=${pub.status} sig(bundles/manifests)=${sigBundles}/${sigManifests} install0.3.0=${tSigned.status}`);
+	// 宿主反向（G4 fail-closed）：篡改 bundles.yaml → 实收字节与 .sig 不符 → install 502 拒载
+	const bundlesBak = readFileSync(path.join(CDN_DIR, "bundles.yaml"), "utf8");
+	writeFileSync(path.join(CDN_DIR, "bundles.yaml"), `${bundlesBak}\n# tampered-by-e2e\n`);
+	const tamperRes = await api("/api/_platform/market/install", { method: "POST", token, body: { name: "demo-solution", version: "0.4.0", source: "cdn" } });
+	writeFileSync(path.join(CDN_DIR, "bundles.yaml"), bundlesBak); // 还原（publish 重签太重，回抄字节即恢复一致性）
+	ac("P3-4b", "索引篡改 → 宿主验签 fail-closed 502（G4）", tamperRes.status === 502, `install（篡改 bundles.yaml）→ ${tamperRes.status} ${String(tamperRes.message ?? "").slice(0, 80)}`);
+
+	// ── AC-P3-3：GC 保留 N=3（连装 0.4.0/0.5.0 → 目录窗口 [0.3.0,0.5.0]，0.1.0/0.2.0 被清）──
+	console.log("[phase] P3 GC N=3 ...");
+	const t04 = await install("demo-solution", "0.4.0", token);
+	must(t04.status === "done", `install 0.4.0 终态=${t04.status}：${t04.message}`);
+	const t05 = await install("demo-solution", "0.5.0", token);
+	must(t05.status === "done", `install 0.5.0 终态=${t05.status}：${t05.message}`);
+	const dirsGc = (await fsp.readdir(path.join(API, "dist"))).filter(d => d.startsWith("demo-solution-")).sort();
+	const journalGc = dbq("SELECT MAX(version) AS head FROM _oj_migrations WHERE module = ?", ["demo-solution"])[0]?.head;
+	ac("P3-3", "GC 内建 install 保留 N=3（state 时间序，锁版本受保护）", t05.status === "done" && dirsGc.join(",") === "demo-solution-0.3.0,demo-solution-0.4.0,demo-solution-0.5.0" && Number(journalGc) === 5, `dirs=${dirsGc.join(",")} journal.head=${journalGc}`);
+
+	// ── AC-P3-1：卸载影响面预检计数（角色 1 + 受授用户 1）──
+	dbq("INSERT INTO sys_user_role (user_id, role_name) VALUES (?, ?)", [1, "demo-solution.admin"]); // 授 admin 以角色 → 计数非零
+	const impact = await api("/api/_platform/market/uninstall-impact?name=demo-solution", { token });
+	ac("P3-1", "卸载影响面预检计数（affectedRoles/affectedUsers）", impact.status === 200 && impact.data?.affectedRoles === 1 && impact.data?.affectedUsers === 1, `impact=${JSON.stringify(impact.data)}`);
+
+	// ── AC-P3-2：superadmin 门（非 super 身份 → 403，拒权不泄露存在性）──
+	console.log("[phase] P3 superadmin gate ...");
+	await api("/api/system/users", { method: "POST", token, body: { username: "staff", password: "staff-pass-123", displayName: "e2e staff" } });
+	const staffLogin = await api("/api/auth/login", { method: "POST", body: { username: "staff", password: "staff-pass-123" } });
+	const staffChanged = await api("/api/auth/password", { method: "PUT", token: staffLogin.data?.access_token, body: { old_password: "staff-pass-123", new_password: "staff-pass-456" } });
+	const staffToken = staffChanged.data?.access_token;
+	const staffImpact = await api("/api/_platform/market/uninstall-impact?name=demo-solution", { token: staffToken });
+	const staffUninstall = await api("/api/_platform/market/uninstall", { method: "POST", token: staffToken, body: { name: "demo-solution" } });
+	ac("P3-2", "superadmin 门：非 super 身份 uninstall-impact / uninstall → 403", staffImpact.status === 403 && staffUninstall.status === 403, `staff impact=${staffImpact.status} uninstall=${staffUninstall.status}`);
+
+	// ── AC-P3-5：卸载 → 重装不复活授权（Q4 业务表保留 + 授权减法不可逆）──
+	console.log("[phase] P3 uninstall/reinstall ...");
+	dbq("INSERT INTO demo_note (title) VALUES (?)", ["kept-row"]); // Q4：业务数据卸载不删——重装后仍在
+	const un = await api("/api/_platform/market/uninstall", { method: "POST", token, body: { name: "demo-solution" } });
+	const rolesAfter = dbq("SELECT COUNT(*) AS c FROM sys_role WHERE module = ?", ["demo-solution"])[0]?.c;
+	const grantsAfter = dbq("SELECT COUNT(*) AS c FROM sys_user_role WHERE role_name = ?", ["demo-solution.admin"])[0]?.c;
+	const noteAfterUn = dbq("SELECT COUNT(*) AS c FROM demo_note")[0]?.c;
+	const re5 = await install("demo-solution", "0.5.0", token);
+	const rolesBack = dbq("SELECT COUNT(*) AS c FROM sys_role WHERE module = ?", ["demo-solution"])[0]?.c;
+	const grantsBack = dbq("SELECT COUNT(*) AS c FROM sys_user_role WHERE role_name = ?", ["demo-solution.admin"])[0]?.c;
+	const noteBack = dbq("SELECT COUNT(*) AS c FROM demo_note")[0]?.c;
+	const pingRe = await fetch(`${BASE}/api/demo-solution/ping`).then(r => r.status);
+	ac("P3-5", "卸载（四处同删+级联+业务表保留）→ 重装 done：角色重建但授权不复活、业务行完好", un.data?.ok === true && (un.data?.retained ?? []).includes("demo_note") && Number(rolesAfter) === 0 && Number(grantsAfter) === 0 && Number(noteAfterUn) === 1 && re5.status === "done" && Number(rolesBack) === 1 && Number(grantsBack) === 0 && Number(noteBack) === 1 && pingRe === 200, `un=${un.data?.ok} retained=${JSON.stringify(un.data?.retained)} 卸后 roles=${rolesAfter} grants=${grantsAfter} note=${noteAfterUn} → 重装=${re5.status} roles=${rolesBack} grants=${grantsBack}（不复活）note=${noteBack} ping=${pingRe}`);
+
+	// ── AC-P3-6：取消安装（install/cancel 端点接线 → U5 令牌 → h.kill + 回退装前态）──
+	console.log("[phase] P3 cancel install ...");
+	const cancelP = api("/api/_platform/market/install", { method: "POST", token, body: { name: "demo-solution", version: "0.6.0", source: "cdn" } });
+	let cancelOk = false;
+	for (let i = 0; i < 200 && !cancelOk; i++) {
+		await sleep(50);
+		try {
+			const files = (await fsp.readdir(TASK_DIR)).filter(f => f.endsWith(".json"));
+			for (const f of files) {
+				const rec = JSON.parse(await fsp.readFile(path.join(TASK_DIR, f), "utf8"));
+				if (rec.name === "demo-solution" && rec.version === "0.6.0" && rec.status === "running") {
+					const cc = await api("/api/_platform/market/install/cancel", { method: "POST", token, body: { name: "demo-solution" } });
+					cancelOk = cc.status === 200 && cc.data?.ok === true;
+					break;
+				}
+			}
+		}
+		catch {}
+	}
+	const cancelRes = await cancelP;
+	const cancelTaskId = cancelRes.data?.task_id;
+	const cancelRec = cancelTaskId ? await pollTask(cancelTaskId, token) : null;
+	const dirsCancel = (await fsp.readdir(path.join(API, "dist"))).filter(d => d.startsWith("demo-solution-")).sort();
+	const lockCancel = await readText(path.join(API, "dist", "manifests.yaml"));
+	const stagingCancel = await fsp.stat(path.join(API, "modules", ".staging")).then(() => true).catch(() => false);
+	ac("P3-6", "取消安装：cancel 端点置位 → 终态 failed/partial + cancelled、staging 清场、锁/目录回退装前", cancelOk && ["failed", "partial"].includes(cancelRec?.status ?? "") && cancelRec?.cancelled === true && !stagingCancel && !dirsCancel.includes("demo-solution-0.6.0") && String(lockCancel).includes("demo-solution: 0.5.0"), `cancel=${cancelOk} task=${cancelRec?.status}@${cancelRec?.stage} cancelled=${cancelRec?.cancelled}（锁后取消=partial+cancelCleanup 回退，D11 双口径）staging=${stagingCancel ? "残留" : "已清"} dirs=${dirsCancel.join(",")} lock行=${String(lockCancel).split("\n").filter(l => l.includes("demo-solution")).join(";").trim()}`);
 
 	// ── 报告 ──
 	const failed = results.filter(r => !r.pass);

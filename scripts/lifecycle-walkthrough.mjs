@@ -25,7 +25,7 @@ const CDN_BASE = "http://127.0.0.1:9782";
 const OJ_BIN = process.env.OJ_BIN ?? `${process.env.HOME}/.local/share/oj/oj`;
 const OJ_MARKET_TGZ = process.env.OJ_MARKET_TGZ ?? "/tmp/oj-market-walk/dist/oj-market-0.1.0.tgz";
 const KEEP = process.argv.includes("--keep");
-const TRANSCRIPT = path.join(ROOT, "logs", "walkthrough-P2-16-fullchain.md"); // P2-16 留档（P1 期产物 walkthrough-P1-16-fullchain.md 保留不动）
+const TRANSCRIPT = path.join(ROOT, "logs", "walkthrough-P3-fullchain.md"); // P3-12 留档（P2 期 walkthrough-P2-16-fullchain.md 保留不动）
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 const transcript = [];
@@ -176,7 +176,10 @@ async function main() {
 	let cfg = readFileSync(path.join(API, "config.yaml"), "utf8");
 	cfg = cfg.replace("port: 9778", "port: 9781");
 	cfg = cfg.replace("__JWT_SECRET__", randomBytes(32).toString("hex"));
-	cfg = cfg.replace("platform:\n  exec:", "platform:\n  modules: [_platform]\n  root: dist\n  exec:");
+	// P3-1 在 platform: 下插入 U6 注释块致 `platform:\n  exec:` 字面补丁失配（e2e 同款修复）——锚定行首两个空格的 exec:
+	cfg = cfg.replace(/^ {2}exec:/m, "  modules: [_platform]\n  root: dist\n  exec:");
+	if (!cfg.includes("modules: [_platform]"))
+		throw new Error("platform 段补丁未命中");
 	cfg = cfg.replace("  anonymous_paths:", "  anonymous_paths:\n    - /oj-market/ping");
 	if (!cfg.includes("/oj-market/ping"))
 		throw new Error("匿名路径补丁未命中");
@@ -338,6 +341,42 @@ async function main() {
 	}
 	ac(6, "install(显式旧版) 回滚（R12 可读失败分支）", ac6pass, ac6ev);
 
+	// ══ P3 走查（P3-12，AC-P3-1/2/4 真机；P3-3/5/6 备案指向 e2e——见段末备案注记）══
+	const OJM_CLI = path.join(ROOT, "packages/cli/bin/ojm.mjs");
+	// ── AC-P3-4 ojm publish：索引重算 + Ed25519 签名侧车 + 宿主验签正/反两向 ──
+	log("\n## P3 走查（AC-P3-1/2/4 真机；P3-3/5/6 见段末备案）\n");
+	const pemPath = path.join(WORK, "walk-publisher-private.pem");
+	writeFileSync(pemPath, WALK_KEY.privateKeyObj.export({ type: "pkcs8", format: "pem" }));
+	const pub = spawnSync(process.execPath, [OJM_CLI, "publish", CDN_DIR, "--id", WALK_KEY.keyId, "--key", pemPath, "--check"], { encoding: "utf8" });
+	const sigB = existsSync(path.join(CDN_DIR, "bundles.yaml.sig"));
+	const sigM = existsSync(path.join(CDN_DIR, "manifests.yaml.sig"));
+	const tPub = await install("oj-market", "", token);
+	ac("P3-4", "ojm publish 索引重算+签名（.sig 侧车）+ 宿主验签重装 done", pub.status === 0 && sigB && sigM && tPub.status === "done", `ojm publish ${CDN_DIR} --id ${WALK_KEY.keyId} --check → exit=${pub.status}；bundles.yaml.sig=${sigB} manifests.yaml.sig=${sigM}；install（签名在场）→ ${tPub.status}（宿主验签通过才可达 resolveCdn）`);
+	// 反向（G4 fail-closed）：篡改 bundles.yaml → 实收字节与 .sig 不符 → install 502
+	const bundlesBak = readFileSync(path.join(CDN_DIR, "bundles.yaml"), "utf8");
+	writeFileSync(path.join(CDN_DIR, "bundles.yaml"), `${bundlesBak}\n# tampered-by-walkthrough\n`);
+	const tamperRes = await api("/api/_platform/market/install", { method: "POST", token, body: { name: "oj-market", version: "0.1.0", source: "cdn" } });
+	writeFileSync(path.join(CDN_DIR, "bundles.yaml"), bundlesBak);
+	ac("P3-4b", "索引篡改 → 宿主验签 fail-closed 502（G4）", tamperRes.status === 502, `install（篡改 bundles.yaml）→ ${tamperRes.status} ${String(tamperRes.message ?? "").slice(0, 80)}`);
+	// ── AC-P3-1 卸载影响面预检计数（授 admin 以 oj-market.viewer → 1 角色 1 用户）──
+	const { DatabaseSync: WalkDb } = await import("node:sqlite");
+	{
+		const dbo = new WalkDb(path.join(API, "db.sqlite"));
+		dbo.prepare("INSERT INTO sys_user_role (user_id, role_name) VALUES (?, ?)").run(1, "oj-market.viewer");
+		dbo.close();
+	}
+	const impact = await api("/api/_platform/market/uninstall-impact?name=oj-market", { token });
+	ac("P3-1", "卸载影响面预检计数（affectedRoles/affectedUsers）", impact.status === 200 && impact.data?.affectedRoles === 1 && impact.data?.affectedUsers === 1, `curl $BASE/api/_platform/market/uninstall-impact?name=oj-market → ${impact.status}，${JSON.stringify(impact.data)}（授 admin 以 oj-market.viewer 后计数非零）`);
+	// ── AC-P3-2 superadmin 门（非 super 身份 → 403）──
+	await api("/api/system/users", { method: "POST", token, body: { username: "staff", password: "staff-pass-123", displayName: "walk staff" } });
+	const staffLogin = await api("/api/auth/login", { method: "POST", body: { username: "staff", password: "staff-pass-123" } });
+	const staffChanged = await api("/api/auth/password", { method: "PUT", token: staffLogin.data?.access_token, body: { old_password: "staff-pass-123", new_password: "staff-pass-456" } });
+	const staffToken = staffChanged.data?.access_token;
+	const staffImpact = await api("/api/_platform/market/uninstall-impact?name=oj-market", { token: staffToken });
+	const staffUninstall = await api("/api/_platform/market/uninstall", { method: "POST", token: staffToken, body: { name: "oj-market" } });
+	ac("P3-2", "superadmin 门：非 super 身份 uninstall-impact / uninstall → 403", staffImpact.status === 403 && staffUninstall.status === 403, `staff（无 superadmin 角色）impact=${staffImpact.status} uninstall=${staffUninstall.status}（拒权不泄露存在性）`);
+	log("\n### P3 备案\n\n- AC-P3-3（GC N=3）/ AC-P3-5（卸载重装不复活授权）/ AC-P3-6（取消安装）：走查站点仅 oj-market 一个已锁方案——卸载触发空锁拒启（S1-1.2）、GC/取消需多版本安装链，真机覆盖见 scripts/lifecycle-e2e.mjs AC-P3-3/5/6（oj 0.1.80 同宿主）。");
+
 	// ── AC7 卸载 + market_history 留痕 ──
 	const un = await api("/api/_platform/market/uninstall", { method: "POST", token, body: { name: "oj-market" } });
 	const lockUn = await readText(path.join(API, "dist", "manifests.yaml"));
@@ -365,7 +404,7 @@ async function main() {
 		log(`\n## market_history 全量（sqlite 直读）\n\n- 读取失败：${String(e).slice(0, 200)}`);
 	}
 
-	log(`\n## 结果（AC0-7 + AC-P2-1~6）\n\n- ${outcomes.filter(o => o.pass).length}/${outcomes.length} PASS${outcomes.every(o => o.pass) ? "（全绿）" : "（存在 FAIL）"}`);
+	log(`\n## 结果（AC0-7 + AC-P2-1~6 + AC-P3-1/2/4）\n\n- ${outcomes.filter(o => o.pass).length}/${outcomes.length} PASS${outcomes.every(o => o.pass) ? "（全绿）" : "（存在 FAIL）"}`);
 }
 
 try {
