@@ -181,6 +181,7 @@ async function pruneBackups(dbPath: string, f: FsFace): Promise<string | null> {
 			// 单份清理失败不掩盖迁移结果
 		}
 	}
+	return null;
 }
 
 export async function migrate(ctx: MigrateContext): Promise<StageResult> {
