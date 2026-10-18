@@ -38,7 +38,7 @@
 | P3-0 | 期门裁决 + 本计划 | 本文 + 分支切出 | — | ✅ |
 | P3-1 | U6 信任库移出 fs.root + trusted_paths 授权 | `market/api.ts` `config.yaml` `trust.spec.ts` | PG3 | ✅ 完成 `4397eb9f` |
 | P3-2 | U2 GC 保留 N=3（state 时间序） | `state.ts` `installer.ts` | AC-P3-3 | ✅ 完成 `f74a5b8f` |
-| P3-3 | U1① 级联单事务 | `uninstall.ts` | AC-P3-1/2 | ⬜ |
+| P3-3 | U1① 级联单事务 | `uninstall.ts` | AC-P3-1/2 | ✅ 完成 `e4bbf19c` |
 | P3-4 | U1② 业务表保留提示 | `uninstall.ts` `market/api.ts` | AC-P3-1/2 | ⬜ |
 | P3-5 | U3-a `ojm publish` 命令 | `index.ts`+`publish.ts` | AC-P3-4 | ⬜ |
 | P3-6 | U3-b 索引重算 + no-cache 确认 | `market/api.ts` | AC-P3-4 | ⬜ |
