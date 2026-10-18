@@ -20,6 +20,8 @@ import { readLock, writeLock } from "./lock";
 declare const db: {
 	exec: (sql: string, params: unknown[]) => Promise<unknown>
 	query: (sql: string, params?: unknown[]) => Promise<unknown>
+	/** 单一 DB 事务包裹（P3-3）：回调内语句共享一个 BEGIN/COMMIT/ROLLBACK 边界，异常即整段回滚 */
+	tx: <T>(fn: (t: { exec: (sql: string, params?: unknown[]) => Promise<unknown>, query: (sql: string, params?: unknown[]) => Promise<unknown> }) => Promise<T>) => Promise<T>
 };
 
 function isObj(v: unknown): v is Record<string, unknown> {
@@ -99,25 +101,29 @@ export async function runUninstall(input: UninstallInput): Promise<UninstallResu
 	const audit = (ok: boolean, detail: string): void =>
 		(input.audit ?? auditOp)({ action: "solution.uninstall", module: name, target: name, detail: { ok, detail }, level: ok ? 6 : 4 });
 
+	// ① DB 级联单一事务（P3-3）：route 删除 + 权限双维度级联（uninstallSolution）纳入同一 BEGIN/COMMIT/ROLLBACK
+	// 边界。任一步失败 → 整段回滚（无角色/权限/路由半残），锁不摘（fail-closed：模块仍挂载、可重试或重装自愈）。
+	try {
+		await db.tx(async (t) => {
+			await t.exec("delete from sys_solution_route where module = ?", [name]);
+			await uninstallSolution(name, t);
+		});
+	}
+	catch (e) {
+		audit(false, `权限级联清理失败：${String(e)}`);
+		return { ok: false, message: `卸载失败：权限级联清理失败（${String(e)}）——事务已回滚，锁/路由/角色/权限未改动（fail-closed）` };
+	}
+
 	// ② sidecar 删条目（patch 值 null = 删除该方案键）
 	try {
 		await input.state.write({ solutions: { [name]: null } });
 	}
 	catch (e) {
 		audit(false, `sidecar 写失败：${String(e)}`);
-		return { ok: false, message: `卸载失败：sidecar 写失败（${String(e)}）` };
+		return { ok: false, message: `卸载失败：sidecar 写失败（${String(e)}）——DB 级联已提交，锁未摘（fail-closed）` };
 	}
 
-	// ③ route 行删除
-	try {
-		await db.exec("delete from sys_solution_route where module = ?", [name]);
-	}
-	catch (e) {
-		audit(false, `route 删除失败：${String(e)}`);
-		return { ok: false, message: `卸载失败：sys_solution_route 删除失败（${String(e)}）——sidecar 已删除，路由残留` };
-	}
-
-	// ④ modules.json 删条目（条目不存在 = api-only 方案，天然一致）
+	// ③ modules.json 删条目（条目不存在 = api-only 方案，天然一致）
 	try {
 		const list = JSON.parse(new TextDecoder().decode(await f.readFile(input.modulesJsonPath))) as unknown[];
 		if (!Array.isArray(list)) {
@@ -128,25 +134,16 @@ export async function runUninstall(input: UninstallInput): Promise<UninstallResu
 	}
 	catch (e) {
 		audit(false, `modules.json 写失败：${String(e)}`);
-		return { ok: false, message: `卸载失败：modules.json 写失败（${String(e)}）——锁/sidecar/route 已更新，前端条目残留` };
+		return { ok: false, message: `卸载失败：modules.json 写失败（${String(e)}）——DB 级联已提交、sidecar 已删，锁未摘（fail-closed）` };
 	}
 
-	// 权限唯一减法出口（双维度级联：角色 + 绑定 + 用户成员 + 权限点）
-	try {
-		await uninstallSolution(name);
-	}
-	catch (e) {
-		audit(false, `权限级联清理失败：${String(e)}`);
-		return { ok: false, message: `卸载失败：权限级联清理失败（${String(e)}）` };
-	}
-
-	// ① 锁摘除（最后执行：模块停止装配）
+	// ① 锁摘除（最后执行：模块停止装配；在此之前任一失败锁均保留 = fail-closed）
 	try {
 		await writeLock(input.lockPath, remaining);
 	}
 	catch (e) {
 		audit(false, `锁写失败：${String(e)}`);
-		return { ok: false, message: `卸载失败：锁写失败（${String(e)}）——其余三处已更新，锁残留` };
+		return { ok: false, message: `卸载失败：锁写失败（${String(e)}）——DB 级联/sidecar/modules 已更新，锁残留` };
 	}
 
 	// 版本目录移除（缺失不报错，幂等）

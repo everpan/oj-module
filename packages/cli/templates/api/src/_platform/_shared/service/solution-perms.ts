@@ -73,22 +73,29 @@ export async function upsertSolutionPerms(m: SolutionManifest): Promise<UpsertRe
 	return { deprecated };
 }
 
+/** 事务/非事务统一的 db 面（P3-3：可传入 db.tx 的事务句柄以纳入单一事务） */
+interface DbLike {
+	query: (sql: string, params?: unknown[]) => Promise<unknown>
+	exec: (sql: string, params?: unknown[]) => Promise<unknown>
+}
+
 /**
  * 卸载级联清理（AC2-6，唯一减法出口）——双维度：
  * ① 该 module 的角色行 + 这些角色的全部绑定 + 用户成员资格；
  * ② permission_code 属该 module 的绑定（含 custom 角色上的）+ 权限点行——
  *   漏维度②会让 custom 角色残留绑定在重装时静默复活旧授权。custom 角色本体保留（空绑定）。
  * AC2-7：业务表不属本出口，运维手工处理（Q4）。
+ * P3-3：可传入事务句柄 `d`（db.tx 的 t），使级联纳入卸载的单一 DB 事务；缺省回落全局 db（兼容既有调用面）。
  */
-export async function uninstallSolution(module: string): Promise<void> {
-	const roles = await db.query("select name from sys_role where module = ?", [module]) as Array<{ name: string }>;
+export async function uninstallSolution(module: string, d: DbLike = db): Promise<void> {
+	const roles = await d.query("select name from sys_role where module = ?", [module]) as Array<{ name: string }>;
 	for (const r of roles) {
-		await db.exec("delete from sys_role_permission where role_name = ?", [r.name]);
-		await db.exec("delete from sys_user_role where role_name = ?", [r.name]);
+		await d.exec("delete from sys_role_permission where role_name = ?", [r.name]);
+		await d.exec("delete from sys_user_role where role_name = ?", [r.name]);
 	}
-	await db.exec("delete from sys_role where module = ?", [module]);
+	await d.exec("delete from sys_role where module = ?", [module]);
 	// module 名是 slug（[a-z0-9_-]），LIKE 前缀匹配的转义纪律同 query.ts（ESCAPE '!' 三方言同义）
 	const prefix = `${module.replace(/[!%_]/g, c => `!${c}`)}.%`;
-	await db.exec("delete from sys_role_permission where permission_code like ? escape '!'", [prefix]);
-	await db.exec("delete from sys_permission where module = ?", [module]);
+	await d.exec("delete from sys_role_permission where permission_code like ? escape '!'", [prefix]);
+	await d.exec("delete from sys_permission where module = ?", [module]);
 }

@@ -183,6 +183,55 @@ describe("POST uninstall 卸载编排（superadmin，R9）", () => {
 	});
 });
 
+describe("P3-3 卸载级联单一事务（fail-closed：中段失败整段回滚、锁不摘、无半残）", () => {
+	it("权限级联中段失败 → 事务回滚（route/角色/权限零残）、锁/sidecar/modules/版本目录原样保留", async () => {
+		await seedInstalled();
+		// 注入：db.tx 内命中「delete from sys_role where module」时抛错，模拟级联中段失败；自建 BEGIN/ROLLBACK 保证回滚
+		const origTx = g.db.tx;
+		g.db.tx = async (fn: (t: { exec: (sql: string, params?: unknown[]) => unknown, query: (sql: string, params?: unknown[]) => unknown }) => unknown) => {
+			dbo.exec("BEGIN");
+			const t = {
+				query: (sql: string, params: unknown[] = []) => dbo.prepare(sql).all(...(params as never[])),
+				exec: (sql: string, params: unknown[] = []) => {
+					if (/delete from sys_role where module/.test(sql))
+						throw new Error("injected cascade failure");
+					return Number(dbo.prepare(sql).run(...(params as never[])).changes);
+				},
+			};
+			try {
+				const r = await fn(t);
+				dbo.exec("COMMIT");
+				return r;
+			}
+			catch (e) {
+				dbo.exec("ROLLBACK");
+				throw e;
+			}
+		};
+		const api = createMarketApi(makeEnv());
+		g.http = { user: { id: 1 }, body: { name: "demo-solution" } };
+		await api.uninstall.post();
+		expect(last?.status).toBe(200);
+		expect(last?.data).toMatchObject({ ok: false });
+		// 锁仍在（fail-closed：模块仍挂载，可重试或重装自愈）
+		expect(await readLock(join(sharedRoot, "manifests.yaml"))).toEqual({ "demo-solution": "0.1.0", other: "1.0.0" });
+		// 事务回滚：route / 角色 / 用户绑定 零残（全部回退到卸载前）
+		expect(Number(dbo.prepare("SELECT count(*) as c FROM sys_solution_route WHERE module = ?").get("demo-solution").c)).toBe(1);
+		expect(Number(dbo.prepare("SELECT count(*) as c FROM sys_role WHERE module = ?").get("demo-solution").c)).toBe(2);
+		expect(Number(dbo.prepare("SELECT count(*) as c FROM sys_user_role WHERE role_name = ?").get("demo-solution.admin").c)).toBe(1);
+		expect(Number(dbo.prepare("SELECT count(*) as c FROM sys_user_role WHERE role_name = ?").get("demo-solution.viewer").c)).toBe(1);
+		// 文件操作未触发（级联失败在锁摘除之前返回）：sidecar / modules.json / 版本目录 原样保留
+		const state = await createStateStore(statePath);
+		expect(state.read().solutions["demo-solution"]).toMatchObject({ version: "0.1.0" });
+		const list = JSON.parse(await fsp.readFile(modulesJsonPath, "utf8")) as Array<{ name: string }>;
+		expect(list.find(e => e.name === "demo-solution")).toBeDefined();
+		expect(list.find(e => e.name === "other")).toBeDefined();
+		await fsp.access(join(sharedRoot, "demo-solution-0.1.0"));
+		// 还原 tx（不影响后续用例）
+		g.db.tx = origTx;
+	});
+});
+
 describe("门禁（R9：卸载 superadmin 独占）", () => {
 	it("非 superadmin 访问 uninstall / uninstall-impact → 403", async () => {
 		await seedInstalled();
