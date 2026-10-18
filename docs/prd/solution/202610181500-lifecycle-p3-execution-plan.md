@@ -46,7 +46,7 @@
 | P3-8 | U5 取消安装（h.kill + staging 清理 + 账本对账 + D11） | `installer.ts` `migrate.ts` | AC-P3-6 | ✅ 完成 `a786d6fe` |
 | P3-9 | reconcile live 信任核对（P2-6#1） | `installer.ts` | P2 §5 | ✅ 完成 8f40804e |
 | P3-10 | 深检静态托管真机增强（P2-16#2） | `scripts/lifecycle-e2e.mjs` | P2 §5 | ✅ 完成 a13763d0 |
-| P3-11 | 宿主打磨（卸载路由 404 + 宿主层 rollbackGuard） | `market/api.ts` `migrate.ts` | P1 §5 | ⬜ |
+| P3-11 | 宿主打磨（卸载路由 404 + 宿主层 rollbackGuard） | `market/api.ts` `migrate.ts` | P1 §5 | ✅ 完成 7d1f38e1 |
 | P3-12 | P3 端到端 e2e + 走查（AC-P3-1~6） | `scripts/*` `logs/` | AC-P3-1~6 | ⬜ |
 | P3-13 | 集中审查 + 合并 | SDD 评审包 | DoD | ⬜ |
 
