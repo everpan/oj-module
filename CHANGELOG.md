@@ -22,7 +22,7 @@
 ### Added
 
 - **`ojm init` 排除清单（`templates/init.exclude.yaml`）**：模板里现在内置一批「仅供演示」的模块与「模板自运行专属」文件，`ojm init` 拷脚手架时按清单跳过，用户工程不再收到它们。
-  - demo-only 模块：`api/src/demo`、`api/src/home`、`web/src/{about,access,exception,outside,route-nest}`（来自 `apps/playground-oj` 的演示模块，模板保留以便自演示）。
+  - demo-only 模块：`api/src/demo`、`api/src/home`、`web/src/{about,access,exception,outside,route-nest}`（来自 `apps/playground-oj` 的演示模块，模板保留以便自演示），外加 `web/src/oj-market`（解决方案市场，第一方能力，仍在演进中，故新工程默认不带）。
   - 模板自运行专属：`package.json`、`node_modules`、`bin`、`pnpm-lock.yaml`。
   - 构建/运行期产物：`api/dist`、`web/dist`、`api/logs`、`api/config/*.pem`、`api/config/cert.jws`、`api/db.sqlite*`——尤其避免所有新建工程共享同一把模板私钥。
   - 派生规则：被排除的 api 模块，其前端 `__client` 生成物一并排除；`openapi.json` 里对应端点也会被裁掉（否则新工程一跑 `ojm api --check` 就是「有契约无 handler」）。

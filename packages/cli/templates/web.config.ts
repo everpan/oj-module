@@ -27,6 +27,9 @@ const allModules = [
 	{ name: "exception", entry: "web/src/exception/entry.ts" },
 	{ name: "outside", entry: "web/src/outside/entry.ts" },
 	{ name: "route-nest", entry: "web/src/route-nest/entry.ts" },
+	// 解决方案市场：第一方能力（消费 _platform 编排面 /api/_platform/market/*），
+	// 模板自带以便自演示；新工程默认不带，同上由 init 剥离。
+	{ name: "oj-market", entry: "web/src/oj-market/entry.ts" },
 	// #endregion demo-only
 ];
 

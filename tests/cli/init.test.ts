@@ -195,6 +195,7 @@ describe("initProject", () => {
 			"web/src/exception",
 			"web/src/outside",
 			"web/src/route-nest",
+			"web/src/oj-market",
 		])
 			expect(fs.existsSync(path.join(dest, mod))).toBe(false);
 
@@ -204,7 +205,7 @@ describe("initProject", () => {
 
 		// 3) web.config.ts：demo 条目与 #region 标记一并剥离（不留指向缺失文件的死条目）
 		const config = fs.readFileSync(path.join(dest, "web.config.ts"), "utf-8");
-		for (const name of ["about", "access", "exception", "outside", "route-nest"])
+		for (const name of ["about", "access", "exception", "outside", "route-nest", "oj-market"])
 			expect(config).not.toContain(`"${name}"`);
 		expect(config).not.toContain("#region demo-only");
 		expect(config).not.toContain("#endregion");

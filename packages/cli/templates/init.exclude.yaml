@@ -18,6 +18,7 @@ exclude:
   - web/src/exception
   - web/src/outside
   - web/src/route-nest
+  - web/src/oj-market
   # —— 模板自运行专属文件 ——
   - package.json
   - node_modules
