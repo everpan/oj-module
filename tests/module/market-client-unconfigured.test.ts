@@ -2,12 +2,16 @@ import { describe, expect, it } from "vitest";
 
 import { createHttpMarketClient } from "../../packages/cli/templates/web/src/oj-market/api/client";
 
+/** 记录每次 get 的选项，供断言「不弹 toast + 不重试」 */
+const getCalls: Array<{ url: string, opts?: Record<string, unknown> }> = [];
+
 /** 最小 ky 形态桩：按预设给结果或抛错（含 HTTPError 的 response.status） */
 function fakeRequest(handler: (url: string) => unknown): Parameters<typeof createHttpMarketClient>[0] {
 	return {
-		get: async (url: string) => ({
-			json: async () => handler(url),
-		}),
+		get: async (url: string, opts?: Record<string, unknown>) => {
+			getCalls.push({ url, opts });
+			return { json: async () => handler(url) };
+		},
 		post: async (url: string) => ({
 			json: async () => handler(url),
 		}),
@@ -44,5 +48,16 @@ describe("市场客户端：未配置市场地址（503）归空态", () => {
 			throw httpError(500);
 		}));
 		await expect(client.index()).rejects.toThrow("HTTP 500");
+	});
+
+	it("index 静默错误 + 关闭重试（页面已有空态文案，不再叠 toast/刷 4 次）", async () => {
+		getCalls.length = 0;
+		const client = createHttpMarketClient(fakeRequest(() => {
+			throw httpError(503);
+		}));
+		await client.index();
+		expect(getCalls).toHaveLength(1);
+		expect(getCalls[0].opts?.silentError).toBe(true);
+		expect(getCalls[0].opts?.retry).toBe(0);
 	});
 });

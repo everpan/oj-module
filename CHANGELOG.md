@@ -32,6 +32,7 @@
 ### Fixed
 
 - **市场页在模板默认配置下不再报错**：模板种子里 `framework.market_cdn_url` 为空，`GET /api/_platform/market/index` 按设计返 503「未配置市场地址」，而前端把它当故障弹了错误态 + 重试。现客户端把 index 的 503 归为空数组（PRD §5.3：卡片区显示「未配置市场地址」），其它状态码照旧上抛。
+  - 同时不再叠 toast 与重试：ky 新增请求级 `silentError` 选项（调用方自行消化错误体时跳过全局错误 toast），index 以 `silentError + retry: 0` 发起——503 是配置态而非抖动，默认重试 3 次只会刷出 4 条同样的错误。
 - **`pnpm-workspace.yaml` 改由 `ojm init` 生成**（构建审批 `allowBuilds.esbuild` + `@redocly/cli` 钉版 2.51.0），不再从模板拷贝：模板目录本身是根 workspace 成员，自带一份会让 pnpm 就近把它当 workspace 根，`cd packages/cli/templates && pnpm i` 找不到父级 catalog（`ERR_PNPM_CATALOG_ENTRY_NOT_FOUND_FOR_SPEC`）。工程里已有该文件时仍是合并语义（占位行填 true、显式 `false` 不动）。
 
 ## [0.2.4] - 2026-10-17

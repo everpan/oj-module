@@ -15,7 +15,9 @@ import type {
 export interface HttpRequest {
 	get: <T = unknown>(
 		url: string,
-		opts?: { searchParams?: Record<string, string> },
+		// silentError：错误体由本客户端消化（未配置市场地址走空态），不弹全局 toast；
+		// retry: 0：503 是配置态而非抖动，默认重试 3 次只会刷出 4 条同样错误。
+		opts?: { searchParams?: Record<string, string>, silentError?: boolean, retry?: number },
 	) => Promise<{ json: <R = T>() => Promise<R> }>
 	post: <T = unknown>(
 		url: string,
@@ -74,7 +76,10 @@ export function createHttpMarketClient(request: HttpRequest): MarketClient {
 		},
 		async index() {
 			try {
-				const r = await request.get<OjEnvelope<IndexRow[]>>(`${PLATFORM}/index`);
+				const r = await request.get<OjEnvelope<IndexRow[]>>(`${PLATFORM}/index`, {
+					silentError: true,
+					retry: 0,
+				});
 				const env = await r.json();
 				return env.data!;
 			}

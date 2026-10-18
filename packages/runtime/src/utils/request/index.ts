@@ -80,6 +80,10 @@ const defaultConfig: Options = {
 						return refreshTokenAndRetry(request, options, refreshToken);
 					}
 					else {
+						// silentError：错误体由调用方自行消化（如市场「未配置地址」这类
+						// 预期空态，页面已有文案），不再叠一层全局 toast。
+						if (options.silentError)
+							return response;
 						return handleErrorResponse(response);
 					}
 				}
