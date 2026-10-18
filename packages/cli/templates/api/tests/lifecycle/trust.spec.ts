@@ -39,7 +39,7 @@ function fingerprintOf(publicKeyHex: string): string {
 
 let root: string;
 let trustPath: string;
-let auditLog: { action: string, target: string, detail: unknown }[];
+let auditLog: { action: string, target: string, detail: unknown, level?: number }[];
 
 beforeEach(async () => {
 	root = await fsp.mkdtemp(join(tmpdir(), "ojm-trust-"));
@@ -54,7 +54,7 @@ afterEach(async () => {
 });
 
 function store(): ReturnType<typeof createTrustStore> {
-	return createTrustStore(trustPath, { audit: e => auditLog.push({ action: e.action, target: e.target, detail: e.detail }), fingerprintOf });
+	return createTrustStore(trustPath, { audit: e => auditLog.push({ action: e.action, target: e.target, detail: e.detail, level: e.level }), fingerprintOf });
 }
 
 describe("信任库 store（C2-38/39）", () => {
@@ -105,6 +105,23 @@ describe("信任库 store（C2-38/39）", () => {
 		expect(await s.remove("ojm.test")).toBe(false);
 		expect(auditLog.map(e => e.action)).toEqual(["solution.trust.add", "solution.trust.revoke"]);
 		expect(auditLog[0]).toMatchObject({ target: "ojm.test", detail: { key_id: "ojm.test", operator: "admin", fingerprint: fingerprintOf(PUB_A) } });
+	});
+
+	it("审计 operator 不可得 → 记 unknown 且告警级 level=4（不静默 null，P2-5）", async () => {
+		const s = store();
+		await s.add("ojm.test", PUB_A); // 无 operator
+		expect(auditLog[0]?.level).toBe(4);
+		expect(auditLog[0]?.detail).toMatchObject({ operator: "unknown" });
+		await s.remove("ojm.test"); // 无 operator
+		expect(auditLog[1]?.level).toBe(4);
+		expect(auditLog[1]?.detail).toMatchObject({ operator: "unknown" });
+	});
+
+	it("审计 operator 可得 → 记真值且 info 级 level=6", async () => {
+		const s = store();
+		await s.add("ojm.test", PUB_A, { operator: "admin" });
+		expect(auditLog[0]?.level).toBe(6);
+		expect(auditLog[0]?.detail).toMatchObject({ operator: "admin" });
 	});
 
 	it("key_id 命名空间违规拒（C2-37）：单段裸名 / 大写 / 空段", async () => {

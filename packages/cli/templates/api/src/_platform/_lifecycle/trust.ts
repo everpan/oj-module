@@ -141,12 +141,14 @@ export function createTrustStore(path: string, opts?: { audit?: TrustAudit, fing
 			const next = new Map(disk.entries);
 			next.set(keyId, { key_id: keyId, public_key: publicKeyHex, added_at: Date.now() });
 			await commit({ ...disk, entries: next });
+			// operator 不可得 → 记 "unknown" 且告警级（level 4），不静默 null（P2-5）
+			const op = o?.operator ?? null;
 			audit({
 				action: "solution.trust.add",
 				module: "market",
 				target: keyId,
-				detail: { key_id: keyId, fingerprint: fingerprint(publicKeyHex), operator: o?.operator ?? "unknown" },
-				level: 6,
+				detail: { key_id: keyId, fingerprint: fingerprint(publicKeyHex), operator: op ?? "unknown" },
+				level: op ? 6 : 4,
 			});
 			return "added";
 		},
@@ -157,12 +159,14 @@ export function createTrustStore(path: string, opts?: { audit?: TrustAudit, fing
 			const next = new Map(disk.entries);
 			next.delete(keyId);
 			await commit({ ...disk, entries: next });
+			// operator 不可得 → 记 "unknown" 且告警级（level 4），不静默 null（P2-5）
+			const op = o?.operator ?? null;
 			audit({
 				action: "solution.trust.revoke",
 				module: "market",
 				target: keyId,
-				detail: { key_id: keyId, operator: o?.operator ?? "unknown" },
-				level: 6,
+				detail: { key_id: keyId, operator: op ?? "unknown" },
+				level: op ? 6 : 4,
 			});
 			return true;
 		},

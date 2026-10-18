@@ -229,6 +229,59 @@ describe("renderOutcome · 终态渲染（reason + retryable + hintKey 双语文
 	});
 });
 
+describe("renderOutcome · 六码双语（P2-5：reason 走 key，按 locale 取附录 A.2；fail-fast 实测渲染而非仅 key 存在）", () => {
+	const ZH = [
+		["sig_missing", "缺少签名"],
+		["sig_alg", "签名算法不被接受"],
+		["sig_key", "公钥标识（key_id）不合法"],
+		["tampered", "验签失败"],
+		["unknown_key", "未知发布方"],
+		["sig_format", "签名编码违规"],
+	] as const;
+	const EN = [
+		["sig_missing", "Missing signature"],
+		["sig_alg", "Unsupported signature algorithm"],
+		["sig_key", "Key identifier (key_id) is invalid"],
+		["tampered", "Signature verification failed"],
+		["unknown_key", "Unknown publisher"],
+		["sig_format", "Signature encoding violation"],
+	] as const;
+
+	for (const [code, needle] of ZH) {
+		it(`zh-CN 渲染 ${code} 双语文案`, () => {
+			const text = renderOutcome(rec({
+				status: "failed",
+				stage: "verifying",
+				error: { reason: code, retryable: false, hintKey: `lifecycle.stage.verifying.${code}` },
+			}), "zh-CN");
+			expect(text).toContain(needle);
+			expect(text).toContain("本次失败不可自动重试");
+			expect(text).toContain(`lifecycle.stage.verifying.${code}`);
+		});
+	}
+	for (const [code, needle] of EN) {
+		it(`en-US 渲染 ${code} 双语文案`, () => {
+			const text = renderOutcome(rec({
+				status: "failed",
+				stage: "verifying",
+				error: { reason: code, retryable: false, hintKey: `lifecycle.stage.verifying.${code}` },
+			}), "en-US");
+			expect(text).toContain(needle);
+			expect(text).toContain("This failure is not retryable");
+		});
+	}
+
+	it("reason 走 key：en-US 用户不再读到服务端中文串（reason=code 时取双语文案，非中文 fallback）", () => {
+		const text = renderOutcome(rec({
+			status: "failed",
+			stage: "verifying",
+			error: { reason: "sig_missing", retryable: false, hintKey: "lifecycle.stage.verifying.sig_missing" },
+		}), "en-US");
+		expect(text).not.toContain("缺少签名");
+		expect(text).toContain("Missing signature");
+	});
+});
+
 describe("parseTarget · 安装目标解析", () => {
 	it("name[@version] → cdn 源", () => {
 		expect(parseTarget("demo-solution")).toEqual({ kind: "cdn", name: "demo-solution", version: null });

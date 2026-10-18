@@ -32,6 +32,71 @@ const RETRYABLE_LABELS: Record<Locale, { yes: string, no: string }> = {
 	"en-US": { yes: "This failure is retryable", no: "This failure is not retryable" },
 };
 
+/**
+ * verifying 段签名失败六码双语文案（契约附录 A.2；文案真源 = 契约附录 A.2 表，此处为渲染镜像，
+ * 缺失即测试红，同 C2-25 纪律）。`error.reason` 走 key（六码），渲染层按 locale 取本表；
+ * 非六码失败（其它 stage）reason 仍是服务端可读串，渲染原样回退（不丢信息）。
+ */
+const VERIFY_CODE_COPY: Record<string, { reason: { zh: string, en: string }, hint: { zh: string, en: string } }> = {
+	sig_missing: {
+		reason: {
+			zh: "缺少签名：未找到 detached 签名侧车（.sig）且市场清单无 signature 字段——宿主已启用强制验签，未签名包一律拒装",
+			en: "Missing signature: no detached .sig sidecar and the manifest has no signature field — the host enforces signing, so unsigned packages are rejected",
+		},
+		hint: {
+			zh: "请用 ojm sign 对包签名后重传，或确认市场源已发布带签名的版本",
+			en: "Sign the package with `ojm sign` and re-upload, or confirm the market source published a signed version",
+		},
+	},
+	sig_alg: {
+		reason: {
+			zh: "签名算法不被接受：仅支持 Ed25519（alg 必须逐字为 \"Ed25519\"，大小写敏感）",
+			en: "Unsupported signature algorithm: only Ed25519 is accepted (alg must be exactly \"Ed25519\", case-sensitive)",
+		},
+		hint: { zh: "请让发布方改用 Ed25519 签名", en: "Ask the publisher to sign with Ed25519" },
+	},
+	sig_key: {
+		reason: {
+			zh: "公钥标识（key_id）不合法，或与信任库绑定不一致（首次绑定不可覆盖）",
+			en: "Key identifier (key_id) is invalid, or does not match the trusted-key binding (first binding cannot be overwritten)",
+		},
+		hint: {
+			zh: "请核对 key_id 命名空间（<publisher>.<id>），或联系运维将正确公钥加入信任库",
+			en: "Check the key_id namespace (<publisher>.<id>), or ask ops to add the correct public key to the trust store",
+		},
+	},
+	tampered: {
+		reason: {
+			zh: "验签失败：包体、公钥或签名任一被篡改（Ed25519 验签返回 false）",
+			en: "Signature verification failed: the archive, public key, or signature was tampered with (Ed25519 verify returned false)",
+		},
+		hint: {
+			zh: "重新下载安装包并核对发布方指纹；若持续失败请勿使用该包",
+			en: "Re-download the package and verify the publisher's fingerprint; if it persists, do not use this package",
+		},
+	},
+	unknown_key: {
+		reason: {
+			zh: "未知发布方（key_id 不在信任库）：需经 TOFU 确认后方可安装",
+			en: "Unknown publisher (key_id not in the trust store): requires TOFU confirmation before install",
+		},
+		hint: {
+			zh: "请与发布方核对指纹后执行 ojm trust confirm --task <id>",
+			en: "Verify the fingerprint with the publisher, then run `ojm trust confirm --task <id>`",
+		},
+	},
+	sig_format: {
+		reason: {
+			zh: "签名编码违规：公钥非 64 位 hex、签名非标准 base64（禁 base64url），或规范串版本标记非 v1",
+			en: "Signature encoding violation: public key is not 64-hex, signature is not standard base64 (base64url forbidden), or the canonical-version marker is not v1",
+		},
+		hint: {
+			zh: "请让发布方使用标准签名工具（ojm sign）重新签名",
+			en: "Ask the publisher to re-sign with the standard tooling (ojm sign)",
+		},
+	},
+};
+
 function normalizeLocale(locale?: string): Locale {
 	return locale === "en-US" || locale === "en" ? "en-US" : "zh-CN";
 }
@@ -69,7 +134,15 @@ export function renderOutcome(record: TaskRecord, locale?: string): string {
 	const retryable = RETRYABLE_LABELS[lang][record.error?.retryable ? "yes" : "no"];
 	const stage = record.error?.hintKey?.replace(/^lifecycle\.stage\./, "").replace(/\.hint$/, "") ?? record.stage ?? "";
 	const en = lang === "en-US";
-	const hint = STAGE_HINTS[stage]?.[en ? "en" : "zh"] ?? (en ? "Inspect the task details on the site for more information" : "请到站点任务详情页查看更多信息");
+	// 六码走 key：hintKey 形如 lifecycle.stage.verifying.<code>，按 locale 取本表（fail-fast 测试据此断言实际渲染）
+	const code = /^lifecycle\.stage\.verifying\.(sig_missing|sig_alg|sig_key|tampered|unknown_key|sig_format)$/
+		.exec(record.error?.hintKey ?? "")?.[1];
+	const reason = code
+		? (VERIFY_CODE_COPY[code]?.reason[en ? "en" : "zh"] ?? record.error?.reason ?? record.message)
+		: (record.error?.reason ?? record.message);
+	const hint = code
+		? (VERIFY_CODE_COPY[code]?.hint[en ? "en" : "zh"] ?? STAGE_HINTS[stage]?.[en ? "en" : "zh"] ?? "")
+		: (STAGE_HINTS[stage]?.[en ? "en" : "zh"] ?? (en ? "Inspect the task details on the site for more information" : "请到站点任务详情页查看更多信息"));
 	const head = record.status === "partial"
 		? (lang === "en-US"
 			? `[ojm] Install partially applied (stage: ${stage}) — the solution is partly live, see hint below`
@@ -79,7 +152,7 @@ export function renderOutcome(record: TaskRecord, locale?: string): string {
 			: `[ojm] 安装失败（stage：${stage}）`);
 	return [
 		head,
-		lang === "en-US" ? `Reason: ${record.error?.reason ?? record.message}` : `原因：${record.error?.reason ?? record.message}`,
+		lang === "en-US" ? `Reason: ${reason}` : `原因：${reason}`,
 		lang === "en-US" ? `Hint: ${hint}` : `指引：${hint}`,
 		`${retryable}（${record.error?.hintKey ?? `lifecycle.stage.${stage}.hint`}）`,
 	].join("\n");

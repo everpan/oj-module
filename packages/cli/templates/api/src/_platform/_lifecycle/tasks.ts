@@ -21,6 +21,11 @@ export function redact(message: string): string {
 	return message
 		.replace(/\?[^"'\s)\]}]*/g, "?…")
 		.replace(/Bearer\s+\S+/gi, "Bearer …")
+		// PEM 私钥块（-----BEGIN ... PRIVATE KEY-----…-----END … PRIVATE KEY-----）整块脱敏
+		.replace(/-----BEGIN [^-]*PRIVATE KEY-----[\s\S]*?-----END [^-]*PRIVATE KEY-----/g, "-----BEGIN PRIVATE KEY-----…-----END PRIVATE KEY-----")
+		// JSON 中的 private_key / privateKey 字段值
+		.replace(/"private_?key"\s*:\s*"[^"]*"/gi, "\"private_key\":\"…\"")
+		// JWT（eyJ... 三段）
 		.replace(/eyJ[\w-]+(?:\.[\w-]+)+/g, "…")
 		.replace(/\b(token|secret|password|passwd|pwd|api_?key|signature)\s*[=:]\s*[^\s"',;)]+/gi, "$1=…");
 }

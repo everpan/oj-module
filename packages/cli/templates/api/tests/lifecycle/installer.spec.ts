@@ -802,6 +802,19 @@ describe("任务治理（R13/B9/R31）：保留 10 条 + 超时判 failed + mess
 		expect(redact(digest)).toBe(digest);
 	});
 
+	it("redact（P2-5）：PEM 私钥块 + private_key JSON 字段整段脱敏", () => {
+		const pem = "BEGIN 头-----BEGIN EC PRIVATE KEY-----\nabcdef0123456789\n-----END EC PRIVATE KEY-----尾巴";
+		expect(redact(pem)).toContain("-----BEGIN PRIVATE KEY-----…-----END PRIVATE KEY-----");
+		expect(redact(pem)).not.toContain("abcdef0123456789");
+		expect(redact("{\"private_key\":\"c2VjcmV0LWtleS1ieXRlcw\",\"key_id\":\"acme.market\"}")).toContain("\"private_key\":\"…\"");
+		// 钉用例：key_id 与指纹明文保留（结构化字段，不进 message 被吞；脱敏只针对私钥/口令）
+		const msg = "发布方 acme.market（指纹 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef）签名不符";
+		const out = redact(msg);
+		expect(out).toContain("acme.market");
+		expect(out).toContain("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+		expect(out).toBe(msg);
+	});
+
 	it("writeTask 落盘前脱敏：message/error.reason/stages 逐条过 redact", async () => {
 		await writeTask(taskDir, {
 			id: "leak",
