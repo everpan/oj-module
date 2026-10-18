@@ -63,8 +63,20 @@ describe("编码面严格拒（C2-36，禁归一）", () => {
 	const good = signCanonical(key.privateKeyPem, canonical);
 
 	it("value 含 -/_（base64url 变体）→ false", () => {
-		const b64url = Buffer.from(good, "base64").toString("base64url");
-		expect(b64url).not.toBe(good); // 形态确实不同（否则本用例空转）
+		// 必须挑一把 base64 表示里**确实含 +/** 的签名再转 base64url：64 字节签名的
+		// base64 有 ~7% 概率不含 +/（88 字符各 2/64），此时 base64url 与原值只差被
+		// 抹掉的 padding，而 Node 的 base64 解码对缺 padding 宽容，会还原出同一串
+		// 字节使校验返回 true——用例以 ~7% 概率偶发失败（实测 2000 次 7.2%），
+		// 且那时「禁归一」的本意根本没被测到。换 key 直到形态真的不同。
+		let key = generateKeyPair();
+		let sig = signCanonical(key.privateKeyPem, canonical);
+		for (let i = 0; !/[+/]/.test(Buffer.from(sig, "base64").toString("base64")) && i < 64; i++) {
+			key = generateKeyPair();
+			sig = signCanonical(key.privateKeyPem, canonical);
+		}
+		const b64url = Buffer.from(sig, "base64").toString("base64url");
+		expect(b64url).toMatch(/[-_]/); // 形态确实是 base64url（-/_ 替换已发生）
+		expect(b64url).not.toBe(sig);
 		expect(verifyCanonical(key.publicKeyHex, canonical, b64url)).toBe(false);
 	});
 
