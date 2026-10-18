@@ -13,6 +13,7 @@ import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { readLock, writeLock } from "../../src/_platform/_lifecycle/lock";
 import { createStateStore } from "../../src/_platform/_lifecycle/state";
+import { catalogSpec, collectRetainedTables, tablePrefixPattern } from "../../src/_platform/_lifecycle/uninstall";
 import { invalidateAllUsers } from "../../src/_platform/_shared/service/access";
 import { createMarketApi } from "../../src/_platform/market/api";
 import { installDb, MARKET_HISTORY_DDL } from "../fixture";
@@ -291,5 +292,95 @@ describe("P3-4 业务表保留提示（Q4：不删业务数据，retained 回传
 		expect(data).toMatchObject({ ok: true });
 		expect(data.retained).toContain("demo_solution_orphan");
 		expect(Number(dbo.prepare("SELECT count(*) as c FROM sqlite_master WHERE type='table' AND name = ?").get("demo_solution_orphan").c)).toBe(1);
+	});
+});
+
+describe("P4-1 多方言卸载矩阵（P3-4#2）：catalogSpec 三方言 SQL 形态 + 前缀转义方言无关", () => {
+	it("catalogSpec 三方言 existing SQL 形态正确（sqlite=sqlite_master / mysql/pg=information_schema）", () => {
+		const sqlite = catalogSpec("sqlite");
+		const mysql = catalogSpec("mysql");
+		const pg = catalogSpec("pg");
+		expect(sqlite.existing).toBe("SELECT name FROM sqlite_master WHERE type='table'");
+		expect(mysql.existing).toContain("information_schema.tables");
+		expect(mysql.existing).toContain("DATABASE()");
+		expect(pg.existing).toContain("information_schema.tables");
+		expect(pg.existing).toContain("table_schema = 'public'");
+	});
+
+	it("catalogSpec.like 三方言均带 ESCAPE '!' + 正确 schema 表达式 + 参数化 pat", () => {
+		const pat = "demo_solution_%";
+		const sqlite = catalogSpec("sqlite").like(pat);
+		const mysql = catalogSpec("mysql").like(pat);
+		const pg = catalogSpec("pg").like(pat);
+		// sqlite
+		expect(sqlite[0]).toBe("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE ? ESCAPE '!'");
+		expect(sqlite[1]).toEqual([pat]);
+		// mysql：information_schema + DATABASE() + ESCAPE + 参数化（值不拼字符串，SSRF/注入无关但口径统一）
+		expect(mysql[0]).toContain("information_schema.tables");
+		expect(mysql[0]).toContain("DATABASE()");
+		expect(mysql[0]).toContain("ESCAPE '!'");
+		expect(mysql[1]).toEqual([pat]);
+		// pg：information_schema + 'public' + ESCAPE + 参数化
+		expect(pg[0]).toContain("information_schema.tables");
+		expect(pg[0]).toContain("table_schema = 'public'");
+		expect(pg[0]).toContain("ESCAPE '!'");
+		expect(pg[1]).toEqual([pat]);
+	});
+
+	it("tablePrefixPattern 转义 !%_ 且连字符→下划线作表前缀", () => {
+		// 连字符→下划线后，该下划线亦被转义（!_）= 字面分隔符而非 LIKE 通配，避免前缀扫描越权命中
+		expect(tablePrefixPattern("demo-solution")).toBe("demo!_solution_%");
+		// 危险字符必须转义，避免 LIKE 通配语义被注入（防前缀扫描越权命中）
+		expect(tablePrefixPattern("a!b%c_d")).toBe("a!!b!%c!_d_%");
+	});
+});
+
+describe("P4-1 多方言卸载矩阵（续）：collectRetainedTables 经 db.dialect 走 mysql/pg 信息_schema 路径", () => {
+	/** 注入指定方言的 db.query 桩：existing 返回全表清单、like 返回前缀命中，模拟 information_schema 行为 */
+	function stubDialect(dialect: "mysql" | "pg", existingNames: string[], likeNames: string[]): void {
+		const spec = catalogSpec(dialect);
+		(g.db as { dialect: () => string, query: (sql: string, p?: unknown[]) => unknown }).dialect = () => dialect;
+		(g.db as { query: (sql: string, p?: unknown[]) => unknown }).query = (sql: string) => {
+			if (sql === spec.existing)
+				return existingNames.map(name => ({ name }));
+			if (sql.includes("AND table_name LIKE"))
+				return likeNames.map(name => ({ name }));
+			return [];
+		};
+	}
+
+	it("mysql 方言：manifest 声明 + 前缀兜底扫描均经 information_schema，返回实际存在的业务表", async () => {
+		await seedInstalledWithTables();
+		stubDialect("mysql", ["demo_solution_notes", "demo_solution_tags", "demo_solution_orphan"], ["demo_solution_orphan"]);
+		const retained = await collectRetainedTables("demo-solution", join(sharedRoot, "demo-solution-0.1.0", "manifest.yaml"));
+		expect(retained).toContain("demo_solution_notes");
+		expect(retained).toContain("demo_solution_tags");
+		expect(retained).toContain("demo_solution_orphan");
+	});
+
+	it("pg 方言：'public' schema 表达式路径一致，返回业务表（与 mysql 口径相同）", async () => {
+		await seedInstalledWithTables();
+		stubDialect("pg", ["demo_solution_notes", "demo_solution_tags", "demo_solution_orphan"], ["demo_solution_orphan"]);
+		const retained = await collectRetainedTables("demo-solution", join(sharedRoot, "demo-solution-0.1.0", "manifest.yaml"));
+		expect(retained).toContain("demo_solution_notes");
+		expect(retained).toContain("demo_solution_tags");
+		expect(retained).toContain("demo_solution_orphan");
+	});
+
+	it("db.dialect 缺省回落 sqlite（不抛、不误导），与既有 sqlite 全量路径一致", async () => {
+		await seedInstalledWithTables();
+		// 还原为缺省（不提供 dialect 函数）→ currentDialect 回落 "sqlite"
+		const spec = catalogSpec("sqlite");
+		(g.db as { dialect?: () => string }).dialect = undefined;
+		(g.db as { query: (sql: string, p?: unknown[]) => unknown }).query = (sql: string) => {
+			if (sql === spec.existing)
+				return [{ name: "demo_solution_notes" }, { name: "demo_solution_tags" }];
+			if (sql.includes("AND name LIKE"))
+				return [{ name: "demo_solution_notes" }];
+			return [];
+		};
+		const retained = await collectRetainedTables("demo-solution", join(sharedRoot, "demo-solution-0.1.0", "manifest.yaml"));
+		expect(retained).toContain("demo_solution_notes");
+		expect(retained).toContain("demo_solution_tags");
 	});
 });

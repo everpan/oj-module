@@ -67,7 +67,7 @@ function currentDialect(): string {
 }
 
 /** 表目录查询片段（方言无关：sqlite=sqlite_master，mysql/pg=information_schema） */
-function catalogSpec(dialect: string): { existing: string, like: (pat: string) => [string, unknown[]] } {
+export function catalogSpec(dialect: string): { existing: string, like: (pat: string) => [string, unknown[]] } {
 	if (dialect === "sqlite") {
 		return {
 			existing: "SELECT name FROM sqlite_master WHERE type='table'",
@@ -88,14 +88,14 @@ async function listExistingTables(dialect: string): Promise<Set<string>> {
 }
 
 /** 模块 slug 规范化 + LIKE 转义（沿用 RBAC 权限命名空间约定：!%_ 转义，连字符→下划线作表前缀） */
-function tablePrefixPattern(name: string): string {
+export function tablePrefixPattern(name: string): string {
 	const slug = name.replace(/-/g, "_").replace(/[!%_]/g, c => `!${c}`);
 	// 表名用下划线分隔（非权限码的 `.`）：slug_ + 通配符 %（末尾 % 不转义，保持通配语义）
 	return `${slug}_%`;
 }
 
 /** 收集需保留的业务表（Q4）：声明 + 前缀兜底；仅返回实际存在的表名 */
-async function collectRetainedTables(name: string, manifestPath: string): Promise<string[]> {
+export async function collectRetainedTables(name: string, manifestPath: string): Promise<string[]> {
 	const dialect = currentDialect();
 	const existing = await listExistingTables(dialect);
 	const candidates = new Set<string>();
