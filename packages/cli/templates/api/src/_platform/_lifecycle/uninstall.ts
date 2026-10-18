@@ -146,6 +146,8 @@ export interface UninstallInput {
 export interface UninstallResult {
 	ok: boolean
 	message: string
+	/** P3-11 失败细分：not-installed = 方案已不存在（锁与 sidecar 均无记录）——端点据此回 404（资源缺失语义），其余拒绝仍 200 {ok:false} */
+	reason?: "not-installed"
 	/** P3-4（Q4）业务表保留清单：卸载不删业务数据，仅回传实际存在的业务表名供运维手工清理 */
 	retained?: string[]
 }
@@ -177,9 +179,9 @@ export async function runUninstall(input: UninstallInput): Promise<UninstallResu
 	const lock = await readLock(input.lockPath);
 	const side = input.state.read().solutions[name];
 
-	// 安装在哪：锁与 sidecar 均无记录 = 未安装
+	// 安装在哪：锁与 sidecar 均无记录 = 未安装（P3-11：细分 reason，端点据此回 404 资源缺失语义）
 	if (lock[name] === undefined && side === undefined) {
-		return { ok: false, message: `卸载失败：「${name}」未安装（锁与 sidecar 均无记录）` };
+		return { ok: false, reason: "not-installed", message: `卸载失败：「${name}」未安装（锁与 sidecar 均无记录）` };
 	}
 	const version = input.version ?? lock[name] ?? side?.version;
 	if (version === undefined) {

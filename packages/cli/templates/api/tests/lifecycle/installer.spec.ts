@@ -395,6 +395,49 @@ describe("失败语义①锁前清场（D11：零改锁零改库表，可重跑�
 	});
 });
 
+describe("p3-11 宿主层 rollbackGuard 预锁拦截（OJ-9）：包内迁移 max seq < ledgerHead → migrating 失败，零 exec 零备份", () => {
+	it("ledgerHead=5、包内仅 0001 → migrating failed（retryable=false），oj migrate 未执行、无 .bak 备份、锁前清场", async () => {
+		const exec = bundleExec();
+		const t = await runInstall(makeReq({ ledgerHead: 5, exec }));
+		expect(t.status).toBe("failed");
+		expect(t.stage).toBe("migrating");
+		expect(t.error?.retryable).toBe(false);
+		expect(String(t.error?.reason)).toContain("禁降版");
+		// 零 exec：oj migrate 未被调用（tar list/extract 属包准备，允许发生）
+		expect(exec.calls.filter(c => c[0] === "oj")).toHaveLength(0);
+		// 零备份：R14 前置备份未发生（宿主层在备份前拦截）
+		expect((await fsp.readdir(root)).filter(e => e.includes(".bak-"))).toHaveLength(0);
+		// 锁前清场（D11①）：staging 清空、零落锁零落位
+		await expect(fsp.access(staging)).rejects.toThrow();
+		await expect(fsp.access(lockPath)).rejects.toThrow();
+	});
+
+	it("近似真源缺失（包内无 migrations 目录）→ 宿主层放行，migrate 段 applied[] 事后复核兜底拦截", async () => {
+		const exec: ExecFace = {
+			run: async (argv) => {
+				if (argv[0] === "tar" && argv[1] === "-tvzf")
+					return { code: 0, stdout: "manifest.yaml\napi/demo-solution-0.1.0/manifest.yaml\napi/demo-solution-0.1.0/routes.js\n", stderr: "" };
+				if (argv[0] === "tar" && argv[1] === "-xzf") {
+					const apiDir = join(argv[4]!, "api", "demo-solution-0.1.0");
+					await fsp.mkdir(apiDir, { recursive: true });
+					await fsp.writeFile(join(argv[4]!, "manifest.yaml"), "name: demo-solution\nversion: 0.1.0\n");
+					await fsp.writeFile(join(apiDir, "manifest.yaml"), JSON.stringify({ name: "demo-solution", desc: "演示方案", version: "0.1.0" }));
+					await fsp.writeFile(join(apiDir, "routes.js"), "export {};\n");
+					return { code: 0, stdout: "", stderr: "" };
+				}
+				if (argv[0] === "oj" && argv[1] === "migrate")
+					return { code: 0, stdout: `${MIGRATE_LINE}\n`, stderr: "" };
+				return { code: 0, stdout: "", stderr: "" };
+			},
+		};
+		const t = await runInstall(makeReq({ ledgerHead: 5, exec }));
+		// 宿主层未拦（无文件名真源）→ oj migrate 真的跑了 → applied seq 3 < head 5 由 migrate 段复核拦下
+		expect(t.status).toBe("failed");
+		expect(t.stage).toBe("migrating");
+		expect(String(t.error?.reason)).toContain("账本 head 5");
+	});
+});
+
 describe("U5 取消安装（P3-8）：cancel token → h.kill + staging 清场 + 锁/目录回退装前 + 终态 cancelled", () => {
 	/**
 	 * 取消用 harness：tar list/extract 走真实 bundleExec；oj migrate 走 spawn（逐块吐、spawn 启动后

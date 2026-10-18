@@ -165,12 +165,14 @@ describe("POST uninstall 卸载编排（superadmin，R9）", () => {
 		expect(String(hist[0].operator)).toBe("admin");
 	});
 
-	it("未安装方案 → ok:false 可读失败（不崩）", async () => {
+	it("未安装方案 → 404 资源缺失语义（P3-11：非 200 {ok:false}），人话在 message", async () => {
 		const api = createMarketApi(makeEnv());
 		g.http = { user: { id: 1 }, body: { name: "nope" } };
 		await api.uninstall.post();
-		expect(last?.status).toBe(200);
-		expect(last?.data).toMatchObject({ ok: false });
+		expect(last?.status).toBe(404);
+		expect(String(last?.msg)).toContain("未安装");
+		// 资源缺失：锁/sidecar/目录零改动（404 即什么都没发生）
+		expect(await readLock(join(sharedRoot, "manifests.yaml"))).toEqual({});
 	});
 
 	it("卸载最后一个模块 → ok:false（空锁拒启 S1-1.2），锁保持不变", async () => {

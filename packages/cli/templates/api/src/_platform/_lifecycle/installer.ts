@@ -29,7 +29,7 @@ import { acquireTaskLock, commitLockEntry, readLock, writeLock } from "./lock";
 import { deployWeb } from "./steps/deploy-web";
 import { download } from "./steps/download";
 import { extract } from "./steps/extract";
-import { maxAppliedSeq, migrate } from "./steps/migrate";
+import { maxAppliedSeq, migrate, rollbackGuard } from "./steps/migrate";
 import { preflight } from "./steps/preflight";
 import { registerSolution } from "./steps/register";
 import { reloadAndAssert } from "./steps/reload";
@@ -116,7 +116,45 @@ function isObj(v: unknown): v is Record<string, unknown> {
 	return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
+/**
+ * 宿主层禁降版近似口径（P3-11）：staging 迁移文件名 `NNNN__` 前缀取最大 seq——applied[]
+ * （oj migrate 真源）产生之前的近似真源。无 api 段 / 无 migrations 目录 / 无可解析文件名
+ * 返回 null（无近似真源不拦截，仍由 migrate 段 applied[] 事后复核兜底，OJ-9 双保险）。
+ */
+async function stagingMaxSeq(staging: string, name: string, version: string): Promise<number | null> {
+	try {
+		const entries = await fsFace().readdir(`${staging}/api/${name}-${version}/migrations`);
+		let max: number | null = null;
+		for (const e of entries) {
+			const m = /^(\d+)__/.exec(e);
+			if (m === null)
+				continue;
+			const v = Number(m[1]);
+			if (max === null || v > max)
+				max = v;
+		}
+		return max;
+	}
+	catch {
+		return null;
+	}
+}
+
 async function migrateStage(req: InstallRequest): Promise<StageResult> {
+	// 宿主层禁降版预锁校验（P3-11，OJ-9）：备份/exec 前先拦一道——包内迁移 max seq 已低于
+	// 账本 head 即拒绝（retryable=false），零 exec 零备份、库保持原状；不等 oj migrate 跑完
+	// 再由 parse 输出复核。近似真源缺失时放行，事后复核仍在（migrate.ts rollbackGuard）。
+	if (req.ledgerHead !== undefined && req.ledgerHead !== null) {
+		const seq = await stagingMaxSeq(req.staging, req.name, req.version);
+		if (seq !== null && !rollbackGuard(seq, req.ledgerHead)) {
+			return {
+				stage: "migrating",
+				ok: false,
+				retryable: false,
+				message: `迁移失败：包内迁移最大 seq ${seq} 低于账本 head ${req.ledgerHead}——禁降版部署（OJ-9 红线，宿主层预锁拦截，P3-11）；未执行 oj migrate、库保持原状（D11）`,
+			};
+		}
+	}
 	return await migrate({
 		...req,
 		// P2-13：appliedSeq 捕获改走 migrate 解析成功回调（单点真源——run/spawn 双路径都在

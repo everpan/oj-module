@@ -786,7 +786,7 @@ export function createMarketApi(env: MarketEnv) {
 					const name = String(body.name ?? "").trim();
 					if (name === "")
 						fail(400, "name is required");
-					return await runUninstall({
+					const r = await runUninstall({
 						name,
 						sharedRoot: env.sharedRoot,
 						lockPath: `${env.sharedRoot}/manifests.yaml`,
@@ -794,6 +794,11 @@ export function createMarketApi(env: MarketEnv) {
 						modulesJsonPath: env.modulesJsonPath,
 						operator: await operatorOf(),
 					});
+					// P3-11 宿主打磨：方案已不存在 = 资源缺失语义 → 404（非 200 {ok:false}）；
+					// 其余领域拒绝（空锁拒启/级联失败等）维持 200 {ok:false} 人话在 message。
+					if (!r.ok && r.reason === "not-installed")
+						fail(404, r.message);
+					return r;
 				});
 			},
 		},
