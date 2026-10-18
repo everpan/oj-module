@@ -42,6 +42,20 @@ export function usageText(): string {
         启用/禁用已装方案（D12 四处同写：锁 / sidecar / sys_solution_route / modules.json）
   ojm uninstall <name> [--url <u>] [--user <u>] [--pass <p>]
         卸载已装方案（P1-15a：四处同删 + 权限级联清理 + 版本目录移除；站点至少保留一个已锁模块）
+  ojm trust ls|add|revoke|confirm [--url <u>] [--user <u>] [--pass <p>]
+        发布方信任库管理（P2-2/3，站点 .solutions/trusted-keys.yaml）：
+        ls <key_id 前缀?>        列出已信任 key（含 sha256 指纹分组展示）
+        add <key_id> <pub>       新增信任（64 hex 公钥；首次绑定不可改）
+        revoke <key_id>          吊销（阻断新装/升级，不动已装方案）
+        confirm --task <id>      TOFU 确认：把 needs_trust 终态待确认 key 入库
+        站点寻址：--url/--user/--pass，或环境变量 OJM_URL / OJM_USER / OJM_PASS
+  ojm keygen --id <publisher.id> [--out <dir>] [--yes]
+        生成 Ed25519 签名密钥对（P2-1）：私钥默认 ~/.ojm/keys/<id>/ 永不出目录（--out 指到
+        工程树内须 --yes 显式确认——私钥入仓即泄露）；打印公钥 hex 供 ojm trust add / 模板回填
+  ojm sign <file.tgz> [--id <publisher.id>] [--key <pem>] [--check]
+        detached 侧车签名（P2-4）：产出 <tgz>.sig（ojm install 自动探测随包上传）；
+        私钥缺省取 ~/.ojm/keys/<id>/private.pem（--key 指定 pem 时须同时 --id）；
+        --check 离线自检签名（不必靠宿主装失败发现签错）
         站点寻址：--url/--user/--pass，或环境变量 OJM_URL / OJM_USER / OJM_PASS
         （缺省 http://127.0.0.1:9778；凭据只走内存不落盘）
   ojm test|exec|openapi|migrate|schema [args...]

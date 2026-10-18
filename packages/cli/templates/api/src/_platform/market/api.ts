@@ -27,6 +27,7 @@ import { createTrustStore } from "../_lifecycle/trust";
 import { computeUninstallImpact, runUninstall } from "../_lifecycle/uninstall";
 import { respond } from "../_shared/respond";
 import { assertSuperAdmin } from "../_shared/service/access";
+import { BOOTSTRAP_KEY, seedBootstrapKey } from "./bootstrap";
 
 /** 平台编排面版本（镜像 _platform/manifest.yaml version；peerPlatform 预检口径，manifest 升版须同步） */
 const API_VERSION = "0.1.0";
@@ -70,6 +71,8 @@ export interface MarketEnv {
 	sha256Hex?: (data: Uint8Array) => string
 	/** Ed25519 验签面（P2-3；缺省回落运行时全局 crypto.verifyEd25519，同 verify.ts；测试注入） */
 	verifyEd25519?: (publicKey: string, msg: string, sigBase64: string) => boolean
+	/** 第一方 bootstrap key 覆盖（P2-12 测试注入；缺省回落 bootstrap.ts 内置常量，发布时回填） */
+	bootstrapKey?: { key_id: string, public_key: string } | null
 	/** 迁移账本 head（缺省 null = 跳过禁降版判定，同 installer） */
 	ledgerHead?: number | bigint | null
 	/** 迁移账本 head 真源（P1-16 接线①：缺省读 oj journal 表 `_oj_migrations` max(version)，查询失败 → null 不猜） */
@@ -449,6 +452,9 @@ async function installBody(env: MarketEnv): Promise<{ task_id: string }> {
 		archiveUrl = r.archiveUrl;
 		fetch = fetchOf(env);
 	}
+	// 第一方 bootstrap key 播种（P2-12，G3 双轨第一轨）：runInstall 之前——market 首装免 TOFU。
+	// key 未回填（null）或信任库已初始化 → no-op（不与运维吊销对抗）
+	await seedBootstrapKey(env.trustPath, env.bootstrapKey !== undefined ? env.bootstrapKey : BOOTSTRAP_KEY);
 	const task = await runInstall({
 		manifest,
 		name,

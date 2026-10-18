@@ -663,6 +663,29 @@ describe("GET index（CDN bundles.yaml no-cache 拉取 + 本地 state 对比）"
 		expect(demo?.latest).toBe("0.2.0");
 	});
 
+	it("P2-12 bootstrap key（G3 双轨第一轨）：信任库为空 + bootstrapKey 注入 → cdn 首装直达 done 不落 needs_trust", async () => {
+		await fsp.rm(join(sharedRoot, ".solutions", "trusted-keys.yaml"), { force: true }); // beforeEach 已播种，删库文件模拟全新站点
+		const env = makeEnv({ bootstrapKey: { key_id: "test.publisher", public_key: TEST_KEY.publicKeyHex } });
+		const api = createMarketApi(env);
+		g.http = { user: { id: 1 }, body: { name: "demo-solution", version: "0.1.0", source: "cdn" } };
+		await api.install.post();
+		expect(last?.status).toBe(200);
+		const taskId = (last?.data as { task_id?: unknown })?.task_id as string;
+		const rec = await getTask(taskDir, taskId);
+		expect(rec?.status).toBe("done"); // 免 TOFU 直接过验签
+		// 播种落库可读
+		expect(await createTrustStore(join(sharedRoot, ".solutions", "trusted-keys.yaml")).get("test.publisher")).toBe(TEST_KEY.publicKeyHex);
+	});
+
+	it("P2-12：无 bootstrapKey（内置未回填口径）+ 信任库为空 → needs_trust（双轨第二轨 TOFU 不失守）", async () => {
+		await fsp.rm(join(sharedRoot, ".solutions", "trusted-keys.yaml"), { force: true });
+		const api = createMarketApi(makeEnv());
+		g.http = { user: { id: 1 }, body: { name: "demo-solution", version: "0.1.0", source: "cdn" } };
+		await api.install.post();
+		const taskId = (last?.data as { task_id?: unknown })?.task_id as string;
+		expect((await getTask(taskDir, taskId))?.status).toBe("needs_trust");
+	});
+
 	it("archive.file 邪例表（P2-11 索引投毒加固：file 逐字 <name>-<version>.tgz）→ 502 拒", async () => {
 		for (const file of ["../evil.tgz", "/etc/hosts.tgz", "other-0.1.0.tgz", "demo-solution-9.9.9.tgz"]) {
 			const bundles = JSON.stringify({ solutions: [{ name: "demo-solution", latest: "0.1.0", versions: [{ version: "0.1.0", file, sha256: SHA256, size: ARCHIVE.byteLength }] }] });
