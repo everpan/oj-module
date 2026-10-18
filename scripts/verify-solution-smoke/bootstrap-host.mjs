@@ -42,6 +42,8 @@ cfg = cfg.replace("__JWT_SECRET__", randomBytes(32).toString("hex"));
 cfg = cfg.replace(/^ {2}exec:/m, "  modules: [_platform]\n  root: dist\n  exec:");
 if (!cfg.includes("modules: [_platform]"))
 	throw new Error("platform 段补丁未命中");
+// 演示环境禁用浏览器缓存：避免早期坏掉的壳/JS 被缓存导致白屏
+cfg = cfg.replace("response_headers: {}", "response_headers:\n    Cache-Control: \"no-store\"");
 cfg = cfg.replace("  anonymous_paths:", "  anonymous_paths:\n    - /demo-solution/ping");
 cfg = `${cfg.trimEnd()}\nfs:\n  root: .\n  readonly: false\n`;
 
