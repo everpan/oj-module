@@ -7,6 +7,8 @@
 //       version: "1.0.0"
 //       enabled: true
 //       installedAt: 1730000000000
+//       archive: "{\"sha256\":\"…\",\"key_id\":\"…\",\"signature\":{…}}"   # P2-6 复验真源（JSON 字符串标量）
+//       trust_state: trusted                                            # P2-6 发布方 key 状态缓存
 //
 // 只保证读回本模块自己写出的内容，不引入 yaml 依赖；任何不符格式的字节一律视为
 // 损坏 → 空状态，损坏上下文并入读结果（corruptNote/corruptReason；禁 console——release
@@ -22,6 +24,13 @@ export interface SolutionEntry {
 	version: string
 	enabled: boolean
 	installedAt: number
+	/**
+	 * P2-6 复验真源：安装时落的包摘要 + 签名记录（D11③ 切换前复验 / 同版本重装摘要比对）。
+	 * JSON 字符串标量落盘（两层 YAML 约束保持）；P1 时代条目无此字段 = 无验签真源。
+	 */
+	archive?: { sha256: string, key_id: string, signature: Record<string, unknown> }
+	/** 发布方 key 状态缓存（P2-6：安装=trusted；启用时 key 已吊销=untrusted；P1 时代条目=absent） */
+	trust_state?: "trusted" | "untrusted" | "absent"
 }
 
 export interface SolutionState {
@@ -43,8 +52,12 @@ const EMPTY: SolutionState = { solutions: {} };
  */
 function snapshot(state: SolutionState): SolutionState {
 	const solutions: Record<string, SolutionEntry> = {};
-	for (const [name, entry] of Object.entries(state.solutions))
-		solutions[name] = { ...entry };
+	for (const [name, entry] of Object.entries(state.solutions)) {
+		// archive 是嵌套对象：逐层克隆（调用方改动不得影响 store 缓存；P2-6 复验真源）
+		solutions[name] = entry.archive === undefined
+			? { ...entry }
+			: { ...entry, archive: { ...entry.archive, signature: { ...entry.archive.signature } } };
+	}
 	return { solutions };
 }
 
@@ -117,6 +130,12 @@ function serializeState(state: SolutionState): string {
 			`    enabled: ${e.enabled}`,
 			`    installedAt: ${e.installedAt}`,
 		);
+		if (e.archive !== undefined) {
+			lines.push(`    archive: ${JSON.stringify(JSON.stringify(e.archive))}`);
+		}
+		if (e.trust_state !== undefined) {
+			lines.push(`    trust_state: ${e.trust_state}`);
+		}
 	}
 	return `${lines.join("\n")}\n`;
 }
@@ -176,8 +195,32 @@ function parseState(text: string): SolutionState {
 		if (version === undefined || enabled === undefined || installedAt === undefined) {
 			throw new Error(`方案「${name}」条目格式不完整或字段损坏`);
 		}
-		solutions[name] = { version, enabled: enabled === "true", installedAt: Number(installedAt) };
-		i += 4;
+		const entry: SolutionEntry = { version, enabled: enabled === "true", installedAt: Number(installedAt) };
+		let j = i + 4;
+		// P2-6 可选行（顺序固定：archive 先、trust_state 后；缺即无——P1 时代条目只有四行）
+		const archiveLiteral = /^ {4}archive: "((?:[^"\\]|\\.)*)"$/.exec(lines[j] ?? "")?.[1];
+		if (archiveLiteral !== undefined) {
+			try {
+				const parsed = JSON.parse(JSON.parse(`"${archiveLiteral}"`)) as unknown;
+				if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed))
+					throw new Error("非对象");
+				const a = parsed as Record<string, unknown>;
+				if (typeof a.sha256 !== "string" || typeof a.key_id !== "string" || typeof a.signature !== "object" || a.signature === null)
+					throw new Error("缺 sha256/key_id/signature");
+				entry.archive = { sha256: a.sha256, key_id: a.key_id, signature: a.signature as Record<string, unknown> };
+			}
+			catch {
+				throw new Error(`方案「${name}」archive 行不是合法复验真源 JSON`);
+			}
+			j += 1;
+		}
+		const trust = /^ {4}trust_state: (trusted|untrusted|absent)$/.exec(lines[j] ?? "")?.[1];
+		if (trust !== undefined) {
+			entry.trust_state = trust as "trusted" | "untrusted" | "absent";
+			j += 1;
+		}
+		solutions[name] = entry;
+		i = j;
 	}
 	return { solutions };
 }

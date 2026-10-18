@@ -573,6 +573,87 @@ describe("扁平锁写（D12）：.bak 备份 + 写后读回收敛（S1-3）", (
 	});
 });
 
+describe("P2-6 切换前复验（D11③/G5：sidecar 复验真源 + 启用发布方核对 + 同版本摘要比对）", () => {
+	it("install done 后 sidecar 落 archive{sha256,key_id,signature} + trust_state=trusted（复验真源随装落）", async () => {
+		const t = await runInstall(makeReq());
+		expect(t.status).toBe("done");
+		const entry = state.read().solutions["demo-solution"]!;
+		expect(entry.trust_state).toBe("trusted");
+		expect(entry.archive?.sha256).toBe(SHA256);
+		expect(entry.archive?.key_id).toBe("test.publisher");
+		expect(entry.archive?.signature).toMatchObject({ alg: "Ed25519", public_key: TEST_KEY.publicKeyHex });
+		// 落盘形状：archive 为 JSON 字符串标量（两层 YAML 约束保持），读回等价
+		const text = await fsp.readFile(join(sharedRoot, ".solutions", "state.yaml"), "utf8");
+		expect(text).toMatch(/trust_state: trusted/);
+		const reread = await createStateStore(join(sharedRoot, ".solutions", "state.yaml"));
+		expect(reread.read().solutions["demo-solution"]?.archive?.sha256).toBe(SHA256);
+	});
+
+	it("同版本重装摘要不符 → verifying 拒（六码 tampered：CDN 同名版本换包即拒）", async () => {
+		await runInstall(makeReq()); // 先装一次（sidecar 落 SHA256）
+		// 重取包：包体换字节、清单摘要自洽（actual===expected 过常规比对），但与已装记录不同
+		const other = new TextEncoder().encode("replaced-archive-bytes\n");
+		const m = manifestFixture("0.1.0");
+		m.archive = { ...m.archive, sha256: createHash("sha256").update(other).digest("hex"), size: other.byteLength };
+		const t = await runInstall(makeReq({ manifest: m, fetch: async () => ({ ok: true, status: 200, arrayBuffer: async () => other.slice().buffer }) }));
+		expect(t.status).toBe("failed");
+		expect(t.stage).toBe("verifying");
+		expect(t.error?.hintKey).toBe("lifecycle.stage.verifying.tampered");
+		expect(t.stages.find(s => s.stage === "verifying")?.message).toContain("包内容被替换");
+	});
+
+	it("吊销后启用（G5）：放行 + 显著告警 + 审计带 trust + sidecar 标 untrusted", async () => {
+		await runInstall(makeReq());
+		// 吊销：信任库移除 key_id（只阻断新装/升级）
+		await createTrustStore(trustPath, { audit: () => {}, fingerprintOf: pk => createHash("sha256").update(hexToBytes(pk)).digest("hex") }).remove("test.publisher");
+		await setEnabled({ name: "demo-solution", enabled: false, sharedRoot, lockPath, state, modulesJsonPath, trustPath });
+		const r = await setEnabled({ name: "demo-solution", enabled: true, sharedRoot, lockPath, state, modulesJsonPath, trustPath });
+		expect(r.ok).toBe(true); // 放行（存量可用性承诺）
+		expect(r.message).toContain("已不在信任库");
+		expect(r.message).toContain("建议升级");
+		expect(state.read().solutions["demo-solution"]?.trust_state).toBe("untrusted");
+		// archive 真源保留（切换不丢复验依据）
+		expect(state.read().solutions["demo-solution"]?.archive?.sha256).toBe(SHA256);
+		// 审计留痕（detail.trust）
+		const oplog = rows("SELECT detail FROM sys_oplog WHERE action = 'solution.enable' ORDER BY id DESC LIMIT 1");
+		expect(String(oplog[0]?.detail)).toContain("trust");
+	});
+
+	it("P1 时代条目（无 archive）：启用放行 +「无验签真源」告警 + trust_state=absent", async () => {
+		await writeLock(lockPath, { "demo-solution": "0.1.0", "auth": "0.1.0" });
+		// 旧四行形态（P2 前安装：无 archive/trust_state 行）
+		await state.write({ solutions: { "demo-solution": { version: "0.1.0", enabled: true, installedAt: 1000 } } });
+		dbo.exec("INSERT INTO sys_solution_route (path, module, category, \"order\", deprecated, enabled) VALUES ('/demo-solution', 'demo-solution', 'main', 200, 0, 1)");
+		await fsp.mkdir(join(sharedRoot, "demo-solution-0.1.0"), { recursive: true });
+		await fsp.writeFile(join(sharedRoot, "demo-solution-0.1.0", "manifest.yaml"), "name: demo-solution\nversion: 0.1.0\n");
+		await atomicWriteText(modulesJsonPath, `${JSON.stringify([{ name: "demo-solution", entry: "modules/demo-solution/0.1.0/entry.js", enabled: true }], null, 2)}\n`);
+		const r = await setEnabled({ name: "demo-solution", enabled: true, sharedRoot, lockPath, state, modulesJsonPath, trustPath });
+		expect(r.ok).toBe(true);
+		expect(r.message).toContain("无验签真源");
+		expect(state.read().solutions["demo-solution"]?.trust_state).toBe("absent");
+	});
+
+	it("吊销后升级拒：新包同 key_id 重签但 key 已移除 → needs_trust（升级走完整验签）", async () => {
+		await runInstall(makeReq());
+		await createTrustStore(trustPath, { audit: () => {}, fingerprintOf: pk => createHash("sha256").update(hexToBytes(pk)).digest("hex") }).remove("test.publisher");
+		// 0.2.0 新包（仍以 TEST_KEY 签，但 key 已吊销）
+		const up = await runInstall(makeReq({ version: "0.2.0" }));
+		expect(up.status).toBe("needs_trust");
+		expect(up.trust?.key_id).toBe("test.publisher");
+		// 已装 0.1.0 不动（吊销不动已装方案）
+		expect(state.read().solutions["demo-solution"]?.version).toBe("0.1.0");
+	});
+
+	it("发布方仍受信：启用无告警 + trust_state=trusted", async () => {
+		await runInstall(makeReq());
+		await setEnabled({ name: "demo-solution", enabled: false, sharedRoot, lockPath, state, modulesJsonPath, trustPath });
+		const r = await setEnabled({ name: "demo-solution", enabled: true, sharedRoot, lockPath, state, modulesJsonPath, trustPath });
+		expect(r.ok).toBe(true);
+		expect(r.message).not.toContain("⚠");
+		expect(state.read().solutions["demo-solution"]?.trust_state).toBe("trusted");
+	});
+});
+
 describe("setEnabled 四处同写（D12/AC-P1-6）：锁摘除/恢复 + sidecar + route + modules", () => {
 	async function seedEnabled(): Promise<void> {
 		await writeLock(lockPath, { "demo-solution": "0.1.0", "auth": "0.1.0" });

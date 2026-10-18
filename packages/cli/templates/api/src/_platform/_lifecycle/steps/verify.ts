@@ -118,6 +118,18 @@ export async function verify(ctx: VerifyContext): Promise<StageResult> {
 			message: `校验失败：${arch.file} 摘要与索引不符（C2-29 fail-closed；附录 A verifying：分发包可能损坏，请重试下载）期望 ${expected}，实得 ${actual}`,
 		};
 	}
+	// P2-6 同版本重装摘要比对（D11③ 族）：sidecar 记录过本版本的安装摘要——重取包不同 =
+	// 版本内容被替换（CDN 同名版本换包即拒；发布方应升版本号）。升级（新版本）无此记录不比对。
+	const prev = ctx.state.read().solutions[ctx.name];
+	if (prev !== undefined && prev.version === ctx.version && prev.archive !== undefined && prev.archive.sha256 !== expected) {
+		return {
+			stage: "verifying",
+			ok: false,
+			retryable: false,
+			code: "tampered",
+			message: `校验失败：重取包摘要与已装记录不符（tampered）——同版本 ${ctx.name}@${ctx.version} 的包内容被替换，拒装。已装记录 ${prev.archive.sha256}，本次重取 ${expected}；请发布方升版本号后重试`,
+		};
+	}
 	// ── P2-3 验签（sha256 通过后；规范串基于已验字节，R10 语义）────────────────────────
 	return verifySignature(ctx, bytes, actual, shaFace);
 }

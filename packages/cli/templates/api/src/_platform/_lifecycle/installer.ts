@@ -37,6 +37,7 @@ import { smoke } from "./steps/smoke";
 import { verify } from "./steps/verify";
 import { getTask, readTasks, sweepTimedOut, writeTask } from "./tasks";
 import { bumpInstallSeq } from "./text-edit";
+import { createTrustStore } from "./trust";
 
 // db/http 为 oj isolate 注入全局（同模板 service 层惯例，register.ts/audit.ts 同款；测试由夹具装 globalThis.db）
 declare const db: { exec: (sql: string, params: unknown[]) => Promise<unknown> };
@@ -132,6 +133,18 @@ async function migrateStage(req: InstallRequest): Promise<StageResult> {
 		req.outcome = { ...req.outcome, appliedSeq: cap.seq() };
 	}
 	return r;
+}
+
+/** P2-6 复验真源：从安装清单提取包摘要 + 签名记录（随 done/partial 落 sidecar，供切换前复验） */
+function archiveRecordOf(manifest: unknown): { sha256: string, key_id: string, signature: Record<string, unknown> } | undefined {
+	const m = isObj(manifest) ? manifest : {};
+	const arch = isObj(m.archive) ? m.archive : undefined;
+	const sha256 = typeof arch?.sha256 === "string" ? arch.sha256 : "";
+	const sig = isObj(arch?.signature) ? arch.signature : undefined;
+	const keyId = typeof sig?.key_id === "string" ? sig.key_id : "";
+	if (sha256 === "" || sig === undefined || keyId === "")
+		return undefined; // 无签名真源（理论不可达：P2-3 验签已过即必带 signature）
+	return { sha256, key_id: keyId, signature: sig };
 }
 
 /** 切换前复验（失败语义③）：staging 产物完整性——manifest.yaml 在、web 声明的 entry 在包内（R10 错配防线） */
@@ -449,9 +462,10 @@ export async function runInstall(req: InstallRequest): Promise<TaskRecord> {
 				task.stages.push({ stage: AUDIT_DEF.name, ok: true, message: `终态审计失败仅记日志：${String(e)}` });
 			}
 			// sidecar 同步（D12 元数据；done/partial 均记录——版本已实际落位，enabled 与锁一致；
+			// P2-6：archive 复验真源（sha256+签名记录）随装落，供切换前复验/同版本重装摘要比对；
 			// 写失败元数据滞后，静默降级不阻断主流程——禁 console，Finding A）
 			try {
-				await req.state.write({ solutions: { [req.name]: { version: req.version, enabled: true, installedAt: Date.now() } } });
+				await req.state.write({ solutions: { [req.name]: { version: req.version, enabled: true, installedAt: Date.now(), ...(archiveRecordOf(req.manifest) !== undefined ? { archive: archiveRecordOf(req.manifest), trust_state: "trusted" as const } : {}) } } });
 			}
 			catch {
 				// 写失败静默：元数据滞后不影响安装主流程（下次操作再收敛）
@@ -659,6 +673,8 @@ export interface SetEnabledInput {
 	state: StateStore
 	/** 站点 modules.json 路径 */
 	modulesJsonPath: string
+	/** 宿主信任库路径（P2-6 切换前复验：启用时核对发布方 key 是否仍受信；缺省跳过核对） */
+	trustPath?: string
 	/** 操作人（历史留痕；端点按 http.user 反查注入，缺省 null） */
 	operator?: string
 	now?: number
@@ -669,14 +685,21 @@ export interface SetEnabledInput {
  * 装配，摘除即不挂载；启用 = 从 sidecar 摘除前记录恢复版本目录）→ ②sidecar enabled →
  * ③sys_solution_route.enabled → ④modules.json enabled。锁改写走 writeLock（.bak 备份）；
  * 摘除后锁为空拒绝（空锁拒启，S1-1.2）。生命周期开关操作不违 D10（D10 禁的是注册内容直写）。
+ * P2-6 切换前复验（D11③/G5 调和）：启用（原版本恢复）不重新取包——无完整验签可做；改为核对
+ * sidecar.archive 的发布方 key 是否仍受信：已吊销 → **放行 + 显著告警 + 审计 + sidecar 标
+ * untrusted**（存量可用性承诺）；P1 时代条目无 archive → 放行 +「无验签真源」告警。升级/回滚
+ * 走完整安装验签（P2-3 verifying 段，吊销即 needs_trust 拒）。
  */
 export async function setEnabled(input: SetEnabledInput): Promise<{ ok: boolean, message: string }> {
 	const { name, enabled } = input;
 	const now = input.now ?? Date.now();
 	const f = fsFace();
 	const side = input.state.read().solutions[name];
+	// P2-6 启用发布方状态核对（切前复验的轻量形态：不取包，只查信任库）
+	let trustNote: string | null = null;
+	let trustState: "trusted" | "untrusted" | "absent" | undefined;
 	const audit = (ok: boolean, detail: string): void => {
-		auditOp({ action: enabled ? "solution.enable" : "solution.disable", module: name, target: name, detail: { ok, detail }, level: ok ? 6 : 4 });
+		auditOp({ action: enabled ? "solution.enable" : "solution.disable", module: name, target: name, detail: { ok, detail, ...(trustNote !== null ? { trust: trustNote } : {}) }, level: ok ? 6 : 4 });
 	};
 	// ① 锁摘除/恢复
 	const lock = await readLock(input.lockPath);
@@ -691,6 +714,22 @@ export async function setEnabled(input: SetEnabledInput): Promise<{ ok: boolean,
 			const msg = `启用失败：版本目录 ${name}-${side.version} 缺失（已卸载？），无可恢复版本`;
 			audit(false, msg);
 			return { ok: false, message: msg };
+		}
+		if (side.archive === undefined) {
+			// P1 时代安装（P2 前）：无复验真源——放行但告警（升级走完整验签由安装路径保证）
+			trustNote = "无验签真源（P2 之前的旧版安装）——启用放行，但无法核验发布方状态，建议升级重装";
+			trustState = "absent";
+		}
+		else if (input.trustPath !== undefined && input.trustPath !== "") {
+			const trusted = await createTrustStore(input.trustPath).get(side.archive.key_id);
+			const bound = isObj(side.archive.signature) && typeof side.archive.signature.public_key === "string" ? side.archive.signature.public_key : null;
+			if (trusted === null || (bound !== null && trusted !== bound)) {
+				trustNote = `发布方「${side.archive.key_id}」已不在信任库（已吊销或换绑）——启用放行（G5：吊销不动已装方案），但该版本发布方状态不可信，建议升级到新签名版本`;
+				trustState = "untrusted";
+			}
+			else {
+				trustState = "trusted";
+			}
 		}
 		version = side.version;
 		lock[name] = version;
@@ -718,8 +757,10 @@ export async function setEnabled(input: SetEnabledInput): Promise<{ ok: boolean,
 		return { ok: false, message: `禁用/启用失败：锁写失败（${String(e)}）——四处同写中止，状态未变` };
 	}
 	// ② sidecar（version 保留摘除前记录，启用从它恢复）
+	// P2-6：archive 复验真源随启用保留（install 时落；P1 时代条目无此字段），trust_state 按发布方
+	// key 信任状态刷新（吊销后启用 = 放行 + untrusted，存量可用性承诺 G5）。
 	try {
-		await input.state.write({ solutions: { [name]: { version, enabled, installedAt: side?.installedAt ?? now } } });
+		await input.state.write({ solutions: { [name]: { version, enabled, installedAt: side?.installedAt ?? now, ...(side?.archive !== undefined ? { archive: side.archive } : {}), ...(trustState !== undefined ? { trust_state: trustState } : {}) } } });
 	}
 	catch (e) {
 		audit(false, `sidecar 写失败：${String(e)}`);
@@ -749,7 +790,7 @@ export async function setEnabled(input: SetEnabledInput): Promise<{ ok: boolean,
 		audit(false, `modules.json 写失败：${String(e)}`);
 		return { ok: false, message: `禁用/启用失败：modules.json 写失败（${String(e)}）——锁/sidecar/route 已更新，前端开关滞后` };
 	}
-	const msg = `${enabled ? "启用" : "禁用"}完成：锁${enabled ? "恢复" : "摘除"} + sidecar + sys_solution_route.enabled + modules.json enabled 四处同写（D12/AC-P1-6）`;
+	const msg = `${enabled ? "启用" : "禁用"}完成：锁${enabled ? "恢复" : "摘除"} + sidecar + sys_solution_route.enabled + modules.json enabled 四处同写（D12/AC-P1-6）${trustNote !== null ? `；⚠ ${trustNote}` : ""}`;
 	audit(true, msg);
 	// market_history 留痕（P1-15a 缺口 A，history.ts 守卫式：表不存在/写失败静默，不阻断开关结果）
 	await recordHistory({ solution: name, version, action: enabled ? "enable" : "disable", status: "success", operator: input.operator ?? null, message: msg });

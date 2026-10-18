@@ -554,6 +554,7 @@ export function createMarketApi(env: MarketEnv) {
 						lockPath: `${env.sharedRoot}/manifests.yaml`,
 						state: await createStateStore(env.statePath),
 						modulesJsonPath: env.modulesJsonPath,
+						trustPath: env.trustPath,
 						operator: await operatorOf(),
 					});
 				});
