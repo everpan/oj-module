@@ -40,3 +40,20 @@ fixtures/
 - `web.integrity` 的安装期重算比对（C2-28/R10）针对**构建产物 tgz**，源树夹具中该值为格式样例；
 - prefix 占用检测、peerRuntime 对宿主 `versions.json`（C2-09）等需要站点/宿主状态的规则，由 P1-5/P1-11 各自的运行时夹具（内存 state/versions 假数据）覆盖；
 - 恶意 tgz 成员（`..`/symlink）用例属 P1-2 `tgz-guard`，独立构造，不入本目录。
+
+## 签名链夹具（`sig/`，v1.3 / P2-0）
+
+```
+fixtures/sig/
+├── gen-signed-fixtures.mjs            # 确定性生成器（自包含 .mjs，两端可 import/spawn；私钥不入仓）
+├── gen-signed-fixtures.d.mts          # 类型声明（供 TS 测试 import）
+├── demo-solution-0.2.0.tgz            # 共用包体（Form A，确定性 ustar + gzip）
+├── demo-solution-0.2.0.tgz.sig        # 已签（TRUSTED_KEY = ojm.test）
+├── demo-solution-0.2.0.tgz.bad.sig    # 篡改（value 首字符翻转 → tampered）
+└── demo-solution-0.2.0.tgz.unknown.sig # 未知发布方（UNKNOWN_KEY = stranger.unknown）
+```
+
+- 再生：`node gen-signed-fixtures.mjs`（幂等确定，与提交产物字节一致，由双端 spec 钉住）；
+- 测试 key 由公开 seed 常量派生（SHA-256 → 32B → PKCS#8 DER → Ed25519），**无保密性、私钥永不入仓**（P2-12「模板/夹具不得含私钥」的前提）；
+- 双端消费：CLI 面 `src/lifecycle/__tests__/sig-fixtures.test.ts`；templates 面 `tests/lifecycle/sig-fixtures.spec.ts`（跨 root import 生成器）；
+- P2-3 起 isolate 六码/TOFU 全链以同组夹具为锚（`steps/verify.ts` + `CryptoFace.verifyEd25519`）。

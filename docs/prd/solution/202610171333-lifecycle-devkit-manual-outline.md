@@ -103,6 +103,21 @@
 
 **示例位**：changelog 写法好坏对照（P1 后补）。
 
+### 1.7 签名与信任（P2 起，契约 v1.3 §2.11；正式手册章节随 P2-14 展开）
+
+**目的**：作者侧「生成 key → 签名 → 发布」全流程；宿主侧「信任库 → TOFU → 吊销」运维模型。
+
+**要点（骨架）**：
+
+- **发布方流程**：`ojm keygen [--id <publisher.id>]`（Ed25519 新生成——站点既有 RSA cert 对/X25519 secrets 对**不可复用**：算法不符、per-site、已暴露；私钥落 `~/.ojm/keys/<id>` 永不出该目录）→ `ojm build --bundle` 出包 → `ojm sign <tgz> [--key <pem>] [--check]` 写同目录 detached 侧车 `<name>-<version>.tgz.sig`（`alg`/`key_id`/`public_key`/`value`/`canon`）→ 分发 tgz + 侧车（CDN 与 file 源同一信任模型）。
+- **签名原文**：规范串 `<name>@<version>:<sha256>`（C2-34，逐字；`canon="v1"`）；编码约束 C2-36（value 仅标准 base64、public_key 仅 32B raw hex）。
+- **宿主验签硬边界（G4）**：未签名/签名不符/格式错一律拒装零落盘，无 `solution_allow_unsigned` 类开关；失败六码（附录 A.2）双语文案 + `retryable=false`。
+- **TOFU 双轨（G3）**：宿主信任库 `.solutions/trusted-keys.yaml`（key_id→公钥，可预置第一方 bootstrap key 免 TOFU）；未知 key_id 首次装停 `needs_trust` 终态 → CLI/市场页展示指纹（sha256Hex(publicKey) 全 64）人确认 → 入库审计。**首次绑定不可改**（同 key_id 异公钥拒；轮换 = 新增 key_id）。
+- **吊销（G5）**：`ojm trust revoke <key_id>` = 移出信任库，只阻断新装/升级、不动已装方案；启用（enable）放行 + 告警 + 深检标 `untrusted`。
+- **切换前复验（C2-40）**：升级/回滚/降级重新取包完整验签；吊销 key 签的新包升级即拒。
+
+**示例位**：keygen→sign→install 全链实录（P2-16 真机走查后补）。
+
 ---
 
 ## 二、章节提纲「第一方特权面不可复制」（R29）

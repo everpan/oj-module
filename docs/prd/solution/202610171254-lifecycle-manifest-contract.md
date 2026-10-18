@@ -1,6 +1,6 @@
-# 解决方案 bundle · manifest.yaml 契约（v1.1）
+# 解决方案 bundle · manifest.yaml 契约（v1.3）
 
-> 状态：**定稿（P0/C2 交付物）** · 日期：2026-10-17 · 分支：`feat/lifecycle-p0`
+> 状态：**定稿（P0/C2 交付物；v1.3 = P2 签名/信任/深检/目录增补）** · 日期：2026-10-17（v1.3 增补 2026-10-18） · 分支：`feat/lifecycle-p0` → P2 于 `feat/lifecycle-p2`
 > 上游：PRD [`202610152345-solution-marketplace-framework-prd.md`](202610152345-solution-marketplace-framework-prd.md) §5.1/§5.2/§5.8/§5.9（原稿基底）· 设计 [`202610171138-solution-lifecycle-implementation-design.md`](202610171138-solution-lifecycle-implementation-design.md) §0 D4/D7/D12、§1 预检白名单、§6.3（决策修订）· spike [`202610171245-lifecycle-p0-spike-findings.md`](202610171245-lifecycle-p0-spike-findings.md)（oj 实测）· oj 上游源码 `oj/src/manifest.rs`（0.1.76 工作区 `../oj-bin`）
 > 执行面：构建期 = `packages/cli/src/manifest-contract.ts`（P1-11，`ojm build --bundle` fail-fast）；安装期 = `templates/api/src/_platform/_lifecycle/steps/preflight.ts`（P1-5，可读中文 reason）。两端正则/规则**逐字一致**，由两枚夹具（`packages/cli/src/lifecycle/__tests__/fixtures/`）双端测试钉一致性（计划 §1「两运行时取舍」）。
 > 规则编号 `C2-01`–`C2-33` 是契约条款的唯一引用 ID：P1-5/P1-11 测试、夹具 EXPECTED-VIOLATIONS、评审意见均按编号引用。
@@ -14,7 +14,7 @@
 | 两层 manifest | **bundle 级 `manifest.yaml`**（tgz 内，分发与安装元信息，本文档定义）≠ **oj 模块级 `manifest.yaml`**（`api/<name>-<version>/` 内，oj 真实解析，仅 oj 原生七字段）。分层红线：bundle 字段**禁止**混入模块级文件（§3-OJ-X） |
 | 唯一真源 | 本文档 = 构建器与安装器的**共同上游**。任何一端改规则必须先改本文档（含规则编号），再同步两端实现与夹具——契约先行纪律（D1） |
 | 兼容底线 | bundle 契约是 oj 原生 schema 的**合法子集收紧**：凡 oj 会真实解析的字段（name/desc/version/tables/deps、模块名/版本白名单、扁平锁），契约口径必须 ⊆ oj 口径；冲突即拒装（spike S1-1.2/S1-1.3 实测 oj 拒启行为） |
-| 演进方式 | append-only：新字段走 minor 增补并保持「P1 未声明字段省略合法」；不回收字段、不改既有字段语义（semver 语义见 C2-02） |
+| 演进方式 | append-only：新字段走 minor 增补并保持「P1 未声明字段省略合法」；不回收字段、不改既有字段语义（semver 语义见 C2-02）。**唯一明写例外**（v1.3，四方评审裁定的硬缺口）：Form B `archive.signature` 增补 `public_key` 为 P2 起必填——无公钥则验签无从执行、TOFU 无从钉定；老 Form B 缺 `public_key` = 拒装 + 迁移指引（§2.9，修订记录 v1.3 留痕） |
 | 文案单一来源 | 十阶段失败文案 key（`lifecycle.stage.*`，附录 A）由本文档唯一维护，T3 状态机与 P1-13 CLI 渲染同表取用（R28/DRY） |
 
 ---
@@ -180,7 +180,7 @@ locales 完整性：`locales/zh-CN.json` 与 `en-US.json` 必须携带 manifest 
 | archive.file | Form B ✅ | `^<name>-<version>\.tgz$` | P3 publish 填充 | C2-29 |
 | archive.sha256 | Form B ✅ | `^[a-f0-9]{64}$` | 安装期 verify 段 fail-closed 比对 | C2-29 |
 | archive.size | Form B ✅ | 正整数（字节） | 同上 | C2-29 |
-| archive.signature | P2 起 Form B ✅ | `{alg: "Ed25519", key_id: string, value: base64}`；签名原文 = 规范串 `<name>@<version>:<sha256>`；P2 fail-closed（`crypto.verifyEd25519`） | P2 安装期 verify 段 | C2-29 |
+| archive.signature | P2 起 Form B ✅ | `{alg: "Ed25519", key_id: string, public_key: hex64, value: base64}`；签名原文 = 规范串 `<name>@<version>:<sha256>`（格式表见 §2.11，C2-34）；**`public_key` v1.3 起必填**（验签需要公钥；附录 B-14 为 append-only 明写例外）——老 Form B 缺 `public_key` = 拒装 + 可读迁移指引；P2 fail-closed（`crypto.verifyEd25519`，编码约束 C2-36）。**file 源签名载体 = detached 侧车 `<name>-<version>.tgz.sig`**（字段同构，C2-35），与 Form B 同源同语义——Form A 禁带 signature 的自引用悖论（B-2）由侧车消解，file 源与 CDN 源同一信任模型（G4） | P2 安装期 verify 段 | C2-29/34/35 |
 
 **archive 两形态裁定（自引用悖论消解，附录 B-2）**：
 
@@ -188,8 +188,9 @@ locales 完整性：`locales/zh-CN.json` 与 `en-US.json` 必须携带 manifest 
 |---|---|---|
 | Form A（构建产物） | tgz 内 `manifest.yaml` | 可整体省略，或仅含 `file`；**禁止**携带 sha256/size/signature（对 tgz 自身摘要不可自洽） |
 | Form B（发布真源） | CDN `manifests.yaml` 聚合数组内该 (name, version) 条目 | 全字段；由 P3 `ojm publish` 填充与校验 |
+| detached 侧车（v1.3，G4 补裁） | 与 tgz 同目录 `<name>-<version>.tgz.sig`（CDN 分发与 file 源本地安装共用） | 仅签名四字段 + `canon`（C2-35）；file 源安装时 `ojm install` 自动探测同目录侧车随包上传，缺签即拒（fail-closed 无逃生门） |
 
-安装器消费顺序：`bundles.yaml`（版本/文件/校验）→ Form B manifest（签名，P2）→ tgz 内容。P1 无签名阶段 CDN 与安装器同信任域（sha256 仅防传输损坏，设计 §10 未修订说明 ①）。
+安装器消费顺序：`bundles.yaml`（版本/文件/校验）→ Form B manifest 或 detached 侧车（签名，P2）→ tgz 内容。P1 无签名阶段 CDN 与安装器同信任域（sha256 仅防传输损坏，设计 §10 未修订说明 ①）。
 
 **tgz 内布局（C2-30/31/32）**：
 
@@ -218,6 +219,72 @@ locales 完整性：`locales/zh-CN.json` 与 `en-US.json` 必须携带 manifest 
 | health | ⬜ | string；值匹配 **C2-17 path 语法**，且存在 r ∈ routes[] 使值 `=== r.path` 或以 `r.path + "/"` 开头（本方案路由或其子路径）。双端校验 = 格式 + 存在于 routes[]。**冒烟语义（设计 §4.1，D14/Q-A 拍板：health 不强制）**：smoke 优先打该端点；缺省打首个非匿名路由兜底。匿名可达性由作者经 `api.anonymous` 自行声明——health 不豁免 C2-26 段内收敛规则 | ✅ | ✅ | C2-33 |
 
 > 与 oj 的关系：oj 原生 Manifest 无 health 字段（spike S1-5.3 实测），故 health 仅存在于 bundle 级 manifest（本文档层），不进入模块级文件——与 §3 对照表相容。
+
+### 2.11 签名与信任（P2，G3/G4/G5 裁决固化）
+
+**规范串格式（C2-34，P2-1 逐字实现）**：
+
+| 项 | 口径 |
+|---|---|
+| 函数 | `canonicalString(name, version, sha256)` |
+| 拼接式（逐字） | `<name>@<version>:<sha256>`——`name` 与 `version` 取 bundle manifest 值，`sha256` = tgz 字节的 sha256（hex 小写）；三段之间仅 `@` 与 `:` 两个分隔符，**禁止自造分隔符/归一化/大小写变换** |
+| 版本标记 | `canon` 字段恒 `"v1"`（规范串格式演进时递增；验签前先比对，不认识即 `sig_format`） |
+
+**detached 侧车 `.sig` 字段表（C2-35；Form B `archive.signature` 与之同源同构）**：
+
+| 字段 | 类型 | 校验 | 条款 |
+|---|---|---|---|
+| `alg` | string | 恒 `"Ed25519"`（大小写敏感；其余值 = `sig_alg`） | C2-35 |
+| `key_id` | string | `<publisher>.<id>` 全小写（C2-37）；信任库比对用 | C2-35/37 |
+| `public_key` | string | **必填**，`^[0-9a-f]{64}$`（Ed25519 32B raw 公钥 hex；禁 PEM/SPKI——C2-36） | C2-35/36 |
+| `value` | string | 标准 base64（`^[A-Za-z0-9+/]+={0,2}$`，含 `-`/`_` 即 `sig_format`，**禁 base64url 归一**） | C2-36 |
+| `canon` | string | 恒 `"v1"`（见规范串版本标记） | C2-34 |
+
+**编码约束（C2-36，上游 `crypto.verifyEd25519` 语义）**：`value` 仅标准 base64；`public_key` 仅 32 字节 raw 的 hex（上游 `decode_key` 兼收 base64 由实现层适配，PEM/SPKI 一律拒）。**双层语义同为拒装**：格式类错误抛错（消息 `verifyEd25519: ` 前缀）→ 转 `sig_format`；验签不过返回 `false` → `tampered`。原语不可得（面未注入且运行时全局缺失）= 拒装，与 `sha256Hex` 既有口径一致（fail-closed，无静默跳过）。
+
+**`key_id` 命名空间（C2-37）**：`<publisher>.<id>` 两段以上、全小写 `[a-z0-9-]`；**禁裸通用名**（`default`/`test`/单段无点）——防 key_id 抢注/碰撞（R9 保留名、R24 键所有权同款洞）；违反归 `sig_format`。
+
+**TOFU 三态与信任库（C2-38，G3 双轨）**：
+
+| 态 | 定义 | 安装行为 |
+|---|---|---|
+| `trusted` | `key_id` 在宿主信任库且公钥逐字一致 | 验签通过即装 |
+| `unknown` | `key_id` 不在信任库（其余全合法） | 任务停 `needs_trust` 第五终态 + 展示指纹（`sha256Hex(publicKey)` 全 64 hex，UI 分组）；staging **不清场**供确认后重试；`ojm trust confirm --task` / `POST /api/_platform/market/trust {task_id}` 确认后入库 |
+| `rejected` | 确认被拒 / 公钥与已绑定不一致 | 不装；`trust_bound_mismatch` 独立错误 |
+
+信任库形态：`.solutions/trusted-keys.yaml`（`key_id → {public_key, added_at}`），原子写（D13）+ `.bak`；**首次绑定不可改**（同 `key_id` 异公钥 = `trust_bound_mismatch`；轮换 = 新增 `key_id` 共存，禁覆写）；宿主可预置第一方 key 免 TOFU（bootstrap，P2-12）；损坏 = fail-closed 可读报错。
+
+**吊销语义（C2-39，G5）**：吊销 = 从信任库移除 `key_id`，**只阻断新装/升级，不动已装方案**（存量可用性承诺）；移除动作审计留痕（`key_id` + 指纹 + operator）。
+
+**切换前复验口径（C2-40，D11③ 与 G5 调和）**：升级/回滚/降级 = 重新取包走**完整验签**（key 已吊销即拒，sha 与 sidecar 不符 = `tampered`）；**enable（原版本恢复）不算新装 → 放行 + 显著告警 + 审计 + 深检标 `untrusted`**；sidecar 缺 `archive` 真源（P1 时代安装）= enable 放行 +「无验签真源」告警，升级仍走完整验签。
+
+**失败六码（附录 A.2 定义文案 key；retryable 恒 false；一律零解压零落盘）**：`sig_missing`（无 `.sig`/Form B 无 signature）/ `sig_alg`（alg 非 Ed25519）/ `sig_key`（key_id 命名空间违规、已信任但公钥不一致）/ `tampered`（验签 false）/ `unknown_key`（→ `needs_trust`）/ `sig_format`（编码违规、抛错类）。
+
+### 2.12 市场索引扩展（IndexRow，P2，C2-41）
+
+`GET /api/_platform/market/index` 的 IndexRow 在既有字段（name/version/archive/summary 等）上增补：
+
+| 字段 | 类型 | 口径 | 条款 |
+|---|---|---|---|
+| `available[]` | string[] | CDN 可下载版本列表（回滚候选不止本站已装旧版——P1-15b 边界收口）；CDN 不可达降级为空数组 | C2-41 |
+| `changelog` | string 或 string[] | 透传 manifest changelog（C2-08）供市场卡片版本对比（R27） | C2-41 |
+| `trust_state` | enum | `trusted`（当前发布方 key 在信任库）/ `untrusted`（不在或已吊销，enable 告警同源）/ `absent`（无签名真源） | C2-41 |
+| `publisher` | string | 发布方标识（= `key_id` 的 `<publisher>` 段；无签名省略） | C2-41 |
+
+`operator` **不挂 IndexRow**（挂卡片行是历史动作语义错位）——回落 `market_history` 行（P1-16 已补通道）。索引本身未签名（P3-U3 索引签名）；P2 低成本加固 = `archive.file` 逐字 `<name>-<version>.tgz` + 下载后立即比 `archive.size`（P2-11）。
+
+### 2.13 深检报告结构（P2，C2-42）
+
+`POST /api/_platform/solutions/verify?name=`（admin 域）返回 `VerifyReport = {ok, checks[], advise[]}`；item 统一结构：
+
+| 字段 | 口径 |
+|---|---|
+| `id` | 检查项标识（`routes`/`rbac`/`settings`/`ledger`/`i18n`/`trust`） |
+| `severity` | `error`（必须处理）/ `warn`（建议处理）/ `info`（说明） |
+| `subject` | 差异主体（如路由 path、权限 code、设置 key——**永不包含设置值**，secret 场景同样只报 key/存在性） |
+| `advise_key` | 修复建议 i18n key（`<name>:verify.<id>.<subject 归一>` 或框架 `lifecycle.verify.*`；**双语可读可行动**——「看得见但不知怎么做」即不合格） |
+
+深检**全程不触 exec**（迁移账本走 `db.query _oj_migrations` + `journalHeadOf`，R9 纪律）；i18n 项前端执行（浏览器 i18next），本仓只下发待查 key 清单，缺执行降级「未校验」不阻断。报告落 `.solutions/verify-reports/` 时间序保留 N=10。
 
 ---
 
@@ -258,7 +325,13 @@ oj 0.1.76 `oj/src/manifest.rs:7-22`（`Manifest` struct）+ `:25-47`（`validate
 | C2-22~24 | 设置组/键所有权 | ✅ | ✅ | 注册 upsert：register 段 |
 | C2-25 | i18n key 语法 + locales 齐备 | ✅（缺 key fail-fast） | 语法 | 深检查值（P2） |
 | C2-27/28 | web 路径/integrity | ✅ 语法/计算 | ✅ 语法 | integrity 重算比对：deployWeb→smoke |
-| C2-29 | archive Form B | 拒绝 Form A 携带 sha256/signature | — | sha256 比对：verify 段；验签：P2 verify 段 |
+| C2-29 | archive Form B / detached 侧车 | 拒绝 Form A 携带 sha256/signature；侧车字段结构（v1.3：public_key 必填） | — | sha256 比对：verify 段；验签（Form B + 侧车）：P2 verify 段（六码附录 A.2） |
+| C2-34~37 | 规范串格式 / .sig 字段 / 编码约束 / key_id 命名空间 | `ojm sign` 写入侧检（P2-4） | — | 结构校验序（alg→key_id→public_key→value→规范串→信任库→验签）：P2-3 verify 段 |
+| C2-38 | TOFU 三态 + 信任库 + 首次绑定不可改 | — | — | 信任库读写（P2-2）；needs_trust 终态与确认端点（P2-3） |
+| C2-39 | 吊销只阻断新装/升级 | — | — | 信任库移除即吊销（P2-2）；切换前复验（P2-6） |
+| C2-40 | 切换前复验口径 | — | — | 升级/回滚完整验签 + enable 放行告警（P2-6）；sidecar archive 随安装落（P2-6） |
+| C2-41 | IndexRow 扩展字段 | — | — | 聚合下发（P2-11）；file 逐字 + size 比对（P2-11） |
+| C2-42 | 深检报告 item 结构 | — | — | 四项检查 + 留存 N=10（P2-7/8） |
 | C2-30/31 | tgz 守卫/分层核对 | ✅（打包自检） | — | list→validate→extract + 成品核对：extract 段 |
 | C2-32 | 确定性 tgz | ✅（专属） | — | — |
 | C2-33 | health 可选：path 格式 + 存在于 routes[] | ✅ | ✅ | smoke 优先探针；缺省首个非匿名路由兜底（D14/Q-A） |
@@ -277,6 +350,7 @@ oj 0.1.76 `oj/src/manifest.rs:7-22`（`Manifest` struct）+ `:25-47`（`validate
 |---|---|---|
 | `fixture-valid/` | 双端零违规 | 契约全部字段（§1 全键出现且合法；含 D4 三类路由、enum/secret 设置项、多组 settings、空 migrations 目录、archive Form A 仅 file） |
 | `fixture-invalid/` | 七码齐报：C2-01/02/16/17/22/23/26 | 每码一条内在违规，逐条对照 `fixture-invalid/EXPECTED-VIOLATIONS.md` |
+| `sig/`（v1.3，P2-0） | 签名链三态：已签过 / 篡改拒 / 未知 key | `demo-solution-0.2.0.tgz` 共用包体 + `.sig`（TRUSTED_KEY）/ `.bad.sig`（value 篡改）/ `.unknown.sig`（UNKNOWN_KEY）；由 `sig/gen-signed-fixtures.mjs` 确定性再生（seed 派生测试 key，私钥不入仓）；CLI 面 `sig-fixtures.test.ts` 与 templates 面 `tests/lifecycle/sig-fixtures.spec.ts` 双端断言「规范串逐字 + 指纹值 + 验签结果」；P2-3 isolate 六码/TOFU 以同组夹具为锚 |
 
 规则演进纪律：改任一端正则前必须先改本文档对应条款 → 同步夹具 → 双端测试全绿（夹具是两份实现唯一共同真源，计划 §1「DRY 于夹具而非运行时」）。
 
@@ -304,6 +378,19 @@ stage 名 = 安装状态机 `InstallStage`（lifecycle 设计 §10.2）逐字；
 
 双语要求：每个 key 必须同时具备 zh-CN 与 en-US 值（T3 文案模板与 P1-13 CLI 渲染同表取用，缺失即测试红）。
 
+### A.2 verifying 段签名失败六码（v1.3，P2；双语值由 P2-5 落 templates locales，缺失即测试红，同 C2-25 纪律）
+
+文案 key 骨架：`lifecycle.stage.verifying.<code>`（reason/hint 同 §A 骨架）。retryable 恒 `false`；六码一律**零解压零落盘**（verify 段先于 extracting）。
+
+| code | 触发条件（逐字） | 文案 key | 附加语义 |
+|---|---|---|---|
+| `sig_missing` | 无 detached `.sig` 且 Form B 无 `signature`（G4 硬 fail-closed，无逃生门开关） | `lifecycle.stage.verifying.sig_missing` | — |
+| `sig_alg` | `alg` 非恒 `"Ed25519"`（大小写敏感） | `…verifying.sig_alg` | — |
+| `sig_key` | `key_id` 命名空间违规（C2-37）；或已信任但公钥与信任库绑定不一致 | `…verifying.sig_key` | 后者同 `trust_bound_mismatch` 族 |
+| `tampered` | `verifyEd25519` 返回 `false`（包体/key/value 任一不符） | `…verifying.tampered` | 与 sha256 比对失败（既有 `verifying` reason）分流 |
+| `unknown_key` | `key_id` 不在信任库（其余全合法） | `…verifying.unknown_key` | → 任务终态 `needs_trust` + `TaskRecord.trust{key_id,fingerprint}`；staging 不清场 |
+| `sig_format` | 编码违规：`public_key` 非 64hex、`value` 非标准 base64（含 `-`/`_`）、`canon` 非 `v1`；或 `verifyEd25519` 抛错（`verifyEd25519: ` 前缀，isolate 内 try/catch 转码） | `…verifying.sig_format` | 抛错与返回 false 同拒装但分码（双层语义） |
+
 ---
 
 ## 附录 B · 问题记录（编码/定稿过程中发现，按类归档）
@@ -324,6 +411,7 @@ stage 名 = 安装状态机 `InstallStage`（lifecycle 设计 §10.2）逐字；
 
 | B-12 | 反常规（oj fs 缺失目标语义，P1-13b 真机实测 0.1.78） | Node 语义 `fs.readFile(missing)` 抛 `ENOENT`（带 `.code`）、`fs.remove(missing, {force:true})` 静默成功；oj isolate 实测两者都抛 `TypeError: invalid_argument`（**无 `.code`**）——所有 `code === "ENOENT"` 嗅探在真机必失效（首装读锁、残留清场、modules.json 冷读三处当场炸过） | `atomic.ts` 单点 `isMissingPath(e)`：`code === "ENOENT" 或 TypeError "invalid_argument"` 双判；三处消费点收敛到它（lock 读写、migrate 残留先清、deploy-web modules.json upsert），回归用例以 oj 形状错误桩钉住 |
 | B-13 | 平台缺面（P1-13b 真机实测） | oj isolate `crypto` 无 `sha384`（仅有 sha256Hex/md5Hex/aesGcm/verifyEd25519），而契约 C2-28 `web.integrity` 钉死 `sha384-<base64>`（ojm build 于 Node 侧写入），安装器 verifying/deploying 两段同算法重算比对在真机无处落脚 | 过渡实现 `sha384.ts`（纯 JS SHA-512 核截断 48 字节，hi/lo 双 Uint32，K/IV 由 FIPS 180-4 定义式推导），文件头标注「上游 crypto.sha384 原语落地后替换」；标准向量（FIPS 官方样例 + node:crypto 交叉）全过；上游需求已录入 oj-bin feature requests（sha384 原语） |
+| B-14 | 契约缺口（四方评审 2026-10-18 阻塞项） | ① Form B `archive.signature` 原口径只有 `key_id`+`value`、**无公钥**——验签无 key 可用、TOFU 无公钥可钉，签名链整条落不了地；② Form A 禁带 signature（B-2 自引用悖论）使 file 源（本地 tgz，P1 全部真机验证/教学主路径/市场自举都走它）在 G4 硬 fail-closed 下**永远拿不到签名**，会被一刀切死 | ① `public_key`（hex64）列为 P2 起必填——**append-only 的明写例外**（§0 演进方式留痕），老 Form B 缺 public_key = 拒装 + 迁移指引；② 签名载体统一为 **detached 侧车 `<name>-<version>.tgz.sig`**（G4 补裁，待用户追认），与 Form B 同源同语义，`ojm install` 自动探测同目录侧车随包上传——file 源与 CDN 源同一信任模型 |
 
 ---
 
@@ -376,3 +464,4 @@ stage 名 = 安装状态机 `InstallStage`（lifecycle 设计 §10.2）逐字；
 | 2026-10-17 | v1.0 | C2 定稿：PRD §5.2 为底 + D4/R7/R8/R9/R24/R27/R28 修订 + changelog 增补 + oj 相容对照 + 双端执行矩阵 + 夹具两枚 |
 | 2026-10-17 | v1.1 | 增补 C2-33 health 可选字段（D14/Q-A：冒烟优先 health、缺省首个非匿名路由兜底）+ §1 顶层键/§4.1 矩阵同步 + fixture-valid 覆盖样例 |
 | 2026-10-17 | v1.2 | 增补附录 C「版本比较规则与案例（compareVersions）」：规则 C-1~C-10 逐条对照 semver.ts 实现（含容错/实现口径标注）+ spec 16 组断言案例表镜像；C2-02 语义指向附录 C（P1-1b） |
+| 2026-10-18 | v1.3 | P2 增补（G3/G4/G5 裁决固化）：§2.11 签名与信任（C2-34 规范串格式 / C2-35 detached 侧车 `.sig` / C2-36 编码约束含 verifyEd25519 双层语义 / C2-37 key_id 命名空间 / C2-38 TOFU 三态与信任库含首次绑定不可改 / C2-39 吊销 / C2-40 切换前复验）；§2.12 IndexRow 扩展（C2-41：available/changelog/trust_state/publisher，operator 回落 history 行）；§2.13 深检报告 item 结构（C2-42）；附录 A.2 六码文案表（P2-5 落双语值）；B-14 记录 `public_key` 必填的 append-only 明写例外与 detached 载体裁决；夹具增 `sig/` 签名链三枚（P2-0） |

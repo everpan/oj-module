@@ -326,6 +326,7 @@ smoking     → 探活/integrity/注册一致性
 | ⑥ | per-module tgz 误用 | `api/dist/<name>-<version>.tgz` 不是安装源 | 只认 `ojm build --bundle` 产物（0.1.77 对账注记同款辨析） |
 | ⑦ | versions.json 缺失 | preflight C2-09 fail-closed | 宿主 `api/dist/versions.json` 补 `{"@oj-module/runtime":"…"}`（P1-13b 合入后自动接线） |
 | ⑧ | 多层 dist/ 打包 | `tar czf x.tgz dist` 多一层 dist/，解压非合法根 | 只用 `ojm build --bundle`（内部单根组装，上游坑同款） |
+| ⑨ | 裸包被拒 `sig_missing` | `ojm install dist/x.tgz` 报「缺少签名」拒装零落盘 | P2 起 G4 硬 fail-closed：`ojm sign dist/x.tgz`（P2-4）生成同目录 `.sig` 侧车后重装；签名载体口径见契约 v1.3 §2.11 |
 
 ## 9. 与 roadmap 的关系
 
