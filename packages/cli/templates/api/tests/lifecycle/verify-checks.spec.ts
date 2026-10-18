@@ -247,14 +247,17 @@ describe("深检端点门（admin 域）", () => {
 });
 
 describe("深检端点编排（四项）", () => {
-	it("全绿：路由 200 + 无声明权限/设置/迁移 → ok=true, checks=[]", async () => {
+	it("全绿：路由 200 + 无声明权限/设置/迁移 + trusted → ok=true, checks=[]", async () => {
 		dbo.prepare("INSERT INTO sys_solution_route (path, module, category, \"order\", title_key, required_permission, enabled, deprecated) VALUES (?,?,?,?,?,?,?,0)").run("/api/demo", "demo", "main", 200, "demo:menu", null, 1);
+		// trusted 状态：无 trust 项、无检查项 → 干净报告（checks=[]）
+		await fsp.writeFile(join(root, "state.yaml"), "solutions:\n  demo:\n    version: \"0.1.0\"\n    enabled: true\n    installedAt: 0\n    trust_state: trusted\n");
 		setHttp({});
 		await createSolutionsApi(makeEnv()).verify.post();
 		expect(last?.status).toBe(200);
-		const data = last?.data as { ok: boolean, checks: unknown[] };
+		const data = last?.data as { ok: boolean, checks: unknown[], advise: string[] };
 		expect(data.ok).toBe(true);
 		expect(data.checks).toEqual([]);
+		expect(data.advise).toEqual([]);
 		// 探针用同源绝对 URL（SSRF 钉①②）
 		expect(fetchCalls[0]).toBe("http://localhost:9778/api/demo");
 	});

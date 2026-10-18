@@ -1,12 +1,15 @@
 import type { SolutionRouteRow, SolutionsEnv, VerifyItem } from "../_lifecycle/verify-checks";
+import type { VerifyReport } from "../_lifecycle/verify-report";
 import type { FetchInitFace } from "../market/api";
 // 平台方案路由读端点 /api/_platform/solutions/routes（P1-14，R21 前端归并数据源）+ 深检端点
 // /api/_platform/solutions/verify?name=（P2-7，C2-42；admin 域、全程不触 exec）。
 // 登录即可、只读、无权限点（contacts/api.ts 同纪律）；读操作不记审计。
 // routes：只下发未 deprecated 行全列（required_permission 仅供深检对比，前端不做权限级菜单过滤，R22）。
-// verify：四项检查（路由可达/RBAC/设置/迁移账本）编排，组装 checks（报告结构/persist/trust 项归 P2-8）。
+// verify：四项检查（路由可达/RBAC/设置/迁移账本）编排 + 可信性项（P2-8 trust_state）+ i18n 依赖项；
+// 返回 VerifyReport{ok,checks,advise} 并落盘 verify-reports（时间序 N=10 留存）。
 // 行序稳定：module → order → path。
 import { fsFace } from "../_lifecycle/atomic";
+import { createStateStore } from "../_lifecycle/state";
 import {
 	declaredMigrationsOf,
 	declaredSettingsOf,
@@ -17,6 +20,7 @@ import {
 
 	verifyRouteReachability,
 } from "../_lifecycle/verify-checks";
+import { getLastReport, persistReport, verifyReportsDirOf } from "../_lifecycle/verify-report";
 import { respond } from "../_shared/respond";
 import { assertSystemAdmin } from "../_shared/service/access";
 import { journalHeadOf, siteOrigin } from "../market/api";
@@ -51,12 +55,30 @@ function rowOf(r: Record<string, unknown>): SolutionRouteRow {
 	};
 }
 
-/** 深检主体：四项检查编排，返回 {ok, checks}（报告结构/persist 归 P2-8） */
-async function verifyBody(env: SolutionsEnv): Promise<{ ok: boolean, checks: VerifyItem[] }> {
+/** 取并校验深检 name 参数（空 → 400；端点门之一） */
+function verifyNameOf(): string {
 	const name = String((globalThis as { http?: { query?: Record<string, unknown> } }).http?.query?.name ?? "").trim();
 	if (name === "")
 		throw Object.assign(new Error("name is required"), { status: 400 });
+	return name;
+}
 
+/**
+ * 可信性项（P2-8）：发布方 key 状态（G5 吊销后已装方案继续运行却无人知晓的补位）。
+ * trusted → 干净不打项；untrusted → error（key 已吊销仍在跑）；absent/未写（P1 遗留）→ info（无法校验来源，非阻断）。
+ */
+async function trustItemOf(env: SolutionsEnv, name: string): Promise<VerifyItem | null> {
+	const state = await createStateStore(env.statePath);
+	const ts = state.read().solutions[name]?.trust_state;
+	if (ts === "trusted")
+		return null;
+	if (ts === "untrusted")
+		return { id: "trust", severity: "error", subject: name, advise_key: "lifecycle.verify.trust.untrusted" };
+	return { id: "trust", severity: "info", subject: name, advise_key: "lifecycle.verify.trust.absent" };
+}
+
+/** 深检主体：四项检查编排 + 可信性项 + i18n 依赖项，组装 VerifyReport{ok,checks,advise}（persist 归端点） */
+async function verifyBody(env: SolutionsEnv, name: string): Promise<VerifyReport> {
 	// 已装校验：sys_solution_route 有该 module 行（未装 → 404，端点门之一）
 	const routeRows = await db.query(
 		`select path, module, category, "order", title_key, required_permission, enabled
@@ -90,9 +112,20 @@ async function verifyBody(env: SolutionsEnv): Promise<{ ok: boolean, checks: Ver
 	applied.set(name, Number(await journalHeadOf(name)));
 	const ledger = diffLedger(declaredMig, applied);
 
-	const checks = [...reach, ...rbac, ...settings, ...ledger];
+	const checks: VerifyItem[] = [...reach, ...rbac, ...settings, ...ledger];
+	const trust = await trustItemOf(env, name);
+	if (trust !== null)
+		checks.push(trust);
+
+	// i18n 依赖项（info，非阻断）：本仓只下发待查 key 清单（advise），前端经 oj-market 解析文案；
+	// 缺执行降级「未校验」不阻断。先据既有检查项判定是否需要 i18n 解析，再纳入 advise 清单。
+	const baseAdvise = [...new Set(checks.map(c => c.advise_key))].sort();
+	if (baseAdvise.length > 0)
+		checks.push({ id: "i18n", severity: "info", subject: String(baseAdvise.length), advise_key: "lifecycle.verify.i18n.dependency" });
+
+	const advise = [...new Set(checks.map(c => c.advise_key))].sort();
 	const ok = !checks.some(c => c.severity === "error");
-	return { ok, checks };
+	return { ok, checks, advise };
 }
 
 /** 版本目录内迁移文件名清单（读不到目录 → 空，意为无迁移声明） */
@@ -130,8 +163,28 @@ export function createSolutionsApi(env: SolutionsEnv) {
 					if (!http.user?.id)
 						throw Object.assign(new Error("unauthorized"), { status: 401 });
 					await assertSystemAdmin();
-					return await verifyBody(env);
+					const name = verifyNameOf();
+					const report = await verifyBody(env, name);
+					// 落盘 verify-reports（时间序 N=10 留存；persist 失败不应阻断响应——但异常须上抛由 respond 收口）
+					await persistReport(verifyReportsDirOf(env), name, report);
+					return report;
 				});
+			},
+			// GET /api/_platform/solutions/verify/last?name= —— 取该方案最新深检报告（登录即可，只读）。
+			last: {
+				async get() {
+					if (!http.user?.id) {
+						json.fail(401, "unauthorized");
+						return;
+					}
+					await respond(async () => {
+						const name = verifyNameOf();
+						const report = await getLastReport(verifyReportsDirOf(env), name);
+						if (report === null)
+							throw Object.assign(new Error(`方案「${name}」暂无深检报告`), { status: 404 });
+						return report;
+					});
+				},
 			},
 		},
 	};

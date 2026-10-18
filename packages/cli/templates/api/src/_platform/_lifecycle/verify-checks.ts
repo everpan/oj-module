@@ -178,5 +178,7 @@ export interface SolutionsEnv {
 	statePath: string
 	modulesJsonPath?: string
 	apiPrefix?: string
+	/** 深检报告留存目录（默认随 statePath 同目录 verify-reports；P2-8） */
+	verifyReportsDir?: string
 	fetch?: FetchInitFace
 }
