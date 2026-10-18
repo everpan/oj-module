@@ -58,6 +58,12 @@ export function usageText(): string {
         --check 离线自检签名（不必靠宿主装失败发现签错）
         站点寻址：--url/--user/--pass，或环境变量 OJM_URL / OJM_USER / OJM_PASS
         （缺省 http://127.0.0.1:9778；凭据只走内存不落盘）
+  ojm publish <dir> [--id <publisher.id>] [--key <pem>] [--check]
+        索引发布（P3-5/6/7）：重算 <dir>/bundles.yaml + manifests.yaml（确定性
+        stringify，消弭格式漂移）→ 对两份索引各产出 detached 侧车签名 <kind>.yaml.sig
+        （与 archive .sig 同构，公钥取 ~/.ojm/keys/<id>/private.pem，缺省 --id 推导）→ 写回
+        <dir>。CDN 侧 resolveCdn/index 拉取索引时校验签名（篡改/不符即拒，G4 fail-closed）。
+        --check 离线自检两份索引签名
   ojm test|exec|openapi|migrate|schema [args...]
         透传给 oj 同名子命令（自动补 -c <project>/api/config.yaml；其余参数原样转发）
         例：ojm test --anonymous / ojm migrate --db report / ojm openapi --check

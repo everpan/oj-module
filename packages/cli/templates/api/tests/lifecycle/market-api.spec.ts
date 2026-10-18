@@ -21,6 +21,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { parse } from "yaml";
 import { defaultTestKey, nodeVerifyEd25519, signedArchiveFor } from "../../../../src/lifecycle/__tests__/helpers";
+import { signIndex } from "../../../../src/publish";
 import { readLock, writeLock } from "../../src/_platform/_lifecycle/lock";
 import { createStateStore } from "../../src/_platform/_lifecycle/state";
 import { getTask, writeTask } from "../../src/_platform/_lifecycle/tasks";
@@ -694,7 +695,9 @@ describe("GET index（CDN bundles.yaml no-cache 拉取 + 本地 state 对比）"
 				const text = String(url).endsWith("bundles.yaml") ? bundles : String(url).endsWith("manifests.yaml") ? manifests : null;
 				if (text !== null)
 					return { ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode(text).buffer as ArrayBuffer };
-				return { ok: true, status: 200, arrayBuffer: async () => ARCHIVE.slice().buffer as ArrayBuffer };
+				if (String(url).endsWith(".yaml.sig"))
+					return { ok: true, status: 200, arrayBuffer: async () => new ArrayBuffer(0) }; // 缺失 .sig → 容忍（本用例聚焦 file 逐字校验，签名另测）
+				return { ok: true, status: 200, arrayBuffer: async () => ARCHIVE.slice().buffer as ArrayBuffer }; // .tgz 下载字节
 			}) as FetchFace;
 			const api = createMarketApi(makeEnv({ fetch: fetchFn }));
 			g.http = { user: { id: 1 }, body: { name: "demo-solution", version: "0.1.0", source: "cdn" } };
@@ -710,6 +713,60 @@ describe("GET index（CDN bundles.yaml no-cache 拉取 + 本地 state 对比）"
 		}));
 		await api.index.get();
 		expect(last?.status).toBe(502);
+	});
+});
+
+describe("P3-7 索引签名校验（G4 fail-closed：署名相符采用 / 篡改拒 / 缺失容忍）", () => {
+	/** 注入 .sig 的 CDN：非空 .sig 进入验签分支；缺/空 .sig → 404（被缺失容忍 catch 吞） */
+	function signingCdnFetch(sigs: { bundles?: string, manifests?: string }): FetchFace {
+		return ((url: string, init?: unknown) => {
+			fetchCalls.push(url);
+			fetchInits.push(init);
+			if (String(url).endsWith(".yaml.sig")) {
+				const kind = String(url).includes("manifests") ? "manifests" : "bundles";
+				const body = sigs[kind];
+				if (body !== undefined && body.trim() !== "")
+					return { ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode(body).buffer as ArrayBuffer };
+				return { ok: false, status: 404, arrayBuffer: async () => new ArrayBuffer(0) }; // 缺失/空 .sig
+			}
+			const text = String(url).endsWith("bundles.yaml")
+				? BUNDLES
+				: String(url).endsWith("manifests.yaml") ? MANIFESTS : null;
+			if (text !== null)
+				return { ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode(text).buffer as ArrayBuffer };
+			if (String(url).endsWith(".tgz"))
+				return { ok: true, status: 200, arrayBuffer: async () => ARCHIVE.slice().buffer as ArrayBuffer };
+			return { ok: true, status: 200, arrayBuffer: async () => new ArrayBuffer(0) };
+		}) as FetchFace;
+	}
+
+	it("署名相符：bundles/manifests 均带合法 .sig → index 照常 200（G4 采用，验签分支确已触发）", async () => {
+		const bundlesSig = JSON.stringify(signIndex("bundles", BUNDLES, TEST_KEY.privateKeyPem, "test.publisher"));
+		const manifestsSig = JSON.stringify(signIndex("manifests", MANIFESTS, TEST_KEY.privateKeyPem, "test.publisher"));
+		const api = createMarketApi(makeEnv({ fetch: signingCdnFetch({ bundles: bundlesSig, manifests: manifestsSig }) }));
+		g.http = { user: { id: 1 } };
+		await api.index.get();
+		expect(last?.status).toBe(200);
+		expect((last?.data as unknown[]).length).toBeGreaterThan(0);
+		expect(fetchCalls.some(u => u.endsWith("bundles.yaml.sig"))).toBe(true);
+		expect(fetchCalls.some(u => u.endsWith("manifests.yaml.sig"))).toBe(true);
+	});
+
+	it("篡改拒：.sig 对别的字节签名（非索引真值）→ verifyIndexSig 不符 → 502 fail-closed（G4 不吞）", async () => {
+		const bundlesSig = JSON.stringify(signIndex("bundles", `${BUNDLES}\n# tampered`, TEST_KEY.privateKeyPem, "test.publisher"));
+		const api = createMarketApi(makeEnv({ fetch: signingCdnFetch({ bundles: bundlesSig }) }));
+		g.http = { user: { id: 1 } };
+		await api.index.get();
+		expect(last?.status).toBe(502);
+		expect(String(last?.msg)).toContain("签名校验失败");
+	});
+
+	it("缺失容忍：CDN 不回 .sig（基线 cdnFetch 口径）→ index 仍 200（滚动发布期缺口，不阻断加载）", async () => {
+		const api = createMarketApi(makeEnv({ fetch: cdnFetch }));
+		g.http = { user: { id: 1 } };
+		await api.index.get();
+		expect(last?.status).toBe(200);
+		expect((last?.data as unknown[]).length).toBeGreaterThan(0);
 	});
 });
 

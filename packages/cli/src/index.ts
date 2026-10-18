@@ -153,6 +153,14 @@ async function main() {
 			await trustCommand(positionals[0] ?? "", positionals.slice(1), { url, user, pass, task });
 			break;
 		}
+		case "publish": {
+			// 索引发布（P3-5/6/7，作者工具链）：重算 bundles/manifests 索引 + detached .sig 签名写回
+			const { parsePublishArgs } = await import("./publish");
+			const { publishCommand } = await import("./publish");
+			const { positionals, id, key, check } = parsePublishArgs(process.argv.slice(3));
+			publishCommand(positionals[0] ?? "", { id, key, check });
+			break;
+		}
 		default: {
 			if (command && OJ_PASSTHROUGH.has(command)) {
 				const { runOjSubcommand } = await import("./oj-cmd");
