@@ -55,6 +55,15 @@ export interface MarketClient {
 const PLATFORM = "/_platform/market";
 const HISTORY = "/_platform/market/history";
 
+/**
+ * 503 = 服务端「未配置市场地址（framework.market_cdn_url）」，是**预期空态**而非故障
+ * （PRD §5.3：卡片区显示「未配置市场地址」）。模板默认不配市场地址，新工程一进市场页
+ * 就会撞它——在此归空数组，交由卡片空态文案承载；其它状态码照旧上抛。
+ */
+function isUnconfigured(e: unknown): boolean {
+	return (e as { response?: { status?: number } } | null)?.response?.status === 503;
+}
+
 /** 默认 HTTP 实现：基于运行时 request（ky 形态） */
 export function createHttpMarketClient(request: HttpRequest): MarketClient {
 	return {
@@ -64,9 +73,16 @@ export function createHttpMarketClient(request: HttpRequest): MarketClient {
 			return env.data!;
 		},
 		async index() {
-			const r = await request.get<OjEnvelope<IndexRow[]>>(`${PLATFORM}/index`);
-			const env = await r.json();
-			return env.data!;
+			try {
+				const r = await request.get<OjEnvelope<IndexRow[]>>(`${PLATFORM}/index`);
+				const env = await r.json();
+				return env.data!;
+			}
+			catch (e) {
+				if (isUnconfigured(e))
+					return [];
+				throw e;
+			}
 		},
 		async install(input: InstallInput) {
 			const r = await request.post<OjEnvelope<{ task_id: string }>>(`${PLATFORM}/install`, {
