@@ -1,6 +1,26 @@
 # oj 服务配置（字段语义见 oj 后端开发手册 oj-api-dev / 或 oj --help）。
 # 本文件由 ojm init 生成；config 内相对路径相对本文件所在目录。
 # 更多能力见手册 §10：vars / broker / tasks / oidc / ws / html_meta / secrets。
+#
+# ---- 证书与密钥的唯一落点：`./config/`（= api/config/，本文件同级的子目录）----
+# 三件套由 `ojm init` 现场签发（dev 缺证时 `ojm dev` 也会补签），逐把的作用与后果：
+#
+#   ① private.pem —— 证书签发私钥（RSA 2048）。只用来给 ③ 签名，**oj 不读它**，
+#      也绝不出部署机、不入仓。丢了不需要恢复：重新签发一套即可（旧的 ③ 作废）。
+#   ② public.pem  —— 与 ① 成对的公钥，oj 启动时拿它验 ③ 的 RS256 签名。
+#      配错路径或与 ③ 不是同一对 → oj 验签失败、启动即拒（读作「证书无效」）。
+#      由 server.public_key_path 引用。
+#   ③ cert.jws    —— JWS 证书（RS256 紧凑三段，payload 仅 nbf/exp），**oj 的启动闸门**：
+#      缺失、过期、签名对不上 → fail-fast 拒启，devkit 手册明确**无任何 config/CLI 绕过开关**。
+#      默认有效期 3650 天（短有效期等于定时炸弹）；过期只能重新签发一套 ①②③。
+#      由 server.certificate_path 引用。
+#
+# 另有一对与上面无关的密钥（jwt_secret 密封用，init 密封成功后追加到本文件末尾）：
+#   secrets.private_key_path  ./config/secrets-private.pem  解 jwt_secret 密文的私钥，只放部署机
+#   secrets.public_key_path   ./config/secrets-public.pem   加密用的公钥，可随代码分发
+#   （密文形如 ENC 后跟方括号包裹的字串；未密封时 config 里是 32 字节十六进制明文）
+#
+# ojm 侧的解析入口是 `resolveCertDir()`，由本文件位置派生；改落点只需动那一处 + 本段注释。
 
 # 站点挂载（oj v0.1.58 起顶层扁平表：一行=一个 URL 前缀+一个目录，api/web 恰好其一）。
 # 被删除的 server.api_prefix / app_spa_fallback 已由 mounts 取代；

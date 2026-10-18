@@ -1,0 +1,11 @@
+# 声明式表结构（§4.2 / D1-C）：demo 模块自有表 todos。
+# 加表/加可空列由 reconcile 自动收敛；类型变更/改名走 migrations/。
+tables:
+  todos:
+    pk: id
+    columns:
+      id: {type: integer, autoincrement: true}
+      title: {type: text, null: false}
+      done: {type: integer, null: false}
+      create_time: {type: integer, null: false}
+      update_time: {type: integer, null: false}

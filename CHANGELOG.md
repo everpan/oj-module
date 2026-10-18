@@ -5,6 +5,30 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 设计依据、迁移记录与陷阱清单见 [`docs/prd/202609110947-oj-module-two-package-consolidation-design.md`](docs/prd/202609110947-oj-module-two-package-consolidation-design.md)。
 
+## [0.2.5] - 2026-10-18
+
+双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步升 **0.2.5**。
+
+### Changed
+
+- **证书/密钥路径收敛为单一入口**：`resolveCertDir()`（由 config 位置派生，`<project>/api/config/`）取代 `init.ts` 里 `certDir` / `keysDir` 两处各算各的；`ojm dev` 的补签逻辑从 config 的 `certificate_path` 反推同一目录。落点与文件名均未变。
+  - 模板 `api/config.yaml` 顶部新增「证书与密钥唯一落点」注释块，逐把说明 `private.pem` / `public.pem` / `cert.jws` 三件套的作用与失效后果，以及 `secrets-*.pem` 与它们的区别。
+
+- **`ojm dev` 缺开发证书时自动补签**：此前证书只在 `ojm init` 时签发，模板仓库本身作为可运行工程（无 init 环节）直接 `pnpm dev` 会因 oj 读不到 `public.pem` 而 fail-fast。现 dev 起后端前检查 `certificate_path`，缺失即现场签发。
+  - 注：曾尝试把 config 迁到与 `api/`、`web/` 同级的 `config/` 目录，实测不可行并已回退——oj 的模块解析把「项目根」锚定在 **config 文件所在目录**，且相对 import 被钳制在该根内；config 一进 `config/` 子目录，`api/src` 就整体落到项目根之外，凡是带 `../` 相对 import 的 handler 在 `ojm dev` 下会被判 `escapes project root`（实测 26 个 api 文件只剩 8 个、18 条路由被跳过）。
+
+- **模板（`packages/cli/templates`）兼作可运行 demo**：模板目录本身即一个完整工程（新增 `package.json`，纳入根 workspace，包名 `@oj-module/template-demo`），可直接 `pnpm --filter @oj-module/template-demo dev` 演示全部模块——不必再先 `ojm init` 出一个工程才能看到效果。
+
+### Added
+
+- **`ojm init` 排除清单（`templates/init.exclude.yaml`）**：模板里现在内置一批「仅供演示」的模块与「模板自运行专属」文件，`ojm init` 拷脚手架时按清单跳过，用户工程不再收到它们。
+  - demo-only 模块：`api/src/demo`、`api/src/home`、`web/src/{about,access,exception,outside,route-nest}`（来自 `apps/playground-oj` 的演示模块，模板保留以便自演示）。
+  - 模板自运行专属：`package.json`、`node_modules`、`bin`、`pnpm-lock.yaml`。
+  - 构建/运行期产物：`api/dist`、`web/dist`、`api/logs`、`api/config/*.pem`、`api/config/cert.jws`、`api/db.sqlite*`——尤其避免所有新建工程共享同一把模板私钥。
+  - 派生规则：被排除的 api 模块，其前端 `__client` 生成物一并排除；`openapi.json` 里对应端点也会被裁掉（否则新工程一跑 `ojm api --check` 就是「有契约无 handler」）。
+  - `web.config.ts` 中 demo 模块的条目以 `// #region demo-only` / `// #endregion` 标注，init 拷贝时整段剥离，脚手架不留指向缺失文件的死条目。
+  - 清单随模板发布，缺失即报错（不静默退化为「全量拷贝」）。
+
 ## [0.2.4] - 2026-10-17
 
 双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步升 **0.2.4**。本周期无代码变更，作为「解决方案全生命周期」阶段的发版基线（`../oj-market` 独立仓等下游将依赖已发布版本）。

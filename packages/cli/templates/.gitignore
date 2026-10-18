@@ -1,9 +1,15 @@
 node_modules/
 bin/
 .ojm-tmp-*
+# 本目录同时是可运行工程（pnpm dev/build），产物一律不签入、也不进发布包；
+# 未忽略会让 `pnpm pack` 把 web/dist 的 sourcemap 打进 tarball（发布清单测试钉面）
 api/db.sqlite
 api/db.sqlite-shm
 api/db.sqlite-wal
 api/logs/
+# 现场签发的开发证书（ojm dev 缺证时自动签发，见 oj-cert.ts）；私钥绝不入仓
+api/config/*.pem
+api/config/cert.jws
 api/dist/
+web/dist/
 modules/dist/

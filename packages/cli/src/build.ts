@@ -10,7 +10,7 @@ import tailwindcss from "@tailwindcss/vite";
 import { build as esbuild } from "esbuild";
 import { build } from "vite";
 import { loadModulesConfig, resolveModuleEntry } from "./config";
-import { resolveLayout } from "./layout";
+import { resolveConfigPath, resolveLayout } from "./layout";
 import { isSharedDep, SHARED_DEPS } from "./shared-deps";
 import { resolveOjBin } from "./vendor";
 import { checkSharedVersions, resolveShellDist } from "./versions";
@@ -154,6 +154,8 @@ export const unloadModule = async () => {};
 export const useSlotNodes = () => [];
 // AC-D15：zod re-export——stub 用可调用代理（契约 schema 不在元数据读取期求值，仅占位防 missing export）
 export const z = new Proxy({}, { get: () => _fn });
+// R29：ky 实例 re-export（第一方市场编排面）——同 z，元数据读取期仅需可调用占位
+export const request = new Proxy({}, { get: () => _fn });
 `;
 
 /**
@@ -498,9 +500,9 @@ export async function buildBackend(projectRoot: string): Promise<boolean> {
 	const apiDist = path.join(projectRoot, "api/dist");
 	console.log("[ojm] oj build（后端）…");
 	// 必须显式给 -c：oj build 的 -c 缺省是 ./config.yaml（相对 CWD），而 config 在
-	// api/ 下——漏传会静默读不到配置，连带 tasks 镜像目录回落默认 "tasks"、
+	// <project>/config/ 下——漏传会静默读不到配置，连带 tasks 镜像目录回落默认 "tasks"、
 	// sql_guard 声明校验不生效（oj 只 warn 两行，极易被忽略）。
-	const configPath = path.join(projectRoot, "api/config.yaml");
+	const configPath = resolveConfigPath(projectRoot);
 	const configArgs = fs.existsSync(configPath) ? ["-c", configPath] : [];
 	// --no-minify：oj 的 swc minify 当前会把产物压坏，必须绕开。实测两种坏法：
 	//   1) `const rows = await db.query(...); rows[0]` → 压成 `await db.query(...)[0]`，

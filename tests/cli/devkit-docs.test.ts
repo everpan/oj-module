@@ -30,7 +30,7 @@ describe("devkit 手册两章节（P2-14：文档存在性）", () => {
 
 describe("三视角指南 + 教学文档（P2-14：truthful 口径）", () => {
 	it("指南 §3.3 深检改 truthful：端点已兑现、界面入口归 oj-market、报告结构 {ok,checks,advise}", () => {
-		const guide = read("docs/prd/solution/202610171354-lifecycle-guide.md");
+		const guide = read("docs/prd/solution/archive/202610171354-lifecycle-guide.md");
 		expect(guide).toContain("POST /api/_platform/solutions/verify");
 		expect(guide).toContain("{ok, checks, advise}");
 		expect(guide).toContain("由市场方案（oj-market）实现");
@@ -38,7 +38,7 @@ describe("三视角指南 + 教学文档（P2-14：truthful 口径）", () => {
 	});
 
 	it("教学文档 §6 主路径 build --bundle → sign → install；八坑表含签名坑", () => {
-		const t = read("docs/prd/solution/202610172100-solution-authoring-tutorial.md");
+		const t = read("docs/prd/solution/archive/202610172100-solution-authoring-tutorial.md");
 		expect(t).toContain("ojm sign dist/demo-market-0.1.0.tgz");
 		expect(t).toContain("needs_trust");
 		expect(t).toContain("sig_missing");

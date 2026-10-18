@@ -3,6 +3,7 @@ import type { IrEndpoint } from "./ir";
 import type { OpenApiDoc } from "./openapi-ir";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, relative, sep } from "node:path";
+import { resolveConfigPath } from "../layout";
 import { readOjAnonymousPaths } from "../oj-config";
 import { emitClient } from "./emit-client";
 import { planStubWrites } from "./emit-stub";
@@ -328,7 +329,7 @@ export async function checkApi(opts: { cwd: string, exempt?: string }): Promise<
 	violations.push(...checkWsAnonymous(
 		walkWsFiles(join(opts.cwd, "api/src")),
 		join(opts.cwd, "api/src"),
-		join(opts.cwd, "api/config.yaml"),
+		resolveConfigPath(opts.cwd),
 	));
 
 	// ③ routes.js diff

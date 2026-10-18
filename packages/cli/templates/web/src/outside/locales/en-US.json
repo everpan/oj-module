@@ -1,0 +1,10 @@
+{
+	"menu": {
+		"outside": "External Page",
+		"embedded": "Embedded",
+		"externalLink": "External Link",
+		"antd": "Ant Design",
+		"projectDocs": "Project Docs",
+		"reactDocs": "React Docs"
+	}
+}

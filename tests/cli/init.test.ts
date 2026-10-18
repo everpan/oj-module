@@ -177,6 +177,51 @@ describe("initProject", () => {
 		expect(pkg.devDependencies["@types/react"]).not.toBe("*");
 	});
 
+	/**
+	 * 模板仓库内置 demo-only 模块（供 templates 自身当可运行 demo 演示），但
+	 * `ojm init` 不得把它们拷进用户工程——拷了会留下「web.config 启用但文件缺失」
+	 * 的死条目，工程一开就崩。排除清单在 templates/init.exclude.yaml。
+	 */
+	it("demo-only 模块不进 init 产物，且 web.config.ts 同步剥离对应条目", async () => {
+		const dest = path.join(tmpRoot(), "demo-proj");
+		await initProject(dest, initOpts);
+
+		// 1) demo-only 模块文件一律不拷
+		for (const mod of [
+			"api/src/demo",
+			"api/src/home",
+			"web/src/about",
+			"web/src/access",
+			"web/src/exception",
+			"web/src/outside",
+			"web/src/route-nest",
+		])
+			expect(fs.existsSync(path.join(dest, mod))).toBe(false);
+
+		// 2) 默认模块照常在
+		for (const mod of ["web/src/home", "web/src/demo", "web/src/login", "web/src/notification"])
+			expect(fs.existsSync(path.join(dest, mod))).toBe(true);
+
+		// 3) web.config.ts：demo 条目与 #region 标记一并剥离（不留指向缺失文件的死条目）
+		const config = fs.readFileSync(path.join(dest, "web.config.ts"), "utf-8");
+		for (const name of ["about", "access", "exception", "outside", "route-nest"])
+			expect(config).not.toContain(`"${name}"`);
+		expect(config).not.toContain("#region demo-only");
+		expect(config).not.toContain("#endregion");
+		// 剥离不能误伤默认条目
+		for (const entry of ["web/src/home/entry.ts", "web/src/notification/entry.ts"])
+			expect(config).toContain(entry);
+
+		// 4) 运行期专属产物/模板元数据不泄漏进用户工程
+		expect(fs.existsSync(path.join(dest, "init.exclude.yaml"))).toBe(false);
+		const pkg = JSON.parse(fs.readFileSync(path.join(dest, "package.json"), "utf-8"));
+		expect(pkg.name).not.toBe("@oj-module/template-demo");
+		for (const deps of [pkg.dependencies ?? {}, pkg.devDependencies ?? {}]) {
+			for (const spec of Object.values(deps))
+				expect(String(spec)).not.toMatch(/workspace:|catalog:/);
+		}
+	});
+
 	it("非空目录无 yes → 拒绝；yes → 幂等补缺且 config.yaml 永不覆盖", async () => {
 		const dest = path.join(tmpRoot(), "proj");
 		fs.mkdirSync(dest, { recursive: true });
@@ -319,7 +364,7 @@ describe("initProject 凭据密封", () => {
 		expect(config).toMatch(/jwt_secret:\s*"?ENC\[TESTSEALED\]"?/);
 		expect(config).toMatch(/secrets:/);
 		expect(config).toMatch(/private_key_path/);
-		expect(fs.existsSync(path.join(dest, "api/config/secrets-private.pem"))).toBe(true);
+		expect(fs.existsSync(path.join(dest, "api/config", "secrets-private.pem"))).toBe(true);
 	});
 
 	it("oj 不支持 secret（旧版/桩）→ 保留明文且不失败", async () => {

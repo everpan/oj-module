@@ -13,6 +13,7 @@ import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
 import { loadModulesConfig } from "./config";
+import { resolveConfigPath } from "./layout";
 import { mergeModuleManifests } from "./manifest";
 import { readOjApiPrefix, readOjServerField } from "./oj-config";
 import { isSupportedOjVersion, MIN_OJ_VERSION, readLocalVersion, resolveOjBin } from "./vendor";
@@ -71,7 +72,7 @@ function probeOjHealth(base: string, port: number): Promise<Record<string, unkno
 /** CLI 默认观测：真跑 `bin/oj -V` 与真探 /health */
 export function realOjObservability(projectRoot: string): OjObservability {
 	const ojBin = resolveOjBin(projectRoot);
-	const configPath = path.join(projectRoot, "api/config.yaml");
+	const configPath = resolveConfigPath(projectRoot);
 	return {
 		ojVersion: () => (fs.existsSync(ojBin) ? probeOjVersion(ojBin) : null),
 		ojHealth: () => {
@@ -120,7 +121,7 @@ export async function printInfo(projectRoot: string, oj: OjObservability = realO
 
 	// ---- 后端（oj）观测段：工程有 config.yaml 或 bin/oj 才展示；观测不可达仅降级不失败 ----
 	let backendBlock = "";
-	const configPath = path.join(projectRoot, "api/config.yaml");
+	const configPath = resolveConfigPath(projectRoot);
 	const ojBin = resolveOjBin(projectRoot);
 	if (fs.existsSync(configPath) || fs.existsSync(ojBin)) {
 		// 安装标记（ojm vendor/init 下载时写入）；bin/oj 存在但无标记 → 未知

@@ -1,0 +1,14 @@
+# 声明式表结构（§4.2 / D1-C）：home 模块自有表 home_pie / home_line。
+tables:
+  home_pie:
+    pk: id
+    columns:
+      id: {type: integer, autoincrement: true}
+      category: {type: text, null: false}
+      value: {type: integer, null: false}
+  home_line:
+    pk: id
+    columns:
+      id: {type: integer, autoincrement: true}
+      day: {type: integer, null: false}
+      value: {type: integer, null: false}

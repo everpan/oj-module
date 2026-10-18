@@ -11,6 +11,7 @@ trustPolicyExclude:
 packages:
   - docs
   - packages/*
+  - packages/cli/templates
   - apps/*
 
 allowBuilds:

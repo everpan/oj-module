@@ -99,4 +99,13 @@ export default antfu({
 	rules: {
 		"jsonc/sort-array-values": "off",
 	},
+}, {
+	// templates 目录身兼两职：既是根 workspace 成员（用根 catalog: 装依赖以便自演示），
+	// 又带着一份要随脚手架分发的 `pnpm-workspace.yaml`（pnpm v11 起审批 esbuild 构建用，
+	// 里面不定义 catalog）。pnpm 插件按「就近」找 workspace 文件，会拿这份模板产物去
+	// 校验 catalog: 引用而误报。catalog 实际由根 pnpm-workspace.yaml 提供，故关掉。
+	files: ["packages/cli/templates/package.json"],
+	rules: {
+		"pnpm/json-valid-catalog": "off",
+	},
 });

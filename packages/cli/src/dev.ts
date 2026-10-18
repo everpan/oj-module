@@ -33,8 +33,9 @@ import { loadContractMocks, resolveMock } from "./contract/mock";
 import { loadProjectMocks, mockStatusCode } from "./dev-mock";
 import { createReloadHub, proxyApi, proxyWsUpgrade, sseScript } from "./dev-proxy";
 import { loadHtmlTransform } from "./html-transform";
-import { resolveLayout } from "./layout";
+import { resolveConfigPath, resolveLayout } from "./layout";
 import { startOj } from "./oj";
+import { ensureDevCert } from "./oj-cert";
 import { readOjApiPrefix } from "./oj-config";
 import { createStaticHandler, decodeReqPath, listenOnFreePort } from "./static-handler";
 import { resolveShellDist } from "./versions";
@@ -84,13 +85,14 @@ export async function devServer(projectRoot: string, opts: DevOptions = {}): Pro
 	const transform = await loadHtmlTransform(projectRoot);
 
 	// 2) oj 后端（工程有 api/config.yaml 时全栈形态；桩可注入）
-	const configPath = resolve(projectRoot, "api/config.yaml");
+	const configPath = resolveConfigPath(projectRoot);
 	let oj: OjProcess | undefined;
 	let ojTarget: string | undefined;
 	// 反代前缀跟随 config 的 mounts:（api 挂载 prefix；F2：改前缀后硬编码 /api 会静默失效）
 	let apiBase = "/api";
 	if (!opts.frontendOnly && existsSync(configPath)) {
 		apiBase = readOjApiPrefix(configPath);
+		await ensureDevCert(configPath);
 		const starter = opts.ojStarter ?? ((cfg: string, b: string, apiSrc: string) => startOj(cfg, b, apiSrc));
 		oj = starter(configPath, apiBase, resolve(projectRoot, "api/src"));
 		try {

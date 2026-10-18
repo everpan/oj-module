@@ -11,6 +11,7 @@ import { Buffer } from "node:buffer";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { readOjServerField } from "./oj-config";
 
 /** 默认有效期：3650 天。oj 证书宽限期尽即拒启且无自助续期，短有效期等于时钟炸弹 */
 const DEFAULT_DAYS = 3650;
@@ -50,4 +51,22 @@ export async function mintDevCert(
 		publicKey: write("public.pem", publicKey.export({ type: "spki", format: "pem" }).toString()),
 		cert: write("cert.jws", `${signingInput}.${signature}\n`),
 	};
+}
+
+/**
+ * dev 起后端前确保开发证书就位：config 声明的 `certificate_path` 文件缺失时现场签发。
+ *
+ * `ojm init` 产出的工程自带证书，但模板仓库本身也是一个可运行工程（不走 init），
+ * 直接 `pnpm dev` 会因 oj 读不到 public.pem 而 fail-fast——故 dev 补这一道。
+ * 证书路径相对 config 文件所在目录解析（与 oj 一致）。
+ */
+export async function ensureDevCert(configPath: string): Promise<boolean> {
+	const rel = readOjServerField(configPath, "certificate_path");
+	if (!rel)
+		return false;
+	const certPath = path.resolve(path.dirname(configPath), rel);
+	if (fs.existsSync(certPath))
+		return false;
+	await mintDevCert(path.dirname(certPath));
+	return true;
 }

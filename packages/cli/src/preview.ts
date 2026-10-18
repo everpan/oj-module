@@ -18,7 +18,7 @@ import path, { normalize } from "node:path";
 import process from "node:process";
 import { proxyApi } from "./dev-proxy";
 import { loadHtmlTransform } from "./html-transform";
-import { resolveLayout } from "./layout";
+import { resolveConfigPath, resolveLayout } from "./layout";
 import { startOj } from "./oj";
 import { readOjApiPrefix } from "./oj-config";
 import { createStaticHandler, decodeReqPath, listenOnFreePort } from "./static-handler";
@@ -42,7 +42,7 @@ export async function previewServer(projectRoot: string, opts: PreviewOptions = 
 	const layout = resolveLayout(projectRoot);
 	const siteDir = opts.siteDir ?? layout.distDir;
 	const ojBin = resolveOjBin(projectRoot);
-	const configPath = path.join(projectRoot, "api", "config.yaml");
+	const configPath = resolveConfigPath(projectRoot);
 	const apiDist = path.join(projectRoot, "api", "dist");
 
 	// fail-fast 四查：缺一即提示对应补救（init 幂等补缺 / ojm build 产物）

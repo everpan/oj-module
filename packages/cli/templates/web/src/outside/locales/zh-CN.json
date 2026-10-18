@@ -1,0 +1,10 @@
+{
+	"menu": {
+		"outside": "外部页面",
+		"embedded": "内嵌",
+		"externalLink": "外链",
+		"antd": "Ant Design",
+		"projectDocs": "项目文档",
+		"reactDocs": "React 文档"
+	}
+}

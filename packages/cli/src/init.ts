@@ -1,8 +1,8 @@
 /**
  * `ojm init` —— 前后端一体化工程脚手架（设计 §3，D1/D3/D6/D10）。
  *
- * 产物：api/（oj 后端 + 现场签发证书 + seed）、web/src/（前端模块）、
- * bin/（从 everpan/only-js 最新 release 联网下载：oj + plugins + devkit）、
+ * 产物：api/（oj 后端 + seed）、config/（config.yaml + 现场签发证书，与 api/、web/ 同级）、
+ * web/src/（前端模块）、bin/（从 everpan/only-js 最新 release 联网下载：oj + plugins + devkit）、
  * 工程配置文件。
  *
  * 幂等补缺：对既有工程重跑只补缺失文件（bin/oj 已在则跳过下载），config.yaml 与
@@ -15,6 +15,8 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import yaml from "yaml";
+import { resolveCertDir, resolveConfigPath } from "./layout";
 import { mintDevCert } from "./oj-cert";
 import { resolveOjBin, vendorCommand } from "./vendor";
 import { readHostVersions } from "./versions";
@@ -56,13 +58,16 @@ export async function initProject(destDir: string, opts: InitOptions = {}): Prom
 	const templatesDir = path.join(cliRoot, "templates");
 	const jwtSecret = crypto.randomBytes(32).toString("hex");
 	const projectName = path.basename(destDir);
+	// demo-only 模块（init.exclude.yaml）：模板内置供演示，init 默认不拷入新工程
+	const exclude = readInitExclude(templatesDir);
 	copyTemplates(templatesDir, destDir, {
 		__JWT_SECRET__: jwtSecret,
 		__PROJECT_NAME__: projectName,
-	}, report);
+	}, report, exclude, templatesDir);
+	pruneExcludedApiPaths(destDir, exclude, report);
 
-	// 2) 证书三件套（现场签发，D6）
-	const certDir = path.join(destDir, "api/config");
+	// 2) 证书三件套（现场签发，D6）——落点即 resolveCertDir()（config.yaml 同级的 config/）
+	const certDir = resolveCertDir(destDir);
 	if (fs.existsSync(path.join(certDir, "cert.jws"))) {
 		report.skipped.push("api/config/cert.jws");
 	}
@@ -154,7 +159,7 @@ const defaultSealer: Sealer = async (destDir, plainSecret) => {
 	const ojBin = resolveOjBin(destDir);
 	if (!fs.existsSync(ojBin))
 		return null;
-	const keysDir = path.join(destDir, "api/config");
+	const keysDir = resolveCertDir(destDir);
 	const publicKey = path.join(keysDir, "secrets-public.pem");
 	try {
 		fs.mkdirSync(keysDir, { recursive: true });
@@ -178,7 +183,7 @@ const defaultSealer: Sealer = async (destDir, plainSecret) => {
  * 并补 `secrets:` 段指向私钥。失败一律降级为明文 + 告警——init 不因加密失败而失败。
  */
 async function sealJwtSecret(destDir: string, report: InitReport, seal: Sealer = defaultSealer): Promise<void> {
-	const configPath = path.join(destDir, "api/config.yaml");
+	const configPath = resolveConfigPath(destDir);
 	if (!fs.existsSync(configPath))
 		return;
 	const text = fs.readFileSync(configPath, "utf-8");
@@ -192,7 +197,7 @@ async function sealJwtSecret(destDir: string, report: InitReport, seal: Sealer =
 		return;
 	}
 	const next = text.replace(match[0], `${match.groups.indent}jwt_secret: "${sealed}"`);
-	// secrets 段：私钥只放部署机，路径相对 config 目录
+	// secrets 段：私钥只放部署机，路径相对 config 目录（config.yaml 同级）
 	const withSecrets = `${next.trimEnd()}\nsecrets:\n  private_key_path: ./config/secrets-private.pem\n  public_key_path: ./config/secrets-public.pem\n`;
 	fs.writeFileSync(configPath, withSecrets);
 	report.created.push("api/config/{secrets-private.pem,secrets-public.pem} + auth.jwt_secret 已密封（ENC[...]）");
@@ -204,17 +209,22 @@ function copyTemplates(
 	destDir: string,
 	placeholders: Record<string, string>,
 	report: InitReport,
+	exclude: Set<string>,
+	rootDir: string,
 ): void {
 	for (const entry of fs.readdirSync(srcDir, { withFileTypes: true })) {
 		const src = path.join(srcDir, entry.name);
 		const dest = path.join(destDir, entry.name);
+		// demo-only 模块（init.exclude.yaml）：整棵子树不拷、不计入 created/skipped
+		if (exclude.has(path.relative(rootDir, src)))
+			continue;
 		if (entry.isDirectory()) {
 			// 空目录不进工程：git 不跟踪空目录，模板里残留的空目录（如误建的
 			// api/src/_shared）会被 oj build 当作缺 manifest.yaml 的模块 fail-fast
 			if (!dirHasFiles(src))
 				continue;
 			fs.mkdirSync(dest, { recursive: true });
-			copyTemplates(src, dest, placeholders, report);
+			copyTemplates(src, dest, placeholders, report, exclude, rootDir);
 			continue;
 		}
 		const rel = path.relative(destDir, dest);
@@ -225,6 +235,7 @@ function copyTemplates(
 		let content = fs.readFileSync(src, "utf-8");
 		for (const [token, value] of Object.entries(placeholders))
 			content = content.replaceAll(token, value);
+		content = stripRegion(content, "demo-only");
 		fs.mkdirSync(path.dirname(dest), { recursive: true });
 		fs.writeFileSync(dest, content);
 		report.created.push(rel);
@@ -240,6 +251,84 @@ function dirHasFiles(dir: string): boolean {
 			return true;
 	}
 	return false;
+}
+
+/**
+ * 读取模板根 `init.exclude.yaml` 的 `exclude` 清单，归一为相对模板根的路径集合。
+ * 清单随模板一起发布，缺失即安装包损坏——直接 fail-fast，不留「静默拷入 demo
+ * 模块/运行期产物」的退化路径。
+ *
+ * 另按「排除的 api 模块」派生一条：其前端 `__client` 生成物同样不拷——否则脚手架
+ * 里会留下一份没有后端端点的 client 代码。
+ */
+function readInitExclude(templatesDir: string): Set<string> {
+	const yamlPath = path.join(templatesDir, "init.exclude.yaml");
+	if (!fs.existsSync(yamlPath))
+		throw new Error(`模板缺少 init.exclude.yaml：${yamlPath}（安装包损坏？）`);
+	const doc = yaml.parse(fs.readFileSync(yamlPath, "utf-8")) as { exclude?: string[] } | null;
+	const out = new Set<string>();
+	for (const raw of doc?.exclude ?? []) {
+		const p = path.normalize(raw).replace(/^(\.\/)+/, "");
+		out.add(p);
+		if (p.startsWith("api/src/") && !p.slice(8).includes("/"))
+			out.add(`web/src/${p.slice(8)}/__client`);
+	}
+	return out;
+}
+
+/**
+ * 从脚手架产出的 openapi.json 里删掉被排除的 api 模块端点。
+ *
+ * 模板的 openapi.json 是「全量演示工程」的产物，含 demo-only 模块的端点；这些
+ * 模块的文件既不拷进新工程，契约里留着它们会让 `ojm api --check` 一上手就报
+ * 「openapi 多」（有契约无 handler）。故按排除清单里的 api 模块名裁掉对应路径。
+ */
+function pruneExcludedApiPaths(destDir: string, exclude: Set<string>, report: InitReport): void {
+	// 只裁本次新建的 openapi.json：init 是幂等补缺，不改动既有工程文件
+	if (!report.created.includes("openapi.json"))
+		return;
+	const mods = [...exclude]
+		.map(p => (p.startsWith("api/src/") ? p.slice("api/src/".length) : null))
+		.filter((m): m is string => !!m && !m.includes("/"));
+	if (mods.length === 0)
+		return;
+	const openapiPath = path.join(destDir, "openapi.json");
+	const prefixes = mods.map(m => `/api/${m}/`);
+	const doc = JSON.parse(fs.readFileSync(openapiPath, "utf-8")) as { paths?: Record<string, unknown> };
+	const paths = doc.paths ?? {};
+	const dropped = Object.keys(paths).filter(p => prefixes.some(prefix => p.startsWith(prefix)));
+	if (dropped.length === 0)
+		return;
+	for (const p of dropped)
+		delete paths[p];
+	fs.writeFileSync(openapiPath, `${JSON.stringify(doc, null, "\t")}\n`);
+	report.created.push(`openapi.json 裁掉 demo-only 端点 ${dropped.length} 条`);
+}
+
+/**
+ * 删除文本里的 `#region <name>` … `#endregion` 区间（含标记行本身）。
+ * 用于把模板内置的 demo-only 模块条目从脚手架产出的配置里剥离，避免留下
+ * 指向未拷贝文件的死条目。标记写不成对时原样返回，不做猜测。
+ */
+function stripRegion(text: string, name: string): string {
+	const lines = text.split("\n");
+	const start = new RegExp(`^\\s*//\\s*#region\\s+${name}\\b`);
+	const end = /^\s*\/\/\s*#endregion\b/;
+	const kept: string[] = [];
+	let inRegion = false;
+	for (const line of lines) {
+		if (inRegion) {
+			if (end.test(line))
+				inRegion = false;
+			continue;
+		}
+		if (start.test(line)) {
+			inRegion = true;
+			continue;
+		}
+		kept.push(line);
+	}
+	return inRegion ? text : kept.join("\n");
 }
 
 function copyIfAbsent(src: string, dest: string, report: InitReport): void {
