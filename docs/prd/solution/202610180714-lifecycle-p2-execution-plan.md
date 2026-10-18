@@ -13,7 +13,7 @@
 | 1 | P1 集中审查完成：`review-p1-findings.md` 已产出 → 备案池逐条裁决 → 修复波（若有）→ 全绿验收 → `feat/lifecycle-p1` 并入集成分支 | 三证：台账 + `git log` + 报告文件 |
 | 2 | G7 承载项就位：P2-15 的任务范围以审查报告裁决为准。**报告未出时 P2-15 标 blocked，不阻塞其余任务**（串行线上它排第 16 位） | 审查报告存在且已裁决 |
 | 3 | 分支 `feat/lifecycle-p2` 自**合并后**的集成分支切出（不得自 feat/lifecycle-p1 直接切） | `git log --oneline -1` |
-| 4 | 环境自检四绿：`pnpm test`（697 passed+1 skipped）/ `cd packages/cli/templates/api && pnpm test`（428）/ `pnpm test:cli`（152+1 skipped）/ `pnpm typecheck` 净 | 全量实跑一遍再开工 |
+| 4 | 环境自检四绿：`pnpm test`（697 passed+1 skipped）/ `pnpm vitest run --config packages/cli/templates/api/vitest.config.ts`（**433**——428+P1 修复波 5；注意交接文档 `cd packages/cli/templates/api && pnpm test` 已失效，该目录无 package.json，必须从根带 config 跑）/ `pnpm test:cli`（**153**+1 skipped——152+P1 修复波 1）/ `pnpm typecheck` 净 | 全量实跑一遍再开工 |
 
 期门 G1–G8 **已全部有裁决**（计划 §4.1，2026-10-18 收口）：G1 不兼走 URL 挂载、G2 进度采纳/取消转 P3、G3 TOFU 双轨、G4 硬 fail-closed + detached `.sig`、G5 吊销三语义、G6 本仓只出契约与端点、G7 备案池随审查落 P2-15、G8 **授权** oj-market 窗口期最小 UI 消费面（四件范围钉死：TOFU 确认界面、深检报告展示、占位卡两态、自升级提示；窗口结束恢复只读红线）。bootstrap key 已定性：`ojm keygen` **新生成 Ed25519 对**（站点既有 RSA cert 对 / X25519 secrets 对不可复用——算法不符、per-site、已暴露）。
 
@@ -22,7 +22,7 @@
 1. **串行排程**（四方评审 2026-10-18 定，不得并行实现代理）：
    `P2-0 → 1 → 2 → 3 → 6 → 4 → 5 → 7 → 8 → 9 → 10 → 11 → 12 → 13 → 14 → 15 → 16`
 2. **文件封锁面**：每任务以计划 §4 任务表 Files 列为封锁面，不得口头扩范围。争抢同一文件的相邻任务同一时间只有一个 owner：`types.ts`/`tasks.ts`/`installer.ts`（P2-3/10/13）、`market/api.ts`（P2-2/3/9/11）、`steps/verify.ts`+`state.ts`（P2-3/6）、CLI `site.ts`/`install.ts`/`index.ts`（P2-3/4/12/14）、CLI `trust.ts`（P2-2/3）。
-3. **测试基线不得回退**：根套件 697 passed+1 skipped；templates/api 428；`test:cli` 152+1 skipped；typecheck 净。lint 触达文件全净（repo 467 warnings 为 pre-existing 基线，新 diff 零交集）。
+3. **测试基线不得回退**：根套件 697 passed+1 skipped；templates/api **433**；`test:cli` **153**+1 skipped；typecheck 净。lint 触达文件全净（repo 467 warnings 为 pre-existing 基线，新 diff 零交集）。
 4. **方法论**：TDD 先红后绿；BDD 场景表（多条件制数据表）；SOLID/DRY 落点逐任务标注（§3 各任务）；DDD 限界上下文见 §1.1。
 5. **工程纪律**（全文见交接文档 `202610180030-lifecycle-p1-handover.md` §6，此处列最易违的）：
    - commitlint：subject 中文或**小写英文**开头；每提交尾行 `unix@vip.qq.com ai`
@@ -292,7 +292,7 @@
 
 - **前置**：宿主重建（templates 改动 rsync → 重建 → **重启 oj serve**）；端口 9778 保留、其余 9781+。
 - **Files**：`scripts/lifecycle-e2e.mjs`（扩展）、`scripts/lifecycle-walkthrough.mjs`（扩 P2 断言）、夹具改造清单执行。
-- **要点**：e2e 从干净库起跑，扩签名链三态（未签名拒/篡改拒/TOFU 确认后过）+ 深检 + 握手 + 索引；真机 AC0-7 扩 P2 断言（**未签名装不上 / 篡改包不落盘 / TOFU 确认 / 吊销后拒升级**）；AC 逐条标注 auto/manual（AC 表「断言方式」列）；**夹具签名改造清单全量执行**（P2-1 `signedArchiveFor()` 替换 ~25 处硬编码常量夹具——改一处跑一处，禁大爆炸后一次跑）；基线终验：根 697+1skip / templates **428+新增** / cli 152+1skip / typecheck 净。
+- **要点**：e2e 从干净库起跑，扩签名链三态（未签名拒/篡改拒/TOFU 确认后过）+ 深检 + 握手 + 索引；真机 AC0-7 扩 P2 断言（**未签名装不上 / 篡改包不落盘 / TOFU 确认 / 吊销后拒升级**）；AC 逐条标注 auto/manual（AC 表「断言方式」列）；**夹具签名改造清单全量执行**（P2-1 `signedArchiveFor()` 替换 ~25 处硬编码常量夹具——改一处跑一处，禁大爆炸后一次跑）；基线终验：根 697+1skip / templates **433+新增** / cli 153+1skip / typecheck 净。
 - **BDD 验收**：AC-P2-1~17 对照表逐条勾；四门数字落报告。
 
 ## 4. 阶段收尾（所有任务完成后执行一次，用户常设指令）
