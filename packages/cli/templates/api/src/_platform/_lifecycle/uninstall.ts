@@ -20,12 +20,105 @@ import { readLock, writeLock } from "./lock";
 declare const db: {
 	exec: (sql: string, params: unknown[]) => Promise<unknown>
 	query: (sql: string, params?: unknown[]) => Promise<unknown>
+	/** 当前方言（sqlite/mysql/pg）；缺省 sqlite。Q4 业务表目录查询方言无关 */
+	dialect?: () => string
 	/** 单一 DB 事务包裹（P3-3）：回调内语句共享一个 BEGIN/COMMIT/ROLLBACK 边界，异常即整段回滚 */
 	tx: <T>(fn: (t: { exec: (sql: string, params?: unknown[]) => Promise<unknown>, query: (sql: string, params?: unknown[]) => Promise<unknown> }) => Promise<T>) => Promise<T>
 };
 
 function isObj(v: unknown): v is Record<string, unknown> {
 	return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+// P3-4（Q4 业务表保留提示）：卸载只删代码/锁/路由/sidecar/权限，绝不 DROP 业务数据；
+// 受影响业务表经双重来源得到——① manifest.tables 声明式权威源 ② 模块 slug 规范化前缀兜底扫描——
+// 仅回传「实际存在」的表名，供运维手工清理。检测全程失败静默兜底，不阻断卸载主流程。
+
+/** 从 manifest 文本抽取顶层 `tables:` 标量列表（manifest 形态稳定，避免引入 yaml 全局依赖） */
+function manifestTables(yamlText: string): string[] {
+	const out: string[] = [];
+	let inTables = false;
+	for (const raw of yamlText.split("\n")) {
+		const line = raw.replace(/\r$/, "");
+		if (!inTables) {
+			if (/^tables\s*:/.test(line)) {
+				inTables = true;
+				continue;
+			}
+			continue;
+		}
+		if (line.trim() === "")
+			continue;
+		const m = /^\s+-\s+(\S.*)$/.exec(line);
+		if (m) {
+			out.push(m[1].replace(/^['"]|['"]$/g, ""));
+			continue;
+		}
+		if (/^\S/.test(line))
+			break; // 顶层新键，tables 块结束
+	}
+	return out;
+}
+
+/** 当前方言（oj 注入 db.dialect，缺省 sqlite） */
+function currentDialect(): string {
+	const d = (db as { dialect?: () => string }).dialect;
+	return typeof d === "function" ? d() : "sqlite";
+}
+
+/** 表目录查询片段（方言无关：sqlite=sqlite_master，mysql/pg=information_schema） */
+function catalogSpec(dialect: string): { existing: string, like: (pat: string) => [string, unknown[]] } {
+	if (dialect === "sqlite") {
+		return {
+			existing: "SELECT name FROM sqlite_master WHERE type='table'",
+			like: pat => ["SELECT name FROM sqlite_master WHERE type='table' AND name LIKE ? ESCAPE '!'", [pat]],
+		};
+	}
+	const schemaExpr = dialect === "mysql" ? "DATABASE()" : "'public'";
+	return {
+		existing: `SELECT table_name AS name FROM information_schema.tables WHERE table_schema = ${schemaExpr}`,
+		like: pat => [`SELECT table_name AS name FROM information_schema.tables WHERE table_schema = ${schemaExpr} AND table_name LIKE ? ESCAPE '!'`, [pat]],
+	};
+}
+
+/** 当前库实际存在的表名集合 */
+async function listExistingTables(dialect: string): Promise<Set<string>> {
+	const rows = (await db.query(catalogSpec(dialect).existing)) as Array<{ name: string }>;
+	return new Set(rows.map(r => r.name));
+}
+
+/** 模块 slug 规范化 + LIKE 转义（沿用 RBAC 权限命名空间约定：!%_ 转义，连字符→下划线作表前缀） */
+function tablePrefixPattern(name: string): string {
+	const slug = name.replace(/-/g, "_").replace(/[!%_]/g, c => `!${c}`);
+	// 表名用下划线分隔（非权限码的 `.`）：slug_ + 通配符 %（末尾 % 不转义，保持通配语义）
+	return `${slug}_%`;
+}
+
+/** 收集需保留的业务表（Q4）：声明 + 前缀兜底；仅返回实际存在的表名 */
+async function collectRetainedTables(name: string, manifestPath: string): Promise<string[]> {
+	const dialect = currentDialect();
+	const existing = await listExistingTables(dialect);
+	const candidates = new Set<string>();
+	// ① 声明式权威源：manifest.tables（通知等模块已在 manifest 声明业务表归属）
+	try {
+		const text = new TextDecoder().decode(await fsFace().readFile(manifestPath));
+		for (const t of manifestTables(text))
+			candidates.add(t);
+	}
+	catch {
+		// manifest 缺失（api-only 方案）→ 仅前缀兜底
+	}
+	// ② 前缀兜底：扫描当前库匹配模块前缀的表，覆盖未声明场景
+	try {
+		const [sql, params] = catalogSpec(dialect).like(tablePrefixPattern(name));
+		const rows = (await db.query(sql, params)) as Array<{ name: string }>;
+		for (const r of rows)
+			candidates.add(r.name);
+	}
+	catch {
+		// 兜底扫描失败不阻断卸载
+	}
+	return [...candidates].filter(t => existing.has(t));
 }
 
 /** 卸载影响面预检（GET uninstall-impact 消费面）：返回前端二次确认所需的影响计数 */
@@ -53,6 +146,8 @@ export interface UninstallInput {
 export interface UninstallResult {
 	ok: boolean
 	message: string
+	/** P3-4（Q4）业务表保留清单：卸载不删业务数据，仅回传实际存在的业务表名供运维手工清理 */
+	retained?: string[]
 }
 
 /** 计算卸载影响面（角色数 + 持有这些角色的用户数） */
@@ -147,6 +242,14 @@ export async function runUninstall(input: UninstallInput): Promise<UninstallResu
 	}
 
 	// 版本目录移除（缺失不报错，幂等）
+	// —— 但 Q4 业务表清单须在版本目录移除前从 manifest 取得（manifest 在版本目录内）——
+	let retained: string[] = [];
+	try {
+		retained = await collectRetainedTables(name, `${input.sharedRoot}/${name}-${version}/manifest.yaml`);
+	}
+	catch {
+		retained = [];
+	}
 	try {
 		await f.remove(`${input.sharedRoot}/${name}-${version}`, { recursive: true });
 	}
@@ -172,6 +275,7 @@ export async function runUninstall(input: UninstallInput): Promise<UninstallResu
 
 	return {
 		ok: true,
-		message: `卸载完成：锁摘除 + sidecar + sys_solution_route + modules.json 四处同删 + 权限级联清理 + 版本目录移除（${name}@${version}）`,
+		message: `卸载完成：锁摘除 + sidecar + sys_solution_route + modules.json 四处同删 + 权限级联清理 + 版本目录移除（${name}@${version}）；业务表 ${retained.length} 张已保留（未删除，需运维手工清理）`,
+		retained,
 	};
 }

@@ -74,6 +74,17 @@ async function seedInstalled(opts: { withOther?: boolean } = {}): Promise<void> 
 	dbo.prepare("INSERT INTO sys_user_role (user_id, role_name) VALUES (?, ?)").run(2, "demo-solution.viewer");
 }
 
+/** 在 seedInstalled 之上：manifest.tables 声明业务表 + 实际建表（Q4 须保留、不删） */
+async function seedInstalledWithTables(opts: { withOther?: boolean } = {}): Promise<void> {
+	await seedInstalled(opts);
+	await fsp.writeFile(
+		join(sharedRoot, "demo-solution-0.1.0", "manifest.yaml"),
+		"name: demo-solution\nversion: 0.1.0\ntables:\n  - demo_solution_notes\n  - demo_solution_tags\n",
+	);
+	dbo.exec("CREATE TABLE demo_solution_notes (id INTEGER PRIMARY KEY, body TEXT)");
+	dbo.exec("CREATE TABLE demo_solution_tags (id INTEGER PRIMARY KEY, name TEXT)");
+}
+
 beforeEach(async () => {
 	root = await fsp.mkdtemp(join(tmpdir(), "ojm-uninstall-"));
 	sharedRoot = join(root, "modules");
@@ -214,7 +225,7 @@ describe("P3-3 卸载级联单一事务（fail-closed：中段失败整段回滚
 		expect(last?.status).toBe(200);
 		expect(last?.data).toMatchObject({ ok: false });
 		// 锁仍在（fail-closed：模块仍挂载，可重试或重装自愈）
-		expect(await readLock(join(sharedRoot, "manifests.yaml"))).toEqual({ "demo-solution": "0.1.0", other: "1.0.0" });
+		expect(await readLock(join(sharedRoot, "manifests.yaml"))).toEqual({ "demo-solution": "0.1.0", "other": "1.0.0" });
 		// 事务回滚：route / 角色 / 用户绑定 零残（全部回退到卸载前）
 		expect(Number(dbo.prepare("SELECT count(*) as c FROM sys_solution_route WHERE module = ?").get("demo-solution").c)).toBe(1);
 		expect(Number(dbo.prepare("SELECT count(*) as c FROM sys_role WHERE module = ?").get("demo-solution").c)).toBe(2);
@@ -242,5 +253,41 @@ describe("门禁（R9：卸载 superadmin 独占）", () => {
 		g.http = { user: { id: 2 }, body: { name: "demo-solution" } };
 		await api.uninstall.post();
 		expect(last?.status).toBe(403);
+	});
+});
+
+describe("P3-4 业务表保留提示（Q4：不删业务数据，retained 回传 + 表仍在）", () => {
+	it("卸载成功响应含 retained 非空，且业务表仍在（sqlite 直读）；代码/锁/路由已删", async () => {
+		await seedInstalledWithTables();
+		const api = createMarketApi(makeEnv());
+		g.http = { user: { id: 1 }, body: { name: "demo-solution" } };
+		await api.uninstall.post();
+		expect(last?.status).toBe(200);
+		const data = last?.data as { ok: boolean, retained?: string[] };
+		expect(data).toMatchObject({ ok: true });
+		expect(Array.isArray(data.retained)).toBe(true);
+		expect(data.retained).toContain("demo_solution_notes");
+		expect(data.retained).toContain("demo_solution_tags");
+		// Q4：业务表未 DROP（sqlite_master 直读仍在）
+		expect(Number(dbo.prepare("SELECT count(*) as c FROM sqlite_master WHERE type='table' AND name = ?").get("demo_solution_notes").c)).toBe(1);
+		expect(Number(dbo.prepare("SELECT count(*) as c FROM sqlite_master WHERE type='table' AND name = ?").get("demo_solution_tags").c)).toBe(1);
+		// 既有纪律：锁摘除 + sidecar + route + modules 已删（other 保留）
+		expect(await readLock(join(sharedRoot, "manifests.yaml"))).toEqual({ other: "1.0.0" });
+		const state = await createStateStore(statePath);
+		expect(state.read().solutions["demo-solution"]).toBeUndefined();
+		expect(Number(dbo.prepare("SELECT count(*) as c FROM sys_solution_route WHERE module = ?").get("demo-solution").c)).toBe(0);
+	});
+
+	it("manifest 缺失（api-only 方案）→ 前缀兜底仍能回传业务表", async () => {
+		await seedInstalled();
+		// 不写 manifest，但业务表名匹配模块前缀 demo_solution.*（兜底扫描命中）
+		dbo.exec("CREATE TABLE demo_solution_orphan (id INTEGER)");
+		const api = createMarketApi(makeEnv());
+		g.http = { user: { id: 1 }, body: { name: "demo-solution" } };
+		await api.uninstall.post();
+		const data = last?.data as { ok: boolean, retained?: string[] };
+		expect(data).toMatchObject({ ok: true });
+		expect(data.retained).toContain("demo_solution_orphan");
+		expect(Number(dbo.prepare("SELECT count(*) as c FROM sqlite_master WHERE type='table' AND name = ?").get("demo_solution_orphan").c)).toBe(1);
 	});
 });
