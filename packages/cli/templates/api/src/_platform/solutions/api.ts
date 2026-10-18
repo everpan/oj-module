@@ -1,4 +1,4 @@
-import type { SolutionRouteRow, SolutionsEnv, VerifyItem } from "../_lifecycle/verify-checks";
+import type { ModuleEntryIntegrity, SolutionRouteRow, SolutionsEnv, VerifyItem } from "../_lifecycle/verify-checks";
 import type { VerifyReport } from "../_lifecycle/verify-report";
 import type { FetchInitFace } from "../_shared/site-facade";
 // 平台方案路由读端点 /api/_platform/solutions/routes（P1-14，R21 前端归并数据源）+ 深检端点
@@ -9,6 +9,7 @@ import type { FetchInitFace } from "../_shared/site-facade";
 // 返回 VerifyReport{ok,checks,advise} 并落盘 verify-reports（时间序 N=10 留存）。
 // 行序稳定：module → order → path。
 import { fsFace } from "../_lifecycle/atomic";
+import { sha384B64 } from "../_lifecycle/sha384";
 import { createStateStore } from "../_lifecycle/state";
 import {
 	declaredMigrationsOf,
@@ -16,6 +17,7 @@ import {
 	diffLedger,
 	diffPermRows,
 	diffSettingRows,
+	diffWebIntegrity,
 	readSolutionManifest,
 
 	verifyRouteReachability,
@@ -112,7 +114,24 @@ async function verifyBody(env: SolutionsEnv, name: string): Promise<VerifyReport
 	applied.set(name, Number(await journalHeadOf(name)));
 	const ledger = diffLedger(declaredMig, applied);
 
-	const checks: VerifyItem[] = [...reach, ...rbac, ...settings, ...ledger];
+	// ⑤ web 入口 integrity（P4-2，P3-10#2 收口）：modules.json 条目 integrity ↔ 本地 dist 资产重算
+	// sha384 比对；SSRF 钉：只比对本地资产，绝不经 fetch 出站（与路由可达性探针严格隔离）。
+	let webChecks: VerifyItem[] = [];
+	try {
+		const mjPath = env.modulesJsonPath;
+		if (typeof mjPath === "string") {
+			const slash = mjPath.lastIndexOf("/");
+			const distRoot = slash === -1 ? "." : mjPath.slice(0, slash);
+			const list = JSON.parse(new TextDecoder().decode(await fsFace().readFile(mjPath))) as unknown[];
+			if (Array.isArray(list))
+				webChecks = await diffWebIntegrity(list as ModuleEntryIntegrity[], distRoot, sha384B64);
+		}
+	}
+	catch {
+		// modules.json 缺失/不可读 → 不打 web 项（非阻断，避免深检自身因装配清单缺失而误报）
+	}
+
+	const checks: VerifyItem[] = [...reach, ...rbac, ...settings, ...ledger, ...webChecks];
 	const trust = await trustItemOf(env, name);
 	if (trust !== null)
 		checks.push(trust);

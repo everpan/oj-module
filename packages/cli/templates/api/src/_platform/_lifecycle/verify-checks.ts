@@ -1,10 +1,12 @@
 import type { FetchInitFace } from "../_shared/site-facade";
 // 深检后端四项（P2-7，C2-42）+ SSRF 防护钉（R9 纪律：全程不触 exec，迁移账本走 db.query + journalHeadOf）。
-// 职责（ISP）：纯 diff 函数（diffPermRows/diffSettingRows/diffLedger）与 I/O 探针（verifyRouteReachability）
-// 分离；端点只编排取参 + 调四项 + 组装 checks（报告结构/persist/trust 项归 P2-8）。
+// 职责（ISP）：纯 diff 函数（diffPermRows/diffSettingRows/diffLedger/diffWebIntegrity）与 I/O 探针
+// （verifyRouteReachability）分离；端点只编排取参 + 调四项 + 组装 checks（报告结构/persist/trust 项归 P2-8）。
 // 设值永不进 checks（subject 只报 key/path/code；secret 同只报 key）——「看得见但不知怎么做」即不合格。
 import { fsFace } from "./atomic";
 import { createStateStore } from "./state";
+
+export { sha384B64 } from "./sha384";
 
 /** 深检项（契约 §2.13 item 结构） */
 export interface VerifyItem {
@@ -170,6 +172,48 @@ export async function readSolutionManifest(env: SolutionsEnv, name: string): Pro
 	catch {
 		return null;
 	}
+}
+
+/** web 入口条目（modules.json）形态（与 deployWeb 落地形状对齐；此处仅取深检所需字段） */
+export interface ModuleEntryIntegrity {
+	name: string
+	entry?: string
+	integrity?: string
+}
+
+/**
+ * 深检 web 入口 integrity（P4-2，P3-10#2 收口）：声明 entry 的 sha384（本地 dist 资产）↔
+ * modules.json 条目 integrity 比对；不符 = error（被篡改/损坏），缺失 integrity 声明 = info
+ * （未声明，非阻断），资产不存在 = info（web 入口缺失，非阻断）。SSRF 钉：只比对本地 dist
+ * 资产，绝不经 fetch 出站（与路由可达性探针严格隔离——复用 native 资产校验，不引入外联面）。
+ */
+export async function diffWebIntegrity(
+	entries: ModuleEntryIntegrity[],
+	distRoot: string,
+	sha384: (data: Uint8Array) => string,
+): Promise<VerifyItem[]> {
+	const items: VerifyItem[] = [];
+	const me = entries.find(e => e.name != null && typeof e.entry === "string" && e.entry !== "");
+	if (me === undefined) {
+		items.push({ id: "web", severity: "info", subject: "*", advise_key: "lifecycle.verify.web.no_entry" });
+		return items;
+	}
+	if (typeof me.integrity !== "string" || !me.integrity.startsWith("sha384-")) {
+		items.push({ id: "web", severity: "info", subject: me.name ?? "*", advise_key: "lifecycle.verify.web.no_integrity" });
+		return items;
+	}
+	try {
+		const bytes = await fsFace().readFile(`${distRoot}/${me.entry}`);
+		const actual = `sha384-${sha384(new Uint8Array(bytes))}`;
+		if (actual !== me.integrity) {
+			items.push({ id: "web", severity: "error", subject: me.entry, advise_key: "lifecycle.verify.web.integrity_mismatch" });
+		}
+	}
+	catch {
+		// 资产缺失（web 入口未落位或路径变更）——info 非阻断（路由可达性已另测）
+		items.push({ id: "web", severity: "info", subject: me.entry, advise_key: "lifecycle.verify.web.asset_missing" });
+	}
+	return items;
 }
 
 /** 站点源（深检端点依赖；sharedRoot/statePath 为读面，fetch 可注入） */

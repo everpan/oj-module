@@ -13,7 +13,9 @@ import {
 	diffLedger,
 	diffPermRows,
 	diffSettingRows,
+	diffWebIntegrity,
 	probeUrlOf,
+	sha384B64,
 
 	verifyRouteReachability,
 } from "../../src/_platform/_lifecycle/verify-checks";
@@ -198,6 +200,39 @@ describe("manifest 声明提取", () => {
 let dbo: any;
 let root: string;
 let last: { status: number, msg?: string, data?: unknown } | null;
+
+// ============ P4-2 web 入口 integrity（diffWebIntegrity）============
+describe("P4-2 深检 web 入口 integrity（diffWebIntegrity）", () => {
+	const distRoot = () => join(root, "dist");
+	const entry = "modules/demo/0.1.0/main.js";
+	async function seedEntry(bytes: Uint8Array) {
+		const p = join(distRoot(), entry);
+		await fsp.mkdir(p.slice(0, p.lastIndexOf("/")), { recursive: true });
+		await fsp.writeFile(p, bytes);
+	}
+	it("声明 integrity 与本地资产 sha384 相符 → 不打项", async () => {
+		const bytes = new TextEncoder().encode("console.log('demo')");
+		await seedEntry(bytes);
+		const integrity = `sha384-${sha384B64(bytes)}`;
+		expect(await diffWebIntegrity([{ name: "demo", entry, integrity }], distRoot(), sha384B64)).toEqual([]);
+	});
+	it("integrity 不符（被篡改/损坏）→ error(integrity_mismatch)", async () => {
+		const bytes = new TextEncoder().encode("console.log('demo')");
+		await seedEntry(bytes);
+		const items = await diffWebIntegrity([{ name: "demo", entry, integrity: "sha384-WRONG" }], distRoot(), sha384B64);
+		expect(items).toEqual([{ id: "web", severity: "error", subject: entry, advise_key: "lifecycle.verify.web.integrity_mismatch" }]);
+	});
+	it("缺失 integrity 声明 → info(no_integrity)，非阻断", async () => {
+		await seedEntry(new TextEncoder().encode("x"));
+		expect(await diffWebIntegrity([{ name: "demo", entry }], distRoot(), sha384B64)).toEqual([{ id: "web", severity: "info", subject: "demo", advise_key: "lifecycle.verify.web.no_integrity" }]);
+	});
+	it("无 entry 条目 → info(no_entry)，非阻断", async () => {
+		expect(await diffWebIntegrity([{ name: "demo" }], distRoot(), sha384B64)).toEqual([{ id: "web", severity: "info", subject: "*", advise_key: "lifecycle.verify.web.no_entry" }]);
+	});
+	it("entry 资产缺失（未落位）→ info(asset_missing)，非阻断", async () => {
+		expect(await diffWebIntegrity([{ name: "demo", entry, integrity: "sha384-abc" }], distRoot(), sha384B64)).toEqual([{ id: "web", severity: "info", subject: entry, advise_key: "lifecycle.verify.web.asset_missing" }]);
+	});
+});
 const fetchCalls: string[] = [];
 const fetchInits: unknown[] = [];
 
@@ -311,5 +346,40 @@ describe("深检端点编排（四项）", () => {
 		expect(data.checks.find(c => c.id === "rbac")?.subject).toBe("demo.p");
 		expect(data.checks.find(c => c.id === "settings")?.subject).toBe("demo:s.k2");
 		expect(data.checks.find(c => c.id === "ledger")?.subject).toBe("demo");
+	});
+
+	it("P4-2 web 入口 integrity 不符 → web error 项，ok=false", async () => {
+		dbo.prepare("INSERT INTO sys_solution_route (path, module, category, \"order\", title_key, required_permission, enabled, deprecated) VALUES (?,?,?,?,?,?,?,0)").run("/api/demo", "demo", "main", 200, "demo:menu", null, 1);
+		const mjPath = join(root, "dist", "modules.json");
+		const entry = "modules/demo/0.1.0/main.js";
+		await fsp.mkdir(join(root, "dist"), { recursive: true });
+		await fsp.writeFile(mjPath, JSON.stringify([{ name: "demo", entry, integrity: "sha384-WRONG" }]));
+		await fsp.mkdir(join(root, "dist", "modules", "demo", "0.1.0"), { recursive: true });
+		await fsp.writeFile(join(root, "dist", "modules", "demo", "0.1.0", "main.js"), "console.log('demo')");
+		setHttp({});
+		await createSolutionsApi({ ...makeEnv(), modulesJsonPath: mjPath }).verify.post();
+		const data = last?.data as { ok: boolean, checks: Array<{ id: string, severity: string, subject: string }> };
+		expect(data.ok).toBe(false);
+		const web = data.checks.find(c => c.id === "web");
+		expect(web?.severity).toBe("error");
+		expect(web?.subject).toBe(entry);
+		expect(web?.advise_key).toBe("lifecycle.verify.web.integrity_mismatch");
+	});
+
+	it("P4-2 web 入口 integrity 相符 → 不打 web 项（其余全绿则 ok=true）", async () => {
+		dbo.prepare("INSERT INTO sys_solution_route (path, module, category, \"order\", title_key, required_permission, enabled, deprecated) VALUES (?,?,?,?,?,?,?,0)").run("/api/demo", "demo", "main", 200, "demo:menu", null, 1);
+		const mjPath = join(root, "dist", "modules.json");
+		const entry = "modules/demo/0.1.0/main.js";
+		const bytes = new TextEncoder().encode("console.log('demo')");
+		const integrity = `sha384-${sha384B64(bytes)}`;
+		await fsp.mkdir(join(root, "dist"), { recursive: true });
+		await fsp.writeFile(mjPath, JSON.stringify([{ name: "demo", entry, integrity }]));
+		await fsp.mkdir(join(root, "dist", "modules", "demo", "0.1.0"), { recursive: true });
+		await fsp.writeFile(join(root, "dist", "modules", "demo", "0.1.0", "main.js"), bytes);
+		setHttp({});
+		await createSolutionsApi({ ...makeEnv(), modulesJsonPath: mjPath }).verify.post();
+		const data = last?.data as { ok: boolean, checks: Array<{ id: string }> };
+		expect(data.ok).toBe(true);
+		expect(data.checks.some(c => c.id === "web")).toBe(false);
 	});
 });
