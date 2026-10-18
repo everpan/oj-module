@@ -5,7 +5,7 @@
 import * as fsp from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 
-import { bumpInstallSeq, ensureReloadApi, hasAnchor, insertAnchor } from "../../src/_platform/_lifecycle/text-edit";
+import { appendAnonymousPaths, bumpInstallSeq, ensureReloadApi, hasAnchor, insertAnchor } from "../../src/_platform/_lifecycle/text-edit";
 
 describe("insertAnchor（R18）", () => {
 	it("带注释的 config.yaml 插入后注释/缩进/空行/键序逐字保留", () => {
@@ -146,5 +146,32 @@ describe("模板 config.yaml 随发锚点（P1-16 接线②：ensureReloadApi �
 		expect(r.changed).toBe(true);
 		expect(r.content).toContain("reload_api: true");
 		expect(r.content).toContain("# ojm:reload");
+	});
+});
+
+describe("p2-15③ C2-26 anonymous 运行时接线（appendAnonymousPaths：config 独占模型文本手术）", () => {
+	const BASE = "auth:\n  anonymous_paths:\n    - /auth/login\n    # 行内注释（模板 config 真形态）\n    - /system/login-methods\n";
+
+	it("追加方案匿名端点：列表尾部插入、统一补前导 /、缩进继承", () => {
+		const r = appendAnonymousPaths(BASE, ["demo-solution/ping", "demo-solution/health"]);
+		expect(r.added).toEqual(["/demo-solution/ping", "/demo-solution/health"]);
+		expect(r.content).toContain("    - /demo-solution/ping");
+		expect(r.content).toContain("    - /demo-solution/health");
+		// 注释逐字保留 + 既有项不动
+		expect(r.content).toContain("# 行内注释（模板 config 真形态）");
+		expect(r.content).toContain("- /auth/login");
+		expect(r.content).toContain("- /system/login-methods");
+	});
+
+	it("幂等：已存在（trim 相等）不重复插入", () => {
+		const once = appendAnonymousPaths(BASE, ["demo-solution/ping"]);
+		const twice = appendAnonymousPaths(once.content, ["demo-solution/ping"]);
+		expect(twice.added).toEqual([]);
+		expect(twice.content).toBe(once.content);
+		expect(once.content.match(/demo-solution\/ping/g)).toHaveLength(1);
+	});
+
+	it("键缺失 = 可读报错不猜位置（用户删键 = 显式退出匿名模型）", () => {
+		expect(() => appendAnonymousPaths("server:\n  reload_api: true\n", ["x/y"])).toThrow(/anonymous_paths/);
 	});
 });

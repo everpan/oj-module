@@ -182,7 +182,7 @@ beforeEach(async () => {
 	dbPath = join(root, "db.sqlite");
 	await fsp.writeFile(dbPath, new TextEncoder().encode("sqlite-header\n"));
 	// 站点 config.yaml 夹具（reloading 段 vars.ojm_install_seq 自增消费面；模板 config.yaml 随发形态）
-	await fsp.writeFile(join(root, "config.yaml"), "mounts: []\nserver:\n  reload_api: true\nvars:\n  ojm_install_seq: 0\n");
+	await fsp.writeFile(join(root, "config.yaml"), "mounts: []\nserver:\n  reload_api: true\nvars:\n  ojm_install_seq: 0\nauth:\n  anonymous_paths:\n    - /auth/login\n");
 	g.fs = nodeFsFace();
 	g.yaml = { parse: async (t: string) => JSON.parse(t) };
 	g.http = {};
@@ -227,7 +227,10 @@ describe("runInstall 全绿路径（步骤 stub，register/smoke/audit 走真实
 		await fsp.access(join(versionDir, "migrations", "0001__init.sql"));
 		await expect(fsp.access(join(versionDir, "web"))).rejects.toThrow();
 		// reloading 段触发变更已落盘：vars.ojm_install_seq 自增（B-11，PRD E5 口径）
-		expect(new TextDecoder().decode(await fsp.readFile(join(root, "config.yaml")))).toContain("ojm_install_seq: 1");
+		const cfg = new TextDecoder().decode(await fsp.readFile(join(root, "config.yaml")));
+		expect(cfg).toContain("ojm_install_seq: 1");
+		// C2-26 anonymous 运行时接线（P2-15③）：方案匿名端点补进 auth.anonymous_paths（幂等追加）
+		expect(cfg).toContain("- /demo-solution/ping");
 		// web 产物落位 + modules.json 条目（R10 integrity 为包内容重算值）
 		await fsp.access(join(siteModulesDir, "demo-solution", "0.1.0", "entry.js"));
 		const list = JSON.parse(await fsp.readFile(modulesJsonPath, "utf8"));

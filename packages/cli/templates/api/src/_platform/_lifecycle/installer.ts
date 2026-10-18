@@ -36,7 +36,7 @@ import { reloadAndAssert } from "./steps/reload";
 import { smoke } from "./steps/smoke";
 import { verify } from "./steps/verify";
 import { getTask, readTasks, sweepTimedOut, writeTask } from "./tasks";
-import { bumpInstallSeq } from "./text-edit";
+import { appendAnonymousPaths, bumpInstallSeq } from "./text-edit";
 import { createTrustStore } from "./trust";
 
 // db/http 为 oj isolate 注入全局（同模板 service 层惯例，register.ts/audit.ts 同款；测试由夹具装 globalThis.db）
@@ -220,6 +220,8 @@ export function declOf(req: InstallRequest): SolutionDecl {
 		if (!isObj(grp) || !Array.isArray(grp.items)) {
 			continue;
 		}
+		// 组级 label_key（P2-15③ G7 承载：declOf 此前丢弃——组标题随注册面落库 sys_setting.group_label_key）
+		const groupLabelKey = typeof grp.label_key === "string" ? grp.label_key : null;
 		for (const it of grp.items) {
 			if (!isObj(it) || typeof it.key !== "string") {
 				continue;
@@ -231,6 +233,7 @@ export function declOf(req: InstallRequest): SolutionDecl {
 				value: typeof it.value === "string" ? it.value : undefined,
 				default_value: it.default_value == null ? null : String(it.default_value),
 				label_key: typeof it.label_key === "string" ? it.label_key : null,
+				group_label_key: groupLabelKey,
 				options: Array.isArray(it.options) ? JSON.stringify(it.options) : it.options == null ? null : String(it.options),
 				secret: it.secret === true,
 			});
@@ -289,10 +292,16 @@ async function reloadStage(req: InstallRequest): Promise<StageResult> {
 	try {
 		const content = new TextDecoder().decode(await fsFace().readFile(path));
 		const bumped = bumpInstallSeq(content);
-		await atomicWriteText(path, bumped.content);
+		// C2-26 anonymous 运行时接线（P2-15③，观察项 6 收口）：方案匿名端点补进
+		// auth.anonymous_paths（幂等；热改属 restart_pending——reload 消息已明示重启生效）
+		const m = isObj(req.manifest) ? req.manifest : {};
+		const api = isObj(m.api) ? m.api : {};
+		const anonymous = Array.isArray(api.anonymous) ? api.anonymous.filter((x): x is string => typeof x === "string") : [];
+		const patched = anonymous.length > 0 ? appendAnonymousPaths(bumped.content, anonymous) : { content: bumped.content, added: [] };
+		await atomicWriteText(path, patched.content);
 	}
 	catch (e) {
-		return { stage: "reloading", ok: false, retryable: true, message: `热更失败：config.yaml 安装序号自增失败（${String(e)}）——reload unchanged 判定基于 config 文档 sha，无变更则热更不可能生效（B-11，PRD E5 口径）` };
+		return { stage: "reloading", ok: false, retryable: true, message: `热更失败：config.yaml 安装序号自增/匿名端点接线失败（${String(e)}）——reload unchanged 判定基于 config 文档 sha，无变更则热更不可能生效（B-11，PRD E5 口径）` };
 	}
 	return reloadAndAssert(req);
 }

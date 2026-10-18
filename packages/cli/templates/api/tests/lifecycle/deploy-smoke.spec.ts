@@ -219,6 +219,8 @@ describe("deployWeb（stage=deploying：staging/web 树 → 站点 modules 目�
 			name: "demo-solution",
 			entry: "modules/demo-solution/0.1.0/entry.js",
 			enabled: true,
+			version: "0.1.0", // P2-15②：完整条目 extras
+			chunks: [],
 			css: ["modules/demo-solution/0.1.0/main.css"],
 			integrity: INT,
 			peerRuntime: ">=0.0.0",

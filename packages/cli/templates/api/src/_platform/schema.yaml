@@ -24,6 +24,7 @@ tables:
       value: {type: text}
       default_value: {type: text}
       label_key: {type: text}
+      group_label_key: {type: text}
       options: {type: text}
       secret: {type: integer, null: false}
       deprecated: {type: integer, null: false}

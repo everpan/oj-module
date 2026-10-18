@@ -55,6 +55,14 @@ describe("PRD §4.3：系统设置", () => {
 		expect(security?.items.find(i => i.key === "market.cdn_url")?.value).toBe("***");
 	});
 
+	it("组标题回填（P2-15③）：group_label_key 落库行 → 组面收敛出 label_key", async () => {
+		dbo.prepare("INSERT INTO sys_setting (key, module, \"group\", type, value, secret, update_time, group_label_key) VALUES ('demo-solution.display.theme', 'demo-solution', 'display', 'string', 'auto', 0, 0, 'demo-solution:settings.group.display')").run();
+		dbo.prepare("INSERT INTO sys_setting (key, module, \"group\", type, value, secret, update_time, group_label_key) VALUES ('demo-solution.display.size', 'demo-solution', 'display', 'int', '20', 0, 0, 'demo-solution:settings.group.display')").run();
+		const groups = await listSettings();
+		const display = groups.find(x => x.group === "display");
+		expect(display?.label_key).toBe("demo-solution:settings.group.display");
+	});
+
 	it("更新写值 + update_time + 审计（market 安全项须 superadmin 操作者）", async () => {
 		dbo.prepare("INSERT INTO sys_setting (key, module, \"group\", type, value, secret, update_time) VALUES ('framework.site_title', 'framework', 'general', 'string', 'ACME', 0, 0)").run();
 		dbo.prepare("INSERT INTO sys_setting (key, module, \"group\", type, value, secret, update_time) VALUES ('market.cdn_url', 'market', 'security', 'string', 'x', 1, 0)").run();

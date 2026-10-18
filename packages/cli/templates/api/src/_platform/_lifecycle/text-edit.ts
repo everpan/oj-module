@@ -67,3 +67,44 @@ export function bumpInstallSeq(content: string): { content: string, seq: number 
 	lines[idx] = `${m[1]}${seq}${lines[idx]!.slice(m[0].length)}`;
 	return { content: lines.join("\n"), seq };
 }
+
+/**
+ * C2-26 anonymous 运行时接线（P2-15③ 承载，观察项 6 收口）：把方案的匿名端点追加进
+ * config.yaml `auth.anonymous_paths` 列表（oj 匿名模型 config 独占；热改属
+ * restart_pending——reload 段消息已明示，重启后生效）。
+ * 幂等：已存在（trim 相等）的路径不重复插入；`anonymous_paths:` 键缺失 = 可读报错
+ * （键随模板 config.yaml 发布，用户删键 = 显式退出匿名模型，安装器不猜位置重建）。
+ * paths 传方案相对形态（C2-26 anonymous 值，首段=apiSeg）；本函数统一补前导 `/`。
+ */
+export function appendAnonymousPaths(content: string, paths: string[]): { content: string, added: string[] } {
+	const lines = content.split("\n");
+	const idx = lines.findIndex(l => /^\s*anonymous_paths\s*:/.test(l));
+	if (idx === -1) {
+		throw new Error("text-edit: config.yaml 缺 auth.anonymous_paths 键（oj 匿名模型 config 独占，键随模板 config.yaml 发布）——方案匿名端点无法接线，请恢复该键后重试安装");
+	}
+	// 列表项收集：键行之后连续的 `- item` 行（缩进任意）；空行/注释行跳过不中断
+	// （模板 config.yaml 列表中部有行内注释），遇首个其他内容行即止
+	const wanted = paths.map(p => (p.startsWith("/") ? p : `/${p}`));
+	const existing = new Set<string>();
+	let last = idx;
+	for (let i = idx + 1; i < lines.length; i++) {
+		const line = lines[i]!;
+		if (line.trim() === "" || /^\s*#/.test(line)) {
+			continue;
+		}
+		// 先剥行内注释再取项值（防 ReDoS：不写可交换量词的组合）
+		const stripped = line.replace(/#.*$/, "").trim();
+		if (!stripped.startsWith("- ")) {
+			break;
+		}
+		existing.add(stripped.slice(2).trim());
+		last = i;
+	}
+	const added = wanted.filter(p => !existing.has(p));
+	if (added.length === 0) {
+		return { content, added: [] };
+	}
+	const itemIndent = /^\s*-/.exec(lines[idx + 1] ?? "")?.[0]?.replace(/-.*/, "") ?? (`${/^\s*/.exec(lines[idx]!)?.[0] ?? ""}  `);
+	lines.splice(last + 1, 0, ...added.map(p => `${itemIndent}- ${p}`));
+	return { content: lines.join("\n"), added };
+}

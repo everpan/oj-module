@@ -29,6 +29,8 @@ export interface SettingDecl {
 	value?: string
 	default_value?: string | null
 	label_key?: string | null
+	/** 组级 label_key（C2-22；P2-15③ G7 承载——declOf 此前丢弃，组标题落库回填） */
+	group_label_key?: string | null
 	/** enum 选项（契约 C2-24 string[] 的序列化产物） */
 	options?: string | null
 	secret?: boolean
@@ -123,14 +125,14 @@ export async function registerSolution(decl: SolutionDecl): Promise<RegisterResu
 			const exists = await db.query("select key from sys_setting where key = ?", [s.key]) as unknown[];
 			if (exists.length) {
 				await db.exec(
-					"update sys_setting set module = ?, \"group\" = ?, type = ?, default_value = ?, label_key = ?, options = ?, secret = ?, deprecated = 0, update_time = ? where key = ?",
-					[decl.module, s.group, s.type, s.default_value ?? null, s.label_key ?? null, s.options ?? null, s.secret ? 1 : 0, Date.now(), s.key],
+					"update sys_setting set module = ?, \"group\" = ?, type = ?, default_value = ?, label_key = ?, group_label_key = ?, options = ?, secret = ?, deprecated = 0, update_time = ? where key = ?",
+					[decl.module, s.group, s.type, s.default_value ?? null, s.label_key ?? null, s.group_label_key ?? null, s.options ?? null, s.secret ? 1 : 0, Date.now(), s.key],
 				);
 			}
 			else {
 				await db.exec(
-					"insert into sys_setting (key, module, \"group\", type, value, default_value, label_key, options, secret, update_time, deprecated) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)",
-					[s.key, decl.module, s.group, s.type, s.value ?? s.default_value ?? null, s.default_value ?? null, s.label_key ?? null, s.options ?? null, s.secret ? 1 : 0, Date.now()],
+					"insert into sys_setting (key, module, \"group\", type, value, default_value, label_key, group_label_key, options, secret, update_time, deprecated) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)",
+					[s.key, decl.module, s.group, s.type, s.value ?? s.default_value ?? null, s.default_value ?? null, s.label_key ?? null, s.group_label_key ?? null, s.options ?? null, s.secret ? 1 : 0, Date.now()],
 				);
 			}
 		}

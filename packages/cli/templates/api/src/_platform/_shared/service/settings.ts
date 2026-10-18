@@ -11,6 +11,8 @@ export interface SettingItem {
 	value: string | null
 	default_value: string | null
 	label_key: string | null
+	/** 组标题 key（C2-22 组级 label_key 落库值，P2-15③；同组各行一致，组面取首个非空） */
+	group_label_key: string | null
 	options: string | null
 	secret: boolean
 	update_time: number
@@ -18,6 +20,8 @@ export interface SettingItem {
 
 export interface SettingGroup {
 	group: string
+	/** 组标题 key（组面收敛：同组任一行非空即用——P2-15③ DB 组标题回填消费面） */
+	label_key: string | null
 	items: SettingItem[]
 }
 
@@ -36,13 +40,18 @@ export async function listSettings(): Promise<SettingGroup[]> {
 			value: Number(r.secret) === 1 ? "***" : (r.value == null ? null : String(r.value)),
 			default_value: r.default_value == null ? null : String(r.default_value),
 			label_key: r.label_key == null ? null : String(r.label_key),
+			group_label_key: r.group_label_key == null ? null : String(r.group_label_key),
 			options: r.options == null ? null : String(r.options),
 			secret: Number(r.secret) === 1,
 			update_time: Number(r.update_time),
 		};
 		(groups.get(item.group) ?? groups.set(item.group, []).get(item.group))!.push(item);
 	}
-	return [...groups.entries()].map(([group, items]) => ({ group, items }));
+	return [...groups.entries()].map(([group, items]) => ({
+		group,
+		label_key: items.find(x => x.group_label_key !== null)?.group_label_key ?? null,
+		items,
+	}));
 }
 
 export async function updateSetting(actorId: number, key: string, value: string): Promise<void> {

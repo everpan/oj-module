@@ -40,6 +40,12 @@ function isObj(v: unknown): v is Record<string, unknown> {
 	return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
+/** manifest api.deps 的模块依赖键（排除 _platform——平台非 web 模块依赖，P2-15② extras） */
+function apiDepsOf(m: Record<string, unknown>): string[] {
+	const deps = isObj(m.api) && isObj((m.api as Record<string, unknown>).deps) ? (m.api as Record<string, unknown>).deps as Record<string, unknown> : {};
+	return Object.keys(deps).filter(k => k !== "_platform").sort();
+}
+
 /** 归一化条目：entry/css 路径 POSIX 化；其余字段（含构建器 extras）原样透传 */
 function normalizeEntry(entry: ModuleEntry): ModuleEntry {
 	const out: ModuleEntry = { ...entry, entry: posixPath(entry.entry) };
@@ -148,6 +154,11 @@ export async function deployWeb(ctx: DeployWebContext): Promise<StageResult> {
 		name: ctx.name,
 		entry: posixPath(web.entry),
 		enabled: true,
+		// P2-15②（G7 defer-P2 承载）：完整条目 extras——version/dependencies/chunks 补齐
+		// （deployWeb 全新生成 entry，构建器条目不透传的缺口；宿主 HostModule 全字段消费面）
+		version: ctx.version,
+		...(apiDepsOf(m).length > 0 ? { dependencies: apiDepsOf(m) } : {}),
+		chunks: [], // 单 entry 产物无懒加载 chunk（宿主 collectPreloads 消费 `?? []`，字段形状齐备）
 		...(Array.isArray(web.css) ? { css: web.css.map(c => posixPath(String(c))) } : {}),
 		...(integrity !== undefined ? { integrity } : {}),
 		...(typeof m.peerRuntime === "string" ? { peerRuntime: m.peerRuntime } : {}),
