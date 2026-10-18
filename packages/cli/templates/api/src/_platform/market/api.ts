@@ -1,5 +1,5 @@
-// 编排端点 + 市场索引（P1-12，R9/ISP）：/api/_platform/market/* 四端点同文件嵌套 handler 组
-// （oj v0.1.64 组形态，notification/api.ts 同款；组名 = 路径段，路由不变）。
+// 编排端点 + 市场索引（P1-12，R9/ISP）：/api/_platform/market/* 端点族同文件嵌套 handler 组
+// （oj v0.1.64 组形态，notification/api.ts 同款；组名 = 路径段，路由不变；嵌套组最深 4 层，oj bridge/mod.rs walker）。
 // 门（R9）：install/task/index 全 assertSuperAdmin 独占（市场页是「市场即样例」的第一方特权
 // 例外，R29；权限码不构成门）；meta 登录即可（peerPlatform 预检先于判权）。
 // 职责边界（ISP）：端点只做 门禁 + Form B 索引解析（安装器不拼 URL，installer.ts 同纪律）+
@@ -23,6 +23,7 @@ import { createStateStore } from "../_lifecycle/state";
 import { flattenBundleRoot } from "../_lifecycle/steps/extract";
 import { getTask } from "../_lifecycle/tasks";
 import { validateTarListing } from "../_lifecycle/tgz-guard";
+import { createTrustStore } from "../_lifecycle/trust";
 import { computeUninstallImpact, runUninstall } from "../_lifecycle/uninstall";
 import { respond } from "../_shared/respond";
 import { assertSuperAdmin } from "../_shared/service/access";
@@ -46,6 +47,8 @@ export interface MarketEnv {
 	taskDir: string
 	/** sidecar 状态文件（.solutions/state.yaml） */
 	statePath: string
+	/** 宿主信任库（.solutions/trusted-keys.yaml；P2-2，与 statePath 同目录） */
+	trustPath: string
 	/** sqlite 库文件路径（R14 备份源；模板 config.yaml `sqlite://db.sqlite` → 站点根 db.sqlite） */
 	dbPath: string
 	/** 站点 web 模块目录（<dist>/modules） */
@@ -125,6 +128,7 @@ export function marketEnv(): MarketEnv {
 		staging: "modules/.staging",
 		taskDir: "modules/.install-tasks",
 		statePath: "modules/.solutions/state.yaml",
+		trustPath: "modules/.solutions/trusted-keys.yaml",
 		dbPath: "db.sqlite",
 		siteModulesDir: "dist/modules",
 		modulesJsonPath: "dist/modules.json",
@@ -530,6 +534,43 @@ export function createMarketApi(env: MarketEnv) {
 						fail(401, "unauthorized");
 					return { apiVersion: API_VERSION };
 				});
+			},
+		},
+		// 信任库运维面（P2-2，C2-38/39，G3 双轨第一轨 / G5；全 superadmin，R9）：
+		// GET    /market/trust          列表（含 .bak 回落 note——损坏时运维可见）
+		// POST   /market/trust/key      新增信任（首次绑定不可改：撞绑定 409，C2-38）
+		// DELETE /market/trust/key?key_id=  吊销（G5：只阻断新装/升级，不动已装方案）
+		// 端点只做门禁 + 取参 + operator 反查；读写/原子写/首次绑定/吊销语义全归 trust.ts（ISP，同 enable/uninstall 纪律）。
+		// del 动词（oj 运行期命名，devkit §http：DELETE 的方法名是 del 不是 delete）+ query 取参（system/roles del 同款先例）。
+		"trust": {
+			async get() {
+				await respond(async () => {
+					await assertSuperAdmin();
+					const store = createTrustStore(env.trustPath);
+					return { keys: await store.list(), note: store.corruptNote?.() ?? null };
+				});
+			},
+			key: {
+				async post() {
+					await respond(async () => {
+						await assertSuperAdmin();
+						const body = isObj(http.body) ? http.body : {};
+						const keyId = String(body.key_id ?? "").trim();
+						const publicKey = String(body.public_key ?? "").trim();
+						if (keyId === "" || publicKey === "")
+							fail(400, "key_id and public_key are required");
+						return { result: await createTrustStore(env.trustPath).add(keyId, publicKey, { operator: await operatorOf() }) };
+					});
+				},
+				async del() {
+					await respond(async () => {
+						await assertSuperAdmin();
+						const keyId = String((http as { query?: Record<string, unknown> }).query?.key_id ?? "").trim();
+						if (keyId === "")
+							fail(400, "key_id is required");
+						return { revoked: await createTrustStore(env.trustPath).remove(keyId, { operator: await operatorOf() }) };
+					});
+				},
 			},
 		},
 		// GET /api/_platform/market/index —— 市场索引聚合（superadmin，R9）

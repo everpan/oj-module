@@ -78,7 +78,7 @@ export async function login(fetchFn: typeof fetch, base: string, user: string, p
 }
 
 /** 携 Bearer 的 JSON 请求（GET body 缺省；POST/PUT 序列化 body） */
-export async function callApi<T>(fetchFn: typeof fetch, base: string, token: string, method: "GET" | "POST", path: string, body?: unknown): Promise<T> {
+export async function callApi<T>(fetchFn: typeof fetch, base: string, token: string, method: "GET" | "POST" | "DELETE", path: string, body?: unknown): Promise<T> {
 	const res = await fetchFn(`${base}${path}`, {
 		method,
 		headers: {
