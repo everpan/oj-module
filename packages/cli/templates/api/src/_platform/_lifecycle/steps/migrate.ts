@@ -31,6 +31,8 @@ export interface MigrateContext extends InstallContext {
 	onProgress?: (frac: number) => void
 	/** 解析成功回调（P2-13）：appliedSeq 捕获真源（installer 据此落 TaskRecord.appliedSeq）；仅解析成功时调用 */
 	onMigrateOutput?: (output: MigrateOutput) => void
+	/** 取消安装令牌（U5，P3-8）：spawn 流式路径逐块探测，命中即 h.kill() 提前终止；run 缓冲路径在返回前探测 */
+	cancel?: () => boolean
 }
 
 export interface StageResult {
@@ -38,6 +40,8 @@ export interface StageResult {
 	ok: boolean
 	message: string
 	retryable?: boolean
+	/** 取消安装（U5，P3-8）：本段被用户中止——运行器据其走清场+回退装前语义 */
+	cancelled?: boolean
 }
 
 export interface MigrateApplied {
@@ -250,30 +254,53 @@ export async function migrate(ctx: MigrateContext): Promise<StageResult> {
 		let code: number;
 		let stdoutText: string;
 		let stderrTail = "";
+		// U5 取消安装（P3-8）：进入 exec 前先探测——若已进入取消态，跳过 oj migrate（库保持原状，
+		// 等同 R14 fail-closed 的「不迁移」语义），直接返回 cancelled 终态由运行器回退
+		if (ctx.cancel?.()) {
+			return { stage: "migrating", ok: false, cancelled: true, retryable: true, message: "迁移被取消（用户中止，未执行 oj migrate，库保持原状）——回退到装前态（U5 取消安装）" };
+		}
 		const spawn = ctx.exec.spawn;
 		if (spawn !== undefined) {
 			const h = await spawn(argv, { timeoutMs: 600_000 });
 			const chunks: Uint8Array[] = [];
 			let total = 0;
+			let killed = false;
+			const dec = new TextDecoder();
 			const drainErr = (async () => {
-				const dec = new TextDecoder();
 				for await (const c of h.stderr) {
 					stderrTail += dec.decode(c, { stream: true });
 				}
 			})();
-			const dec = new TextDecoder();
-			for await (const chunk of h.stdout) {
-				chunks.push(chunk);
-				total += chunk.byteLength;
-				ctx.onProgress?.(total / (total + 4096));
+			try {
+				for await (const chunk of h.stdout) {
+					// U5 取消安装（P3-8）：每收一块即探测 cancel token，命中 → h.kill() 提前终止流式消费
+					if (ctx.cancel?.()) {
+						killed = true;
+						h.kill();
+						break;
+					}
+					chunks.push(chunk);
+					total += chunk.byteLength;
+					ctx.onProgress?.(total / (total + 4096));
+				}
+			}
+			catch {
+				// 子进程被 kill 后 stdout 通道可能抛错——killed 情形下转 cancel 终态，不误判失败
 			}
 			await drainErr;
 			code = (await h.exit()).code;
+			if (killed) {
+				return { stage: "migrating", ok: false, cancelled: true, retryable: true, message: `迁移被取消（用户中止，退出码 ${code}）——staging 与已落位产物将回退到装前态（U5 取消安装）` };
+			}
 			stdoutText = dec.decode(concatBytes(chunks));
 		}
 		else {
 			const r = await ctx.exec.run(argv, { timeoutMs: 600_000 });
 			code = r.code;
+			// U5 取消安装（P3-8）：run 缓冲路径无法中途中断，返回前探测——已取消则按 cancelled 收口
+			if (ctx.cancel?.()) {
+				return { stage: "migrating", ok: false, cancelled: true, retryable: true, message: `迁移被取消（用户中止，退出码 ${code}）——回退到装前态（U5 取消安装）` };
+			}
 			stdoutText = r.stdout;
 			stderrTail = r.stderr;
 		}

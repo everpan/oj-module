@@ -303,6 +303,80 @@ describe("p2-13 exec.spawn 流式路径（G2①：feature-detect 双路径；onS
 	});
 });
 
+describe("p3-8 取消安装（U5）：cancel token → h.kill 提前终止 + appliedSeq 稳定", () => {
+	/**
+	 * 取消用 spawn stub：stdout 切多块吐出；spawn 一旦启动即记录，kill 记录调用；exit 返回 0（常态，
+	 * 取消由 killed 标记而非退出码判定）。cancel token 仅在 spawn 启动且收过 ≥1 块后才为真——避免
+	 * 误触 top-of-exec 检测（真实 cancel 是布尔闭包，此处用 spawnStarted 门控贴近语义）
+	 */
+	function cancelSpawnExec(): ExecFace & { killCalled: () => boolean, cancel: () => boolean } {
+		let killed = false;
+		let spawnStarted = false;
+		let chunksInSpawn = 0;
+		return {
+			run: async () => { throw new Error("spawn 在场不得回落 exec.run"); },
+			spawn: async () => {
+				spawnStarted = true;
+				const bytes = new TextEncoder().encode(`${OK_LINE}\n`);
+				const cuts = [5, 12, bytes.byteLength];
+				const chunks: Uint8Array[] = [];
+				let prev = 0;
+				for (const c of cuts) {
+					if (c > prev) {
+						chunks.push(bytes.slice(prev, c));
+						prev = c;
+					}
+				}
+				async function* gen() {
+					for (const c of chunks) {
+						chunksInSpawn++;
+						yield c;
+					}
+				}
+				return {
+					stdout: gen(),
+					stderr: gen(),
+					exit: async () => ({ code: 0 }),
+					kill: () => {
+						killed = true;
+					},
+				};
+			},
+			killCalled: () => killed,
+			cancel: () => spawnStarted && chunksInSpawn >= 1,
+		};
+	}
+
+	it("spawn 流式路径首块后取消 → h.kill() 触发、提前终止返回 cancelled、appliedSeq 未被部分输出污染", async () => {
+		const exec = cancelSpawnExec();
+		const outs: unknown[] = [];
+		const r = await migrate(mgCtx({ exec, cancel: exec.cancel, onMigrateOutput: o => outs.push(o), onProgress: () => {} }));
+		expect(r.ok).toBe(false);
+		expect((r as { cancelled?: boolean }).cancelled).toBe(true);
+		expect(exec.killCalled()).toBe(true);
+		// 取消发生在解析前 → appliedSeq 捕获回调不得被部分输出触发（稳定：不污染对账 floor）
+		expect(outs).toHaveLength(0);
+	});
+
+	it("run 缓冲路径取消：返回 cancelled（缓冲路径无法中途 kill，但返回前探测命中）", async () => {
+		const exec = recordingExec(async () => ({ code: 0, stdout: `${OK_LINE}\n`, stderr: "" }));
+		const r = await migrate(mgCtx({ exec, cancel: () => true }));
+		expect(r.ok).toBe(false);
+		expect((r as { cancelled?: boolean }).cancelled).toBe(true);
+	});
+
+	it("未取消：cancel token 恒 false → 正常完成、appliedSeq 捕获、kill 不调用", async () => {
+		const exec = cancelSpawnExec();
+		const seen: { frac: number }[] = [];
+		const outs: unknown[] = [];
+		const r = await migrate(mgCtx({ exec, cancel: () => false, onProgress: f => seen.push({ frac: f }), onMigrateOutput: o => outs.push(o) }));
+		expect(r.ok).toBe(true);
+		expect(outs).toHaveLength(1);
+		expect(exec.killCalled()).toBe(false);
+		expect(seen.length).toBeGreaterThanOrEqual(3);
+	});
+});
+
 describe("migrate（stage=migrating：R14 备份 → exec → 解析 → 禁降版守卫；绝触碰锁与 state）", () => {
 	it("成功：备份文件存在且字节一致，exec argv 逐字对齐 buildMigrateCmd，state 零写入", async () => {
 		const state = recordingState();

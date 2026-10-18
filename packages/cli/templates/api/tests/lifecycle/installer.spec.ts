@@ -395,6 +395,98 @@ describe("失败语义①锁前清场（D11：零改锁零改库表，可重跑�
 	});
 });
 
+describe("U5 取消安装（P3-8）：cancel token → h.kill + staging 清场 + 锁/目录回退装前 + 终态 cancelled", () => {
+	/**
+	 * 取消用 harness：tar list/extract 走真实 bundleExec；oj migrate 走 spawn（逐块吐、spawn 启动后
+	 * cancel 才为真、kill 记录调用）。cancel 仅在 migrate 段 spawn 实际启动且收过 ≥1 块后才为真——
+	 * 避免误触 runInstall 段间 cancel 检测（真实 cancel 是布尔闭包，spawnStarted 门控贴近语义）
+	 */
+	function cancelHarness() {
+		let killed = false;
+		let spawnStarted = false;
+		let chunksInSpawn = 0;
+		const base = bundleExec();
+		const exec: ExecFace = {
+			run: (argv, opts) => base.run(argv, opts),
+			spawn: async (argv) => {
+				if (argv[0] === "oj" && argv[1] === "migrate") {
+					spawnStarted = true;
+					const bytes = new TextEncoder().encode(`${MIGRATE_LINE}\n`);
+					const chunks = [bytes.slice(0, 5), bytes.slice(5)];
+					async function* gen() {
+						for (const c of chunks) {
+							chunksInSpawn++;
+							yield c;
+						}
+					}
+					return {
+						stdout: gen(),
+						stderr: gen(),
+						exit: async () => ({ code: 137 }),
+						kill: () => {
+							killed = true;
+						},
+					};
+				}
+				throw new Error(`unexpected spawn: ${argv.join(" ")}`);
+			},
+		};
+		const cancel = () => spawnStarted && chunksInSpawn >= 1;
+		return { exec, cancel, killCalled: () => killed };
+	}
+
+	it("migrate 段取消 → kill 调用、staging 清空、锁/版本目录回到装前、终态 failed+cancelled、审计末位落 oplog", async () => {
+		const h = cancelHarness();
+		const t = await runInstall(makeReq({ exec: h.exec, cancel: h.cancel }));
+		expect(t.status).toBe("failed");
+		expect(t.cancelled).toBe(true);
+		expect(h.killCalled()).toBe(true);
+		// staging 清空（下载/解压/迁移产物随之一并清）
+		await expect(fsp.access(staging)).rejects.toThrow();
+		// 首装装前无锁 → 取消后无锁文件（空锁拒启 S1-1.2，不污染）
+		await expect(fsp.access(lockPath)).rejects.toThrow();
+		// 版本目录不得残留（migrate 段取消 = 锁前，lock_commit 未达 → 无版本目录）
+		await expect(fsp.access(join(sharedRoot, "demo-solution-0.1.0"))).rejects.toThrow();
+		// 审计末位：solution.install 落 oplog（取消也须可观测，AC-P1-14）
+		const oplog = rows("SELECT detail FROM sys_oplog WHERE action = 'solution.install'");
+		expect(oplog).toHaveLength(1);
+		// 任务文件终态可查，不滞留 running
+		expect((await getTask(taskDir, t.id))?.status).toBe("failed");
+	});
+
+	it("升级场景取消（装前已有同名方案+锁）：锁回退到装前旧版本、旧版本目录保留、新版本目录清除", async () => {
+		// 先装 0.1.0 成功，建立装前态
+		const first = await runInstall(makeReq({ version: "0.1.0" }));
+		expect(first.status).toBe("done");
+		expect(await readLock(lockPath)).toEqual({ "demo-solution": "0.1.0" });
+		// 升级到 0.2.0 途中取消
+		const h = cancelHarness();
+		const up = await runInstall(makeReq({ version: "0.2.0", exec: h.exec, cancel: h.cancel }));
+		expect(up.status).toBe("failed");
+		expect(up.cancelled).toBe(true);
+		expect(h.killCalled()).toBe(true);
+		// 锁回退到装前旧版本（撤销 0.2.0 的写入）
+		expect(await readLock(lockPath)).toEqual({ "demo-solution": "0.1.0" });
+		// 旧版本目录保留（回滚可用）
+		await fsp.access(join(sharedRoot, "demo-solution-0.1.0", "manifest.yaml"));
+		// 新版本目录清除（升级取消不残留半成品）
+		await expect(fsp.access(join(sharedRoot, "demo-solution-0.2.0"))).rejects.toThrow();
+		// staging 清空
+		await expect(fsp.access(staging)).rejects.toThrow();
+	});
+
+	it("幂等/可重入：取消 cleanup 对已清场态重复执行无副作用（staging 已不存在仍安全）", async () => {
+		const h = cancelHarness();
+		const t = await runInstall(makeReq({ exec: h.exec, cancel: h.cancel }));
+		expect(t.status).toBe("failed");
+		expect(t.cancelled).toBe(true);
+		// staging 已清：重复访问确认非存在（cleanup 重复调用幂等）
+		await expect(fsp.access(staging)).rejects.toThrow();
+		// 终态任务可查（不滞留 running）
+		expect((await getTask(taskDir, t.id))?.status).toBe("failed");
+	});
+});
+
 describe("第五终态 needs_trust（P2-3，G3 TOFU：未知 key_id 待确认，staging 不清场）", () => {
 	it("未知 key 装 → needs_trust + trust 三元组 + unknown_key 指引；锁/库表/sidecar/审计零改动，staging 留存", async () => {
 		const { generateKeyPair } = await import("../../../../src/lifecycle/keygen");

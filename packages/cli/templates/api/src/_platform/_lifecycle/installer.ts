@@ -88,7 +88,12 @@ export interface InstallRequest extends InstallContext {
 	/** reload 终态断言期望生效段键（缺省 ["vars"]，同 reload.ts——B-11 安装触发面） */
 	expected?: string[]
 	/** 安装器内部通道（外部调用方忽略）：终态审计读 status/failedStage/taskId + migrate 捕获 appliedSeq */
-	outcome?: { taskId?: string, status?: TaskStatus, failedStage?: InstallStage, appliedSeq?: number | null }
+	outcome?: { taskId?: string, status?: TaskStatus, failedStage?: InstallStage, appliedSeq?: number | null, cancelled?: boolean }
+	/**
+	 * 取消安装令牌（U5，P3-8）：运行期外部置位（端点 `?cancel=<taskId>` 或任务状态 `cancelling` 驱动的闭包），
+	 * 返回 true 即中止——PIPELINE 循环每段前探测 + migrating 段 spawn 流逐块探测；幂等、可重入
+	 */
+	cancel?: () => boolean
 	/** 安装器内部通道（P2-13）：migrating 段内进度回调（runInstall 注入；spawn 流式路径逐块触发） */
 	onProgress?: (frac: number) => void
 	/** 操作人（历史留痕；端点按 http.user 反查注入，缺省 null） */
@@ -120,6 +125,8 @@ async function migrateStage(req: InstallRequest): Promise<StageResult> {
 			req.outcome = { ...req.outcome, appliedSeq: maxAppliedSeq(output) };
 		},
 		onProgress: req.onProgress,
+		// U5 取消安装（P3-8）：令牌透传进迁移上下文——spawn 流式路径逐块探测，命中点 h.kill() 提前终止
+		cancel: req.cancel,
 	});
 }
 
@@ -387,9 +394,47 @@ export async function gcVersions(sharedRoot: string, name: string, state: StateS
 }
 
 /**
+ * U5 取消安装回退（P3-8）：把锁/版本目录/staging 恢复到「本次安装发起前」的状态——
+ * ① staging 清空（下载/解压/迁移产物一并清）；② 锁写回到装前快照（首装装前无锁则不落锁文件，
+ * 不污染空锁）；③ 撤销本安装新建的版本目录（仅当装前锁未指向该版本——升级场景下旧版本目录保留，
+ * 新版本目录移除）。幂等、可重入：重复调用对已是装前态的盘无副作用。
+ */
+async function cancelCleanup(req: InstallRequest, lockBefore: Record<string, string>, lockExisted: boolean): Promise<void> {
+	const f = fsFace();
+	try {
+		await f.remove(req.staging, { recursive: true });
+	}
+	catch {
+		// staging 已不存在（首装取消 / 重复回退）不掩盖取消终态
+	}
+	try {
+		if (lockExisted) {
+			await writeLock(`${req.sharedRoot}/manifests.yaml`, lockBefore);
+		}
+		else {
+			// 首装：装前本无锁文件，取消后也不该留空锁（空锁拒启 S1-1.2）
+			await f.remove(`${req.sharedRoot}/manifests.yaml`, { force: true });
+		}
+	}
+	catch {
+		// 锁回退失败由 reconcile 对账兜底（D11）
+	}
+	// 撤销本安装新建的版本目录（装前锁未指向该版本才移除——保留升级前的旧版本目录供回滚）
+	if (lockBefore[req.name] !== req.version) {
+		try {
+			await f.remove(`${req.sharedRoot}/${req.name}-${req.version}`, { recursive: true });
+		}
+		catch {
+			// 版本目录未创建（锁前取消）或已不存在不掩盖取消终态
+		}
+	}
+}
+
+/**
  * 声明式遍历 stage 表执行安装（§10.2 任务模型）：任务文件逐 stage 落盘（800ms 轮询消费面）、
- * .install-tasks/.lock 互斥（R17/R31）、失败语义三分、终态审计含 partial（AC-P1-14）。
- * 返回终态 TaskRecord（done / failed / partial / busy failed）。
+ * .install-tasks/.lock 互斥（R17/R31）、失败语义三分、终态审计含 partial（AC-P1-14）、
+ * U5 取消安装（P3-8：cancel token 触发清场+锁/目录回退装前+审计末位）。
+ * 返回终态 TaskRecord（done / failed / partial / cancelled-by-failed）。
  */
 export async function runInstall(req: InstallRequest): Promise<TaskRecord> {
 	const now = Date.now();
@@ -431,11 +476,35 @@ export async function runInstall(req: InstallRequest): Promise<TaskRecord> {
 		// 对账时点纪律（R13/B9/R31）：残留 running 超时判 failed，再开新任务
 		await sweepTimedOut(req.taskDir, now);
 		await writeTask(req.taskDir, task);
+		// U5 取消安装（P3-8）：装前锁快照——取消回退的「装前态」真源（首装时锁文件尚不存在）
+		let lockBefore: Record<string, string> = {};
+		let lockExisted = false;
+		try {
+			lockBefore = await readLock(`${req.sharedRoot}/manifests.yaml`);
+			lockExisted = true;
+		}
+		catch {
+			lockExisted = false;
+		}
 		// P2-13 段内进度：migrating 段 spawn 流式路径逐块触发；写链串行（回调 fire-and-forget
 		// 防交错），失败静默（进度观测面不阻断安装）
 		let progressChain: Promise<void> = Promise.resolve();
 		for (let i = 0; i < PIPELINE.length; i++) {
 			const def = PIPELINE[i]!;
+			// U5 取消入口一（区间外取消）：进入任一 stage 前先探测 cancel token——段间取消即时响应，
+			// 含非 migrate 段；命中即走「清场 + 锁/目录回退装前 + 审计末位」语义（幂等、可重入）
+			if (req.cancel?.()) {
+				task.stage = def.name;
+				task.message = "安装已被用户取消（U5 取消安装）";
+				task.stages.push({ stage: def.name, ok: false, message: "安装已被用户取消（用户中止）" });
+				const postLock = !PRE_LOCK_STAGES.has(def.name);
+				task.status = postLock ? "partial" : "failed";
+				task.cancelled = true;
+				req.outcome = { ...req.outcome, status: task.status, cancelled: true, failedStage: def.name };
+				await cancelCleanup(req, lockBefore, lockExisted);
+				task.error = { reason: "安装已被用户取消（U5 取消安装）", retryable: true, hintKey: "lifecycle.stage.cancelled" };
+				break;
+			}
 			task.stage = def.name;
 			task.message = `执行中：${def.name}`;
 			await writeTask(req.taskDir, task);
@@ -462,6 +531,20 @@ export async function runInstall(req: InstallRequest): Promise<TaskRecord> {
 			task.stages.push({ stage: def.name, ok: r.ok, message: r.message });
 			if (task.appliedSeq === undefined && req.outcome?.appliedSeq != null) {
 				task.appliedSeq = req.outcome.appliedSeq;
+			}
+			// U5 取消安装（P3-8）：段内取消命中（migrating 段 spawn 流 h.kill 提前终止后返回 cancelled）。
+			// 先于通用失败分支处理——走「清场 + 锁/目录回退装前 + 审计末位」语义，终态取 failed（锁前）/
+			// partial（锁后），并打 cancelled 标记供 UI 区分「取消」与「失败」（D11 共用失败终态）
+			if (r.cancelled === true) {
+				task.stage = def.name;
+				task.message = r.message;
+				const postLock = !PRE_LOCK_STAGES.has(def.name);
+				task.status = postLock ? "partial" : "failed";
+				task.cancelled = true;
+				req.outcome = { ...req.outcome, status: task.status, cancelled: true, failedStage: def.name };
+				await cancelCleanup(req, lockBefore, lockExisted);
+				task.error = { reason: r.message, retryable: true, hintKey: "lifecycle.stage.cancelled" };
+				break;
 			}
 			if (!r.ok) {
 				task.stage = def.name;
@@ -548,6 +631,25 @@ export async function runInstall(req: InstallRequest): Promise<TaskRecord> {
 				status: task.status,
 				operator: req.operator ?? null,
 				message: task.status === "done" ? `安装完成：${req.name}@${req.version}` : `安装部分生效（status=partial）：${req.name}@${req.version}`,
+			});
+		}
+		// U5 取消安装（P3-8）：取消终态也须落终态审计（AC-P1-14 口径——取消/失败都要可观测）——审计末位、
+		// market_history 留痕；**不写 sidecar**（锁/目录已回退装前，sidecar 维持装前态，不记录本次未生效安装）。
+		if (task.cancelled === true) {
+			try {
+				const ar = await AUDIT_DEF.run(req);
+				task.stages.push({ stage: AUDIT_DEF.name, ok: ar.ok, message: ar.message });
+			}
+			catch (e) {
+				task.stages.push({ stage: AUDIT_DEF.name, ok: true, message: `终态审计失败仅记日志：${String(e)}` });
+			}
+			await recordHistory({
+				solution: req.name,
+				version: req.version,
+				action: "install",
+				status: task.status,
+				operator: req.operator ?? null,
+				message: `安装已取消（U5 取消安装）：${req.name}@${req.version}`,
 			});
 		}
 		if (task.status === "done") {

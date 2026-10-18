@@ -34,6 +34,8 @@ export interface StageResult {
 	ok: boolean
 	message: string
 	retryable?: boolean
+	/** 取消安装（U5，P3-8）：本 stage 被用户中止，运行器据其走「清场 + 锁/目录回退装前 + 审计末位」语义 */
+	cancelled?: boolean
 	/** 签名失败六码（P2-3，契约附录 A.2；缺省 = 非签名类失败） */
 	code?: SigCode
 	/** 未知 key_id 待 TOFU 确认：任务停 needs_trust 终态，staging 不清场供确认后重试 */
@@ -87,4 +89,6 @@ export interface TaskRecord {
 	finishedAt?: number
 	/** 本次迁移 applied max seq（migrating 段捕获；reconcile 账本对账 floor 依据） */
 	appliedSeq?: number
+	/** 取消安装标记（U5，P3-8）：用户中止触发的终态（status 仍取 failed/partial——D11 共用失败终态，此标记供 UI 区分「取消」与「失败」） */
+	cancelled?: boolean
 }
