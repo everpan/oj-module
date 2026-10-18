@@ -1,0 +1,58 @@
+import type { KeyPair } from "../keygen";
+// 签名链测试 helper（P2-1）：测试运行时算摘要与签名，替代硬编码常量。
+// 消费方：P2-3 起全部安装路径用例（G4 下未签名夹具必被打红，P2-16 全量改造的替换件）。
+import { Buffer } from "node:buffer";
+import { createHash } from "node:crypto";
+import { generateKeyPair } from "../keygen";
+import { CANON, canonicalString, fingerprintOfPublicKey, SIG_ALG, signCanonical } from "../sign";
+
+/** detached 侧车 / Form B archive.signature 的字段形状（契约 §2.11 / C2-35） */
+export interface SigFile {
+	alg: string
+	key_id: string
+	public_key: string
+	value: string
+	canon: string
+}
+
+export interface SignedArchive {
+	/** 与包体匹配的 .sig 对象（上传/写盘即此 JSON） */
+	sig: SigFile
+	keyId: string
+	publicKeyHex: string
+	fingerprint: string
+	/** 生成用的密钥对（测试自行加入信任库或用于未知 key 场景） */
+	keyPair: KeyPair
+}
+
+let defaultKey: KeyPair | null = null;
+
+/** 进程内稳定的默认测试 key（每测试文件首次用时生成；跨文件不共享——无共享秘密） */
+export function defaultTestKey(): KeyPair {
+	defaultKey ??= generateKeyPair();
+	return defaultKey;
+}
+
+/**
+ * 对 tgz 字节签名：sha256(bytes) → 规范串 → Ed25519 → .sig 五字段。
+ * `keyPair` 缺省 = defaultTestKey()；传第二个 keyPair 即「未知发布方」场景。
+ */
+export function signedArchiveFor(tgz: Uint8Array, name: string, version: string, opts?: { keyPair?: KeyPair, keyId?: string }): SignedArchive {
+	const keyPair = opts?.keyPair ?? defaultTestKey();
+	const sha256 = createHash("sha256").update(tgz).digest("hex");
+	const value = signCanonical(keyPair.privateKeyPem, canonicalString(name, version, sha256));
+	return {
+		sig: { alg: SIG_ALG, key_id: opts?.keyId ?? "test.publisher", public_key: keyPair.publicKeyHex, value, canon: CANON },
+		keyId: opts?.keyId ?? "test.publisher",
+		publicKeyHex: keyPair.publicKeyHex,
+		fingerprint: fingerprintOfPublicKey(keyPair.publicKeyHex),
+		keyPair,
+	};
+}
+
+/** 便捷重载：直接给 Buffer（node fs 读出的常见形态） */
+export function signedArchiveForBuffer(tgz: Buffer, name: string, version: string, opts?: { keyPair?: KeyPair, keyId?: string }): SignedArchive {
+	return signedArchiveFor(new Uint8Array(tgz), name, version, opts);
+}
+
+export { Buffer };
