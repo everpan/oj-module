@@ -7,7 +7,7 @@
 // 留档：logs/walkthrough-P1-16-fullchain.md（逐 AC 请求/响应全录）。
 import { Buffer } from "node:buffer";
 import { spawn, spawnSync } from "node:child_process";
-import { createHash, createSign, generateKeyPairSync, randomBytes } from "node:crypto";
+import { createHash, createSign, sign as edSign, generateKeyPairSync, randomBytes } from "node:crypto";
 import { appendFileSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import * as fsp from "node:fs/promises";
 import http from "node:http";
@@ -25,7 +25,7 @@ const CDN_BASE = "http://127.0.0.1:9782";
 const OJ_BIN = process.env.OJ_BIN ?? `${process.env.HOME}/.local/share/oj/oj`;
 const OJ_MARKET_TGZ = process.env.OJ_MARKET_TGZ ?? "/tmp/oj-market-walk/dist/oj-market-0.1.0.tgz";
 const KEEP = process.argv.includes("--keep");
-const TRANSCRIPT = path.join(ROOT, "logs", "walkthrough-P1-16-fullchain.md");
+const TRANSCRIPT = path.join(ROOT, "logs", "walkthrough-P2-16-fullchain.md"); // P2-16 留档（P1 期产物 walkthrough-P1-16-fullchain.md 保留不动）
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 const transcript = [];
@@ -44,6 +44,22 @@ function mintDevCert(certDir) {
 	writeFileSync(path.join(certDir, "private.pem"), privateKey.export({ type: "pkcs8", format: "pem" }));
 	writeFileSync(path.join(certDir, "public.pem"), publicKey.export({ type: "spki", format: "pem" }));
 	writeFileSync(path.join(certDir, "cert.jws"), `${signingInput}.${sig}`);
+}
+
+// ── Ed25519 签名链（P2-16：契约 v1.3 §2.11 canonical = <name>@<version>:<sha256hex>）──
+const WALK_KEY = (() => {
+	const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+	const der = publicKey.export({ format: "der", type: "spki" });
+	return {
+		keyId: "walk.publisher",
+		publicKeyHex: Buffer.from(der.subarray(der.length - 32)).toString("hex"),
+		privateKeyObj: privateKey,
+	};
+})();
+function sigFor(name, version, tgzBytes) {
+	const canonical = `${name}@${version}:${createHash("sha256").update(tgzBytes).digest("hex")}`;
+	const value = edSign(null, Buffer.from(canonical, "utf8"), WALK_KEY.privateKeyObj).toString("base64");
+	return { alg: "Ed25519", key_id: WALK_KEY.keyId, public_key: WALK_KEY.publicKeyHex, value, canon: "v1" };
 }
 
 // ── HTTP 客户端（oj 信封；恒 10s 超时）──
@@ -67,7 +83,7 @@ async function pollTask(id, tk, { timeoutMs = 90_000 } = {}) {
 	const t0 = Date.now();
 	for (;;) {
 		const r = await api(`/api/_platform/market/task?id=${id}`, { token: tk });
-		if (["done", "failed", "partial"].includes(r.data?.status))
+		if (["done", "failed", "partial", "needs_trust"].includes(r.data?.status))
 			return r.data;
 		if (Date.now() - t0 > timeoutMs)
 			throw new Error(`task ${id} 轮询超时`);
@@ -194,7 +210,10 @@ async function main() {
 		peerRuntime: ">=0.0.0",
 		peerOj: ">=0.1.78",
 		peerFramework: ">=0.2.4",
-		peerPlatform: ">=1.0.0",
+		// P2-16 实证备注：oj-market 仓 manifest 声明 peerPlatform >=1.0.0，宿主 API_VERSION=0.1.0 →
+		// C2-11 预检拒（P2-9 强制生效的真机首证，e2e 前置版本已在案）。走查镜像按宿主口径修订为
+		// >=0.1.0（其仓收口时同步；本走查验的是签名链/TOFU/深检语义，非 C2-11）。
+		peerPlatform: ">=0.1.0",
 		api: { module: "oj-market", prefix: "/api/oj-market", tables: ["note", "market_history"], deps: { _platform: ">=0.1.0" }, anonymous: ["oj-market/ping"] },
 		web: { route_prefix: "/oj-market", entry: "modules/oj-market/0.1.0/entry.js", integrity: "sha384-KU1QC9B9tr+ytO94iON/LGpXt7y4FZgxLdtxEvHjW/3etI3GMiw2tvZFwHB+nbE1", css: [] },
 		permissions: [{ code: "oj-market.view", title_key: "oj-market:perm.view" }],
@@ -202,7 +221,7 @@ async function main() {
 		routes: [{ path: "/oj-market", category: "main", order: 200, title_key: "oj-market:menu.main" }],
 		health: "/oj-market/ping",
 		settings: { groups: [{ group: "display", label_key: "oj-market:settings.group.display", items: [{ key: "oj-market.display.greeting", type: "string", default: "hello", label_key: "oj-market:settings.display.greeting" }] }] },
-		archive: { file: "oj-market-0.1.0.tgz", sha256: sha, size },
+		archive: { file: "oj-market-0.1.0.tgz", sha256: sha, size, signature: sigFor("oj-market", "0.1.0", tgz) },
 	};
 	writeFileSync(path.join(CDN_DIR, "bundles.yaml"), JSON.stringify({ generated_at: new Date().toISOString(), cdn: CDN_BASE, solutions: [{ name: "oj-market", latest: "0.1.0", versions: [{ version: "0.1.0", file: "oj-market-0.1.0.tgz", sha256: sha, size }] }] }, null, 2));
 	writeFileSync(path.join(CDN_DIR, "manifests.yaml"), JSON.stringify([bundleManifest], null, 2));
@@ -229,11 +248,38 @@ async function main() {
 	const row = (index.data ?? []).find(r => r.name === "oj-market");
 	ac(1, "卡片索引非空", index.status === 200 && (index.data ?? []).length > 0, `curl $BASE/api/_platform/market/index → ${index.status}，rows=${(index.data ?? []).length}，oj-market.latest=${row?.latest}`);
 
-	// ── AC2 安装（cdn latest）→ done ──
+	// ── AC-P2-1 未签名装不上（G4 fail-closed）：摘除 manifest 签名 → sig_missing 拒；锁零改动 ──
+	const signedManifests = readFileSync(path.join(CDN_DIR, "manifests.yaml"), "utf8");
+	const unsigned = JSON.parse(signedManifests);
+	delete unsigned[0].archive.signature;
+	writeFileSync(path.join(CDN_DIR, "manifests.yaml"), JSON.stringify(unsigned, null, 2));
+	const tU = await install("oj-market", "", token);
+	const lockU = await readText(path.join(API, "dist", "manifests.yaml"));
+	const unsignedMsg = `${tU.message ?? ""} ${tU.stages?.map(x => x.message ?? "").join(" ") ?? ""}`;
+	ac("P2-1", "未签名装不上（sig_missing，零落盘）", tU.status === "failed" && tU.stage === "verifying" && unsignedMsg.includes("sig_missing") && !String(lockU).includes("oj-market"), `install（无签名 manifest）→ ${tU.status}@${tU.stage}；锁含 oj-market=${String(lockU).includes("oj-market")}；msg=${unsignedMsg.slice(0, 90)}`);
+	writeFileSync(path.join(CDN_DIR, "manifests.yaml"), signedManifests);
+
+	// ── AC-P2-2 篡改包不落盘：服务侧翻转 tgz 字节 → 实收 sha ≠ 索引声明 → failed@verifying ──
+	const honestTgz = readFileSync(path.join(CDN_DIR, "oj-market-0.1.0.tgz"));
+	const corrupt = Buffer.from(honestTgz);
+	corrupt[16] ^= 0xFF;
+	writeFileSync(path.join(CDN_DIR, "oj-market-0.1.0.tgz"), corrupt);
+	const tT = await install("oj-market", "", token);
+	const lockT = await readText(path.join(API, "dist", "manifests.yaml"));
+	const tamperedMsg = `${tT.message ?? ""} ${tT.stages?.map(x => x.message ?? "").join(" ") ?? ""}`;
+	ac("P2-2", "篡改包不落盘（sha 不符拒@verifying）", tT.status === "failed" && tT.stage === "verifying" && !String(lockT).includes("oj-market"), `install（篡改 tgz）→ ${tT.status}@${tT.stage}；锁含 oj-market=${String(lockT).includes("oj-market")}；msg=${tamperedMsg.slice(0, 90)}`);
+	writeFileSync(path.join(CDN_DIR, "oj-market-0.1.0.tgz"), honestTgz);
+
+	// ── AC2 安装（cdn latest；陌生发布方 → TOFU 确认 → done）──
+	const t2a = await install("oj-market", "", token);
+	if (t2a.status !== "needs_trust")
+		throw new Error(`TOFU 首装终态=${t2a.status}（期望 needs_trust）：${t2a.message}`);
+	log(`- TOFU：needs_trust 指纹=${t2a.trust?.fingerprint?.slice(0, 16)}… key_id=${t2a.trust?.key_id}`);
+	const confirm = await api("/api/_platform/market/trust", { method: "POST", token, body: { task_id: t2a.id } });
 	const t2 = await install("oj-market", "", token);
 	const ping2 = await fetch(`${BASE}/api/oj-market/ping`, { signal: AbortSignal.timeout(10_000) }).then(r => r.status).catch(e => String(e));
 	const lock2 = await readText(path.join(API, "dist", "manifests.yaml"));
-	ac(2, "install(latest) → task done", t2.status === "done", `install oj-market@latest → ${t2.status}；task_id=${t2.error ? "" : "(见 logs)"} 锁含 oj-market=${String(lock2).includes("oj-market: 0.1.0")}；/api/oj-market/ping=${ping2}（未重启）${t2.stages ? `；stages=${t2.stages.map(s => `${s.stage}:${s.ok ? "ok" : "fail"}`).join(",")}` : ""}`);
+	ac(2, "install(latest)：TOFU 确认后 → task done", t2.status === "done" && confirm.status === 200, `install → needs_trust → POST trust{task_id}=${confirm.status} → 重装 ${t2.status}；锁含 oj-market: 0.1.0=${String(lock2).includes("oj-market: 0.1.0")}；/api/oj-market/ping=${ping2}（未重启，restart_pending）${t2.stages ? `；stages=${t2.stages.map(x => `${x.stage}:${x.ok ? "ok" : "fail"}`).join(",")}` : ""}`);
 
 	// ── AC3 禁用（锁摘除）──
 	const off = await api("/api/_platform/market/enable", { method: "POST", token, body: { name: "oj-market", enabled: false } });
@@ -245,9 +291,34 @@ async function main() {
 	const lockOn = await readText(path.join(API, "dist", "manifests.yaml"));
 	ac(4, "启用四处同写（锁恢复）", on.data?.ok === true && String(lockOn).includes("oj-market: 0.1.0"), `POST enable{enabled:true} → ok=${on.data?.ok}；锁恢复=${String(lockOn).includes("oj-market: 0.1.0")}`);
 
+	// ── AC-P2-6 匿名握手（restart 后生效：anonymous_paths 热改属 restart_pending，S1-5）──
+	await stopSite();
+	await startSite();
+	const pingAnon = await fetch(`${BASE}/api/oj-market/ping`, { signal: AbortSignal.timeout(10_000) }).then(r => r.status).catch(e => String(e));
+	ac("P2-6", "匿名握手（重启后无凭据 200）", pingAnon === 200, `重启 oj serve → GET /api/oj-market/ping（无 Authorization）→ ${pingAnon}（config 预声明 + P2-15 接线幂等并存；S1-5 restart_pending 语义实证）`);
+
 	// ── AC5 升级（再装 latest；CDN 仅 0.1.0 → no-op 重装收敛）──
 	const t5 = await install("oj-market", "", token);
 	ac(5, "install(latest) 升级", t5.status === "done", `install oj-market@latest → ${t5.status}（CDN 单版本 0.1.0：no-op 重装收敛，R12 升级=重装到 latest 的 P1 口径）`);
+
+	// ── AC-P2-3 吊销后拒升级（G5：revoked = unknown → needs_trust；锁版本不动）+ 恢复 ──
+	const rev = await api("/api/_platform/market/trust/key?key_id=walk.publisher", { method: "DELETE", token });
+	const tRev = await install("oj-market", "", token);
+	const lockRev = await readText(path.join(API, "dist", "manifests.yaml"));
+	ac("P2-3", "吊销后拒升级（needs_trust，锁版本不动）", rev.data?.revoked === true && tRev.status === "needs_trust" && String(lockRev).includes("oj-market: 0.1.0"), `DELETE trust/key → revoked=${rev.data?.revoked}；install → ${tRev.status}；锁含 0.1.0=${String(lockRev).includes("oj-market: 0.1.0")}`);
+	await api("/api/_platform/market/trust/key", { method: "POST", token, body: { key_id: WALK_KEY.keyId, public_key: WALK_KEY.publicKeyHex } }); // 恢复信任（AC5/AC7 无依赖，落库留证）
+
+	// ── AC-P2-4 深检（报告结构 + verify/last）──
+	const vf = await api("/api/_platform/solutions/verify?name=oj-market", { method: "POST", token });
+	const vfLast = await api("/api/_platform/solutions/verify/last?name=oj-market", { token });
+	// 语义同 e2e P2-6：API-only 走查站点无 SPA 宿主 → routes 404 被深检如实上报（ok=false 是检测能力的证据）
+	const vfRoutes = (vf.data?.checks ?? []).filter(c => c.id === "routes");
+	ac("P2-4", "深检报告 {ok,checks,advise} + verify/last（如实检出 routes 不可达）", vf.status === 200 && typeof vf.data?.ok === "boolean" && vfRoutes.length >= 1 && vfRoutes.every(c => c.severity === "error" && c.advise_key === "lifecycle.verify.routes.anomaly") && vfLast.status === 200 && vfLast.data?.ok === vf.data?.ok, `verify=${vf.status} ok=${vf.data?.ok}（API-only 站点 → routes 404 如实上报）checks=${JSON.stringify(vf.data?.checks)?.slice(0, 200)} last=${vfLast.status}`);
+
+	// ── AC-P2-5 索引聚合（available[]/trust_state/key_id/operator，P2-11 扩展）──
+	const idxP2 = await api("/api/_platform/market/index", { token });
+	const om = (idxP2.data ?? []).find(r => r.name === "oj-market");
+	ac("P2-5", "索引聚合字段齐", idxP2.status === 200 && Array.isArray(om?.available) && om.trust_state === "trusted" && om.key_id === WALK_KEY.keyId, `available=${JSON.stringify(om?.available)} trust=${om?.trust_state} key=${om?.key_id} operator=${om?.operator}`);
 
 	// ── AC6 回滚（显式旧版 1.0.0）：文档期望 done 或 failed（R12 可读 reason）。CDN 索引仅 0.1.0
 	// （oj-market 从未发布 1.0.0 包），resolveCdn 404 可读拒 = failed 分支（文档「已知边界」在案：
@@ -294,7 +365,7 @@ async function main() {
 		log(`\n## market_history 全量（sqlite 直读）\n\n- 读取失败：${String(e).slice(0, 200)}`);
 	}
 
-	log(`\n## 结果\n\n- ${outcomes.filter(o => o.pass).length}/${outcomes.length} PASS${outcomes.every(o => o.pass) ? "（全绿）" : "（存在 FAIL）"}`);
+	log(`\n## 结果（AC0-7 + AC-P2-1~6）\n\n- ${outcomes.filter(o => o.pass).length}/${outcomes.length} PASS${outcomes.every(o => o.pass) ? "（全绿）" : "（存在 FAIL）"}`);
 }
 
 try {

@@ -15,6 +15,7 @@
 import type { FetchFace } from "../_lifecycle/steps/download";
 import type { ExecFace } from "../_lifecycle/steps/extract";
 import type { ReloadFace } from "../_lifecycle/steps/reload";
+import type { FetchInitFace } from "../_shared/site-facade";
 import { fsFace } from "../_lifecycle/atomic";
 import { latestAppliedSeqOf, reconcile, runInstall, setEnabled } from "../_lifecycle/installer";
 import { compareVersions } from "../_lifecycle/semver";
@@ -27,17 +28,16 @@ import { createTrustStore } from "../_lifecycle/trust";
 import { computeUninstallImpact, runUninstall } from "../_lifecycle/uninstall";
 import { respond } from "../_shared/respond";
 import { assertSuperAdmin } from "../_shared/service/access";
+import { journalHeadOf, siteOrigin, withSiteOrigin } from "../_shared/site-facade";
 import { BOOTSTRAP_KEY, seedBootstrapKey } from "./bootstrap";
+
+// 站点编排面共享真源落 _shared/site-facade（P2-16 真机构建钉出：api.ts 是路由入口不可被模块内
+// import）；此处 re-export 保持既有引用面（market-api.spec / 历史 import 路径）不变。
+export { journalHeadOf, siteOrigin, withSiteOrigin };
+export type { FetchInitFace };
 
 /** 平台编排面版本（镜像 _platform/manifest.yaml version；peerPlatform 预检口径，manifest 升版须同步） */
 const API_VERSION = "0.1.0";
-
-/** 带缓存指令的拉取面（FetchFace 的超集：oj 全局 fetch/测试 stub 天然满足，少参函数可赋多参形） */
-export type FetchInitFace = (url: string, init?: { headers?: Record<string, string>, redirect?: string }) => Promise<{
-	ok: boolean
-	status: number
-	arrayBuffer: () => Promise<ArrayBuffer>
-}>;
 
 export interface MarketEnv {
 	/** 共享根（manifests.yaml 所在目录 = 版本目录父级，D3 单 mount 形态） */
@@ -160,32 +160,6 @@ function execOf(env: MarketEnv): ExecFace {
 	return env.exec ?? { run: (argv, opts) => g.exec!.run(argv, opts) };
 }
 
-/**
- * smoke 探针同源补全（P1-16 接线④）：isolate fetch = deno_fetch（出站客户端，无同源 base），
- * smoke 段相对探针 URL（probeUrlOf 契约形态）恒 TypeError——探活永不通过（凡带非匿名路由的方案
- * release 必 partial，e2e 真机实测）。http.headers.host 在场时按请求源补全为绝对 URL（反代取
- * x-forwarded-proto）；无 Host（CLI/测试注入面）原样透传。
- */
-/** 站点源（SSRF 钉②：x-forwarded-proto 取首个、去空白）。非请求上下文（CLI/测试无 Host）→ null */
-export function siteOrigin(): { proto: string, host: string } | null {
-	const h = (http as { headers?: Record<string, string | undefined> }).headers ?? {};
-	const host = h.host;
-	if (!host) {
-		return null;
-	}
-	const proto = String(h["x-forwarded-proto"] ?? "http").split(",")[0]!.trim() || "http";
-	return { proto, host };
-}
-
-/** 站点源补全（深检探针复用 siteOrigin；相对 URL → 绝对同源 URL） */
-export function withSiteOrigin(fetch: FetchInitFace): FetchFace {
-	const o = siteOrigin();
-	if (o === null) {
-		return fetch as FetchFace;
-	}
-	return url => fetch(/^https?:\/\//i.test(url) ? url : `${o.proto}://${o.host}${url}`) as ReturnType<FetchFace>;
-}
-
 function reloadOf(env: MarketEnv): ReloadFace {
 	const g = globalThis as { server?: { reloadConfig: ReloadFace["reloadConfig"] } };
 	return env.reload ?? { reloadConfig: () => g.server!.reloadConfig() };
@@ -234,18 +208,6 @@ async function operatorOf(): Promise<string | null> {
 	try {
 		const u = await db.query("select username from users where id = ?", [uid]) as Array<{ username: string }>;
 		return u[0]?.username ?? null;
-	}
-	catch {
-		return null;
-	}
-}
-
-/** 站点迁移账本 head（oj journal 真源 `_oj_migrations`；表缺失/查询失败 → null = 跳过禁降版判定，不猜） */
-export async function journalHeadOf(name: string): Promise<number | bigint | null> {
-	try {
-		const rows = await db.query("select max(version) as head from _oj_migrations where module = ?", [name]) as Array<{ head: unknown }>;
-		const head = rows[0]?.head;
-		return head == null ? null : Number(head);
 	}
 	catch {
 		return null;

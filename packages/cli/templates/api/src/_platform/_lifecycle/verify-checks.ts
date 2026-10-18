@@ -1,4 +1,4 @@
-import type { FetchInitFace } from "../market/api";
+import type { FetchInitFace } from "../_shared/site-facade";
 // 深检后端四项（P2-7，C2-42）+ SSRF 防护钉（R9 纪律：全程不触 exec，迁移账本走 db.query + journalHeadOf）。
 // 职责（ISP）：纯 diff 函数（diffPermRows/diffSettingRows/diffLedger）与 I/O 探针（verifyRouteReachability）
 // 分离；端点只编排取参 + 调四项 + 组装 checks（报告结构/persist/trust 项归 P2-8）。

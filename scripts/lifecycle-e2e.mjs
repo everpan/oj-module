@@ -11,7 +11,7 @@
 //   → 禁用/启用（AC6）→ 恶意 tgz / 契约违规拒装（AC8/10/11）→ release 重启不拒启（AC2）→ 报告（AC18/20 汇总）。
 import { Buffer } from "node:buffer";
 import { spawn, spawnSync } from "node:child_process";
-import { createHash, createSign, generateKeyPairSync, randomBytes } from "node:crypto";
+import { createHash, createSign, sign as edSign, generateKeyPairSync, randomBytes } from "node:crypto";
 import { appendFileSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import * as fsp from "node:fs/promises";
 import http from "node:http";
@@ -36,7 +36,8 @@ const sha256 = d => createHash("sha256").update(d).digest("hex");
 const results = [];
 function ac(id, name, pass, evidence) {
 	results.push({ id, name, pass, evidence });
-	console.log(`${pass ? "PASS" : "FAIL"} AC-P1-${id}\t${name}\t— ${evidence}`);
+	const tag = String(id).startsWith("P2") ? "AC-" : "AC-P1-";
+	console.log(`${pass ? "PASS" : "FAIL"} ${tag}${id}\t${name}\t— ${evidence}`);
 }
 function must(cond, msg) {
 	if (!cond)
@@ -53,6 +54,31 @@ function mintDevCert(certDir) {
 	writeFileSync(path.join(certDir, "private.pem"), privateKey.export({ type: "pkcs8", format: "pem" }));
 	writeFileSync(path.join(certDir, "public.pem"), publicKey.export({ type: "spki", format: "pem" }));
 	writeFileSync(path.join(certDir, "cert.jws"), `${signingInput}.${sig}`);
+}
+
+// ── Ed25519 签名链（P2-3 契约 v1.3 §2.11：canonical = <name>@<version>:<sha256hex>；G4 硬 fail-closed）──
+const E2E_KEY = (() => {
+	const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+	const der = publicKey.export({ format: "der", type: "spki" });
+	return {
+		keyId: "e2e.publisher",
+		publicKeyHex: Buffer.from(der.subarray(der.length - 32)).toString("hex"),
+		privateKeyObj: privateKey,
+	};
+})();
+const STRANGER_KEY = (() => {
+	const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+	const der = publicKey.export({ format: "der", type: "spki" });
+	return {
+		keyId: "stranger.publisher",
+		publicKeyHex: Buffer.from(der.subarray(der.length - 32)).toString("hex"),
+		privateKeyObj: privateKey,
+	};
+})();
+function sigFor(name, version, tgzBytes, key = E2E_KEY) {
+	const canonical = `${name}@${version}:${sha256(tgzBytes)}`;
+	const value = edSign(null, Buffer.from(canonical, "utf8"), key.privateKeyObj).toString("base64");
+	return { alg: "Ed25519", key_id: key.keyId, public_key: key.publicKeyHex, value, canon: "v1" };
 }
 
 // ── HTTP 小客户端（oj 信封 {data,...}；恒 10s 超时——站点死亡快速失败不挂死）──
@@ -76,7 +102,7 @@ async function pollTask(id, token, { timeoutMs = 90_000 } = {}) {
 	const t0 = Date.now();
 	for (;;) {
 		const r = await api(`/api/_platform/market/task?id=${id}`, { token });
-		if (["done", "failed", "partial"].includes(r.data?.status))
+		if (["done", "failed", "partial", "needs_trust"].includes(r.data?.status))
 			return r.data;
 		if (Date.now() - t0 > timeoutMs)
 			throw new Error(`task ${id} 轮询超时：${JSON.stringify(r.json)?.slice(0, 300)}`);
@@ -112,13 +138,13 @@ function startCdn(dir, port) {
 }
 
 // ── 方案包构建（§2.9 单根布局；0.1.0/0.2.0 迁移递进）──
-function solutionManifest(v, sha, size) {
+function solutionManifest(v, sha, size, sig = null) {
 	return {
 		name: "demo-solution",
 		version: v,
 		summary: "e2e demo solution",
 		peerRuntime: ">=0.1.0",
-		archive: { file: `demo-solution-${v}.tgz`, sha256: sha, size },
+		archive: { file: `demo-solution-${v}.tgz`, sha256: sha, size, ...(sig ? { signature: sig } : {}) },
 		health: "/demo-solution/ping",
 		api: { prefix: "/api/demo-solution", anonymous: ["demo-solution/ping"] },
 		web: { entry: `modules/demo-solution/${v}/entry.js`, css: [`modules/demo-solution/${v}/main.css`] },
@@ -172,7 +198,7 @@ function buildCdnBundles() {
 		rmSync(path.join(stage, "a.tgz"));
 		rmSync(path.join(stage, "b.tgz"));
 		writeFileSync(path.join(CDN_DIR, `demo-solution-${v}.tgz`), a.bytes);
-		manifests.push(solutionManifest(v, a.sha, a.size));
+		manifests.push(solutionManifest(v, a.sha, a.size, sigFor("demo-solution", v, a.bytes)));
 		versions.push({ version: v, file: `demo-solution-${v}.tgz`, sha256: a.sha, size: a.size });
 		results.push({ id: "18", name: "确定性 tgz（同树两次 tar sha 一致）", pass: a.sha === b.sha, evidence: `demo-solution-${v} sha=${a.sha.slice(0, 12)}…` });
 	}
@@ -212,6 +238,7 @@ function buildCdnBundles() {
 	const eb = tarCzf(evilStage, "evil-pack-1.0.0.tgz", ["evil-pack-1.0.0", "evil.js"], ["-s", ",^evil\\.js$,../evil.js,"]);
 	evilB.archive.sha256 = eb.sha;
 	evilB.archive.size = eb.size;
+	evilB.archive.signature = sigFor("evil-pack", "1.0.0", eb.bytes); // P2-3 起 verify 先于 extracting：zip-slip 场景须签名在场才可到达 R1 守卫
 	writeFileSync(path.join(CDN_DIR, "evil-pack-1.0.0.tgz"), eb.bytes);
 	writeFileSync(path.join(CDN_DIR, "evil-solution-9.9.9.tgz"), Buffer.from("never-downloaded\n"));
 	// evil 方案也须进索引（resolveCdn 先查 bundles.yaml，缺条目 404 挡在 preflight 之前——
@@ -220,8 +247,56 @@ function buildCdnBundles() {
 		{ name: "evil-solution", latest: "9.9.9", versions: [{ version: "9.9.9", file: "evil-solution-9.9.9.tgz", sha256: evilA.archive.sha256, size: evilA.archive.size }] },
 		{ name: "evil-pack", latest: "1.0.0", versions: [{ version: "1.0.0", file: "evil-pack-1.0.0.tgz", sha256: eb.sha, size: eb.size }] },
 	);
+	// ── P2-16 签名链三态夹具（nosig 未签名 / tampered 篡改 / stranger 陌生方 TOFU）──
+	function simpleManifest(name, v, sha, size, sig) {
+		return {
+			name,
+			version: v,
+			summary: `e2e ${name}`,
+			peerRuntime: ">=0.1.0",
+			archive: { file: `${name}-${v}.tgz`, sha256: sha, size, ...(sig ? { signature: sig } : {}) },
+			api: { prefix: `/api/${name}`, anonymous: [] },
+			web: { entry: `modules/${name}/${v}/entry.js` },
+			routes: [{ path: `/${name}`, category: "hidden", order: 260, title_key: `${name}:menu.main` }],
+			permissions: [{ code: `${name}.view`, title_key: `${name}:perm.view` }],
+			roles: [{ name: `${name}.viewer`, title_key: `${name}:role.viewer`, permissions: [`${name}.view`] }],
+			settings: { groups: [] },
+		};
+	}
+	function buildSimple(stageDir, name, v) {
+		const mod = path.join(stageDir, `${name}-${v}`, "api", `${name}-${v}`);
+		const web = path.join(stageDir, `${name}-${v}`, "web", "modules", name, v);
+		mkdirSync(path.join(mod, "migrations"), { recursive: true });
+		mkdirSync(path.join(mod, "ping"), { recursive: true });
+		mkdirSync(web, { recursive: true });
+		writeFileSync(path.join(stageDir, `${name}-${v}`, "manifest.yaml"), JSON.stringify(simpleManifest(name, v, "", 0)));
+		writeFileSync(path.join(mod, "manifest.yaml"), `name: ${name}\ndesc: e2e ${name}\nversion: ${v}\n`);
+		writeFileSync(path.join(mod, "routes.js"), `export default [{ method: "get", pattern: "${name}/ping", file: "ping/api.js" }];\n`);
+		writeFileSync(path.join(mod, "ping", "api.js"), `export default { async get() { return { pong: true, module: "${name}" }; } };\n`);
+		writeFileSync(path.join(mod, "migrations", "0001__init.sql"), `CREATE TABLE ${name.replace(/-/g, "_")}_note (id INTEGER PRIMARY KEY);\n`);
+		writeFileSync(path.join(web, "entry.js"), `console.log("${name} ${v}");\n`);
+	}
+	const p2Variants = [];
+	for (const [name, v, key] of [["nosig-solution", "1.0.0", null], ["tampered-solution", "1.0.0", E2E_KEY], ["stranger-solution", "1.0.0", STRANGER_KEY]]) {
+		const stage = path.join(CDN_DIR, `stage-${name}`);
+		mkdirSync(stage, { recursive: true });
+		buildSimple(stage, name, v);
+		const t = tarCzf(stage, `${name}-${v}.tgz`, [`${name}-${v}`]);
+		const sig = key ? sigFor(name, v, t.bytes, key) : null;
+		p2Variants.push(simpleManifest(name, v, t.sha, t.size, sig));
+		index.solutions.push({ name, latest: v, versions: [{ version: v, file: `${name}-${v}.tgz`, sha256: t.sha, size: t.size }] });
+		if (name === "tampered-solution") {
+			// 服务侧篡改：索引 sha = 原包；落盘字节翻转 1B → 实收 sha 不符（verify 段 fail-closed）
+			const corrupted = Buffer.from(t.bytes);
+			corrupted[10] ^= 0xFF;
+			writeFileSync(path.join(CDN_DIR, `${name}-${v}.tgz`), corrupted);
+		}
+		else {
+			writeFileSync(path.join(CDN_DIR, `${name}-${v}.tgz`), t.bytes);
+		}
+	}
 	writeFileSync(path.join(CDN_DIR, "bundles.yaml"), JSON.stringify(index, null, 2));
-	writeFileSync(path.join(CDN_DIR, "manifests.yaml"), JSON.stringify([...manifests, evilA, evilB], null, 2));
+	writeFileSync(path.join(CDN_DIR, "manifests.yaml"), JSON.stringify([...manifests, evilA, evilB, ...p2Variants], null, 2));
 }
 
 // ── 站点进程（oj serve release 形态）──
@@ -344,6 +419,9 @@ async function boot() {
 	// 市场地址（framework.market_cdn_url，security 组 super-only 写——AC-P1-16 后端位）
 	const put = await api("/api/system/settings", { method: "PUT", token, body: { key: "framework.market_cdn_url", value: CDN_BASE } });
 	must(put.status === 200, `设置写入失败：${put.status} ${JSON.stringify(put.json)?.slice(0, 200)}`);
+	// P2-16：发布方 key 预登记（G3 add 路径——demo 包签名方；stranger 留给 TOFU 场景）
+	const tk = await api("/api/_platform/market/trust/key", { method: "POST", token, body: { key_id: E2E_KEY.keyId, public_key: E2E_KEY.publicKeyHex } });
+	must(tk.status === 200, `trust/key 登记失败：${tk.status} ${JSON.stringify(tk.json)?.slice(0, 200)}`);
 }
 
 async function main() {
@@ -480,6 +558,35 @@ async function main() {
 	ac(10, "权限键越空间拒装（failed@preflight）", evilA.status === "failed" && evilA.stage === "preflight" && Number(evilRoutes) === 0 && Number(oplogEvil) === 0, `stage=${evilA.stage} routes=${evilRoutes} oplog=${oplogEvil}（锁前失败零审计）`);
 	ac(11, "匿名越段拒装（同包并报）", evilA.stage === "preflight" && evilAmsg.includes("othermod"), `violations 含 othermod/ping：${evilAmsg.slice(0, 100)}`);
 
+	// ── P2-16 签名链三态 + 深检 + 索引聚合（AC-P2-1~8）──
+	console.log("[phase] P2 sig-chain ...");
+	// P2-1 未签名拒（sig_missing fail-closed，零落盘）
+	const tNosig = await install("nosig-solution", "1.0.0", token);
+	const nosigMsg = `${tNosig.message ?? ""} ${tNosig.stages?.map(x => x.message ?? "").join(" ") ?? ""}`;
+	const nosigDirs = (await fsp.readdir(path.join(API, "dist"))).filter(d => d.startsWith("nosig"));
+	ac("P2-1", "未签名包拒装（sig_missing，零落盘）", tNosig.status === "failed" && tNosig.stage === "verifying" && nosigMsg.includes("sig_missing") && nosigDirs.length === 0, `stage=${tNosig.stage} dirs=${nosigDirs.length} msg=${nosigMsg.slice(0, 100)}`);
+	// P2-2 篡改拒（实收 sha ≠ 索引声明，零落盘）
+	const tTampered = await install("tampered-solution", "1.0.0", token);
+	const tamperedMsg = `${tTampered.message ?? ""} ${tTampered.stages?.map(x => x.message ?? "").join(" ") ?? ""}`;
+	const tamperedDirs = (await fsp.readdir(path.join(API, "dist"))).filter(d => d.startsWith("tampered"));
+	ac("P2-2", "篡改包拒装（sha 不符，零落盘）", tTampered.status === "failed" && tTampered.stage === "verifying" && tamperedDirs.length === 0, `stage=${tTampered.stage} dirs=${tamperedDirs.length} msg=${tamperedMsg.slice(0, 100)}`);
+	// P2-3 陌生方 TOFU：needs_trust → 确认入库 → 重装 done
+	const tStranger = await install("stranger-solution", "1.0.0", token);
+	must(tStranger.status === "needs_trust" && !!tStranger.trust?.fingerprint, `TOFU 终态=${tStranger.status} trust=${JSON.stringify(tStranger.trust)?.slice(0, 120)}`);
+	const strangerDirs = (await fsp.readdir(path.join(API, "dist"))).filter(d => d.startsWith("stranger"));
+	ac("P2-3", "陌生发布方 → needs_trust（指纹在场，staging 不清场）", tStranger.status === "needs_trust" && strangerDirs.length === 0, `fingerprint=${tStranger.trust?.fingerprint?.slice(0, 16)}… key_id=${tStranger.trust?.key_id} dirs=${strangerDirs.length}`);
+	const confirm = await api("/api/_platform/market/trust", { method: "POST", token, body: { task_id: tStranger.id } });
+	must(confirm.status === 200, `trust confirm 失败：${confirm.status} ${JSON.stringify(confirm.json)?.slice(0, 200)}`);
+	const tStranger2 = await install("stranger-solution", "1.0.0", token);
+	ac("P2-4", "TOFU 确认后重装 done（G3 双轨第二轨闭环）", tStranger2.status === "done", `confirm=${confirm.status} reinstall=${tStranger2.status}`);
+	// P2-5 吊销后拒升级（G5：revoked = unknown → needs_trust；版本不升）
+	const revoke = await api("/api/_platform/market/trust/key?key_id=e2e.publisher", { method: "DELETE", token });
+	must(revoke.status === 200, `吊销失败：${revoke.status}`);
+	const tRevoked = await install("demo-solution", "0.2.0", token);
+	const lockRevoked = await readText(path.join(API, "dist", "manifests.yaml"));
+	ac("P2-5", "吊销后拒装/拒升级（needs_trust，版本不动）", revoke.data?.revoked === true && tRevoked.status === "needs_trust" && lockRevoked.includes("demo-solution: 0.2.0"), `revoke=${revoke.data?.revoked} install=${tRevoked.status} lock=0.2.0（升级面本无新版：重装路径 verify 同样 fail-closed）`);
+	// 恢复信任（后续场景无依赖，落库留证）
+	await api("/api/_platform/market/trust/key", { method: "POST", token, body: { key_id: E2E_KEY.keyId, public_key: E2E_KEY.publicKeyHex } });
 	// ── release 重启不拒启（AC2）：带迁移模块 + 锁 0.1.0 + 账本 head=1 ──
 	await stopSite();
 	setMigrateOnStart("auto");
@@ -490,17 +597,35 @@ async function main() {
 	const index2 = await api("/api/_platform/market/index", { token });
 	ac(2, "release 重启不拒启（meta/菜单/路由/市场索引全可达）", meta2.status === 200 && (routes2.data ?? []).some(r => r.module === "demo-solution") && ping2 === 200 && index2.status === 200, `meta=${meta2.status} routes=${(routes2.data ?? []).length} ping=${ping2} index=${index2.status}`);
 
+	// ── P2-6/P2-7：深检语义裁决（真机）——本站点为 API-only 形态（无 SPA 静态宿主），
+	// web 路由探针 404 被深检**如实上报**（routes anomaly error → ok=false）＝检测能力在工作的
+	// 证据；「全绿」场景（探针 2xx）由 verify-checks.spec 单测钉面。端点报告结构 + verify/last
+	// 留档读取为 e2e 钉面。──
+	const verify = await api("/api/_platform/solutions/verify?name=demo-solution", { method: "POST", token });
+	const verifyLast = await api("/api/_platform/solutions/verify/last?name=demo-solution", { token });
+	const vdata = verify.data ?? {};
+	const routesChecks = (vdata.checks ?? []).filter(c => c.id === "routes");
+	ac("P2-6", "深检报告 {ok,checks,advise} + verify/last（如实检出 routes 不可达）", verify.status === 200 && typeof vdata.ok === "boolean" && routesChecks.length === 2 && routesChecks.every(c => c.severity === "error" && c.advise_key === "lifecycle.verify.routes.anomaly") && (vdata.advise ?? []).includes("lifecycle.verify.routes.anomaly") && verifyLast.status === 200 && verifyLast.data?.ok === vdata.ok && verifyLast.data?.checks?.length === vdata.checks?.length, `verify=${verify.status} ok=${vdata.ok}（API-only 站点无 SPA 宿主 → routes 404 如实上报）checks=${JSON.stringify(vdata.checks)?.slice(0, 220)} last=${verifyLast.status}`);
+	const indexP2 = await api("/api/_platform/market/index", { token });
+	const demoRow = (indexP2.data ?? []).find(r => r.name === "demo-solution");
+	ac("P2-7", "索引聚合（available[]/trust_state/key_id/operator）", indexP2.status === 200 && Array.isArray(demoRow?.available) && demoRow.available.length === 2 && demoRow.trust_state === "trusted" && demoRow.key_id === E2E_KEY.keyId, `available=${JSON.stringify(demoRow?.available)} trust=${demoRow?.trust_state} key=${demoRow?.key_id} operator=${demoRow?.operator}`);
+
 	// ── 报告 ──
 	const failed = results.filter(r => !r.pass);
 	const report = [
-		"# P1-16 e2e 报告（AC-P1-1~20）",
+		"# P2-16 e2e 报告（AC-P1-1~20 + AC-P2-1~7）",
 		"",
 		`- 日期：${new Date().toISOString()}`,
 		`- 宿主：${OJ_BIN}（${spawnSync(OJ_BIN, ["--version"], { encoding: "utf8" }).stdout.trim()}）`,
 		`- 现场：${KEEP ? `${WORK}（--keep 保留）` : "已清理"}；本报告：logs/lifecycle-e2e-report.md`,
 		`- 结果：${results.filter(r => r.pass).length}/${results.length} 绿${failed.length ? `，FAIL：${failed.map(f => f.id).join("、")}` : ""}`,
 		"",
-		...results.map(r => `${r.pass ? "✅" : "❌"} AC-P1-${r.id} ${r.name} — ${r.evidence ?? ""}`),
+		...results.map(r => `${r.pass ? "✅" : "❌"} AC-${r.id} ${r.name} — ${r.evidence ?? ""}`),
+		"",
+		"## P2 备案",
+		"- 签名链：CDN 全部合法包以 e2e.publisher（Ed25519）Form B 签名；发布方 key 经 POST trust/key 预登记（G3 add 路径）；stranger 走 TOFU 全闭环（needs_trust → confirm → 重装 done）。",
+		"- 匿名握手：demo-solution/ping 经 patchConfig 预声明（S1-5：anonymous_paths 热改属 restart_pending）+ P2-15 安装器接线幂等并存；AC2 重启后无凭据 200 即握手生效。",
+		"- P2-5 吊销语义：revoke 只阻断新装/重装（重装路径 verify 同样 fail-closed → needs_trust），已装方案继续运行（G5），sidecar trust_state 缓存不变。",
 		"",
 		"## 备案",
 		"- AC-P1-5：账本超前时的显式降级安装由宿主拒（oj migrate journal/filesystem 一致性，failed@migrating，锁零扰动）——回滚的用户通道 = 对账自愈回指（AC7）；no-op 重装（head==目标 seq）放行，rollbackGuard 的 applied[] 近似口径与 D11③ 文件级 max seq 校验为升级项（单测覆盖）。",

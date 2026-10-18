@@ -1,6 +1,6 @@
 import type { SolutionRouteRow, SolutionsEnv, VerifyItem } from "../_lifecycle/verify-checks";
 import type { VerifyReport } from "../_lifecycle/verify-report";
-import type { FetchInitFace } from "../market/api";
+import type { FetchInitFace } from "../_shared/site-facade";
 // 平台方案路由读端点 /api/_platform/solutions/routes（P1-14，R21 前端归并数据源）+ 深检端点
 // /api/_platform/solutions/verify?name=（P2-7，C2-42；admin 域、全程不触 exec）。
 // 登录即可、只读、无权限点（contacts/api.ts 同纪律）；读操作不记审计。
@@ -23,7 +23,7 @@ import {
 import { getLastReport, persistReport, verifyReportsDirOf } from "../_lifecycle/verify-report";
 import { respond } from "../_shared/respond";
 import { assertSystemAdmin } from "../_shared/service/access";
-import { journalHeadOf, siteOrigin } from "../market/api";
+import { journalHeadOf, siteOrigin } from "../_shared/site-facade";
 
 /** 线格式行（与 packages/runtime/src/api/rbac/types.ts 的 SolutionRouteRow 对齐） */
 export type { SolutionRouteRow } from "../_lifecycle/verify-checks";
