@@ -21,7 +21,7 @@ changelog: # C2-08（R27 市场卡片版本对比）
 peerRuntime: '>=0.0.0' # C2-09（P1 预检对宿主 versions.json 强制）
 peerOj: '>=0.1.76' # C2-10（P1 仅声明不强制）
 peerFramework: '>=0.2.4'
-peerPlatform: '>=1.0.0' # C2-11（P2 起对 /market/meta apiVersion 强制）
+peerPlatform: '>=0.1.0' # C2-11（P2 起对宿主 API_VERSION 强制；本仓 API_VERSION=0.1.0，夹具声明须可被其满足）
 
 api:
   module: demo-solution # C2-12（存在时必须 === name）

@@ -13,10 +13,13 @@ import type { ExecFace } from "../../src/_platform/_lifecycle/steps/extract";
 import type { ReloadFace } from "../../src/_platform/_lifecycle/steps/reload";
 import type { MarketEnv } from "../../src/_platform/market/api";
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import * as fsp from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { parse } from "yaml";
 import { defaultTestKey, nodeVerifyEd25519, signedArchiveFor } from "../../../../src/lifecycle/__tests__/helpers";
 import { readLock, writeLock } from "../../src/_platform/_lifecycle/lock";
 import { createStateStore } from "../../src/_platform/_lifecycle/state";
@@ -263,6 +266,17 @@ describe("权限门（R9：市场编排 superadmin 独占，meta 登录即可）
 		await api.meta.get();
 		expect(last?.status).toBe(200);
 		expect(last?.data).toEqual({ apiVersion: "0.1.0" });
+	});
+
+	it("pair-pin：meta apiVersion === _platform/manifest.yaml version（手工镜像漂移防护，P2-9）", async () => {
+		// API_VERSION（market/api.ts）与 _platform/manifest.yaml version 为手工同步的双真源；
+		// 本测试经 meta 端点间接钉住 API_VERSION，漂移即红（peerPlatform 预检口径失真）。
+		const manifestPath = join(dirname(fileURLToPath(import.meta.url)), "../../src/_platform/manifest.yaml");
+		const manifestVersion = (parse(readFileSync(manifestPath, "utf8")) as { version: string }).version;
+		const api = createMarketApi(makeEnv());
+		g.http = { user: { id: 1 } };
+		await api.meta.get();
+		expect((last?.data as { apiVersion?: string })?.apiVersion).toBe(manifestVersion);
 	});
 });
 

@@ -102,7 +102,7 @@ function rangeProblem(range: string): string | null {
 	return versionProblem(m[2]);
 }
 
-/** §2.2 P1 语义集求值：精确（裸/=）、>=、^（同主版本且 ≥） */
+/** §2.2 P1 语义集求值：精确（裸/=）、>=、^（标准 semver caret，0.x 下 minor 必须相等） */
 function rangeSatisfies(host: string, op: string | undefined, base: string): boolean {
 	const c = compareVersions(host, base);
 	if (op === undefined || op === "=") {
@@ -111,8 +111,45 @@ function rangeSatisfies(host: string, op: string | undefined, base: string): boo
 	if (op === ">=") {
 		return c >= 0;
 	}
-	// ^：同主版本且 ≥
-	return c >= 0 && host.split("-")[0].split(".")[0] === base.split("-")[0].split(".")[0];
+	// ^：标准 semver caret（见 caretSatisfies）——0.x 口径：^0.1.0 仅匹配 0.1.*，^0.2.0 不兼容 0.1.x
+	return caretSatisfies(host, base);
+}
+
+/** 取版本核心段 [major, minor, patch]（缺段补 0；prerelease 截断不参与比对）。非法返回 null。 */
+function coreParts(v: string): [number, number, number] | null {
+	const core = v.split("-")[0];
+	if (!/^\d+(?:\.\d+)*$/.test(core)) {
+		return null;
+	}
+	const parts = core.split(".").map(Number);
+	while (parts.length < 3) {
+		parts.push(0);
+	}
+	return [parts[0], parts[1], parts[2]];
+}
+
+/**
+ * semver caret 求值（P2-9 钉 0.x 口径）：
+ * - ^x.y.z（x>0）：x 同主版本且 ≥ 基线（即 x.*.*）
+ * - ^0.y.z（y>0）：主版本 0 且 minor == y 且 ≥ 基线（即 0.y.*）
+ * - ^0.0.z：仅 0.0.z 本身（prerelease 截断，不参与比对）
+ */
+function caretSatisfies(host: string, base: string): boolean {
+	const h = coreParts(host);
+	const b = coreParts(base);
+	if (h === null || b === null) {
+		return false;
+	}
+	const [hm, hi, hp] = h;
+	const [bm, bi, bp] = b;
+	if (bm > 0) {
+		return hm === bm && (hi > bi || (hi === bi && hp >= bp));
+	}
+	if (bi > 0) {
+		return hm === 0 && hi === bi && hp >= bp;
+	}
+	// 0.0.z
+	return hm === 0 && hi === 0 && hp === bp;
 }
 
 export async function preflight(ctx: InstallContext): Promise<StageResult> {
@@ -179,6 +216,27 @@ export async function preflight(ctx: InstallContext): Promise<StageResult> {
 			}
 			else if (!rangeSatisfies(host, parsed[1], parsed[2])) {
 				v.push({ clause: "C2-09", detail: `宿主 runtime 版本 ${host} 不满足 peerRuntime 声明「${range}」（需升级宿主）` });
+			}
+		}
+	}
+
+	// ── C2-11 peerPlatform：对宿主平台编排面 API_VERSION 强制比对（P2-9 起安装预检强制，R23；与 peerRuntime 同算子集）──
+	if (m.peerPlatform !== undefined) {
+		const range = typeof m.peerPlatform === "string" ? m.peerPlatform : "";
+		const parsed = RANGE_RE.exec(range);
+		if (parsed === null || versionProblem(parsed[2]) !== null) {
+			v.push({ clause: "C2-11", detail: `peerPlatform「${String(m.peerPlatform)}」不符合范围算子语法 ^(>=|<=|>|<|^|=)?<version>（version 遵守 C2-02）` });
+		}
+		else if (parsed[1] === "<" || parsed[1] === "<=" || parsed[1] === ">") {
+			v.push({ clause: "C2-11", detail: `peerPlatform「${range}」使用了暂不支持的范围算子（P1 语义集 = 精确/=、>=、^）` });
+		}
+		else {
+			const host = ctx.hostApiVersion;
+			if (host === undefined) {
+				v.push({ clause: "C2-11", detail: `无法读取宿主平台 API 版本（GET /api/_platform/market/meta 不可用或本仓 API_VERSION 未注入），peerPlatform「${range}」强制比对失败（fail-closed）` });
+			}
+			else if (!rangeSatisfies(host, parsed[1], parsed[2])) {
+				v.push({ clause: "C2-11", detail: `宿主平台 API 版本 ${host} 不满足 peerPlatform 声明「${range}」（需升级宿主平台模块）` });
 			}
 		}
 	}

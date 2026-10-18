@@ -223,5 +223,6 @@ function makeCtx(manifest: unknown): InstallContext {
 		version: typeof (manifest as any)?.version === "string" ? (manifest as any).version : "0.1.0",
 		state: { read: () => ({ solutions: {} }), write: async () => {} },
 		hostVersions: { "@oj-module/runtime": "0.1.80" },
+		hostApiVersion: "0.1.0", // C2-11 真源（= market/api.ts API_VERSION；与 fixture-valid peerPlatform '>=0.1.0' 配套）
 	};
 }

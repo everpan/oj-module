@@ -31,6 +31,7 @@ function ctx(overrides: Partial<InstallContext> = {}): InstallContext {
 		version: "0.1.0",
 		state: stateStore(),
 		hostVersions: HOST_OK,
+		hostApiVersion: "0.1.0", // C2-11 真源默认值（= market/api.ts API_VERSION；C2-11 describe 内按用例覆盖）
 		...overrides,
 	};
 }
@@ -153,6 +154,83 @@ describe("preflight · C2-09 peerRuntime 范围算子语义", () => {
 		const m = structuredClone(VALID);
 		delete m.peerRuntime;
 		expect((await preflight(ctx({ manifest: m, hostVersions: undefined }))).ok).toBe(true);
+	});
+});
+
+describe("preflight · C2-11 peerPlatform 范围算子语义（^ 遵循 0.x 口径）", () => {
+	const HOST = "0.1.80";
+	it("过例：^ 同主版本且 ≥（宿主 0.1.80 满足 ^0.1.0）", async () => {
+		const m = structuredClone(VALID);
+		m.peerPlatform = "^0.1.0";
+		expect((await preflight(ctx({ manifest: m, hostApiVersion: HOST }))).ok).toBe(true);
+	});
+
+	it("拒例：^ 主版本相同但低于基线（宿主 0.1.80 不满足 ^0.2.0）", async () => {
+		const m = structuredClone(VALID);
+		m.peerPlatform = "^0.2.0";
+		const r = await preflight(ctx({ manifest: m, hostApiVersion: HOST }));
+		expect(r.ok).toBe(false);
+		expect(r.message).toContain("C2-11");
+	});
+
+	it("拒例：0.x 口径——^0.1.0 不兼容 0.2.x（minor 不同即不兼容）", async () => {
+		const m = structuredClone(VALID);
+		m.peerPlatform = "^0.1.0";
+		const r = await preflight(ctx({ manifest: m, hostApiVersion: "0.2.3" }));
+		expect(r.ok).toBe(false);
+		expect(r.message).toContain("C2-11");
+	});
+
+	it("过例：0.x 口径——^0.2.0 兼容 0.2.5（minor 相同，patch 更高）", async () => {
+		const m = structuredClone(VALID);
+		m.peerPlatform = "^0.2.0";
+		expect((await preflight(ctx({ manifest: m, hostApiVersion: "0.2.5" }))).ok).toBe(true);
+	});
+
+	it("过例：>= 跨 minor 满足（宿主 0.2.3 满足 >=0.1.0）", async () => {
+		const m = structuredClone(VALID);
+		m.peerPlatform = ">=0.1.0";
+		expect((await preflight(ctx({ manifest: m, hostApiVersion: "0.2.3" }))).ok).toBe(true);
+	});
+
+	it("拒例：精确声明与宿主不符（=0.1.0 vs 宿主 0.1.80）", async () => {
+		const m = structuredClone(VALID);
+		m.peerPlatform = "=0.1.0";
+		const r = await preflight(ctx({ manifest: m, hostApiVersion: HOST }));
+		expect(r.ok).toBe(false);
+		expect(r.message).toContain("C2-11");
+	});
+
+	it("拒例：暂不支持的范围算子（<，P1 语义集外）", async () => {
+		const m = structuredClone(VALID);
+		m.peerPlatform = "<0.9.0";
+		const r = await preflight(ctx({ manifest: m, hostApiVersion: HOST }));
+		expect(r.ok).toBe(false);
+		expect(r.message).toContain("C2-11");
+		expect(r.message).toContain("暂不支持");
+	});
+
+	it("拒例：语法非法（非范围算子字符串）", async () => {
+		const m = structuredClone(VALID);
+		m.peerPlatform = "latest";
+		const r = await preflight(ctx({ manifest: m, hostApiVersion: HOST }));
+		expect(r.ok).toBe(false);
+		expect(r.message).toContain("C2-11");
+		expect(r.message).toContain("语法");
+	});
+
+	it("拒例：宿主 API 版本未注入 → 强制比对 fail-closed", async () => {
+		const m = structuredClone(VALID);
+		m.peerPlatform = "^0.1.0";
+		const r = await preflight(ctx({ manifest: m, hostApiVersion: undefined }));
+		expect(r.ok).toBe(false);
+		expect(r.message).toContain("C2-11");
+	});
+
+	it("过例：peerPlatform 缺省 → 不做比对（C2-11 可选字段）", async () => {
+		const m = structuredClone(VALID);
+		delete m.peerPlatform;
+		expect((await preflight(ctx({ manifest: m, hostApiVersion: undefined }))).ok).toBe(true);
 	});
 });
 

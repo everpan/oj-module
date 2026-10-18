@@ -459,6 +459,8 @@ async function installBody(env: MarketEnv): Promise<{ task_id: string }> {
 		verifyEd25519: env.verifyEd25519,
 		ledgerHead: env.ledgerHeadOf ? await env.ledgerHeadOf(name) : (env.ledgerHead ?? null),
 		hostVersions: await hostVersionsOf(env),
+		// 宿主平台编排面 API 版本（C2-11 peerPlatform 比对真源；与 meta 端点 apiVersion、_platform/manifest.yaml 版本同源，手工同步）
+		hostApiVersion: API_VERSION,
 		trustPath: env.trustPath,
 	});
 	return { task_id: task.id };
