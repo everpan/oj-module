@@ -10,6 +10,7 @@
 | 解决方案开发者（作者） | **[DEVELOPER.md](./DEVELOPER.md)** | 如何从 0 搭建解决方案工程、写 manifest、全栈构建与打包、本地开发调试、发布、安装验证、常见坑 |
 | 运维工程师 | **[OPERATIONS.md](./OPERATIONS.md)** | 如何引导部署、日常运维、失败语义与故障恢复、DB 迁移、安全基线、Windows 限制、卸载级联、监控审计 |
 | 产品经理 | **[PRODUCT.md](./PRODUCT.md)** | 产品定位与设计理念、公共能力地图、关键决策取舍、用户角色与权限、演进路线（P0–P3 已交付 / P4 收口 / P5+ 规划） |
+| 验证者 / QA | **[VERIFICATION.md](./VERIFICATION.md)** | 如何启动服务、造方案、装/卸/深检、curl 核对端点，证明文档闭环成立（路径 A 零依赖脚本 + 路径 B 真·手动链） |
 
 > 四篇彼此边界清晰、可独立成读；交叉主题（如 manifest 契约、RBAC、安全）按读者视角各取所需，不再彼此复述。
 
@@ -35,6 +36,7 @@ docs/prd/solution/
 ├── DEVELOPER.md         ← 面向解决方案开发者（动手）
 ├── OPERATIONS.md        ← 面向运维工程师（部署/排障/迁移）
 ├── PRODUCT.md           ← 面向产品经理（理念/能力/演进）
+├── VERIFICATION.md      ← 功能验证剧本（起服务 / 装方案 / 深检 / curl 核对）
 └── archive/             ← 原 21 篇历史真源（含 oj-bin-submissions/ 上游 PR 稿）
 ```
 
