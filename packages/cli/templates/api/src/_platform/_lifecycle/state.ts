@@ -31,6 +31,8 @@ export interface SolutionEntry {
 	archive?: { sha256: string, key_id: string, signature: Record<string, unknown> }
 	/** 发布方 key 状态缓存（P2-6：安装=trusted；启用时 key 已吊销=untrusted；P1 时代条目=absent） */
 	trust_state?: "trusted" | "untrusted" | "absent"
+	/** P3-2 版本时间序记录（GC 依据）：成功安装的版本按 installedAt 倒序（最新在前），保留最近 N=3 + 锁版本强制保留 */
+	history?: Array<{ version: string, installedAt: number }>
 }
 
 export interface SolutionState {
@@ -54,9 +56,15 @@ function snapshot(state: SolutionState): SolutionState {
 	const solutions: Record<string, SolutionEntry> = {};
 	for (const [name, entry] of Object.entries(state.solutions)) {
 		// archive 是嵌套对象：逐层克隆（调用方改动不得影响 store 缓存；P2-6 复验真源）
-		solutions[name] = entry.archive === undefined
-			? { ...entry }
-			: { ...entry, archive: { ...entry.archive, signature: { ...entry.archive.signature } } };
+		const cloned: SolutionEntry = { ...entry };
+		if (entry.archive !== undefined) {
+			cloned.archive = { ...entry.archive, signature: { ...entry.archive.signature } };
+		}
+		// P3-2 history 数组：浅克隆（条目为标量态，调用方改动不影响 store 缓存）
+		if (entry.history !== undefined) {
+			cloned.history = entry.history.map(h => ({ ...h }));
+		}
+		solutions[name] = cloned;
 	}
 	return { solutions };
 }
@@ -136,6 +144,9 @@ function serializeState(state: SolutionState): string {
 		if (e.trust_state !== undefined) {
 			lines.push(`    trust_state: ${e.trust_state}`);
 		}
+		if (e.history !== undefined) {
+			lines.push(`    history: ${JSON.stringify(JSON.stringify(e.history))}`);
+		}
 	}
 	return `${lines.join("\n")}\n`;
 }
@@ -162,6 +173,11 @@ function assertEntry(name: string, e: SolutionEntry): void {
 /** 引号/反斜杠会破坏 version 的双引号定界，控制字符（< 0x20）在 YAML 双引号标量里非法——一律拒绝落盘。 */
 function hasQuoteOrControlChar(s: string): boolean {
 	return /["\\]/.test(s) || [...s].some(ch => ch.charCodeAt(0) < 32);
+}
+
+/** history 行校验用：判断未知值是否为普通对象（非数组/非 null） */
+function isObj(v: unknown): v is Record<string, unknown> {
+	return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
 /** 严格解析：逐行匹配固定形状，任何偏差都算损坏（只读回自己写的内容，不做通用 YAML）。 */
@@ -217,6 +233,20 @@ function parseState(text: string): SolutionState {
 		const trust = /^ {4}trust_state: (trusted|untrusted|absent)$/.exec(lines[j] ?? "")?.[1];
 		if (trust !== undefined) {
 			entry.trust_state = trust as "trusted" | "untrusted" | "absent";
+			j += 1;
+		}
+		// P3-2 history：JSON 字符串标量（双串化，同 archive 口径）；非法即损坏
+		const historyLiteral = /^ {4}history: "((?:[^"\\]|\\.)*)"$/.exec(lines[j] ?? "")?.[1];
+		if (historyLiteral !== undefined) {
+			try {
+				const parsed = JSON.parse(JSON.parse(`"${historyLiteral}"`)) as unknown;
+				if (!Array.isArray(parsed) || !parsed.every(x => isObj(x) && typeof x.version === "string" && typeof x.installedAt === "number"))
+					throw new Error("history 非版本时间序数组");
+				entry.history = parsed as Array<{ version: string, installedAt: number }>;
+			}
+			catch {
+				throw new Error(`方案「${name}」history 行不是合法版本时间序 JSON`);
+			}
 			j += 1;
 		}
 		solutions[name] = entry;

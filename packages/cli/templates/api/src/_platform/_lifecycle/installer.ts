@@ -104,6 +104,9 @@ export interface StageDef {
 /** 锁前 stage 集合（失败语义①清场重跑；lock_commit 收 D11①锁前语义——落锁即生效点之前最后一步） */
 const PRE_LOCK_STAGES = new Set<InstallStage>(["preflight", "downloading", "verifying", "extracting", "migrating", "lock_commit"]);
 
+/** P3-2 版本目录保留数（按 installedAt 倒序保留最近 N 个；对照 TASK_KEEP=10 / KEEP_BACKUPS=3 范式） */
+const KEEP_VERSIONS = 3;
+
 function isObj(v: unknown): v is Record<string, unknown> {
 	return typeof v === "object" && v !== null && !Array.isArray(v);
 }
@@ -343,6 +346,47 @@ const PIPELINE = STAGES.filter(s => s.name !== "audit");
 const AUDIT_DEF = STAGES[STAGES.length - 1]!;
 
 /**
+ * P3-2 版本 GC：成功安装后清理旧版本目录，保留最近 KEEP_VERSIONS 个（按 installedAt 倒序），
+ * 当前锁版本强制保留（回滚目标不可被 GC 误删——否则 reconcile 回指旧版的 repoint 会因目录缺失降级为摘除）。
+ * 清理为运维性动作：缺锁/读锁失败/删目录失败均静默，不阻断安装主流程。
+ */
+export async function gcVersions(sharedRoot: string, name: string, state: StateStore): Promise<void> {
+	const f = fsFace();
+	let lock: Record<string, string>;
+	try {
+		lock = await readLock(`${sharedRoot}/manifests.yaml`);
+	}
+	catch {
+		return; // 无锁（首装即失败等极端态）不 GC
+	}
+	const locked = lock[name];
+	const entry = state.read().solutions[name];
+	if (entry?.history === undefined || entry.history.length <= KEEP_VERSIONS) {
+		return; // 版本数未超阈值，无需清理
+	}
+	// 保留集：最近 N 个 + 锁版本（强制，即使超出 N）
+	const keep = new Set<string>();
+	for (const h of [...entry.history].sort((a, b) => b.installedAt - a.installedAt).slice(0, KEEP_VERSIONS)) {
+		keep.add(h.version);
+	}
+	if (locked !== undefined) {
+		keep.add(locked);
+	}
+	let trimmed = false;
+	const nextHistory = entry.history.filter((h) => {
+		if (keep.has(h.version))
+			return true;
+		trimmed = true;
+		// 删除不在保留集的版本目录（best-effort：失败不阻断）
+		f.remove(`${sharedRoot}/${name}-${h.version}`, { recursive: true }).catch(() => {});
+		return false;
+	});
+	if (trimmed) {
+		await state.write({ solutions: { [name]: { ...entry, history: nextHistory } } });
+	}
+}
+
+/**
  * 声明式遍历 stage 表执行安装（§10.2 任务模型）：任务文件逐 stage 落盘（800ms 轮询消费面）、
  * .install-tasks/.lock 互斥（R17/R31）、失败语义三分、终态审计含 partial（AC-P1-14）。
  * 返回终态 TaskRecord（done / failed / partial / busy failed）。
@@ -474,9 +518,23 @@ export async function runInstall(req: InstallRequest): Promise<TaskRecord> {
 			}
 			// sidecar 同步（D12 元数据；done/partial 均记录——版本已实际落位，enabled 与锁一致；
 			// P2-6：archive 复验真源（sha256+签名记录）随装落，供切换前复验/同版本重装摘要比对；
-			// 写失败元数据滞后，静默降级不阻断主流程——禁 console，Finding A）
+			// P3-2：history 版本时间序记录（供 GC 保留最近 N=3 + 锁版本保护）；写失败元数据滞后，
+			// 静默降级不阻断主流程——禁 console，Finding A）
 			try {
-				await req.state.write({ solutions: { [req.name]: { version: req.version, enabled: true, installedAt: Date.now(), ...(archiveRecordOf(req.manifest) !== undefined ? { archive: archiveRecordOf(req.manifest), trust_state: "trusted" as const } : {}) } } });
+				const prev = req.state.read().solutions[req.name];
+				const installedAt = Date.now();
+				const newHistory: Array<{ version: string, installedAt: number }> = [
+					{ version: req.version, installedAt },
+					...(prev?.history ?? []).filter(h => h.version !== req.version),
+				];
+				await req.state.write({ solutions: { [req.name]: { version: req.version, enabled: true, installedAt, ...(archiveRecordOf(req.manifest) !== undefined ? { archive: archiveRecordOf(req.manifest), trust_state: "trusted" as const } : {}), history: newHistory } } });
+				// P3-2 GC：保留最近 KEEP_VERSIONS 个版本目录（锁版本强制保留），多余清理（运维性动作，静默）
+				try {
+					await gcVersions(req.sharedRoot, req.name, req.state);
+				}
+				catch {
+					// GC 失败不阻断主流程
+				}
 			}
 			catch {
 				// 写失败静默：元数据滞后不影响安装主流程（下次操作再收敛）
@@ -770,8 +828,9 @@ export async function setEnabled(input: SetEnabledInput): Promise<{ ok: boolean,
 	// ② sidecar（version 保留摘除前记录，启用从它恢复）
 	// P2-6：archive 复验真源随启用保留（install 时落；P1 时代条目无此字段），trust_state 按发布方
 	// key 信任状态刷新（吊销后启用 = 放行 + untrusted，存量可用性承诺 G5）。
+	// P3-2：history 版本时间序记录随启用保留（GC 依据不因启用/禁用丢失）。
 	try {
-		await input.state.write({ solutions: { [name]: { version, enabled, installedAt: side?.installedAt ?? now, ...(side?.archive !== undefined ? { archive: side.archive } : {}), ...(trustState !== undefined ? { trust_state: trustState } : {}) } } });
+		await input.state.write({ solutions: { [name]: { version, enabled, installedAt: side?.installedAt ?? now, ...(side?.archive !== undefined ? { archive: side.archive } : {}), ...(trustState !== undefined ? { trust_state: trustState } : {}), ...(side?.history !== undefined ? { history: side.history } : {}) } } });
 	}
 	catch (e) {
 		audit(false, `sidecar 写失败：${String(e)}`);

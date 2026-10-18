@@ -23,7 +23,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { defaultTestKey, nodeVerifyEd25519, signedArchiveFor } from "../../../../src/lifecycle/__tests__/helpers";
 import { atomicWriteText } from "../../src/_platform/_lifecycle/atomic";
-import { reconcile, runInstall, setEnabled, STAGES } from "../../src/_platform/_lifecycle/installer";
+import { gcVersions, reconcile, runInstall, setEnabled, STAGES } from "../../src/_platform/_lifecycle/installer";
 import { acquireTaskLock, commitLockEntry, parseLock, readLock, serializeLock, writeLock } from "../../src/_platform/_lifecycle/lock";
 import { createStateStore } from "../../src/_platform/_lifecycle/state";
 import { getTask, readTasks, redact, sweepTimedOut, writeTask } from "../../src/_platform/_lifecycle/tasks";
@@ -297,6 +297,59 @@ describe("runInstall 全绿路径（步骤 stub，register/smoke/audit 走真实
 		expect(parseLock(await fsp.readFile(lockPath, "utf8"))).toEqual({ "demo-solution": "0.2.0" });
 		await fsp.access(join(sharedRoot, "demo-solution-0.1.0", "manifest.yaml")); // 旧版本目录保留（回滚可用）
 		await fsp.access(join(sharedRoot, "demo-solution-0.2.0", "manifest.yaml"));
+	});
+});
+
+describe("P3-2 版本 GC（KEEP_VERSIONS=3：state history 时间序 + 锁版本保护）", () => {
+	it("装 5 个不同版本 → 仅留最近 3 版目录、旧版本目录被清理、sidecar history 截取最近 3", async () => {
+		for (const v of ["0.1.0", "0.2.0", "0.3.0", "0.4.0", "0.5.0"]) {
+			const t = await runInstall(makeReq({ version: v }));
+			expect(t.status).toBe("done");
+		}
+		expect(parseLock(await fsp.readFile(lockPath, "utf8"))).toEqual({ "demo-solution": "0.5.0" });
+		// 仅最近 3 版目录在盘，最旧两版被 GC 清理
+		for (const v of ["0.1.0", "0.2.0"]) {
+			await expect(fsp.access(join(sharedRoot, `demo-solution-${v}`))).rejects.toThrow();
+		}
+		for (const v of ["0.3.0", "0.4.0", "0.5.0"]) {
+			await fsp.access(join(sharedRoot, `demo-solution-${v}`, "manifest.yaml"));
+		}
+		// sidecar history 截取为最近 3（倒序：最新在前）
+		expect(state.read().solutions["demo-solution"]?.history?.map(h => h.version)).toEqual(["0.5.0", "0.4.0", "0.3.0"]);
+	});
+
+	it("gcVersions 锁版本保护：history 超出 N 但锁指向最旧版本时，最旧版本目录与 history 保留（回滚目标不可被 GC 误删）", async () => {
+		// 预置 sidecar history 5 个版本（倒序），最旧为 0.1.0
+		await state.write({ solutions: { "demo-solution": { version: "0.1.0", enabled: true, installedAt: 1000, history: [
+			{ version: "0.5.0", installedAt: 5000 },
+			{ version: "0.4.0", installedAt: 4000 },
+			{ version: "0.3.0", installedAt: 3000 },
+			{ version: "0.2.0", installedAt: 2000 },
+			{ version: "0.1.0", installedAt: 1000 },
+		] } } });
+		// 预建 5 个版本目录
+		for (const v of ["0.1.0", "0.2.0", "0.3.0", "0.4.0", "0.5.0"]) {
+			await fsp.mkdir(join(sharedRoot, `demo-solution-${v}`), { recursive: true });
+		}
+		// 锁指向最旧版本 0.1.0（reconcile 回滚到旧版的落地形态）
+		await writeLock(lockPath, { "demo-solution": "0.1.0", "auth": "0.1.0" });
+		await gcVersions(sharedRoot, "demo-solution", state);
+		// 锁版本 0.1.0 保留；0.2.0 超出「最近 3 ∪ 锁版本」被清理
+		await fsp.access(join(sharedRoot, "demo-solution-0.1.0"));
+		await fsp.access(join(sharedRoot, "demo-solution-0.3.0"));
+		await fsp.access(join(sharedRoot, "demo-solution-0.4.0"));
+		await fsp.access(join(sharedRoot, "demo-solution-0.5.0"));
+		await expect(fsp.access(join(sharedRoot, "demo-solution-0.2.0"))).rejects.toThrow();
+		// history 保留锁版本（最旧 0.1.0 在，0.2.0 出）
+		expect(state.read().solutions["demo-solution"]?.history?.map(h => h.version)).toEqual(["0.5.0", "0.4.0", "0.3.0", "0.1.0"]);
+	});
+
+	it("同版本重装：history 不重复、installedAt 刷新，不触发 GC 涨栈", async () => {
+		await runInstall(makeReq({ version: "0.1.0" }));
+		await runInstall(makeReq({ version: "0.1.0" }));
+		await runInstall(makeReq({ version: "0.2.0" }));
+		const hist = state.read().solutions["demo-solution"]?.history?.map(h => h.version);
+		expect(hist).toEqual(["0.2.0", "0.1.0"]); // 0.1.0 仅一条（重装去重，installedAt 刷新到更晚）
 	});
 });
 
