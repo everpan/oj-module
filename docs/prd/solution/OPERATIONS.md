@@ -41,10 +41,10 @@ flowchart TD
     API -->|进程内直调| SM["十阶段安装状态机<br/>_platform 特权模块(isolate 内)"]
     SM -->|exec.run 外部 shell| EXEC["tar 解压 · oj migrate ·<br/>config 文本改写"]
     SM -->|reloadConfig| OJ[oj 宿主 serve]
-    OJ -->|共享根 mount| ROOT["api/modules/&lt;name&gt;-&lt;version&gt;/<br/>manifests.yaml 扁平锁 · .solutions/state.yaml"]
+    OJ -->|共享根 mount| ROOT["api/modules/名称-版本/<br/>manifests.yaml 扁平锁 · .solutions/state.yaml"]
     OJ --> DB[(DB: sqlite/mysql/pg<br/>迁移账本 _oj_migrations)]
     SM -->|下载 tgz| CDN["CDN / oj 静态 web: mount<br/>bundles.yaml·manifests.yaml·*.tgz"]
-    MK -.->|深检(admin 域)| VER["POST /api/_platform/solutions/verify<br/>不进 superadmin 编排面"]
+    MK -.->|"深检(admin 域)"| VER["POST /api/_platform/solutions/verify<br/>不进 superadmin 编排面"]
 ```
 
 **组件职责速查**

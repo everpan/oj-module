@@ -43,7 +43,7 @@ flowchart LR
         ISO["isolate 沙箱<br/>exec.run / verifyEd25519 / reloadConfig / db"]
     end
     subgraph SOL["解决方案（第三方/第一方）"]
-        TGZ["&lt;name&gt;-&lt;version&gt;.tgz<br/>+ manifest.yaml"]
+        TGZ["名称-版本.tgz<br/>+ manifest.yaml"]
         MRKT["oj-market 样例方案"]
     end
     OJM -->|下载/触发| OP
@@ -308,11 +308,11 @@ sequenceDiagram
 
     U->>M: POST /market/install {name, version}
     M->>N: 触发编排（superadmin 独占）
-    N->>CDN: GET bundles.yaml + &lt;file&gt;.tgz
+    N->>CDN: GET bundles.yaml + 文件.tgz
     N->>N: 预检（保留名/占用/兼容/白名单/键所有权）
     N->>N: sha256 比对 + Ed25519 验签(fail-closed)
     N->>FS: list→validate→extract 三步解压 .staging → 原子 rename
-    N->>DB: oj migrate -d &lt;共享根&gt;（★先于热更，约束 B）
+    N->>DB: oj migrate -d 共享根（★先于热更，约束 B）
     N->>DB: 注册 sys_setting/sys_role/sys_permission/sys_role_permission/sys_solution_route
     N->>FS: modules.json upsert + web 产物落位
     N->>OJ: 改 config.yaml(anonymous_paths 并入 + vars.ojm_solutions_gen++)
