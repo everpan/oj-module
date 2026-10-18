@@ -88,3 +88,16 @@ tables:
       expires_at: {type: integer, null: false}
       revoked: {type: integer, null: false}
       created_at: {type: integer, null: false}
+  # 市场操作历史（P4 上收 _platform）：install/enable/disable/uninstall/upgrade/rollback 六类动作留痕。
+  # 写入由平台编排面（_lifecycle/history.ts recordHistory）落到本表；市场页只读消费。
+  market_history:
+    pk: id
+    columns:
+      id: {type: integer, autoincrement: true}
+      solution: {type: text, null: false}
+      version: {type: text, null: false}
+      action: {type: text, null: false}
+      status: {type: text, null: false}
+      operator: {type: text}
+      message: {type: text}
+      created_at: {type: integer, null: false}

@@ -86,6 +86,8 @@ describe("runtime 主入口出口白名单 (P3.1)", () => {
 		// AC-D15：zod re-export（契约 schema 书写入口；zod 随 runtime dist 走，不进 importmap）
 		expect(Runtime.z).toBeTypeOf("object");
 		expect(Runtime.z.object).toBeTypeOf("function");
+		// R29：ky 实例 re-export（第一方市场编排面；第三方走 ctx scoped request）
+		expect(Runtime.request).toBeDefined();
 	});
 
 	it("组件：basic-* / iframe / access-control / 表单项", () => {

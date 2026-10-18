@@ -861,6 +861,22 @@ export function createMarketApi(env: MarketEnv) {
 				});
 			},
 		},
+
+		// GET /api/_platform/market/history —— 市场操作历史（只读消费面，供前端 HistoryDrawer）。
+		// 平台级审计面（P4 上收 _platform）：install/enable/disable/uninstall/upgrade/rollback 留痕
+		// 由 _lifecycle/history.ts recordHistory 写入；本端点仅登录用户可读（非匿名名单，Bearer 守卫保护）。
+		// 表不存在/查询失败一律返回空数组（历史是观测面，不阻断主流程，与终态审计附录 B-5 同语义）。
+		"history": {
+			async get() {
+				await respond(async () => {
+					const rows = (await db.query(
+						"select solution, version, action, status, operator, message, created_at from market_history order by created_at desc",
+						[],
+					)) as Array<Record<string, unknown>>;
+					return rows ?? [];
+				});
+			},
+		},
 	};
 }
 

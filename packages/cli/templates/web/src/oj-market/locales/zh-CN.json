@@ -1,0 +1,100 @@
+{
+	"menu": {
+		"main": "方案市场"
+	},
+	"perm": {
+		"view": "查看方案市场"
+	},
+	"role": {
+		"viewer": "方案市场查看者"
+	},
+	"settings": {
+		"group": {
+			"display": "显示偏好"
+		},
+		"display": {
+			"greeting": "问候语"
+		}
+	},
+	"card": {
+		"title": "方案市场",
+		"subtitle": "浏览、安装与管理 oj 方案",
+		"loading": "卡片加载中…",
+		"empty": "市场暂无可用方案（未配置市场地址或索引为空）",
+		"error": "卡片加载失败",
+		"retry": "重试",
+		"version": "版本",
+		"latest": "最新",
+		"installed": "已装",
+		"notInstalled": "未安装",
+		"enabled": "已启用",
+		"disabled": "已停用",
+		"upgradable": "可升级",
+		"details": "详情",
+		"history": "历史",
+		"install": "安装",
+		"uninstall": "卸载",
+		"enable": "启用",
+		"disable": "停用",
+		"upgrade": "升级",
+		"rollback": "回滚"
+	},
+	"task": {
+		"installing": "安装中",
+		"uninstalling": "卸载中",
+		"progress": "进度",
+		"stage": "阶段",
+		"status": {
+			"running": "进行中",
+			"done": "完成",
+			"failed": "失败",
+			"partial": "部分完成"
+		},
+		"reason": "原因",
+		"retryable": "可重试",
+		"notRetryable": "不可重试",
+		"hint": "提示",
+		"close": "关闭",
+		"viewLog": "查看日志"
+	},
+	"confirm": {
+		"uninstallTitle": "确认卸载",
+		"uninstallBody": "卸载「{{name}}」将影响以下角色与用户，且站点至少保留一个已锁模块。此操作不可撤销，确定继续？",
+		"impactTitle": "影响面预检",
+		"impactEmpty": "无受影响角色或用户（孤立方案）",
+		"cancel": "取消",
+		"ok": "确认卸载"
+	},
+	"rollback": {
+		"title": "回滚版本",
+		"running": "回滚中",
+		"body": "选择「{{name}}」要回滚到的历史版本（当前已装 {{installed}}）。回滚即按所选旧版重新安装，迁移差异校验（R12）不通过时会给出可读失败。",
+		"selectLabel": "目标版本",
+		"noCandidates": "无更早的历史版本可回滚",
+		"confirm": "确认回滚",
+		"warning": "回滚会按所选旧版重新安装；若旧版迁移不可逆将被拒绝。"
+	},
+	"history": {
+		"title": "操作历史",
+		"empty": "暂无操作记录",
+		"colSolution": "方案",
+		"colVersion": "版本",
+		"colAction": "操作",
+		"colStatus": "状态",
+		"colOperator": "操作人",
+		"colTime": "时间",
+		"action": {
+			"install": "安装",
+			"uninstall": "卸载",
+			"enable": "启用",
+			"disable": "停用",
+			"upgrade": "升级",
+			"rollback": "回滚"
+		},
+		"status": {
+			"done": "成功",
+			"failed": "失败",
+			"partial": "部分"
+		}
+	}
+}

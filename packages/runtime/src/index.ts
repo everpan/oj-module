@@ -121,6 +121,11 @@ export { getAppInfo } from "./utils/get-app-info";
 // redirect 解析出口（P3，login 模块化：模块登录页成功后调它跳转）
 export { getRedirectPath } from "./utils/get-redirect-path";
 
+// ky 实例出口（R29 第一方专用）：方案市场等第一方模块消费 /api/_platform/* 编排面时
+// 直接复用宿主 request（自带鉴权头/信封解包/刷新链）。第三方方案模块不得仿照——
+// 第三方一律走 defineModule ctx 的 scoped request（D11 前缀收敛）。
+export { request } from "./utils/request";
+
 // 工具与常量
 export * from "./utils/tree";
 

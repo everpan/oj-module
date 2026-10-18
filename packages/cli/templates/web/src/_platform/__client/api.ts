@@ -33,7 +33,7 @@ export function create_platformClient(ctx: ModuleContext) {
 	}
 	ctx.register.apiPrefix(API_PREFIX);
 	bindRequest(ctx.utils.request);
-	return { platformContactsGet, platformContactsDetailGet, platformSolutionsRoutesGet, platformMarketInstallPost, platformMarketTaskGet, platformMarketEnablePost, platformMarketMetaGet, platformMarketTrustGet, platformMarketTrustPost, platformMarketTrustKeyPost, platformMarketTrustKeyDelete, platformMarketIndexGet, platformMarketUninstallImpactGet, platformMarketUninstallPost, platformSolutionsVerifyPost, platformSolutionsVerifyLastGet, platformMarketInstallCancelPost };
+	return { platformContactsGet, platformContactsDetailGet, platformMarketInstallPost, platformMarketInstallCancelPost, platformMarketTaskGet, platformMarketEnablePost, platformMarketMetaGet, platformMarketTrustGet, platformMarketTrustPost, platformMarketTrustKeyPost, platformMarketTrustKeyDelete, platformMarketIndexGet, platformMarketUninstallImpactGet, platformMarketUninstallPost, platformMarketHistoryGet, platformSolutionsRoutesGet, platformSolutionsVerifyPost, platformSolutionsVerifyLastGet };
 }
 
 /**
@@ -94,10 +94,10 @@ export async function platformContactsDetailGet(): Promise<unknown> {
 	}
 }
 
-export async function platformSolutionsRoutesGet(): Promise<unknown> {
+export async function platformMarketInstallPost(): Promise<unknown> {
 	const client = ensureReq();
 	try {
-		const env = await client.get(`_platform/solutions/routes`).json<OjEnvelope<unknown>>();
+		const env = await client.post(`_platform/market/install`).json<OjEnvelope<unknown>>();
 		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
 		if (typeof env.code === "number" && env.code !== 0)
 			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
@@ -109,10 +109,10 @@ export async function platformSolutionsRoutesGet(): Promise<unknown> {
 	}
 }
 
-export async function platformMarketInstallPost(): Promise<unknown> {
+export async function platformMarketInstallCancelPost(): Promise<unknown> {
 	const client = ensureReq();
 	try {
-		const env = await client.post(`_platform/market/install`).json<OjEnvelope<unknown>>();
+		const env = await client.post(`_platform/market/install/cancel`).json<OjEnvelope<unknown>>();
 		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
 		if (typeof env.code === "number" && env.code !== 0)
 			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
@@ -274,6 +274,36 @@ export async function platformMarketUninstallPost(): Promise<unknown> {
 	}
 }
 
+export async function platformMarketHistoryGet(): Promise<unknown> {
+	const client = ensureReq();
+	try {
+		const env = await client.get(`_platform/market/history`).json<OjEnvelope<unknown>>();
+		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
+		if (typeof env.code === "number" && env.code !== 0)
+			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
+		const data = env.data as unknown;
+		return data;
+	}
+	catch (e) {
+		throw await toApiError(e);
+	}
+}
+
+export async function platformSolutionsRoutesGet(): Promise<unknown> {
+	const client = ensureReq();
+	try {
+		const env = await client.get(`_platform/solutions/routes`).json<OjEnvelope<unknown>>();
+		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
+		if (typeof env.code === "number" && env.code !== 0)
+			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
+		const data = env.data as unknown;
+		return data;
+	}
+	catch (e) {
+		throw await toApiError(e);
+	}
+}
+
 export async function platformSolutionsVerifyPost(): Promise<unknown> {
 	const client = ensureReq();
 	try {
@@ -293,21 +323,6 @@ export async function platformSolutionsVerifyLastGet(): Promise<unknown> {
 	const client = ensureReq();
 	try {
 		const env = await client.get(`_platform/solutions/verify/last`).json<OjEnvelope<unknown>>();
-		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
-		if (typeof env.code === "number" && env.code !== 0)
-			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
-		const data = env.data as unknown;
-		return data;
-	}
-	catch (e) {
-		throw await toApiError(e);
-	}
-}
-
-export async function platformMarketInstallCancelPost(): Promise<unknown> {
-	const client = ensureReq();
-	try {
-		const env = await client.post(`_platform/market/install/cancel`).json<OjEnvelope<unknown>>();
 		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
 		if (typeof env.code === "number" && env.code !== 0)
 			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");

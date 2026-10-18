@@ -1,0 +1,100 @@
+{
+	"menu": {
+		"main": "Market"
+	},
+	"perm": {
+		"view": "View solution market"
+	},
+	"role": {
+		"viewer": "Solution market viewer"
+	},
+	"settings": {
+		"group": {
+			"display": "Display preferences"
+		},
+		"display": {
+			"greeting": "Greeting"
+		}
+	},
+	"card": {
+		"title": "Solution Market",
+		"subtitle": "Browse, install and manage oj solutions",
+		"loading": "Loading cards…",
+		"empty": "No solutions available (market address not configured or index empty)",
+		"error": "Failed to load cards",
+		"retry": "Retry",
+		"version": "Version",
+		"latest": "Latest",
+		"installed": "Installed",
+		"notInstalled": "Not installed",
+		"enabled": "Enabled",
+		"disabled": "Disabled",
+		"upgradable": "Upgradable",
+		"details": "Details",
+		"history": "History",
+		"install": "Install",
+		"uninstall": "Uninstall",
+		"enable": "Enable",
+		"disable": "Disable",
+		"upgrade": "Upgrade",
+		"rollback": "Rollback"
+	},
+	"task": {
+		"installing": "Installing",
+		"uninstalling": "Uninstalling",
+		"progress": "Progress",
+		"stage": "Stage",
+		"status": {
+			"running": "Running",
+			"done": "Done",
+			"failed": "Failed",
+			"partial": "Partial"
+		},
+		"reason": "Reason",
+		"retryable": "Retryable",
+		"notRetryable": "Not retryable",
+		"hint": "Hint",
+		"close": "Close",
+		"viewLog": "View log"
+	},
+	"confirm": {
+		"uninstallTitle": "Confirm uninstall",
+		"uninstallBody": "Uninstalling \"{{name}}\" affects the roles and users below, and the site must keep at least one locked module. This cannot be undone. Continue?",
+		"impactTitle": "Impact pre-check",
+		"impactEmpty": "No affected roles or users (orphan solution)",
+		"cancel": "Cancel",
+		"ok": "Confirm uninstall"
+	},
+	"rollback": {
+		"title": "Rollback version",
+		"running": "Rolling back",
+		"body": "Pick a prior version to roll \"{{name}}\" back to (currently installed {{installed}}). Rollback reinstalls the chosen older version; if the migration diff check (R12) fails you will get a readable error.",
+		"selectLabel": "Target version",
+		"noCandidates": "No earlier version in history to roll back to",
+		"confirm": "Confirm rollback",
+		"warning": "Rollback reinstalls the chosen older version; it is rejected if the older migration is irreversible."
+	},
+	"history": {
+		"title": "Operation history",
+		"empty": "No records yet",
+		"colSolution": "Solution",
+		"colVersion": "Version",
+		"colAction": "Action",
+		"colStatus": "Status",
+		"colOperator": "Operator",
+		"colTime": "Time",
+		"action": {
+			"install": "Install",
+			"uninstall": "Uninstall",
+			"enable": "Enable",
+			"disable": "Disable",
+			"upgrade": "Upgrade",
+			"rollback": "Rollback"
+		},
+		"status": {
+			"done": "Done",
+			"failed": "Failed",
+			"partial": "Partial"
+		}
+	}
+}
