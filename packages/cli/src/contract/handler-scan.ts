@@ -136,6 +136,29 @@ function defaultExportObject(sf: ts.SourceFile, decls: Map<string, ts.ObjectLite
 	return undefined;
 }
 
+/**
+ * 工厂形态（P2-14 裁决：修 handler-scan 认 CallExpression——`export default createXxxApi(env)`
+ * 是调用表达式，此前扫描器不认，route-unregistered 守卫对 market/solutions 全族失效）：
+ * 解析同文件同名函数声明体内 return 的对象字面量（运行时 oj 内省执行工厂拿到该对象，静态
+ * 扫描镜像此语义）。支持多个 return；对象内标识符引用仍解析文件级顶层 const。
+ */
+function factoryReturnObjects(sf: ts.SourceFile, call: ts.CallExpression): ts.ObjectLiteralExpression[] {
+	const callee = dottedNameOf(call.expression);
+	if (callee === undefined)
+		return [];
+	for (const stmt of sf.statements) {
+		if (!ts.isFunctionDeclaration(stmt) || stmt.name?.text !== callee || stmt.body === undefined)
+			continue;
+		const out: ts.ObjectLiteralExpression[] = [];
+		for (const st of stmt.body.statements) {
+			if (ts.isReturnStatement(st) && st.expression !== undefined && ts.isObjectLiteralExpression(st.expression))
+				out.push(st.expression);
+		}
+		return out;
+	}
+	return [];
+}
+
 /** 相对路由按层前缀解析（绝对 `/` 开头即根级）；与 oj 内省 resolve 同规则 */
 function resolveRoute(own: string, prefix: string): string {
 	return own.startsWith("/") ? own : (prefix ? `${prefix}/${own}` : own);
@@ -226,6 +249,15 @@ export function scanHandlerFile(filePath: string, apiSrcDir: string): HandlerRow
 			}
 		}
 		walk(root, "", filePrefix, 1);
+	}
+	else {
+		// P2-14：工厂形态（CallExpression）——组前缀从目录镜像起算（同内联字面量形态）
+		for (const stmt of sf.statements) {
+			if (ts.isExportAssignment(stmt) && !stmt.isExportEquals && ts.isCallExpression(stmt.expression)) {
+				for (const obj of factoryReturnObjects(sf, stmt.expression))
+					walk(obj, "", "", 1);
+			}
+		}
 	}
 	return rows;
 }

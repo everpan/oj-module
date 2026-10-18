@@ -276,10 +276,19 @@ ojm build --bundle
 
 ## 6. 安装（十阶段实况）
 
+**主路径（P2 起带签名，G4 硬 fail-closed——裸包会被 `sig_missing` 拒装）**：
+
 ```bash
+ojm build --bundle                                   # 打包（只出包不签名，§5.3）
+ojm sign dist/demo-market-0.1.0.tgz --id <publisher>.<key-name> --check
+                                                     # 签名 + 离线自检（私钥 ~/.ojm/keys/，§12 发布流程）
 ojm install dist/demo-market-0.1.0.tgz \
   --url http://127.0.0.1:9781 --user admin --pass '<新口令>'
 ```
+
+> 没有密钥？先 `ojm keygen --id <publisher>.<key-name>` 生成（一次性）。首次向陌生站点
+> 发布会落 `needs_trust`（TOFU 双轨第二轨）：把安装输出里的公钥指纹发给运维核对，运维
+> `ojm trust confirm --task <id>` 后重跑安装即可。详见 devkit 手册 §12「签名与信任」。
 
 瘦客户端旅程：登录 → Bearer → multipart 上传 → `POST /api/_platform/market/install` → 轮询 `task?id=`（800ms 起步指数退避、5s 封顶、30min 总超时）→ 终态渲染（失败输出 reason + retryable + 双语指引）。服务端状态机十阶段实录（摘自任务记录）：
 

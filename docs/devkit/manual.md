@@ -1415,7 +1415,7 @@ export default async (path: string, html: string) => {
 
 | 类别 | 命令 | 谁实现 | 一句话 |
 |---|---|---|---|
-| **ojm 原生** | `init` / `dev` / `build` / `preview` / `api` / `info` / `vendor` / `merge` | `ojm` 自己 | 前后端一体工程的脚手架、开发、构建、契约生成、版本/清单、oj 分发、清单合并 |
+| **ojm 原生** | `init` / `dev` / `build` / `preview` / `api` / `info` / `vendor` / `merge` / `install` / `enable` / `disable` / `uninstall` / `trust` / `keygen` / `sign` | `ojm` 自己 | 前后端一体工程的脚手架、开发、构建、契约生成、版本/清单、oj 分发、清单合并；方案包安装面与签名信任（install/enable/disable/uninstall 见 §11，trust/keygen/sign 见 §12） |
 | **oj 透传** | `test` / `exec` / `openapi` / `migrate` / `schema` | `oj`（ojm 仅转发） | 这 5 个**就是 oj 的同名子命令**，ojm 只负责定位 `bin/oj` 并补上 `-c api/config.yaml` |
 
 > **为什么只有这 5 个走透传？** oj 还有 `serve` / `build` / `secret`（`keygen`/`seal` 等）
@@ -1540,6 +1540,94 @@ export default async (path: string, html: string) => {
 
 ---
 
+## §11 方案包：打包与分发（P2-14 正式落地，P1-11 承诺兑现）
+
+「站点级构建」见 §7；本节讲**方案包**（solution bundle）——单方案的可分发产物与到达站点的方式。
+
+### 11.1 打包：`ojm build --bundle`
+
+```bash
+ojm build --bundle            # --out <dir> 缺省 dist/
+# [ojm] 方案包已生成 → dist/<name>-<version>.tgz
+# [ojm] sha256：…（确定性打包：同源同字节，AC-P1-18）
+```
+
+- 打包即校验（fail-fast，坏清单出不了包）：manifest 契约校验（C2 字段/白名单/保留名/键空间 →
+  可读违规清单）→ 文件面校验（`api.tables` ↔ `schema.yaml`、C2-25 locales 双语齐备）。
+- **只出包不签名**——签名见 §12（关注点分离：作者签名是显式动作，不是构建副产品）。
+- 产物内 `manifest.yaml` 的 `archive` 段是 **Form A**（仅 `file`）；`sha256`/`size` 由
+  file 源上传时点补齐（宿主安装器）或发布通道 Form B 自带。
+- **入包红线**：`*.pem` / `*.key` / `.env` / `id_ed25519` / `id_rsa` 等私钥形态文件禁入包
+  （与 `modules.json` 禁入同款自检）——私钥入包即信任根基烧毁。
+
+### 11.2 两种分发源
+
+| 源 | 形态 | 说明 |
+|---|---|---|
+| **file** | `ojm install dist/<name>-<version>.tgz` | multipart 直传（同目录 `<tgz>.sig` 自动探测随包上传，§12） |
+| **cdn** | `ojm install <name>[@version]` | 站点从 CDN 拉 Form B 索引：`bundles.yaml`（版本清单）+ `manifests.yaml`（聚合清单）+ 分发包 |
+
+Form B 索引规范（宿主侧强制，P2-11 索引投毒加固）：`versions[].file` 必须逐字
+`<name>-<version>.tgz`（禁 `../`、绝对路径、异名、异版本）；`archive.size` 在下载段立即
+比对；索引拉取恒 `Cache-Control: no-cache`（R15）。索引本身未签名（签名归 P3-U3）。
+
+### 11.3 安装面速览
+
+`ojm install`（file/cdn 双源）→ 站点编排端点 `POST /api/_platform/market/install`
+（superadmin，R9）→ 十阶段状态机（§7 verify 闸语义的方案版，见指南「失败语义三分」）→
+任务记录 `.install-tasks/<id>.json`（保留 10 条，800ms 轮询消费面）。市场页族端点
+（install/task/index/meta/trust/uninstall…）已全量登记 openapi.json（P2-14），
+前端经 `web/src/_platform/__client` 消费。
+
+---
+
+## §12 签名与信任（P2-14 正式落地）
+
+方案的发布与安装建立在 **Ed25519 detached 签名 + 站点信任库** 之上（契约 v1.3 §2.11）。
+**G4 硬 fail-closed：未签名包拒装（sig_missing），无任何逃生开关。**
+
+### 12.1 发布流程（作者侧，三步）
+
+```bash
+# ① 一次性：生成 Ed25519 密钥对（私钥 ~/.ojm/keys/<id>/ 永不出目录——--out 指进工程树须 --yes）
+ojm keygen --id <publisher>.<key-name>
+
+# ② 每次发布：签名（产物 = 同目录 <tgz>.sig；--check 离线自检，不必靠装失败发现签错）
+ojm sign dist/<name>-<version>.tgz --id <publisher>.<key-name> --check
+
+# ③ 安装/分发：.sig 自动探测随包上传
+ojm install dist/<name>-<version>.tgz --url <站点> --user admin --pass …
+```
+
+宿主验签六码（失败文案双语，`--locale` 切换）：`sig_missing`（缺签）/ `sig_alg`（算法
+不受接受）/ `sig_key`（key_id 命名空间违约）/ `tampered`（验签不过）/ `unknown_key`
+（信任库无此 key → **needs_trust 第五终态**）/ `sig_format`（.sig 结构违约）。
+
+### 12.2 信任库与 TOFU（运维侧）
+
+- 信任库 = `.solutions/trusted-keys.yaml`（key_id → 公钥 + added_at；首次绑定不可改，
+  轮换 = 新增 key_id）。
+- **TOFU 双轨**：未知发布方首装 → 任务终态 `needs_trust`（非成功非崩溃，staging 不清场），
+  展示公钥指纹；**与发布方逐字核对指纹后**确认入库并重试：
+
+```bash
+ojm trust ls                     # 列已信任 key（含 sha256 指纹分组）
+ojm trust confirm --task <id>    # 把 needs_trust 待确认 key 入库，然后重跑 install
+ojm trust add <key_id> <pubhex>  # 直接登记
+ojm trust revoke <key_id>        # 吊销：阻断新装/升级，不动已装方案（G5）
+```
+
+### 12.3 第一方 bootstrap key（G3 双轨第一轨）
+
+平台模板内置第一方发布方**公钥**（`api/src/_platform/market/bootstrap.ts` 的
+`BOOTSTRAP_KEY`）：信任库文件首次初始化时自动播种一次——**market 方案首装免 TOFU 直接过
+验签**。发布时序（平台发行人执行）：`ojm keygen` → 签 oj-market 首发包 → 公钥 + key_id
+回填 `BOOTSTRAP_KEY` 随模板发布。播种纪律：库已初始化（含空库）不播种——运维 `revoke`
+后不复活。**模板内只有公钥**（packages/cli 全树私钥零命中钉成测试；私钥只活在发行人
+`~/.ojm/keys/`）。
+
+---
+
 ## 附录：章节目录
 
 | 章 | 内容 | 什么时候读 |
@@ -1554,3 +1642,5 @@ export default async (path: string, html: string) => {
 | §8 排查 | 五步排查法、症状速查表 | 任何「没生效」 |
 | §9 参考 | 可抄的工程内文件、oj-api-dev 手册指引 | 找范本 |
 | §10 CLI 子命令参考 | ojm 原生命令 vs oj 透传命令 | 查命令用法 |
+| §11 方案包：打包与分发 | build --bundle、Form A/B、分发源、索引规范 | 发布方案包 |
+| §12 签名与信任 | keygen/sign/install 发布流程、信任库、TOFU、bootstrap key | 首次签名发布；管理信任 |

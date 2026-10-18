@@ -1565,6 +1565,197 @@
 					}
 				}
 			}
+		},
+		"/api/_platform/market/install": {
+			"post": {
+				"operationId": "_platform_market_install_post",
+				"summary": "POST _platform/market/install",
+				"tags": [
+					"_platform"
+				],
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				},
+				"x-oj-file": "_platform/market/api.ts"
+			}
+		},
+		"/api/_platform/market/task": {
+			"get": {
+				"operationId": "_platform_market_task_get",
+				"summary": "GET _platform/market/task",
+				"tags": [
+					"_platform"
+				],
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				},
+				"x-oj-file": "_platform/market/api.ts"
+			}
+		},
+		"/api/_platform/market/enable": {
+			"post": {
+				"operationId": "_platform_market_enable_post",
+				"summary": "POST _platform/market/enable",
+				"tags": [
+					"_platform"
+				],
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				},
+				"x-oj-file": "_platform/market/api.ts"
+			}
+		},
+		"/api/_platform/market/meta": {
+			"get": {
+				"operationId": "_platform_market_meta_get",
+				"summary": "GET _platform/market/meta",
+				"tags": [
+					"_platform"
+				],
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				},
+				"x-oj-file": "_platform/market/api.ts"
+			}
+		},
+		"/api/_platform/market/trust": {
+			"get": {
+				"operationId": "_platform_market_trust_get",
+				"summary": "GET _platform/market/trust",
+				"tags": [
+					"_platform"
+				],
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				},
+				"x-oj-file": "_platform/market/api.ts"
+			},
+			"post": {
+				"operationId": "_platform_market_trust_post",
+				"summary": "POST _platform/market/trust",
+				"tags": [
+					"_platform"
+				],
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				},
+				"x-oj-file": "_platform/market/api.ts"
+			}
+		},
+		"/api/_platform/market/trust/key": {
+			"post": {
+				"operationId": "_platform_market_trust_key_post",
+				"summary": "POST _platform/market/trust/key",
+				"tags": [
+					"_platform"
+				],
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				},
+				"x-oj-file": "_platform/market/api.ts"
+			},
+			"delete": {
+				"operationId": "_platform_market_trust_key_delete",
+				"summary": "DELETE _platform/market/trust/key",
+				"tags": [
+					"_platform"
+				],
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				},
+				"x-oj-file": "_platform/market/api.ts"
+			}
+		},
+		"/api/_platform/market/index": {
+			"get": {
+				"operationId": "_platform_market_index_get",
+				"summary": "GET _platform/market/index",
+				"tags": [
+					"_platform"
+				],
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				},
+				"x-oj-file": "_platform/market/api.ts"
+			}
+		},
+		"/api/_platform/market/uninstall-impact": {
+			"get": {
+				"operationId": "_platform_market_uninstall_impact_get",
+				"summary": "GET api/_platform/market/uninstall-impact",
+				"tags": [
+					"_platform"
+				],
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				},
+				"x-oj-file": "_platform/market/api.ts"
+			}
+		},
+		"/api/_platform/market/uninstall": {
+			"post": {
+				"operationId": "_platform_market_uninstall_post",
+				"summary": "POST _platform/market/uninstall",
+				"tags": [
+					"_platform"
+				],
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				},
+				"x-oj-file": "_platform/market/api.ts"
+			}
+		},
+		"/api/_platform/solutions/verify": {
+			"post": {
+				"operationId": "_platform_solutions_verify_post",
+				"summary": "POST _platform/solutions/verify",
+				"tags": [
+					"_platform"
+				],
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				},
+				"x-oj-file": "_platform/solutions/api.ts"
+			}
+		},
+		"/api/_platform/solutions/verify/last": {
+			"get": {
+				"operationId": "_platform_solutions_verify_last_get",
+				"summary": "GET _platform/solutions/verify/last",
+				"tags": [
+					"_platform"
+				],
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				},
+				"x-oj-file": "_platform/solutions/api.ts"
+			}
 		}
 	},
 	"tags": [
