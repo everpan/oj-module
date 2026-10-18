@@ -41,7 +41,7 @@
 |---|---|---|---|---|
 | P4-0 | 期门裁决 + 本计划 + 分支 | 本文 | — | ✅ 完成（分支 `feat/lifecycle-p4` @ `6d89c82c`） |
 | P4-1 | 多方言卸载矩阵（单测矩阵 + 验证 harness） | `uninstall.ts` `uninstall.spec.ts` `scripts/lifecycle-dialect-matrix.mjs` | P3-4#2 | ✅ 完成 `d14cd524` |
-| P4-2 | 深检 web 入口 integrity | `verify-checks.ts` `solutions/api.ts` `verify-checks.spec.ts` | P3-10#2 | ⬜ 未开始 |
+| P4-2 | 深检 web 入口 integrity | `verify-checks.ts` `solutions/api.ts` `verify-checks.spec.ts` | P3-10#2 | ✅ 完成 `426b9232` |
 | P4-3 | install 异步化（设计文档收口，非落地） | `task-P4-3-design.md` | P3-12#1 | ⬜ 未开始 |
 | P4-4 | U6 全量第三方写拒绝运行时验证 | `trust.ts` `trust.spec.ts` `scripts/lifecycle-u6-runtime.mjs` | P3-1#3 | ⬜ 未开始 |
 | P4-13 | 集中审查 + 合并 | SDD 评审包 | DoD | ⬜ 未开始 |
