@@ -342,14 +342,39 @@ function copyIfAbsent(src: string, dest: string, report: InitReport): void {
 }
 
 /**
- * 确保 pnpm-workspace.yaml 的 allowBuilds 含 `esbuild: true`。
+ * 确保工程根 pnpm-workspace.yaml 的 allowBuilds 含 `esbuild: true`。
+ *  - 文件不存在（本函数即唯一来源，见下）→ 按 SCAFFOLD_WORKSPACE_YAML 生成
  *  - pnpm v11 自动生成的占位行（"set this to true or false"）→ 填 true
  *  - 有 allowBuilds 段无 esbuild 行 → 段内追加
  *  - 无 allowBuilds 段 → 文末追加整段
  *  - 显式 `esbuild: false` → 用户的选择，尊重不动
+ *
+ * 本文件由 init 生成而非模板拷贝：模板目录本身是根 workspace 的成员，若带一份
+ * pnpm-workspace.yaml，pnpm 会就近把它当 workspace 根，`cd templates && pnpm i`
+ * 就找不到父级 catalog（ERR_PNPM_CATALOG_ENTRY_NOT_FOUND_FOR_SPEC）。
  */
+const SCAFFOLD_WORKSPACE_YAML = `# 由 ojm init 生成。
+# pnpm v11 起构建审批只读 pnpm-workspace.yaml（package.json 的 pnpm 字段
+# 已废弃）。缺了 allowBuilds，esbuild 的 postinstall 会被默认拦截，之后所有
+# pnpm 命令报 ERR_PNPM_IGNORED_BUILDS。
+allowBuilds:
+  esbuild: true
+
+# @oj-module/cli 经 catalog: 拉 @redocly/cli，而 catalog 只作用于 workspace
+# 自有 package.json 的依赖，对 cli（外部包）的 catalog: 传递依赖无效；不钉的话
+# 会漂到 latest，撞本机 minimumReleaseAge 供应链策略被拒
+# （ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION）。钉到 cli 实测通过的 2.51.0。
+overrides:
+  '@redocly/cli': 2.51.0
+`;
+
 function ensureAllowBuilds(destDir: string, report: InitReport): void {
 	const yamlPath = path.join(destDir, "pnpm-workspace.yaml");
+	if (!fs.existsSync(yamlPath)) {
+		fs.writeFileSync(yamlPath, SCAFFOLD_WORKSPACE_YAML);
+		report.created.push("pnpm-workspace.yaml（构建审批 + redocly 钉版）");
+		return;
+	}
 	let content = fs.readFileSync(yamlPath, "utf-8");
 	if (/^\s+esbuild:\s*(?:true|false)\s*$/m.test(content)) {
 		if (/^\s+esbuild:\s*true\s*$/m.test(content))

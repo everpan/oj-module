@@ -286,6 +286,19 @@ describe("initProject", () => {
 		expect(yaml).toContain("@oj-module/cli@0.1.0");
 	});
 
+	/**
+	 * pnpm-workspace.yaml 不再由模板拷贝（模板自带一份会让 pnpm 把 templates 当
+	 * workspace 根，`cd templates && pnpm i` 找不到父级 catalog），改由 init 生成。
+	 */
+	it("全新工程无 pnpm-workspace.yaml → init 生成（构建审批 + redocly 钉版）", async () => {
+		const dest = path.join(tmpRoot(), "proj-fresh");
+		fs.mkdirSync(dest, { recursive: true });
+		await initProject(dest, initOpts);
+		const yaml = fs.readFileSync(path.join(dest, "pnpm-workspace.yaml"), "utf-8");
+		expect(yaml).toMatch(/^\s+esbuild:\s*true$/m);
+		expect(yaml).toContain("'@redocly/cli': 2.51.0");
+	});
+
 	it("pnpm-workspace.yaml 无 allowBuilds 段 → 追加；显式 false → 尊重不动", async () => {
 		const destA = path.join(tmpRoot(), "proj-a");
 		fs.mkdirSync(destA, { recursive: true });
