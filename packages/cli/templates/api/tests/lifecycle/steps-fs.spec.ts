@@ -222,6 +222,36 @@ describe("download（stage=downloading，S1-2.3 fetch→fs.writeFile）", () => 
 		expect(r.message).toContain("下载失败");
 	});
 
+	it("p2-11 索引投毒加固：archive.size 与实收字节不符 → 拒（retryable=false，size 立即快筛）", async () => {
+		const r = await download(dlCtx({ manifest: manifest({ file: FILE, sha256: shaOf(BYTES), size: BYTES.byteLength + 1 }) }));
+		expect(r.ok).toBe(false);
+		expect(r.retryable).toBe(false);
+		expect(r.message).toContain("archive.size");
+		expect(r.message).toContain(String(BYTES.byteLength));
+	});
+
+	it("p2-11：archive.size 缺省（Form A 未填口径）跳过 size 快筛，sha256 兜底仍在 verify 段", async () => {
+		const r = await download(dlCtx({ manifest: manifest({ file: FILE, sha256: shaOf(BYTES) }) }));
+		expect(r.ok).toBe(true);
+	});
+
+	it("p2-11：archive.file 非逐字 <name>-<version>.tgz（异版本/异名/伪扩展）→ 拒（穿越形态由 archiveFileOf 通用形拒）", async () => {
+		for (const file of ["demo-solution-9.9.9.tgz", "other-0.1.0.tgz", "demo-solution-0.1.0.tgz.bak"]) {
+			let calls = 0;
+			const r = await download(dlCtx({
+				manifest: manifest({ file, sha256: shaOf(BYTES), size: BYTES.byteLength }),
+				fetch: async () => {
+					calls++;
+					return { ok: true, status: 200, arrayBuffer: async () => new ArrayBuffer(0) };
+				},
+			}));
+			expect(r.ok, file).toBe(false);
+			expect(r.retryable, file).toBe(false);
+			expect(r.message, file).toContain("逐字");
+			expect(calls, file).toBe(0);
+		}
+	});
+
 	it("archive.file 缺失（Form A 占位无身份）：ok=false retryable=false 引 C2-29，fetch 零调用", async () => {
 		let calls = 0;
 		const r = await download(dlCtx({

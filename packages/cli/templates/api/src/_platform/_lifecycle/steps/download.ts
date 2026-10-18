@@ -55,6 +55,12 @@ export async function download(ctx: DownloadContext): Promise<StageResult> {
 	if (!arch.ok) {
 		return { stage: "downloading", ok: false, retryable: false, message: `下载失败：${arch.message}` };
 	}
+	// P2-11 索引投毒加固：archive.file 收紧 <name>-<version>.tgz 逐字（禁异名/异版本/路径拼接；
+	// 此刻 name/version 已过 preflight C2-01/C2-02，均无路径分隔符，逐字等值即排除穿越形态）
+	const expected = `${ctx.name}-${ctx.version}.tgz`;
+	if (arch.file !== expected) {
+		return { stage: "downloading", ok: false, retryable: false, message: `下载失败：archive.file「${arch.file}」须逐字为 <name>-<version>.tgz（「${expected}」，P2-11 索引投毒加固）` };
+	}
 	const dest = `${ctx.staging}/${arch.file}`;
 	try {
 		const res = await ctx.fetch(ctx.archiveUrl);
@@ -67,6 +73,12 @@ export async function download(ctx: DownloadContext): Promise<StageResult> {
 			};
 		}
 		const bytes = new Uint8Array(await res.arrayBuffer());
+		// P2-11 索引投毒加固：下载后立即比 archive.size（声明在场且为有限数才比对；
+		// 内容级真伪仍由 verify 段 sha256 fail-closed 把关，size 是低成本前置快筛）
+		const declared = arch.archive.size;
+		if (typeof declared === "number" && Number.isFinite(declared) && declared !== bytes.byteLength) {
+			return { stage: "downloading", ok: false, retryable: false, message: `下载失败：分发包 ${bytes.byteLength} 字节与索引声明 archive.size ${declared} 不符——P2-11 索引投毒加固（size 立即比对）` };
+		}
 		const f = fsFace();
 		await f.mkdir(ctx.staging, { recursive: true });
 		await f.writeFile(dest, bytes);

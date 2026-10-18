@@ -313,7 +313,13 @@ async function resolveCdn(base: string, name: string, reqVersion: string | null,
 	const manifest = (Array.isArray(list) ? list : []).find(m => isObj(m) && m.name === name && String(m.version) === version);
 	if (!isObj(manifest))
 		fail(404, `聚合清单缺 ${name}@${version} 的 manifest（manifests.yaml 与 bundles.yaml 不一致，Form B 真源破损）`);
-	return { version, archiveUrl: `${base}/${String(hit.file)}`, manifest };
+	// P2-11 索引投毒加固：bundles.yaml 的 file 逐字 <name>-<version>.tgz（索引未签名属不可信输入，
+	// 过弱形态可拼宿主任意路径；逐字等值排除 ../、绝对路径、异名、异版本）
+	const file = typeof hit.file === "string" ? hit.file : "";
+	if (file !== `${name}-${version}.tgz`) {
+		fail(502, `索引分发包 file「${file}」须逐字为 <name>-<version>.tgz（「${name}-${version}.tgz」）——索引投毒加固（P2-11），疑似被篡改的 bundles.yaml`);
+	}
+	return { version, archiveUrl: `${base}/${file}`, manifest };
 }
 
 /** 上传载荷字节（upload/api.ts 先例双路径：小文件字节在手，大文件已流式落 blob 须走 blob.get） */
@@ -415,7 +421,14 @@ async function installBody(env: MarketEnv): Promise<{ task_id: string }> {
 		// 包内 manifest 是 Form A（archive 仅 file，sha256/size 由 P3 publish 填充于 Form B），而安装器
 		// verify 段对 archive.sha256 fail-closed。file 源字节在手——上传时点即算摘要补成可校验清单
 		// （verify 复核同批字节，R10 语义保持）；CDN 源不受影响（Form B 真源自带摘要）。
-		m.archive = { file: "upload.tgz", sha256: sha256Of(env)(bytes), size: bytes.byteLength };
+		// 正名（P2-11 索引投毒加固）：archive.file 逐字 <name>-<version>.tgz——name(C2-01)/version
+		// （无路径分隔符）拼出的单文件名安全时即正名（download 段按其落盘）；否则退回常量名
+		// upload.tgz（此刻尚未过预检，恶意命名不提前 400 也不给穿越面——预检稍后照拒）。
+		const effectiveVersion = reqVersion ?? mVersion;
+		const namedFile = /^[a-z][a-z0-9-]{0,63}$/.test(name) && /^[0-9A-Z.-]+$/i.test(effectiveVersion) && !effectiveVersion.includes("..")
+			? `${name}-${effectiveVersion}.tgz`
+			: "upload.tgz";
+		m.archive = { file: namedFile, sha256: sha256Of(env)(bytes), size: bytes.byteLength };
 		// detached 侧车签名注入（P2-3，G4 补裁）：同目录 .sig 随 multipart 第二文件上传——
 		// 与 Form B archive.signature 同结构注入，verify 段统一验签（六码分流）
 		const sig = await uploadSig();
@@ -472,6 +485,33 @@ interface IndexRow {
 	installed: string | null
 	enabled: boolean | null
 	upgradable: boolean
+	/** CDN 版本全集（P2-11）：回滚候选不止本站已装旧版；索引缺段/畸形 → [] 降级不炸 */
+	available: string[]
+	/** 最新版 changelog（C2-08，R27 卡片版本对比；manifests.yaml 不可得 → null） */
+	changelog: unknown
+	/** 最新版发布方（manifest author，C2-07；manifests.yaml 不可得 → null） */
+	publisher: string | null
+	/** 本地安装的发布方 key 状态（P2-6 sidecar；未装 → null） */
+	trust_state: "trusted" | "untrusted" | "absent" | null
+	/** 本地安装记录的签名 key id（sidecar archive.key_id；未装/P1 时代条目 → null） */
+	key_id: string | null
+	/** 最近一次安装操作人（P2-11 裁决：operator 是历史动作语义，回落 market_history 行，不在卡片现算） */
+	operator: string | null
+}
+
+/** 最近一次安装操作人（回落 market_history 行；表不存在/查询失败/无行 → null，观测面不阻断索引） */
+async function lastInstallOperatorOf(name: string): Promise<string | null> {
+	try {
+		const rows = await db.query(
+			"select operator from market_history where solution = ? and action = 'install' order by created_at desc, rowid desc limit 1",
+			[name],
+		) as Array<{ operator: unknown }>;
+		const op = rows[0]?.operator;
+		return typeof op === "string" ? op : null;
+	}
+	catch {
+		return null;
+	}
 }
 
 /** GET index 主体：CDN bundles.yaml（no-cache）⊕ 本地 sidecar state——CDN 序优先，本地独有方案殿后 */
@@ -493,6 +533,18 @@ async function indexBody(env: MarketEnv): Promise<IndexRow[]> {
 	}
 	const cdn = (Array.isArray(bundles.solutions) ? bundles.solutions : []).filter(isObj);
 	const local = (await createStateStore(env.statePath)).read().solutions;
+	// manifests.yaml 单次拉取供 changelog/publisher（P2-11）：失败降级 null 不阻断索引（可用性优先）
+	let manifests: Record<string, unknown>[] = [];
+	try {
+		const list = await g.yaml!.parse(await fetchText(fetchOf(env), `${base}/manifests.yaml`));
+		if (Array.isArray(list))
+			manifests = list.filter(isObj);
+	}
+	catch {
+		// 降级：changelog/publisher 全 null，索引主体照常返回
+	}
+	const manifestOf = (name: string, version: string | null): Record<string, unknown> | undefined =>
+		version === null ? undefined : manifests.find(m => m.name === name && String(m.version) === version);
 	const rows: IndexRow[] = [];
 	const seen = new Set<string>();
 	for (const s of cdn) {
@@ -502,17 +554,41 @@ async function indexBody(env: MarketEnv): Promise<IndexRow[]> {
 		seen.add(name);
 		const latest = typeof s.latest === "string" ? s.latest : null;
 		const side = local[name];
+		// available：versions[].version 字符串全集（缺段/畸形 → [] 降级）
+		const available = (Array.isArray(s.versions) ? s.versions : [])
+			.map(v => isObj(v) && typeof v.version === "string" ? v.version : "")
+			.filter(x => x !== "");
+		const m = manifestOf(name, latest) ?? manifestOf(name, side?.version ?? null);
 		rows.push({
 			name,
 			latest,
 			installed: side?.version ?? null,
 			enabled: side?.enabled ?? null,
 			upgradable: latest !== null && side !== undefined && compareVersions(side.version, latest) < 0,
+			available,
+			changelog: m?.changelog ?? null,
+			publisher: typeof m?.author === "string" ? m.author : null,
+			trust_state: side?.trust_state ?? null,
+			key_id: side?.archive?.key_id ?? null,
+			operator: await lastInstallOperatorOf(name),
 		});
 	}
 	for (const [name, side] of Object.entries(local)) {
-		if (!seen.has(name))
-			rows.push({ name, latest: null, installed: side.version, enabled: side.enabled, upgradable: false });
+		if (!seen.has(name)) {
+			rows.push({
+				name,
+				latest: null,
+				installed: side.version,
+				enabled: side.enabled,
+				upgradable: false,
+				available: [],
+				changelog: null,
+				publisher: null,
+				trust_state: side.trust_state ?? null,
+				key_id: side.archive?.key_id ?? null,
+				operator: await lastInstallOperatorOf(name),
+			});
+		}
 	}
 	return rows;
 }

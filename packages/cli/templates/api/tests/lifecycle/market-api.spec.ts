@@ -59,6 +59,8 @@ function manifestFixture(version = "0.1.0"): any {
 		name: "demo-solution",
 		version,
 		summary: "演示方案",
+		author: "oj-module",
+		changelog: [`${version} 变更条目`],
 		peerRuntime: ">=0.1.0",
 		archive: { file: `demo-solution-${version}.tgz`, sha256: SHA256, size: ARCHIVE.byteLength, signature: signedArchiveFor(ARCHIVE, "demo-solution", version, { keyPair: TEST_KEY }).sig },
 		api: { prefix: "/api/demo-solution", anonymous: ["demo-solution/ping"] },
@@ -610,12 +612,12 @@ describe("GET index（CDN bundles.yaml no-cache 拉取 + 本地 state 对比）"
 		expect(String(last?.msg)).toContain("未配置市场地址");
 	});
 
-	it("聚合对比：CDN 最新版本 + 本地已装/enabled + upgradable；本地独有方案也列出；拉取带 no-cache", async () => {
+	it("聚合对比：CDN 最新版本 + 本地已装/enabled + upgradable + available/changelog/publisher/trust/key_id/operator（P2-11）；本地独有方案也列出；拉取带 no-cache", async () => {
 		const env = makeEnv();
 		const state = await createStateStore(env.statePath);
 		await state.write({
 			solutions: {
-				"demo-solution": { version: "0.1.0", enabled: true, installedAt: 1 },
+				"demo-solution": { version: "0.1.0", enabled: true, installedAt: 1, trust_state: "trusted", archive: { sha256: "a", key_id: "test.publisher", signature: {} } },
 				"legacy": { version: "9.9.9", enabled: false, installedAt: 2 },
 			},
 		});
@@ -625,10 +627,58 @@ describe("GET index（CDN bundles.yaml no-cache 拉取 + 本地 state 对比）"
 		expect(fetchCalls[0]).toBe(`${CDN}bundles.yaml`);
 		expect((fetchInits[0] as { headers?: Record<string, string> })?.headers?.["cache-control"]).toBe("no-cache");
 		expect(last?.data).toEqual([
-			{ name: "demo-solution", latest: "0.2.0", installed: "0.1.0", enabled: true, upgradable: true },
-			{ name: "wiki", latest: "1.3.0", installed: null, enabled: null, upgradable: false },
-			{ name: "legacy", latest: null, installed: "9.9.9", enabled: false, upgradable: false },
+			{ name: "demo-solution", latest: "0.2.0", installed: "0.1.0", enabled: true, upgradable: true, available: ["0.2.0", "0.1.0"], changelog: ["0.2.0 变更条目"], publisher: "oj-module", trust_state: "trusted", key_id: "test.publisher", operator: null },
+			{ name: "wiki", latest: "1.3.0", installed: null, enabled: null, upgradable: false, available: ["1.3.0"], changelog: null, publisher: null, trust_state: null, key_id: null, operator: null },
+			{ name: "legacy", latest: null, installed: "9.9.9", enabled: false, upgradable: false, available: [], changelog: null, publisher: null, trust_state: null, key_id: null, operator: null },
 		]);
+	});
+
+	it("operator 回落 history 行（P2-11：最近一次 install 动作的 operator；表缺失/无行 → null 不炸）", async () => {
+		dbo.exec(MARKET_HISTORY_DDL);
+		dbo.prepare("insert into market_history (solution, version, action, status, operator, message, created_at) values (?, ?, ?, ?, ?, ?, ?)")
+			.run("demo-solution", "0.1.0", "install", "done", "alice", "", 1700000000);
+		const api = createMarketApi(makeEnv());
+		g.http = { user: { id: 1 } };
+		await api.index.get();
+		expect(last?.status).toBe(200);
+		const rows = last?.data as Array<{ name: string, operator: string | null }>;
+		expect(rows.find(r => r.name === "demo-solution")?.operator).toBe("alice");
+		expect(rows.find(r => r.name === "wiki")?.operator).toBeNull();
+	});
+
+	it("manifests.yaml 不可达 → changelog/publisher 降级 null，索引主体照常 200（可用性优先）", async () => {
+		const fetchFn = (async (url: string) => {
+			if (String(url).endsWith("manifests.yaml"))
+				return { ok: false, status: 503, arrayBuffer: async () => new ArrayBuffer(0) };
+			return cdnFetch(url);
+		}) as FetchFace;
+		const api = createMarketApi(makeEnv({ fetch: fetchFn }));
+		g.http = { user: { id: 1 } };
+		await api.index.get();
+		expect(last?.status).toBe(200);
+		const rows = last?.data as Array<{ name: string, changelog: unknown, publisher: string | null }>;
+		const demo = rows.find(r => r.name === "demo-solution");
+		expect(demo?.changelog).toBeNull();
+		expect(demo?.publisher).toBeNull();
+		expect(demo?.latest).toBe("0.2.0");
+	});
+
+	it("archive.file 邪例表（P2-11 索引投毒加固：file 逐字 <name>-<version>.tgz）→ 502 拒", async () => {
+		for (const file of ["../evil.tgz", "/etc/hosts.tgz", "other-0.1.0.tgz", "demo-solution-9.9.9.tgz"]) {
+			const bundles = JSON.stringify({ solutions: [{ name: "demo-solution", latest: "0.1.0", versions: [{ version: "0.1.0", file, sha256: SHA256, size: ARCHIVE.byteLength }] }] });
+			const manifests = JSON.stringify([manifestFixture("0.1.0")]);
+			const fetchFn = (async (url: string) => {
+				const text = String(url).endsWith("bundles.yaml") ? bundles : String(url).endsWith("manifests.yaml") ? manifests : null;
+				if (text !== null)
+					return { ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode(text).buffer as ArrayBuffer };
+				return { ok: true, status: 200, arrayBuffer: async () => ARCHIVE.slice().buffer as ArrayBuffer };
+			}) as FetchFace;
+			const api = createMarketApi(makeEnv({ fetch: fetchFn }));
+			g.http = { user: { id: 1 }, body: { name: "demo-solution", version: "0.1.0", source: "cdn" } };
+			await api.install.post();
+			expect(last?.status, `file=${file}`).toBe(502);
+			expect(String(last?.msg), `file=${file}`).toContain("逐字");
+		}
 	});
 
 	it("索引不可达 → 502 可读错误不崩", async () => {
