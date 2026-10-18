@@ -48,7 +48,7 @@ export interface MarketEnv {
 	taskDir: string
 	/** sidecar 状态文件（.solutions/state.yaml） */
 	statePath: string
-	/** 宿主信任库（.solutions/trusted-keys.yaml；P2-2，与 statePath 同目录） */
+	/** 宿主信任库（.solutions/trusted-keys.yaml；P2-2；U6/P3-1 起移出 modules/ 安装子树，落 deploy 根，仅 _platform 特权经 platform.trusted_paths 可写） */
 	trustPath: string
 	/** sqlite 库文件路径（R14 备份源；模板 config.yaml `sqlite://db.sqlite` → 站点根 db.sqlite） */
 	dbPath: string
@@ -133,7 +133,7 @@ export function marketEnv(): MarketEnv {
 		staging: "modules/.staging",
 		taskDir: "modules/.install-tasks",
 		statePath: "modules/.solutions/state.yaml",
-		trustPath: "modules/.solutions/trusted-keys.yaml",
+		trustPath: ".solutions/trusted-keys.yaml",
 		dbPath: "db.sqlite",
 		siteModulesDir: "dist/modules",
 		modulesJsonPath: "dist/modules.json",

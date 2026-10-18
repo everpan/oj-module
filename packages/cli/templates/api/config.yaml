@@ -54,6 +54,15 @@ vars:
 # ---- 平台 exec 白名单（ojm install 的解压/迁移两处消费；模板逐字对齐 lifecycle steps 命令构造，
 # 不得增删——多一个 token 都会 NotCapable）----
 platform:
+  # ---- U6 信任库加固（P3-1；P2-2 红线 spike 结论）----
+  # 威胁：devkit 0.1.75 语义下 fs: 段对全部模块生效（jail = fs.root），且 trusted_paths 只增不减——
+  # 信任库落在第三方方案模块可写的 fs.root 内即可被其伪造信任锚。加固须两端配合：
+  # ① 本模板已将信任库默认路径移出 modules/ 安装子树（见 _lifecycle 默认 `.solutions/trusted-keys.yaml`，
+  #    落在 fs.root 之外的部署根，第三方方案模块 jail 之外）；
+  # ② **部署侧**须按 oj 语义补 `platform.trusted_paths`（指向运行时信任库目录，该目录须先存在——
+  #    oj 对不存在的 trusted_paths 装配 fail-fast，故不可在模板里硬编码尚未创建的目录）显式授权给
+  #    _platform 特权模块写信任库，并收窄第三方方案模块的 fs.root 至其安装子树，方可彻底隔离。
+  # 本仓负责①（代码路径）；②属部署/上游配置，留作部署清单项（P3-1 备案，不硬编码以免 oj serve 装配失败）。
   exec:
     _platform:
       allow:

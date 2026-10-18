@@ -12,7 +12,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createTrustStore, isValidKeyId } from "../../src/_platform/_lifecycle/trust";
 import { invalidateAllUsers } from "../../src/_platform/_shared/service/access";
-import { createMarketApi } from "../../src/_platform/market/api";
+import { createMarketApi, marketEnv } from "../../src/_platform/market/api";
 import { installDb } from "../fixture";
 
 const g = globalThis as any;
@@ -284,5 +284,27 @@ describe("信任库运维端点（superadmin，R9）", () => {
 		expect(rows.map(r => r.action)).toEqual(["solution.trust.add", "solution.trust.revoke"]);
 		expect(rows[0]).toMatchObject({ target: "ojm.test" });
 		expect(JSON.parse(String(rows[0].detail))).toMatchObject({ key_id: "ojm.test", operator: "admin" });
+	});
+});
+
+// U6 信任库加固（P3-1）：信任库路径须移出第三方方案模块的 fs jail（modules/ 安装子树），
+// 并经 platform.trusted_paths 显式授权给 _platform 特权模块——防止伪造信任锚（P2-2 红线 spike）。
+describe("U6 信任库路径加固（P3-1）", () => {
+	it("marketEnv().trustPath 不在 modules/ 安装子树内", () => {
+		const env = marketEnv();
+		// 关键不变量：第三方方案模块（非 _platform）的 fs 读写范围 = fs.root，
+		// 落在 modules/ 下即处于其 jail 内可被写入；信任库必须在其外。
+		expect(env.trustPath.startsWith("modules/")).toBe(false);
+		expect(env.trustPath).toBe(".solutions/trusted-keys.yaml");
+	});
+
+	it("模板 config.yaml 文档化 U6 trusted_paths 授权要求（部署侧须补声明）", async () => {
+		const cfg = await fsp.readFile(join(__dirname, "..", "..", "config.yaml"), "utf8");
+		// 信任库存放根须落 platform.trusted_paths 授权 + 移出 modules/ 安装子树（防第三方方案模块伪造信任锚）。
+		// 模板不硬编码 trusted_paths 条目（oj 对不存在路径装配 fail-fast，会致 oj serve 起服失败），
+		// 故此处钉「要求被文档化」这一不变量，部署侧据此补声明。
+		expect(cfg).toContain("trusted_paths");
+		expect(cfg).toContain("U6");
+		expect(cfg).toContain(".solutions/trusted-keys.yaml");
 	});
 });
