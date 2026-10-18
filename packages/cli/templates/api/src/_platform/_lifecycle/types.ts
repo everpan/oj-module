@@ -63,6 +63,12 @@ export type TaskStatus = "running" | "done" | "failed" | "partial" | "needs_trus
 
 /** 安装任务记录（§10.2 + stages 明细日志；落 .install-tasks/<id>.json，800ms 轮询消费面） */
 export interface TaskRecord {
+	/**
+	 * 记录 schema 版本（P2-10）：写方盖章（tasks.ts TASK_SCHEMA_VERSION）、读方回填（缺省=1，旧记录不炸）。
+	 * 升版纪律——加字段=minor（兼容：读方忽略未知字段）；改语义/删字段=major（不认识的高版本，
+	 * 读方须降级提示：人话提示 + 不误渲染成功）。与 CLI 侧 site.ts TASK_SCHEMA_VERSION_KNOWN 手工同步。
+	 */
+	schemaVersion?: number
 	id: string
 	name: string
 	version: string

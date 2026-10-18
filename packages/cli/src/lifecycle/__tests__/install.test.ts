@@ -229,6 +229,61 @@ describe("renderOutcome · 终态渲染（reason + retryable + hintKey 双语文
 	});
 });
 
+describe("schemaVersion 旧记录兼容（P2-10 升版纪律读方侧：高版本降级提示 + 不误渲染成功）", () => {
+	let dir: string;
+
+	beforeEach(() => {
+		dir = mkdtempSync(join(tmpdir(), "ojm-schema-"));
+	});
+
+	afterEach(() => {
+		rmSync(dir, { recursive: true, force: true });
+	});
+
+	it("renderOutcome：schemaVersion=99 即使 status=done 也只出降级提示，不报「安装完成」", () => {
+		const text = renderOutcome(rec({ status: "done", schemaVersion: 99 }), "zh-CN");
+		expect(text).toContain("schema 版本 99");
+		expect(text).toContain("升级 ojm");
+		expect(text).not.toContain("安装完成");
+		const en = renderOutcome(rec({ status: "done", schemaVersion: 99 }), "en-US");
+		expect(en).toContain("newer than this CLI supports");
+		expect(en).not.toContain("Install complete");
+	});
+
+	it("renderOutcome：旧记录（schemaVersion 缺省）照常渲染 done 成功文案", () => {
+		expect(renderOutcome(rec(), "zh-CN")).toContain("安装完成");
+	});
+
+	it("pollTask：高版本记录原样返回不炸（轮询消费面兼容）", async () => {
+		const { fetchFn } = fetchStub({
+			"/api/_platform/market/task": () => ok(rec({ status: "done", schemaVersion: 99 })),
+		});
+		const r = await pollTask(fetchFn, "http://x", "tok", "t1", { sleep: async () => {} });
+		expect(r.status).toBe("done");
+		expect(r.schemaVersion).toBe(99);
+	});
+
+	it("installCommand：终态 done 但 schemaVersion=99 → exitCode=1（非成功态）+ 降级提示", async () => {
+		const tgz = join(dir, "demo-solution-0.1.0.tgz");
+		writeFileSync(tgz, "fake-tgz-bytes");
+		const { fetchFn } = fetchStub({
+			"/api/auth/login": () => ok({ access_token: "tok", refresh_token: "r", expires_in: 1 }),
+			"/api/_platform/market/install": () => ok({ task_id: "t1" }),
+			"/api/_platform/market/task": () => ok(rec({ status: "done", schemaVersion: 99 })),
+		});
+		const exitBackup = process.exitCode;
+		process.exitCode = 0;
+		try {
+			await installCommand(tgz, { url: "http://x", user: "u", pass: "p", fetchFn, sleep: async () => {} });
+			expect(process.exitCode).toBe(1);
+		}
+		finally {
+			process.exitCode = exitBackup;
+		}
+		expect(logs.join("\n")).toContain("升级 ojm");
+	});
+});
+
 describe("renderOutcome · 六码双语（P2-5：reason 走 key，按 locale 取附录 A.2；fail-fast 实测渲染而非仅 key 存在）", () => {
 	const ZH = [
 		["sig_missing", "缺少签名"],

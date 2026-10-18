@@ -10,6 +10,14 @@ import { atomicWriteText, fsFace } from "./atomic";
 /** 任务文件保留条数（超出删最旧） */
 export const TASK_KEEP = 10;
 
+/** 当前任务记录 schema 版本（P2-10）：写方盖章、读方回填；升版纪律见 TaskRecord.schemaVersion 注释 */
+export const TASK_SCHEMA_VERSION = 1;
+
+/** 旧记录兼容：无 schemaVersion 的记录回填 1（读方不炸；更高版本原样透传，由消费面降级提示） */
+function normalizeTask(record: TaskRecord): TaskRecord {
+	return record.schemaVersion === undefined ? { ...record, schemaVersion: TASK_SCHEMA_VERSION } : record;
+}
+
 /** running 超时阈值：>30min 无进展判 failed（与 .lock stale 阈值同款口径） */
 export const TASK_TIMEOUT_MS = 30 * 60_000;
 
@@ -30,10 +38,11 @@ export function redact(message: string): string {
 		.replace(/\b(token|secret|password|passwd|pwd|api_?key|signature)\s*[=:]\s*[^\s"',;)]+/gi, "$1=…");
 }
 
-/** 写任务文件：脱敏 → 原子写 → 治理（保留最近 TASK_KEEP 条，删最旧；本次写入豁免） */
+/** 写任务文件：脱敏 → 盖章 schema 版本（写方语义，单写者恒为当前版本）→ 原子写 → 治理（保留最近 TASK_KEEP 条，删最旧；本次写入豁免） */
 export async function writeTask(taskDir: string, record: TaskRecord): Promise<void> {
 	const clean: TaskRecord = {
 		...record,
+		schemaVersion: TASK_SCHEMA_VERSION,
 		message: redact(record.message),
 		stages: record.stages.map(s => ({ ...s, message: redact(s.message) })),
 		...(record.error === undefined ? {} : { error: { ...record.error, reason: redact(record.error.reason) } }),
@@ -65,7 +74,7 @@ export async function readTasks(taskDir: string): Promise<TaskRecord[]> {
 	const out: TaskRecord[] = [];
 	for (const name of names.filter(n => n.endsWith(".json"))) {
 		try {
-			out.push(JSON.parse(new TextDecoder().decode(await fsFace().readFile(`${taskDir}/${name}`))) as TaskRecord);
+			out.push(normalizeTask(JSON.parse(new TextDecoder().decode(await fsFace().readFile(`${taskDir}/${name}`))) as TaskRecord));
 		}
 		catch {
 			// 单文件损坏跳过：任务面可观测性优先，不为坏文件阻塞对账/轮询
@@ -80,7 +89,7 @@ export async function getTask(taskDir: string, id: string): Promise<TaskRecord |
 		return null;
 	}
 	try {
-		return JSON.parse(new TextDecoder().decode(await fsFace().readFile(`${taskDir}/${id}.json`))) as TaskRecord;
+		return normalizeTask(JSON.parse(new TextDecoder().decode(await fsFace().readFile(`${taskDir}/${id}.json`))) as TaskRecord);
 	}
 	catch {
 		return null;

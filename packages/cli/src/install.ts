@@ -8,7 +8,7 @@ import type { TaskRecord } from "./site";
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
-import { callApi, login, pollTask, resolveSite, unwrapEnvelope } from "./site";
+import { callApi, isFutureSchema, login, pollTask, resolveSite, TASK_SCHEMA_VERSION_KNOWN, unwrapEnvelope } from "./site";
 
 export type Locale = "zh-CN" | "en-US";
 
@@ -107,6 +107,13 @@ function normalizeLocale(locale?: string): Locale {
  */
 export function renderOutcome(record: TaskRecord, locale?: string): string {
 	const lang = normalizeLocale(locale);
+	// P2-10 升版纪律（读方）：不认识的高版本 → 人话降级提示 + 不误渲染成功——
+	// 语义可能已漂移（status 字段含义不再可信），只出降级提示，连 done 也不报「安装完成」
+	if (isFutureSchema(record)) {
+		return lang === "en-US"
+			? `[ojm] Task record schema version ${record.schemaVersion} is newer than this CLI supports (${TASK_SCHEMA_VERSION_KNOWN}) — fields may be missing or semantics drifted. Upgrade ojm and retry.`
+			: `[ojm] 任务记录 schema 版本 ${record.schemaVersion} 高于本 CLI 支持的版本（${TASK_SCHEMA_VERSION_KNOWN}）——字段可能缺失或语义漂移，请升级 ojm 后重试。`;
+	}
 	if (record.status === "done") {
 		return lang === "en-US"
 			? `[ojm] Install complete: ${record.name} ${record.version}`
@@ -245,7 +252,8 @@ export async function installCommand(target: string, opts: InstallOptions = {}):
 
 	const record = await pollTask(fetchFn, base, token, response.task_id, { sleep: opts.sleep });
 	console.log(renderOutcome(record, opts.locale));
-	if (record.status !== "done")
+	// P2-10：未来 schema 版本即使 status=done 也按非成功态处理（语义可能漂移，不误报成功）
+	if (record.status !== "done" || isFutureSchema(record))
 		process.exitCode = 1;
 	return record;
 }

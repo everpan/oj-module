@@ -835,6 +835,41 @@ describe("任务治理（R13/B9/R31）：保留 10 条 + 超时判 failed + mess
 	});
 });
 
+describe("P2-10 TaskRecord schemaVersion：写方盖章 + 读方回填（旧记录不炸）", () => {
+	it("writeTask 盖章 schemaVersion=1（写方语义：单写者恒为当前版本）", async () => {
+		await writeTask(taskDir, { id: "t-stamp", name: "demo-solution", version: "0.1.0", status: "done", stage: "done", progress: 100, message: "", stages: [], startedAt: 1 });
+		const raw = JSON.parse(await fsp.readFile(join(taskDir, "t-stamp.json"), "utf8")) as { schemaVersion?: number };
+		expect(raw.schemaVersion).toBe(1);
+	});
+
+	it("readTasks 回填：无 schemaVersion 的旧记录读出 = 1", async () => {
+		await fsp.mkdir(taskDir, { recursive: true });
+		await fsp.writeFile(join(taskDir, "t-old.json"), JSON.stringify({ id: "t-old", name: "demo-solution", version: "0.1.0", status: "done", stage: "done", progress: 100, message: "", stages: [], startedAt: 1 }));
+		const all = await readTasks(taskDir);
+		expect(all).toHaveLength(1);
+		expect(all[0]?.id).toBe("t-old");
+		expect(all[0]?.schemaVersion).toBe(1);
+	});
+
+	it("getTask 回填：旧记录读出 = 1；高版本（99）原样透传不剥（降级提示属消费面）", async () => {
+		await fsp.mkdir(taskDir, { recursive: true });
+		await fsp.writeFile(join(taskDir, "t-old.json"), JSON.stringify({ id: "t-old", name: "demo-solution", version: "0.1.0", status: "done", stage: "done", progress: 100, message: "", stages: [], startedAt: 1 }));
+		expect((await getTask(taskDir, "t-old"))?.schemaVersion).toBe(1);
+		await fsp.writeFile(join(taskDir, "t-future.json"), JSON.stringify({ id: "t-future", name: "demo-solution", version: "0.2.0", status: "done", stage: "done", progress: 100, message: "", stages: [], startedAt: 2, schemaVersion: 99 }));
+		expect((await getTask(taskDir, "t-future"))?.schemaVersion).toBe(99);
+	});
+
+	it("sweepTimedOut 改判写回：旧记录（无 schemaVersion）经回填读出后写回盖章为当前版本", async () => {
+		const now = Date.now();
+		await fsp.mkdir(taskDir, { recursive: true });
+		await fsp.writeFile(join(taskDir, "t-stale.json"), JSON.stringify({ id: "t-stale", name: "demo-solution", version: "0.1.0", status: "running", stage: "migrating", progress: 30, message: "", stages: [], startedAt: now - 31 * 60_000 }));
+		const flipped = await sweepTimedOut(taskDir, now);
+		expect(flipped).toHaveLength(1);
+		const raw = JSON.parse(await fsp.readFile(join(taskDir, "t-stale.json"), "utf8")) as { schemaVersion?: number };
+		expect(raw.schemaVersion).toBe(1);
+	});
+});
+
 describe("P1-16 接线：reconcile 不一致自动修复（重跑 setEnabled）+ operator 通道 + migrate opts 转发", () => {
 	it("route enabled=0 / modules.json enabled=false 分歧 + 注入 state → 自动重跑 setEnabled(true) 收敛（healed 记 enable）", async () => {
 		await writeLock(lockPath, { "demo-solution": "0.1.0", "auth": "0.1.0" });

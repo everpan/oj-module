@@ -6,8 +6,14 @@
 
 import process from "node:process";
 
-/** 任务记录（线形状镜像；真源 templates/api/src/_platform/_lifecycle/types.ts:47，客户端不 import 模板内部） */
+/** 任务记录（线形状镜像；真源 templates/api/src/_platform/_lifecycle/types.ts:65，客户端不 import 模板内部） */
 export interface TaskRecord {
+	/**
+	 * 记录 schema 版本（P2-10 线形状镜像）：缺省（undefined）=旧记录=v1 语义照常渲染；
+	 * 高于 TASK_SCHEMA_VERSION_KNOWN 的高版本 → renderOutcome 降级提示（人话 + 不误渲染成功）。
+	 * 升版纪律见真源 types.ts TaskRecord.schemaVersion 注释。
+	 */
+	schemaVersion?: number
 	id: string
 	name: string
 	version: string
@@ -26,6 +32,14 @@ export interface TaskRecord {
 
 /** 模板 serve 缺省端口（templates/api/config.yaml server.port: 9778；host 显式钉 127.0.0.1） */
 export const DEFAULT_SITE_URL = "http://127.0.0.1:9778";
+
+/** 本 CLI 已知的任务记录 schema 版本（P2-10；与服务端 tasks.ts TASK_SCHEMA_VERSION 手工同步，更高版本触发降级提示） */
+export const TASK_SCHEMA_VERSION_KNOWN = 1;
+
+/** 未来版本判定（P2-10 升版纪律读方侧）：undefined=旧记录=已知 v1 语义；数值高于已知版本 → 降级提示 */
+export function isFutureSchema(record: TaskRecord): boolean {
+	return typeof record.schemaVersion === "number" && record.schemaVersion > TASK_SCHEMA_VERSION_KNOWN;
+}
 
 export interface SiteAddressing {
 	url?: string
