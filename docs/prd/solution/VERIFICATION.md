@@ -5,7 +5,14 @@
 两份验证路径：
 
 - **路径 A（推荐，~30s，零外部依赖）**：直接跑仓库自带脚本 `scripts/lifecycle-e2e.mjs`，它在内存里合成完整 `demo-solution`、经 `_platform` 内部端点走完整状态机并断言全绿。适合「快速证明文档闭环是真的」。
-- **路径 B（真·手动链，~5–10min）**：自己 bootstrap 一个宿主 → `oj serve` 起服务 → 造一个带 web 的签名方案 → `ojm install` → curl 核对端点。适合「按真实 CLI 走一遍文档命令」。
+- **路径 B（真·CLI 链，一键可重跑）**：仓库内置冒烟编排 `scripts/verify-solution-smoke/`——`bootstrap-host.mjs` 自举宿主、`make-solution.mjs` 造签名方案、`run.mjs` 串起 serve→签名→安装（含 TOFU）→核对清单，最后自动关服务。**一条命令即可复现并断言全绿**：
+
+  ```bash
+  pnpm verify:solution        # = node scripts/verify-solution-smoke/run.mjs
+  OJ_BIN=/abs/oj PORT=9782 pnpm verify:solution   # 自定义运行时/端口
+  ```
+
+  该编排不依赖外部 `oj-market`，每次重跑幂等（清空 `/tmp/oj-smoke`、重建签名密钥、自动处理首登改密与 TOFU 确认）。下面 B1/B3 仍可单步手动跑，对应脚本即 `scripts/verify-solution-smoke/` 下文件。
 
 > 关键前置结论：**本仓没有可直接安装的 `oj-market`**（它是独立仓、只读）。所有验证都用仓库内自带的 demo 方案或内存合成方案，不依赖外部 `oj-market`。
 
@@ -73,47 +80,11 @@ PASS=35  FAIL=0   （exit=0）
 
 ### B1. Bootstrap 宿主（来自模板，与 e2e 同构）
 
-把仓库模板 `packages/cli/templates/api` 拷出、补 config、签 dev 证书、`oj build`、写 `versions.json`。存为 `/tmp/bootstrap-host.mjs` 后 `node /tmp/bootstrap-host.mjs`：
+把仓库模板 `packages/cli/templates/api` 拷出、补 config、签 dev 证书、`oj build`、写 `versions.json`。脚本已内置为 `scripts/verify-solution-smoke/bootstrap-host.mjs`（自动推导仓库根、可经 `OJ_BIN/SITE/PORT` 环境变量覆盖），直接：
 
-```js
-import { spawnSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { generateKeyPairSync, createSign, randomBytes } from "node:crypto";
-import path from "node:path";
-
-const OJ_BIN = process.env.OJ_BIN ?? "/Users/ever/.local/bin/oj";
-const ROOT = "/Users/ever/git/only-js/oj-module";
-const SITE = "/tmp/oj-smoke/api";
-const PORT = 9781;
-
-rmSync("/tmp/oj-smoke", { recursive: true, force: true });
-mkdirSync(path.join(SITE, "config"), { recursive: true });
-for (const f of ["src", "config.yaml"])
-  cpSync(path.join(ROOT, "packages/cli/templates/api", f), path.join(SITE, f), { recursive: true });
-
-let cfg = readFileSync(path.join(SITE, "config.yaml"), "utf8");
-cfg = cfg.replace("port: 9778", `port: ${PORT}`);
-cfg = cfg.replace("__JWT_SECRET__", randomBytes(32).toString("hex"));
-cfg = cfg.replace(/^ {2}exec:/m, "  modules: [_platform]\n  root: dist\n  exec:");
-if (!cfg.includes("modules: [_platform]")) throw new Error("platform 段补丁未命中");
-cfg = cfg.replace("  anonymous_paths:", "  anonymous_paths:\n    - /demo-solution/ping");
-cfg = `${cfg.trimEnd()}\nfs:\n  root: .\n  readonly: false\n`;
-writeFileSync(path.join(SITE, "config.yaml"), cfg);
-
-const certDir = path.join(SITE, "config");
-const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
-const now = Math.floor(Date.now() / 1000);
-const head = Buffer.from(JSON.stringify({ alg: "RS256" })).toString("base64url");
-const payload = Buffer.from(JSON.stringify({ nbf: now, exp: now + 3650 * 86400 })).toString("base64url");
-const sig = createSign("RSA-SHA256").update(`${head}.${payload}`).sign(privateKey).toString("base64url");
-writeFileSync(path.join(certDir, "private.pem"), privateKey.export({ type: "pkcs8", format: "pem" }));
-writeFileSync(path.join(certDir, "public.pem"), publicKey.export({ type: "spki", format: "pem" }));
-writeFileSync(path.join(certDir, "cert.jws"), `${head}.${payload}.${sig}`);
-
-const build = spawnSync(OJ_BIN, ["build", "--no-minify", "-d", "src", "-o", "dist"], { cwd: SITE, encoding: "utf8" });
-if (build.status !== 0) throw new Error(`oj build 失败:\n${build.stdout}\n${build.stderr}`);
-writeFileSync(path.join(SITE, "dist", "versions.json"), JSON.stringify({ "@oj-module/runtime": "0.1.0" }));
-console.log("[ok] host bootstrapped at", SITE);
+```bash
+node scripts/verify-solution-smoke/bootstrap-host.mjs
+# 或自定义： OJ_BIN=oj PORT=9782 SITE=/tmp/oj-smoke/api node scripts/verify-solution-smoke/bootstrap-host.mjs
 ```
 
 期望产物：`/tmp/oj-smoke/api/dist/` 含各模块目录 + `manifests.yaml`（含 `_platform: 0.1.0`）+ `versions.json`。
@@ -130,43 +101,11 @@ curl -fsS $BASE/api/health && echo " SERVE OK"   # 启动成功标志：逐行�
 
 ### B3. 造一个带 web 的签名方案
 
-存为 `/tmp/make-solution.mjs` 后 `node /tmp/make-solution.mjs`，产出 `/tmp/demo-solution-0.1.0.tgz`（含 api+web+manifest，逻辑镜像 e2e 的 `buildDemoTree`，本仓验证用）：
+脚本已内置为 `scripts/verify-solution-smoke/make-solution.mjs`（产出 `/tmp/demo-solution-0.1.0.tgz`，含 api+web+manifest，逻辑镜像 e2e 的 `buildDemoTree`）。注意 ping 处理器必须调用 oj 运行时的全局 `json.ok(...)`（直接 `return` 对象会被忽略、空 body）：
 
-```js
-import { spawnSync } from "node:child_process";
-import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
-import { createHash } from "node:crypto";
-import path from "node:path";
-const V = "0.1.0", OUT = "/tmp/demo-solution-0.1.0.tgz";
-const root = `/tmp/sol-stage/demo-solution-${V}`;
-const mod = path.join(root, "api", `demo-solution-${V}`);
-const web = path.join(root, "web", "modules", "demo-solution", V);
-mkdirSync(path.join(mod, "migrations"), { recursive: true });
-mkdirSync(path.join(mod, "ping"), { recursive: true });
-mkdirSync(web, { recursive: true });
-writeFileSync(path.join(root, "manifest.yaml"), JSON.stringify({
-  name: "demo-solution", version: V, summary: "smoke solution", peerRuntime: ">=0.1.0",
-  health: "/demo-solution/ping",
-  api: { prefix: "/api/demo-solution", anonymous: ["demo-solution/ping"] },
-  web: { entry: `modules/demo-solution/${V}/entry.js`, css: [`modules/demo-solution/${V}/main.css`] },
-  routes: [
-    { path: "/demo-solution", category: "main", order: 200, title_key: "demo-solution:menu.main" },
-    { path: "/demo-solution/ping", category: "hidden", order: 205, title_key: "demo-solution:menu.ping" },
-  ],
-  permissions: [{ code: "demo-solution.view", title_key: "demo-solution:perm.view" }],
-  roles: [{ name: "demo-solution.admin", title_key: "demo-solution:role.admin", permissions: ["demo-solution.view"] }],
-  settings: { groups: [{ group: "display", label_key: "demo-solution:settings.group.display",
-    items: [{ key: "demo-solution.display.theme", type: "enum", options: ["dark", "light"] }] }] },
-}));
-writeFileSync(path.join(mod, "manifest.yaml"), `name: demo-solution\ndesc: smoke solution\nversion: ${V}\ntables:\n  - demo_note\n`);
-writeFileSync(path.join(mod, "routes.js"), 'export default [{ method: "get", pattern: "demo-solution/ping", file: "ping/api.js" }];\n');
-writeFileSync(path.join(mod, "ping", "api.js"), 'export default { async get() { return { pong: true, module: "demo-solution", version: "'+V+'" }; } };\n');
-writeFileSync(path.join(mod, "migrations", "0001__init.sql"), "CREATE TABLE demo_note (id INTEGER PRIMARY KEY, title TEXT NOT NULL);\n");
-writeFileSync(path.join(web, "entry.js"), `console.log("demo-solution ${V}");\n`);
-writeFileSync(path.join(web, "main.css"), `.demo-solution-v1-0-0 { color: red; }\n`);
-const r = spawnSync("tar", ["-czf", OUT, "demo-solution-0.1.0"], { cwd: "/tmp/sol-stage" });
-if (r.status !== 0) throw new Error("tar failed: " + r.stderr);
-console.log("[ok]", OUT, createHash("sha256").update(readFileSync(OUT)).digest("hex").slice(0,12)+"…");
+```bash
+node scripts/verify-solution-smoke/make-solution.mjs
+# 产物： /tmp/demo-solution-0.1.0.tgz
 ```
 
 ### B4. 签名 + 安装
@@ -213,7 +152,7 @@ echo "⑤ 磁盘扁平锁";      grep demo-solution /tmp/oj-smoke/api/dist/manif
 echo "⑥ 健康/代际";       curl -s $BASE/api/health | python3 -m json.tool
 ```
 
-期望：① `data.apiVersion` 非空；② `data.ok` 布尔、`data.checks` 数组（API-only 站点 routes 可能报 error，那是检测能力证据）；③ 同②有 `last` 报告；④ `{"pong":true,...}` 200；⑤ 锁含 `demo-solution: 0.1.0`；⑥ 200 且带 generation。
+期望：① `data.apiVersion` 非空；② `data.ok` 布尔、`data.checks` 数组（API-only 站点 routes 可能报 error，那是检测能力证据）；③ 同②有 `last` 报告；④ 200 且包体 `data.pong===true`（`{"code":0,"msg":"ok","data":{"pong":true,...}}`）；⑤ 锁含 `demo-solution: 0.1.0`；⑥ 200 且带 generation。
 
 ---
 

@@ -36,6 +36,7 @@
 		"npm-check": "taze major -lrw",
 		"check:circular-deps": "ds packages/runtime/src --output circular-deps.json",
 		"check:mermaid": "node scripts/check-mermaid.mjs",
+		"verify:solution": "node scripts/verify-solution-smoke/run.mjs",
 		"test": "vitest",
 		"test:e2e": "playwright test --config tests/e2e/playwright.config.ts",
 		"test:e2e:legacy": "E2E_TARGET=legacy playwright test --config tests/e2e/playwright.config.ts",
