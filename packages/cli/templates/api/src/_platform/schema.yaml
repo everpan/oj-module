@@ -88,6 +88,20 @@ tables:
       expires_at: {type: integer, null: false}
       revoked: {type: integer, null: false}
       created_at: {type: integer, null: false}
+  # 限速/登录节流状态表（V9__sys_throttle 经迁移创建；rate.ts 经 db.table() 访问，
+  # 须在此声明 + 在 manifest.yaml tables 登记，否则 oj 表元数据校验报 unknown table）。
+  sys_rate_window:
+    pk: rate_key
+    columns:
+      rate_key: {type: text, null: false}
+      window_start: {type: integer, null: false}
+      count: {type: integer, null: false}
+  sys_login_throttle:
+    pk: pair_key
+    columns:
+      pair_key: {type: text, null: false}
+      fail_count: {type: integer, null: false}
+      blocked_until: {type: integer, null: false}
   # 市场操作历史（P4 上收 _platform）：install/enable/disable/uninstall/upgrade/rollback 六类动作留痕。
   # 写入由平台编排面（_lifecycle/history.ts recordHistory）落到本表；市场页只读消费。
   market_history:
