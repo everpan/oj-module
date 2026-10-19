@@ -111,17 +111,35 @@ rm -rf "$VERIFY_DIR" && mkdir -p "$VERIFY_DIR" && cd "$VERIFY_DIR"
 > 2. **框架包自身**：待发版本（如 0.1.20 未上 npm）`pnpm install` 会 `ERR_PNPM_NO_MATCHING_VERSION`。旁路：删 devDeps 里的 `@oj-module/cli`（CLI 用源码 bin 直跑），`@oj-module/runtime` 装好后手工 symlink 到仓库 `packages/runtime`（其内部依赖经 realpath 回落仓库 node_modules 解析，与 playground-oj 的 workspace 链接等效）。注意 `file:` 链接不行：两个包都用了 pnpm `catalog:` 协议，只对 workspace 成员解析。
 >    **cli 与 runtime 双双未发版时**（2026-10-19 实测形态）：两个 devDep 都要删，再 `ln -s $OJM_REPO/packages/runtime node_modules/@oj-module/runtime`。Node 侧只有 `@oj-module/runtime/contract` 子路径会被真正求值（`ojm api` 用）；浏览器包本体 import `antd/locale/*` 在裸 Node 下报 extensionless 是**预期**，不影响链路。另：本机 pnpm store 已预热时 `pnpm install --offline` 可绕开 registry 限速（实测 1.6s，见 §9）。
 
+## 0.5 发布形态准备（默认；与发包逐字节一致）
+
+> **为什么必须有这一步**（2026-10-19 0.2.5 实测教训）：源码树跑演练会漏掉**打包差异**——npm/pnpm pack 会剥离 `.gitignore` 等 VCS 点文件、prepack 才同步 `devkit/` 与 `vendor/host-versions.json`、`shell-dist` 不带 sourcemap。源码树里 `templates/.gitignore` 存在、演练全绿；发布包里它不存在，`readInitInclude` fail-fast 把 `ojm init` 整个打挂（用户工程只剩空目录）。**演练用源码树 = 没验到用户真正装到的东西。**
+
+```bash
+export CLI_PKG=/tmp/ojm-verify/cli-pkg          # 解包后的 cli 发布包（后续 ojm 调用一律走它）
+mkdir -p /tmp/ojm-verify
+pnpm --dir "$OJM_REPO/packages/cli" pack --pack-destination /tmp/ojm-verify
+tar -xzf /tmp/ojm-verify/oj-module-cli-*.tgz -C /tmp/ojm-verify
+mv /tmp/ojm-verify/package "$CLI_PKG"
+pnpm install --dir "$CLI_PKG"                    # 发布包 manifest 已被 pnpm pack 改写为真实 semver，可独立安装
+```
+
+后续所有 `ojm` 命令走 `$CLI_PKG/bin/ojm.mjs`（**不要**再走 `$OJM_REPO/packages/cli/bin/ojm.mjs`）。runtime 未发版时：在 my-books 里 `pnpm add <runtime 本地 tgz>`（同样先 `pnpm --dir packages/runtime pack`），与发包解析路径一致；§0 旁路 2 的 symlink 仅作 store 不全时兜底。整体通过后如需确认 registry 形态，再 `pnpm dlx @oj-module/cli@<ver> init` 复跑一次 §1。
+
 ## 1. 脚手架（`ojm init`）
 
 ```bash
-# 用源码 CLI（验证当前代码）；若验证发布包，改 `npx --package @oj-module/cli ojm init`
-node "$OJM_REPO/packages/cli/bin/ojm.mjs" init my-books --yes
+# 发布形态（默认，§0.5 准备）：与用户 `pnpm dlx @oj-module/cli@x.y.z init` 装到的逐字节一致
+node "$CLI_PKG/bin/ojm.mjs" init my-books --yes
+# 仅当明确要验证「源码树当前代码」时才用源码 bin（注意：会漏打包差异，如 .gitignore 被 pack 剥离，见 §9）
+# node "$OJM_REPO/packages/cli/bin/ojm.mjs" init my-books --yes
 ```
 
 **检查点**
 
 - [ ] 退出码 0，末行提示 `登录 admin / 123456`
 - [ ] 目录齐全：`api/src/{_platform,auth,web,notifications,notification,personal-center,system}`、`api/.ojm-api-exempt.json`、`web/src/{demo,home,login,personal-center,notification,notifications,system}`、`web.config.ts`、`tsconfig.json`、`global.d.ts`、`env.d.ts`、`bin/oj`、`bin/.oj-version`、`.claude/skills/{oj-api-dev,ojm-module-dev}/`
+- [ ] **工程根有 `.gitignore`**（发布包不携带模板 `.gitignore`——npm/pnpm pack 剥离点文件，改由 init 现场生成，`ensureGitignore`；0.2.5 曾因 include 清单收录它而 fail-fast，见 §9）
 - [ ] **工程根有 `openapi.json`**（新流水线唯一事实源，模板随附）+ `web/src/<模块>/__client/` 预生成（`ojm api --check` 开箱即过）
 - [ ] handler 契约为新约定：动词挂 `.schema`（params/query/body 入参）+ **平级 `.response`**（出参，oj v0.1.72+）；无 `contract.ts` / `routes.json` / `openapi.yaml`
 - [ ] **分发的 devkit 自包含**：`.claude/skills/ojm-module-dev/` 三件套含 manual.md **§3.10 旧 contract.ts 工程迁移指南**；grep `docs/migration|docs/plans|../oj-api-dev` 应**零命中**（devkit 随 init 进业务工程，不能引用框架仓内部路径）；oj 侧 devkit 落在 `.claude/skills/oj-api-dev/`
@@ -140,7 +158,7 @@ cd my-books && pnpm install
 
 - [ ] `node_modules/.bin/tsc` 存在；`@oj-module/runtime` 可解析（发行版走 npm；源码验证按 §0 旁路 2）
 - [ ] 安装日志里 `@oj-module/{cli,runtime}` 版本与 `versions.json` 一致（源码验证时 cli 以 bin 直跑、`ojm info` 显示 `cli: unknown` 属预期）
-- [ ] `pnpm exec ojm info`（或 `node "$OJM_REPO/packages/cli/bin/ojm.mjs" info`）输出宿主版本矩阵 + 模块清单，无报错
+- [ ] `pnpm exec ojm info`（或 `node "$CLI_PKG/bin/ojm.mjs" info`）输出宿主版本矩阵 + 模块清单，无报错
 - [ ] 处理 §1 的 `*` 告警：把 `@types/react` / `typescript` 钉成实际安装版本
 
 ## 3. oj 二进制可用性（检查点）
@@ -208,8 +226,8 @@ export default list;
 
 ```bash
 ./bin/oj openapi -c api/config.yaml -d api/src -b /api -o openapi.json   # 唯一事实源（工程根单文件）
-node "$OJM_REPO/packages/cli/bin/ojm.mjs" api                            # 或 pnpm exec ojm api
-node "$OJM_REPO/packages/cli/bin/ojm.mjs" api --check
+node "$CLI_PKG/bin/ojm.mjs" api                            # 或 pnpm exec ojm api
+node "$CLI_PKG/bin/ojm.mjs" api --check
 ```
 
 **检查点**
@@ -328,6 +346,7 @@ API 全链路再通一遍（登录/列表/新增）；
 | 手工改过 `openapi.json`（`del`→`delete`、operationId 改名）后 `--check` 漂移 | oj ≤ 0.1.72 的 `oj openapi` 产出非法 `"del"` 操作键 | 升级 oj ≥ 0.1.73（`del`→`delete` 归一）后删手工改动重生成；client 用原生 operationId 派生名 |
 | `pnpm install` 卡死：20min+ 无 lockfile、`node_modules` 近空、pnpm 进程低 CPU 干等 | 直连 `registry.npmjs.org` 被限速（实测 ~18KB/s，单个 tarball 30s 下不完），pnpm 卡在元数据解析段 | 本机 pnpm store 已预热（装过同版本矩阵）时 `pnpm install --offline`，实测 1.6s 完成；store 不全时换镜像源或等限速恢复。**环境问题，非框架缺陷** |
 | 新模块 `entry.ts` 被 `tsc` 拦：`TS2322 (ctx) => void 不匹配 (ctx) => Promise<void>` | `lifecycle.onInit` 签名要求返回 Promise；照抄老模块时容易漏 `async` | 写 `async onInit(ctx)`（范本：模板 `web/src/notification/entry.ts`；devkit SKILL「注册时机」红线已补明） |
+| `ojm init` 报 `init.include.yaml 收录了不存在的路径：.gitignore`，工程只剩空目录 | npm/pnpm pack 剥离 `.gitignore` 点文件（npm-packlist always-exclude，`files` 字段绕不过）；include 白名单收录它 → 安装包缺文件 → `readInitInclude` fail-fast 在拷贝任何文件前中断。**演练盲区**：playbook 当时用源码树 CLI 演练，源码树里该文件存在故全绿——演练形态 ≠ 发包形态 | cli ≥ 0.2.6 已修：`.gitignore` 改由 init 现场生成（`ensureGitignore`，与 `pnpm-workspace.yaml` 同型），include 清单移除该条目；守卫：`tests/cli/release-manifest.test.ts` 逐条核对清单条目落在 tarball 内；演练按 §0.5 用本地 pack 的发布包 |
 
 ## 10. 复跑脚本（TL;DR）
 
@@ -335,9 +354,14 @@ API 全链路再通一遍（登录/列表/新增）；
 set -e
 export VERIFY_DIR=/tmp/ojm-verify OJM_REPO=/Users/ever/git/only-js/oj-module
 rm -rf "$VERIFY_DIR" && mkdir -p "$VERIFY_DIR" && cd "$VERIFY_DIR"
+# §0.5 发布形态：pack → 解包 → 安装（演练与发包逐字节一致，防打包差异漏网）
+export CLI_PKG="$VERIFY_DIR/cli-pkg"
+pnpm --dir "$OJM_REPO/packages/cli" pack --pack-destination "$VERIFY_DIR"
+tar -xzf "$VERIFY_DIR"/oj-module-cli-*.tgz -C "$VERIFY_DIR" && mv "$VERIFY_DIR/package" "$CLI_PKG"
+pnpm install --dir "$CLI_PKG"
 # npm 通道 oj 低于门禁时先预置（§0 旁路 1）：mkdir my-books/bin && cp ~/.local/share/oj/oj my-books/bin/oj
 #   && cp -R ~/.local/share/oj/{devkit,plugins} my-books/bin/ && printf 'v0.1.74\n' > my-books/bin/.oj-version
-node "$OJM_REPO/packages/cli/bin/ojm.mjs" init my-books --yes
+node "$CLI_PKG/bin/ojm.mjs" init my-books --yes
 cd my-books && pnpm install
 ./bin/oj --version
 rm -rf /tmp/_oj_probe && mkdir -p /tmp/_oj_probe/src/web/hello \
@@ -346,7 +370,7 @@ rm -rf /tmp/_oj_probe && mkdir -p /tmp/_oj_probe/src/web/hello \
   && ./bin/oj build -d /tmp/_oj_probe/src -o /tmp/_oj_probe/out   # §3 探针（坏二进制约在此 panic）
 # …补 books 后端（.schema 入参 + 平级 .response 出参）→ ./bin/oj openapi -c api/config.yaml -d api/src -b /api -o openapi.json
 #   → ojm api（+ --check）→ 补前端 →
-node "$OJM_REPO/packages/cli/bin/ojm.mjs" build && npx tsc --noEmit -p tsconfig.json && node "$OJM_REPO/packages/cli/bin/ojm.mjs" dev
+node "$CLI_PKG/bin/ojm.mjs" build && npx tsc --noEmit -p tsconfig.json && node "$CLI_PKG/bin/ojm.mjs" dev
 ```
 
 > 每次框架发版后跑一遍本文档，把 §「最近一次基线」更新为新版本与结果。

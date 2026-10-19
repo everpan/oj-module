@@ -321,6 +321,28 @@ describe("initProject", () => {
 		expect(yaml).toContain("'@redocly/cli': 2.51.0");
 	});
 
+	/**
+	 * .gitignore 与 pnpm-workspace.yaml 同型：npm/pnpm pack 会剥离 `.gitignore`
+	 * 点文件（0.2.5 发布实测：include 清单收录它 → 安装包缺文件 → readInitInclude
+	 * fail-fast → init 整体中断、目标目录留空），故不随模板拷贝，改由 init 生成。
+	 */
+	it("全新工程由 init 生成 .gitignore；已存在则永不覆盖", async () => {
+		const dest = path.join(tmpRoot(), "proj-gitignore");
+		await initProject(dest, initOpts);
+		const gitignore = path.join(dest, ".gitignore");
+		expect(fs.existsSync(gitignore)).toBe(true);
+		const text = fs.readFileSync(gitignore, "utf-8");
+		// 现场产物不入仓：dev 下载的 bin/oj、sqlite/日志/私钥、各级构建产物
+		for (const rule of ["node_modules/", "bin/", "api/db.sqlite", "api/logs/", "api/config/*.pem", "api/config/cert.jws", "api/dist/", "web/dist/", "modules/dist/"])
+			expect(text).toContain(rule);
+
+		const dest2 = path.join(tmpRoot(), "proj-gitignore-keep");
+		fs.mkdirSync(dest2, { recursive: true });
+		fs.writeFileSync(path.join(dest2, ".gitignore"), "custom-rules\n");
+		await initProject(dest2, initOpts);
+		expect(fs.readFileSync(path.join(dest2, ".gitignore"), "utf-8")).toBe("custom-rules\n");
+	});
+
 	it("pnpm-workspace.yaml 无 allowBuilds 段 → 追加；显式 false → 尊重不动", async () => {
 		const destA = path.join(tmpRoot(), "proj-a");
 		fs.mkdirSync(destA, { recursive: true });

@@ -146,6 +146,13 @@ export async function initProject(destDir: string, opts: InitOptions = {}): Prom
 	// 的「已存在即跳过」会把审批挡在门外（0.1.0 发布实测）——必须合并
 	ensureAllowBuilds(destDir, report);
 
+	// 5c) .gitignore：模板自带一份（模板兼作可运行 demo 用），但 npm/pnpm pack
+	//     会剥离 `.gitignore` 点文件（npm-packlist always-exclude，`files` 字段
+	//     绕不过），收录进 init.include.yaml 只会让安装包缺文件、readInitInclude
+	//     fail-fast 把整个 init 打挂（0.2.5 发布实测：目标目录只剩空壳）——
+	//     与 pnpm-workspace.yaml 同型，改由 init 现场生成
+	ensureGitignore(destDir, report);
+
 	console.log(`[ojm] init 完成：${destDir}`);
 	console.log(`[ojm]   新增 ${report.created.length} 项，跳过（已存在）${report.skipped.length} 项`);
 	for (const item of report.skipped)
@@ -358,6 +365,41 @@ function copyIfAbsent(src: string, dest: string, report: InitReport): void {
 	fs.mkdirSync(path.dirname(dest), { recursive: true });
 	fs.copyFileSync(src, dest);
 	report.created.push(path.relative(process.cwd(), dest) || path.basename(dest));
+}
+
+/**
+ * 新工程 .gitignore：不存在则生成；已存在则幂等跳过（用户规则永不覆盖）。
+ *
+ * 内容与 templates/.gitignore 对齐（模板兼作可运行 demo，ignore 的是同一套
+ * 现场产物）：dev 下载的 bin/oj、sqlite/日志/现场签发的私钥与证书、构建产物。
+ * 它不能随模板拷贝——npm/pnpm pack 剥离 `.gitignore`，详见 initProject 5c。
+ */
+const SCAFFOLD_GITIGNORE = `# 由 ojm init 生成。
+node_modules/
+bin/
+.ojm-tmp-*
+# 本地 sqlite 与运行日志
+api/db.sqlite
+api/db.sqlite-shm
+api/db.sqlite-wal
+api/logs/
+# 现场签发的开发证书与凭据私钥（ojm dev 缺证时自动签发，见 oj-cert.ts）；私钥绝不入仓
+api/config/*.pem
+api/config/cert.jws
+# 构建产物
+api/dist/
+web/dist/
+modules/dist/
+`;
+
+function ensureGitignore(destDir: string, report: InitReport): void {
+	const gitignorePath = path.join(destDir, ".gitignore");
+	if (fs.existsSync(gitignorePath)) {
+		report.skipped.push(".gitignore");
+		return;
+	}
+	fs.writeFileSync(gitignorePath, SCAFFOLD_GITIGNORE);
+	report.created.push(".gitignore");
 }
 
 /**

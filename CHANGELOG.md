@@ -5,7 +5,9 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 设计依据、迁移记录与陷阱清单见 [`docs/prd/202609110947-oj-module-two-package-consolidation-design.md`](docs/prd/202609110947-oj-module-two-package-consolidation-design.md)。
 
-## [Unreleased]
+## [0.2.6] - 2026-10-19
+
+双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步升 **0.2.6**。
 
 ### Changed
 
@@ -14,6 +16,12 @@
   - `openapi.json` 裁剪反转为「只保留白名单内 api 模块的 `/api/<mod>/` 路径」，与脚手架实际模块严格一致。
   - 修复旧逻辑两处泄漏：模板本地产物 `api/node_modules/`（旧清单只排了根级 `node_modules`）与 `init.include.yaml` 自身不再进用户工程。
   - `web/src/{demo,home}/__client` 仍不拷（其 api 模块是 demo-only）：白名单对 demo/home 只列页面源码（entry/locales/pages），不列整棵模块目录。
+
+### Fixed
+
+- **`ojm init` 在发布包上 fail-fast、目标目录只剩空壳**（0.2.5 发布实测）：白名单收录了 `.gitignore`，但 npm/pnpm pack 会剥离 `.gitignore` 点文件（npm-packlist always-exclude，`files` 字段绕不过），安装包里该文件不存在 → `readInitInclude` 存在性校验在拷贝任何文件前抛出，整个 init 中断。现 `.gitignore` 改由 init 现场生成（`ensureGitignore`，与 `pnpm-workspace.yaml`/`package.json` 同型；已存在则幂等跳过、永不覆盖用户规则），白名单移除该条目；模板自带的 `.gitignore` 保留供模板自身 `pnpm dev` 使用。
+  - 守卫：`tests/cli/release-manifest.test.ts` 新增断言——`init.include.yaml` 每条收录路径都必须落在 `pnpm pack` 的 tarball 内，此类「打包差异」以后未发包即可在 CI 发现。
+  - 流程：演练手册（`docs/prd/framework-verification-playbook.md`）新增 §0.5「发布形态准备」——演练默认改用本地 pack 的 tarball（解包 + 安装）而非源码树 CLI，堵住「演练形态 ≠ 发包形态」的盲区。
 
 ## [0.2.5] - 2026-10-18
 

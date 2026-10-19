@@ -92,4 +92,25 @@ describe("发布清单（走真实 pnpm pack 路径）", () => {
 		expect(entries).toContain("package/shell-dist/index.html");
 		expect(entries).toContain("package/templates/api/.ojm-api-exempt.json");
 	});
+
+	/**
+	 * 0.2.5 发布实测 bug3：npm/pnpm pack 会剥离 `.gitignore` 等 VCS 点文件
+	 * （npm-packlist 的 always-exclude，`files` 字段也绕不过）。init.include.yaml
+	 * 曾收录 `.gitignore`，tarball 里没有它 → readInitInclude fail-fast →
+	 * 用户工程 init 整体中断、只剩空目录。白名单条目必须逐条落在 tarball 内。
+	 */
+	it("cli：init.include.yaml 每条收录路径都在 tarball 内", () => {
+		const tgz = pack("packages/cli", "oj-module-cli-");
+		const inTarball = new Set(entriesOf(tgz).map(e => e.replace(/^package\//, "").replace(/\/$/, "")));
+		const listText = fs.readFileSync(
+			path.join(PROJECT_ROOT, "packages/cli/templates/init.include.yaml"),
+			"utf-8",
+		);
+		const listed = [...listText.matchAll(/^\s*-\s*(\S+)\s*$/gm)].map(m => m[1]);
+		expect(listed.length).toBeGreaterThan(0);
+		// tarball 只列文件条目：目录条目按「其下有子孙文件」判定（同 copyTemplates 的穿行语义）
+		const missing = listed.filter(p =>
+			!inTarball.has(`templates/${p}`) && ![...inTarball].some(e => e.startsWith(`templates/${p}/`)));
+		expect(missing, "init.include.yaml 有条目未进 tarball（点文件会被 pack 剥离）").toEqual([]);
+	});
 });

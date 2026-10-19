@@ -13,6 +13,13 @@
 #     共享同一把私钥。
 #  4. 模板自用元数据——本清单自身。
 #
+# 另有两类文件「故意不进清单」：package.json / pnpm-workspace.yaml / .gitignore
+# 由 init 现场生成（见 init.ts）。其中 .gitignore 是硬约束：npm/pnpm pack 会
+# 剥离 `.gitignore` 点文件，收录它只会让安装包缺文件、readInitInclude fail-fast
+# 把整个 init 打挂（0.2.5 发布实测）；本模板目录自带的 .gitignore 仅供模板自身
+# `pnpm dev` 时忽略产物，不进发布包、也不进用户工程。守卫：
+# tests/cli/release-manifest.test.ts 逐条核对清单条目落在 tarball 内。
+#
 # 注意 web/src/{demo,home}/__client 不在清单：其 api 模块（api/src/demo、
 # api/src/home）是 demo-only 不进脚手架，client 生成物留着会指向不存在的端点，
 # 故 demo/home 只列页面源码（entry/locales/pages），不列整棵模块目录。
@@ -23,7 +30,6 @@ include:
   - env.d.ts
   - web.config.ts
   - openapi.json
-  - .gitignore
   - web/src/styles.css
   # —— api 后端：配置 / 种子 / 测试 / 默认模块 ——
   - api/config.yaml
