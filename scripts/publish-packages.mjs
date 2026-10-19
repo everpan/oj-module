@@ -1,14 +1,6 @@
 // 发布 @oj-module/* 包：lockstep 门禁 → 产物重建 → 守卫测试 → 按依赖序发布 → registry 复核。
 //
-// 用法：node scripts/publish-packages.mjs [--dry-run] [--skip-tests] [--tag <tag>] [--otp <code>] [--web-2fa]
-//   --dry-run     只构建 + 守卫测试，不发布（也不要求登录）
-//   --skip-tests  跳过守卫测试（应急；发布前须手动补跑 pnpm vitest run tests/cli）
-//   --tag <tag>   dist-tag，默认 latest
-//   --otp <code>  npm 2FA 验证码（TOTP 类账户开启双因素认证时必填）；省略则在发布前交互索取
-//   --web-2fa     npm 2FA 为「web 验证」（浏览器审批）模式：发布时 npm 弹浏览器让你批准，
-//                 不传 --otp、也不索取验证码；脚本直接 pnpm publish 并等待浏览器审批完成。
-//                 与 --otp 互斥，同时给则忽略 --otp。前置登录校验照常执行
-//                 （token 失效时 web 审批链路不触发，须在发布前拦下）。
+// 参数与流程说明：见本文件 USAGE 常量（单一事实来源；`node scripts/publish-packages.mjs --help` 同文）。
 //
 // 流程来源：docs/prd/framework-development-guide.md 附录 A（发布 runbook）。
 // 设计文档：docs/prd/202610101416-publish-script.md（事故背景见
@@ -57,6 +49,56 @@ const flag = name => args.includes(name);
 function opt(name) {
 	const i = args.indexOf(name);
 	return i >= 0 ? args[i + 1] : undefined;
+}
+
+/**
+ * 帮助文本（用法 + 五步流程 + 全部旗标）。单一事实来源：头部注释只留指针，
+ * 新增/改旗标时只改这里，`--help` 输出与注释不会漂移。
+ */
+const USAGE = `用法：node scripts/publish-packages.mjs [选项]
+
+一键发布 @oj-module/runtime + @oj-module/cli（双包 lockstep 同版，按依赖序
+runtime → cli；颠倒则消费端装不上）。
+
+流程（5 步，任一失败即中止；已发布的版本自动跳过，可安全重跑）：
+  1/5 前置校验      lockstep 同版门禁 + 工作区干净 + npm 登录态（dry-run 跳过登录）
+  2/5 产物重建      runtime build + cli build:shell（宿主外壳预打包）
+  3/5 守卫测试      vitest run tests/cli/ tests/shell/kit-shared.test.ts
+  4/5 发布          runtime → cli（pnpm publish --access public --no-provenance）
+  5/5 registry 复核 官方源轮询 dist-tag / version / tarball（容忍 CDN 延迟，最长 3 分钟）
+
+选项：
+  --dry-run      只构建 + 守卫测试，不发布（也不要求登录、不做 registry 复核）
+  --skip-tests   跳过守卫测试（应急；发布前须手动补跑 pnpm vitest run tests/cli）
+  --tag <tag>    dist-tag，默认 latest（发 beta 等预发布通道时用）
+  --otp <code>   npm 2FA 验证码（TOTP 类账户必填）；省略则发布前交互索取，
+                被 EOTP 拦截时自动重新索取并重试（最多 3 次）
+  --web-2fa      npm 2FA 为「web 验证」（浏览器审批）模式：发布时 npm 弹浏览器
+                让你批准，脚本阻塞等待；无验证码可输，超时/被拒需重跑本命令。
+                与 --otp 互斥（同时给则忽略 --otp）
+  -h, --help     打印本帮助并退出（不做任何校验、不发布）
+
+发布仓库：https://registry.npmjs.org（与各包 publishConfig.registry、.npmrc 一致）。
+
+注意：pnpm ≥11 默认 minimumReleaseAge=1 天——发布后约一天内裸版本号安装可能
+仍指向旧版；在此之前消费端可用 pnpm i @oj-module/cli@<version> 显式指定
+（此现象非发布问题，勿重发版本）。`;
+
+// --help/-h 先于一切副作用：误敲 --help 绝不该触发真实发布（此前无帮助入口，
+// 敲 --help 会被当未知参数忽略、直接开跑——本分支修此隐患）。
+if (flag("--help") || flag("-h")) {
+	console.log(USAGE);
+	process.exit(0);
+}
+// 未知参数 fail-fast：拼错旗标（如 --dryrun、--skip_test）旧行为是静默忽略，
+// 结果是一场「以为在演练、实际在真发布」的事故。这里直接拦下并给出用法。
+const KNOWN_FLAGS = new Set(["--dry-run", "--skip-tests", "--web-2fa", "--help", "-h"]);
+const KNOWN_OPTS = new Set(["--tag", "--otp"]);
+const unknownArgs = args.filter(a => a.startsWith("-") && !KNOWN_FLAGS.has(a) && !KNOWN_OPTS.has(a));
+if (unknownArgs.length > 0) {
+	console.error(`✗ 未知参数：${unknownArgs.join(" ")}\n`);
+	console.error(USAGE);
+	process.exit(1);
 }
 const DRY_RUN = flag("--dry-run");
 const SKIP_TESTS = flag("--skip-tests");
