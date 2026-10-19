@@ -63,5 +63,6 @@ flowchart LR
 （幂等跳过已存在的文件——若想强制覆盖旧拷贝，先删 `.claude/skills/ojm-module-dev/` 再 init）。
 源文件只在仓库根 `docs/devkit/` 一处维护。
 
-> 本目录（devkit）是**自包含**的：所有内容都在这 4 个文件里，不需要工程仓库里的
-> 其它文档即可读懂。维护者视角的内容来源整理在 `framework-dev.md`（仅本仓）。
+> 本目录（devkit）是**自包含**的：所有内容都在这 5 个文件里，不需要工程仓库里的
+> 其它文档即可读懂。维护者视角的内容来源整理在 `framework-dev.md`（仅本仓）；
+> `sql-builder-missing-capabilities-pr.md` 是构造器能力缺口 PR 参考（同样仅本仓维护用）。

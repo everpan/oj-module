@@ -100,7 +100,9 @@ api/src/<模块>/<路径...>/api.ts   →   /api/<模块>/<路径...>
 | `api/src/<模块>/manifest.yaml` | `tables: [表名]` | **与 `schema.yaml` 双向一致**（约定），只写一边启动即失败 |
 
 > 少了 migration → 表根本建不出来；少了 `schema.yaml` / `manifest.tables`
-> → 归属校验失败；两边列定义漂移 → reconcile 报差异（`oj schema diff` 可见）。
+> → 启动归属校验失败，且任何经 `db.table("<表名>")` 访问该表的代码都会被 oj 的 DB 构造器以
+> `unknown table` 拒绝（2026-10-19 演练实踩：仅由迁移建表、未声明的 `sys_rate_window` /
+> `sys_login_throttle` 导致登录恒 500）；两边列定义漂移 → reconcile 报差异（`oj schema diff` 可见）。
 
 ### 1.6 迁移与 seed 的应用时机
 
@@ -297,7 +299,7 @@ export default defineModule({
 可服务的同源路径）。直接 `import "vditor/dist/..."` 其它深路径会命中前缀 external 但无
 importmap 键，构建期报错——需要新深路径请联系框架方在共享表登记。
 
-### 2.7 本版本共享依赖钉版（0.2.5 快照）
+### 2.7 本版本共享依赖钉版（0.2.8 快照）
 
 宿主经 importmap 提供以下单例（模块 `devDependencies` 须对齐，供 `tsc` 用）；完整 68 项矩阵以
 `pnpm exec ojm info` 或 `packages/cli/shell-dist/versions.json`（构建期生成）为准。
@@ -326,7 +328,7 @@ importmap 键，构建期报错——需要新深路径请联系框架方在共�
 | `pinyin-pro` | 3.29.3 |
 | `vditor` | 4.0.0 |
 
-框架包版本：`@oj-module/runtime` / `@oj-module/cli` 为 `0.2.5`（**双包 lockstep**）；
+框架包版本：`@oj-module/runtime` / `@oj-module/cli` 为 `0.2.8`（**双包 lockstep**）；
 `@plane/kit` / `@plane/editor` 是独立版本线（当前 `0.1.20`，随宿主 importmap 提供，
 不参与 lockstep）。`oj` 二进制最低版本门禁 `MIN_OJ_VERSION = 0.1.73`——契约流水线要求
 oj ≥ 0.1.73：平级 `.response` 出参声明位自 v0.1.72 起、`oj openapi` 的 `del`→`delete`
@@ -913,7 +915,8 @@ ctx.register.routesApi({
 ```ts
 export default {
 	async get() {
-		const rows = await db.query("SELECT path, title, icon FROM menus ORDER BY sort", []);
+		// 表须按 §1.5 三件套在 schema.yaml + manifest.yaml 声明；db.table() 构造器要求表已声明
+		const rows = await db.table("menus").select(["path", "title", "icon"]).orderBy([{ field: "sort" }]).all();
 		json.ok(rows.map(r => ({
 			path: String(r.path),
 			handle: { layout: "container", title: String(r.title) },

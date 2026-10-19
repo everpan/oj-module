@@ -20,7 +20,7 @@
 > ⚠️ 那两份 guide 有**已知陈旧处**，以源码为准：
 > dev 端口实际是 **3333**（guide 写的 5173 已过时；注意与 `ojm dev` 的前端 devServer
 > **5174** 不是一回事——前者是本仓 vite，后者是业务工程 devServer）；包版本以
-> `packages/*/package.json` 为准（guide 内部版本号不一致，实际 **0.2.5**）。
+> `packages/*/package.json` 为准（撰写时实际 **0.2.8**，仅供参考，以当前 package.json 为准）。
 
 ## §2 两包结构与依赖方向
 
@@ -133,7 +133,7 @@ pnpm test tests/shell                       # 宿主全量
 **一键发布**：`node scripts/publish-packages.mjs`（lockstep 门禁 → 构建 → 守卫测试 →
 runtime → cli → registry 复核；`--dry-run` 只演练）。下面的手动步骤是它的展开参考。
 
-- **两包**同版本号（`@oj-module/runtime` + `@oj-module/cli`，当前 `0.2.5`），后续发版保持
+- **两包**同版本号（`@oj-module/runtime` + `@oj-module/cli`，当前 `0.2.8`），后续发版保持
   lockstep；`@plane/kit` / `@plane/editor` 不在发布集内（脚本里已注释）。
 - **必须 `pnpm publish`**——用 `npm publish` 会漏出 `workspace:*` / `catalog:` 字面量。
 - **顺序：先 `runtime` 后 `cli`**。`runtime` 未公开时，新 `cli` 的精确依赖会悬空，
@@ -175,7 +175,7 @@ runtime → cli → registry 复核；`--dry-run` 只演练）。下面的手动
 
 ## 附：本 devkit 内容来源（维护者看）
 
-`docs/devkit/` 是**自包含**的交付文档，业务工程拿到这 4 个文件即可读懂，不依赖工程仓库里的其它文档。
+`docs/devkit/` 是**自包含**的交付文档（含 `sql-builder-missing-capabilities-pr.md` 这份构造器能力缺口 PR 参考，共 5 个文件），业务工程拿到即可读懂，不依赖工程仓库里的其它文档。
 下面的来源仅用于维护时追溯与同步，不参与交付：
 
 | 源（本仓其它位置） | 贡献到 devkit 的内容 |
