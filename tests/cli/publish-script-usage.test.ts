@@ -44,4 +44,25 @@ describe("publish-packages 帮助与参数守卫", () => {
 		expect(stderr).toContain("用法：node scripts/publish-packages.mjs");
 		expect(stderr).not.toContain("== 1/5");
 	});
+
+	it("裸跑（无参数）= 显示帮助并退出 1，不发生任何发布动作", () => {
+		const { status, stdout } = run([]);
+		expect(status).toBe(1);
+		expect(stdout).toContain("用法：node scripts/publish-packages.mjs");
+		expect(stdout).not.toContain("== 1/5"); // main() 从未开跑
+	});
+
+	it("只给修饰旗标不给 --publish = 意图不明，fail-fast", () => {
+		const { status, stderr } = run(["--tag", "beta"]);
+		expect(status).toBe(1);
+		expect(stderr).toContain("未指定 --publish");
+		expect(stderr).not.toContain("== 1/5");
+	});
+
+	it("--publish 与 --dry-run 互斥", () => {
+		const { status, stderr } = run(["--publish", "--dry-run"]);
+		expect(status).toBe(1);
+		expect(stderr).toContain("互斥");
+		expect(stderr).not.toContain("== 1/5");
+	});
 });

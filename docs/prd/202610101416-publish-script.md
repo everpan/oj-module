@@ -66,22 +66,26 @@ And  不执行 publish、不要求登录
 
 | 旗标 | 行为 |
 |---|---|
-| `--dry-run` | 只构建 + 守卫测试，不发布、不查登录 |
+| `--publish` | 实发（显式动作，不可逆）。**裸跑不再发布**——不带任何参数 = 显示帮助并退出 1 |
+| `--dry-run` | 演练：只构建 + 守卫测试，不发布、不查登录（与 `--publish` 互斥） |
 | `--skip-tests` | 跳过守卫测试（应急用，发布前须手动补跑） |
 | `--tag <t>` | 指定 dist-tag（默认 latest） |
 
 ## 用法
 
 ```bash
-# 全流程发布（需已 npm login --registry=https://registry.npmjs.org）
+# 不带参数 = 显示帮助（退出 1，不发生任何动作）
 node scripts/publish-packages.mjs
+
+# 全流程发布（需已 npm login --registry=https://registry.npmjs.org）
+node scripts/publish-packages.mjs --publish
 
 # 演练：构建 + 守卫测试，不发布
 node scripts/publish-packages.mjs --dry-run
 
-# 应急跳过测试 / 发预发 tag
-node scripts/publish-packages.mjs --skip-tests
-node scripts/publish-packages.mjs --tag beta
+# 应急跳过测试 / 发预发 tag（均需配 --publish 才会实发）
+node scripts/publish-packages.mjs --publish --skip-tests
+node scripts/publish-packages.mjs --publish --tag beta
 ```
 
 执行序：`lockstep 校验 → 工作区干净校验 → 登录校验 → 构建（runtime → shell）→

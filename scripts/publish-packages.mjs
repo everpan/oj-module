@@ -55,10 +55,14 @@ function opt(name) {
  * 帮助文本（用法 + 五步流程 + 全部旗标）。单一事实来源：头部注释只留指针，
  * 新增/改旗标时只改这里，`--help` 输出与注释不会漂移。
  */
-const USAGE = `用法：node scripts/publish-packages.mjs [选项]
+const USAGE = `用法：node scripts/publish-packages.mjs --dry-run
+     node scripts/publish-packages.mjs --publish [其他选项]
 
 一键发布 @oj-module/runtime + @oj-module/cli（双包 lockstep 同版，按依赖序
 runtime → cli；颠倒则消费端装不上）。
+
+不带任何参数运行 = 显示本帮助（退出 1）——实发必须显式 --publish，
+「手滑敲个命令」不会变成真发布。
 
 流程（5 步，任一失败即中止；已发布的版本自动跳过，可安全重跑）：
   1/5 前置校验      lockstep 同版门禁 + 工作区干净 + npm 登录态（dry-run 跳过登录）
@@ -68,15 +72,17 @@ runtime → cli；颠倒则消费端装不上）。
   5/5 registry 复核 官方源轮询 dist-tag / version / tarball（容忍 CDN 延迟，最长 3 分钟）
 
 选项：
-  --dry-run      只构建 + 守卫测试，不发布（也不要求登录、不做 registry 复核）
-  --skip-tests   跳过守卫测试（应急；发布前须手动补跑 pnpm vitest run tests/cli）
-  --tag <tag>    dist-tag，默认 latest（发 beta 等预发布通道时用）
-  --otp <code>   npm 2FA 验证码（TOTP 类账户必填）；省略则发布前交互索取，
-                被 EOTP 拦截时自动重新索取并重试（最多 3 次）
-  --web-2fa      npm 2FA 为「web 验证」（浏览器审批）模式：发布时 npm 弹浏览器
-                让你批准，脚本阻塞等待；无验证码可输，超时/被拒需重跑本命令。
-                与 --otp 互斥（同时给则忽略 --otp）
-  -h, --help     打印本帮助并退出（不做任何校验、不发布）
+  --publish       实发（显式动作，不可逆）。不带它又不带 --dry-run = 意图不明，
+                  直接 fail-fast；与 --dry-run 互斥
+  --dry-run       演练：只构建 + 守卫测试，不发布（也不要求登录、不做 registry 复核）
+  --skip-tests    跳过守卫测试（应急；发布前须手动补跑 pnpm vitest run tests/cli）
+  --tag <tag>     dist-tag，默认 latest（发 beta 等预发布通道时用）
+  --otp <code>    npm 2FA 验证码（TOTP 类账户必填）；省略则发布前交互索取，
+                 被 EOTP 拦截时自动重新索取并重试（最多 3 次）
+  --web-2fa       npm 2FA 为「web 验证」（浏览器审批）模式：发布时 npm 弹浏览器
+                 让你批准，脚本阻塞等待；无验证码可输，超时/被拒需重跑本命令。
+                 与 --otp 互斥（同时给则忽略 --otp）
+  -h, --help      打印本帮助并退出（不做任何校验、不发布）
 
 发布仓库：https://registry.npmjs.org（与各包 publishConfig.registry、.npmrc 一致）。
 
@@ -92,7 +98,7 @@ if (flag("--help") || flag("-h")) {
 }
 // 未知参数 fail-fast：拼错旗标（如 --dryrun、--skip_test）旧行为是静默忽略，
 // 结果是一场「以为在演练、实际在真发布」的事故。这里直接拦下并给出用法。
-const KNOWN_FLAGS = new Set(["--dry-run", "--skip-tests", "--web-2fa", "--help", "-h"]);
+const KNOWN_FLAGS = new Set(["--dry-run", "--skip-tests", "--web-2fa", "--publish", "--help", "-h"]);
 const KNOWN_OPTS = new Set(["--tag", "--otp"]);
 const unknownArgs = args.filter(a => a.startsWith("-") && !KNOWN_FLAGS.has(a) && !KNOWN_OPTS.has(a));
 if (unknownArgs.length > 0) {
@@ -105,6 +111,27 @@ const SKIP_TESTS = flag("--skip-tests");
 const TAG = opt("--tag") ?? "latest";
 const OTP = opt("--otp");
 const WEB_2FA = flag("--web-2fa");
+const PUBLISH = flag("--publish");
+
+// 动作显式化（安全默认）：
+//   · 裸跑（无任何参数）= 显示帮助并退出 1——发布是不可逆的共享动作，
+//     「手滑敲个 node scripts/publish-packages.mjs」不该等于真发布；
+//   · 实发必须显式 --publish；只给修饰旗标（--tag/--otp/--web-2fa/--skip-tests）
+//     不给 --publish = 意图不明，fail-fast；
+//   · --dry-run 是安全演练，无需 --publish；与 --publish 同给 = 自相矛盾，拦下。
+if (args.length === 0) {
+	console.log(USAGE);
+	process.exit(1);
+}
+if (DRY_RUN && PUBLISH) {
+	console.error("✗ --publish 与 --dry-run 互斥：演练不发布；要实发请不要带 --dry-run。");
+	process.exit(1);
+}
+if (!DRY_RUN && !PUBLISH) {
+	console.error("✗ 未指定 --publish——实发是显式动作（不可逆）：确认发布请加 --publish；演练请用 --dry-run。\n");
+	console.error(USAGE);
+	process.exit(1);
+}
 
 // ── 基础：shell 执行与日志 ──────────────────────────────────
 // 所有命令统一在此打印 `$ cmd args` 并 exec——消除 run()/publishPkg() 各自重复打印的散点。
