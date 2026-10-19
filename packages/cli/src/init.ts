@@ -58,13 +58,12 @@ export async function initProject(destDir: string, opts: InitOptions = {}): Prom
 	const templatesDir = path.join(cliRoot, "templates");
 	const jwtSecret = crypto.randomBytes(32).toString("hex");
 	const projectName = path.basename(destDir);
-	// demo-only 模块（init.exclude.yaml）：模板内置供演示，init 默认不拷入新工程
-	const exclude = readInitExclude(templatesDir);
+	const include = readInitInclude(templatesDir);
 	copyTemplates(templatesDir, destDir, {
 		__JWT_SECRET__: jwtSecret,
 		__PROJECT_NAME__: projectName,
-	}, report, exclude, templatesDir);
-	pruneExcludedApiPaths(destDir, exclude, report);
+	}, report, include, templatesDir);
+	pruneUnincludedApiPaths(destDir, include, report);
 
 	// 2) 证书三件套（现场签发，D6）——落点即 resolveCertDir()（config.yaml 同级的 config/）
 	const certDir = resolveCertDir(destDir);
@@ -203,20 +202,29 @@ async function sealJwtSecret(destDir: string, report: InitReport, seal: Sealer =
 	report.created.push("api/config/{secrets-private.pem,secrets-public.pem} + auth.jwt_secret 已密封（ENC[...]）");
 }
 
-/** 递归拷贝模板；文本文件做占位符替换；已存在的目标文件一律跳过 */
+/**
+ * 递归拷贝模板；文本文件做占位符替换；已存在的目标文件一律跳过。
+ *
+ * 白名单语义（init.include.yaml）：清单内路径整棵拷贝；清单外一律不拷、不计入
+ * created/skipped（demo 模块/模板自运行产物/元数据的大头在清单外）。清单外的
+ * 目录仅在「有收录子孙」时才穿行（如 `api/`、`web/src/`、`web/src/demo/`——
+ * 只收录了后者底下的 entry/locales/pages），穿行时未收录的子项继续被挡下。
+ */
 function copyTemplates(
 	srcDir: string,
 	destDir: string,
 	placeholders: Record<string, string>,
 	report: InitReport,
-	exclude: Set<string>,
+	include: Set<string>,
 	rootDir: string,
+	underIncluded = false,
 ): void {
 	for (const entry of fs.readdirSync(srcDir, { withFileTypes: true })) {
 		const src = path.join(srcDir, entry.name);
 		const dest = path.join(destDir, entry.name);
-		// demo-only 模块（init.exclude.yaml）：整棵子树不拷、不计入 created/skipped
-		if (exclude.has(path.relative(rootDir, src)))
+		const srcRel = path.relative(rootDir, src);
+		const listed = include.has(srcRel);
+		if (!underIncluded && !listed && !hasIncludedDescendant(include, srcRel))
 			continue;
 		if (entry.isDirectory()) {
 			// 空目录不进工程：git 不跟踪空目录，模板里残留的空目录（如误建的
@@ -224,12 +232,12 @@ function copyTemplates(
 			if (!dirHasFiles(src))
 				continue;
 			fs.mkdirSync(dest, { recursive: true });
-			copyTemplates(src, dest, placeholders, report, exclude, rootDir);
+			copyTemplates(src, dest, placeholders, report, include, rootDir, underIncluded || listed);
 			continue;
 		}
-		const rel = path.relative(destDir, dest);
+		const destRel = path.relative(destDir, dest);
 		if (fs.existsSync(dest)) {
-			report.skipped.push(rel);
+			report.skipped.push(destRel);
 			continue;
 		}
 		let content = fs.readFileSync(src, "utf-8");
@@ -238,8 +246,18 @@ function copyTemplates(
 		content = stripRegion(content, "demo-only");
 		fs.mkdirSync(path.dirname(dest), { recursive: true });
 		fs.writeFileSync(dest, content);
-		report.created.push(rel);
+		report.created.push(destRel);
 	}
+}
+
+/** srcRel 是否为白名单里某条收录路径的祖先目录——决定清单外目录要不要穿行 */
+function hasIncludedDescendant(include: Set<string>, srcRel: string): boolean {
+	const prefix = `${srcRel}/`;
+	for (const p of include) {
+		if (p.startsWith(prefix))
+			return true;
+	}
+	return false;
 }
 
 /** 目录（递归）是否含至少一个文件——空目录判定供 copyTemplates 跳过用 */
@@ -254,55 +272,56 @@ function dirHasFiles(dir: string): boolean {
 }
 
 /**
- * 读取模板根 `init.exclude.yaml` 的 `exclude` 清单，归一为相对模板根的路径集合。
- * 清单随模板一起发布，缺失即安装包损坏——直接 fail-fast，不留「静默拷入 demo
- * 模块/运行期产物」的退化路径。
- *
- * 另按「排除的 api 模块」派生一条：其前端 `__client` 生成物同样不拷——否则脚手架
- * 里会留下一份没有后端端点的 client 代码。
+ * 读取模板根 `init.include.yaml` 的 `include` 白名单，归一为相对模板根的路径集合。
+ * 清单随模板一起发布，缺失即安装包损坏——直接 fail-fast，不留「静默少拷」的
+ * 退化路径。条目指向不存在的路径同样 fail-fast：拼错一个目录名不会当场报错，
+ * 只会在用户工程里留下难以追溯的缺文件（旧 exclude 清单没有这类校验面）。
  */
-function readInitExclude(templatesDir: string): Set<string> {
-	const yamlPath = path.join(templatesDir, "init.exclude.yaml");
+function readInitInclude(templatesDir: string): Set<string> {
+	const yamlPath = path.join(templatesDir, "init.include.yaml");
 	if (!fs.existsSync(yamlPath))
-		throw new Error(`模板缺少 init.exclude.yaml：${yamlPath}（安装包损坏？）`);
-	const doc = yaml.parse(fs.readFileSync(yamlPath, "utf-8")) as { exclude?: string[] } | null;
+		throw new Error(`模板缺少 init.include.yaml：${yamlPath}（安装包损坏？）`);
+	const doc = yaml.parse(fs.readFileSync(yamlPath, "utf-8")) as { include?: string[] } | null;
 	const out = new Set<string>();
-	for (const raw of doc?.exclude ?? []) {
+	for (const raw of doc?.include ?? []) {
 		const p = path.normalize(raw).replace(/^(\.\/)+/, "");
 		out.add(p);
-		if (p.startsWith("api/src/") && !p.slice(8).includes("/"))
-			out.add(`web/src/${p.slice(8)}/__client`);
+		if (!fs.existsSync(path.join(templatesDir, p)))
+			throw new Error(`init.include.yaml 收录了不存在的路径：${p}（拼写错误或模板缺文件？）`);
 	}
 	return out;
 }
 
 /**
- * 从脚手架产出的 openapi.json 里删掉被排除的 api 模块端点。
+ * 从脚手架产出的 openapi.json 里删掉未进白名单的 api 模块端点。
  *
- * 模板的 openapi.json 是「全量演示工程」的产物，含 demo-only 模块的端点；这些
- * 模块的文件既不拷进新工程，契约里留着它们会让 `ojm api --check` 一上手就报
- * 「openapi 多」（有契约无 handler）。故按排除清单里的 api 模块名裁掉对应路径。
+ * 模板的 openapi.json 是「全量演示工程」的产物，含 demo-only 模块（demo/home）
+ * 的端点；这些模块的文件不拷进新工程，契约里留着它们会让 `ojm api --check`
+ * 一上手就报「openapi 多」（有契约无 handler）。故只保留白名单内 api 模块
+ * 名下的 `/api/<mod>/` 路径，其余裁掉——契约与脚手架实际模块严格一致。
  */
-function pruneExcludedApiPaths(destDir: string, exclude: Set<string>, report: InitReport): void {
+function pruneUnincludedApiPaths(destDir: string, include: Set<string>, report: InitReport): void {
 	// 只裁本次新建的 openapi.json：init 是幂等补缺，不改动既有工程文件
 	if (!report.created.includes("openapi.json"))
 		return;
-	const mods = [...exclude]
+	const mods = new Set([...include]
 		.map(p => (p.startsWith("api/src/") ? p.slice("api/src/".length) : null))
-		.filter((m): m is string => !!m && !m.includes("/"));
-	if (mods.length === 0)
+		.filter((m): m is string => !!m && !m.includes("/")));
+	if (mods.size === 0)
 		return;
 	const openapiPath = path.join(destDir, "openapi.json");
-	const prefixes = mods.map(m => `/api/${m}/`);
 	const doc = JSON.parse(fs.readFileSync(openapiPath, "utf-8")) as { paths?: Record<string, unknown> };
 	const paths = doc.paths ?? {};
-	const dropped = Object.keys(paths).filter(p => prefixes.some(prefix => p.startsWith(prefix)));
+	const dropped = Object.keys(paths).filter((p) => {
+		const mod = /^\/api\/([^/]+)\//.exec(p)?.[1];
+		return !!mod && !mods.has(mod);
+	});
 	if (dropped.length === 0)
 		return;
 	for (const p of dropped)
 		delete paths[p];
 	fs.writeFileSync(openapiPath, `${JSON.stringify(doc, null, "\t")}\n`);
-	report.created.push(`openapi.json 裁掉 demo-only 端点 ${dropped.length} 条`);
+	report.created.push(`openapi.json 裁掉未收录 api 模块端点 ${dropped.length} 条`);
 }
 
 /**

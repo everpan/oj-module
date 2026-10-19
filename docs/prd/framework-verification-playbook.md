@@ -4,7 +4,20 @@
 > **配套**：[`framework-development-guide.md`](./framework-development-guide.md)（原理）、[`oj-fullstack-tutorial.md`](./oj-fullstack-tutorial.md)（跟做）。
 > **原则**：每一步都有**可判定通过/失败的检查点**，不要只看命令退出码，要核对产物。
 
-### 最近一次基线（2026-10-16 复跑，oj 0.1.74 / cli+runtime 0.2.1 提交态 `34ac3d09`）
+### 最近一次基线（2026-10-19 复跑，oj 0.1.80 / cli+runtime 0.2.5 工作区态）
+
+| 项 | 值 |
+| --- | --- |
+| 日期 | 2026-10-19 |
+| 框架包版本 | `cli`/`runtime` `0.2.5`（**工作区态，均未发版**——npm latest 仍停在 0.2.2；双包 lockstep 不变） |
+| oj | `0.1.80`（npm `@oj-bin/oj` latest，**首次无需 §0 旁路 1**：latest 已 ≥ 门禁 0.1.73，`ojm init` 自动下载且安装后探针无告警） |
+| 验证动机 | `ojm init` 模板拷贝由**排除清单反转为白名单**（`templates/init.include.yaml`，见 CHANGELOG Unreleased）后的首次全链路演练 |
+| 结果 | **全链路通过（§1–§7）**：`ojm init`（**216 项新增**，白名单下 demo-only 模块与模板自运行产物零泄漏）→ `pnpm install`（§0 旁路 2「双包均未发版」形态 + `--offline`，1.6s）→ JsRuntime 探针通过 → books 模块（后端 6 文件 + 前端 4 文件，handler `.schema` 入参 + 平级 `.response`）→ `oj openapi`（books 2 端点）+ `ojm api`（契约 8 份、写入 2 文件）+ `--check` 0 error / 0 warn → `ojm build`（后端 8 模块，books 2 api file(s)、notifications 1、system 10；前端 7 模块，modules.json 含 home/demo/login/personal-center/notification/system/books，books entry 带 integrity）→ `tsc` 0 error → `ojm dev`：seed ok（_platform/books/notification）、52 路由方法、24 个入参校验激活、登录返回 token、关键字过滤命中 1 条、新增 `{ok:true}`、全量 4 条、无 token 401、通知兜底返 4 条数组；5174 根 200、importmap 含 `@oj-module/runtime`、books/login/home entry.js 200、`/login`（Accept: text/html）200 → `ojm preview`（release 形态）：migrate 门禁过、路由来自 `api/dist`、4173 根 200、API 链复跑全对、**带 dist 三腿 `--check` 0/0** |
+| 白名单专项核对 | 脚手架实际落盘 204 个模板文件，与 `init.include.yaml` 遍历模拟集合**逐文件一致（无缺无多）**；`web/src/{demo,home}` 页面源码在册而 `__client` 不拷（其 api 模块是 demo-only）；`api/node_modules` 与 `init.include.yaml` 自身零泄漏——旧排除逻辑的这两处漏洞随之修复 |
+| 本次发现并处置 | ① `pnpm install` 直连 registry 被限速（实测 ~18KB/s）卡死在解析段 20min——**环境问题非框架缺陷**，处置与旁路补进 §0/§9；② books `entry.ts` 的 `onInit` 漏 `async` 被 tsc 拦（TS2322：void 不匹配 Promise<void>）——devkit SKILL「注册时机」红线补明 async 签名（模板 `web/src/notification/entry.ts` 早有此形，文档没写明）；③ oj 0.1.80 起 `oj serve` 对 `/api/health` 打 deprecated WARN（建议 `/api/_system/health`）——oj 上游信息项，本仓无需动作，记录备查 |
+| 与 0.2.1 基线差异 | init 新增项 76 → 216（模板扩容：system 模块、notification/notifications 拆分、`api/tests` 全量、lifecycle 全套）；排除清单 → 白名单（拷贝结果逐文件等价，另修两处泄漏）；oj 下载通道不再滞后于门禁 |
+
+### 上一次基线（2026-10-16 复跑，oj 0.1.74 / cli+runtime 0.2.1 提交态 `34ac3d09`）
 
 | 项 | 值 |
 | --- | --- |
@@ -94,8 +107,9 @@ rm -rf "$VERIFY_DIR" && mkdir -p "$VERIFY_DIR" && cd "$VERIFY_DIR"
 需要：Node 18+、pnpm、**网络**（下载 oj 与 npm 包）。预计 5–10 分钟。
 
 > **npm 通道滞后时的两条旁路**（2026-10-15 演练实测）：
-> 1. **oj**：`MIN_OJ_VERSION` 门禁钉最新发布版（0.1.20 起为 **0.1.73**），而 npm `@oj-bin/oj` 的 latest 可能仍低于门禁 → `ojm vendor`/`ojm init` 的下载步被拦。旁路：先把本机 oj（≥ 门禁）连同 `devkit/`、`plugins/`、`.oj-version` 预置进工程 `bin/`，`ojm init` 对已有 `bin/oj` 会跳过 vendor（init.ts：bin/oj 存在即 `report.skipped`），效果等价。
+> 1. **oj**：`MIN_OJ_VERSION` 门禁钉最新发布版（0.1.20 起为 **0.1.73**），而 npm `@oj-bin/oj` 的 latest 可能仍低于门禁 → `ojm vendor`/`ojm init` 的下载步被拦。旁路：先把本机 oj（≥ 门禁）连同 `devkit/`、`plugins/`、`.oj-version` 预置进工程 `bin/`，`ojm init` 对已有 `bin/oj` 会跳过 vendor（init.ts：bin/oj 存在即 `report.skipped`），效果等价。（2026-10-19 实测：oj latest 已 0.1.80 ≥ 门禁，本条旁路未触发。）
 > 2. **框架包自身**：待发版本（如 0.1.20 未上 npm）`pnpm install` 会 `ERR_PNPM_NO_MATCHING_VERSION`。旁路：删 devDeps 里的 `@oj-module/cli`（CLI 用源码 bin 直跑），`@oj-module/runtime` 装好后手工 symlink 到仓库 `packages/runtime`（其内部依赖经 realpath 回落仓库 node_modules 解析，与 playground-oj 的 workspace 链接等效）。注意 `file:` 链接不行：两个包都用了 pnpm `catalog:` 协议，只对 workspace 成员解析。
+>    **cli 与 runtime 双双未发版时**（2026-10-19 实测形态）：两个 devDep 都要删，再 `ln -s $OJM_REPO/packages/runtime node_modules/@oj-module/runtime`。Node 侧只有 `@oj-module/runtime/contract` 子路径会被真正求值（`ojm api` 用）；浏览器包本体 import `antd/locale/*` 在裸 Node 下报 extensionless 是**预期**，不影响链路。另：本机 pnpm store 已预热时 `pnpm install --offline` 可绕开 registry 限速（实测 1.6s，见 §9）。
 
 ## 1. 脚手架（`ojm init`）
 
@@ -107,7 +121,7 @@ node "$OJM_REPO/packages/cli/bin/ojm.mjs" init my-books --yes
 **检查点**
 
 - [ ] 退出码 0，末行提示 `登录 admin / 123456`
-- [ ] 目录齐全：`api/src/{_platform,auth,web,notifications,personal-center,notification}`、`api/.ojm-api-exempt.json`、`web/src/{demo,home,login,personal-center,notification,notifications}`、`web.config.ts`、`tsconfig.json`、`global.d.ts`、`env.d.ts`、`bin/oj`、`bin/.oj-version`、`.claude/skills/{oj-api-dev,ojm-module-dev}/`
+- [ ] 目录齐全：`api/src/{_platform,auth,web,notifications,notification,personal-center,system}`、`api/.ojm-api-exempt.json`、`web/src/{demo,home,login,personal-center,notification,notifications,system}`、`web.config.ts`、`tsconfig.json`、`global.d.ts`、`env.d.ts`、`bin/oj`、`bin/.oj-version`、`.claude/skills/{oj-api-dev,ojm-module-dev}/`
 - [ ] **工程根有 `openapi.json`**（新流水线唯一事实源，模板随附）+ `web/src/<模块>/__client/` 预生成（`ojm api --check` 开箱即过）
 - [ ] handler 契约为新约定：动词挂 `.schema`（params/query/body 入参）+ **平级 `.response`**（出参，oj v0.1.72+）；无 `contract.ts` / `routes.json` / `openapi.yaml`
 - [ ] **分发的 devkit 自包含**：`.claude/skills/ojm-module-dev/` 三件套含 manual.md **§3.10 旧 contract.ts 工程迁移指南**；grep `docs/migration|docs/plans|../oj-api-dev` 应**零命中**（devkit 随 init 进业务工程，不能引用框架仓内部路径）；oj 侧 devkit 落在 `.claude/skills/oj-api-dev/`
@@ -312,6 +326,8 @@ API 全链路再通一遍（登录/列表/新增）；
 | `oj build` 报 `module '_shared' missing manifest.yaml` | 模板里残留**空目录**（git 不跟踪空目录，删文件不删目录），init 连空目录一起拷进工程，oj 把每个 api/src 子目录当模块 | 删模板里的空目录；cli ≥ 0.1.20 的 `copyTemplates` 已加空目录跳过防护（`dirHasFiles`） |
 | `ojm api --check` 报 `routes.js 与契约路由表不一致——dist 缺：GET notifications/` | 契约侧 fullPath 对模块根路径带尾斜杠（`stripBase` 的 `rel || "/"` → `/notifications/`），dist pattern 无斜杠（`notifications`），键不等误报；且豁免原只过滤「dist 多」 | cli ≥ 0.1.20 已修：第三腿双侧尾斜杠规范化 + 豁免对「dist 缺/dist 多」对称过滤（回归测试见 `tests/cli/contract-check.test.ts`） |
 | 手工改过 `openapi.json`（`del`→`delete`、operationId 改名）后 `--check` 漂移 | oj ≤ 0.1.72 的 `oj openapi` 产出非法 `"del"` 操作键 | 升级 oj ≥ 0.1.73（`del`→`delete` 归一）后删手工改动重生成；client 用原生 operationId 派生名 |
+| `pnpm install` 卡死：20min+ 无 lockfile、`node_modules` 近空、pnpm 进程低 CPU 干等 | 直连 `registry.npmjs.org` 被限速（实测 ~18KB/s，单个 tarball 30s 下不完），pnpm 卡在元数据解析段 | 本机 pnpm store 已预热（装过同版本矩阵）时 `pnpm install --offline`，实测 1.6s 完成；store 不全时换镜像源或等限速恢复。**环境问题，非框架缺陷** |
+| 新模块 `entry.ts` 被 `tsc` 拦：`TS2322 (ctx) => void 不匹配 (ctx) => Promise<void>` | `lifecycle.onInit` 签名要求返回 Promise；照抄老模块时容易漏 `async` | 写 `async onInit(ctx)`（范本：模板 `web/src/notification/entry.ts`；devkit SKILL「注册时机」红线已补明） |
 
 ## 10. 复跑脚本（TL;DR）
 

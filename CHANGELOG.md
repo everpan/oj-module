@@ -5,6 +5,16 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 设计依据、迁移记录与陷阱清单见 [`docs/prd/202609110947-oj-module-two-package-consolidation-design.md`](docs/prd/202609110947-oj-module-two-package-consolidation-design.md)。
 
+## [Unreleased]
+
+### Changed
+
+- **`ojm init` 模板拷贝反转为白名单（`templates/init.include.yaml`）**：取代 0.2.5 引入的 `init.exclude.yaml` 排除清单。模板里大部分文件是「模板自运行/demo/产物」，不该进用户工程，排除清单越列越长；白名单只收录真正进脚手架的路径，未收录的一律不拷（也不计入 init 报告的 created/skipped）。拷贝结果与旧排除逻辑逐文件一致（206 → 204，差异仅两项修复，见下）。
+  - 白名单条目存在性 fail-fast：收录了不存在的路径直接报错，避免拼错目录名在用户工程里留下难以追溯的缺文件。
+  - `openapi.json` 裁剪反转为「只保留白名单内 api 模块的 `/api/<mod>/` 路径」，与脚手架实际模块严格一致。
+  - 修复旧逻辑两处泄漏：模板本地产物 `api/node_modules/`（旧清单只排了根级 `node_modules`）与 `init.include.yaml` 自身不再进用户工程。
+  - `web/src/{demo,home}/__client` 仍不拷（其 api 模块是 demo-only）：白名单对 demo/home 只列页面源码（entry/locales/pages），不列整棵模块目录。
+
 ## [0.2.5] - 2026-10-18
 
 双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步升 **0.2.5**。

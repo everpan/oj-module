@@ -180,7 +180,8 @@ describe("initProject", () => {
 	/**
 	 * 模板仓库内置 demo-only 模块（供 templates 自身当可运行 demo 演示），但
 	 * `ojm init` 不得把它们拷进用户工程——拷了会留下「web.config 启用但文件缺失」
-	 * 的死条目，工程一开就崩。排除清单在 templates/init.exclude.yaml。
+	 * 的死条目，工程一开就崩。白名单在 templates/init.include.yaml：demo-only
+	 * 模块不收录，故不拷。
 	 */
 	it("demo-only 模块不进 init 产物，且 web.config.ts 同步剥离对应条目", async () => {
 		const dest = path.join(tmpRoot(), "demo-proj");
@@ -199,6 +200,13 @@ describe("initProject", () => {
 		])
 			expect(fs.existsSync(path.join(dest, mod))).toBe(false);
 
+		// 1b) demo-only api 模块的前端 __client 生成物同样不拷（旧派生规则）：
+		//     client 留着会指向不存在的端点；但 demo/home 的页面源码照拷
+		for (const mod of ["web/src/demo/__client", "web/src/home/__client"])
+			expect(fs.existsSync(path.join(dest, mod))).toBe(false);
+		expect(fs.existsSync(path.join(dest, "web/src/demo/entry.ts"))).toBe(true);
+		expect(fs.existsSync(path.join(dest, "web/src/home/entry.ts"))).toBe(true);
+
 		// 2) 默认模块照常在
 		for (const mod of ["web/src/home", "web/src/demo", "web/src/login", "web/src/notification"])
 			expect(fs.existsSync(path.join(dest, mod))).toBe(true);
@@ -213,8 +221,22 @@ describe("initProject", () => {
 		for (const entry of ["web/src/home/entry.ts", "web/src/notification/entry.ts"])
 			expect(config).toContain(entry);
 
-		// 4) 运行期专属产物/模板元数据不泄漏进用户工程
-		expect(fs.existsSync(path.join(dest, "init.exclude.yaml"))).toBe(false);
+		// 4) openapi.json：demo-only 模块（demo/home）的端点被裁掉——留着会让
+		//    新工程一上手跑 `ojm api --check` 就报「有契约无 handler」；白名单内
+		//    模块的端点照留
+		const openapi = JSON.parse(fs.readFileSync(path.join(dest, "openapi.json"), "utf-8")) as {
+			paths: Record<string, unknown>
+		};
+		const openapiPaths = Object.keys(openapi.paths);
+		for (const mod of ["demo", "home"])
+			expect(openapiPaths.some(p => p.startsWith(`/api/${mod}/`))).toBe(false);
+		expect(openapiPaths.some(p => p.startsWith("/api/system/"))).toBe(true);
+
+		// 5) 模板自运行产物/元数据不泄漏进用户工程：白名单自身、模板的
+		//    package.json（由 init 现场生成）、各级 node_modules 均不在拷贝结果里
+		expect(fs.existsSync(path.join(dest, "init.include.yaml"))).toBe(false);
+		expect(fs.existsSync(path.join(dest, "node_modules"))).toBe(false);
+		expect(fs.existsSync(path.join(dest, "api/node_modules"))).toBe(false);
 		const pkg = JSON.parse(fs.readFileSync(path.join(dest, "package.json"), "utf-8"));
 		expect(pkg.name).not.toBe("@oj-module/template-demo");
 		for (const deps of [pkg.dependencies ?? {}, pkg.devDependencies ?? {}]) {

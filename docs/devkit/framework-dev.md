@@ -18,8 +18,9 @@
 | 后端 handler 写法 | `bin/devkit/api-manual.md`（`oj-api-dev` skill） |
 
 > ⚠️ 那两份 guide 有**已知陈旧处**，以源码为准：
-> dev 端口实际是 **3333**（guide 写的 5173 已过时）；包版本以
-> `packages/*/package.json` 为准（guide 内部 0.1.6 / 0.1.8 不一致，实际 **0.1.16**）。
+> dev 端口实际是 **3333**（guide 写的 5173 已过时；注意与 `ojm dev` 的前端 devServer
+> **5174** 不是一回事——前者是本仓 vite，后者是业务工程 devServer）；包版本以
+> `packages/*/package.json` 为准（guide 内部版本号不一致，实际 **0.2.5**）。
 
 ## §2 两包结构与依赖方向
 
@@ -29,7 +30,7 @@ pnpm 改写成**精确版本**，不是 `^` 范围）。
 | 包 | 面 | 内容 |
 |---|---|---|
 | `packages/runtime` | 浏览器 | 路由 / 布局 / store / 请求 / 组件 / module-loader，+ 契约 DSL 子路径（`./contract`、`./contract/errors`） |
-| `packages/cli` | Node 工具链 | `ojm dev/build/info/merge/api/vendor`，+ 预构建宿主（源码 `shell/`、产物 `shell-dist/`、模板 `templates/`） |
+| `packages/cli` | Node 工具链 | `ojm init/dev/build/preview/api/info/vendor/merge/install/enable/disable/uninstall/trust/keygen/sign/publish`，+ 预构建宿主（源码 `shell/`、产物 `shell-dist/`、模板 `templates/`、分发 devkit `devkit/`） |
 
 - 宿主产物随 cli 发布；`ojm dev/build` 直接从 cli 包内 `shell-dist` 取宿主，
   不再依赖独立 shell 包或 monorepo 路径回退。
@@ -125,14 +126,15 @@ pnpm test tests/shell                       # 宿主全量
 | `tests/shell/shell-importmap.test.ts` | 门禁一致性 + runtime.js 与包 dist 一致 + 深路径回归 |
 | `tests/shell/host-version-drift.test.ts`、`version-gate.test.ts` | 共享依赖三处同步 |
 | `tests/cli/release-manifest.test.ts` | 真跑 `pnpm pack`，守护 `workspace:*` → 精确版本改写 |
-| `tests/cli/__snapshots__` | 契约代码生成快照（改 `defineApi` 校验规则需同步更新） |
+| `tests/cli/__snapshots__` | 契约代码生成快照（改 `.schema` 发射规则需同步更新） |
 
 ## §5 发布（lockstep，别用 npm publish）
 
-**一键发布**：`node scripts/publish-packages.mjs`（lockstep 四包校验 → 构建 → 守卫测试 →
+**一键发布**：`node scripts/publish-packages.mjs`（lockstep 门禁 → 构建 → 守卫测试 →
 runtime → cli → registry 复核；`--dry-run` 只演练）。下面的手动步骤是它的展开参考。
 
-- 两包**同版本号**（当前 `0.1.16`），后续发版保持 lockstep。
+- **两包**同版本号（`@oj-module/runtime` + `@oj-module/cli`，当前 `0.2.5`），后续发版保持
+  lockstep；`@plane/kit` / `@plane/editor` 不在发布集内（脚本里已注释）。
 - **必须 `pnpm publish`**——用 `npm publish` 会漏出 `workspace:*` / `catalog:` 字面量。
 - **顺序：先 `runtime` 后 `cli`**。`runtime` 未公开时，新 `cli` 的精确依赖会悬空，
   消费者直接装不上。

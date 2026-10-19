@@ -19,9 +19,9 @@ const allModules = [
 	{ name: "system", entry: "web/src/system/entry.ts" },
 	// #region demo-only
 	// 以下为模板内置的演示模块（about/access/exception/outside/route-nest），
-	// 用于把 templates 当可运行 demo 直接跑；其文件在 `ojm init` 时不拷入新工程
-	// （见 init.exclude.yaml），故本区间连同这些条目会被 init 一并剥离，
-	// 脚手架产出的配置不会残留指向缺失文件的死条目。
+	// 用于把 templates 当可运行 demo 直接跑；其文件不在 `ojm init` 的
+	// init.include.yaml 白名单里，不拷入新工程，故本区间连同这些条目会被
+	// init 一并剥离，脚手架产出的配置不会残留指向缺失文件的死条目。
 	{ name: "about", entry: "web/src/about/entry.ts" },
 	{ name: "access", entry: "web/src/access/entry.ts" },
 	{ name: "exception", entry: "web/src/exception/entry.ts" },

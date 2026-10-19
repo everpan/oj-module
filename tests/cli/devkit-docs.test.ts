@@ -24,7 +24,22 @@ describe("devkit 手册两章节（P2-14：文档存在性）", () => {
 		expect(manual).toContain("ojm sign dist/");
 		expect(manual).toContain("ojm trust confirm --task");
 		expect(manual).toContain("BOOTSTRAP_KEY");
-		expect(manual).toContain("G4 硬 fail-closed");
+		expect(manual).toContain("硬 fail-closed：未签名包拒装");
+	});
+});
+
+/**
+ * devkit 随 `ojm init` 进业务工程，读者手里没有框架仓的设计/评审文档——
+ * `P2-14` / `C3` / `AC-D9` / `G4` 这类内部代号对他们不可解码，违背 devkit 的自包含承诺。
+ * 本守卫钉死「交付四件套零内部代号」；确需追溯的出处写在框架仓文档，不进 devkit。
+ */
+describe("devkit 自包含（零仓库内部代号）", () => {
+	it("sKILL/manual/README/framework-dev 不含设计与评审代号", () => {
+		const pattern = /\b(P\d+(-[0-9A-Z]+)?|C\d+(-\d+)?|AC-[A-Z]+-?\d*|S0\d{2}|R\d+|D1\d|B-\d+|G\d|M0\d{2})\b/;
+		for (const name of ["SKILL.md", "manual.md", "README.md", "framework-dev.md"]) {
+			const hit = read(`docs/devkit/${name}`).match(pattern);
+			expect(hit?.[0], `docs/devkit/${name} 含内部代号：${hit?.[0]}`).toBeUndefined();
+		}
 	});
 });
 

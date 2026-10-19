@@ -24,20 +24,32 @@ description: 用 ojm 开发前后端一体工程时使用——新增/修改前�
    ```
    写 handler .schema → 写 handler 业务逻辑(api.ts) → oj openapi + ojm api 生成 client → entry.ts 的 onInit 里 create<Module>Client(ctx) + 注册
    ```
+
+   ```mermaid
+   flowchart LR
+     A["handler 动词写 .schema（入参）+ 平级 .response（出参）"] --> B["写业务逻辑 api.ts"]
+     B --> C["oj openapi 生成 openapi.json（唯一事实源）"]
+     C --> D["ojm api 生成 web/src/模块/__client"]
+     D --> E["entry.ts onInit：createModuleClient(ctx) 一次"]
+     E --> F["web.config.ts 登记模块（漏了静默不加载）"]
+   ```
 4. **登记**：往工程根 `web.config.ts` 的 `modules` 数组加一项。**漏了这步模块静默不加载、全程不报错。**
 5. **验证**：`pnpm dev`（前端 devServer **5174** + oj 后端 **9778**，端口以 `api/config.yaml` 为准）
    → 登录 `admin / 123456` → 按 §8.1 五步清单核对。
 
 ## 红线（不可违反）
 
-- **登记**：模块必须在 `web.config.ts` 里 `enabled: true`。文件写完 ≠ 模块会跑。
+- **登记**：模块必须写进 `web.config.ts` 的 `modules`（`enabled` 缺省即启用，显式
+  `enabled: false` 才禁用）。文件写完 ≠ 模块会跑。
   清单**先后顺序就是接管优先级**（同一入口先注册者生效，无优先级数字可填）。
 - **`home` / `login` 模块必须保留**：shell 预构建把 `/` 重定向到 `/home`，且宿主只消费
   模块路由、不挂内置登录页。删掉它们 → 登录回跳落错误边界、`/login` 无路由可跳。
 - **布局级路由 handle 必写 `layout: "container"`**：不写页面会裸渲染（无侧边栏/页签），
   且 `keepAlive` 失效。`"container" | "parent" | "none" | 自定义名`。
 - **注册时机**：一切 `ctx.register.*` 必须在 `lifecycle.onInit` 内、且在 onInit 返回前完成。
-  拖到 `onActivate` 或某个异步回调里注册不保证生效。
+  拖到 `onActivate` 或某个异步回调里注册不保证生效。`onInit` 签名是 **async**（返回
+  `Promise<void>`）——漏写 `async` 会被 `tsc` 以 TS2322 拦下，范本见模板
+  `web/src/notification/entry.ts`。
 - **一模块一 client**：`create<Module>Client(ctx)` 只在 onInit 里创建一次。
   页面/组件/事件回调里**不要**再创建——会覆盖 request 单槽。页面里直接 import 裸函数调用。
 - **只创建自己模块的 client**：A 模块的 onInit 里创建 B 模块的 client 会 DEV 告警。要别家接口，
@@ -143,7 +155,7 @@ description: 用 ojm 开发前后端一体工程时使用——新增/修改前�
 
 ## 手册
 
-`manual.md`（同目录）共 10 章：1 工程结构（含 **§1.7 handler 四红线**——oj 运行时实测钉出，
+`manual.md`（同目录）共 12 章：1 工程结构（含 **§1.7 handler 四红线**——oj 运行时实测钉出，
 后端 handler 必读）/ 2 写前端模块 / 3 契约与代码生成 / 4 接管框架内置功能（provider）/
 5 布局与插槽 / 6 i18n 与样式 / 7 构建与发布 / 8 排查 / 9 参考 / 10 CLI 子命令参考
-（ojm 原生命令 vs oj 透传命令的差异区分）。
+（ojm 原生命令 vs oj 透传命令的差异区分）/ 11 方案包打包与分发 / 12 签名与信任。

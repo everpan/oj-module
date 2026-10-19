@@ -1,7 +1,11 @@
 # oj-module DevKit——模块开发手册 + agent skill
 
 面向用 `ojm` 开发前后端一体工程的开发者与 AI agent。本目录是**源文件**，
-发布时整目录归置进 `bin/devkit/`，再由 `ojm init` 分发到工程内。
+发布时由 cli 的 `prepack`（`packages/cli/scripts/sync-devkit.mjs`）整目录同步进
+`packages/cli/devkit/`，随 `@oj-module/cli` 发布，再由 `ojm init` 分发到工程内。
+
+> 两个 `devkit` 别混：**本目录**（ojm 模块开发）进 cli 包；`bin/devkit/` 是 **oj 自带**
+> devkit（`oj-api-dev` skill）在工程里的落点，由 `ojm vendor` / `ojm init` 装 oj 时一并落盘。
 
 它补的是 `oj-api-dev`（oj 后端 API 开发）之外的另一半：**前端模块、契约、
 前后端对接**。
@@ -15,7 +19,7 @@
 | 文件 | 用途 |
 |---|---|
 | `SKILL.md` | Claude Code 等 agent 的 skill 入口：工作流、红线、新模块 checklist、陷阱速查，按章节号引用手册 |
-| `manual.md` | 模块开发手册（10 章）：工程结构（含 §1.7 handler 四红线——oj 运行时实测钉出，后端必读）、写模块、契约与代码生成（含 §3.10 旧 contract.ts 工程迁移指南）、provider 接管（覆盖框架内置功能）、布局、i18n、构建发布、排查、CLI 子命令参考（ojm 原生命令 vs oj 透传命令） |
+| `manual.md` | 模块开发手册（12 章）：工程结构（含 §1.7 handler 四红线——oj 运行时实测钉出，后端必读）、写模块、契约与代码生成（含 §3.10 旧 contract.ts 工程迁移指南）、provider 接管（覆盖框架内置功能）、布局、i18n、构建发布、排查、CLI 子命令参考（ojm 原生命令 vs oj 透传命令）、方案包打包与分发、签名与信任 |
 | `framework-dev.md` | 框架贡献者路线（**仅框架仓库**）：改 `packages/runtime`、`packages/cli` 时的入口与红线 |
 
 ## 安装（业务工程）
@@ -29,7 +33,7 @@
 ```sh
 # 本 devkit（ojm 模块开发）：拷入工程的 Claude Code skill 目录
 mkdir -p .claude/skills/ojm-module-dev
-cp SKILL.md manual.md .claude/skills/ojm-module-dev/
+cp SKILL.md manual.md README.md .claude/skills/ojm-module-dev/
 
 # 后端 API 开发另装 oj 自带的 devkit（独立 skill，不在此目录内）：
 # 权威源随 oj 二进制分发——本机安装在 ~/.local/share/oj/devkit/，
@@ -45,6 +49,13 @@ cp ~/.local/share/oj/devkit/SKILL.md ~/.local/share/oj/devkit/api-manual.md .cla
 `ojm init` 已接入本 devkit 分发（`packages/cli/src/init.ts` 第 4b 步）：从 cli 包内置的
 `devkit/`（prepack 由 `docs/devkit/` 同步而来）拷 `SKILL.md` / `manual.md` / `README.md`
 到 `.claude/skills/ojm-module-dev/`。发布链路细节见 `framework-dev.md` §7。
+
+```mermaid
+flowchart LR
+  SRC["docs/devkit/（源文件，只在此处维护）"] -->|"cli prepack：sync-devkit.mjs"| PKG["packages/cli/devkit/（发布副本，随 @oj-module/cli）"]
+  PKG -->|"ojm init 第 4b 步（幂等跳过已存在）"| PROJ[".claude/skills/ojm-module-dev/"]
+  OJBIN["bin/devkit/（oj 自带）"] -->|"ojm init 第 4 步"| API[".claude/skills/oj-api-dev/"]
+```
 
 ## 更新
 

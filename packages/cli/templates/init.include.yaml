@@ -1,0 +1,56 @@
+# `ojm init` 拷入新工程的白名单（路径相对本 templates 根目录）。
+#
+# 与已废弃的 init.exclude.yaml 逻辑相反：模板里大部分文件是「模板自运行/
+# demo/产物」，不该进用户工程——用排除清单会越列越长，故反转为白名单：
+# 凡未列出的路径一律不拷，也不计入 init 报告的 created/skipped。四类不列入：
+#  1. demo-only 演示模块——模板内置供演示，新工程默认不需要（文件缺失会崩）。
+#     其 web.config.ts 条目由 `// #region demo-only` 标注，init 时整段剥离。
+#  2. 模板自运行专属文件——templates 本身也是一个可 `pnpm dev` 的工程，
+#     它的 package.json / node_modules / bin / lock 绝不能泄漏进用户工程；
+#     package.json 由 init 现场生成（钉死真实版本，不带 workspace:/catalog:）。
+#  3. 构建与运行期产物——api/dist、web/dist、api/logs、签发的私钥与 sqlite；
+#     模板跑过 build/dev 后会留在本地，既不进用户工程，更不该让所有工程
+#     共享同一把私钥。
+#  4. 模板自用元数据——本清单自身。
+#
+# 注意 web/src/{demo,home}/__client 不在清单：其 api 模块（api/src/demo、
+# api/src/home）是 demo-only 不进脚手架，client 生成物留着会指向不存在的端点，
+# 故 demo/home 只列页面源码（entry/locales/pages），不列整棵模块目录。
+include:
+  # —— 工程级文件 ——
+  - README.md
+  - tsconfig.json
+  - env.d.ts
+  - web.config.ts
+  - openapi.json
+  - .gitignore
+  - web/src/styles.css
+  # —— api 后端：配置 / 种子 / 测试 / 默认模块 ——
+  - api/config.yaml
+  - api/.ojm-api-exempt.json
+  - api/seed.mysql.sql
+  - api/seed.pg.sql
+  - api/vitest.config.ts
+  - api/tests
+  - api/src/_platform
+  - api/src/auth
+  - api/src/notification
+  - api/src/notifications
+  - api/src/personal-center
+  - api/src/system
+  - api/src/web
+  # —— web 前端模块（demo/home 只列页面源码，__client 见顶部说明）——
+  - web/src/_platform
+  - web/src/auth
+  - web/src/demo/entry.ts
+  - web/src/demo/locales
+  - web/src/demo/pages
+  - web/src/home/entry.ts
+  - web/src/home/locales
+  - web/src/home/pages
+  - web/src/login
+  - web/src/notification
+  - web/src/notifications
+  - web/src/personal-center
+  - web/src/system
+  - web/src/web

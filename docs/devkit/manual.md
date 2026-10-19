@@ -12,29 +12,49 @@
 
 ### 1.1 脚手架产物
 
-`ojm init <目录>` 生成（幂等补缺，重跑只补缺失文件，**永不覆盖已有文件**）：
+`ojm init <目录>` 生成（幂等补缺，重跑只补缺失文件，**永不覆盖已有文件**）。
+模板拷贝按 `packages/cli/templates/init.include.yaml` **白名单**执行——未收录的
+路径一律不拷（demo-only 演示模块、模板自运行产物都在清单外）：
 
 ```
 <工程根>/
-├── package.json           # scripts: dev / build / preview / info / typecheck，全部转发 ojm
-├── web.config.ts          # 前端模块清单（name + entry + enabled）
+├── README.md
+├── package.json           # scripts: dev / build / preview / info / typecheck；devDeps 钉死真实版本
+├── pnpm-workspace.yaml    # 构建审批（esbuild）+ redocly 钉版（init 生成，非模板拷贝）
+├── web.config.ts          # 前端模块清单（name + entry）
+├── openapi.json           # 契约唯一事实源（oj openapi 产物，模板随附，ojm api --check 开箱即过）
 ├── tsconfig.json
 ├── global.d.ts            # 后端 oj 全局对象（db/json/http…）类型声明
 ├── env.d.ts               # ImportMeta.env 类型补丁
+├── .gitignore
 ├── api/
-│   ├── config.yaml        # oj 服务配置（端口、db、auth、secrets）；站点挂载见顶层 mounts:（v0.1.58 起替代 server.api_prefix）
-│   ├── config/            # dev 证书（public.pem / cert.jws）
+│   ├── config.yaml        # oj 服务配置（mounts / db / auth / secrets）
+│   ├── config/            # 现场签发：证书三件套（private/public.pem + cert.jws）+ secrets 密钥对
 │   ├── .ojm-api-exempt.json
+│   ├── seed.mysql.sql / seed.pg.sql
+│   ├── vitest.config.ts
+│   ├── tests/             # 后端 BDD 测试（node:sqlite 内存库 + 真实迁移建表）
 │   └── src/
-│       ├── _platform/     # 框架级共有表（users）
-│       ├── auth/          # login / refresh / logout
-│       ├── web/           # hello / user-info / get-async-routes
-│       └── notifications/ # root 级 /api/notifications（通知铃的后备实现）
+│       ├── _platform/     # 框架级：users 表 / rbac / 市场编排 / 生命周期
+│       ├── auth/          # login / refresh / logout / ldap-login
+│       ├── notification/  # 通知互动（表 + push + del）
+│       ├── notifications/ # root 级 /api/notifications（通知铃的后备实现）
+│       ├── personal-center/ # 头像上传
+│       ├── system/        # 用户 / 角色 / 权限 / 设置 / oplog / login-methods
+│       └── web/           # hello / user-info / get-async-routes
 ├── web/
-│   ├── src/<模块>/         # 前端模块源码
-│   └── dist/              # 构建产物（完整站点）
-└── bin/                   # oj 二进制 + plugins/ + devkit/（不入库）
+│   └── src/
+│       ├── home/ demo/ login/          # 带页面模块（home/login 不可少，见 SKILL 红线）
+│       ├── personal-center/ notification/ system/  # 其余默认前端模块
+│       ├── _platform/ auth/ notifications/ web/     # 仅 __client 生成物（无页面）
+│       └── styles.css
+├── bin/                   # oj 二进制 + plugins/ + devkit/（不入库）
+└── .claude/skills/        # ojm-module-dev（本 devkit）+ oj-api-dev（随 oj 二进制）
 ```
+
+> 模板里还有一批 demo-only 模块（`api/src/{demo,home}`、`web/src/{about,access,
+> exception,outside,route-nest,oj-market}`）仅供模板自演示，**不进脚手架**；
+> 其 `web.config.ts` 条目带 `// #region demo-only` 标记，init 拷贝时整段剥离。
 
 登录账号 `admin / 123456`。端口：前端 devServer **5174**，oj 后端 **9778**
 （以 `api/config.yaml` 的 `server.port` 为准）。
@@ -96,7 +116,7 @@ api/src/<模块>/<路径...>/api.ts   →   /api/<模块>/<路径...>
 
 以下四条都是真机冒烟（`ojm init` + `ojm dev`/`build`）实测钉出的 oj 运行时行为，
 **dev 模式体感正常、一到构建/并发就炸**——vitest 直引 service 的测试结构性覆盖不到，
-评审 checklist 必查。逐条展开：
+提交前必查。逐条展开：
 
 1. **未捕获异常恒 500，不读 `err.status`。** handler 抛出任何异常，oj 运行时一律回
    `{"code":500,"msg":"Error: ..."}`——你在 service 层精心设计的 401/403/409 全被抹平。
@@ -277,7 +297,7 @@ export default defineModule({
 可服务的同源路径）。直接 `import "vditor/dist/..."` 其它深路径会命中前缀 external 但无
 importmap 键，构建期报错——需要新深路径请联系框架方在共享表登记。
 
-### 2.7 本版本共享依赖钉版（0.1.20 快照）
+### 2.7 本版本共享依赖钉版（0.2.5 快照）
 
 宿主经 importmap 提供以下单例（模块 `devDependencies` 须对齐，供 `tsc` 用）；完整 68 项矩阵以
 `pnpm exec ojm info` 或 `packages/cli/shell-dist/versions.json`（构建期生成）为准。
@@ -306,10 +326,12 @@ importmap 键，构建期报错——需要新深路径请联系框架方在共�
 | `pinyin-pro` | 3.29.3 |
 | `vditor` | 4.0.0 |
 
-框架包版本：`@oj-module/runtime` / `@oj-module/cli` / `@plane/kit` / `@plane/editor` 均为 `0.1.20`
-（lockstep）；`oj` 二进制最低版本门禁 `MIN_OJ_VERSION = 0.1.73`——契约流水线要求 oj ≥ 0.1.73：
-平级 `.response` 出参声明位自 v0.1.72 起、`oj openapi` 的 `del`→`delete` 操作键归一自 v0.1.73 起
-（低版本 oj 生成 `openapi.json` 会丢出参类型或产出非法 `"del"` 键，`ojm api --check` 必漂移）。
+框架包版本：`@oj-module/runtime` / `@oj-module/cli` 为 `0.2.5`（**双包 lockstep**）；
+`@plane/kit` / `@plane/editor` 是独立版本线（当前 `0.1.20`，随宿主 importmap 提供，
+不参与 lockstep）。`oj` 二进制最低版本门禁 `MIN_OJ_VERSION = 0.1.73`——契约流水线要求
+oj ≥ 0.1.73：平级 `.response` 出参声明位自 v0.1.72 起、`oj openapi` 的 `del`→`delete`
+操作键归一自 v0.1.73 起（低版本 oj 生成 `openapi.json` 会丢出参类型或产出非法
+`"del"` 键，`ojm api --check` 必漂移）。
 
 > **`@oj-module/runtime` 到底导出哪些东西？** 权威清单随包发布在
 > `node_modules/@oj-module/runtime/dist/index.d.ts`——直接 Read 它，或在编辑器里
@@ -342,10 +364,10 @@ const roles = useUserStore(s => s.roles);
 
 **写（改密/改角色/改设置）→ 走契约 API client，不碰框架内部**
 
-- 框架已把 `auth/*`、`system/*`、`web/*` 等端点经 OpenAPI 契约定义，并从 `@oj-module/runtime` 导出类型化 fetch（如 `api/rbac` 的 `fetchChangePassword`、`fetchRbacUpdateUserRoles`，`api/user` 的 `fetchUserInfo`）。要调框架内置写接口，直接复用这些导出。**但更推荐模块 own 自己的契约**：在 `api/src/<模块>/contract.ts` 声明，跑 `ojm api` 生成 `web/src/<模块>/__client/api.ts`，模块经自己的 client 调框架端点——接口由契约（versioned OpenAPI）对齐，而非把框架源文件打进来。
+- 框架已把 `auth/*`、`system/*`、`web/*` 等端点经 OpenAPI 契约定义，并从 `@oj-module/runtime` 导出类型化 fetch（如 `api/rbac` 的 `fetchChangePassword`、`fetchRbacUpdateUserRoles`，`api/user` 的 `fetchUserInfo`）。要调框架内置写接口，直接复用这些导出。**但更推荐模块 own 自己的契约**：在**自己模块的 handler 动词**上写 `.schema`，跑 `oj openapi` + `ojm api` 生成 `web/src/<模块>/__client/api.ts`，模块经自己的 client 调框架端点——接口由契约（versioned OpenAPI）对齐，而非把框架源文件打进来。
 - 底层都走同一个 `request` 单例 + 契约 URL；模块侧请求被 `defineModule` 的 `ctx` 收敛到登记过的 `apiPrefix`，越界 / `../` 穿越 / 逐请求 prefix 覆盖均被拒（请求边界见 §2.6 + `tests/runtime/scoped-request.test.ts`）。
 
-**场景：解决方案模块记录操作日志（写端，C3）**
+**场景：模块记录自己的操作日志（写端）**
 
 解决方案模块经常要审计自身的关键写操作（建单、改配置、删资源…）。**正确姿势：调 runtime 导出的 `fetchRbacOplogPost`，绝不在模块里 import 框架 `#src/audit` 的 `recordOp`**（那是框架内部，违反 §2.6 红线，且模块 bundle 会被夹带框架实现）。
 
@@ -570,6 +592,14 @@ pnpm exec ojm api --docs
 
 `--check` 对四件事（只读，绝不写盘、绝不修文件）：
 
+```mermaid
+flowchart TD
+  C["ojm api --check（只读）"] --> L1["① 生成物同步：内存重跑 ojm api vs 磁盘 __client 逐字节 diff"]
+  C --> L2["② route 双向对账：生成物 ⊄ handler 已实现 → route-not-implemented；handler ⊄ 生成物 → route-unregistered"]
+  C --> L3["③ routes.js diff：oj build 产物路由表 vs 生成物（无 dist 只提示，不判违规）"]
+  C --> L4["④ WS 路由鉴权：ws.ts 产生的 GET ws 路由不在 anonymous_paths → 只 warn"]
+```
+
 1. **生成物同步（artifact-stale）**：内存重跑 `ojm api` vs 磁盘逐字节 diff（`__client/{api.ts,api.schemas.ts}`）；
 2. **route 双向对账**：生成物端点 ⊄ handler 已实现表 → `route-not-implemented`；handler 表 ⊄ 生成物 → `route-unregistered`（参数段不一致 error）；
 3. **`routes.js` diff**：`oj build` 产物路由表 vs 生成物；无 dist 给提示不判违规；
@@ -654,7 +684,7 @@ export default { get };
 
 | 旧 `defineApi` 字段 | 新声明位 | 说明 |
 |---|---|---|
-| `route` / `method` | handler 所在目录/文件名 + 动词函数名 | 路由由目录镜像推导，不再手写（AC-D9） |
+| `route` / `method` | handler 所在目录/文件名 + 动词函数名 | 路由由目录镜像推导，不再手写（前缀 = 后端模块目录名，见 §3.2 硬约束） |
 | `params` | `.schema.params` | 路径参数，与 route 的 `{id}` 段对应 |
 | `query` | `.schema.query` | URL query |
 | `body` | `.schema.body` | JSON 请求体 |
@@ -818,7 +848,7 @@ export default {
 };
 ```
 
-原语清单（`_shared/notify.ts`，设计文档 §4.3 / §6）：
+原语清单（`_shared/notify.ts`）：
 
 | 原语 | 作用 | 返回 |
 |---|---|---|
@@ -1270,6 +1300,24 @@ pnpm exec ojm info   # 版本矩阵 + 模块清单（报障用）
 pnpm exec ojm vendor # 下载/重装 oj 二进制
 ```
 
+`ojm build` 的两条产物线与全站合并：
+
+```mermaid
+flowchart LR
+  subgraph backend["后端线"]
+    direction TB
+    OJB["oj build -d api/src"] --> RD["api/dist/routes.js（release 下唯一路由来源，目录镜像不生效）"]
+  end
+  subgraph frontend["前端线"]
+    direction TB
+    MB["逐模块构建（esbuild bundle）"] --> EN["web/dist/modules/模块名/版本/entry.js（带 integrity）"]
+    MB --> MJ["web/dist/modules.json + versions.json"]
+  end
+  HOST["cli 内置 shell-dist 宿主（importmap 单例）"] --> MERGE["全站合并 mergeSite"]
+  MJ --> MERGE
+  MERGE --> SITE["web/dist/ = index.html + assets/ + modules/ + modules.json + versions.json"]
+```
+
 - `web/dist/` = **完整站点**（`index.html`、`assets/`、`modules/`、`modules.json`、`versions.json`）。
 - `api/dist/` = oj build 产物。**release 下只有 `routes.js` 里的路由存在，
   目录镜像路由不生效**——所以参数路由要先 `oj build` 再测。
@@ -1415,7 +1463,7 @@ export default async (path: string, html: string) => {
 
 | 类别 | 命令 | 谁实现 | 一句话 |
 |---|---|---|---|
-| **ojm 原生** | `init` / `dev` / `build` / `preview` / `api` / `info` / `vendor` / `merge` / `install` / `enable` / `disable` / `uninstall` / `trust` / `keygen` / `sign` | `ojm` 自己 | 前后端一体工程的脚手架、开发、构建、契约生成、版本/清单、oj 分发、清单合并；方案包安装面与签名信任（install/enable/disable/uninstall 见 §11，trust/keygen/sign 见 §12） |
+| **ojm 原生** | `init` / `dev` / `build` / `preview` / `api` / `info` / `vendor` / `merge` / `install` / `enable` / `disable` / `uninstall` / `trust` / `keygen` / `sign` / `publish` | `ojm` 自己 | 前后端一体工程的脚手架、开发、构建、契约生成、版本/清单、oj 分发、清单合并；方案包安装面与签名信任（install/enable/disable/uninstall 见 §11，trust/keygen/sign 见 §12，publish 见 §11.2） |
 | **oj 透传** | `test` / `exec` / `openapi` / `migrate` / `schema` | `oj`（ojm 仅转发） | 这 5 个**就是 oj 的同名子命令**，ojm 只负责定位 `bin/oj` 并补上 `-c api/config.yaml` |
 
 > **为什么只有这 5 个走透传？** oj 还有 `serve` / `build` / `secret`（`keygen`/`seal` 等）
@@ -1435,7 +1483,11 @@ export default async (path: string, html: string) => {
 - `--yes`：跳过交互确认，直接补缺。
 
 产物见 §1.1（`api/` 后端骨架 + `web/` 前端骨架 + `bin/`、`web.config.ts`、`tsconfig.json` 等）。
-`oj` 二进制缺失时，会提示重跑 `ojm init` 或 `ojm vendor`。
+模板拷贝按 `packages/cli/templates/init.include.yaml` 白名单——demo-only 演示模块
+与模板自运行产物不在清单内，不会进工程（§1.1）。
+`bin/oj` 缺失时自动经 npm 包 `@oj-bin/oj` 下载（与 `ojm vendor` 同款，受
+`MIN_OJ_VERSION` 门禁约束）；下载失败即报错——可先 `ojm vendor`，或把本机 oj
+预置进 `bin/` 后重跑（`bin/oj` 已在则跳过下载，init 幂等）。
 
 #### `ojm dev [port]`
 
@@ -1540,7 +1592,7 @@ export default async (path: string, html: string) => {
 
 ---
 
-## §11 方案包：打包与分发（P2-14 正式落地，P1-11 承诺兑现）
+## §11 方案包：打包与分发
 
 「站点级构建」见 §7；本节讲**方案包**（solution bundle）——单方案的可分发产物与到达站点的方式。
 
@@ -1549,11 +1601,11 @@ export default async (path: string, html: string) => {
 ```bash
 ojm build --bundle            # --out <dir> 缺省 dist/
 # [ojm] 方案包已生成 → dist/<name>-<version>.tgz
-# [ojm] sha256：…（确定性打包：同源同字节，AC-P1-18）
+# [ojm] sha256：…（确定性打包：同源同字节）
 ```
 
-- 打包即校验（fail-fast，坏清单出不了包）：manifest 契约校验（C2 字段/白名单/保留名/键空间 →
-  可读违规清单）→ 文件面校验（`api.tables` ↔ `schema.yaml`、C2-25 locales 双语齐备）。
+- 打包即校验（fail-fast，坏清单出不了包）：方案 manifest 契约校验（字段齐全 / 类型白名单 /
+  保留名 / 键空间 → 可读违规清单）→ 文件面校验（`api.tables` ↔ `schema.yaml`、locales 双语齐备）。
 - **只出包不签名**——签名见 §12（关注点分离：作者签名是显式动作，不是构建副产品）。
 - 产物内 `manifest.yaml` 的 `archive` 段是 **Form A**（仅 `file`）；`sha256`/`size` 由
   file 源上传时点补齐（宿主安装器）或发布通道 Form B 自带。
@@ -1567,24 +1619,76 @@ ojm build --bundle            # --out <dir> 缺省 dist/
 | **file** | `ojm install dist/<name>-<version>.tgz` | multipart 直传（同目录 `<tgz>.sig` 自动探测随包上传，§12） |
 | **cdn** | `ojm install <name>[@version]` | 站点从 CDN 拉 Form B 索引：`bundles.yaml`（版本清单）+ `manifests.yaml`（聚合清单）+ 分发包 |
 
-Form B 索引规范（宿主侧强制，P2-11 索引投毒加固）：`versions[].file` 必须逐字
+Form B 索引规范（宿主侧强制，防索引投毒）：`versions[].file` 必须逐字
 `<name>-<version>.tgz`（禁 `../`、绝对路径、异名、异版本）；`archive.size` 在下载段立即
-比对；索引拉取恒 `Cache-Control: no-cache`（R15）。索引本身未签名（签名归 P3-U3）。
+比对；索引拉取恒 `Cache-Control: no-cache`。索引本身未签名（签名只保护分发包本身，
+`.sig` 侧车随包上传）。
+
+**作者侧**：索引的产出/重签用 `ojm publish <发布目录>`——对 `bundles.yaml` +
+`manifests.yaml` 重算（确定性 stringify）→ detached 签名（`.sig` 侧车）→ 写回
+（本地文件目标；CDN 推送走同一 resolveCdn 面）。发布方 key 与 `ojm sign` 同身份体系
+（`~/.ojm/keys`）。
 
 ### 11.3 安装面速览
 
 `ojm install`（file/cdn 双源）→ 站点编排端点 `POST /api/_platform/market/install`
-（superadmin，R9）→ 十阶段状态机（§7 verify 闸语义的方案版，见指南「失败语义三分」）→
+（需 superadmin）→ 十阶段状态机（§7 verify 闸语义的方案版，失败语义见下图）→
 任务记录 `.install-tasks/<id>.json`（保留 10 条，800ms 轮询消费面）。市场页族端点
-（install/task/index/meta/trust/uninstall…）已全量登记 openapi.json（P2-14），
+（install/task/index/meta/trust/uninstall…）已全量登记 openapi.json，
 前端经 `web/src/_platform/__client` 消费。
+
+十阶段（阶段名如下）+ 失败语义：
+
+```mermaid
+flowchart TD
+  A(["POST /api/_platform/market/install"]) --> P["1 preflight 预检"]
+  P --> D["2 downloading 下载"]
+  D --> V["3 verifying 验签"]
+  V --> X["4 extracting 解包"]
+  X --> M["5 migrating 迁移"]
+  M --> L["6 lock_commit 落锁生效"]
+  L --> R["7 registering 登记"]
+  R --> W["8 deploying_web 部署前端"]
+  W --> RL["9 reloading 热更"]
+  RL --> SM["10 smoke 冒烟"]
+  SM --> AU["audit 终态审计（恒末位，失败也审）"]
+  AU --> OK(["done"])
+  V -. "unknown_key 或吊销：预锁段即停，staging 不清场，公钥指纹交人核对" .-> NT(["needs_trust 第五终态"])
+  P -. "① 锁前段（preflight–lock_commit）失败：清场重跑，什么都没发生" .-> F(["failed"])
+  R -. "② 锁后段（registering–smoke）失败：partial 部分生效" .-> PA(["partial"])
+```
+
+- **needs_trust 确认后重试同一安装**即可续跑；一切消费面须把它当**非成功态**渲染。
 
 ---
 
-## §12 签名与信任（P2-14 正式落地）
+## §12 签名与信任
 
-方案的发布与安装建立在 **Ed25519 detached 签名 + 站点信任库** 之上（契约 v1.3 §2.11）。
-**G4 硬 fail-closed：未签名包拒装（sig_missing），无任何逃生开关。**
+方案的发布与安装建立在 **Ed25519 detached 签名 + 站点信任库** 之上。
+**硬 fail-closed：未签名包拒装（sig_missing），无任何逃生开关。**
+（fail-closed = 校验不过时**拒绝安装**，而不是放行、也不是告警后继续——
+信任链上一律不做「先装了再说」的妥协。）
+
+```mermaid
+flowchart LR
+  subgraph author["作者侧"]
+    direction TB
+    K["ojm keygen --id 发布方.密钥名"] --> S["ojm sign dist/name-version.tgz --id … --check"]
+    S --> PUB["ojm publish 发布目录（索引重算 + .sig 侧车）"]
+  end
+  subgraph ops["运维侧（站点）"]
+    direction TB
+    INST["ojm install（file 直传 / cdn 拉取）"] --> VER["verifying 段验签"]
+    VER -->|"签名缺失"| E1["sig_missing 拒装"]
+    VER -->|"算法 / key_id 命名 / .sig 结构违约"| E2["sig_alg / sig_key / sig_format 拒装"]
+    VER -->|"验签不过"| E3["tampered 拒装"]
+    VER -->|"信任库无此 key"| TOFU["needs_trust：展示公钥指纹，与发布方逐字核对"]
+    TOFU -->|"ojm trust confirm --task 安装任务id"| LIB[".solutions/trusted-keys.yaml 入库"]
+    LIB --> INST
+    VER -->|"验签通过"| NEXT["继续 installing 后续阶段（§11.3）"]
+  end
+  BOOT["模板内置 BOOTSTRAP_KEY（第一方公钥）"] -. "market 方案首装免 TOFU" .-> VER
+```
 
 ### 12.1 发布流程（作者侧，三步）
 
@@ -1605,6 +1709,11 @@ ojm install dist/<name>-<version>.tgz --url <站点> --user admin --pass …
 
 ### 12.2 信任库与 TOFU（运维侧）
 
+**TOFU = Trust On First Use（首次使用即信任）**：陌生发布方的第一个包，安装器无法判断
+该不该信，于是把公钥指纹摆出来让人核对——核对通过才入库，之后同一 key_id 直接放行。
+信任的建立因此有两条路：**第一方**走模板内置公钥免核对（§12.3），**第三方**走本节的
+人工核对。
+
 - 信任库 = `.solutions/trusted-keys.yaml`（key_id → 公钥 + added_at；首次绑定不可改，
   轮换 = 新增 key_id）。
 - **TOFU 双轨**：未知发布方首装 → 任务终态 `needs_trust`（非成功非崩溃，staging 不清场），
@@ -1614,10 +1723,10 @@ ojm install dist/<name>-<version>.tgz --url <站点> --user admin --pass …
 ojm trust ls                     # 列已信任 key（含 sha256 指纹分组）
 ojm trust confirm --task <id>    # 把 needs_trust 待确认 key 入库，然后重跑 install
 ojm trust add <key_id> <pubhex>  # 直接登记
-ojm trust revoke <key_id>        # 吊销：阻断新装/升级，不动已装方案（G5）
+ojm trust revoke <key_id>        # 吊销：阻断新装/升级，不动已装方案
 ```
 
-### 12.3 第一方 bootstrap key（G3 双轨第一轨）
+### 12.3 第一方 bootstrap key（首装免 TOFU）
 
 平台模板内置第一方发布方**公钥**（`api/src/_platform/market/bootstrap.ts` 的
 `BOOTSTRAP_KEY`）：信任库文件首次初始化时自动播种一次——**market 方案首装免 TOFU 直接过
