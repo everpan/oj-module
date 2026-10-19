@@ -196,7 +196,6 @@ describe("initProject", () => {
 			"web/src/exception",
 			"web/src/outside",
 			"web/src/route-nest",
-			"web/src/oj-market",
 		])
 			expect(fs.existsSync(path.join(dest, mod))).toBe(false);
 
@@ -207,14 +206,20 @@ describe("initProject", () => {
 		expect(fs.existsSync(path.join(dest, "web/src/demo/entry.ts"))).toBe(true);
 		expect(fs.existsSync(path.join(dest, "web/src/home/entry.ts"))).toBe(true);
 
-		// 2) 默认模块照常在
-		for (const mod of ["web/src/home", "web/src/demo", "web/src/login", "web/src/notification"])
+		// 2) 默认模块照常在（oj-market 0.2.8 起默认下发：方案市场前端 +
+		//    _platform 市场编排面 /api/_platform/market/*）
+		for (const mod of ["web/src/home", "web/src/demo", "web/src/login", "web/src/notification", "web/src/oj-market"])
 			expect(fs.existsSync(path.join(dest, mod))).toBe(true);
+		//    其 __tests__ 不进脚手架（用户工程无 web 侧 vitest 基建）
+		expect(fs.existsSync(path.join(dest, "web/src/oj-market/__tests__"))).toBe(false);
+		expect(fs.existsSync(path.join(dest, "web/src/oj-market/entry.ts"))).toBe(true);
 
-		// 3) web.config.ts：demo 条目与 #region 标记一并剥离（不留指向缺失文件的死条目）
+		// 3) web.config.ts：demo 条目与 #region 标记一并剥离（不留指向缺失文件的死条目）；
+		//    oj-market 条目保留（默认模块，不再走 demo-only 剥离）
 		const config = fs.readFileSync(path.join(dest, "web.config.ts"), "utf-8");
-		for (const name of ["about", "access", "exception", "outside", "route-nest", "oj-market"])
+		for (const name of ["about", "access", "exception", "outside", "route-nest"])
 			expect(config).not.toContain(`"${name}"`);
+		expect(config).toContain("\"oj-market\"");
 		expect(config).not.toContain("#region demo-only");
 		expect(config).not.toContain("#endregion");
 		// 剥离不能误伤默认条目

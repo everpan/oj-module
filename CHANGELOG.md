@@ -5,6 +5,19 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 设计依据、迁移记录与陷阱清单见 [`docs/prd/202609110947-oj-module-two-package-consolidation-design.md`](docs/prd/202609110947-oj-module-two-package-consolidation-design.md)。
 
+## [0.2.8] - 2026-10-19
+
+双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步升 **0.2.8**。
+
+### Changed
+
+- **方案市场（oj-market）默认随脚手架下发**：`ojm init` 新工程自带 `web/src/oj-market`
+  （前端方案，消费 `_platform` 编排面 `/api/_platform/market/*`——该 api 模块此前已在
+  默认清单内，前后端自此配套齐活）。`web.config.ts` 的 `oj-market` 条目移出
+  `#region demo-only`，升为默认第一方模块。
+  - `__tests__` 不进脚手架（用户工程无 web 侧 vitest 基建，拷了是死文件）；
+  - 新工程导航即含「方案市场」入口，无需手动从模板搬运。
+
 ## [0.2.7] - 2026-10-19
 
 双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步升 **0.2.7**。

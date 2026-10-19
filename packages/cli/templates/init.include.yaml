@@ -57,6 +57,16 @@ include:
   - web/src/login
   - web/src/notification
   - web/src/notifications
+  # 解决方案市场：默认第一方能力。逐子路径收录——__tests__ 不进脚手架
+  # （用户工程无 web 侧 vitest 基建，拷了是死文件）
+  - web/src/oj-market/entry.ts
+  - web/src/oj-market/types.ts
+  - web/src/oj-market/api
+  - web/src/oj-market/components
+  - web/src/oj-market/hooks
+  - web/src/oj-market/locales
+  - web/src/oj-market/pages
+  - web/src/oj-market/utils
   - web/src/personal-center
   - web/src/system
   - web/src/web

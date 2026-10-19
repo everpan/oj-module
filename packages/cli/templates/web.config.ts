@@ -17,6 +17,9 @@ const allModules = [
 	{ name: "notification", entry: "web/src/notification/entry.ts" },
 	// 系统管理：用户/成员资格/角色权限/操作日志/站点设置/登录方式（oj 后端 /api/system/*）
 	{ name: "system", entry: "web/src/system/entry.ts" },
+	// 解决方案市场：第一方能力（消费 _platform 编排面 /api/_platform/market/*，
+	// R29：第三方方案不得仿照此调用面），默认随脚手架下发
+	{ name: "oj-market", entry: "web/src/oj-market/entry.ts" },
 	// #region demo-only
 	// 以下为模板内置的演示模块（about/access/exception/outside/route-nest），
 	// 用于把 templates 当可运行 demo 直接跑；其文件不在 `ojm init` 的
@@ -27,9 +30,6 @@ const allModules = [
 	{ name: "exception", entry: "web/src/exception/entry.ts" },
 	{ name: "outside", entry: "web/src/outside/entry.ts" },
 	{ name: "route-nest", entry: "web/src/route-nest/entry.ts" },
-	// 解决方案市场：第一方能力（消费 _platform 编排面 /api/_platform/market/*），
-	// 模板自带以便自演示；新工程默认不带，同上由 init 剥离。
-	{ name: "oj-market", entry: "web/src/oj-market/entry.ts" },
 	// #endregion demo-only
 ];
 
