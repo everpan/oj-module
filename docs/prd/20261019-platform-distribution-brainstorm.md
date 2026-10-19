@@ -1,6 +1,6 @@
 # _platform 分发形态脑暴：源码 vs 编译 vs 机制护栏
 
-> 日期：2026-10-19 · 状态：脑暴（未实现） · 触发：oj-market 默认进脚手架后，_platform 以源码随 scaffold 下发，R29「第三方不得仿照/直呼特权面」只是约定，无法阻止开发者直接 import。
+> 日期：2026-10-19 · 状态：**评审完成，待用户确认后实施**（§0～§5 为原始脑暴，§6 为五专家评审后的方案修订——**实施以 §6 为准**）· 触发：oj-market 默认进脚手架后，_platform 以源码随 scaffold 下发，R29「第三方不得仿照/直呼特权面」只是约定，无法阻止开发者直接 import。
 > 关联：docs/prd/solution/DEVELOPER.md §7（R29）、docs/plans/2026-10-19-module-data-sharing-design.md §3.5（前端直连查证）。
 
 ## 0. 结论先行
@@ -84,3 +84,72 @@
 1. C1 的第一方清单与 init.include.yaml 的单一事实源（同一份 yaml 还是复制清单）——建议 init.include.yaml 增加一节 `firstPartyModules`，两边共读。
 2. C2 是否同步收 `api/src/_platform` 的对外契约面（contacts 等用户域端点是**要**开放的，不能收）——需逐端点分类：特权编排面（market/lifecycle）vs 用户域（contacts/notification list）。
 3. 存量工程（0.2.8 之前 init 的）没有守卫——C1 若做成 `api --check` 的一部分，存量升级 cli 后自然获得，无需迁移。
+
+---
+
+## 6. 专家评审记录与方案修订（2026-10-19，实施以本节为准）
+
+五位专家独立评审（架构师 / 安全工程师 / 产品经理 / 工程师 / 体验官，均为只读评审、grep 实证后下结论）。**结论一致：有保留通过**——C1 方向与编译分发/npm 化的否决判断成立；C2 的事实前提已过期须改写；C1 挂点与规则粒度需修正。以下为修订后方案，**未实施**。
+
+### 6.1 全票修正：C2 改写为「删除 + 抑制再生成」
+
+评审实证推翻本文 §2-F2：「web/src/_platform/__client 唯一消费者是 oj-market」**不成立**——模板全树零文件 import 它；oj-market 自带手写 DIP client（client.ts 拼 URL，data-sharing §3.5 本就自证「非 __client 生成」）。且该目录是 ojm api 的**生成物**：contract/run.ts 的 emit 循环按 openapi.json 模块全集逐个写 web/src/<模块>/__client，check.ts 对账循环对缺失报 artifact-stale——只删文件会被 ojm api 原样复活、--check 报假过期。
+
+修订后 C2（四步，不动 oj-market）：
+
+| # | 动作 | 落点 |
+|---|---|---|
+| 1 | emit 与对账两侧共享 EMIT_CLIENT_SKIP_MODULES = ["_platform"]，跳过 web client 发射与生成物核对 | contract/run.ts emit 循环 + contract/check.ts 对账循环 |
+| 2 | 删模板目录 web/src/_platform | packages/cli/templates/ |
+| 3 | 白名单删 web/src/_platform 行 | init.include.yaml |
+| 4 | openapi.json 的 _platform 端点**保留**（route 双向对账与 stub 规划仍需要） | 不改 |
+
+特权面叙事随之更干净：**_platform 不暴露任何前端生成 client**，而非「特权 client 特权模块自带」。
+
+### 6.2 C1 修订：挂点、粒度、匹配、清单
+
+**挂点（四消费点，同一扫描函数）**——只挂 api --check 对第三方是自愿守卫（评审实证：DEVELOPER.md 全文没让方案作者跑它；dev/build 流程均不调它）：
+
+| 消费点 | 级别 | 理由 |
+|---|---|---|
+| ojm build | **error，fail-fast** | 主门：esbuild 会把跨模块 import 静默内联进 routes.js，build 是唯一自然拦截点 |
+| ojm build --bundle（bundle.ts） | **error，fail-fast** | 第三方发布必经关口，沿用「构建即校验」模式 |
+| ojm api --check | error kind boundary-import（新增，**不读 .ojm-api-exempt.json**——豁免文件语义是契约对账降级，不得扩权到纪律项） | CI 口径 |
+| ojm dev 起动 | **warn 一次** | 最早反馈，不打断热更开发 |
+
+**规则粒度**：从「import _platform」泛化为「**非第一方模块的跨模块源码 import 一律 error**」（现网非 _platform 第一方模块间零互导，同成本多挡 auth/_shared、system 内部等同级耦合）——但设**显式放行清单** _platform/_shared/respond：devkit 手册 §1.7-1 明文教所有 handler 用 respond() 收口错误信封，全拦会打断文档化流程、把守卫变成人人绕过的假门（体验官发现，产品/工程师附议）。
+
+**匹配方式**：只认 import 语法位置（from "..." 静态与 export-from / 副作用 import "..." / 动态 import(...) / require(...)），相对路径归一后测目标模块；**禁子串扫描**——模板注释与 URL 字符串大量含 _platform 字样，裸 grep 全误报（评审实证）。无路径别名（模板 tsconfig 无 paths），无需别名解析。第二级：非第一方模块源文本出现 /api/_platform（或 /_platform/）URL 字符串 → **warn**（提示特权编排面不可仿照，注释不算）。
+
+**扫描根**：api/src/<模块>/ 与 web/src/<模块>/ 模块目录内 .ts/.tsx（api/tests 合法引用 ../src/_platform，根限定避免误报）；不扫 api/modules（站点侧安装产物，宿主扫描无意义）。
+
+**第一方清单单一事实源（裁决，原未决点 1）**：packages/cli/src/contract/first-party.ts 导出 FIRST_PARTY_MODULES = { api: [_platform, auth, notification, notifications, personal-center, system, web], web: [auth, login, notification, notifications, oj-market, personal-center, system, web, demo, home] }；release-manifest.test.ts 加双向断言（常量 ↔ include 收录的 api/src/*、web/src/* 顶层目录逐一对齐）防漂移。**弃「yaml 加 firstPartyModules 节两边共读」**：守卫在用户工程 cwd 运行，init.include.yaml 是模板自用元数据不进用户工程，dlx/pack 形态下回读 ojm 包内模板资产脆弱（架构师裁定，工程师/体验官附议）。
+
+**报错文案（三段式，共用一份常量）**：① 越了什么界（文件:行、模块、import 描述符）；② 现实出路：数据/界面/权限走 manifest 契约声明（DEVELOPER.md §4），背景与失效形态 §7 R29；③ 跨模块直连走 data-sharing v2 直连轨（**标注「规划中」**，不给死链体验）。usage.ts 「四重对账」→「五重对账」。
+
+### 6.3 配套（低优先级，随实施带上）
+
+- DEVELOPER.md §7 从「警告」升级为「规则 + 守卫行为」小节（何时报、报什么、**明确不设豁免阀**，真需求等 v2）；§8.1 打包步骤前加「发布前必跑 ojm api --check」；
+- api/src/_platform/manifest.yaml 加端点分类注释表：用户域（contacts，登录即可，第三方可合法 HTTP 调用）vs 特权编排面（market/*、生命周期，仅 superadmin）——供守卫文案与 v2 直连轨引用（原未决点 2 最小落法）；
+- CHANGELOG 记新 error kind（方案作者升级 CLI 后首次 CI 见红不至于懵）；
+- 诚实账写死：守卫只拦**构建期 import**，不拦 fetch 字符串直呼（该通道由 R9 运行时门兜底）；--check 绿 ≠ 边界安全——写进 §7 与 --check 通过输出。
+
+### 6.4 待用户确认的裁决点
+
+| # | 裁决 | 评审立场 |
+|---|---|---|
+| 1 | C2 动作 = 删除 + 抑制再生成（非「收进 oj-market」） | 五方一致，无分歧 |
+| 2 | 守卫挂四点：build fail-fast / bundle fail-fast / dev warn / check CI（error，不可豁免） | 工程师+体验官主张，架构师附议；无反对 |
+| 3 | 跨模块 import 全拦，**仅放行 _platform/_shared/respond** | 体验官提出（手册 §1.7-1 教学依赖），安全工程师原主张全拦——折中裁定 |
+| 4 | 第一方清单 = cli 常量 + release-manifest 双向断言（弃 yaml 共读） | 架构师裁定，体验官附议；工程师/安全工程师原主张 yaml 节 |
+| 5 | 非第一方模块 URL 字符串 warn（不阻断） | 安全工程师主张；无反对 |
+
+### 6.5 评审原始立场存档
+
+| 专家 | 结论 | 最高优先级发现 |
+|---|---|---|
+| 架构师 | 有保留通过 | C2 会被 emit/check 管线复活；清单用 cli 常量+测试锚定；规则泛化为跨模块全禁 |
+| 安全工程师 | 有保留通过 | C2 是生成物须停发；新 kind 不得读豁免清单；端点分类表进 manifest 注释 |
+| 产品经理 | 有保留通过 | C2 改「删除+防再生成」；守卫打不中方案作者（DEVELOPER.md §8.1 补必跑）；文案三段式不诺死链 |
+| 工程师 | 有保留通过 | C1 须同挂 bundle（泄漏通道在 esbuild 内联进 routes.js 入包）；匹配限定 import 语法位；扫描范围查证 |
+| 体验官 | 有保留通过 | api --check 无人主动跑，主门挂 build + dev warn；respond 放行否则假门；清单须 cli 常量（yaml 不进用户工程） |
