@@ -378,6 +378,8 @@ const SCAFFOLD_GITIGNORE = `# 由 ojm init 生成。
 node_modules/
 bin/
 .ojm-tmp-*
+# ojm preview 的派生 config（临时产物，进程退出即删；见 preview-config.ts）
+api/.ojm-preview.yaml
 # 本地 sqlite 与运行日志
 api/db.sqlite
 api/db.sqlite-shm

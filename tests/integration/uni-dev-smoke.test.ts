@@ -26,8 +26,8 @@ function getFreePort(): Promise<number> {
  * P6 Task 10：uni-dev 全链真二进制冒烟（设计 §9 首跑登录闭环 + §6 preview）。
  *
  * init → dev（真 oj）→ POST /api/auth/login（admin/123456）→ user-info →
- * 收尾 → build → preview（migrate → oj release/js + ojm 静态兜底）→
- * GET / 200 → 带 token /api/web/hello 200 → 收尾。
+ * 收尾 → build → preview（migrate → oj serve 单服务：API + web 挂载 SPA 同进程）→
+ * GET / 200 → 深链 200 → 带 token /api/web/hello 200 → 收尾。
  *
  * 依赖本仓 vendor tarball 与 shell dist，CI 无产物环境跳过；
  * 端口 9778 被残留实例占用时直接失败并提示（不静默换端）。
@@ -178,9 +178,9 @@ describe.skipIf(process.env.CI || ojBusy)("uni-dev e2e 冒烟（真二进制）"
 		expect(fs.existsSync(path.join(root, "api/dist/manifests.yaml"))).toBe(true);
 	}, 240_000);
 
-	it("preview：migrate → 静态兜底 + 带 token 业务路由", async () => {
-		// 显式传空闲端口：preview 缺省 4173 会被本机其他 preview 实例占用（自动顺延后
-		// 测试若仍按横幅旧端口打请求，会打到别人站点的反代上——2026-10-17 真机踩坑）
+	it("preview：单服务（migrate → oj serve API+静态 SPA）+ 带 token 业务路由", async () => {
+		// 显式传空闲端口：单服务形态下端口经派生 config 覆盖 server.port（DR-4），
+		// 仍是覆盖而非自动顺延——占用即失败，不静默换端
 		const reserved = await getFreePort();
 		const { proc, port } = startRam(["preview", String(reserved)]);
 		const previewPort = await port();
@@ -188,6 +188,11 @@ describe.skipIf(process.env.CI || ojBusy)("uni-dev e2e 冒烟（真二进制）"
 		const index = await request(previewPort, "/");
 		expect(index.status).toBe(200);
 		expect(index.text).toContain("<html");
+
+		// SPA 深链回落（oj web 挂载 spa: true，2026-10-19 单服务化的核心新断言）
+		const deep = await request(previewPort, "/some/deep/route", { });
+		expect(deep.status).toBe(200);
+		expect(deep.text).toContain("<html");
 
 		const login = await request(previewPort, "/api/auth/login", {
 			method: "POST",
@@ -199,7 +204,12 @@ describe.skipIf(process.env.CI || ojBusy)("uni-dev e2e 冒烟（真二进制）"
 		const hello = await request(previewPort, "/api/web/hello", { token });
 		expect(hello.status).toBe(200);
 
+		// 派生 config 运行中存在、退出后清理（DR-2）
+		const previewConfig = path.join(root, "api/.ojm-preview.yaml");
+		expect(fs.existsSync(previewConfig)).toBe(true);
+
 		killTree(proc);
 		await new Promise(resolve => proc.once("exit", resolve));
+		expect(fs.existsSync(previewConfig)).toBe(false);
 	}, 240_000);
 });

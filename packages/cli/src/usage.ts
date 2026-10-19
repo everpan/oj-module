@@ -20,8 +20,9 @@ export function usageText(): string {
         --bundle   方案包构建：manifest.yaml 契约校验（C2，fail-fast）→ 确定性 tgz
                    → dist/<name>-<version>.tgz + sha256（市场安装器的上游产物）
         --out <dir>  --bundle 输出目录（缺省 dist/）
-  ojm preview [port] [--oj-static]
-        生产形态预览（migrate → oj serve + 静态兜底）
+  ojm preview [port]
+        生产形态预览（migrate → oj serve 单服务：API 与静态 SPA 同进程，深链回落）
+        静态由 oj web 挂载直出；ojm 不起第二个服务、不做反代
   ojm api [dir] [--check] [--docs] [--exempt <path>]
         契约代码生成（client / routes / openapi / stub）
         --check   四重对账（生成物同步 / route 双向 / routes.js / WS 路由鉴权）

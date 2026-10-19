@@ -360,12 +360,22 @@ describe("shutdownDev（前端终止 → 后端 oj 随之消亡）", () => {
 		const upPort = await listenOn(up.server);
 		const sigints: string[] = [];
 		const terms: string[] = [];
-		const onOnce = vi.spyOn(process, "once").mockImplementation(((ev: string, _cb: () => void) => {
+		const record = (ev: string) => {
 			if (ev === "SIGINT")
 				sigints.push(ev);
 			if (ev === "SIGTERM")
 				terms.push(ev);
 			return process as unknown as NodeJS.Process;
+		};
+		const origOn = process.on.bind(process);
+		const origOnce = process.once.bind(process);
+		// 只拦截 devServer 的 SIGINT/SIGTERM 注册点供断言；其余事件（如 exit
+		// 兜底）透传真实 process——不吞被测代码之外任何监听器注册
+		const onSpy = vi.spyOn(process, "on").mockImplementation(((ev: string, listener: (...args: never[]) => void) => {
+			return ev === "SIGINT" || ev === "SIGTERM" ? record(ev) : origOn(ev, listener as never);
+		}) as typeof process.on);
+		const onceSpy = vi.spyOn(process, "once").mockImplementation(((ev: string, listener: (...args: never[]) => void) => {
+			return ev === "SIGINT" || ev === "SIGTERM" ? record(ev) : origOnce(ev, listener as never);
 		}) as typeof process.once);
 
 		await devServer(root, {
@@ -374,7 +384,8 @@ describe("shutdownDev（前端终止 → 后端 oj 随之消亡）", () => {
 			buildModulesFn: async () => {},
 			ojStarter: up.starter(upPort, configPath),
 		});
-		onOnce.mockRestore();
+		onSpy.mockRestore();
+		onceSpy.mockRestore();
 
 		expect(sigints).toContain("SIGINT");
 		expect(terms).toContain("SIGTERM");

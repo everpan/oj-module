@@ -93,7 +93,7 @@ my-books/
   "scripts": {
     "dev": "ojm dev",         // 开发：前端 + oj，热更
     "build": "ojm build",     // 构建：oj build + 前端全站合并到 web/dist
-    "preview": "ojm preview",  // 预览：oj migrate → 起 server + 静态兜底
+    "preview": "ojm preview",  // 预览：oj migrate → oj serve 单服务（API + 静态 SPA 同进程）
     "info": "ojm info",       // 版本矩阵 + 模块清单
     "typecheck": "tsc --noEmit -p tsconfig.json"
   }
@@ -607,7 +607,7 @@ pnpm exec ojm info          # 版本矩阵 + 模块清单
 
 ```bash
 pnpm build        # = ojm build：oj build（生成 routes.js）+ 前端全站合并到 web/dist
-pnpm preview      # = ojm preview：oj migrate（ver 门禁）→ 起 server + 静态兜底
+pnpm preview      # = ojm preview：oj migrate（ver 门禁）→ oj serve 单服务（API + 静态 SPA）
 ```
 
 产物与要点：

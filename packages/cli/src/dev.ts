@@ -183,11 +183,19 @@ export async function devServer(projectRoot: string, opts: DevOptions = {}): Pro
 
 	// 终端 Ctrl+C / `kill`（SIGINT / SIGTERM）终止 dev 进程时，后端 oj 必须随之消亡：
 	// 起一个统一优雅停机，先停 oj 再退出；并打印后端终止信息。
+	// 终端 Ctrl-C 是进程组信号：外层 bin 转发一份 + 组送达一份，内层会收到
+	// 两个 SIGINT——once 首次触发即摘除，第二个走默认动作杀死本进程，
+	// shutdownDev 跑不完（与 preview 同根因，2026-10-19 冒烟实测）。on +
+	// 幂等守卫吞掉重复信号。
+	let shuttingDown = false;
 	const shutdown = () => {
+		if (shuttingDown)
+			return;
+		shuttingDown = true;
 		void shutdownDev(server, oj, hub);
 	};
-	process.once("SIGINT", shutdown);
-	process.once("SIGTERM", shutdown);
+	process.on("SIGINT", shutdown);
+	process.on("SIGTERM", shutdown);
 
 	// 兜底：dev 进程以任何非优雅路径退出（未走 SIGINT/SIGTERM，如未捕获异常）时，
 	// 同步强杀 oj，确保它不孤儿化继续占端口（shutdownDev 已停则 kill 为 no-op）。

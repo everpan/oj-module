@@ -1294,7 +1294,7 @@ pnpm dev             # 开发：devServer + oj 后端（api/src 保存即热更�
 # Ctrl+C（SIGINT）/ kill（SIGTERM）终止 dev 时，前端与后端 oj 一起终止：
 # 先关 SSE 通道 → 停 oj 子进程 → 打印「后端 oj 已随前端一起终止」，不留 oj 孤儿占端口
 pnpm build           # = ojm build：oj build（生成 routes.js）+ 前端全站合并到 web/dist
-pnpm preview         # = ojm preview：oj migrate（verify 闸）→ 启动 serve + 静态后备
+pnpm preview         # = ojm preview：oj migrate（verify 闸）→ oj serve 单服务（API + 静态 SPA 同进程）
 pnpm typecheck       # = tsc --noEmit
 pnpm exec ojm info   # 版本矩阵 + 模块清单（报障用）
 pnpm exec ojm vendor # 下载/重装 oj 二进制
@@ -1354,10 +1354,11 @@ export default async (path: string, html: string) => {
   顺序是 transform → dev 的 reload 脚本注入，`ojm dev` 照旧热更。
 - 返回 `string` 或 `{ html, cacheControl? }`；**未配置时输出与历史逐字节一致**，抛错/坏返回只
   打日志并回退原文（不会 500），非 HTML 资产完全不受影响。
-- 配置的模块缺失或 default 不是函数 → `ojm dev`/`ojm preview` **启动即报错**（不留半个 oj 进程）。
-- **`preview --oj-static` 例外**：该模式静态由 oj 二进制直出（`--app-path`），不经 ojm 静态层，
-  本钩子不生效；生产要在 oj 托管侧做同样的事，用 oj 的 `server.html_meta`（构建期 JSON）或
-  `server.html_meta_handler`（动态 handler）——见 oj devkit 手册「静态站点与 per-route meta」。
+- 配置的模块缺失或 default 不是函数 → `ojm dev` **启动即报错**（不留半个 oj 进程）。
+- **单服务 preview 例外**：preview 静态由 oj 二进制直出（web 挂载），不经 ojm 静态层，本钩子
+  不生效（启动检测到配置即 WARN，不加载模块）；逐路由 meta 用 oj 的 `server.html_meta`
+  （构建期 JSON）或 `server.html_meta_handler`（动态 handler）——见 oj devkit 手册
+  「静态站点与 per-route meta」。
 
 > release 的 `server.migrate_on_start` 默认 `verify`：迁移账本落后会**拒绝启动**，
 > 先跑 `ojm migrate -d api/dist`（透传自动补 `-c api/config.yaml`）。
@@ -1398,7 +1399,7 @@ export default async (path: string, html: string) => {
 | 豁免写了 `//` 注释后全部失效 | 严格 JSON 解析失败、静默回退 | 注释写进 `_comment` 字段 |
 | 新建后端模块目录后 API 404 | 目录镜像路由未热更 | **重启** `ojm dev` |
 | DELETE 返回 405 | 方法名写成了 `delete` | 改成 `del` |
-| IM 预览/爬虫只有默认标题（页面 JS 改了没用） | 服务端没做 HTML 注入 | 配 `htmlTransform`（见 §7；`preview --oj-static` 模式下要改到 oj 侧 `server.html_meta_handler`） |
+| IM 预览/爬虫只有默认标题（页面 JS 改了没用） | 服务端没做 HTML 注入 | 配 `htmlTransform`（见 §7；单服务 preview 要改到 oj 侧 `server.html_meta`/`server.html_meta_handler`） |
 | 配了 `htmlTransform` 但没生效 | 路径写错 / default 不是函数会**启动报错**；能起来却没效果 → 检查该请求是否命中静态层（`/api` 前缀与带扩展名的资源都不过钩子） | 见 §7 的生效范围 |
 | 上传报 401 | `headers` 写成固定对象，token 过期 | 写成方法，用时现取（§4.5） |
 | 后端菜单用了我的布局名，页面却没壳 | 注册该布局的模块没加载 | 看控制台 `[layout] 未知名布局` 提醒 |
@@ -1468,7 +1469,7 @@ export default async (path: string, html: string) => {
 
 > **为什么只有这 5 个走透传？** oj 还有 `serve` / `build` / `secret`（`keygen`/`seal` 等）
 > 子命令——但它们被 `ojm` **内部调用并附带额外逻辑**（如 `ojm build` 在 `oj build`
-> 之后还要做前端全站合并；`ojm preview` 在 `oj migrate` 之后起 `oj serve` + 静态后备），
+> 之后还要做前端全站合并；`ojm preview` 在 `oj migrate` 之后起 `oj serve` 单服务），
 > 所以不单独透传给用户，避免绕开 ojm 的工程化处理。需要原汁原味跑 oj 其它子命令时，
 > 直接 `./bin/oj <sub> ...`（记得手动 `-c api/config.yaml`）。
 
@@ -1516,21 +1517,22 @@ export default async (path: string, html: string) => {
 > release 下只有 `routes.js` 里的路由存在，目录镜像路由不生效——所以参数路由要先
 > `ojm build` 再测（见 §7）。
 
-#### `ojm preview [port] [--oj-static]`
+#### `ojm preview [port]`
 
-生产形态预览（设计 §6）：
+生产形态预览（设计 §6，2026-10-19 单服务化）：
 
 1. 启动前 **fail-fast 四查**（缺 oj 二进制 / `config.yaml` / `web/dist/index.html` /
    `api/dist/manifests.yaml` 任一即报错并给补救指引，绝不留下 oj 孤儿）；
 2. `oj migrate`（应用待执行迁移，非零退出即退、不起 server）；
-3. `oj serve`（release/js，仅 API）；
-4. ojm 静态层后备（SPA 回退，无 SSE 注入、不设 no-store）。
+3. 生成派生 config `api/.ojm-preview.yaml`（原 config 副本 + upsert `/` web 挂载 +
+   `spa: true`；显式 `port` 时覆盖 `server.port`）；
+4. `oj serve`（release/js，**单进程同时出 API 与静态**，SPA 深链回落）。
 
-- `port`：preview 端口（缺省 **4173**）。
-- `--oj-static`：静态改由 oj `--app-path` 直出（真 exercise oj 静态层；history 深链接 404 为已知限制，
-  ojm 本口仍提供 SPA 后备 + `/api` 反代）。
-- 支持 `web.config.ts` 的 `htmlTransform`（按路由注入 `<title>`/`og:*`，见 §7），模块缺失或
-  default 非函数会**启动即报错**。
+- `port`：preview 端口（缺省用 config 的 `server.port`，默认 9778）；显式传参经派生 config 覆盖。
+- ojm 不再自建 http server、不反代、不传 `--app-path`——与「oj serve + web 挂载」的生产公式同形。
+- 派生 config 为临时产物，退出三路清理（SIGINT / 进程退出兜底 / 编程式 stop），模板 .gitignore 已收录。
+- `web.config.ts` 的 `htmlTransform` 在单服务 preview **不生效**（启动 WARN 指向 oj
+  `server.html_meta` / `server.html_meta_handler`）。
 
 #### `ojm api [dir] [--check] [--docs] [--exempt <path>]`
 

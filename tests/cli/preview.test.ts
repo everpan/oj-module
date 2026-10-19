@@ -1,20 +1,22 @@
-import type { AddressInfo } from "node:net";
 import type { OjProcess } from "../../packages/cli/src/oj";
-import { Buffer } from "node:buffer";
 import fs from "node:fs";
-import http from "node:http";
 import path from "node:path";
-import { afterAll, describe, expect, it } from "vitest";
-import { previewServer } from "../../packages/cli/src/preview";
+import { afterAll, describe, expect, it, vi } from "vitest";
+import { parse } from "yaml";
+import { runPreview } from "../../packages/cli/src/preview";
+import { PREVIEW_CONFIG_NAME } from "../../packages/cli/src/preview-config";
 
 /**
- * 设计 §6（P4）：ojm preview。
- *  - fail-fast 四查：bin/oj、api/config.yaml、web/dist/index.html、
- *    api/dist/manifests.yaml，缺一即人话报错指向 ojm init / ojm build
- *  - migrate 非零退出 → 透传报错、不起 server（失败即退）
- *  - 成功路径：migrate → server 顺序，参数全绝对路径；默认无 --app-path，
- *    --oj-static 时传 --app-path <siteDir>（oj 静态直出，已知深链接 404 限制）
- *  - 默认 ojm 静态层：/ 与深链接回落 index.html、不注入 SSE；/api/* 反代 oj
+ * 设计 §6（P4，2026-10-19 单服务化）：ojm preview。
+ *
+ * 单服务形态：四查 → migrate（原 config）→ 派生 config（api/.ojm-preview.yaml，
+ * upsert / web 挂载 + spa:true + 显式 port 覆盖）→ spawn 唯一 oj serve。
+ * ojm 不再自建 http server、不反代、不传 --app-path。
+ *  - migrate 失败即退：不起 oj、不落派生文件（零残留）
+ *  - ready 拒绝：先回收 oj 子进程再删派生 config 后抛错（F3 顺序）
+ *  - 退出三路清理：stop() / SIGINT / process exit
+ *  - htmlTransform（web.config.ts）单服务不生效：WARN 指向 oj html_meta，
+ *    且不 import 变换模块（无副作用执行用户代码）
  */
 
 const FIXTURE_ROOT = path.join(process.cwd(), ".tmp-preview-fx");
@@ -39,46 +41,61 @@ function makeFixture(base = "/api"): { root: string, configPath: string, siteDir
 	return { root, configPath: path.join(root, "api/config.yaml"), siteDir, apiDist: path.join(root, "api/dist"), port };
 }
 
-function listenOn(server: http.Server): Promise<number> {
-	return new Promise((resolve) => {
-		server.listen(0, "127.0.0.1", () => resolve((server.address() as AddressInfo).port));
-	});
+/** 派生 config 路径（与原 config 同目录，固定名） */
+function previewConfigPath(root: string): string {
+	return path.join(root, "api", PREVIEW_CONFIG_NAME);
 }
 
-function get(port: number, reqPath: string, headers: http.OutgoingHttpHeaders = {}): Promise<{
-	status: number
-	headers: http.IncomingHttpHeaders
-	text: string
-}> {
-	return new Promise((resolve, reject) => {
-		http.get({ host: "127.0.0.1", port, path: reqPath, headers }, (res) => {
-			const chunks: Buffer[] = [];
-			res.on("data", chunk => chunks.push(chunk as Buffer));
-			res.on("end", () => resolve({
-				status: res.statusCode ?? 0,
-				headers: res.headers,
-				text: Buffer.concat(chunks).toString(),
-			}));
-		}).on("error", reject);
-	});
+function readDerived(root: string): Record<string, unknown> {
+	return parse(fs.readFileSync(previewConfigPath(root), "utf-8")) as Record<string, unknown>;
 }
 
-/** 桩 oj：真监听的 http server，承担 /api 反代上游 */
-function stubOjUpstream() {
-	const seen: string[] = [];
-	const server = http.createServer((_req, res) => {
-		seen.push(_req.url ?? "");
-		res.writeHead(200, { "content-type": "application/json" });
-		res.end(JSON.stringify({ code: 0, from: "oj" }));
-	});
-	return { server, seen };
+/** 桩 ojStarter：记录调用参数，ready 立即 resolve */
+function stubStarter(port: number, opts: { ready?: () => Promise<void> } = {}) {
+	const calls: { cfg: string, base: string, apiPath: string, extraArgs: string[] }[] = [];
+	const starter = (cfg: string, base: string, apiPath: string, extraArgs: string[]) => {
+		calls.push({ cfg, base, apiPath, extraArgs });
+		return {
+			port,
+			ready: opts.ready ? opts.ready() : Promise.resolve(),
+			stop: async () => {},
+		} satisfies OjProcess;
+	};
+	return { calls, starter };
+}
+
+/**
+ * 拦截 runPreview 的信号注册点（SIGINT 走 on、exit 走 once）供断言，不真
+ * 注册（十几个用例会触发 MaxListenersExceededWarning）；其余事件一律透传
+ * 真实 process——不吞被测代码之外任何监听器注册。
+ */
+function stubProcessSignals() {
+	const events: string[] = [];
+	const origOn = process.on.bind(process);
+	const origOnce = process.once.bind(process);
+	const onSpy = vi.spyOn(process, "on").mockImplementation(((ev: string, listener: (...args: never[]) => void) => {
+		if (ev !== "SIGINT")
+			return origOn(ev, listener as never);
+		events.push(ev);
+		return process as unknown as NodeJS.Process;
+	}) as typeof process.on);
+	const onceSpy = vi.spyOn(process, "once").mockImplementation(((ev: string, listener: (...args: never[]) => void) => {
+		if (ev !== "exit")
+			return origOnce(ev, listener as never);
+		events.push(ev);
+		return process as unknown as NodeJS.Process;
+	}) as typeof process.once);
+	return { events, restore: () => {
+		onSpy.mockRestore();
+		onceSpy.mockRestore();
+	} };
 }
 
 afterAll(() => {
 	fs.rmSync(FIXTURE_ROOT, { recursive: true, force: true });
 });
 
-describe("previewServer fail-fast 四查", () => {
+describe("runPreview fail-fast 四查", () => {
 	const cases = [
 		{ name: "缺 bin/oj → 指向 ojm init", remove: (root: string) => fs.rmSync(path.join(root, "bin/oj")), hint: /init/ },
 		{ name: "缺 api/config.yaml → 指向 ojm init", remove: (root: string) => fs.rmSync(path.join(root, "api/config.yaml")), hint: /init/ },
@@ -89,212 +106,205 @@ describe("previewServer fail-fast 四查", () => {
 		it(c.name, async () => {
 			const { root } = makeFixture();
 			c.remove(root);
-			await expect(previewServer(root, { execOj: () => {}, ojStarter: () => ({ port: 1, ready: Promise.resolve(), stop: async () => {} }) }))
+			const once = stubProcessSignals();
+			await expect(runPreview(root, { execOj: () => {}, ojStarter: stubStarter(1).starter }))
 				.rejects
 				.toThrowError(c.hint);
+			once.restore();
 		});
 	}
 });
 
-describe("previewServer 编排", () => {
-	it("migrate 非零退出 → 透传报错且不起 server", async () => {
-		const { root } = makeFixture();
-		const started: unknown[] = [];
-		await expect(previewServer(root, {
-			execOj: () => {
-				throw new Error("migrate boom: M004 ledger behind");
-			},
-			ojStarter: () => {
-				started.push(1);
-				return { port: 1, ready: Promise.resolve(), stop: async () => {} };
-			},
-		})).rejects.toThrowError(/migrate boom/);
-		expect(started).toEqual([]);
+describe("runPreview 派生 config", () => {
+	it("无 / web 挂载 → 注入 {prefix:/, web:siteDir, spa:true}，其余段与原 config 一致", async () => {
+		const { root, configPath, siteDir, port } = makeFixture();
+		const before = fs.readFileSync(configPath, "utf-8");
+		const once = stubProcessSignals();
+
+		const handle = await runPreview(root, {
+			siteDir,
+			execOj: () => {},
+			ojStarter: stubStarter(port).starter,
+		});
+		once.restore();
+
+		const derived = readDerived(root);
+		const mounts = derived.mounts as { prefix: string, web?: string, api?: string, spa?: boolean }[];
+		expect(mounts).toEqual([
+			{ prefix: "/api", api: "src" },
+			{ prefix: "/", web: siteDir, spa: true },
+		]);
+		expect(derived.server).toMatchObject({ host: "127.0.0.1", port });
+		// 原 config 不被修改
+		expect(fs.readFileSync(configPath, "utf-8")).toBe(before);
+
+		await handle.stop();
+		expect(fs.existsSync(previewConfigPath(root))).toBe(false);
 	});
 
-	it("成功路径：migrate → server 顺序、参数全绝对路径；默认无 --app-path", async () => {
+	it("已有 / web 挂载 → 覆盖指向与 spa，保留 headers 等自定义键，其他挂载不动", async () => {
+		const { root, siteDir, port } = makeFixture();
+		fs.writeFileSync(path.join(root, "api/config.yaml"), [
+			"server:",
+			"  host: 127.0.0.1",
+			`  port: ${port}`,
+			"mounts:",
+			"  - prefix: /api",
+			"    api: src",
+			"  - prefix: \"/\"",
+			"    web: \"../stale-dir\"",
+			"    headers: { X-Frame-Options: \"DENY\" }",
+			"  - prefix: /docs",
+			"    web: \"../docs-dist\"",
+			"",
+		].join("\n"));
+		const once = stubProcessSignals();
+
+		await runPreview(root, {
+			siteDir,
+			execOj: () => {},
+			ojStarter: stubStarter(port).starter,
+		});
+		once.restore();
+
+		const mounts = readDerived(root).mounts as Record<string, unknown>[];
+		expect(mounts).toEqual([
+			{ prefix: "/api", api: "src" },
+			{ prefix: "/", web: siteDir, spa: true, headers: { "X-Frame-Options": "DENY" } },
+			{ prefix: "/docs", web: "../docs-dist" },
+		]);
+	});
+
+	it("显式 port → 覆盖派生 config 的 server.port（DR-4）", async () => {
+		const { root, siteDir, port } = makeFixture();
+		const once = stubProcessSignals();
+
+		await runPreview(root, {
+			port: 39999,
+			siteDir,
+			execOj: () => {},
+			ojStarter: stubStarter(port).starter,
+		});
+		once.restore();
+
+		expect(readDerived(root).server).toMatchObject({ port: 39999 });
+	});
+
+	it("mounts 非序列（手误写成标量）→ 人话报错，不静默置空掩盖错误", async () => {
+		const { root, siteDir } = makeFixture();
+		fs.writeFileSync(path.join(root, "api/config.yaml"), "server:\n  port: 19877\nmounts: api-src\n");
+		const once = stubProcessSignals();
+
+		await expect(runPreview(root, {
+			siteDir,
+			execOj: () => {},
+			ojStarter: stubStarter(1).starter,
+		})).rejects.toThrowError(/mounts 不是序列/);
+		once.restore();
+
+		expect(fs.existsSync(previewConfigPath(root))).toBe(false);
+	});
+
+	it("非法 YAML → 人话报错，不落派生文件", async () => {
+		const { root, siteDir } = makeFixture();
+		fs.writeFileSync(path.join(root, "api/config.yaml"), "server:\n  port: [unclosed\n");
+		const once = stubProcessSignals();
+
+		await expect(runPreview(root, {
+			siteDir,
+			execOj: () => {},
+			ojStarter: stubStarter(1).starter,
+		})).rejects.toThrowError(/不是合法 YAML/);
+		once.restore();
+
+		expect(fs.existsSync(previewConfigPath(root))).toBe(false);
+	});
+});
+
+describe("runPreview 编排", () => {
+	it("migrate 用原 config；spawn 用派生 config，无 --app-path", async () => {
 		const { root, configPath, siteDir, apiDist, port } = makeFixture();
 		const calls: string[][] = [];
-		let started: { cfg: string, base: string, apiPath: string, extraArgs: string[] } | null = null;
+		const { calls: startCalls, starter } = stubStarter(port);
+		const logs: string[] = [];
+		const logSpy = vi.spyOn(console, "log").mockImplementation((...args: unknown[]) => {
+			logs.push(args.join(" "));
+		});
+		const once = stubProcessSignals();
 
-		const server = await previewServer(root, {
+		await runPreview(root, {
 			siteDir,
 			execOj: (args) => {
 				calls.push(args);
 			},
-			ojStarter: (cfg, base, apiPath, extraArgs) => {
-				started = { cfg, base, apiPath, extraArgs };
-				return { port, ready: Promise.resolve(), stop: async () => {} } satisfies OjProcess;
-			},
+			ojStarter: starter,
 		});
-		await new Promise<void>(resolve => server.close(() => resolve()));
+		once.restore();
+		logSpy.mockRestore();
 
+		// migrate：原 config + 绝对路径
 		expect(calls).toEqual([["migrate", "-c", configPath, "-d", apiDist]]);
 		for (const arg of calls[0]!) {
 			if (!["migrate", "-c", "-d"].includes(arg))
 				expect(path.isAbsolute(arg)).toBe(true);
 		}
-		expect(started).not.toBeNull();
-		const s = started as unknown as { cfg: string, base: string, apiPath: string, extraArgs: string[] };
-		expect(path.isAbsolute(s.cfg)).toBe(true);
-		expect(s.cfg).toBe(configPath);
-		expect(s.base).toBe("/api");
-		expect(path.isAbsolute(s.apiPath)).toBe(true);
-		expect(s.apiPath).toBe(apiDist);
-		expect(s.extraArgs).toEqual([]); // 默认静态归 ojm，不给 oj --app-path
+		// spawn：派生 config + 无 --app-path（静态走 config 的 web 挂载）
+		expect(startCalls).toHaveLength(1);
+		expect(startCalls[0]!.cfg).toBe(previewConfigPath(root));
+		expect(path.isAbsolute(startCalls[0]!.cfg)).toBe(true);
+		expect(startCalls[0]!.base).toBe("/api");
+		expect(startCalls[0]!.apiPath).toBe(apiDist);
+		expect(startCalls[0]!.extraArgs).toEqual([]);
+		// 横幅串保持（tests/integration 的 startRam 靠它抓端口）
+		expect(logs.some(l => l.includes("已启动：http://localhost:"))).toBe(true);
 	});
 
-	it("--oj-static：--app-path <siteDir> 绝对路径", async () => {
-		const { root, siteDir, port } = makeFixture();
-		let extraArgs: string[] = [];
-		const server = await previewServer(root, {
+	it("migrate 非零退出 → 透传报错且不起 oj、不落派生文件", async () => {
+		const { root, siteDir } = makeFixture();
+		const started: unknown[] = [];
+		const once = stubProcessSignals();
+
+		await expect(runPreview(root, {
 			siteDir,
-			ojStatic: true,
-			execOj: () => {},
-			ojStarter: (_cfg, _base, _apiPath, extra) => {
-				extraArgs = extra;
-				return { port, ready: Promise.resolve(), stop: async () => {} } satisfies OjProcess;
+			execOj: () => {
+				throw new Error("migrate boom: M004 ledger behind");
 			},
-		});
-		await new Promise<void>(resolve => server.close(() => resolve()));
-		expect(extraArgs[0]).toBe("--app-path");
-		expect(extraArgs[1]).toBe(siteDir);
-		expect(path.isAbsolute(extraArgs[1])).toBe(true);
-	});
-});
+			ojStarter: (_cfg: string, _b: string, _a: string, _e: string[]) => {
+				started.push(1);
+				return { port: 1, ready: Promise.resolve(), stop: async () => {} } satisfies OjProcess;
+			},
+		})).rejects.toThrowError(/migrate boom/);
+		once.restore();
 
-describe("previewServer ojm 静态层", () => {
-	it("/ 与深链接回落 index.html、无 SSE 注入；/api/* 反代桩 oj", async () => {
+		expect(started).toEqual([]);
+		expect(fs.existsSync(previewConfigPath(root))).toBe(false);
+	});
+
+	it("starter 同步抛错（如 config 缺 server.port）→ 派生 config 不残留", async () => {
+		// startOj 首行 readOjPort 会同步 throw（先于返回 OjProcess），此刻 exit
+		// 兜底尚未注册——必须就地清理，否则 api/.ojm-preview.yaml 泄漏
 		const { root, siteDir } = makeFixture();
-		const up = stubOjUpstream();
-		const upPort = await listenOn(up.server);
+		const once = stubProcessSignals();
 
-		const server = await previewServer(root, {
-			siteDir,
-			execOj: () => {},
-			ojStarter: () => ({ port: upPort, ready: Promise.resolve(), stop: async () => {} }),
-		});
-		const devPort = (server.address() as AddressInfo).port;
-
-		const index = await get(devPort, "/");
-		expect(index.status).toBe(200);
-		expect(index.headers["content-type"]).toContain("text/html");
-		expect(index.text).toContain("site");
-		expect(index.text).not.toContain("__ojm_reload"); // 生产形态无 SSE 注入
-
-		const deep = await get(devPort, "/some/deep/route", { Accept: "text/html" });
-		expect(deep.status).toBe(200);
-		expect(deep.text).toContain("site");
-
-		const proxied = await get(devPort, "/api/web/hello");
-		expect(JSON.parse(proxied.text)).toMatchObject({ from: "oj" });
-		expect(up.seen).toEqual(["/api/web/hello"]);
-
-		await new Promise<void>(resolve => server.close(() => resolve()));
-		up.server.close();
-	});
-
-	it("f2：反代前缀跟随 config.yaml 的 server.base", async () => {
-		const { root, siteDir, port } = makeFixture("/apiv2");
-		const up = stubOjUpstream();
-		const upPort = await listenOn(up.server);
-
-		const server = await previewServer(root, {
-			port, // 不复用默认 4173：前序用例的监听socket可能仍在排空，复用会被 ECONNRESET
-			siteDir,
-			execOj: () => {},
-			ojStarter: () => ({ port: upPort, ready: Promise.resolve(), stop: async () => {} }),
-		});
-		const devPort = (server.address() as AddressInfo).port;
-
-		const proxied = await get(devPort, "/apiv2/web/hello");
-		expect(JSON.parse(proxied.text)).toMatchObject({ from: "oj" });
-
-		const offBase = await get(devPort, "/api/web/hello");
-		expect(offBase.status).toBe(404);
-
-		expect(up.seen).toEqual(["/apiv2/web/hello"]);
-
-		await new Promise<void>(resolve => server.close(() => resolve()));
-		up.server.close();
-	});
-
-	it("f1：畸形 URL（%ZZ）→ 400，进程不崩", async () => {
-		const { root, siteDir, port } = makeFixture();
-		const server = await previewServer(root, {
-			port,
-			siteDir,
-			execOj: () => {},
-			ojStarter: () => ({ port: 1, ready: Promise.resolve(), stop: async () => {} }),
-		});
-		const devPort = (server.address() as AddressInfo).port;
-
-		const bad = await get(devPort, "/%ZZ");
-		expect(bad.status).toBe(400);
-
-		const ok = await get(devPort, "/");
-		expect(ok.status).toBe(200);
-
-		await new Promise<void>(resolve => server.close(() => resolve()));
-	});
-});
-
-describe("previewServer htmlTransform（web.config.ts）", () => {
-	const MODULES = "[{ name: \"fx\", entry: \"./web/src/fx/entry.ts\" }]";
-
-	function writeTransformConfig(root: string, spec: string) {
-		fs.writeFileSync(path.join(root, "web.config.ts"), `export default { baseUrl: "", modules: ${MODULES}, htmlTransform: "${spec}" };\n`);
-	}
-
-	it("生产形态下 / 与 SPA 深链接都拿到按路由改写的 HTML", async () => {
-		const { root, siteDir } = makeFixture();
-		writeTransformConfig(root, "./html-transform.ts");
-		fs.writeFileSync(path.join(root, "html-transform.ts"), [
-			"export default function (reqPath) {",
-			"  return \"<html><head><title>\" + reqPath + \" · oj</title></head><body>site</body></html>\";",
-			"}",
-			"",
-		].join("\n"));
-
-		const server = await previewServer(root, {
-			siteDir,
-			execOj: () => {},
-			ojStarter: () => ({ port: 1, ready: Promise.resolve(), stop: async () => {} }),
-		});
-		const devPort = (server.address() as AddressInfo).port;
-
-		const index = await get(devPort, "/");
-		expect(index.status).toBe(200);
-		expect(index.text).toContain("<title>/ · oj</title>");
-
-		const deep = await get(devPort, "/share/abc", { Accept: "text/html" });
-		expect(deep.status).toBe(200);
-		expect(deep.text).toContain("<title>/share/abc · oj</title>");
-
-		await new Promise<void>(resolve => server.close(() => resolve()));
-	});
-
-	it("配置的模块缺失 → fail-fast，且不启动 oj（不留孤儿）", async () => {
-		const { root, siteDir } = makeFixture();
-		writeTransformConfig(root, "./missing-transform.ts");
-		let started = false;
-		await expect(previewServer(root, {
+		await expect(runPreview(root, {
 			siteDir,
 			execOj: () => {},
 			ojStarter: () => {
-				started = true;
-				return { port: 1, ready: Promise.resolve(), stop: async () => {} };
+				throw new Error("[ojm] 缺少合法的 server.port");
 			},
-		})).rejects.toThrowError(/无法加载 htmlTransform 模块 "\.\/missing-transform\.ts"/);
-		expect(started).toBe(false);
-	});
-});
+		})).rejects.toThrowError(/server\.port/);
+		once.restore();
 
-describe("previewServer oj 生命周期", () => {
-	it("f3：oj.ready 拒绝 → 回收 oj 子进程后再抛错", async () => {
-		const { root } = makeFixture();
+		expect(fs.existsSync(previewConfigPath(root))).toBe(false);
+	});
+
+	it("f3：oj.ready 拒绝 → 回收 oj 子进程 + 删派生 config 后再抛错", async () => {
+		const { root, siteDir } = makeFixture();
 		let stopped = false;
-		await expect(previewServer(root, {
+		const once = stubProcessSignals();
+
+		await expect(runPreview(root, {
+			siteDir,
 			execOj: () => {},
 			ojStarter: () => ({
 				port: 1,
@@ -304,6 +314,74 @@ describe("previewServer oj 生命周期", () => {
 				},
 			}),
 		})).rejects.toThrowError(/health 轮询超时/);
+		once.restore();
+
 		expect(stopped).toBe(true);
+		expect(fs.existsSync(previewConfigPath(root))).toBe(false);
+	});
+
+	it("注册 SIGINT 与 exit 两路清理（派生 config 不残留）", async () => {
+		const { root, siteDir, port } = makeFixture();
+		const once = stubProcessSignals();
+
+		await runPreview(root, {
+			siteDir,
+			execOj: () => {},
+			ojStarter: stubStarter(port).starter,
+		});
+		once.restore();
+
+		expect(once.events.filter(e => e === "SIGINT")).toHaveLength(1);
+		expect(once.events.filter(e => e === "exit")).toHaveLength(1);
+	});
+});
+
+describe("runPreview htmlTransform（单服务不生效）", () => {
+	const MODULES = "[{ name: \"fx\", entry: \"./web/src/fx/entry.ts\" }]";
+
+	function writeTransformConfig(root: string, spec: string) {
+		fs.writeFileSync(path.join(root, "web.config.ts"), `export default { baseUrl: "", modules: ${MODULES}, htmlTransform: "${spec}" };\n`);
+	}
+
+	it("配置了 htmlTransform → WARN 指向 oj html_meta，且不 import 变换模块", async () => {
+		const { root, siteDir, port } = makeFixture();
+		writeTransformConfig(root, "./html-transform.ts");
+		// 坏模块：一旦被 import 即刻抛错——runPreview 正常 resolve 即证明未加载
+		fs.writeFileSync(path.join(root, "html-transform.ts"), "throw new Error(\"transform module must not be imported\");\n");
+		const warnings: string[] = [];
+		const warnSpy = vi.spyOn(console, "warn").mockImplementation((...args: unknown[]) => {
+			warnings.push(args.join(" "));
+		});
+		const once = stubProcessSignals();
+
+		await runPreview(root, {
+			siteDir,
+			execOj: () => {},
+			ojStarter: stubStarter(port).starter,
+		});
+		once.restore();
+		warnSpy.mockRestore();
+
+		expect(warnings.join("\n")).toMatch(/htmlTransform/);
+		expect(warnings.join("\n")).toMatch(/html_meta/);
+	});
+
+	it("未配置 htmlTransform → 无 WARN", async () => {
+		const { root, siteDir, port } = makeFixture();
+		const warnings: string[] = [];
+		const warnSpy = vi.spyOn(console, "warn").mockImplementation((...args: unknown[]) => {
+			warnings.push(args.join(" "));
+		});
+		const once = stubProcessSignals();
+
+		await runPreview(root, {
+			siteDir,
+			execOj: () => {},
+			ojStarter: stubStarter(port).starter,
+		});
+		once.restore();
+		warnSpy.mockRestore();
+
+		expect(warnings).toEqual([]);
 	});
 });

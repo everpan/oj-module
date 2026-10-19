@@ -27,7 +27,7 @@ ojm dev [port]   # 启动开发服务器（默认 5174）：宿主代理 + 本�
 ojm build        # 构建模块产物与 dist/modules.json
 ojm init [dir] [--yes]        # 脚手架：模板工程 + 证书签发 + 联网下载 oj 到 bin/
 ojm vendor [tag] [--force]    # 下载/重装 oj vendor（经 npm 包 @oj-bin/oj，tag 缺省取最新版本，形如 v0.1.13）
-ojm preview [port] [--oj-static]   # 生产形态预览：oj migrate + release + 静态兜底
+ojm preview [port]   # 生产形态预览：oj migrate → oj serve 单服务（API + 静态 SPA 同进程）
 ojm info        # 输出报障所需的版本矩阵与后端观测
 ojm api [dir]   # 契约产物生成（client/openapi/mock stub）
 ojm merge <out> <in...>  # 合并多份 modules.json

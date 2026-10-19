@@ -1,44 +1,58 @@
 /**
- * `ojm preview` —— 生产形态预览（设计 §6）。
+ * `ojm preview` —— 生产形态预览（设计 §6，2026-10-19 单服务化）。
  *
- * 职责：校验产物（fail-fast 四查）→ `oj migrate`（失败即退，不起 server）
- * → `oj serve`（release/js，仅 API）→ ojm 静态层兜底（SPA 回退，无 SSE
- * 注入、不设 no-store）。默认静态归 ojm（与 oj 手册 §13「SPA 回退经前置
- * 反代补」一致）；`--oj-static` 切换为 oj `--app-path` 直出（真 exercise
- * oj 静态层，history 深链接 404 是已知限制）。
+ * 职责：fail-fast 四查 → `oj migrate`（失败即退，不起 server）→ 派生
+ * preview config（注入 web 挂载 + spa: true）→ `oj serve`（release/js，
+ * **单进程同时出 API 与静态**）。ojm 不再自建 http server、不再反代——
+ * 前后端同端口同进程，与「oj serve + web 挂载」的生产公式逐字同形。
+ *
+ * 派生 config 为临时产物（api/.ojm-preview.yaml，与原件同目录保证相对
+ * 路径解析一致），三路清理：ready 拒绝路径 / SIGINT / process exit 兜底
+ * （语义与落盘见 preview-config.ts）。
+ *
+ * web.config.ts 的 htmlTransform 是 serve 期钩子，单服务下 oj 直出 HTML
+ * 无从介入——启动时检测到配置即 WARN 并指向 oj 的 html_meta /
+ * html_meta_handler（devkit 手册「静态站点与 per-route meta」）。
  *
  * 一律传绝对路径：oj 命令行相对 CWD、config 内相对 config 目录，混用即歧义。
  */
 
 import type { OjProcess } from "./oj";
+import type { PreviewConfigFiles } from "./preview-config";
 import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
-import http from "node:http";
-import path, { normalize } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
 import process from "node:process";
-import { proxyApi } from "./dev-proxy";
-import { loadHtmlTransform } from "./html-transform";
+import { loadModulesConfig } from "./config";
 import { resolveConfigPath, resolveLayout } from "./layout";
 import { startOj } from "./oj";
 import { readOjApiPrefix } from "./oj-config";
-import { createStaticHandler, decodeReqPath, listenOnFreePort } from "./static-handler";
+import { hasRootApiMount, parseMounts, writePreviewConfig } from "./preview-config";
 import { resolveOjBin } from "./vendor";
 
-const DEFAULT_PORT = 4173;
-
 export interface PreviewOptions {
+	/** 显式端口（覆盖派生 config 的 server.port）；缺省沿用 config（oj 代码默认 9778） */
 	port?: number
-	/** 静态改由 oj --app-path 直出（history 深链接 404，已知限制） */
-	ojStatic?: boolean
 	/** 注入桩站点目录（默认 layout.distDir） */
 	siteDir?: string
 	/** 注入桩 oj 命令执行（migrate）；默认 execFileSync(bin/oj, args, inherit) */
 	execOj?: (args: string[]) => void
 	/** 注入桩 oj 进程；默认 startOj */
 	ojStarter?: (configPath: string, base: string, apiPath: string, extraArgs: string[]) => OjProcess
+	/** 注入桩派生 config 落盘（测试）；默认 writePreviewConfig */
+	configWriter?: (projectRoot: string, opts: { siteDir: string, port?: number }) => PreviewConfigFiles
 }
 
-export async function previewServer(projectRoot: string, opts: PreviewOptions = {}): Promise<http.Server> {
+export interface PreviewHandle {
+	/** 停 oj 子进程并清理派生 config（测试与编程式消费用） */
+	stop: () => Promise<void>
+}
+
+/**
+ * 单服务 preview。返回后进程保活依赖 oj 子进程 stdio 管道（ref 状态）
+ * 与已注册的信号 handler；Ctrl+C 走 SIGINT 善后。
+ */
+export async function runPreview(projectRoot: string, opts: PreviewOptions = {}): Promise<PreviewHandle> {
 	const layout = resolveLayout(projectRoot);
 	const siteDir = opts.siteDir ?? layout.distDir;
 	const ojBin = resolveOjBin(projectRoot);
@@ -55,8 +69,9 @@ export async function previewServer(projectRoot: string, opts: PreviewOptions = 
 	if (!existsSync(path.join(apiDist, "manifests.yaml")))
 		throw new Error(`[ojm] ${apiDist} 缺少 manifests.yaml。\n请先 ojm build（后端 oj build 产物）。`);
 
-	// htmlTransform（web.config.ts，可选）先于起进程校验：配置坏了不该留下 oj 孤儿
-	const transform = await loadHtmlTransform(projectRoot);
+	// DR-5：htmlTransform 存在性检测（只读 web.config.ts 的字段，不 import 变换模块——
+	// 单服务下 oj 直出 HTML，钩子不生效；执行用户代码只会白付副作用）
+	await warnHtmlTransformUnsupported(projectRoot);
 
 	const execOj = opts.execOj ?? ((args: string[]) => execFileSync(ojBin, args, { stdio: "inherit" }));
 
@@ -64,57 +79,91 @@ export async function previewServer(projectRoot: string, opts: PreviewOptions = 
 	console.log("[ojm] oj migrate（应用待执行迁移）…");
 	execOj(["migrate", "-c", configPath, "-d", apiDist]);
 
+	// 派生 config 在 migrate 成功后落盘：失败即退路径零残留
 	const base = readOjApiPrefix(configPath);
+	const writer = opts.configWriter ?? ((root: string, o: { siteDir: string, port?: number }) => writePreviewConfig(root, o));
+	const preview = writer(projectRoot, { siteDir, port: opts.port });
+
+	// / api 挂载与注入的 / web 挂载配对时 oj 不开 SPA 回落（oj 语义，见 devkit 手册 §13）
+	if (hasRootApiMount(parseMounts(readFileSync(configPath, "utf-8"), configPath)))
+		console.warn("[ojm] config 的 api 挂载位于 /：与 web 挂载配对时 oj 不做 SPA 深链回落（已知限制），深链接刷新将 404。");
+
 	const starter = opts.ojStarter ?? ((cfg: string, b: string, apiPath: string, extraArgs: string[]) =>
 		startOj(cfg, b, apiPath, undefined, extraArgs));
-	const extraArgs = opts.ojStatic ? ["--app-path", siteDir] : [];
-	const oj = starter(configPath, base, apiDist, extraArgs);
+	// starter 可能同步抛错（startOj 首行 readOjPort 对缺/坏 server.port 即 throw，
+	// 先于返回 OjProcess）——此刻 exit 兜底尚未注册，必须就地清理派生 config
+	let oj: OjProcess;
+	try {
+		oj = starter(preview.configPath, base, apiDist, []);
+	}
+	catch (error) {
+		preview.cleanup();
+		throw error;
+	}
 	try {
 		await oj.ready;
 	}
 	catch (error) {
-		// F3：ready 拒绝必须先回收子进程，否则 oj 孤儿化继续占端口
+		// F3：ready 拒绝必须先回收子进程，否则 oj 孤儿化继续占端口；派生 config 一并清理
 		await oj.stop().catch(() => {});
+		preview.cleanup();
 		throw error;
 	}
-	console.log(`[ojm] oj 后端已就绪（release/js）：${base} → http://127.0.0.1:${oj.port}`);
+	console.log(`[ojm] oj 已就绪（release/js，单服务：${base} API + 静态 SPA 同进程）：http://127.0.0.1:${oj.port}`);
+	console.log(`\n[ojm] preview 已启动：http://localhost:${oj.port}`);
+	console.log(`[ojm] 静态由 oj web 挂载直出（spa 深链回落）；派生 config ${path.basename(preview.configPath)} 为本进程临时产物，退出自动清理`);
 
-	const ojTarget = `http://127.0.0.1:${oj.port}`;
-	// 生产形态下按路由改写 title/OG（transform 已在起进程前加载校验）
-	const serveStatic = createStaticHandler({ roots: [siteDir], reload: null, noStore: false, transform });
-
-	const server = http.createServer((req, res) => {
-		const urlPath = decodeReqPath(req.url ?? "/");
-		if (urlPath === null) {
-			res.writeHead(400, { "content-type": "text/plain" });
-			res.end("400 Bad Request: malformed URL encoding");
+	// 退出回收：派生 config 必须随 oj 一起消亡（test/integration 断言其不存在）
+	// 终端 Ctrl-C 是进程组信号：外层 bin 转发一份 + 组送达一份，内层会收到
+	// 两个 SIGINT。用 on + 幂等守卫吞掉第二个——once 在首次触发后即摘除，
+	// 第二个 SIGINT 会走默认动作杀死本进程，清理全没跑（2026-10-19 冒烟实测）。
+	let stopping = false;
+	const onSigint = () => {
+		if (stopping)
 			return;
-		}
-		const rel = normalize(urlPath).replace(/^(\.\.[/\\])+/, "");
-		// 反代前缀跟随 config 的 mounts:（api 挂载 prefix；F2）
-		if (rel.startsWith(`${base}/`)) {
-			void proxyApi(ojTarget)(req, res);
-			return;
-		}
-		serveStatic(req, res);
-	});
-
-	server.on("close", () => {
-		void oj.stop();
-	});
-	process.once("SIGINT", () => {
+		stopping = true;
 		console.log("\n[ojm] 正在退出…");
-		void oj.stop();
-		server.close(() => process.exit(0));
+		// 同步先删派生 config：后续任何死亡路径（含信号）都零残留；oj 运行中
+		// 已读入 config，运行期删除文件无影响
+		preview.cleanup();
+		void oj.stop().finally(() => process.exit(0));
 		setTimeout(() => process.exit(0), 1500).unref();
-	});
+	};
+	process.on("SIGINT", onSigint);
+	// 兜底：非优雅路径退出（未捕获异常等）时同步清掉派生 config，防下次启动读到陈旧文件
+	const onExit = () => {
+		preview.cleanup();
+	};
+	process.once("exit", onExit);
 
-	const actualPort = await listenOnFreePort(server, opts.port ?? DEFAULT_PORT);
-	console.log(`\n[ojm] preview 已启动：http://localhost:${actualPort}`);
-	if (opts.ojStatic)
-		console.log(`[ojm] --oj-static：oj 已挂静态直出 http://127.0.0.1:${oj.port}（history 深链接 404 为已知限制；ojm 本口仍提供 SPA 兜底 + /api 反代）`);
-	else
-		console.log(`[ojm] 静态兜底：ojm（SPA 回退）+ ${base} 反代 oj`);
+	// stop 摘除信号/退出 handler：编程式同进程多次调用不累积旧实例的闭包
+	// （CLI 单次调用行为不变）
+	const stop = async () => {
+		process.removeListener("SIGINT", onSigint);
+		process.removeListener("exit", onExit);
+		await oj.stop();
+		preview.cleanup();
+	};
 
-	return server;
+	return { stop };
+}
+
+/**
+ * web.config.ts 配了 htmlTransform → WARN。加载失败（缺文件/坏配置）静默
+ * 跳过：能走到 preview 的工程必然过 ojm build，config 问题会在那里先炸。
+ */
+async function warnHtmlTransformUnsupported(projectRoot: string): Promise<void> {
+	try {
+		const config = await loadModulesConfig(projectRoot);
+		if (config.htmlTransform) {
+			console.warn(
+				"[ojm] web.config.ts 配置了 htmlTransform：单服务 preview 由 oj 直出 HTML，该钩子不生效。\n"
+				+ "逐路由 meta 请改用 oj 的 server.html_meta（构建期 JSON）或 server.html_meta_handler（运行期 handler），"
+				+ "见 bin/devkit/api-manual.md「静态站点与 per-route meta」。",
+			);
+		}
+	}
+	catch {
+		// config 加载失败：不阻塞 preview（build 已先行校验过）
+	}
 }

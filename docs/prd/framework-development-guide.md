@@ -812,7 +812,8 @@ packages/cli/
 ├── src/static-handler.ts  # 静态/SPA/importmap 注入（dev 的 hostRoots 钉死 cli 内置 shell-dist）
 ├── src/dev-proxy.ts       # /api 反代与 SSE（/__ojm_reload）
 ├── src/oj.ts / oj-config.ts / oj-cert.ts  # oj 后端进程生命周期
-├── src/preview.ts         # 生产形态预览
+├── src/preview.ts         # 生产形态预览（单服务编排：四查 → migrate → 派生 config → spawn oj）
+├── src/preview-config.ts  # preview 派生 config（注入 web 挂载 + spa，退出即删）
 ├── src/init.ts            # 工程脚手架（模板 + 钉版）
 ├── src/vendor.ts          # oj vendor 下载（缺省 latest，可指定 tag）
 ├── src/shared-deps.ts     # 【共享依赖单一来源】importmap/宿主入口/external/版本门禁
@@ -859,8 +860,11 @@ ojm dev        # /api 反代 oj；模块源码变更 → 重建 → SSE 刷新�
 ojm build      # 只有 build 会清场合并，产物在 web/dist（含宿主站点全量拷贝）
 ```
 
-**`ojm preview [port] [--oj-static]`** —— 生产形态预览（migrate → oj server + 静态兜底）。
-两者都支持 `web.config.ts` 的 **`htmlTransform`**（按路由注入 HTML，见下）：
+**`ojm preview [port]`** —— 生产形态预览（migrate → **oj serve 单服务**：API 与静态 SPA 同进程，2026-10-19 单服务化）。
+不传 port 用 config 的 `server.port`（默认 9778）；传 port 经派生 config 覆盖。静态由 oj web 挂载
+直出（spa 深链回落），ojm 不起第二个服务、不做反代——与「oj serve + web 挂载」的生产公式同形。
+运行时在 `api/.ojm-preview.yaml` 生成派生 config（原 config 的副本 + 注入 web 挂载），退出即删。
+`ojm dev` 支持 `web.config.ts` 的 **`htmlTransform`**（按路由注入 HTML，见下）：
 
 ```ts
 // web.config.ts —— 可选：指定一个模块，其 default 导出即变换函数
@@ -873,12 +877,13 @@ export default async (path: string, html: string) => ({
 });
 ```
 
-- 生效范围：`/`、`/index.html` 与 SPA 回落的深链接（`path` 已是**解码后**的请求路径）；
+- 生效范围（仅 dev）：`/`、`/index.html` 与 SPA 回落的深链接（`path` 已是**解码后**的请求路径）；
   顺序 = transform → dev 的 reload 注入，`ojm dev` 照旧热更。
 - **未配置时输出与历史逐字节一致**；变换抛错/返回非字符串 → 打日志并回退原文（不会 500）；
   非 HTML 资产一律不经钩子。配置的模块缺失或 default 不是函数 → **启动即报错**。
-- **`--oj-static` 例外**：该模式静态由 oj 二进制直出，不经本钩子（生产 SEO 要在 oj 托管侧
-  用 `server.html_meta` / `server.html_meta_handler`，见 oj devkit 手册）。
+- **单服务 preview 例外**：preview 静态由 oj 二进制直出，不经本钩子（启动检测到配置即 WARN）；
+  生产 SEO/IM 预览在 oj 托管侧用 `server.html_meta`（构建期 JSON）/
+  `server.html_meta_handler`（运行期 handler），见 oj devkit 手册「静态站点与 per-route meta」。
 
 **`ojm api [dir] [--check] [--docs] [--exempt <path>]`** —— 契约代码生成与对账。
 
@@ -946,9 +951,9 @@ pnpm test tests/shell/shell-importmap.test.ts  # 门禁实现一致性
 - dev 服务器静态解析必须正确区分「本地模块产物」与「宿主产物」；`hostRoots` 钉死 cli 内置 `shell-dist`，避免 `ojm build` 的合并残留反向遮蔽宿主。
 - 报错面向人话（默认不打印堆栈）；`OJM_DEBUG=1` 才输出堆栈（旧名 `RAM_DEBUG` 一并读）。
 - 改了契约文件后忘了重跑 `ojm api`，前端 client 会与后端漂移；CI 用 `ojm api --check` 兜底。
-- **IM 链接预览/爬虫只看到默认标题**：客户端改 `document.title` 对爬虫无效——配
-  `web.config.ts` 的 `htmlTransform`（见 §4.3）；`preview --oj-static` 模式下该钩子不生效，
-  生产要在 oj 托管侧做（`server.html_meta_handler`）。
+- **IM 链接预览/爬虫只看到默认标题**：客户端改 `document.title` 对爬虫无效——dev 配
+  `web.config.ts` 的 `htmlTransform`（见 §4.3）；**单服务 preview 该钩子不生效**（WARN 提示），
+  逐路由 meta 在 oj 托管侧做（`server.html_meta` / `server.html_meta_handler`）。
 
 ### 4.9 命令与内部前缀改名（P3）与兼容读取
 

@@ -5,6 +5,23 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 设计依据、迁移记录与陷阱清单见 [`docs/prd/202609110947-oj-module-two-package-consolidation-design.md`](docs/prd/202609110947-oj-module-two-package-consolidation-design.md)。
 
+## [0.2.7] - 2026-10-19
+
+双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步升 **0.2.7**。
+
+### Changed
+
+- **`ojm preview` 单服务化**：由双服务（ojm 4173 静态 + `/api` 反代 ↔ oj 9778 仅 API）改为只 spawn 一个 `oj serve`——四查 → `oj migrate`（原 config）→ 现场生成派生 config（`api/.ojm-preview.yaml`，upsert `/` web 挂载 + `spa: true` + 显式 port 时覆盖 `server.port`）→ 唯一 `oj serve` 同进程出 API 与静态。与「oj serve + web 挂载」的生产公式逐字同形；退出三路清理（stop / SIGINT / 进程退出兜底）。
+  - 行为变化：预览地址由 `http://localhost:4173` 改为 `http://localhost:<server.port>`（缺省 9778，`ojm preview [port]` 传参仍生效）；SPA 深链回落由 oj web 挂载承担（深链刷新 200）；WS 端点在 preview 下可握手（此前无 upgrade 隧道）。
+  - **删除 `--oj-static`**：单服务即默认，该形态（history 深链 404）是被放弃的历史路线；ojm 不再自建 http server、不反代。`ojm dev` 双服务不动（SSE 热更 / 宿主 hostRoots 依赖 ojm 静态层，是开发形态必要结构）。
+  - **`web.config.ts` 的 `htmlTransform` 在 preview 不生效**（与原 `--oj-static` 同款例外，现为唯一形态）：启动检测到配置即 WARN，指向 oj 的 `server.html_meta` / `server.html_meta_handler`。
+  - 派生 config 为临时产物，模板 `.gitignore` 已收录 `api/.ojm-preview.yaml`；原 config 零改动。
+  - 新模块 `packages/cli/src/preview-config.ts`：纯变换 `derivePreviewConfigText`（mounts 非序列即人话报错，不静默置空）+ 落盘/清理；错误路径（migrate 失败、starter 同步抛错、ready 拒绝）均零残留。
+
+### Fixed
+
+- **双重 SIGINT 杀死优雅清理（preview + dev 同款）**：终端 Ctrl-C 是进程组信号，外层 `bin/ojm.mjs` 转发一份 + 组送达一份，内层 CLI 收到两个 SIGINT——`once` handler 首次触发即摘除，第二个走默认动作杀死本进程，`shutdownDev`/preview 清理全没跑（冒烟实测 exit `signal=SIGINT` 复现）。现信号 handler 改 `on` + 幂等守卫吞掉重复信号；preview 侧派生 config 的 `cleanup()` 同步先行，任何后续死亡路径零残留。
+
 ## [0.2.6] - 2026-10-19
 
 双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步升 **0.2.6**。

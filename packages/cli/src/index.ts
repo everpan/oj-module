@@ -7,7 +7,7 @@ import { buildBundle } from "./bundle";
 import { devServer } from "./dev";
 import { mergeManifests, printInfo } from "./info";
 import { initProject } from "./init";
-import { previewServer } from "./preview";
+import { runPreview } from "./preview";
 import { usageText } from "./usage";
 import { vendorCommand } from "./vendor";
 import { readCliVersion } from "./versions";
@@ -51,8 +51,8 @@ async function main() {
 		}
 		case "preview": {
 			const previewPortArg = Number(process.argv[3]);
-			const previewPort = Number.isFinite(previewPortArg) && previewPortArg > 0 ? previewPortArg : undefined;
-			await previewServer(projectRoot, { port: previewPort, ojStatic: process.argv.includes("--oj-static") });
+			const previewPort = Number.isInteger(previewPortArg) && previewPortArg > 0 ? previewPortArg : undefined;
+			await runPreview(projectRoot, { port: previewPort });
 			break;
 		}
 		case "dev": {

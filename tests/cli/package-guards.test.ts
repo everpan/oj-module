@@ -197,6 +197,10 @@ describe("旧 scope 零残留（R7）", () => {
 	const TEXT = /\.(?:ts|tsx|js|jsx|mjs|cjs|json|yaml|yml|md|html|txt|sql|css)$/;
 
 	function walk(dir: string, hit: string[]): void {
+		// 全仓遍历会撞上其他测试文件的临时夹具（如 .tmp-oj-fx）——它可能已被
+		// 该文件的 afterAll 清掉（vitest 文件间无顺序保证），缺失即跳过
+		if (!fs.existsSync(dir))
+			return;
 		for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
 			const full = path.join(dir, entry.name);
 			if (entry.isDirectory()) {
