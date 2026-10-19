@@ -4,7 +4,19 @@
 > **配套**：[`framework-development-guide.md`](./framework-development-guide.md)（原理）、[`oj-fullstack-tutorial.md`](./oj-fullstack-tutorial.md)（跟做）。
 > **原则**：每一步都有**可判定通过/失败的检查点**，不要只看命令退出码，要核对产物。
 
-### 最近一次基线（2026-10-19 复跑，oj 0.1.80 / cli+runtime 0.2.5 工作区态）
+### 最近一次基线（2026-10-19 复跑，oj 0.1.80 / cli+runtime 0.2.8 打包态）
+
+| 项 | 值 |
+| --- | --- |
+| 日期 | 2026-10-19 |
+| 框架包版本 | `cli`/`runtime` `0.2.8`（**打包态**：`pnpm --dir packages/cli pack` 后解包直跑 `cli-pkg/bin/ojm.mjs`，与发版逐字节一致；双包均未发版，`pnpm install` 须 `pnpm add <runtime 本地 tgz>` 入 devDependencies，见本基线发现 ②） |
+| oj | `0.1.80`（`@oj-bin/oj` latest ≥ 门禁 0.1.73，init 自动下载、探针无告警） |
+| 验证动机 | 上阶段 `db.query`→`db.table()` SQL builder 迁移后，端到端复跑捕捉回归；并验证 §0.5 发布形态（pack 而非源码树） |
+| 结果 | **全链路通过（§1–§7）**：`ojm init`（**236 项新增**）→ `pnpm install`（`@oj-module/runtime` 经 `pnpm add <本地 tgz>` 入 devDependencies，`--offline` 秒级）→ JsRuntime 探针通过 → books 模块（后端 6 文件 + 前端 4 文件，`.schema` 入参 + 平级 `.response`）→ `oj openapi` + `ojm api`（`--check` 0 error / 0 warn）→ `ojm build`（后端 8 模块 books 2 api file(s)、前端 8 模块含 books@0.1.0，modules.json 含 home/login/books 且 books entry 带 integrity）→ `tsc` **0 error** → `ojm dev`：seed ok（_platform/books/notification）、`routes: 52 method-row(s)`、`input contracts: 37`（`.schema` 入参校验激活）、登录返回 token、关键字过滤命中、新增 `{ok:true}`、全量 5 条、无 token 401、通知兜底返 4 条数组；5174 根 200、importmap 含 `@oj-module/runtime`、books/login/home entry.js 200、`/login`（Accept: text/html）200 → `ojm preview`（单服务 release 形态，端口 9778）：migrate 门禁过、路由来自 `api/dist`、9778 根 200、API 链复跑全对、**带 dist 三腿 `--check` 0/0** |
+| 本次发现并处置 | ① **登录 500 `unknown table 'sys_rate_window'`**：上阶段 `rate.ts` 由 `db.query` 迁 `db.table()`，但 `sys_rate_window`/`sys_login_throttle` 仅 V9 迁移创建、从未在 `schema.yaml`/`manifest.yaml` 登记，oj 表元数据校验拒绝；**修复**：模板 `_platform/{schema,manifest}.yaml` 双向登记两表（提交 `aa9a3f63`），重打包后 fresh init + build + preview 登录通过。② **§0 旁路 2 的 symlink 会让 typecheck 炸 41 个 TS7006**：裸 runtime tarball 无 `node_modules`，`export { z } from "zod"` 解析成 `any`，生成物 `__client/api.ts` 的 `.map(i => …)` 全变隐式 any；须改用 §0.5 `pnpm add <runtime 本地 tgz>` 把 runtime 装进 devDependencies（zod 随之可解析）。③ oj 0.1.80 起 `oj serve` 对 `/api/health` 打 deprecated WARN（建议 `/api/_system/health`）——oj 上游信息项，本仓无需动作。④ `ojm preview` 端口已为 **9778**（单服务：API + 静态 SPA 同进程），旧基线记的 4173 已过时 |
+| 与 0.2.5 基线差异 | 0.2.5 基线当时 `tsc` 0 error 系未触发本回归（`db.table` 迁移尚未引入）；本次 0.2.8 捕捉并修复 `sys_*` 表声明缺失；init 新增项 216 → 236；preview 由 4173 双服务变为 9778 单服务 |
+
+### 上一次基线（2026-10-19 复跑，oj 0.1.80 / cli+runtime 0.2.5 工作区态）
 
 | 项 | 值 |
 | --- | --- |
@@ -17,7 +29,7 @@
 | 本次发现并处置 | ① `pnpm install` 直连 registry 被限速（实测 ~18KB/s）卡死在解析段 20min——**环境问题非框架缺陷**，处置与旁路补进 §0/§9；② books `entry.ts` 的 `onInit` 漏 `async` 被 tsc 拦（TS2322：void 不匹配 Promise<void>）——devkit SKILL「注册时机」红线补明 async 签名（模板 `web/src/notification/entry.ts` 早有此形，文档没写明）；③ oj 0.1.80 起 `oj serve` 对 `/api/health` 打 deprecated WARN（建议 `/api/_system/health`）——oj 上游信息项，本仓无需动作，记录备查 |
 | 与 0.2.1 基线差异 | init 新增项 76 → 216（模板扩容：system 模块、notification/notifications 拆分、`api/tests` 全量、lifecycle 全套）；排除清单 → 白名单（拷贝结果逐文件等价，另修两处泄漏）；oj 下载通道不再滞后于门禁 |
 
-### 上一次基线（2026-10-16 复跑，oj 0.1.74 / cli+runtime 0.2.1 提交态 `34ac3d09`）
+### 历史基线（2026-10-16 复跑，oj 0.1.74 / cli+runtime 0.2.1 提交态 `34ac3d09`）
 
 | 项 | 值 |
 | --- | --- |
@@ -340,7 +352,7 @@ API 全链路再通一遍（登录/列表/新增）；
 | `ojm api` 报 apiPrefix 与目录名不符 | 违反 AC-D9 | 改 `apiPrefix` 或移动契约目录 |
 | 迁移账本落后拒启（M004） | release `verify` 门禁 | 先 `oj migrate -c api/config.yaml -d api/dist` |
 | `ojm init`/`ojm vendor` 报「上游 @oj-bin/oj 的 latest 是 vX，低于 ojm 要求的最低版本 v0.1.73」 | npm 通道发布滞后于 `MIN_OJ_VERSION` 门禁（门禁钉最新发布版，ojm 不做兼容分支） | 本机已装 ≥ 门禁的 oj 时：把 `bin/{oj,devkit/,plugins/,.oj-version}` 预置进工程再跑 init（bin/oj 存在即跳过 vendor）；否则等上游发布或降级 cli |
-| `pnpm install` 报 `ERR_PNPM_NO_MATCHING_VERSION ... @oj-module/cli@0.1.20` | 验证的是未发布版本，npm 上没有 | 删 devDeps 的 cli（源码 bin 直跑）+ runtime 装后手工 symlink 到仓库 `packages/runtime`；勿用 `file:`（两包的 `catalog:` 依赖只对 workspace 成员解析，报 `ERR_PNPM_SPEC_NOT_SUPPORTED_BY_ANY_RESOLVER`） |
+| `pnpm install` 报 `ERR_PNPM_NO_MATCHING_VERSION ... @oj-module/cli@0.1.20` | 验证的是未发布版本，npm 上没有 | 删 devDeps 的 cli（源码 bin 直跑）+ 用 §0.5 的 `pnpm add <runtime 本地 tgz>` 把 runtime 装进 devDependencies（双包均未发版时 cli/runtime 都要处理）；**勿用 `ln -s` 把裸 runtime tarball 链进 `node_modules`**——裸包无 `node_modules`，`export { z } from "zod"` 解析成 `any`，会让生成物 `__client/api.ts` 的 `.map(i => …)` 全报 TS7006，typecheck 假红。也勿用 `file:` 链 cli（两包的 `catalog:` 依赖只对 workspace 成员解析，报 `ERR_PNPM_SPEC_NOT_SUPPORTED_BY_ANY_RESOLVER`） |
 | `oj build` 报 `module '_shared' missing manifest.yaml` | 模板里残留**空目录**（git 不跟踪空目录，删文件不删目录），init 连空目录一起拷进工程，oj 把每个 api/src 子目录当模块 | 删模板里的空目录；cli ≥ 0.1.20 的 `copyTemplates` 已加空目录跳过防护（`dirHasFiles`） |
 | `ojm api --check` 报 `routes.js 与契约路由表不一致——dist 缺：GET notifications/` | 契约侧 fullPath 对模块根路径带尾斜杠（`stripBase` 的 `rel || "/"` → `/notifications/`），dist pattern 无斜杠（`notifications`），键不等误报；且豁免原只过滤「dist 多」 | cli ≥ 0.1.20 已修：第三腿双侧尾斜杠规范化 + 豁免对「dist 缺/dist 多」对称过滤（回归测试见 `tests/cli/contract-check.test.ts`） |
 | 手工改过 `openapi.json`（`del`→`delete`、operationId 改名）后 `--check` 漂移 | oj ≤ 0.1.72 的 `oj openapi` 产出非法 `"del"` 操作键 | 升级 oj ≥ 0.1.73（`del`→`delete` 归一）后删手工改动重生成；client 用原生 operationId 派生名 |
