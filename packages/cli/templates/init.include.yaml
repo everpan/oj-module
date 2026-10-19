@@ -27,6 +27,7 @@ include:
   # —— 工程级文件 ——
   - README.md
   - tsconfig.json
+  - global.d.ts
   - env.d.ts
   - web.config.ts
   - openapi.json

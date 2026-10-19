@@ -4,7 +4,7 @@
 /* eslint-disable test/prefer-lowercase-title -- AC 编号是验收锚点，保留大写 */
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
-import { contactDetail, searchContacts } from "../src/_platform/_shared/service/contacts";
+import { contactDetail, searchContacts } from "../src/_platform/_shared/service/domain/contacts";
 import { installDb } from "./fixture";
 
 let dbo: ReturnType<typeof installDb>;
@@ -74,7 +74,7 @@ describe("详情与限速", () => {
 	it("接口级限速：同用户突发超限 → 429", async () => {
 		const uid = mkUser("c_rate");
 		g.http = { user: { id: uid } };
-		const { rateLimit } = await import("../src/_platform/_shared/service/rate");
+		const { rateLimit } = await import("../src/_platform/_shared/service/infra/rate");
 		// 窗口 60s / 限额 3（测试参数；生产端点各自定额）
 		for (let i = 0; i < 3; i++)
 			await rateLimit(`contacts:${uid}`, 3, 60_000);

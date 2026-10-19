@@ -9,7 +9,7 @@ export interface FsFace {
 	writeFile: (path: string, data: Uint8Array) => Promise<void>
 	readFile: (path: string) => Promise<Uint8Array>
 	mkdir: (path: string, opts?: { recursive?: boolean }) => Promise<void>
-	remove: (path: string, opts?: { recursive?: boolean }) => Promise<void>
+	remove: (path: string, opts?: { recursive?: boolean, force?: boolean }) => Promise<void>
 	rename: (oldPath: string, newPath: string) => Promise<void>
 	/** 复制文件（R14 迁移前置备份：sqlite 库 copy 为 <db>.bak-<ts>）；两路径须同文件系统无需递归 */
 	copyFile: (src: string, dest: string) => Promise<void>

@@ -1,7 +1,7 @@
 import { respond } from "../../_shared/respond";
 // GET /api/_platform/contacts/detail?id= —— 单条详情（含 email/avatar，设计 §4B）。
-import { contactDetail } from "../../_shared/service/contacts";
-import { rateLimit } from "../../_shared/service/rate";
+import { contactDetail } from "../../_shared/service/domain/contacts";
+import { rateLimit } from "../../_shared/service/infra/rate";
 
 export default {
 	async get() {

@@ -101,7 +101,7 @@ export function sha384Bytes(data: Uint8Array): Uint8Array {
 	view.setUint32(padded - 4, bitLenLo);
 
 	const h: Array<[number, number]> = IV.map(x => [x[0], x[1]] as [number, number]);
-	const w = Array.from({ length: 80 });
+	const w = Array.from({ length: 80 }, () => [0, 0] as [number, number]);
 	for (let off = 0; off < padded; off += 128) {
 		for (let t = 0; t < 16; t++) {
 			w[t] = [view.getUint32(off + t * 8), view.getUint32(off + t * 8 + 4)];

@@ -51,6 +51,7 @@ interface Row {
 interface NotifyDb {
 	query: (sql: string, params?: unknown[]) => Promise<Row[]>
 	exec: (sql: string, params?: unknown[]) => Promise<number>
+	table: DBInstance["table"]
 }
 declare const db: NotifyDb;
 
@@ -83,37 +84,30 @@ function mapItem(r: Row): NoticeItem {
 
 /** 给指定用户推一条按人通知，返回命名空间 id "u:<id>" */
 export async function pushNotice(input: PushInput): Promise<string> {
-	const ins = await db.query(
-		`INSERT INTO notifications (user_id, avatar, date, is_read, message, title, link, category)
-		 VALUES (?, ?, ?, 0, ?, ?, ?, ?) RETURNING id`,
-		[
-			Number(input.userId),
-			input.avatar ?? "",
-			nowStr(),
-			input.message,
-			input.title,
-			input.link ?? null,
-			input.category ?? "notice",
-		],
-	);
+	const ins = await db.table("notifications").insert({
+		user_id: Number(input.userId),
+		avatar: input.avatar ?? "",
+		date: nowStr(),
+		is_read: 0,
+		message: input.message,
+		title: input.title,
+		link: input.link ?? null,
+		category: input.category ?? "notice",
+	}).returning(["id"]).run() as Array<{ id: number }>;
 	return `u:${Number(ins[0]!.id)}`;
 }
 
 /** 广播一条通知（全员可见，一行存储），返回命名空间 id "b:<id>" */
 export async function pushBroadcastNotice(input: PushBroadcastInput): Promise<string> {
-	const ins = await db.query(
-		`INSERT INTO notifications_broadcast (avatar, date, message, title, link, category, create_time)
-		 VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id`,
-		[
-			input.avatar ?? "",
-			nowStr(),
-			input.message,
-			input.title,
-			input.link ?? null,
-			input.category ?? "notice",
-			nowStr(),
-		],
-	);
+	const ins = await db.table("notifications_broadcast").insert({
+		avatar: input.avatar ?? "",
+		date: nowStr(),
+		message: input.message,
+		title: input.title,
+		link: input.link ?? null,
+		category: input.category ?? "notice",
+		create_time: nowStr(),
+	}).returning(["id"]).run() as Array<{ id: number }>;
 	return `b:${Number(ins[0]!.id)}`;
 }
 
@@ -125,16 +119,18 @@ export async function delNotice(id: string, userId: string | number): Promise<bo
 	const [scope, raw] = splitId(id);
 	const uid = Number(userId);
 	if (scope === "b") {
-		await db.exec(
-			"DELETE FROM notifications_broadcast_read WHERE broadcast_id = ? AND user_id = ?",
-			[Number(raw), uid],
-		);
+		await db.table("notifications_broadcast_read")
+			.where({ field: "broadcast_id", op: "eq", value: Number(raw) })
+			.where({ field: "user_id", op: "eq", value: uid })
+			.delete()
+			.run();
 		return true;
 	}
-	const n = await db.exec(
-		"DELETE FROM notifications WHERE id = ? AND user_id = ?",
-		[Number(raw), uid],
-	);
+	const n = await db.table("notifications")
+		.where({ field: "id", op: "eq", value: Number(raw) })
+		.where({ field: "user_id", op: "eq", value: uid })
+		.delete()
+		.run() as number;
 	return n > 0;
 }
 
@@ -170,13 +166,18 @@ export async function markRead(id: string, userId: string | number): Promise<boo
 	const uid = Number(userId);
 	const now = nowStr();
 	if (scope === "b") {
+		// 保留 db.exec：INSERT OR IGNORE 构造器无等价（引擎按方言改写 IGNORE）
 		await db.exec(
 			"INSERT OR IGNORE INTO notifications_broadcast_read (broadcast_id, user_id, read_time) VALUES (?, ?, ?)",
 			[Number(raw), uid, now],
 		);
 		return true;
 	}
-	const n = await db.exec("UPDATE notifications SET is_read = 1 WHERE id = ? AND user_id = ?", [Number(raw), uid]);
+	const n = await db.table("notifications")
+		.where({ field: "id", op: "eq", value: Number(raw) })
+		.where({ field: "user_id", op: "eq", value: uid })
+		.update({ is_read: 1 })
+		.run() as number;
 	return n > 0;
 }
 
@@ -184,7 +185,8 @@ export async function markRead(id: string, userId: string | number): Promise<boo
 export async function markAllRead(userId: string | number): Promise<void> {
 	const uid = Number(userId);
 	const now = nowStr();
-	await db.exec("UPDATE notifications SET is_read = 1 WHERE user_id = ?", [uid]);
+	await db.table("notifications").where({ field: "user_id", op: "eq", value: uid }).update({ is_read: 1 }).run();
+	// 保留 db.exec：INSERT OR IGNORE ... SELECT 构造器无法表达
 	await db.exec(
 		"INSERT OR IGNORE INTO notifications_broadcast_read (broadcast_id, user_id, read_time) SELECT id, ?, ? FROM notifications_broadcast",
 		[uid, now],
@@ -194,6 +196,6 @@ export async function markAllRead(userId: string | number): Promise<void> {
 /** 清空：删按人项 + 删本人广播回执（列表消失） */
 export async function clearNotices(userId: string | number): Promise<void> {
 	const uid = Number(userId);
-	await db.exec("DELETE FROM notifications WHERE user_id = ?", [uid]);
-	await db.exec("DELETE FROM notifications_broadcast_read WHERE user_id = ?", [uid]);
+	await db.table("notifications").where({ field: "user_id", op: "eq", value: uid }).delete().run();
+	await db.table("notifications_broadcast_read").where({ field: "user_id", op: "eq", value: uid }).delete().run();
 }

@@ -8,9 +8,9 @@
 // 是其既有语义，本文件不越界代改）。DB 级路由占用检查承接 P1-5 备案③（pre-DB 阶段无真源）。
 // db 为 isolate 全局（同模板 service 层，无需 import；测试由夹具装 globalThis.db）。
 
-import type { SolutionManifest } from "../../_shared/service/solution-perms";
-import { auditOp } from "../../_shared/service/audit";
-import { upsertSolutionPerms } from "../../_shared/service/solution-perms";
+import type { SolutionManifest } from "../../_shared/service/domain/solution-perms";
+import { upsertSolutionPerms } from "../../_shared/service/domain/solution-perms";
+import { auditOp } from "../../_shared/service/infra/audit";
 
 export interface RouteDecl {
 	path: string
@@ -76,19 +76,19 @@ function firstSeg(path: string): string {
  * 让位须走卸载），自占排除（module ≠ 自己）。
  */
 export async function checkOccupancy(module: string, routePaths: string[]): Promise<string[]> {
-	const rows = await db.query("select path from sys_solution_route where module != ?", [module]) as Array<{ path: string }>;
+	const rows = await db.table("sys_solution_route").select(["path"]).where({ field: "module", op: "ne", value: module }).all() as Array<{ path: string }>;
 	const taken = new Set(rows.map(r => firstSeg(String(r.path))));
 	return routePaths.filter(p => taken.has(firstSeg(p)));
 }
 
 /** 声明消失 → 行保留标 deprecated=1（镜像 solution-perms AC2-3/4），返回被标 key/path 清单 */
 async function deprecateGone(table: "sys_setting" | "sys_solution_route", col: "key" | "path", module: string, declared: Set<string>): Promise<string[]> {
-	const old = await db.query(`select ${col} from ${table} where module = ? and deprecated = 0`, [module]) as Array<Record<string, unknown>>;
+	const old = await db.table(table).select([col]).where({ field: "module", op: "eq", value: module }).where({ field: "deprecated", op: "eq", value: 0 }).all() as Array<Record<string, unknown>>;
 	const gone: string[] = [];
 	for (const r of old) {
 		const k = String(r[col]);
 		if (!declared.has(k)) {
-			await db.exec(`update ${table} set deprecated = 1 where ${col} = ?`, [k]);
+			await db.table(table).update({ deprecated: 1 }).where({ field: col, op: "eq", value: k }).run();
 			gone.push(k);
 		}
 	}
@@ -122,36 +122,64 @@ export async function registerSolution(decl: SolutionDecl): Promise<RegisterResu
 		// 设置项 upsert：存在只覆定义列（value/update 语义 = 管理员改过的值不复活，AC1-15），
 		// 不存在插 default_value（首装 value）
 		for (const s of settings) {
-			const exists = await db.query("select key from sys_setting where key = ?", [s.key]) as unknown[];
+			const exists = await db.table("sys_setting").select(["key"]).where({ field: "key", op: "eq", value: s.key }).all() as unknown[];
 			if (exists.length) {
-				await db.exec(
-					"update sys_setting set module = ?, \"group\" = ?, type = ?, default_value = ?, label_key = ?, group_label_key = ?, options = ?, secret = ?, deprecated = 0, update_time = ? where key = ?",
-					[decl.module, s.group, s.type, s.default_value ?? null, s.label_key ?? null, s.group_label_key ?? null, s.options ?? null, s.secret ? 1 : 0, Date.now(), s.key],
-				);
+				await db.table("sys_setting").update({
+					module: decl.module,
+					group: s.group,
+					type: s.type,
+					default_value: s.default_value ?? null,
+					label_key: s.label_key ?? null,
+					group_label_key: s.group_label_key ?? null,
+					options: s.options ?? null,
+					secret: s.secret ? 1 : 0,
+					deprecated: 0,
+					update_time: Date.now(),
+				}).where({ field: "key", op: "eq", value: s.key }).run();
 			}
 			else {
-				await db.exec(
-					"insert into sys_setting (key, module, \"group\", type, value, default_value, label_key, group_label_key, options, secret, update_time, deprecated) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)",
-					[s.key, decl.module, s.group, s.type, s.value ?? s.default_value ?? null, s.default_value ?? null, s.label_key ?? null, s.group_label_key ?? null, s.options ?? null, s.secret ? 1 : 0, Date.now()],
-				);
+				await db.table("sys_setting").insert({
+					key: s.key,
+					module: decl.module,
+					group: s.group,
+					type: s.type,
+					value: s.value ?? s.default_value ?? null,
+					default_value: s.default_value ?? null,
+					label_key: s.label_key ?? null,
+					group_label_key: s.group_label_key ?? null,
+					options: s.options ?? null,
+					secret: s.secret ? 1 : 0,
+					update_time: Date.now(),
+					deprecated: 0,
+				}).run();
 			}
 		}
 		const settingDeps = await deprecateGone("sys_setting", "key", decl.module, new Set(settings.map(s => s.key)));
 
 		// 路由逐行 upsert：同 path 覆元数据；声明行复位 deprecated=0（重声明回到快照）
 		for (const r of routes) {
-			const exists = await db.query("select path from sys_solution_route where path = ?", [r.path]) as unknown[];
+			const exists = await db.table("sys_solution_route").select(["path"]).where({ field: "path", op: "eq", value: r.path }).all() as unknown[];
 			if (exists.length) {
-				await db.exec(
-					"update sys_solution_route set module = ?, category = ?, \"order\" = ?, title_key = ?, required_permission = ?, deprecated = 0 where path = ?",
-					[decl.module, r.category, r.order, r.title_key ?? null, r.required_permission ?? null, r.path],
-				);
+				await db.table("sys_solution_route").update({
+					module: decl.module,
+					category: r.category,
+					order: r.order,
+					title_key: r.title_key ?? null,
+					required_permission: r.required_permission ?? null,
+					deprecated: 0,
+				}).where({ field: "path", op: "eq", value: r.path }).run();
 			}
 			else {
-				await db.exec(
-					"insert into sys_solution_route (path, module, category, \"order\", title_key, required_permission, deprecated, enabled) values (?, ?, ?, ?, ?, ?, 0, 1)",
-					[r.path, decl.module, r.category, r.order, r.title_key ?? null, r.required_permission ?? null],
-				);
+				await db.table("sys_solution_route").insert({
+					path: r.path,
+					module: decl.module,
+					category: r.category,
+					order: r.order,
+					title_key: r.title_key ?? null,
+					required_permission: r.required_permission ?? null,
+					deprecated: 0,
+					enabled: 1,
+				}).run();
 			}
 		}
 		const routeDeps = await deprecateGone("sys_solution_route", "path", decl.module, new Set(routes.map(r => r.path)));
@@ -177,10 +205,10 @@ export async function registerSolution(decl: SolutionDecl): Promise<RegisterResu
 }
 
 export async function queryRegistered(name: string): Promise<SolutionSnapshot | null> {
-	const routes = (await db.query("select path from sys_solution_route where module = ? and deprecated = 0", [name]) as Array<{ path: string }>).map(r => String(r.path)).sort();
-	const settings = (await db.query("select key from sys_setting where module = ? and deprecated = 0", [name]) as Array<{ key: string }>).map(r => String(r.key)).sort();
-	const roles = (await db.query("select name from sys_role where module = ? and deprecated = 0", [name]) as Array<{ name: string }>).map(r => String(r.name)).sort();
-	const permissions = (await db.query("select code from sys_permission where module = ? and deprecated = 0", [name]) as Array<{ code: string }>).map(r => String(r.code)).sort();
+	const routes = (await db.table("sys_solution_route").select(["path"]).where({ field: "module", op: "eq", value: name }).where({ field: "deprecated", op: "eq", value: 0 }).all() as Array<{ path: string }>).map(r => String(r.path)).sort();
+	const settings = (await db.table("sys_setting").select(["key"]).where({ field: "module", op: "eq", value: name }).where({ field: "deprecated", op: "eq", value: 0 }).all() as Array<{ key: string }>).map(r => String(r.key)).sort();
+	const roles = (await db.table("sys_role").select(["name"]).where({ field: "module", op: "eq", value: name }).where({ field: "deprecated", op: "eq", value: 0 }).all() as Array<{ name: string }>).map(r => String(r.name)).sort();
+	const permissions = (await db.table("sys_permission").select(["code"]).where({ field: "module", op: "eq", value: name }).where({ field: "deprecated", op: "eq", value: 0 }).all() as Array<{ code: string }>).map(r => String(r.code)).sort();
 	if (routes.length + settings.length + roles.length + permissions.length === 0) {
 		return null;
 	}
@@ -195,7 +223,7 @@ export async function queryAllRegistered(): Promise<SolutionSnapshot[]> {
 	const names = new Set<string>();
 	for (const table of ["sys_solution_route", "sys_setting", "sys_role", "sys_permission"]) {
 		// 表名为字面常量，无拼接注入面
-		const rows = await db.query(`select distinct module from ${table} where deprecated = 0`) as Array<{ module: string }>;
+		const rows = await db.table(table).distinct().select(["module"]).where({ field: "deprecated", op: "eq", value: 0 }).all() as Array<{ module: string }>;
 		for (const r of rows) {
 			names.add(String(r.module));
 		}

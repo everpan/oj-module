@@ -1,5 +1,6 @@
 import type { IndexRow, TaskRecord } from "../types";
-import { Typography } from "antd";
+import { useUserStore } from "@oj-module/runtime";
+import { Alert, Typography } from "antd";
 import React, { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useMarketClient } from "../api/context";
@@ -16,6 +17,9 @@ export default function MarketApp() {
 	const { t } = useTranslation();
 	const client = useMarketClient();
 	const index = useMarketIndex();
+	// 管理权限 = superadmin（与后端 assertSuperAdmin 口径一致）。仅屏蔽写操作，浏览（详情/历史）对所有登录用户开放。
+	const roles = useUserStore(s => s.roles);
+	const canManage = roles.includes("superadmin");
 
 	const [detailRow, setDetailRow] = useState<IndexRow | null>(null);
 	const [installRow, setInstallRow] = useState<IndexRow | null>(null);
@@ -81,11 +85,21 @@ export default function MarketApp() {
 			<Typography.Title level={4}>{t("oj-market:card:title")}</Typography.Title>
 			<Typography.Paragraph type="secondary">{t("oj-market:card:subtitle")}</Typography.Paragraph>
 
+			{!canManage && (
+				<Alert
+					type="info"
+					showIcon
+					style={{ marginBottom: 16 }}
+					message={t("oj-market:card:superOnly")}
+				/>
+			)}
+
 			<CardGrid
 				loading={index.status === "loading"}
 				error={index.status === "error" ? index.error : null}
 				rows={rows}
 				busyName={busyName}
+				canManage={canManage}
 				onInstall={handleInstall}
 				onEnableToggle={handleEnableToggle}
 				onDetails={r => setDetailRow(r)}
@@ -99,6 +113,7 @@ export default function MarketApp() {
 				row={detailRow}
 				open={detailRow != null}
 				onClose={() => setDetailRow(null)}
+				canManage={canManage}
 				onInstall={handleInstall}
 				onHistory={(r) => {
 					setDetailRow(null);

@@ -9,6 +9,8 @@ interface ImportMetaEnv {
 	readonly PROD: boolean
 	readonly MODE: string
 	readonly BASE_URL: string
+	/** 回退首页路径（框架注入；始终为字符串，供异常页 navigate 使用） */
+	readonly VITE_BASE_HOME_PATH: string
 	readonly [key: string]: string | boolean | undefined
 }
 

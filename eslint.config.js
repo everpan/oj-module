@@ -80,6 +80,9 @@ export default antfu({
 		// 从 oj 二进制分发同步的权威后端 devkit——必须保持与源逐字节一致，
 		// 不得被 eslint --fix 改写（含 .d.ts 的类型习惯，如 shorthand method 签名）
 		"docs/oj-api-dev/**",
+		// 模板 global.d.ts 同样镜像运行时注入的全局对象（FsApi/http/crypto…），
+		// 沿用框架 devkit 的 shorthand method 签名风格，禁止 --fix 改写以免与源漂移
+		"packages/cli/templates/global.d.ts",
 	],
 	rules: {
 		"style/quotes": ["error", "double"],

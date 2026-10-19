@@ -4,8 +4,8 @@
 // B4：access JWT 仅载 sub（roles 走登录响应/资料接口，不进 claims）。
 // B3：refresh = 不透明随机串 + DB 存 SHA-256 哈希（sys_refresh_token，迁移 0008）；
 //     轮换作旧 + 滑动窗口（绝对 TTL 封顶 min(旧 exp, now+30d)）；reuse 检测全族吊销 + 审计。
-import { invalidateUser } from "../../_platform/_shared/service/access";
-import { recordOp } from "../../_platform/_shared/service/audit";
+import { invalidateUser } from "../../_platform/_shared/service/infra/access";
+import { recordOp } from "../../_platform/_shared/service/infra/audit";
 
 export interface SessionDeps {
 	randomHex: (bytes: number) => string
@@ -59,13 +59,10 @@ export function createSession(deps: SessionDeps = runtimeDeps()) {
 	const hashOf = (token: string) => deps.sha256Hex(token);
 
 	async function profileOf(uid: number): Promise<SessionUser> {
-		const rows = await db.query(
-			"select id, username, display_name, avatar_base64, must_change from users where id = ?",
-			[uid],
-		) as Array<Record<string, unknown>>;
+		const rows = await db.table("users").select(["id", "username", "display_name", "avatar_base64", "must_change"]).where({ field: "id", op: "eq", value: uid }).all() as Array<Record<string, unknown>>;
 		if (!rows[0])
 			fail(404, "user not found");
-		const roleRows = await db.query("select role_name from sys_user_role where user_id = ?", [uid]) as Array<{ role_name: string }>;
+		const roleRows = await db.table("sys_user_role").select(["role_name"]).where({ field: "user_id", op: "eq", value: uid }).all() as Array<{ role_name: string }>;
 		return {
 			id: uid,
 			username: String(rows[0].username),
@@ -79,10 +76,13 @@ export function createSession(deps: SessionDeps = runtimeDeps()) {
 	async function issueFor(uid: number): Promise<TokenBundle> {
 		const user = await profileOf(uid);
 		const refreshToken = deps.randomHex(32);
-		await db.exec(
-			"insert into sys_refresh_token (token_hash, user_id, expires_at, revoked, created_at) values (?, ?, ?, 0, ?)",
-			[hashOf(refreshToken), uid, now() + deps.refreshTtlSecs, now()],
-		);
+		await db.table("sys_refresh_token").insert({
+			token_hash: hashOf(refreshToken),
+			user_id: uid,
+			expires_at: now() + deps.refreshTtlSecs,
+			revoked: 0,
+			created_at: now(),
+		}).run();
 		return {
 			access_token: await deps.signAccess(String(uid)),
 			refresh_token: refreshToken,
@@ -94,13 +94,13 @@ export function createSession(deps: SessionDeps = runtimeDeps()) {
 
 	/** 吊销联动（§3.1）：禁用/重置口令/改密 → 删该用户全部 refresh 记录。 */
 	async function revokeAll(uid: number): Promise<void> {
-		await db.exec("delete from sys_refresh_token where user_id = ?", [uid]);
+		await db.table("sys_refresh_token").where({ field: "user_id", op: "eq", value: uid }).delete().run();
 	}
 
 	return {
 		/** B1+D14：本地登录——先验口令后查禁用；号不存在/口令错/禁用统一 401（不泄露账号状态）。 */
 		async localLogin(username: string, password: string): Promise<TokenBundle> {
-			const rows = await db.query("select id, password_hash, is_forbidden from users where username = ?", [String(username ?? "")]) as Array<Record<string, unknown>>;
+			const rows = await db.table("users").select(["id", "password_hash", "is_forbidden"]).where({ field: "username", op: "eq", value: String(username ?? "") }).all() as Array<Record<string, unknown>>;
 			const row = rows[0];
 			if (!row || !(await deps.bcryptVerify(String(password ?? ""), String(row.password_hash))))
 				fail(401, "invalid credentials");
@@ -111,6 +111,7 @@ export function createSession(deps: SessionDeps = runtimeDeps()) {
 
 		/** B3：刷新——轮换作旧；reuse 检测（已吊销串二次出现）全族吊销 + 审计。 */
 		async refresh(token: string): Promise<TokenBundle> {
+			// 保留 db.query：select * 无已知列清单（规则6）
 			const rows = await db.query("select * from sys_refresh_token where token_hash = ?", [hashOf(String(token ?? ""))]) as Array<Record<string, unknown>>;
 			const row = rows[0];
 			if (!row)
@@ -123,14 +124,17 @@ export function createSession(deps: SessionDeps = runtimeDeps()) {
 			}
 			if (Number(row.expires_at) <= now())
 				fail(401, "invalid or expired refresh token");
-			await db.exec("update sys_refresh_token set revoked = 1 where token_hash = ?", [row.token_hash]);
+			await db.table("sys_refresh_token").update({ revoked: 1 }).where({ field: "token_hash", op: "eq", value: row.token_hash }).run();
 			// 滑动窗口 + 绝对 30d 封顶（§3.1「绝对 TTL + 滑动」）
 			const newExp = Math.min(Number(row.expires_at), now() + deps.refreshTtlSecs);
 			const refreshToken = deps.randomHex(32);
-			await db.exec(
-				"insert into sys_refresh_token (token_hash, user_id, expires_at, revoked, created_at) values (?, ?, ?, 0, ?)",
-				[hashOf(refreshToken), uid, newExp, now()],
-			);
+			await db.table("sys_refresh_token").insert({
+				token_hash: hashOf(refreshToken),
+				user_id: uid,
+				expires_at: newExp,
+				revoked: 0,
+				created_at: now(),
+			}).run();
 			const user = await profileOf(uid);
 			return {
 				access_token: await deps.signAccess(String(uid)),
@@ -143,7 +147,7 @@ export function createSession(deps: SessionDeps = runtimeDeps()) {
 
 		/** AC1-27：自助改密——本人 + 旧口令校验；改密清 must_change、级联删 refresh、换发正式 token。 */
 		async changePassword(uid: number, oldPassword: string, newPassword: string): Promise<TokenBundle> {
-			const rows = await db.query("select password_hash from users where id = ?", [uid]) as Array<{ password_hash: string }>;
+			const rows = await db.table("users").select(["password_hash"]).where({ field: "id", op: "eq", value: uid }).all() as Array<{ password_hash: string }>;
 			if (!rows[0])
 				fail(404, "user not found");
 			if (!(await deps.bcryptVerify(String(oldPassword ?? ""), String(rows[0].password_hash))))
@@ -152,8 +156,8 @@ export function createSession(deps: SessionDeps = runtimeDeps()) {
 				fail(400, "password too short (min 6)");
 			const hash = await deps.bcryptHash(String(newPassword));
 			await db.tx(async (t) => {
-				await t.exec("update users set password_hash = ?, must_change = 0 where id = ?", [hash, uid]);
-				await t.exec("delete from sys_refresh_token where user_id = ?", [uid]);
+				await t.table("users").update({ password_hash: hash, must_change: 0 }).where({ field: "id", op: "eq", value: uid }).run();
+				await t.table("sys_refresh_token").where({ field: "user_id", op: "eq", value: uid }).delete().run();
 			});
 			invalidateUser(uid);
 			return issueFor(uid);

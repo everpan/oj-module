@@ -22,27 +22,24 @@ export interface OpEntry {
 async function usernameOf(userId: number): Promise<string> {
 	if (!userId)
 		return "system";
-	const rows = await db.query("select username from users where id = ?", [userId]);
+	const rows = await db.table("users").select(["username"]).where({ field: "id", op: "eq", value: userId }).all();
 	return rows[0] ? String(rows[0].username) : "unknown";
 }
 
 /** 同步落表。关键路径（如 A6 角色管理）直接 await；一般路径用 auditOp。 */
 export async function recordOp(entry: OpEntry): Promise<void> {
-	const uid = http.user?.id ?? 0;
-	await db.exec(
-		"insert into sys_oplog (create_time, user_id, username, action, module, version, target, detail, level) values (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-		[
-			Date.now(),
-			uid,
-			await usernameOf(uid),
-			entry.action,
-			entry.module,
-			entry.version ?? null,
-			entry.target ?? null,
-			entry.detail == null ? null : JSON.stringify(entry.detail),
-			entry.level ?? 6,
-		],
-	);
+	const uid = Number(http.user?.id ?? 0);
+	await db.table("sys_oplog").insert({
+		create_time: Date.now(),
+		user_id: uid,
+		username: await usernameOf(uid),
+		action: entry.action,
+		module: entry.module,
+		version: entry.version ?? null,
+		target: entry.target ?? null,
+		detail: entry.detail == null ? null : JSON.stringify(entry.detail),
+		level: entry.level ?? 6,
+	}).run();
 }
 
 /** fire-and-forget：审计失败静默（写日志也失败的极端场景下，业务正确性优先）。 */
@@ -61,7 +58,7 @@ let denyQueue: Promise<void> = Promise.resolve();
  *  uid 在调用瞬间同步捕获——http.user 是可变全局，异步队列执行时再读会被后续请求覆盖。
  */
 export function auditDeny(code: string): void {
-	const uid = http.user?.id ?? 0;
+	const uid = Number(http.user?.id ?? 0);
 	denyQueue = denyQueue.then(() => recordDeny(uid, code)).catch(() => {});
 }
 
@@ -73,18 +70,21 @@ export function resetDenyAudit(): void {
 async function recordDeny(uid: number, code: string): Promise<void> {
 	const now = Date.now();
 	// 窗口锚点 = 分钟内最近一条同 (user, code) 的 auth.deny 行；命中只更新计数，否则落首条。
-	const rows = await db.query(
-		"select id, detail from sys_oplog where user_id = ? and action = 'auth.deny' and target = ? and create_time > ? order by id desc limit 1",
-		[uid, code, now - DENY_WINDOW_MS],
-	);
+	const rows = await db.table("sys_oplog").select(["id", "detail"]).where({ field: "user_id", op: "eq", value: uid }).where({ field: "action", op: "eq", value: "auth.deny" }).where({ field: "target", op: "eq", value: code }).where({ field: "create_time", op: "gt", value: now - DENY_WINDOW_MS }).orderBy([{ field: "id", dir: "desc" }]).limit(1).all();
 	const hit = rows[0] as { id: number, detail: string } | undefined;
 	if (hit) {
 		const count = (JSON.parse(hit.detail) as { count: number }).count + 1;
-		await db.exec("update sys_oplog set detail = ? where id = ?", [JSON.stringify({ code, count }), hit.id]);
+		await db.table("sys_oplog").update({ detail: JSON.stringify({ code, count }) }).where({ field: "id", op: "eq", value: hit.id }).run();
 		return;
 	}
-	await db.exec(
-		"insert into sys_oplog (create_time, user_id, username, action, module, target, detail, level) values (?, ?, ?, 'auth.deny', ?, ?, ?, 4)",
-		[now, uid, await usernameOf(uid), moduleOf(code), code, JSON.stringify({ code, count: 1 })],
-	);
+	await db.table("sys_oplog").insert({
+		create_time: now,
+		user_id: uid,
+		username: await usernameOf(uid),
+		action: "auth.deny",
+		module: moduleOf(code),
+		target: code,
+		detail: JSON.stringify({ code, count: 1 }),
+		level: 4,
+	}).run();
 }

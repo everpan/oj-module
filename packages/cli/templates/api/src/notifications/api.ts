@@ -12,10 +12,7 @@
 export default {
 	async get() {
 		try {
-			const rows = await db.query(
-				"SELECT id, avatar, date, is_read, message, title FROM notifications ORDER BY id DESC",
-				[],
-			);
+			const rows = await db.table("notifications").select(["id", "avatar", "date", "is_read", "message", "title"]).orderBy([{ field: "id", dir: "desc" }]).all();
 			json.ok(rows.map(r => ({
 				id: Number(r.id),
 				avatar: String(r.avatar),

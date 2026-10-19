@@ -37,7 +37,8 @@
 		"enable": "Enable",
 		"disable": "Disable",
 		"upgrade": "Upgrade",
-		"rollback": "Rollback"
+		"rollback": "Rollback",
+		"superOnly": "Only superadmins can install, upgrade, roll back, enable/disable or uninstall solutions; other users may browse only."
 	},
 	"task": {
 		"installing": "Installing",

@@ -53,7 +53,7 @@ export function InstallDialog({ row, open, onClose, onDone, version, mode }: Ins
 	}, [open, row, started, client, targetVersion]);
 
 	useEffect(() => {
-		if (isTerminal(record) && done)
+		if (record && isTerminal(record) && done)
 			onDone?.(record);
 	}, [record, done, onDone]);
 

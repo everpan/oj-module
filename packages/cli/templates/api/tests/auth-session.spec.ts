@@ -4,7 +4,7 @@
 import type { SessionDeps } from "../src/auth/_shared/session";
 
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
-import { assertPermission } from "../src/_platform/_shared/service/access";
+import { assertPermission } from "../src/_platform/_shared/service/infra/access";
 import { createSession } from "../src/auth/_shared/session";
 import { installDb } from "./fixture";
 

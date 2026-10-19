@@ -26,7 +26,7 @@ import { readLock, writeLock } from "../../src/_platform/_lifecycle/lock";
 import { createStateStore } from "../../src/_platform/_lifecycle/state";
 import { getTask, writeTask } from "../../src/_platform/_lifecycle/tasks";
 import { createTrustStore } from "../../src/_platform/_lifecycle/trust";
-import { invalidateAllUsers } from "../../src/_platform/_shared/service/access";
+import { invalidateAllUsers } from "../../src/_platform/_shared/service/infra/access";
 import { createMarketApi, marketEnv, parseVersionsJson, versionsJsonPathOf } from "../../src/_platform/market/api";
 import { installDb, MARKET_HISTORY_DDL } from "../fixture";
 

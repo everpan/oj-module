@@ -5,7 +5,7 @@
 // 参数化 insert，与 audit.ts 同纪律（值不拼字符串）。
 
 // db 为 oj isolate 注入全局（同模板 service 层惯例，installer.ts 同款；测试由夹具装 globalThis.db）
-declare const db: { exec: (sql: string, params: unknown[]) => Promise<unknown> };
+declare const db: { exec: (sql: string, params: unknown[]) => Promise<unknown>, table: (name: string) => any };
 
 export interface HistoryRow {
 	solution: string
@@ -20,10 +20,15 @@ export interface HistoryRow {
 /** 守卫式 insert：表不存在/写失败一律静默（留痕失败不影响主流程） */
 export async function recordHistory(row: HistoryRow): Promise<void> {
 	try {
-		await db.exec(
-			"insert into market_history (solution, version, action, status, operator, message, created_at) values (?, ?, ?, ?, ?, ?, ?)",
-			[row.solution, row.version, row.action, row.status, row.operator, row.message, Math.floor(Date.now() / 1000)],
-		);
+		await db.table("market_history").insert({
+			solution: row.solution,
+			version: row.version,
+			action: row.action,
+			status: row.status,
+			operator: row.operator,
+			message: row.message,
+			created_at: Math.floor(Date.now() / 1000),
+		}).run();
 	}
 	catch {
 		// 表不存在（市场方案未装）或写失败：静默跳过，不阻断主流程

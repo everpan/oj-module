@@ -9,6 +9,7 @@ const todos = {
 		const where = kw ? "WHERE title LIKE ?" : "";
 		const params = kw ? [`%${kw}%`] : [];
 		try {
+			// 保留 db.query：WHERE 由 JS 字符串拼接动态生成（规则5）
 			const totalRows = await db.query(`SELECT COUNT(*) AS c FROM todos ${where}`, params);
 			const total = Number(totalRows[0]?.c ?? 0);
 			const rows = await db.query(

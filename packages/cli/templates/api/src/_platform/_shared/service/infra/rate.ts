@@ -12,15 +12,15 @@ export interface RateLimitOpts {
 /** key 维度（如 `contacts:<uid>` / `login:ip:<ip>`）：窗口内超 limit → 429。 */
 export async function rateLimit(key: string, limit: number, windowMs: number, opts: RateLimitOpts = {}): Promise<void> {
 	const now = opts.now?.() ?? Date.now();
-	const rows = await db.query("select window_start, count from sys_rate_window where rate_key = ?", [key]);
+	const rows = await db.table("sys_rate_window").select(["window_start", "count"]).where({ field: "rate_key", op: "eq", value: key }).all();
 	const w = rows[0] as { window_start: number, count: number } | undefined;
 	if (!w || now - Number(w.window_start) >= windowMs) {
-		await db.exec("delete from sys_rate_window where rate_key = ?", [key]);
-		await db.exec("insert into sys_rate_window (rate_key, window_start, count) values (?, ?, 1)", [key, now]);
+		await db.table("sys_rate_window").where({ field: "rate_key", op: "eq", value: key }).delete().run();
+		await db.table("sys_rate_window").insert({ rate_key: key, window_start: now, count: 1 }).run();
 		return;
 	}
 	const count = Number(w.count) + 1;
-	await db.exec("update sys_rate_window set count = ? where rate_key = ?", [count, key]);
+	await db.table("sys_rate_window").update({ count }).where({ field: "rate_key", op: "eq", value: key }).run();
 	if (count > limit)
 		throw Object.assign(new Error("rate limited"), { status: 429 });
 }
@@ -44,12 +44,12 @@ export async function loginFailed(key: string, opts: LoginThrottleOpts = {}): Pr
 	const threshold = opts.threshold ?? 6;
 	const base = opts.baseBackoffMs ?? 15_000;
 	const now = opts.now?.() ?? Date.now();
-	const rows = await db.query("select fail_count, blocked_until from sys_login_throttle where pair_key = ?", [key]);
-	const s = rows[0] as LoginThrottleRow | undefined;
+	const rows = await db.table("sys_login_throttle").select(["fail_count", "blocked_until"]).where({ field: "pair_key", op: "eq", value: key }).all();
+	const s = rows[0] as unknown as LoginThrottleRow | undefined;
 	const count = (s ? Number(s.fail_count) : 0) + 1;
 	const blockedUntil = count >= threshold ? now + base * 2 ** (count - threshold) : (s ? Number(s.blocked_until) : 0);
-	await db.exec("delete from sys_login_throttle where pair_key = ?", [key]);
-	await db.exec("insert into sys_login_throttle (pair_key, fail_count, blocked_until) values (?, ?, ?)", [key, count, blockedUntil]);
+	await db.table("sys_login_throttle").where({ field: "pair_key", op: "eq", value: key }).delete().run();
+	await db.table("sys_login_throttle").insert({ pair_key: key, fail_count: count, blocked_until: blockedUntil }).run();
 	return count;
 }
 
@@ -58,19 +58,19 @@ export async function loginBlocked(key: string, opts: LoginThrottleOpts = {}): P
 	const threshold = opts.threshold ?? 6;
 	const base = opts.baseBackoffMs ?? 15_000;
 	const now = opts.now?.() ?? Date.now();
-	const rows = await db.query("select fail_count, blocked_until from sys_login_throttle where pair_key = ?", [key]);
-	const s = rows[0] as LoginThrottleRow | undefined;
+	const rows = await db.table("sys_login_throttle").select(["fail_count", "blocked_until"]).where({ field: "pair_key", op: "eq", value: key }).all();
+	const s = rows[0] as unknown as LoginThrottleRow | undefined;
 	if (!s || Number(s.blocked_until) <= now)
 		return;
 	const count = Number(s.fail_count) + 1;
 	const blockedUntil = now + base * 2 ** (count - threshold);
-	await db.exec("update sys_login_throttle set fail_count = ?, blocked_until = ? where pair_key = ?", [count, blockedUntil, key]);
+	await db.table("sys_login_throttle").update({ fail_count: count, blocked_until: blockedUntil }).where({ field: "pair_key", op: "eq", value: key }).run();
 	throw Object.assign(new Error("too many login attempts"), { status: 429, retryAfterMs: blockedUntil - now });
 }
 
 /** 登录成功清零连败。 */
 export async function loginSucceeded(key: string): Promise<void> {
-	await db.exec("delete from sys_login_throttle where pair_key = ?", [key]);
+	await db.table("sys_login_throttle").where({ field: "pair_key", op: "eq", value: key }).delete().run();
 }
 
 /** 清登录限速状态（测试夹具/运维排障用）。 */

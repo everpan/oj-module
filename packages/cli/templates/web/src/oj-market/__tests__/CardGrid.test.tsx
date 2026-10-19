@@ -73,6 +73,25 @@ describe("cardGrid 卡片网格（BDD）", () => {
 		expect(handlers.onRollback).toHaveBeenCalledWith(installed);
 	});
 
+	it("given canManage=false（非 superadmin）When 渲染 Then 安装/启停/回滚/卸载按钮禁用、详情/历史保持可用", () => {
+		renderWithProviders(
+			<CardGrid rows={[installed]} canManage={false} {...handlers} />,
+			new InMemoryMarketClient(),
+		);
+		const btn = (name: string) => screen.getByRole("button", { name }) as HTMLButtonElement;
+		// 写操作禁用
+		expect(btn("升级").disabled).toBe(true);
+		expect(btn("停用").disabled).toBe(true);
+		expect(btn("卸载").disabled).toBe(true);
+		expect((screen.getByTestId("card-rollback-alpha") as HTMLButtonElement).disabled).toBe(true);
+		// 只读操作不受影响
+		expect(btn("详情").disabled).toBe(false);
+		expect(btn("历史").disabled).toBe(false);
+		// 禁用时不应触发写回调
+		btn("卸载").click();
+		expect(handlers.onUninstall).not.toHaveBeenCalled();
+	});
+
 	it("given 空列表 When 渲染 Then 显示空态", () => {
 		renderWithProviders(<CardGrid rows={[]} {...handlers} />, new InMemoryMarketClient());
 		expect(screen.getByTestId("card-grid-empty")).toBeTruthy();

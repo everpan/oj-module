@@ -12,10 +12,10 @@ const line = {
 			const today = Math.floor(Date.now() / 86400000);
 			const start = today - days + 1;
 
-			const rows = await db.query(
-				"SELECT day, SUM(value) AS v FROM home_line WHERE day >= ? AND day <= ? GROUP BY day",
-				[start, today],
-			);
+			const rows = await db.table("home_line").select([
+				"day",
+				{ fn: "sum", field: "value", as: "v" },
+			]).where({ field: "day", op: "gte", value: start }).where({ field: "day", op: "lte", value: today }).groupBy(["day"]).all();
 			const map = new Map<number, number>();
 			for (const r of rows)
 				map.set(Number(r.day), Number(r.v));

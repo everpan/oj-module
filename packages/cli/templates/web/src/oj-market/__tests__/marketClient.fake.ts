@@ -45,6 +45,7 @@ export class InMemoryMarketClient implements MarketClient {
 			progress: 100,
 			message: "ok",
 			stages: [],
+			startedAt: 0,
 		} as TaskRecord);
 	}
 

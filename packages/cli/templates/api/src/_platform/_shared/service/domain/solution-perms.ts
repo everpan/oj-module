@@ -28,20 +28,20 @@ export async function upsertSolutionPerms(m: SolutionManifest): Promise<UpsertRe
 	const declaredPerms = new Set(m.roles.flatMap(r => r.permissions ?? []));
 
 	for (const role of m.roles) {
-		const existing = await db.query("select name from sys_role where name = ?", [role.name]) as unknown[];
+		const existing = await db.table("sys_role").select(["name"]).where({ field: "name", op: "eq", value: role.name }).all() as unknown[];
 		// upsert：行存在只覆盖元数据（title），name/builtin 不动（AC2-2 元数据覆盖）
 		if (existing.length) {
-			await db.exec("update sys_role set title = ? where name = ?", [role.title, role.name]);
+			await db.table("sys_role").update({ title: role.title }).where({ field: "name", op: "eq", value: role.name }).run();
 		}
 		else {
-			await db.exec("insert into sys_role (name, module, title, builtin) values (?, ?, ?, 0)", [role.name, m.module, role.title]);
+			await db.table("sys_role").insert({ name: role.name, module: m.module, title: role.title, builtin: 0 }).run();
 			// 声明绑定只在角色创建时写一次（角色级 insert-if-absent，AC1-15 红线）：
 			// 升级/重装对已存在角色永不补写声明绑定——管理员撤过的绑定不复活；
 			// 新版本给既有角色新增权限点时，由管理员显式勾选（insert-if-absent 的取舍边界，§9.5）。
 			for (const code of role.permissions ?? []) {
-				const bound = await db.query("select role_name from sys_role_permission where role_name = ? and permission_code = ?", [role.name, code]) as unknown[];
+				const bound = await db.table("sys_role_permission").select(["role_name"]).where({ field: "role_name", op: "eq", value: role.name }).where({ field: "permission_code", op: "eq", value: code }).all() as unknown[];
 				if (!bound.length)
-					await db.exec("insert into sys_role_permission (role_name, permission_code) values (?, ?)", [role.name, code]);
+					await db.table("sys_role_permission").insert({ role_name: role.name, permission_code: code }).run();
 			}
 		}
 	}
@@ -49,24 +49,24 @@ export async function upsertSolutionPerms(m: SolutionManifest): Promise<UpsertRe
 	// 权限点行独立于角色创建：声明里的新 code 一律 upsert 插入（AC2-1「新增声明 → upsert 插入新行」——
 	// 含既有角色新增权限点的场景；绑定是否自动挂上由上面的角色级规则决定）
 	for (const code of declaredPerms) {
-		const p = await db.query("select code from sys_permission where code = ?", [code]) as unknown[];
+		const p = await db.table("sys_permission").select(["code"]).where({ field: "code", op: "eq", value: code }).all() as unknown[];
 		if (!p.length)
-			await db.exec("insert into sys_permission (code, module) values (?, ?)", [code, m.module]);
+			await db.table("sys_permission").insert({ code, module: m.module }).run();
 	}
 
 	// 声明消失 → 行保留标 deprecated（AC2-3/4）：行与绑定全留，判决不突变；
 	// 重命名的旧 code 走同一条规则（视为删除+新增），deprecated 清单交给安装器告警。
-	const oldPerms = await db.query("select code from sys_permission where module = ? and deprecated = 0", [m.module]) as Array<{ code: string }>;
+	const oldPerms = await db.table("sys_permission").select(["code"]).where({ field: "module", op: "eq", value: m.module }).where({ field: "deprecated", op: "eq", value: 0 }).all() as Array<{ code: string }>;
 	for (const r of oldPerms) {
 		if (!declaredPerms.has(String(r.code))) {
-			await db.exec("update sys_permission set deprecated = 1 where code = ?", [r.code]);
+			await db.table("sys_permission").update({ deprecated: 1 }).where({ field: "code", op: "eq", value: r.code }).run();
 			deprecated.push(String(r.code));
 		}
 	}
-	const oldRoles = await db.query("select name from sys_role where module = ? and builtin = 0 and deprecated = 0", [m.module]) as Array<{ name: string }>;
+	const oldRoles = await db.table("sys_role").select(["name"]).where({ field: "module", op: "eq", value: m.module }).where({ field: "builtin", op: "eq", value: 0 }).where({ field: "deprecated", op: "eq", value: 0 }).all() as Array<{ name: string }>;
 	for (const r of oldRoles) {
 		if (!declaredRoles.has(String(r.name))) {
-			await db.exec("update sys_role set deprecated = 1 where name = ?", [r.name]);
+			await db.table("sys_role").update({ deprecated: 1 }).where({ field: "name", op: "eq", value: r.name }).run();
 			deprecated.push(String(r.name));
 		}
 	}
@@ -77,6 +77,7 @@ export async function upsertSolutionPerms(m: SolutionManifest): Promise<UpsertRe
 interface DbLike {
 	query: (sql: string, params?: unknown[]) => Promise<unknown>
 	exec: (sql: string, params?: unknown[]) => Promise<unknown>
+	table: DBInstance["table"]
 }
 
 /**
@@ -88,14 +89,14 @@ interface DbLike {
  * P3-3：可传入事务句柄 `d`（db.tx 的 t），使级联纳入卸载的单一 DB 事务；缺省回落全局 db（兼容既有调用面）。
  */
 export async function uninstallSolution(module: string, d: DbLike = db): Promise<void> {
-	const roles = await d.query("select name from sys_role where module = ?", [module]) as Array<{ name: string }>;
+	const roles = await d.table("sys_role").select(["name"]).where({ field: "module", op: "eq", value: module }).all() as Array<{ name: string }>;
 	for (const r of roles) {
-		await d.exec("delete from sys_role_permission where role_name = ?", [r.name]);
-		await d.exec("delete from sys_user_role where role_name = ?", [r.name]);
+		await d.table("sys_role_permission").where({ field: "role_name", op: "eq", value: r.name }).delete().run();
+		await d.table("sys_user_role").where({ field: "role_name", op: "eq", value: r.name }).delete().run();
 	}
-	await d.exec("delete from sys_role where module = ?", [module]);
-	// module 名是 slug（[a-z0-9_-]），LIKE 前缀匹配的转义纪律同 query.ts（ESCAPE '!' 三方言同义）
+	await d.table("sys_role").where({ field: "module", op: "eq", value: module }).delete().run();
+	// 保留 d.exec：LIKE ? escape '!' 转义子句构造器 like 不支持（三方言 ESCAPE 同义纪律见 query.ts）
 	const prefix = `${module.replace(/[!%_]/g, c => `!${c}`)}.%`;
 	await d.exec("delete from sys_role_permission where permission_code like ? escape '!'", [prefix]);
-	await d.exec("delete from sys_permission where module = ?", [module]);
+	await d.table("sys_permission").where({ field: "module", op: "eq", value: module }).delete().run();
 }

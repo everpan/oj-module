@@ -1,4 +1,4 @@
-import { auditOp } from "../_shared/service/audit";
+import { auditOp } from "../_shared/service/infra/audit";
 // 宿主信任库（P2-2，契约 v1.3 §2.11 / C2-38/39，G3 双轨第一轨 / G5）。
 // 存储：.solutions/trusted-keys.yaml（key_id → {public_key, added_at}）——YAML 受限子集
 // （两层 map + 标量，同 state.ts 口径：只读回本模块写出的内容，不引 yaml 依赖，严格解析）。

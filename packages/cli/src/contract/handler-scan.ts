@@ -94,6 +94,20 @@ function collectObjectDecls(sf: ts.SourceFile): Map<string, ts.ObjectLiteralExpr
 	return decls;
 }
 
+/** 顶层 `const x = createXxx(env)` 调用声明表：工厂形态经标识符引用（`export default x`）时的解析依据 */
+function collectCallDecls(sf: ts.SourceFile): Map<string, ts.CallExpression> {
+	const decls = new Map<string, ts.CallExpression>();
+	for (const stmt of sf.statements) {
+		if (!ts.isVariableStatement(stmt))
+			continue;
+		for (const decl of stmt.declarationList.declarations) {
+			if (ts.isIdentifier(decl.name) && decl.initializer && ts.isCallExpression(decl.initializer))
+				decls.set(decl.name.text, decl.initializer);
+		}
+	}
+	return decls;
+}
+
 /** verb 键 → 实现函数名（供 `.route` 语句按函数名查找；内联写法回落键名） */
 function implNameOf(prop: ts.ObjectLiteralElementLike): string | undefined {
 	if (ts.isShorthandPropertyAssignment(prop))
@@ -141,9 +155,16 @@ function defaultExportObject(sf: ts.SourceFile, decls: Map<string, ts.ObjectLite
  * 是调用表达式，此前扫描器不认，route-unregistered 守卫对 market/solutions 全族失效）：
  * 解析同文件同名函数声明体内 return 的对象字面量（运行时 oj 内省执行工厂拿到该对象，静态
  * 扫描镜像此语义）。支持多个 return；对象内标识符引用仍解析文件级顶层 const。
+ * 补全（P2-14 形态遗漏）：`export default createXxxApi(marketEnv())` 中 `call.expression`
+ * 是**带实参的调用表达式**，函数名落在 `call.expression.expression`（createXxxApi）；
+ * 旧逻辑直接 dottedNameOf(call.expression) 对 CallExpression 返回 undefined → 扫成 0 路由，
+ * 致使 ojm api --check 把 market 全族端点判为「未实现 / stub 缺失」。此处穿透一层取被调函数名。
  */
 function factoryReturnObjects(sf: ts.SourceFile, call: ts.CallExpression): ts.ObjectLiteralExpression[] {
-	const callee = dottedNameOf(call.expression);
+	// `export default createXxxApi(marketEnv())`：`call.expression` 为带实参的调用表达式，
+	// 函数名在其 `.expression`；`export default obj.createXxxApi(marketEnv())` 同样穿透。
+	const target = ts.isCallExpression(call.expression) ? call.expression.expression : call.expression;
+	const callee = dottedNameOf(target);
 	if (callee === undefined)
 		return [];
 	for (const stmt of sf.statements) {
@@ -189,6 +210,7 @@ export function scanHandlerFile(filePath: string, apiSrcDir: string): HandlerRow
 	const sf = ts.createSourceFile(filePath, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
 	const routes = collectRouteDecls(sf);
 	const decls = collectObjectDecls(sf);
+	const callDecls = collectCallDecls(sf);
 	const relDir = relative(apiSrcDir, dirname(filePath)).split(sep).join("/");
 	const rows: HandlerRow[] = [];
 	const seen = new Set<ts.Node>();
@@ -251,10 +273,19 @@ export function scanHandlerFile(filePath: string, apiSrcDir: string): HandlerRow
 		walk(root, "", filePrefix, 1);
 	}
 	else {
-		// P2-14：工厂形态（CallExpression）——组前缀从目录镜像起算（同内联字面量形态）
+		// 工厂形态（P2-14 + 补全）：export default 后接
+		//  - CallExpression 直调：createXxx(env) / createXxx(marketEnv())
+		//  - Identifier 引用：const api = createXxx(env); export default api
+		// 组前缀从目录镜像起算（同内联字面量形态）。
 		for (const stmt of sf.statements) {
-			if (ts.isExportAssignment(stmt) && !stmt.isExportEquals && ts.isCallExpression(stmt.expression)) {
-				for (const obj of factoryReturnObjects(sf, stmt.expression))
+			if (!ts.isExportAssignment(stmt) || stmt.isExportEquals)
+				continue;
+			const expr = stmt.expression;
+			const callExpr = ts.isCallExpression(expr)
+				? expr
+				: (ts.isIdentifier(expr) ? callDecls.get(expr.text) : undefined);
+			if (callExpr) {
+				for (const obj of factoryReturnObjects(sf, callExpr))
 					walk(obj, "", "", 1);
 			}
 		}

@@ -51,6 +51,35 @@ export default createMarketApi({} as Env);
 		]);
 	});
 
+	it("标识符默认导出指回工厂调用：const x = createXxx(env); export default x（market/api.ts 真形态）", () => {
+		// 真实模板形态：工厂调用赋给 const，再 export default 该标识符。
+		// 此前 scanHandlerFile 只认「default 导出 = 调用表达式」，认不出
+		// 「default 导出 = 标识符 → 指向一次工厂调用」，导致 market 整族 route 漏登。
+		const rows = scan("api.ts", `
+import type { Env } from "./types";
+export function createMarketApi(env: Env) {
+	return {
+		"install": {
+			async post() { return {}; },
+		},
+		"verify": {
+			async post() { return {}; },
+			last: {
+				async get() { return {}; },
+			},
+		},
+	};
+}
+const marketApi = createMarketApi({} as Env);
+export default marketApi;
+`);
+		expect(rows.map(r => `${r.method} ${r.full}`).sort()).toEqual([
+			"GET _platform/market/verify/last",
+			"POST _platform/market/install",
+			"POST _platform/market/verify",
+		]);
+	});
+
 	it("无 return 对象 / 未知 callee / 点分 callee 不可解析 → 零行（不炸不猜）", () => {
 		expect(scan("a.ts", "export default createMissingApi({});")).toEqual([]);
 		expect(scan("b.ts", `

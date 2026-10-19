@@ -4,7 +4,7 @@
 /* eslint-disable test/prefer-lowercase-title -- AC 编号是验收锚点，保留大写 */
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
-import { assertPermission, assertSuperAdmin, assertSystemAdmin, invalidateUser } from "../src/_platform/_shared/service/access";
+import { assertPermission, assertSuperAdmin, assertSystemAdmin, invalidateUser } from "../src/_platform/_shared/service/infra/access";
 import { installDb } from "./fixture";
 
 let dbo: ReturnType<typeof installDb>;

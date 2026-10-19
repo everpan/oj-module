@@ -14,7 +14,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { readLock, writeLock } from "../../src/_platform/_lifecycle/lock";
 import { createStateStore } from "../../src/_platform/_lifecycle/state";
 import { catalogSpec, collectRetainedTables, tablePrefixPattern } from "../../src/_platform/_lifecycle/uninstall";
-import { invalidateAllUsers } from "../../src/_platform/_shared/service/access";
+import { invalidateAllUsers } from "../../src/_platform/_shared/service/infra/access";
 import { createMarketApi } from "../../src/_platform/market/api";
 import { installDb, MARKET_HISTORY_DDL } from "../fixture";
 

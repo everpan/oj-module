@@ -94,14 +94,23 @@ export async function platformContactsDetailGet(): Promise<unknown> {
 	}
 }
 
-export async function platformMarketInstallPost(): Promise<unknown> {
+export type PlatformMarketInstallPostBody = z.input<(typeof schemas)["platformMarketInstallPost"]["body"]>;
+export type PlatformMarketInstallPostData = z.infer<(typeof schemas)["platformMarketInstallPost"]["data"]>;
+
+export async function platformMarketInstallPost(body: PlatformMarketInstallPostBody): Promise<PlatformMarketInstallPostData> {
 	const client = ensureReq();
 	try {
-		const env = await client.post(`_platform/market/install`).json<OjEnvelope<unknown>>();
+		const env = await client.post(`_platform/market/install`, { json: body }).json<OjEnvelope<PlatformMarketInstallPostData>>();
 		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
 		if (typeof env.code === "number" && env.code !== 0)
 			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
-		const data = env.data as unknown;
+		const data = env.data as PlatformMarketInstallPostData;
+		if (import.meta.env.DEV) {
+			const { schemas } = await import("./api.schemas");
+			const r = schemas["platformMarketInstallPost"].data.safeParse(data);
+			if (!r.success)
+				throw new ContractApiError(-1, `[契约违例] platformMarketInstallPost 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
+		}
 		return data;
 	}
 	catch (e) {
@@ -109,14 +118,23 @@ export async function platformMarketInstallPost(): Promise<unknown> {
 	}
 }
 
-export async function platformMarketInstallCancelPost(): Promise<unknown> {
+export type PlatformMarketInstallCancelPostBody = z.input<(typeof schemas)["platformMarketInstallCancelPost"]["body"]>;
+export type PlatformMarketInstallCancelPostData = z.infer<(typeof schemas)["platformMarketInstallCancelPost"]["data"]>;
+
+export async function platformMarketInstallCancelPost(body: PlatformMarketInstallCancelPostBody): Promise<PlatformMarketInstallCancelPostData> {
 	const client = ensureReq();
 	try {
-		const env = await client.post(`_platform/market/install/cancel`).json<OjEnvelope<unknown>>();
+		const env = await client.post(`_platform/market/install/cancel`, { json: body }).json<OjEnvelope<PlatformMarketInstallCancelPostData>>();
 		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
 		if (typeof env.code === "number" && env.code !== 0)
 			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
-		const data = env.data as unknown;
+		const data = env.data as PlatformMarketInstallCancelPostData;
+		if (import.meta.env.DEV) {
+			const { schemas } = await import("./api.schemas");
+			const r = schemas["platformMarketInstallCancelPost"].data.safeParse(data);
+			if (!r.success)
+				throw new ContractApiError(-1, `[契约违例] platformMarketInstallCancelPost 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
+		}
 		return data;
 	}
 	catch (e) {
@@ -124,14 +142,23 @@ export async function platformMarketInstallCancelPost(): Promise<unknown> {
 	}
 }
 
-export async function platformMarketTaskGet(): Promise<unknown> {
+export type PlatformMarketTaskGetQuery = z.input<(typeof schemas)["platformMarketTaskGet"]["query"]>;
+export type PlatformMarketTaskGetData = z.infer<(typeof schemas)["platformMarketTaskGet"]["data"]>;
+
+export async function platformMarketTaskGet(query: PlatformMarketTaskGetQuery): Promise<PlatformMarketTaskGetData> {
 	const client = ensureReq();
 	try {
-		const env = await client.get(`_platform/market/task`).json<OjEnvelope<unknown>>();
+		const env = await client.get(`_platform/market/task`, { searchParams: query as Record<string, string | number | boolean> }).json<OjEnvelope<PlatformMarketTaskGetData>>();
 		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
 		if (typeof env.code === "number" && env.code !== 0)
 			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
-		const data = env.data as unknown;
+		const data = env.data as PlatformMarketTaskGetData;
+		if (import.meta.env.DEV) {
+			const { schemas } = await import("./api.schemas");
+			const r = schemas["platformMarketTaskGet"].data.safeParse(data);
+			if (!r.success)
+				throw new ContractApiError(-1, `[契约违例] platformMarketTaskGet 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
+		}
 		return data;
 	}
 	catch (e) {
@@ -139,14 +166,23 @@ export async function platformMarketTaskGet(): Promise<unknown> {
 	}
 }
 
-export async function platformMarketEnablePost(): Promise<unknown> {
+export type PlatformMarketEnablePostBody = z.input<(typeof schemas)["platformMarketEnablePost"]["body"]>;
+export type PlatformMarketEnablePostData = z.infer<(typeof schemas)["platformMarketEnablePost"]["data"]>;
+
+export async function platformMarketEnablePost(body: PlatformMarketEnablePostBody): Promise<PlatformMarketEnablePostData> {
 	const client = ensureReq();
 	try {
-		const env = await client.post(`_platform/market/enable`).json<OjEnvelope<unknown>>();
+		const env = await client.post(`_platform/market/enable`, { json: body }).json<OjEnvelope<PlatformMarketEnablePostData>>();
 		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
 		if (typeof env.code === "number" && env.code !== 0)
 			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
-		const data = env.data as unknown;
+		const data = env.data as PlatformMarketEnablePostData;
+		if (import.meta.env.DEV) {
+			const { schemas } = await import("./api.schemas");
+			const r = schemas["platformMarketEnablePost"].data.safeParse(data);
+			if (!r.success)
+				throw new ContractApiError(-1, `[契约违例] platformMarketEnablePost 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
+		}
 		return data;
 	}
 	catch (e) {
@@ -154,14 +190,22 @@ export async function platformMarketEnablePost(): Promise<unknown> {
 	}
 }
 
-export async function platformMarketMetaGet(): Promise<unknown> {
+export type PlatformMarketMetaGetData = z.infer<(typeof schemas)["platformMarketMetaGet"]["data"]>;
+
+export async function platformMarketMetaGet(): Promise<PlatformMarketMetaGetData> {
 	const client = ensureReq();
 	try {
-		const env = await client.get(`_platform/market/meta`).json<OjEnvelope<unknown>>();
+		const env = await client.get(`_platform/market/meta`).json<OjEnvelope<PlatformMarketMetaGetData>>();
 		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
 		if (typeof env.code === "number" && env.code !== 0)
 			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
-		const data = env.data as unknown;
+		const data = env.data as PlatformMarketMetaGetData;
+		if (import.meta.env.DEV) {
+			const { schemas } = await import("./api.schemas");
+			const r = schemas["platformMarketMetaGet"].data.safeParse(data);
+			if (!r.success)
+				throw new ContractApiError(-1, `[契约违例] platformMarketMetaGet 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
+		}
 		return data;
 	}
 	catch (e) {
@@ -169,14 +213,22 @@ export async function platformMarketMetaGet(): Promise<unknown> {
 	}
 }
 
-export async function platformMarketTrustGet(): Promise<unknown> {
+export type PlatformMarketTrustGetData = z.infer<(typeof schemas)["platformMarketTrustGet"]["data"]>;
+
+export async function platformMarketTrustGet(): Promise<PlatformMarketTrustGetData> {
 	const client = ensureReq();
 	try {
-		const env = await client.get(`_platform/market/trust`).json<OjEnvelope<unknown>>();
+		const env = await client.get(`_platform/market/trust`).json<OjEnvelope<PlatformMarketTrustGetData>>();
 		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
 		if (typeof env.code === "number" && env.code !== 0)
 			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
-		const data = env.data as unknown;
+		const data = env.data as PlatformMarketTrustGetData;
+		if (import.meta.env.DEV) {
+			const { schemas } = await import("./api.schemas");
+			const r = schemas["platformMarketTrustGet"].data.safeParse(data);
+			if (!r.success)
+				throw new ContractApiError(-1, `[契约违例] platformMarketTrustGet 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
+		}
 		return data;
 	}
 	catch (e) {
@@ -184,14 +236,23 @@ export async function platformMarketTrustGet(): Promise<unknown> {
 	}
 }
 
-export async function platformMarketTrustPost(): Promise<unknown> {
+export type PlatformMarketTrustPostBody = z.input<(typeof schemas)["platformMarketTrustPost"]["body"]>;
+export type PlatformMarketTrustPostData = z.infer<(typeof schemas)["platformMarketTrustPost"]["data"]>;
+
+export async function platformMarketTrustPost(body: PlatformMarketTrustPostBody): Promise<PlatformMarketTrustPostData> {
 	const client = ensureReq();
 	try {
-		const env = await client.post(`_platform/market/trust`).json<OjEnvelope<unknown>>();
+		const env = await client.post(`_platform/market/trust`, { json: body }).json<OjEnvelope<PlatformMarketTrustPostData>>();
 		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
 		if (typeof env.code === "number" && env.code !== 0)
 			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
-		const data = env.data as unknown;
+		const data = env.data as PlatformMarketTrustPostData;
+		if (import.meta.env.DEV) {
+			const { schemas } = await import("./api.schemas");
+			const r = schemas["platformMarketTrustPost"].data.safeParse(data);
+			if (!r.success)
+				throw new ContractApiError(-1, `[契约违例] platformMarketTrustPost 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
+		}
 		return data;
 	}
 	catch (e) {
@@ -199,14 +260,23 @@ export async function platformMarketTrustPost(): Promise<unknown> {
 	}
 }
 
-export async function platformMarketTrustKeyPost(): Promise<unknown> {
+export type PlatformMarketTrustKeyPostBody = z.input<(typeof schemas)["platformMarketTrustKeyPost"]["body"]>;
+export type PlatformMarketTrustKeyPostData = z.infer<(typeof schemas)["platformMarketTrustKeyPost"]["data"]>;
+
+export async function platformMarketTrustKeyPost(body: PlatformMarketTrustKeyPostBody): Promise<PlatformMarketTrustKeyPostData> {
 	const client = ensureReq();
 	try {
-		const env = await client.post(`_platform/market/trust/key`).json<OjEnvelope<unknown>>();
+		const env = await client.post(`_platform/market/trust/key`, { json: body }).json<OjEnvelope<PlatformMarketTrustKeyPostData>>();
 		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
 		if (typeof env.code === "number" && env.code !== 0)
 			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
-		const data = env.data as unknown;
+		const data = env.data as PlatformMarketTrustKeyPostData;
+		if (import.meta.env.DEV) {
+			const { schemas } = await import("./api.schemas");
+			const r = schemas["platformMarketTrustKeyPost"].data.safeParse(data);
+			if (!r.success)
+				throw new ContractApiError(-1, `[契约违例] platformMarketTrustKeyPost 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
+		}
 		return data;
 	}
 	catch (e) {
@@ -214,14 +284,23 @@ export async function platformMarketTrustKeyPost(): Promise<unknown> {
 	}
 }
 
-export async function platformMarketTrustKeyDelete(): Promise<unknown> {
+export type PlatformMarketTrustKeyDeleteQuery = z.input<(typeof schemas)["platformMarketTrustKeyDelete"]["query"]>;
+export type PlatformMarketTrustKeyDeleteData = z.infer<(typeof schemas)["platformMarketTrustKeyDelete"]["data"]>;
+
+export async function platformMarketTrustKeyDelete(query: PlatformMarketTrustKeyDeleteQuery): Promise<PlatformMarketTrustKeyDeleteData> {
 	const client = ensureReq();
 	try {
-		const env = await client.delete(`_platform/market/trust/key`).json<OjEnvelope<unknown>>();
+		const env = await client.delete(`_platform/market/trust/key`, { searchParams: query as Record<string, string | number | boolean> }).json<OjEnvelope<PlatformMarketTrustKeyDeleteData>>();
 		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
 		if (typeof env.code === "number" && env.code !== 0)
 			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
-		const data = env.data as unknown;
+		const data = env.data as PlatformMarketTrustKeyDeleteData;
+		if (import.meta.env.DEV) {
+			const { schemas } = await import("./api.schemas");
+			const r = schemas["platformMarketTrustKeyDelete"].data.safeParse(data);
+			if (!r.success)
+				throw new ContractApiError(-1, `[契约违例] platformMarketTrustKeyDelete 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
+		}
 		return data;
 	}
 	catch (e) {
@@ -229,14 +308,22 @@ export async function platformMarketTrustKeyDelete(): Promise<unknown> {
 	}
 }
 
-export async function platformMarketIndexGet(): Promise<unknown> {
+export type PlatformMarketIndexGetData = z.infer<(typeof schemas)["platformMarketIndexGet"]["data"]>;
+
+export async function platformMarketIndexGet(): Promise<PlatformMarketIndexGetData> {
 	const client = ensureReq();
 	try {
-		const env = await client.get(`_platform/market/index`).json<OjEnvelope<unknown>>();
+		const env = await client.get(`_platform/market/index`).json<OjEnvelope<PlatformMarketIndexGetData>>();
 		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
 		if (typeof env.code === "number" && env.code !== 0)
 			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
-		const data = env.data as unknown;
+		const data = env.data as PlatformMarketIndexGetData;
+		if (import.meta.env.DEV) {
+			const { schemas } = await import("./api.schemas");
+			const r = schemas["platformMarketIndexGet"].data.safeParse(data);
+			if (!r.success)
+				throw new ContractApiError(-1, `[契约违例] platformMarketIndexGet 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
+		}
 		return data;
 	}
 	catch (e) {
@@ -244,14 +331,23 @@ export async function platformMarketIndexGet(): Promise<unknown> {
 	}
 }
 
-export async function platformMarketUninstallImpactGet(): Promise<unknown> {
+export type PlatformMarketUninstallImpactGetQuery = z.input<(typeof schemas)["platformMarketUninstallImpactGet"]["query"]>;
+export type PlatformMarketUninstallImpactGetData = z.infer<(typeof schemas)["platformMarketUninstallImpactGet"]["data"]>;
+
+export async function platformMarketUninstallImpactGet(query: PlatformMarketUninstallImpactGetQuery): Promise<PlatformMarketUninstallImpactGetData> {
 	const client = ensureReq();
 	try {
-		const env = await client.get(`_platform/market/uninstall-impact`).json<OjEnvelope<unknown>>();
+		const env = await client.get(`_platform/market/uninstall-impact`, { searchParams: query as Record<string, string | number | boolean> }).json<OjEnvelope<PlatformMarketUninstallImpactGetData>>();
 		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
 		if (typeof env.code === "number" && env.code !== 0)
 			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
-		const data = env.data as unknown;
+		const data = env.data as PlatformMarketUninstallImpactGetData;
+		if (import.meta.env.DEV) {
+			const { schemas } = await import("./api.schemas");
+			const r = schemas["platformMarketUninstallImpactGet"].data.safeParse(data);
+			if (!r.success)
+				throw new ContractApiError(-1, `[契约违例] platformMarketUninstallImpactGet 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
+		}
 		return data;
 	}
 	catch (e) {
@@ -259,14 +355,23 @@ export async function platformMarketUninstallImpactGet(): Promise<unknown> {
 	}
 }
 
-export async function platformMarketUninstallPost(): Promise<unknown> {
+export type PlatformMarketUninstallPostBody = z.input<(typeof schemas)["platformMarketUninstallPost"]["body"]>;
+export type PlatformMarketUninstallPostData = z.infer<(typeof schemas)["platformMarketUninstallPost"]["data"]>;
+
+export async function platformMarketUninstallPost(body: PlatformMarketUninstallPostBody): Promise<PlatformMarketUninstallPostData> {
 	const client = ensureReq();
 	try {
-		const env = await client.post(`_platform/market/uninstall`).json<OjEnvelope<unknown>>();
+		const env = await client.post(`_platform/market/uninstall`, { json: body }).json<OjEnvelope<PlatformMarketUninstallPostData>>();
 		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
 		if (typeof env.code === "number" && env.code !== 0)
 			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
-		const data = env.data as unknown;
+		const data = env.data as PlatformMarketUninstallPostData;
+		if (import.meta.env.DEV) {
+			const { schemas } = await import("./api.schemas");
+			const r = schemas["platformMarketUninstallPost"].data.safeParse(data);
+			if (!r.success)
+				throw new ContractApiError(-1, `[契约违例] platformMarketUninstallPost 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
+		}
 		return data;
 	}
 	catch (e) {
@@ -274,14 +379,22 @@ export async function platformMarketUninstallPost(): Promise<unknown> {
 	}
 }
 
-export async function platformMarketHistoryGet(): Promise<unknown> {
+export type PlatformMarketHistoryGetData = z.infer<(typeof schemas)["platformMarketHistoryGet"]["data"]>;
+
+export async function platformMarketHistoryGet(): Promise<PlatformMarketHistoryGetData> {
 	const client = ensureReq();
 	try {
-		const env = await client.get(`_platform/market/history`).json<OjEnvelope<unknown>>();
+		const env = await client.get(`_platform/market/history`).json<OjEnvelope<PlatformMarketHistoryGetData>>();
 		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
 		if (typeof env.code === "number" && env.code !== 0)
 			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
-		const data = env.data as unknown;
+		const data = env.data as PlatformMarketHistoryGetData;
+		if (import.meta.env.DEV) {
+			const { schemas } = await import("./api.schemas");
+			const r = schemas["platformMarketHistoryGet"].data.safeParse(data);
+			if (!r.success)
+				throw new ContractApiError(-1, `[契约违例] platformMarketHistoryGet 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
+		}
 		return data;
 	}
 	catch (e) {

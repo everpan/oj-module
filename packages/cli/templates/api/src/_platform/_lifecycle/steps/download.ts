@@ -39,7 +39,7 @@ export function archiveFileOf(manifest: unknown): { ok: true, file: string, arch
 	if (typeof manifest !== "object" || manifest === null || Array.isArray(manifest)) {
 		return { ok: false, message: "C2-29：manifest 不是键值对象，archive 身份不可得" };
 	}
-	const archive = (manifest as Record<string, unknown>).archive;
+	const archive = (manifest as Record<string, unknown>).archive as Record<string, unknown>;
 	if (typeof archive !== "object" || archive === null || Array.isArray(archive)) {
 		return { ok: false, message: "C2-29：archive 段缺失或不是键值对象（Form B 真源须含 file/sha256/size）" };
 	}

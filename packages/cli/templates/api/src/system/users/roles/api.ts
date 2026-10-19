@@ -1,7 +1,7 @@
 import { respond } from "../../../_platform/_shared/respond";
+import { updateUserRoles } from "../../../_platform/_shared/service/domain/users";
 // PUT /api/system/users/roles?uid= —— 整集替换用户角色（AC1-7；sys_user_role 权威源 + 写时失效）。
-import { assertSystemAdmin } from "../../../_platform/_shared/service/access";
-import { updateUserRoles } from "../../../_platform/_shared/service/users";
+import { assertSystemAdmin } from "../../../_platform/_shared/service/infra/access";
 
 async function put() {
 	await respond(async () => {

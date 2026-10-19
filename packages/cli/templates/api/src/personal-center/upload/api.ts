@@ -41,7 +41,7 @@ const handler = {
 			const bytes = meta.key ? await blob.get(meta.key) : await http.file(0);
 			const b64 = toBase64(bytes);
 			const dataUrl = `data:${meta.content_type || "application/octet-stream"};base64,${b64}`;
-			await db.exec("UPDATE users SET avatar_base64 = ? WHERE id = ?", [dataUrl, Number(uid)]);
+			await db.table("users").update({ avatar_base64: dataUrl }).where({ field: "id", op: "eq", value: Number(uid) }).run();
 			// 大文件搬运/留档用 blob（v0.1.47）：搬走用 blob.move，别 get + put（字节进 V8）
 			if (meta.key)
 				await blob.del(meta.key);

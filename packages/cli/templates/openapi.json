@@ -43,9 +43,71 @@
 				"tags": [
 					"_platform"
 				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"required": [
+									"source",
+									"name"
+								],
+								"properties": {
+									"source": {
+										"type": "string",
+										"enum": [
+											"cdn",
+											"file"
+										]
+									},
+									"name": {
+										"type": "string"
+									},
+									"version": {
+										"type": [
+											"string",
+											"null"
+										]
+									}
+								}
+							}
+						}
+					}
+				},
 				"responses": {
 					"200": {
-						"description": "OK"
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"properties": {
+												"task_id": {
+													"type": "string"
+												}
+											},
+											"additionalProperties": true
+										}
+									}
+								}
+							}
+						}
 					}
 				}
 			}
@@ -58,9 +120,63 @@
 				"tags": [
 					"_platform"
 				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"required": [
+									"name"
+								],
+								"properties": {
+									"name": {
+										"type": "string"
+									}
+								}
+							}
+						}
+					}
+				},
 				"responses": {
 					"200": {
-						"description": "OK"
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"properties": {
+												"ok": {
+													"type": "boolean"
+												},
+												"name": {
+													"type": "string"
+												},
+												"requested": {
+													"type": "boolean"
+												}
+											},
+											"additionalProperties": true
+										}
+									}
+								}
+							}
+						}
 					}
 				}
 			}
@@ -73,9 +189,44 @@
 				"tags": [
 					"_platform"
 				],
+				"parameters": [
+					{
+						"name": "id",
+						"in": "query",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
 				"responses": {
 					"200": {
-						"description": "OK"
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"additionalProperties": true
+										}
+									}
+								}
+							}
+						}
 					}
 				}
 			}
@@ -88,9 +239,56 @@
 				"tags": [
 					"_platform"
 				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"required": [
+									"name",
+									"enabled"
+								],
+								"properties": {
+									"name": {
+										"type": "string"
+									},
+									"enabled": {
+										"type": "boolean"
+									}
+								}
+							}
+						}
+					}
+				},
 				"responses": {
 					"200": {
-						"description": "OK"
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"additionalProperties": true
+										}
+									}
+								}
+							}
+						}
 					}
 				}
 			}
@@ -105,7 +303,37 @@
 				],
 				"responses": {
 					"200": {
-						"description": "OK"
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"properties": {
+												"apiVersion": {
+													"type": "string"
+												}
+											},
+											"additionalProperties": true
+										}
+									}
+								}
+							}
+						}
 					}
 				}
 			}
@@ -120,7 +348,32 @@
 				],
 				"responses": {
 					"200": {
-						"description": "OK"
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"additionalProperties": true
+										}
+									}
+								}
+							}
+						}
 					}
 				}
 			},
@@ -131,9 +384,52 @@
 				"tags": [
 					"_platform"
 				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"required": [
+									"task_id"
+								],
+								"properties": {
+									"task_id": {
+										"type": "string"
+									}
+								}
+							}
+						}
+					}
+				},
 				"responses": {
 					"200": {
-						"description": "OK"
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"additionalProperties": true
+										}
+									}
+								}
+							}
+						}
 					}
 				}
 			}
@@ -146,9 +442,56 @@
 				"tags": [
 					"_platform"
 				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"required": [
+									"key_id",
+									"public_key"
+								],
+								"properties": {
+									"key_id": {
+										"type": "string"
+									},
+									"public_key": {
+										"type": "string"
+									}
+								}
+							}
+						}
+					}
+				},
 				"responses": {
 					"200": {
-						"description": "OK"
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"additionalProperties": true
+										}
+									}
+								}
+							}
+						}
 					}
 				}
 			},
@@ -159,9 +502,44 @@
 				"tags": [
 					"_platform"
 				],
+				"parameters": [
+					{
+						"name": "key_id",
+						"in": "query",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
 				"responses": {
 					"200": {
-						"description": "OK"
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"additionalProperties": true
+										}
+									}
+								}
+							}
+						}
 					}
 				}
 			}
@@ -176,7 +554,35 @@
 				],
 				"responses": {
 					"200": {
-						"description": "OK"
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "array",
+											"items": {
+												"type": "object",
+												"additionalProperties": true
+											}
+										}
+									}
+								}
+							}
+						}
 					}
 				}
 			}
@@ -189,9 +595,44 @@
 				"tags": [
 					"_platform"
 				],
+				"parameters": [
+					{
+						"name": "name",
+						"in": "query",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
 				"responses": {
 					"200": {
-						"description": "OK"
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"additionalProperties": true
+										}
+									}
+								}
+							}
+						}
 					}
 				}
 			}
@@ -204,9 +645,52 @@
 				"tags": [
 					"_platform"
 				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"required": [
+									"name"
+								],
+								"properties": {
+									"name": {
+										"type": "string"
+									}
+								}
+							}
+						}
+					}
+				},
 				"responses": {
 					"200": {
-						"description": "OK"
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"additionalProperties": true
+										}
+									}
+								}
+							}
+						}
 					}
 				}
 			}
@@ -221,7 +705,35 @@
 				],
 				"responses": {
 					"200": {
-						"description": "OK"
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "array",
+											"items": {
+												"type": "object",
+												"additionalProperties": true
+											}
+										}
+									}
+								}
+							}
+						}
 					}
 				}
 			}

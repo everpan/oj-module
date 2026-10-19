@@ -24,7 +24,7 @@ import {
 } from "../_lifecycle/verify-checks";
 import { getLastReport, persistReport, verifyReportsDirOf } from "../_lifecycle/verify-report";
 import { respond } from "../_shared/respond";
-import { assertSystemAdmin } from "../_shared/service/access";
+import { assertSystemAdmin } from "../_shared/service/infra/access";
 import { journalHeadOf, siteOrigin } from "../_shared/site-facade";
 
 /** 线格式行（与 packages/runtime/src/api/rbac/types.ts 的 SolutionRouteRow 对齐） */
@@ -82,11 +82,11 @@ async function trustItemOf(env: SolutionsEnv, name: string): Promise<VerifyItem 
 /** 深检主体：四项检查编排 + 可信性项 + i18n 依赖项，组装 VerifyReport{ok,checks,advise}（persist 归端点） */
 async function verifyBody(env: SolutionsEnv, name: string): Promise<VerifyReport> {
 	// 已装校验：sys_solution_route 有该 module 行（未装 → 404，端点门之一）
-	const routeRows = await db.query(
-		`select path, module, category, "order", title_key, required_permission, enabled
-		from sys_solution_route where deprecated = 0 and module = ?`,
-		[name],
-	) as Array<Record<string, unknown>>;
+	const routeRows = await db.table("sys_solution_route")
+		.select(["path", "module", "category", "order", "title_key", "required_permission", "enabled"])
+		.where({ field: "deprecated", op: "eq", value: 0 })
+		.where({ field: "module", op: "eq", value: name })
+		.all() as Array<Record<string, unknown>>;
 	if (routeRows.length === 0)
 		throw Object.assign(new Error(`方案「${name}」未安装或无路由注册`), { status: 404 });
 
@@ -97,13 +97,13 @@ async function verifyBody(env: SolutionsEnv, name: string): Promise<VerifyReport
 
 	// ② RBAC 完整性：声明权限点 ↔ sys_permission 实有
 	const declaredPerms = [...new Set(routes.map(r => r.required_permission).filter((p): p is string => p != null))];
-	const permRows = await db.query("select code from sys_permission") as Array<{ code: string }>;
+	const permRows = await db.table("sys_permission").select(["code"]).all() as Array<{ code: string }>;
 	const rbac = diffPermRows(declaredPerms, new Set(permRows.map(r => r.code)));
 
 	// ③ 设置完整性：manifest 声明设置 key ↔ sys_setting 实有（永不含值）
 	const manifest = await readSolutionManifest(env, name);
 	const declaredSettings = manifest ? declaredSettingsOf(manifest.manifest) : [];
-	const settingRows = await db.query("select key from sys_setting where module = ? and deprecated = 0", [name]) as Array<{ key: string }>;
+	const settingRows = await db.table("sys_setting").select(["key"]).where({ field: "module", op: "eq", value: name }).where({ field: "deprecated", op: "eq", value: 0 }).all() as Array<{ key: string }>;
 	const settings = diffSettingRows(declaredSettings, new Set(settingRows.map(r => r.key)));
 
 	// ④ 迁移账本：manifest 迁移目录最高版本 ↔ _oj_migrations 实有（journalHeadOf 复用，DRY）
@@ -167,10 +167,11 @@ export function createSolutionsApi(env: SolutionsEnv) {
 					return;
 				}
 				await respond(async () => {
-					const rows = await db.query(
-						`select path, module, category, "order", title_key, required_permission, enabled
-						from sys_solution_route where deprecated = 0 order by module, "order", path`,
-					) as Array<Record<string, unknown>>;
+					const rows = await db.table("sys_solution_route")
+						.select(["path", "module", "category", "order", "title_key", "required_permission", "enabled"])
+						.where({ field: "deprecated", op: "eq", value: 0 })
+						.orderBy([{ field: "module" }, { field: "order" }, { field: "path" }])
+						.all() as Array<Record<string, unknown>>;
 					return rows.map(rowOf);
 				});
 			},

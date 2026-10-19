@@ -7,11 +7,11 @@
 // 任一步失败返回 {ok:false, message}（与 setEnabled 同纪律）；部分残差由 admin 重试或重装自愈。
 // SQL 全部参数化（与 audit.ts / setEnabled 同纪律，值不拼字符串）。
 
-import type { OpEntry } from "../_shared/service/audit";
+import type { OpEntry } from "../_shared/service/infra/audit";
 import type { StateStore } from "./state";
-import { invalidateAllUsers } from "../_shared/service/access";
-import { auditOp } from "../_shared/service/audit";
-import { uninstallSolution } from "../_shared/service/solution-perms";
+import { uninstallSolution } from "../_shared/service/domain/solution-perms";
+import { invalidateAllUsers } from "../_shared/service/infra/access";
+import { auditOp } from "../_shared/service/infra/audit";
 import { atomicWriteText, fsFace } from "./atomic";
 import { recordHistory } from "./history";
 import { readLock, writeLock } from "./lock";
@@ -20,10 +20,12 @@ import { readLock, writeLock } from "./lock";
 declare const db: {
 	exec: (sql: string, params: unknown[]) => Promise<unknown>
 	query: (sql: string, params?: unknown[]) => Promise<unknown>
+	/** 安全查询构造器（迁移目标；与 query 同返回行数组） */
+	table: (name: string) => any
 	/** 当前方言（sqlite/mysql/pg）；缺省 sqlite。Q4 业务表目录查询方言无关 */
 	dialect?: () => string
 	/** 单一 DB 事务包裹（P3-3）：回调内语句共享一个 BEGIN/COMMIT/ROLLBACK 边界，异常即整段回滚 */
-	tx: <T>(fn: (t: { exec: (sql: string, params?: unknown[]) => Promise<unknown>, query: (sql: string, params?: unknown[]) => Promise<unknown> }) => Promise<T>) => Promise<T>
+	tx: <T>(fn: (t: { exec: (sql: string, params?: unknown[]) => Promise<unknown>, query: (sql: string, params?: unknown[]) => Promise<unknown>, table: (name: string) => any }) => Promise<T>) => Promise<T>
 };
 
 function isObj(v: unknown): v is Record<string, unknown> {
@@ -83,6 +85,7 @@ export function catalogSpec(dialect: string): { existing: string, like: (pat: st
 
 /** 当前库实际存在的表名集合 */
 async function listExistingTables(dialect: string): Promise<Set<string>> {
+	// 保留 db.query：方言相关表目录查询（sqlite_master / information_schema），构造器无法表达
 	const rows = (await db.query(catalogSpec(dialect).existing)) as Array<{ name: string }>;
 	return new Set(rows.map(r => r.name));
 }
@@ -110,6 +113,7 @@ export async function collectRetainedTables(name: string, manifestPath: string):
 	}
 	// ② 前缀兜底：扫描当前库匹配模块前缀的表，覆盖未声明场景
 	try {
+		// 保留 db.query：LIKE ? ESCAPE '!' 转义子句，构造器 like 无 ESCAPE 支持
 		const [sql, params] = catalogSpec(dialect).like(tablePrefixPattern(name));
 		const rows = (await db.query(sql, params)) as Array<{ name: string }>;
 		for (const r of rows)
@@ -155,10 +159,11 @@ export interface UninstallResult {
 /** 计算卸载影响面（角色数 + 持有这些角色的用户数） */
 export async function computeUninstallImpact(input: UninstallInput): Promise<UninstallImpact> {
 	const { name } = input;
-	const roles = await db.query("select name from sys_role where module = ?", [name]) as Array<{ name: string }>;
+	const roles = await db.table("sys_role").select(["name"]).where({ field: "module", op: "eq", value: name }).all() as Array<{ name: string }>;
 	const roleNames = roles.map(r => r.name);
 	let affectedUsers = 0;
 	if (roleNames.length > 0) {
+		// 保留 db.query：IN 占位符经 JS 字符串拼接动态生成（动态 SQL），构造器 in 仅接受静态数组值
 		const rows = await db.query(
 			`select distinct user_id from sys_user_role where role_name in (${roleNames.map(() => "?").join(",")})`,
 			roleNames,
@@ -202,7 +207,7 @@ export async function runUninstall(input: UninstallInput): Promise<UninstallResu
 	// 边界。任一步失败 → 整段回滚（无角色/权限/路由半残），锁不摘（fail-closed：模块仍挂载、可重试或重装自愈）。
 	try {
 		await db.tx(async (t) => {
-			await t.exec("delete from sys_solution_route where module = ?", [name]);
+			await t.table("sys_solution_route").where({ field: "module", op: "eq", value: name }).delete().run();
 			await uninstallSolution(name, t);
 		});
 	}
@@ -213,7 +218,7 @@ export async function runUninstall(input: UninstallInput): Promise<UninstallResu
 
 	// ② sidecar 删条目（patch 值 null = 删除该方案键）
 	try {
-		await input.state.write({ solutions: { [name]: null } });
+		await input.state.write({ solutions: { [name]: null } } as unknown as Parameters<typeof input.state.write>[0]);
 	}
 	catch (e) {
 		audit(false, `sidecar 写失败：${String(e)}`);

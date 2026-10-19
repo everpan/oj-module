@@ -1,7 +1,7 @@
 // 登录限速编排（B5/AC1-26）：auth/login 与 auth/ldap-login 共用的 (IP, username) 双维度守卫 + 失败记账。
 // 状态全在 DB（sys_login_throttle/sys_rate_window，迁移 0009）——oj 每请求重建模块，进程内方案恒失效（§9.3-3）。
-import { auditOp } from "../../_platform/_shared/service/audit";
-import { loginBlocked, loginFailed, loginSucceeded, rateLimit } from "../../_platform/_shared/service/rate";
+import { auditOp } from "../../_platform/_shared/service/infra/audit";
+import { loginBlocked, loginFailed, loginSucceeded, rateLimit } from "../../_platform/_shared/service/infra/rate";
 
 /** 客户端 IP：优先 X-Forwarded-For（反代后），回落 X-Real-IP。 */
 export async function clientIp(): Promise<string> {

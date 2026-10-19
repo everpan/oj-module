@@ -25,7 +25,7 @@ function fail(status: number, message: string): never {
 }
 
 async function setting(key: string): Promise<string> {
-	const rows = await db.query("select value from sys_setting where key = ?", [key]) as Array<{ value: string | null }>;
+	const rows = await db.table("sys_setting").select(["value"]).where({ field: "key", op: "eq", value: key }).all() as Array<{ value: string | null }>;
 	return rows[0]?.value == null ? "" : String(rows[0].value);
 }
 
@@ -64,20 +64,24 @@ export function createLdapLogin(session: Pick<Session, "issueExternal">, gateway
 		// JIT find-or-create：键 "ldap:<uid>"，占位 hash "!ldap" 恒 verify false（低信任来源不接管本地号）；
 		// must_change=0——外来号无本地旧口令，悬挂期唯一可用写端（改密）必失败 = 号 brick（设计 §9.4）
 		const localName = `ldap:${username}`;
-		let rows = await db.query("select id, is_forbidden from users where username = ?", [localName]) as Array<{ id: number, is_forbidden: number }>;
+		let rows = await db.table("users").select(["id", "is_forbidden"]).where({ field: "username", op: "eq", value: localName }).all() as Array<{ id: number, is_forbidden: number }>;
 		if (!rows.length) {
 			try {
-				await db.exec(
-					"insert into users (username, password_hash, source, email, must_change, is_forbidden) values (?, '!ldap', 'ldap', ?, 0, 0)",
-					[localName, firstAttr(entries[0].attrs, emailAttr) || null],
-				);
+				await db.table("users").insert({
+					username: localName,
+					password_hash: "!ldap",
+					source: "ldap",
+					email: firstAttr(entries[0].attrs, emailAttr) || null,
+					must_change: 0,
+					is_forbidden: 0,
+				}).run();
 			}
 			catch (e) {
 				// 唯一约束兜底（预查与插入间的竞态，同 createUser 模式）：撞 username → 回查复用；其余照抛
 				if (!/unique|constraint/i.test(e instanceof Error ? e.message : String(e)))
 					throw e;
 			}
-			rows = await db.query("select id, is_forbidden from users where username = ?", [localName]) as Array<{ id: number, is_forbidden: number }>;
+			rows = await db.table("users").select(["id", "is_forbidden"]).where({ field: "username", op: "eq", value: localName }).all() as Array<{ id: number, is_forbidden: number }>;
 		}
 		if (Number(rows[0].is_forbidden) === 1)
 			fail(403, "account disabled");

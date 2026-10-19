@@ -1,6 +1,6 @@
 // 系统设置（PRD §4.3）+ 登录方式发现（C5/D2）。
 // secret 项读取掩码（***）；market.* 安全项写操作须 superadmin 操作者（D11 边界在 service 按 actor 角色查）。
-import { recordOp } from "./audit";
+import { recordOp } from "../infra/audit";
 
 export interface SettingItem {
 	key: string
@@ -29,7 +29,7 @@ export interface SettingGroup {
 const SUPER_ONLY_GROUPS = new Set(["security"]);
 
 export async function listSettings(): Promise<SettingGroup[]> {
-	const rows = await db.query("select * from sys_setting order by \"group\", key") as Array<Record<string, unknown>>;
+	const rows = await db.table("sys_setting").select(["key", "module", "group", "type", "value", "default_value", "label_key", "group_label_key", "options", "secret", "update_time"]).orderBy([{ field: "group" }, { field: "key" }]).all() as Array<Record<string, unknown>>;
 	const groups = new Map<string, SettingItem[]>();
 	for (const r of rows) {
 		const item: SettingItem = {
@@ -55,22 +55,22 @@ export async function listSettings(): Promise<SettingGroup[]> {
 }
 
 export async function updateSetting(actorId: number, key: string, value: string): Promise<void> {
-	const rows = await db.query("select * from sys_setting where key = ?", [key]) as Array<Record<string, unknown>>;
+	const rows = await db.table("sys_setting").select(["key", "module", "group", "type", "value", "default_value", "label_key", "group_label_key", "options", "secret", "update_time"]).where({ field: "key", op: "eq", value: key }).all() as Array<Record<string, unknown>>;
 	if (!rows.length)
 		throw Object.assign(new Error(`setting not found: ${key}`), { status: 404 });
 	const row = rows[0];
 	if (SUPER_ONLY_GROUPS.has(String(row.group))) {
-		const actorRoles = await db.query("select role_name from sys_user_role where user_id = ?", [actorId]) as Array<{ role_name: string }>;
+		const actorRoles = await db.table("sys_user_role").select(["role_name"]).where({ field: "user_id", op: "eq", value: actorId }).all() as Array<{ role_name: string }>;
 		if (!actorRoles.some(r => r.role_name === "superadmin"))
 			throw Object.assign(new Error("security settings require superadmin"), { status: 403 });
 	}
-	await db.exec("update sys_setting set value = ?, update_time = ? where key = ?", [String(value ?? ""), Date.now(), key]);
+	await db.table("sys_setting").update({ value: String(value ?? ""), update_time: Date.now() }).where({ field: "key", op: "eq", value: key }).run();
 	await recordOp({ action: "setting.update", module: String(row.module), target: key });
 }
 
 /** C5/D2：登录方式发现的数据源——local 恒在，ldap/sso 由设置项开关。 */
 export async function listLoginMethods(): Promise<{ methods: string[] }> {
-	const rows = await db.query("select key, value from sys_setting where key in ('ldap.enabled', 'sso.enabled')") as Array<{ key: string, value: string | null }>;
+	const rows = await db.table("sys_setting").select(["key", "value"]).where({ field: "key", op: "in", value: ["ldap.enabled", "sso.enabled"] }).all() as Array<{ key: string, value: string | null }>;
 	const enabled = (k: string) => rows.find(r => r.key === k)?.value === "1";
 	return { methods: ["local", ...(enabled("ldap.enabled") ? ["ldap" as const] : []), ...(enabled("sso.enabled") ? ["sso" as const] : [])] };
 }

@@ -3,8 +3,8 @@
 // 禁止操作自己（AC1-10 注）；最后 superadmin 兜底（服务端二次防线）；
 // 角色唯一权威源 sys_user_role + 写时失效（AC1-7/D10）；禁用/重置口令级联删 refresh（§3.1）。
 // bcrypt 经注入（Node 侧全局不可 stub，同 session.ts 约定）。
-import { invalidateUser } from "./access";
-import { recordOp } from "./audit";
+import { invalidateUser } from "../infra/access";
+import { recordOp } from "../infra/audit";
 
 export interface UserDeps {
 	bcryptHash: (pw: string) => Promise<string>
@@ -28,12 +28,12 @@ function fail(status: number, message: string): never {
 const RESERVED_PREFIX = /^(?:ldap|sso):/i;
 
 async function rolesOf(uid: number): Promise<string[]> {
-	const rows = await db.query("select role_name from sys_user_role where user_id = ?", [uid]) as Array<{ role_name: string }>;
+	const rows = await db.table("sys_user_role").select(["role_name"]).where({ field: "user_id", op: "eq", value: uid }).all() as Array<{ role_name: string }>;
 	return rows.map(r => r.role_name);
 }
 
 async function usernameOf(uid: number): Promise<string> {
-	const rows = await db.query("select username from users where id = ?", [uid]) as Array<{ username: string }>;
+	const rows = await db.table("users").select(["username"]).where({ field: "id", op: "eq", value: uid }).all() as Array<{ username: string }>;
 	return rows[0] ? String(rows[0].username) : `#${uid}`;
 }
 
@@ -52,10 +52,8 @@ async function assertMembershipAllowed(actorId: number, nextRoles: string[]): Pr
 }
 
 export async function listUsers(): Promise<UserRow[]> {
-	const rows = await db.query(
-		"select id, username, display_name, email, is_forbidden, must_change from users order by username",
-	) as Array<Record<string, unknown>>;
-	const roleRows = await db.query("select user_id, role_name from sys_user_role") as Array<{ user_id: number, role_name: string }>;
+	const rows = await db.table("users").select(["id", "username", "display_name", "email", "is_forbidden", "must_change"]).orderBy([{ field: "username" }]).all() as Array<Record<string, unknown>>;
+	const roleRows = await db.table("sys_user_role").select(["user_id", "role_name"]).all() as Array<{ user_id: number, role_name: string }>;
 	const roleMap = new Map<number, string[]>();
 	for (const r of roleRows)
 		(roleMap.get(Number(r.user_id)) ?? roleMap.set(Number(r.user_id), []).get(Number(r.user_id)))!.push(r.role_name);
@@ -79,14 +77,11 @@ export async function createUser(input: { username: string, password: string, di
 		fail(400, "username prefix reserved for external identity sources");
 	if (!input.password || String(input.password).length < 6)
 		fail(400, "password too short (min 6)");
-	const exists = await db.query("select id from users where username = ?", [username]);
+	const exists = await db.table("users").select(["id"]).where({ field: "username", op: "eq", value: username }).all();
 	if (exists.length)
 		fail(400, "username exists");
 	const hash = await deps.bcryptHash(String(input.password));
-	const rows = await db.query(
-		"insert into users (username, password_hash, display_name, email, must_change) values (?, ?, ?, ?, 1) returning id",
-		[username, hash, input.displayName ?? null, input.email ?? null],
-	) as Array<{ id: number }>;
+	const rows = await db.table("users").insert({ username, password_hash: hash, display_name: input.displayName ?? null, email: input.email ?? null, must_change: 1 }).returning(["id"]).run() as Array<{ id: number }>;
 	const uid = Number(rows[0].id);
 	await recordOp({ action: "user.create", module: "framework", target: username });
 	return uid;
@@ -95,14 +90,13 @@ export async function createUser(input: { username: string, password: string, di
 /** AC1-7：整集替换角色（sys_user_role 权威源），写后失效持有者判权缓存。 */
 export async function updateUserRoles(actorId: number, targetUid: number, roles: string[]): Promise<void> {
 	assertNotSelf(actorId, targetUid);
-	const target = await db.query("select id from users where id = ?", [targetUid]);
+	const target = await db.table("users").select(["id"]).where({ field: "id", op: "eq", value: targetUid }).all();
 	if (!target.length)
 		fail(404, "user not found");
 	const next = [...new Set(roles.map(String))];
 	if (next.length) {
-		const marks = next.map(() => "?").join(",");
-		const known = await db.query(`select name from sys_role where name in (${marks})`, next);
-		const knownSet = new Set(known.map((r: { name: string }) => r.name));
+		const known = await db.table("sys_role").select(["name"]).where({ field: "name", op: "in", value: next }).all();
+		const knownSet = new Set(known.map(r => (r as { name: string }).name));
 		const unknown = next.filter(r => !knownSet.has(r));
 		if (unknown.length)
 			fail(400, `unknown roles: ${unknown.join(", ")}`);
@@ -112,14 +106,14 @@ export async function updateUserRoles(actorId: number, targetUid: number, roles:
 	const beforeSet = new Set(before);
 	// AC1-10 兜底：撤掉最后一个 superadmin 拒绝（现实可达路径已被「禁止操作自己」拦截）
 	if (beforeSet.has("superadmin") && !next.includes("superadmin")) {
-		const supers = await db.query("select count(*) c from sys_user_role where role_name = 'superadmin'") as Array<{ c: number }>;
+		const supers = await db.table("sys_user_role").select([{ fn: "count", as: "c" }]).where({ field: "role_name", op: "eq", value: "superadmin" }).all() as Array<{ c: number }>;
 		if (Number(supers[0].c) <= 1)
 			fail(400, "cannot revoke the last superadmin");
 	}
 	await db.tx(async (t) => {
-		await t.exec("delete from sys_user_role where user_id = ?", [targetUid]);
+		await t.table("sys_user_role").where({ field: "user_id", op: "eq", value: targetUid }).delete().run();
 		for (const role of next)
-			await t.exec("insert into sys_user_role (user_id, role_name) values (?, ?)", [targetUid, role]);
+			await t.table("sys_user_role").insert({ user_id: targetUid, role_name: role }).run();
 	});
 	invalidateUser(Number(targetUid));
 	await recordOp({
@@ -135,13 +129,13 @@ export async function changePasswordByAdmin(actorId: number, targetUid: number, 
 	assertNotSelf(actorId, targetUid);
 	if (!newPassword || String(newPassword).length < 6)
 		fail(400, "password too short (min 6)");
-	const rows = await db.query("select id from users where id = ?", [targetUid]);
+	const rows = await db.table("users").select(["id"]).where({ field: "id", op: "eq", value: targetUid }).all();
 	if (!rows.length)
 		fail(404, "user not found");
 	const hash = await deps.bcryptHash(String(newPassword));
 	await db.tx(async (t) => {
-		await t.exec("update users set password_hash = ?, must_change = 1 where id = ?", [hash, targetUid]);
-		await t.exec("delete from sys_refresh_token where user_id = ?", [targetUid]);
+		await t.table("users").update({ password_hash: hash, must_change: 1 }).where({ field: "id", op: "eq", value: targetUid }).run();
+		await t.table("sys_refresh_token").where({ field: "user_id", op: "eq", value: targetUid }).delete().run();
 	});
 	invalidateUser(Number(targetUid));
 	await recordOp({ action: "user.password.reset", module: "framework", target: await usernameOf(Number(targetUid)) });
@@ -150,13 +144,13 @@ export async function changePasswordByAdmin(actorId: number, targetUid: number, 
 /** B7：禁用/解禁——禁用级联删 refresh + 写时失效。 */
 export async function setForbidden(actorId: number, targetUid: number, forbidden: boolean): Promise<void> {
 	assertNotSelf(actorId, targetUid);
-	const rows = await db.query("select id from users where id = ?", [targetUid]);
+	const rows = await db.table("users").select(["id"]).where({ field: "id", op: "eq", value: targetUid }).all();
 	if (!rows.length)
 		fail(404, "user not found");
 	await db.tx(async (t) => {
-		await t.exec("update users set is_forbidden = ? where id = ?", [forbidden ? 1 : 0, targetUid]);
+		await t.table("users").update({ is_forbidden: forbidden ? 1 : 0 }).where({ field: "id", op: "eq", value: targetUid }).run();
 		if (forbidden)
-			await t.exec("delete from sys_refresh_token where user_id = ?", [targetUid]);
+			await t.table("sys_refresh_token").where({ field: "user_id", op: "eq", value: targetUid }).delete().run();
 	});
 	invalidateUser(Number(targetUid));
 	await recordOp({ action: "user.forbidden.update", module: "framework", target: await usernameOf(Number(targetUid)), detail: { forbidden } });

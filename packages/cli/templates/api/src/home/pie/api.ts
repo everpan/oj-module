@@ -6,10 +6,10 @@
 const pie = {
 	async get() {
 		try {
-			const rows = await db.query(
-				"SELECT category, SUM(value) AS v FROM home_pie GROUP BY category",
-				[],
-			);
+			const rows = await db.table("home_pie").select([
+				"category",
+				{ fn: "sum", field: "value", as: "v" },
+			]).groupBy(["category"]).all();
 			json.ok(rows.map(r => ({ code: String(r.category), value: Number(r.v) })));
 		}
 		catch (e) {

@@ -18,6 +18,7 @@ describe("installDialog 安装进度（BDD）", () => {
 			progress: 100,
 			message: "ok",
 			stages: [],
+			startedAt: 0,
 		};
 		const client = new InMemoryMarketClient({ taskRecord: done, installResult: { task_id: "t1" } });
 		renderWithProviders(<InstallDialog row={row} open onClose={() => {}} />, client);
@@ -37,6 +38,7 @@ describe("installDialog 安装进度（BDD）", () => {
 			message: "verify failed",
 			stages: [{ stage: "verifying", ok: false, message: "bad hash" }],
 			error: { reason: "包校验失败", retryable: false, hintKey: "lifecycle.stage.verifying.hint" },
+			startedAt: 0,
 		};
 		const client = new InMemoryMarketClient({ taskRecord: failed, installResult: { task_id: "t1" } });
 		renderWithProviders(<InstallDialog row={row} open onClose={() => {}} />, client);
@@ -54,6 +56,7 @@ describe("installDialog 安装进度（BDD）", () => {
 			progress: 100,
 			message: "ok",
 			stages: [],
+			startedAt: 0,
 		};
 		const client = new InMemoryMarketClient({ taskRecord: done, installResult: { task_id: "t1" } });
 		const rollbackRow: IndexRow = { name: "alpha", latest: "1.2.0", installed: "1.2.0", enabled: true, upgradable: false };

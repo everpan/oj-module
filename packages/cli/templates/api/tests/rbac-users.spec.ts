@@ -6,7 +6,7 @@
 import type { SessionDeps } from "../src/auth/_shared/session";
 
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
-import { changePasswordByAdmin, createUser, listUsers, setForbidden, updateUserRoles } from "../src/_platform/_shared/service/users";
+import { changePasswordByAdmin, createUser, listUsers, setForbidden, updateUserRoles } from "../src/_platform/_shared/service/domain/users";
 import { createSession } from "../src/auth/_shared/session";
 import { installDb } from "./fixture";
 

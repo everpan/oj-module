@@ -36,7 +36,7 @@ const logout = {
 	// POST /api/auth/logout —— 吊销当前 refresh 串（access 到期前仍有效，语义同旧版）。
 	async post() {
 		const token = String((http.body || {}).refresh_token ?? "");
-		await db.exec("delete from sys_refresh_token where token_hash = ?", [crypto.sha256Hex(token)]);
+		await db.table("sys_refresh_token").where({ field: "token_hash", op: "eq", value: crypto.sha256Hex(token) }).delete().run();
 		json.ok(null);
 	},
 };

@@ -14,7 +14,7 @@
 // setEnabled 四处同写（D12/AC-P1-6）：锁摘除/恢复 + sidecar + sys_solution_route.enabled +
 // modules.json enabled；启用从 sidecar 摘除前记录恢复版本。db 为 isolate 全局（同模板 service 层）。
 
-import type { OpEntry } from "../_shared/service/audit";
+import type { OpEntry } from "../_shared/service/infra/audit";
 import type { TaskLock } from "./lock";
 import type { StateStore } from "./state";
 import type { FetchFace } from "./steps/download";
@@ -22,7 +22,7 @@ import type { ExecFace } from "./steps/extract";
 import type { SettingDecl, SolutionDecl, SolutionSnapshot } from "./steps/register";
 import type { ReloadFace } from "./steps/reload";
 import type { InstallContext, InstallStage, StageResult, TaskRecord, TaskStatus } from "./types";
-import { auditOp } from "../_shared/service/audit";
+import { auditOp } from "../_shared/service/infra/audit";
 import { atomicWriteText, fsFace, randomId } from "./atomic";
 import { recordHistory } from "./history";
 import { acquireTaskLock, commitLockEntry, readLock, writeLock } from "./lock";
@@ -40,7 +40,7 @@ import { appendAnonymousPaths, bumpInstallSeq } from "./text-edit";
 import { createTrustStore } from "./trust";
 
 // db/http 为 oj isolate 注入全局（同模板 service 层惯例，register.ts/audit.ts 同款；测试由夹具装 globalThis.db）
-declare const db: { exec: (sql: string, params: unknown[]) => Promise<unknown> };
+declare const db: { exec: (sql: string, params: unknown[]) => Promise<unknown>, table: (name: string) => any };
 
 export type { InstallContext, InstallStage, StageResult, TaskRecord, TaskStatus };
 
@@ -1039,7 +1039,7 @@ export async function setEnabled(input: SetEnabledInput): Promise<{ ok: boolean,
 	}
 	// ③ route 表 enabled（生命周期开关，非注册内容直写，D10 不适用）
 	try {
-		await db.exec("update sys_solution_route set enabled = ? where module = ?", [enabled ? 1 : 0, name]);
+		await db.table("sys_solution_route").update({ enabled: enabled ? 1 : 0 }).where({ field: "module", op: "eq", value: name }).run();
 	}
 	catch (e) {
 		audit(false, `route enabled 写失败：${String(e)}`);

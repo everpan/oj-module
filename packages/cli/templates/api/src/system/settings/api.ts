@@ -1,7 +1,7 @@
 import { respond } from "../../_platform/_shared/respond";
+import { listSettings, updateSetting } from "../../_platform/_shared/service/domain/settings";
 // /api/system/settings —— 系统设置（PRD §4.3）：GET 按组列出（secret 掩码），PUT 写值（写审计）。
-import { assertSystemAdmin } from "../../_platform/_shared/service/access";
-import { listSettings, updateSetting } from "../../_platform/_shared/service/settings";
+import { assertSystemAdmin } from "../../_platform/_shared/service/infra/access";
 
 const settingItemSchema = {
 	type: "object",

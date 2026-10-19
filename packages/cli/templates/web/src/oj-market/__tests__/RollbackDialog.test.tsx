@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { RollbackDialog } from "../components/RollbackDialog";
 import { InMemoryMarketClient } from "./marketClient.fake";
 import { renderWithProviders } from "./render";
+import "@testing-library/jest-dom/vitest";
 
 const row: IndexRow = { name: "alpha", latest: "1.2.0", installed: "1.2.0", enabled: true, upgradable: false };
 

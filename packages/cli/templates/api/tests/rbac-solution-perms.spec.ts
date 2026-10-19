@@ -4,7 +4,7 @@
 /* eslint-disable test/prefer-lowercase-title -- AC 编号是验收锚点，保留大写 */
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 
-import { uninstallSolution, upsertSolutionPerms } from "../src/_platform/_shared/service/solution-perms";
+import { uninstallSolution, upsertSolutionPerms } from "../src/_platform/_shared/service/domain/solution-perms";
 import { installDb } from "./fixture";
 
 let dbo: ReturnType<typeof installDb>;

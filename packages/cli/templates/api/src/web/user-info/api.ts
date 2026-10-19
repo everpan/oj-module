@@ -10,16 +10,13 @@ export default {
 			return;
 		}
 		try {
-			const rows = await db.query(
-				"SELECT id, username, display_name, avatar_base64, email, must_change FROM users WHERE id = ?",
-				[Number(uid)],
-			);
+			const rows = await db.table("users").select(["id", "username", "display_name", "avatar_base64", "email", "must_change"]).where({ field: "id", op: "eq", value: Number(uid) }).all();
 			const row = rows[0];
 			if (!row) {
 				json.fail(404, "user not found");
 				return;
 			}
-			const roleRows = await db.query("SELECT role_name FROM sys_user_role WHERE user_id = ?", [Number(uid)]) as Array<{ role_name: string }>;
+			const roleRows = await db.table("sys_user_role").select(["role_name"]).where({ field: "user_id", op: "eq", value: Number(uid) }).all() as Array<{ role_name: string }>;
 			json.ok({
 				id: String(row.id),
 				avatar: String(row.avatar_base64 ?? ""),

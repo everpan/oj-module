@@ -20,15 +20,12 @@ interface AccessSnapshot {
 const cache = new Map<number, AccessSnapshot>();
 
 async function loadSnapshot(userId: number): Promise<AccessSnapshot> {
-	const userRows = await db.query("select is_forbidden, must_change from users where id = ?", [userId]);
-	const roleRows = await db.query("select role_name from sys_user_role where user_id = ?", [userId]);
-	const roles = roleRows.map((r: { role_name: string }) => r.role_name);
+	const userRows = await db.table("users").select(["is_forbidden", "must_change"]).where({ field: "id", op: "eq", value: userId }).all();
+	const roleRows = await db.table("sys_user_role").select(["role_name"]).where({ field: "user_id", op: "eq", value: userId }).all();
+	const roles = roleRows.map(r => (r as { role_name: string }).role_name);
 	// 只捞该用户角色的绑定（参数化 IN，三方言纪律）；deprecated 不过滤（判权职责，§5）
 	const bindRows = roles.length
-		? await db.query(
-			`select role_name, permission_code from sys_role_permission where role_name in (${roles.map(() => "?").join(",")})`,
-			roles,
-		)
+		? await db.table("sys_role_permission").select(["role_name", "permission_code"]).where({ field: "role_name", op: "in", value: roles }).all()
 		: [];
 	const bindings: Record<string, string[]> = {};
 	for (const r of bindRows as { role_name: string, permission_code: string }[])
@@ -69,7 +66,7 @@ export async function currentAccess(): Promise<AccessSnapshot> {
 	const uid = http.user?.id;
 	if (uid == null)
 		deny();
-	const snap = await snapshot(uid);
+	const snap = await snapshot(Number(uid));
 	if (snap.forbidden)
 		deny();
 	if (snap.mustChange)

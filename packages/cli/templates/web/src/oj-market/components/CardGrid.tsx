@@ -11,6 +11,8 @@ export interface CardGridProps {
 	error?: string | null
 	rows: IndexRow[]
 	busyName?: string | null
+	/** 是否具备管理权限（superadmin）；透传给 CardItem 以禁用写操作。 */
+	canManage?: boolean
 	onInstall: (row: IndexRow) => void
 	onEnableToggle: (row: IndexRow) => void
 	onDetails: (row: IndexRow) => void
@@ -23,7 +25,7 @@ export interface CardGridProps {
 /** 卡片网格容器：三态（加载/空/错误）+ 正常网格，DRY 渲染交由 CardItem */
 export function CardGrid(props: CardGridProps) {
 	const { t } = useTranslation();
-	const { loading, error, rows, busyName, onInstall, onEnableToggle, onDetails, onHistory, onUninstall, onRollback, onRetry } = props;
+	const { loading, error, rows, busyName, canManage, onInstall, onEnableToggle, onDetails, onHistory, onUninstall, onRollback, onRetry } = props;
 
 	if (loading) {
 		return (
@@ -63,6 +65,7 @@ export function CardGrid(props: CardGridProps) {
 					key={row.name}
 					row={row}
 					busy={busyName === row.name}
+					canManage={canManage}
 					onInstall={onInstall}
 					onEnableToggle={onEnableToggle}
 					onDetails={onDetails}

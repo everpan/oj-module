@@ -27,7 +27,7 @@ import { validateTarListing } from "../_lifecycle/tgz-guard";
 import { createTrustStore } from "../_lifecycle/trust";
 import { computeUninstallImpact, runUninstall } from "../_lifecycle/uninstall";
 import { respond } from "../_shared/respond";
-import { assertSuperAdmin } from "../_shared/service/access";
+import { assertSuperAdmin } from "../_shared/service/infra/access";
 import { journalHeadOf, siteOrigin, withSiteOrigin } from "../_shared/site-facade";
 import { BOOTSTRAP_KEY, seedBootstrapKey } from "./bootstrap";
 
@@ -182,7 +182,7 @@ async function cdnBaseOf(env: MarketEnv): Promise<string | null> {
 		return injected === "" ? null : injected.replace(/\/+$/, "");
 	}
 	try {
-		const rows = await db.query("select value, default_value from sys_setting where key = ?", ["framework.market_cdn_url"]) as Array<Record<string, unknown>>;
+		const rows = await db.table("sys_setting").select(["value", "default_value"]).where({ field: "key", op: "eq", value: "framework.market_cdn_url" }).all() as Array<Record<string, unknown>>;
 		const v = String(rows[0]?.value ?? rows[0]?.default_value ?? "").trim().replace(/\/+$/, "");
 		return v === "" ? null : v;
 	}
@@ -263,7 +263,7 @@ async function operatorOf(): Promise<string | null> {
 		return null;
 	}
 	try {
-		const u = await db.query("select username from users where id = ?", [uid]) as Array<{ username: string }>;
+		const u = await db.table("users").select(["username"]).where({ field: "id", op: "eq", value: uid }).all() as Array<{ username: string }>;
 		return u[0]?.username ?? null;
 	}
 	catch {
@@ -274,7 +274,7 @@ async function operatorOf(): Promise<string | null> {
 /** sys_solution_route enabled（reconcile route 一致性面；无行/查询失败 → null 不猜） */
 async function routeEnabledOf(name: string): Promise<boolean | null> {
 	try {
-		const rows = await db.query("select enabled from sys_solution_route where module = ? and deprecated = 0 limit 1", [name]) as Array<{ enabled: unknown }>;
+		const rows = await db.table("sys_solution_route").select(["enabled"]).where({ field: "module", op: "eq", value: name }).where({ field: "deprecated", op: "eq", value: 0 }).limit(1).all() as Array<{ enabled: unknown }>;
 		if (rows.length === 0) {
 			return null;
 		}
@@ -499,7 +499,7 @@ async function installBody(env: MarketEnv): Promise<{ task_id: string }> {
 			manifest,
 			name,
 			version,
-			operator: await operatorOf(),
+			operator: (await operatorOf()) ?? undefined,
 			state: await createStateStore(env.statePath),
 			archiveUrl,
 			sharedRoot: env.sharedRoot,
@@ -564,10 +564,13 @@ interface IndexRow {
 /** 最近一次安装操作人（回落 market_history 行；表不存在/查询失败/无行 → null，观测面不阻断索引） */
 async function lastInstallOperatorOf(name: string): Promise<string | null> {
 	try {
-		const rows = await db.query(
-			"select operator from market_history where solution = ? and action = 'install' order by created_at desc, rowid desc limit 1",
-			[name],
-		) as Array<{ operator: unknown }>;
+		const rows = await db.table("market_history")
+			.select(["operator"])
+			.where({ field: "solution", op: "eq", value: name })
+			.where({ field: "action", op: "eq", value: "install" })
+			.orderBy([{ field: "created_at", dir: "desc" }, { field: "rowid", dir: "desc" }])
+			.limit(1)
+			.all() as Array<{ operator: unknown }>;
 		const op = rows[0]?.operator;
 		return typeof op === "string" ? op : null;
 	}
@@ -728,7 +731,7 @@ export function createMarketApi(env: MarketEnv) {
 						state: await createStateStore(env.statePath),
 						modulesJsonPath: env.modulesJsonPath,
 						trustPath: env.trustPath,
-						operator: await operatorOf(),
+						operator: (await operatorOf()) ?? undefined,
 					});
 				});
 			},
@@ -851,7 +854,7 @@ export function createMarketApi(env: MarketEnv) {
 						lockPath: `${env.sharedRoot}/manifests.yaml`,
 						state: await createStateStore(env.statePath),
 						modulesJsonPath: env.modulesJsonPath,
-						operator: await operatorOf(),
+						operator: (await operatorOf()) ?? undefined,
 					});
 					// P3-11 宿主打磨：方案已不存在 = 资源缺失语义 → 404（非 200 {ok:false}）；
 					// 其余领域拒绝（空锁拒启/级联失败等）维持 200 {ok:false} 人话在 message。
@@ -869,10 +872,10 @@ export function createMarketApi(env: MarketEnv) {
 		"history": {
 			async get() {
 				await respond(async () => {
-					const rows = (await db.query(
-						"select solution, version, action, status, operator, message, created_at from market_history order by created_at desc",
-						[],
-					)) as Array<Record<string, unknown>>;
+					const rows = (await db.table("market_history")
+						.select(["solution", "version", "action", "status", "operator", "message", "created_at"])
+						.orderBy([{ field: "created_at", dir: "desc" }])
+						.all()) as Array<Record<string, unknown>>;
 					return rows ?? [];
 				});
 			},
@@ -880,4 +883,39 @@ export function createMarketApi(env: MarketEnv) {
 	};
 }
 
-export default createMarketApi(marketEnv());
+const marketApi = createMarketApi(marketEnv());
+
+// —— 契约 I/O（schema-first，oj v0.1.72+）：`.schema` 定义入参（body/query）、`.response`
+// 定义出参，供 oj 在 handler 运行前校验 + 生成式 __client 推导有类型函数（与 notification/api.ts
+// 同口径）。出参一律 additionalProperties:true 宽松，不约束运行期返回形状；入参对齐 handler 实际
+// 收口（source 枚举 / 必填项），oj 先校验、handler 仍自校验（双保险，不放松运行期语义）。
+marketApi.install.post.schema = {
+	body: {
+		type: "object",
+		required: ["source", "name"],
+		properties: { source: { type: "string", enum: ["cdn", "file"] }, name: { type: "string" }, version: { type: ["string", "null"] } },
+	},
+};
+marketApi.install.post.response = { type: "object", properties: { task_id: { type: "string" } }, additionalProperties: true };
+marketApi.install.cancel.post.schema = { body: { type: "object", required: ["name"], properties: { name: { type: "string" } } } };
+marketApi.install.cancel.post.response = { type: "object", properties: { ok: { type: "boolean" }, name: { type: "string" }, requested: { type: "boolean" } }, additionalProperties: true };
+marketApi.task.get.schema = { query: { type: "object", required: ["id"], properties: { id: { type: "string" } } } };
+marketApi.task.get.response = { type: "object", additionalProperties: true };
+marketApi.enable.post.schema = { body: { type: "object", required: ["name", "enabled"], properties: { name: { type: "string" }, enabled: { type: "boolean" } } } };
+marketApi.enable.post.response = { type: "object", additionalProperties: true };
+marketApi.meta.get.response = { type: "object", properties: { apiVersion: { type: "string" } }, additionalProperties: true };
+marketApi.trust.get.response = { type: "object", additionalProperties: true };
+marketApi.trust.post.schema = { body: { type: "object", required: ["task_id"], properties: { task_id: { type: "string" } } } };
+marketApi.trust.post.response = { type: "object", additionalProperties: true };
+marketApi.trust.key.post.schema = { body: { type: "object", required: ["key_id", "public_key"], properties: { key_id: { type: "string" }, public_key: { type: "string" } } } };
+marketApi.trust.key.post.response = { type: "object", additionalProperties: true };
+marketApi.trust.key.del.schema = { query: { type: "object", required: ["key_id"], properties: { key_id: { type: "string" } } } };
+marketApi.trust.key.del.response = { type: "object", additionalProperties: true };
+marketApi.index.get.response = { type: "array", items: { type: "object", additionalProperties: true } };
+marketApi["uninstall-impact"].get.schema = { query: { type: "object", required: ["name"], properties: { name: { type: "string" } } } };
+marketApi["uninstall-impact"].get.response = { type: "object", additionalProperties: true };
+marketApi.uninstall.post.schema = { body: { type: "object", required: ["name"], properties: { name: { type: "string" } } } };
+marketApi.uninstall.post.response = { type: "object", additionalProperties: true };
+marketApi.history.get.response = { type: "array", items: { type: "object", additionalProperties: true } };
+
+export default marketApi;

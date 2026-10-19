@@ -206,12 +206,12 @@ export async function diffWebIntegrity(
 		const bytes = await fsFace().readFile(`${distRoot}/${me.entry}`);
 		const actual = `sha384-${sha384(new Uint8Array(bytes))}`;
 		if (actual !== me.integrity) {
-			items.push({ id: "web", severity: "error", subject: me.entry, advise_key: "lifecycle.verify.web.integrity_mismatch" });
+			items.push({ id: "web", severity: "error", subject: me.entry ?? "*", advise_key: "lifecycle.verify.web.integrity_mismatch" });
 		}
 	}
 	catch {
 		// 资产缺失（web 入口未落位或路径变更）——info 非阻断（路由可达性已另测）
-		items.push({ id: "web", severity: "info", subject: me.entry, advise_key: "lifecycle.verify.web.asset_missing" });
+		items.push({ id: "web", severity: "info", subject: me.entry ?? "*", advise_key: "lifecycle.verify.web.asset_missing" });
 	}
 	return items;
 }

@@ -6,6 +6,8 @@ import { useTranslation } from "react-i18next";
 export interface CardItemProps {
 	row: IndexRow
 	busy?: boolean
+	/** 是否具备管理权限（superadmin）。false 时禁用一切写操作（安装/升级/启停/回滚/卸载），仅保留浏览。 */
+	canManage?: boolean
 	onInstall: (row: IndexRow) => void
 	onEnableToggle: (row: IndexRow) => void
 	onDetails: (row: IndexRow) => void
@@ -19,12 +21,14 @@ export interface CardItemProps {
  * 双版本展示（P1-15b）：已装且可升级时并列「已装 installed → 最新 latest」（upgradable 对比），
  * 否则单版本。已装方案提供回滚入口（RollbackDialog 选旧版降级安装）。
  */
-export function CardItem({ row, busy, onInstall, onEnableToggle, onDetails, onHistory, onUninstall, onRollback }: CardItemProps) {
+export function CardItem({ row, busy, canManage = true, onInstall, onEnableToggle, onDetails, onHistory, onUninstall, onRollback }: CardItemProps) {
 	const { t } = useTranslation();
 	const installed = row.installed != null;
 	const enabled = row.enabled === true;
 	const disabled = row.enabled === false;
 	const dualVersion = installed && row.upgradable && row.latest != null;
+	// 非 superadmin：所有写操作禁用并给出原因提示，只读（详情/历史）不受影响。
+	const manageTip = canManage ? undefined : t("oj-market:card:superOnly");
 
 	return (
 		<Card
@@ -72,21 +76,21 @@ export function CardItem({ row, busy, onInstall, onEnableToggle, onDetails, onHi
 						)}
 			</div>
 			<Space wrap>
-				<Button type="primary" size="small" loading={busy} onClick={() => onInstall(row)} disabled={busy}>
+				<Button type="primary" size="small" loading={busy} onClick={() => onInstall(row)} disabled={busy || !canManage} title={manageTip}>
 					{installed ? t("oj-market:card:upgrade") : t("oj-market:card:install")}
 				</Button>
 				{installed && (
-					<Button size="small" onClick={() => onEnableToggle(row)} disabled={busy}>
+					<Button size="small" onClick={() => onEnableToggle(row)} disabled={busy || !canManage} title={manageTip}>
 						{enabled ? t("oj-market:card:disable") : t("oj-market:card:enable")}
 					</Button>
 				)}
 				{installed && (
-					<Button size="small" onClick={() => onRollback(row)} disabled={busy} data-testid={`card-rollback-${row.name}`}>
+					<Button size="small" onClick={() => onRollback(row)} disabled={busy || !canManage} title={manageTip} data-testid={`card-rollback-${row.name}`}>
 						{t("oj-market:card:rollback")}
 					</Button>
 				)}
 				{installed && (
-					<Button size="small" danger onClick={() => onUninstall(row)} disabled={busy}>
+					<Button size="small" danger onClick={() => onUninstall(row)} disabled={busy || !canManage} title={manageTip}>
 						{t("oj-market:card:uninstall")}
 					</Button>
 				)}

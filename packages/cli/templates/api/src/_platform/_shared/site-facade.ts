@@ -34,7 +34,7 @@ export function withSiteOrigin(fetch: FetchInitFace): FetchFace {
 /** 站点迁移账本 head（oj journal 真源 `_oj_migrations`；表缺失/查询失败 → null = 跳过禁降版判定，不猜） */
 export async function journalHeadOf(name: string): Promise<number | bigint | null> {
 	try {
-		const rows = await db.query("select max(version) as head from _oj_migrations where module = ?", [name]) as Array<{ head: unknown }>;
+		const rows = await db.table("_oj_migrations").select([{ fn: "max", field: "version", as: "head" }]).where({ field: "module", op: "eq", value: name }).all() as Array<{ head: unknown }>;
 		const head = rows[0]?.head;
 		return head == null ? null : Number(head);
 	}

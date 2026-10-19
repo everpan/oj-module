@@ -3,7 +3,7 @@
 // （真实迁移建表 / 运行时全局 db 同面 / 事务往返）——S0 spike 的「一条真实判权 AC + 形态证明」。
 import { beforeAll, describe, expect, it } from "vitest";
 
-import { decideAccess, moduleOf } from "../src/_platform/_shared/service/guard";
+import { decideAccess, moduleOf } from "../src/_platform/_shared/service/infra/guard";
 import { ADMIN, installDb } from "./fixture";
 
 const as = (roles: string[], bindings: Record<string, string[]> = {}) => ({ roles, bindings });

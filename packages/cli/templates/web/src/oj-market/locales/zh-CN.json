@@ -37,7 +37,8 @@
 		"enable": "启用",
 		"disable": "停用",
 		"upgrade": "升级",
-		"rollback": "回滚"
+		"rollback": "回滚",
+		"superOnly": "仅超级管理员可安装、升级、回滚、启停或卸载方案；其余用户仅可浏览。"
 	},
 	"task": {
 		"installing": "安装中",

@@ -4,7 +4,9 @@ import { useMarketClient } from "../api/context";
 import { poll } from "../utils/poll";
 
 /** 加载态三态（空态/加载/错误）统一建模，便于组件 DRY 渲染 */
-export type LoadState<T> = { status: "loading" } | { status: "ok", data: T } | { status: "error", error: string };
+// 注：TS 6 收紧联合类型属性访问——属性须出现在所有成员上方可通过 .data 访问，
+// 故非 ok 变体也声明 data?: undefined（ok 变体 data: T，访问结果为 T | undefined）。
+export type LoadState<T> = { status: "loading", data?: undefined } | { status: "ok", data: T } | { status: "error", error: string, data?: undefined };
 
 /** 卡片索引加载（含重试）；消费 GET /_platform/market/index */
 export function useMarketIndex(): LoadState<IndexRow[]> & { retry: () => void } {
@@ -58,6 +60,7 @@ export function useInstallTask(taskId: string | null): {
 				progress: 0,
 				message: e instanceof Error ? e.message : String(e),
 				stages: [],
+				startedAt: 0,
 			}))
 			.finally(() => active && setDone(true));
 		return () => {
