@@ -5,6 +5,18 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 设计依据、迁移记录与陷阱清单见 [`docs/prd/202609110947-oj-module-two-package-consolidation-design.md`](docs/prd/202609110947-oj-module-two-package-consolidation-design.md)。
 
+## [0.2.9] - 2026-10-20
+
+双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步升 **0.2.9**。
+
+### Changed
+
+- **模板手写 SQL 改写为 oj 0.1.81 构造器**：`todos`/`uninstall`/`contacts`/`session`/`notify` 由 `db.query`/`db.exec` 改为 `db.table()` 构造器（`contains`/`whereIf`/`count` 聚合/`union`/`join`/`lit`/`as`/`select("*")`/`orIgnore`），多库可移植性提升；`templates/global.d.ts` 补齐 v0.1.81 构造器方法类型。
+
+### Fixed
+
+- **`notifications.markAllRead` 在 sqlite 上 500**：原 `db.table(...).fromSelect(...).orIgnore()` 在 sqlite 不受支持（`orIgnore` 的 upsert 子句只跟随 VALUES，不支持 SELECT 源）。回退为裸 `INSERT OR IGNORE ... SELECT`（sqlite `OR IGNORE` / pg `ON CONFLICT DO NOTHING` / mysql `ON DUPLICATE KEY` 三方言通用）。注意 `orIgnore` + `fromSelect` 组合在 sqlite 上不可用。
+
 ## [0.2.8] - 2026-10-19
 
 双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步升 **0.2.8**。
