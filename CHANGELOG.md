@@ -5,6 +5,25 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 设计依据、迁移记录与陷阱清单见 [`docs/prd/202609110947-oj-module-two-package-consolidation-design.md`](docs/prd/202609110947-oj-module-two-package-consolidation-design.md)。
 
+## [0.2.10] - 2026-10-20
+
+双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步升 **0.2.10**。
+
+### Added
+
+- **模板 L1 测试通道（`oj test` 真执行面）**：`api/tests/l1-builder.test.ts` 5 用例（匿名登录方法 / 构造器三形态 / 通知 join+UNION+lit 真渲染），连跑三次幂等；配套 fixtures 专用账号 `api/src/_platform/fixtures/l1-test-user.sql`（`l1tester`，`must_change=0`，仅 `oj test` 灌入、不进 release）——seed admin 是 `must_change=1` 生产语义（判权端点恒 403）且口令随用户首登改密漂移，L1 不能绑它。
+- **`ojm init` 分发 oj 0.1.82 两份新专题指南**：`sql-builder-guide.md` / `oj-test-guide.md` 随 devkit 进 `.claude/skills/oj-api-dev/`（有则拷；旧版 oj 的 devkit 缺这两个文件时容忍跳过，不影响 ojm 运行）。
+
+### Fixed
+
+- **`oplog` 可选过滤 `""` 归一化 bug**：过滤缺失值被归一成空串，而构造器 `whereIf` 的跳过集是 `undefined/null/false/[]`——`""` 是合法值会照发 `action = ''` 把结果过滤空（与旧 `if (filter.x)` 语义相悖）；修为归一化 `undefined` 走跳过集。
+
+### Changed
+
+- **模板分页工厂化**：`query.ts` 新增 `pagedFactory`（条件写一份，count 走聚合不受 LIMIT 钳制、list 复用同条件），oplog / rbac-settings 等查询切换；模板 L2 同步刷新。
+- **devkit 文档树合并（仓库结构 + 随 init 分发的 README）**：oj 侧 devkit 快照（10 文件）由 `docs/oj-api-dev/` 整体迁入 `docs/devkit/oj-api-dev/`，旧目录删除；README 重写为唯一入口（两侧文件索引 + 两条分发链 + 快照刷新口径）；`sync-devkit.mjs` 显式跳过快照子目录（发货内容不变：仍只有 ojm 侧 5 个文件）；`devkit-docs.test.ts` 加结构守卫（顶层 5 文件 / 快照 10 文件 / 零旧路径引用）。
+- **devkit 同步上游 oj 0.1.82**：构造器能力缺口 PR 文档闭环（7 项诉求全闭 + 1 条误报订正）；playbook 补 0.1.82 验证基线与 §9.1（L1/L2 边界与契约坑速查）。
+
 ## [0.2.9] - 2026-10-20
 
 双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步升 **0.2.9**。
