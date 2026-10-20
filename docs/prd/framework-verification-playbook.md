@@ -4,7 +4,19 @@
 > **配套**：[`framework-development-guide.md`](./framework-development-guide.md)（原理）、[`oj-fullstack-tutorial.md`](./oj-fullstack-tutorial.md)（跟做）。
 > **原则**：每一步都有**可判定通过/失败的检查点**，不要只看命令退出码，要核对产物。
 
-### 最近一次基线（2026-10-20 复跑，oj 0.1.82；范围=0.1.81/0.1.82 构造器迁移收尾 + L1 通道建立）
+### 最近一次基线（2026-10-20 第二次复跑，oj 0.1.82 / cli+runtime 0.2.10 打包态；devkit 文档树合并 + 0.2.10 发布前演练）
+
+| 项 | 值 |
+| --- | --- |
+| 日期 | 2026-10-20（当日第二次，补上首轮未跑的打包态 e2e 全链路） |
+| 框架包版本 | `cli`/`runtime` `0.2.10`（**打包态**：§0.5 双包 pack → 解包直跑 `cli-pkg/bin/ojm.mjs`；双包均未发版，安装须 file: tgz + pnpm overrides，见发现 ③） |
+| oj | `0.1.82`（npm `@oj-bin/oj` latest，init 自动下载、探针无告警，无需旁路 1） |
+| 验证动机 | ① devkit 文档树合并（`docs/devkit/` 唯一入口 + `docs/devkit/oj-api-dev/` 快照迁入、旧 `docs/oj-api-dev/` 删除）后验证 init 分发不受影响；② 0.2.10 发布前按 §0.5 打包形态跑 §1–§7 全链路 |
+| 结果 | **全链路通过（§0.5–§7）**：§0.5 双包 pack（cli 5.6MB / runtime 331KB）+ cli-pkg 解装（`ojm --version` 0.2.10，devkit 恰 5 文件、子目录跳过）→ `ojm init` 全检查点（目录树齐全、`.gitignore` 在包内且 `templates/.gitignore` 不在、openapi 新约定全中、devDeps 全家 + `typescript@~6.0.3`、`__client` 预生成、无 `contract.ts`/`routes.json`/`openapi.yaml`）→ 依赖安装（file: tgz + overrides + `--offline` 2s）→ oj 探针通过（无构建机路径泄漏、JsRuntime 冒烟 OK）→ books 模块（后端 manifest/schema/migration/seed + list/create 两 handler，全构造器 + `.schema`/平级 `.response`；前端 entry/pages/双 locale）→ `oj openapi` + `ojm api` + `--check` 0 error / 0 warn（`BooksListGetData` 解析为 `z.array(z.object({id,title,author}))`，非 `unknown`）→ `ojm build`（后端 8 模块 + 前端 8 模块含 books@0.1.0，见发现 ④）→ `tsc` **0 error** → `ojm dev`：`seed ok module="books"`、`routes: 52 method-row(s), 25 api file(s)`、`input contracts: 37`、登录 code:0、过滤命中、新增 `data.id`、缺字段 400（`.schema` 拒收）、无 token 401、通知兜底数组、5174 根 200 + importmap runtime + books/login entry.js 200 → `ojm preview`（**单服务 9778**，release/js）：migrate 门禁过、API 链复跑全对、**带 dist 三腿 `--check` 0/0** |
+| 本次发现并处置 | ① **devkit 上游引用 1 条**：npm 0.1.82 二进制的 `api-manual.md:226` 引用 `docs/migration.md`（上游 oj 仓内部路径）——0.1.80 同样存在（grep -c 1），上游长期缺口非本轮回归；ojm 侧 5 文件零命中。② **npm 0.1.82 devkit 只有 9 文件**（缺 `oj-test-guide.md`；本机 `~/.local/share/oj` 本地构建 10 文件领先 npm 发布）——init 对缺失文件优雅跳过，行为正确；文档版本对照：0.1.80=8 文件、0.1.82 npm=9、0.1.82 本地=10。③ **打包态双包依赖死结**：pack 时 cli tarball 内 manifest 被改写为 `@oj-module/runtime@0.2.10` 精确版而 npm latest 停 0.2.8——解包后须 sed cli-pkg 依赖为 `file:<runtime tgz>`；工程安装时因 cli 也来自 tarball，还须在工程 `package.json` 加 `pnpm.overrides` 把整棵树的 `@oj-module/runtime` 统一改写到本地 tgz（单点 add 不够）。④ **`web.config.ts` 是显式模块清单**：books 前端目录建好后必须在 `allModules` 加一行 `{ name: "books", entry: ... }` 才进 modules.json（首轮构建 books 缺席即此因，登记后正常）——已补进 §5 步骤。⑤ 首次带 dist `--check`（preview 刚启动即跑）报一次性 `MODULE_NOT_FOUND`，未复现（随后连跑两次 0 error / 0 warn）；疑与 preview 进程瞬时状态相关，记录备查 |
+| 与上一基线差异 | 上一基线（同日首轮）因模板契约面无改动未跑打包态 e2e；本轮补全 §0.5–§7 且发现 ③④ 两条打包态/清单类新知；devkit 分发行为与合并前逐字节一致（init 分发 5 文件） |
+
+### 上一次基线（2026-10-20 首次复跑，oj 0.1.82；范围=0.1.81/0.1.82 构造器迁移收尾 + L1 通道建立）
 
 | 项 | 值 |
 | --- | --- |
@@ -269,8 +281,9 @@ node "$CLI_PKG/bin/ojm.mjs" api --check
 
 ## 5. 前端模块
 
-补 `web/src/books/{entry.ts,locales/*,pages/index.tsx}` 并注册进
-`web.config.ts`（照抄 tutorial 第 5 节），然后：
+补 `web/src/books/{entry.ts,locales/*,pages/index.tsx}` 并**登记进 `web.config.ts` 的 `allModules`**
+（加一行 `{ name: "books", entry: "web/src/books/entry.ts" }`——该清单是显式的，漏登记则
+build 静默跳过 books、modules.json 里不出现，2026-10-20 实踩），然后：
 
 ```bash
 pnpm exec ojm build
@@ -279,7 +292,7 @@ pnpm exec tsc --noEmit -p tsconfig.json     # typecheck
 
 **检查点**
 
-- [ ] `ojm build`：`oj build` 列出全部后端模块（`_platform/auth/books/notification/notifications/personal-center/web`），其中 books `2 api file(s)`、notifications `1 api file(s)`
+- [ ] `ojm build`：`oj build` 列出全部后端模块（0.2.10 实测 8 个：`_platform/auth/books/notification/notifications/personal-center/system/web`），其中 books `2 api file(s)`、notifications `1 api file(s)`
 - [ ] 输出「已合并宿主站点 → web/dist」「构建 books@0.1.0」「清单已生成」
 - [ ] `web/dist/` 含 `index.html`、`assets/`、`modules/`、`modules.json`、`versions.json`
 - [ ] `web/dist/modules/books/0.1.0/entry.js` 存在（带 `integrity`）
@@ -304,11 +317,11 @@ curl -s http://127.0.0.1:9778/api/notifications -H "authorization: Bearer $TOKEN
 
 **检查点**
 
-- [ ] dev 日志：`seed ok module="books"`、`routes: N method-row(s)`（10 个 api file）、`input contracts: 8 route-method(s) validated before reaching JS`（`.schema` 入参校验激活）、`oj serve listening`
+- [ ] dev 日志：`seed ok module="books"`、`routes: N method-row(s)`（0.2.10 实测 52 row / 25 api file）、`input contracts: M route-method(s) validated before reaching JS`（0.2.10 实测 37；`.schema` 入参校验激活）、`oj serve listening`
 - [ ] 登录返回 `code:0` 且 `data.access_token` 非空
 - [ ] 登录成功后回跳 `/home` 正常渲染（不落 React Router 错误边界），页面含统计卡片 + 折线/柱/饼图（共享依赖矩阵演示）
 - [ ] 列表过滤按关键字命中（注意种子数据：`keyword=设计` 会同时命中「设计数据密集型应用」与「领域驱动设计」——用更独特的关键字如 `数据密集型` 验证单条过滤）
-- [ ] 新增返回 `{"ok":true}`（与 `create.post.response` 声明一致），全量列表变 4 条
+- [ ] 新增返回 `code:0` 且 `data` 与 `create.post.response` 声明一致（tutorial 的 handler 声明 `{ok:true}`；自建 handler 按自身声明核对），全量列表条数 +1
 - [ ] `GET /api/notifications`（带 token）返回 `code:0` + 数组（runtime 通知铃 root 级兜底；缺端点会 404 `no route matched`）
 - [ ] 无 token 返回 **401**
 - [ ] `http://localhost:5174/` 200，importmap 含 `@oj-module/runtime`，`/modules/books/0.1.0/entry.js` 200
@@ -322,11 +335,12 @@ curl -s http://127.0.0.1:9778/api/notifications -H "authorization: Bearer $TOKEN
 ## 7. 预览（可选，验证 release 形态）
 
 ```bash
-pnpm exec ojm preview    # oj migrate（verify 门禁）→ server + 静态兜底（4173）
+pnpm exec ojm preview    # oj migrate（verify 门禁）→ 单服务 release 形态（9778：API + 静态 SPA 同进程）
 ```
 
 **检查点**：migrate 成功（账本落后会拒启，先 `oj migrate -c api/config.yaml -d api/dist`）；
-站点可访问（4173 根 200 + `/modules/books/0.1.0/entry.js` 200）；
+站点可访问（9778 根 200 + `/modules/books/0.1.0/entry.js` 200；preview 自 0.2.5 起为单服务，
+旧基线记的 4173 双服务已过时）；
 release 下路由来自 `api/dist/**/routes.js`（目录镜像不存在）；
 API 全链路再通一遍（登录/列表/新增）；
 **带 dist 后重跑 `ojm api --check`**——第三腿（routes.js vs openapi.json 契约路由表）此时激活，
