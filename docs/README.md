@@ -3,6 +3,8 @@
 本目录是 `oj-module` 工程的文档根。文档分三类：**交付文档（devkit）**、**PRD / 设计文档（活跃）**、**归档（archive）**。
 
 > 阅读顺序建议：先看 [DevKit 手册](#devkit-随-ojm-分发给业务工程) 上手开发；想了解某个功能为什么这么设计，再到 [PRD](#prd--设计文档活跃) 找对应的方案；历史方案与旧版中文指南在 [归档](#归档-archive)。
+>
+> **接手在制品**：先读 [`HANDOFF-ojm-market-cdn.md`](HANDOFF-ojm-market-cdn.md)（现状 / 代码地图 / 怎么跑 / 余量）。
 
 ---
 
