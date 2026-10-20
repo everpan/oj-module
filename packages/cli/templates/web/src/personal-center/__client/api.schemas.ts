@@ -4,6 +4,15 @@
 import { z } from "@oj-module/runtime";
 
 export const schemas = {
+	"personalCenterProfilePost": {
+		body: z.object({
+	"username": z.string().optional(),
+	"email": z.string().optional(),
+	"phoneNumber": z.string().optional(),
+	"description": z.string().optional()
+}),
+		data: z.null(),
+	},
 	"personalCenterUploadPost": {
 		data: z.string(),
 	},

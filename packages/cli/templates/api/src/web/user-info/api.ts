@@ -10,7 +10,7 @@ export default {
 			return;
 		}
 		try {
-			const rows = await db.table("users").select(["id", "username", "display_name", "avatar_base64", "email", "must_change"]).where({ field: "id", op: "eq", value: Number(uid) }).all();
+			const rows = await db.table("users").select(["id", "username", "display_name", "avatar_base64", "email", "phone_number", "description", "must_change"]).where({ field: "id", op: "eq", value: Number(uid) }).all();
 			const row = rows[0];
 			if (!row) {
 				json.fail(404, "user not found");
@@ -23,6 +23,8 @@ export default {
 				username: String(row.username),
 				displayName: row.display_name == null ? "" : String(row.display_name),
 				email: String(row.email ?? ""),
+				phoneNumber: row.phone_number == null ? "" : String(row.phone_number),
+				description: row.description == null ? "" : String(row.description),
 				roles: roleRows.map(r => r.role_name),
 				mustChange: Number(row.must_change) === 1,
 				permissions: [],

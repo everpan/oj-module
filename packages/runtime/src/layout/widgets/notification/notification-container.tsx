@@ -19,7 +19,8 @@ const warnedStaleProviders = new Set<string>();
  *   （popup 按 onEventChange 是否存在推导，评审 A3——不加新 prop）；
  * - 写操作成功后重拉刷新；**重拉失败不清空现有列表**（评审 b4）；
  * - 20x 复制残留已删除（评审 b4，同一 id 复制 20 份会让 markRead 语义失真）；
- * - viewAll 不接线（N3，模板无通知中心页）。
+ * - viewAll 由弹层内直接导航到通知中心页（N3 落地，不经过 provider——
+ *   本组件的 onEventChange 仍只承载写事件，read-only 推导不受影响）。
  */
 export function NotificationContainer({ ...restProps }: ButtonProps) {
 	const [notifications, setNotifications] = useState<NotificationItem[]>([]);
@@ -70,7 +71,7 @@ export function NotificationContainer({ ...restProps }: ButtonProps) {
 					? () => p.markAllRead()
 					: event === "clear"
 						? () => p.clearAll()
-						: undefined; // viewAll 不接线（N3）
+						: undefined; // viewAll 在弹层内导航（N3），不经此 handler
 			action?.()
 				.then(reload)
 				.catch(() => {
@@ -83,6 +84,9 @@ export function NotificationContainer({ ...restProps }: ButtonProps) {
 		<NotificationPopup
 			notifications={notifications}
 			onEventChange={handleEventChange}
+			// 打开即重拉：清空/已读可能发生在通知中心页等别处（N4），铃铛自己的
+			// 写操作才会触发 reload，不重拉会把已清空的消息一直挂在弹层里
+			onOpenChange={open => open && reload()}
 			{...restProps}
 		/>
 	);

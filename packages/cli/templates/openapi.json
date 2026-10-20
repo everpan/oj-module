@@ -1390,17 +1390,65 @@
 				}
 			}
 		},
-		"/api/notifications": {
-			"get": {
-				"operationId": "notifications_get",
-				"summary": "GET api/notifications",
-				"x-oj-file": "notifications/api.ts",
+		"/api/personal-center/profile": {
+			"post": {
+				"operationId": "personal_center_profile_post",
+				"summary": "POST api/personal-center/profile",
+				"x-oj-file": "personal-center/profile/api.ts",
 				"tags": [
-					"notifications"
+					"personal-center"
 				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"properties": {
+									"username": {
+										"type": "string"
+									},
+									"email": {
+										"type": "string"
+									},
+									"phoneNumber": {
+										"type": "string"
+									},
+									"description": {
+										"type": "string"
+									}
+								}
+							}
+						}
+					}
+				},
 				"responses": {
 					"200": {
-						"description": "OK"
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "null"
+										}
+									}
+								}
+							}
+						}
 					}
 				}
 			}
@@ -2522,9 +2570,6 @@
 		},
 		{
 			"name": "notification"
-		},
-		{
-			"name": "notifications"
 		},
 		{
 			"name": "personal-center"

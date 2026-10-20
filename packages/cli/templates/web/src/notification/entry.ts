@@ -1,23 +1,60 @@
-import type { NotificationsApiProvider } from "@oj-module/runtime";
+import type { AppRouteRecordRaw, NotificationsApiProvider } from "@oj-module/runtime";
 
+import { BellOutlined } from "@ant-design/icons";
 import { defineModule } from "@oj-module/runtime";
+
+import { createElement, lazy } from "react";
 
 import { createNotificationClient } from "./__client/api";
 
+const NotificationCenter = lazy(() => import("./pages/center"));
+
 /**
- * notification 模块（G5 模板形态，对齐 apps/playground-oj/web/src/notification）。
+ * 通知中心页（N3）：全量消息 + 类型 Tab，铃铛弹层「查看全部」跳转至此。
+ * hideInMenu——入口在铃铛，不占侧边导航。
+ * 布局挂父路由 handle（resolveRouteLayouts 只给「无 Component 有 children」的
+ * 父路由注入 layout，页面组件写父级上布局会被忽略、裸渲染无 chrome）。
+ */
+const routes: AppRouteRecordRaw[] = [
+	{
+		path: "/notification-center",
+		handle: {
+			layout: "container",
+			title: "notification:menu.notificationCenter",
+			icon: createElement(BellOutlined),
+			hideInMenu: true,
+		},
+		children: [
+			{
+				index: true,
+				Component: NotificationCenter,
+				handle: {
+					title: "notification:menu.notificationCenter",
+					icon: createElement(BellOutlined),
+				},
+			},
+		],
+	},
+];
+
+/**
+ * notification 模块（G5 模板形态）：通知聚合的唯一前端消费面。
  *
- * 无页面路由；仅通过 onInit 全量接管通知 API（D9 + G4）：把内置 root 级通知读/写
- * 收敛到本模块 `/notification` 前缀下的 oj 后端，通知铃的互动（单条已读/全部已读/
- * 清空）由此生效；发射端三方法（push/pushBroadcast/del）使本模块同时作为跨模块
- * 通知原语的接收端（前端 facade 委托至此）。
+ * onInit 全量接管通知 API（D9 + G4）：把通知读/写收敛到本模块 `/notification`
+ * 前缀下的 oj 后端，通知铃的互动（单条已读/全部已读/清空）由此生效；发射端
+ * 三方法（push/pushBroadcast/del）使本模块同时作为跨模块通知原语的接收端
+ * （前端 facade 委托至此）。
  */
 export default defineModule({
 	name: "notification",
-	description: "通知模块（D9/G4 注入通知读写）",
-	version: "0.0.2",
+	description: "通知模块（D9/G4 注入通知读写 + 通知中心页）",
+	version: "0.1.0",
 	peerRuntime: ">=0.0.0",
-	routes: [],
+	routes,
+	i18n: {
+		"zh-CN": () => import("./locales/zh-CN.json"),
+		"en-US": () => import("./locales/en-US.json"),
+	},
 	lifecycle: {
 		async onInit(ctx) {
 			// 构造即接线：createNotificationClient 登记契约前缀 /notification

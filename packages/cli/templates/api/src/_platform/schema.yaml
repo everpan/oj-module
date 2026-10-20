@@ -14,6 +14,8 @@ tables:
       must_change: {type: integer, null: false}
       is_forbidden: {type: integer, null: false}
       email: {type: text}
+      phone_number: {type: text}
+      description: {type: text}
   sys_setting:
     pk: key
     columns:

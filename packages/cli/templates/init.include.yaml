@@ -42,7 +42,6 @@ include:
   - api/src/_platform
   - api/src/auth
   - api/src/notification
-  - api/src/notifications
   - api/src/personal-center
   - api/src/system
   - api/src/web
@@ -57,7 +56,6 @@ include:
   - web/src/home/pages
   - web/src/login
   - web/src/notification
-  - web/src/notifications
   # 解决方案市场：默认第一方能力。逐子路径收录——__tests__ 不进脚手架
   # （用户工程无 web 侧 vitest 基建，拷了是死文件）
   - web/src/oj-market/entry.ts

@@ -31,3 +31,10 @@ tables:
       broadcast_id: {type: integer, null: false}
       user_id: {type: integer, null: false}
       read_time: {type: text, null: false}
+  notifications_broadcast_hidden:
+    pk: id
+    columns:
+      id: {type: integer, autoincrement: true}
+      broadcast_id: {type: integer, null: false}
+      user_id: {type: integer, null: false}
+      create_time: {type: text, null: false}

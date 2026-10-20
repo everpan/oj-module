@@ -72,7 +72,7 @@ const notifications = {
 		},
 	},
 	// POST /api/notification/notifications/clear —— 清空通知（按当前用户）。
-	// 删按人项 + 删本人广播回执（列表消失）。
+	// 删按人项 + 广播逐条落「对我隐藏」标记（共享行不可物理删，他人不受影响）。
 	"clear": {
 		async post() {
 			const uid = http.user?.id;

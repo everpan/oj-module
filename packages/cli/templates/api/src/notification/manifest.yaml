@@ -5,3 +5,4 @@ tables:
   - notifications
   - notifications_broadcast
   - notifications_broadcast_read
+  - notifications_broadcast_hidden

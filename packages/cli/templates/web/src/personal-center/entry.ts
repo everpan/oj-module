@@ -3,6 +3,8 @@ import { ProfileCardIcon, RiAccountCircleLine, useAuthStore } from "@oj-module/r
 
 import { createElement, lazy } from "react";
 
+import { createPersonalCenterClient } from "./__client/api";
+
 const MyProfile = lazy(() => import("./pages/my-profile"));
 
 const routes: AppRouteRecordRaw[] = [
@@ -40,6 +42,9 @@ const mod: ModuleDefinition = {
 		// P4-3：接管头像上传端点（D9）。antd Upload 直连 action，headers 在上传瞬间
 		// 取当前 token 注入 Bearer（token 存 runtime auth store，跨渲染期读 getState）。
 		async onInit(ctx) {
+			// 构造即接线：登记契约前缀 /personal-center + 绑定 scoped request，
+			// 页面直接 import 的 personalCenterProfilePost 才有可用的请求通道
+			createPersonalCenterClient(ctx);
 			const provider: UploadApiProvider = {
 				action: "/api/personal-center/upload",
 				headers: (): Record<string, string> => {

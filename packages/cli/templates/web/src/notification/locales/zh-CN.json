@@ -1,0 +1,19 @@
+{
+	"menu": {
+		"notificationCenter": "通知中心"
+	},
+	"center": {
+		"tabAll": "全部",
+		"category": {
+			"notice": "通知",
+			"pm": "私信",
+			"mention": "@我"
+		},
+		"markAllRead": "全部已读",
+		"clear": "清空",
+		"clearConfirm": "确定清空所有通知吗？（广播仅对您隐藏，不影响他人）",
+		"empty": "暂无通知",
+		"scopeBroadcast": "广播",
+		"scopeUser": "个人"
+	}
+}

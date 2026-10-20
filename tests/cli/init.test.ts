@@ -121,18 +121,14 @@ describe("initProject", () => {
 		expect(fs.existsSync(path.join(dest, "env.d.ts"))).toBe(true);
 		const tsconfig = JSON.parse(fs.readFileSync(path.join(dest, "tsconfig.json"), "utf-8"));
 		expect(tsconfig.include).toContain("env.d.ts");
-		// api/.ojm-api-exempt.json：内置 auth/web/notifications handler 有意无契约，ojm api --check 需豁免清单
+		// api/.ojm-api-exempt.json：内置 auth/web handler 有意无契约，ojm api --check 需豁免清单
 		expect(fs.existsSync(path.join(dest, "api/.ojm-api-exempt.json"))).toBe(true);
 		const exempt = JSON.parse(fs.readFileSync(path.join(dest, "api/.ojm-api-exempt.json"), "utf-8"));
 		expect(exempt.modules).toContain("web");
-		expect(exempt.modules).toContain("notifications");
 		expect(exempt.paths).toContain("/auth/*");
-		// notifications 模块（root 级兜底，只读）：runtime 通知铃未接 provider 时的
-		// 回落端点。G5 起不再持有表结构/种子（迁归 notification 模块，评审 b3 决策），
-		// 但查询须返回 id（G4 NotificationItem.id 必填）
-		expect(fs.existsSync(path.join(dest, "api/src/notifications/api.ts"))).toBe(true);
-		expect(fs.existsSync(path.join(dest, "api/src/notifications/migrations/0001__create_notifications.sql"))).toBe(false);
-		expect(fs.readFileSync(path.join(dest, "api/src/notifications/api.ts"), "utf-8")).toContain("id: Number(r.id)");
+		// 通知聚合单一属主 = notification 模块（DDD）：root 级 notifications 兜底模块已删，
+		// 模板恒注册 provider，兜底端点不可达（2026-10-20 聚合收敛）
+		expect(fs.existsSync(path.join(dest, "api/src/notifications"))).toBe(false);
 		// notification 模块（G5 契约化通知互动 + DDD reshape）：表/种子/迁移归属本模块，
 		// handler 收模块根嵌套组单文件（notifications 含 read/read-all/clear 子组 +
 		// push + "push-broadcast" 字符串键组），_shared/notify 共享发射原语，del/ 例外保留

@@ -1,0 +1,19 @@
+{
+	"menu": {
+		"notificationCenter": "Notifications"
+	},
+	"center": {
+		"tabAll": "All",
+		"category": {
+			"notice": "Notice",
+			"pm": "Direct",
+			"mention": "Mentions"
+		},
+		"markAllRead": "Mark all as read",
+		"clear": "Clear",
+		"clearConfirm": "Clear all notifications? (Broadcasts are hidden for you only)",
+		"empty": "No notifications",
+		"scopeBroadcast": "Broadcast",
+		"scopeUser": "Personal"
+	}
+}

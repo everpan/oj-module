@@ -40,6 +40,7 @@
 		"test": "vitest",
 		"test:e2e": "playwright test --config tests/e2e/playwright.config.ts",
 		"test:e2e:legacy": "E2E_TARGET=legacy playwright test --config tests/e2e/playwright.config.ts",
+		"test:e2e:templates": "playwright test --config tests/e2e/templates.playwright.config.ts",
 		"test:e2e:ui": "playwright test --config tests/e2e/playwright.config.ts --ui",
 		"test:cli": "vitest run --config packages/cli/vitest.config.ts"
 	},

@@ -117,17 +117,17 @@ export async function pushBroadcastNotice(input: PushBroadcastInput): Promise<st
 }
 
 /**
- * 删除通知。按人项校验归属：非本人返回 false；广播项仅删本人回执（幂等，返回 true）。
+ * 删除通知。按人项校验归属：非本人返回 false；广播项是共享行，物理删除会影响
+ * 其他收件人——落「对我隐藏」标记（幂等，返回 true），列表查询过滤 hidden 命中项。
  * 返回是否成功操作到目标（调用方据 false 判 403）。
  */
 export async function delNotice(id: string, userId: string | number): Promise<boolean> {
 	const [scope, raw] = splitId(id);
 	const uid = Number(userId);
 	if (scope === "b") {
-		await db.table("notifications_broadcast_read")
-			.where({ field: "broadcast_id", op: "eq", value: Number(raw) })
-			.where({ field: "user_id", op: "eq", value: uid })
-			.delete()
+		await db.table("notifications_broadcast_hidden")
+			.insert({ broadcast_id: Number(raw), user_id: uid, create_time: nowStr() })
+			.orIgnore()
 			.run();
 		return true;
 	}
@@ -165,7 +165,10 @@ export async function noticesFor(
 	const broadcastQ = db.table("notifications_broadcast").as("b").join("notifications_broadcast_read", [
 		{ left: "b.id", right: "r.broadcast_id" },
 		{ left: "r.user_id", op: "eq", value: uid },
-	], "left", "r").select([
+	], "left", "r").join("notifications_broadcast_hidden", [
+		{ left: "b.id", right: "h.broadcast_id" },
+		{ left: "h.user_id", op: "eq", value: uid },
+	], "left", "h").where({ field: "h.id", op: "isnull" }).select([
 		"b.id",
 		"b.avatar",
 		"b.date",
@@ -223,9 +226,14 @@ export async function markAllRead(userId: string | number): Promise<void> {
 	);
 }
 
-/** 清空：删按人项 + 删本人广播回执（列表消失） */
+/** 清空：删按人项 + 广播逐条落「对我隐藏」标记（共享行不可物理删，他人不受影响） */
 export async function clearNotices(userId: string | number): Promise<void> {
 	const uid = Number(userId);
 	await db.table("notifications").where({ field: "user_id", op: "eq", value: uid }).delete().run();
-	await db.table("notifications_broadcast_read").where({ field: "user_id", op: "eq", value: uid }).delete().run();
+	// 保留 db.exec：INSERT OR IGNORE ... SELECT 同 markAllRead（构造器 orIgnore 不与
+	// fromSelect 组合，实测 500），原 SQL 三方言通用。
+	await db.exec(
+		"INSERT OR IGNORE INTO notifications_broadcast_hidden (broadcast_id, user_id, create_time) SELECT id, ?, ? FROM notifications_broadcast",
+		[uid, nowStr()],
+	);
 }

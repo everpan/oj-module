@@ -5,10 +5,13 @@ import {
 	ProFormTextArea,
 } from "@ant-design/pro-components";
 import { BasicContent, FormAvatarItem, useUserStore } from "@oj-module/runtime";
-import { Form, Input } from "antd";
+import { App, Form, Input } from "antd";
+
+import { personalCenterProfilePost } from "../../__client/api";
 
 export default function Profile() {
 	const currentUser = useUserStore();
+	const { message } = App.useApp();
 	const getAvatarURL = () => {
 		if (currentUser) {
 			if (currentUser.avatar) {
@@ -20,8 +23,27 @@ export default function Profile() {
 		return "";
 	};
 
-	const handleFinish = async () => {
-		window.$message?.success("更新基本信息成功");
+	// 真实入库：POST /api/personal-center/profile（只传资料四字段，avatar 走 upload 通道），
+	// 成功后重拉 user-info 刷新全局 store（表单 initialValues 随之更新）。
+	const handleFinish = async (values: {
+		username?: string
+		email?: string
+		phoneNumber?: string
+		description?: string
+	}) => {
+		try {
+			await personalCenterProfilePost({
+				username: values.username,
+				email: values.email,
+				phoneNumber: values.phoneNumber,
+				description: values.description,
+			});
+			await useUserStore.getState().getUserInfo();
+			message.success("更新基本信息成功");
+		}
+		catch (e) {
+			message.error(`更新基本信息失败：${e instanceof Error ? e.message : String(e)}`);
+		}
 	};
 
 	return (

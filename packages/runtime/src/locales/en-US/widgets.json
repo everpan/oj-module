@@ -5,6 +5,11 @@
 	"logoutTip": "Do you want to logout?",
 	"viewAll": "View All Messages",
 	"notifications": "Notifications",
+	"notiCategory": {
+		"notice": "Notice",
+		"pm": "Direct",
+		"mention": "Mentions"
+	},
 	"markAllAsRead": "Make All as Read",
 	"clearNotifications": "Clear",
 	"versionMonitorTitle": "System Version Update Notification",
