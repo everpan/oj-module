@@ -15,7 +15,7 @@
 | 端到端可重复验证流程 | `docs/prd/framework-verification-playbook.md` |
 | 某特性的设计与评审记录 | `docs/prd/<日期>-<特性>-design.md` |
 | 各阶段实战记录（骨架→注入→认证→CRUD→release） | `apps/playground-oj/docs/phase*.md` |
-| 后端 handler 写法 | `bin/devkit/api-manual.md`（`oj-api-dev` skill） |
+| 后端 handler 写法 | `docs/devkit/oj-api-dev/api-manual.md`（`oj-api-dev` skill 的本仓快照；用户工程侧在 `.claude/skills/oj-api-dev/`，随 oj 二进制分发） |
 
 > ⚠️ 那两份 guide 有**已知陈旧处**，以源码为准：
 > dev 端口实际是 **3333**（guide 写的 5173 已过时；注意与 `ojm dev` 的前端 devServer
@@ -167,7 +167,13 @@ runtime → cli → registry 复核；`--dry-run` 只演练）。下面的手动
   `README.md`，已存在则幂等跳过）。
 
 `packages/cli/devkit/` 是发布副本、由 prepack 生成，已加进 `.gitignore` 不入库；
-源仍是仓库根 `docs/devkit/`，改文档只动那里一处。
+源仍是仓库 `docs/devkit/` 顶层，改文档只动那里一处。
+
+> `docs/devkit/oj-api-dev/` 是 **oj 侧 devkit 的快照**（10 个文件，与
+> `~/.local/share/oj/devkit/` 逐字节一致），仅供本仓 grep 后端手册，
+> **不随 cli 包发货**（`sync-devkit.mjs` 只同步顶层文件）——用户工程的
+> `oj-api-dev` skill 由 oj 二进制分发。升级本机 oj 后要同步快照：
+> 从 `~/.local/share/oj/devkit/` 整目录覆盖该子目录。
 
 > 历史记录：此处原为「待对接（未做）」，上述两步落地后即完成。
 
@@ -175,7 +181,10 @@ runtime → cli → registry 复核；`--dry-run` 只演练）。下面的手动
 
 ## 附：本 devkit 内容来源（维护者看）
 
-`docs/devkit/` 是**自包含**的交付文档（含 `sql-builder-missing-capabilities-pr.md` 这份构造器能力缺口 PR 参考，共 5 个文件），业务工程拿到即可读懂，不依赖工程仓库里的其它文档。
+`docs/devkit/` 是**自包含**的交付文档（顶层 5 个文件，含
+`sql-builder-missing-capabilities-pr.md` 这份构造器能力缺口 PR 参考），业务工程拿到即可读懂，不依赖工程仓库里的其它文档。
+另有 `oj-api-dev/` 子目录是 oj 侧 devkit 的快照（10 文件，仅本仓参考、不发货），
+结构说明见 `README.md`。
 下面的来源仅用于维护时追溯与同步，不参与交付：
 
 | 源（本仓其它位置） | 贡献到 devkit 的内容 |

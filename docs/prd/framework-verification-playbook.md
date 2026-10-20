@@ -4,7 +4,19 @@
 > **配套**：[`framework-development-guide.md`](./framework-development-guide.md)（原理）、[`oj-fullstack-tutorial.md`](./oj-fullstack-tutorial.md)（跟做）。
 > **原则**：每一步都有**可判定通过/失败的检查点**，不要只看命令退出码，要核对产物。
 
-### 最近一次基线（2026-10-19 复跑，oj 0.1.80 / cli+runtime 0.2.8 打包态）
+### 最近一次基线（2026-10-20 复跑，oj 0.1.82；范围=0.1.81/0.1.82 构造器迁移收尾 + L1 通道建立）
+
+| 项 | 值 |
+| --- | --- |
+| 日期 | 2026-10-20 |
+| 框架包版本 | `cli`/`runtime` `0.2.9`（工作区态；本轮改动随 **0.2.10** 发出，见 CHANGELOG） |
+| oj | `0.1.82`（`listTables(prefix?)` / `truncate()` / `count(distinct)` 随本轮迁移用上） |
+| 验证动机 | 把 0.1.81 迁移收尾到 0.1.82（`uninstall` IN→`startswith`、`rate` 改 `truncate`、`solution-perms` 最后一处裸 SQL、`query`/`oplog` 工厂化分页），并建立模板 **L1（`oj test`）回归通道**——构造器是 oj 二进制内纯 Rust 实现，vitest 夹具原理上够不着真 `table()`，真执行面必须走 L1（边界论证见 §9.1） |
+| 结果 | ① 模板 api `tsc --noEmit` **0 error**；② 模板 L1（`oj test -c config.yaml -d src -t tests`，5 用例：login-methods 匿名 / todos 无 keyword·keyword=契约·keyword=% / notification join+UNION+lit）**5/5 passed，连跑三次幂等**；③ `tests/cli/init.test.ts` **14/14**（两份 0.1.82 新指南随 init 分发，旧 devkit 缺文件时容忍）；④ 模板 L2 vitest 基线 **190 failed \| 409 passed (599)，19/33 文件**——单一根因族（夹具无 builder 面，86 直接 TypeError + 104 级联），本轮按 §9.1 政策记录不硬修；⑤ 6 处 stale `MARKET_HISTORY_DDL` 全清（market_history 真源=平台迁移 0012）；⑥ vendored devkit 与上游 0.1.82 全量对齐（`docs/devkit/oj-api-dev/` 10 文件） |
+| 本次发现并处置 | ① **`oplog.ts` whereIf `""` 归一化真 bug**：可选过滤缺失值被归一成 `""`，而 whereIf 的跳过集是 `undefined/null/false/[]`——`""` 是合法值会照发 `action = ''` 把结果过滤空（与旧 `if (filter.x)` 语义相悖）；修为归一化 `undefined`（api-manual §whereIf 契约）。② **L1 登录 401 排查**（本地 dev 库口令被首登改密流程改成 `12345678` → seed 重放 `INSERT OR IGNORE` 不复位 → admin/123456 恒 401）：处置不是改 seed，而是按框架正道加 **fixtures 专用账号**（`src/_platform/fixtures/l1-test-user.sql`，`l1tester`/`l1test1234`，additive `INSERT OR IGNORE` + superadmin 绑定，仅 `oj test` 灌入）——seed 的 admin 是 `must_change=1` 生产语义（判权端点恒 403）且口令必然随用户首登漂移，L1 不能绑它。③ L1 三处契约坑（client path 相对 base 多写 `/api` 即 404；L1 `expect` 无 `toHaveLength`；`oj test` 每轮重放 迁移→seed→fixtures，断言须按唯一键收敛到自己行）——全部记入 §9.1。④ `docs/devkit/sql-builder-missing-capabilities-pr.md` 闭环：7 项诉求全闭（6 项随 0.1.81/0.1.82 落地 + 1 项 sqlite 组合限制 sanctioned 绕行），并订正原文档一处误判（`like` 的 escape 逃生舱本就存在，上游复核同判「1 条误报」） |
+| 与 0.2.9 基线差异 | 0.2.9 记录的是 0.1.81 改造的端到端回归（打包态 §1–§7）；本轮模板 api.ts 契约面无改动，未重跑全套打包态 e2e，改以「tsc + L1 + L2 基线 + init 单测」四件套验证迁移收尾；L2 的 190 红是 L1/L2 边界结构性欠账（非本轮新增回归），政策见 §9.1 |
+
+### 上一次基线（2026-10-19 复跑，oj 0.1.80 / cli+runtime 0.2.8 打包态）
 
 | 项 | 值 |
 | --- | --- |
@@ -360,6 +372,45 @@ API 全链路再通一遍（登录/列表/新增）；
 | 新模块 `entry.ts` 被 `tsc` 拦：`TS2322 (ctx) => void 不匹配 (ctx) => Promise<void>` | `lifecycle.onInit` 签名要求返回 Promise；照抄老模块时容易漏 `async` | 写 `async onInit(ctx)`（范本：模板 `web/src/notification/entry.ts`；devkit SKILL「注册时机」红线已补明） |
 | `ojm init` 报 `init.include.yaml 收录了不存在的路径：.gitignore`，工程只剩空目录 | npm/pnpm pack 剥离 `.gitignore` 点文件（npm-packlist always-exclude，`files` 字段绕不过）；include 白名单收录它 → 安装包缺文件 → `readInitInclude` fail-fast 在拷贝任何文件前中断。**演练盲区**：playbook 当时用源码树 CLI 演练，源码树里该文件存在故全绿——演练形态 ≠ 发包形态 | cli ≥ 0.2.6 已修：`.gitignore` 改由 init 现场生成（`ensureGitignore`，与 `pnpm-workspace.yaml` 同型），include 清单移除该条目；守卫：`tests/cli/release-manifest.test.ts` 逐条核对清单条目落在 tarball 内；演练按 §0.5 用本地 pack 的发布包 |
 | 通知「全部已读」在 sqlite 开发库 500：`markAllRead` 用 `db.table(...).fromSelect(...).orIgnore()` | oj 0.1.81 在 sqlite 上 `orIgnore` 的 upsert 子句只跟随 VALUES，不支持 SELECT 源（实测 `orIgnore with fromSelect is not supported on sqlite`）——构造器无法表达「`INSERT OR IGNORE ... SELECT`」 | 退回裸 `db.exec("INSERT OR IGNORE INTO ... SELECT ...")`（sqlite `OR IGNORE` / pg `ON CONFLICT DO NOTHING` / mysql `ON DUPLICATE KEY` 三方言通用）；**`orIgnore` + `fromSelect` 组合在 sqlite 上不可用**，别用。上游需求见 §「向上游改进需求」F |
+
+### 9.1 构造器迁移后的 L1/L2 边界与 vitest 190 红基线（2026-10-20）
+
+**架构定论**：`db.table()` 构造器是 oj 二进制内的**纯 Rust 实现**，无 JS 模块可导出——Node 侧
+（vitest 夹具）原理上垫不出真 `table()`，任何 JS 复刻都是会漂移的第二真相。两层测试因此定型：
+
+- **L2（`tests/*.spec.ts`，vitest + node:sqlite 夹具）**：夹具 `g.db` 只给
+  `{query, exec, tx, dialect}`（见 `tests/fixture.ts` 头注）。构造器面用**记录型假 builder**
+  （记 `where/orderBy/limit` 调用序列做编排断言，样板 `query-utils.spec.ts` / `rbac-settings.spec.ts`）；
+  真 SQL 执行断言走 `db.query` 直查内存库。
+- **L1（`tests/*.test.ts`，`oj test` 收集）**：真 v8 + 真路由/鉴权 + 真迁移/seed/fixtures +
+  真构造器，守 SQL 渲染/过滤/转义的真执行面（样板 `tests/l1-builder.test.ts`；方法论
+  devkit `oj-test-guide.md`）。
+
+**vitest 基线（2026-10-20，单一可复现命令）**：
+`npx vitest run -c packages/cli/templates/api/vitest.config.ts --reporter=json` →
+**190 failed | 409 passed (599)，19/33 文件**。按报错文本归类（判据：failure message 含
+`table is not a function`）：**86 直接**（`db.table`/`tx.table` TypeError）+ **104 级联**
+（89 AssertionError——handler 500 信封致 `data` undefined；13 其他 TypeError——undefined
+读数；2 Error——lifecycle 步骤副作用断链）。**单一根因族**：模板 src 全面迁构造器后，
+L2 夹具没有 builder 面。这是结构性欠账，**不是本轮新增回归**（迁移前同源码的红随迁移推进
+等比扩大）。
+
+**处置政策（逐条修复时按此分轨，勿整体 L2 化）**：
+
+1. handler 对构造器的使用是** incidental**（真逻辑在别处）→ L2 化：记录型假 builder（见上样板）；
+2. 行为**就是** SQL 渲染/过滤/转义 → 属 L1，补 `*.test.ts`（见上样板）；
+3. 两条都不沾（纯 orchestration）→ 修夹具数据准备，不给 builder。
+
+**L1 契约坑速查（本轮实测）**：
+
+| 现象 | 原因与解法 |
+| --- | --- |
+| `client.get("/api/x")` 恒 404（日志 `/api/api/x`） | `client` 路径**相对 base**（base=`/api`），多写一层前缀即翻倍；正确写法 `client.get("/x")`。`client.login` 同理（内部 POST `/auth/login`） |
+| `expect(...).toHaveLength is not a function` | L1 `expect` 只支持 `toBe/toEqual/toBeTruthy/toBeFalsy/toContain`（api-manual §9 契约）；改 `expect(x.length).toBe(n)` |
+| 登录后打鉴权端点恒 403 `must_change` | seed admin 是 `must_change=1`（D12 生产语义），`currentAccess()` 悬挂期全拒；L1 用 fixtures 专用账号（`l1tester`，`must_change=0`，`src/_platform/fixtures/l1-test-user.sql`，仅 `oj test` 灌入、additive 不动 admin） |
+| 口令正确却登录 401 `invalid credentials` | dev 库 admin 口令被首登改密流程改过（seed 重放 `INSERT OR IGNORE` 不复位既有行）；本地重置 `rm -f api/db.sqlite*` 后重跑（迁移+seed+fixtures 重建），或直接用 fixtures 账号 |
+| 重复跑 L1 断言飘 | `oj test` 每轮重放 迁移→seed→fixtures 且 INSERT 类只增不改；断言按**自己推的行**收敛（push→拿回 id→按 id 断言，样板见 `l1-builder.test.ts` 通知用例） |
+| 可选过滤传 `""` 仍发出 `= ''` 条件 | `whereIf` 跳过集是 `undefined/null/false/[]`，**`""`/`0` 是合法值会保留**（api-manual §whereIf）；缺失值必须归一化为 `undefined`（`oplog.ts` 2026-10-20 修复同款坑） |
 
 ## 10. 复跑脚本（TL;DR）
 

@@ -1,7 +1,13 @@
 # 上游 PR 提案：SQL 构造器缺失能力清单
 
+> **闭环状态（2026-10-20）：7 项诉求全部闭环**——6 项随 oj 0.1.81/0.1.82 发布落地，第 4 项
+> （orIgnore + fromSelect）能力本身已发布但**组合在 sqlite 上被上游明文拒绝**，模板按上游
+> 文档指引保留一处 sanctioned 裸 SQL 绕行（`notify.ts:216`，api-manual §"orIgnore + fromSelect
+> 组合在 sqlite 不支持"原文即指向该绕行）。逐项映射见 §6；模板 `api/src` 内 `保留 db.query`
+> 注释已归零（仅剩上述 1 处 `保留 db.exec`）。
+>
 > 目的：把模板 `db.query` 全面迁移到 `db.table(...)` 构造器以获得多库（sqlite / mysql / postgres）可移植性时，
-> 识别出构造器**当前无法表达**、只能回退 `db.query` 的 7 类能力。本文档作为向上游 `oj` 运行时 SQL 构造器提 PR 的依据。
+> 识别出构造器**当时无法表达**、只能回退 `db.query` 的 7 类能力。本文档作为向上游 `oj` 运行时 SQL 构造器提 PR 的依据。
 >
 > 证据来源：`~/.local/share/oj/devkit/api-manual.md`（查询构造器章节，含 `like` 操作清单 §1142、子查询限制 §1343、
 > `union` §1346、CTE §1378 等）；框架 `README.md` v0.1.66（ESCAPE 纪律）；模板代码 `packages/cli/templates/api/src/**`。
@@ -38,9 +44,15 @@
 
 ### 3.1 `like` 缺 `ESCAPE` 子句（P0）
 
-**为什么是硬约束**：框架对模糊搜索有强制纪律——`LIKE` 元字符必须用 `ESCAPE '!'` 转义，且**不能用 `ESCAPE '\'`**
-（mysql 默认 `sql_mode` 下 `ESCAPE '\'` 直接 1064）。`api-manual.md` 的 `like` 操作清单（§1142）及子查询限制（§1343）
-表明：`WhereCond` 的 `like` 不接受 `escape` 字段，也不接受子查询。
+> **订正（2026-10-20，上游复核结论）**：本节原判「`WhereCond` 的 `like` 不接受 `escape` 字段」
+> 是**误报**——`like` 的 `escape` 逃生舱本就存在（白名单 `! / | ~ # @`、显式拒 `\`，见
+> devkit `sql-builder-guide.md` §3.5）。真正缺的不是逃生舱，而是**业务零转义的语义化模糊匹配**：
+> 每个调用点手写 `%!v!%` 式转义模式易错且三方言心智负担重。上游按此落地
+> `contains` / `startswith` / `endswith`（v0.1.81），本节诉求以更彻底的形式闭环。
+
+**为什么曾是硬约束**：框架对模糊搜索有强制纪律——`LIKE` 元字符必须转义，且**不能用 `ESCAPE '\'`**
+（mysql 默认 `sql_mode` 下 `ESCAPE '\'` 直接 1064）。当时判定构造器无出口，各调用点只能回退
+`db.query` 手写 `LIKE ? ESCAPE '!'`。
 
 **阻塞的真实代码**（`contacts.ts:20`）：
 
@@ -232,3 +244,25 @@ db.table("sys_refresh_token").select("*").where({ field: "token_hash", op: "eq",
 7. `session.ts:114-115` → `select("*")`。
 
 全部关闭后，模板 `api/src` 内 `保留 db.query` / `保留 d.exec` 注释应归零，达成"零原生 SQL 可移植"目标。
+
+---
+
+## 6. 闭环状态（2026-10-20 实测）
+
+| # | 诉求 | 上游落地（版本） | 模板现状 |
+|---|------|------------------|----------|
+| 1 | `like` 的 `ESCAPE` 转义子句 | `contains` / `startswith` / `endswith` 语义化模糊匹配（**v0.1.81**），引擎自动转义 `%`/`_`/`!` | 已闭环：`contacts.ts` 等模糊搜索全部走 `contains`。**订正**：原判「`like` 无 escape 出口」系误报——escape 逃生舱本就存在（白名单 `! / | ~ # @`）；真正缺的是业务零转义语义 op，上游按此落地（L1 实测 `%` 元字符不泛化） |
+| 2 | `join ... ON` 值条件 | join 支持表别名 + ON 值条件（**v0.1.81**）：`{ left, op, value }` 混排列对列/列对常量 | 已闭环：`notify.ts:165-168` 广播 LEFT JOIN `r.user_id = ?` 直表达 |
+| 3 | `select` 字面量/计算列 | 字面量列 `{ lit, as }`（**v0.1.81**，值走绑定参数）；`expr` 任意表达式入口经上游四路评审**砍除**（计算列用现成 `case`） | 字面量部分已闭环：`notify.ts:163/177` 的 `'user'/'broadcast' as scope`。**计算列子项被设计化解掉**：广播分支第 4 列直接取 `r.read_time`，经 UNION 位置对齐落 `is_read` 列名，是否已读由 `mapItem` 按非空推导（`notify.ts:69-88` 注释同源说明）——模板侧无 `expr` 诉求残留 |
+| 4 | `INSERT OR IGNORE` / `INSERT … SELECT` | `orIgnore()` 与 `fromSelect(q, cols)` 均落地（**v0.1.81**）；但**组合在 sqlite 上被明文拒绝**（v0.1.82 文档：`orIgnore with fromSelect is not supported on sqlite`，报错原文即指引绕行） | 能力闭环 + 一处 sanctioned 绕行：VALUES 形态 upsert 已全量构造器化（`markRead` 等）；仅 `markAllRead` 的 `INSERT OR IGNORE … SELECT`（`notify.ts:216-223`）保留裸 SQL——三方言通用的单语句，正是上游文档点名的绕行姿势 |
+| 5 | 全表 delete 强制 where 豁免 | `truncate()`（**v0.1.82**）：显式整表清空，渲染 `DELETE FROM t`，三方言通用 | 已闭环：`rate.ts` 限流重置改 `truncate()`；未采纳 `where({ __all: true })`（独立动词比魔法 where 值更不可误用） |
+| 6 | 动态 WHERE 组合 | `whereIf(test, cond)`（**v0.1.81**）：`undefined/null/false/[]` 整条跳过（注意 `""`/`0` 是合法值会保留——可选过滤的缺失值必须归一化为 `undefined`，模板 oplog 曾踩此坑并修复） | 已闭环：`demo/todos`、`uninstall.ts` 等全部改 `whereIf`；未采纳裸片段出口（whereIf 已覆盖诉求场景） |
+| 7 | `select *` | `select(["*"])`（**v0.1.81**，必须是唯一元素） | 已闭环：`session.ts` refresh 查询改 `select(["*"])` |
+
+**结论**：模板 `api/src` 内 `保留 db.query` 注释归零；`保留 d.exec` 仅剩 `notify.ts:216` 一处，
+且属上游文档明文记载的 sqlite 组合限制绕行（非能力缺口）。"零原生 SQL 可移植"目标以
+「一处上游 sanctioned 绕行」的形态达成。
+
+> 上游侧复核记录（oj 0.1.81 release notes，devkit `oj-api-dev/README.md`）：7 条诉求落地时
+> 判定「1 条误报、1 条部分误报」——误报即 §3.1 的 escape 出口（本就存在），部分误报即 §3.3
+> 的计算列（`expr` 被砍，`case` 已够用）；另附赠表别名 `as()`（#8）。本表与该记录口径一致。

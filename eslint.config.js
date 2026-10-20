@@ -77,9 +77,10 @@ export default antfu({
 		// playground 工程里由 `ojm vendor/init` 联网落盘的 oj 二进制与 devkit
 		// （未入库，由 apps/*/.gitignore 忽略；eslint 只读根 .gitignore，需显式排除）
 		"apps/*/bin/**",
-		// 从 oj 二进制分发同步的权威后端 devkit——必须保持与源逐字节一致，
+		// 从 oj 二进制分发同步的权威后端 devkit（现位于 docs/devkit/oj-api-dev/，
+		// 2026-10-20 由 docs/oj-api-dev/ 迁入）——必须保持与源逐字节一致，
 		// 不得被 eslint --fix 改写（含 .d.ts 的类型习惯，如 shorthand method 签名）
-		"docs/oj-api-dev/**",
+		"docs/devkit/oj-api-dev/**",
 		// 模板 global.d.ts 同样镜像运行时注入的全局对象（FsApi/http/crypto…），
 		// 沿用框架 devkit 的 shorthand method 签名风格，禁止 --fix 改写以免与源漂移
 		"packages/cli/templates/global.d.ts",

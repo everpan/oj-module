@@ -1,6 +1,6 @@
 # oj TS API 开发手册
 
-适用版本：API 面 v0.2（二进制版本号见 `oj/Cargo.toml`）
+适用版本：API 面 v0.2（二进制版本号见 `oj --version`）
 
 本手册写给**用 oj 框架开发业务项目**的开发者与 AI agent，内容包括：怎么组织模块、
 怎么写 `api.ts` / `ws.ts` handler、怎么用注入的全局对象、怎么写测试、怎么配服务、
@@ -8,9 +8,13 @@
 oj 是把 V8（deno_core）嵌进 Rust 的低代码后端框架：业务逻辑用 TS handler 编写，
 运行时注入 `json` / `db` / `http` / `kv` / `blob` / `bus` / `es` 等全局对象，
 所有响应统一套 `{code,msg,data}` 信封写回 HTTP。这里说的「信封」就是那层固定的
-JSON 外壳：`code` 是状态码、`msg` 是消息、`data` 装业务数据。仓库内部实现见
-`docs/dev-guide.md`，部署排障细节见 `docs/ops-manual.md`。本手册随版本包 `devkit/`
-一同发布；API 签名以同目录 `global.d.ts` 为类型权威。
+JSON 外壳：`code` 是状态码、`msg` 是消息、`data` 装业务数据。本手册随版本包 `devkit/`
+一同独立发布，内容自洽（不依赖 oj 仓库内路径）；API 签名以同目录 `global.d.ts` 为类型权威。
+
+> **上下文独立性**：本文档（及同目录 `scenarios.md` / `SKILL.md` / `README.md`）随
+> `devkit/` 单独分发。文中示例路径（`src/...` / `tests/...` / `config.yaml` 等）均相对
+> **你的项目根**；完整可运行样例（sample 项目）见 oj 仓库
+> `sample/` 目录（github.com/everpan/oj-bin）。
 
 目录：1 快速开始 / 2 项目结构与模块约定 / 3 模块数据层 / 4 编写 api.ts /
 5 导入解析 / 6 全局对象 API 参考 / 7 响应信封与错误码 / 8 鉴权与多租户 / 9 测试 /
@@ -114,7 +118,11 @@ export default {
 **例外**：启动失败的最终退出原因总是直写终端（console 关闭也不例外），便于立即调整。
 **后台运行**：加 `--daemon` 脱离终端（unix 用 setsid，windows 用 DETACHED_PROCESS），
 stdio 重定向到空设备，父进程打印子 pid 后退出。日志照常落 `server.logs_dir`，停机用
-`kill <pid>`。
+`kill <pid>`。unix 上父进程会**等子进程就绪信号**（30s 上限）：子进程监听绑定后才打印
+`daemonized (pid …)` 并退 0；启动失败（config/证书/插件/端口任一环节）父进程**带真因
+报错并非零退出**——不再有「报了 daemonized 但其实没起来」的假成功。自带 glibc 发行包
+的 re-exec **直接 exec 随包 ld-linux + `oj.bin`**：子进程从 fork 后第一个 exec 起全程
+跑随包 glibc，不经系统 `/bin/sh`（宿主 sh/coreutils 异常不再能静默杀死 daemon 子进程）。
 **准入门（v0.1.58）**：`mounts:`（config + CLI 折叠后）为空 → 退出并提醒。挂载目录的
 存在性在**装配期**统一检查。「装配期」指启动时把配置、插件、路由拼起来、请求还没进来的
 那个阶段；「fail-fast」指这个阶段一发现问题就立即报错退出，不带病启动。重复前缀或目录
@@ -140,7 +148,7 @@ curl 'http://localhost:9778/v1/api/hello/'
 模块各自绑不同库（`manifest.yaml` 的 `db:`）时，还须配 `--module` 逐组合跑——见
 `scenarios.md` 场景 6。
 
-构建细节见第 11 章；完整可跑样例见仓库 `sample/`（`sample/README.md`）。
+构建细节见第 11 章；完整可跑样例见 oj 仓库 `sample/` 目录（github.com/everpan/oj-bin）。
 
 ## 2. 项目结构与模块约定
 
@@ -249,7 +257,7 @@ tables:
 | 文件 | 时机 | 纪律 |
 |---|---|---|
 | `migrations/{seq:04}__{desc}[.方言].sql` | 启动（auto）/ `oj migrate` | 只前向；账本 `_oj_migrations`（`module` 列区分模块）；序列空洞/乱序 S007 报错 |
-| `seed.sql`（模块级） | 每次启动重放 | 幂等 `INSERT OR IGNORE`；按 `;` 切分，语句内不得含分号字面量（S006） |
+| `seed.sql`（模块级） | 每次启动重放 | 幂等 `INSERT OR IGNORE`；按 `;` 切分，语句内不得含分号字面量（S006）；语句前置 `--` 注释行允许（v0.1.66 起，改写判定先剥注释） |
 | `fixtures/*.sql` | 仅 `oj test` / `oj test fixture` 灌入 | 演示/测试数据，不进 release 产物 |
 
 ### 命令
@@ -259,7 +267,7 @@ tables:
 | `oj migrate -c config.yaml -d <dir>` | 应用待执行迁移（`--baseline`：存量库接入，≤head 记为已应用不执行） |
 | `oj schema diff -c config.yaml -d <dir>` | 声明 vs 实库对账（D001 漂移 / D002 未声明表），只读，漂移 exit 1 |
 | `oj test fixture -c config.yaml -d <dir>` | 灌 `fixtures/*.sql` 演示数据（dev/test 用，不进 release 产物）。v0.1.52 起有**幂等门禁**：非幂等 INSERT（判据同 S006）灌入前报错，改 `INSERT OR IGNORE` / `ON CONFLICT DO NOTHING` 写法即可重复灌 |
-| `oj openapi -c config.yaml [-d dir] [--base B] [-o out.json]` | 从路由表生成 OpenAPI 3.1（dev 内省 `.route` / release 读 `dist/routes.js`），打印或落盘（v0.1.43）；v0.1.52 起 dev 分支内省失败同样 fail-fast（对齐 release，不再静默缺路由） |
+| `oj openapi -c config.yaml [-d dir] [--base B] [-o out.json]` | 从路由表生成 OpenAPI 3.1（dev 内省 `.route` / release 读 `dist/routes.js`），打印或落盘（v0.1.43）；v0.1.52 起 dev 分支内省失败同样 fail-fast（对齐 release，不再静默缺路由）；**v0.1.70 起补齐响应侧**：`.schema.response`（v0.1.72 起亦可写平级 `.response`，优先级 动词 `.response` > 组 `.response` > 动词 `.schema.response` > 组 `.schema.response`）→ `responses.200`（外裹 `{code,msg,data}` 信封）、每个 operation 与 spec 根带 **`tags: [<module>]`**、生成前审计全部 `.schema`（非法契约不再原样进 spec）、`operationId` 重复即报错、**v0.1.73 起 `del` 动词归一为 `delete` 操作键**（OpenAPI 3.x 只认标准 HTTP 方法） |
 | `oj build --check` | 只跑结构检查 S001–S008 不落盘（CI 门禁） |
 | `oj openapi -c config.yaml --check` | 生成物与已提交 `openapi.json` 比对，键序规范化后不一致即非零退出（CI 漂移门禁，v0.1.43）；`--check` 时 `-o` 为待比对文件，缺省 `<dir>/openapi.json` |
 
@@ -268,6 +276,32 @@ tables:
 不会静默回落 `default`。注意它是**整轮目标库**：会把全部模块的迁移灌进该库，不读模块级
 `manifest.yaml` 的 `db:` 绑定（那只是运行期路由）。所以模块绑不同库的项目，要
 `--db <profile> --module <M>` 逐组合各跑一遍（`scenarios.md` 场景 6）。
+
+### `oj migrate` 输出格式与模块定向
+
+**`--format json`**（机器可读，安装器/CI 收敛用）：continue-and-collect——单模块失败**不中断**其余模块，
+全部结果聚合成**一行 JSON** 打到 stdout（人读行改走 stderr，保证 stdout 纯净可解析）。输出契约：
+
+```json
+{ "results": [ { "module": "modA", "ok": true,  "applied": [ { "version": 1, "name": "init" } ] },
+               { "module": "modB", "ok": false, "error": "at seq 1: ..." } ],
+  "error": null }
+```
+
+- `results[]`：每模块一条；`ok=false` 时 `error` 携**脱敏后**原因（凭据段 `<scheme>://***@host`，
+  同 `secret::redact` 语义）。装配期（开库/目录解析）全局失败则 `results` 为空、`error` 携原因。
+- `applied[]`：本轮**新应用**的迁移（`version`/`name` 与账本一致，`name` 即 `V{seq}__{desc}` 的
+  `{desc}`）；幂等重跑为空数组；`--baseline` 记账不执行 → 空数组。
+- 退出码：任一模块失败即非 0（人读格式同样）；安装器**必须校验 exit code**，不能只凭 JSON 解析成功。
+- 错误脱敏：`error` 字段里的 `<scheme>://user:pass@host` 一律抹为 `<scheme>://***@host`（host/端口保留），
+  纯文本逐字节原样——日志/报错绝不外泄库密码。失败位点：`error` 形如 `at seq {账本最高 seq+1}: …`
+  （该模块账本空时即 `at seq 1:`），点名首败迁移序号。
+
+**`--module <M>`**（定向迁移）：两级匹配，命中唯一才收——
+① 裸模块名精确匹配（dev 树目录名即裸名）；② 未命中时按 dist 版本目录名 `<module>-<version>`
+定向（release 锁聚合形态 `<dir>/<m>-<v>/`）。**不解析 `<m>-<v>` 字符串**（version 可含 `-` 如
+`0.1.0-beta`，拆分有歧义），直接对已发现目录名匹配：`--module modA` 与 `--module modA-1.0.0`
+在 release 下等价只动 modA。多库项目：`--db X --module M` 逐组合跑（场景 6）。
 
 ### 门禁配置（第 10 章 server 表）
 
@@ -311,12 +345,14 @@ schema 回滚**没有自动机制**（refinery 语义，只前向）：破坏性
 | OPTIONS | `options` |
 
 **DELETE 的方法名是 `del`，不是 `delete`**——写错时该请求返回 405
-（`method DELETE not allowed`）。
+（`method DELETE not allowed`）。注意这是**运行期**命名；`oj openapi` 的生成物
+（v0.1.73 起）会把 `del` 归一为 OpenAPI 标准操作键 `delete`（operationId 同步
+`..._delete`），下游 client 方法名为 `deleteXxx()`。
 
 ### 两种 handler 写法
 
 **写法一：同步函数 + `.then().catch()`**。方法体同步返回，异步调用走 Promise 链；
-runtime 会泵 event loop 直到所有 Promise 落定后再写回响应（摘自 `sample/src/user/account/api.ts`）：
+runtime 会泵 event loop 直到所有 Promise 落定后再写回响应（摘自 `src/user/account/api.ts`）：
 
 ```ts
 function get(): void {
@@ -329,7 +365,7 @@ function get(): void {
 export default { get };
 ```
 
-**写法二：`async` 函数**（driver 会 `await fn()`；摘自 `sample/src/news/api.ts`）：
+**写法二：`async` 函数**（driver 会 `await fn()`；摘自 `src/news/api.ts`）：
 
 ```ts
 export default {
@@ -341,7 +377,7 @@ export default {
 };
 ```
 
-两种写法等价可用；同一文件可混用。响应一律经 `json.ok` / `json.fail` 收口（第 7 章）。
+两种写法等价可用；同一文件可混用。响应一律通过 `json.ok` / `json.fail` 统一返回（第 7 章）。
 
 ### 请求体 http.body
 
@@ -358,7 +394,7 @@ if (!b.name) { json.fail(400, "name required"); return; }
 返回原始帧字节）：
 
 ```ts
-// ws.ts：帧型忠实回显（可运行案例 sample/src/echo-bin/ws.ts）
+// ws.ts：帧型忠实回显（可运行案例 src/echo-bin/ws.ts）
 export default {
   async message() {
     const text = http.body; // 二进制帧为 null
@@ -374,7 +410,7 @@ URL = `{base}/{module}/{...path}/{feature}/` → `<dir>/{module}/{...path}/{feat
 尾斜杠有无皆可；`{base}` = api 挂载的 `prefix`（v0.1.58 挂载模型；缺省挂载即 `/v1/api`）。
 
 handler 函数挂 `.route` 属性即**替换**目录镜像路由，支持 matchit 语法
-（摘自 `sample/src/user/item/api.ts`）：
+（摘自 `src/user/item/api.ts`）：
 
 ```ts
 function detail(): void {
@@ -424,10 +460,123 @@ api 挂载内：路由表（含 `.route` 参数路由与 `_name_` 目录参数�
 `{api挂载prefix}/plugins`、`{api挂载prefix}/blob/{key}` 逐 api 挂载注册。
 目录穿越 / 空段 / 非法段（`..`、`.`、`\`、NUL）→ 404。
 
-### 入参契约 `.schema`（v0.1.44）
+### 嵌套 handler 组（v0.1.64）
 
-与 `.route` 同构：在导出的函数对象上挂 `.schema`，分**三通道**声明入参
-（`params` / `query` / `body`，对应 `http.params` / `http.query` / `http.body`）：
+default 导出里**非动词键 + 对象值**即一个嵌套 handler 组：一个文件挂多个同动词端点，
+不再必须拆子目录。组名即路径段（与目录镜像同构），组可再嵌子组（上限 4 层）。
+
+**何时采用（以领域驱动设计为参照，先读这段再决定形态）**。DDD 概念到 oj 落点的对应：
+
+| DDD 概念 | oj 落点 | 说明 |
+|---|---|---|
+| 限界上下文 | **模块**（`manifest.yaml`） | 先按业务边界分模块，不在一个模块里堆多个上下文 |
+| 聚合根 | **实体组**（`asset`） | 同一聚合的操作（动词）聚在组内——这是嵌套组的主用例 |
+| 聚合内的子实体 / 从属资源 | **子组**（`asset.upload`） | 没有独立生命周期，随聚合根一起路由 |
+| 独立聚合 | **独立目录 / 文件** | 不塞进别人的组——各自演化、各自鉴权 |
+
+三档形态按聚合判据选择：
+
+| 形态 | 适合 | 代价 |
+|---|---|---|
+| 拆子目录（`asset/get/api.ts`、`asset/post/api.ts`） | **不同聚合**：端点各自独立演化、多人分权、权限面不同 | 目录膨胀：一个聚合三五个动词就占三五行 `find` 结果；跨端点共享 helper 要走 `_shared` |
+| **嵌套组（同一聚合的多操作，推荐）** | 同一聚合根的多个同动词端点（资产的 读/建/上传），或一组共享前缀的对外端点 | 单文件变大——按聚合分段即可控；文件仍然过胖是**聚合过胖**的信号（DDD：拆聚合），不是回退动词目录的理由 |
+| 单文件平铺所有动词 | 模块根本身就是单一聚合且操作极少（≤3 个） | 动词一多，`.route`/`.schema` 在文件里交错难读 |
+
+一句话：**同一聚合的操作进同一个实体组，不同聚合才拆目录**——在「多文件夹」与「大文件」
+之间取平衡。可运行示例：`src/nest/api.ts`（L1 用例 `tests/nest.test.ts`）。
+
+```ts
+// src/nest/api.ts —— 实体为根：asset 的集合读/建/上传聚在一组
+function get(): void { json.ok({ where: "get" }); }              // GET  /nest/
+
+const asset = {
+  get: () => { json.ok({ where: "asset.get", state: http.query.state }); }, // GET  /nest/asset
+  post: () => { json.ok({ where: "asset.post" }); },             // POST /nest/asset
+  upload: {                                                      // 子资源（再嵌一层）
+    post: async () => { json.ok({ where: "asset.upload.post" }); }, // POST /nest/asset/upload
+  },
+};
+asset.get.schema = { query: { type: "object", required: ["state"],
+  properties: { state: { type: "string" } } } };                 // 元数据只挂函数，不是路由
+
+export default { get, asset };
+```
+
+组级 `.route` 作**整组默认前缀**，动词自身 `.route` 优先覆盖（规则与顶层 `.route` 相同：
+绝对 `/` 开头挂 base 根下，否则相对本层前缀）——适合把整组实体挂到对外根级 URL：
+
+```ts
+const anchor = {
+  post: async () => { json.ok({ anchor: http.param("anchor", "") }); },
+};
+anchor.route = "/x/{anchor}/upload";   // 组前缀：POST /x/{anchor}/upload 命中 anchor.post
+export default { anchor };             // 组内动词未单独挂 .route 时沿用之前缀
+```
+
+组级 `.schema` 与组级 `.route` **同等地位**：组对象上挂 `.schema` 作整组默认入参契约，
+组内动词无自身 `.schema` 时继承之；动词自身 `.schema` 在其上**合并**（通道级，与
+`oj openapi` / 运行期守卫同源——合并发生在内省期，结果落到 `RouteRow.schema`）：
+
+- 同通道（`params` / `query` / `body`）`required` 取**并集**；
+- 同 `properties` **动词逐键覆盖**、组值兜底；
+- 其余通道级关键字（如 `additionalProperties`）动词优先。
+
+组 `.schema` 非法 → `server.schema_validation` 装配期硬失败（不静默跳过）。
+
+> 与 oj-module 对齐：`.schema` 的首要目的是**让接口符合 OpenAPI 并生成文档**（`oj openapi`
+> 从 `RouteRow.schema` 出 parameters / requestBody）。因此组级 `.schema` 适合承载**跨端点共享
+> 的 query 契约**（分页 / 租户 / 公共过滤），而**路径参数（`params`）留给各 verb 自挂**——
+> 因为 `oj openapi` 对 path 参数做**双向一致**硬校验：组级 `.schema` 若声明了某路径参数，
+> 组内**每个**动词的路由 pattern 都必须含它，否则装配期失败。把 `params` 放组级只适用于
+> 「整组动词都带同一路径参数」的情况（组 `.route` 以该参数为固定前缀时最自然）。
+
+```ts
+const asset = {
+  get:  () => { json.ok({ where: "asset.get" }); },   // GET  /nest/asset
+  post: () => { json.ok({ where: "asset.post" }); },   // POST /nest/asset
+};
+// 组级默认契约：本聚合所有端点的公共 query（分页）——不碰路径参数，避免与部分动词的 {id} 冲突
+asset.schema = {
+  query: { type: "object", properties: { page: { type: "integer", minimum: 1 }, pageSize: { type: "integer", maximum: 100 } } },
+};
+// 建端点叠加 body 契约：最终 = 组 query(page/pageSize) ∪ 动词 body.title（不是替换）
+asset.post.schema = {
+  body: { type: "object", required: ["title"], properties: { title: { type: "string", maxLength: 80 } } },
+};
+export default { asset };
+```
+
+判别红线（**启动/`oj build` 期可操作报错，不再静默丢弃**）：
+
+| 键 | 值 | 语义 |
+|---|---|---|
+| 动词键（`get/post/put/del/patch/head/options`） | 函数 | handler 端点；`.route` / `.schema` 等属性一律读作元数据 |
+| 动词键 | 对象 / 数组 / 基元 / null | **报错**（动词键下不允许挂子组或常量） |
+| 非动词键 | 普通对象 | 子组，递归解析 |
+| 非动词键 | 函数 / 数组 / 基元 / null | **报错**（此前的静默丢弃陷阱） |
+
+- 组名可以是连字符等非标识符（`"audit-log"`），经计算式访问命中；段名不得含 `/`、
+  不得为 `__proto__` / `constructor` / `prototype`（手改 `routes.js` 注入这些段 →
+  release 启动失败）。
+- 组对象的 `.route`（字符串）/ `.schema`（对象）/ `.response`（对象，v0.1.72）是本层
+  前缀/默认契约/默认出参声明，不当子键；`route` 与 `schema` 与 `response` 因此是
+  **保留键**（组对象上这几个名字不会被当作子组解析）。
+- 嵌套上限 4 层；自引用（`const a = {}; a.self = a;`）在内省期即失败，不会拖死启动。
+- 挂 `.route` 的组动词同样**替换目录镜像**：镜像 URL 不再可达（404）。
+- release：`oj build` 为嵌套行写入 `handler` 链字段（顶层动词行不写，旧产物无此字段
+  照常启动）；路由事实唯一来源仍是 `routes.js`（第 11 章）。
+
+### 入参与出参契约 `.schema`（v0.1.44，响应通道 v0.1.70，平级 `.response` v0.1.72）
+
+与 `.route` 同构：在导出的函数对象上挂 `.schema`，分**四通道**声明——入参三通道
+（`params` / `query` / `body`，对应 `http.params` / `http.query` / `http.body`）
+加出参 `response`（v0.1.70；v0.1.72 起出参也可写在 `.schema` **之外**的平级 `.response`，
+见下节）。
+`.schema` 的首要目的是**让接口符合 OpenAPI 并生成文档**（`oj openapi` 从 `RouteRow.schema`
+出 parameters / requestBody；与 oj-module 的「前端契约 → 后端 `.schema` → OpenAPI」管线同源
+对齐——关键字白名单、三通道 `params`/`query`/`body` 形态完全一致）。它既可挂在**动词函数**
+上（单端点契约），也可挂在**组对象**上（整组默认契约，见上节「嵌套 handler 组」的组级
+`.schema`——组内动词继承并合并）：
 
 ```js
 export default { get, post };
@@ -453,7 +602,9 @@ post.schema = {
   JSON，**不**强转。
 - **受支持关键字**（白名单）：`type` / `required` / `properties` / `items` /
   `additionalProperties` / `minimum` / `maximum` / `minLength` / `maxLength` /
-  `pattern` / `enum` / `nullable` / `minItems` / `maxItems`。
+  `pattern` / `enum` / `nullable` / `minItems` / `maxItems` / `default`。
+  `default` 是纯注解关键字（无校验语义，v0.1.65 起放开）：声明后装配期不再 fail-fast，但
+  **oj 不会替你填值**——缺省钳制仍须 handler 自行做（应用层 `?? default`）。
   白名单外（`$ref` / `oneOf` / `format` …）一律 **fail-fast，绝不静默跳过**
   —— 静默放行等于把声明变成不生效的东西。非法契约在**装配期**即报错（启动失败）。
 - **`pattern` 用 Rust regex**，不是 ECMA-262：lookahead / 反向引用不支持，
@@ -464,11 +615,133 @@ post.schema = {
 - `additionalProperties: false`（body 通道）运行期**拒掉未声明字段**；不写则放行额外字段。
   其余白名单关键字按 JSON Schema 语义生效（`required` / `enum` / `minimum`·`maximum` /
   `minLength`·`maxLength` / `items` + `minItems`·`maxItems` / `nullable` / `pattern`）。
+- **数值 `enum` 按值比较**：`query`/`params` 经强转后 `number` 声明得到浮点（如 `?x=1`
+  → `1.0`），`enum` 成员判定按**数值**而非 serde_json 数字变体——`1` 与 `1.0` 等价，
+  故 `type:"number"/"integer"` + `enum:[1,2]` 配合 `?x=1` 直接命中，**不要**为绕过误报
+  而在 handler 内重校验（那是对已修复根因的临时壳）。越界值（如 `3`、`1.5`）仍被拒。
 - 开关 `server.schema_validation`：**默认 true**（声明了就会执行）；
-  置 `false` 为逃生门。
-- 同一份声明喂给 `oj openapi`，补出 `parameters` 与 `requestBody`；其中
+  置 `false` 为逃生门——**它只关「是否执行运行期校验」，不关「声明是否合法」**：
+  拼错通道名、白名单外关键字这类**声明错误**在该开关关闭时**照样启动失败**。
+  不要用这个开关去绕启动报错（那会同时关掉全部入参校验）。
+- 同一份声明喂给 `oj openapi`，补出 `parameters` / `requestBody` / `responses`；其中
   `params` 声明必须与路由 pattern 的实参**双向一致**，否则 `oj openapi` 报错
   （避免契约与 URL 变成两份真源）。
+
+#### `response` 通道：出参声明（v0.1.70，平级 `.response` v0.1.72）
+
+```js
+get.schema = {
+  // 入参照旧……
+  // 出参：声明 `json.ok(data)` 的 **data payload**
+  response: {
+    type: "object",
+    required: ["list", "total"],
+    properties: {
+      list: { type: "array", items: { type: "object", properties: { id: { type: "integer" } } } },
+      total: { type: "integer", minimum: 0 },
+    },
+  },
+};
+
+// v0.1.72：出参也可写在 .schema 之外的平级 .response——.schema 只放入参，
+// 入参与出参不再混在同一对象里。语义与 .schema.response 完全一致。
+get.response = {
+  type: "object",
+  required: ["list", "total"],
+  properties: { list: { type: "array" }, total: { type: "integer" } },
+};
+get.schema = { query: { type: "object" } }; // 现在只放入参
+```
+
+生效优先级（四个位置并存时）：**动词 `.response` > 组 `.response` > 动词
+`.schema.response` > 组 `.schema.response`**。组级 `.response` 与组级 `.schema`
+同机制：作整组默认沿嵌套层层继承，动词自身 `.response` 整体覆盖。两位置并存时
+`.response` 优先；`.schema.response` 继续生效，存量零破坏。`oj openapi` 的
+生成逻辑完全不变（仍取最终生效者裹信封），未声明任何 response 的端点保持占位 200。
+（v0.1.74：各声明位值为 `null` 与缺失同义——回落继承链 / 占位；声明了但非法
+如布尔 schema 照旧装配期 fail-fast。另：`response` 是组对象**保留键**，不能用来
+命名嵌套子组——被当声明读走，子组会静默不产生路由，与 `schema`/`route` 相同。）
+
+四件事必须说清楚（否则一定会被误解）：
+
+1. **只声明、不校验。** 运行期**不**校验返回值——少返回字段不会 400/500，也不会有
+   任何告警。把它当**写给前端的类型注释**，不是守卫。理由：响应由 JS 产生，校验失败时
+   请求已执行完、无处可去；把出参变成硬约束会让「少返回一个字段」升级成 500 级故障。
+   产物里带了 `x-oj-response-enforced: false` 就是这个意思。
+2. **它 = `json.ok(data)` 的 data payload**，不是整包信封。`oj openapi` 输出的是
+   **完整信封** `{code,msg,data}`（oj 的 wire 恒为信封，公开产物不该对字节撒谎）。
+3. **`json.raw` / `json.stream` / `json.sse` 端点不要声明 `response`**——它们绕过信封
+   出裸 body，声明了就与 wire 不符（这类端点不声明即保持占位）。
+4. **声明合法性照旧 fail-fast**：关键字白名单 / 类型字面值 / `pattern` 可编译，写错即
+   启动失败。`response` 允许 object / array / 嵌套（与 `body` 同），**不**受
+   `params`/`query` 那套「仅扁平标量」限制。
+
+组级 `.schema` 的 `response` 与入参合并规则**不同**：`response` 走「动词级**整体覆盖**、
+无则继承组级」，不做 `required` 并集 / `properties` 逐键覆盖——响应是动词各不相同的，
+组级必填被某动词继承会让文档声称返回并不存在的字段。
+
+> **不得把 `response` 当脱敏 / 裁剪边界**：按声明裁字段是字段级越权的伪保证
+> （声明窄于实际返回时，多出来的数据照样到了客户端）。
+
+#### 表达力边界：与 zod 的对照表（v0.1.71）
+
+`.schema` 是 **JSON Schema 的严格子集**，不是 zod 的超集也不是其等价物。下游拿
+`openapi.json` 生成 zod 时按下表映射；**表外的构造一律 fail-fast**（装配期/生成期报错），
+不会静默降级——宁可写不了，也不给你一份「声明了但没生效」的契约。
+
+| `.schema` 关键字 | zod 写法 | 备注 |
+|---|---|---|
+| `type: "string"/"number"/"integer"/"boolean"/"null"` | `z.string()` / `z.number()` / `z.number().int()` / `z.boolean()` / `z.null()` | `integer` 在 JSON Schema 与 OpenAPI 里都是「整型」，映射到 zod 是 `z.number().int()` |
+| `type: ["string","null"]`（类型数组） | `z.string().nullable()` | 类型数组是 nullable 的标准写法 |
+| `type: "object"` + `properties` | `z.object({...})` | 递归生效 |
+| `type: "array"` + `items` | `z.array(...)` | `items` 必配 |
+| `required: ["a"]` | 字段不加 `.optional()` | OpenAPI 里 `required` 是**父级**字段，不是字段级 |
+| `additionalProperties: false` | `z.object({}).strict()` | 运行期（body 通道）真的拒未声明字段 |
+| `minimum` / `maximum` | `.min()` / `.max()`（数值） | |
+| `minLength` / `maxLength` | `.min()` / `.max()`（字符串） | 按**字符数**（`chars().count()`）算，不是字节 |
+| `pattern` | `.regex(new RegExp(...))` | **见下方跨语言红线** |
+| `enum: [...]` | `z.enum([...])` / `z.literal()` 联合 | 非空数组；**数值按值比较**（`1` 与 `1.0` 等价） |
+| `nullable: true` | `.nullable()` | |
+| `minItems` / `maxItems` | `.min()` / `.max()`（数组） | |
+| `default` | `.default(...)`（仅 zod 侧） | oj 侧**纯注解**：不替你填值，缺省钳制仍须 handler 自己做 |
+
+**不支持且 fail-fast**（`$ref` / `oneOf` / `allOf` / `anyOf` / `not` / `format` /
+`patternProperties` / `dependencies` / 以及 zod 的 `refine` / `transform` /
+`discriminatedUnion` / `record`）。其中高频的两条怎么改写：
+
+- **联合类型 / discriminated union**：写不了。用「可选字段 + 单形态」表达
+  （例如 `{ kind: {type:"string", enum:["a","b"]}, aOnly?: ..., bOnly?: ... }`），
+  判别逻辑放 handler。
+- **`format`（email / date-time / uuid 等）**：写不了。改成 `pattern`
+  （`pattern` 是唯一的字符串形状约束手段）。别指望 oj 帮你校验邮箱——那需要真解析器。
+
+**跨语言红线（`pattern`）**：`.schema` 的 `pattern` 是 **Rust regex**，不是 ECMA-262。
+下游把它搬进前端 zod 的 `new RegExp(...)` 时：
+
+- Rust-only 语法（lookahead `(?=` `(?!` `(?<=` `(?<!`、反向引用 `\1`）在 JS 里要么
+  **编译失败**、要么**语义漂移**——漂移尤其危险：Rust 里拒绝的字符串在 JS 里被放行，
+  等于前端校验被绕过；
+- 反过来 JS 支持而 Rust 不支持的写法，在 oj 侧装配期就报错（不会静默）。
+- 实践建议：`.schema` 里只写**两边都成立**的保守正则（字符类、量词、锚点、`\d`/`\w` 等），
+  复杂校验下移到 handler。
+
+**下游 codegen 的三条注意事项**（openapi.json 里的值是任意 JSON 字符串，可含 `` ` ``、
+`*/`、换行、`${`）：
+
+1. 属性名已是合法 JSON 键，但**不保证**是合法 JS 标识符——生成对象键请一律
+   `JSON.stringify(name)` 后嵌入，不要裸插值；
+2. `enum` 元素与 `default` 值同理，必须序列化后嵌入；
+3. `required` 里的项**可能不在 `properties` 中**（JSON Schema 允许「只声明必填、不约束
+   类型」），codegen 取值前先判存在。
+
+#### `.schema` 顶层只允许四个通道（v0.1.70，行为收紧）
+
+顶层键白名单 = `params` / `query` / `body` / `response`；其余键（`param` / `bodys` /
+`responce` / `title` / `$schema` …）**装配期硬失败**（报错带 method / pattern /
+handler 链 / 文件）。以前这类键被**静默忽略**——拼错的通道意味着接口一直在裸奔，
+而「声明了但没生效」是本项目最重的缺陷类。报 `unsupported channel` 就改名或删除。
+（v0.1.72 的平级 `.response` 不在此列：它在 `.schema` 之外，胜出者会被写回
+`schema.response` 通道，同样过这道审计。）
 
 ### ws.ts（WebSocket 生命周期钩子）
 
@@ -510,7 +783,7 @@ export default {
 （如 kv 写入）照常生效；但钩子里的 `ws.send` 离帧受 RFC 6455 关闭握手限制，无法送达
 客户端。需要离帧可见时，用服务端 `ws.close()` 收尾。
 
-运行案例（摘自 `sample/src/news/ws.ts`）：
+运行案例（摘自 `src/news/ws.ts`）：
 
 ```ts
 export default {
@@ -528,7 +801,7 @@ export default {
 ### 帧内发布：`ws.ts` 里直接 `bus.publish`
 
 `bus.publish` 没有上下文限制（只有 `bus.subscribe` 限 WS 连接），帧处理器可以直接当
-「广播泵」用。可运行案例 `sample/src/news/chat/ws.ts`——聊天室，任意连接发帧，
+「广播泵」用。可运行案例 `src/news/chat/ws.ts`——聊天室，任意连接发帧，
 所有订阅者收广播：
 
 ```ts
@@ -581,7 +854,7 @@ import { requireRole } from "#/user/_shared/validate"; // 跨模块：首段必�
 - 后缀补全与相对导入同序；别名路径禁 `..` / 空段。
 - **只能在模块内的文件里用**：模块根由**文件自身位置**派生——从所在目录向上找最近的
   `manifest.yaml` 祖先。`src/tests` 用例目录与任务池在模块外 → 没有锚点，继续用相对路径。
-  运行期与构建期**共用同一份探针**（`resolve_relative` / `resolve_alias`），所以 dev 与
+  运行期与构建期**共用同一套路径解析逻辑**（`resolve_relative` / `resolve_alias`），所以 dev 与
   release 对同一 specifier 必然命中同一文件（含目录索引）。
 - **跨模块别名需声明依赖**：`manifest.yaml` 的 `deps` 缺目标模块 → `oj build` 报 S008
   （与表归属 S003 同一套归属图）。既有**相对**跨模块引用不追溯（升级不破坏）。
@@ -594,8 +867,8 @@ import { requireRole } from "#/user/_shared/validate"; // 跨模块：首段必�
   `oj build` fail-fast（此前静默悬空，release 运行期才炸）。
 - 编辑器/测试工具对齐：`tsconfig.json` 的 `paths` 按同规则镜像
   （`"#/*": ["./src/*"]` + `"#*": [各模块 /*]`）。值须带 `./` 前缀——无 `baseUrl` 时非相对值
-  会被 vite/esbuild 警告（见 `sample/tsconfig.json`）。L2 vitest 走
-  `sample/unit/vitest.config.ts` 的 `resolveId` 插件（同规则镜像）。
+  会被 vite/esbuild 警告（见 `tsconfig.json`）。L2 vitest 走
+  `unit/vitest.config.ts` 的 `resolveId` 插件（同规则镜像）。
 - `#` 与 Node `package.json#imports` 共用命名空间：项目若声明 `#` 开头的 imports 键，
   `oj build` 直接失败（避免 Node/vite 与 oj 两套解析器分叉）。
 
@@ -609,7 +882,7 @@ import { positiveId, requireRole } from "../_shared/validate";   // → ../_shar
 
 **跨模块相对导入**（如 `idp` 引 `auth` 的工具）：dev 下直接可跑；build 时改写为指向
 目标模块版本目录的相对路径——目标模块未构建过则报错，先 `oj build auth` 再
-`oj build idp`（摘自 `sample/src/idp/login/api.ts`）：
+`oj build idp`（摘自 `src/idp/login/api.ts`）：
 
 ```ts
 import { nowSecs } from "../../auth/_shared/util";
@@ -646,22 +919,52 @@ CJS 包自动包装：`module.exports` → `default`；`require("pkg")` 走 `__o
 
 > 何时读我：写任何 handler 期间，查签名与语义。
 
-签名与 `global.d.ts` 一致（类型权威）。SQL 占位符方言：**sqlite / mysql 用 `?`，
-postgres 用 `$1`**；值一律经参数数组绑定。
+签名与 `global.d.ts` 一致（类型权威）。**`?` 是三引擎统一绑定参数占位符（0.1.67 起）**；
+值一律经参数数组绑定。
 
-### 总表（27 组）
+#### 统一占位符（0.1.67）
+
+同一段 SQL、三引擎跑通——写 `?` 即可，postgres 由宿主 op 层自动改写为 `$n`，业务代码
+**无需 `db.dialect()` 分支**：
+
+```ts
+// 以下三 DSN（sqlite:./a.db / mysql://… / postgres://…）跑同一段 SQL：
+const rows = await db.query("select * from user where age > ? and name = ?", [18, "a"]);
+const n = await db.exec("update user set name = ? where id = ?", ["b", 1]);
+```
+
+- **存量 `$n` 写法继续有效**：postgres 上 `$n`+`?` 混用时，`?` 按已有最大序号续接
+  （`where a = $1 and b = ?` → `b = $2`）；不改也不报错。
+- **参数计数校验仅 postgres**：改写后占位符数 ≠ 参数数即报
+  `placeholder count N != params M`（附正解 hint），比引擎侧报错更早、文案更可读；
+  sqlite/mysql 的同类不匹配仍由引擎在执行期报错（提示文本见各引擎错误表）。
+- **PG × JSONB `?` × 参数 行为矩阵**（`?` 运算符与占位符共用一个字符，宿主按下表处理）：
+
+| 写法 | params 空 | params 非空 | 说明 |
+| --- | --- | --- | --- |
+| `doc ?\| 'a','b'`（及 `?&`/`?#`/`?-`/`?<`/`?>`/`?=`/`?~`） | 可用 | 可用 | 后跟运算符字符的 `?` 一律豁免不改写 |
+| `doc ? 'key'`（裸 jsonb 存在性） | **可用** | **禁止**——`?` 会被当占位符改写，静默错绑 | 空参短路不误伤；带参必须换 `jsonb_exists` |
+| `E'a\'?b'` 等字符串字面量 | 可用 | 可用 | E-string 反斜杠转义已感知；但仍建议少用 |
+
+  **铁律：PG 下 jsonb 存在性判断一律写 `jsonb_exists(doc, 'key')`**（PG 内建同名函数），
+  不写裸 `?` 运算符——它无法与占位符区分。
+
+### 总表（35 组）
 
 | 全局 | 说明 |
 |---|---|
 | `json.ok(data?)` / `json.fail(code, msg, data?)` / `json.header(name, value)` / `json.redirect(url, code?)` | 统一响应信封、响应头与 3xx 重定向原语（v0.1.26） |
-| `http.method / query / headers / body / params / param / tenantId / user / files / file(i)` | 当前请求上下文（只读、懒加载、每请求最新） |
+| `http.method / query / headers / body / params / param / tenantId / user / module / files / file(i)` | 当前请求上下文（只读、懒加载、每请求最新；`module` = 只读模块身份 `{name, version}`，v0.1.76） |
 | `db.query / exec / table / tx` | 默认库（`db === DB("default")`） |
 | `db.sqlProfile()` / 信封 `_sql` | SQL 执行追踪（v0.1.51，dev 默认开）：本请求画像快照 `{count,totalMs,slow,byDb,events}`；dev 信封自动附加 `_sql` 字段 |
 | `DB(name)` | 命名库实例（未配置的名字返回 `undefined`） |
 | `kv.get/set/del/expire/incr` | KV 存储（配 `redis.default` → 真 Redis，否则进程内存 KV） |
 | `redis.get/set/del/expire/incr` | 与 `kv` 同源同面（真连时二者同栈，auth 会话同库） |
-| `blob.put/get/del/url/contentType/copy/move/readRange`（可调用：`blob("name")`） | 对象存储（`blob:` 段启用）；`copy` / `move` / `readRange` 自 v0.1.47（ABI 11）起 |
+| `blob.put/get/del/url/contentType/copy/move/readRange`（可调用：`blob("name")`） | 对象存储（`blob:` 段启用）；`copy` / `move` / `readRange` 自 v0.1.47 起 |
 | `fs.readFile/readTextFile/writeFile/writeTextFile/mkdir/remove/rename/stat/readDir` | 本地文件系统（`fs:` 段启用，v0.1.53）；jail 到 `fs.root`，未配置/越界抛 `NotCapable` |
+| `exec.run(argv, opts?)` | 外部命令执行（v0.1.75，`platform.exec` 段授权）：argv 模板白名单 + 路径占位符校验，无 shell；未配置/未授权抛 `NotCapable`，见下「exec」 |
+| `yaml.parse(text)` / `yaml.stringify(value)` | YAML 读写原语（v0.1.75，无特权，始终可用）：三预算防炸弹解析（1 MiB 输入 / 10 万节点含 alias 展开 / 深度 128）+ Rust 阻塞池执行不卡 isolate；stringify 仅承诺机器产物往返，见下「yaml」 |
+| `server.reloadConfig()` | 进程内触发热更（v0.1.75，`platform.modules` 特权）：与 `POST {base}/_system/config` 同一 executor 与串行锁，返回恒定形状（`generation` + 三清单 `applied`/`restart_pending`/`kept_listener`，`unchanged` 时三清单空）；`oj test` / 嵌入式抛 `reload not available`，见下「server」 |
 | `bus.publish / subscribe / kind` | 主题广播（HTTP 发布、WS 订阅） |
 | `es.search / index / del` | Elasticsearch 薄客户端（`es:` 段启用） |
 | `Mail(key)` / `mail` | 邮件投递（`smtp:` 段 + `oj-mail` 插件启用）：`send / sendSync / enqueue / result / sendRaw`，见下「mail」 |
@@ -680,7 +983,9 @@ postgres 用 `$1`**；值一律经参数数组绑定。
 | `jwt.sign / verify / accessDuration / refreshDuration` | JWT 签发与验签（`auth:` 段注入；未配置调用报错，见第 8 章） |
 | `bcrypt.hash / verify` | 密码哈希与校验（Rust 侧 `spawn_blocking`，不卡 isolate） |
 | `oidc.sign / verify / jwks` + `oidc.issuer / rp / clients` | RS256 JWS 原语与装配期配置（`oidc:` 段启用；私钥留在 Rust，见第 10 章） |
-| `crypto.sha256Hex / randomHex` | sha256 十六进制摘要 / 随机 hex（增补进原生 `crypto`，原生成员保留） |
+| `sso.providers` | HTTP 表单 / CAS SSO 提供者注册表（v0.1.61，`http_sso:` 段启用；段缺省调用报 `http sso not configured`）。登录端点是**业务模块**（src/sso/ 参考实现），详见第 10 章「sso」 |
+| `cert.generate / cert.renew` | JWS 证书生成/重签（RSA + RS256，纯内存不落盘；`oj-cert` 工具同源于此）。部署期证书签发用 `oj-cert`，运行期此全局仅当内存自签发/续期通道；详见第 10 章「证书门禁」 |
+| `crypto.sha256Hex / md5Hex / randomHex` | sha256/MD5 十六进制摘要 / 随机 hex（增补进原生 `crypto`，原生成员保留；**MD5 仅限非安全场景**，见第 13 章限制） |
 | `toBigInt(v)` / `toUBigInt(v)` / `toDouble(v)` | **64 位整数转换**：DB 的 i64 超界（雪花 id）读出为十进制字符串，回写用 `toBigInt()`；无符号 64 位（仅 MySQL `BIGINT UNSIGNED`）用 `toUBigInt()`（v0.1.24）；见下「大整数与 i64」 |
 | 测试 SDK（`client.*` / `describe / it / expect / beforeEach` / `finish`） | **仅测试文件可用**，见第 9 章 |
 
@@ -693,14 +998,16 @@ postgres 用 `$1`**；值一律经参数数组绑定。
 | `json.header` | `header(name: string, value: string): void` | 追加响应头（v0.1.46）：同名可重复——`Set-Cookie` 双发（登录端点同响应下发 `oj_sess` + `oj_csrf`）合法落多个值；其余头同名最后一个生效 |
 | `json.raw` | `raw(data: unknown): void` | **裸 JSON 200（无 `{code,msg,data}` 信封）**，content-type 默认 `application/json`（`json.header` 可覆盖）。对外标准协议端点用（OIDC discovery/jwks/token/userinfo）；错误仍走 `json.fail` 信封 |
 | `json.redirect` | `redirect(url: string, code?: number): void` | **3xx 重定向原语**（v0.1.26）：`Location` + RFC 9110 §15.4 短超文本注记（HEAD 请求为空 body），content-type 默认 `text/html; charset=utf-8`。`code` 非 3xx **回落 302**（杜绝「200 + Location」畸形响应）；空 url 忽略 `Location`。具名封装：`movedPermanently`(301) / `found`(302) / `seeOther`(303，跟随后改 GET) / `temporaryRedirect`(307，方法/体保持) / `permanentRedirect`(308，永久 + 方法保持)。典型：302 到 `blob.url()` 预签名 URL（`scenarios.md` 场景 8） |
-| `json.stream` | `stream(opts?: { status?: number; contentType?: string }): StreamWriter` | **流式响应**（v0.1.35）：打开裸 body 流（绕过信封），返回 `{ write(chunk), end() }`；默认 HTTP 200，可经 `opts.status` / `opts.contentType` 覆盖。`write` 入参 string/ArrayBuffer/ArrayBufferView/TypedArray |
-| `json.sse` | `sse(opts?: { status?: number; contentType?: string }): StreamWriter` | **SSE 流**（v0.1.35）：等同 `json.stream` 但强制 `Content-Type: text/event-stream`，每次 `write` 的「数据」自动包成 `data: <内容>\n\n` 帧；`opts` 同 `json.stream` |
+| `json.stream` | `stream(opts?: { status?: number; contentType?: string; fileName?: string; disposition?: "attachment" \| "inline" }): StreamWriter` | **流式响应**（v0.1.35）：打开裸 body 流（绕过信封），返回 `{ write(chunk), end() }`；默认 HTTP 200，可经 `opts.status` / `opts.contentType` 覆盖。`write` 按入参类型分发：`Uint8Array`/`ArrayBuffer`/类型化数组（如 `Int32Array`）/`DataView` 走**字节通道**（二进制无损，附件/图片下载用；v0.1.66 起后三者在分发层转为 `Uint8Array` 后进字节 op，0.1.65 实测会 TypeError）；其余（`string` 等）走 UTF-8 文本通道（CSV/JSON/SSE 行）。`opts.fileName`（v0.1.65）写入 `Content-Disposition: <disposition>; filename*=UTF-8''<pct-encoded>`（`disposition` 默认 `attachment` 下载，传 `inline` 内联展示）——浏览器另存为原名而非安全化名，且**无需 302 到免鉴权 blob 路由**即可把鉴权后的字节流式回源 |
+| `json.sse` | `sse(opts?: { status?: number; contentType?: string; fileName?: string; disposition?: "attachment" \| "inline" }): StreamWriter` | **SSE 流**（v0.1.35）：等同 `json.stream` 但强制 `Content-Type: text/event-stream`，每次 `write` 的「数据」自动包成 `data: <内容>\n\n` 帧；`opts` 同 `json.stream` |
 
 > **流式 / SSE 响应（v0.1.35）**：`json.stream` / `json.sse` 返回 `StreamWriter`（`{ write(chunk), end() }`）。
 > 数据通道解耦于 isolate 生命周期——handler 退出后 isolate 归还池、但响应继续向客户端推送；
 > **不调用 `end()` 也会在 `read_capture` 阶段自动关流**（心跳任务经 `Notify` 退出）。
 > 限制：流式响应**绕过** `{code,msg,data}` 信封（直接写裸 body）；心跳保活间隔 15s（`:\n\n`）；
-> `opts` 仅支持 `status` / `contentType` 两字段，不支持额外 SSE 字段（如 `event:` / `id:` 需自行拼进 `write` 内容）。
+> `opts` 支持 `status` / `contentType` / `fileName` / `disposition` 四字段；
+> **二进制须传 `Uint8Array`/`ArrayBuffer`/`TypedArray`/`DataView`**——传 `string` 会被当 UTF-8 文本而失真（如图片/压缩包）；
+> 不支持额外 SSE 字段（如 `event:` / `id:` 需自行拼进 `write` 内容）。
 
 ```ts
 json.ok({ created: true });
@@ -713,9 +1020,15 @@ json.redirect.seeOther("/v1/api/order/list/"); // POST 提交后跳转：跟随�
 
 // v0.1.35：流式 / SSE（绕过信封，直接写裸 body）
 const s = json.stream({ contentType: "text/csv" });
-s.write("a,b\n"); s.write("1,2\n"); s.end();          // 普通流式
+s.write("a,b\n"); s.write("1,2\n"); s.end();          // 普通流式（文本通道）
 const e = json.sse();
 e.write("hello"); e.write("world");                    // 自动包成 data: hello\n\n / data: world\n\n
+
+// v0.1.65：二进制附件下载（鉴权后流式回源，无需 302 到免鉴权 blob 路由）
+const bytes = await db.query(...);                     // Uint8Array
+const dl = json.stream({ contentType: "application/octet-stream", fileName: "报告.pdf" });
+dl.write(new Uint8Array(bytes)); dl.end();             // 字节通道：逐字节无损
+// → Content-Disposition: attachment; filename*=UTF-8''%E6%8A%A5%E5%91%8A.pdf
 ```
 
 ### http —— 请求上下文
@@ -731,6 +1044,7 @@ e.write("hello"); e.write("world");                    // 自动包成 data: hel
 | `http.param` | `param(name: string, def?: unknown): any` | **路径参数优先，query 兜底**，均缺失返回 `def` 原值 |
 | `http.tenantId` | `string \| null` | 租户 id（`tenant.enable` 时从租户头提取；未启用为 `null`） |
 | `http.user` | `AuthUser \| null` | 已验签用户 `{id, roles, claims}`；auth 启用且请求通过 Bearer 守卫（进 handler 前统一验 token 的那道检查）才有值，否则 `null` |
+| `http.module` | `{ name: string; version: string } \| null` | **模块身份**（v0.1.76）：路由分发时按 handler 文件所在模块目录注入 `{name, version}`（dev 取 `src/<m>/manifest.yaml`，release 取 `dist/<m>-<v>/manifest.yaml`）。无模块上下文（任务桥 / WS 帧 / `run_with` / 启动期内省）为 `null`；页面 meta 合成派发在模块目录内**有值**。**只读**：对象已冻结，strict 下写抛 TypeError（详见 §6.1） |
 | `http.files` | `UploadedFileMeta[]` | multipart 上传元信息 `[{field, filename, content_type, size, key, url}]`；非 multipart 为空数组。**`key`/`url`（v0.1.38）**：流式大文件（> `max_upload`，服务端直落 blob）的 blob 对象 key 与下载地址；小文件为 `null` |
 | `http.file` | `file(i: number): Promise<Uint8Array>` | 第 i 个上传文件的字节（越界报错 `no such file`；**流式大文件报错**并指路 `files[i].key`/`.url`——小文件行为不变） |
 
@@ -739,13 +1053,35 @@ const id = Number(http.param("id", 0));   // /item/42?id=9 → "42"（路径优�
 const page = http.param("page", 1);       // 无路径参数 → query 兜底 → 默认 1
 ```
 
+#### http.module —— 只读模块身份（v0.1.76）
+
+模块路由分发时注入，让业务知道请求落在哪个模块/哪个版本：
+
+```ts
+// 典型用途：按模块版本做观测打点 / 兼容分支（版本分流本身在 manifests 锁与挂载层）
+log.info("hit", "module", http.module.name, "version", http.module.version);
+if (http.module.version.startsWith("0.1.")) { /* 旧版兼容分支 */ }
+```
+
+- **判定依据是 handler 文件所在目录**（祖先目录命中模块目录），不是请求来源：
+  - 有值：普通 api.ts 路由、**页面 meta 合成派发**（handler 在模块目录内时）；
+  - `null`：任务桥、WS 帧（含模块目录内的 `ws.ts`）、`run_with`、启动期内省期。
+- **只读**：返回对象已 `Object.freeze`。`module` 是框架授信依据（跨模块表归属守卫 /
+  bound_db 重定向 / 平台特权换装都按它裁决），故冻结；`http.user` 不冻（维持现状）。
+  strict（ESM / api 文件 CJS 包装）下写属性抛 `TypeError: Cannot assign to read only
+  property ...`；`require()` 引入的 CJS 代码（`new Function`，sloppy）写它静默无效。
+  两条路径都改不了框架状态——JS 拿到的只是快照拷贝。
+- **勿回显 version 给外部客户端**：版本号是指纹面，日志/内部打点用即可。
+- dev 与 release 的 version 同源同值（`src/<m>/manifest.yaml` 与 `dist/<m>-<v>/` 内
+  manifest）；release 装配期校验二者一致，不一致（stale/手改 dist）启动即 fail-fast。
+
 ### db / DB(name) —— 数据库
 
 | API | 签名 | 说明 |
 |---|---|---|
 | `db.query` | `query(sql: string, params?: unknown[]): Promise<Row[]>` | 参数化查询 → 行数组 |
 | `db.exec` | `exec(sql: string, params?: unknown[]): Promise<number>` | 参数化执行 → 受影响行数 |
-| `db.stream` | `stream(sql: string, params?: unknown[], opts?: { onRow?: (row: Row) => void; signal?: AbortSignal }): Promise<void> \| AsyncIterable<Row>` | **流式查询**（v0.1.37，PR-2 Phase A）。逐行拉取大结果集，避免一次性 `db.query` 全量驻留。两种形态见下 |
+| `db.stream` | `stream(sql: string, params?: unknown[], opts?: { onRow?: (row: Row) => void; signal?: AbortSignal }): Promise<void> \| AsyncIterable<Row>` | **流式查询**（v0.1.37）。逐行拉取大结果集，避免一次性 `db.query` 全量驻留。**只走直连池**（`db.tx` 内会报错），且**只有部分后端真逐行拉取**（其余回落全量或直接报错，详见下节）。两种形态见下 |
 | `db.table` | `table(name: string): QueryBuilder` | 安全查询构造器（标识符白名单 + 参数化值） |
 | `db.nextSeq` | `nextSeq(name: string): Promise<number \| string>` | **平台序列分配**（v0.1.24）。单语句原子取号，是 `max+1` 竞态的终态方案。首次使用自动建平台表 `_oj_sequences`。**库级、跨租户共享**——需隔离就把租户拼进 `name`；`name` 请用服务端常量；账号需 DDL 权限或由迁移预建该表；`memory://` 不支持。`db.tx` 内调用搭车同一连接 |
 | `db.tx` | `tx(fn: (tx: DBInstance) => unknown): Promise<unknown>` | 事务（语义见下） |
@@ -753,6 +1089,10 @@ const page = http.param("page", 1);       // 无路径参数 → query 兜底 �
 | `db.asTenant` | `asTenant(id: string): DBInstance` | 匿名请求**声明**租户身份（v0.1.20）——仍强制租户条件，只是把 `tenant_id` 由 `id` 填充；需 `tenant.allow_as_tenant: true` 且请求为匿名（见下） |
 | `DB(name)` | `(name: string) => DBInstance \| undefined` | 命名库实例；全部方法与 `db` 同签名 |
 | `db.sqlProfile()` | `sqlProfile(): { count: number; totalMs: number; slow: Array<{sql,ms,db}>; byDb: Record<string,{count,ms}>; events: Array<{sql,params,db,inTx,source,ms,rows,ok,error}> }` | **SQL 执行追踪**（v0.1.51，dev 默认开）：本请求累计的 SQL 统计 + 慢查询 + 逐条事件；追踪关闭时返回空对象 |
+| `db.dialect()` | `dialect(): "sqlite" \| "mysql" \| "postgres"` | **连接引擎名**（v0.1.61）。供 `_shared` 共享模块（search/versions）与诊断分派方言 SQL；业务 handler 分支方言 = 放弃跨引擎可移植承诺，**慎用**。`db.tx` 回调对象同面（另有 `isTx: true` 标记事务域句柄——DDL 必须拒绝在此类句柄上执行） |
+| `db.listTables` | `listTables(prefix?: string): Promise<string[]>` | **目录自省**（v0.1.82）。当前库全部业务可见表名，**含未登记 registry 的表**（api-only 方案 / 历史遗留表），按名称排序；可选前缀过滤（`%`/`_` 按字面量匹配，绑定参数）。sqlite 排除 `sqlite_*` 内部表；mysql/pg 经 information_schema 限当前库/schema。方言无关（SQL 文本引擎常量），替代「按方言分支 `information_schema` / `sqlite_master`」的裸 `db.query`。`db.tx` 回调对象同签名（搭车事务连接） |
+
+> **业务 SQL 写法红线**：业务读写优先用 `db.table` 构造器（见下「查询构造器」），由服务端按目标方言自动生成 SQL，从而获得**多库 / 跨引擎迁移能力**；仅在构造器不支持的语句（DDL、部分非 CRUD 语义）才退回 `db.query` / `db.exec`，且仍须用 `?` 绑定参数、避免方言特有语法。
 
 **SQL 执行追踪**（v0.1.51，开发期可观测性）：
 
@@ -781,6 +1121,15 @@ db_trace:
 
 **查询构造器**（流式、结构化；SQL 由服务端按库方言生成）：
 
+> **专题指南**：SQL 构造器的**能力矩阵、三方言语义差异**（受影响行数 / `orIgnore` / `fromSelect`
+> / 字面量列 `CAST` / 模糊搜索转义）、**红线与逃生舱**、**从 `db.query` 迁移路径**，统一见
+> **`sql-builder-guide.md`**。本章只列 API 契约（签名、允许形态、报错文案）。
+
+- **业务优先用构造器**：业务读写应优先用 `db.table(...)` 构造器，而非手写 `db.query` /
+  `db.exec` 裸 SQL。构造器按目标方言（sqlite/mysql/postgres）**自动生成正确 SQL**，业务无需
+  关心方言差异，同一份 handler 可在多库 / 跨引擎间迁移；**仅当构造器不支持的语句（DDL、部分非
+  CRUD 语义）才退回 `db.query` / `db.exec`**，且仍须用 `?` 绑定参数、避免方言特有语法。
+
 ```ts
 const rows = await db.table("account")
   .select(["id", "name"])
@@ -793,8 +1142,22 @@ const rows = await db.table("account")
 ```
 
 - `WhereCond`：`{ field: string; op?: string; value?: unknown }`。
-  操作符：`eq / ne / gt / gte / lt / lte / in（值须数组）/ like / isnull`；未知操作符直接报错。
+  操作符：`eq / ne / gt / gte / lt / lte / in（值须数组）/ like / isnull / contains / startswith / endswith`；
+  未知操作符直接报错。`contains` / `startswith` / `endswith` 是**语义化模糊匹配**（转义与
+  `like` 逃生舱口径见 `sql-builder-guide.md` §3.5）：
+  业务层零转义负担、零方言知识，引擎自动把 `%` `_` `!` 转义后渲染 `LIKE ? ESCAPE '!'`。
 - `OrderByItem`：`{ field: string; dir?: "asc" | "desc" | null }`。
+- **`select(["*"])`（v0.1.81）**：显式拉全列。必须是唯一元素
+  （`select(["*", "id"])` 直接报 `select '*' must be the only column`）；**带 join 时直接报错**
+  （`select '*' does not accept joins`）——全列展开只出基表列，业务拿 join 列做授权判断会拿到 `undefined`。
+- **`whereIf(test, cond)`（v0.1.81）**：条件化 where。`test` 为 `undefined` / `null` / `false` /
+  **空数组 `[]`** 时整条跳过；`0` 与 `""` 照常保留（它们是合法过滤值，例如 `status = 0`）。
+  用来把「可选筛选」写成一行而不用 `if (x) q.where(...)`：
+  ```ts
+  db.table("order")
+    .whereIf(id, { field: "id", op: "eq", value: id })        // id 为假值→跳过
+    .whereIf(ids && ids.length, { field: "id", op: "in", value: ids });  // 空数组→跳过（避免 IN () 静默 0 行）
+  ```
 - **红线**：标识符（表/列/别名）只来自 SchemaRegistry 白名单（启动内省所得），值一律经绑定参数。
   SQL 注入面为零；未知表/列报错，排序列另有可排序白名单。`limit` 缺省 100、硬上限 1000。
 - 构造器自动按库方言出 SQL（sqlite/mysql/postgres），业务无需手写方言差异。
@@ -831,19 +1194,56 @@ if (!scope.has("tenant_id")) throw new Error("tenant scope required");  // 多�
 - 条件对象**不可变**：`c.and(x)` / `c.or(x)` / `c.not()` 返回新对象，不改 `c`。
 - `.tree()` 取纯 JSON 树；`.fields()` 取去重字段名列表；`.has(f)` 判断是否涉及某字段。
 
-**join 联表**：
+**模糊搜索（v0.1.81）——`contains` / `startswith` / `endswith`**：
+
+```ts
+await db.table("user").where({ field: "name", op: "contains", value: "100%" }).all();
+// → WHERE name LIKE ? ESCAPE '!'  with param '%100!%'  （业务零转义，% 被当字面量）
+await db.table("order").where({ field: "code", op: "startswith", value: "AB_" }).all();
+// → LIKE 'AB!_%' ESCAPE '!'
+await db.table("file").where({ field: "path", op: "endswith", value: ".log" }).all();
+// → LIKE '%\.log' ESCAPE '!'  （注意 . 也被转义，不会匹配任意字符）
+```
+
+- 语义：`contains` ⇒ `%v%`、`startswith` ⇒ `v%`、`endswith` ⇒ `%v`；引擎自动转义 `%`/`_`/`!`
+  并渲染 `LIKE ? ESCAPE '!'`，业务零转义、零方言知识。转义原理、`like` 的 `escape` 逃生舱
+  （白名单 `! / | ~ # @`、显式拒 `\`）、`in` 空数组守卫的口径，统一见
+  `sql-builder-guide.md` §3.5。
+
+**join 联表（v0.1.81 支持表别名与 ON 值条件）**：
 
 ```ts
 await db.table("account")
   .join("user", [{ left: "account.user_id", right: "user.id" }], "left")
   .select(["account.id", "user.name"])
   .all();
+
+// ON 值条件（v0.1.81）：列对列 + 列对常量混合
+await db.table("receipt").as("r")
+  .join("broadcast", [{ left: "r.broadcast_id", right: "b.id" },
+                      { left: "r.user_id", op: "eq", value: uid }], "left", "b")
+  .all();
+// → ... JOIN broadcast b ON r.broadcast_id = b.id AND r.user_id = ?
 ```
 
-- `on` 只支持列对列等值（`{left, right}` 数组，非空）；`kind` 省略为 `inner`，可选 `left`。
-- 列可写 `"表.列"`（表 ∈ 基表 ∪ join 表）或裸列名。裸列名**只解析基表**，有歧义直接拒绝；
-  联表查询建议全限定。
-- join 表同样过租户/所有权守卫；**自 join 不支持**（无表别名）。
+- `on` 条目两形：`{left, right}`（列=列）或 `{left, op, value}`（列 `<比较op>` 值）。可混合
+  出现在同一 `on` 数组。列可写 `"表.列"`（表 ∈ 基表 ∪ join 表）或裸列名（只解析基表，歧义拒）。
+- `op` 限**比较类**（`eq/ne/gt/gte/lt/lte/in` 等）；`contains`/`startswith`/`endswith`/`isnull`
+  等模式/空值类 op 在 ON 值条件里直接拒绝（`join on 'r.user_id' takes a compare op, not 'contains'`）。
+  `value` 过 `encodeParams`（BigInt 标记不丢）。
+- 第 4 参数 `alias` 给**被 join 的表**起别名；基表别名用 `db.table("x").as("b")`（v0.1.81）。
+  别名只用于列限定，**归属感/租户守卫始终按真名生效**（见下「表别名与归属/租户守卫」）。
+- `kind` 省略为 `inner`，可选 `left`。自 join 现已放开（基表/被 join 表均可别名）。
+- `select(["*"])` 与 join 互斥（全列展开只出基表列，join 列会丢）。
+
+**表别名与归属/租户守卫（v0.1.81）**：
+
+- `db.table("x").as("b")` 让基表以别名 `b` 出现（列限定写成 `b.col`）；`join` 的第 4 参数给被
+  join 表起别名。别名**只作用于列限定与 SQL 渲染**；归属/租户守卫始终按**真名**生效（此前
+  「别名混入真名」会让两条守卫同时静默失效的缺陷已修，背景见 `sql-builder-guide.md` §3）。
+- 别名**只支持 select / join**：`update` / `delete` 带别名直接报
+  `table alias is not supported on insert/update/delete`（mysql 的 `DELETE FROM t AS b` 需
+  8.0.16+，跨引擎不保证，故构造器直接拒）。
 
 **聚合 / groupBy / having / distinct**：
 
@@ -859,28 +1259,82 @@ await db.table("order")
   .all();
 ```
 
-- 聚合列 `{ fn: "count"|"sum"|"avg"|"min"|"max", field?: string, as?: string }`；
+- 聚合列 `{ fn: "count"|"sum"|"avg"|"min"|"max", field?: string, as?: string, distinct?: boolean }`；
   别名形状 `^[A-Za-z_][A-Za-z0-9_]*$`（违例报 `illegal alias`）。
+- **`count(distinct col)`（v0.1.82）**：`{ fn: "count", distinct: true, field: "user_id", as: "c" }`
+  → `COUNT(DISTINCT user_id)`，聚合一行返回、不受 LIMIT 钳制。仅 count 支持
+  （其他聚合带 `distinct` 报 `distinct is only supported on count`）；必须带具名 `field`
+  （缺省或 `"*"` 报 `count distinct needs a field`）。**别再**用 `distinct().all()` 拉行后
+  `.length` 计数——顶层 select 隐式 LIMIT 会静默截断（受影响用户数 >1000 即漏算）。
 - `having` 白名单列优先，未命中按 select 聚合别名展开（`unknown column '...' in having`）。
   PG 不允许 HAVING 引用输出别名，展开能消灭方言分叉；orderBy 不支持聚合别名（仍走列白名单）。
 - `.distinct()` 去重（仅 select）。
 
-**DML：insert / update / delete**（`.run()` 终执行，返回受影响行数；`.all()` 仅 select）：
+**DML：insert / update / delete / truncate**（`.run()` 终执行，返回受影响行数；`.all()` 仅 select）：
 
 ```ts
 await db.table("user").insert({ name: "neo", age: 1 }).run();        // 单行
 await db.table("user").insert([{ name: "a" }, { name: "b" }]).run(); // 多行（键集须一致）
 await db.table("user").update({ age: 2 }).where({ field: "id", op: "eq", value: 1 }).run();
 await db.table("user").delete().where({ field: "id", op: "in", value: [1, 2] }).run();
+await db.table("sys_login_throttle").truncate().run();               // 整表清空（v0.1.82）
 ```
 
 - **红线**：`update`/`delete` 必须带 where 且叶子数 ≥ 1。JS 链层早抛（`update requires where`），
   op 侧同样强制——`fromJSON` 可完全绕过 JS 链层，所以动词×字段矩阵以 **op 侧校验为权威**。
+  **唯一例外是 `truncate()`（v0.1.82）**：明示的整表清空，取代「退回裸 `db.exec("delete from …")`」。
+- **`truncate()`（v0.1.82）**：无 where 的显式清空，渲染 `DELETE FROM t`（三方言通用——sqlite 无
+  TRUNCATE 语句，sea-query 的 TruncateStatement 不可移植）。**租户守卫照常注入**：租户表上只清
+  **当前租户**的行（真整库清空在 `db.asSystem` 下执行）；非租户表 / 系统态 = 整表清空。自带
+  where 报 `truncate does not accept where`（带条件的清空用 `delete`）；`update` 携带 truncate
+  报 `update does not accept truncate`。
 - 动词×字段矩阵：`insert` 拒 `where/orderBy/limit/offset/joins/distinct/groupBy/having`，
-  `values` 非空且多行键集一致；`update`/`delete` 拒 `joins/distinct/groupBy/having/limit/offset`，
-  `update` 的 `sets` 非空；`select` 拒 `values/sets`。违例报 `<verb> does not accept <field>`。
+  `values` 与 `from_select` 二选一（都给报 `insert takes either values or fromSelect, not both`、
+  都空报 `insert needs at least one row`）；`update`/`delete` 拒 `joins/distinct/groupBy/having/limit/offset`
+  （及 `values`/`from_select`/`or_ignore`；`truncate` 仅 delete 承载）；`select` 拒 `values/sets`。
+  违例报 `<verb> does not accept <field>`。
 - insert 键 / update 键均过白名单（`unknown column '<k>' in insert values / update sets`）。
+- 表别名只用于 select/join（见上）：`insert/update/delete` 带 `.as(...)` 直接报
+  `table alias is not supported on insert/update/delete`。
 - `db.tx` 内构造的 DML 自动走事务同连接（见下）。
+
+**幂等写入（v0.1.81）——`orIgnore()` 与 `fromSelect(q, cols)`**：
+
+```ts
+// 撞主键/唯一键则跳过（不报错、不写入），用于「已存在就忽略」的幂等导入
+await db.table("notify").insert({ id: 1, user_id: uid }).orIgnore().run();
+
+// INSERT ... SELECT：从一张查询的结果批量写入（两列列表按位置对齐）
+await db.table("notify_daily").fromSelect(
+  db.table("notify").select(["user_id", "cnt"]).where({ field: "day", op: "eq", value: d }),
+  ["user_id", "cnt"],
+).run();
+// 也可叠加 .orIgnore()：fromSelect(...).orIgnore().run()——**sqlite 除外**（见下）
+```
+
+- **`orIgnore()`**：撞主键/任意唯一键的行被跳过。sqlite / postgres 渲染 `ON CONFLICT DO NOTHING`；
+  mysql 走 `ON DUPLICATE KEY UPDATE <pk> = <pk>`（恒等式、命中冲突即跳过），**要求表有主键**——
+  无主键表报 `orIgnore on mysql requires a primary key on table '...'`；mysql 上 `orIgnore` 与
+  `returning` **互斥**（`orIgnore with returning is not supported on mysql`）。**三方言 affected-rows
+  不一致**（mysql 命中重复键返回匹配行 1，pg/sqlite 返回 0），勿用 `if (n === 1)` 判幂等——
+  口径与「为什么不用 `INSERT IGNORE`」见 `sql-builder-guide.md` §3.2。
+  **sqlite 上 `orIgnore()` 与 `fromSelect()` 不可组合**（v0.1.82 明文）：报
+  `orIgnore with fromSelect is not supported on sqlite (its upsert clause only follows VALUES)`
+  ——sqlite 的 upsert 子句只能跟在 VALUES 之后（引擎在构造期显式拒绝，pg / mysql 的
+  ON CONFLICT / ON DUPLICATE KEY 支持 SELECT 源，不受限）。绕行：裸
+  `db.exec("insert or ignore into … select …", [...])`（注意 sqlite 的 `OR IGNORE` 会把
+  NOT NULL / CHECK 违例**一并静默跳过**，数据面比 ON CONFLICT 宽，自行权衡），或先查后插。
+- **`fromSelect(q, cols)`**：`q` 是另一个 `db.table(...)` 构造器（或纯 JSON 请求）；`cols` 是目标
+  表写入列、与 `q` 的 select 列**按位置一一对齐**。列数不符报
+  `insert declares N columns but the source select yields M`；`cols` 为空报
+  `insert fromSelect needs insert columns`；`values` 与 `fromSelect` 二选一。`cols` 含 `tenant_id`
+  直接报 `fromSelect must not declare tenant column 'tenant_id'`（tenant 由服务端按当前租户注入）。
+- `db.tx` 内构造的 DML 自动走事务同连接（见下）。
+
+**受影响行数的三方言语义**：`run()` 返回值 = WHERE **匹配行数**，三方言在 oj 运行时上一致（mysql
+协商 `CLIENT_FOUND_ROWS`）。「用行数判行存在 / 归属」只在匹配语义下成立，跨连接方式即翻车——正确
+姿势是**先断言再写、行数不读**（示例见 `sql-builder-guide.md` §3.1）。三方言完整对照表与
+`orIgnore` 的 affected-rows 差异，见 `sql-builder-guide.md` §3.1。
 
 **insert 取回主键 `.returning([...])`**（`run()` 改返回行数组，不返回行数）：
 
@@ -978,7 +1432,7 @@ await db.table("vip").select(["id", "name"])
   成员禁 order_by/limit/offset（`union member does not accept order_by/limit/offset`）。
 - 成员同样过租户守卫；`intersect`/`except` 不做。
 
-**case 列 / 窗口函数列**（select 列的对象形）：
+**case 列 / 窗口函数列 / 字面量列**（select 列的对象形）：
 
 ```ts
 await db.table("account").select([
@@ -989,9 +1443,18 @@ await db.table("account").select([
     ], else: "normal" }, as: "level" },          // → CASE WHEN ... THEN ? ... ELSE ? END
   { window: { fn: "row_number", partition_by: ["user_id"],
       order_by: [{ field: "amount", dir: "desc" }] }, as: "rn" },
+  { lit: "svc", as: "scope" },                    // → 'svc' AS "scope"（按方言 CAST，见下）
 ]).all();
 ```
 
+- **字面量列（v0.1.81）**：`{ lit: <值>, as: "<别名>" }` 把常量作为一列输出。值走**绑定参数**
+  （永远不会拼进 SQL 文本），并按目标方言做类型转换——sqlite 裸 `?`、mysql `CAST(? AS CHAR)`、
+  postgres `CAST(? AS TEXT)`。用途：给结果打固定标记列（如 `scope = 'svc'`）、与真实列拼接。
+  - `lit` 必须是**标量**（数组/对象/嵌套会报 `lit column must be a scalar`）；`as` 必填且过别名
+    形状（`^[A-Za-z_][A-Za-z0-9_]*$`，违例 `illegal alias`），与 `*` 混用直接拒
+    （`literal column cannot mix with select '*'`）。
+  - **真正的计算列请用 `case`**：`{case:{when:[...],else:...},as:"x"}` 已支持条件表达式；
+    `lit` 只承载常量，不承载表达式。注意 op 拼写是 `isnull` 不是 `isNull`。
 - case：searched case；`cond` 与 where 条件树同形；`then`/`else` **只允许 JSON 值**（绑定参数，
   不接受列名/标识符）；`as` 必填过别名形状。
 - window：`fn ∈ row_number / rank / dense_rank`；`partition_by` 列过白名单；frame 不做；`as` 必填。
@@ -1020,7 +1483,22 @@ await db.table("rich")
   （默认 1000）clamp；两者均可在配置中调整（硬顶 100000）。顶层结果为数组且行数 ≥ 生效
   上限时，响应带 `X-OJ-Row-Limit: <上限>` 头提示可能被截断。
 
-#### 流式查询 db.stream（v0.1.37，PR-2 Phase A）
+#### 流式查询 db.stream（v0.1.37）
+
+> **两条限制（动手前先看）**：
+> 1. **只走直连池**：在 `db.tx` 内调用报
+>    `db.stream within an active transaction is not supported (streaming queries run on the connection pool only)`
+>    ——先 `db.query` 取 id 集，或把流式挪到事务外。
+> 2. **不是所有后端都真逐行拉取**，分三档：
+>    - **真流式**（逐行推）：核心 sqlite / mysql / postgres 连接，以及 `oj-db-mysql` /
+>      `oj-db-postgres` 两个插件后端——大表遍历内存恒定。
+>    - **回落全量**（v0.1.38 起）：后端没有逐行能力时，宿主改成一次取全量——**结果与
+>      `db.query` 完全一致，不报错，只是内存优势没了**。
+>    - **彻底不支持**：直接报 `backend does not support streaming`，此时请换 `db.query` 分页。
+>
+>    想确认走的是哪一档：真流式的耗时随结果集分批推进（边收边出），回落全量的耗时会
+>    在首行之前一次性卡住。
+
 
 `db.query` 一次性把整张结果集拉进内存再序列化回 JS；结果集很大（导出、ETL、大表遍历）时
 会撑爆 handler 内存或触碰信封体积上限。`db.stream` 改为**逐行**从后端拉取，由 JS 一边收一边
@@ -1068,10 +1546,10 @@ db.stream("select * from huge_table", null, { signal: ac.signal, onRow: (r) => {
 **限制与边界**：
 - 仅支持**非事务**目标（`DB(name)` 的直连池）。在 `db.tx(...)` 内部调用 `db.stream` 直接报错
   `db.stream within an active transaction is not supported (streaming queries run on the connection pool only)`。
-- **后端支持**（v0.1.38 起 ABI 10）：核心 `SqlxAccessor`（sqlite/mysql/postgres）、内置
-  InMemory 与第一方插件 `oj-db-mysql`/`oj-db-postgres`（vtable 批量 pull，≤100 行/次）均
-  **真流式**。第三方插件若未实现流式槽（open 哨兵 `{"unsupported":true}`），宿主**回落
-  `db.query` 全量**（行为等同 `db.query`，仅失去流式内存优势，不报错）。
+- **后端能力分三档**（v0.1.38 起，见本节开头的「两条限制」）：核心 sqlite / mysql /
+  postgres 连接与 `oj-db-mysql` / `oj-db-postgres` 插件后端**真流式**；没有逐行能力的后端
+  **回落 `db.query` 全量**（行为一致、不报错，仅失去内存优势）；彻底不支持的报
+  `backend does not support streaming`。
 - `db.stream` 与 `db.query` 返回**内容一致**（同一查询的逐行等价于全量数组）；差异只在内存形态。
 - 取消（`signal`）按后端分两档：
   - **第一方插件 `oj-db-postgres` / `oj-db-mysql` 在 `postgres://` / `mysql://` DSN 下走
@@ -1096,7 +1574,7 @@ JS 的 `number` 只有 f64 精度（安全整数上界 **`2^53-1`**，约 900719
 （REAL/DOUBLE 列仍是 `number`；`es.search` 的 long 字段同规则。）
 
 - **`toBigInt(v): bigint`** —— 字符串/安全范围内的 number/bigint → 精确 64 位整数。
-  **fail-loud**：`Number("<大整数串>")` 的产物、`1.5`、`"007"`、超 i64 等一律 **throw**。
+  **无法精确转换时直接报错**：`Number("<大整数串>")` 的产物、`1.5`、`"007"`、超 i64 等一律 **throw**。
 - **`toUBigInt(v): bigint`** —— 同上但为**无符号** 64 位 `[0, 2^64-1]`（v0.1.24）。
   **只有 MySQL `BIGINT UNSIGNED` 列能承载**；PG / SQLite 传它会明确报错（它们的 bigint 就是
   i64），请把这类值存成 text 或换库。跨 op 编码为 `{"$oj$u64":"<十进制>"}`。
@@ -1148,7 +1626,7 @@ const seq = Number(rows[0].m) + 1;
 （`redis.get / redis.set / redis.del / redis.expire / redis.incr` 与上表同签名——二者同源同面。）
 
 ```ts
-// 读穿缓存（摘自 sample/src/order/detail/api.ts，改编）
+// 读穿缓存（摘自 src/order/detail/api.ts，改编）
 const hit = await kv.get(key);
 if (hit !== null) { json.ok({ cached: true, data: JSON.parse(hit) }); return; }
 ```
@@ -1167,11 +1645,11 @@ auth 会话也在同一 Redis（多实例共享的前提）；未配置时均为
 | `blob.url` | `url(key: string): Promise<string>` | 下载地址：local = `{base}/blob/{key}`；s3 = presigned URL（15min） |
 | `blob.uploadUrl` | `uploadUrl(key: string, opts?: { kind: string }): Promise<{ url: string }>` | 上传直传预签名（v0.1.30）：s3 后端返回 15min 预签名 PUT URL，客户端直传**不经 handler**（绕开 `max_upload_bytes`/30s）；`opts` 缺省 `{"kind":"put"}`，multipart 形态暂返回 Err。local 后端无预签名——报 `local blob backend has no upload presign; use the direct PUT upload route`，改用直传路由 |
 | `blob.contentType` | `contentType(key: string): Promise<string \| null>` | Content-Type（local 读 sidecar / 按扩展名推断；缺失且无法推断返回空串；s3 无 Content-Type 返回 `null`） |
-| `blob.copy` | `copy(src: string, dst: string): Promise<boolean>` | **服务端复制（v0.1.47，ABI 11）：src 保留**。local = `fs::copy`；s3 = CopyObject。**字节不进 V8**——大文件搬运的替代写法（不要 `get` + `put`）。`src == dst` 为 no-op；src 不存在报错 |
-| `blob.move` | `move(src: string, dst: string): Promise<boolean>` | **服务端搬移（v0.1.47，ABI 11）：src 不再存在**。local 同父目录 = `fs::rename`（原子、零字节），跨目录 = copy + unlink；s3 = CopyObject + DeleteObject。`src == dst` 为 no-op |
-| `blob.readRange` | `readRange(key: string, offset: number, len: number): Promise<Uint8Array>` | **区间读（v0.1.47，ABI 11）：短读截断**——`offset + len` 越过对象尾部只返回实际可读字节（可能短于 `len`），`offset` 已过尾部返回**空数组**；key 不存在报错；`offset`/`len` 为负 / 非整数 / NaN 报错（`blob readRange: offset must be a non-negative integer`）。后端不支持区间读时宿主回落 `get` 全量再切片（local/s3 均原生支持） |
+| `blob.copy` | `copy(src: string, dst: string): Promise<boolean>` | **服务端复制（v0.1.47）：src 保留**。local = `fs::copy`；s3 = CopyObject。**字节不进 V8**——大文件搬运的替代写法（不要 `get` + `put`）。`src == dst` 为 no-op；src 不存在报错 |
+| `blob.move` | `move(src: string, dst: string): Promise<boolean>` | **服务端搬移（v0.1.47）：src 不再存在**。local 同父目录 = `fs::rename`（原子、零字节），跨目录 = copy + unlink；s3 = CopyObject + DeleteObject。`src == dst` 为 no-op |
+| `blob.readRange` | `readRange(key: string, offset: number, len: number): Promise<Uint8Array>` | **区间读（v0.1.47）：短读截断**——`offset + len` 越过对象尾部只返回实际可读字节（可能短于 `len`），`offset` 已过尾部返回**空数组**；key 不存在报错；`offset`/`len` 为负 / 非整数 / NaN 报错（`blob readRange: offset must be a non-negative integer`）。后端不支持区间读时宿主回落 `get` 全量再切片（local/s3 均原生支持） |
 
-**上传四件套完整例子**（摘自 `sample/src/upload/api.ts`）：
+**上传四件套完整例子**（摘自 `src/upload/api.ts`）：
 
 ```ts
 export default {
@@ -1197,7 +1675,7 @@ Content-Type，s3 302 跳 presigned URL）。key 按 `/` 分段白名单校验
 ① s3 后端：`blob.uploadUrl(key)` 拿预签名 PUT URL 给客户端直传；② 任意后端：
 `PUT {base}/blob/{key}` 内置路由（**过鉴权守卫**，Bearer/cookie 即令牌；体积上限独立
 `server.blob_upload_max_bytes`，默认 1 GiB；不经 JsActor，无 30s 限制）。下载侧 local
-内联腿支持 `Range` 单区间（206 + Content-Range；越界 416），pdf.js/媒体 seek 直接可用。
+内联附件的响应支持 `Range` 单区间（206 + Content-Range；越界 416），pdf.js/媒体 seek 直接可用。
 
 **multipart 大文件流式落 blob（v0.1.38）**：multipart 上传不再整段缓冲——**大于
 `server.max_upload_bytes` 的文件字段由服务端流式写进 blob**（local 落盘 / s3 multipart，
@@ -1206,7 +1684,7 @@ Content-Type，s3 302 跳 presigned URL）。key 按 `/` 分段白名单校验
 （下载/外链地址）；**≤ `max_upload` 的小文件行为完全不变**（`http.file(i)` 照常给字节）。
 服务端代分配的 key 形如 `uploads/<时间戳>-<序号>-<安全化文件名>`。
 
-**服务端搬运与区间读（v0.1.47，ABI 11）**：大文件的三件事不该让字节进 V8——
+**服务端搬运与区间读（v0.1.47）**：大文件的三件事不该让字节进 V8——
 
 ```ts
 // ① 搬运：流式落盘的临时对象转正（不要 blob.get + blob.put，那是 2× 峰值）
@@ -1253,6 +1731,265 @@ fs:
   root: ./data     # jail 根；相对路径按 config.yaml 所在目录解析（缺省 "data"）
   readonly: false  # true = 写类 API 全拒
 ```
+
+> **平台特权 fs 扩展（v0.1.75，`platform:` 段）**：`platform.modules` 名单中的特权模块
+> （归属 = 请求级模块身份，URL/JS 侧不可伪造）的 fs 读写授权面 = **`fs.root ∪ platform.trusted_paths`**
+> （门面裁决与 deno 内建 op 的第二道防线同口径放行）；非特权模块行为不变。
+> 前提：**`fs:` 段已配置**（fs 未配置时恒非特权——trusted_paths 不会在无 jail 的前提下放行任何
+> 路径）；`fs.readonly: true` 时写类 API 对 trusted_paths 同样全拒。越出集合报
+> `NotCapable: path escapes fs.root: …`（文案不变，判定集合已扩为并集）。
+> 配置写法见 §10「platform」。
+
+### exec —— 外部命令执行（v0.1.75，`platform.exec` 段授权）
+
+```ts
+exec.run(argv: string[], opts?: {
+  timeoutMs?: number;   // 缺省 30_000，硬上限 600_000（传更大值被钳到上限，不报错）
+  stdin?: string;       // 可选，一次性写入后关闭写端（子进程读到 EOF）
+}): Promise<{ code: number; stdout: string; stderr: string }>
+```
+
+另有流式消费形态：句柄式 `exec.spawn`（`for await` 消费 stdout/stderr）+ `exec.run` 的 `onStdout`/`onStderr` 回调，详见下方「exec 流式形态（v0.1.78）」小节。
+
+外部命令原语：**无 shell**——spawn 只接受「授权模板匹配后重建的 argv」。安全形态 =
+config 白名单 + argv 模板 + 平台特权限定，全部 fail-closed：
+
+```yaml
+platform:
+  exec:
+    ojm-installer:              # 模块名 → exec 授权；列出该模块 = 授权其 exec
+      allow:                    # argv 模板：literal token 逐字相等，JS 只能填占位符
+        - "tar -xzf ${path:archive} -C ${path:dest}"
+        - "tar -tzf ${path:archive}"
+      env: ["OJ_SECRET_KEY"]    # 透传环境变量白名单（值不进 JS 面）
+```
+
+- **授权与 `platform.modules` 相互独立**：exec 特权只看 `platform.exec.<模块>` 是否列出该
+  模块——「有平台 API 特权无 exec」或反之都合法；两处都未配 = 该面全 deny。
+- **模板匹配**：argv 逐 token 对 `allow` 条目匹配。literal token 必须**逐字相等**（tar 的
+  `--use-compress-program` / 任意 `-f` 之类 option 注入因此无从下手）；占位符**恰吸收一个
+  token**；token 数不齐 / literal 失配 → 0 命中，报 `exec template mismatch`；同一 argv
+  命中 ≥2 条模板 → `exec template ambiguous`（歧义拒绝，不静默择一）。
+- **两类占位符**：
+  - `${path:NAME}`：吸收一个 token，值按**路径**校验——相对路径按 fs.root 折叠 +
+    canonicalize，解析结果必须落在 **`fs.root ∪ trusted_paths`** 内（与 fs 轴特权扩展同一
+    实现，无第二套语义）；放行后以 canonical 绝对路径传给子进程。
+  - `${raw:NAME}`：仅字面收集，拒 `-` 开头（option 注入）与绝对形态（`/`、`\`、盘符起手），
+    拒收以 `exec template mismatch` 报出（中段 `-`/`/` 合法，只看起手形态）。
+  - 占位符名须匹配 `[A-Za-z_][A-Za-z0-9_]*`；未知占位符类型 / 一个 token 含多占位符 /
+    未闭合 / 非法名等模板语法错在**调用期** fail-closed 抛
+    `exec template parse failed (<raw>): …`（配置面原样保存、解析期报错是设计约定的时点）。
+  - 占位符可带**字面前后缀**（同一 token 内，v0.1.79），用于 Windows `cmd /c echo %VAR%`
+    的 `%…%` 变量定界：`cmd /c echo %${raw:NAME}%` 中 `%` 为字面定界符，占位符吸收中间子串
+    `NAME`，重建时以模板前缀/后缀原样还原为 `%NAME%`；安全不变量不变——占位符仍吸收恰一个
+    argv token，前后字面量来自受信模板、不引入注入面。`${raw:}` 的 option-like / 绝对形态
+    校验作用在**中间子串**上（`%…%` 内填 `-x` / `/abs` 同样被拒）。
+  - **同位置不要既配裸 raw 又配带定界符的 raw**：`cmd /c echo ${raw:word}` 是
+    `cmd /c echo %${raw:NAME}%` 的**超集**，两条并存时任何 `%X%` 形态 argv 都同时命中 →
+    恒报 `exec template ambiguous`（只给命中条数）。要同时支持「echo 任意词」与
+    「echo 环境变量」，就把其中一条写成全字面模板（`cmd /c echo hello`）或换用不同的
+    命令名 / literal 段落错开。
+- **命令解析（模板首 token）**：必须是**裸名**——不接受占位符、不含 `/` `\` 路径分隔符。
+  `"oj"` 特判解析为服务进程自身（`current_exe()`，serve 进程即 bin/oj，同版本自保证）；
+  其余裸名在**宿主侧**按父进程 PATH 解析为**绝对路径**后 spawn（子进程 env 已清空、不继承
+  PATH，宿主侧解析消除 execvp 回落默认路径的不确定性）。解析失败 →
+  `exec: command resolve failed for '<name>': …`。注意：**子进程拿到的 argv[0] 是解析后的
+  绝对路径**，不是模板首 token 原文。
+- **返回 vs 抛错边界**：进程正常跑到退出（**含非 0 退出码**）= 返回 `{code, stdout, stderr}`
+  （信号终止映射 `code = 128 + signal`，TERM=15 → 143）；执行环境失败 = **抛错**——未授权 /
+  模板失配 / 歧义 / 占位符路径越界为 `NotCapable` 类，超时 / 输出超限 / spawn 失败 /
+  UTF-8 解码失败为普通 Error 类（文案见下表）。
+- **硬限制**：
+  - stdout + stderr **流式合计 10MB 上限**（边读边计数；超限 kill 进程组 + 抛错，已收部分
+    不随错返回）；
+  - `timeoutMs` 缺省 30_000、硬上限 600_000（超出钳制）；到期先 `kill(-pgid, SIGKILL)` 整组
+    击杀（含孙进程）再兜底杀直接子进程（Windows 无进程组对应物，仅杀直接子进程）；**stdin
+    写入也在超时窗口内**——子进程不读 stdin 且输入大时 write 阻塞 → 超时兜底组杀（大 DDL /
+    大输入显式调大 `timeoutMs`）；
+  - stdout / stderr 强制 UTF-8 解码，非法序列抛错（二进制输出不在本原语范围）；
+  - 子进程 cwd = **fs.root**；env 默认**空表**，仅 `env` 白名单透传（值不进 JS 面，PATH
+    不继承）。cwd 钉定**不构成隔离边界**（无 OS 级 chroot）——文件可达性由 `${path:}` 校验
+    承载，**不要**给子进程传越出授权集合的路径；
+  - **未配 `fs:` 段 → exec 整体不可用**（`NotCapable: exec requires fs.root …`）；
+  - tasks / WS 上下文无模块归属 → 恒拒（`exec requires module ownership …`）。
+- **tar 解压范式**：`tar -tzf` 预检只是快速失败优化；**权威校验 = 解压后对目标目录全量
+  walk**（symlink/hardlink/设备零容忍、组件级拒 `..`、总体积对账），配合 `.staging` 原子
+  落位——完整三步范式见 `scenarios.md` 场景 34。
+
+#### Windows 平台命令形态
+
+Windows 无独立 `echo` / `cat` / `sh` 等可执行（这些只是 shell 内建），且**不自动探测 Git Bash /
+WSL / MSYS**：
+
+- 需要 shell 语义时，模板直接写成 `cmd /c <语句>`——例如   `["cmd","/c","echo","hello"]`、
+  `["cmd","/c","type","__JAIL__/in.txt"]`；`cmd` 经 resolver 解析为绝对路径（如
+  `C:\Windows\System32\cmd.exe`）后 spawn，与 unix 同语义。
+- 命令名按 PATH 或 resolver 解析为绝对路径，跨平台一致；裸名 `sh` / `bash` 在 Windows 上
+  不存在 → 解析失败抛 `command resolve failed`——**不要**在跨平台模板里写 `sh -c ...`，否则
+  同一份配置在 Windows 部署即失败；unix 面用 `sh -c` 的模板，Windows 面须改写为 `cmd /c`
+  等价形态（路径占位符、`${raw:}` 注入规则完全一致，只换最外层命令）。
+- **刻意不引入 Git Bash 自动探测**：自动探测会 (1) 扩大命令解析面、引入 PATH / 注入歧义；
+  (2) 与「命令名由配置白名单显式声明」的安全边界冲突；(3) 使同一模板在有无 Git Bash 的机器
+  上行为不一致。Windows 命令形态请在模板里直接写 `cmd /c`，不要依赖 sh 仿真层。
+- kill_tree 在 Windows 上无进程组对应物，仅 `start_kill()` 杀直接子进程（与 unix 整组击杀
+  语义不同）；超时 / 输出超限仍触发兜底 kill，但孙进程可能残留——设计已声明此差异。
+- **输出行尾随平台不同，oj 刻意不做归一**（v0.1.79）：`cmd /c echo x` 的 stdout 是
+  `"x\r\n"`（cmd 的 `echo` 恒以 CRLF 收尾），而 `cmd /c type <file>` **原样吐文件字节**、
+  不补行尾（文件无行尾 → 输出亦无行尾）。exec 返回子进程**原始字节**（与
+  `Deno.Command.output` / Node `child_process` 同口径），不做 CRLF→LF 归一——
+  二进制 / 压缩包管道必须保真；跨平台文本比对请用 `trimEnd()` 或 `split(/\r?\n/)`，
+  **不要**在跨平台代码里写死 `"\n"`。
+- **Windows 子进程输出是本地代码页（GBK / CP1252 等），不是 UTF-8**（v0.1.79）：
+  输出含非 ASCII（中文路径、中文报错、`ping` 的本地化文案等）时，exec 的 UTF-8
+  强制解码即抛 `exec: stdout is not valid UTF-8 (binary output unsupported)`
+  （stderr 同文案）。要 UTF-8 输出，把 `chcp 65001` 写进 `cmd /c` 语句
+  （`["cmd","/c","chcp 65001 >nul && echo <语句>"]`）——这是 Windows 控制台的既有
+  行为，不是 oj 的限制。
+- **`%VAR%` 要用带字面前后缀的占位符**（v0.1.79）：`cmd /c echo %VAR%` 的 `%…%` 是 cmd 的
+  变量定界符、无法拆成独立 token，模板写成 `cmd /c echo %${raw:NAME}%`，JS 侧照旧传
+  `["cmd","/c","echo","%VAR%"]`。**别与 `cmd /c echo ${raw:word}` 并存**——后者是前者的
+  超集，`%X%` 形态 argv 恒判 `exec template ambiguous`；两者要共存就把其一写成全字面
+  模板或换不同命令名。
+
+#### exec 流式形态（v0.1.78）：exec.spawn 句柄 + exec.run 回调
+
+**exec** 提供两种消费形态，统一建在 Rust 侧「spawn 到 双管道并发 drain 到 边读边推进」的流式底座之上；A（回调）是 B（句柄）之上的 JS 糖，不引入第二套读循环、不新增命令构造面（安全闸门全复用）。
+
+    // B：句柄式（新增）——stdout/stderr 为 AsyncIterable<Uint8Array>
+    const h = await exec.spawn(
+      ["sh", "-c", "for i in 1 2 3; do echo $i; sleep .2; done"],
+      { timeoutMs: 30000 },
+    );
+    // 逐块解码多字节文本（含中文）时**复用同一个 decoder 实例**或攒够字节再解：
+    // 每块 new 一个 TextDecoder 会在块边界把 UTF-8 序列切坏 → U+FFFD。
+    const dec = new TextDecoder();
+    for await (const chunk of h.stdout) log(dec.decode(chunk, { stream: true }));
+    const code = (await h.exit()).code;   // 信号终止 128+sig（TERM=15 到 143）
+    h.kill();                            // 主动整组击杀（unix: kill(-pgid, SIGKILL)）
+
+    // A：回调式（扩展现有）——逐块转发给回调，**同时**攒下全量；返回
+    // { code, stdout, stderr }（stdout/stderr 为全量 merge 后的**有损**解码，
+    // 非法 UTF-8 → U+FFFD，不抛；受 10MB 合计上限约束——v0.1.79 订正）
+    const r = await exec.run(["sh", "-c", "..."], {
+      onStdout: (chunk) => process.stdout.write(chunk),
+      onStderr: (chunk) => process.stderr.write(chunk),
+      timeoutMs: 5000,
+    });
+
+- **exec.spawn(argv, opts?)** 返回句柄 { rid, pid, stdout, stderr, kill, exit }：h.stdout / h.stderr 为 AsyncIterable<Uint8Array>，EOF 时迭代自然结束；h.exit() 等待子进程退出返回 { code }；h.kill() 主动整组击杀。
+- **exec.run(argv, opts?)** 向后兼容：无 onStdout / onStderr 时，行为、返回形状与 v0.1.75 完全一致（{ code, stdout, stderr }，非 UTF-8 输出**抛**）；带回调时逐块转发给回调，返回形状**同样是 { code, stdout, stderr }**（v0.1.79 订正：此前文档称「返回 { code }、不缓冲整段」，实现实际是把全部分块攒在内存后 merge，只是解码改走**有损** TextDecoder、非法 UTF-8 变 U+FFFD 而**不抛**）。要真正的逐块流式（不占内存、拿原始字节）请用 `exec.spawn`。
+- **opts 差异**：timeoutMs?（缺省 30_000，硬上限 600_000，超出钳制）两形态共用；**stdin? 只有无回调的 `exec.run` 支持**（一次性写入后关闭写端）——`exec.spawn` 与回调形态的子进程 stdin 恒为 null，传了会被静默丢弃。
+- **背压（重要）**：stdout/stderr 经有界 mpsc（16 槽 x 8KiB）送消费端；JS 不 for await 拉取 到 通道满 到 drain 在 send 上挂起 到 子进程管道满 到 子进程自然暂停（真实子进程语义，正确背压）。不消费流 = 子进程在输出填满管道时阻塞，不是 bug，也别指望 exit() 在流未消费时返回——先消费（或 break）再 exit()。
+- **资源回收（每请求）**：句柄 rid 进 OpState.resource_table；close()（JS 释放 / runtime 归还 / 异常丢弃都覆盖）同步整组击杀子进程，杜绝跨请求/租户泄漏与 next_rid 回绕 panic。drain 任务与子进程同生命周期：handle close 到 kill 到 管道 EOF 到 drain 自然结束。
+- **rid 仅本 runtime 可达**：进程内 ResourceId，跨模块/跨请求无法凭 rid 触达他人会话；kill 只能杀自己 spawn 的会话（无 pid 入参，只接受本会话 rid）。
+- cwd = fs.root、env 空表（仅 `env` 白名单透传）、命令解析与全部安全闸门，三形态**完全一致**（见上「硬限制」）。
+- **差异只在「超限时怎么告诉你」**（v0.1.79 订正：此前称「与缓冲形态完全一致」，不准确）：
+
+  | 情形 | 无回调 `exec.run`（缓冲） | `exec.run` 带回调 | `exec.spawn` 流式 |
+  |---|---|---|---|
+  | 输出合计 > 10MiB | **抛** `exec output limit exceeded` | 不抛：整组击杀，`code = 137`，回调收到的块被截断 | 同左（流提前 EOF，`code = 137`） |
+  | `timeoutMs` 到期 | **抛** `exec timed out after N ms` | 不抛：整组击杀，`code = 137` | 同左（`code = 137`） |
+  | 输出非 UTF-8 | **抛** `exec: stdout is not valid UTF-8` | 不抛：`stdout` / `stderr` 为有损解码（U+FFFD） | 不抛：给原始 `Uint8Array`，JS 自行解码 |
+  | 内存占用 | 全量（≤10MiB 封顶） | 全量（≤10MiB 封顶） | 仅当前块（16 槽 × 8KiB 背压） |
+
+  **别用 `try/catch` 的成功当「跑完了」**：回调 / 流式形态下超时与超限不抛错，只把 `code` 打成 137 并截断输出——必须同时校验 `code`，且不要拿被截断的 stdout 当完整结果（安全判定只认原始字节，见上表）。
+
+错误文案速查**（文案以实现为准；「类」= 错误分类，`NotCapable` 为授权面，其余为普通
+Error）：
+
+| 文案 | 类 | 触发 |
+|---|---|---|
+| `exec not configured (config platform.exec section missing)` | NotCapable | 未配 `platform.exec` 段 |
+| `exec requires module ownership (request has no module context)` | NotCapable | tasks / WS 等无模块归属的上下文 |
+| `module '<m>' is not authorized for exec` | NotCapable | 模块不在 `platform.exec` 授权表 |
+| `exec requires fs.root (config fs: section missing)` | NotCapable | 未配 `fs:` 段 |
+| `exec template mismatch: <reason>` | NotCapable | 0 命中：literal 失配 / token 数不齐 / `${raw:}` 拒 `-` 开头或绝对形态 |
+| `exec template ambiguous: argv matches <N> authorized templates` | NotCapable | ≥2 条模板同时命中（不静默择一） |
+| `exec ${path:NAME}: path outside fs.root and trusted_paths: <p> (resolved <abs>)` | NotCapable | 路径占位符越出 `fs.root ∪ trusted_paths` |
+| `exec template parse failed (<raw>): <e>` | Error | 模板语法错（未知占位符类型 / 未闭合 / 非法名 / 首 token 含路径分隔符等） |
+| `exec: command resolve failed for '<name>': …` | Error | 命令名解析失败（含 `command '<name>' not found in PATH`） |
+| `exec: spawn failed for '<abs>': <e>` | Error | 进程启动失败 |
+| `exec timed out after <N> ms (process group killed)` | Error | 超时到期（整组击杀）——**仅无回调的 `exec.run` 抛**；回调 / `exec.spawn` 形态不抛，只把 `code` 打成 137 并截断输出（v0.1.79 订正） |
+| `exec output limit exceeded (10485760 bytes cap, stdout+stderr combined)` | Error | 输出合计超 10MB——**仅无回调的 `exec.run` 抛**；回调 / `exec.spawn` 形态同上为 `code = 137` + 截断（v0.1.79 订正） |
+| `exec: stdout is not valid UTF-8 (binary output unsupported)` / `exec: stderr is not valid UTF-8 (binary output unsupported)` | Error | 输出流非 UTF-8——**仅无回调的 `exec.run` 抛**（Windows 上本地代码页（GBK / CP1252）输出含非 ASCII 即落此条，见 §6「Windows 平台命令形态」，v0.1.79）；回调形态改走有损解码（U+FFFD）、`exec.spawn` 给原始字节，两者均不抛 |
+| `exec: stdin write failed: <e>` | Error | stdin 写入失败 |
+
+### yaml —— YAML 读写原语（v0.1.75，无特权，始终可用）
+
+```ts
+yaml.parse(text: string): Promise<unknown>;      // 只读解析（异步：Rust 阻塞池执行，须 await）
+yaml.stringify(value: object): Promise<string>;  // 仅承诺机器产物（manifests.yaml）往返（异步）
+```
+
+纯解析原语，不占 platform 授权面（所有模块、tasks/WS 上下文均可用）。parse 在 Rust
+阻塞池执行（不卡 isolate），带独立 5s deadline 与**三预算**，超限一律抛错点名：
+
+- **输入 1 MiB**：超限报 `yaml.parse: input exceeds 1 MiB limit (N bytes)`；
+- **节点总数 100_000**（含 alias 引用展开出的每个节点）：billion laughs 链式放大
+  （`a1: &a1 [*a0,*a0]` 逐层翻倍）在展开侧计节点，超限报
+  `yaml.parse: node budget exceeded`；serde_yaml 内建的 alias 重放上限先触发时映射为
+  `yaml.parse: alias budget exceeded (alias replay amplification)`；
+- **嵌套深度 128**：约 20 万 `[` 即合法 1MB 输入而递归下降栈溢出不可捕获——超限报
+  `yaml.parse: nesting depth limit exceeded (128)`（进程存活，不崩）。
+
+语义细则（实测钉死，serde_yaml 0.9.34）：
+
+- **重复键**：后键覆盖（`a: 1\na: 2` → `{a: 2}`），不报错；
+- **多文档**（`---` 分隔）→ 抛 `expected a single YAML document`；
+- **非字符串键**（`1: a` / `null: a`）→ 抛 `non-string mapping key not supported`；
+- **NaN / `.inf` / `.nan`** → 抛 `non-finite number (NaN/Inf) not supported`（取更严取向）；
+- **大整数**：超出 2^53-1 一律十进制字符串（i128/u128 级在解析器内即转；i64/u64 级出口过
+  数值护栏，与「大整数与 i64」一节同形态），`json.ok` 不会 500；
+- **空文档**（空串/纯空白）→ `null`；
+- **非法 YAML** → `yaml.parse: invalid YAML at line N column M: <detail>`（带行列）。
+
+> ⚠️ **stringify 禁用于 config.yaml 回写**：serde_yaml 往返丢注释与空白。改 config 只走
+> 文本手术三步模式（`fs.readTextFile` → 只改目标段 → `yaml.parse` 语义复检 → 写回，
+> 路径授权见第 10 章 `trusted_paths`）。stringify 只承诺**机器产物**（manifests.yaml
+> 形状的 map/list/标量）往返；**对象键输出保留 JS 对象键插入序（整数型键先行），
+> 不排序**——需确定序请在 stringify 前自行归序（键序由单测钉死，运行时依赖
+> deno_core 传递开启的 serde_json `preserve_order`，该 feature 撤销即测试红）。
+
+| 错误文案 | 说明 |
+|---|---|
+| `yaml.parse: input exceeds 1 MiB limit (N bytes)` | 输入超限 |
+| `yaml.parse: node budget exceeded` / `yaml.parse: alias budget exceeded (alias replay amplification)` | 节点 / alias 重放预算超限 |
+| `yaml.parse: nesting depth limit exceeded (128)` | 嵌套超深 |
+| `yaml.parse: expected a single YAML document (multi-document input rejected)` | 多文档输入 |
+| `yaml.parse: non-string mapping key not supported` | 非字符串键 |
+| `yaml.parse: non-finite number (NaN/Inf) not supported` | NaN / `.inf` / `.nan` |
+| `yaml.parse: invalid YAML at line N column M: <detail>` | 语法错（带行列） |
+| `yaml.parse: timed out after 5s` | hang 兜底（预算内正常解析为毫秒级） |
+| `yaml.stringify: <e>` | 不可序列化值 |
+
+### server —— 平台级控制（v0.1.75，platform 特权）
+
+```ts
+server.reloadConfig(): Promise<{
+  generation: number; unchanged: boolean;
+  applied: string[]; restart_pending: string[]; kept_listener: string[];
+}>
+```
+
+进程内触发热更，与 `POST {base}/_system/config` 调**同一 executor 实例、同一把串行
+锁**（响应三清单语义见第 10 章「配置热更新（reload_api）」）：
+
+- **特权**：仅 `platform.modules` 名单内的模块可调（特权是请求级归属，见 `platform:`
+  段说明）；tasks/WS 上下文无归属恒 `NotCapable`。
+- **返回形状恒定**：`unchanged=true` 时三清单为空数组，JS 无需分支。
+- **不可用形态**：`oj test` / 嵌入式（无热更执行器）抛 `reload not available`。
+- **并发**：与 HTTP POST 共享串行锁——撞锁一方抛 busy 错误，**不静默排队**。
+- **⚠️ actor 占用**：热更在独立线程跑影子装配（**秒级**：DB verify + 模块转译），
+  **触发 reload 的 handler 所在 actor 在此期间被占用**、不归还池；大规模热更期间
+  该 actor 的后续请求短暂排队。避免在流量高峰频繁触发。
+
+| 错误文案 | 说明 |
+|---|---|
+| `NotCapable: module 'x' is not platform-privileged` | 调用模块不在 `platform.modules` |
+| `NotCapable: platform APIs require module ownership (request has no module context)` | tasks/WS 上下文无归属 |
+| `reload not available (not running under oj serve)` | `oj test` / 嵌入式无执行器 |
+| `server.reloadConfig: reload in progress (busy)` | 并发触发撞串行锁（HTTP 侧同语义 409） |
+| `server.reloadConfig: HTTP 400: <原因>` | 归一/装配失败（旧代继续服务，不破坏在跑实例） |
 
 ### bus —— 订阅发布
 
@@ -1368,7 +2105,7 @@ const jobId = res.data.jobId;          // 入队成功；真实结果稍后到�
 bus.subscribe("mail.result");
 ```
 
-配置（详见 `sample/config.yaml`；`smtp:` 顶层除 `workers`/`queue_capacity` 外每个键都是一个 profile）：
+配置（详见 `config.yaml`；`smtp:` 顶层除 `workers`/`queue_capacity` 外每个键都是一个 profile）：
 
 ```yaml
 smtp:
@@ -1517,7 +2254,7 @@ ldap:
   bindPw per search call)`（config 只有密码无 DN）。全部 reject，不会 resolve 半个信封。
 - **filter 注入**：`filter` 是拼进 LDAP 查询的字符串，`(uid=${username})` 若 `username`
   含 `*`/`()`/`\` 会改变查询语义（LDAP 无参数绑定）。**先转义**（把 `*` `(` `)` `\` NUL
-  前缀 `\`）或用 `axis("ldap").compare` 收口。
+  前缀 `\`）或用 `axis("ldap").compare` 做精确比较。
 
 ### log —— 结构化日志
 
@@ -1579,7 +2316,7 @@ if (r.ok) {
 无 MQ 式 task 门禁（连接无 offset/ack 消费会话语义）。
 
 长任务里作消费端取数（`src/tasks/task_*.ts`，写法同「命名 MQ 客户端与长任务」，
-可运行案例 `sample/src/tasks/task_wsclient.ts`）：
+可运行案例 `src/tasks/task_wsclient.ts`）：
 
 ```ts
 const ws = new WebSocket("ws://localhost:9778/v1/api/news/ws");
@@ -1742,11 +2479,13 @@ atob/btoa）经 L1 实测可用，wasm 引擎包可进 oj runtime。
 
 | API | 签名 | 说明 |
 |---|---|---|
-| `crypto.sha256Hex` | `sha256Hex(s: string): string` | UTF-8 编码后的 sha256 十六进制摘要 |
+| `crypto.sha256Hex` | `sha256Hex(data: string \| Uint8Array \| ArrayBuffer): string` | UTF-8 编码后的 sha256 十六进制摘要；v0.1.75 起支持二进制入参（`Uint8Array`/`ArrayBuffer` 自动归一，非 UTF-8 字节不炸）。**行为变更（v0.1.75）**：非 string/二进制入参（number/null 等）旧版经 `String()` 强转求摘要，现抛 TypeError（fail-loud） |
+| `crypto.md5Hex` | `md5Hex(data: string \| Uint8Array \| ArrayBuffer): string` | MD5 十六进制摘要（v0.1.75）。入参分流同 `sha256Hex`：string 走 UTF-8；`Uint8Array`/`ArrayBuffer` 走原始字节摘要（非 UTF-8 字节安全）；其余抛 TypeError。**MD5 已密码学破损，仅限非安全场景（缓存键/etag/旧系统兼容），不得用于凭据/签名/完整性校验** |
 | `crypto.randomHex` | `randomHex(nBytes?: number): string` | `nBytes` 字节随机数的 hex（缺省 32 字节） |
 | `crypto.getRandomValues` | `getRandomValues(view: ArrayBufferView): ArrayBufferView` | 填充随机字节（v0.1.30） |
 | `crypto.aesGcmEncrypt` | `aesGcmEncrypt(plaintext: string, key: string): string` | AES-GCM 对称加密（v0.1.35）：明文 UTF-8，密钥 16/32 字节 hex 或 base64，返回 `base64(nonce ‖ ct ‖ tag)` |
 | `crypto.aesGcmDecrypt` | `aesGcmDecrypt(ciphertext: string, key: string): string` | AES-GCM 解密（v0.1.35）：输入 `aesGcmEncrypt` 的密文，返回原文；密钥/密文错抛错 |
+| `crypto.verifyEd25519` | `verifyEd25519(publicKey: string, msg: string, sigBase64: string): boolean` | Ed25519 验签原语（v0.1.75，bundle 签名校验用），双层语义见下 |
 
 另：全局 `atob(s)` / `btoa(s)` 标准 base64（v0.1.30；非法输入抛
 `InvalidCharacterError`），wasm 胶水常用。
@@ -1756,6 +2495,27 @@ atob/btoa）经 L1 实测可用，wasm 引擎包可进 oj runtime。
 > 密钥仅支持 **16 字节（AES-128）或 32 字节（AES-256）**的 hex / base64 编码；**不支持
 > AES-192**（上游 crate 未提供），传入 24 字节密钥会明确报错。nonce 由运行时随机生成（12 字节），
 > 与密文、GMAC tag（16 字节）一并 base64 拼接返回，解密方无需单独传 nonce。
+
+> **Ed25519 验签（v0.1.75）**：`crypto.verifyEd25519(publicKey, msg, sigBase64)` 为纯验签
+> 原语（bundle 签名校验用）。**双层语义**：格式错抛错（文案均以 `verifyEd25519: ` 起头——
+> `signature not base64` / `public key must be 32 raw bytes (got N)` /
+> `signature must be 64 bytes (got N)` / `key not hex/base64`）；格式合法但验签不过
+> （错公钥/错 msg/无效曲线点）返回 `false` 而非抛错。编码限制：
+> ① `sigBase64` 仅**标准 base64**（STANDARD / NO_PAD，**base64url 不支持**）；
+> ② `msg` 仅 UTF-8 字符串；③ `publicKey` 须是 hex / base64 编码的 **32 字节原始公钥**
+> （**PEM/SPKI 不支持**）。作者侧密钥生成：`oj secret keygen --alg ed25519`（v0.1.80，
+> 产 PKCS#8 私钥 PEM + `ed25519-public.hex` 原始公钥 hex，见「secrets」一节）。
+
+bundle 签名校验典型用法（规范串 `"<name>@<version>:<sha256>"` + Ed25519；发布方对规范串
+签名，安装方用发布方公钥验签）：
+
+```ts
+const bundleBytes = await fs.readFile(`${name}-${version}.tgz`);      // 二进制直接求摘要
+const canon = `${name}@${version}:${crypto.sha256Hex(bundleBytes)}`;  // 规范串
+if (!crypto.verifyEd25519(publisherPubKey, canon, sigBase64)) {
+  json.fail(400, "bundle signature mismatch");                        // 验签不过 → false
+}
+```
 
 ```ts
 const sessionKey = "AUTH-SESSION:" + crypto.sha256Hex(refreshToken);   // 见第 8 章轮换
@@ -1879,7 +2639,7 @@ while (!tasks.stopping()) {
 - 与 `bus.*` 的关系：`bus` 是进程内/分布式**广播**（fire-and-forget），MQ 客户端是
   **持久队列消费**（有 offset/ack 语义）。需要可靠逐条消费用后者。
 
-最小无 broker 示例见 `sample/src/tasks/task_demo.ts`（每秒心跳）。
+最小无 broker 示例见 `src/tasks/task_demo.ts`（每秒心跳）。
 
 ### 池化任务与 cron（v0.1.28）
 
@@ -2031,11 +2791,11 @@ config `auth:` 段存在即启用两层能力：**Bearer 守卫**（oj-auth 插�
 `jwt_secret` 配了却为空串 → 启动 fail-fast（不静默跳过）。
 
 **auth 端点是业务路由，不是内置路由**：`login` / `refresh` / `logout` 由普通 JS 模块实现
-（sample 提供参考实现 `sample/src/auth/`，目录镜像路由 `POST /auth/login|refresh|logout`）：
+（sample 提供参考实现 `src/auth/`，目录镜像路由 `POST /auth/login|refresh|logout`）：
 `db` 查用户表、`bcrypt.verify` 校验密码、`jwt.sign` 签发 access token，refresh 为不透明
 随机串 + KV session（轮换）。框架不内置这些路由——业务可整模块替换或改名。
 
-| 端点（sample/src/auth/） | 请求体 | 响应 data |
+| 端点（src/auth/） | 请求体 | 响应 data |
 |---|---|---|
 | `POST /auth/login` | `{"username","password"}` | `{"access_token","refresh_token","expires_in"(秒),"user":{"id","roles"}}` |
 | `POST /auth/refresh` | `{"refresh_token"}` | 同上（**轮换**：旧 refresh 立即失效） |
@@ -2100,7 +2860,7 @@ auth 段其余字段（`jwt_secret` 生产必改且空串启动 fail-fast、`sig
 access/refresh 时长）见第 10 章配置表。
 
 ```ts
-// 受保护路由：读验签后的用户身份（sample/src/auth_demo/me/api.ts）
+// 受保护路由：读验签后的用户身份（src/auth_demo/me/api.ts）
 export default {
   get() {
     json.ok({ user: http.user });
@@ -2127,7 +2887,7 @@ tenant:
 供 handler 做数据隔离。`tenant.anonymous_paths`（与 `auth.anonymous_paths` 同语义）是
 **去 base 前缀**后的路径列表，支持四种通配形态：字面、`/*`（严格一层）、`**`（跨任意层）、
 中段 `*`（恰好一段）。豁免命中且确实没带租户头的请求被标记为**匿名**
-（`RequestInfo.anonymous`），不再因缺头而 400——这是给 OIDC 302 跳转腿用的（浏览器带不了
+（`RequestInfo.anonymous`），不再因缺头而 400——这是给 OIDC 302 跳转请求用的（浏览器带不了
 自定义头）。已带的头仍照常注入。
 
 **租户声明的服务端绑定（`tenant.require_signed_claim`，v0.1.41，默认 false）**：开启后
@@ -2195,29 +2955,37 @@ tenant_id」时 warn 告警 / deny 拦截。guard 非 Off 时 schema.yaml 声明
 
 ### auth_demo 走读（sample）
 
-`sample/src/auth_demo/`：`me`（受保护，返回 `http.user`）与 `health`（匿名，
-在 `anonymous_paths`）两个路由；`sample/seed.sql` 已建 `users` 表并写入 demo 用户
+`src/auth_demo/`：`me`（受保护，返回 `http.user`）与 `health`（匿名，
+在 `anonymous_paths`）两个路由；`seed.sql` 已建 `users` 表并写入 demo 用户
 （`demo` / `demo1234`，角色 admin）。走读顺序：login 拿 token → 带 Bearer 打
 `/auth_demo/me/` → refresh 轮换 → logout 失效。sample 同时开了 tenant，
-curl 需另带 `-H 'X-TENANT-ID: acme'`（完整命令见 `sample/src/auth_demo/README.md`）。
+curl 需另带 `-H 'X-TENANT-ID: acme'`（完整命令见 `src/auth_demo/README.md`）。
 
 ### OIDC 演示走读（sample：idp + oidc）
 
-`sample/src/idp/` 是同进程 **OP**（`/.well-known/openid-configuration`、`jwks.json`、
+`src/idp/` 是同进程 **OP**（`/.well-known/openid-configuration`、`jwks.json`、
 `authorize`、`login`、`token`、`userinfo`——标准协议端点用 `json.raw` 出裸 JSON）；
-`sample/src/oidc/` 是 **RP**（`login` → 302 授权 → `callback` 换会话桥接成本地
-`auth` token → `logout`）。OIDC 的 302 跳转腿带不了自定义头，故 demo 在
+`src/oidc/` 是 **RP**（`login` → 302 授权 → `callback` 换会话桥接成本地
+`auth` token → `logout`）。OIDC 的 302 跳转请求带不了自定义头，故 demo 在
 `tenant.anonymous_paths` 与 `auth.anonymous_paths` **两条列表**里都匿名
 `/oidc/*`、`/idp/*`、`/idp/.well-known/*`（窄面：discovery 比 `/idp/*` 深一层，故单列；
 auth 的 `/idp/*` 标 `one_layer: true` 确认「有意一层」；键见第 10 章 tenant/auth）；
 `oidc.rp`/`oidc.clients` 配置驱动，对接外部 IdP 只改 config。curl 全链路见
-`sample/README.md` 的「OIDC 演示」；实现走读（含 mermaid 时序图）与接入手册见
+oj 仓库 `sample/`（github.com/everpan/oj-bin）的「OIDC 演示」；实现走读（含 mermaid 时序图）与接入手册见
 `oidc-implementation.md` / `oidc-integration.md`（仓库在 `docs/` 下，发行包随 devkit
 同目录附带）。
 
+> 分层注记：`oj-auth` 插件只是**守卫**（Bearer/cookie 验签 + 匿名路径 + CSRF），
+> `src/auth/`、`src/oidc/` 这些登录端点全是**普通业务模块**——守卫对
+> 登录来源不可见。新增一种登录来源（企业 HTTP 表单 / CAS SSO 等）= 新写一个业务
+> 模块 + 匿名路径放行跳转请求，不改插件、不动 ABI；JIT 建号用「来源前缀键 +
+> 非法占位 password_hash（`bcrypt.verify` 恒 false）」。可照抄见 `scenarios.md` 场景 28。
+
 ## 9. 测试
 
-> 何时读我：写模块测试或搭 CI 时。
+> 何时读我：写模块测试或搭 CI 时。本章只列契约（旗标 / 注入 API 表）；**写法走读**——
+> 运行生命周期、测试库隔离口径、可照抄样板、fixtures/seed 纪律与坑——见专题篇
+> `oj-test-guide.md`。
 
 两层测试互补：**L1 `oj test`**（进程内真实 v8 + 真实路由/鉴权/租户管线 + 真实后端，
 零 TCP）；**L2 vitest 纯 mock**（Node 直调 handler，mock 全局，毫秒级）。
@@ -2230,7 +2998,7 @@ auth 的 `/idp/*` 标 `one_layer: true` 确认「有意一层」；键见第 10 
 此前只扫首层，子目录里的 `*.test.ts` 会被静默忽略。
 
 ```bash
-./bin/oj test -c sample/config.yaml -d sample/src                 # human 摘要
+./bin/oj test -c config.yaml -d src                       # human 摘要
 ./bin/oj test -c config.yaml -d src --format junit --output l1.xml # CI 报告
 ```
 
@@ -2283,8 +3051,8 @@ describe("user account", () => {
 | API | 说明 |
 |---|---|
 | `client.get/post/put/del/patch/head/options(path, opts?)` | 进程内派发；`opts = { headers?, body? }`，返回 `ClientResp { status, headers, body, upgrade }`；`path` 相对 base（如 `"/user/account"`） |
-| `client.login(username, password, headers?)` | POST 业务路由 `/auth/login`（sample/src/auth/）→ 返回 `access_token`（失败抛错；`headers` 透传，如租户头） |
-| `client.ws(path)`（v0.1.16） | WS 帧测试面：`send(string\|Uint8Array)` / `next(ms?) → {binary,data}\|{closed:true}\|null` / `close()`；首次使用惰性起 127.0.0.1:0 本地服务（真实路由 + 帧循环）。**`send`/`next`/`close` 任一个都能建连**——`next()` 可单独读服务端主动推的首帧（connection 钩子 `ws.send` / bus 广播），不必先 `send`；文本帧 `data` 为 string（运行时无 `TextDecoder`，测试面自带 UTF-8 解码）。用例见 `sample/tests/ws-bin.test.ts` |
+| `client.login(username, password, headers?)` | POST 业务路由 `/auth/login`（src/auth/）→ 返回 `access_token`（失败抛错；`headers` 透传，如租户头） |
+| `client.ws(path)`（v0.1.16） | WS 帧测试面：`send(string\|Uint8Array)` / `next(ms?) → {binary,data}\|{closed:true}\|null` / `close()`；首次使用惰性起 127.0.0.1:0 本地服务（真实路由 + 帧循环）。**`send`/`next`/`close` 任一个都能建连**——`next()` 可单独读服务端主动推的首帧（connection 钩子 `ws.send` / bus 广播），不必先 `send`；文本帧 `data` 为 string（运行时无 `TextDecoder`，测试面自带 UTF-8 解码）。用例见 `tests/ws-bin.test.ts` |
 | `describe(name, fn)` / `it(name, fn)` / `beforeEach(fn)` | vitest 风格子集 |
 | `expect(actual)` | `.toBe / .toEqual / .toBeTruthy / .toBeFalsy / .toContain` |
 | `finish()` | 标记会话结束 |
@@ -2354,11 +3122,11 @@ CI 已内置（`.github/workflows/plugin-matrix.yml` 的 `sample-tests` job，�
 `release.yml` 的 `lint`）：`npm ci`（`unit/`）→ `npm run typecheck` →
 `cargo run --release -p xtask -- build`（workspace 构建，产出 `bin/oj` + 全部第一方插件。
 勿用 `cargo build -p oj`，那会按不同 feature 归一化重编 rusty_v8）→
-`./bin/oj test -c sample/config.yaml -d sample/src --format junit` → `npx vitest run`。
+`./bin/oj test -c config.yaml -d src --format junit` → `npx vitest run`。
 
 依赖管理：L2 的 vitest 与 typescript（类型检查用）声明在 `unit/package.json` 的
 `devDependencies`，与运行时依赖（如 `escape-goat`）隔离——被测物不携带测试工具；
-统一入口在 `sample/package.json`（`npm run test` = `typecheck` + `test:unit` + `test:api`）。
+统一入口在 `package.json`（`npm run test` = `typecheck` + `test:unit` + `test:api`）。
 
 ## 10. 配置 config.yaml
 
@@ -2405,6 +3173,30 @@ mounts:
 | 根 `/` | 允许：api 挂载路由 `/<module>`；web 挂载全路径兜底 |
 | CLI 折叠 | `--api-path d [-b B]` → upsert `{prefix: B(默认 /v1/api), api: d}`（裸 `-b` 报错）；`--app-path d` → upsert `{prefix: "/", web: d}`、`--app-path /p=d` → upsert 同前缀 web 条目（保留 headers/spa） |
 
+#### 远程 dist 挂载（v0.1.77）
+
+`api` 字段除了本地目录，还可以是 `http(s)://` URL：装配期按 URL 拉取「dist 根 tarball」
+（产物根须含 `manifests.yaml`，否则视为非法 dist 根拒启），解压到**内容寻址缓存**
+`<cache>/<sha256>/`（`cache` 缺省 `<config_dir>/.oj-cache`），以 release 语义服务。
+
+```yaml
+mounts:
+  - prefix: '/remote'
+    api: 'https://cdn.example.com/app/dist.tgz'   # 远程 dist 根 tarball
+    sha256: 'a1b2c3d4e5f6...64hex'                 # 完整性锚（必填，64 hex）
+    cache: '.oj-cache'                              # 可选，相对 config 目录；绝对路径原样用
+```
+
+- **完整性锚 = 声明 `sha256`**：下载内容 sha256 与声明不符即拒启（防篡改 / CDN 漂移 /
+  缓存投毒）；缺 `sha256` 或 scheme 非 http/https → 装配期 fail-fast。
+- **解压 fail-fast**：逐条目拒绝 tar-slip（路径逃逸 `/` 父目录 / 盘符前缀）、符号链接 /
+  硬链接 / 字符·块·FIFO 特殊文件、pax·gnu 扩展元数据；并对下载量（512 MiB）/ 解压总量
+  （4 GiB）/ 条目数（10 万）/ 单条目（1 GiB）设上限防炸弹。命中缓存按 sha256 复用，
+  损坏自动重拉；同 URL 物化按 sha256 互斥串行化。
+- **`--api-path` 不接受 URL**：远程挂载的 sha256 上下文只在 config 声明期存在，CLI 折叠期
+  无此上下文，故 `oj serve --api-path <url>` 直接报错并引导改走 config 的 `mounts[].api`。
+
+
 ### server
 
 | 字段 | 默认 | 说明 |
@@ -2429,6 +3221,36 @@ mounts:
 | `grace_days` | `30` | 证书过期后宽限天数（缩窄可加速告警） |
 | `migrate_on_start` | `auto`（dev）/ `verify`（release） | 迁移门禁：auto 启动即应用；verify 账本落后拒启（M004，先 `oj migrate`）；`off` 迁移完全归运维 |
 | `ownership_guard` | `"warn"` | 表归属守卫：`warn` 跨模块表访问仅告警；`deny` 未声明 deps 拒绝执行（500 附修复指引） |
+| `reload_api` | `false` | （v1 配置热更新）开启后 `oj serve` 走「永生 listener + 外层单一 fallback」形态：监听 `POST {base}/_system/config` 触发热更、`GET {base}/_system/config` 看当前代际、`GET {base}/_system/health` 看健康 + 代际。详见下「配置热更新（reload_api）」。关闭则维持原 `serve_graceful` 行为（零变化） |
+
+#### 配置热更新（reload_api）
+
+`server.reload_api: true` 时，`oj serve` 启动「热更新服务形态」：监听 socket 永生（不被热更/优雅停机外的信号关闭），所有请求经一层**外层 fallback** 分流——`_system` 相关路径由平台处理，其余原样 `oneshot` 转发给「当前内层 Router」（由 `watch` 通道持有，热更时整体替换）。热更**零停机**：旧内层 Router 随在途请求完成自然 drain，新请求命中新 Router。
+
+> **保留路径**：`_system` 是平台保留前缀，业务模块勿占用；`{base}/_system/config`（`GET`/`POST`）与 `{base}/_system/health` 由外层 fallback 直接响应，不经业务路由，也不走证书过期门禁（运维换证窗口仍可探活）。
+
+**触发**：`POST {base}/_system/config`（**空 body**，非空 body 一律 400），或特权模块在 JS 侧调 `server.reloadConfig()`（同一 executor 实例与同一把串行锁，见「server」一节）。服务端重新 `load_cfg` → `fold_cli_mounts` 重放 CLI 覆盖 → 证书/公钥路径重放 → `admission_gate`，再与当前代做幂等/段 diff：
+
+- **幂等**：归一后落盘文件 sha256 与当前代相同 → 返回 `{"code":0,"msg":"unchanged","generation":<n>}`，不装配、不 swap。
+- **段 diff 三清单**（每次成功 swap 返回）：
+  - `restart_pending`：后端段（`db`/`redis`/`blob`/`es`/`broker`/`smtp`/`ldap`/`auth`/`kafkas`/`rabbits`/`plugins`/`plugins_dir`/`secrets`）与**特权面段（`platform`/`fs`）**——已验证合法，但本代沿用旧连接池/旧插件后端/旧授权面，**重启后生效**。特权面段不热生效是安全语义：特权模块不能热改自己的 API/exec/fs 白名单（防自提权）。
+  - `kept_listener`：`server` 段（port/host/证书路径）——listener 永生，本代沿旧，改了也**下个进程**才生效。
+  - `applied`：其余段（如 `vars` 部署期常量）——本代即生效。
+
+成功响应：`{"code":0,"data":{"generation":<n>,"applied":[...],"restart_pending":[...],"kept_listener":[...]}}`。
+
+**守卫**：`server.reload_api` 开启后 `_system/config` 受保护——`auth:` 配置了 → 需 Bearer 验签（401 详情在响应体）；未配 `auth:` → 仅**回环地址**（loopback）可调，非回环 403（响应体 `"reload_api requires loopback or auth"`）。`GET` 同样受此守卫。
+
+**并发**：同一时刻只允许一个热更（HTTP POST 与 JS `server.reloadConfig()` 共享同一把串行锁）；第二个并发触发在拿不到锁时返回 **409 `reload in progress`**（JS 侧抛 `server.reloadConfig: reload in progress (busy)`）。
+
+**代际与可观测**：`GET {base}/_system/config` 返回 `{config_path, sha256, loaded_at, generation}`；`GET {base}/_system/health` 返回 `{status:"OK", generation, config_path}`（旧路径 `{base}/health` 仍可用，但会告警建议改用 `_system/health`）。
+
+**限制（v1 边界）**：
+- 热更**复用首代已建立的连接池与插件后端**——不重建后端、不二次 `init` 插件、迁移强制 `verify`-only（dev 默认 `auto` 会打生产库，故热更路径强制 `verify`）、不重放 seed。需要新后端/新迁移的改动请走 `restart_pending` 提示并**重启进程**。
+- 触发源是**落盘配置文件**：进程生命周期内 CLI 覆盖（`--api-path`/`--cert-path`）不变，故以文件内容为热更真触发源。改文件 → `POST` 即生效。
+- 装配失败（如 `admission_gate` 不通过、新模块编译错）→ `POST` 返回 400 + 原因，**旧代继续服务**（失败不破坏在跑实例）；任务池交接为先建新池 fail-fast、再停旧池，新池建不起来则旧池仍跑（回滚完整）。
+
+| `reload_api` | `false` | （v1 配置热更新）开启后 `oj serve` 走「永生 listener + 外层单一 fallback」形态：监听 `POST {base}/_system/config` 触发热更、`GET {base}/_system/config` 看当前代际、`GET {base}/_system/health` 看健康 + 代际。详见下「配置热更新（reload_api）」。关闭则维持原 `serve_graceful` 行为（零变化） |
 
 ### 静态站点与 per-route meta（SEO / IM 预览）
 
@@ -2532,9 +3354,9 @@ curl -s -H 'Accept: text/html' http://127.0.0.1:9778/issues/abc | grep -i '<titl
 
 - 内置只有 sqlite/memory；`mysql`/`postgres` 需对应插件（oj-db-mysql / oj-db-postgres），
   未装插件 → 启动报 `unknown db scheme`。
-- `DB("name")` 按名取库；查询构造器自动按库方言出 SQL；裸 SQL 占位符方言归业务
-  （sqlite/mysql `?`，postgres `$1`）。
-- `seed.sql` 仅对 **default 库且为 sqlite** 时重放。
+- `DB("name")` 按名取库；查询构造器自动按库方言出 SQL；裸 SQL **统一用 `?` 占位符**
+  （0.1.67 起，postgres 由宿主自动改写 `$n`；存量 `$n` 继续有效，见「统一占位符」节）。
+- `seed.sql` 启动时对 `default` 库重放，**三方言**（幂等靠 S006 门禁 + 引擎按方言改写）。
 - mysql/pg 连不上启动 fail-fast（连接串错/库未建）。
 - **按库运维（v0.1.21）**：`oj migrate` / `oj test fixture` / `oj schema diff` 的 `--db <name>`
   即上方键名；缺省 `default`，未声明 fail-fast。账本 `_oj_migrations`、schema 收敛、
@@ -2590,6 +3412,46 @@ fs:
 
 块存在即启用 `fs.*` 全局；缺省不启用（`fs.*` 抛 `NotCapable`，fail-closed）。
 
+### platform —— 平台特权（v0.1.75，ojm 批次）
+
+```yaml
+platform:
+  modules: ["ojm-installer"]      # 平台特权模块名单
+  root: "./platform-modules"      # 受控挂载根（modules 非空时必配，须同时列为 mounts[].api 条目）
+  trusted_paths: ["./config.yaml", "./dist"]   # 额外授权路径根（canonical，装配期 fail-fast）
+  exec:                           # exec 授权（v0.1.75 生效；与 modules 相互独立，缺省 = 全 deny）
+    ojm-installer:
+      allow:                      # argv 模板：literal 逐字 + ${path:}/${raw:} 占位符（见 §6「exec」）
+        - "tar -xzf ${path:archive} -C ${path:dest}"
+        - "tar -tzf ${path:archive}"
+      env: ["OJ_SECRET_KEY"]
+```
+
+**fail-closed**：不配 `platform:` 段 = 全部平台特权不可用（运行期裁决报
+`NotCapable: platform not configured (config platform: section missing)`）。
+段存在而某键缺省 = 该键为空名单（同样 deny）。
+
+特权面（归属 = 请求级模块身份，URL/JS 侧不可伪造；tasks/WS 上下文无模块归属 →
+特权恒不可用）：
+
+| 键 | 语义 |
+|---|---|
+| `modules` | 平台特权模块名白名单。非名单模块报 `NotCapable: module 'x' is not platform-privileged` |
+| `root` | 受控挂载根：特权模块的**唯一**正经部署目录（相对 config_dir 解析）。`modules` 非空时必配，且该目录必须同时列为 **`mounts[].api` 条目**——模块归属与路由只能来自挂载 discover。特权模块只能由部署方放入该目录 |
+| `trusted_paths` | 额外授权路径根（相对 config_dir 解析；canonical 化，路径不存在 → 装配 fail-fast）。生效面 = 特权模块的 **fs 读写范围**（`fs.root ∪ trusted_paths`，见 §6 fs「平台特权 fs 扩展」；`fs:` 未配置时 fs 轴不生效，非特权模块行为不变）与 **exec `${path:}` 占位符的校验集合**（§6「exec」） |
+| `exec` | **exec 全局授权**（v0.1.75 生效）：模块名 → `{ allow: [argv 模板], env: [透传环境变量白名单] }`。列出该模块 = 授权其 `exec.run`；**与 `modules` 相互独立**（只配一边拿不到另一边）。模板 literal token 逐字相等、`${path:NAME}`/`${raw:NAME}` 占位符恰吸一 token；模板语法错在调用期 fail-closed 点名。签名、语义与错误文案见 §6「exec」 |
+
+装配期抢注/绊线防护（全部启动 fail-fast，不等第一个请求）：
+
+- **抢注（anti-squatting）**：特权名出现在任何其他 api 挂载树 →
+  `platform module 'x' must not come from an install tree (deploy it in a platform-controlled directory under platform.root)`——「安装名为 X 的 bundle = 继承 X 特权」被装配校验阻断。
+- **受控根互斥**：`platform.root` 与其他 api 挂载树同径或互为父子 →
+  `platform.root (…) must not overlap another api mount (…) — the anti-squatting tripwire would be silently disabled`（防部署方误把受控根指到市场安装树；父目录形态会让市场产物静默穿透绊线）。
+- **root 未挂载**：`platform.root (…) must be mounted as an api mount to give platform modules routes and ownership`。
+- **root 缺失**：`platform.modules is set but platform.root is missing — privileged modules need a controlled mount root`。
+- **名单悬空**（root 下无此模块）：`platform module 'x' is not deployed under platform.root (dangling privilege: no module implementation)`。
+- **trusted_paths 不存在**：`platform.trusted_paths canonicalize failed (…): …`。
+
 ### broker —— 事件总线（三种 kind）
 
 ```yaml
@@ -2642,7 +3504,7 @@ V8 runtime 按 Worker 数常驻；单帧超时只断该连接（毒化 Worker �
 ### tenant / auth
 
 字段与语义见第 8 章。tenant：默认关闭、header 默认 `X-TENANT-ID`、`anonymous_paths`
-跳转腿豁免；v0.1.15 起增 `sql_guard`（false|"warn"|"deny"）与 `shared_allow` 共享表
+跳转请求豁免；v0.1.15 起增 `sql_guard`（false|"warn"|"deny"）与 `shared_allow` 共享表
 白名单，语义与建表要求见第 8 章与 `docs/tenant-guide.md`。auth：`jwt_secret`（空串
 启动 fail-fast，生产必改）、`signing_method`（HS256|HS384|HS512，默认 HS256）、
 `access_token_duration`（默认 60s）、`refresh_token_duration`（默认 720h）、
@@ -2656,12 +3518,39 @@ RS256 签名/验签原语与装配期配置（第 6 章 `oidc` 全局）；缺 `
 | 键 | 说明 |
 |---|---|
 | `issuer` | OP 标识/发现基址（如 `http://localhost:9778/v1/api/idp`） |
-| `private_key_path` | RS256 私钥（PKCS#8 PEM，相对 config 目录；demo 用 `sample/config/oidc_rs256.pem`，与示例证书同性质，勿用于生产） |
+| `private_key_path` | RS256 私钥（PKCS#8 PEM，相对 config 目录；demo 用 `config/oidc_rs256.pem`，与示例证书同性质，勿用于生产） |
 | `rp` | RP 侧 `tenant → IdP` 映射：`issuer` / `client_id` / `client_secret` / `scope` |
 | `clients` | OP 侧 client 白名单：`secret` / `redirect_uris`（**精确串**，未命中绝不重定向）/ `tenant` |
 
 私钥只在 Rust 侧解析使用；`client_secret` 经 `oidc.rp`/`oidc.clients` 对 JS 可读——
 与 `auth.jwt_secret` 同一信任级（能跑 handler 即能拿鉴权密钥）。
+
+### sso —— HTTP 表单 / CAS SSO 提供者注册表（段存在即启用）
+
+顶层 `http_sso:` 段（map：提供者名 → 配置）装配期注入；缺段调用 `sso.providers` 报
+`http sso not configured`。**登录端点是普通业务模块**（`src/sso/` 参考实现，
+守卫只认签出的 token）——form 登录端点与 CAS 302 跳转请求都要进 `auth.anonymous_paths` 与
+`tenant.anonymous_paths` 两条列表。
+
+| 键 | 说明 |
+|---|---|
+| `kind` | `form`（转发凭据到企业端点，按响应判成败）\| `cas2`（302 跳转 + ticket 回校） |
+| `login_url` | form: 凭据校验端点；cas2: CAS `/login` |
+| `cas_validate_url` / `callback_url` | cas2 必填：ticket 校验端点 / 本站回跳绝对 URL（装配期固定，**禁从请求 Host 派生**，两处请求的 service 必须同串） |
+| `user_field` / `pass_field` | 凭据字段名，缺省 `username` / `password` |
+| `body_encoding` | form 出站编码：`form`（urlencoded，缺省）\| `json` |
+| `extra_fields` | 附加固定字段（app_id 等；secret 类值写 `ENC[...]`，装载期自动解封） |
+| `success_when` | 成功判定：点路径 → 期望值，全部命中即成功；form 必填 |
+| `profile` | 用户信息映射：本地 users 列 → 上游响应点路径 |
+| `allow_http` | 显式允许 `http://` 上游（内网联调）；缺省拒绝（与 smtp `allow_none_tls` 行为一致） |
+
+判定语义：点路径只支持 `.` 分隔对象遍历；**缺失/null 仅当期望值为 `null` 时命中**；其余
+`String(actual) === String(expected)`（`0` 与 `"0"` 互命中）。mm-wiki 判据
+`message == ""` → `success_when: { message: "" }`。JIT 键
+`sso:<provider>:<tenant>:<username>` + `"!sso"` 占位 hash（该号永不可密码登录）；
+provider 必须命中已配置名（未命中 400 `unknown sso provider`）。CAS 交接红线：token 不进
+URL（httpOnly 双 cookie），302 目标只认 `/` 开头且非 `//` 的相对路径。可照抄：
+`scenarios.md` 场景 28。
 
 ### plugins / plugins_dir —— 插件装配（map 一段三用）
 
@@ -2728,6 +3617,8 @@ vars:
 ```bash
 # 生成 X25519 密钥对（私钥自动 0o600，已存在则拒绝覆盖）：
 ./bin/oj secret keygen --out-dir keys   # keys/secrets-private.pem + secrets-public.pem
+# 生成 Ed25519 签名密钥对（v0.1.80；bundle 签名校验的作者侧，与密封密钥互不可用）：
+./bin/oj secret keygen --alg ed25519 --out-dir sign-keys
 echo -n 'hunter2' | ./bin/oj secret seal -k keys/secrets-public.pem   # → ENC[BASE64…]
 ./bin/oj secret open -c config.yaml 'ENC[BASE64…]'  # 排障：确认密文与私钥对得上
 ```
@@ -2781,9 +3672,18 @@ ldap:                            # 不透明段里的 bind_pw 同样支持
   里会提示换写法。密文也不能当**键**用（`ENC[...]: 1` 直接报错）。
 - **日志面**：DSN / URL 出现在错误信息与 warn 里时**凭据段打 `***`**
   （如 `mysql://***@127.0.0.1:3306/app`），排障认得 host 就够。
-- `keygen` 只生成 X25519 密钥对（无需 `--bits` / `--alg` 旗标）；密文格式固定为
-  X25519 + AES-256-GCM，密文长度≈明文+62B。RSA(v1) 信封已整体移除（v1 无人使用，移除以
-  避免密钥配置歧义）；手上若有旧版 RSA(v1) 密文，用 `oj secret seal` 以 X25519 重新加密。
+- `keygen` 密钥算法族（`--alg`，v0.1.80）：缺省 `x25519` = 密封密钥对（`secrets-private.pem`
+  / `secrets-public.pem`，`BEGIN OJ X25519 …` 标签，供 `seal`/`open`），行为零变化；
+  `--alg ed25519` = 签名密钥对，产出三文件——`ed25519-private.pem`（标准 PKCS#8
+  `BEGIN PRIVATE KEY`，openssl / Node `crypto.createPrivateKey` 可直接读；0600）、
+  `ed25519-public.hex`（32 字节**原始公钥**的 64 hex 字符——**必须 raw 32B**，
+  `crypto.verifyEd25519` 喂 PEM/SPKI 会抛 `key not hex/base64`）与 `ed25519-public.fp`
+  （sha256(rawPublicKey) hex，运维核对 / 信任库 mismatch diff 用）。
+  **两算法族不可互用**：X25519 是密钥协商（ECDH）、做不了签名；ed25519 密钥拿去
+  `seal`/`open`/`secrets.private_key_path` 会报 `not a OJ X25519 … PEM`。覆盖拒绝同规
+  （已存在须 `--force`）。密文格式仍固定为 X25519 + AES-256-GCM，密文长度≈明文+62B。
+  RSA(v1) 信封已整体移除（v1 无人使用，移除以避免密钥配置歧义）；手上若有旧版 RSA(v1)
+  密文，用 `oj secret seal` 以 X25519 重新加密。
 
 完整手册（威胁模型、密文格式、轮换与迁移步骤、排障）见仓库 `docs/secrets.md`。
 
@@ -2820,6 +3720,12 @@ ldap:                            # 不透明段里的 bind_pw 同样支持
 | `no mounts configured — …` | 准入门（v0.1.58）：`mounts:`（config + CLI 折叠后）为空——加一条挂载或传 `--api-path`/`--app-path` |
 | `api path not found: …` | `--api-path` 指定了就必须存在（静态站点存在性不在此判，见下行） |
 | `mounts[i]: duplicate … mount prefix` / `mounts[i]: 挂载目录 …: No such file or directory` | （v0.1.58）装配期挂载解析 fail-fast：同类前缀重复或挂载目录缺失/非目录（api+web 同前缀配对合法） |
+| `mounts[i]: URL api requires sha256 integrity anchor` | （v0.1.77）`api` 为 `http(s)://` 但未提供 64 hex `sha256` —— 装配期 fail-fast（防未锚定的远程 dist 被静默替换） |
+| `mounts[i]: <url> scheme not allowed (only http/https)` | （v0.1.77）`api` URL 的 scheme 非 http/https（如 `ftp:`、`file:`）→ 拒启 |
+| `mounts[i]: <url> sha256 mismatch (got …, expected …)` | （v0.1.77）下载内容 sha256 与声明不符 → 拒启（不静默当明文 / 降级） |
+| `mounts[i]: dist root missing manifests.yaml` / `extraction rejected: <reason>` | （v0.1.77）远程 dist 根解压后无 `manifests.yaml`，或单条目触发 tar-slip / 符号链接 / 特殊文件 / 超预算 → 拒启（解压器 fail-fast） |
+| `api path '<url>' is a URL — declare remote dist via mounts[].api in config` | （v0.1.77）`--api-path` 收到 URL → 报错引导走 config（CLI 折叠期无 sha256 上下文） |
+
 | `server.html_meta_handler` 未命中 GET 路由 | `server.html_meta_handler: "…" 不在路由表（拼错了？）` / `未映射 GET 方法` 退出（v0.1.25；后果只在爬虫侧可见，故不留到运行期） |
 | config 里有 `ENC[…]` 但找不到私钥 / 解密失败 | `config has ENC[...] sealed values but …` 退出（v0.1.33；**不静默把密文当明文用**） |
 | `vars:` 段值不是标量（嵌套 map/list） | 解析期报错（值只能是字符串/数字/布尔） |
@@ -2828,6 +3734,8 @@ ldap:                            # 不透明段里的 bind_pw 同样支持
 | `ext_boot.js` 存在但语法错/导入失败/顶层 await 抛错 | 启动期预热即 `ext_boot: …` 退出（服务不监听） |
 | crontab.yaml 坏行（非 5 字段 cron + 路径 / 路径不存在） | fail-fast 退出，报错带 `:行号:`（v0.1.28） |
 | `server.cors.credentials: true` 且 `server.cors.origins` 为空 | `cors: credentials requires explicit origins (wildcard '*' is rejected by browsers)` 退出（v0.1.35；带凭据的 `*` 非法）。其余字段缺省回落安全值 |
+| `platform.modules` 非空但 `platform.root` 缺失 / root 未列为 api mount / 与其他挂载树同径或父子 / 名单悬空 | platform 段装配 fail-fast 退出（v0.1.75，报错原文见 §10「platform」——抢注绊线必须在装配期生效，运行期拦截为时已晚） |
+| `platform.trusted_paths` 条目不存在 | `platform.trusted_paths canonicalize failed (…): …` 退出（v0.1.75） |
 
 ## 11. 构建与发布
 
@@ -2858,6 +3766,24 @@ S003 跨模块 SQL 须声明 deps、S004 deps 版本范围可满足、S005 `tabl
 | `dist/manifests.yaml` | 模块 → 锁定版本（原子写，保留其他模块条目）；多版本目录可共存，锁决定 release 加载哪个 |
 | `dist/<module>-<version>.tgz` | 确定性发布包（同输入字节一致，可校验完整性） |
 
+#### `oj build --bundle`（v0.1.77）
+
+把整棵已构建 `dist/`（根 `manifests.yaml` + 各 `<module>-<version>/`）打成**空前缀**
+tarball `<out>/<name>.tgz`（`name` 取输出目录名）并打印 sha256 —— 产物可直接声明为上面
+远程挂载的 `sha256` 完整性锚（手工等价 `tar czf app.tgz -C dist .`）。
+
+```bash
+./bin/oj build -d src -o dist
+./bin/oj build --bundle -d src -o /tmp/sd     # 产出 /tmp/sd/sd.tgz + 打印 sha256
+```
+
+- 要求 `dist/manifests.yaml` 存在（先 `oj build`）；只收目录与 `manifests.yaml`，跳过各
+  per-module `*.tgz`，保证解压后根即 dist 根（空前缀 → 解压落到 `<cache>/<sha256>/` 即为
+  合法 dist 根）。
+- 与 `oj build` 普通产物（`dist/<module>-<version>.tgz`）的区别：普通产物是单模块包；
+  `--bundle` 是「整站 dist 根」包，专供远程挂载分发。
+
+
 跨模块相对导入构建期改写为指向目标模块版本目录的相对路径；目标模块未构建过则报错
 （先 `oj build user`）。npm 依赖不打包进 tgz（裸 specifier 运行时沿 `node_modules`
 解析，发布物需自带）。
@@ -2880,7 +3806,7 @@ scripts\deploy.bat         # Windows (cmd) → dist/oj-v<version>-<triple>.zip
 
 `<triple>` 取自 `rustc -vV` 的 host 行（如 `aarch64-apple-darwin`、
 `x86_64-unknown-linux-gnu`、`x86_64-pc-windows-msvc`），与插件加载器的发现路径
-`<exe>/plugins/<triple>/` 同形。版本取自 `oj/Cargo.toml`。每个包附带同名
+`<exe>/plugins/<triple>/` 同形。版本取自发布流程（与 `oj --version` 一致）。每个包附带同名
 `.sha256` 校验文件。
 
 包内容（解包后，根路径 = 包名）：
@@ -2898,6 +3824,23 @@ vendored `node_modules/`（不打进 tgz）→ `./oj migrate -c config.yaml -d d
 加 `--db <name>` 逐库跑）→ `./oj serve -c config.yaml --api-path dist`。
 启动时把模块清单 + 路由表写入日志，可据此核对发布是否完整（终端默认静默：
 `tail -f logs/server-*.log`，或启动时加 `--console-log`）。
+
+### 安装脚本（scripts/install.sh）
+
+从仓库 `dist/` 取发行包解包覆盖安装到本机（维护侧便捷工具，非运行期 API）：
+
+```bash
+scripts/install.sh                                    # 自动选 dist/ 下 mtime 最新的 oj-v*.tar.gz
+scripts/install.sh oj-v0.1.69-aarch64-apple-darwin    # 按包名（自动补 .tar.gz）
+scripts/install.sh path/to/oj-v0.1.69-xxx.tar.gz      # 按 tar.gz 路径
+scripts/install.sh <包> /custom/oj                    # 第二参数指定安装位置
+```
+
+- 安装位置可用 **第二位置参数**显式指定（优先级高于环境变量 `OJ_INSTALL_DIR`，
+  见 `scripts/install.sh` 头部），用于隔离安装。
+- **安全约束**：显式指定的安装位置必须**已存在且为空**，否则报错退出；脚本**不会**
+  主动清空 / 删除目标，避免误指向含数据的目录被整体覆盖。默认安装目录
+  （`~/.local/share/oj`）仍走 `mkdir -p` + 合并的旧升级语义。
 
 ### npm 分发（@oj-bin/*，v0.1.13）
 
@@ -2928,7 +3871,7 @@ npm i @oj-bin/oj     # 主包；optionalDependencies 自动带平台子包 @oj-b
 
 **config.yaml 不是必需的**（v0.1.57 起 `-c` 可省）：省略时按「CWD 逐级向上 `config.yaml`
 → `$HOME/.oj/config.yaml`」搜索，都没有就用内置默认值（**v0.1.60 起 `oj exec` 静默回落、
-不再向 stderr 打 `note:`**，与 `oj info` 同口径；仅 `serve`/`migrate`/`openapi` 等依赖后端配置
+不再向 stderr 打 `note:`**，与 `oj info` 行为一致；仅 `serve`/`migrate`/`openapi` 等依赖后端配置
 的场景保留该提示）——纯计算脚本（`-e '1'` 之类，不碰 db/表白名单）零配置可跑。目录解析
 （`-d` 缺省时）：取 config/mounts 的第一条 api 挂载，无挂载才向上探测（只认「像业务树」的候选，
 见 `-d` 参数行）；在源码仓根这类「祖先带非业务 `src/`」的地方裸跑，会得到 `service dir not
@@ -3106,7 +4049,15 @@ RUST_LOG=oj=info ./oj serve -c config.yaml --api-path dist
 | `ext_boot.js` 里 `import "ext:core/ops"` 失败 | deno_core 硬拦，设计如此 | 用已有全局组合；要新 op 属改 bootstrap |
 | 运行期偶发 500 且 msg 含 `ext_boot` | boot 依赖外部服务抖动，或文件被删/替换 | boot 改为幂等无外部依赖；恢复文件后重启 |
 
-完整排障表见 `docs/ops-manual.md` §7。
+| `http sso not configured` | `http_sso:` 段缺省 | 加段即启用；不用就别调 `sso.providers` |
+| 400 `unknown sso provider: x` | provider 未命中 `http_sso` 已配置名 | 核对 config 键名与请求 `provider` |
+| 启动报 `http_sso.x: … must be https` | 非 https 上游且未 `allow_http` | 上游改 https，或内网联调显式 `allow_http: true` |
+| 409 `version conflict` | versions 乐观锁：`expect` 与当前 head 不符，或并发双 commit 撞 UNIQUE | 重读 head 重试；不带 `expect` 即 last-write-wins |
+| `diff too large (line budget exceeded)` | versions.diff 修剪后格子数超 4M | 缩小对比范围或整删整加 |
+| `search.ensureIndex: DDL inside db.tx` | ensureIndex 在 `db.tx` 内调用 | 移到事务外（MySQL DDL 会隐式提交调用方事务） |
+| `search.*: call ensureIndex('t') first` | index/remove/query 先于 ensureIndex | 先 ensureIndex（进程内每表一次） |
+
+完整排障表见 oj 仓库 `docs/ops-manual.md` §7（github.com/everpan/oj-bin）。
 
 ### 插件升级与回滚
 
@@ -3153,6 +4104,9 @@ await db.query("select id from account where id = " + id, []);   // 禁止
 - blob key 白名单：按 `/` 分段，`.` / `..` / `\` / NUL / 空段拒绝。下载路由
   `{base}/blob/{key}` **公开免鉴权**——不要把需鉴权的对象放进去。
 - import 解析结果钳制在 project root 内，`..` 逃逸报错（第 5 章）。
+- handler 链段名（嵌套组，v0.1.64）禁 `/`、空段与 `__proto__`/`constructor`/`prototype`：
+  内省期权威校验，运行期 driver 与 release `from_entries` 双保险——手改 `routes.js`
+  注入这些段 → 记 failure 不注册（dev）/ 启动失败（release）。
 
 ### v0.2 已知限制全表
 
@@ -3161,6 +4115,10 @@ await db.query("select id from account where id = " + id, []);   // 禁止
 | ~~相对 `require("./x")` 不支持~~（v0.1.30 已支持） | 相对 require / JSON 模块 / 循环 require 均可用；`exports`/`conditions` 与 pnpm 布局完整支持。残留限制：`exports` 的 `types`/`browser` 条件不命中；CJS `module.exports` 替换函数式写法启发式识别 |
 | blob multipart 预签名（v0.1.30） | `blob.uploadUrl` 的 multipart 形态暂返回 Err（object_store 无 multipart presign API）；单发 PUT 预签名 + `PUT {base}/blob/{key}` 直传路由（≤1 GiB）已覆盖大文件场景，>100MB 分片需求出现再补 |
 | build 剥 `.route` 仅识别语句起始的标准赋值写法 | `fn.route = "…"` 顶层标准写法可用；花式写法可能漏剥 |
+| 嵌套 handler 组上限 4 层、`route` 为保留键（v0.1.64） | 链长 >4 或自引用（`a.self=a`）内省期即失败；组对象的字符串 `.route` 是本层前缀声明，故子组不能命名 `route` |
+| `.schema` 顶层只允许四通道（v0.1.70） | 白名单 = `params`/`query`/`body`/`response`，其余键装配期硬失败（旧版静默忽略 = 接口裸奔）。报错带 method/pattern/handler/文件；**不要**用 `schema_validation: false` 绕 |
+| `.schema.response` / 平级 `.response` 运行期**不校验**（v0.1.70；平级声明位 v0.1.72） | 只作文档与生成真源（产物带 `x-oj-response-enforced: false`）：少返回字段不报错、不裁剪。`json.raw`/`json.stream`/`json.sse` 端点无信封，**不要**声明 `response`。出参四个声明位并存时优先级：动词 `.response` > 组 `.response` > 动词 `.schema.response` > 组 `.schema.response` |
+| `oj openapi` 生成期审计 + `operationId` 唯一（v0.1.70） | 非法 `.schema`（含拼错通道）在生成期即失败，不再进 spec；`/user/profile` 与 `/user-profile` 派生同名 `user_profile_get` → 报错（下游按它命名符号会互相覆盖） |
 | npm 依赖不打包进 tgz | 发布物需自带 `node_modules/` |
 | 旧版本目录不自动回收 | 锁不指向即为死数据，手工删 |
 | 端口 <1024（如 778）属特权端口 | 需 root 才能 bind，用 ≥1024（默认 `9778`） |
@@ -3172,16 +4130,18 @@ await db.query("select id from account where id = " + id, []);   // 禁止
 | tasks 池禁用别名 / 不得越池根 | 任务池是非版本化资产（只镜像 `dist/<tasks.dir>/`），无法绑定模块版本 |
 | web 挂载无目录列表 / Range / ETag | 未知扩展名按 `application/octet-stream`；SPA 深链回落需挂载显式 `spa: true`（v0.1.58 起逐挂载，默认关——静默把 404 变 200 会掩盖错配，见 `scenarios.md` 场景 2）；HTML 缓存头可配 `server.html_cache_control`（v0.1.25，只作用于 HTML）；Range/ETag 经前置反代补；web 挂载仅 GET/HEAD（其余方法 405） |
 | 多挂载（v0.1.58） | 同类前缀归一后重复 → 启动报错；挂载目录缺失/非目录 → 启动报错；命中挂载内 miss **不跨挂载**回落；`spa` 逐挂载显式（配对 web 恒无回落）；`html_meta`/`html_cache_control` 是全局键、按命中挂载根生效 |
+| search 引擎原生 FTS（v0.1.61） | sqlite trigram 对 **<3 字符查询静默零命中**（共享模块自动 LIKE 回退）；sqlite 实现仅支持整型自增 PK（外部内容表只认 rowid）；`sql_guard: deny` 模式与 FTS 裸查询互斥（deny 部署要么关守卫要么不用 search）；mysql InnoDB FULLTEXT 同事务可见性需实测（文档含糊区）；score 为引擎原始分不可跨引擎比较；`docs_fts*`/`oj_ver*` 影子表会进 `oj schema diff` 的 D002 噪音；pg 实现 v0.1.68 修复（自写 `$n` 与统一占位符计数校验冲突 + `ts_headline` 签名错——highlight 的 fragments 键为 `_doc` 文档级片段）；短词回退大小写三方言一致（pg 用 `ILIKE`，v0.1.68 起） |
 | 动态 meta 每次 HTML 请求**多派发一次 JS** | `server.html_meta_handler`（v0.1.25）：每次送 HTML 都调一次该 handler（无缓存层）。高流量站点请让 handler 只读缓存/轻查询，并用返回的 `cache_control` 让中间层替你挡住重复请求 |
 | release 下 WS URL 含版本段 | `…/news-0.1.0/ws`；客户端发现 WS 地址时注意拼版本段 |
 | `db.tx` 每请求至多一个；嵌套报错 | 合并事务回调 |
-| `db.stream` 仅非事务目标（v0.1.37；v0.1.38 起插件后端真流式） | 在 `db.tx` 内调用报 `db.stream within an active transaction is not supported (streaming queries run on the connection pool only)`。核心 SqlxAccessor（sqlite/mysql/postgres）+ 第一方插件（`oj-db-mysql`/`oj-db-postgres`，vtable 批量 pull ≤100 行/次）真流式；第三方插件未实现流式槽 → 回落 `db.query` 全量（不报错，仅失去内存优势）。内容等价于 `db.query` 全量，差异仅在内存形态 |
+| `db.stream` 仅非事务目标 + 后端能力分档（v0.1.37；v0.1.38 起插件后端真流式） | 在 `db.tx` 内调用报 `db.stream within an active transaction is not supported (streaming queries run on the connection pool only)`。核心 sqlite/mysql/postgres 连接与 `oj-db-mysql` / `oj-db-postgres` 插件后端**真流式**（逐行拉，内存恒定）；没有逐行能力的后端**回落 `db.query` 全量**（内容等价、不报错，仅失去内存优势）；彻底不支持时报 `backend does not support streaming`，改走 `db.query` 分页 |
 | 流式取消（`signal`）= 干净提前结束（v0.1.39；v0.1.42 起 pg/mysql 真取消） | abort 后**停止后端拉取**（有界行缓冲背压），缓冲行交付完即 done。**第一方插件 `oj-db-postgres`/`oj-db-mysql` 在 `postgres://`/`mysql://` DSN 下走专用连接，取消 = `pg_cancel_backend`/`KILL QUERY` + 断连 → 服务端查询立即终止（真取消）**；core（sqlite）与 Any 回退路径为协作式（批间生效）。已回调的行不回滚 |
 | `http.file(i)` 对流式大文件报错（v0.1.38） | > `max_upload` 的 multipart 文件由服务端流式落 blob（字节不进 handler）——报错文案指路 `files[i].key`/`.url`；小文件行为不变 |
 | `bus` 缺省进程内，跨实例不互通 | 需要跨实例广播配 `broker.kind` |
 | bus 二进制 wire 约定（v0.1.16） | JSON → record/信封文本帧；字节 → record payload = 原始字节、投递为 Binary 帧。消费侧启发式：UTF-8 且为含 `topic`+`data` 的 JSON 对象才按文本信封，否则按二进制透传——**恰为该形状 JSON 的二进制载荷会以文本帧投递**（无害，自辨） |
 | WS 二进制状态（Yjs awareness 等）不进 `sess.state` | `sess.state` 必须可 JSON 序列化；二进制状态走 base64 字符串存 `sess.state`/kv，或分片放 kv |
 | `WhereCond.and/or` 嵌套未展开 | 多个 `where()` 即 AND；复杂条件用 `db.query` 参数化 SQL |
+| `orIgnore()` + `fromSelect()` 组合在 **sqlite** 不支持（v0.1.82 明文，构造期拒绝） | sqlite 的 upsert 子句只能跟 VALUES；报 `orIgnore with fromSelect is not supported on sqlite (its upsert clause only follows VALUES)`。pg / mysql 支持 SELECT 源。绕行走裸 `db.exec("insert or ignore into … select …", [...])`（`OR IGNORE` 会把 NOT NULL/CHECK 违例一并静默跳过，数据面比 ON CONFLICT 宽）或先查后插 |
 | schema 回滚无自动机制 | 迁移只前向；破坏性变更前备份，反向变更写新 seq 迁移 |
 | fixtures/ 不进 release 产物 | 演示数据走 fixtures（oj test / oj test fixture）；参考数据走模块 seed.sql |
 | `db param: u64 value … is not supported on this path`（v0.1.24） | 在 PG/SQLite 上用了 `toUBigInt()`——它们的 bigint 是 i64；改存 text，或把该列放到 MySQL `BIGINT UNSIGNED` |
@@ -3211,6 +4171,17 @@ await db.query("select id from account where id = " + id, []);   // 禁止
 | `blob.readRange` 是短读（v0.1.47） | 越尾只返回实际可读字节、`offset` 过尾返回**空数组**——先判 `head.length` 再分支，不要假设一定拿满 `len`；`offset` / `len` 为负 / 小数 / NaN 报错 `blob readRange: offset must be a non-negative integer` |
 | `blob.copy` / `blob.move` 的 `src == dst`（v0.1.47） | 明确 **no-op**（`fs::copy` 同文件语义未定义、会截断文件）——不是「复制一份给自己」；`move` 后 src 一定不存在，`copy` 后 src 一定还在 |
 | blob 搬运 / 区间读的能力回落（v0.1.47） | 后端不支持时宿主回落：`copy` → `get`+`put`（**2× 峰值，字节进 V8**）、`readRange` → `get` 全量切片。JS 侧永不因后端能力失败，但回落不便宜——local/s3 均原生支持，回落只是第三方后端的保险 |
+| `crypto.verifyEd25519` 编码面（v0.1.75） | `sigBase64` 仅标准 base64（STANDARD/NO_PAD，**base64url 不支持**）；`msg` 仅 UTF-8 字符串；`publicKey` 须 hex/base64 编码的 **32 字节原始 key**（**PEM/SPKI 不支持**）。格式错抛错（文案 `verifyEd25519: …` 起头），格式合法验签不过返回 `false` |
+| Ed25519 签名密钥 ≠ 密封密钥（v0.1.80） | `oj secret keygen --alg ed25519` 产的是**签名**密钥（PKCS#8 私钥 + raw 32B 公钥 hex/fp），拿去 `seal`/`open`/`secrets.private_key_path` 会报 `not a OJ X25519 … PEM`——密封只认 X25519；反之 X25519 公钥喂 `verifyEd25519` 也不合法（两算法族不同，不可互用） |
+| `crypto.sha256Hex` 非 string/二进制入参抛 TypeError（v0.1.75 **行为变更**） | 旧版把 number/null 等经 `String()` 强转求摘要（静默产出垃圾摘要）；现 fail-loud 抛 TypeError——旧脚本传非 string/二进制入参的要先改（`String(x)` 显式转或改传 `Uint8Array`） |
+| `crypto.md5Hex` 已密码学破损（v0.1.75） | MD5 仅限**非安全场景**（缓存键/etag/旧系统兼容），**不得用于凭据/签名/完整性校验**；入参分流同 `sha256Hex`（string 走 UTF-8，`Uint8Array`/`ArrayBuffer` 走原始字节，其余抛 TypeError） |
+| `platform:` 段 fail-closed（v0.1.75） | 不配 = 全部平台特权不可用（`NotCapable: platform not configured …`）；特权面 = 特权模块 fs 读写扩展（`fs.root ∪ trusted_paths`，且 `fs:` 须已配置）+ `exec.run`（见下两条）；tasks/WS 上下文无模块归属 → 特权恒不可用 |
+| `exec.run` 授权 ≠ `platform.modules`（v0.1.75） | **两名单相互独立**：exec 特权只看 `platform.exec.<模块>` 是否列出该模块——只配 `modules` 不配 `exec`（或反之）拿不到对应面；未授权/模板失配/歧义/`${path:}` 越界一律 `NotCapable` 点名（文案见 §6「exec」错误表） |
+| `exec.run` 运行面硬限制（v0.1.75） | stdout+stderr **流式合计 10MB** 上限（超限杀进程组抛错，已收部分不返回）；`timeoutMs` 缺省 30s、硬上限 600s（超出**钳制**不报错）；输出强制 UTF-8（二进制不支持）；cwd 钉在 fs.root 但**非隔离边界**（路径防线在 `${path:}` 占位符校验，勿传越界相对路径）；未配 `fs:` → exec 整体不可用；子进程 argv[0] 是宿主解析后的**绝对路径**（非模板首 token 原文）；信号终止 `code = 128 + signal`，非 0 退出码**不抛错**照常返回 |
+| `yaml.parse` 三预算（v0.1.75） | 输入 1 MiB / 节点 100_000（含 alias 展开）/ 深度 128，超限抛错点名**不崩进程**；重复键后键覆盖，多文档 / 非字符串键 / NaN·Inf 一律拒绝（不静默强转）；**stringify 禁用于 config.yaml 回写**（serde_yaml 丢注释，回写走文本手术三步模式） |
+| `platform.root` 不得与其他 api 挂载树同径或互为父子（v0.1.75） | 启动报错（`… anti-squatting tripwire would be silently disabled`）——受控根必须独立于市场安装树；特权模块只能由部署方放入 `platform.root` 并把该目录列为 `mounts[].api` 条目 |
+| `http.module` 写属性抛 `TypeError: Cannot assign to read only property …`（v0.1.76） | `http.module` 是框架授信依据（归属守卫 / bound_db / 平台特权换装）故冻结只读：strict（ESM / api 文件 CJS 包装）下写 / delete 抛 TypeError；`require()` 引入的 CJS 代码（`new Function`，sloppy）写它**静默无效**。两条路径都改不了框架状态（JS 只持快照拷贝）——只读用即可，测试要伪造模块身份走真实路由（e2e 同款），无可写变体 |
+| `http.module` 为 `null` 的上下文（v0.1.76） | 任务桥、WS 帧（含模块目录内的 `ws.ts`）、`run_with`、启动期内省期——按 handler 文件所在目录判定，不是请求来源。访问前判 `null`（与 `http.user` 匿名时同款体验）；页面 meta 合成派发在模块目录内**有值** |
 
 ### 常见陷阱清单
 
@@ -3222,7 +4193,7 @@ await db.query("select id from account where id = " + id, []);   // 禁止
   等）；换 SQL 文本或保持参数形态稳定。
 - `{id}.json` 混字面 pattern 非法——matchit 参数段不得混字面，拆成静态多段由 handler 校验。
 - `seed.sql` 不得含分号字面量（按 `;` 切分）；用 `INSERT OR IGNORE` 保证幂等。
-- postgres 占位符是 `$1`，sqlite/mysql 才是 `?`。
+- postgres 占位符 **0.1.67 起也用 `?`**（宿主自动改写 `$n`；`$n` 存量写法继续有效）；jsonb 存在性用 `jsonb_exists(doc, 'key')`，勿写裸 `?` 运算符。
 - 上传 413 双闸：`max_upload_bytes`（信封 413）+ axum 层 2x 硬顶（裸 413）——客户端看到
   的 413 未必带 oj 信封。
 - 未配置 `blob:` / `es:` 段时调用 `blob.*` / `es.*` 即报错（配置即启用）。

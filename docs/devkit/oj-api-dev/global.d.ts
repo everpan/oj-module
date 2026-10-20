@@ -20,6 +20,11 @@ interface WhereCond {
   field?: string;
   op?: string; // eq/neq/gt/gte/lt/lte/like/in/nin/null/notnull/... 依服务端支持
   value?: unknown;
+  // 子查询（v0.1.81）：in/eq/ne/gt/gte/lt/lte 叶子以 subquery 代 value（builder 或纯 JSON
+  // 请求）；value 与 subquery 互斥；isnull/like 不接受子查询。
+  subquery?: QueryBuilder | object;
+  // exists 节点（v0.1.81）：`{ exists: <子查询> }`，不得携带其他键。
+  exists?: QueryBuilder | object;
   and?: WhereCond[];
   or?: WhereCond[];
   not?: WhereCond;
@@ -35,6 +40,9 @@ interface OrderByItem {
 interface QueryBuilder {
   select(cols?: (string | object)[]): QueryBuilder;
   where(cond: WhereCond): QueryBuilder;
+  // 动态 WHERE（v0.1.81）：test 为 undefined/null/false 或空数组时跳过该条件；
+  // 0 与 "" 是合法值、保留（空数组跳过是防 IN () 恒假静默 0 行）。
+  whereIf(test: unknown, cond: WhereCond): QueryBuilder;
   orderBy(items?: OrderByItem[]): QueryBuilder;
   // LIMIT/OFFSET（v0.1.20 起可配，见 config `db_query` 段——不能写进 `db:` 段）：
   // 未给 limit 的**顶层** select 隐式补 `db_query.default_limit`（默认 100）；显式 limit
@@ -51,13 +59,30 @@ interface QueryBuilder {
   insert(rows: object | object[]): QueryBuilder;
   update(sets: object): QueryBuilder;
   delete(): QueryBuilder;
+  // 整表清空（v0.1.82）：唯一的无 where 写动词，明示使用——渲染 `DELETE FROM t`。
+  // 租户守卫照常注入：租户表上只清**当前租户**的行（清整库用 db.asSystem）。
+  // 自带 where 报 `truncate does not accept where`；update 携带 truncate 报错。
+  truncate(): QueryBuilder;
   returning(cols?: string[]): QueryBuilder;
-  // JOIN：on = 左右列对；kind 缺省 "inner"（left/right/... 依服务端支持）。
+  // 幂等写入（v0.1.81）：撞主键/任意唯一键的行跳过（sqlite/pg = ON CONFLICT DO NOTHING，
+  // mysql 回落 identity update、需主键且与 returning 互斥）。sqlite 上与 fromSelect
+  // 不可组合（v0.1.82 明文报错）。
+  orIgnore(): QueryBuilder;
+  // 查询插入（v0.1.81）：从子查询写入；cols 与子查询输出列**按位置**对齐（数量不匹配
+  // 报错）。与 insert 的 values 互斥（都给报错）。
+  fromSelect(sub: QueryBuilder | object, cols: string[]): QueryBuilder;
+  // JOIN：on 条目两形——{left,right}（列=列）或 {left,op,value}（列=值，v0.1.81，op 限
+  // 比较类；contains/isnull 等模式/空值类直接拒绝）。kind 缺省 "inner"（可选 left）；
+  // 第 4 参数 alias 给被 join 的表起别名（v0.1.81）——归属/租户守卫仍按真名。
   join(
     table: string,
-    on: { left: string; right: string }[],
+    on: ({ left: string; right: string } | { left: string; op: string; value?: unknown })[],
     kind?: string,
+    alias?: string,
   ): QueryBuilder;
+  // 基表别名（v0.1.81）：列限定写 "别名.列"；仅 select/join 生效（写动词带 as 报错），
+  // 守卫始终按真名。
+  as(alias: string): QueryBuilder;
   // DISTINCT / GROUP BY / HAVING / UNION / CTE（WITH）。
   distinct(): QueryBuilder;
   groupBy(cols?: string[]): QueryBuilder;
@@ -71,46 +96,35 @@ interface QueryBuilder {
   toJSON(): object;
 }
 
-// DB(name) 返回的命名数据库实例。
-interface DBInstance {
-  // 原始 SQL + 绑定参数（params 可选）。返回行数组。
-  query(sql: string, params?: unknown[]): Promise<Row[]>;
-  // 执行写操作，返回受影响行数。
-  exec(sql: string, params?: unknown[]): Promise<number>;
-  // 安全查询构造器（标识符白名单 + 参数化值）。
-  table(name: string): QueryBuilder;
-  // 条件构造器：leaf(field, op, value) / and / or / not，供 where/having 组合。
-  leaf(field: string, op: string, value?: unknown): WhereCond;
-  and(...conds: WhereCond[]): WhereCond;
-  or(...conds: WhereCond[]): WhereCond;
-  not(cond: WhereCond): WhereCond;
-  // 从 toJSON() 快照复原构造器（继续链式调用）。
-  fromJSON(snap: object): QueryBuilder;
-  // 系统逃生通道（tenant sql_guard）：本请求绕过租户注入/校验。显式且被审计，
-  // 业务 handler 不得使用。
-  asSystem(): DBInstance;
-  // 匿名请求声明租户（v0.1.20）。公开页 handler 用**服务端派生**的租户 id 声明本次请求
-  // 的身份（典型派生链：分享 token → 查共享表 → 租户 id）。**与 asSystem 不同——租户条件
-  // 仍然强制注入**，只是身份由 handler 给。
-  // 三道门禁全过才生效，缺一即抛错（不是静默忽略）：
-  //   ① config `tenant.allow_as_tenant: true`（默认关）；
-  //   ② 请求是匿名请求（命中 `tenant.anonymous_paths` 且未带租户头；`oj test --anonymous`）；
-  //   ③ id 非空。
-  // 另：请求级且**只能调用一次**（已带租户头的请求、或同一请求内二次调用 → 抛错，防运行期
-  // 切换身份）；生效后 `http.tenantId` 即该值，并记一条审计日志。
-  // 红线：id 必须服务端派生，**绝不可**直接取请求参数（否则等于把租户交给调用方）。
-  /** 平台序列分配（v0.1.24）：单语句原子取号，`max+1` 竞态的终态。
-   * 首次使用自动建平台表 `_oj_sequences`；返回值 ≤2^53-1 是 number，超出是十进制字符串。 */
-  nextSeq(name: string): Promise<number | string>;
-  asTenant(id: string): DBInstance;
-  // 事务：回调 resolve 提交 / throw 回滚再抛；tx.query/exec/table 同签名走同一连接。
-  // 每请求至多一个活跃事务（嵌套报错）；请求结束未完结自动回滚。
-  // 回调参数**不含 tx 自身**（嵌套事务直接被拒，故类型上也拿不到——见 TxInstance）。
-  tx(fn: (tx: TxInstance) => unknown): Promise<unknown>;
+// db.sqlProfile() 的返回（v0.1.51）：本请求 SQL 画像。追踪未开启（release 默认 /
+// `db_trace.enabled:false`）时为空对象 {}。
+interface SqlProfile {
+  count: number;
+  totalMs: number;
+  // 慢查询速览（超 db_trace.slow_ms 阈值的语句）。
+  slow: { sql: string; ms: number; db: string }[];
+  // 按库聚合：{ "default": { count, ms }, ... }。
+  byDb: Record<string, { count: number; ms: number }>;
+  // 逐条回放；params 恒为 "N params" 形式的脱敏串（redact_params 默认 true，
+  // 绝不把参数原值送进响应）。
+  events: {
+    sql: string;
+    params: string;
+    db: string;
+    inTx: boolean;
+    source: string;
+    ms: number;
+    rows: number;
+    ok: boolean;
+    error?: string;
+  }[];
 }
 
-// 事务内的库实例：与 DBInstance 同面，但没有 tx（嵌套事务不支持）。
-type TxInstance = Omit<DBInstance, "tx">;
+// 事务内的库实例：与 DBInstance 同面，但没有 tx（嵌套事务不支持）、没有 stream
+// （流式只走直连池，tx 内报错）。
+// isTx 标记事务域句柄——DDL（如 search.ensureIndex）必须拒绝在此类句柄上执行
+// （MySQL 的 DDL 会隐式提交调用方事务）。
+type TxInstance = Omit<DBInstance, "tx" | "stream"> & { isTx?: true };
 
 // json.* ：统一响应信封 + 响应头。
 interface JsonApi {
@@ -159,6 +173,11 @@ interface HttpApi {
   tenantId: string | null;
   // 已验签用户（auth 启用且通过 Bearer 守卫；否则 null）。
   user: AuthUser | null;
+  // 本请求命中的模块身份（v0.1.76：路由分发时注入；无模块上下文——任务桥 /
+  // WS 帧 / run_with / 启动期内省——为 null）。**只读**：对象已冻结，strict 下
+  // 写属性抛 TypeError（CJS require 路径静默无效）。version 勿回显给外部客户端
+  // （指纹面）。
+  module: { name: string; version: string } | null;
   // multipart 上传文件元信息（非 multipart 为空数组）。
   files: UploadedFileMeta[];
   // 取第 i 个上传文件的字节（越界报错 no such file）。
@@ -355,6 +374,25 @@ interface OidcApi {
   readonly clients: Record<string, { secret: string; redirect_uris: string[]; tenant: string }>;
 }
 
+// sso.* ：HTTP 表单 / CAS SSO 提供者注册表（v0.1.61，config `http_sso:` 段注入；
+// 未配置调用报 http sso not configured）。字段语义与校验规则见 api-manual §sso。
+interface SsoProviderCfg {
+  kind: "form" | "cas2";
+  login_url: string;
+  cas_validate_url?: string;
+  callback_url?: string;
+  user_field?: string;
+  pass_field?: string;
+  body_encoding?: "form" | "json";
+  extra_fields?: Record<string, unknown>;
+  success_when?: Record<string, unknown>;
+  profile?: Record<string, string>;
+  allow_http?: boolean;
+}
+interface SsoApi {
+  readonly providers: Record<string, SsoProviderCfg>;
+}
+
 // mail / Mail(key) ：邮件投递（config smtp: 段 + oj-mail 插件启用；未配置调用报
 // mail not configured）。宿主做校验/附件解析，插件做投递；所有方法**都 resolve 信封**
 // （校验失败 = {code:5}，不抛），只有「未配置」抛异常。
@@ -463,9 +501,155 @@ interface VarsApi {
   get(name: string): string | null;
 }
 
+// exec.*：外部命令执行（v0.1.75，config `platform.exec` 段授权）。
+// 授权模型 = argv 模板白名单（literal token 逐字相等 + ${path:NAME}/${raw:NAME} 占位符
+// 恰吸收一个 token）+ 无 shell：argv 必须恰命中一条授权模板（歧义命中报错，不静默择一）。
+// ${path:} 值按路径校验（fs.root ∪ trusted_paths）；${raw:} 拒 `-` 开头与绝对形态。
+// exec 授权与 platform.modules 相互独立；缺省全 deny（fail-closed）。
+interface ExecRunOpts {
+  /** 缺省 30_000，硬上限 600_000（超出钳制）。大 DDL / 大 stdin 显式调大。 */
+  timeoutMs?: number;
+  /** 一次性写入子进程 stdin 后关闭写端；写入也在超时窗口内。 */
+  stdin?: string;
+}
+interface ExecResult {
+  /** 进程退出码：非 0 也正常返回（不抛错）；信号终止 = 128 + signal。 */
+  code: number;
+  stdout: string;
+  stderr: string;
+}
+interface ExecApi {
+  /**
+   * 执行一条授权模板匹配后的外部命令（无 shell；cwd 钉在 fs.root，env 默认空表仅
+   * 白名单透传、PATH 不继承；argv[0] 为宿主解析后的绝对路径——"oj" 即服务进程自身）。
+   * 抛错边界：未授权 / 模板失配 / 歧义 / 路径越界 → NotCapable；超时（整组击杀）/
+   * 输出超限（stdout+stderr 合计 10MB） / spawn 失败 / 非 UTF-8 输出 → 普通 Error。
+   * 未配 `fs:` 段或 tasks/WS 上下文（无模块归属）恒拒。
+   */
+  run(argv: string[], opts?: ExecRunOpts): Promise<ExecResult>;
+}
+
+// yaml.*：YAML 读写原语（v0.1.75，无特权，始终可用）。
+// parse: 三预算防炸弹（1 MiB 输入 / 10 万节点含 alias 展开 / 深度 128），Rust 阻塞池
+// 执行 + 独立 5s deadline；重复键后键覆盖；多文档 / 非字符串键 / NaN·Inf 拒绝；
+// 非法 YAML 抛带行列错误；超 2^53-1 的整数为十进制字符串（json.ok 安全）。
+// stringify: 仅承诺机器产物（manifests.yaml）往返——serde_yaml 丢注释，
+// 禁用于 config.yaml 回写（走文本手术）。
+interface YamlApi {
+  parse(text: string): Promise<unknown>;
+  /**
+   * 仅承诺机器产物（manifests.yaml）往返——serde_yaml 丢注释，禁用于 config.yaml
+   * 回写（走文本手术）。对象键输出保留 JS 对象键插入序（整数型键先行），不排序；
+   * 需确定序请在 stringify 前自行归序。
+   */
+  stringify(value: object): Promise<string>;
+}
+
+// server.*：平台级控制（v0.1.75，platform 特权）。
+// reloadConfig：进程内触发热更，与 `POST {base}/_system/config` 同一 executor 与串行锁。
+// 返回恒定形状五键：`unchanged=true` 时三清单为空数组；tasks/WS 上下文无归属 → NotCapable；
+// `oj test` / 嵌入式 → `reload not available`；并发撞锁 → `server.reloadConfig: reload in progress (busy)`。
+interface ServerReloadResult {
+  /** 代际 id（每次成功 swap +1；unchanged 时不变）。 */
+  generation: number;
+  /** 配置未变（归一后与原代等价）：true 时 applied/restart_pending/kept_listener 均为空数组。 */
+  unchanged: boolean;
+  /** 本轮实际生效的变更项（段/键清单）。 */
+  applied: string[];
+  /** 需重启进程才生效的项（如 db/redis/plugins 后端段、server 段）——提示重启，本进程不重建。 */
+  restart_pending: string[];
+  /** 本进程永久持有、不随热更变更的项（如 listener：server.port/host/证书路径）。 */
+  kept_listener: string[];
+}
+interface ServerApi {
+  reloadConfig(): Promise<ServerReloadResult>;
+}
+
 declare global {
   interface Function {
     route?: string;
+    /** handler 入参契约（v0.1.44 `.schema`；嵌套组动词同样可挂，键 = (文件, handler 链)） */
+    schema?: Record<string, unknown>;
+    /** handler 出参契约（v0.1.72）：与 `.schema` 平级声明，语义同 `.schema.response`
+     * （`json.ok(data)` 的 data payload；运行期不校验，只喂 `oj openapi` / client 生成）。
+     * 优先级：动词 `.response` > 组 `.response` > 动词 `.schema.response` > 组 `.schema.response` */
+    response?: Record<string, unknown>;
+  }
+
+  // 嵌套组（v0.1.64）：以实体对象为根的组同样可挂组级 `.route`（整组默认前缀）、
+  // 组级 `.schema`（整组默认入参契约）与组级 `.response`（整组默认出参，v0.1.72），
+  // 与 handler 级同语义。组是普通对象字面量，
+  // 故在 `Object` 上声明，使 `anchor.route = "/x/{anchor}/upload"` 之类不报 TS2339。
+  // 运行时：组级 `.schema` 作继承默认，动词自身 `.schema` 在其上合并（通道级
+  // required 并集 / properties 逐键覆盖）；组级 `.response` 同样沿嵌套层层继承。
+  interface Object {
+    route?: string;
+    /** 组级入参契约（v0.1.64 嵌套组）：整组默认，动词 `.schema` 在其上合并 */
+    schema?: Record<string, unknown>;
+    /** 组级出参契约（v0.1.72）：整组默认，沿嵌套继承，动词 `.response` 整体覆盖。
+     * ⚠️ 保留键：组对象上的 `response` 被当作声明读走，**不能**用来命名嵌套子组
+     * （子组命名为 response 会静默不产生路由，与 `schema`/`route` 相同） */
+    response?: Record<string, unknown>;
+  }
+
+  // DB(name) 返回的命名数据库实例。（在 declare global 内：业务代码要能**点名**
+  // 这个类型（如 `function f(dbi: DBInstance)`）；放模块作用域会 TS2304。）
+  interface DBInstance {
+    // 原始 SQL + 绑定参数（params 可选）。返回行数组。
+    query(sql: string, params?: unknown[]): Promise<Row[]>;
+    // 执行写操作，返回受影响行数。
+    exec(sql: string, params?: unknown[]): Promise<number>;
+    // 安全查询构造器（标识符白名单 + 参数化值）。
+    table(name: string): QueryBuilder;
+    // 条件构造器：leaf(field, op, value) / and / or / not，供 where/having 组合。
+    leaf(field: string, op: string, value?: unknown): WhereCond;
+    and(...conds: WhereCond[]): WhereCond;
+    or(...conds: WhereCond[]): WhereCond;
+    not(cond: WhereCond): WhereCond;
+    // 从 toJSON() 快照复原构造器（继续链式调用）。
+    fromJSON(snap: object): QueryBuilder;
+    // 系统逃生通道（tenant sql_guard）：本请求绕过租户注入/校验。显式且被审计，
+    // 业务 handler 不得使用。
+    asSystem(): DBInstance;
+    // 匿名请求声明租户（v0.1.20）。公开页 handler 用**服务端派生**的租户 id 声明本次请求
+    // 的身份（典型派生链：分享 token → 查共享表 → 租户 id）。**与 asSystem 不同——租户条件
+    // 仍然强制注入**，只是身份由 handler 给。
+    // 三道门禁全过才生效，缺一即抛错（不是静默忽略）：
+    //   ① config `tenant.allow_as_tenant: true`（默认关）；
+    //   ② 请求是匿名请求（命中 `tenant.anonymous_paths` 且未带租户头；`oj test --anonymous`）；
+    //   ③ id 非空。
+    // 另：请求级且**只能调用一次**（已带租户头的请求、或同一请求内二次调用 → 抛错，防运行期
+    // 切换身份）；生效后 `http.tenantId` 即该值，并记一条审计日志。
+    // 红线：id 必须服务端派生，**绝不可**直接取请求参数（否则等于把租户交给调用方）。
+    /** 平台序列分配（v0.1.24）：单语句原子取号，`max+1` 竞态的终态。
+     * 首次使用自动建平台表 `_oj_sequences`；返回值 ≤2^53-1 是 number，超出是十进制字符串。 */
+    nextSeq(name: string): Promise<number | string>;
+    /** 连接引擎名（v0.1.61）：`"sqlite" | "mysql" | "postgres"`。供 `_shared` 共享模块与
+     * 诊断分派方言 SQL；业务 handler 分支方言 = 放弃跨引擎可移植承诺，慎用。 */
+    dialect(): "sqlite" | "mysql" | "postgres";
+    /** 目录自省（v0.1.82）：当前库全部业务可见表名（**含未登记 registry 的表**——api-only
+     * 方案 / 历史遗留表），按名称排序。可选前缀过滤（%/_ 按字面量匹配，绑定参数）。
+     * sqlite 排除 `sqlite_*` 内部表；mysql/pg 经 information_schema 限当前库/schema。
+     * 替代「按方言分支 information_schema / sqlite_master」的裸 db.query。 */
+    listTables(prefix?: string): Promise<string[]>;
+    /** 流式查询（v0.1.37）：逐行拉取大结果集，避免 db.query 全量驻留。给 onRow 回调
+     * （逐行富化/转写，如写 json.stream）返回 Promise<void>；省略则返回 AsyncIterable<Row>
+     * 供 for-await。opts.signal 触发 abort 即取消（pg/mysql 是真取消——KILL QUERY+断连，
+     * sqlite 协作式）。只走直连池——db.tx 内调用报错；非直连后端回落全量（不报错）
+     * 或报 backend does not support streaming。 */
+    stream(
+      sql: string,
+      params?: unknown[],
+      opts?: { onRow?: (row: Row) => void; signal?: AbortSignal },
+    ): Promise<void> | AsyncIterable<Row>;
+    /** SQL 执行追踪（v0.1.51，dev 默认开）：本请求累计画像；同一请求内调用，
+     * 跨请求重置。追踪关闭返回空对象 {}。 */
+    sqlProfile(): SqlProfile;
+    asTenant(id: string): DBInstance;
+    // 事务：回调 resolve 提交 / throw 回滚再抛；tx.query/exec/table 同签名走同一连接。
+    // 每请求至多一个活跃事务（嵌套报错）；请求结束未完结自动回滚。
+    // 回调参数**不含 tx 自身**（嵌套事务直接被拒，故类型上也拿不到——见 TxInstance）。
+    tx(fn: (tx: TxInstance) => unknown): Promise<unknown>;
   }
 
   const json: JsonApi;
@@ -478,6 +662,12 @@ declare global {
   const sess: WsSess;
   const blob: BlobApi;
   const fs: FsApi;
+  // 外部命令执行（v0.1.75，platform.exec 段授权；见 ExecApi JSDoc 与 api-manual §6「exec」）。
+  const exec: ExecApi;
+  // YAML 读写原语（v0.1.75，无特权；见 YamlApi JSDoc 与 api-manual §6「yaml」）。
+  const yaml: YamlApi;
+  // server.*：平台级控制（v0.1.75，platform 特权；见 ServerApi JSDoc 与 api-manual §6「server」）。
+  const server: ServerApi;
   const bus: BusApi;
   const es: EsApi;
   // 默认 profile（"default"）的 mail 实例；其它 profile 用 new Mail("name")。
@@ -492,6 +682,9 @@ declare global {
   const cert: CertApi;
   const jwt: JwtApi;
   const oidc: OidcApi;
+  // sso.*：HTTP 表单 / CAS SSO 提供者注册表（config `http_sso:` 段注入；未配置调用报
+  // http sso not configured）。登录端点（业务模块）读它分派上游；详见 api-manual §sso。
+  const sso: SsoApi;
   const bcrypt: BcryptApi;
   // 部署期常量（config `vars:` 段；未声明的键恒 null）。
   const vars: VarsApi;
@@ -514,7 +707,12 @@ declare global {
   // 返回原 view，非 view 抛 TypeError，单次 ≤65536 字节（对齐 WebCrypto；lib.dom 的
   // 同名声明只是兜底，运行时是 oj 实现）。
   interface Crypto {
-    sha256Hex(s: string): string;
+    /** string 走 UTF-8 摘要；Uint8Array / ArrayBuffer 走原始字节摘要（非 UTF-8 字节安全）。 */
+    sha256Hex(data: string | Uint8Array | ArrayBuffer): string;
+    /** MD5 十六进制摘要。**MD5 已密码学破损，仅限非安全场景（缓存键/etag/旧系统兼容），
+     * 不得用于凭据/签名/完整性校验。** 入参分流同 sha256Hex：string 走 UTF-8；
+     * Uint8Array / ArrayBuffer 走原始字节摘要（非 UTF-8 字节安全）；其余抛 TypeError。 */
+    md5Hex(data: string | Uint8Array | ArrayBuffer): string;
     randomHex(nBytes?: number): string;
     getRandomValues<T extends ArrayBufferView>(view: T): T;
     // AES-GCM 应用级加密（v0.1.35）：key 为 hex/base64 编码的原始 16/32 字节
@@ -522,6 +720,11 @@ declare global {
     // base64(nonce12 ‖ ct ‖ tag16) 出。密钥缺失/非法由调用方 json.fail。
     aesGcmEncrypt(plaintext: string, key: string): string;
     aesGcmDecrypt(ciphertext: string, key: string): string;
+    /** Ed25519 验签：publicKey 为 hex/base64 编码的 **32 字节原始公钥**（不支持 PEM/SPKI）；
+     * msg 为 UTF-8 字符串；sigBase64 仅 base64（STANDARD/NO_PAD，不支持 base64url）。
+     * 验签通过返回 true，签名/密钥不匹配返回 false；格式错（公钥 ≠ 32 字节、
+     * sig 解码后 ≠ 64 字节、base64 非法）抛错。 */
+    verifyEd25519(publicKey: string, msg: string, sigBase64: string): boolean;
   }
 
   // ---- oj test L1 测试 SDK（oj test 运行时注入；仅测试文件使用） ----
@@ -586,6 +789,19 @@ declare global {
   function finish(): void;
   // CJS 同步 require（eval + 进程级缓存）。
   function __ojRequire(name: string, referrerPath?: string): any;
+  // fetch 返回的 Response（浏览器风格子集）。在 declare global 内：业务代码要能
+  // **点名**它（如 `let r: OjFetchResponse`，try/catch 两段赋值场景）；放模块作用域
+  // 会 TS2304，误标 DOM 的 Response 则 TS2740（缺 redirected/type/url 等）。
+  interface OjFetchResponse {
+    ok: boolean;
+    status: number;
+    statusText: string;
+    headers: Record<string, string>;
+    json(): Promise<Json | null>;
+    text(): Promise<string>;
+    arrayBuffer(): Promise<Uint8Array>;
+    clone(): OjFetchResponse;
+  }
   // 浏览器兼容的 fetch（url 必填，options 同 RequestInit 的常用子集）。
   function fetch(url: string, options?: {
     method?: string;
@@ -650,17 +866,5 @@ interface OjRabbitClient {
 // 由 `types/oj-modules.d.ts`（非模块，真 ambient `declare module "#*"`）兜底为 `any`
 // 而非报 TS2307；已存在、能被 `paths` 命中的别名仍走真实文件类型。运行时由 oj 的
 // loader 解析，本文件与该兜底只影响编辑器 / tsc。
-
-// fetch 返回的 Response（浏览器风格子集）。
-interface OjFetchResponse {
-  ok: boolean;
-  status: number;
-  statusText: string;
-  headers: Record<string, string>;
-  json(): Promise<Json | null>;
-  text(): Promise<string>;
-  arrayBuffer(): Promise<Uint8Array>;
-  clone(): OjFetchResponse;
-}
 
 export {};

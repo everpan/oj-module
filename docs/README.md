@@ -8,14 +8,21 @@
 
 ## DevKit（随 `ojm` 分发给业务工程）
 
-`docs/devkit/` 是**源文件**，发布时整目录归置进 `bin/devkit/`，再由 `ojm init` 分发到各业务工程内。补的是 `oj-api-dev`（oj 后端 API 开发）之外的另一半：前端模块、契约、前后端接线。
+`docs/devkit/` 是**源文件**，发布时由 cli 的 `prepack` 归置进 `packages/cli/devkit/`，再由 `ojm init` 分发到各业务工程内。一棵树覆盖前后端两侧，但是**两套独立分发的 skill**：
+
+| 侧 | 位置 | 用户工程落点 | 分发链 |
+|---|---|---|---|
+| ojm 模块开发（前端模块、契约、前后端接线） | `devkit/` 顶层 5 个文件 | `.claude/skills/ojm-module-dev/` | `@oj-module/cli` 包 → `ojm init` 第 4b 步 |
+| oj API 开发（后端 handler、全局对象、配置、测试） | `devkit/oj-api-dev/`（oj devkit 快照，仅本仓参考） | `.claude/skills/oj-api-dev/` | oj 二进制自带 → `ojm init` 第 4 步 |
 
 | 文件 | 面向谁 | 用途 |
 |---|---|---|
-| [`devkit/README.md`](devkit/README.md) | 所有人 | 本索引的入口说明、DevKit 与 `ojm init` 的关系、素材来源 |
-| [`devkit/manual.md`](devkit/manual.md) | 业务开发者 | 模块开发手册（10 章）：工程结构、写模块、契约与代码生成、接管框架内置功能、布局、i18n、构建发布、排查、CLI 子命令参考 |
+| [`devkit/README.md`](devkit/README.md) | 所有人 | 整棵树的入口说明：两侧文件索引、安装、两条分发链、快照刷新 |
+| [`devkit/manual.md`](devkit/manual.md) | 业务开发者 | 模块开发手册（12 章）：工程结构、写模块、契约与代码生成、接管框架内置功能、布局、i18n、构建发布、排查、CLI 子命令参考 |
 | [`devkit/SKILL.md`](devkit/SKILL.md) | AI agent / 开发者 | agent skill 入口：工作流、红线、新模块 checklist、陷阱速查，按章节号引用手册 |
 | [`devkit/framework-dev.md`](devkit/framework-dev.md) | 框架贡献者（**仅本仓**） | 改 `packages/runtime`、`packages/cli` 时的入口、红线、不变式索引、守卫测试索引 |
+| [`devkit/oj-api-dev/api-manual.md`](devkit/oj-api-dev/api-manual.md) | 后端开发者 | 后端开发手册（13 章，oj 侧快照）：模块约定、全局对象 API、鉴权租户、测试、配置 |
+| [`devkit/oj-api-dev/README.md`](devkit/oj-api-dev/README.md) | 后端开发者 | oj 侧索引 + v0.1.66→v0.1.82 逐版落地记录（查「某个能力哪版有的」） |
 
 ---
 
