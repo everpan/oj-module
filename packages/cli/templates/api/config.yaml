@@ -29,6 +29,11 @@
 mounts:
   - prefix: /api # api 挂载：/api/<module>/...（目录相对 config 所在目录 → api/src）
     api: src
+  # 本地模拟 CDN：直出工程根 cdn/（内容见 cdn/README.md）。
+  # 红线：生产请删掉这一条挂载，并把 system 设置 framework.market_cdn_url 指向真 CDN。
+  # 不得给此挂载设 spa——缺文件必须返回 404，回落 index.html 会让市场解析崩。
+  - prefix: /cdn
+    web: ../cdn
   # 生产若由 oj 直出前端（前后端同进程，即 ojm preview 的生产形态），
   # 取消下一行注释并先 build 出 web/dist（preview 会自动注入等价挂载，无需手改）：
   # - prefix: "/"
