@@ -25,7 +25,7 @@
 
 真正想验证「A 这个包能不能装、安装流程对不对」时，有三个去处，按推荐顺序：
 
-1. **一次性隔离站点**：随机端口 + 一次性 DB + 一次性密钥，跑完即毁，不碰你的工程、DB、信任库。这是唯一「装了也不心疼」的地方。
+1. **一次性隔离站点**：`ojm market trial --fixture <name>@<version>`（随机端口 + 一次性 DB + 一次性密钥 + 隔离信任库/CDN），跑完即毁，不碰你的工程、DB、信任库。这是唯一「装了也不心疼」的地方，也是最快的「这包能不能装」判据（实测 11 段全 ok 约 12 秒）。
 2. **另一个工程**：`ojm install dist/A-0.1.0.tgz`（file 源，multipart 直传）。
 3. **市场链路**：`ojm market publish` 落 CDN → 市场页点安装（§4 全套）。
 
@@ -184,7 +184,7 @@ ls api/dist/<name>-<version>/                        # 安装产物目录
 
 ```text
 写模块      → 源码直跑（ojm dev），不要装
-验证能装    → 隔离站点，或 ojm install <tgz> 到另一个工程
+验证能装    → ojm market trial（隔离站点，12s），或 ojm install <tgz> 到另一个工程
 重复？      → 不会。注册面全 upsert；同名再装被前置校验直接拒
 市场链路    → setup → publish → build-index → verify → 市场页安装（release 形态：--api-path dist）
 绝对 URL    → 市场地址端口取自 config（9778），不是 dev server 的 5174

@@ -211,11 +211,38 @@ node node_modules/vitest/vitest.mjs run tests/cli/release-manifest.test.ts      
 | T5 | market setup | ✅ 完成 | `market/setup.ts`（must_change 闭环 + 绝对地址）+ `market/command.ts` 接入 `ojm market <sub>`；4 条用例 |
 | T6 | 端到端验证 | ✅ 完成 | 真宿主（端口 9785）跑通：publish → build-index → setup → market/index 出卡片 → install 十阶段全 ok |
 | T7 | market verify 离线验包 | ✅ 完成 | market/verify.ts：四类校验分列（完整性 / 包级签 / 索引签 / manifest 结构）+ --rebuild-index 漂移检出；结论恒带边界声明；已接入 ojm market verify 与 usage |
-| T8 | market/bootstrap.ts 隔离站点库 | 进行中 | |
-| T9 | market trial 隔离试装 | 待开始 | |
+| T8 | market/bootstrap.ts 隔离站点库 | ✅ 完成 | `market/bootstrap.ts`：空闲端口 / 一次性 DB / 内存发布方密钥（seed 派生，不落 PEM）/ 种子凭据 / 隔离信任库 / 隔离 CDN；`SIGINT/SIGTERM` 防孤儿；cleanup 幂等；11 条隔离断言 |
+| T9 | market trial 隔离试装 | ✅ 完成 | `market/trial.ts` + `ojm market trial`：隔离站点内 setup（首登改密）→ 安装 → needs_trust 自动确认 → 重试 → 11 段全 ok，跑完即毁；实测 12s |
 | T10-T12 | phase2 全套模拟 | 未开始 | |
 
 ## 8. 阶段小结
+
+### phase1（T7–T9）已完成 —— 2026-10-21 07:50
+
+**交付**：`ojm market verify`（离线验包）、`market/bootstrap.ts`（隔离站点库）、`ojm market trial`
+（隔离试装，11 段全 ok ≈12s）。phase1 的净效果：任何人拿到一个方案包，都能在**不碰自己工程**
+的前提下，12 秒内判定「能不能装、哪一段挂」。
+
+**关键过程**
+
+1. **T7 校验分四类而非一类**：完整性（sha）、包级签（信任锚）、索引签（完整性层）、manifest 结构
+   分开列——语义不同的东西混成一个 `ok` 会让失败无从定位。
+2. **T8 隔离六项逐条断言**：端口/DB/密钥/凭据/信任库/CDN 各查文件系统与派生 config，不靠口头约定。
+   发布方密钥走「公开 seed → SHA-256 → PKCS#8 DER」派生（照 `fixtures/sig` 手法），私钥只在内存。
+3. **T8 起站形态踩过一次**：隔离站点最初以 `--api-path src`（dev 形态）起站，装好的模块落在
+   `api/dist` 不被发现，smoke 404 → 改为 `oj build` + `--api-path dist` + `platform.root: dist`。
+4. **T9 一个真实时序坑**：`anonymous_paths` 在装配期读取，安装器刚注册的匿名端点在 smoke 段 401。
+   隔离站点预置被测方案的探活路径（与 `bootstrap-host.mjs` 同手法），让 trial 验的是安装机制本身。
+5. **T9 撞到接口口径**：`POST market/install` 返回 `{task_id}` 而非 `{id}`——已按真实响应修正。
+
+**统一审查**
+
+| 项 | 结果 |
+|---|---|
+| cli 单元测试 | 289 passed / 1 skipped（phase0 271 → +18） |
+| 真链路 | `market trial` 实测：preflight→…→audit 11 段全 `ok`，`--keep` 现场保留与销毁清单正确 |
+| typecheck / eslint | 净 |
+
 
 ### phase0（T1–T6）已完成 —— 2026-10-21 03:15
 

@@ -443,6 +443,9 @@ curl -s -X POST http://127.0.0.1:9778/api/_platform/market/install \
 
 node "$CLI_PKG/bin/ojm.mjs" trust confirm --task <task-id> --url http://127.0.0.1:9778 --user admin --pass <新口令>
 # 重试同一条 install → 期望 status=done，11 段全 ok
+
+# 只验「这个包能不能装」、不想搭宿主时（隔离站点，12s 内出结果）
+node "$CLI_PKG/bin/ojm.mjs" market trial --fixture <name>@<version>
 ```
 
 **检查点**
@@ -501,6 +504,8 @@ node "$CLI_PKG/bin/ojm.mjs" trust confirm --task <task-id> --url http://127.0.0.
 | 安装卡在 `reloading`：`NotCapable: module '_platform' is not platform-privileged` | 宿主 config 的 `platform.modules` 未列 `_platform` | 模板自 0.2.13 起自带 `platform: {modules: [_platform], root: src}`；旧工程手补 |
 | 安装卡在 `reloading`：`reloadConfig 返回 unchanged` | 用 `ojm preview` 起站——它服务派生 config（`.ojm-preview.yaml`），而安装器热更改的是 `api/config.yaml`，被监视文件没变 | 安装验证必须对**真实 config** 起站：`(cd api && ../bin/oj serve -c config.yaml -b /api --api-path dist)`，并把 `platform.root` 改成 `dist` |
 | 安装卡在 `smoke`：探活 404 | dev 形态（`--api-path src`）起站，装好的模块落在 `api/dist`，不被发现 | 安装目标恒为 release 部署；先 `ojm build`，再以 `--api-path dist` 起站 |
+| 安装卡在 `smoke`：探活 401（方案声明了 `api.anonymous`） | auth 守卫在**装配期**读 `anonymous_paths`，安装器刚注册进去的匿名路径要重启才生效 | 重启站点后重试安装即可（装成的模块与锁都在，重试走重装路径）；或安装前把该路径预置进 `config.anonymous_paths`。`ojm market trial` 已在隔离站点预置（验机制而非重启时序） |
+| 想确认「这个包到底能不能装」又不想碰自己的工程 | 手工起站试装要清场、还会污染信任库 | `ojm market trial --fixture <name>@<version>`：一次性隔离站点（随机端口 / 一次性 DB/密钥/凭据/信任库/CDN）跑完整安装，跑完即毁；`--keep` 保留现场。实测 11 段全 ok 约 12s |
 | `oj serve` 报 `platform.root (...) must be mounted as an api mount` | release（`--api-path dist`）下 `platform.root` 仍指 `src`，与生效的模块根不一致 | 把 `platform.root` 改成 `dist`（`ojm preview` 派生 config 时会自动改写） |
 | `ojm init`/`ojm vendor` 报「上游 @oj-bin/oj 的 latest 是 vX，低于 ojm 要求的最低版本 v0.1.73」 | npm 通道发布滞后于 `MIN_OJ_VERSION` 门禁（门禁钉最新发布版，ojm 不做兼容分支） | 本机已装 ≥ 门禁的 oj 时：把 `bin/{oj,devkit/,plugins/,.oj-version}` 预置进工程再跑 init（bin/oj 存在即跳过 vendor）；否则等上游发布或降级 cli |
 | `pnpm install` 报 `ERR_PNPM_NO_MATCHING_VERSION ... @oj-module/cli@0.1.20` | 验证的是未发布版本，npm 上没有 | 删 devDeps 的 cli（源码 bin 直跑）+ 用 §0.5 的 `pnpm add <runtime 本地 tgz>` 把 runtime 装进 devDependencies（双包均未发版时 cli/runtime 都要处理）；**勿用 `ln -s` 把裸 runtime tarball 链进 `node_modules`**——裸包无 `node_modules`，`export { z } from "zod"` 解析成 `any`，会让生成物 `__client/api.ts` 的 `.map(i => …)` 全报 TS7006，typecheck 假红。也勿用 `file:` 链 cli（两包的 `catalog:` 依赖只对 workspace 成员解析，报 `ERR_PNPM_SPEC_NOT_SUPPORTED_BY_ANY_RESOLVER`） |

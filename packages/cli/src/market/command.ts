@@ -10,6 +10,7 @@ import process from "node:process";
 import { buildIndex } from "./build-index";
 import { publishPackage } from "./publish";
 import { setupMarketUrl } from "./setup";
+import { trialCommand } from "./trial";
 import { verifyMarket } from "./verify";
 
 interface Flags {
@@ -91,6 +92,10 @@ export async function marketCommand(sub: string, argv: string[]): Promise<void> 
 				process.exitCode = 1;
 			return;
 		}
+		case "trial": {
+			await trialCommand(argv);
+			return;
+		}
 		case "build-index": {
 			await buildIndex({ id: flags.id, key: flags.key, check: flags.check });
 			return;
@@ -112,6 +117,7 @@ export function marketUsage(): string {
 		"ojm market publish [--fixture <name>@<version>] [--real <方案工程>] [--id <key>] [--rebuild-index]",
 		"ojm market build-index           [--id <key>] [--check]                        扫描 cdn/ 重建索引",
 		"ojm market verify [--file <tgz>] [--rebuild-index]                             离线验包（不起站点、不装）",
+		"ojm market trial [--fixture <name>@<version>] [--keep]                          隔离站点试装（跑完即毁）",
 	].join("\n");
 }
 

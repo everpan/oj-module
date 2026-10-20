@@ -22,14 +22,16 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, write
 import net from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import process from "node:process";
 
+import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { buildBackend } from "../build";
 import { exportRawPublicKeyHex, fingerprintOfPublicKey } from "../lifecycle/sign";
 import { startOj } from "../oj";
 import { mintDevCert } from "../oj-cert";
 import { resolveOjBin } from "../vendor";
 import { buildIndex } from "./build-index";
+import { parseFixtureSpec } from "./fixture";
 import { publishPackage } from "./publish";
 
 /** 种子管理员（隔离库全新 seed；与 templates seed.sql 一致） */
@@ -127,6 +129,15 @@ export async function bootstrapIsolatedSite(opts: BootstrapOptions = {}): Promis
 	}
 	cfg = cfg.replace("__JWT_SECRET__", randomBytes(32).toString("hex"));
 	cfg = cfg.replace("web: ../cdn", `web: ${cdnDir}`);
+	// 安装目标恒为 release 部署：装好的模块落在 api/dist，dev 形态（--api-path src）发现不了。
+	// 故隔离站点以 dist 起站，platform.root 同步改写（oj 校验 root 必须是生效的 api 挂载目录）。
+	cfg = cfg.replace("  root: src", "  root: dist");
+	// auth 守卫在装配期读 anonymous_paths，安装器注册的新匿名端点要重启才生效（首次安装 smoke 会 401）。
+	// 隔离站点直接预置被测方案的探活路径——与 scripts/verify-solution-smoke/bootstrap-host.mjs 同手法，
+	// 让 trial 验的是安装机制本身，而不是重启时序。
+	const healthPath = `/${parseFixtureSpec(opts.fixture).name}/ping`;
+	if (!cfg.includes(`- ${healthPath}`))
+		cfg = cfg.replace(/^(\s*)- \/system\/login-methods$/m, `$1- /system/login-methods\n$1- ${healthPath}`);
 	// fs 段：模板自 0.2.13 起已自带（安装器落盘面）；旧模板没有时才补，避免重复键
 	if (!/^fs:/m.test(cfg))
 		cfg = `${cfg.trimEnd()}\nfs:\n  root: .\n  readonly: false\n`;
@@ -144,11 +155,14 @@ export async function bootstrapIsolatedSite(opts: BootstrapOptions = {}): Promis
 	await publishPackage({ projectRoot: root, fixture: opts.fixture, id: keyId, privateKeyPem: publisher.privateKeyPem });
 	await buildIndex({ projectRoot: root, id: keyId, privateKeyPem: publisher.privateKeyPem });
 
-	// 7) 起 oj（starter 注入供测试）；ready 失败即整体作废，不留孤儿
+	// 7) 后端构建（api/dist + versions.json；安装与 reloading 都依赖它）
+	await buildBackend(root);
+
+	// 7b) 起 oj（starter 注入供测试）；ready 失败即整体作废，不留孤儿
 	const starter = opts.starter ?? ((cfgPath: string, base: string, apiSrc: string) => startOj(cfgPath, base, apiSrc));
 	let oj: OjProcess;
 	try {
-		oj = starter(configPath, "/api", path.join(apiDir, "src"));
+		oj = starter(configPath, "/api", path.join(apiDir, "dist"));
 		await oj.ready;
 	}
 	catch (error) {

@@ -81,6 +81,9 @@ export function usageText(): string {
         索引验签 / manifest 结构（含 C2-31 desc===summary、各版本 0001 迁移一致）分列输出。
         --rebuild-index 额外比对「扫描重建的索引」与盘上索引，检出落了包却没重建的漂移。
         注意：结论恒带边界声明——校验通过只说明来源与完整性，不构成内容安全性背书。
+  ojm market trial [--fixture <name>@<version>] [--keep]
+        在一次性隔离站点（随机端口 + 一次性 DB/密钥/凭据/信任库/CDN）里跑完整安装，
+        跑完即毁；--keep 保留现场供排查。用于确认「这个包到底能不能装」，不污染你的工程。
   ojm test|exec|openapi|migrate|schema [args...]
         透传给 oj 同名子命令（自动补 -c <project>/api/config.yaml；其余参数原样转发）
         例：ojm test --anonymous / ojm migrate --db report / ojm openapi --check
