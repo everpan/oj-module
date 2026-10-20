@@ -5,6 +5,26 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 设计依据、迁移记录与陷阱清单见 [`docs/prd/202609110947-oj-module-two-package-consolidation-design.md`](docs/prd/202609110947-oj-module-two-package-consolidation-design.md)。
 
+## [0.2.11] - 2026-10-20
+
+双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步升 **0.2.11**。
+
+### Added
+
+- **菜单双段排序（order 双轴）**：`ascending()` 将 `handle.order` 拆成两个区段——`order >= 0` 主区（升序）、`order < 0` 底部固定区（升序，`-2` 排在 `-1` 之上）；未声明 `order` 回落 `routeIndex + 2`（同时修掉 `order: 0` 被 `??` 吞掉的旧问题）；同 `order` 按根 path 字母序决胜。`access` store 拆出 `wholeMenus`（主区）与 `bottomMenus`（底部区）两个字段。
+- **侧边导航底部固定槽**：`layout-sidebar` 改 flex 布局（Logo / 可滚动主菜单 / 底槽菜单 / SiderTrigger），底槽仅当 `bottomMenus` 非空时渲染；`order: -100` 的 system 模块随之 pin 在侧栏底部。其余菜单面按形态合并回落列表末尾：双列导航第二列不做底槽（避免子菜单重复，附 e2e S7 回归守卫）、移动端菜单合并、全局搜索收录两段、顶部导航回落末尾。
+- **e2e 回归**：`tests/runtime/ascending.test.ts`（双段排序 6 用例）、`tests/runtime/access-store-bottom-menus.test.ts`（store 拆分 4 用例）、e2e S6（底槽几何与跳转）改多根锚定、新增 S7 双列无底槽守卫（红绿双向验证过：底槽加回即 fail 3≠2）。
+
+### Fixed
+
+- **CI 遗留 5 处失败清零**：`market-client-unconfigured.test.ts` 测的是已退役的 `createHttpMarketClient` 工厂（DIP 改造后不存在），删除并将其独有断言（silentError / retry:0 / 单次调用）并入集成测试 503 用例；playbook 中已删除的 `docs/oj-api-dev/` 旧路径改述为迁移后位置，`devkit-docs.test.ts` 结构守卫恢复绿。
+- **`templates/web.config.ts` 误导注释修正**：注册顺序 ≠ 导航顺序，导航顺序来自 `handle.order`。
+- **devkit 手册 §2.4**：补 `order` 双轴语义（负数入底部固定区）与同序决胜规则。
+
+### Changed
+
+- **market 客户端 DIP 收尾**：删除 `createHttpMarketClient` 工厂，统一走 `defaultClient.ts` 的 `httpMarketClient` 单例委托生成 `__client`；`ScopedRequestLike` 类型统一从 `@oj-module/runtime/contract/errors` 引入。
+
 ## [0.2.10] - 2026-10-20
 
 双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步升 **0.2.10**。
