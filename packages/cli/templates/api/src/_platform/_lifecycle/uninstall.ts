@@ -18,14 +18,12 @@ import { readLock, writeLock } from "./lock";
 
 // db 为 oj isolate 注入全局（同模板 service 层惯例，installer.ts 同款；测试由夹具装 globalThis.db）
 declare const db: {
-	exec: (sql: string, params: unknown[]) => Promise<unknown>
-	query: (sql: string, params?: unknown[]) => Promise<unknown>
-	/** 安全查询构造器（迁移目标；与 query 同返回行数组） */
+	/** 安全查询构造器（与 db.query 同返回行数组） */
 	table: (name: string) => any
-	/** 当前方言（sqlite/mysql/pg）；缺省 sqlite。Q4 业务表目录查询方言无关 */
-	dialect?: () => string
+	/** 目录自省（v0.1.82）：当前库全部/前缀匹配的表名（方言无关；前缀 %/_ 由引擎转义） */
+	listTables: (prefix?: string) => Promise<string[]>
 	/** 单一 DB 事务包裹（P3-3）：回调内语句共享一个 BEGIN/COMMIT/ROLLBACK 边界，异常即整段回滚 */
-	tx: <T>(fn: (t: { exec: (sql: string, params?: unknown[]) => Promise<unknown>, query: (sql: string, params?: unknown[]) => Promise<unknown>, table: (name: string) => any }) => Promise<T>) => Promise<T>
+	tx: <T>(fn: (t: { table: (name: string) => any }) => Promise<T>) => Promise<T>
 };
 
 function isObj(v: unknown): v is Record<string, unknown> {
@@ -62,45 +60,13 @@ function manifestTables(yamlText: string): string[] {
 	return out;
 }
 
-/** 当前方言（oj 注入 db.dialect，缺省 sqlite） */
-function currentDialect(): string {
-	const d = (db as { dialect?: () => string }).dialect;
-	return typeof d === "function" ? d() : "sqlite";
-}
-
-/** 表目录查询片段（方言无关：sqlite=sqlite_master，mysql/pg=information_schema） */
-export function catalogSpec(dialect: string): { existing: string, like: (pat: string) => [string, unknown[]] } {
-	if (dialect === "sqlite") {
-		return {
-			existing: "SELECT name FROM sqlite_master WHERE type='table'",
-			like: pat => ["SELECT name FROM sqlite_master WHERE type='table' AND name LIKE ? ESCAPE '!'", [pat]],
-		};
-	}
-	const schemaExpr = dialect === "mysql" ? "DATABASE()" : "'public'";
-	return {
-		existing: `SELECT table_name AS name FROM information_schema.tables WHERE table_schema = ${schemaExpr}`,
-		like: pat => [`SELECT table_name AS name FROM information_schema.tables WHERE table_schema = ${schemaExpr} AND table_name LIKE ? ESCAPE '!'`, [pat]],
-	};
-}
-
-/** 当前库实际存在的表名集合 */
-async function listExistingTables(dialect: string): Promise<Set<string>> {
-	// 保留 db.query：方言相关表目录查询（sqlite_master / information_schema），构造器无法表达
-	const rows = (await db.query(catalogSpec(dialect).existing)) as Array<{ name: string }>;
-	return new Set(rows.map(r => r.name));
-}
-
-/** 模块 slug 规范化 + LIKE 转义（沿用 RBAC 权限命名空间约定：!%_ 转义，连字符→下划线作表前缀） */
-export function tablePrefixPattern(name: string): string {
-	const slug = name.replace(/-/g, "_").replace(/[!%_]/g, c => `!${c}`);
-	// 表名用下划线分隔（非权限码的 `.`）：slug_ + 通配符 %（末尾 % 不转义，保持通配语义）
-	return `${slug}_%`;
+/** 模块 slug 规范化（连字符→下划线）作表前缀；db.listTables 内部按字面量前缀匹配（自动转义 %/_），无需手拼通配 */
+export function moduleTablePrefix(name: string): string {
+	return `${name.replace(/-/g, "_")}_`;
 }
 
 /** 收集需保留的业务表（Q4）：声明 + 前缀兜底；仅返回实际存在的表名 */
 export async function collectRetainedTables(name: string, manifestPath: string): Promise<string[]> {
-	const dialect = currentDialect();
-	const existing = await listExistingTables(dialect);
 	const candidates = new Set<string>();
 	// ① 声明式权威源：manifest.tables（通知等模块已在 manifest 声明业务表归属）
 	try {
@@ -111,17 +77,17 @@ export async function collectRetainedTables(name: string, manifestPath: string):
 	catch {
 		// manifest 缺失（api-only 方案）→ 仅前缀兜底
 	}
-	// ② 前缀兜底：扫描当前库匹配模块前缀的表，覆盖未声明场景
+	// ② 前缀兜底：db.listTables（v0.1.82，方言无关，前缀转义引擎做）枚举当前库匹配模块前缀的
+	//    实际表，覆盖未声明场景。listTables 已只返回存在的表，故前缀命中的候选天然存在。
 	try {
-		// 保留 db.query：LIKE ? ESCAPE '!' 转义子句，构造器 like 无 ESCAPE 支持
-		const [sql, params] = catalogSpec(dialect).like(tablePrefixPattern(name));
-		const rows = (await db.query(sql, params)) as Array<{ name: string }>;
-		for (const r of rows)
-			candidates.add(r.name);
+		for (const t of await db.listTables(moduleTablePrefix(name)))
+			candidates.add(t);
 	}
 	catch {
 		// 兜底扫描失败不阻断卸载
 	}
+	// 仅回传实际存在的表（manifest 声明的表若物理不存在则不回传）
+	const existing = new Set(await db.listTables());
 	return [...candidates].filter(t => existing.has(t));
 }
 
@@ -163,10 +129,14 @@ export async function computeUninstallImpact(input: UninstallInput): Promise<Uni
 	const roleNames = roles.map(r => r.name);
 	let affectedUsers = 0;
 	if (roleNames.length > 0) {
-		// 构造器（v0.1.81）：in 直接收静态数组值，无需 JS 拼接占位符。distinct 去重用户；
-		// 顶层 select 无 limit 会被隐式钳到 default_limit，故显式拉到硬上限——预览计数与框架其余列表端点同受上限约束。
-		const rows = await db.table("sys_user_role").select(["user_id"]).distinct().where({ field: "role_name", op: "in", value: roleNames }).limit(100_000).all() as Array<{ user_id: number }>;
-		affectedUsers = rows.length;
+		// 构造器（v0.1.82）：count(distinct) 聚合一行返回，不受 LIMIT 钳制——
+		// 旧 distinct().all().length 因顶层隐式 LIMIT（默认 100）/ 显式 clamp（max_limit 默认 1000）
+		// 在受影响用户 >1000 时静默漏算（今天就有正确性风险，须尽快迁移）。
+		const rows = await db.table("sys_user_role")
+			.select([{ fn: "count", distinct: true, field: "user_id", as: "c" }])
+			.where({ field: "role_name", op: "in", value: roleNames })
+			.all() as Array<{ c: number }>;
+		affectedUsers = rows[0]?.c ?? 0;
 	}
 	return { name, affectedRoles: roleNames.length, affectedUsers };
 }

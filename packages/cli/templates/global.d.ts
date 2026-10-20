@@ -60,6 +60,10 @@ interface QueryBuilder {
 	insert: (rows: object | object[]) => QueryBuilder
 	update: (sets: object) => QueryBuilder
 	delete: () => QueryBuilder
+	// 整表清空（v0.1.82）：唯一的无 where 写动词，明示使用——渲染 `DELETE FROM t`。
+	// 租户守卫照常注入：租户表上只清**当前租户**的行（清整库用 db.asSystem）。
+	// 自带 where 报 `truncate does not accept where`；update 携带 truncate 报错。
+	truncate: () => QueryBuilder
 	returning: (cols?: string[]) => QueryBuilder
 	// JOIN（v0.1.81 支持 ON 值条件与表别名）：on = 左右列对 / 列对值条件；kind 缺省 "inner"。
 	// 第 4 参数 alias 给被 join 的表起别名；基表别名用 .as(alias)（v0.1.81）。
@@ -84,8 +88,9 @@ interface QueryBuilder {
 	// mysql → ON DUPLICATE KEY UPDATE <pk>=<pk>，要求表有主键）。三方言 affected-rows 不一致，
 	// 勿用 if (n===1) 判幂等；与 returning 在 mysql 上互斥。
 	orIgnore: () => QueryBuilder
-	// INSERT ... SELECT（v0.1.81）：从另一构造器结果批量写入，cols 与源 select 列按位置对齐。
-	fromSelect: (query: QueryBuilder, cols: string[]) => QueryBuilder
+	// INSERT ... SELECT（v0.1.81）：从另一构造器结果（或其 toJSON 快照）批量写入，
+	// cols 与源 select 列按位置对齐。
+	fromSelect: (sub: QueryBuilder | object, cols: string[]) => QueryBuilder
 	run: () => Promise<number | Row[]>
 	// 只构造不执行（与 .all()/.run() 完全相同的校验管线）。
 	toSQL: () => { sql: string, params: unknown[] }
@@ -606,6 +611,13 @@ declare global {
 		 * 连接引擎名（v0.1.61）：`"sqlite" | "mysql" | "postgres"`。供 `_shared` 共享模块与
 		 * 诊断分派方言 SQL；业务 handler 分支方言 = 放弃跨引擎可移植承诺，慎用。
 		 */
+		/**
+		 * 目录自省（v0.1.82）：当前库全部业务可见表名（**含未登记 registry 的表**——api-only
+		 * 方案 / 历史遗留表），按名称排序。可选前缀过滤（%/_ 按字面量匹配，引擎转义 + 绑定参数）。
+		 * sqlite 排除 `sqlite_*` 内部表；mysql/pg 经 information_schema 限当前库/schema。
+		 * 替代「按方言分支 information_schema / sqlite_master」的裸 db.query。
+		 */
+		listTables: (prefix?: string) => Promise<string[]>
 		dialect(): "sqlite" | "mysql" | "postgres"
 		asTenant(id: string): DBInstance
 		// 事务：回调 resolve 提交 / throw 回滚再抛；tx.query/exec/table 同签名走同一连接。

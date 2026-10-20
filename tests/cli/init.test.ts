@@ -28,6 +28,8 @@ function fakeOjInstall(binDir: string): Promise<void> {
 	fs.writeFileSync(path.join(binDir, "devkit/SKILL.md"), "skill\n");
 	fs.writeFileSync(path.join(binDir, "devkit/api-manual.md"), "manual\n");
 	fs.writeFileSync(path.join(binDir, "devkit/global.d.ts"), "types\n");
+	fs.writeFileSync(path.join(binDir, "devkit/sql-builder-guide.md"), "guide\n");
+	fs.writeFileSync(path.join(binDir, "devkit/oj-test-guide.md"), "guide\n");
 	return Promise.resolve();
 }
 
@@ -75,6 +77,9 @@ describe("initProject", () => {
 		// devkit 拷贝
 		expect(fs.existsSync(path.join(dest, ".claude/skills/oj-api-dev/SKILL.md"))).toBe(true);
 		expect(fs.existsSync(path.join(dest, ".claude/skills/oj-api-dev/api-manual.md"))).toBe(true);
+		// v0.1.82 起 devkit 新增两份专题指南（api-manual/SKILL 引用），有则拷
+		expect(fs.existsSync(path.join(dest, ".claude/skills/oj-api-dev/sql-builder-guide.md"))).toBe(true);
+		expect(fs.existsSync(path.join(dest, ".claude/skills/oj-api-dev/oj-test-guide.md"))).toBe(true);
 		expect(fs.existsSync(path.join(dest, "global.d.ts"))).toBe(true);
 
 		// 前端模块与工程文件
@@ -374,6 +379,29 @@ describe("initProject", () => {
 		const { matrix } = resolveVersionMatrix(fakeCli);
 		expect(matrix.react).toBe("19.2.0");
 		expect(matrix["@oj-module/runtime"]).toBe("0.1.0");
+	});
+
+	/**
+	 * bin/devkit 来自用户本地 oj 版本（MIN_OJ_VERSION 只钉 0.1.73），旧版没有
+	 * v0.1.82 的两份专题指南属正常版本 skew——「有则拷、无则跳过」，init 不挂。
+	 */
+	it("旧版 devkit 缺 v0.1.82 两份专题指南 → init 照常完成，仅少两份文档", async () => {
+		const dest = path.join(tmpRoot(), "old-devkit");
+		const oldInstall = (binDir: string): Promise<void> => {
+			fs.mkdirSync(path.join(binDir, "devkit"), { recursive: true });
+			fs.writeFileSync(path.join(binDir, "oj"), "#!/bin/sh\necho oj\n");
+			fs.chmodSync(path.join(binDir, "oj"), 0o755);
+			fs.writeFileSync(path.join(binDir, ".oj-version"), "v0.1.73\n");
+			fs.writeFileSync(path.join(binDir, "devkit/SKILL.md"), "skill\n");
+			fs.writeFileSync(path.join(binDir, "devkit/api-manual.md"), "manual\n");
+			fs.writeFileSync(path.join(binDir, "devkit/global.d.ts"), "types\n");
+			return Promise.resolve();
+		};
+		await initProject(dest, { yes: true, ojInstaller: oldInstall });
+
+		expect(fs.existsSync(path.join(dest, ".claude/skills/oj-api-dev/SKILL.md"))).toBe(true);
+		expect(fs.existsSync(path.join(dest, ".claude/skills/oj-api-dev/sql-builder-guide.md"))).toBe(false);
+		expect(fs.existsSync(path.join(dest, ".claude/skills/oj-api-dev/oj-test-guide.md"))).toBe(false);
 	});
 
 	it("cli 内置版本矩阵真实存在且含核心项（发布内容物契约）", () => {

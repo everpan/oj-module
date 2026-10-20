@@ -73,10 +73,12 @@ export async function upsertSolutionPerms(m: SolutionManifest): Promise<UpsertRe
 	return { deprecated };
 }
 
-/** 事务/非事务统一的 db 面（P3-3：可传入 db.tx 的事务句柄以纳入单一事务） */
+/**
+ * 事务/非事务统一的 db 面（P3-3：可传入 db.tx 的事务句柄以纳入单一事务）。
+ *  只收 table——全构造器化后（v0.1.81 startswith 补齐最后缺口）本出口不再走裸 SQL，
+ *  契约随实现收窄：tx 句柄（{table}）与全局 db 均可传入。
+ */
 interface DbLike {
-	query: (sql: string, params?: unknown[]) => Promise<unknown>
-	exec: (sql: string, params?: unknown[]) => Promise<unknown>
 	table: DBInstance["table"]
 }
 
@@ -95,8 +97,8 @@ export async function uninstallSolution(module: string, d: DbLike = db): Promise
 		await d.table("sys_user_role").where({ field: "role_name", op: "eq", value: r.name }).delete().run();
 	}
 	await d.table("sys_role").where({ field: "module", op: "eq", value: module }).delete().run();
-	// 保留 d.exec：LIKE ? escape '!' 转义子句构造器 like 不支持（三方言 ESCAPE 同义纪律见 query.ts）
-	const prefix = `${module.replace(/[!%_]/g, c => `!${c}`)}.%`;
-	await d.exec("delete from sys_role_permission where permission_code like ? escape '!'", [prefix]);
+	// startswith（v0.1.81）：语义化前缀匹配（⇒ `v%`），引擎自动转义 %/_/!——
+	// 替代旧「手工 escape 拼接 + 裸 SQL like ? escape '!'」（三方言 ESCAPE 同义纪律见 query.ts）
+	await d.table("sys_role_permission").where({ field: "permission_code", op: "startswith", value: `${module}.` }).delete().run();
 	await d.table("sys_permission").where({ field: "module", op: "eq", value: module }).delete().run();
 }

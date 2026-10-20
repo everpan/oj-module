@@ -37,6 +37,24 @@ export async function paged<T>(
 	return { list, total, page, size, truncated: offset + list.length < total };
 }
 
+// 构造器分页工厂（v0.1.82）：条件写一份（mk 工厂），count + list 各跑一次（count 用聚合，
+// 不受 LIMIT 钳制）；替代「接受任意 SQL 片段」的旧 paged（裸 SQL 包装器）。条件收敛到构造器
+// （contains 替代 LIKE ? ESCAPE '!'），残留任意 SQL 的场景才继续走旧 paged。
+type Builder = ReturnType<typeof db.table>;
+export async function pagedFactory<T>(
+	mk: () => Builder,
+	input: { page?: unknown, size?: unknown } = {},
+): Promise<PageResult<T>> {
+	const { page, size, offset } = pageArgs(input);
+	const total = Number(
+		(await mk().select([{ fn: "count", as: "c" }]).all() as Array<Record<string, unknown>>)[0]?.c ?? 0,
+	);
+	const list = total === 0
+		? []
+		: await mk().orderBy([{ field: "id", dir: "desc" }]).limit(size).offset(offset).all() as T[];
+	return { list, total, page, size, truncated: total > page * size };
+}
+
 /**
  * LIKE 模式：修剪后校验长度（默认 2~64），元字符 % _ ! 加 ! 转义，两侧包 %。
  *  SQL 侧必须写 `like ? escape '!'`（三方言同语义；sqlite 默认无转义符，mysql/pg 默认不是 !）。

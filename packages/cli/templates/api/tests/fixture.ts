@@ -1,6 +1,14 @@
 // 后端 BDD 夹具：node:sqlite 内存库 + **真实迁移文件**建表，装到 globalThis.db——
 // 与 oj 运行时注入的全局同名同面（query/exec/tx/dialect），service 代码不改一行即可被测。
 // 夹具直接读 api/src/<模块>/migrations/*.sql，与迁移不可能漂移（沿用 oj-wiki 先例）。
+//
+// **构造器边界（架构定论，勿在此夹具里补 table()）**：db.table()/listTables() 等构造器是
+// oj 二进制内的纯 Rust 实现，无 JS 模块可导出，Node 侧垫不出来——本夹具刻意只给
+// {query, exec, tx, dialect}。两层测试的分工因此定型：
+//   · L2（本目录 *.spec.ts）：构造器面用**记录型假 builder**（记 where/orderBy/limit 调用
+//     序列做编排断言）；真 SQL 执行断言走 db.query 直查。
+//   · L1（同目录 *.test.ts，`oj test` 收集）：真 v8 + 真构造器闭环，守 SQL 渲染/过滤/转义
+//     的真执行面（样板见 tests/l1-builder.test.ts；方法论见 devkit oj-test-guide.md）。
 import { createRequire } from "node:module";
 
 const req = createRequire(import.meta.url);
@@ -12,22 +20,6 @@ const { fileURLToPath } = req("node:url");
 const SRC = join(dirname(fileURLToPath(import.meta.url)), "..", "src");
 
 export const ADMIN = 1;
-
-/**
- * market_history 同构 DDL：表真源 = 市场方案包自带迁移（oj-market 0002__market_history），
- * 不属平台迁移（installDb 不回放）——需要断言留痕的用例显式执行；守卫语义（表不存在静默跳过）
- * 另有专项用例钉住。
- */
-export const MARKET_HISTORY_DDL = `CREATE TABLE market_history (
-	id INTEGER PRIMARY KEY AUTOINCREMENT,
-	solution TEXT NOT NULL,
-	version TEXT NOT NULL,
-	action TEXT NOT NULL,
-	status TEXT NOT NULL,
-	operator TEXT,
-	message TEXT,
-	created_at INTEGER NOT NULL
-)`;
 
 /** 建内存库 + 注入全局；返回 DatabaseSync 供用例直插数据/断言。 */
 export function installDb(): any {

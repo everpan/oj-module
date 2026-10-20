@@ -28,7 +28,7 @@ import { getTask, writeTask } from "../../src/_platform/_lifecycle/tasks";
 import { createTrustStore } from "../../src/_platform/_lifecycle/trust";
 import { invalidateAllUsers } from "../../src/_platform/_shared/service/infra/access";
 import { createMarketApi, marketEnv, parseVersionsJson, versionsJsonPathOf } from "../../src/_platform/market/api";
-import { installDb, MARKET_HISTORY_DDL } from "../fixture";
+import { installDb } from "../fixture";
 
 function hexToBytes(hex: string): Uint8Array {
 	const out = new Uint8Array(hex.length / 2);
@@ -680,7 +680,6 @@ describe("GET index（CDN bundles.yaml no-cache 拉取 + 本地 state 对比）"
 	});
 
 	it("operator 回落 history 行（P2-11：最近一次 install 动作的 operator；表缺失/无行 → null 不炸）", async () => {
-		dbo.exec(MARKET_HISTORY_DDL);
 		dbo.prepare("insert into market_history (solution, version, action, status, operator, message, created_at) values (?, ?, ?, ?, ?, ?, ?)")
 			.run("demo-solution", "0.1.0", "install", "done", "alice", "", 1700000000);
 		const api = createMarketApi(makeEnv());
@@ -917,7 +916,6 @@ describe("P1-16 接线：marketEnv 生产口径 / exec opts 转发 / operator �
 	});
 
 	it("operator 通道：install/enable 端点按 http.user.id 反查 username 落 market_history（uninstall 同款反查）", async () => {
-		dbo.exec(MARKET_HISTORY_DDL);
 		// 预置「已装」最小形态（enable 用例同款：单条目禁用会触发空锁拒启，S1-1.2）
 		await writeLock(join(sharedRoot, "manifests.yaml"), { "demo-solution": "0.1.0", "other": "1.0.0" });
 		const state = await createStateStore(join(sharedRoot, ".solutions", "state.yaml"));

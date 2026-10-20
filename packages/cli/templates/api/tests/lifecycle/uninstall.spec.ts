@@ -2,8 +2,8 @@
 // 端点（createMarketApi 的 uninstall-impact / uninstall）只做门禁 + 取参 + 调 runUninstall；
 // 编排器负责四处同删（锁/sidecar/sys_solution_route/modules.json）+ 权限级联 uninstallSolution
 // + 版本目录移除 + 审计 + 全用户失效 + market_history 留痕。本规格为验收锚点。
-// 夹具：本仓范式（node:sqlite 真实迁移建表 + 真实 fs 面 g.fs）；market_history 表真源随市场
-// 方案包（fixture.MARKET_HISTORY_DDL 同构建表），守卫语义（表不存在静默跳过）单列一例。
+// 夹具：本仓范式（node:sqlite 真实迁移建表 + 真实 fs 面 g.fs）；market_history 表由平台迁移
+// 0012（IF NOT EXISTS）随 installDb 重放建立，守卫语义（表不存在静默跳过）单列一例。
 /* eslint-disable test/prefer-lowercase-title -- 端点动词/路径是验收锚点，保留大写（market-api.spec 同约定） */
 import type { FsFace } from "../../src/_platform/_lifecycle/atomic";
 import type { MarketEnv } from "../../src/_platform/market/api";
@@ -13,10 +13,10 @@ import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { readLock, writeLock } from "../../src/_platform/_lifecycle/lock";
 import { createStateStore } from "../../src/_platform/_lifecycle/state";
-import { catalogSpec, collectRetainedTables, tablePrefixPattern } from "../../src/_platform/_lifecycle/uninstall";
+import { collectRetainedTables, moduleTablePrefix } from "../../src/_platform/_lifecycle/uninstall";
 import { invalidateAllUsers } from "../../src/_platform/_shared/service/infra/access";
 import { createMarketApi } from "../../src/_platform/market/api";
-import { installDb, MARKET_HISTORY_DDL } from "../fixture";
+import { installDb } from "../fixture";
 
 const g = globalThis as any;
 
@@ -67,7 +67,6 @@ async function seedInstalled(opts: { withOther?: boolean } = {}): Promise<void> 
 		{ name: "demo-solution", enabled: true, src: "modules/demo-solution/" },
 		...(withOther ? [{ name: "other", enabled: true, src: "modules/other/" }] : []),
 	]));
-	dbo.exec(MARKET_HISTORY_DDL);
 	dbo.prepare("INSERT INTO sys_solution_route (path, module, category) VALUES (?, ?, ?)").run("/demo-solution", "demo-solution", "main");
 	dbo.prepare("INSERT INTO sys_role (name, module, title, builtin) VALUES (?, ?, ?, 0)").run("demo-solution.admin", "demo-solution", "管理员");
 	dbo.prepare("INSERT INTO sys_role (name, module, title, builtin) VALUES (?, ?, ?, 0)").run("demo-solution.viewer", "demo-solution", "访客");
@@ -295,92 +294,33 @@ describe("P3-4 业务表保留提示（Q4：不删业务数据，retained 回传
 	});
 });
 
-describe("P4-1 多方言卸载矩阵（P3-4#2）：catalogSpec 三方言 SQL 形态 + 前缀转义方言无关", () => {
-	it("catalogSpec 三方言 existing SQL 形态正确（sqlite=sqlite_master / mysql/pg=information_schema）", () => {
-		const sqlite = catalogSpec("sqlite");
-		const mysql = catalogSpec("mysql");
-		const pg = catalogSpec("pg");
-		expect(sqlite.existing).toBe("SELECT name FROM sqlite_master WHERE type='table'");
-		expect(mysql.existing).toContain("information_schema.tables");
-		expect(mysql.existing).toContain("DATABASE()");
-		expect(pg.existing).toContain("information_schema.tables");
-		expect(pg.existing).toContain("table_schema = 'public'");
+describe("P4-1 卸载业务表保留清单（P3-4#2）：moduleTablePrefix + db.listTables 方言无关", () => {
+	it("moduleTablePrefix 连字符→下划线作表前缀（listTables 内部按字面量前缀匹配，无需手拼 %）", () => {
+		expect(moduleTablePrefix("demo-solution")).toBe("demo_solution_");
+		expect(moduleTablePrefix("a!b%c_d")).toBe("a!b%c_d_");
 	});
 
-	it("catalogSpec.like 三方言均带 ESCAPE '!' + 正确 schema 表达式 + 参数化 pat", () => {
-		const pat = "demo_solution_%";
-		const sqlite = catalogSpec("sqlite").like(pat);
-		const mysql = catalogSpec("mysql").like(pat);
-		const pg = catalogSpec("pg").like(pat);
-		// sqlite
-		expect(sqlite[0]).toBe("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE ? ESCAPE '!'");
-		expect(sqlite[1]).toEqual([pat]);
-		// mysql：information_schema + DATABASE() + ESCAPE + 参数化（值不拼字符串，SSRF/注入无关但口径统一）
-		expect(mysql[0]).toContain("information_schema.tables");
-		expect(mysql[0]).toContain("DATABASE()");
-		expect(mysql[0]).toContain("ESCAPE '!'");
-		expect(mysql[1]).toEqual([pat]);
-		// pg：information_schema + 'public' + ESCAPE + 参数化
-		expect(pg[0]).toContain("information_schema.tables");
-		expect(pg[0]).toContain("table_schema = 'public'");
-		expect(pg[0]).toContain("ESCAPE '!'");
-		expect(pg[1]).toEqual([pat]);
-	});
-
-	it("tablePrefixPattern 转义 !%_ 且连字符→下划线作表前缀", () => {
-		// 连字符→下划线后，该下划线亦被转义（!_）= 字面分隔符而非 LIKE 通配，避免前缀扫描越权命中
-		expect(tablePrefixPattern("demo-solution")).toBe("demo!_solution_%");
-		// 危险字符必须转义，避免 LIKE 通配语义被注入（防前缀扫描越权命中）
-		expect(tablePrefixPattern("a!b%c_d")).toBe("a!!b!%c!_d_%");
-	});
-});
-
-describe("P4-1 多方言卸载矩阵（续）：collectRetainedTables 经 db.dialect 走 mysql/pg 信息_schema 路径", () => {
-	/** 注入指定方言的 db.query 桩：existing 返回全表清单、like 返回前缀命中，模拟 information_schema 行为 */
-	function stubDialect(dialect: "mysql" | "pg", existingNames: string[], likeNames: string[]): void {
-		const spec = catalogSpec(dialect);
-		(g.db as { dialect: () => string, query: (sql: string, p?: unknown[]) => unknown }).dialect = () => dialect;
-		(g.db as { query: (sql: string, p?: unknown[]) => unknown }).query = (sql: string) => {
-			if (sql === spec.existing)
-				return existingNames.map(name => ({ name }));
-			if (sql.includes("AND table_name LIKE"))
-				return likeNames.map(name => ({ name }));
-			return [];
+	it("manifest 声明 + 前缀兜底经 db.listTables 合并，仅回传实际存在的业务表", async () => {
+		await seedInstalledWithTables();
+		// manifest 追加「声明了但没建表」的幽灵条目，验证存在性过滤
+		const manifestPath = join(sharedRoot, "demo-solution-0.1.0", "manifest.yaml");
+		await fsp.writeFile(manifestPath, `${await fsp.readFile(manifestPath, "utf-8")}  - demo_solution_ghost\n`);
+		// 真实 sqlite 目录：manifest 声明 notes/tags（seed 已建）+ 前缀扫描命中 orphan（未声明）
+		dbo.exec("CREATE TABLE demo_solution_orphan (id INTEGER)");
+		// L2：listTables 是 oj 运行时能力（纯 Rust 二进制内，vitest 无载体，见 devkit
+		// oj-test-guide.md）——桩回放**真实 sqlite 目录**（sqlite_master 实查）并记录
+		// 调用形态；被测的是合并/过滤编排，不是引擎的目录自省本身。
+		const seen: Array<string | undefined> = [];
+		g.db.listTables = async (prefix?: string) => {
+			seen.push(prefix);
+			const all = (dbo.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as Array<{ name: string }>).map(r => r.name);
+			return prefix === undefined ? all : all.filter(t => t.startsWith(prefix));
 		};
-	}
-
-	it("mysql 方言：manifest 声明 + 前缀兜底扫描均经 information_schema，返回实际存在的业务表", async () => {
-		await seedInstalledWithTables();
-		stubDialect("mysql", ["demo_solution_notes", "demo_solution_tags", "demo_solution_orphan"], ["demo_solution_orphan"]);
-		const retained = await collectRetainedTables("demo-solution", join(sharedRoot, "demo-solution-0.1.0", "manifest.yaml"));
-		expect(retained).toContain("demo_solution_notes");
-		expect(retained).toContain("demo_solution_tags");
-		expect(retained).toContain("demo_solution_orphan");
-	});
-
-	it("pg 方言：'public' schema 表达式路径一致，返回业务表（与 mysql 口径相同）", async () => {
-		await seedInstalledWithTables();
-		stubDialect("pg", ["demo_solution_notes", "demo_solution_tags", "demo_solution_orphan"], ["demo_solution_orphan"]);
-		const retained = await collectRetainedTables("demo-solution", join(sharedRoot, "demo-solution-0.1.0", "manifest.yaml"));
-		expect(retained).toContain("demo_solution_notes");
-		expect(retained).toContain("demo_solution_tags");
-		expect(retained).toContain("demo_solution_orphan");
-	});
-
-	it("db.dialect 缺省回落 sqlite（不抛、不误导），与既有 sqlite 全量路径一致", async () => {
-		await seedInstalledWithTables();
-		// 还原为缺省（不提供 dialect 函数）→ currentDialect 回落 "sqlite"
-		const spec = catalogSpec("sqlite");
-		(g.db as { dialect?: () => string }).dialect = undefined;
-		(g.db as { query: (sql: string, p?: unknown[]) => unknown }).query = (sql: string) => {
-			if (sql === spec.existing)
-				return [{ name: "demo_solution_notes" }, { name: "demo_solution_tags" }];
-			if (sql.includes("AND name LIKE"))
-				return [{ name: "demo_solution_notes" }];
-			return [];
-		};
-		const retained = await collectRetainedTables("demo-solution", join(sharedRoot, "demo-solution-0.1.0", "manifest.yaml"));
-		expect(retained).toContain("demo_solution_notes");
-		expect(retained).toContain("demo_solution_tags");
+		const retained = await collectRetainedTables("demo-solution", manifestPath);
+		expect(seen).toEqual(["demo_solution_", undefined]); // 前缀扫描 + 全量存在性过滤各一次
+		expect(retained).toContain("demo_solution_notes"); // manifest 声明
+		expect(retained).toContain("demo_solution_tags"); // manifest 声明
+		expect(retained).toContain("demo_solution_orphan"); // 前缀兜底命中（未声明）
+		expect(retained).not.toContain("demo_solution_ghost"); // 声明但物理不存在 → 不回传
 	});
 });

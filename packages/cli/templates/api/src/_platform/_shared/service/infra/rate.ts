@@ -75,5 +75,8 @@ export async function loginSucceeded(key: string): Promise<void> {
 
 /** 清登录限速状态（测试夹具/运维排障用）。 */
 export async function resetLoginThrottle(): Promise<void> {
-	await db.exec("delete from sys_login_throttle", []);
+	// 构造器（v0.1.82）：truncate() 是唯一的「无 where 清空」写动词，命名式、可 grep，
+	// 取代裸 db.exec("delete from …")（审查上像漏写 where 的 delete）。渲染 DELETE FROM t，
+	// 租户守卫照常注入（本表非租户表=整表清空）。
+	await db.table("sys_login_throttle").truncate().run();
 }

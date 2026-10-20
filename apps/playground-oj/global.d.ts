@@ -38,6 +38,8 @@ interface QueryBuilder {
   limit(n: number): QueryBuilder;
   offset(n: number): QueryBuilder;
   all(): Promise<Json[]>;
+  // 整表清空（v0.1.82）：唯一无 where 写动词，渲染 DELETE FROM t；租户守卫照常注入。
+  truncate(): QueryBuilder;
 }
 
 // DB(name) 返回的命名数据库实例。
@@ -48,6 +50,8 @@ interface DBInstance {
   exec(sql: string, params?: unknown[]): Promise<number>;
   // 安全查询构造器（标识符白名单 + 参数化值）。
   table(name: string): QueryBuilder;
+  // 目录自省（v0.1.82）：当前库业务可见表名（含未登记 registry），按名排序；可选前缀过滤。
+  listTables(prefix?: string): Promise<string[]>;
   // 事务：回调 resolve 提交 / throw 回滚再抛；tx.query/exec/table 同签名走同一连接。
   // 每请求至多一个活跃事务（嵌套报错）；请求结束未完结自动回滚。
   tx(fn: (tx: DBInstance) => unknown): Promise<unknown>;

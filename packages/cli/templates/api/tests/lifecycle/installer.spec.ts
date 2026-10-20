@@ -28,7 +28,7 @@ import { acquireTaskLock, commitLockEntry, parseLock, readLock, serializeLock, w
 import { createStateStore } from "../../src/_platform/_lifecycle/state";
 import { getTask, readTasks, redact, sweepTimedOut, writeTask } from "../../src/_platform/_lifecycle/tasks";
 import { createTrustStore } from "../../src/_platform/_lifecycle/trust";
-import { installDb, MARKET_HISTORY_DDL } from "../fixture";
+import { installDb } from "../fixture";
 
 const g = globalThis as any;
 
@@ -979,7 +979,6 @@ describe("market_history 留痕（P1-15a 缺口 A）：install/enable/disable/un
 	}
 
 	it("runInstall 终态（done）落 install 历史（守卫式：随主流程写，失败不阻断）", async () => {
-		dbo.exec(MARKET_HISTORY_DDL);
 		const t = await runInstall(makeReq());
 		expect(t.status).toBe("done");
 		const hist = rows("SELECT solution, version, action, status, operator, message FROM market_history");
@@ -989,7 +988,6 @@ describe("market_history 留痕（P1-15a 缺口 A）：install/enable/disable/un
 	});
 
 	it("setEnabled 落 disable/enable 历史（status=success，message 与返回人话一致）", async () => {
-		dbo.exec(MARKET_HISTORY_DDL);
 		await seedHistory();
 		const off = await setEnabled({ name: "demo-solution", enabled: false, sharedRoot, lockPath, state, modulesJsonPath });
 		const on = await setEnabled({ name: "demo-solution", enabled: true, sharedRoot, lockPath, state, modulesJsonPath });
@@ -1185,7 +1183,6 @@ describe("P1-16 接线：reconcile 不一致自动修复（重跑 setEnabled）+
 	});
 
 	it("operator 通道：runInstall / setEnabled 的 operator 落 market_history（缺省 null 语义不变）", async () => {
-		dbo.exec(MARKET_HISTORY_DDL);
 		await writeLock(lockPath, { "demo-solution": "0.1.0", "auth": "0.1.0" });
 		await state.write({ solutions: { "demo-solution": { version: "0.1.0", enabled: true, installedAt: 1000 } } });
 		await fsp.mkdir(join(sharedRoot, "demo-solution-0.1.0"), { recursive: true });

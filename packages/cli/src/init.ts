@@ -98,6 +98,13 @@ export async function initProject(destDir: string, opts: InitOptions = {}): Prom
 		fs.mkdirSync(skillDir, { recursive: true });
 		for (const name of ["SKILL.md", "api-manual.md"])
 			copyIfAbsent(path.join(devkit, name), path.join(skillDir, name), report);
+		// v0.1.82 起 devkit 新增两份专题指南（api-manual/SKILL 均引用它们）：
+		// SQL 构造器能力矩阵/方言差异、oj test L1 测试指南。它们是**增量文档**、
+		// 不影响 ojm 运行，故「有则拷、无则记跳过」——bin/devkit 来自用户本地
+		// oj 版本（MIN_OJ_VERSION 只钉到 0.1.73），旧版 devkit 没有这两个文件，
+		// 为两份文档把整个 init 打挂不值当（用户升 oj 后重跑 init 即补上）。
+		for (const name of ["sql-builder-guide.md", "oj-test-guide.md"])
+			copyIfPresent(path.join(devkit, name), path.join(skillDir, name), report);
 		copyIfAbsent(path.join(devkit, "global.d.ts"), path.join(destDir, "global.d.ts"), report);
 	}
 	else {
@@ -365,6 +372,21 @@ function copyIfAbsent(src: string, dest: string, report: InitReport): void {
 	fs.mkdirSync(path.dirname(dest), { recursive: true });
 	fs.copyFileSync(src, dest);
 	report.created.push(path.relative(process.cwd(), dest) || path.basename(dest));
+}
+
+/**
+ * 同 copyIfAbsent，但**源缺失**时记一条跳过而非抛错。
+ *
+ * 用于从 bin/devkit 拷第三方版本化内容（两份专题指南）：devkit 随用户本地 oj
+ * 版本而变，旧版没有新文件属正常版本 skew，不是安装包损坏——缺了只少份文档，
+ * 不该让 init 失败。源在而目标已存在仍走 copyIfAbsent 的幂等跳过。
+ */
+function copyIfPresent(src: string, dest: string, report: InitReport): void {
+	if (!fs.existsSync(src)) {
+		report.skipped.push(`${path.basename(src)}（bin/devkit 无此文件，跳过）`);
+		return;
+	}
+	copyIfAbsent(src, dest, report);
 }
 
 /**
