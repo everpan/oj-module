@@ -1,4 +1,6 @@
-import type { ScopedRequestLike } from "../../../templates/web/src/_platform/__client/api";
+// ScopedRequestLike 真源在 runtime contract（生成物 __client/api.ts 也从这里 import，
+// 自身不再 re-export——旧写法 type import 自 __client 会在再生后 TS2305）。
+import type { ScopedRequestLike } from "@oj-module/runtime/contract/errors";
 
 // 集成回归：真实 httpMarketClient（统一后委托 ojm 生成 client）的委托行为。
 // 经 bindRequest 注入 mock request，验证每条 MarketClient 方法 → 正确 URL/body/query + 返回形状；
@@ -43,9 +45,8 @@ function mockRequest(responder: (c: Call) => { status?: number, data?: unknown }
 		calls.push({ method, url, opts });
 		const r = responder({ method, url, opts });
 		if (r.status && r.status >= 400) {
-			const err: { response?: { status?: number } } = new Error(`HTTP ${r.status}`);
-			err.response = { status: r.status };
-			throw err;
+			// ky 形态：HTTPError 携带 response.status（httpMarketClient.isUnconfigured 依赖它）
+			throw Object.assign(new Error(`HTTP ${r.status}`), { response: { status: r.status } });
 		}
 		return { json: () => Promise.resolve({ code: 0, data: r.data ?? null }) };
 	};
@@ -61,14 +62,12 @@ function mockRequest(responder: (c: Call) => { status?: number, data?: unknown }
 }
 
 // 让 index() 直连的 request 与生成 client 的 bindRequest 指向同一 mock，行为一致。
+// 桥接：占位方法零参签名 ↔ ScopedRequestLike 真实签名，经 any 双向打通（测试桩，无运行时差异）。
 function useMock(m: ReturnType<typeof mockRequest>) {
 	bindRequest(m.req);
-	requestImpl.get = m.req.get;
-	requestImpl.post = m.req.post;
-	requestImpl.put = m.req.put;
-	requestImpl.delete = m.req.delete;
-	requestImpl.patch = m.req.patch;
-	requestImpl.head = m.req.head;
+	const req = m.req as unknown as Record<keyof typeof requestImpl, () => never>;
+	for (const k of Object.keys(requestImpl) as Array<keyof typeof requestImpl>)
+		requestImpl[k] = req[k];
 }
 
 describe("httpMarketClient · 统一委托生成 client 集成回归", () => {
@@ -101,6 +100,10 @@ describe("httpMarketClient · 统一委托生成 client 集成回归", () => {
 		useMock(mock);
 		const r = await httpMarketClient.index();
 		expect(r).toEqual([]);
+		// 503 是配置态而非故障：silentError 抑制全局 toast + retry:0 不重试（原
+		// market-client-unconfigured 用例的断言并入此处——工厂形态退役后唯一活口）
+		expect(mock.calls).toHaveLength(1);
+		expect(mock.calls[0].opts).toMatchObject({ silentError: true, retry: 0 });
 	});
 
 	it("install(input) → POST _platform/market/install，body 含 name/version/source", async () => {

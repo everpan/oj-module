@@ -14,8 +14,11 @@ import { mergeSolutionCategories } from "#src/router/utils/merge-solution-catego
 import { resolveLoginRoute } from "#src/router/utils/resolve-login-route";
 
 interface AccessState {
-	// 路由菜单
+	// 路由菜单（主菜单区：order >= 0，升序；不含底部固定区条目）
 	wholeMenus: MenuItemType[]
+	// 底部固定区菜单（order < 0，升序）：layout-sidebar / layout-mixed-sidebar
+	// 第二列渲染为侧边栏底部 pin 区；其余菜单形态回落到列表末尾
+	bottomMenus: MenuItemType[]
 	// 有权限的 React Router 路由
 	routeList: AppRouteRecordRaw[]
 	// 扁平化后的路由，路由 id 作为索引 key
@@ -26,8 +29,21 @@ interface AccessState {
 	solutionRoutes: SolutionRouteRow[]
 }
 
+/**
+ * 切分主区/底部固定区路由（ascending 已双段排序：负 order 段整体在后）。
+ * 按首个负 order 找边界一次切分，两段各自保持升序。
+ */
+function splitMenuRoutes(routes: AppRouteRecordRaw[]) {
+	const boundary = routes.findIndex(route => (route.handle.order ?? 0) < 0);
+	if (boundary === -1)
+		return { top: routes, bottom: [] as AppRouteRecordRaw[] };
+	return { top: routes.slice(0, boundary), bottom: routes.slice(boundary) };
+}
+
+const baseMenuRoutes = splitMenuRoutes(baseRoutes);
 const initialState: AccessState = {
-	wholeMenus: generateMenuItemsFromRoutes(baseRoutes),
+	wholeMenus: generateMenuItemsFromRoutes(baseMenuRoutes.top),
+	bottomMenus: generateMenuItemsFromRoutes(baseMenuRoutes.bottom),
 	routeList: baseRoutes,
 	flatRouteList: flattenRoutes(baseRoutes),
 	isAccessChecked: false,
@@ -62,9 +78,12 @@ export const useAccessStore = create<AccessState & AccessAction>((set, get) => (
 		/* 添加新的路由到根路由 */
 		router.patchRoutes(ROOT_ROUTE_ID, routes);
 		const flatRouteList = flattenRoutes(newRoutes);
-		const wholeMenus = generateMenuItemsFromRoutes(newRoutes);
+		/* 双段序轴切分（ascending 保证负 order 段整体在后）：主区进 wholeMenus，
+		 * 底部固定区进 bottomMenus（渲染层 pin 侧边栏底部） */
+		const { top, bottom } = splitMenuRoutes(newRoutes);
 		const newState = {
-			wholeMenus,
+			wholeMenus: generateMenuItemsFromRoutes(top),
+			bottomMenus: generateMenuItemsFromRoutes(bottom),
 			routeList: newRoutes,
 			flatRouteList,
 			isAccessChecked: true,

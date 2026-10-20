@@ -1,4 +1,5 @@
 import { theme as antdTheme, Drawer } from "antd";
+import { useMemo } from "react";
 import { createUseStyles } from "react-jss";
 import { Scrollbar } from "#src/components/scrollbar";
 import { useDeviceType } from "#src/hooks/use-device-type";
@@ -28,7 +29,12 @@ export default function LayoutMobileMenu() {
 	const { token: { Menu } } = antdTheme.useToken();
 	const { sidebarCollapsed, setPreferences, isDark, sidebarTheme } = usePreferences();
 	const { isMobile } = useDeviceType();
-	const { sideNavItems, handleMenuSelect } = useMenu();
+	const { sideNavItems, bottomNavItems, handleMenuSelect } = useMenu();
+	/* 移动端无底槽：底部固定区条目回落到菜单末尾（不消失） */
+	const menuItems = useMemo(
+		() => [...sideNavItems, ...bottomNavItems],
+		[sideNavItems, bottomNavItems],
+	);
 	const isFixedDarkTheme = isDark || sidebarTheme === "dark";
 
 	return (
@@ -49,7 +55,7 @@ export default function LayoutMobileMenu() {
 					<Scrollbar>
 						<LayoutMenu
 							autoExpandCurrentMenu
-							menus={sideNavItems}
+							menus={menuItems}
 							handleMenuSelect={handleMenuSelect}
 						/>
 					</Scrollbar>

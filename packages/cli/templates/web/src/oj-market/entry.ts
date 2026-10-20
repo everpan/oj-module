@@ -1,4 +1,5 @@
-import { defineModule } from "@oj-module/runtime";
+import { defineModule, OutsidePageIcon } from "@oj-module/runtime";
+import { createElement } from "react";
 import MarketApp from "./pages/MarketApp";
 
 // 方案市场前端模块（第一方专用，R29：消费 /api/_platform/market/* 编排面，第三方方案不得仿照此调用面）。
@@ -10,7 +11,12 @@ export default defineModule({
 	routes: [
 		{
 			path: "/oj-market",
-			handle: { layout: "container", order: 200, title: "oj-market:menu.main" },
+			handle: {
+				layout: "container",
+				order: 200,
+				title: "oj-market:menu.main",
+				icon: createElement(OutsidePageIcon),
+			},
 			children: [
 				{
 					index: true,

@@ -2,12 +2,15 @@
  * 模块工程配置：共享依赖一律不进 dependencies（宿主 importmap 提供），
  * 这里只登记模块清单（entry 相对本工程根）。
  *
- * 模块顺序即导航顺序：`home` 必须第一个（shell 的 "/" 重定向到它）。
+ * 注意：这里的登记顺序只影响模块加载顺序，**不决定侧边栏导航顺序**——
+ * 菜单顺序由各模块 entry 路由的 handle.order 决定（≥0 主菜单区升序；
+ * <0 底部固定区，pin 在侧边栏底部；同 order 按根 path 字母序）。
+ * `home` 必须第一个登记（shell 的 "/" 重定向到它）。
  */
 const allModules = [
 	// /home 必须是首个模块：shell 的 "/" → VITE_BASE_HOME_PATH（=/home）重定向
 	{ name: "home", entry: "web/src/home/entry.ts" },
-	{ name: "demo", entry: "web/src/demo/entry.ts" },
+	// { name: "demo", entry: "web/src/demo/entry.ts" },
 	// /login 路由由模块提供：shell 宿主不挂 runtime 内置 baseRoutes
 	{ name: "login", entry: "web/src/login/entry.ts" },
 	// 个人中心：runtime 用户菜单固定导航 /personal-center/my-profile，缺则点击落空
@@ -25,11 +28,11 @@ const allModules = [
 	// 用于把 templates 当可运行 demo 直接跑；其文件不在 `ojm init` 的
 	// init.include.yaml 白名单里，不拷入新工程，故本区间连同这些条目会被
 	// init 一并剥离，脚手架产出的配置不会残留指向缺失文件的死条目。
-	{ name: "about", entry: "web/src/about/entry.ts" },
-	{ name: "access", entry: "web/src/access/entry.ts" },
-	{ name: "exception", entry: "web/src/exception/entry.ts" },
-	{ name: "outside", entry: "web/src/outside/entry.ts" },
-	{ name: "route-nest", entry: "web/src/route-nest/entry.ts" },
+	// { name: "about", entry: "web/src/about/entry.ts" },
+	// { name: "access", entry: "web/src/access/entry.ts" },
+	// { name: "exception", entry: "web/src/exception/entry.ts" },
+	// { name: "outside", entry: "web/src/outside/entry.ts" },
+	// { name: "route-nest", entry: "web/src/route-nest/entry.ts" },
 	// #endregion demo-only
 ];
 

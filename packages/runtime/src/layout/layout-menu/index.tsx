@@ -39,13 +39,15 @@ export default function LayoutMenu({
 	const classes = useStyles();
 	const matches = useMatches();
 	const wholeMenus = useAccessStore(state => state.wholeMenus);
+	const bottomMenus = useAccessStore(state => state.bottomMenus);
 	const { sidebarCollapsed, sidebarTheme, isDark, accordion } = usePreferences();
 	const [openKeys, setOpenKeys] = useState<string[]>([]);
 	const { isMobile } = useDeviceType();
 
 	const menuParentKeys = useMemo(() => {
-		return getParentKeys(wholeMenus);
-	}, [wholeMenus]);
+		/* 选中态父链需覆盖双段菜单：底部固定区（如 /system）页面的高亮展开也靠它 */
+		return getParentKeys([...wholeMenus, ...bottomMenus]);
+	}, [wholeMenus, bottomMenus]);
 
 	const getSelectedKeys = useMemo(
 		() => {

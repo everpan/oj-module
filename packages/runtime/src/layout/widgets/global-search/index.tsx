@@ -40,6 +40,7 @@ const searchHistoryLocalStorageKey = `__search-history-${location.hostname}__`;
 
 export function GlobalSearch() {
 	const wholeMenus = useAccessStore(state => state.wholeMenus);
+	const bottomMenus = useAccessStore(state => state.bottomMenus);
 	const { isMobile } = useDeviceType();
 	const [open, setOpen] = useState(false);
 	const navigate = useNavigate();
@@ -53,7 +54,11 @@ export function GlobalSearch() {
 		defaultValue: [],
 	});
 
-	const searchMenuList = useMemo(() => transformMenuToFlatMenu(wholeMenus), [wholeMenus]);
+	/* 底部固定区条目（order < 0）同样可被搜索（2026-10-20） */
+	const searchMenuList = useMemo(
+		() => transformMenuToFlatMenu([...wholeMenus, ...bottomMenus]),
+		[wholeMenus, bottomMenus],
+	);
 
 	function onClose() {
 		setOpen(false);

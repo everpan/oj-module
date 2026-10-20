@@ -3,7 +3,8 @@ import { Scrollbar } from "#src/components/scrollbar";
 
 import { usePreferences } from "#src/hooks/use-preferences";
 
-import { headerHeight, siderTriggerHeight } from "../constants";
+import LayoutMenu from "../layout-menu";
+import { useMenu } from "../layout-menu/use-menu";
 import { Logo } from "../widgets/logo";
 import { SiderTrigger } from "../widgets/sider-trigger";
 
@@ -14,6 +15,7 @@ export interface LayoutSidebarProps {
 
 export default function LayoutSidebar({ children, computedSidebarWidth }: LayoutSidebarProps) {
 	const { sidebarCollapsed, sidebarTheme, isDark } = usePreferences();
+	const { bottomNavItems, handleMenuSelect } = useMenu();
 	const {
 		token: { Menu },
 	} = antdTheme.useToken();
@@ -37,14 +39,29 @@ export default function LayoutSidebar({ children, computedSidebarWidth }: Layout
 						boxShadow: "3px 0 5px 0 rgb(29, 35, 41, 0.05)",
 					}
 				}
-				className="fixed top-0 bottom-0 left-0 overflow-x-hidden overflow-y-auto transition-all border-r border-r-colorBorderSecondary"
+				className="fixed top-0 bottom-0 left-0 flex flex-col overflow-x-hidden overflow-y-auto transition-all border-r border-r-colorBorderSecondary"
 			>
 				<Logo sidebarCollapsed={sidebarCollapsed} />
-				<div className="overflow-hidden" style={{ height: `calc(100% - ${headerHeight}px - ${siderTriggerHeight}px)` }}>
+				<div className="flex-1 min-h-0 overflow-hidden">
 					<Scrollbar>
 						{children}
 					</Scrollbar>
 				</div>
+				{
+					/* 底部固定区菜单（order < 0，2026-10-20）：pin 在主菜单之后、
+					 * SiderTrigger 之上；空表不渲染占位 */
+					bottomNavItems.length > 0
+						? (
+							<div className="shrink-0">
+								<LayoutMenu
+									autoExpandCurrentMenu
+									menus={bottomNavItems}
+									handleMenuSelect={handleMenuSelect}
+								/>
+							</div>
+						)
+						: null
+				}
 				<SiderTrigger />
 			</aside>
 		</ConfigProvider>

@@ -216,7 +216,7 @@ export default defineModule({
 			path: "/books",
 			handle: {
 				layout: "container",       // ⚠️ 布局级路由必填（见 §5.1）
-				order: 5,                  // 菜单排序
+				order: 5,                  // 菜单排序（≥0 主区升序；<0 入侧边栏底部固定区）
 				title: "books:menu.books", // 命名空间语法 "<模块名>:<key>"
 				icon: createElement(BookOutlined),
 			},
@@ -253,7 +253,7 @@ export default defineModule({
 | 字段 | 说明 |
 |---|---|
 | `layout` | `"container"`（完整壳）\| `"parent"`（嵌套父级）\| `"fullscreen"`（全屏）\| `"none"`（默认，裸渲染）\| 自定义名（§5） |
-| `order` | 菜单排序值 |
+| `order` | 菜单排序值（双段序轴）：`≥0` 主菜单区升序；`<0` 底部固定区（pin 在侧边栏底部，区内仍按 order 升序）；未声明按登记下标兜底；同 order 按根 path 字母序 |
 | `title` | 菜单标题，用 `"<模块名>:menu.<key>"` |
 | `icon` | `createElement(XxxOutlined)` |
 | `keepAlive` | 页面缓存（**必须挂在 `layout: "container"` 下才生效**） |

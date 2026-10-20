@@ -13,7 +13,9 @@ export type AnnotatedRoute = AppRouteRecordRaw;
  * - 三值 category 原样落 handle.category（main=常规组、admin=管理组、hidden=不进菜单）；
  * - hidden 与 enabled=0（禁用）复用既有 hideInMenu 通路——只过滤菜单层，路由仍可达
  *   （禁用的路由摘除归装载层三处同写，D12）；
- * - order 覆写为声明序：框架项保留 100 间隔带、方案项从 200 起编，共用一条序轴；
+ * - order 覆写为声明序（2026-10-20 双段序轴）：框架常规项 ≥0 升序、管理面负数入
+ *   底部固定区（pin 侧边栏底部，ascending 双段排序）、方案项从 200 起编，共用一条序轴；
+ *   同 order 按根 path 字母序；
  * - 未匹配路由（框架/后端）原样保留（同一对象引用），入参不突变；
  * - solRoutes 为空（端点失败/未登录降级空表）时原样返回——降级不阻断，路由照常。
  *

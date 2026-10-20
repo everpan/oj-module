@@ -11,14 +11,16 @@ test.describe("sidebar", () => {
 		await expect(page.locator("header")).toBeVisible();
 		await expect(page.locator("aside")).toBeVisible();
 		await expect(page.locator("main")).toBeVisible();
-		await expect(page.locator(".ant-menu-root")).toBeVisible();
+		// 2026-10-20 起侧边栏可有底部固定区（第二个 .ant-menu-root）：锚定主菜单
+		await expect(page.locator(".ant-menu-root").first()).toBeVisible();
 		await expect(page.locator(".ant-menu-root .ant-menu-item")).not.toHaveCount(0);
 	});
 
 	// S2/S3：折叠触发器收起再展开（aside 无 collapsed 类，折叠态体现在宽度与菜单 inline-collapsed）
 	test("S2-S3: 侧栏折叠与恢复", async ({ page }) => {
 		const sider = page.locator("aside");
-		const menu = page.locator(".ant-menu-root");
+		// 2026-10-20 起可能存在底部固定区菜单（第二个 .ant-menu-root）：折叠断言锚定主菜单
+		const menu = page.locator(".ant-menu-root").first();
 		const widthBefore = await sider.evaluate(el => el.getBoundingClientRect().width);
 		// PC 端折叠触发器在侧栏底部 SiderTrigger（header 内的折叠按钮仅移动端渲染）
 		const trigger = page.locator("aside button:has(.anticon-menu-fold), aside button:has(.anticon-menu-unfold)");
@@ -44,5 +46,34 @@ test.describe("sidebar", () => {
 		await submenuTitle.click();
 		await page.waitForTimeout(500); // 展开动画
 		expect(page.url()).toBe(urlBefore);
+	});
+
+	// S6：底部固定区（order < 0，2026-10-20）。system 模块 order=-100，
+	// DOM 上出现第二个 .ant-menu-root（底槽，空表不渲染）：/system 组只出现在
+	// 底槽，且底槽 pin 在主菜单之后、SiderTrigger 之上。
+	test("S6: 底部固定区菜单 pin 在侧栏底部", async ({ page }) => {
+		const sider = page.locator("aside");
+		const roots = page.locator("aside .ant-menu-root");
+		await expect(roots).toHaveCount(2);
+		const mainMenu = roots.nth(0);
+		const bottomMenu = roots.nth(1);
+
+		// /system 组只出现在底部区（antd 6：submenu 的 data-menu-id 在标题 div 上）
+		await expect(bottomMenu.locator("[data-menu-id$=\"/system\"]")).toBeVisible();
+		expect(await mainMenu.locator("[data-menu-id$=\"/system\"]").count()).toBe(0);
+
+		// 几何断言：底槽在主菜单之下，且底边紧靠侧栏底部（只隔 SiderTrigger）
+		const asideBox = await sider.boundingBox();
+		const mainBox = await mainMenu.boundingBox();
+		const bottomBox = await bottomMenu.boundingBox();
+		expect(bottomBox!.y).toBeGreaterThan(mainBox!.y);
+		const gapToAsideBottom = asideBox!.y + asideBox!.height - (bottomBox!.y + bottomBox!.height);
+		expect(gapToAsideBottom).toBeLessThanOrEqual(60);
+
+		// 底部区条目走完整数据链路：展开组 → 点子项跳转（submenu 标题只展开不导航）
+		await bottomMenu.locator(".ant-menu-submenu-title[data-menu-id$=\"/system\"]").click();
+		await page.waitForTimeout(300); // 展开动画
+		await bottomMenu.locator("li[data-menu-id$=\"/system/user\"]").click();
+		await expect.poll(() => new URL(page.url()).pathname, { timeout: 5000 }).toBe("/system/user");
 	});
 });

@@ -20,7 +20,8 @@ const routes: AppRouteRecordRaw[] = [
 		handle: {
 			icon: createElement(SettingOutlined),
 			title: "system:menu.system",
-			order: 100,
+			// 负 order = 底部固定区：系统管理 pin 在侧边栏底部（2026-10-20 序轴约定）
+			order: -100,
 			layout: "container",
 		},
 		children: [

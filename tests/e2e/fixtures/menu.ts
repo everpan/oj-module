@@ -50,13 +50,21 @@ async function visitUlChildren(
 	}
 }
 
-/** 深度优先访问菜单树上的每个叶子项（两环境通用，M1/M2 用） */
+/**
+ * 深度优先访问菜单树上每个根菜单的叶子项（M1/M2/M3 用）。
+ * 2026-10-20 起侧边栏有底部固定区（order<0）——DOM 上出现第二个 .ant-menu-root
+ * （空表不渲染），逐根遍历而非单根假设。
+ */
 export async function visitEveryMenuItem(
 	page: Page,
 	visit: (item: Locator) => Promise<void>,
 	shouldVisit: (item: Locator) => Promise<boolean> = async () => true,
 ): Promise<void> {
-	await visitUlChildren(page, page.locator(".ant-menu-root"), visit, shouldVisit);
+	const roots = page.locator(".ant-menu-root");
+	const rootCount = await roots.count();
+	for (let i = 0; i < rootCount; i++) {
+		await visitUlChildren(page, roots.nth(i), visit, shouldVisit);
+	}
 }
 
 /**
