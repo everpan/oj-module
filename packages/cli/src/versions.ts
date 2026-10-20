@@ -100,9 +100,37 @@ export function validateSharedVersions(
 	return errors;
 }
 
+/**
+ * 源码形态守卫（R5 prepack 断言的本地版）：cli 源码树内 shell-dist 与
+ * packages/runtime 同源于一次宿主构建，升 runtime 后忘跑 build:shell 会让
+ * versions.json 停在旧版本，门禁误报「请对齐版本后重新安装」。此处先对比
+ * 两者版本，过期直接报真因。发布形态（pack 后）无同级 runtime 目录，跳过。
+ */
+export function hostArtifactFreshnessError(
+	hostRuntime: string | undefined,
+	workspaceRuntime: string | undefined,
+): string | undefined {
+	if (!hostRuntime || !workspaceRuntime || hostRuntime === workspaceRuntime)
+		return undefined;
+	return `内置宿主产物（shell-dist/versions.json）过期：其中 runtime 版本（${hostRuntime}）≠ 本仓 packages/runtime 版本（${workspaceRuntime}）。
+这是升 runtime 后未重建宿主导致的漂移，请执行：pnpm --filter @oj-module/cli build:shell`;
+}
+
 /** 校验模块工程的共享依赖版本矩阵，违规直接抛错并打印期望值 */
 export function checkSharedVersions(projectRoot: string, shellDist: string): void {
 	const versions = readHostVersions(shellDist);
+
+	let workspaceRuntime: string | undefined;
+	try {
+		workspaceRuntime = JSON.parse(fs.readFileSync(path.join(CLI_ROOT, "..", "runtime", "package.json"), "utf-8")).version;
+	}
+	catch {
+		/* 发布形态：cli 包旁无 runtime 源码目录，跳过守卫 */
+	}
+	const stale = hostArtifactFreshnessError(versions["@oj-module/runtime"], workspaceRuntime);
+	if (stale)
+		throw new Error(stale);
+
 	const pkg = JSON.parse(fs.readFileSync(path.join(projectRoot, "package.json"), "utf-8"));
 	const errors = validateSharedVersions(pkg, versions, spec => readInstalledVersion(projectRoot, spec));
 
