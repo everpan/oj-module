@@ -458,6 +458,28 @@ node "$CLI_PKG/bin/ojm.mjs" market trial --fixture <name>@<version>
 - [ ] 安装锁 `api/dist/manifests.yaml` 出现 `<name>: <version>`；`api/dist/<name>-<version>/` 存在
 - [ ] 再装同版本 → 走重装路径而非「方案名已被占用」；`market verify --rebuild-index` 无漂移
 
+## 7.4 全套操作自检（`ojm market walkthrough`）
+
+装一次只证明「能装」；要证明「装了以后每个操作都对」，跑 walkthrough——它在隔离站点上按固定形状
+（setup → act → assert → cleanup）逐项验证，输出 AC 表。
+
+```bash
+node "$CLI_PKG/bin/ojm.mjs" market walkthrough --fixture <name>@<version>
+# ✓ index / ✓ install / ✓ reinstall / ✓ enable / ✓ verify / ✓ history / ✓ uninstall
+# 全部通过（7 项）：7 PASS / 0 FAIL
+
+node "$CLI_PKG/bin/ojm.mjs" market walkthrough --only enable    # 单跑某项（setup 自建前置态）
+```
+
+**检查点**
+
+- [ ] AC 表全 PASS（退出码 0）；任一 FAIL 退出码 1，`--strict` 首败即停
+- [ ] `--only <op>` 单跑同样 PASS（原子性：不依赖前序 op 的残留）
+- [ ] `enable` 项验证 disable → enable 双向（含路由/锁/modules.json 三面同写）
+- [ ] `uninstall` 项验证装后清场（目录不存在 + 锁摘除）
+- [ ] `verify` 项断言的是**报告结构完整**（checks 齐全），不是它的裁决——报告里的 `ledger.stale`
+      是已知误报（见 §9 对应行），不应据此判 walkthrough 失败
+
 ## 8. 一次通过判据（汇总清单）
 
 - [ ] `ojm init` 成功：devDeps 含 `@oj-module/{cli,runtime}`（非 `*`）、根级 `openapi.json` + `__client` 预生成、handler 为新约定（`.schema` 入参 + 平级 `.response`，无 `contract.ts`/`routes.json`/`openapi.yaml`）、`env.d.ts` 在 include
@@ -505,6 +527,7 @@ node "$CLI_PKG/bin/ojm.mjs" market trial --fixture <name>@<version>
 | 安装卡在 `reloading`：`reloadConfig 返回 unchanged` | 用 `ojm preview` 起站——它服务派生 config（`.ojm-preview.yaml`），而安装器热更改的是 `api/config.yaml`，被监视文件没变 | 安装验证必须对**真实 config** 起站：`(cd api && ../bin/oj serve -c config.yaml -b /api --api-path dist)`，并把 `platform.root` 改成 `dist` |
 | 安装卡在 `smoke`：探活 404 | dev 形态（`--api-path src`）起站，装好的模块落在 `api/dist`，不被发现 | 安装目标恒为 release 部署；先 `ojm build`，再以 `--api-path dist` 起站 |
 | 安装卡在 `smoke`：探活 401（方案声明了 `api.anonymous`） | auth 守卫在**装配期**读 `anonymous_paths`，安装器刚注册进去的匿名路径要重启才生效 | 重启站点后重试安装即可（装成的模块与锁都在，重试走重装路径）；或安装前把该路径预置进 `config.anonymous_paths`。`ojm market trial` 已在隔离站点预置（验机制而非重启时序） |
+| 深检报 `ledger` / `ledger.stale`，但 `_oj_migrations` 里明明有该模块的行 | `journalHeadOf` 走 `db.table("_oj_migrations")`，而该表未在模块 `schema.yaml` 声明 → 查询被元数据校验拒 → 返回 null → 判定为「落后」 | 已知误报（存量缺口，与安装无关）：深检的其余项（routes / rbac / settings / web integrity）照常可信；不要在 walkthrough 里把它当失败判据 |
 | 想确认「这个包到底能不能装」又不想碰自己的工程 | 手工起站试装要清场、还会污染信任库 | `ojm market trial --fixture <name>@<version>`：一次性隔离站点（随机端口 / 一次性 DB/密钥/凭据/信任库/CDN）跑完整安装，跑完即毁；`--keep` 保留现场。实测 11 段全 ok 约 12s |
 | `oj serve` 报 `platform.root (...) must be mounted as an api mount` | release（`--api-path dist`）下 `platform.root` 仍指 `src`，与生效的模块根不一致 | 把 `platform.root` 改成 `dist`（`ojm preview` 派生 config 时会自动改写） |
 | `ojm init`/`ojm vendor` 报「上游 @oj-bin/oj 的 latest 是 vX，低于 ojm 要求的最低版本 v0.1.73」 | npm 通道发布滞后于 `MIN_OJ_VERSION` 门禁（门禁钉最新发布版，ojm 不做兼容分支） | 本机已装 ≥ 门禁的 oj 时：把 `bin/{oj,devkit/,plugins/,.oj-version}` 预置进工程再跑 init（bin/oj 存在即跳过 vendor）；否则等上游发布或降级 cli |

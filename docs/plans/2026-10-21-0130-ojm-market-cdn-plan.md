@@ -213,7 +213,9 @@ node node_modules/vitest/vitest.mjs run tests/cli/release-manifest.test.ts      
 | T7 | market verify 离线验包 | ✅ 完成 | market/verify.ts：四类校验分列（完整性 / 包级签 / 索引签 / manifest 结构）+ --rebuild-index 漂移检出；结论恒带边界声明；已接入 ojm market verify 与 usage |
 | T8 | market/bootstrap.ts 隔离站点库 | ✅ 完成 | `market/bootstrap.ts`：空闲端口 / 一次性 DB / 内存发布方密钥（seed 派生，不落 PEM）/ 种子凭据 / 隔离信任库 / 隔离 CDN；`SIGINT/SIGTERM` 防孤儿；cleanup 幂等；11 条隔离断言 |
 | T9 | market trial 隔离试装 | ✅ 完成 | `market/trial.ts` + `ojm market trial`：隔离站点内 setup（首登改密）→ 安装 → needs_trust 自动确认 → 重试 → 11 段全 ok，跑完即毁；实测 12s |
-| T10-T12 | phase2 全套模拟 | 未开始 | |
+| T10 | walkthrough 骨架 | ✅ 完成 | `market/walkthrough.ts`：op 注册表 + `setup→act→assert→cleanup` + AC 表 + 汇总行 + `--only/--strict/--keep` |
+| T11 | 主链路 op | ✅ 完成 | index / install / reinstall / enable / disable / verify / history / uninstall（8 项，实测 7 PASS + enable 含双向） |
+| T12 | neg-* 与升级回滚 | 未完成 | neg-tamper/nosig/badindex/stranger、upgrade/rollback 未实现（phase2 余量） |
 
 ## 8. 阶段小结
 
@@ -242,6 +244,25 @@ node node_modules/vitest/vitest.mjs run tests/cli/release-manifest.test.ts      
 | cli 单元测试 | 289 passed / 1 skipped（phase0 271 → +18） |
 | 真链路 | `market trial` 实测：preflight→…→audit 11 段全 `ok`，`--keep` 现场保留与销毁清单正确 |
 | typecheck / eslint | 净 |
+
+### phase2（T10–T11）部分完成 —— 2026-10-21 08:20
+
+**交付**：`ojm market walkthrough` —— 隔离站点上跑主链路 8 项操作（index / install / reinstall /
+enable / disable / verify / history / uninstall），出 AC 表；`--only` 单跑、`--strict` 首败即停。
+
+**实测**：`全部通过（7 项）：7 PASS / 0 FAIL`；`--only enable` 单跑亦 PASS（原子性成立）。
+
+**过程发现**
+
+1. 深检会**逐条探活前端路由**：隔离站点最初没有 web 挂载，`/demo-solution` 类路径 404 → 被判定
+   anomaly。给隔离站点加一个最小 SPA 壳（一个 index.html + `spa: true`）后归零。
+2. 深检的 `ledger.stale` 是**存量误报**：`journalHeadOf` 走 `db.table("_oj_migrations")`，该表未在
+   模块 `schema.yaml` 声明 → 元数据校验拒 → null → 判「落后」。已在 playbook §9 记账，walkthrough
+   的 verify 项因此断言「报告结构完整」而非裁决。
+3. `POST market/install` 返回 `{task_id}`（非 `{id}`）——trial/walkthrough 均按真实响应取值。
+
+**未完成（明确余量）**：T12 的 neg-*（tamper / nosig / badindex / stranger）与 upgrade / rollback。
+骨架已就位（op 注册表 + 逐 op 前置换装），补 op 即用。
 
 
 ### phase0（T1–T6）已完成 —— 2026-10-21 03:15

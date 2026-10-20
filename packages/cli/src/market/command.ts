@@ -12,6 +12,7 @@ import { publishPackage } from "./publish";
 import { setupMarketUrl } from "./setup";
 import { trialCommand } from "./trial";
 import { verifyMarket } from "./verify";
+import { walkthroughCommand } from "./walkthrough";
 
 interface Flags {
 	id?: string
@@ -96,6 +97,10 @@ export async function marketCommand(sub: string, argv: string[]): Promise<void> 
 			await trialCommand(argv);
 			return;
 		}
+		case "walkthrough": {
+			await walkthroughCommand(argv);
+			return;
+		}
 		case "build-index": {
 			await buildIndex({ id: flags.id, key: flags.key, check: flags.check });
 			return;
@@ -118,6 +123,7 @@ export function marketUsage(): string {
 		"ojm market build-index           [--id <key>] [--check]                        扫描 cdn/ 重建索引",
 		"ojm market verify [--file <tgz>] [--rebuild-index]                             离线验包（不起站点、不装）",
 		"ojm market trial [--fixture <name>@<version>] [--keep]                          隔离站点试装（跑完即毁）",
+		"ojm market walkthrough [--only <op>] [--strict] [--keep]                        隔离站点跑全套市场操作并出 AC 表",
 	].join("\n");
 }
 
