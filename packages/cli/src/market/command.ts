@@ -10,6 +10,7 @@ import process from "node:process";
 import { buildIndex } from "./build-index";
 import { publishPackage } from "./publish";
 import { setupMarketUrl } from "./setup";
+import { verifyMarket } from "./verify";
 
 interface Flags {
 	id?: string
@@ -77,6 +78,19 @@ export async function marketCommand(sub: string, argv: string[]): Promise<void> 
 				await buildIndex({ id: flags.id, key: flags.key, check: flags.check });
 			return;
 		}
+		case "verify": {
+			const result = verifyMarket({ file: flags.fixture === undefined ? undefined : flags.fixture, rebuildCheck: flags.rebuildIndex });
+			for (const check of result.checks)
+				console.log(`${check.ok ? "✓" : "✗"} ${check.item}：${check.detail}`);
+			if (result.drift !== undefined && result.drift.length > 0) {
+				for (const line of result.drift)
+					console.log(`✗ 索引漂移：${line}`);
+			}
+			console.log(result.conclusion);
+			if (!result.passed)
+				process.exitCode = 1;
+			return;
+		}
 		case "build-index": {
 			await buildIndex({ id: flags.id, key: flags.key, check: flags.check });
 			return;
@@ -97,6 +111,7 @@ export function marketUsage(): string {
 		"ojm market setup   [--url <站点地址>] [--user <u> --pass <p>] [--new-pass <p>]   把市场地址指向本地 cdn/",
 		"ojm market publish [--fixture <name>@<version>] [--real <方案工程>] [--id <key>] [--rebuild-index]",
 		"ojm market build-index           [--id <key>] [--check]                        扫描 cdn/ 重建索引",
+		"ojm market verify [--file <tgz>] [--rebuild-index]                             离线验包（不起站点、不装）",
 	].join("\n");
 }
 

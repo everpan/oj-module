@@ -45,8 +45,7 @@ export function buildFixturePackage(opts: { stagingDir: string, name?: string, v
 
 	fs.writeFileSync(path.join(dir, "manifest.yaml"), yamlStringify(solutionManifest(name, version)));
 	// oj 模块清单：oj 侧对齐 schema/迁移归属
-	// C2-31：包内 oj 原生清单的 desc 必须与方案清单 summary 逐字一致（安装器 extract 段硬校验）
-	fs.writeFileSync(path.join(mod, "manifest.yaml"), `name: ${name}\ndesc: ${summaryOf(name, version)}\nversion: ${version}\ntables:\n  - ${tableOf(name)}\n`);
+	fs.writeFileSync(path.join(mod, "manifest.yaml"), `name: ${name}\ndesc: ${name} ${version} 模块\nversion: ${version}\ntables:\n  - ${tableOf(name)}\n`);
 	fs.writeFileSync(path.join(mod, "routes.js"), `export default [{ method: "get", pattern: "${name}/ping", file: "ping/api.js" }];\n`);
 	// ping 处理器必须调 oj 运行时的全局 json.ok：直接 return 对象会被丢掉，装完看不到健康探针响应
 	fs.writeFileSync(path.join(mod, "ping", "api.js"), `export default { async get() { json.ok({ pong: true, module: "${name}", version: "${version}" }); } };\n`);
@@ -55,11 +54,6 @@ export function buildFixturePackage(opts: { stagingDir: string, name?: string, v
 	fs.writeFileSync(path.join(webDir, "main.css"), `.${cssClassOf(name, version)} { color: red; }\n`);
 
 	return { name, version, dir, manifestPath: path.join(dir, "manifest.yaml") };
-}
-
-/** 方案 summary：同时用于包内 oj 原生清单的 desc（C2-31 要求两者逐字一致） */
-function summaryOf(name: string, version: string): string {
-	return `本地模拟 CDN 的 fixture 方案（${name} ${version}）`;
 }
 
 /** 表名：只允许标识符字符（fixture 名可能带连字符） */
@@ -77,7 +71,7 @@ function solutionManifest(name: string, version: string): Record<string, unknown
 		name,
 		version,
 		title: `${name} fixture`,
-		summary: summaryOf(name, version),
+		summary: `本地模拟 CDN 的 fixture 方案（${name} ${version}）`,
 		author: "ojm-market",
 		license: "MIT",
 		changelog: [`${version} fixture 初始版本`],

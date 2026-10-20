@@ -33,7 +33,7 @@ afterEach(() => {
 
 /** 预置「已构建」产物：oj build（api/dist/<name>-<version>/）与站点构建（web/dist/modules/） */
 function makePrebuiltArtifacts(): void {
-	// oj build 产物（模块级 manifest 仅 oj 原生七键；name/version/desc 与 bundle 级逐一相等，C2-31）
+	// oj build 产物（模块级 manifest 仅 oj 原生七键；name/version 与 bundle 级逐一相等，C2-31）
 	const apiDist = join(project, "api/dist/demo-solution-0.1.0");
 	mkdirSync(join(apiDist, "ping"), { recursive: true });
 	mkdirSync(join(apiDist, "migrations"), { recursive: true });
@@ -101,9 +101,9 @@ describe("buildBundle · 校验先于打包（fail-fast）", () => {
 		await expect(pack()).rejects.toThrow(/manifest\.yaml/);
 	});
 
-	it("c2-31 分层核对：模块级 desc ≠ bundle summary → 拒绝", async () => {
+	it("c2-31 分层核对：模块级 desc ≠ bundle summary → 放行（等值要求已移除）", async () => {
 		writeFileSync(join(project, "api/dist/demo-solution-0.1.0/manifest.yaml"), "name: demo-solution\ndesc: 不一致描述\nversion: 0.1.0\n");
-		await expect(pack()).rejects.toThrow(/C2-31/);
+		await expect(pack()).resolves.toMatchObject({ name: "demo-solution" });
 	});
 
 	it("c2-31 分层核对：api/dist 缺 <name>-<version>/ → 可读报错指明期望产物路径", async () => {

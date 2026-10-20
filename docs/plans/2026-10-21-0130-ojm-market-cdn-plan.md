@@ -262,10 +262,24 @@ node node_modules/vitest/vitest.mjs run tests/cli/release-manifest.test.ts      
 CDN 目录里摆着 `<tgz>.sig` 侧车**不够**，索引不带过去就是 `sig_missing` 硬 fail-closed。
 → `build-index` 必须把侧车读进索引（本期已修，T6 实测前撞过一次）。
 
-### 9.3 反直觉：`api/<mod>/manifest.yaml` 的 desc 必须等于方案 summary（C2-31）
+### 9.3 曾反直觉、现已移除：desc 必须等于 summary（C2-31 等值校验）
 
-包内 oj 原生清单的 `desc` 若与方案清单 `summary` 不一致，安装器在 `extracting` 段直接拒装。
-fiction fixture 最初两边各写各的，T6 实测撞到；已改为同一个函数产出，并加用例钉住。
+**原状**：包内 `api/<mod>/manifest.yaml` 的 `desc` 若与方案清单 `summary` 一字之差，
+安装器 `extracting` 段直接拒装（双端：`templates/.../steps/extract.ts` 与 `cli/src/bundle.ts`）。
+fixture 最初两边各写各的，T6 实测撞到过一次。
+
+**处置（2026-10-21，用户拍板「去掉此规则」）**：等值校验**两端一并移除**。
+理由：那是「构建期映射」的产物被当成了安装期契约，而 desc 只是模块描述文本、不是安全边界，
+保留它意味着 fixture 与手写包只要描述差一个字就整包装不上——校验成本远高于它拦下的风险。
+保留的两项：`summary` 必填（C2-04）、`desc` 必填非空（oj 启动装配面）。
+
+**同步改动**：extract.ts 纯函数 + 接线注释、bundle.ts 分层核对、`steps-fs.spec.ts` 两条断言改为放行、
+`bundle.test.ts` 一条改为放行、`market/verify.ts` 该项改为「desc 非空」、fixture 不再绑定两者。
+
+**回归口径**：`packages/cli/templates/api` 的整套 spec 在本机跑不起来
+（大量 `db.table is not a function`——缺 oj 运行期全局桩，与本次改动无关）。
+故只跑了直接相关的 `tests/lifecycle/steps-fs.spec.ts`：43 passed。
+**完整回归须在能起 oj 运行期桩的环境里补跑。**
 
 ### 9.4 oj 挂载目录缺失 = 启动 fail-fast，且相对路径按 cwd 解析
 

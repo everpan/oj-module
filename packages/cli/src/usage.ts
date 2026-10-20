@@ -76,6 +76,11 @@ export function usageText(): string {
   ojm market build-index [--id <key>] [--key <pem>] [--check]
         扫描 cdn/*.tgz、提取包内 manifest，全量重建 bundles.yaml + manifests.yaml 并签名。
         结果只取决于目录内容：连续执行字节一致。
+  ojm market verify [--file <tgz>] [--rebuild-index]
+        离线验包（不起站点、不装、不要凭据）：sha256 完整性 / 包级 Ed25519 验签 /
+        索引验签 / manifest 结构（含 C2-31 desc===summary、各版本 0001 迁移一致）分列输出。
+        --rebuild-index 额外比对「扫描重建的索引」与盘上索引，检出落了包却没重建的漂移。
+        注意：结论恒带边界声明——校验通过只说明来源与完整性，不构成内容安全性背书。
   ojm test|exec|openapi|migrate|schema [args...]
         透传给 oj 同名子命令（自动补 -c <project>/api/config.yaml；其余参数原样转发）
         例：ojm test --anonymous / ojm migrate --db report / ojm openapi --check

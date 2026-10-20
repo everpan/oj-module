@@ -10,7 +10,6 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { verifyCanonical } from "../../lifecycle/sign";
-import { buildFixturePackage } from "../fixture";
 import { publishPackage } from "../publish";
 
 const MOUNTS = "  - prefix: /api\n    api: src\n  - prefix: /cdn\n    web: ../cdn\n";
@@ -69,20 +68,6 @@ describe("given cdn/ 为空 When 发布 fixture", () => {
 
 		const pemInCdn = readdirSync(join(root, "cdn")).filter(f => f.endsWith(".pem"));
 		expect(pemInCdn).toEqual([]);
-	});
-});
-
-describe("given 合成 fixture 包 When 检查包内原生清单", () => {
-	it("then 其 desc 与方案 summary 逐字一致（C2-31：不一致安装器 extract 段拒装）", () => {
-		const staging = mkdtempSync(join(tmpdir(), "ojm-fixture-"));
-		const pkg = buildFixturePackage({ stagingDir: staging, name: "demo-solution", version: "0.1.0" });
-		const rootManifest = readFileSync(pkg.manifestPath, "utf-8");
-		const summary = /summary:\s*(.+)/.exec(rootManifest)?.[1]?.trim() ?? "";
-		const modManifest = readFileSync(join(pkg.dir, "api", "demo-solution-0.1.0", "manifest.yaml"), "utf-8");
-		const desc = /desc:\s*(.+)/.exec(modManifest)?.[1]?.trim() ?? "";
-
-		expect(summary).not.toBe("");
-		expect(desc).toBe(summary);
 	});
 });
 
