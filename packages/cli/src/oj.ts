@@ -113,7 +113,9 @@ export function startOj(
 		});
 		// spawn 本身失败（如 ENOENT）只发 error 不发 exit，必须单独兜住
 		child.once("error", (err) => {
-			finish(new Error(`[ojm] 无法启动 oj（${binPath}）：${err.message}`));
+			const enoent = (err as NodeJS.ErrnoException).code === "ENOENT";
+			const hint = enoent ? "\n下一步：oj 二进制尚未安装（它在 .gitignore 里，不随仓库分发）。\n在本工程目录跑一次 `ojm vendor`（经 npm 包 @oj-bin/oj 下载），再重试本命令。" : "";
+			finish(new Error(`[ojm] 无法启动 oj（${binPath}）：${err.message}${hint}`));
 		});
 		const timeout = setTimeout(() => {
 			finish(new Error(
