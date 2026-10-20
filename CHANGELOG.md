@@ -5,6 +5,37 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 设计依据、迁移记录与陷阱清单见 [`docs/prd/202609110947-oj-module-two-package-consolidation-design.md`](docs/prd/202609110947-oj-module-two-package-consolidation-design.md)。
 
+## [0.2.13] - 2026-10-21
+
+双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步升 **0.2.13**。
+
+### Fixed
+
+- **`ojm build` 补写 `api/dist/versions.json`**：方案安装器按 B-11 布局读该文件做 `peerRuntime` 强制比对，此前只有 `web/dist/versions.json` → 新工程构建完装任何方案都在 preflight 报「无法读取宿主 runtime 版本」。两处同源（`shell-dist`），新增 spec `src/__tests__/build-backend.test.ts`。
+- **模板补 `platform.modules` / `platform.root`**：缺名单时安装最后一步 `reloading` 报 `NotCapable: module '_platform' is not platform-privileged`。`ojm preview` 派生 config 时把 `platform.root` 一并改写为 `api/dist`（与 `--api-path` 同源）。
+- **模板补 `fs:` 段**：安装器落盘面（staging / dist/modules / db 备份）缺 jail 授权时，失败发生在任务文件写入之前——表现为「POST 安装 200、task 查询恒 404」。
+- **`market/bootstrap` 幂等补 `fs:`**：模板已自带该段时不再重复追加（否则派生 config 出现重复键）。
+
+### Added
+
+- **手册新增「方案模块」三段**：`docs/prd/framework-verification-playbook.md` §7.1 开发方案模块 / §7.2 发布到 CDN / §7.3 市场链路验证（含 TOFU 与 11 段检查点），并新增 6 条已知坑。
+- **教学文档新增「实战 + 七个坑」**：`docs/devkit/module-dev-and-cdn-playground.md` §6（handler 必须 `.ts`、`schema.yaml` 对齐、locales 必须嵌套、安装必须 release 形态等）。
+
+## [0.2.12] - 2026-10-21
+
+双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步升 **0.2.12**。
+
+### Added
+
+- **`ojm market` 本地模拟 CDN 命令面**：模板自带工程根 `cdn/` 与 `/cdn` 挂载（目录缺失会让 `oj serve` 启动 fail-fast，故随模板发布）；`ojm market setup`（must_change 改密闭环 + 写入绝对市场地址）、`ojm market publish`（fixture 合成 / `--real` 真构建 → 确定性 tgz → 包级 detached 签名，不碰索引）、`ojm market build-index`（扫描 `cdn/*.tgz` 提取内嵌 manifest 全量重建两份索引并签名）、`ojm market verify`（离线四类校验 + 索引漂移检出，结论恒带「不构成内容安全性背书」边界声明）。
+- **`ojm sign` 内存私钥通道**（`privateKeyPem`）：隔离/一次性场景私钥不落盘；`--key` 语义零变更（给 `--key` 仍须带 `--id`）。
+- **devkit 教学文档** `module-dev-and-cdn-playground.md`：开发态 ≠ 分发态、「怎么安装自己的模块 / 会不会重复」（注册面全 upsert + 同名唯一前置校验 + 遮蔽风险）、本地 CDN 市场链路五步跑通。
+
+### Changed
+
+- **移除 desc===summary 等值校验**（安装侧 `extract.ts` 与构建侧 `bundle.ts` 同步）：构建期映射不再被当成安装期契约，保留 `summary` 必填与 `desc` 非空两项。
+- **oj 二进制缺失时报错带出路**：spawn ENOENT 时提示「`oj` 二进制尚未安装（在 .gitignore 里，不随仓库分发）→ 本工程目录跑一次 `ojm vendor`」。
+
 ## [0.2.11] - 2026-10-20
 
 双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步升 **0.2.11**。

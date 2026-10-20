@@ -122,10 +122,13 @@ const NATIVE_KEYS = new Set(["name", "desc", "version", "config", "db", "tables"
 /**
  * C2-31 安装期复核纯函数（双端 DRY 于夹具，preflight 同纪律；构建侧同形实现在
  * packages/cli/src/bundle.ts checkModuleManifest）：包内 oj 原生清单 ↔ C2 Form A 逐项钉住——
- * name/version 三方一致、desc === summary（构建期映射真源；summary 缺省/多字节/空白边界）、
- * 七键白名单（白名单外键 = OJ-X 红线，oj 不拒但契约拒）。只验不写：安装期改写 desc 等于
- * 掩盖上游映射被篡改，必须拒装（附录 B-11 裁决备选的落地形态：bundle 侧 ojm build --bundle
- * 已写原生清单，安装期复核即映射消费点）。
+ * name/version 三方一致、七键白名单（白名单外键 = OJ-X 红线，oj 不拒但契约拒）。
+ * 只验不写：安装期改写原生清单等于掩盖上游不一致。
+ *
+ * 变更（2026-10-21）：**desc === summary 的等值校验已移除**。该等值要求把「构建期映射」
+ * 当成安装期契约，于是 fixture/手写包只要 desc 与 summary 有一字之差就整包装不上——
+ * 校验成本远高于它拦下的风险（desc 只是模块描述文本，非安全边界）。现只保留
+ * 「summary 必填（C2-04）」与「desc 必填非空（oj 启动装配面）」两项。
  */
 export function checkModuleManifest(
 	c2: unknown,
@@ -138,14 +141,11 @@ export function checkModuleManifest(
 	}
 	const summary = isObj(c2) && typeof c2.summary === "string" ? c2.summary : undefined;
 	if (summary === undefined || summary.trim() === "") {
-		return { ok: false, message: "C2 manifest summary 缺省或空白——desc 映射无真源（C2-31/C2-04）" };
+		return { ok: false, message: "C2 manifest summary 缺省或空白（C2-04 必填字段）——C2-31" };
 	}
 	const desc = native.desc;
 	if (typeof desc !== "string" || desc.trim() === "") {
 		return { ok: false, message: "包内原生清单 desc 缺失或空白（oj Manifest 必填字段，serve 装配即失败）——C2-31" };
-	}
-	if (desc !== summary) {
-		return { ok: false, message: "包内原生清单 desc 与 C2 summary 不一致（构建期映射被篡改或上游不一致，拒装）——C2-31" };
 	}
 	if (native.name !== name) {
 		return { ok: false, message: `包内原生清单 name「${String(native.name)}」与安装身份「${name}」不一致——C2-31` };

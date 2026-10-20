@@ -161,6 +161,12 @@ async function main() {
 			publishCommand(positionals[0] ?? "", { id, key, check });
 			break;
 		}
+		case "market": {
+			// 本地模拟 CDN 与市场链路（setup / publish / build-index）
+			const { runMarket } = await import("./market/command");
+			await runMarket(process.argv.slice(3));
+			break;
+		}
 		default: {
 			if (command && OJ_PASSTHROUGH.has(command)) {
 				const { runOjSubcommand } = await import("./oj-cmd");

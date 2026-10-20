@@ -34,9 +34,9 @@ describe("devkit 手册两章节（P2-14：文档存在性）", () => {
  * 本守卫钉死「交付四件套零内部代号」；确需追溯的出处写在框架仓文档，不进 devkit。
  */
 describe("devkit 自包含（零仓库内部代号）", () => {
-	it("sKILL/manual/README/framework-dev 不含设计与评审代号", () => {
+	it("sKILL/manual/README/framework-dev/教学文档 不含设计与评审代号", () => {
 		const pattern = /\b(P\d+(-[0-9A-Z]+)?|C\d+(-\d+)?|AC-[A-Z]+-?\d*|S0\d{2}|R\d+|D1\d|B-\d+|G\d|M0\d{2})\b/;
-		for (const name of ["SKILL.md", "manual.md", "README.md", "framework-dev.md"]) {
+		for (const name of ["SKILL.md", "manual.md", "README.md", "framework-dev.md", "module-dev-and-cdn-playground.md"]) {
 			const hit = read(`docs/devkit/${name}`).match(pattern);
 			expect(hit?.[0], `docs/devkit/${name} 含内部代号：${hit?.[0]}`).toBeUndefined();
 		}
@@ -44,14 +44,14 @@ describe("devkit 自包含（零仓库内部代号）", () => {
 });
 
 /**
- * devkit 目录结构（2026-10-20 合并 oj-api-dev 快照后）：
- * docs/devkit/ 一棵树覆盖前后端两侧，但两套分发链不变——顶层 5 个 ojm 侧文件
+ * devkit 目录结构（2026-10-20 合并 oj-api-dev 快照后；2026-10-21 增教学文档）：
+ * docs/devkit/ 一棵树覆盖前后端两侧，但两套分发链不变——顶层 6 个 ojm 侧文件
  * 随 cli 包发货（→ .claude/skills/ojm-module-dev/），oj-api-dev/ 子目录是 oj 侧
  * devkit 的快照（与 ~/.local/share/oj/devkit/ 逐字节一致，仅本仓参考、不发货）。
  * 本守卫钉死这个结构：快照文件若被平铺进顶层，会误随 cli 包发货且与 oj 版本漂移。
  */
 describe("devkit 目录结构（ojm 侧发货 + oj-api-dev 快照子目录）", () => {
-	const OJM_FILES = ["SKILL.md", "manual.md", "README.md", "framework-dev.md", "sql-builder-missing-capabilities-pr.md"];
+	const OJM_FILES = ["SKILL.md", "manual.md", "README.md", "framework-dev.md", "sql-builder-missing-capabilities-pr.md", "module-dev-and-cdn-playground.md"];
 	const SNAPSHOT_FILES = [
 		"SKILL.md",
 		"README.md",
@@ -65,7 +65,7 @@ describe("devkit 目录结构（ojm 侧发货 + oj-api-dev 快照子目录）", 
 		"oidc-integration.md",
 	];
 
-	it("docs/devkit/ 顶层文件恰为 5 个 ojm 侧文件（快照不得平铺进同步源）", () => {
+	it("docs/devkit/ 顶层文件恰为 6 个 ojm 侧文件（快照不得平铺进同步源）", () => {
 		const top = readdirSync(join(ROOT, "docs/devkit"))
 			.filter(n => !n.startsWith(".") && statSync(join(ROOT, "docs/devkit", n)).isFile())
 			.sort();

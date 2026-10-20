@@ -13,3 +13,8 @@ api/config/cert.jws
 api/dist/
 web/dist/
 modules/dist/
+# 本地模拟 CDN 的产物一律不签入、不进发布包；cdn/README.md 是唯一例外（随模板发布）
+cdn/*.tgz
+cdn/*.sig
+cdn/bundles.yaml
+cdn/manifests.yaml

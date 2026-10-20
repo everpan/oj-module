@@ -514,7 +514,7 @@ describe("checkModuleManifest（C2-31 安装期复核纯函数：C2 manifest ↔
 	const c2 = { name: "demo-solution", version: "0.1.0", summary: "演示方案 Demo — émoji 🎉" };
 	const native = { name: "demo-solution", desc: "演示方案 Demo — émoji 🎉", version: "0.1.0" };
 
-	it("合法：desc === summary（多字节逐字相等）、name/version 三方一致、七键之内 → ok", () => {
+	it("合法：name/version 三方一致、desc 非空、七键之内 → ok", () => {
 		expect(checkModuleManifest(c2, native, "demo-solution", "0.1.0")).toEqual({ ok: true });
 	});
 
@@ -535,10 +535,9 @@ describe("checkModuleManifest（C2-31 安装期复核纯函数：C2 manifest ↔
 		expect(r.ok).toBe(false);
 	});
 
-	it("desc !== summary → 拒（构建期映射被篡改/上游不一致）", () => {
+	it("desc !== summary → 放行（等值要求已于 2026-10-21 移除：desc 只是模块描述，非安全边界）", () => {
 		const r = checkModuleManifest(c2, { ...native, desc: "另一个描述" }, "demo-solution", "0.1.0");
-		expect(r.ok).toBe(false);
-		expect(!r.ok && r.message).toContain("desc");
+		expect(r.ok).toBe(true);
 	});
 
 	it("name 或 version 与包身份不一致 → 拒", () => {
@@ -613,11 +612,9 @@ describe("extract C2-31 安装期复核（B-11：api 段声明与包内原生清
 		expect(r.message).toContain("C2-31");
 	});
 
-	it("包内原生清单 desc !== summary → C2-31 拒（映射被篡改）", async () => {
+	it("包内原生清单 desc !== summary → 放行（等值校验已移除）", async () => {
 		await seedBundle({ nativeManifest: { name: "demo-solution", desc: "另一个描述", version: "0.1.0" } });
 		const r = await extract(exCtx({ manifest: c2Manifest(), exec: realTarExec() }));
-		expect(r.ok).toBe(false);
-		expect(r.retryable).toBe(false);
-		expect(r.message).toContain("C2-31");
+		expect(r.ok).toBe(true);
 	});
 });

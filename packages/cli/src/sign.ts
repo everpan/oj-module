@@ -17,6 +17,12 @@ export interface SignOptions {
 	id?: string
 	/** 私钥 PEM 文件（缺省 ~/.ojm/keys/<id>/private.pem） */
 	key?: string
+	/**
+	 * 内存私钥 PEM（一次性/隔离场景专用，与 --key 二选一）。
+	 * 用途：`ojm market trial` 的一次性 keypair 不落盘，经此直接传进来；
+	 * 给了它就跳过文件存在性检查，也永远不读真 ~/.ojm/keys（计划 §3.3.1）。
+	 */
+	privateKeyPem?: string
 	/** 写完离线自检（verifyCanonical 复核） */
 	check?: boolean
 	/** 测试注入；缺省 process.cwd() */
@@ -46,10 +52,17 @@ export function signCommand(tgz: string, opts: SignOptions = {}): SignResult {
 	if (!fs.existsSync(tgz))
 		throw new Error(`[ojm] 方案包不存在：${tgz}`);
 	const cwd = opts.cwd ?? process.cwd();
-	// key 解析：--key 显式文件优先；否则 ~/.ojm/keys/<id>/private.pem（--id 必填）
-	let keyFile: string;
+	// key 解析：内存 PEM（不落盘）> --key 显式文件 > ~/.ojm/keys/<id>/private.pem（--id 必填）
+	let keyFile = "";
 	let keyId: string;
-	if (opts.key !== undefined) {
+	let memoryPem: string | undefined;
+	if (opts.privateKeyPem !== undefined && opts.privateKeyPem !== "") {
+		memoryPem = opts.privateKeyPem;
+		keyId = opts.id ?? "";
+		if (keyId === "")
+			throw new Error("[ojm] 使用内存私钥时须同时给 --id <publisher.id>（.sig 的发布方标识；C2-37 命名空间）");
+	}
+	else if (opts.key !== undefined) {
 		keyFile = path.resolve(cwd, opts.key);
 		keyId = opts.id ?? keyIdFromKeyPath(path.relative(os.homedir(), keyFile)) ?? "";
 		if (keyId === "")
@@ -63,13 +76,15 @@ export function signCommand(tgz: string, opts: SignOptions = {}): SignResult {
 	}
 	if (!isValidKeyId(keyId))
 		throw new Error(`[ojm] key_id 命名空间非法（C2-37）：「${keyId}」`);
-	if (!fs.existsSync(keyFile))
-		throw new Error(`[ojm] 私钥文件不存在：${keyFile}（用 ojm keygen --id ${keyId} 生成，或 --key 指定）`);
+	if (memoryPem === undefined) {
+		if (!fs.existsSync(keyFile!))
+			throw new Error(`[ojm] 私钥文件不存在：${keyFile}（用 ojm keygen --id ${keyId} 生成，或 --key 指定）`);
+	}
 
 	const bytes = new Uint8Array(fs.readFileSync(tgz));
 	const sha256 = createHash("sha256").update(bytes).digest("hex");
 	const canonical = canonicalString(deriveName(tgz), deriveVersion(tgz), sha256);
-	const privateKeyPem = readPrivateKeyPem(keyFile);
+	const privateKeyPem = memoryPem ?? readPrivateKeyPem(keyFile!);
 	const value = signCanonical(privateKeyPem, canonical);
 	const publicKeyHex = exportRawPublicKeyHex(privateKeyPem);
 	const sig = { alg: SIG_ALG, key_id: keyId, public_key: publicKeyHex, value, canon: CANON };

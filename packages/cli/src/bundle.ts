@@ -116,8 +116,14 @@ export async function buildBundle(projectRoot: string, opts: { out?: string } = 
 	}
 }
 
-/** C2-31 分层核对：模块级 manifest 仅 oj 原生键，且 name/version/desc 与 bundle 级逐一相等（oj 启动强校验同源） */
-function checkModuleManifest(built: string, name: string, version: string, summary: string): string[] {
+/**
+ * C2-31 分层核对：模块级 manifest 仅 oj 原生键，且 name/version 与 bundle 级逐一相等
+ * （oj 启动强校验同源）。
+ *
+ * 变更（2026-10-21）：`desc === summary` 的等值要求已移除（与安装侧 extract.ts 同步）——
+ * 那是构建期映射的产物而不是安全边界，保留它会让 desc 与 summary 一字之差的包直接装不上。
+ */
+function checkModuleManifest(built: string, name: string, version: string, _summary: string): string[] {
 	const p = path.join(built, "manifest.yaml");
 	let doc: unknown;
 	try {
@@ -136,9 +142,6 @@ function checkModuleManifest(built: string, name: string, version: string, summa
 	}
 	if (mm.version !== version) {
 		out.push(`模块级 version「${String(mm.version)}」必须 === bundle version「${version}」`);
-	}
-	if (mm.desc !== summary) {
-		out.push(`模块级 desc「${String(mm.desc)}」必须 === bundle summary「${summary}」（安装器写 desc 即取 summary）`);
 	}
 	return out;
 }

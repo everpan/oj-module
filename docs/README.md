@@ -3,6 +3,8 @@
 本目录是 `oj-module` 工程的文档根。文档分三类：**交付文档（devkit）**、**PRD / 设计文档（活跃）**、**归档（archive）**。
 
 > 阅读顺序建议：先看 [DevKit 手册](#devkit-随-ojm-分发给业务工程) 上手开发；想了解某个功能为什么这么设计，再到 [PRD](#prd--设计文档活跃) 找对应的方案；历史方案与旧版中文指南在 [归档](#归档-archive)。
+>
+> **接手在制品**：先读 [`HANDOFF-ojm-market-cdn.md`](HANDOFF-ojm-market-cdn.md)（现状 / 代码地图 / 怎么跑 / 余量）。
 
 ---
 
@@ -21,6 +23,7 @@
 | [`devkit/manual.md`](devkit/manual.md) | 业务开发者 | 模块开发手册（12 章）：工程结构、写模块、契约与代码生成、接管框架内置功能、布局、i18n、构建发布、排查、CLI 子命令参考 |
 | [`devkit/SKILL.md`](devkit/SKILL.md) | AI agent / 开发者 | agent skill 入口：工作流、红线、新模块 checklist、陷阱速查，按章节号引用手册 |
 | [`devkit/framework-dev.md`](devkit/framework-dev.md) | 框架贡献者（**仅本仓**） | 改 `packages/runtime`、`packages/cli` 时的入口、红线、不变式索引、守卫测试索引 |
+| [`devkit/module-dev-and-cdn-playground.md`](devkit/module-dev-and-cdn-playground.md) | 业务开发者 | 教学文档：开发态 vs 分发态、安装自己的模块会不会重复、本地 CDN 市场链路演练 |
 | [`devkit/oj-api-dev/api-manual.md`](devkit/oj-api-dev/api-manual.md) | 后端开发者 | 后端开发手册（13 章，oj 侧快照）：模块约定、全局对象 API、鉴权租户、测试、配置 |
 | [`devkit/oj-api-dev/README.md`](devkit/oj-api-dev/README.md) | 后端开发者 | oj 侧索引 + v0.1.66→v0.1.82 逐版落地记录（查「某个能力哪版有的」） |
 

@@ -511,6 +511,15 @@ export async function buildBackend(projectRoot: string): Promise<boolean> {
 	//      SyntaxError: Invalid left-hand side in assignment（端点 500）。
 	// 0.1.32 / 0.1.50 均复现。产物体积换正确性，等上游修好再撤这个旗标。
 	execFileSync(oj, ["build", ...configArgs, "-d", apiSrc, "-o", apiDist, "--no-minify"], { stdio: "inherit" });
+	// 宿主 versions.json 双落点：站点壳从 shell-dist 拷进 web/dist（mergeShellSite），
+	// 而方案安装器读的是 `<api>/dist/versions.json`（B-11：与 manifests.yaml 同层，用于
+	// peerRuntime 强制比对）。两处必须同源，否则新工程 `ojm build` 完仍装不上方案——
+	// preflight 直接 C2-09 fail-closed「无法读取宿主 runtime 版本」。
+	const versionsSrc = path.join(resolveShellDist(), "versions.json");
+	if (fs.existsSync(versionsSrc)) {
+		fs.mkdirSync(apiDist, { recursive: true });
+		fs.copyFileSync(versionsSrc, path.join(apiDist, "versions.json"));
+	}
 	return true;
 }
 

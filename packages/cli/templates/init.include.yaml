@@ -26,6 +26,9 @@
 include:
   # —— 工程级文件 ——
   - README.md
+  # 本地模拟 CDN 目录：只带 README（它的存在让挂载目录不缺，站点才起得来）。
+  # 产物 *.tgz / *.sig / bundles.yaml / manifests.yaml 一律不拷、不进发布包。
+  - cdn/README.md
   - tsconfig.json
   - global.d.ts
   - env.d.ts
