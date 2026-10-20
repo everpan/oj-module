@@ -4,7 +4,19 @@
 > **配套**：[`framework-development-guide.md`](./framework-development-guide.md)（原理）、[`oj-fullstack-tutorial.md`](./oj-fullstack-tutorial.md)（跟做）。
 > **原则**：每一步都有**可判定通过/失败的检查点**，不要只看命令退出码，要核对产物。
 
-### 最近一次基线（2026-10-20 第二次复跑，oj 0.1.82 / cli+runtime 0.2.10 打包态；devkit 文档树合并 + 0.2.10 发布前演练）
+### 最近一次基线（2026-10-21，oj 0.1.84 / cli+runtime 0.2.12 工作区态；市场链路首演）
+
+| 项 | 值 |
+| --- | --- |
+| 日期 | 2026-10-21 |
+| 框架包版本 | `cli`/`runtime` `0.2.12`（工作区态，源码 bin 直跑） |
+| oj | `0.1.84`（`ojm vendor` 装进演练宿主） |
+| 验证动机 | 新增「开发方案模块 → 发布到本地 CDN → 市场安装 → TOFU → 装成」三段（§7.1–§7.3），并修掉演练暴露的宿主侧缺口 |
+| 结果 | **两轮全绿**：① `ojm init` 新工程自带 `cdn/` + `/cdn` 挂载 + `platform.modules` + `fs:` 段（零手工补丁）→ `ojm build`（api/dist + web/dist + `api/dist/versions.json`）→ 方案工程 `oj build` + `ojm build --bundle`（同输入两次同 sha256）→ `keygen`/`sign --check` → `market publish --real --rebuild-index` → `market verify`（5 项全 ✓）→ `market setup`（首登改密闭环）→ `market/index` 出卡片 → 安装 `needs_trust`（指纹与发布方一致）→ `trust confirm` → 重试 `status=done`（11 段全 ok）→ `/api/demo-solution/ping` 返回 `{pong:true}` → 安装锁含 `demo-solution: 0.1.0`。② 换全新 `host2` 零手工补丁复跑同样 done（唯一人工步骤 = `platform.root` 由 `src` 改 `dist`，见 §7.3 前置） |
+| 本次发现并处置 | ① **`ojm build` 不写 `api/dist/versions.json`** → 新工程装方案在 preflight 报 `C2-09`；**已修** `build.ts` + `src/__tests__/build-backend.test.ts`。② **模板 `platform:` 缺 `modules`/`root`** → 卡 `reloading`（`NotCapable: module '_platform' is not platform-privileged`）；**已修**模板并在 `preview-config` 派生时把 `root` 改写为 `api/dist`。③ **模板缺 `fs:` 段** → 安装器落盘被 jail 拒，且失败在任务文件写入前（POST 200 但 task 恒 404）；**已修**模板。④ **`oj build` 只收 `.ts` handler**：`.js` 不进 dist、`routes.js` 生成空表。⑤ **`manifest.tables` 必须与 `schema.yaml` 对齐**（`S005`）；缺 `schema.yaml` 直接失败。⑥ **引用 i18n key 必须有 locales 双语且嵌套**：平铺 dotted key 查不到。⑦ **dev 形态装不上**：`--api-path src` 时装到 dist 的模块不被发现（smoke 404）。⑧ **`ojm preview` 不能完成安装**：派生 config 与安装器热更目标（`api/config.yaml`）不同文件 → `reloadConfig` 恒 `unchanged`。 |
+| 与上一基线差异 | 上一基线只覆盖「宿主工程内开发模块」（§4–§5）；本轮新增可分发方案的开发/发布/安装三段（§7.1–§7.3），并把 7 项宿主侧缺口（①–③ 已修代码，④–⑧ 入坑表）纳入手册 |
+
+### 上一次基线（2026-10-20 第二次复跑，oj 0.1.82 / cli+runtime 0.2.10 打包态；devkit 文档树合并 + 0.2.10 发布前演练）
 
 | 项 | 值 |
 | --- | --- |
@@ -346,6 +358,103 @@ API 全链路再通一遍（登录/列表/新增）；
 **带 dist 后重跑 `ojm api --check`**——第三腿（routes.js vs openapi.json 契约路由表）此时激活，
 应 `0 error / 0 warn`（注意尾斜杠规范化与豁免对称过滤，2026-10-15 已修，见 §9）。
 
+## 7.1 开发一个方案模块（作者视角）
+
+> 与 §4–§5 的区别：§4/§5 是在**宿主工程里**写业务模块（跟着宿主一起构建）；本节写的是**可分发**的
+> 方案模块——独立工程、独立构建、打成包发布到市场。两者共用 oj 的 handler 与清单约定。
+
+方案工程的最小形态（后端方案；带前端则在 `web/src/<name>/` 补 entry 与 locales）：
+
+```text
+solution-demo/
+├── manifest.yaml                      # C2 契约清单（Form A，包身份证）
+├── api/src/<name>/
+│   ├── manifest.yaml                  # oj 原生清单（name/desc/version/tables）
+│   ├── schema.yaml                    # 声明式表结构（必须与 manifest.tables 逐一对齐）
+│   ├── routes.js                      # 手写路由（oj build 会重写成生成物）
+│   ├── migrations/0001__init.sql      # 迁移（与 schema.yaml 同表名）
+│   └── ping/api.ts                    # handler 必须是 .ts（见坑 ①）
+└── web/src/<name>/locales/{zh-CN,en-US}.json   # manifest 引用 i18n key 时必需（见坑 ③）
+```
+
+```bash
+# 1) 后端构建：用宿主（或任意）已安装的 oj 二进制
+<host>/bin/oj build -d api/src -o api/dist
+#   期望：oj build: demo-solution v0.1.0 → api/dist/demo-solution-0.1.0 (1 api file(s))
+
+# 2) 打包（构建即校验：清单契约 + 表↔schema + locales 双语齐备）
+node "$CLI_PKG/bin/ojm.mjs" build --bundle
+#   期望：方案包已生成 → dist/<name>-<version>.tgz + sha256（确定性：同输入两次同哈希）
+```
+
+**检查点**
+
+- [ ] `api/dist/<name>-<version>/` 内含 `manifest.yaml`、`routes.js`、`ping/api.js`、`migrations/`、`schema.yaml`
+- [ ] `routes.js` 里出现自己声明的路由行（若为空 → handler 不是 `.ts`，见坑 ①）
+- [ ] `ojm build --bundle` 退出码 0，`dist/<name>-<version>.tgz` 存在且 sha256 两次一致
+- [ ] 没有 `C2-25` / `C2-12a` 违规输出（有则按提示补齐 locales / schema）
+
+## 7.2 发布到市场源（CDN）
+
+```bash
+# 1) 一次性发布方身份（一次生成，长期复用；私钥永不入仓）
+node "$CLI_PKG/bin/ojm.mjs" keygen --id demo.publisher --out ./keys --yes
+#   记下 fingerprint（市场卡片与 trust confirm 都要核对它）
+
+# 2) 落包 + 重建索引（--real 走真构建；发布方密钥与 --id 必须同时给）
+cd <host>
+node "$CLI_PKG/bin/ojm.mjs" market publish --real ../solution-demo \
+  --id demo.publisher --key ../keys/private.pem --rebuild-index
+
+# 3) 离线验包（不起站点、不装、不要凭据）
+node "$CLI_PKG/bin/ojm.mjs" market verify --rebuild-index
+```
+
+**检查点**
+
+- [ ] `cdn/` 下六件套齐全：`<name>-<version>.tgz`、`.tgz.sig`、`bundles.yaml`、`manifests.yaml` 及两份 `.yaml.sig`
+- [ ] `market verify` 五项全 ✓（完整性 / 包级签 / 索引签 ×2 / manifest 结构），末行带边界声明
+- [ ] `curl <站点>/cdn/bundles.yaml` 返回 YAML（不是 index.html）——dev 形态陷阱见 §9
+- [ ] 重发同版本且字节一致 → 幂等；字节不同 → 报冲突并提示升 version
+
+## 7.3 市场链路验证（安装 → TOFU → 装成）
+
+> **前置**：宿主必须以 **release 形态 + 真实 config** 起站（见坑 ⑤⑥）。dev（`--api-path src`）与
+> `ojm preview`（派生 config）都**不能**完成安装的热更段。
+
+```bash
+cd <host>
+node "$CLI_PKG/bin/ojm.mjs" build                      # api/dist + web/dist（含 api/dist/versions.json）
+# config：platform.root 改为 dist（release 形态；dev 时是 src）
+#   platform:
+#     modules: [_platform]
+#     root: dist
+(cd api && ../bin/oj serve -c config.yaml -b /api --api-path dist --console-log &)
+
+node "$CLI_PKG/bin/ojm.mjs" market setup --url http://127.0.0.1:9778 --user admin --pass 123456 --new-pass <新口令>
+# → 市场页（或 GET /api/_platform/market/index）出现方案卡片
+
+# 安装（首次必然停在待信任）
+curl -s -X POST http://127.0.0.1:9778/api/_platform/market/install \
+  -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+  -d '{"name":"demo-solution","version":"0.1.0","source":"cdn"}'
+# → {data:{id:"install-..."}}；轮询 GET /api/_platform/market/task?id=<id> 到 status=needs_trust
+#   响应的 trust.fingerprint 必须与 keygen 输出逐字一致
+
+node "$CLI_PKG/bin/ojm.mjs" trust confirm --task <task-id> --url http://127.0.0.1:9778 --user admin --pass <新口令>
+# 重试同一条 install → 期望 status=done，11 段全 ok
+```
+
+**检查点**
+
+- [ ] `market/index` 卡片含目标方案与 latest 版本（空则回看 setup 写入的市场地址）
+- [ ] 首次安装 `status=needs_trust`，`trust.fingerprint` 与发布方公布值一致（**逐字核对再确认**）
+- [ ] `trust confirm` 后重试，`status=done` 且 11 段全 `ok`：`preflight / downloading / verifying /
+      extracting / migrating / lock_commit / registering / deploying_web / reloading / smoke / audit`
+- [ ] 装后探活：`curl /api/<name>/ping` 返回 `code:0`（匿名端点，无需 token）
+- [ ] 安装锁 `api/dist/manifests.yaml` 出现 `<name>: <version>`；`api/dist/<name>-<version>/` 存在
+- [ ] 再装同版本 → 走重装路径而非「方案名已被占用」；`market verify --rebuild-index` 无漂移
+
 ## 8. 一次通过判据（汇总清单）
 
 - [ ] `ojm init` 成功：devDeps 含 `@oj-module/{cli,runtime}`（非 `*`）、根级 `openapi.json` + `__client` 预生成、handler 为新约定（`.schema` 入参 + 平级 `.response`，无 `contract.ts`/`routes.json`/`openapi.yaml`）、`env.d.ts` 在 include
@@ -356,6 +465,12 @@ API 全链路再通一遍（登录/列表/新增）；
 - [ ] `typecheck` 0 error
 - [ ] `ojm dev`：登录 / 列表过滤 / 新增 / 401 / 通知兜底全对
 - [ ] （可选）`ojm preview` 通过 migrate、服务与带 dist 的 `--check` 三腿
+- [ ] 〔方案链路〕
+  - [ ] 方案工程 `oj build` 出 `api/dist/<name>-<version>/`（含路由行）、`ojm build --bundle` 出 tgz（sha256 稳定）
+  - [ ] `ojm market publish --real --rebuild-index` 后 `cdn/` 六件套齐全，`market verify --rebuild-index` 五项全 ✓
+  - [ ] 宿主 `ojm build` 后 `api/dist/versions.json` **存在**（C2-09 前置；缺则该步是回归）
+  - [ ] 市场卡片可见 → 首装 `needs_trust`（指纹逐字核对）→ `trust confirm` → 重试 `status=done` 且 11 段全 ok
+  - [ ] 装后 `/api/<name>/ping` 返回 `code:0`；`api/dist/manifests.yaml` 出现 `<name>: <version>`
 
 ## 9. 已知坑与处置
 
@@ -377,6 +492,16 @@ API 全链路再通一遍（登录/列表/新增）；
 | DELETE 请求 405 | 方法名写成 `delete` | 改为 `del` |
 | `ojm api` 报 apiPrefix 与目录名不符 | 违反 AC-D9 | 改 `apiPrefix` 或移动契约目录 |
 | 迁移账本落后拒启（M004） | release `verify` 门禁 | 先 `oj migrate -c api/config.yaml -d api/dist` |
+| 方案工程 `oj build` 报 `S005: <mod>/manifest.yaml: tables 声明 "x" 不在 schema.yaml` | oj 用 schema.yaml 做表结构真源，manifest.tables 只是引用面 | 在 `api/src/<name>/schema.yaml` 按声明式格式补该表（`tables: {<table>: {pk, columns}}`），与 migrations 的建表语句对齐 |
+| 方案包 `ojm build --bundle` 报 `C2-25 缺少 web/src/<name>/locales/{zh-CN,en-US}.json` | manifest 只要引用了 `title_key`/`label_key` 这类 i18n key，就必须提供双语 locale（后端方案同样要） | 建两份 locale JSON；key 必须**嵌套**（`{"menu":{"main":"…"}}`），平铺 dotted key（`"menu.main"`）查不到 |
+| `ojm build --bundle` 报 `C2-12a`（tables 与 schema 不一致） | 同上：清单声明与 schema.yaml 表集必须逐一相等 | 改 manifest.tables 或 schema.yaml，二者取并集后保持一致 |
+| 方案装了但路由 404 / `routes.js` 是空表 | `oj build` 只编译 `.ts` handler；直接放 `ping/api.js` 不会进 dist | 方案工程 handler 写 `api.ts`（由 oj build 编译成 dist 里的 `api.js`） |
+| 安装 POST 返回 200、但 `GET market/task?id=` 恒 404 | 宿主 config 缺 `fs:` 段 → 安装器落盘被 jail 拒，失败发生在任务文件写入之前 | cli ≥ 0.2.13 的模板自带 `fs: {root: ., readonly: false}`；旧工程手补后重启 |
+| 安装卡在 `preflight`：`C2-09 无法读取宿主 runtime 版本` | 安装器读 `api/dist/versions.json`（B-11 与 manifests.yaml 同层），而早期 `ojm build` 只写 `web/dist/versions.json` | cli ≥ 0.2.13 的 `ojm build` 已双落点；旧版手抄一份 `cp web/dist/versions.json api/dist/versions.json` |
+| 安装卡在 `reloading`：`NotCapable: module '_platform' is not platform-privileged` | 宿主 config 的 `platform.modules` 未列 `_platform` | 模板自 0.2.13 起自带 `platform: {modules: [_platform], root: src}`；旧工程手补 |
+| 安装卡在 `reloading`：`reloadConfig 返回 unchanged` | 用 `ojm preview` 起站——它服务派生 config（`.ojm-preview.yaml`），而安装器热更改的是 `api/config.yaml`，被监视文件没变 | 安装验证必须对**真实 config** 起站：`(cd api && ../bin/oj serve -c config.yaml -b /api --api-path dist)`，并把 `platform.root` 改成 `dist` |
+| 安装卡在 `smoke`：探活 404 | dev 形态（`--api-path src`）起站，装好的模块落在 `api/dist`，不被发现 | 安装目标恒为 release 部署；先 `ojm build`，再以 `--api-path dist` 起站 |
+| `oj serve` 报 `platform.root (...) must be mounted as an api mount` | release（`--api-path dist`）下 `platform.root` 仍指 `src`，与生效的模块根不一致 | 把 `platform.root` 改成 `dist`（`ojm preview` 派生 config 时会自动改写） |
 | `ojm init`/`ojm vendor` 报「上游 @oj-bin/oj 的 latest 是 vX，低于 ojm 要求的最低版本 v0.1.73」 | npm 通道发布滞后于 `MIN_OJ_VERSION` 门禁（门禁钉最新发布版，ojm 不做兼容分支） | 本机已装 ≥ 门禁的 oj 时：把 `bin/{oj,devkit/,plugins/,.oj-version}` 预置进工程再跑 init（bin/oj 存在即跳过 vendor）；否则等上游发布或降级 cli |
 | `pnpm install` 报 `ERR_PNPM_NO_MATCHING_VERSION ... @oj-module/cli@0.1.20` | 验证的是未发布版本，npm 上没有 | 删 devDeps 的 cli（源码 bin 直跑）+ 用 §0.5 的 `pnpm add <runtime 本地 tgz>` 把 runtime 装进 devDependencies（双包均未发版时 cli/runtime 都要处理）；**勿用 `ln -s` 把裸 runtime tarball 链进 `node_modules`**——裸包无 `node_modules`，`export { z } from "zod"` 解析成 `any`，会让生成物 `__client/api.ts` 的 `.map(i => …)` 全报 TS7006，typecheck 假红。也勿用 `file:` 链 cli（两包的 `catalog:` 依赖只对 workspace 成员解析，报 `ERR_PNPM_SPEC_NOT_SUPPORTED_BY_ANY_RESOLVER`） |
 | `oj build` 报 `module '_shared' missing manifest.yaml` | 模板里残留**空目录**（git 不跟踪空目录，删文件不删目录），init 连空目录一起拷进工程，oj 把每个 api/src 子目录当模块 | 删模板里的空目录；cli ≥ 0.1.20 的 `copyTemplates` 已加空目录跳过防护（`dirHasFiles`） |

@@ -119,18 +119,79 @@ ojm market verify --rebuild-index
 
 > 附注：曾有一条「包内 `api/<mod>/manifest.yaml` 的 desc 必须逐字等于方案 summary」的校验，已于 2026-10-21 移除——那是构建期映射被当成安装期契约，而 desc 只是模块描述文本、非安全边界。现存相关校验只有：`summary` 必填、`desc` 必填非空。
 
-## 6. 一页速查
+## 6. 实战：发一个真方案，并躲开七个坑
+
+上面的 fixture 路径能秒出可装包，但真实交付要么写方案工程、要么至少知道真构建长什么样。下面是
+2026-10-21 一次**完整演练**（宿主 `ojm init` → 方案工程 → 打包签名 → 发布 → 安装 → TOFU → 装成）
+沉淀下来的路径与坑。演练两轮全绿（换全新宿主零手工补丁复跑同样通过）。
+
+### 6.1 方案工程最小形态
+
+```text
+solution-demo/
+├── manifest.yaml                      # 方案契约清单（Form A）
+├── api/src/<name>/
+│   ├── manifest.yaml                  # oj 原生清单（name/desc/version/tables）
+│   ├── schema.yaml                    # 表结构真源（必须与 manifest.tables 对齐）
+│   ├── routes.js
+│   ├── migrations/0001__init.sql
+│   └── ping/api.ts                    # handler 必须是 .ts
+└── web/src/<name>/locales/{zh-CN,en-US}.json   # 引用 i18n key 时必需
+```
+
+```bash
+<host>/bin/oj build -d api/src -o api/dist        # 后端构建（只用宿主已装的 oj）
+node "$CLI_PKG/bin/ojm.mjs" build --bundle        # 打包（构建即校验）
+node "$CLI_PKG/bin/ojm.mjs" keygen --id demo.publisher --out ./keys --yes
+node "$CLI_PKG/bin/ojm.mjs" sign dist/<name>-<version>.tgz --id demo.publisher --key ./keys/private.pem --check
+```
+
+### 6.2 发布与安装（release 形态）
+
+```bash
+cd <host>
+node "$CLI_PKG/bin/ojm.mjs" market publish --real ../solution-demo --id demo.publisher --key ../keys/private.pem --rebuild-index
+node "$CLI_PKG/bin/ojm.mjs" market verify --rebuild-index
+
+node "$CLI_PKG/bin/ojm.mjs" build                 # 生成 api/dist + web/dist（含 api/dist/versions.json）
+# config：platform.root 改成 dist（安装目标恒为 release 部署）
+(cd api && ../bin/oj serve -c config.yaml -b /api --api-path dist --console-log &)
+node "$CLI_PKG/bin/ojm.mjs" market setup --url http://127.0.0.1:9778 --user admin --pass 123456 --new-pass <新口令>
+# 市场页点安装 → 首次停在「待信任」→ 核对指纹 → ojm trust confirm --task <id> → 重试 → done
+```
+
+### 6.3 七个坑（按撞见顺序）
+
+| # | 现象 | 根因 / 正确做法 |
+|---|---|---|
+| ① | `oj build` 报 `tables 声明 "x" 不在 schema.yaml` | oj 用 `schema.yaml` 做表结构真源，`manifest.tables` 只是引用面；补 `schema.yaml`（`tables: {<t>: {pk, columns}}`），与迁移语句对齐 |
+| ② | `oj build` 成功但 `routes.js` 是空表、dist 里没有 handler | **只编译 `.ts` handler**；写成 `ping/api.js` 会被静默丢弃 → 改 `api.ts` |
+| ③ | `build --bundle` 报 `缺少 web/src/<name>/locales/…` | manifest 一旦引用 `title_key`/`label_key` 就必须双语 locale（后端方案也要）；且 key 必须**嵌套** `{"menu":{"main":"…"}}`，平铺 `"menu.main"` 查不到 |
+| ④ | 安装 POST 返回 200，但 `market/task` 恒 404 | 宿主 config 缺 `fs:` 段 → 安装器落盘被 jail 拒、失败发生在任务文件写入前；0.2.13 起模板自带，旧工程手补 |
+| ⑤ | 安装卡 `preflight`：`无法读取宿主 runtime 版本` | 安装器读 `api/dist/versions.json`；0.2.13 起 `ojm build` 双落点（旧版手抄 `web/dist/versions.json`） |
+| ⑥ | 安装卡 `reloading`：`NotCapable: module '_platform' is not platform-privileged` | 宿主 config 的 `platform.modules` 未列 `_platform`（0.2.13 起模板自带） |
+| ⑦ | 安装卡 `reloading`：`reloadConfig 返回 unchanged` / 卡 `smoke`：探活 404 | 起站形态不对：`ojm preview` 服务派生 config（安装器热更写的是 `api/config.yaml`，被监视文件没变）；dev（`--api-path src`）装到 dist 的模块不被发现。**安装必须对真实 config 以 `--api-path dist` 起站** |
+
+### 6.4 装成之后怎么确认
+
+```bash
+curl -s http://127.0.0.1:9778/api/<name>/ping        # {"code":0,...pong...}
+cat api/dist/manifests.yaml | grep <name>            # <name>: <version>
+ls api/dist/<name>-<version>/                        # 安装产物目录
+```
+
+## 7. 一页速查
 
 ```text
 写模块      → 源码直跑（ojm dev），不要装
 验证能装    → 隔离站点，或 ojm install <tgz> 到另一个工程
 重复？      → 不会。注册面全 upsert；同名再装被前置校验直接拒
-市场链路    → setup → publish → build-index → verify → 市场页安装
+市场链路    → setup → publish → build-index → verify → 市场页安装（release 形态：--api-path dist）
 绝对 URL    → 市场地址端口取自 config（9778），不是 dev server 的 5174
 信任        → 包级签=锚，索引签=完整性，TOFU 管陌生发布方，verify 不背书内容安全
 ```
 
-## 7. 延伸阅读
+## 8. 延伸阅读
 
 - 方案打包与分发全貌、签名与信任：本 skill 的 `manual.md` §11–§12
 - 后端 handler 写法、站点挂载（`mounts`）等：`oj-api-dev` skill 手册

@@ -30,6 +30,12 @@ export const PREVIEW_CONFIG_NAME = ".ojm-preview.yaml";
 export interface DerivePreviewConfigOptions {
 	/** 全站产物目录（layout.distDir），写入 web 挂载的绝对路径 */
 	siteDir: string
+	/**
+	 * release 形态的后端模块根（api/dist）。给了且原 config 声明了 platform.modules 时，
+	 * 把 `platform.root` 一并改写到该目录——特权模块的受控根必须与 `--api-path` 同源，
+	 * 否则 release 下 reloadConfig 会按 dev 的 src 判定归属（装好的方案热更不生效）。
+	 */
+	apiRoot?: string
 	/** 显式端口时覆盖 server.port；缺省沿用原 config（oj 代码默认 9778） */
 	port?: number
 	/** 原 config 文本（测试注入）；缺省读 api/config.yaml */
@@ -119,6 +125,14 @@ export function derivePreviewConfigText(configText: string, opts: DerivePreviewC
 		mounts.push({ prefix: "/", web: opts.siteDir, spa: true });
 	}
 	doc.mounts = mounts;
+
+	// platform.root 跟随 api 挂载根：dev = src，release（preview）= dist
+	const platform = doc.platform;
+	if (opts.apiRoot !== undefined && platform !== null && typeof platform === "object" && !Array.isArray(platform)) {
+		const mods = (platform as Record<string, unknown>).modules;
+		if (Array.isArray(mods) && mods.length > 0)
+			(platform as Record<string, unknown>).root = opts.apiRoot;
+	}
 
 	if (opts.port !== undefined) {
 		const server = doc.server !== null && typeof doc.server === "object" && !Array.isArray(doc.server)

@@ -40,7 +40,7 @@ export interface PreviewOptions {
 	/** 注入桩 oj 进程；默认 startOj */
 	ojStarter?: (configPath: string, base: string, apiPath: string, extraArgs: string[]) => OjProcess
 	/** 注入桩派生 config 落盘（测试）；默认 writePreviewConfig */
-	configWriter?: (projectRoot: string, opts: { siteDir: string, port?: number }) => PreviewConfigFiles
+	configWriter?: (projectRoot: string, opts: { siteDir: string, port?: number, apiRoot?: string }) => PreviewConfigFiles
 }
 
 export interface PreviewHandle {
@@ -81,8 +81,9 @@ export async function runPreview(projectRoot: string, opts: PreviewOptions = {})
 
 	// 派生 config 在 migrate 成功后落盘：失败即退路径零残留
 	const base = readOjApiPrefix(configPath);
-	const writer = opts.configWriter ?? ((root: string, o: { siteDir: string, port?: number }) => writePreviewConfig(root, o));
-	const preview = writer(projectRoot, { siteDir, port: opts.port });
+	const writer = opts.configWriter ?? ((root: string, o: { siteDir: string, port?: number, apiRoot?: string }) => writePreviewConfig(root, o));
+	// apiRoot 交给派生器：release 下 platform.root 必须指向 api/dist（与 --api-path 同源）
+	const preview = writer(projectRoot, { siteDir, port: opts.port, apiRoot: apiDist });
 
 	// / api 挂载与注入的 / web 挂载配对时 oj 不开 SPA 回落（oj 语义，见 devkit 手册 §13）
 	if (hasRootApiMount(parseMounts(readFileSync(configPath, "utf-8"), configPath)))

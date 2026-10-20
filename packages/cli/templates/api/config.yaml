@@ -81,6 +81,12 @@ vars:
 # ---- 平台 exec 白名单（ojm install 的解压/迁移两处消费；模板逐字对齐 lifecycle steps 命令构造，
 # 不得增删——多一个 token 都会 NotCapable）----
 platform:
+  # 平台特权模块名单：方案安装器的 reloading 段调 server.reloadConfig 触发热更。
+  # 缺这条 → 装在最后一步报 NotCapable: module '_platform' is not platform-privileged。
+  modules: [_platform]
+  # 受控挂载根 = api 挂载目录（dev 形态 src）。ojm preview 派生 config 时会改写为 dist，
+  # 保持与 `--api-path` 同源；手写部署请按实际模块根填写。
+  root: src
   # ---- U6 信任库加固（P3-1；P2-2 红线 spike 结论）----
   # 威胁：devkit 0.1.75 语义下 fs: 段对全部模块生效（jail = fs.root），且 trusted_paths 只增不减——
   # 信任库落在第三方方案模块可写的 fs.root 内即可被其伪造信任锚。加固须两端配合：
@@ -96,6 +102,15 @@ platform:
         - 'tar -tvzf ${path:archive}'
         - 'tar -xzf ${path:archive} -C ${path:dest}'
         - 'oj migrate --format json -d ${path:dir} ${raw:module}'
+
+# ---- 方案安装器的落盘面（fs.* 全局）----
+# 安装器要解包到 modules/.staging、写 dist/modules、备份 db.sqlite——全在 config 目录内。
+# 缺本段 = fs.* 抛 NotCapable，且失败发生在任务文件落盘之前：表现为「POST 安装返回 200、
+# 但 task 查询恒 404」，排查成本极高。生产收紧口径见上面 platform 段的 U6 说明
+# （fs.root 收窄到安装子树 + third-party 模块 jail 隔离属部署清单项）。
+fs:
+  root: .
+  readonly: false
 
 # ---- LDAP 连接段（D1/PRD §4.5 两段式之连接段；oj 插件严格解析本段，未知键启动 fail-fast——只写下列键）----
 # 取消注释并填值即接通目录服务；应用映射段在 DB/设置页（ldap.enabled、ldap_base_dn、
