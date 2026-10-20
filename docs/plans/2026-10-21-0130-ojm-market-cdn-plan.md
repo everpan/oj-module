@@ -210,7 +210,9 @@ node node_modules/vitest/vitest.mjs run tests/cli/release-manifest.test.ts      
 | T4 | market build-index | ✅ 完成 | `market/scan.ts`（ustar 读端）+ `index-builder.ts` + `build-index.ts`；7 条用例 |
 | T5 | market setup | ✅ 完成 | `market/setup.ts`（must_change 闭环 + 绝对地址）+ `market/command.ts` 接入 `ojm market <sub>`；4 条用例 |
 | T6 | 端到端验证 | ✅ 完成 | 真宿主（端口 9785）跑通：publish → build-index → setup → market/index 出卡片 → install 十阶段全 ok |
-| T7-T9 | phase1 开发者环境 | 未开始 | |
+| T7 | market verify 离线验包 | ✅ 完成 | market/verify.ts：四类校验分列（完整性 / 包级签 / 索引签 / manifest 结构）+ --rebuild-index 漂移检出；结论恒带边界声明；已接入 ojm market verify 与 usage |
+| T8 | market/bootstrap.ts 隔离站点库 | 进行中 | |
+| T9 | market trial 隔离试装 | 待开始 | |
 | T10-T12 | phase2 全套模拟 | 未开始 | |
 
 ## 8. 阶段小结
@@ -286,3 +288,14 @@ fixture 最初两边各写各的，T6 实测撞到过一次。
 `oj serve` 启动时校验挂载目录（`mounts[N]: 挂载目录 …: No such file or directory`）；
 并且 `api: src` 这类相对路径**按 cwd 解析**而不是 config 所在目录——所以必须从 `api/` 目录起服务
 （`run.mjs` 也是这么做的）。这两条决定了 D-2「目录必须随模板发布」不是洁癖而是硬要求。
+
+### 9.5 模板仓跑 dev 的前置：`ojm vendor`（二进制不随仓库分发）
+
+`pnpm --filter @oj-module/template-demo dev` 会一路构建完本地模块、生成 `modules.json`，然后死在：
+
+> [ojm] 无法启动 oj（…/packages/cli/templates/bin/oj）：spawn … ENOENT
+
+因为 `bin/` 在 `templates/.gitignore` 里——oj 二进制**不随仓库分发**，需在模板目录跑一次
+`pnpm ojm vendor`（经 npm 包 `@oj-bin/oj`，本机落到 v0.1.84）。装好后同一条命令即通：
+dev server 5174 + oj 子进程 9778，`/api/health` 200、`/cdn/bundles.yaml` 干净 404。
+已把 ENOENT 报错改成人话（`packages/cli/src/oj.ts` spawn error 分支附「跑一次 ojm vendor」指引）。
