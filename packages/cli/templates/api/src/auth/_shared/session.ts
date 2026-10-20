@@ -111,8 +111,8 @@ export function createSession(deps: SessionDeps = runtimeDeps()) {
 
 		/** B3：刷新——轮换作旧；reuse 检测（已吊销串二次出现）全族吊销 + 审计。 */
 		async refresh(token: string): Promise<TokenBundle> {
-			// 保留 db.query：select * 无已知列清单（规则6）
-			const rows = await db.query("select * from sys_refresh_token where token_hash = ?", [hashOf(String(token ?? ""))]) as Array<Record<string, unknown>>;
+			// 构造器（v0.1.81）：select(["*"]) 显式拉全列，无已知列清单也能用，方言无关。
+			const rows = await db.table("sys_refresh_token").select(["*"]).where({ field: "token_hash", op: "eq", value: hashOf(String(token ?? "")) }).all() as Array<Record<string, unknown>>;
 			const row = rows[0];
 			if (!row)
 				fail(401, "invalid or expired refresh token");

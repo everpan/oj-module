@@ -163,11 +163,9 @@ export async function computeUninstallImpact(input: UninstallInput): Promise<Uni
 	const roleNames = roles.map(r => r.name);
 	let affectedUsers = 0;
 	if (roleNames.length > 0) {
-		// 保留 db.query：IN 占位符经 JS 字符串拼接动态生成（动态 SQL），构造器 in 仅接受静态数组值
-		const rows = await db.query(
-			`select distinct user_id from sys_user_role where role_name in (${roleNames.map(() => "?").join(",")})`,
-			roleNames,
-		) as Array<{ user_id: number }>;
+		// 构造器（v0.1.81）：in 直接收静态数组值，无需 JS 拼接占位符。distinct 去重用户；
+		// 顶层 select 无 limit 会被隐式钳到 default_limit，故显式拉到硬上限——预览计数与框架其余列表端点同受上限约束。
+		const rows = await db.table("sys_user_role").select(["user_id"]).distinct().where({ field: "role_name", op: "in", value: roleNames }).limit(100_000).all() as Array<{ user_id: number }>;
 		affectedUsers = rows.length;
 	}
 	return { name, affectedRoles: roleNames.length, affectedUsers };

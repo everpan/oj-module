@@ -25,6 +25,15 @@ interface WhereCond {
 	not?: WhereCond
 }
 
+// db.table(...).join(table, on, ...) 的单个 ON 项（v0.1.81）：列=列（{left,right}）
+// 或列=值（{left,op,value}），可混合出现在同一 on 数组；op 限比较类。
+interface JoinOn {
+	left: string
+	right?: string
+	op?: string
+	value?: unknown
+}
+
 // db.table(...).orderBy(items) 的单个排序项。
 interface OrderByItem {
 	field: string
@@ -52,18 +61,31 @@ interface QueryBuilder {
 	update: (sets: object) => QueryBuilder
 	delete: () => QueryBuilder
 	returning: (cols?: string[]) => QueryBuilder
-	// JOIN：on = 左右列对；kind 缺省 "inner"（left/right/... 依服务端支持）。
+	// JOIN（v0.1.81 支持 ON 值条件与表别名）：on = 左右列对 / 列对值条件；kind 缺省 "inner"。
+	// 第 4 参数 alias 给被 join 的表起别名；基表别名用 .as(alias)（v0.1.81）。
 	join: (
 		table: string,
-		on: { left: string, right: string }[],
+		on: JoinOn[],
 		kind?: string,
+		alias?: string,
 	) => QueryBuilder
+	// 基表别名（v0.1.81）：仅作用于列限定与 SQL 渲染；归属/租户守卫按真名生效。
+	// 仅 select/join 支持；insert/update/delete 带别名直接报错。
+	as: (alias: string) => QueryBuilder
+	// 条件化 where（v0.1.81）：test 为 undefined/null/false/空数组时整条跳过；0 与 "" 保留。
+	whereIf: (test: unknown, cond: WhereCond) => QueryBuilder
 	// DISTINCT / GROUP BY / HAVING / UNION / CTE（WITH）。
 	distinct: () => QueryBuilder
 	groupBy: (cols?: string[]) => QueryBuilder
 	having: (cond: WhereCond) => QueryBuilder
 	union: (other: QueryBuilder, kind?: string) => QueryBuilder
 	with: (name: string, columns: string[], query: QueryBuilder) => QueryBuilder
+	// 幂等写入（v0.1.81）：撞主键/任意唯一键则跳过（sqlite/pg → ON CONFLICT DO NOTHING；
+	// mysql → ON DUPLICATE KEY UPDATE <pk>=<pk>，要求表有主键）。三方言 affected-rows 不一致，
+	// 勿用 if (n===1) 判幂等；与 returning 在 mysql 上互斥。
+	orIgnore: () => QueryBuilder
+	// INSERT ... SELECT（v0.1.81）：从另一构造器结果批量写入，cols 与源 select 列按位置对齐。
+	fromSelect: (query: QueryBuilder, cols: string[]) => QueryBuilder
 	run: () => Promise<number | Row[]>
 	// 只构造不执行（与 .all()/.run() 完全相同的校验管线）。
 	toSQL: () => { sql: string, params: unknown[] }

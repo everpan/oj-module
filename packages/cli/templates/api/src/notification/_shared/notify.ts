@@ -69,12 +69,17 @@ function splitId(id: string): [scope: "u" | "b", raw: string] {
 function mapItem(r: Row): NoticeItem {
 	const scope = String(r.scope);
 	const isBroadcast = scope === "broadcast";
+	// UNION 结果列名取首分支（userQ）=> 位置 4 名为 is_read。按人项此处即存储整数列；
+	// 广播项此处实际承载回执 read_time（非空即已读，与原始 SQL 的 (read_time IS NOT NULL AND <> '') 等价）。
+	const isRead = isBroadcast
+		? (r.is_read != null && String(r.is_read) !== "")
+		: Number(r.is_read) === 1;
 	return {
 		id: (isBroadcast ? "b:" : "u:") + String(r.id),
 		scope: isBroadcast ? "broadcast" : "user",
 		avatar: String(r.avatar ?? ""),
 		date: String(r.date ?? ""),
-		isRead: Number(r.is_read) === 1,
+		isRead,
 		message: String(r.message ?? ""),
 		title: String(r.title ?? ""),
 		link: r.link == null ? undefined : String(r.link),
@@ -142,18 +147,40 @@ export async function noticesFor(
 	const limit = opts.limit ?? 50;
 	const offset = opts.offset ?? 0;
 	const uid = Number(userId);
-	const rows = await db.query(
-		`SELECT id, avatar, date, is_read, message, title, link, category, 'user' as scope
-		   FROM notifications WHERE user_id = ?
-		 UNION ALL
-		 SELECT b.id, b.avatar, b.date, (r.read_time IS NOT NULL AND r.read_time <> '') as is_read,
-		        b.message, b.title, b.link, b.category, 'broadcast' as scope
-		   FROM notifications_broadcast b
-		   LEFT JOIN notifications_broadcast_read r ON r.broadcast_id = b.id AND r.user_id = ?
-		 ORDER BY date DESC
-		 LIMIT ? OFFSET ?`,
-		[uid, uid, limit, offset],
-	);
+	// 构造器（v0.1.81）：UNION ALL 合并「按人」与「广播(LEFT JOIN 回执)」；lit 打固定 scope 标记列，
+	// 顶层 orderBy/limit/offset 跨方言一致。
+	// 注意：UNION 结果列名取首分支(userQ)，故两分支位置对齐即可——广播第 4 列取回执 read_time，
+	// 经 union 落到 is_read 列名下，是否「已读」由 mapItem 据非空推导（与原始 SQL 同源）。
+	const userQ = db.table("notifications").select([
+		"id",
+		"avatar",
+		"date",
+		"is_read",
+		"message",
+		"title",
+		"link",
+		"category",
+		{ lit: "user", as: "scope" },
+	]).where({ field: "user_id", op: "eq", value: uid });
+	const broadcastQ = db.table("notifications_broadcast").as("b").join("notifications_broadcast_read", [
+		{ left: "b.id", right: "r.broadcast_id" },
+		{ left: "r.user_id", op: "eq", value: uid },
+	], "left", "r").select([
+		"b.id",
+		"b.avatar",
+		"b.date",
+		"r.read_time",
+		"b.message",
+		"b.title",
+		"b.link",
+		"b.category",
+		{ lit: "broadcast", as: "scope" },
+	]);
+	const rows = await userQ.union(broadcastQ, "all")
+		.orderBy([{ field: "date", dir: "desc" }])
+		.limit(limit)
+		.offset(offset)
+		.all();
 	return rows.map(mapItem);
 }
 
@@ -166,11 +193,11 @@ export async function markRead(id: string, userId: string | number): Promise<boo
 	const uid = Number(userId);
 	const now = nowStr();
 	if (scope === "b") {
-		// 保留 db.exec：INSERT OR IGNORE 构造器无等价（引擎按方言改写 IGNORE）
-		await db.exec(
-			"INSERT OR IGNORE INTO notifications_broadcast_read (broadcast_id, user_id, read_time) VALUES (?, ?, ?)",
-			[Number(raw), uid, now],
-		);
+		// 构造器（v0.1.81）：orIgnore 幂等写入（sqlite/pg → ON CONFLICT DO NOTHING；mysql → ON DUPLICATE KEY UPDATE pk=pk）。
+		await db.table("notifications_broadcast_read")
+			.insert({ broadcast_id: Number(raw), user_id: uid, read_time: now })
+			.orIgnore()
+			.run();
 		return true;
 	}
 	const n = await db.table("notifications")
@@ -186,7 +213,10 @@ export async function markAllRead(userId: string | number): Promise<void> {
 	const uid = Number(userId);
 	const now = nowStr();
 	await db.table("notifications").where({ field: "user_id", op: "eq", value: uid }).update({ is_read: 1 }).run();
-	// 保留 db.exec：INSERT OR IGNORE ... SELECT 构造器无法表达
+	// 保留 db.exec：INSERT OR IGNORE ... SELECT 在 sqlite 上构造器无法表达——
+	// oj 0.1.81 的 orIgnore 仅跟随 VALUES 的 upsert 子句，不与 fromSelect(SELECT 源) 组合
+	// （实测：code 500 "orIgnore with fromSelect is not supported on sqlite"）。原 SQL 三方言通用
+	// （sqlite OR IGNORE / pg ON CONFLICT DO NOTHING / mysql ON DUPLICATE KEY），退回裸 SQL。
 	await db.exec(
 		"INSERT OR IGNORE INTO notifications_broadcast_read (broadcast_id, user_id, read_time) SELECT id, ?, ? FROM notifications_broadcast",
 		[uid, now],

@@ -6,16 +6,15 @@
 const todos = {
 	async get() {
 		const kw = http.query.keyword;
-		const where = kw ? "WHERE title LIKE ?" : "";
-		const params = kw ? [`%${kw}%`] : [];
+		const hasKw = typeof kw === "string" && kw.length > 0;
+		// 构造器：模糊过滤走语义 op（contains 自动转义 %/_/!），count 走聚合，方言无关。
+		const build = () => db.table("todos").whereIf(hasKw, { field: "title", op: "contains", value: kw });
 		try {
-			// 保留 db.query：WHERE 由 JS 字符串拼接动态生成（规则5）
-			const totalRows = await db.query(`SELECT COUNT(*) AS c FROM todos ${where}`, params);
-			const total = Number(totalRows[0]?.c ?? 0);
-			const rows = await db.query(
-				`SELECT id, title, done, create_time, update_time FROM todos ${where} ORDER BY id ASC`,
-				params,
-			);
+			const total = Number((await build().select([{ fn: "count", as: "c" }]).all())[0]?.c ?? 0);
+			const rows = await build()
+				.select(["id", "title", "done", "create_time", "update_time"])
+				.orderBy([{ field: "id", dir: "asc" }])
+				.all();
 			const list = rows.map(r => ({
 				id: Number(r.id),
 				title: String(r.title),
