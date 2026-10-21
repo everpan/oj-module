@@ -10,6 +10,7 @@ import { ascending } from "#src/router/utils/ascending";
 import { flattenRoutes } from "#src/router/utils/flatten-routes";
 import { generateMenuItemsFromRoutes } from "#src/router/utils/generate-menu-items-from-routes";
 
+import { groupSolutionMenus } from "#src/router/utils/group-solution-menus";
 import { mergeSolutionCategories } from "#src/router/utils/merge-solution-categories";
 import { resolveLoginRoute } from "#src/router/utils/resolve-login-route";
 
@@ -81,9 +82,16 @@ export const useAccessStore = create<AccessState & AccessAction>((set, get) => (
 		/* 双段序轴切分（ascending 保证负 order 段整体在后）：主区进 wholeMenus，
 		 * 底部固定区进 bottomMenus（渲染层 pin 侧边栏底部） */
 		const { top, bottom } = splitMenuRoutes(newRoutes);
+		// 方案路由注册菜单归组（纯视觉层）：main ≥2 按模块归父菜单、admin 挂入 /system；
+		// 空表/无命中为无操作，开发形态不变。setSolutionRoutes 回调本函数时 solutionRoutes 已就绪，随菜单重建自动覆盖。
+		const grouped = groupSolutionMenus(
+			generateMenuItemsFromRoutes(top),
+			generateMenuItemsFromRoutes(bottom),
+			get().solutionRoutes,
+		);
 		const newState = {
-			wholeMenus: generateMenuItemsFromRoutes(top),
-			bottomMenus: generateMenuItemsFromRoutes(bottom),
+			wholeMenus: grouped.top,
+			bottomMenus: grouped.bottom,
 			routeList: newRoutes,
 			flatRouteList,
 			isAccessChecked: true,

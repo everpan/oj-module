@@ -101,6 +101,10 @@ export function useMenu() {
 	 * 菜单点击事件处理
 	 */
 	const handleMenuSelect = (key: string, mode: MenuProps["mode"]) => {
+		/* 合成归组父键（solgroup:*）非真实路由，点击父标题不可导航，仅展开（§4.4） */
+		if (key.startsWith("solgroup:")) {
+			return;
+		}
 		if (key === removeTrailingSlash(pathname)) {
 			return;
 		}

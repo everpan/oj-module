@@ -2,7 +2,8 @@
 	"menu": {
 		"main": "生命周期样例",
 		"admin": "样例管理",
-		"report": "样例报告"
+		"report": "样例报告",
+		"group": "样例分组"
 	},
 	"perm": {
 		"view": "查看样例",

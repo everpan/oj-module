@@ -2,7 +2,8 @@
 	"menu": {
 		"main": "Lifecycle Sample",
 		"admin": "Sample Admin",
-		"report": "Sample Report"
+		"report": "Sample Report",
+		"group": "Sample Group"
 	},
 	"perm": {
 		"view": "View sample",

@@ -5,6 +5,20 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 设计依据、迁移记录与陷阱清单见 [`docs/prd/202609110947-oj-module-two-package-consolidation-design.md`](docs/prd/202609110947-oj-module-two-package-consolidation-design.md)。
 
+## [0.2.15] - 2026-10-21
+
+双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步升 **0.2.15**。
+
+### Added
+
+- **方案路由注册菜单归组**（纯视觉层，开发形态不变）：已安装的方案 `main` 路由同模块 ≥2 条时归进一个合成父菜单（`solgroup:main:<module>`，标题 `<name>:menu.group`）；`admin` 路由跨菜单挂进宿主底部 `/system` 的 children（缺失 `/system` 则回落平铺并 warnOnce 一次）。合成父键被 `use-menu.ts` 显式拦截，点击只展开不导航。
+- **manifest 契约 C2-43**：声明 `main`/`admin` 路由的方案须提供嵌套 i18n key `<name>:menu.group`（双语齐备），构建期 fail-fast；缺失报 C2-43（非笼统 C2-25），按语言去重。
+- **开发者文档**：`docs/devkit/menu-rules.md` 讲清归组规则、i18n key 约定、DO/DON'T 清单与源码索引。
+
+### Changed
+
+- `setAccessStore` 登记菜单时同步调用 `groupSolutionMenus`，空表 / 无命中为无操作；`setSolutionRoutes` 按快照重归并（R21），端点失败 / 登出清空回落平铺。
+
 ## [0.2.14] - 2026-10-21
 
 双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步升 **0.2.14**。
