@@ -8,7 +8,7 @@ import { devServer } from "./dev";
 import { mergeManifests, printInfo } from "./info";
 import { initProject } from "./init";
 import { runPreview } from "./preview";
-import { usageText } from "./usage";
+import { getCommandHelp, resolveHelpRequest, usageText } from "./usage";
 import { vendorCommand } from "./vendor";
 import { readCliVersion } from "./versions";
 
@@ -24,6 +24,23 @@ function usage(): never {
 
 async function main() {
 	const projectRoot = process.cwd();
+
+	// 帮助请求：`ojm <cmd> --help` / `ojm help <cmd>` / 顶层 `ojm --help`
+	// 必须在 switch 之前拦截，否则会真正执行子命令（如 `ojm market setup --help` 会去建 CDN）。
+	const helpReq = resolveHelpRequest();
+	if (helpReq !== null) {
+		if (!helpReq.cmd) {
+			console.log(usageText());
+			return;
+		}
+		const text = getCommandHelp(helpReq.cmd, helpReq.sub);
+		if (text) {
+			console.log(text);
+			return;
+		}
+		console.error(`[ojm] 未知命令：${helpReq.cmd}${helpReq.sub ? ` ${helpReq.sub}` : ""}`);
+		process.exit(1);
+	}
 
 	// 顶层 --version / -V：打印 cli 包版本（与 `ojm info` 的 cli 版本同源）
 	if (command === "--version" || command === "-V") {

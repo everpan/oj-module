@@ -1465,6 +1465,9 @@ export default async (path: string, html: string) => {
 
 `ojm` 暴露两类命令，务必分清（这也是本手册 §7 反复强调的「oj 透传」指的是什么）：
 
+> 每个命令都支持 **`ojm <cmd> --help`**（或 `ojm help <cmd>`）打印该命令的用法与全部选项——
+> 记不住参数时直接加 `--help`，不必翻本节。
+
 | 类别 | 命令 | 谁实现 | 一句话 |
 |---|---|---|---|
 | **ojm 原生** | `init` / `dev` / `build` / `preview` / `api` / `info` / `vendor` / `merge` / `install` / `enable` / `disable` / `uninstall` / `trust` / `keygen` / `sign` / `publish` | `ojm` 自己 | 前后端一体工程的脚手架、开发、构建、契约生成、版本/清单、oj 分发、清单合并；方案包安装面与签名信任（install/enable/disable/uninstall 见 §11，trust/keygen/sign 见 §12，publish 见 §11.2） |
@@ -1595,6 +1598,29 @@ export default async (path: string, html: string) => {
 
 `secret`（`keygen` / `seal` 等）**不在透传集合内**——它不需要 config，需直接 `./bin/oj secret ...`。
 
+### 10.3 本地市场链路：`ojm market` 子命令
+
+`market` 是一组**本地模拟 CDN + 市场链路**工具，专供作者在本机验证「方案包能不能发、能不能装」，
+**不触碰真实生产 CDN**。所有产物落在工程根 `cdn/`（由 `api/config.yaml` 的 `/cdn` 挂载直出），
+首跑用 `market setup` 把系统设置 `framework.market_cdn_url` 指过去即可在本地市场页看到。
+
+> 跑任何子命令前先 `ojm market setup` 一次（把模拟 CDN 地址写进站点配置）。
+> 想看「这个包到底能不能装」而不污染工程，用 `ojm market trial`（一次性隔离站点，跑完即毁）。
+> 每个子命令都能 `ojm market <sub> --help` 单独看帮助。
+
+| 子命令 | 一句话 |
+|---|---|
+| `ojm market setup [--url <站点>] [--user <u> --pass <p>] [--new-pass <p>]` | 把 `framework.market_cdn_url` 指向本地 `cdn/`；首跑若账号处于首次改密期会先自动改密再写入 |
+| `ojm market publish [--fixture <name>@<version>] [--real <方案工程>] [--id <key>] [--key <pem>] [--rebuild-index] [--check]` | 把方案包落进 `cdn/` 并做包级 detached 签名；**不碰索引**（索引由 `build-index` 重建，避免多人发布互相覆盖） |
+| `ojm market build-index [--id <key>] [--key <pem>] [--check]` | 扫描 `cdn/*.tgz`、提取包内 manifest，全量重建 `bundles.yaml` + `manifests.yaml` 并签名；结果只取决于目录内容，连续执行字节一致 |
+| `ojm market verify [--file <tgz>] [--rebuild-index]` | 离线验包（不起站点、不装、不要凭据）：sha256 完整性 / 包级 Ed25519 验签 / 索引验签 / manifest 结构分列输出；`--rebuild-index` 额外比对重建索引与盘上索引的漂移 |
+| `ojm market trial [--fixture <name>@<version>] [--keep]` | 在一次性隔离站点里跑完整安装，跑完即毁；`--keep` 保留现场供排查 |
+
+- `--fixture <name>@<version>`：用内置合成包（无需先 build）；`--real <方案工程>`：先 `ojm build --bundle` 再拿真实产物。
+- `--id <key>` / `--key <pem>`：包级签名身份（与 `ojm sign` 同体系，默认取 `~/.ojm/keys`）。
+- `--check`：离线自检签名（不必靠装失败发现签错）。
+- `verify` 的边界声明保留：**校验通过只说明来源与完整性，不构成内容安全性背书**。
+
 ---
 
 ## §11 方案包：打包与分发
@@ -1664,6 +1690,26 @@ flowchart TD
 ```
 
 - **needs_trust 确认后重试同一安装**即可续跑；一切消费面须把它当**非成功态**渲染。
+
+### 11.4 生命周期命令与站点寻址约定
+
+`install` / `enable` / `disable` / `uninstall` / `trust` 都是**瘦客户端**——它们把请求发到目标站点
+（需 superadmin），本地只做「登录 → 提交 → 轮询任务至终态」并打印结果。三处寻址约定完全一致：
+
+- `--url <站点地址>`：缺省 `http://127.0.0.1:9778`；
+- `--user <账号>` / `--pass <密码>`：站点凭据；
+- 等价环境变量 `OJM_URL` / `OJM_USER` / `OJM_PASS`（命令行缺省时回退读取，**凭据只走内存不落盘**）；
+- `--locale <zh-CN|en-US>`：`install` 专用，切换失败文案双语（默认按站点 locale）。
+
+| 命令 | 作用 | 注意 |
+|---|---|---|
+| `ojm install <file.tgz \| name[@version]> [--name <n>] [--version <v>]` | 安装方案包（file 直传 / cdn 拉取，见 §11.2），十阶段状态机见 §11.3 | `<name>-<version>.tgz` 文件名推导身份，可用 `--name`/`--version` 覆盖 |
+| `ojm enable <name>` / `ojm disable <name>` | 启用 / 禁用已装方案 | 四处同写：锁 / sidecar / 路由清单 / 模块清单 |
+| `ojm uninstall <name>` | 卸载已装方案 | 四处同删 + 权限级联清理 + 版本目录移除；**站点至少保留一个已锁模块** |
+| `ojm trust ls\|add\|revoke\|confirm` | 站点信任库管理（§12.2） | `confirm --task <id>` 把 needs_trust 待确认 key 入库 |
+
+> `enable`/`disable`/`uninstall` 失败多半是「站点地址/凭据没给对」或「站点没这个方案」——
+> 先 `ojm info` 贴出版本矩阵与模块清单，确认目标站点与方案名无误再重试。
 
 ---
 
@@ -1814,7 +1860,7 @@ ojm trust revoke <key_id>        # 吊销：阻断新装/升级，不动已装�
 | §7 构建与发布 | build / preview、htmlTransform、verify 闸 | 发布前 |
 | §8 排查 | 五步排查法、症状速查表 | 任何「没生效」 |
 | §9 参考 | 可抄的工程内文件、oj-api-dev 手册指引 | 找范本 |
-| §10 CLI 子命令参考 | ojm 原生命令 vs oj 透传命令 | 查命令用法 |
+| §10 CLI 子命令参考 | ojm 原生命令 vs oj 透传命令；`market` 子命令（本地模拟 CDN） | 查命令用法；`ojm <cmd> --help` 看单命令帮助 |
 | §11 方案包：打包与分发 | build --bundle、Form A/B、分发源、索引规范 | 发布方案包 |
 | §12 签名与信任 | keygen/sign/install 发布流程、信任库、TOFU、bootstrap key | 首次签名发布；管理信任 |
 | §13 方案菜单归组规则 | main ≥2 按模块归父菜单、admin 挂进系统设置、组标题 i18n key `<方案名>:menu.group` 约定、开发者 DO/DON'T | 写方案要让菜单按模块分组 |

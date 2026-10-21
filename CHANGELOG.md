@@ -13,7 +13,8 @@
 
 - **方案路由注册菜单归组**（纯视觉层，开发形态不变）：已安装的方案 `main` 路由同模块 ≥2 条时归进一个合成父菜单（`solgroup:main:<module>`，标题 `<name>:menu.group`）；`admin` 路由跨菜单挂进宿主底部 `/system` 的 children（缺失 `/system` 则回落平铺并 warnOnce 一次）。合成父键被 `use-menu.ts` 显式拦截，点击只展开不导航。
 - **manifest 契约 C2-43**：声明 `main`/`admin` 路由的方案须提供嵌套 i18n key `<name>:menu.group`（双语齐备），构建期 fail-fast；缺失报 C2-43（非笼统 C2-25），按语言去重。
-- **开发者文档**：`docs/devkit/menu-rules.md` 讲清归组规则、i18n key 约定、DO/DON'T 清单与源码索引。
+- **开发者文档**：`docs/devkit/manual.md` §13 讲清归组规则、i18n key 约定、DO/DON'T 清单与源码索引（原 `menu-rules.md` 已并入 §13，保持 devkit 顶层 6 文件发货约束）。
+- **`ojm <cmd> --help` / `ojm help <cmd>` 单命令帮助**：`usage.ts` 抽出 `COMMAND_HELP` 单命令帮助表（含 `market` 全部子命令与 `trust` 各子命令），`index.ts` 在 dispatch 前拦截 `--help`/`-h` 与 `help <cmd>` 形态；每个子命令的用法与全部选项可与文档 `docs/devkit/manual.md` §10/§11/§12 互参。
 
 ### Changed
 
