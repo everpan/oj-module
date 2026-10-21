@@ -219,8 +219,9 @@ export async function bootstrapIsolatedSite(opts: BootstrapOptions = {}): Promis
 /**
  * seed 派生一次性 Ed25519 身份（照 fixtures/sig 夹具手法：公开 seed → SHA-256 → PKCS#8 DER）。
  * 私钥只在内存；label 每次随机，故每次 trial 都是不同身份（不会与任何既有信任库条目撞）。
+ * 导出供 walkthrough 的 neg-stranger op 派生「未登记 key」（DRY：不重写派生手法）。
  */
-function derivePublisherKey(label: string): { privateKeyPem: string, publicKeyHex: string } {
+export function derivePublisherKey(label: string): { privateKeyPem: string, publicKeyHex: string } {
 	const seed = createHash("sha256").update(`ojm-trial-publisher:${label}`).digest();
 	const der = Buffer.concat([Buffer.from(ED25519_PKCS8_PREFIX, "hex"), seed]);
 	const key = createPrivateKey({ key: der, format: "der", type: "pkcs8" });

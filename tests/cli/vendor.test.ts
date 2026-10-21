@@ -220,9 +220,10 @@ fs.writeFileSync(path.join(bin,${JSON.stringify(ojBin)}),"#!/bin/sh\\necho oj\\n
 	 */
 	describe("最低 oj 版本门禁（MIN_OJ_VERSION）", () => {
 		it(`isSupportedOjVersion：${MIN_OJ_VERSION} 及以上通过，以下拒绝（数值比较非字符串）`, () => {
-			expect(isSupportedOjVersion("0.1.73")).toBe(true);
+			expect(isSupportedOjVersion(MIN_OJ_VERSION)).toBe(true);
 			expect(isSupportedOjVersion("0.2.0")).toBe(true);
 			expect(isSupportedOjVersion("1.0.0")).toBe(true);
+			expect(isSupportedOjVersion("0.1.80")).toBe(false);
 			expect(isSupportedOjVersion("0.1.72")).toBe(false);
 			expect(isSupportedOjVersion("0.1.69")).toBe(false);
 			expect(isSupportedOjVersion("0.1.50")).toBe(false);
@@ -230,7 +231,7 @@ fs.writeFileSync(path.join(bin,${JSON.stringify(ojBin)}),"#!/bin/sh\\necho oj\\n
 			expect(isSupportedOjVersion("0.1.32")).toBe(false);
 			expect(isSupportedOjVersion("0.1.28")).toBe(false);
 			expect(isSupportedOjVersion("0.1.11")).toBe(false);
-			// 字符串比较会把 0.1.9 判成 > 0.1.73，必须按段数值比
+			// 字符串比较会把 0.1.9 判成 > 0.1.81，必须按段数值比
 			expect(isSupportedOjVersion("0.1.9")).toBe(false);
 		});
 
@@ -239,7 +240,7 @@ fs.writeFileSync(path.join(bin,${JSON.stringify(ojBin)}),"#!/bin/sh\\necho oj\\n
 			const logs: string[] = [];
 			await expect(vendorCommand(dir, { force: false }, { run, log: m => logs.push(m), probe: () => ({ ok: true, detail: "" }) }))
 				.rejects
-				.toThrowError(/0\.1\.73/);
+				.toThrowError(new RegExp(MIN_OJ_VERSION.replace(/\./g, "\\.")));
 			expect(calls.some(c => c[0] === "install")).toBe(false);
 			expect(fs.existsSync(path.join(dir, "bin", "oj"))).toBe(false);
 			fs.rmSync(dir, { recursive: true, force: true });
@@ -249,7 +250,7 @@ fs.writeFileSync(path.join(bin,${JSON.stringify(ojBin)}),"#!/bin/sh\\necho oj\\n
 			const { dir, run, calls } = setup("0.2.0");
 			await expect(vendorCommand(dir, { force: false, tag: "v0.1.11" }, { run, log: () => {}, probe: () => ({ ok: true, detail: "" }) }))
 				.rejects
-				.toThrowError(/0\.1\.73|过低/);
+				.toThrowError(new RegExp(`${MIN_OJ_VERSION.replace(/\./g, "\\.")}|过低`));
 			expect(calls.some(c => c[0] === "install")).toBe(false);
 			fs.rmSync(dir, { recursive: true, force: true });
 		});

@@ -10,7 +10,9 @@
 本地模拟 CDN（工程根 `cdn/` + `/cdn` 挂载）与 `ojm market` 六条子命令已打通，
 真宿主上「开发方案模块 → 打包签名 → 发布 → 市场卡片 → 安装 11 段全 ok → 探活」两轮全绿；
 版本 lockstep **0.2.13**，分支 `feat/ojm-market-cdn`（8 个提交，已并入 `feat/ojm`）。
-**余量**：phase2 T12（neg-* 四条负面场景 + upgrade/rollback）未实现，骨架已就位。
+**T12 已完成（2026-10-21）**：walkthrough 13 项全 PASS——主链路 upgrade / rollback，
+负向 neg-tamper / neg-nosig / neg-badindex / neg-stranger（详见计划文档 §8 phase2 T12 小结）。
+注意：`MIN_OJ_VERSION` 已抬到 **0.1.81**（模板 startswith 硬需求），本机 oj 需 ≥ v0.1.81。
 
 ## 2. 已交付（可直接用）
 
@@ -105,23 +107,20 @@ node node_modules/eslint/bin/eslint.js packages/cli/src/market packages/cli/src/
 9. 安装卡 smoke 401 ⇒ 方案声明了 `api.anonymous`，`anonymous_paths` 需重启才生效（trial 站点已预置）
 10. 深检 `ledger.stale` 是**存量误报**（`_oj_migrations` 未进 schema，取不到 head）——不要据此改安装逻辑
 
-## 8. 还差什么（T12，建议下一步就做）
+## 8. T12 已完成（2026-10-21）
 
-`walkthrough.ts` 的 op 注册表已就位，补四个 op 即可（每个 op 自己 setup → act → assert → cleanup）：
+walkthrough 现有 13 个 op，全量实测 **13 PASS / 0 FAIL**，`--only` 单跑原子性成立：
 
-| op | 做法 | 断言 |
-|---|---|---|
-| `neg-tamper` | 翻转 `cdn/<pkg>.tgz` 一个字节（先备份） | 安装 `failed`/`partial` 且 `stage=verifying`，零落盘 |
-| `neg-nosig` | 删 `.tgz.sig` 后重建索引 | 失败信息含 `sig_missing` |
-| `neg-badindex` | 向 `bundles.yaml` 追加字节 | 索引验签失败拒装 |
-| `neg-stranger` | 用未登记 key 重签 + 重建索引 | `needs_trust` → `trust confirm` → 重装 done |
+- 主链路新增：`upgrade`（0.1.0→0.2.0，断言 installed 推进 / 双版本目录共存 / 0001 逐字节一致）、
+  `rollback`（账本超前 → failed@migrating，dist 内容快照零变化）。
+- 负向新增（统一用 9.9.9 版本隔离，finally 回抄原始字节 + 摘包重铺索引）：
+  `neg-tamper`（failed@verifying）、`neg-nosig`（sig_missing）、`neg-badindex`（安装 POST 即 502）、
+  `neg-stranger`（needs_trust → confirm → done）。
+- 支撑改动：fixture 迁移阶梯（minor ≥ 2 增 0002__more.sql）；`MIN_OJ_VERSION` 0.1.73 → **0.1.81**
+  （模板 `startswith` 硬需求；oj < 0.1.81 卸载方案会 `unknown variant startswith` fail-closed）。
 
-另外两个主链路 op：
-
-- `upgrade`：先装 0.1.0，再发布 0.2.0 并安装 → 断言锁与 `state.yaml` 版本推进、`0001` 迁移逐字节一致
-- `rollback`：装 0.1.0 时账本已超前 → 断言 `failed@migrating` 且零副作用（AC5 口径）
-
-实现注意：负面 op 篡改的文件必须在 `finally` 里**回抄原始字节**（不要重签），否则后续 op 全挂。
+过程与坑全记录在 `docs/plans/2026-10-21-0130-ojm-market-cdn-plan.md` §8「phase2（T12）已完成」。
+原 T12 清单的 evil / 信任库快照 diff / revoke / 失败文案表 / 报告白黑名单**不在交接范围，仍属余量**。
 
 ## 9. 环境与协作注意
 

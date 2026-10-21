@@ -186,6 +186,26 @@ Scenario 4.1 首跑 must_change 闭环
 - **T10** `installRaw` 抽取 + walkthrough 骨架（preflight 五项 / AC 表 / 汇总行 / artifacts）
 - **T11** 主链路 op（index / install / reinstall / upgrade / rollback / enable / disable / verify / history / uninstall）
 - **T12** neg-*（tamper / nosig / badindex / stranger / evil）+ 信任库快照 diff + revoke + 失败文案表 + 报告白黑名单
+  - **口径收敛（交接文档 §8）**：本期只做 6 个 op——`upgrade` / `rollback` / `neg-tamper` / `neg-nosig` / `neg-badindex` / `neg-stranger`；
+    「evil / 信任库快照 diff / revoke / 失败文案表 / 报告白黑名单」不在交接范围内，留后续。
+  - **支撑改动**：fixture 迁移阶梯——`0.2.0` 起（minor ≥ 2）多一段 `0002__more.sql`，
+    让「升级真的多走一段迁移、账本 head 能真超前」，upgrade/rollback 才有可断言的物理差异。
+  - **BDD 用例**（op 即场景，`--only` 单跑；neg-* 篡改文件在 `finally` 回抄原始字节，不重签）：
+
+| 场景 | Given | When | Then |
+|---|---|---|---|
+| upgrade | 隔离站点已装 `demo-solution@0.1.0`（账本 head=1） | 发布 `0.2.0`（含 `0001+0002`）重建索引并安装 | `done`；索引 `installed=0.2.0` 且 `available` 含两版；`api/dist` 下 0.1.0/0.2.0 版本目录共存（旧版不 prune）；两版 `0001__init.sql` 逐字节一致 |
+| rollback | 已装 `0.2.0`（账本 head=2） | 再装 `0.1.0`（包内最大 seq=1 < head=2） | `failed` 且 `stage=migrating`（禁降版拦截）；`api/dist` 内容快照零变化（0.1.0 目录是前序合法安装产物，不能拿「目录不存在」当断言）；索引 `installed` 仍为 `0.2.0` |
+| neg-tamper | CDN 已索引 `demo-solution@9.9.9` | 翻转 tgz 一个字节后安装该版本 | `failed` 且 `stage=verifying`（sha256 与索引不符，C2-29）；`api/dist/<name>-9.9.9` 不存在（零落盘） |
+| neg-nosig | `9.9.9` 的 `.tgz.sig` 被删除并重建索引 | 安装 `9.9.9` | `failed` 且失败信息含 `sig_missing`（G4 硬 fail-closed） |
+| neg-badindex | `bundles.yaml` 被追加字节（签名失配） | 发起安装 | 安装 POST 即被拒（502，信息含「签名校验失败」，G4 fail-closed），任务都未创建 |
+| neg-stranger | `9.9.9` 被**未登记 key** 重签并重建索引 | 安装 `9.9.9` | 首装 `needs_trust`（unknown_key）→ trust confirm → 重装 `done` |
+
+  - **op 顺序约束**：upgrade 须在 head ≤ 1 时跑（0.1.0 之后）；rollback 依赖 upgrade 之后的 head=2；
+    故顺序为 `… enable / verify / history → upgrade → rollback → uninstall → neg-*`。
+    uninstall op 改为「查索引实际 installed 版本再断言目录清除」，不再钉死 `ctx.version`。
+  - **neg-* 用 `9.9.9`**：与主链路版本完全隔离，互不残留；每个 neg op 自建前置（发布→篡改→重建索引），
+    finally 里删 `9.9.9` 包并重铺索引。
 - **DOD**：每条 op 支持 `--only` 单跑；neg-* 按预期失败口径计分；`--strict` 首败即停。
 
 ## 6. 分支、提交与验证命令
@@ -215,7 +235,7 @@ node node_modules/vitest/vitest.mjs run tests/cli/release-manifest.test.ts      
 | T9 | market trial 隔离试装 | ✅ 完成 | `market/trial.ts` + `ojm market trial`：隔离站点内 setup（首登改密）→ 安装 → needs_trust 自动确认 → 重试 → 11 段全 ok，跑完即毁；实测 12s |
 | T10 | walkthrough 骨架 | ✅ 完成 | `market/walkthrough.ts`：op 注册表 + `setup→act→assert→cleanup` + AC 表 + 汇总行 + `--only/--strict/--keep` |
 | T11 | 主链路 op | ✅ 完成 | index / install / reinstall / enable / disable / verify / history / uninstall（8 项，实测 7 PASS + enable 含双向） |
-| T12 | neg-* 与升级回滚 | 未完成 | neg-tamper/nosig/badindex/stranger、upgrade/rollback 未实现（phase2 余量） |
+| T12 | neg-* 与升级回滚 | ✅ 完成 | walkthrough 新增 6 op：upgrade / rollback / neg-tamper / neg-nosig / neg-badindex / neg-stranger（neg-* 统一用 9.9.9 隔离，finally 回抄原始字节 + 摘包重铺索引）；fixture 迁移阶梯（minor ≥ 2 增 0002）；`MIN_OJ_VERSION` 0.1.73 → 0.1.81（模板 startswith 硬需求）；实测 13 项全 PASS，`--only` 单跑原子性成立 |
 
 ## 8. 阶段小结
 
@@ -263,6 +283,41 @@ enable / disable / verify / history / uninstall），出 AC 表；`--only` 单�
 
 **未完成（明确余量）**：T12 的 neg-*（tamper / nosig / badindex / stranger）与 upgrade / rollback。
 骨架已就位（op 注册表 + 逐 op 前置换装），补 op 即用。
+
+### phase2（T12）已完成 —— 2026-10-21 08:45
+
+**交付**：`ojm market walkthrough` 补齐 6 个 op——主链路 `upgrade`（0.1.0→0.2.0）/ `rollback`
+（账本超前拦截），负向 `neg-tamper`（包体篡改）/ `neg-nosig`（缺签名）/ `neg-badindex`（索引篡改）/
+`neg-stranger`（未登记 key TOFU 闭环）。全套 13 项实测 **13 PASS / 0 FAIL**，`--only` 单跑原子性成立。
+
+**关键过程**
+
+1. **fixture 迁移阶梯**：`0.2.0` 起（minor ≥ 2）多一段 `0002__more.sql`——upgrade 真的多走一段迁移，
+   rollback 才有「包内最大 seq < 账本 head」可拦（OJ-9）。同版本输出恒定的确定性不破。
+2. **rollback 的「零落盘」断言踩了自己一脚**：`api/dist/<name>-0.1.0` 是前序 op 的**合法产物**，
+   「目录不存在」断言必然误报。改为安装前后 `api/dist` 目录清单快照比对——「零副作用」的正确定义是
+   **本次操作不改变任何既有产物**，不是「目标目录不存在」。
+3. **存量版本脱节（反常规：门禁与模板能力假设两张皮）**：模板 `solution-perms.ts` 依赖 oj v0.1.81 的
+   `startswith` 操作键，而 `MIN_OJ_VERSION` 还停在 0.1.73、本机 vendored oj 是 0.1.80——卸载方案时
+   权限级联清理抛 `unknown variant startswith`，事务回滚 fail-closed。修复：`MIN_OJ_VERSION` 抬到
+   0.1.81（vendor.test 硬编码字面量同步改为引用常量）+ 重 vendor v0.1.84（根与 templates 两处）。
+4. **P3-11 预锁 guard 仍未触发**（oj 0.1.84 下实测）：`ledgerHeadOf = journalHeadOf` 受 pitfall 10
+   之限（`_oj_migrations` 未进 schema → null → 跳过预锁），实际由 oj migrate 的 `rollbackGuard`
+   事后拦截（exit 1 → failed@migrating）。op 断言 `failed@migrating` 两种拦截路径均成立，
+   但若将来要单独验「宿主层预锁零 exec」，须先解 pitfall 10。
+5. **neg-* 隔离纪律**：四个负向 op 统一用 `9.9.9` 版本，与主链路零交集；篡改文件（tgz / .sig /
+   bundles.yaml）在 `finally` 里**回抄原始字节**（不重签），随后摘包 + 重铺索引，后续 op 不受残留影响。
+
+**统一审查**
+
+| 项 | 结果 |
+|---|---|
+| cli 单元测试 | 292 passed / 1 skipped（+3：fixture 迁移阶梯） |
+| 守卫套件 | release-manifest / devkit-docs / package-guards / vendor / info-oj / init 共 64 passed（修复 MIN_OJ_VERSION 抬版后的 3 条硬编码断言） |
+| typecheck / eslint | 净 |
+| 真链路 | walkthrough 全套 13 项 **13 PASS / 0 FAIL**；`--only upgrade/rollback/neg-tamper/neg-stranger` 单跑各 PASS（原子性成立）；**耗时 ≈40 分钟**（含两轮全量 e2e 与 vendored oj 升级） |
+
+**遗留（不在交接范围）**：T12 原清单的 evil 场景 / 信任库快照 diff / revoke / 失败文案表 / 报告白黑名单。
 
 
 ### phase0（T1–T6）已完成 —— 2026-10-21 03:15
