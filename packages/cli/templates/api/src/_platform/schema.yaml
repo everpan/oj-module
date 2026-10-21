@@ -1,7 +1,17 @@
 # 框架级共有表上收 _platform 伪模块（§3-D2）：归属图单源，杜绝「散在模块 seed」。
 # 与 manifest.tables 双向一致（S005）；auth 模块跨模块读 users 经 deps 声明。
 # D10：users.roles JSON 列已移除——角色唯一权威源为 sys_user_role 关系表。
+# _oj_migrations 为 oj 迁移 journal 内建表（oj 自建自管 DDL）；此处声明只为让 db.table
+# 元数据校验放行（journalHeadOf：深检 ledger 复核 + P3-11 预锁 guard 的真源），列与 oj 真表逐列对齐。
 tables:
+  _oj_migrations:
+    pk: [module, version]
+    columns:
+      module: {type: text, null: false}
+      version: {type: integer, null: false}
+      name: {type: text}
+      applied_on: {type: text}
+      checksum: {type: text}
   users:
     pk: id
     columns:

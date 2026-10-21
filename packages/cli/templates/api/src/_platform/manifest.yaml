@@ -2,6 +2,7 @@ name: _platform
 desc: 平台内核（非业务模块、无自身业务路由前缀）。含三类：① 跨模块服务 _shared/service（infra 基础设施 + domain 管理域）；② 生命周期引擎 _lifecycle（方案安装/卸载/注册/验签/信任状态机）；③ 平台编排 API 面 /api/_platform/{contacts,market,solutions}（由 market/api.ts、contacts/api.ts、solutions/api.ts 暴露，全 superadmin 门禁）。运行时安装的方案包不在此树。
 version: 0.1.0
 tables:
+  - _oj_migrations
   - users
   - sys_setting
   - sys_oplog

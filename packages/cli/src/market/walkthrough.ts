@@ -20,11 +20,13 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { signCommand } from "../sign";
-import { callApi, login, pollTask } from "../site";
+import { callApi, login, pollTask, unwrapEnvelope } from "../site";
 import { bootstrapIsolatedSite, derivePublisherKey } from "./bootstrap";
 import { buildIndex } from "./build-index";
-import { parseFixtureSpec } from "./fixture";
+import { FAILURE_PLAYBOOK } from "./failure-playbook";
+import { buildEvilZipSlipTgz, parseFixtureSpec } from "./fixture";
 import { publishPackage } from "./publish";
+import { writeWalkthroughReport } from "./report";
 import { setupMarketUrl } from "./setup";
 
 interface Ctx {
@@ -120,16 +122,16 @@ const OPS: Op[] = [
 		run: async (ctx) => {
 			await ensureInstalled(ctx);
 			const res = await callApi<{ ok?: boolean, checks?: Array<{ id?: string, severity?: string }>, advise?: unknown }>(fetch, ctx.base, ctx.token, "POST", `/api/_platform/solutions/verify?name=${encodeURIComponent(ctx.name)}`);
-			const checks = Array.isArray(res.checks) ? res.checks : [];
-			// 本 op 断言的是「深检可用且报告结构完整」，不是它的裁决——报告里的 error 由站点事实决定。
-			// 已知误报：ledger.stale（_oj_migrations 未在模块 schema 声明，journalHeadOf 取不到 head）。
-			if (checks.length === 0)
-				return { ok: false, detail: "深检未返回任何 checks（端点异常？）" };
-			const ids = [...new Set(checks.map(c => c.id ?? "?"))].join("/");
-			const errors = checks.filter(c => c.severity === "error").map(c => c.id ?? "?");
+			// 本 op 断言「深检可用且报告结构完整」，不做裁决。checks 是问题清单：pitfall 10 修复后
+			// 全绿站点恒为空数组——空是健康态不是端点异常（此前的非空断言其实寄生在 ledger.stale 误报上）。
+			if (typeof res.ok !== "boolean" || !Array.isArray(res.checks) || !Array.isArray(res.advise))
+				return { ok: false, detail: "深检报告结构破损（缺 ok/checks/advise 字段）" };
+			const errors = res.checks.filter(c => c.severity === "error").map(c => c.id ?? "?");
 			return {
 				ok: true,
-				detail: `报告完整（${checks.length} 项：${ids}）${errors.length === 0 ? "，无 error" : `；error 项：${[...new Set(errors)].join("/")}`}`,
+				detail: res.checks.length === 0
+					? "报告结构完整，checks 为零问题（账本/RBAC/设置/路由/web 全绿）"
+					: `报告结构完整（${res.checks.length} 项问题）；error 项：${[...new Set(errors)].join("/") || "无"}`,
 			};
 		},
 	},
@@ -301,6 +303,7 @@ const OPS: Op[] = [
 			const orig = fs.readFileSync(tgz);
 			const origSig = fs.readFileSync(sig);
 			const stranger = derivePublisherKey(randomBytes(16).toString("hex")); // 未登记身份，私钥只在内存
+			const before = await trustKeys(ctx); // 信任库快照（F3 diff 基线）
 			try {
 				signCommand(tgz, { id: "stranger.publisher", privateKeyPem: stranger.privateKeyPem }); // 覆盖侧车签名
 				await buildIndex({ projectRoot: ctx.site.root, id: "stranger.publisher", privateKeyPem: stranger.privateKeyPem });
@@ -309,13 +312,56 @@ const OPS: Op[] = [
 					return { ok: false, detail: `未停 needs_trust：status=${first.status}：${first.message}` };
 				await callApi(fetch, ctx.base, ctx.token, "POST", "/api/_platform/market/trust", { task_id: first.id });
 				const second = await installOnce(ctx, NEG_VERSION);
-				const ok = second.status === "done";
-				return { ok, detail: ok ? "needs_trust（unknown_key）→ trust confirm → 重装 done" : `确认后重装：status=${second.status}：${second.message}` };
+				if (second.status !== "done")
+					return { ok: false, detail: `确认后重装未 done：status=${second.status}：${second.message}` };
+				// 收尾（F3）：显式 revoke 陌生 key，快照 diff 断言无残留——不靠 uninstall 兜底（它本就不摘信任）
+				const del = await callApi<{ revoked?: boolean }>(fetch, ctx.base, ctx.token, "DELETE", `/api/_platform/market/trust/key?key_id=${encodeURIComponent("stranger.publisher")}`);
+				const after = await trustKeys(ctx);
+				const revoked = del.revoked === true;
+				const noResidue = JSON.stringify(after) === JSON.stringify(before);
+				const ok = revoked && noResidue;
+				return {
+					ok,
+					detail: ok
+						? "needs_trust → confirm → done；stranger key 已 revoke，信任库快照 diff 为空"
+						: `revoked=${revoked} noResidue=${noResidue}（before=${before.length} after=${after.length}）`,
+				};
 			}
 			finally {
 				fs.writeFileSync(tgz, orig); // 回抄原始字节，不重签
 				fs.writeFileSync(sig, origSig);
 				await removeVersion(ctx, NEG_VERSION);
+			}
+		},
+	},
+	{
+		key: "neg-evil",
+		title: "负向：zip-slip 越界包（R1 拒收）",
+		run: async (ctx) => {
+			const evil = path.join(ctx.site.cdnDir, `${ctx.name}-evil.tgz`);
+			buildEvilZipSlipTgz(evil); // 成员含 ../evil.sql，无需发布进索引（file 源直传）
+			const distDir = path.join(ctx.site.root, "api", "dist");
+			const before = fs.readdirSync(distDir).sort(); // 零副作用基线：9.9.9 目录可能是前序 neg-stranger 的合法产物
+			try {
+				let msg = "";
+				try {
+					await installFile(ctx, evil, NEG_VERSION);
+				}
+				catch (error) {
+					msg = (error as Error).message; // 预期：上传校验 400，任务未创建
+				}
+				const rejected = msg.includes("zip-slip");
+				const untouched = JSON.stringify(fs.readdirSync(distDir).sort()) === JSON.stringify(before);
+				const ok = rejected && untouched;
+				return {
+					ok,
+					detail: ok
+						? "上传即 400（R1 zip-slip 防护拒在解包前），dist 内容零变化"
+						: `rejected=${rejected} untouched=${untouched}：${msg === "" ? "安装竟成功" : msg}`,
+				};
+			}
+			finally {
+				fs.rmSync(evil, { force: true });
 			}
 		},
 	},
@@ -353,6 +399,9 @@ export async function walkthrough(opts: WalkthroughOptions = {}): Promise<Walkth
 
 		const failed = rows.filter(r => !r.ok).length;
 		log(`\n${failed === 0 ? "全部通过" : `${failed} 项未过`}（${rows.length} 项）：${rows.filter(r => r.ok).length} PASS / ${failed} FAIL`);
+		// 报告落盘（白名单内容 + 黑名单脱敏兜底）：AC 表 + 汇总 + 失败文案表
+		const reportPath = writeWalkthroughReport({ rows, port: site.port, playbook: FAILURE_PLAYBOOK });
+		log(`[ojm] 报告已落盘 → ${reportPath}`);
 		return { ok: failed === 0, rows, port: site.port };
 	}
 	finally {
@@ -376,6 +425,27 @@ async function installOnce(ctx: Ctx, version: string): Promise<TaskRecord> {
 	if (taskId === "")
 		throw new Error("[ojm] 安装接口未返回 task id");
 	return pollTask(fetch, ctx.base, ctx.token, taskId, { interval0: 400, intervalMax: 2000, timeoutMs: 120_000 });
+}
+
+/** file 源 multipart 上传（与 install.ts 同形态；neg-evil 用它递 zip-slip 恶意包） */
+async function installFile(ctx: Ctx, tgzPath: string, version: string): Promise<void> {
+	const form = new FormData();
+	form.append("name", ctx.name);
+	form.append("version", version);
+	form.append("source", "file");
+	form.append("file", new Blob([fs.readFileSync(tgzPath)], { type: "application/gzip" }), path.basename(tgzPath));
+	const res = await fetch(`${ctx.base}/api/_platform/market/install`, {
+		method: "POST",
+		headers: { authorization: `Bearer ${ctx.token}` },
+		body: form,
+	});
+	await unwrapEnvelope(res); // 非 0 code 抛人话（400 zip-slip / 502 索引等）
+}
+
+/** 信任库 key_id 快照（GET /market/trust；neg-stranger 的 diff 断言用） */
+async function trustKeys(ctx: Ctx): Promise<string[]> {
+	const res = await callApi<{ keys?: Array<{ key_id?: string }> }>(fetch, ctx.base, ctx.token, "GET", "/api/_platform/market/trust");
+	return (res.keys ?? []).map(k => k.key_id ?? "").filter(id => id !== "").sort();
 }
 
 /** 前置态：保证目标版本已装（其他 op 不依赖前序 op 的残留） */

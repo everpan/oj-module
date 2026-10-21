@@ -5,9 +5,10 @@
 import { mkdtempSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { gunzipSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
 
-import { buildFixturePackage } from "../fixture";
+import { buildEvilZipSlipTgz, buildFixturePackage } from "../fixture";
 
 describe("given 合成 fixture 方案树 When 看 migrations 目录", () => {
 	it("then 0.1.0 只有 0001（head 上限 1）", () => {
@@ -29,5 +30,19 @@ describe("given 合成 fixture 方案树 When 看 migrations 目录", () => {
 		const pkg = buildFixturePackage({ stagingDir: mkdtempSync(join(tmpdir(), "ojm-fixture-")), name: "demo-solution", version: "0.2.0" });
 		const sql = readFileSync(join(pkg.dir, "api", "demo-solution-0.2.0", "migrations", "0002__more.sql"), "utf-8");
 		expect(sql).toContain("ALTER TABLE demo_solution_note");
+	});
+});
+
+describe("given 手造 zip-slip 恶意 tgz When 检查字节", () => {
+	it("then 是合法 gzip/tar 且含 ../ 越界成员，同输入恒同字节（确定性）", () => {
+		const a = join(mkdtempSync(join(tmpdir(), "ojm-evil-")), "evil.tgz");
+		const b = join(mkdtempSync(join(tmpdir(), "ojm-evil-")), "evil.tgz");
+		buildEvilZipSlipTgz(a);
+		buildEvilZipSlipTgz(b);
+		const raw = readFileSync(a);
+		expect([raw[0], raw[1]]).toEqual([0x1F, 0x8B]); // gzip magic
+		expect(readFileSync(b)).toEqual(raw); // 确定性（mtime 置 0）
+		const tar = gunzipSync(raw).toString("utf-8");
+		expect(tar).toContain("../evil.sql"); // R1 必须能检出这个成员
 	});
 });

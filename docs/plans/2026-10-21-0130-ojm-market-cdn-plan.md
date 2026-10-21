@@ -206,6 +206,17 @@ Scenario 4.1 首跑 must_change 闭环
     uninstall op 改为「查索引实际 installed 版本再断言目录清除」，不再钉死 `ctx.version`。
   - **neg-* 用 `9.9.9`**：与主链路版本完全隔离，互不残留；每个 neg op 自建前置（发布→篡改→重建索引），
     finally 里删 `9.9.9` 包并重铺索引。
+  - **T12 收尾批（2026-10-21 第二轮，消灭遗留风险项）**——原清单余量 5 项 + pitfall 10 修复：
+
+| 场景 | Given | When | Then |
+|---|---|---|---|
+| neg-evil | 手造 zip-slip tgz（成员 `../evil.sql`，file 源 multipart 上传） | 发起安装 | 安装 POST 即 400（信息含 `zip-slip`，R1 list→validate→extract 三步范式拒在解包前），任务未创建 |
+| neg-stranger 收尾 | 首装 needs_trust → confirm → 重装 done（既有断言） | cleanup 显式 `DELETE /market/trust/key?key_id=stranger.publisher` | `{revoked}`；op 前后 `GET /market/trust` key 集合快照 diff 相等（陌生 key 无残留，F3） |
+| 失败文案表 | `market/failure-playbook.ts` 双段式（成因一句 + 下一步一句） | 报告渲染文案表 | 每个 neg 场景的预期失败码都有条目（traceability 单测守着） |
+| 报告白黑名单 | 白名单（key_id/指纹/task_id/sha256/AC 表）可落盘；黑名单（token/jwt/PEM/口令）禁落盘 | walkthrough 收尾写 `logs/walkthrough-<ts>.md` | 写盘前过黑名单脱敏（单测：注入 token/PEM 被掩码） |
+| pitfall 10 修复 | `_oj_migrations` 是 oj journal 内建表（复合 PK module+version），未进模块 schema → `db.table` 被元数据校验拒 → `journalHeadOf` 恒 null | `_platform/schema.yaml` + `manifest.yaml` 声明 `_oj_migrations`（列与真表对齐） | 深检 `ledger.stale` 误报消失；P3-11 宿主层预锁 guard 真正生效（rollback 不再走到 oj migrate 才拦） |
+
+  - **构造器纪律**：用户裁定查询一律走 `db.table` 构造器（多库可移植），故 pitfall 10 走 schema 声明而非 raw SQL。
 - **DOD**：每条 op 支持 `--only` 单跑；neg-* 按预期失败口径计分；`--strict` 首败即停。
 
 ## 6. 分支、提交与验证命令
@@ -235,7 +246,7 @@ node node_modules/vitest/vitest.mjs run tests/cli/release-manifest.test.ts      
 | T9 | market trial 隔离试装 | ✅ 完成 | `market/trial.ts` + `ojm market trial`：隔离站点内 setup（首登改密）→ 安装 → needs_trust 自动确认 → 重试 → 11 段全 ok，跑完即毁；实测 12s |
 | T10 | walkthrough 骨架 | ✅ 完成 | `market/walkthrough.ts`：op 注册表 + `setup→act→assert→cleanup` + AC 表 + 汇总行 + `--only/--strict/--keep` |
 | T11 | 主链路 op | ✅ 完成 | index / install / reinstall / enable / disable / verify / history / uninstall（8 项，实测 7 PASS + enable 含双向） |
-| T12 | neg-* 与升级回滚 | ✅ 完成 | walkthrough 新增 6 op：upgrade / rollback / neg-tamper / neg-nosig / neg-badindex / neg-stranger（neg-* 统一用 9.9.9 隔离，finally 回抄原始字节 + 摘包重铺索引）；fixture 迁移阶梯（minor ≥ 2 增 0002）；`MIN_OJ_VERSION` 0.1.73 → 0.1.81（模板 startswith 硬需求）；实测 13 项全 PASS，`--only` 单跑原子性成立 |
+| T12 | neg-* 与升级回滚 | ✅ 完成（含余量收口） | walkthrough 14 op 全 PASS：upgrade / rollback / neg-tamper / neg-nosig / neg-badindex / neg-stranger（revoke + 信任库快照 diff）/ neg-evil（zip-slip）；failure-playbook 文案表 + 报告白黑名单（`logs/walkthrough-<ts>.md` 脱敏落盘）；fixture 迁移阶梯 + evil tgz；pitfall 10 修复（`_oj_migrations` 进 `_platform` schema/manifest） |
 
 ## 8. 阶段小结
 
@@ -317,7 +328,33 @@ enable / disable / verify / history / uninstall），出 AC 表；`--only` 单�
 | typecheck / eslint | 净 |
 | 真链路 | walkthrough 全套 13 项 **13 PASS / 0 FAIL**；`--only upgrade/rollback/neg-tamper/neg-stranger` 单跑各 PASS（原子性成立）；**耗时 ≈40 分钟**（含两轮全量 e2e 与 vendored oj 升级） |
 
-**遗留（不在交接范围）**：T12 原清单的 evil 场景 / 信任库快照 diff / revoke / 失败文案表 / 报告白黑名单。
+**遗留（不在交接范围）**：无——T12 原清单余量（evil / 信任库快照 diff / revoke / 失败文案表 /
+报告白黑名单）已于同日第二轮全部收口（见上方「T12 收尾批」用例表），风险项清零。
+
+### phase2（T12 收尾批）已完成 —— 2026-10-21 09:00
+
+**交付**：消灭全部遗留风险项——① pitfall 10 修复（`_oj_migrations` 声明进 `_platform`
+schema.yaml + manifest.yaml，构造器路线，不修 raw SQL）；② neg-evil op（手造 zip-slip tgz，
+file 源上传即 400）；③ neg-stranger 收尾（显式 revoke + 信任库快照 diff 为空）；④ 失败文案表
+（`failure-playbook.ts` 双段式，traceability 单测）；⑤ 报告白黑名单（脱敏落盘
+`logs/walkthrough-<ts>.md`）。最终演练：**14 项 14 PASS / 0 FAIL**。
+
+**关键过程**
+
+1. **pitfall 10 根因实证**：用 `--keep` 隔离站点 + `node:sqlite` 直查——`_oj_migrations`
+   表与数据都在（demo-solution head=1），纯是 `db.table` 元数据校验拒。修复后深检 ledger
+   项零误报，但 verify op 旧断言「checks 非空」当场露馅：**它一直寄生在误报上**（checks 是
+   问题清单，全绿站点恒为空）。已改为断言报告结构（ok/checks/advise 字段）。
+2. **「零落盘」断言第二次踩坑**（rollback 踩过一次、neg-evil 又踩）：`9.9.9` 目录是
+   neg-stranger 的合法安装产物——正确口径始终是「操作前后 dist 清单快照零变化」。
+3. **构造器纪律**（用户裁定）：查询一律 `db.table` 构造器、不用 `db.query` raw SQL；
+   同理 cli 侧压缩用 `node:zlib`（与 `deterministic-tar.ts` 同范式），模板（oj 运行时，
+   无 node 环境）侧才走 exec tar。
+4. MIN_OJ_VERSION 0.1.73 → 0.1.81（首轮已抬），本轮配套重 vendor oj v0.1.84 两处。
+
+**统一审查**：cli 单测 297 passed（+5）/ 守卫 64 passed / typecheck / eslint 净 /
+最终演练 14 PASS。**耗时 ≈25 分钟**。playbook §7.4 重写为主链路 + 负向双轨检查点，
+新增 2026-10-21 第二次基线。
 
 
 ### phase0（T1–T6）已完成 —— 2026-10-21 03:15

@@ -4,7 +4,19 @@
 > **配套**：[`framework-development-guide.md`](./framework-development-guide.md)（原理）、[`oj-fullstack-tutorial.md`](./oj-fullstack-tutorial.md)（跟做）。
 > **原则**：每一步都有**可判定通过/失败的检查点**，不要只看命令退出码，要核对产物。
 
-### 最近一次基线（2026-10-21，oj 0.1.84 / cli+runtime 0.2.12 工作区态；市场链路首演）
+### 最近一次基线（2026-10-21 第二次，oj 0.1.84 / cli+runtime 0.2.13 工作区态；walkthrough 负向防线 + pitfall 10 修复）
+
+| 项 | 值 |
+| --- | --- |
+| 日期 | 2026-10-21（当日第二次） |
+| 框架包版本 | `cli`/`runtime` `0.2.13`（工作区态，源码 bin 直跑） |
+| oj | `0.1.84`（本机根与 templates 各一份，`ojm vendor v0.1.84` 重装） |
+| 验证动机 | T12 收尾：walkthrough 补齐 upgrade/rollback 与 neg-tamper/nosig/badindex/stranger/evil 共 6 op（当日首轮已交付），本轮消灭遗留风险项——pitfall 10（`_oj_migrations` 未进 schema 致深检 `ledger.stale` 误报 + 预锁 guard 空转）、neg-stranger 信任库残留（revoke + 快照 diff）、失败文案表、报告白黑名单 |
+| 结果 | **`ojm market walkthrough` 14 项全 PASS / 0 FAIL**（主链路 9 + 负向 5）：upgrade（installed 推进/双版本目录共存/0001 逐字节一致）、rollback（failed@migrating + dist 快照零变化）、neg-tamper（failed@verifying 零落盘）、neg-nosig（sig_missing）、neg-badindex（POST 即 502）、neg-stranger（needs_trust→confirm→done + `{revoked:true}` + 信任库快照 diff 空）、neg-evil（zip-slip 手造包上传即 400）。`--only` 单跑 neg-evil / neg-stranger / upgrade / rollback 均 PASS（原子性）。报告脱敏落盘 `logs/walkthrough-<ts>.md`（14 行 AC 表 + 6 条失败文案表）。单测 297 passed（+5：fixture 迁移阶梯 3 / evil tgz 1 / 文案表 traceability / 报告脱敏） |
+| 本次发现并处置 | ① **pitfall 10 根因实证**：`_oj_migrations` 表与数据都在，`db.table` 被元数据校验拒 → `_platform/schema.yaml` + `manifest.yaml` 声明该表（复合 PK `[module, version]`，列与 oj 真表逐列对齐）→ 深检 ledger 项零误报（verify op 的 checks 从「恒有 1 条误报」变「零问题空数组」，op 断言同步改为结构 + ok 字段）；构造器纪律：不修 raw SQL 绕行。② **verify op 曾寄生在误报上**：旧断言「checks 非空」靠 ledger.stale 误报撑住，pitfall 一修即露馅——教训：断言不要依赖被测对象的缺陷。③ **「零落盘」断言的两次踩坑**（rollback / neg-evil）：目标目录可能是前序 op 的**合法产物**，正确口径是「本次操作前后 dist 清单快照零变化」。④ **MIN_OJ_VERSION 0.1.73 → 0.1.81**：模板 `solution-perms` 用 `startswith`（oj v0.1.81），旧 vendored oj 0.1.80 卸载方案必 fail-closed；`vendor.test` 硬编码字面量改引用常量。⑤ neg-evil 的手造 ustar 用 `node:zlib` gzipSync——与 `deterministic-tar.ts` 同范式（手写 ustar + node 压缩），模板（oj 运行时）侧无 node 环境才走 exec tar，cli 侧不混 |
+| 与上一基线差异 | 上一基线（当日首轮）交付市场六命令 + walkthrough 骨架与主链路 8 op；本轮把 walkthrough 扩到 14 op（含全部 neg 防线）、修复 pitfall 10 存量误报、抬 MIN_OJ_VERSION，手册 §7.4 重写为「主链路 + 负向预期失败」双轨检查点 |
+
+### 上一次基线（2026-10-21，oj 0.1.84 / cli+runtime 0.2.12 工作区态；市场链路首演）
 
 | 项 | 值 |
 | --- | --- |
@@ -460,15 +472,23 @@ node "$CLI_PKG/bin/ojm.mjs" market trial --fixture <name>@<version>
 
 ## 7.4 全套操作自检（`ojm market walkthrough`）
 
-装一次只证明「能装」；要证明「装了以后每个操作都对」，跑 walkthrough——它在隔离站点上按固定形状
-（setup → act → assert → cleanup）逐项验证，输出 AC 表。
+装一次只证明「能装」；要证明「装了以后每个操作都对」、以及「恶意输入都被预期拒在边界上」，跑
+walkthrough——它在隔离站点上按固定形状（setup → act → assert → cleanup）逐项验证，输出 AC 表，
+收尾把报告（AC 表 + 失败文案表）脱敏后落盘 `logs/walkthrough-<ts>.md`。
 
 ```bash
 node "$CLI_PKG/bin/ojm.mjs" market walkthrough --fixture <name>@<version>
-# ✓ index / ✓ install / ✓ reinstall / ✓ enable / ✓ verify / ✓ history / ✓ uninstall
-# 全部通过（7 项）：7 PASS / 0 FAIL
+# 主链路 9 项：✓ index / ✓ install / ✓ reinstall / ✓ enable / ✓ verify / ✓ history /
+#              ✓ upgrade（0.1.0→0.2.0）/ ✓ rollback（账本超前拦截）/ ✓ uninstall
+# 负向 5 项（预期失败口径，全 PASS = 每道防线都真的拦住了）：
+#   ✓ neg-tamper（翻转 tgz 1B → failed@verifying，零落盘）
+#   ✓ neg-nosig（删 .sig 重建索引 → sig_missing）
+#   ✓ neg-badindex（bundles.yaml 追加字节 → 安装 POST 即 502 拒载）
+#   ✓ neg-stranger（未登记 key → needs_trust → confirm → done；cleanup 显式 revoke + 信任库快照 diff 为空）
+#   ✓ neg-evil（手造 zip-slip tgz file 源上传 → 400 拒在解包前，R1 三步范式）
+# 全部通过（14 项）：14 PASS / 0 FAIL
 
-node "$CLI_PKG/bin/ojm.mjs" market walkthrough --only enable    # 单跑某项（setup 自建前置态）
+node "$CLI_PKG/bin/ojm.mjs" market walkthrough --only neg-evil    # 单跑某项（setup 自建前置态）
 ```
 
 **检查点**
@@ -476,9 +496,16 @@ node "$CLI_PKG/bin/ojm.mjs" market walkthrough --only enable    # 单跑某项�
 - [ ] AC 表全 PASS（退出码 0）；任一 FAIL 退出码 1，`--strict` 首败即停
 - [ ] `--only <op>` 单跑同样 PASS（原子性：不依赖前序 op 的残留）
 - [ ] `enable` 项验证 disable → enable 双向（含路由/锁/modules.json 三面同写）
+- [ ] `upgrade` 项：`installed` 推进 + 双版本目录共存（旧版不 prune）+ `0001` 迁移逐字节一致
+- [ ] `rollback` 项：`failed@migrating` 且 `api/dist` 内容快照零变化（禁降版 OJ-9，宿主层预锁或 oj migrate 双层拦截之一）
 - [ ] `uninstall` 项验证装后清场（目录不存在 + 锁摘除）
-- [ ] `verify` 项断言的是**报告结构完整**（checks 齐全），不是它的裁决——报告里的 `ledger.stale`
-      是已知误报（见 §9 对应行），不应据此判 walkthrough 失败
+- [ ] 负向项是**预期失败口径**：防线没拦住（装成了）记 FAIL，比失败更严重
+- [ ] `verify` 项断言**报告结构完整**（ok/checks/advise 字段在场）；`checks` 是问题清单——
+      **零问题站点恒为空数组是健康态**，不是端点异常（深检全绿即如此）
+- [ ] `neg-stranger` 收尾：`DELETE /market/trust/key` 返回 `{revoked:true}`，op 前后
+      `GET /market/trust` 快照 diff 相等（陌生 key 无残留；不靠 uninstall 兜底——它本就不摘信任）
+- [ ] 报告落盘且过黑名单脱敏：`grep -E "Bearer |BEGIN .*PRIVATE" logs/walkthrough-*.md` 恒空
+      （token / PEM 不得出现在报告里；指纹、sha256、key_id 属白名单，原样保留）
 
 ## 8. 一次通过判据（汇总清单）
 
@@ -496,6 +523,7 @@ node "$CLI_PKG/bin/ojm.mjs" market walkthrough --only enable    # 单跑某项�
   - [ ] 宿主 `ojm build` 后 `api/dist/versions.json` **存在**（C2-09 前置；缺则该步是回归）
   - [ ] 市场卡片可见 → 首装 `needs_trust`（指纹逐字核对）→ `trust confirm` → 重试 `status=done` 且 11 段全 ok
   - [ ] 装后 `/api/<name>/ping` 返回 `code:0`；`api/dist/manifests.yaml` 出现 `<name>: <version>`
+  - [ ] （§7.4）walkthrough 14 项 AC 表全 PASS，含 neg-* 五项负向防线与 neg-stranger 信任库快照 diff 为空
 
 ## 9. 已知坑与处置
 
@@ -527,10 +555,10 @@ node "$CLI_PKG/bin/ojm.mjs" market walkthrough --only enable    # 单跑某项�
 | 安装卡在 `reloading`：`reloadConfig 返回 unchanged` | 用 `ojm preview` 起站——它服务派生 config（`.ojm-preview.yaml`），而安装器热更改的是 `api/config.yaml`，被监视文件没变 | 安装验证必须对**真实 config** 起站：`(cd api && ../bin/oj serve -c config.yaml -b /api --api-path dist)`，并把 `platform.root` 改成 `dist` |
 | 安装卡在 `smoke`：探活 404 | dev 形态（`--api-path src`）起站，装好的模块落在 `api/dist`，不被发现 | 安装目标恒为 release 部署；先 `ojm build`，再以 `--api-path dist` 起站 |
 | 安装卡在 `smoke`：探活 401（方案声明了 `api.anonymous`） | auth 守卫在**装配期**读 `anonymous_paths`，安装器刚注册进去的匿名路径要重启才生效 | 重启站点后重试安装即可（装成的模块与锁都在，重试走重装路径）；或安装前把该路径预置进 `config.anonymous_paths`。`ojm market trial` 已在隔离站点预置（验机制而非重启时序） |
-| 深检报 `ledger` / `ledger.stale`，但 `_oj_migrations` 里明明有该模块的行 | `journalHeadOf` 走 `db.table("_oj_migrations")`，而该表未在模块 `schema.yaml` 声明 → 查询被元数据校验拒 → 返回 null → 判定为「落后」 | 已知误报（存量缺口，与安装无关）：深检的其余项（routes / rbac / settings / web integrity）照常可信；不要在 walkthrough 里把它当失败判据 |
+| 深检报 `ledger` / `ledger.stale`，但 `_oj_migrations` 里明明有该模块的行 | `journalHeadOf` 走 `db.table("_oj_migrations")`，而该表未在模块 `schema.yaml` 声明 → 查询被元数据校验拒 → 返回 null → 判定为「落后」 | **已修**（0.2.13 工作区）：`_platform/schema.yaml` + `manifest.yaml` 声明 `_oj_migrations`（列与 oj 真表逐列对齐，DDL 仍归 oj 自建自管），`db.table` 元数据校验放行 → 深检 ledger 项零误报、安装器账本 head 真源恢复。若旧宿主复现：给 `_platform` 补同样的表声明后重启 |
 | 想确认「这个包到底能不能装」又不想碰自己的工程 | 手工起站试装要清场、还会污染信任库 | `ojm market trial --fixture <name>@<version>`：一次性隔离站点（随机端口 / 一次性 DB/密钥/凭据/信任库/CDN）跑完整安装，跑完即毁；`--keep` 保留现场。实测 11 段全 ok 约 12s |
 | `oj serve` 报 `platform.root (...) must be mounted as an api mount` | release（`--api-path dist`）下 `platform.root` 仍指 `src`，与生效的模块根不一致 | 把 `platform.root` 改成 `dist`（`ojm preview` 派生 config 时会自动改写） |
-| `ojm init`/`ojm vendor` 报「上游 @oj-bin/oj 的 latest 是 vX，低于 ojm 要求的最低版本 v0.1.73」 | npm 通道发布滞后于 `MIN_OJ_VERSION` 门禁（门禁钉最新发布版，ojm 不做兼容分支） | 本机已装 ≥ 门禁的 oj 时：把 `bin/{oj,devkit/,plugins/,.oj-version}` 预置进工程再跑 init（bin/oj 存在即跳过 vendor）；否则等上游发布或降级 cli |
+| `ojm init`/`ojm vendor` 报「上游 @oj-bin/oj 的 latest 是 vX，低于 ojm 要求的最低版本 v0.1.81」 | npm 通道发布滞后于 `MIN_OJ_VERSION` 门禁（门禁钉模板硬需求版本，ojm 不做兼容分支；0.1.81 起因模板 `solution-perms` 依赖 `startswith` 操作键，旧 oj 卸载方案会 `unknown variant startswith` fail-closed） | 本机已装 ≥ 门禁的 oj 时：把 `bin/{oj,devkit/,plugins/,.oj-version}` 预置进工程再跑 init（bin/oj 存在即跳过 vendor）；否则等上游发布或降级 cli |
 | `pnpm install` 报 `ERR_PNPM_NO_MATCHING_VERSION ... @oj-module/cli@0.1.20` | 验证的是未发布版本，npm 上没有 | 删 devDeps 的 cli（源码 bin 直跑）+ 用 §0.5 的 `pnpm add <runtime 本地 tgz>` 把 runtime 装进 devDependencies（双包均未发版时 cli/runtime 都要处理）；**勿用 `ln -s` 把裸 runtime tarball 链进 `node_modules`**——裸包无 `node_modules`，`export { z } from "zod"` 解析成 `any`，会让生成物 `__client/api.ts` 的 `.map(i => …)` 全报 TS7006，typecheck 假红。也勿用 `file:` 链 cli（两包的 `catalog:` 依赖只对 workspace 成员解析，报 `ERR_PNPM_SPEC_NOT_SUPPORTED_BY_ANY_RESOLVER`） |
 | `oj build` 报 `module '_shared' missing manifest.yaml` | 模板里残留**空目录**（git 不跟踪空目录，删文件不删目录），init 连空目录一起拷进工程，oj 把每个 api/src 子目录当模块 | 删模板里的空目录；cli ≥ 0.1.20 的 `copyTemplates` 已加空目录跳过防护（`dirHasFiles`） |
 | `ojm api --check` 报 `routes.js 与契约路由表不一致——dist 缺：GET notifications/` | 契约侧 fullPath 对模块根路径带尾斜杠（`stripBase` 的 `rel || "/"` → `/notifications/`），dist pattern 无斜杠（`notifications`），键不等误报；且豁免原只过滤「dist 多」 | cli ≥ 0.1.20 已修：第三腿双侧尾斜杠规范化 + 豁免对「dist 缺/dist 多」对称过滤（回归测试见 `tests/cli/contract-check.test.ts`） |

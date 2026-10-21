@@ -6,8 +6,10 @@
  * 打包交给 `createDeterministicTgz`（同输入字节一致，不受 mtime/uid 影响）。
  */
 
+import { Buffer } from "node:buffer";
 import fs from "node:fs";
 import path from "node:path";
+import { gzipSync } from "node:zlib";
 import { stringify as yamlStringify } from "yaml";
 
 export interface FixturePackage {
@@ -69,6 +71,42 @@ function tableOf(name: string): string {
 function minorOf(version: string): number {
 	const m = /^\d+\.(\d+)/.exec(version);
 	return m === null ? 0 : Number(m[1]);
+}
+
+/**
+ * 手造 zip-slip 恶意 tgz（成员 `../evil.sql`）——neg-evil op 的上传载荷。
+ * 为什么不用 createDeterministicTgz：它只打包真实目录树，文件系统里造不出 `../` 成员；
+ * ustar 头是纯字节布局，手写 40 行可控成员名。确定性：mtime 置 0，同输入恒同字节。
+ */
+export function buildEvilZipSlipTgz(outPath: string): string {
+	const chunks: Buffer[] = [];
+	for (const [name, content] of [
+		["../evil.sql", "DROP TABLE users;"],
+		["manifest.yaml", "name: evil-solution\nversion: 9.9.9\n"],
+	] as Array<[string, string]>) {
+		const header = Buffer.alloc(512);
+		header.write(name, 0, "utf-8"); // name[100]
+		header.write("0000644\0", 100); // mode
+		header.write("0000000\0", 108); // uid
+		header.write("0000000\0", 116); // gid
+		header.write(`${content.length.toString(8).padStart(11, "0")}\0`, 124); // size[12]
+		header.write("00000000000\0", 136); // mtime[12] 置 0（确定性）
+		header.fill(0x20, 148, 156); // chksum 先填空格
+		header.write("0", 156); // typeflag：普通文件
+		header.write("ustar\0", 257); // magic
+		header.write("00", 263); // version
+		let sum = 0;
+		for (const b of header)
+			sum += b;
+		header.write(`${sum.toString(8).padStart(6, "0")}\0 `, 148); // chksum[8]
+		chunks.push(header, Buffer.from(content));
+		const pad = Math.ceil(content.length / 512) * 512 - content.length;
+		if (pad > 0)
+			chunks.push(Buffer.alloc(pad));
+	}
+	chunks.push(Buffer.alloc(1024)); // 尾零块
+	fs.writeFileSync(outPath, gzipSync(Buffer.concat(chunks)));
+	return outPath;
 }
 
 function cssClassOf(name: string, version: string): string {
