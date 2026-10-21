@@ -14,7 +14,7 @@ import { parse } from "yaml";
 // 跨端引用（双端一致钉）：被测实现同仓分居两运行时（计划 §1「两运行时取舍」），
 // 测试直接互调，比「两套件各读同一夹具」更强——漂移即本文件红。
 import { preflight } from "../../../templates/api/src/_platform/_lifecycle/steps/preflight";
-import { checkLocalesComplete, checkTablesAgainstSchema, groupI18nKeys, parseManifest, validateContract } from "../../manifest-contract";
+import { checkLocalesComplete, checkTablesAgainstSchema, parseManifest, validateContract } from "../../manifest-contract";
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), "fixtures");
 const readText = (p: string) => readFileSync(join(FIXTURES, p), "utf8");
@@ -214,72 +214,31 @@ describe("checkLocalesComplete（C2-25：构建期缺 key fail-fast）", () => {
 	});
 });
 
-// ── C2-43 归组父标题 i18n（solution menu grouping；纯内容入参）──
+// ── 归组父标题不再进引用面（0.2.18：menu.main 统一，`menu.group` 已废弃）──
 
-describe("c2-43 归组父标题 i18n（solution menu grouping）", () => {
+describe("menu.group 已废弃：main/admin 路由不再要求归组父标题", () => {
 	const baseManifest = (): any => ({
 		name: "demo-solution",
 		version: "0.1.0",
 		routes: [
 			{ path: "/demo-solution", category: "main", order: 200, title_key: "demo-solution:menu.main" },
+			{ path: "/demo-solution/users", category: "admin", order: 210, title_key: "demo-solution:menu.users" },
 		],
 	});
-	const ZH_FULL = JSON.stringify({ menu: { main: "主", group: "分组" } });
-	const EN_FULL = JSON.stringify({ menu: { main: "Main", group: "Group" } });
 
-	it("groupI18nKeys：声明 main/admin 路由才产一条 <name>:menu.group", () => {
-		expect(groupI18nKeys(baseManifest())).toEqual(["demo-solution:menu.group"]);
+	it("声明 main/admin 路由、locale 只有 menu.main → 零违规（C2-43 已移除）", () => {
+		const zh = JSON.stringify({ menu: { main: "主", users: "用户" } });
+		const en = JSON.stringify({ menu: { main: "Main", users: "Users" } });
+		expect(checkLocalesComplete(baseManifest(), zh, en)).toEqual([]);
 	});
 
-	it("groupI18nKeys：多条 main 路由去重只产一条（C5）", () => {
-		const m = baseManifest();
-		m.routes = [
-			{ path: "/a", category: "main", order: 200, title_key: "demo-solution:menu.a" },
-			{ path: "/b", category: "main", order: 210, title_key: "demo-solution:menu.b" },
-		];
-		expect(groupI18nKeys(m)).toEqual(["demo-solution:menu.group"]);
-	});
-
-	it("groupI18nKeys：仅 hidden 路由不产 group key（C3）", () => {
-		const m = baseManifest();
-		m.routes = [{ path: "/x", category: "hidden", order: 210, title_key: "demo-solution:menu.x" }];
-		expect(groupI18nKeys(m)).toEqual([]);
-	});
-
-	it("c1 正例：menu.group 双语齐备 → 零违规", () => {
-		expect(checkLocalesComplete(baseManifest(), ZH_FULL, EN_FULL)).toEqual([]);
-	});
-
-	it("c2 反例：zh-CN 缺 menu.group → C2-43（非 C2-25，去重生效）", () => {
-		const zh = JSON.stringify({ menu: { main: "主" } });
-		const v = checkLocalesComplete(baseManifest(), zh, EN_FULL);
-		const hit = v.find(x => x.includes("C2-43"));
-		expect(hit, `期望 C2-43，实际：\n${v.join("\n")}`).toBeTruthy();
-		expect(hit).not.toContain("C2-25");
-		expect(hit).toContain("menu.group");
-	});
-
-	it("c4 反例：en-US 缺 menu.group → C2-43 指明 en-US", () => {
-		const en = JSON.stringify({ menu: { main: "Main" } });
-		const v = checkLocalesComplete(baseManifest(), ZH_FULL, en);
-		const hit = v.find(x => x.includes("C2-43"));
-		expect(hit).toBeTruthy();
-		expect(hit).toContain("en-US");
-	});
-
-	it("去重：多条 main 路由只产一条 group key，缺失时按语言各报一次（非按路由重复）", () => {
-		const m = baseManifest();
-		m.routes = [
-			{ path: "/a", category: "main", order: 200, title_key: "demo-solution:menu.a" },
-			{ path: "/b", category: "main", order: 210, title_key: "demo-solution:menu.b" },
-		];
-		const v = checkLocalesComplete(m, JSON.stringify({ menu: { main: "主" } }), JSON.stringify({ menu: { main: "Main" } }));
-		const c243 = v.filter(x => x.includes("C2-43"));
-		// 关键：2 条路由只产 1 个 group key → 缺失时按语言各报 1 次 = 2 条 C2-43，
-		// 而非 2 路由 × 2 语言 = 4 条（去重生效的判据是「< 路由数 × 语言数」）
-		expect(c243.length).toBe(2);
-		expect(c243.some(x => x.includes("zh-CN 缺少归组父标题 key「demo-solution:menu.group」"))).toBe(true);
-		expect(c243.some(x => x.includes("en-US 缺少归组父标题 key「demo-solution:menu.group」"))).toBe(true);
+	it("根标题 menu.main 仍受 C2-25 约束：缺则报 C2-25（真源是 menu.main 不是 menu.group）", () => {
+		const zh = JSON.stringify({ menu: { users: "用户" } });
+		const en = JSON.stringify({ menu: { main: "Main", users: "Users" } });
+		const v = checkLocalesComplete(baseManifest(), zh, en);
+		expect(v).toHaveLength(1);
+		expect(v[0]).toContain("C2-25");
+		expect(v[0]).toContain("demo-solution:menu.main");
 	});
 });
 

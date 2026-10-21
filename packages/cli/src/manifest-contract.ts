@@ -1,5 +1,5 @@
 // bundle 级 manifest.yaml 契约校验（P1-11，`ojm build --bundle` 构建期执行点）。
-// 规则真源：docs/prd/solution/202610171254-lifecycle-manifest-contract.md §2/§4（C2-01~33 构建列；C2-34~42 为归档签名与信任，见 sign.ts；本文件新增 C2-43）；
+// 规则真源：docs/prd/solution/202610171254-lifecycle-manifest-contract.md §2/§4（C2-01~33 构建列；C2-34~42 为归档签名与信任，见 sign.ts）；
 // 期望真源：src/lifecycle/__tests__/fixtures/（fixture-valid 零违规 / fixture-invalid 七码齐报）。
 // 双端一致：本实现与 isolate 侧 preflight（templates/api/.../steps/preflight.ts）共享同一组夹具，
 // 正则与规则**逐字一致**（§4.1 矩阵构建列 vs 安装列的执行点差异见各规则注释）——
@@ -581,15 +581,6 @@ export function validateContract(m: unknown): string[] {
 	return v0;
 }
 
-/** C2-43 引用面：声明 main/admin 路由的方案须提供归组父标题 `<name>:menu.group`（单 bundle 单 name，去重只产一条） */
-export function groupI18nKeys(m: BundleManifest): string[] {
-	if (!isObj(m) || typeof m.name !== "string")
-		return [];
-	const routes = Array.isArray(m.routes) ? m.routes : [];
-	const hasGroupable = routes.some(r => isObj(r) && (r.category === "main" || r.category === "admin"));
-	return hasGroupable ? [`${m.name}:menu.group`] : [];
-}
-
 /** 收集 manifest 引用的全部 i18n key（C2-25 locales 齐备检查的引用面；bundle.ts 以此判定 locales 文件是否必查） */
 export function referencedI18nKeys(m: BundleManifest): string[] {
 	const keys: string[] = [];
@@ -620,10 +611,6 @@ export function referencedI18nKeys(m: BundleManifest): string[] {
 			}
 		}
 	}
-	// C2-43：归组父标题纳入引用面，交由 checkLocalesComplete 双语齐备（改报 C2-43）
-	for (const k of groupI18nKeys(m)) {
-		keys.push(k);
-	}
 	return keys;
 }
 
@@ -646,12 +633,9 @@ export function checkLocalesComplete(m: unknown, zhText: string, enText: string)
 	if (!isObj(m))
 		return [v("C2-25", "manifest 不是键值对象，无法核对 locales 引用")];
 	const locales: [string, Record<string, unknown> | null][] = [["zh-CN", parseJson(zhText)], ["en-US", parseJson(enText)]];
-	// group key 识别（C2-43）：归组父标题缺失须归因 C2-43 而非笼统 C2-25，避免重复报错
-	const groupKeys = new Set(groupI18nKeys(m));
 	const out: string[] = [];
 	for (const key of referencedI18nKeys(m)) {
 		const nsKey = key.includes(":") ? key.slice(key.indexOf(":") + 1) : key;
-		const isGroup = groupKeys.has(key);
 		for (const [lang, tree] of locales) {
 			if (tree === null) {
 				out.push(v("C2-25", `${lang} locale 不是合法 JSON 对象，无法核对引用 key`));
@@ -659,14 +643,7 @@ export function checkLocalesComplete(m: unknown, zhText: string, enText: string)
 			}
 			const val = lookupKey(tree, nsKey);
 			if (typeof val !== "string" || val === "") {
-				out.push(
-					v(
-						isGroup ? "C2-43" : "C2-25",
-						isGroup
-							? `${lang} 缺少归组父标题 key「${key}」（须为嵌套 menu.group，C2-43；声明 main/admin 路由即须提供）`
-							: `${lang} 缺少 manifest 引用的 key「${key}」（双语齐备，D4；构建期 fail-fast）`,
-					),
-				);
+				out.push(v("C2-25", `${lang} 缺少 manifest 引用的 key「${key}」（双语齐备，D4；构建期 fail-fast）`));
 			}
 		}
 	}
