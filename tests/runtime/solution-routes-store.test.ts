@@ -11,7 +11,7 @@ import { useSolutionRoutes } from "#src/store/solution-routes";
  * BDD：useSolutionRoutes 独立归并 store（R21）。
  * - token 就绪强制重拉一次（首登会话不再永久降级）；
  * - 端点失败降级空表不炸；登出清空；
- * - 行就绪后推送 access store 重归并（hidden 出菜单、category/order 注记上路由表）。
+ * - 行就绪后推送 access store 重归并（category/order 真源是 handle；DB 行仅 enabled=false → hideInMenu 管理覆写）。
  */
 
 vi.mock("#src/api/rbac", async importOriginal => ({
@@ -27,7 +27,8 @@ function row(partial: Partial<SolutionRouteRow> & { path: string }): SolutionRou
 
 const MODULE_ROUTES: AppRouteRecordRaw[] = [
 	{ path: "/home", handle: { title: "home:menu.home", order: 100 }, Component: () => null },
-	{ path: "/demo", handle: { title: "demo-market:menu.main" }, Component: () => null },
+	// 0.2.16：category/order 真源是路由 handle（作者声明），不再来自 DB 行
+	{ path: "/demo", handle: { title: "demo-market:menu.main", category: "main", order: 200 }, Component: () => null },
 ];
 
 beforeEach(() => {
@@ -41,8 +42,9 @@ beforeEach(() => {
 });
 
 describe("useSolutionRoutes（R21 归并 store）", () => {
-	it("refresh 成功：行落 store 并推送 access store 重归并（hidden 出菜单、category/order 注记）", async () => {
-		const rows = [row({ path: "/demo", category: "hidden", order: 200 })];
+	it("refresh 成功：DB 行 enabled=false 管理覆写 hideInMenu（category/order 真源仍是 handle）", async () => {
+		// 0.2.16：category/order 真源是路由 handle；DB 行仅 enabled=false → hideInMenu 管理覆写
+		const rows = [row({ path: "/demo", enabled: false, category: "main", order: 200 })];
 		mockedFetch.mockResolvedValue(rows);
 		useAccessStore.getState().setAccessStore(MODULE_ROUTES);
 
@@ -51,7 +53,10 @@ describe("useSolutionRoutes（R21 归并 store）", () => {
 		expect(useSolutionRoutes.getState().routes).toEqual(rows);
 		expect(useSolutionRoutes.getState().loaded).toBe(true);
 		const access = useAccessStore.getState();
-		expect(access.routeList.find(r => r.path === "/demo")?.handle.category).toBe("hidden");
+		// category/order 真源是 handle，不被行覆写
+		expect(access.routeList.find(r => r.path === "/demo")?.handle.category).toBe("main");
+		expect(access.routeList.find(r => r.path === "/demo")?.handle.order).toBe(200);
+		// 行 enabled=false → hideInMenu（管理禁用，路由仍可达）
 		expect(access.routeList.find(r => r.path === "/demo")?.handle.hideInMenu).toBe(true);
 		// /home 未匹配方案行 → 不受影响
 		expect(access.routeList.find(r => r.path === "/home")?.handle.category).toBeUndefined();

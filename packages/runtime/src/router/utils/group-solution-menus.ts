@@ -2,14 +2,20 @@ import type { SolutionRouteRow } from "#src/api/rbac/types";
 import type { MenuItemType } from "#src/layout/layout-menu/types";
 
 /**
- * 方案路由注册菜单归组（2026-10-21，docs/plans/2026-10-21-1028-solution-menu-grouping.md）。
+ * 方案路由注册菜单归组（2026-10-21 设计；0.2.17 起）：
  *
- * 纯函数、单一职责（SRP）：只把已生成的菜单做"视觉层归组"，不动路由树、不触碰
- * i18n/翻译（组标题存裸 i18n key，交由渲染层 translateMenus 翻译）。跨列表操作
- * （admin 项在 wholeMenus、`/system` 在 bottomMenus），故一次调用吃两段菜单。
+ * - flat main 归组已取消：category==="main" 不再按模块建父菜单，模块根路由本身即
+ *   第一级菜单（entry.ts 单根约定），其子项直出（visible 由 category/hideInMenu 决定）。
+ * - admin 真重写：路由 PATH 已由 rewriteAdminPaths（access.ts）在注入前改写为
+ *   /system/<模块 root path>/*，故此处收到的 admin 菜单项 key 已是 /system/...；
+ *   本函数只做"视觉层归组"——递归收集 category==="admin" 项，按 module 建子组，
+ *   挂入 /system children 末尾，组标题存裸 i18n key `<module>:menu.main`（渲染层翻译）。
  *
- * 依赖倒置（DIP）：告警通道 onWarn 由调用方注入，缺省为模块级 warnOnce，便于单测
- * 断言与生产环境接管。无副作用、不 mutate 入参（未变动项复用原引用，返回新数组）。
+ * 纯函数、单一职责（SRP）：只把已生成的菜单做"视觉层归组"，不动路由树、不触碰翻译。
+ * 跨列表操作（admin 项可能在 wholeMenus、`/system` 在 bottomMenus），故一次调用吃两段菜单。
+ *
+ * 依赖倒置（DIP）：告警通道 onWarn 由调用方注入，缺省为模块级 warnOnce，便于单测断言。
+ * 无副作用、不 mutate 入参（未变动项复用原引用，返回新数组）。
  */
 export interface GroupSolutionMenusOptions {
 	/** 宿主系统设置菜单 key，默认 "/system" */
@@ -18,7 +24,6 @@ export interface GroupSolutionMenusOptions {
 	onWarn?: (msg: string) => void
 }
 
-const MAIN_PREFIX = "solgroup:main:";
 const ADMIN_PREFIX = "solgroup:admin:";
 
 /** 模块级 warnOnce：同会话同一消息只告警一次（防 host 反复触发轰炸） */
@@ -30,76 +35,65 @@ function defaultWarn(msg: string): void {
 	console.warn(msg);
 }
 
-interface KeyedItem {
-	item: MenuItemType
-	row: SolutionRouteRow
+/** 取某 item 的有效归组元数据（handle 优先，行回退） */
+function effective(item: MenuItemType, row: SolutionRouteRow | undefined): { module: string | undefined, category: MenuItemType["category"] } {
+	const module = item.module ?? row?.module;
+	const category = item.category ?? row?.category;
+	return { module, category };
 }
 
 /**
- * 处理单段菜单（顶层扫描，不递归 children）：
- * - main 路由：模块可见项 ≥2 则延迟建组（组插到该模块首个被摘项原序位）；否则原样直出；
- * - admin 路由：可挂载 `/system` 时摘除（交由调用方挂入 bottom 的 /system children），
- *   否则原样直出（回落顶层平铺，保持原序）；
- * - 无对应行项：原样直出。
+ * 递归摘除 category==="admin" 的菜单项（handle 优先、行回退兜底），按 module 分桶收集；
+ * 收集时压平 admin 项自身的层级——直接取 admin 项的 children，使"管理"中间级消失、
+ * 子项直挂 `<module>:menu.main` 子组下，无 children 时退回 admin 项本身。
+ * 其余项原样保留（children 递归同样处理），非突变；无变动的子树复用原引用。
+ *
+ * 返回新数组（有项被摘除/被重写父级时）或原数组引用（整段无 admin 时），便于调用方
+ * 判断是否需重建 /system children（避免无 admin 项时给 /system 强加空 children）。
  */
-function processList(
+function stripAdmin(
 	list: MenuItemType[],
 	byPath: Map<string, SolutionRouteRow>,
-	groupedModules: Set<string>,
-	mountPossible: boolean,
-): { out: MenuItemType[], adminItems: KeyedItem[] } {
+	buckets: Map<string, { items: MenuItemType[], module: string, minOrder: number }>,
+): MenuItemType[] {
+	let changed = false;
 	const out: MenuItemType[] = [];
-	const groupsByModule = new Map<string, { items: MenuItemType[], rows: SolutionRouteRow[], firstIdx: number }>();
-	const adminItems: KeyedItem[] = [];
-
-	list.forEach((it, idx) => {
-		const row = byPath.get(it.key);
-		if (!row) {
-			out.push(it);
-			return;
+	for (const it of list) {
+		const { module, category } = effective(it, byPath.get(it.key));
+		if (category === "admin" && module) {
+			const subItems = (it.children && it.children.length > 0) ? it.children : [it];
+			const bucket = buckets.get(module) ?? { items: [], module, minOrder: Infinity };
+			for (const s of subItems)
+				bucket.items.push(s);
+			bucket.minOrder = Math.min(bucket.minOrder, it.order ?? 0);
+			buckets.set(module, bucket);
+			changed = true; // 从原位置摘除
+			continue;
 		}
-		if (row.category === "admin") {
-			// 无论能否挂载都收集，供回落告警；可挂载时摘除（交由 /system children），否则留原序直出
-			adminItems.push({ item: it, row });
-			if (mountPossible)
-				return;
-			out.push(it);
-			return;
-		}
-		// main
-		if (groupedModules.has(row.module)) {
-			let g = groupsByModule.get(row.module);
-			if (!g) {
-				g = { items: [], rows: [], firstIdx: idx };
-				groupsByModule.set(row.module, g);
+		if (it.children && it.children.length > 0) {
+			const newChildren = stripAdmin(it.children, byPath, buckets);
+			if (newChildren !== it.children) {
+				changed = true;
+				out.push({ ...it, children: newChildren });
 			}
-			g.items.push(it);
-			g.rows.push(row);
-			return;
+			else {
+				out.push(it);
+			}
 		}
-		out.push(it);
-	});
-
-	// 建组并插入到该模块首个被摘项的原序位（保持升序序轴）
-	const inserts = [...groupsByModule.values()]
-		.map(g => ({
-			index: g.firstIdx,
-			group: makeGroup(MAIN_PREFIX, g.rows[0].module, g.items, g.rows),
-		}))
-		.sort((a, b) => b.index - a.index);
-	for (const ins of inserts) {
-		out.splice(ins.index, 0, ins.group);
+		else {
+			out.push(it);
+		}
 	}
-
-	return { out, adminItems };
+	return changed ? out : list;
 }
 
-function makeGroup(prefix: string, module: string, items: MenuItemType[], rows: SolutionRouteRow[]): MenuItemType {
-	const paired = items.map((item, i) => ({ item, order: rows[i].order }))
+function makeAdminGroup(module: string, items: MenuItemType[]): MenuItemType {
+	const paired = items
+		.map(item => ({ item, order: item.order ?? 0 }))
 		.sort((a, b) => a.order - b.order);
 	return {
-		key: `${prefix}${module}`,
-		label: `${module}:menu.group`,
+		key: `${ADMIN_PREFIX}${module}`,
+		label: `${module}:menu.main`,
 		children: paired.map(p => p.item),
 	};
 }
@@ -107,82 +101,59 @@ function makeGroup(prefix: string, module: string, items: MenuItemType[], rows: 
 /**
  * 归组入口。
  *
- * - 空表（未安装/端点失败）或无命中行 → 返回新数组（内容相等），开发形态不变；
- * - 不 mutate 入参对象，未变动项复用原 menuItem 引用（仅重组数组与合成父项）。
+ * @param top 主区菜单项（order >= 0）
+ * @param bottom 底部固定区菜单项（order < 0，含 /system）
+ * @param rows 宿主方案路由行（可选）：缺省或空时归组完全依赖 handle 元数据（dev 形态）；
+ *   提供时仅作 category 的向后兼容回退（0.2.15 已装站点），不参与新 bundle 的归组真源。
+ * @param opts 选项（systemKey / onWarn）
  */
 export function groupSolutionMenus(
 	top: MenuItemType[],
 	bottom: MenuItemType[],
-	rows: SolutionRouteRow[],
+	rows?: SolutionRouteRow[],
 	opts: GroupSolutionMenusOptions = {},
 ): { top: MenuItemType[], bottom: MenuItemType[] } {
 	const systemKey = opts.systemKey ?? "/system";
 	const onWarn = opts.onWarn ?? defaultWarn;
 
-	if (rows.length === 0) {
-		return { top: [...top], bottom: [...bottom] };
-	}
-
-	// 行索引：只认 main/admin 且 enabled（hidden/禁用此前已被上游经 hideInMenu 滤除，这里再兜底）
+	// 回退用行索引：只认 admin 且 enabled（hidden/禁用此前已在上游 hideInMenu 滤除）
 	const byPath = new Map<string, SolutionRouteRow>();
-	for (const r of rows) {
-		if ((r.category === "main" || r.category === "admin") && r.enabled !== false) {
+	for (const r of rows ?? []) {
+		if (r.category === "admin" && r.enabled !== false)
 			byPath.set(r.path, r);
-		}
-	}
-	if (byPath.size === 0) {
-		return { top: [...top], bottom: [...bottom] };
 	}
 
-	// 可见 main 计数（匹配存活菜单项，非行计数）
-	const mainCount = new Map<string, number>();
-	for (const list of [top, bottom]) {
-		for (const it of list) {
-			const row = byPath.get(it.key);
-			if (row?.category === "main") {
-				mainCount.set(row.module, (mainCount.get(row.module) ?? 0) + 1);
-			}
-		}
-	}
-	const groupedModules = new Set(
-		[...mainCount].filter(([, n]) => n >= 2).map(([module]) => module),
-	);
+	// 递归摘除 admin 项并按模块分桶（组标题用 <module>:menu.main，组内压平 admin 中间级）
+	const buckets = new Map<string, { items: MenuItemType[], module: string, minOrder: number }>();
+	const newTop = stripAdmin(top, byPath, buckets);
+	const newBottom = stripAdmin(bottom, byPath, buckets);
 
-	const mountPossible = bottom.some(it => it.key === systemKey);
-
-	const topRes = processList(top, byPath, groupedModules, mountPossible);
-	const bottomRes = processList(bottom, byPath, groupedModules, mountPossible);
-
-	// 合成 admin 组（按 module 分桶、组内按 order 升序），挂入 bottom 的 /system children 末尾
-	const adminGroupsMap = new Map<string, KeyedItem[]>();
-	for (const a of [...topRes.adminItems, ...bottomRes.adminItems]) {
-		const arr = adminGroupsMap.get(a.row.module) ?? [];
-		arr.push(a);
-		adminGroupsMap.set(a.row.module, arr);
-	}
-	const adminGroups = [...adminGroupsMap.entries()]
-		.map(([module, items]) => ({
-			minOrder: Math.min(...items.map(i => i.row.order)),
-			group: makeGroup(ADMIN_PREFIX, module, items.map(i => i.item), items.map(i => i.row)),
+	const adminGroups = [...buckets.entries()]
+		.map(([module, b]) => ({
+			minOrder: b.minOrder,
+			group: makeAdminGroup(module, b.items),
 		}))
 		.sort((a, b) => a.minOrder - b.minOrder);
 
-	let newBottom = bottomRes.out;
+	let resultBottom = newBottom;
 	const sysIdx = newBottom.findIndex(it => it.key === systemKey);
-	if (mountPossible && sysIdx !== -1) {
-		const system = newBottom[sysIdx];
-		newBottom = newBottom.slice();
-		newBottom[sysIdx] = {
-			...system,
-			children: [...(system.children ?? []), ...adminGroups.map(g => g.group)],
-		};
-	}
-	else if (adminGroups.length > 0) {
-		// 宿主缺 /system：admin 项已按原序留在来源列表（processList 回落直出），仅告警一次
-		onWarn(
-			`[solution-menu-grouping] system menu "${systemKey}" not found; admin items keep top-level (grouping degraded).`,
-		);
+	if (adminGroups.length > 0) {
+		if (sysIdx !== -1) {
+			// 仅当有 admin 组要挂入时才改写 /system（避免无 admin 项时强加空 children）
+			const system = newBottom[sysIdx]!;
+			resultBottom = newBottom.slice();
+			resultBottom[sysIdx] = {
+				...system,
+				children: [...(system.children ?? []), ...adminGroups.map(g => g.group)],
+			};
+		}
+		else {
+			// 宿主缺 /system：admin 项已从原位置摘除且无处挂载，仅告警一次（避免菜单丢失静默）
+			onWarn(
+				`[solution-menu-grouping] system menu "${systemKey}" not found; admin items dropped from menu.`,
+			);
+		}
 	}
 
-	return { top: topRes.out, bottom: newBottom };
+	return { top: newTop, bottom: resultBottom };
 }

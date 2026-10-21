@@ -30,9 +30,10 @@ export function generateMenuItemsFromRoutes(
 	parentPath = "/",
 ): MenuItemType[] {
 	return routeList.reduce<MenuItemType[]>((acc, item) => {
-		const label = item.handle?.title;
-		const externalLink = item?.handle?.externalLink;
-		const icon = item?.handle?.icon;
+		const handle = item.handle;
+		const label = handle?.title;
+		const externalLink = handle?.externalLink;
+		const icon = handle?.icon;
 		const absolutePath = resolveMenuKey(item.path, parentPath);
 
 		const menuItem: MenuItemType = {
@@ -60,14 +61,23 @@ export function generateMenuItemsFromRoutes(
 		if (icon) {
 			menuItem.icon = icon;
 		}
+		// 0.2.16 R2：归组自描述——把 handle 的 module/category/order 透传到菜单项，
+		// 使 groupSolutionMenus 不再依赖宿主 DB 行。
+		if (handle?.module)
+			menuItem.module = handle.module;
+		if (handle?.category)
+			menuItem.category = handle.category;
+		if (handle?.order !== undefined)
+			menuItem.order = handle.order;
 		if (Array.isArray(item.children) && item.children.length > 0) {
 			// 过滤掉非首页，且不显示在菜单中的路由
-			const noIndexRoute = item.children.filter(route => !route.index && !route?.handle?.hideInMenu);
+			const noIndexRoute = item.children.filter(route => !route.index && !route?.handle?.hideInMenu && route?.handle?.category !== "hidden");
 			if (noIndexRoute.length > 0) {
 				menuItem.children = generateMenuItemsFromRoutes(noIndexRoute, absolutePath);
 			}
 		}
-		if (item?.handle?.hideInMenu) {
+		// 0.2.16 R2：hidden 优先——handle.category==="hidden" 与显式 hideInMenu 等价，均不进菜单
+		if (handle?.hideInMenu || handle?.category === "hidden") {
 			return acc;
 		}
 		return [...acc, menuItem];

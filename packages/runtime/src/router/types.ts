@@ -75,11 +75,17 @@ export interface RouteMeta {
 	hideInMenu?: boolean
 
 	/**
-	 * 方案路由分类（P1-14/R21 三值归并，源自 sys_solution_route.category，经
-	 * mergeSolutionCategories 注写）：main=常规组、admin=管理组、hidden=不进菜单。
-	 * 框架/后端路由未归并时缺省。
+	 * 方案路由分类（P1-14/R21 三值归并）：main=常规组、admin=管理组、hidden=不进菜单。
+	 * 作者显式声明在 entry.ts handle（运行时单一真源）；框架/后端路由缺省。
 	 */
 	category?: "main" | "admin" | "hidden"
+
+	/**
+	 * 所属模块名（module-loader 在 `getRoutes()` 注册时按 `definition.name` 注入，
+	 * 非作者手写）。归组逻辑据此甄别方案路由、生成 `solgroup:<category>:<module>` 父键，
+	 * 不再依赖宿主 DB 行（0.2.16 起；此前由 sys_solution_route.module 提供）。
+	 */
+	module?: string
 
 	/**
 	 * iframe链接，如果路由需要在iframe中加载外部页面时使用

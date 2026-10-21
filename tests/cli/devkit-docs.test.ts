@@ -36,7 +36,7 @@ describe("devkit 手册两章节（P2-14：文档存在性）", () => {
 describe("devkit 自包含（零仓库内部代号）", () => {
 	it("sKILL/manual/README/framework-dev/教学文档 不含设计与评审代号", () => {
 		const pattern = /\b(P\d+(-[0-9A-Z]+)?|C\d+(-\d+)?|AC-[A-Z]+-?\d*|S0\d{2}|R\d+|D1\d|B-\d+|G\d|M0\d{2})\b/;
-		for (const name of ["SKILL.md", "manual.md", "README.md", "framework-dev.md", "module-dev-and-cdn-playground.md"]) {
+		for (const name of ["SKILL.md", "manual.md", "README.md", "framework-dev.md", "module-dev-and-cdn-playground.md", "menu-rules.md"]) {
 			const hit = read(`docs/devkit/${name}`).match(pattern);
 			expect(hit?.[0], `docs/devkit/${name} 含内部代号：${hit?.[0]}`).toBeUndefined();
 		}
@@ -51,7 +51,7 @@ describe("devkit 自包含（零仓库内部代号）", () => {
  * 本守卫钉死这个结构：快照文件若被平铺进顶层，会误随 cli 包发货且与 oj 版本漂移。
  */
 describe("devkit 目录结构（ojm 侧发货 + oj-api-dev 快照子目录）", () => {
-	const OJM_FILES = ["SKILL.md", "manual.md", "README.md", "framework-dev.md", "sql-builder-missing-capabilities-pr.md", "module-dev-and-cdn-playground.md"];
+	const OJM_FILES = ["SKILL.md", "manual.md", "README.md", "framework-dev.md", "sql-builder-missing-capabilities-pr.md", "module-dev-and-cdn-playground.md", "menu-rules.md"];
 	const SNAPSHOT_FILES = [
 		"SKILL.md",
 		"README.md",

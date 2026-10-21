@@ -5,6 +5,37 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 设计依据、迁移记录与陷阱清单见 [`docs/prd/202609110947-oj-module-two-package-consolidation-design.md`](docs/prd/202609110947-oj-module-two-package-consolidation-design.md)。
 
+## [0.2.16] - 2026-10-21
+
+双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步升 **0.2.16**。
+
+方案菜单归组的「单一真源」改造（上游 wiki parity 方案 R1–R6）：归组元数据
+（`category`/`order`/`module`）从「宿主 `sys_solution_route` 表行」改为「`entry.ts` 路由
+handle」，彻底修复 **dev 模式菜单未按预期分组**（`sys_solution_route` 在 dev 为空 → 旧逻辑不归组）。
+
+### Added
+
+- **R5 manifest.routes 由 entry.ts 自动派生**：`ojm build --bundle` 在契约校验前，从
+  `web/src/<name>/entry.ts` 的路由 handle 派生 `manifest.routes`（`category`/`order`/`title_key`），
+  覆盖手工书写，杜绝「entry.ts 改了 handle 但 manifest.yaml 没同步」的漂移；未迁移方案
+  （entry.ts 未声明 category）保留既有 manifest routes 不报错。新增 `manifest-routes-derive.ts`
+  （`deriveManifestRoutes` / `reconcileManifestRoutes`）。
+- **R1 路由打 module 标**：`module-loader` 在 `getRoutes()` 注册时按 `definition.name` 注入
+  `handle.module`（纯函数 `tagModuleRoutes`，不 mutate 入参），旧 bundle 也带标。
+- **R2 handle 元数据入菜单项**：`generateMenuItemsFromRoutes` 把 `handle.module`/`category`/`order`
+  拷入 `MenuItemType`；`hidden` 识别扩展为 `handle.hideInMenu || category==="hidden"`。
+- **R3 groupSolutionMenus 改读 handle 元数据**：选择键由「路径命中 DB 行」翻转为「`item.module`
+  存在」；`main≥2` 按模块归父菜单、`admin` 挂入 `/system`（旧行仅作可选回退，dev 零行也归组）。
+- **BDD 无漂移用例**：运行时纯函数 + 接入层双轨（handle 真源 vs 旧行声明）结构一致（`drift-A`）、
+  dev 零行仍归组（`drift-B`）；CLI 派生三态 + 漂移警告（`d-1`~`d-3`）。
+
+### Changed
+
+- **R4 mergeSolutionCategories 收窄为管理覆写层**：不再从行注写 `category`/`order`（handle 为真源），
+  仅保留 `enabled===false → hideInMenu`（路由仍可达，D12 口径）。
+- `setAccessStore` 归组时把 `solutionRoutes` 作为 category/order 的可选回退传入（handle 优先），
+  使已迁移模块纯靠 handle 归组、未迁移模块沿用旧行，生产不破版。
+
 ## [0.2.15] - 2026-10-21
 
 双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步升 **0.2.15**。

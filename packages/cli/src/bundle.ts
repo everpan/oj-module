@@ -10,8 +10,11 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { parse } from "yaml";
+import { readModuleDefinition } from "./build";
 import { createDeterministicTgz } from "./deterministic-tar";
+import { resolveLayout } from "./layout";
 import { checkLocalesComplete, checkTablesAgainstSchema, parseManifest, referencedI18nKeys, validateContract } from "./manifest-contract";
+import { deriveManifestRoutes, reconcileManifestRoutes } from "./manifest-routes-derive";
 
 export interface BundleBuildResult {
 	tgz: string
@@ -37,11 +40,34 @@ export async function buildBundle(projectRoot: string, opts: { out?: string } = 
 		throw new Error(`[ojm] 方案包构建失败：${parsed.error}`);
 	}
 	const m = parsed.manifest;
+	const name = m.name as string;
+
+	// R5：manifest.routes 由 entry.ts 路由 handle 自动派生（单一真源），覆盖手工书写。
+	// 仅当 entry.ts 声明了 category 路由才覆盖；否则保留 manifest 既有 routes（未迁移方案兼容）。
+	// entry 读不出来（如第三依赖未装）时软降级：沿用既有 routes，不阻断打包。
+	const layout = resolveLayout(projectRoot);
+	const entryFile = path.join(layout.modulesSrc, name, "entry.ts");
+	if (fs.existsSync(entryFile)) {
+		try {
+			const def = await readModuleDefinition(entryFile, projectRoot);
+			const derived = deriveManifestRoutes(def);
+			const { routes, warnings } = reconcileManifestRoutes(
+				Array.isArray(m.routes) ? m.routes : [],
+				derived,
+			);
+			for (const w of warnings)
+				console.warn(w);
+			m.routes = routes;
+		}
+		catch (e) {
+			console.warn(`[ojm] ⚠️ 无法从 entry.ts 派生 routes（${e instanceof Error ? e.message : String(e)}），沿用 manifest.yaml 既有 routes`);
+		}
+	}
+
 	const violations = validateContract(m);
 	if (violations.length > 0) {
 		throw new Error(`[ojm] 方案包构建失败：manifest.yaml 契约校验未通过（${violations.length} 项违规，全量列出）：\n${violations.map(x => `- ${x}`).join("\n")}`);
 	}
-	const name = m.name as string;
 	const version = m.version as string;
 
 	// 2) 文件面契约（§4.1 构建列专属执行点；manifest 内在规则已在 validateContract 全量通过）

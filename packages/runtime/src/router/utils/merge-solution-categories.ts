@@ -8,19 +8,16 @@ import type { AppRouteRecordRaw } from "#src/router/types";
 export type AnnotatedRoute = AppRouteRecordRaw;
 
 /**
- * 方案路由归并（纯函数，R21）：按 path 把 sys_solution_route 行注记到已注册路由上。
+ * 方案路由归并（纯函数，R21 / 0.2.16 收窄）：DB 行仅作为「管理覆写层」。
  *
- * - 三值 category 原样落 handle.category（main=常规组、admin=管理组、hidden=不进菜单）；
- * - hidden 与 enabled=0（禁用）复用既有 hideInMenu 通路——只过滤菜单层，路由仍可达
- *   （禁用的路由摘除归装载层三处同写，D12）；
- * - order 覆写为声明序（2026-10-20 双段序轴）：框架常规项 ≥0 升序、管理面负数入
- *   底部固定区（pin 侧边栏底部，ascending 双段排序）、方案项从 200 起编，共用一条序轴；
- *   同 order 按根 path 字母序；
- * - 未匹配路由（框架/后端）原样保留（同一对象引用），入参不突变；
- * - solRoutes 为空（端点失败/未登录降级空表）时原样返回——降级不阻断，路由照常。
+ * 0.2.16 起 `category`/`order`/`module` 已是路由 handle 真源（作者声明 + module-loader 注入，
+ * 见 R1/R2），不再由本函数从行注写。本函数只保留一项管理语义：
  *
- * title 不在此覆写：entry.ts 是模块元数据唯一来源（module-loader 既有惯例），
- * title_key 随行下发仅供深检对比。
+ * - **禁用覆写**：行 `enabled === false`（或 deprecated）时追加 `hideInMenu: true`，
+ *   使该菜单项不可见（路由仍可达，D12 口径——禁用在装载层三处同写）；
+ * - 其余字段（category/order/module/title）一律不覆写，保持 handle 原值；
+ * - 入参不突变（未命中行或无需覆写时返回同一对象引用）；
+ * - solRoutes 为空（端点失败/未登录/dev 零行降级）时原样返回——降级不阻断，路由照常。
  */
 export function mergeSolutionCategories(routes: AppRouteRecordRaw[], solRoutes: SolutionRouteRow[]): AnnotatedRoute[] {
 	if (solRoutes.length === 0) {
@@ -29,16 +26,14 @@ export function mergeSolutionCategories(routes: AppRouteRecordRaw[], solRoutes: 
 	const byPath = new Map(solRoutes.map(r => [r.path, r]));
 	return routes.map((route) => {
 		const row = route.path ? byPath.get(route.path) : undefined;
-		if (!row) {
+		if (!row || row.enabled !== false)
 			return route;
-		}
+		// 仅禁用态：追加 hideInMenu（与既有 handle.hideInMenu / category==="hidden" 取并集）
 		return {
 			...route,
 			handle: {
 				...route.handle,
-				category: row.category,
-				order: row.order,
-				hideInMenu: row.category === "hidden" || !row.enabled || (route.handle.hideInMenu ?? false),
+				hideInMenu: true,
 			},
 		};
 	});

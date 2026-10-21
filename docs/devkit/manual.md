@@ -1791,59 +1791,67 @@ ojm trust revoke <key_id>        # 吊销：阻断新装/升级，不动已装�
 ## §13 方案菜单归组规则
 
 > 适用：写方案（前后端一体模块）时让路由菜单按模块自动分组。归组是**纯视觉层**——
-> 开发态（`ojm dev` 直接扫源码）不归组；装进宿主且方案路由行就绪后才归组，开发形态不变。
+> 归组元数据（`category` / `order` / `module`）的真源是 **`entry.ts` 路由 handle**，因此
+> **连 dev 形态（`sys_solution_route` 为空）也会归组**，不再依赖方案路由行就绪。
+> 完整心智模型与流水线见 [`menu-rules.md`](./menu-rules.md)。
 
-### 13.1 归组规则
+> **2026-10 起设计已变**：取消「`main` ≥2 条按模块收合成父菜单」的旧归组；改为**单根模块约定**
+> （一个方案只有一个根路由，它本身就是第一级菜单），admin 走**路由层真重写**到
+> `/system/<模块 root path>/*` 再视觉归组，管理子组与模块根菜单共用 `<模块>:menu.main` 一个 key。
+> 完整规则、流水线、`currentActiveMenu`、模块内路径助手见 [`menu-rules.md`](./menu-rules.md)（自包含）。
 
-方案路由分 `main` / `admin` / `hidden` 三类。归组只动 `main` 和 `admin`：
+### 13.1 单根模块约定（第一级菜单 = 模块根路由）
 
-- **`main` 路由 ≥ 2 条（同模块）** → 收进一个合成父菜单：
-  - 父项 key：`solgroup:main:<模块名>`
-  - 父项标题：裸 i18n key `<方案名>:menu.group`（翻译归渲染层，本仓只存裸 key）
-  - 子项按各自 `order` 升序；只有 1 条 `main` 路由时不归组，原样平铺
-- **`admin` 路由** → 挂进宿主底部「系统设置」（`/system`）菜单的 children 末尾，同样按模块
-  归成 `solgroup:admin:<模块名>` 父项
-  - 若宿主没有 `/system`（极少数自定义宿主）：`admin` 路由不归组、回落平铺，并告警一次
-    （warnOnce，同消息不重复）
+一个方案 `entry.ts` `routes` 只有**一个根路由**（如 `path: "wiki"`），它直接渲染为侧栏第一级菜单项；
+其余页面是其 `children`。根路由 `handle.title` 用 `<模块>:menu.main`。不要为归组另写分组根路由。
 
-> `/system` 是框架侧断言，不是方案 manifest 能声明或验证的。方案只需把 `admin` 路由标
-> `category: "admin"`，挂载点交给框架。
-
-### 13.2 组标题 i18n key 约定（最容易踩的坑）
-
-归组父项标题是 `<方案名>:menu.group`（`<方案名>` = 你的方案 manifest 的 `name`）。这条 key
-**必须**存在于双语 locale 文件，且必须是**嵌套**结构：
-
-```jsonc
-// web/src/<模块>/locales/zh-CN.json
-{ "menu": { "group": "Wiki" } }   // 命中 <方案名>:menu.group
-
-// web/src/<模块>/locales/en-US.json
-{ "menu": { "group": "Wiki" } }
+```ts
+export default defineModule({
+  name: "wiki",
+  routes: [{
+    path: "wiki",
+    handle: { title: "wiki:menu.main", layout: "container" },
+    children: [
+      { path: "space",       handle: { title: "wiki:menu.space",       layout: "parent" } },
+      { path: "admin",       handle: { title: "wiki:menu.admin", category: "admin", layout: "container" } },
+      { path: "status/detail", handle: { title: "wiki:menu.statusDetail", category: "hidden" } },
+    ],
+  }],
+});
 ```
 
-- 只声明一条就够：无论多少模块、多少 `main`/`admin` 路由，框架只认一个 `<方案名>:menu.group`（按 name 去重）
-- 必须嵌套在 `menu.group`，不能平铺成 `"<方案名>:menu.group": "..."`（i18next 点路径取值）
-- 缺这条 key → 构建期契约校验直接 fail（构建期 fail-fast）
+### 13.2 category 三值语义
 
-### 13.3 开发者的该做 / 别做
+`handle.category`：
+
+- 省略 / `""` / 旧 `"main"` → 普通可见菜单项。**`"main"` 不再产生合成父菜单**（扁平 main 归组已取消），新代码直接省略。
+- `"hidden"` → 有效路由但**不进菜单**（等价于 `hideInMenu: true`），用于详情页等。
+- `"admin"` → 路由层被 `rewriteAdminPaths` 真重写为 `/system/<模块 root path>/*`（运行时 URL 真正归到系统设置），菜单层再被 `groupSolutionMenus` 收进 `/system` 子组 `solgroup:admin:<模块>`。
+
+> `/system` 是框架侧断言，方案只标 `category: "admin"`，挂载点交给框架；宿主缺 `/system` 时告警一次。
+
+### 13.3 menu.main 统一 + 路径助手
+
+- 模块根菜单标题与 /system 下的管理子组标题**共用** `<模块>:menu.main` 一个 i18n key（嵌套在 `menu.main`，缺则构建期 fail-fast）。旧 `menu.group` key 已废弃。
+- 模块内所有前端路径——`navigate` / `Link to` / `useMatch`·`matchPath` / `currentActiveMenu` / SEO 正则——统一从模块基路径助手（如 `paths.ts` 的 `wikiPath(...)` / `wikiBase`）派生，不散落 `/wiki/...` 字面量；`currentActiveMenu` 必须写绝对路径（指向真实菜单 key）。`tree/bus.ts` 的 room 名是后端 WS 契约，非前端路由，不动。
+
+### 13.4 开发者的该做 / 别做
 
 该做（DO）：
 
-- 路由 `handle.title` 写裸 key：`{ title: "wiki:menu.space", order: 200, layout: "container" }`
-- manifest `routes[]` 每条标 `category`（main/admin/hidden）+ `order` 整数 + `title_key`
-  （main/admin 必填，须匹配 `<方案名>:menu.*`）
-- 在 `locales/{zh-CN,en-US}.json` 里补 `menu.group`
-- 多个 `main` 路由想归到一组 → 让它们 `module` 字段相同、`category: "main"`
-- `admin` 路由统一 `category: "admin"`，框架自动塞进 `/system`
+- 在 `entry.ts` 路由 handle 直接声明归组/菜单元数据（**真源**）：
+  `{ title: "wiki:menu.space", layout: "parent" }`、
+  `{ title: "wiki:menu.admin", category: "admin", layout: "container" }`
+- 模块只设一个根路由，根 `title` 用 `<模块>:menu.main`；`manifest.yaml` 的 `routes[]` 不必手写（构建期从 handle 派生覆盖）。
+- 在 `locales/{zh-CN,en-US}.json` 里补嵌套的 `menu.main`。
+- `admin` 路由统一 `category: "admin"`；模块内路径走 `paths.ts` 助手，`currentActiveMenu` 写绝对路径且从助手派生。
 
 别做（DON'T）：
 
-- 为归组父项写路由 / 配 handle —— 父项是合成的，没有真实路由
-- 直接写中文 `label` / `title` —— 必须走 i18n key，否则切语言不动
-- 在方案里假设 `/system` 的 key 或结构 —— 那是框架断言，自定义宿主会回落平铺
-- 给隐藏（hidden）或禁用（`enabled: false`）路由指望归组 —— 它们不参与
-- 一个模块只挂 1 条 `main` 路由还想要父菜单 —— 规则门槛是 ≥2，单条保持平铺
+- 为归组父菜单手写额外分组根路由；用 `category:"main"` 想「归到一组」（扁平 main 归组已取消）；
+- 直接写中文 `label`/`title`（必须 i18n key）；假设 `/system` 的 key/结构；给 hidden/禁用路由指望进菜单；
+- 把 `currentActiveMenu` / `Link to` / `useMatch` 写成散落全路径字面量（统一走模块基路径助手）；
+- 手工双写 `manifest.yaml` routes[] 与 entry.ts handle（单一真源是 entry.ts）；改 `tree/bus.ts` room 名当路由。
 
 ---
 
@@ -1863,4 +1871,4 @@ ojm trust revoke <key_id>        # 吊销：阻断新装/升级，不动已装�
 | §10 CLI 子命令参考 | ojm 原生命令 vs oj 透传命令；`market` 子命令（本地模拟 CDN） | 查命令用法；`ojm <cmd> --help` 看单命令帮助 |
 | §11 方案包：打包与分发 | build --bundle、Form A/B、分发源、索引规范 | 发布方案包 |
 | §12 签名与信任 | keygen/sign/install 发布流程、信任库、TOFU、bootstrap key | 首次签名发布；管理信任 |
-| §13 方案菜单归组规则 | main ≥2 按模块归父菜单、admin 挂进系统设置、组标题 i18n key `<方案名>:menu.group` 约定、开发者 DO/DON'T | 写方案要让菜单按模块分组 |
+| §13 方案菜单归组规则 | 单根模块约定（根路由=第一级菜单）、category 三值（普通/hidden/admin）、admin 真重写 `/system/<模块 root>/*` + 视觉归组、menu.main 统一、模块内路径助手、开发者 DO/DON'T | 写方案要让菜单按模块分组、admin 归系统设置 |

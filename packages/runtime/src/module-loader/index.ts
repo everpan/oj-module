@@ -303,6 +303,23 @@ export function getModule(name: string): ModuleInstance | undefined {
 	return modules.get(name);
 }
 
+/**
+ * 给模块路由打 module 标（R1，0.2.16）：递归 children，非突变返回新对象。
+ * module 来自 `definition.name`，作者无需手写——归组据此甄别方案路由、
+ * 生成 `solgroup:<category>:<module>` 父键，不再依赖宿主 DB 行。
+ */
+function tagModuleRoutes(routes: AppRouteRecordRaw[], name: string): AppRouteRecordRaw[] {
+	return routes.map((route) => {
+		const tagged: AppRouteRecordRaw = {
+			...route,
+			handle: { ...route.handle, module: name },
+		};
+		if (Array.isArray(route.children) && route.children.length > 0)
+			tagged.children = tagModuleRoutes(route.children, name);
+		return tagged;
+	});
+}
+
 export function getRoutes(): AppRouteRecordRaw[] {
 	// P5.9 / B16：模块级 requiredRoles 在路由注入前过滤——
 	// 无角色的用户拿不到路由本身（菜单同源），而非渲染后 403
@@ -321,7 +338,9 @@ export function getRoutes(): AppRouteRecordRaw[] {
 			continue;
 		if (instance.definition.routes.length > 0) {
 			// P2.7：布局不再由模块自行 import，按 handle.layout 在出口统一包裹
-			routes.push(...resolveRouteLayouts(instance.definition.routes));
+			// 0.2.16 R1：注册时按 definition.name 给每条路由打 module 标（递归 children），
+			// 使归组无需依赖宿主 DB 行；tagModuleRoutes 非突变。
+			routes.push(...resolveRouteLayouts(tagModuleRoutes(instance.definition.routes, instance.definition.name)));
 		}
 	}
 	// 菜单选中态依赖 useMatches 的 match.id（=path）。在出口统一补 id，

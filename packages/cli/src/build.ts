@@ -1,5 +1,6 @@
 import type { Plugin as EsbuildPlugin } from "esbuild";
 import type { Plugin } from "vite";
+import type { RouteDefinitionLike } from "./manifest-routes-derive";
 import { execFileSync } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -387,6 +388,9 @@ export async function readModuleDefinition(entryFile: string, projectRoot: strin
 			version: string
 			peerRuntime?: string
 			config?: { dependencies?: string[] }
+			// R5：entry.ts 声明的路由树（含 handle.category/order/title），
+			// buildBundle 据此派生 manifest.routes（单一真源，避免手工双写漂移）
+			routes?: RouteDefinitionLike[]
 		};
 	}
 	finally {

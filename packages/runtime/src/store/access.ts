@@ -13,6 +13,7 @@ import { generateMenuItemsFromRoutes } from "#src/router/utils/generate-menu-ite
 import { groupSolutionMenus } from "#src/router/utils/group-solution-menus";
 import { mergeSolutionCategories } from "#src/router/utils/merge-solution-categories";
 import { resolveLoginRoute } from "#src/router/utils/resolve-login-route";
+import { rewriteAdminPaths } from "#src/router/utils/rewrite-admin-paths";
 
 interface AccessState {
 	// 路由菜单（主菜单区：order >= 0，升序；不含底部固定区条目）
@@ -72,21 +73,28 @@ export const useAccessStore = create<AccessState & AccessAction>((set, get) => (
 	...initialState,
 
 	setAccessStore: (routes) => {
+		/* admin 路由真重写（0.2.17 单根约定）：category==="admin" 的路由子树在注入前改写为
+		 * /system/<模块 root path>/* 并 hoist 到顶层，使运行时 URL 真正落在 /system 下；
+		 * 菜单随后由 groupSolutionMenus 视觉层归组进 /system。非突变，仅作用于本次入参。 */
+		const rewrittenRoutes = rewriteAdminPaths(routes);
 		/* login 模块化（P3）：存在外部 login 模块路由时剔除内置兜底（含 router 重建） */
-		const effectiveBase = resolveLoginRoute(baseRoutes, routes, router, rootRoute);
+		const effectiveBase = resolveLoginRoute(baseRoutes, rewrittenRoutes, router, rootRoute);
 		/* 方案路由三值归并（P1-14/R21）：空表降级原样返回，菜单登记不因端点失败降级 */
-		const newRoutes = ascending([...effectiveBase, ...mergeSolutionCategories(routes, get().solutionRoutes)]);
+		const newRoutes = ascending([...effectiveBase, ...mergeSolutionCategories(rewrittenRoutes, get().solutionRoutes)]);
 		/* 添加新的路由到根路由 */
-		router.patchRoutes(ROOT_ROUTE_ID, routes);
+		router.patchRoutes(ROOT_ROUTE_ID, rewrittenRoutes);
 		const flatRouteList = flattenRoutes(newRoutes);
 		/* 双段序轴切分（ascending 保证负 order 段整体在后）：主区进 wholeMenus，
 		 * 底部固定区进 bottomMenus（渲染层 pin 侧边栏底部） */
 		const { top, bottom } = splitMenuRoutes(newRoutes);
-		// 方案路由注册菜单归组（纯视觉层）：main ≥2 按模块归父菜单、admin 挂入 /system；
-		// 空表/无命中为无操作，开发形态不变。setSolutionRoutes 回调本函数时 solutionRoutes 已就绪，随菜单重建自动覆盖。
+		// 方案路由注册菜单归组（纯视觉层，0.2.16 起读 handle 元数据，dev 零行也归组）：
+		// main ≥2 按模块归父菜单、admin 挂入 /system。setSolutionRoutes 回调本函数时
+		// solutionRoutes 已就绪，随菜单重建自动覆盖。
 		const grouped = groupSolutionMenus(
 			generateMenuItemsFromRoutes(top),
 			generateMenuItemsFromRoutes(bottom),
+			// R6：宿主方案路由行作 category/order 的可选回退（handle 优先）。dev 形态
+			// solutionRoutes=[] 时纯靠 handle 元数据归组；已迁移模块 handle 声明后此回退不生效。
 			get().solutionRoutes,
 		);
 		const newState = {

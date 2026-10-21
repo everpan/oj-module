@@ -33,43 +33,39 @@ function route(path: string, order?: number, hideInMenu?: boolean): AppRouteReco
 	};
 }
 
-describe("mergeSolutionCategories：三值归并（R21）", () => {
-	it("main/admin/hidden 按路径注记 category，hidden 复用 hideInMenu 通路", () => {
-		const routes = [route("/demo"), route("/demo/admin"), route("/demo/ping")];
+describe("mergeSolutionCategories：管理覆写层（0.2.16 收窄，R4）", () => {
+	it("category/order 不再由行注写：行声明 category/order 不污染 handle 真源", () => {
+		// 0.2.16 起 category/order/module 的真源是路由 handle（作者声明 + module-loader 注入），
+		// 本函数仅保留禁用覆写，不再从行注写——避免「行与 handle 双真源漂移」。
+		const routes = [route("/demo", 200), route("/demo/admin", 300)];
 		const merged = mergeSolutionCategories(routes, [
-			row({ path: "/demo", category: "main", order: 200 }),
-			row({ path: "/demo/admin", category: "admin", order: 300 }),
-			row({ path: "/demo/ping", category: "hidden", order: 205 }),
+			row({ path: "/demo", category: "admin", order: 999 }),
+			row({ path: "/demo/admin", category: "main", order: 1 }),
 		]);
-		expect(merged.map(r => r.handle.category)).toEqual(["main", "admin", "hidden"]);
-		expect(merged[2]!.handle.hideInMenu).toBe(true);
-		expect(merged[0]!.handle.hideInMenu).toBe(false);
-		expect(merged[1]!.handle.hideInMenu).toBe(false);
+		// handle 原值保持，行不覆写
+		expect(merged.map(r => r.handle.category)).toEqual([undefined, undefined]);
+		expect(merged.map(r => r.handle.order)).toEqual([200, 300]);
+		expect(merged.every(r => r.handle.hideInMenu !== true)).toBe(true);
 	});
 
-	it("enabled=0（禁用）仅菜单层过滤：hideInMenu=true、路由仍可达", () => {
-		const merged = mergeSolutionCategories([route("/demo")], [row({ path: "/demo", enabled: false })]);
+	it("禁用覆写：enabled=false → hideInMenu=true（路由仍可达；其余字段维持 handle 原值）", () => {
+		const routes = [route("/demo", 200)]; // handle 未声明 category/order
+		const merged = mergeSolutionCategories(routes, [row({ path: "/demo", enabled: false, category: "main", order: 200 })]);
 		expect(merged[0]!.handle.hideInMenu).toBe(true);
-		expect(merged[0]!.handle.category).toBe("main");
-	});
-
-	it("方案 order 覆写共用序轴：框架项 100 带在前、方案项 200 起在后", () => {
-		const routes = [route("/home", 100), route("/demo", 1)];
-		const merged = mergeSolutionCategories(routes, [row({ path: "/demo", order: 200 })]);
-		expect(merged.map(r => r.handle.order)).toEqual([100, 200]);
-		expect([...merged].sort((a, b) => a.handle.order! - b.handle.order!).map(r => r.path)).toEqual(["/home", "/demo"]);
+		// 禁用态不反向注入 category/order
+		expect(merged[0]!.handle.category).toBeUndefined();
+		expect(merged[0]!.handle.order).toBe(200);
 	});
 
 	it("未匹配路由（框架/后端）原样保留；入参不被突变（纯函数）", () => {
 		const home = route("/home", 100);
 		const demo = route("/demo", 1);
-		const merged = mergeSolutionCategories([home, demo], [row({ path: "/demo", order: 200, category: "admin" })]);
+		const merged = mergeSolutionCategories([home, demo], [row({ path: "/demo", enabled: false })]);
 		expect(merged[0]).toBe(home);
-		expect(home.handle.category).toBeUndefined();
-		expect(home.handle.order).toBe(100);
-		// demo 被替换为新对象，原对象不动
-		expect(demo.handle.order).toBe(1);
-		expect(merged[1]!.handle.order).toBe(200);
+		expect(home.handle.hideInMenu).toBeUndefined(); // 未命中行，原样
+		expect(merged[1]!.handle.hideInMenu).toBe(true); // /demo 被禁用覆写（新对象）
+		expect(demo.handle.hideInMenu).toBeUndefined(); // 入参不被突变
+		expect(merged[1]!.handle.order).toBe(1); // 顺序不变
 	});
 
 	it("降级空表不炸：solRoutes 为空时原样返回（路由照常，R21）", () => {
@@ -77,7 +73,7 @@ describe("mergeSolutionCategories：三值归并（R21）", () => {
 		expect(mergeSolutionCategories(routes, [])).toBe(routes);
 	});
 
-	it("路由已声明 hideInMenu 时不被归并复活", () => {
+	it("路由已声明 hideInMenu 时不被归并复活（禁用覆写与之取并集）", () => {
 		const merged = mergeSolutionCategories([route("/demo", undefined, true)], [row({ path: "/demo", category: "main" })]);
 		expect(merged[0]!.handle.hideInMenu).toBe(true);
 	});
