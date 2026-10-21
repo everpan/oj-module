@@ -5,6 +5,23 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 设计依据、迁移记录与陷阱清单见 [`docs/prd/202609110947-oj-module-two-package-consolidation-design.md`](docs/prd/202609110947-oj-module-two-package-consolidation-design.md)。
 
+## [0.2.14] - 2026-10-21
+
+双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步升 **0.2.14**。
+
+### Added
+
+- **`ojm market walkthrough` 全套操作自检**：隔离站点（随机端口 / 一次性 DB / 内存发布方密钥 / 种子凭据 / 隔离信任库 / 隔离 CDN 六项物理隔离）上按 `setup → act → assert → cleanup` 跑 14 项 AC 表——主链路 9 项（index / install / reinstall / enable / verify / history / upgrade / rollback / uninstall）+ 负向 5 项（neg-tamper / neg-nosig / neg-badindex / neg-stranger / neg-evil，预期失败口径：防线没拦住记 FAIL）。`--only` 单跑原子性成立，`--strict` 首败即停。
+- **负向防线演练**：包体篡改（failed@verifying 零落盘）、缺签名（sig_missing）、索引篡改（POST 即 502）、未登记 key（needs_trust → confirm → done，收尾显式 `DELETE trust/key` + 信任库快照 diff 为空）、zip-slip 恶意包（file 源上传即 400，R1 拒在解包前）。负向 op 篡改文件在 `finally` 回抄原始字节并重铺索引。
+- **失败路径人话文案表**（`market/failure-playbook.ts`）：双段式（成因 + 下一步）6 条，随报告落盘；traceability 单测守每个 neg 场景的失败码覆盖。
+- **报告白黑名单**：walkthrough 收尾脱敏落盘 `logs/walkthrough-<ts>.md`（AC 表 + 文案表）；Bearer / JWT / PEM / jwt_secret 掩码，指纹、sha256、key_id 白名单原样。
+- **fixture 迁移阶梯**：`0.2.0` 起（minor ≥ 2）多一段 `0002__more.sql`——upgrade 真的多走一段迁移，rollback 才有「包内最大 seq < 账本 head」可拦。
+
+### Fixed
+
+- **深检 `ledger.stale` 存量误报（pitfall 10）**：`_oj_migrations` 是 oj journal 内建表但未进模块 schema → `db.table` 被元数据校验拒 → `journalHeadOf` 恒 null → 账本复核恒判「落后」。修复：`_platform/schema.yaml` + `manifest.yaml` 声明 `_oj_migrations`（复合 PK `[module, version]`，列与 oj 真表逐列对齐，DDL 仍归 oj 自建自管）。深检 ledger 项零误报，安装器禁降版预锁 guard 的输入真源恢复。
+- **`MIN_OJ_VERSION` 0.1.73 → 0.1.81**：模板 `solution-perms.ts` 权限级联清理用 `startswith` 操作键（oj v0.1.81 补齐），旧 oj（< 0.1.81）卸载方案报 `unknown variant startswith` fail-closed。门禁与模板能力对齐；`vendor.test` 硬编码字面量改引用常量。
+
 ## [0.2.13] - 2026-10-21
 
 双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步升 **0.2.13**。
