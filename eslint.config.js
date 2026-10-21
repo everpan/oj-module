@@ -84,6 +84,8 @@ export default antfu({
 		// 模板 global.d.ts 同样镜像运行时注入的全局对象（FsApi/http/crypto…），
 		// 沿用框架 devkit 的 shorthand method 签名风格，禁止 --fix 改写以免与源漂移
 		"packages/cli/templates/global.d.ts",
+		// ojm init 分发到工程内的 devkit 副本（bin/devkit/），同源 mirror，同样忽略
+		"packages/cli/templates/bin/devkit/global.d.ts",
 	],
 	rules: {
 		"style/quotes": ["error", "double"],
