@@ -13,6 +13,7 @@ import { build } from "vite";
 import { loadModulesConfig, resolveModuleEntry } from "./config";
 import { resolveConfigPath, resolveLayout } from "./layout";
 import { isSharedDep, SHARED_DEPS } from "./shared-deps";
+import { normalizeSiteBase, rewriteIndexHtml } from "./site-base";
 import { resolveOjBin } from "./vendor";
 import { checkSharedVersions, resolveShellDist } from "./versions";
 
@@ -139,6 +140,9 @@ export const mapTree = _fn;
 export const getAllExpandedKeys = _fn;
 export const getAppInfo = _fn;
 export const getRedirectPath = _fn;
+// 站点部署 base（子路径部署）：stub 只需占位，元数据读取期不拼 URL
+export const resolveSiteBase = _fn;
+export const withSiteBase = _fn;
 export const getYesNoOptions = _fn;
 export const getBooleanOptions = _fn;
 // 模块契约
@@ -532,12 +536,22 @@ export async function buildBackend(projectRoot: string): Promise<boolean> {
  * 再由模块构建写入 modules.json 与 modules/。清场防旧哈希资产无限累积
  * （shell 每次重构建生成新哈希文件名）；devServer 热重建路径不合并——
  * dev 的 / 与 /assets/* 直接服务 shell dist，合并产物无人消费。
+ *
+ * siteBase 非空时（站点挂载在 `/oj` 这类子路径）改写 index.html 的站内绝对
+ * URL 并注入 `window.__OJ_BASE__`（见 site-base.ts）；为空则产物与既有行为
+ * 逐字节一致。
  */
-function mergeShellSite(distDir: string): void {
+function mergeShellSite(distDir: string, siteBase: string): void {
 	const shellDist = resolveShellDist();
 	fs.rmSync(distDir, { recursive: true, force: true });
 	fs.mkdirSync(path.dirname(distDir), { recursive: true });
 	fs.cpSync(shellDist, distDir, { recursive: true });
+
+	const indexPath = path.join(distDir, "index.html");
+	if (normalizeSiteBase(siteBase) !== "/") {
+		fs.writeFileSync(indexPath, rewriteIndexHtml(fs.readFileSync(indexPath, "utf-8"), siteBase));
+		console.log(`[ojm] 站点 index.html 已按 siteBase=${normalizeSiteBase(siteBase)} 重写（子路径部署）`);
+	}
 	console.log(`[ojm] 已合并宿主站点 → ${distDir}`);
 }
 
@@ -561,7 +575,7 @@ export async function buildModules(
 	const baseUrl = config.baseUrl ?? "";
 
 	if (opts.mergeSite)
-		mergeShellSite(outDir);
+		mergeShellSite(outDir, config.siteBase ?? "");
 
 	// P4.5 / C4 / D12：构建前先过版本矩阵门禁，版本漂移直接拒绝
 	checkSharedVersions(projectRoot, resolveShellDist());

@@ -12,6 +12,19 @@ export interface ModuleConfigEntry {
 export interface ModulesConfig {
 	/** 产物 URL 前缀，留空表示同源相对路径 */
 	baseUrl?: string
+	/**
+	 * 站点部署子路径（如 `"/oj"`），留空 = 挂在域名根。
+	 *
+	 * 站点被 oj 挂到 `mounts: [{ prefix: /oj, web: dist, spa: true }]` 这类非根
+	 * 前缀时**必须**配它：`ojm build` 会把全站 index.html 的站内绝对 URL
+	 * （importmap / `<script src>` / `<link href>`）改写为 `/oj/...`，并注入
+	 * `window.__OJ_BASE__` 供路由 basename 与模块资源解析取用。
+	 * 不配则浏览器去域名根取 `/assets/*` → 404 白屏，深链刷新也匹配不到路由。
+	 *
+	 * 与 `baseUrl` 的区别：`baseUrl` 是**模块产物**的 URL 前缀（可指向 CDN
+	 * 绝对域），`siteBase` 是**站点自身**的部署位置；两者正交，可同时使用。
+	 */
+	siteBase?: string
 	modules: ModuleConfigEntry[]
 	/**
 	 * 站点 HTML 变换模块（可选）：相对工程根的路径（`./html-transform.ts`）
@@ -24,8 +37,9 @@ export interface ModulesConfig {
 	htmlTransform?: string
 }
 
-const DEFAULT_CONFIG: Required<Pick<ModulesConfig, "baseUrl">> = {
+const DEFAULT_CONFIG: Required<Pick<ModulesConfig, "baseUrl" | "siteBase">> = {
 	baseUrl: "",
+	siteBase: "",
 };
 
 /**
@@ -34,7 +48,7 @@ const DEFAULT_CONFIG: Required<Pick<ModulesConfig, "baseUrl">> = {
  * 用 tsx 真实 import，而不是正则解析——这样配置文件里可以写注释、
  * 用变量、做条件判断，且类型错误会直接暴露（B10 的正则方案做不到）。
  */
-export async function loadModulesConfig(projectRoot: string): Promise<ModulesConfig & { baseUrl: string }> {
+export async function loadModulesConfig(projectRoot: string): Promise<ModulesConfig & { baseUrl: string, siteBase: string }> {
 	const configPath = path.join(projectRoot, "web.config.ts");
 
 	let mod: { default?: ModulesConfig };

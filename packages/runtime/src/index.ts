@@ -126,6 +126,19 @@ export { getRedirectPath } from "./utils/get-redirect-path";
 // 第三方一律走 defineModule ctx 的 scoped request（D11 前缀收敛）。
 export { request } from "./utils/request";
 
+/**
+ * 站点部署 base（子路径部署，2026-10-21）。
+ *
+ * 宿主把站点挂在非根前缀（oj `mounts: [{ prefix: /oj }]`）时，站内绝对 URL 必须
+ * 带该前缀。runtime 产物里的 `import.meta.env.BASE_URL` 是**包构建期**内联的 `/`，
+ * 只有部署期注入的 `window.__OJ_BASE__` 才是真值，故一律经 `resolveSiteBase()` 取值。
+ *
+ * - 模块侧拼「非路由」的站内绝对 URL（下载直链、`window.open`）用 `withSiteBase()`；
+ * - **路由跳转不要用它们**：`navigate` / `<Link>` 走路由空间，basename 已由
+ *   react-router 剥离，再拼一次会得到 `/oj/oj/wiki`。
+ */
+export { resolveSiteBase, withSiteBase } from "./utils/site-base";
+
 // 工具与常量
 export * from "./utils/tree";
 

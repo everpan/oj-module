@@ -42,8 +42,9 @@ import {
 	Outlet,
 	RouterProvider,
 } from "react-router";
-import { extractRuntimeVersion, toLoaderManifest } from "./manifest";
+import { extractRuntimeVersion, resolveModuleUrls, toLoaderManifest } from "./manifest";
 import { collectPreloads } from "./preload";
+import { resolveSiteBase } from "./site-urls";
 import { assertTrustedModules } from "./trust";
 
 const queryClient = new QueryClient();
@@ -140,17 +141,20 @@ function Boot() {
 				// 模块清单与宿主版本矩阵并行拉取（versions.json 提供
 				// peerRuntime 校验所需的宿主 runtime 版本，P7.6；404 容忍——
 				// 拿不到则跳过版本校验并告警，不阻断启动）。
-				// 必须基于 BASE_URL 取绝对路径：相对 "./" 在深链接（如
+				// 必须基于部署 base 取绝对路径：相对 "./" 在深链接（如
 				// /demo/detail 直接刷新）下会解析成 /demo/modules.json → 404
-				// （layout e2e M3 深链接用例暴露）
-				const base = import.meta.env.BASE_URL ?? "/";
+				// （layout e2e M3 深链接用例暴露）；子路径部署（/oj）下裸 "/"
+				// 同样会打到宿主机根，故 base 一律走 resolveSiteBase()。
+				const base = resolveSiteBase();
 				const [res, versionsRes] = await Promise.all([
 					fetch(`${base}modules.json`),
 					fetch(`${base}versions.json`).catch(() => null),
 				]);
 				if (!res.ok)
 					throw new Error(`modules.json 加载失败：HTTP ${res.status}`);
-				const list: HostModule[] = await res.json();
+				// 站内绝对 URL 在此一次性补齐部署 base（entry / css / chunks），
+				// 后续信任根校验、样式注入、预载、loader 全部消费归一后的清单
+				const list: HostModule[] = resolveModuleUrls(await res.json(), base);
 				const runtimeVersion = versionsRes?.ok
 					? extractRuntimeVersion(await versionsRes.json())
 					: undefined;
@@ -246,7 +250,18 @@ function Boot() {
 								{ path: "*", element: <CatchAll /> },
 							],
 						},
-					]),
+					], {
+						/**
+						 * 子路径部署（oj `mounts: [{ prefix: /oj, web: dist, spa: true }]`）：
+						 * 不设 basename 时 react-router 看到的是含前缀的 `/oj/wiki/...`，
+						 * 匹配不到模块路由（`routes[].path` 恒为 `/wiki/...`，无模块根以外的
+						 * 前缀），深链刷新直接落 catch-all 404。取值同 modules.json 的
+						 * base（`resolveSiteBase()`），保证资源与路由用同一个前缀。
+						 *
+						 * 浏览器 URL 不受影响：react-router 只是在匹配/生成时剥/补前缀。
+						 */
+						basename: base,
+					}),
 				);
 			}
 			catch (e) {

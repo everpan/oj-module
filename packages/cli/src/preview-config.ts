@@ -31,6 +31,12 @@ export interface DerivePreviewConfigOptions {
 	/** 全站产物目录（layout.distDir），写入 web 挂载的绝对路径 */
 	siteDir: string
 	/**
+	 * web 挂载前缀（默认 `"/"`）。配了 `siteBase` 的工程，产物里 URL 全是
+	 * `/oj/...`，preview 必须把站点挂在同一前缀上才能验证子路径部署
+	 * （否则资源全 404，预览白屏）。
+	 */
+	prefix?: string
+	/**
 	 * release 形态的后端模块根（api/dist）。给了且原 config 声明了 platform.modules 时，
 	 * 把 `platform.root` 一并改写到该目录——特权模块的受控根必须与 `--api-path` 同源，
 	 * 否则 release 下 reloadConfig 会按 dev 的 src 判定归属（装好的方案热更不生效）。
@@ -78,9 +84,9 @@ function isMountEntry(m: unknown): m is Record<string, unknown> {
 	return m !== null && typeof m === "object" && !Array.isArray(m);
 }
 
-/** 找 prefix === "/" 的 web 挂载条目下标；没有返回 -1 */
-function findRootWebMount(mounts: unknown[]): number {
-	return mounts.findIndex(m => isMountEntry(m) && m.prefix === "/" && "web" in m);
+/** 找指定 prefix 的 web 挂载条目下标；没有返回 -1 */
+function findWebMount(mounts: unknown[], prefix: string): number {
+	return mounts.findIndex(m => isMountEntry(m) && m.prefix === prefix && "web" in m);
 }
 
 /**
@@ -116,13 +122,14 @@ export function derivePreviewConfigText(configText: string, opts: DerivePreviewC
 	const doc = parseConfigDoc(configText, configPath);
 
 	const mounts = [...readMounts(doc, configPath)];
-	const idx = findRootWebMount(mounts);
+	const prefix = opts.prefix ?? "/";
+	const idx = findWebMount(mounts, prefix);
 	if (idx >= 0) {
 		// 保留用户自定义键（headers 等），只接管指向与回落
 		mounts[idx] = { ...(mounts[idx] as Record<string, unknown>), web: opts.siteDir, spa: true };
 	}
 	else {
-		mounts.push({ prefix: "/", web: opts.siteDir, spa: true });
+		mounts.push({ prefix, web: opts.siteDir, spa: true });
 	}
 	doc.mounts = mounts;
 

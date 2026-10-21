@@ -113,6 +113,7 @@ pnpm test tests/shell                       # 宿主全量
 | 内置异常后备页 | 框架内置 `/exception/403\|404\|500` 后备页；exception 模块仅为可选覆盖 |
 | 宿主 runtime 版本锁等 | prepack 断言宿主 runtime 版本 == `packages/runtime` 版本 |
 | merge 合并多团队清单 | `ojm merge` 合并多团队清单 |
+| 站点 base 单点 | 部署前缀只从 `resolveSiteBase()`（`window.__OJ_BASE__` → `BASE_URL`）取；runtime 里禁止再读 `import.meta.env.BASE_URL` |
 
 ### 4.5 守卫测试索引（改动后知道哪个会红）
 
@@ -124,6 +125,10 @@ pnpm test tests/shell                       # 宿主全量
 | `tests/runtime/scoped-request.test.ts` | 请求前缀收敛（scoped client） |
 | `tests/shell/no-fake-in-dist.test.ts` | 生产产物不含 fake |
 | `tests/shell/shell-importmap.test.ts` | 门禁一致性 + runtime.js 与包 dist 一致 + 深路径回归 |
+| `tests/runtime/site-base.test.ts` | 站点部署 base 单点：`import.meta.env.BASE_URL` 只许出现在 `utils/site-base.ts` |
+| `tests/cli/site-base.test.ts` | 三份 base 实现（runtime / shell / cli）逐条对撞 + `index.html` 重写与 `__OJ_BASE__` 注入 |
+| `tests/shell/site-urls.test.ts` | 宿主清单 entry/css/chunks 补部署前缀（子路径部署不白屏） |
+| `scripts/verify-subpath.mjs`（`pnpm verify:subpath`） | 子路径部署 **e2e**：真构建 + 真 `oj serve`，核对 importmap／`__OJ_BASE__`／modules.json／深链刷新／零回归字节一致 |
 | `tests/shell/host-version-drift.test.ts`、`version-gate.test.ts` | 共享依赖三处同步 |
 | `tests/cli/release-manifest.test.ts` | 真跑 `pnpm pack`，守护 `workspace:*` → 精确版本改写 |
 | `tests/cli/__snapshots__` | 契约代码生成快照（改 `.schema` 发射规则需同步更新） |

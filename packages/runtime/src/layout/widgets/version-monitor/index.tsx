@@ -2,6 +2,8 @@ import { Button, Space } from "antd";
 import { createElement, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 
+import { resolveSiteBase } from "#src/utils/site-base";
+
 interface AppVersionMonitorProps {
 	/**
 	 * @zh 轮训时间，单位：分钟，默认 1 分钟
@@ -15,7 +17,9 @@ interface AppVersionMonitorProps {
 
 export function AppVersionMonitor({
 	checkUpdatesInterval = 1,
-	checkUpdateUrl = import.meta.env.BASE_URL ?? "/",
+	// 轮询的是站点首页的 ETag（HEAD 请求只比响应头）。必须带部署 base：
+	// 子路径部署下裸 "/" 拿到的是宿主机根页面的 ETag，会一直误报「有新版本」。
+	checkUpdateUrl = resolveSiteBase(),
 }: AppVersionMonitorProps) {
 	let isCheckingUpdates = false;
 	const { t } = useTranslation();

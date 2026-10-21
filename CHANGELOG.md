@@ -5,6 +5,55 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 设计依据、迁移记录与陷阱清单见 [`docs/prd/202609110947-oj-module-two-package-consolidation-design.md`](docs/prd/202609110947-oj-module-two-package-consolidation-design.md)。
 
+## [0.2.17] - 2026-10-21
+
+双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步升 **0.2.17**。
+
+**子路径部署支持**：站点被 oj 挂到非根前缀（`mounts: [{ prefix: /oj, web: dist, spa: true }]`）
+时，此前会**白屏 + 深链刷新 404**。根因是三个前缀都停在「包构建期」——runtime 产物里的
+`basename` 内联成 `/`、shell 的 importmap 写死 `/assets/*`、宿主 router 不设 `basename`。
+本版把 base 改成「部署期可配」，一个 `siteBase` 配置项全覆盖；未配置（根路径部署）时产物
+与 0.2.16 逐字节一致。
+
+### Added
+
+- **`web.config.ts` 新增 `siteBase`**（如 `"/oj"`，默认 `""` = 站点根）。`ojm build` 据此
+  重写全站 `index.html`：importmap 映射值、`<script src>`、`<link href>` 统一加前缀，并在
+  `<head>` 注入 `<script nonce>window.__OJ_BASE__="/oj/"</script>`（复用 importmap 的 nonce，
+  否则被 `script-src` 非随机 nonce 策略拦掉）。实现见 `packages/cli/src/site-base.ts`。
+- **runtime 出口新增 `resolveSiteBase()` / `withSiteBase()`**（`@oj-module/runtime`）：部署期
+  base 的唯一取值口（`window.__OJ_BASE__` → `import.meta.env.BASE_URL`，恒以 `/` 结尾）。
+  模块拼静态资源直链用它；路由跳转**不要**用（`navigate`/`Link` 走路由空间）。
+- `ojm preview` 按 `siteBase` 把站点挂到同一前缀（`http://localhost:<port>/oj`），子路径部署
+  可在本地验证，不必等上线。
+
+### Changed
+
+- **runtime 内 6 处 `import.meta.env.BASE_URL` 收敛到 `resolveSiteBase()`**：router 的
+  `basename`、`goLogin()`、改密跳转、`isLoginPathname()` 默认 base、版本轮询地址、
+  App 链 `module-manifest.json` 取址。API 前缀（`VITE_API_BASE_URL`）不受影响，两者语义正交。
+- **宿主 shell**：`createBrowserRouter` 显式传 `basename`；`modules.json` 的 entry / css /
+  chunks 在载入时一次性补部署前缀（`resolveModuleUrls`），后续信任根校验、CSS 注入、
+  modulepreload、loader 全部消费归一后的清单。
+
+### Fixed
+
+- 子路径部署下 `GET /assets/react.js` 404 导致的白屏（HTML 仍指向站点根）。
+- 子路径部署下深链刷新落 404 兜底页（router 未剥 `/oj`）。
+- 子路径部署下 401 循环跳登录 / 改密跳转跳出站点（`isLoginPathname` 与 `location.href` 缺失前缀）。
+
+### 测试（先红后绿）
+
+- `tests/runtime/site-base.test.ts`：归一化 / 注入优先 / 回退语义 + **源码扫描**（`BASE_URL`
+  只许出现在 `utils/site-base.ts`）。
+- `tests/cli/site-base.test.ts`：runtime / shell / cli 三份实现用同一张用例表对撞（防漂移）；
+  `index.html` 重写段逐项断言（CDN 不动、无双斜杠、幂等、缺 nonce 时 fail-closed）。
+- `tests/shell/site-urls.test.ts`：entry / css / chunks 补前缀，归一后可直接喂 `collectPreloads`。
+- **`scripts/verify-subpath.mjs`（`pnpm verify:subpath`）——子路径部署 e2e 验收**：造最小模块
+  工程 → `ojm build`（`siteBase: "/oj"`）核对产物 → `siteBase` 留空重建核对与 `shell-dist`
+  逐字节一致 → 真 `oj serve` 跑挂载请求矩阵 → headless chromium 核对 `/` 重定向与深链刷新。
+  共 24 项断言；去掉 `__OJ_BASE__` 注入即 6 项红（修复前形态），可作下游验收手段。
+
 ## [0.2.16] - 2026-10-21
 
 双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步升 **0.2.16**。

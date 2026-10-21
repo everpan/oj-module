@@ -13,6 +13,7 @@ import LayoutRoot from "#src/layout/layout-root";
 import { usePreferencesStore } from "#src/store/preferences";
 
 import { NProgress } from "#src/utils/progress";
+import { resolveSiteBase } from "#src/utils/site-base";
 import { ROOT_ROUTE_ID } from "./constants";
 import { baseRoutes } from "./routes";
 
@@ -67,14 +68,22 @@ function createRouter() {
 				 * @en When the routing mode is hash, you don't need to set the basename property. If you set it as `/app`, the root route `/` will become `/#/app`.
 				 * @see https://reactrouter.com/6.30.0/router-components/hash-router#basename
 				 */
-				// basename: import.meta.env.BASE_URL,
+				// basename: resolveSiteBase(),
 			},
 		);
 	}
 	return createBrowserRouter(
 		rootRoute,
 		{
-			basename: import.meta.env.BASE_URL,
+			/**
+			 * @zh 子路径部署（oj `mounts: [{ prefix: /oj }]`）下 basename 必须是部署前缀，
+			 * 否则 react-router 不剥前缀，深链 `/oj/wiki/...` 匹配不到任何路由（落到 404 兜底）。
+			 * 取值走 `resolveSiteBase()`：优先宿主注入的 `window.__OJ_BASE__`，回退构建期
+			 * `import.meta.env.BASE_URL`——后者在预构建产物里被内联成 `/`，单独用不可靠。
+			 * @en Under sub-path deployment the basename must be the deploy prefix; read it
+			 * through `resolveSiteBase()` instead of the build-time `import.meta.env.BASE_URL`.
+			 */
+			basename: resolveSiteBase(),
 		},
 	);
 }

@@ -17,6 +17,7 @@
  * 一律传绝对路径：oj 命令行相对 CWD、config 内相对 config 目录，混用即歧义。
  */
 
+import type { ModulesConfig } from "./config";
 import type { OjProcess } from "./oj";
 import type { PreviewConfigFiles } from "./preview-config";
 import { execFileSync } from "node:child_process";
@@ -28,6 +29,7 @@ import { resolveConfigPath, resolveLayout } from "./layout";
 import { startOj } from "./oj";
 import { readOjApiPrefix } from "./oj-config";
 import { hasRootApiMount, parseMounts, writePreviewConfig } from "./preview-config";
+import { normalizeSiteBase } from "./site-base";
 import { resolveOjBin } from "./vendor";
 
 export interface PreviewOptions {
@@ -40,7 +42,7 @@ export interface PreviewOptions {
 	/** 注入桩 oj 进程；默认 startOj */
 	ojStarter?: (configPath: string, base: string, apiPath: string, extraArgs: string[]) => OjProcess
 	/** 注入桩派生 config 落盘（测试）；默认 writePreviewConfig */
-	configWriter?: (projectRoot: string, opts: { siteDir: string, port?: number, apiRoot?: string }) => PreviewConfigFiles
+	configWriter?: (projectRoot: string, opts: { siteDir: string, prefix?: string, port?: number, apiRoot?: string }) => PreviewConfigFiles
 }
 
 export interface PreviewHandle {
@@ -71,7 +73,11 @@ export async function runPreview(projectRoot: string, opts: PreviewOptions = {})
 
 	// DR-5：htmlTransform 存在性检测（只读 web.config.ts 的字段，不 import 变换模块——
 	// 单服务下 oj 直出 HTML，钩子不生效；执行用户代码只会白付副作用）
-	await warnHtmlTransformUnsupported(projectRoot);
+	const moduleConfig = await warnHtmlTransformUnsupported(projectRoot);
+
+	// 站点部署前缀：web.config.ts 的 siteBase（"{siteBase}" → 挂载 prefix "/oj"）。
+	// 产物里的 URL 已按 siteBase 重写，preview 必须挂在同一前缀上，否则白屏。
+	const sitePrefix = mountPrefixOf(moduleConfig?.siteBase);
 
 	const execOj = opts.execOj ?? ((args: string[]) => execFileSync(ojBin, args, { stdio: "inherit" }));
 
@@ -81,12 +87,13 @@ export async function runPreview(projectRoot: string, opts: PreviewOptions = {})
 
 	// 派生 config 在 migrate 成功后落盘：失败即退路径零残留
 	const base = readOjApiPrefix(configPath);
-	const writer = opts.configWriter ?? ((root: string, o: { siteDir: string, port?: number, apiRoot?: string }) => writePreviewConfig(root, o));
+	const writer = opts.configWriter ?? ((root: string, o: { siteDir: string, prefix?: string, port?: number, apiRoot?: string }) => writePreviewConfig(root, o));
 	// apiRoot 交给派生器：release 下 platform.root 必须指向 api/dist（与 --api-path 同源）
-	const preview = writer(projectRoot, { siteDir, port: opts.port, apiRoot: apiDist });
+	const preview = writer(projectRoot, { siteDir, prefix: sitePrefix, port: opts.port, apiRoot: apiDist });
 
-	// / api 挂载与注入的 / web 挂载配对时 oj 不开 SPA 回落（oj 语义，见 devkit 手册 §13）
-	if (hasRootApiMount(parseMounts(readFileSync(configPath, "utf-8"), configPath)))
+	// / api 挂载与注入的 web 挂载配对时 oj 不开 SPA 回落（oj 语义，见 devkit 手册 §13）。
+	// 仅在站点挂根时成立：web 挂到 /oj 时两者不配对，深链回落正常。
+	if (sitePrefix === "/" && hasRootApiMount(parseMounts(readFileSync(configPath, "utf-8"), configPath)))
 		console.warn("[ojm] config 的 api 挂载位于 /：与 web 挂载配对时 oj 不做 SPA 深链回落（已知限制），深链接刷新将 404。");
 
 	const starter = opts.ojStarter ?? ((cfg: string, b: string, apiPath: string, extraArgs: string[]) =>
@@ -111,7 +118,7 @@ export async function runPreview(projectRoot: string, opts: PreviewOptions = {})
 		throw error;
 	}
 	console.log(`[ojm] oj 已就绪（release/js，单服务：${base} API + 静态 SPA 同进程）：http://127.0.0.1:${oj.port}`);
-	console.log(`\n[ojm] preview 已启动：http://localhost:${oj.port}`);
+	console.log(`\n[ojm] preview 已启动：http://localhost:${oj.port}${sitePrefix === "/" ? "" : sitePrefix}`);
 	console.log(`[ojm] 静态由 oj web 挂载直出（spa 深链回落）；派生 config ${path.basename(preview.configPath)} 为本进程临时产物，退出自动清理`);
 
 	// 退出回收：派生 config 必须随 oj 一起消亡（test/integration 断言其不存在）
@@ -150,10 +157,11 @@ export async function runPreview(projectRoot: string, opts: PreviewOptions = {})
 }
 
 /**
- * web.config.ts 配了 htmlTransform → WARN。加载失败（缺文件/坏配置）静默
- * 跳过：能走到 preview 的工程必然过 ojm build，config 问题会在那里先炸。
+ * web.config.ts 配了 htmlTransform → WARN；返回已加载的配置（preview 还要读
+ * siteBase 决定挂载前缀）。加载失败（缺文件/坏配置）静默跳过：能走到 preview
+ * 的工程必然过 ojm build，config 问题会在那里先炸。
  */
-async function warnHtmlTransformUnsupported(projectRoot: string): Promise<void> {
+async function warnHtmlTransformUnsupported(projectRoot: string): Promise<ModulesConfig | undefined> {
 	try {
 		const config = await loadModulesConfig(projectRoot);
 		if (config.htmlTransform) {
@@ -163,8 +171,21 @@ async function warnHtmlTransformUnsupported(projectRoot: string): Promise<void> 
 				+ "见 bin/devkit/api-manual.md「静态站点与 per-route meta」。",
 			);
 		}
+		return config;
 	}
 	catch {
 		// config 加载失败：不阻塞 preview（build 已先行校验过）
+		return undefined;
 	}
+}
+
+/**
+ * `siteBase`（`"/oj"` / `"/oj/"` / 空）→ oj 挂载 prefix（`"/oj"` / `"/"`）。
+ *
+ * 两者只差尾斜杠：`siteBase` 是 URL 拼接口径（恒带尾斜杠），oj 的 mount
+ * prefix 是路径口径（不带尾斜杠，见模板 config 的 `/api`）。
+ */
+function mountPrefixOf(siteBase: string | undefined): string {
+	const normalized = normalizeSiteBase(siteBase);
+	return normalized === "/" ? "/" : normalized.slice(0, -1);
 }

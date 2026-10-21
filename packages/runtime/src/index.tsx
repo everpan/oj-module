@@ -9,6 +9,7 @@ import { setupLoading } from "#src/plugins/loading";
 import { rootRoute, router } from "#src/router";
 import { baseRoutes } from "#src/router/routes";
 import { resolveLoginRoute } from "#src/router/utils/resolve-login-route";
+import { resolveSiteBase } from "#src/utils/site-base";
 
 import App from "./app";
 import "./styles/index.css";
@@ -82,7 +83,12 @@ async function setupApp() {
 			manifest = (await import("#manifest.json")).default;
 		}
 		else {
-			const res = await fetch(`${import.meta.env.BASE_URL}module-manifest.json`);
+			// `resolveSiteBase()`：优先宿主注入的 `window.__OJ_BASE__`，回退构建期
+			// `import.meta.env.BASE_URL`。App 链由 vite 按真实 base 构建、无注入，
+			// 因此行为与直接读 BASE_URL 完全一致；统一走单点是为了子路径部署
+			// （ojm 宿主链）下同一套语义（见 utils/site-base.ts）。
+			const siteBase = resolveSiteBase();
+			const res = await fetch(`${siteBase}module-manifest.json`);
 			if (!res.ok)
 				throw new Error(`module-manifest.json 加载失败：HTTP ${res.status}`);
 			manifest = await res.json();
@@ -92,7 +98,7 @@ async function setupApp() {
 			// 部署子路径（base）在此补齐；绝对 URL（CDN）原样保留
 			for (const mod of manifest.modules) {
 				if (!/^(?:https?:)?\/\//.test(mod.entry))
-					mod.entry = `${import.meta.env.BASE_URL}${mod.entry}`;
+					mod.entry = `${siteBase}${mod.entry}`;
 			}
 		}
 		await loadAll(manifest);

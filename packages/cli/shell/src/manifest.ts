@@ -1,5 +1,25 @@
 import type { Manifest } from "@oj-module/runtime";
 import type { HostModule } from "./preload";
+import { withSiteBase } from "./site-urls";
+
+/**
+ * 把 modules.json 里的站内绝对 URL 补上部署 base（子路径部署，2026-10-21）。
+ *
+ * modules.json 是**构建期**产物（`ojm build`），URL 与站点挂载前缀无关
+ * （恒为 `/modules/...`）；真实前缀只有运行期才知道（`window.__OJ_BASE__`）。
+ * 因此在宿主拿到清单后立刻归一，后续所有消费者（信任根校验、CSS 注入、
+ * modulepreload、loader entry）看到的都是最终 URL——只此一处，漏改即 404 白屏。
+ *
+ * 绝对域（CDN 模块）原样保留，见 `web.config.ts` 的 `baseUrl`。
+ */
+export function resolveModuleUrls(list: HostModule[], base: string): HostModule[] {
+	return list.map(m => ({
+		...m,
+		entry: m.entry === undefined ? m.entry : withSiteBase(m.entry, base),
+		css: m.css?.map(href => withSiteBase(href, base)),
+		chunks: m.chunks?.map(chunk => ({ ...chunk, url: withSiteBase(chunk.url, base) })),
+	}));
+}
 
 /**
  * P7.7：modules.json（cli BuiltModule[]）→ loader Manifest 的字段透传。

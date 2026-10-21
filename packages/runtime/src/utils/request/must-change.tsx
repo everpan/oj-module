@@ -1,6 +1,7 @@
 import { ExclamationCircleFilled } from "@ant-design/icons";
 
 import { isObject } from "#src/utils/is";
+import { resolveSiteBase } from "#src/utils/site-base";
 import { modal } from "#src/utils/static-antd";
 
 /**
@@ -52,8 +53,9 @@ export function openMustChangeModal() {
 		cancelButtonProps: { style: { display: "none" } },
 		onOk: () => {
 			// 与 goLogin 同套路：用 window.location 而非 router.navigate，
-			// 以兼容 shell 自建 router 与模板 router 非同一实例的情况（浏览器路由模式）
-			window.location.href = `${import.meta.env.BASE_URL}change-password`;
+			// 以兼容 shell 自建 router 与模板 router 非同一实例的情况（浏览器路由模式）。
+			// 必须带部署 base（resolveSiteBase），子路径部署下裸 "/change-password" 会跳出站点。
+			window.location.href = `${resolveSiteBase()}change-password`;
 		},
 		afterClose: () => {
 			mustChangeModalOpen = false;

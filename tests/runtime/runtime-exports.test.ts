@@ -174,6 +174,13 @@ describe("runtime 主入口出口白名单 (P3.1)", () => {
 		expect(Runtime.getBooleanOptions).toBeTypeOf("function");
 	});
 
+	it("站点部署 base（子路径部署，2026-10-21）", () => {
+		// 模块拼「非路由」的站内绝对 URL（下载直链 / window.open）用；
+		// 路由跳转不要用——navigate/Link 走路由空间，basename 已由 react-router 剥离
+		expect(Runtime.resolveSiteBase).toBeTypeOf("function");
+		expect(Runtime.withSiteBase).toBeTypeOf("function");
+	});
+
 	it("redirect 解析出口（P3，login 模块化）", () => {
 		expect(Runtime.getRedirectPath).toBeTypeOf("function");
 	});

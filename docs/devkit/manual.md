@@ -180,7 +180,8 @@ web/src/<模块名>/
 ```ts
 // web.config.ts
 export default {
-	baseUrl: "",
+	baseUrl: "", // 模块产物 URL 前缀（可填 CDN 绝对域）；与站点部署位置无关
+	// siteBase: "/oj", // 站点挂在 https://host/oj/ 下时才需要（默认根路径），见 §13 的路径空间一节
 	modules: [
 		// home 必须保留且尽量靠前：shell 预构建把 "/" → VITE_BASE_HOME_PATH（=/home）
 		// 重定向，缺 /home 路由会让登录回跳 / 点 logo 落错误边界。
@@ -1799,6 +1800,10 @@ ojm trust revoke <key_id>        # 吊销：阻断新装/升级，不动已装�
 > （一个方案只有一个根路由，它本身就是第一级菜单），admin 走**路由层真重写**到
 > `/system/<模块 root path>/*` 再视觉归组，管理子组与模块根菜单共用 `<模块>:menu.main` 一个 key。
 > 完整规则、流水线、`currentActiveMenu`、模块内路径助手见 [`menu-rules.md`](./menu-rules.md)（自包含）。
+> **路径写法另见同文件 §7「两个路径空间」**：模块内只产出**路由空间**路径（`/wiki/...`），
+> 禁止拿 `window.location.pathname` 做匹配、禁止读 `import.meta.env.BASE_URL`；站点要挂到
+> 非根前缀（`/oj`）时改 `web.config.ts` 的 `siteBase` 一项即可，用法与原理也在那一节
+> （配好后用 `pnpm verify:subpath` 一键验收：真构建 + 真 `oj serve` + 深链刷新）。
 
 ### 13.1 单根模块约定（第一级菜单 = 模块根路由）
 

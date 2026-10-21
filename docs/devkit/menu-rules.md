@@ -208,6 +208,129 @@ export const wikiPath = (...segments: Array<string | number>): string =>
 > 例外（**不要**改）：`tree/bus.ts` 里的 `treeRoom("/space/:id")` 之类是**后端 WebSocket 房间名**
 > （后端契约），不是前端路由，故意不参与前端路径重写。
 
+`manifest.yaml` 的 `routes[].path` 同样是**带模块根的绝对路由路径**（`/wiki/space`，不是 `/space`）：
+安装器按它注册菜单，漏掉模块根前缀会让菜单指到别的模块或 404。构建期从 `entry.ts` 派生与
+手写两种形态都遵循这一条；`health` 也必须是 `routes[]` 里的路由或其子路径。
+
+---
+
+## §7 两个路径空间：URL 空间 vs 路由空间
+
+**同一串字符，在浏览器和 React Router 里不是同一个东西**：
+
+```
+URL 空间（地址栏，含部署 base）
+  https://host/oj/wiki/space/1/doc/2
+                 └ basename ┘└──── 路由空间 ────┘
+路由空间（Router 已剥 basename）
+  /wiki/space/1/doc/2
+```
+
+开发/预览通常部署在根路径（base = `/`），两个空间**恰好重合**——把 URL 空间的值喂给路由空间
+的 API 也能「碰巧正确」。换到子路径部署（`/oj/`、`/app/`）立刻分叉。
+
+| 空间 | 谁负责加/剥 base | 典型 API |
+|---|---|---|
+| URL 空间 | 浏览器 + 宿主 | `window.location.pathname`、`document.baseURI`、复制分享链接、OAuth 回跳 |
+| 路由空间 | React Router（`basename`） | `<Link to>`、`navigate()`、`useMatch()`、`useLocation()`、`matchPath()` 的模式、`currentActiveMenu`、`manifest.routes`、`html_meta` 键 |
+
+### 三条硬规则
+
+1. **导航与匹配只走路由空间**：`navigate`/`Link to`/`useMatch` 一律用 §6 的路径助手产出。
+   需要「当前是不是某个页面」时用 `useMatch(pattern)` / `useLocation()`，**不要**
+   `matchPath(pattern, window.location.pathname)`。
+2. **模块内禁止读 `import.meta.env.BASE_URL`**：模块是**独立构建**的，这个值在构建期就被替换成
+   *方案工程自己的* base（通常 `/`），不是宿主部署 base。同理，模块也不该自己拼 `location.origin`。
+3. **真要 URL 空间的值，用 `useHref(path)`**（Router 负责补 base），不要手工字符串拼接。
+   典型场景：复制分享链接、第三方回跳地址、`document.title` 之类的外部消费。
+
+### 为什么这些错误在本地看不出来
+
+根路径部署下 `window.location.pathname` 与 `useLocation().pathname` 相同，上面第 1 条的错误
+写法**恰好**正确。所以必须用测试把「非根 base」变成常规路径：
+
+```tsx
+// 部署 base 基线：basename 明确设为 /oj，initialEntries 是 URL 空间
+const router = createMemoryRouter([...], {
+  basename: "/oj",
+  initialEntries: ["/oj/wiki/space/3/doc/12"],   // location.pathname = /oj/wiki/...
+});
+// 断言：useMatch("/wiki/space/:id/doc/:docId/*") 命中；<Link to="/wiki/..."> 的 href 带 /oj
+```
+
+再配一条源码扫描（成本极低、收益很高）：模块目录里禁止出现 `window.location.pathname`、
+`import.meta.env.BASE_URL`、裸 `"/<模块根>"` 字面量，白名单只留 `paths.ts`（与「API 前缀」
+这类非路由常量所在的文件）。
+
+### 子路径部署怎么开（`web.config.ts` 的 `siteBase`）
+
+模块侧按本节写只是必要条件，**能不能子路径部署由宿主决定**。从 `0.2.17` 起宿主侧支持了，
+全套动作只需一个配置项：
+
+```ts
+// web.config.ts —— 站点挂在 https://host/oj/ 下
+export default {
+  siteBase: "/oj",        // 留空 = 站点根路径（默认，行为与旧版一致）
+  modules: [...],
+};
+```
+
+`ojm build` 会按它做三件事（都发生在**构建/部署期**，运行期只读结果）：
+
+| 位置 | 动作 | 不配的后果 |
+|---|---|---|
+| `<dist>/index.html` | importmap 映射值、`<script src>`、`<link href>` 统一加 `/oj` 前缀 | HTML 指向 `/assets/react.js`，在 `/oj` 挂载下 404 → 白屏 |
+| `<dist>/index.html` | `<head>` 注入 `<script nonce>window.__OJ_BASE__="/oj/"</script>`（复用 importmap 的 nonce，否则被 CSP 拦掉） | 运行期拿不到真实部署前缀 |
+| 运行期 Router | runtime 与宿主 shell 都经 `resolveSiteBase()` 取 basename，即 `window.__OJ_BASE__` | Router 不剥 `/oj`，`/oj/wiki/...` 匹配不到 `/wiki/...`（深链刷新落 404 页） |
+
+为什么必须运行期读全局：runtime 是**预构建 npm 产物**，`import.meta.env.BASE_URL` 在包构建期
+就被内联成 `/`（`packages/runtime/vite.config.ts` 的 `define`）；shell 的 importmap 同样是在包
+构建期写死。部署前缀只有拿到实际 config 的人才知道，所以只能由 `ojm build` 在站点产物上注入。
+
+由此推出**两条模块侧纪律**：
+
+1. **禁止读 `import.meta.env.BASE_URL`**（§7 第 2 条）——它在你的模块构建期就被钉死成方案工程
+   自己的 base，永远不等于宿主部署 base。
+2. 需要「站内绝对 URL」（下载直链、`window.open`、`<a href>` 到静态资源）时，用 runtime 出口
+   `withSiteBase("/files/a.pdf")`，不要自己拼 `location.origin` 或写死 `/files/...`。
+   **路由跳转仍然不要用它**：`navigate`/`<Link>` 走路由空间，basename 已由 Router 剥离，
+   再拼一次会得到 `/oj/oj/wiki`。
+
+副产物：`ojm preview` 会把站点挂到同一前缀（`http://localhost:<port>/oj`），所以子路径部署
+在本地就能验证，不必等上线。
+
+根路径部署（`siteBase` 留空）时产物与旧版**逐字节一致**，无需任何迁移。
+
+实测依据（2026-10-21，站点以 `mounts: [{prefix: /oj, web: web/dist, spa: true}]` 挂起）：
+
+| 请求 | 结果 | 说明 |
+|---|---|---|
+| `GET /oj/wiki/space/3/doc/12` | `200 text/html` | 深链回落本身是通的，前提是该挂载显式 `spa: true` |
+| `GET /wiki/space/3/doc/12` | `404` | 没有根挂载，命中不了别的前缀 |
+| `GET /oj/assets/react.js` | `200` | 静态服务正常 |
+| `GET /assets/react.js`（旧产物 HTML 指向的地址） | `404` | 旧版缺的正是「HTML 与 Router 的前缀」，不是服务端回落 |
+
+这套结论已固化成可重复的验收脚本 `pnpm verify:subpath`（`scripts/verify-subpath.mjs`）：
+它造一个最小模块工程 → `ojm build` 配 `siteBase: "/oj"` → 逐项核对产物（importmap 全量带
+前缀、注入脚本复用 nonce 且在 importmap 之前、modules.json 不带前缀、资产文件真的存在）→
+再以 `siteBase` 留空重建，核对与 `shell-dist` **逐字节一致** → 起真 `oj serve` 跑上表矩阵 →
+headless chromium 核对「`/` 重定向到 `/oj/<首个模块路由>`」与「深链刷新命中模块路由」。
+改到 base 相关代码后跑它，比手搓 curl 可靠（删掉注入即 6 项红，正是修复前的形态）。
+
+### per-route meta 的生效矩阵（深链标题/OG）
+
+`web.config.ts` 的 `htmlTransform` **只在 `ojm dev` 的静态层生效**：
+
+| 链路 | 谁产出 HTML | 深链标题 |
+|---|---|---|
+| `ojm dev` | CLI 静态层，跑 `htmlTransform` | 生效 |
+| `ojm preview`（oj 单服务） | oj 直出 | **不生效**（CLI 启动时 WARN） |
+| 生产 `oj serve` | oj 直出 | 需 `server.html_meta`（构建期 JSON 目录）或 `server.html_meta_handler`（GET handler） |
+
+配 `html_meta`/`html_meta_handler` 时注意：**它们的 path 是「已剥 web 挂载前缀」的站内路径**，
+也就是**路由空间**——子路径部署时键仍写 `/wiki/space/3/doc/12`，不要带 `/oj`。这一点与第 1 条
+规则同源：只认路由空间。
+
 ---
 
 ## 开发者的该做 / 别做
@@ -223,6 +346,12 @@ export const wikiPath = (...segments: Array<string | number>): string =>
 - `admin` 路由统一 `category: "admin"`，框架自动真重写进 `/system` 并归组。
 - 模块内所有前端路径走 `paths.ts` 的 `wikiPath(...)` / `wikiBase`，不散落绝对路径字面量。
 - `currentActiveMenu` 写绝对路径，且从模块基路径助手派生。
+- 判断「当前是不是某个页面」用 `useMatch(pattern)` / `useLocation()`（路由空间）；
+  需要把路由路径变回真实 URL（分享链接、外部回跳）用 `useHref(path)`。
+- 给路径助手配两条测试：①路由表展平后与助手产出逐条对撞（含反例）；②`createMemoryRouter`
+  显式 `basename: "/oj"` 的部署基线（`useMatch` 命中 + `Link` 的 href 带 base）。
+- 站点要挂到非根前缀时，在 `web.config.ts` 配 `siteBase: "/oj"`，别去动模块代码（见 §7）。
+- 拼静态资源直链用 runtime 出口的 `withSiteBase("/files/a.pdf")`。
 
 别做（DON'T）：
 
@@ -232,5 +361,15 @@ export const wikiPath = (...segments: Array<string | number>): string =>
 - 在方案里假设 `/system` 的 key 或结构 —— 那是框架断言，自定义宿主会告警并回落。
 - 给隐藏（`hidden`）或禁用（`enabled: false`）路由指望进菜单 —— 它们不参与。
 - 把 `currentActiveMenu` / `Link to` / `useMatch` 写成散落的全路径字面量 —— 统一走模块基路径助手（§6）。
+- 用 `window.location.pathname` 去和路由模式 `matchPath` —— 那是 URL 空间，子路径部署下恒不匹配
+  （根部署时两者重合，测试也难发现；见 §7）。
+- 在模块里读 `import.meta.env.BASE_URL` —— 模块独立构建，这个值是**方案工程自己的** base，
+  不是宿主部署 base。
+- 用 `withSiteBase()` 拼 `navigate` / `<Link to>` 的目标 —— 那是路由空间，会得到 `/oj/oj/wiki`。
+- 子路径部署时去改模块里的路径字面量 —— 该改的是 `web.config.ts` 的 `siteBase`。
+- 在模块目录里散落 `"/<模块根>/..."` 字符串 —— 源码扫描应零命中（白名单只留 `paths.ts`、
+  API 前缀常量所在文件）。
+- 在 `manifest.yaml` 的 `routes[]` 里写 `/<子段>`（如 `/space`）当绝对路径 —— 必须带模块根
+  （`/wiki/space`），否则安装器注册的菜单指错地方。
 - 手工维持 `manifest.yaml` 的 `routes[]` 与 entry.ts handle 双份 —— 单一真源是 entry.ts，手工那份会被派生结果覆盖（并警告），多写只会增加漂移风险。
 - 改动 `tree/bus.ts` 的 room 名当路由改 —— 那是后端 WS 契约，非前端路由。
