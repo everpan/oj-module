@@ -1837,7 +1837,7 @@ export default defineModule({
 
 ### 13.3 menu.main 统一 + 路径助手
 
-- 模块根菜单标题与 /system 下的管理子组标题**共用** `<模块>:menu.main` 一个 i18n key（嵌套在 `menu.main`，缺则构建期 fail-fast）。旧 `menu.group` key 已废弃。
+- 模块根菜单标题与 /system 下的管理子组标题**共用** `<模块>:menu.main` 一个 i18n key（嵌套在 `menu.main`，是模块级标题的唯一真源，缺则构建期 fail-fast）。
 - 模块内所有前端路径——`navigate` / `Link to` / `useMatch`·`matchPath` / `currentActiveMenu` / SEO 正则——统一从模块基路径助手（如 `paths.ts` 的 `wikiPath(...)` / `wikiBase`）派生，不散落 `/wiki/...` 字面量；`currentActiveMenu` 必须写绝对路径（指向真实菜单 key）。`tree/bus.ts` 的 room 名是后端 WS 契约，非前端路由，不动。
 
 ### 13.4 开发者的该做 / 别做

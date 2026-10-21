@@ -156,7 +156,6 @@ export default defineModule({
 - 必须**嵌套**在 `menu.main`，不能平铺成 `"<模块名>:menu.main": "..."`（i18next 点路径取值）。
 - 缺这条 key → 构建期契约校验直接 fail（构建期 fail-fast）。
 - 普通子项（space / status / collections 等）的 `title` 仍各自匹配 `<模块名>:menu.*`（如 `wiki:menu.space`）。
-- 旧设计的 `menu.group` key 已废弃：`menu.main` 取代它成为根标题与管理子组标题的统一真源。
 
 ---
 

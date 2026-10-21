@@ -12,11 +12,11 @@
 ### Fixed
 
 - **移除遗留的 C2-43 归组父标题门禁**。0.2.16「单根模块约定 + `menu.main` 统一」已把模块根
-  菜单标题与 `/system` 下管理子组标题统一到 `<模块>:menu.main`，运行期不再读 `menu.group`；
-  但 `manifest-contract.ts` 的 `groupI18nKeys()` 仍要求「声明 `main`/`admin` 路由的方案提供
-  `<name>:menu.group`」，使所有按 0.2.17 文档新写的方案在 `ojm build --bundle` 阶段被误拦
-  （`ojm build` 不带 `--bundle` 时不做文件面契约校验，问题被掩盖）。本版删除该引用面：
-  `menu.group` 不再进 `referencedI18nKeys`，根标题缺失统一报 C2-25。
+  菜单标题与 `/system` 下管理子组标题统一到 `<模块>:menu.main`；但 `manifest-contract.ts` 的
+  `groupI18nKeys()` 仍要求「声明 `main`/`admin` 路由的方案额外提供一条模块级归组父标题 i18n
+  key」，使按 0.2.17 文档新写的方案在 `ojm build --bundle` 阶段被误拦（`ojm build` 不带
+  `--bundle` 时不做文件面契约校验，问题被掩盖）。本版删除该引用面：归组父标题不再进
+  `referencedI18nKeys`，`menu.main` 成为模块级标题的唯一真源，缺失统一报 C2-25。
 - 契约测试改为反向钉住：声明 `main`/`admin` 路由、locale 只提供 `menu.main` → **零违规**；
   缺 `menu.main` → C2-25 且指明 key 与语言。
 
@@ -106,8 +106,8 @@ handle」，彻底修复 **dev 模式菜单未按预期分组**（`sys_solution_
 
 ### Added
 
-- **方案路由注册菜单归组**（纯视觉层，开发形态不变）：已安装的方案 `main` 路由同模块 ≥2 条时归进一个合成父菜单（`solgroup:main:<module>`，标题 `<name>:menu.group`）；`admin` 路由跨菜单挂进宿主底部 `/system` 的 children（缺失 `/system` 则回落平铺并 warnOnce 一次）。合成父键被 `use-menu.ts` 显式拦截，点击只展开不导航。
-- **manifest 契约 C2-43**：声明 `main`/`admin` 路由的方案须提供嵌套 i18n key `<name>:menu.group`（双语齐备），构建期 fail-fast；缺失报 C2-43（非笼统 C2-25），按语言去重。**（0.2.18 已移除该门禁：与 0.2.16 的 `menu.main` 统一冲突，运行期从未读 `menu.group`）**
+- **方案路由注册菜单归组**（纯视觉层，开发形态不变）：已安装的方案 `main` 路由同模块 ≥2 条时归进一个合成父菜单（`solgroup:main:<module>`，标题取模块级归组父标题 i18n key）；`admin` 路由跨菜单挂进宿主底部 `/system` 的 children（缺失 `/system` 则回落平铺并 warnOnce 一次）。合成父键被 `use-menu.ts` 显式拦截，点击只展开不导航。**（0.2.16 单根模块约定后，main 侧扁平归组已不再合成父菜单）**
+- **manifest 契约 C2-43**：声明 `main`/`admin` 路由的方案须提供模块级归组父标题 i18n key（双语齐备），构建期 fail-fast；缺失报 C2-43（非笼统 C2-25），按语言去重。**（0.2.18 已移除该门禁：与 0.2.16 的 `menu.main` 统一冲突）**
 - **开发者文档**：`docs/devkit/manual.md` §13 讲清归组规则、i18n key 约定、DO/DON'T 清单与源码索引（原 `menu-rules.md` 已并入 §13，保持 devkit 顶层 6 文件发货约束）。
 - **`ojm <cmd> --help` / `ojm help <cmd>` 单命令帮助**：`usage.ts` 抽出 `COMMAND_HELP` 单命令帮助表（含 `market` 全部子命令与 `trust` 各子命令），`index.ts` 在 dispatch 前拦截 `--help`/`-h` 与 `help <cmd>` 形态；每个子命令的用法与全部选项可与文档 `docs/devkit/manual.md` §10/§11/§12 互参。
 

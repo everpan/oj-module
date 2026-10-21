@@ -214,9 +214,9 @@ describe("checkLocalesComplete（C2-25：构建期缺 key fail-fast）", () => {
 	});
 });
 
-// ── 归组父标题不再进引用面（0.2.18：menu.main 统一，`menu.group` 已废弃）──
+// ── 归组父标题不再进引用面（0.2.18：`menu.main` 是模块级标题的唯一真源）──
 
-describe("menu.group 已废弃：main/admin 路由不再要求归组父标题", () => {
+describe("main/admin 路由不再要求归组父标题", () => {
 	const baseManifest = (): any => ({
 		name: "demo-solution",
 		version: "0.1.0",
@@ -226,13 +226,13 @@ describe("menu.group 已废弃：main/admin 路由不再要求归组父标题", 
 		],
 	});
 
-	it("声明 main/admin 路由、locale 只有 menu.main → 零违规（C2-43 已移除）", () => {
+	it("声明 main/admin 路由、locale 只有 menu.main → 零违规", () => {
 		const zh = JSON.stringify({ menu: { main: "主", users: "用户" } });
 		const en = JSON.stringify({ menu: { main: "Main", users: "Users" } });
 		expect(checkLocalesComplete(baseManifest(), zh, en)).toEqual([]);
 	});
 
-	it("根标题 menu.main 仍受 C2-25 约束：缺则报 C2-25（真源是 menu.main 不是 menu.group）", () => {
+	it("根标题 menu.main 仍受 C2-25 约束：缺则报 C2-25", () => {
 		const zh = JSON.stringify({ menu: { users: "用户" } });
 		const en = JSON.stringify({ menu: { main: "Main", users: "Users" } });
 		const v = checkLocalesComplete(baseManifest(), zh, en);
