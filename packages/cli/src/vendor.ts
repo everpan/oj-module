@@ -32,9 +32,11 @@ export const NPM_PKG = "@oj-bin/oj";
  * docs/superpowers/specs/2026-10-14-ojm-0.1.18-design.md）；**0.1.20 抬到 0.1.73**：
  * 平级 `.response` 出参声明位自 oj v0.1.72 起、`oj openapi` 的 `del`→`delete`
  * 操作键归一自 v0.1.73 起，`ojm api` 的 openapi 流水线以这两者为前提
- * （见 CHANGELOG 0.1.20 / docs/guides/api-codegen-openapi.md）。
+ * （见 CHANGELOG 0.1.20 / docs/guides/api-codegen-openapi.md）。**0.2.13 抬到 0.1.81**：
+ * 模板侧 `solution-perms.ts` 权限级联清理用 `startswith` 操作键（v0.1.81 补齐，
+ * 构造器迁移收尾），oj < 0.1.81 时卸载方案报 `unknown variant startswith` fail-closed。
  */
-export const MIN_OJ_VERSION = "0.1.73";
+export const MIN_OJ_VERSION = "0.1.81";
 
 /** 按段数值比较（字符串比较会把 0.1.9 判成大于 0.1.69）；非数字段按 0 处理 */
 export function isSupportedOjVersion(version: string): boolean {

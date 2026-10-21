@@ -50,6 +50,10 @@ export function buildFixturePackage(opts: { stagingDir: string, name?: string, v
 	// ping 处理器必须调 oj 运行时的全局 json.ok：直接 return 对象会被丢掉，装完看不到健康探针响应
 	fs.writeFileSync(path.join(mod, "ping", "api.js"), `export default { async get() { json.ok({ pong: true, module: "${name}", version: "${version}" }); } };\n`);
 	fs.writeFileSync(path.join(mod, "migrations", "0001__init.sql"), `CREATE TABLE ${tableOf(name)} (id INTEGER PRIMARY KEY, title TEXT NOT NULL);\n`);
+	// 迁移阶梯（T12）：minor ≥ 2 多一段 ALTER——upgrade 真的多走一段迁移，rollback 才有
+	// 「包内最大 seq < 账本 head」可拦（OJ-9 宿主层预锁拦截的物理前提）。确定性：内容只依赖 name。
+	if (minorOf(version) >= 2)
+		fs.writeFileSync(path.join(mod, "migrations", "0002__more.sql"), `ALTER TABLE ${tableOf(name)} ADD COLUMN body TEXT;\n`);
 	fs.writeFileSync(path.join(webDir, "entry.js"), `console.log("${name} ${version}");\n`);
 	fs.writeFileSync(path.join(webDir, "main.css"), `.${cssClassOf(name, version)} { color: red; }\n`);
 
@@ -59,6 +63,12 @@ export function buildFixturePackage(opts: { stagingDir: string, name?: string, v
 /** 表名：只允许标识符字符（fixture 名可能带连字符） */
 function tableOf(name: string): string {
 	return `${name.replace(/\W/g, "_")}_note`;
+}
+
+/** minor 段取数（迁移阶梯判定用；非 semver 形态一律按 0 处理） */
+function minorOf(version: string): number {
+	const m = /^\d+\.(\d+)/.exec(version);
+	return m === null ? 0 : Number(m[1]);
 }
 
 function cssClassOf(name: string, version: string): string {
