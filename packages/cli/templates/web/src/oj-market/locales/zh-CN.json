@@ -49,12 +49,21 @@
 			"running": "进行中",
 			"done": "完成",
 			"failed": "失败",
-			"partial": "部分完成"
+			"partial": "部分完成",
+			"needs_trust": "待信任确认"
 		},
+		"trustTitle": "待信任确认：发布方密钥不在宿主信任库",
+		"trustBody": "发布方「{{keyId}}」的签名密钥尚未被本宿主信任（首次信任 TOFU）。",
+		"trustFingerprint": "密钥指纹：",
+		"trustHint": "请与发布方公布的公钥指纹逐字核对，一致才确认。确认后会自动重试本次安装，已暂存的内容不会重新下载。",
+		"trustConfirm": "指纹一致，信任并重试",
 		"reason": "原因",
 		"retryable": "可重试",
 		"notRetryable": "不可重试",
 		"hint": "提示",
+		"hintSmoke": "冒烟探活失败常见于两类原因：① 本次安装新增的匿名端点（auth.anonymous_paths）属「待重启生效」，重启宿主后再点重试即可；② dev 形态下宿主已内置同名模块，该路由由源码模块占位，探活打到的不是刚装的包。",
+		"hintCancelled": "本次安装已被取消：锁、版本目录与 staging 均已回到发起前状态，可直接重试。",
+		"hintReloading": "配置热更未完全生效：可热改段（vars 等）已应用，auth 段（含匿名端点）需重启宿主后生效。",
 		"close": "关闭",
 		"viewLog": "查看日志"
 	},

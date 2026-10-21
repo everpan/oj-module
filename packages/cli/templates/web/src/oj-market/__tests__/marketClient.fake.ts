@@ -11,6 +11,7 @@ export interface FakeState {
 	enableResult?: { ok: boolean, message: string }
 	uninstallResult?: { ok: boolean, message: string }
 	installResult?: { task_id: string }
+	trustResult?: { result: string, key_id: string, fingerprint: string }
 }
 
 export class InMemoryMarketClient implements MarketClient {
@@ -47,6 +48,11 @@ export class InMemoryMarketClient implements MarketClient {
 			stages: [],
 			startedAt: 0,
 		} as TaskRecord);
+	}
+
+	async trust(taskId: string) {
+		this.calls.push(`trust:${taskId}`);
+		return this.state.trustResult ?? { result: "added", key_id: "k1", fingerprint: "f".repeat(64) };
 	}
 
 	async enable(input: EnableInput) {

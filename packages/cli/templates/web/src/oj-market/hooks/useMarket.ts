@@ -40,8 +40,13 @@ export function useInstallTask(taskId: string | null): {
 	const [done, setDone] = useState(false);
 
 	useEffect(() => {
-		if (!taskId)
+		// 无任务 id = 尚无任务：清空上一次任务的记录，避免「重新安装/信任后重试」时
+		// 旧终态（可能是 needs_trust）残留在弹窗里被误读成本次结果。
+		if (!taskId) {
+			setRecord(null);
+			setDone(false);
 			return;
+		}
 		let active = true;
 		setRecord(null);
 		setDone(false);

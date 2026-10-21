@@ -25,6 +25,7 @@ import {
 	platformMarketInstallPost,
 	platformMarketMetaGet,
 	platformMarketTaskGet,
+	platformMarketTrustPost,
 	platformMarketUninstallImpactGet,
 	platformMarketUninstallPost,
 } from "../../_platform/__client/api";
@@ -95,6 +96,11 @@ export const httpMarketClient: MarketClient = {
 		// 生成 Data 为空 schema（仅 DEV catchall 校验），经 unknown 桥接领域类型；
 		// 运行时形状由服务端真源 + DEV zod 校验保证，TS 侧以领域类型为准。
 		return (await platformMarketTaskGet({ id })) as unknown as TaskRecord;
+	},
+	async trust(taskId: string) {
+		// 服务端自任务记录重取公钥复算指纹比对（防混淆代理），前端只传 task_id，不传公钥
+		const data = await platformMarketTrustPost({ task_id: taskId });
+		return data as { result: string, key_id: string, fingerprint: string };
 	},
 	async enable(input: EnableInput) {
 		const data = await platformMarketEnablePost({ name: input.name, enabled: input.enabled });

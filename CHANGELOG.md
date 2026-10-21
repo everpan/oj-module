@@ -5,6 +5,31 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 设计依据、迁移记录与陷阱清单见 [`docs/prd/202609110947-oj-module-two-package-consolidation-design.md`](docs/prd/202609110947-oj-module-two-package-consolidation-design.md)。
 
+## [0.2.19] - 2026-10-21
+
+双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步升 **0.2.19**（runtime 无代码改动，仅为同版发布）。
+
+### Fixed
+
+- **冒烟探活把「匿名接线待重启」误判成包有问题**。方案首次安装时，安装器在 `reloading` 段把
+  `api.anonymous` 追加进站点 `config.yaml` 的 `auth.anonymous_paths`，但该段属
+  `restart_pending`（reload 段消息已明示「待重启段 [auth]」），本进程内尚未生效；紧随其后的
+  `smoke` 段按 `manifest.health` 探活，必然拿到 401，于是任务落 `partial` 并报「探活失败」。
+  现在 reload 段把本次**真正新增**的路径交接给 smoke（`InstallRequest.deferredAnonymous`），
+  smoke 对这些路径的 401 判「待重启通过」并在 message 里注明「重启宿主后生效」；已在配置里
+  却仍 401 的路径照旧判失败（不放宽真失败）。
+- **方案市场模板（`templates/web/src/oj-market`）补齐信任确认与失败指引**：
+  - 建模第五终态 `needs_trust`（此前按成功态渲染成绿色进度），新增 TOFU 确认 UI：展示发布方
+    key_id 与可复制的密钥指纹 + 「指纹一致，信任并重试」按钮；确认走
+    `POST /_platform/market/trust {task_id}`，入库后自动重发安装（staging 未清场，续跑不重下）。
+  - `MarketClient` 契约新增 `trust(taskId)`，`defaultClient` 委托生成的
+    `platformMarketTrustPost`（只传 task_id，公钥由服务端自任务记录重取复算指纹）。
+  - 契约附录 A 的 `lifecycle.stage.*` 指引 key 在模板 locales 里未落地，此前直接把裸 key
+    显示给运维；现显式映射为可读文案（smoke/cancelled/reloading 三条，未收录的保持原样）。
+  - 修 `onDone` 死循环：父级每次渲染都会换 `onDone` 身份，终态后 effect 重新触发
+    → `index.retry()` → 重渲染 → 再触发，形成同毫秒级的无限请求（浏览器侧报
+    `ERR_INSUFFICIENT_RESOURCES`）。改为按 task id 一次性通告。
+
 ## [0.2.18] - 2026-10-21
 
 双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步升 **0.2.18**（runtime 无代码改动，仅为同版发布）。

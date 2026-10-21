@@ -326,6 +326,29 @@ describe("smoke 探活（D14/Q-A：health 不强制）", () => {
 		expect(r.ok).toBe(true);
 	});
 
+	it("health 401 且路径属本次新增 anonymous（restart_pending）→ 判通过 + 落待重启提示", async () => {
+		await seedDeployed();
+		const r = await smoke(smCtx({
+			manifest: solManifest({ health: "/demo-solution/ping" }),
+			fetch: async () => ({ ok: false, status: 401 }),
+			deferredAnonymous: ["/demo-solution/ping"],
+		}));
+		expect(r.ok).toBe(true);
+		expect(r.message).toContain("restart_pending");
+		expect(r.message).toContain("重启宿主后生效");
+	});
+
+	it("health 401 但路径不是本次新增（已在配置里）→ 仍判失败（不放宽真失败）", async () => {
+		await seedDeployed();
+		const r = await smoke(smCtx({
+			manifest: solManifest({ health: "/demo-solution/ping" }),
+			fetch: async () => ({ ok: false, status: 401 }),
+			deferredAnonymous: ["/demo-solution/other"],
+		}));
+		expect(r.ok).toBe(false);
+		expect(r.message).toContain("401");
+	});
+
 	it("health 非 2xx → 探活失败", async () => {
 		await seedDeployed();
 		const r = await smoke(smCtx({

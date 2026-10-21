@@ -24,6 +24,11 @@ export interface MarketClient {
 	install: (input: InstallInput) => Promise<{ task_id: string }>
 	/** 任务轮询消费面（query 形态 ?id=） */
 	task: (id: string) => Promise<TaskRecord>
+	/**
+	 * TOFU 确认：把 needs_trust 任务记录里的发布方 key 写入宿主信任库（服务端自任务记录重取
+	 * 公钥复算指纹比对，防混淆代理）。确认成功后重试同一安装即可续跑（staging 未清场）。
+	 */
+	trust: (taskId: string) => Promise<{ result: string, key_id: string, fingerprint: string }>
 	/** 生命周期开关（同步 setEnabled，无任务模型；{ok,message} 200 渲染 ok 位） */
 	enable: (input: EnableInput) => Promise<{ ok: boolean, message: string }>
 	/** 市场操作历史（_platform 只读端点 /_platform/market/history） */

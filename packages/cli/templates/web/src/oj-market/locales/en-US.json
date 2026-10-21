@@ -49,12 +49,21 @@
 			"running": "Running",
 			"done": "Done",
 			"failed": "Failed",
-			"partial": "Partial"
+			"partial": "Partial",
+			"needs_trust": "Awaiting trust"
 		},
+		"trustTitle": "Trust confirmation required: publisher key not in host trust store",
+		"trustBody": "The signing key of publisher \"{{keyId}}\" is not trusted by this host yet (first-use TOFU).",
+		"trustFingerprint": "Key fingerprint: ",
+		"trustHint": "Compare this fingerprint with the one published by the vendor; confirm only if they match. Confirming retries this install automatically and reuses the staged files.",
+		"trustConfirm": "Fingerprint matches — trust and retry",
 		"reason": "Reason",
 		"retryable": "Retryable",
 		"notRetryable": "Not retryable",
 		"hint": "Hint",
+		"hintSmoke": "Smoke probe failures usually mean one of two things: (1) the anonymous endpoints added by this install (auth.anonymous_paths) are pending a restart — restart the host and retry; (2) in dev the host already ships a module with the same name, so the route belongs to the source module and the probe is not hitting the freshly installed package.",
+		"hintCancelled": "This install was cancelled: lock file, version directory and staging were restored to their pre-install state. You can retry directly.",
+		"hintReloading": "Config hot-reload was partial: hot-applicable sections (vars, ...) are applied, while the auth section (including anonymous endpoints) needs a host restart.",
 		"close": "Close",
 		"viewLog": "View log"
 	},

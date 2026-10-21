@@ -89,6 +89,8 @@ export interface InstallRequest extends InstallContext {
 	expected?: string[]
 	/** 安装器内部通道（外部调用方忽略）：终态审计读 status/failedStage/taskId + migrate 捕获 appliedSeq */
 	outcome?: { taskId?: string, status?: TaskStatus, failedStage?: InstallStage, appliedSeq?: number | null, cancelled?: boolean }
+	/** 安装器内部通道（reloading → smoke）：本次新追加进 auth.anonymous_paths 的路径（restart_pending，探活对其 401 判待重启） */
+	deferredAnonymous?: string[]
 	/**
 	 * 取消安装令牌（U5，P3-8）：运行期外部置位（端点 `?cancel=<taskId>` 或任务状态 `cancelling` 驱动的闭包），
 	 * 返回 true 即中止——PIPELINE 循环每段前探测 + migrating 段 spawn 流逐块探测；幂等、可重入
@@ -347,6 +349,8 @@ async function reloadStage(req: InstallRequest): Promise<StageResult> {
 		const anonymous = Array.isArray(api.anonymous) ? api.anonymous.filter((x): x is string => typeof x === "string") : [];
 		const patched = anonymous.length > 0 ? appendAnonymousPaths(bumped.content, anonymous) : { content: bumped.content, added: [] };
 		await atomicWriteText(path, patched.content);
+		// 交接给 smoke：本次真正新增的匿名路径在重启前恒 401（restart_pending）
+		req.deferredAnonymous = patched.added;
 	}
 	catch (e) {
 		return { stage: "reloading", ok: false, retryable: true, message: `热更失败：config.yaml 安装序号自增/匿名端点接线失败（${String(e)}）——reload unchanged 判定基于 config 文档 sha，无变更则热更不可能生效（B-11，PRD E5 口径）` };

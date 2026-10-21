@@ -30,6 +30,12 @@ export interface SmokeContext extends InstallContext {
 	modulesJsonPath: string
 	/** 注册快照查询；缺省回落 queryRegistered（isolate db 全局；测试注入 stub） */
 	query?: (name: string) => Promise<SolutionSnapshot | null>
+	/**
+	 * 本次安装**新追加**进 config.yaml `auth.anonymous_paths` 的路径（reloading 段注入，带前导 /）。
+	 * 匿名接线属 restart_pending（reload 段已明示），本进程内尚未生效——探活对这些路径的
+	 * 401 判「待重启」而非失败；已在配置里却仍 401 才是真失败（说明接线或守卫有问题）。
+	 */
+	deferredAnonymous?: string[]
 }
 
 export interface StageResult {
@@ -116,6 +122,7 @@ export async function smoke(ctx: SmokeContext): Promise<StageResult> {
 	const web = isObj(m.web) ? m.web : undefined;
 
 	// ① 探活：health 优先（2xx），缺省首个非匿名路由（连通即可）
+	const notes: string[] = [];
 	try {
 		const health = typeof m.health === "string" && m.health !== "" ? m.health : undefined;
 		const target = health ?? firstNonAnonymousRoute(m);
@@ -123,7 +130,18 @@ export async function smoke(ctx: SmokeContext): Promise<StageResult> {
 			const url = probeUrlOf(ctx.apiPrefix, target);
 			const res = await ctx.fetch(url);
 			if (health !== undefined && !res.ok) {
-				failures.push({ item: "探活", retryable: true, reason: `health 端点 ${url} 返回 HTTP ${res.status}（C2-33 冒烟探针要求 2xx）` });
+				// 本次安装新增的匿名接线尚未生效（restart_pending）：此处的 401 反映的是
+				// 「宿主还没重启」，不是包或站点的问题——判待重启并落人话提示，不判失败。
+				const rel = (s: string) => s.replace(/^\/+/, "");
+				const healthRel = rel(health);
+				const pending = (ctx.deferredAnonymous ?? []).some(a => healthRel === rel(a) || healthRel.startsWith(`${rel(a)}/`));
+				const deferred = res.status === 401 && pending;
+				if (deferred) {
+					notes.push(`探活 ${url} 返回 401：该端点是本次安装新增的匿名路径（auth.anonymous_paths），匿名接线属 restart_pending——重启宿主后生效，不计入失败`);
+				}
+				else {
+					failures.push({ item: "探活", retryable: true, reason: `health 端点 ${url} 返回 HTTP ${res.status}（C2-33 冒烟探针要求 2xx）` });
+				}
 			}
 		}
 	}
@@ -205,7 +223,8 @@ export async function smoke(ctx: SmokeContext): Promise<StageResult> {
 	// ④ entry 浏览器加载不在安装器验（设计 §4.1）——无判定，口径钉于成功 message。
 
 	if (failures.length === 0) {
-		return { stage: "smoke", ok: true, message: "冒烟通过：探活 / integrity / 注册一致性 三项全过（entry 浏览器加载不在安装器验——设计 §4.1，宿主 error boundary + P2 深检兜底）" };
+		const passed = "冒烟通过：探活 / integrity / 注册一致性 三项全过（entry 浏览器加载不在安装器验——设计 §4.1，宿主 error boundary + P2 深检兜底）";
+		return { stage: "smoke", ok: true, message: notes.length === 0 ? passed : `${passed}\n${notes.map(n => `- ${n}`).join("\n")}` };
 	}
 	return {
 		stage: "smoke",

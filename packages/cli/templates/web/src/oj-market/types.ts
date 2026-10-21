@@ -5,8 +5,12 @@
 /** 安装阶段名（契约附录 A 十阶段逐字 + lock_commit/audit/done 终态） */
 export type InstallStage = "preflight" | "downloading" | "verifying" | "extracting" | "migrating" | "lock_commit" | "registering" | "deploying_web" | "reloading" | "smoke" | "audit" | "done";
 
-/** 任务状态（§10.2 三态 + partial：锁后失败部分生效） */
-export type TaskStatus = "running" | "done" | "failed" | "partial";
+/**
+ * 任务状态（§10.2 三态 + partial：锁后失败部分生效 + needs_trust：未知发布方 key 待人工
+ * TOFU 确认，staging 不清场，确认入库后重试同一安装即可续跑）。
+ * needs_trust 是非成功态：消费面不得按绿色成功渲染（真源 api/src/_platform/_lifecycle/types.ts:64）。
+ */
+export type TaskStatus = "running" | "done" | "failed" | "partial" | "needs_trust";
 
 /** 阶段明细日志（UI 详情日志区数据源） */
 export interface TaskStageLog {
@@ -22,6 +26,13 @@ export interface TaskError {
 	hintKey?: string
 }
 
+/** needs_trust 终态：待确认的发布方 key（指纹 = sha256(public_key) 十六进制，供人核对） */
+export interface TaskTrust {
+	key_id: string
+	public_key: string
+	fingerprint: string
+}
+
 /** 安装任务记录（§10.2 + stages 明细日志；落 .install-tasks/<id>.json，800ms 轮询消费面） */
 export interface TaskRecord {
 	id: string
@@ -34,6 +45,8 @@ export interface TaskRecord {
 	message: string
 	stages: TaskStageLog[]
 	error?: TaskError
+	/** needs_trust 终态才有：待确认的发布方 key（POST /market/trust {task_id} 消费） */
+	trust?: TaskTrust
 	startedAt: number
 	finishedAt?: number
 	appliedSeq?: number

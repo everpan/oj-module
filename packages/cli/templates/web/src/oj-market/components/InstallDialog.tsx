@@ -1,6 +1,6 @@
 import type { IndexRow, TaskRecord } from "../types";
 import { Alert, Button, Modal, Progress, Space, Typography } from "antd";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useMarketClient } from "../api/context";
 import { useInstallTask } from "../hooks/useMarket";
@@ -19,6 +19,17 @@ export interface InstallDialogProps {
 const isTerminal = (r: TaskRecord | null) => r != null && r.status !== "running";
 
 /**
+ * 阶段失败指引（契约附录 A 的 `lifecycle.stage.*` key）→ 本模块文案。
+ * 附录 A 的这批 key 在模板 locales 里尚未落地，直接 t() 会把裸 key 显示给运维，
+ * 故此处显式映射；未收录的 key 保持原样（不吞信息）。
+ */
+const HINT_KEYS: Record<string, string> = {
+	"lifecycle.stage.smoke.hint": "oj-market:task:hintSmoke",
+	"lifecycle.stage.cancelled": "oj-market:task:hintCancelled",
+	"lifecycle.stage.reloading.hint": "oj-market:task:hintReloading",
+};
+
+/**
  * 安装/升级/回滚对话框：触发 POST install → 800ms 轮询 TaskRecord 终态渲染（reason+retryable+hintKey 双语）。
  *  回滚 = 对已装旧版降级安装（显式 version）；降版迁移差异校验（R12）的可读失败由终态 error 渲染。
  */
@@ -27,7 +38,13 @@ export function InstallDialog({ row, open, onClose, onDone, version, mode }: Ins
 	const client = useMarketClient();
 	const [taskId, setTaskId] = useState<string | null>(null);
 	const [started, setStarted] = useState(false);
+	const [trusting, setTrusting] = useState(false);
+	const [trustError, setTrustError] = useState<string | null>(null);
 	const { record, done } = useInstallTask(taskId);
+	// onDone 对同一任务只通告一次：父级每次渲染都会换 onDone 身份，若只靠 deps 触发，
+	// 终态后 onDone → index.retry() → 父级重渲染 → onDone 身份变 → 再触发，会形成
+	// 无限请求循环（浏览器侧表现为 ERR_INSUFFICIENT_RESOURCES）。
+	const notifiedTaskId = useRef<string | null>(null);
 
 	const targetVersion = version ?? row?.latest ?? null;
 	const title
@@ -49,15 +66,43 @@ export function InstallDialog({ row, open, onClose, onDone, version, mode }: Ins
 		if (!open) {
 			setTaskId(null);
 			setStarted(false);
+			setTrustError(null);
+			notifiedTaskId.current = null;
 		}
 	}, [open, row, started, client, targetVersion]);
 
 	useEffect(() => {
-		if (record && isTerminal(record) && done)
-			onDone?.(record);
+		if (!record || !isTerminal(record) || !done)
+			return;
+		if (notifiedTaskId.current === record.id)
+			return;
+		notifiedTaskId.current = record.id;
+		onDone?.(record);
 	}, [record, done, onDone]);
 
+	// TOFU 确认：确认入库后重试同一安装（服务端 staging 未清场，续跑不重下）
+	const handleTrustConfirm = async () => {
+		if (taskId === null || taskId.startsWith("__error__"))
+			return;
+		setTrusting(true);
+		setTrustError(null);
+		try {
+			await client.trust(taskId);
+			notifiedTaskId.current = null;
+			setTaskId(null);
+			setStarted(false);
+		}
+		catch (e) {
+			setTrustError(e instanceof Error ? e.message : String(e));
+		}
+		finally {
+			setTrusting(false);
+		}
+	};
+
 	const terminal = isTerminal(record);
+	const needsTrust = record?.status === "needs_trust";
+	const succeeded = record?.status === "done";
 	const failed = record?.status === "failed" || record?.status === "partial";
 	const errorTask = typeof taskId === "string" && taskId.startsWith("__error__");
 
@@ -78,9 +123,35 @@ export function InstallDialog({ row, open, onClose, onDone, version, mode }: Ins
 			)}
 			{record && (
 				<>
-					<Progress percent={record.progress} status={terminal ? (failed ? "exception" : "success") : "active"} />
+					<Progress percent={record.progress} status={terminal ? (succeeded ? "success" : "exception") : "active"} />
 					<div data-testid="install-stage">{record.stage ? t(`oj-market:task:stage.${record.stage}`, record.stage) : record.stage}</div>
 					<div data-testid="install-message">{record.message}</div>
+					{needsTrust && record?.trust && (
+						<Alert
+							style={{ marginTop: 12 }}
+							type="warning"
+							showIcon
+							message={t("oj-market:task:trustTitle")}
+							description={(
+								<Space direction="vertical" size={4}>
+									<span>{t("oj-market:task:trustBody", { keyId: record.trust.key_id })}</span>
+									<span data-testid="install-trust-fingerprint">
+										{t("oj-market:task:trustFingerprint")}
+										<Typography.Text code copyable={{ text: record.trust.fingerprint }}>
+											{record.trust.fingerprint}
+										</Typography.Text>
+									</span>
+									<span>{t("oj-market:task:trustHint")}</span>
+								</Space>
+							)}
+						/>
+					)}
+					{needsTrust && trustError && <Alert style={{ marginTop: 8 }} type="error" showIcon message={trustError} />}
+					{needsTrust && (
+						<Button type="primary" style={{ marginTop: 12 }} loading={trusting} onClick={handleTrustConfirm}>
+							{t("oj-market:task:trustConfirm")}
+						</Button>
+					)}
 					{failed && record.error && (
 						<Alert
 							type="error"
@@ -89,7 +160,11 @@ export function InstallDialog({ row, open, onClose, onDone, version, mode }: Ins
 							description={(
 								<Space direction="vertical">
 									<span>{record.error.retryable ? t("oj-market:task:retryable") : t("oj-market:task:notRetryable")}</span>
-									{record.error.hintKey && <span data-testid="install-hint">{t(record.error.hintKey, record.error.hintKey)}</span>}
+									{record.error.hintKey && (
+										<span data-testid="install-hint">
+											{t(HINT_KEYS[record.error.hintKey] ?? record.error.hintKey, record.error.hintKey)}
+										</span>
+									)}
 								</Space>
 							)}
 						/>
