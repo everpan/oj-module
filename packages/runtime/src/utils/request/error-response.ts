@@ -31,12 +31,19 @@ export async function handleErrorResponse(response: Response) {
 			openMustChangeModal();
 			return response;
 		}
+		// 403 抑制逐条 toast（与 must_change 同理）：无权页面的并发 query 由
+		// 页面层 isForbidden → ForbiddenPanel 消化，mutation 由 onError explainError
+		// 反馈，全局 toast 只会刷屏（见 docs/prd/202610222046-403-forbidden-fast-path.md）
+		if (response.status === 403)
+			return response;
 		// AC-D16：全站唯一信封 = oj {code,msg,data}，错误体只读 msg 键
 		const json = data as { msg?: string };
 		message.error(json.msg || response.statusText);
 	}
 	else {
-		message.error(response.statusText);
+		// 非 JSON 错误体（常态），展示状态文本即可
+		if (response.status !== 403)
+			message.error(response.statusText);
 	}
 
 	return response;
