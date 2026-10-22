@@ -75,15 +75,17 @@
 > **历史布局仍被识别**：`web/src/<name>`（uni-dev）与 `web/<name>`（框架根仓）照旧可用，
 > 只是 `ojm init` 不再产出。两套源码树**互斥**——同时存在时 `ojm` 直接报错，而不是静默选一个。
 
-登录账号 `admin / 123456`（superadmin，**首登强制改密**——must_change 闭环兜底默认凭据）。
-另有每个内置角色一个开发账号，口令均 `123456` 且**免首登改密**（纯开发便利，勿用于生产）：
+登录账号：**账号名=内置角色名**一一对应，口令均 `123456`，且全部**免首登改密**（must_change=0，纯开发便利，勿用于生产）：
 
 | 账号 | 角色 | 能干什么 |
 |---|---|---|
-| `admin` | superadmin | 全部能力（含安全组设置、成员资格管理）；首登强制改密 |
-| `sysadmin` | admin | 日常管理（不含 superadmin 专属项） |
+| `superadmin` | superadmin | 全部能力（含安全组设置、成员资格管理） |
+| `admin` | admin | 日常管理（不含 superadmin 专属项） |
 | `editor` | editor | 页面门编辑级 |
 | `viewer` | viewer | 页面门访客级 |
+
+> 旧脚手架库（admin 绑 superadmin / must_change=1）**无需手工迁移**：seed 每次启动幂等重放，
+> 自动收敛为账号名=角色名并清零 must_change（`DELETE` 旧绑定 + `UPDATE`，见 `_platform/api/seed.sql`）。
 
 端口：前端 devServer **5174**，oj 后端 **9778**
 （以工程根 `config.yaml` 的 `server.port` 为准）。
