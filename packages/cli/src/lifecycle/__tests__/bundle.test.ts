@@ -49,7 +49,25 @@ function makePrebuiltArtifacts(): void {
 	writeFileSync(join(webDist, "demo-solution.css"), ".demo{}\n");
 }
 
-const pack = () => buildBundle(project, { out });
+const pack = () => buildBundle(project, { out }).then(r => r[0]!);
+
+/** 造一个 web-only 用户方案（模块级契约 + 站点产物，无 api 段校验面最小） */
+function addWebSolution(name: string, version = "0.1.0"): void {
+	const dir = join(project, "src", name);
+	mkdirSync(dir, { recursive: true });
+	writeFileSync(join(dir, "solution.yaml"), [
+		`name: ${name}`,
+		`version: ${version}`,
+		`summary: ${name} 用户方案`,
+		`changelog: ${name} 首个版本`,
+		"web:",
+		`  entry: modules/${name}/${version}/entry.js`,
+		"",
+	].join("\n"));
+	const webDist = join(project, "web/dist/modules", name, version);
+	mkdirSync(webDist, { recursive: true });
+	writeFileSync(join(webDist, "entry.js"), "export default {};\n");
+}
 
 describe("buildBundle · 正路径", () => {
 	it("产出 out/<name>-<version>.tgz + 64 位 sha256，布局单根三分（manifest/api/web）", async () => {
@@ -119,16 +137,15 @@ describe("buildBundle · 正路径", () => {
 		expect(names.some(n => n.endsWith("/solution.yaml"))).toBe(false);
 	});
 
-	it("src/ 下多份模块级契约 → 报错列出归属候选", async () => {
-		// 同一工程只应有一份方案契约；多份模块级契约时无法判定方案归属，fail-fast。
+	it("src/ 下多份模块级契约 → 全部打包（多方案；B2）", async () => {
+		// 多方案正是本特性要支持的场景：每份契约独立校验、独立出包
 		rmSync(join(project, "manifest.yaml"));
-		const a = join(project, "src/mod-a/solution.yaml");
-		const b = join(project, "src/mod-b/solution.yaml");
-		mkdirSync(dirname(a), { recursive: true });
-		mkdirSync(dirname(b), { recursive: true });
-		writeFileSync(a, "name: mod-a\nversion: 0.1.0\n");
-		writeFileSync(b, "name: mod-b\nversion: 0.1.0\n");
-		await expect(pack()).rejects.toThrow(/src\/ 下发现多份 solution\.yaml/);
+		addWebSolution("mod-a");
+		addWebSolution("mod-b");
+		const results = await buildBundle(project, { out });
+		expect(results.map(r => r.name).sort()).toEqual(["mod-a", "mod-b"]);
+		for (const r of results)
+			expect(existsSync(r.tgz)).toBe(true);
 	});
 
 	it("产物树混入 modules.json → 打包自检拒绝（C2-31 红线）", async () => {
@@ -136,12 +153,112 @@ describe("buildBundle · 正路径", () => {
 		await expect(pack()).rejects.toThrow(/modules\.json/);
 	});
 
-	it("私钥/凭证混入包树 → 打包自检拒绝（P2-4 入包红线：*.pem/*.key/.env/id_ed25519/id_rsa）", async () => {
+	it("私钥/凭证混入包树 → 打包自检拒绝（P2-4 入包红线：*.pem/*.key/.env(.local…)/id_ed25519/id_rsa/*.p12/*.pfx）", async () => {
 		writeFileSync(join(project, "api/dist/demo-solution-0.1.0/signing.pem"), "-----BEGIN PRIVATE KEY-----\n");
 		await expect(pack()).rejects.toThrow(/私钥\/凭证/);
 		rmSync(join(project, "api/dist/demo-solution-0.1.0/signing.pem"));
 		writeFileSync(join(project, "web/dist/modules/demo-solution/0.1.0/.env"), "SECRET=1\n");
 		await expect(pack()).rejects.toThrow(/私钥\/凭证/);
+		rmSync(join(project, "web/dist/modules/demo-solution/0.1.0/.env"));
+		writeFileSync(join(project, "web/dist/modules/demo-solution/0.1.0/.env.production"), "SECRET=1\n");
+		await expect(pack()).rejects.toThrow(/私钥\/凭证/);
+	});
+});
+
+describe("buildBundle · 多方案与内置排除（B3/B7/B8/B9/B10/B12）", () => {
+	it("b3 内置方案跳过：名单内的模块契约不出包，用户契约照打", async () => {
+		rmSync(join(project, "manifest.yaml"));
+		addWebSolution("crm");
+		addWebSolution("oj-market"); // 自带方案也带契约（第一方可分发形态）
+		mkdirSync(join(project, "src"), { recursive: true });
+		writeFileSync(join(project, "src/.ojm-builtin.json"), JSON.stringify({ modules: ["oj-market"] }));
+		const results = await buildBundle(project, { out });
+		expect(results.map(r => r.name)).toEqual(["crm"]);
+	});
+
+	it("b6/B3 无名单文件 → 无内置概念，多份契约全部打包", async () => {
+		rmSync(join(project, "manifest.yaml"));
+		addWebSolution("crm");
+		addWebSolution("oj-market");
+		const results = await buildBundle(project, { out });
+		expect(results.map(r => r.name).sort()).toEqual(["crm", "oj-market"]);
+	});
+
+	it("b7+B8：目录不同契约 name 撞车 → 被 name===目录名 校验拦下（B8 使 B7 向量不可达，决策见计划文档）", async () => {
+		rmSync(join(project, "manifest.yaml"));
+		addWebSolution("crm");
+		// 拷贝改目录忘改 name 的典型症状——B8 在收集期即拒，dist/ 不会出现同名产物
+		const dir = join(project, "src", "crm-copy");
+		mkdirSync(dir, { recursive: true });
+		writeFileSync(join(dir, "solution.yaml"), "name: crm\nversion: 0.1.0\nsummary: dup\nchangelog: x\nweb:\n  entry: modules/crm/0.1.0/entry.js\n");
+		await expect(buildBundle(project, { out })).rejects.toThrow(/与目录名「crm-copy」不一致/);
+	});
+
+	it("b8 模块级契约 name ≠ 目录名 → fail-fast", async () => {
+		rmSync(join(project, "manifest.yaml"));
+		const dir = join(project, "src", "crm");
+		mkdirSync(dir, { recursive: true });
+		writeFileSync(join(dir, "solution.yaml"), "name: erp\nversion: 0.1.0\nsummary: x\n");
+		await expect(pack()).rejects.toThrow(/与目录名「crm」不一致/);
+	});
+
+	it("b9 两段式：多契约其一校验失败 → dist/ 零增量", async () => {
+		rmSync(join(project, "manifest.yaml"));
+		addWebSolution("crm");
+		// erp 契约违规（name 大写触发契约校验）
+		const dir = join(project, "src", "erp");
+		mkdirSync(dir, { recursive: true });
+		writeFileSync(join(dir, "solution.yaml"), "name: erp\nversion: 0.1.0\nsummary: x\n");
+		await expect(buildBundle(project, { out })).rejects.toThrow(/C2-08/);
+		expect(existsSync(join(out, "crm-0.1.0.tgz"))).toBe(false);
+	});
+
+	it("b10 旧契约回退：src/<name>/manifest.yaml（非内置）参与收集", async () => {
+		rmSync(join(project, "manifest.yaml"));
+		const dir = join(project, "src", "crm");
+		mkdirSync(dir, { recursive: true });
+		writeFileSync(join(dir, "manifest.yaml"), "name: crm\nversion: 0.1.0\nsummary: x\nchangelog: x\nweb:\n  entry: modules/crm/0.1.0/entry.js\n");
+		const webDist = join(project, "web/dist/modules/crm/0.1.0");
+		mkdirSync(webDist, { recursive: true });
+		writeFileSync(join(webDist, "entry.js"), "export default {};\n");
+		const results = await buildBundle(project, { out });
+		expect(results.map(r => r.name)).toEqual(["crm"]);
+	});
+
+	it("b12 坏 .ojm-builtin.json → fail-fast 报路径与错因", async () => {
+		mkdirSync(join(project, "src"), { recursive: true });
+		writeFileSync(join(project, "src/.ojm-builtin.json"), "{ not json");
+		await expect(pack()).rejects.toThrow(/\.ojm-builtin\.json/);
+	});
+
+	it("b4 --bundle <name>：按名打包；内置名拒绝；非法名拒绝", async () => {
+		rmSync(join(project, "manifest.yaml"));
+		addWebSolution("crm");
+		addWebSolution("erp");
+		const one = await buildBundle(project, { out, name: "crm" });
+		expect(one.map(r => r.name)).toEqual(["crm"]);
+		await expect(buildBundle(project, { out, name: "erp2" })).rejects.toThrow(/未找到「erp2」/);
+		writeFileSync(join(project, "src/.ojm-builtin.json"), JSON.stringify({ modules: ["erp"] }));
+		await expect(buildBundle(project, { out, name: "erp" })).rejects.toThrow(/框架自带方案/);
+		await expect(buildBundle(project, { out, name: "../evil" })).rejects.toThrow(/非法/);
+		await expect(buildBundle(project, { out, name: "Bad Name" })).rejects.toThrow(/非法/);
+	});
+
+	it("b1 根契约优先于 src 契约（旧行为）+ B11 hint", async () => {
+		addWebSolution("crm"); // 根 manifest.yaml（demo-solution）仍在
+		const spy: string[] = [];
+		const orig = console.log;
+		console.log = (m?: unknown) => {
+			spy.push(String(m));
+		};
+		try {
+			const results = await buildBundle(project, { out });
+			expect(results.map(r => r.name)).toEqual(["demo-solution"]);
+		}
+		finally {
+			console.log = orig;
+		}
+		expect(spy.join("\n")).toMatch(/工程根契约优先/);
 	});
 });
 
@@ -152,9 +269,9 @@ describe("buildBundle · 校验先于打包（fail-fast）", () => {
 		expect(existsSync(join(out, "Demo-1.0.0+build.5.tgz"))).toBe(false);
 	});
 
-	it("manifest.yaml 缺失：可读报错指明期望路径", async () => {
+	it("manifest.yaml 缺失且无用户方案：可读报错指向 ojm new（B5）", async () => {
 		rmSync(join(project, "manifest.yaml"));
-		await expect(pack()).rejects.toThrow(/manifest\.yaml/);
+		await expect(pack()).rejects.toThrow(/没有可打包的用户方案/);
 	});
 
 	it("c2-31 分层核对：模块级 desc ≠ bundle summary → 放行（等值要求已移除）", async () => {

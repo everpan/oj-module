@@ -49,7 +49,8 @@ describe.skipIf(!smokeReady)("真机冒烟（需 OJM_SMOKE_URL/OJM_SMOKE_USER/OJ
 		mkdirSync(webDist, { recursive: true });
 		writeFileSync(join(webDist, "entry.js"), "export default {};\n");
 		writeFileSync(join(webDist, "demo-solution.css"), ".demo{}\n");
-		const { tgz } = await buildBundle(project, { out: join(project, "dist") });
+		const [built] = await buildBundle(project, { out: join(project, "dist") });
+		const { tgz } = built!;
 
 		const record = await installCommand(tgz, { url: SMOKE_URL ?? DEFAULT_SITE_URL, user: SMOKE_USER, pass: SMOKE_PASS });
 		expect(record.status).toBe("done");

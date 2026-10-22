@@ -1,12 +1,13 @@
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
-import { parseApiArgs, parseBuildArgs, parseInitArgs, parseLifecycleArgs, parseVendorArgs } from "./args";
+import { parseApiArgs, parseBuildArgs, parseInitArgs, parseLifecycleArgs, parseNewArgs, parseVendorArgs } from "./args";
 import { buildBackend, buildModules } from "./build";
 import { buildBundle } from "./bundle";
 import { devServer } from "./dev";
 import { mergeManifests, printInfo } from "./info";
 import { initProject } from "./init";
+import { createSolution } from "./new";
 import { runPreview } from "./preview";
 import { getCommandHelp, resolveHelpRequest, usageText } from "./usage";
 import { vendorCommand } from "./vendor";
@@ -50,15 +51,31 @@ async function main() {
 
 	switch (command) {
 		case "build": {
-			const { bundle, out } = parseBuildArgs(process.argv.slice(3));
+			const { bundle, bundleName, out } = parseBuildArgs(process.argv.slice(3));
 			if (bundle) {
 				// 方案包构建（P1-11）：契约校验 fail-fast → 确定性 tgz + sha256（消费方：市场安装器）
-				await buildBundle(projectRoot, { out });
+				// 多方案：无 bundleName 打全部用户方案（自带排除），有则只打 name 那一份
+				const results = await buildBundle(projectRoot, { out, name: bundleName });
+				if (results.length > 1)
+					console.log(`[ojm] 共打包 ${results.length} 份方案包（逐包签名：ojm sign dist/<name>-<version>.tgz --id <publisher>.<key> --check）`);
 				break;
 			}
 			// 设计 §5：后端 oj build（零 DB 副作用）→ 前端全站合并（仅 build 清场合并）
 			await buildBackend(projectRoot);
 			await buildModules(projectRoot, { mergeSite: true });
+			break;
+		}
+		case "new": {
+			const { name, layout, api } = parseNewArgs(process.argv.slice(3));
+			if (!name) {
+				console.error("[ojm] 用法：ojm new <name> [--layout container|none] [--api]（非交互环境必须显式给 name）");
+				process.exit(1);
+			}
+			const created = createSolution(projectRoot, name, { layout, api });
+			console.log(`[ojm] 已生成方案骨架：${path.relative(process.cwd(), created.dir)}`);
+			for (const f of created.files)
+				console.log(`[ojm]   + ${f}`);
+			console.log(`[ojm] 下一步：pnpm dev 看效果 → ojm build && ojm build --bundle ${name} 打包`);
 			break;
 		}
 		case "init": {
@@ -79,7 +96,7 @@ async function main() {
 			break;
 		}
 		case "info":
-			await printInfo(projectRoot);
+			await printInfo(projectRoot, undefined, { all: process.argv.slice(3).includes("--all") });
 			break;
 		case "vendor": {
 			const { force, tag } = parseVendorArgs(process.argv.slice(3));
@@ -200,7 +217,7 @@ main().catch((error: unknown) => {
 	// （旧名 RAM_DEBUG 一并读，兼容既有排障习惯）。
 	// 文案常自带 [ojm] 前缀（bundle/publish/sign 等抛出的错误），顶层不再叠一个，否则变 [ojm] [ojm]。
 	const isDebug = !!(process.env.OJM_DEBUG ?? process.env.RAM_DEBUG);
-	const body = error instanceof Error ? (isDebug ? error.stack : error.message) : String(error);
+	const body = error instanceof Error ? (isDebug ? error.stack ?? error.message : error.message) : String(error);
 	console.error(/^\[ojm/.test(body) ? body : `[ojm] ${body}`);
 	process.exit(1);
 });

@@ -16,11 +16,24 @@ export type ParseResult = { ok: true, manifest: BundleManifest } | { ok: false, 
 
 // ── 契约 §2/§4 正则与清单（与 preflight.ts 逐字对应；改动须先改契约再同步双端与夹具）──
 
-/** C2-01：name 白名单 */
-const NAME_RE = /^[a-z][a-z0-9-]{0,63}$/;
+/** C2-01：name 白名单（导出供 ojm new/--bundle <name> 入口校验共用，DRY） */
+export const NAME_RE = /^[a-z][a-z0-9-]{0,63}$/;
+
+/**
+ * 方案名入口校验（`--bundle <name>` / `ojm new <name>` 共用，先校验再拼路径）：
+ * 与契约 C2-01 同一条正则；入口先给可读错误，契约校验再做正式判罚。
+ * 放在这里而非 bundle.ts——new 入口不应拖入打包模块图（esbuild/deterministic-tar 等）。
+ */
+export function assertValidSolutionName(name: string, where: string): void {
+	if (!NAME_RE.test(name)) {
+		throw new Error(
+			`[ojm] ${where}：「${name}」非法——须为 kebab-case（小写字母/数字/连字符，首字符为小写字母）。`,
+		);
+	}
+}
 
 /** §4.2 保留名清单（C2-01/13/14 共用；market 经 R9 恢复保留） */
-const RESERVED_NAMES = new Set(["_platform", "system", "auth", "market", "framework", "health", "plugins", "_system"]);
+export const RESERVED_NAMES = new Set(["_platform", "system", "auth", "market", "framework", "health", "plugins", "_system"]);
 
 /** C2-02 字符集：[0-9A-Za-z.-]（禁 +——oj validate_version 拒装，附录 B-1；禁 _——契约收紧） */
 const VERSION_CHARS_RE = /^[0-9A-Z.-]+$/i;

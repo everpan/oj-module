@@ -9,7 +9,9 @@
 		"preview": "ojm preview",
 		"info": "ojm info",
 		"typecheck": "tsc --noEmit -p tsconfig.json",
-		"typecheck:api": "tsc --noEmit -p src/tsconfig.json"
+		"typecheck:api": "tsc --noEmit -p src/tsconfig.json",
+		"bundle": "ojm build --bundle",
+		"new": "ojm new"
 	},
 	"devDependencies": {
 		"@ant-design/cssinjs": "catalog:",

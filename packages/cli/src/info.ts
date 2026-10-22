@@ -12,8 +12,9 @@ import fs from "node:fs";
 
 import http from "node:http";
 import path from "node:path";
-import { loadModulesConfig } from "./config";
-import { resolveConfigPath } from "./layout";
+import { readBuiltinModules } from "./builtin";
+import { loadModulesConfig, loadSiteConfig, mergeModuleList } from "./config";
+import { resolveConfigPath, scanModules, tryResolveLayout } from "./layout";
 import { mergeModuleManifests } from "./manifest";
 import { probeOjCaps } from "./oj-caps";
 import { readOjApiPrefix, readOjServerField } from "./oj-config";
@@ -91,7 +92,50 @@ export function realOjObservability(projectRoot: string): OjObservability {
 	};
 }
 
-export async function printInfo(projectRoot: string, oj: OjObservability = realOjObservability(projectRoot)): Promise<void> {
+export interface PrintInfoOptions {
+	/** 展开框架自带模块（默认折叠为一行计数） */
+	all?: boolean
+}
+
+/**
+ * 模块清单条目解析：module-root 用「扫描 + 登记覆盖」并集（与 build 同源，
+ * 未登记的用户模块也可见——旧实现只读 web.config.ts 会漏掉它们）；历史布局
+ * 维持登记清单（loadModulesConfig）。
+ */
+async function resolveModuleEntries(projectRoot: string): Promise<{ name: string, entry: string, enabled: boolean }[]> {
+	const layout = tryResolveLayout(projectRoot);
+	if (layout?.kind === "module-root") {
+		const config = await loadSiteConfig(projectRoot);
+		return mergeModuleList(scanModules(layout), config.modules, projectRoot);
+	}
+	const config = await loadModulesConfig(projectRoot);
+	return config.modules.map(m => ({ name: m.name, entry: m.entry, enabled: m.enabled !== false }));
+}
+
+/** 清单渲染：自带模块默认折叠（--all 展开）；坏名单文件告警降级为平铺，info 不失败 */
+function renderModuleLines(entries: { name: string, entry: string, enabled: boolean }[], projectRoot: string, all: boolean): string {
+	let builtin = new Set<string>();
+	try {
+		builtin = readBuiltinModules(projectRoot);
+	}
+	catch (error) {
+		console.warn(`[ojm] ⚠️ ${error instanceof Error ? error.message : String(error)}——本次按无内置名单渲染。`);
+	}
+	const fmt = (m: { name: string, entry: string, enabled: boolean }) => `  · ${m.name}（${m.entry}）${m.enabled ? "" : " [disabled]"}`;
+	const own = entries.filter(m => builtin.has(m.name));
+	const user = entries.filter(m => !builtin.has(m.name));
+	const lines = user.map(fmt);
+	if (own.length > 0) {
+		if (all)
+			lines.push(...own.map(fmt));
+		else
+			lines.push(`  框架自带：${own.length} 个（ojm info --all 展开）`);
+	}
+	// 零模块时留占位行，避免清单段整段空白像渲染故障
+	return lines.length > 0 ? lines.join("\n") : "（无 web 模块）";
+}
+
+export async function printInfo(projectRoot: string, oj: OjObservability = realOjObservability(projectRoot), opts: PrintInfoOptions = {}): Promise<void> {
 	const cliVersion = readPkgVersion(path.join(projectRoot, "node_modules/@oj-module/cli/package.json"));
 	const runtimeVersion = readPkgVersion(path.join(projectRoot, "node_modules/@oj-module/runtime/package.json"));
 
@@ -107,10 +151,8 @@ export async function printInfo(projectRoot: string, oj: OjObservability = realO
 
 	let moduleLines = "（web.config.ts 加载失败或无模块）";
 	try {
-		const config = await loadModulesConfig(projectRoot);
-		moduleLines = config.modules
-			.map(m => `  · ${m.name}（${m.entry}）${m.enabled === false ? " [disabled]" : ""}`)
-			.join("\n");
+		const entries = await resolveModuleEntries(projectRoot);
+		moduleLines = renderModuleLines(entries, projectRoot, opts.all ?? false);
 	}
 	catch (error) {
 		moduleLines = `（加载失败：${(error as Error).message}）`;

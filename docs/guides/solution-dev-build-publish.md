@@ -48,6 +48,7 @@ flowchart LR
 pnpm dev          # devServer + oj 后端；src/<name>/api 保存即热更
 pnpm typecheck    # 前端工程
 pnpm typecheck:api
+pnpm new          # = ojm new <name>：脚手架内再生成一份用户方案骨架（多方案并存）
 ```
 
 ---
@@ -56,15 +57,19 @@ pnpm typecheck:api
 
 ```bash
 ojm build               # ① 站点产物 web/dist/modules/<name>/… + 后端产物 api/dist/<name>-<ver>/
-ojm build --bundle      # ② 组装 dist/<name>-<version>.tgz（确定性打包：同源同字节，sha256 打印在日志里）
+ojm build --bundle      # ② 组装全部用户方案 dist/<name>-<version>.tgz（确定性打包：同源同字节，sha256 打印在日志里）
+ojm build --bundle crm  # 只打 src/crm/ 这一份（--bundle=crm 等价）
 ```
 
 要点（细节见手册 §11.1）：
 
 - `--bundle` **只组装、不重跑构建**——必须先 ① 后 ②。
+- **多方案**：一份脚手架可有多份用户方案（`pnpm new` 逐个生成，各自 `src/<name>/solution.yaml`）；
+  无参 `--bundle` 全部打包、逐个校验独立出包；**框架自带方案自动排除**（名单 `src/.ojm-builtin.json`，
+  逐条日志注明「框架自带，跳过」）。两段式：全部校验通过才开始写盘，任一失败 dist/ 零增量。
 - 打包即校验，坏清单出不了包：契约字段/类型白名单/保留名、表集对照、双语齐备，全部 fail-fast 并全量列出违规项。
 - **方案包只带自己的模块**：`web/dist/modules/` 里的脚手架模板模块（home/login/…）属宿主面，不会也不该入包——安装器会把包内模块整树覆盖进目标站。
-- **私钥形态文件禁入包**（`*.pem` / `*.key` / `.env` / `id_ed25519` / `id_rsa` 等，打包自检红线）：私钥入包 = 信任根基烧毁。
+- **私钥形态文件禁入包**（`*.pem` / `*.key` / `*.p12` / `*.pfx` / `.env` 系 / `id_ed25519` / `id_rsa` 等，打包自检红线）：私钥入包 = 信任根基烧毁。
 
 ---
 
