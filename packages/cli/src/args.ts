@@ -40,8 +40,10 @@ export function parseApiArgs(argv: string[]): { dir: string, check: boolean, doc
 
 /**
  * `ojm build [--bundle] [--out <dir>]`。
- * `--bundle`：方案包构建（solution.yaml 契约校验 → 确定性 tgz + sha256；旧方案回退 manifest.yaml），
- * 与站点级 `ojm build`（后端 oj build + 模块产物合并）互斥分工（devkit 手册「打包与分发」）。
+ * `--bundle`：方案包构建（契约校验 → 确定性 tgz + sha256）。bundle 级契约位置：优先工程根
+ * `solution.yaml`、或 `src/<模块>/solution.yaml`（模块级方案，契约与所打包模块同位）；旧方案回退
+ * `manifest.yaml`（同两处位置）。与站点级 `ojm build`（后端 oj build + 模块产物合并）互斥分工
+ * （devkit 手册「打包与分发」）。
  * `--out` 的值不得以 `--` 开头（同 parseApiArgs 的消费式扫描，P6 同款坑）。
  */
 export function parseBuildArgs(argv: string[]): { bundle: boolean, out?: string } {

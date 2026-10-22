@@ -4,8 +4,11 @@
 // 之所以用 solution.yaml 而非根目录 manifest.yaml：oj 按 `manifest.yaml` 枚举发现 api 后端模块
 // （模块级 `src/<name>/api/manifest.yaml`），根目录再放一份 bundle 契约会污染后端的「搜索枚举」，
 // 让 oj 误把 bundle 契约当 api 模块——故用独立文件名隔开两条枚举（避免后端搜索枚举与 bundle 冲突）。
-// 组装映射（对齐 P1-9 staging copy 源一层定版，unpack 布局即安装器 extract 段消费面）：
-//   <project>/solution.yaml | manifest.yaml      → <name>-<version>/manifest.yaml（Form A；tgz 内名固定为 manifest.yaml）
+// 组装映射（对齐 P1-9 staging copy 源一层定版，unpack 布局即安装器 extract 段消费面）；
+// bundle 级契约文件位置（resolveContract，优先级 ①→④）：
+//   <project>/solution.yaml | manifest.yaml          → ①/③（工程根，旧写法）
+//   <project>/src/<模块>/solution.yaml | manifest.yaml → ②/④（模块级方案：契约与所打包模块同位）
+//   任一处均 → <name>-<version>/manifest.yaml（Form A；tgz 内名固定为 manifest.yaml）
 //   <project>/api/dist/<name>-<version>/        → <name>-<version>/api/<name>-<version>/（oj build 产物原样，C2-31 分层核对）
 //   <project>/web/dist/modules/<name>/          → <name>-<version>/web/modules/<name>/（只入包方案自己的模块；
 //                                                 web.entry/css 存在性复核）
@@ -30,8 +33,60 @@ export interface BundleBuildResult {
 }
 
 /**
+ * 定位 bundle 级契约文件（方案包入口）。
+ *
+ * 优先级（向后兼容旧方案，且 solution.yaml 始终先于 manifest.yaml）：
+ *   ① 工程根 `solution.yaml`
+ *   ② `src/<模块>/solution.yaml`（模块级方案：契约与所打包模块同位）
+ *   ③ 工程根 `manifest.yaml`
+ *   ④ `src/<模块>/manifest.yaml`
+ *
+ * 关键：模块级只认 `src/<模块>/` 根下的契约，绝不进入 `<模块>/api/`——
+ * 否则会与 oj「按 `src/<模块>/api/manifest.yaml` 枚举 api 后端」撞车（§1.2 红线）。
+ * 若 `src/` 下出现多份模块级契约（无法判定方案归属），报错列出由调用方收敛。
+ *
+ * @param projectRoot 方案工程根（api/dist、web/dist 的基准目录，与契约文件实际位置无关）
+ */
+function resolveContract(projectRoot: string): string {
+	const srcDir = path.join(projectRoot, "src");
+
+	const rootSolution = path.join(projectRoot, "solution.yaml");
+	const rootManifest = path.join(projectRoot, "manifest.yaml");
+
+	const modSolutions: string[] = [];
+	const modManifests: string[] = [];
+	if (fs.existsSync(srcDir)) {
+		for (const e of fs.readdirSync(srcDir, { withFileTypes: true })) {
+			if (!e.isDirectory())
+				continue;
+			const sp = path.join(srcDir, e.name, "solution.yaml");
+			if (fs.existsSync(sp))
+				modSolutions.push(sp);
+			const mp = path.join(srcDir, e.name, "manifest.yaml");
+			if (fs.existsSync(mp))
+				modManifests.push(mp);
+		}
+	}
+
+	if (fs.existsSync(rootSolution))
+		return rootSolution;
+	if (modSolutions.length === 1)
+		return modSolutions[0];
+	if (modSolutions.length > 1)
+		throw new Error(`[ojm] 方案包构建失败：src/ 下发现多份 solution.yaml，无法确定方案归属：\n${modSolutions.map(p => `- ${path.relative(projectRoot, p)}`).join("\n")}`);
+	if (fs.existsSync(rootManifest))
+		return rootManifest;
+	if (modManifests.length === 1)
+		return modManifests[0];
+	if (modManifests.length > 1)
+		throw new Error(`[ojm] 方案包构建失败：src/ 下发现多份 manifest.yaml（方案契约回退），无法确定方案归属：\n${modManifests.map(p => `- ${path.relative(projectRoot, p)}`).join("\n")}`);
+
+	throw new Error(`[ojm] 方案包构建失败：${projectRoot} 下缺少 bundle 级契约文件（期望工程根 solution.yaml，或 src/<模块>/solution.yaml；旧方案可回退 manifest.yaml）。写法见 devkit 手册「打包与分发」`);
+}
+
+/**
  * 从方案工程产出可安装 tgz + sha256。
- * @param projectRoot 方案工程根（manifest.yaml 所在目录）
+ * @param projectRoot 方案工程根：作为 api/dist、web/dist 的基准目录；bundle 级契约可位于工程根或 src/<模块>/（见 resolveContract）
  * @param opts 输出与选项
  * @param opts.out 输出目录，缺省 `dist/`；产物 `<name>-<version>.tgz`
  */
@@ -39,12 +94,15 @@ export async function buildBundle(projectRoot: string, opts: { out?: string } = 
 	// 1) 读入并校验契约（构建即校验，坏清单出不了包）
 	// bundle 级契约文件名：solution.yaml 优先（避开 oj 用 manifest.yaml 枚举 api 后端），
 	// manifest.yaml 回退以兼容旧方案。tgz 内固定写 manifest.yaml（安装侧只认这个名字）。
-	const contractNames = ["solution.yaml", "manifest.yaml"] as const;
-	const contractName = contractNames.find(n => fs.existsSync(path.join(projectRoot, n)));
-	if (!contractName) {
-		throw new Error(`[ojm] 方案包构建失败：${projectRoot} 下缺少 bundle 级契约文件（期望 solution.yaml；旧方案可回退 manifest.yaml）。写法见 devkit 手册「打包与分发」`);
-	}
-	const manifestPath = path.join(projectRoot, contractName);
+	// 契约位置（向后兼容，按优先级）：
+	//   ① 工程根 solution.yaml（推荐，旧写法）
+	//   ② src/<模块>/solution.yaml（模块级方案：契约与它所打包的模块同位，单模块方案更直观）
+	//   ③ 工程根 manifest.yaml（旧方案）
+	//   ④ src/<模块>/manifest.yaml（旧方案 + 模块级，最后回退）
+	// ②/④ 刻意只认 src/<模块>/ 根下的契约、绝不进 <模块>/api/ —— oj 枚举 api 后端认的是
+	// src/<模块>/api/manifest.yaml，故模块级方案契约既不在 api/ 下、也不叫 manifest.yaml，
+	// 两条枚举互不干扰（与 §1.2 红线一致）。
+	const manifestPath = resolveContract(projectRoot);
 	const parsed = parseManifest(fs.readFileSync(manifestPath, "utf8"));
 	if (!parsed.ok) {
 		throw new Error(`[ojm] 方案包构建失败：${parsed.error}`);

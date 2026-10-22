@@ -1,6 +1,7 @@
 // BDD：`ojm build --bundle` 方案包组装（P1-11）。
 // 组装契约（对齐 tgz 内布局，契约 §2.9 + P1-9 staging copy 源定版）：
 //   <root>/solution.yaml | manifest.yaml           ← 必填（solution.yaml 优先，避开 oj 的 api 枚举冲突），契约校验 fail-fast 先于打包
+//   <root>/src/<模块>/solution.yaml | manifest.yaml ← 模块级方案：契约与所打包模块同位（同优先级回退）
 //   api/dist/<name>-<version>/                    ← oj build 产物原样 → tgz 内 api/<name>-<version>/（C2-31 分层核对）
 //   web/dist/modules/<name>/                      ← 站点构建模块产物 → tgz 内 web/modules/<name>/（只入包方案自己的模块）
 // 禁携 modules.json（C2-31 红线）；产物确定性（C2-32）由 deterministic-tar 承担，此处断言端到端复现。
@@ -99,6 +100,35 @@ describe("buildBundle · 正路径", () => {
 		const names = tarList(r.tgz);
 		expect(names).toContain("demo-solution-0.1.0/manifest.yaml");
 		expect(names.some(n => n.endsWith("/solution.yaml"))).toBe(false);
+	});
+
+	it("src/<模块>/solution.yaml 作为 bundle 契约（模块级方案：契约与所打包模块同位）", async () => {
+		// 单模块方案：契约紧贴它打包的模块 src/<name>/，比工程根更直观；
+		// 仍不在 api/ 下、也不叫 manifest.yaml，等价避开 oj 按 manifest.yaml 枚举 api 后端的冲突。
+		const mf = join(project, "manifest.yaml");
+		const sf = join(project, "src/demo-solution/solution.yaml");
+		mkdirSync(dirname(sf), { recursive: true });
+		cpSync(mf, sf);
+		rmSync(mf);
+		const r = await pack();
+		expect(r.name).toBe("demo-solution");
+		expect(existsSync(r.tgz)).toBe(true);
+		// tgz 内固定为 manifest.yaml（安装侧只认这个名字），与源文件名/源位置无关
+		const names = tarList(r.tgz);
+		expect(names).toContain("demo-solution-0.1.0/manifest.yaml");
+		expect(names.some(n => n.endsWith("/solution.yaml"))).toBe(false);
+	});
+
+	it("src/ 下多份模块级契约 → 报错列出归属候选", async () => {
+		// 同一工程只应有一份方案契约；多份模块级契约时无法判定方案归属，fail-fast。
+		rmSync(join(project, "manifest.yaml"));
+		const a = join(project, "src/mod-a/solution.yaml");
+		const b = join(project, "src/mod-b/solution.yaml");
+		mkdirSync(dirname(a), { recursive: true });
+		mkdirSync(dirname(b), { recursive: true });
+		writeFileSync(a, "name: mod-a\nversion: 0.1.0\n");
+		writeFileSync(b, "name: mod-b\nversion: 0.1.0\n");
+		await expect(pack()).rejects.toThrow(/src\/ 下发现多份 solution\.yaml/);
 	});
 
 	it("产物树混入 modules.json → 打包自检拒绝（C2-31 红线）", async () => {
