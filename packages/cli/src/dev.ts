@@ -294,6 +294,8 @@ export async function devServer(projectRoot: string, opts: DevOptions = {}): Pro
 	// 仅 TTY 默认启用（管道/CI 下不抢 stdin）；测试可经 keymap + inputStream 强制。
 	const keymapEnabled = opts.keymap ?? (process.stdin.isTTY ?? false);
 	if (keymapEnabled) {
+		const footerText = "快捷键：r 热更新 · h 帮助 · c 清屏 · o 打开浏览器 · q 退出";
+		const footer = pinFooter(`[ojm] ${footerText}`);
 		setupDevKeymap({
 			server,
 			oj,
@@ -301,12 +303,15 @@ export async function devServer(projectRoot: string, opts: DevOptions = {}): Pro
 			port: actualPort,
 			input: opts.inputStream,
 			openBrowser: opts.openBrowser,
+			clearScreen: footer ? () => footer.clear() : undefined,
 			onReload: () => {
 				void trigger();
 			},
 			onQuit: shutdown,
 		});
-		console.log("[ojm] 快捷键：r 热更新 · h 帮助 · c 清屏 · o 打开浏览器 · q 退出");
+		// 非 TTY（pinFooter 拒绝）回退一次性打印，行为与历史一致
+		if (!footer)
+			console.log(`[ojm] ${footerText}`);
 	}
 
 	return server;
@@ -336,6 +341,52 @@ export async function shutdownDev(
 }
 
 /**
+ * 快捷键提示常驻底栏：DECSTBM 把滚动区设为 1..rows-1，末行留给提示。
+ * 之后本进程 console.log 与 oj 透传（均经 process.stdout.write）只在滚动区内滚动，
+ * 末行由终端保持，无需逐条重绘。非 TTY / 行数不足返回 undefined（调用方回退一次性打印）。
+ */
+export interface PinnedFooter {
+	/** 清屏：ED（\x1b[2J）保留滚动区（RIS \x1bc 会复位滚动区，禁用），随后重绘提示 */
+	clear: () => void
+	/** 恢复全屏滚动区并落光标到底行（进程退出/shell 接管前调用）；幂等 */
+	stop: () => void
+}
+
+export function pinFooter(text: string, stream: NodeJS.WriteStream = process.stdout): PinnedFooter | undefined {
+	if (!stream.isTTY || (stream.rows ?? 0) < 3)
+		return undefined;
+	const write = (s: string) => {
+		stream.write(s);
+	};
+	const render = () => {
+		const rows = stream.rows || 24;
+		write(`\x1B[1;${rows - 1}r`); // 滚动区：首行 ~ 倒数第二行（DECSTBM 会把光标送回 1;1）
+		write(`\x1B[${rows};1H\x1B[2K${text}`); // 末行清行后画常驻提示
+		write(`\x1B[${rows - 1};1H`); // 光标回滚动区底行，后续输出照常滚动
+	};
+	render();
+	const onResize = () => render();
+	let stopped = false;
+	const stop = () => {
+		if (stopped)
+			return;
+		stopped = true;
+		process.removeListener("SIGWINCH", onResize);
+		process.removeListener("exit", stop);
+		write("\x1B[r\x1B[999;1H\n"); // 恢复全屏滚动区，光标夹到底行避免 shell 提示符悬空
+	};
+	process.on("SIGWINCH", onResize);
+	process.on("exit", stop);
+	return {
+		clear: () => {
+			write("\x1B[2J");
+			render();
+		},
+		stop,
+	};
+}
+
+/**
  * Vite 风格 dev 快捷键（默认仅在 TTY 启用，见 devServer 内的 keymapEnabled 判定）。
  *   r  强制重建并热更新（复用 trigger）
  *   h  显示快捷键帮助
@@ -356,6 +407,8 @@ export interface DevKeymapDeps {
 	 */
 	input?: NodeJS.ReadableStream & { setRawMode?: (mode: boolean) => unknown }
 	openBrowser?: (url: string) => void
+	/** 清屏实现（默认 \x1Bc）；devServer 注入底栏版以保住滚动区 */
+	clearScreen?: () => void
 	onReload: () => void
 	onQuit: () => void
 	log?: (msg: string) => void
@@ -404,7 +457,10 @@ export function setupDevKeymap(deps: DevKeymapDeps): void {
 			help();
 		}
 		else if (k === "c") {
-			process.stdout.write("\x1Bc");
+			if (deps.clearScreen)
+				deps.clearScreen();
+			else
+				process.stdout.write("\x1Bc");
 		}
 		else if (k === "o") {
 			open(url);
