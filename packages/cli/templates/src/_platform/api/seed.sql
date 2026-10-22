@@ -11,6 +11,14 @@ INSERT OR IGNORE INTO sys_role (name, module, title, builtin) VALUES ('editor', 
 INSERT OR IGNORE INTO sys_role (name, module, title, builtin) VALUES ('viewer', 'framework', '访客', 1);
 -- seed 超管绑定（sys_user_role 唯一权威源，D10）
 INSERT OR IGNORE INTO sys_user_role (user_id, role_name) SELECT id, 'superadmin' FROM users WHERE username = 'admin';
+-- 内置角色开发账号（每角色一号，口令均 123456，must_change=0 免首登改密——纯开发便利；
+-- admin(superadmin) 不在此列，其 must_change=1 的强制改密闭环是默认凭据的安全兜底）
+INSERT OR IGNORE INTO users (username, password_hash, must_change) VALUES ('sysadmin', '$2y$10$ylE2NdjnYiuEcq54W/KxH.bhvGaQQg3rbmYI3mcEHX6LdQEAqixeC', 0);
+INSERT OR IGNORE INTO users (username, password_hash, must_change) VALUES ('editor', '$2y$10$ylE2NdjnYiuEcq54W/KxH.bhvGaQQg3rbmYI3mcEHX6LdQEAqixeC', 0);
+INSERT OR IGNORE INTO users (username, password_hash, must_change) VALUES ('viewer', '$2y$10$ylE2NdjnYiuEcq54W/KxH.bhvGaQQg3rbmYI3mcEHX6LdQEAqixeC', 0);
+INSERT OR IGNORE INTO sys_user_role (user_id, role_name) SELECT id, 'admin' FROM users WHERE username = 'sysadmin';
+INSERT OR IGNORE INTO sys_user_role (user_id, role_name) SELECT id, 'editor' FROM users WHERE username = 'editor';
+INSERT OR IGNORE INTO sys_user_role (user_id, role_name) SELECT id, 'viewer' FROM users WHERE username = 'viewer';
 -- 系统设置默认值（PRD §4.3；C4 设置页 / C5 登录方式发现的数据源；framework.market_cdn_url 安全组仅 superadmin 可改）
 INSERT OR IGNORE INTO sys_setting (key, module, "group", type, value, default_value, label_key, secret, update_time) VALUES ('framework.site_title', 'framework', 'general', 'string', 'React Antd Admin', 'React Antd Admin', 'system:setting.site_title', 0, 0);
 INSERT OR IGNORE INTO sys_setting (key, module, "group", type, value, default_value, label_key, secret, update_time) VALUES ('framework.market_cdn_url', 'framework', 'security', 'string', '', '', 'system:setting.market_cdn_url', 0, 0);

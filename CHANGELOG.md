@@ -5,6 +5,12 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 设计依据、迁移记录与陷阱清单见 [`docs/prd/202609110947-oj-module-two-package-consolidation-design.md`](docs/prd/202609110947-oj-module-two-package-consolidation-design.md)。
 
+## [Unreleased]
+
+### Added
+
+- **脚手架 seed 内置角色开发账号**：`ojm init` 产物的 `_platform` seed 新增 `sysadmin`（admin 角色）、`editor`、`viewer` 三个账号（admin 角色账号取名 sysadmin——`admin` 已被 superadmin 占用），口令均 `123456` 且 `must_change=0` **免首登改密**（纯开发便利）。`admin`（superadmin）不在此列，保持 `must_change=1` 的强制改密闭环。三个方言文件（sqlite/mysql/pg）同构对齐，新增 seed 回归测试钉守。
+
 ## [0.2.23] - 2026-10-22
 
 双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步升 **0.2.23**（runtime 无代码改动，仅为同版发布）。
