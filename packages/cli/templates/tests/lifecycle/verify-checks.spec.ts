@@ -278,7 +278,10 @@ function setHttp(over: Record<string, unknown>) {
 }
 
 function makeEnv() {
-	return { ...solutionsEnv(), sharedRoot: root, statePath: join(root, "state.yaml") };
+	// modulesJsonPath 钉进临时目录（readFile 失败 → 不打 web 项）：默认值 `web/dist/modules.json`
+	// 是相对 cwd 的，会把模板本机构建产物卷进用例，全绿用例随「模板 build 过没有」摇摆。
+	// P4-2 两条 integrity 用例显式覆盖它。
+	return { ...solutionsEnv(), sharedRoot: root, statePath: join(root, "state.yaml"), modulesJsonPath: join(root, "modules.json") };
 }
 
 describe("深检端点门（admin 域）", () => {

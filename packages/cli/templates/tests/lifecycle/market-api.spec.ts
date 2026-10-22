@@ -274,7 +274,7 @@ describe("权限门（R9：市场编排 superadmin 独占，meta 登录即可）
 	it("pair-pin：meta apiVersion === _platform/manifest.yaml version（手工镜像漂移防护，P2-9）", async () => {
 		// API_VERSION（market/api.ts）与 _platform/manifest.yaml version 为手工同步的双真源；
 		// 本测试经 meta 端点间接钉住 API_VERSION，漂移即红（peerPlatform 预检口径失真）。
-		const manifestPath = join(dirname(fileURLToPath(import.meta.url)), "../../src/_platform/manifest.yaml");
+		const manifestPath = join(dirname(fileURLToPath(import.meta.url)), "../../src/_platform/api/manifest.yaml");
 		const manifestVersion = (parse(readFileSync(manifestPath, "utf8")) as { version: string }).version;
 		const api = createMarketApi(makeEnv());
 		g.http = { user: { id: 1 } };
