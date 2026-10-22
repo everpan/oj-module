@@ -5,6 +5,27 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 设计依据、迁移记录与陷阱清单见 [`docs/prd/202609110947-oj-module-two-package-consolidation-design.md`](docs/prd/202609110947-oj-module-two-package-consolidation-design.md)。
 
+## [0.2.23] - 2026-10-22
+
+双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步升 **0.2.23**（runtime 无代码改动，仅为同版发布）。
+
+### Added
+
+- **多用户方案打包**：`ojm build --bundle` 复数化——无参时收集 `src/*/` 下全部**用户方案**契约（solution.yaml 优先、manifest.yaml 回退）逐个打包；`--bundle <name>` / `--bundle=<name>` 只打指定一份。优先级矩阵：按名指定 ≻ 工程根契约（旧单方案行为零变化）≻ src 全量收集；零用户方案时报错指路 `ojm new`。
+- **`src/.ojm-builtin.json` 框架自带方案名单**：`ojm init` 从模板白名单派生写入（重跑缺失才补写，可手改/删除）；打包自动排除名单内模块（逐条日志），`ojm info` 默认折叠为一行计数（`--all` 展开）。名单只是打包排除 / UI 折叠提示，**不是安全边界**——文件永不入包，安装侧信任链（签名 + 信任库 + TOFU）与它无关。
+- **`ojm new <name> [--layout container|none] [--api]`**：脚手架内快速生成用户方案骨架（solution.yaml + web entry/pages/locales，可选 api manifest/handler），module-root 布局守卫 + 原子性（失败不留半截目录），生成即被扫描收录、补产物后可直接 `ojm build --bundle <name>`（round-trip）。
+- **`ojm info` 数据源修复 + 自带折叠**：module-root 下改用「扫描 + `web.config.ts` 登记」并集（未登记的用户模块也可见）；坏名单文件告警降级为平铺。
+- **脚手架 scripts 补齐**：`pnpm new`（= `ojm new`）、`pnpm bundle`（= `ojm build --bundle`）、`typecheck:api`（修复生成器与模板的既有漂移）；新增双写守卫测试（生成 scripts ⊆ 模板 scripts）。
+
+### Changed
+
+- **两段式打包**：先对全部目标契约跑完校验（纯读零写盘），全绿才开始逐个写 tgz——任一校验失败 dist/ 零增量；组装期失败保留已完成产物并指名失败方案。
+- **入包红线扩面**：私钥形态文件自检增补 `*.p12` / `*.pfx` / `.env.*`（原 `*.pem` / `*.key` / `.env` / `id_ed25519` / `id_rsa` 不变）。
+
+### Docs
+
+- devkit 手册 §1/§7/§10.1/§11 同步多方案语义；`docs/guides/solution-dev-build-publish.md` 同步打包一节。
+
 ## [0.2.22] - 2026-10-22
 
 双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步升 **0.2.22**（runtime 无代码改动，仅为同版发布）。

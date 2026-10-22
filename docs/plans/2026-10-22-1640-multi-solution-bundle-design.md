@@ -150,9 +150,15 @@
 - [x] **Phase 3 `ojm new`**：守卫（工程/布局/name）、骨架生成、原子性、交互、`usage.ts`/`index.ts` 接线 —— N0–N7 ✅（10 用例 + CLI 接线；**实现期决策：不做交互提问，name 显式必填**——仓库无 prompt 依赖，为一个向导加依赖不值，N5 用例改为空名拒绝）
 - [x] **Phase 4 `ojm info`**：扫描并集数据源 + 自带分组折叠 + `--all` —— I1–I4 ✅（5 用例 + info-oj 回归）
 - [x] **Phase 5 scripts**：`generatePackageJson` 补 new/bundle/typecheck:api + 模板同步 + 子集守卫测试 —— T3 ✅（顺带修复：shell-dist 与 vendor 快照漂移致 release-manifest 测试失败，重建宿主后 389 全绿）
-- [ ] **Phase 6 文档与发版**：manual §1/§7/§10.1/§11 + guides 同步 + devkit-docs 守卫 + CHANGELOG 0.2.23 + lockstep bump
+- [x] **Phase 6 文档与发版**：manual §1/§7/§10.1/§11 + guides 同步 + devkit-docs 守卫（10 用例过）+ CHANGELOG 0.2.23 + lockstep bump（双包 + host-versions ×3 + shell-dist 重建）
+      —— 顺带修复 Phase 2 引入、vitest 未覆盖的 typecheck 回归（vitest 不做类型检查）：
+      ① `market/publish.ts buildRealPackage` 仍按单结果解构（改为非 1 份即拒绝 + 指路显式链路）；
+      ② `lifecycle smoke.test.ts` 同步取 `built[0]`；③ `new.ts solutionYaml` 形收 `boolean | undefined`；
+      ④ 既有 `index.ts` 顶层 `error.stack`（string|undefined）一行修复（`?? error.message`）。
 - [ ] **统一审查**：全部阶段完成后一次性代码审查（不在阶段中途审）
-- [ ] `pnpm test` / lint / typecheck 全绿
+- [x] `pnpm test` / lint / typecheck 全绿（394 cli + 389 tests/cli + devkit-docs 10 全过；typecheck 0 error；
+      例外：`tests/integration/uni-dev-smoke.test.ts` 4 用例失败——环境性，上游 @oj-bin/oj latest=v0.1.84 < MIN_OJ_VERSION 0.1.85
+      （该门禁在基线 feat/ojm 即存在，与本分支无关，等上游发 0.1.85 即恢复））
 - [ ] 合并回 `feat/ojm`，更新任务状态与总结
 
 BDD 用例风格遵循 INVEST：各用例相互独立（无顺序依赖）、可协商、有价值、可估算、小、可测试；

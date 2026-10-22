@@ -217,7 +217,7 @@ main().catch((error: unknown) => {
 	// （旧名 RAM_DEBUG 一并读，兼容既有排障习惯）。
 	// 文案常自带 [ojm] 前缀（bundle/publish/sign 等抛出的错误），顶层不再叠一个，否则变 [ojm] [ojm]。
 	const isDebug = !!(process.env.OJM_DEBUG ?? process.env.RAM_DEBUG);
-	const body = error instanceof Error ? (isDebug ? error.stack : error.message) : String(error);
+	const body = error instanceof Error ? (isDebug ? error.stack ?? error.message : error.message) : String(error);
 	console.error(/^\[ojm/.test(body) ? body : `[ojm] ${body}`);
 	process.exit(1);
 });

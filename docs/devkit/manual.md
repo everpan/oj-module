@@ -39,6 +39,7 @@
 ├── tests/                 # 后端 BDD 测试（node:sqlite 内存库 + 真实迁移建表）
 ├── src/
 │   ├── tsconfig.json      # 后端 typecheck 工程（extends 上两者，exclude */web）
+│   ├── .ojm-builtin.json  # 框架自带方案名单（init 派生，可手改/删除；打包排除 + info 折叠，见 §11）
 │   ├── styles.css
 │   ├── _platform/         # 框架级：users 表 / rbac / 市场编排 / 生命周期
 │   │   ├── api/           #   + _shared/（respond、service/、site-facade）
@@ -1411,6 +1412,8 @@ pnpm build             # = ojm build：oj build（生成 routes.js）+ 前端全
 pnpm preview           # = ojm preview：oj migrate（verify 闸）→ oj serve 单服务（API + 静态 SPA 同进程）
 pnpm typecheck         # = tsc --noEmit（前端工程）
 pnpm typecheck:api     # = tsc --noEmit -p src/tsconfig.json（后端工程，见 §6.5）
+pnpm new               # = ojm new <name>：脚手架内生成用户方案骨架（见 §10.1）
+pnpm bundle            # = ojm build --bundle：打包全部用户方案（自带方案自动排除，见 §11）
 pnpm exec ojm info     # 版本矩阵 + 模块清单（报障用）
 pnpm exec ojm vendor   # 下载/重装 oj 二进制
 ```
@@ -1644,6 +1647,28 @@ export default async (path: string, html: string) => {
 > release 下只有 `routes.js` 里的路由存在，目录镜像路由不生效——所以参数路由要先
 > `ojm build` 再测（见 §7）。
 
+#### `ojm build --bundle [name]`
+
+打包**方案包**（solution bundle，可分发产物；语义细节见 §11）。只组装不构建，先 `ojm build` 再打包。
+
+- `--bundle` 无参：工程根有 `solution.yaml` 则只打根契约（旧单方案行为零变化）；
+  否则收集 `src/*/` 下全部**用户方案**契约逐个打包（框架自带方案自动排除，日志注明「框架自带，跳过」）。
+- `--bundle <name>` / `--bundle=<name>`：只打 `src/<name>/solution.yaml` 这一份（manifest.yaml 回退）。
+- 两段式：全部契约校验通过才开始写盘；零用户方案时报错指路 `ojm new`。
+
+#### `ojm new <name> [--layout container|none] [--api]`
+
+脚手架内生成一份用户方案骨架（module-root 布局）：`src/<name>/solution.yaml` +
+`web/{entry.ts,pages/,locales/}`（`--api` 再加 `api/{manifest.yaml,api.ts}`）。
+生成即被扫描收录，补产物后 `ojm build --bundle <name>` 直接可打（round-trip）。
+非 module-root 布局拒绝（会先要求迁移）；名字撞内置方案 / 保留名 / 已存在目录都会拒绝。
+```bash
+ojm new crm --layout container   # 建 src/crm/ 骨架
+pnpm dev                         # 看效果
+ojm build --bundle crm           # 打包
+```
+
+
 #### `ojm preview [port]`
 
 生产形态预览（设计 §6，2026-10-19 单服务化）：
@@ -1675,9 +1700,11 @@ export default async (path: string, html: string) => {
 
 生成物重跑即覆盖（eslint 已忽略）；唯一例外是带 `// ojm-api:stub` 指纹的 stub，人碰过则工具永不写删。
 
-#### `ojm info`
+#### `ojm info [--all]`
 
 输出版本矩阵（`@oj-module/cli` / `@oj-module/runtime` / 钉版 `@plane/*` / `oj` 二进制）与模块清单。
+module-root 下数据源是「扫描 + `web.config.ts` 登记」并集（未登记的用户模块也可见）。
+框架自带方案默认折叠为一行计数（`--all` 展开平铺）。
 **报障用**：拿不准「工程里到底装了什么版本、哪些模块被登记」时，先 `ojm info` 贴出来。
 
 #### `ojm vendor [tag] [--force]`
@@ -1750,6 +1777,9 @@ export default async (path: string, html: string) => {
 ## §11 方案包：打包与分发
 
 「站点级构建」见 §7；本节讲**方案包**（solution bundle）——单方案的可分发产物与到达站点的方式。
+一个脚手架可放多份用户方案（`ojm new` 逐个生成，各自一份 `src/<name>/solution.yaml`），
+`ojm build --bundle` 无参时全部打包、逐个校验独立出包；框架自带方案自动排除（名单见
+`src/.ojm-builtin.json`，`ojm info` 默认折叠自带模块）。
 **从开发到发布的完整过程视角（含签名与私钥保存纪律）见**
 [`docs/guides/solution-dev-build-publish.md`](../guides/solution-dev-build-publish.md)。
 
@@ -1757,8 +1787,10 @@ export default async (path: string, html: string) => {
 
 ```bash
 ojm build --bundle            # --out <dir> 缺省工程根 dist/（方案包输出目录，与后端产物 api/dist 无关）
-# [ojm] 方案包已生成 → dist/<name>-<version>.tgz
+ojm build --bundle crm        # 只打 src/crm/ 这一份；--bundle=crm 等价
+# [ojm] 方案包已生成 → dist/<name>-<version>.tgz（多份用户方案时逐份输出，共打包 N 份）
 # [ojm] sha256：…（确定性打包：同源同字节）
+# 没有可打包的用户方案时：报错指向 ojm new（不静默产出空批次）
 ```
 
 > `--bundle` 只**组装**，不重跑构建：入包内容取自 `api/dist/<name>-<version>/` 与
@@ -1771,13 +1803,18 @@ ojm build --bundle            # --out <dir> 缺省工程根 dist/（方案包输
   bundle 契约会污染那条搜索枚举；故用 `solution.yaml` 隔开两条枚举——**后端按 `manifest.yaml` 枚举 api、
   打包按 `solution.yaml` 取契约**，不再冲突。模块级契约同样**只认 `src/<模块>/` 根下、绝不进 `<模块>/api/`**，
   否则会与 oj 的 api 枚举撞车。tgz 内固定写回 `manifest.yaml`（安装侧只认这个名字）。
-- 打包即校验（fail-fast，坏清单出不了包）：方案 solution 契约校验（字段齐全 / 类型白名单 /
-  保留名 / 键空间 → 可读违规清单）→ 文件面校验（`api.tables` ↔ `schema.yaml`、locales 双语齐备）。
+- **两段式**：先对全部目标契约跑完校验（纯读零写盘），全绿才开始逐个写 tgz——任一校验失败
+  dist/ 零增量，报错指名失败方案（发布者不会把半截批次扫进 CDN 索引）。校验项（fail-fast，
+  坏清单出不了包）：方案 solution 契约（字段齐全 / 类型白名单 / 保留名 / 键空间 → 可读违规清单）
+  → 文件面（`api.tables` ↔ `schema.yaml`、locales 双语齐备）→ 模块级契约 `name` 必须 === 目录名。
+- 框架自带方案不参与打包：`src/.ojm-builtin.json` 名单内的模块契约被跳过（逐条日志）；
+  该文件由 `ojm init` 从模板白名单派生，**可手改/删除**（删名 = 恢复参与打包），重跑 init 缺失才补写。
+  它只是打包排除 / info 折叠提示，**不是安全边界**：文件永不入包，安装侧信任链（签名 + 信任库 + TOFU）与它无关。
 - **只出包不签名**——签名见 §12（关注点分离：作者签名是显式动作，不是构建副产品）。
 - 产物内 `manifest.yaml` 的 `archive` 段是 **Form A**（仅 `file`）；`sha256`/`size` 由
   file 源上传时点补齐（宿主安装器）或发布通道 Form B 自带。
-- **入包红线**：`*.pem` / `*.key` / `.env` / `id_ed25519` / `id_rsa` 等私钥形态文件禁入包
-  （与 `modules.json` 禁入同款自检）——私钥入包即信任根基烧毁。
+- **入包红线**：`*.pem` / `*.key` / `*.p12` / `*.pfx` / `.env` 系 / `id_ed25519` / `id_rsa`
+  等私钥形态文件禁入包（与 `modules.json` 禁入同款自检，0.2.23 起扩面）——私钥入包即信任根基烧毁。
 
 ### 11.2 两种分发源
 

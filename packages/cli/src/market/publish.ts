@@ -118,9 +118,17 @@ async function buildFixture(args: { fixture?: string, staging: string, cdnDir: s
 	return { name: spec.name, version: spec.version, tgzPath, sha256, preExisted: before.exists };
 }
 
-/** `--real`：走既有 ojm build --bundle，产物搬到 CDN 目录 */
+/** `--real`：走既有 ojm build --bundle，产物搬到 CDN 目录（一次只发一份：多方案工程请显式指定） */
 async function buildRealPackage(solutionRoot: string, staging: string, cdnDir: string): Promise<{ name: string, version: string, tgzPath: string, sha256: string, preExisted: boolean }> {
-	const built = await buildBundle(solutionRoot, { out: staging });
+	const builtList = await buildBundle(solutionRoot, { out: staging });
+	if (builtList.length !== 1) {
+		throw new Error(
+			`[ojm] market publish --real 一次只发布一份方案，但该工程打出了 ${builtList.length} 份用户方案。`
+			+ "请改用显式链路：在方案工程里 `ojm build --bundle <name>`，再 `ojm sign dist/<name>-<version>.tgz --id <publisher>.<key>`，"
+			+ "把 tgz + .sig 放进 cdn/ 后 `ojm market build-index`。",
+		);
+	}
+	const built = builtList[0]!;
 	const tgzPath = path.join(cdnDir, `${built.name}-${built.version}.tgz`);
 	const before = captureExisting(tgzPath);
 

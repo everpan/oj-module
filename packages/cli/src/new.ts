@@ -108,7 +108,7 @@ function put(projectRoot: string, files: string[], p: string, content: string): 
 	files.push(path.relative(projectRoot, p));
 }
 
-function solutionYaml(name: string, withApi: boolean): string {
+function solutionYaml(name: string, withApi: boolean | undefined): string {
 	const api = withApi
 		? [
 			"api:",
