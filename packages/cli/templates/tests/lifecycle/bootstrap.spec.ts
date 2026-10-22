@@ -77,7 +77,11 @@ describe("私钥红线钉测（P2-12：packages/cli 全树零私钥材料）", (
 
 	async function* walk(root: string): AsyncGenerator<string> {
 		for (const name of await fsp.readdir(root)) {
-			if (name === "node_modules" || name === "dist" || name.startsWith(".")) {
+			// 跳过 node_modules / dist / 点目录（依赖与构建产物）；`config` 是 `ojm dev` 缺证时
+			// **现场签发**的开发证书目录（模板 .gitignore 的 `config/*.pem` 已挡住、进不了
+			// tarball）。本测试钉的是「源码树里没有私钥材料」，不是本地运行时产物——不跳
+			// config 会让模板自身跑过一次 dev 就永久变红（连带 `pnpm pack` 也不会带上它们）。
+			if (name === "node_modules" || name === "dist" || name === "config" || name.startsWith(".")) {
 				continue;
 			}
 			const p = join(root, name);
