@@ -6,7 +6,7 @@ import { PROJECT_ROOT } from "../helpers/paths";
 
 /**
  * 设计 §5（D8/D11）：build 的布局感知与职责边界。
- *  - buildModules 产物落 web/dist（2026-09-11 硬切换后只认 web 布局）
+ *  - buildModules 产物落 dist/web（layout.distDir；2026-10-22 自 {web,api}/dist 收编）
  *  - 全站合并（mergeSite）只属 `ojm build`：先清场再拷 shell dist，防旧哈希资产累积
  *  - buildBackend 编排 `bin/oj build`：绝对路径、绝不 migrate（零 DB 副作用）
  */
@@ -76,11 +76,11 @@ describe("readModuleDefinition 元数据读取封闭性（外部工程未装依�
 });
 
 describe("buildModules 布局感知", () => {
-	it("新布局产物落 web/dist", async () => {
+	it("新布局产物落 dist/web", async () => {
 		const root = makeFixture();
 		await buildModules(root);
-		expect(fs.existsSync(path.join(root, "web/dist/modules.json"))).toBe(true);
-		expect(fs.existsSync(path.join(root, "web/dist/modules/fx/0.1.0/entry.js"))).toBe(true);
+		expect(fs.existsSync(path.join(root, "dist/web/modules.json"))).toBe(true);
+		expect(fs.existsSync(path.join(root, "dist/web/modules/fx/0.1.0/entry.js"))).toBe(true);
 	});
 
 	it("存量 modules/ 工程 → 人话报错提示迁移", async () => {
@@ -92,7 +92,7 @@ describe("buildModules 布局感知", () => {
 
 	it("mergeSite：先清场再拷 shell dist，旧哈希资产不残留", async () => {
 		const root = makeFixture();
-		const distDir = path.join(root, "web/dist");
+		const distDir = path.join(root, "dist/web");
 		fs.mkdirSync(distDir, { recursive: true });
 		fs.writeFileSync(path.join(distDir, "stale-old-hash.js"), "stale");
 
@@ -126,7 +126,7 @@ describe("buildBackend（oj build 编排，D8）", () => {
 		expect(path.isAbsolute(dirFlag)).toBe(true);
 		expect(path.isAbsolute(outFlag)).toBe(true);
 		expect(dirFlag).toBe(path.join(root, "api/src"));
-		expect(outFlag).toBe(path.join(root, "api/dist"));
+		expect(outFlag).toBe(path.join(root, "dist/api"));
 		// 产物一律不 minify：oj 的 swc minify 会压坏产物（await X[0] 优先级 / && 后赋值）
 		expect(args).toContain("--no-minify");
 	});

@@ -43,16 +43,16 @@ describe("resolveLayout / module-root", () => {
 
 		expect(layout.kind).toBe("module-root");
 		expect(layout.modulesSrc).toBe(join(root, "src"));
-		expect(layout.distDir).toBe(join(root, "web", "dist"));
-		expect(layout.apiDist).toBe(join(root, "api", "dist"));
+		expect(layout.distDir).toBe(join(root, "dist", "web"));
+		expect(layout.apiDist).toBe(join(root, "dist", "api"));
 		expect(layout.watchTarget).toBe(join(root, "src"));
 		// --module-root 取「源码树根目录」（oj 在其子树内递归找 manifest.yaml）
 		expect(layout.moduleRoot).toBe(join(root, "src"));
 	});
 
-	it("web/dist 存在不会被误判成 flat 布局", () => {
+	it("dist/web 存在不会被误判成 flat 布局（历史产物目录不算源码）", () => {
 		const root = newModuleRootProject();
-		mkdirSync(join(root, "web", "dist", "modules", "wiki", "0.1.0"), { recursive: true });
+		mkdirSync(join(root, "dist", "web", "modules", "wiki", "0.1.0"), { recursive: true });
 		expect(resolveLayout(root).kind).toBe("module-root");
 	});
 
@@ -102,11 +102,13 @@ describe("resolveLayout / 历史布局", () => {
 		expect(layout.kind).toBe("new");
 		expect(layout.modulesSrc).toBe(join(root, "web", "src"));
 		expect(layout.moduleRoot).toBeUndefined();
+		expect(layout.distDir).toBe(join(root, "dist", "web"));
+		expect(layout.apiDist).toBe(join(root, "dist", "api"));
 		expect(apiSrcOf(layout, "wiki")).toBe(join(root, "api", "src", "wiki"));
 		expect(webSrcOf(layout, "wiki")).toBe(join(root, "web", "src", "wiki"));
 	});
 
-	it("web/<name>/entry.ts 识别为 flat，产物落 build/", () => {
+	it("web/<name>/entry.ts 识别为 flat，web 产物落 build/（框架根仓约定不变），api 产物归 dist/api", () => {
 		const root = newRoot();
 		writeFile(root, "web/home/entry.ts", "export default {};\n");
 		writeFile(root, "web/home/__client/api.ts", "export {};\n");
@@ -115,6 +117,7 @@ describe("resolveLayout / 历史布局", () => {
 		expect(layout.kind).toBe("flat");
 		expect(layout.modulesSrc).toBe(join(root, "web"));
 		expect(layout.distDir).toBe(join(root, "build"));
+		expect(layout.apiDist).toBe(join(root, "dist", "api"));
 		expect(webSrcOf(layout, "home")).toBe(join(root, "web", "home"));
 	});
 

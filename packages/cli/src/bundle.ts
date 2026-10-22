@@ -23,8 +23,8 @@
 //   <project>/solution.yaml | manifest.yaml          → 工程根契约（旧单方案写法）
 //   <project>/src/<模块>/solution.yaml | manifest.yaml → 模块级契约（绝不进 <模块>/api/，§1.2 红线）
 //   任一处均 → <name>-<version>/manifest.yaml（Form A；tgz 内名固定为 manifest.yaml）
-//   <project>/api/dist/<name>-<version>/        → <name>-<version>/api/<name>-<version>/（oj build 产物原样，C2-31 分层核对）
-//   <project>/web/dist/modules/<name>/          → <name>-<version>/web/modules/<name>/（只入包方案自己的模块；
+//   <project>/dist/api/<name>-<version>/        → <name>-<version>/api/<name>-<version>/（oj build 产物原样，C2-31 分层核对）
+//   <project>/dist/web/modules/<name>/          → <name>-<version>/web/modules/<name>/（只入包方案自己的模块；
 //                                                 web.entry/css 存在性复核）
 // 红线：modules.json 禁入包（C2-31——该清单由安装器在目标站点 upsert，防覆盖宿主清单）；
 // 文件面契约（tables↔schema.yaml、locales 双语齐备）构建期 fail-fast（契约 §4.1 构建列）。
@@ -257,8 +257,8 @@ async function planBundle(projectRoot: string, layout: ProjectLayout, target: Bu
 
 /**
  * 组装段（写盘）：staging 单根 <name>-<version>/ → 红线自检 → 确定性 tgz + sha256。
- * 入包内容与 §11.1 一致：只组装本方案的模块产物（api/dist/<name>-<version>/ 与
- * web/dist/modules/<name>/），模板/宿主模块不随包。
+ * 入包内容与 §11.1 一致：只组装本方案的模块产物（layout.apiDist/<name>-<version>/ 与
+ * layout.distDir/modules/<name>/），模板/宿主模块不随包。
  */
 async function assembleBundle(projectRoot: string, layout: ProjectLayout, plan: BundlePlan, outDir: string): Promise<BundleBuildResult> {
 	const m = plan.manifest;
@@ -274,7 +274,7 @@ async function assembleBundle(projectRoot: string, layout: ProjectLayout, plan: 
 
 		// api：oj build 产物原样入包（编译编排不在此重跑——作者先 oj build，本命令只校验与组装）
 		if (m.api !== undefined) {
-			const built = path.join(projectRoot, "api/dist", `${name}-${version}`);
+			const built = path.join(layout.apiDist, `${name}-${version}`);
 			if (!fs.existsSync(built)) {
 				throw new Error(`[ojm] 方案包构建失败：缺少 oj build 产物 ${path.relative(projectRoot, built)}（manifest 声明了 api 段；先对 api/ 运行 oj build，产物原样入包）`);
 			}
@@ -286,18 +286,18 @@ async function assembleBundle(projectRoot: string, layout: ProjectLayout, plan: 
 		}
 
 		// web：只入包方案自己的模块产物（web 段缺省 = 纯后端方案，整段跳过）。
-		// 为何不是整树：web/dist/modules 里除本方案模块外还有脚手架模板模块（home/login/
+		// 为何不是整树：dist/web/modules 里除本方案模块外还有脚手架模板模块（home/login/
 		// personal-center/notification/system/oj-market…），而安装器 deployWeb 会把包内
 		// web/modules 整树覆盖进目标站 <dist>/modules——整树入包等于用开发机上的模板产物
 		// 覆盖目标站同名前端。方案包只该带自己那一份，模板模块属宿主面，不由方案分发。
 		if (m.web !== undefined) {
-			const webModules = path.join(projectRoot, "web/dist/modules");
+			const webModules = path.join(layout.distDir, "modules");
 			if (!fs.existsSync(webModules)) {
-				throw new Error("[ojm] 方案包构建失败：缺少站点构建产物 web/dist/modules（manifest 声明了 web 段；先运行 ojm build 生成模块产物）");
+				throw new Error(`[ojm] 方案包构建失败：缺少站点构建产物 ${path.relative(projectRoot, webModules)}（manifest 声明了 web 段；先运行 ojm build 生成模块产物）`);
 			}
 			const ownWeb = path.join(webModules, name);
 			if (!fs.existsSync(ownWeb)) {
-				throw new Error(`[ojm] 方案包构建失败：缺少本方案的站点产物 web/dist/modules/${name}/（方案包只入包方案自己的模块；请确认 web.config.ts 已登记 ${name} 且本次 ojm build 已产出）`);
+				throw new Error(`[ojm] 方案包构建失败：缺少本方案的站点产物 ${path.relative(projectRoot, ownWeb)}/（方案包只入包方案自己的模块；请确认 web.config.ts 已登记 ${name} 且本次 ojm build 已产出）`);
 			}
 			fs.mkdirSync(path.join(root, "web", "modules"), { recursive: true });
 			fs.cpSync(ownWeb, path.join(root, "web", "modules", name), { recursive: true });

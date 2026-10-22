@@ -522,7 +522,7 @@ export async function buildBackend(projectRoot: string): Promise<boolean> {
 	if (syncedPaths === "created" || syncedPaths === "updated")
 		console.log(`[ojm] 已${syncedPaths === "created" ? "生成" : "更新"} ${ALIAS_PATHS_FILE}（\`#/<模块名>/…\` 的 TS paths 投影）`);
 
-	const apiDist = layout?.apiDist ?? path.join(projectRoot, "api", "dist");
+	const apiDist = layout?.apiDist ?? path.join(projectRoot, "dist", "api");
 	console.log("[ojm] oj build（后端）…");
 	// 必须显式给 -c：oj build 的 -c 缺省是 ./config.yaml（相对 CWD），而 config 在
 	// <project>/config/ 下——漏传会静默读不到配置，连带 tasks 镜像目录回落默认 "tasks"、
@@ -546,8 +546,8 @@ export async function buildBackend(projectRoot: string): Promise<boolean> {
 		apiDist,
 		"--no-minify",
 	], { stdio: "inherit" });
-	// 宿主 versions.json 双落点：站点壳从 shell-dist 拷进 web/dist（mergeShellSite），
-	// 而方案安装器读的是 `<api>/dist/versions.json`（B-11：与 manifests.yaml 同层，用于
+	// 宿主 versions.json 双落点：站点壳从 shell-dist 拷进 dist/web（mergeShellSite），
+	// 而方案安装器读的是 `dist/api/versions.json`（B-11：与 manifests.yaml 同层，用于
 	// peerRuntime 强制比对）。两处必须同源，否则新工程 `ojm build` 完仍装不上方案——
 	// preflight 直接 C2-09 fail-closed「无法读取宿主 runtime 版本」。
 	const versionsSrc = path.join(resolveShellDist(), "versions.json");
@@ -585,7 +585,7 @@ function mergeShellSite(distDir: string, siteBase: string): void {
 /**
  * 构建模块工程。
  *
- * 产出（web 布局：web/dist）：
+ * 产出（layout.distDir：module-root / new → dist/web；flat → build）：
  *   <dist>/modules/<name>/<version>/{entry.js, chunk-*.js, *.css}
  *   <dist>/modules.json
  *

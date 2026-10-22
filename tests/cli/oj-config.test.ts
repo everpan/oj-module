@@ -62,7 +62,7 @@ describe("readOjApiPrefix", () => {
 	});
 
 	it("mounts 无 api 条目 → 回落 /api", () => {
-		const file = writeConfig("mounts:\n  - prefix: \"/\"\n    web: ../web/dist\n    spa: true\n");
+		const file = writeConfig("mounts:\n  - prefix: \"/\"\n    web: ../dist/web\n    spa: true\n");
 		expect(readOjApiPrefix(file)).toBe("/api");
 	});
 

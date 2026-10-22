@@ -148,8 +148,8 @@ const upload = {
 };
 export default { upload };
 `);
-		mkdirSync(join(cwd, "api/dist/order-0.1.0"), { recursive: true });
-		writeFileSync(join(cwd, "api/dist/order-0.1.0/routes.js"), `// 由 oj build 生成；勿手改。
+		mkdirSync(join(cwd, "dist/api/order-0.1.0"), { recursive: true });
+		writeFileSync(join(cwd, "dist/api/order-0.1.0/routes.js"), `// 由 oj build 生成；勿手改。
 export default [
   { method: "post", pattern: "order/item/upload", file: "item/api.js" },
   { method: "options", pattern: "order/item/upload", file: "item/api.js" },

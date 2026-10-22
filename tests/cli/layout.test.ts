@@ -6,12 +6,13 @@ import { resolveLayout, resolveWatchTarget } from "../../packages/cli/src/layout
 
 /**
  * D11：布局探测收敛单一模块。2026-09-11 硬切换后只认
- * `web/src` + `web/dist`（uni-dev），旧 `modules/` 布局不再探测。
+ * `web/src`（uni-dev），旧 `modules/` 布局不再探测；2026-10-22 起产物收进
+ * 工程根 `dist/`（dist/web + dist/api），不再散落 {web,api}/dist。
  * 关键约束：watch 目标绝不能含产物目录——watch `web/` 会把自身
  * 重建产物当源码变更，造成自触发重建循环（设计 §4 / 审阅记录一）。
  */
 describe("resolveLayout", () => {
-	it("web/src 存在 → 产物 web/dist，watch web/src", () => {
+	it("web/src 存在 → 产物 dist/web + dist/api，watch web/src", () => {
 		const root = fs.mkdtempSync(path.join(os.tmpdir(), "lay-new-"));
 		fs.mkdirSync(path.join(root, "web/src"), { recursive: true });
 
@@ -19,7 +20,8 @@ describe("resolveLayout", () => {
 
 		expect(layout.kind).toBe("new");
 		expect(layout.modulesSrc).toBe(path.join(root, "web/src"));
-		expect(layout.distDir).toBe(path.join(root, "web/dist"));
+		expect(layout.distDir).toBe(path.join(root, "dist/web"));
+		expect(layout.apiDist).toBe(path.join(root, "dist/api"));
 		expect(layout.watchTarget).toBe(path.join(root, "web/src"));
 	});
 
@@ -44,9 +46,9 @@ describe("resolveLayout", () => {
 		expect(layout.watchTarget).toBe(path.join(root, "web"));
 	});
 
-	it("只有 web/dist（module-root 布局的站点产物）时不会被误判成 flat", () => {
+	it("只有 dist/web（module-root 布局的站点产物）时不会被误判成 flat", () => {
 		const root = fs.mkdtempSync(path.join(os.tmpdir(), "lay-webdist-"));
-		fs.mkdirSync(path.join(root, "web/dist/modules/home/0.1.0"), { recursive: true });
+		fs.mkdirSync(path.join(root, "dist/web/modules/home/0.1.0"), { recursive: true });
 		fs.mkdirSync(path.join(root, "src/home/web"), { recursive: true });
 		fs.writeFileSync(path.join(root, "src/home/web/entry.ts"), "export default {};\n");
 

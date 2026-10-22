@@ -3,7 +3,7 @@
  *
  * 单服务 preview 由 oj 一个进程同时出 API 与静态（web 挂载 + spa: true），
  * 而 spa 只能来自 config 文件（CLI --app-path 的 upsert 保留但不设置
- * spa——实测 oj 0.1.80）。用户在模板里手改 config 不可取（web/dist 缺失时
+ * spa——实测 oj 0.1.80）。用户在模板里手改 config 不可取（dist/web 缺失时
  * oj serve 整体拒启，会连带挂掉 ojm dev），故 preview 现场生成一份
  * 派生 config：
  *
@@ -37,7 +37,7 @@ export interface DerivePreviewConfigOptions {
 	 */
 	prefix?: string
 	/**
-	 * release 形态的后端模块根（api/dist）。给了且原 config 声明了 platform.modules 时，
+	 * release 形态的后端模块根（layout.apiDist = dist/api）。给了且原 config 声明了 platform.modules 时，
 	 * 把 `platform.root` 一并改写到该目录——特权模块的受控根必须与 `--api-path` 同源，
 	 * 否则 release 下 reloadConfig 会按 dev 的 src 判定归属（装好的方案热更不生效）。
 	 */

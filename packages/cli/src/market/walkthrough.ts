@@ -19,6 +19,7 @@ import fs from "node:fs";
 
 import path from "node:path";
 import process from "node:process";
+import { resolveLayout } from "../layout";
 import { signCommand } from "../sign";
 import { callApi, login, pollTask, unwrapEnvelope } from "../site";
 import { bootstrapIsolatedSite, derivePublisherKey } from "./bootstrap";
@@ -154,7 +155,7 @@ const OPS: Op[] = [
 			if (task.status !== "done")
 				return { ok: false, detail: `升级安装未 done：status=${task.status} stage=${task.stage ?? "?"}：${task.message}` };
 			const card = await indexCard(ctx);
-			const distDir = path.join(ctx.site.root, "api", "dist");
+			const distDir = resolveLayout(ctx.site.root).apiDist;
 			const dir010 = path.join(distDir, `${ctx.name}-0.1.0`);
 			const dir020 = path.join(distDir, `${ctx.name}-0.2.0`);
 			const mig010 = path.join(dir010, "migrations", "0001__init.sql");
@@ -185,7 +186,7 @@ const OPS: Op[] = [
 					return { ok: false, detail: `前置安装 0.2.0 未 done：status=${pre.status}：${pre.message}` };
 				card = await indexCard(ctx);
 			}
-			const distDir = path.join(ctx.site.root, "api", "dist");
+			const distDir = resolveLayout(ctx.site.root).apiDist;
 			const before = fs.readdirSync(distDir).sort(); // 零副作用基线：0.1.0 目录是前序合法安装的产物，不代表本次落盘
 			const task = await installOnce(ctx, "0.1.0"); // 包内最大 seq 1 < head 2
 			const blocked = task.status === "failed" && task.stage === "migrating";
@@ -340,7 +341,7 @@ const OPS: Op[] = [
 		run: async (ctx) => {
 			const evil = path.join(ctx.site.cdnDir, `${ctx.name}-evil.tgz`);
 			buildEvilZipSlipTgz(evil); // 成员含 ../evil.sql，无需发布进索引（file 源直传）
-			const distDir = path.join(ctx.site.root, "api", "dist");
+			const distDir = resolveLayout(ctx.site.root).apiDist;
 			const before = fs.readdirSync(distDir).sort(); // 零副作用基线：9.9.9 目录可能是前序 neg-stranger 的合法产物
 			try {
 				let msg = "";

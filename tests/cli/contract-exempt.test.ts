@@ -77,8 +77,8 @@ export default {
 		const cwd = makeProject();
 		await runApi({ cwd });
 		writeExempt(cwd, { paths: ["/auth/*"] });
-		mkdirSync(join(cwd, "api/dist/order-0.1.0"), { recursive: true });
-		writeFileSync(join(cwd, "api/dist/order-0.1.0/routes.js"), `// 由 oj build 生成；勿手改。
+		mkdirSync(join(cwd, "dist/api/order-0.1.0"), { recursive: true });
+		writeFileSync(join(cwd, "dist/api/order-0.1.0/routes.js"), `// 由 oj build 生成；勿手改。
 export default [
   { method: "get", pattern: "order/list", file: "list/api.js" },
   { method: "post", pattern: "auth/login", file: "auth/login/api.js" },
@@ -93,8 +93,8 @@ export default [
 		const cwd = makeProject();
 		await runApi({ cwd });
 		writeExempt(cwd, { paths: ["/auth/*"] });
-		mkdirSync(join(cwd, "api/dist/order-0.1.0"), { recursive: true });
-		writeFileSync(join(cwd, "api/dist/order-0.1.0/routes.js"), `// 由 oj build 生成；勿手改。
+		mkdirSync(join(cwd, "dist/api/order-0.1.0"), { recursive: true });
+		writeFileSync(join(cwd, "dist/api/order-0.1.0/routes.js"), `// 由 oj build 生成；勿手改。
 export default [
   { method: "get", pattern: "auth/x/y", file: "auth/x/y/api.js" },
 ];

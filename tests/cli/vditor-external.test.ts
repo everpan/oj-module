@@ -70,7 +70,7 @@ describe("vditor 共享化后模块产物 external（0.1.16）", () => {
 		const root = makeFixture();
 		await buildModules(root);
 
-		const entry = fs.readFileSync(path.join(root, "web/dist/modules/vdfx/0.1.0/entry.js"), "utf-8");
+		const entry = fs.readFileSync(path.join(root, "dist/web/modules/vdfx/0.1.0/entry.js"), "utf-8");
 		// external：裸说明符原样保留（宿主 importmap 解析）
 		expect(entry).toMatch(/from\s*["']vditor["']/);
 		expect(entry).toMatch(/import\s*["']vditor\/dist\/index\.css["']/);

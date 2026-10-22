@@ -50,7 +50,7 @@ export interface IsolatedPublisher {
 }
 
 export interface IsolatedSite {
-	/** 临时根（含 config.yaml / src/ / api/dist/ / bin/ / cdn/） */
+	/** 临时根（含 config.yaml / src/ / dist/api/ / bin/ / cdn/） */
 	root: string
 	port: number
 	baseUrl: string
@@ -96,7 +96,7 @@ export async function bootstrapIsolatedSite(opts: BootstrapOptions = {}): Promis
 
 	const root = mkdtempSync(path.join(tmpdir(), "ojm-trial-"));
 	// 新布局（`src/<name>/{api,web}`）：config.yaml 在隔离根，源码树根为 <root>/src，
-	// 构建产物仍是扁平根 <root>/api/dist（与真实工程同形）。
+	// 构建产物仍是扁平根 <root>/dist/api（与真实工程同形）。
 	const srcDir = path.join(root, "src");
 	const configPath = path.join(root, "config.yaml");
 	const cdnDir = path.join(root, "cdn");
@@ -143,9 +143,9 @@ export async function bootstrapIsolatedSite(opts: BootstrapOptions = {}): Promis
 	mkdirSync(siteDir, { recursive: true });
 	writeFileSync(path.join(siteDir, "index.html"), "<!doctype html><html><body>ojm trial site</body></html>\n", "utf-8");
 	cfg = cfg.replace("web: ./cdn", `web: ${cdnDir}\n  - prefix: /\n    web: ${siteDir}\n    spa: true`);
-	// 安装目标恒为 release 部署：装好的模块落在 api/dist，dev 形态（--api-path src）发现不了。
+	// 安装目标恒为 release 部署：装好的模块落在 dist/api，dev 形态（--api-path src）发现不了。
 	// 故隔离站点以 dist 起站，platform.root 同步改写（oj 校验 root 必须是生效的 api 挂载目录）。
-	// root 相对 **config 所在目录** 解析——config 在隔离根，产物在 <root>/api/dist，故不能写死
+	// root 相对 **config 所在目录** 解析——config 在隔离根，产物在 <root>/dist/api，故不能写死
 	// `dist`（那是 config 还在 api/ 时的旧口径），按布局取值。
 	const apiDistRel = path.relative(root, resolveLayout(root).apiDist).split(path.sep).join("/");
 	cfg = cfg.replace("  root: src", `  root: ${apiDistRel}`);
@@ -172,7 +172,7 @@ export async function bootstrapIsolatedSite(opts: BootstrapOptions = {}): Promis
 	await publishPackage({ projectRoot: root, fixture: opts.fixture, id: keyId, privateKeyPem: publisher.privateKeyPem });
 	await buildIndex({ projectRoot: root, id: keyId, privateKeyPem: publisher.privateKeyPem });
 
-	// 7) 后端构建（api/dist + versions.json；安装与 reloading 都依赖它）
+	// 7) 后端构建（dist/api + versions.json；安装与 reloading 都依赖它）
 	await buildBackend(root);
 
 	// 7b) 起 oj（starter 注入供测试）；ready 失败即整体作废，不留孤儿
@@ -258,7 +258,7 @@ function teardownReport(root: string, port: number): string[] {
 		`隔离根：${root}`,
 		"  config.yaml + config/ 证书 + db.sqlite   站点配置面",
 		"  src/    后端模块源码树（src/<name>/api，拷自 cli 内置模板）",
-		"  api/dist/  构建产物（安装目标）",
+		"  dist/api/  构建产物（安装目标）",
 		"  bin/    oj 二进制与插件（拷贝自源工程）",
 		"  cdn/    隔离 CDN（fixture 包 + 两份索引 + 签名）",
 		`监听端口：127.0.0.1:${port}（进程已停）`,

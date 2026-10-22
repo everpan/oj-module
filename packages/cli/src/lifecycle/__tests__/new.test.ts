@@ -29,7 +29,7 @@ function makeModuleRootProject(builtin = true): void {
 
 /** 给已生成的方案补站点产物，模拟「ojm build 之后」的打包前置 */
 function addWebArtifacts(name: string, version = "0.1.0"): void {
-	const webDist = join(project, "web/dist/modules", name, version);
+	const webDist = join(project, "dist/web/modules", name, version);
 	mkdirSync(webDist, { recursive: true });
 	writeFileSync(join(webDist, "entry.js"), "export default {};\n");
 }

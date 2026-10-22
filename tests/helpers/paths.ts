@@ -26,5 +26,5 @@ export const MANIFEST_PATH = path.join(PROJECT_ROOT, "manifest.json");
 /** 模拟外部工程（playground）目录 */
 export const PLAYGROUND_DIR = path.join(PROJECT_ROOT, "apps/playground");
 
-/** playground 构建产物目录（D11 新布局：web/dist） */
-export const PLAYGROUND_DIST_DIR = path.join(PLAYGROUND_DIR, "web", "dist");
+/** playground 构建产物目录（D11 布局：dist/web） */
+export const PLAYGROUND_DIST_DIR = path.join(PLAYGROUND_DIR, "dist", "web");

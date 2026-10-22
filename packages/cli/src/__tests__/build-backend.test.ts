@@ -1,7 +1,7 @@
 // buildBackend spec：宿主 versions.json 双落点（方案安装的 C2-09 前置）。
 //
-// 安装器按 B-11 布局读 `<api>/dist/versions.json`（与 manifests.yaml 同层）做 peerRuntime
-// 强制比对；而站点壳的 versions.json 落在 web/dist。两者不同源时，新工程 `ojm build`
+// 安装器按 B-11 布局读 `dist/api/versions.json`（与 manifests.yaml 同层）做 peerRuntime
+// 强制比对；而站点壳的 versions.json 落在 dist/web。两者不同源时，新工程 `ojm build`
 // 完仍会在 preflight 被 C2-09 拒装——这条用例钉住「同源双写」，防止回归。
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -27,19 +27,19 @@ function newProject(): string {
 	writeFileSync(join(root, "api", "src", "demo", "manifest.yaml"), "name: demo\nversion: 0.1.0\n", "utf-8");
 	writeFileSync(join(root, "api", "config.yaml"), "server:\n  port: 9778\n", "utf-8");
 	// 模拟 oj build 已产出的 manifests.yaml（验证收尾动作不破坏既有产物）
-	mkdirSync(join(root, "api", "dist"), { recursive: true });
-	writeFileSync(join(root, "api", "dist", "manifests.yaml"), "demo: 0.1.0\n", "utf-8");
+	mkdirSync(join(root, "dist", "api"), { recursive: true });
+	writeFileSync(join(root, "dist", "api", "manifests.yaml"), "demo: 0.1.0\n", "utf-8");
 	fakeOj(root);
 	return root;
 }
 
 describe("given 宿主工程有 api/src When ojm build 后端", () => {
-	it("then api/dist/versions.json 与 shell-dist 同源落地（安装器 C2-09 前置）", async () => {
+	it("then dist/api/versions.json 与 shell-dist 同源落地（安装器 C2-09 前置）", async () => {
 		const root = newProject();
 
 		await buildBackend(root);
 
-		const hostVersions = join(root, "api", "dist", "versions.json");
+		const hostVersions = join(root, "dist", "api", "versions.json");
 		expect(existsSync(hostVersions)).toBe(true);
 		const parsed = JSON.parse(readFileSync(hostVersions, "utf-8")) as Record<string, string>;
 		expect(typeof parsed["@oj-module/runtime"]).toBe("string");
@@ -50,16 +50,16 @@ describe("given 宿主工程有 api/src When ojm build 后端", () => {
 
 		await buildBackend(root);
 
-		expect(readFileSync(join(root, "api", "dist", "manifests.yaml"), "utf-8")).toBe("demo: 0.1.0\n");
+		expect(readFileSync(join(root, "dist", "api", "manifests.yaml"), "utf-8")).toBe("demo: 0.1.0\n");
 	});
 });
 
 describe("given 纯前端工程（无 api/src）When ojm build 后端", () => {
-	it("then 跳过构建、不产出 api/dist", async () => {
+	it("then 跳过构建、不产出 dist/api", async () => {
 		const root = mkdtempSync(join(tmpdir(), "ojm-build-backend-fe-"));
 
 		expect(await buildBackend(root)).toBe(false);
-		expect(existsSync(join(root, "api", "dist"))).toBe(false);
+		expect(existsSync(join(root, "dist", "api"))).toBe(false);
 	});
 });
 
@@ -93,7 +93,7 @@ function newModuleRootProject(): string {
 }
 
 describe("given module-root 布局 When ojm build 后端", () => {
-	it("then 一次调用、单一输出根：--module-root src + -o api/dist（与 -d 互斥）", async () => {
+	it("then 一次调用、单一输出根：--module-root src + -o dist/api（与 -d 互斥）", async () => {
 		const root = newModuleRootProject();
 		fakeOjRecording(root, true);
 
@@ -102,9 +102,9 @@ describe("given module-root 布局 When ojm build 后端", () => {
 		// 逐模块 `-o <tmp>` 会让每个 tmp 各写一份 manifests.yaml，锁与兄弟目录关系全丢
 		const invoked = readFileSync(join(root, "bin", "invoked"), "utf-8").trim();
 		expect(invoked).toBe(
-			`build -c ${join(root, "config.yaml")} --module-root ${join(root, "src")} -o ${join(root, "api", "dist")} --no-minify`,
+			`build -c ${join(root, "config.yaml")} --module-root ${join(root, "src")} -o ${join(root, "dist", "api")} --no-minify`,
 		);
-		expect(existsSync(join(root, "api", "dist", "versions.json"))).toBe(true);
+		expect(existsSync(join(root, "dist", "api", "versions.json"))).toBe(true);
 	});
 
 	it("then oj 缺 --module-root 能力时 fail-fast，不落任何产物", async () => {
@@ -113,6 +113,6 @@ describe("given module-root 布局 When ojm build 后端", () => {
 
 		await expect(buildBackend(root)).rejects.toThrow(/不支持 --module-root/);
 		expect(existsSync(join(root, "bin", "invoked"))).toBe(false); // 没跑 oj build
-		expect(existsSync(join(root, "api", "dist"))).toBe(false);
+		expect(existsSync(join(root, "dist", "api"))).toBe(false);
 	});
 });

@@ -8,7 +8,7 @@
 #  2. 模板自运行专属文件——templates 本身也是一个可 `pnpm dev` 的工程，
 #     它的 package.json / node_modules / bin / lock 绝不能泄漏进用户工程；
 #     package.json 由 init 现场生成（钉死真实版本，不带 workspace:/catalog:）。
-#  3. 构建与运行期产物——api/dist、web/dist、logs、签发的私钥与 sqlite；
+#  3. 构建与运行期产物——dist/api、dist/web、logs、签发的私钥与 sqlite；
 #     模板跑过 build/dev 后会留在本地，既不进用户工程，更不该让所有工程
 #     共享同一把私钥。
 #  4. 模板自用元数据——本清单自身。

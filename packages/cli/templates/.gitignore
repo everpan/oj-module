@@ -2,7 +2,7 @@ node_modules/
 bin/
 .ojm-tmp-*
 # 本目录同时是可运行工程（pnpm dev/build），产物一律不签入、也不进发布包；
-# 未忽略会让 `pnpm pack` 把 web/dist 的 sourcemap 打进 tarball（发布清单测试钉面）
+# 未忽略会让 `pnpm pack` 把 dist/web 的 sourcemap 打进 tarball（发布清单测试钉面）
 # 布局：config.yaml 在工程根（`src/<name>/{api,web}`），故 db/日志/证书都相对工程根
 db.sqlite
 db.sqlite-shm
@@ -11,9 +11,8 @@ logs/
 # 现场签发的开发证书（ojm dev 缺证时自动签发，见 oj-cert.ts）；私钥绝不入仓
 config/*.pem
 config/cert.jws
-api/dist/
-web/dist/
-modules/dist/
+# ojm build 产物：站点 dist/web + 后端 release dist/api
+dist/
 # 本地模拟 CDN 的产物一律不签入、不进发布包；cdn/README.md 是唯一例外（随模板发布）
 cdn/*.tgz
 cdn/*.sig
