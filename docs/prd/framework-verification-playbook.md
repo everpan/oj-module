@@ -4,7 +4,19 @@
 > **配套**：[`framework-development-guide.md`](./framework-development-guide.md)（原理）、[`oj-fullstack-tutorial.md`](./oj-fullstack-tutorial.md)（跟做）。
 > **原则**：每一步都有**可判定通过/失败的检查点**，不要只看命令退出码，要核对产物。
 
-### 最近一次基线（2026-10-21 第二次，oj 0.1.84 / cli+runtime 0.2.13 工作区态；walkthrough 负向防线 + pitfall 10 修复）
+### 最近一次基线（2026-10-22，oj 0.1.85 / cli+runtime 0.2.23 打包态；新增 §7.5 新命令特性演练并首跑）
+
+| 项 | 值 |
+| --- | --- |
+| 日期 | 2026-10-22 |
+| 框架包版本 | `cli`/`runtime` `0.2.23`（**打包态**：§0.5 双包 pack → cli-pkg 解包直跑；runtime 经 `file:` tgz 装进 devDependencies） |
+| oj | `0.1.85`（本机预置旁路：npm `@oj-bin/oj` latest 停在 0.1.84，低于 `MIN_OJ_VERSION` 0.1.85 门禁，按 §0 旁路 1 预置 `bin/`） |
+| 验证动机 | 0.2.23 多方案特性首发（`ojm new` / `build --bundle` 复数化 / `.ojm-builtin.json` 排除 / `info` 折叠）：手册新增 **§7.5 新命令特性演练环节**并首跑验收 |
+| 结果 | **§7.5 A–F 全过**：A scripts 七键（含 `new`/`bundle`/`typecheck:api`）+ `.ojm-builtin.json` 10 模块名单（含 web-only 的 demo/home/login/oj-market）；B `info` 默认折叠「框架自带：7 个」、`--all` 平铺 7 个 web 模块；C `ojm new crm --layout container` + `erp --layout none --api` 双骨架（erp 含 api manifest/handler + 契约 api 段）、五类拒绝（重名/大写/保留名 auth/内置名 home/无 name exit=1）各命中文案且零写入、生成即被扫描收录（info 用户区可见）；D `ojm build --bundle` 无参出 crm+erp 两份 + 「共打包 2 份」、自带零出包、`--bundle crm` 与 `--bundle=crm` 单份、重复打包 sha256 逐字节一致（c63454e…/865beb61…）、tgz 内固定 `manifest.yaml` 命名且零私钥形态文件；E 塞 `src/system/solution.yaml` 后无参跳过有逐条日志 + `--bundle system` 明确拒绝、坏契约（name≠目录名）fail-fast 指名 bad 且 dist 份数零增量（两段式）、移走全部用户契约报错指路 `ojm new` 且恢复后重跑复原；F `market publish --real .` 对多方案工程拒绝并指路显式链路 |
+| 本次发现并处置 | ① **npm 通道双重滞后**：`@oj-bin/oj` latest 0.1.84 < 门禁 0.1.85（§0 旁路 1 预置本机 0.1.85）；`@oj-module/*` latest 0.2.20 < 0.2.23（strip 两 devDeps + runtime `file:` tgz；cli-pkg 自身依赖同样 sed 为 `file:../oj-module-runtime-0.2.23.tgz`，同 2026-10-20 基线发现 ③）。② **`ojm new auth` 命中保留名而非内置名**（守卫顺序：保留名先于内置名单触发）——§7.5 已改用 `home` 演示内置名拒绝路径。③ **init 产物已是 module-root 布局**（`src/<name>/{api,web}`，0.2.20 起）：本手册 §1/§4/§5 检查点仍描述旧 `api/src`+`web/src`+`web.config.ts allModules` 登记流程——**登记为待重写项**，本轮未动（§7.5 全部步骤已按 module-root 口径编写）。④ `pnpm install --offline` 650ms（store 预热）。 |
+| 与上一基线差异 | 上一基线（0.2.13）后 0.2.14–0.2.23 主要增量 = module-root 布局（0.2.20）+ 契约优先级 solution.yaml（0.2.21）+ 多方案工作流（0.2.23）+ dev 底栏（0.2.22）；本轮演练范围 = 新命令特性（§7.5），旧 §1–§7.4 链路未复跑（module-root 改写后需整轮重排，见发现 ③） |
+
+### 上一次基线（2026-10-21 第二次，oj 0.1.84 / cli+runtime 0.2.13 工作区态；walkthrough 负向防线 + pitfall 10 修复）
 
 | 项 | 值 |
 | --- | --- |
@@ -507,6 +519,107 @@ node "$CLI_PKG/bin/ojm.mjs" market walkthrough --only neg-evil    # 单跑某项
 - [ ] 报告落盘且过黑名单脱敏：`grep -E "Bearer |BEGIN .*PRIVATE" logs/walkthrough-*.md` 恒空
       （token / PEM 不得出现在报告里；指纹、sha256、key_id 属白名单，原样保留）
 
+## 7.5 新命令特性演练（0.2.23 多方案：`ojm new` / 多方案打包 / `info` 折叠）
+
+> 与 §7.1 的区别：§7.1 在**独立方案工程**里手写契约打包；本节演练 0.2.23 起脚手架内建的
+> **多用户方案工作流**——`ojm new` 生成骨架、`.ojm-builtin.json` 排除自带方案、
+> `ojm build --bundle` 复数化打包、`ojm info` 折叠自带模块。全程在 §1–§2 的 my-books 工程内进行。
+
+前置：§1–§2 完成（依赖已装、`bin/oj` 就位、工程可 `ojm build`）。
+
+**A. 脚手架 scripts 与自带名单**
+
+```bash
+node -e "console.log(Object.keys(require('./package.json').scripts).join(' '))"
+cat src/.ojm-builtin.json        # 名单 + 「//」注释键；由 ojm init 从模板白名单派生
+```
+
+- [ ] scripts 含 `new`（= `ojm new`）与 `bundle`（= `ojm build --bundle`）与 `typecheck:api`
+- [ ] `src/.ojm-builtin.json` 存在，`modules` 含 `_platform/auth/system/notification/personal-center/web`
+
+**B. `ojm info` 自带折叠**
+
+```bash
+node "$CLI_PKG/bin/ojm.mjs" info
+node "$CLI_PKG/bin/ojm.mjs" info --all
+```
+
+- [ ] 默认输出：自带模块折叠为一行「框架自带：N 个（ojm info --all 展开）」，不逐条平铺
+- [ ] `--all`：自带模块平铺可见
+- [ ] module-root 下未登记 `web.config.ts` 的模块也在清单（扫描并集数据源）
+
+**C. `ojm new` 生成两份用户方案 + 守卫拒绝**
+
+```bash
+node "$CLI_PKG/bin/ojm.mjs" new crm --layout container
+node "$CLI_PKG/bin/ojm.mjs" new erp --layout none --api
+node "$CLI_PKG/bin/ojm.mjs" new crm          # 重名 → 拒绝
+node "$CLI_PKG/bin/ojm.mjs" new CRM          # 大写 → 拒绝（kebab-case）
+node "$CLI_PKG/bin/ojm.mjs" new auth         # 保留名 → 拒绝（先于内置名命中）
+node "$CLI_PKG/bin/ojm.mjs" new home         # 框架自带名 → 拒绝（命中内置名单）
+node "$CLI_PKG/bin/ojm.mjs" new              # 非交互无 name → 用法报错退出码 1
+```
+
+- [ ] `src/crm/`：solution.yaml + web/{entry.ts,pages/index.tsx,locales/双语}
+- [ ] `src/erp/`：额外含 api/{manifest.yaml,api.ts}（`--api`），solution.yaml 含 `api:` 段
+- [ ] 五类拒绝各命中对应文案（注意 auth 是**保留名**先触发、home 才是内置名路径）；
+      拒绝时**零写入**（目标目录不存在）
+- [ ] 重跑 `ojm info`：crm / erp 出现在用户区（生成即被扫描收录，无需登记 web.config.ts）
+
+**D. 构建 + 多方案打包**
+
+```bash
+node "$CLI_PKG/bin/ojm.mjs" build              # 骨架编进产物（erp 带 api 侧 ping）
+node "$CLI_PKG/bin/ojm.mjs" build --bundle     # 无参 = 全部用户方案
+ls dist/*.tgz
+node "$CLI_PKG/bin/ojm.mjs" build --bundle crm   # 只打一份；--bundle=crm 等价
+sha256sum dist/crm-0.1.0.tgz && node "$CLI_PKG/bin/ojm.mjs" build --bundle crm && sha256sum dist/crm-0.1.0.tgz
+```
+
+- [ ] 无参打包：出 `crm-0.1.0.tgz` + `erp-0.1.0.tgz` 两份，末行「共打包 2 份方案包」；
+      自带方案零出包
+- [ ] 每份独立校验（契约 + 表集 + 双语）；`--bundle crm` 只出 crm 一份
+- [ ] 同输入重复打包 sha256 逐字节一致（确定性）
+- [ ] tgz 内固定 `manifest.yaml` 命名；`tar -tzf` 无私钥形态文件（`*.pem/*.key/.env*` 等）
+
+**E. 自带排除与负向口径**
+
+```bash
+# 给自带模块塞一份临时契约：无参打包必须跳过它、按名打包必须拒绝
+printf 'name: system\nversion: 0.1.0\ntitle: system\nsummary: x\nchangelog:\n  - 0.1.0 x\nweb:\n  route_prefix: /system\n  entry: modules/system/0.1.0/entry.js\n' > src/system/solution.yaml
+node "$CLI_PKG/bin/ojm.mjs" build --bundle          # 日志注明「跳过框架自带方案：system」
+node "$CLI_PKG/bin/ojm.mjs" build --bundle system   # 拒绝：框架自带方案不参与用户打包
+rm src/system/solution.yaml
+
+# 两段式：混入坏契约（name ≠ 目录名）→ 校验失败 dist 零增量、报错指名失败方案
+mkdir -p src/bad && printf 'name: not-bad\nversion: 0.1.0\ntitle: x\nsummary: x\nchangelog:\n  - 0.1.0 x\nweb:\n  route_prefix: /bad\n  entry: modules/bad/0.1.0/entry.js\n' > src/bad/solution.yaml
+ls dist/*.tgz | wc -l   # 记当前份数
+node "$CLI_PKG/bin/ojm.mjs" build --bundle            # 失败：指名 bad（name 须 === 目录名）
+ls dist/*.tgz | wc -l   # 与上相等 = 零增量（两段式）
+rm -rf src/bad
+
+# 零用户方案：临时移走全部用户契约 → 友好报错指路 ojm new
+mkdir -p /tmp/ojm-verify/_stash
+mv src/crm/solution.yaml /tmp/ojm-verify/_stash/crm.yaml
+mv src/erp/solution.yaml /tmp/ojm-verify/_stash/erp.yaml
+node "$CLI_PKG/bin/ojm.mjs" build --bundle            # 报错：没有可打包的用户方案…ojm new
+mv /tmp/ojm-verify/_stash/crm.yaml src/crm/solution.yaml
+mv /tmp/ojm-verify/_stash/erp.yaml src/erp/solution.yaml
+```
+
+- [ ] 自带契约被跳过且有逐条日志；`--bundle system` 明确拒绝（不静默、不出包）
+- [ ] 坏契约 fail-fast 指名 `bad`；失败前后 `dist/*.tgz` 份数不变（两段式零增量）
+- [ ] 零用户方案报错文案指向 `ojm new`；恢复契约后重跑打包恢复两份
+
+**F. `market publish --real` 多方案拒绝**
+
+```bash
+node "$CLI_PKG/bin/ojm.mjs" market publish --real . --id demo.publisher
+```
+
+- [ ] 多方案工程给出明确拒绝与显式链路指路（`build --bundle <name>` → `sign` → `build-index`），
+      不静默只发一份
+
 ## 8. 一次通过判据（汇总清单）
 
 - [ ] `ojm init` 成功：devDeps 含 `@oj-module/{cli,runtime}`（非 `*`）、根级 `openapi.json` + `__client` 预生成、handler 为新约定（`.schema` 入参 + 平级 `.response`，无 `contract.ts`/`routes.json`/`openapi.yaml`）、`env.d.ts` 在 include
@@ -524,6 +637,9 @@ node "$CLI_PKG/bin/ojm.mjs" market walkthrough --only neg-evil    # 单跑某项
   - [ ] 市场卡片可见 → 首装 `needs_trust`（指纹逐字核对）→ `trust confirm` → 重试 `status=done` 且 11 段全 ok
   - [ ] 装后 `/api/<name>/ping` 返回 `code:0`；`api/dist/manifests.yaml` 出现 `<name>: <version>`
   - [ ] （§7.4）walkthrough 14 项 AC 表全 PASS，含 neg-* 五项负向防线与 neg-stranger 信任库快照 diff 为空
+  - [ ] （§7.5，0.2.23 起）`ojm new` 守卫四拒零写入；`info` 默认折叠自带 / `--all` 平铺；
+        `build --bundle` 无参只出用户方案（自带跳过有日志）、`--bundle <name>` 单份、
+        坏契约两段式零增量、零方案报错指路 `ojm new`；重复打包 sha256 一致
 
 ## 9. 已知坑与处置
 
