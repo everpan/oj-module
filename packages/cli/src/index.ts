@@ -50,10 +50,13 @@ async function main() {
 
 	switch (command) {
 		case "build": {
-			const { bundle, out } = parseBuildArgs(process.argv.slice(3));
+			const { bundle, bundleName, out } = parseBuildArgs(process.argv.slice(3));
 			if (bundle) {
 				// 方案包构建（P1-11）：契约校验 fail-fast → 确定性 tgz + sha256（消费方：市场安装器）
-				await buildBundle(projectRoot, { out });
+				// 多方案：无 bundleName 打全部用户方案（自带排除），有则只打 name 那一份
+				const results = await buildBundle(projectRoot, { out, name: bundleName });
+				if (results.length > 1)
+					console.log(`[ojm] 共打包 ${results.length} 份方案包（逐包签名：ojm sign dist/<name>-<version>.tgz --id <publisher>.<key> --check）`);
 				break;
 			}
 			// 设计 §5：后端 oj build（零 DB 副作用）→ 前端全站合并（仅 build 清场合并）

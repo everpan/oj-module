@@ -107,8 +107,7 @@
 | B5 | 空清单 | 无根契约、无用户契约 | `--bundle` | 友好报错指向 `ojm new` |
 | B6 | 无清单文件 | 无 `.ojm-builtin.json`，多份用户契约 | `--bundle` | 全部打包（兼容） |
 | B7 | 跨契约同名同版 | 两份契约 name/version 撞车 | `--bundle` | fail-fast 指名两份契约路径 |
-| B8 | name≠目录名 | `src/crm/solution.yaml` 写 `name: erp` | `--bundle` | fail-fast（module-root 强校验） |
-| B9 | 两段式 | 三份契约其一表集校验失败 | `--bundle` | dist/ 零增量，报错指名失败方案 |
+| B8 | name≠目录名 | `src/crm/solution.yaml` 写 `name: erp` | `--bundle` | fail-fast（module-root 强校验） || B9 | 两段式 | 三份契约其一表集校验失败 | `--bundle` | dist/ 零增量，报错指名失败方案 |
 | B10 | 旧契约回退 | `src/x/manifest.yaml`（旧方案）非内置 | `--bundle` | 参与收集并出包 |
 | B11 | 根契约压 src | 根契约存在 + src 有用户契约 | `--bundle` | 只打根契约 + 一行 hint |
 | B12 | 坏清单文件 | `.ojm-builtin.json` 非法 JSON | 任何消费命令 | fail-fast 报路径与错因（非静默降级） |
@@ -147,7 +146,7 @@
 
 - [x] 文档（v1 → v2 六方评审修订）
 - [x] **Phase 1 基础设施**：`builtin.ts`（读/校验 `.ojm-builtin.json`，历史布局返回空集）+ init 名单派生/写入/copyIfAbsent 回填 —— T1/T2/B12 ✅（10 用例，含 init 接线，无回归）
-- [ ] **Phase 2 打包复数化**：name 正则、优先级矩阵、name===目录名、跨契约查重、两段式、内置跳过日志、私钥扫描扩面 —— B1–B12
+- [x] **Phase 2 打包复数化**：name 正则、优先级矩阵、name===目录名、两段式、内置跳过日志、私钥扫描扩面 —— B1–B12 ✅（两段式重构 + `--bundle <name>` 接线，382 用例全绿；B7 决策见文末）
 - [ ] **Phase 3 `ojm new`**：守卫（工程/布局/name）、骨架生成、原子性、交互、`usage.ts`/`index.ts` 接线 —— N0–N7
 - [ ] **Phase 4 `ojm info`**：扫描并集数据源 + 自带分组折叠 + `--all` —— I1–I4
 - [ ] **Phase 5 scripts**：`generatePackageJson` 补 new/bundle/typecheck:api + 模板同步 + 子集守卫测试 —— T3
@@ -164,3 +163,6 @@ BDD 用例风格遵循 INVEST：各用例相互独立（无顺序依赖）、可
 
 - N1「骨架打包校验直接过」是重验收断言（entry.ts 需一次通过定义读取 + 契约校验），实现时若卡壳是工作量风险而非设计风险，允许拆分先行落地骨架再补 round-trip 断言。
 - `--bundle [name]` 同时接受 `--bundle crm` 与 `--bundle=crm`；--help 示例固定推荐 `--bundle <name>` 形态。
+- **实现期决策（B7）**：跨契约 name+version 查重与 B8（name===目录名）组合后撞车向量不可达
+  （目录名在单一 src/ 层唯一 ⇒ name 唯一），故不实现独立查重，B7 用例改为记录该决策；
+  若未来放松 name===目录名 校验，必须先恢复跨契约查重。

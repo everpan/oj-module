@@ -46,9 +46,10 @@ export function parseApiArgs(argv: string[]): { dir: string, check: boolean, doc
  * （devkit 手册「打包与分发」）。
  * `--out` 的值不得以 `--` 开头（同 parseApiArgs 的消费式扫描，P6 同款坑）。
  */
-export function parseBuildArgs(argv: string[]): { bundle: boolean, out?: string } {
+export function parseBuildArgs(argv: string[]): { bundle: boolean, bundleName?: string, out?: string } {
 	const flags = new Set<string>();
 	let out: string | undefined;
+	let bundleName: string | undefined;
 	for (let i = 0; i < argv.length; i++) {
 		const a = argv[i];
 		if (a === "--out") {
@@ -56,11 +57,26 @@ export function parseBuildArgs(argv: string[]): { bundle: boolean, out?: string 
 			i++; // 消费紧随的值，不被当 flag
 			continue;
 		}
+		// --bundle <name> / --bundle=<name>：只打这一份方案（无值 = 全部用户方案）
+		if (a === "--bundle") {
+			flags.add(a);
+			const next = argv[i + 1];
+			if (next !== undefined && !next.startsWith("--")) {
+				bundleName = next;
+				i++;
+			}
+			continue;
+		}
+		if (a.startsWith("--bundle=")) {
+			flags.add("--bundle");
+			bundleName = a.slice("--bundle=".length);
+			continue;
+		}
 		if (a.startsWith("--")) {
 			flags.add(a);
 		}
 	}
-	return { bundle: flags.has("--bundle"), out };
+	return { bundle: flags.has("--bundle"), bundleName, out };
 }
 
 /**
