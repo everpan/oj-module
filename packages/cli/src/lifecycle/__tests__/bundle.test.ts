@@ -2,7 +2,7 @@
 // 组装契约（对齐 tgz 内布局，契约 §2.9 + P1-9 staging copy 源定版）：
 //   <root>/manifest.yaml                          ← 必填，契约校验 fail-fast 先于打包
 //   api/dist/<name>-<version>/                    ← oj build 产物原样 → tgz 内 api/<name>-<version>/（C2-31 分层核对）
-//   web/dist/modules/                             ← 站点构建模块产物 → tgz 内 web/modules/（web.entry 存在性复核）
+//   web/dist/modules/<name>/                      ← 站点构建模块产物 → tgz 内 web/modules/<name>/（只入包方案自己的模块）
 // 禁携 modules.json（C2-31 红线）；产物确定性（C2-32）由 deterministic-tar 承担，此处断言端到端复现。
 import { execFileSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -64,6 +64,16 @@ describe("buildBundle · 正路径", () => {
 			expect(names, `缺成员 ${member}`).toContain(`demo-solution-0.1.0/${member}`);
 	});
 
+	it("只入包方案自己的前端模块：模板模块（home/login…）不随包", async () => {
+		// 安装器 deployWeb 把包内 web/modules 整树覆盖进目标站，模板产物随包会覆盖宿主同名前端
+		const hostWeb = join(project, "web/dist/modules/home/0.1.0");
+		mkdirSync(hostWeb, { recursive: true });
+		writeFileSync(join(hostWeb, "entry.js"), "export default {};\n");
+		const names = tarList((await pack()).tgz);
+		expect(names.some(n => n.includes("/web/modules/home/"))).toBe(false);
+		expect(names).toContain("demo-solution-0.1.0/web/modules/demo-solution/0.1.0/entry.js");
+	});
+
 	it("端到端确定性：同一工程两次打包 sha256 相等（C2-32）", async () => {
 		const r1 = await pack();
 		const r2 = await pack();
@@ -114,6 +124,11 @@ describe("buildBundle · 校验先于打包（fail-fast）", () => {
 	it("web 段存在但站点产物缺失 → 可读报错指引先构建", async () => {
 		rmSync(join(project, "web/dist"), { recursive: true, force: true });
 		await expect(pack()).rejects.toThrow(/web\/dist\/modules/);
+	});
+
+	it("web/dist/modules 在但缺本方案目录 → 可读报错（不整树入包）", async () => {
+		rmSync(join(project, "web/dist/modules/demo-solution"), { recursive: true, force: true });
+		await expect(pack()).rejects.toThrow(/web\/dist\/modules\/demo-solution\//);
 	});
 
 	it("c2-12a：api.tables 与 schema.yaml 表集不一致 → 构建期拒绝", async () => {

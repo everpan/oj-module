@@ -18,7 +18,7 @@
 import type { OjProcess } from "../oj";
 import { Buffer } from "node:buffer";
 import { createHash, createPrivateKey, randomBytes } from "node:crypto";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import net from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -49,7 +49,7 @@ export interface IsolatedPublisher {
 }
 
 export interface IsolatedSite {
-	/** 临时根（含 api/ bin/ cdn/） */
+	/** 临时根（含 config.yaml / src/ / api/dist/ / bin/ / cdn/） */
 	root: string
 	port: number
 	baseUrl: string
@@ -94,19 +94,26 @@ export async function bootstrapIsolatedSite(opts: BootstrapOptions = {}): Promis
 	}
 
 	const root = mkdtempSync(path.join(tmpdir(), "ojm-trial-"));
-	const apiDir = path.join(root, "api");
-	const configPath = path.join(apiDir, "config.yaml");
+	// 新布局（`src/<name>/{api,web}`）：config.yaml 在隔离根，源码树根为 <root>/src，
+	// 构建产物仍是扁平根 <root>/api/dist（与真实工程同形）。
+	const srcDir = path.join(root, "src");
+	const configPath = path.join(root, "config.yaml");
 	const cdnDir = path.join(root, "cdn");
-	const dbPath = path.join(apiDir, "db.sqlite");
+	const dbPath = path.join(root, "db.sqlite");
 
-	// 1) api 树 + config（模板由 cli 包内置，init 同源；与 cli→templates 依赖红线不冲突——那是运行期文件而非 import）
+	// 1) 后端源码树 + config（模板由 cli 包内置，init 同源；与 cli→templates 依赖红线不冲突——那是运行期文件而非 import）
 	const cliRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-	const templateApi = path.join(cliRoot, "templates", "api");
-	if (!existsSync(path.join(templateApi, "config.yaml"))) {
-		throw new Error(`[ojm] cli 内置模板缺失：${templateApi}（@oj-module/cli 安装不完整？）`);
+	const templateDir = path.join(cliRoot, "templates");
+	if (!existsSync(path.join(templateDir, "config.yaml"))) {
+		throw new Error(`[ojm] cli 内置模板缺失：${templateDir}（@oj-module/cli 安装不完整？）`);
 	}
-	cpSync(path.join(templateApi, "src"), path.join(apiDir, "src"), { recursive: true });
-	writeFileSync(configPath, readFileSync(path.join(templateApi, "config.yaml"), "utf-8"), "utf-8");
+	// 只拷后端侧（`src/<name>/api`）：隔离站点不构建前端，web 源码拷过去只是噪音
+	for (const entry of readdirSync(path.join(templateDir, "src"), { withFileTypes: true })) {
+		const apiSide = path.join(templateDir, "src", entry.name, "api");
+		if (entry.isDirectory() && existsSync(apiSide))
+			cpSync(apiSide, path.join(srcDir, entry.name, "api"), { recursive: true });
+	}
+	writeFileSync(configPath, readFileSync(path.join(templateDir, "config.yaml"), "utf-8"), "utf-8");
 
 	// 2) oj 二进制与插件（startOj 按 <root>/bin/oj 解析；plugins 让 auth 插件可用）
 	mkdirSync(path.join(root, "bin"), { recursive: true });
@@ -134,7 +141,7 @@ export async function bootstrapIsolatedSite(opts: BootstrapOptions = {}): Promis
 	const siteDir = path.join(root, "site");
 	mkdirSync(siteDir, { recursive: true });
 	writeFileSync(path.join(siteDir, "index.html"), "<!doctype html><html><body>ojm trial site</body></html>\n", "utf-8");
-	cfg = cfg.replace("web: ../cdn", `web: ${cdnDir}\n  - prefix: /\n    web: ${siteDir}\n    spa: true`);
+	cfg = cfg.replace("web: ./cdn", `web: ${cdnDir}\n  - prefix: /\n    web: ${siteDir}\n    spa: true`);
 	// 安装目标恒为 release 部署：装好的模块落在 api/dist，dev 形态（--api-path src）发现不了。
 	// 故隔离站点以 dist 起站，platform.root 同步改写（oj 校验 root 必须是生效的 api 挂载目录）。
 	cfg = cfg.replace("  root: src", "  root: dist");
@@ -149,8 +156,8 @@ export async function bootstrapIsolatedSite(opts: BootstrapOptions = {}): Promis
 		cfg = `${cfg.trimEnd()}\nfs:\n  root: .\n  readonly: false\n`;
 	writeFileSync(configPath, cfg, "utf-8");
 
-	// 4) 站点开发证书（oj serve 无绕过开关；mintDevCert 落 api/config 三件套）
-	await mintDevCert(path.join(apiDir, "config"));
+	// 4) 站点开发证书（oj serve 无绕过开关；mintDevCert 落 config.yaml 同级的 config/ 三件套）
+	await mintDevCert(path.join(root, "config"));
 
 	// 5) 一次性发布方身份：seed 派生，私钥只在内存
 	const keyId = "trial.publisher";
@@ -168,7 +175,7 @@ export async function bootstrapIsolatedSite(opts: BootstrapOptions = {}): Promis
 	const starter = opts.starter ?? ((cfgPath: string, base: string, apiSrc: string) => startOj(cfgPath, base, apiSrc));
 	let oj: OjProcess;
 	try {
-		oj = starter(configPath, "/api", path.join(apiDir, "dist"));
+		oj = starter(configPath, "/api", path.join(root, "api", "dist"));
 		await oj.ready;
 	}
 	catch (error) {
@@ -245,7 +252,9 @@ function freePort(): Promise<number> {
 function teardownReport(root: string, port: number): string[] {
 	const lines = [
 		`隔离根：${root}`,
-		"  api/    站点树（src + config.yaml + config/ 证书 + db.sqlite）",
+		"  config.yaml + config/ 证书 + db.sqlite   站点配置面",
+		"  src/    后端模块源码树（src/<name>/api，拷自 cli 内置模板）",
+		"  api/dist/  构建产物（安装目标）",
 		"  bin/    oj 二进制与插件（拷贝自源工程）",
 		"  cdn/    隔离 CDN（fixture 包 + 两份索引 + 签名）",
 		`监听端口：127.0.0.1:${port}（进程已停）`,

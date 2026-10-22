@@ -7,7 +7,7 @@ import { expect } from "@playwright/test";
 /** 模板工程 dev 服务的 db（本文件位于 tests/e2e/fixtures，上溯三级到仓库根） */
 const REPO_ROOT = path.resolve(import.meta.dirname, "../../..");
 const DB_PATH = path.join(REPO_ROOT, "packages/cli/templates/api/db.sqlite");
-const SEED_PATH = path.join(REPO_ROOT, "packages/cli/templates/api/src/_platform/seed.sql");
+const SEED_PATH = path.join(REPO_ROOT, "packages/cli/templates/src/_platform/api/seed.sql");
 
 /**
  * 归一 admin 账号夹具（幂等）：口令重置为种子值（123456）+ 清 must_change +

@@ -10,8 +10,9 @@ import { pathToFileURL } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
 import { build as esbuild } from "esbuild";
 import { build } from "vite";
-import { loadModulesConfig, resolveModuleEntry } from "./config";
-import { resolveConfigPath, resolveLayout } from "./layout";
+import { assertModuleList, loadSiteConfig, mergeModuleList, resolveModuleEntry } from "./config";
+import { resolveConfigPath, resolveLayout, scanModules, tryResolveLayout } from "./layout";
+import { requireModuleRootCapability } from "./oj-caps";
 import { isSharedDep, SHARED_DEPS } from "./shared-deps";
 import { normalizeSiteBase, rewriteIndexHtml } from "./site-base";
 import { resolveOjBin } from "./vendor";
@@ -494,18 +495,27 @@ function assertResolvableSpecifiers(
  * 无后端源码返回 false（纯前端工程跳过）。
  */
 export async function buildBackend(projectRoot: string): Promise<boolean> {
-	const apiSrc = path.join(projectRoot, "api/src");
+	// 没有模块源码的工程（如 market 的隔离站点根）直接跳过——不能因为探测不到布局就抛
+	const layout = tryResolveLayout(projectRoot);
+	const moduleRoot = layout?.kind === "module-root";
+	const apiSrc = moduleRoot
+		? layout.modulesSrc
+		: path.join(projectRoot, "api/src");
 	if (!fs.existsSync(apiSrc))
 		return false;
 
 	const oj = resolveOjBin(projectRoot);
 	if (!fs.existsSync(oj)) {
 		throw new Error(
-			`[ojm] 找到 api/src 但缺少 ${oj}。\n`
+			`[ojm] 找到 ${path.relative(projectRoot, apiSrc) || "."} 但缺少 ${oj}。\n`
 			+ "请重跑 ojm init 幂等补缺（不会覆盖 config 与用户代码）。",
 		);
 	}
-	const apiDist = path.join(projectRoot, "api/dist");
+	// 能力闸门先于任何写入：失败时磁盘上不留半成品
+	if (moduleRoot)
+		requireModuleRootCapability(projectRoot);
+
+	const apiDist = layout?.apiDist ?? path.join(projectRoot, "api", "dist");
 	console.log("[ojm] oj build（后端）…");
 	// 必须显式给 -c：oj build 的 -c 缺省是 ./config.yaml（相对 CWD），而 config 在
 	// <project>/config/ 下——漏传会静默读不到配置，连带 tasks 镜像目录回落默认 "tasks"、
@@ -518,7 +528,17 @@ export async function buildBackend(projectRoot: string): Promise<boolean> {
 	//   2) `if (cond) x = y` → 压成 `cond && x = y`，赋值作 && 右项缺括号 →
 	//      SyntaxError: Invalid left-hand side in assignment（端点 500）。
 	// 0.1.32 / 0.1.50 均复现。产物体积换正确性，等上游修好再撤这个旗标。
-	execFileSync(oj, ["build", ...configArgs, "-d", apiSrc, "-o", apiDist, "--no-minify"], { stdio: "inherit" });
+	// v0.1.85：`--module-root <dir>` 与 `-d` 互斥（都是「源码树根」）。新布局给 src，
+	// oj 在子树内递归找 manifest.yaml（命中 src/<name>/api/manifest.yaml 即停）。
+	const sourceArgs = layout?.moduleRoot ? ["--module-root", layout.moduleRoot] : ["-d", apiSrc];
+	execFileSync(oj, [
+		"build",
+		...configArgs,
+		...sourceArgs,
+		"-o",
+		apiDist,
+		"--no-minify",
+	], { stdio: "inherit" });
 	// 宿主 versions.json 双落点：站点壳从 shell-dist 拷进 web/dist（mergeShellSite），
 	// 而方案安装器读的是 `<api>/dist/versions.json`（B-11：与 manifests.yaml 同层，用于
 	// peerRuntime 强制比对）。两处必须同源，否则新工程 `ojm build` 完仍装不上方案——
@@ -569,8 +589,13 @@ export async function buildModules(
 	projectRoot: string,
 	opts: { mergeSite?: boolean } = {},
 ): Promise<BuiltModule[]> {
-	const config = await loadModulesConfig(projectRoot);
 	const layout = resolveLayout(projectRoot);
+	const config = await loadSiteConfig(projectRoot);
+	// module-root：模块清单由 src/*/web/entry.ts 扫描得出（web.config.ts 仅可选覆盖）；
+	// 历史布局：仍以 web.config.ts 的 modules 为唯一真源。
+	const modules = layout.kind === "module-root"
+		? mergeModuleList(scanModules(layout), config.modules, projectRoot)
+		: assertModuleList(projectRoot, config.modules);
 	const outDir = layout.distDir;
 	const baseUrl = config.baseUrl ?? "";
 
@@ -584,7 +609,7 @@ export async function buildModules(
 
 	const built: BuiltModule[] = [];
 
-	for (const item of config.modules) {
+	for (const item of modules) {
 		if (item.enabled === false) {
 			console.log(`[ojm] 跳过已禁用模块 ${item.name}`);
 			continue;
@@ -595,7 +620,7 @@ export async function buildModules(
 
 		if (definition.name !== item.name) {
 			throw new Error(
-				`模块名不一致：web.config.ts 中为 "${item.name}"，entry.ts 中为 "${definition.name}"`,
+				`模块名不一致：${layout.kind === "module-root" ? `src/${item.name}` : "web.config.ts"} 中为 "${item.name}"，entry.ts 中为 "${definition.name}"`,
 			);
 		}
 

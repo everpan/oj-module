@@ -8,7 +8,7 @@
 #  2. 模板自运行专属文件——templates 本身也是一个可 `pnpm dev` 的工程，
 #     它的 package.json / node_modules / bin / lock 绝不能泄漏进用户工程；
 #     package.json 由 init 现场生成（钉死真实版本，不带 workspace:/catalog:）。
-#  3. 构建与运行期产物——api/dist、web/dist、api/logs、签发的私钥与 sqlite；
+#  3. 构建与运行期产物——api/dist、web/dist、logs、签发的私钥与 sqlite；
 #     模板跑过 build/dev 后会留在本地，既不进用户工程，更不该让所有工程
 #     共享同一把私钥。
 #  4. 模板自用元数据——本清单自身。
@@ -34,41 +34,43 @@ include:
   - env.d.ts
   - web.config.ts
   - openapi.json
-  - web/src/styles.css
-  # —— api 后端：配置 / 种子 / 测试 / 默认模块 ——
-  - api/config.yaml
-  - api/.ojm-api-exempt.json
-  - api/seed.mysql.sql
-  - api/seed.pg.sql
-  - api/vitest.config.ts
-  - api/tests
-  - api/src/_platform
-  - api/src/auth
-  - api/src/notification
-  - api/src/personal-center
-  - api/src/system
-  - api/src/web
+  - src/styles.css
+  # 后端 typecheck 工程（package.json 的 typecheck:api 指向它）；只收后端、排除 web
+  - src/tsconfig.json
+  # —— 后端：配置 / 种子 / 测试 / 默认模块（模块源码在 src/<name>/api）——
+  - config.yaml
+  - .ojm-api-exempt.json
+  - seed.mysql.sql
+  - seed.pg.sql
+  - vitest.config.ts
+  - tests
+  - src/_platform/api
+  - src/auth/api
+  - src/notification/api
+  - src/personal-center/api
+  - src/system/api
+  - src/web/api
   # —— web 前端模块（demo/home 只列页面源码，__client 见顶部说明）——
-  - web/src/_platform
-  - web/src/auth
-  - web/src/demo/entry.ts
-  - web/src/demo/locales
-  - web/src/demo/pages
-  - web/src/home/entry.ts
-  - web/src/home/locales
-  - web/src/home/pages
-  - web/src/login
-  - web/src/notification
+  - src/_platform/web
+  - src/auth/web
+  - src/demo/web/entry.ts
+  - src/demo/web/locales
+  - src/demo/web/pages
+  - src/home/web/entry.ts
+  - src/home/web/locales
+  - src/home/web/pages
+  - src/login/web
+  - src/notification/web
   # 解决方案市场：默认第一方能力。逐子路径收录——__tests__ 不进脚手架
   # （用户工程无 web 侧 vitest 基建，拷了是死文件）
-  - web/src/oj-market/entry.ts
-  - web/src/oj-market/types.ts
-  - web/src/oj-market/api
-  - web/src/oj-market/components
-  - web/src/oj-market/hooks
-  - web/src/oj-market/locales
-  - web/src/oj-market/pages
-  - web/src/oj-market/utils
-  - web/src/personal-center
-  - web/src/system
-  - web/src/web
+  - src/oj-market/web/entry.ts
+  - src/oj-market/web/types.ts
+  - src/oj-market/web/api
+  - src/oj-market/web/components
+  - src/oj-market/web/hooks
+  - src/oj-market/web/locales
+  - src/oj-market/web/pages
+  - src/oj-market/web/utils
+  - src/personal-center/web
+  - src/system/web
+  - src/web/web

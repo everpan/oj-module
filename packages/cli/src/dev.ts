@@ -10,7 +10,7 @@
  *   - 布局探测          → layout.ts
  *   - 工程 mock 约定    → dev-mock.ts
  *
- * 两种形态（按 api/config.yaml 是否存在自动判定）：
+ * 两种形态（按 config.yaml 是否存在自动判定）：
  *   全栈   /api/* 反代 oj（oj 自带热更，ojm 不重启它），模块源码变更 → 重建 → SSE 刷新
  *   纯前端 /api/* 走工程 mock（mock/*.mock.mjs 约定，未命中 404），行为与历史版本一致
  *
@@ -35,6 +35,7 @@ import { createReloadHub, proxyApi, proxyWsUpgrade, sseScript } from "./dev-prox
 import { loadHtmlTransform } from "./html-transform";
 import { resolveConfigPath, resolveLayout } from "./layout";
 import { startOj } from "./oj";
+import { requireModuleRootCapability } from "./oj-caps";
 import { ensureDevCert } from "./oj-cert";
 import { readOjApiPrefix } from "./oj-config";
 import { createStaticHandler, decodeReqPath, listenOnFreePort } from "./static-handler";
@@ -48,8 +49,8 @@ export interface DevOptions {
 	shellDist?: string
 	/** 注入重建函数（测试）；默认 buildModules（不合并全站，产物只写模块） */
 	buildModulesFn?: (projectRoot: string) => Promise<unknown>
-	/** 注入桩 oj（测试）；默认 startOj；纯前端工程不调用 */
-	ojStarter?: (configPath: string, base: string, apiSrc: string) => OjProcess
+	/** 注入桩 oj（测试）；默认 startOj；纯前端工程不调用。第三参为目录（→ --api-path）或已拼好的旗标数组（→ --module-root） */
+	ojStarter?: (configPath: string, base: string, apiSource: string | string[]) => OjProcess
 	/** 强制纯前端形态（不起 oj，/api 走 mock） */
 	frontendOnly?: boolean
 	/** 启用 Vite 风格快捷键（默认仅 TTY 启用；测试可强制开） */
@@ -84,17 +85,26 @@ export async function devServer(projectRoot: string, opts: DevOptions = {}): Pro
 	// htmlTransform（web.config.ts，可选）先于起进程校验：配置坏了不该留下 oj 孤儿
 	const transform = await loadHtmlTransform(projectRoot);
 
-	// 2) oj 后端（工程有 api/config.yaml 时全栈形态；桩可注入）
+	// 2) oj 后端（工程有 config.yaml 时全栈形态；桩可注入）
 	const configPath = resolveConfigPath(projectRoot);
 	let oj: OjProcess | undefined;
 	let ojTarget: string | undefined;
 	// 反代前缀跟随 config 的 mounts:（api 挂载 prefix；F2：改前缀后硬编码 /api 会静默失效）
 	let apiBase = "/api";
 	if (!opts.frontendOnly && existsSync(configPath)) {
+		// dev 读源码树（保存即热更，不经产物）：module-root 布局给 `--module-root <root>/src`
+		// （oj 递归发现 manifest.yaml），历史布局给 `--api-path <root>/api/src`——两者互斥。
+		const moduleRoot = layout.kind === "module-root";
+		if (moduleRoot)
+			requireModuleRootCapability(projectRoot);
+		const apiSource: string | string[] = moduleRoot && layout.moduleRoot
+			? ["--module-root", layout.moduleRoot]
+			: resolve(projectRoot, "api/src");
 		apiBase = readOjApiPrefix(configPath);
 		await ensureDevCert(configPath);
-		const starter = opts.ojStarter ?? ((cfg: string, b: string, apiSrc: string) => startOj(cfg, b, apiSrc));
-		oj = starter(configPath, apiBase, resolve(projectRoot, "api/src"));
+		const fallbackStarter = (cfg: string, b: string, apiSrc: string | string[]) => startOj(cfg, b, apiSrc);
+		const starter: NonNullable<DevOptions["ojStarter"]> = opts.ojStarter ?? fallbackStarter;
+		oj = starter(configPath, apiBase, apiSource);
 		try {
 			await oj.ready; // 失败人话报错（stderr 尾部），fail-fast
 		}
@@ -210,7 +220,7 @@ export async function devServer(projectRoot: string, opts: DevOptions = {}): Pro
 	if (ojTarget)
 		console.log(`[ojm] oj 后端已就绪：${apiBase} → ${ojTarget}（api.ts 保存即热更）`);
 	else
-		console.log("[ojm] 纯前端形态（无 api/config.yaml）：/api 由 mock/ 提供");
+		console.log("[ojm] 纯前端形态（无 config.yaml）：/api 由 mock/ 提供");
 
 	console.log("[ojm] 宿主来自 @oj-module/cli 内置 shell-dist（importmap 单例），模块来自本地 dist/");
 

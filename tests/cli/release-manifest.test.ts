@@ -90,7 +90,7 @@ describe("发布清单（走真实 pnpm pack 路径）", () => {
 		const entries = entriesOf(tgz);
 		expect(entries.filter(e => e.endsWith(".map")), "tarball 里出现了 sourcemap").toEqual([]);
 		expect(entries).toContain("package/shell-dist/index.html");
-		expect(entries).toContain("package/templates/api/.ojm-api-exempt.json");
+		expect(entries).toContain("package/templates/.ojm-api-exempt.json");
 	});
 
 	/**

@@ -8,6 +8,7 @@ import { dirname, join } from "node:path";
 import process from "node:process";
 import { promisify } from "node:util";
 import { stringify as stringifyYaml } from "yaml";
+import { apiModuleRoots, apiModulesSrc, apiSrcOf, legacyApiModuleRoots, tryResolveLayout, webSrcOf } from "../layout";
 import { emitClient } from "./emit-client";
 import { applyStubWrites, planStubWrites } from "./emit-stub";
 import { implementedRouteKeys } from "./handler-scan";
@@ -81,19 +82,27 @@ async function runFromOpenapi(openapiPath: string, cwd: string, result: RunResul
 	const doc = JSON.parse(readFileSync(openapiPath, "utf8")) as OpenApiDoc;
 	const ir = irFromOpenapi(doc, { rawPaths });
 	const byModule = groupIrByModule(ir);
+	const layout = tryResolveLayout(cwd);
 	result.contracts += byModule.size;
 	for (const [module, eps] of byModule) {
 		const client = emitClient(eps, { target: "module", module });
-		const clientDir = join(cwd, "web/src", module, "__client");
+		const clientDir = join(layout ? webSrcOf(layout, module) : join(cwd, "web/src", module), "__client");
 		writeIfChanged(join(clientDir, "api.ts"), client["api.ts"], result);
 		writeIfChanged(join(clientDir, "api.schemas.ts"), client["api.schemas.ts"], result);
 	}
 	// stub：oj 目录镜像树（人碰过的文件永不写——plan 阶段已按指纹判好）。
 	// 已实现键全量扫一遍传入：嵌套组（模块根单文件）实现的端点不再生成镜像 stub。
-	const apiSrcDir = join(cwd, "api/src");
+	const apiSrcDir = layout ? apiModulesSrc(layout) : join(cwd, "api/src");
+	const roots = layout ? apiModuleRoots(layout) : legacyApiModuleRoots(cwd);
 	if (existsSync(apiSrcDir)) {
 		const diag: OjSchemaDiag = { warnings: [] };
-		const writes = await planStubWrites(ir, { apiSrcDir, diag, implemented: implementedRouteKeys(apiSrcDir) });
+		const writes = await planStubWrites(ir, {
+			apiSrcDir,
+			// stub 落模块的 api 侧：module-root 布局是 `<src>/<m>/api`，不是 `<src>/<m>`
+			apiRootOf: layout ? (m: string) => apiSrcOf(layout, m) : undefined,
+			diag,
+			implemented: implementedRouteKeys(roots),
+		});
 		const counts = applyStubWrites(writes);
 		result.stubs.created += counts.created;
 		result.stubs.updated += counts.updated;
@@ -126,7 +135,8 @@ export async function runApiDocs(cwd: string, opts: { redocBin?: string, fetchJs
 	}
 	const doc = JSON.parse(readFileSync(openapiPath, "utf8")) as { paths?: Record<string, Record<string, unknown>> };
 	const paths = doc.paths ?? {};
-	const isUniDev = existsSync(join(cwd, "api/src"));
+	const layout = tryResolveLayout(cwd);
+	const isUniDev = existsSync(layout ? apiModulesSrc(layout) : join(cwd, "api/src"));
 
 	const outDir = isUniDev ? join(cwd, "api/docs") : join(cwd, "docs/api");
 	mkdirSync(outDir, { recursive: true });

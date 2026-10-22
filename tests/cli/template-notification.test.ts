@@ -8,20 +8,27 @@ import { runApi } from "../../packages/cli/src/contract/run";
  * G5 模板 notification 模块（BDD 5.4#1 + 评审 b5）：
  * ① ojm api 生成 + --check 零违规（notification 走标准契约流，豁免清单不新增）
  * ② 签入模板的生成 client 与现场生成物逐字节一致（钉版/--check 流对得上）
+ *
+ * 布局：`src/<name>/{api,web}`（module-root）。临时工程按同一形状搭——config.yaml 在
+ * 工程根（`resolveConfigPath` 只认它 + `src/` 单树），源码树整棵拷 `src/`，
+ * `ojm api` 才会落到 `src/<name>/web/__client`（老 `web/src/<name>/__client` 是
+ * 历史布局的回退分支，这里不能走）。
  */
 
-const TEMPLATES_API = join(process.cwd(), "packages/cli/templates/api");
-const TEMPLATES_WEB = join(process.cwd(), "packages/cli/templates/web");
-const TEMPLATES_OPENAPI = join(process.cwd(), "packages/cli/templates/openapi.json");
+const TEMPLATES = join(process.cwd(), "packages/cli/templates");
+const TEMPLATES_OPENAPI = join(TEMPLATES, "openapi.json");
 
 const tmpDirs: string[] = [];
 
 function makeTemplateProject(): string {
 	const dir = mkdtempSync(join(process.cwd(), "node_modules/.cache/ojm-tpl-notif-test-"));
 	tmpDirs.push(dir);
-	cpSync(TEMPLATES_API, join(dir, "api"), { recursive: true });
+	cpSync(join(TEMPLATES, "src"), join(dir, "src"), { recursive: true });
+	cpSync(join(TEMPLATES, "config.yaml"), join(dir, "config.yaml"));
 	// `ojm api` 单一事实源即 openapi.json（oj `oj openapi` 产物，落于工程根），须一并拷入临时工程根
 	cpSync(TEMPLATES_OPENAPI, join(dir, "openapi.json"));
+	// 豁免清单：auth/web 的 handler 有意无契约，缺它会让 --check 报「有 handler 无契约」
+	cpSync(join(TEMPLATES, ".ojm-api-exempt.json"), join(dir, ".ojm-api-exempt.json"));
 	return dir;
 }
 
@@ -42,8 +49,8 @@ describe("模板 notification 模块（G5，BDD 5.4#1）", () => {
 		const cwd = makeTemplateProject();
 		await runApi({ cwd });
 		for (const file of ["api.ts", "api.schemas.ts"]) {
-			const generated = readFileSync(join(cwd, `web/src/notification/__client/${file}`), "utf-8");
-			const committed = readFileSync(join(TEMPLATES_WEB, `src/notification/__client/${file}`), "utf-8");
+			const generated = readFileSync(join(cwd, `src/notification/web/__client/${file}`), "utf-8");
+			const committed = readFileSync(join(TEMPLATES, `src/notification/web/__client/${file}`), "utf-8");
 			expect(generated).toBe(committed);
 		}
 	});

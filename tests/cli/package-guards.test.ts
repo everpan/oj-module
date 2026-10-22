@@ -159,7 +159,7 @@ describe("模块源码不得 import cli（R6）", () => {
 		path.join(PROJECT_ROOT, "apps/playground-oj/web/src"),
 		// 根 App 链自己的模块目录（架构评审：vite alias 也把它当模块树，此前漏检）
 		path.join(PROJECT_ROOT, "web/src"),
-		path.join(CLI_DIR, "templates/web/src"),
+		path.join(CLI_DIR, "templates/src"),
 	];
 
 	function collect(dir: string): string[] {

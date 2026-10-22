@@ -1,9 +1,10 @@
+import type { ApiModuleRoot } from "../layout";
 import type { HandlerRow } from "./handler-scan";
 import type { IrEndpoint } from "./ir";
 import type { OpenApiDoc } from "./openapi-ir";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, relative, sep } from "node:path";
-import { resolveConfigPath } from "../layout";
+import { apiModuleRoots, apiModulesSrc, apiSrcOf, legacyApiModuleRoots, resolveConfigPath, tryResolveLayout, webSrcOf } from "../layout";
 import { readOjAnonymousPaths } from "../oj-config";
 import { emitClient } from "./emit-client";
 import { planStubWrites } from "./emit-stub";
@@ -47,9 +48,12 @@ export interface ApiExemption {
 }
 
 /**
- * 加载豁免清单：默认 `<cwd>/api/.ojm-api-exempt.json`（新名），缺失时回退旧名
- * `api/.ram-api-exempt.json`（R4：存量工程豁免不因改名失效）；`opts.exempt` 为
- * 绝对/相对路径时覆盖默认。文件缺失或 JSON 损坏 → 空豁免 `{}`（绝不抛错）。
+ * 加载豁免清单：按布局找位置，`opts.exempt` 为绝对/相对路径时覆盖默认。
+ * 候选顺序（第一个存在的胜出）：
+ *   1. `<cwd>/.ojm-api-exempt.json`        —— module-root 布局（config.yaml 在工程根）
+ *   2. `<cwd>/api/.ojm-api-exempt.json`    —— 历史布局（api/ 即工程根）
+ *   3. `<cwd>/api/.ram-api-exempt.json`    —— R4：存量工程旧名不因改名失效
+ * 文件缺失或 JSON 损坏 → 空豁免 `{}`（绝不抛错）。
  * 反常识坑：清单是严格 JSON.parse——写 `//` 注释会解析失败、静默回退空豁免
  * （豁免全失效且无报错）；说明文字请放 `_comment` 字段（本加载器只读
  * modules/paths，多余字段天然忽略）。
@@ -70,18 +74,29 @@ export function loadExemption(opts: { cwd: string, exempt?: string }): ApiExempt
 	}
 }
 
-/** 豁免清单文件名（新名优先；旧名只读回退）。`init` 只产新名。 */
-const EXEMPT_FILE = "api/.ojm-api-exempt.json";
-const EXEMPT_FILE_LEGACY = "api/.ram-api-exempt.json";
+/**
+ * 豁免清单候选路径（按优先级；`init` 只产第一条）。
+ *
+ * 位置由布局决定而不是常量钉死：module-root 布局 config.yaml 在工程根、随行的
+ * `.ojm-api-exempt.json` 也在根；历史布局两者都在 `api/` 下。写死 `api/` 会让新
+ * 布局工程的豁免**静默失效**——`loadExemption` 缺文件即回退空豁免，`ojm api --check`
+ * 会突然对 auth/web 报一堆「有 handler 无契约」。
+ */
+const EXEMPT_FILES = [
+	".ojm-api-exempt.json",
+	"api/.ojm-api-exempt.json",
+	"api/.ram-api-exempt.json", // R4：旧名只读回退
+] as const;
 
 function resolveExemptPath(cwd: string, exempt?: string): string {
 	if (exempt)
 		return exempt;
-	const next = join(cwd, EXEMPT_FILE);
-	if (existsSync(next))
-		return next;
-	const legacy = join(cwd, EXEMPT_FILE_LEGACY);
-	return existsSync(legacy) ? legacy : next;
+	for (const rel of EXEMPT_FILES) {
+		const candidate = join(cwd, rel);
+		if (existsSync(candidate))
+			return candidate;
+	}
+	return join(cwd, EXEMPT_FILES[0]);
 }
 
 /** 路由身份串（如 "order/list"、"auth/login"）的模块段 = 首段 */
@@ -130,15 +145,18 @@ function walkWsFiles(dir: string, out: string[] = []): string[] {
  * 只 warn 不 error：带 Bearer/cookie 的受保护 WS 是正当用法。
  * 读不到 config 直接不判——缺配置时做不出有依据的断言。
  */
-function checkWsAnonymous(wsFiles: string[], apiSrcDir: string, configPath: string): CheckViolation[] {
+function checkWsAnonymous(roots: readonly ApiModuleRoot[], configPath: string): CheckViolation[] {
+	const wsFiles = roots.flatMap(root => walkWsFiles(root.dir).map(file => ({ file, root })));
 	if (!existsSync(configPath) || wsFiles.length === 0)
 		return [];
 	const anonymous = readOjAnonymousPaths(configPath);
 	if (anonymous.length === 0)
 		return [];
 	return wsFiles
-		.map((file) => {
-			const relDir = relative(apiSrcDir, dirname(file)).split(sep).join("/");
+		.map(({ file, root }) => {
+			const relDir = [root.name, relative(root.dir, dirname(file)).split(sep).filter(Boolean).join("/")]
+				.filter(Boolean)
+				.join("/");
 			return { file, path: `/${relDir}/ws` };
 		})
 		.filter(({ path }) => !anonymous.includes(path))
@@ -146,7 +164,7 @@ function checkWsAnonymous(wsFiles: string[], apiSrcDir: string, configPath: stri
 			level: "warn" as const,
 			kind: "ws-anonymous-missing" as const,
 			filePath: file,
-			message: `[ojm-api] WS 路由 ${path} 不在 auth.anonymous_paths——oj 0.1.30 起 WS 握手过鉴权守卫，未带凭据的客户端会握手 401（表现为「文件在却连不上」）。若该 WS 本就要求鉴权（客户端带 Bearer/Cookie）可忽略本提示；否则请在 api/config.yaml 的 auth.anonymous_paths 补上 ${path}。`,
+			message: `[ojm-api] WS 路由 ${path} 不在 auth.anonymous_paths——oj 0.1.30 起 WS 握手过鉴权守卫，未带凭据的客户端会握手 401（表现为「文件在却连不上」）。若该 WS 本就要求鉴权（客户端带 Bearer/Cookie）可忽略本提示；否则请在 config.yaml 的 auth.anonymous_paths 补上 ${path}。`,
 		}));
 }
 
@@ -279,18 +297,29 @@ async function checkFromOpenapi(openapiPath: string, cwd: string, _exemption: Ap
 	const doc = JSON.parse(readFileSync(openapiPath, "utf8")) as OpenApiDoc;
 	const ir = irFromOpenapi(doc);
 	const violations: CheckViolation[] = [];
+	const layout = tryResolveLayout(cwd);
+	// 契约工具的扫描单元是「模块 api 根」而不是整棵源码树：module-root 布局里
+	// `src/<name>/api` 的 `api` 段不属于路由，且 `web/__client/api.ts` 不能被当 handler。
+	const roots = layout ? apiModuleRoots(layout) : legacyApiModuleRoots(cwd);
+	const clientDirOf = (module: string) =>
+		join(layout ? webSrcOf(layout, module) : join(cwd, "web/src", module), "__client");
 	for (const [module, eps] of groupIrByModule(ir)) {
 		const client = emitClient(eps, { target: "module", module });
-		const clientDir = join(cwd, "web/src", module, "__client");
+		const clientDir = clientDirOf(module);
 		for (const [file, content] of [["api.ts", client["api.ts"]], ["api.schemas.ts", client["api.schemas.ts"]]] as const) {
 			const p = join(clientDir, file);
 			if (!existsSync(p) || readFileSync(p, "utf8") !== content)
 				violations.push({ level: "error", kind: "artifact-stale", message: `[ojm-api] 生成物过期或缺失：${relative(cwd, p)}——请重跑 ojm api 使其与 openapi.json 同步。`, filePath: p });
 		}
 	}
-	const apiSrcDir = join(cwd, "api/src");
+	const apiSrcDir = layout ? apiModulesSrc(layout) : join(cwd, "api/src");
 	if (existsSync(apiSrcDir)) {
-		const stubWrites = await planStubWrites(ir, { apiSrcDir, implemented: implementedRouteKeys(apiSrcDir) });
+		const stubWrites = await planStubWrites(ir, {
+			apiSrcDir,
+			// stub 落模块的 api 侧：module-root 布局是 `<src>/<m>/api`，不是 `<src>/<m>`
+			apiRootOf: layout ? (m: string) => apiSrcOf(layout, m) : undefined,
+			implemented: implementedRouteKeys(roots),
+		});
 		for (const w of stubWrites) {
 			if (w.action === "create")
 				violations.push({ level: "error", kind: "artifact-stale", message: `[ojm-api] stub 缺失：${relative(cwd, w.filePath)}——请重跑 ojm api 生成。`, filePath: w.filePath });
@@ -318,19 +347,18 @@ export async function checkApi(opts: { cwd: string, exempt?: string }): Promise<
 		throw new Error(`[ojm-api] ${opts.cwd} 下未发现 openapi.json——请先运行 oj v0.1.73 的 \`oj openapi -c config -d api/src -b /api -o openapi.json\` 生成（OpenAPI 3.1，含全部模块）。\`ojm api --check\` 的单一事实源即 openapi.json，不再消费旧 contract.ts。`);
 	}
 
-	// ② route 双向对账（仅 uni-dev——oj 树存在才有意义）
-	if (existsSync(join(opts.cwd, "api/src"))) {
-		const apiSrcDir = join(opts.cwd, "api/src");
-		const handlers = walkApiFiles(apiSrcDir).flatMap(f => scanHandlerFile(f, apiSrcDir));
+	// ② route 双向对账（仅后端树存在才有意义）
+	const layout = tryResolveLayout(opts.cwd);
+	const apiSrcDir = layout ? apiModulesSrc(layout) : join(opts.cwd, "api/src");
+	const roots = layout ? apiModuleRoots(layout) : legacyApiModuleRoots(opts.cwd);
+	if (existsSync(apiSrcDir)) {
+		const handlers = roots.flatMap(root =>
+			walkApiFiles(root.dir).flatMap(f => scanHandlerFile(f, root.dir, root.name)));
 		violations.push(...reconcileRoutes(uniDevIr, handlers, exemption));
 	}
 
 	// ④ WS 路由鉴权对账（oj 0.1.30 起握手过鉴权守卫）
-	violations.push(...checkWsAnonymous(
-		walkWsFiles(join(opts.cwd, "api/src")),
-		join(opts.cwd, "api/src"),
-		resolveConfigPath(opts.cwd),
-	));
+	violations.push(...checkWsAnonymous(roots, resolveConfigPath(opts.cwd)));
 
 	// ③ routes.js diff
 	const distDir = join(opts.cwd, "api/dist");

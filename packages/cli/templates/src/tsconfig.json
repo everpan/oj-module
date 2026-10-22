@@ -1,0 +1,14 @@
+{
+	"extends": [
+		"../tsconfig.json"
+	],
+	"include": [
+		".",
+		"../global.d.ts",
+		"../env.d.ts"
+	],
+	"exclude": [
+		"*/web",
+		"*/web/**"
+	]
+}

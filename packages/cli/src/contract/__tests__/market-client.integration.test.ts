@@ -9,8 +9,8 @@ import type { ScopedRequestLike } from "@oj-module/runtime/contract/errors";
 // 不加载 @oj-module/runtime 重依赖（antd / pro-components 在 node 环境无法 import），仅桩 request、
 // 透传真实 zod（供生成 client 的 DEV 响应校验走真实路径）。ContractApiError 由轻量子路径提供。
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { bindRequest } from "../../../templates/web/src/_platform/__client/api";
-import { httpMarketClient } from "../../../templates/web/src/oj-market/api/defaultClient";
+import { bindRequest } from "../../../templates/src/_platform/web/__client/api";
+import { httpMarketClient } from "../../../templates/src/oj-market/web/api/defaultClient";
 
 // index() 直连 request（不走生成 client），故把桩 request 做成可变实现，测试内统一指向同一 mock。
 const { requestImpl } = vi.hoisted(() => ({

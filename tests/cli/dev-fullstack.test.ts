@@ -20,13 +20,22 @@ import { devServer, shutdownDev } from "../../packages/cli/src/dev";
 
 const FIXTURE_ROOT = path.join(process.cwd(), ".tmp-dev-fx");
 
-function makeFixture(kind: "fullstack" | "frontend", base = "/api"): { root: string, port: number } {
+function makeFixture(kind: "fullstack" | "frontend" | "module-root", base = "/api"): { root: string, port: number } {
 	fs.mkdirSync(FIXTURE_ROOT, { recursive: true });
 	const root = fs.mkdtempSync(path.join(FIXTURE_ROOT, `dev-${kind}-`));
 	const port = 21000 + Math.floor(Math.random() * 1000); // 并行测试端口区间不得重叠（playground-oj 设计 §10）
 	fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({ type: "module" }));
-	fs.mkdirSync(path.join(root, "web/src"), { recursive: true });
-	fs.writeFileSync(path.join(root, "web/src/entry.ts"), "export default {};\n");
+	if (kind === "module-root") {
+		// 新布局：源码根 <root>/src，config 在仓库根；模块两侧至少一侧有标记文件
+		fs.mkdirSync(path.join(root, "src/wiki/api"), { recursive: true });
+		fs.writeFileSync(path.join(root, "src/wiki/api/manifest.yaml"), "name: wiki\nversion: 0.1.0\n");
+		fs.mkdirSync(path.join(root, "src/wiki/web"), { recursive: true });
+		fs.writeFileSync(path.join(root, "src/wiki/web/entry.ts"), "export default {};\n");
+	}
+	else {
+		fs.mkdirSync(path.join(root, "web/src"), { recursive: true });
+		fs.writeFileSync(path.join(root, "web/src/entry.ts"), "export default {};\n");
+	}
 	const shellDist = path.join(root, "shell-dist");
 	fs.mkdirSync(shellDist, { recursive: true });
 	fs.writeFileSync(path.join(shellDist, "index.html"), "<html><head><title>stub</title></head><body><div id=\"app\"></div></body></html>");
@@ -40,6 +49,13 @@ function makeFixture(kind: "fullstack" | "frontend", base = "/api"): { root: str
 	if (kind === "fullstack") {
 		fs.mkdirSync(path.join(root, "api/src"), { recursive: true });
 		fs.writeFileSync(path.join(root, "api/config.yaml"), `server:\n  host: 127.0.0.1\n  port: ${port}\nmounts:\n  - prefix: ${base}\n    api: src\n`);
+	}
+	if (kind === "module-root") {
+		fs.writeFileSync(path.join(root, "config.yaml"), `server:\n  host: 127.0.0.1\n  port: ${port}\nmounts:\n  - prefix: ${base}\n    api: src\n`);
+		// 能力探针：新布局起 oj 前要先确认 --module-root 可用（否则 fail-fast）
+		fs.mkdirSync(path.join(root, "bin"), { recursive: true });
+		const oj = path.join(root, "bin", "oj");
+		fs.writeFileSync(oj, "#!/bin/sh\ncase \"$1 $2\" in\n  \"build --help\") echo '      --module-root <GLOB>  模块根 glob' ;;\n  \"-V \"*) echo 'oj 0.1.999' ;;\nesac\nexit 0\n", { mode: 0o755 });
 	}
 	return { root, port };
 }
@@ -83,19 +99,24 @@ function stubOjUpstream(expectedBase = "/api") {
 		get stopped() {
 			return stopped;
 		},
-		starter: (upPort: number, configPath: string) => (cfg: string, base: string, apiSrc: string): OjProcess => {
-			expect(path.isAbsolute(cfg)).toBe(true);
-			expect(cfg).toBe(configPath);
-			expect(base).toBe(expectedBase);
-			expect(path.isAbsolute(apiSrc)).toBe(true);
-			return {
-				port: upPort,
-				ready: Promise.resolve(),
-				stop: async () => {
-					stopped = true;
+		starter:
+			(upPort: number, configPath: string) =>
+				(cfg: string, base: string, apiSrc: string | string[]): OjProcess => {
+					expect(path.isAbsolute(cfg)).toBe(true);
+					expect(cfg).toBe(configPath);
+					expect(base).toBe(expectedBase);
+					const srcs = (Array.isArray(apiSrc) ? apiSrc : [apiSrc]).filter(
+						s => s !== "" && !s.startsWith("-"),
+					);
+					expect(srcs.every(s => path.isAbsolute(s))).toBe(true);
+					return {
+						port: upPort,
+						ready: Promise.resolve(),
+						stop: async () => {
+							stopped = true;
+						},
+					};
 				},
-			};
-		},
 	};
 }
 
@@ -134,6 +155,29 @@ describe("devServer 全栈接线", () => {
 
 		await stopServer(server);
 		expect(up.stopped).toBe(true); // oj 被回收
+		up.server.close();
+	});
+
+	it("module-root 布局：oj 收到 --module-root <root>/src（不是 --api-path），config 取自仓库根", async () => {
+		const { root, port } = makeFixture("module-root");
+		const configPath = path.join(root, "config.yaml");
+		const up = stubOjUpstream();
+		const upPort = await listenOn(up.server);
+		let seen: string | string[] | undefined;
+
+		const server = await devServer(root, {
+			port,
+			shellDist: path.join(root, "shell-dist"),
+			buildModulesFn: async () => {},
+			ojStarter: (cfg: string, base: string, apiSource: string | string[]): OjProcess => {
+				seen = apiSource;
+				return up.starter(upPort, configPath)(cfg, base, "");
+			},
+		});
+
+		// v0.1.85：--module-root 与 --api-path 互斥，新布局只能给源码树根目录
+		expect(seen).toEqual(["--module-root", path.join(root, "src")]);
+		await stopServer(server);
 		up.server.close();
 	});
 

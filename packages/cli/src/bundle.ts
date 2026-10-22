@@ -3,16 +3,18 @@
 // 组装映射（对齐 P1-9 staging copy 源一层定版，unpack 布局即安装器 extract 段消费面）：
 //   <project>/manifest.yaml                     → <name>-<version>/manifest.yaml（Form A）
 //   <project>/api/dist/<name>-<version>/        → <name>-<version>/api/<name>-<version>/（oj build 产物原样，C2-31 分层核对）
-//   <project>/web/dist/modules/                 → <name>-<version>/web/modules/（web.entry/css 存在性复核）
+//   <project>/web/dist/modules/<name>/          → <name>-<version>/web/modules/<name>/（只入包方案自己的模块；
+//                                                 web.entry/css 存在性复核）
 // 红线：modules.json 禁入包（C2-31——该清单由安装器在目标站点 upsert，防覆盖宿主清单）；
 // 文件面契约（tables↔schema.yaml、locales 双语齐备）构建期 fail-fast（契约 §4.1 构建列）。
+import type { ProjectLayout } from "./layout";
 import fs from "node:fs";
 import path from "node:path";
 
 import { parse } from "yaml";
 import { readModuleDefinition } from "./build";
 import { createDeterministicTgz } from "./deterministic-tar";
-import { resolveLayout } from "./layout";
+import { apiSrcOf, resolveLayout, webSrcOf } from "./layout";
 import { checkLocalesComplete, checkTablesAgainstSchema, parseManifest, referencedI18nKeys, validateContract } from "./manifest-contract";
 import { deriveManifestRoutes, reconcileManifestRoutes } from "./manifest-routes-derive";
 
@@ -46,7 +48,8 @@ export async function buildBundle(projectRoot: string, opts: { out?: string } = 
 	// 仅当 entry.ts 声明了 category 路由才覆盖；否则保留 manifest 既有 routes（未迁移方案兼容）。
 	// entry 读不出来（如第三依赖未装）时软降级：沿用既有 routes，不阻断打包。
 	const layout = resolveLayout(projectRoot);
-	const entryFile = path.join(layout.modulesSrc, name, "entry.ts");
+	// 前端入口两侧布局都在 webSrcOf 里收口：module-root → src/<name>/web，历史 → web/src/<name>
+	const entryFile = path.join(webSrcOf(layout, name), "entry.ts");
 	if (fs.existsSync(entryFile)) {
 		try {
 			const def = await readModuleDefinition(entryFile, projectRoot);
@@ -72,8 +75,8 @@ export async function buildBundle(projectRoot: string, opts: { out?: string } = 
 
 	// 2) 文件面契约（§4.1 构建列专属执行点；manifest 内在规则已在 validateContract 全量通过）
 	const fileViolations = [
-		...checkTables(m, projectRoot, name),
-		...checkLocales(m, projectRoot, name),
+		...checkTables(m, layout, name),
+		...checkLocales(m, layout, name),
 	];
 	if (fileViolations.length > 0) {
 		throw new Error(`[ojm] 方案包构建失败：文件面契约未通过（${fileViolations.length} 项，全量列出）：\n${fileViolations.map(x => `- ${x}`).join("\n")}`);
@@ -109,13 +112,22 @@ export async function buildBundle(projectRoot: string, opts: { out?: string } = 
 			fs.cpSync(built, path.join(root, "api", `${name}-${version}`), { recursive: true });
 		}
 
-		// web：站点构建模块产物入包（web 段缺省 = 纯后端方案，整段跳过）
+		// web：只入包方案自己的模块产物（web 段缺省 = 纯后端方案，整段跳过）。
+		// 为何不是整树：web/dist/modules 里除本方案模块外还有脚手架模板模块（home/login/
+		// personal-center/notification/system/oj-market…），而安装器 deployWeb 会把包内
+		// web/modules 整树覆盖进目标站 <dist>/modules——整树入包等于用开发机上的模板产物
+		// 覆盖目标站同名前端。方案包只该带自己那一份，模板模块属宿主面，不由方案分发。
 		if (m.web !== undefined) {
 			const webModules = path.join(projectRoot, "web/dist/modules");
 			if (!fs.existsSync(webModules)) {
 				throw new Error("[ojm] 方案包构建失败：缺少站点构建产物 web/dist/modules（manifest 声明了 web 段；先运行 ojm build 生成模块产物）");
 			}
-			fs.cpSync(webModules, path.join(root, "web", "modules"), { recursive: true });
+			const ownWeb = path.join(webModules, name);
+			if (!fs.existsSync(ownWeb)) {
+				throw new Error(`[ojm] 方案包构建失败：缺少本方案的站点产物 web/dist/modules/${name}/（方案包只入包方案自己的模块；请确认 web.config.ts 已登记 ${name} 且本次 ojm build 已产出）`);
+			}
+			fs.mkdirSync(path.join(root, "web", "modules"), { recursive: true });
+			fs.cpSync(ownWeb, path.join(root, "web", "modules", name), { recursive: true });
 			const web = m.web as Record<string, unknown>;
 			for (const rel of [web.entry, ...(Array.isArray(web.css) ? web.css : [])]) {
 				if (typeof rel === "string" && !fs.existsSync(path.join(root, "web", rel))) {
@@ -173,28 +185,28 @@ function checkModuleManifest(built: string, name: string, version: string, _summ
 }
 
 /** api.tables ↔ schema.yaml 表集对照（C2-12a 构建列；schema 缺失/声明不一致均 fail-fast） */
-function checkTables(m: Record<string, unknown>, projectRoot: string, name: string): string[] {
+function checkTables(m: Record<string, unknown>, layout: ProjectLayout, name: string): string[] {
 	const api = m.api as Record<string, unknown> | undefined;
 	if (api === undefined || api.tables === undefined)
 		return [];
-	const schemaPath = path.join(projectRoot, "api/src", name, "schema.yaml");
+	const schemaPath = path.join(apiSrcOf(layout, name), "schema.yaml");
 	if (!fs.existsSync(schemaPath)) {
-		return [`【C2-12a】api.tables 已声明但缺少 ${path.relative(projectRoot, schemaPath)}，无法对照表集（oj 冗余校验同源）`];
+		return [`【C2-12a】api.tables 已声明但缺少 ${path.relative(layout.projectRoot, schemaPath)}，无法对照表集（oj 冗余校验同源）`];
 	}
 	return checkTablesAgainstSchema(m, fs.readFileSync(schemaPath, "utf8"));
 }
 
 /** locales 双语齐备（C2-25 构建列缺 key fail-fast；安装期信任构建产物不重复校验） */
-function checkLocales(m: Record<string, unknown>, projectRoot: string, name: string): string[] {
+function checkLocales(m: Record<string, unknown>, layout: ProjectLayout, name: string): string[] {
 	if (referencedI18nKeys(m).length === 0)
 		return [];
-	const dir = path.join(projectRoot, "web/src", name, "locales");
+	const dir = path.join(webSrcOf(layout, name), "locales");
 	const texts: Partial<Record<"zh-CN" | "en-US", string>> = {};
 	const out: string[] = [];
 	for (const lang of ["zh-CN", "en-US"] as const) {
 		const p = path.join(dir, `${lang}.json`);
 		if (!fs.existsSync(p)) {
-			out.push(`【C2-25】manifest 引用了 i18n key 但缺少 ${path.relative(projectRoot, p)}（双语齐备，D4）`);
+			out.push(`【C2-25】manifest 引用了 i18n key 但缺少 ${path.relative(layout.projectRoot, p)}（双语齐备，D4）`);
 			continue;
 		}
 		texts[lang] = fs.readFileSync(p, "utf8");

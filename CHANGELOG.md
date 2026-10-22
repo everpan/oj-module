@@ -5,6 +5,70 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 设计依据、迁移记录与陷阱清单见 [`docs/prd/202609110947-oj-module-two-package-consolidation-design.md`](docs/prd/202609110947-oj-module-two-package-consolidation-design.md)。
 
+## [Unreleased] - 2026-10-22
+
+### Added
+
+- **识别 `src/<name>/{api,web}` 布局（module-root，opt-in，历史布局零变化）**。
+  `layout.ts` 新增 `module-root` 一种 kind 与取值函数（`moduleDir`/`apiSrcOf`/`webSrcOf`/
+  `apiModulesSrc`），build/dev/preview/bundle/contract 全部改经它取路径，不再手拼
+  `api/src`、`web/src`。判定只认模块根标记文件（`src/<name>/api/manifest.yaml` 或
+  `src/<name>/web/entry.ts`），并且：
+  - 两套源码树同时存在 → 报错（不静默选一个，否则 build 构 A 而 dev 预览 B）；
+  - `src/<x>/api` 有目录却缺 `manifest.yaml` → 报错指名目录；
+  - `web/dist` 不会被误判成框架根仓的平铺布局。
+  产物形状**完全不变**：`api/dist/<name>-<ver>/` 扁平根与 `web/dist` 站点根继续各就各位
+  （按模块聚合产物会打断跨模块 import 的 `<ver>` 相对路径、版本锁与 preview 的四处扁平根假设）。
+- **oj 能力探针（`bin/.oj-caps`）**：版本号是声明、能跑通才是事实。`build`/`dev` 在
+  module-root 布局下先探 `oj build --help` 是否含 `--module-root`，缺失即 fail-fast 并给出
+  `ojm vendor` 处置命令；结果按二进制 size+mtime 指纹缓存，手替 `bin/oj` 后自动重探。
+- **前端模块清单改为「扫描 + 可选覆盖」**：module-root 布局下模块由 `src/<name>/web/entry.ts`
+  扫描得出（字典序，保证两次构建产物一致），`web.config.ts` 的 `modules` 退化为可选覆盖——
+  显式顺序排前、未登记的按序追加（并集，忘登记也不会漏构建），`enabled:false` 仍生效，
+  登记了不存在的前端入口则报错。历史布局仍以 `modules` 为唯一真源。
+- **dev 的 oj 后端参数与构建同口径**：module-root 下传 `--module-root <root>/src`（**不是**
+  `--api-path`——oj 0.1.85 起两者互斥，都是「源码树根」），config 取自仓库根；`startOj` 的
+  工程根改为「向上找最近的含 `bin/` 的目录」，不再硬编码「config 往上两级」（config 上移到
+  仓库根后那样会越过工程）。
+- **`MIN_OJ_VERSION` 抬到 0.1.85**：`src/<name>/{api,web}` 布局依赖 oj 的 `--module-root`；
+  该版同时落地了 `manifest.name` 与目录名脱钩、`#/m/x` 按 name 解析（详见
+  `docs/prd/202610220010-layout-module-root-design.md` §5）。`ojm info` 的后端段新增
+  **能力探针**一行（`--module-root 可用/不可用`），并把版本门禁从「只读 `bin/.oj-version`
+  标记」改为以现场 `oj -V` 为准（标记只用于报 drift）。
+- **`ojm init` 对已存在的 `bin/oj` 先过能力闸门**：早前「存在即跳过」会让从旧工程拷来的
+  0.1.84 静默过关，等 `ojm build` 才失败；现在在任何模板写入之前校验版本与 `--module-root`
+  能力，不满足直接抛错并给 `ojm vendor --force` 处置（`-V` 读不出版本的桩/损坏二进制只告警，
+  不阻断幂等补缺）。
+- **tsconfig 覆盖不变量测试**（`tests/cli/typecheck-coverage.test.ts`）：单树布局下前后端分面
+  只能靠 `exclude` 表达，宽 glob 会误伤同名模块（见 Fixed 第一条）。测试钉的是行为而非字面量——
+  两侧 `tsc --listFiles` 的并集必须等于 `src/**/*.{ts,tsx}`、交集必须为空，且 `src/web/api`
+  与 `src/oj-market/web/api` 两侧各归其位。
+
+### Fixed
+
+- **`ojm api` 的契约工具在 module-root 布局下把布局分隔符当成了路由段**。`src/<name>/api` 的
+  `api` 是布局的一层，不是路由：拿 `src` 当扫描根会让 handler 的路由镜像变成
+  `system/api/users`（真实路由 `system/users`），`--check` 报满屏「handler 未登记」；stub 生成
+  也会落到 `src/<m>/<dir>/api.ts`（少了 `api` 一侧）而判「stub 缺失」；WS 匿名对账同理多一段。
+  改为在 `layout.ts` 统一给出**模块 api 根**（`apiModuleRoots`：module-root 取
+  `<src>/<name>/api`、历史布局取 `api/src/<name>`），handler 扫描 / stub 落盘 / WS 对账 /
+  已实现键集合全部按它走。顺带修掉「`src/<name>/web/__client/api.ts` 被当 handler 扫进来」。
+- **新布局工程的豁免清单静默失效**。`.ojm-api-exempt.json` 的位置原本写死 `api/`，而 module-root
+  布局的 `config.yaml` 在同级工程根、清单也在根；`loadExemption` 找不到文件即回退空豁免，
+  `ojm api --check` 会对 auth/web 报一堆「有 handler 无契约」且无任何提示。现在按布局依次找
+  `.ojm-api-exempt.json`（工程根）→ `api/.ojm-api-exempt.json` → `api/.ram-api-exempt.json`（R4 旧名）。
+- **前后端 tsconfig 的排除规则写宽了，静默漏检**。`exclude: ["**/web"]` 会连带排除「模块名就叫
+  `web`」的 `src/web/api`（实测 3 个后端文件从未进过 `typecheck:api`，命令依旧全绿）；
+  `**/api` 同样排除 `src/oj-market/web/api`（只因被 entry 引用才侥幸回到图里）。收窄为按布局
+  精确一层的 `*/web` 与 `src/*/api`，并加覆盖不变量测试兜底。
+
+- **方案包把脚手架模板的前端模块也打进包里**。`ojm build --bundle` 的 web 段原先把
+  `web/dist/modules/` **整树**拷进 tgz，而该目录除本方案模块外还有 `home/login/
+  personal-center/notification/system/oj-market` 等模板模块；安装器 `deployWeb` 又把包内
+  `web/modules` 整树覆盖进目标站 `<dist>/modules`，于是装一个方案会顺带用作者开发机上的
+  模板产物覆盖目标站同名前端。现在只入包 `web/dist/modules/<name>/`（方案自己的模块），
+  模板模块属宿主面、不由方案分发；缺该目录时报错指明期望路径（不再静默整树兜底）。
+
 ## [0.2.19] - 2026-10-21
 
 双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步升 **0.2.19**（runtime 无代码改动，仅为同版发布）。

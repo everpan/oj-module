@@ -2,7 +2,7 @@ import type { OjSchemaDiag } from "./emit-oj-schema";
 import type { IrEndpoint } from "./ir";
 import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 import { emitOjSchemaLine } from "./emit-oj-schema";
 import { splitRoute, wirePrefixOf } from "./ir";
 import { jsonSchemaToSample } from "./json-schema-sample";
@@ -32,8 +32,14 @@ export interface StubWrite {
 }
 
 export interface PlanStubOptions {
-	/** oj api 源码根（如 "api/src"） */
+	/** oj api 源码根（如 "api/src"）；仅用于未提供 `apiRootOf` 时的路径拼接 */
 	apiSrcDir: string
+	/**
+	 * 模块名 → 该模块 api 侧目录。module-root 布局传 `(m) => apiSrcOf(layout, m)`
+	 * （`<src>/<m>/api`）——stub 必须落进模块的 api 侧，串到 `<src>/<m>/` 会被 oj 当成
+	 * 模块根下的普通文件；历史布局缺省即 `<apiSrcDir>/<m>`。
+	 */
+	apiRootOf?: (module: string) => string
 	/** 读已有文件（不存在返回 undefined）；缺省真实 fs */
 	readFile?: (path: string) => string | undefined
 	/** 格式化注入缝（测试/特殊工程）；缺省恒等——模板本身天然 lint-clean（F6） */
@@ -119,7 +125,9 @@ export async function planStubWrites(ir: IrEndpoint[], opts: PlanStubOptions): P
 
 	// 按（模块段 + 目录镜像）分组 → 一个 api.ts
 	// 已在别处（模块根嵌套组 / 其他文件）实现的端点不进 stub 计划。
-	const groups = new Map<string, IrEndpoint[]>();
+	// 键保留模块与目录两段：落盘路径要经 `apiRootOf` 定位模块 api 根（module-root 布局
+	// 多一层 `api`），不能只拼成一条相对串。
+	const groups = new Map<string, { module: string, dir: string, endpoints: IrEndpoint[] }>();
 	for (const ep of ir) {
 		if (opts.implemented) {
 			const ojFullAbs = (ep.apiPrefix + ep.route).replace(/\/{2,}/g, "/");
@@ -127,16 +135,20 @@ export async function planStubWrites(ir: IrEndpoint[], opts: PlanStubOptions): P
 			if ([ojFullAbs, contractAbs].some(a => opts.implemented!.has(`${ep.method} ${a}`)))
 				continue;
 		}
+		const module = ep.apiPrefix.replace(/^\//, "");
 		const { dir } = splitRoute(ep.route);
-		const rel = [ep.apiPrefix.replace(/^\//, ""), dir, "api.ts"].filter(Boolean).join("/");
-		const list = groups.get(rel) ?? [];
-		list.push(ep);
-		groups.set(rel, list);
+		const key = `${module}\u0000${dir}`;
+		const group = groups.get(key);
+		if (group)
+			group.endpoints.push(ep);
+		else
+			groups.set(key, { module, dir, endpoints: [ep] });
 	}
 
 	const writes: StubWrite[] = [];
-	for (const [rel, endpoints] of [...groups.entries()].sort()) {
-		const filePath = `${opts.apiSrcDir}/${rel}`;
+	for (const [, { module, dir, endpoints }] of [...groups.entries()].sort()) {
+		const apiRoot = opts.apiRootOf ? opts.apiRootOf(module) : join(opts.apiSrcDir, module);
+		const filePath = join(apiRoot, dir, "api.ts");
 		// 模板天然 lint-clean（F6）→ 直接哈希发射内容；注入缝仅供测试/特殊工程对齐
 		const body = await fix(emitStubBody(endpoints, opts.diag), filePath);
 		const fingerprint = `// ojm-api:stub ${endpoints.map(e => e.name).sort().join(",")} sha256:${hashContent(body)}\n`;

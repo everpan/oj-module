@@ -59,7 +59,8 @@ export async function runPreview(projectRoot: string, opts: PreviewOptions = {})
 	const siteDir = opts.siteDir ?? layout.distDir;
 	const ojBin = resolveOjBin(projectRoot);
 	const configPath = resolveConfigPath(projectRoot);
-	const apiDist = path.join(projectRoot, "api", "dist");
+	// release 根恒为扁平 api/dist（module-root 只改源码布局，不改产物形状——设计 C-3/C-7）
+	const apiDist = layout.apiDist;
 
 	// fail-fast 四查：缺一即提示对应补救（init 幂等补缺 / ojm build 产物）
 	if (!existsSync(ojBin))

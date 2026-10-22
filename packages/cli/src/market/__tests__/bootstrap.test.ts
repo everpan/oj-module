@@ -28,8 +28,16 @@ function fakeStarter() {
 function newSourceProject(): string {
 	const root = mkdtempSync(join(tmpdir(), "ojm-bootstrap-src-"));
 	mkdirSync(join(root, "bin", "plugins"), { recursive: true });
-	writeFileSync(join(root, "bin", "oj"), "#!/bin/sh\necho fake-oj\n", { mode: 0o755 });
-	writeFileSync(join(root, "bin", ".oj-version"), "v0.1.84\n");
+	// 假 oj 必须过 §7 双探：`-V` 报版本、`build --help` 含 --module-root，否则 buildBackend 在闸门处 fail-fast
+	writeFileSync(
+		join(root, "bin", "oj"),
+		"#!/bin/sh\n"
+		+ "if [ \"$1\" = \"-V\" ]; then echo oj 0.1.85; exit 0; fi\n"
+		+ "if [ \"$1\" = \"build\" ]; then echo \"      --module-root <MODULE_ROOT>  源码树根\"; exit 0; fi\n"
+		+ "echo fake-oj\n",
+		{ mode: 0o755 },
+	);
+	writeFileSync(join(root, "bin", ".oj-version"), "v0.1.85\n");
 	writeFileSync(join(root, "bin", "plugins", "auth.wasm"), "plugin", "utf-8");
 	mkdirSync(join(root, "api", "src", "_platform"), { recursive: true });
 	writeFileSync(join(root, "api", "src", "_platform", "seed.sql"), "-- seed\n", "utf-8");
@@ -60,7 +68,7 @@ describe("given 一个装了 oj 二进制的源工程 When 自举隔离站点", 
 
 		const site = await bootstrapIsolatedSite({ projectRoot: src, starter });
 
-		expect(existsSync(join(site.root, "api", "src", "_platform", "seed.sql"))).toBe(true);
+		expect(existsSync(join(site.root, "src", "_platform", "api", "seed.sql"))).toBe(true);
 		expect(existsSync(join(site.root, "bin", "oj"))).toBe(true);
 		expect(existsSync(join(site.root, "bin", "plugins", "auth.wasm"))).toBe(true);
 		expect(site.root).not.toBe(src);
@@ -75,8 +83,8 @@ describe("given 一个装了 oj 二进制的源工程 When 自举隔离站点", 
 
 		expect(site.port).toBeGreaterThan(1024);
 		expect(site.port).not.toBe(9778);
-		expect(started[0]?.configPath).toBe(join(site.root, "api", "config.yaml"));
-		const cfg = readFileSync(join(site.root, "api", "config.yaml"), "utf-8");
+		expect(started[0]?.configPath).toBe(join(site.root, "config.yaml"));
+		const cfg = readFileSync(join(site.root, "config.yaml"), "utf-8");
 		expect(cfg).toContain(`port: ${site.port}`);
 		await site.cleanup();
 	});
@@ -87,7 +95,7 @@ describe("given 一个装了 oj 二进制的源工程 When 自举隔离站点", 
 
 		const site = await bootstrapIsolatedSite({ projectRoot: src, starter });
 
-		const cfg = readFileSync(join(site.root, "api", "config.yaml"), "utf-8");
+		const cfg = readFileSync(join(site.root, "config.yaml"), "utf-8");
 		expect(cfg).not.toContain("__JWT_SECRET__");
 		await site.cleanup();
 	});
@@ -113,7 +121,8 @@ describe("given 一个装了 oj 二进制的源工程 When 自举隔离站点", 
 
 		expect(site.publisher.privateKeyPem).toContain("PRIVATE KEY");
 		const pemFiles = listFiles(site.root).filter(f => f.endsWith(".pem"));
-		const outside = pemFiles.filter(f => !f.includes("api/config"));
+		// listFiles 返回相对隔离根的路径；站点自身证书三件套在 config/ 下，其余任何 PEM 都是泄漏
+		const outside = pemFiles.filter(f => !f.startsWith("config/"));
 		expect(outside).toEqual([]);
 		await site.cleanup();
 	});
@@ -144,8 +153,7 @@ describe("given 一个装了 oj 二进制的源工程 When 自举隔离站点", 
 describe("given 源工程没装 oj 二进制 When 自举", () => {
 	it("then 人话报错指向 ojm vendor，且不留半成品临时根", async () => {
 		const root = mkdtempSync(join(tmpdir(), "ojm-bootstrap-nooj-"));
-		mkdirSync(join(root, "api"), { recursive: true });
-		writeFileSync(join(root, "api", "config.yaml"), "server:\n  port: 9778\n", "utf-8");
+		writeFileSync(join(root, "config.yaml"), "server:\n  port: 9778\n", "utf-8");
 		const { starter } = fakeStarter();
 
 		await expect(bootstrapIsolatedSite({ projectRoot: root, starter }))

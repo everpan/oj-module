@@ -35,8 +35,12 @@ export const NPM_PKG = "@oj-bin/oj";
  * （见 CHANGELOG 0.1.20 / docs/guides/api-codegen-openapi.md）。**0.2.13 抬到 0.1.81**：
  * 模板侧 `solution-perms.ts` 权限级联清理用 `startswith` 操作键（v0.1.81 补齐，
  * 构造器迁移收尾），oj < 0.1.81 时卸载方案报 `unknown variant startswith` fail-closed。
+ * **本版抬到 0.1.85**：`src/<name>/{web,api}` 布局依赖 `--module-root <DIR>`（源码树根，
+ * 与 `-d`/`--api-path` 互斥）；旧版收到该旗标即报错。0.1.85 同时落地了
+ * `manifest.name` 与目录名脱钩、`#/m/x` 按 name 解析（见
+ * docs/prd/202610220010-layout-module-root-design.md §5）。
  */
-export const MIN_OJ_VERSION = "0.1.81";
+export const MIN_OJ_VERSION = "0.1.85";
 
 /** 按段数值比较（字符串比较会把 0.1.9 判成大于 0.1.69）；非数字段按 0 处理 */
 export function isSupportedOjVersion(version: string): boolean {

@@ -100,7 +100,7 @@ async function main() {
 			}
 			if (check) {
 				const { checkApi } = await import("./contract/check");
-				// --exempt <path>：相对路径按项目根解析；缺省回退 api/.ojm-api-exempt.json
+				// --exempt <path>：相对路径按项目根解析；缺省按布局找 .ojm-api-exempt.json（工程根 → api/）
 				// （旧名 api/.ram-api-exempt.json 仍被读取，R4）
 				const { violations, hints } = await checkApi({ cwd: apiRoot, exempt: exempt ? path.resolve(projectRoot, exempt) : undefined });
 				for (const v of violations)

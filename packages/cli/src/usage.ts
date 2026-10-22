@@ -27,7 +27,7 @@ export function usageText(): string {
   ojm api [dir] [--check] [--docs] [--exempt <path>]
         契约代码生成（client / routes / openapi / stub）
         --check   四重对账（生成物同步 / route 双向 / routes.js / WS 路由鉴权）
-        --exempt <path>  指定豁免清单，覆盖默认 api/.ojm-api-exempt.json
+        --exempt <path>  指定豁免清单，覆盖默认 .ojm-api-exempt.json（工程根；历史布局在 api/ 下）
         --docs    出自包含文档站（单文件离线可看）
   ojm info
         输出版本矩阵与模块清单（报障用，US-7）
@@ -68,7 +68,7 @@ export function usageText(): string {
         --check 离线自检两份索引签名
   ojm market setup [--url <站点地址>] [--user <u> --pass <p>] [--new-pass <p>]
         把系统设置 framework.market_cdn_url 指向本地模拟 CDN（工程根 cdn/，由
-        api/config.yaml 的 /cdn 挂载直出）。首跑若账号处于首次改密期（seed admin
+        config.yaml 的 /cdn 挂载直出）。首跑若账号处于首次改密期（seed admin
         must_change=1），会自动改密换全权 token 后再写入。
   ojm market publish [--fixture <name>@<version>] [--real <方案工程>] [--id <key>] [--key <pem>] [--rebuild-index] [--check]
         把方案包落进 cdn/：合成 fixture（或 --real 走 ojm build --bundle）→ 确定性 tgz
@@ -86,7 +86,7 @@ export function usageText(): string {
         在一次性隔离站点（随机端口 + 一次性 DB/密钥/凭据/信任库/CDN）里跑完整安装，
         跑完即毁；--keep 保留现场供排查。用于确认「这个包到底能不能装」，不污染你的工程。
   ojm test|exec|openapi|migrate|schema [args...]
-        透传给 oj 同名子命令（自动补 -c <project>/api/config.yaml；其余参数原样转发）
+        透传给 oj 同名子命令（自动补 -c <project>/config.yaml；其余参数原样转发）
         例：ojm test --anonymous / ojm migrate --db report / ojm openapi --check
 `;
 }
@@ -104,7 +104,7 @@ const COMMAND_HELP: Record<string, string> = {
   开发模式快捷键（仅 TTY 终端，类 Vite）：
     r  强制重建并热更新    h  显示帮助    c  清屏    o  浏览器打开
     q  退出（后端 oj 一并终止）
-  port 缺省 5174（oj 后端端口以 api/config.yaml 的 server.port 为准）`,
+  port 缺省 5174（oj 后端端口以 config.yaml 的 server.port 为准）`,
 	"build": `ojm build [--bundle] [--out <dir>]
   构建后端（oj build）与模块产物（含全站合并）
   --bundle   方案包构建：manifest.yaml 契约校验（fail-fast）→ 确定性 tgz
@@ -117,7 +117,7 @@ const COMMAND_HELP: Record<string, string> = {
 	"api": `ojm api [dir] [--check] [--docs] [--exempt <path>]
   契约代码生成（client / routes / openapi / stub）
   --check   四重对账（生成物同步 / route 双向 / routes.js / WS 路由鉴权）
-  --exempt <path>  指定豁免清单，覆盖默认 api/.ojm-api-exempt.json
+  --exempt <path>  指定豁免清单，覆盖默认 .ojm-api-exempt.json（工程根；历史布局在 api/ 下）
   --docs    出自包含文档站（单文件离线可看）
   dir 缺省当前目录；显式目录须先存在`,
 	"info": `ojm info
@@ -168,7 +168,7 @@ const COMMAND_HELP: Record<string, string> = {
   本地模拟 CDN 与市场链路子命令：setup / publish / build-index / verify / trial
   详见各子命令帮助：ojm market setup --help 等`,
 	"market setup": `ojm market setup [--url <站点地址>] [--user <u> --pass <p>] [--new-pass <p>]
-  把系统设置 framework.market_cdn_url 指向本地模拟 CDN（工程根 cdn/，由 api/config.yaml 的 /cdn 挂载直出）。首跑若账号处于首次改密期（seed admin must_change=1），会自动改密换全权 token 后再写入`,
+  把系统设置 framework.market_cdn_url 指向本地模拟 CDN（工程根 cdn/，由 config.yaml 的 /cdn 挂载直出）。首跑若账号处于首次改密期（seed admin must_change=1），会自动改密换全权 token 后再写入`,
 	"market publish": `ojm market publish [--fixture <name>@<version>] [--real <方案工程>] [--id <key>] [--key <pem>] [--rebuild-index] [--check]
   把方案包落进 cdn/：合成 fixture（或 --real 走 ojm build --bundle）→ 确定性 tgz → 包级 detached 签名 <name>-<version>.tgz.sig
   不碰索引（索引由 build-index 扫描重建，多人发布才不会互相覆盖）`,

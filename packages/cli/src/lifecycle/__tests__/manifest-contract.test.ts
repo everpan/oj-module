@@ -1,4 +1,4 @@
-import type { InstallContext } from "../../../templates/api/src/_platform/_lifecycle/steps/preflight";
+import type { InstallContext } from "../../../templates/src/_platform/api/_lifecycle/steps/preflight";
 
 // BDD：bundle 级 manifest.yaml 契约校验（P1-11，C2 规则构建列）。
 // 规则真源：docs/prd/solution/202610171254-lifecycle-manifest-contract.md（C2-01~33 构建列，§4.1 矩阵）；
@@ -13,7 +13,7 @@ import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 // 跨端引用（双端一致钉）：被测实现同仓分居两运行时（计划 §1「两运行时取舍」），
 // 测试直接互调，比「两套件各读同一夹具」更强——漂移即本文件红。
-import { preflight } from "../../../templates/api/src/_platform/_lifecycle/steps/preflight";
+import { preflight } from "../../../templates/src/_platform/api/_lifecycle/steps/preflight";
 import { checkLocalesComplete, checkTablesAgainstSchema, parseManifest, validateContract } from "../../manifest-contract";
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), "fixtures");

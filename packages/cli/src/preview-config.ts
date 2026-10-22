@@ -44,7 +44,7 @@ export interface DerivePreviewConfigOptions {
 	apiRoot?: string
 	/** 显式端口时覆盖 server.port；缺省沿用原 config（oj 代码默认 9778） */
 	port?: number
-	/** 原 config 文本（测试注入）；缺省读 api/config.yaml */
+	/** 原 config 文本（测试注入）；缺省读 config.yaml */
 	configText?: string
 }
 

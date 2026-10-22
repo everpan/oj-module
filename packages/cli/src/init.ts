@@ -1,12 +1,12 @@
 /**
  * `ojm init` —— 前后端一体化工程脚手架（设计 §3，D1/D3/D6/D10）。
  *
- * 产物：api/（oj 后端 + seed）、config/（config.yaml + 现场签发证书，与 api/、web/ 同级）、
- * web/src/（前端模块）、bin/（从 everpan/only-js 最新 release 联网下载：oj + plugins + devkit）、
- * 工程配置文件。
+ * 产物（布局 `src/<name>/{api,web}`）：src/（模块源码单树）、config.yaml + config/（现场签发证书）、
+ * seed.*.sql / tests / vitest.config.ts（后端工程面，与 config.yaml 同级）、
+ * bin/（从 everpan/only-js 最新 release 联网下载：oj + plugins + devkit）、工程配置文件。
  *
- * 幂等补缺：对既有工程重跑只补缺失文件（bin/oj 已在则跳过下载），config.yaml 与
- * 用户文件永不覆盖——「重新 init 覆盖脚手架」是审阅记录二明令禁止的行为。
+ * 幂等补缺：对既有工程重跑只补缺失文件（bin/oj 已在则跳过下载，但先过 §7 能力闸门），
+ * config.yaml 与用户文件永不覆盖——「重新 init 覆盖脚手架」是审阅记录二明令禁止的行为。
  */
 
 import { execFileSync } from "node:child_process";
@@ -17,8 +17,9 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 import yaml from "yaml";
 import { resolveCertDir, resolveConfigPath } from "./layout";
+import { probeOjCaps } from "./oj-caps";
 import { mintDevCert } from "./oj-cert";
-import { resolveOjBin, vendorCommand } from "./vendor";
+import { isSupportedOjVersion, MIN_OJ_VERSION, resolveOjBin, vendorCommand } from "./vendor";
 import { readHostVersions } from "./versions";
 
 export interface InitOptions {
@@ -33,6 +34,7 @@ export interface InitOptions {
 interface InitReport {
 	created: string[]
 	skipped: string[]
+	warnings: string[]
 }
 
 /**
@@ -40,6 +42,59 @@ interface InitReport {
  * 返回 null = 未密封（oj 缺失/不支持），调用方据此保留明文并告警。
  */
 export type Sealer = (destDir: string, plainSecret: string) => Promise<string | null>;
+
+/**
+ * 既有 `bin/oj` 的能力预检（设计 §7「双探」；评审 BLOCKING #8）。
+ *
+ * 只查**已存在**的二进制：刚由 `vendorCommand` 装下的那份已被 `MIN_OJ_VERSION` 挡过一遍，
+ * 而「从别处拷来的旧二进制」正是这条闸门要拦的形态。
+ *
+ * 三档处置：
+ *   - `-V` 读不出版本（桩/损坏二进制）→ 告警放行，不阻断幂等补缺；
+ *   - 版本 < MIN_OJ_VERSION → 抛错（`ojm vendor --force` 可覆盖标记）；
+ *   - 版本够但 `--module-root` 缺失 → 抛错，这是「声明新、能力旧」的真实形态。
+ */
+function assertExistingOjUsable(destDir: string, report: InitReport): void {
+	const ojBin = resolveOjBin(destDir);
+	if (!fs.existsSync(ojBin))
+		return;
+
+	let printed: string;
+	try {
+		printed = execFileSync(ojBin, ["-V"], { encoding: "utf-8", timeout: 10_000 }).trim();
+	}
+	catch (error) {
+		report.warnings.push(`无法执行 ${ojBin} -V（${(error as Error).message}），跳过版本校验`);
+		return;
+	}
+
+	const version = /(\d+\.\d+\.\d+)/.exec(printed)?.[1];
+	if (!version) {
+		report.warnings.push(`无法解析 ${ojBin} -V 的输出（${printed || "空"}），跳过版本校验`);
+		return;
+	}
+	if (!isSupportedOjVersion(version)) {
+		throw new Error(
+			`[ojm] ${ojBin} 是 v${version}，低于 ojm 要求的最低版本 v${MIN_OJ_VERSION}。\n`
+			+ "原因：init 不再对已存在的 bin/oj 静默跳过——旧二进制生成的新布局工程会在 `ojm build` 时才失败。\n"
+			+ `处置：\`ojm vendor --force v${MIN_OJ_VERSION}\` 重装，或删除 ${ojBin} 后重跑 init。`,
+		);
+	}
+
+	try {
+		if (probeOjCaps(ojBin).moduleRoot)
+			return;
+	}
+	catch (error) {
+		report.warnings.push(`能力探针失败（${(error as Error).message}），跳过 --module-root 校验`);
+		return;
+	}
+	throw new Error(
+		`[ojm] ${ojBin}（v${version}）不接受 --module-root，无法支撑 src/<name>/{api,web} 布局。\n`
+		+ "原因：版本号是声明，能跑通才是事实——`oj build --help` 里没有该旗标。\n"
+		+ `处置：\`ojm vendor --force v${MIN_OJ_VERSION}\` 重装。`,
+	);
+}
 
 export async function initProject(destDir: string, opts: InitOptions = {}): Promise<void> {
 	fs.mkdirSync(destDir, { recursive: true });
@@ -51,8 +106,12 @@ export async function initProject(destDir: string, opts: InitOptions = {}): Prom
 		);
 	}
 
-	const report: InitReport = { created: [], skipped: [] };
+	const report: InitReport = { created: [], skipped: [], warnings: [] };
 	const cliRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
+
+	// 0) 已有 bin/oj 先过能力闸门（评审 BLOCKING #8）：早前「bin/oj 存在即跳过」
+	//    会让从旧工程带来的 0.1.84 静默过关，等 `ojm build` 才死在 --module-root 不认。
+	assertExistingOjUsable(destDir, report);
 
 	// 1) 模板（占位符替换 + 幂等跳过）
 	const templatesDir = path.join(cliRoot, "templates");
@@ -65,14 +124,15 @@ export async function initProject(destDir: string, opts: InitOptions = {}): Prom
 	}, report, include, templatesDir);
 	pruneUnincludedApiPaths(destDir, include, report);
 
-	// 2) 证书三件套（现场签发，D6）——落点即 resolveCertDir()（config.yaml 同级的 config/）
+	// 2) 证书三件套（现场签发，D6）——落点即 resolveCertDir()（config.yaml 同级的 config/；
+	//    新布局 config.yaml 在工程根，故为 <工程根>/config/）
 	const certDir = resolveCertDir(destDir);
 	if (fs.existsSync(path.join(certDir, "cert.jws"))) {
-		report.skipped.push("api/config/cert.jws");
+		report.skipped.push("config/cert.jws");
 	}
 	else {
 		await mintDevCert(certDir);
-		report.created.push("api/config/{private.pem,public.pem,cert.jws}");
+		report.created.push("config/{private.pem,public.pem,cert.jws}");
 	}
 
 	// 3) oj 二进制：从最新 release 联网下载（sha256 校验 → tar 解包 → chmod），
@@ -164,6 +224,8 @@ export async function initProject(destDir: string, opts: InitOptions = {}): Prom
 	console.log(`[ojm]   新增 ${report.created.length} 项，跳过（已存在）${report.skipped.length} 项`);
 	for (const item of report.skipped)
 		console.log(`[ojm]   · 跳过 ${item}`);
+	for (const item of report.warnings)
+		console.warn(`[ojm]   ! ${item}`);
 	console.log("[ojm] 下一步：pnpm install && pnpm dev（登录 admin / 123456）");
 }
 
@@ -213,7 +275,7 @@ async function sealJwtSecret(destDir: string, report: InitReport, seal: Sealer =
 	// secrets 段：私钥只放部署机，路径相对 config 目录（config.yaml 同级）
 	const withSecrets = `${next.trimEnd()}\nsecrets:\n  private_key_path: ./config/secrets-private.pem\n  public_key_path: ./config/secrets-public.pem\n`;
 	fs.writeFileSync(configPath, withSecrets);
-	report.created.push("api/config/{secrets-private.pem,secrets-public.pem} + auth.jwt_secret 已密封（ENC[...]）");
+	report.created.push("config/{secrets-private.pem,secrets-public.pem} + auth.jwt_secret 已密封（ENC[...]）");
 }
 
 /**
@@ -318,9 +380,10 @@ function pruneUnincludedApiPaths(destDir: string, include: Set<string>, report: 
 	// 只裁本次新建的 openapi.json：init 是幂等补缺，不改动既有工程文件
 	if (!report.created.includes("openapi.json"))
 		return;
+	// 白名单里 `src/<name>/api` 这条（整模块收录）决定「脚手架有哪些后端模块」
 	const mods = new Set([...include]
-		.map(p => (p.startsWith("api/src/") ? p.slice("api/src/".length) : null))
-		.filter((m): m is string => !!m && !m.includes("/")));
+		.map(p => /^src\/([^/]+)\/api$/.exec(p)?.[1])
+		.filter((m): m is string => !!m));
 	if (mods.size === 0)
 		return;
 	const openapiPath = path.join(destDir, "openapi.json");
@@ -401,15 +464,15 @@ node_modules/
 bin/
 .ojm-tmp-*
 # ojm preview 的派生 config（临时产物，进程退出即删；见 preview-config.ts）
-api/.ojm-preview.yaml
-# 本地 sqlite 与运行日志
-api/db.sqlite
-api/db.sqlite-shm
-api/db.sqlite-wal
-api/logs/
+.ojm-preview.yaml
+# 本地 sqlite 与运行日志（config.yaml 在工程根，路径都相对工程根）
+db.sqlite
+db.sqlite-shm
+db.sqlite-wal
+logs/
 # 现场签发的开发证书与凭据私钥（ojm dev 缺证时自动签发，见 oj-cert.ts）；私钥绝不入仓
-api/config/*.pem
-api/config/cert.jws
+config/*.pem
+config/cert.jws
 # 构建产物
 api/dist/
 web/dist/

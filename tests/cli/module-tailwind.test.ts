@@ -15,7 +15,7 @@ const FIXTURE_ROOT = path.join(PROJECT_ROOT, ".tmp-fx-tw");
 
 // 夹具直接复用模板文件：测试同时守护「模板本身可编译、可出产物」
 const TEMPLATE_STYLES = fs.readFileSync(
-	path.join(PROJECT_ROOT, "packages/cli/templates/web/src/styles.css"),
+	path.join(PROJECT_ROOT, "packages/cli/templates/src/styles.css"),
 	"utf-8",
 );
 

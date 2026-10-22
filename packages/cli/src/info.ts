@@ -15,6 +15,7 @@ import path from "node:path";
 import { loadModulesConfig } from "./config";
 import { resolveConfigPath } from "./layout";
 import { mergeModuleManifests } from "./manifest";
+import { probeOjCaps } from "./oj-caps";
 import { readOjApiPrefix, readOjServerField } from "./oj-config";
 import { isSupportedOjVersion, MIN_OJ_VERSION, readLocalVersion, resolveOjBin } from "./vendor";
 import { readHostVersions, resolveShellDist } from "./versions";
@@ -150,21 +151,37 @@ export async function printInfo(projectRoot: string, oj: OjObservability = realO
 			: "证书状态:  无法探测（服务未运行时属正常；ojm dev/preview 起服后可测）";
 
 		const markerShort = markerVersion?.replace(/^v/, "");
-		const drift = markerShort && siteVersion.includes(markerShort)
+		// 版本门禁以**现场版本**为准，标记只用来报漂移：`bin/oj` 允许手替（vendor.ts 逃生门），
+		// 只看标记会把「标记新、二进制旧」判成健康（设计 §7「双探」第 1 条）。
+		const liveShort = /(\d+\.\d+\.\d+)/.exec(siteVersion)?.[1];
+		const drift = markerShort && (liveShort ?? siteVersion).includes(markerShort)
 			? ""
 			: markerShort
 				? `\n  [!] 现场版本与安装标记（${markerVersion}）不一致，请核对（ojm vendor --force 重装）`
 				: "";
+		const gateShort = liveShort ?? markerShort;
 		// 最低版本门禁：ojm 只与 >= MIN_OJ_VERSION 的 oj 组合可用（子命令 serve 等契约）
-		const outdated = markerShort && !isSupportedOjVersion(markerShort)
+		const outdated = gateShort && !isSupportedOjVersion(gateShort)
 			? `\n  [!] 低于 ojm 要求的最低版本 v${MIN_OJ_VERSION}（oj v0.1.32 起启动子命令 server → serve）——请升级：ojm vendor v${MIN_OJ_VERSION}`
 			: "";
+		// 能力探针（§7 第 2 条）：版本号是声明，能跑通才是事实
+		const capsLine = fs.existsSync(ojBin)
+			? (() => {
+				try {
+					return `--module-root ${probeOjCaps(ojBin).moduleRoot ? "可用" : `不可用（src/<name>/{api,web} 布局需 oj >= v0.1.85；ojm vendor v${MIN_OJ_VERSION}）`}`;
+				}
+				catch (error) {
+					return `探测失败（${(error as Error).message}）`;
+				}
+			})()
+			: "未知（bin/oj 不存在，ojm vendor 安装）";
 		backendBlock = `
 后端（oj）:
   安装标记:  ${markerVersion ?? "未知（缺 bin/.oj-version，ojm vendor 重装）"}
   现场版本:  ${siteVersion}${drift}${outdated}
   版本要求:  >= v${MIN_OJ_VERSION}（ojm 以最新 oj 为准，不做兼容分支）
-  端口/base: ${port} / ${base}（api/config.yaml）
+  能力探针:  ${capsLine}
+  端口/base: ${port} / ${base}（config.yaml）
   ${certLine}
 `;
 	}

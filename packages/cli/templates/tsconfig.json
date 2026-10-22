@@ -15,9 +15,13 @@
 		"skipLibCheck": true
 	},
 	"include": [
-		"web",
+		"src",
 		"web.config.ts",
 		"global.d.ts",
 		"env.d.ts"
+	],
+	"exclude": [
+		"src/*/api",
+		"src/*/api/**"
 	]
 }

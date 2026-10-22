@@ -62,3 +62,57 @@ describe("given 纯前端工程（无 api/src）When ojm build 后端", () => {
 		expect(existsSync(join(root, "api", "dist"))).toBe(false);
 	});
 });
+
+/**
+ * 假 oj：把 argv 落盘供断言；`build --help` 的输出可切（模拟是否支持 --module-root）。
+ * 能力探针会先跑 `build --help`，所以脚本必须区分这两次调用。
+ */
+function fakeOjRecording(projectRoot: string, supportsModuleRoot: boolean): void {
+	mkdirSync(join(projectRoot, "bin"), { recursive: true });
+	const bin = join(projectRoot, "bin", "oj");
+	writeFileSync(bin, [
+		"#!/bin/sh",
+		"if [ \"$1\" = \"build\" ] && [ \"$2\" = \"--help\" ]; then",
+		`  ${supportsModuleRoot ? "echo '      --module-root <GLOB>  模块根 glob'" : "echo '  -d, --dir <DIR>'"}`,
+		"  exit 0",
+		"fi",
+		"if [ \"$1\" = \"-V\" ]; then echo 'oj 0.1.84'; exit 0; fi",
+		"printf '%s\\n' \"$*\" > \"$(dirname \"$0\")/invoked\"",
+		"exit 0",
+		"",
+	].join("\n"), { mode: 0o755 });
+}
+
+/** 新布局工程：src/<name>/{api,web} + 仓库根 config.yaml */
+function newModuleRootProject(): string {
+	const root = mkdtempSync(join(tmpdir(), "ojm-build-backend-mr-"));
+	mkdirSync(join(root, "src", "wiki", "api"), { recursive: true });
+	writeFileSync(join(root, "src", "wiki", "api", "manifest.yaml"), "name: wiki\nversion: 0.1.0\n", "utf-8");
+	writeFileSync(join(root, "config.yaml"), "server:\n  port: 9778\n", "utf-8");
+	return root;
+}
+
+describe("given module-root 布局 When ojm build 后端", () => {
+	it("then 一次调用、单一输出根：--module-root src + -o api/dist（与 -d 互斥）", async () => {
+		const root = newModuleRootProject();
+		fakeOjRecording(root, true);
+
+		expect(await buildBackend(root)).toBe(true);
+
+		// 逐模块 `-o <tmp>` 会让每个 tmp 各写一份 manifests.yaml，锁与兄弟目录关系全丢
+		const invoked = readFileSync(join(root, "bin", "invoked"), "utf-8").trim();
+		expect(invoked).toBe(
+			`build -c ${join(root, "config.yaml")} --module-root ${join(root, "src")} -o ${join(root, "api", "dist")} --no-minify`,
+		);
+		expect(existsSync(join(root, "api", "dist", "versions.json"))).toBe(true);
+	});
+
+	it("then oj 缺 --module-root 能力时 fail-fast，不落任何产物", async () => {
+		const root = newModuleRootProject();
+		fakeOjRecording(root, false);
+
+		await expect(buildBackend(root)).rejects.toThrow(/不支持 --module-root/);
+		expect(existsSync(join(root, "bin", "invoked"))).toBe(false); // 没跑 oj build
+		expect(existsSync(join(root, "api", "dist"))).toBe(false);
+	});
+});

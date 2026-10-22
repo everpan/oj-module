@@ -1,3 +1,4 @@
+import type { ApiModuleRoot } from "../layout";
 import type { IrEndpoint } from "./ir";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, relative, sep } from "node:path";
@@ -205,13 +206,19 @@ export function handlerAbs(h: HandlerRow): string {
 	return h.tail?.startsWith("/") ? h.tail : `/${h.full}`;
 }
 
-export function scanHandlerFile(filePath: string, apiSrcDir: string): HandlerRow[] {
+/**
+ * `apiDir` 是**模块的 api 侧目录**（module-root → `src/<name>/api`，历史 → `api/src/<name>`），
+ * `moduleName` 补进路由镜像的首段。两个参数而不是「扫描根 + 相对路径」，是因为 module-root
+ * 布局在扫描根与 handler 目录之间多一层 `api`，而它不属于路由（见 layout.apiModuleRoots）。
+ */
+export function scanHandlerFile(filePath: string, apiDir: string, moduleName = ""): HandlerRow[] {
 	const text = readFileSync(filePath, "utf8");
 	const sf = ts.createSourceFile(filePath, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
 	const routes = collectRouteDecls(sf);
 	const decls = collectObjectDecls(sf);
 	const callDecls = collectCallDecls(sf);
-	const relDir = relative(apiSrcDir, dirname(filePath)).split(sep).join("/");
+	const inner = relative(apiDir, dirname(filePath)).split(sep).filter(Boolean).join("/");
+	const relDir = [moduleName, inner].filter(Boolean).join("/");
 	const rows: HandlerRow[] = [];
 	const seen = new Set<ts.Node>();
 
@@ -312,15 +319,17 @@ export function walkApiFiles(dir: string, out: string[] = []): string[] {
  * emit-stub 据此跳过「已在别处（模块根嵌套组 / 其他文件）实现」的端点——否则 DDD
  * reshape 后镜像 stub 与真实 handler 双写同路由，oj 路由表出现重复注册。
  */
-export function implementedRouteKeys(apiSrcDir: string): Set<string> {
+export function implementedRouteKeys(roots: readonly ApiModuleRoot[]): Set<string> {
 	const keys = new Set<string>();
-	for (const f of walkApiFiles(apiSrcDir)) {
-		const text = readFileSync(f, "utf8");
-		// stub 镜像文件不算实现——它们覆盖的路由需照常报「stub 缺失/待更新」
-		if (/^\/\/ (?:ojm|ram)-api:stub /.test(text))
-			continue;
-		for (const row of scanHandlerFile(f, apiSrcDir))
-			keys.add(pathKey(row.method, handlerAbs(row)));
+	for (const root of roots) {
+		for (const f of walkApiFiles(root.dir)) {
+			const text = readFileSync(f, "utf8");
+			// stub 镜像文件不算实现——它们覆盖的路由需照常报「stub 缺失/待更新」
+			if (/^\/\/ (?:ojm|ram)-api:stub /.test(text))
+				continue;
+			for (const row of scanHandlerFile(f, root.dir, root.name))
+				keys.add(pathKey(row.method, handlerAbs(row)));
+		}
 	}
 	return keys;
 }

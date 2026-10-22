@@ -40,17 +40,40 @@ export interface StartOjPoll {
 	timeoutMs?: number
 }
 
+/**
+ * 工程根：从 config 所在目录向上找最近的含 `bin/` 的目录（ojm 的 vendor 布局）。
+ *
+ * 两种布局：
+ *   <root>/api/config.yaml → <root>/bin/oj     （历史布局，命中第二层）
+ *   <root>/config.yaml     → <root>/bin/oj     （module-root，命中第一层）
+ * 找不到 `bin/` 时退回旧的「往上两级」，保持既有报错行为（缺 bin/oj 的文案不变）。
+ */
+function resolveProjectRoot(configPath: string): string {
+	const configDir = path.dirname(configPath);
+	for (const dir of [configDir, path.dirname(configDir)]) {
+		if (fs.existsSync(path.join(dir, "bin")))
+			return dir;
+	}
+	return path.dirname(configDir);
+}
+
 export function startOj(
 	configPath: string,
 	base: string,
-	apiSrcPath: string,
+	apiSource: string | string[],
 	poll: StartOjPoll = {},
 	extraArgs: string[] = [],
 ): OjProcess {
 	const port = readOjPort(configPath);
-	// 约定：config 在 <project>/api/config.yaml，vendor 二进制在 <project>/bin/oj
-	const projectRoot = path.dirname(path.dirname(configPath));
+	// 约定：vendor 二进制在 <project>/bin/oj。工程根不能按「config 往上两级」算：
+	// module-root 布局的 config 在仓库根（<project>/config.yaml），往上两级会越过工程，
+	// 落到父目录找 bin/oj。改为「向上找最近的含 bin/ 的目录」，两种布局都成立。
+	const projectRoot = resolveProjectRoot(configPath);
 	const binPath = resolveOjBin(projectRoot);
+	// 后端源码参数二选一（oj v0.1.85：`--api-path` 与 `--module-root` 互斥，同时给会被
+	// clap 拒掉）：历史布局传目录 → `--api-path <dir>`；module-root 布局传**已拼好的
+	// 旗标数组** → `["--module-root", "<project>/src"]`。
+	const apiArgs = Array.isArray(apiSource) ? apiSource : ["--api-path", apiSource];
 	const healthUrl = `http://127.0.0.1:${port}${base}/health`;
 
 	// 插件目录发现显式化：oj 的 resolve_plugins_dir 依赖 current_exe() 启发式，而
@@ -69,7 +92,7 @@ export function startOj(
 	let stderrTail = "";
 	// --console-log：oj 新版终端默认静默（console_log 缺省 false，只落 logs/），
 	// ojm dev/preview 的 [oj] 透传管道必须显式打开终端输出才能看到日志（手册 §10）。
-	const child = spawn(binPath, ["serve", "-c", configPath, "-b", base, "--api-path", apiSrcPath, "--console-log", ...extraArgs], {
+	const child = spawn(binPath, ["serve", "-c", configPath, "-b", base, ...apiArgs, "--console-log", ...extraArgs], {
 		stdio: ["ignore", "pipe", "pipe"],
 		...(env ? { env } : {}),
 	});
