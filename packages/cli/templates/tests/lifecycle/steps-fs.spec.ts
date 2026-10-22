@@ -18,7 +18,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { defaultTestKey, nodeVerifyEd25519, signedArchiveFor } from "../../../../src/lifecycle/__tests__/helpers";
+import { defaultTestKey, nodeVerifyEd25519, signedArchiveFor } from "../../../src/lifecycle/__tests__/helpers";
 import { archiveFileOf, download } from "../../src/_platform/api/_lifecycle/steps/download";
 import { buildExtractCmd, buildListCmd, checkModuleManifest, extract } from "../../src/_platform/api/_lifecycle/steps/extract";
 import { verify } from "../../src/_platform/api/_lifecycle/steps/verify";
@@ -352,8 +352,8 @@ describe("verify（stage=verifying，C2-29 sha256 fail-closed + P2-3 六码验�
 	it("sig_key：已信任 key_id 但包内公钥与库绑定不一致（首次绑定不可改族）", async () => {
 		await seed();
 		// 另一把私钥冒用已信任 key_id（trusted key_id + 异公钥 = 绑定不一致）
-		const { signedArchiveFor: signFor } = await import("../../../../src/lifecycle/__tests__/helpers");
-		const { generateKeyPair } = await import("../../../../src/lifecycle/keygen");
+		const { signedArchiveFor: signFor } = await import("../../../src/lifecycle/__tests__/helpers");
+		const { generateKeyPair } = await import("../../../src/lifecycle/keygen");
 		const impostor = signFor(BYTES, "demo-solution", "0.1.0", { keyPair: generateKeyPair(), keyId: "test.publisher" });
 		const r = await verify(vfCtx({ manifest: manifest({ ...manifest().archive, signature: impostor.sig }) }));
 		expect(r).toMatchObject({ ok: false, code: "sig_key" });

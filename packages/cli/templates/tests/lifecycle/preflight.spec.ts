@@ -14,7 +14,7 @@ import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import { preflight } from "../../src/_platform/api/_lifecycle/steps/preflight";
 
-const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), "../../../../src/lifecycle/__tests__/fixtures");
+const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), "../../../src/lifecycle/__tests__/fixtures");
 const VALID = parse(readFileSync(join(FIXTURES, "fixture-valid/manifest.yaml"), "utf8")) as any;
 
 /** 宿主 versions.json 假数据（C2-09 真源键：@oj-module/runtime，shell/src/manifest.ts P7.6） */

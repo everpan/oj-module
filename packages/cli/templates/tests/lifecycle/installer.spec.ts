@@ -21,7 +21,7 @@ import * as fsp from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { defaultTestKey, nodeVerifyEd25519, signedArchiveFor } from "../../../../src/lifecycle/__tests__/helpers";
+import { defaultTestKey, nodeVerifyEd25519, signedArchiveFor } from "../../../src/lifecycle/__tests__/helpers";
 import { atomicWriteText } from "../../src/_platform/api/_lifecycle/atomic";
 import { gcVersions, reconcile, runInstall, setEnabled, STAGES } from "../../src/_platform/api/_lifecycle/installer";
 import { acquireTaskLock, commitLockEntry, parseLock, readLock, serializeLock, writeLock } from "../../src/_platform/api/_lifecycle/lock";
@@ -532,8 +532,8 @@ describe("U5 取消安装（P3-8）：cancel token → h.kill + staging 清场 +
 
 describe("第五终态 needs_trust（P2-3，G3 TOFU：未知 key_id 待确认，staging 不清场）", () => {
 	it("未知 key 装 → needs_trust + trust 三元组 + unknown_key 指引；锁/库表/sidecar/审计零改动，staging 留存", async () => {
-		const { generateKeyPair } = await import("../../../../src/lifecycle/keygen");
-		const { signedArchiveFor: signFor } = await import("../../../../src/lifecycle/__tests__/helpers");
+		const { generateKeyPair } = await import("../../../src/lifecycle/keygen");
+		const { signedArchiveFor: signFor } = await import("../../../src/lifecycle/__tests__/helpers");
 		const stranger = signFor(ARCHIVE, "demo-solution", "0.1.0", { keyPair: generateKeyPair(), keyId: "stranger.pub" });
 		const m = manifestFixture("0.1.0");
 		m.archive = { ...m.archive, signature: stranger.sig };
@@ -562,8 +562,8 @@ describe("第五终态 needs_trust（P2-3，G3 TOFU：未知 key_id 待确认，
 	});
 
 	it("TOFU 全链：确认入信任库（端点同路径 store.add）后原样重试 → done", async () => {
-		const { generateKeyPair } = await import("../../../../src/lifecycle/keygen");
-		const { signedArchiveFor: signFor } = await import("../../../../src/lifecycle/__tests__/helpers");
+		const { generateKeyPair } = await import("../../../src/lifecycle/keygen");
+		const { signedArchiveFor: signFor } = await import("../../../src/lifecycle/__tests__/helpers");
 		const stranger = signFor(ARCHIVE, "demo-solution", "0.1.0", { keyPair: generateKeyPair(), keyId: "stranger.pub" });
 		const m = manifestFixture("0.1.0");
 		m.archive = { ...m.archive, signature: stranger.sig };

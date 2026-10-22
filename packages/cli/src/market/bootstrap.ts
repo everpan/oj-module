@@ -26,6 +26,7 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { buildBackend } from "../build";
+import { resolveLayout } from "../layout";
 import { exportRawPublicKeyHex, fingerprintOfPublicKey } from "../lifecycle/sign";
 import { startOj } from "../oj";
 import { mintDevCert } from "../oj-cert";
@@ -144,7 +145,10 @@ export async function bootstrapIsolatedSite(opts: BootstrapOptions = {}): Promis
 	cfg = cfg.replace("web: ./cdn", `web: ${cdnDir}\n  - prefix: /\n    web: ${siteDir}\n    spa: true`);
 	// 安装目标恒为 release 部署：装好的模块落在 api/dist，dev 形态（--api-path src）发现不了。
 	// 故隔离站点以 dist 起站，platform.root 同步改写（oj 校验 root 必须是生效的 api 挂载目录）。
-	cfg = cfg.replace("  root: src", "  root: dist");
+	// root 相对 **config 所在目录** 解析——config 在隔离根，产物在 <root>/api/dist，故不能写死
+	// `dist`（那是 config 还在 api/ 时的旧口径），按布局取值。
+	const apiDistRel = path.relative(root, resolveLayout(root).apiDist).split(path.sep).join("/");
+	cfg = cfg.replace("  root: src", `  root: ${apiDistRel}`);
 	// auth 守卫在装配期读 anonymous_paths，安装器注册的新匿名端点要重启才生效（首次安装 smoke 会 401）。
 	// 隔离站点直接预置被测方案的探活路径——与 scripts/verify-solution-smoke/bootstrap-host.mjs 同手法，
 	// 让 trial 验的是安装机制本身，而不是重启时序。

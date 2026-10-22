@@ -70,6 +70,13 @@
 
 ### Fixed
 
+- **布局 v2 收尾：隔离站点起站根与模板测试的路径层级没跟上迁移**。`market bootstrap` 的
+  `platform.root` 写死 `dist`——那是 config 还在 `api/` 时（相对 config 目录）的口径；config
+  上移到工程根后它解析到不存在的 `<root>/dist`，`oj serve` 直接
+  `platform.root canonicalize failed`。改为按布局取 `<root>/api/dist` 的相对路径。
+  同时修模板测试两处迁移遗留：`tests/api/**` 上移一层成 `tests/**` 后，`../../../../src/…`
+  越到了 `packages/`（整包 import 失败，等于测试从未加载），退一层为 `../../../src/…`；
+  BDD 夹具建库仍读 `src/<mod>/migrations`，补上 `api` 一侧（`src/<mod>/api/migrations`）。
 - **`ojm api` 的契约工具在 module-root 布局下把布局分隔符当成了路由段**。`src/<name>/api` 的
   `api` 是布局的一层，不是路由：拿 `src` 当扫描根会让 handler 的路由镜像变成
   `system/api/users`（真实路由 `system/users`），`--check` 报满屏「handler 未登记」；stub 生成

@@ -1,6 +1,6 @@
 // 后端 BDD 夹具：node:sqlite 内存库 + **真实迁移文件**建表，装到 globalThis.db——
 // 与 oj 运行时注入的全局同名同面（query/exec/tx/dialect），service 代码不改一行即可被测。
-// 夹具直接读 api/src/<模块>/migrations/*.sql，与迁移不可能漂移（沿用 oj-wiki 先例）。
+// 夹具直接读 src/<模块>/api/migrations/*.sql，与迁移不可能漂移（沿用 oj-wiki 先例）。
 //
 // **构造器边界（架构定论，勿在此夹具里补 table()）**：db.table()/listTables() 等构造器是
 // oj 二进制内的纯 Rust 实现，无 JS 模块可导出，Node 侧垫不出来——本夹具刻意只给
@@ -26,7 +26,7 @@ export function installDb(): any {
 	const dbo = new DatabaseSync(":memory:");
 	// 重放 src 下全部模块的迁移（方言专属文件除外）
 	for (const mod of readdirSync(SRC)) {
-		const dir = join(SRC, mod, "migrations");
+		const dir = join(SRC, mod, "api", "migrations");
 		if (!existsSync(dir))
 			continue;
 		for (const f of readdirSync(dir).filter((f: string) => f.endsWith(".sql") && !/\.(?:mysql|pg)\.sql$/.test(f)).sort())

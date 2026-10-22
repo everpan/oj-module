@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const SIG_DIR = path.resolve(HERE, "../../../../src/lifecycle/__tests__/fixtures/sig");
+const SIG_DIR = path.resolve(HERE, "../../../src/lifecycle/__tests__/fixtures/sig");
 const GEN = path.join(SIG_DIR, "gen-signed-fixtures.mjs");
 
 const HEX64 = /^[0-9a-f]{64}$/;
