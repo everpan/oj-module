@@ -63,7 +63,7 @@ function mockRequest(responder: (c: Call) => { status?: number, data?: unknown }
 
 // 让 index() 直连的 request 与生成 client 的 bindRequest 指向同一 mock，行为一致。
 // 桥接：占位方法零参签名 ↔ ScopedRequestLike 真实签名，经 any 双向打通（测试桩，无运行时差异）。
-function useMock(m: ReturnType<typeof mockRequest>) {
+function bindMock(m: ReturnType<typeof mockRequest>) {
 	bindRequest(m.req);
 	const req = m.req as unknown as Record<keyof typeof requestImpl, () => never>;
 	for (const k of Object.keys(requestImpl) as Array<keyof typeof requestImpl>)
@@ -75,12 +75,12 @@ describe("httpMarketClient · 统一委托生成 client 集成回归", () => {
 
 	beforeEach(() => {
 		mock = mockRequest(() => ({ data: {} }));
-		useMock(mock);
+		bindMock(mock);
 	});
 
 	it("meta() → GET _platform/market/meta，返回 { apiVersion }", async () => {
 		mock = mockRequest(() => ({ data: { apiVersion: "1.2.3" } }));
-		useMock(mock);
+		bindMock(mock);
 		const r = await httpMarketClient.meta();
 		expect(mock.calls).toEqual([{ method: "get", url: "_platform/market/meta", opts: undefined }]);
 		expect(r).toEqual({ apiVersion: "1.2.3" });
@@ -89,7 +89,7 @@ describe("httpMarketClient · 统一委托生成 client 集成回归", () => {
 	it("index() → GET _platform/market/index，返回 IndexRow[]", async () => {
 		const rows = [{ name: "a", latest: "1.0", installed: "1.0", enabled: true, upgradable: false }];
 		mock = mockRequest(() => ({ data: rows }));
-		useMock(mock);
+		bindMock(mock);
 		const r = await httpMarketClient.index();
 		expect(mock.calls[0]).toMatchObject({ method: "get", url: "_platform/market/index" });
 		expect(r).toEqual(rows);
@@ -97,7 +97,7 @@ describe("httpMarketClient · 统一委托生成 client 集成回归", () => {
 
 	it("index() 遇 503（未配置市场地址）→ [] 空态，不抛（PRD §5.3）", async () => {
 		mock = mockRequest(c => (c.url === "_platform/market/index" ? { status: 503 } : { data: {} }));
-		useMock(mock);
+		bindMock(mock);
 		const r = await httpMarketClient.index();
 		expect(r).toEqual([]);
 		// 503 是配置态而非故障：silentError 抑制全局 toast + retry:0 不重试（原
@@ -108,7 +108,7 @@ describe("httpMarketClient · 统一委托生成 client 集成回归", () => {
 
 	it("install(input) → POST _platform/market/install，body 含 name/version/source", async () => {
 		mock = mockRequest(() => ({ data: { task_id: "t-1" } }));
-		useMock(mock);
+		bindMock(mock);
 		const r = await httpMarketClient.install({ name: "alpha", version: "2.0", source: "file" });
 		expect(mock.calls[0]).toMatchObject({ method: "post", url: "_platform/market/install" });
 		expect(mock.calls[0].opts?.json).toEqual({ name: "alpha", version: "2.0", source: "file" });
@@ -117,7 +117,7 @@ describe("httpMarketClient · 统一委托生成 client 集成回归", () => {
 
 	it("install(input) 缺省 version/source → null / cdn 兜底", async () => {
 		mock = mockRequest(() => ({ data: { task_id: "t-2" } }));
-		useMock(mock);
+		bindMock(mock);
 		await httpMarketClient.install({ name: "beta" });
 		expect(mock.calls[0].opts?.json).toEqual({ name: "beta", version: null, source: "cdn" });
 	});
@@ -125,7 +125,7 @@ describe("httpMarketClient · 统一委托生成 client 集成回归", () => {
 	it("task(id) → GET _platform/market/task? 带 id", async () => {
 		const rec = { id: "t-1", name: "a", version: "1.0", status: "done", stage: "done", progress: 100, message: "ok", stages: [], startedAt: 1 };
 		mock = mockRequest(() => ({ data: rec }));
-		useMock(mock);
+		bindMock(mock);
 		const r = await httpMarketClient.task("t-1");
 		expect(mock.calls[0]).toMatchObject({ method: "get", url: "_platform/market/task" });
 		expect(mock.calls[0].opts?.searchParams).toEqual({ id: "t-1" });
@@ -134,7 +134,7 @@ describe("httpMarketClient · 统一委托生成 client 集成回归", () => {
 
 	it("enable(input) → POST _platform/market/enable，body {name,enabled}", async () => {
 		mock = mockRequest(() => ({ data: { ok: true, message: "done" } }));
-		useMock(mock);
+		bindMock(mock);
 		const r = await httpMarketClient.enable({ name: "a", enabled: false });
 		expect(mock.calls[0]).toMatchObject({ method: "post", url: "_platform/market/enable" });
 		expect(mock.calls[0].opts?.json).toEqual({ name: "a", enabled: false });
@@ -144,7 +144,7 @@ describe("httpMarketClient · 统一委托生成 client 集成回归", () => {
 	it("history() → GET _platform/market/history，返回 MarketHistory[]", async () => {
 		const hist = [{ id: 1, solution: "a", version: "1.0", action: "install", status: "ok", operator: null, message: null, created_at: 1 }];
 		mock = mockRequest(() => ({ data: hist }));
-		useMock(mock);
+		bindMock(mock);
 		const r = await httpMarketClient.history();
 		expect(mock.calls[0]).toMatchObject({ method: "get", url: "_platform/market/history" });
 		expect(r).toEqual(hist);
@@ -152,7 +152,7 @@ describe("httpMarketClient · 统一委托生成 client 集成回归", () => {
 
 	it("uninstallImpact(name) → GET _platform/market/uninstall-impact? 带 name", async () => {
 		mock = mockRequest(() => ({ data: { name: "a", affectedRoles: 2, affectedUsers: 5 } }));
-		useMock(mock);
+		bindMock(mock);
 		const r = await httpMarketClient.uninstallImpact("a");
 		expect(mock.calls[0]).toMatchObject({ method: "get", url: "_platform/market/uninstall-impact" });
 		expect(mock.calls[0].opts?.searchParams).toEqual({ name: "a" });
@@ -161,7 +161,7 @@ describe("httpMarketClient · 统一委托生成 client 集成回归", () => {
 
 	it("uninstall(name) → POST _platform/market/uninstall，body {name}", async () => {
 		mock = mockRequest(() => ({ data: { ok: true, message: "removed" } }));
-		useMock(mock);
+		bindMock(mock);
 		const r = await httpMarketClient.uninstall("a");
 		expect(mock.calls[0]).toMatchObject({ method: "post", url: "_platform/market/uninstall" });
 		expect(mock.calls[0].opts?.json).toEqual({ name: "a" });

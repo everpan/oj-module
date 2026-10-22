@@ -101,7 +101,7 @@ export function useDropdownMenu() {
 				disabled: tabKey === homePath,
 			},
 		];
-	}, [t, activeKey, homePath, openTabs]);
+	}, [t, activeKey, openTabs]);
 
 	/**
 	 * 定义菜单操作与对应的处理函数
@@ -118,7 +118,7 @@ export function useDropdownMenu() {
 		[TabActionKeys.CLOSE_LEFT]: closeLeftTabs,
 		[TabActionKeys.CLOSE_OTHERS]: closeOtherTabs,
 		[TabActionKeys.CLOSE_ALL]: closeAllTabs,
-	}), [removeTab, closeRightTabs, closeLeftTabs, closeOtherTabs, closeAllTabs]);
+	}), [refresh, setIsRefresh, removeTab, closeRightTabs, closeLeftTabs, closeOtherTabs, closeAllTabs]);
 
 	/**
 	 * 处理菜单点击事件

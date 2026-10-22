@@ -48,7 +48,7 @@ export default function KeepAliveLayer() {
 				aliveRef.current?.destroy(node.cacheKey);
 			}
 		});
-	}, [openTabs]);
+	}, [openTabs, aliveRef]);
 
 	/**
 	 * 关闭多 tab 功能时，清空所有非当前页面缓存
@@ -62,14 +62,14 @@ export default function KeepAliveLayer() {
 				}
 			});
 		}
-	}, [tabbarEnable]);
+	}, [tabbarEnable, aliveRef, cacheKey]);
 
 	/* KeepAlive 的刷新 */
 	useEffect(() => {
 		if (tabbarEnable && isRefresh) {
 			aliveRef.current?.refresh();
 		}
-	}, [isRefresh]);
+	}, [isRefresh, aliveRef, tabbarEnable]);
 
 	/* 路由设置 keepAlive = false 则不缓存页面 */
 	const keepAliveExclude = useMemo(() => {

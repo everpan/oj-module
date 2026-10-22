@@ -33,5 +33,5 @@ export function useScrollToHash(
 		const delayScroll = setTimeout(scrollToHash, interval);
 
 		return () => clearTimeout(delayScroll);
-	}, [trigger]);
+	}, [trigger, behavior, interval]);
 }

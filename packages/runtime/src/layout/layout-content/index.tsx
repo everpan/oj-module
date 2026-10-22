@@ -14,7 +14,7 @@ export default function LayoutContent() {
 	const {
 		token: { colorBgLayout },
 	} = theme.useToken();
-	const { contentElement } = useLayoutContentStyle();
+	const { contentElementRef } = useLayoutContentStyle();
 
 	const enableFooter = usePreferencesStore(state => state.enableFooter);
 	const fixedFooter = usePreferencesStore(state => state.fixedFooter);
@@ -26,7 +26,7 @@ export default function LayoutContent() {
 	return (
 		<main
 			id={ELEMENT_ID_MAIN_CONTENT}
-			ref={contentElement}
+			ref={contentElementRef}
 			className="relative overflow-y-auto overflow-x-hidden grow"
 			style={
 				{

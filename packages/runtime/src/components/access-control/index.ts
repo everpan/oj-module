@@ -16,6 +16,10 @@ interface AccessControlProps {
  * 权限验证组件
  *
  * @param AccessControlProps 权限验证组件的属性
+ * @param AccessControlProps.type 权限类型，默认为 code
+ * @param AccessControlProps.codes 权限值，可以是字符串或字符串数组
+ * @param AccessControlProps.children 有权限时渲染的子组件
+ * @param AccessControlProps.fallback 无权限时显示的内容
  * @returns 若子组件存在，并且传入的权限值有效，则返回子组件；否则返回 null
  */
 export function AccessControl({ type = "code", codes, children, fallback }: AccessControlProps) {

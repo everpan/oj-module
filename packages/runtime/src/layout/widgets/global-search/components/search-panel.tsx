@@ -42,6 +42,8 @@ export function SearchPanel({ menuItem, active, enter, setActiveKey, showCloseBu
 				<div className="flex items-center justify-between">
 					<div className="flex items-center">
 						{menuItem.icon && <div className="mr-3">{menuItem.icon}</div>}
+						{/* 有意的 cloneElement：把翻译后的文本注入原 label 元素（i18n 包裹模式） */}
+						{/* eslint-disable-next-line react/no-clone-element */}
 						<span>{isValidElement(menuItem?.label) ? cloneElement(menuItem.label, {}, t((menuItem.label as ReactElement<{ children: string }>)?.props?.children)) : t(`${menuItem?.label}`)}</span>
 					</div>
 					<div className="flex items-center gap-2">

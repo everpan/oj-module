@@ -186,9 +186,11 @@ export function GlobalSearch() {
 
 	useEffect(() => {
 		if (!keyword.length && Array.isArray(searchHistory)) {
+			// 关键字为空时把搜索历史同步进结果列表，属于有意的外部状态同步
+			// eslint-disable-next-line react/set-state-in-effect
 			setResultOptions(searchMenuList.filter(item => searchHistory?.includes(item.key)));
 		}
-	}, [keyword, searchHistory]);
+	}, [keyword, searchHistory, searchMenuList]);
 
 	return (
 		<>

@@ -3,7 +3,7 @@ import type { PieDataType } from "../../__client/api";
 import { Card, Segmented } from "antd";
 import ReactECharts from "echarts-for-react";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { useTranslation } from "react-i18next";
 import { fetchPie } from "../../__client/api";
@@ -12,16 +12,16 @@ export default function PieChart() {
 	const { t } = useTranslation();
 	const [data, setData] = useState<PieDataType[]>([]);
 	const [value, setValue] = useState<string | number>(
-		t("home:allChannels"),
+		() => t("home:allChannels"),
 	);
 
-	const DATA_KEY = {
+	const DATA_KEY = useMemo(() => ({
 		electronics: t("home:electronics"),
 		home_goods: t("home:homeGoods"),
 		apparel_accessories: t("home:apparelAccessories"),
 		food_beverages: t("home:foodBeverages"),
 		beauty_skincare: t("home:beautySkincare"),
-	};
+	}), [t]);
 
 	const option: EChartsOption = {
 		title: {
@@ -69,7 +69,7 @@ export default function PieChart() {
 				);
 			});
 		}
-	}, [value]);
+	}, [value, DATA_KEY]);
 
 	return (
 		<Card

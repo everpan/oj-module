@@ -59,7 +59,7 @@ export default function ContainerLayout() {
 		else if (screens.xs || (screens.sm && !screens.md)) {
 			setPreferences("sidebarCollapsed", false);
 		}
-	}, [screens]);
+	}, [screens, setPreferences]);
 
 	const sidebarEnableState = useMemo(() => !isTopNav && sidebarEnable, [isTopNav, sidebarEnable]);
 	const computedSidebarWidth = useMemo(() => {
@@ -97,14 +97,18 @@ export default function ContainerLayout() {
 			height += tabbarHeight;
 		}
 		return height;
-	}, [tabbarEnable, tabbarHeight]);
+	}, [tabbarEnable]);
 
 	useEffect(() => {
 		setLayoutHeaderHeight(isMaximize ? tabbarHeight : headerWrapperHeight);
+		// setLayoutHeaderHeight 来自未 memo 的 hook，每次渲染都是新引用，仅作为写入 CSS 变量的工具函数使用
+		// eslint-disable-next-line react/exhaustive-deps
 	}, [headerWrapperHeight, isMaximize]);
 
 	useEffect(() => {
 		setLayoutFooterHeight(footerHeight);
+		// 同上：setLayoutFooterHeight 引用不稳定，挂载时写一次即可
+		// eslint-disable-next-line react/exhaustive-deps
 	}, []);
 
 	return (

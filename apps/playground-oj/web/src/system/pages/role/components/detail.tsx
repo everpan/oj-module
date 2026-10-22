@@ -53,7 +53,9 @@ export function Detail({ title, open, onCloseChange, detailData, treeData, refre
 		if (open) {
 			form.setFieldsValue(detailData);
 		}
-	}, [open]);
+		// detailData 由父组件在打开抽屉前更新，仅需在 open 变化时回填，加入依赖会在编辑中覆盖用户输入
+		// eslint-disable-next-line react/exhaustive-deps
+	}, [open, form]);
 
 	return (
 		<DrawerForm<RoleItemType>

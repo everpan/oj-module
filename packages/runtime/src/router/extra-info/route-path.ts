@@ -22,6 +22,7 @@ export const exceptionUnknownComponentPath = `${exceptionPath}/not-found-compone
  * 子路径部署（/oj/wiki/...）下直接与 loginPath 比较恒为 false，401 时会重复 goLogin。
  * React 组件内请用 `useLocation()`（react-router 已剥离 basename），无需本函数。
  *
+ * @param pathname 原始路径（含部署 base，如 `location.pathname`）
  * @param base 部署 base，恒以 `/` 结尾；缺省取 `resolveSiteBase()`（部署期注入优先，
  * 见 utils/site-base.ts —— runtime 产物里的 `import.meta.env.BASE_URL` 是构建期
  * 内联的 `/`，子路径部署下直接用它恒错）

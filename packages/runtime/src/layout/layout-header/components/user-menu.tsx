@@ -31,7 +31,7 @@ export function UserMenu({ ...restProps }: ButtonProps) {
 		}
 	};
 
-	const altView = useMemo(() => isWindowsOs() ? "Alt" : "⌥", [isWindowsOs]);
+	const altView = useMemo(() => isWindowsOs() ? "Alt" : "⌥", []);
 	const items: MenuProps["items"] = [
 		{
 			label: t("personal-center:menu.personalCenter"),

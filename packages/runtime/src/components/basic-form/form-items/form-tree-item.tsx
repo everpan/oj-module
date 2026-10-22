@@ -92,9 +92,11 @@ export function FormTreeItem({ treeData, value, onChange }: FormTreeItemProps) {
 
 	useEffect(() => {
 		if (checkedOptions.includes("expandAll")) {
+			// eslint-disable-next-line react/set-state-in-effect -- 展开/全选是 checkedOptions 的派生状态，需在 treeData 变化时同步重算，改为事件处理会丢失 treeData 联动
 			setExpandedKeys(flattenTreeData.map(item => item.id));
 		}
 		else {
+			// eslint-disable-next-line react/set-state-in-effect -- 同上：checkedOptions 派生状态的同步重置
 			setExpandedKeys([]);
 		}
 		if (checkedOptions.includes("checkAll")) {
@@ -103,6 +105,7 @@ export function FormTreeItem({ treeData, value, onChange }: FormTreeItemProps) {
 		else {
 			onChange?.([]);
 		}
+		// eslint-disable-next-line react/exhaustive-deps -- onChange 为父组件受控回调（通常非 memo），补全会引发重复回写
 	}, [checkedOptions, flattenTreeData]);
 	return (
 		<>

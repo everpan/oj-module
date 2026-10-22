@@ -64,7 +64,7 @@ export async function generateRoutesFromBackend(backendRoutes: Array<AppRouteRec
 	/**
 	 * 转换路由配置
 	 * @param route 原始路由配置
-	 * @param parentPath 父级路径（用于嵌套路由）
+	 * @param parentComponentPath 父级组件路径（用于嵌套路由）
 	 * @returns 转换后的路由配置
 	 */
 	const transformRoute = async (route: AppRouteRecordRaw, parentComponentPath?: string): Promise<AppRouteRecordRaw> => {

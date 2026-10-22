@@ -19,21 +19,32 @@ export function UninstallConfirm({ row, open, onClose, onConfirmed }: UninstallC
 	const { t } = useTranslation();
 	const client = useMarketClient();
 	const [impact, setImpact] = useState<UninstallImpact | null>(null);
-	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
+
+	// 打开（或切换方案）即清场上一轮结果；渲染期同步派生重置，替代 effect 内同步 set
+	const rowKey = open && row ? row.name : null;
+	const [prevRowKey, setPrevRowKey] = useState(rowKey);
+	if (prevRowKey !== rowKey) {
+		setPrevRowKey(rowKey);
+		setImpact(null);
+		setError(null);
+	}
 
 	useEffect(() => {
 		if (!open || !row)
 			return;
-		setLoading(true);
-		setError(null);
-		setImpact(null);
+		let active = true;
 		client
 			.uninstallImpact(row.name)
-			.then(setImpact)
-			.catch(e => setError(e instanceof Error ? e.message : String(e)))
-			.finally(() => setLoading(false));
+			.then(i => active && setImpact(i))
+			.catch(e => active && setError(e instanceof Error ? e.message : String(e)));
+		return () => {
+			active = false;
+		};
 	}, [open, row, client]);
+
+	// 加载态派生：已打开且尚无结果/错误即视为预检中（替代原 effect 同步 setLoading）
+	const loading = rowKey !== null && impact === null && error === null;
 
 	return (
 		<Modal

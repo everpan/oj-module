@@ -2,7 +2,7 @@ import type { MenuProps } from "antd";
 import type { MenuItemType } from "./types";
 
 import { Menu } from "antd";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMatches } from "react-router";
 
 import { useDeviceType } from "#src/hooks/use-device-type";
@@ -89,7 +89,7 @@ export default function LayoutMenu({
 		return {};
 	}, [mode, isMobile, sidebarCollapsed]);
 
-	const handleOpenChange: MenuProps["onOpenChange"] = (keys) => {
+	const handleOpenChange: MenuProps["onOpenChange"] = useCallback((keys) => {
 		/**
 		 * 1. 手风琴模式，点击菜单项，自动关闭其他菜单
 		 * 2. 非手风琴模式且菜单是收起的，鼠标悬浮菜单自动关闭其他菜单
@@ -116,7 +116,7 @@ export default function LayoutMenu({
 		else {
 			setOpenKeys(keys);
 		}
-	};
+	}, [accordion, sidebarCollapsed, openKeys, menuParentKeys]);
 
 	const menuOpenProps = useMemo(() => {
 		// 如果开启了手风琴模式，则需要自动展开菜单
@@ -137,16 +137,20 @@ export default function LayoutMenu({
 	useEffect(() => {
 		// 折叠
 		if (sidebarCollapsed) {
+			// 有意在 effect 中同步：侧边栏折叠时清空展开项，属于外部状态驱动的重置
+			// eslint-disable-next-line react/set-state-in-effect
 			setOpenKeys([]);
 		}
 		// 展开
 		else {
 			// 手风琴模式，只展开当前激活的菜单
 			if (accordion) {
+				// eslint-disable-next-line react/set-state-in-effect
 				setOpenKeys(getSelectedKeys);
 			}
 			// 非手风琴模式，展开所有激活的菜单
 			else {
+				// eslint-disable-next-line react/set-state-in-effect
 				setOpenKeys((prevOpenKeys) => {
 					if (prevOpenKeys.length === 0) {
 						return getSelectedKeys;
@@ -155,7 +159,7 @@ export default function LayoutMenu({
 				});
 			}
 		}
-	}, [matches, sidebarCollapsed, getSelectedKeys]);
+	}, [matches, sidebarCollapsed, getSelectedKeys, accordion]);
 
 	return (
 		<Menu
