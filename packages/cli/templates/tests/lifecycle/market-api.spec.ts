@@ -858,12 +858,12 @@ describe("hostVersions 缺省接线（B-11：C2-09 比对真源 = <dist>/version
 });
 
 describe("P1-16 接线：marketEnv 生产口径 / exec opts 转发 / operator 通道 / 账本真源 / index 即对账入口", () => {
-	it("marketEnv() 缺省 = 布局 v2 生产口径：版本目录与 versions.json 在 release 根 api/dist，站点 modules 在 web/dist；暂存/任务/sidecar 留 jail 根", () => {
+	it("marketEnv() 缺省 = 布局 v3 生产口径：版本目录与 versions.json 在 release 根 dist/api，站点 modules 在 dist/web；暂存/任务/sidecar 留 jail 根", () => {
 		const env = marketEnv();
-		expect(env.sharedRoot).toBe("api/dist");
-		expect(env.siteModulesDir).toBe("web/dist/modules");
-		expect(env.modulesJsonPath).toBe("web/dist/modules.json");
-		expect(versionsJsonPathOf(env.sharedRoot)).toBe("api/dist/versions.json");
+		expect(env.sharedRoot).toBe("dist/api");
+		expect(env.siteModulesDir).toBe("dist/web/modules");
+		expect(env.modulesJsonPath).toBe("dist/web/modules.json");
+		expect(versionsJsonPathOf(env.sharedRoot)).toBe("dist/api/versions.json");
 		expect(env.staging).toBe("modules/.staging");
 		expect(env.taskDir).toBe("modules/.install-tasks");
 		expect(env.statePath).toBe("modules/.solutions/state.yaml");

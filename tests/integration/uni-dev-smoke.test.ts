@@ -173,9 +173,9 @@ describe.skipIf(process.env.CI || ojBusy)("uni-dev e2e 冒烟（真二进制）"
 
 	it("build：后端与全站产物齐备", () => {
 		runRam(["build"]);
-		expect(fs.existsSync(path.join(root, "web/dist/index.html"))).toBe(true);
-		expect(fs.existsSync(path.join(root, "web/dist/modules.json"))).toBe(true);
-		expect(fs.existsSync(path.join(root, "api/dist/manifests.yaml"))).toBe(true);
+		expect(fs.existsSync(path.join(root, "dist/web/index.html"))).toBe(true);
+		expect(fs.existsSync(path.join(root, "dist/web/modules.json"))).toBe(true);
+		expect(fs.existsSync(path.join(root, "dist/api/manifests.yaml"))).toBe(true);
 	}, 240_000);
 
 	it("preview：单服务（migrate → oj serve API+静态 SPA）+ 带 token 业务路由", async () => {

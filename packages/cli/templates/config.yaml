@@ -30,7 +30,7 @@
 # **这里没有 api 挂载是有意的**：本工程是 `src/<name>/{api,web}` 布局，模块分散在
 # `src/<name>/api` 下，而 mounts 的 api 项按 `<目录>/<模块>/manifest.yaml` 单层解析、
 # 不会递归（实测报 `module 'x' missing manifest.yaml`）。源码形态由 `ojm dev` 用
-# `--module-root src` 供给，产物形态由 `ojm preview` 用 `--api-path api/dist` 供给；
+# `--module-root src` 供给，产物形态由 `ojm preview` 用 `--api-path dist/api` 供给；
 # 两者与 mounts 的 api 项同时出现还会报「module declared in multiple places」。
 # 手写部署（不经 ojm）时才需要自己加回一条 `- prefix: /api` + `api: dist`。
 mounts:
@@ -40,9 +40,9 @@ mounts:
   - prefix: /cdn
     web: ./cdn
   # 生产若由 oj 直出前端（前后端同进程，即 ojm preview 的生产形态），
-  # 取消下一行注释并先 build 出 web/dist（preview 会自动注入等价挂载，无需手改）：
+  # 取消下一行注释并先 build 出 dist/web（preview 会自动注入等价挂载，无需手改）：
   # - prefix: "/"
-  #   web: "./web/dist"   # 相对 config.yaml → 工程根/web/dist
+  #   web: "./dist/web"   # 相对 config.yaml → 工程根/dist/web
   #   spa: true
   # 嵌套 handler 组（oj v0.1.64）无需配置开关，组织方式见 api.ts 顶部注释。
 

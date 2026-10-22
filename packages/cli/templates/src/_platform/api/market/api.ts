@@ -87,7 +87,7 @@ export interface MarketEnv {
 
 /**
  * 宿主 versions.json 布局推导（B-11）：与 manifests.yaml 同层（release 根 = `sharedRoot`），
- * 不是站点产物根——两处根在 `src/<name>/{api,web}` 布局下已分流（`api/dist` vs `web/dist`）。
+ * 不是站点产物根——两处根在 `src/<name>/{api,web}` 布局下已分流（`dist/api` vs `dist/web`）。
  */
 export function versionsJsonPathOf(releaseRoot: string): string {
 	const trimmed = releaseRoot.replace(/\/+$/, "");
@@ -132,21 +132,22 @@ async function hostVersionsOf(env: MarketEnv): Promise<Record<string, string> | 
 /**
  * oj serve release 布局生产缺省（P1-16 B3/B4；全字段可覆盖）。
  *
- * 两处根在 `src/<name>/{api,web}` 布局下分流，且都相对 fs jail 根（= config.yaml 所在目录）：
- *   release 根 `api/dist` —— 版本目录 / manifests.yaml / versions.json / migrations（后端产物）
- *   站点根   `web/dist`   —— modules/ + modules.json（前端产物，安装器 upsert 的落点）
+ * 两处根在 `src/<name>/{api,web}` 布局下分流（2026-10-22 起收进工程根 dist/），
+ * 且都相对 fs jail 根（= config.yaml 所在目录）：
+ *   release 根 `dist/api` —— 版本目录 / manifests.yaml / versions.json / migrations（后端产物）
+ *   站点根   `dist/web`   —— modules/ + modules.json（前端产物，安装器 upsert 的落点）
  * 暂存 / 任务 / 状态 / 信任库 / db 仍在 jail 根下：它们是安装器私有面，不属任何产物根。
  */
 export function marketEnv(): MarketEnv {
 	return {
-		sharedRoot: "api/dist",
+		sharedRoot: "dist/api",
 		staging: "modules/.staging",
 		taskDir: "modules/.install-tasks",
 		statePath: "modules/.solutions/state.yaml",
 		trustPath: ".solutions/trusted-keys.yaml",
 		dbPath: "db.sqlite",
-		siteModulesDir: "web/dist/modules",
-		modulesJsonPath: "web/dist/modules.json",
+		siteModulesDir: "dist/web/modules",
+		modulesJsonPath: "dist/web/modules.json",
 		apiPrefix: "/api",
 		ledgerHeadOf: journalHeadOf,
 	};

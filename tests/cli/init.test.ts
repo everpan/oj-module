@@ -206,7 +206,7 @@ describe("initProject", () => {
 		// 单一源码树；旧布局的两棵树与 api/ 源码目录都不存在
 		expect(fs.existsSync(path.join(dest, "api/src"))).toBe(false);
 		expect(fs.existsSync(path.join(dest, "web/src"))).toBe(false);
-		// 后端构建产物落点仍是扁平根 api/dist（layout.apiDist 恒为 <project>/api/dist）
+		// 后端构建产物落点仍是扁平根 dist/api（layout.apiDist 恒为 <project>/dist/api）
 		expect(fs.existsSync(path.join(dest, "api"))).toBe(false);
 
 		// 工程根：config.yaml + config/ + 种子 + 后端 tsconfig / vitest / tests / 豁免清单
@@ -425,7 +425,7 @@ describe("initProject", () => {
 		const text = fs.readFileSync(gitignore, "utf-8");
 		// 现场产物不入仓：dev 下载的 bin/oj、sqlite/日志/私钥、各级构建产物。
 		// 新布局 config.yaml 在工程根，故 sqlite/logs/证书都相对工程根，不再有 api/ 前缀。
-		for (const rule of ["node_modules/", "bin/", "db.sqlite", "logs/", "config/*.pem", "config/cert.jws", "api/dist/", "web/dist/", "modules/dist/"])
+		for (const rule of ["node_modules/", "bin/", "db.sqlite", "logs/", "config/*.pem", "config/cert.jws", "dist/"])
 			expect(text).toContain(rule);
 
 		const dest2 = path.join(tmpRoot(), "proj-gitignore-keep");

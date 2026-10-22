@@ -59,7 +59,7 @@ export async function runPreview(projectRoot: string, opts: PreviewOptions = {})
 	const siteDir = opts.siteDir ?? layout.distDir;
 	const ojBin = resolveOjBin(projectRoot);
 	const configPath = resolveConfigPath(projectRoot);
-	// release 根恒为扁平 api/dist（module-root 只改源码布局，不改产物形状——设计 C-3/C-7）
+	// release 根恒为扁平 dist/api（module-root 只改源码布局，不改产物形状——设计 C-3/C-7）
 	const apiDist = layout.apiDist;
 
 	// fail-fast 四查：缺一即提示对应补救（init 幂等补缺 / ojm build 产物）
@@ -89,7 +89,7 @@ export async function runPreview(projectRoot: string, opts: PreviewOptions = {})
 	// 派生 config 在 migrate 成功后落盘：失败即退路径零残留
 	const base = readOjApiPrefix(configPath);
 	const writer = opts.configWriter ?? ((root: string, o: { siteDir: string, prefix?: string, port?: number, apiRoot?: string }) => writePreviewConfig(root, o));
-	// apiRoot 交给派生器：release 下 platform.root 必须指向 api/dist（与 --api-path 同源）
+	// apiRoot 交给派生器：release 下 platform.root 必须指向 dist/api（与 --api-path 同源）
 	const preview = writer(projectRoot, { siteDir, prefix: sitePrefix, port: opts.port, apiRoot: apiDist });
 
 	// / api 挂载与注入的 web 挂载配对时 oj 不开 SPA 回落（oj 语义，见 devkit 手册 §13）。

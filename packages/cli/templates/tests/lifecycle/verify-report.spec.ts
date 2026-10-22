@@ -128,7 +128,7 @@ function setHttp(over: Record<string, unknown> = {}) {
 
 function makeEnv() {
 	// modulesJsonPath 同 verify-checks.spec：钉进临时目录（缺文件 → 跳过 web 项），
-	// 不吃模板本机 `web/dist/modules.json`。
+	// 不吃模板本机 `dist/web/modules.json`。
 	return { ...solutionsEnv(), sharedRoot: root, statePath: join(root, "state.yaml"), modulesJsonPath: join(root, "modules.json"), verifyReportsDir: reportsDir };
 }
 

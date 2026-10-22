@@ -16,7 +16,7 @@ import { PROJECT_ROOT } from "../helpers/paths";
  */
 
 const PLAYGROUND = path.join(PROJECT_ROOT, "apps/playground");
-const DIST = path.join(PLAYGROUND, "web", "dist");
+const DIST = path.join(PLAYGROUND, "dist", "web");
 const MODULE_DIR = path.join(DIST, "modules/demo/0.1.0");
 
 function sha384(file: string): string {

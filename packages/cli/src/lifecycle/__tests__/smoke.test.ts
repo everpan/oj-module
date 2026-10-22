@@ -34,7 +34,7 @@ afterEach(() => {
 describe.skipIf(!smokeReady)("真机冒烟（需 OJM_SMOKE_URL/OJM_SMOKE_USER/OJM_SMOKE_PASS）", () => {
 	it("file 源安装 fixture-valid 包 → 终态 done", { timeout: 600_000 }, async () => {
 		// 先出可安装 tgz（同 bundle.test.ts：预置已构建产物再 --bundle 组装）
-		const apiDist = join(project, "api/dist/demo-solution-0.1.0");
+		const apiDist = join(project, "dist/api/demo-solution-0.1.0");
 		const { mkdirSync, writeFileSync } = await import("node:fs");
 		mkdirSync(join(apiDist, "ping"), { recursive: true });
 		// 迁移 SQL 随夹具 src 真源（0001__init.sql 建 note 表）；B-11 硬验收：appliedSeq > 0 可断言
@@ -45,7 +45,7 @@ describe.skipIf(!smokeReady)("真机冒烟（需 OJM_SMOKE_URL/OJM_SMOKE_USER/OJ
 		cpSync(join(FIXTURE_VALID, "api/src/demo-solution/schema.yaml"), join(apiDist, "schema.yaml"));
 		writeFileSync(join(apiDist, "routes.js"), "export {};\n");
 		writeFileSync(join(apiDist, "ping/api.js"), "export async function ping() {}\n");
-		const webDist = join(project, "web/dist/modules/demo-solution/0.1.0");
+		const webDist = join(project, "dist/web/modules/demo-solution/0.1.0");
 		mkdirSync(webDist, { recursive: true });
 		writeFileSync(join(webDist, "entry.js"), "export default {};\n");
 		writeFileSync(join(webDist, "demo-solution.css"), ".demo{}\n");

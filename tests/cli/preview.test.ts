@@ -29,16 +29,17 @@ function makeFixture(base = "/api"): { root: string, configPath: string, siteDir
 	fs.mkdirSync(path.join(root, "bin"), { recursive: true });
 	fs.writeFileSync(path.join(root, "bin/oj"), "#!/bin/sh\nexit 0\n");
 	fs.chmodSync(path.join(root, "bin/oj"), 0o755);
-	fs.mkdirSync(path.join(root, "api/dist"), { recursive: true });
-	fs.writeFileSync(path.join(root, "api/dist/manifests.yaml"), "modules: []\n");
+	fs.mkdirSync(path.join(root, "dist/api"), { recursive: true });
+	fs.writeFileSync(path.join(root, "dist/api/manifests.yaml"), "modules: []\n");
+	fs.mkdirSync(path.join(root, "api"), { recursive: true });
 	fs.writeFileSync(path.join(root, "api/config.yaml"), `server:\n  host: 127.0.0.1\n  port: ${port}\nmounts:\n  - prefix: ${base}\n    api: src\n`);
-	// 新布局标记（web/src 存在 → distDir = web/dist）
+	// 新布局标记（web/src 存在 → distDir = dist/web）
 	fs.mkdirSync(path.join(root, "web/src"), { recursive: true });
-	const siteDir = path.join(root, "web/dist");
+	const siteDir = path.join(root, "dist/web");
 	fs.mkdirSync(siteDir, { recursive: true });
 	fs.writeFileSync(path.join(siteDir, "index.html"), "<html><head><title>site</title></head><body>site</body></html>");
 	fs.writeFileSync(path.join(siteDir, "modules.json"), "[]\n");
-	return { root, configPath: path.join(root, "api/config.yaml"), siteDir, apiDist: path.join(root, "api/dist"), port };
+	return { root, configPath: path.join(root, "api/config.yaml"), siteDir, apiDist: path.join(root, "dist/api"), port };
 }
 
 /** 派生 config 路径（与原 config 同目录，固定名） */
@@ -99,8 +100,8 @@ describe("runPreview fail-fast 四查", () => {
 	const cases = [
 		{ name: "缺 bin/oj → 指向 ojm init", remove: (root: string) => fs.rmSync(path.join(root, "bin/oj")), hint: /init/ },
 		{ name: "缺 api/config.yaml → 指向 ojm init", remove: (root: string) => fs.rmSync(path.join(root, "api/config.yaml")), hint: /init/ },
-		{ name: "缺 index.html → 指向 ojm build", remove: (root: string) => fs.rmSync(path.join(root, "web/dist/index.html")), hint: /build/ },
-		{ name: "缺 manifests.yaml → 指向 ojm build", remove: (root: string) => fs.rmSync(path.join(root, "api/dist/manifests.yaml")), hint: /build/ },
+		{ name: "缺 index.html → 指向 ojm build", remove: (root: string) => fs.rmSync(path.join(root, "dist/web/index.html")), hint: /build/ },
+		{ name: "缺 manifests.yaml → 指向 ojm build", remove: (root: string) => fs.rmSync(path.join(root, "dist/api/manifests.yaml")), hint: /build/ },
 	];
 	for (const c of cases) {
 		it(c.name, async () => {

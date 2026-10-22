@@ -37,9 +37,9 @@ export type { SolutionRouteRow } from "../_lifecycle/verify-checks";
  */
 export function solutionsEnv(): SolutionsEnv {
 	return {
-		sharedRoot: "api/dist",
+		sharedRoot: "dist/api",
 		statePath: "modules/.solutions/state.yaml",
-		modulesJsonPath: "web/dist/modules.json",
+		modulesJsonPath: "dist/web/modules.json",
 		apiPrefix: "/api",
 	};
 }

@@ -18,7 +18,7 @@ import { findOpenapiJson, groupIrByModule } from "./run";
  * ① 生成物同步：内存重生成 vs 磁盘逐字节 diff（含 stub 待更新）
  * ② route 双向对账：AST 扫 oj api.ts（default 导出方法名 + 语句起始 `.route = "..."` 赋值）
  *    vs 契约路由表：未实现 warn / 未登记 error / 参数段不一致 error
- * ③ routes.js diff：release 路由表（oj build 产物，api/dist 下各模块的 routes.js）vs openapi.json
+ * ③ routes.js diff：release 路由表（oj build 产物，dist/api 下各模块的 routes.js）vs openapi.json
  *   契约路由表；无 dist 给提示不判违规
  *
  * 原则：check 永不修文件——修复动作永远由人执行（重跑 ojm api / 补 handler / oj build）。
@@ -360,8 +360,8 @@ export async function checkApi(opts: { cwd: string, exempt?: string }): Promise<
 	// ④ WS 路由鉴权对账（oj 0.1.30 起握手过鉴权守卫）
 	violations.push(...checkWsAnonymous(roots, resolveConfigPath(opts.cwd)));
 
-	// ③ routes.js diff
-	const distDir = join(opts.cwd, "api/dist");
+	// ③ routes.js diff（release 路由表读 layout.apiDist；无布局工程回退同一约定 dist/api）
+	const distDir = tryResolveLayout(opts.cwd)?.apiDist ?? join(opts.cwd, "dist", "api");
 	const distRows: { method: string, pattern: string }[] = [];
 	if (existsSync(distDir)) {
 		for (const entry of readdirSync(distDir, { withFileTypes: true })) {
@@ -373,7 +373,7 @@ export async function checkApi(opts: { cwd: string, exempt?: string }): Promise<
 		}
 	}
 	if (distRows.length === 0) {
-		hints.push("[ojm-api] 未发现 api/dist/**/routes.js——release 路由表对账跳过；发布前请先 oj build 再跑 ojm api --check。");
+		hints.push(`[ojm-api] 未发现 ${relative(opts.cwd, distDir)}/**/routes.js——release 路由表对账跳过；发布前请先 oj build 再跑 ojm api --check。`);
 	}
 	else {
 		// 尾斜杠规范化：契约侧 fullPath 对「模块根路径」带尾斜杠（stripBase 的

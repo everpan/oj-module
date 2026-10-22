@@ -113,7 +113,7 @@ function build(siteBase) {
 // ──────────────────────── 2. 子路径产物：三处缺口都要堵上 ────────────────────────
 
 build(SUB);
-const distDir = path.join(SITE, "web/dist");
+const distDir = path.join(SITE, "dist/web");
 const indexPath = path.join(distDir, "index.html");
 const html = fs.readFileSync(indexPath, "utf8");
 
@@ -228,7 +228,7 @@ fs.writeFileSync(
 		"  certificate_path: config/cert.jws",
 		"mounts:",
 		`  - prefix: "${SUB}"`,
-		"    web: web/dist",
+		"    web: dist/web",
 		"    spa: true",
 		"",
 	].join("\n"),

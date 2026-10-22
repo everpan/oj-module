@@ -49,11 +49,11 @@ interface ManifestEntry {
 }
 
 function readManifest(root: string): ManifestEntry[] {
-	return JSON.parse(fs.readFileSync(path.join(root, "web/dist/modules.json"), "utf-8")) as ManifestEntry[];
+	return JSON.parse(fs.readFileSync(path.join(root, "dist/web/modules.json"), "utf-8")) as ManifestEntry[];
 }
 
 function moduleCssFiles(root: string): string[] {
-	const dir = path.join(root, "web/dist/modules/fx/0.1.0");
+	const dir = path.join(root, "dist/web/modules/fx/0.1.0");
 	return fs.existsSync(dir) ? fs.readdirSync(dir).filter(f => f.endsWith(".css")) : [];
 }
 
@@ -69,7 +69,7 @@ describe("tailwind 模块管线", () => {
 		const files = moduleCssFiles(root);
 		expect(files.length, "模块产物应含 css 文件").toBeGreaterThanOrEqual(1);
 
-		const css = files.map(f => fs.readFileSync(path.join(root, "web/dist/modules/fx/0.1.0", f), "utf-8")).join("\n");
+		const css = files.map(f => fs.readFileSync(path.join(root, "dist/web/modules/fx/0.1.0", f), "utf-8")).join("\n");
 		expect(css, "css 应已被 tailwind 编译，不残留 @import 指令").not.toContain("@import \"tailwindcss");
 		expect(css, "css 应含带前缀的编译工具类").toContain(".tw\\:flex");
 		expect(css, "模板禁 preflight，不应混入 reset（与 runtime 对齐防 antd 冲突）").not.toContain("::backdrop");

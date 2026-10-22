@@ -14,12 +14,12 @@
  * `src/<x>/api/manifest.yaml` 与 `src/<x>/web/entry.ts` 是唯一真源（设计 C-6：
  * 一侧可缺省，两侧皆无则不是模块）。
  *
- * 产物根在两套布局里语义相同、位置不变：
- *   api/dist   oj 扁平 release 根（<name>-<version>/ 同层兄弟 + manifests.yaml）
- *   web/dist   站点产物（shell + modules/ + modules.json）
+ * 产物根（2026-10-22 起收进工程根单一 dist/，原 {web,api}/dist 与源码混树）：
+ *   dist/api   oj 扁平 release 根（<name>-<version>/ 同层兄弟 + manifests.yaml），三种布局一致
+ *   dist/web   站点产物（shell + modules/ + modules.json）；flat 例外：框架根仓维持 build/
  * 产物按模块聚合已被设计 §2.2 否决（实证见该节），禁止在此引入第二套形状。
  *
- * watch 目标绝不含产物目录：若 watch `web/`，重建产物（web/dist）
+ * watch 目标绝不含产物目录：若 watch `web/`，重建产物（dist/web）
  * 会反过来触发重建，形成自触发循环（设计 §4）。
  */
 
@@ -42,9 +42,9 @@ export interface ProjectLayout {
 	projectRoot: string
 	/** 模块源码目录：module-root → `<project>/src`；new → `<project>/web/src`；flat → `<project>/web` */
 	modulesSrc: string
-	/** 站点产物根：module-root / new → `<project>/web/dist`；flat → `<project>/build` */
+	/** 站点产物根：module-root / new → `<project>/dist/web`；flat → `<project>/build`（框架根仓约定） */
 	distDir: string
-	/** oj 扁平 release 根：恒为 `<project>/api/dist`（设计 C-3/C-7，不随布局变化） */
+	/** oj 扁平 release 根：恒为 `<project>/dist/api`（不随布局变化；无布局回退同值） */
 	apiDist: string
 	/** fs.watch 目标（纯源码，永不落产物） */
 	watchTarget: string
@@ -161,8 +161,8 @@ export function tryResolveLayout(projectRoot: string): ProjectLayout | null {
 			kind: "module-root",
 			projectRoot,
 			modulesSrc: path.join(projectRoot, "src"),
-			distDir: path.join(projectRoot, "web", "dist"),
-			apiDist: path.join(projectRoot, "api", "dist"),
+			distDir: path.join(projectRoot, "dist", "web"),
+			apiDist: path.join(projectRoot, "dist", "api"),
 			watchTarget: path.join(projectRoot, "src"),
 			moduleRoot: path.join(projectRoot, "src"),
 		};
@@ -173,8 +173,8 @@ export function tryResolveLayout(projectRoot: string): ProjectLayout | null {
 			kind: "new",
 			projectRoot,
 			modulesSrc: path.join(projectRoot, "web", "src"),
-			distDir: path.join(projectRoot, "web", "dist"),
-			apiDist: path.join(projectRoot, "api", "dist"),
+			distDir: path.join(projectRoot, "dist", "web"),
+			apiDist: path.join(projectRoot, "dist", "api"),
 			watchTarget: path.join(projectRoot, "web", "src"),
 		};
 	}
@@ -186,7 +186,7 @@ export function tryResolveLayout(projectRoot: string): ProjectLayout | null {
 			projectRoot,
 			modulesSrc: path.join(projectRoot, "web"),
 			distDir: path.join(projectRoot, "build"),
-			apiDist: path.join(projectRoot, "api", "dist"),
+			apiDist: path.join(projectRoot, "dist", "api"),
 			watchTarget: path.join(projectRoot, "web"),
 		};
 	}

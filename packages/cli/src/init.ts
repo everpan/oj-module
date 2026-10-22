@@ -489,10 +489,8 @@ logs/
 # 现场签发的开发证书与凭据私钥（ojm dev 缺证时自动签发，见 oj-cert.ts）；私钥绝不入仓
 config/*.pem
 config/cert.jws
-# 构建产物
-api/dist/
-web/dist/
-modules/dist/
+# 构建产物（ojm build：站点 dist/web + 后端 release dist/api）
+dist/
 `;
 
 function ensureGitignore(destDir: string, report: InitReport): void {

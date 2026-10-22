@@ -9,7 +9,7 @@ import { writeOpenapiJson } from "./_fixtures";
  * AC-D10：`ojm api --check` 三重校验——
  * ①生成物同步（内存重生成 vs 磁盘逐字节 diff）
  * ②route 双向对账（AST 扫 oj api.ts：default 导出方法名 + 语句起始 .route 赋值）
- * ③routes.js diff（release 路由表，api/dist 下各模块的 routes.js，vs openapi.json 契约路由表）
+ * ③routes.js diff（release 路由表，dist/api 下各模块的 routes.js，vs openapi.json 契约路由表）
  *
  * 翻译层退役后，事实源即 openapi.json（oj v0.1.73 产物）。
  */
@@ -146,8 +146,8 @@ export default { get };
 		expect(noDist.violations).toEqual([]);
 		expect(noDist.hints.join("\n")).toContain("oj build");
 		// dist routes.js 缺 getOrderDetail → drift
-		mkdirSync(join(cwd, "api/dist/order-0.1.0"), { recursive: true });
-		writeFileSync(join(cwd, "api/dist/order-0.1.0/routes.js"), `// 由 oj build 生成；勿手改。
+		mkdirSync(join(cwd, "dist/api/order-0.1.0"), { recursive: true });
+		writeFileSync(join(cwd, "dist/api/order-0.1.0/routes.js"), `// 由 oj build 生成；勿手改。
 export default [
   { method: "get", pattern: "order/list", file: "list/api.js" },
 ];
@@ -167,13 +167,13 @@ export default [
 			{ module: "order", route: "/list", method: "GET", data: { type: "object", properties: { list: { type: "array", items: { type: "object", properties: { id: { type: "number" } } } } } } },
 		]);
 		await runApi({ cwd });
-		mkdirSync(join(cwd, "api/dist/notifications-0.1.0"), { recursive: true });
-		writeFileSync(join(cwd, "api/dist/notifications-0.1.0/routes.js"), `export default [
+		mkdirSync(join(cwd, "dist/api/notifications-0.1.0"), { recursive: true });
+		writeFileSync(join(cwd, "dist/api/notifications-0.1.0/routes.js"), `export default [
   { method: "get", pattern: "notifications", file: "api.js" },
 ];
 `);
-		mkdirSync(join(cwd, "api/dist/order-0.1.0"), { recursive: true });
-		writeFileSync(join(cwd, "api/dist/order-0.1.0/routes.js"), `export default [
+		mkdirSync(join(cwd, "dist/api/order-0.1.0"), { recursive: true });
+		writeFileSync(join(cwd, "dist/api/order-0.1.0/routes.js"), `export default [
   { method: "get", pattern: "order/list", file: "list/api.js" },
 ];
 `);
@@ -191,8 +191,8 @@ export default [
 		// 豁免清单含 notifications 整模块
 		writeFileSync(join(cwd, "api/.ojm-api-exempt.json"), JSON.stringify({ modules: ["notifications"], paths: [] }));
 		// dist 只有 order——notifications 缺行但被豁免，不报
-		mkdirSync(join(cwd, "api/dist/order-0.1.0"), { recursive: true });
-		writeFileSync(join(cwd, "api/dist/order-0.1.0/routes.js"), `export default [
+		mkdirSync(join(cwd, "dist/api/order-0.1.0"), { recursive: true });
+		writeFileSync(join(cwd, "dist/api/order-0.1.0/routes.js"), `export default [
   { method: "get", pattern: "order/list", file: "list/api.js" },
 ];
 `);
@@ -208,8 +208,8 @@ export default [
 			{ module: "order", route: "/item/{id}", method: "DELETE", params: { id: { type: "number" } } },
 		]);
 		await runApi({ cwd });
-		mkdirSync(join(cwd, "api/dist/order-0.1.0"), { recursive: true });
-		writeFileSync(join(cwd, "api/dist/order-0.1.0/routes.js"), `// 由 oj build 生成；勿手改。
+		mkdirSync(join(cwd, "dist/api/order-0.1.0"), { recursive: true });
+		writeFileSync(join(cwd, "dist/api/order-0.1.0/routes.js"), `// 由 oj build 生成；勿手改。
 export default [
   { method: "del", pattern: "order/item/{id}", file: "item/api.js" },
 ];

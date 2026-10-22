@@ -2,8 +2,8 @@
 // 组装契约（对齐 tgz 内布局，契约 §2.9 + P1-9 staging copy 源定版）：
 //   <root>/solution.yaml | manifest.yaml           ← 必填（solution.yaml 优先，避开 oj 的 api 枚举冲突），契约校验 fail-fast 先于打包
 //   <root>/src/<模块>/solution.yaml | manifest.yaml ← 模块级方案：契约与所打包模块同位（同优先级回退）
-//   api/dist/<name>-<version>/                    ← oj build 产物原样 → tgz 内 api/<name>-<version>/（C2-31 分层核对）
-//   web/dist/modules/<name>/                      ← 站点构建模块产物 → tgz 内 web/modules/<name>/（只入包方案自己的模块）
+//   dist/api/<name>-<version>/                    ← oj build 产物原样 → tgz 内 api/<name>-<version>/（C2-31 分层核对）
+//   dist/web/modules/<name>/                      ← 站点构建模块产物 → tgz 内 web/modules/<name>/（只入包方案自己的模块）
 // 禁携 modules.json（C2-31 红线）；产物确定性（C2-32）由 deterministic-tar 承担，此处断言端到端复现。
 import { execFileSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -32,18 +32,18 @@ afterEach(() => {
 	rmSync(out, { recursive: true, force: true });
 });
 
-/** 预置「已构建」产物：oj build（api/dist/<name>-<version>/）与站点构建（web/dist/modules/） */
+/** 预置「已构建」产物：oj build（dist/api/<name>-<version>/）与站点构建（dist/web/modules/） */
 function makePrebuiltArtifacts(): void {
 	// oj build 产物（模块级 manifest 仅 oj 原生七键；name/version 与 bundle 级逐一相等，C2-31）
-	const apiDist = join(project, "api/dist/demo-solution-0.1.0");
+	const apiDist = join(project, "dist/api/demo-solution-0.1.0");
 	mkdirSync(join(apiDist, "ping"), { recursive: true });
 	mkdirSync(join(apiDist, "migrations"), { recursive: true });
 	writeFileSync(join(apiDist, "manifest.yaml"), "name: demo-solution\ndesc: manifest.yaml 契约全字段合法夹具\nversion: 0.1.0\ntables:\n  - note\n");
 	writeFileSync(join(apiDist, "schema.yaml"), "tables:\n  note: {}\n");
 	writeFileSync(join(apiDist, "routes.js"), "export {};\n");
 	writeFileSync(join(apiDist, "ping/api.js"), "export async function ping() {}\n");
-	// 站点构建产物（web/dist/modules/<name>/<version>/entry.js + css，对应 web.entry/css 声明）
-	const webDist = join(project, "web/dist/modules/demo-solution/0.1.0");
+	// 站点构建产物（dist/web/modules/<name>/<version>/entry.js + css，对应 web.entry/css 声明）
+	const webDist = join(project, "dist/web/modules/demo-solution/0.1.0");
 	mkdirSync(webDist, { recursive: true });
 	writeFileSync(join(webDist, "entry.js"), "export default {};\n");
 	writeFileSync(join(webDist, "demo-solution.css"), ".demo{}\n");
@@ -64,7 +64,7 @@ function addWebSolution(name: string, version = "0.1.0"): void {
 		`  entry: modules/${name}/${version}/entry.js`,
 		"",
 	].join("\n"));
-	const webDist = join(project, "web/dist/modules", name, version);
+	const webDist = join(project, "dist/web/modules", name, version);
 	mkdirSync(webDist, { recursive: true });
 	writeFileSync(join(webDist, "entry.js"), "export default {};\n");
 }
@@ -85,7 +85,7 @@ describe("buildBundle · 正路径", () => {
 
 	it("只入包方案自己的前端模块：模板模块（home/login…）不随包", async () => {
 		// 安装器 deployWeb 把包内 web/modules 整树覆盖进目标站，模板产物随包会覆盖宿主同名前端
-		const hostWeb = join(project, "web/dist/modules/home/0.1.0");
+		const hostWeb = join(project, "dist/web/modules/home/0.1.0");
 		mkdirSync(hostWeb, { recursive: true });
 		writeFileSync(join(hostWeb, "entry.js"), "export default {};\n");
 		const names = tarList((await pack()).tgz);
@@ -149,18 +149,18 @@ describe("buildBundle · 正路径", () => {
 	});
 
 	it("产物树混入 modules.json → 打包自检拒绝（C2-31 红线）", async () => {
-		writeFileSync(join(project, "web/dist/modules/demo-solution/0.1.0/modules.json"), "[]");
+		writeFileSync(join(project, "dist/web/modules/demo-solution/0.1.0/modules.json"), "[]");
 		await expect(pack()).rejects.toThrow(/modules\.json/);
 	});
 
 	it("私钥/凭证混入包树 → 打包自检拒绝（P2-4 入包红线：*.pem/*.key/.env(.local…)/id_ed25519/id_rsa/*.p12/*.pfx）", async () => {
-		writeFileSync(join(project, "api/dist/demo-solution-0.1.0/signing.pem"), "-----BEGIN PRIVATE KEY-----\n");
+		writeFileSync(join(project, "dist/api/demo-solution-0.1.0/signing.pem"), "-----BEGIN PRIVATE KEY-----\n");
 		await expect(pack()).rejects.toThrow(/私钥\/凭证/);
-		rmSync(join(project, "api/dist/demo-solution-0.1.0/signing.pem"));
-		writeFileSync(join(project, "web/dist/modules/demo-solution/0.1.0/.env"), "SECRET=1\n");
+		rmSync(join(project, "dist/api/demo-solution-0.1.0/signing.pem"));
+		writeFileSync(join(project, "dist/web/modules/demo-solution/0.1.0/.env"), "SECRET=1\n");
 		await expect(pack()).rejects.toThrow(/私钥\/凭证/);
-		rmSync(join(project, "web/dist/modules/demo-solution/0.1.0/.env"));
-		writeFileSync(join(project, "web/dist/modules/demo-solution/0.1.0/.env.production"), "SECRET=1\n");
+		rmSync(join(project, "dist/web/modules/demo-solution/0.1.0/.env"));
+		writeFileSync(join(project, "dist/web/modules/demo-solution/0.1.0/.env.production"), "SECRET=1\n");
 		await expect(pack()).rejects.toThrow(/私钥\/凭证/);
 	});
 });
@@ -218,7 +218,7 @@ describe("buildBundle · 多方案与内置排除（B3/B7/B8/B9/B10/B12）", () 
 		const dir = join(project, "src", "crm");
 		mkdirSync(dir, { recursive: true });
 		writeFileSync(join(dir, "manifest.yaml"), "name: crm\nversion: 0.1.0\nsummary: x\nchangelog: x\nweb:\n  entry: modules/crm/0.1.0/entry.js\n");
-		const webDist = join(project, "web/dist/modules/crm/0.1.0");
+		const webDist = join(project, "dist/web/modules/crm/0.1.0");
 		mkdirSync(webDist, { recursive: true });
 		writeFileSync(join(webDist, "entry.js"), "export default {};\n");
 		const results = await buildBundle(project, { out });
@@ -275,23 +275,23 @@ describe("buildBundle · 校验先于打包（fail-fast）", () => {
 	});
 
 	it("c2-31 分层核对：模块级 desc ≠ bundle summary → 放行（等值要求已移除）", async () => {
-		writeFileSync(join(project, "api/dist/demo-solution-0.1.0/manifest.yaml"), "name: demo-solution\ndesc: 不一致描述\nversion: 0.1.0\n");
+		writeFileSync(join(project, "dist/api/demo-solution-0.1.0/manifest.yaml"), "name: demo-solution\ndesc: 不一致描述\nversion: 0.1.0\n");
 		await expect(pack()).resolves.toMatchObject({ name: "demo-solution" });
 	});
 
-	it("c2-31 分层核对：api/dist 缺 <name>-<version>/ → 可读报错指明期望产物路径", async () => {
-		rmSync(join(project, "api/dist"), { recursive: true, force: true });
-		await expect(pack()).rejects.toThrow(/api\/dist\/demo-solution-0\.1\.0/);
+	it("c2-31 分层核对：dist/api 缺 <name>-<version>/ → 可读报错指明期望产物路径", async () => {
+		rmSync(join(project, "dist/api"), { recursive: true, force: true });
+		await expect(pack()).rejects.toThrow(/dist\/api\/demo-solution-0\.1\.0/);
 	});
 
 	it("web 段存在但站点产物缺失 → 可读报错指引先构建", async () => {
-		rmSync(join(project, "web/dist"), { recursive: true, force: true });
-		await expect(pack()).rejects.toThrow(/web\/dist\/modules/);
+		rmSync(join(project, "dist/web"), { recursive: true, force: true });
+		await expect(pack()).rejects.toThrow(/dist\/web\/modules/);
 	});
 
-	it("web/dist/modules 在但缺本方案目录 → 可读报错（不整树入包）", async () => {
-		rmSync(join(project, "web/dist/modules/demo-solution"), { recursive: true, force: true });
-		await expect(pack()).rejects.toThrow(/web\/dist\/modules\/demo-solution\//);
+	it("dist/web/modules 在但缺本方案目录 → 可读报错（不整树入包）", async () => {
+		rmSync(join(project, "dist/web/modules/demo-solution"), { recursive: true, force: true });
+		await expect(pack()).rejects.toThrow(/dist\/web\/modules\/demo-solution\//);
 	});
 
 	it("c2-12a：api.tables 与 schema.yaml 表集不一致 → 构建期拒绝", async () => {
