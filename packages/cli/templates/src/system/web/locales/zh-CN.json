@@ -30,7 +30,7 @@
 			"displayName": "显示名",
 			"email": "邮箱",
 			"roles": "角色",
-			"status": "状态",
+			"status": "账号状态（禁用/首登改密）",
 			"actions": "操作"
 		}
 	},

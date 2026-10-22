@@ -30,7 +30,7 @@
 			"displayName": "Display Name",
 			"email": "Email",
 			"roles": "Roles",
-			"status": "Status",
+			"status": "Account status (forbidden / password change)",
 			"actions": "Actions"
 		}
 	},
