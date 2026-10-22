@@ -80,6 +80,36 @@ export function parseBuildArgs(argv: string[]): { bundle: boolean, bundleName?: 
 }
 
 /**
+ * `ojm new <name> [--layout container|none] [--api]`：新方案骨架生成参数。
+ * name 为首个非 flag 位置参数（必填，由调用方判空——非交互/CI 友好）。
+ */
+export function parseNewArgs(argv: string[]): { name?: string, layout?: "container" | "none", api?: boolean } {
+	let name: string | undefined;
+	let layout: "container" | "none" | undefined;
+	let api = false;
+	for (let i = 0; i < argv.length; i++) {
+		const a = argv[i];
+		if (a === "--layout") {
+			const v = argv[i + 1];
+			if (v !== "container" && v !== "none")
+				throw new Error(`[ojm] --layout 只接受 container | none（实际：${v}）`);
+			layout = v;
+			i++;
+			continue;
+		}
+		if (a === "--api") {
+			api = true;
+			continue;
+		}
+		if (a !== undefined && !a.startsWith("--") && name === undefined) {
+			name = a;
+			continue;
+		}
+	}
+	return { name, layout, api };
+}
+
+/**
  * `ojm vendor [tag] [--force]`：下载/更新 oj vendor（npm 包 @oj-bin/oj）。
  * tag 缺省追 npm latest；形如 `v0.1.13` 或 `0.1.13`（自动补 v 前缀，装包时去掉）。
  * 非法 tag 形状即报错（防误把目录当版本）。

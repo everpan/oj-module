@@ -16,11 +16,15 @@ export function usageText(): string {
         开发模式快捷键（仅 TTY 终端，类 Vite）:
           r  强制重建并热更新    h  显示帮助    c  清屏    o  浏览器打开
           q  退出（后端 oj 一并终止）
-  ojm build [--bundle] [--out <dir>]
+  ojm build [--bundle [name]] [--out <dir>]
         构建后端（oj build）与模块产物（含全站合并）
-        --bundle   方案包构建：manifest.yaml 契约校验（C2，fail-fast）→ 确定性 tgz
+        --bundle   方案包构建：契约校验（fail-fast）→ 确定性 tgz
                    → dist/<name>-<version>.tgz + sha256（市场安装器的上游产物）
+        --bundle <name>  只打这一份方案（无参 = 全部用户方案，框架自带自动排除）
         --out <dir>  --bundle 输出目录（缺省 dist/）
+  ojm new <name> [--layout container|none] [--api]
+        脚手架内生成用户方案骨架（src/<name>/{api,web} + solution.yaml；
+        module-root 扫描自动收录，无需登记 web.config.ts）
   ojm preview [port]
         生产形态预览（migrate → oj serve 单服务：API 与静态 SPA 同进程，深链回落）
         静态由 oj web 挂载直出；ojm 不起第二个服务、不做反代
@@ -105,11 +109,18 @@ const COMMAND_HELP: Record<string, string> = {
     r  强制重建并热更新    h  显示帮助    c  清屏    o  浏览器打开
     q  退出（后端 oj 一并终止）
   port 缺省 5174（oj 后端端口以 config.yaml 的 server.port 为准）`,
-	"build": `ojm build [--bundle] [--out <dir>]
+	"build": `ojm build [--bundle [name]] [--out <dir>]
   构建后端（oj build）与模块产物（含全站合并）
-  --bundle   方案包构建：manifest.yaml 契约校验（fail-fast）→ 确定性 tgz
+  --bundle   方案包构建：契约校验（fail-fast，两段式全绿才写盘）→ 确定性 tgz
              → dist/<name>-<version>.tgz + sha256（市场安装器的上游产物）
+  --bundle <name> / --bundle=<name>  只打这一份方案；无参 = 全部用户方案
+             （src/<name>/solution.yaml；框架自带方案自动排除并逐条日志）
   --out <dir>  --bundle 输出目录（缺省 dist/）`,
+	"new": `ojm new <name> [--layout container|none] [--api]
+  脚手架内生成用户方案骨架：src/<name>/solution.yaml（契约，build --bundle 入口）
+  + web（entry.ts 示例路由/占位页/双语 locales）+ 可选 api（oj 七键 manifest + ping 示例）
+  守卫：非 ojm 工程 / 历史布局 / 非法名 / 保留名 / 框架自带名 / 重名一律拒绝（零写入）
+  module-root 布局以 src/<name>/web/entry.ts 扫描收录，无需登记 web.config.ts`,
 	"preview": `ojm preview [port]
   生产形态预览（migrate → oj serve 单服务：API 与静态 SPA 同进程，深链回落）
   静态由 oj web 挂载直出；ojm 不起第二个服务、不做反代

@@ -35,7 +35,7 @@ import { readModuleDefinition } from "./build";
 import { readBuiltinModules } from "./builtin";
 import { createDeterministicTgz } from "./deterministic-tar";
 import { apiSrcOf, resolveLayout, webSrcOf } from "./layout";
-import { checkLocalesComplete, checkTablesAgainstSchema, parseManifest, referencedI18nKeys, validateContract } from "./manifest-contract";
+import { checkLocalesComplete, checkTablesAgainstSchema, NAME_RE, parseManifest, referencedI18nKeys, validateContract } from "./manifest-contract";
 import { deriveManifestRoutes, reconcileManifestRoutes } from "./manifest-routes-derive";
 
 export interface BundleBuildResult {
@@ -45,8 +45,12 @@ export interface BundleBuildResult {
 	version: string
 }
 
-/** 方案名正则（`--bundle <name>` / `ojm new <name>` 共用，DRY）：kebab-case，挡住 ../ 路径穿越与引号/换行注入 */
-export const SOLUTION_NAME_RE = /^[a-z0-9][a-z0-9-]*$/;
+/**
+ * 方案名正则（`--bundle <name>` / `ojm new <name>` 入口校验共用，DRY）：
+ * 与契约 C2-01 同一条（小写字母开头 kebab-case，≤64）——入口先校验，
+ * 契约校验再做正式判罚；挡住 ../ 路径穿越与引号/换行注入。
+ */
+export const SOLUTION_NAME_RE = NAME_RE;
 
 /** 方案名合法性校验（两处入口共用，先校验再拼路径） */
 export function assertValidSolutionName(name: string, where: string): void {
@@ -315,9 +319,6 @@ async function assembleBundle(projectRoot: string, layout: ProjectLayout, plan: 
  * 从方案工程产出可安装 tgz + sha256（多方案：返回 N 份结果，与目标契约一一对应）。
  * 两段式：planBundle 全部先跑完（纯读、零写盘），任一失败 dist/ 零增量；
  * 组装段失败保留已完成产物并在报错中指名失败方案。
- * @param opts 输出与范围
- * @param opts.name 只打这一份（src/<name>/ 契约，或工程根契约 name 匹配）
- * @param opts.out 输出目录，缺省 `dist/`；产物 `<name>-<version>.tgz`
  */
 export async function buildBundle(projectRoot: string, opts: { out?: string, name?: string } = {}): Promise<BundleBuildResult[]> {
 	const targets = resolveContractTargets(projectRoot, opts.name);
