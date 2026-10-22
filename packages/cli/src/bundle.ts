@@ -10,10 +10,12 @@
 //   --bundle <name> → src/<name>/solution.yaml（无则 manifest.yaml 回退）；
 //                     未命中再比对工程根契约的 name === <name>；都不中 → 报错。
 //                     内置名拒绝（第一方请在框架仓模板工程打包——那里无 builtin 清单）。
-//   无参 + 工程根契约 → 只打根契约（旧行为零变化），src 契约被跳过打 hint
+//   无参 + 工程根契约 → 只打根契约，src 契约被跳过打 hint。根 solution.yaml 场景与旧行为
+//                     逐字节一致；根 manifest.yaml 与 src 模块契约并存时旧版取 src 契约
+//                     （旧优先级 ②>③）、现取根契约——多方案矩阵定版「根压 src」（B11）。
 //   无参 + 无根契约   → 收集全部非内置模块级契约逐个打包；
 //                     零份用户契约 → 友好报错指向 `ojm new`
-//   模块级契约强校验 name === 目录名；跨契约 name+version 查重（防 dist/ 静默覆盖）。
+//   模块级契约强校验 name === 目录名（B8；跨契约查重因 B8 不可达已不实现，见计划文档 B7 决策）。
 //   两段式：全部校验（纯读零写盘）先于全部组装——校验失败 dist/ 零增量，
 //   发布者不会把半截批次扫进 CDN 索引（build-index 全量收目录）。
 //
@@ -35,7 +37,7 @@ import { readModuleDefinition } from "./build";
 import { readBuiltinModules } from "./builtin";
 import { createDeterministicTgz } from "./deterministic-tar";
 import { apiSrcOf, resolveLayout, webSrcOf } from "./layout";
-import { checkLocalesComplete, checkTablesAgainstSchema, NAME_RE, parseManifest, referencedI18nKeys, validateContract } from "./manifest-contract";
+import { assertValidSolutionName, checkLocalesComplete, checkTablesAgainstSchema, NAME_RE, parseManifest, referencedI18nKeys, validateContract } from "./manifest-contract";
 import { deriveManifestRoutes, reconcileManifestRoutes } from "./manifest-routes-derive";
 
 export interface BundleBuildResult {
@@ -49,17 +51,10 @@ export interface BundleBuildResult {
  * 方案名正则（`--bundle <name>` / `ojm new <name>` 入口校验共用，DRY）：
  * 与契约 C2-01 同一条（小写字母开头 kebab-case，≤64）——入口先校验，
  * 契约校验再做正式判罚；挡住 ../ 路径穿越与引号/换行注入。
+ * 校验函数本体在 manifest-contract.ts（new 入口不拖入打包模块图），此处 re-export 兼容既有引用。
  */
 export const SOLUTION_NAME_RE = NAME_RE;
-
-/** 方案名合法性校验（两处入口共用，先校验再拼路径） */
-export function assertValidSolutionName(name: string, where: string): void {
-	if (!SOLUTION_NAME_RE.test(name)) {
-		throw new Error(
-			`[ojm] ${where}：「${name}」非法——须为 kebab-case（小写字母/数字/连字符，首字符为字母或数字）。`,
-		);
-	}
-}
+export { assertValidSolutionName } from "./manifest-contract";
 
 /** 打包目标：一份契约 = 一个方案包 */
 interface BundleTarget {
@@ -129,8 +124,24 @@ function resolveContractTargets(projectRoot: string, name?: string): BundleTarge
 			}
 			return [hit];
 		}
-		if (rootContract && peekContractName(rootContract) === name)
-			return [{ contractPath: rootContract }];
+		if (rootContract) {
+			const rootName = peekContractName(rootContract);
+			if (rootName === undefined) {
+				throw new Error(
+					`[ojm] 方案包构建失败：工程根契约 ${path.basename(rootContract)} 存在但无法解析`
+					+ "（name 缺失或文件损坏）——请先修复它，或显式给出 src/<name>/solution.yaml。",
+				);
+			}
+			if (rootName === name) {
+				if (builtin.has(name)) {
+					console.warn(
+						`[ojm] ⚠️ 工程根契约 name「${name}」与框架自带方案同名——`
+						+ "确认你要分发的是自有方案而非自带模块的构建产物。",
+					);
+				}
+				return [{ contractPath: rootContract }];
+			}
+		}
 		throw new Error(
 			`[ojm] 方案包构建失败：未找到「${name}」的契约`
 			+ `（期望 src/${name}/solution.yaml，或工程根契约 name === "${name}"）。`,

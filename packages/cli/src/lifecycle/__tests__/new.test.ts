@@ -1,10 +1,10 @@
 // BDD：`ojm new <name>` 方案骨架生成（docs/plans/2026-10-22-1640-multi-solution-bundle-design.md §C）。
 // N0 非工程拒绝 / N1 骨架 round-trip（生成→补产物→buildBundle 直接过）/ N2 --api
 // N3 非法·保留·内置·重名拒绝 / N5 空名拒绝 / N6 历史布局拒绝 / N7 失败清理
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import fs, { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, writeFileSync as writeFileSyncOrig } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildBundle } from "../../bundle";
 import { createSolution } from "../../new";
 
@@ -109,11 +109,21 @@ describe("createSolution · 生成", () => {
 
 	it("n7 生成中途失败 → 不残留半截 src/<name>/", () => {
 		makeModuleRootProject();
-		// src/crm/web/pages 预置为文件：生成到 mkdir(web/pages) 时必失败（ENOTDIR）
-		mkdirSync(join(project, "src", "crm", "web"), { recursive: true });
-		writeFileSync(join(project, "src", "crm", "web", "pages"), "i am a file");
-		expect(() => createSolution(project, "crm")).toThrow();
-		// 前面已写入的 solution.yaml 等随清理一并消失
-		expect(existsSync(join(project, "src", "crm", "solution.yaml"))).toBe(false);
+		// 让第二次写盘（entry.ts）必失败：首写（solution.yaml）成功后触发清理路径——
+		// 预置冲突文件会先在「目录已存在」守卫被拒，测不到 rmSync 回滚（审查发现 n7 旧用例假绿）
+		let calls = 0;
+		const spy = vi.spyOn(fs, "writeFileSync").mockImplementation(((...args: unknown[]) => {
+			calls++;
+			if (calls === 2)
+				throw new Error("ENOSPC: disk full");
+			return (writeFileSyncOrig as (...a: unknown[]) => unknown)(...args);
+		}) as typeof fs.writeFileSync);
+		try {
+			expect(() => createSolution(project, "crm")).toThrow(/disk full/);
+		}
+		finally {
+			spy.mockRestore();
+		}
+		expect(existsSync(join(project, "src", "crm"))).toBe(false);
 	});
 });

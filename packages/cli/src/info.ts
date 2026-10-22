@@ -131,7 +131,8 @@ function renderModuleLines(entries: { name: string, entry: string, enabled: bool
 		else
 			lines.push(`  框架自带：${own.length} 个（ojm info --all 展开）`);
 	}
-	return lines.join("\n");
+	// 零模块时留占位行，避免清单段整段空白像渲染故障
+	return lines.length > 0 ? lines.join("\n") : "（无 web 模块）";
 }
 
 export async function printInfo(projectRoot: string, oj: OjObservability = realOjObservability(projectRoot), opts: PrintInfoOptions = {}): Promise<void> {

@@ -101,7 +101,9 @@ export function parseNewArgs(argv: string[]): { name?: string, layout?: "contain
 			api = true;
 			continue;
 		}
-		if (a !== undefined && !a.startsWith("--") && name === undefined) {
+		if (a !== undefined && !a.startsWith("--")) {
+			if (name !== undefined)
+				throw new Error(`[ojm] ojm new 只接受一个方案名（多余参数：${a}）`);
 			name = a;
 			continue;
 		}

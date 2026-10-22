@@ -11,7 +11,7 @@
 
 ### Added
 
-- **多用户方案打包**：`ojm build --bundle` 复数化——无参时收集 `src/*/` 下全部**用户方案**契约（solution.yaml 优先、manifest.yaml 回退）逐个打包；`--bundle <name>` / `--bundle=<name>` 只打指定一份。优先级矩阵：按名指定 ≻ 工程根契约（旧单方案行为零变化）≻ src 全量收集；零用户方案时报错指路 `ojm new`。
+- **多用户方案打包**：`ojm build --bundle` 复数化——无参时收集 `src/*/` 下全部**用户方案**契约（solution.yaml 优先、manifest.yaml 回退）逐个打包；`--bundle <name>` / `--bundle=<name>` 只打指定一份。优先级矩阵：按名指定 ≻ 工程根契约 ≻ src 全量收集；零用户方案时报错指路 `ojm new`。兼容口径：根 solution.yaml 场景与旧行为逐字节一致；根 manifest.yaml 与 src 模块契约并存时矩阵定版「根压 src」（旧版取 src 契约），有 hint 提示。
 - **`src/.ojm-builtin.json` 框架自带方案名单**：`ojm init` 从模板白名单派生写入（重跑缺失才补写，可手改/删除）；打包自动排除名单内模块（逐条日志），`ojm info` 默认折叠为一行计数（`--all` 展开）。名单只是打包排除 / UI 折叠提示，**不是安全边界**——文件永不入包，安装侧信任链（签名 + 信任库 + TOFU）与它无关。
 - **`ojm new <name> [--layout container|none] [--api]`**：脚手架内快速生成用户方案骨架（solution.yaml + web entry/pages/locales，可选 api manifest/handler），module-root 布局守卫 + 原子性（失败不留半截目录），生成即被扫描收录、补产物后可直接 `ojm build --bundle <name>`（round-trip）。
 - **`ojm info` 数据源修复 + 自带折叠**：module-root 下改用「扫描 + `web.config.ts` 登记」并集（未登记的用户模块也可见）；坏名单文件告警降级为平铺。

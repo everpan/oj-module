@@ -19,6 +19,19 @@ export type ParseResult = { ok: true, manifest: BundleManifest } | { ok: false, 
 /** C2-01：name 白名单（导出供 ojm new/--bundle <name> 入口校验共用，DRY） */
 export const NAME_RE = /^[a-z][a-z0-9-]{0,63}$/;
 
+/**
+ * 方案名入口校验（`--bundle <name>` / `ojm new <name>` 共用，先校验再拼路径）：
+ * 与契约 C2-01 同一条正则；入口先给可读错误，契约校验再做正式判罚。
+ * 放在这里而非 bundle.ts——new 入口不应拖入打包模块图（esbuild/deterministic-tar 等）。
+ */
+export function assertValidSolutionName(name: string, where: string): void {
+	if (!NAME_RE.test(name)) {
+		throw new Error(
+			`[ojm] ${where}：「${name}」非法——须为 kebab-case（小写字母/数字/连字符，首字符为小写字母）。`,
+		);
+	}
+}
+
 /** §4.2 保留名清单（C2-01/13/14 共用；market 经 R9 恢复保留） */
 export const RESERVED_NAMES = new Set(["_platform", "system", "auth", "market", "framework", "health", "plugins", "_system"]);
 

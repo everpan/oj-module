@@ -23,9 +23,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { readBuiltinModules } from "./builtin";
-import { assertValidSolutionName } from "./bundle";
 import { tryResolveLayout } from "./layout";
-import { RESERVED_NAMES } from "./manifest-contract";
+import { assertValidSolutionName, RESERVED_NAMES } from "./manifest-contract";
 
 export interface NewSolutionOptions {
 	/** 示例路由布局（默认 container；none = 无外壳裸页面） */
