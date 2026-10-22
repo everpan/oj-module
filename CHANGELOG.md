@@ -5,6 +5,18 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 设计依据、迁移记录与陷阱清单见 [`docs/prd/202609110947-oj-module-two-package-consolidation-design.md`](docs/prd/202609110947-oj-module-two-package-consolidation-design.md)。
 
+## [0.2.22] - 2026-10-22
+
+双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步升 **0.2.22**（runtime 无代码改动，仅为同版发布）。
+
+### Added
+
+- **`ojm dev` 快捷键提示常驻终端底栏**：启动后提示行固定在终端最末行（DECSTBM 滚动区），构建与 oj 后端日志在其上方滚动不再顶走提示。`c` 清屏从 RIS 改 ED 以保住滚动区；`SIGWINCH` 自适应重建；退出时恢复全屏滚动区。非 TTY 环境回退为一次性打印，行为不变。
+
+### Docs
+
+- 新增 `docs/guides/solution-dev-build-publish.md`：从开发、打包、签名到发布的完整过程指南（重点：签名与私钥保存纪律），devkit 手册 §11/§12 交叉引用。
+
 ## [0.2.21] - 2026-10-22
 
 双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步升 **0.2.21**（runtime 无代码改动，仅为同版发布）。

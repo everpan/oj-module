@@ -100,7 +100,7 @@
 | 文件 | 层级 | 身份 | 谁读它 | 写什么 |
 |---|---|---|---|---|
 | `src/<模块>/api/manifest.yaml` | **模块级**（每个后端模块一份） | oj **原生七键**清单（`name`/`desc`/`version`/`tables`/…） | **oj 运行时**——按 `manifest.yaml` 枚举发现并校验 api 后端模块 | 模块名、版本、表清单（与 `schema.yaml` 双向一致，§1.5） |
-| `solution.yaml`（`src/<模块>/` 或工程根） | **方案级**（整个方案一份） | 方案包契约（C2 契约：身份 / 路由 / api 段 / web 段 / 权限 / …） | **`ojm build --bundle`**——打包入口与契约校验 | 方案名、版本、`api` 段（模块+前缀+tables+deps+anonymous）、`web` 段（entry/css/integrity）、`routes`、`health` |
+| `solution.yaml`（`src/<模块>/` 或工程根） | **方案级**（整个方案一份） | 方案包契约（身份 / 路由 / api 段 / web 段 / 权限 / …） | **`ojm build --bundle`**——打包入口与契约校验 | 方案名、版本、`api` 段（模块+前缀+tables+deps+anonymous）、`web` 段（entry/css/integrity）、`routes`、`health` |
 
 关键区别与红线：
 
@@ -118,7 +118,7 @@
   `src/<模块>/` 下的 `solution.yaml`（或旧 `manifest.yaml`）拷贝进 tgz 内的 `<name>-<version>/manifest.yaml`，安装器/市场仍按老名字消费。
 
 > 一句话：**`manifest.yaml` 是给 oj 认模块用的（模块级、七键、oj 枚举）；`solution.yaml` 是给 `ojm build --bundle`
-> 打包用的（方案级、C2 契约、工程根）。两者文件名不同、层级不同、读者不同，别写错层。**
+> 打包用的（方案级、工程根）。两者文件名不同、层级不同、读者不同，别写错层。**
 
 ### 1.3 后端路由 = 目录镜像
 
@@ -1404,6 +1404,7 @@ useEffect(() => {
 pnpm dev               # 开发：devServer + oj 后端（src/<模块>/api 保存即热更）
 # 交互快捷键（仅 TTY 终端启用，类 Vite）：
 #   r  强制重建并热更新    h  显示帮助    c  清屏    o  浏览器打开    q  退出（oj 一并终止）
+# 提示行常驻终端最末行（滚动区），日志在其上方滚动不会被顶走（ojm ≥ 0.2.22）
 # Ctrl+C（SIGINT）/ kill（SIGTERM）终止 dev 时，前端与后端 oj 一起终止：
 # 先关 SSE 通道 → 停 oj 子进程 → 打印「后端 oj 已随前端一起终止」，不留 oj 孤儿占端口
 pnpm build             # = ojm build：oj build（生成 routes.js）+ 前端全站合并到 web/dist
@@ -1749,6 +1750,8 @@ export default async (path: string, html: string) => {
 ## §11 方案包：打包与分发
 
 「站点级构建」见 §7；本节讲**方案包**（solution bundle）——单方案的可分发产物与到达站点的方式。
+**从开发到发布的完整过程视角（含签名与私钥保存纪律）见**
+[`docs/guides/solution-dev-build-publish.md`](../guides/solution-dev-build-publish.md)。
 
 ### 11.1 打包：`ojm build --bundle`
 
@@ -1762,7 +1765,7 @@ ojm build --bundle            # --out <dir> 缺省工程根 dist/（方案包输
 > `web/dist/modules/<name>/`——先 `ojm build` 再打包。
 
 - **契约入口（按优先级）**：`src/<模块>/solution.yaml` ≻ 工程根 `solution.yaml` ≻
-  `src/<模块>/manifest.yaml` ≻ 工程根 `manifest.yaml`（方案级 C2 契约；`manifest.yaml` 为旧方案回退）。
+  `src/<模块>/manifest.yaml` ≻ 工程根 `manifest.yaml`（方案级；`manifest.yaml` 为旧方案回退）。
   **单模块方案推荐把契约放在 `src/<模块>/solution.yaml`**——契约与它所打包的模块同位，最直观。
   文件名刻意避开 `manifest.yaml`：oj 按 `manifest.yaml` 枚举发现 api 后端模块（§1.2），工程根若放一份
   bundle 契约会污染那条搜索枚举；故用 `solution.yaml` 隔开两条枚举——**后端按 `manifest.yaml` 枚举 api、
