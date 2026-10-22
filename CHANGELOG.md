@@ -5,6 +5,16 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 设计依据、迁移记录与陷阱清单见 [`docs/prd/202609110947-oj-module-two-package-consolidation-design.md`](docs/prd/202609110947-oj-module-two-package-consolidation-design.md)。
 
+## [0.2.21] - 2026-10-22
+
+双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步升 **0.2.21**（runtime 无代码改动，仅为同版发布）。
+
+### Fixed
+
+- **`ojm build --bundle` 契约优先读 `solution.yaml`，避开 oj 按 `manifest.yaml` 枚举 api 后端的冲突**。
+  旧方案仍回退 `manifest.yaml`；tgz 内仍按 oj 约定命名为 `manifest.yaml`（`solution.yaml` ↔ `manifest.yaml` 身份差异见 devkit 手册 §1.2）。
+- **顶层 catch 不再对已经带 `[ojm]` 前缀的错误二次加前缀**（原先 `bundle`/`publish`/`sign` 抛出的 `[ojm] ...` 会被再包一层变成 `[ojm] [ojm] ...`）。
+
 ## [0.2.20] - 2026-10-22
 
 双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步升 **0.2.20**（runtime 无代码改动，仅为同版发布）。
