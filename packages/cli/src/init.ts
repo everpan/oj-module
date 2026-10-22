@@ -585,7 +585,8 @@ function mergePackageJson(existing: Record<string, any>, generated: Record<strin
 	return merged;
 }
 
-function generatePackageJson(cliRoot: string, projectName: string) {
+/** 生成脚手架 package.json（导出供守卫测试：scripts ⊆ 模板 scripts，防双写漂移） */
+export function generatePackageJson(cliRoot: string, projectName: string) {
 	const { matrix: hostVersions } = resolveVersionMatrix(cliRoot);
 	const cliPkg = JSON.parse(fs.readFileSync(path.join(cliRoot, "package.json"), "utf-8"));
 
@@ -635,11 +636,17 @@ function generatePackageJson(cliRoot: string, projectName: string) {
 		type: "module",
 		private: true,
 		scripts: {
-			dev: "ojm dev",
-			build: "ojm build",
-			preview: "ojm preview",
-			info: "ojm info",
-			typecheck: "tsc --noEmit -p tsconfig.json",
+			"dev": "ojm dev",
+			"build": "ojm build",
+			"preview": "ojm preview",
+			"info": "ojm info",
+			"typecheck": "tsc --noEmit -p tsconfig.json",
+			// typecheck:api 指向 src/tsconfig.json（后端工程面，白名单收录）——
+			// 早期生成器漏发这条（与模板双写漂移），补上并钉守卫测试
+			"typecheck:api": "tsc --noEmit -p src/tsconfig.json",
+			// 多方案（phase 2/3）：打包全部用户方案（自带自动排除）/ 生成新方案骨架
+			"bundle": "ojm build --bundle",
+			"new": "ojm new",
 		},
 		devDependencies: devDeps,
 	};

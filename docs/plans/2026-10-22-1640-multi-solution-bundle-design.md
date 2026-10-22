@@ -149,7 +149,7 @@
 - [x] **Phase 2 打包复数化**：name 正则、优先级矩阵、name===目录名、两段式、内置跳过日志、私钥扫描扩面 —— B1–B12 ✅（两段式重构 + `--bundle <name>` 接线，382 用例全绿；B7 决策见文末）
 - [x] **Phase 3 `ojm new`**：守卫（工程/布局/name）、骨架生成、原子性、交互、`usage.ts`/`index.ts` 接线 —— N0–N7 ✅（10 用例 + CLI 接线；**实现期决策：不做交互提问，name 显式必填**——仓库无 prompt 依赖，为一个向导加依赖不值，N5 用例改为空名拒绝）
 - [x] **Phase 4 `ojm info`**：扫描并集数据源 + 自带分组折叠 + `--all` —— I1–I4 ✅（5 用例 + info-oj 回归）
-- [ ] **Phase 5 scripts**：`generatePackageJson` 补 new/bundle/typecheck:api + 模板同步 + 子集守卫测试 —— T3
+- [x] **Phase 5 scripts**：`generatePackageJson` 补 new/bundle/typecheck:api + 模板同步 + 子集守卫测试 —— T3 ✅（顺带修复：shell-dist 与 vendor 快照漂移致 release-manifest 测试失败，重建宿主后 389 全绿）
 - [ ] **Phase 6 文档与发版**：manual §1/§7/§10.1/§11 + guides 同步 + devkit-docs 守卫 + CHANGELOG 0.2.23 + lockstep bump
 - [ ] **统一审查**：全部阶段完成后一次性代码审查（不在阶段中途审）
 - [ ] `pnpm test` / lint / typecheck 全绿
