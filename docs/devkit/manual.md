@@ -93,6 +93,30 @@
 历史布局下两侧分居 `web/src/<模块>/` 与 `api/src/<模块>/`——**同一个名字、两个目录**，
 是布局迁移时最容易对不上的地方。
 
+#### manifest.yaml 与 solution.yaml：两种身份，别混淆
+
+工程里会出现两个名字里带 "manifest" 的文件，用途**完全不同**，混用会出构建/运行期怪问题：
+
+| 文件 | 层级 | 身份 | 谁读它 | 写什么 |
+|---|---|---|---|---|
+| `src/<模块>/api/manifest.yaml` | **模块级**（每个后端模块一份） | oj **原生七键**清单（`name`/`desc`/`version`/`tables`/…） | **oj 运行时**——按 `manifest.yaml` 枚举发现并校验 api 后端模块 | 模块名、版本、表清单（与 `schema.yaml` 双向一致，§1.5） |
+| `solution.yaml`（工程根） | **方案级**（整个方案一份） | 方案包契约（C2 契约：身份 / 路由 / api 段 / web 段 / 权限 / …） | **`ojm build --bundle`**——打包入口与契约校验 | 方案名、版本、`api` 段（模块+前缀+tables+deps+anonymous）、`web` 段（entry/css/integrity）、`routes`、`health` |
+
+关键区别与红线：
+
+- **模块级 `manifest.yaml` 是 oj 发现 api 后端的唯一真源**：`ojm dev/build` 递归扫描
+  `src/<模块>/api/manifest.yaml` 认领后端模块；oj 启动也用它做强校验（`name ==` 目录名、版本同源）。
+  它**只能有 oj 原生七键**，写任何方案级字段（`routes` / `permissions` / …）都会被拒启。
+- **方案级契约以前也叫 `manifest.yaml`（工程根）**，但它会和上面的「oj 按 `manifest.yaml` 枚举 api 模块」
+  撞名：**工程根再放一份 `manifest.yaml` 当 bundle 契约，会被 oj 的搜索枚举误当成 api 模块**，污染后端发现。
+  所以解决方案统一改名为 **`solution.yaml`**，`ojm build --bundle` 优先认它（`manifest.yaml` 仅作旧方案回退）——
+  **后端按 `manifest.yaml` 枚举 api、打包按 `solution.yaml` 取契约**，两条枚举互不干扰。
+- 进包后文件名固定回到 `manifest.yaml`（安装侧只认这个名字）：`ojm build --bundle` 把工程根的
+  `solution.yaml`（或旧 `manifest.yaml`）拷贝进 tgz 内的 `<name>-<version>/manifest.yaml`，安装器/市场仍按老名字消费。
+
+> 一句话：**`manifest.yaml` 是给 oj 认模块用的（模块级、七键、oj 枚举）；`solution.yaml` 是给 `ojm build --bundle`
+> 打包用的（方案级、C2 契约、工程根）。两者文件名不同、层级不同、读者不同，别写错层。**
+
 ### 1.3 后端路由 = 目录镜像
 
 ```
@@ -1734,7 +1758,11 @@ ojm build --bundle            # --out <dir> 缺省工程根 dist/（方案包输
 > `--bundle` 只**组装**，不重跑构建：入包内容取自 `api/dist/<name>-<version>/` 与
 > `web/dist/modules/<name>/`——先 `ojm build` 再打包。
 
-- 打包即校验（fail-fast，坏清单出不了包）：方案 manifest 契约校验（字段齐全 / 类型白名单 /
+- **契约入口 = 工程根 `solution.yaml`**（方案级 C2 契约；旧方案可回退工程根 `manifest.yaml`）。
+  文件名刻意避开 `manifest.yaml`：oj 按 `manifest.yaml` 枚举发现 api 后端模块（§1.2），工程根若放一份
+  bundle 契约会污染那条搜索枚举；故用 `solution.yaml` 隔开两条枚举——**后端按 `manifest.yaml` 枚举 api、
+  打包按 `solution.yaml` 取契约**，不再冲突。tgz 内固定写回 `manifest.yaml`（安装侧只认这个名字）。
+- 打包即校验（fail-fast，坏清单出不了包）：方案 solution 契约校验（字段齐全 / 类型白名单 /
   保留名 / 键空间 → 可读违规清单）→ 文件面校验（`api.tables` ↔ `schema.yaml`、locales 双语齐备）。
 - **只出包不签名**——签名见 §12（关注点分离：作者签名是显式动作，不是构建副产品）。
 - 产物内 `manifest.yaml` 的 `archive` 段是 **Form A**（仅 `file`）；`sha256`/`size` 由

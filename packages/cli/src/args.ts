@@ -40,7 +40,7 @@ export function parseApiArgs(argv: string[]): { dir: string, check: boolean, doc
 
 /**
  * `ojm build [--bundle] [--out <dir>]`。
- * `--bundle`：方案包构建（manifest.yaml 契约校验 → 确定性 tgz + sha256），
+ * `--bundle`：方案包构建（solution.yaml 契约校验 → 确定性 tgz + sha256；旧方案回退 manifest.yaml），
  * 与站点级 `ojm build`（后端 oj build + 模块产物合并）互斥分工（devkit 手册「打包与分发」）。
  * `--out` 的值不得以 `--` 开头（同 parseApiArgs 的消费式扫描，P6 同款坑）。
  */

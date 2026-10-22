@@ -197,7 +197,10 @@ async function main() {
 
 main().catch((error: unknown) => {
 	// Error 的 message 已是人话（含修复指引）；堆栈默认是噪音，OJM_DEBUG=1 才输出
-	// （旧名 RAM_DEBUG 一并读，兼容既有排障习惯）
-	console.error(`[ojm] ${error instanceof Error ? ((process.env.OJM_DEBUG ?? process.env.RAM_DEBUG) ? error.stack : error.message) : String(error)}`);
+	// （旧名 RAM_DEBUG 一并读，兼容既有排障习惯）。
+	// 文案常自带 [ojm] 前缀（bundle/publish/sign 等抛出的错误），顶层不再叠一个，否则变 [ojm] [ojm]。
+	const isDebug = !!(process.env.OJM_DEBUG ?? process.env.RAM_DEBUG);
+	const body = error instanceof Error ? (isDebug ? error.stack : error.message) : String(error);
+	console.error(/^\[ojm/.test(body) ? body : `[ojm] ${body}`);
 	process.exit(1);
 });

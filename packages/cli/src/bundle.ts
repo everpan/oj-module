@@ -1,7 +1,11 @@
-// 方案包构建（P1-11，`ojm build --bundle`）：manifest.yaml 契约校验（fail-fast 先于打包）
+// 方案包构建（P1-11，`ojm build --bundle`）：bundle 级契约校验（fail-fast 先于打包）
 // → 组装 tgz 内布局（契约 §2.9）→ 确定性打包（C2-32）+ sha256。
+// bundle 级契约文件名：解决方案优先 `solution.yaml`；旧方案回退 `manifest.yaml`。
+// 之所以用 solution.yaml 而非根目录 manifest.yaml：oj 按 `manifest.yaml` 枚举发现 api 后端模块
+// （模块级 `src/<name>/api/manifest.yaml`），根目录再放一份 bundle 契约会污染后端的「搜索枚举」，
+// 让 oj 误把 bundle 契约当 api 模块——故用独立文件名隔开两条枚举（避免后端搜索枚举与 bundle 冲突）。
 // 组装映射（对齐 P1-9 staging copy 源一层定版，unpack 布局即安装器 extract 段消费面）：
-//   <project>/manifest.yaml                     → <name>-<version>/manifest.yaml（Form A）
+//   <project>/solution.yaml | manifest.yaml      → <name>-<version>/manifest.yaml（Form A；tgz 内名固定为 manifest.yaml）
 //   <project>/api/dist/<name>-<version>/        → <name>-<version>/api/<name>-<version>/（oj build 产物原样，C2-31 分层核对）
 //   <project>/web/dist/modules/<name>/          → <name>-<version>/web/modules/<name>/（只入包方案自己的模块；
 //                                                 web.entry/css 存在性复核）
@@ -33,10 +37,14 @@ export interface BundleBuildResult {
  */
 export async function buildBundle(projectRoot: string, opts: { out?: string } = {}): Promise<BundleBuildResult> {
 	// 1) 读入并校验契约（构建即校验，坏清单出不了包）
-	const manifestPath = path.join(projectRoot, "manifest.yaml");
-	if (!fs.existsSync(manifestPath)) {
-		throw new Error(`[ojm] 方案包构建失败：${projectRoot} 下缺少 manifest.yaml（bundle 级契约是打包入口，写法见 devkit 手册「打包与分发」）`);
+	// bundle 级契约文件名：solution.yaml 优先（避开 oj 用 manifest.yaml 枚举 api 后端），
+	// manifest.yaml 回退以兼容旧方案。tgz 内固定写 manifest.yaml（安装侧只认这个名字）。
+	const contractNames = ["solution.yaml", "manifest.yaml"] as const;
+	const contractName = contractNames.find(n => fs.existsSync(path.join(projectRoot, n)));
+	if (!contractName) {
+		throw new Error(`[ojm] 方案包构建失败：${projectRoot} 下缺少 bundle 级契约文件（期望 solution.yaml；旧方案可回退 manifest.yaml）。写法见 devkit 手册「打包与分发」`);
 	}
+	const manifestPath = path.join(projectRoot, contractName);
 	const parsed = parseManifest(fs.readFileSync(manifestPath, "utf8"));
 	if (!parsed.ok) {
 		throw new Error(`[ojm] 方案包构建失败：${parsed.error}`);

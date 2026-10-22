@@ -1,6 +1,6 @@
 // BDD：`ojm build --bundle` 方案包组装（P1-11）。
 // 组装契约（对齐 tgz 内布局，契约 §2.9 + P1-9 staging copy 源定版）：
-//   <root>/manifest.yaml                          ← 必填，契约校验 fail-fast 先于打包
+//   <root>/solution.yaml | manifest.yaml           ← 必填（solution.yaml 优先，避开 oj 的 api 枚举冲突），契约校验 fail-fast 先于打包
 //   api/dist/<name>-<version>/                    ← oj build 产物原样 → tgz 内 api/<name>-<version>/（C2-31 分层核对）
 //   web/dist/modules/<name>/                      ← 站点构建模块产物 → tgz 内 web/modules/<name>/（只入包方案自己的模块）
 // 禁携 modules.json（C2-31 红线）；产物确定性（C2-32）由 deterministic-tar 承担，此处断言端到端复现。
@@ -83,6 +83,22 @@ describe("buildBundle · 正路径", () => {
 	it("tgz 内任何位置无 modules.json（C2-31：清单由安装器在目标站点 upsert）", async () => {
 		const r = await pack();
 		expect(tarList(r.tgz).some(n => n.endsWith("/modules.json"))).toBe(false);
+	});
+
+	it("solution.yaml 作为 bundle 契约（优先于 manifest.yaml，避开 oj 按 manifest.yaml 枚举 api 后端的冲突）", async () => {
+		// 根目录若用 manifest.yaml 当 bundle 契约，会被 oj 的 api 模块搜索枚举误判为 api 模块；
+		// 故解决方案改用 solution.yaml，bundle 工具优先认它（manifest.yaml 仅旧方案回退）。
+		const mf = join(project, "manifest.yaml");
+		const sf = join(project, "solution.yaml");
+		cpSync(mf, sf);
+		rmSync(mf);
+		const r = await pack();
+		expect(r.name).toBe("demo-solution");
+		expect(existsSync(r.tgz)).toBe(true);
+		// tgz 内固定为 manifest.yaml（安装侧只认这个名字），与源文件名无关
+		const names = tarList(r.tgz);
+		expect(names).toContain("demo-solution-0.1.0/manifest.yaml");
+		expect(names.some(n => n.endsWith("/solution.yaml"))).toBe(false);
 	});
 
 	it("产物树混入 modules.json → 打包自检拒绝（C2-31 红线）", async () => {
