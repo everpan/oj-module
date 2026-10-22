@@ -30,12 +30,16 @@ import { journalHeadOf, siteOrigin } from "../_shared/site-facade";
 /** 线格式行（与 packages/runtime/src/api/rbac/types.ts 的 SolutionRouteRow 对齐） */
 export type { SolutionRouteRow } from "../_lifecycle/verify-checks";
 
-/** oj serve release 布局生产缺省 */
+/**
+ * oj serve release 布局生产缺省（与 marketEnv 同口径，见其注释）：
+ *   sharedRoot     = 后端 release 根（版本目录 / migrations）
+ *   modulesJsonPath = 站点产物根下的 modules.json（web 入口 integrity 真源）
+ */
 export function solutionsEnv(): SolutionsEnv {
 	return {
-		sharedRoot: "dist",
+		sharedRoot: "api/dist",
 		statePath: "modules/.solutions/state.yaml",
-		modulesJsonPath: "dist/modules.json",
+		modulesJsonPath: "web/dist/modules.json",
 		apiPrefix: "/api",
 	};
 }

@@ -20,8 +20,8 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { parse } from "yaml";
-import { defaultTestKey, nodeVerifyEd25519, signedArchiveFor } from "../../../../src/lifecycle/__tests__/helpers";
-import { signIndex } from "../../../../src/publish";
+import { defaultTestKey, nodeVerifyEd25519, signedArchiveFor } from "../../../src/lifecycle/__tests__/helpers";
+import { signIndex } from "../../../src/publish";
 import { readLock, writeLock } from "../../src/_platform/api/_lifecycle/lock";
 import { createStateStore } from "../../src/_platform/api/_lifecycle/state";
 import { getTask, writeTask } from "../../src/_platform/api/_lifecycle/tasks";
@@ -503,7 +503,7 @@ describe("POST /market/trust {task_id}（P2-3 TOFU 确认：混淆代理防线�
 
 	it("确认成功：任务 needs_trust → 指纹复算一致 → 入信任库 added", async () => {
 		const api = createMarketApi(makeEnv());
-		const { generateKeyPair } = await import("../../../../src/lifecycle/keygen");
+		const { generateKeyPair } = await import("../../../src/lifecycle/keygen");
 		const kp = generateKeyPair();
 		const id = await seedNeedsTrust("stranger.pub", kp.publicKeyHex);
 		g.http = { user: { id: 1 }, body: { task_id: id } };
@@ -539,7 +539,7 @@ describe("POST /market/trust {task_id}（P2-3 TOFU 确认：混淆代理防线�
 
 	it("混淆代理：任务记录指纹与公钥不符 → 409 拒，信任库零变化", async () => {
 		const api = createMarketApi(makeEnv());
-		const { generateKeyPair } = await import("../../../../src/lifecycle/keygen");
+		const { generateKeyPair } = await import("../../../src/lifecycle/keygen");
 		const kp = generateKeyPair();
 		const id = await seedNeedsTrust("stranger.pub", kp.publicKeyHex, "f".repeat(64)); // 指纹造假
 		g.http = { user: { id: 1 }, body: { task_id: id } };
@@ -552,7 +552,7 @@ describe("POST /market/trust {task_id}（P2-3 TOFU 确认：混淆代理防线�
 
 	it("撞绑定：key_id 已绑其他公钥 → 409 trust_bound_mismatch，库内不动", async () => {
 		const api = createMarketApi(makeEnv());
-		const { generateKeyPair } = await import("../../../../src/lifecycle/keygen");
+		const { generateKeyPair } = await import("../../../src/lifecycle/keygen");
 		const kp = generateKeyPair();
 		const id = await seedNeedsTrust("test.publisher", kp.publicKeyHex); // 已播种的 key_id
 		g.http = { user: { id: 1 }, body: { task_id: id } };
@@ -815,10 +815,11 @@ describe("P3-7 索引签名校验（G4 fail-closed：署名相符采用 / 篡改
 });
 
 describe("hostVersions 缺省接线（B-11：C2-09 比对真源 = <dist>/versions.json，ojm 宿主构建产物）", () => {
-	it("versionsJsonPathOf 布局推导：modules.json 同目录 versions.json（相对/绝对同构）", () => {
-		expect(versionsJsonPathOf("dist/modules.json")).toBe("dist/versions.json");
-		expect(versionsJsonPathOf("/site/dist/modules.json")).toBe("/site/dist/versions.json");
-		expect(versionsJsonPathOf("modules.json")).toBe("versions.json");
+	it("versionsJsonPathOf 布局推导：release 根下的 versions.json（相对/绝对/尾斜杠同构）", () => {
+		expect(versionsJsonPathOf("api/dist")).toBe("api/dist/versions.json");
+		expect(versionsJsonPathOf("/site/api/dist")).toBe("/site/api/dist/versions.json");
+		expect(versionsJsonPathOf("api/dist/")).toBe("api/dist/versions.json");
+		expect(versionsJsonPathOf("")).toBe("versions.json");
 	});
 
 	it("parseVersionsJson：{packageName: version} 全字符串表 → 解析；任何违约（非对象/值非字符串/坏 JSON）→ undefined（fail-closed 不猜）", () => {
@@ -829,9 +830,9 @@ describe("hostVersions 缺省接线（B-11：C2-09 比对真源 = <dist>/version
 		}
 	});
 
-	it("集成：env 未注入 hostVersions + dist/versions.json 在盘 → install 全链 done（C2-09 比对走缺省真源）", async () => {
-		await fsp.mkdir(dirname(modulesJsonPath), { recursive: true });
-		await fsp.writeFile(join(dirname(modulesJsonPath), "versions.json"), JSON.stringify({ "@oj-module/runtime": "0.1.77" }));
+	it("集成：env 未注入 hostVersions + <release 根>/versions.json 在盘 → install 全链 done（C2-09 比对走缺省真源）", async () => {
+		await fsp.mkdir(sharedRoot, { recursive: true });
+		await fsp.writeFile(join(sharedRoot, "versions.json"), JSON.stringify({ "@oj-module/runtime": "0.1.77" }));
 		const env = makeEnv();
 		delete (env as Partial<MarketEnv>).hostVersions;
 		const api = createMarketApi(env);
@@ -857,12 +858,12 @@ describe("hostVersions 缺省接线（B-11：C2-09 比对真源 = <dist>/version
 });
 
 describe("P1-16 接线：marketEnv 生产口径 / exec opts 转发 / operator 通道 / 账本真源 / index 即对账入口", () => {
-	it("marketEnv() 缺省 = oj serve release 布局：锁与版本目录在 serve 根 dist（B3），versions.json 同根推导（B4）；暂存/任务/sidecar 留根外", () => {
+	it("marketEnv() 缺省 = 布局 v2 生产口径：版本目录与 versions.json 在 release 根 api/dist，站点 modules 在 web/dist；暂存/任务/sidecar 留 jail 根", () => {
 		const env = marketEnv();
-		expect(env.sharedRoot).toBe("dist");
-		expect(env.siteModulesDir).toBe("dist/modules");
-		expect(env.modulesJsonPath).toBe("dist/modules.json");
-		expect(versionsJsonPathOf(env.modulesJsonPath)).toBe("dist/versions.json");
+		expect(env.sharedRoot).toBe("api/dist");
+		expect(env.siteModulesDir).toBe("web/dist/modules");
+		expect(env.modulesJsonPath).toBe("web/dist/modules.json");
+		expect(versionsJsonPathOf(env.sharedRoot)).toBe("api/dist/versions.json");
 		expect(env.staging).toBe("modules/.staging");
 		expect(env.taskDir).toBe("modules/.install-tasks");
 		expect(env.statePath).toBe("modules/.solutions/state.yaml");

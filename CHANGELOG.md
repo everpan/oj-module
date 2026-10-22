@@ -70,6 +70,15 @@
 
 ### Fixed
 
+- **方案安装器把「release 根」和「站点根」当成了同一个 `dist`**。模板 `marketEnv()` /
+  `solutionsEnv()` 的 `sharedRoot` / `siteModulesDir` / `modulesJsonPath` 全写死 `dist/…`，
+  那是 config 在 `api/` 下的历史口径（jail 根 = `api/`，`dist` = `api/dist`）。布局 v2 里
+  config 在工程根，后端产物落 `api/dist`、站点产物落 `web/dist`，两个根已分流：安装器的
+  版本目录/迁移仍在 `api/dist`，前端 `modules/` 与 `modules.json` 则要进 `web/dist`。
+  按此分别取值，并把 C2-09 的宿主版本真源从「modules.json 同目录」改为「release 根」
+  （`<sharedRoot>/versions.json`，与 `manifests.yaml` 同层）——站点根不再是它的邻居。
+  修前 `ojm market walkthrough` 有 11 项卡在 preflight 的 C2-09（读不到 versions.json）；
+  修后 14/14 PASS，`ojm market trial` 同样通过。
 - **布局 v2 收尾：隔离站点起站根与模板测试的路径层级没跟上迁移**。`market bootstrap` 的
   `platform.root` 写死 `dist`——那是 config 还在 `api/` 时（相对 config 目录）的口径；config
   上移到工程根后它解析到不存在的 `<root>/dist`，`oj serve` 直接

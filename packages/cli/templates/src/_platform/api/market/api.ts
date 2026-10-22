@@ -52,9 +52,9 @@ export interface MarketEnv {
 	trustPath: string
 	/** sqlite 库文件路径（R14 备份源；模板 config.yaml `sqlite://db.sqlite` → 站点根 db.sqlite） */
 	dbPath: string
-	/** 站点 web 模块目录（<dist>/modules） */
+	/** 站点 web 模块目录（站点产物根下的 modules/） */
 	siteModulesDir: string
-	/** 站点 modules.json 路径（与 siteModulesDir 同属 <dist>） */
+	/** 站点 modules.json 路径（与 siteModulesDir 同属站点产物根） */
 	modulesJsonPath: string
 	/** API 前缀（smoke 探针 URL 前缀） */
 	apiPrefix: string
@@ -78,17 +78,20 @@ export interface MarketEnv {
 	/** 迁移账本 head 真源（P1-16 接线①：缺省读 oj journal 表 `_oj_migrations` max(version)，查询失败 → null 不猜） */
 	ledgerHeadOf?: (name: string) => Promise<number | bigint | null>
 	/**
-	 * 宿主 versions.json（C2-09 peerRuntime 比对真源，键 = 包名）。缺省读 <dist>/versions.json
-	 * （ojm 宿主构建产物，与 modules.json 同目录，B-11 接线）；不可得 → undefined，manifest 声明
-	 * peerRuntime 即预检 fail-closed 拒装（C2-09 语义保持）。
+	 * 宿主 versions.json（C2-09 peerRuntime 比对真源，键 = 包名）。缺省读 `<sharedRoot>/versions.json`
+	 * （ojm 宿主构建产物：与 manifests.yaml 同层，即 release 根，B-11 接线）；不可得 → undefined，
+	 * manifest 声明 peerRuntime 即预检 fail-closed 拒装（C2-09 语义保持）。
 	 */
 	hostVersions?: Record<string, string>
 }
 
-/** 宿主 versions.json 布局推导（B-11）：与 modules.json 同目录（<dist>/versions.json） */
-export function versionsJsonPathOf(modulesJsonPath: string): string {
-	const slash = modulesJsonPath.lastIndexOf("/");
-	return slash === -1 ? "versions.json" : `${modulesJsonPath.slice(0, slash)}/versions.json`;
+/**
+ * 宿主 versions.json 布局推导（B-11）：与 manifests.yaml 同层（release 根 = `sharedRoot`），
+ * 不是站点产物根——两处根在 `src/<name>/{api,web}` 布局下已分流（`api/dist` vs `web/dist`）。
+ */
+export function versionsJsonPathOf(releaseRoot: string): string {
+	const trimmed = releaseRoot.replace(/\/+$/, "");
+	return trimmed === "" ? "versions.json" : `${trimmed}/versions.json`;
 }
 
 /** 宿主 versions.json 解析（纯函数）：{packageName: version} 全字符串表；任何违约 → undefined（fail-closed 不猜） */
@@ -113,30 +116,37 @@ export function parseVersionsJson(text: string): Record<string, string> | undefi
 	return out;
 }
 
-/** hostVersions 注入缺省：显式注入优先，否则读 <dist>/versions.json；不可得 → undefined（C2-09 fail-closed） */
+/** hostVersions 注入缺省：显式注入优先，否则读 `<sharedRoot>/versions.json`；不可得 → undefined（C2-09 fail-closed） */
 async function hostVersionsOf(env: MarketEnv): Promise<Record<string, string> | undefined> {
 	if (env.hostVersions !== undefined) {
 		return env.hostVersions;
 	}
 	try {
-		return parseVersionsJson(new TextDecoder().decode(await fsFace().readFile(versionsJsonPathOf(env.modulesJsonPath))));
+		return parseVersionsJson(new TextDecoder().decode(await fsFace().readFile(versionsJsonPathOf(env.sharedRoot))));
 	}
 	catch {
 		return undefined;
 	}
 }
 
-/** oj serve release 布局生产缺省（P1-16 B3/B4；全字段可覆盖） */
+/**
+ * oj serve release 布局生产缺省（P1-16 B3/B4；全字段可覆盖）。
+ *
+ * 两处根在 `src/<name>/{api,web}` 布局下分流，且都相对 fs jail 根（= config.yaml 所在目录）：
+ *   release 根 `api/dist` —— 版本目录 / manifests.yaml / versions.json / migrations（后端产物）
+ *   站点根   `web/dist`   —— modules/ + modules.json（前端产物，安装器 upsert 的落点）
+ * 暂存 / 任务 / 状态 / 信任库 / db 仍在 jail 根下：它们是安装器私有面，不属任何产物根。
+ */
 export function marketEnv(): MarketEnv {
 	return {
-		sharedRoot: "dist",
+		sharedRoot: "api/dist",
 		staging: "modules/.staging",
 		taskDir: "modules/.install-tasks",
 		statePath: "modules/.solutions/state.yaml",
 		trustPath: ".solutions/trusted-keys.yaml",
 		dbPath: "db.sqlite",
-		siteModulesDir: "dist/modules",
-		modulesJsonPath: "dist/modules.json",
+		siteModulesDir: "web/dist/modules",
+		modulesJsonPath: "web/dist/modules.json",
 		apiPrefix: "/api",
 		ledgerHeadOf: journalHeadOf,
 	};
