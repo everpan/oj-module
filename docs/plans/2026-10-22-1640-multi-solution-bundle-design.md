@@ -155,11 +155,14 @@
       ① `market/publish.ts buildRealPackage` 仍按单结果解构（改为非 1 份即拒绝 + 指路显式链路）；
       ② `lifecycle smoke.test.ts` 同步取 `built[0]`；③ `new.ts solutionYaml` 形收 `boolean | undefined`；
       ④ 既有 `index.ts` 顶层 `error.stack`（string|undefined）一行修复（`?? error.message`）。
-- [ ] **统一审查**：全部阶段完成后一次性代码审查（不在阶段中途审）
+- [x] **统一审查**：code-review skill 全量 diff 8 视角扫描，9 发现 survive——修复 8（优先级措辞收窄/
+      n7 假绿用例重写/spy 真走清理路径/契约损坏与未找到的报错区分/文案与正则矛盾/校验函数搬家减负/
+      --bundle 根命中补 warn/多余位置参数拒绝/零模块占位行），不采纳 1（F3 publish --real 先构建再拒绝
+      多份：浪费限于 tmp staging，换来单包原子回滚不动）；修复后 397 cli + 389 tests/cli + typecheck 全绿
 - [x] `pnpm test` / lint / typecheck 全绿（394 cli + 389 tests/cli + devkit-docs 10 全过；typecheck 0 error；
       例外：`tests/integration/uni-dev-smoke.test.ts` 4 用例失败——环境性，上游 @oj-bin/oj latest=v0.1.84 < MIN_OJ_VERSION 0.1.85
       （该门禁在基线 feat/ojm 即存在，与本分支无关，等上游发 0.1.85 即恢复））
-- [ ] 合并回 `feat/ojm`，更新任务状态与总结
+- [x] 合并回 `feat/ojm`（--no-ff），更新任务状态与总结
 
 BDD 用例风格遵循 INVEST：各用例相互独立（无顺序依赖）、可协商、有价值、可估算、小、可测试；
 实现遵循 SOLID（单一职责：builtin/bundle/new/info 各司其职，依赖注入可测）与 DRY
@@ -172,3 +175,18 @@ BDD 用例风格遵循 INVEST：各用例相互独立（无顺序依赖）、可
 - **实现期决策（B7）**：跨契约 name+version 查重与 B8（name===目录名）组合后撞车向量不可达
   （目录名在单一 src/ 层唯一 ⇒ name 唯一），故不实现独立查重，B7 用例改为记录该决策；
   若未来放松 name===目录名 校验，必须先恢复跨契约查重。
+
+## 总结（2026-10-22 收尾）
+
+**关键过程**：v1 设计 → 六方评审（全「有条件通过」）→ v2 修订（28 BDD 用例）→ 6 阶段 TDD 实施
+（Phase 1 名单 → 2 打包复数化 → 3 ojm new → 4 info → 5 scripts → 6 文档发版）→ 统一审查一轮
+（9 发现，修 8 拒 1）→ 全绿合并。全程约 6 个编码 session；最大弯路是 B7 跨契约查重在 B8
+（name===目录名）落地后向量不可达，删除死代码并以文档钉决策；其次是外部编辑器回冲计划文档
+致任务状态丢失，已重放修复（教训：python replace 后须断言命中）。
+
+**验收口径**：397 cli 单测 + 389 tests/cli + devkit-docs 10 用例全过；typecheck 0 error；
+唯一例外 `uni-dev-smoke` 4 用例为环境性失败（上游 @oj-bin/oj latest 0.1.84 < MIN_OJ_VERSION
+0.1.85，基线即存在，与本分支无关）。
+
+**遗留决策**：F3（publish --real 多方案工程先全量构建再拒绝）不采纳，理由记录在案——
+若未来 `--real` 频繁用于多方案工程，再引入按名预解析。
