@@ -7,7 +7,7 @@ import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router";
 
 import { systemRolesGet, systemUsersGet, systemUsersRolesPut } from "../../__client/api";
-import { isForbidden } from "../errors";
+import { explainError, isForbidden } from "../errors";
 import { ForbiddenPanel } from "../forbidden";
 
 /**
@@ -36,6 +36,8 @@ export default function UserRolesPage() {
 			queryClient.invalidateQueries({ queryKey: ["system", "users"] });
 			navigate("/system/users");
 		},
+		// 403 全局 toast 已被请求层抑制，页面须自行反馈（admin 非 superadmin 手输 URL 的场景）
+		onError: e => message.error(explainError(e, t)),
 	});
 
 	const user = usersQuery.data?.find(u => String(u.id) === uid);
