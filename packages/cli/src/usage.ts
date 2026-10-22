@@ -131,8 +131,9 @@ const COMMAND_HELP: Record<string, string> = {
   --exempt <path>  指定豁免清单，覆盖默认 .ojm-api-exempt.json（工程根；历史布局在 api/ 下）
   --docs    出自包含文档站（单文件离线可看）
   dir 缺省当前目录；显式目录须先存在`,
-	"info": `ojm info
-  输出版本矩阵与模块清单（报障用）`,
+	"info": `ojm info [--all]
+  输出版本矩阵与模块清单（报障用）
+  --all  展开框架自带模块（默认折叠为一行计数；名单见 src/.ojm-builtin.json）`,
 	"vendor": `ojm vendor [tag] [--force]
   下载/重装 oj vendor（经 npm 包 @oj-bin/oj；tag 缺省取最新，形如 v0.1.13）
   --force  即使已存在也重新下载`,

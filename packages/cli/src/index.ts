@@ -96,7 +96,7 @@ async function main() {
 			break;
 		}
 		case "info":
-			await printInfo(projectRoot);
+			await printInfo(projectRoot, undefined, { all: process.argv.slice(3).includes("--all") });
 			break;
 		case "vendor": {
 			const { force, tag } = parseVendorArgs(process.argv.slice(3));
