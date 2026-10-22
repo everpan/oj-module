@@ -41,6 +41,8 @@ export function DraggableTabNode({ className, children, ...props }: DraggableTab
 		// draggable: "true",
 	};
 
+	// 有意的 cloneElement：antd Tabs 只暴露已渲染的 tab 节点，需要把 dnd 的 ref/样式/事件注入进去
+	// eslint-disable-next-line react/no-clone-element
 	return cloneElement(children, clonedProps);
 }
 interface DraggableTabBarProps {

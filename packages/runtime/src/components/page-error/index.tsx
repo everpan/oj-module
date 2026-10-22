@@ -38,7 +38,7 @@ export function PageError({ error, resetErrorBoundary }: FallbackProps) {
 		if (enableDynamicTitle) {
 			document.title = t("exception.pageErrorTitle");
 		}
-	}, [enableDynamicTitle]);
+	}, [enableDynamicTitle, t]);
 
 	return (
 		<Result

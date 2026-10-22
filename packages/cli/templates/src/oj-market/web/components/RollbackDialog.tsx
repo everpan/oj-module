@@ -1,6 +1,6 @@
 import type { IndexRow } from "../types";
 import { Alert, Modal, Radio, Space, Spin, Typography } from "antd";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useMarketHistory } from "../hooks/useMarket";
 import { compareVersions } from "../utils/semver";
@@ -34,9 +34,13 @@ export function RollbackDialog({ row, open, onClose, onRollback }: RollbackDialo
 		return [...versions].sort((a, b) => compareVersions(b, a)); // 较新的旧版在前
 	}, [row, status, data]);
 
-	useEffect(() => {
+	// 候选集变化（历史加载完成/切换方案）时默认选中最新旧版；
+	// 渲染期同步派生重置，替代 effect 内同步 set（react/set-state-in-effect）
+	const [prevCandidates, setPrevCandidates] = useState(candidates);
+	if (prevCandidates !== candidates) {
+		setPrevCandidates(candidates);
 		setSelected(candidates.length ? candidates[0] : null);
-	}, [candidates]);
+	}
 
 	const loading = status === "loading";
 

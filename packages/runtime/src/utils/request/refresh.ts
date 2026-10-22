@@ -103,6 +103,8 @@ function onRefreshFailed(error: any) {
  * 订阅者对象应包含 resolve 和 reject 方法。
  *
  * @param subscriber 订阅者对象，包含 resolve 和 reject 方法
+ * @param subscriber.resolve 当 token 刷新成功时调用的函数，传入新的 token
+ * @param subscriber.reject 当 token 刷新失败时调用的函数，传入错误信息
  */
 function addRefreshSubscriber(subscriber: {
 	resolve: (token: string) => void // 当 token 刷新成功时调用的函数

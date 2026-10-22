@@ -72,7 +72,7 @@ export default function LayoutTabbar() {
 	const handleChangeTabs = useCallback((key: string) => {
 		const historyState = openTabs.get(key)?.historyState || { search: "", hash: "" };
 		navigate(key + historyState.search + historyState.hash);
-	}, [openTabs]);
+	}, [openTabs, navigate]);
 
 	/**
 	 * 处理标签页编辑（关闭）
@@ -152,6 +152,8 @@ export default function LayoutTabbar() {
 		if (activeKey.length > 0 && activeFullPath !== currentFullpath) {
 			navigate(activeFullPath);
 		}
+		// 有意只在 activeKey 变化时执行：活动标签页被关闭后兜底导航，加入 location/openTabs 会造成导航回环
+		// eslint-disable-next-line react/exhaustive-deps
 	}, [activeKey]);
 
 	/**
@@ -194,7 +196,7 @@ export default function LayoutTabbar() {
 				draggable: normalizedPath !== import.meta.env.VITE_BASE_HOME_PATH,
 			});
 		}
-	}, [location, currentRoute, setActiveKey, addTab]);
+	}, [location, currentRoute, setActiveKey, addTab, activeKey]);
 
 	return (
 		<div className={classes.tabsContainer}>

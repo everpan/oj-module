@@ -15,6 +15,8 @@ export function translateMenus(menus: MenuItemType[], t: (key: string) => string
 		let translatedLabel: React.ReactNode = menu.label;
 		if (isValidElement(menu.label)) {
 			const translatedChildren = t((menu.label as ReactElement<{ children: string }>).props.children);
+			// 有意的 cloneElement：保留原 label 元素结构，仅替换为翻译后的 children
+			// eslint-disable-next-line react/no-clone-element
 			translatedLabel = cloneElement(menu.label, {}, translatedChildren ?? "");
 		}
 		if (isString(menu.label)) {

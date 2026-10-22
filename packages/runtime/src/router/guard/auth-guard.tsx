@@ -224,6 +224,7 @@ export function AuthGuard({ children }: AuthGuardProps) {
 		if (!whiteRouteNames.includes(pathname) && isLogin && !isAuthorized) {
 			fetchUserInfoAndRoutes();
 		}
+		// eslint-disable-next-line react/exhaustive-deps -- 鉴权守卫仅响应 pathname/登录态变化；依赖项均为稳定引用（store action、navigate），补全会引入 search 变化导致的重复请求
 	}, [pathname, isLogin, isAuthorized]);
 
 	/**

@@ -13,7 +13,7 @@ export function useCurrentRoute() {
 		const match = matches[matches.length - 1];
 
 		return match;
-	}, [matches, location]);
+	}, [matches]);
 
 	return currentRoute;
 }

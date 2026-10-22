@@ -44,7 +44,7 @@ export function InstallDialog({ row, open, onClose, onDone, version, mode }: Ins
 	// onDone 对同一任务只通告一次：父级每次渲染都会换 onDone 身份，若只靠 deps 触发，
 	// 终态后 onDone → index.retry() → 父级重渲染 → onDone 身份变 → 再触发，会形成
 	// 无限请求循环（浏览器侧表现为 ERR_INSUFFICIENT_RESOURCES）。
-	const notifiedTaskId = useRef<string | null>(null);
+	const notifiedTaskIdRef = useRef<string | null>(null);
 
 	const targetVersion = version ?? row?.latest ?? null;
 	const title
@@ -54,9 +54,13 @@ export function InstallDialog({ row, open, onClose, onDone, version, mode }: Ins
 				? t("oj-market:card:upgrade")
 				: t("oj-market:task:installing");
 
-	// 打开即触发安装（version 缺省取 latest；已装视为升级；显式 version = 回滚降级安装）
+	// 打开即触发安装（version 缺省取 latest；已装视为升级；显式 version = 回滚降级安装）。
+	// 注：下面的同步 set 均为「弹窗打开/关闭生命周期」的有意重置与触发守卫；
+	// 曾尝试渲染期派生重置，但同组件 notifier effect 里的 onDone?.(record) 会触发
+	// eslint-react set-state-in-effect 的误判（prop 回调被解析回组件函数），故保留原结构。
 	useEffect(() => {
 		if (open && row && !started) {
+			// eslint-disable-next-line react/set-state-in-effect -- 有意：打开弹窗时置「已触发」守卫，保证安装只发起一次
 			setStarted(true);
 			client
 				.install({ name: row.name, version: targetVersion, source: "cdn" })
@@ -64,19 +68,22 @@ export function InstallDialog({ row, open, onClose, onDone, version, mode }: Ins
 				.catch(e => setTaskId(`__error__${e instanceof Error ? e.message : String(e)}`));
 		}
 		if (!open) {
+			// eslint-disable-next-line react/set-state-in-effect -- 有意：关闭弹窗时清空任务，下次打开是全新一次安装
 			setTaskId(null);
+			// eslint-disable-next-line react/set-state-in-effect -- 有意：关闭时复位触发守卫，配合上行清场
 			setStarted(false);
+			// eslint-disable-next-line react/set-state-in-effect -- 有意：关闭时清掉信任错误，避免残留到下次打开
 			setTrustError(null);
-			notifiedTaskId.current = null;
+			notifiedTaskIdRef.current = null;
 		}
 	}, [open, row, started, client, targetVersion]);
 
 	useEffect(() => {
 		if (!record || !isTerminal(record) || !done)
 			return;
-		if (notifiedTaskId.current === record.id)
+		if (notifiedTaskIdRef.current === record.id)
 			return;
-		notifiedTaskId.current = record.id;
+		notifiedTaskIdRef.current = record.id;
 		onDone?.(record);
 	}, [record, done, onDone]);
 
@@ -88,7 +95,7 @@ export function InstallDialog({ row, open, onClose, onDone, version, mode }: Ins
 		setTrustError(null);
 		try {
 			await client.trust(taskId);
-			notifiedTaskId.current = null;
+			notifiedTaskIdRef.current = null;
 			setTaskId(null);
 			setStarted(false);
 		}

@@ -8,8 +8,6 @@ import { resolveSiteBase } from "#src/utils/site-base";
  * 必须带上部署 base（`resolveSiteBase()`）：子路径部署下 `location.href = "/login"`
  * 会跳到宿主机根，而不是 `/oj/login`。不能用 `import.meta.env.BASE_URL`——预构建
  * 产物里它是构建期内联的 `/`。
- *
- * @returns 无返回值
  */
 export function goLogin() {
 	// 重置登录状态

@@ -18,7 +18,7 @@ import { getElementVisibleRect } from "#src/utils/dom";
  * @en Get the style of the layout content area
  */
 export function useLayoutContentStyle() {
-	const contentElement = useRef<HTMLDivElement>(null);
+	const contentElementRef = useRef<HTMLDivElement>(null);
 	const [visibleDomRect, setVisibleDomRect] = useState<VisibleDomRect | null>(null);
 	const resizeObserverRef = useRef<ResizeObserver | null>(null);
 
@@ -39,7 +39,7 @@ export function useLayoutContentStyle() {
 
 	const debouncedCalcHeight = useDebounceFn(
 		(_entries: ResizeObserverEntry[]) => {
-			const rect = getElementVisibleRect(contentElement.current);
+			const rect = getElementVisibleRect(contentElementRef.current);
 			setVisibleDomRect(rect);
 			if (rect) {
 				contentHeightControls.set(`${rect.height}px`);
@@ -50,10 +50,11 @@ export function useLayoutContentStyle() {
 	);
 
 	useEffect(() => {
-		if (contentElement.current && !resizeObserverRef.current) {
+		if (contentElementRef.current && !resizeObserverRef.current) {
+			// eslint-disable-next-line react/web-api-no-leaked-resize-observer -- cleanup 已统一 disconnect（规则识别不了 ref 间接持有）
 			const resizeObserver = new ResizeObserver(debouncedCalcHeight.run);
 			resizeObserverRef.current = resizeObserver;
-			resizeObserver.observe(contentElement.current);
+			resizeObserver.observe(contentElementRef.current);
 		}
 
 		return () => {
@@ -62,7 +63,7 @@ export function useLayoutContentStyle() {
 		};
 	}, [debouncedCalcHeight]);
 
-	return { contentElement, overlayStyle, visibleDomRect };
+	return { contentElementRef, overlayStyle, visibleDomRect };
 }
 
 export function useLayoutHeaderStyle() {

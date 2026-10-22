@@ -5,7 +5,7 @@ import type { TablePaginationConfig } from "antd";
 import { LoadingOutlined } from "@ant-design/icons";
 import { ProTable } from "@ant-design/pro-components";
 import { useSize } from "ahooks";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useTranslation } from "react-i18next";
 import { footerHeight as layoutFooterHeight } from "#src/layout/constants";
@@ -60,7 +60,7 @@ export function BasicTable<
 		return 0;
 	}, [enableFooter, fixedFooter]);
 
-	const getPaginationProps = () => {
+	const getPaginationProps = useCallback(() => {
 		if (props.pagination === false) {
 			return false;
 		}
@@ -73,7 +73,7 @@ export function BasicTable<
 			showTotal: total => t("common.pagination", { total }),
 			...props.pagination,
 		} satisfies TablePaginationConfig;
-	};
+	}, [props.pagination, t]);
 
 	/**
 	 * @description 计算分页器的高度

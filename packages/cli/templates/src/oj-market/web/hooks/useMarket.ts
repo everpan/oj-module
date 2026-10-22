@@ -12,10 +12,12 @@ export type LoadState<T> = { status: "loading", data?: undefined } | { status: "
 export function useMarketIndex(): LoadState<IndexRow[]> & { retry: () => void } {
 	const client = useMarketClient();
 	const [state, setState] = useState<LoadState<IndexRow[]>>({ status: "loading" });
+	// 重试不复跑「先同步 set loading 再拉取」的加载函数（effect 内同步 set 触发
+	// react/set-state-in-effect），改为事件里置 loading + 递增 nonce 驱动 effect 重跑。
+	const [nonce, setNonce] = useState(0);
 
-	const load = useCallback(() => {
+	useEffect(() => {
 		let active = true;
-		setState({ status: "loading" });
 		client
 			.index()
 			.then(data => active && setState({ status: "ok", data }))
@@ -23,11 +25,14 @@ export function useMarketIndex(): LoadState<IndexRow[]> & { retry: () => void } 
 		return () => {
 			active = false;
 		};
-	}, [client]);
+	}, [client, nonce]);
 
-	useEffect(() => load(), [load]);
+	const retry = useCallback(() => {
+		setState({ status: "loading" });
+		setNonce(n => n + 1);
+	}, []);
 
-	return { ...state, retry: load };
+	return { ...state, retry };
 }
 
 /** 任务轮询：给定 task_id，800ms 轮询至终态（done/failed/partial）；超时不抛，返回当前值 */
@@ -39,17 +44,20 @@ export function useInstallTask(taskId: string | null): {
 	const [record, setRecord] = useState<TaskRecord | null>(null);
 	const [done, setDone] = useState(false);
 
-	useEffect(() => {
-		// 无任务 id = 尚无任务：清空上一次任务的记录，避免「重新安装/信任后重试」时
-		// 旧终态（可能是 needs_trust）残留在弹窗里被误读成本次结果。
-		if (!taskId) {
-			setRecord(null);
-			setDone(false);
-			return;
-		}
-		let active = true;
+	// 无任务 id / 切换任务 = 尚无任务：清空上一次任务的记录，避免「重新安装/信任后重试」时
+	// 旧终态（可能是 needs_trust）残留在弹窗里被误读成本次结果。
+	// （渲染期同步派生重置，替代 effect 内同步 set，规避 react/set-state-in-effect）
+	const [prevTaskId, setPrevTaskId] = useState(taskId);
+	if (prevTaskId !== taskId) {
+		setPrevTaskId(taskId);
 		setRecord(null);
 		setDone(false);
+	}
+
+	useEffect(() => {
+		if (!taskId)
+			return;
+		let active = true;
 		poll(
 			() => client.task(taskId),
 			r => r.status !== "running",
@@ -80,10 +88,11 @@ export function useInstallTask(taskId: string | null): {
 export function useMarketHistory(): LoadState<MarketHistory[]> & { retry: () => void } {
 	const client = useMarketClient();
 	const [state, setState] = useState<LoadState<MarketHistory[]>>({ status: "loading" });
+	// 同 useMarketIndex：重试走 nonce 驱动，不在 effect 链路里同步 set
+	const [nonce, setNonce] = useState(0);
 
-	const load = useCallback(() => {
+	useEffect(() => {
 		let active = true;
-		setState({ status: "loading" });
 		client
 			.history()
 			.then(data => active && setState({ status: "ok", data }))
@@ -91,9 +100,12 @@ export function useMarketHistory(): LoadState<MarketHistory[]> & { retry: () => 
 		return () => {
 			active = false;
 		};
-	}, [client]);
+	}, [client, nonce]);
 
-	useEffect(() => load(), [load]);
+	const retry = useCallback(() => {
+		setState({ status: "loading" });
+		setNonce(n => n + 1);
+	}, []);
 
-	return { ...state, retry: load };
+	return { ...state, retry };
 }

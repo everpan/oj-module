@@ -53,9 +53,10 @@ export function Sidebar() {
 							name={item.name}
 							checked={item.value}
 							onChange={handleChange}
-							children={item.label}
 							disabled={item.disabled}
-						/>
+						>
+							{item.label}
+						</SwitchItem>
 					);
 				})
 			}
@@ -63,11 +64,12 @@ export function Sidebar() {
 				name="sidebarTheme"
 				checked={sidebarTheme === "light"}
 				onChange={(name, value) => setPreferences(name, value ? "light" : "dark")}
-				children={t("preferences.sidebar.sidebarTheme")}
 				disabled={!sidebarEnable}
 				unCheckedChildren={<RiContrastFill />}
 				checkedChildren={<RiMoonIcon />}
-			/>
+			>
+				{t("preferences.sidebar.sidebarTheme")}
+			</SwitchItem>
 			<NumberInputSpinner
 				min={40}
 				max={80}
