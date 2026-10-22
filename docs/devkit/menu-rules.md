@@ -144,10 +144,10 @@ export default defineModule({
 - 因此你只需在双语 locale 里声明**一条** `<模块名>:menu.main`：
 
 ```jsonc
-// web/src/<模块>/locales/zh-CN.json
+// src/<模块>/web/locales/zh-CN.json
 { "menu": { "main": "Wiki" } }   // 命中 <模块名>:menu.main（根菜单 + 系统设置里的管理子组都读它）
 
-// web/src/<模块>/locales/en-US.json
+// src/<模块>/web/locales/en-US.json
 { "menu": { "main": "Wiki" } }
 ```
 
@@ -190,7 +190,7 @@ handle: { currentActiveMenu: wikiPath("space") }   // → "/wiki/space"，随模
 推荐在模块内放一个 `paths.ts`：
 
 ```ts
-// web/src/<模块>/paths.ts
+// src/<模块>/web/paths.ts
 export const WIKI_ROOT = "wiki";                       // 模块挂载根（唯一定义处）
 export const wikiBase = `/${WIKI_ROOT}`;
 export const wikiPath = (...segments: Array<string | number>): string =>

@@ -2,14 +2,14 @@
 
 面向用 `ojm` 开发前后端一体工程的开发者与 AI agent。本目录是**源文件**，
 发布时由 cli 的 `prepack`（`packages/cli/scripts/sync-devkit.mjs`）把其中
-**ojm 侧的 5 个文件**同步进 `packages/cli/devkit/`，随 `@oj-module/cli`
+**ojm 侧的 6 个文件**同步进 `packages/cli/devkit/`，随 `@oj-module/cli`
 发布，再由 `ojm init` 分发到工程内。
 
 整棵树覆盖前后端两侧，但仍是**两套独立分发的 skill**（同名不同物，别混）：
 
 | 侧 | 本仓位置 | 用户工程里的落点 | 分发链 |
 |---|---|---|---|
-| ojm 模块开发（前端模块、契约、前后端对接） | 本目录顶层 5 个文件 | `.claude/skills/ojm-module-dev/` | `@oj-module/cli` 包 → `ojm init` 第 4b 步 |
+| ojm 模块开发（前端模块、契约、前后端对接） | 本目录顶层 6 个文件 | `.claude/skills/ojm-module-dev/` | `@oj-module/cli` 包 → `ojm init` 第 4b 步 |
 | oj API 开发（后端 handler、全局对象、配置、测试） | `oj-api-dev/` 子目录（快照） | `.claude/skills/oj-api-dev/` | **oj 二进制自带**（`bin/devkit/`）→ `ojm init` 第 4 步 |
 
 > **`oj-api-dev/` 子目录是快照，不是本仓维护的文档**：它与本机 oj 的
@@ -24,7 +24,7 @@
 | 文件 | 用途 |
 |---|---|
 | `SKILL.md` | Claude Code 等 agent 的 skill 入口：工作流、红线、新模块 checklist、陷阱速查，按章节号引用手册 |
-| `manual.md` | 模块开发手册（12 章）：工程结构（含 §1.7 handler 四红线——oj 运行时实测钉出，后端必读）、写模块、契约与代码生成（含 §3.10 旧 contract.ts 工程迁移指南）、provider 接管（覆盖框架内置功能）、布局、i18n、构建发布、排查、CLI 子命令参考（ojm 原生命令 vs oj 透传命令）、方案包打包与分发、签名与信任 |
+| `manual.md` | 模块开发手册（13 章）：工程结构（module-root 单树 + 两处产物根；含 §1.7 handler 四红线——oj 运行时实测钉出，后端必读；§1.8 `#` 别名与 TS 投影）、写模块、契约与代码生成（含 §3.10 旧 contract.ts 工程迁移指南）、provider 接管（覆盖框架内置功能）、布局、i18n、构建发布、排查、CLI 子命令参考（ojm 原生命令 vs oj 透传命令）、方案包打包与分发、签名与信任 |
 | `framework-dev.md` | 框架贡献者路线（**仅框架仓库**）：改 `packages/runtime`、`packages/cli` 时的入口与红线 |
 | `module-dev-and-cdn-playground.md` | 教学文档：开发态 ≠ 分发态、「怎么安装自己的模块 / 会不会重复」、本地 CDN 市场链路五步跑通（setup → publish → build-index → verify → 安装） |
 | `sql-builder-missing-capabilities-pr.md` | 构造器能力缺口 PR 参考（**仅框架仓库**）：7 项诉求的闭环记录 |
@@ -108,6 +108,6 @@ flowchart LR
   框架贡献者要把本仓快照同步到新版：从 `~/.local/share/oj/devkit/` 整目录覆盖
   `docs/devkit/oj-api-dev/`（10 个文件，保持逐字节一致以便对账）。
 
-> 本目录顶层 5 个文件是**自包含**的：业务工程拿到即可读懂，不需要工程仓库里的
+> 本目录顶层 6 个文件是**自包含**的：业务工程拿到即可读懂，不需要工程仓库里的
 > 其它文档。`oj-api-dev/` 子目录是 oj 侧快照，同样自包含（其自身 README 即索引），
 > 但不随 cli 包发货、仅本仓参考。维护者视角的内容来源整理在 `framework-dev.md`（仅本仓）。

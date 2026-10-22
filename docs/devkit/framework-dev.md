@@ -1,7 +1,8 @@
 # 框架贡献者路线（仅本仓）
 
 > 读者：改 `packages/runtime/`、`packages/cli/` 的人。
-> **业务工程里用不到本文件**——那些工程只有 `web/src` + `api/src`，
+> **业务工程里用不到本文件**——那些工程是「一棵源码树 + 一个配置」：
+> `src/<模块>/{api,web}` + 工程根 `config.yaml`（历史布局为 `web/src` + `api/src`），
 > 没有 `packages/`。业务开发看 `SKILL.md` + `manual.md`。
 
 ## §1 先读哪份文档
@@ -20,7 +21,7 @@
 > ⚠️ 那两份 guide 有**已知陈旧处**，以源码为准：
 > dev 端口实际是 **3333**（guide 写的 5173 已过时；注意与 `ojm dev` 的前端 devServer
 > **5174** 不是一回事——前者是本仓 vite，后者是业务工程 devServer）；包版本以
-> `packages/*/package.json` 为准（撰写时实际 **0.2.8**，仅供参考，以当前 package.json 为准）。
+> `packages/*/package.json` 为准（撰写时实际 **0.2.20**，仅供参考，以当前 package.json 为准）。
 
 ## §2 两包结构与依赖方向
 
@@ -103,7 +104,7 @@ pnpm test tests/shell                       # 宿主全量
 | 不变式 | 说明 |
 |---|---|
 | scoped request 在 onInit 绑定 | `onInit` 里绑定 scoped request |
-| 契约前缀字面相等 | uni-dev 形态 `apiPrefix` 必须字面等于目录名 |
+| 契约前缀字面相等 | 路由前缀取 `manifest.yaml` 的 `name`（0.1.85 起与目录名脱钩）；uni-dev 历史形态下 `apiPrefix` 必须字面等于目录名 |
 | 模块仅 import 三类（`#src` 双声明） | `#src/*` 由 package.json `imports` 与 vite alias 双声明 |
 | 模块元信息从 entry.ts 解析 | 模块 name/version 从 `entry.ts` 解析（esbuild bundle + 真实 `import()`） |
 | 生产产物不含 fake | 生产构建不含 fake 代码（**有测试断言产物里无 fake**） |
@@ -138,7 +139,7 @@ pnpm test tests/shell                       # 宿主全量
 **一键发布**：`node scripts/publish-packages.mjs`（lockstep 门禁 → 构建 → 守卫测试 →
 runtime → cli → registry 复核；`--dry-run` 只演练）。下面的手动步骤是它的展开参考。
 
-- **两包**同版本号（`@oj-module/runtime` + `@oj-module/cli`，当前 `0.2.8`），后续发版保持
+- **两包**同版本号（`@oj-module/runtime` + `@oj-module/cli`，当前 `0.2.20`），后续发版保持
   lockstep；`@plane/kit` / `@plane/editor` 不在发布集内（脚本里已注释）。
 - **必须 `pnpm publish`**——用 `npm publish` 会漏出 `workspace:*` / `catalog:` 字面量。
 - **顺序：先 `runtime` 后 `cli`**。`runtime` 未公开时，新 `cli` 的精确依赖会悬空，
@@ -186,7 +187,7 @@ runtime → cli → registry 复核；`--dry-run` 只演练）。下面的手动
 
 ## 附：本 devkit 内容来源（维护者看）
 
-`docs/devkit/` 是**自包含**的交付文档（顶层 5 个文件，含
+`docs/devkit/` 是**自包含**的交付文档（顶层 6 个文件，含
 `sql-builder-missing-capabilities-pr.md` 这份构造器能力缺口 PR 参考），业务工程拿到即可读懂，不依赖工程仓库里的其它文档。
 另有 `oj-api-dev/` 子目录是 oj 侧 devkit 的快照（10 文件，仅本仓参考、不发货），
 结构说明见 `README.md`。

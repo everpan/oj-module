@@ -3,6 +3,8 @@
 > 一篇写给「第一次在本工程开发模块」的人的教学文档。读完之后你应该能回答三个问题：
 > **① 开发中的模块要不要「安装」？② 要的话装到哪、会不会重复？③ 怎么在本地把市场链路完整跑一遍？**
 > 适用版本：`@oj-module/cli` 0.2.12+（`ojm market` 子命令），运行期 `oj` ≥ 0.1.73。
+> 本文按**当前模板的 module-root 布局**书写（`src/<模块>/{api,web}` + 工程根 `config.yaml`），
+> 建新工程另需 `oj` ≥ 0.1.85（`--module-root`）。历史布局（`api/src` + `web/src`）对照写在括注里。
 
 ## 1. 先建立心智模型：开发态 ≠ 分发态
 
@@ -10,12 +12,12 @@
 
 | | 开发态 | 分发态 |
 |---|---|---|
-| 模块在哪 | 工程内源码：`web/src/A` + `api/src/A` | 一个 `.tgz` 包（`ojm build --bundle` 产出） |
-| 谁登记它 | `web.config.ts` 的 `modules` 列表 → `ojm build` 生成 `modules.json` | 安装器往目标站点 upsert |
+| 模块在哪 | 工程内源码：`src/A/api` + `src/A/web`（历史布局：`api/src/A` + `web/src/A`） | 一个 `.tgz` 包（`ojm build --bundle` 产出） |
+| 谁登记它 | `ojm build` 扫描 `src/*/web/entry.ts`（`web.config.ts` 可选覆盖）→ 生成 `web/dist/modules.json` | 安装器往目标站点 upsert |
 | 跑起来靠 | `ojm dev` 直跑源码，改一行刷新即见 | 安装器十阶段（下载→验签→解压→迁移→注册→热更→冒烟） |
 | 典型场景 | 你在写它 | 别人（或另一个站点）装它 |
 
-一句话：**开发态没有「安装」这个动作**。`ojm dev` 起的站点直接扫描 `api/src` 产生路由、读 `modules.json` 装配菜单——你写的模块 A 此刻「已经在跑」，只是还没打过包。
+一句话：**开发态没有「安装」这个动作**。`ojm dev` 起的站点直接扫描 `src/` 产生路由（`oj build --module-root src`）、读 `modules.json` 装配菜单——你写的模块 A 此刻「已经在跑」，只是还没打过包。
 
 ## 2. 常见问题：我开发了模块 A，怎么「安装」我自己？
 
@@ -26,7 +28,7 @@
 真正想验证「A 这个包能不能装、安装流程对不对」时，有三个去处，按推荐顺序：
 
 1. **一次性隔离站点**：`ojm market trial --fixture <name>@<version>`（随机端口 + 一次性 DB + 一次性密钥 + 隔离信任库/CDN），跑完即毁，不碰你的工程、DB、信任库。这是唯一「装了也不心疼」的地方，也是最快的「这包能不能装」判据（实测 11 段全 ok 约 12 秒）。
-2. **另一个工程**：`ojm install dist/A-0.1.0.tgz`（file 源，multipart 直传）。
+2. **另一个工程**：`ojm install dist/A-0.1.0.tgz`（file 源，multipart 直传；`dist/` 是 `--bundle` 的默认输出目录，与后端产物 `api/dist` 无关）。
 3. **市场链路**：`ojm market publish` 落 CDN → 市场页点安装（§4 全套）。
 
 ### 2.2 偏要在本工程试怎么办
@@ -56,7 +58,7 @@
 
 注意 §3.1 的 upsert 是**按 name/path** 而不是按来源。于是存在这种状态：
 
-> 你源码里的 A（`api/src/A`，路由由 oj 扫描源码产生）和某次安装产物 `dist/A-0.1.0/` 同时存在。
+> 你源码里的 A（`src/A/api`，路由由 oj 扫描源码产生）和某次安装产物 `api/dist/A-0.1.0/` 同时存在。
 
 表现是：路由与模块条目各自只有一份（不重复），但**哪一份生效取决于挂载命中顺序**——症状为「我改了源码却不生效」或「行为怎么都不对」。这是本主题下最难查的一类问题：没有报错、没有重复，只是「被另一个自己顶替了」。
 
@@ -64,7 +66,7 @@
 
 ## 4. 本地 CDN 演练场：把市场链路完整跑一遍
 
-模板自带一个**本地模拟 CDN**（工程根 `cdn/` + `api/config.yaml` 的 `/cdn` 挂载），配上 `ojm market` 四条命令，就能在本地复刻「发包 → 上架 → 索引 → 安装」全链路。不需要外部服务。
+模板自带一个**本地模拟 CDN**（工程根 `cdn/` + 工程根 `config.yaml` 里的 `/cdn` 挂载），配上 `ojm market` 四条命令，就能在本地复刻「发包 → 上架 → 索引 → 安装」全链路。不需要外部服务。
 
 ### 4.1 全流程（五步）
 
@@ -91,7 +93,7 @@ ojm market verify --rebuild-index
 
 | 命令 | 做什么 | **不**做什么 |
 |---|---|---|
-| `market setup` | 写系统设置 `framework.market_cdn_url` | 不改写 `api/config.yaml`（挂载由模板自带） |
+| `market setup` | 写系统设置 `framework.market_cdn_url` | 不改写工程根 `config.yaml`（`/cdn` 挂载由模板自带） |
 | `market publish` | 落 `<name>-<version>.tgz` + 包级 `.tgz.sig` | **不碰索引**（索引是共享单文件，多人发布会互相覆盖） |
 | `market build-index` | 扫 `cdn/*.tgz` 提取包内 manifest，全量重建两份索引并签名 | 不落包 |
 | `market verify` | 完整性 / 包级签 / 索引签 / manifest 结构四类校验 + 漂移检出 | 不起站点、不装、不访问任何远端 |
@@ -129,19 +131,26 @@ ojm market verify --rebuild-index
 
 ```text
 solution-demo/
-├── manifest.yaml                      # 方案契约清单（Form A）
-├── api/src/<name>/
-│   ├── manifest.yaml                  # oj 原生清单（name/desc/version/tables）
-│   ├── schema.yaml                    # 表结构真源（必须与 manifest.tables 对齐）
-│   ├── routes.js
-│   ├── migrations/0001__init.sql
-│   └── ping/api.ts                    # handler 必须是 .ts
-└── web/src/<name>/locales/{zh-CN,en-US}.json   # 引用 i18n key 时必需
+├── manifest.yaml                       # 方案契约清单（Form A，恒在工程根）
+└── src/<name>/
+    ├── api/
+    │   ├── manifest.yaml               # oj 原生清单（name/desc/version/tables）
+    │   ├── schema.yaml                 # 表结构真源（必须与 manifest.tables 对齐）
+    │   ├── routes.js
+    │   ├── migrations/0001__init.sql
+    │   └── ping/api.ts                 # handler 必须是 .ts
+    └── web/
+        └── locales/{zh-CN,en-US}.json  # 引用 i18n key 时必需
 ```
 
+> 历史布局把这棵树换成 `api/src/<name>/…` + `web/src/<name>/locales/…`，构建命令里的
+> `--module-root src` 换成 `-d api/src`（两者互斥，都是「源码树根」）。布局判定看标记文件
+> 而不是目录名：`src/<name>/api/manifest.yaml` 或 `src/<name>/web/entry.ts` 存在即成模块。
+> 方案工程若由 `ojm init` 起（会带工程根 `config.yaml`），构建时加 `-c config.yaml`。
+
 ```bash
-<host>/bin/oj build -d api/src -o api/dist        # 后端构建（只用宿主已装的 oj）
-node "$CLI_PKG/bin/ojm.mjs" build --bundle        # 打包（构建即校验）
+<host>/bin/oj build --module-root src -o api/dist   # 后端构建（只用宿主已装的 oj）
+node "$CLI_PKG/bin/ojm.mjs" build --bundle          # 打包（构建即校验）
 node "$CLI_PKG/bin/ojm.mjs" keygen --id demo.publisher --out ./keys --yes
 node "$CLI_PKG/bin/ojm.mjs" sign dist/<name>-<version>.tgz --id demo.publisher --key ./keys/private.pem --check
 ```
@@ -154,8 +163,8 @@ node "$CLI_PKG/bin/ojm.mjs" market publish --real ../solution-demo --id demo.pub
 node "$CLI_PKG/bin/ojm.mjs" market verify --rebuild-index
 
 node "$CLI_PKG/bin/ojm.mjs" build                 # 生成 api/dist + web/dist（含 api/dist/versions.json）
-# config：platform.root 改成 dist（安装目标恒为 release 部署）
-(cd api && ../bin/oj serve -c config.yaml -b /api --api-path dist --console-log &)
+# config：platform.root 改成 api/dist（安装目标恒为 release 部署，root 必须与 --api-path 同源）
+(bin/oj serve -c config.yaml -b /api --api-path api/dist --console-log &)
 node "$CLI_PKG/bin/ojm.mjs" market setup --url http://127.0.0.1:9778 --user admin --pass 123456 --new-pass <新口令>
 # 市场页点安装 → 首次停在「待信任」→ 核对指纹 → ojm trust confirm --task <id> → 重试 → done
 ```
@@ -166,11 +175,11 @@ node "$CLI_PKG/bin/ojm.mjs" market setup --url http://127.0.0.1:9778 --user admi
 |---|---|---|
 | ① | `oj build` 报 `tables 声明 "x" 不在 schema.yaml` | oj 用 `schema.yaml` 做表结构真源，`manifest.tables` 只是引用面；补 `schema.yaml`（`tables: {<t>: {pk, columns}}`），与迁移语句对齐 |
 | ② | `oj build` 成功但 `routes.js` 是空表、dist 里没有 handler | **只编译 `.ts` handler**；写成 `ping/api.js` 会被静默丢弃 → 改 `api.ts` |
-| ③ | `build --bundle` 报 `缺少 web/src/<name>/locales/…` | manifest 一旦引用 `title_key`/`label_key` 就必须双语 locale（后端方案也要）；且 key 必须**嵌套** `{"menu":{"main":"…"}}`，平铺 `"menu.main"` 查不到 |
+| ③ | `build --bundle` 报 `缺少 src/<name>/web/locales/…`（历史布局是 `web/src/<name>/locales/…`） | manifest 一旦引用 `title_key`/`label_key` 就必须双语 locale（后端方案也要）；且 key 必须**嵌套** `{"menu":{"main":"…"}}`，平铺 `"menu.main"` 查不到 |
 | ④ | 安装 POST 返回 200，但 `market/task` 恒 404 | 宿主 config 缺 `fs:` 段 → 安装器落盘被 jail 拒、失败发生在任务文件写入前；0.2.13 起模板自带，旧工程手补 |
 | ⑤ | 安装卡 `preflight`：`无法读取宿主 runtime 版本` | 安装器读 `api/dist/versions.json`；0.2.13 起 `ojm build` 双落点（旧版手抄 `web/dist/versions.json`） |
 | ⑥ | 安装卡 `reloading`：`NotCapable: module '_platform' is not platform-privileged` | 宿主 config 的 `platform.modules` 未列 `_platform`（0.2.13 起模板自带） |
-| ⑦ | 安装卡 `reloading`：`reloadConfig 返回 unchanged` / 卡 `smoke`：探活 404 | 起站形态不对：`ojm preview` 服务派生 config（安装器热更写的是 `api/config.yaml`，被监视文件没变）；dev（`--api-path src`）装到 dist 的模块不被发现。**安装必须对真实 config 以 `--api-path dist` 起站** |
+| ⑦ | 安装卡 `reloading`：`reloadConfig 返回 unchanged` / 卡 `smoke`：探活 404 | 起站形态不对：`ojm preview` 服务派生 config（安装器热更写的是真实 config，派生文件没变）；dev 用 `--module-root src`（历史布局 `--api-path src`）读源码，装到 `api/dist` 的模块不被发现。**安装必须对真实 config 以 `--api-path api/dist`（历史布局 `--api-path dist`）起站** |
 
 ### 6.4 装成之后怎么确认
 
@@ -186,7 +195,7 @@ ls api/dist/<name>-<version>/                        # 安装产物目录
 写模块      → 源码直跑（ojm dev），不要装
 验证能装    → ojm market trial（隔离站点，12s），或 ojm install <tgz> 到另一个工程
 重复？      → 不会。注册面全 upsert；同名再装被前置校验直接拒
-市场链路    → setup → publish → build-index → verify → 市场页安装（release 形态：--api-path dist）
+市场链路    → setup → publish → build-index → verify → 市场页安装（release 形态：--api-path api/dist）
 绝对 URL    → 市场地址端口取自 config（9778），不是 dev server 的 5174
 信任        → 包级签=锚，索引签=完整性，TOFU 管陌生发布方，verify 不背书内容安全
 ```

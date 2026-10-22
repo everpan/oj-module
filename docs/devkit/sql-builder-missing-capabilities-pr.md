@@ -3,14 +3,15 @@
 > **闭环状态（2026-10-20）：7 项诉求全部闭环**——6 项随 oj 0.1.81/0.1.82 发布落地，第 4 项
 > （orIgnore + fromSelect）能力本身已发布但**组合在 sqlite 上被上游明文拒绝**，模板按上游
 > 文档指引保留一处 sanctioned 裸 SQL 绕行（`notify.ts:216`，api-manual §"orIgnore + fromSelect
-> 组合在 sqlite 不支持"原文即指向该绕行）。逐项映射见 §6；模板 `api/src` 内 `保留 db.query`
-> 注释已归零（仅剩上述 1 处 `保留 db.exec`）。
+> 组合在 sqlite 不支持"原文即指向该绕行）。逐项映射见 §6；模板 `src/*/api`（布局 v2 前为
+> `api/src`）内 `保留 db.query` 注释已归零（仅剩 `notify.ts` 里 `markAllRead` / `clearNotices`
+> 两处 `保留 db.exec`）。
 >
 > 目的：把模板 `db.query` 全面迁移到 `db.table(...)` 构造器以获得多库（sqlite / mysql / postgres）可移植性时，
 > 识别出构造器**当时无法表达**、只能回退 `db.query` 的 7 类能力。本文档作为向上游 `oj` 运行时 SQL 构造器提 PR 的依据。
 >
 > 证据来源：`~/.local/share/oj/devkit/api-manual.md`（查询构造器章节，含 `like` 操作清单 §1142、子查询限制 §1343、
-> `union` §1346、CTE §1378 等）；框架 `README.md` v0.1.66（ESCAPE 纪律）；模板代码 `packages/cli/templates/api/src/**`。
+> `union` §1346、CTE §1378 等）；框架 `README.md` v0.1.66（ESCAPE 纪律）；模板代码 `packages/cli/templates/src/*/api/**`。
 
 ---
 
@@ -243,11 +244,14 @@ db.table("sys_refresh_token").select("*").where({ field: "token_hash", op: "eq",
 6. `demo/todos/api.ts:12` / `uninstall.ts:166` → 动态 WHERE 安全出口。
 7. `session.ts:114-115` → `select("*")`。
 
-全部关闭后，模板 `api/src` 内 `保留 db.query` / `保留 d.exec` 注释应归零，达成"零原生 SQL 可移植"目标。
+全部关闭后，模板 `src/*/api` 内 `保留 db.query` / `保留 db.exec` 注释应归零，达成"零原生 SQL 可移植"目标。
 
 ---
 
 ## 6. 闭环状态（2026-10-20 实测）
+
+> 表中 `notify.ts:NN` 等行号是 **2026-10-20 的快照**，代码此后有增删（文件也已迁到
+> `src/notification/api/_shared/notify.ts`）——按函数名定位，别按行号跳。
 
 | # | 诉求 | 上游落地（版本） | 模板现状 |
 |---|------|------------------|----------|
@@ -259,9 +263,10 @@ db.table("sys_refresh_token").select("*").where({ field: "token_hash", op: "eq",
 | 6 | 动态 WHERE 组合 | `whereIf(test, cond)`（**v0.1.81**）：`undefined/null/false/[]` 整条跳过（注意 `""`/`0` 是合法值会保留——可选过滤的缺失值必须归一化为 `undefined`，模板 oplog 曾踩此坑并修复） | 已闭环：`demo/todos`、`uninstall.ts` 等全部改 `whereIf`；未采纳裸片段出口（whereIf 已覆盖诉求场景） |
 | 7 | `select *` | `select(["*"])`（**v0.1.81**，必须是唯一元素） | 已闭环：`session.ts` refresh 查询改 `select(["*"])` |
 
-**结论**：模板 `api/src` 内 `保留 db.query` 注释归零；`保留 d.exec` 仅剩 `notify.ts:216` 一处，
+**结论**：模板 `src/*/api` 内 `保留 db.query` 注释归零；`保留 db.exec` 仅剩 `notify.ts` 的
+`markAllRead` / `clearNotices` 两处（`src/notification/api/_shared/notify.ts`），
 且属上游文档明文记载的 sqlite 组合限制绕行（非能力缺口）。"零原生 SQL 可移植"目标以
-「一处上游 sanctioned 绕行」的形态达成。
+「上游 sanctioned 绕行」的形态达成。
 
 > 上游侧复核记录（oj 0.1.81 release notes，devkit `oj-api-dev/README.md`）：7 条诉求落地时
 > 判定「1 条误报、1 条部分误报」——误报即 §3.1 的 escape 出口（本就存在），部分误报即 §3.3
