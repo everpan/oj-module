@@ -143,15 +143,22 @@
 | T2 | 旧工程重跑 init 且清单缺失 | 补写清单；已存在则不覆盖用户手改 |
 | T3 | 生成 scripts | 含 new/bundle/typecheck:api，且 ⊆ 模板 scripts（守卫测试） |
 
-## 任务
+## 任务（阶段跟踪，进行中）
 
 - [x] 文档（v1 → v2 六方评审修订）
-- [ ] TDD：B1–B12 / N0–N7 / I1–I4 / T1–T3 先红（既有 `lifecycle/__tests__/bundle.test.ts` fixture 模式复用）
-- [ ] 实现：builtin.ts → bundle 复数化+两段式 → new.ts → usage/index 接线 → info 数据源 → init（名单+scripts+漂移修复）→ 私钥扫描扩面
-- [ ] 文档：manual §1/§7/§10.1/§11 + guides 指南同步 + devkit-docs 守卫同步（零内部代号）
-- [ ] 发版：双包 lockstep 升 0.2.23（runtime 无改动）+ CHANGELOG 条目
+- [x] **Phase 1 基础设施**：`builtin.ts`（读/校验 `.ojm-builtin.json`，历史布局返回空集）+ init 名单派生/写入/copyIfAbsent 回填 —— T1/T2/B12 ✅（10 用例，含 init 接线，无回归）
+- [ ] **Phase 2 打包复数化**：name 正则、优先级矩阵、name===目录名、跨契约查重、两段式、内置跳过日志、私钥扫描扩面 —— B1–B12
+- [ ] **Phase 3 `ojm new`**：守卫（工程/布局/name）、骨架生成、原子性、交互、`usage.ts`/`index.ts` 接线 —— N0–N7
+- [ ] **Phase 4 `ojm info`**：扫描并集数据源 + 自带分组折叠 + `--all` —— I1–I4
+- [ ] **Phase 5 scripts**：`generatePackageJson` 补 new/bundle/typecheck:api + 模板同步 + 子集守卫测试 —— T3
+- [ ] **Phase 6 文档与发版**：manual §1/§7/§10.1/§11 + guides 同步 + devkit-docs 守卫 + CHANGELOG 0.2.23 + lockstep bump
+- [ ] **统一审查**：全部阶段完成后一次性代码审查（不在阶段中途审）
 - [ ] `pnpm test` / lint / typecheck 全绿
 - [ ] 合并回 `feat/ojm`，更新任务状态与总结
+
+BDD 用例风格遵循 INVEST：各用例相互独立（无顺序依赖）、可协商、有价值、可估算、小、可测试；
+实现遵循 SOLID（单一职责：builtin/bundle/new/info 各司其职，依赖注入可测）与 DRY
+（name 正则、名单读取、扫描清单等共享逻辑单点定义）。
 
 ## 评审后风险备注
 

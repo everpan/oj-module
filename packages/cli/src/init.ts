@@ -17,6 +17,7 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 import yaml from "yaml";
 import { ALIAS_PATHS_FILE, syncAliasPaths } from "./alias-paths";
+import { BUILTIN_LIST_FILE, writeBuiltinList } from "./builtin";
 import { resolveCertDir, resolveConfigPath } from "./layout";
 import { probeOjCaps } from "./oj-caps";
 import { mintDevCert } from "./oj-cert";
@@ -124,6 +125,14 @@ export async function initProject(destDir: string, opts: InitOptions = {}): Prom
 		__PROJECT_NAME__: projectName,
 	}, report, include, templatesDir);
 	pruneUnincludedApiPaths(destDir, include, report);
+
+	// 1a) src/.ojm-builtin.json：脚手架自带模块身份（名单派生自上面的白名单，单一真源）。
+	//     copyIfAbsent：旧工程重跑 init 时缺失才补写，已存在不覆盖用户手改。
+	const builtinStatus = writeBuiltinList(destDir, include);
+	if (builtinStatus === "created")
+		report.created.push(`src/${BUILTIN_LIST_FILE}`);
+	else if (builtinStatus === "skipped")
+		report.skipped.push(`${BUILTIN_LIST_FILE}（已存在，不覆盖用户手改）`);
 
 	// 1b) tsconfig.paths.json：把 oj 别名 `#/<模块名>/…` 投影成 TS 的 paths。
 	//     必须**现场生成**而不是随模板拷贝——模板兼作 demo 工程（多出 demo/home 两个
