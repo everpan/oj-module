@@ -840,11 +840,12 @@ interface OjRabbitClient {
 	metadata: () => Promise<any>
 }
 
-// oj 的导入别名 `#x`（本模块根）/ `#/m/x`（src 根）是「引用方所在模块」相对的，
-// tsconfig 的 `paths` 无法表达模块相对解析，只能枚举模块目录（见 tsconfig.json），
-// 因此仅能命中**已存在**的文件。无法静态定位的别名（如尚未创建的 `#_shared/view`）
-// 由 `types/oj-modules.d.ts`（非模块，真 ambient `declare module "#*"`）兜底为 `any`
-// 而非报 TS2307；已存在、能被 `paths` 命中的别名仍走真实文件类型。运行时由 oj 的
-// loader 解析，本文件与该兜底只影响编辑器 / tsc。
+// oj 的导入别名 `#x`（本模块根）/ `#/<模块名>/x`（目标模块根）是「引用方所在模块」
+// 相对的，tsconfig 的 `paths` 表达不了模块相对解析，只能按模块枚举
+// （`tsconfig.paths.json`，由 `ojm init` / `ojm build` / `ojm dev` 按 `src/*/api/manifest.yaml`
+// 生成，被 `src/tsconfig.json` extends），因此仅能命中**已存在**的文件。无法静态定位
+// 的别名（如尚未创建的 `#_shared/view`）由 `types/oj-modules.d.ts`（非模块，真 ambient
+// `declare module "#*"`）兜底为 `any` 而非报 TS2307；已存在、能被 `paths` 命中的别名
+// 仍走真实文件类型。运行时由 oj 的 loader 解析，本文件与该兜底只影响编辑器 / tsc。
 
 export {};

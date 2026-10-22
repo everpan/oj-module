@@ -32,6 +32,9 @@ include:
   - tsconfig.json
   - global.d.ts
   - env.d.ts
+  # 别名类型兜底（`declare module "#*"`，非模块文件）。`tsconfig.paths.json` 不在此列：
+  # 它由 init 按目标工程的模块清单**现场生成**（模板兼作 demo 工程，多出的模块不该带过去）
+  - types
   - web.config.ts
   - openapi.json
   - src/styles.css

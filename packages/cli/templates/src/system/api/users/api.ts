@@ -1,9 +1,9 @@
-import { respond } from "../../../_platform/api/_shared/respond";
-import { createUser, listUsers } from "../../../_platform/api/_shared/service/domain/users";
+import { respond } from "#/_platform/_shared/respond";
+import { createUser, listUsers } from "#/_platform/_shared/service/domain/users";
 // 管理域端点组 /api/system/users（AC1-7~10）：handler 只编排——assertSystemAdmin 守卫 → service → json。
 // 保护红线在 service 层硬 enforcement：禁止操作自己、admin 不碰成员资格、最后 superadmin 兜底。
 // 子端点：roles/password/forbidden 各为独立目录（wiki per-endpoint 先例）。
-import { assertSystemAdmin } from "../../../_platform/api/_shared/service/infra/access";
+import { assertSystemAdmin } from "#/_platform/_shared/service/infra/access";
 
 const bcryptDeps = { bcryptHash: (pw: string) => bcrypt.hash(pw) };
 

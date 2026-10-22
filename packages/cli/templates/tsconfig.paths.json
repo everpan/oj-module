@@ -1,0 +1,19 @@
+// 由 ojm 生成：ojm init / ojm build / ojm dev 会按 src/*/api/manifest.yaml 重写本文件，请勿手改。
+//
+// oj 别名 `#/<模块名>/…` 锚在目标模块根（本布局下即 src/<模块名>/api）。tsconfig 的
+// paths 只能静态全局映射，且每条规则的替换值只允许一个 `*`（`./src/*/api/*` 会被 TS
+// 以 TS5062 拒掉），故按模块逐条枚举。
+{
+	"compilerOptions": {
+		"paths": {
+			"#/_platform/*": ["./src/_platform/api/*"],
+			"#/auth/*": ["./src/auth/api/*"],
+			"#/demo/*": ["./src/demo/api/*"],
+			"#/home/*": ["./src/home/api/*"],
+			"#/notification/*": ["./src/notification/api/*"],
+			"#/personal-center/*": ["./src/personal-center/api/*"],
+			"#/system/*": ["./src/system/api/*"],
+			"#/web/*": ["./src/web/api/*"]
+		}
+	}
+}

@@ -4,8 +4,8 @@
 // B4：access JWT 仅载 sub（roles 走登录响应/资料接口，不进 claims）。
 // B3：refresh = 不透明随机串 + DB 存 SHA-256 哈希（sys_refresh_token，迁移 0008）；
 //     轮换作旧 + 滑动窗口（绝对 TTL 封顶 min(旧 exp, now+30d)）；reuse 检测全族吊销 + 审计。
-import { invalidateUser } from "../../../_platform/api/_shared/service/infra/access";
-import { recordOp } from "../../../_platform/api/_shared/service/infra/audit";
+import { invalidateUser } from "#/_platform/_shared/service/infra/access";
+import { recordOp } from "#/_platform/_shared/service/infra/audit";
 
 export interface SessionDeps {
 	randomHex: (bytes: number) => string

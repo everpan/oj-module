@@ -43,6 +43,30 @@
   只能靠 `exclude` 表达，宽 glob 会误伤同名模块（见 Fixed 第一条）。测试钉的是行为而非字面量——
   两侧 `tsc --listFiles` 的并集必须等于 `src/**/*.{ts,tsx}`、交集必须为空，且 `src/web/api`
   与 `src/oj-market/web/api` 两侧各归其位。
+- **别名的类型投影生成**：`ojm init` / `ojm build` / `ojm dev` 按 `src/*/api/manifest.yaml` 生成
+  `<project>/tsconfig.paths.json`（`"#/<模块名>/*": ["./src/<模块名>/api/*"]`，内容未变不写盘），
+  由 `src/tsconfig.json` 单独 `extends`（前端不引：web 侧没有 `#` 解析）。tsconfig 的 `paths`
+  每条规则的替换值只允许一个 `*`（`./src/*/api/*` 被 TS 以 TS5062 拒掉），且表达不了 `#x`
+  这种「本模块根」的模块相对解析，所以只能按模块逐条枚举——清单必须与模块同源，手写必然漂移。
+  生成是**现场**的而非随模板拷贝：模板兼作 demo 工程（多出 `demo`/`home`），照拷会让 paths
+  指向用户工程里不存在的目录。
+- **`types/oj-modules.d.ts` 类型兜底**（`declare module "#*"`，非模块文件）随模板分发并纳入
+  `src/tsconfig.json` 的 `include`。`paths` 只命中已存在的文件，模块内 `#_shared/view` 这类
+  静态定位不到的别名降级为 `any` 而非 TS2307；模块名写错由 `oj build` 的 S008 在构建期拦下。
+- **跨模块引用守卫测试**（`tests/cli/alias-deps.test.ts`）：api 侧不得有跨模块**相对**引用；
+  每个 `#/<模块名>/…` 的首段必须是已存在模块、消费方 `manifest.yaml` 必须已声明 `deps`、
+  且别名要能按 oj 的后缀探针（`.ts` → `/index.ts`）落到真实文件。
+
+### Changed
+
+- **模板的跨模块 import 改用 oj 原生别名 `#/<模块名>/…`**：`src/{auth,system}/api` 共
+  36 处、14 个文件从 `../../[-../]_platform/api/…` 改写为 `#/_platform/…`（module-root 布局
+  下别名锚在模块根 `src/<name>/api`，故 `api` 段要消掉）。别名不随目录深度漂移，且把跨模块
+  依赖变成**可校验的声明**——`oj build` 的 S008 按 `manifest.deps` 卡门禁（相对跨模块引用
+  不追溯，等于换个写法就补上了约束）。`auth` / `system` 的 `deps._platform` 本为表归属
+  （S003）已声明，本次无需新增；`_platform` 是提供方，无 `deps`。
+  未迁移的一处：`src/oj-market/web/api/defaultClient.ts` 仍用相对路径——它在 web 侧，
+  `#` 在打包链路上没有解析语义。
 
 ### Fixed
 

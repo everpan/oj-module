@@ -28,6 +28,7 @@ import http from "node:http";
 import { join, resolve } from "node:path";
 import process from "node:process";
 import readline from "node:readline";
+import { syncAliasPaths } from "./alias-paths";
 import { buildModules } from "./build";
 import { loadContractMocks, resolveMock } from "./contract/mock";
 import { loadProjectMocks, mockStatusCode } from "./dev-mock";
@@ -70,6 +71,10 @@ export async function devServer(projectRoot: string, opts: DevOptions = {}): Pro
 	// 1) 先把本地模块构建一次
 	console.log("[ojm] 构建本地模块…");
 	await build(projectRoot);
+
+	// 别名投影跟着模块清单走：dev 是「新增模块 → 立刻写 #/<新模块>/…」的主循环，
+	// 不刷新 paths 的话编辑器要把这条 import 报成 any/TS2307，直到下次 build。内容未变不写盘。
+	syncAliasPaths(projectRoot);
 
 	// 工程 mock（可选约定 mock/*.mock.mjs）：纯前端形态的 /api 边界
 	const mocks: MockRoute[] = await loadProjectMocks(projectRoot);

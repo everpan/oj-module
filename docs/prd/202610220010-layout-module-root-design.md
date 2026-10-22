@@ -131,6 +131,25 @@ $ grep -rho "\.\./[a-z_-]\+-[0-9][0-9.]*\/" api/dist/*/ | sort | uniq -c
 
 `-d <模块目录>` 命中 0 个模块时 oj 静默成功（v1 已记）。下游 CI 会表现为「构建成功、产物缺失」。PR 中要求非零退出（§6 D）。
 
+### C-10 跨模块引用一律走原生别名 `#/<模块名>/…`（2026-10-22 落地）
+
+> 记法警示：本文（含手册）里的 `#/m/x` 中 `m` 是**元变量**，字面写法是 `#/<模块名>/<模块内路径>`。
+> module-root 布局下别名锚点是**模块根** = `src/<name>/api`，所以路径里的 `api` 段要消掉：
+> `src/system/api/users/api.ts` 引 `_platform` 的 `_shared/respond` → `#/_platform/_shared/respond`。
+
+1. **不再用跨模块相对路径**。`templates/src/{auth,system}/api` 共 **36 处、14 个文件**已全部改写（含 3 层与 4 层两种深度写法，这正是别名相对路径的收益点）。`tests/cli/alias-deps.test.ts` 钉住「api 侧没有跨模块相对引用」——否则目录一搬就断。
+2. **消费方必须声明 `deps`**。`oj build` 的 S008 对别名跨模块引用按 `manifest.deps` 卡门禁（相对跨模块引用不追溯，故换别名即等于补声明）。现有 `auth` / `system` 的 `deps._platform` 本就为表归属（S003）声明过，本次未新增条目；`_platform` 是提供方，无 `deps`。
+3. **TS 侧必须按模块枚举 paths**（`tsconfig.paths.json`，由 `ojm init` / `ojm build` / `ojm dev` 生成、内容未变不写）：
+   ```
+   "#/_platform/*": ["./src/_platform/api/*"]
+   ```
+   - 不能写一条通配：`paths` 每条规则的替换值只允许一个 `*`（`./src/*/api/*` 被 TS 以 **TS5062** 拒掉）；
+   - `paths` 也表达不了 `#x`（本模块根，随引用方变化）——模块内继续用相对路径即可；
+   - 只被 `src/tsconfig.json`（后端）`extends`：web 侧没有 `#` 解析（`build.ts` 的 esbuild/vite 不认），让编辑器能过而打包失败更坏。
+   - 生成物是**现场生成而非随模板拷贝**：模板兼作 demo 工程（多出 `demo`/`home`），照拷会让 paths 指向用户工程里不存在的目录。
+4. **类型兜底** `types/oj-modules.d.ts`（非模块，真 ambient `declare module "#*"`）补齐：`paths` 只命中已存在的文件，模块内 `#_shared/view` 这类静态定位不到的别名降级为 `any` 而非 TS2307。模块名写错由 `oj build` 的 S008 在构建期拦下，不会拖到运行期。
+5. **未迁移的一处**：`src/oj-market/web/api/defaultClient.ts` 引 `_platform/web/__client/api` 仍是相对路径——它在 web 侧，`#` 在打包链路上无解析语义，保留相对。
+
 ## 4. 方案分段
 
 ### A. 布局解析

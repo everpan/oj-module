@@ -1,11 +1,13 @@
 {
 	"extends": [
-		"../tsconfig.json"
+		"../tsconfig.json",
+		"../tsconfig.paths.json"
 	],
 	"include": [
 		".",
 		"../global.d.ts",
-		"../env.d.ts"
+		"../env.d.ts",
+		"../types"
 	],
 	"exclude": [
 		"*/web",

@@ -1,5 +1,6 @@
 name: system
 desc: 框架管理域端点（/api/system/*）：角色/权限点管理（assertSystemAdmin 判权，H2）
 version: 0.1.0
-deps: # roles/bindings/permissions 读写 _platform 的 sys_* 表（ownership_guard: deny 下必须声明）
+deps: # 两处都用：roles/bindings/permissions 读写 _platform 的 sys_* 表（ownership_guard: deny）；
+  # 跨模块别名 `#/_platform/…` 的依赖门禁（oj build S008）
   _platform: ^0.1.0

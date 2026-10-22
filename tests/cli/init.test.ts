@@ -235,6 +235,23 @@ describe("initProject", () => {
 		for (const exclude of [[...apiTsconfig.exclude], [...webTsconfig.exclude]])
 			expect(exclude.join(",")).not.toContain("**/");
 
+		// 别名在 TS 侧的投影：tsconfig 的 paths 表达不了模块相对解析，且替换值只允许
+		// 一个 `*`，只能按模块枚举 → 生成物必须与目标工程的模块清单同源（现场生成，
+		// 照拷模板会把 demo/home 这两个模板自运行模块带进来）。
+		expect(apiTsconfig.extends).toContain("../tsconfig.paths.json");
+		const pathsFile = path.join(dest, "tsconfig.paths.json");
+		expect(fs.existsSync(pathsFile)).toBe(true);
+		const aliasPaths = JSON.parse(
+			fs.readFileSync(pathsFile, "utf-8").replace(/^\s*\/\/.*$/gm, ""),
+		).compilerOptions.paths as Record<string, string[]>;
+		const apiModules = fs.readdirSync(path.join(dest, "src"))
+			.filter(name => fs.existsSync(path.join(dest, "src", name, "api/manifest.yaml")));
+		expect(Object.keys(aliasPaths).sort()).toEqual(apiModules.map(name => `#/${name}/*`).sort());
+		for (const name of apiModules)
+			expect(aliasPaths[`#/${name}/*`]).toEqual([`./src/${name}/api/*`]);
+		// 类型兜底：`#*` 的 ambient 声明（非模块文件，放 global.d.ts 里不生效）
+		expect(fs.existsSync(path.join(dest, "types/oj-modules.d.ts"))).toBe(true);
+
 		// 每个 src/<name>/ 至少一侧：api/manifest.yaml 或 web/entry.ts（layout 的模块判定口径）
 		for (const name of fs.readdirSync(path.join(dest, "src"))) {
 			const dir = path.join(dest, "src", name);

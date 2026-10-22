@@ -1,8 +1,8 @@
-import { respond } from "../../../_platform/api/_shared/respond";
-import { createRole, deleteRole, listRoles } from "../../../_platform/api/_shared/service/domain/roles";
+import { respond } from "#/_platform/_shared/respond";
+import { createRole, deleteRole, listRoles } from "#/_platform/_shared/service/domain/roles";
 // 管理域端点 /api/system/roles（设计文档 D207：/api/system/* = 管理域，assertSystemAdmin 判权）。
 // handler 层只编排：守卫 → service → json 信封；name 走 query（wiki 先例：静态段 + http.query）。
-import { assertSystemAdmin } from "../../../_platform/api/_shared/service/infra/access";
+import { assertSystemAdmin } from "#/_platform/_shared/service/infra/access";
 
 async function guard(): Promise<void> {
 	await assertSystemAdmin();

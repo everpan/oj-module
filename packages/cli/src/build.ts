@@ -10,6 +10,7 @@ import { pathToFileURL } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
 import { build as esbuild } from "esbuild";
 import { build } from "vite";
+import { ALIAS_PATHS_FILE, syncAliasPaths } from "./alias-paths";
 import { assertModuleList, loadSiteConfig, mergeModuleList, resolveModuleEntry } from "./config";
 import { resolveConfigPath, resolveLayout, scanModules, tryResolveLayout } from "./layout";
 import { requireModuleRootCapability } from "./oj-caps";
@@ -514,6 +515,12 @@ export async function buildBackend(projectRoot: string): Promise<boolean> {
 	// 能力闸门先于任何写入：失败时磁盘上不留半成品
 	if (moduleRoot)
 		requireModuleRootCapability(projectRoot);
+
+	// 别名投影：模块增删后要让 TS 的 paths 跟上（否则 `#/<模块名>/…` 在编辑器/typecheck
+	// 里解析不到，退化成 any）。内容未变不写盘。
+	const syncedPaths = syncAliasPaths(projectRoot);
+	if (syncedPaths === "created" || syncedPaths === "updated")
+		console.log(`[ojm] 已${syncedPaths === "created" ? "生成" : "更新"} ${ALIAS_PATHS_FILE}（\`#/<模块名>/…\` 的 TS paths 投影）`);
 
 	const apiDist = layout?.apiDist ?? path.join(projectRoot, "api", "dist");
 	console.log("[ojm] oj build（后端）…");

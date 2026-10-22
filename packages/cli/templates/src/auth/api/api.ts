@@ -1,4 +1,4 @@
-import { respond } from "../../_platform/api/_shared/respond";
+import { respond } from "#/_platform/_shared/respond";
 // oj 嵌套 handler 组：组名 = 路径段（login → POST /api/auth/login，路由不变）。
 // 阶段 B 登录链（D14/AC1-12/13/27）：领域逻辑全在 _shared/session.ts（createSession 注入 deps），
 // handler 只编排：取参 → 调 service → json 信封；B5 限速收敛在 _shared/login-throttle.ts（与 ldap-login 共用）。

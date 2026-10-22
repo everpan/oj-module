@@ -16,6 +16,7 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import yaml from "yaml";
+import { ALIAS_PATHS_FILE, syncAliasPaths } from "./alias-paths";
 import { resolveCertDir, resolveConfigPath } from "./layout";
 import { probeOjCaps } from "./oj-caps";
 import { mintDevCert } from "./oj-cert";
@@ -123,6 +124,12 @@ export async function initProject(destDir: string, opts: InitOptions = {}): Prom
 		__PROJECT_NAME__: projectName,
 	}, report, include, templatesDir);
 	pruneUnincludedApiPaths(destDir, include, report);
+
+	// 1b) tsconfig.paths.json：把 oj 别名 `#/<模块名>/…` 投影成 TS 的 paths。
+	//     必须**现场生成**而不是随模板拷贝——模板兼作 demo 工程（多出 demo/home 两个
+	//     模块），而用户工程只有白名单里的那些；照拷会让 paths 指向不存在的目录。
+	if (syncAliasPaths(destDir) === "created")
+		report.created.push(ALIAS_PATHS_FILE);
 
 	// 2) 证书三件套（现场签发，D6）——落点即 resolveCertDir()（config.yaml 同级的 config/；
 	//    新布局 config.yaml 在工程根，故为 <工程根>/config/）

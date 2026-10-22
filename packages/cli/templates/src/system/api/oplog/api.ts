@@ -1,9 +1,9 @@
-import { respond } from "../../../_platform/api/_shared/respond";
+import { respond } from "#/_platform/_shared/respond";
 // GET /api/system/oplog?action=&username=&module=&limit= —— 操作日志查询（AC1-29；D13 admin 可查）。
 // POST /api/system/oplog —— 操作日志写入（C3；登录态即可，解决方案模块记录自身操作）。
-import { assertSystemAdmin, currentAccess } from "../../../_platform/api/_shared/service/infra/access";
-import { recordOp } from "../../../_platform/api/_shared/service/infra/audit";
-import { searchOplog } from "../../../_platform/api/_shared/service/infra/oplog";
+import { assertSystemAdmin, currentAccess } from "#/_platform/_shared/service/infra/access";
+import { recordOp } from "#/_platform/_shared/service/infra/audit";
+import { searchOplog } from "#/_platform/_shared/service/infra/oplog";
 
 async function get() {
 	await respond(async () => {
