@@ -269,15 +269,38 @@ function checkCleanTree() {
  * 1. 登录态。whoami 401 = token 失效（npm_ 粒度 token 有过期时间），必须发布前拦下：
  *  token 无效时对已存在包 PUT 会被 registry 回 404（不泄露包存在性），报错极具迷惑性，
  *  且 web 2FA 的浏览器审批链路根本不会触发（认证第一关就失败，无审批链接可弹）。
- *  修复：npm login --registry=https://registry.npmjs.org（浏览器审批 web 2FA）。
+ *  修复：whoami 失败时**除提示外直接执行 `npm login`**（交互式，web 2FA 弹浏览器 /
+ *  TOTP 输密码与验证码），登录成功后再复核一次 whoami，确认 token 已生效才继续下一步；
+ *  登录被取消或仍失败则 fail（发布不可在没有登录态下继续）。
  */
+function loginToRegistry() {
+	// npm login 是交互命令，必须 inherit stdio 把真实 TTY 交给 npm；
+	// 否则 pnpm/npm 判定为非交互终端会拒绝（与 web 2FA 发布同理）。
+	execFileSync("npm", ["login", `--registry=${REGISTRY}`], { stdio: "inherit" });
+}
+
 function checkLoggedIn() {
+	try {
+		execFileSync("npm", ["whoami", `--registry=${REGISTRY}`], { stdio: "pipe" });
+		return;
+	}
+	catch {
+		console.error(`⚠ npm token 无效或已过期（whoami 失败）——自动执行登录：${REGISTRY}`);
+	}
+	try {
+		loginToRegistry();
+	}
+	catch {
+		fail("npm login 未成功（被取消或失败）——发布需要有效的 npm 登录态，请确认登录后再跑本命令。");
+	}
+	// 登录成功后复核一次：确认 token 已生效再继续，避免带着失效态进发布步骤
 	try {
 		execFileSync("npm", ["whoami", `--registry=${REGISTRY}`], { stdio: "pipe" });
 	}
 	catch {
-		fail(`npm token 无效或已过期（whoami 失败）——请重新登录：npm login --registry=${REGISTRY}`);
+		fail(`登录后 whoami 仍失败——请确认登录的 registry（${REGISTRY}）与发布目标一致，再跑本命令。`);
 	}
+	console.log("✓ 登录态已恢复");
 }
 
 /** 2. 产物重建（runtime 构建 + cli 宿主外壳预打包） */
