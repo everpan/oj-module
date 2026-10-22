@@ -209,7 +209,7 @@ node "$CLI_PKG/bin/ojm.mjs" init my-books --yes
 
 **检查点**
 
-- [ ] 退出码 0，末行提示 `登录 admin / 123456`
+- [ ] 退出码 0，末行提示 `登录 superadmin / 123456`（角色账号见 devkit 手册 §1.1）
 - [ ] 目录齐全：`api/src/{_platform,auth,web,notifications,notification,personal-center,system}`、`api/.ojm-api-exempt.json`、`web/src/{demo,home,login,personal-center,notification,notifications,system}`、`web.config.ts`、`tsconfig.json`、`global.d.ts`、`env.d.ts`、`bin/oj`、`bin/.oj-version`、`.claude/skills/{oj-api-dev,ojm-module-dev}/`
 - [ ] **工程根有 `.gitignore`**（发布包不携带模板 `.gitignore`——npm/pnpm pack 剥离点文件，改由 init 现场生成，`ensureGitignore`；0.2.5 曾因 include 清单收录它而 fail-fast，见 §9）
 - [ ] **工程根有 `openapi.json`**（新流水线唯一事实源，模板随附）+ `web/src/<模块>/__client/` 预生成（`ojm api --check` 开箱即过）
@@ -342,7 +342,7 @@ pnpm exec tsc --noEmit -p tsconfig.json     # typecheck
 pnpm exec ojm dev        # 默认 5174；oj 9778
 # 另一个终端：
 TOKEN=$(curl -s -X POST http://127.0.0.1:9778/api/auth/login \
-  -H 'content-type: application/json' -d '{"username":"admin","password":"123456"}' \
+  -H 'content-type: application/json' -d '{"username":"superadmin","password":"123456"}' \
   | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>console.log(JSON.parse(s).data.access_token))")
 curl -s "http://127.0.0.1:9778/api/books/list?keyword=设计" -H "authorization: Bearer $TOKEN"
 curl -s -X POST http://127.0.0.1:9778/api/books/create -H "authorization: Bearer $TOKEN" \
@@ -455,7 +455,7 @@ node "$CLI_PKG/bin/ojm.mjs" build                      # api/dist + web/dist（�
 #     root: dist
 (cd api && ../bin/oj serve -c config.yaml -b /api --api-path dist --console-log &)
 
-node "$CLI_PKG/bin/ojm.mjs" market setup --url http://127.0.0.1:9778 --user admin --pass 123456 --new-pass <新口令>
+node "$CLI_PKG/bin/ojm.mjs" market setup --url http://127.0.0.1:9778 --user superadmin --pass 123456 --new-pass <新口令>
 # → 市场页（或 GET /api/_platform/market/index）出现方案卡片
 
 # 安装（首次必然停在待信任）
@@ -465,7 +465,7 @@ curl -s -X POST http://127.0.0.1:9778/api/_platform/market/install \
 # → {data:{id:"install-..."}}；轮询 GET /api/_platform/market/task?id=<id> 到 status=needs_trust
 #   响应的 trust.fingerprint 必须与 keygen 输出逐字一致
 
-node "$CLI_PKG/bin/ojm.mjs" trust confirm --task <task-id> --url http://127.0.0.1:9778 --user admin --pass <新口令>
+node "$CLI_PKG/bin/ojm.mjs" trust confirm --task <task-id> --url http://127.0.0.1:9778 --user superadmin --pass <新口令>
 # 重试同一条 install → 期望 status=done，11 段全 ok
 
 # 只验「这个包能不能装」、不想搭宿主时（隔离站点，12s 内出结果）
@@ -718,7 +718,7 @@ L2 夹具没有 builder 面。这是结构性欠账，**不是本轮新增回归
 | --- | --- |
 | `client.get("/api/x")` 恒 404（日志 `/api/api/x`） | `client` 路径**相对 base**（base=`/api`），多写一层前缀即翻倍；正确写法 `client.get("/x")`。`client.login` 同理（内部 POST `/auth/login`） |
 | `expect(...).toHaveLength is not a function` | L1 `expect` 只支持 `toBe/toEqual/toBeTruthy/toBeFalsy/toContain`（api-manual §9 契约）；改 `expect(x.length).toBe(n)` |
-| 登录后打鉴权端点恒 403 `must_change` | seed admin 是 `must_change=1`（D12 生产语义），`currentAccess()` 悬挂期全拒；L1 用 fixtures 专用账号（`l1tester`，`must_change=0`，`src/_platform/fixtures/l1-test-user.sql`，仅 `oj test` 灌入、additive 不动 admin） |
+| 登录后打鉴权端点恒 403 `must_change` | 该账号处于强制改密悬挂（`must_change=1`，见 users 表）；`currentAccess()` 悬挂期全拒。seed 四个角色账号现均为 `must_change=0`（2026-10-22 口径），悬挂只可能来自「管理员重置口令 / 新建账号」路径；L1 用 fixtures 专用账号（`l1tester`，`must_change=0`，`src/_platform/fixtures/l1-test-user.sql`，仅 `oj test` 灌入、additive 不动 seed 账号） |
 | 口令正确却登录 401 `invalid credentials` | dev 库 admin 口令被首登改密流程改过（seed 重放 `INSERT OR IGNORE` 不复位既有行）；本地重置 `rm -f api/db.sqlite*` 后重跑（迁移+seed+fixtures 重建），或直接用 fixtures 账号 |
 | 重复跑 L1 断言飘 | `oj test` 每轮重放 迁移→seed→fixtures 且 INSERT 类只增不改；断言按**自己推的行**收敛（push→拿回 id→按 id 断言，样板见 `l1-builder.test.ts` 通知用例） |
 | 可选过滤传 `""` 仍发出 `= ''` 条件 | `whereIf` 跳过集是 `undefined/null/false/[]`，**`""`/`0` 是合法值会保留**（api-manual §whereIf）；缺失值必须归一化为 `undefined`（`oplog.ts` 2026-10-20 修复同款坑） |

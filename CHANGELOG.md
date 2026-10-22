@@ -9,7 +9,11 @@
 
 ### Added
 
-- **脚手架 seed 内置角色开发账号**：`ojm init` 产物的 `_platform` seed 新增 `sysadmin`（admin 角色）、`editor`、`viewer` 三个账号（admin 角色账号取名 sysadmin——`admin` 已被 superadmin 占用），口令均 `123456` 且 `must_change=0` **免首登改密**（纯开发便利）。`admin`（superadmin）不在此列，保持 `must_change=1` 的强制改密闭环。三个方言文件（sqlite/mysql/pg）同构对齐，新增 seed 回归测试钉守。
+- **脚手架 seed 内置角色开发账号**：`ojm init` 产物的 `_platform` seed 为四个内置角色各备一个开发账号，**账号名=角色名**（superadmin/admin/editor/viewer），口令均 `123456` 且 `must_change=0` **免首登改密**（纯开发便利，生产部署须改密/删除）。旧库（admin 绑 superadmin / must_change=1）无需手工迁移——seed 每次启动幂等重放自动收敛（`DELETE` 旧绑定 + `UPDATE` must_change）。三个方言文件（sqlite/mysql/pg）同构对齐，seed 回归测试钉守（含旧库收敛与幂等用例）。
+
+### Changed
+
+- **seed 默认账号语义调整**：`admin` 账号由 superadmin 调整为 **admin 角色**（superadmin 能力移交给同名 `superadmin` 账号），且不再首登强制改密——原「must_change=1 兜底默认凭据」闭环让位给「账号名=角色名、零心智负担」的开发便利口径。
 
 ## [0.2.23] - 2026-10-22
 

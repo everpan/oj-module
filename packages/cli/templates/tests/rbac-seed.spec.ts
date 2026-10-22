@@ -1,7 +1,8 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-// BDD：seed 契约——框架内置角色 + seed 超管绑定 + must_change 首登改密（D12/AC1-27）。
+// BDD：seed 契约——框架内置角色 + 内置角色开发账号（账号名=角色名，must_change=0，
+// 2026-10-22 口径，替代原「admin 绑 superadmin + must_change=1」的 D12 旧钉）。
 // 夹具重放真实 migrations + seed.sql 文件，本 spec 即「seed 与文件不漂移」的钉子。
 import { beforeAll, describe, expect, it } from "vitest";
 
@@ -38,17 +39,18 @@ describe("框架内置角色（ROLES 常量单一真相，PRD §4.2）", () => {
 	});
 });
 
-describe("seed 超管（D12）", () => {
-	// AUTOINCREMENT 不复用 id（sqlite_sequence 语义），统一按 username 动态解析，不钉死 id
-	const adminId = () => (dbo.prepare("SELECT id FROM users WHERE username = 'admin'").get() as { id: number }).id;
-
-	it("admin 账号绑定 superadmin 角色（sys_user_role 权威源）", () => {
-		const row = dbo.prepare("SELECT * FROM sys_user_role WHERE user_id = ? AND role_name = 'superadmin'").get(adminId());
+describe("seed 内置角色开发账号（账号名=角色名，2026-10-22 口径）", () => {
+	it.each(["superadmin", "admin", "editor", "viewer"])("账号 %s 绑定同名角色且 must_change=0", (name) => {
+		const uid = (dbo.prepare("SELECT id FROM users WHERE username = ?").get(name) as { id: number }).id;
+		const row = dbo.prepare("SELECT * FROM sys_user_role WHERE user_id = ? AND role_name = ?").get(uid, name);
 		expect(row).toBeDefined();
+		const mc = dbo.prepare("SELECT must_change FROM users WHERE id = ?").get(uid) as { must_change: number };
+		expect(Number(mc.must_change)).toBe(0);
 	});
 
-	it("must_change=1：首登强制改密（AC1-27 前提）", () => {
-		const row = dbo.prepare("SELECT must_change FROM users WHERE id = ?").get(adminId()) as { must_change: number };
-		expect(Number(row.must_change)).toBe(1);
+	it("admin 不再绑 superadmin（旧 D12 绑定已被幂等 DELETE 收敛）", () => {
+		const uid = (dbo.prepare("SELECT id FROM users WHERE username = 'admin'").get() as { id: number }).id;
+		const row = dbo.prepare("SELECT * FROM sys_user_role WHERE user_id = ? AND role_name = 'superadmin'").get(uid);
+		expect(row).toBeUndefined();
 	});
 });

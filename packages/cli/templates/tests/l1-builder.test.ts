@@ -11,8 +11,8 @@
 //   ③ notification：join ON 值条件 + UNION ALL + 字面量列 {lit,as} 的真渲染（场景 41 同款）。
 //
 // 登录账号：fixtures 的 l1tester（src/_platform/fixtures/l1-test-user.sql，仅 oj test 灌入）。
-// 不用 seed 的 admin：其 must_change=1（判权端点恒 403）且初始口令 123456 会随用户
-// 首登改密漂移——L1 绑 admin 曾实测 401。l1tester 为 additive 专用账号（must_change=0）。
+// 不用 seed 的 admin 等开发账号：初始口令 123456 会随用户在 dev 库改密漂移——
+// L1 绑 seed 账号曾实测 401。l1tester 为 additive 专用账号（must_change=0）。
 //
 // 运行：cd packages/cli/templates/api && ~/.local/share/oj/oj test -c config.yaml -d src -t tests
 
