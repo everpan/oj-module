@@ -7,6 +7,10 @@
 
 ## [Unreleased]
 
+## [0.2.27] - 2026-10-23
+
+双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步升 **0.2.27**。
+
 ### Fixed
 
 - **keep-alive exclude key 绝对化（相对声明模块的 `keepAlive:false` 修复）**：解决方案模块一律相对路径声明（安装时 prefix 加在顶层），此前 exclude key 取声明 path（相对值，如 `collections`）而 KeepAlive 的 `activeCacheKey` 是绝对 pathname（`/wiki/collections`），精确串等恒不匹配——表现为 oj-wiki（相对路径声明）收藏页 `keepAlive:false` 静默失效、切回不刷新。key 现按 `addRouteIdByPath` 同规则求解绝对路径（绝对原样、相对拼父层、index 取父层且无尾斜杠），`collectAllRoutePaths` 同口径去重（tab 关闭分支的 exclude 自此真正有意义）。绝对声明模块行为不变（既有回归用例证明）。
