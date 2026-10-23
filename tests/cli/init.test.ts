@@ -82,6 +82,23 @@ describe("initProject", () => {
 		for (const name of ["private.pem", "public.pem", "cert.jws"])
 			expect(fs.existsSync(path.join(dest, "config", name))).toBe(true);
 
+		// tests 分发白名单：业务工程可跑的 scaffold 测试逐条收录……
+		expect(fs.existsSync(path.join(dest, "tests/fixture.ts"))).toBe(true);
+		expect(fs.existsSync(path.join(dest, "tests/rbac-seed.spec.ts"))).toBe(true);
+		expect(fs.existsSync(path.join(dest, "tests/seed-role-accounts.spec.ts"))).toBe(true);
+		expect(fs.existsSync(path.join(dest, "tests/lifecycle/trust.spec.ts"))).toBe(true);
+		// ……而带 cli 包环境假设的一律不分发（oj-bin 仓夹具路径 / packages/cli 全树私钥扫）：
+		// 拷进业务工程即死文件，且重跑 init 会反复复活（oj-wiki 0.2.25 升级实踩）
+		for (const banned of [
+			"tests/lifecycle/preflight.spec.ts",
+			"tests/lifecycle/installer.spec.ts",
+			"tests/lifecycle/market-api.spec.ts",
+			"tests/lifecycle/steps-fs.spec.ts",
+			"tests/lifecycle/sig-fixtures.spec.ts",
+			"tests/lifecycle/bootstrap.spec.ts",
+		])
+			expect(fs.existsSync(path.join(dest, banned))).toBe(false);
+
 		// bin/oj（桩安装器模拟 @oj-bin/oj 产物：可执行 + 版本标记）
 		const oj = path.join(dest, "bin/oj");
 		expect(fs.existsSync(oj)).toBe(true);

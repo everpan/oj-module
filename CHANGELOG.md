@@ -14,6 +14,7 @@
 ### Fixed
 
 - **`ojm api --check` 模块根动词误报 `route-params-mismatch`**：模块根单文件聚合形态（`src/<name>/api/api.ts` 的动词键，如 `GET/POST /api/books`）的契约 route 为 `/`，对账精确腿因 ojFull 尾斜杠（`books/`）与 handler 全路径（`books`）不等而落空，掉进模糊兜底被误报「参数段不一致」。精确腿现对模块根路由做尾斜杠规范化（0.2.25 发布态 playbook 第三次演练实踩，含回归测试）。
+- **`ojm init` 不再向业务工程分发 cli 包环境假设的测试**：`init.include.yaml` 的 `tests` 整目录收录改为逐条白名单——`lifecycle/{preflight,installer,market-api,steps-fs,sig-fixtures}.spec.ts`（硬编码 oj-bin 仓夹具路径）与 `lifecycle/bootstrap.spec.ts`（硬编码 packages/cli 全树私钥扫描）不再拷入用户工程（oj-wiki 0.2.25 升级实踩：拷入即死文件、重跑 init 反复复活）。
 
 ## [0.2.25] - 2026-10-23
 

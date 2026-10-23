@@ -46,7 +46,43 @@ include:
   - seed.mysql.sql
   - seed.pg.sql
   - vitest.config.ts
-  - tests
+  # —— tests 逐条白名单（不收 tests/ 整目录）——
+  # 业务工程只拷「纯 node:sqlite 夹具、零 cli 包环境假设」的测试。以下 6 个不分发
+  # （oj-wiki 0.2.25 升级实踩：拷进业务工程即死文件，重跑 init 还会复活）：
+  #   lifecycle/preflight・installer・market-api・steps-fs・sig-fixtures —— 硬编码
+  #   oj-bin 仓夹具路径（../../src/lifecycle/__tests__/fixtures，模板树内不存在）；
+  #   lifecycle/bootstrap —— 私钥红线钉测硬编码「packages/cli 全树」扫描，业务工程
+  #   扫 node_modules 必超时。它们只活在 oj-module/oj-bin 的 cli 包测试语境。
+  - tests/fixture.ts
+  - tests/auth-ldap.spec.ts
+  - tests/auth-session.spec.ts
+  - tests/auth-throttle.spec.ts
+  - tests/guard.spec.ts
+  - tests/l1-builder.test.ts
+  - tests/query-utils.spec.ts
+  - tests/rbac-audit.spec.ts
+  - tests/rbac-contacts.spec.ts
+  - tests/rbac-guard.spec.ts
+  - tests/rbac-roles.spec.ts
+  - tests/rbac-seed.spec.ts
+  - tests/rbac-settings.spec.ts
+  - tests/rbac-solution-perms.spec.ts
+  - tests/rbac-tables.spec.ts
+  - tests/rbac-users.spec.ts
+  - tests/seed-role-accounts.spec.ts
+  - tests/lifecycle/atomic-state.spec.ts
+  - tests/lifecycle/deploy-smoke.spec.ts
+  - tests/lifecycle/migrate.spec.ts
+  - tests/lifecycle/register.spec.ts
+  - tests/lifecycle/semver.spec.ts
+  - tests/lifecycle/sha384.spec.ts
+  - tests/lifecycle/solutions-api.spec.ts
+  - tests/lifecycle/text-edit.spec.ts
+  - tests/lifecycle/tgz-guard.spec.ts
+  - tests/lifecycle/trust.spec.ts
+  - tests/lifecycle/uninstall.spec.ts
+  - tests/lifecycle/verify-checks.spec.ts
+  - tests/lifecycle/verify-report.spec.ts
   - src/_platform/api
   - src/auth/api
   - src/notification/api
