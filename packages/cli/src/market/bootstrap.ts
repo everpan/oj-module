@@ -36,7 +36,9 @@ import { parseFixtureSpec } from "./fixture";
 import { publishPackage } from "./publish";
 
 /** 种子管理员（隔离库全新 seed；与 templates seed.sql 一致） */
-const SEED_ADMIN_USER = "admin";
+// 种子管理员 = superadmin：模板 seed 账号名=角色名（3d93063f 起 admin 被幂等解绑 superadmin
+// 角色），写 market 安全设置要求 actor 持 superadmin 角色——用 admin 会 403（2026-10-23 演练实踩）。
+const SEED_ADMIN_USER = "superadmin";
 const SEED_ADMIN_PASS = "123456";
 
 /** Ed25519 PKCS#8 DER 前缀（RFC 8410 固定头；与 gen-signed-fixtures.mjs 同一手法） */
