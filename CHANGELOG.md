@@ -7,12 +7,17 @@
 
 ## [Unreleased]
 
+## [0.2.26] - 2026-10-23
+
+双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步升 **0.2.26**。
+
 ### Changed
 
 - **最低 oj 版本门禁（MIN_OJ_VERSION）0.1.85 → 0.1.86**：openapi 的 dev 分支裸包解析截断缺陷（module-root 下预生成 `__client` 内省 fail-fast，`oj openapi --module-root` 契约链整体不可用）修复于 oj 0.1.86；module-root 是 0.2.20 起默认布局，门禁须盖住契约链。2026-10-23 第三次基线已用发布通道 0.1.86 实证回归。
 
 ### Fixed
 
+- **关闭激活 tab 后幽灵 tab（tabbar 路由同步 effect 依赖回归）**：tabbar「监听路由变化」effect 的依赖数组含 `activeKey`（1e453baf lint 清零时补入），关闭激活 tab 后 activeKey 先变为回退 tab，该 effect 遂以尚未更新的 location 把刚关闭的 tab re-add 回来（zustand 同步 set 抢占 react-router 7 导航的 startTransition lane）——表现为被关 tab 仍留在 tab 栏、仅激活回退 tab。依赖数组移除 `activeKey` 并注释豁免 exhaustive-deps，恢复「仅路由变化时同步」语义。含组件级回归测试 `tests/runtime/tabbar-close.test.tsx`。
 - **`ojm api --check` 模块根动词误报 `route-params-mismatch`**：模块根单文件聚合形态（`src/<name>/api/api.ts` 的动词键，如 `GET/POST /api/books`）的契约 route 为 `/`，对账精确腿因 ojFull 尾斜杠（`books/`）与 handler 全路径（`books`）不等而落空，掉进模糊兜底被误报「参数段不一致」。精确腿现对模块根路由做尾斜杠规范化（0.2.25 发布态 playbook 第三次演练实踩，含回归测试）。
 - **`ojm init` 不再向业务工程分发 cli 包环境假设的测试**：`init.include.yaml` 的 `tests` 整目录收录改为逐条白名单——`lifecycle/{preflight,installer,market-api,steps-fs,sig-fixtures}.spec.ts`（硬编码 oj-bin 仓夹具路径）与 `lifecycle/bootstrap.spec.ts`（硬编码 packages/cli 全树私钥扫描）不再拷入用户工程（oj-wiki 0.2.25 升级实踩：拷入即死文件、重跑 init 反复复活）。
 
