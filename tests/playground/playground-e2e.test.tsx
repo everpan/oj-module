@@ -28,6 +28,37 @@ import { PLAYGROUND_DIST_DIR } from "../helpers/paths";
 
 const DEMO_ENTRY = path.join(PLAYGROUND_DIST_DIR, "modules/demo/0.1.0/entry.js");
 
+/**
+ * 失败现场自描述：本 flake 家族的历史症状是「vitest 只剩一句 timeout」
+ * （如 18826ms 撞满 15s waitFor，连是哪一步超时都看不出来），缺现场信息致
+ * 两轮排查均靠猜（19:05 修复轮、19:17 复报轮，见
+ * docs/plans/20261023-1905-playground-e2e-flake.md）。任一断言失败时先把
+ * URL / DOM 状态抖出再抛，下次复现即可直接定位卡点与 pathname 竞态终态
+ * （keepalive 缓存命中 /demo vs index 重定向 /demo/todos）。
+ * 读 window.location 而非 router.state：后者在测试体动态 import 作用域内，
+ * 而 browser history 下二者等价（basename 前缀以窗口 URL 原样呈现）。
+ */
+function withFailureDump(fn: () => Promise<void>) {
+	return async () => {
+		try {
+			await fn();
+		}
+		catch (e) {
+			const has = (selector: string) => Boolean(document.querySelector(selector));
+			const menuTexts = Array.from(
+				document.querySelectorAll(".ant-menu-item, .ant-menu-submenu-title"),
+			).map(node => node.textContent);
+			console.error(
+				`[e2e] 失败现场：location=${window.location.pathname}${window.location.search}`
+				+ `，ant-app=${has(".ant-app")}，header=${has("header")}，aside=${has("aside")}`
+				+ `，main=${has("main")}，menu=${has(".ant-menu")}，card=${has(".ant-card")}`
+				+ `，icon=${has(".anticon")}，菜单项=${JSON.stringify(menuTexts)}`,
+			);
+			throw e;
+		}
+	};
+}
+
 // happy-dom 缺口补齐：antd Menu / Layout 依赖 ResizeObserver / matchMedia / IntersectionObserver
 beforeAll(() => {
 	// 测试环境无后端，所有 fetch 一律返回 200 空 JSON，避免 ECONNREFUSED 的
@@ -122,7 +153,7 @@ afterEach(() => {
 describe("playground e2e", () => {
 	it(
 		"runtime 加载 + 默认 layout + demo 菜单 + 页面切换 + 主题/图标",
-		async () => {
+		withFailureDump(async () => {
 			// 初始 URL 指向一个“不触发守卫重定向”的静态路由（/privacy-policy 在白名单内）。
 			// 不能直接以 /demo 作为首屏入口（实测会导致侧边栏菜单不渲染），也不能以 "/"
 			// 作为入口（守卫会把 "/" 重定向到首页，与后续 navigate("/demo") 竞态）。
@@ -277,7 +308,7 @@ describe("playground e2e", () => {
 			});
 
 			root.remove();
-		},
+		}),
 		60000,
 	);
 });
