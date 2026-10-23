@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { printInfo } from "../../packages/cli/src/info";
-import { usageText } from "../../packages/cli/src/usage";
+import { getCommandHelp, usageText } from "../../packages/cli/src/usage";
 import { MIN_OJ_VERSION } from "../../packages/cli/src/vendor";
 import { PROJECT_ROOT } from "../helpers/paths";
 
@@ -48,7 +48,8 @@ describe("usage 契约", () => {
 	});
 
 	it("dev 用法含开发模式快捷键映射（r/h/c/o/q）", () => {
-		const text = usageText();
+		// 顶层帮助已按组索引化（一行一条），快捷键详解归 ojm dev --help
+		const text = `${usageText()}\n${getCommandHelp("dev")}`;
 		expect(text).toContain("开发模式快捷键");
 		for (const k of ["r", "h", "c", "o", "q"]) {
 			expect(text).toMatch(new RegExp(`\\b${k}\\b`));
