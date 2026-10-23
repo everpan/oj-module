@@ -216,7 +216,14 @@ function reconcileRoutes(contractIr: IrEndpoint[], handlers: HandlerRow[], exemp
 		const contractAbs = `${wirePrefixOf(ep)}${ep.route}`;
 
 		// ① 精确全路径：嵌套组 / 绝对精确命中
-		const exact = byPath.get(pathKey(ep.method, ojFull)) ?? byPath.get(pathKey(ep.method, contractAbs));
+		// 模块根动词（契约 route "/"，如 GET /api/books 的聚合根形态）：ojFull 带尾斜杠
+		// （"books/"），handler 全路径是模块名（"books"）——去尾斜杠再查一次，否则
+		// 会掉进②模糊兜底被误报 route-params-mismatch（0.2.25 演练实踩）
+		const ojFullBare = ojFull.replace(/\/+$/, "");
+		let exact = byPath.get(pathKey(ep.method, ojFull));
+		if (!exact && ojFullBare !== ojFull)
+			exact = byPath.get(pathKey(ep.method, ojFullBare));
+		exact ??= byPath.get(pathKey(ep.method, contractAbs));
 		if (exact) {
 			claimed.add(exact);
 			continue;
