@@ -35,3 +35,20 @@
 ## 总结
 
 本阶段移除两包 `publishConfig.registry`（保留 `access: public`），发布目标改由命令行钉死：真实发版脚本 `publish-packages.mjs` 的 publishArgs 显式 `--registry https://registry.npmjs.org`，模拟发布裸 `pnpm publish` 走 `.npmrc` 作用域映射落 verdaccio——两种场景均零 package.json 改动。关键过程：红测试（USAGE 须声明钉死语义）→ 三处编辑 → 端到端实证（卸载 0.2.24 → 裸发成功 → 空目录装回 0.2.24）。耗时约 15 分钟。
+
+## 勘误（2026-10-23 15:40，真实发布 409 事故后追加）
+
+**问题记录 2 与「优先级链」记录错误**：`@scope:registry` 作用域映射优先级**高于**
+`--registry`（npm 官方口径：`publishConfig.registry > @scope:registry > registry`，
+`--registry` 只设 `registry` 键）。本文档原记「--registry flag > @scope:registry 映射」，
+并据此把「移除 publishConfig + 脚本显式 --registry」当成充分钉死——2026-10-23 用户真实
+发布时，本机 `~/.npmrc` 的 verdaccio 映射把带 `--registry npmjs` 的发布劫到 localhost
+（409 Conflict）。且 npm view 在 scope 映射下无视 --registry 的现象上午已出现，被误判为
+核验手法问题而未追溯。
+
+**修复**（计划 `20261023-1531-publish-scope-registry-pin`）：两发布脚本发布步在**工程根
+.npmrc** 临时追加 `@oj-module:registry=<目标>` 行（工程级 > 用户级，finally 复原）。
+pnpm 实测：不收 `--@scope:registry` CLI 覆盖、包目录级 .npmrc 不生效、工程根 .npmrc 追加
+有效；`.npmrc` 在默认 pack 忽略表内不会进包。教训重申：**配置键优先级必须跨工具实测**，
+「命令行 flag 天然最高优先」是错觉——publishConfig 才是唯一压过一切的键（这正是当初
+移除它的理由，也解释了它为何必须移除）。

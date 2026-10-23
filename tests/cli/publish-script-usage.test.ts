@@ -27,8 +27,12 @@ describe("publish-packages 帮助与参数守卫", () => {
 		expect(stdout).toContain("用法：node scripts/publish-packages.mjs");
 		expect(stdout).toContain("--dry-run");
 		expect(stdout).toContain("--web-2fa");
-		// 发布目标钉死：USAGE 须声明 --registry 显式指定官方源（不受 .npmrc 作用域映射影响）
-		expect(stdout).toContain("发布仓库：https://registry.npmjs.org（命令行 --registry 显式钉死");
+		// 发布目标钉死：USAGE 须如实声明双重钉法（--registry + 发布步工程级 .npmrc 临时
+		// 追加 @oj-module:registry 行）——@scope:registry 映射优先级高于 --registry，
+		// 只钉 --registry 会被用户 ~/.npmrc 映射劫走（2026-10-23 实锤，见计划
+		// 20261023-1531-publish-scope-registry-pin）
+		expect(stdout).toContain("发布仓库：https://registry.npmjs.org");
+		expect(stdout).toContain("@oj-module:registry");
 		// main() 的步骤行形如「== 1/5 前置校验 ==」；用法文本里只有无 == 的流程说明
 		expect(stdout).not.toContain("== 1/5");
 	});
