@@ -12,8 +12,8 @@
 | 框架包版本 | `cli`/`runtime` `0.2.24`（**打包态**：§0.5 双包 pack → cli-pkg 解包直跑；双包经 verdaccio 模拟通道安装——`~/.npmrc` `@oj-module:registry` 映射首次在演练中担任安装源，零 package.json 改动） |
 | oj | `0.1.85` + 本地构建 `fix/openapi-module-root-project-root`（`0f8a6e2`，见发现 ①；npm latest 0.1.85 无此修，**module-root 工程契约链在 oj 0.1.86 发布前持续中招**） |
 | 验证动机 | 0.2.24（cac 全面化 + 双语 + 发布钉死）发布前全链路演练；module-root 改写（0.2.20）后 §1–§7.4 从未整轮回排（上轮发现 ③ 挂账），本轮补齐 |
-| 结果 | **§0.5–§7.5 全链路通过**：§0.5 pack → `ojm --help` 分组双语正常 → §1 init 248 项（module-root：`src/<name>/{api,web}`、根级 `.gitignore`/`openapi.json`/`.ojm-builtin.json` 10 模块/devkit 零内部引用）→ §2 install 935ms（**包走 verdaccio 解析 0.2.24**，npmjs latest 仅 0.2.23）→ §3 探针零泄漏（注：grep 经管道时 `$?` 是管道的，须看输出行数）→ §4 books 六文件（`.schema`+平级 `.response`）→ `oj openapi --module-root src`（**新口径**，见发现 ①）出 `/api/books/{list,create}` → `ojm api` 生成 `src/books/web/__client`（operationId 派生名、`BooksListGetData` 存活）→ `--check` 0/0 → §5 前端模块扫描即收录（web.config.ts 登记退化为可选覆盖）→ `ojm build` 8 后端模块 books 2 api file(s)、modules.json 8 模块含 books（带 integrity）、**tsc 0 error** → §6 dev：seed ok books 3 条、`routes: 52 / input contracts: 38`、登录/关键字单条过滤/新增 {ok:true}/全量 4 条/无 token 401/缺字段 400、5174 根 200 + importmap + books/login entry.js 200 + `/login` html 200 → §7 preview：migrate 门禁过、release API 链复跑全对、**带 dist 三腿 --check 0/0** → §7.5 A–F 复跑全过（scripts 七键 / info 折叠 7 个 / `new` 双骨架 + 五拒文案全中零写入 exit=1 / 无参打包 2 份 + sha256 重复一致 + tar 零私钥 / 自带跳过+按名拒绝 / 坏契约两段式零增量 exit=1 / 零方案指路 `ojm new` / `market publish --real .` 多方案拒绝指路显式链路 exit=1） |
-| 本次发现并处置 | ① **`oj openapi --module-root` 裸包解析截断（oj 上游 bug，已修）**：openapi_cmd dev 分支 loader `project_root` 锚了 `dir`（src），裸包 node_modules 行走被截断在 src（工程根 node_modules 在其外）→ 模板预生成 `web/__client/api.ts`（import `@oj-module/runtime/contract/errors`）内省 fail-fast，「openapi → ojm api」契约链在 module-root 工程整体不可用；`oj serve --module-root` 无恙（app.rs 锚 config_dir）。**修复**（oj-bin `0f8a6e2`，分支 `fix/openapi-module-root-project-root`，287 lib 测试全过 + 新回归用例）：discover_routes 增 `project_root` 参数锚 config_dir + 修 regen 提示 module-root 下误给 `-d`（与 `--module-root` 互斥）。**待 oj 0.1.86 发布后 ojm 抬 MIN_OJ_VERSION 并回归**。② **§6 通知铃判据过期（手册问题，非缺陷）**：module-root 模板（0.2.20 起）的 root 级 `/api/notifications` 模块未随迁，改由 `notification` web 模块注册 `notificationsApi` provider（端点 `/api/notification/notifications`，实测 code:0 数组）——§6/§8 的「`/api/notifications` 兜底数组」判据已不适用，判据改 provider 口径。③ **手册 §4 命令过期**：`-d api/src` 系平铺树口径，module-root 工程须 `oj openapi -c config.yaml --module-root src -b /api -o openapi.json`（config.yaml 在工程根）；§10 TL;DR 同步。④ zsh 不对变量做分词，`OJM="node …"` + `$OJM …` 会报 no such file；管道后 `$?` 是被管道末命令的退出码——演练脚本里两个都踩了，判据核对要绕开。 |
+| 结果 | **§0.5–§7.5 全链路通过**：§0.5 pack → `ojm --help` 分组双语正常 → §1 init 248 项（module-root：`src/<name>/{api,web}`、根级 `.gitignore`/`openapi.json`/`.ojm-builtin.json` 10 模块/devkit 零内部引用）→ §2 install 935ms（**包走 verdaccio 解析 0.2.24**，npmjs latest 仅 0.2.23）→ §3 探针零泄漏（注：grep 经管道时 `$?` 是管道的，须看输出行数）→ §4 books 六文件（`.schema`+平级 `.response`）→ `oj openapi --module-root src`（**新口径**，见发现 ①）出 `/api/books/{list,create}` → `ojm api` 生成 `src/books/web/__client`（operationId 派生名、`BooksListGetData` 存活）→ `--check` 0/0 → §5 前端模块扫描即收录（web.config.ts 登记退化为可选覆盖）→ `ojm build` 8 后端模块 books 2 api file(s)、modules.json 8 模块含 books（带 integrity）、**tsc 0 error** → §6 dev：seed ok books 3 条、`routes: 52 / input contracts: 38`、登录/关键字单条过滤/新增 {ok:true}/全量 4 条/无 token 401/缺字段 400、5174 根 200 + importmap + books/login entry.js 200 + `/login` html 200 → §7 preview：migrate 门禁过、release API 链复跑全对、**带 dist 三腿 --check 0/0** → §7.1–§7.4 **market 链路全通**（本轮重点，见下）→ §7.5 A–F 复跑全过（scripts 七键 / info 折叠 7 个 / `new` 双骨架 + 五拒文案全中零写入 exit=1 / 无参打包 2 份 + sha256 重复一致 + tar 零私钥 / 自带跳过+按名拒绝 / 坏契约两段式零增量 exit=1 / 零方案指路 `ojm new` / `market publish --real .` 多方案拒绝指路显式链路 exit=1）。**§7.1–§7.4 market 链路**：§7.1 erp 方案 `ojm new` 骨架起步 → 手写 `erp/ping` 契约 → `ojm build --bundle` 出包 → §7.2 keygen + `market publish --real .`（单方案流；同版本字节冲突防线实证：篡 1B 重发被拒「同版本号只允许一份字节」，删 tgz 重发解围）+ `market verify --rebuild-index` 5/5 ✓ → §7.3 release 起站（`--api-path dist/api` + `platform.root: dist/api`）→ setup 写市场地址 200 → 首装 needs_trust（指纹 d1909578… 逐字一致）→ trust confirm → 重试 11/11 段 done → 匿名 `/api/erp/ping` `{pong:true}`（`api.anonymous: [erp/ping]`，C2-26 首段=方案段）→ 同版本重装路径 ✓ → 卸载→净装路径 ✓ → 篡改包安装侧同样判 tampered ✓ → §7.4 walkthrough **14/14 PASS**（主链 9 + 负向 5 全中）。 |
+| 本次发现并处置 | ① **`oj openapi --module-root` 裸包解析截断（oj 上游 bug，已修）**：openapi_cmd dev 分支 loader `project_root` 锚了 `dir`（src），裸包 node_modules 行走被截断在 src（工程根 node_modules 在其外）→ 模板预生成 `web/__client/api.ts`（import `@oj-module/runtime/contract/errors`）内省 fail-fast，「openapi → ojm api」契约链在 module-root 工程整体不可用；`oj serve --module-root` 无恙（app.rs 锚 config_dir）。**修复**（oj-bin `0f8a6e2`，分支 `fix/openapi-module-root-project-root`，287 lib 测试全过 + 新回归用例）：discover_routes 增 `project_root` 参数锚 config_dir + 修 regen 提示 module-root 下误给 `-d`（与 `--module-root` 互斥）。**待 oj 0.1.86 发布后 ojm 抬 MIN_OJ_VERSION 并回归**。② **§6 通知铃判据过期（手册问题，非缺陷）**：module-root 模板（0.2.20 起）的 root 级 `/api/notifications` 模块未随迁，改由 `notification` web 模块注册 `notificationsApi` provider（端点 `/api/notification/notifications`，实测 code:0 数组）——§6/§8 的「`/api/notifications` 兜底数组」判据已不适用，判据改 provider 口径。③ **手册 §4 命令过期**：`-d api/src` 系平铺树口径，module-root 工程须 `oj openapi -c config.yaml --module-root src -b /api -o openapi.json`（config.yaml 在工程根）；§10 TL;DR 同步。④ zsh 不对变量做分词，`OJM="node …"` + `$OJM …` 会报 no such file；管道后 `$?` 是被管道末命令的退出码——演练脚本里两个都踩了，判据核对要绕开。⑤ **market 链路实踩修复 4 处（均 TDD + 合入 feat/ojm）**：(a) `ojm new --api` 骨架 ping handler 是裸具名导出——oj 路由内省只读 default export + METHODS 白名单，裸导出零路由且**构建期零报错**（故障延迟到安装 smoke 才现形），骨架改嵌套组 `export default { ping }` + 回归测试；(b) `ojm new` solution.yaml 缺 `peerRuntime`/`archive`——market verify 结构检查 5 必填（严于契约 C2-29 允许缺 archive），骨架补齐；(c) trial/walkthrough 隔离站点起站路径写死 `api/dist`（平布局），module-root 产物在 `dist/api`，起站即挂——改 `resolveLayout(root).apiDist` 同源取值；(d) trial/walkthrough 两处 setup 后登录恒用 newPass，而 seed must_change=0 不改密 → 401——按 `setupMarketUrl` 返回的 `changedPassword` 二选一（`loginPasswordAfterSetup`）。⑥ **手册 §7.3 口径过期已改**：module-root 宿主 `--api-path dist/api` + `platform.root: dist/api`、安装锁 `dist/api/manifests.yaml`；补两条 module-root 专属坑（bin/oj 与 bin/plugins rustc 一致、新方案路由要重启才注册）。 |
 | 与上一基线差异 | 上一基线（0.2.23，§7.5 首跑）后 0.2.24 增量 = CLI 全面 cac 化 + 双语帮助 + 发布目标 `--registry` 钉死（publishConfig.registry 移除）；module-root 后 §1–§7.4 首轮全排，捕获 oj 上游 openapi 缺陷 1 个（已修未发）+ 手册判据过期 2 处（已改） |
 
 ### 上一次基线（2026-10-22，oj 0.1.85 / cli+runtime 0.2.23 打包态；新增 §7.5 新命令特性演练并首跑）
@@ -467,15 +467,20 @@ node "$CLI_PKG/bin/ojm.mjs" market verify --rebuild-index
 
 > **前置**：宿主必须以 **release 形态 + 真实 config** 起站（见坑 ⑤⑥）。dev（`--api-path src`）与
 > `ojm preview`（派生 config）都**不能**完成安装的热更段。
+> **module-root 宿主口径**（0.2.20 起 init 产物）：config.yaml 在工程根，构建产物在 `dist/api`，
+> 故起站为 `--api-path dist/api` 且 `platform.root: dist/api`（写 `dist` 会撞反抢占 tripwire，
+> 与 api 挂载重叠直接被拒）。另两条 module-root 专属注意：① 宿主 `bin/oj` 与 `bin/plugins/*`
+> 必须 rustc 版本一致（本地 rustc 构建的 oj 配 npm 拉来的 plugins 会指纹不符拒载，同源拷贝即可）；
+> ② 安装新方案的**新路由**要 oj serve 重启才注册（热更只覆盖 [vars] 段），装后探活前先重启。
 
 ```bash
 cd <host>
-node "$CLI_PKG/bin/ojm.mjs" build                      # api/dist + web/dist（含 api/dist/versions.json）
-# config：platform.root 改为 dist（release 形态；dev 时是 src）
+node "$CLI_PKG/bin/ojm.mjs" build                      # dist/api + web/dist（含 dist/api/versions.json）
+# config：platform.root 改为 dist/api（module-root release 形态；平铺宿主才是 dist）
 #   platform:
 #     modules: [_platform]
-#     root: dist
-(cd api && ../bin/oj serve -c config.yaml -b /api --api-path dist --console-log &)
+#     root: dist/api
+(../bin/oj serve -c config.yaml -b /api --api-path dist/api --console-log &)
 
 node "$CLI_PKG/bin/ojm.mjs" market setup --url http://127.0.0.1:9778 --user superadmin --pass 123456 --new-pass <新口令>
 # → 市场页（或 GET /api/_platform/market/index）出现方案卡片
@@ -501,7 +506,7 @@ node "$CLI_PKG/bin/ojm.mjs" market trial --fixture <name>@<version>
 - [ ] `trust confirm` 后重试，`status=done` 且 11 段全 `ok`：`preflight / downloading / verifying /
       extracting / migrating / lock_commit / registering / deploying_web / reloading / smoke / audit`
 - [ ] 装后探活：`curl /api/<name>/ping` 返回 `code:0`（匿名端点，无需 token）
-- [ ] 安装锁 `api/dist/manifests.yaml` 出现 `<name>: <version>`；`api/dist/<name>-<version>/` 存在
+- [ ] 安装锁 `dist/api/manifests.yaml`（module-root；平铺宿主为 `api/dist/manifests.yaml`）出现 `<name>: <version>`；`dist/api/<name>-<version>/` 存在
 - [ ] 再装同版本 → 走重装路径而非「方案名已被占用」；`market verify --rebuild-index` 无漂移
 
 ## 7.4 全套操作自检（`ojm market walkthrough`）
