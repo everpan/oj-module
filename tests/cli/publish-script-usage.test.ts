@@ -67,4 +67,22 @@ describe("publish-packages 帮助与参数守卫", () => {
 		expect(stderr).toContain("互斥");
 		expect(stderr).not.toContain("== 1/5");
 	});
+
+	it("值旗标等号形式（--otp=/--tag=）不被误判未知参数，正常进入后续守卫", () => {
+		// 复现：--otp=123456 曾被打成「未知参数：--otp=123456」；
+		// 用 --publish --dry-run 互斥作探针——能走到互斥 fail-fast 即证明已通过参数解析
+		for (const extra of [["--otp=123456"], ["--tag=beta"], ["--otp", "123456", "--tag=beta"]]) {
+			const { status, stderr } = run(["--publish", "--dry-run", ...extra]);
+			expect(status).toBe(1);
+			expect(stderr).toContain("互斥");
+			expect(stderr).not.toContain("未知参数");
+			expect(stderr).not.toContain("== 1/5");
+		}
+	});
+
+	it("真正未知的等号参数仍被拦截", () => {
+		const { status, stderr } = run(["--dryrun=x"]);
+		expect(status).toBe(1);
+		expect(stderr).toContain("未知参数：--dryrun=x");
+	});
 });

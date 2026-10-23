@@ -49,6 +49,11 @@ const LOCKSTEP = {
 const args = process.argv.slice(2);
 const flag = name => args.includes(name);
 function opt(name) {
+	// 等号形式（--otp=123456 / --tag=beta）与空格形式（--otp 123456）等价：
+	// cac/npm 生态里等号是自然输入，曾被未知参数守卫误判拦下
+	const eq = args.find(a => a.startsWith(`${name}=`));
+	if (eq !== undefined)
+		return eq.slice(name.length + 1);
 	const i = args.indexOf(name);
 	return i >= 0 ? args[i + 1] : undefined;
 }
@@ -104,7 +109,7 @@ if (flag("--help") || flag("-h")) {
 // 结果是一场「以为在演练、实际在真发布」的事故。这里直接拦下并给出用法。
 const KNOWN_FLAGS = new Set(["--dry-run", "--skip-tests", "--web-2fa", "--publish", "--help", "-h"]);
 const KNOWN_OPTS = new Set(["--tag", "--otp"]);
-const unknownArgs = args.filter(a => a.startsWith("-") && !KNOWN_FLAGS.has(a) && !KNOWN_OPTS.has(a));
+const unknownArgs = args.filter(a => a.startsWith("-") && !KNOWN_FLAGS.has(a) && !KNOWN_OPTS.has(a) && ![...KNOWN_OPTS].some(k => a.startsWith(`${k}=`)));
 if (unknownArgs.length > 0) {
 	console.error(`✗ 未知参数：${unknownArgs.join(" ")}\n`);
 	console.error(USAGE);
