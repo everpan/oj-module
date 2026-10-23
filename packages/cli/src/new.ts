@@ -124,6 +124,11 @@ title: ${name}
 summary: ${name} 方案（ojm new 生成的骨架，替换为你的描述）
 changelog:
   - 0.1.0 首个版本（ojm new 生成）
+# 市场验包五必填（market verify structureCheck）：peerRuntime 对宿主运行时强制比对（C2-09），
+# archive 为 Form A 占位（tgz 内仅允许 file 键，C2-29；发布侧由 publish 填 Form B）。
+peerRuntime: ">=0.0.0"
+archive:
+  file: ${name}-0.1.0.tgz
 ${api}web:
   route_prefix: /${name}
   entry: modules/${name}/0.1.0/entry.js
