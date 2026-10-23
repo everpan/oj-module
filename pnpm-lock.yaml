@@ -285,6 +285,9 @@ catalogs:
     antd-img-crop:
       specifier: ^4.30.0
       version: 4.30.0
+    cac:
+      specifier: ^6.7.14
+      version: 6.7.14
     circular-dependency-scanner:
       specifier: ^3.0.1
       version: 3.1.0
@@ -768,6 +771,9 @@ importers:
       '@tailwindcss/vite':
         specifier: 'catalog:'
         version: 4.3.3(vite@8.2.2(@types/node@25.9.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.12)(yaml@2.9.0))
+      cac:
+        specifier: 'catalog:'
+        version: 6.7.14
       esbuild:
         specifier: 'catalog:'
         version: 0.28.2

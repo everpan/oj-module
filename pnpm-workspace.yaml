@@ -66,6 +66,7 @@ catalog:
   ahooks: ^3.9.7
   antd: ^6.4.2
   antd-img-crop: ^4.30.0
+  cac: ^6.7.14
   circular-dependency-scanner: ^3.0.1
   clsx: ^2.1.1
   code-inspector-plugin: ^1.5.1
