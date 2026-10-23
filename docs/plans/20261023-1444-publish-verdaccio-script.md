@@ -1,8 +1,8 @@
 # publish-verdaccio：模拟发布脚本固化（供下次人工发布到本地）
 
 - 日期：2026-10-23 14:44
-- 分支：feat/publish-verdaccio-script
-- 状态：进行中
+- 分支：feat/publish-verdaccio-script（已删，--no-ff 合入 feat/ojm）
+- 状态：已完成（2026-10-23 14:50）
 
 ## 需求
 
@@ -24,16 +24,26 @@
 
 ## 任务
 
-- [ ] RED：usage 守卫测试
-- [ ] 实现 scripts/publish-verdaccio.mjs
-- [ ] 实测：--publish（两包已在 verdaccio → 走自动跳过路径，验证幂等）
-- [ ] 主脚本 USAGE 指针 + 全量相关测试 + lint
-- [ ] 合入 feat/ojm（--no-ff）删分支，更新本文档
+- [x] RED：usage 守卫测试（4 红基线）
+- [x] 实现 scripts/publish-verdaccio.mjs
+- [x] 实测：--publish（两包已在 verdaccio → 走自动跳过路径 + 复核双绿，exit=0）
+- [x] 主脚本 USAGE 指针 + 相关测试（12/12）+ lint
+- [x] 合入 feat/ojm（--no-ff）删分支，更新本文档
 
 ## 问题记录
 
-（暂无）
+1. **隐式发布目标被拦的教训固化**：初版演练靠 `.npmrc` 的 `@oj-module:registry`
+   映射隐式定目标，被 auto 分类器拦下（映射缺席时会回落公网）。脚本因此把
+   `--registry http://127.0.0.1:4873` 写成显式默认（`VERDACCIO_REGISTRY` 可覆盖），
+   并写进 USAGE 与头部注释——这是本脚本相对「手动 pnpm publish」的最大价值。
+2. **TDZ 实锤**：第一版把 `--help` 分支放在 `const USAGE` 声明之前，引用即
+   ReferenceError——帮助入口测试（--help 退出 0）当场抓住。const 不提升，守卫
+   代码与文本定义的相对顺序必须「定义在前」。
 
 ## 总结
 
-（待收尾填写）
+把 2026-10-23 演练时的手工模拟发布（dry-run + 手动 pnpm publish ×2）固化为
+`scripts/publish-verdaccio.mjs`：与 publish-packages.mjs 同构五步，差异三处（目标
+显式钉本地可覆盖、无 2FA、复核秒级）。实测 --publish 走「已发布自动跳过」路径 +
+本地复核双绿，exit=0；守卫测试 12/12（主脚本 usage 断言未受影响）。--help 分支
+TDZ 被 RED 测试当场抓住是本轮唯一的实现返工点。耗时约 8 分钟。
