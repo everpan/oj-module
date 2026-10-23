@@ -248,8 +248,13 @@ describe("playground e2e", () => {
 			await act(async () => {
 				await router.navigate("/demo");
 			});
+			// demo 模块的 index 子路由是 <Navigate replace to="/demo/todos">（entry 声明的
+			// 直达重定向），但 keepalive 对 todos 页有缓存：二次进入 /demo 时，缓存命中路径
+			// 会直出缓存页（旁路 index 的 Navigate，pathname 停在 /demo）；缓存未命中路径则
+			// 先落 /demo 再重定向到 /demo/todos。两条路径都合法，断言稳定终态集合，
+			// 页面内容断言（下方 .ant-card）锁定「模块路由可切回并渲染」这一能力本身。
 			await waitFor(
-				() => expect(router.state.location.pathname).toBe("/demo"),
+				() => expect(["/demo", "/demo/todos"]).toContain(router.state.location.pathname),
 				{ timeout: 15000 },
 			);
 			await waitFor(
