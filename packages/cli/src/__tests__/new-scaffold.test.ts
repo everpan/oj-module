@@ -44,4 +44,16 @@ describe("ojm new --api 骨架可路由（BDD）", () => {
 		// Then：不再有「裸命名导出而无 default export」的旧形状
 		expect(apiTs).not.toMatch(/^export async function ping/m);
 	});
+
+	it("给定 createSolution(api: true)，solution.yaml 过自家 market verify 五必填（20261023-1155）", async () => {
+		const root = projectRoot();
+		const result = createSolution(root, "crm", { api: true, layout: "none" });
+		const { parse: yamlParse } = await import("yaml");
+		const doc = yamlParse(fs.readFileSync(path.join(result.dir, "solution.yaml"), "utf8")) as Record<string, unknown>;
+
+		// Then：market/verify.ts structureCheck 五必填 name/version/summary/peerRuntime/archive 齐备
+		for (const key of ["name", "version", "summary", "peerRuntime", "archive"])
+			expect(doc[key], `solution.yaml 缺 ${key}（market verify 必填）`).toBeDefined();
+		expect((doc.archive as Record<string, unknown>).file).toBe("crm-0.1.0.tgz");
+	});
 });
