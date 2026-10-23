@@ -5,8 +5,9 @@
 // 流程来源：docs/prd/framework-development-guide.md 附录 A（发布 runbook）。
 // 设计文档：docs/prd/202610101416-publish-script.md（事故背景见
 // docs/prd/202610101405-cli-publish-private-deps-fix.md）。
-// 发布仓库：registry.npmjs.org（用户指定；与各包 publishConfig.registry 一致，
-// 与 .npmrc 安装源（同为官方源）一致）。
+// 发布仓库：registry.npmjs.org（用户指定）。发布目标由 publish 命令行 --registry
+// 显式钉死——两包 publishConfig 只保留 access:public（publishConfig.registry 会压过
+// --registry 与 .npmrc 作用域映射，导致每次模拟发 verdaccio 都得改 package.json 再复原）。
 //
 // 反常识点（runbook 实测踩坑，勿"优化"掉）：
 //   - 必须 pnpm publish：npm publish 会把 workspace:*/catalog: 字面量发出去；
@@ -15,7 +16,8 @@
 //     验证码失效/被拒时脚本会自动重新索取并重试该包（最多 3 次）；未开 2FA 时该参数被忽略；
 //   - web 验证类 2FA：改用 --web-2fa。此时 npm 发布时弹浏览器审批，脚本不传 --otp、不索取验证码，
 //     阻塞等待浏览器批准后继续；若审批超时/失败，按发布失败处理（无验证码可重输，重跑本命令即可）；
-//   - 发布走各包 publishConfig.registry（官方源，与 .npmrc 安装源相同），复核只查官方源——
+//   - 发布必须显式 --registry（本脚本 publishArgs 已钉死官方源）：命令行压过 .npmrc 的
+//     @oj-module:registry 作用域映射（指向本地 verdaccio 时只影响模拟发布，不影响本脚本）；
 //     复核只查官方 registry，镜像可能一直 404 属正常；
 //   - 发布后用 403 "previously published versions" 重发确认的办法已被
 //     registry 轮询取代（本脚本自动处理 CDN 传播延迟）。
@@ -84,7 +86,9 @@ runtime → cli；颠倒则消费端装不上）。
                  与 --otp 互斥（同时给则忽略 --otp）
   -h, --help      打印本帮助并退出（不做任何校验、不发布）
 
-发布仓库：https://registry.npmjs.org（与各包 publishConfig.registry、.npmrc 一致）。
+发布仓库：https://registry.npmjs.org（命令行 --registry 显式钉死官方源，不受 .npmrc
+作用域映射影响；两包 publishConfig 仅保留 access:public——publishConfig.registry
+优先级高于 --registry，会让模拟发布 verdaccio 被迫改 package.json）。
 
 注意：pnpm ≥11 默认 minimumReleaseAge=1 天——发布后约一天内裸版本号安装可能
 仍指向旧版；在此之前消费端可用 pnpm i @oj-module/cli@<version> 显式指定
@@ -181,6 +185,8 @@ function publishArgs(pkg, { otp } = {}) {
 		"-C",
 		`packages/${pkg}`,
 		"publish",
+		"--registry",
+		REGISTRY,
 		"--access",
 		"public",
 		"--no-provenance",
