@@ -15,7 +15,7 @@ import process from "node:process";
 import { callApi, login, pollTask } from "../site";
 import { bootstrapIsolatedSite } from "./bootstrap";
 import { parseFixtureSpec } from "./fixture";
-import { setupMarketUrl } from "./setup";
+import { loginPasswordAfterSetup, setupMarketUrl } from "./setup";
 
 export interface TrialOptions {
 	/** 源工程（提供 bin/oj 与 cli 模板）；缺省 process.cwd() */
@@ -53,7 +53,7 @@ export async function trialInstall(opts: TrialOptions = {}): Promise<TrialResult
 	try {
 		// 1) 打开市场地址：隔离库是全新 seed，首登必然处于改密悬挂期 → setup 顺带完成改密
 		const newPass = "trial-pass-1";
-		await setupMarketUrl({
+		const setup = await setupMarketUrl({
 			projectRoot: site.root,
 			url: site.baseUrl,
 			user: site.admin.user,
@@ -61,7 +61,7 @@ export async function trialInstall(opts: TrialOptions = {}): Promise<TrialResult
 			newPass,
 		});
 
-		const token = await login(fetch, site.baseUrl, site.admin.user, newPass);
+		const token = await login(fetch, site.baseUrl, site.admin.user, loginPasswordAfterSetup(setup, newPass, site.admin.pass));
 
 		// 2) 首次安装：预期停在 needs_trust（发布方是本次临时生成的身份）
 		let task = await installOnce(site.baseUrl, token, spec.name, spec.version);

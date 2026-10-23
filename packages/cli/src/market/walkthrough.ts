@@ -28,7 +28,7 @@ import { FAILURE_PLAYBOOK } from "./failure-playbook";
 import { buildEvilZipSlipTgz, parseFixtureSpec } from "./fixture";
 import { publishPackage } from "./publish";
 import { writeWalkthroughReport } from "./report";
-import { setupMarketUrl } from "./setup";
+import { loginPasswordAfterSetup, setupMarketUrl } from "./setup";
 
 interface Ctx {
 	site: IsolatedSite
@@ -374,8 +374,8 @@ export async function walkthrough(opts: WalkthroughOptions = {}): Promise<Walkth
 	const site = await bootstrapIsolatedSite({ projectRoot: opts.projectRoot, fixture: opts.fixture, keep: opts.keep, onLog: log });
 	try {
 		const newPass = "trial-pass-1";
-		await setupMarketUrl({ projectRoot: site.root, url: site.baseUrl, user: site.admin.user, pass: site.admin.pass, newPass });
-		const token = await login(fetch, site.baseUrl, site.admin.user, newPass);
+		const setup = await setupMarketUrl({ projectRoot: site.root, url: site.baseUrl, user: site.admin.user, pass: site.admin.pass, newPass });
+		const token = await login(fetch, site.baseUrl, site.admin.user, loginPasswordAfterSetup(setup, newPass, site.admin.pass));
 		const ctx: Ctx = { site, base: site.baseUrl, token, name: spec.name, version: spec.version, log };
 
 		const selected = opts.only === undefined ? OPS : OPS.filter(op => op.key === opts.only);
