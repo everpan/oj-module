@@ -69,6 +69,9 @@ test-results/
 
 # oj 集成测试 / 运行时临时产物
 .tmp-oj-fx/
+# vitest 夹具（tests/cli 的 buildModules 类测试）：残留会脏树卡发布脚本 checkCleanTree，
+# 未忽略时 git clean/stash 还可能删掉运行中的夹具文件（UNRESOLVED_ENTRY 的疑似成因之一）
+.tmp-fx/
 apps/playground-oj/logs/
 
 # P1-16 e2e/走查现场（报告 md 单独 force-add 留痕）

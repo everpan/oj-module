@@ -6,8 +6,9 @@
  * **单进程同时出 API 与静态**）。ojm 不再自建 http server、不再反代——
  * 前后端同端口同进程，与「oj serve + web 挂载」的生产公式逐字同形。
  *
- * 派生 config 为临时产物（api/.ojm-preview.yaml，与原件同目录保证相对
- * 路径解析一致），三路清理：ready 拒绝路径 / SIGINT / process exit 兜底
+ * 派生 config 为临时产物（module-root：工程根 .ojm-preview.yaml，与原件同目录
+ * 保证相对路径解析一致；历史布局才是 api/.ojm-preview.yaml），三路清理：ready
+ * 拒绝路径 / SIGINT / process exit 兜底
  * （语义与落盘见 preview-config.ts）。
  *
  * web.config.ts 的 htmlTransform 是 serve 期钩子，单服务下 oj 直出 HTML

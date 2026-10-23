@@ -143,8 +143,9 @@ describe.skipIf(process.env.CI || ojBusy)("uni-dev e2e 冒烟（真二进制）"
 		const out = runRam(["init", "--yes"]);
 		expect(out).not.toMatch(/\[ojm\].*失败/);
 		expect(fs.existsSync(path.join(root, "bin/oj"))).toBe(true);
-		expect(fs.existsSync(path.join(root, "api/config.yaml"))).toBe(true);
-		expect(fs.existsSync(path.join(root, "api/config/cert.jws"))).toBe(true);
+		// module-root 布局（0.2.20 起）：config.yaml 在工程根，证书落 config/（config.yaml 同级）
+		expect(fs.existsSync(path.join(root, "config.yaml"))).toBe(true);
+		expect(fs.existsSync(path.join(root, "config/cert.jws"))).toBe(true);
 	}, 240_000);
 
 	it("dev：登录链经反代全通（首跑闭环）", async () => {
@@ -204,8 +205,8 @@ describe.skipIf(process.env.CI || ojBusy)("uni-dev e2e 冒烟（真二进制）"
 		const hello = await request(previewPort, "/api/web/hello", { token });
 		expect(hello.status).toBe(200);
 
-		// 派生 config 运行中存在、退出后清理（DR-2）
-		const previewConfig = path.join(root, "api/.ojm-preview.yaml");
+		// 派生 config 与 config.yaml 同目录（module-root：工程根），运行中存在、退出后清理（DR-2）
+		const previewConfig = path.join(root, ".ojm-preview.yaml");
 		expect(fs.existsSync(previewConfig)).toBe(true);
 
 		killTree(proc);
