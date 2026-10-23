@@ -355,7 +355,7 @@ export default defineModule({
 | `order` | 菜单排序值（双段序轴）：`≥0` 主菜单区升序；`<0` 底部固定区（pin 在侧边栏底部，区内仍按 order 升序）；未声明按登记下标兜底；同 order 按根 path 字母序 |
 | `title` | 菜单标题，用 `"<模块名>:menu.<key>"` |
 | `icon` | `createElement(XxxOutlined)` |
-| `keepAlive` | 页面缓存（**必须挂在 `layout: "container"` 下才生效**） |
+| `keepAlive` | 页面缓存（多 tab 开启时有效；与 layout 解绑；相对/绝对声明均可，key 取路由绝对路径） |
 | `hideInMenu` | 不在菜单显示 |
 | `roles` / `permissions` | 路由级权限（页面级 / 按钮级） |
 | `iframeLink` | 内嵌 iframe 的外链地址 |

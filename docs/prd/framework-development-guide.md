@@ -529,7 +529,7 @@ beforeInit → onInit → onActivate → onDeactivate → onDestroy
 | `icon` | 菜单图标（`createElement(XxxOutlined)`） |
 | `order` | 菜单排序 |
 | `layout` | `"container"`（完整 chrome）/ `"parent"`（父级布局）/ `"fullscreen"`（全屏外壳，登录页）/ `"none"` |
-| `keepAlive` | 是否缓存页面（**必须挂在 `layout:"container"` 下才生效**） |
+| `keepAlive` | 是否缓存页面（多 tab 开启时有效；与 layout 解绑；相对/绝对声明均可，key 取路由绝对路径） |
 | `hideInMenu` | 不在侧边栏显示 |
 | `roles` / `permissions` | 页面级 / 按钮级权限 |
 | `login` / `internal` | 登录页标记 / 内置兜底标记（由 `resolveLoginRoute` 消费） |

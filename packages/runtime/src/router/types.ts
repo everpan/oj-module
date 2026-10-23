@@ -41,6 +41,7 @@ export interface RouteMeta {
 
 	/**
 	 * 设置页面是否开启缓存，开启后页面会缓存，不会重新加载，仅在标签页启用时有效。
+	 * 相对声明的模块路由同样生效（exclude key 取路由绝对路径，与 layout 解绑）。
 	 * @default true
 	 */
 	keepAlive?: boolean
