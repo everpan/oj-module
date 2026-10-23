@@ -24,25 +24,6 @@ export interface KeygenOptions {
 
 export const DEFAULT_KEY_ID = "local.dev";
 
-/** `ojm keygen [--id <publisher.id>] [--out <dir>] [--yes]` 参数解析（值式 flag 逐项消费，P6 同款纪律） */
-export function parseKeygenArgs(argv: string[]): { id?: string, out?: string, yes?: boolean } {
-	const values: Record<string, string> = {};
-	let yes = false;
-	for (let i = 0; i < argv.length; i++) {
-		const a = argv[i]!;
-		if (a === "--yes") {
-			yes = true;
-			continue;
-		}
-		if (a === "--id" || a === "--out") {
-			values[a] = argv[i + 1] ?? "";
-			i++;
-			continue;
-		}
-	}
-	return { id: values["--id"], out: values["--out"], yes };
-}
-
 /** C2-37 key_id 命名空间（与 isolate 侧 trust.ts isValidKeyId 同规则；禁裸通用名单段） */
 export function isValidKeyId(keyId: string): boolean {
 	return /^[a-z][a-z0-9-]*(?:\.[a-z0-9-]+)+$/.test(keyId);

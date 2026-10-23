@@ -114,26 +114,3 @@ export async function marketCommand(sub: string, argv: string[]): Promise<void> 
 			throw new Error(`[ojm] 未知子命令：ojm market ${sub}\n可用：setup / publish / build-index`);
 	}
 }
-
-/** `ojm market` 无子命令时的提示（与 usage.ts 同源风格） */
-export function marketUsage(): string {
-	return [
-		"ojm market setup   [--url <站点地址>] [--user <u> --pass <p>] [--new-pass <p>]   把市场地址指向本地 cdn/",
-		"ojm market publish [--fixture <name>@<version>] [--real <方案工程>] [--id <key>] [--rebuild-index]",
-		"ojm market build-index           [--id <key>] [--check]                        扫描 cdn/ 重建索引",
-		"ojm market verify [--file <tgz>] [--rebuild-index]                             离线验包（不起站点、不装）",
-		"ojm market trial [--fixture <name>@<version>] [--keep]                          隔离站点试装（跑完即毁）",
-		"ojm market walkthrough [--only <op>] [--strict] [--keep]                        隔离站点跑全套市场操作并出 AC 表",
-	].join("\n");
-}
-
-/** 进程入口：从 argv 取子命令（index.ts 负责 dispatch 到此处） */
-export async function runMarket(argv: string[]): Promise<void> {
-	const sub = argv[0] ?? "";
-	if (sub === "" || sub === "--help" || sub === "-h") {
-		console.log(marketUsage());
-		return;
-	}
-	await marketCommand(sub, argv.slice(1));
-	void process;
-}

@@ -4,7 +4,6 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { parseVendorArgs } from "../../packages/cli/src/args";
 import { isSupportedOjVersion, MIN_OJ_VERSION, NPM_PKG, probeOjRuntime, readLocalVersion, vendorCommand } from "../../packages/cli/src/vendor";
 
 /**
@@ -13,22 +12,6 @@ import { isSupportedOjVersion, MIN_OJ_VERSION, NPM_PKG, probeOjRuntime, readLoca
  * 临时目录 `npm i` 后拷贝 bin/ 进工程，写 .oj-version 标记。
  * （202609040905 旧 GitHub releases 方案已被本文档取代。）
  */
-
-describe("parseVendorArgs", () => {
-	it("无参数 force=false；--force 任意位置生效", () => {
-		expect(parseVendorArgs([])).toEqual({ force: false });
-		expect(parseVendorArgs(["--force"])).toEqual({ force: true });
-	});
-
-	it("位置参数为 tag：v 前缀可选（0.1.12 → v0.1.12）", () => {
-		expect(parseVendorArgs(["v0.1.12"])).toEqual({ force: false, tag: "v0.1.12" });
-		expect(parseVendorArgs(["0.1.12", "--force"])).toEqual({ force: true, tag: "v0.1.12" });
-	});
-
-	it("非法 tag 形状 → 报错（防误把目录当版本）", () => {
-		expect(() => parseVendorArgs(["abc"])).toThrowError(/非法版本号/);
-	});
-});
 
 describe("readLocalVersion（N6 标记文件）", () => {
 	it("bin/oj 缺失 → null；有 oj 无标记 → null；两者俱在 → 版本串", () => {
