@@ -179,7 +179,7 @@ export async function bootstrapIsolatedSite(opts: BootstrapOptions = {}): Promis
 	const starter = opts.starter ?? ((cfgPath: string, base: string, apiSrc: string) => startOj(cfgPath, base, apiSrc));
 	let oj: OjProcess;
 	try {
-		oj = starter(configPath, "/api", path.join(root, "api", "dist"));
+		oj = starter(configPath, "/api", resolveLayout(root).apiDist);
 		await oj.ready;
 	}
 	catch (error) {

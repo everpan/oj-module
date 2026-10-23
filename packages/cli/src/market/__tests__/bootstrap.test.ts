@@ -100,6 +100,19 @@ describe("given 一个装了 oj 二进制的源工程 When 自举隔离站点", 
 		await site.cleanup();
 	});
 
+	it("then 起站 api 路径 = 构建产物实际位置 <root>/dist/api（module-root；旧写死 api/dist 起站即挂）", async () => {
+		const src = newSourceProject();
+		const { started, starter } = fakeStarter();
+
+		const site = await bootstrapIsolatedSite({ projectRoot: src, starter });
+
+		// starter 第三参是 oj serve 的 --api-path：必须与 buildBackend 产物落点同源
+		// （layout.ts module-root 口径 apiDist = <root>/dist/api；写死 api/dist 会在
+		// mounts 校验报 No such file or directory，2026-10-23 演练实踩）
+		expect(started[0]?.apiSrc).toBe(join(site.root, "dist", "api"));
+		await site.cleanup();
+	});
+
 	it("then CDN 目录在临时根内且已落好 fixture 包与索引", async () => {
 		const src = newSourceProject();
 		const { starter } = fakeStarter();
