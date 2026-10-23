@@ -2,7 +2,7 @@
 
 - 日期：2026-10-23 12:23
 - 分支：fix/market-trial-login-pass
-- 状态：进行中
+- 状态：已完成（2026-10-23 12:26）
 
 ## 需求
 
@@ -40,9 +40,25 @@ export function loginPasswordAfterSetup(result: SetupResult, newPass: string, or
 
 ## 任务
 
-- [ ] 建分支 fix/market-trial-login-pass
-- [ ] TDD：setup.test.ts 红断言
-- [ ] 助手 + 两处调用点改造
-- [ ] cli 测试全绿 + lint
-- [ ] 合入 feat/ojm（--no-ff）删分支
-- [ ] 更新本文档状态与总结
+- [x] 建分支 fix/market-trial-login-pass
+- [x] TDD：setup.test.ts 红断言
+- [x] 助手 + 两处调用点改造
+- [x] cli 测试全绿 + lint
+- [x] 合入 feat/ojm（--no-ff）删分支
+- [x] 更新本文档状态与总结
+
+## 问题记录
+
+1. 同一根因两个调用点（trial.ts 与 walkthrough.ts）——两处都无条件用 newPass，
+   修一处漏一处是经典漂移面；助手收口后调用点无分支逻辑。
+2. trial.ts:54 注释「首登必然处于改密悬挂期」与当前 seed 口径（must_change=0）
+   已不符，但描述的是设计意图，随本次修复行为对齐而重新成立（setup 内部判定），
+   注释保留。
+
+## 总结
+
+本阶段把 trial/walkthrough setup 后的登录口令从恒用 newPass 改为按
+`changedPassword` 二选一（setup.ts 新增一行助手 `loginPasswordAfterSetup`，
+两调用点各改一行），must_change=0 种子下的 401 消除。关键过程：
+walkthrough 演练 401 → setup.ts 的 changedPassword 返回字段定位根因 →
+setup.test.ts 红断言 → 助手 + 两调用点 → cli 414 全绿 + lint 净。耗时约 5 分钟。
