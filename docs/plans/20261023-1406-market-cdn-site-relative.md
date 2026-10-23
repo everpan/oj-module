@@ -1,8 +1,8 @@
 # market CDN 相对路径（本站点自供）+ 脚手架免 setup + 0.2.25 版本抬升
 
 - 日期：2026-10-23 14:06
-- 分支：feat/market-cdn-site-relative
-- 状态：进行中
+- 分支：feat/market-cdn-site-relative（已删，--no-ff 合入 feat/ojm：merge 750c38e0，feat 9cdf6b09）
+- 状态：已完成（2026-10-23 14:25）
 
 ## 需求
 
@@ -68,22 +68,42 @@
 ## 任务
 
 - [x] 踩点消费面/原语/seed/dev/版本（本计划「关键事实」）
-- [ ] 建分支 feat/market-cdn-site-relative
-- [ ] RED：market-api.spec.ts #1/#2
-- [ ] RED：dev-fullstack.test.ts #3/#4
-- [ ] 实现：fetchOf 包 withSiteOrigin（消费侧）
-- [ ] 实现：dev.ts /cdn 反代分支
-- [ ] 实现：seed ×3 置 /cdn
-- [ ] 双包 0.2.25 + CHANGELOG
-- [ ] 文档同步（config.yaml/cdn-layout/setup/usage/devkit ×2）
-- [ ] 模板测试 + cli 相关测试 + 全量测试 + lint
-- [ ] 合入 feat/ojm（--no-ff）删分支
-- [ ] 更新本文档状态与总结
+- [x] 建分支 feat/market-cdn-site-relative
+- [x] RED：market-api.spec.ts #1/#2（顺带发现 archive 路径 runInstall 早有 withSiteOrigin 包裹，#2 天然绿）
+- [x] RED：dev-fullstack.test.ts #3/#4
+- [x] 实现：fetchOf 包 withSiteOrigin（消费侧）
+- [x] 实现：dev.ts /cdn 反代分支
+- [x] 实现：seed ×3 置 /cdn
+- [x] 双包 0.2.25 + CHANGELOG（Unreleased 转 [0.2.25]）
+- [x] 文档同步（config.yaml/cdn README/cdn-layout/setup/usage/devkit ×2）
+- [x] 模板测试（615/615）+ cli 相关 + 全量测试（822/822）+ lint
+- [x] 合入 feat/ojm（--no-ff）删分支
+- [x] 更新本文档状态与总结
 
 ## 问题记录
 
-（暂无）
+1. **升版本必须重建宿主**：抬 0.2.25 后全量 11 红——shell-dist/versions.json 停在
+   0.2.24，版本矩阵门禁（versions.ts hostArtifactFreshnessError）把所有走
+   build/dev 的测试一起拦住。处置：`pnpm --filter @oj-module/cli build:shell`
+   后全绿。**这是 lockstep 发版的固定配套动作，应进发版 checklist**。
+2. **误用 `git checkout -- .` 回退过深**：在 packages/cli/templates 下执行
+   把工作区该子树的两处已实现改动一并回退（cwd 外文件幸存），重做浪费约
+   5 分钟。纪律：回退一律用 `git checkout -- <明确路径>`，绝不点号。
+3. 全量跑出现一次单发偶发（ECONNREFUSED :3000，某测试争用外部端口），
+   重跑即过、exit=0；与本次改动无关，备案观察。
+4. zsh 引号地狱：含 `''` 的 SQL 替换用 perl 单行失败且险些误改，改走 Edit
+   工具逐文件精确替换。
 
 ## 总结
 
-（待收尾填写）
+本阶段交付市场 CDN 相对路径特性：`framework.market_cdn_url` 可写 `/cdn`
+（本站点自供），消费侧在 `fetchOf` 单一出口包 `withSiteOrigin` 按请求源补全
+同源绝对 URL（复用 SSRF 钉②原语，绝对地址直通、无 Host 不猜）；`ojm dev`
+补 `/cdn` 反代到 oj 子进程，消除「dev 下相对基址拿到 index.html」的历史坑；
+seed 三方言缺省 `/cdn` 让脚手架免 `market setup`（setup 降级为外部真 CDN
+可选步骤）；双包 lockstep 抬 0.2.25 并重建宿主。关键过程：踩点发现
+runInstall 侧本就有 withSiteOrigin 包裹（真缺口只在索引解析路径）→ TDD
+3+2 用例 → 抬版本触发宿主版本矩阵门禁 11 红 → build:shell 后全绿。全量
+822 测试 + lint 净，--no-ff 合入 feat/ojm（merge 750c38e0），分支已删。
+耗时约 20 分钟。遗留：存量库不迁移（INSERT OR IGNORE 语义，需手动改设置
+或重建）；walkthrough/trial 仍显式跑 setup（兼作 setup 命令本身的链路验证）。
