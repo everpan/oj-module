@@ -121,6 +121,24 @@ export default {
 		expect(violations.find(v => v.kind === "route-unregistered")?.message).toContain("legacy");
 	});
 
+	it("②模块根动词（契约 route \"/\" vs handler 全路径=模块名）→ 精确命中不误报", async () => {
+		const cwd = makeProject(false);
+		// 模块根单文件聚合形态（oj v0.1.64，教程 books 演练同款）：GET /api/books
+		mkdirSync(join(cwd, "api/src/books"), { recursive: true });
+		writeFileSync(join(cwd, "api/src/books/api.ts"), `
+export default {
+	get(): void { json.ok({ list: [], total: 0 }); },
+	post(): void { json.ok({ ok: true }); },
+};
+`);
+		writeOpenapiJson(cwd, [
+			{ module: "books", route: "/", method: "GET", data: { type: "object", properties: { list: { type: "array", items: { type: "object" } }, total: { type: "number" } }, required: ["list", "total"] } },
+			{ module: "books", route: "/", method: "POST", body: { type: "object", properties: { title: { type: "string" } }, required: ["title"] }, data: { type: "object", properties: { ok: { type: "boolean" } }, required: ["ok"] } },
+		]);
+		const { violations } = await checkApi({ cwd });
+		expect(violations.filter(v => v.kind === "route-params-mismatch" || v.kind === "route-not-implemented" || v.kind === "route-unregistered")).toEqual([]);
+	});
+
 	it("②参数段不一致（handler {name} vs 契约 {id}）→ error route-params-mismatch", async () => {
 		const cwd = makeProject();
 		mkdirSync(join(cwd, "api/src/order/item"), { recursive: true });

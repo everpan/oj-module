@@ -5,6 +5,12 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 设计依据、迁移记录与陷阱清单见 [`docs/prd/202609110947-oj-module-two-package-consolidation-design.md`](docs/prd/202609110947-oj-module-two-package-consolidation-design.md)。
 
+## [Unreleased]
+
+### Fixed
+
+- **`ojm api --check` 模块根动词误报 `route-params-mismatch`**：模块根单文件聚合形态（`src/<name>/api/api.ts` 的动词键，如 `GET/POST /api/books`）的契约 route 为 `/`，对账精确腿因 ojFull 尾斜杠（`books/`）与 handler 全路径（`books`）不等而落空，掉进模糊兜底被误报「参数段不一致」。精确腿现对模块根路由做尾斜杠规范化（0.2.25 发布态 playbook 第三次演练实踩，含回归测试）。
+
 ## [0.2.25] - 2026-10-23
 
 双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步升 **0.2.25**（runtime 无代码改动，仅为同版发布）。
