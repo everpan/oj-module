@@ -39,8 +39,12 @@ export const NPM_PKG = "@oj-bin/oj";
  * 与 `-d`/`--api-path` 互斥）；旧版收到该旗标即报错。0.1.85 同时落地了
  * `manifest.name` 与目录名脱钩、`#/m/x` 按 name 解析（见
  * docs/prd/202610220010-layout-module-root-design.md §5）。
+ * **0.2.26 抬到 0.1.86**：openapi 的 dev 分支裸包解析截断（module-root 下预生成
+ * `__client` 内省 fail-fast，`oj openapi --module-root` 契约链整体不可用）修复于
+ * 0.1.86（oj-bin 0f8a6e2，第三次基线发布通道实证）；module-root 工程是 0.2.20 起
+ * 的默认布局，门禁必须盖住契约链（见 playbook §9 与 2026-10-23 第三次基线）。
  */
-export const MIN_OJ_VERSION = "0.1.85";
+export const MIN_OJ_VERSION = "0.1.86";
 
 /** 按段数值比较（字符串比较会把 0.1.9 判成大于 0.1.69）；非数字段按 0 处理 */
 export function isSupportedOjVersion(version: string): boolean {

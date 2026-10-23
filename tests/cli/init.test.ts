@@ -33,12 +33,12 @@ function fakeOjInstall(binDir: string): Promise<void> {
 	fs.mkdirSync(path.join(binDir, "devkit"), { recursive: true });
 	fs.writeFileSync(path.join(binDir, "oj"), [
 		"#!/bin/sh",
-		"if [ \"$1\" = \"-V\" ]; then echo \"oj 0.1.85\"; exit 0; fi",
+		"if [ \"$1\" = \"-V\" ]; then echo \"oj 0.1.86\"; exit 0; fi",
 		"if [ \"$1\" = \"build\" ]; then echo \"      --module-root <MODULE_ROOT>  源码树根\"; exit 0; fi",
 		"echo oj",
 	].join("\n"));
 	fs.chmodSync(path.join(binDir, "oj"), 0o755);
-	fs.writeFileSync(path.join(binDir, ".oj-version"), "v0.1.85\n");
+	fs.writeFileSync(path.join(binDir, ".oj-version"), "v0.1.86\n");
 	fs.writeFileSync(path.join(binDir, "devkit/SKILL.md"), "skill\n");
 	fs.writeFileSync(path.join(binDir, "devkit/api-manual.md"), "manual\n");
 	fs.writeFileSync(path.join(binDir, "devkit/global.d.ts"), "types\n");
@@ -86,7 +86,7 @@ describe("initProject", () => {
 		const oj = path.join(dest, "bin/oj");
 		expect(fs.existsSync(oj)).toBe(true);
 		expect(fs.statSync(oj).mode & 0o111).not.toBe(0);
-		expect(fs.readFileSync(path.join(dest, "bin/.oj-version"), "utf-8").trim()).toBe("v0.1.85");
+		expect(fs.readFileSync(path.join(dest, "bin/.oj-version"), "utf-8").trim()).toBe("v0.1.86");
 
 		// devkit 拷贝
 		expect(fs.existsSync(path.join(dest, ".claude/skills/oj-api-dev/SKILL.md"))).toBe(true);
@@ -473,12 +473,12 @@ describe("initProject", () => {
 			fs.mkdirSync(path.join(binDir, "devkit"), { recursive: true });
 			fs.writeFileSync(path.join(binDir, "oj"), [
 				"#!/bin/sh",
-				"if [ \"$1\" = \"-V\" ]; then echo \"oj 0.1.85\"; exit 0; fi",
+				"if [ \"$1\" = \"-V\" ]; then echo \"oj 0.1.86\"; exit 0; fi",
 				"if [ \"$1\" = \"build\" ]; then echo \"      --module-root <MODULE_ROOT>  源码树根\"; exit 0; fi",
 				"echo oj",
 			].join("\n"));
 			fs.chmodSync(path.join(binDir, "oj"), 0o755);
-			fs.writeFileSync(path.join(binDir, ".oj-version"), "v0.1.85\n");
+			fs.writeFileSync(path.join(binDir, ".oj-version"), "v0.1.86\n");
 			fs.writeFileSync(path.join(binDir, "devkit/SKILL.md"), "skill\n");
 			fs.writeFileSync(path.join(binDir, "devkit/api-manual.md"), "manual\n");
 			fs.writeFileSync(path.join(binDir, "devkit/global.d.ts"), "types\n");
@@ -520,7 +520,7 @@ describe("initProject 凭据密封", () => {
 			const bin = path.join(binDir, "oj");
 			fs.writeFileSync(bin, [
 				"#!/bin/sh",
-				"if [ \"$1\" = \"-V\" ]; then echo \"oj 0.1.85\"; exit 0; fi",
+				"if [ \"$1\" = \"-V\" ]; then echo \"oj 0.1.86\"; exit 0; fi",
 				"if [ \"$1\" = \"secret\" ] && [ \"$2\" = \"keygen\" ]; then",
 				"  printf 'PRIV\\n' > \"$4/secrets-private.pem\"",
 				"  printf 'PUB\\n' > \"$4/secrets-public.pem\"",

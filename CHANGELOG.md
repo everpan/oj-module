@@ -7,6 +7,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **最低 oj 版本门禁（MIN_OJ_VERSION）0.1.85 → 0.1.86**：openapi 的 dev 分支裸包解析截断缺陷（module-root 下预生成 `__client` 内省 fail-fast，`oj openapi --module-root` 契约链整体不可用）修复于 oj 0.1.86；module-root 是 0.2.20 起默认布局，门禁须盖住契约链。2026-10-23 第三次基线已用发布通道 0.1.86 实证回归。
+
 ### Fixed
 
 - **`ojm api --check` 模块根动词误报 `route-params-mismatch`**：模块根单文件聚合形态（`src/<name>/api/api.ts` 的动词键，如 `GET/POST /api/books`）的契约 route 为 `/`，对账精确腿因 ojFull 尾斜杠（`books/`）与 handler 全路径（`books`）不等而落空，掉进模糊兜底被误报「参数段不一致」。精确腿现对模块根路由做尾斜杠规范化（0.2.25 发布态 playbook 第三次演练实踩，含回归测试）。
