@@ -4,9 +4,13 @@ import path from "node:path";
 
 import { expect } from "@playwright/test";
 
-/** 模板工程 dev 服务的 db（本文件位于 tests/e2e/fixtures，上溯三级到仓库根） */
+/**
+ * 模板工程 dev 服务的 db（本文件位于 tests/e2e/fixtures，上溯三级到仓库根）。
+ * 新布局（src/<name>/{api,web}）下 db 与 config.yaml 同在工程根；
+ * api/db.sqlite 是旧布局残留，oj 已不读写它，指回去会让归一静默打空。
+ */
 const REPO_ROOT = path.resolve(import.meta.dirname, "../../..");
-const DB_PATH = path.join(REPO_ROOT, "packages/cli/templates/api/db.sqlite");
+const DB_PATH = path.join(REPO_ROOT, "packages/cli/templates/db.sqlite");
 const SEED_PATH = path.join(REPO_ROOT, "packages/cli/templates/src/_platform/api/seed.sql");
 
 /**

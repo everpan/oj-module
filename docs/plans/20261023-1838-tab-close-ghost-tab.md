@@ -83,3 +83,36 @@
   全程约 25 分钟，其中测试基建排障（data router / 导入大小写）约 10 分钟。
 - 教训沉淀：lint 清零提交触碰 effect 依赖务必跑组件级行为验证——
   exhaustive-deps 在"有意快照"场景应注释豁免而非补依赖。
+
+## 后续：21 时许复报「仓内 template 仍现症状」的归因与 template 路径真浏览器复验
+
+**复报归因（两因叠加，均非代码缺口）**：
+
+1. **端口混淆（主因）**：5174 当时被 oj-wiki 的 dev server 占用（其锁
+   `@oj-module/cli@0.2.25` 发布版=修复前代码；0.2.26 未发布，下游升不上来）。
+   用户启动模板 dev 被顺延到 5175（其启动日志「端口 5174 已被占用，改用 5175」
+   为证）；若浏览器访问 `localhost:5174`，实击 oj-wiki 旧版——症状（关激活 tab
+   只激活前一个、再点一次才关）与幽灵回归完全吻合。**若地址栏是 5174，则 template
+   侧从未被测到**。
+2. **测量假象（复现脚本自身）**：初轮脚本用全局 `.ant-tabs-tab` 计数，把角色权限
+   页面自带的内部 Tabs（角色/权限点）误计进 shell 页签栏，出现「5 页签/2 激活」
+   假异常；选择器收紧到第一个 `.ant-tabs`（shell 页签栏）后消失。
+
+**template 路径真浏览器复验**（清洁环境：仅模板 dev 一个服务占 5174；登录后经
+「系统管理」子菜单点 用户管理/角色权限/操作日志 开 4 页签，点激活页签「操作日志」的 ×）：
+
+- 浏览器实载 `/assets/runtime.js` 的响应体核验 = **修复版**（effect B 依赖数组无
+  `activeKey`；宿主来自 CLI 内置 shell-dist，dev 期 hostRoots 钉死，本地 dist/web 只供模块）；
+- 连跑 5 轮全部**立即关闭**（4→3 页签），回退激活「角色权限」，URL 跳 `/system/roles`，
+  sessionStorage 精确剩 3 键；50ms 粒度采样无幽灵重加。
+
+**结论**：修复对 template 路径（ojm dev + 模块客户端导航 + 页面内部 Tabs 并存）
+确定性生效，无需新代码改动。
+
+**附带发现（已处置/备案）**：
+
+1. （已处置）`tests/e2e/fixtures/enter-template-app.ts` 的 `DB_PATH` 仍指旧布局
+   `api/db.sqlite`，真库已随新布局搬到工程根（与 config.yaml 同级）——templates
+   e2e 的 admin 夹具归一会静默打空；本次改为根 `db.sqlite` 并实跑验证。
+2. （备案）`listenOnFreePort` 每次重试新注册 `once('error')` 却不摘旧的（监听器
+   泄漏），需"成功监听后又发生 error 事件"才触发，暂无复现路径。
