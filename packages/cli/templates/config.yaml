@@ -35,7 +35,8 @@
 # 手写部署（不经 ojm）时才需要自己加回一条 `- prefix: /api` + `api: dist`。
 mounts:
   # 本地模拟 CDN：直出工程根 cdn/（内容见 cdn/README.md）。
-  # 红线：生产请删掉这一条挂载，并把 system 设置 framework.market_cdn_url 指向真 CDN。
+  # seed 的 framework.market_cdn_url 缺省即 /cdn（本站点自供），新工程免 market setup。
+  # 红线：生产请删掉这一条挂载，并把 system 设置 framework.market_cdn_url 指向真 CDN（绝对地址）。
   # 不得给此挂载设 spa——缺文件必须返回 404，回落 index.html 会让市场解析崩。
   - prefix: /cdn
     web: ./cdn

@@ -5,14 +5,18 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 设计依据、迁移记录与陷阱清单见 [`docs/prd/202609110947-oj-module-two-package-consolidation-design.md`](docs/prd/202609110947-oj-module-two-package-consolidation-design.md)。
 
-## [Unreleased]
+## [0.2.25] - 2026-10-23
+
+双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步升 **0.2.25**（runtime 无代码改动，仅为同版发布）。
 
 ### Added
 
+- **市场 CDN 相对路径（本站点自供）**：`framework.market_cdn_url` 支持不带 http/https 的相对路径（如 `/cdn`）——表示 CDN 由本站点自己提供（oj 按 config.yaml 的 `/cdn` 挂载直出工程根 `cdn/`）。服务端索引/签名/分发包拉取按**请求源补全同源绝对 URL**（复用 SSRF 钉②的 `withSiteOrigin`；无请求上下文不猜原点、原样透传）；`ojm dev` 同步补 `/cdn` 反代到 oj 子进程（config 无 `/cdn` 挂载或纯前端形态回落静态，行为不变）。
 - **脚手架 seed 内置角色开发账号**：`ojm init` 产物的 `_platform` seed 为四个内置角色各备一个开发账号，**账号名=角色名**（superadmin/admin/editor/viewer），口令均 `123456` 且 `must_change=0` **免首登改密**（纯开发便利，生产部署须改密/删除）。旧库（admin 绑 superadmin / must_change=1）无需手工迁移——seed 每次启动幂等重放自动收敛（`DELETE` 旧绑定 + `UPDATE` must_change）。三个方言文件（sqlite/mysql/pg）同构对齐，seed 回归测试钉守（含旧库收敛与幂等用例）。
 
 ### Changed
 
+- **脚手架免 `ojm market setup`**：seed 的 `framework.market_cdn_url` 缺省值由空改为 `/cdn`（三方言同改，INSERT OR IGNORE 语义下存量库不受影响）——新工程起站即市场可用；`ojm market setup` 降级为「指向外部真 CDN」时的可选步骤。
 - **seed 默认账号语义调整**：`admin` 账号由 superadmin 调整为 **admin 角色**（superadmin 能力移交给同名 `superadmin` 账号），且不再首登强制改密——原「must_change=1 兜底默认凭据」闭环让位给「账号名=角色名、零心智负担」的开发便利口径。
 
 ## [0.2.23] - 2026-10-22

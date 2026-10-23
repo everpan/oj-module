@@ -163,7 +163,9 @@ function fail(status: number, msg: string): never {
 }
 
 function fetchOf(env: MarketEnv): FetchInitFace {
-	return env.fetch ?? (globalThis as { fetch?: FetchInitFace }).fetch as FetchInitFace;
+	// 相对基址（feature：/cdn = 本站点自供）按请求源补全同源绝对 URL；绝对 http(s) 直通。
+	// 无请求上下文（无 Host）不猜原点、原样透传；runInstall 侧的 withSiteOrigin 包裹幂等。
+	return withSiteOrigin(env.fetch ?? (globalThis as { fetch?: FetchInitFace }).fetch as FetchInitFace);
 }
 
 function execOf(env: MarketEnv): ExecFace {

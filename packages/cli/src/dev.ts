@@ -35,6 +35,7 @@ import { loadProjectMocks, mockStatusCode } from "./dev-mock";
 import { createReloadHub, proxyApi, proxyWsUpgrade, sseScript } from "./dev-proxy";
 import { loadHtmlTransform } from "./html-transform";
 import { resolveConfigPath, resolveLayout } from "./layout";
+import { resolveCdnLayout } from "./market/cdn-layout";
 import { startOj } from "./oj";
 import { requireModuleRootCapability } from "./oj-caps";
 import { ensureDevCert } from "./oj-cert";
@@ -123,6 +124,16 @@ export async function devServer(projectRoot: string, opts: DevOptions = {}): Pro
 
 	const hub = createReloadHub();
 
+	// /cdn 反代（feature：market_cdn_url 可为相对路径 = 本站点自供）：config 有 /cdn 挂载
+	// 才反代到 oj；无挂载（旧模板/手改工程）或纯前端形态 → 回落静态，行为不变
+	let cdnPrefix: string | null = null;
+	try {
+		cdnPrefix = resolveCdnLayout(projectRoot).prefix;
+	}
+	catch {
+		cdnPrefix = null;
+	}
+
 	// 3) 静态半边（dev：模块产物优先，shell dist 兜底；no-store；注入刷新通道）
 	// hostRoots 钉死 shell dist：ojm build 的合并残留不得反向遮蔽宿主（F11）
 	// transform 来自 web.config.ts（可选）：按路由改写 title/OG，先于 reload 注入
@@ -172,6 +183,12 @@ export async function devServer(projectRoot: string, opts: DevOptions = {}): Pro
 				res.writeHead(mockStatusCode(payload), { "content-type": "application/json; charset=utf-8" });
 				res.end(JSON.stringify(payload));
 			});
+			return;
+		}
+
+		// 相对基址 CDN（/cdn）：站点自供挂载直发 oj（不剥前缀），否则静态层会回落成 index.html
+		if (cdnPrefix !== null && ojTarget !== undefined && (urlPath === cdnPrefix || urlPath.startsWith(`${cdnPrefix}/`))) {
+			void proxyApi(ojTarget)(req, res);
 			return;
 		}
 

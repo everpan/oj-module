@@ -68,15 +68,15 @@
 
 模板自带一个**本地模拟 CDN**（工程根 `cdn/` + 工程根 `config.yaml` 里的 `/cdn` 挂载），配上 `ojm market` 四条命令，就能在本地复刻「发包 → 上架 → 索引 → 安装」全链路。不需要外部服务。
 
-### 4.1 全流程（五步）
+### 4.1 全流程（五步，step 1 已省）
 
 ```bash
-# 0) 起站点（dev 或 serve 均可；市场地址必须指向 oj 子进程的端口，见 §5.1）
+# 0) 起站点（dev 或 serve 均可）
 ojm dev
 
-# 1) 打开市场地址：把 framework.market_cdn_url 指向 http://127.0.0.1:9778/cdn
-#    种子账号 superadmin / 123456 免首登改密；若账号处于改密悬挂期会自动改密换全权 token
-ojm market setup --user superadmin --pass 123456 --new-pass <你的口令>
+# 1) 【免 setup】脚手架 seed 的 framework.market_cdn_url 缺省即 /cdn（本站点自供，
+#    dev 形态 ojm 已把 /cdn 反代给 oj 子进程）。只有指向外部真 CDN 时才需要：
+#    ojm market setup --user superadmin --pass 123456 --new-pass <你的口令>
 
 # 2) 发包：合成 fixture（或 --real 走 ojm build --bundle）→ 确定性 tgz → 包级签名
 #    --rebuild-index 顺带重建索引
@@ -93,7 +93,7 @@ ojm market verify --rebuild-index
 
 | 命令 | 做什么 | **不**做什么 |
 |---|---|---|
-| `market setup` | 写系统设置 `framework.market_cdn_url` | 不改写工程根 `config.yaml`（`/cdn` 挂载由模板自带） |
+| `market setup` | 写系统设置 `framework.market_cdn_url`（**外部真 CDN 场景才需要**；脚手架缺省 /cdn 免 setup） | 不改写工程根 `config.yaml`（`/cdn` 挂载由模板自带） |
 | `market publish` | 落 `<name>-<version>.tgz` + 包级 `.tgz.sig` | **不碰索引**（索引是共享单文件，多人发布会互相覆盖） |
 | `market build-index` | 扫 `cdn/*.tgz` 提取包内 manifest，全量重建两份索引并签名 | 不落包 |
 | `market verify` | 完整性 / 包级签 / 索引签 / manifest 结构四类校验 + 漂移检出 | 不起站点、不装、不访问任何远端 |
@@ -111,9 +111,9 @@ ojm market verify --rebuild-index
 
 ## 5. 两个已经踩过的坑（别再踩）
 
-### 5.1 dev 形态下，`/cdn` 不在 dev server 上
+### 5.1 dev 形态下，`/cdn` 由 oj 子进程直出（ojm 已代为反代）
 
-`ojm dev` 的 Node 服务在 **5174**，只把 `/api` 反代给 oj 子进程；`/cdn` 是 **oj 的挂载**，只在 oj 子进程（`config.yaml` 的 `server.port`，默认 9778）上成立。所以市场地址**必须写绝对 URL** 且端口取自 config——写成相对 `/cdn` 的话，dev 下取到的是 index.html，报出来是难懂的 YAML 解析错，不是干净 404。`market setup` 已按 config 推导，别手改。
+`ojm dev` 的 Node 服务在 **5174**，把 `/api` 与 `/cdn`（config 有 `/cdn` 挂载时）一并反代给 oj 子进程；`/cdn` 是 **oj 的挂载**，直出工程根 `cdn/`。`framework.market_cdn_url` 写成相对路径 `/cdn`（seed 缺省值）时，服务端按**请求源**补全同源绝对 URL 再拉取——dev 下请求走 5174，反代链路内透传，拿到的是真索引。2026-10-23 之前 dev 只反代 `/api`，相对基址会拿到静态层回落的 index.html（难懂的 YAML 解析错）——该坑已由 dev 反代 + 消费侧 `withSiteOrigin` 补全闭环。历史上下文：`market setup` 写绝对地址（`http://<host>:<config server.port>/cdn`）依旧兼容可用。
 
 ### 5.2 CDN 里摆了 `.tgz.sig` 侧车，不等于能装
 

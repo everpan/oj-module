@@ -1764,16 +1764,17 @@ module-root 下数据源是「扫描 + `web.config.ts` 登记」并集（未登�
 ### 10.3 本地市场链路：`ojm market` 子命令
 
 `market` 是一组**本地模拟 CDN + 市场链路**工具，专供作者在本机验证「方案包能不能发、能不能装」，
-**不触碰真实生产 CDN**。所有产物落在工程根 `cdn/`（由 `config.yaml` 的 `/cdn` 挂载直出），
-首跑用 `market setup` 把系统设置 `framework.market_cdn_url` 指过去即可在本地市场页看到。
+**不触碰真实生产 CDN**。所有产物落在工程根 `cdn/`（由 `config.yaml` 的 `/cdn` 挂载直出）。
+**脚手架 seed 的 `framework.market_cdn_url` 缺省即相对路径 `/cdn`（本站点自供），起站即市场可用，
+无需 setup**；只有指向外部真 CDN 时才需要 `market setup` 改写设置。
 
-> 跑任何子命令前先 `ojm market setup` 一次（把模拟 CDN 地址写进站点配置）。
+> `market setup` 已非必需（见上）；它只剩「指向外部真 CDN」一个场景。
 > 想看「这个包到底能不能装」而不污染工程，用 `ojm market trial`（一次性隔离站点，跑完即毁）。
 > 每个子命令都能 `ojm market <sub> --help` 单独看帮助。
 
 | 子命令 | 一句话 |
 |---|---|
-| `ojm market setup [--url <站点>] [--user <u> --pass <p>] [--new-pass <p>]` | 把 `framework.market_cdn_url` 指向本地 `cdn/`；账号须 **superadmin**（该设置安全组仅 superadmin 可写，admin 角色会被 403）；首跑若账号处于首次改密期会先自动改密再写入 |
+| `ojm market setup [--url <站点>] [--user <u> --pass <p>] [--new-pass <p>]` | **外部真 CDN 场景才需要**：把 `framework.market_cdn_url` 改写为绝对地址；账号须 **superadmin**（该设置安全组仅 superadmin 可写，admin 角色会被 403）；首跑若账号处于首次改密期会先自动改密再写入 |
 | `ojm market publish [--fixture <name>@<version>] [--real <方案工程>] [--id <key>] [--key <pem>] [--rebuild-index] [--check]` | 把方案包落进 `cdn/` 并做包级 detached 签名；**不碰索引**（索引由 `build-index` 重建，避免多人发布互相覆盖） |
 | `ojm market build-index [--id <key>] [--key <pem>] [--check]` | 扫描 `cdn/*.tgz`、提取包内 manifest，全量重建 `bundles.yaml` + `manifests.yaml` 并签名；结果只取决于目录内容，连续执行字节一致 |
 | `ojm market verify [--file <tgz>] [--rebuild-index]` | 离线验包（不起站点、不装、不要凭据）：sha256 完整性 / 包级 Ed25519 验签 / 索引验签 / manifest 结构分列输出；`--rebuild-index` 额外比对重建索引与盘上索引的漂移 |
