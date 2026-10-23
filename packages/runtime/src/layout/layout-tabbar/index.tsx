@@ -196,7 +196,10 @@ export default function LayoutTabbar() {
 				draggable: normalizedPath !== import.meta.env.VITE_BASE_HOME_PATH,
 			});
 		}
-	}, [location, currentRoute, setActiveKey, addTab, activeKey]);
+		// 有意不依赖 activeKey：本 effect 只做「路由 → tab」同步。关闭激活 tab 后 activeKey
+		// 先变为回退 tab，若因此重跑，会用尚未更新的 location 把刚关闭的 tab 加回来（幽灵 tab）
+		// eslint-disable-next-line react/exhaustive-deps
+	}, [location, currentRoute, setActiveKey, addTab]);
 
 	return (
 		<div className={classes.tabsContainer}>
