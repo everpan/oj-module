@@ -207,6 +207,8 @@ fs.writeFileSync(path.join(bin,${JSON.stringify(ojBin)}),"#!/bin/sh\\necho oj\\n
 			expect(isSupportedOjVersion("0.2.0")).toBe(true);
 			expect(isSupportedOjVersion("1.0.0")).toBe(true);
 			expect(isSupportedOjVersion("0.1.80")).toBe(false);
+			// 上一档门禁（0.1.85）：openapi --module-root 裸包解析截断缺陷在 0.1.86 才修
+			expect(isSupportedOjVersion("0.1.85")).toBe(false);
 			expect(isSupportedOjVersion("0.1.72")).toBe(false);
 			expect(isSupportedOjVersion("0.1.69")).toBe(false);
 			expect(isSupportedOjVersion("0.1.50")).toBe(false);
