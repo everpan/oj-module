@@ -56,6 +56,14 @@ export async function setupMarketUrl(opts: SetupOptions = {}): Promise<SetupResu
 	};
 }
 
+/**
+ * setup 后用于登录的口令：改密闭环走了才用 newPass，否则原口令。
+ * 当前 seed must_change=0（账号名=角色名口径）时 setup 不改密，恒用 newPass 会 401。
+ */
+export function loginPasswordAfterSetup(result: SetupResult, newPass: string, originalPass: string): string {
+	return result.changedPassword ? newPass : originalPass;
+}
+
 /** 登录并在必要时走改密闭环，返回可用 token */
 async function obtainToken(fetchFn: typeof fetch, base: string, user: string, pass: string, newPass: string | undefined, projectRoot: string): Promise<{ value: string, changedPassword: boolean, generatedPassword?: string }> {
 	let login: { access_token?: string, restricted?: boolean };

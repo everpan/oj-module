@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { setupMarketUrl } from "../setup";
+import { loginPasswordAfterSetup, setupMarketUrl } from "../setup";
 
 const MOUNTS = "  - prefix: /api\n    api: src\n  - prefix: /cdn\n    web: ../cdn\n";
 const CONFIG = `mounts:\n${MOUNTS}server:\n  host: 127.0.0.1\n  port: 9778\n`;
@@ -110,5 +110,12 @@ describe("given 改密后写设置仍被拒 When setup", () => {
 		await expect(setupMarketUrl({ projectRoot: root, user: "admin", pass: "123456", newPass: "newpass-123", url: "http://127.0.0.1:9778", fetchFn: site.fetchFn }))
 			.rejects
 			.toThrow(/must_change|权限|设置/);
+	});
+});
+
+describe("given setup 返回 changedPassword When 选 setup 后的登录口令", () => {
+	it("then 改密已发生用 newPass，未改密用原种子口令（must_change=0 是当前 seed 常态）", () => {
+		expect(loginPasswordAfterSetup({ siteUrl: "", cdnBaseUrl: "", changedPassword: true }, "new-pass", "123456")).toBe("new-pass");
+		expect(loginPasswordAfterSetup({ siteUrl: "", cdnBaseUrl: "", changedPassword: false }, "new-pass", "123456")).toBe("123456");
 	});
 });
