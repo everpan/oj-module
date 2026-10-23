@@ -26,6 +26,8 @@
 //     只补发失败的包，不会卡在「版本已存在」报错。
 //   - 发布按依赖序逐个进行，单个包失败不中断其余包（web 2FA 需每个包各自浏览器批准一次，
 //     漏批一个不应导致后续包全废）；全部跑完后统一汇总失败并退出非 0。
+//   - 模拟发布到本地 verdaccio（发布前演练/playbook §0.5）走 scripts/publish-verdaccio.mjs——
+//     与本脚本同构五步，目标显式钉 http://127.0.0.1:4873，不受本机 .npmrc 作用域映射影响。
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
