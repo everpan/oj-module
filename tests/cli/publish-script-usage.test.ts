@@ -27,6 +27,8 @@ describe("publish-packages 帮助与参数守卫", () => {
 		expect(stdout).toContain("用法：node scripts/publish-packages.mjs");
 		expect(stdout).toContain("--dry-run");
 		expect(stdout).toContain("--web-2fa");
+		// 发布目标钉死：USAGE 须声明 --registry 显式指定官方源（不受 .npmrc 作用域映射影响）
+		expect(stdout).toContain("发布仓库：https://registry.npmjs.org（命令行 --registry 显式钉死");
 		// main() 的步骤行形如「== 1/5 前置校验 ==」；用法文本里只有无 == 的流程说明
 		expect(stdout).not.toContain("== 1/5");
 	});
