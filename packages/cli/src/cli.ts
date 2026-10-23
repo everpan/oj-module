@@ -8,7 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import cac from "cac";
-import { findCommand, groupHelpText, HELP_GROUPS, resolveLang, topHelpSections } from "./usage";
+import { findCommand, groupHelpText, HELP_GROUPS, resolveLang, topHelpSections, usageText } from "./usage";
 
 export interface CliDeps { exit?: (code: number) => never }
 
@@ -19,6 +19,34 @@ export function rewriteHelpArgv(argv: string[]): string[] {
 	if (argv.length === 1)
 		return ["--help"];
 	return [...argv.slice(1), "--help"];
+}
+
+/**
+ * 未知命令兜底结果（index.ts 打印 + 退出用）。
+ * help 形态（ojm nope --help / ojm help nope）：报「未知命令」exit 1——打帮助退 0 会掩盖拼写错误。
+ */
+export function unknownCommandResult(cmd: string, lang: Lang, helpRequested: boolean): { text: string, code: number } {
+	if (helpRequested) {
+		return {
+			text: lang === "zh-CN"
+				? `[ojm] 未知命令：${cmd}（ojm --help 查看全部命令）`
+				: `[ojm] Unknown command: ${cmd} (run ojm --help for the full command list)`,
+			code: 1,
+		};
+	}
+	return { text: usageText(lang), code: 1 };
+}
+
+/** cac 的内置报错是英文裸消息（Unknown option）——按语言重写成人话，带修复指引。 */
+export function localizeCacError(error: unknown, lang: Lang): unknown {
+	if (!(error instanceof Error))
+		return error;
+	const m = /^Unknown option `([^`]+)`/.exec(error.message);
+	if (!m)
+		return error;
+	return new Error(lang === "zh-CN"
+		? `[ojm] 未知选项：${m[1]}（ojm <cmd> --help 查看可用选项）`
+		: `[ojm] Unknown option: ${m[1]} (run ojm <cmd> --help for available options)`);
 }
 
 /** 与旧 index.ts 顶层 catch 同源：message 已是人话，堆栈仅 OJM_DEBUG=1（兼容旧名 RAM_DEBUG）。 */
