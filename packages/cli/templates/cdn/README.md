@@ -1,8 +1,8 @@
 # cdn/ —— 本地模拟市场源
 
-本目录是**本地模拟 CDN**：`ojm market publish` 把分发包落在这里，站点通过 `api/config.yaml` 里的挂载
-（`- prefix: /cdn` → `web: ../cdn`）把它直出成分发源，市场页按系统设置 `framework.market_cdn_url`
-指向的地址读取。
+本目录是**本地模拟 CDN**：`ojm market publish` 把分发包落在这里，站点通过工程根 `config.yaml` 里的挂载
+（`- prefix: /cdn` → `web: ./cdn`）把它直出成分发源。市场按系统设置 `framework.market_cdn_url` 读取，
+**seed 缺省值即相对路径 `/cdn`（本站点自供），新工程免 `ojm market setup`**；指向外部真 CDN 时才改设置。
 
 > **目录缺失会让站点起不来**：`oj serve` 启动即校验挂载目录，缺失就报错退出。
 > 所以本 README 进模板、进发布包、进新工程——它的存在就是目录存在的理由，**不要删**。
@@ -23,14 +23,14 @@
 
 ## 生产怎么切出去
 
-1. 删掉 `api/config.yaml` 的 `mounts` 里这条（它就是本地挂载的全部）：
+1. 删掉工程根 `config.yaml` 的 `mounts` 里这条（它就是本地挂载的全部）：
 
 ```yaml
   - prefix: /cdn
-    web: ../cdn
+    web: ./cdn
 ```
 
-2. 把真 CDN（对象存储 / nginx）的地址写进系统设置 `framework.market_cdn_url`；
+2. 把真 CDN（对象存储 / nginx）的**绝对地址**写进系统设置 `framework.market_cdn_url`；
    命令行等价写法是 `ojm market setup --url <地址>`。
 3. 索引（`bundles.yaml` / `manifests.yaml`）由 CDN 侧维护：`ojm market build-index` 在本地产出后自行上传。
 

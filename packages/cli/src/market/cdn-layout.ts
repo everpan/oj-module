@@ -3,9 +3,9 @@
  *
  * 两条不能破的规矩：
  * 1. **不许硬编码端口/主机/挂载路径**——全部从 `api/config.yaml` 读。
- *    dev 形态下 `/cdn` 只在 oj 子进程（`server.port`）上成立，dev server 自己（5174）
- *    会把 `/cdn/*` 交给静态层、未命中就回落 index.html（设计 §3.1.1）；写成相对路径或
- *    写死 9778，市场页拿到的会是 HTML 而不是索引 YAML。
+ *    （2026-10-23 起 dev 形态 ojm 已把 /cdn 反代给 oj 子进程，`framework.market_cdn_url`
+ *    允许写相对路径 `/cdn` = 本站点自供，由消费侧按请求源补全；本模块的绝对基址推导
+ *    只服务 `market setup` 写外部地址的场景。）
  * 2. **基址无尾斜杠**——`market/api.ts` 按 `${base}/bundles.yaml` 拼。
  *
  * 文本版（`resolveCdnLayoutFromConfig`）与工程版（`resolveCdnLayout`）分工：前者纯函数便于单测，

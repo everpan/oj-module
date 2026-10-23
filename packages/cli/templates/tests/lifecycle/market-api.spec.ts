@@ -331,6 +331,36 @@ describe("POST install（cdn：Form B 索引解析属市场侧，安装器不拼
 	});
 });
 
+describe("相对基址（feature：/cdn = 本站点自供，按请求源补全同源绝对 URL）", () => {
+	const REL = "/cdn";
+	const HOST = "127.0.0.1:9778";
+	const relEnv = () => makeEnv({ cdnBase: async () => REL });
+
+	it("index：索引与 .sig/manifests 拉取按请求 Host 补全为同源绝对 URL", async () => {
+		const api = createMarketApi(relEnv());
+		g.http = { user: { id: 1 }, headers: { host: HOST } };
+		await api.index.get();
+		expect(last?.status).toBe(200);
+		expect(fetchCalls).toContain(`http://${HOST}/cdn/bundles.yaml`);
+		expect(fetchCalls).toContain(`http://${HOST}/cdn/manifests.yaml`);
+	});
+
+	it("install：archive 分发包同样补全同源绝对 URL", async () => {
+		const api = createMarketApi(relEnv());
+		g.http = { user: { id: 1 }, body: { name: "demo-solution", version: "0.1.0", source: "cdn" }, headers: { host: HOST } };
+		await api.install.post();
+		expect(last?.status).toBe(200);
+		expect(fetchCalls).toContain(`http://${HOST}/cdn/demo-solution-0.1.0.tgz`);
+	});
+
+	it("无请求上下文（无 Host）：不猜原点，原样透传相对 URL", async () => {
+		const api = createMarketApi(relEnv());
+		g.http = { user: { id: 1 } };
+		await api.index.get();
+		expect(fetchCalls).toContain("/cdn/bundles.yaml");
+	});
+});
+
 describe("POST install/cancel（P3-12 端点接线，U5/P3-8 令牌的消费面）", () => {
 	it("无进行中安装 → 404（取消只对 running 态有效，任务终态后信号已注销）", async () => {
 		const api = createMarketApi(makeEnv());

@@ -1,9 +1,13 @@
 /**
  * `ojm market setup`（T5）：把 `framework.market_cdn_url` 指向本地模拟 CDN。
  *
+ * 2026-10-23 起**非必需**：脚手架 seed 的缺省值即相对路径 `/cdn`（本站点自供，
+ * dev 形态 ojm 已把 /cdn 反代给 oj 子进程），新工程免 setup。本命令只剩一个场景：
+ * 指向**外部真 CDN**（或本地但要写绝对地址）时显式改写设置。
+ *
  * 两件容易踩的事都收在这一处：
- * 1. **地址必须是绝对的**，且端口来自 config 的 `server.port`——dev 形态下 dev server（5174）
- *    只会把 `/api` 反代给 oj 子进程，`/cdn/*` 会被静态层回落成 index.html（设计 §3.1.1）。
+ * 1. **地址必须是绝对的**，且端口来自 config 的 `server.port`——写给外部访问方的地址，
+ *    相对路径对浏览器/服务端消费另有按请求源补全的口径（market/api.ts withSiteOrigin）。
  * 2. **首跑凭据悬挂**：seed admin `must_change=1`，登录拿的是限权 token，写不了 system 设置；
  *    须先 `PUT /api/auth/password` 改密换全权 token（该端点是悬挂期唯一可用写端）。
  */

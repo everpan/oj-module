@@ -48,7 +48,7 @@ function makeFixture(kind: "fullstack" | "frontend" | "module-root", base = "/ap
 	].join("\n"));
 	if (kind === "fullstack") {
 		fs.mkdirSync(path.join(root, "api/src"), { recursive: true });
-		fs.writeFileSync(path.join(root, "api/config.yaml"), `server:\n  host: 127.0.0.1\n  port: ${port}\nmounts:\n  - prefix: ${base}\n    api: src\n`);
+		fs.writeFileSync(path.join(root, "api/config.yaml"), `server:\n  host: 127.0.0.1\n  port: ${port}\nmounts:\n  - prefix: ${base}\n    api: src\n  - prefix: /cdn\n    web: ../cdn\n`);
 	}
 	if (kind === "module-root") {
 		fs.writeFileSync(path.join(root, "config.yaml"), `server:\n  host: 127.0.0.1\n  port: ${port}\nmounts:\n  - prefix: ${base}\n    api: src\n`);
@@ -156,6 +156,41 @@ describe("devServer 全栈接线", () => {
 		await stopServer(server);
 		expect(up.stopped).toBe(true); // oj 被回收
 		up.server.close();
+	});
+
+	it("/cdn 反代：config 有 /cdn 挂载时直发 oj（不剥前缀）；无挂载工程回落静态不崩", async () => {
+		const { root, port } = makeFixture("fullstack");
+		const configPath = path.join(root, "api/config.yaml");
+		const up = stubOjUpstream();
+		const upPort = await listenOn(up.server);
+
+		const server = await devServer(root, {
+			port,
+			shellDist: path.join(root, "shell-dist"),
+			buildModulesFn: async () => {},
+			ojStarter: up.starter(upPort, configPath),
+		});
+		const devPort = (server.address() as AddressInfo).port;
+
+		const res = await get(devPort, "/cdn/bundles.yaml");
+		expect(res.status).toBe(200);
+		expect(JSON.parse(res.text)).toMatchObject({ from: "oj" });
+		expect(up.seen).toEqual(["/cdn/bundles.yaml"]); // 相对基址消费的 dev 前提
+
+		await stopServer(server);
+		up.server.close();
+
+		// 无 /cdn 挂载（纯前端 fixture 无 config）：回落静态层，不崩不反代
+		const fe = makeFixture("frontend");
+		const feServer = await devServer(fe.root, {
+			port: fe.port,
+			shellDist: path.join(fe.root, "shell-dist"),
+			buildModulesFn: async () => {},
+		});
+		const fePort = (feServer.address() as AddressInfo).port;
+		const feRes = await get(fePort, "/cdn/bundles.yaml");
+		expect(feRes.status).toBe(404); // 静态层对未知带后缀路径的既有 404（非反代、非崩溃）
+		await stopServer(feServer);
 	});
 
 	it("module-root 布局：oj 收到 --module-root <root>/src（不是 --api-path），config 取自仓库根", async () => {

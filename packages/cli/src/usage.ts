@@ -364,9 +364,9 @@ export const HELP_GROUPS: HelpGroup[] = [
 				],
 				subs: {
 					"setup": {
-						short: { zh: "framework.market_cdn_url 指向本地 cdn/", en: "Point framework.market_cdn_url at the local cdn/" },
-						zh: "ojm market setup [--url <站点地址>] [--user <u> --pass <p>] [--new-pass <p>]\n  把系统设置 framework.market_cdn_url 指向本地模拟 CDN（工程根 cdn/，由 config.yaml 的 /cdn 挂载直出）。首跑若账号处于首次改密期（seed admin must_change=1），会自动改密换全权 token 后再写入",
-						en: "ojm market setup [--url <site>] [--user <u> --pass <p>] [--new-pass <p>]\n  Point the framework.market_cdn_url system setting at the local mock CDN (project-root cdn/, served directly via the config.yaml /cdn mount). On first run, if the account is in the forced password-reset period (seed admin must_change=1), it resets the password to obtain a full-privilege token before writing",
+						short: { zh: "framework.market_cdn_url 指向外部真 CDN（脚手架缺省 /cdn 免 setup）", en: "Point framework.market_cdn_url at an external CDN (scaffold defaults to /cdn, no setup needed)" },
+						zh: "ojm market setup [--url <站点地址>] [--user <u> --pass <p>] [--new-pass <p>]\n  把系统设置 framework.market_cdn_url 改写为绝对地址（外部真 CDN 场景；脚手架 seed 缺省 /cdn = 本站点自供，免 setup）。首跑若账号处于首次改密期（seed admin must_change=1），会自动改密换全权 token 后再写入",
+						en: "ojm market setup [--url <site>] [--user <u> --pass <p>] [--new-pass <p>]\n  Rewrite the framework.market_cdn_url system setting to an absolute URL (external CDN scenario; the scaffold seed defaults to /cdn = site-served, no setup needed). On first run, if the account is in the forced password-reset period (seed admin must_change=1), it resets the password to obtain a full-privilege token before writing",
 					},
 					"publish": {
 						short: { zh: "方案包落进 cdn/ + 包级签名（不碰索引）", en: "Drop a bundle into cdn/ + package-level signature (index untouched)" },
