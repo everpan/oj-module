@@ -25,8 +25,8 @@
 
 | 功能 | 前端 | 后端 | 生成的 client |
 | --- | --- | --- | --- |
-| 图书列表（关键词过滤） | 表格 | `GET /api/books/list` | `booksListGet` |
-| 新增图书 | 表单提交 | `POST /api/books/create` | `booksCreatePost` |
+| 图书列表（关键词过滤） | 表格 | `GET /api/books` | `booksGet` |
+| 新增图书 | 表单提交 | `POST /api/books` | `booksPost` |
 
 演示的顺序刻意是 **后端 → 契约 → 前端**：先把数据与接口做实，再把接口钉成契约生成前端 client，最后写页面。这是本框架推荐的开发顺序（契约是前后端的边界）。
 
@@ -132,36 +132,41 @@ auth:
 
 ### 2.3 oj 后端的三个基础概念
 
-**① 目录镜像路由**：`src/<name>/api/<路径...>/api.ts` → `/api/<name>/<路径...>`。
-
-```
-src/web/api/hello/api.ts        →  GET|POST … /api/web/hello
-src/books/api/list/api.ts       →  /api/books/list
-src/books/api/create/api.ts     →  /api/books/create
-```
-
-**② 端点文件形状**：默认导出一个对象，键是 HTTP 方法（写 `del` 不是 `delete`）；入参挂 `.schema`（params/query/body），出参挂**平级 `.response`**——oj 运行期按 `.schema` 校验入参（违反即 400），并供 `oj openapi` 生成契约：
+**① 端点文件形状**：一个 `api.ts` 默认导出一个对象；**动词键**（`get/post/put/patch/del`）直接是端点，**非动词键 + 对象值**是一个嵌套 handler 组（组名 = 路径段）。入参挂 `.schema`（params/query/body），出参挂**平级 `.response`**——oj 运行期按 `.schema` 校验入参（违反即 400），并供 `oj openapi` 生成契约：
 
 ```ts
-const list = {
-  async get() { /* ... */ },
-};
-list.get.schema = { query: { type: "object", properties: { keyword: { type: "string" } } } };
-list.get.response = { /* data payload 的 JSON Schema */ };
-export default list;
 // 方法名对照：GET→get  POST→post  PUT→put  PATCH→patch  DELETE→del
 // 写错方法名该请求返回 405；裸具名导出（export async function get）不在路由表里——必须 default export
+const books = {
+  async get() { /* GET  /api/books —— 聚合根操作 */ },
+  async post() { /* POST /api/books —— 聚合根操作 */ },
+};
+books.get.schema = { query: { type: "object", properties: { keyword: { type: "string" } } } };
+books.get.response = { /* data payload 的 JSON Schema */ };
+export default books;
 ```
+
+**② 路由的两种形态（以 DDD 为参照选形）**：
+
+| 形态 | 规则 | 适合 |
+| --- | --- | --- |
+| **嵌套 handler 组（v0.1.64，推荐）** | 单文件 default 导出里组名 = 路径段，组可再嵌子组（≤4 层）；模块根文件的动词键 = 聚合根本身的操作 | 同一聚合的多个操作聚在一处（本演练的 books 就是） |
+| 目录镜像 | `src/<name>/api/<路径...>/api.ts` → `/api/<name>/<路径...>` | 不同聚合各自独立演化（例：`src/web/api/hello/api.ts` → `/api/web/hello`） |
+
+DDD 判据速查（完整版见模块手册 §3.9）：**同一聚合的操作进同一个实体组，不同聚合才拆目录**；
+`del` 是保留动词键不能作组名；出现动词命名的组/目录（`list/`、`create/`）是旧形态信号。
+模块内多个聚合时，聚合之间用目录分开，聚合内部仍用嵌套组。
 
 **③ 注入的全局**（无需 import）：
 
 | 全局 | 用途 |
 | --- | --- |
-| `db.query(sql, params)` | 执行 SQL，返回行数组（sqlite 驱动） |
+| `db.table("<表名>")` | **业务读写首选**：查询构造器 `select/insert/update/delete/where/whereIf/orderBy/limit…`，服务端按方言（sqlite/mysql/pg）自动生成 SQL，同一份代码跨引擎可迁移 |
+| `db.query(sql, params)` / `db.exec` | 逃生舱：仅当构造器不支持（DDL、特殊方言语法）；仍须 `?` 绑定参数，写死方言特有语法会锁死单引擎 |
 | `json.ok(data)` / `json.fail(code, msg)` | 输出统一信封 `{code,msg,data}` |
 | `http.query` / `http.body` | 查询参数 / 请求体（JSON 自动 parse） |
 | `http.user` | 已验签用户 `{id, roles, claims}`，未登录为 `null` |
-| `http.params` / `http.param(k, d)` | 路径参数（目录镜像路由下恒空；params 段路由才有值） |
+| `http.params` / `http.param(k, d)` | 路径参数（params 段路由才有值） |
 | `http.files` / `await http.file(i)` | multipart 上传 |
 | `kv.get/set/del/expire` | KV 存储（auth 会话用） |
 | `jwt.sign/verify`、`bcrypt.hash/verify`、`crypto.sha256Hex/randomHex` | 令牌与加密 |
@@ -237,8 +242,7 @@ src/books/
 │   ├── schema.yaml
 │   ├── migrations/0001__create_books.sql
 │   ├── seed.sql
-│   ├── list/api.ts
-│   └── create/api.ts
+│   └── api.ts              # 单文件：books 聚合根的两个操作（DDD 嵌套组形态，§3.2）
 └── web/                    # §5 再填
 ```
 
@@ -288,22 +292,37 @@ INSERT OR IGNORE INTO books (id, title, author, year, create_time) VALUES (2, '�
 INSERT OR IGNORE INTO books (id, title, author, year, create_time) VALUES (3, '设计数据密集型应用', 'Martin Kleppmann', 2017, 0);
 ```
 
-### 3.2 列表端点 `src/books/api/list/api.ts`
+### 3.2 聚合端点 `src/books/api/api.ts`（单文件 DDD 形态）
+
+books 表 = 一致性边界 = **一个聚合**；列表/新增都是该聚合上的操作 → 按 §2.3 的判据用
+module-root 单文件形态（verbs 直接挂在模块根对象上，与模板 `src/demo/api/todos/api.ts`
+同构）。路由因此收敛为 `GET /api/books`（列表）与 `POST /api/books`（新增）——
+比目录镜像的 `/api/books/list`、`/api/books/create` 更贴近资源语义，也避开「动词命名目录」旧形态。
+
+数据访问全部走 `db.table` 构造器：模糊过滤用语义 op（`contains` 由引擎自动转义 `%`/`_`，
+业务零转义），方言无关、未来迁 mysql/pg 不用改写。
 
 ```ts
-// GET /api/books/list —— Bearer 守卫保护；keyword 模糊过滤 title/author。
-// 契约：入参挂 .schema，出参挂平级 .response（oj v0.1.72+ 新约定）。
-const list = {
+// oj v0.1.64 嵌套 handler 组（module-root 单文件聚合形态）：
+// 模块根动词键 = 聚合根操作（GET/POST /api/books）；将来加子资源（如 /api/books/export）
+// 再往对象里嵌非动词键子组即可（≤4 层），del 是保留动词键不能作组名。
+// 契约（v0.1.72）：入参挂 .schema，出参挂平级 .response——oj 运行期校验入参（违反即 400），
+// 并供 `oj openapi` 生成 openapi.json → 前端 `ojm api` 生成 __client。
+const books = {
+  // GET /api/books —— Bearer 守卫保护；keyword 模糊过滤 title/author。
   async get() {
     const kw = http.query.keyword;                       // query 参数（string | undefined）
-    const like = kw ? `%${kw}%` : "%";
+    const hasKw = typeof kw === "string" && kw.length > 0;
     try {
-      const rows = await db.query(
-        `SELECT id, title, author, year FROM books
-         WHERE title LIKE ? OR author LIKE ?
-         ORDER BY id ASC`,
-        [like, like],
-      );
+      // 构造器：whereIf 假值跳过；or 条件树跨两列 contains；orderBy 排序；方言无关。
+      const rows = await db.table("books")
+        .select(["id", "title", "author", "year"])
+        .whereIf(hasKw, { or: [
+          { field: "title", op: "contains", value: kw },
+          { field: "author", op: "contains", value: kw },
+        ] })
+        .orderBy([{ field: "id", dir: "asc" }])
+        .all();
       json.ok({                                          // 信封 {code:0, data}
         list: rows.map(r => ({
           id: Number(r.id),
@@ -318,16 +337,41 @@ const list = {
       json.fail(500, String(e));
     }
   },
+
+  // POST /api/books —— 新增（先手写语义校验，再构造器写入）。
+  async post() {
+    const b = (http.body ?? {}) as { title?: unknown, author?: unknown, year?: unknown };
+    const title = String(b.title ?? "").trim();
+    const author = String(b.author ?? "").trim();
+    const year = Number(b.year ?? 0);
+
+    if (!title || !author || !Number.isFinite(year)) {
+      json.fail(400, "title 与 author 必填，year 需为数字");
+      return;
+    }
+    try {
+      await db.table("books").insert({
+        title,
+        author,
+        year,
+        create_time: Math.floor(Date.now() / 1000),
+      }).run();
+      json.ok({ ok: true });
+    }
+    catch (e) {
+      json.fail(500, String(e));
+    }
+  },
 };
 
-list.get.schema = {
+books.get.schema = {
   query: {
     type: "object",
     properties: { keyword: { type: "string" } },
   },
 };
 
-list.get.response = {
+books.get.response = {
   type: "object",
   required: ["list", "total"],
   properties: {
@@ -348,38 +392,7 @@ list.get.response = {
   },
 };
 
-export default list;
-```
-
-### 3.3 新增端点 `src/books/api/create/api.ts`
-
-```ts
-// POST /api/books/create —— 事务式写入。
-const create = {
-  async post() {
-    const b = (http.body ?? {}) as { title?: unknown, author?: unknown, year?: unknown };
-    const title = String(b.title ?? "").trim();
-    const author = String(b.author ?? "").trim();
-    const year = Number(b.year ?? 0);
-
-    if (!title || !author || !Number.isFinite(year)) {
-      json.fail(400, "title 与 author 必填，year 需为数字");
-      return;
-    }
-    try {
-      await db.query(
-        "INSERT INTO books (title, author, year, create_time) VALUES (?, ?, ?, ?)",
-        [title, author, year, Math.floor(Date.now() / 1000)],
-      );
-      json.ok({ ok: true });
-    }
-    catch (e) {
-      json.fail(500, String(e));
-    }
-  },
-};
-
-create.post.schema = {
+books.post.schema = {
   body: {
     type: "object",
     required: ["title", "author", "year"],
@@ -391,25 +404,27 @@ create.post.schema = {
   },
 };
 
-create.post.response = {
+books.post.response = {
   type: "object",
   required: ["ok"],
   properties: { ok: { type: "boolean" } },
 };
 
-export default create;
+export default books;
 ```
 
 > 手写兜底校验（`if (!title…) json.fail(400)`）与 `.schema` 并存不冲突：`.schema` 把关「形状」（缺字段/类型错 → 400 且 handler 不执行），手写把关「语义」（trim 后为空 → 400）。
+>
+> 何时退回 `db.query`：仅当构造器不支持（DDL、特殊方言语法）；且仍须 `?` 绑定参数——构造器能力矩阵与逃生舱口径见 [`sql-builder-guide.md`](../devkit/oj-api-dev/sql-builder-guide.md)。
 
-### 3.4 重启边界（最容易卡住新人的一点）
+### 3.3 重启边界（最容易卡住新人的一点）
 
 - 改 `src/**/api.ts` 的内容 → **保存即生效**（oj 热更）。
-- **新增/删除后端模块目录**、改 `schema.yaml` / `migrations/` / `config.yaml` → **必须重启 `ojm dev`**。
+- **新增/删除后端模块目录或端点文件**、改 `schema.yaml` / `migrations/` / `config.yaml` → **必须重启 `ojm dev`**。
 
 所以：加完 `src/books/api/` 目录后，先 `Ctrl-C` 再 `pnpm dev`。
 
-### 3.5 先用 curl 自测后端
+### 3.4 先用 curl 自测后端
 
 ```bash
 # 登录拿 token（auth 已在 anonymous_paths，无需 token）
@@ -418,10 +433,10 @@ TOKEN=$(curl -s -X POST http://127.0.0.1:9778/api/auth/login \
   -d '{"username":"superadmin","password":"123456"}' | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>console.log(JSON.parse(s).data.access_token))")
 
 # 列表（带 Bearer）
-curl -s "http://127.0.0.1:9778/api/books/list?keyword=设计" -H "authorization: Bearer $TOKEN"
+curl -s "http://127.0.0.1:9778/api/books?keyword=设计" -H "authorization: Bearer $TOKEN"
 
 # 新增
-curl -s -X POST http://127.0.0.1:9778/api/books/create \
+curl -s -X POST http://127.0.0.1:9778/api/books \
   -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' \
   -d '{"title":"重构","author":"Martin Fowler","year":2019}'
 ```
@@ -525,23 +540,23 @@ export default defineModule({
 ### 5.4 页面 `src/books/web/pages/index.tsx`
 
 ```tsx
-import type { BooksListGetData } from "../__client/api";
+import type { BooksGetData } from "../__client/api";
 import { BasicContent, BasicTable } from "@oj-module/runtime";
 import { Button, Card, Form, Input, InputNumber, Modal, Space, message } from "antd";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { booksCreatePost, booksListGet } from "../__client/api";
+import { booksGet, booksPost } from "../__client/api";
 
 export default function BooksPage() {
   const { t } = useTranslation();
-  const [list, setList] = useState<BooksListGetData["list"]>([]);
+  const [list, setList] = useState<BooksGetData["list"]>([]);
   const [keyword, setKeyword] = useState("");
   const [open, setOpen] = useState(false);
   const [form] = Form.useForm();
 
   const refresh = useCallback(async () => {
-    const data = await booksListGet({ keyword: keyword || undefined });  // 落 /api/books/list
+    const data = await booksGet({ keyword: keyword || undefined });  // 落 GET /api/books
     setList(data.list);
   }, [keyword]);
 
@@ -549,7 +564,7 @@ export default function BooksPage() {
 
   const submit = async () => {
     const values = await form.validateFields();
-    await booksCreatePost(values);                // 落 /api/books/create
+    await booksPost(values);                      // 落 POST /api/books
     message.success("已新增");
     setOpen(false);
     form.resetFields();
@@ -596,7 +611,7 @@ export default function BooksPage() {
 }
 ```
 
-> **命名规则**：生成函数/类型名 = `camelCase(路径_方法)` 的 operationId 派生——`booksListGet` / `BooksListGetQuery` / `BooksListGetData` / `booksCreatePost`。**函数形参必填**：query 全可选时传 `booksListGet({})` 而不是 `booksListGet()`（TS2554）。
+> **命名规则**：生成函数/类型名 = `camelCase(路径_方法)` 的 operationId 派生——`booksGet` / `BooksGetQuery` / `BooksGetData` / `booksPost`。**函数形参必填**：query 全可选时传 `booksGet({})` 而不是 `booksGet()`（TS2554）。
 
 ---
 
@@ -604,8 +619,8 @@ export default function BooksPage() {
 
 1. `pnpm dev` 起来，登录 `superadmin / 123456`；
 2. 左侧出现「图书管理」，点进去应看到 3 条种子数据；
-3. 输入关键词搜索 → Network 里 `GET /api/books/list?keyword=…` 返回 200；
-4. 新增一本 → `POST /api/books/create` 200，列表刷新；
+3. 输入关键词搜索 → Network 里 `GET /api/books?keyword=…` 返回 200；
+4. 新增一本 → `POST /api/books` 200，列表刷新；
 5. 缺必填字段 → `.schema` 校验先拦（400，handler 不执行）；trim 后为空的语义错误走手写兜底（同样 400）。
 
 **契约维度的自查**：
@@ -644,7 +659,7 @@ pnpm preview      # = ojm preview：oj migrate（ver 门禁）→ oj serve 单�
 | `ojm api` 报 `Cannot find package '@oj-module/runtime'` | 依赖未装/未链接 | `pnpm install`（`@oj-module/runtime` 在模板 devDependencies 里） |
 | `typecheck` 报 `Property 'env' does not exist on type 'ImportMeta'` | 缺 `env.d.ts` | 补 `env.d.ts` 并加进 tsconfig `include`（新版 init 已内置） |
 | 登录 401，且 msg 不是 `invalid credentials` | `/auth/*` 未在 `anonymous_paths` | 补进根 `config.yaml` 后重启 |
-| 新增了模块目录但接口 404 | 目录镜像路由未生效 | **重启** `ojm dev`（改 api.ts 内容才免重启） |
+| 新增了模块目录或端点文件但接口 404 | 路由表未重建 | **重启** `ojm dev`（改 api.ts 内容才免重启） |
 | 通知铃请求 `/api/notifications` 404 | root 级兜底端点未随迁 module-root | 当前模板由 `src/notification/web/` 注册 `notificationsApi` provider，端点在 `/api/notification/notifications`；通知读不到先查 provider 是否注册 |
 | DELETE 请求 405 | 方法名写成了 `delete` | 改为 `del` |
 | 契约（`.schema`/`.response`）改了但前端类型没变 | 忘了重跑生成 | `./bin/oj openapi … && pnpm exec ojm api`；CI 用 `ojm api --check` 兜底 |
