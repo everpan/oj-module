@@ -264,18 +264,22 @@ export const HELP_GROUPS: HelpGroup[] = [
 				},
 				subs: {
 					ls: {
+						short: { zh: "列出已信任 key（含 sha256 指纹分组展示）", en: "List trusted keys (grouped sha256 fingerprints)" },
 						zh: "ojm trust ls [key_id 前缀?]\n  列出已信任 key（含 sha256 指纹分组展示）",
 						en: "ojm trust ls [key_id prefix?]\n  List trusted keys (grouped display with sha256 fingerprints)",
 					},
 					add: {
+						short: { zh: "新增信任（64 hex 公钥；首次绑定不可改）", en: "Add trust (64-hex public key; first binding immutable)" },
 						zh: "ojm trust add <key_id> <pub>\n  新增信任（64 hex 公钥；首次绑定不可改）",
 						en: "ojm trust add <key_id> <pub>\n  Add trust (64-hex public key; the first binding is immutable)",
 					},
 					revoke: {
+						short: { zh: "吊销（阻断新装/升级，不动已装方案）", en: "Revoke (blocks new installs/upgrades, installed untouched)" },
 						zh: "ojm trust revoke <key_id>\n  吊销（阻断新装/升级，不动已装方案）",
 						en: "ojm trust revoke <key_id>\n  Revoke (blocks new installs/upgrades, leaves installed solutions untouched)",
 					},
 					confirm: {
+						short: { zh: "TOFU 确认：待确认 key 入库", en: "TOFU confirm: import the pending key" },
 						zh: "ojm trust confirm --task <id>\n  TOFU 确认：把 needs_trust 终态待确认 key 入库",
 						en: "ojm trust confirm --task <id>\n  TOFU confirm: import the key pending from a needs_trust terminal state",
 					},
@@ -415,6 +419,11 @@ export const COMMANDS: HelpEntry[] = HELP_GROUPS.flatMap(g => g.commands);
 
 export function findCommand(rawName: string): HelpEntry | undefined {
 	return COMMANDS.find(c => c.name === rawName);
+}
+
+/** 首位置参数是否是已知命令（cac 只按首段匹配，子命令如 verify 不算独立命令）。 */
+export function isKnownCommand(name: string): boolean {
+	return COMMANDS.some(c => c.name.split(" ")[0] === name);
 }
 
 interface HelpSection { title?: string, body: string }

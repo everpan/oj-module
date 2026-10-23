@@ -54,6 +54,12 @@ describe("usageText 分组（cac 渲染）", () => {
 		}
 	});
 
+	it("trust 子命令索引行是 short 一句话，不复读语法行（回归）", () => {
+		const zh = usageText("zh-CN");
+		expect(zh).toMatch(/ojm trust ls\s+列出已信任 key/);
+		expect(zh).not.toContain("ojm trust ls          ojm trust ls");
+	});
+
 	it("版本项保留（双语）", () => {
 		expect(usageText("zh-CN")).toContain("ojm --version | -V");
 		expect(usageText("en-US")).toContain("ojm --version | -V");

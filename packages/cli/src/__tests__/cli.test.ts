@@ -108,6 +108,49 @@ describe("未知命令与兜底", () => {
 	});
 });
 
+describe("反常识行为修正（20261023-0937）", () => {
+	it("isKnownCommand：已知命令 true / 未知 false", async () => {
+		const { isKnownCommand } = await import("../usage");
+		expect(isKnownCommand("market")).toBe(true);
+		expect(isKnownCommand("trust")).toBe(true);
+		expect(isKnownCommand("nope")).toBe(false);
+	});
+
+	it("unknownCommandResult：help 形态报未知命令（双语），code 1", async () => {
+		const { unknownCommandResult } = await import("../cli");
+		const zh = unknownCommandResult("nope", "zh-CN", true);
+		expect(zh.text).toContain("[ojm] 未知命令：nope");
+		expect(zh.code).toBe(1);
+		const en = unknownCommandResult("nope", "en-US", true);
+		expect(en.text).toContain("[ojm] Unknown command: nope");
+		expect(en.code).toBe(1);
+	});
+
+	it("unknownCommandResult：非 help 形态给顶层帮助，code 1", async () => {
+		const { unknownCommandResult } = await import("../cli");
+		const { usageText } = await import("../usage");
+		const r = unknownCommandResult("nope", "zh-CN", false);
+		expect(r.text).toBe(usageText("zh-CN"));
+		expect(r.code).toBe(1);
+	});
+
+	it("localizeCacError：未知选项本地化（双语）+ 指引", async () => {
+		const { localizeCacError } = await import("../cli");
+		const zh = localizeCacError(new Error("Unknown option `--foo`"), "zh-CN");
+		expect(zh).toBeInstanceOf(Error);
+		expect((zh as Error).message).toContain("未知选项：--foo");
+		expect((zh as Error).message).toContain("--help");
+		const en = localizeCacError(new Error("Unknown option `--foo`"), "en-US");
+		expect((en as Error).message).toContain("Unknown option: --foo");
+	});
+
+	it("localizeCacError：非匹配错误原样返回（同一实例）", async () => {
+		const { localizeCacError } = await import("../cli");
+		const err = new Error("[ojm] 别的错误");
+		expect(localizeCacError(err, "zh-CN")).toBe(err);
+	});
+});
+
 describe("校验搬入 action 后行为保持", () => {
 	it("new 多余位置参数显式拒绝（F8）", async () => {
 		const r = await run(["new", "crm", "erp"], "zh-CN", tmp);
