@@ -200,9 +200,22 @@ tables: []
 }
 
 function apiTs(name: string): string {
+	// 形状契约：oj 内省只读 default export、链尾须为 HTTP 动词——ping 做成嵌套组
+	// （链 ping.get → GET /api/<name>/ping）；裸命名导出不进 default 会产出空 routes.js
+	// （20261023 市场链路演练实踩）。
 	return `// GET /api/${name}/ping —— 健康探针示例（保存即热更；出参挂平级 .response 即入 openapi.json）。
-export async function ping() {
-	json.ok({ pong: true, module: "${name}" });
-}
+const ping = {
+	async get() {
+		json.ok({ pong: true, module: "${name}" });
+	},
+};
+
+ping.get.response = {
+	type: "object",
+	required: ["pong"],
+	properties: { pong: { type: "boolean" } },
+};
+
+export default { ping };
 `;
 }
