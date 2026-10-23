@@ -38,6 +38,11 @@ describe("供应链加固（P6.6）", () => {
 		const script = fs.readFileSync(path.join(PROJECT_ROOT, "scripts/publish-packages.mjs"), "utf-8");
 		expect(script).toContain("\"--registry\"");
 		expect(script).toContain("https://registry.npmjs.org");
+		// 效果级断言（非手段级）：@scope:registry 映射优先级**高于** --registry（npm 官方口径
+		// publishConfig > @scope:registry > registry；2026-10-23 实锤——本机 ~/.npmrc 的
+		// verdaccio 映射把带 --registry npmjs 的真实发布劫到本地 409）。只钉 --registry
+		// 不钉 scope = 没钉死，发布步必须另有压过用户映射的动作（工程级 .npmrc 临时行）。
+		expect(script).toContain("@oj-module:registry=");
 	});
 
 	it(".npmrc 锁定安装源并开启 provenance", () => {

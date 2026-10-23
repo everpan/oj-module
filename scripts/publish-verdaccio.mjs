@@ -1,9 +1,11 @@
 // 模拟发布 @oj-module/* 到本地 verdaccio：lockstep 门禁 → 产物重建 → 守卫测试 → 按依赖序发布 → registry 复核。
 //
 // 与 scripts/publish-packages.mjs（官方源发布）同构的五步流程，差异只有三处：
-//   1. 目标 registry 显式钉本地 http://127.0.0.1:4873（可用环境变量 VERDACCIO_REGISTRY
+//   1. 目标 registry 钉本地 http://127.0.0.1:4873（可用环境变量 VERDACCIO_REGISTRY
 //      覆盖）——**不靠 .npmrc 的 @oj-module:registry 作用域映射隐式决定**（映射缺席时
-//      会静默回落公网，2026-10-23 演练时因此被执行分类器拦下过：显式 --registry 才无歧义）；
+//      会静默回落公网；且 2026-10-23 实锤：@scope:registry 映射优先级**高于** --registry，
+//      用户映射指向别处时只带 --registry 同样被劫——故发布步与主脚本同机制：工程根
+//      .npmrc 临时追加 scope 行钉死目标，完毕即复原）；
 //   2. 无 2FA（本地 registry 无 TOTP/web 审批）；
 //   3. 复核查本地（无 CDN 传播延迟，秒级，不轮询 3 分钟）。
 //
@@ -59,7 +61,9 @@ VERDACCIO_REGISTRY 覆盖）。发布前演练 / playbook §0.5 发布形态准�
   --skip-tests  跳过守卫测试（应急；发布前须手动补跑 pnpm vitest run tests/cli）
   -h, --help    打印本帮助并退出（不做任何校验、不发布）
 
-发布目标：${REGISTRY}（命令行 --registry 显式钉死，不靠 .npmrc 作用域映射）`;
+发布目标：${REGISTRY}（--registry + 发布步工程根 .npmrc 临时追加 @oj-module:registry
+行、完毕即复原——scope 映射优先级高于 --registry，只带 --registry 不可靠，见
+publish-packages.mjs 同机制注释）`;
 
 const KNOWN_FLAGS = new Set(["--dry-run", "--skip-tests", "--publish", "--help", "-h"]);
 const unknownArgs = args.filter(a => a.startsWith("-") && !KNOWN_FLAGS.has(a));
@@ -159,6 +163,26 @@ async function fetchRegistryJson(name) {
 }
 
 /** 4. 按依赖序发布；已发布目标版本自动跳过（可安全重跑），单包失败不中断、末尾汇总 */
+/**
+ * 发布期的 scope 钉死：工程根 .npmrc 临时追加 @oj-module:registry 行，完毕（含异常）即复原。
+ * 与 publish-packages.mjs 同机制：@scope:registry 作用域映射优先级高于 --registry，
+ * 用户 ~/.npmrc 映射指向别处时只带 --registry 会被劫走（2026-10-23 实锤）。
+ */
+async function withPinnedScopeRegistry(fn) {
+	const npmrcPath = path.join(ROOT, ".npmrc");
+	const original = fs.readFileSync(npmrcPath, "utf-8");
+	const line = `@oj-module:registry=${REGISTRY}`;
+	if (original.includes(line))
+		return fn();
+	fs.writeFileSync(npmrcPath, `${original.replace(/\s*$/, "")}\n${line}\n`);
+	try {
+		return await fn();
+	}
+	finally {
+		fs.writeFileSync(npmrcPath, original);
+	}
+}
+
 async function publishAll(target) {
 	const failed = [];
 	for (const pkg of PUBLISH_ORDER) {
@@ -213,7 +237,7 @@ async function main() {
 	if (DRY_RUN)
 		console.log(`（--dry-run 跳过；将发布 ${PUBLISH_ORDER.map(p => `@oj-module/${p}@${target}`).join(" → ")} → ${REGISTRY}）`);
 	else
-		await publishAll(target);
+		await withPinnedScopeRegistry(() => publishAll(target));
 
 	console.log(`\n== 5/5 registry 复核（${REGISTRY}）==`);
 	if (DRY_RUN)

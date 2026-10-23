@@ -5,9 +5,13 @@
 // 流程来源：docs/prd/framework-development-guide.md 附录 A（发布 runbook）。
 // 设计文档：docs/prd/202610101416-publish-script.md（事故背景见
 // docs/prd/202610101405-cli-publish-private-deps-fix.md）。
-// 发布仓库：registry.npmjs.org（用户指定）。发布目标由 publish 命令行 --registry
-// 显式钉死——两包 publishConfig 只保留 access:public（publishConfig.registry 会压过
-// --registry 与 .npmrc 作用域映射，导致每次模拟发 verdaccio 都得改 package.json 再复原）。
+// 发布仓库：registry.npmjs.org。发布目标**双重钉死**：命令行 --registry + 发布步在
+// 工程根 .npmrc 临时追加 @oj-module:registry 行（完毕即复原）。两包 publishConfig
+// 只保留 access:public（publishConfig.registry 优先级最高，会同时压过 --registry 与
+// .npmrc 作用域映射，导致每次模拟发 verdaccio 都得改 package.json 再复原，故移除）。
+// 注意优先级真相（npm 官方口径，2026-10-23 实锤）：publishConfig.registry >
+// @scope:registry（用户 .npmrc 作用域映射）> registry（--registry 只设这个键）——
+// 只带 --registry 会被本机 ~/.npmrc 的 verdaccio 映射劫走（真实发布 409 事故）。
 //
 // 反常识点（runbook 实测踩坑，勿"优化"掉）：
 //   - 必须 pnpm publish：npm publish 会把 workspace:*/catalog: 字面量发出去；
@@ -16,8 +20,11 @@
 //     验证码失效/被拒时脚本会自动重新索取并重试该包（最多 3 次）；未开 2FA 时该参数被忽略；
 //   - web 验证类 2FA：改用 --web-2fa。此时 npm 发布时弹浏览器审批，脚本不传 --otp、不索取验证码，
 //     阻塞等待浏览器批准后继续；若审批超时/失败，按发布失败处理（无验证码可重输，重跑本命令即可）；
-//   - 发布必须显式 --registry（本脚本 publishArgs 已钉死官方源）：命令行压过 .npmrc 的
-//     @oj-module:registry 作用域映射（指向本地 verdaccio 时只影响模拟发布，不影响本脚本）；
+//   - 发布必须双重钉死（--registry + 发布步工程根 .npmrc 临时追加 @oj-module:registry 行，
+//     finally 复原）：@scope:registry 作用域映射优先级**高于** --registry，只带 --registry
+//     会被 ~/.npmrc 映射劫到本地 verdaccio（2026-10-23 真实发布 409 事故实锤；npm 官方口径
+//     publishConfig > @scope:registry > registry）。pnpm 不收 --@scope:registry CLI 覆盖、
+//     包目录级 .npmrc 不生效，工程根 .npmrc 追加是唯一实测有效的压过手段；
 //     复核只查官方 registry，镜像可能一直 404 属正常；
 //   - 发布后用 403 "previously published versions" 重发确认的办法已被
 //     registry 轮询取代（本脚本自动处理 CDN 传播延迟）。
@@ -93,9 +100,11 @@ runtime → cli；颠倒则消费端装不上）。
                  与 --otp 互斥（同时给则忽略 --otp）
   -h, --help      打印本帮助并退出（不做任何校验、不发布）
 
-发布仓库：https://registry.npmjs.org（命令行 --registry 显式钉死官方源，不受 .npmrc
-作用域映射影响；两包 publishConfig 仅保留 access:public——publishConfig.registry
-优先级高于 --registry，会让模拟发布 verdaccio 被迫改 package.json）。
+发布仓库：https://registry.npmjs.org（双重钉死：--registry + 发布步在工程根 .npmrc
+临时追加 @oj-module:registry 行、完毕即复原——@scope:registry 作用域映射优先级高于
+--registry，只带 --registry 会被 ~/.npmrc 的 verdaccio 映射劫走，2026-10-23 真实发布
+409 事故实锤；两包 publishConfig 仅保留 access:public——publishConfig.registry 优先级
+最高，会让模拟发布 verdaccio 被迫改 package.json）。
 
 注意：pnpm ≥11 默认 minimumReleaseAge=1 天——发布后约一天内裸版本号安装可能
 仍指向旧版；在此之前消费端可用 pnpm i @oj-module/cli@<version> 显式指定
@@ -186,6 +195,33 @@ async function isVersionPublished(name, version) {
 }
 
 // ── 发布原语 ──────────────────────────────────────────────
+/**
+ * 发布期的 scope 钉死：在工程根 .npmrc 临时追加 @oj-module:registry 行，完毕（含异常）即复原。
+ *
+ * 为什么必须：@scope:registry 作用域映射优先级**高于** --registry（npm 官方口径
+ * publishConfig > @scope:registry > registry；2026-10-23 实锤——本机 ~/.npmrc 的
+ * verdaccio 映射把带 --registry npmjs 的真实发布劫到本地，409 Conflict）。pnpm 不收
+ * `--@scope:registry` CLI 覆盖、包目录级 .npmrc 不生效（均实测），工程根 .npmrc 追加
+ * 是唯一实测有效的压过用户映射的手段（工程级 > 用户级）。.npmrc 在 npm/pnpm 默认
+ * pack 忽略表内，不会被打进发布包。
+ */
+async function withPinnedScopeRegistry(fn) {
+	const npmrcPath = path.join(ROOT, ".npmrc");
+	const original = fs.readFileSync(npmrcPath, "utf-8");
+	const line = `@oj-module:registry=${REGISTRY}`;
+	if (original.includes(line)) {
+		// 已有同目标行（如上一轮异常残留被人工修成一致）→ 不重复追加、也不必复原
+		return fn();
+	}
+	fs.writeFileSync(npmrcPath, `${original.replace(/\s*$/, "")}\n${line}\n`);
+	try {
+		return await fn();
+	}
+	finally {
+		fs.writeFileSync(npmrcPath, original);
+	}
+}
+
 /** 组装 `pnpm -C packages/<pkg> publish ...` 参数（单一事实来源，杜绝散落拼接） */
 function publishArgs(pkg, { otp } = {}) {
 	return [
@@ -397,7 +433,7 @@ async function main() {
 		console.log(`（--dry-run 跳过；将发布 ${PUBLISH_ORDER.map(p => `@oj-module/${p}@${target}`).join(" → ")}）`);
 	}
 	else {
-		await publishAll(target);
+		await withPinnedScopeRegistry(() => publishAll(target));
 	}
 
 	console.log(`\n== 5/5 registry 复核（${REGISTRY}，最长 3 分钟）==`);
