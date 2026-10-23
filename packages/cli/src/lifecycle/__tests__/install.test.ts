@@ -6,7 +6,6 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { parseLifecycleArgs } from "../../args";
 import { setEnabledCommand } from "../../enable";
 import { installCommand, parseTarget, renderOutcome } from "../../install";
 import { pollTask, resolveSite } from "../../site";
@@ -59,28 +58,6 @@ beforeEach(() => {
 
 afterEach(() => {
 	vi.restoreAllMocks();
-});
-
-describe("parseLifecycleArgs · 参数解析", () => {
-	it("位置参数与值式 flag 分离：--url 等的值不被误当位置参数（P6 同款坑）", () => {
-		const a = parseLifecycleArgs(["demo-solution@0.1.0", "--url", "http://x:1", "--user", "u", "--pass", "p", "--locale", "en-US"]);
-		expect(a.positionals).toEqual(["demo-solution@0.1.0"]);
-		expect(a.url).toBe("http://x:1");
-		expect(a.user).toBe("u");
-		expect(a.pass).toBe("p");
-		expect(a.locale).toBe("en-US");
-	});
-
-	it("install 专属 --name/--version 覆盖位", () => {
-		const a = parseLifecycleArgs(["./a.tgz", "--name", "demo-solution", "--version", "0.2.0"]);
-		expect(a.positionals).toEqual(["./a.tgz"]);
-		expect(a.name).toBe("demo-solution");
-		expect(a.version).toBe("0.2.0");
-	});
-
-	it("未知 --flag 忽略不炸", () => {
-		expect(parseLifecycleArgs(["x", "--future"]).positionals).toEqual(["x"]);
-	});
 });
 
 describe("resolveSite · 站点寻址（flag > 环境变量 > 缺省模板 serve 端口 9778）", () => {

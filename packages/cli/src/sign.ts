@@ -104,28 +104,6 @@ export function signCommand(tgz: string, opts: SignOptions = {}): SignResult {
 	return { sigPath, keyId, publicKeyHex, fingerprint: fingerprintOfPublicKey(publicKeyHex), sha256, canonical, checkPassed };
 }
 
-/** `ojm sign <tgz> [--id <publisher.id>] [--key <pem>] [--check]` 参数解析 */
-export function parseSignArgs(argv: string[]): { positionals: string[], id?: string, key?: string, check?: boolean } {
-	const values: Record<string, string> = {};
-	let check = false;
-	const positionals: string[] = [];
-	for (let i = 0; i < argv.length; i++) {
-		const a = argv[i]!;
-		if (a === "--check") {
-			check = true;
-			continue;
-		}
-		if (a === "--id" || a === "--key") {
-			values[a] = argv[i + 1] ?? "";
-			i++;
-			continue;
-		}
-		if (!a.startsWith("--"))
-			positionals.push(a);
-	}
-	return { positionals, id: values["--id"], key: values["--key"], check };
-}
-
 /** 身份从文件名推导（<name>-<version>.tgz；与 ojm install parseTarget 同规则，Finding C 正则） */
 function deriveIdentity(stem: string): { name: string, version: string } {
 	const m = /^(.+)-(\d[\w.]+(?:-[\w.]+)?)$/.exec(stem);

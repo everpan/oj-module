@@ -5,8 +5,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { DEFAULT_KEY_ID, isValidKeyId, keygenCommand, parseKeygenArgs } from "../../keygen";
-import { parseSignArgs, signCommand } from "../../sign";
+import { DEFAULT_KEY_ID, isValidKeyId, keygenCommand } from "../../keygen";
+import { signCommand } from "../../sign";
 import { readPrivateKeyPem } from "../keygen";
 import { fingerprintOfPublicKey, signCanonical as signCanonicalLocal, verifyCanonical } from "../sign";
 
@@ -19,11 +19,7 @@ afterEach(() => {
 	fs.rmSync(tmp, { recursive: true, force: true });
 });
 
-describe("ojm keygen 参数解析 + key_id 命名空间（C2-37）", () => {
-	it("parseKeygenArgs：--id/--out 值式消费 + --yes 独立", () => {
-		expect(parseKeygenArgs(["--id", "acme.market", "--out", "./k", "--yes"]))
-			.toEqual({ id: "acme.market", out: "./k", yes: true });
-	});
+describe("ojm keygen key_id 命名空间（C2-37）", () => {
 	it("isValidKeyId：<publisher>.<id> 合法 / 裸名·大写·空非法", () => {
 		expect(isValidKeyId("acme.market")).toBe(true);
 		expect(isValidKeyId("acme.dev.key-1")).toBe(true);
@@ -60,13 +56,6 @@ describe("ojm keygen 命令体（Ed25519 落盘 + 私钥红线）", () => {
 	});
 	it("非法 key_id 命名空间 → 直接拒（C2-37）", () => {
 		expect(() => keygenCommand({ id: "local", cwd: tmp })).toThrow(/key_id 命名空间非法/);
-	});
-});
-
-describe("ojm sign 参数解析", () => {
-	it("parseSignArgs：位置参数 + --id/--key 值式消费 + --check 独立", () => {
-		expect(parseSignArgs(["pkg.tgz", "--id", "acme.market", "--key", "k.pem", "--check"]))
-			.toEqual({ positionals: ["pkg.tgz"], id: "acme.market", key: "k.pem", check: true });
 	});
 });
 

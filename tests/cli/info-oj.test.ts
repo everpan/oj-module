@@ -1,8 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { buildCli } from "../../packages/cli/src/cli";
 import { printInfo } from "../../packages/cli/src/info";
-import { getCommandHelp, usageText } from "../../packages/cli/src/usage";
+import { usageText } from "../../packages/cli/src/usage";
 import { MIN_OJ_VERSION } from "../../packages/cli/src/vendor";
 import { PROJECT_ROOT } from "../helpers/paths";
 
@@ -41,15 +42,17 @@ function stubObservability(version: string | null, health: Record<string, unknow
 
 describe("usage 契约", () => {
 	it("包含全部六条子命令行", () => {
-		const text = usageText();
+		const text = usageText("zh-CN");
 		for (const cmd of ["init", "dev", "build", "preview", "info", "merge"]) {
 			expect(text).toMatch(new RegExp(`ojm ${cmd}`));
 		}
 	});
 
-	it("dev 用法含开发模式快捷键映射（r/h/c/o/q）", () => {
-		// 顶层帮助已按组索引化（一行一条），快捷键详解归 ojm dev --help
-		const text = `${usageText()}\n${getCommandHelp("dev")}`;
+	it("dev 用法含开发模式快捷键映射（r/h/c/o/q）", async () => {
+		// 顶层帮助已按组索引化（一行一条），快捷键详解归 ojm dev --help（cac 渲染）
+		const cli = buildCli(PROJECT_ROOT, "zh-CN");
+		cli.parse(["node", "ojm", "dev", "--help"], { run: true });
+		const text = `${usageText("zh-CN")}\n${logs.join("\n")}`;
 		expect(text).toContain("开发模式快捷键");
 		for (const k of ["r", "h", "c", "o", "q"]) {
 			expect(text).toMatch(new RegExp(`\\b${k}\\b`));
@@ -59,7 +62,7 @@ describe("usage 契约", () => {
 	});
 
 	it("--version / -V 用法被文档化", () => {
-		const text = usageText();
+		const text = usageText("zh-CN");
 		expect(text).toContain("ojm --version | -V");
 		expect(text).toContain("显示 cli 包版本");
 	});

@@ -126,25 +126,3 @@ export function publishCommand(dir: string, opts: PublishOptions = {}): PublishR
 	}
 	return { bundlesPath, manifestsPath, bundlesSigPath, manifestsSigPath, keyId, publicKeyHex, fingerprint: fingerprintOfPublicKey(publicKeyHex), checkPassed };
 }
-
-/** `ojm publish <dir> [--id <publisher.id>] [--key <pem>] [--check]` 参数解析 */
-export function parsePublishArgs(argv: string[]): { positionals: string[], id?: string, key?: string, check?: boolean } {
-	const values: Record<string, string> = {};
-	let check = false;
-	const positionals: string[] = [];
-	for (let i = 0; i < argv.length; i++) {
-		const a = argv[i]!;
-		if (a === "--check") {
-			check = true;
-			continue;
-		}
-		if (a === "--id" || a === "--key") {
-			values[a] = argv[i + 1] ?? "";
-			i++;
-			continue;
-		}
-		if (!a.startsWith("--"))
-			positionals.push(a);
-	}
-	return { positionals, id: values["--id"], key: values["--key"], check };
-}
