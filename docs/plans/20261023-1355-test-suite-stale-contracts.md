@@ -2,7 +2,7 @@
 
 - 日期：2026-10-23 13:55
 - 分支：fix/test-suite-stale-contracts
-- 状态：进行中
+- 状态：已完成（2026-10-23 14:05）
 
 ## 需求
 
@@ -45,10 +45,32 @@ checkCleanTree，`git clean/stash` 类操作可删除运行中的夹具文件造
 
 ## 任务
 
-- [ ] 建分支 fix/test-suite-stale-contracts
-- [ ] supply-chain 契约反转 + 脚本锁定断言
-- [ ] uni-dev-smoke 三路径 module-root 化
-- [ ] .gitignore 增 .tmp-fx/ + preview.ts 注释
-- [ ] 全量测试转绿 + lint
-- [ ] 合入 feat/ojm（--no-ff）删分支
-- [ ] 更新本文档状态与总结
+- [x] 建分支 fix/test-suite-stale-contracts
+- [x] supply-chain 契约反转 + 脚本锁定断言
+- [x] uni-dev-smoke 三路径 module-root 化
+- [x] .gitignore 增 .tmp-fx/ + preview.ts 注释
+- [x] 全量测试转绿 + lint
+- [x] 合入 feat/ojm（--no-ff）删分支
+- [x] 更新本文档状态与总结
+
+## 问题记录
+
+1. 设计翻转后旧契约测试无人报警的两个条件叠加：publish-registry-pinning
+   计划没把「改设计必改钉死契约的测试」列入任务（guard 套件不含
+   tests/security，全量才红）；module-root 改写（0.2.20）同理漏了
+   tests/integration——两处都在守卫网之外腐烂。教训：**翻转类设计文档的
+   任务清单应显式列「同步钉死旧契约的测试」**，尤其 guard 网之外的目录。
+2. 提交时 `pnpm lint | tail` 又一次让管道尾命令吞掉退出码，合并已完成后
+   才补验（结果净）。纪律：判定类命令一律重定向到文件再看 exit。
+
+## 总结
+
+本阶段把全量测试的 4 个红从「钉死已翻转旧契约」改为新契约断言：
+publishConfig.registry 反转为必须缺席（防回流）+ 发版脚本 --registry 钉死
+npmjs 承接锁定；uni-dev-smoke 三路径改 module-root 口径；.tmp-fx/ 入
+gitignore 消除脏树卡发布 checkCleanTree 与运行中夹具被 git clean/stash
+删除的隐患（vditor UNRESOLVED_ENTRY 偶发的可确认成因面）。全量 121 文件
+821 测试全绿。关键过程：用户报守卫套件 vditor 偶发 → 三语境未能复现 →
+全量跑露出 4 个真红 → 定位两宗 stale 契约 + 一宗 ignore 缺漏 → 修复后
+全量转绿。耗时约 15 分钟。vditor 偶发本体无根因级修复，若再现在已 ignore
+的语境下仍有防护盲区（如 -fx 级 clean）。
