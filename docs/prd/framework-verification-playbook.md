@@ -4,7 +4,19 @@
 > **配套**：[`framework-development-guide.md`](./framework-development-guide.md)（原理）、[`oj-fullstack-tutorial.md`](./oj-fullstack-tutorial.md)（跟做）。
 > **原则**：每一步都有**可判定通过/失败的检查点**，不要只看命令退出码，要核对产物。
 
-### 最近一次基线（2026-10-23，oj 0.1.85+0f8a6e2 本地修 / cli+runtime 0.2.24 打包态；module-root 后 §1–§7.4 首轮回排 + §7.5 复跑）
+### 最近一次基线（2026-10-23 第二次，oj 0.1.85+0f8a6e2 本地修 / cli+runtime 0.2.25 **verdaccio 发布态**；免 setup 特性首演 + walkthrough 14/14）
+
+| 项 | 值 |
+| --- | --- |
+| 日期 | 2026-10-23（第二次） |
+| 框架包版本 | `cli`/`runtime` `0.2.25`（**verdaccio 发布态**：双包 `scripts/publish-verdaccio.mjs --publish` 上本地 verdaccio，演练工程从 verdaccio 取 `@oj-module/cli-0.2.25.tgz` 解包 + `pnpm install` 解析 runtime/cli 0.2.25——比 §0.5 pack 态多验了 prepack 产物与 registry 通道；npmjs 复核 0.2.25 缺席（latest 仍 0.2.23），模拟零污染） |
+| oj | `0.1.85` + 本地构建 `0f8a6e2`（openapi module-root 修；npm latest 0.1.85 无此修，契约链仍需换 bin/oj 旁路，**0.1.86 发布后抬 MIN_OJ_VERSION 回归**） |
+| 验证动机 | 0.2.25（market CDN 相对路径 `/cdn` 本站点自供 + 脚手架免 setup）发布前演练；`publish-verdaccio.mjs` 固化后首跑 |
+| 结果 | **§1–§7 全链路通过**：init 248 项（module-root 齐、`.gitignore`/`openapi.json` 在根）→ install 1.5s（**runtime+cli 0.2.25 均走 verdaccio scope 映射**，零旁路）→ info 三版全 0.2.25 对齐 → §3 探针 1 api file(s) + 零 runner 路径泄漏 → §4 books 六文件 → `oj openapi --module-root src`（0f8a6e2 修复实证，含 `/api/books/{list,create}`）→ `ojm api` 出 `src/books/web/__client`（派生名 + `BooksListGetData` 存活）→ `--check` 0/0 → §5 `ojm build` 7 后端模块 books 2 api file(s)、`dist/web` 产物齐（modules.json 8 模块含 books）、tsc 0 error → §6 dev：5174 登录 superadmin/123456 → user-info ok → `/api/books/list` 种子 2 条（迁移+种子经反代真跑）→ **§7 market 免 setup 首演**：起站后**未跑任何 setup**，市场 index 直接报「`/cdn/bundles.yaml` 返回 HTTP 404」（seed 缺省 `/cdn` 生效 + dev 反代拿到干净 404，非 index.html 的 YAML 解析错）→ fixture 发布 + build-index 后 index 出卡片 → install → needs_trust（TOFU，指纹 949dbd75… 一致）→ trust confirm → 重装推进至 smoke 段（仅因「新方案路由要 oj serve 重启才注册」停 partial——既有已知口径，非缺陷）→ walkthrough **14/14 PASS**（隔离站点内跑全链）→ §7 preview 单服务 index/deep/api 全 200。 |
+| 本次发现并处置 | ① **免 setup 闭环实证**（0.2.25 特性）：seed `/cdn` 缺省 + 消费侧 `withSiteOrigin` 按请求源补全 + `ojm dev` `/cdn` 反代三件套在真站点全通；`market setup` 降级为外部真 CDN 可选步骤。② **npm scope 映射压过显式 `--registry`**：`npm view @oj-module/cli --registry https://registry.npmjs.org` 仍查 verdaccio（映射优先级高于 --registry）——核官方源须 curl registry URL 直查（本轮差点误判「真发布泄露」）。③ **client 调用需显式空参**：`booksListGet({})`（query 无 required 时形参仍必填），`booksListGet()` 是 TS2554——写演练页时注意。④ 手册 §5/§6 判据两处小漂移（本轮实踩）：产物根是 `dist/web`（非 `web/dist`）；后端模块 7 个（notifications 为 web 模块，不进 oj build 列表）。均已在本轮核对中按实改口径记录，未改手册正文（判据随模板组合浮动，以输出实查为准）。 |
+| 与上一基线差异 | 0.2.24 → 0.2.25 增量 = market CDN 相对路径（本站点自供）+ 脚手架免 setup + `publish-verdaccio.mjs`；演练形态从 §0.5 pack 态升级为 verdaccio 发布态（多验 prepack + registry 通道） |
+
+### 上一次基线（2026-10-23，oj 0.1.85+0f8a6e2 本地修 / cli+runtime 0.2.24 打包态；module-root 后 §1–§7.4 首轮回排 + §7.5 复跑）
 
 | 项 | 值 |
 | --- | --- |
