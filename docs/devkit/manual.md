@@ -1773,11 +1773,12 @@ module-root 下数据源是「扫描 + `web.config.ts` 登记」并集（未登�
 
 | 子命令 | 一句话 |
 |---|---|
-| `ojm market setup [--url <站点>] [--user <u> --pass <p>] [--new-pass <p>]` | 把 `framework.market_cdn_url` 指向本地 `cdn/`；首跑若账号处于首次改密期会先自动改密再写入 |
+| `ojm market setup [--url <站点>] [--user <u> --pass <p>] [--new-pass <p>]` | 把 `framework.market_cdn_url` 指向本地 `cdn/`；账号须 **superadmin**（该设置安全组仅 superadmin 可写，admin 角色会被 403）；首跑若账号处于首次改密期会先自动改密再写入 |
 | `ojm market publish [--fixture <name>@<version>] [--real <方案工程>] [--id <key>] [--key <pem>] [--rebuild-index] [--check]` | 把方案包落进 `cdn/` 并做包级 detached 签名；**不碰索引**（索引由 `build-index` 重建，避免多人发布互相覆盖） |
 | `ojm market build-index [--id <key>] [--key <pem>] [--check]` | 扫描 `cdn/*.tgz`、提取包内 manifest，全量重建 `bundles.yaml` + `manifests.yaml` 并签名；结果只取决于目录内容，连续执行字节一致 |
 | `ojm market verify [--file <tgz>] [--rebuild-index]` | 离线验包（不起站点、不装、不要凭据）：sha256 完整性 / 包级 Ed25519 验签 / 索引验签 / manifest 结构分列输出；`--rebuild-index` 额外比对重建索引与盘上索引的漂移 |
 | `ojm market trial [--fixture <name>@<version>] [--keep]` | 在一次性隔离站点里跑完整安装，跑完即毁；`--keep` 保留现场供排查 |
+| `ojm market walkthrough [--fixture <name>@<version>] [--only <op>] [--keep] [--strict]` | 隔离站点上 14 项全套自检（主链 9：index/install/reinstall/enable/verify/history/upgrade/rollback/uninstall；负向 5：tamper/nosig/badindex/stranger/evil——预期失败口径，防线没拦住才算 FAIL）；AC 表 + 失败文案脱敏落盘 `logs/walkthrough-<ts>.md`；`--only` 单跑验原子性 |
 
 - `--fixture <name>@<version>`：用内置合成包（无需先 build）；`--real <方案工程>`：先 `ojm build --bundle` 再拿真实产物。
 - `--id <key>` / `--key <pem>`：包级签名身份（与 `ojm sign` 同体系，默认取 `~/.ojm/keys`）。
@@ -1936,7 +1937,7 @@ ojm keygen --id <publisher>.<key-name>
 ojm sign dist/<name>-<version>.tgz --id <publisher>.<key-name> --check
 
 # ③ 安装/分发：.sig 自动探测随包上传
-ojm install dist/<name>-<version>.tgz --url <站点> --user admin --pass …
+ojm install dist/<name>-<version>.tgz --url <站点> --user superadmin --pass …
 ```
 
 宿主验签六码（失败文案双语，`--locale` 切换）：`sig_missing`（缺签）/ `sig_alg`（算法

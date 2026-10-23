@@ -75,8 +75,8 @@
 ojm dev
 
 # 1) 打开市场地址：把 framework.market_cdn_url 指向 http://127.0.0.1:9778/cdn
-#    站点管理员首次登录处于改密悬挂期时会自动改密换全权 token
-ojm market setup --user admin --pass 123456 --new-pass <你的口令>
+#    种子账号 superadmin / 123456 免首登改密；若账号处于改密悬挂期会自动改密换全权 token
+ojm market setup --user superadmin --pass 123456 --new-pass <你的口令>
 
 # 2) 发包：合成 fixture（或 --real 走 ojm build --bundle）→ 确定性 tgz → 包级签名
 #    --rebuild-index 顺带重建索引
@@ -165,7 +165,7 @@ node "$CLI_PKG/bin/ojm.mjs" market verify --rebuild-index
 node "$CLI_PKG/bin/ojm.mjs" build                 # 生成 api/dist + web/dist（含 api/dist/versions.json）
 # config：platform.root 改成 api/dist（安装目标恒为 release 部署，root 必须与 --api-path 同源）
 (bin/oj serve -c config.yaml -b /api --api-path api/dist --console-log &)
-node "$CLI_PKG/bin/ojm.mjs" market setup --url http://127.0.0.1:9778 --user admin --pass 123456 --new-pass <新口令>
+node "$CLI_PKG/bin/ojm.mjs" market setup --url http://127.0.0.1:9778 --user superadmin --pass 123456 --new-pass <新口令>
 # 市场页点安装 → 首次停在「待信任」→ 核对指纹 → ojm trust confirm --task <id> → 重试 → done
 ```
 
@@ -174,7 +174,7 @@ node "$CLI_PKG/bin/ojm.mjs" market setup --url http://127.0.0.1:9778 --user admi
 | # | 现象 | 根因 / 正确做法 |
 |---|---|---|
 | ① | `oj build` 报 `tables 声明 "x" 不在 schema.yaml` | oj 用 `schema.yaml` 做表结构真源，`manifest.tables` 只是引用面；补 `schema.yaml`（`tables: {<t>: {pk, columns}}`），与迁移语句对齐 |
-| ② | `oj build` 成功但 `routes.js` 是空表、dist 里没有 handler | **只编译 `.ts` handler**；写成 `ping/api.js` 会被静默丢弃 → 改 `api.ts` |
+| ② | `oj build` 成功但 `routes.js` 是空表、dist 里没有 handler | **只编译 `.ts` handler**；写成 `ping/api.js` 会被静默丢弃 → 改 `api.ts`。另一同形坑（构建也零报错）：`api.ts` 写成裸具名导出（`export async function ping`）——oj 内省只读 **default export** 且链尾动词须在 METHODS 白名单（get/post/put/del/patch/head/options），裸导出的函数根本不在表里 → 改成 `const ping = { async get() {...} }; export default { ping }`（`ojm new --api` 骨架即此形状） |
 | ③ | `build --bundle` 报 `缺少 src/<name>/web/locales/…`（历史布局是 `web/src/<name>/locales/…`） | manifest 一旦引用 `title_key`/`label_key` 就必须双语 locale（后端方案也要）；且 key 必须**嵌套** `{"menu":{"main":"…"}}`，平铺 `"menu.main"` 查不到 |
 | ④ | 安装 POST 返回 200，但 `market/task` 恒 404 | 宿主 config 缺 `fs:` 段 → 安装器落盘被 jail 拒、失败发生在任务文件写入前；0.2.13 起模板自带，旧工程手补 |
 | ⑤ | 安装卡 `preflight`：`无法读取宿主 runtime 版本` | 安装器读 `api/dist/versions.json`；0.2.13 起 `ojm build` 双落点（旧版手抄 `web/dist/versions.json`） |
