@@ -113,6 +113,17 @@ describe("given 一个装了 oj 二进制的源工程 When 自举隔离站点", 
 		await site.cleanup();
 	});
 
+	it("then 种子管理员 = superadmin（seed 账号名=角色名口径；admin 已被解绑，用它会 403）", async () => {
+		const src = newSourceProject();
+		const { starter } = fakeStarter();
+
+		const site = await bootstrapIsolatedSite({ projectRoot: src, starter });
+
+		expect(site.admin.user).toBe("superadmin");
+		expect(site.admin.pass).toBe("123456");
+		await site.cleanup();
+	});
+
 	it("then CDN 目录在临时根内且已落好 fixture 包与索引", async () => {
 		const src = newSourceProject();
 		const { starter } = fakeStarter();
