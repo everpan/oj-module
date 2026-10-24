@@ -11,8 +11,8 @@
 > ②「`@scope/name` 作物理名」→ 改为**物理名 slug**；③「索引在服务端生成并签名」→ 改为**分片 +
 > 签名外置**；④「79 条 / 52 条 P0」→ 改为 **18 条 MVP**（合并自 v1 的 26 条）。逐条差异见 §14.3。
 >
-> 上游草稿（`202610242350-multi-publisher-cdn-brainstorm.md`、
-> `202610250002-solution-registry-requirements-brainstorm.md`）**作废**，勿据其开工。
+> 写作过程产生过两份中间草稿（一份讲多发布方×多平台的信任扩展，一份讲 registry 的功能面），
+> 结论已全部折叠进本文并**已删除原文件**——需要追溯论证时看 §14 的评审记录，不必去翻草稿。
 >
 > **文档状态（2026-10-25）**：7 个阻塞项（Q1–Q6、Q12）已逐项确认，**P0-C 可开工、P0-R 可进设计**；
 > 剩 5 项非阻塞待定项见 §15。
@@ -553,7 +553,7 @@ ojm unpublish @acme/demo@1.0.0      # ⑤ 下线（默认 yank）
 
 | 文档 | 状态 |
 |---|---|
-| 本文 `202610250010-solution-registry-requirements.md` | **权威（v2）** |
-| `202610242350-multi-publisher-cdn-brainstorm.md` | 作废（信任部分已折叠进 §5.3 / REG-R10 / REG-CS1~CS3） |
-| `202610250002-solution-registry-requirements-brainstorm.md` | 作废（功能面已被 §5/§6 取代） |
+| 本文 `202610250010-solution-registry-requirements.md` | **权威（v2.1）** |
+| `docs/plans/20261025-1500-solution-registry-task-plan.md` | 执行计划（18 条拆 5 阶段） |
 | `docs/prd/solution/ARCHITECTURE.md` | **上位约束**（§2 的「宿主提供账号面」依据其 §2.1 与 §11.1） |
+| ~~两份中间草稿~~ | **已删除**（信任扩展 + 功能面），结论已折叠进 §5.3 / REG-R10 / REG-CS1~CS3 与 §5/§6 |
