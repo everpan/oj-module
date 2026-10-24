@@ -6,6 +6,7 @@ import { useAuthStore } from "#src/store/auth";
 import { currentHeaderProvider } from "#src/store/header-provider";
 import { usePreferencesStore } from "#src/store/preferences";
 
+import { resolveApiBase } from "#src/utils/api-base";
 import { AUTH_HEADER, LANG_HEADER, REFRESH_TOKEN_PATH } from "./constants";
 import { handleErrorResponse } from "./error-response";
 import { globalProgress } from "./global-progress";
@@ -18,7 +19,8 @@ import { isAnonymousApi } from "./whitelist";
 const API_TIMEOUT = Number(import.meta.env.VITE_API_TIMEOUT) || 10000;
 
 const defaultConfig: Options = {
-	prefix: import.meta.env.VITE_API_BASE_URL,
+	// API 前缀部署期可配（window.__OJ_API_BASE__，见 utils/api-base.ts），构建期 VITE_API_BASE_URL 只是缺省
+	prefix: resolveApiBase(),
 	timeout: API_TIMEOUT,
 	retry: {
 		// 当请求失败时，最多重试次数

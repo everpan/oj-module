@@ -82,6 +82,32 @@ describe("rewriteIndexHtml：构建期把全站 URL 挪到部署前缀", () => {
 		expect(rewriteIndexHtml(html, "")).toBe(html);
 		expect(rewriteIndexHtml(html, "/")).toBe(html);
 		expect(rewriteIndexHtml(html, undefined)).toBe(html);
+		expect(rewriteIndexHtml(html, "", "")).toBe(html);
+		expect(rewriteIndexHtml(html, "/", undefined)).toBe(html);
+	});
+
+	it("apiBase：站点在根也注入 __OJ_API_BASE__（API 前缀与站点位置正交）", () => {
+		const out = rewriteIndexHtml(fixtureHtml("n0nce=="), "/", "/gw/");
+		// 站点在根：URL 不重写
+		expect(out).toContain("src=\"/assets/index-CLdhl3Qd.js\"");
+		expect(out).toContain("window.__OJ_API_BASE__=\"/gw\";");
+		// 不注入未配置的 site base
+		expect(out).not.toContain("__OJ_BASE__=");
+		expect(out.indexOf("window.__OJ_API_BASE__")).toBeLessThan(out.indexOf("type=\"importmap\""));
+	});
+
+	it("siteBase + apiBase 同时配置：两个全局一次注入", () => {
+		const out = rewriteIndexHtml(fixtureHtml("n0nce=="), "/oj", "/gw");
+		expect(out).toContain("window.__OJ_BASE__=\"/oj/\";");
+		expect(out).toContain("window.__OJ_API_BASE__=\"/gw\";");
+		// 同一 nonce script，且在 importmap 之前
+		expect(out).toMatch(/<script nonce="n0nce==">window\.__OJ_BASE__[^<]*window\.__OJ_API_BASE__[^<]*<\/script>/);
+		expect(out.indexOf("window.__OJ_API_BASE__")).toBeLessThan(out.indexOf("type=\"importmap\""));
+	});
+
+	it("apiBase 尾斜杠归一（与 ky prefix 拼接口径一致）", () => {
+		const out = rewriteIndexHtml(fixtureHtml(), "/", "https://api.example.com/gw/");
+		expect(out).toContain("window.__OJ_API_BASE__=\"https://api.example.com/gw\";");
 	});
 
 	it("siteBase=/oj：importmap / script src / link href 全部带前缀", () => {

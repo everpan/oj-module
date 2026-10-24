@@ -566,19 +566,22 @@ export async function buildBackend(projectRoot: string): Promise<boolean> {
  * dev 的 / 与 /assets/* 直接服务 shell dist，合并产物无人消费。
  *
  * siteBase 非空时（站点挂载在 `/oj` 这类子路径）改写 index.html 的站内绝对
- * URL 并注入 `window.__OJ_BASE__`（见 site-base.ts）；为空则产物与既有行为
- * 逐字节一致。
+ * URL；apiBase 非空时注入 `window.__OJ_API_BASE__`（API 挂载前缀部署期可配，
+ * 见 site-base.ts）。两者都为空则产物与既有行为逐字节一致。
  */
-function mergeShellSite(distDir: string, siteBase: string): void {
+function mergeShellSite(distDir: string, siteBase: string, apiBase: string): void {
 	const shellDist = resolveShellDist();
 	fs.rmSync(distDir, { recursive: true, force: true });
 	fs.mkdirSync(path.dirname(distDir), { recursive: true });
 	fs.cpSync(shellDist, distDir, { recursive: true });
 
 	const indexPath = path.join(distDir, "index.html");
-	if (normalizeSiteBase(siteBase) !== "/") {
-		fs.writeFileSync(indexPath, rewriteIndexHtml(fs.readFileSync(indexPath, "utf-8"), siteBase));
-		console.log(`[ojm] 站点 index.html 已按 siteBase=${normalizeSiteBase(siteBase)} 重写（子路径部署）`);
+	if (normalizeSiteBase(siteBase) !== "/" || apiBase.trim()) {
+		fs.writeFileSync(indexPath, rewriteIndexHtml(fs.readFileSync(indexPath, "utf-8"), siteBase, apiBase));
+		if (normalizeSiteBase(siteBase) !== "/")
+			console.log(`[ojm] 站点 index.html 已按 siteBase=${normalizeSiteBase(siteBase)} 重写（子路径部署）`);
+		if (apiBase.trim())
+			console.log(`[ojm] API 前缀已注入 index.html：${apiBase.trim().replace(/\/+$/, "")}（apiBase）`);
 	}
 	console.log(`[ojm] 已合并宿主站点 → ${distDir}`);
 }
@@ -608,7 +611,7 @@ export async function buildModules(
 	const baseUrl = config.baseUrl ?? "";
 
 	if (opts.mergeSite)
-		mergeShellSite(outDir, config.siteBase ?? "");
+		mergeShellSite(outDir, config.siteBase ?? "", config.apiBase ?? "");
 
 	// P4.5 / C4 / D12：构建前先过版本矩阵门禁，版本漂移直接拒绝
 	checkSharedVersions(projectRoot, resolveShellDist());

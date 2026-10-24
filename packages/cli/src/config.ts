@@ -26,6 +26,18 @@ export interface ModulesConfig {
 	 * 绝对域），`siteBase` 是**站点自身**的部署位置；两者正交，可同时使用。
 	 */
 	siteBase?: string
+	/**
+	 * API 端点前缀（如 `"/gw"`），留空 = 构建期默认 `/api`。
+	 *
+	 * oj 的 API 挂载前缀是部署期配置（`config.yaml` 的 `mounts` api 条），
+	 * 而 runtime 是预构建产物——构建期内联的默认前缀改不了。API 挂载不在
+	 * `/api` 时**必须**配它：`ojm build` 注入 `window.__OJ_API_BASE__`，
+	 * runtime 的 ky `prefix` 运行期读它（`resolveApiBase()`），端点仍一律相对。
+	 *
+	 * 与 `siteBase` 正交：站点可挂 `/oj` 而 API 恒在 `/api`；也可只换 API
+	 * 前缀而站点在根。允许绝对域（如 `https://api.example.com`）。
+	 */
+	apiBase?: string
 	modules?: ModuleConfigEntry[]
 	/**
 	 * 站点 HTML 变换模块（可选）：相对工程根的路径（`./html-transform.ts`）

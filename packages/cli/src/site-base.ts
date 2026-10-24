@@ -71,31 +71,45 @@ function rewriteImportmap(html: string, base: string): string {
 /**
  * 重写全站 index.html：
  * - importmap 映射值、`<script src>`、`<link href>` 统一加 `siteBase`；
- * - `<head>` 内注入 `window.__OJ_BASE__`（**复用 importmap 的 nonce**，
- *   CSP 是 `script-src 'self' … 'nonce-xxx'`，无 nonce 的内联脚本会被直接拦掉）。
+ * - `<head>` 内注入 `window.__OJ_BASE__` / `window.__OJ_API_BASE__`
+ *   （**复用 importmap 的 nonce**，CSP 是 `script-src 'self' … 'nonce-xxx'`，
+ *   无 nonce 的内联脚本会被直接拦掉）。
+ *
+ * 两者独立：siteBase 非根才重写 URL；apiBase 配了就注入（API 挂载前缀是
+ * 部署期事实，与站点位置正交）。都不涉及 → 逐字节原样返回（零回归）。
  */
-export function rewriteIndexHtml(html: string, siteBase: string | undefined): string {
+export function rewriteIndexHtml(html: string, siteBase: string | undefined, apiBase?: string): string {
 	const base = normalizeSiteBase(siteBase);
-	// 根路径部署：原样返回（保持与既有产物逐字节一致）
-	if (base === ROOT_BASE)
+	const api = apiBase?.trim();
+	// 根路径部署且未配 API 前缀：原样返回（保持与既有产物逐字节一致）
+	if (base === ROOT_BASE && !api)
 		return html;
 
 	const nonce = html.match(/<script type="importmap"[^>]*\snonce="([^"]*)"/)?.[1];
 	if (!nonce) {
 		throw new Error(
-			"[ojm] 站点 index.html 缺少带 nonce 的 importmap，无法注入 window.__OJ_BASE__"
+			"[ojm] 站点 index.html 缺少带 nonce 的 importmap，无法注入 window.__OJ_BASE__ / window.__OJ_API_BASE__"
 			+ "（CSP 会拦掉无 nonce 的内联脚本，子路径部署下路由 basename 会退化成 \"/\"）。"
 			+ "请确认 shell-dist 是最新构建产物（pnpm build:shell）。",
 		);
 	}
 
-	let out = rewriteImportmap(html, base);
-	// 属性值：只要以单个 "/" 开头（排除 "//host"）。importmap 是脚本正文、非属性，
-	// 上一步已处理，二者不重叠。
-	out = out.replace(/(\b(?:href|src)=")(\/[^/"][^"]*|\/")/g, (_m, attr: string, url: string) =>
-		`${attr}${withSiteBase(url, base)}`);
+	const globals: string[] = [];
+	let out = html;
+	if (base !== ROOT_BASE) {
+		out = rewriteImportmap(out, base);
+		// 属性值：只要以单个 "/" 开头（排除 "//host"）。importmap 是脚本正文、非属性，
+		// 上一步已处理，二者不重叠。
+		out = out.replace(/(\b(?:href|src)=")(\/[^/"][^"]*|\/")/g, (_m, attr: string, url: string) =>
+			`${attr}${withSiteBase(url, base)}`);
+		globals.push(`window.__OJ_BASE__=${JSON.stringify(base)};`);
+	}
+	if (api) {
+		// 归一为不以 / 结尾（ky v2 的 prefix 自剥尾斜杠，这里归一保证注入值确定）
+		globals.push(`window.__OJ_API_BASE__=${JSON.stringify(api.replace(/\/+$/, ""))};`);
+	}
 
-	const injected = `<script nonce="${nonce}">window.__OJ_BASE__=${JSON.stringify(base)};</script>`;
+	const injected = `<script nonce="${nonce}">${globals.join("")}</script>`;
 	// 注入点选在 importmap 之前：importmap 本身必须在任何 module script 之前，
 	// 而内联 classic script 是解析期同步执行，因此宿主 main 与模块 entry 读
 	// `window.__OJ_BASE__` 时它一定已经在位。

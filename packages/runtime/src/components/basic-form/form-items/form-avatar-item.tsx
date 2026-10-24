@@ -4,6 +4,7 @@ import { Avatar, Button, Upload } from "antd";
 import ImgCrop from "antd-img-crop";
 
 import { getUploadApiProvider } from "#src/store/api-provider";
+import { resolveApiBase } from "#src/utils/api-base";
 
 interface FormAvatarItemProps {
 	value?: string
@@ -19,7 +20,7 @@ export function FormAvatarItem({ value, onChange }: FormAvatarItemProps) {
 
 	// D9：未注册 uploadProvider 时回落内置 root 级 /upload + 死头（沿用现状）。
 	const uploadProvider = getUploadApiProvider();
-	const uploadAction = uploadProvider?.action ?? `${import.meta.env.VITE_API_BASE_URL}/upload`;
+	const uploadAction = uploadProvider?.action ?? `${resolveApiBase()}/upload`;
 	const uploadHeaders = uploadProvider?.headers() ?? { authorization: "authorization-text" };
 
 	return (
