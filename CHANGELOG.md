@@ -7,6 +7,20 @@
 
 ## [Unreleased]
 
+## [0.2.28] - 2026-10-24
+
+双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步升 **0.2.28**。
+
+### Added
+
+- **`web.route_prefix` 运行期消费（R1）**：`ojm build` 把模块 Web 根路径写进 `dist/web/modules.json` 的 `routePrefix`（缺省=模块名，零漂移默认）；runtime 起站按 `routePrefix` 改写模块路由根段（仅根段，子路由原样），并新增单点 getter `getModuleRoutePrefix(name)` 与 `rewriteAdminPaths` 自动跟随——后端 `apiBase` 与前端路由根解耦，模块级根路径可部署期单独指定。
+- **引用式 `solution.yaml` 一等公民（R2）**：方案契约的 `api` 段省略 `tables`/`deps` 时，视为引用打包后包内 `<module>/manifest.yaml` 的原生清单（安装期 C2-31 复核其存在、依赖装配据其回读），`ojm build --bundle` 与 `ojm api --check` 会打印「引用式方案…非漏配」标注，不再误报漏配。
+
+### Fixed
+
+- **`ojm new` 模板不再发冗余 `route_prefix: /<name>`**：模板仅保留注释态提示，避免与运行期默认（`=模块名`）叠加产生重复路径。
+- **`ojm api --docs` 落点统一**：生成的接口文档落在 `<projectRoot>/src/docs/<name>/api`，树外产出，与源码树解耦。
+
 ## [0.2.27] - 2026-10-23
 
 双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步升 **0.2.27**。
