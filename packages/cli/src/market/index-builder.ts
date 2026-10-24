@@ -35,7 +35,7 @@ export function buildIndexData(packages: IndexedPackage[]): BuiltIndex {
 	const solutions: Array<Record<string, unknown>> = [];
 	const manifests: Array<Record<string, unknown>> = [];
 	for (const name of [...byName.keys()].sort()) {
-		const list = [...byName.get(name)!].sort((a, b) => compareVersion(a.version, b.version));
+		const list = [...byName.get(name)!].sort((a, b) => compareSemver(a.version, b.version));
 		solutions.push({
 			name,
 			latest: list[list.length - 1]!.version,
@@ -59,18 +59,62 @@ export function buildIndexData(packages: IndexedPackage[]): BuiltIndex {
 	return { bundles: { solutions }, manifests };
 }
 
-/** semver 数值比较（够用的子集：只比较 `x.y.z` 的数值段，非数字段按 0 计） */
-export function compareVersion(a: string, b: string): number {
-	const pa = numeric(a);
-	const pb = numeric(b);
-	for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-		const diff = (pa[i] ?? 0) - (pb[i] ?? 0);
+/**
+ * semver 比较（与模板 `_lifecycle/semver.ts` 同源算法；prerelease 遵循 semver 2.0.0）：
+ * 数字标识符按数值、字母按字典序、数字 < 字母、标识符列表前缀相等时多者大；无 prerelease > 有 prerelease。
+ * 取代旧版纯数值比较（旧版对 `1.0.0-rc.1` 这类预发布版本按 `1.0.0.0` 处理，latest 计算失真——
+ * S2-0 红队 F 相关预发布序修复）。返回 -1|0|1，可直接作 Array.sort 比较器。
+ */
+export function compareSemver(a: string, b: string): -1 | 0 | 1 {
+	const va = splitVersion(a);
+	const vb = splitVersion(b);
+	const len = Math.max(va.core.length, vb.core.length);
+	for (let i = 0; i < len; i++) {
+		const diff = (va.core[i] ?? 0) - (vb.core[i] ?? 0);
 		if (diff !== 0)
-			return diff;
+			return diff < 0 ? -1 : 1;
 	}
-	return 0;
+	return comparePrerelease(va.pre, vb.pre);
 }
 
-function numeric(version: string): number[] {
-	return version.replace(/^v/, "").split(".").map(part => Number.parseInt(part, 10) || 0);
+/** 兼容旧名（过渡期别名；新调用请用 compareSemver） */
+export const compareVersion = compareSemver;
+
+function splitVersion(v: string): { core: number[], pre: string[] | null } {
+	const hyphen = v.indexOf("-");
+	const core = hyphen === -1 ? v : v.slice(0, hyphen);
+	const prePart = hyphen === -1 ? null : v.slice(hyphen + 1);
+	return {
+		core: core.split(".").map(seg => Number.parseInt(seg, 10) || 0),
+		pre: prePart == null ? null : prePart.split("."),
+	};
+}
+
+function comparePrerelease(a: string[] | null, b: string[] | null): -1 | 0 | 1 {
+	if (a === null || b === null) {
+		return a === b ? 0 : a === null ? 1 : -1;
+	}
+	const len = Math.max(a.length, b.length);
+	for (let i = 0; i < len; i++) {
+		const ia = a[i];
+		const ib = b[i];
+		if (ia === undefined)
+			return -1;
+		if (ib === undefined)
+			return 1;
+		const na = /^\d+$/.test(ia);
+		const nb = /^\d+$/.test(ib);
+		if (na && nb) {
+			const diff = Number.parseInt(ia, 10) - Number.parseInt(ib, 10);
+			if (diff !== 0)
+				return diff < 0 ? -1 : 1;
+		}
+		else if (na !== nb) {
+			return na ? -1 : 1;
+		}
+		else if (ia !== ib) {
+			return ia < ib ? -1 : 1;
+		}
+	}
+	return 0;
 }

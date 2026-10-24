@@ -16,7 +16,7 @@ import process from "node:process";
 import { parse as yamlParse, stringify as yamlStringify } from "yaml";
 import { indexMetaOf, recomputeIndex, resolveRebuildSeq, signIndex, stampIndexMeta } from "../publish";
 import { resolveCdnLayout } from "./cdn-layout";
-import { buildIndexData, compareVersion } from "./index-builder";
+import { buildIndexData, compareSemver } from "./index-builder";
 import { readEmbeddedManifest } from "./scan";
 
 export interface BuildIndexOptions {
@@ -133,7 +133,7 @@ function assertLatestMonotonic(existing: string | null, fresh: string): void {
 	const before = latestMapOf(existing);
 	for (const [name, version] of latestMapOf(fresh)) {
 		const prev = before.get(name);
-		if (prev !== undefined && compareVersion(version, prev) < 0)
+		if (prev !== undefined && compareSemver(version, prev) < 0)
 			throw new Error(`[ojm] ${name} 的 latest 回退（${prev} → ${version}）：REG-CS2 要求 latest 单调不降——检查是否有版本被误删或拿回了旧索引`);
 	}
 }

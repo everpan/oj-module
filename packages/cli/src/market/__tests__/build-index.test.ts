@@ -14,6 +14,7 @@ import { verifyCanonical } from "../../lifecycle/sign";
 import { INDEX_TTL_SECONDS, indexCanonical } from "../../publish";
 import { buildIndex } from "../build-index";
 import { buildFixturePackage } from "../fixture";
+import { compareSemver } from "../index-builder";
 
 const MOUNTS = "  - prefix: /api\n    api: src\n  - prefix: /cdn\n    web: ../cdn\n";
 const CONFIG = `mounts:\n${MOUNTS}server:\n  host: 127.0.0.1\n  port: 9778\n`;
@@ -45,6 +46,48 @@ async function putPackage(cdn: string, staging: string, name: string, version: s
 function readBundles(cdn: string): { solutions?: Array<Record<string, unknown>> } {
 	return yamlParse(readFileSync(join(cdn, "bundles.yaml"), "utf-8")) as { solutions?: Array<Record<string, unknown>> };
 }
+
+describe("compareSemver（S2-0 prerelease 序，与 _lifecycle/semver.ts 同源算法）", () => {
+	it("预发布数字标识符按数值：1.0.0-10 > 1.0.0-2", () => {
+		expect(compareSemver("1.0.0-10", "1.0.0-2")).toBe(1);
+		expect(compareSemver("1.0.0-2", "1.0.0-10")).toBe(-1);
+	});
+
+	it("正式版 > 预发布版：1.0.0 > 1.0.0-rc.1", () => {
+		expect(compareSemver("1.0.0", "1.0.0-rc.1")).toBe(1);
+		expect(compareSemver("1.0.0-rc.1", "1.0.0")).toBe(-1);
+	});
+
+	it("无预发布相等：1.0.0 == 1.0.0", () => {
+		expect(compareSemver("1.0.0", "1.0.0")).toBe(0);
+	});
+
+	it("缺省段视为 0：1.0 == 1.0.0", () => {
+		expect(compareSemver("1.0", "1.0.0")).toBe(0);
+	});
+
+	it("预发布字母按字典序、数字 < 字母", () => {
+		expect(compareSemver("1.0.0-alpha", "1.0.0-beta")).toBe(-1);
+		expect(compareSemver("1.0.0-rc.1", "1.0.0-zeta")).toBe(-1);
+	});
+});
+
+describe("given cdn/ 里有预发布版本 When 重建索引", () => {
+	it("then latest 取最大（含预发布序：1.0.0 > 1.0.0-rc.1 > 1.0.0-2）", async () => {
+		const { root, cdn } = newProject();
+		const staging = mkdtempSync(join(tmpdir(), "ojm-stage-"));
+		await putPackage(cdn, staging, "demo-solution", "1.0.0-rc.1");
+		await putPackage(cdn, staging, "demo-solution", "1.0.0-2");
+		await putPackage(cdn, staging, "demo-solution", "1.0.0");
+		await putPackage(cdn, staging, "demo-solution", "0.9.0");
+
+		await buildIndex({ projectRoot: root, id: KEY_ID, privateKeyPem: testPem() });
+
+		const demo = readBundles(cdn).solutions!.find(s => s.name === "demo-solution")!;
+		expect(demo.latest).toBe("1.0.0");
+		expect(demo.versions as unknown[]).toHaveLength(4);
+	});
+});
 
 describe("given cdn/ 里有多个包与多个版本 When 重建索引", () => {
 	it("then 按 semver 聚合：版本全留、latest 取最大", async () => {
