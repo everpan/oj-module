@@ -7,6 +7,15 @@
 
 ## [Unreleased]
 
+## [0.2.29] - 2026-10-24
+
+双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步升 **0.2.29**。
+
+### Fixed
+
+- **`listenOnFreePort` 重试滞留闭包（端口顺延日志与实listen漂移）**：`listen(port, cb)` 的回调登记在 server 上，EADDRINUSE 顺延重试成功触发 `listening` 时，前次失败滞留的旧闭包先以旧端口 resolve——表现为「端口 5174 已被占用，改用 5175」与「开发服务器已启动：http://localhost:5174」并存，而服务实际监听 5175（多次重启 dev 时浏览器连 5174 会落到上一个残留实例）。现手动挂/摘 `error`/`listening` 监听，并按 `server.address()` 实绑端口 resolve（`startPort=0` 的 OS 随机端口同族问题一并修正），附回归测试。
+- **宿主链角色重登记（B16：路由/菜单与真实角色同步）**：宿主无 AuthGuard，模块路由/侧栏菜单只在 Boot 期按当时角色登记一次——无 token 按演示角色 `["admin"]`、user-info 失败为空。SPA 登录不刷新页面时沿用 Boot 期旧表：admin 登录后看不到「系统管理」（须硬刷新才出现）、viewer 反而看得到完整系统菜单（点进去 404）。现 token 变化经 `hydrateUser` 定角色后重跑 `setAccessStore(getRoutes())`（runtime 新增公开导出 `useAccessStore`）；Boot 早期 token 漂移且模块未加载时登记 base 子集，由 loadAll 尾部登记覆盖。
+
 ## [0.2.28] - 2026-10-24
 
 双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步升 **0.2.28**。
