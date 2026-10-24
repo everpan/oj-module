@@ -51,7 +51,7 @@
 6. **索引必须可分片 + 必须可缓存**。运维实测：索引恒 `no-cache` 回源（`market/api.ts:209`）导致
    出网量是包体的 **200+ 倍**（12GB/日 vs 56MB/日）；3 年 6 万版本 ≈ 37MB 索引；isolate 堆上限
    `js_heap_limit_bytes: 268435456`（256MB），v1 算出的 428MB **必然 OOM**。v2 改为
-   **catalog → shard → manifest 三级 + `max-age=60, stale-while-revalidate=300`**。
+   **catalog → shard → manifest 三级 + `max-age=60, stale-while-revalidate=60`**。
 7. **索引签名必须外置**：isolate **没有通用 Ed25519 签名能力**（只有 verify），服务端无法签索引。
    v2 改为「registry 产出未签索引 → CI/运维用离线 key 签 → 回传」。这同时让索引私钥可离线保管。
 8. **私有 registry = 装了 registry 包的内网站点**，其读面默认走「registry 模块自己的 API」；若站点
@@ -203,7 +203,7 @@ ojm unpublish @acme/demo@1.0.0      # ⑤ 下线（默认 yank）
 | **REG-CS2** | **索引新鲜度（防回放/降级）** | 索引含 `seq`（单调递增）、`issued_at`、`expires_at`；客户端按源记录最大 `seq`，**回退即拒**；`latest` 单调不降。取代 v1 REG-S7 | 🆕 现状规范串只有 `index:<kind>:<sha256>`（`publish.ts:40-43`） |
 | **REG-CS3** | **规范串 v2（防跨仓库重放）** | `<registry_id>:<slug>@<version>:<sha256>`；`canon` 字段**必须校验**。取代 v1 REG-T8 | 🔧 现状 `market/verify.ts:111-123` 不校验 canon |
 | **REG-CS4** | **yank 通道（本地形态）** | `ojm market yank <name>@<version>` → 索引标 `yanked`；**新装拒、已装不动**、保留历史。该能力在 registry 上线前后同一套语义。取代 v1 REG-P5 | 🆕 现状 yank/硬删均无 |
-| **REG-CS5** | **索引三级化 + 缓存 + 分片** | ① `catalog.yaml`（包名 → 分片号，无版本明细）；② `shards/<n>.yaml`（每片 ≤2000 版本 ≈1.2MB）；③ 缓存头 `ETag` + `Cache-Control: max-age=60, stale-while-revalidate=300`。**>2000 版本自动分片**，客户端只拉命中分片。生成器（`build-index`）与读取器（市场/verify/install）**同期切换，不保留单文件双读**。取代 v1 REG-S4/S9 | 🔧 现状单文件、`no-cache` 回源（`market/api.ts:209`） |
+| **REG-CS5** | **索引三级化 + 缓存 + 分片** | ① `catalog.yaml`（包名 → 分片号，无版本明细）；② `shards/<n>.yaml`（每片 ≤2000 版本 ≈1.2MB）；③ 缓存头 `ETag` + `Cache-Control: max-age=60, stale-while-revalidate=60`。**>2000 版本自动分片**，客户端只拉命中分片。生成器（`build-index`）与读取器（市场/verify/install）**同期切换，不保留单文件双读**。取代 v1 REG-S4/S9 | 🔧 现状单文件、`no-cache` 回源（`market/api.ts:209`） |
 | **REG-CS6** | **Host 头 SSRF 修复（阻断前置）** | 删掉用请求头 `host` + `x-forwarded-proto` 补全绝对 URL 的路径，改用站点配置的 canonical origin；非法值直接报错。取代 v1 REG-C8 的前置部分 | 🔧 现有洞：`_shared/site-facade.ts:16-34` |
 
 ### 5.2 P0-R：registry 本体（12 条）
@@ -221,6 +221,9 @@ ojm unpublish @acme/demo@1.0.0      # ⑤ 下线（默认 yank）
 | **REG-R9** | **install 源切换** | `ojm install @acme/demo@1.0.0 --registry <url>`：CLI 把目录键归一为 `acme-demo` 再发请求；服务端 `/api/_platform/market/install` 增 `registry` 字段并**校验在站点白名单内**。**API_VERSION 0.1.0 → 0.2.0**，旧站点明确报「站点版本过低，不支持指定仓库」（**不静默降级**）。合并 v1 REG-I1/C1 | 🔧 现状请求体只有 `{name,version,source:"cdn"}`（`install.ts:245-249`） |
 | **REG-R10** | **集中吊销 + fail-closed** | registry 出 `revocations.yaml`（短缓存 60s）；安装前拉取，命中即拒装；**拉取失败 = fail-closed 拒装**（同时修复现有 fail-open 先例 `installer.ts:886-891`、`:915-918`）。合并 v1 REG-I3/K7/T5 | 🆕 |
 | **REG-R11** | **离线导入 + 离线回滚** | ① 离线包格式：`tgz + .sig + 索引切片 + catalog + revocations`，`ojm registry import` 导入，带 `seq` 与签名校验；② 回滚走**本地版本目录**，registry 挂也能回滚。合并 v1 REG-C9 + I6 | 🆕 回滚现状依赖 CDN 索引 |
+> **附项（Q10 裁定）**：REG-M3 的 **license 展示**提前到 P0-R，随 REG-R8 一起做
+> （`manifest-contract.ts:84` 已在白名单、`:234` 已校验 SPDX，成本近零）；来源/yank 标识仍留 P1。
+
 | **REG-R12** | **CLI 自动化契约** | 退出码契约（0/1/2 三档：成功/业务失败/用法错误）；`--json` 输出；`--dry-run`；**`OJM_REGISTRY_TOKEN` 环境变量**（CI 不跑 login）；`ojm config ls --show-origin`。取代 v1 REG-C10 | 🆕 现状只有散落 `process.exitCode = 1` |
 
 ### 5.3 降级口径（取代 v1 REG-A6 + 修正 REG-I3 的矛盾）
@@ -255,7 +258,7 @@ ojm unpublish @acme/demo@1.0.0      # ⑤ 下线（默认 yank）
 | REG-U2 | 作者后台 | 同上 |
 | REG-U3 | 搜索 | 包数 > 50 |
 | REG-U4 | 运维后台（复用 system） | 举报量起来后 |
-| REG-M3 | 市场卡片来源标识 / license 展示 | **license 成本近零，建议并入 P0-R**（`manifest-contract.ts:84` 已在白名单、`:234` 已校验 SPDX） |
+| REG-M3 | 市场卡片来源标识 / yank 标识（license 部分已按 Q10 提前到 P0-R） | 有第三方发布方后 |
 | REG-C4 | scope 绑定 registry（`@acme:registry=`） | 多源真实出现 |
 | REG-C6 | `unpublish --hard` 物理删除 | 有恶意包处置需求 |
 | REG-T6 | 版本不可变（已在 R6 内） | — |
@@ -288,7 +291,7 @@ ojm unpublish @acme/demo@1.0.0      # ⑤ 下线（默认 yank）
 | **索引体积** | 单条 Form B manifest ≈535–684B；驱动体积的是**版本数**不是包数。**每片 ≤2000 版本（≈1.2MB）**，超出自动分片 | 会审实测 |
 | **索引出网** | 现状 12GB/日 vs 包体 56MB/日（**200+ 倍**）。v2 目标：索引出网 ≤ 包体 5 倍（靠 `max-age=60` + 分片 + ETag 304） | SRE 实测 |
 | **isolate 内存** | 上限 256MB（`js_heap_limit_bytes: 268435456`）；**任何单次索引构建的中间对象必须 <100MB**。分片后单片 1.2MB 安全；v1 的「全量 37MB → 428MB 堆」路线**禁止** | 上游配置 + v1 复核 |
-| **索引新鲜度** | yank 生效 ≤60s（TTL）+ CDN purge 兜底；`seq` 回退即拒 | 与 REG-CS2/CS5 配套 |
+| **索引新鲜度** | yank **最坏 120s** 生效（`max-age=60` + `stale-while-revalidate=60`，Q8 裁定）+ CDN purge 兜底；`seq` 回退即拒 | 与 REG-CS2/CS5 配套；原写「≤60s」已更正 |
 | **安全** | 私钥**不出托管边界**（本地 / HSM / KMS）；CI 用短时效子密钥；token 只存哈希、默认短时效、可按 scope 授权；上传全链路审计；验签**硬 fail-closed 不留开关**（G4） | 供应链会审 |
 | **可用性** | **不承诺「registry 挂了不影响安装」**（v1 判断错误）：索引在缓存窗口内可装，缓存过期即拒；**回滚走本地，不受影响** | `market/api.ts:209` 恒回源 |
 | **兼容** | 物理名 slug 不变 ⇒ 安装/解包/路由/权限码链路**零改造**；契约变更只有 `install` 的 `registry` 字段（0.1.0→0.2.0） | REG-R5/R9 |
@@ -520,11 +523,10 @@ ojm unpublish @acme/demo@1.0.0      # ⑤ 下线（默认 yank）
 
 ---
 
-## 15. 拍板记录（12 项：7 项已确认 / 5 项待定）
+## 15. 拍板记录（12 项：全部已确认）
 
-> **2026-10-25 用户逐项确认了 7 个阻塞项**（Q1–Q6、Q12），全部按建议通过。
-> 剩余 5 项（Q7–Q11）**不阻塞开工**，可在 P0-C 执行期间定。
-> 本文仍是需求，不是执行计划；进设计前不改既有行为。
+> **2026-10-25 用户逐项确认了全部 12 项**（Q1–Q12），均按建议通过。
+> 本文仍是需求，不是执行计划；具体拆解见 `docs/plans/20261025-1500-solution-registry-task-plan.md`。
 
 | # | 待确认项 | 选项 | 结论 | 状态 |
 |---|---|---|---|---|
@@ -535,11 +537,11 @@ ojm unpublish @acme/demo@1.0.0      # ⑤ 下线（默认 yank）
 | **Q5** | **发布凭据落盘** | `~/.ojm/credentials.json`(0600) / 只走环境变量 | **落盘 0600**，按 registry origin 分桶；站点口令仍只走内存 | ✅ 确认 |
 | **Q6** | **MVP 范围** | 18 条 / 砍到 12 / 扩到 21 | **18 条**（P0-C 6 + P0-R 12），其余明列 26 条进 backlog | ✅ 确认 |
 | **Q12** | **私有读面授权** | 网络隔离 / 源 token / mTLS | **网络隔离**（MVP 零代码）；源 token 排 P1 | ✅ 确认 |
-| **Q7** | **`uninstall` 是否接 `--registry`** | 不接 / 接上但忽略 | 建议不接，帮助文本说明「卸载不涉及仓库」 | 待定（不阻塞） |
-| **Q8** | **索引缓存 TTL** | 60s / 更短（需 purge API）/ 更长 | 建议 60s + purge 兜底 | 待定（不阻塞） |
-| **Q9** | **G5「不动已装」是否对恶意开例外** | 维持 / 开例外（自动禁用 + 告警） | 建议开例外；属既有期门裁决变更 | 待定（不阻塞） |
-| **Q10** | **REG-I7 与 license 展示推进 P0-R** | 推进 / 维持 P1 | 建议推进（成本近零） | 待定（不阻塞） |
-| **Q11** | **既有 `--url` 改名 `--site`** | 保留 / 改名 / 并入配置移除 | 建议改名；牵动 5 个命令，可独立做 | 待定（不阻塞） |
+| **Q7** | **`uninstall` 是否接 `--registry`** | 不接 / 接上但忽略 / 接且校验来源 | **不接**；输出里打印「该包来自 X」，帮助文本说明「卸载不涉及仓库」。升「接且校验」要等 I7（见 Q10） | ✅ 确认 |
+| **Q8** | **索引缓存 TTL** | 60/60 / 60/300 / 300/600 | **`max-age=60` + `stale-while-revalidate=60`**（yank 最坏 120s）。12GB/日 的基线**未独立复现**，S2-1 开工前先量一轮「谁在拉索引」再决定是否调大 | ✅ 确认 |
+| **Q9** | **G5「不动已装」是否对恶意开例外** | 维持 / 自动禁用 / 分级 + 人工一键 | **分级**：`retire` 只挡新装；`malicious` → 强告警 + 一键禁用入口，**不自动执行**（不把裁决权交给一条清单） | ✅ 确认 |
+| **Q10** | **REG-I7 与 license 展示** | 都推 / 只推 license / 都不推 | **只推 license**（进 P0-R，随 R8）；**I7 留 P1**，因此 Q7 停在「不接」 | ✅ 确认 |
+| **Q11** | **既有 `--url` 改名 `--site`** | 保留 / 硬切改名 / 改名+弃用别名 | **硬切改名，不加别名**（符合「不做兼容兜底」）；牵动 5 个命令，**作独立 PR 单独发版说明**，不与 registry 功能混 | ✅ 确认 |
 
 ### 15.1 确认后解锁的事
 
