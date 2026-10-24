@@ -215,10 +215,13 @@ async function fetchText(fetch: FetchInitFace, url: string): Promise<string> {
 /** 索引签名算法标识（与 ojm publish 同源：Ed25519；C2-35） */
 const INDEX_SIG_ALG = "Ed25519";
 
-/** 索引规范串（P3-7，与 ojm publish indexCanonical 逐字一致）：`index:<kind>:<sha256hex>` */
-function indexCanonical(env: MarketEnv, kind: "bundles" | "manifests", text: string): string {
+/** 索引文件种类（REG-CS1 同代校验：签名覆盖 (kind, seq)） */
+type IndexKind = "bundles" | "manifests";
+
+/** 索引规范串（REG-CS1，与 ojm publish indexCanonical 逐字一致）：`index:<kind>:<seq>:<sha256hex>` */
+function indexCanonical(env: MarketEnv, kind: IndexKind, seq: number, text: string): string {
 	const sha256 = sha256Of(env)(new TextEncoder().encode(text));
-	return `index:${kind}:${sha256}`;
+	return `index:${kind}:${seq}:${sha256}`;
 }
 
 /** Ed25519 验签面（P2-3；env 注入优先，缺省回落 isolate 全局 crypto.verifyEd25519） */
@@ -227,46 +230,86 @@ function verifyEd25519Of(env: MarketEnv): (publicKey: string, msg: string, sigBa
 	return env.verifyEd25519 ?? ((pk, msg, sig) => g.crypto!.verifyEd25519!(pk, msg, sig));
 }
 
+/** 验签判定：ok + 代次（读方据此做同代校验；seq 为 null = 旧格式签名，一律拒） */
+interface IndexSigVerdict {
+	ok: boolean
+	seq: number | null
+}
+
 /**
- * 索引签名校验（P3-7，G4 fail-closed 口径）：解析 detached .sig 五字段 → 结构校验 →
- * 重算规范串 → verifyEd25519。返回 true 仅当签名完整且匹配索引字节；任一结构/验签失败 → false。
+ * 索引签名校验（REG-CS1，G4 fail-closed 口径）：解析 detached .sig 六字段 → 结构校验 →
+ * 重算规范串（含 seq）→ verifyEd25519。返回 ok 仅当签名完整、覆盖代次且匹配索引字节。
  * 注：发布方信任（key 是否在信任库/bootstrap）由安装期 TOFU/信任库承载，此处仅做完整性（防 CDN 索引篡改）。
  */
-function verifyIndexSig(env: MarketEnv, kind: "bundles" | "manifests", text: string, sigText: string): boolean {
+function verifyIndexSig(env: MarketEnv, kind: IndexKind, text: string, sigText: string): IndexSigVerdict {
 	let sig: unknown;
 	try {
 		sig = JSON.parse(sigText);
 	}
 	catch {
-		return false;
+		return { ok: false, seq: null };
 	}
-	if (!isObj(sig) || sig.alg !== INDEX_SIG_ALG || typeof sig.value !== "string" || typeof sig.public_key !== "string")
-		return false;
-	const canonical = indexCanonical(env, kind, text);
-	return verifyEd25519Of(env)(sig.public_key, canonical, sig.value);
+	if (!isObj(sig))
+		return { ok: false, seq: null };
+	const { alg, value, public_key: publicKey, seq } = sig as { alg?: unknown, value?: unknown, public_key?: unknown, seq?: unknown };
+	if (alg !== INDEX_SIG_ALG || typeof value !== "string" || typeof publicKey !== "string")
+		return { ok: false, seq: null };
+	// 签名未覆盖代次 = 旧格式（无法防「新总目录 + 旧分册」），拒
+	if (typeof seq !== "number" || !Number.isInteger(seq) || seq < 1)
+		return { ok: false, seq: null };
+	return { ok: verifyEd25519Of(env)(publicKey, indexCanonical(env, kind, seq, text), value), seq };
 }
 
-/**
- * 拉取索引并校验签名（P3-7）：索引字节先取；若同目录存在非空 `<kind>.yaml.sig` 则校验，
- * 篡改/不符/格式破损 → fail-closed 拒载（502，G4）；`.sig` 缺失或空（滚动发布期）暂容忍
- * （备案：缺失即拒的硬开关留后续 rollout）。
- * 关键：验签失败须抛出 try 之外——fail-closed 不能被「缺失容忍」的 catch 吞掉。
- */
-async function fetchIndex(env: MarketEnv, fetch: FetchInitFace, base: string, kind: "bundles" | "manifests"): Promise<string> {
-	const text = await fetchText(fetch, `${base}/${kind}.yaml`);
-	let sigText: string | null = null;
+/** 索引正文的代次（顶层 `seq`；数组形态的索引无顶层键 → null，代次只由 .sig 承载） */
+async function indexSeqOfText(text: string): Promise<number | null> {
+	const g = globalThis as { yaml?: { parse: (t: string) => Promise<unknown> } };
 	try {
-		// 先取 .sig 字节：404 / 空体 → 视为缺失（滚动发布期容忍），不进验签分支
-		const body = await fetchText(fetch, `${base}/${kind}.yaml.sig`);
-		if (body.trim() !== "")
-			sigText = body;
+		const doc = await g.yaml!.parse(text) as unknown;
+		if (doc === null || typeof doc !== "object" || Array.isArray(doc))
+			return null;
+		const seq = (doc as Record<string, unknown>).seq;
+		return typeof seq === "number" && Number.isInteger(seq) && seq >= 1 ? seq : null;
 	}
 	catch {
-		// .sig 缺失/不可读：滚动发布期容忍（不阻断索引加载），硬开关留后续 rollout
+		return null;
 	}
-	if (sigText !== null && !verifyIndexSig(env, kind, text, sigText))
-		fail(502, `市场索引 ${kind}.yaml 签名校验失败（索引被篡改或签名不符，G4 fail-closed）——请重新发布并签名`);
-	return text;
+}
+
+/** 缺签名/空签名的人话（两步可执行下一步，与 CLI `ojm market verify` 同一文案口径） */
+const SIG_MISSING_NEXT = "完整性无保障，已拒载。下一步：① 让源执行 ojm market build-index --id <publisher.id> 重建并签名；② 或对既有索引补签 ojm publish <目录> --id <publisher.id>";
+
+/**
+ * 拉取索引并校验签名（REG-CS1，G4 fail-closed）：
+ * ① `.sig` 缺失 / 空 / 不可读 → **拒载**（502）——不再「滚动发布期容忍」：
+ *    容忍等于把索引完整性交给发布方自觉，谁改了 bundles.yaml 都能装。
+ * ② 签名不符或未覆盖代次 → 拒载（index_sig_mismatch）。
+ * ③ 跨文件不同代（`seq` ≠ catalog 代次）→ 拒载（index_generation_mismatch，提示「源正在重建索引」）。
+ *
+ * `expectSeq` = 总目录（bundles.yaml）的代次；取总目录本身时省略。
+ * 关键：三类拒载都在 try 之外抛出——fail-closed 不能被任何 catch 吞掉。
+ */
+async function fetchIndex(env: MarketEnv, fetch: FetchInitFace, base: string, kind: IndexKind, expectSeq?: number): Promise<{ text: string, seq: number }> {
+	const text = await fetchText(fetch, `${base}/${kind}.yaml`);
+	let sigText: string;
+	try {
+		sigText = await fetchText(fetch, `${base}/${kind}.yaml.sig`);
+	}
+	catch {
+		fail(502, `市场索引 ${kind}.yaml 缺签名文件 ${base}/${kind}.yaml.sig（index_sig_missing）——${SIG_MISSING_NEXT}`);
+	}
+	if (sigText.trim() === "")
+		fail(502, `市场索引 ${kind}.yaml 的签名文件为空（index_sig_missing）——${SIG_MISSING_NEXT}`);
+	const verdict = verifyIndexSig(env, kind, text, sigText);
+	if (!verdict.ok || verdict.seq === null)
+		fail(502, `市场索引 ${kind}.yaml 签名校验失败（index_sig_mismatch：索引被篡改、签名不符或签名未覆盖代次，G4 fail-closed）——请重新发布并签名`);
+	const seq = verdict.seq;
+	// 正文自带代次时（键值形态索引）必须与签名一致——防止「改了正文没换签名」的半个写入
+	const textSeq = await indexSeqOfText(text);
+	if (textSeq !== null && textSeq !== seq)
+		fail(502, `市场索引 ${kind}.yaml 正文是第 ${textSeq} 代、签名是第 ${seq} 代（index_generation_mismatch）——源正在重建索引，请稍后重试`);
+	if (expectSeq !== undefined && expectSeq !== seq)
+		fail(502, `市场索引 ${kind}.yaml 是第 ${seq} 代，总目录是第 ${expectSeq} 代（index_generation_mismatch）——源正在重建索引，请稍后重试`);
+	return { text, seq };
 }
 
 /** http.user.id → username（operator 历史留痕，uninstall 端点同款反查；查询失败不阻断编排） */
@@ -336,7 +379,9 @@ interface ResolvedBundle {
  */
 async function resolveCdn(env: MarketEnv, base: string, name: string, reqVersion: string | null, fetch: FetchInitFace): Promise<ResolvedBundle> {
 	const g = globalThis as { yaml?: { parse: (text: string) => Promise<unknown> } };
-	const bundles = await g.yaml!.parse(await fetchIndex(env, fetch, base, "bundles")) as { solutions?: unknown };
+	// 总目录（catalog）= 代次真源；聚合清单必须同代才可用（REG-CS1②）
+	const catalog = await fetchIndex(env, fetch, base, "bundles");
+	const bundles = await g.yaml!.parse(catalog.text) as { solutions?: unknown };
 	const entry = (Array.isArray(bundles.solutions) ? bundles.solutions : []).find(s => isObj(s) && s.name === name);
 	if (!isObj(entry))
 		fail(404, `市场索引中无方案「${name}」（${base}/bundles.yaml）`);
@@ -345,7 +390,7 @@ async function resolveCdn(env: MarketEnv, base: string, name: string, reqVersion
 	const hit = versions.find(v => String(v.version) === version);
 	if (version === null || !isObj(hit))
 		fail(404, `市场索引中无方案「${name}」版本「${reqVersion ?? "latest"}」（${base}/bundles.yaml）`);
-	const list = await g.yaml!.parse(await fetchIndex(env, fetch, base, "manifests")) as unknown;
+	const list = await g.yaml!.parse((await fetchIndex(env, fetch, base, "manifests", catalog.seq)).text) as unknown;
 	const manifest = (Array.isArray(list) ? list : []).find(m => isObj(m) && m.name === name && String(m.version) === version);
 	if (!isObj(manifest))
 		fail(404, `聚合清单缺 ${name}@${version} 的 manifest（manifests.yaml 与 bundles.yaml 不一致，Form B 真源破损）`);
@@ -601,10 +646,10 @@ async function indexBody(env: MarketEnv): Promise<IndexRow[]> {
 	if (base === null)
 		fail(503, "未配置市场地址（framework.market_cdn_url）——卡片区显示「未配置市场地址」（PRD §5.3）");
 	const g = globalThis as { yaml?: { parse: (text: string) => Promise<unknown> } };
-	const text = await fetchIndex(env, fetchOf(env), base, "bundles");
+	const catalog = await fetchIndex(env, fetchOf(env), base, "bundles");
 	let bundles: { solutions?: unknown };
 	try {
-		bundles = await g.yaml!.parse(text) as { solutions?: unknown };
+		bundles = await g.yaml!.parse(catalog.text) as { solutions?: unknown };
 	}
 	catch {
 		fail(502, `市场索引解析失败：${base}/bundles.yaml 不是合法索引`);
@@ -613,13 +658,15 @@ async function indexBody(env: MarketEnv): Promise<IndexRow[]> {
 	const local = (await createStateStore(env.statePath)).read().solutions;
 	// manifests.yaml 单次拉取供 changelog/publisher（P2-11）：失败降级 null 不阻断索引（可用性优先）
 	let manifests: Record<string, unknown>[] = [];
+	// 同代校验必须在 try 之外：聚合清单与总目录不同代 = 源正在重建，属拒载不属降级
+	const manifestsText = (await fetchIndex(env, fetchOf(env), base, "manifests", catalog.seq)).text;
 	try {
-		const list = await g.yaml!.parse(await fetchIndex(env, fetchOf(env), base, "manifests"));
+		const list = await g.yaml!.parse(manifestsText);
 		if (Array.isArray(list))
 			manifests = list.filter(isObj);
 	}
 	catch {
-		// 降级：changelog/publisher 全 null，索引主体照常返回
+		// 降级：changelog/publisher 全 null，索引主体照常返回（解析失败是可用性问题，不是完整性问题）
 	}
 	const manifestOf = (name: string, version: string | null): Record<string, unknown> | undefined =>
 		version === null ? undefined : manifests.find(m => m.name === name && String(m.version) === version);

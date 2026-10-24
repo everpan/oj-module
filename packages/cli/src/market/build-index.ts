@@ -14,7 +14,7 @@ import path from "node:path";
 import process from "node:process";
 
 import { stringify as yamlStringify } from "yaml";
-import { recomputeIndex, signIndex } from "../publish";
+import { recomputeIndex, resolveRebuildSeq, signIndex, stampIndexSeq } from "../publish";
 import { resolveCdnLayout } from "./cdn-layout";
 import { buildIndexData } from "./index-builder";
 import { readEmbeddedManifest } from "./scan";
@@ -37,6 +37,8 @@ export interface BuildIndexResult {
 	solutions: number
 	/** 因缺内嵌 manifest 等原因被跳过的文件名 */
 	skipped: string[]
+	/** 本次重建的索引代次（REG-CS2 单调 seq） */
+	seq: number
 	checkPassed?: boolean
 }
 
@@ -78,15 +80,21 @@ export async function buildIndex(opts: BuildIndexOptions = {}): Promise<BuildInd
 	}
 
 	const data = buildIndexData(packages);
-	const bundlesText = normalizeYaml(data.bundles);
-	const manifestsText = normalizeYaml(data.manifests);
 	const bundlesPath = path.join(layout.dir, "bundles.yaml");
 	const manifestsPath = path.join(layout.dir, "manifests.yaml");
+	// REG-CS2：每次重建 = 新一代（seq 单调 +1）。代次进 bundles 正文，两份索引共用同一 seq，
+	// 并由签名锁定——读者拼「新总目录 + 旧分册」时 seq 不等即拒（红队 F2）。
+	const existing = fs.existsSync(bundlesPath) ? fs.readFileSync(bundlesPath, "utf-8") : null;
+	const fresh = normalizeYaml(data.bundles);
+	const seq = resolveRebuildSeq(existing, fresh);
+	const bundlesText = stampIndexSeq(fresh, seq);
+	// 聚合清单是数组形态（无顶层键），代次只随 .sig 携带——正文不动
+	const manifestsText = normalizeYaml(data.manifests);
 	fs.writeFileSync(bundlesPath, bundlesText);
 	fs.writeFileSync(manifestsPath, manifestsText);
 
 	// 索引是多人协作产物：格式再 determinism 一次（recomputeIndex 即 sortKeysDeep + 确定性 stringify）
-	const signed = signIndexes({ bundlesPath, manifestsPath, id: opts.id, key: opts.key, privateKeyPem: opts.privateKeyPem });
+	const signed = signIndexes({ bundlesPath, manifestsPath, seq, id: opts.id, key: opts.key, privateKeyPem: opts.privateKeyPem });
 
 	console.log(`[ojm] 索引已重建：${data.bundles.solutions.length} 个方案 / ${packages.length} 个版本（来源 ${files.length} 个 tgz）`);
 	if (skipped.length > 0)
@@ -99,6 +107,7 @@ export async function buildIndex(opts: BuildIndexOptions = {}): Promise<BuildInd
 		manifestsSigPath: signed.manifestsSigPath,
 		solutions: data.bundles.solutions.length,
 		skipped,
+		seq,
 	};
 }
 
@@ -131,15 +140,15 @@ function normalizeYaml(value: unknown): string {
 	return recomputeIndex(yamlStringify(value, { lineWidth: 0 }));
 }
 
-function signIndexes(args: { bundlesPath: string, manifestsPath: string, id?: string, key?: string, privateKeyPem?: string }): { bundlesSigPath: string, manifestsSigPath: string } {
+function signIndexes(args: { bundlesPath: string, manifestsPath: string, seq: number, id?: string, key?: string, privateKeyPem?: string }): { bundlesSigPath: string, manifestsSigPath: string } {
 	const pem = args.privateKeyPem ?? readPemFrom(args.id, args.key);
 	const keyId = args.id ?? "";
 	if (keyId === "")
 		throw new Error("[ojm] 重建索引须给签名身份：--id <publisher.id>（.sig 的发布方标识；C2-37 命名空间）");
 	const bundlesText = fs.readFileSync(args.bundlesPath, "utf-8");
 	const manifestsText = fs.readFileSync(args.manifestsPath, "utf-8");
-	const bundlesSig = signIndex("bundles", bundlesText, pem, keyId);
-	const manifestsSig = signIndex("manifests", manifestsText, pem, keyId);
+	const bundlesSig = signIndex("bundles", args.seq, bundlesText, pem, keyId);
+	const manifestsSig = signIndex("manifests", args.seq, manifestsText, pem, keyId);
 	const bundlesSigPath = `${args.bundlesPath}.sig`;
 	const manifestsSigPath = `${args.manifestsPath}.sig`;
 	fs.writeFileSync(bundlesSigPath, `${JSON.stringify(bundlesSig, null, 2)}\n`);

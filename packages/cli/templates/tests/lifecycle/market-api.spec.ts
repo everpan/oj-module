@@ -84,6 +84,8 @@ function manifestFixture(version = "0.1.0"): any {
 
 /** Form B CDN 索引（JSON 序列充当 yaml.parse 全局的载荷——解析面是 oj 全局，端点只管喂文本取对象） */
 const BUNDLES = JSON.stringify({
+	// REG-CS1/CS2：总目录（catalog）= 代次真源，所有索引签名必须与它同代
+	seq: 1,
 	generated_at: "2026-10-17T00:00:00Z",
 	cdn: CDN,
 	solutions: [
@@ -98,8 +100,14 @@ const BUNDLES = JSON.stringify({
 		{ name: "wiki", latest: "1.3.0", versions: [{ version: "1.3.0", file: "wiki-1.3.0.tgz", sha256: "x", size: 1 }] },
 	],
 });
-/** manifests.yaml 聚合数组（PRD §5.3：按 name+version 精确取） */
+/** manifests.yaml 聚合数组（PRD §5.3：按 name+version 精确取；数组形态无顶层键，代次只由 .sig 承载） */
 const MANIFESTS = JSON.stringify([manifestFixture("0.2.0"), manifestFixture("0.1.0")]);
+
+/** 基线代次 */
+const SEQ = 1;
+/** 索引签名（REG-CS1：签名覆盖 (kind, seq)——换 kind 或换代都验不过） */
+const BUNDLES_SIG = JSON.stringify(signIndex("bundles", SEQ, BUNDLES, TEST_KEY.privateKeyPem, "test.publisher"));
+const MANIFESTS_SIG = JSON.stringify(signIndex("manifests", SEQ, MANIFESTS, TEST_KEY.privateKeyPem, "test.publisher"));
 
 let root: string;
 let sharedRoot: string;
@@ -119,6 +127,11 @@ const fetchInits: unknown[] = [];
 const cdnFetch = ((url: string, init?: unknown) => {
 	fetchCalls.push(url);
 	fetchInits.push(init);
+	// 基线 CDN 已签名（REG-CS1：缺签名即拒，故所有「正常路径」夹具都必须带 .sig）
+	if (url.endsWith("bundles.yaml.sig"))
+		return { ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode(BUNDLES_SIG).buffer as ArrayBuffer };
+	if (url.endsWith("manifests.yaml.sig"))
+		return { ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode(MANIFESTS_SIG).buffer as ArrayBuffer };
 	const text = url.endsWith("bundles.yaml")
 		? BUNDLES
 		: url.endsWith("manifests.yaml")
@@ -721,21 +734,17 @@ describe("GET index（CDN bundles.yaml no-cache 拉取 + 本地 state 对比）"
 		expect(rows.find(r => r.name === "wiki")?.operator).toBeNull();
 	});
 
-	it("manifests.yaml 不可达 → changelog/publisher 降级 null，索引主体照常 200（可用性优先）", async () => {
+	it("manifests.yaml 签名不可达 → 502 index_sig_missing 不降级（REG-CS1 fail-closed：可用性不再压过完整性）", async () => {
 		const fetchFn = (async (url: string) => {
-			if (String(url).endsWith("manifests.yaml"))
+			if (String(url).endsWith("manifests.yaml.sig"))
 				return { ok: false, status: 503, arrayBuffer: async () => new ArrayBuffer(0) };
 			return cdnFetch(url);
 		}) as FetchFace;
 		const api = createMarketApi(makeEnv({ fetch: fetchFn }));
 		g.http = { user: { id: 1 } };
 		await api.index.get();
-		expect(last?.status).toBe(200);
-		const rows = last?.data as Array<{ name: string, changelog: unknown, publisher: string | null }>;
-		const demo = rows.find(r => r.name === "demo-solution");
-		expect(demo?.changelog).toBeNull();
-		expect(demo?.publisher).toBeNull();
-		expect(demo?.latest).toBe("0.2.0");
+		expect(last?.status).toBe(502);
+		expect(String(last?.msg)).toContain("index_sig_missing");
 	});
 
 	it("P2-12 bootstrap key（G3 双轨第一轨）：信任库为空 + bootstrapKey 注入 → cdn 首装直达 done 不落 needs_trust", async () => {
@@ -763,14 +772,19 @@ describe("GET index（CDN bundles.yaml no-cache 拉取 + 本地 state 对比）"
 
 	it("archive.file 邪例表（P2-11 索引投毒加固：file 逐字 <name>-<version>.tgz）→ 502 拒", async () => {
 		for (const file of ["../evil.tgz", "/etc/hosts.tgz", "other-0.1.0.tgz", "demo-solution-9.9.9.tgz"]) {
-			const bundles = JSON.stringify({ solutions: [{ name: "demo-solution", latest: "0.1.0", versions: [{ version: "0.1.0", file, sha256: SHA256, size: ARCHIVE.byteLength }] }] });
+			const bundles = JSON.stringify({ seq: 1, solutions: [{ name: "demo-solution", latest: "0.1.0", versions: [{ version: "0.1.0", file, sha256: SHA256, size: ARCHIVE.byteLength }] }] });
 			const manifests = JSON.stringify([manifestFixture("0.1.0")]);
+			// 本用例聚焦 file 逐字校验：索引照常签名，否则会先被「缺签名」挡下而测不到 file 分支
+			const bundlesSig = JSON.stringify(signIndex("bundles", 1, bundles, TEST_KEY.privateKeyPem, "test.publisher"));
+			const manifestsSig = JSON.stringify(signIndex("manifests", 1, manifests, TEST_KEY.privateKeyPem, "test.publisher"));
 			const fetchFn = (async (url: string) => {
 				const text = String(url).endsWith("bundles.yaml") ? bundles : String(url).endsWith("manifests.yaml") ? manifests : null;
 				if (text !== null)
 					return { ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode(text).buffer as ArrayBuffer };
-				if (String(url).endsWith(".yaml.sig"))
-					return { ok: true, status: 200, arrayBuffer: async () => new ArrayBuffer(0) }; // 缺失 .sig → 容忍（本用例聚焦 file 逐字校验，签名另测）
+				if (String(url).endsWith(".yaml.sig")) {
+					const sig = String(url).includes("manifests") ? manifestsSig : bundlesSig;
+					return { ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode(sig).buffer as ArrayBuffer };
+				}
 				return { ok: true, status: 200, arrayBuffer: async () => ARCHIVE.slice().buffer as ArrayBuffer }; // .tgz 下载字节
 			}) as FetchFace;
 			const api = createMarketApi(makeEnv({ fetch: fetchFn }));
@@ -790,8 +804,8 @@ describe("GET index（CDN bundles.yaml no-cache 拉取 + 本地 state 对比）"
 	});
 });
 
-describe("P3-7 索引签名校验（G4 fail-closed：署名相符采用 / 篡改拒 / 缺失容忍）", () => {
-	/** 注入 .sig 的 CDN：非空 .sig 进入验签分支；缺/空 .sig → 404（被缺失容忍 catch 吞） */
+describe("REG-CS1 索引签名强制（G4 fail-closed：署名相符采用 / 篡改拒 / 缺失即拒 / 不同代即拒）", () => {
+	/** 注入 .sig 的 CDN：非空 .sig 进验签分支；缺/空 .sig → 404（REG-CS1 起即拒，不再容忍） */
 	function signingCdnFetch(sigs: { bundles?: string, manifests?: string }): FetchFace {
 		return ((url: string, init?: unknown) => {
 			fetchCalls.push(url);
@@ -814,10 +828,33 @@ describe("P3-7 索引签名校验（G4 fail-closed：署名相符采用 / 篡改
 		}) as FetchFace;
 	}
 
+	/** 代次可配的 CDN：总目录正文 seq 与两份 .sig 的 seq 分别可设——用来造「新总目录 + 旧分册」中间态 */
+	function generationCdnFetch(args: { bundles: string, bundlesSeq: number, manifestsSeq: number }): FetchFace {
+		return ((url: string) => {
+			fetchCalls.push(url);
+			const text = String(url).endsWith("bundles.yaml")
+				? args.bundles
+				: String(url).endsWith("manifests.yaml") ? MANIFESTS : null;
+			if (text !== null)
+				return { ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode(text).buffer as ArrayBuffer };
+			if (String(url).endsWith(".yaml.sig")) {
+				const manifests = String(url).includes("manifests");
+				const kind = manifests ? "manifests" : "bundles";
+				const signed = JSON.stringify(signIndex(
+					kind,
+					manifests ? args.manifestsSeq : args.bundlesSeq,
+					manifests ? MANIFESTS : args.bundles,
+					TEST_KEY.privateKeyPem,
+					"test.publisher",
+				));
+				return { ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode(signed).buffer as ArrayBuffer };
+			}
+			return { ok: true, status: 200, arrayBuffer: async () => ARCHIVE.slice().buffer as ArrayBuffer };
+		}) as FetchFace;
+	}
+
 	it("署名相符：bundles/manifests 均带合法 .sig → index 照常 200（G4 采用，验签分支确已触发）", async () => {
-		const bundlesSig = JSON.stringify(signIndex("bundles", BUNDLES, TEST_KEY.privateKeyPem, "test.publisher"));
-		const manifestsSig = JSON.stringify(signIndex("manifests", MANIFESTS, TEST_KEY.privateKeyPem, "test.publisher"));
-		const api = createMarketApi(makeEnv({ fetch: signingCdnFetch({ bundles: bundlesSig, manifests: manifestsSig }) }));
+		const api = createMarketApi(makeEnv({ fetch: signingCdnFetch({ bundles: BUNDLES_SIG, manifests: MANIFESTS_SIG }) }));
 		g.http = { user: { id: 1 } };
 		await api.index.get();
 		expect(last?.status).toBe(200);
@@ -827,20 +864,75 @@ describe("P3-7 索引签名校验（G4 fail-closed：署名相符采用 / 篡改
 	});
 
 	it("篡改拒：.sig 对别的字节签名（非索引真值）→ verifyIndexSig 不符 → 502 fail-closed（G4 不吞）", async () => {
-		const bundlesSig = JSON.stringify(signIndex("bundles", `${BUNDLES}\n# tampered`, TEST_KEY.privateKeyPem, "test.publisher"));
-		const api = createMarketApi(makeEnv({ fetch: signingCdnFetch({ bundles: bundlesSig }) }));
+		const bundlesSig = JSON.stringify(signIndex("bundles", SEQ, `${BUNDLES}\n# tampered`, TEST_KEY.privateKeyPem, "test.publisher"));
+		const api = createMarketApi(makeEnv({ fetch: signingCdnFetch({ bundles: bundlesSig, manifests: MANIFESTS_SIG }) }));
 		g.http = { user: { id: 1 } };
 		await api.index.get();
 		expect(last?.status).toBe(502);
-		expect(String(last?.msg)).toContain("签名校验失败");
+		expect(String(last?.msg)).toContain("index_sig_mismatch");
 	});
 
-	it("缺失容忍：CDN 不回 .sig（基线 cdnFetch 口径）→ index 仍 200（滚动发布期缺口，不阻断加载）", async () => {
-		const api = createMarketApi(makeEnv({ fetch: cdnFetch }));
+	it("缺失即拒：CDN 不回 .sig → 502 index_sig_missing（不再「滚动发布期容忍」）＋两步补签提示", async () => {
+		const api = createMarketApi(makeEnv({ fetch: signingCdnFetch({}) }));
+		g.http = { user: { id: 1 } };
+		await api.index.get();
+		expect(last?.status).toBe(502);
+		expect(String(last?.msg)).toContain("index_sig_missing");
+		expect(String(last?.msg)).toContain("ojm market build-index");
+		expect(String(last?.msg)).toContain("ojm publish");
+	});
+
+	it("空 .sig 等同缺失 → 502 index_sig_missing（不能靠空体绕过）", async () => {
+		const api = createMarketApi(makeEnv({ fetch: signingCdnFetch({ bundles: "   ", manifests: "   " }) }));
+		g.http = { user: { id: 1 } };
+		await api.index.get();
+		expect(last?.status).toBe(502);
+		expect(String(last?.msg)).toContain("index_sig_missing");
+	});
+
+	it("签名未覆盖代次（旧格式无 seq）→ 502 index_sig_mismatch（不默认通过）", async () => {
+		const legacy = JSON.stringify({ alg: "Ed25519", key_id: "test.publisher", public_key: TEST_KEY.publicKeyHex, value: "AAAA", canon: "v1" });
+		const api = createMarketApi(makeEnv({ fetch: signingCdnFetch({ bundles: legacy, manifests: legacy }) }));
+		g.http = { user: { id: 1 } };
+		await api.index.get();
+		expect(last?.status).toBe(502);
+		expect(String(last?.msg)).toContain("index_sig_mismatch");
+	});
+
+	it("跨文件不同代（红队 F2）：总目录第 7 代、聚合清单签名第 6 代 → 502 index_generation_mismatch（提示源在重建，不是「被篡改」）", async () => {
+		const bundles = JSON.stringify({ seq: 7, solutions: [{ name: "demo-solution", latest: "0.1.0", versions: [{ version: "0.1.0", file: "demo-solution-0.1.0.tgz", sha256: SHA256, size: ARCHIVE.byteLength }] }] });
+		const api = createMarketApi(makeEnv({ fetch: generationCdnFetch({ bundles, bundlesSeq: 7, manifestsSeq: 6 }) }));
+		g.http = { user: { id: 1 } };
+		await api.index.get();
+		expect(last?.status).toBe(502);
+		expect(String(last?.msg)).toContain("index_generation_mismatch");
+		expect(String(last?.msg)).toContain("源正在重建索引，请稍后重试");
+		expect(String(last?.msg)).not.toContain("被篡改");
+	});
+
+	it("正文与签名不同代（改了正文没换签名）→ 502 index_generation_mismatch", async () => {
+		const bundles = JSON.stringify({ seq: 7, solutions: [{ name: "demo-solution", latest: "0.1.0", versions: [{ version: "0.1.0", file: "demo-solution-0.1.0.tgz", sha256: SHA256, size: ARCHIVE.byteLength }] }] });
+		const api = createMarketApi(makeEnv({ fetch: generationCdnFetch({ bundles, bundlesSeq: 6, manifestsSeq: 6 }) }));
+		g.http = { user: { id: 1 } };
+		await api.index.get();
+		expect(last?.status).toBe(502);
+		expect(String(last?.msg)).toContain("index_generation_mismatch");
+	});
+
+	it("同代放行：两份索引同为第 7 代 → 200（不误伤正常重建）", async () => {
+		const bundles = JSON.stringify({ seq: 7, solutions: [{ name: "demo-solution", latest: "0.1.0", versions: [{ version: "0.1.0", file: "demo-solution-0.1.0.tgz", sha256: SHA256, size: ARCHIVE.byteLength }] }] });
+		const api = createMarketApi(makeEnv({ fetch: generationCdnFetch({ bundles, bundlesSeq: 7, manifestsSeq: 7 }) }));
 		g.http = { user: { id: 1 } };
 		await api.index.get();
 		expect(last?.status).toBe(200);
-		expect((last?.data as unknown[]).length).toBeGreaterThan(0);
+	});
+
+	it("安装侧同判定：缺签名 → install 终态 failed（离线 verify 与站点安装不能一个拒一个放）", async () => {
+		const api = createMarketApi(makeEnv({ fetch: signingCdnFetch({}) }));
+		g.http = { user: { id: 1 }, body: { name: "demo-solution", version: "0.1.0", source: "cdn" } };
+		await api.install.post();
+		expect(last?.status).toBe(502);
+		expect(String(last?.msg)).toContain("index_sig_missing");
 	});
 });
 

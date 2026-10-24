@@ -145,10 +145,14 @@ describe("given 给了签名身份 When 重建索引", () => {
 		for (const kind of ["bundles", "manifests"] as const) {
 			const sigPath = join(cdn, `${kind}.yaml.sig`);
 			expect(existsSync(sigPath)).toBe(true);
-			const sig = JSON.parse(readFileSync(sigPath, "utf-8")) as { public_key: string, value: string, key_id: string };
+			const sig = JSON.parse(readFileSync(sigPath, "utf-8")) as { public_key: string, value: string, key_id: string, seq: number };
 			expect(sig.key_id).toBe(KEY_ID);
+			// REG-CS1：签名覆盖 (kind, seq)；两份索引同代
+			expect(sig.seq).toBe(1);
 			const text = readFileSync(join(cdn, `${kind}.yaml`), "utf-8");
-			expect(verifyCanonical(sig.public_key, indexCanonical(kind, text), sig.value)).toBe(true);
+			expect(verifyCanonical(sig.public_key, indexCanonical(kind, sig.seq, text), sig.value)).toBe(true);
+			// 换代即失效——同内容换 seq 签不出来
+			expect(verifyCanonical(sig.public_key, indexCanonical(kind, sig.seq + 1, text), sig.value)).toBe(false);
 		}
 	});
 });

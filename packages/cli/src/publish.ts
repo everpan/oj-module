@@ -36,16 +36,75 @@ export interface PublishResult {
 	checkPassed?: boolean
 }
 
-/** 索引规范串（P3-7）：`index:<kind>:<sha256hex>`，与验签侧（market/api.ts）逐字一致 */
-export function indexCanonical(kind: "bundles" | "manifests", text: string): string {
+/** 索引文件的种类（REG-CS1 同代校验：签名覆盖 (kind, seq)，换 kind 或换代签名即失效） */
+export type IndexKind = "bundles" | "manifests";
+
+/**
+ * 索引规范串（REG-CS1/CS2）：`index:<kind>:<seq>:<sha256hex>`，与验签侧（market/api.ts）逐字一致。
+ *
+ * **seq 为什么进串**：只签文本哈希时，「今年的总目录」与「去年的分册」各自都能验过，
+ * 读者能把两代拼起来用（红队 F2）。进串之后签名即锁定「第几代」，不同代拼不起来。
+ */
+export function indexCanonical(kind: IndexKind, seq: number, text: string): string {
 	const sha256 = createHash("sha256").update(Buffer.from(text, "utf8")).digest("hex");
-	return `index:${kind}:${sha256}`;
+	return `index:${kind}:${seq}:${sha256}`;
 }
 
-/** 对单个索引文本签名，产出 detached .sig 五字段（与 archive .sig 同构，契约 §2.11 / C2-35） */
-export function signIndex(kind: "bundles" | "manifests", text: string, privateKeyPem: string, keyId: string): { alg: string, key_id: string, public_key: string, value: string, canon: string } {
-	const value = signCanonical(privateKeyPem, indexCanonical(kind, text));
-	return { alg: SIG_ALG, key_id: keyId, public_key: exportRawPublicKeyHex(privateKeyPem), value, canon: CANON };
+/** 对单个索引文本签名，产出 detached .sig 六字段（与 archive .sig 同构，契约 §2.11 / C2-35 + seq） */
+export function signIndex(kind: IndexKind, seq: number, text: string, privateKeyPem: string, keyId: string): { alg: string, key_id: string, public_key: string, value: string, canon: string, seq: number } {
+	const value = signCanonical(privateKeyPem, indexCanonical(kind, seq, text));
+	return { alg: SIG_ALG, key_id: keyId, public_key: exportRawPublicKeyHex(privateKeyPem), value, canon: CANON, seq };
+}
+
+/** 索引代次（REG-CS2）：顶层 `seq` 字段；数组形态的索引（如聚合清单）没有顶层键 → null */
+export function indexSeqOf(text: string): number | null {
+	let doc: unknown;
+	try {
+		doc = yamlParse(text);
+	}
+	catch {
+		return null;
+	}
+	if (doc === null || typeof doc !== "object" || Array.isArray(doc))
+		return null;
+	const seq = (doc as Record<string, unknown>).seq;
+	return typeof seq === "number" && Number.isInteger(seq) && seq >= 1 ? seq : null;
+}
+
+/**
+ * 重建索引的代次（REG-CS2 单调，且保持「重建幂等」）：
+ * 盘上既有索引 == 「本次内容盖上旧代次」→ 沿用旧代次（重复跑不产生代次漂移，
+ * 否则每次重建都 +1 会让「索引只取决于目录内容」这条性质失效）；内容有变 → +1（只增不减）。
+ * 单调计数由盘上既有索引承载，不另设状态文件。
+ */
+export function resolveRebuildSeq(existing: string | null, fresh: string): number {
+	const prev = existing === null ? null : indexSeqOf(existing);
+	if (prev === null)
+		return 1;
+	return stampIndexSeq(fresh, prev) === existing ? prev : prev + 1;
+}
+
+/**
+ * 一次「重签」的代次：两份索引都无 seq → 首代 1；只有一份有 / 两份不等 → 拒
+ * （`index_generation_mismatch`：不替「新总目录 + 旧分册」签字）。
+ */
+export function resolveIndexSeq(bundlesText: string, manifestsText: string): number {
+	const bundlesSeq = indexSeqOf(bundlesText);
+	const manifestsSeq = indexSeqOf(manifestsText);
+	if (bundlesSeq === null && manifestsSeq === null)
+		return 1;
+	if (bundlesSeq === null || manifestsSeq === null || bundlesSeq !== manifestsSeq)
+		throw new Error(`[ojm] 两份索引代次不一致（index_generation_mismatch）：bundles=${bundlesSeq ?? "无"} manifests=${manifestsSeq ?? "无"}——先跑 ojm market build-index 重建同一代索引再签`);
+	return bundlesSeq;
+}
+
+/** 把 seq 盖进索引文本（parse → 置 seq → 确定性 stringify），使哈希覆盖代次 */
+export function stampIndexSeq(text: string, seq: number): string {
+	const doc = yamlParse(text);
+	if (doc === null || typeof doc !== "object" || Array.isArray(doc))
+		throw new Error("[ojm] 索引不是键值文档，无法盖章 seq（数组形态的索引由 .sig 携带代次）");
+	(doc as Record<string, unknown>).seq = seq;
+	return yamlStringify(sortKeysDeep(doc), { lineWidth: 0 });
 }
 
 /**
@@ -98,16 +157,19 @@ export function publishCommand(dir: string, opts: PublishOptions = {}): PublishR
 		throw new Error(`[ojm] 发布目录须含 bundles.yaml 与 manifests.yaml：${base}`);
 
 	// P3-6 重算索引（deterministic stringify 后写回，publish 即生效，无需额外缓存层）
-	const bundlesText = recomputeIndex(fs.readFileSync(bundlesPath, "utf8"));
+	const bundlesRaw = recomputeIndex(fs.readFileSync(bundlesPath, "utf8"));
 	const manifestsText = recomputeIndex(fs.readFileSync(manifestsPath, "utf8"));
+	// REG-CS1/CS2：代次进 bundles 正文（数组形态的 manifests 由 .sig 携带同一 seq）
+	const seq = resolveIndexSeq(bundlesRaw, manifestsText);
+	const bundlesText = stampIndexSeq(bundlesRaw, seq);
 	fs.writeFileSync(bundlesPath, bundlesText);
 	fs.writeFileSync(manifestsPath, manifestsText);
 
 	// P3-7 签名（detached .sig 侧车，与 archive .sig 同构）
 	const privateKeyPem = readPrivateKeyPem(keyFile);
 	const publicKeyHex = exportRawPublicKeyHex(privateKeyPem);
-	const bundlesSig = signIndex("bundles", bundlesText, privateKeyPem, keyId);
-	const manifestsSig = signIndex("manifests", manifestsText, privateKeyPem, keyId);
+	const bundlesSig = signIndex("bundles", seq, bundlesText, privateKeyPem, keyId);
+	const manifestsSig = signIndex("manifests", seq, manifestsText, privateKeyPem, keyId);
 	const bundlesSigPath = `${bundlesPath}.sig`;
 	const manifestsSigPath = `${manifestsPath}.sig`;
 	fs.writeFileSync(bundlesSigPath, `${JSON.stringify(bundlesSig, null, 2)}\n`);
@@ -117,8 +179,8 @@ export function publishCommand(dir: string, opts: PublishOptions = {}): PublishR
 
 	let checkPassed: boolean | undefined;
 	if (opts.check === true) {
-		const bundlesOk = verifyCanonical(publicKeyHex, indexCanonical("bundles", bundlesText), bundlesSig.value);
-		const manifestsOk = verifyCanonical(publicKeyHex, indexCanonical("manifests", manifestsText), manifestsSig.value);
+		const bundlesOk = verifyCanonical(publicKeyHex, indexCanonical("bundles", seq, bundlesText), bundlesSig.value);
+		const manifestsOk = verifyCanonical(publicKeyHex, indexCanonical("manifests", seq, manifestsText), manifestsSig.value);
 		checkPassed = bundlesOk && manifestsOk;
 		console.log(checkPassed ? "[ojm] 自检通过：索引签名与内容匹配" : "[ojm] 自检失败：索引签名与内容不匹配——请检查私钥与索引后重签");
 		if (!checkPassed)

@@ -4,6 +4,7 @@ import { existsSync, mkdtempSync, readFileSync, unlinkSync, writeFileSync } from
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { parse as yamlParse } from "yaml";
 import { indexCanonical, publishCommand, recomputeIndex, signIndex } from "../../publish";
 import { verifyCanonical } from "../sign";
 import { defaultTestKey } from "./helpers";
@@ -51,8 +52,14 @@ describe("ojm publish 索引重算 + 签名（P3-5/6/7）", () => {
 		expect(bundlesSig.alg).toBe("Ed25519");
 		expect(bundlesSig.key_id).toBe("test.publisher");
 		expect(bundlesSig.canon).toBe("v1");
-		expect(verifyCanonical(res.publicKeyHex, indexCanonical("bundles", bundlesText), bundlesSig.value)).toBe(true);
-		expect(verifyCanonical(res.publicKeyHex, indexCanonical("manifests", manifestsText), manifestsSig.value)).toBe(true);
+		// REG-CS1/CS2：签名覆盖代次——`.sig` 与索引正文各带 seq 且相等
+		expect(bundlesSig.seq).toBe(1);
+		expect(manifestsSig.seq).toBe(1);
+		expect(yamlParse(bundlesText).seq).toBe(1);
+		expect(verifyCanonical(res.publicKeyHex, indexCanonical("bundles", bundlesSig.seq, bundlesText), bundlesSig.value)).toBe(true);
+		expect(verifyCanonical(res.publicKeyHex, indexCanonical("manifests", manifestsSig.seq, manifestsText), manifestsSig.value)).toBe(true);
+		// 换代即失效（防「新总目录 + 旧分册」被拼起来用）
+		expect(verifyCanonical(res.publicKeyHex, indexCanonical("bundles", 2, bundlesText), bundlesSig.value)).toBe(false);
 	});
 
 	it("--check 离线自检通过（checkPassed === true）", () => {
@@ -64,9 +71,10 @@ describe("ojm publish 索引重算 + 签名（P3-5/6/7）", () => {
 		const a = recomputeIndex("x: 1\ny: 2\n");
 		const b = recomputeIndex("y: 2\nx: 1\n");
 		expect(a).toBe(b);
-		// 重算文本可被 signIndex 正常签出五字段
-		const sig = signIndex("bundles", a, defaultTestKey().privateKeyPem, "test.publisher");
-		expect(verifyCanonical(defaultTestKey().publicKeyHex, indexCanonical("bundles", a), sig.value)).toBe(true);
+		// 重算文本可被 signIndex 正常签出六字段（含 seq）
+		const sig = signIndex("bundles", 7, a, defaultTestKey().privateKeyPem, "test.publisher");
+		expect(sig.seq).toBe(7);
+		expect(verifyCanonical(defaultTestKey().publicKeyHex, indexCanonical("bundles", 7, a), sig.value)).toBe(true);
 	});
 
 	it("缺索引文件 → 抛错（不发半成品 .sig）", () => {

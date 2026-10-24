@@ -11,15 +11,16 @@
  * `publish.ts` 的 indexCanonical、`node:crypto` 的 sha256。
  */
 
+import type { IndexKind } from "../publish";
 import type { IndexedPackage } from "./index-builder";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import process from "node:process";
 
+import process from "node:process";
 import { parse as yamlParse } from "yaml";
 import { canonicalString, verifyCanonical } from "../lifecycle/sign";
-import { indexCanonical } from "../publish";
+import { indexCanonical, indexSeqOf } from "../publish";
 import { resolveCdnLayout } from "./cdn-layout";
 import { readTgz } from "./scan";
 
@@ -27,6 +28,12 @@ export interface VerifyCheck {
 	item: string
 	ok: boolean
 	detail: string
+	/**
+	 * 失败码（REG-CS1）：可区分的三种拒因，供安装侧与报告侧共用同一套判定。
+	 * `index_sig_missing` 缺 `.sig` / `index_sig_mismatch` 签名不符 /
+	 * `index_generation_mismatch` 跨文件不同代（运维事故，与安全事件分开报）。
+	 */
+	code?: string
 }
 
 export interface VerifyOptions {
@@ -87,6 +94,7 @@ export function verifyMarket(opts: VerifyOptions = {}): VerifyResult {
 
 	checks.push(indexSigCheck(layout.dir, "bundles", bundlesText));
 	checks.push(indexSigCheck(layout.dir, "manifests", manifestsText));
+	checks.push(generationCheck(layout.dir, [{ kind: "bundles", text: bundlesText }, { kind: "manifests", text: manifestsText }]));
 	checks.push(...migrationConsistencyCheck(layout.dir, tgzFiles));
 
 	if (opts.rebuildCheck === true)
@@ -134,21 +142,83 @@ function signatureCheck(tgzPath: string, name: string, version: string, sha256: 
 	}
 }
 
-/** 索引级验签（完整性层） */
-function indexSigCheck(cdnDir: string, kind: "bundles" | "manifests", text: string | null): VerifyCheck {
+/**
+ * 索引级验签（REG-CS1①：fail-closed，缺签名即拒，不再「运行期容忍」）。
+ *
+ * 为什么不能容忍：容忍等于把「索引完整性」交给发布方的自觉——谁改了 bundles.yaml 都能装。
+ * 规范串带 seq（`index:<kind>:<seq>:<sha256>`），故 `.sig` 必须带 seq 才可能验过。
+ */
+function indexSigCheck(cdnDir: string, kind: IndexKind, text: string | null): VerifyCheck {
 	if (text === null)
 		return { item: "索引签名", ok: true, detail: `${kind}.yaml 不存在，跳过` };
 	const sigPath = path.join(cdnDir, `${kind}.yaml.sig`);
-	if (!fs.existsSync(sigPath))
-		return { item: "索引签名", ok: true, detail: `${kind}.yaml.sig 缺失——运行期容忍（滚动发布期），完整性无保障` };
+	if (!fs.existsSync(sigPath)) {
+		return {
+			item: "索引签名",
+			ok: false,
+			code: "index_sig_missing",
+			detail: `${kind}.yaml.sig 缺失（index_sig_missing）——完整性无保障，安装侧会拒装。下一步：① ojm market build-index --id <publisher.id> 重建并签名；② 或对既有索引补签 ojm publish <目录> --id <publisher.id>`,
+		};
+	}
 	try {
-		const sig = JSON.parse(fs.readFileSync(sigPath, "utf-8")) as { public_key?: string, value?: string };
-		const ok = hasSigFields(sig) && verifyCanonical(sig.public_key, indexCanonical(kind, text), sig.value);
-		return { item: "索引签名", ok, detail: ok ? `${kind}.yaml 验签通过` : `${kind}.yaml 验签失败——索引被改或签名不符` };
+		const sig = JSON.parse(fs.readFileSync(sigPath, "utf-8")) as { public_key?: string, value?: string, seq?: unknown };
+		const seq = sigSeqOf(sig);
+		if (seq === null)
+			return { item: "索引签名", ok: false, code: "index_sig_mismatch", detail: `${kind}.yaml.sig 缺 seq 字段——签名未覆盖代次，请用当前 ojm 重签` };
+		const ok = hasSigFields(sig) && verifyCanonical(sig.public_key, indexCanonical(kind, seq, text), sig.value);
+		return {
+			item: "索引签名",
+			ok,
+			code: ok ? undefined : "index_sig_mismatch",
+			detail: ok
+				? `${kind}.yaml 验签通过（第 ${seq} 代）`
+				: `${kind}.yaml 验签失败（index_sig_mismatch）——索引被改或签名不符`,
+		};
 	}
 	catch (error) {
-		return { item: "索引签名", ok: false, detail: `${kind}.yaml.sig 不可解析：${(error as Error).message}` };
+		return { item: "索引签名", ok: false, code: "index_sig_mismatch", detail: `${kind}.yaml.sig 不可解析：${(error as Error).message}` };
 	}
+}
+
+/** `.sig` 的 seq 字段（非正整数即 null——代次必须是可比较的整数） */
+function sigSeqOf(sig: { seq?: unknown }): number | null {
+	const seq = sig.seq;
+	return typeof seq === "number" && Number.isInteger(seq) && seq >= 1 ? seq : null;
+}
+
+/**
+ * REG-CS1② 同代校验：代次真源 = **catalog**（bundles.yaml 顶层 `seq`）。
+ *
+ * 每份索引的正文 seq（若有）与 `.sig.seq` 都必须等于它——不允许把「今年的总目录」和
+ * 「去年的分册」拼起来用（红队 F2：写索引写到一半进程被杀就会留下这种中间态）。
+ * 这是**运维事故**不是安全事件，所以错误码与「签名不符」分开，提示也指向「稍后重试」。
+ */
+export function generationCheck(cdnDir: string, files: Array<{ kind: IndexKind, text: string | null }>): VerifyCheck {
+	const present = files.filter(f => f.text !== null);
+	if (present.length === 0)
+		return { item: "索引同代", ok: true, detail: "索引文件缺失，跳过同代校验" };
+	const catalog = present[0]!;
+	const catalogSeq = indexSeqOf(catalog.text!);
+	if (catalogSeq === null)
+		return { item: "索引同代", ok: false, code: "index_generation_mismatch", detail: `${catalog.kind}.yaml 缺顶层 seq 字段——用 ojm market build-index 重建索引` };
+	for (const f of present) {
+		const textSeq = indexSeqOf(f.text!);
+		if (textSeq !== null && textSeq !== catalogSeq)
+			return { item: "索引同代", ok: false, code: "index_generation_mismatch", detail: `${f.kind}.yaml 正文是第 ${textSeq} 代，catalog 是第 ${catalogSeq} 代——源正在重建索引，请稍后重试（index_generation_mismatch）` };
+		let sig: { seq?: unknown };
+		try {
+			sig = JSON.parse(fs.readFileSync(path.join(cdnDir, `${f.kind}.yaml.sig`), "utf-8")) as { seq?: unknown };
+		}
+		catch {
+			return { item: "索引同代", ok: false, code: "index_generation_mismatch", detail: `${f.kind}.yaml.sig 不可解析，无法判定代次` };
+		}
+		const sigSeq = sigSeqOf(sig);
+		if (sigSeq === null)
+			return { item: "索引同代", ok: false, code: "index_generation_mismatch", detail: `${f.kind}.yaml.sig 缺 seq，无法判定代次——请用当前 ojm 重签` };
+		if (sigSeq !== catalogSeq)
+			return { item: "索引同代", ok: false, code: "index_generation_mismatch", detail: `${f.kind}.yaml 签名是第 ${sigSeq} 代，catalog 是第 ${catalogSeq} 代——源正在重建索引，请稍后重试（index_generation_mismatch）` };
+	}
+	return { item: "索引同代", ok: true, detail: `全部索引同代（seq=${catalogSeq}）` };
 }
 
 /** manifest 结构：必填字段 + 内嵌原生清单 desc 非空（等值要求已移除，见 §9.3） */

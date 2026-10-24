@@ -1,3 +1,4 @@
+import type { VerifyCheck } from "../verify";
 // ojm market verify spec（T7）：离线验包——不起站点、不装、不要凭据。
 //
 // 钉死两条：① 四类校验分列（完整性 / 包级签 / 索引签 / 结构），篡改任一项都必须在对应项上打叉；
@@ -7,8 +8,9 @@ import { generateKeyPairSync } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
 
+import { describe, expect, it } from "vitest";
+import { signIndex } from "../../publish";
 import { buildIndex } from "../build-index";
 import { publishPackage } from "../publish";
 import { verifyMarket } from "../verify";
@@ -37,7 +39,7 @@ async function seed(): Promise<string> {
 	return root;
 }
 
-function itemOf(result: Awaited<ReturnType<typeof verifyMarket>>, name: string): { ok: boolean, detail: string } | undefined {
+function itemOf(result: Awaited<ReturnType<typeof verifyMarket>>, name: string): VerifyCheck | undefined {
 	return result.checks.find(c => c.item === name);
 }
 
@@ -93,6 +95,104 @@ describe("given 索引被手改过 When 离线验包", () => {
 		const result = await verifyMarket({ projectRoot: root });
 
 		expect(itemOf(result, "索引签名")?.ok).toBe(false);
+		// REG-CS1：篡改与缺失必须可分（前者是安全事件，后者是发布流程漏了）
+		expect(itemOf(result, "索引签名")?.code).toBe("index_sig_mismatch");
+	});
+});
+
+describe("given 索引缺 .sig When 离线验包", () => {
+	it("then 索引签名打叉 index_sig_missing 并给两步补签提示（不再「运行期容忍」）", async () => {
+		const root = await seed();
+		rmSync(join(root, "cdn", "bundles.yaml.sig"));
+		rmSync(join(root, "cdn", "manifests.yaml.sig"));
+
+		const result = await verifyMarket({ projectRoot: root });
+
+		expect(result.passed).toBe(false);
+		const item = itemOf(result, "索引签名");
+		expect(item?.ok).toBe(false);
+		expect(item?.code).toBe("index_sig_missing");
+		expect(item?.detail).toContain("ojm market build-index");
+		expect(item?.detail).toContain("ojm publish");
+	});
+});
+
+describe("given 总目录与聚合清单不是同一代 When 离线验包", () => {
+	it("then 报 index_generation_mismatch 并提示「源正在重建索引」（不是「索引被篡改」）", async () => {
+		const root = await seed();
+		// 模拟「总目录已是第 7 代、聚合清单还停在第 1 代」（写索引写到一半的中间态）
+		const bundles = join(root, "cdn", "bundles.yaml");
+		writeFileSync(bundles, readFileSync(bundles, "utf-8").replace(/^seq: \d+$/m, "seq: 7"), "utf-8");
+
+		const result = await verifyMarket({ projectRoot: root });
+
+		expect(result.passed).toBe(false);
+		const item = itemOf(result, "索引同代");
+		expect(item?.ok).toBe(false);
+		expect(item?.code).toBe("index_generation_mismatch");
+		expect(item?.detail).toContain("源正在重建索引，请稍后重试");
+		expect(item?.detail).not.toContain("被篡改");
+	});
+});
+
+describe("given 索引正文被换了代 When 离线验包", () => {
+	it("then 报 index_generation_mismatch（改了正文没换签名也不放过）", async () => {
+		const root = await seed();
+		const bundles = join(root, "cdn", "bundles.yaml");
+		writeFileSync(bundles, readFileSync(bundles, "utf-8").replace(/^seq: \d+$/m, "seq: 99"), "utf-8");
+
+		const result = await verifyMarket({ projectRoot: root });
+
+		const item = itemOf(result, "索引同代");
+		expect(item?.ok).toBe(false);
+		expect(item?.code).toBe("index_generation_mismatch");
+	});
+});
+
+describe("given 索引的 .sig 被删掉 When 离线验包", () => {
+	it("then 索引签名打叉并报 index_sig_missing（REG-CS1①：缺签即拒，不再运行期容忍）", async () => {
+		const root = await seed();
+		rmSync(join(root, "cdn", "bundles.yaml.sig"));
+
+		const result = await verifyMarket({ projectRoot: root });
+
+		expect(result.passed).toBe(false);
+		expect(itemOf(result, "索引签名")?.ok).toBe(false);
+		expect(itemOf(result, "索引签名")?.code).toBe("index_sig_missing");
+	});
+});
+
+describe("given 索引签名是旧格式（不带 seq）When 离线验包", () => {
+	it("then 索引签名打叉并报 index_sig_mismatch（签名未覆盖代次 = 挡不住新旧拼接）", async () => {
+		const root = await seed();
+		const sigPath = join(root, "cdn", "bundles.yaml.sig");
+		const sig = JSON.parse(readFileSync(sigPath, "utf-8")) as Record<string, unknown>;
+		delete sig.seq;
+		writeFileSync(sigPath, JSON.stringify(sig), "utf-8");
+
+		const result = await verifyMarket({ projectRoot: root });
+
+		expect(itemOf(result, "索引签名")?.code).toBe("index_sig_mismatch");
+	});
+});
+
+describe("given 索引写到一半留下中间态（新总目录 + 旧分册）When 离线验包", () => {
+	it("then 同代校验打叉报 index_generation_mismatch（红队 F2：拼不进，且按运维事故提示重试）", async () => {
+		const root = await seed();
+		const manifestsPath = join(root, "cdn", "manifests.yaml");
+		const manifestsText = readFileSync(manifestsPath, "utf-8");
+		// 分册用第 2 代重签（签名本身有效），总目录仍是第 1 代
+		writeFileSync(
+			join(root, "cdn", "manifests.yaml.sig"),
+			JSON.stringify(signIndex("manifests", 2, manifestsText, testPem(), KEY_ID)),
+			"utf-8",
+		);
+
+		const result = await verifyMarket({ projectRoot: root });
+
+		expect(itemOf(result, "索引同代")?.ok).toBe(false);
+		expect(itemOf(result, "索引同代")?.code).toBe("index_generation_mismatch");
+		expect(itemOf(result, "索引同代")?.detail).toContain("源正在重建索引，请稍后重试");
 	});
 });
 
