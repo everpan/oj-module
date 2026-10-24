@@ -7,25 +7,26 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { generateKeyPair } from "../keygen";
 import { CANON, canonicalString, exportRawPublicKeyHex, fingerprintOfPublicKey, SIG_ALG, signCanonical, verifyCanonical } from "../sign";
-import { FIXTURE_NAME, FIXTURE_VERSION, TRUSTED_KEY, UNKNOWN_KEY } from "./fixtures/sig/gen-signed-fixtures.mjs";
+import { FIXTURE_NAME, FIXTURE_REGISTRY_ID, FIXTURE_VERSION, TRUSTED_KEY, UNKNOWN_KEY } from "./fixtures/sig/gen-signed-fixtures.mjs";
 import { defaultTestKey, signedArchiveFor } from "./helpers";
 
 const SHA_A = "a".repeat(64);
+const REGISTRY = "test.registry";
 
-describe("规范串（C2-34）", () => {
-	it("拼接式逐字 <name>@<version>:<sha256>（契约 §2.11 格式表）", () => {
-		expect(canonicalString("demo-solution", "0.2.0", SHA_A)).toBe(`demo-solution@0.2.0:${SHA_A}`);
+describe("规范串（C2-34 / REG-CS3 v2）", () => {
+	it("拼接式逐字 <registry_id>:<name>@<version>:<sha256>（REG-CS3 v2 格式表）", () => {
+		expect(canonicalString(REGISTRY, "demo-solution", "0.2.0", SHA_A)).toBe(`test.registry:demo-solution@0.2.0:${SHA_A}`);
 	});
 
 	it("sha256 形态非法不拦截（规范化属调用方结构校验序，P2-3）", () => {
 		// 纯函数只负责拼接；sha256 合法性由 verify 段比对时保证（C2-29 fail-closed）
-		expect(canonicalString("a", "1", "short")).toBe("a@1:short");
+		expect(canonicalString(REGISTRY, "a", "1", "short")).toBe("test.registry:a@1:short");
 	});
 });
 
 describe("签验往返与对拍", () => {
 	const key = generateKeyPair();
-	const canonical = canonicalString("demo-solution", "0.1.0", SHA_A);
+	const canonical = canonicalString(REGISTRY, "demo-solution", "0.1.0", SHA_A);
 
 	it("sign → verifyCanonical 往返 true；篡改 canonical 一字符 → false", () => {
 		const sig = signCanonical(key.privateKeyPem, canonical);
@@ -59,7 +60,7 @@ describe("签验往返与对拍", () => {
 
 describe("编码面严格拒（C2-36，禁归一）", () => {
 	const key = generateKeyPair();
-	const canonical = canonicalString("demo-solution", "0.1.0", SHA_A);
+	const canonical = canonicalString(REGISTRY, "demo-solution", "0.1.0", SHA_A);
 	const good = signCanonical(key.privateKeyPem, canonical);
 
 	it("value 含 -/_（base64url 变体）→ false", () => {
@@ -101,7 +102,7 @@ describe("p2-0 夹具对拍（双端三同一锚点）", () => {
 	const SIG_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures", "sig");
 	const tgz = readFileSync(path.join(SIG_DIR, `${FIXTURE_NAME}-${FIXTURE_VERSION}.tgz`));
 	const sha256 = createHash("sha256").update(tgz).digest("hex");
-	const canonical = canonicalString(FIXTURE_NAME, FIXTURE_VERSION, sha256);
+	const canonical = canonicalString(FIXTURE_REGISTRY_ID, FIXTURE_NAME, FIXTURE_VERSION, sha256);
 	const readSig = (suffix: string) => JSON.parse(readFileSync(path.join(SIG_DIR, `${FIXTURE_NAME}-${FIXTURE_VERSION}.tgz${suffix}`), "utf8")) as { key_id: string, public_key: string, value: string, canon: string, alg: string };
 
 	it("已签/篡改/未知 key 三态经 sign.ts 验签结果与生成器一致", () => {

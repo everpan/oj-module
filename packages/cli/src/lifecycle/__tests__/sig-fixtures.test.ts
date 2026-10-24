@@ -15,6 +15,7 @@ import {
 	canonicalString,
 	fingerprintOf,
 	FIXTURE_NAME,
+	FIXTURE_REGISTRY_ID,
 	FIXTURE_VERSION,
 	generate,
 	TRUSTED_KEY,
@@ -31,6 +32,7 @@ interface Sig {
 	public_key: string
 	value: string
 	canon: string
+	registry_id: string
 }
 
 const readSig = (suffix: string): Sig => JSON.parse(readFileSync(`${tgzPath}${suffix}`, "utf8")) as Sig;
@@ -43,20 +45,21 @@ const KEY_ID = /^[a-z][a-z0-9-]*\.[a-z0-9-]+$/;
 describe("签名链夹具（P2-0）", () => {
 	const tgz = readFileSync(tgzPath);
 	const sha256 = createHash("sha256").update(tgz).digest("hex");
-	const canonical = canonicalString(FIXTURE_NAME, FIXTURE_VERSION, sha256);
+	const canonical = canonicalString(FIXTURE_REGISTRY_ID, FIXTURE_NAME, FIXTURE_VERSION, sha256);
 	const good = readSig(".sig");
 	const bad = readSig(".bad.sig");
 	const unknownSig = readSig(".unknown.sig");
 
-	it("规范串逐字 = <name>@<version>:<sha256>（契约 §2.11 格式表）", () => {
-		expect(canonical).toBe(`${FIXTURE_NAME}@${FIXTURE_VERSION}:${sha256}`);
-		expect(canonical).toMatch(/^demo-solution@0\.2\.0:[0-9a-f]{64}$/);
+	it("规范串逐字 = <registry_id>:<name>@<version>:<sha256>（REG-CS3 v2 格式表）", () => {
+		expect(canonical).toBe(`${FIXTURE_REGISTRY_ID}:${FIXTURE_NAME}@${FIXTURE_VERSION}:${sha256}`);
+		expect(canonical).toMatch(/^test\.registry:demo-solution@0\.2\.0:[0-9a-f]{64}$/);
 	});
 
-	it(".sig 五字段齐备且形态合法（alg 恒 Ed25519 / canon 恒 v1）", () => {
+	it(".sig 字段齐备且形态合法（alg 恒 Ed25519 / canon 恒 v2 / registry_id 存在）", () => {
 		for (const sig of [good, bad, unknownSig]) {
 			expect(sig.alg).toBe("Ed25519");
 			expect(sig.canon).toBe(CANON);
+			expect(sig.registry_id).toBe(FIXTURE_REGISTRY_ID);
 			expect(sig.public_key).toMatch(HEX64);
 			expect(sig.value).toMatch(STD_B64);
 			expect(sig.value).not.toMatch(/[-_]/); // 禁 base64url（§2.11 编码约束）
@@ -77,7 +80,7 @@ describe("签名链夹具（P2-0）", () => {
 		const tampered = Buffer.from(tgz);
 		tampered[100] ^= 0xFF;
 		const sha2 = createHash("sha256").update(tampered).digest("hex");
-		expect(verifyCanonicalB64(good.public_key, canonicalString(FIXTURE_NAME, FIXTURE_VERSION, sha2), good.value)).toBe(false);
+		expect(verifyCanonicalB64(good.public_key, canonicalString(FIXTURE_REGISTRY_ID, FIXTURE_NAME, FIXTURE_VERSION, sha2), good.value)).toBe(false);
 	});
 
 	it("未知 key 夹具是真实签名但 key_id 不在信任库（TOFU 场景锚点）", () => {

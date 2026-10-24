@@ -30,13 +30,15 @@ const FIXTURE_DIR = path.dirname(fileURLToPath(import.meta.url));
 
 export const FIXTURE_NAME = "demo-solution";
 export const FIXTURE_VERSION = "0.2.0";
-/** 规范串版本标记（契约 §2.11：canon 字段恒 "v1"） */
-export const CANON = "v1";
+/** 规范串版本标记（REG-CS3 v2：canon 字段恒 "v2"） */
+export const CANON = "v2";
+/** 夹具签发方 registry 身份（REG-CS3 v2 规范串首段，跨仓重放判定真源） */
+export const FIXTURE_REGISTRY_ID = "test.registry";
 const SEED_PREFIX = "ojm-lifecycle-fixture-v1:";
 
-/** 契约 v1.3 §2.11 规范串格式（逐字，P2-1 照抄实现，禁止自造分隔符） */
-export function canonicalString(name, version, sha256) {
-	return `${name}@${version}:${sha256}`;
+/** REG-CS3 v2 规范串格式（逐字：`<registry_id>:<slug>@<version>:<sha256>`） */
+export function canonicalString(registryId, slug, version, sha256) {
+	return `${registryId}:${slug}@${version}:${sha256}`;
 }
 
 /** 指纹 = sha256Hex(publicKey) 全 64 hex（契约 §2.11，UI 分组展示用） */
@@ -155,7 +157,7 @@ function tamperFirstChar(valueB64) {
 export function generate(outDir = FIXTURE_DIR) {
 	const tgz = buildTgz(fixtureMembers());
 	const sha256 = createHash("sha256").update(tgz).digest("hex");
-	const canonical = canonicalString(FIXTURE_NAME, FIXTURE_VERSION, sha256);
+	const canonical = canonicalString(FIXTURE_REGISTRY_ID, FIXTURE_NAME, FIXTURE_VERSION, sha256);
 
 	const sigOf = (keyId, publicKeyHex, privateKey) => ({
 		alg: "Ed25519",
@@ -163,6 +165,7 @@ export function generate(outDir = FIXTURE_DIR) {
 		public_key: publicKeyHex,
 		value: signCanonicalB64(privateKey, canonical),
 		canon: CANON,
+		registry_id: FIXTURE_REGISTRY_ID,
 	});
 
 	const good = sigOf(TRUSTED_KEY.key_id, TRUSTED_KEY.public_key_hex, trusted.privateKey);

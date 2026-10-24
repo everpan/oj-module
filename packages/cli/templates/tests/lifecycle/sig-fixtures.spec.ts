@@ -20,8 +20,9 @@ const KEY_ID = /^[a-z][a-z0-9-]*\.[a-z0-9-]+$/;
 const gen = (await import(GEN)) as {
 	FIXTURE_NAME: string
 	FIXTURE_VERSION: string
+	FIXTURE_REGISTRY_ID: string
 	CANON: string
-	canonicalString: (name: string, version: string, sha256: string) => string
+	canonicalString: (registryId: string, name: string, version: string, sha256: string) => string
 	fingerprintOf: (publicKeyHex: string) => string
 	generate: (outDir: string) => { sha256: string, canonical: string, paths: Record<string, string> }
 };
@@ -29,6 +30,7 @@ const gen = (await import(GEN)) as {
 describe("签名链夹具 · templates 面可达性与再生一致性（P2-0）", () => {
 	const name = gen.FIXTURE_NAME;
 	const version = gen.FIXTURE_VERSION;
+	const registryId = gen.FIXTURE_REGISTRY_ID;
 	const tgzPath = path.join(SIG_DIR, `${name}-${version}.tgz`);
 	const tgz = readFileSync(tgzPath);
 	const sha256 = createHash("sha256").update(tgz).digest("hex");
@@ -38,6 +40,7 @@ describe("签名链夹具 · templates 面可达性与再生一致性（P2-0）"
 			const sig = JSON.parse(readFileSync(`${tgzPath}${suffix}`, "utf8")) as Record<string, string>;
 			expect(sig.alg).toBe("Ed25519");
 			expect(sig.canon).toBe(gen.CANON);
+			expect(sig.registry_id).toBe(registryId);
 			expect(sig.public_key).toMatch(HEX64);
 			expect(sig.value).toMatch(STD_B64);
 			expect(sig.value).not.toMatch(/[-_]/);
@@ -46,8 +49,8 @@ describe("签名链夹具 · templates 面可达性与再生一致性（P2-0）"
 	});
 
 	it("规范串与指纹从 templates 面计算与提交产物一致（三同一的夹具侧）", () => {
-		const canonical = gen.canonicalString(name, version, sha256);
-		expect(canonical).toBe(`${name}@${version}:${sha256}`);
+		const canonical = gen.canonicalString(registryId, name, version, sha256);
+		expect(canonical).toBe(`${registryId}:${name}@${version}:${sha256}`);
 		const sig = JSON.parse(readFileSync(`${tgzPath}.sig`, "utf8")) as { public_key: string };
 		expect(gen.fingerprintOf(sig.public_key)).toMatch(HEX64);
 	});
@@ -56,7 +59,7 @@ describe("签名链夹具 · templates 面可达性与再生一致性（P2-0）"
 		const out = path.join(os.tmpdir(), `ojm-sig-fixtures-tpl-${process.pid}`);
 		const r = gen.generate(out);
 		expect(r.sha256).toBe(sha256);
-		expect(r.canonical).toBe(`${name}@${version}:${sha256}`);
+		expect(r.canonical).toBe(`${registryId}:${name}@${version}:${sha256}`);
 		expect(readFileSync(r.paths.tgz).equals(tgz)).toBe(true);
 		expect(readFileSync(r.paths.good, "utf8")).toBe(readFileSync(`${tgzPath}.sig`, "utf8"));
 		expect(readFileSync(r.paths.bad, "utf8")).toBe(readFileSync(`${tgzPath}.bad.sig`, "utf8"));

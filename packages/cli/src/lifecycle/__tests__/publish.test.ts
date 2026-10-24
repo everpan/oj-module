@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { parse as yamlParse } from "yaml";
 import { indexCanonical, publishCommand, recomputeIndex, signIndex } from "../../publish";
-import { verifyCanonical } from "../sign";
+import { CANON, verifyCanonical } from "../sign";
 import { defaultTestKey } from "./helpers";
 
 const BUNDLES = `solutions:
@@ -51,7 +51,7 @@ describe("ojm publish 索引重算 + 签名（P3-5/6/7）", () => {
 
 		expect(bundlesSig.alg).toBe("Ed25519");
 		expect(bundlesSig.key_id).toBe("test.publisher");
-		expect(bundlesSig.canon).toBe("v1");
+		expect(bundlesSig.canon).toBe(CANON);
 		// REG-CS1/CS2：签名覆盖代次——`.sig` 与索引正文各带 seq 且相等
 		expect(bundlesSig.seq).toBe(1);
 		expect(manifestsSig.seq).toBe(1);

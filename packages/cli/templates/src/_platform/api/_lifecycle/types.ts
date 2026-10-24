@@ -53,7 +53,7 @@ export interface StageResult {
  * 签名失败六码（契约 v1.3 附录 A.2，P2-3）：retryable 恒 false、零解压零落盘。
  * 文案 key = `lifecycle.stage.verifying.<code>`（双语值 P2-5 落 locales）。
  */
-export type SigCode = "sig_missing" | "sig_alg" | "sig_key" | "tampered" | "unknown_key" | "sig_format";
+export type SigCode = "sig_missing" | "sig_alg" | "sig_key" | "tampered" | "signature_mismatch" | "canon_stale" | "canon_mismatch" | "unknown_key" | "sig_format";
 
 /**
  * 安装阶段名（契约附录 A 十阶段逐字 + D11①扩展组 lock_commit + audit/done 终态）。

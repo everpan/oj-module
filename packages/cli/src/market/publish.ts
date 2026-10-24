@@ -36,6 +36,8 @@ export interface MarketPublishOptions {
 	privateKeyPem?: string
 	/** 落包后离线自检（verifyCanonical 复核包级签名） */
 	check?: boolean
+	/** 签发方 registry 身份（REG-CS3 v2 防跨仓库重放；透传 signCommand --registry-id） */
+	registryId?: string
 }
 
 export interface MarketPublishResult {
@@ -73,7 +75,7 @@ export async function publishPackage(opts: MarketPublishOptions = {}): Promise<M
 
 		let signed: ReturnType<typeof signCommand>;
 		try {
-			signed = signCommand(tgzPath, { id: opts.id, key: opts.key, privateKeyPem: opts.privateKeyPem, check: opts.check });
+			signed = signCommand(tgzPath, { id: opts.id, key: opts.key, privateKeyPem: opts.privateKeyPem, check: opts.check, registryId: opts.registryId });
 		}
 		catch (error) {
 			rollbackPackage();

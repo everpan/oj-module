@@ -400,7 +400,7 @@ describe("installCommand · file 源端到端（stub fetch：登录 → multipar
 	it("detached 侧车自动探测（P2-3，G4）：同目录 .sig 随 multipart 第二文件上传", async () => {
 		const tgz = join(dir, "demo-solution-0.1.0.tgz");
 		writeFileSync(tgz, "fake-tgz-bytes");
-		writeFileSync(`${tgz}.sig`, JSON.stringify({ alg: "Ed25519", key_id: "test.publisher", public_key: "a".repeat(64), value: "AAAA", canon: "v1" }));
+		writeFileSync(`${tgz}.sig`, JSON.stringify({ alg: "Ed25519", key_id: "test.publisher", public_key: "a".repeat(64), value: "AAAA", canon: "v2", registry_id: "test.registry" }));
 		const { fetchFn, calls } = fetchStub({
 			"/api/auth/login": () => ok({ access_token: "tok", refresh_token: "r", expires_in: 1 }),
 			"/api/_platform/market/install": () => ok({ task_id: "t1" }),

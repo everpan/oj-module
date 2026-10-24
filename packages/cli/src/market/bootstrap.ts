@@ -171,7 +171,7 @@ export async function bootstrapIsolatedSite(opts: BootstrapOptions = {}): Promis
 
 	// 6) 隔离 CDN：落 fixture 包 + 重建索引（publish/buildIndex 直落临时根）
 	mkdirSync(cdnDir, { recursive: true });
-	await publishPackage({ projectRoot: root, fixture: opts.fixture, id: keyId, privateKeyPem: publisher.privateKeyPem });
+	await publishPackage({ projectRoot: root, fixture: opts.fixture, id: keyId, privateKeyPem: publisher.privateKeyPem, registryId: "trial.registry" });
 	await buildIndex({ projectRoot: root, id: keyId, privateKeyPem: publisher.privateKeyPem });
 
 	// 7) 后端构建（dist/api + versions.json；安装与 reloading 都依赖它）

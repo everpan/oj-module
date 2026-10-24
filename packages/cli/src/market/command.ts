@@ -23,11 +23,12 @@ interface Flags {
 	user?: string
 	pass?: string
 	newPass?: string
+	registryId?: string
 	rebuildIndex?: boolean
 	check?: boolean
 }
 
-const VALUE_FLAGS = new Set(["--id", "--key", "--fixture", "--real", "--url", "--user", "--pass", "--new-pass"]);
+const VALUE_FLAGS = new Set(["--id", "--key", "--fixture", "--real", "--url", "--user", "--pass", "--new-pass", "--registry-id"]);
 
 function parseFlags(argv: string[]): Flags {
 	const flags: Flags = {};
@@ -60,6 +61,8 @@ function parseFlags(argv: string[]): Flags {
 				flags.pass = value;
 			else if (arg === "--new-pass")
 				flags.newPass = value;
+			else if (arg === "--registry-id")
+				flags.registryId = value;
 		}
 	}
 	return flags;
@@ -75,6 +78,7 @@ export async function marketCommand(sub: string, argv: string[]): Promise<void> 
 				id: flags.id,
 				key: flags.key,
 				check: flags.check,
+				registryId: flags.registryId,
 			});
 			if (flags.rebuildIndex === true)
 				await buildIndex({ id: flags.id, key: flags.key, check: flags.check });

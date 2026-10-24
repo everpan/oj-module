@@ -467,7 +467,7 @@ async function indexCard(ctx: Ctx): Promise<Record<string, unknown> | undefined>
 
 /** 发布某版本 fixture 进隔离 CDN 并重铺索引（upgrade/rollback/neg-* 的共用前置） */
 async function publishVersion(ctx: Ctx, version: string): Promise<void> {
-	await publishPackage({ projectRoot: ctx.site.root, fixture: `${ctx.name}@${version}`, id: ctx.site.publisher.keyId, privateKeyPem: ctx.site.publisher.privateKeyPem });
+	await publishPackage({ projectRoot: ctx.site.root, fixture: `${ctx.name}@${version}`, id: ctx.site.publisher.keyId, privateKeyPem: ctx.site.publisher.privateKeyPem, registryId: "trial.registry" });
 	await buildIndex({ projectRoot: ctx.site.root, id: ctx.site.publisher.keyId, privateKeyPem: ctx.site.publisher.privateKeyPem });
 }
 

@@ -23,6 +23,12 @@ export interface SignOptions {
 	 * 给了它就跳过文件存在性检查，也永远不读真 ~/.ojm/keys（计划 §3.3.1）。
 	 */
 	privateKeyPem?: string
+	/**
+	 * 签发方 registry 身份（REG-CS3 v2 防跨仓库重放）：`.sig.registry_id` 与规范串首段。
+	 * 缺省报错——旧版 ojm 未带此字段，新规范串要求显式声明归属 registry，否则无法区分
+	 * 「A 签的包被 B 的 CDN 安装」这类重放。
+	 */
+	registryId?: string
 	/** 写完离线自检（verifyCanonical 复核） */
 	check?: boolean
 	/** 测试注入；缺省 process.cwd() */
@@ -76,6 +82,10 @@ export function signCommand(tgz: string, opts: SignOptions = {}): SignResult {
 	}
 	if (!isValidKeyId(keyId))
 		throw new Error(`[ojm] key_id 命名空间非法（C2-37）：「${keyId}」`);
+	// REG-CS3 v2：规范串首段 = 签发方 registry 身份，缺省即报错（不兼容旧 ojm 未带此字段的 .sig）
+	const registryId = opts.registryId ?? "";
+	if (registryId === "")
+		throw new Error("[ojm] 缺少签发方身份：--registry-id <registry.id>（REG-CS3 v2 规范串首段，防跨仓库重放）。例如 ojm sign --registry-id oj-registry");
 	if (memoryPem === undefined) {
 		if (!fs.existsSync(keyFile!))
 			throw new Error(`[ojm] 私钥文件不存在：${keyFile}（用 ojm keygen --id ${keyId} 生成，或 --key 指定）`);
@@ -83,11 +93,11 @@ export function signCommand(tgz: string, opts: SignOptions = {}): SignResult {
 
 	const bytes = new Uint8Array(fs.readFileSync(tgz));
 	const sha256 = createHash("sha256").update(bytes).digest("hex");
-	const canonical = canonicalString(deriveName(tgz), deriveVersion(tgz), sha256);
+	const canonical = canonicalString(registryId, deriveName(tgz), deriveVersion(tgz), sha256);
 	const privateKeyPem = memoryPem ?? readPrivateKeyPem(keyFile!);
 	const value = signCanonical(privateKeyPem, canonical);
 	const publicKeyHex = exportRawPublicKeyHex(privateKeyPem);
-	const sig = { alg: SIG_ALG, key_id: keyId, public_key: publicKeyHex, value, canon: CANON };
+	const sig = { alg: SIG_ALG, key_id: keyId, public_key: publicKeyHex, value, canon: CANON, registry_id: registryId };
 	const sigPath = `${tgz}.sig`;
 	fs.writeFileSync(sigPath, `${JSON.stringify(sig, null, 2)}\n`);
 	console.log(`[ojm] 签名完成 → ${sigPath}`);

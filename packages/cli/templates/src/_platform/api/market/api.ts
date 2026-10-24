@@ -87,6 +87,8 @@ export interface MarketEnv {
 	 * manifest 声明 peerRuntime 即预检 fail-closed 拒装（C2-09 语义保持）。
 	 */
 	hostVersions?: Record<string, string>
+	/** 本站点（registry）身份（REG-CS3 v2 防跨仓库重放）：安装验签时与 .sig.registry_id 比对 */
+	registryId?: string
 }
 
 /**
@@ -643,6 +645,7 @@ async function installBody(env: MarketEnv): Promise<{ task_id: string }> {
 			// 宿主平台编排面 API 版本（C2-11 peerPlatform 比对真源；与 meta 端点 apiVersion、_platform/manifest.yaml 版本同源，手工同步）
 			hostApiVersion: API_VERSION,
 			trustPath: env.trustPath,
+			registryId: env.registryId,
 			cancel: () => {
 				if (!cancelled) {
 					void fsFace().readFile(markerPath).then(() => {

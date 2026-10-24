@@ -9,12 +9,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { verifyCanonical } from "../../lifecycle/sign";
+import { CANON, verifyCanonical } from "../../lifecycle/sign";
 import { publishPackage } from "../publish";
 
 const MOUNTS = "  - prefix: /api\n    api: src\n  - prefix: /cdn\n    web: ../cdn\n";
 const CONFIG = `mounts:\n${MOUNTS}server:\n  host: 127.0.0.1\n  port: 9778\n`;
 const KEY_ID = "demo.publisher";
+const REGISTRY_ID = "test.registry";
 
 /** Ed25519 测试身份：私钥只在内存，路径从不落盘 */
 function testIdentity(): { privateKeyPem: string, publicKeyHex: string } {
@@ -38,7 +39,7 @@ describe("given cdn/ 为空 When 发布 fixture", () => {
 		const root = newProject();
 		const identity = testIdentity();
 
-		const result = await publishPackage({ projectRoot: root, fixture: "demo-solution@0.1.0", id: KEY_ID, privateKeyPem: identity.privateKeyPem });
+		const result = await publishPackage({ projectRoot: root, fixture: "demo-solution@0.1.0", id: KEY_ID, privateKeyPem: identity.privateKeyPem, registryId: REGISTRY_ID });
 
 		expect(existsSync(result.tgzPath)).toBe(true);
 		expect(existsSync(result.sigPath)).toBe(true);
@@ -51,12 +52,12 @@ describe("given cdn/ 为空 When 发布 fixture", () => {
 		const root = newProject();
 		const identity = testIdentity();
 
-		const result = await publishPackage({ projectRoot: root, fixture: "demo-solution@0.1.0", id: KEY_ID, privateKeyPem: identity.privateKeyPem });
+		const result = await publishPackage({ projectRoot: root, fixture: "demo-solution@0.1.0", id: KEY_ID, privateKeyPem: identity.privateKeyPem, registryId: REGISTRY_ID });
 		const sig = JSON.parse(readFileSync(result.sigPath, "utf-8")) as { key_id: string, public_key: string, value: string, canon: string };
 
 		expect(sig.key_id).toBe(KEY_ID);
 		expect(sig.public_key).toBe(identity.publicKeyHex);
-		expect(sig.canon).toBe("v1");
+		expect(sig.canon).toBe(CANON);
 		expect(verifyCanonical(sig.public_key, result.canonical, sig.value)).toBe(true);
 	});
 
@@ -64,7 +65,7 @@ describe("given cdn/ 为空 When 发布 fixture", () => {
 		const root = newProject();
 		const identity = testIdentity();
 
-		await publishPackage({ projectRoot: root, fixture: "demo-solution@0.1.0", id: KEY_ID, privateKeyPem: identity.privateKeyPem });
+		await publishPackage({ projectRoot: root, fixture: "demo-solution@0.1.0", id: KEY_ID, privateKeyPem: identity.privateKeyPem, registryId: REGISTRY_ID });
 
 		const pemInCdn = readdirSync(join(root, "cdn")).filter(f => f.endsWith(".pem"));
 		expect(pemInCdn).toEqual([]);
@@ -75,7 +76,7 @@ describe("given 同 name@version 再次发布", () => {
 	it("when 内容一致 Then 幂等覆盖（sha256 不变）", async () => {
 		const root = newProject();
 		const identity = testIdentity();
-		const base = { projectRoot: root, fixture: "demo-solution@0.1.0", id: KEY_ID, privateKeyPem: identity.privateKeyPem };
+		const base = { projectRoot: root, fixture: "demo-solution@0.1.0", id: KEY_ID, privateKeyPem: identity.privateKeyPem, registryId: REGISTRY_ID };
 
 		const first = await publishPackage(base);
 		const second = await publishPackage(base);
@@ -90,7 +91,7 @@ describe("given 同 name@version 再次发布", () => {
 		const target = join(root, "cdn", "demo-solution-0.1.0.tgz");
 		writeFileSync(target, "not-a-real-tgz-but-different-bytes", "utf-8");
 
-		await expect(publishPackage({ projectRoot: root, fixture: "demo-solution@0.1.0", id: KEY_ID, privateKeyPem: identity.privateKeyPem }))
+		await expect(publishPackage({ projectRoot: root, fixture: "demo-solution@0.1.0", id: KEY_ID, privateKeyPem: identity.privateKeyPem, registryId: REGISTRY_ID }))
 			.rejects
 			.toThrow(/version/);
 	});

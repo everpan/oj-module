@@ -19,7 +19,7 @@ import path from "node:path";
 
 import process from "node:process";
 import { parse as yamlParse } from "yaml";
-import { canonicalString, verifyCanonical } from "../lifecycle/sign";
+import { CANON, canonicalString, verifyCanonical } from "../lifecycle/sign";
 import { indexCanonical, indexSeqOf, indexTimesOf } from "../publish";
 import { resolveCdnLayout } from "./cdn-layout";
 import { readTgz } from "./scan";
@@ -117,25 +117,29 @@ export function verifyMarket(opts: VerifyOptions = {}): VerifyResult {
  * 抽成类型守卫：包级与索引级两处验签共用（DRY），也顺带让调用点的布尔式保持单行
  * （本仓 indent-binary-ops 与 no-mixed-spaces-and-tabs 对续行缩进的要求互相打架）。
  */
-function hasSigFields(sig: { public_key?: string, value?: string }): sig is { public_key: string, value: string } {
+function hasSigFields(sig: { public_key?: string, value?: string, canon?: string, registry_id?: string }): sig is { public_key: string, value: string, canon?: string, registry_id?: string } {
 	return typeof sig.public_key === "string" && typeof sig.value === "string";
 }
 
-/** 包级 detached 验签：`<tgz>.sig` 的公钥复核规范串 */
+/** 包级 detached 验签：`<tgz>.sig` 的公钥复核规范串（REG-CS3 v2：`<registry_id>:<slug>@<version>:<sha256>`） */
 function signatureCheck(tgzPath: string, name: string, version: string, sha256: string): VerifyCheck {
 	const sigPath = `${tgzPath}.sig`;
 	if (!fs.existsSync(sigPath))
-		return { item: "包级签名", ok: false, detail: `${path.basename(tgzPath)}：缺 .tgz.sig（sig_missing）——用 ojm market publish 重发，或向发布方索取签名包` };
+		return { item: "包级签名", ok: false, code: "sig_missing", detail: `${path.basename(tgzPath)}：缺 .tgz.sig（sig_missing）——用 ojm market publish 重发，或向发布方索取签名包` };
 	try {
-		const sig = JSON.parse(fs.readFileSync(sigPath, "utf-8")) as { public_key?: string, value?: string };
-		const canonical = canonicalString(name, version, sha256);
+		const sig = JSON.parse(fs.readFileSync(sigPath, "utf-8")) as { public_key?: string, value?: string, canon?: string, registry_id?: string };
+		// REG-CS3：规范串版本标记必须 v2（旧 ojm 签的 v1 .sig 一律拒，不兼容，逼重签）
+		if (sig.canon !== CANON)
+			return { item: "包级签名", ok: false, code: "canon_stale", detail: `${path.basename(sigPath)}：规范串版本过旧（${sig.canon ?? "缺失"}，本机要求 ${CANON}）——请用当前 ojm 重签` };
+		const canonical = canonicalString(sig.registry_id ?? "", name, version, sha256);
 		const ok = hasSigFields(sig) && verifyCanonical(sig.public_key, canonical, sig.value);
 		return {
 			item: "包级签名",
 			ok,
+			code: ok ? undefined : "signature_mismatch",
 			detail: ok
-				? `${path.basename(tgzPath)}：Ed25519 验签通过（规范串 ${name}@${version}:${sha256.slice(0, 12)}…）`
-				: `${path.basename(tgzPath)}：验签失败——包体被改或签名不匹配`,
+				? `${path.basename(tgzPath)}：Ed25519 验签通过（registry_id ${sig.registry_id ?? "∅"}，规范串 ${sig.registry_id ?? "∅"}:${name}@${version}:${sha256.slice(0, 12)}…）`
+				: `${path.basename(tgzPath)}：验签失败（signature_mismatch）——包体被改或签名不匹配，请用当前 ojm 重签`,
 		};
 	}
 	catch (error) {

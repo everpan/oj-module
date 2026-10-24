@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { DEFAULT_KEY_ID, isValidKeyId, keygenCommand } from "../../keygen";
 import { signCommand } from "../../sign";
 import { readPrivateKeyPem } from "../keygen";
-import { fingerprintOfPublicKey, signCanonical as signCanonicalLocal, verifyCanonical } from "../sign";
+import { CANON, fingerprintOfPublicKey, signCanonical as signCanonicalLocal, verifyCanonical } from "../sign";
 
 const tmp = path.join(os.tmpdir(), `ojm-authoring-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 
@@ -66,20 +66,21 @@ describe("ojm sign 命令体（detached .sig，G4 载体）", () => {
 		fs.writeFileSync(TGZ, "demo-archive-bytes\n");
 	});
 
-	it("签名产出 .sig 五字段（alg/key_id/public_key/value/canon），且 verifyCanonical 通过", () => {
+	it("签名产出 .sig 六字段（alg/key_id/public_key/value/canon/registry_id），且 verifyCanonical 通过", () => {
 		const kp = keygenCommand({ id: "acme.market", out: path.join(tmp, "k"), yes: true, cwd: tmp });
-		const r = signCommand(TGZ, { id: "acme.market", key: kp.privateKeyPath });
+		const r = signCommand(TGZ, { id: "acme.market", key: kp.privateKeyPath, registryId: "oj-registry" });
 		const sig = JSON.parse(fs.readFileSync(r.sigPath, "utf8"));
 		expect(sig.alg).toBe("Ed25519");
 		expect(sig.key_id).toBe("acme.market");
 		expect(sig.public_key).toBe(kp.publicKeyHex);
-		expect(sig.canon).toBe("v1");
+		expect(sig.canon).toBe(CANON);
+		expect(sig.registry_id).toBe("oj-registry");
 		expect(verifyCanonical(sig.public_key, r.canonical, sig.value)).toBe(true);
 	});
 
 	it("--check 离线自检：真签名通过（checkPassed=true）；--key+--id 自定义位置", () => {
 		const kp = keygenCommand({ id: "acme.market", out: path.join(tmp, "k"), yes: true, cwd: tmp });
-		const r = signCommand(TGZ, { id: "acme.market", key: kp.privateKeyPath, check: true });
+		const r = signCommand(TGZ, { id: "acme.market", key: kp.privateKeyPath, check: true, registryId: "oj-registry" });
 		expect(r.checkPassed).toBe(true);
 	});
 

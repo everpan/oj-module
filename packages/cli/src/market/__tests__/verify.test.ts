@@ -19,6 +19,7 @@ import { verifyMarket } from "../verify";
 const MOUNTS = "  - prefix: /api\n    api: src\n  - prefix: /cdn\n    web: ../cdn\n";
 const CONFIG = `mounts:\n${MOUNTS}server:\n  host: 127.0.0.1\n  port: 9778\n`;
 const KEY_ID = "demo.publisher";
+const REGISTRY_ID = "test.registry";
 
 function testPem(): string {
 	return generateKeyPairSync("ed25519").privateKey.export({ type: "pkcs8", format: "pem" }).toString();
@@ -35,7 +36,7 @@ function newProject(): string {
 /** 落一个包并重建索引，返回工程根 */
 async function seed(): Promise<string> {
 	const root = newProject();
-	await publishPackage({ projectRoot: root, fixture: "demo-solution@0.1.0", id: KEY_ID, privateKeyPem: testPem() });
+	await publishPackage({ projectRoot: root, fixture: "demo-solution@0.1.0", id: KEY_ID, privateKeyPem: testPem(), registryId: REGISTRY_ID });
 	await buildIndex({ projectRoot: root, id: KEY_ID, privateKeyPem: testPem() });
 	return root;
 }
@@ -232,9 +233,9 @@ describe("given 索引不带时效字段（旧 ojm 产物）When 离线验包", 
 describe("given 落了 tgz 但没重建索引 When 带 --rebuild-check 验包", () => {
 	it("then 报漂移：索引缺该包条目", async () => {
 		const root = newProject();
-		await publishPackage({ projectRoot: root, fixture: "demo-solution@0.1.0", id: KEY_ID, privateKeyPem: testPem() });
+		await publishPackage({ projectRoot: root, fixture: "demo-solution@0.1.0", id: KEY_ID, privateKeyPem: testPem(), registryId: REGISTRY_ID });
 		await buildIndex({ projectRoot: root, id: KEY_ID, privateKeyPem: testPem() });
-		await publishPackage({ projectRoot: root, fixture: "other-solution@0.1.0", id: KEY_ID, privateKeyPem: testPem() });
+		await publishPackage({ projectRoot: root, fixture: "other-solution@0.1.0", id: KEY_ID, privateKeyPem: testPem(), registryId: REGISTRY_ID });
 
 		const result = await verifyMarket({ projectRoot: root, rebuildCheck: true });
 

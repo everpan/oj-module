@@ -335,18 +335,40 @@ describe("verify（stage=verifying，C2-29 sha256 fail-closed + P2-3 六码验�
 		const badNs = await verify(vfCtx({ manifest: manifest({ ...manifest().archive, signature: { ...good, key_id: "default" } }) }));
 		expect(badNs).toMatchObject({ ok: false, code: "sig_key", retryable: false });
 
-		// sig_format：public_key 非 64hex / value 含 -（base64url 特征字符）/ canon 非 v1
+		// sig_format：public_key 非 64hex / value 含 -（base64url 特征字符）
 		const badKey = await verify(vfCtx({ manifest: manifest({ ...manifest().archive, signature: { ...good, public_key: "abc" } }) }));
 		expect(badKey).toMatchObject({ ok: false, code: "sig_format" });
 		const b64url = await verify(vfCtx({ manifest: manifest({ ...manifest().archive, signature: { ...good, value: `${good.value.slice(0, 10)}-${good.value.slice(11)}` } }) }));
 		expect(b64url).toMatchObject({ ok: false, code: "sig_format" });
-		const badCanon = await verify(vfCtx({ manifest: manifest({ ...manifest().archive, signature: { ...good, canon: "v2" } }) }));
-		expect(badCanon).toMatchObject({ ok: false, code: "sig_format" });
+		// canon_stale：v1 旧规范串（REG-CS3 不兼容旧 ojm 签的 .sig，一律逼重签）
+		const staleCanon = await verify(vfCtx({ manifest: manifest({ ...manifest().archive, signature: { ...good, canon: "v1" } }) }));
+		expect(staleCanon).toMatchObject({ ok: false, code: "canon_stale" });
 
-		// tampered：value 首字符翻转（仍是合法标准 base64）
+		// signature_mismatch：value 首字符翻转（仍是合法标准 base64）
 		const tamperedValue = (good.value[0] === "A" ? "B" : "A") + good.value.slice(1);
 		const tampered = await verify(vfCtx({ manifest: manifest({ ...manifest().archive, signature: { ...good, value: tamperedValue } }) }));
-		expect(tampered).toMatchObject({ ok: false, code: "tampered", retryable: false });
+		expect(tampered).toMatchObject({ ok: false, code: "signature_mismatch", retryable: false });
+	});
+
+	it("rEG-CS3 canon_mismatch：包归属 registry 与本站不符（跨仓重放拒装）", async () => {
+		await seed();
+		const good = signedArchiveFor(BYTES, "demo-solution", "0.1.0").sig;
+		// 本站身份 oj-registry，但包是 test.registry 签发的 → 跨仓重放
+		const r = await verify(vfCtx({
+			registryId: "oj-registry",
+			manifest: manifest({ ...manifest().archive, signature: good }),
+		}));
+		expect(r).toMatchObject({ ok: false, code: "canon_mismatch" });
+		expect(r.message).toContain("oj-registry");
+		// 同身份则放行（回归：归属一致不误伤）
+		const okSame = await verify(vfCtx({
+			registryId: "test.registry",
+			manifest: manifest({ ...manifest().archive, signature: good }),
+		}));
+		expect(okSame).toMatchObject({ ok: true });
+		// 未配置 registryId = 跳过跨仓比对（仅验签完整性，向后兼容）
+		const okUnset = await verify(vfCtx({ manifest: manifest({ ...manifest().archive, signature: good }) }));
+		expect(okUnset).toMatchObject({ ok: true });
 	});
 
 	it("sig_key：已信任 key_id 但包内公钥与库绑定不一致（首次绑定不可改族）", async () => {
@@ -370,7 +392,7 @@ describe("verify（stage=verifying，C2-29 sha256 fail-closed + P2-3 六码验�
 		expect(await fsp.readdir(staging)).toEqual([FILE]);
 	});
 
-	it("双层语义分码：验签面抛错 → sig_format（上游 verifyEd25519: 前缀）；返回 false → tampered", async () => {
+	it("双层语义分码：验签面抛错 → sig_format（上游 verifyEd25519: 前缀）；返回 false → signature_mismatch", async () => {
 		await seed();
 		const throwing = await verify(vfCtx({
 			verifyEd25519: () => { throw new Error("verifyEd25519: signature not base64"); },
@@ -378,7 +400,7 @@ describe("verify（stage=verifying，C2-29 sha256 fail-closed + P2-3 六码验�
 		expect(throwing).toMatchObject({ ok: false, code: "sig_format" });
 		expect(throwing.message).toContain("verifyEd25519: ");
 		const falseFace = await verify(vfCtx({ verifyEd25519: () => false }));
-		expect(falseFace).toMatchObject({ ok: false, code: "tampered" });
+		expect(falseFace).toMatchObject({ ok: false, code: "signature_mismatch" });
 	});
 
 	it("原语/信任库不可得：验签面缺失或 trustPath 缺失 → fail-closed 拒装（无静默跳过）", async () => {

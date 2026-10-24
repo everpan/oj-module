@@ -79,6 +79,8 @@ export interface InstallRequest extends InstallContext {
 	trustPath?: string
 	/** Ed25519 验签面（P2-3；缺省回落运行时全局 crypto.verifyEd25519，同 verify.ts） */
 	verifyEd25519?: (publicKey: string, msg: string, sigBase64: string) => boolean
+	/** 本站点（registry）身份（REG-CS3 v2 防跨仓库重放）；安装验签时与 .sig.registry_id 比对 */
+	registryId?: string
 	/** 迁移账本 head（rollbackGuard 真源；缺省跳过禁降版判定，同 migrate.ts） */
 	ledgerHead?: number | bigint | null
 	/** 注册快照查询（smoke；缺省回落 queryRegistered 的 db 全局） */

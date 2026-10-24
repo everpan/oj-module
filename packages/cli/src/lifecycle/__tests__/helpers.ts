@@ -26,13 +26,15 @@ export function nodeVerifyEd25519(publicKeyHex: string, msg: string, sigB64: str
 	}
 }
 
-/** detached 侧车 / Form B archive.signature 的字段形状（契约 §2.11 / C2-35） */
+/** detached 侧车 / Form B archive.signature 的字段形状（契约 §2.11 / C2-35，REG-CS3 增 registry_id） */
 export interface SigFile {
 	alg: string
 	key_id: string
 	public_key: string
 	value: string
 	canon: string
+	/** 签发方 registry 身份（REG-CS3 v2 规范串首段；跨仓重放判定真源） */
+	registry_id: string
 }
 
 export interface SignedArchive {
@@ -54,15 +56,17 @@ export function defaultTestKey(): KeyPair {
 }
 
 /**
- * 对 tgz 字节签名：sha256(bytes) → 规范串 → Ed25519 → .sig 五字段。
- * `keyPair` 缺省 = defaultTestKey()；传第二个 keyPair 即「未知发布方」场景。
+ * 对 tgz 字节签名：sha256(bytes) → 规范串（REG-CS3 v2：`<registry_id>:<slug>@<version>:<sha256>`）
+ * → Ed25519 → .sig 五字段 + registry_id。
+ * `keyPair` 缺省 = defaultTestKey()；传第二个 keyPair 即「未知发布方」场景；`registryId` 缺省 = "test.registry"。
  */
-export function signedArchiveFor(tgz: Uint8Array, name: string, version: string, opts?: { keyPair?: KeyPair, keyId?: string }): SignedArchive {
+export function signedArchiveFor(tgz: Uint8Array, name: string, version: string, opts?: { keyPair?: KeyPair, keyId?: string, registryId?: string }): SignedArchive {
 	const keyPair = opts?.keyPair ?? defaultTestKey();
+	const registryId = opts?.registryId ?? "test.registry";
 	const sha256 = createHash("sha256").update(tgz).digest("hex");
-	const value = signCanonical(keyPair.privateKeyPem, canonicalString(name, version, sha256));
+	const value = signCanonical(keyPair.privateKeyPem, canonicalString(registryId, name, version, sha256));
 	return {
-		sig: { alg: SIG_ALG, key_id: opts?.keyId ?? "test.publisher", public_key: keyPair.publicKeyHex, value, canon: CANON },
+		sig: { alg: SIG_ALG, key_id: opts?.keyId ?? "test.publisher", public_key: keyPair.publicKeyHex, value, canon: CANON, registry_id: registryId },
 		keyId: opts?.keyId ?? "test.publisher",
 		publicKeyHex: keyPair.publicKeyHex,
 		fingerprint: fingerprintOfPublicKey(keyPair.publicKeyHex),

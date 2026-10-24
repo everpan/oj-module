@@ -26,6 +26,12 @@ export interface VerifyContext extends InstallContext {
 	trustPath?: string
 	/** Ed25519 验签面；缺省回落 globalThis.crypto.verifyEd25519 */
 	verifyEd25519?: VerifyEd25519Face
+	/**
+	 * 本站点（registry）身份（REG-CS3 v2 防跨仓库重放）：签名 .sig.registry_id 必须与之一致，
+	 * 否则视为「A 签的包被 B 的 CDN 安装」→ canon_mismatch 拒装。缺省 undefined = 不启用跨仓比对
+	 * （仅验签完整性），由站点装配时填入自身 registry id 才生效。
+	 */
+	registryId?: string
 }
 
 export interface StageResult {
@@ -41,8 +47,8 @@ export interface StageResult {
 const HEX64 = /^[0-9a-f]{64}$/;
 /** 标准 base64（含 -/_ 即 base64url，一律 sig_format，禁归一） */
 const STD_B64 = /^[A-Z0-9+/]+={0,2}$/i;
-/** 规范串版本标记（契约 §2.11；不认识即 sig_format） */
-const CANON = "v1";
+/** 规范串版本标记（REG-CS3 v2；不认识即 canon_stale 拒装） */
+const CANON = "v2";
 
 interface Signature {
 	alg: unknown
@@ -50,6 +56,8 @@ interface Signature {
 	public_key: unknown
 	value: unknown
 	canon?: unknown
+	/** 签发方 registry 身份（REG-CS3 v2 规范串首段，跨仓重放判定真源） */
+	registry_id?: unknown
 }
 
 /** 签名失败结果统一出口（六码：retryable 恒 false、零解压零落盘；unknown_key 附 needsTrust） */
@@ -160,9 +168,9 @@ async function verifySignature(ctx: VerifyContext, bytes: Uint8Array, sha256: st
 	if (typeof sig.value !== "string" || !STD_B64.test(sig.value)) {
 		return sigFail("sig_format", "校验失败：签名 value 必须是标准 base64（sig_format；base64url 含 -/_ 不受理，不做归一）");
 	}
-	// ⑤ canon 版本标记
-	if (sig.canon !== undefined && sig.canon !== CANON) {
-		return sigFail("sig_format", `校验失败：规范串版本标记不认识（sig_format；本机支持 ${CANON}），实为「${String(sig.canon)}」`);
+	// ⑤ canon 版本标记（REG-CS3：v1 旧格式一律拒，逼重签；缺失即拒，不兼容旧 ojm）
+	if (sig.canon !== CANON) {
+		return sigFail("canon_stale", `校验失败：规范串版本过旧（canon_stale；本机要求 ${CANON}，实为「${String(sig.canon)}」）——请用当前 ojm 重签，旧版 .sig 不再受理`);
 	}
 	// ⑥ 验签原语可得性（与 sha256Hex 同口径：不可得 = 拒装，不静默跳过）
 	const face = verifyEd25519FaceOf(ctx);
@@ -186,8 +194,14 @@ async function verifySignature(ctx: VerifyContext, bytes: Uint8Array, sha256: st
 	if (trustedKey !== sig.public_key) {
 		return sigFail("sig_key", `校验失败：key_id「${sig.key_id}」的包内公钥与信任库绑定不一致（sig_key；首次绑定不可改——疑抢注/换钥，请发布方轮换为新 key_id）`);
 	}
-	// ⑧ 规范串 + 验签（双层语义：抛错 = sig_format，false = tampered，同拒装但分码）
-	const canonical = `${ctx.name}@${ctx.version}:${sha256}`;
+	// ⑧ 规范串 + 验签（双层语义：抛错 = sig_format，false = signature_mismatch，同拒装但分码）
+	// REG-CS3 v2：规范串首段 = 签发方 registry 身份，防「A 签的包被 B 的 CDN 安装」跨仓重放。
+	const sigRegistryId = typeof sig.registry_id === "string" ? sig.registry_id : "";
+	const canonical = `${sigRegistryId}:${ctx.name}@${ctx.version}:${sha256}`;
+	// REG-CS3 跨仓重放：声明的 registry_id 必须与本站点身份一致（env.registryId 未配置则跳过此比对）
+	if (ctx.registryId !== undefined && sigRegistryId !== ctx.registryId) {
+		return sigFail("canon_mismatch", `校验失败：包归属 registry「${sigRegistryId}」与本站「${ctx.registryId}」不符（canon_mismatch；REG-CS3 防跨仓库重放）——疑似被挪到非签发方 registry 的 CDN 安装，已拒装`);
+	}
 	let verified: boolean;
 	try {
 		verified = face(sig.public_key, canonical, sig.value);
@@ -197,7 +211,7 @@ async function verifySignature(ctx: VerifyContext, bytes: Uint8Array, sha256: st
 		return sigFail("sig_format", `校验失败：验签输入格式错（sig_format）：${String(e)}`);
 	}
 	if (!verified) {
-		return sigFail("tampered", "校验失败：签名与包体不符（tampered；签名不符不落盘——请重新从可信源获取分发包与签名）");
+		return sigFail("signature_mismatch", "校验失败：签名与包体不符（signature_mismatch；REG-CS3 v2 规范串含 registry_id，签名不符不落盘——请重新从可信源获取分发包与签名）");
 	}
 	return {
 		stage: "verifying",

@@ -6,8 +6,8 @@
 import { Buffer } from "node:buffer";
 import { createHash, createPrivateKey, createPublicKey, sign as nodeSign, verify as nodeVerify } from "node:crypto";
 
-/** 规范串版本标记（契约 §2.11：canon 字段恒 "v1"） */
-export const CANON = "v1";
+/** 规范串版本标记（REG-CS3 v2：canon 字段恒 "v2"；v1 一律按 canon_stale 拒） */
+export const CANON = "v2";
 /** 签名算法标识（大小写敏感，契约 §2.11 / C2-35） */
 export const SIG_ALG = "Ed25519";
 
@@ -18,12 +18,13 @@ const STD_B64 = /^[A-Z0-9+/]+={0,2}$/i;
 const SPKI_PREFIX = Buffer.from("302a300506032b6570032100", "hex");
 
 /**
- * 规范串（C2-34，拼接式逐字）：`<name>@<version>:<sha256>`。
- * name/version 取 bundle manifest 值，sha256 = tgz 字节 sha256（hex 小写）；
- * 禁止自造分隔符/归一化/大小写变换——两端与夹具三方逐字一致的前提。
+ * 规范串（REG-CS3 v2，拼接式逐字）：`<registry_id>:<slug>@<version>:<sha256>`。
+ * registry_id = 签发方 registry 身份（防跨仓库重放：A 签的包不能被 B 的 CDN 安装）；
+ * slug/version 取 bundle manifest 值，sha256 = tgz 字节 sha256（hex 小写）；
+ * 禁止自造分隔符/归一化/大小写变换——CLI 签发与站点验签两端逐字一致的前提。
  */
-export function canonicalString(name: string, version: string, sha256: string): string {
-	return `${name}@${version}:${sha256}`;
+export function canonicalString(registryId: string, slug: string, version: string, sha256: string): string {
+	return `${registryId}:${slug}@${version}:${sha256}`;
 }
 
 /** 指纹 = sha256Hex(publicKey) 全 64 hex（契约 §2.11，TOFU 展示用） */

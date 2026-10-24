@@ -87,8 +87,8 @@ const VERIFY_CODE_COPY: Record<string, { reason: { zh: string, en: string }, hin
 	},
 	sig_format: {
 		reason: {
-			zh: "签名编码违规：公钥非 64 位 hex、签名非标准 base64（禁 base64url），或规范串版本标记非 v1",
-			en: "Signature encoding violation: public key is not 64-hex, signature is not standard base64 (base64url forbidden), or the canonical-version marker is not v1",
+			zh: "签名编码违规：公钥非 64 位 hex、签名非标准 base64（禁 base64url），或规范串版本标记非 v2",
+			en: "Signature encoding violation: public key is not 64-hex, signature is not standard base64 (base64url forbidden), or the canonical-version marker is not v2",
 		},
 		hint: {
 			zh: "请让发布方使用标准签名工具（ojm sign）重新签名",

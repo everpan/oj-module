@@ -174,7 +174,7 @@ describe("given 包带包级 .sig 侧车 When 重建索引", () => {
 		const { root, cdn } = newProject();
 		const staging = mkdtempSync(join(tmpdir(), "ojm-stage-"));
 		const file = await putPackage(cdn, staging, "demo-solution", "0.1.0");
-		writeFileSync(`${join(cdn, file)}.sig`, JSON.stringify({ alg: "Ed25519", key_id: KEY_ID, public_key: "ab", value: "cd", canon: "v1" }), "utf-8");
+		writeFileSync(`${join(cdn, file)}.sig`, JSON.stringify({ alg: "Ed25519", key_id: KEY_ID, public_key: "ab", value: "cd", canon: "v2", registry_id: "test.registry" }), "utf-8");
 
 		await buildIndex({ projectRoot: root, id: KEY_ID, privateKeyPem: testPem() });
 
