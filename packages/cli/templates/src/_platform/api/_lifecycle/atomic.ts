@@ -15,6 +15,8 @@ export interface FsFace {
 	copyFile: (src: string, dest: string) => Promise<void>
 	/** 列目录成员名（不含路径；不含 . / ..） */
 	readdir: (path: string) => Promise<string[]>
+	/** 取文件体积（REG-CS8 解压后实际磁盘占用复核用；oj 真机 stat 形状略有差异，缺失则复核降级跳过） */
+	stat?: (path: string) => Promise<{ size: number }>
 }
 
 /**
@@ -67,6 +69,7 @@ export function fsFace(): FsFace {
 				names.push(e.name);
 			return names;
 		}),
+		stat: f.stat ?? undefined,
 	};
 }
 

@@ -266,6 +266,41 @@ describe("download（stage=downloading，S1-2.3 fetch→fs.writeFile）", () => 
 		expect(r.message).toContain("C2-29");
 		expect(calls).toBe(0);
 	});
+
+	// ── REG-CS8 下载闸（红队 F1）：先比对索引声明的 archive.size，超限直接拒——不发请求、不读入内存 ──
+	it("rEG-CS8 package_too_large：声明体积超限，fetch 零调用（源头堵死「先中毒后验毒」）", async () => {
+		const over = 50 * 1024 * 1024 + 1;
+		let calls = 0;
+		const r = await download(dlCtx({
+			manifest: manifest({ file: FILE, sha256: shaOf(BYTES), size: over }),
+			fetch: async () => {
+				calls++;
+				return { ok: true, status: 200, arrayBuffer: async () => new ArrayBuffer(0) };
+			},
+		}));
+		expect(r.ok).toBe(false);
+		expect(r.retryable).toBe(false);
+		expect(r.code).toBe("package_too_large");
+		expect(r.message).toContain("REG-CS8");
+		expect(calls).toBe(0); // 关键：超限时 fetch 未被调用
+	});
+
+	it("rEG-CS8 边界：声明体积恰等于上限（50MB）放行，照常下载（fetch 收到等长字节，P2-11 通过）", async () => {
+		const atLimit = 50 * 1024 * 1024;
+		const big = new Uint8Array(atLimit);
+		const r = await download(dlCtx({
+			manifest: manifest({ file: FILE, sha256: shaOf(BYTES), size: atLimit }),
+			fetch: async () => ({ ok: true, status: 200, arrayBuffer: async () => big.slice().buffer as ArrayBuffer }),
+		}));
+		expect(r.ok).toBe(true);
+	});
+
+	it("rEG-CS8 边界：声明体积超 1 字节即拒（package_too_large 严格不等）", async () => {
+		const over = 50 * 1024 * 1024 + 1;
+		const r = await download(dlCtx({ manifest: manifest({ file: FILE, sha256: shaOf(BYTES), size: over }) }));
+		expect(r.ok).toBe(false);
+		expect(r.code).toBe("package_too_large");
+	});
 });
 
 describe("verify（stage=verifying，C2-29 sha256 fail-closed + P2-3 六码验签）", () => {
@@ -525,6 +560,108 @@ describe("extract（stage=extracting，R1 list→validate→extract 三步）", 
 		expect(r.ok).toBe(false);
 		expect(r.message).toContain("R1");
 		expect(exec.calls.length).toBe(1);
+	});
+});
+
+// ── REG-CS8 体积闸（红队 F1）：解压前复用同一份清单累加，零额外 tar、零解压前即拒；解压后复核兜底 ──
+describe("extract REG-CS8 体积闸（清单口径，复用 list 输出，零额外 IO）", () => {
+	it("entry_too_large：单条目未压缩 > 50MB → 拒，code=entry_too_large，零解压（exec 仅 1 次列表）", async () => {
+		const big = 50 * 1024 * 1024 + 1;
+		const exec = recordingExec(async () => ({
+			code: 0,
+			stdout: [
+				"drwxr-xr-x  0 ever staff    0 10 17 12:00 demo-solution-0.1.0/",
+				`-rw-r--r--  0 ever staff   ${big} 10 17 12:00 demo-solution-0.1.0/bomb`,
+			].join("\n"),
+			stderr: "",
+		}));
+		await fsp.mkdir(staging, { recursive: true });
+		const r = await extract(exCtx({ exec }));
+		expect(r.ok).toBe(false);
+		expect(r.retryable).toBe(false);
+		expect(r.code).toBe("entry_too_large");
+		expect(r.message).toContain("REG-CS8");
+		expect(exec.calls.length).toBe(1); // 复用清单，未触发第二次 tar（extract）
+		expect(await fsp.readdir(staging)).toEqual([]); // 零落盘
+	});
+
+	it("unpacked_too_large：未压缩总体积 > 200MB（单条目安全）→ 拒，code=unpacked_too_large，零解压", async () => {
+		const safe = 40 * 1024 * 1024;
+		const n = Math.ceil((200 * 1024 * 1024 + 1) / safe);
+		const lines: string[] = [];
+		for (let i = 0; i < n; i++)
+			lines.push(`-rw-r--r--  0 ever staff   ${safe} 10 17 12:00 demo-solution-0.1.0/f${i}`);
+		const exec = recordingExec(async () => ({ code: 0, stdout: lines.join("\n"), stderr: "" }));
+		await fsp.mkdir(staging, { recursive: true });
+		const r = await extract(exCtx({ exec }));
+		expect(r.ok).toBe(false);
+		expect(r.retryable).toBe(false);
+		expect(r.code).toBe("unpacked_too_large");
+		expect(exec.calls.length).toBe(1);
+	});
+
+	it("too_many_entries：条目数 > 5000 → 拒，code=too_many_entries，零解压", async () => {
+		const n = 5000 + 1;
+		const lines: string[] = [];
+		for (let i = 0; i < n; i++)
+			lines.push(`-rw-r--r--  0 ever staff    1 10 17 12:00 demo-solution-0.1.0/f${i}`);
+		const exec = recordingExec(async () => ({ code: 0, stdout: lines.join("\n"), stderr: "" }));
+		await fsp.mkdir(staging, { recursive: true });
+		const r = await extract(exCtx({ exec }));
+		expect(r.ok).toBe(false);
+		expect(r.retryable).toBe(false);
+		expect(r.code).toBe("too_many_entries");
+		expect(exec.calls.length).toBe(1);
+	});
+
+	it("合法清单（成员数/总体积/单条目均安全）→ 越过体积闸，继续到 extract 步（exec.calls===2）", async () => {
+		// 真实系统 tar 解压此合法清单（list 成功→volume 通过→extract 真解压）
+		const realExec = realTarExec();
+		await fsp.mkdir(staging, { recursive: true });
+		const pkg = join(root, "pkg", "demo-solution-0.1.0");
+		await fsp.mkdir(join(pkg, "src"), { recursive: true });
+		await fsp.writeFile(join(pkg, "manifest.yaml"), "name: demo-solution\n");
+		await fsp.writeFile(join(pkg, "src", "entry.js"), "export default {};\n");
+		const tgz = join(staging, FILE);
+		await execFileP("tar", ["-czf", tgz, "-C", join(root, "pkg"), "demo-solution-0.1.0"]);
+		// 用真实 tar 回放同一 tgz 的 list/extract：list 输出即上面构造的合法形态
+		const r = await extract(exCtx({ exec: realExec }));
+		expect(r.ok).toBe(true);
+		expect(realExec.calls.length).toBe(2); // list + extract 各一次，体积闸未重复跑 tar
+	});
+});
+
+describe("extract REG-CS8 解压后复核（清单瞒报兜底：实际磁盘占用 > 200MB → 拒）", () => {
+	it("清单口径小（通过 volume 闸）但 stat 面报告实际占用超大 → 解压后复核拒，code=unpacked_too_large", async () => {
+		// 注入 stat 面：一切文件都报 1GB（模拟解压炸弹绕过清单口径）；list 给一份小清单骗过 volume 闸
+		const hugeStat: FsFace = {
+			...nodeFsFace(),
+			stat: async () => ({ size: 1024 * 1024 * 1024 }),
+		};
+		g.fs = hugeStat;
+		await fsp.mkdir(staging, { recursive: true });
+		await fsp.writeFile(join(staging, "manifest.yaml"), "name: demo-solution\n"); // 复核须读到的真实小文件
+		const exec = recordingExec(async argv => argv[1] === "-xzf"
+			? { code: 0, stdout: "", stderr: "" } // 解压步：no-op（不真解压，靠 stat 面模拟实际占用）
+			: { code: 0, stdout: "-rw-r--r--  0 ever staff    1 10 17 12:00 demo-solution-0.1.0/manifest.yaml", stderr: "" });
+		const r = await extract(exCtx({ exec }));
+		expect(r.ok).toBe(false);
+		expect(r.retryable).toBe(false);
+		expect(r.code).toBe("unpacked_too_large");
+		expect(r.message).toContain("REG-CS8");
+		expect(r.message).toContain("瞒报");
+	});
+
+	it("stat 面缺失 → 复核降级跳过（清单口径已先拦，不误杀正常包）", async () => {
+		// nodeFsFace 无 stat：recheck 应 ok 跳过；用真实小包验证不误杀
+		await fsp.mkdir(staging, { recursive: true });
+		const pkg = join(root, "pkg2", "demo-solution-0.1.0");
+		await fsp.mkdir(pkg, { recursive: true });
+		await fsp.writeFile(join(pkg, "manifest.yaml"), "name: demo-solution\n");
+		const tgz = join(staging, FILE);
+		await execFileP("tar", ["-czf", tgz, "-C", join(root, "pkg2"), "demo-solution-0.1.0"]);
+		const r = await extract(exCtx({ exec: realTarExec() }));
+		expect(r.ok).toBe(true); // 无 stat 面正常包照常通过（复核跳过而非失败）
 	});
 });
 

@@ -6,6 +6,7 @@
 
 import type { InstallContext } from "./preflight";
 import { fsFace } from "../atomic";
+import { MAX_PACKAGE_BYTES } from "../limits";
 
 /** 最小 fetch 面（结构化：Node fetch/Response 天然满足；测试注入 stub 不真跑网络） */
 export type FetchFace = (url: string) => Promise<{
@@ -28,6 +29,8 @@ export interface StageResult {
 	ok: boolean
 	message: string
 	retryable?: boolean
+	/** 终止态错误码（installer 据此置 task.error.reason）；体积闸门命中恒 package_too_large */
+	code?: string
 }
 
 /**
@@ -62,6 +65,18 @@ export async function download(ctx: DownloadContext): Promise<StageResult> {
 		return { stage: "downloading", ok: false, retryable: false, message: `下载失败：archive.file「${arch.file}」须逐字为 <name>-<version>.tgz（「${expected}」，P2-11 索引投毒加固）` };
 	}
 	const dest = `${ctx.staging}/${arch.file}`;
+	// REG-CS8 下载闸（红队 F1）：先比对索引声明的 archive.size，超限直接拒——不发请求、不读入内存，
+	// 把「先中毒后验毒」的源头堵死（限量值全仓单源，与解压闸/上传侧共用 MAX_PACKAGE_BYTES）。
+	const declaredSize = arch.archive.size;
+	if (typeof declaredSize === "number" && Number.isFinite(declaredSize) && declaredSize > MAX_PACKAGE_BYTES) {
+		return {
+			stage: "downloading",
+			ok: false,
+			retryable: false,
+			code: "package_too_large",
+			message: `下载失败：分发包声明体积 ${declaredSize} 字节超过上限 ${MAX_PACKAGE_BYTES}（REG-CS8 package_too_large）——拒绝下载以省带宽与内存，请发布方拆分或压缩后重试`,
+		};
+	}
 	try {
 		const res = await ctx.fetch(ctx.archiveUrl);
 		if (!res.ok) {

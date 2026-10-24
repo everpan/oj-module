@@ -9,7 +9,8 @@
 
 import type { InstallContext } from "./preflight";
 import { fsFace } from "../atomic";
-import { validateTarListing } from "../tgz-guard";
+import { MAX_UNPACKED_BYTES } from "../limits";
+import { checkTarVolumeLimits, validateTarListing } from "../tgz-guard";
 import { archiveFileOf } from "./download";
 
 export interface ExecResult {
@@ -49,6 +50,8 @@ export interface StageResult {
 	ok: boolean
 	message: string
 	retryable?: boolean
+	/** 终止态错误码（installer 据此置 task.error.reason）；体积闸门命中恒为体积类 code */
+	code?: string
 }
 
 function isObj(v: unknown): v is Record<string, unknown> {
@@ -94,6 +97,17 @@ export async function extract(ctx: ExtractContext): Promise<StageResult> {
 				message: `解压失败：包内容未通过安全校验（R1：offender「${v.offender}」为越界/链接成员）——零解压零落盘，附录 A extracting：若反复出现请勿使用该分发包`,
 			};
 		}
+		// 第二步（续）REG-CS8 体积闸门：复用同一份清单累加，零额外 IO、零解压前即拒
+		const vol = checkTarVolumeLimits(lines);
+		if (!vol.ok) {
+			return {
+				stage: "extracting",
+				ok: false,
+				retryable: false,
+				code: vol.code,
+				message: `解压失败：包内容超出体积上限（REG-CS8：${vol.code}，offender「${vol.offender}」）——零解压零落盘，附录 A extracting：请发布方拆分或压缩后重试`,
+			};
+		}
 		// 第三步 extract：校验通过才落盘；-C staging 就位即止，rename 由 P1-10 落锁段接管
 		const extracted = await ctx.exec.run(buildExtractCmd(file, ctx.staging));
 		if (extracted.code !== 0) {
@@ -109,7 +123,19 @@ export async function extract(ctx: ExtractContext): Promise<StageResult> {
 		if (!c31.ok) {
 			return { stage: "extracting", ok: false, retryable: false, message: c31.message };
 		}
-		return { stage: "extracting", ok: true, message: `解压完成：${lines.length} 个成员 → ${ctx.staging}/（单根已归平，§2.9 布局消费点；C2-31 复核通过；目录 rename 由 P1-10 落锁段接管）` };
+		// REG-CS8 解压后复核：清单尺寸可能由畸形 tar 瞒报（解压炸弹绕过清单口径），以实际磁盘占用兜底。
+		// 仅当 stat 面可用时执行（oj 真机提供；测试/缺失则降级跳过，LIST 闸已先拦）。
+		const recheck = await recheckStagingOccupancy(ctx);
+		if (!recheck.ok) {
+			return {
+				stage: "extracting",
+				ok: false,
+				retryable: false,
+				code: "unpacked_too_large",
+				message: `解压失败：实际磁盘占用 ${recheck.bytes} 字节超过上限 ${MAX_UNPACKED_BYTES}（REG-CS8 解压后复核：清单尺寸瞒报，已清场）——附录 A extracting：请发布方拆分或压缩后重试`,
+			};
+		}
+		return { stage: "extracting", ok: true, message: `解压完成：${lines.length} 个成员 → ${ctx.staging}/（单根已归平，§2.9 布局消费点；C2-31 复核通过；REG-CS8 解压后复核通过；目录 rename 由 P1-10 落锁段接管）` };
 	}
 	catch (e) {
 		return { stage: "extracting", ok: false, retryable: true, message: `解压失败：${String(e)}——附录 A extracting（S1-2 exec.run tar 三步范式）` };
@@ -238,4 +264,37 @@ export async function flattenBundleRoot(staging: string): Promise<void> {
 		}
 		await f.remove(root, { recursive: true });
 	}
+}
+
+/**
+ * REG-CS8 解压后实际磁盘占用复核（解压炸弹绕过清单口径的兜底）：递归累加 staging 全部文件体积。
+ * 仅当 stat 面可用时执行；读盘失败/缺面 → 降级跳过（LIST 闸已先拦，不误杀正常包）。
+ * 注：staging 顶层的 .tgz 一并计入（已压缩，≤ MAX_PACKAGE_BYTES，对 200MB 阈值保守不影响正常包）。
+ */
+async function recheckStagingOccupancy(ctx: ExtractContext): Promise<{ ok: true } | { ok: false, bytes: number }> {
+	const f = fsFace();
+	if (f.stat === undefined)
+		return { ok: true };
+	let total = 0;
+	const walk = async (dir: string): Promise<void> => {
+		const names = await f.readdir(dir);
+		for (const name of names) {
+			const p = `${dir}/${name}`;
+			try {
+				await f.readdir(p); // 失败 = 普通文件（与 flattenBundleRoot 同手法）
+			}
+			catch {
+				total += (await f.stat(p)).size;
+				continue;
+			}
+			await walk(p);
+		}
+	};
+	try {
+		await walk(ctx.staging);
+	}
+	catch {
+		return { ok: true };
+	}
+	return total > MAX_UNPACKED_BYTES ? { ok: false, bytes: total } : { ok: true };
 }
