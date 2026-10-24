@@ -9,7 +9,7 @@
  * - 宿主只负责「加载外部模块 + 渲染容器」，不内置任何业务模块；
  * - 所有共享依赖（react / antd / runtime …）由 importmap 注入，宿主本身
  *   external 这些裸说明符，保证与模块命中同一份实例（单例，D5/D12）；
- * - 模块通过 `loadAll(manifest)` 加载，`getRoutes()` 收集路由后注入 react-router；
+ * - 模块通过 `loadAll(manifest)` 加载，`getHostRoutes()` 收集路由后注入 react-router；
  * - 路由根只渲染「容器」（`Outlet`），**整站 chrome（侧边栏 / 顶栏 / 页签）由模块
  *   自带的 `ContainerLayout` 提供**（模块路由默认 layout=container）。宿主刻意不
  *   再叠加自己的 Layout chrome —— 否则会出现「宿主侧栏 + 模块侧栏」双层嵌套的混乱布局；
@@ -21,7 +21,7 @@ import { StyleProvider } from "@ant-design/cssinjs";
 import {
 	AntdApp,
 	ErrorBoundary,
-	getRoutes,
+	getHostRoutes,
 	LayoutEffects,
 	loadAll,
 	PageError,
@@ -214,6 +214,11 @@ function Boot() {
 				if (cancelled)
 					return;
 
+				// 建表必须走 getHostRoutes（admin 路由与菜单管线同源重写 /system/<root>/*）——
+				// 直接用 getRoutes() 时菜单指向 /system/... 而渲染路由表没有该路径，方案
+				// 管理页菜单点击必 404（wiki admin/contacts 回归，2026-10）
+				const hostRoutes = getHostRoutes();
+
 				setRouter(
 					createBrowserRouter([
 						{
@@ -240,8 +245,8 @@ function Boot() {
 							// （否则根 Outlet 无匹配子路由会空白）。等同全量 App 的
 							// `/` → VITE_BASE_HOME_PATH 重定向语义。
 							children: [
-								{ index: true, element: <Navigate to={getRoutes()[0]?.path ?? "/"} replace /> },
-								...getRoutes(),
+								{ index: true, element: <Navigate to={hostRoutes[0]?.path ?? "/"} replace /> },
+								...hostRoutes,
 								// 风险项 §9.1：非管理员直达角色受限路由（如 /system/*）时，
 								// B16 过滤后该路由不在 getRoutes() 内 → React Router 无匹配。
 								// 补 catch-all 渲染框架兜底页（替代默认「Unexpected Application

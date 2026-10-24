@@ -14,6 +14,7 @@ import i18next from "i18next";
 import { registerLayout, unregisterLayouts } from "#src/layout/layout-registry";
 import { addRouteIdByPath } from "#src/router/utils/add-route-id-by-path";
 import { resolveRouteLayouts } from "#src/router/utils/resolve-layout";
+import { rewriteAdminPaths } from "#src/router/utils/rewrite-admin-paths";
 import { useAccessStore } from "#src/store/access";
 import {
 	registerNotificationsApiProvider,
@@ -347,6 +348,18 @@ export function getRoutes(): AppRouteRecordRaw[] {
 	// host.tsx 等不经 auth-guard 的链路也能拿到（此前仅 auth-guard 补，
 	// 导致 ojm dev 下菜单无高亮）；auth-guard 重复调用是幂等的。
 	return addRouteIdByPath(routes);
+}
+
+/**
+ * 宿主链建路由表的唯一取口：与菜单管线同源套 rewriteAdminPaths。
+ *
+ * 0.2.17 起方案 admin 路由被真重写为 /system/<模块根>/*（菜单项 key 已随之改写），
+ * 宿主若直接用 getRoutes() 建表（cli/shell host.tsx 回归，2026-10），渲染路由表
+ * 停留在 /wiki/admin/* 而菜单指向 /system/wiki/admin/* → 方案管理页菜单点击必 404。
+ * getRoutes() 只该给 access store 登记、keep-alive 聚合等「无需重写」的场景用。
+ */
+export function getHostRoutes(): AppRouteRecordRaw[] {
+	return rewriteAdminPaths(getRoutes());
 }
 
 export function getRegisteredStore<T = unknown>(name: string): T | undefined {

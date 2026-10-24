@@ -154,6 +154,7 @@ export const defineGuard = (...a) => a[a.length - 1];
 export const getModules = () => [];
 export const getModule = () => undefined;
 export const getRoutes = () => [];
+export const getHostRoutes = () => [];
 export const getRegisteredStore = () => undefined;
 export const getRegisteredApiPrefix = () => undefined;
 export const loadAll = async () => [];

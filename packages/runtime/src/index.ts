@@ -62,6 +62,7 @@ export { setupI18n } from "./locales";
 
 // 模块加载（宿主消费外部模块时使用；模块工程一般不直接调用）
 export {
+	getHostRoutes,
 	getModule,
 	getModules,
 	getRegisteredApiPrefix,
