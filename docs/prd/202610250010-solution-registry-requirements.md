@@ -1,4 +1,4 @@
-# 解决方案 Registry（产物仓库）· 需求规格 v2.1
+# 解决方案 Registry（产物仓库）· 需求规格 v2.2
 
 > **v2.1 说明（2026-10-25 用户裁定，推翻 v2 §0-1）**：**registry 本身就是一个第一方解决方案包**，
 > 和别的方案一样被站点安装；它**复用宿主站点的登录与 RBAC**，装上之后该站点就**成为 registry
@@ -16,6 +16,11 @@
 >
 > **文档状态（2026-10-25）**：7 个阻塞项（Q1–Q6、Q12）已逐项确认，**P0-C 可开工、P0-R 可进设计**；
 > 剩 5 项非阻塞待定项见 §15。
+>
+> **v2.2 追加（2026-10-25 红队对抗演练）**：按「攻击者 + 故障注入」双视角跑了 14 个场景
+> （§16），**8 个真问题**已就地修订，其中 **2 条提升为 P0-C**（REG-CS7 保留名扩项、REG-CS8
+> 包体/解压体积闸门）⇒ **MVP 由 18 条变为 20 条**。另有 6 条判定为「已被现有设计覆盖」，理由留在
+> §16.4 以便下轮不复盘。**扩容这一项待确认**；若回退，两条退回 backlog（不影响其余修订）。
 
 ---
 
@@ -44,6 +49,8 @@
 4. **范围必须收口：79 条需求 / 52 条 P0 不可交付**。会审实测计数（`sed -n '103,272p' … | grep -c`）
    为 79 条、其中 52 条标 P0，而 v1 §9 的「MVP」列了 50 条。v2 重定为 **18 条 MVP**（由 v1 的
    26 条合并而来），其余 26 条明列于 backlog，余者作为 MVP 条目的验收细则或已被架构前提覆盖。
+   **v2.2 红队后为 20 条**：新增两条都是「护栏型」小项（保留名扩项、包体/解压体积闸门），
+   不是功能扩张，各 ≤1 人日（§16.5）。
 5. **拆两条轨道，P0-C 可立即开工**：Team Leader 指出当前是**单租户单发布方**（谁能写 `cdn/`
    目录谁就能发），近 3 个月 803 次提交全出自同一作者、8 个方案全第一方、无 `bundles.yaml` /
    `trusted-keys.yaml` 产物。因此把**不依赖 registry 的静态仓硬化**（索引签名强制、seq 新鲜度、
@@ -57,10 +64,38 @@
 8. **私有 registry = 装了 registry 包的内网站点**，其读面默认走「registry 模块自己的 API」；若站点
    保留既有 `/cdn` 挂载（`templates/config.yaml:36-45` 默认就有），registry 可直接把索引与 tgz
    写进该目录，**不需要新增挂载点**。私有读面对外授权是**另一件事**（§11-5，MVP 建议先靠网络隔离）。
-9. **诚实账（不粉饰）**：18 条里仍有 **3 条依赖上游或契约变更**——索引签名能力（已用外置签名绕开，
+   > **红队修正（F6）**：`/cdn` 是**无鉴权静态目录**，把私有包写进去 = 任何能访问站点的人都可直下
+   > tgz，与「私有」直接矛盾。因此载体**由 `registry.visibility` 决定而不是按性能偏好**：
+   > `private`（默认）**只**走模块 API、禁止写公共 `/cdn`（写了即启动时报错）；`public` 才允许
+   > 静态载体。这条不改 Q12 的「MVP 靠网络隔离」，只是堵掉「配错即泄漏」。
+9. **诚实账（不粉饰）**：20 条里仍有 **3 条依赖上游或契约变更**——索引签名能力（已用外置签名绕开，
    但仍需 CI 一侧的签名命令）、`install --registry`（服务端 API 0.1.0 → 0.2.0）、私有读面鉴权
    （MVP 只做网络隔离，不做 token）。**自助注册不再是依赖项**：账号由宿主站点 `system`/LDAP/OIDC
    提供，模块零改动。
+
+---
+
+## 0.1 术语白话对照（先读这个，后面不再解释）
+
+| 术语 | 白话 | 为什么需要它 |
+|---|---|---|
+| **解决方案包**（简称「方案」） | 一个能装进站点的功能模块，装完站点多一块能力 | oj 的既有叫法 |
+| **slug** | 包的**物理名字**：小写字母/数字/连字符，同时是磁盘目录名、路由前缀、tgz 文件名 | 让安装/解压/路由链路不用改一个字 |
+| **scope / 目录键 `@acme`** | 仓库里的**门牌分组**，只存在于仓库目录里，**不进磁盘** | 让 `@acme/demo` 和 `@other/demo` 不打架 |
+| **索引** | 仓库的**目录页**：有哪些包、哪个版本、文件叫什么、多大、被谁签的 | 客户端靠它决定装什么 |
+| **catalog / shard（分册）** | 总目录（先查「这个包在哪一册」）+ 分册（再查版本明细） | 一个文件太大，256MB 内存扛不住 |
+| **seq** | 目录页的**第几代编号**，只增不减 | 挡住「拿旧目录冒充新目录」的回放攻击 |
+| **签名 / `.sig`** | 用私钥盖的章，谁都能用公钥验 | 证明「这确实是我发的」 |
+| **验签 fail-closed** | 验不过就**拒装**，不做「先装上再说」 | 安全通道不能有逃生门 |
+| **TOFU（首次使用即信任）** | 第一次见到某把公钥让你人工确认，之后记住 | 没有中心化 CA，只能这样起步 |
+| **吊销清单 `revocations.yaml`** | **黑名单文件**：这些包/版本/公钥不许再装 | 出了事要有刹车 |
+| **yank（下架）** | 把某版本**从目录页撤掉**，文件不删、已装的不动 | 发错了不毁历史 |
+| **发布 token** | **上传通行证**（≠ 签名私钥），丢了只影响上传，不影响已发版的真伪 | 两套凭证各管一件事 |
+| **载体** | 包和索引**从哪条路发出去**：模块 API，还是站点已有的静态目录 `/cdn` | 决定了能不能被匿名下载 |
+| **SSRF** | 让**服务器替攻击者去访问内网地址**的漏洞 | 拿 `--registry` 指一个地址就能试 |
+| **幂等** | 同样的请求重复发，结果一样（不重复建、不报错） | 重试要安全 |
+| **isolate** | 平台跑模块的**沙箱进程**，堆上限 256MB，且 `blob.get` 一次把整个文件读进内存 | 这就是「大包会 OOM」的根因 |
+| **预签名 URL** | 对象存储给的**一次性下载链接**，有有效期 | 大文件绕开沙箱内存的常规办法 |
 
 ---
 
@@ -73,13 +108,7 @@
 | 类比 | npmjs.org = registry；`ojm` = npm CLI；`npm publish` = `ojm publish`；`npm i` = `ojm install` |
 | 部署形态 | **装进任意站点的可选方案包**：不装=普通站点；装了=私有 registry 站点（公共托管是它的开放配置）；消费方平台把 `framework.market_cdn_url` 指向它 |
 
-**术语白话注解**：
-- **registry**：存包、存版本、存元数据的地方，对外提供索引 + tgz。
-- **命名空间 / scope**：包名的归属前缀（`@acme/`），**只是 registry 的目录键**，不是文件名。
-- **slug（物理名）**：真正落盘/安装/路由/权限码用的模块名，形如 `acme-demo`。
-- **发布 key**：签名密钥（本地私钥 + 注册到 registry 的公钥）+ 上传凭证（token）的合称。
-- **TOFU**：第一次见到陌生签名 key 时，人工核对指纹后确认。
-- **yank**：把某个已发布版本标记为不可安装（保留历史，不物理删除）。
+> 术语的白话解释统一放在 **§0.1**，本节与后文不再重复解释。
 
 ---
 
@@ -102,7 +131,7 @@
 | 审计 | **宿主 `oplog`** | 发布/吊销/yank 调 `auditOp`（内部 try/catch 不反噬业务） | 硬纪律 #5 |
 | 领域数据 | **registry 模块** | scope / 包 / 版本 / token / 公钥 / 吊销 / 分片索引 | 新建 |
 | 索引签名 | **CI / 运维（离线 key）** | 模块产出未签索引，签名回传后校验再发布 | isolate 无 Ed25519 签名 |
-| 读面 | **模块 API**，或站点既有 `/cdn` 挂载 | 见下 | 模块不能新增 `mounts`（`manifest-contract.ts:76-100`） |
+| 读面 | **模块 API**；`public` 时才可走站点既有 `/cdn` 挂载 | 载体由 `visibility` 决定（§8 决策 5），不让运维按性能偏好挑 | 模块不能新增 `mounts`（`manifest-contract.ts:76-100`） |
 
 ### 2.1 三态：不装 / 装 / 卸（这是本需求的形态基础）
 
@@ -117,7 +146,8 @@
 _platform/auth     登录签发      →     同一套，一行不改
 system RBAC        判权/建号     →     同一套，一行不改（多两个权限码 registry.publish / registry.admin）
 oplog              审计          →     同一套，一行不改
-/cdn 挂载（若有）   市场取数       →     同一目录，现在由 registry 写索引与 tgz
+不写公共目录（私有）              →     索引与 tgz 只经模块 API 出
+/cdn 挂载（public 才用） 市场取数  →     同一目录，由 registry 写索引与 tgz
 —                                →     + 领域 API / 读面 API / reg_* 表
 ```
 
@@ -132,12 +162,18 @@ oplog              审计          →     同一套，一行不改
 
 | 形态 | 站点 | 读面 | 谁在用 | 私有性靠什么 |
 |---|---|---|---|---|
-| **私有（默认）** | 内网站点装 registry | 站点既有 `/cdn` 挂载（无需新增）或模块 API | 企业内平台群 | 网络隔离（MVP）；源 token（P1） |
-| **自供** | 同一个站点既当源又当消费方 | `/cdn` 自供（`market_cdn_url=/cdn`，`config.yaml:39-40` 已是缺省） | 单机/小团队 | 天然隔离 |
-| **公开托管** | 公网站点装 registry（= 私有形态的开放配置） | 模块 API + CDN 前置 | 任意平台 | 公开只读 |
+| **私有（默认）** | 内网站点装 registry | **只走模块 API**（`/api/registry/cdn/...`）；**禁止写公共 `/cdn`** | 企业内平台群 | 网络隔离（MVP）+ 载体不可选错（决策 5）；源 token（P1） |
+| **自供** | 同一个站点既当源又当消费方 | `market_cdn_url` 指向 `/api/registry/cdn`（**不是**市场那个 `/cdn`） | 单机/小团队 | 天然隔离 |
+| **公开托管** | 公网站点装 registry（= 私有形态的开放配置） | 模块 API + CDN 前置；**此时才允许**写 `/cdn` | 任意平台 | 公开只读 |
 
-> 自供形态消解了 v1 标记的「`--registry` 与站点设置谁优先」无解项：**同一站点时两者指向同一 URL，
-> `--registry` 只做一致性校验**（不一致才需要服务端契约，见 REG-R9）。
+> **`/cdn` 与 `/api/registry/cdn` 是两回事**：前者是市场早就有的**匿名静态目录**（谁都能下），
+> 后者是 registry 模块自己判权的接口。v2.1 把二者当「同一份文件的两种发法」让运维挑，
+> 红队指出这正是泄漏路径（F6），v2.2 起**由可见性锁死**。
+
+> 自供形态消解了 v1 标记的「`--registry` 与站点设置谁优先」无解项：**同一站点时两者指向同一 URL**
+> （`https://<本站>/api/registry/cdn`），`--registry` 只做一致性校验（不一致才需要服务端契约，见 REG-R9）。
+> 注意：市场原有的 `/cdn` 缺省值（`config.yaml:39-40`）**保持不变**——它是「本站自产方案」的目录，
+> 与 registry 的读面不是同一个东西。
 
 ---
 
@@ -174,37 +210,41 @@ ojm unpublish @acme/demo@1.0.0      # ⑤ 下线（默认 yank）
 
 ---
 
-## 4. 范围裁决：79 → 18
+## 4. 范围裁决：79 → 20
 
-| 维度 | v1 | v2 | 依据 |
-|---|---|---|---|
-| 条目总数 | 79（P0 52） | **18 MVP（合并自 26 条）+ backlog 明列 26 条（P1 17 / P2 9）** | 产品会审：79 条不可交付；TL：前提尚未成熟 |
-| P0 条数 | 52 | **18** | 同上 |
-| 轨道 | 一条 | **P0-C（6 条，可立即开工）+ P0-R（12 条）** | TL：静态仓硬化不依赖 registry |
-| Web 控制台 | P0（后降 P1） | **P1** | CLI 足以撑 MVP 作者侧 |
-| 自助注册 | P0 | **P1**（依赖上游 signup） | 框架面缺口，非模块能解 |
-| scope 成员 RBAC | P0/P1 | **P2** | 违反「模块不自管 RBAC」 |
-| 命名空间物理形态 | `@scope/name` | **slug 物理名 + scope 目录键** | §0-2 六处证据 |
+| 维度 | v1 | v2.1 | v2.2（红队后） | 依据 |
+|---|---|---|---|---|
+| 条目总数 | 79（P0 52） | 18 MVP + backlog 26（P1 17 / P2 9） | **20 MVP + backlog 26（P1 16 / P2 9）** | 产品会审：79 条不可交付；TL：前提尚未成熟 |
+| P0 条数 | 52 | 18 | **20** | 同上 |
+| 轨道 | 一条 | P0-C（6）+ P0-R（12） | **P0-C（8）+ P0-R（12）** | TL：静态仓硬化不依赖 registry |
+| Web 控制台 | P0（后降 P1） | P1 | P1 | CLI 足以撑 MVP 作者侧 |
+| 自助注册 | P0 | P1（依赖上游 signup） | P1 | 框架面缺口，非模块能解 |
+| scope 成员 RBAC | P0/P1 | P2 | P2 | 违反「模块不自管 RBAC」 |
+| 命名空间物理形态 | `@scope/name` | slug 物理名 + scope 目录键 | slug 物理名 + scope 目录键 | §0-3 六处证据 |
+| 保留名清单 | — | P1（建议提前） | **P0-C（REG-CS7）** | 红队 F5：不提前则 `registry` 可被抢注撞路由 |
+| 体积闸门 | — | backlog（P1） | **P0-C（REG-CS8）** | 红队 F1：现状解压无上限，1MB 包可打满磁盘 |
 
 **砍掉不做的（明确写出，避免"以后再说"）**：付费/计费、组织协作与审批流、评论评分、
 多 region 镜像、作者↔使用者直接通道、商标申诉通道。
 
 ---
 
-## 5. MVP-18 需求明细与降级口径
+## 5. MVP-20 需求明细与降级口径
 
 「现状」列：♻️ 可复用 / 🆕 需新建 / 🔧 需改造。
 
-### 5.1 P0-C：静态仓硬化（6 条，不依赖 registry，可立即开工）
+### 5.1 P0-C：静态仓硬化（8 条，不依赖 registry，可立即开工）
 
 | # | 需求 | 验收要点 | 现状 |
 |---|---|---|---|
-| **REG-CS1** | **索引签名强制** | 索引 `.sig` 缺失/不符 → `ojm market verify` 非 ok、安装前置拒装。过渡：先告警一个版本，再转硬 fail-closed，**不留开关**。取代 v1 REG-T7 | 🔧 现状缺失容忍→ok（`market/verify.ts:142-143`） |
+| **REG-CS1** | **索引签名强制 + 跨文件同代** | ① 索引 `.sig` 缺失/不符 → `ojm market verify` 非 ok、安装前置拒装。过渡：先告警一个版本，再转硬 fail-closed，**不留开关**。② **同代校验（红队 F2）**：`catalog.yaml`、`shards/*.yaml`、`revocations.yaml` 各自带 `seq`，签名覆盖 `(kind, seq)`；读方见到 `shard.seq ≠ catalog.seq`（或任一缺失）即拒，不允许「一份新一份旧」被拼起来用。取代 v1 REG-T7 | 🔧 现状缺失容忍→ok（`market/verify.ts:142-143`）；现状两个索引两次非原子写（`build-index.ts:83-86`） |
 | **REG-CS2** | **索引新鲜度（防回放/降级）** | 索引含 `seq`（单调递增）、`issued_at`、`expires_at`；客户端按源记录最大 `seq`，**回退即拒**；`latest` 单调不降。取代 v1 REG-S7 | 🆕 现状规范串只有 `index:<kind>:<sha256>`（`publish.ts:40-43`） |
 | **REG-CS3** | **规范串 v2（防跨仓库重放）** | `<registry_id>:<slug>@<version>:<sha256>`；`canon` 字段**必须校验**。取代 v1 REG-T8 | 🔧 现状 `market/verify.ts:111-123` 不校验 canon |
 | **REG-CS4** | **yank 通道（本地形态）** | `ojm market yank <name>@<version>` → 索引标 `yanked`；**新装拒、已装不动**、保留历史。该能力在 registry 上线前后同一套语义。取代 v1 REG-P5 | 🆕 现状 yank/硬删均无 |
-| **REG-CS5** | **索引三级化 + 缓存 + 分片** | ① `catalog.yaml`（包名 → 分片号，无版本明细）；② `shards/<n>.yaml`（每片 ≤2000 版本 ≈1.2MB）；③ 缓存头 `ETag` + `Cache-Control: max-age=60, stale-while-revalidate=60`。**>2000 版本自动分片**，客户端只拉命中分片。生成器（`build-index`）与读取器（市场/verify/install）**同期切换，不保留单文件双读**。取代 v1 REG-S4/S9 | 🔧 现状单文件、`no-cache` 回源（`market/api.ts:209`） |
+| **REG-CS5** | **索引三级化 + 缓存 + 分片** | ① `catalog.yaml`（包名 → 分片号，无版本明细）；② `shards/<n>.yaml`（每片 ≤2000 版本 ≈1.2MB）；③ 缓存头 `ETag` + `Cache-Control: max-age=60, stale-while-revalidate=60`。**>2000 版本自动分片**，客户端只拉命中分片。生成器（`build-index`）与读取器（市场/verify/install）**同期切换，不保留单文件双读**。④ **落盘必须原子（红队 F2）**：先写 `<name>.yaml.tmp.<rand>` 再 `rename`，**先写分片后写 catalog**（catalog 是提交点），杜绝「catalog 指到还没写完的分片」。取代 v1 REG-S4/S9 | 🔧 现状单文件、`no-cache` 回源（`market/api.ts:209`）；现状两次 `writeFileSync` 无原子性（`build-index.ts:83-86`） |
 | **REG-CS6** | **Host 头 SSRF 修复（阻断前置）** | 删掉用请求头 `host` + `x-forwarded-proto` 补全绝对 URL 的路径，改用站点配置的 canonical origin；非法值直接报错。取代 v1 REG-C8 的前置部分 | 🔧 现有洞：`_shared/site-facade.ts:16-34` |
+| **REG-CS7** | **保留名扩项（红队 F5，原 REG-N3 提前）** | `RESERVED_NAMES` 增 `oj`、`ojm`、`registry`。**不提前的后果是自撞**：方案默认 `api.prefix = name`，任何人先装一个名为 `registry` 的方案就占住 `/api/registry`，与本包路由正面冲突；`oj`/`ojm` 则是 CLI 命令名，被占用后文档与命令语义冲突。发布期与安装期**同一份清单**校验，命中即拒并给替代名建议 | 🔧 现有 8 项（`manifest-contract.ts:36`），缺这 3 个 |
+| **REG-CS8** | **包体与解压体积闸门（红队 F1）** | 三道闸，**常量单点定义**（`MAX_PACKAGE_BYTES` / `MAX_UNPACKED_BYTES` / `MAX_ENTRIES` / `MAX_SINGLE_ENTRY_BYTES`）：① 下载前用**签名索引声明的 `archive.size`** 比对上限，超限不下载（省带宽也省内存）；② 解压前用**已有的 `tar -tvzf` 清单**累加未压缩体积、条目数、单条目体积，超限拒（复用 `validateTarListing`，不新增一次 IO）；③ 解压后复核 staging 实际占用。现状：`extract.ts` **零体积守卫**，`tgz-guard.ts` 只查路径/类型；`download.ts` 先 `arrayBuffer()` 后比 size（**比之前在内存里**，对超大响应无保护） | 🆕 现状完全缺失 |
 
 ### 5.2 P0-R：registry 本体（12 条）
 
@@ -215,11 +255,11 @@ ojm unpublish @acme/demo@1.0.0      # ⑤ 下线（默认 yank）
 | **REG-R3** | **公钥注册 + 二次确认** | `ojm key register` 提交 64 hex 公钥；**首次绑定需邮件/控制台二次确认 + 24h 冷却**，期间不可用于发布；注册/启用各发一次通知。合并 v1 REG-K2 + K8（K8 是 v1 最大空洞） | 🆕 现状公钥只在安装端手工 `trust add` |
 | **REG-R4** | **key 生命周期（最小集）** | 绑定**不可改**；可 `retire`（不再接受新发布）/ `revoke`（阻断新装，进集中吊销）。合并 v1 REG-K3 + K7 | 🔧 现状吊销只在站点本地，不跨站点 |
 | **REG-R5** | **scope 目录 + slug 映射** | registry 目录键 `@acme/demo` ↔ **物理名 `acme-demo`**；物理名恒满足 `^[a-z][a-z0-9-]{0,63}$`；manifest 增 `registryScope` 声明归属；**同名不同 scope → 物理名冲突在发布期即拒**（提示 `acme2-demo`）。重写 v1 REG-N1/N5（不再要求全链路改造） | 🔧 现状按裸 name 归并（`market/index-builder.ts:30-52`） |
-| **REG-R6** | **上传发布四查** | ① token → scope 授权；② scope 的 active key 含本签名 key；③ **包级验签**；④ 版本冲突（同 sha256 幂等放行，且**不清除** yanked/revoked）。合并 v1 REG-P1/P2/P9 | 🆕 现状 `market publish` 只写本地 `cdn/`（`market/publish.ts:132-135`） |
+| **REG-R6** | **上传发布五查** | ① token → scope 授权；② scope 的 active key 含本签名 key；③ **包级验签**；④ 版本冲突（同 sha256 幂等放行，且**不清除** yanked/revoked）；⑤ **体积上限（红队 F1）**：`tgz` 超 `MAX_PACKAGE_BYTES` 直接 413，**在整包入内存之前按 `content-length` 先拒**（现状 `market/api.ts:361-367` 是整包读进 isolate，256MB 堆下单个 200MB 包即 OOM）。合并 v1 REG-P1/P2/P9 | 🆕 现状 `market publish` 只写本地 `cdn/`（`market/publish.ts:132-135`） |
 | **REG-R7** | **索引生成 + 外置签名** | DB 为唯一真相 + **单写者串行**（blob 无 LIST）；按分片**增量重渲染**（只重画受影响的片）；产出未签索引 → `ojm registry sign` 用离线索引私钥签 → 回传后校验公钥一致才发布到读面。取代 v1 REG-S3 | 🆕 isolate 无签名能力，必须外置 |
-| **REG-R8** | **读面两种载体（不新增挂载）** | ① **模块 API**（保证可用）：`/api/registry/cdn/*` 吐索引与 tgz，带 `ETag`/缓存头/`Range`，不经 s3 预签名；② **站点既有 `/cdn` 挂载**（默认工程就有，`templates/config.yaml:36-45`）：registry 把索引与 tgz 写进该目录即纯静态，**无需运维加 mount**。两种载体文件格式完全一致，切换只改 `market_cdn_url`。**不承诺「平台零改造」**（v1 硬承诺已撤）。取代 v1 REG-S4 | 🔧 不新增 mounts（复用已有的） |
-| **REG-R9** | **install 源切换** | `ojm install @acme/demo@1.0.0 --registry <url>`：CLI 把目录键归一为 `acme-demo` 再发请求；服务端 `/api/_platform/market/install` 增 `registry` 字段并**校验在站点白名单内**。**API_VERSION 0.1.0 → 0.2.0**，旧站点明确报「站点版本过低，不支持指定仓库」（**不静默降级**）。合并 v1 REG-I1/C1 | 🔧 现状请求体只有 `{name,version,source:"cdn"}`（`install.ts:245-249`） |
-| **REG-R10** | **集中吊销 + fail-closed** | registry 出 `revocations.yaml`（短缓存 60s）；安装前拉取，命中即拒装；**拉取失败 = fail-closed 拒装**（同时修复现有 fail-open 先例 `installer.ts:886-891`、`:915-918`）。合并 v1 REG-I3/K7/T5 | 🆕 |
+| **REG-R8** | **读面两种载体（不新增挂载）+ 载体由可见性决定** | ① **模块 API**（保证可用）：`/api/registry/cdn/*` 吐索引与 tgz，带 `ETag`/缓存头/`Range`，不经 s3 预签名；② **站点既有 `/cdn` 挂载**（默认工程就有，`templates/config.yaml:36-45`）：registry 把索引与 tgz 写进该目录即纯静态，**无需运维加 mount**。两种载体文件格式完全一致，切换只改 `market_cdn_url`。**不承诺「平台零改造」**（v1 硬承诺已撤）。③ **红队 F6 硬约束**：`registry.visibility = private`（默认）**禁止**写公共 `/cdn`，启动自检发现即 fail loud；只有 `public` 才允许静态载体。理由：`/cdn` 无鉴权，写进去等于把私有包交给任何能访问站点的人。④ **红队 F16 容量约束**：`blob.get` 返回整块 `Uint8Array`（`api-manual.md:1720`），没有流式/Range；isolate 堆 256MB ⇒ 模块 API 载体的**单包上限与并发数必须写进配置**，超过 `MAX_PACKAGE_BYTES` 的包在 `private` 下**不可安装**（明确报错）而不是 OOM。取代 v1 REG-S4 | 🔧 不新增 mounts（复用已有的） |
+| **REG-R9** | **install 源切换** | `ojm install @acme/demo@1.0.0 --registry <url>`：CLI 把目录键归一为 `acme-demo` 再发请求（**归一单点在 CLI**，见 §8.2 D5）；服务端 `/api/_platform/market/install` 增 `registry` 字段并**校验在站点白名单内**。**API_VERSION 0.1.0 → 0.2.0**，旧站点明确报「站点版本过低，不支持指定仓库」（**不静默降级**）。<br>**② 反向破坏（红队 F4）**：升 0.2.0 后，声明 `peerPlatform: ^0.1.0` 的存量第三方包在新站点**全部装不上**（caret 在 0.x 下 minor 必须相等，`preflight.ts:106-116`）。处置：发版说明要求第三方把 `peerPlatform` 写成 `>=0.1.0`；`C2-11` 的报错文案对「host 0.2.x + range `^0.1.x`」给**专属迁移提示**，不是笼统「不满足」。本仓 8 个第一方方案均未声明 `peerPlatform`（`grep` 0 命中），不受影响。<br>**③ 白名单不是防 SSRF 的全部（红队 F7）**：站点去拉 `--registry` 给的源，**禁止跨源重定向**（`3xx` 到白名单外即拒），否则允许源可以 302 到任意地址。合并 v1 REG-I1/C1 | 🔧 现状请求体只有 `{name,version,source:"cdn"}`（`install.ts:245-249`） |
+| **REG-R10** | **集中吊销 + fail-closed** | registry 出 `revocations.yaml`（短缓存 60s，**不设 stale 窗口**——安全通道不吃可用性降级）；安装前拉取，命中即拒装；**拉取失败 = fail-closed 拒装**（同时修复现有 fail-open 先例 `installer.ts:886-891`、`:915-918`）。**红队 F3 补齐**：① 清单**必须签名**，空清单也要签（否则「把文件清空」就是一次成功的吊销绕过——fail-closed 只挡拉取失败，挡不住「拉到一份合法的空文件」）；② 带 `seq`，客户端记录每源最大 `seq`，**回退即拒**；③ 签名 key 与索引 key 同一套 `reg_index_key`，轮换期双 key 并行。合并 v1 REG-I3/K7/T5 | 🆕 |
 | **REG-R11** | **离线导入 + 离线回滚** | ① 离线包格式：`tgz + .sig + 索引切片 + catalog + revocations`，`ojm registry import` 导入，带 `seq` 与签名校验；② 回滚走**本地版本目录**，registry 挂也能回滚。合并 v1 REG-C9 + I6 | 🆕 回滚现状依赖 CDN 索引 |
 > **附项（Q10 裁定）**：REG-M3 的 **license 展示**提前到 P0-R，随 REG-R8 一起做
 > （`manifest-contract.ts:84` 已在白名单、`:234` 已校验 SPDX，成本近零）；来源/yank 标识仍留 P1。
@@ -230,7 +270,7 @@ ojm unpublish @acme/demo@1.0.0      # ⑤ 下线（默认 yank）
 
 | 通道 | 拉取失败时 | 理由 |
 |---|---|---|
-| **索引**（可用性通道） | 缓存期内（`stale-while-revalidate=300`）**继续装**；缓存过期才拒 | 索引是内容分发，不是安全裁决 |
+| **索引**（可用性通道） | 缓存期内（`stale-while-revalidate=60`，与 REG-CS5 同值）**继续装**；缓存过期才拒 | 索引是内容分发，不是安全裁决 |
 | **吊销清单**（安全通道） | **fail-closed 拒装** | 吊销是安全裁决，放行即失效 |
 | **回滚** | 走本地版本目录，**不拉 registry** | REG-R11 |
 
@@ -238,9 +278,10 @@ ojm unpublish @acme/demo@1.0.0      # ⑤ 下线（默认 yank）
 
 ---
 
-## 6. 非 MVP backlog（明列 26 条：P1 17 / P2 9）
+## 6. 非 MVP backlog（明列 25 条：P1 16 / P2 9）
 
 保留 v1 的完整编号以便追溯，但**不再与 MVP 混排**。触发条件写明，避免「以后再说」。
+（v2.2：原 P1 的 REG-N3 已提升为 **P0-C / REG-CS7**，故 26 → 25。）
 
 ### 6.1 P1（registry 上线后第一批）
 
@@ -253,7 +294,7 @@ ojm unpublish @acme/demo@1.0.0      # ⑤ 下线（默认 yank）
 | REG-P10 | deprecate 弃用态（可装但告警） | 首次出现「要弃用但不忍心 yank」的场景 |
 | REG-P11 | 发布后修改窗 + 版本号永不重用 | registry 上线即有政策，代码可先不做 |
 | REG-I4 | 版本范围 `^1.2` / `~1.2` | 用户实际提出需求（现状精确版本够用） |
-| REG-I7 | 安装侧记录来源（审计） | **建议提前到 P0-R**，见 §15 Q10 |
+| REG-I7 | 安装侧记录来源（审计） | **Q10 已裁：不提前**，留 P1（只把 license 展示提前） |
 | REG-U1 | 包详情页 | 有 3 个以上第三方发布方 |
 | REG-U2 | 作者后台 | 同上 |
 | REG-U3 | 搜索 | 包数 > 50 |
@@ -262,7 +303,6 @@ ojm unpublish @acme/demo@1.0.0      # ⑤ 下线（默认 yank）
 | REG-C4 | scope 绑定 registry（`@acme:registry=`） | 多源真实出现 |
 | REG-C6 | `unpublish --hard` 物理删除 | 有恶意包处置需求 |
 | REG-T6 | 版本不可变（已在 R6 内） | — |
-| REG-N3 | 保留名扩项（`oj`/`ojm`/`registry`） | **成本近零，建议并入 P0-R**（`manifest-contract.ts:36` 现有 8 项） |
 
 ### 6.2 P2（明确延后）
 
@@ -292,6 +332,7 @@ ojm unpublish @acme/demo@1.0.0      # ⑤ 下线（默认 yank）
 | **索引出网** | 现状 12GB/日 vs 包体 56MB/日（**200+ 倍**）。v2 目标：索引出网 ≤ 包体 5 倍（靠 `max-age=60` + 分片 + ETag 304） | SRE 实测 |
 | **isolate 内存** | 上限 256MB（`js_heap_limit_bytes: 268435456`）；**任何单次索引构建的中间对象必须 <100MB**。分片后单片 1.2MB 安全；v1 的「全量 37MB → 428MB 堆」路线**禁止** | 上游配置 + v1 复核 |
 | **索引新鲜度** | yank **最坏 120s** 生效（`max-age=60` + `stale-while-revalidate=60`，Q8 裁定）+ CDN purge 兜底；`seq` 回退即拒 | 与 REG-CS2/CS5 配套；原写「≤60s」已更正 |
+| **包体与解压** | 四道上限常量单点（REG-CS8）：tgz ≤50MB、解压总量 ≤200MB、条目 ≤5000、单条目 ≤50MB；**下载前、解压前、解压后各校验一次**。依据：256MB 堆且 `blob.get` 整块返回，无上限即等于把 OOM/磁盘打满交给发布方 | 红队 F1/F16（`api-manual.md:1720` + `extract.ts` 零守卫） |
 | **安全** | 私钥**不出托管边界**（本地 / HSM / KMS）；CI 用短时效子密钥；token 只存哈希、默认短时效、可按 scope 授权；上传全链路审计；验签**硬 fail-closed 不留开关**（G4） | 供应链会审 |
 | **可用性** | **不承诺「registry 挂了不影响安装」**（v1 判断错误）：索引在缓存窗口内可装，缓存过期即拒；**回滚走本地，不受影响** | `market/api.ts:209` 恒回源 |
 | **兼容** | 物理名 slug 不变 ⇒ 安装/解包/路由/权限码链路**零改造**；契约变更只有 `install` 的 `registry` 字段（0.1.0→0.2.0） | REG-R5/R9 |
@@ -299,7 +340,7 @@ ojm unpublish @acme/demo@1.0.0      # ⑤ 下线（默认 yank）
 
 ---
 
-## 8. 关键架构决策（v2 修订）
+## 8. 关键架构决策（v2.2 修订）
 
 ### 决策 1（再重写）：registry 形态 = 一个方案包，账号面由宿主给
 
@@ -337,6 +378,17 @@ ojm unpublish @acme/demo@1.0.0      # ⑤ 下线（默认 yank）
 签名**归属** registry（不是发布方）——索引是仓库的目录声明。但**执行位置在服务外**（CI/运维），
 因为 isolate 无签名能力。私钥可离线保管，反而是安全增益。
 
+### 决策 5（红队新增）：读面载体由「可见性」决定，不由性能偏好决定
+
+| 选项 | 做法 | 结论 |
+|---|---|---|
+| **A. visibility 决定载体**（`private`→只走模块 API；`public`→可用 `/cdn` 静态） | 一个配置项控制，启动自检 | **推荐**：堵掉「以为私有、实际静态公开」的配错路径 |
+| B. 载体自由选（v2.1 口径） | 运维自选 | **否决**：`/cdn` 无鉴权，选错即泄漏，且泄漏无声 |
+| C. 一律走模块 API | 最简单 | 否决：`blob.get` 整块返回、256MB 堆 ⇒ 大包+并发会 OOM；且公共托管也需要 CDN 前置 |
+
+代价（诚实账）：私有大包只能靠「内网 + 模块 API」，单包上限被堆内存硬约束；
+真要发大包得等 P1 的预签名/CDN 前置。**先把边界说清，比事后 OOM 好。**
+
 ---
 
 ## 9. 数据模型（registry 模块自有表）
@@ -345,7 +397,7 @@ ojm unpublish @acme/demo@1.0.0      # ⑤ 下线（默认 yank）
 |---|---|---|
 | `reg_scope` | `id`, `name`(唯一), `owner_user`, `created_at`, `reserved` | 目录键 `@acme` |
 | `reg_scope_grant` | `scope_id`, `user_id`, `can_publish`(0/1) | **不是 RBAC**：单一布尔授权，不写框架 RBAC 表、无角色层级、不进全局判权路径 |
-| `reg_package` | `id`, `scope_id`, `slug`(唯一，物理名), `name`, `created_at` | `slug` 与 `name` 的映射在此落死 |
+| `reg_package` | `id`, `scope_id`, `name`(目录内名，如 `demo`), `slug`(**全局唯一，物理名**，如 `acme-demo`), `created_at` | `@<scope>/<name>` ↔ `slug` 的映射在此落死；**唯一约束只建在 `slug`**（`name` 允许跨 scope 重名） |
 | `reg_version` | `id`, `package_id`, `version`, `sha256`, `size`, `blob_key`, `sig_blob_key`, `key_id`, `token_id`, `state`(published/yanked), `dist_tags`, `published_by`, `published_at`, `yanked_at`, `yanked_by` | **不可变**；`token_id` 供凭证失窃时枚举受影响版本 |
 | `reg_publish_key` | `id`, `scope_id`, `key_id`, `public_key`(64hex), `fingerprint`, `state`(pending/active/retired/revoked), `confirmed_at`, `not_before`, `created_by` | `pending` 即 24h 冷却态 |
 | `reg_token` | `id`, `user_id`, `scope_id`, `token_hash`, `origin`, `expires_at`, `revoked_at`, `last_used_at` | 只存哈希 |
@@ -362,15 +414,15 @@ ojm unpublish @acme/demo@1.0.0      # ⑤ 下线（默认 yank）
 
 ### 10.1 registry 模块 API
 
-| 域 | 端点 | 说明 |
+| 域 | 端点（路由前缀统一 `/api/registry`） | 说明 |
 |---|---|---|
 | key | `POST /keys`（提交待确认）、`POST /keys/:id/confirm`、`POST /keys/:id/retire`、`POST /keys/:id/revoke` | 公钥生命周期 |
 | token | `POST /tokens`、`GET /tokens`、`DELETE /tokens/:id` | 上传凭证 |
 | scope | `POST /scopes`、`GET /scopes/:name`、`PUT /scopes/:name/acl` | 目录与授权（布尔） |
 | 发布 | `POST /packages/:scope/:name`（multipart：tgz + sig）、`POST /packages/:scope/:name/:version/yank` | 上传与下线 |
-| 读面 | `GET /cdn/catalog.yaml`、`GET /cdn/shards/<n>.yaml`、`GET /cdn/revocations.yaml`、`GET /cdn/files/<slug>-<version>.tgz` | 带 `ETag` + 缓存头 |
-| 索引签名 | `POST /index/unsigned`（导出）、`POST /index/signature`（回传） | 外置签名通道 |
-| 查询 | `GET /packages/:scope/:name`、`GET /search?q=` | 控制台/市场取数 |
+| 读面 | `GET /api/registry/cdn/catalog.yaml`、`GET /api/registry/cdn/shards/<n>.yaml`、`GET /api/registry/cdn/revocations.yaml`、`GET /api/registry/cdn/files/<slug>-<version>.tgz` | 带 `ETag` + 缓存头；**签名文件同路径加 `.sig`** |
+| 索引签名 | `POST /api/registry/index/unsigned`（导出）、`POST /api/registry/index/signature`（回传） | 外置签名通道；两端口**仅站点管理员可用**（`assertPermission`） |
+| 查询 | `GET /api/registry/packages/:scope/:name`、`GET /api/registry/search?q=` | 控制台/市场取数 |
 
 > 读面端点**不叫** `/cdn/*` 顶层路径——模块路由只能挂 `/api/<prefix>`；运维若在站点配置
 > `/cdn` 静态挂载，则同一份文件走纯静态。**两种形态文件格式完全一致**。
@@ -414,7 +466,10 @@ ojm unpublish @acme/demo@1.0.0      # ⑤ 下线（默认 yank）
 
 1. **公共托管 vs 私有部署优先？** 影响多租户隔离强度与配额策略（不影响 MVP 编码）。
 2. **scope 抢注与申诉**：先到先得 + 保留名之外，是否需要商标/实名通道？（P2）
-3. **包体上限**：tgz 上限多少（建议 50MB）？超出拒绝还是分片？（P0 护栏，需数字）
+3. **包体上限的四个数字**（红队 F1 已把它从「可选参数」变成 P0-C 的 REG-CS8，数字待定）：
+   建议默认 `MAX_PACKAGE_BYTES=50MB`、`MAX_UNPACKED_BYTES=200MB`（4 倍膨胀容差）、
+   `MAX_ENTRIES=5000`、`MAX_SINGLE_ENTRY_BYTES=50MB`。**超出即拒**，不做「自动分片」
+   （分片会让安装语义复杂一个量级，且 npm 也不这么做）。需要确认的是这四个数对不对。
 4. **平台展示层是否多源聚合**？还是只展示「主源」？（取决于 §15 Q3 白名单形式）
 5. **私有 registry 的读面怎么授权？** 三档：① **网络隔离**（HTTP 层完全公开，只靠内网可达性；
    MVP 建议）② **源 token**（消费方站点配置 token，服务端 fetch 时带 `Authorization`——需改市场取数）
@@ -426,7 +481,7 @@ ojm unpublish @acme/demo@1.0.0      # ⑤ 下线（默认 yank）
 
 | 阶段 | 范围 | 产出 | 是否可独立开工 |
 |---|---|---|---|
-| **P0-C（6 条）** | REG-CS1~CS6 | 索引签名强制、防回放、防跨仓重放、yank、三级化+缓存、Host 头修复 | **已确认，可立即开工** |
+| **P0-C（8 条）** | REG-CS1~CS8 | 索引签名强制（含同代）、防回放、防跨仓重放、yank、三级化+缓存+原子写、Host 头修复、保留名扩项、体积闸门 | **已确认，可立即开工** |
 | **P0-R（12 条）** | REG-R1~R12 | 能发、能撤、能装、能离线回滚、能切源且源受控 | 形态/命名/契约/范围已定，可进详细设计 |
 | **P1** | §6.1 十七条 | 自助注册、控制台、弃用态、版本范围 | — |
 | **P2** | §6.2 | 统计、镜像、治理、组织协作 | — |
@@ -456,6 +511,18 @@ ojm unpublish @acme/demo@1.0.0      # ⑤ 下线（默认 yank）
 - [x] **CDN 缓存头现状只有 ETag**：`templates/cdn/README.md:43`
 - [x] **需求计数（可复现）**：`sed -n '103,272p' <v1> | grep -c '^| \**REG-'` = **79**；
       叠加 `| grep -c P0` = **52**
+
+**v2.2 红队新增复验项（2026-10-25）**
+
+- [x] **解压零体积守卫**：`grep -nE "size|limit|MAX|quota|byteLength" _lifecycle/steps/extract.ts` → **0 命中**
+- [x] **tgz 只防路径不防体积**：`_lifecycle/tgz-guard.ts` 全文件只判绝对路径/`..`/链接类型
+- [x] **下载先入内存后比 size（顺序反了）**：`_lifecycle/steps/download.ts:75`（`arrayBuffer`）→ `:78-82`（才比 size）
+- [x] **上传无体积上限**：`market/api.ts:361-367`、`:478`（`size` 是事后计算，不是前置拒绝）
+- [x] **索引两次非原子写 + 两次签名写**：`packages/cli/src/market/build-index.ts:83-86`、`:145-146`
+- [x] **`blob.get` 整块返回、无流式/Range**：`docs/devkit/oj-api-dev/api-manual.md:1720`
+- [x] **`^0.1.0` 不匹配 `0.2.x`**：`_lifecycle/steps/preflight.ts:106-116`（`caretSatisfies` 的 0.x 口径）
+- [x] **第一方方案均未声明 `peerPlatform`**：`grep -rl peerPlatform packages/cli/templates/src --include=*.yaml | wc -l` → **0**
+- [x] **`/cdn` 是无鉴权静态挂载**：`packages/cli/templates/config.yaml:36-45`
 
 ---
 
@@ -533,9 +600,9 @@ ojm unpublish @acme/demo@1.0.0      # ⑤ 下线（默认 yank）
 | **Q1** | **registry 形态**：可选的第一方方案包，装上即成私有 registry 站点，账号/登录/RBAC 全用宿主 | 方案包 / 框架内置 / 独立后端 | **方案包形态**（§2） | ✅ 确认 |
 | **Q2** | **物理产物名** | slug / slug+`@scope` 输入别名 / `@scope/name` 物理名 | **slug 物理名**（`acme-demo`），scope 只作 registry 目录键（REG-R5） | ✅ 确认 |
 | **Q3** | **`install --registry` 契约升级** | 升级 0.1.0→0.2.0 且旧站点硬报错 / 不升级 / 旧站点静默降级 | **升级 + 硬报错**；源必须命中站点白名单（REG-R9） | ✅ 确认 |
-| **Q4** | **P0-C 是否先独立开工** | 先做 / 同期 / 不做 | **先做 P0-C**（6 条，含修 Host 头 SSRF 现有洞） | ✅ 确认 |
+| **Q4** | **P0-C 是否先独立开工** | 先做 / 同期 / 不做 | **先做 P0-C**（6 条，含修 Host 头 SSRF 现有洞）；v2.2 红队后为 8 条（§16.5） | ✅ 确认 |
 | **Q5** | **发布凭据落盘** | `~/.ojm/credentials.json`(0600) / 只走环境变量 | **落盘 0600**，按 registry origin 分桶；站点口令仍只走内存 | ✅ 确认 |
-| **Q6** | **MVP 范围** | 18 条 / 砍到 12 / 扩到 21 | **18 条**（P0-C 6 + P0-R 12），其余明列 26 条进 backlog | ✅ 确认 |
+| **Q6** | **MVP 范围** | 18 条 / 砍到 12 / 扩到 21 | **18 条**（P0-C 6 + P0-R 12），其余明列 26 条进 backlog；v2.2 红队后 **20 条**（P0-C 8 + P0-R 12），扩容待确认 | ✅ 确认（18）；§16.5 待确认（+2） |
 | **Q12** | **私有读面授权** | 网络隔离 / 源 token / mTLS | **网络隔离**（MVP 零代码）；源 token 排 P1 | ✅ 确认 |
 | **Q7** | **`uninstall` 是否接 `--registry`** | 不接 / 接上但忽略 / 接且校验来源 | **不接**；输出里打印「该包来自 X」，帮助文本说明「卸载不涉及仓库」。升「接且校验」要等 I7（见 Q10） | ✅ 确认 |
 | **Q8** | **索引缓存 TTL** | 60/60 / 60/300 / 300/600 | **`max-age=60` + `stale-while-revalidate=60`**（yank 最坏 120s）。12GB/日 的基线**未独立复现**，S2-1 开工前先量一轮「谁在拉索引」再决定是否调大 | ✅ 确认 |
@@ -545,17 +612,76 @@ ojm unpublish @acme/demo@1.0.0      # ⑤ 下线（默认 yank）
 
 ### 15.1 确认后解锁的事
 
-- **P0-C 可以开工**（REG-CS1~CS6）。其中 **REG-CS6（Host 头 SSRF）是现有安全洞，与 registry 无关**，
+- **P0-C 可以开工**（REG-CS1~CS8）。其中 **REG-CS6（Host 头 SSRF）是现有安全洞，与 registry 无关**，
   优先级可单独提前。
 - **P0-R 可以进详细设计**（不再是悬空需求）：形态、命名、契约、范围四项已定，剩余的是实现细节。
-- **仍不动的**：Q7–Q11 未定项涉及的 `uninstall` 帮助文本、缓存 TTL 常量、G5 例外、`--url` 改名、
-  license 展示，都**不阻塞** P0-C，等确认后再改。
+- **Q7–Q11 已全部确认**（2026-10-25 回填）：`uninstall` 不接 `--registry`、缓存 60/60、G5 分级、
+  `--url` 硬切 `--site`、只推 license。
+- **仍待确认的只有 §16.5 的两条 P0-C 扩容**（REG-CS7 / CS8），它们**不阻塞**已有 P0-C 开工。
+
+---
+
+## 16. 红队对抗演练（2026-10-25）
+
+### 16.1 怎么打的
+
+不用「再读一遍文档」的方式复查，而是**扮演两种人**去攻击它：
+
+- **六种攻击者**：想投毒包的发布方、想偷私有包的匿名者、想越权的低权限账号、能改网络响应的中间人、
+  想把服务器打瘫的资源攻击者、想借用别人公钥发版的人。
+- **四种故障注入**：磁盘满、进程中途被杀、升版、并发。
+
+每个场景都要求**拿代码或配置当证据**，不接受「应该没问题」。**14 个场景**里 **8 个是真问题**，
+全部已就地改写需求；另外 6 个判定为「已被现有设计覆盖」，理由留在 §16.3，避免下一轮重复讨论。
+
+### 16.2 8 个真问题（含证据与处置）
+
+| # | 攻击 / 故障 | 现在会发生什么（证据） | 处置（已写进需求） |
+|---|---|---|---|
+| **F1** | 发一个 1MB 的 tgz，解开是 1TB（解压炸弹）；或直接传 200MB 包 | `extract.ts` **没有任何体积/条目上限**，`tgz-guard.ts` 只查路径与链接类型；`download.ts` 先 `arrayBuffer()` **把整包读进内存再比 size**（比对发生在占用之后）；上传侧同样无上限（`market/api.ts:361-367` 整包入 isolate） | **新增 REG-CS8**（P0-C）：下载前 / 解压前 / 解压后三道闸，常量单点；**REG-R6 加第五查**（超限 413） |
+| **F2** | 索引写一半进程被杀；或 `bundles.yaml` 已新、`manifests.yaml` 还是旧 | `build-index.ts:83-86` **两次 `writeFileSync`**、`:145-146` 再写两个签名，中间窗口读方会拿到「一新一旧」或「有文件没签名」 | **REG-CS1 加②同代校验**（三份文件各带 `seq`，签名覆盖 `(kind,seq)`，不同代即拒）；**REG-CS5 加④原子写**（tmp + rename，先分片后 catalog） |
+| **F3** | 把 `revocations.yaml` 换成一份合法的空文件 | 需求只规定「拉不到 → 拒装」，**没规定清单要签名**。空文件是「拉到了」，于是黑名单被静默清空 | **REG-R10 加①②**：空清单也要签；带 `seq`，回退即拒 |
+| **F4** | 站点从 API 0.1.0 升到 0.2.0，第三方包声明 `peerPlatform: ^0.1.0` | caret 在 0.x 下 minor 必须相等（`preflight.ts:106-116`），**这些包在新站点全部装不上**，且只报笼统「不满足」。本仓 8 个方案均未声明（`grep` 0 命中）⇒ 受害的是第三方 | **REG-R9 加②**：发版说明要求改 `>=0.1.0`；`C2-11` 对「host 0.2.x + `^0.1.x`」给专属迁移提示 |
+| **F5** | 先装一个名叫 `registry` 的方案 | `RESERVED_NAMES`（`manifest-contract.ts:36`）**没有** `oj`/`ojm`/`registry`；方案默认 `api.prefix = name` ⇒ 它占住 `/api/registry`，与本包路由**正面冲突** | **新增 REG-CS7**（P0-C，原 P1 的 REG-N3 提前）：清单加 3 个名，发布期与安装期同源校验 |
+| **F6** | 私有站点把包写进 `/cdn` | `/cdn` 是**无鉴权静态目录**（`templates/config.yaml:36-45`），写进去等于匿名可下；而 v2.1 的 R8 把「静态 / 模块 API」当**性能偏好**让运维自选 | **REG-R8 加③ + 新增决策 5**：载体由 `visibility` 决定，`private` 禁止写 `/cdn`，违反即启动报错 |
+| **F7** | 把白名单内的源换成 `302 → http://169.254.169.254` | 白名单只校验**初始 URL**，站点去拉包时会跟随重定向 ⇒ 白名单形同虚设 | **REG-R9 加③**：禁止跨源重定向，3xx 到白名单外即拒 |
+| **F8** | 50MB 包 × 10 个并发安装 | `blob.get` 返回**整块 `Uint8Array`**（`api-manual.md:1720`），无流式/Range；isolate 堆 256MB ⇒ 模块 API 载体在大包+并发下必然 OOM | **REG-R8 加④ + §7 包体行**：超过阈值的包在 `private` 下明确报错不可装；容量约束写进配置而不是靠运气 |
+
+### 16.3 六条「看着像问题、实际已被覆盖」
+
+| # | 疑问 | 为什么不是问题 |
+|---|---|---|
+| N1 | 索引缓存 60s，yank 后还能装到坏版本 | Q8 已裁定可接受（最坏 120s 生效）；真正的刹车是**吊销清单**（60s、不设 stale），不是索引 |
+| N2 | 私有读面根本没鉴权，谁能访问站点谁就能装 | Q12 已裁定 MVP 靠**网络隔离**（零代码）。F6 只堵「配错成静态公开」，不改这个裁定；源 token 在 P1 |
+| N3 | CI 每次都是干净环境，`seq` 回放防护记不住历史 | 承认。兜底是 `expires_at` 过期即拒 + 吊销通道 fail-closed；不在 MVP 造额外状态 |
+| N4 | 「索引出网 12GB/日 vs 包体 56MB/日」这个 200 倍 | **我没有独立复现**。已写进 Q8 的开工前置：先量一轮日志再定 TTL，不拿未验证的数字当依据 |
+| N5 | 没有 Web 控制台、没有自助注册 | 都已明确排 P1（§6.1），不是遗漏 |
+| N6 | 恶意包发布后怎么处置 | `yank`（挡新装）+ 吊销（挡后续新装）+ G5 分级（不自动禁用已装）三件套已覆盖，见 Q9 |
+
+### 16.4 这轮演练**没有**解决的事（不许当已解决）
+
+1. **`MAX_*` 的四个具体数字**没定（建议 50MB / 200MB / 5000 / 50MB，见 §11-3）。数字错了，闸门就是安慰剂。
+2. **F8 的准确容量**要等 D4 的 1 小时 spike（`blob.get` 是否可流式）才有结论；现在只写了「必须设上限」。
+3. **第三方包迁移**只能靠发版说明喊话，没有强制手段（站点无法强制别人改 manifest）。这是外部成本，不是本仓能解的。
+4. **`/cdn` 与模块 API 双载体的字节一致性**没有测试手段，只能靠「格式一致 + 同一份生成产物」的设计约束。
+
+### 16.5 对 MVP 计数的影响（待确认）
+
+| 项 | 变化 | 理由 | 回退成本 |
+|---|---|---|---|
+| REG-CS7 保留名 | backlog → **P0-C** | 不提前会让本功能**自己撞自己** | 极低（回退只是继续留洞） |
+| REG-CS8 体积闸门 | backlog → **P0-C** | 现状是「发布方决定你的磁盘和内存」 | 低，但回退意味着接受 F1 的 DoS |
+
+⇒ **MVP 18 → 20**（P0-C 6 → 8，P0-R 12 不变），backlog 26 → 25。两条各 ≤1 人日，不影响阶段划分。
+**若不同意扩容**，把这两条退回 §6.1 即可；另外 6 条（F2/F3/F4/F6/F7/F8 的修订）与这两条无关，照常生效。
+
+---
 
 ## 附：本文与上游文档的关系
 
 | 文档 | 状态 |
 |---|---|
-| 本文 `202610250010-solution-registry-requirements.md` | **权威（v2.1）** |
-| `docs/plans/20261025-1500-solution-registry-task-plan.md` | 执行计划（18 条拆 5 阶段） |
+| 本文 `202610250010-solution-registry-requirements.md` | **权威（v2.2）** |
+| `docs/plans/20261025-1500-solution-registry-task-plan.md` | 执行计划（20 条拆 5 阶段） |
 | `docs/prd/solution/ARCHITECTURE.md` | **上位约束**（§2 的「宿主提供账号面」依据其 §2.1 与 §11.1） |
 | ~~两份中间草稿~~ | **已删除**（信任扩展 + 功能面），结论已折叠进 §5.3 / REG-R10 / REG-CS1~CS3 与 §5/§6 |
