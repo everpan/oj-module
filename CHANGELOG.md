@@ -7,6 +7,15 @@
 
 ## [Unreleased]
 
+## [0.2.30] - 2026-10-24
+
+双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步升 **0.2.30**。
+
+### Fixed
+
+- **SPA 重新登录后 `/system/*` 直达恒 404（B16 回归：宿主路由表登录后重登记）**：Boot 期 `user-info` 失败（后端闪断/过期 token 刷新失败）→ 角色快照为空 → `requiredRoles` 模块被 B16 过滤出路由表；随后 SPA 登录不刷新页面时，`setAccessStore` 的 `router.patchRoutes` 打的是 runtime 单例 router，而宿主渲染的是 Boot 自建 router——菜单回来了但路由表保持旧快照，admin/superadmin 访问 `/system/users` 恒落 catch-all「返回首页」，须硬刷新才恢复。宿主侧抽出 `buildShellChildren()` 统一构建口，token 变化（`hydrateUser` 定角色后）调 `repatchShellRoutes()` 重登记宿主路由表，并按当前路径 replace 一次强制重匹配（覆盖登录重定向与重登记交叉的竞态）。附 e2e 确定性复现（abort user-info + reload + SPA 重登 + 直达）。
+- **`system` 模块入口误导性注释**：原注释声称「seed 的 admin 账号只有 superadmin」，与 D12 账号名=角色名口径相反，会诱导把 `requiredRoles` 收窄成 `["admin"]` 从而把 superadmin 挡在门外。改为对齐后端 `assertSystemAdmin`（`access.ts:87`）的口径说明，并指向守此口径的回归测试。
+
 ## [0.2.29] - 2026-10-24
 
 双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步升 **0.2.29**。
