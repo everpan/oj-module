@@ -199,12 +199,26 @@ describe("旧 scope 零残留（R7）", () => {
 	function walk(dir: string, hit: string[]): void {
 		// 全仓遍历会撞上其他测试文件的临时夹具（如 .tmp-oj-fx）——它可能已被
 		// 该文件的 afterAll 清掉（vitest 文件间无顺序保证），缺失即跳过
-		if (!fs.existsSync(dir))
-			return;
-		for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+		// 全仓遍历会撞上其他测试文件的临时夹具（如 .tmp-oj-fx / .tmp-dev-fx）——
+		// 它可能被该文件的 afterAll 在 vitest 文件间无顺序保证下清掉，缺失即跳过。
+		// 注意 TOCTOU：existsSync 通过、但 readdirSync 前被并发删除，故 readdirSync
+		// 也必须兜底 ENOENT，否则会抛「no such file or directory, scandir .../mock」。
+		let entries: fs.Dirent[];
+		try {
+			entries = fs.readdirSync(dir, { withFileTypes: true });
+		}
+		catch (err) {
+			if ((err as NodeJS.ErrnoException).code === "ENOENT")
+				return;
+			throw err;
+		}
+		for (const entry of entries) {
 			const full = path.join(dir, entry.name);
 			if (entry.isDirectory()) {
 				if (SKIP_DIRS.has(entry.name))
+					continue;
+				// 临时夹具目录（.tmp-oj-fx / .tmp-dev-fx 等）与改名守卫无关，整棵跳过
+				if (entry.name.startsWith(".tmp-"))
 					continue;
 				// docs/archive 保留历史改名痕迹，不回写
 				if (path.relative(PROJECT_ROOT, full) === "docs/archive")

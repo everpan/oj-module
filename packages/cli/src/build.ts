@@ -106,6 +106,7 @@ export const accessControlCodes = _obj;
 export const AccessControlRoles = _obj;
 export const permissionPrefix = "permission:button";
 // store
+export const useAccessStore = _fn;
 export const useAuthStore = _fn;
 // 方案路由归并 store（token 就绪自动重拉，R21）
 export const useSolutionRoutes = _fn;
