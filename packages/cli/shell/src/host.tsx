@@ -102,9 +102,60 @@ useAuthStore.subscribe((state, prev) => {
 			// 记会沿用旧表——admin 看不到 /system、viewer 反而看得到，硬刷新才纠正。
 			// Boot 早期 token 漂移时模块未加载，登记 base 子集，loadAll 尾部会覆盖。
 			useAccessStore.getState().setAccessStore(getRoutes());
+			repatchShellRoutes();
 		});
 	}
 });
+
+/**
+ * 宿主路由根 id：patchRoutes 重登记的 parentId（与 runtime 的 ROOT_ROUTE_ID
+ * 同名无碍——各自作用于各自 router 实例）。
+ */
+const SHELL_ROOT_ID = "shell-root";
+
+/** Boot 建表后持有的宿主 router 实例；token 变化时按新角色快照重登记其路由表。 */
+let shellRouter: ReturnType<typeof createBrowserRouter> | null = null;
+
+/**
+ * 宿主路由表 children：index 重定向 + 模块路由（getHostRoutes 同源重写）+
+ * catch-all 兜底。Boot 建表与登录后重登记共用同一构建口，保证两处同源。
+ */
+function buildShellChildren() {
+	const hostRoutes = getHostRoutes();
+	return [
+		{ index: true, element: <Navigate to={hostRoutes[0]?.path ?? "/"} replace /> },
+		...hostRoutes,
+		// 风险项 §9.1：非管理员直达角色受限路由（如 /system/*）时，
+		// B16 过滤后该路由不在 getRoutes() 内 → React Router 无匹配。
+		// 补 catch-all 渲染框架兜底页（替代默认「Unexpected Application
+		// Error!」），title 取框架 404 文案（exception.notFoundTitle）。
+		// 后端 403 仍是权限硬兜底，此页仅改善直链观感，不构成权限判断。
+		{ path: "*", element: <CatchAll /> },
+	];
+}
+
+/**
+ * 按当前角色快照重登记宿主路由表（B16 回归，2026-10-24）。
+ *
+ * setAccessStore 内部的 router.patchRoutes 打的是 runtime 单例 router，而宿主
+ * 渲染的是本文件 Boot 里自建的 router——仅调 setAccessStore 只会更新菜单
+ * （access store），路由表保持 Boot 期快照。后果：Boot 期 user-info 失败
+ * （后端闪断/过期 token 刷新失败）→ 角色空 → requiredRoles 门禁模块被过滤出
+ * 路由表；随后 SPA 登录（不刷新页面）菜单回来了，但 /system/* 仍不在路由表里，
+ * 直达恒落 catch-all 404「返回首页」，须硬刷新才恢复。
+ */
+function repatchShellRoutes(): void {
+	if (!shellRouter)
+		return;
+	shellRouter.patchRoutes(SHELL_ROOT_ID, buildShellChildren());
+	// patchRoutes 不触发重匹配（同 AuthGuard 补 replace 的语义）：登录重定向
+	// 竞态下当前可能已停在 404 兜底上，按当前路径 replace 一次强制重新匹配。
+	// state.location 为 basename 相对路径，直接回填不会双重拼接部署前缀。
+	const { pathname, search } = shellRouter.state.location;
+	void shellRouter.navigate(`${pathname}${search}`, { replace: true }).catch(() => {
+		// 被更新的导航取消属正常竞态（登录重定向与重登记交叉），无需处理
+	});
+}
 
 /**
  * 直链兜底页（catch-all 路由元素）。无匹配路由时渲染框架 `PageError`，
@@ -222,58 +273,46 @@ function Boot() {
 
 				// 建表必须走 getHostRoutes（admin 路由与菜单管线同源重写 /system/<root>/*）——
 				// 直接用 getRoutes() 时菜单指向 /system/... 而渲染路由表没有该路径，方案
-				// 管理页菜单点击必 404（wiki admin/contacts 回归，2026-10）
-				const hostRoutes = getHostRoutes();
-
-				setRouter(
-					createBrowserRouter([
-						{
+				// 管理页菜单点击必 404（wiki admin/contacts 回归，2026-10）。
+				// children 走 buildShellChildren 统一构建口：登录后 repatchShellRoutes
+				// 按同一构建口重登记（B16 回归，2026-10-24）。
+				shellRouter = createBrowserRouter([
+					{
 						// 路由根只渲染容器（Outlet），整站 chrome 由模块自带的
 						// ContainerLayout 提供；宿主不叠加自己的 Layout chrome，
 						// 避免「宿主侧栏 + 模块侧栏」双层嵌套（布局混乱）。
-							path: "/",
-							// 全局副作用与 <Outlet /> 并列挂载：LayoutEffects 不含
-							// AuthGuard（宿主免登录），但暗色类/动态标题/NProgress
-							// 必须与 App 链路同源（偏差 4）
-							//
-							// 页面级错误边界（增量⑥）：模块路由默认 layout:"container"，
-							// **不经过** runtime 的 LayoutRoot（其自带 ErrorBoundary）——
-							// 模块页面渲染抛错时只剩 React Router 默认 ErrorBoundary，
-							// 表现为整页白屏。宿主链在此与 LayoutRoot 同构地包一层
-							// （ErrorBoundary + PageError，两者均自 runtime 出口取得）。
-							element: (
-								<ErrorBoundary FallbackComponent={PageError}>
-									<LayoutEffects />
-									<Outlet />
-								</ErrorBoundary>
-							),
-							// 落地 `/` 时跳到首个模块路由，确保模块 ContainerLayout 立即渲染
-							// （否则根 Outlet 无匹配子路由会空白）。等同全量 App 的
-							// `/` → VITE_BASE_HOME_PATH 重定向语义。
-							children: [
-								{ index: true, element: <Navigate to={hostRoutes[0]?.path ?? "/"} replace /> },
-								...hostRoutes,
-								// 风险项 §9.1：非管理员直达角色受限路由（如 /system/*）时，
-								// B16 过滤后该路由不在 getRoutes() 内 → React Router 无匹配。
-								// 补 catch-all 渲染框架兜底页（替代默认「Unexpected Application
-								// Error!」），title 取框架 404 文案（exception.notFoundTitle）。
-								// 后端 403 仍是权限硬兜底，此页仅改善直链观感，不构成权限判断。
-								{ path: "*", element: <CatchAll /> },
-							],
-						},
-					], {
-						/**
-						 * 子路径部署（oj `mounts: [{ prefix: /oj, web: dist, spa: true }]`）：
-						 * 不设 basename 时 react-router 看到的是含前缀的 `/oj/wiki/...`，
-						 * 匹配不到模块路由（`routes[].path` 恒为 `/wiki/...`，无模块根以外的
-						 * 前缀），深链刷新直接落 catch-all 404。取值同 modules.json 的
-						 * base（`resolveSiteBase()`），保证资源与路由用同一个前缀。
-						 *
-						 * 浏览器 URL 不受影响：react-router 只是在匹配/生成时剥/补前缀。
-						 */
-						basename: base,
-					}),
-				);
+						path: "/",
+						id: SHELL_ROOT_ID,
+						// 全局副作用与 <Outlet /> 并列挂载：LayoutEffects 不含
+						// AuthGuard（宿主免登录），但暗色类/动态标题/NProgress
+						// 必须与 App 链路同源（偏差 4）
+						//
+						// 页面级错误边界（增量⑥）：模块路由默认 layout:"container"，
+						// **不经过** runtime 的 LayoutRoot（其自带 ErrorBoundary）——
+						// 模块页面渲染抛错时只剩 React Router 默认 ErrorBoundary，
+						// 表现为整页白屏。宿主链在此与 LayoutRoot 同构地包一层
+						// （ErrorBoundary + PageError，两者均自 runtime 出口取得）。
+						element: (
+							<ErrorBoundary FallbackComponent={PageError}>
+								<LayoutEffects />
+								<Outlet />
+							</ErrorBoundary>
+						),
+						children: buildShellChildren(),
+					},
+				], {
+					/**
+					 * 子路径部署（oj `mounts: [{ prefix: /oj, web: dist, spa: true }]`）：
+					 * 不设 basename 时 react-router 看到的是含前缀的 `/oj/wiki/...`，
+					 * 匹配不到模块路由（`routes[].path` 恒为 `/wiki/...`，无模块根以外的
+					 * 前缀），深链刷新直接落 catch-all 404。取值同 modules.json 的
+					 * base（`resolveSiteBase()`），保证资源与路由用同一个前缀。
+					 *
+					 * 浏览器 URL 不受影响：react-router 只是在匹配/生成时剥/补前缀。
+					 */
+					basename: base,
+				});
+				setRouter(shellRouter);
 			}
 			catch (e) {
 				if (!cancelled)

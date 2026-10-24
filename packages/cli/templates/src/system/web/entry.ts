@@ -73,8 +73,11 @@ export default defineModule({
 	peerRuntime: ">=0.0.0",
 	// 路由级门禁（B16）：非系统管理员不注入 /system 路由、菜单不可见；
 	// API 级 403 由 assertSystemAdmin + service 层硬 enforcement 兜底。
-	// 角色口径对齐后端 assertSystemAdmin（access.ts:90）——superadmin **或**
-	// admin 均可；seed 的 admin 账号只有 superadmin，写 ["admin"] 会把它自己挡在门外。
+	// 角色口径对齐后端 assertSystemAdmin（access.ts:87）——superadmin **或**
+	// admin 均可，两者必须同时保留：D12（2026-10-22）起账号名=角色名，admin 与
+	// superadmin 是两个独立账号（seed.sql），只留 ["admin"] 会把 superadmin 挡在
+	// 门外（注册期过滤 → 路由消失 → 登录后 404 兜底）。改这两个值前先跑
+	// tests/system-guard.regression.spec.ts（只留 ["admin"] 会立刻变红）。
 	config: { requiredRoles: ["admin", "superadmin"] },
 	routes,
 	i18n: {
