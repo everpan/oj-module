@@ -96,7 +96,9 @@ export function indexSeqOf(text: string): number | null {
  * 单调计数由盘上既有索引承载，不另设状态文件。
  */
 export function resolveRebuildSeq(existing: string | null, fresh: string): number {
-	const prev = existing === null ? null : indexSeqOf(existing);
+	if (existing === null)
+		return 1;
+	const prev = indexSeqOf(existing);
 	if (prev === null)
 		return 1;
 	return indexBodyOf(existing) === recomputeIndex(fresh) ? prev : prev + 1;
