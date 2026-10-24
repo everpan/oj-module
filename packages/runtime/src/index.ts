@@ -92,6 +92,8 @@ export type {
 
 // 路由类型（模块声明 routes 时要用）
 export type { AppRouteRecordRaw, RouteMeta } from "./router/types";
+// 宿主链角色重登记用：shell hydrateUser 定角色后按新角色重跑 setAccessStore(getRoutes())
+export { useAccessStore } from "./store/access";
 // 系统/通知/上传 API provider 注入契约（D9）：模块经 ctx.register.{systemApi,
 // notificationsApi, uploadApi} 实现，覆盖内置 root 级端点
 export type {
@@ -103,12 +105,13 @@ export type {
 export { useAuthStore } from "./store/auth";
 // 认证 provider 注入契约（P5）：模块经 ctx.register.authProvider 实现
 export type { AuthProvider } from "./store/auth-provider";
+
 // 请求头 provider 注入契约（D-M9）：模块经 ctx.register.headerProvider 实现
 export type { HeaderProvider } from "./store/header-provider";
-
 // 方案路由归并 store（P1-14/R21）：token 就绪自动重拉 + 失败降级空表；
 // 导入即武装 token 监视（宿主链无 AuthGuard 也生效），菜单归并经 access store 消费
 export { useSolutionRoutes } from "./store/solution-routes";
+
 export { useTabsStore } from "./store/tabs";
 
 export { useUserStore } from "./store/user";

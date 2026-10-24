@@ -22,10 +22,12 @@ import {
 	AntdApp,
 	ErrorBoundary,
 	getHostRoutes,
+	getRoutes,
 	LayoutEffects,
 	loadAll,
 	PageError,
 	setupI18n,
+	useAccessStore,
 	useAuthStore,
 	usePreferences,
 	useUserStore,
@@ -91,13 +93,17 @@ async function hydrateUser(): Promise<void> {
 /**
  * 登录/登出都会经 auth store reset() 清空 user store（宿主链无 AuthGuard 重新
  * 拉取），token 变化即重新定角色。
- *
- * 已知偏差：角色变化只影响渲染期判断，侧栏菜单是 Boot 期按当时角色登记的，
- * 不登录直接进站再登录的场景菜单需刷新一次才对（后端 403 硬兜底，不是权限泄漏）。
  */
 useAuthStore.subscribe((state, prev) => {
-	if (state.token !== prev.token)
-		void hydrateUser();
+	if (state.token !== prev.token) {
+		void hydrateUser().then(() => {
+			// 角色就位后按新角色重登记路由/菜单（B16）：Boot 期登记用的是当时的
+			// 角色（无 token = 演示 admin / user-info 失败 = 空），SPA 登录后不重登
+			// 记会沿用旧表——admin 看不到 /system、viewer 反而看得到，硬刷新才纠正。
+			// Boot 早期 token 漂移时模块未加载，登记 base 子集，loadAll 尾部会覆盖。
+			useAccessStore.getState().setAccessStore(getRoutes());
+		});
+	}
 });
 
 /**
