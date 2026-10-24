@@ -284,7 +284,7 @@ async function recheckStagingOccupancy(ctx: ExtractContext): Promise<{ ok: true 
 				await f.readdir(p); // 失败 = 普通文件（与 flattenBundleRoot 同手法）
 			}
 			catch {
-				total += (await f.stat(p)).size;
+				total += (await f.stat!(p)).size;
 				continue;
 			}
 			await walk(p);

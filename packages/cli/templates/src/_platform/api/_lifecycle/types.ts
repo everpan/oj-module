@@ -41,8 +41,11 @@ export interface StageResult {
 	retryable?: boolean
 	/** 取消安装（U5，P3-8）：本 stage 被用户中止，运行器据其走「清场 + 锁/目录回退装前 + 审计末位」语义 */
 	cancelled?: boolean
-	/** 签名失败六码（P2-3，契约附录 A.2；缺省 = 非签名类失败） */
-	code?: SigCode
+	/**
+	 * 终止态错误码（installer 据此置 task.error.reason；各 step 自带字面量集合——签名六码见 SigCode、
+	 * 保留名 reserved_name、体积闸 package_too_large 等；统一收敛为 string 供编排层记录与 i18n 兜底）
+	 */
+	code?: string
 	/** 未知 key_id 待 TOFU 确认：任务停 needs_trust 终态，staging 不清场供确认后重试 */
 	needsTrust?: boolean
 	/** 待确认的发布方 key（TaskRecord.trust 同源；UI/CLI 展示指纹） */
