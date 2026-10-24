@@ -40,6 +40,22 @@ export interface PublishResult {
 export type IndexKind = "bundles" | "manifests";
 
 /**
+ * 索引有效期（REG-CS2，秒）。全仓只此一处——生成器盖章与读方判过期共用同一个数。
+ * 7 天的理由：索引是内容分发不是安全裁决，窗口要够「源方休假回来重建」；真出事靠
+ * `seq` 回退即拒与吊销通道兜底，不靠把 TTL 压到小时级。
+ */
+export const INDEX_TTL_SECONDS = 7 * 24 * 60 * 60;
+
+/** 索引元字段（代次 + 时效），盖进 bundles.yaml 顶层并由签名锁定 */
+export interface IndexMeta {
+	seq: number
+	/** 签发时刻（epoch 秒） */
+	issued_at: number
+	/** 失效时刻（epoch 秒；读方 now > 此值即拒，REG-CS2） */
+	expires_at: number
+}
+
+/**
  * 索引规范串（REG-CS1/CS2）：`index:<kind>:<seq>:<sha256hex>`，与验签侧（market/api.ts）逐字一致。
  *
  * **seq 为什么进串**：只签文本哈希时，「今年的总目录」与「去年的分册」各自都能验过，
@@ -73,15 +89,17 @@ export function indexSeqOf(text: string): number | null {
 
 /**
  * 重建索引的代次（REG-CS2 单调，且保持「重建幂等」）：
- * 盘上既有索引 == 「本次内容盖上旧代次」→ 沿用旧代次（重复跑不产生代次漂移，
+ * 盘上既有索引的正文字段 == 本次重建出的正文 → 沿用旧代次（重复跑不产生代次漂移，
  * 否则每次重建都 +1 会让「索引只取决于目录内容」这条性质失效）；内容有变 → +1（只增不减）。
+ * 比对只认**正文**（剥掉 seq/issued_at/expires_at 三个元字段）：时间戳每次重建都刷新，
+ * 若一并比对则「无变化的重建」永远判成有变化。
  * 单调计数由盘上既有索引承载，不另设状态文件。
  */
 export function resolveRebuildSeq(existing: string | null, fresh: string): number {
 	const prev = existing === null ? null : indexSeqOf(existing);
 	if (prev === null)
 		return 1;
-	return stampIndexSeq(fresh, prev) === existing ? prev : prev + 1;
+	return indexBodyOf(existing) === recomputeIndex(fresh) ? prev : prev + 1;
 }
 
 /**
@@ -98,13 +116,63 @@ export function resolveIndexSeq(bundlesText: string, manifestsText: string): num
 	return bundlesSeq;
 }
 
-/** 把 seq 盖进索引文本（parse → 置 seq → 确定性 stringify），使哈希覆盖代次 */
-export function stampIndexSeq(text: string, seq: number): string {
+/** 把代次与时效盖进索引文本（parse → 置 seq/issued_at/expires_at → 确定性 stringify），使哈希覆盖代次 */
+export function stampIndexMeta(text: string, meta: IndexMeta): string {
 	const doc = yamlParse(text);
 	if (doc === null || typeof doc !== "object" || Array.isArray(doc))
-		throw new Error("[ojm] 索引不是键值文档，无法盖章 seq（数组形态的索引由 .sig 携带代次）");
-	(doc as Record<string, unknown>).seq = seq;
-	return yamlStringify(sortKeysDeep(doc), { lineWidth: 0 });
+		throw new Error("[ojm] 索引不是键值文档，无法盖章代次（数组形态的索引由 .sig 携带代次）");
+	const out = doc as Record<string, unknown>;
+	out.seq = meta.seq;
+	out.issued_at = meta.issued_at;
+	out.expires_at = meta.expires_at;
+	return yamlStringify(sortKeysDeep(out), { lineWidth: 0 });
+}
+
+/**
+ * 按当前时刻算一份时效（`issued_at` = now，`expires_at` = now + TTL）。
+ * `now` 可注入，使重建结果在用例里可断言。
+ */
+export function indexMetaOf(seq: number, now: number): IndexMeta {
+	return { seq, issued_at: now, expires_at: now + INDEX_TTL_SECONDS };
+}
+
+/** 索引时效（读方据此判过期；缺任一字段或不是数 → null，按 REG-CS2 fail-closed 拒） */
+export function indexTimesOf(text: string): { issued_at: number, expires_at: number } | null {
+	let doc: unknown;
+	try {
+		doc = yamlParse(text);
+	}
+	catch {
+		return null;
+	}
+	if (doc === null || typeof doc !== "object" || Array.isArray(doc))
+		return null;
+	const issuedAt = (doc as Record<string, unknown>).issued_at;
+	const expiresAt = (doc as Record<string, unknown>).expires_at;
+	if (typeof issuedAt !== "number" || typeof expiresAt !== "number")
+		return null;
+	return { issued_at: issuedAt, expires_at: expiresAt };
+}
+
+/**
+ * 索引正文（剥掉 seq / issued_at / expires_at 后的确定性文本）。
+ * 重建幂等判定用：时间戳每次重建都刷新，只有正文相同才算「内容没变」。
+ */
+export function indexBodyOf(text: string): string | null {
+	let doc: unknown;
+	try {
+		doc = yamlParse(text);
+	}
+	catch {
+		return null;
+	}
+	if (doc === null || typeof doc !== "object" || Array.isArray(doc))
+		return null;
+	const out = { ...(doc as Record<string, unknown>) };
+	delete out.seq;
+	delete out.issued_at;
+	delete out.expires_at;
+	return yamlStringify(sortKeysDeep(out), { lineWidth: 0 });
 }
 
 /**
@@ -159,9 +227,13 @@ export function publishCommand(dir: string, opts: PublishOptions = {}): PublishR
 	// P3-6 重算索引（deterministic stringify 后写回，publish 即生效，无需额外缓存层）
 	const bundlesRaw = recomputeIndex(fs.readFileSync(bundlesPath, "utf8"));
 	const manifestsText = recomputeIndex(fs.readFileSync(manifestsPath, "utf8"));
-	// REG-CS1/CS2：代次进 bundles 正文（数组形态的 manifests 由 .sig 携带同一 seq）
+	// REG-CS1/CS2：代次与时效进 bundles 正文（数组形态的 manifests 由 .sig 携带同一 seq）。
+	// 补签既有索引时沿用其时效（重签不改时效语义），仅在缺失/非法时按当前时刻补盖。
 	const seq = resolveIndexSeq(bundlesRaw, manifestsText);
-	const bundlesText = stampIndexSeq(bundlesRaw, seq);
+	const now = Math.floor(Date.now() / 1000);
+	const times = indexTimesOf(bundlesRaw);
+	const meta = times === null ? indexMetaOf(seq, now) : { seq, issued_at: times.issued_at, expires_at: times.expires_at };
+	const bundlesText = stampIndexMeta(bundlesRaw, meta);
 	fs.writeFileSync(bundlesPath, bundlesText);
 	fs.writeFileSync(manifestsPath, manifestsText);
 

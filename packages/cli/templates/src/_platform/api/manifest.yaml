@@ -15,3 +15,4 @@ tables:
   - market_history
   - sys_rate_window
   - sys_login_throttle
+  - reg_source_seq

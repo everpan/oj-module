@@ -20,7 +20,7 @@ import path from "node:path";
 import process from "node:process";
 import { parse as yamlParse } from "yaml";
 import { canonicalString, verifyCanonical } from "../lifecycle/sign";
-import { indexCanonical, indexSeqOf } from "../publish";
+import { indexCanonical, indexSeqOf, indexTimesOf } from "../publish";
 import { resolveCdnLayout } from "./cdn-layout";
 import { readTgz } from "./scan";
 
@@ -95,6 +95,7 @@ export function verifyMarket(opts: VerifyOptions = {}): VerifyResult {
 	checks.push(indexSigCheck(layout.dir, "bundles", bundlesText));
 	checks.push(indexSigCheck(layout.dir, "manifests", manifestsText));
 	checks.push(generationCheck(layout.dir, [{ kind: "bundles", text: bundlesText }, { kind: "manifests", text: manifestsText }]));
+	checks.push(expiryCheck(bundlesText));
 	checks.push(...migrationConsistencyCheck(layout.dir, tgzFiles));
 
 	if (opts.rebuildCheck === true)
@@ -219,6 +220,29 @@ export function generationCheck(cdnDir: string, files: Array<{ kind: IndexKind, 
 			return { item: "索引同代", ok: false, code: "index_generation_mismatch", detail: `${f.kind}.yaml 签名是第 ${sigSeq} 代，catalog 是第 ${catalogSeq} 代——源正在重建索引，请稍后重试（index_generation_mismatch）` };
 	}
 	return { item: "索引同代", ok: true, detail: `全部索引同代（seq=${catalogSeq}）` };
+}
+
+/**
+ * REG-CS2 索引时效：总目录自带 `issued_at` / `expires_at`，过了失效时刻的索引不能再用来装。
+ * 与站点 `market/api.ts guardCatalogFreshness` 同一判定（CLI/API 一致，D1）。
+ */
+export function expiryCheck(text: string | null): VerifyCheck {
+	if (text === null)
+		return { item: "索引时效", ok: true, detail: "索引文件缺失，跳过时效校验" };
+	const times = indexTimesOf(text);
+	if (times === null)
+		return { item: "索引时效", ok: false, code: "index_expired", detail: "bundles.yaml 缺 issued_at / expires_at——索引未带时效，用 ojm market build-index 重建" };
+	const now = Math.floor(Date.now() / 1000);
+	const ok = now <= times.expires_at;
+	const at = new Date(times.expires_at * 1000).toISOString();
+	return {
+		item: "索引时效",
+		ok,
+		code: ok ? undefined : "index_expired",
+		detail: ok
+			? `索引有效至 ${at}`
+			: `索引已于 ${at} 失效（index_expired）——源未在其自声明的有效期内重建，请重建后再发布`,
+	};
 }
 
 /** manifest 结构：必填字段 + 内嵌原生清单 desc 非空（等值要求已移除，见 §9.3） */

@@ -13,10 +13,10 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 
-import { stringify as yamlStringify } from "yaml";
-import { recomputeIndex, resolveRebuildSeq, signIndex, stampIndexSeq } from "../publish";
+import { parse as yamlParse, stringify as yamlStringify } from "yaml";
+import { indexMetaOf, recomputeIndex, resolveRebuildSeq, signIndex, stampIndexMeta } from "../publish";
 import { resolveCdnLayout } from "./cdn-layout";
-import { buildIndexData } from "./index-builder";
+import { buildIndexData, compareVersion } from "./index-builder";
 import { readEmbeddedManifest } from "./scan";
 
 export interface BuildIndexOptions {
@@ -24,6 +24,8 @@ export interface BuildIndexOptions {
 	id?: string
 	key?: string
 	privateKeyPem?: string
+	/** 重建时刻（epoch 秒；REG-CS2 时效基准，测试注入用，缺省当前时刻） */
+	now?: number
 	/** 重建后离线自检（verifyCanonical 复核两份索引签名） */
 	check?: boolean
 }
@@ -39,6 +41,9 @@ export interface BuildIndexResult {
 	skipped: string[]
 	/** 本次重建的索引代次（REG-CS2 单调 seq） */
 	seq: number
+	/** 盖章进索引的时效（REG-CS2；读方 now > expiresAt 即拒） */
+	issuedAt: number
+	expiresAt: number
 	checkPassed?: boolean
 }
 
@@ -82,12 +87,15 @@ export async function buildIndex(opts: BuildIndexOptions = {}): Promise<BuildInd
 	const data = buildIndexData(packages);
 	const bundlesPath = path.join(layout.dir, "bundles.yaml");
 	const manifestsPath = path.join(layout.dir, "manifests.yaml");
-	// REG-CS2：每次重建 = 新一代（seq 单调 +1）。代次进 bundles 正文，两份索引共用同一 seq，
-	// 并由签名锁定——读者拼「新总目录 + 旧分册」时 seq 不等即拒（红队 F2）。
+	// REG-CS2：代次进 bundles 正文，两份索引共用同一 seq，并由签名锁定——读者拼
+	// 「新总目录 + 旧分册」时 seq 不等即拒（红队 F2）。代次只在正文变化时递增（重建幂等）。
 	const existing = fs.existsSync(bundlesPath) ? fs.readFileSync(bundlesPath, "utf-8") : null;
 	const fresh = normalizeYaml(data.bundles);
+	assertLatestMonotonic(existing, fresh);
 	const seq = resolveRebuildSeq(existing, fresh);
-	const bundlesText = stampIndexSeq(fresh, seq);
+	// REG-CS2：时效每次重建都刷新（源方持续运营则永不过期），代次只在正文变化时递增
+	const meta = indexMetaOf(seq, opts.now ?? Math.floor(Date.now() / 1000));
+	const bundlesText = stampIndexMeta(fresh, meta);
 	// 聚合清单是数组形态（无顶层键），代次只随 .sig 携带——正文不动
 	const manifestsText = normalizeYaml(data.manifests);
 	fs.writeFileSync(bundlesPath, bundlesText);
@@ -108,7 +116,47 @@ export async function buildIndex(opts: BuildIndexOptions = {}): Promise<BuildInd
 		solutions: data.bundles.solutions.length,
 		skipped,
 		seq,
+		issuedAt: meta.issued_at,
+		expiresAt: meta.expires_at,
 	};
+}
+
+/**
+ * REG-CS2 `latest` 单调不降：同名方案的新 `latest` 不得低于盘上旧值。
+ *
+ * 丢包、误删版本目录、拿回旧快照重建都会让 latest 往回走——读者据此把「更旧」当「有更新」装上，
+ * 而已装实例还停在更高的版本上，回滚与升级判定全线错位。宁可拒建，也不产出一个往回走的索引。
+ */
+function assertLatestMonotonic(existing: string | null, fresh: string): void {
+	if (existing === null)
+		return;
+	const before = latestMapOf(existing);
+	for (const [name, version] of latestMapOf(fresh)) {
+		const prev = before.get(name);
+		if (prev !== undefined && compareVersion(version, prev) < 0)
+			throw new Error(`[ojm] ${name} 的 latest 回退（${prev} → ${version}）：REG-CS2 要求 latest 单调不降——检查是否有版本被误删或拿回了旧索引`);
+	}
+}
+
+/** 索引里 `方案 → latest` 的映射（解析失败 → 空表，由调用方按「无旧值」处理） */
+function latestMapOf(text: string): Map<string, string> {
+	const out = new Map<string, string>();
+	let doc: unknown;
+	try {
+		doc = yamlParse(text);
+	}
+	catch {
+		return out;
+	}
+	const solutions = (isObj(doc) ? doc.solutions : undefined) as unknown;
+	for (const s of Array.isArray(solutions) ? solutions : []) {
+		if (!isObj(s))
+			continue;
+		const { name, latest } = s as { name?: unknown, latest?: unknown };
+		if (typeof name === "string" && typeof latest === "string")
+			out.set(name, latest);
+	}
+	return out;
 }
 
 /**

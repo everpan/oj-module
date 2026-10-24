@@ -10,6 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
+import { parse, stringify } from "yaml";
 import { signIndex } from "../../publish";
 import { buildIndex } from "../build-index";
 import { publishPackage } from "../publish";
@@ -193,6 +194,38 @@ describe("given 索引写到一半留下中间态（新总目录 + 旧分册）W
 		expect(itemOf(result, "索引同代")?.ok).toBe(false);
 		expect(itemOf(result, "索引同代")?.code).toBe("index_generation_mismatch");
 		expect(itemOf(result, "索引同代")?.detail).toContain("源正在重建索引，请稍后重试");
+	});
+});
+
+describe("given 索引已过自声明的失效时刻 When 离线验包", () => {
+	it("then 索引时效打叉报 index_expired（REG-CS2：与站点安装同一判定，CLI/API 一致）", async () => {
+		const root = await seed();
+		const bundlesPath = join(root, "cdn", "bundles.yaml");
+		const doc = parse(readFileSync(bundlesPath, "utf-8")) as Record<string, unknown>;
+		doc.issued_at = 1;
+		doc.expires_at = 2;
+		writeFileSync(bundlesPath, stringify(doc), "utf-8");
+
+		const result = await verifyMarket({ projectRoot: root });
+
+		expect(itemOf(result, "索引时效")?.ok).toBe(false);
+		expect(itemOf(result, "索引时效")?.code).toBe("index_expired");
+	});
+});
+
+describe("given 索引不带时效字段（旧 ojm 产物）When 离线验包", () => {
+	it("then 索引时效打叉（不可判定即按过期处理，不默认当新鲜）", async () => {
+		const root = await seed();
+		const bundlesPath = join(root, "cdn", "bundles.yaml");
+		const doc = parse(readFileSync(bundlesPath, "utf-8")) as Record<string, unknown>;
+		delete doc.issued_at;
+		delete doc.expires_at;
+		writeFileSync(bundlesPath, stringify(doc), "utf-8");
+
+		const result = await verifyMarket({ projectRoot: root });
+
+		expect(itemOf(result, "索引时效")?.ok).toBe(false);
+		expect(itemOf(result, "索引时效")?.code).toBe("index_expired");
 	});
 });
 

@@ -10,6 +10,7 @@
 ### Changed
 
 - **REG-CS1 索引签名强制 + 同代校验（breaking，需重签索引）**：`bundles.yaml` 新增顶层 `seq`（代次，每次重建 +1，内容未变沿用旧代次以保持重建幂等），索引规范串由 `index:<kind>:<sha256>` 改为 `index:<kind>:<seq>:<sha256>`，`.sig` 同步增加 `seq` 字段。索引缺 `.sig`（或为空、不可读）由「运行期容忍」改为**拒载**：`ojm market verify` 该检查项打叉并报 `index_sig_missing`（含两步补签提示），站点市场索引一律 502、安装被拒。新增跨文件同代校验：总目录（`bundles.yaml`）的 `seq` 是代次真源，聚合清单的签名代次与之不等即拒（`index_generation_mismatch`，文案指向「源正在重建索引，请稍后重试」，与安全事件的「被篡改」分开）。**升级影响**：已发布索引须用当前版本 `ojm market build-index` 重建重签，旧签名因规范串变更一律验不过。
+- **REG-CS2 索引新鲜度（防回放/降级）**：`bundles.yaml` 新增时效封套 `issued_at` / `expires_at`（epoch 秒，TTL 7 天，常量 `INDEX_TTL_SECONDS` 单点），重建时时效刷新、代次只在正文变化时递增。站点侧新增表 `reg_source_seq`（`_platform` 0014 迁移）按源记录见过的最大代次：拉到的索引过期 → `index_expired`；代次小于水位 → `index_stale`（且不拉低水位）；水位表缺失/写坏 → `index_state_corrupt`（fail-closed，不静默当「第一次见」）。`latest` 单调不降：生成器拒建「latest 往回走」的索引，读方另挡「声明的 latest 低于已声明最高版本」（`index_latest_regressed`）。`ojm market verify` 同步增加「索引时效」检查项。**升级影响**：站点须执行 `oj migrate`（新增表），否则市场索引一律 502 `index_state_corrupt`。
 
 ## [0.2.30] - 2026-10-24
 

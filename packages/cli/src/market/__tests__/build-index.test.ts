@@ -11,13 +11,15 @@ import { parse as yamlParse } from "yaml";
 
 import { createDeterministicTgz } from "../../deterministic-tar";
 import { verifyCanonical } from "../../lifecycle/sign";
-import { indexCanonical } from "../../publish";
+import { INDEX_TTL_SECONDS, indexCanonical } from "../../publish";
 import { buildIndex } from "../build-index";
 import { buildFixturePackage } from "../fixture";
 
 const MOUNTS = "  - prefix: /api\n    api: src\n  - prefix: /cdn\n    web: ../cdn\n";
 const CONFIG = `mounts:\n${MOUNTS}server:\n  host: 127.0.0.1\n  port: 9778\n`;
 const KEY_ID = "cdn.maintainer";
+/** 注入的重建时刻（epoch 秒；固定值使时效字段可断言，不随 wall clock 漂） */
+const NOW = 1_800_000_000;
 
 function testPem(): string {
 	return generateKeyPairSync("ed25519").privateKey.export({ type: "pkcs8", format: "pem" }).toString();
@@ -77,18 +79,66 @@ describe("given cdn/ 里有多个包与多个版本 When 重建索引", () => {
 		expect(hit.size).toBeGreaterThan(0);
 	});
 
-	it("then 索引只取决于目录内容：连续两次执行字节一致（幂等）", async () => {
+	it("then 索引只取决于目录内容：连续两次执行字节一致（幂等；时效按注入时刻，不随 wall clock 漂）", async () => {
 		const { root, cdn } = newProject();
 		const staging = mkdtempSync(join(tmpdir(), "ojm-stage-"));
 		await putPackage(cdn, staging, "demo-solution", "0.1.0");
 		const key = testPem();
 
-		await buildIndex({ projectRoot: root, id: KEY_ID, privateKeyPem: key });
+		await buildIndex({ projectRoot: root, id: KEY_ID, privateKeyPem: key, now: NOW });
 		const first = readFileSync(join(cdn, "bundles.yaml"), "utf-8");
-		await buildIndex({ projectRoot: root, id: KEY_ID, privateKeyPem: key });
+		await buildIndex({ projectRoot: root, id: KEY_ID, privateKeyPem: key, now: NOW });
 		const second = readFileSync(join(cdn, "bundles.yaml"), "utf-8");
 
 		expect(second).toBe(first);
+	});
+});
+
+describe("given 一个已重建过的索引 When 目录内容发生变化后再次重建", () => {
+	it("then seq 单调 +1（REG-CS2），且时效随之刷新", async () => {
+		const { root, cdn } = newProject();
+		const staging = mkdtempSync(join(tmpdir(), "ojm-stage-"));
+		await putPackage(cdn, staging, "demo-solution", "0.1.0");
+		const key = testPem();
+
+		const first = await buildIndex({ projectRoot: root, id: KEY_ID, privateKeyPem: key, now: NOW });
+		await putPackage(cdn, staging, "demo-solution", "0.2.0");
+		const second = await buildIndex({ projectRoot: root, id: KEY_ID, privateKeyPem: key, now: NOW + 3600 });
+
+		expect(first.seq).toBe(1);
+		expect(second.seq).toBe(2); // 只增不减——读方据此挡回放
+		expect(second.issuedAt).toBe(NOW + 3600);
+		expect((readBundles(cdn) as { seq?: number }).seq).toBe(2);
+	});
+
+	it("then 内容未变则 seq 不变（幂等不产生代次漂移），时效仍刷新", async () => {
+		const { root, cdn } = newProject();
+		const staging = mkdtempSync(join(tmpdir(), "ojm-stage-"));
+		await putPackage(cdn, staging, "demo-solution", "0.1.0");
+		const key = testPem();
+
+		await buildIndex({ projectRoot: root, id: KEY_ID, privateKeyPem: key, now: NOW });
+		const again = await buildIndex({ projectRoot: root, id: KEY_ID, privateKeyPem: key, now: NOW + 86400 });
+
+		expect(again.seq).toBe(1);
+		expect(again.issuedAt).toBe(NOW + 86400);
+		expect(again.expiresAt).toBe(NOW + 86400 + INDEX_TTL_SECONDS);
+	});
+});
+
+describe("given 一次普通重建 When 检查产出索引的时效字段", () => {
+	it("then bundles.yaml 盖有 issued_at / expires_at，跨度恰为 INDEX_TTL_SECONDS（REG-CS2）", async () => {
+		const { root, cdn } = newProject();
+		const staging = mkdtempSync(join(tmpdir(), "ojm-stage-"));
+		await putPackage(cdn, staging, "demo-solution", "0.1.0");
+
+		const result = await buildIndex({ projectRoot: root, id: KEY_ID, privateKeyPem: testPem(), now: NOW });
+
+		const bundles = readBundles(cdn) as { issued_at?: number, expires_at?: number };
+		expect(bundles.issued_at).toBe(NOW);
+		expect(bundles.expires_at).toBe(NOW + INDEX_TTL_SECONDS);
+		expect(result.issuedAt).toBe(NOW);
+		expect(result.expiresAt).toBe(NOW + INDEX_TTL_SECONDS);
 	});
 });
 

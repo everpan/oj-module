@@ -1,3 +1,4 @@
+import type { SourceSeqVerdict } from "../_lifecycle/source-seq";
 // 编排端点 + 市场索引（P1-12，R9/ISP）：/api/_platform/market/* 端点族同文件嵌套 handler 组
 // （oj v0.1.64 组形态，notification/api.ts 同款；组名 = 路径段，路由不变；嵌套组最深 4 层，oj bridge/mod.rs walker）。
 // 门（R9）：install/task/index 全 assertSuperAdmin 独占（市场页是「市场即样例」的第一方特权
@@ -20,6 +21,7 @@ import { atomicWriteText, fsFace } from "../_lifecycle/atomic";
 import { latestAppliedSeqOf, reconcile, runInstall, setEnabled } from "../_lifecycle/installer";
 import { compareVersions } from "../_lifecycle/semver";
 import { sha384B64 } from "../_lifecycle/sha384";
+import { guardAndRecordSourceSeq } from "../_lifecycle/source-seq";
 import { createStateStore } from "../_lifecycle/state";
 import { flattenBundleRoot } from "../_lifecycle/steps/extract";
 import { getTask, readTasks } from "../_lifecycle/tasks";
@@ -77,6 +79,8 @@ export interface MarketEnv {
 	ledgerHead?: number | bigint | null
 	/** 迁移账本 head 真源（P1-16 接线①：缺省读 oj journal 表 `_oj_migrations` max(version)，查询失败 → null 不猜） */
 	ledgerHeadOf?: (name: string) => Promise<number | bigint | null>
+	/** 当前时刻（epoch 秒；REG-CS2 索引时效判定基准，测试注入；缺省 Date.now） */
+	now?: () => number
 	/**
 	 * 宿主 versions.json（C2-09 peerRuntime 比对真源，键 = 包名）。缺省读 `<sharedRoot>/versions.json`
 	 * （ojm 宿主构建产物：与 manifests.yaml 同层，即 release 根，B-11 接线）；不可得 → undefined，
@@ -284,9 +288,11 @@ const SIG_MISSING_NEXT = "完整性无保障，已拒载。下一步：① 让�
  *    容忍等于把索引完整性交给发布方自觉，谁改了 bundles.yaml 都能装。
  * ② 签名不符或未覆盖代次 → 拒载（index_sig_mismatch）。
  * ③ 跨文件不同代（`seq` ≠ catalog 代次）→ 拒载（index_generation_mismatch，提示「源正在重建索引」）。
+ * ④ 总目录另过两道新鲜度闸（REG-CS2，见 `guardCatalogFreshness`）：时效过期 `index_expired`、
+ *    seq 回退 `index_stale`——回放与镜像落后在此处被挡住。
  *
  * `expectSeq` = 总目录（bundles.yaml）的代次；取总目录本身时省略。
- * 关键：三类拒载都在 try 之外抛出——fail-closed 不能被任何 catch 吞掉。
+ * 关键：四类拒载都在 try 之外抛出——fail-closed 不能被任何 catch 吞掉。
  */
 async function fetchIndex(env: MarketEnv, fetch: FetchInitFace, base: string, kind: IndexKind, expectSeq?: number): Promise<{ text: string, seq: number }> {
 	const text = await fetchText(fetch, `${base}/${kind}.yaml`);
@@ -309,7 +315,59 @@ async function fetchIndex(env: MarketEnv, fetch: FetchInitFace, base: string, ki
 		fail(502, `市场索引 ${kind}.yaml 正文是第 ${textSeq} 代、签名是第 ${seq} 代（index_generation_mismatch）——源正在重建索引，请稍后重试`);
 	if (expectSeq !== undefined && expectSeq !== seq)
 		fail(502, `市场索引 ${kind}.yaml 是第 ${seq} 代，总目录是第 ${expectSeq} 代（index_generation_mismatch）——源正在重建索引，请稍后重试`);
+	// ④ 新鲜度只在总目录上判一次：代次真源与时效盖章都在它身上，分册跟着走
+	if (kind === "bundles")
+		await guardCatalogFreshness(env, base, text, seq);
 	return { text, seq };
+}
+
+/**
+ * REG-CS2 索引新鲜度（防回放/降级）：总目录过了签名之后还要过时效与代次水位两道闸。
+ *
+ * - `expires_at` 已过 → `index_expired`：索引自带失效时刻，源停止运营超过 TTL 就不再可信。
+ *   （§5.3 可用性通道的降级口径是「拉不到时用缓存窗口内的副本」；本站点索引恒 no-cache 回源，
+ *    没有副本可用，故拉到的索引自身过期即拒——与§5.3 不冲突。）
+ * - `seq` 小于本源见过的最大代次 → `index_stale`：镜像落后或旧索引被回放。
+ * - 水位读不到/写不进 → `index_state_corrupt`：fail-closed，不静默重置成「第一次见」。
+ */
+async function guardCatalogFreshness(env: MarketEnv, base: string, text: string, seq: number): Promise<void> {
+	const times = await indexTimesOfText(text);
+	if (times === null)
+		fail(502, "市场索引 bundles.yaml 缺 issued_at / expires_at（index_expired）——索引未带时效，请让源执行 ojm market build-index 重建");
+	const now = env.now?.() ?? Math.floor(Date.now() / 1000);
+	if (now > times.expires_at)
+		fail(502, `市场索引 bundles.yaml 已于 ${new Date(times.expires_at * 1000).toISOString()} 失效（index_expired）——源未在其自声明的有效期内重建索引，请让源执行 ojm market build-index 后再装`);
+
+	let verdict: SourceSeqVerdict;
+	try {
+		verdict = await guardAndRecordSourceSeq(base, seq);
+	}
+	catch {
+		fail(502, "市场索引代次水位写不进去（index_state_corrupt）——reg_source_seq 不可写，防回放保护失效，已拒载。请检查站点数据库权限后重试");
+	}
+	if (verdict.ok)
+		return;
+	if (verdict.code === "index_stale")
+		fail(502, `市场索引 bundles.yaml 是第 ${seq} 代，本源已见过第 ${verdict.prev} 代（index_stale）——源可能被回放或镜像落后，请核实源状态后再装`);
+	fail(502, "市场索引代次水位不可读（index_state_corrupt）——reg_source_seq 记录损坏，请检查站点数据库后重试（不静默重置，否则防回放形同虚设）");
+}
+
+/** 索引时效（顶层 `issued_at` / `expires_at`；缺任一或非数 → null，按 REG-CS2 拒） */
+async function indexTimesOfText(text: string): Promise<{ issued_at: number, expires_at: number } | null> {
+	const g = globalThis as { yaml?: { parse: (t: string) => Promise<unknown> } };
+	try {
+		const doc = await g.yaml!.parse(text) as unknown;
+		if (doc === null || typeof doc !== "object" || Array.isArray(doc))
+			return null;
+		const issuedAt = (doc as Record<string, unknown>).issued_at;
+		const expiresAt = (doc as Record<string, unknown>).expires_at;
+		if (typeof issuedAt !== "number" || typeof expiresAt !== "number")
+			return null;
+		return { issued_at: issuedAt, expires_at: expiresAt };
+	}
+	catch {
+		return null;
+	}
 }
 
 /** http.user.id → username（operator 历史留痕，uninstall 端点同款反查；查询失败不阻断编排） */
@@ -387,6 +445,12 @@ async function resolveCdn(env: MarketEnv, base: string, name: string, reqVersion
 		fail(404, `市场索引中无方案「${name}」（${base}/bundles.yaml）`);
 	const versions = Array.isArray(entry.versions) ? entry.versions.filter(isObj) : [];
 	const version = reqVersion ?? (typeof entry.latest === "string" ? entry.latest : null);
+	// REG-CS2 `latest` 单调不降：总目录声明的 latest 不得低于本方案已声明版本中的最高版本。
+	// 把 latest 往下改是「让站点装回旧版」的最短路径（yank 之后回退声明），必须挡在解析处。
+	const sorted = versions.map(v => String(v.version)).sort(compareVersions);
+	const highest = sorted.length === 0 ? null : sorted[sorted.length - 1]!;
+	if (typeof entry.latest === "string" && highest !== null && compareVersions(entry.latest, highest) < 0)
+		fail(502, `市场索引中方案「${name}」的 latest 是 ${entry.latest}，低于已声明的最高版本 ${highest}（index_latest_regressed）——索引被回退，请核实源状态后再装`);
 	const hit = versions.find(v => String(v.version) === version);
 	if (version === null || !isObj(hit))
 		fail(404, `市场索引中无方案「${name}」版本「${reqVersion ?? "latest"}」（${base}/bundles.yaml）`);

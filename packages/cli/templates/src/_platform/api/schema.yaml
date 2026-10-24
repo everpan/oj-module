@@ -127,3 +127,11 @@ tables:
       operator: {type: text}
       message: {type: text}
       created_at: {type: integer, null: false}
+  # REG-CS2 索引新鲜度：站点按源记住见过的最大 seq（防回放/降级，回退即拒）。
+  # 读写由 _lifecycle/source-seq.ts 落到本表；source_url 为业务主键（无自增 id）。
+  reg_source_seq:
+    pk: source_url
+    columns:
+      source_url: {type: text, null: false}
+      max_seq: {type: integer, null: false}
+      updated_at: {type: integer, null: false}

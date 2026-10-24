@@ -82,10 +82,16 @@ function manifestFixture(version = "0.1.0"): any {
 	};
 }
 
+/** REG-CS2 时效：签发时刻与失效时刻（epoch 秒；用例里取「刚签发」以免被判过期） */
+const ISSUED_AT = Math.floor(Date.now() / 1000);
+const EXPIRES_AT = ISSUED_AT + 7 * 24 * 60 * 60;
+
 /** Form B CDN 索引（JSON 序列充当 yaml.parse 全局的载荷——解析面是 oj 全局，端点只管喂文本取对象） */
 const BUNDLES = JSON.stringify({
-	// REG-CS1/CS2：总目录（catalog）= 代次真源，所有索引签名必须与它同代
+	// REG-CS1/CS2：总目录（catalog）= 代次与时效真源，所有索引签名必须与它同代
 	seq: 1,
+	issued_at: ISSUED_AT,
+	expires_at: EXPIRES_AT,
 	generated_at: "2026-10-17T00:00:00Z",
 	cdn: CDN,
 	solutions: [
@@ -772,7 +778,7 @@ describe("GET index（CDN bundles.yaml no-cache 拉取 + 本地 state 对比）"
 
 	it("archive.file 邪例表（P2-11 索引投毒加固：file 逐字 <name>-<version>.tgz）→ 502 拒", async () => {
 		for (const file of ["../evil.tgz", "/etc/hosts.tgz", "other-0.1.0.tgz", "demo-solution-9.9.9.tgz"]) {
-			const bundles = JSON.stringify({ seq: 1, solutions: [{ name: "demo-solution", latest: "0.1.0", versions: [{ version: "0.1.0", file, sha256: SHA256, size: ARCHIVE.byteLength }] }] });
+			const bundles = JSON.stringify({ seq: 1, issued_at: ISSUED_AT, expires_at: EXPIRES_AT, solutions: [{ name: "demo-solution", latest: "0.1.0", versions: [{ version: "0.1.0", file, sha256: SHA256, size: ARCHIVE.byteLength }] }] });
 			const manifests = JSON.stringify([manifestFixture("0.1.0")]);
 			// 本用例聚焦 file 逐字校验：索引照常签名，否则会先被「缺签名」挡下而测不到 file 分支
 			const bundlesSig = JSON.stringify(signIndex("bundles", 1, bundles, TEST_KEY.privateKeyPem, "test.publisher"));
@@ -900,7 +906,7 @@ describe("REG-CS1 索引签名强制（G4 fail-closed：署名相符采用 / 篡
 	});
 
 	it("跨文件不同代（红队 F2）：总目录第 7 代、聚合清单签名第 6 代 → 502 index_generation_mismatch（提示源在重建，不是「被篡改」）", async () => {
-		const bundles = JSON.stringify({ seq: 7, solutions: [{ name: "demo-solution", latest: "0.1.0", versions: [{ version: "0.1.0", file: "demo-solution-0.1.0.tgz", sha256: SHA256, size: ARCHIVE.byteLength }] }] });
+		const bundles = JSON.stringify({ seq: 7, issued_at: ISSUED_AT, expires_at: EXPIRES_AT, solutions: [{ name: "demo-solution", latest: "0.1.0", versions: [{ version: "0.1.0", file: "demo-solution-0.1.0.tgz", sha256: SHA256, size: ARCHIVE.byteLength }] }] });
 		const api = createMarketApi(makeEnv({ fetch: generationCdnFetch({ bundles, bundlesSeq: 7, manifestsSeq: 6 }) }));
 		g.http = { user: { id: 1 } };
 		await api.index.get();
@@ -911,7 +917,7 @@ describe("REG-CS1 索引签名强制（G4 fail-closed：署名相符采用 / 篡
 	});
 
 	it("正文与签名不同代（改了正文没换签名）→ 502 index_generation_mismatch", async () => {
-		const bundles = JSON.stringify({ seq: 7, solutions: [{ name: "demo-solution", latest: "0.1.0", versions: [{ version: "0.1.0", file: "demo-solution-0.1.0.tgz", sha256: SHA256, size: ARCHIVE.byteLength }] }] });
+		const bundles = JSON.stringify({ seq: 7, issued_at: ISSUED_AT, expires_at: EXPIRES_AT, solutions: [{ name: "demo-solution", latest: "0.1.0", versions: [{ version: "0.1.0", file: "demo-solution-0.1.0.tgz", sha256: SHA256, size: ARCHIVE.byteLength }] }] });
 		const api = createMarketApi(makeEnv({ fetch: generationCdnFetch({ bundles, bundlesSeq: 6, manifestsSeq: 6 }) }));
 		g.http = { user: { id: 1 } };
 		await api.index.get();
@@ -920,7 +926,7 @@ describe("REG-CS1 索引签名强制（G4 fail-closed：署名相符采用 / 篡
 	});
 
 	it("同代放行：两份索引同为第 7 代 → 200（不误伤正常重建）", async () => {
-		const bundles = JSON.stringify({ seq: 7, solutions: [{ name: "demo-solution", latest: "0.1.0", versions: [{ version: "0.1.0", file: "demo-solution-0.1.0.tgz", sha256: SHA256, size: ARCHIVE.byteLength }] }] });
+		const bundles = JSON.stringify({ seq: 7, issued_at: ISSUED_AT, expires_at: EXPIRES_AT, solutions: [{ name: "demo-solution", latest: "0.1.0", versions: [{ version: "0.1.0", file: "demo-solution-0.1.0.tgz", sha256: SHA256, size: ARCHIVE.byteLength }] }] });
 		const api = createMarketApi(makeEnv({ fetch: generationCdnFetch({ bundles, bundlesSeq: 7, manifestsSeq: 7 }) }));
 		g.http = { user: { id: 1 } };
 		await api.index.get();
@@ -933,6 +939,81 @@ describe("REG-CS1 索引签名强制（G4 fail-closed：署名相符采用 / 篡
 		await api.install.post();
 		expect(last?.status).toBe(502);
 		expect(String(last?.msg)).toContain("index_sig_missing");
+	});
+});
+
+describe("REG-CS2 索引新鲜度（过期即拒 / 代次回退即拒 / 状态损坏 fail-closed）", () => {
+	/** 代次与时效可配的 CDN：造过期、缺时效、代次回退三种邪例 */
+	function timedCdnFetch(args: { seq: number, manifestsSeq?: number, expiresAt?: number | null }): FetchFace {
+		const bundles = JSON.stringify({
+			seq: args.seq,
+			// expiresAt = null → 索引不带时效封套（旧 ojm 产物）
+			...(args.expiresAt === null ? {} : { issued_at: ISSUED_AT, expires_at: args.expiresAt ?? EXPIRES_AT }),
+			solutions: [{ name: "demo-solution", latest: "0.1.0", versions: [{ version: "0.1.0", file: "demo-solution-0.1.0.tgz", sha256: SHA256, size: ARCHIVE.byteLength }] }],
+		});
+		return ((url: string) => {
+			fetchCalls.push(url);
+			const manifests = String(url).includes("manifests");
+			const text = manifests ? MANIFESTS : bundles;
+			if (String(url).endsWith(".yaml"))
+				return { ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode(text).buffer as ArrayBuffer };
+			if (String(url).endsWith(".yaml.sig")) {
+				const seq = manifests ? (args.manifestsSeq ?? args.seq) : args.seq;
+				const sig = JSON.stringify(signIndex(manifests ? "manifests" : "bundles", seq, text, TEST_KEY.privateKeyPem, "test.publisher"));
+				return { ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode(sig).buffer as ArrayBuffer };
+			}
+			return { ok: true, status: 200, arrayBuffer: async () => ARCHIVE.slice().buffer as ArrayBuffer };
+		}) as FetchFace;
+	}
+
+	it("索引已过期（expires_at 已过）→ 502 index_expired", async () => {
+		const api = createMarketApi(makeEnv({ fetch: timedCdnFetch({ seq: 1, expiresAt: ISSUED_AT - 1 }) }));
+		g.http = { user: { id: 1 } };
+		await api.index.get();
+		expect(last?.status).toBe(502);
+		expect(String(last?.msg)).toContain("index_expired");
+	});
+
+	it("索引不带时效（旧 ojm 产物）→ 502 index_expired（不可判定即按过期处理）", async () => {
+		const api = createMarketApi(makeEnv({ fetch: timedCdnFetch({ seq: 1, expiresAt: null }) }));
+		g.http = { user: { id: 1 } };
+		await api.index.get();
+		expect(last?.status).toBe(502);
+		expect(String(last?.msg)).toContain("index_expired");
+	});
+
+	it("源返回更旧的代次（镜像落后 / 旧快照回放）→ 502 index_stale，且水位不被拉低", async () => {
+		// 先见第 7 代（水位落库），同源再返回第 3 代 → 回放被挡
+		const seen7 = createMarketApi(makeEnv({ fetch: timedCdnFetch({ seq: 7 }) }));
+		g.http = { user: { id: 1 } };
+		await seen7.index.get();
+		expect(last?.status).toBe(200);
+
+		const replayed = createMarketApi(makeEnv({ fetch: timedCdnFetch({ seq: 3 }) }));
+		g.http = { user: { id: 1 } };
+		await replayed.index.get();
+		expect(last?.status).toBe(502);
+		expect(String(last?.msg)).toContain("index_stale");
+		const row = dbo.prepare("SELECT max_seq FROM reg_source_seq WHERE source_url = ?").get(CDN.replace(/\/$/, "")) as { max_seq: number } | undefined;
+		expect(row?.max_seq).toBe(7);
+	});
+
+	it("同代重复拉取 → 放行（幂等，不误伤正常重复请求）", async () => {
+		const fetchFn = timedCdnFetch({ seq: 4 });
+		g.http = { user: { id: 1 } };
+		await createMarketApi(makeEnv({ fetch: fetchFn })).index.get();
+		expect(last?.status).toBe(200);
+		await createMarketApi(makeEnv({ fetch: fetchFn })).index.get();
+		expect(last?.status).toBe(200);
+	});
+
+	it("代次水位表缺失（未 migrate）→ 502 index_state_corrupt（fail-closed，不静默当「第一次见」）", async () => {
+		dbo.exec("DROP TABLE reg_source_seq");
+		const api = createMarketApi(makeEnv({ fetch: timedCdnFetch({ seq: 1 }) }));
+		g.http = { user: { id: 1 } };
+		await api.index.get();
+		expect(last?.status).toBe(502);
+		expect(String(last?.msg)).toContain("index_state_corrupt");
 	});
 });
 
