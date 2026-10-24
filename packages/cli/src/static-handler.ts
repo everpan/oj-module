@@ -229,7 +229,14 @@ export function createStaticHandler(opts: StaticHandlerOptions): (req: http.Inco
 export function listenOnFreePort(server: http.Server, startPort: number, maxTries = 10): Promise<number> {
 	return new Promise((resolve, reject) => {
 		const attempt = (port: number) => {
-			server.once("error", (err: NodeJS.ErrnoException) => {
+			// 回调手动挂/摘（listen(port, cb) 的 cb 摘不掉前次失败的滞留闭包，
+			// 重试成功时会以旧端口先 resolve——日志与实listen端口漂移，2026-10-24 实测）
+			function cleanup() {
+				server.off("error", onError);
+				server.off("listening", onListen);
+			}
+			function onError(err: NodeJS.ErrnoException) {
+				cleanup();
 				if (err.code === "EADDRINUSE" && port - startPort < maxTries) {
 					console.warn(`[ojm] 端口 ${port} 已被占用，改用 ${port + 1}`);
 					attempt(port + 1);
@@ -237,8 +244,16 @@ export function listenOnFreePort(server: http.Server, startPort: number, maxTrie
 				else {
 					reject(err);
 				}
-			});
-			server.listen(port, () => resolve(port));
+			}
+			function onListen() {
+				cleanup();
+				// 取实绑端口（startPort=0 时 OS 自分随机端口，闭包 port 不可信）
+				const addr = server.address();
+				resolve(typeof addr === "object" && addr ? addr.port : port);
+			}
+			server.once("error", onError);
+			server.once("listening", onListen);
+			server.listen(port);
 		};
 		attempt(startPort);
 	});
