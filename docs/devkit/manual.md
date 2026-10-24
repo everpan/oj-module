@@ -822,7 +822,8 @@ export default { get };
    逐个改 import 与调用；`tsc --noEmit` 应收敛到 0 错误。
 6. **删旧文件**：删除各 `contract.ts`，以及旧流水线产物 `routes.json` /
    `openapi.yaml`（模块目录下；ojm 不再自产。`ojm api --docs` 渲染的静态文档站另放：
-   module-root → 工程根 `docs/api/`，历史布局 → `api/docs/`，保留）。
+   `<projectRoot>/src/docs/<name>/api`（与模块树同位、树外，不参与模块枚举与 handler 路由扫描，
+   杜绝 docs 被当 handler 镜像导致端点翻倍；legacy 布局同形、落在 `api/src` 扫描树外，保留）。
 7. **对账**：`ojm api --check` 应 `0 error / 0 warn`；内置端点（`auth/*`、`web/*`、
    `notification/*`）经 `.ojm-api-exempt.json` 豁免（init 已内置）。
 
@@ -1681,6 +1682,9 @@ ojm build --bundle crm           # 打包
 ```
 
 
+> 生成的 `src/<name>/solution.yaml` 不再写出 `web.route_prefix: /<name>`（与缺省重复），只在
+> `web` 段留一行注释；要自定义根路径时取消注释改值即可（见 §13.1.1）。
+
 #### `ojm preview [port]`
 
 生产形态预览（设计 §6，2026-10-19 单服务化）：
@@ -1705,8 +1709,11 @@ ojm build --bundle crm           # 打包
 - `dir`：项目目录（缺省 `cwd`；显式目录必须先存在，否则报错）。
 - `--check`：**四重对账**（只读、绝不写盘）：① 生成物同步 ② route 双向对账
   ③ `routes.js` diff ④ WS 路由鉴权（§3.6）。
-- `--docs`：聚合 OpenAPI → redoc 自包含静态文档站（离线可看），落 `<cwd>/docs/api/`
-  （历史布局 `<cwd>/api/docs/`）。
+- `--docs`：聚合 OpenAPI → redoc 自包含静态文档站（离线可看），落
+  `<projectRoot>/src/docs/<name>/api`（与模块树同位、树外——不参与模块枚举与 handler 路由扫描，
+  杜绝 docs 被当 handler 镜像导致端点翻倍 `wikiDocsDocs*`）。`name` 推导：cwd 为 `src/<name>/api`
+  时取父目录名；module-root 单模块时取该模块名；否则回退工程目录名（legacy 布局同形，
+  落在 `api/src` 扫描树外）。
 - `--exempt <path>`：指定豁免清单，覆盖默认探测顺序 `.ojm-api-exempt.json` →
   `api/.ojm-api-exempt.json` → `api/.ram-api-exempt.json`（旧名回退），§3.8。
 
@@ -1829,6 +1836,24 @@ ojm build --bundle crm        # 只打 src/crm/ 这一份；--bundle=crm 等价
   file 源上传时点补齐（宿主安装器）或发布通道 Form B 自带。
 - **入包红线**：`*.pem` / `*.key` / `*.p12` / `*.pfx` / `.env` 系 / `id_ed25519` / `id_rsa`
   等私钥形态文件禁入包（与 `modules.json` 禁入同款自检，0.2.23 起扩面）——私钥入包即信任根基烧毁。
+
+#### 11.1.1 引用式方案：`api` 段省略 `tables` / `deps`
+
+方案包契约的 `api` 段有两种合法形态：
+
+- **全量形态**：给出 `tables` 与/或 `deps`（外加 `module` / `prefix` / `anonymous` 等），
+  契约按全量校验，`api.tables` 须与 `api/src/<name>/schema.yaml` 表集逐一相等（oj 冗余校验同源）。
+- **引用形态**：`api` 段只给 `module` / `prefix` 等、**省略 `tables` 与 `deps`**——表与依赖清单
+  **引用包内** oj 原生 `<module>/manifest.yaml`（七键清单，tgz 打包时已随包携带）。契约**显式承认**
+  此形态（不再仅靠字段可选性漏过），安装期 `extract` 阶段读回该原生 manifest 做占用检测与依赖装配
+  （`_platform` 除外）；两字段任一给出即按全量优先。
+
+`ojm build --bundle` 校验通过后会打印一行提示，避免把省略误读成漏配：
+
+```
+[ojm] 引用式方案：api.tables/api.deps 缺省，引用包内 api/<name>-<version>/manifest.yaml
+       （安装期复核其存在，依赖装配据其回读，非漏配）
+```
 
 ### 11.2 两种分发源
 
@@ -2011,6 +2036,45 @@ export default defineModule({
 });
 ```
 
+#### 13.1.1 自定义模块根路径：`web.route_prefix`
+
+单根约定下，模块根路由首段默认就是模块名 `name`（即 `web.route_prefix` 缺省 `/<name>`）。
+要换根（比如让 `wiki` 模块挂在 `/kb`），在 `src/<name>/solution.yaml` 的 `web` 段声明：
+
+```yaml
+web:
+  route_prefix: /kb   # 形如 /<小写字母开头，字母数字短横线>
+```
+
+构建期 `ojm build` 会把**生效前缀段**（`kb`，去首斜杠）写进 `modules.json` 每个模块条目的
+`routePrefix` 字段；运行时模块加载器据此**只改写路由根段**（单根约定下仅首段——
+`applyRoutePrefix` 保持原 path 的前导斜杠风格：相对 `wiki`→`kb`、绝对 `/wiki`→`/kb`，
+children 不变）。因此**缺省（不声明）= name 时路径字段逐字节不变（零漂移）**，已有模块升级无感。
+
+改写后 `rewriteAdminPaths` 会自动跟随（它从顶层路径推导根），`category: "admin"` 的路由落到
+`/system/<前缀>/admin`，菜单归组一并跟随——菜单、深链、模块内跳转、tab 键、admin 提升全部落在
+同一个根。
+
+模块内路径**不要硬编码根段**，统一经 `getModuleRoutePrefix(name)` 单点消费（运行时导出，读
+`modules.json` 的 `routePrefix`，未声明回落 `name`）：
+
+```ts
+// paths.ts：把根段参数化，所有 navigate / Link / matchPath 都从它派生
+export const createWikiPaths = (root: string) => ({
+  home: `/${root}`,
+  space: `/${root}/space`,
+  admin: `/${root}/admin`,
+});
+
+// 使用时懒取（组件渲染 / 事件处理内），不要缓存到模块顶层常量——
+// 模块静态求值期模块表尚未就绪，须等 loadAll 之后才取值
+import { getModuleRoutePrefix } from "@oj-module/runtime";
+const paths = createWikiPaths(getModuleRoutePrefix("wiki"));
+```
+
+> `ojm new` 生成的骨架不再写出 `route_prefix: /<name>`（与缺省重复），只留注释，需要时取消
+> 注释改值即可（见 §10.1）。
+
 ### 13.2 category 三值语义
 
 `handle.category`：
@@ -2025,6 +2089,7 @@ export default defineModule({
 
 - 模块根菜单标题与 /system 下的管理子组标题**共用** `<模块>:menu.main` 一个 i18n key（嵌套在 `menu.main`，是模块级标题的唯一真源，缺则构建期 fail-fast）。
 - 模块内所有前端路径——`navigate` / `Link to` / `useMatch`·`matchPath` / `currentActiveMenu` / SEO 正则——统一从模块基路径助手（如 `paths.ts` 的 `wikiPath(...)` / `wikiBase`）派生，不散落 `/wiki/...` 字面量；`currentActiveMenu` 必须写绝对路径（指向真实菜单 key）。`tree/bus.ts` 的 room 名是后端 WS 契约，非前端路由，不动。
+- 模块基路径的真源是 `getModuleRoutePrefix(name)`（运行时导出，读 `modules.json` 的 `routePrefix`，缺省 `name`）——`paths.ts` 助手应以其为参数，而非写死 `/<name>`；自定义根路径见 §13.1.1。
 
 ### 13.4 开发者的该做 / 别做
 
@@ -2060,6 +2125,6 @@ export default defineModule({
 | §8 排查 | 五步排查法、症状速查表 | 任何「没生效」 |
 | §9 参考 | 可抄的工程内文件、oj-api-dev 手册指引 | 找范本 |
 | §10 CLI 子命令参考 | ojm 原生命令 vs oj 透传命令；`market` 子命令（本地模拟 CDN） | 查命令用法；`ojm <cmd> --help` 看单命令帮助 |
-| §11 方案包：打包与分发 | build --bundle、Form A/B、分发源、索引规范 | 发布方案包 |
+| §11 方案包：打包与分发 | build --bundle、Form A/B、分发源、索引规范、引用式方案（api 段省略 tables/deps，引用包内原生 manifest） | 发布方案包 |
 | §12 签名与信任 | keygen/sign/install 发布流程、信任库、TOFU、bootstrap key | 首次签名发布；管理信任 |
-| §13 方案菜单归组规则 | 单根模块约定（根路由=第一级菜单）、category 三值（普通/hidden/admin）、admin 真重写 `/system/<模块 root>/*` + 视觉归组、menu.main 统一、模块内路径助手、开发者 DO/DON'T | 写方案要让菜单按模块分组、admin 归系统设置 |
+| §13 方案菜单归组规则 | 单根模块约定（根路由=第一级菜单）、自定义根路径 `web.route_prefix`（构建写 modules.json、运行时只改根段、getModuleRoutePrefix 单点消费）、category 三值（普通/hidden/admin）、admin 真重写 `/system/<模块 root>/*` + 视觉归组、menu.main 统一、模块内路径助手、开发者 DO/DON'T | 写方案要让菜单按模块分组、admin 归系统设置 |

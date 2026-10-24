@@ -14,6 +14,11 @@ export interface ModuleContext {
 	module: {
 		name: string
 		version: string
+		/**
+		 * 生效的 web 路由前缀段（契约 C2-14 `web.route_prefix` 缺省 `name`）。
+		 * 运行期据其改写模块路由根；模块内深链/跳转应读此值单点消费，勿硬编码根段。
+		 */
+		routePrefix: string
 	}
 	/** 主框架工具 */
 	utils: {
@@ -91,6 +96,8 @@ export interface ModuleDefinition {
 /** 运行时模块实例 */
 export interface ModuleInstance {
 	definition: ModuleDefinition
+	/** 生效的 web 路由前缀段（缺省 = name）；供 getModuleRoutePrefix 读取 */
+	routePrefix: string
 	/** missing-deps：声明的依赖模块缺失或加载失败，本模块未执行生命周期（US-9 禁止半加载） */
 	status: "pending" | "loading" | "loaded" | "active" | "error" | "missing-deps"
 	error?: Error
@@ -108,6 +115,11 @@ export interface ManifestModuleEntry {
 	dependencies?: string[]
 	/** 兼容的宿主 runtime 版本（semver 范围），P7.6 起在加载后即刻校验 */
 	peerRuntime?: string
+	/**
+	 * 生效的 web 路由前缀段（契约 C2-14，缺省 = name）。缺位时运行期回落 name。
+	 * 注：构建器恒写入该字段，缺位仅发生在手写/旧版清单。
+	 */
+	routePrefix?: string
 }
 
 /** manifest.json 格式 */

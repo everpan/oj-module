@@ -92,6 +92,8 @@ async function main() {
 			entry: `modules/${definition.name}/${definition.version}/entry.js`,
 			enabled: true,
 			dependencies: definition.config?.dependencies ?? [],
+			// R1.2：生产清单带生效 web 路由前缀段（缺省 = name，运行期据此改写路由根）
+			routePrefix: definition.name,
 			...(definition.peerRuntime ? { peerRuntime: definition.peerRuntime } : {}),
 		})),
 	};

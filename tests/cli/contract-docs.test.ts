@@ -1,5 +1,5 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { basename, join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { inlineRedocScript, runApiDocs } from "../../packages/cli/src/contract/run";
 import { writeOpenapiJson } from "./_fixtures";
@@ -33,28 +33,50 @@ afterAll(() => {
 });
 
 describe("runApiDocs（R5 redoc 文档站）", () => {
-	it("聚合契约 → redoc 产物含端点路径且自包含（uni-dev 落 api/docs/）", async () => {
+	it("聚合契约 → redoc 产物含端点路径且自包含（统一落 <root>/src/docs/<name>/api/）", async () => {
 		const cwd = makeProject();
+		const name = basename(cwd);
 		const out = await runApiDocs(cwd, { fetchJs: stubFetchJs });
-		expect(out).toBe(join(cwd, "api/docs/index.html"));
+		expect(out).toBe(join(cwd, "src", "docs", name, "api/index.html"));
 		const html = readFileSync(out, "utf8");
 		expect(html).toContain("/order/item/{id}");
 		// S2：无 CDN 外链，bundle 已内联
 		expect(html).not.toContain("cdn.redocly.com");
 		expect(html).toContain("/* redoc bundle stub */");
 		// 聚合 spec 同时落盘（评审可直读 yaml）
-		expect(readFileSync(join(cwd, "api/docs/openapi.yaml"), "utf8")).toContain("openapi: 3.1.0");
+		expect(readFileSync(join(cwd, "src", "docs", name, "api/openapi.yaml"), "utf8")).toContain("openapi: 3.1.0");
 	}, 120_000);
 
-	it("纯前端形态（无 api/src）→ 落 docs/api/", async () => {
+	it("纯前端形态（无 api/src）→ 同样落 <root>/src/docs/<name>/api/", async () => {
 		const dir = mkdtempSync(join(process.cwd(), "node_modules/.cache/ojm-docs-fe-"));
 		tmpDirs.push(dir);
 		writeOpenapiJson(dir, [
 			{ module: "demo", route: "/dashboard", method: "GET", data: { type: "object", properties: { visitors: { type: "number" } }, required: ["visitors"] } },
 		]);
+		const name = basename(dir);
 		const out = await runApiDocs(dir, { fetchJs: stubFetchJs });
-		expect(out).toBe(join(dir, "docs/api/index.html"));
+		expect(out).toBe(join(dir, "src", "docs", name, "api/index.html"));
 		expect(existsSync(out)).toBe(true);
+	}, 120_000);
+
+	it("修正B：module-root 布局 → 落 src/docs/<name>/api（树外，不参与模块枚举/路由扫描）", async () => {
+		const dir = mkdtempSync(join(process.cwd(), "node_modules/.cache/ojm-docs-mr-"));
+		tmpDirs.push(dir);
+		// 构造 module-root：src/<name>/{api/manifest.yaml, web/entry.ts}
+		const name = "wiki";
+		mkdirSync(join(dir, "src", name, "api"), { recursive: true });
+		mkdirSync(join(dir, "src", name, "web"), { recursive: true });
+		writeFileSync(join(dir, "src", name, "api", "manifest.yaml"), "name: wiki\nversion: 0.1.0\n");
+		writeFileSync(join(dir, "src", name, "web", "entry.ts"), "export default {}\n");
+		writeOpenapiJson(dir, [
+			{ module: name, route: "/space/{id}", method: "GET", data: { type: "object", properties: { id: { type: "number" } }, required: ["id"] } },
+		]);
+		const out = await runApiDocs(dir, { fetchJs: stubFetchJs });
+		// 单模块 → name 取该模块名
+		expect(out).toBe(join(dir, "src", "docs", name, "api/index.html"));
+		expect(existsSync(out)).toBe(true);
+		// 落点在模块树外：顶层 src/docs 无 manifest.yaml，不进枚举
+		expect(existsSync(join(dir, "src", "docs", name, "api", "openapi.yaml"))).toBe(true);
 	}, 120_000);
 
 	it("多契约聚合一页：两份契约端点同现于单个 index.html", async () => {

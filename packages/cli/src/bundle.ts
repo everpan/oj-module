@@ -37,7 +37,7 @@ import { readModuleDefinition } from "./build";
 import { readBuiltinModules } from "./builtin";
 import { createDeterministicTgz } from "./deterministic-tar";
 import { apiSrcOf, resolveLayout, webSrcOf } from "./layout";
-import { assertValidSolutionName, checkLocalesComplete, checkTablesAgainstSchema, NAME_RE, parseManifest, referencedI18nKeys, validateContract } from "./manifest-contract";
+import { assertValidSolutionName, checkLocalesComplete, checkTablesAgainstSchema, isReferenceApiForm, NAME_RE, parseManifest, referencedI18nKeys, validateContract } from "./manifest-contract";
 import { deriveManifestRoutes, reconcileManifestRoutes } from "./manifest-routes-derive";
 
 export interface BundleBuildResult {
@@ -231,6 +231,13 @@ async function planBundle(projectRoot: string, layout: ProjectLayout, target: Bu
 	const violations = validateContract(m);
 	if (violations.length > 0) {
 		throw new Error(`[ojm] 方案包构建失败：manifest.yaml 契约校验未通过（${violations.length} 项违规，全量列出）：\n${violations.map(x => `- ${x}`).join("\n")}`);
+	}
+	// R2.2：引用式 solution 提示——api.tables/api.deps 缺省 = 引用包内 manifest.yaml（非漏配）
+	if (isReferenceApiForm(m.api)) {
+		console.log(
+			`[ojm] 引用式方案：api.tables/api.deps 缺省，引用包内 api/${String(m.name)}-${String(m.version)}/manifest.yaml`
+			+ "（安装期 C2-31 复核其存在，依赖装配据其回读，非漏配）",
+		);
 	}
 	const version = m.version as string;
 

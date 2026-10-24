@@ -189,6 +189,8 @@ async function checkApiSegment(ctx: ExtractContext): Promise<{ ok: true } | { ok
 	catch (e) {
 		return { ok: false, message: `解压复核失败：api/${ctx.name}-${ctx.version}/manifest.yaml 不可解析（${String(e)}）——C2-31` };
 	}
+	// R2.2：引用式 solution 的 tables/deps 真源——保留 native manifest 供 deployWeb 回读装配。
+	ctx.nativeManifest = native;
 	return checkModuleManifest(ctx.manifest, native, ctx.name, ctx.version);
 }
 

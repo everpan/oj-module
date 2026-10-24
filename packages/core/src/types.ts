@@ -110,6 +110,8 @@ export interface ManifestModuleEntry {
 	dependencies?: string[]
 	/** 兼容的宿主 runtime 版本范围，加载后即刻校验 */
 	peerRuntime?: string
+	/** 生效的 web 路由前缀段（契约 C2-14，缺省 = name）；构建器恒写入 */
+	routePrefix?: string
 }
 
 /** manifest.json 格式 */

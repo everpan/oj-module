@@ -40,9 +40,16 @@ function isObj(v: unknown): v is Record<string, unknown> {
 	return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
-/** manifest api.deps 的模块依赖键（排除 _platform——平台非 web 模块依赖，P2-15② extras） */
-function apiDepsOf(m: Record<string, unknown>): string[] {
-	const deps = isObj(m.api) && isObj((m.api as Record<string, unknown>).deps) ? (m.api as Record<string, unknown>).deps as Record<string, unknown> : {};
+/**
+ * manifest api.deps 的模块依赖键（排除 _platform——平台非 web 模块依赖，P2-15② extras）。
+ * 全量 form（C2 `api.deps` 给出）优先；引用式（R2.2）回退包内 native manifest.deps
+ * （oj 原生七键清单，tgz 随包携带，extract 段已解析留存 ctx.nativeManifest）。
+ */
+function apiDepsOf(m: Record<string, unknown>, native?: unknown): string[] {
+	const c2 = isObj(m.api) && isObj((m.api as Record<string, unknown>).deps)
+		? (m.api as Record<string, unknown>).deps as Record<string, unknown>
+		: undefined;
+	const deps = c2 ?? (isObj(native) && isObj((native as Record<string, unknown>).deps) ? (native as Record<string, unknown>).deps as Record<string, unknown> : {});
 	return Object.keys(deps).filter(k => k !== "_platform").sort();
 }
 
@@ -157,7 +164,8 @@ export async function deployWeb(ctx: DeployWebContext): Promise<StageResult> {
 		// P2-15②（G7 defer-P2 承载）：完整条目 extras——version/dependencies/chunks 补齐
 		// （deployWeb 全新生成 entry，构建器条目不透传的缺口；宿主 HostModule 全字段消费面）
 		version: ctx.version,
-		...(apiDepsOf(m).length > 0 ? { dependencies: apiDepsOf(m) } : {}),
+		// R2.2：引用式 solution 的 dependencies 据包内 native manifest 回读装配
+		...(apiDepsOf(m, ctx.nativeManifest).length > 0 ? { dependencies: apiDepsOf(m, ctx.nativeManifest) } : {}),
 		chunks: [], // 单 entry 产物无懒加载 chunk（宿主 collectPreloads 消费 `?? []`，字段形状齐备）
 		...(Array.isArray(web.css) ? { css: web.css.map(c => posixPath(String(c))) } : {}),
 		...(integrity !== undefined ? { integrity } : {}),

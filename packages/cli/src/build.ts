@@ -1,5 +1,6 @@
 import type { Plugin as EsbuildPlugin } from "esbuild";
 import type { Plugin } from "vite";
+import type { ProjectLayout } from "./layout";
 import type { RouteDefinitionLike } from "./manifest-routes-derive";
 import { execFileSync } from "node:child_process";
 import crypto from "node:crypto";
@@ -10,9 +11,10 @@ import { pathToFileURL } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
 import { build as esbuild } from "esbuild";
 import { build } from "vite";
+import { parse as parseYaml } from "yaml";
 import { ALIAS_PATHS_FILE, syncAliasPaths } from "./alias-paths";
 import { assertModuleList, loadSiteConfig, mergeModuleList, resolveModuleEntry } from "./config";
-import { resolveConfigPath, resolveLayout, scanModules, tryResolveLayout } from "./layout";
+import { moduleDir, resolveConfigPath, resolveLayout, scanModules, tryResolveLayout } from "./layout";
 import { requireModuleRootCapability } from "./oj-caps";
 import { isSharedDep, SHARED_DEPS } from "./shared-deps";
 import { normalizeSiteBase, rewriteIndexHtml } from "./site-base";
@@ -155,6 +157,8 @@ export const getModules = () => [];
 export const getModule = () => undefined;
 export const getRoutes = () => [];
 export const getHostRoutes = () => [];
+// 模块生效 web 路由前缀段取值口（R1.3：写进 modules.json 的 routePrefix，未声明回落 name）
+export const getModuleRoutePrefix = _fn;
 export const getRegisteredStore = () => undefined;
 export const getRegisteredApiPrefix = () => undefined;
 export const loadAll = async () => [];
@@ -342,6 +346,37 @@ export interface BuiltModule {
 	integrity: string
 	css: string[]
 	chunks: ChunkEntry[]
+	/**
+	 * 生效的 web 路由前缀段（契约 C2-14：`web.route_prefix` 缺省 `/<name>`）。
+	 * 运行期据其改写模块路由根（单根约定下仅根段），缺省 = name 保证零漂移。
+	 */
+	routePrefix: string
+}
+
+/**
+ * 解析模块生效的 web 路由前缀段（R1.1）。
+ * module-root：读 `src/<name>/solution.yaml` 的 `web.route_prefix`（契约 C2-14，缺省 `/<name>`）；
+ * 未配置/非法/非 module-root → 缺省 `name`，与现有路由根（顶层段即 name）逐字节一致。
+ */
+function resolveRoutePrefix(layout: ProjectLayout, name: string): string {
+	if (layout.kind !== "module-root")
+		return name;
+	const solPath = path.join(moduleDir(layout, name), "solution.yaml");
+	if (!fs.existsSync(solPath))
+		return name;
+	try {
+		const doc = parseYaml(fs.readFileSync(solPath, "utf-8")) as Record<string, unknown>;
+		const web = doc.web;
+		if (web && typeof web === "object" && !Array.isArray(web)) {
+			const rp = (web as Record<string, unknown>).route_prefix;
+			if (typeof rp === "string" && /^\/[a-z][a-z0-9-]{0,63}$/.test(rp))
+				return rp.slice(1);
+		}
+	}
+	catch {
+		// YAML 解析失败 → 缺省，不阻断构建（契约校验会在别处暴露）
+	}
+	return name;
 }
 
 const ALGORITHM = "sha384";
@@ -760,6 +795,7 @@ export async function buildModules(
 			integrity: sha384(path.join(moduleOutDir, "entry.js")),
 			css,
 			chunks,
+			routePrefix: resolveRoutePrefix(layout, definition.name),
 		});
 	}
 

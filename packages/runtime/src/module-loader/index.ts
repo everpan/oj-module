@@ -37,11 +37,12 @@ const registeredStores = new Map<string, unknown>();
 // 因此按模块存集合而非单值；登记顺序即数组顺序（getRegisteredApiPrefix 取首个）
 const registeredApiPrefixes = new Map<string, string[]>();
 
-function createModuleContext(definition: ModuleDefinition): ModuleContext {
+function createModuleContext(definition: ModuleDefinition, routePrefix: string): ModuleContext {
 	return {
 		module: {
 			name: definition.name,
 			version: definition.version,
+			routePrefix,
 		},
 		utils: {
 			// P6.3 / D11：模块拿到的是按其登记 apiPrefix 收敛的 scoped client，
@@ -203,6 +204,7 @@ export async function loadAll(manifest: Manifest): Promise<ModuleInstance[]> {
 				);
 				modules.set(entry.name, {
 					definition,
+					routePrefix: entry.routePrefix ?? rootSegmentOf(definition.routes) ?? entry.name,
 					status: "error",
 					error: new Error(
 						`模块 "${entry.name}" peerRuntime 不兼容：期望 ${peerRuntime}，实际 ${manifest.runtimeVersion}`,
@@ -214,12 +216,14 @@ export async function loadAll(manifest: Manifest): Promise<ModuleInstance[]> {
 			validEntries.push(entry);
 			modules.set(entry.name, {
 				definition,
+				routePrefix: entry.routePrefix ?? rootSegmentOf(definition.routes) ?? entry.name,
 				status: "loaded",
 			});
 		}
 		else {
 			modules.set(entry.name, {
 				definition: { name: entry.name, description: "", version: "0.0.0", routes: [] },
+				routePrefix: entry.routePrefix ?? entry.name,
 				status: "error",
 				error: new Error("Failed to load module entry"),
 			});
@@ -240,6 +244,7 @@ export async function loadAll(manifest: Manifest): Promise<ModuleInstance[]> {
 			);
 			modules.set(entry.name, {
 				definition,
+				routePrefix: entry.routePrefix ?? rootSegmentOf(definition.routes) ?? entry.name,
 				status: "missing-deps",
 				error: new Error(`模块 "${entry.name}" 依赖缺失：${missing.join(", ")}`),
 			});
@@ -254,7 +259,7 @@ export async function loadAll(manifest: Manifest): Promise<ModuleInstance[]> {
 	// Phase 3: 按序执行生命周期
 	for (const entry of sortedEntries) {
 		const definition = definitions.get(entry.name)!;
-		const ctx = createModuleContext(definition);
+		const ctx = createModuleContext(definition, entry.routePrefix ?? rootSegmentOf(definition.routes) ?? entry.name);
 
 		try {
 			if (definition.lifecycle?.beforeInit) {
@@ -275,6 +280,7 @@ export async function loadAll(manifest: Manifest): Promise<ModuleInstance[]> {
 			console.error(`[module-loader] Lifecycle error for "${entry.name}":`, error);
 			modules.set(entry.name, {
 				definition,
+				routePrefix: entry.routePrefix ?? rootSegmentOf(definition.routes) ?? entry.name,
 				status: "error",
 				error: error instanceof Error ? error : new Error(String(error)),
 			});
@@ -305,6 +311,20 @@ export function getModule(name: string): ModuleInstance | undefined {
 }
 
 /**
+ * 模块生效 web 路由前缀段取值口（R1.3）。
+ *
+ * 模块内深链/跳转应经此单点消费，勿硬编码根段：
+ * `createWikiPaths(getModuleRoutePrefix("wiki") ?? "wiki")`。
+ *
+ * 注意时序：须在 `loadAll` 之后调用——模块静态求值期 `modules` 未就绪。
+ * 模块内导航应懒取（组件渲染 / 事件处理器内），不要缓存于模块顶层常量。
+ * 未加载模块回落 `name`（与缺省语义一致）。
+ */
+export function getModuleRoutePrefix(name: string): string {
+	return modules.get(name)?.routePrefix ?? name;
+}
+
+/**
  * 给模块路由打 module 标（R1，0.2.16）：递归 children，非突变返回新对象。
  * module 来自 `definition.name`，作者无需手写——归组据此甄别方案路由、
  * 生成 `solgroup:<category>:<module>` 父键，不再依赖宿主 DB 行。
@@ -319,6 +339,35 @@ function tagModuleRoutes(routes: AppRouteRecordRaw[], name: string): AppRouteRec
 			tagged.children = tagModuleRoutes(route.children, name);
 		return tagged;
 	});
+}
+
+/**
+ * 按生效前缀改写模块路由根（R1.2，单根约定下仅改首段/根段）。
+ * 顶层路由 path 的首段替换为 prefix；children 为相对路径不变。
+ * 保持原 path 的「前导斜杠」风格：相对 `wiki` → `kb`、绝对 `/wiki` → `/kb`，
+ * 因此缺省 prefix = name 时路径字段逐字节不变（零漂移），仅段值一致。
+ */
+export function applyRoutePrefix(routes: AppRouteRecordRaw[], prefix: string): AppRouteRecordRaw[] {
+	return routes.map((route) => {
+		const p = typeof route.path === "string" ? route.path : "";
+		const hadLeadingSlash = p.startsWith("/");
+		const firstSeg = p.replace(/^\/?/, "").split("/")[0] ?? "";
+		const afterFirst = hadLeadingSlash ? p.slice(1 + firstSeg.length) : p.slice(firstSeg.length);
+		const newPath = hadLeadingSlash ? `/${prefix}${afterFirst}` : `${prefix}${afterFirst}`;
+		return { ...route, path: newPath };
+	});
+}
+
+/**
+ * 取模块路由根段（首段，去前导斜杠）；无路由返回 undefined。
+ * 用于 `routePrefix` 缺省：单根约定下根段即模块身份，故缺省前缀 = 根段
+ * （约定等于 name；fixture/异常态下 name 与根段不一致时回落根段而非 name，避免改写真实根）。
+ */
+function rootSegmentOf(routes: AppRouteRecordRaw[]): string | undefined {
+	const p = routes[0]?.path;
+	if (typeof p !== "string" || p.length === 0)
+		return undefined;
+	return p.replace(/^\/?/, "").split("/")[0] || undefined;
 }
 
 export function getRoutes(): AppRouteRecordRaw[] {
@@ -341,6 +390,9 @@ export function getRoutes(): AppRouteRecordRaw[] {
 			// P2.7：布局不再由模块自行 import，按 handle.layout 在出口统一包裹
 			// 0.2.16 R1：注册时按 definition.name 给每条路由打 module 标（递归 children），
 			// 使归组无需依赖宿主 DB 行；tagModuleRoutes 非突变。
+			// 注意：此处保留原始路由根（不按 routePrefix 改写）——改写是宿主建表取口
+			// getHostRoutes() 的职责（与 rewriteAdminPaths 同源），getRoutes() 只供
+			// access store 登记 / keep-alive 聚合等「无需重写」的场景。
 			routes.push(...resolveRouteLayouts(tagModuleRoutes(instance.definition.routes, instance.definition.name)));
 		}
 	}
@@ -359,7 +411,17 @@ export function getRoutes(): AppRouteRecordRaw[] {
  * getRoutes() 只该给 access store 登记、keep-alive 聚合等「无需重写」的场景用。
  */
 export function getHostRoutes(): AppRouteRecordRaw[] {
-	return rewriteAdminPaths(getRoutes());
+	// 宿主链建路由表的唯一取口：先按生效 routePrefix 改写路由根（缺省 = 模块根段，零漂移），
+	// 再 rewriteAdminPaths（admin 真重写 /system/<根>/*）。二者均派生自绝对路径，
+	// 菜单/tab/keepalive 自动跟随。getRoutes() 保留原始路径供 access store 等无需重写场景。
+	const prefixed = getRoutes().map((route) => {
+		const mod = (route.handle as { module?: string } | undefined)?.module;
+		if (!mod)
+			return route;
+		const prefix = modules.get(mod)?.routePrefix ?? mod;
+		return applyRoutePrefix([route], prefix)[0] ?? route;
+	});
+	return rewriteAdminPaths(prefixed);
 }
 
 export function getRegisteredStore<T = unknown>(name: string): T | undefined {
@@ -378,7 +440,7 @@ export function getRegisteredApiPrefix(moduleName: string): string | undefined {
 export async function unloadModule(name: string): Promise<void> {
 	const instance = modules.get(name);
 	if (instance) {
-		const ctx = createModuleContext(instance.definition);
+		const ctx = createModuleContext(instance.definition, instance.routePrefix);
 		if (instance.definition.lifecycle?.onDestroy) {
 			await instance.definition.lifecycle.onDestroy(ctx);
 		}

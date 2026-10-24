@@ -64,6 +64,7 @@ export { setupI18n } from "./locales";
 export {
 	getHostRoutes,
 	getModule,
+	getModuleRoutePrefix,
 	getModules,
 	getRegisteredApiPrefix,
 	getRegisteredStore,

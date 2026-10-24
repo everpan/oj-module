@@ -9,6 +9,11 @@ import type { StateStore } from "./state";
 export interface InstallContext {
 	/** 已解析的 manifest.yaml（安装器读盘解析产物） */
 	manifest: unknown
+	/**
+	 * 包内 oj 原生清单（C2-31 复核解析产物；引用式 solution 的 tables/deps 真源）。
+	 * web-only 包（无 api 段）保持 undefined；引用式方案的依赖装配据其回读（R2.2）。
+	 */
+	nativeManifest?: unknown
 	/** 安装目标身份（与 manifest.name/version 同源；manifest 字段缺失/非字符串时兜底） */
 	name: string
 	version: string

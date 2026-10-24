@@ -24,7 +24,7 @@
 | 文件 | 用途 |
 |---|---|
 | `SKILL.md` | Claude Code 等 agent 的 skill 入口：工作流、红线、新模块 checklist、陷阱速查，按章节号引用手册 |
-| `manual.md` | 模块开发手册（13 章）：工程结构（module-root 单树 + 两处产物根；含 §1.7 handler 四红线——oj 运行时实测钉出，后端必读；§1.8 `#` 别名与 TS 投影）、写模块、契约与代码生成（含 §3.10 旧 contract.ts 工程迁移指南）、provider 接管（覆盖框架内置功能）、布局、i18n、构建发布、排查、CLI 子命令参考（ojm 原生命令 vs oj 透传命令）、方案包打包与分发、签名与信任 |
+| `manual.md` | 模块开发手册（13 章）：工程结构（module-root 单树 + 两处产物根；含 §1.7 handler 四红线——oj 运行时实测钉出，后端必读；§1.8 `#` 别名与 TS 投影）、写模块、契约与代码生成（含 §3.10 旧 contract.ts 工程迁移指南）、provider 接管（覆盖框架内置功能）、布局、i18n、构建发布、排查、CLI 子命令参考（ojm 原生命令 vs oj 透传命令）、方案包打包与分发（含 §11.1.1 引用式方案）、签名与信任；含 §13.1.1 web.route_prefix 自定义根路径 |
 | `framework-dev.md` | 框架贡献者路线（**仅框架仓库**）：改 `packages/runtime`、`packages/cli` 时的入口与红线 |
 | `module-dev-and-cdn-playground.md` | 教学文档：开发态 ≠ 分发态、「怎么安装自己的模块 / 会不会重复」、本地 CDN 市场链路五步跑通（setup → publish → build-index → verify → 安装） |
 | `sql-builder-missing-capabilities-pr.md` | 构造器能力缺口 PR 参考（**仅框架仓库**）：7 项诉求的闭环记录 |

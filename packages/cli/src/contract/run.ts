@@ -4,11 +4,11 @@ import type { OpenApiDoc } from "./openapi-ir";
 import { execFile as execFileCb } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import process from "node:process";
 import { promisify } from "node:util";
 import { stringify as stringifyYaml } from "yaml";
-import { apiModuleRoots, apiModulesSrc, apiSrcOf, legacyApiModuleRoots, tryResolveLayout, webSrcOf } from "../layout";
+import { apiModuleRoots, apiModulesSrc, apiSrcOf, legacyApiModuleRoots, scanModules, tryResolveLayout, webSrcOf } from "../layout";
 import { emitClient } from "./emit-client";
 import { applyStubWrites, planStubWrites } from "./emit-stub";
 import { implementedRouteKeys } from "./handler-scan";
@@ -125,7 +125,10 @@ export async function runApi(opts: { cwd: string, openapi?: string, rawPaths?: S
 
 /**
  * R5：`ojm api --docs`——聚合 openapi.json 的 paths → redoc 渲染静态站。
- * uni-dev 形态（存在 api/src）落 `api/docs/index.html`，纯前端落 `docs/api/index.html`。
+ * 文档统一落 `<projectRoot>/src/docs/<name>/api`（与模块树同位、树外——不参与模块
+ * 枚举与 handler 路由扫描，杜绝 docs 被当 handler 镜像导致端点翻倍 wikiDocsDocs*）。
+ * `name` 推导：cwd 为 `src/<name>/api` 时取父目录名；module-root 单模块时取该模块名；
+ * 否则回退工程目录名。legacy 布局同样落 `src/docs/<name>/api`（位于 api/src 扫描树外）。
  * redoc CLI 缺失时人话报错。
  */
 export async function runApiDocs(cwd: string, opts: { redocBin?: string, fetchJs?: (url: string) => Promise<string> } = {}): Promise<string> {
@@ -136,9 +139,30 @@ export async function runApiDocs(cwd: string, opts: { redocBin?: string, fetchJs
 	const doc = JSON.parse(readFileSync(openapiPath, "utf8")) as { paths?: Record<string, Record<string, unknown>> };
 	const paths = doc.paths ?? {};
 	const layout = tryResolveLayout(cwd);
-	const isUniDev = existsSync(layout ? apiModulesSrc(layout) : join(cwd, "api/src"));
 
-	const outDir = isUniDev ? join(cwd, "api/docs") : join(cwd, "docs/api");
+	// 修正B：文档统一落 <projectRoot>/src/docs/<name>/api（与模块树同位、树外——
+	// 无 manifest.yaml、顶层不被 scanModuleRoot 枚举，walkApiFiles 也不命中，
+	// 不会把 docs 当 handler 路由镜像，杜绝 wikiDocsDocs* 类端点翻倍）。
+	const projectRoot = layout?.projectRoot ?? cwd;
+	let name = basename(projectRoot);
+	if (basename(cwd) === "api") {
+		// cwd 为模块 api 目录（src/<name>/api）时取父目录名为模块名
+		const candidate = basename(dirname(cwd));
+		if (layout?.kind === "module-root") {
+			const mods = scanModules(layout).map(m => m.name);
+			if (mods.includes(candidate))
+				name = candidate;
+		}
+		else {
+			name = candidate;
+		}
+	}
+	else if (layout?.kind === "module-root") {
+		const mods = scanModules(layout).map(m => m.name);
+		if (mods.length === 1)
+			name = mods[0]!;
+	}
+	const outDir = join(projectRoot, "src", "docs", name, "api");
 	mkdirSync(outDir, { recursive: true });
 	const specPath = join(outDir, "openapi.yaml");
 	writeFileSync(specPath, stringifyYaml({ openapi: "3.1.0", info: { title: "API 文档", version: "0.0.0" }, paths }));

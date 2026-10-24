@@ -130,7 +130,8 @@ peerRuntime: ">=0.0.0"
 archive:
   file: ${name}-0.1.0.tgz
 ${api}web:
-  route_prefix: /${name}
+  # route_prefix 缺省 = /<name>（契约 C2-14）；需自定义根路径时取消下一行注释修改
+  # route_prefix: /${name}
   entry: modules/${name}/0.1.0/entry.js
 `;
 }

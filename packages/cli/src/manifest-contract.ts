@@ -38,6 +38,19 @@ export const RESERVED_NAMES = new Set(["_platform", "system", "auth", "market", 
 /** C2-02 字符集：[0-9A-Za-z.-]（禁 +——oj validate_version 拒装，附录 B-1；禁 _——契约收紧） */
 const VERSION_CHARS_RE = /^[0-9A-Z.-]+$/i;
 
+/**
+ * 引用式 api 段判定（R2.1）：`api` 段存在但 `tables` 与 `deps` 均缺省 =
+ * 引用包内 `<module>/manifest.yaml`（oj 原生七键清单，tgz 已随包携带，安装期 C2-31 复核）。
+ * 契约**显式承认**此形态（不再仅靠字段可选性「漏过」通过）：安装器据 native manifest
+ * 回读做占用检测/装配（R2.2），全量 form（两字段任一给出）优先。
+ */
+export function isReferenceApiForm(api: unknown): boolean {
+	if (!isObj(api))
+		return false;
+	const a = api as Record<string, unknown>;
+	return a.tables === undefined && a.deps === undefined;
+}
+
 /** §2.2 范围算子语法（peer 四字段/api.deps 值共用） */
 const RANGE_RE = /^(>=|<=|[><^=])?([0-9A-Z.-]+)$/i;
 
@@ -253,7 +266,7 @@ export function validateContract(m: unknown): string[] {
 		}
 	}
 
-	// ── api 段（C2-12/12a/12b/13/26）──
+	// ── api 段（C2-12/12a/12b/13/26；R2.1 引用式：tables/deps 均缺省 = 引用包内 manifest.yaml）──
 	let apiSeg = name;
 	if (m.api !== undefined) {
 		const api = m.api;
