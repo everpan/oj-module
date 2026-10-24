@@ -132,11 +132,19 @@ ojm install dist/<name>-<version>.tgz \
 发布目录约定三个文件：`bundles.yaml`（版本清单）、`manifests.yaml`（聚合清单）、分发包 `<name>-<version>.tgz`（+ `.sig`）。
 
 ```bash
-ojm publish <发布目录>     # 索引重算（确定性 stringify）+ detached 签名（.sig 侧车）+ 写回
+# 落包 + 包级 detached 签名 + 重建索引，一步到位（单方案工程；多方案工程见下文注）
+ojm market publish --real . \
+  --id demo.publisher --key ~/.ojm/keys/demo.publisher/private.pem --rebuild-index
+#   → cdn/ 下写齐六件套：<name>-<ver>.tgz / .tgz.sig /
+#     bundles.yaml(+.sig) / manifests.yaml(+.sig)
+#   → 引用式方案（api 段缺 tables/deps）会打印「引用式方案…非漏配」提示，安装期 C2-31 复核
 ```
 
-- CDN 推送与本地写回走同一发布面；发布方 key 与 `ojm sign` 同身份体系（`~/.ojm/keys`）。
-- 索引有防投毒规范（`versions[].file` 必须逐字 `<name>-<version>.tgz`、下载段立即比对 size、恒 `no-cache`），详见手册 §11.2。
+- `--real <方案工程>` 取方案工程路径（`.` 即当前工程）；发布方 key 与 `ojm sign` 同身份体系（`~/.ojm/keys`）。
+- **多方案工程**（`src/` 下多份 `solution.yaml`）走 `market publish --real .` 会被拒并提示显式链路：
+  `ojm build --bundle <name>` → `ojm sign dist/<name>-<ver>.tgz --id <pub> --key <pem>` →
+  把 `tgz`+`.sig` 放进 `cdn/` → `ojm market build-index`。单方案工程或显式 `--real <某方案工程>` 才走自动发布。
+- CDN 推送与本地写回走同一发布面；索引有防投毒规范（`versions[].file` 必须逐字 `<name>-<version>.tgz`、下载段立即比对 size、恒 `no-cache`），详见手册 §11.2。
 - 站点侧消费：`ojm install <name>[@version]`，从 CDN 拉 Form B 索引再拉包。
 
 ### 4.3 发布前 checklist
@@ -176,4 +184,65 @@ ojm trust revoke <key_id>        # 吊销
 | `needs_trust` 终态 | 站点第一次见这个 key | 逐字核对指纹 → `trust confirm --task <id>` → 重跑 install |
 | 打包报「缺少本方案的站点产物」 | `web.config.ts` 没登记模块，或没先 `ojm build` | 登记后重跑构建再打包 |
 | 打包报「缺少 bundle 级契约」 | 没有 `solution.yaml`（工程根或 `src/<模块>/`） | 补契约（§1.2） |
-| `ojm publish` 后站点装不到新版 | 索引没重算/没推上去 | 重跑 `ojm publish <发布目录>` 并确认 CDN 上三文件同步 |
+| `ojm publish` 后站点装不到新版 | 索引没重算/没推上去 | 重跑 `ojm market build-index`（见 §4.2 显式链路）并确认 CDN 上六文件同步 |
+
+---
+
+## 7. 端到端闭环（真实命令一次跑通）
+
+把 §3–§5 的发布方动作与运维动作串成**一条可复制的命令链**，本机就能走完「开发 → 签名发布 → 安装 → 信任 → 装成」全过程，并附每步通过判据。以 module-root 宿主（config.yaml 在工程根、产物在 `dist/api`）为例；flat 布局把 `dist/api` 换成 `dist` 即可。
+
+### 7.1 发布方：keygen → publish → verify
+
+```bash
+# ① 一次性身份（缺省落 ~/.ojm/keys/<id>/，私钥 0600 永不入仓）
+ojm keygen --id demo.publisher
+#   记下输出的 fingerprint（sha256(publicKey)）——运维侧 TOFU 核对用
+
+# ② 落包 + 包级签名 + 重建索引（单方案工程；多方案工程会被拒，见 §4.2 注）
+ojm market publish --real . --id demo.publisher \
+  --key ~/.ojm/keys/demo.publisher/private.pem --rebuild-index
+#   → cdn/ 六件套齐（含 .tgz.sig 与两份 .yaml.sig）
+#   → 引用式方案会打印「引用式方案…非漏配」提示
+
+# ③ 离线验包（不起站点、不装、不要凭据）
+ojm market verify --rebuild-index
+#   → 五项全 ✓（完整性 / 包级签 / 索引签 ×2 / manifest 结构）
+```
+
+### 7.2 运维侧：起站（release）→ setup → install → TOFU
+
+```bash
+# ④ 宿主以 release 形态起站（dev / ojm preview 都完不成安装的热更段）
+#   module-root：config.yaml 里 platform.root 设为 dist/api，然后：
+oj serve -c config.yaml -b /api --api-path dist/api --console-log
+
+# ⑤ 把市场地址指向本站点自供的 /cdn（仅外部真 CDN 才需要绝对地址）
+ojm market setup --url http://127.0.0.1:9778 --user superadmin --pass 123456 --new-pass <新口令>
+
+# ⑥ 安装（首次必然停在 needs_trust）
+ojm install erp@0.1.0 --url http://127.0.0.1:9778 --user superadmin --pass <新口令>
+#   → 返回 task_id；轮询到 status=needs_trust，响应 trust.fingerprint 必与 ① 输出逐字一致
+#     用 §5 的 out-of-band 通道核对指纹——一致才继续
+
+# ⑦ 核对指纹后确认信任，重试同一安装续跑
+ojm trust confirm --task <task-id> --url http://127.0.0.1:9778 --user superadmin --pass <新口令>
+ojm install erp@0.1.0 --url http://127.0.0.1:9778 --user superadmin --pass <新口令>
+#   → status=done，十一个阶段全 ok：
+#     preflight / downloading / verifying / extracting / migrating /
+#     lock_commit / registering / deploying_web / reloading / smoke / audit
+```
+
+通过判据：`dist/api/manifests.yaml` 出现 `<name>: <version>`；装后探活 `curl /api/<name>/ping` 返回 `code:0`（匿名端点无需 token；非匿名端点带 token 探）。新装的方案路由要 `oj serve` 重启才注册（热更只覆盖 `[vars]` 段），探活前先重启一次。
+
+### 7.3 装成后全量自检（不污染工程）
+
+不想搭宿主也能证明「包能装、装后每个操作都对、恶意输入都被边界拦住」：
+
+```bash
+ojm market trial        --fixture erp@0.1.0   # 隔离站点跑完整安装，跑完即毁
+ojm market walkthrough  --fixture erp@0.1.0   # 14 项 AC：主链 9 + 负向 5
+#   → 14 PASS / 0 FAIL；报告脱敏落盘 logs/walkthrough-<ts>.md（无 token/PEM 泄露）
+```
+
+> 负向 5 项是**预期失败口径**：防线没拦住（装成了）才算 FAIL，比失败更严重。其中 zip-slip（neg-evil）在解包前被 R1 防护拒收；未登记 key（neg-stranger）走 TOFU 闭环（needs_trust → 核对指纹 → trust confirm → done）。
