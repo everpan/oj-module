@@ -39,6 +39,39 @@ cp bin/devkit/global.d.ts bin/devkit/oj-modules.d.ts .                       # �
 手册与 skill 随 oj 版本一起发布。升级 oj 后，用新包里的 `devkit/` 覆盖旧拷贝即可。
 源文件与反馈入口在仓库 `docs/devkit/`。
 
+v0.1.87 已落地部分：**WS 路由与 api.ts 同口径 + 挂载清单外显**——① `--module-root` 布局下
+`ws.ts` 的路径由模块索引给出（`{prefix}/{模块根内路径}/ws`），不再按挂载根平铺：
+`src/wiki/api/ws.ts` → `GET {base}/wiki/ws`（`api` 是模块根即布局分隔符，不是路由段；此前
+多出一层 → 文档契约里的 URL 恒 404，且守卫面错位使 `anonymous_paths` 配 `/wiki/ws` 也 401）。
+② 启动时打印 `ws: N mount(s)` 清单（路径 + 源文件，命中 `auth.anonymous_paths` 的标
+`[anonymous]`）——WS 不进路由表与 `openapi.json`，这是唯一权威面，下游工具据此核对。
+③ 两个不同目录的 `ws.ts` 映射到同一 URL → 拒启；扫描跳过点目录/`node_modules`/目录符号链接。
+平铺布局 URL 逐字不变；release 仍带版本段（`…/<name>-<version>/ws`，v0.2 已知限制，与 dev
+不同源）。见 api-manual §ws.ts 与 §13 限制表、SKILL 陷阱速查、scenarios 场景 43。
+
+v0.1.85 已落地部分：**模块根可配置（`--module-root` + manifest `prefix`）**——
+① serve/build/openapi/test/migrate/exec/schema diff 新增 `--module-root <目录>`：子树内
+**递归**发现 `manifest.yaml`（命中即停），模块身份取 manifest 的 `name`（目录名只作定位），
+monorepo/存量仓库的模块可放任意深度；与 `-d`/`--api-path` 互斥；命中 0 个 manifest 或指向
+release 树均非零退出（树内就地 build 过的 `dist/ 会被扫描自动跳过，不重复登记）。
+② `manifest.yaml` 新增可选 `prefix`：模块 URL 前缀（可含 `/`
+分段），缺省/空串 = `name`，全局唯一——URL 由前缀决定（`<prefix>/xxx/yyy/api.ts` →
+`GET <prefix>/xxx/yyy`），dev 与 release 同口径。③ `#/m/x` 跨模块别名按 manifest
+`name` 解析（与目录名脱钩），**为跨模块导入首选写法**。不带 `--module-root` 时行为与
+v0.1.84 逐字节一致（平铺树构建产物/openapi 生成物实测比对）。见 api-manual §2「源码树/
+manifest.yaml」与「模块根可配置」、§5「别名导入」、§11、§13 错误/限制表、SKILL 陷阱速查。
+
+v0.1.84 已落地部分：**插件/FFI 层审计修复七项**——rabbitmq bus 面 publish 复用 channel（修逐次
+泄漏打满 channel_max 被 broker 杀连接）、推送订阅退避自愈（断连不再 topic 永久停摆，首次搭建
+仍同步报错）、kafka 消费错误日志 30s 节流、mysql/postgres 流式游标专用连接并发上限 8（超限报
+`too many concurrent cursors (limit 8)`，收口即释放）、blob 直传/上传 pump 断连兜底 abort（s3
+不再留计费 orphan parts）、redis expire 的 ttl 越 i64 报错（此前回绕成负数 = 立即删键）、宿主
+loader 对空 vtable 的畸形插件轴告警跳过（不再 SIGSEGV）。见 api-manual「db.stream」「bus」
+「kv」对应小节与错误文案、SKILL 陷阱速查。
+
+v0.1.83 已落地部分：**三处行为订正（exec stdin 全形态 + 表别名形状门 + fromSelect 归属守卫）**——
+① `exec.run` 回调形态与 `exec.spawn` 现在支持 `opts.stdin`（语义与缓冲形态一致：一次性写入后关写端；此前传了被**静默丢弃**，子进程 stdin 恒 null）；② 表别名（`.as(...)` / join 第 4 参 / `"t as u"`）与聚合/CTE 别名走同一道形状门 `^[A-Za-z_][A-Za-z0-9_]*$`，空串等怪形在请求反序列化期报 `illegal alias '<a>'`（此前漏到 SQL 渲染只换回 DB 原生报错）；③ `ownership_guard: deny` 下 `fromSelect` 的**源 select** 同样过归属守卫（此前源表绕过守卫，`INSERT...SELECT` 可跨模块搬运；源表属其他模块需在 manifest 补 `deps:`）；另修 exec Wrapped 模板（`%${raw:N}%`）收到比前后缀还短的 argv 时的宿主 panic（改为命名报错）、dev 目录树里 `preview-0.9` 这类同形模块名不再被 `oj openapi` 误剥成 `preview`。见 api-manual「exec 流式形态」「表别名与归属/租户守卫」「fromSelect」、SKILL 陷阱速查。
+
 v0.1.80 已落地部分：**`oj secret keygen` 新增 `--alg ed25519`**——为 v0.1.75 的 `crypto.verifyEd25519` 补齐作者侧密钥生成（bundle 签名校验链路：发布方签 → 安装方隔离舱验，此前只能手写 Node 脚本）。`--alg ed25519` 在 `--out-dir` 产三文件：`ed25519-private.pem`（标准 PKCS#8 `BEGIN PRIVATE KEY`，0600）、`ed25519-public.hex`（32 字节**原始公钥**的 64 hex——`verifyEd25519` 只吃 raw 32B，喂 PEM/SPKI 会抛 `key not hex/base64`）、`ed25519-public.fp`（sha256(rawPublicKey) hex，运维核对 / 信任库 mismatch diff）。缺省 `x25519` 行为零变化（`secrets-*.pem`）；**两算法族不可互用**——X25519 是密钥协商（ECDH）做不了签名，ed25519 密钥拿去 `seal`/`open` 会报 `not a OJ X25519 … PEM`。见 api-manual「secrets」与错误/限制表、SKILL 陷阱速查、scenarios 场景 18。
 
 v0.1.81 已落地部分：**`db.table()` 构造器补齐 7 项能力**（下游模板 `docs/sql-builder-missing-capabilities-pr.md` 的 7 条诉求经复核后落地；1 条误报、1 条部分误报、`expr` 任意表达式模板经四路评审砍除）：#1 模糊搜索根治——新增 `contains` / `startswith` / `endswith` 三个 op（全小写，与 `gte`/`isnull` 同族），引擎自动转义 `%`/`_`/`!` 渲染 `LIKE ? ESCAPE '!'`、业务零转义零方言知识，保留 `like` 的 `escape` 逃生舱（白名单 `! / | ~ # @`、显式拒 `\`）；#2 join ON 值条件——`join(t, [{left,right},{left,op,value}])`，op 限比较类；#3 字面量列——`{lit: v, as: "x"}` 走绑定参数按方言 `CAST`（计算列请用现成 `case`）；#4 幂等写入——`orIgnore()` 与 `fromSelect(q, cols)`（mysql 走 `ON DUPLICATE KEY UPDATE <pk>=<pk>` 而非 `INSERT IGNORE`，无主键表直接 Err、`orIgnore+returning` 在 mysql 上 Err，三方言 affected-rows 不一致勿用 `n===1` 判幂等）；#6 动态 WHERE——`whereIf(test, cond)`（`undefined`/`null`/`false`/空数组跳过，`0`/`""` 保留）+ `in []` 守卫；#7 `select(["*"])`（唯一元素、带 join 报错）；#8 表别名——`db.table("x").as("b")` / `join(..., "left", "b")`，仅 select/join 生效、update/delete 带别名报错，并修掉「别名让归属/租户守卫静默失效」缺陷；另 INSERT…SELECT 新嵌套边统一走 `child_reqs()` 单一出口，杜绝跨租户读写漏遍历。见 api-manual「查询构造器」章、SKILL 陷阱速查与 scenarios 场景 41。

@@ -40,11 +40,16 @@ oj（only-js）是一个低代码后端框架：你用 JS/TS 写 handler，框�
    可照抄代码见 `scenarios.md` 场景 28。
    **全文检索（不上 ES）→ §6「db.dialect」+ `src/_platform/_shared/search.ts`**
    （三引擎原生 FTS 统一面；ensureIndex 禁入 db.tx；sqlite 短词自动 LIKE 回退），可照抄
-   代码见 `scenarios.md` 场景 29。**内容版本化 / 历史 / diff / 回滚 →
+   代码见 `scenarios.md` 场景 29。   **内容版本化 / 历史 / diff / 回滚 →
    `src/_platform/_shared/versions.ts`**（CAS 去重 + UNIQUE 乐观锁 + 行级 diff；
    撞版本 409），见 `scenarios.md` 场景 30。
+   **模块要放任意深度目录 / monorepo 聚合 / URL 前缀要改名 → `--module-root`
+   + manifest `prefix`**（v0.1.85，递归发现，身份取 name），见 `scenarios.md` 场景 43。
 2. **脚手架**：模块 = `src/<模块名>/`（首层子目录），内放 `manifest.yaml`
    （`name` 必须等于目录名，违反启动失败）+ 子目录 `api.ts`。
+   **v0.1.85 起模块可放任意深度目录**：`oj serve/build --module-root <目录>` 在该子树
+   内递归发现 `manifest.yaml`，模块身份取 manifest 的 `name`（目录名只作定位）；
+   此时 `name` 不必等于目录名，URL 前缀由 manifest 可选 `prefix` 决定（缺省 = `name`）。
 3. **写 handler**：遵守下方红线；响应一律 `json.ok` / `json.fail` 统一返回。
 4. **测试**：先 L2 vitest 测逻辑（快，不起服务），再 L1 `oj test` 测端到端（真，连真实 DB）。
    两层都绿才算完（§9）。`oj test` 的写法走读（生命周期 / 测试库隔离 / 照抄样板 / 坑）
@@ -82,7 +87,9 @@ oj（only-js）是一个低代码后端框架：你用 JS/TS 写 handler，框�
 - [ ] 响应全部走 `json.ok`/`json.fail`（重定向走 `json.redirect`，别用 `header`+`fail` 拼）；错误码符合 §7 场景表
 - [ ] SQL 全部参数化；动态标识符全部走构造器
 - [ ] 共享代码用别名（`#_shared/x` 本模块根 / `#/user/_shared/x` src 根），不再数 `../`；
-      跨模块别名已在 `manifest.deps` 声明；本地导入目标都是 `.ts`
+      跨模块别名已在 `manifest.deps` 声明；本地导入目标都是 `.ts`。
+      **跨模块导入首选 `#/m/x`**（`m` = 模块名，v0.1.85 起与目录名无关）——不随目录
+      结构调整失效，dev/release 同解析；相对路径留给目录固定且相邻的存量代码
 - [ ] 用了 `mail`？→ `smtp:` 段已配对应 profile，且 `allowed_from`/`allowed_recipients` **非空**
       （空表 fail-closed）；附件用 `{blobKey}`/`{path}` 引用而非内联
 - [ ] L2 + L1 测试跑过并全绿
@@ -98,7 +105,13 @@ oj（only-js）是一个低代码后端框架：你用 JS/TS 写 handler，框�
 | release 启动报 `illegal handler chain` | `routes.js` 的 `handler` 段非法（含 `/`、空段、`__proto__`/`constructor`/`prototype`，或段间多一个 `.`）——手改产物恢复或重新 `oj build`；嵌套上限 4 层、自引用在内省期即失败 |
 | 组 `.route` 挂了之后目录镜像 404 | 符合预期：组动词各自替换目录镜像（与顶层 `.route` 同语义）；要镜像可达就别挂 `.route` |
 | 端点该拆目录、用嵌套组还是平铺（选型） | 同实体多端点用嵌套组、**以实体对象为根**（组名=实体，子组=子资源）；端点独立演化/多人分权拆目录；≤3 个同形端点平铺——详见 api-manual §4「何时采用」与场景 31 |
-| 启动失败 manifest | `name` 与目录名不一致 |
+| 启动失败 manifest | `name` 与目录名不一致（仅平铺树 `-d`；`--module-root` 递归模式下 name 与目录名无关，v0.1.85） |
+| `-d` 与 `--module-root` 同时给报错（v0.1.85） | 两者都是「源码树根」，clap 层互斥（exit 2）——嵌套/任意深度布局用 `--module-root`，平铺树继续 `-d` |
+| `--module-root` 报 `no manifest.yaml under module root …`（v0.1.85） | 显式指定却命中 0 个 manifest → 非零退出（防 CI 假绿）。确认指向的是含 `<模块>/manifest.yaml` 的源码树根 |
+| `--module-root` 报 `is a release tree`（v0.1.85） | 指向了 build 产物（含 `manifests.yaml`）——`--module-root` 只认源码树；产物树用 `-d dist` |
+| `--module-root` 下 URL 不是预期路径 / 404（v0.1.85） | URL 前缀取 manifest 可选 `prefix`（缺省 = `name`），**不再由目录结构决定**：`<prefix>/xxx/yyy/api.ts` → `GET <prefix>/xxx/yyy`。核对 manifest 的 `prefix` 与 `name`（`ws.ts` 同口径，v0.1.87） |
+| 启动报 `url prefix '…' declared by both module …` / `illegal url prefix '…'`（v0.1.85） | 两个模块 URL 前缀相同（含默认 = name 撞车）→ 给一个加 `prefix` 改名；`prefix` 形状白名单：分段 `[A-Za-z0-9_-]`，禁空段/`.`/`..`/`\`/首尾斜杠 |
+| `#/m/x` 跨模块导入在 `--module-root` 下找不到（v0.1.85） | `m` 是 **manifest `name`** 不是目录名——嵌套布局下按 name 写（`#/user/_shared/x`），勿用目录名 |
 | postgres 占位符 | **0.1.67 起三引擎统一用 `?`**（宿主对 postgres 自动改写 `$n`）；存量 `$n` 继续有效（`$n`+`?` 混用按序号续接）。计数不匹配在 PG 上提前报 `placeholder count N != params M`；jsonb 存在性判断用 `jsonb_exists(doc,'key')`，**别写裸 `?` 运算符** |
 | 按受影响行数判存在/归属，幂等二写失灵（如「已读」再点误报 403） | `run()` 行数三方言在 oj 上都是**匹配行**——mysql 连接协商了 `CLIENT_FOUND_ROWS`（裸 mysql 客户端默认只算「实际变更行」，同值 UPDATE 得 0，这才是坑的来源；oj 运行时已拉齐）。**别依赖行数**：先 `SELECT` 按 `(id, user_id)` 断言归属，再无条件 UPDATE、行数不读——跨引擎安全的幂等写见 api-manual §6「受影响行数的三方言语义」 |
 | 启动即退出 | 证书两路径缺一（必配不可绕过）或 redis 连不上（fail-fast） |
@@ -118,6 +131,8 @@ oj（only-js）是一个低代码后端框架：你用 JS/TS 写 handler，框�
 | 模糊搜索想手写 `LIKE '%x%'` | **别手写**——用语义化 op：`contains` / `startswith` / `endswith`（v0.1.81），引擎自动转义 `%`/`_`/`!` 并渲染 `LIKE ? ESCAPE '!'`，业务零转义、零方言知识；`like` 只留作高级/框架内部逃生舱（其 `escape` 仅收单字符白名单 `! / \| ~ # @`，**显式拒 `\`**——mysql 默认 `sql_mode` 下 `ESCAPE '\'` 即 1064） |
 | `orIgnore()` 写完用 `if (n === 1)` 判幂等 | **错**：三方言 affected-rows 不一致——mysql 协商 `CLIENT_FOUND_ROWS` 命中重复键返回**匹配行 1**，pg/sqlite `ON CONFLICT DO NOTHING` 返回 **0**；应靠唯一约束/事务保证「不重复写」，行数只读「写几条」 |
 | `fromSelect` 列对不齐 / select 自带 tenant | 目标 `cols` 与源 select 列按位置一一对齐，列数不符报 `insert declares N columns but the source select yields M`；`cols` 含 `tenant_id` 直接拒（tenant 由服务端按当前租户注入）；`values` 与 `fromSelect` 二选一 |
+| 升级到 v0.1.83 后 `fromSelect` 报跨模块表访问被拒（`ownership_guard: deny`） | 预期收紧：**源 select 也在归属守卫覆盖内**（此前源表绕过守卫，等于 `INSERT...SELECT` 跨模块搬运）——源表属其他模块就在 manifest 补 `deps:` 声明，或改走已授权路径 |
+| `.as("")` / 数字开头等怪表别名报 `illegal alias '<a>'` | v0.1.83 起表别名与聚合/CTE 别名**同一道形状门**（`^[A-Za-z_][A-Za-z0-9_]*$`），请求反序列化期点名拒绝——此前漏到 SQL 渲染只换回一句看不懂的 DB 原生报错 |
 | sqlite 上 `fromSelect(...).orIgnore()` 运行时报错（v0.1.82 明文） | 构造期即拒：`orIgnore with fromSelect is not supported on sqlite (its upsert clause only follows VALUES)`——sqlite 的 upsert 子句只能跟 VALUES。pg / mysql 组合可用。sqlite 绕行：裸 `db.exec("insert or ignore into … select …", [...])`（`OR IGNORE` 连 NOT NULL/CHECK 违例都静默跳过，数据面更宽，自行权衡） |
 | 去重计数用 `distinct().all()` 拉行再 `.length` | **静默漏算**：顶层 select 未给 limit 隐式补 100、显式也被 clamp 到 max_limit（默认 1000）——总数超限就少算。用 `select([{fn:"count",distinct:true,field,as}])`（v0.1.82）：聚合一行返回，与 LIMIT 无关 |
 | 「清空整表」写裸 `db.exec("delete from t", [])` | 用 `db.table("t").truncate().run()`（v0.1.82）：命名式明示、可 grep。**租户表上只清当前租户的行**（守卫照常注入，清不出租户边界）——要整库清空在 `db.asSystem` 下执行；带 where 报 `truncate does not accept where` |
@@ -187,6 +202,7 @@ oj（only-js）是一个低代码后端框架：你用 JS/TS 写 handler，框�
 | `db.stream` 报 `backend does not support streaming` | 该后端没有逐行拉取能力。**真流式**的是核心 sqlite/mysql/postgres 连接与 `oj-db-mysql` / `oj-db-postgres` 两个插件；其余后端要么回落全量（不报错）、要么直接报这个错——改用 `db.query` + 分页 |
 | `db.stream` 没报错但内存照样爆 | 后端不支持逐行拉取时宿主会一次取全量（行为等同 `db.query`，只失去内存优势，**不报错**）——按结果集大小分页，或换到 `oj-db-mysql` / `oj-db-postgres` 后端 |
 | `db.stream` 取消在 pg/mysql 下是「真取消」，sqlite 只是「协作式」 | v0.1.42 起：`postgres://`/`mysql://` DSN 游标走**专用连接**，取消 = `pg_cancel_backend`/`KILL QUERY` + 断连 → 服务端慢查询立即终止；core/Any（sqlite 等）无服务端句柄，只能**协作式**（下一批返回 `{"error":"cancelled"}`）。别指望 sqlite 的取消能打断正在跑的查询 |
+| `db.stream` 报 `too many concurrent cursors (limit 8)` | v0.1.84：pg/mysql 的 typed 游标每条独占一条池外连接（真取消语义的前提），并发上限 8、超限 fail-loud——并行大导出改串行，或及时 abort/close 释放配额（Any 回退路径走池不占闸） |
 | 用了 `json.stream` 又 `json.ok` | 流式响应已接管 body，二者互斥——`json.stream`/`sse` 后 handler 直接 `return`，别再包信封 |
 | 启动报 `config has ENC[...] sealed values but no decryption key: …` | config 里有密封值却找不到私钥——设 `OJ_SECRET_KEY`（PEM）/ `OJ_SECRET_KEY_FILE` / `secrets.private_key_path`。**不会**静默把密文当明文用（v0.1.33） |
 | `ENC[…]` 解不开 / 报 `aes-gcm open failed` | 私钥与加密用的公钥不是一对（换机器时只拷了 config 没拷私钥） |
@@ -203,7 +219,8 @@ oj（only-js）是一个低代码后端框架：你用 JS/TS 写 handler，框�
 | `POST {base}/_system/config` 报 403 | 未配 `auth:` 时只允许**回环**调用；远程调度走 Bearer 守卫须先配 `auth:` 段 |
 | `POST {base}/_system/config` 报 409 | 上一次热更还在跑（串行锁占用）——等上一次完成再发 |
 | `POST {base}/_system/config` 报 400 且 body 非空 | 该端点**只接受空 body**，改配置请直接改落盘文件再 POST 触发 |
-| WS 路由 404（文件明明在） | 文件名必须小写 `ws.ts`/`ws.js`——`WS.ts` 无效（v0.1.5 约定） |
+| `--module-root` 下 WS 路由 404 / 握手 401（v0.1.87） | WS 与 api.ts **同口径**：`src/wiki/api/ws.ts`（manifest 在 `src/wiki/api/`）→ `GET {base}/wiki/ws`，`api` 是模块根（布局分隔符）不是路由段；`anonymous_paths` 按守卫面写 `/wiki/ws`。release 仍带版本段（`…/wiki-0.1.0/ws`），与 dev 不同源。新增/删除 `ws.ts` 要重启。**唯一权威面是启动打印的 `ws: N mount(s)` 清单**——别从目录结构推 |
+| WS 路由 404（文件明明在） | 文件名必须小写 `ws.ts`/`ws.js`——`WS.ts` 无效（v0.1.5 约定）；路径拿不准就看启动打印的挂载清单 |
 | （v0.1.9 已消除）旧帧循环的 const 重复声明 | 新契约为生命周期钩子：模块每 Worker 预载一次——无需处理；可变跨帧状态放 `sess.state`（模块作用域只是只读缓存），见 api-manual §ws.ts |
 | WS 帧内 `bus.publish` 自己也收到 | 自回声语义：fan-out 不排除本连接——按字段客户端过滤或发布到别的 topic |
 | 查询被拦截 / 启动报 `tenant_id` 相关错（v0.1.15 sql_guard） | `sql_guard: "deny"` 拦截租户条件不匹配的查询（`"warn"` 只告警）：跨租户操作（对账/报表）走 `await db.asSystem()`（请求级 + 审计日志）；共享表须 schema.yaml `tenant: false` **且** config `tenant.shared_allow` 列出，双声明才豁免 |
@@ -276,6 +293,7 @@ oj（only-js）是一个低代码后端框架：你用 JS/TS 写 handler，框�
 | `exec.run` 里给子进程传相对路径就以为出不了 jail | cwd 钉在 fs.root 但**不构成隔离边界**——路径越界防线在 `${path:}` 占位符校验（`fs.root ∪ trusted_paths`），别把越出集合的路径交给子进程（v0.1.75） |
 | exec 子进程里 `argv[0]` 和模板首 token 不一致 | 预期：宿主侧把首 token 解析为**绝对路径**（"oj"→服务进程自身，其余 PATH 解析）再传给子进程；模板首 token 必须是裸名（路径分隔符直接拒）（v0.1.75） |
 | `exec.run` 大 stdin 报 `exec timed out after N ms` | stdin 写入也在超时窗口内：子进程不读 stdin 且输入大时 write 阻塞 → 超时兜底组杀（缺省 30s）——大 DDL / 大输入显式调大 `timeoutMs`（硬上限 600s，超出钳制）（v0.1.75） |
+| `exec.run` 回调形态 / `exec.spawn` 里传 `stdin` 没生效 | v0.1.83 订正：此前仅无回调的 `exec.run` 支持 `stdin`，回调 / `spawn` 形态**静默丢弃**（子进程 stdin 恒 null，`sh -c cat` 直接吃空输入）；现在三形态语义一致（一次性写入后关写端）——老代码里为绕过而写的临时方案可以删了 |
 | `exec.run` 跑 `oj migrate` 大 DDL 报 `exec timed out after 30000 ms` | 经 `exec.run` 调 `oj migrate` 执行大表 `ALTER`/索引迁移时，30s 默认超时不够（迁移**不**走 stdin 写入，但仍受同一 `timeoutMs` 窗口约束）——显式 `timeoutMs` 调大（< 600s 硬上限），否则超时组杀留下半截账本（v0.1.75） |
 | Windows 上 `exec.run(["sh","-c",...])` 必败（`command resolve failed`） | Windows 无 `sh` 可执行、且不自动探测 Git Bash——跨平台模板别写 `sh -c`，改用 `cmd /c`：`["cmd","/c","echo","hello"]` / `["cmd","/c","type","__JAIL__/in.txt"]`；`cmd` 由 resolver 解析为绝对路径（如 `C:\Windows\System32\cmd.exe`）后 spawn（v0.1.75 既有行为，文档补全） |
 | Windows 上 exec 输出比对总差一个 `\r` | `cmd /c echo` 恒以 CRLF 收尾、`cmd /c type` 原样吐文件字节（不补行尾），oj **不做** CRLF→LF 归一（与 `Deno.Command.output` / Node 同口径）——跨平台文本比对用 `trimEnd()` / `split(/\r?\n/)`，别写死 `"\n"`（v0.1.79） |

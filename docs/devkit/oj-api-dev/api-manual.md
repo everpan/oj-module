@@ -105,6 +105,8 @@ export default {
 ```bash
 ./bin/oj serve -c config.yaml --api-path src
 # 仓库内：先 cargo xtask build 产出 bin/oj，再从仓库根执行同形命令
+# v0.1.85：模块不在 src 首层时改用 --module-root（子树内递归发现 manifest.yaml）
+./bin/oj serve -c config.yaml --module-root services
 ```
 
 `serve` 按 `--api-path` 目录**自动判定模式**：目录里有 `dist/manifests.yaml`（即「构建锁」，
@@ -184,18 +186,57 @@ curl 'http://localhost:9778/v1/api/hello/'
   没有 `api` 文件的目录不是路由，可作共享工具目录（如 `_shared/`）。
 - 同目录可放 `ws.ts` 产生一条 WebSocket 路由（第 4 章）。
 
+#### 模块根可配置：`--module-root`（v0.1.85）
+
+模块不必再钉在 src 首层。给 `--module-root <dir>` 即在该目录子树内**递归**找
+`manifest.yaml`，命中即停（不再深入，模块根互不嵌套；跳过 `node_modules` 与点目录、
+不跟随目录符号链接）：
+
+```bash
+# 存量 monorepo：模块在任意深度的目录下，目录名只作定位
+./bin/oj serve -c config.yaml --module-root services
+# services/user/api/manifest.yaml（name: user）→ GET {base}/user/…
+# services/order/api/manifest.yaml（name: order）→ GET {base}/order/…
+```
+
+- **模块身份取 `manifest.yaml` 的 `name`**（产物目录 `dist/<name>-<version>/`、锁键、
+  tgz 名、URL 前缀、`#/m/x` 别名解析，全部按 name）；目录名与 name 不必一致。
+- **URL 前缀由 `prefix` 决定**（见下节），dev 与 release 同口径。
+- `-d`/`--api-path` 与 `--module-root` **互斥**（clap 层报错）——两者都是「源码树根」。
+- 显式指定却命中 0 个 manifest → 非零退出（`no manifest.yaml under module root …`，
+  下一步：确认该目录是后端源码树根）；指向 release 树（含 `manifests.yaml`）同样
+  fail-fast——`--module-root` 只认源码树。
+- 树内就地 build 过的 `dist/`（与模块根同级或在下层）会被扫描**整棵跳过**（锁目录剪枝）：
+  产物里的 manifest 是原样副本，不跳过会把同一模块重复登记成第二个模块根。
+
 ### manifest.yaml（模块清单）
 
 ```yaml
-name: "user"        # 必须等于父目录名（强校验，否则启动失败）
+name: "user"        # 模块名：平铺树（-d src）须等于父目录名；--module-root 下任意（递归发现）
 desc: "用户信息相关，记录账号、地址等个人信息"
 version: "0.1.0"
+# prefix: "sys/user"  # 可选（v0.1.85）：URL 前缀，可含 / 分段；缺省/空串 = 用 name
 # tables: [account]   # 有表模块必配：拥有的表清单（与 schema.yaml 双向一致 S005）
 # deps: { user: "^0.1.0" }  # 跨模块表访问声明（ownership_guard 校验依据）
 # config: {}        # 可选，本模块的其他设置
 ```
 
-`name` ≠ 目录名 → 启动报 `manifest name "x" != directory name "y"` 退出（防止模块名与路由脱节）。
+- 平铺树（`-d src`，不带 `--module-root`）：`name` ≠ 目录名 → 启动报
+  `manifest name "x" != directory name "y"` 退出（防止模块名与路由脱节）——
+  **与既往行为一致**。
+- `--module-root` 递归模式：`name` 不再受「== 目录名」约束（发现期改过白名单
+  `[A-Za-z0-9_-]`——它要进产物目录名与路由 pattern）。
+- **`prefix`（v0.1.85）**：该模块 URL 的第一段（们）。缺省或空串 = `prefix = name`；
+  非空时允许 `/` 分段（如 `sys/user`），每段 `[A-Za-z0-9_-]`，禁空段 / `.` / `..` /
+  首尾斜杠——前缀进路由 pattern，不得借路径段逃逸挂载根。**全局唯一**：两个模块
+  （含默认 = name 的）争同一条 URL → 拒启
+  （`url prefix "x" declared by both module "a" (…) and "b" (…)`）。
+  URL 因此由前缀而非目录结构决定：`<prefix>/xxx/yyy/api.ts` → `GET <prefix>/xxx/yyy`，
+  dev 与 release 一致。
+- **同一口径覆盖 `ws.ts`（v0.1.87）**：模块根内的 `ws.ts` 同样取
+  `{prefix}/{模块根内路径}/ws`——`src/wiki/api/ws.ts`（manifest 在 `src/wiki/api/`）
+  → `GET {base}/wiki/ws`，**不是** `{base}/wiki/api/ws`（`api` 是模块根即布局分隔符，
+  不是路由段）。v0.1.86 及以前 WS 多出这一层，前端按文档连即 404。
 
 ### seed.sql（可选）
 
@@ -750,7 +791,20 @@ handler 链 / 文件）。以前这类键被**静默忽略**——拼错的通�
 
 目录内放 `ws.ts`（dev）/ `ws.js`（release，约定同 `api.ts`）即产生一条 WebSocket 路由
 `GET {base}/{...path}/ws`：`src/news/ws.ts` → `/v1/api/news/ws`；根级 `ws.ts` → `/v1/api/ws`。
-同目录 `ws.ts` 与 `ws.js` 并存时 `.ts` 优先。
+同目录 `ws.ts` 与 `ws.js` 并存时 `.ts` 优先（release 下 `.js` 优先）。
+
+**路径口径与 `api.ts` 同源（v0.1.87）**：`--module-root` 布局下由模块索引给出
+`{prefix}/{模块根内路径}`——中间的 `api` 是**布局分隔符**（模块根本身），不是路由段：
+
+```text
+src/wiki/api/manifest.yaml   # 模块根 = src/wiki/api（name: wiki）
+src/wiki/api/ws.ts        →  GET /api/wiki/ws        ✅（不是 /api/wiki/api/ws）
+src/wiki/api/tree/ws.ts   →  GET /api/wiki/tree/ws
+```
+
+v0.1.86 及以前 WS 按「文件父目录相对挂载根」平铺计算，比 `api.ts` 多一层 `api` 段
+（`/api/wiki/api/ws`），前端按文档连 `/api/wiki/ws` 恒 404；且守卫面同为 `/wiki/api/ws`，
+`anonymous_paths` 里写 `/wiki/ws` 也命中不了（握手 401）。v0.1.87 起两口径统一。
 
 **契约（v0.1.9 起，钩子签名不变）**：default 导出生命周期钩子对象，按事件触发：
 
@@ -795,8 +849,14 @@ export default {
 };
 ```
 
-注意：release 下 root=dist，WS URL 含模块版本段（如 `…/news-0.1.0/ws`）——v0.2 已知限制
+注意：release 下 root=dist，WS URL 含模块版本段（如 `…/news-0.1.0/ws`）——**dev 与 release
+的 WS 路径不同源**（dev `…/news/ws`），前端按环境配前缀，勿硬编码；v0.2 已知限制
 （第 13 章）。bus 的发布/订阅方向约定见第 6 章 bus 小节。
+
+**WS 不进路由表、不进 `openapi.json`**：唯一权威面是 `oj serve` 启动时打印的挂载清单
+（`ws: N mount(s)` + 每条 `GET <路径> → <源文件>`，命中 `auth.anonymous_paths` 的标
+`[anonymous]`）。下游工具据此核对，不要从目录结构自行推算 WS 路径。
+新增/删除 `ws.ts` 需**重启**进程（dev 无文件监听，`api.ts` 的 `?v=mtime` 热重载不覆盖 WS）。
 
 ### 帧内发布：`ws.ts` 里直接 `bus.publish`
 
@@ -836,18 +896,22 @@ export default {
 
 > 何时读我：import 报错或想抽公共代码时。
 
-### 别名导入（共享库推荐写法）
+### 别名导入（共享库推荐写法；**跨模块首选 `#/m/x`**）
 
-`#x` 锚在**本模块根**、`#/m/x` 锚在 **src 根**（`m` = 模块目录名）。与目录深度无关，
-目录搬动不用改引用：
+`#x` 锚在**本模块根**、`#/m/x` 锚在 **src 根**（`m` = 模块名，v0.1.85 起 =
+`manifest.yaml` 的 `name`，与目录名无关）。与目录深度无关，目录搬动不用改引用：
 
 ```ts
 // src/user/profile/detail/api.ts —— 无论嵌套多深，写法完全一样
 import { positiveId } from "#_shared/validate";        // → src/user/_shared/validate.ts
 import { v } from "#_shared";                          // → src/user/_shared/index.ts（目录索引）
 import { p } from "#_shared/validate.ts";              // 显式后缀
-import { requireRole } from "#/user/_shared/validate"; // 跨模块：首段必须是模块目录名
+import { requireRole } from "#/user/_shared/validate"; // 跨模块：首段是模块名（manifest name）
 ```
+
+**跨模块导入请首选 `#/m/x` 别名**（而非相对路径）：按模块名寻址，不随目录结构调整
+失效；dev / release 共用同一套解析逻辑，产物里实化为版本目录相对路径。
+相对跨模块导入仅建议用于「目标模块目录固定且相邻」的存量代码。
 
 规则与边界：
 
@@ -856,6 +920,8 @@ import { requireRole } from "#/user/_shared/validate"; // 跨模块：首段必�
   `manifest.yaml` 祖先。`src/tests` 用例目录与任务池在模块外 → 没有锚点，继续用相对路径。
   运行期与构建期**共用同一套路径解析逻辑**（`resolve_relative` / `resolve_alias`），所以 dev 与
   release 对同一 specifier 必然命中同一文件（含目录索引）。
+- **`#/m/x` 的 `m` 是模块名**：平铺树下 = 首层目录名；`--module-root` 递归发现下 =
+  manifest `name`（目录名不再参与身份，v0.1.85）。
 - **跨模块别名需声明依赖**：`manifest.yaml` 的 `deps` 缺目标模块 → `oj build` 报 S008
   （与表归属 S003 同一套归属图）。既有**相对**跨模块引用不追溯（升级不破坏）。
 - release：build 期实化为版本目录相对路径，跨模块目标按 `dist/manifests.yaml` 锁钉版本，
@@ -1241,6 +1307,9 @@ await db.table("receipt").as("r")
 - `db.table("x").as("b")` 让基表以别名 `b` 出现（列限定写成 `b.col`）；`join` 的第 4 参数给被
   join 表起别名。别名**只作用于列限定与 SQL 渲染**；归属/租户守卫始终按**真名**生效（此前
   「别名混入真名」会让两条守卫同时静默失效的缺陷已修，背景见 `sql-builder-guide.md` §3）。
+- 表别名形状与聚合/CTE 等其他别名位**同一道门**（v0.1.83）：`^[A-Za-z_][A-Za-z0-9_]*$`，
+  违例（含空串 `.as("")`）在请求反序列化期报 `illegal alias '<a>'`——此前表别名不做校验，
+  空串/怪形会漏到 SQL 渲染，换回一句看不懂的 DB 原生报错。
 - 别名**只支持 select / join**：`update` / `delete` 带别名直接报
   `table alias is not supported on insert/update/delete`（mysql 的 `DELETE FROM t AS b` 需
   8.0.16+，跨引擎不保证，故构造器直接拒）。
@@ -1329,6 +1398,9 @@ await db.table("notify_daily").fromSelect(
   `insert declares N columns but the source select yields M`；`cols` 为空报
   `insert fromSelect needs insert columns`；`values` 与 `fromSelect` 二选一。`cols` 含 `tenant_id`
   直接报 `fromSelect must not declare tenant column 'tenant_id'`（tenant 由服务端按当前租户注入）。
+  **两条守卫都递归源 select**：租户注入 v0.1.81 已覆盖；**归属守卫 v0.1.83 起同样覆盖**——
+  `ownership_guard: deny` 下源表不在本模块或 `deps:` 声明内即拒（报错同跨模块表访问），堵住
+  「`insert into 我的表 select * from 别人的表`」这条此前绕过归属守卫的搬运通道。
 - `db.tx` 内构造的 DML 自动走事务同连接（见下）。
 
 **受影响行数的三方言语义**：`run()` 返回值 = WHERE **匹配行数**，三方言在 oj 运行时上一致（mysql
@@ -1560,6 +1632,11 @@ db.stream("select * from huge_table", null, { signal: ac.signal, onRow: (r) => {
     `{"error":"cancelled"}`）。
   - 取消 = **流干净提前结束**（消费端收到 done，不报错；服务端行缓冲有界——64 行——消费端不
     拉取时后端拉取同步暂停）；已回调/已迭代的行不回滚。
+- **专用连接并发上限 8**（v0.1.84，mysql / postgres 的 typed 直连路径）：每条游标独占一条
+  池外连接（真取消语义的前提），并发超限 **fail-loud**：
+  `db stream_open: too many concurrent cursors (limit 8) — close or cancel running streams first`
+  ——此前无上限，并发大结果集可打满服务端 `max_connections`（此后连池查询一并失败，全库
+  不可用）。游标收口（done / err / cancel / close）即释放配额；Any 回退路径走池、不占闸。
 
 ### 大整数与 i64（v0.1.22）——雪花 id / 长主键必读
 
@@ -1620,7 +1697,7 @@ const seq = Number(rows[0].m) + 1;
 | `kv.get` | `get(key: string): Promise<string \| null>` | 取值（缺失 `null`） |
 | `kv.set` | `set(key: string, value: string): Promise<boolean>` | 写值 |
 | `kv.del` | `del(key: string): Promise<boolean>` | 删键 |
-| `kv.expire` | `expire(key: string, ttlSec: number): Promise<boolean>` | 设过期（秒）；真 Redis 走 EXPIRE，内存 KV 惰性过期 |
+| `kv.expire` | `expire(key: string, ttlSec: number): Promise<boolean>` | 设过期（秒）；真 Redis 走 EXPIRE，内存 KV 惰性过期。`ttlSec` 越出 i64 值域**报错**（v0.1.84——此前回绕成负数会被 Redis 理解为「立即删键」） |
 | `kv.incr` | `incr(key: string): Promise<number>` | 自增返回新值（键不存在从 0 起） |
 
 （`redis.get / redis.set / redis.del / redis.expire / redis.incr` 与上表同签名——二者同源同面。）
@@ -1749,7 +1826,7 @@ exec.run(argv: string[], opts?: {
 }): Promise<{ code: number; stdout: string; stderr: string }>
 ```
 
-另有流式消费形态：句柄式 `exec.spawn`（`for await` 消费 stdout/stderr）+ `exec.run` 的 `onStdout`/`onStderr` 回调，详见下方「exec 流式形态（v0.1.78）」小节。
+另有流式消费形态：句柄式 `exec.spawn`（`for await` 消费 stdout/stderr）+ `exec.run` 的 `onStdout`/`onStderr` 回调，详见下方「exec 流式形态（v0.1.78）」小节。`stdin?` 自 v0.1.83 起**三形态一致支持**（含回调与 `exec.spawn`）。
 
 外部命令原语：**无 shell**——spawn 只接受「授权模板匹配后重建的 argv」。安全形态 =
 config 白名单 + argv 模板 + 平台特权限定，全部 fail-closed：
@@ -1878,7 +1955,7 @@ WSL / MSYS**：
 
 - **exec.spawn(argv, opts?)** 返回句柄 { rid, pid, stdout, stderr, kill, exit }：h.stdout / h.stderr 为 AsyncIterable<Uint8Array>，EOF 时迭代自然结束；h.exit() 等待子进程退出返回 { code }；h.kill() 主动整组击杀。
 - **exec.run(argv, opts?)** 向后兼容：无 onStdout / onStderr 时，行为、返回形状与 v0.1.75 完全一致（{ code, stdout, stderr }，非 UTF-8 输出**抛**）；带回调时逐块转发给回调，返回形状**同样是 { code, stdout, stderr }**（v0.1.79 订正：此前文档称「返回 { code }、不缓冲整段」，实现实际是把全部分块攒在内存后 merge，只是解码改走**有损** TextDecoder、非法 UTF-8 变 U+FFFD 而**不抛**）。要真正的逐块流式（不占内存、拿原始字节）请用 `exec.spawn`。
-- **opts 差异**：timeoutMs?（缺省 30_000，硬上限 600_000，超出钳制）两形态共用；**stdin? 只有无回调的 `exec.run` 支持**（一次性写入后关闭写端）——`exec.spawn` 与回调形态的子进程 stdin 恒为 null，传了会被静默丢弃。
+- **opts 差异**：timeoutMs?（缺省 30_000，硬上限 600_000，超出钳制）两形态共用；**stdin? 三形态都支持**（v0.1.83 订正：此前仅无回调的 `exec.run` 支持，回调 / `exec.spawn` 形态传了会被**静默丢弃**、子进程 stdin 恒为 null）——语义一致：一次性写入后关闭写端；子进程不读且输入大导致 write 阻塞时，由超时兜底组杀（与缓冲形态同窗口）。
 - **背压（重要）**：stdout/stderr 经有界 mpsc（16 槽 x 8KiB）送消费端；JS 不 for await 拉取 到 通道满 到 drain 在 send 上挂起 到 子进程管道满 到 子进程自然暂停（真实子进程语义，正确背压）。不消费流 = 子进程在输出填满管道时阻塞，不是 bug，也别指望 exit() 在流未消费时返回——先消费（或 break）再 exit()。
 - **资源回收（每请求）**：句柄 rid 进 OpState.resource_table；close()（JS 释放 / runtime 归还 / 异常丢弃都覆盖）同步整组击杀子进程，杜绝跨请求/租户泄漏与 next_rid 回绕 panic。drain 任务与子进程同生命周期：handle close 到 kill 到 管道 EOF 到 drain 自然结束。
 - **rid 仅本 runtime 可达**：进程内 ResourceId，跨模块/跨请求无法凭 rid 触达他人会话；kill 只能杀自己 spawn 的会话（无 pid 入参，只接受本会话 rid）。
@@ -2012,6 +2089,9 @@ bus.subscribe("news");
 ```
 
 缺省 `broker` 为进程内总线（跨实例不互通）；`broker.kind: kafka|rabbitmq` 需对应插件。
+**rabbitmq 推送订阅自愈**（v0.1.84）：消费循环遇连接/通道级错误按退避重建（0.5s 起、上限
+10s、成功收信即重置），不再一次抖动即 topic 永久停摆；**首次**搭建失败仍同步报错（失败回滚
+语义不变）。自愈窗口内消息会延迟，至多 ~10s 一轮。
 
 ### es —— Elasticsearch（`es:` 段启用，未配置调用报 `es not configured`）
 
@@ -3007,6 +3087,7 @@ oj 仓库 `sample/`（github.com/everpan/oj-bin）的「OIDC 演示」；实现�
 | `-c/--config` | 配置文件（v0.1.57 起可省：CWD 逐级向上 → `$HOME/.oj/config.yaml` 搜索，未找到用内置默认） |
 | `-b/--base` | API 基础前缀覆盖（server：`--api-path` 折叠挂载的 prefix，默认 `/v1/api`，裸 `-b` 报错；openapi/test：覆盖路由前缀） |
 | `-d/--dir` | 源码目录 `src` 或产物 `dist`（默认自动判定） |
+| `--module-root` | 源码树根（v0.1.85）：子树内递归发现模块（模块名取 manifest `name`）；与 `-d` 互斥。serve / build / openapi / test / migrate / exec / schema diff 同口径 |
 | `-t/--tests` | 测试目录，相对 config 目录（默认 `tests`） |
 | `--format` | `human`（默认）/ `tap` / `junit` / `json` |
 | `--output` | 报告落盘文件；省略打到 stdout（机器格式 stdout 纯净） |
@@ -3714,7 +3795,7 @@ ldap:                            # 不透明段里的 bind_pw 同样支持
 | config 声明 `es:` 但无 es 插件 | fail fast 退出 |
 | `-d` 目录不存在 | 启动即报错 |
 | 首层子目录缺 `manifest.yaml` | `missing manifest.yaml` 退出 |
-| `manifest.yaml` 的 `name` ≠ 目录名 | `manifest name "x" != directory name "y"` 退出 |
+| `manifest.yaml` 的 `name` ≠ 目录名 | `manifest name "x" != directory name "y"` 退出（仅平铺树 `-d`；v0.1.85 起 `--module-root` 递归模式下 name 与目录名无关，发现期改过白名单） |
 | 版本目录名碰撞 | `version dir collision` 退出 |
 | release：`manifests.yaml` 缺失/损坏/指向不存在版本 | 报错提示先 `oj build` |
 | `no mounts configured — …` | 准入门（v0.1.58）：`mounts:`（config + CLI 折叠后）为空——加一条挂载或传 `--api-path`/`--app-path` |
@@ -3725,6 +3806,14 @@ ldap:                            # 不透明段里的 bind_pw 同样支持
 | `mounts[i]: <url> sha256 mismatch (got …, expected …)` | （v0.1.77）下载内容 sha256 与声明不符 → 拒启（不静默当明文 / 降级） |
 | `mounts[i]: dist root missing manifests.yaml` / `extraction rejected: <reason>` | （v0.1.77）远程 dist 根解压后无 `manifests.yaml`，或单条目触发 tar-slip / 符号链接 / 特殊文件 / 超预算 → 拒启（解压器 fail-fast） |
 | `api path '<url>' is a URL — declare remote dist via mounts[].api in config` | （v0.1.77）`--api-path` 收到 URL → 报错引导走 config（CLI 折叠期无 sha256 上下文） |
+| `-d` 与 `--module-root` 同时给 | （v0.1.85）clap 层 `conflicts_with` 报错（exit 2）——两者都是「源码树根」，二选一 |
+| `no manifest.yaml under module root … (--module-root)` + `下一步：…` | （v0.1.85）显式指定模块根却命中 0 个 manifest → 非零退出（配置错误而非空项目，防 CI 假绿）。确认该目录是后端源码树根，或改指正确的目录 |
+| `--module-root is a source-tree option: … is a release tree (contains manifests.yaml)` | （v0.1.85）`--module-root` 指向 build 产物树 → 非零退出；指回 src 树或去掉该旗标 |
+| `illegal url prefix '<p>'` | （v0.1.85）manifest 的 `prefix` 形状非法（空段 / `.` / `..` / `\` / 首尾斜杠 / 段内白名单外字符）→ 发现期拒启 |
+| `url prefix '<p>' declared by both module '<a>' (…) and '<b>' (…)` | （v0.1.85）两个模块 URL 前缀相同（含默认 = name 的）→ 拒启；给其中一个加 `prefix` 改名 |
+| `module '<n>' declared in multiple module roots (… and …)` | （v0.1.85）同名模块出现在两个模块根下 → 拒启（重名会抢产物目录与锁键） |
+| `illegal module name '<n>'` / `illegal version '<v>'` | （v0.1.85）`--module-root` 递归发现期白名单（name：`[A-Za-z0-9_-]`；version：`[A-Za-z0-9._-]`、拒连续点）——它们要进产物目录名与路由 pattern，不留给运行期 |
+| `--module-root` 下嵌套 manifest.yaml | （v0.1.85）S008：模块根之下再出现 `manifest.yaml` 即报（嵌套会改写别名锚点）；`too many module roots (> 上限)` 同理——确认指向的是模块树而非仓库根 |
 
 | `server.html_meta_handler` 未命中 GET 路由 | `server.html_meta_handler: "…" 不在路由表（拼错了？）` / `未映射 GET 方法` 退出（v0.1.25；后果只在爬虫侧可见，故不留到运行期） |
 | config 里有 `ENC[…]` 但找不到私钥 / 解密失败 | `config has ENC[...] sealed values but …` 退出（v0.1.33；**不静默把密文当明文用**） |
@@ -3741,13 +3830,20 @@ ldap:                            # 不透明段里的 bind_pw 同样支持
 
 > 何时读我：dev 跑通后要交付时。
 
-### `oj build [module] [-d src] [-o dist] [--no-minify]`
+### `oj build [module] [-d src] [-o dist] [--no-minify] [--module-root DIR]`
 
 ```bash
 ./bin/oj build -d src -o dist          # 全部模块
 ./bin/oj build user -d src -o dist     # 单模块
 ./bin/oj build user --no-minify        # 排障：多行可读产物（含内联 sourcemap）
+# v0.1.85：模块在任意深度目录下（递归发现，模块名取 manifest.yaml 的 name）
+./bin/oj build --module-root services -o dist      # 全部模块
+./bin/oj build user --module-root services -o dist # 单模块（位置参数 = 模块名，不是目录名）
 ```
+
+`--module-root`（v0.1.85）与 `-d` 互斥；位置参数是**模块名**（manifest `name`）而非
+目录名。URL 前缀取 manifest 的 `prefix`（缺省 = `name`）——routes.js 的 pattern 由它决定，
+与 dev 路由表同口径。
 
 `oj build` 内建结构检查 S001–S008：S001 模块目录/manifest 合法性、S002 表归属唯一、
 S003 跨模块 SQL 须声明 deps、S004 deps 版本范围可满足、S005 `tables` 与 schema.yaml
@@ -4104,6 +4200,9 @@ await db.query("select id from account where id = " + id, []);   // 禁止
 - blob key 白名单：按 `/` 分段，`.` / `..` / `\` / NUL / 空段拒绝。下载路由
   `{base}/blob/{key}` **公开免鉴权**——不要把需鉴权的对象放进去。
 - import 解析结果钳制在 project root 内，`..` 逃逸报错（第 5 章）。
+- manifest 的 `prefix`（v0.1.85）与模块 `name` 是**进路由 pattern / 产物目录名**的
+  仓库内容：发现期即过形状白名单（`prefix` 分段禁 `.`/`..`/`\`/空段；`name` 限
+  `[A-Za-z0-9_-]`），且前缀全局唯一——不把合法性检查留到运行期。
 - handler 链段名（嵌套组，v0.1.64）禁 `/`、空段与 `__proto__`/`constructor`/`prototype`：
   内省期权威校验，运行期 driver 与 release `from_entries` 双保险——手改 `routes.js`
   注入这些段 → 记 failure 不注册（dev）/ 启动失败（release）。
@@ -4132,7 +4231,7 @@ await db.query("select id from account where id = " + id, []);   // 禁止
 | 多挂载（v0.1.58） | 同类前缀归一后重复 → 启动报错；挂载目录缺失/非目录 → 启动报错；命中挂载内 miss **不跨挂载**回落；`spa` 逐挂载显式（配对 web 恒无回落）；`html_meta`/`html_cache_control` 是全局键、按命中挂载根生效 |
 | search 引擎原生 FTS（v0.1.61） | sqlite trigram 对 **<3 字符查询静默零命中**（共享模块自动 LIKE 回退）；sqlite 实现仅支持整型自增 PK（外部内容表只认 rowid）；`sql_guard: deny` 模式与 FTS 裸查询互斥（deny 部署要么关守卫要么不用 search）；mysql InnoDB FULLTEXT 同事务可见性需实测（文档含糊区）；score 为引擎原始分不可跨引擎比较；`docs_fts*`/`oj_ver*` 影子表会进 `oj schema diff` 的 D002 噪音；pg 实现 v0.1.68 修复（自写 `$n` 与统一占位符计数校验冲突 + `ts_headline` 签名错——highlight 的 fragments 键为 `_doc` 文档级片段）；短词回退大小写三方言一致（pg 用 `ILIKE`，v0.1.68 起） |
 | 动态 meta 每次 HTML 请求**多派发一次 JS** | `server.html_meta_handler`（v0.1.25）：每次送 HTML 都调一次该 handler（无缓存层）。高流量站点请让 handler 只读缓存/轻查询，并用返回的 `cache_control` 让中间层替你挡住重复请求 |
-| release 下 WS URL 含版本段 | `…/news-0.1.0/ws`；客户端发现 WS 地址时注意拼版本段 |
+| release 下 WS URL 含版本段（v0.2） | `…/news-0.1.0/ws`，与 dev 的 `…/news/ws` **不同源**；客户端发现 WS 地址时按环境拼（勿硬编码）。WS 路径不做 `_name_` → `{param}` 转换（`_id_/ws.ts` 是字面段）；新增/删除 `ws.ts` 需重启（dev 无文件监听）。WS 不在路由表与 `openapi.json` 内，唯一权威面是启动打印的 `ws: N mount(s)` 清单 |
 | `db.tx` 每请求至多一个；嵌套报错 | 合并事务回调 |
 | `db.stream` 仅非事务目标 + 后端能力分档（v0.1.37；v0.1.38 起插件后端真流式） | 在 `db.tx` 内调用报 `db.stream within an active transaction is not supported (streaming queries run on the connection pool only)`。核心 sqlite/mysql/postgres 连接与 `oj-db-mysql` / `oj-db-postgres` 插件后端**真流式**（逐行拉，内存恒定）；没有逐行能力的后端**回落 `db.query` 全量**（内容等价、不报错，仅失去内存优势）；彻底不支持时报 `backend does not support streaming`，改走 `db.query` 分页 |
 | 流式取消（`signal`）= 干净提前结束（v0.1.39；v0.1.42 起 pg/mysql 真取消） | abort 后**停止后端拉取**（有界行缓冲背压），缓冲行交付完即 done。**第一方插件 `oj-db-postgres`/`oj-db-mysql` 在 `postgres://`/`mysql://` DSN 下走专用连接，取消 = `pg_cancel_backend`/`KILL QUERY` + 断连 → 服务端查询立即终止（真取消）**；core（sqlite）与 Any 回退路径为协作式（批间生效）。已回调的行不回滚 |

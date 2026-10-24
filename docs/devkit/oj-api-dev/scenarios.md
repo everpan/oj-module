@@ -3095,3 +3095,90 @@ curl "http://localhost:9778/v1/api/_lifecycle/uninstall/?module=myapp"   # 返�
 | `count(distinct)` 忘了 `field` / 用在 sum 上 | 报 `count distinct needs a field` / `distinct is only supported on count`——显式拒绝，不静默忽略 |
 | sqlite 上 `fromSelect(...).orIgnore()` | 不支持（构造期报 `orIgnore with fromSelect is not supported on sqlite`）——见场景 41 与 sql-builder-guide §3.3 |
 | `drop table "${t}"` 在 mysql 上 1064 | mysql 默认不认双引号包标识符——DDL 逃生舱里按方言换反引号（此类语句本就是方言语义，分支可接受；表名来自 `db.listTables`，非用户输入） |
+
+## 场景 43：模块放任意深度目录 + URL 前缀自定义（`--module-root` / manifest `prefix`，v0.1.85）
+
+存量 monorepo 或「平台仓 + 多个业务后端」的仓库里，模块往往不在同一层：`services/user/api/`、
+`packages/order/src/`、`legacy/sys/user/`……v0.1.84 及以前只能把它们平铺到 `src/` 首层
+（模块名 = 首层目录名，URL 第一段 = 模块名）。v0.1.85 起 `--module-root` 递归发现
+`manifest.yaml`：**目录名只作定位，模块身份与 URL 前缀由 manifest 决定**。
+
+### ① 布局与 manifest
+
+```
+repo/
+├── services/
+│   ├── user/api/                 # 模块根（命中 manifest.yaml 即停，不再深入）
+│   │   ├── manifest.yaml         # name: user（≠ 目录名 api）
+│   │   ├── account/api.ts        # → GET {base}/user/account/
+│   │   └── _shared/validate.ts
+│   └── order/api/
+│       ├── manifest.yaml         # name: order；prefix: sys/order（URL 前缀改名）
+│       └── list/api.ts           # → GET {base}/sys/order/list/
+└── packages/sysuser/api/
+    ├── manifest.yaml             # name: sysuser；prefix: sys/user
+    └── profile/api.ts            # → GET {base}/sys/user/profile/
+```
+
+```yaml
+# services/user/api/manifest.yaml
+name: "user"            # 模块名：产物目录 dist/user-<v>/、锁键、#/m/x 别名、tag 都按它
+desc: "用户服务"
+version: "1.4.0"
+# prefix 省略 = 用 name 作 URL 前缀
+```
+
+```yaml
+# packages/sysuser/api/manifest.yaml
+name: "sysuser"
+desc: "存量用户中心（目录名 sysuser，URL 要简短）"
+version: "0.9.2"
+prefix: "sys/user"      # URL 前缀：可含 / 分段；缺省/空串 = name
+```
+
+### ② 启动与构建
+
+```bash
+./bin/oj serve -c config.yaml --module-root .        # 整个仓库子树递归发现（命中即停）
+./bin/oj build --module-root . -o dist               # 全部模块；产物仍按 name 命名
+./bin/oj build sysuser --module-root . -o dist       # 位置参数 = 模块名，不是目录名
+./bin/oj openapi -c config.yaml --module-root .      # 同口径生成（tags = 模块名）
+```
+
+- `-d`/`--api-path` 与 `--module-root` **互斥**（clap 层报错）——两者都是「源码树根」。
+- 命中 0 个 manifest → 非零退出（`no manifest.yaml under module root … 下一步：…`）；
+  指向 release 树（含 `manifests.yaml`）同样 fail-fast——它只认源码树。
+- release 照旧：`oj serve -c config.yaml -d dist`（路由以 routes.js 为准，URL 与 dev 一致）。
+
+### ③ 跨模块导入：首选 `#/m/x`
+
+```ts
+// services/order/api/list/api.ts —— 按模块名寻址，与目录深度/目录名无关
+import { requireRole } from "#/user/_shared/validate";   // 跨模块：首段是 manifest name
+import { page } from "#_shared/paging";                  // 本模块根
+```
+
+`m` = 目标模块的 manifest `name`（此处 `user`，不是目录名 `api`）。跨模块仍需在
+`manifest.yaml` 声明 `deps: { user: "^1.0.0" }`（S008/S003 归属图同款）。
+
+### ④ 验证
+
+```bash
+curl localhost:9778/v1/api/user/account/?id=1        # name 作前缀（缺省 prefix）
+curl localhost:9778/v1/api/sys/user/profile/         # prefix 改名生效
+curl localhost:9778/v1/api/sys/order/list/           # prefix 含 / 分段
+./bin/oj openapi -c config.yaml --module-root . | grep '"/v1/api/sys/user'   # dev 口径一致
+```
+
+### ⑤ 常见坑
+
+| 坑 | 说明 |
+|---|---|
+| `--module-root` 与 `-d src` 同时给 | clap 互斥（exit 2）——两者都是源码树根，二选一 |
+| 目录名当模块名用（`oj build api`、`#/api/x`） | 递归模式下身份是 manifest `name`——用 `user`/`order`，目录名（如 `api`）不在索引里 |
+| URL 404 但文件确实在 | URL 前缀由 `prefix`（缺省 = `name`）决定，不再由目录结构决定——核对 manifest，别按目录猜 |
+| WS 端点连不上（v0.1.87） | `ws.ts` 与 `api.ts` 同口径：`services/wiki/api/ws.ts` → `GET {base}/wiki/ws`（不是 `…/wiki/api/ws`）；`anonymous_paths` 按守卫面写 `/wiki/ws`；release 仍带版本段。启动时看 `ws: N mount(s)` 清单（命中匿名的标 `[anonymous]`） |
+| 两个模块 URL 撞车 | `url prefix '…' declared by both module …` 拒启（含默认 = name 撞车）——给其一加 `prefix` 改名；`prefix` 形状白名单：分段 `[A-Za-z0-9_-]`，禁空段/`.`/`..`/`\`/首尾斜杠 |
+| `--module-root` 指向 dist 或仓库根 | 前者报 `is a release tree`（只认源码树）；后者可能命中过多（`too many module roots`）或把非业务目录里的 manifest 卷进来——指向真正的模块树根 |
+| 树内就地 build 过（`dist/` 与模块根同级）再用 `--module-root .` | 不会撞车：扫描整棵跳过含 `manifests.yaml` 锁的 release 树（产物里的 manifest 是原样副本，跳过即不重复登记）；但 release 跑法仍用 `-d dist` |
+| 平铺树项目以为要改命令 | 不需要——不带 `--module-root` 时全部路径走今日语义（`name` = 目录名强校验仍在），构建产物与 openapi 生成物与 v0.1.84 逐字节一致 |
