@@ -32,8 +32,13 @@ export function assertValidSolutionName(name: string, where: string): void {
 	}
 }
 
-/** §4.2 保留名清单（C2-01/13/14 共用；market 经 R9 恢复保留） */
-export const RESERVED_NAMES = new Set(["_platform", "system", "auth", "market", "framework", "health", "plugins", "_system"]);
+/** §4.2 保留名清单（C2-01/13/14 共用；market 经 R9 恢复保留）。REG-CS7 扩项：oj/ojm/registry 一并保留 */
+export const RESERVED_NAMES = new Set(["_platform", "system", "auth", "market", "framework", "health", "plugins", "_system", "oj", "ojm", "registry"]);
+
+/** 保留名替代建议（REG-CS7：给可落地的 kebab-case 候选，而非只说「非法」；两候选恒非保留名） */
+export function reservedNameSuggestions(name: string): [string, string] {
+	return [`${name}-app`, `meta-${name}`];
+}
 
 /** C2-02 字符集：[0-9A-Za-z.-]（禁 +——oj validate_version 拒装，附录 B-1；禁 _——契约收紧） */
 const VERSION_CHARS_RE = /^[0-9A-Z.-]+$/i;
@@ -201,7 +206,8 @@ export function validateContract(m: unknown): string[] {
 		v0.push(v("C2-01", `name「${String(m.name)}」不匹配 ^[a-z][a-z0-9-]{0,63}$（小写字母开头，仅小写字母/数字/连字符）`));
 	}
 	if (RESERVED_NAMES.has(name)) {
-		v0.push(v("C2-01", `name「${name}」是保留名（§4.2：_platform/system/auth/market/framework/health/plugins/_system），禁用于方案（R9）`));
+		const [a1, a2] = reservedNameSuggestions(name);
+		v0.push(v("C2-01", `name「${name}」为保留名（§4.2：${[...RESERVED_NAMES].join("/")}），禁用于方案（R9）；替代名建议：${a1} / ${a2}`));
 	}
 
 	// ── C2-02 version：字符集 + oj 相容排除 ──
@@ -285,7 +291,7 @@ export function validateContract(m: unknown): string[] {
 				else {
 					apiSeg = p.slice("/api/".length);
 					if (RESERVED_NAMES.has(apiSeg)) {
-						v0.push(v("C2-13", `api.prefix 模块段「${apiSeg}」是保留名（§4.2），禁用`));
+						v0.push(v("C2-13", `api.prefix 模块段「${apiSeg}」为保留名（§4.2：${[...RESERVED_NAMES].join("/")}），禁用；替代名建议：${reservedNameSuggestions(apiSeg)[0]} / ${reservedNameSuggestions(apiSeg)[1]}`));
 					}
 				}
 			}
@@ -352,7 +358,7 @@ export function validateContract(m: unknown): string[] {
 					v0.push(v("C2-14", `web.route_prefix「${String(rp)}」必须匹配 ^/[a-z][a-z0-9-]{0,63}$（缺省 /<name>）`));
 				}
 				else if (RESERVED_NAMES.has(rp.slice(1))) {
-					v0.push(v("C2-14", `web.route_prefix 首段「${rp.slice(1)}」是保留名（§4.2），禁用`));
+					v0.push(v("C2-14", `web.route_prefix 首段「${rp.slice(1)}」为保留名（§4.2：${[...RESERVED_NAMES].join("/")}），禁用；替代名建议：${reservedNameSuggestions(rp.slice(1))[0]} / ${reservedNameSuggestions(rp.slice(1))[1]}`));
 				}
 			}
 			const base = `modules/${escapeRe(name)}/${escapeRe(version)}/[a-z0-9._/-]+`;

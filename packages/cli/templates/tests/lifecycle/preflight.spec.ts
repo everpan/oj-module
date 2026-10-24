@@ -49,6 +49,9 @@ interface RuleCase {
 const RULES: RuleCase[] = [
 	{ rule: "name 白名单（大写拒绝）", clause: "C2-01", keyword: "name", mutate: (m) => { m.name = "Demo"; } },
 	{ rule: "name 保留名（market，R9）", clause: "C2-01", keyword: "保留名", mutate: (m) => { m.name = "market"; } },
+	{ rule: "name 保留名（oj，REG-CS7）", clause: "C2-01", keyword: "保留名", mutate: (m) => { m.name = "oj"; } },
+	{ rule: "name 保留名（ojm，REG-CS7）", clause: "C2-01", keyword: "保留名", mutate: (m) => { m.name = "ojm"; } },
+	{ rule: "name 保留名（registry，REG-CS7）", clause: "C2-01", keyword: "保留名", mutate: (m) => { m.name = "registry"; } },
 	{ rule: "version 禁 +（oj 相容排除，附录 B-1）", clause: "C2-02", keyword: "version", mutate: (m) => { m.version = "1.0.0+build.5"; } },
 	{
 		rule: "方案名已被已装方案占用（拒装）",
@@ -101,6 +104,27 @@ describe("preflight 规则表（每规则一拒例 + 一过例）", () => {
 			expect(r.ok).toBe(true);
 		});
 	}
+});
+
+describe("rEG-CS7 保留名（安装期 reserved_name 终止态，红队 F5）", () => {
+	it("name=oj/ojm/registry → 预检拒且 code=reserved_name，解压前即拒（stage 1 早于 download/extract）", async () => {
+		for (const bad of ["oj", "ojm", "registry"]) {
+			const m = structuredClone(VALID);
+			m.name = bad;
+			const r = await preflight(ctx({ manifest: m }));
+			expect(r.ok).toBe(false);
+			expect(r.code).toBe("reserved_name");
+			expect(r.retryable).toBe(false);
+			expect(r.message).toContain("为保留名");
+		}
+	});
+
+	it("真实第一方方案名（oj-registry）安装预检不被误伤", async () => {
+		const m = structuredClone(VALID);
+		m.name = "oj-registry";
+		const r = await preflight(ctx({ manifest: m }));
+		expect(r.code === "reserved_name").toBe(false);
+	});
 });
 
 describe("preflight · C2-09 peerRuntime 范围算子语义", () => {

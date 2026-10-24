@@ -14,7 +14,7 @@ import { parse } from "yaml";
 // 跨端引用（双端一致钉）：被测实现同仓分居两运行时（计划 §1「两运行时取舍」），
 // 测试直接互调，比「两套件各读同一夹具」更强——漂移即本文件红。
 import { preflight } from "../../../templates/src/_platform/api/_lifecycle/steps/preflight";
-import { checkLocalesComplete, checkTablesAgainstSchema, parseManifest, validateContract } from "../../manifest-contract";
+import { checkLocalesComplete, checkTablesAgainstSchema, parseManifest, RESERVED_NAMES, reservedNameSuggestions, validateContract } from "../../manifest-contract";
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), "fixtures");
 const readText = (p: string) => readFileSync(join(FIXTURES, p), "utf8");
@@ -62,6 +62,11 @@ interface RuleCase {
 const RULES: RuleCase[] = [
 	{ rule: "name 白名单（大写拒绝）", clause: "C2-01", keyword: "name", mutate: (m) => { m.name = "Demo"; } },
 	{ rule: "name 保留名（market，R9）", clause: "C2-01", keyword: "保留名", mutate: (m) => { m.name = "market"; } },
+	{ rule: "name 保留名（oj，REG-CS7）", clause: "C2-01", keyword: "保留名", mutate: (m) => { m.name = "oj"; } },
+	{ rule: "name 保留名（ojm，REG-CS7）", clause: "C2-01", keyword: "保留名", mutate: (m) => { m.name = "ojm"; } },
+	{ rule: "name 保留名（registry，REG-CS7）", clause: "C2-01", keyword: "保留名", mutate: (m) => { m.name = "registry"; } },
+	{ rule: "api.prefix 保留段（registry，REG-CS7）", clause: "C2-13", keyword: "保留名", mutate: (m) => { m.api.prefix = "/api/registry"; } },
+	{ rule: "web.route_prefix 保留段（ojm，REG-CS7）", clause: "C2-14", keyword: "保留名", mutate: (m) => { m.web.route_prefix = "/ojm"; } },
 	{ rule: "version 禁 +（oj 相容排除，附录 B-1）", clause: "C2-02", keyword: "version", mutate: (m) => { m.version = "1.0.0+build.5"; } },
 	{ rule: "version 禁下划线（契约收紧）", clause: "C2-02", keyword: "version", mutate: (m) => { m.version = "1.0.0_beta"; } },
 	{ rule: "title ≤100", clause: "C2-03", keyword: "title", mutate: (m) => { m.title = "x".repeat(101); } },
@@ -167,6 +172,40 @@ describe("parseManifest", () => {
 			const r = parseManifest(bad);
 			expect(r.ok).toBe(false);
 		}
+	});
+});
+
+describe("rEG-CS7 保留名扩项（红队 F5）", () => {
+	it("oj/ojm/registry 命中保留名 → C2-01 违规且含替代名建议（两候选）", () => {
+		for (const bad of ["oj", "ojm", "registry"]) {
+			const m = structuredClone(VALID);
+			m.name = bad;
+			const v = validateContract(m);
+			const hit = v.find(x => x.includes("C2-01") && x.includes(bad));
+			expect(hit, `期望 ${bad} 命中 C2-01 保留名，实际：\n${v.join("\n")}`).toBeTruthy();
+			expect(hit).toContain("为保留名");
+			expect(hit).toContain("替代名建议");
+			const [a1, a2] = reservedNameSuggestions(bad);
+			expect(hit).toContain(a1);
+			expect(hit).toContain(a2);
+		}
+	});
+
+	it("真实第一方方案名不被误伤（oj-registry / demo-solution 等）", () => {
+		for (const okName of ["oj-registry", "demo-solution", "oj-module", "ojm-cli"]) {
+			expect(RESERVED_NAMES.has(okName)).toBe(false);
+			const m = structuredClone(VALID);
+			m.name = okName;
+			const v = validateContract(m);
+			expect(v.find(x => x.includes("C2-01") && x.includes(okName))).toBeUndefined();
+		}
+	});
+
+	it("rEG-CS7 扩项后保留名清单含 oj/ojm/registry 且数量正确", () => {
+		expect(RESERVED_NAMES.has("oj")).toBe(true);
+		expect(RESERVED_NAMES.has("ojm")).toBe(true);
+		expect(RESERVED_NAMES.has("registry")).toBe(true);
+		expect(RESERVED_NAMES.size).toBe(11);
 	});
 });
 

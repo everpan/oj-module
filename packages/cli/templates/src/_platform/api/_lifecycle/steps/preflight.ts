@@ -19,11 +19,15 @@ export interface StageResult {
 	ok: boolean
 	message: string
 	retryable?: boolean
+	/** 终止态错误码（安装器据此置 task.error.reason）；保留名命中恒 reserved_name */
+	code?: string
 }
 
 interface Violation {
 	clause: string
 	detail: string
+	/** 终止态错误码（安装器据此置 task.error.reason）；保留名命中恒 reserved_name */
+	code?: string
 }
 
 // ── 契约 §2/§4 正则与清单（与契约现行文本逐字对应，改动须先改契约再同步夹具与双端实现）──
@@ -31,8 +35,13 @@ interface Violation {
 /** C2-01：name 白名单 */
 const NAME_RE = /^[a-z][a-z0-9-]{0,63}$/;
 
-/** §4.2 保留名清单（C2-01/13/14 共用；market 经 R9 恢复保留） */
-const RESERVED_NAMES = new Set(["_platform", "system", "auth", "market", "framework", "health", "plugins", "_system"]);
+/** §4.2 保留名清单（C2-01/13/14 共用；market 经 R9 恢复保留）。REG-CS7 扩项：oj/ojm/registry 一并保留 */
+const RESERVED_NAMES = new Set(["_platform", "system", "auth", "market", "framework", "health", "plugins", "_system", "oj", "ojm", "registry"]);
+
+/** 保留名替代建议（REG-CS7：给可落地的 kebab-case 候选，而非只说「非法」；两候选恒非保留名） */
+function reservedNameSuggestions(name: string): [string, string] {
+	return [`${name}-app`, `meta-${name}`];
+}
 
 /** C2-02 字符集：[0-9A-Za-z.-]（禁 +——oj validate_version 拒装，附录 B-1；禁 _——契约收紧） */
 const VERSION_CHARS_RE = /^[0-9A-Z.-]+$/i;
@@ -173,7 +182,8 @@ export async function preflight(ctx: InstallContext): Promise<StageResult> {
 		v.push({ clause: "C2-01", detail: `name「${String(m.name)}」不匹配 ^[a-z][a-z0-9-]{0,63}$（小写字母开头，仅小写字母/数字/连字符）` });
 	}
 	if (RESERVED_NAMES.has(name)) {
-		v.push({ clause: "C2-01", detail: `name「${name}」是保留名（§4.2：_platform/system/auth/market/framework/health/plugins/_system），禁用于方案（R9）` });
+		const [a1, a2] = reservedNameSuggestions(name);
+		v.push({ clause: "C2-01", code: "reserved_name", detail: `name「${name}」为保留名（§4.2：${[...RESERVED_NAMES].join("/")}），禁用于方案（R9）；替代名建议：${a1} / ${a2}` });
 	}
 
 	// ── C2-02 version：字符集 + oj 相容排除 ──
@@ -263,7 +273,8 @@ export async function preflight(ctx: InstallContext): Promise<StageResult> {
 				else {
 					apiSeg = p.slice("/api/".length);
 					if (RESERVED_NAMES.has(apiSeg)) {
-						v.push({ clause: "C2-13", detail: `api.prefix 模块段「${apiSeg}」是保留名（§4.2），禁用` });
+						const [a1, a2] = reservedNameSuggestions(apiSeg);
+						v.push({ clause: "C2-13", code: "reserved_name", detail: `api.prefix 模块段「${apiSeg}」为保留名（§4.2：${[...RESERVED_NAMES].join("/")}），禁用；替代名建议：${a1} / ${a2}` });
 					}
 					if (apiSeg !== name) {
 						const occ = occupier(apiSeg);
@@ -341,7 +352,8 @@ export async function preflight(ctx: InstallContext): Promise<StageResult> {
 				else {
 					const seg = rp.slice(1);
 					if (RESERVED_NAMES.has(seg)) {
-						v.push({ clause: "C2-14", detail: `web.route_prefix 首段「${seg}」是保留名（§4.2），禁用` });
+						const [a1, a2] = reservedNameSuggestions(seg);
+						v.push({ clause: "C2-14", code: "reserved_name", detail: `web.route_prefix 首段「${seg}」为保留名（§4.2：${[...RESERVED_NAMES].join("/")}），禁用；替代名建议：${a1} / ${a2}` });
 					}
 					if (seg !== name) {
 						const occ = occupier(seg);
@@ -581,10 +593,13 @@ function report(v: Violation[]): StageResult {
 	if (v.length === 0) {
 		return { stage: "preflight", ok: true, message: "预检通过：manifest 满足 C2 契约（身份/兼容/占用/匿名/RBAC/路由/设置/health 安全预检全部通过）" };
 	}
+	// 保留名命中（reserved_name）优先作为终止态错误码（红队 F5：撞保留名是确定性拒绝，非可重试）
+	const coded = v.find(x => x.code !== undefined);
 	return {
 		stage: "preflight",
 		ok: false,
 		retryable: false,
+		code: coded?.code,
 		message: `预检未通过（${v.length} 项违规，全量列出）：\n${v.map(x => `- 【${x.clause}】${x.detail}`).join("\n")}`,
 	};
 }
