@@ -1605,7 +1605,7 @@ export default async (path: string, html: string) => {
 
 | 类别 | 命令 | 谁实现 | 一句话 |
 |---|---|---|---|
-| **ojm 原生** | `init` / `dev` / `build` / `preview` / `api` / `info` / `vendor` / `merge` / `install` / `list` / `enable` / `disable` / `uninstall` / `trust` / `view` / `keygen` / `sign` / `publish` / `registry` | `ojm` 自己 | 前后端一体工程的脚手架、开发、构建、契约生成、版本/清单、oj 分发、清单合并；方案包安装面与签名信任（install/list/enable/disable/uninstall 见 §11，trust/keygen/sign 见 §12，publish 见 §11.2）；`registry` 是索引/吊销清单/离线包的外置签名与流转，见 [`prd/20261026-registry-cli-commands-design.md`](../prd/20261026-registry-cli-commands-design.md) |
+| **ojm 原生** | `init` / `dev` / `build` / `preview` / `api` / `info` / `vendor` / `merge` / `install` / `list` / `enable` / `disable` / `uninstall` / `trust` / `view` / `keygen` / `sign` / `publish` / `registry` | `ojm` 自己 | 前后端一体工程的脚手架、开发、构建、契约生成、版本/清单、oj 分发、清单合并；方案包安装面与签名信任（install/list/enable/disable/uninstall 见 §11，trust/keygen/sign 见 §12，publish 见 §11.2）；`registry` 是索引/吊销清单/离线包的外置签名与流转；整条 registry 链路（发版 / 安装 / 运维 / 查询）的图文流程见 [`prd/20261026-registry-cli-commands-design.md`](../prd/20261026-registry-cli-commands-design.md) |
 | **oj 透传** | `test` / `exec` / `openapi` / `migrate` / `schema` | `oj`（ojm 仅转发） | 这 5 个**就是 oj 的同名子命令**，ojm 只负责定位 `bin/oj` 并补上 `-c config.yaml` |
 
 > **为什么只有这 5 个走透传？** oj 还有 `serve` / `build` / `secret`（`keygen`/`seal` 等）

@@ -225,6 +225,34 @@ sequenceDiagram
 - 清单**每变一次 seq +1**，安装端记录每源最大 seq，回退或同代替换都拒（`revocations_not_monotonic`）。
 - 空清单也必须签（seq=0）：把「没签」当「没吊销」是 v2.1 漏掉的绕过。
 
+`--revocations` 与索引签名共用一个子命令，内部判定如下：
+
+```mermaid
+flowchart TD
+    IN(["输入 revocations.yaml（或 - 读 stdin）"]) --> M{"带 --revocations？"}
+    M -->|"否"| IDX["索引签名：export.json → signatures[]<br/>（canon 字段 = v2）"]
+    M -->|"是"| EMPTY{"正文为空？"}
+    EMPTY -->|"是"| U1["用法错误 exit 2<br/>空清单也必须签，但空文件不是清单"]
+    EMPTY -->|"否"| JSON{"首字符是左花括号？"}
+    JSON -->|"是"| F1["revocation_sig_format<br/>这是 /revocations 的 JSON 导出，不是正文"]
+    JSON -->|"否"| SEQ{"解析出顶层 seq ≥ 0？"}
+    SEQ -->|"否"| F1
+    SEQ -->|"是"| ID{"给了 --id 且合法？"}
+    ID -->|"否"| U2["用法错误 exit 2<br/>这一处没有导出体可推断 key"]
+    ID -->|"是"| KEY["读私钥 → 导出公钥 hex + 指纹"]
+    KEY --> CANON["canon = revocations:seq:sha256(正文原文)"]
+    CANON --> SIGN["Ed25519 签名"]
+    SIGN -->|"verifyCanonical 不过"| F2["revocation_sig_mismatch"]
+    SIGN --> OK["六字段回传体<br/>seq / alg / key_id / public_key / value / canon"]
+    OK --> OUT{"--out 或 --json"}
+    OUT -->|"都没有"| U3["用法错误 exit 2<br/>签名结果必须有去处"]
+    OUT -->|"有"| DONE["落盘或打信封"]
+```
+
+为什么必须喂**正文原文**：服务端把收到的 `canon` 与自己按正文重算的串逐字比对。任何重渲染
+（换行、键序、缩进）都会改变 sha，于是只能拿到 `revocation_sig_format` 且看不出原因。所以命令
+原样吃文件，并直接拒掉以 `{` 开头的输入。
+
 ---
 
 ## 2. 消费安装链（`ojm install`）
