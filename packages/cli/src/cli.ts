@@ -273,9 +273,9 @@ function makeAction(def: HelpEntry, projectRoot: string, lang: Lang, exit: (code
 					exit(EXIT_FAILURE);
 			};
 		case "install":
-			return async (target: string | undefined, opts: SiteOpts & { locale?: string, name?: string, version?: string } = {}) => {
+			return async (target: string | undefined, opts: SiteOpts & { locale?: string, name?: string, version?: string, registry?: string } = {}) => {
 				const { installCommand } = await import("./install");
-				await installCommand(target ?? "", { url: opts.url, user: opts.user, pass: opts.pass, locale: opts.locale, name: opts.name, version: opts.version });
+				await installCommand(target ?? "", { url: opts.url, user: opts.user, pass: opts.pass, locale: opts.locale, name: opts.name, version: opts.version, registry: opts.registry });
 			};
 		case "enable":
 		case "disable":

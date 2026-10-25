@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setEnabledCommand } from "../../enable";
-import { installCommand, parseTarget, renderOutcome } from "../../install";
+import { installCommand, isSiteApiAtLeast, parseRegistryTarget, parseTarget, renderOutcome } from "../../install";
 import { pollTask, resolveSite } from "../../site";
 
 /** 终态记录工厂（§10.2 形状，测试只需关键字段） */
@@ -487,5 +487,62 @@ describe("setEnabledCommand · enable/disable 瘦客户端（D8）", () => {
 			process.exitCode = exitBackup;
 		}
 		expect(logs.join("\n")).toContain("禁用失败：「x」未安装");
+	});
+});
+
+describe("s5-2② REG-R9 install 源切换：registry（CLI 归一 + 旧站点拒）", () => {
+	it("parseRegistryTarget：@scope/name → slug=scope-name、version=null", () => {
+		expect(parseRegistryTarget("@acme/demo")).toEqual({ slug: "acme-demo", version: null });
+	});
+
+	it("parseRegistryTarget：@scope/name@version 拆出版本；acme/demo 等价", () => {
+		expect(parseRegistryTarget("@acme/demo@1.2.3")).toEqual({ slug: "acme-demo", version: "1.2.3" });
+		expect(parseRegistryTarget("acme/demo@1.2.3")).toEqual({ slug: "acme-demo", version: "1.2.3" });
+	});
+
+	it("parseRegistryTarget：裸 slug 原样透传（含 @version）", () => {
+		expect(parseRegistryTarget("acme-demo")).toEqual({ slug: "acme-demo", version: null });
+		expect(parseRegistryTarget("acme-demo@2.0.0")).toEqual({ slug: "acme-demo", version: "2.0.0" });
+	});
+
+	it("parseRegistryTarget：大写/空段/空串即抛 UsageError（REG-R5 字符集）", () => {
+		expect(() => parseRegistryTarget("@ACME/demo")).toThrow(/REG-R5/);
+		expect(() => parseRegistryTarget("@acme/")).toThrow();
+		expect(() => parseRegistryTarget("")).toThrow(/registry 源用法/);
+	});
+
+	it("isSiteApiAtLeast：0.1.0 < 0.2.0 → false；0.2.0/0.2.1 → true；undefined → false", () => {
+		expect(isSiteApiAtLeast("0.1.0", "0.2.0")).toBe(false);
+		expect(isSiteApiAtLeast("0.2.0", "0.2.0")).toBe(true);
+		expect(isSiteApiAtLeast("0.2.1", "0.2.0")).toBe(true);
+		expect(isSiteApiAtLeast(undefined, "0.2.0")).toBe(false);
+	});
+
+	it("installCommand registry：新站点（apiVersion 0.2.0）POST source=registry + registry=origin（slug 归一）", async () => {
+		const { fetchFn, calls } = fetchStub({
+			"/api/auth/login": () => ok({ access_token: "tok" }),
+			"/api/_platform/market/meta": () => ok({ apiVersion: "0.2.0" }),
+			"/api/_platform/market/install": () => ok({ task_id: "t1" }),
+			"/api/_platform/market/task": () => ok(rec()),
+		});
+		const r = await installCommand("@acme/demo", { url: "http://site", user: "u", pass: "p", registry: "https://r.example.com/", fetchFn });
+		expect(r.status).toBe("done");
+		const call = calls.find(c => c.url.includes("/api/_platform/market/install"));
+		expect(call).toBeDefined();
+		const body = JSON.parse(String(call!.init!.body));
+		expect(body).toMatchObject({ name: "acme-demo", source: "registry", registry: "https://r.example.com" });
+		expect(body.version).toBeNull();
+	});
+
+	it("installCommand registry：旧站点（apiVersion 0.1.0）→ 抛「站点版本过低」且不 POST install", async () => {
+		const { fetchFn, calls } = fetchStub({
+			"/api/auth/login": () => ok({ access_token: "tok" }),
+			"/api/_platform/market/meta": () => ok({ apiVersion: "0.1.0" }),
+			"/api/_platform/market/install": () => ok({ task_id: "t1" }),
+		});
+		await expect(installCommand("@acme/demo", { url: "http://site", user: "u", pass: "p", registry: "https://r.example.com", fetchFn }))
+			.rejects
+			.toThrow(/版本过低/);
+		expect(calls.some(c => c.url.includes("/api/_platform/market/install"))).toBe(false);
 	});
 });

@@ -161,6 +161,34 @@ function caretSatisfies(host: string, base: string): boolean {
 	return hm === 0 && hi === 0 && hp === bp;
 }
 
+/**
+ * 升版反噬（红队 F4）的专属迁移提示：`host 0.2.x` + 声明 `^0.1.x`。
+ *
+ * 0.x 的 caret 语义是「minor 必须相等」（见 caretSatisfies），所以平台小版本一升，
+ * 所有声明 `^0.1.0` 的存量包**同时**装不上。这不是包写错了，是升级带来的兼容断点——
+ * 笼统回「不满足 peerPlatform」会把发布方引向「升方案版本」「改代码」两个错方向，
+ * 真正要改的只有这一行 range。
+ *
+ * 只对 0.x 给建议：`^1.0.0` 在 2.0.0 宿主上不满足是标准的语义化版本预期，没有迁移可言。
+ */
+function caretUpgradeAdvice(host: string, op: string | undefined, base: string): string | null {
+	if (op !== "^")
+		return null;
+	const h = coreParts(host);
+	const b = coreParts(base);
+	if (h === null || b === null)
+		return null;
+	if (h[0] !== 0 || b[0] !== 0 || h[1] <= b[1])
+		return null;
+	return `这是平台小版本升级带来的兼容断点（0.x 下 ^ 只匹配同 minor：^${coreOf(base)} 等价于 ${coreOf(base).split(".")[0]}.${b[1]}.*），不是本方案的问题。请把 peerPlatform 改成「>=${coreOf(base)}」后重新打包——这一条要改的是声明，不是代码`;
+}
+
+/** 版本核心段文本（`0.1.0-rc.1` → `0.1.0`；cit：提示文案里只出现核心段，别把 prerelease 带进去） */
+function coreOf(v: string): string {
+	const [major, minor, patch] = coreParts(v) ?? [0, 0, 0];
+	return `${major}.${minor}.${patch}`;
+}
+
 export async function preflight(ctx: InstallContext): Promise<StageResult> {
 	const v: Violation[] = [];
 	const m = ctx.manifest;
@@ -246,7 +274,13 @@ export async function preflight(ctx: InstallContext): Promise<StageResult> {
 				v.push({ clause: "C2-11", detail: `无法读取宿主平台 API 版本（GET /api/_platform/market/meta 不可用或本仓 API_VERSION 未注入），peerPlatform「${range}」强制比对失败（fail-closed）` });
 			}
 			else if (!rangeSatisfies(host, parsed[1], parsed[2])) {
-				v.push({ clause: "C2-11", detail: `宿主平台 API 版本 ${host} 不满足 peerPlatform 声明「${range}」（需升级宿主平台模块）` });
+				const advice = caretUpgradeAdvice(host, parsed[1], parsed[2]);
+				v.push({
+					clause: "C2-11",
+					detail: advice === null
+						? `宿主平台 API 版本 ${host} 不满足 peerPlatform 声明「${range}」（需升级宿主平台模块）`
+						: `宿主平台 API 版本 ${host} 不满足 peerPlatform 声明「${range}」。${advice}`,
+				});
 			}
 		}
 	}

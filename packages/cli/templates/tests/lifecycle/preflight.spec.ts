@@ -205,6 +205,34 @@ describe("preflight · C2-11 peerPlatform 范围算子语义（^ 遵循 0.x 口�
 		expect(r.message).toContain("C2-11");
 	});
 
+	// REG-R9 / 红队 F4：升 0.2.0 后声明 ^0.1.x 的存量包全部装不上。笼统回「不满足」会让人
+	// 去改方案版本/代码，真正要改的只有那一行 range——所以文案必须是可执行的迁移指令。
+	it("拒例（F4 升版反噬）：host 0.2.x + ^0.1.x → 给出「改成 >=0.1.0」的专属迁移提示", async () => {
+		const m = structuredClone(VALID);
+		m.peerPlatform = "^0.1.0";
+		const r = await preflight(ctx({ manifest: m, hostApiVersion: "0.2.0" }));
+		expect(r.ok).toBe(false);
+		expect(r.message).toContain("C2-11");
+		expect(r.message).toContain(">=0.1.0");
+		// 要说清「不是本方案的问题」，否则发布方会去翻自己的代码
+		expect(r.message).toContain("不是本方案的问题");
+		expect(r.message).toContain("这一条要改的是声明，不是代码");
+		// 基线带 prerelease 时提示里只出现核心段（别把 -rc.1 拼进建议的 range 里）
+		m.peerPlatform = "^0.1.0-rc.1";
+		const r2 = await preflight(ctx({ manifest: m, hostApiVersion: "0.2.0" }));
+		expect(r2.message).toContain(">=0.1.0");
+		expect(r2.message).not.toContain(">=0.1.0-rc.1");
+	});
+
+	it("拒例（不该给迁移提示）：host 0.1.x + ^0.2.0 是「包要求更高版本」，不是升版反噬", async () => {
+		const m = structuredClone(VALID);
+		m.peerPlatform = "^0.2.0";
+		const r = await preflight(ctx({ manifest: m, hostApiVersion: "0.1.80" }));
+		expect(r.ok).toBe(false);
+		expect(r.message).toContain("需升级宿主平台模块");
+		expect(r.message).not.toContain("改成「>=0.2.0」");
+	});
+
 	it("过例：0.x 口径——^0.2.0 兼容 0.2.5（minor 相同，patch 更高）", async () => {
 		const m = structuredClone(VALID);
 		m.peerPlatform = "^0.2.0";

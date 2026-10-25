@@ -234,11 +234,12 @@ export const HELP_GROUPS: HelpGroup[] = [
 					...SITE_OPTIONS,
 					{ raw: "--name <name>", zh: "覆盖文件名推导的方案名", en: "Override the solution name derived from the file name" },
 					{ raw: "--version <version>", zh: "覆盖文件名推导的版本", en: "Override the version derived from the file name" },
+					{ raw: "--registry <url>", zh: "从指定 registry 源安装（白名单在服务端；旧站点 API < 0.2.0 不支持）", en: "Install from the specified registry source (allowlist is server-side; sites with API < 0.2.0 are unsupported)" },
 					{ raw: "--locale <locale>", zh: "终态文案语言 zh-CN|en-US", en: "Language of the final status message zh-CN|en-US" },
 				],
 				detail: {
-					zh: "ojm install <file.tgz | name[@version]> [--url <u>] [--user <u>] [--pass <p>] [--name <n>] [--version <v>] [--locale <zh-CN|en-US>]\n  本地 tgz 走 file 上传（<name>-<version>.tgz 文件名推导身份，可 --name/--version 覆盖）；name[@version] 走 CDN 市场源\n  登录 → 提交 → 轮询任务至终态并打印结果（失败附原因 + 指引）\n  站点寻址：--url/--user/--pass，或环境变量 OJM_URL / OJM_USER / OJM_PASS",
-					en: "ojm install <file.tgz | name[@version]> [--url <u>] [--user <u>] [--pass <p>] [--name <n>] [--version <v>] [--locale <zh-CN|en-US>]\n  Local tgz goes through file upload (identity derived from the <name>-<version>.tgz file name, overridable via --name/--version); name[@version] goes through the CDN marketplace\n  Login → submit → poll the task to a terminal state and print the result (failures include the reason + guidance)\n  Site addressing: --url/--user/--pass, or env vars OJM_URL / OJM_USER / OJM_PASS",
+					zh: "ojm install <file.tgz | name[@version] | @<scope>/<name>[@version]> [--url <u>] [--user <u>] [--pass <p>] [--name <n>] [--version <v>] [--registry <r>] [--locale <zh-CN|en-US>]\n  本地 tgz 走 file 上传（<name>-<version>.tgz 文件名推导身份，可 --name/--version 覆盖）；name[@version] 走 CDN 市场源；@<scope>/<name>[@version] --registry <url> 走外部 registry 源（目录键由 CLI 归一为物理名 slug，白名单在服务端）\n  登录 → 提交 → 轮询任务至终态并打印结果（失败附原因 + 指引）\n  站点寻址：--url/--user/--pass，或环境变量 OJM_URL / OJM_USER / OJM_PASS",
+					en: "ojm install <file.tgz | name[@version] | @<scope>/<name>[@version]> [--url <u>] [--user <u>] [--pass <p>] [--name <n>] [--version <v>] [--registry <r>] [--locale <zh-CN|en-US>]\n  Local tgz goes through file upload (identity derived from the <name>-<version>.tgz file name, overridable via --name/--version); name[@version] goes through the CDN marketplace; @<scope>/<name>[@version] --registry <url> goes through an external registry source (the directory key is normalized to the physical slug by the CLI; allowlist is server-side)\n  Login → submit → poll the task to a terminal state and print the result (failures include the reason + guidance)\n  Site addressing: --url/--user/--pass, or env vars OJM_URL / OJM_USER / OJM_PASS",
 				},
 			},
 			{

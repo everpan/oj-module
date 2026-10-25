@@ -8,7 +8,66 @@ import type { TaskRecord } from "./site";
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
+import { UsageError } from "./exit-codes";
+import { originOf, resolveRegistrySource } from "./registry-source";
 import { callApi, isFutureSchema, login, pollTask, resolveSite, TASK_SCHEMA_VERSION_KNOWN, unwrapEnvelope } from "./site";
+
+/**
+ * REG-R5 / S5-2②：安装目标的**唯一**归一点（grep 可证——全仓只有这一处把 `@scope/name`
+ * 换算成物理名 slug）。服务端 install 只认 slug（收到 `@`/`/` 即 400 `invalid_physical_name`），
+ * 所以「目录键 → 物理名」的换算必须只在 CLI 完成一次，绝不分层；服务端是最后一道闸。
+ *
+ * 形态：`@scope/name[@version]` / `scope/name[@version]` → slug=`scope-name`；裸 `slug[@version]`
+ * 视为已是物理名，原样透传。字符集与下游 `naming.ts` 的 `SEGMENT_RE`/`SLUG_RE` 同口径
+ * （小写字母开头 + 小写字母/数字/连字符，slug 上限 64），保证 CLI 推导的 slug 与发布侧落盘名逐字一致。
+ */
+const SEGMENT_RE = /^[a-z][a-z0-9-]{0,63}$/;
+const SLUG_RE = /^[a-z][a-z0-9-]{0,63}$/;
+
+export function parseRegistryTarget(raw: string): { slug: string, version: string | null } {
+	let rest = String(raw ?? "").trim().replace(/^@/, "");
+	if (rest === "")
+		throw new UsageError(`[ojm] 非法安装目标：「${raw}」（registry 源用法：ojm install @<scope>/<name>[@version] --registry <url>）`);
+	// 版本：尾随 @（与 scope 前缀的 @ 不冲突——先剥掉前缀 @ 再取 lastIndexOf）
+	let version: string | null = null;
+	const at = rest.lastIndexOf("@");
+	if (at > 0) {
+		version = rest.slice(at + 1);
+		rest = rest.slice(0, at);
+	}
+	if (rest.includes("/")) {
+		const slash = rest.indexOf("/");
+		const scope = rest.slice(0, slash);
+		const name = rest.slice(slash + 1);
+		if (!SEGMENT_RE.test(scope) || !SEGMENT_RE.test(name))
+			throw new UsageError(`[ojm] 目录键「${raw}」不合法：scope 与 name 都须匹配 ${SEGMENT_RE.source}（REG-R5）`);
+		const slug = `${scope}-${name}`;
+		if (!SLUG_RE.test(slug))
+			throw new UsageError(`[ojm] 物理名「${slug}」不合法：须匹配 ${SLUG_RE.source}（slug 上限 64 字符）`);
+		return { slug, version: version === "" ? null : version };
+	}
+	if (!SLUG_RE.test(rest))
+		throw new UsageError(`[ojm] 物理名「${rest}」不合法：须匹配 ${SLUG_RE.source}（裸 slug 须为小写字母开头的小写字母/数字/连字符）`);
+	return { slug: rest, version: version === "" ? null : version };
+}
+
+/**
+ * REG-R9② 旧站点拒：站点平台 API 版本是否 ≥ `min`。`undefined`（meta 端点缺失/未注入）按
+ * 旧版本处理——宁可不装，不静默降级到不支持 registry 源的站点。
+ */
+export function isSiteApiAtLeast(apiVersion: string | undefined, min: string): boolean {
+	if (apiVersion === undefined)
+		return false;
+	const parse = (v: string): [number, number, number] | null => {
+		const m = /^(\d+)\.(\d+)\.(\d+)/.exec(v.trim());
+		return m === null ? null : [Number(m[1]), Number(m[2]), Number(m[3])];
+	};
+	const a = parse(apiVersion);
+	const b = parse(min);
+	if (a === null || b === null)
+		return false;
+	return a[0] > b[0] || (a[0] === b[0] && (a[1] > b[1] || (a[1] === b[1] && a[2] >= b[2])));
+}
 
 export type Locale = "zh-CN" | "en-US";
 
@@ -193,6 +252,8 @@ export interface InstallOptions {
 	version?: string
 	/** 终态文案语言（缺省 zh-CN） */
 	locale?: string
+	/** REG-R9②：从指定 registry 源安装（白名单在服务端；旧站点 API < 0.2.0 不支持 → exit 1） */
+	registry?: string
 	/** 测试注入；缺省 globalThis.fetch */
 	fetchFn?: typeof fetch
 	/** 测试注入；缺省真睡 */
@@ -206,48 +267,69 @@ export interface InstallOptions {
  */
 export async function installCommand(target: string, opts: InstallOptions = {}): Promise<TaskRecord> {
 	const fetchFn = opts.fetchFn ?? globalThis.fetch;
-	const parsed = parseTarget(target);
 	const { base, user, pass } = resolveSite(opts);
 	const token = await login(fetchFn, base, user, pass);
 
 	let response: { task_id: string };
-	if (parsed.kind === "file") {
-		const name = opts.name ?? parsed.name;
-		if (name === null)
-			throw new Error(`[ojm] 无法从文件名推导方案名：${target}——请用 --name <name>（及 --version <version>）显式指定`);
-		const version = opts.version ?? parsed.version;
-		const bytes = new Uint8Array(fs.readFileSync(parsed.path));
-		const form = new FormData();
-		form.append("name", name);
-		if (version !== null)
-			form.append("version", version);
-		form.append("source", "file");
-		form.append("file", new Blob([bytes], { type: "application/gzip" }), path.basename(parsed.path));
-		// detached 侧车签名（P2-3，G4）：同目录 <tgz>.sig 自动探测随 multipart 第二文件上传——
-		// 缺签即被宿主 G4 拒（sig_missing 人话转述），与 Form B 同一信任模型
-		const sigPath = `${parsed.path}.sig`;
-		if (fs.existsSync(sigPath)) {
-			form.append("sig", new Blob([new Uint8Array(fs.readFileSync(sigPath))], { type: "application/json" }), path.basename(sigPath));
-			console.log(`[ojm] 已随包上传签名侧车：${path.basename(sigPath)}`);
-		}
-		else {
-			console.log(`[ojm] 未发现签名侧车（${path.basename(sigPath)}）——宿主验签硬 fail-closed，未签名包将被拒（sig_missing）；签名方法见 devkit「签名与信任」`);
-		}
-		const res = await fetchFn(`${base}/api/_platform/market/install`, {
-			method: "POST",
-			headers: { authorization: `Bearer ${token}` },
-			body: form,
+	if (opts.registry !== undefined) {
+		// REG-R9②：registry 源安装。归一（目录键 → slug）只在此一处；旧站点拒；白名单在服务端。
+		const src = resolveRegistrySource({ flag: opts.registry });
+		const { slug, version } = parseRegistryTarget(target);
+		if (opts.name !== undefined && opts.name !== slug)
+			throw new UsageError(`[ojm] --name「${opts.name}」与 registry 目标推导的物理名「${slug}」不一致——registry 源由目标推导身份，请二选一`);
+		// 旧站点拒：meta apiVersion < 0.2.0 不支持 registry 源（REG-R9② 升版反噬 F4 的人话面）
+		const meta = await callApi<{ apiVersion?: string }>(fetchFn, base, token, "GET", "/api/_platform/market/meta");
+		if (!isSiteApiAtLeast(meta.apiVersion, "0.2.0"))
+			throw new Error(`[ojm] 目标站点平台 API 版本过低（需 ≥ 0.2.0 才支持 --registry 源安装，实为 ${meta.apiVersion ?? "未知"}）——请升级目标站点的 oj-module，或改用 CDN/file 源`);
+		const registryOrigin = originOf(src.url) ?? src.url;
+		response = await callApi<{ task_id: string }>(fetchFn, base, token, "POST", "/api/_platform/market/install", {
+			name: slug,
+			version: opts.version ?? version,
+			source: "registry",
+			registry: registryOrigin,
 		});
-		response = await unwrapInstall(res);
+		console.log(`[ojm] 已从 registry 源提交安装任务（源 ${registryOrigin}，物理名 ${slug}）`);
 	}
 	else {
-		if (opts.name !== undefined && opts.name !== parsed.name)
-			throw new Error(`[ojm] --name「${opts.name}」与目标「${parsed.name}」不一致——请二选一`);
-		response = await callApi<{ task_id: string }>(fetchFn, base, token, "POST", "/api/_platform/market/install", {
-			name: parsed.name,
-			version: opts.version ?? parsed.version,
-			source: "cdn",
-		});
+		const parsed = parseTarget(target);
+		if (parsed.kind === "file") {
+			const name = opts.name ?? parsed.name;
+			if (name === null)
+				throw new Error(`[ojm] 无法从文件名推导方案名：${target}——请用 --name <name>（及 --version <version>）显式指定`);
+			const version = opts.version ?? parsed.version;
+			const bytes = new Uint8Array(fs.readFileSync(parsed.path));
+			const form = new FormData();
+			form.append("name", name);
+			if (version !== null)
+				form.append("version", version);
+			form.append("source", "file");
+			form.append("file", new Blob([bytes], { type: "application/gzip" }), path.basename(parsed.path));
+			// detached 侧车签名（P2-3，G4）：同目录 <tgz>.sig 自动探测随 multipart 第二文件上传——
+			// 缺签即被宿主 G4 拒（sig_missing 人话转述），与 Form B 同一信任模型
+			const sigPath = `${parsed.path}.sig`;
+			if (fs.existsSync(sigPath)) {
+				form.append("sig", new Blob([new Uint8Array(fs.readFileSync(sigPath))], { type: "application/json" }), path.basename(sigPath));
+				console.log(`[ojm] 已随包上传签名侧车：${path.basename(sigPath)}`);
+			}
+			else {
+				console.log(`[ojm] 未发现签名侧车（${path.basename(sigPath)}）——宿主验签硬 fail-closed，未签名包将被拒（sig_missing）；签名方法见 devkit「签名与信任」`);
+			}
+			const res = await fetchFn(`${base}/api/_platform/market/install`, {
+				method: "POST",
+				headers: { authorization: `Bearer ${token}` },
+				body: form,
+			});
+			response = await unwrapInstall(res);
+		}
+		else {
+			if (opts.name !== undefined && opts.name !== parsed.name)
+				throw new Error(`[ojm] --name「${opts.name}」与目标「${parsed.name}」不一致——请二选一`);
+			response = await callApi<{ task_id: string }>(fetchFn, base, token, "POST", "/api/_platform/market/install", {
+				name: parsed.name,
+				version: opts.version ?? parsed.version,
+				source: "cdn",
+			});
+		}
 	}
 
 	const record = await pollTask(fetchFn, base, token, response.task_id, { sleep: opts.sleep });
