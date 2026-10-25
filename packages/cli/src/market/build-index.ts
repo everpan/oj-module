@@ -18,6 +18,7 @@ import { indexMetaOf, recomputeIndex, resolveRebuildSeq, signIndex, stampIndexMe
 import { resolveCdnLayout } from "./cdn-layout";
 import { buildIndexData, compareSemver } from "./index-builder";
 import { readEmbeddedManifest } from "./scan";
+import { readYankLedger } from "./yank-ledger";
 
 export interface BuildIndexOptions {
 	projectRoot?: string
@@ -84,14 +85,15 @@ export async function buildIndex(opts: BuildIndexOptions = {}): Promise<BuildInd
 		});
 	}
 
-	const data = buildIndexData(packages);
+	const yanked = readYankLedger(projectRoot);
+	const data = buildIndexData(packages, yanked);
 	const bundlesPath = path.join(layout.dir, "bundles.yaml");
 	const manifestsPath = path.join(layout.dir, "manifests.yaml");
 	// REG-CS2：代次进 bundles 正文，两份索引共用同一 seq，并由签名锁定——读者拼
 	// 「新总目录 + 旧分册」时 seq 不等即拒（红队 F2）。代次只在正文变化时递增（重建幂等）。
 	const existing = fs.existsSync(bundlesPath) ? fs.readFileSync(bundlesPath, "utf-8") : null;
 	const fresh = normalizeYaml(data.bundles);
-	assertLatestMonotonic(existing, fresh);
+	assertLatestMonotonic(existing, fresh, yanked);
 	const seq = resolveRebuildSeq(existing, fresh);
 	// REG-CS2：时效每次重建都刷新（源方持续运营则永不过期），代次只在正文变化时递增
 	const meta = indexMetaOf(seq, opts.now ?? Math.floor(Date.now() / 1000));
@@ -127,13 +129,15 @@ export async function buildIndex(opts: BuildIndexOptions = {}): Promise<BuildInd
  * 丢包、误删版本目录、拿回旧快照重建都会让 latest 往回走——读者据此把「更旧」当「有更新」装上，
  * 而已装实例还停在更高的版本上，回滚与升级判定全线错位。宁可拒建，也不产出一个往回走的索引。
  */
-function assertLatestMonotonic(existing: string | null, fresh: string): void {
+function assertLatestMonotonic(existing: string | null, fresh: string, yanked?: Map<string, { name: string, version: string, at: number, by: string, reason?: string }>): void {
 	if (existing === null)
 		return;
 	const before = latestMapOf(existing);
 	for (const [name, version] of latestMapOf(fresh)) {
 		const prev = before.get(name);
-		if (prev !== undefined && compareSemver(version, prev) < 0)
+		// 例外：旧 latest 此刻已被 yank（REG-CS4）——合法的下线会让 latest 主动下降，不算回退。
+		// 只有「非 yank 驱动的下降」才判回退（误删版本 / 拿回旧索引）。
+		if (prev !== undefined && compareSemver(version, prev) < 0 && yanked?.has(`${name}@${prev}`) !== true)
 			throw new Error(`[ojm] ${name} 的 latest 回退（${prev} → ${version}）：REG-CS2 要求 latest 单调不降——检查是否有版本被误删或拿回了旧索引`);
 	}
 }

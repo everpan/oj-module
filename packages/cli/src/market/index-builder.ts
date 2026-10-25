@@ -6,6 +6,8 @@
  * 判索引投毒直接 502。
  */
 
+import type { YankEntry } from "./yank-ledger";
+
 export interface IndexedPackage {
 	name: string
 	version: string
@@ -24,7 +26,14 @@ export interface BuiltIndex {
 	manifests: Array<Record<string, unknown>>
 }
 
-export function buildIndexData(packages: IndexedPackage[]): BuiltIndex {
+/**
+ * 聚合索引数据。
+ *
+ * `yanked?`：yank 账本（`name@version -> 条目`，REG-CS4）。非零时：
+ * - 各版本条目带 `yanked: true` + `yanked_at`（epoch 秒），安装侧 resolveCdn 据此拒精确安装；
+ * - 该方案的 `latest` 跳过已下线版本（全部下线则降级取最高版，保证索引不空）。
+ */
+export function buildIndexData(packages: IndexedPackage[], yanked?: Map<string, YankEntry>): BuiltIndex {
 	const byName = new Map<string, IndexedPackage[]>();
 	for (const pkg of packages) {
 		const list = byName.get(pkg.name) ?? [];
@@ -36,10 +45,18 @@ export function buildIndexData(packages: IndexedPackage[]): BuiltIndex {
 	const manifests: Array<Record<string, unknown>> = [];
 	for (const name of [...byName.keys()].sort()) {
 		const list = [...byName.get(name)!].sort((a, b) => compareSemver(a.version, b.version));
+		// latest 跳过 yanked（REG-CS4）：已下线的版本绝不成为默认升级目标；全下线降级取最高版
+		const live = list.filter(v => !isYanked(yanked, name, v.version));
+		const latestSource = live.length > 0 ? live : list;
 		solutions.push({
 			name,
-			latest: list[list.length - 1]!.version,
-			versions: list.map(v => ({ file: `${v.name}-${v.version}.tgz`, sha256: v.sha256, size: v.size, version: v.version })),
+			latest: latestSource[latestSource.length - 1]!.version,
+			versions: list.map((v) => {
+				const key = yanked !== undefined && isYanked(yanked, name, v.version)
+					? { yanked: true, yanked_at: yanked.get(`${name}@${v.version}`)!.at }
+					: {};
+				return { file: `${v.name}-${v.version}.tgz`, sha256: v.sha256, size: v.size, version: v.version, ...key };
+			}),
 		});
 		for (const pkg of list) {
 			const file = `${name}-${pkg.version}.tgz`;
@@ -57,6 +74,10 @@ export function buildIndexData(packages: IndexedPackage[]): BuiltIndex {
 		}
 	}
 	return { bundles: { solutions }, manifests };
+}
+
+function isYanked(yanked: Map<string, YankEntry> | undefined, name: string, version: string): boolean {
+	return yanked !== undefined && yanked.has(`${name}@${version}`);
 }
 
 /**

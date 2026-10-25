@@ -15,6 +15,7 @@ import { INDEX_TTL_SECONDS, indexCanonical } from "../../publish";
 import { buildIndex } from "../build-index";
 import { buildFixturePackage } from "../fixture";
 import { compareSemver } from "../index-builder";
+import { markYanked, readYankLedger } from "../yank-ledger";
 
 const MOUNTS = "  - prefix: /api\n    api: src\n  - prefix: /cdn\n    web: ../cdn\n";
 const CONFIG = `mounts:\n${MOUNTS}server:\n  host: 127.0.0.1\n  port: 9778\n`;
@@ -247,5 +248,80 @@ describe("given 给了签名身份 When 重建索引", () => {
 			// 换代即失效——同内容换 seq 签不出来
 			expect(verifyCanonical(sig.public_key, indexCanonical(kind, sig.seq + 1, text), sig.value)).toBe(false);
 		}
+	});
+});
+
+describe("rEG-CS4 yank（下线某版本：索引标记 + latest 跳过）", () => {
+	it("yank 后该版本带 yanked:true + yanked_at，且 latest 跳到下一个未下线版本", async () => {
+		const { root, cdn } = newProject();
+		const staging = mkdtempSync(join(tmpdir(), "ojm-stage-"));
+		await putPackage(cdn, staging, "demo-solution", "0.1.0");
+		await putPackage(cdn, staging, "demo-solution", "0.2.0");
+		await putPackage(cdn, staging, "demo-solution", "0.3.0");
+		await buildIndex({ projectRoot: root, id: KEY_ID, privateKeyPem: testPem() });
+
+		const r = markYanked(root, "demo-solution", "0.3.0", { by: "admin", reason: "安全漏洞" });
+		expect(r.created).toBe(true);
+		await buildIndex({ projectRoot: root, id: KEY_ID, privateKeyPem: testPem(), now: NOW });
+
+		const demo = readBundles(cdn).solutions!.find(s => s.name === "demo-solution")!;
+		// latest 跳过已下线版本
+		expect(demo.latest).toBe("0.2.0");
+		const v030 = (demo.versions as Array<Record<string, unknown>>).find(v => v.version === "0.3.0")!;
+		expect(v030.yanked).toBe(true);
+		expect(typeof v030.yanked_at).toBe("number");
+		const v020 = (demo.versions as Array<Record<string, unknown>>).find(v => v.version === "0.2.0")!;
+		expect(v020.yanked).toBeUndefined();
+	});
+
+	it("重复 yank 幂等（不重复写、created=false），且 latest 仍正确跳过", async () => {
+		const { root, cdn } = newProject();
+		const staging = mkdtempSync(join(tmpdir(), "ojm-stage-"));
+		await putPackage(cdn, staging, "demo-solution", "0.1.0");
+		await putPackage(cdn, staging, "demo-solution", "0.2.0");
+		await buildIndex({ projectRoot: root, id: KEY_ID, privateKeyPem: testPem() });
+
+		expect(markYanked(root, "demo-solution", "0.2.0", { by: "admin" }).created).toBe(true);
+		expect(markYanked(root, "demo-solution", "0.2.0", { by: "admin" }).created).toBe(false);
+		await buildIndex({ projectRoot: root, id: KEY_ID, privateKeyPem: testPem(), now: NOW });
+
+		const demo = readBundles(cdn).solutions!.find(s => s.name === "demo-solution")!;
+		expect(demo.latest).toBe("0.1.0");
+		// 账本文件未被改写（幂等）：仍是单条
+		expect(readYankLedger(root).size).toBe(1);
+	});
+
+	it("对 cdn 中不存在的版本 yank → 抛明确错误（不污染账本）", async () => {
+		const { root, cdn } = newProject();
+		const staging = mkdtempSync(join(tmpdir(), "ojm-stage-"));
+		await putPackage(cdn, staging, "demo-solution", "0.1.0");
+
+		let thrown: unknown;
+		try {
+			await markYanked(root, "demo-solution", "9.9.9", { by: "admin" });
+		}
+		catch (e) {
+			thrown = e;
+		}
+		expect(thrown).toBeInstanceOf(Error);
+		expect(String((thrown as Error).message)).toContain("无法下线");
+		expect(readYankLedger(root).size).toBe(0);
+	});
+
+	it("全部版本下线 → latest 降级取最高版（索引不空，避免 latest 缺失引发下游崩溃）", async () => {
+		const { root, cdn } = newProject();
+		const staging = mkdtempSync(join(tmpdir(), "ojm-stage-"));
+		await putPackage(cdn, staging, "demo-solution", "0.1.0");
+		await putPackage(cdn, staging, "demo-solution", "0.2.0");
+		await buildIndex({ projectRoot: root, id: KEY_ID, privateKeyPem: testPem() });
+
+		markYanked(root, "demo-solution", "0.1.0", { by: "admin" });
+		markYanked(root, "demo-solution", "0.2.0", { by: "admin" });
+		await buildIndex({ projectRoot: root, id: KEY_ID, privateKeyPem: testPem(), now: NOW });
+
+		const demo = readBundles(cdn).solutions!.find(s => s.name === "demo-solution")!;
+		expect(demo.latest).toBe("0.2.0");
+		for (const v of demo.versions as Array<Record<string, unknown>>)
+			expect(v.yanked).toBe(true);
 	});
 });

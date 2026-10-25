@@ -13,6 +13,7 @@ import { setupMarketUrl } from "./setup";
 import { trialCommand } from "./trial";
 import { verifyMarket } from "./verify";
 import { walkthroughCommand } from "./walkthrough";
+import { markYanked } from "./yank-ledger";
 
 interface Flags {
 	id?: string
@@ -26,9 +27,13 @@ interface Flags {
 	registryId?: string
 	rebuildIndex?: boolean
 	check?: boolean
+	/** yank：操作人（审计留痕；缺省 "local-cli"） */
+	by?: string
+	/** yank：下线原因（审计留痕；可选） */
+	reason?: string
 }
 
-const VALUE_FLAGS = new Set(["--id", "--key", "--fixture", "--real", "--url", "--user", "--pass", "--new-pass", "--registry-id"]);
+const VALUE_FLAGS = new Set(["--id", "--key", "--fixture", "--real", "--url", "--user", "--pass", "--new-pass", "--registry-id", "--by", "--reason"]);
 
 function parseFlags(argv: string[]): Flags {
 	const flags: Flags = {};
@@ -63,6 +68,10 @@ function parseFlags(argv: string[]): Flags {
 				flags.newPass = value;
 			else if (arg === "--registry-id")
 				flags.registryId = value;
+			else if (arg === "--by")
+				flags.by = value;
+			else if (arg === "--reason")
+				flags.reason = value;
 		}
 	}
 	return flags;
@@ -71,6 +80,24 @@ function parseFlags(argv: string[]): Flags {
 export async function marketCommand(sub: string, argv: string[]): Promise<void> {
 	const flags = parseFlags(argv);
 	switch (sub) {
+		case "yank": {
+			// 位置参数：<name>@<version>（非 -- 开头的首个 token）
+			const target = argv.find(a => !a.startsWith("--"));
+			if (target === undefined || !target.includes("@"))
+				throw new Error("[ojm] 用法：ojm market yank <name>@<version> [--by <操作人>] [--reason <原因>]");
+			const at = target.indexOf("@");
+			const name = target.slice(0, at);
+			const version = target.slice(at + 1);
+			const by = flags.by ?? "local-cli";
+			const r = markYanked(process.cwd(), name, version, { by, reason: flags.reason });
+			if (r.created)
+				console.log(`[ojm] 已下线 ${name}@${version}（操作人 ${by}${flags.reason !== undefined ? `，原因：${flags.reason}` : ""}）——重建索引以生效`);
+			else
+				console.log(`[ojm] ${name}@${version} 此前已下线，幂等跳过`);
+			// 重建索引让 yanked 标记进 bundles.yaml（REG-CS4：latest 跳过 + 安装侧精确版本拒装）
+			await buildIndex({ id: flags.id, key: flags.key, check: flags.check });
+			return;
+		}
 		case "publish": {
 			await publishPackage({
 				fixture: flags.fixture,
@@ -115,6 +142,6 @@ export async function marketCommand(sub: string, argv: string[]): Promise<void> 
 			return;
 		}
 		default:
-			throw new Error(`[ojm] 未知子命令：ojm market ${sub}\n可用：setup / publish / build-index`);
+			throw new Error(`[ojm] 未知子命令：ojm market ${sub}\n可用：setup / publish / yank / build-index`);
 	}
 }
