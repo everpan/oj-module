@@ -7,6 +7,14 @@
 
 ## [Unreleased]
 
+## [0.2.31] - 2026-10-25
+
+双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步升 **0.2.31**。
+
+### Fixed
+
+- **`ojm api --check` 对参数路由双向误报（`_id_` 目录段没参数化）**：契约 route 用 matchit 语法写 `{id}`，磁盘侧写 `_id_` 目录——同一条路由的两种写法（api-manual §`_name_` 目录即路径参数）。但 handler AST 扫描把目录名原样拼进 `full`，精确对账（方法 + 全路径）永远命中不了，模糊兜底又因静态前缀不同接不住，于是**同一条已实现的端点被同时报成「契约未实现」（warn）和「handler 未登记」（error）**，两条违规互相矛盾且都指向用户去改本来正确的代码。现按 oj 内省同谓词把目录段参数化（整段 `_name_`、内部名非空且不以 `_` 开头/结尾、不含 `{}`；`__x__`/`___`/`_a{b}_`/`_shared` 保持字面），模块段同样适用（`_aa_/bb` → `{aa}/bb`），`.route` 尾巴不重复转换。`dir` 字段仍保留磁盘事实，只有 `full`/`handlerAbs` 是 wire 路径。
+
 ### Changed
 
 - **REG-CS1 索引签名强制 + 同代校验（breaking，需重签索引）**：`bundles.yaml` 新增顶层 `seq`（代次，每次重建 +1，内容未变沿用旧代次以保持重建幂等），索引规范串由 `index:<kind>:<sha256>` 改为 `index:<kind>:<seq>:<sha256>`，`.sig` 同步增加 `seq` 字段。索引缺 `.sig`（或为空、不可读）由「运行期容忍」改为**拒载**：`ojm market verify` 该检查项打叉并报 `index_sig_missing`（含两步补签提示），站点市场索引一律 502、安装被拒。新增跨文件同代校验：总目录（`bundles.yaml`）的 `seq` 是代次真源，聚合清单的签名代次与之不等即拒（`index_generation_mismatch`，文案指向「源正在重建索引，请稍后重试」，与安全事件的「被篡改」分开）。**升级影响**：已发布索引须用当前版本 `ojm market build-index` 重建重签，旧签名因规范串变更一律验不过。
