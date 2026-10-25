@@ -24,6 +24,7 @@ import { EXIT_FAILURE, EXIT_OK, EXIT_USAGE, exitCodeOf, UsageError } from "../ex
 import { defaultTestKey } from "../lifecycle/__tests__/helpers";
 import { describeCredential, normalizeRegistryUrl, resolveRegistryCredential, resolveRegistrySource, resolveRegistrySourceOptional } from "../registry-source";
 import { uninstallCommand } from "../uninstall";
+import { parseViewTarget, viewCommand } from "../view";
 
 const CATALOG = `shards:
   "1": 1
@@ -454,6 +455,68 @@ describe("g Q7：uninstall 在联网前就拒绝 --registry", () => {
 		await expect(uninstallCommand("demo", { url: "http://x", user: "u", pass: "p", registry: REGISTRY, fetchFn: fetchFn as unknown as typeof fetch }))
 			.rejects
 			.toThrow(/不涉及仓库/);
+		expect(fetchFn).not.toHaveBeenCalled();
+	});
+});
+
+describe("h REG-R5：ojm view 同时显示目录键与物理名", () => {
+	const PKG = { scope: "acme", name: "demo", slug: "acme-demo", directoryKey: "@acme/demo", createdAt: 1_700_000_000_000 };
+
+	/** 只实现 fetch 用到的三件事：ok/status/text（unwrapEnvelope 的口径） */
+	function jsonResponse(body: unknown): { ok: boolean, status: number, text: () => Promise<string> } {
+		return { ok: true, status: 200, text: async () => JSON.stringify(body) };
+	}
+
+	function fakeSite(): { fetchFn: ReturnType<typeof vi.fn>, calls: Array<{ url: string, init?: RequestInit }> } {
+		const calls: Array<{ url: string, init?: RequestInit }> = [];
+		const fetchFn = vi.fn(async (url: string, init?: RequestInit) => {
+			calls.push({ url, init });
+			if (String(url).endsWith("/api/auth/login"))
+				return jsonResponse({ code: 0, data: { access_token: "site-token" } });
+			return jsonResponse({ code: 0, data: PKG });
+		});
+		return { fetchFn, calls };
+	}
+
+	it("只收目录键：裸 slug 不反推（换算不可逆）", () => {
+		expect(parseViewTarget("@acme/demo")).toEqual({ scope: "acme", name: "demo" });
+		expect(parseViewTarget("acme/demo")).toEqual({ scope: "acme", name: "demo" });
+		for (const bad of ["demo", "acme-x-demo", "@acme", "@acme/", "@Acme/demo", "@acme/de_mo"]) {
+			expect(() => parseViewTarget(bad), bad).toThrow(UsageError);
+		}
+	});
+
+	it("登录后按目录键取一条，两个名字都打印（物理名不在客户端重算）", async () => {
+		const { fetchFn, calls } = fakeSite();
+		const data = await viewCommand("@acme/demo", { url: "http://site.test", user: "u", pass: "p", fetchFn: fetchFn as unknown as typeof fetch });
+		expect(data).toEqual(PKG);
+		expect(calls).toHaveLength(2);
+		expect(calls[0]!.url).toBe("http://site.test/api/auth/login");
+		expect(calls[1]!.url).toBe("http://site.test/api/oj-registry/packages/acme/demo");
+		expect((calls[1]!.init?.headers as Record<string, string>).authorization).toBe("Bearer site-token");
+
+		const text = out.join("\n");
+		expect(text).toContain("@acme/demo");
+		expect(text).toContain("acme-demo");
+		expect(text).toContain("2023-11-14"); // createdAt=1700000000000 → UTC 格式化留痕
+	});
+
+	it("--json：stdout 只有一行信封，人话改走 stderr", async () => {
+		const { fetchFn } = fakeSite();
+		await viewCommand("@acme/demo", { url: "http://site.test", user: "u", pass: "p", json: true, fetchFn: fetchFn as unknown as typeof fetch });
+		const env = stdoutEnvelope({ out, err, exitCode: undefined });
+		expect(env.command).toBe("view");
+		expect(Object.keys(env.data!).sort()).toEqual(["createdAt", "directoryKey", "name", "scope", "site", "slug"]);
+		expect(env.data!).toMatchObject({ directoryKey: "@acme/demo", slug: "acme-demo", site: "http://site.test" });
+		expect(err.join("\n")).toContain("物理名");
+		expect(err.join("\n")).toContain("acme-demo");
+	});
+
+	it("缺站点凭据 → 用法错误（exit 2 语义），一次 fetch 都不发", async () => {
+		const { fetchFn } = fakeSite();
+		await expect(viewCommand("@acme/demo", { user: "", pass: "", fetchFn: fetchFn as unknown as typeof fetch }))
+			.rejects
+			.toBeInstanceOf(UsageError);
 		expect(fetchFn).not.toHaveBeenCalled();
 	});
 });

@@ -7,6 +7,14 @@
 
 ## [Unreleased]
 
+## [0.2.34] - 2026-10-25
+
+双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步升 **0.2.34**。
+
+### Added
+
+- **`ojm view @<scope>/<name>`（REG-R5 的可查面）**：一次输出**目录键**与**物理名**两个名字——`@acme/demo` 是仓库门牌，`acme-demo` 才是磁盘目录/路由前缀/tgz 文件名。只收目录键：物理名是单向换算（`acme-x-demo` 可能来自 `@acme-x/demo`，也可能来自 `@acme/x-demo`），裸 slug 反推会给出有歧义的答案，所以直接拒绝（exit 2）而不是猜。站点寻址沿用 `--url/--user/--pass`（或 `OJM_URL/OJM_USER/OJM_PASS`），缺凭据退 2；`--json` 走统一单信封，人话改道 stderr。
+
 ## [0.2.33] - 2026-10-25
 
 双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步升 **0.2.33**。

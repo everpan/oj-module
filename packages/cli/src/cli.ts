@@ -288,6 +288,11 @@ function makeAction(def: HelpEntry, projectRoot: string, lang: Lang, exit: (code
 				const { uninstallCommand } = await import("./uninstall");
 				await uninstallCommand(name ?? "", { url: opts.url, user: opts.user, pass: opts.pass, registry: opts.registry });
 			};
+		case "view":
+			return async (target: string | undefined, opts: SiteOpts & { json?: boolean } = {}) => {
+				const { viewCommand } = await import("./view");
+				await viewCommand(target, { url: opts.url, user: opts.user, pass: opts.pass, json: opts.json });
+			};
 		case "trust":
 			return async (sub: string | undefined, keyId: string | undefined, pub: string | undefined, opts: SiteOpts & { task?: string } = {}) => {
 				const { trustCommand } = await import("./trust");

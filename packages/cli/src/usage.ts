@@ -275,6 +275,20 @@ export const HELP_GROUPS: HelpGroup[] = [
 				},
 			},
 			{
+				key: "view",
+				name: "view [target]",
+				zh: "查看包映射（目录键 ↔ 物理名）",
+				en: "Show a package mapping (directory key ↔ physical name)",
+				options: [
+					...SITE_OPTIONS,
+					{ raw: "--json", zh: "stdout 只放一份 JSON 信封（人话改走 stderr）", en: "Emit a single JSON envelope on stdout (human lines move to stderr)" },
+				],
+				detail: {
+					zh: "ojm view @<scope>/<name> [--url <u>] [--user <u>] [--pass <p>] [--json]\n  同时显示目录键（@acme/demo）与物理名（acme-demo）：前者是仓库门牌，后者才是磁盘/路由/文件名\n  只收目录键——物理名是单向换算（acme-x-demo 可能来自 @acme-x/demo 或 @acme/x-demo），裸 slug 无法反推\n  站点寻址同上；缺凭据退出 2",
+					en: "ojm view @<scope>/<name> [--url <u>] [--user <u>] [--pass <p>] [--json]\n  Print both the directory key (@acme/demo) and the physical name (acme-demo): the former is the registry door plate, the latter is the on-disk/route/file name\n  Directory keys only — the mapping is one-way (acme-x-demo may come from @acme-x/demo or @acme/x-demo), so a bare slug cannot be reversed\n  Site addressing: same as above; missing credentials exit 2",
+				},
+			},
+			{
 				key: "trust",
 				name: "trust [sub] [keyId] [pub]",
 				zh: "发布方信任库管理（TOFU 确认）",
