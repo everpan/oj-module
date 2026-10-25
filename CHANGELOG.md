@@ -7,6 +7,24 @@
 
 ## [Unreleased]
 
+### Added
+
+- **`ojm registry export`（REG-R11 离线包的产出端）**：把 registry 读面
+  （`/api/oj-registry/cdn/…`）上的索引与包体拉成一个 `ojm registry import` 能直接吃的离线包目录：
+  `<out>/source.json` + `<out>/registry/{catalog.yaml(+.sig), shards/<n>.yaml(+.sig),
+  revocations.yaml(+.sig), <slug>-<version>.tgz(+.sig)}`。
+  此前离线包只能手工拼——public 站点能整拷 `<cdn>/registry/`，**private 站点（REG-R8 的 private 载体）
+  根本没有那个静态目录，等于产不出离线包**。
+  导出时当场判三条自洽：正文与侧车对不上（`index_sig_mismatch`）、分片代数 ≠ 总目录钉值
+  （`index_generation_mismatch`，源正在重建索引）、包体 sha256 或长度 ≠ 索引声明
+  （`package_sha_mismatch`）——把「拼错的离线包」挡在导出端，而不是等运维救站时才发现导不进去。
+  **只验自洽不验归属**：公钥是否属于本站 active 索引 key 由 `import` 用本地信任库判；导出侧拿源
+  给的钥匙验源给的签名等于没验，所以本命令不产出 `index-keys.json`、也不写本地信任库。
+  落盘是「先全下到隐藏暂存目录、最后整体换位」：中途失败不会在 `<out>/registry/` 留半份包。
+  `--dry-run` 只验索引层、不下载包体、零落盘。
+  另外把侧车校验抽成 `registry-sidecar.ts`，`export` 与 `import` 共用同一判定——两边各写一份，
+  一旦口径漂移就会出「导出的包自己导不进去」这类最难查的故障。
+
 ## [0.3.2] - 2026-10-26
 
 双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步升 **0.3.2**。

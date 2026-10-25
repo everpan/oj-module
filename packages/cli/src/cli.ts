@@ -299,7 +299,7 @@ function makeAction(def: HelpEntry, projectRoot: string, lang: Lang, exit: (code
 				await trustCommand(sub ?? "", [keyId, pub].filter((v): v is string => v !== undefined), { siteUrl: opts.siteUrl, user: opts.user, pass: opts.pass, task: opts.task });
 			};
 		case "registry":
-			return async (sub: string | undefined, file: string | undefined, opts: { id?: string, key?: string, out?: string, site?: string, keys?: string, registry?: string, dryRun?: boolean, json?: boolean } = {}) => {
+			return async (sub: string | undefined, file: string | undefined, opts: { id?: string, key?: string, out?: string, site?: string, siteUrl?: string, keys?: string, registry?: string, dryRun?: boolean, json?: boolean } = {}) => {
 				if (!sub) {
 					console.log(groupHelpText("registry", lang));
 					return;
@@ -379,7 +379,50 @@ function makeAction(def: HelpEntry, projectRoot: string, lang: Lang, exit: (code
 					}, { json: !!opts.json });
 					return;
 				}
-				throw new UsageError(`[ojm] 未知 registry 子命令：${sub}（支持 sign / import）`);
+				if (sub === "export") {
+					const { registryExportCommand, RegistryExportError } = await import("./registry-export");
+					let result: Awaited<ReturnType<typeof registryExportCommand>>;
+					try {
+						result = await registryExportCommand({
+							siteUrl: opts.siteUrl ?? "",
+							out: opts.out,
+							dryRun: !!opts.dryRun,
+							json: !!opts.json,
+							cwd: projectRoot,
+						});
+					}
+					catch (error) {
+						if (error instanceof RegistryExportError) {
+							emit({ command: "registry export", code: error.code, message: error.message, data: null, human: [`[ojm] ${error.message}`] }, { json: !!opts.json });
+							return exit(EXIT_FAILURE);
+						}
+						throw error;
+					}
+					const human = [
+						`[ojm] ${result.dryRun ? "dry-run：索引已校验通过（包体未下载）" : "离线包已导出"}：${result.packages} 个包体、${result.shards.length} 个分片、第 ${result.catalogSeq} 代索引、吊销清单第 ${result.revocationSeq} 代 → ${result.target}`,
+						`[ojm] 恢复到站点：ojm registry import ${path.relative(projectRoot, result.outDir) || result.outDir} --site <站点数据根> --keys <active索引key.json>`,
+					];
+					emit({
+						command: "registry export",
+						code: "ok",
+						data: {
+							siteUrl: result.siteUrl,
+							out: path.relative(projectRoot, result.outDir) || ".",
+							target: path.relative(projectRoot, result.target) || "registry",
+							catalogSeq: result.catalogSeq,
+							revocationSeq: result.revocationSeq,
+							shards: result.shards,
+							packages: result.packages,
+							verified: result.verified,
+							bytes: result.bytes,
+							written: result.written,
+							dryRun: result.dryRun,
+						},
+						human,
+					}, { json: !!opts.json });
+					return;
+				}
+				throw new UsageError(`[ojm] 未知 registry 子命令：${sub}（支持 sign / import / export）`);
 			};
 		case "market":
 			return async (sub: string | undefined) => {

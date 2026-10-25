@@ -26,8 +26,8 @@ import path from "node:path";
 import process from "node:process";
 
 import { UsageError } from "./exit-codes";
-import { verifyCanonical } from "./lifecycle/sign";
 import { indexCanonical, revocationCanonical, shardPinsOf } from "./publish";
+import { inspectSidecar } from "./registry-sidecar";
 
 /** registry 静态载体在站点 /cdn 下的子目录（与 oj-registry 的 REGISTRY_SUBDIR 逐字一致） */
 export const REGISTRY_SUBDIR = "registry";
@@ -89,8 +89,6 @@ export interface RegistryImportResult {
 	verified: number
 }
 
-const HEX_RE = /^[0-9a-f]+$/i;
-
 function sha256Hex(text: string): string {
 	return createHash("sha256").update(Buffer.from(text, "utf8")).digest("hex");
 }
@@ -99,15 +97,6 @@ function asRecord(v: unknown, what: string): Record<string, unknown> {
 	if (v === null || typeof v !== "object" || Array.isArray(v))
 		throw new UsageError(`[ojm] ${what} 必须是对象`);
 	return v as Record<string, unknown>;
-}
-
-interface SigSidecar {
-	alg?: unknown
-	key_id?: unknown
-	public_key?: unknown
-	value?: unknown
-	canon?: unknown
-	seq?: unknown
 }
 
 function readText(file: string): string | null {
@@ -156,48 +145,20 @@ function loadActiveKeys(opts: RegistryImportOptions, origin: string, home: strin
 	return set;
 }
 
-/** 解析 .sig 六字段；任一字段形态不对 → 报对应错误 */
-function parseSig(sigText: string, what: string): SigSidecar {
-	let doc: unknown;
-	try {
-		doc = JSON.parse(sigText);
-	}
-	catch {
-		throw new UsageError(`[ojm] ${what} 的 .sig 不是合法 JSON`);
-	}
-	return asRecord(doc, `${what} 的 .sig`);
-}
-
-interface VerifyOutcome {
-	ok: boolean
-	code?: string
-	message?: string
-}
+type VerifyOutcome = { ok: true, seq: number } | { ok: false, code: string, message: string };
 
 /**
  * 验一条索引/吊销正文：alg 必须 Ed25519、pubkey 在 active 集合、Ed25519 验签通过。
  * `canonFn` 按种类拼规范串（index:<kind>:<seq>:<sha> 或 revocations:<seq>:<sha>）。
+ * 判定逻辑在 `registry-sidecar`（与 `ojm registry export` 共用，避免「导出的包自己导不进去」）。
  */
-function verifyOne(opts: RegistryImportOptions, activeKeys: Set<string>, rel: string, body: string, sigText: string, canonFn: (seq: number, text: string) => string): VerifyOutcome {
+function verifyOne(activeKeys: Set<string>, rel: string, body: string, sigText: string, canonFn: (seq: number, text: string) => string): VerifyOutcome {
 	if (sigText.trim() === "")
 		return { ok: false, code: "index_sig_missing", message: `${rel} 缺签名侧车（${rel}.sig）——完整性无保障，已拒载` };
-	const sig = parseSig(sigText, rel);
-	const alg = String(sig.alg ?? "");
-	if (alg !== "Ed25519")
-		return { ok: false, code: "index_sig_mismatch", message: `${rel} 签名算法只支持 Ed25519（收到「${alg}」）` };
-	const pk = String(sig.public_key ?? "").toLowerCase();
-	if (!HEX_RE.test(pk) || !activeKeys.has(pk))
-		return { ok: false, code: "index_key_mismatch", message: `${rel} 的签名公钥不在站点已登记的 active 索引 key 集合里——无法离线确认它属于 registry，已拒载` };
-	const seq = Number(sig.seq);
-	if (!Number.isInteger(seq) || seq < 0)
-		return { ok: false, code: "index_sig_mismatch", message: `${rel} 签名 seq 不合法（应为非负整数）` };
-	const value = String(sig.value ?? "");
-	if (!/^[A-Z0-9+/]+={0,2}$/i.test(value))
-		return { ok: false, code: "index_sig_mismatch", message: `${rel} 签名 value 不是标准 base64` };
-	const canon = canonFn(seq, body);
-	if (!verifyCanonical(pk, canon, value))
-		return { ok: false, code: "index_sig_mismatch", message: `${rel} 验签失败——正文与签名不匹配（或被篡改），已拒载` };
-	return { ok: true };
+	const verdict = inspectSidecar({ rel, body, sigText, canon: canonFn, isTrusted: pk => activeKeys.has(pk) });
+	return verdict.ok && verdict.seq !== null
+		? { ok: true, seq: verdict.seq }
+		: { ok: false, code: verdict.code ?? "index_sig_mismatch", message: verdict.message ?? `${rel} 验签不过` };
 }
 
 /** 本地吊销 seq 账本（~/.ojm/registry/<origin>/revocation-seq.json） */
@@ -336,7 +297,7 @@ export function registryImportCommand(opts: RegistryImportOptions): RegistryImpo
 	const catalogSig = readText(path.join(regDir, "catalog.yaml.sig"));
 	if (catalogSig === null)
 		throw new RegistryImportError("index_sig_missing", "离线包总目录缺签名侧车 catalog.yaml.sig");
-	const catalogVerify = verifyOne(opts, activeKeys, "catalog.yaml", catalogBody, catalogSig, (seq, t) => indexCanonical("catalog", seq, t));
+	const catalogVerify = verifyOne(activeKeys, "catalog.yaml", catalogBody, catalogSig, (seq, t) => indexCanonical("catalog", seq, t));
 	if (!catalogVerify.ok)
 		throw new RegistryImportError(catalogVerify.code!, catalogVerify.message!);
 	verified++;
@@ -358,10 +319,10 @@ export function registryImportCommand(opts: RegistryImportOptions): RegistryImpo
 		const shardSig = readText(path.join(regDir, "shards", `${no}.yaml.sig`));
 		if (shardSig === null)
 			throw new RegistryImportError("index_sig_missing", `离线包分片 shards/${no}.yaml 缺签名侧车——完整性无保障，已拒载`);
-		const shardVerify = verifyOne(opts, activeKeys, `shards/${no}.yaml`, shardBody, shardSig, (seq, t) => indexCanonical("shard", seq, t));
+		const shardVerify = verifyOne(activeKeys, `shards/${no}.yaml`, shardBody, shardSig, (seq, t) => indexCanonical("shard", seq, t));
 		if (!shardVerify.ok)
 			throw new RegistryImportError(shardVerify.code!, shardVerify.message!);
-		const sigSeq = Number(parseSig(shardSig, `shards/${no}.yaml`).seq);
+		const sigSeq = shardVerify.seq;
 		if (sigSeq !== pins.get(no))
 			throw new RegistryImportError("index_generation_mismatch", `离线包分片 shards/${no}.yaml 签名是第 ${sigSeq} 代，总目录钉的是第 ${pins.get(no)} 代——源正在重建索引，已拒载`);
 		verified++;
@@ -375,10 +336,10 @@ export function registryImportCommand(opts: RegistryImportOptions): RegistryImpo
 		const revSig = readText(path.join(regDir, "revocations.yaml.sig"));
 		if (revSig === null)
 			throw new RegistryImportError("revocations_sig_missing", "离线包吊销清单缺签名侧车 revocations.yaml.sig——空清单也必须签，已拒载");
-		const revVerify = verifyOne(opts, activeKeys, "revocations.yaml", revBody, revSig, (seq, t) => revocationCanonical(seq, t));
+		const revVerify = verifyOne(activeKeys, "revocations.yaml", revBody, revSig, (seq, t) => revocationCanonical(seq, t));
 		if (!revVerify.ok)
 			throw new RegistryImportError(revVerify.code!, revVerify.message!);
-		revocationSeq = Number(parseSig(revSig, "revocations.yaml").seq);
+		revocationSeq = revVerify.seq;
 		verified++;
 		// ② seq 护栏（本地账本）
 		const ledger = readLedger(origin, home);
