@@ -7,6 +7,20 @@
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-25
+
+双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步升 **0.3.0**（0.x 下的破坏性变更走次版本号）。
+
+### Changed
+
+- **破坏性：站点寻址 `--url` 硬切改名 `--site-url`，环境变量 `OJM_URL` 硬切改名 `OJM_SITE_URL`（Q11）**。
+  牵动 `install` / `enable` / `disable` / `uninstall` / `view` / `trust` / `market setup` 与
+  `ojm config ls --show-origin`（`site.url` 的来源标注）。**不加别名、不加兜底**：旧写法按未知选项
+  报错退出，迁移只有一条路——把 `--url` 写成 `--site-url`、把 `OJM_URL` 写成 `OJM_SITE_URL`。
+  改名动机是给 `ojm registry import --site <站点数据根>`（REG-R11，落盘目标是一个**目录**）让出
+  `--site` 这个名字：同一个 `--site` 在两个命令里一个指 URL、一个指目录，CLI 的语义就废了。
+  `--user` / `--pass` / `OJM_USER` / `OJM_PASS` 与缺省地址 `http://127.0.0.1:9778` 均不变。
+
 ## [0.2.36] - 2026-10-25
 
 双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步升 **0.2.36**。
