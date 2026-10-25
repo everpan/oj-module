@@ -197,6 +197,27 @@ export const HELP_GROUPS: HelpGroup[] = [
 					en: "ojm vendor [tag] [--force]\n  tag defaults to latest, e.g. v0.1.13",
 				},
 			},
+			{
+				key: "config",
+				name: "config [sub]",
+				zh: "查看生效配置（仓库源 / 凭据来源 / 站点定位；不回显密钥）",
+				en: "Show effective config (registry source / credential origin / site addressing; never echoes secrets)",
+				options: [
+					{ raw: "--show-origin", zh: "每行附「该值从哪来」（flag / .ojmrc / 用户配置 / 环境变量）", en: "Append where each value came from (flag / .ojmrc / user config / env)" },
+					{ raw: "--json", zh: "stdout 只放一份 JSON 信封（人话改走 stderr）", en: "Emit a single JSON envelope on stdout (human lines move to stderr)" },
+				],
+				subs: {
+					ls: {
+						short: { zh: "列出生效配置（`ls` 可省略）", en: "List effective config (`ls` may be omitted)" },
+						zh: "ojm config ls [--show-origin] [--json]\n  列出仓库源 / 凭据来源 / 站点定位。未配置不是错误（退出码 0）：诊断命令的职责就是把「这里空着」显示出来",
+						en: "ojm config ls [--show-origin] [--json]\n  List the registry source / credential origin / site addressing. Unset is not an error (exit 0): a diagnostics command exists precisely to show that something is empty",
+					},
+				},
+				detail: {
+					zh: "ojm config ls [--show-origin] [--json]\n  源解析顺序：--registry > 工程根 .ojmrc > ~/.ojm/config.json；本 CLI 不内置缺省源\n  凭据：OJM_REGISTRY_TOKEN（CI 首选）> ~/.ojm/config.json 的 registries[<origin>].token\n  只报「从哪来」，token 与密码一个字都不打印",
+					en: "ojm config ls [--show-origin] [--json]\n  Source order: --registry > project .ojmrc > ~/.ojm/config.json; there is no built-in default\n  Credential: OJM_REGISTRY_TOKEN (preferred in CI) > registries[<origin>].token in ~/.ojm/config.json\n  Only the origin is reported — tokens and passwords are never printed",
+				},
+			},
 		],
 	},
 	{
@@ -243,10 +264,14 @@ export const HELP_GROUPS: HelpGroup[] = [
 				name: "uninstall [name]",
 				zh: "卸载已装方案（四处同删 + 权限级联清理）",
 				en: "Uninstall a solution (four synchronized removals + permission cascade cleanup)",
-				options: SITE_OPTIONS,
+				options: [
+					...SITE_OPTIONS,
+					// Q7：注册出来只为拒绝——给了即 exit 2，并说明「卸载不涉及仓库」
+					{ raw: "--registry <url>", zh: "（不支持）卸载不涉及仓库：本命令只认站点寻址，给了即报错退出 2", en: "(unsupported) Uninstall does not involve a registry: this command only takes site addressing; passing it exits 2" },
+				],
 				detail: {
-					zh: "ojm uninstall <name> [--url <u>] [--user <u>] [--pass <p>]\n  四处同删 + 权限级联清理 + 版本目录移除；站点至少保留一个已锁模块\n  站点寻址同上",
-					en: "ojm uninstall <name> [--url <u>] [--user <u>] [--pass <p>]\n  Four synchronized removals + permission cascade cleanup + version directory removal; a site keeps at least one locked module\n  Site addressing: same as above",
+					zh: "ojm uninstall <name> [--url <u>] [--user <u>] [--pass <p>]\n  四处同删 + 权限级联清理 + 版本目录移除；站点至少保留一个已锁模块\n  站点寻址同上；**卸载不涉及仓库**——包已经在站点上，来源不影响删除范围，故不接 --registry",
+					en: "ojm uninstall <name> [--url <u>] [--user <u>] [--pass <p>]\n  Four synchronized removals + permission cascade cleanup + version directory removal; a site keeps at least one locked module\n  Site addressing: same as above; **uninstall does not involve a registry** — the package is already on the site, so its origin has no effect on the removal scope, hence no --registry",
 				},
 			},
 			{
@@ -331,10 +356,13 @@ export const HELP_GROUPS: HelpGroup[] = [
 					{ raw: "--id <id>", zh: "发布方 key id", en: "Publisher key id" },
 					{ raw: "--key <pem>", zh: "指定私钥 pem", en: "Explicit private key pem" },
 					{ raw: "--check", zh: "离线自检索引签名（catalog + 各分片）", en: "Offline self-check of index signatures (catalog + each shard)" },
+					{ raw: "--registry <url>", zh: "仓库源（覆盖 .ojmrc / 用户配置；本 CLI 无内置缺省源）", en: "Registry URL (overrides .ojmrc / user config; no built-in default)" },
+					{ raw: "--dry-run", zh: "只算不写：打印本次会写哪些文件，盘上零改动", en: "Compute only: print which files would be written, change nothing on disk" },
+					{ raw: "--json", zh: "stdout 只放一份 JSON 信封（人话改走 stderr）", en: "Emit a single JSON envelope on stdout (human lines move to stderr)" },
 				],
 				detail: {
-					zh: "ojm publish <dir> [--id <key>] [--key <pem>] [--check]\n  重算 <dir>/catalog.yaml + shards/<n>.yaml（确定性 stringify，消弭格式漂移）→ 各产出 detached 侧车签名 → 写回 <dir>",
-					en: "ojm publish <dir> [--id <key>] [--key <pem>] [--check]\n  Recompute <dir>/catalog.yaml + shards/<n>.yaml (deterministic stringify to eliminate format drift) → produce a detached sidecar signature for each → write back to <dir>",
+					zh: "ojm publish <dir> [--id <key>] [--key <pem>] [--check] [--registry <url>] [--dry-run] [--json]\n  重算 <dir>/catalog.yaml + shards/<n>.yaml（确定性 stringify，消弭格式漂移）→ 各产出 detached 侧车签名 → 写回 <dir>\n  未配仓库源时只写本地目录（不上传），并明说这一点；--dry-run 全程零写入\n  退出码：0 成功 / 1 业务失败（签名不符、私钥缺失、--check 没过）/ 2 用法错误",
+					en: "ojm publish <dir> [--id <key>] [--key <pem>] [--check] [--registry <url>] [--dry-run] [--json]\n  Recompute <dir>/catalog.yaml + shards/<n>.yaml (deterministic stringify to eliminate format drift) → produce a detached sidecar signature for each → write back to <dir>\n  With no registry source it only writes the local directory (no upload) and says so; --dry-run writes nothing at all\n  Exit codes: 0 success / 1 business failure (signature mismatch, missing key, --check failed) / 2 usage error",
 				},
 			},
 		],
@@ -476,6 +504,10 @@ export function topHelpSections(lang: Lang): HelpSection[] {
 			body: [
 				`ojm --version | -V        ${lang === "zh-CN" ? "显示 cli 包版本" : "Show the cli package version"}`,
 				`ojm <cmd> --help          ${lang === "zh-CN" ? "单命令详解（如 ojm market setup --help）" : "Per-command details (e.g. ojm market setup --help)"}`,
+				`--json                    ${lang === "zh-CN" ? "机器通道：stdout 只放一份 JSON 信封，人话改走 stderr" : "Machine channel: one JSON envelope on stdout, human lines move to stderr"}`,
+				lang === "zh-CN"
+					? "退出码                    0 成功 / 1 业务失败 / 2 用法错误（改脚本即可）"
+					: "Exit codes                0 success / 1 business failure / 2 usage error (fix the command line)",
 			].join("\n"),
 		},
 	];

@@ -116,22 +116,22 @@ describe("反常识行为修正（20261023-0937）", () => {
 		expect(isKnownCommand("nope")).toBe(false);
 	});
 
-	it("unknownCommandResult：help 形态报未知命令（双语），code 1", async () => {
+	it("unknownCommandResult：help 形态报未知命令（双语），code 2（用法错误）", async () => {
 		const { unknownCommandResult } = await import("../cli");
 		const zh = unknownCommandResult("nope", "zh-CN", true);
 		expect(zh.text).toContain("[ojm] 未知命令：nope");
-		expect(zh.code).toBe(1);
+		expect(zh.code).toBe(2);
 		const en = unknownCommandResult("nope", "en-US", true);
 		expect(en.text).toContain("[ojm] Unknown command: nope");
-		expect(en.code).toBe(1);
+		expect(en.code).toBe(2);
 	});
 
-	it("unknownCommandResult：非 help 形态给顶层帮助，code 1", async () => {
+	it("unknownCommandResult：非 help 形态给顶层帮助，code 2（用法错误）", async () => {
 		const { unknownCommandResult } = await import("../cli");
 		const { usageText } = await import("../usage");
 		const r = unknownCommandResult("nope", "zh-CN", false);
 		expect(r.text).toBe(usageText("zh-CN"));
-		expect(r.code).toBe(1);
+		expect(r.code).toBe(2);
 	});
 
 	it("localizeCacError：未知选项本地化（双语）+ 指引", async () => {
@@ -152,28 +152,28 @@ describe("反常识行为修正（20261023-0937）", () => {
 });
 
 describe("校验搬入 action 后行为保持", () => {
-	it("new 多余位置参数显式拒绝（F8）", async () => {
+	it("new 多余位置参数显式拒绝（F8），exit 2", async () => {
 		const r = await run(["new", "crm", "erp"], "zh-CN", tmp);
 		expect(r.out).toContain("只接受一个方案名");
-		expect(r.exitCode).toBe(1);
+		expect(r.exitCode).toBe(2);
 	});
 
-	it("new --layout 非 container|none 报错", async () => {
+	it("new --layout 非 container|none 报错，exit 2", async () => {
 		const r = await run(["new", "demo", "--layout", "bogus"], "zh-CN", tmp);
 		expect(r.out).toContain("--layout 只接受 container | none");
-		expect(r.exitCode).toBe(1);
+		expect(r.exitCode).toBe(2);
 	});
 
-	it("new 缺 name 打印用法并 exit 1", async () => {
+	it("new 缺 name 打印用法并 exit 2", async () => {
 		const r = await run(["new"], "zh-CN", tmp);
 		expect(r.out).toContain("ojm new <name>");
-		expect(r.exitCode).toBe(1);
+		expect(r.exitCode).toBe(2);
 	});
 
-	it("vendor 非法 tag 报错", async () => {
+	it("vendor 非法 tag 报错（exit 2：改命令行即可）", async () => {
 		const r = await run(["vendor", "notatag"], "zh-CN", tmp);
 		expect(r.out).toContain("非法版本号");
-		expect(r.exitCode).toBe(1);
+		expect(r.exitCode).toBe(2);
 	});
 
 	it("vendor 0.1.12 规范化补 v 前缀后传入 vendorCommand", async () => {
@@ -188,7 +188,7 @@ describe("校验搬入 action 后行为保持", () => {
 });
 
 describe("参数映射", () => {
-	it("merge <out> <inputs...> variadic 映射（缺文件报错提及输入名）", async () => {
+	it("merge <out> <inputs...> variadic 映射（缺文件报错提及输入名，exit 1：业务失败）", async () => {
 		const r = await run(["merge", "out.json", "in1.json", "in2.json"], "zh-CN", tmp);
 		expect(r.out).toContain("in1.json");
 		expect(r.exitCode).toBe(1);

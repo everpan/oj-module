@@ -8,9 +8,15 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import cac from "cac";
+import { emit, failEnvelope, OK_CODE } from "./cli-output";
+import { EXIT_FAILURE, EXIT_USAGE, exitCodeOf, UsageError } from "./exit-codes";
 import { findCommand, groupHelpText, HELP_GROUPS, resolveLang, topHelpSections, usageText } from "./usage";
 
-export interface CliDeps { exit?: (code: number) => never }
+export interface CliDeps {
+	exit?: (code: number) => never
+	/** 本次调用的参数（`--json` 失败信封归因用）；缺省 process.argv.slice(2) */
+	argv?: string[]
+}
 
 /** `ojm help [cmd [sub]]` → `<cmd> [sub] --help`：词形归一，交给 cac 的 help 机制。 */
 export function rewriteHelpArgv(argv: string[]): string[] {
@@ -23,7 +29,8 @@ export function rewriteHelpArgv(argv: string[]): string[] {
 
 /**
  * 未知命令兜底结果（index.ts 打印 + 退出用）。
- * help 形态（ojm nope --help / ojm help nope）：报「未知命令」exit 1——打帮助退 0 会掩盖拼写错误。
+ * help 形态（ojm nope --help / ojm help nope）：报「未知命令」exit 2——拼错属于**用法错误**，
+ * 与业务失败（1）分开，CI 才不会把「脚本写错」当成「发版被拒」。
  */
 export function unknownCommandResult(cmd: string, lang: Lang, helpRequested: boolean): { text: string, code: number } {
 	if (helpRequested) {
@@ -31,30 +38,54 @@ export function unknownCommandResult(cmd: string, lang: Lang, helpRequested: boo
 			text: lang === "zh-CN"
 				? `[ojm] 未知命令：${cmd}（ojm --help 查看全部命令）`
 				: `[ojm] Unknown command: ${cmd} (run ojm --help for the full command list)`,
-			code: 1,
+			code: EXIT_USAGE,
 		};
 	}
-	return { text: usageText(lang), code: 1 };
+	return { text: usageText(lang), code: EXIT_USAGE };
 }
 
-/** cac 的内置报错是英文裸消息（Unknown option）——按语言重写成人话，带修复指引。 */
+/**
+ * cac 的内置报错是英文裸消息（Unknown option / missing required arg）——按语言重写成人话，带修复指引。
+ * 同时**升格为 UsageError**：这些错误一律是「命令行写错了」（exit 2），不是业务失败。
+ */
 export function localizeCacError(error: unknown, lang: Lang): unknown {
 	if (!(error instanceof Error))
 		return error;
-	const m = /^Unknown option `([^`]+)`/.exec(error.message);
-	if (!m)
-		return error;
-	return new Error(lang === "zh-CN"
-		? `[ojm] 未知选项：${m[1]}（ojm <cmd> --help 查看可用选项）`
-		: `[ojm] Unknown option: ${m[1]} (run ojm <cmd> --help for available options)`);
+	const unknownOption = /^Unknown option `([^`]+)`/.exec(error.message);
+	if (unknownOption) {
+		return new UsageError(lang === "zh-CN"
+			? `[ojm] 未知选项：${unknownOption[1]}（ojm <cmd> --help 查看可用选项）`
+			: `[ojm] Unknown option: ${unknownOption[1]} (run ojm <cmd> --help for available options)`);
+	}
+	const missingArg = /^missing required arg for `([^`]+)`/.exec(error.message);
+	if (missingArg) {
+		return new UsageError(lang === "zh-CN"
+			? `[ojm] 缺少必需参数：${missingArg[1]}（ojm <cmd> --help 查看语法）`
+			: `[ojm] Missing required argument: ${missingArg[1]} (run ojm <cmd> --help for the syntax)`);
+	}
+	return error;
 }
 
-/** 与旧 index.ts 顶层 catch 同源：message 已是人话，堆栈仅 OJM_DEBUG=1（兼容旧名 RAM_DEBUG）。 */
-export function reportCliError(error: unknown, exit: (code: number) => never): void {
+/**
+ * 与旧 index.ts 顶层 catch 同源：message 已是人话，堆栈仅 OJM_DEBUG=1（兼容旧名 RAM_DEBUG）。
+ * 退出码走 `exitCodeOf`：UsageError → 2，其余 → 1（REG-R12 三档契约）。
+ *
+ * `--json` 下失败也要给信封：CI 读完 stdout 就能分支，不必「先看退出码再猜哪条是人话」。
+ * 三种失败各一个稳定机器码：`usage_error`（2）/ `failed`（1）；成功恒 `ok`。
+ * 人话**始终**走 stderr——stdout 在有 `--json` 时恒为「一行可解析 JSON 或空」。
+ */
+export function reportCliError(error: unknown, exit: (code: number) => never, argv: string[] = process.argv.slice(2)): void {
 	const isDebug = !!(process.env.OJM_DEBUG ?? process.env.RAM_DEBUG);
 	const body = error instanceof Error ? (isDebug ? error.stack ?? error.message : error.message) : String(error);
 	console.error(/^\[ojm/.test(body) ? body : `[ojm] ${body}`);
-	exit(1);
+	if (argv.includes("--json")) {
+		const command = argv.find(a => !a.startsWith("-")) ?? "";
+		const message = error instanceof Error ? error.message : String(error);
+		const code = error instanceof UsageError ? "usage_error" : "failed";
+		// 走 console.log 与 `emit` 同一条输出通道：机器通道只有一处实现，测试也能捕获
+		console.log(JSON.stringify(failEnvelope(command, code, message)));
+	}
+	exit(exitCodeOf(error));
 }
 
 interface SiteOpts { url?: string, user?: string, pass?: string }
@@ -91,15 +122,14 @@ function makeAction(def: HelpEntry, projectRoot: string, lang: Lang, exit: (code
 		case "new":
 			return async (name: string | undefined, extra: string[] = [], opts: { layout?: string, api?: boolean } = {}) => {
 				if (!name) {
-					console.error("[ojm] 用法：ojm new <name> [--layout container|none] [--api]（非交互环境必须显式给 name）");
-					exit(1);
-					return;
+					// 用法错误（exit 2）：缺位置参数，改命令行就能解决
+					throw new UsageError("[ojm] 用法：ojm new <name> [--layout container|none] [--api]（非交互环境必须显式给 name）");
 				}
 				// 统一审查 F8：多余位置参数显式拒绝，不能静默丢弃（ojm new crm erp 只建 crm 是事故）
 				if (extra.length > 0)
-					throw new Error(`[ojm] ojm new 只接受一个方案名（多余参数：${extra.join(" ")}）`);
+					throw new UsageError(`[ojm] ojm new 只接受一个方案名（多余参数：${extra.join(" ")}）`);
 				if (opts.layout !== undefined && opts.layout !== "container" && opts.layout !== "none")
-					throw new Error(`[ojm] --layout 只接受 container | none（实际：${opts.layout}）`);
+					throw new UsageError(`[ojm] --layout 只接受 container | none（实际：${opts.layout}）`);
 				const { createSolution } = await import("./new");
 				const created = createSolution(projectRoot, name, { layout: opts.layout as "container" | "none" | undefined, api: !!opts.api });
 				console.log(`[ojm] 已生成方案骨架：${path.relative(process.cwd(), created.dir)}`);
@@ -155,7 +185,7 @@ function makeAction(def: HelpEntry, projectRoot: string, lang: Lang, exit: (code
 		case "vendor":
 			return async (tag?: string, opts: { force?: boolean } = {}) => {
 				if (tag !== undefined && !/^v?\d+\.\d+\.\d+(?:-[\w.]+)?$/.test(tag))
-					throw new Error(`[ojm] 非法版本号：${tag}（形如 v0.1.11 或 0.1.11）`);
+					throw new UsageError(`[ojm] 非法版本号：${tag}（形如 v0.1.11 或 0.1.11）`);
 				const { vendorCommand } = await import("./vendor");
 				await vendorCommand(projectRoot, { force: !!opts.force, tag: tag === undefined ? undefined : (tag.startsWith("v") ? tag : `v${tag}`) });
 			};
@@ -174,10 +204,55 @@ function makeAction(def: HelpEntry, projectRoot: string, lang: Lang, exit: (code
 				const { signCommand } = await import("./sign");
 				signCommand(file ?? "", { id: opts.id, key: opts.key, check: opts.check });
 			};
+		case "config":
+			return async (sub: string | undefined, opts: { json?: boolean, showOrigin?: boolean } = {}) => {
+				const { configCommand } = await import("./config-cmd");
+				await configCommand(sub, { json: !!opts.json, showOrigin: !!opts.showOrigin, cwd: projectRoot });
+			};
 		case "publish":
-			return async (dir: string | undefined, opts: { id?: string, key?: string, check?: boolean } = {}) => {
+			return async (dir: string | undefined, opts: { id?: string, key?: string, check?: boolean, registry?: string, dryRun?: boolean, json?: boolean } = {}) => {
 				const { publishCommand } = await import("./publish");
-				publishCommand(dir ?? "", { id: opts.id, key: opts.key, check: opts.check });
+				const { describeCredential, describeSourceLevel, resolveRegistryCredential, resolveRegistrySourceOptional } = await import("./registry-source");
+				// 源：给了就必须合法（`--registry` 拼错 → exit 2）；没配则明说「只写本地、不上传」。
+				// 这里不抛「未指定仓库源」：`ojm publish` 今天仍是本地索引落盘（上传随 S4 落地），
+				// 逼它必须有源会把「本地自建 CDN」这条既有链路打死。
+				const source = resolveRegistrySourceOptional({ flag: opts.registry, cwd: projectRoot });
+				const credential = source === null ? null : resolveRegistryCredential(source, { cwd: projectRoot });
+				const human: string[] = [];
+				human.push(source === null
+					? "[ojm] 未配置仓库源：本次只重算并签名本地索引目录（不上传）；CI 用 --registry 或工程根 .ojmrc 指定"
+					: `[ojm] 仓库源 ${source.url}（来源 ${describeSourceLevel(source)}）；凭据 ${describeCredential(credential!)}`);
+				const result = publishCommand(dir ?? "", {
+					id: opts.id,
+					key: opts.key,
+					check: opts.check,
+					dryRun: !!opts.dryRun,
+					cwd: projectRoot,
+					log: line => human.push(line),
+				});
+				const rel = (p: string) => path.relative(projectRoot, p);
+				// `--check` 没过 = 业务失败（1）：签名与内容对不上，改数据就不了，得重签
+				const checkFailed = result.checkPassed === false;
+				emit({
+					command: "publish",
+					code: checkFailed ? "check_failed" : OK_CODE,
+					message: checkFailed ? "索引自检失败：签名与内容不匹配" : undefined,
+					data: {
+						dryRun: result.dryRun,
+						seq: result.seq,
+						keyId: result.keyId,
+						fingerprint: result.fingerprint,
+						registry: source === null ? null : { url: source.url, level: source.level },
+						credential: credential?.kind ?? null,
+						catalog: rel(result.catalogPath),
+						shards: result.shardPaths.map(rel),
+						writes: result.writes.map(rel),
+						checkPassed: result.checkPassed ?? null,
+					},
+					human,
+				}, { json: !!opts.json });
+				if (checkFailed)
+					exit(EXIT_FAILURE);
 			};
 		case "install":
 			return async (target: string | undefined, opts: SiteOpts & { locale?: string, name?: string, version?: string } = {}) => {
@@ -191,9 +266,9 @@ function makeAction(def: HelpEntry, projectRoot: string, lang: Lang, exit: (code
 				await setEnabledCommand(name ?? "", def.key === "enable", { url: opts.url, user: opts.user, pass: opts.pass });
 			};
 		case "uninstall":
-			return async (name: string | undefined, opts: SiteOpts = {}) => {
+			return async (name: string | undefined, opts: SiteOpts & { registry?: string } = {}) => {
 				const { uninstallCommand } = await import("./uninstall");
-				await uninstallCommand(name ?? "", { url: opts.url, user: opts.user, pass: opts.pass });
+				await uninstallCommand(name ?? "", { url: opts.url, user: opts.user, pass: opts.pass, registry: opts.registry });
 			};
 		case "trust":
 			return async (sub: string | undefined, keyId: string | undefined, pub: string | undefined, opts: SiteOpts & { task?: string } = {}) => {
@@ -224,6 +299,7 @@ function makeAction(def: HelpEntry, projectRoot: string, lang: Lang, exit: (code
 
 export function buildCli(projectRoot: string, lang: Lang = resolveLang(), deps: CliDeps = {}): CAC {
 	const exit = deps.exit ?? ((code: number) => process.exit(code) as never);
+	const argv = deps.argv ?? process.argv.slice(2);
 	const cli = cac("ojm");
 	for (const group of HELP_GROUPS) {
 		for (const def of group.commands) {
@@ -234,7 +310,7 @@ export function buildCli(projectRoot: string, lang: Lang = resolveLang(), deps: 
 				cmd.allowUnknownOptions();
 			const action = makeAction(def, projectRoot, lang, exit);
 			cmd.action((...args: unknown[]) => {
-				Promise.resolve(action(...args)).catch((error: unknown) => reportCliError(error, exit));
+				Promise.resolve(action(...args)).catch((error: unknown) => reportCliError(error, exit, argv));
 			});
 		}
 	}

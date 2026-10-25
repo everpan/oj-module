@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { parse as yamlParse, stringify as yamlStringify } from "yaml";
+import { UsageError } from "./exit-codes";
 // ojm publish（P3-5/6/7，作者工具链）：对发布目录的 REG-CS5 三级索引（catalog.yaml + shards/<n>.yaml）
 // 重算（P3-6：parse→确定性 stringify，消弭格式漂移、使 sha256 稳定可签）→ 签名（P3-7：detached
 // 侧车 .sig，与 archive .sig 同构）→ 写回目录（本地文件目标；CDN 推送走 resolveCdn 同形）。
@@ -20,6 +21,13 @@ export interface PublishOptions {
 	key?: string
 	/** 写完离线自检（verifyCanonical 复核 catalog 与各分片签名） */
 	check?: boolean
+	/**
+	 * `--dry-run`（REG-R12）：只算不写——重算后的正文、代次、目标路径都算出来，
+	 * 但一个字节都不落盘（CI 用它先看「会改哪些文件」再决定是否真发）。
+	 */
+	dryRun?: boolean
+	/** 输出 sink（`--json` 下由 CLI 改指向 stderr；缺省 console.log） */
+	log?: (line: string) => void
 	/** 测试注入；缺省 process.cwd() */
 	cwd?: string
 }
@@ -34,6 +42,12 @@ export interface PublishResult {
 	keyId: string
 	publicKeyHex: string
 	fingerprint: string
+	/** 索引代次（catalog 顶层 seq） */
+	seq: number
+	/** `--dry-run`：true = 本次只算不写（writes 全是「本应写入」的路径） */
+	dryRun: boolean
+	/** 本次涉及的文件（落盘顺序：先分片 → 再 catalog；dry-run 下同样返回，便于比对） */
+	writes: string[]
 	/** --check 的自检结果（未传 --check = undefined） */
 	checkPassed?: boolean
 }
@@ -173,6 +187,8 @@ export function writeIndexFile(file: string, text: string): void {
 
 export function publishCommand(dir: string, opts: PublishOptions = {}): PublishResult {
 	const cwd = opts.cwd ?? process.cwd();
+	const log = opts.log ?? ((line: string) => console.log(line));
+	const dryRun = opts.dryRun === true;
 	const base = dir ? path.resolve(cwd, dir) : cwd;
 	// key 解析（同 ojm sign）
 	let keyFile: string;
@@ -181,16 +197,16 @@ export function publishCommand(dir: string, opts: PublishOptions = {}): PublishR
 		keyFile = path.resolve(cwd, opts.key);
 		keyId = opts.id ?? "";
 		if (keyId === "")
-			throw new Error("[ojm] --key 指向自定义位置时须同时给 --id <publisher.id>（.sig 的发布方标识；C2-37 命名空间）");
+			throw new UsageError("[ojm] --key 指向自定义位置时须同时给 --id <publisher.id>（.sig 的发布方标识；C2-37 命名空间）");
 	}
 	else {
 		keyId = opts.id ?? "";
 		if (keyId === "")
-			throw new Error("[ojm] 缺少签名身份：--id <publisher.id>（从 ~/.ojm/keys/<id>/ 取私钥）或 --key <pem> --id <publisher.id>。先生成：ojm keygen --id <publisher.id>");
+			throw new UsageError("[ojm] 缺少签名身份：--id <publisher.id>（从 ~/.ojm/keys/<id>/ 取私钥）或 --key <pem> --id <publisher.id>。先生成：ojm keygen --id <publisher.id>");
 		keyFile = path.join(os.homedir(), ".ojm", "keys", keyId, "private.pem");
 	}
 	if (!isValidKeyId(keyId))
-		throw new Error(`[ojm] key_id 命名空间非法（C2-37）：「${keyId}」`);
+		throw new UsageError(`[ojm] key_id 命名空间非法（C2-37）：「${keyId}」`);
 	if (!fs.existsSync(keyFile))
 		throw new Error(`[ojm] 私钥文件不存在：${keyFile}（用 ojm keygen --id ${keyId} 生成，或 --key 指定）`);
 
@@ -242,23 +258,37 @@ export function publishCommand(dir: string, opts: PublishOptions = {}): PublishR
 		shardSigs.set(no, signIndex("shard", pins.get(no)!, shardTexts.get(no)!, privateKeyPem, keyId));
 
 	// 原子落盘，顺序固定「先分片 → 再 catalog」（catalog 是提交点；与 build-index 同一纪律）
+	// `--dry-run`：同一份计算、同一个顺序，只是不执行写——写盘清单照常返回，CI 可先比对
+	const writes: string[] = [];
 	for (const no of shardNos) {
 		const shardPath = path.join(shardsDir, `${no}.yaml`);
-		writeIndexFile(shardPath, shardTexts.get(no)!);
-		writeIndexFile(`${shardPath}.sig`, `${JSON.stringify(shardSigs.get(no)!, null, 2)}\n`);
+		writes.push(shardPath, `${shardPath}.sig`);
+	}
+	writes.push(catalogPath, `${catalogPath}.sig`);
+	if (!dryRun) {
+		for (const no of shardNos) {
+			const shardPath = path.join(shardsDir, `${no}.yaml`);
+			writeIndexFile(shardPath, shardTexts.get(no)!);
+			writeIndexFile(`${shardPath}.sig`, `${JSON.stringify(shardSigs.get(no)!, null, 2)}\n`);
+		}
+		const catalogSigPath = `${catalogPath}.sig`;
+		writeIndexFile(catalogPath, catalogText);
+		writeIndexFile(catalogSigPath, `${JSON.stringify(catalogSig, null, 2)}\n`);
 	}
 	const catalogSigPath = `${catalogPath}.sig`;
-	writeIndexFile(catalogPath, catalogText);
-	writeIndexFile(catalogSigPath, `${JSON.stringify(catalogSig, null, 2)}\n`);
-	console.log(`[ojm] 索引已重算并签名 → ${path.relative(cwd, catalogSigPath)}${shardNos.length > 0 ? ` + ${shardNos.length} 片` : ""}`);
-	console.log(`[ojm] 发布方 ${keyId}；指纹 ${fingerprintOfPublicKey(publicKeyHex)}`);
+	const rel = (p: string) => path.relative(cwd, p);
+	if (dryRun)
+		log(`[ojm] --dry-run：只算不写；本次本应写入 ${writes.length} 个文件（第 ${seq} 代，${shardNos.length} 片）`);
+	else
+		log(`[ojm] 索引已重算并签名 → ${rel(catalogSigPath)}${shardNos.length > 0 ? ` + ${shardNos.length} 片` : ""}`);
+	log(`[ojm] 发布方 ${keyId}；指纹 ${fingerprintOfPublicKey(publicKeyHex)}`);
 
 	let checkPassed: boolean | undefined;
 	if (opts.check === true) {
 		const shardsOk = shardNos.every(no => verifyCanonical(publicKeyHex, indexCanonical("shard", pins.get(no)!, shardTexts.get(no)!), shardSigs.get(no)!.value));
 		const catalogOk = verifyCanonical(publicKeyHex, indexCanonical("catalog", seq, catalogText), catalogSig.value);
 		checkPassed = catalogOk && shardsOk;
-		console.log(checkPassed ? "[ojm] 自检通过：索引签名与内容匹配" : "[ojm] 自检失败：索引签名与内容不匹配——请检查私钥与索引后重签");
+		log(checkPassed ? "[ojm] 自检通过：索引签名与内容匹配" : "[ojm] 自检失败：索引签名与内容不匹配——请检查私钥与索引后重签");
 		if (!checkPassed)
 			process.exitCode = 1;
 	}
@@ -270,6 +300,9 @@ export function publishCommand(dir: string, opts: PublishOptions = {}): PublishR
 		keyId,
 		publicKeyHex,
 		fingerprint: fingerprintOfPublicKey(publicKeyHex),
+		seq,
+		dryRun,
+		writes,
 		checkPassed,
 	};
 }

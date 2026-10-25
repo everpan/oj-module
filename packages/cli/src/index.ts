@@ -14,7 +14,7 @@ async function main() {
 	}
 
 	const rewritten = rewriteHelpArgv(argv);
-	const cli = buildCli(process.cwd(), lang);
+	const cli = buildCli(process.cwd(), lang, { argv: rewritten });
 	let unknown: string | undefined;
 	cli.on("command:*", () => {
 		// cac 在 --help 输出后会 unsetMatchedCommand 再发 command:*（args[0] 可能是子命令，如 verify）——
@@ -40,4 +40,4 @@ async function main() {
 
 main().catch((error: unknown) => reportCliError(localizeCacError(error, resolveLang()), (code) => {
 	process.exit(code);
-}));
+}, process.argv.slice(2)));
