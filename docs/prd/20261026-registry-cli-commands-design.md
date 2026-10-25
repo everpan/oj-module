@@ -385,6 +385,9 @@ flowchart LR
 ojm registry export --site-url <registry 站点地址> [--out <目录>] [--dry-run] [--json]
 ```
 
+前提：站点读面**免登录可达**（`auth.anonymous_paths` 含 `/oj-registry/cdn/**`）。export 不带凭据，
+这条没开时第一个请求就是 401 → `export_fetch_failed`；站点服务端从本站读面拉包同样依赖它。
+
 ```mermaid
 sequenceDiagram
     autonumber
