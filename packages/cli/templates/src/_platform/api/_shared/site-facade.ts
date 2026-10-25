@@ -10,6 +10,12 @@ export type FetchInitFace = (url: string, init?: { headers?: Record<string, stri
 	ok: boolean
 	status: number
 	arrayBuffer: () => Promise<ArrayBuffer>
+	/**
+	 * 响应头读取面（REG-CS5 读面缓存）：读 ETag 发 If-None-Match → 304 不重传正文。
+	 * 可选字段：真实 fetch 的 Response.headers 天然满足；不暴露响应头的测试 stub 省略即按
+	 * 「无 ETag 语义」退化为每次全量拉取——语义正确，只是少了条件请求的省字节。
+	 */
+	headers?: { get: (name: string) => string | null }
 }>;
 
 /**
@@ -51,7 +57,9 @@ export function readCanonicalOrigin(configPath?: string): Promise<string | null>
 	const p = (async () => {
 		try {
 			const bytes = await fsFace().readFile(configPath);
-			const doc = (globalThis as { yaml?: { parse: (t: string) => unknown } }).yaml?.parse(new TextDecoder().decode(bytes)) as { vars?: { canonical_origin?: unknown } } | undefined;
+			// yaml.parse 是异步面（oj 隔离全局，全仓消费方同一口径）——必须 await：
+			// 漏 await 时 doc 是 Promise，vars 恒 undefined，config 里的 canonical_origin 永远读不到。
+			const doc = await (globalThis as { yaml?: { parse: (t: string) => Promise<unknown> } }).yaml?.parse(new TextDecoder().decode(bytes)) as { vars?: { canonical_origin?: unknown } } | undefined;
 			const v = doc?.vars?.canonical_origin;
 			return typeof v === "string" && v.trim() !== "" ? v.trim() : null;
 		}
@@ -69,7 +77,7 @@ export function withSiteOrigin(fetch: FetchInitFace, canonicalOrigin?: string | 
 	if (o === null) {
 		return fetch as FetchFace;
 	}
-	// init（如 cache-control: no-cache）必须透传——否则按源补全会静默丢掉调用方的请求头。
+	// init（如 REG-CS5 条件请求的 if-none-match）必须透传——否则按源补全会静默丢掉调用方的请求头。
 	// init 形参可选，故仍可赋给单参的 FetchFace。
 	return (url: string, init?: { headers?: Record<string, string>, redirect?: string }) => fetch(/^https?:\/\//i.test(url) ? url : `${o.proto}://${o.host}${url}`, init) as ReturnType<FetchFace>;
 }

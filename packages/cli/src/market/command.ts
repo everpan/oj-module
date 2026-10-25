@@ -94,7 +94,7 @@ export async function marketCommand(sub: string, argv: string[]): Promise<void> 
 				console.log(`[ojm] 已下线 ${name}@${version}（操作人 ${by}${flags.reason !== undefined ? `，原因：${flags.reason}` : ""}）——重建索引以生效`);
 			else
 				console.log(`[ojm] ${name}@${version} 此前已下线，幂等跳过`);
-			// 重建索引让 yanked 标记进 bundles.yaml（REG-CS4：latest 跳过 + 安装侧精确版本拒装）
+			// 重建索引让 yanked 标记进分片正文（REG-CS4：latest 跳过 + 安装侧精确版本拒装）
 			await buildIndex({ id: flags.id, key: flags.key, check: flags.check });
 			return;
 		}

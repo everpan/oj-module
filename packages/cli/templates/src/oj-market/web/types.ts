@@ -52,7 +52,7 @@ export interface TaskRecord {
 	appliedSeq?: number
 }
 
-/** 卡片数据源行（GET /_platform/market/index）：CDN bundles.yaml ⊕ 本地 sidecar state */
+/** 卡片数据源行（GET /_platform/market/index）：CDN 三级索引（catalog + shards）⊕ 本地 sidecar state */
 export interface IndexRow {
 	name: string
 	latest: string | null

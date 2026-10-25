@@ -10,5 +10,9 @@ export default defineConfig({
 	test: {
 		include: ["src/**/*.test.ts"],
 		environment: "node",
+		// build-index 的体积/内存实测要量的「中间对象」是**存活集**，不是未回收的垃圾：
+		// 不暴露 gc 时 heapUsed 增量把垃圾一并算进（实测 152MB vs 真实约 30MB），闸门失真。
+		// （vitest 4 起 poolOptions 已移除，execArgv 是 test 顶层选项）
+		execArgv: ["--expose-gc"],
 	},
 });

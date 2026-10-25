@@ -6,7 +6,7 @@
  *    （2026-10-23 起 dev 形态 ojm 已把 /cdn 反代给 oj 子进程，`framework.market_cdn_url`
  *    允许写相对路径 `/cdn` = 本站点自供，由消费侧按请求源补全；本模块的绝对基址推导
  *    只服务 `market setup` 写外部地址的场景。）
- * 2. **基址无尾斜杠**——`market/api.ts` 按 `${base}/bundles.yaml` 拼。
+ * 2. **基址无尾斜杠**——`market/api.ts` 按 `${base}/catalog.yaml` 拼。
  *
  * 文本版（`resolveCdnLayoutFromConfig`）与工程版（`resolveCdnLayout`）分工：前者纯函数便于单测，
  * 后者负责读盘。取值口径只有前者一份，后者不重算。

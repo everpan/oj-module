@@ -113,8 +113,12 @@ function cssClassOf(name: string, version: string): string {
 	return `${name}-v${version.replace(/[^0-9A-Z]/gi, "-")}`;
 }
 
-/** 方案清单（Form A：archive 只写 file，sha256/size 由索引侧填 Form B） */
-function solutionManifest(name: string, version: string): Record<string, unknown> {
+/**
+ * 方案清单（Form A：archive 只写 file，sha256/size 由索引侧填 Form B）。
+ * 导出给 build-index 的体积实测用：需求 §7 估「单条 Form B ≈535–684B」偏乐观——本形态
+ * 实测 945B YAML、进索引 ≈1.2KB/条，SHARD_MAX_VERSIONS 的 1000 校准即以它为据。
+ */
+export function solutionManifest(name: string, version: string): Record<string, unknown> {
 	return {
 		name,
 		version,

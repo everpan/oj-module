@@ -325,16 +325,16 @@ export const HELP_GROUPS: HelpGroup[] = [
 			{
 				key: "publish",
 				name: "publish [dir]",
-				zh: "索引发布（重算 bundles/manifests + 侧车签名）",
-				en: "Index publishing (recompute bundles/manifests + sidecar signatures)",
+				zh: "索引发布（重算 catalog/shards + 侧车签名）",
+				en: "Index publishing (recompute catalog/shards + sidecar signatures)",
 				options: [
 					{ raw: "--id <id>", zh: "发布方 key id", en: "Publisher key id" },
 					{ raw: "--key <pem>", zh: "指定私钥 pem", en: "Explicit private key pem" },
-					{ raw: "--check", zh: "离线自检两份索引签名", en: "Offline self-check of both index signatures" },
+					{ raw: "--check", zh: "离线自检索引签名（catalog + 各分片）", en: "Offline self-check of index signatures (catalog + each shard)" },
 				],
 				detail: {
-					zh: "ojm publish <dir> [--id <key>] [--key <pem>] [--check]\n  重算 <dir>/bundles.yaml + manifests.yaml（确定性 stringify，消弭格式漂移）→ 各产出 detached 侧车签名 <kind>.yaml.sig → 写回 <dir>",
-					en: "ojm publish <dir> [--id <key>] [--key <pem>] [--check]\n  Recompute <dir>/bundles.yaml + manifests.yaml (deterministic stringify to eliminate format drift) → produce a detached sidecar signature <kind>.yaml.sig for each → write back to <dir>",
+					zh: "ojm publish <dir> [--id <key>] [--key <pem>] [--check]\n  重算 <dir>/catalog.yaml + shards/<n>.yaml（确定性 stringify，消弭格式漂移）→ 各产出 detached 侧车签名 → 写回 <dir>",
+					en: "ojm publish <dir> [--id <key>] [--key <pem>] [--check]\n  Recompute <dir>/catalog.yaml + shards/<n>.yaml (deterministic stringify to eliminate format drift) → produce a detached sidecar signature for each → write back to <dir>",
 				},
 			},
 		],
@@ -374,14 +374,14 @@ export const HELP_GROUPS: HelpGroup[] = [
 						en: "ojm market publish [--fixture <name@version>] [--real <project>] [--id <key>] [--key <pem>] [--rebuild-index] [--check]\n  Drop a solution bundle into cdn/: synthesize a fixture (or --real via ojm build --bundle) → deterministic tgz → package-level detached signature <name>-<version>.tgz.sig. Does not touch the index (the index is rebuilt by build-index so concurrent publishers don't overwrite each other)",
 					},
 					"build-index": {
-						short: { zh: "扫描重建 bundles.yaml + manifests.yaml 并签名", en: "Rebuild bundles.yaml + manifests.yaml from a scan and sign" },
-						zh: "ojm market build-index [--id <key>] [--key <pem>] [--check]\n  扫描 cdn/*.tgz、提取包内 manifest，全量重建 bundles.yaml + manifests.yaml 并签名。结果只取决于目录内容：连续执行字节一致",
-						en: "ojm market build-index [--id <key>] [--key <pem>] [--check]\n  Scan cdn/*.tgz, extract each bundle's manifest, fully rebuild bundles.yaml + manifests.yaml and sign them. The result depends only on directory content: consecutive runs are byte-identical",
+						short: { zh: "扫描重建三级索引（catalog + shards）并签名", en: "Rebuild the three-tier index (catalog + shards) from a scan and sign" },
+						zh: "ojm market build-index [--id <key>] [--key <pem>] [--check]\n  扫描 cdn/*.tgz、提取包内 manifest，全量重建 catalog.yaml（包名→分片号）+ shards/<n>.yaml（每片 ≤1000 版本）并签名。原子落盘（先分片后 catalog）；结果只取决于目录内容：连续执行字节一致",
+						en: "ojm market build-index [--id <key>] [--key <pem>] [--check]\n  Scan cdn/*.tgz, extract each bundle's manifest, fully rebuild catalog.yaml (name→shard) + shards/<n>.yaml (≤1000 versions each) and sign them. Atomic landing (shards before catalog); the result depends only on directory content: consecutive runs are byte-identical",
 					},
 					"verify": {
 						short: { zh: "离线验包（sha256 / 验签 / 索引 / manifest 结构）", en: "Offline bundle verification (sha256 / signatures / index / manifest)" },
-						zh: "ojm market verify [--file <tgz>] [--rebuild-index]\n  离线验包（不起站点、不装、不要凭据）：sha256 完整性 / 包级 Ed25519 验签 / 索引验签 / manifest 结构分列输出。--rebuild-index 额外比对「扫描重建的索引」与盘上索引，检出落了包却没重建的漂移。注意：校验通过只说明来源与完整性，不构成内容安全性背书",
-						en: "ojm market verify [--file <tgz>] [--rebuild-index]\n  Offline bundle verification (no site, no install, no credentials): sha256 integrity / package-level Ed25519 signature / index signature / manifest structure in separate sections. --rebuild-index additionally compares the index rebuilt from a scan against the one on disk, detecting drift where a bundle was dropped but the index was not rebuilt. Note: passing only proves origin and integrity — it is not an endorsement of content safety",
+						zh: "ojm market verify [--file <tgz>] [--rebuild-index]\n  离线验包（不起站点、不装、不要凭据）：sha256 完整性 / 包级 Ed25519 验签 / 索引验签（catalog 与各分片分列）/ manifest 结构分列输出。--rebuild-index 额外双向比对「扫描重建的索引」与盘上索引：既报落了包却没重建（索引缺条目），也报索引声明了、盘上包却没了的反向漂移。注意：校验通过只说明来源与完整性，不构成内容安全性背书",
+						en: "ojm market verify [--file <tgz>] [--rebuild-index]\n  Offline bundle verification (no site, no install, no credentials): sha256 integrity / package-level Ed25519 signature / index signature (catalog and each shard listed separately) / manifest structure in separate sections. --rebuild-index additionally runs a two-way comparison of the index rebuilt from a scan against the one on disk: it reports both a dropped bundle whose index entry is missing, and the reverse drift where the index declares a version whose tgz is gone. Note: passing only proves origin and integrity — it is not an endorsement of content safety",
 					},
 					"trial": {
 						short: { zh: "一次性隔离站点试装，跑完即毁", en: "Full install trial in a throwaway isolated site" },

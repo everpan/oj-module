@@ -132,7 +132,10 @@ describe("given 一个装了 oj 二进制的源工程 When 自举隔离站点", 
 
 		expect(site.cdnDir.startsWith(site.root)).toBe(true);
 		expect(existsSync(join(site.cdnDir, "demo-solution-0.1.0.tgz"))).toBe(true);
-		expect(existsSync(join(site.cdnDir, "bundles.yaml"))).toBe(true);
+		// REG-CS5 三级索引：catalog.yaml（提交点）+ shards/<n>.yaml（版本明细）及其 .sig
+		expect(existsSync(join(site.cdnDir, "catalog.yaml"))).toBe(true);
+		expect(existsSync(join(site.cdnDir, "catalog.yaml.sig"))).toBe(true);
+		expect(readdirSync(join(site.cdnDir, "shards")).some(f => /^1\.yaml$/.test(f))).toBe(true);
 		expect(site.cdnBaseUrl).toBe(`${site.baseUrl}/cdn`);
 		await site.cleanup();
 	});

@@ -45,7 +45,7 @@ export const FAILURE_PLAYBOOK: FailurePlaybookEntry[] = [
 	{
 		code: "index_sig",
 		stage: "安装前（索引解析）",
-		cause: "市场索引签名校验失败：bundles/manifests.yaml 被篡改或签名与字节不符",
+		cause: "市场索引签名校验失败：catalog.yaml / shards/*.yaml 被篡改或签名与字节不符",
 		next: "重建索引并签名 `ojm market build-index`；同时核对 CDN 目录写入来源",
 	},
 	{

@@ -40,6 +40,11 @@ mounts:
   # 不得给此挂载设 spa——缺文件必须返回 404，回落 index.html 会让市场解析崩。
   - prefix: /cdn
     web: ./cdn
+    # REG-CS5 缓存头（读面）：索引（catalog/shards）与内容寻址包体统一 60s 新鲜窗口 +
+    # 60s stale-while-revalidate——yank 最坏 120s 生效（Q8）。ETag/If-None-Match→304 由 oj
+    # 静态层原生支持；本头只加在读面（静态挂载），写入面（ojm market build-index）不发 HTTP 头。
+    headers:
+      Cache-Control: 'max-age=60, stale-while-revalidate=60'
   # 生产若由 oj 直出前端（前后端同进程，即 ojm preview 的生产形态），
   # 取消下一行注释并先 build 出 dist/web（preview 会自动注入等价挂载，无需手改）：
   # - prefix: "/"

@@ -20,6 +20,7 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { resolveLayout } from "../layout";
+import { writeIndexFile } from "../publish";
 import { signCommand } from "../sign";
 import { callApi, login, pollTask, unwrapEnvelope } from "../site";
 import { bootstrapIsolatedSite, derivePublisherKey } from "./bootstrap";
@@ -274,10 +275,10 @@ const OPS: Op[] = [
 		title: "负向：索引篡改（验签拒载）",
 		run: async (ctx) => {
 			await publishVersion(ctx, NEG_VERSION);
-			const bundles = path.join(ctx.site.cdnDir, "bundles.yaml");
-			const orig = fs.readFileSync(bundles);
+			const catalog = path.join(ctx.site.cdnDir, "catalog.yaml");
+			const orig = fs.readFileSync(catalog);
 			try {
-				fs.appendFileSync(bundles, "# tampered\n"); // 索引字节变、签名失配
+				fs.appendFileSync(catalog, "# tampered\n"); // 索引字节变、签名失配
 				let msg = "";
 				try {
 					await installOnce(ctx, NEG_VERSION);
@@ -289,7 +290,7 @@ const OPS: Op[] = [
 				return { ok, detail: ok ? "安装 POST 即 502 拒载（G4 fail-closed），任务未创建" : `未按预期拒装：${msg === "" ? "安装竟成功" : msg}` };
 			}
 			finally {
-				fs.writeFileSync(bundles, orig); // 回抄原始字节
+				writeIndexFile(catalog, orig.toString("utf-8")); // 回抄原始字节（也走唯一写入口，不留下直写索引的路径）
 				await removeVersion(ctx, NEG_VERSION);
 			}
 		},

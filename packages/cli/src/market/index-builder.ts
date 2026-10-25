@@ -1,33 +1,32 @@
 /**
- * Form B 索引聚合（T4）：把「一批已扫出的包」变成 bundles.yaml / manifests.yaml 的数据形状。
+ * Form B 索引聚合（T4 + REG-CS5 三级化）：把「一批已扫出的包」变成分片索引的数据形状。
  *
- * 纯数据变换，不落 IO、不签名——IO 与签名归 `build-index.ts`。形状严格对齐安装侧的消费口径
- * （`market/api.ts resolveCdn`）：`file` 必须逐字 `<name>-<version>.tgz`，否则安装侧 P2-11 会
- * 判索引投毒直接 502。
+ * 纯数据变换，不落 IO、不签名——IO 与签名归 `build-index.ts`（写入）与 `publish.ts`（补签）。
+ * 形状严格对齐安装侧的消费口径（`market/api.ts resolveCdn`）：`archive.file` 必须逐字
+ * `<name>-<version>.tgz`，否则安装侧 P2-11 会判索引投毒直接 502。
+ *
+ * REG-CS5：v2 起索引三级化——`catalog.yaml`（包名 → 分片号，无版本明细）+ `shards/<n>.yaml`
+ * （每片 ≤1000 版本）+ 版本条目内嵌 Form B manifest（原 manifests.yaml 的聚合清单并入分片，
+ * 装一个包只拉 1 catalog + 1 shard，不再有第三份全量清单）。版本条目即 Form B 条目：
+ * `archive` 带 file/sha256/size/signature，与旧 manifests.yaml 逐字同构，故安装侧
+ * 「取版本条目即取 manifest」，少一次全量拉取。
  */
 
 import type { YankEntry } from "./yank-ledger";
 
-export interface IndexedPackage {
+/** 分片内的方案条目：版本数组 = Form B manifest 条目（升序） */
+export interface BuiltSolution {
 	name: string
-	version: string
-	/** tgz 文件名（由 name+version 派生，逐字约束在此处一次成型） */
-	file: string
-	sha256: string
-	size: number
-	/** 包内 manifest（Form A），入 manifests.yaml 时补成 Form B */
-	manifest: Record<string, unknown>
-	/** 包级 detached 签名（`<tgz>.sig` 五字段）；缺则 Form B 不带 signature，安装侧按 sig_missing 拒装 */
-	signature?: Record<string, unknown>
+	latest: string
+	versions: Array<Record<string, unknown>>
 }
 
 export interface BuiltIndex {
-	bundles: { solutions: Array<Record<string, unknown>> }
-	manifests: Array<Record<string, unknown>>
+	solutions: BuiltSolution[]
 }
 
 /**
- * 聚合索引数据。
+ * 聚合索引数据（分片形态）。
  *
  * `yanked?`：yank 账本（`name@version -> 条目`，REG-CS4）。非零时：
  * - 各版本条目带 `yanked: true` + `yanked_at`（epoch 秒），安装侧 resolveCdn 据此拒精确安装；
@@ -41,39 +40,48 @@ export function buildIndexData(packages: IndexedPackage[], yanked?: Map<string, 
 		byName.set(pkg.name, list);
 	}
 
-	const solutions: Array<Record<string, unknown>> = [];
-	const manifests: Array<Record<string, unknown>> = [];
+	const solutions: BuiltSolution[] = [];
 	for (const name of [...byName.keys()].sort()) {
 		const list = [...byName.get(name)!].sort((a, b) => compareSemver(a.version, b.version));
 		// latest 跳过 yanked（REG-CS4）：已下线的版本绝不成为默认升级目标；全下线降级取最高版
 		const live = list.filter(v => !isYanked(yanked, name, v.version));
 		const latestSource = live.length > 0 ? live : list;
-		solutions.push({
-			name,
-			latest: latestSource[latestSource.length - 1]!.version,
-			versions: list.map((v) => {
-				const key = yanked !== undefined && isYanked(yanked, name, v.version)
-					? { yanked: true, yanked_at: yanked.get(`${name}@${v.version}`)!.at }
-					: {};
-				return { file: `${v.name}-${v.version}.tgz`, sha256: v.sha256, size: v.size, version: v.version, ...key };
-			}),
-		});
-		for (const pkg of list) {
-			const file = `${name}-${pkg.version}.tgz`;
-			manifests.push({
-				...pkg.manifest,
+		const versions = list.map((v) => {
+			const key = yanked !== undefined && isYanked(yanked, name, v.version)
+				? { yanked: true, yanked_at: yanked.get(`${name}@${v.version}`)!.at }
+				: {};
+			// 版本条目 = Form B manifest 条目：name/version/archive 与旧 manifests.yaml 逐字同构，
+			// 顶层再并进版本裁决字段（yanked）。安装侧「取条目即取 manifest」。
+			return {
+				...v.manifest,
 				name,
-				version: pkg.version,
+				version: v.version,
 				archive: {
-					file,
-					sha256: pkg.sha256,
-					size: pkg.size,
-					...(pkg.signature === undefined ? {} : { signature: pkg.signature }),
+					file: `${v.name}-${v.version}.tgz`,
+					sha256: v.sha256,
+					size: v.size,
+					...(v.signature === undefined ? {} : { signature: v.signature }),
 				},
-			});
-		}
+				...key,
+			};
+		});
+		solutions.push({ name, latest: latestSource[latestSource.length - 1]!.version, versions });
 	}
-	return { bundles: { solutions }, manifests };
+	return { solutions };
+}
+
+/** 入索引的包（扫描产物；manifest 为包内 Form A，进分片时补成 Form B） */
+export interface IndexedPackage {
+	name: string
+	version: string
+	/** tgz 文件名（由 name+version 派生，逐字约束在此处一次成型） */
+	file: string
+	sha256: string
+	size: number
+	/** 包内 manifest（Form A） */
+	manifest: Record<string, unknown>
+	/** 包级 detached 签名（`<tgz>.sig` 五字段）；缺则 Form B 不带 signature，安装侧按 sig_missing 拒装 */
+	signature?: Record<string, unknown>
 }
 
 function isYanked(yanked: Map<string, YankEntry> | undefined, name: string, version: string): boolean {

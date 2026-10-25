@@ -3,7 +3,7 @@
 //   POST /api/_platform/market/install   superadmin——runInstall 编排（端点不重复编排，P1-10 状态机负责推进）
 //   GET  /api/_platform/market/task?id=  superadmin——任务轮询消费面（§10.2；内容写侧已脱敏，读侧无秘密可泄）
 //   GET  /api/_platform/market/meta      登录即可——{apiVersion}（peerPlatform 预检）
-//   GET  /api/_platform/market/index     superadmin——CDN bundles.yaml（no-cache 拉取）+ 本地 state 对比
+//   GET  /api/_platform/market/index     superadmin——CDN 三级索引（catalog.yaml + shards/<n>.yaml，ETag/If-None-Match 条件请求）+ 本地 state 对比
 // 简报 `task/:id` 段参数形态在模板 http 面无先例（contacts/detail?id= 同款 query 惯例），备案于任务报告。
 // 步骤面全 stub 注入（DIP）：fetch/exec/reload 不真跑；register/smoke/audit 走真实内存库夹具。
 /* eslint-disable test/prefer-lowercase-title -- 端点动词/路径是验收锚点，保留大写（installer.spec 同约定） */
@@ -23,11 +23,13 @@ import { parse } from "yaml";
 import { defaultTestKey, nodeVerifyEd25519, signedArchiveFor } from "../../../src/lifecycle/__tests__/helpers";
 import { signIndex } from "../../../src/publish";
 import { readLock, writeLock } from "../../src/_platform/api/_lifecycle/lock";
+import { compareVersions } from "../../src/_platform/api/_lifecycle/semver";
 import { createStateStore } from "../../src/_platform/api/_lifecycle/state";
 import { getTask, writeTask } from "../../src/_platform/api/_lifecycle/tasks";
 import { createTrustStore } from "../../src/_platform/api/_lifecycle/trust";
 import { invalidateAllUsers } from "../../src/_platform/api/_shared/service/infra/access";
 import { createMarketApi, marketEnv, parseVersionsJson, versionsJsonPathOf } from "../../src/_platform/api/market/api";
+import { localIndexSource } from "../../src/_platform/api/market/index-source";
 import { installDb } from "../fixture";
 
 function hexToBytes(hex: string): Uint8Array {
@@ -86,34 +88,38 @@ function manifestFixture(version = "0.1.0"): any {
 const ISSUED_AT = Math.floor(Date.now() / 1000);
 const EXPIRES_AT = ISSUED_AT + 7 * 24 * 60 * 60;
 
-/** Form B CDN 索引（JSON 序列充当 yaml.parse 全局的载荷——解析面是 oj 全局，端点只管喂文本取对象） */
-const BUNDLES = JSON.stringify({
-	// REG-CS1/CS2：总目录（catalog）= 代次与时效真源，所有索引签名必须与它同代
+/**
+ * Form B 三级索引夹具（REG-CS5：catalog + shards）。JSON 序列充当 yaml.parse 全局的载荷——
+ *  解析面是 oj 全局，端点只管喂文本取对象。catalog 只记「包名 → 分片号」无版本明细。
+ */
+const CATALOG = JSON.stringify({
+	// REG-CS1/CS2：catalog = 代次与时效真源，所有索引签名必须与它同代
 	seq: 1,
 	issued_at: ISSUED_AT,
 	expires_at: EXPIRES_AT,
 	generated_at: "2026-10-17T00:00:00Z",
 	cdn: CDN,
+	// 片号 → 代次钉值（REG-CS1③：分片签名 seq 必须等于钉值；byte 相同的分片可跨代复用）
+	shards: { 1: 1 },
+	// 包名 → 分片号（无版本明细；版本明细在分片里）
 	solutions: [
-		{
-			name: "demo-solution",
-			latest: "0.2.0",
-			versions: [
-				{ version: "0.2.0", file: "demo-solution-0.2.0.tgz", sha256: SHA256, size: ARCHIVE.byteLength },
-				{ version: "0.1.0", file: "demo-solution-0.1.0.tgz", sha256: SHA256, size: ARCHIVE.byteLength },
-			],
-		},
-		{ name: "wiki", latest: "1.3.0", versions: [{ version: "1.3.0", file: "wiki-1.3.0.tgz", sha256: "x", size: 1 }] },
+		{ name: "demo-solution", shards: [1] },
+		{ name: "wiki", shards: [1] },
 	],
 });
-/** manifests.yaml 聚合数组（PRD §5.3：按 name+version 精确取；数组形态无顶层键，代次只由 .sig 承载） */
-const MANIFESTS = JSON.stringify([manifestFixture("0.2.0"), manifestFixture("0.1.0")]);
+/** 分片正文（纯内容无 meta：版本条目即 Form B manifest——原 manifests.yaml 聚合清单并入分片） */
+const SHARD_1 = JSON.stringify({
+	solutions: [
+		{ name: "demo-solution", latest: "0.2.0", versions: [manifestFixture("0.2.0"), manifestFixture("0.1.0")] },
+		{ name: "wiki", latest: "1.3.0", versions: [{ name: "wiki", version: "1.3.0", archive: { file: "wiki-1.3.0.tgz", sha256: "x", size: 1 } }] },
+	],
+});
 
 /** 基线代次 */
 const SEQ = 1;
 /** 索引签名（REG-CS1：签名覆盖 (kind, seq)——换 kind 或换代都验不过） */
-const BUNDLES_SIG = JSON.stringify(signIndex("bundles", SEQ, BUNDLES, TEST_KEY.privateKeyPem, "test.publisher"));
-const MANIFESTS_SIG = JSON.stringify(signIndex("manifests", SEQ, MANIFESTS, TEST_KEY.privateKeyPem, "test.publisher"));
+const CATALOG_SIG = JSON.stringify(signIndex("catalog", SEQ, CATALOG, TEST_KEY.privateKeyPem, "test.publisher"));
+const SHARD_1_SIG = JSON.stringify(signIndex("shard", 1, SHARD_1, TEST_KEY.privateKeyPem, "test.publisher"));
 
 let root: string;
 let sharedRoot: string;
@@ -133,15 +139,16 @@ const fetchInits: unknown[] = [];
 const cdnFetch = ((url: string, init?: unknown) => {
 	fetchCalls.push(url);
 	fetchInits.push(init);
-	// 基线 CDN 已签名（REG-CS1：缺签名即拒，故所有「正常路径」夹具都必须带 .sig）
-	if (url.endsWith("bundles.yaml.sig"))
-		return { ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode(BUNDLES_SIG).buffer as ArrayBuffer };
-	if (url.endsWith("manifests.yaml.sig"))
-		return { ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode(MANIFESTS_SIG).buffer as ArrayBuffer };
-	const text = url.endsWith("bundles.yaml")
-		? BUNDLES
-		: url.endsWith("manifests.yaml")
-			? MANIFESTS
+	// 基线 CDN 已签名（REG-CS1：缺签名即拒，故所有「正常路径」夹具都必须带 .sig）。
+	// .sig 判定先行：`catalog.yaml.sig` 也以 `.yaml` 结尾，顺序反了会把签名当正文。
+	if (url.endsWith("catalog.yaml.sig"))
+		return { ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode(CATALOG_SIG).buffer as ArrayBuffer };
+	if (url.endsWith("shards/1.yaml.sig"))
+		return { ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode(SHARD_1_SIG).buffer as ArrayBuffer };
+	const text = url.endsWith("catalog.yaml")
+		? CATALOG
+		: url.endsWith("shards/1.yaml")
+			? SHARD_1
 			: null;
 	if (text !== null) {
 		return { ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode(text).buffer as ArrayBuffer };
@@ -307,19 +314,20 @@ describe("权限门（R9：市场编排 superadmin 独占，meta 登录即可）
 });
 
 describe("POST install（cdn：Form B 索引解析属市场侧，安装器不拼 URL）", () => {
-	it("指定版本：解析 bundles+manifests → runInstall 推进至 done，task 文件全 stage 就位且索引拉取带 no-cache", async () => {
+	it("指定版本：解析 catalog+shard → runInstall 推进至 done，task 文件全 stage 就位且索引拉取不带 no-cache", async () => {
 		const api = createMarketApi(makeEnv());
 		g.http = { user: { id: 1 }, body: { name: "demo-solution", version: "0.1.0", source: "cdn" } };
 		await api.install.post();
 		expect(last?.status).toBe(200);
 		const taskId = (last?.data as { task_id?: unknown })?.task_id;
 		expect(typeof taskId).toBe("string");
-		// 索引解析：bundles.yaml + manifests.yaml + 分发包，URL 由 base 归一化拼装
-		expect(fetchCalls[0]).toBe(`${CDN}bundles.yaml`);
-		expect(fetchCalls).toContain(`${CDN}manifests.yaml`);
+		// 索引解析：catalog.yaml + shards/1.yaml + 分发包，URL 由 base 归一化拼装
+		expect(fetchCalls[0]).toBe(`${CDN}catalog.yaml`);
+		expect(fetchCalls).toContain(`${CDN}shards/1.yaml`);
 		expect(fetchCalls).toContain(`${CDN}demo-solution-0.1.0.tgz`);
-		// CDN 拉取禁缓存（索引时效性）
-		expect((fetchInits[0] as { headers?: Record<string, string> })?.headers?.["cache-control"]).toBe("no-cache");
+		// REG-CS5④：读面不再发 cache-control: no-cache——新鲜度由服务端 max-age=60,
+		// stale-while-revalidate=60 + ETag/If-None-Match 条件请求承载（Q8）
+		expect(fetchInits.every(i => (i as { headers?: Record<string, string> } | undefined)?.headers?.["cache-control"] === undefined)).toBe(true);
 		// 后台推进：runInstall 状态机逐 stage 落盘，终态 done + 全 stage 明细
 		const rec = await getTask(taskDir, taskId as string);
 		expect(rec?.status).toBe("done");
@@ -355,32 +363,35 @@ describe("POST install（cdn：Form B 索引解析属市场侧，安装器不拼
 });
 
 describe("REG-CS4 yank（安装侧精确版本拒装）", () => {
-	/** 带 yanked 标记的索引：0.2.0 被下线、0.1.0 正常；latest 已被源方改为 0.1.0 */
+	/** 带 yanked 标记的三级索引：0.2.0 被下线、0.1.0 正常；latest 已被源方改为 0.1.0 */
 	function yankedCdnFetch(): FetchFace {
-		const bundles = JSON.stringify({
+		const catalog = JSON.stringify({
 			seq: 1,
 			issued_at: ISSUED_AT,
 			expires_at: EXPIRES_AT,
+			shards: { 1: 1 },
+			solutions: [{ name: "demo-solution", shards: [1] }],
+		});
+		const shard = JSON.stringify({
 			solutions: [{
 				name: "demo-solution",
 				latest: "0.1.0",
 				versions: [
-					{ version: "0.2.0", file: "demo-solution-0.2.0.tgz", sha256: SHA256, size: ARCHIVE.byteLength, yanked: true, yanked_at: ISSUED_AT },
-					{ version: "0.1.0", file: "demo-solution-0.1.0.tgz", sha256: SHA256, size: ARCHIVE.byteLength },
+					{ ...manifestFixture("0.2.0"), yanked: true, yanked_at: ISSUED_AT },
+					manifestFixture("0.1.0"),
 				],
 			}],
 		});
-		const manifests = JSON.stringify([manifestFixture("0.2.0"), manifestFixture("0.1.0")]);
-		const bundlesSig = JSON.stringify(signIndex("bundles", SEQ, bundles, TEST_KEY.privateKeyPem, "test.publisher"));
-		const manifestsSig = JSON.stringify(signIndex("manifests", SEQ, manifests, TEST_KEY.privateKeyPem, "test.publisher"));
+		const catalogSig = JSON.stringify(signIndex("catalog", SEQ, catalog, TEST_KEY.privateKeyPem, "test.publisher"));
+		const shardSig = JSON.stringify(signIndex("shard", 1, shard, TEST_KEY.privateKeyPem, "test.publisher"));
 		return ((url: string) => {
-			const text = String(url).endsWith("bundles.yaml")
-				? bundles
-				: String(url).endsWith("manifests.yaml") ? manifests : null;
+			const text = String(url).endsWith("catalog.yaml")
+				? catalog
+				: String(url).endsWith("shards/1.yaml") ? shard : null;
 			if (text !== null)
 				return { ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode(text).buffer as ArrayBuffer };
 			if (String(url).endsWith(".yaml.sig")) {
-				const sig = String(url).includes("manifests") ? manifestsSig : bundlesSig;
+				const sig = String(url).includes("shards") ? shardSig : catalogSig;
 				return { ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode(sig).buffer as ArrayBuffer };
 			}
 			if (String(url).endsWith(".tgz"))
@@ -425,14 +436,14 @@ describe("相对基址（REG-CS6：/cdn 自供按配置的 canonical_origin 补�
 		expect(fetchCalls.some(u => String(u).includes(FORGED))).toBe(false);
 	});
 
-	it("index：canonical_origin 配置 → 索引与 manifests 拉取按配置 origin 补全（非 Host 头）", async () => {
+	it("index：canonical_origin 配置 → 索引与分片拉取按配置 origin 补全（非 Host 头）", async () => {
 		const api = createMarketApi(relEnv({ canonicalOrigin: "http://127.0.0.1:5174" }));
 		fetchCalls.length = 0;
 		g.http = { user: { id: 1 }, headers: { host: FORGED } };
 		await api.index.get();
 		expect(last?.status).toBe(200);
-		expect(fetchCalls).toContain("http://127.0.0.1:5174/cdn/bundles.yaml");
-		expect(fetchCalls).toContain("http://127.0.0.1:5174/cdn/manifests.yaml");
+		expect(fetchCalls).toContain("http://127.0.0.1:5174/cdn/catalog.yaml");
+		expect(fetchCalls).toContain("http://127.0.0.1:5174/cdn/shards/1.yaml");
 		expect(fetchCalls.some(u => String(u).includes(FORGED))).toBe(false);
 	});
 
@@ -475,7 +486,7 @@ describe("相对基址（REG-CS6：/cdn 自供按配置的 canonical_origin 补�
 		g.http = { user: { id: 1 }, headers: { host: FORGED } };
 		await api.index.get();
 		expect(last?.status).toBe(200);
-		expect(fetchCalls).toContain(`${CDN}bundles.yaml`);
+		expect(fetchCalls).toContain(`${CDN}catalog.yaml`);
 		expect(fetchCalls.some(u => String(u).includes(FORGED))).toBe(false);
 	});
 });
@@ -799,7 +810,7 @@ describe("POST enable（生命周期开关：P1-13 瘦客户端触发面，四�
 	});
 });
 
-describe("GET index（CDN bundles.yaml no-cache 拉取 + 本地 state 对比）", () => {
+describe("GET index（CDN catalog + shards 拉取 + 本地 state 对比）", () => {
 	it("未配置市场地址 → 503 可读错误（「未配置市场地址」卡片区口径，PRD §5.3）", async () => {
 		const api = createMarketApi(makeEnv({ cdnBase: async () => null }));
 		await api.index.get();
@@ -807,7 +818,7 @@ describe("GET index（CDN bundles.yaml no-cache 拉取 + 本地 state 对比）"
 		expect(String(last?.msg)).toContain("未配置市场地址");
 	});
 
-	it("聚合对比：CDN 最新版本 + 本地已装/enabled + upgradable + available/changelog/publisher/trust/key_id/operator（P2-11）；本地独有方案也列出；拉取带 no-cache", async () => {
+	it("聚合对比：CDN 最新版本 + 本地已装/enabled + upgradable + available/changelog/publisher/trust/key_id/operator（P2-11）；本地独有方案也列出；拉取不带 no-cache", async () => {
 		const env = makeEnv();
 		const state = await createStateStore(env.statePath);
 		await state.write({
@@ -819,10 +830,11 @@ describe("GET index（CDN bundles.yaml no-cache 拉取 + 本地 state 对比）"
 		const api = createMarketApi(env);
 		await api.index.get();
 		expect(last?.status).toBe(200);
-		expect(fetchCalls[0]).toBe(`${CDN}bundles.yaml`);
-		expect((fetchInits[0] as { headers?: Record<string, string> })?.headers?.["cache-control"]).toBe("no-cache");
+		expect(fetchCalls[0]).toBe(`${CDN}catalog.yaml`);
+		// REG-CS5④：读面不再发 cache-control: no-cache（服务端缓存头 + 条件请求承载新鲜度）
+		expect(fetchInits.every(i => (i as { headers?: Record<string, string> } | undefined)?.headers?.["cache-control"] === undefined)).toBe(true);
 		expect(last?.data).toEqual([
-			{ name: "demo-solution", latest: "0.2.0", installed: "0.1.0", enabled: true, upgradable: true, available: ["0.2.0", "0.1.0"], changelog: ["0.2.0 变更条目"], publisher: "oj-module", trust_state: "trusted", key_id: "test.publisher", operator: null },
+			{ name: "demo-solution", latest: "0.2.0", installed: "0.1.0", enabled: true, upgradable: true, available: ["0.1.0", "0.2.0"], changelog: ["0.2.0 变更条目"], publisher: "oj-module", trust_state: "trusted", key_id: "test.publisher", operator: null },
 			{ name: "wiki", latest: "1.3.0", installed: null, enabled: null, upgradable: false, available: ["1.3.0"], changelog: null, publisher: null, trust_state: null, key_id: null, operator: null },
 			{ name: "legacy", latest: null, installed: "9.9.9", enabled: false, upgradable: false, available: [], changelog: null, publisher: null, trust_state: null, key_id: null, operator: null },
 		]);
@@ -840,9 +852,9 @@ describe("GET index（CDN bundles.yaml no-cache 拉取 + 本地 state 对比）"
 		expect(rows.find(r => r.name === "wiki")?.operator).toBeNull();
 	});
 
-	it("manifests.yaml 签名不可达 → 502 index_sig_missing 不降级（REG-CS1 fail-closed：可用性不再压过完整性）", async () => {
+	it("shards/1.yaml 签名不可达 → 502 index_sig_missing 不降级（REG-CS1 fail-closed：可用性不再压过完整性）", async () => {
 		const fetchFn = (async (url: string) => {
-			if (String(url).endsWith("manifests.yaml.sig"))
+			if (String(url).endsWith("shards/1.yaml.sig"))
 				return { ok: false, status: 503, arrayBuffer: async () => new ArrayBuffer(0) };
 			return cdnFetch(url);
 		}) as FetchFace;
@@ -878,17 +890,18 @@ describe("GET index（CDN bundles.yaml no-cache 拉取 + 本地 state 对比）"
 
 	it("archive.file 邪例表（P2-11 索引投毒加固：file 逐字 <name>-<version>.tgz）→ 502 拒", async () => {
 		for (const file of ["../evil.tgz", "/etc/hosts.tgz", "other-0.1.0.tgz", "demo-solution-9.9.9.tgz"]) {
-			const bundles = JSON.stringify({ seq: 1, issued_at: ISSUED_AT, expires_at: EXPIRES_AT, solutions: [{ name: "demo-solution", latest: "0.1.0", versions: [{ version: "0.1.0", file, sha256: SHA256, size: ARCHIVE.byteLength }] }] });
-			const manifests = JSON.stringify([manifestFixture("0.1.0")]);
+			const catalog = JSON.stringify({ seq: 1, issued_at: ISSUED_AT, expires_at: EXPIRES_AT, shards: { 1: 1 }, solutions: [{ name: "demo-solution", shards: [1] }] });
+			const base = manifestFixture("0.1.0");
+			const shard = JSON.stringify({ solutions: [{ name: "demo-solution", latest: "0.1.0", versions: [{ ...base, archive: { ...base.archive, file } }] }] });
 			// 本用例聚焦 file 逐字校验：索引照常签名，否则会先被「缺签名」挡下而测不到 file 分支
-			const bundlesSig = JSON.stringify(signIndex("bundles", 1, bundles, TEST_KEY.privateKeyPem, "test.publisher"));
-			const manifestsSig = JSON.stringify(signIndex("manifests", 1, manifests, TEST_KEY.privateKeyPem, "test.publisher"));
+			const catalogSig = JSON.stringify(signIndex("catalog", 1, catalog, TEST_KEY.privateKeyPem, "test.publisher"));
+			const shardSig = JSON.stringify(signIndex("shard", 1, shard, TEST_KEY.privateKeyPem, "test.publisher"));
 			const fetchFn = (async (url: string) => {
-				const text = String(url).endsWith("bundles.yaml") ? bundles : String(url).endsWith("manifests.yaml") ? manifests : null;
+				const text = String(url).endsWith("catalog.yaml") ? catalog : String(url).endsWith("shards/1.yaml") ? shard : null;
 				if (text !== null)
 					return { ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode(text).buffer as ArrayBuffer };
 				if (String(url).endsWith(".yaml.sig")) {
-					const sig = String(url).includes("manifests") ? manifestsSig : bundlesSig;
+					const sig = String(url).includes("shards") ? shardSig : catalogSig;
 					return { ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode(sig).buffer as ArrayBuffer };
 				}
 				return { ok: true, status: 200, arrayBuffer: async () => ARCHIVE.slice().buffer as ArrayBuffer }; // .tgz 下载字节
@@ -911,21 +924,21 @@ describe("GET index（CDN bundles.yaml no-cache 拉取 + 本地 state 对比）"
 });
 
 describe("REG-CS1 索引签名强制（G4 fail-closed：署名相符采用 / 篡改拒 / 缺失即拒 / 不同代即拒）", () => {
-	/** 注入 .sig 的 CDN：非空 .sig 进验签分支；缺/空 .sig → 404（REG-CS1 起即拒，不再容忍） */
-	function signingCdnFetch(sigs: { bundles?: string, manifests?: string }): FetchFace {
+	/** 注入 .sig 的三级 CDN：非空 .sig 进验签分支；缺/空 .sig → 404（REG-CS1 起即拒，不再容忍） */
+	function signingCdnFetch(sigs: { catalog?: string, shard?: string }): FetchFace {
 		return ((url: string, init?: unknown) => {
 			fetchCalls.push(url);
 			fetchInits.push(init);
 			if (String(url).endsWith(".yaml.sig")) {
-				const kind = String(url).includes("manifests") ? "manifests" : "bundles";
+				const kind = String(url).includes("shards") ? "shard" : "catalog";
 				const body = sigs[kind];
 				if (body !== undefined && body.trim() !== "")
 					return { ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode(body).buffer as ArrayBuffer };
 				return { ok: false, status: 404, arrayBuffer: async () => new ArrayBuffer(0) }; // 缺失/空 .sig
 			}
-			const text = String(url).endsWith("bundles.yaml")
-				? BUNDLES
-				: String(url).endsWith("manifests.yaml") ? MANIFESTS : null;
+			const text = String(url).endsWith("catalog.yaml")
+				? CATALOG
+				: String(url).endsWith("shards/1.yaml") ? SHARD_1 : null;
 			if (text !== null)
 				return { ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode(text).buffer as ArrayBuffer };
 			if (String(url).endsWith(".tgz"))
@@ -934,44 +947,43 @@ describe("REG-CS1 索引签名强制（G4 fail-closed：署名相符采用 / 篡
 		}) as FetchFace;
 	}
 
-	/** 代次可配的 CDN：总目录正文 seq 与两份 .sig 的 seq 分别可设——用来造「新总目录 + 旧分册」中间态 */
-	function generationCdnFetch(args: { bundles: string, bundlesSeq: number, manifestsSeq: number }): FetchFace {
+	/**
+	 * 代次可配的三级 CDN：catalog 正文 seq、catalog 签名 seq、catalog 对 shard 1 的钉值、
+	 * shard 1 签名 seq 分别可设——用来造「新总目录 + 旧分片」「改了正文没换签名」等中间态。
+	 * 分片正文恒为 SHARD_1（纯内容无 seq：代次只由签名与 catalog 钉值携带）。
+	 */
+	function generationCdnFetch(args: { catalogSeq: number, shardPin: number, shardSigSeq: number }): FetchFace {
+		const catalog = JSON.stringify({ seq: args.catalogSeq, issued_at: ISSUED_AT, expires_at: EXPIRES_AT, shards: { 1: args.shardPin }, solutions: [{ name: "demo-solution", shards: [1] }] });
+		const catalogSig = JSON.stringify(signIndex("catalog", args.catalogSeq, catalog, TEST_KEY.privateKeyPem, "test.publisher"));
+		const shardSig = JSON.stringify(signIndex("shard", args.shardSigSeq, SHARD_1, TEST_KEY.privateKeyPem, "test.publisher"));
 		return ((url: string) => {
 			fetchCalls.push(url);
-			const text = String(url).endsWith("bundles.yaml")
-				? args.bundles
-				: String(url).endsWith("manifests.yaml") ? MANIFESTS : null;
+			if (String(url).endsWith(".yaml.sig")) {
+				const sig = String(url).includes("shards") ? shardSig : catalogSig;
+				return { ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode(sig).buffer as ArrayBuffer };
+			}
+			const text = String(url).endsWith("catalog.yaml") ? catalog : String(url).endsWith("shards/1.yaml") ? SHARD_1 : null;
 			if (text !== null)
 				return { ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode(text).buffer as ArrayBuffer };
-			if (String(url).endsWith(".yaml.sig")) {
-				const manifests = String(url).includes("manifests");
-				const kind = manifests ? "manifests" : "bundles";
-				const signed = JSON.stringify(signIndex(
-					kind,
-					manifests ? args.manifestsSeq : args.bundlesSeq,
-					manifests ? MANIFESTS : args.bundles,
-					TEST_KEY.privateKeyPem,
-					"test.publisher",
-				));
-				return { ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode(signed).buffer as ArrayBuffer };
-			}
-			return { ok: true, status: 200, arrayBuffer: async () => ARCHIVE.slice().buffer as ArrayBuffer };
+			if (String(url).endsWith(".tgz"))
+				return { ok: true, status: 200, arrayBuffer: async () => ARCHIVE.slice().buffer as ArrayBuffer };
+			return { ok: true, status: 200, arrayBuffer: async () => new ArrayBuffer(0) };
 		}) as FetchFace;
 	}
 
-	it("署名相符：bundles/manifests 均带合法 .sig → index 照常 200（G4 采用，验签分支确已触发）", async () => {
-		const api = createMarketApi(makeEnv({ fetch: signingCdnFetch({ bundles: BUNDLES_SIG, manifests: MANIFESTS_SIG }) }));
+	it("署名相符：catalog/shard 均带合法 .sig → index 照常 200（G4 采用，验签分支确已触发）", async () => {
+		const api = createMarketApi(makeEnv({ fetch: signingCdnFetch({ catalog: CATALOG_SIG, shard: SHARD_1_SIG }) }));
 		g.http = { user: { id: 1 } };
 		await api.index.get();
 		expect(last?.status).toBe(200);
 		expect((last?.data as unknown[]).length).toBeGreaterThan(0);
-		expect(fetchCalls.some(u => u.endsWith("bundles.yaml.sig"))).toBe(true);
-		expect(fetchCalls.some(u => u.endsWith("manifests.yaml.sig"))).toBe(true);
+		expect(fetchCalls.some(u => u.endsWith("catalog.yaml.sig"))).toBe(true);
+		expect(fetchCalls.some(u => u.endsWith("shards/1.yaml.sig"))).toBe(true);
 	});
 
-	it("篡改拒：.sig 对别的字节签名（非索引真值）→ verifyIndexSig 不符 → 502 fail-closed（G4 不吞）", async () => {
-		const bundlesSig = JSON.stringify(signIndex("bundles", SEQ, `${BUNDLES}\n# tampered`, TEST_KEY.privateKeyPem, "test.publisher"));
-		const api = createMarketApi(makeEnv({ fetch: signingCdnFetch({ bundles: bundlesSig, manifests: MANIFESTS_SIG }) }));
+	it("篡改拒：catalog .sig 对别的字节签名（非索引真值）→ verifyIndexSig 不符 → 502 fail-closed（G4 不吞）", async () => {
+		const catalogSig = JSON.stringify(signIndex("catalog", SEQ, `${CATALOG}\n# tampered`, TEST_KEY.privateKeyPem, "test.publisher"));
+		const api = createMarketApi(makeEnv({ fetch: signingCdnFetch({ catalog: catalogSig, shard: SHARD_1_SIG }) }));
 		g.http = { user: { id: 1 } };
 		await api.index.get();
 		expect(last?.status).toBe(502);
@@ -989,7 +1001,7 @@ describe("REG-CS1 索引签名强制（G4 fail-closed：署名相符采用 / 篡
 	});
 
 	it("空 .sig 等同缺失 → 502 index_sig_missing（不能靠空体绕过）", async () => {
-		const api = createMarketApi(makeEnv({ fetch: signingCdnFetch({ bundles: "   ", manifests: "   " }) }));
+		const api = createMarketApi(makeEnv({ fetch: signingCdnFetch({ catalog: "   ", shard: "   " }) }));
 		g.http = { user: { id: 1 } };
 		await api.index.get();
 		expect(last?.status).toBe(502);
@@ -998,16 +1010,15 @@ describe("REG-CS1 索引签名强制（G4 fail-closed：署名相符采用 / 篡
 
 	it("签名未覆盖代次（旧格式无 seq）→ 502 index_sig_mismatch（不默认通过）", async () => {
 		const legacy = JSON.stringify({ alg: "Ed25519", key_id: "test.publisher", public_key: TEST_KEY.publicKeyHex, value: "AAAA", canon: "v1" });
-		const api = createMarketApi(makeEnv({ fetch: signingCdnFetch({ bundles: legacy, manifests: legacy }) }));
+		const api = createMarketApi(makeEnv({ fetch: signingCdnFetch({ catalog: legacy, shard: legacy }) }));
 		g.http = { user: { id: 1 } };
 		await api.index.get();
 		expect(last?.status).toBe(502);
 		expect(String(last?.msg)).toContain("index_sig_mismatch");
 	});
 
-	it("跨文件不同代（红队 F2）：总目录第 7 代、聚合清单签名第 6 代 → 502 index_generation_mismatch（提示源在重建，不是「被篡改」）", async () => {
-		const bundles = JSON.stringify({ seq: 7, issued_at: ISSUED_AT, expires_at: EXPIRES_AT, solutions: [{ name: "demo-solution", latest: "0.1.0", versions: [{ version: "0.1.0", file: "demo-solution-0.1.0.tgz", sha256: SHA256, size: ARCHIVE.byteLength }] }] });
-		const api = createMarketApi(makeEnv({ fetch: generationCdnFetch({ bundles, bundlesSeq: 7, manifestsSeq: 6 }) }));
+	it("跨文件不同代（红队 F2）：总目录第 7 代钉 shard 7、分片签名第 6 代 → 502 index_generation_mismatch（提示源在重建，不是「被篡改」）", async () => {
+		const api = createMarketApi(makeEnv({ fetch: generationCdnFetch({ catalogSeq: 7, shardPin: 7, shardSigSeq: 6 }) }));
 		g.http = { user: { id: 1 } };
 		await api.index.get();
 		expect(last?.status).toBe(502);
@@ -1017,23 +1028,43 @@ describe("REG-CS1 索引签名强制（G4 fail-closed：署名相符采用 / 篡
 	});
 
 	it("正文与签名不同代（改了正文没换签名）→ 502 index_generation_mismatch", async () => {
-		const bundles = JSON.stringify({ seq: 7, issued_at: ISSUED_AT, expires_at: EXPIRES_AT, solutions: [{ name: "demo-solution", latest: "0.1.0", versions: [{ version: "0.1.0", file: "demo-solution-0.1.0.tgz", sha256: SHA256, size: ARCHIVE.byteLength }] }] });
-		const api = createMarketApi(makeEnv({ fetch: generationCdnFetch({ bundles, bundlesSeq: 6, manifestsSeq: 6 }) }));
+		// catalog 正文 seq=7 但签名 seq=6：body-seq 与 sig-seq 对不上（半个写入）
+		const catalog = JSON.stringify({ seq: 7, issued_at: ISSUED_AT, expires_at: EXPIRES_AT, shards: { 1: 6 }, solutions: [{ name: "demo-solution", shards: [1] }] });
+		const catalogSig = JSON.stringify(signIndex("catalog", 6, catalog, TEST_KEY.privateKeyPem, "test.publisher"));
+		const shardSig = JSON.stringify(signIndex("shard", 6, SHARD_1, TEST_KEY.privateKeyPem, "test.publisher"));
+		const fetchFn = ((url: string) => {
+			fetchCalls.push(url);
+			if (String(url).endsWith(".yaml.sig")) {
+				const sig = String(url).includes("shards") ? shardSig : catalogSig;
+				return { ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode(sig).buffer as ArrayBuffer };
+			}
+			const text = String(url).endsWith("catalog.yaml") ? catalog : String(url).endsWith("shards/1.yaml") ? SHARD_1 : null;
+			if (text !== null)
+				return { ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode(text).buffer as ArrayBuffer };
+			return { ok: true, status: 200, arrayBuffer: async () => new ArrayBuffer(0) };
+		}) as FetchFace;
+		const api = createMarketApi(makeEnv({ fetch: fetchFn }));
 		g.http = { user: { id: 1 } };
 		await api.index.get();
 		expect(last?.status).toBe(502);
 		expect(String(last?.msg)).toContain("index_generation_mismatch");
 	});
 
-	it("同代放行：两份索引同为第 7 代 → 200（不误伤正常重建）", async () => {
-		const bundles = JSON.stringify({ seq: 7, issued_at: ISSUED_AT, expires_at: EXPIRES_AT, solutions: [{ name: "demo-solution", latest: "0.1.0", versions: [{ version: "0.1.0", file: "demo-solution-0.1.0.tgz", sha256: SHA256, size: ARCHIVE.byteLength }] }] });
-		const api = createMarketApi(makeEnv({ fetch: generationCdnFetch({ bundles, bundlesSeq: 7, manifestsSeq: 7 }) }));
+	it("同代放行：catalog 第 7 代、钉 shard 7、分片签名第 7 代 → 200（不误伤正常重建）", async () => {
+		const api = createMarketApi(makeEnv({ fetch: generationCdnFetch({ catalogSeq: 7, shardPin: 7, shardSigSeq: 7 }) }));
 		g.http = { user: { id: 1 } };
 		await api.index.get();
 		expect(last?.status).toBe(200);
 	});
 
-	it("安装侧同判定：缺签名 → install 终态 failed（离线 verify 与站点安装不能一个拒一个放）", async () => {
+	it("byte 相同分片跨代复用：catalog 第 7 代钉 shard 3、分片签名第 3 代 → 200（钉值口径，非恒等 catalog 代次）", async () => {
+		const api = createMarketApi(makeEnv({ fetch: generationCdnFetch({ catalogSeq: 7, shardPin: 3, shardSigSeq: 3 }) }));
+		g.http = { user: { id: 1 } };
+		await api.index.get();
+		expect(last?.status).toBe(200);
+	});
+
+	it("安装侧同判定：缺签名 → install 502 index_sig_missing（离线 verify 与站点安装不能一个拒一个放）", async () => {
 		const api = createMarketApi(makeEnv({ fetch: signingCdnFetch({}) }));
 		g.http = { user: { id: 1 }, body: { name: "demo-solution", version: "0.1.0", source: "cdn" } };
 		await api.install.post();
@@ -1043,25 +1074,27 @@ describe("REG-CS1 索引签名强制（G4 fail-closed：署名相符采用 / 篡
 });
 
 describe("REG-CS2 索引新鲜度（过期即拒 / 代次回退即拒 / 状态损坏 fail-closed）", () => {
-	/** 代次与时效可配的 CDN：造过期、缺时效、代次回退三种邪例 */
-	function timedCdnFetch(args: { seq: number, manifestsSeq?: number, expiresAt?: number | null }): FetchFace {
-		const bundles = JSON.stringify({
+	/** 代次与时效可配的三级 CDN：catalog 正文 seq 与时效封套可设；分片与 catalog 同代（钉值 = seq，签名 seq = 钉值） */
+	function timedCdnFetch(args: { seq: number, shardPin?: number, expiresAt?: number | null }): FetchFace {
+		const pin = args.shardPin ?? args.seq;
+		const catalog = JSON.stringify({
 			seq: args.seq,
 			// expiresAt = null → 索引不带时效封套（旧 ojm 产物）
 			...(args.expiresAt === null ? {} : { issued_at: ISSUED_AT, expires_at: args.expiresAt ?? EXPIRES_AT }),
-			solutions: [{ name: "demo-solution", latest: "0.1.0", versions: [{ version: "0.1.0", file: "demo-solution-0.1.0.tgz", sha256: SHA256, size: ARCHIVE.byteLength }] }],
+			shards: { 1: pin },
+			solutions: [{ name: "demo-solution", shards: [1] }],
 		});
+		const catalogSig = JSON.stringify(signIndex("catalog", args.seq, catalog, TEST_KEY.privateKeyPem, "test.publisher"));
+		const shardSig = JSON.stringify(signIndex("shard", pin, SHARD_1, TEST_KEY.privateKeyPem, "test.publisher"));
 		return ((url: string) => {
 			fetchCalls.push(url);
-			const manifests = String(url).includes("manifests");
-			const text = manifests ? MANIFESTS : bundles;
-			if (String(url).endsWith(".yaml"))
-				return { ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode(text).buffer as ArrayBuffer };
 			if (String(url).endsWith(".yaml.sig")) {
-				const seq = manifests ? (args.manifestsSeq ?? args.seq) : args.seq;
-				const sig = JSON.stringify(signIndex(manifests ? "manifests" : "bundles", seq, text, TEST_KEY.privateKeyPem, "test.publisher"));
+				const sig = String(url).includes("shards") ? shardSig : catalogSig;
 				return { ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode(sig).buffer as ArrayBuffer };
 			}
+			const text = String(url).endsWith("catalog.yaml") ? catalog : String(url).endsWith("shards/1.yaml") ? SHARD_1 : null;
+			if (text !== null)
+				return { ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode(text).buffer as ArrayBuffer };
 			return { ok: true, status: 200, arrayBuffer: async () => ARCHIVE.slice().buffer as ArrayBuffer };
 		}) as FetchFace;
 	}
@@ -1114,6 +1147,252 @@ describe("REG-CS2 索引新鲜度（过期即拒 / 代次回退即拒 / 状态�
 		await api.index.get();
 		expect(last?.status).toBe(502);
 		expect(String(last?.msg)).toContain("index_state_corrupt");
+	});
+});
+
+describe("REG-CS5 三级索引（装箱分片 + 条件请求 + DIP 读取源 + 读写两侧半写防线）", () => {
+	/**
+	 * 2500 版本跨 3 片的装箱索引（BDD①；装箱口径与写侧 sharding.ts 同参：单片 ≤1000 版本）：
+	 * 1 号片持 1.0.0..1.0.999、2 号片持 1.0.1000..1.0.1999、3 号片持 1.0.2000..1.0.2499，
+	 * 最高片持最新版。两端界版本给完整 Form B manifest（安装链消费面），
+	 * 其余条目只要 name/version/archive 三要素（latest 单调与 available 消费）。
+	 */
+	function bigIndexFetch(): FetchFace {
+		const cut = 1000;
+		const entryOf = (v: string, full: boolean): Record<string, unknown> => full
+			? manifestFixture(v)
+			: { name: "demo-solution", version: v, archive: { file: `demo-solution-${v}.tgz`, sha256: SHA256, size: ARCHIVE.byteLength } };
+		const range = (from: number, to: number, fullAt: number[]): Array<Record<string, unknown>> =>
+			Array.from({ length: to - from + 1 }, (_, i) => entryOf(`1.0.${from + i}`, fullAt.includes(from + i)));
+		const shard1 = JSON.stringify({ solutions: [{ name: "demo-solution", latest: `1.0.${cut - 1}`, versions: range(0, cut - 1, [0]) }] });
+		const shard2 = JSON.stringify({ solutions: [{ name: "demo-solution", latest: `1.0.${cut * 2 - 1}`, versions: range(cut, cut * 2 - 1, []) }] });
+		const shard3 = JSON.stringify({ solutions: [{ name: "demo-solution", latest: "1.0.2499", versions: range(cut * 2, 2499, [2499]) }] });
+		const catalog = JSON.stringify({ seq: 1, issued_at: ISSUED_AT, expires_at: EXPIRES_AT, shards: { 1: 1, 2: 1, 3: 1 }, solutions: [{ name: "demo-solution", shards: [1, 2, 3] }] });
+		const catalogSig = JSON.stringify(signIndex("catalog", 1, catalog, TEST_KEY.privateKeyPem, "test.publisher"));
+		const shardSigs = [shard1, shard2, shard3].map(body => JSON.stringify(signIndex("shard", 1, body, TEST_KEY.privateKeyPem, "test.publisher")));
+		return ((url: string) => {
+			fetchCalls.push(url);
+			if (String(url).endsWith(".yaml.sig")) {
+				const hit = /shards\/(\d+)\.yaml\.sig$/.exec(String(url));
+				const sig = hit === null ? catalogSig : shardSigs[Number(hit[1]) - 1]!;
+				return { ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode(sig).buffer as ArrayBuffer };
+			}
+			const text = String(url).endsWith("catalog.yaml")
+				? catalog
+				: String(url).endsWith("shards/1.yaml") ? shard1 : String(url).endsWith("shards/2.yaml") ? shard2 : String(url).endsWith("shards/3.yaml") ? shard3 : null;
+			if (text !== null)
+				return { ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode(text).buffer as ArrayBuffer };
+			if (String(url).endsWith(".tgz"))
+				return { ok: true, status: 200, arrayBuffer: async () => ARCHIVE.slice().buffer as ArrayBuffer };
+			return { ok: true, status: 200, arrayBuffer: async () => new ArrayBuffer(0) };
+		}) as FetchFace;
+	}
+
+	it("BDD① 装箱分片：2500 版本跨 3 片，latest 安装只拉最高片（≤ 1 catalog + 1 shard）→ done", async () => {
+		const api = createMarketApi(makeEnv({ fetch: bigIndexFetch() }));
+		fetchCalls.length = 0;
+		g.http = { user: { id: 1 }, body: { name: "demo-solution", version: null, source: "cdn" } };
+		await api.install.post();
+		expect(last?.status).toBe(200);
+		expect(fetchCalls).toContain(`${CDN}catalog.yaml`);
+		expect(fetchCalls).toContain(`${CDN}shards/3.yaml`);
+		// 降序尝试：最高片即中，低片一次都不拉（索引请求 ≤ 1 catalog + 1 shard）
+		expect(fetchCalls.some(u => u.endsWith("shards/1.yaml"))).toBe(false);
+		expect(fetchCalls.some(u => u.endsWith("shards/2.yaml"))).toBe(false);
+		expect(fetchCalls).toContain(`${CDN}demo-solution-1.0.2499.tgz`);
+		const taskId = (last?.data as { task_id?: unknown })?.task_id as string;
+		const rec = await getTask(taskDir, taskId);
+		expect(rec?.version).toBe("1.0.2499");
+		expect(rec?.status).toBe("done");
+	});
+
+	it("BDD① 回落低片：显式指定最低版本 → 先试最高片未中，逐片回落到 1 号片命中 → done", async () => {
+		const api = createMarketApi(makeEnv({ fetch: bigIndexFetch() }));
+		fetchCalls.length = 0;
+		g.http = { user: { id: 1 }, body: { name: "demo-solution", version: "1.0.0", source: "cdn" } };
+		await api.install.post();
+		expect(last?.status).toBe(200);
+		expect(fetchCalls).toContain(`${CDN}shards/3.yaml`); // 仍先试最高片
+		expect(fetchCalls).toContain(`${CDN}shards/2.yaml`); // 未中 → 回落中片
+		expect(fetchCalls).toContain(`${CDN}shards/1.yaml`); // 仍未中 → 回落低片命中
+		expect(fetchCalls).toContain(`${CDN}demo-solution-1.0.0.tgz`);
+		const taskId = (last?.data as { task_id?: unknown })?.task_id as string;
+		const rec = await getTask(taskDir, taskId);
+		expect(rec?.version).toBe("1.0.0");
+		expect(rec?.status).toBe("done");
+	});
+
+	it("页面 available 全集（回滚候选要版本全集）：3 片 2500 版跨片全局升序，latest 取最高片", async () => {
+		const api = createMarketApi(makeEnv({ fetch: bigIndexFetch() }));
+		g.http = { user: { id: 1 } };
+		await api.index.get();
+		expect(last?.status).toBe(200);
+		const row = (last?.data as Array<{ name: string, latest: string | null, available: string[], changelog: string[] | null, publisher: string | null }>).find(r => r.name === "demo-solution");
+		expect(row?.latest).toBe("1.0.2499");
+		expect(row?.available).toHaveLength(2500);
+		expect(row?.available[0]).toBe("1.0.0");
+		expect(row?.available[999]).toBe("1.0.999"); // 1 号片末条
+		expect(row?.available[1000]).toBe("1.0.1000"); // 2 号片首条——跨片拼接处仍升序
+		expect(row?.available[1999]).toBe("1.0.1999"); // 2 号片末条
+		expect(row?.available[2000]).toBe("1.0.2000"); // 3 号片首条
+		expect(row?.available[2499]).toBe("1.0.2499");
+		expect([...row!.available].sort(compareVersions)).toEqual(row!.available);
+		// latest 的 changelog/publisher 直接取分片条目（无独立聚合清单）
+		expect(row?.changelog).toEqual(["1.0.2499 变更条目"]);
+		expect(row?.publisher).toBe("oj-module");
+	});
+
+	it("条件请求缓存（Q8 可用性通道）：第二轮索引拉取带 If-None-Match → 304 不重传正文，缓存副本照常出数", async () => {
+		// 独立基址：etagCache 是模块级（url → {etag, body}），与其余用例的 CDN 基址隔离
+		const ETAG_BASE = "https://etag.example.com/cdn/";
+		let notModified = 0;
+		const fetchFn = ((url: string, init?: unknown) => {
+			fetchCalls.push(url);
+			fetchInits.push(init);
+			const conditional = (init as { headers?: Record<string, string> } | undefined)?.headers?.["if-none-match"];
+			const text = String(url).endsWith("catalog.yaml")
+				? CATALOG
+				: String(url).endsWith("shards/1.yaml") ? SHARD_1 : null;
+			const sigText = String(url).endsWith("catalog.yaml.sig")
+				? CATALOG_SIG
+				: String(url).endsWith("shards/1.yaml.sig") ? SHARD_1_SIG : null;
+			// 带条件头的请求：服务端认 ETag → 304 空正文（ok=false 但语义是「未变」）
+			if (conditional !== undefined) {
+				notModified++;
+				return { ok: false, status: 304, arrayBuffer: async () => new ArrayBuffer(0) };
+			}
+			const body = text ?? sigText;
+			if (body !== null) {
+				return {
+					ok: true,
+					status: 200,
+					arrayBuffer: async () => new TextEncoder().encode(body).buffer as ArrayBuffer,
+					// 响应头读取面（site-facade 扩展）：读 ETag 供下一轮 If-None-Match
+					headers: { get: (name: string) => (name.toLowerCase() === "etag" ? `"idx-${body.length}"` : null) },
+				};
+			}
+			return { ok: true, status: 200, arrayBuffer: async () => new ArrayBuffer(0) };
+		}) as FetchFace;
+		const api = createMarketApi(makeEnv({ cdnBase: async () => ETAG_BASE, fetch: fetchFn }));
+		g.http = { user: { id: 1 } };
+		// 第一轮：无缓存 → 四项索引请求（catalog 正文+签名、shard 正文+签名）全量 200 + ETag
+		await api.index.get();
+		expect(last?.status).toBe(200);
+		const first = last?.data;
+		expect(notModified).toBe(0);
+		expect(fetchInits.every(i => (i as { headers?: Record<string, string> } | undefined)?.headers?.["if-none-match"] === undefined)).toBe(true);
+		// 读面不发 no-cache：新鲜度由服务端缓存头 + 条件请求承载
+		expect(fetchInits.every(i => (i as { headers?: Record<string, string> } | undefined)?.headers?.["cache-control"] === undefined)).toBe(true);
+		// 第二轮：四项全部带 If-None-Match → 全部 304 不重传，缓存副本出数与首轮逐字一致
+		await api.index.get();
+		expect(last?.status).toBe(200);
+		expect(last?.data).toEqual(first);
+		const second = fetchInits.slice(4);
+		expect(second).toHaveLength(4);
+		expect(second.every(i => (i as { headers?: Record<string, string> }).headers?.["if-none-match"] !== undefined)).toBe(true);
+		expect(notModified).toBe(4);
+	});
+
+	it("DIP 本地目录索引源：indexSource 注入 → 零 HTTP 直读 catalog+shards，校验语义与 HTTP 实现同构", async () => {
+		const dir = join(root, "cdn-mirror");
+		await fsp.mkdir(join(dir, "shards"), { recursive: true });
+		await fsp.writeFile(join(dir, "catalog.yaml"), CATALOG);
+		await fsp.writeFile(join(dir, "catalog.yaml.sig"), CATALOG_SIG);
+		await fsp.writeFile(join(dir, "shards", "1.yaml"), SHARD_1);
+		await fsp.writeFile(join(dir, "shards", "1.yaml.sig"), SHARD_1_SIG);
+		const api = createMarketApi(makeEnv({ indexSource: localIndexSource(dir) }));
+		fetchCalls.length = 0;
+		g.http = { user: { id: 1 } };
+		await api.index.get();
+		expect(last?.status).toBe(200);
+		expect(fetchCalls.length).toBe(0); // 本地直读，零出站
+		const row = (last?.data as Array<{ name: string, latest: string | null }>).find(r => r.name === "demo-solution");
+		expect(row?.latest).toBe("0.2.0");
+	});
+
+	it("本地目录索引源同构拒载：缺 .sig → 502 index_sig_missing（与 HTTP 实现一个判定）", async () => {
+		const dir = join(root, "cdn-mirror-nosig");
+		await fsp.mkdir(join(dir, "shards"), { recursive: true });
+		await fsp.writeFile(join(dir, "catalog.yaml"), CATALOG);
+		await fsp.writeFile(join(dir, "shards", "1.yaml"), SHARD_1);
+		await fsp.writeFile(join(dir, "shards", "1.yaml.sig"), SHARD_1_SIG); // 只缺 catalog 的签名
+		const api = createMarketApi(makeEnv({ indexSource: localIndexSource(dir) }));
+		g.http = { user: { id: 1 } };
+		await api.index.get();
+		expect(last?.status).toBe(502);
+		expect(String(last?.msg)).toContain("index_sig_missing");
+	});
+
+	it("读侧半写防线：catalog 钉了 shards/2.yaml 但 CDN 缺该文件 → 502 fail-closed（不是「没有该方案」）", async () => {
+		// 写侧原子落地序：分片正文 → 分片签名 → catalog 正文 → catalog 签名。
+		// 此夹具 = catalog 已提交、shard 2 尚未落盘的中间态（读侧视角的半写）
+		const catalog = JSON.stringify({ seq: 1, issued_at: ISSUED_AT, expires_at: EXPIRES_AT, shards: { 1: 1, 2: 1 }, solutions: [{ name: "demo-solution", shards: [1, 2] }] });
+		const catalogSig = JSON.stringify(signIndex("catalog", 1, catalog, TEST_KEY.privateKeyPem, "test.publisher"));
+		const fetchFn = ((url: string) => {
+			fetchCalls.push(url);
+			if (String(url).includes("shards/2"))
+				return { ok: false, status: 404, arrayBuffer: async () => new ArrayBuffer(0) }; // 分片还没落盘
+			if (String(url).endsWith("catalog.yaml.sig"))
+				return { ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode(catalogSig).buffer as ArrayBuffer };
+			if (String(url).endsWith("shards/1.yaml.sig"))
+				return { ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode(SHARD_1_SIG).buffer as ArrayBuffer };
+			const text = String(url).endsWith("catalog.yaml") ? catalog : String(url).endsWith("shards/1.yaml") ? SHARD_1 : null;
+			if (text !== null)
+				return { ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode(text).buffer as ArrayBuffer };
+			return { ok: true, status: 200, arrayBuffer: async () => new ArrayBuffer(0) };
+		}) as FetchFace;
+		const api = createMarketApi(makeEnv({ fetch: fetchFn }));
+		g.http = { user: { id: 1 } };
+		await api.index.get();
+		expect(last?.status).toBe(502);
+		expect(String(last?.msg)).toContain("shards/2.yaml");
+	});
+
+	it("索引结构破损邪例表（签名过的不可信输入，G4：结构破损与字节被改同类）→ 502 index_generation_mismatch", async () => {
+		const brokenCatalogs = [
+			// 分片钉值为空
+			JSON.stringify({ seq: 1, issued_at: ISSUED_AT, expires_at: EXPIRES_AT, shards: {}, solutions: [{ name: "demo-solution", shards: [1] }] }),
+			// 方案指向未钉分片（不静默跳过——那会伪装成「没有该方案」）
+			JSON.stringify({ seq: 1, issued_at: ISSUED_AT, expires_at: EXPIRES_AT, shards: { 1: 1 }, solutions: [{ name: "demo-solution", shards: [2] }] }),
+		];
+		for (const catalog of brokenCatalogs) {
+			const catalogSig = JSON.stringify(signIndex("catalog", 1, catalog, TEST_KEY.privateKeyPem, "test.publisher"));
+			const fetchFn = ((url: string) => {
+				if (String(url).endsWith("catalog.yaml.sig"))
+					return { ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode(catalogSig).buffer as ArrayBuffer };
+				if (String(url).endsWith("catalog.yaml"))
+					return { ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode(catalog).buffer as ArrayBuffer };
+				return { ok: false, status: 404, arrayBuffer: async () => new ArrayBuffer(0) };
+			}) as FetchFace;
+			const api = createMarketApi(makeEnv({ fetch: fetchFn }));
+			g.http = { user: { id: 1 } };
+			await api.index.get();
+			expect(last?.status).toBe(502);
+			expect(String(last?.msg)).toContain("index_generation_mismatch");
+		}
+	});
+
+	it("分片结构破损（签名过但缺 solutions 数组）→ 502 fail-closed（不猜、不降级）", async () => {
+		const shard = JSON.stringify({ packages: [] }); // 旧键名/畸形：分片解析面拒
+		const catalog = JSON.stringify({ seq: 1, issued_at: ISSUED_AT, expires_at: EXPIRES_AT, shards: { 1: 1 }, solutions: [{ name: "demo-solution", shards: [1] }] });
+		const catalogSig = JSON.stringify(signIndex("catalog", 1, catalog, TEST_KEY.privateKeyPem, "test.publisher"));
+		const shardSig = JSON.stringify(signIndex("shard", 1, shard, TEST_KEY.privateKeyPem, "test.publisher"));
+		const fetchFn = ((url: string) => {
+			if (String(url).endsWith(".yaml.sig")) {
+				const sig = String(url).includes("shards") ? shardSig : catalogSig;
+				return { ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode(sig).buffer as ArrayBuffer };
+			}
+			const text = String(url).endsWith("catalog.yaml") ? catalog : String(url).endsWith("shards/1.yaml") ? shard : null;
+			if (text !== null)
+				return { ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode(text).buffer as ArrayBuffer };
+			return { ok: false, status: 404, arrayBuffer: async () => new ArrayBuffer(0) };
+		}) as FetchFace;
+		const api = createMarketApi(makeEnv({ fetch: fetchFn }));
+		g.http = { user: { id: 1 } };
+		await api.index.get();
+		expect(last?.status).toBe(502);
+		expect(String(last?.msg)).toContain("shards/1.yaml");
+		expect(String(last?.msg)).toContain("solutions");
 	});
 });
 

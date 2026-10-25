@@ -6,7 +6,9 @@ import type { SourceSeqVerdict } from "../_lifecycle/source-seq";
 // 职责边界（ISP）：端点只做 门禁 + Form B 索引解析（安装器不拼 URL，installer.ts 同纪律）+
 // InstallRequest 组装；任务生命周期/失败三分/终态审计全归 runInstall 状态机（P1-10），端点不重复编排。
 // CDN 基址：sys_setting `framework.market_cdn_url`（PRD §5.3，缺省空 = 市场不可用，可读错误不崩）；
-// 索引/清单拉取恒带 Cache-Control: no-cache（索引时效性）。
+// 索引拉取走 IndexSource DIP（REG-CS5 三级化：catalog.yaml + shards/<n>.yaml）——读面带
+// ETag/If-None-Match 条件请求（304 不重传），不再发 cache-control: no-cache（Q8：新鲜度由
+// 服务端 max-age=60, stale-while-revalidate=60 + 索引自身 expires_at 共同承载）。
 // 站点路径缺省（marketEnv）：oj serve release 布局生产口径（P1-16 接线 B3/B4）——共享根 = serve
 // 挂载根 dist（锁 dist/manifests.yaml、版本目录 dist/<name>-<ver>/、versions.json 同根），
 // 暂存/任务/sidecar 留 dist 外（R13 不与装配树冲突）；全字段可注入覆盖（测试 stub 同款）。
@@ -17,6 +19,7 @@ import type { FetchFace } from "../_lifecycle/steps/download";
 import type { ExecFace } from "../_lifecycle/steps/extract";
 import type { ReloadFace } from "../_lifecycle/steps/reload";
 import type { FetchInitFace } from "../_shared/site-facade";
+import type { IndexKind, IndexSource } from "./index-source";
 import { atomicWriteText, fsFace } from "../_lifecycle/atomic";
 import { latestAppliedSeqOf, reconcile, runInstall, setEnabled } from "../_lifecycle/installer";
 import { compareVersions } from "../_lifecycle/semver";
@@ -32,6 +35,7 @@ import { respond } from "../_shared/respond";
 import { assertSuperAdmin } from "../_shared/service/infra/access";
 import { journalHeadOf, readCanonicalOrigin, siteOrigin, withSiteOrigin } from "../_shared/site-facade";
 import { BOOTSTRAP_KEY, seedBootstrapKey } from "./bootstrap";
+import { httpIndexSource, indexPathOf } from "./index-source";
 
 // 站点编排面共享真源落 _shared/site-facade（P2-16 真机构建钉出：api.ts 是路由入口不可被模块内
 // import）；此处 re-export 保持既有引用面（market-api.spec / 历史 import 路径）不变。
@@ -66,6 +70,11 @@ export interface MarketEnv {
 	canonicalOrigin?: string
 	/** CDN 基址（缺省读 sys_setting `framework.market_cdn_url`；测试注入） */
 	cdnBase?: () => Promise<string | null>
+	/**
+	 * 索引读取源注入（DIP，REG-CS5③）：缺省按 CDN 基址 + fetchOf 构造 HTTP 源
+	 * （ETag/If-None-Match 条件请求）；本地目录索引 / 测试夹具可直注（localIndexSource）。
+	 */
+	indexSource?: IndexSource
 	/** 注入面（DIP）：缺省回落 isolate 全局 fetch / exec.run / server.reloadConfig / 本地 sha384（过渡实现） */
 	fetch?: FetchFace
 	exec?: ExecFace
@@ -256,19 +265,8 @@ async function cdnBaseOf(env: MarketEnv): Promise<string | null> {
 	}
 }
 
-/** CDN 文本拉取（bundles.yaml/manifests.yaml）：恒带 Cache-Control: no-cache（索引时效性） */
-async function fetchText(fetch: FetchInitFace, url: string): Promise<string> {
-	const res = await fetch(url, { headers: { "cache-control": "no-cache" } });
-	if (!res.ok)
-		fail(502, `索引拉取失败：${url} 返回 HTTP ${res.status}（请检查市场地址与网络）`);
-	return new TextDecoder().decode(await res.arrayBuffer());
-}
-
 /** 索引签名算法标识（与 ojm publish 同源：Ed25519；C2-35） */
 const INDEX_SIG_ALG = "Ed25519";
-
-/** 索引文件种类（REG-CS1 同代校验：签名覆盖 (kind, seq)） */
-type IndexKind = "bundles" | "manifests";
 
 /** 索引规范串（REG-CS1，与 ojm publish indexCanonical 逐字一致）：`index:<kind>:<seq>:<sha256hex>` */
 function indexCanonical(env: MarketEnv, kind: IndexKind, seq: number, text: string): string {
@@ -312,7 +310,7 @@ function verifyIndexSig(env: MarketEnv, kind: IndexKind, text: string, sigText: 
 	return { ok: verifyEd25519Of(env)(publicKey, indexCanonical(env, kind, seq, text), value), seq };
 }
 
-/** 索引正文的代次（顶层 `seq`；数组形态的索引无顶层键 → null，代次只由 .sig 承载） */
+/** 索引正文的代次（顶层 `seq`；纯内容形态（分片）无顶层键 → null，代次只由 .sig 承载） */
 async function indexSeqOfText(text: string): Promise<number | null> {
 	const g = globalThis as { yaml?: { parse: (t: string) => Promise<unknown> } };
 	try {
@@ -331,60 +329,62 @@ async function indexSeqOfText(text: string): Promise<number | null> {
 const SIG_MISSING_NEXT = "完整性无保障，已拒载。下一步：① 让源执行 ojm market build-index --id <publisher.id> 重建并签名；② 或对既有索引补签 ojm publish <目录> --id <publisher.id>";
 
 /**
- * 拉取索引并校验签名（REG-CS1，G4 fail-closed）：
- * ① `.sig` 缺失 / 空 / 不可读 → **拒载**（502）——不再「滚动发布期容忍」：
- *    容忍等于把索引完整性交给发布方自觉，谁改了 bundles.yaml 都能装。
+ * 拉取索引并校验签名（REG-CS1，G4 fail-closed）——三级化后（catalog + shards）：
+ * ① `.sig` 缺失 / 空 / 拉不到 → **拒载**（502）——不再「滚动发布期容忍」：
+ *    容忍等于把索引完整性交给发布方自觉，谁改了索引都能装。
  * ② 签名不符或未覆盖代次 → 拒载（index_sig_mismatch）。
- * ③ 跨文件不同代（`seq` ≠ catalog 代次）→ 拒载（index_generation_mismatch，提示「源正在重建索引」）。
- * ④ 总目录另过两道新鲜度闸（REG-CS2，见 `guardCatalogFreshness`）：时效过期 `index_expired`、
+ * ③ 同代校验改「钉值」口径：catalog 正文 `shards: {<片号>: <代次>}` 钉每片的代次，
+ *    分片签名 seq 必须等于钉值（`expectSeq`）——不等即拒（index_generation_mismatch，
+ *    提示「源正在重建索引」）。byte 级相同的分片可跨代复用，故钉值而非恒等于 catalog 代次。
+ * ④ catalog 另过两道新鲜度闸（REG-CS2，见 `guardCatalogFreshness`）：时效过期 `index_expired`、
  *    seq 回退 `index_stale`——回放与镜像落后在此处被挡住。
  *
- * `expectSeq` = 总目录（bundles.yaml）的代次；取总目录本身时省略。
+ * `no` = 分片号（catalog 省略）；`expectSeq` = catalog 对该片的钉值（取 catalog 本身时省略）。
  * 关键：四类拒载都在 try 之外抛出——fail-closed 不能被任何 catch 吞掉。
  */
-async function fetchIndex(env: MarketEnv, fetch: FetchInitFace, base: string, kind: IndexKind, expectSeq?: number): Promise<{ text: string, seq: number }> {
-	const text = await fetchText(fetch, `${base}/${kind}.yaml`);
-	let sigText: string;
-	try {
-		sigText = await fetchText(fetch, `${base}/${kind}.yaml.sig`);
-	}
-	catch {
-		fail(502, `市场索引 ${kind}.yaml 缺签名文件 ${base}/${kind}.yaml.sig（index_sig_missing）——${SIG_MISSING_NEXT}`);
-	}
-	if (sigText.trim() === "")
-		fail(502, `市场索引 ${kind}.yaml 的签名文件为空（index_sig_missing）——${SIG_MISSING_NEXT}`);
-	const verdict = verifyIndexSig(env, kind, text, sigText);
+async function fetchIndex(env: MarketEnv, source: IndexSource, base: string, kind: IndexKind, no?: number, expectSeq?: number): Promise<{ text: string, seq: number }> {
+	// 人话里的文件名与 CDN 布局逐字一致（indexPathOf 单点）：shards/<n>.yaml，不是 shard/<n>.yaml
+	const label = indexPathOf(kind, no);
+	const file = await source.read(kind, no);
+	if (file === null)
+		fail(502, `市场索引 ${label} 拉取失败（请检查市场地址与网络）`);
+	const sigText = file.sig;
+	if (sigText === null || sigText.trim() === "")
+		fail(502, `市场索引 ${label} 缺签名文件 ${label}.sig（index_sig_missing）——${SIG_MISSING_NEXT}`);
+	const verdict = verifyIndexSig(env, kind, file.body, sigText);
 	if (!verdict.ok || verdict.seq === null)
-		fail(502, `市场索引 ${kind}.yaml 签名校验失败（index_sig_mismatch：索引被篡改、签名不符或签名未覆盖代次，G4 fail-closed）——请重新发布并签名`);
+		fail(502, `市场索引 ${label} 签名校验失败（index_sig_mismatch：索引被篡改、签名不符或签名未覆盖代次，G4 fail-closed）——请重新发布并签名`);
 	const seq = verdict.seq;
-	// 正文自带代次时（键值形态索引）必须与签名一致——防止「改了正文没换签名」的半个写入
-	const textSeq = await indexSeqOfText(text);
+	// 正文自带代次时（catalog）必须与签名一致——防止「改了正文没换签名」的半个写入；
+	// 分片正文是纯内容（无顶层 seq），代次只由签名 + catalog 钉值携带，故不过此闸。
+	const textSeq = await indexSeqOfText(file.body);
 	if (textSeq !== null && textSeq !== seq)
-		fail(502, `市场索引 ${kind}.yaml 正文是第 ${textSeq} 代、签名是第 ${seq} 代（index_generation_mismatch）——源正在重建索引，请稍后重试`);
+		fail(502, `市场索引 ${label} 正文是第 ${textSeq} 代、签名是第 ${seq} 代（index_generation_mismatch）——源正在重建索引，请稍后重试`);
 	if (expectSeq !== undefined && expectSeq !== seq)
-		fail(502, `市场索引 ${kind}.yaml 是第 ${seq} 代，总目录是第 ${expectSeq} 代（index_generation_mismatch）——源正在重建索引，请稍后重试`);
-	// ④ 新鲜度只在总目录上判一次：代次真源与时效盖章都在它身上，分册跟着走
-	if (kind === "bundles")
-		await guardCatalogFreshness(env, base, text, seq);
-	return { text, seq };
+		fail(502, `市场索引 ${label} 签名是第 ${seq} 代，总目录钉的是第 ${expectSeq} 代（index_generation_mismatch）——源正在重建索引，请稍后重试`);
+	// ④ 新鲜度只在 catalog 上判一次：代次真源与时效盖章都在它身上，分片跟着走
+	if (kind === "catalog")
+		await guardCatalogFreshness(env, base, file.body, seq);
+	return { text: file.body, seq };
 }
 
 /**
  * REG-CS2 索引新鲜度（防回放/降级）：总目录过了签名之后还要过时效与代次水位两道闸。
  *
  * - `expires_at` 已过 → `index_expired`：索引自带失效时刻，源停止运营超过 TTL 就不再可信。
- *   （§5.3 可用性通道的降级口径是「拉不到时用缓存窗口内的副本」；本站点索引恒 no-cache 回源，
- *    没有副本可用，故拉到的索引自身过期即拒——与§5.3 不冲突。）
+ *   （§5.3 可用性通道的「窗口内用缓存副本」由 HTTP 缓存层兑现——服务端
+ *    `max-age=60, stale-while-revalidate=60` + 读取器条件请求；到达读取器手里的副本
+ *    自身过期即拒，与§5.3 不冲突。）
  * - `seq` 小于本源见过的最大代次 → `index_stale`：镜像落后或旧索引被回放。
  * - 水位读不到/写不进 → `index_state_corrupt`：fail-closed，不静默重置成「第一次见」。
  */
 async function guardCatalogFreshness(env: MarketEnv, base: string, text: string, seq: number): Promise<void> {
 	const times = await indexTimesOfText(text);
 	if (times === null)
-		fail(502, "市场索引 bundles.yaml 缺 issued_at / expires_at（index_expired）——索引未带时效，请让源执行 ojm market build-index 重建");
+		fail(502, "市场索引 catalog.yaml 缺 issued_at / expires_at（index_expired）——索引未带时效，请让源执行 ojm market build-index 重建");
 	const now = env.now?.() ?? Math.floor(Date.now() / 1000);
 	if (now > times.expires_at)
-		fail(502, `市场索引 bundles.yaml 已于 ${new Date(times.expires_at * 1000).toISOString()} 失效（index_expired）——源未在其自声明的有效期内重建索引，请让源执行 ojm market build-index 后再装`);
+		fail(502, `市场索引 catalog.yaml 已于 ${new Date(times.expires_at * 1000).toISOString()} 失效（index_expired）——源未在其自声明的有效期内重建索引，请让源执行 ojm market build-index 后再装`);
 
 	let verdict: SourceSeqVerdict;
 	try {
@@ -396,8 +396,83 @@ async function guardCatalogFreshness(env: MarketEnv, base: string, text: string,
 	if (verdict.ok)
 		return;
 	if (verdict.code === "index_stale")
-		fail(502, `市场索引 bundles.yaml 是第 ${seq} 代，本源已见过第 ${verdict.prev} 代（index_stale）——源可能被回放或镜像落后，请核实源状态后再装`);
+		fail(502, `市场索引 catalog.yaml 是第 ${seq} 代，本源已见过第 ${verdict.prev} 代（index_stale）——源可能被回放或镜像落后，请核实源状态后再装`);
 	fail(502, "市场索引代次水位不可读（index_state_corrupt）——reg_source_seq 记录损坏，请检查站点数据库后重试（不静默重置，否则防回放形同虚设）");
+}
+
+/**
+ * catalog 解析（REG-CS5：包名 → 分片号 + 片号 → 代次钉值）。畸形即拒不猜——索引是签名过的
+ * 不可信输入，结构破损与字节被改同类对待（G4 fail-closed）。
+ */
+async function parseCatalog(text: string, base: string): Promise<{ pins: Map<number, number>, solutions: Array<{ name: string, shards: number[] }> }> {
+	const g = globalThis as { yaml?: { parse: (t: string) => Promise<unknown> } };
+	let doc: unknown;
+	try {
+		doc = await g.yaml!.parse(text);
+	}
+	catch {
+		fail(502, `市场索引解析失败：${base}/catalog.yaml 不是合法索引`);
+	}
+	if (!isObj(doc))
+		fail(502, `市场索引解析失败：${base}/catalog.yaml 不是键值文档`);
+	const pins = new Map<number, number>();
+	if (isObj(doc.shards)) {
+		for (const [k, v] of Object.entries(doc.shards)) {
+			const no = Number(k);
+			if (Number.isInteger(no) && no >= 1 && typeof v === "number" && Number.isInteger(v) && v >= 1)
+				pins.set(no, v);
+		}
+	}
+	if (pins.size === 0)
+		fail(502, "市场索引 catalog.yaml 的分片钉值为空（index_generation_mismatch）——索引结构破损，请让源执行 ojm market build-index 重建");
+	const solutions: Array<{ name: string, shards: number[] }> = [];
+	for (const s of Array.isArray(doc.solutions) ? doc.solutions : []) {
+		if (!isObj(s) || typeof s.name !== "string" || s.name === "")
+			continue;
+		// 片号须是已钉值正整数：指向未钉片的方案 = 结构破损，拒载（不静默跳过，那会伪装成「没有该方案」）
+		const nos = Array.isArray(s.shards) ? s.shards.filter((n): n is number => typeof n === "number" && Number.isInteger(n) && n >= 1 && pins.has(n)) : [];
+		if (nos.length === 0)
+			fail(502, `市场索引 catalog.yaml 中方案「${s.name}」未指向任何已钉分片（index_generation_mismatch）——索引结构破损，请让源执行 ojm market build-index 重建`);
+		solutions.push({ name: s.name, shards: nos });
+	}
+	return { pins, solutions };
+}
+
+/** 分片内的方案条目（版本条目 = Form B manifest：name/version/archive/yanked/yanked_at + manifest 全字段） */
+interface ShardSolution {
+	name: string
+	latest: string | null
+	versions: Array<Record<string, unknown>>
+}
+
+/** 分片解析（纯内容无 meta：`{solutions: [{name, latest, versions}]}`；结构破损即拒，不猜） */
+async function parseShard(text: string, label: string): Promise<ShardSolution[]> {
+	const g = globalThis as { yaml?: { parse: (t: string) => Promise<unknown> } };
+	let doc: unknown;
+	try {
+		doc = await g.yaml!.parse(text);
+	}
+	catch {
+		fail(502, `市场索引 ${label} 不是合法索引（解析失败）`);
+	}
+	if (!isObj(doc) || !Array.isArray(doc.solutions))
+		fail(502, `市场索引 ${label} 解析失败：缺 solutions 数组——索引结构破损，请让源执行 ojm market build-index 重建`);
+	const out: ShardSolution[] = [];
+	for (const s of doc.solutions) {
+		if (!isObj(s) || typeof s.name !== "string" || s.name === "")
+			continue;
+		out.push({
+			name: s.name,
+			latest: typeof s.latest === "string" ? s.latest : null,
+			versions: Array.isArray(s.versions) ? s.versions.filter(isObj) : [],
+		});
+	}
+	return out;
+}
+
+/** 索引读取源（DIP，REG-CS5③）：注入面优先，缺省按 CDN 基址 + fetchOf 构造 HTTP 源 */
+async function indexSourceOf(env: MarketEnv, base: string): Promise<IndexSource> {
+	return env.indexSource ?? httpIndexSource(await fetchOf(env), base);
 }
 
 /** 索引时效（顶层 `issued_at` / `expires_at`；缺任一或非数 → null，按 REG-CS2 拒） */
@@ -480,45 +555,58 @@ interface ResolvedBundle {
 
 /**
  * Form B 索引解析（安装器不拼 URL——市场侧职责，installer.ts 同纪律）：
- * bundles.yaml 定版本（缺省 latest，同名只展示最高版本 PRD §5.3）→ manifests.yaml 按
- * name+version 精确取 manifest → 分发包 URL = base + 索引 file 字段。
+ * catalog.yaml 定包名 → 分片号（无版本明细）→ 分片内按版本精确取（版本条目即 manifest，
+ * 原 manifests.yaml 聚合清单并入分片，装一个包不再有第三份全量拉取）→ 分发包 URL =
+ * base + 条目 archive.file。分片按号**降序**尝试：装箱口径下新版本进新片，最高片持有
+ * 最新版——latest 安装只拉 1 片（REG-CS5 验收：一次安装索引请求 ≤ 1 catalog + 1 shard）。
  */
 async function resolveCdn(env: MarketEnv, base: string, name: string, reqVersion: string | null, fetch: FetchInitFace): Promise<ResolvedBundle> {
-	const g = globalThis as { yaml?: { parse: (text: string) => Promise<unknown> } };
-	// 总目录（catalog）= 代次真源；聚合清单必须同代才可用（REG-CS1②）
-	const catalog = await fetchIndex(env, fetch, base, "bundles");
-	const bundles = await g.yaml!.parse(catalog.text) as { solutions?: unknown };
-	const entry = (Array.isArray(bundles.solutions) ? bundles.solutions : []).find(s => isObj(s) && s.name === name);
-	if (!isObj(entry))
-		fail(404, `市场索引中无方案「${name}」（${base}/bundles.yaml）`);
-	const versions = Array.isArray(entry.versions) ? entry.versions.filter(isObj) : [];
-	const version = reqVersion ?? (typeof entry.latest === "string" ? entry.latest : null);
-	// REG-CS2 `latest` 单调不降：总目录声明的 latest 不得低于本方案已声明版本中的最高版本。
-	// 把 latest 往下改是「让站点装回旧版」的最短路径（yank 之后回退声明），必须挡在解析处。
-	// 已下线版本（REG-CS4 yanked）不计入「已声明最高版本」——否则 yank 掉最高版会把 latest 主动
-	// 下调，被误判成索引回退；latest 本就指向未下线的最高版。
-	const liveSorted = versions.filter(v => v.yanked !== true).map(v => String(v.version)).sort(compareVersions);
-	const highest = liveSorted.length === 0 ? null : liveSorted[liveSorted.length - 1]!;
-	if (typeof entry.latest === "string" && highest !== null && compareVersions(entry.latest, highest) < 0)
-		fail(502, `市场索引中方案「${name}」的 latest 是 ${entry.latest}，低于已声明的最高版本 ${highest}（index_latest_regressed）——索引被回退，请核实源状态后再装`);
-	const hit = versions.find(v => String(v.version) === version);
-	if (version === null || !isObj(hit))
-		fail(404, `市场索引中无方案「${name}」版本「${reqVersion ?? "latest"}」（${base}/bundles.yaml）`);
-	// REG-CS4 yank：精确指定被下线版本 → 拒装（latest 路径不命中，因为索引 rebuilt 时 latest 已跳过 yanked）；
-	// 已装实例不受影响（不在此解析路径内）。错误信息明示「版本已下线」而非「无此版本」，避免误导。
-	if (reqVersion !== null && hit.yanked === true)
-		fail(409, `方案「${name}」版本「${version}」已被发布方下线（REG-CS4 yank），无法安装；已安装实例不受影响。如需继续请联系发布方或改用其他版本`);
-	const list = await g.yaml!.parse((await fetchIndex(env, fetch, base, "manifests", catalog.seq)).text) as unknown;
-	const manifest = (Array.isArray(list) ? list : []).find(m => isObj(m) && m.name === name && String(m.version) === version);
-	if (!isObj(manifest))
-		fail(404, `聚合清单缺 ${name}@${version} 的 manifest（manifests.yaml 与 bundles.yaml 不一致，Form B 真源破损）`);
-	// P2-11 索引投毒加固：bundles.yaml 的 file 逐字 <name>-<version>.tgz（索引未签名属不可信输入，
-	// 过弱形态可拼宿主任意路径；逐字等值排除 ../、绝对路径、异名、异版本）
-	const file = typeof hit.file === "string" ? hit.file : "";
-	if (file !== `${name}-${version}.tgz`) {
-		fail(502, `索引分发包 file「${file}」须逐字为 <name>-<version>.tgz（「${name}-${version}.tgz」）——索引投毒加固（P2-11），疑似被篡改的 bundles.yaml`);
+	const source = httpIndexSource(fetch, base);
+	// 总目录（catalog）= 代次与时效真源；分片钉值同代才可用（REG-CS1③）
+	const catalog = await fetchIndex(env, source, base, "catalog");
+	const { pins, solutions } = await parseCatalog(catalog.text, base);
+	const entry = solutions.find(s => s.name === name);
+	if (entry === undefined)
+		fail(404, `市场索引中无方案「${name}」（${base}/catalog.yaml）`);
+	// 降序：最高片先试（latest 路径一片即中）；精确老版本落在低片时继续往下，直到找到或找遍
+	for (const no of [...entry.shards].sort((a, b) => b - a)) {
+		const pin = pins.get(no);
+		if (pin === undefined)
+			fail(502, `市场索引 catalog.yaml 钉值缺 shards/${no}.yaml（index_generation_mismatch）——源正在重建索引，请稍后重试`);
+		const shard = await fetchIndex(env, source, base, "shard", no, pin);
+		const sol = (await parseShard(shard.text, `shards/${no}.yaml`)).find(s => s.name === name);
+		if (sol === undefined)
+			continue;
+		// REG-CS2 `latest` 单调不降（三级化后移到分片条目）：分片声明的 latest 不得低于本片
+		// 已声明版本中的最高未下线版本。把 latest 往下改是「让站点装回旧版」的最短路径
+		// （yank 之后回退声明），必须挡在解析处。已下线版本（REG-CS4 yanked）不计入——
+		// 否则 yank 掉最高版会把 latest 主动下调，被误判成索引回退；latest 本就指向未下线的最高版。
+		const liveSorted = sol.versions.filter(v => v.yanked !== true).map(v => String(v.version)).sort(compareVersions);
+		const highest = liveSorted.length === 0 ? null : liveSorted[liveSorted.length - 1]!;
+		if (sol.latest !== null && highest !== null && compareVersions(sol.latest, highest) < 0)
+			fail(502, `市场索引中方案「${name}」的 latest 是 ${sol.latest}，低于已声明的最高版本 ${highest}（index_latest_regressed）——索引被回退，请核实源状态后再装`);
+		const version = reqVersion ?? sol.latest;
+		if (version !== null) {
+			const hit = sol.versions.find(v => String(v.version) === version);
+			if (hit !== undefined) {
+				// REG-CS4 yank：精确指定被下线版本 → 拒装（latest 路径不命中，源方 rebuilt 时 latest 已跳过 yanked）；
+				// 已装实例不受影响（不在此解析路径内）。错误信息明示「版本已下线」而非「无此版本」，避免误导。
+				if (reqVersion !== null && hit.yanked === true)
+					fail(409, `方案「${name}」版本「${version}」已被发布方下线（REG-CS4 yank），无法安装；已安装实例不受影响。如需继续请联系发布方或改用其他版本`);
+				// P2-11 索引投毒加固：archive.file 逐字 <name>-<version>.tgz（索引是签名过的不可信输入，
+				// 过弱形态可拼宿主任意路径；逐字等值排除 ../、绝对路径、异名、异版本）
+				const archive = isObj(hit.archive) ? hit.archive : {};
+				const file = typeof archive.file === "string" ? archive.file : "";
+				if (file !== `${name}-${version}.tgz`) {
+					fail(502, `索引分发包 file「${file}」须逐字为 <name>-<version>.tgz（「${name}-${version}.tgz」）——索引投毒加固（P2-11），疑似被篡改的索引`);
+				}
+				// 版本条目即 Form B manifest（原 manifests.yaml 并入分片）：取到条目即取到 manifest
+				return { version, archiveUrl: `${base}/${file}`, manifest: hit };
+			}
+		}
+		// 版本不在这片（更低分片或真没有）：继续往低片找
 	}
-	return { version, archiveUrl: `${base}/${file}`, manifest };
+	fail(404, `市场索引中无方案「${name}」版本「${reqVersion ?? "latest"}」（${base}/catalog.yaml → shards）`);
 }
 
 /** 上传载荷字节（upload/api.ts 先例双路径：小文件字节在手，大文件已流式落 blob 须走 blob.get） */
@@ -728,9 +816,9 @@ interface IndexRow {
 	upgradable: boolean
 	/** CDN 版本全集（P2-11）：回滚候选不止本站已装旧版；索引缺段/畸形 → [] 降级不炸 */
 	available: string[]
-	/** 最新版 changelog（C2-08，R27 卡片版本对比；manifests.yaml 不可得 → null） */
+	/** 最新版 changelog（C2-08，R27 卡片版本对比；分片条目缺 changelog → null） */
 	changelog: unknown
-	/** 最新版发布方（manifest author，C2-07；manifests.yaml 不可得 → null） */
+	/** 最新版发布方（manifest author，C2-07；分片条目缺 author → null） */
 	publisher: string | null
 	/** 本地安装的发布方 key 状态（P2-6 sidecar；未装 → null） */
 	trust_state: "trusted" | "untrusted" | "absent" | null
@@ -758,7 +846,14 @@ async function lastInstallOperatorOf(name: string): Promise<string | null> {
 	}
 }
 
-/** GET index 主体：CDN bundles.yaml（no-cache）⊕ 本地 sidecar state——CDN 序优先，本地独有方案殿后 */
+/**
+ * GET index 主体：CDN catalog + shards ⊕ 本地 sidecar state——CDN 序优先，本地独有方案殿后。
+ *
+ * 三级化后市场页的拉取形态：1 catalog + catalog 指向的全部分片（去重）——`available`
+ * 回滚候选要版本全集，故页面比安装多拉几片；安装侧仍 ≤ 1 catalog + 1 shard（resolveCdn）。
+ * 版本条目即 Form B manifest：latest 的 changelog/publisher 直接从分片条目取，不再有
+ * 独立的聚合清单拉取。分片拉取/验签失败即 502（REG-CS1：可用性不再压过完整性）。
+ */
 async function indexBody(env: MarketEnv): Promise<IndexRow[]> {
 	// 对账即服务（P1-10 接线③）：市场页刷新即对账时点——锁 ↔ 账本 head 自愈 + enabled 不一致
 	// 自动修复先行（失败只记日志，不阻断索引），失败站点的市场页每次打开都在尝试自愈
@@ -767,45 +862,40 @@ async function indexBody(env: MarketEnv): Promise<IndexRow[]> {
 	if (base === null)
 		fail(503, "未配置市场地址（framework.market_cdn_url）——卡片区显示「未配置市场地址」（PRD §5.3）");
 	await assertOriginForRelativeBase(env, base);
-	const g = globalThis as { yaml?: { parse: (text: string) => Promise<unknown> } };
-	const catalog = await fetchIndex(env, await fetchOf(env), base, "bundles");
-	let bundles: { solutions?: unknown };
-	try {
-		bundles = await g.yaml!.parse(catalog.text) as { solutions?: unknown };
+	const source = await indexSourceOf(env, base);
+	const catalog = await fetchIndex(env, source, base, "catalog");
+	const { pins, solutions } = await parseCatalog(catalog.text, base);
+	// 拉取 catalog 指向的全部分片（去重、升序确定性）；每片都过签名 + 钉值同代校验
+	const shardDocs = new Map<number, ShardSolution[]>();
+	for (const no of [...pins.keys()].sort((a, b) => a - b)) {
+		const shard = await fetchIndex(env, source, base, "shard", no, pins.get(no)!);
+		shardDocs.set(no, await parseShard(shard.text, `shards/${no}.yaml`));
 	}
-	catch {
-		fail(502, `市场索引解析失败：${base}/bundles.yaml 不是合法索引`);
-	}
-	const cdn = (Array.isArray(bundles.solutions) ? bundles.solutions : []).filter(isObj);
 	const local = (await createStateStore(env.statePath)).read().solutions;
-	// manifests.yaml 单次拉取供 changelog/publisher（P2-11）：失败降级 null 不阻断索引（可用性优先）
-	let manifests: Record<string, unknown>[] = [];
-	// 同代校验必须在 try 之外：聚合清单与总目录不同代 = 源正在重建，属拒载不属降级
-	const manifestsText = (await fetchIndex(env, await fetchOf(env), base, "manifests", catalog.seq)).text;
-	try {
-		const list = await g.yaml!.parse(manifestsText);
-		if (Array.isArray(list))
-			manifests = list.filter(isObj);
-	}
-	catch {
-		// 降级：changelog/publisher 全 null，索引主体照常返回（解析失败是可用性问题，不是完整性问题）
-	}
-	const manifestOf = (name: string, version: string | null): Record<string, unknown> | undefined =>
-		version === null ? undefined : manifests.find(m => m.name === name && String(m.version) === version);
 	const rows: IndexRow[] = [];
 	const seen = new Set<string>();
-	for (const s of cdn) {
-		const name = typeof s.name === "string" ? s.name : "";
-		if (name === "" || seen.has(name))
+	for (const entry of solutions) {
+		const name = entry.name;
+		if (seen.has(name))
 			continue;
 		seen.add(name);
-		const latest = typeof s.latest === "string" ? s.latest : null;
+		// 合并该包全部分片的版本条目（降序拼：最高片持有最新版，latest 取首片即得）
+		const merged: Array<Record<string, unknown>> = [];
+		let latest: string | null = null;
+		for (const no of [...entry.shards].sort((a, b) => b - a)) {
+			const sol = shardDocs.get(no)?.find(s => s.name === name);
+			if (sol === undefined)
+				continue;
+			if (latest === null)
+				latest = sol.latest;
+			merged.push(...sol.versions);
+		}
 		const side = local[name];
-		// available：versions[].version 字符串全集（缺段/畸形 → [] 降级）
-		const available = (Array.isArray(s.versions) ? s.versions : [])
-			.map(v => isObj(v) && typeof v.version === "string" ? v.version : "")
-			.filter(x => x !== "");
-		const m = manifestOf(name, latest) ?? manifestOf(name, side?.version ?? null);
+		// available：版本全集（缺段/畸形 → [] 降级）；分片内升序、跨片重排为全局升序
+		const available = merged.map(v => typeof v.version === "string" ? v.version : "").filter(x => x !== "").sort(compareVersions);
+		const manifestOf = (version: string | null): Record<string, unknown> | undefined =>
+			version === null ? undefined : merged.find(v => String(v.version) === version);
+		const m = manifestOf(latest) ?? manifestOf(side?.version ?? null);
 		rows.push({
 			name,
 			latest,
