@@ -7,6 +7,14 @@
 
 ## [Unreleased]
 
+## [0.2.33] - 2026-10-25
+
+双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步升 **0.2.33**。
+
+### Fixed
+
+- **`ojm <未知命令> --json` 的 stdout 混进整页帮助**：退出码本来就是 2，但兜底路径在 `index.ts` 里自己 `console.log` 顶层帮助、绕过了 `--json` 的统一出口——CI 拿 `JSON.parse(stdout)` 会直接炸，而「stdout 恒为一行信封或空」正是本选项的全部承诺。现抽出 `reportUnknownCommand`：`--json` 下帮助转 stderr、stdout 只留 `{ok:false, code:"usage_error"}` 信封；不带 `--json` 时行为不变。附回归用例（两种通道都钉）。
+
 ## [0.2.32] - 2026-10-25
 
 双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步升 **0.2.32**。
