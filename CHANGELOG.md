@@ -7,6 +7,14 @@
 
 ## [Unreleased]
 
+## [0.2.35] - 2026-10-25
+
+双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步升 **0.2.35**。
+
+### Added
+
+- **`ojm registry sign`（REG-R7 外置签名，CI 侧）**：把 registry 导出的未签索引（`POST /index/unsigned` 的响应体：`gen` + `pending[]` + `keys[]`）签成可直接回传的请求体（`POST /index/signature` 的 `{gen, signatures}`）——私钥只在 CI/运维手里，服务端结构上没有任何签名原语。三条 fail-closed 都在上传前挡住：公钥未登记或指纹不符 `index_key_mismatch`、正文与导出声明的 sha256 不符 `index_export_tampered`、签完自检不过 `index_sig_mismatch`；这一代没有待签文件时幂等成功且不碰私钥。`--out` 与 `--json` 至少给一个——两者都没有等于白签一场，退 2。
+
 ## [0.2.34] - 2026-10-25
 
 双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步升 **0.2.34**。

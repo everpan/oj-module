@@ -382,6 +382,32 @@ export const HELP_GROUPS: HelpGroup[] = [
 		],
 	},
 	{
+		key: "registry",
+		zh: "registry 索引外置签名（CI 侧）",
+		en: "Registry index signing (CI side)",
+		commands: [
+			{
+				key: "registry",
+				name: "registry [sub] [file]",
+				zh: "索引外置签名：把 registry 导出的未签索引签成回传请求体",
+				en: "Index signing: turn an unsigned export from a registry into an upload body",
+				options: [
+					{ raw: "--id <id>", zh: "索引签名 key_id（导出里只有一把 active key 时可省）", en: "Index signing key_id (optional when the export has exactly one active key)" },
+					{ raw: "--key <pem>", zh: "私钥 pem（缺省 ~/.ojm/keys/<id>/private.pem）", en: "Private key pem (default ~/.ojm/keys/<id>/private.pem)" },
+					{ raw: "--out <file>", zh: "回传请求体落盘位置（POST /index/signature 的 body）", en: "Where to write the upload body (the POST /index/signature body)" },
+					{ raw: "--json", zh: "stdout 只放一份 JSON 信封（人话改走 stderr）", en: "Emit a single JSON envelope on stdout (human lines move to stderr)" },
+				],
+				subs: {
+					sign: {
+						short: { zh: "签名导出的未签索引，产出回传请求体", en: "Sign an exported unsigned index and produce the upload body" },
+						zh: "ojm registry sign <export.json> --id <key> [--key <pem>] [--out <file>] [--json]\n  输入 = POST /index/unsigned 的响应体（gen + pending + keys）；输出 = POST /index/signature 的请求体（gen + signatures）\n  私钥缺省 ~/.ojm/keys/<id>/private.pem；`-` 表示从 stdin 读导出体\n  三条 fail-closed：公钥未登记或指纹不符（index_key_mismatch）/ 正文与声明的 sha256 不符（index_export_tampered）/ 签完自检不过（index_sig_mismatch）\n  这一代没有待签文件时是幂等的：不碰私钥，直接产出空 signatures\n  退出码：0 成功 / 1 业务失败 / 2 用法错误",
+						en: "ojm registry sign <export.json> --id <key> [--key <pem>] [--out <file>] [--json]\n  Input = the POST /index/unsigned response body (gen + pending + keys); output = the POST /index/signature request body (gen + signatures)\n  The private key defaults to ~/.ojm/keys/<id>/private.pem; `-` reads the export from stdin\n  Three fail-closed checks: unregistered key or fingerprint mismatch (index_key_mismatch) / body does not match the declared sha256 (index_export_tampered) / self-verification failed (index_sig_mismatch)\n  Idempotent when the generation has nothing pending: no key is touched, empty signatures are produced\n  Exit codes: 0 success / 1 business failure / 2 usage error",
+					},
+				},
+			},
+		],
+	},
+	{
 		key: "market-cdn",
 		zh: "本地市场模拟 CDN",
 		en: "Local marketplace mock CDN",

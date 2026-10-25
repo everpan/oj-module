@@ -298,6 +298,50 @@ function makeAction(def: HelpEntry, projectRoot: string, lang: Lang, exit: (code
 				const { trustCommand } = await import("./trust");
 				await trustCommand(sub ?? "", [keyId, pub].filter((v): v is string => v !== undefined), { url: opts.url, user: opts.user, pass: opts.pass, task: opts.task });
 			};
+		case "registry":
+			return async (sub: string | undefined, file: string | undefined, opts: { id?: string, key?: string, out?: string, json?: boolean } = {}) => {
+				if (!sub) {
+					console.log(groupHelpText("registry", lang));
+					return;
+				}
+				if (sub !== "sign")
+					throw new UsageError(`[ojm] 未知 registry 子命令：${sub}（只有 sign：把导出的未签索引签成回传请求体）`);
+				const { registrySignCommand, RegistrySignError } = await import("./registry-sign");
+				const human: string[] = [];
+				let result: ReturnType<typeof registrySignCommand>;
+				try {
+					result = registrySignCommand({ file: file ?? "", id: opts.id, key: opts.key, out: opts.out, json: !!opts.json, cwd: projectRoot });
+				}
+				catch (error) {
+					if (!(error instanceof RegistrySignError))
+						throw error;
+					// 业务失败（1）带稳定码：CI 靠 code 分支（usage_error 补参数，这些码只能改数据/换钥匙）
+					emit({ command: "registry sign", code: error.code, message: error.message, data: null, human: [`[ojm] ${error.message}`] }, { json: !!opts.json });
+					// `return` 是必要的：测试里 exit 是 spy（不真的终止），否则会掉回下面的成功分支再抛一次
+					return exit(EXIT_FAILURE);
+				}
+				if (result.signed === 0) {
+					human.push(`[ojm] 第 ${result.gen} 代没有待签文件（已签全或全部沿用旧片）——幂等成功，未触碰私钥`);
+				}
+				else {
+					human.push(`[ojm] 第 ${result.gen} 代：签了 ${result.signed} 个文件（catalog + ${result.signed - 1} 片）`);
+					human.push(`[ojm] 签名者 ${result.keyId}（指纹 ${String(result.fingerprint).slice(0, 16)}…）`);
+				}
+				if (result.outPath !== null)
+					human.push(`[ojm] 回传体已写入 ${path.relative(projectRoot, result.outPath) || result.outPath}（POST /api/oj-registry/index/signature 的请求体）`);
+				emit({
+					command: "registry sign",
+					data: {
+						gen: result.gen,
+						keyId: result.keyId,
+						fingerprint: result.fingerprint,
+						signed: result.signed,
+						signatures: result.signatures,
+						out: result.outPath === null ? null : path.relative(projectRoot, result.outPath),
+					},
+					human,
+				}, { json: !!opts.json });
+			};
 		case "market":
 			return async (sub: string | undefined) => {
 				if (!sub) {
