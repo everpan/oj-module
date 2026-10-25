@@ -7,6 +7,15 @@
 
 ## [Unreleased]
 
+## [0.2.36] - 2026-10-25
+
+双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步升 **0.2.36**。
+
+### Added
+
+- **`ojm registry import <dir>`（REG-R11 离线导入，运维侧）**：把离线包目录（`<dir>/registry/{catalog.yaml(+.sig), shards/<n>.yaml(+.sig), revocations.yaml(+.sig), <slug>-<version>.tgz[+.sig]}`，与 `cdn/` 同结构）恢复到站点本地，**全程不触网**——主场景是「源挂了还能救」。三步与线上 REG-CS1 / REG-R10 同语义、同判别码：① 验签 catalog / 各分片 / revocations，复用站点已登记的 active 索引 key（Ed25519，与线上 `verifyIndexSig` 同口径）；② 吊销 seq 护栏：本地账本 `~/.ojm/registry/<origin>/revocation-seq.json` 比代次，`seq` 低于本地已知值 / 同代正文指纹变了 / 无清单但有账本都拒（`revocations_not_monotonic`），等价线上 `guardAndRecordRevocationSeq`；③ 落盘：public 站点用 `--site` 自动落到 `<cdn>/registry/`，private 站点用 `--out` 直接指定本地索引目录，原样拷贝**不重渲染**保证字节一致。信任源 `--keys` > 本地信任库，取不到活跃 key 即 fail-closed（`index_key_mismatch`）；registry 不新增 mounts。`--dry-run` 全程零写入。
+- **`ojm install --registry <url>`（REG-R9 源切换）**：安装源归一逻辑只在 CLI 一处（`parseRegistryTarget`，`@scope/name` → slug 单一归一点；服务端只认 slug，收到 `@` 或 `/` 即 400 `invalid_physical_name`）；装前 `GET /api/_platform/market/meta` 校验站点 API 版本，低于 0.2.0 明确报错而不是静默降级；下载复用 `guardedRedirectFetch`（跨源 3xx 重定向拒，同源 307 放行）。
+
 ## [0.2.35] - 2026-10-25
 
 双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步升 **0.2.35**。
