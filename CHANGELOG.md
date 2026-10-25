@@ -44,6 +44,17 @@
   另外把侧车校验抽成 `registry-sidecar.ts`，`export` 与 `import` 共用同一判定——两边各写一份，
   一旦口径漂移就会出「导出的包自己导不进去」这类最难查的故障。
 
+- **`ojm list`（站点已装方案的可查面）**：登录后读 `GET /api/_platform/market/index`，只挑
+  `installed != null` 的行打表（`NAME / INSTALLED / ENABLED / LATEST / UPGRADABLE / TRUST`），
+  末尾按需追加「可升级」与「签名不受信」两行汇总；`--all` 连未安装的索引行一起列（`installed` 显示 `-`）。
+  此前 CLI **没有任何命令能回答「这个站点上装了什么」**：装完只有一条终态文案，核对版本、启用态、
+  可升级与否都得登站点翻市场页；升级前看谁落后、卸载前确认名字这类动作没法脚本化。
+  **复用站点已有的聚合视图而不是新增「只列已装」端点**——那一条已经把 sidecar 的
+  `installed/enabled`、索引的 `latest/available`（算 `upgradable`）、信任库的 `trust_state`
+  三件事聚合好了，新增端点等于让两个真相源各自漂移。
+  清单为空仍是成功（exit 0，没装东西不是错误）；缺凭据是用法错误（exit 2）且**不联网**。
+  `--json` 走统一单行信封（`data.site / data.all / data.solutions`）。
+
 ## [0.3.2] - 2026-10-26
 
 双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步升 **0.3.2**。
