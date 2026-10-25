@@ -7,6 +7,18 @@
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-10-26
+
+双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步升 **0.3.2**。
+
+### Added
+
+- **市场卡片与安装确认页展示许可（P-2）**：`GET /_platform/market/index` 的每行新增 `license`
+  （取自分片条目 `manifest.license`，C2-07 同一口径；缺口/非字符串 → `null`）。市场页卡片在
+  版本行下方显示「许可: MIT」小标签，安装弹窗在进度上方常驻「版本 + 许可」元信息。
+  未声明就不渲染许可行——不显示「未知」占位，避免和「字段缺失」混在一起。
+  模板侧补了卡片/弹窗各两条用例（声明显示、未声明不占位）。
+
 ## [0.3.1] - 2026-10-26
 
 双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步升 **0.3.1**。

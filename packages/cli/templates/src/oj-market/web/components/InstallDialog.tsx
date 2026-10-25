@@ -121,6 +121,24 @@ export function InstallDialog({ row, open, onClose, onDone, version, mode }: Ins
 			footer={terminal ? <Button onClick={onClose}>{t("oj-market:task:close")}</Button> : null}
 			data-testid="install-dialog"
 		>
+			{/* 安装确认元信息（P-2）：装之前把「装哪个版本、什么许可」摆在明面上 */}
+			{row && (
+				<div data-testid="install-meta" style={{ marginBottom: 12 }}>
+					<span>
+						{t("oj-market:card:version")}
+						:
+						{targetVersion ?? "-"}
+					</span>
+					{typeof row.license === "string" && row.license !== "" && (
+						<span data-testid="install-license">
+							{" · "}
+							{t("oj-market:card:license")}
+							:
+							{row.license}
+						</span>
+					)}
+				</div>
+			)}
 			{errorTask && <Alert type="error" message={taskId!.slice("__error__".length)} />}
 			{!errorTask && !record && (
 				<Typography.Text>

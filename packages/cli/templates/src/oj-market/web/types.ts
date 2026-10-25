@@ -59,6 +59,8 @@ export interface IndexRow {
 	installed: string | null
 	enabled: boolean | null
 	upgradable: boolean
+	/** 最新版许可（SPDX 简化式，来自分片条目的 manifest.license；未声明 → null） */
+	license?: string | null
 }
 
 /** 安装输入（POST /_platform/market/install） */

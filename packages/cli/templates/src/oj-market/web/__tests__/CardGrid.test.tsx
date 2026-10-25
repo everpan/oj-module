@@ -60,6 +60,19 @@ describe("cardGrid 卡片网格（BDD）", () => {
 		expect(screen.getByTestId("card-rollback-alpha")).toBeTruthy();
 	});
 
+	it("given 索引带 license When 渲染 Then 卡片显示该项（P-2）", () => {
+		renderWithProviders(
+			<CardGrid rows={[{ ...installed, license: "MIT" }]} {...handlers} />,
+			new InMemoryMarketClient(),
+		);
+		expect(screen.getByTestId("card-license-alpha").textContent).toContain("MIT");
+	});
+
+	it("given 索引未声明 license When 渲染 Then 卡片不出现许可行（不显示占位符）", () => {
+		renderWithProviders(<CardGrid rows={[installed]} {...handlers} />, new InMemoryMarketClient());
+		expect(screen.queryByTestId("card-license-alpha")).toBeNull();
+	});
+
 	it("given 未安装卡片 When 渲染 Then 安装按钮显示「安装」而非「升级」，且无回滚按钮", () => {
 		renderWithProviders(<CardGrid rows={[notInstalled]} {...handlers} />, new InMemoryMarketClient());
 		expect(screen.getByText("安装")).toBeTruthy();

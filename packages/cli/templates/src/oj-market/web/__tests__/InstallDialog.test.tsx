@@ -47,6 +47,44 @@ describe("installDialog 安装进度（BDD）", () => {
 		expect(screen.getByText("不可重试")).toBeTruthy();
 	});
 
+	it("given 索引带 license When 打开 Then 安装前展示「版本 + 许可」（P-2）", async () => {
+		const done: TaskRecord = {
+			id: "t1",
+			name: "alpha",
+			version: "1.2.0",
+			status: "done",
+			stage: "done",
+			progress: 100,
+			message: "ok",
+			stages: [],
+			startedAt: 0,
+		};
+		const client = new InMemoryMarketClient({ taskRecord: done, installResult: { task_id: "t1" } });
+		renderWithProviders(<InstallDialog row={{ ...row, license: "Apache-2.0" }} open onClose={() => {}} />, client);
+		expect(screen.getByTestId("install-meta").textContent).toContain("1.2.0");
+		expect(screen.getByTestId("install-license").textContent).toContain("Apache-2.0");
+		await waitFor(() => expect(screen.getByTestId("install-message").textContent).toBe("ok"), { timeout: 5000 });
+	});
+
+	it("given 索引未声明 license When 打开 Then 元信息只有版本、不出现许可段", async () => {
+		const done: TaskRecord = {
+			id: "t1",
+			name: "alpha",
+			version: "1.2.0",
+			status: "done",
+			stage: "done",
+			progress: 100,
+			message: "ok",
+			stages: [],
+			startedAt: 0,
+		};
+		const client = new InMemoryMarketClient({ taskRecord: done, installResult: { task_id: "t1" } });
+		renderWithProviders(<InstallDialog row={row} open onClose={() => {}} />, client);
+		expect(screen.getByTestId("install-meta").textContent).toContain("1.2.0");
+		expect(screen.queryByTestId("install-license")).toBeNull();
+		await waitFor(() => expect(screen.getByTestId("install-message").textContent).toBe("ok"), { timeout: 5000 });
+	});
+
 	it("given 回滚（显式旧版 version）When 打开 Then 以该版本触发 install 且标题为「回滚中」", async () => {
 		const done: TaskRecord = {
 			id: "t1",

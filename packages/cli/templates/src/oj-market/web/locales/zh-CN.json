@@ -24,6 +24,7 @@
 		"error": "卡片加载失败",
 		"retry": "重试",
 		"version": "版本",
+		"license": "许可",
 		"latest": "最新",
 		"installed": "已装",
 		"notInstalled": "未安装",

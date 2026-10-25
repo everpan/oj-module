@@ -820,6 +820,8 @@ interface IndexRow {
 	changelog: unknown
 	/** 最新版发布方（manifest author，C2-07；分片条目缺 author → null） */
 	publisher: string | null
+	/** 最新版许可（manifest license，C2-07 SPDX 简化式；分片条目缺/非字符串 → null） */
+	license: string | null
 	/** 本地安装的发布方 key 状态（P2-6 sidecar；未装 → null） */
 	trust_state: "trusted" | "untrusted" | "absent" | null
 	/** 本地安装记录的签名 key id（sidecar archive.key_id；未装/P1 时代条目 → null） */
@@ -905,6 +907,7 @@ async function indexBody(env: MarketEnv): Promise<IndexRow[]> {
 			available,
 			changelog: m?.changelog ?? null,
 			publisher: typeof m?.author === "string" ? m.author : null,
+			license: typeof m?.license === "string" ? m.license : null,
 			trust_state: side?.trust_state ?? null,
 			key_id: side?.archive?.key_id ?? null,
 			operator: await lastInstallOperatorOf(name),
@@ -921,6 +924,7 @@ async function indexBody(env: MarketEnv): Promise<IndexRow[]> {
 				available: [],
 				changelog: null,
 				publisher: null,
+				license: null,
 				trust_state: side.trust_state ?? null,
 				key_id: side.archive?.key_id ?? null,
 				operator: await lastInstallOperatorOf(name),

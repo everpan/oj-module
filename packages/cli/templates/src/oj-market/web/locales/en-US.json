@@ -24,6 +24,7 @@
 		"error": "Failed to load cards",
 		"retry": "Retry",
 		"version": "Version",
+		"license": "License",
 		"latest": "Latest",
 		"installed": "Installed",
 		"notInstalled": "Not installed",

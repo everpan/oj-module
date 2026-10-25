@@ -75,6 +75,16 @@ export function CardItem({ row, busy, canManage = true, onInstall, onEnableToggl
 							</span>
 						)}
 			</div>
+			{/* 许可（P-2）：索引未声明就不占位，避免满屏「未知」 */}
+			{typeof row.license === "string" && row.license !== "" && (
+				<div style={{ marginBottom: 12 }} data-testid={`card-license-${row.name}`}>
+					<Tag color="blue">
+						{t("oj-market:card:license")}
+						:
+						{row.license}
+					</Tag>
+				</div>
+			)}
 			<Space wrap>
 				<Button type="primary" size="small" loading={busy} onClick={() => onInstall(row)} disabled={busy || !canManage} title={manageTip}>
 					{installed ? t("oj-market:card:upgrade") : t("oj-market:card:install")}
