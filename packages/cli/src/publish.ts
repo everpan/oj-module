@@ -82,6 +82,15 @@ export function indexCanonical(kind: IndexKind, seq: number, text: string): stri
 	return `index:${kind}:${seq}:${sha256}`;
 }
 
+/**
+ * 吊销清单规范串（REG-R10）：`revocations:<seq>:<sha256hex(正文)>`——与 oj-registry 的
+ * `revocationCanonical` 逐字一致。offline import 复用 `verifyCanonical` 验签时，canon 必须同源。
+ */
+export function revocationCanonical(seq: number, text: string): string {
+	const sha256 = createHash("sha256").update(Buffer.from(text, "utf8")).digest("hex");
+	return `revocations:${seq}:${sha256}`;
+}
+
 /** 对单个索引文本签名，产出 detached .sig 六字段（与 archive .sig 同构，契约 §2.11 / C2-35 + seq） */
 export function signIndex(kind: IndexKind, seq: number, text: string, privateKeyPem: string, keyId: string): { alg: string, key_id: string, public_key: string, value: string, canon: string, seq: number } {
 	const value = signCanonical(privateKeyPem, indexCanonical(kind, seq, text));
