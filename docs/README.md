@@ -46,7 +46,7 @@
 | [`prd/202609112324-web-layout-and-codegen-guide-design.md`](prd/202609112324-web-layout-and-codegen-guide-design.md) | web 布局改名 + ojm api 生成目录更名 + 豁免清单注释 |
 | [`prd/202609122224-layout-injection-and-notification-design.md`](prd/202609122224-layout-injection-and-notification-design.md) | 布局注入与通知互动设计 |
 | [`prd/202609130128-client-factory-design.md`](prd/202609130128-client-factory-design.md) | 生成 client 工厂化设计（`create<Module>Client(ctx)`，构造即 install） |
-| [`prd/20261026-registry-cli-commands-design.md`](prd/20261026-registry-cli-commands-design.md) | registry 侧 CLI：`ojm registry export`（离线包产出）/ `ojm registry sign --revocations`（吊销清单签名）/ `ojm list`（已装清单）的判定顺序与信任边界（含 mermaid 流程图） |
+| [`prd/20261026-registry-cli-commands-design.md`](prd/20261026-registry-cli-commands-design.md) | registry 相关 CLI 命令全图（`keygen` / `sign` / `publish` / `registry sign` / `registry export` / `registry import` / `install` / `trust` / `view` / `list`）：判定顺序、十阶段状态机、信任边界，26 张 mermaid 图 |
 | [`prd/oj-release-binary-defect-report.md`](prd/oj-release-binary-defect-report.md) | oj 发布二进制缺陷报告：release 产物在非构建机不可用 |
 
 ---
