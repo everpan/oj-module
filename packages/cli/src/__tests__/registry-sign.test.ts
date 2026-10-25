@@ -15,8 +15,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildCli, localizeCacError, reportCliError } from "../cli";
 import { generateKeyPair } from "../lifecycle/keygen";
 import { fingerprintOfPublicKey, verifyCanonical } from "../lifecycle/sign";
-import { indexCanonical } from "../publish";
-import { registrySignCommand, RegistrySignError } from "../registry-sign";
+import { indexCanonical, revocationCanonical } from "../publish";
+import { registryRevocationSignCommand, registrySignCommand, RegistrySignError } from "../registry-sign";
 
 const CATALOG = `seq: 3
 issued_at: 1700000000
@@ -185,6 +185,104 @@ describe("registry sign：三条 fail-closed", () => {
 		const file = writeExport(exportBody({ gen: 1, keys: [{ keyId: "registry.index", key }] }));
 		expect(() => registrySignCommand({ file, id: "registry.index", key: keyFile(key), cwd }))
 			.toThrowError(/签名结果必须有去处/);
+	});
+});
+
+describe("registry sign：吊销清单（--revocations）", () => {
+	const REVOCATIONS = `seq: 7\nentries:\n  - seq: 7\n    keyId: publisher.key\n    fingerprint: ${"0".repeat(64)}\n    scope: acme\n    package: demo\n    version: 1.0.0\n    severity: block\n    reason: key compromised\n    at: 1700000000\n`;
+
+	function writeRevocations(text = REVOCATIONS): string {
+		const file = path.join(cwd, "revocations.yaml");
+		fs.writeFileSync(file, text);
+		return file;
+	}
+
+	it("scenario: 正常路径 → 签的是 revocations:<seq>:<sha256(正文)>，真验签通过，回传体落盘", () => {
+		const key = generateKeyPair();
+		const file = writeRevocations();
+		const result = registryRevocationSignCommand({ file, revocations: true, id: "registry.index", key: keyFile(key), out: "rev-sig.json", cwd });
+
+		expect(result.seq).toBe(7);
+		expect(result.keyId).toBe("registry.index");
+		expect(result.signature).toMatchObject({
+			seq: 7,
+			alg: "Ed25519",
+			key_id: "registry.index",
+			public_key: key.publicKeyHex,
+			canon: revocationCanonical(7, REVOCATIONS),
+		});
+		// 规范串里带的是**正文**摘要：服务端会重算同一个串逐字比对
+		expect(result.signature.canon).toBe(`revocations:7:${sha256(REVOCATIONS)}`);
+		expect(verifyCanonical(key.publicKeyHex, result.signature.canon, result.signature.value)).toBe(true);
+
+		// 落盘的就是回传请求体六字段，可直接 `-d @`
+		const body = JSON.parse(fs.readFileSync(result.outPath!, "utf8")) as Record<string, unknown>;
+		expect(body).toEqual(result.signature);
+	});
+
+	it("scenario: 正文任何字节变化都换 canon（这正是「必须喂原文」的原因）", () => {
+		const key = generateKeyPair();
+		const bare = registryRevocationSignCommand({ file: writeRevocations(), revocations: true, id: "registry.index", key: keyFile(key), json: true, cwd });
+		const padded = registryRevocationSignCommand({ file: writeRevocations(`${REVOCATIONS}\n`), revocations: true, id: "registry.index", key: keyFile(key), json: true, cwd });
+		expect(padded.signature.canon).not.toBe(bare.signature.canon);
+	});
+
+	it("scenario: 喂了 /revocations 的 JSON 导出 → revocation_sig_format（服务端按正文重算，签了也白签）", () => {
+		const key = generateKeyPair();
+		const file = writeRevocations("{\"seq\":7,\"entries\":[]}\n");
+		try {
+			registryRevocationSignCommand({ file, revocations: true, id: "registry.index", key: keyFile(key), json: true, cwd });
+			throw new Error("应当失败");
+		}
+		catch (error) {
+			expect(error).toBeInstanceOf(RegistrySignError);
+			expect((error as RegistrySignError).code).toBe("revocation_sig_format");
+			expect((error as RegistrySignError).message).toContain("/cdn/revocations");
+		}
+	});
+
+	it("scenario: YAML 正文里没有 seq → revocation_sig_format", () => {
+		const key = generateKeyPair();
+		const file = writeRevocations("entries: []\n");
+		try {
+			registryRevocationSignCommand({ file, revocations: true, id: "registry.index", key: keyFile(key), json: true, cwd });
+			throw new Error("应当失败");
+		}
+		catch (error) {
+			expect(error).toBeInstanceOf(RegistrySignError);
+			expect((error as RegistrySignError).code).toBe("revocation_sig_format");
+		}
+	});
+
+	it("scenario: 空文件 → 用法错误（空清单要 seq=0 的正文，不是空文件）", () => {
+		const key = generateKeyPair();
+		expect(() => registryRevocationSignCommand({ file: writeRevocations(""), revocations: true, id: "registry.index", key: keyFile(key), json: true, cwd }))
+			.toThrowError(/空清单也必须签/);
+	});
+
+	it("scenario: 缺 --id → 用法错误（这一处没有导出体可推断 key）", () => {
+		const key = generateKeyPair();
+		expect(() => registryRevocationSignCommand({ file: writeRevocations(), revocations: true, key: keyFile(key), json: true, cwd }))
+			.toThrowError(/--id/);
+	});
+
+	it("scenario: 既没 --out 也没 --json → 用法错误（签名结果不能凭空消失）", () => {
+		const key = generateKeyPair();
+		expect(() => registryRevocationSignCommand({ file: writeRevocations(), revocations: true, id: "registry.index", key: keyFile(key), cwd }))
+			.toThrowError(/签名结果必须有去处/);
+	});
+
+	it("scenario: CLI --json → stdout 一行信封，data.kind = revocations 且带 signature", async () => {
+		const key = generateKeyPair();
+		const file = writeRevocations();
+		const r = await run(["registry", "sign", file, "--revocations", "--id", "registry.index", "--key", keyFile(key), "--json"]);
+		expect(r.exitCode).toBeUndefined();
+		expect(r.out).toHaveLength(1);
+		const envelope = JSON.parse(r.out[0]!) as { ok: boolean, command: string, data: { kind: string, seq: number, signature: { canon: string } } };
+		expect(envelope).toMatchObject({ ok: true, command: "registry sign" });
+		expect(envelope.data.kind).toBe("revocations");
+		expect(envelope.data.seq).toBe(7);
+		expect(envelope.data.signature.canon).toBe(`revocations:7:${sha256(REVOCATIONS)}`);
 	});
 });
 

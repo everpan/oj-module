@@ -9,6 +9,16 @@
 
 ### Added
 
+- **`ojm registry sign --revocations`（REG-R10 吊销清单外置签名）**：输入是吊销清单**正文原文**
+  （`GET /api/oj-registry/cdn/revocations` 的响应体，或 `ojm registry export` 产出的
+  `registry/revocations.yaml`），输出是 `POST /api/oj-registry/revocations/signature` 的六字段请求体
+  （`seq/alg/key_id/public_key/value/canon`），签的是 `revocations:<seq>:<sha256(正文)>`。
+  此前这条链只能手工拼：服务端按正文**重算**规范串再逐字比对，客户端一旦解析再序列化（换行、
+  键序、缩进变了）sha 就变，`revocation_sig_format` 拒收且看不出原因。
+  本命令不做重渲染，原样吃文件；以 `{` 开头的输入（= `/revocations` 的 JSON 导出）直接拒并指路。
+  这一处 `--id` 必填（没有导出体可推断 key），签完自检不过 → `revocation_sig_mismatch`。
+  索引签名与吊销清单签名共用一个子命令，信封里用 `data.kind`（`index` / `revocations`）区分。
+
 - **`ojm registry export`（REG-R11 离线包的产出端）**：把 registry 读面
   （`/api/oj-registry/cdn/…`）上的索引与包体拉成一个 `ojm registry import` 能直接吃的离线包目录：
   `<out>/source.json` + `<out>/registry/{catalog.yaml(+.sig), shards/<n>.yaml(+.sig),

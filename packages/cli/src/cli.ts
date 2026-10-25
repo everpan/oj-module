@@ -299,14 +299,42 @@ function makeAction(def: HelpEntry, projectRoot: string, lang: Lang, exit: (code
 				await trustCommand(sub ?? "", [keyId, pub].filter((v): v is string => v !== undefined), { siteUrl: opts.siteUrl, user: opts.user, pass: opts.pass, task: opts.task });
 			};
 		case "registry":
-			return async (sub: string | undefined, file: string | undefined, opts: { id?: string, key?: string, out?: string, site?: string, siteUrl?: string, keys?: string, registry?: string, dryRun?: boolean, json?: boolean } = {}) => {
+			return async (sub: string | undefined, file: string | undefined, opts: { id?: string, key?: string, out?: string, site?: string, siteUrl?: string, keys?: string, registry?: string, revocations?: boolean, dryRun?: boolean, json?: boolean } = {}) => {
 				if (!sub) {
 					console.log(groupHelpText("registry", lang));
 					return;
 				}
 				if (sub === "sign") {
-					const { registrySignCommand, RegistrySignError } = await import("./registry-sign");
+					const { registrySignCommand, registryRevocationSignCommand, RegistrySignError } = await import("./registry-sign");
 					const human: string[] = [];
+					if (opts.revocations) {
+						let rev: ReturnType<typeof registryRevocationSignCommand>;
+						try {
+							rev = registryRevocationSignCommand({ file: file ?? "", id: opts.id, key: opts.key, out: opts.out, json: !!opts.json, cwd: projectRoot });
+						}
+						catch (error) {
+							if (!(error instanceof RegistrySignError))
+								throw error;
+							emit({ command: "registry sign", code: error.code, message: error.message, data: null, human: [`[ojm] ${error.message}`] }, { json: !!opts.json });
+							return exit(EXIT_FAILURE);
+						}
+						human.push(`[ojm] 第 ${rev.seq} 代吊销清单已签：${rev.keyId}（指纹 ${String(rev.fingerprint).slice(0, 16)}…）`);
+						if (rev.outPath !== null)
+							human.push(`[ojm] 回传体已写入 ${path.relative(projectRoot, rev.outPath) || rev.outPath}（POST /api/oj-registry/revocations/signature 的请求体）`);
+						emit({
+							command: "registry sign",
+							data: {
+								kind: "revocations",
+								seq: rev.seq,
+								keyId: rev.keyId,
+								fingerprint: rev.fingerprint,
+								signature: rev.signature,
+								out: rev.outPath === null ? null : path.relative(projectRoot, rev.outPath),
+							},
+							human,
+						}, { json: !!opts.json });
+						return;
+					}
 					let result: ReturnType<typeof registrySignCommand>;
 					try {
 						result = registrySignCommand({ file: file ?? "", id: opts.id, key: opts.key, out: opts.out, json: !!opts.json, cwd: projectRoot });
@@ -331,6 +359,7 @@ function makeAction(def: HelpEntry, projectRoot: string, lang: Lang, exit: (code
 					emit({
 						command: "registry sign",
 						data: {
+							kind: "index",
 							gen: result.gen,
 							keyId: result.keyId,
 							fingerprint: result.fingerprint,

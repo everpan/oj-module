@@ -24,12 +24,13 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
+import { parse as yamlParse } from "yaml";
 
 import { UsageError } from "./exit-codes";
 import { isValidKeyId } from "./keygen";
 import { readPrivateKeyPem } from "./lifecycle/keygen";
-import { exportRawPublicKeyHex, fingerprintOfPublicKey, verifyCanonical } from "./lifecycle/sign";
-import { indexCanonical, signIndex } from "./publish";
+import { exportRawPublicKeyHex, fingerprintOfPublicKey, SIG_ALG, signCanonical, verifyCanonical } from "./lifecycle/sign";
+import { indexCanonical, revocationCanonical, signIndex } from "./publish";
 
 export type RegistryIndexKind = "catalog" | "shard";
 
@@ -58,10 +59,37 @@ export interface RegistrySignOptions {
 	out?: string
 	/** `--json`：签名结果走 stdout 信封（与 --out 二选一即可） */
 	json?: boolean
+	/** `--revocations`：输入按吊销清单正文解释（走 `registryRevocationSignCommand`） */
+	revocations?: boolean
 	/** 测试注入；缺省 process.cwd() */
 	cwd?: string
 	/** 测试注入 stdin（file === "-" 时） */
 	stdin?: () => string
+}
+
+/** 回传体里的一条吊销清单签名（`POST /revocations/signature` 的请求体，六字段） */
+export interface RegistryRevocationSignature {
+	seq: number
+	alg: string
+	key_id: string
+	public_key: string
+	/**
+	 * **规范串原文** `revocations:<seq>:<sha256(正文)>`。
+	 * 注意与索引签名里的 `canon` 同名不同义——那边是规范化版本号（`v2`），服务端拿它比常量；
+	 * 这边服务端拿它与自己重算的规范串**逐字比对**，所以必须原样上传。
+	 */
+	canon: string
+	value: string
+}
+
+export interface RegistryRevocationSignResult {
+	/** 吊销清单代次（取自正文顶层 seq） */
+	seq: number
+	keyId: string
+	fingerprint: string
+	signature: RegistryRevocationSignature
+	/** 回传体落盘位置（未给 --out = null） */
+	outPath: string | null
 }
 
 export interface RegistrySignResult {
@@ -217,4 +245,78 @@ function writeOut(result: Omit<RegistrySignResult, "outPath">, opts: RegistrySig
 	fs.mkdirSync(path.dirname(outPath), { recursive: true });
 	fs.writeFileSync(outPath, `${JSON.stringify({ gen: result.gen, signatures: result.signatures }, null, 2)}\n`);
 	return { ...result, outPath };
+}
+
+/** 吊销清单正文的顶层 seq（空清单是 0；形态不对 → null，由调用方给码） */
+function revocationsSeqOf(text: string): number | null {
+	let doc: unknown;
+	try {
+		doc = yamlParse(text);
+	}
+	catch {
+		return null;
+	}
+	if (doc === null || typeof doc !== "object" || Array.isArray(doc))
+		return null;
+	const seq = (doc as Record<string, unknown>).seq;
+	return typeof seq === "number" && Number.isInteger(seq) && seq >= 0 ? seq : null;
+}
+
+/**
+ * 吊销清单签名（REG-R10 的另一半）：输入是**清单正文原文**，输出是
+ * `POST /api/oj-registry/revocations/signature` 的请求体。
+ *
+ * 为什么输入是整份正文而不是「seq + 条目」：服务端会把收到的 `canon` 与自己**重算**的
+ * `revocations:<seq>:<sha256(正文)>` 逐字比对。所以客户端必须对**同一串字节**签名——
+ * 中间任何重渲染（换行、键序、缩进）都会让 sha 变、canon 对不上，服务端 `revocation_sig_format` 拒收。
+ * 因此本命令不自作主张解析再序列化，原样吃文件；正文从哪里来由使用者决定
+ * （`ojm registry export` 产出的 `registry/revocations.yaml`、或 `GET /api/oj-registry/cdn/revocations` 的响应体）。
+ *
+ * `--id` 在这一处没有默认值可推断（不像索引签名有导出体的 keys[]），必须显式给。
+ */
+export function registryRevocationSignCommand(opts: RegistrySignOptions): RegistryRevocationSignResult {
+	const cwd = opts.cwd ?? process.cwd();
+	if (!opts.file)
+		throw new UsageError("[ojm] 用法：ojm registry sign <revocations.yaml> --revocations --id <publisher.index> [--key <pem>] [--out <file>] [--json]\n  输入 = 吊销清单正文原文（GET /api/oj-registry/cdn/revocations 的响应体，或 ojm registry export 产出的 registry/revocations.yaml；`-` 表示从 stdin 读）");
+	if (opts.out === undefined && opts.json !== true)
+		throw new UsageError("[ojm] 签名结果必须有去处：--out <file>（回传请求体落盘）或 --json（打到 stdout）——两者都没有等于白签一场");
+
+	const file = opts.file === "-" ? opts.file : path.resolve(cwd, opts.file);
+	const text = opts.file === "-"
+		? (opts.stdin?.() ?? fs.readFileSync(0, "utf8"))
+		: fs.readFileSync(file, "utf8");
+	if (text.trim() === "")
+		throw new UsageError(`[ojm] 吊销清单正文是空的：${opts.file}——空清单也必须签（seq=0），但空文件不是清单；用 GET /api/oj-registry/cdn/revocations 取原文`);
+	// JSON 也是合法 YAML，靠解析拦不住；直接按首字符判：服务端渲染的正文永远以 `seq:` 开头，
+	// 以 `{` 开头的几乎一定是 /revocations 的管理端点导出——签它的正文，服务端重算的 sha 必然不同。
+	if (text.trimStart().startsWith("{"))
+		throw new RegistrySignError("revocation_sig_format", `输入看起来是 /revocations 的 JSON 导出（首字符 {），不是 /cdn/revocations 的 YAML 正文：${opts.file}——服务端按正文重算规范串，喂 JSON 必被拒收；改用 GET /api/oj-registry/cdn/revocations 的响应体`);
+	const seq = revocationsSeqOf(text);
+	if (seq === null)
+		throw new RegistrySignError("revocation_sig_format", `吊销清单正文里没有合法的 seq（顶层应为非负整数）：${opts.file}——确认喂进来的是 /cdn/revocations 的 YAML 正文，不是 /revocations 的 JSON 导出`);
+
+	const keyId = opts.id?.trim();
+	if (keyId === undefined || keyId === "")
+		throw new UsageError("[ojm] 吊销清单签名必须用 --id 指定索引签名 key（这一处没有导出体可以推断）：--id <publisher.index>");
+	if (!isValidKeyId(keyId))
+		throw new UsageError(`[ojm] key_id 命名空间非法（C2-37：<publisher>.<id> 全小写）：「${keyId}」`);
+
+	const pem = readPrivateKeyPem(opts.key === undefined
+		? path.join(os.homedir(), ".ojm", "keys", keyId, "private.pem")
+		: path.resolve(cwd, opts.key));
+	const publicHex = exportRawPublicKeyHex(pem);
+	const fingerprint = fingerprintOfPublicKey(publicHex);
+
+	const canon = revocationCanonical(seq, text);
+	const value = signCanonical(pem, canon);
+	if (!verifyCanonical(publicHex, canon, value))
+		throw new RegistrySignError("revocation_sig_mismatch", "吊销清单签完自检不过——私钥导出的公钥与签名口径不一致（检查 PEM 是不是 Ed25519）");
+
+	const signature: RegistryRevocationSignature = { seq, alg: SIG_ALG, key_id: keyId, public_key: publicHex, canon, value };
+	if (opts.out === undefined)
+		return { seq, keyId, fingerprint, signature, outPath: null };
+	const outPath = path.resolve(cwd, opts.out);
+	fs.mkdirSync(path.dirname(outPath), { recursive: true });
+	fs.writeFileSync(outPath, `${JSON.stringify(signature, null, 2)}\n`);
+	return { seq, keyId, fingerprint, signature, outPath };
 }
