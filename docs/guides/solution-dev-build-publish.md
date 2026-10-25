@@ -103,7 +103,7 @@ ojm keygen --id <publisher>.<key-name>
 ### 3.4 每次发布：签名
 
 ```bash
-ojm sign dist/<name>-<version>.tgz --id acme.release-2026 --check
+ojm sign dist/<name>-<version>.tgz --id acme.release-2026 --registry-id oj-registry --check
 ```
 
 - 产物 = 同目录 `<tgz>.sig`（detached 侧车）；`ojm install` 上传 tgz 时会**自动探测**同目录 `.sig` 随包上传。
@@ -142,7 +142,7 @@ ojm market publish --real . \
 
 - `--real <方案工程>` 取方案工程路径（`.` 即当前工程）；发布方 key 与 `ojm sign` 同身份体系（`~/.ojm/keys`）。
 - **多方案工程**（`src/` 下多份 `solution.yaml`）走 `market publish --real .` 会被拒并提示显式链路：
-  `ojm build --bundle <name>` → `ojm sign dist/<name>-<ver>.tgz --id <pub> --key <pem>` →
+  `ojm build --bundle <name>` → `ojm sign dist/<name>-<ver>.tgz --id <pub> --key <pem> --registry-id <registry.id>` →
   把 `tgz`+`.sig` 放进 `cdn/` → `ojm market build-index`。单方案工程或显式 `--real <某方案工程>` 才走自动发布。
 - CDN 推送与本地写回走同一发布面；索引有防投毒规范（`versions[].file` 必须逐字 `<name>-<version>.tgz`、下载段立即比对 size、恒 `no-cache`），详见手册 §11.2。
 - 站点侧消费：`ojm install <name>[@version]`，从 CDN 拉 Form B 索引再拉包。

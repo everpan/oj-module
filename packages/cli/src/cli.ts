@@ -218,9 +218,9 @@ function makeAction(def: HelpEntry, projectRoot: string, lang: Lang, exit: (code
 				keygenCommand({ id: opts.id, out: opts.out, yes: opts.yes });
 			};
 		case "sign":
-			return async (file: string | undefined, opts: { id?: string, key?: string, check?: boolean } = {}) => {
+			return async (file: string | undefined, opts: { id?: string, key?: string, check?: boolean, registryId?: string } = {}) => {
 				const { signCommand } = await import("./sign");
-				signCommand(file ?? "", { id: opts.id, key: opts.key, check: opts.check });
+				signCommand(file ?? "", { id: opts.id, key: opts.key, check: opts.check, registryId: opts.registryId });
 			};
 		case "config":
 			return async (sub: string | undefined, opts: { json?: boolean, showOrigin?: boolean } = {}) => {

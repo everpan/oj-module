@@ -23,6 +23,9 @@ const buildBundleMock = vi.hoisted(() => vi.fn(async () => [{ file: "x.tgz" }]))
 vi.mock("../bundle", () => ({ buildBundle: buildBundleMock }));
 const vendorCommandMock = vi.hoisted(() => vi.fn(async () => {}));
 vi.mock("../vendor", () => ({ vendorCommand: vendorCommandMock }));
+// REG-CS3 v2：sign 的 --registry-id 曾只被 signCommand 要求、却没在 CLI 上接线，命令成死路
+const signCommandMock = vi.hoisted(() => vi.fn(() => ({})));
+vi.mock("../sign", () => ({ signCommand: signCommandMock }));
 
 beforeEach(() => {
 	logs.length = 0;
@@ -35,6 +38,7 @@ afterEach(() => {
 	vi.restoreAllMocks();
 	buildBundleMock.mockClear();
 	vendorCommandMock.mockClear();
+	signCommandMock.mockClear();
 });
 
 interface RunResult { out: string, unknown: string[], exitCode: number | undefined }
@@ -203,6 +207,11 @@ describe("参数映射", () => {
 	it("build 裸 --bundle 无名称（全部用户方案）", async () => {
 		await run(["build", "--bundle"], "zh-CN", tmp, () => buildBundleMock.mock.calls.length > 0);
 		expect(buildBundleMock).toHaveBeenCalledWith(tmp, { out: undefined, name: undefined });
+	});
+
+	it("sign --registry-id 映射到 signCommand.registryId（REG-CS3 v2 规范串首段）", async () => {
+		await run(["sign", "demo-0.1.0.tgz", "--id", "acme.market", "--registry-id", "oj-registry"], "zh-CN", tmp, () => signCommandMock.mock.calls.length > 0);
+		expect(signCommandMock).toHaveBeenCalledWith("demo-0.1.0.tgz", { id: "acme.market", key: undefined, check: undefined, registryId: "oj-registry" });
 	});
 });
 

@@ -355,11 +355,12 @@ export const HELP_GROUPS: HelpGroup[] = [
 				options: [
 					{ raw: "--id <id>", zh: "发布方 key id", en: "Publisher key id" },
 					{ raw: "--key <pem>", zh: "指定私钥 pem（须同时 --id）", en: "Explicit private key pem (requires --id as well)" },
+					{ raw: "--registry-id <id>", zh: "签发方 registry 身份（必填；REG-CS3 v2 规范串首段，防跨仓库重放）", en: "Issuing registry id (required; first segment of the REG-CS3 v2 canonical string, blocks cross-registry replay)" },
 					{ raw: "--check", zh: "离线自检签名", en: "Offline signature self-check" },
 				],
 				detail: {
-					zh: "ojm sign <file.tgz> [--id <publisher.id>] [--key <pem>] [--check]\n  detached 侧车签名：产出 <tgz>.sig（ojm install 自动探测随包上传）；私钥缺省取 ~/.ojm/keys/<id>/private.pem",
-					en: "ojm sign <file.tgz> [--id <publisher.id>] [--key <pem>] [--check]\n  Detached sidecar signature: produces <tgz>.sig (ojm install auto-detects and uploads it with the bundle); the private key defaults to ~/.ojm/keys/<id>/private.pem",
+					zh: "ojm sign <file.tgz> --registry-id <registry.id> [--id <publisher.id>] [--key <pem>] [--check]\n  detached 侧车签名：产出 <tgz>.sig（ojm install 自动探测随包上传）；私钥缺省取 ~/.ojm/keys/<id>/private.pem\n  规范串 = <registry_id>:<slug>@<version>:<sha256>——registry_id 防 A 签的包被 B 的 CDN 装；往 registry 发布时必须等于该站的 canonical_origin，否则服务端报 registry_id_mismatch",
+					en: "ojm sign <file.tgz> --registry-id <registry.id> [--id <publisher.id>] [--key <pem>] [--check]\n  Detached sidecar signature: produces <tgz>.sig (ojm install auto-detects and uploads it with the bundle); the private key defaults to ~/.ojm/keys/<id>/private.pem\n  Canonical string = <registry_id>:<slug>@<version>:<sha256> — the registry_id stops a bundle signed by A from being installed from B's CDN; when publishing to a registry it must equal that site's canonical_origin, otherwise the server rejects with registry_id_mismatch",
 				},
 			},
 			{

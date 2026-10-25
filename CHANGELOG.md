@@ -7,6 +7,20 @@
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-10-26
+
+双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步升 **0.3.1**。
+
+### Fixed
+
+- **`ojm sign` 接上 `--registry-id`（REG-CS3 v2）**：`signCommand` 自规范串 v2 起就强制要求
+  签发方身份（`--registry-id <registry.id>`），但 CLI 从未声明这个选项——cac 按未知选项报错，
+  于是命令**无论怎么打都是死路**。真机冒烟（把 oj-registry 装进隔离站点）时撞出来的。
+  现在 `ojm sign <file.tgz> --registry-id <registry.id> [--id <publisher.id>] [--key <pem>] [--check]`
+  可用，产物 `.sig` 带 `registry_id` 字段；规范串 `<registry_id>:<slug>@<version>:<sha256>`
+  ——往 registry 发布时该值必须等于目标站点的 `canonical_origin`，否则服务端
+  `registry_id_mismatch`。补了一条参数映射用例钉住接线。
+
 ## [0.3.0] - 2026-10-25
 
 双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步升 **0.3.0**（0.x 下的破坏性变更走次版本号）。
