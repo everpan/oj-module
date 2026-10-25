@@ -5,7 +5,9 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 设计依据、迁移记录与陷阱清单见 [`docs/prd/202609110947-oj-module-two-package-consolidation-design.md`](docs/prd/202609110947-oj-module-two-package-consolidation-design.md)。
 
-## [Unreleased]
+## [0.3.3] - 2026-10-26
+
+双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步升 **0.3.3**。
 
 ### Fixed
 
