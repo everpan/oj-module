@@ -106,7 +106,7 @@ export function reportCliError(error: unknown, exit: (code: number) => never, ar
 	exit(exitCodeOf(error));
 }
 
-interface SiteOpts { url?: string, user?: string, pass?: string }
+interface SiteOpts { siteUrl?: string, user?: string, pass?: string }
 
 function makeAction(def: HelpEntry, projectRoot: string, lang: Lang, exit: (code: number) => never): (...args: any[]) => Promise<void> {
 	switch (def.key) {
@@ -275,28 +275,28 @@ function makeAction(def: HelpEntry, projectRoot: string, lang: Lang, exit: (code
 		case "install":
 			return async (target: string | undefined, opts: SiteOpts & { locale?: string, name?: string, version?: string, registry?: string } = {}) => {
 				const { installCommand } = await import("./install");
-				await installCommand(target ?? "", { url: opts.url, user: opts.user, pass: opts.pass, locale: opts.locale, name: opts.name, version: opts.version, registry: opts.registry });
+				await installCommand(target ?? "", { siteUrl: opts.siteUrl, user: opts.user, pass: opts.pass, locale: opts.locale, name: opts.name, version: opts.version, registry: opts.registry });
 			};
 		case "enable":
 		case "disable":
 			return async (name: string | undefined, opts: SiteOpts = {}) => {
 				const { setEnabledCommand } = await import("./enable");
-				await setEnabledCommand(name ?? "", def.key === "enable", { url: opts.url, user: opts.user, pass: opts.pass });
+				await setEnabledCommand(name ?? "", def.key === "enable", { siteUrl: opts.siteUrl, user: opts.user, pass: opts.pass });
 			};
 		case "uninstall":
 			return async (name: string | undefined, opts: SiteOpts & { registry?: string } = {}) => {
 				const { uninstallCommand } = await import("./uninstall");
-				await uninstallCommand(name ?? "", { url: opts.url, user: opts.user, pass: opts.pass, registry: opts.registry });
+				await uninstallCommand(name ?? "", { siteUrl: opts.siteUrl, user: opts.user, pass: opts.pass, registry: opts.registry });
 			};
 		case "view":
 			return async (target: string | undefined, opts: SiteOpts & { json?: boolean } = {}) => {
 				const { viewCommand } = await import("./view");
-				await viewCommand(target, { url: opts.url, user: opts.user, pass: opts.pass, json: opts.json });
+				await viewCommand(target, { siteUrl: opts.siteUrl, user: opts.user, pass: opts.pass, json: opts.json });
 			};
 		case "trust":
 			return async (sub: string | undefined, keyId: string | undefined, pub: string | undefined, opts: SiteOpts & { task?: string } = {}) => {
 				const { trustCommand } = await import("./trust");
-				await trustCommand(sub ?? "", [keyId, pub].filter((v): v is string => v !== undefined), { url: opts.url, user: opts.user, pass: opts.pass, task: opts.task });
+				await trustCommand(sub ?? "", [keyId, pub].filter((v): v is string => v !== undefined), { siteUrl: opts.siteUrl, user: opts.user, pass: opts.pass, task: opts.task });
 			};
 		case "registry":
 			return async (sub: string | undefined, file: string | undefined, opts: { id?: string, key?: string, out?: string, site?: string, keys?: string, registry?: string, dryRun?: boolean, json?: boolean } = {}) => {

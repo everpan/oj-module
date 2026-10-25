@@ -59,8 +59,8 @@ export function configRows(opts: ConfigOptions = {}): ConfigRow[] {
 	});
 	rows.push({
 		key: "site.url",
-		value: env.OJM_URL?.trim() ? String(env.OJM_URL).trim() : DEFAULT_SITE_URL,
-		origin: env.OJM_URL?.trim() ? "OJM_URL" : "缺省",
+		value: env.OJM_SITE_URL?.trim() ? String(env.OJM_SITE_URL).trim() : DEFAULT_SITE_URL,
+		origin: env.OJM_SITE_URL?.trim() ? "OJM_SITE_URL" : "缺省",
 	});
 	const siteCreds = (env.OJM_USER ?? "") !== "" && (env.OJM_PASS ?? "") !== "";
 	rows.push({

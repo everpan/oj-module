@@ -11,7 +11,7 @@ import process from "node:process";
 import { callApi, login, resolveSite } from "./site";
 
 export interface TrustOptions {
-	url?: string
+	siteUrl?: string
 	user?: string
 	pass?: string
 	/** TOFU 确认目标任务 id（confirm 子命令；--task） */

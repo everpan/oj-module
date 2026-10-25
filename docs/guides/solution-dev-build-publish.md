@@ -122,7 +122,7 @@ ojm sign dist/<name>-<version>.tgz --id acme.release-2026 --check
 
 ```bash
 ojm install dist/<name>-<version>.tgz \
-  --url http://<站点> --user admin --pass …
+  --site-url http://<站点> --user admin --pass …
 ```
 
 适合内网/单站交付。`.sig` 同目录自动随包上传。
@@ -160,7 +160,7 @@ ojm market publish --real . \
 ## 5. 安装与信任（运维侧）
 
 ```bash
-ojm install <file.tgz | name[@version]> --url <站点> --user admin --pass …
+ojm install <file.tgz | name[@version]> --site-url <站点> --user admin --pass …
 ojm trust ls                     # 列已信任 key（含 sha256 指纹）
 ojm trust confirm --task <id>    # needs_trust 待确认 key 入库，然后重跑 install
 ojm trust add <key_id> <pubhex>  # 直接登记（预信任）
@@ -218,16 +218,16 @@ ojm market verify --rebuild-index
 oj serve -c config.yaml -b /api --api-path dist/api --console-log
 
 # ⑤ 把市场地址指向本站点自供的 /cdn（仅外部真 CDN 才需要绝对地址）
-ojm market setup --url http://127.0.0.1:9778 --user superadmin --pass 123456 --new-pass <新口令>
+ojm market setup --site-url http://127.0.0.1:9778 --user superadmin --pass 123456 --new-pass <新口令>
 
 # ⑥ 安装（首次必然停在 needs_trust）
-ojm install erp@0.1.0 --url http://127.0.0.1:9778 --user superadmin --pass <新口令>
+ojm install erp@0.1.0 --site-url http://127.0.0.1:9778 --user superadmin --pass <新口令>
 #   → 返回 task_id；轮询到 status=needs_trust，响应 trust.fingerprint 必与 ① 输出逐字一致
 #     用 §5 的 out-of-band 通道核对指纹——一致才继续
 
 # ⑦ 核对指纹后确认信任，重试同一安装续跑
-ojm trust confirm --task <task-id> --url http://127.0.0.1:9778 --user superadmin --pass <新口令>
-ojm install erp@0.1.0 --url http://127.0.0.1:9778 --user superadmin --pass <新口令>
+ojm trust confirm --task <task-id> --site-url http://127.0.0.1:9778 --user superadmin --pass <新口令>
+ojm install erp@0.1.0 --site-url http://127.0.0.1:9778 --user superadmin --pass <新口令>
 #   → status=done，十一个阶段全 ok：
 #     preflight / downloading / verifying / extracting / migrating /
 #     lock_commit / registering / deploying_web / reloading / smoke / audit

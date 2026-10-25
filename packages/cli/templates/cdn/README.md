@@ -60,7 +60,7 @@ shards/<n>.yaml     分片（纯内容无 meta）：{solutions: [{name, latest,
 ```
 
 2. 把真 CDN（对象存储 / nginx）的**绝对地址**写进系统设置 `framework.market_cdn_url`；
-   命令行等价写法是 `ojm market setup --url <地址>`。
+   命令行等价写法是 `ojm market setup --site-url <地址>`。
 3. 索引（`catalog.yaml` / `shards/*.yaml`）由 CDN 侧维护：`ojm market build-index` 在本地产出后自行上传。
    真 CDN 侧自行配等价缓存头与 ETag（对象存储默认带 ETag；nginx 可复用上面的 Cache-Control 值）。
 

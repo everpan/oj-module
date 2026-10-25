@@ -165,7 +165,7 @@ node "$CLI_PKG/bin/ojm.mjs" market verify --rebuild-index
 node "$CLI_PKG/bin/ojm.mjs" build                 # 生成 api/dist + web/dist（含 api/dist/versions.json）
 # config：platform.root 改成 api/dist（安装目标恒为 release 部署，root 必须与 --api-path 同源）
 (bin/oj serve -c config.yaml -b /api --api-path api/dist --console-log &)
-node "$CLI_PKG/bin/ojm.mjs" market setup --url http://127.0.0.1:9778 --user superadmin --pass 123456 --new-pass <新口令>
+node "$CLI_PKG/bin/ojm.mjs" market setup --site-url http://127.0.0.1:9778 --user superadmin --pass 123456 --new-pass <新口令>
 # 市场页点安装 → 首次停在「待信任」→ 核对指纹 → ojm trust confirm --task <id> → 重试 → done
 ```
 

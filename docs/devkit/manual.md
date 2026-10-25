@@ -1781,7 +1781,7 @@ module-root 下数据源是「扫描 + `web.config.ts` 登记」并集（未登�
 
 | 子命令 | 一句话 |
 |---|---|
-| `ojm market setup [--url <站点>] [--user <u> --pass <p>] [--new-pass <p>]` | **外部真 CDN 场景才需要**：把 `framework.market_cdn_url` 改写为绝对地址；账号须 **superadmin**（该设置安全组仅 superadmin 可写，admin 角色会被 403）；首跑若账号处于首次改密期会先自动改密再写入 |
+| `ojm market setup [--site-url <站点>] [--user <u> --pass <p>] [--new-pass <p>]` | **外部真 CDN 场景才需要**：把 `framework.market_cdn_url` 改写为绝对地址；账号须 **superadmin**（该设置安全组仅 superadmin 可写，admin 角色会被 403）；首跑若账号处于首次改密期会先自动改密再写入 |
 | `ojm market publish [--fixture <name>@<version>] [--real <方案工程>] [--id <key>] [--key <pem>] [--rebuild-index] [--check]` | 把方案包落进 `cdn/` 并做包级 detached 签名；**不碰索引**（索引由 `build-index` 重建，避免多人发布互相覆盖） |
 | `ojm market build-index [--id <key>] [--key <pem>] [--check]` | 扫描 `cdn/*.tgz`、提取包内 manifest，全量重建 `bundles.yaml` + `manifests.yaml` 并签名；结果只取决于目录内容，连续执行字节一致 |
 | `ojm market verify [--file <tgz>] [--rebuild-index]` | 离线验包（不起站点、不装、不要凭据）：sha256 完整性 / 包级 Ed25519 验签 / 索引验签 / manifest 结构分列输出；`--rebuild-index` 额外比对重建索引与盘上索引的漂移 |
@@ -1908,9 +1908,9 @@ flowchart TD
 `install` / `enable` / `disable` / `uninstall` / `trust` 都是**瘦客户端**——它们把请求发到目标站点
 （需 superadmin），本地只做「登录 → 提交 → 轮询任务至终态」并打印结果。三处寻址约定完全一致：
 
-- `--url <站点地址>`：缺省 `http://127.0.0.1:9778`；
+- `--site-url <站点地址>`：缺省 `http://127.0.0.1:9778`；
 - `--user <账号>` / `--pass <密码>`：站点凭据；
-- 等价环境变量 `OJM_URL` / `OJM_USER` / `OJM_PASS`（命令行缺省时回退读取，**凭据只走内存不落盘**）；
+- 等价环境变量 `OJM_SITE_URL` / `OJM_USER` / `OJM_PASS`（命令行缺省时回退读取，**凭据只走内存不落盘**）；
 - `--locale <zh-CN|en-US>`：`install` 专用，切换失败文案双语（默认按站点 locale）。
 
 | 命令 | 作用 | 注意 |
@@ -1963,7 +1963,7 @@ ojm keygen --id <publisher>.<key-name>
 ojm sign dist/<name>-<version>.tgz --id <publisher>.<key-name> --check
 
 # ③ 安装/分发：.sig 自动探测随包上传
-ojm install dist/<name>-<version>.tgz --url <站点> --user superadmin --pass …
+ojm install dist/<name>-<version>.tgz --site-url <站点> --user superadmin --pass …
 ```
 
 宿主验签六码（失败文案双语，`--locale` 切换）：`sig_missing`（缺签）/ `sig_alg`（算法

@@ -52,7 +52,7 @@ describe.skipIf(!smokeReady)("真机冒烟（需 OJM_SMOKE_URL/OJM_SMOKE_USER/OJ
 		const [built] = await buildBundle(project, { out: join(project, "dist") });
 		const { tgz } = built!;
 
-		const record = await installCommand(tgz, { url: SMOKE_URL ?? DEFAULT_SITE_URL, user: SMOKE_USER, pass: SMOKE_PASS });
+		const record = await installCommand(tgz, { siteUrl: SMOKE_URL ?? DEFAULT_SITE_URL, user: SMOKE_USER, pass: SMOKE_PASS });
 		expect(record.status).toBe("done");
 		expect(record.name).toBe("demo-solution");
 		expect(record.version).toBe("0.1.0");

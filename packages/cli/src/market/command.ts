@@ -20,7 +20,7 @@ interface Flags {
 	key?: string
 	fixture?: string
 	real?: string
-	url?: string
+	siteUrl?: string
 	user?: string
 	pass?: string
 	newPass?: string
@@ -33,7 +33,7 @@ interface Flags {
 	reason?: string
 }
 
-const VALUE_FLAGS = new Set(["--id", "--key", "--fixture", "--real", "--url", "--user", "--pass", "--new-pass", "--registry-id", "--by", "--reason"]);
+const VALUE_FLAGS = new Set(["--id", "--key", "--fixture", "--real", "--site-url", "--user", "--pass", "--new-pass", "--registry-id", "--by", "--reason"]);
 
 function parseFlags(argv: string[]): Flags {
 	const flags: Flags = {};
@@ -58,8 +58,8 @@ function parseFlags(argv: string[]): Flags {
 				flags.fixture = value;
 			else if (arg === "--real")
 				flags.real = value;
-			else if (arg === "--url")
-				flags.url = value;
+			else if (arg === "--site-url")
+				flags.siteUrl = value;
 			else if (arg === "--user")
 				flags.user = value;
 			else if (arg === "--pass")
@@ -137,7 +137,7 @@ export async function marketCommand(sub: string, argv: string[]): Promise<void> 
 			return;
 		}
 		case "setup": {
-			const result = await setupMarketUrl({ url: flags.url, user: flags.user, pass: flags.pass, newPass: flags.newPass });
+			const result = await setupMarketUrl({ siteUrl: flags.siteUrl, user: flags.user, pass: flags.pass, newPass: flags.newPass });
 			console.log(`[ojm] 站点 ${result.siteUrl} 的市场地址已指向 ${result.cdnBaseUrl}`);
 			return;
 		}

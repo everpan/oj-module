@@ -506,7 +506,7 @@ node "$CLI_PKG/bin/ojm.mjs" build                      # dist/api + web/dist（�
 #     root: dist/api
 (../bin/oj serve -c config.yaml -b /api --api-path dist/api --console-log &)
 
-node "$CLI_PKG/bin/ojm.mjs" market setup --url http://127.0.0.1:9778 --user superadmin --pass 123456 --new-pass <新口令>
+node "$CLI_PKG/bin/ojm.mjs" market setup --site-url http://127.0.0.1:9778 --user superadmin --pass 123456 --new-pass <新口令>
 # → 市场页（或 GET /api/_platform/market/index）出现方案卡片
 
 # 安装（首次必然停在待信任）
@@ -516,7 +516,7 @@ curl -s -X POST http://127.0.0.1:9778/api/_platform/market/install \
 # → {data:{id:"install-..."}}；轮询 GET /api/_platform/market/task?id=<id> 到 status=needs_trust
 #   响应的 trust.fingerprint 必须与 keygen 输出逐字一致
 
-node "$CLI_PKG/bin/ojm.mjs" trust confirm --task <task-id> --url http://127.0.0.1:9778 --user superadmin --pass <新口令>
+node "$CLI_PKG/bin/ojm.mjs" trust confirm --task <task-id> --site-url http://127.0.0.1:9778 --user superadmin --pass <新口令>
 # 重试同一条 install → 期望 status=done，11 段全 ok
 
 # 只验「这个包能不能装」、不想搭宿主时（隔离站点，12s 内出结果）

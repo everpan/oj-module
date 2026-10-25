@@ -124,14 +124,14 @@ TOKEN=$(curl -s -X POST $BASE/api/auth/login -H 'content-type: application/json'
   -d '{"username":"admin","password":"smoke-pass-123"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["data"]["access_token"])')
 
 # 安装（.sig 侧车自动随包上传）
-node packages/cli/bin/ojm.mjs install /tmp/demo-solution-0.1.0.tgz --url $BASE --user admin --pass 'smoke-pass-123'
+node packages/cli/bin/ojm.mjs install /tmp/demo-solution-0.1.0.tgz --site-url $BASE --user admin --pass 'smoke-pass-123'
 ```
 
 若输出「待信任确认（发布方：smoke.local）」+ 指纹 → 进入 TOFU，确认后重装：
 
 ```bash
-node packages/cli/bin/ojm.mjs trust confirm --task <上一步 task id> --url $BASE --user admin --pass 'smoke-pass-123'
-node packages/cli/bin/ojm.mjs install /tmp/demo-solution-0.1.0.tgz --url $BASE --user admin --pass 'smoke-pass-123'   # 期望 [ojm] 安装完成：demo-solution 0.1.0
+node packages/cli/bin/ojm.mjs trust confirm --task <上一步 task id> --site-url $BASE --user admin --pass 'smoke-pass-123'
+node packages/cli/bin/ojm.mjs install /tmp/demo-solution-0.1.0.tgz --site-url $BASE --user admin --pass 'smoke-pass-123'   # 期望 [ojm] 安装完成：demo-solution 0.1.0
 ```
 
 ---

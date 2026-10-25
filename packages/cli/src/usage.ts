@@ -58,7 +58,7 @@ export interface HelpGroup {
 
 /** 站点寻址三件套（生命周期命令共用） */
 const SITE_OPTIONS: HelpOption[] = [
-	{ raw: "--url <url>", zh: "站点地址（缺省 http://127.0.0.1:9778）", en: "Site URL (default http://127.0.0.1:9778)" },
+	{ raw: "--site-url <url>", zh: "站点地址（缺省 http://127.0.0.1:9778）", en: "Site URL (default http://127.0.0.1:9778)" },
 	{ raw: "--user <user>", zh: "登录账号（或环境变量 OJM_USER）", en: "Login username (or env OJM_USER)" },
 	{ raw: "--pass <pass>", zh: "登录密码（或环境变量 OJM_PASS；只走内存不落盘）", en: "Login password (or env OJM_PASS; memory-only, never persisted)" },
 ];
@@ -238,8 +238,8 @@ export const HELP_GROUPS: HelpGroup[] = [
 					{ raw: "--locale <locale>", zh: "终态文案语言 zh-CN|en-US", en: "Language of the final status message zh-CN|en-US" },
 				],
 				detail: {
-					zh: "ojm install <file.tgz | name[@version] | @<scope>/<name>[@version]> [--url <u>] [--user <u>] [--pass <p>] [--name <n>] [--version <v>] [--registry <r>] [--locale <zh-CN|en-US>]\n  本地 tgz 走 file 上传（<name>-<version>.tgz 文件名推导身份，可 --name/--version 覆盖）；name[@version] 走 CDN 市场源；@<scope>/<name>[@version] --registry <url> 走外部 registry 源（目录键由 CLI 归一为物理名 slug，白名单在服务端）\n  登录 → 提交 → 轮询任务至终态并打印结果（失败附原因 + 指引）\n  站点寻址：--url/--user/--pass，或环境变量 OJM_URL / OJM_USER / OJM_PASS",
-					en: "ojm install <file.tgz | name[@version] | @<scope>/<name>[@version]> [--url <u>] [--user <u>] [--pass <p>] [--name <n>] [--version <v>] [--registry <r>] [--locale <zh-CN|en-US>]\n  Local tgz goes through file upload (identity derived from the <name>-<version>.tgz file name, overridable via --name/--version); name[@version] goes through the CDN marketplace; @<scope>/<name>[@version] --registry <url> goes through an external registry source (the directory key is normalized to the physical slug by the CLI; allowlist is server-side)\n  Login → submit → poll the task to a terminal state and print the result (failures include the reason + guidance)\n  Site addressing: --url/--user/--pass, or env vars OJM_URL / OJM_USER / OJM_PASS",
+					zh: "ojm install <file.tgz | name[@version] | @<scope>/<name>[@version]> [--site-url <u>] [--user <u>] [--pass <p>] [--name <n>] [--version <v>] [--registry <r>] [--locale <zh-CN|en-US>]\n  本地 tgz 走 file 上传（<name>-<version>.tgz 文件名推导身份，可 --name/--version 覆盖）；name[@version] 走 CDN 市场源；@<scope>/<name>[@version] --registry <url> 走外部 registry 源（目录键由 CLI 归一为物理名 slug，白名单在服务端）\n  登录 → 提交 → 轮询任务至终态并打印结果（失败附原因 + 指引）\n  站点寻址：--site-url/--user/--pass，或环境变量 OJM_SITE_URL / OJM_USER / OJM_PASS",
+					en: "ojm install <file.tgz | name[@version] | @<scope>/<name>[@version]> [--site-url <u>] [--user <u>] [--pass <p>] [--name <n>] [--version <v>] [--registry <r>] [--locale <zh-CN|en-US>]\n  Local tgz goes through file upload (identity derived from the <name>-<version>.tgz file name, overridable via --name/--version); name[@version] goes through the CDN marketplace; @<scope>/<name>[@version] --registry <url> goes through an external registry source (the directory key is normalized to the physical slug by the CLI; allowlist is server-side)\n  Login → submit → poll the task to a terminal state and print the result (failures include the reason + guidance)\n  Site addressing: --site-url/--user/--pass, or env vars OJM_SITE_URL / OJM_USER / OJM_PASS",
 				},
 			},
 			{
@@ -249,8 +249,8 @@ export const HELP_GROUPS: HelpGroup[] = [
 				en: "Enable an installed solution (writes to four places)",
 				options: SITE_OPTIONS,
 				detail: {
-					zh: "ojm enable|disable <name> [--url <u>] [--user <u>] [--pass <p>]\n  启用/禁用已装方案（四处同写：锁 / sidecar / 路由清单 / 模块清单）\n  站点寻址同上",
-					en: "ojm enable|disable <name> [--url <u>] [--user <u>] [--pass <p>]\n  Enable/disable an installed solution (four synchronized writes: lock / sidecar / route manifest / module manifest)\n  Site addressing: same as above",
+					zh: "ojm enable|disable <name> [--site-url <u>] [--user <u>] [--pass <p>]\n  启用/禁用已装方案（四处同写：锁 / sidecar / 路由清单 / 模块清单）\n  站点寻址同上",
+					en: "ojm enable|disable <name> [--site-url <u>] [--user <u>] [--pass <p>]\n  Enable/disable an installed solution (four synchronized writes: lock / sidecar / route manifest / module manifest)\n  Site addressing: same as above",
 				},
 			},
 			{
@@ -271,8 +271,8 @@ export const HELP_GROUPS: HelpGroup[] = [
 					{ raw: "--registry <url>", zh: "（不支持）卸载不涉及仓库：本命令只认站点寻址，给了即报错退出 2", en: "(unsupported) Uninstall does not involve a registry: this command only takes site addressing; passing it exits 2" },
 				],
 				detail: {
-					zh: "ojm uninstall <name> [--url <u>] [--user <u>] [--pass <p>]\n  四处同删 + 权限级联清理 + 版本目录移除；站点至少保留一个已锁模块\n  站点寻址同上；**卸载不涉及仓库**——包已经在站点上，来源不影响删除范围，故不接 --registry",
-					en: "ojm uninstall <name> [--url <u>] [--user <u>] [--pass <p>]\n  Four synchronized removals + permission cascade cleanup + version directory removal; a site keeps at least one locked module\n  Site addressing: same as above; **uninstall does not involve a registry** — the package is already on the site, so its origin has no effect on the removal scope, hence no --registry",
+					zh: "ojm uninstall <name> [--site-url <u>] [--user <u>] [--pass <p>]\n  四处同删 + 权限级联清理 + 版本目录移除；站点至少保留一个已锁模块\n  站点寻址同上；**卸载不涉及仓库**——包已经在站点上，来源不影响删除范围，故不接 --registry",
+					en: "ojm uninstall <name> [--site-url <u>] [--user <u>] [--pass <p>]\n  Four synchronized removals + permission cascade cleanup + version directory removal; a site keeps at least one locked module\n  Site addressing: same as above; **uninstall does not involve a registry** — the package is already on the site, so its origin has no effect on the removal scope, hence no --registry",
 				},
 			},
 			{
@@ -285,8 +285,8 @@ export const HELP_GROUPS: HelpGroup[] = [
 					{ raw: "--json", zh: "stdout 只放一份 JSON 信封（人话改走 stderr）", en: "Emit a single JSON envelope on stdout (human lines move to stderr)" },
 				],
 				detail: {
-					zh: "ojm view @<scope>/<name> [--url <u>] [--user <u>] [--pass <p>] [--json]\n  同时显示目录键（@acme/demo）与物理名（acme-demo）：前者是仓库门牌，后者才是磁盘/路由/文件名\n  只收目录键——物理名是单向换算（acme-x-demo 可能来自 @acme-x/demo 或 @acme/x-demo），裸 slug 无法反推\n  站点寻址同上；缺凭据退出 2",
-					en: "ojm view @<scope>/<name> [--url <u>] [--user <u>] [--pass <p>] [--json]\n  Print both the directory key (@acme/demo) and the physical name (acme-demo): the former is the registry door plate, the latter is the on-disk/route/file name\n  Directory keys only — the mapping is one-way (acme-x-demo may come from @acme-x/demo or @acme/x-demo), so a bare slug cannot be reversed\n  Site addressing: same as above; missing credentials exit 2",
+					zh: "ojm view @<scope>/<name> [--site-url <u>] [--user <u>] [--pass <p>] [--json]\n  同时显示目录键（@acme/demo）与物理名（acme-demo）：前者是仓库门牌，后者才是磁盘/路由/文件名\n  只收目录键——物理名是单向换算（acme-x-demo 可能来自 @acme-x/demo 或 @acme/x-demo），裸 slug 无法反推\n  站点寻址同上；缺凭据退出 2",
+					en: "ojm view @<scope>/<name> [--site-url <u>] [--user <u>] [--pass <p>] [--json]\n  Print both the directory key (@acme/demo) and the physical name (acme-demo): the former is the registry door plate, the latter is the on-disk/route/file name\n  Directory keys only — the mapping is one-way (acme-x-demo may come from @acme-x/demo or @acme/x-demo), so a bare slug cannot be reversed\n  Site addressing: same as above; missing credentials exit 2",
 				},
 			},
 			{
@@ -299,8 +299,8 @@ export const HELP_GROUPS: HelpGroup[] = [
 					{ raw: "--task <id>", zh: "TOFU 确认：needs_trust 终态任务 id", en: "TOFU confirm: task id of a needs_trust terminal state" },
 				],
 				detail: {
-					zh: "ojm trust ls|add|revoke|confirm [--url <u>] [--user <u>] [--pass <p>]\n  发布方信任库管理（站点 .solutions/trusted-keys.yaml）",
-					en: "ojm trust ls|add|revoke|confirm [--url <u>] [--user <u>] [--pass <p>]\n  Publisher trust store management (site-side .solutions/trusted-keys.yaml)",
+					zh: "ojm trust ls|add|revoke|confirm [--site-url <u>] [--user <u>] [--pass <p>]\n  发布方信任库管理（站点 .solutions/trusted-keys.yaml）",
+					en: "ojm trust ls|add|revoke|confirm [--site-url <u>] [--user <u>] [--pass <p>]\n  Publisher trust store management (site-side .solutions/trusted-keys.yaml)",
 				},
 				subs: {
 					ls: {
@@ -429,7 +429,7 @@ export const HELP_GROUPS: HelpGroup[] = [
 				en: "Local mock CDN and marketplace pipeline (setup / publish / build-index / verify / trial)",
 				allowUnknownOptions: true,
 				options: [
-					{ raw: "--url <url>", zh: "站点地址", en: "Site URL" },
+					{ raw: "--site-url <url>", zh: "站点地址", en: "Site URL" },
 					{ raw: "--user <user>", zh: "登录账号", en: "Login username" },
 					{ raw: "--pass <pass>", zh: "登录密码", en: "Login password" },
 					{ raw: "--new-pass <pass>", zh: "首次改密期的新密码（setup）", en: "New password during the forced-reset period (setup)" },
@@ -443,8 +443,8 @@ export const HELP_GROUPS: HelpGroup[] = [
 				subs: {
 					"setup": {
 						short: { zh: "framework.market_cdn_url 指向外部真 CDN（脚手架缺省 /cdn 免 setup）", en: "Point framework.market_cdn_url at an external CDN (scaffold defaults to /cdn, no setup needed)" },
-						zh: "ojm market setup [--url <站点地址>] [--user <u> --pass <p>] [--new-pass <p>]\n  把系统设置 framework.market_cdn_url 改写为绝对地址（外部真 CDN 场景；脚手架 seed 缺省 /cdn = 本站点自供，免 setup）。首跑若账号处于首次改密期（seed admin must_change=1），会自动改密换全权 token 后再写入",
-						en: "ojm market setup [--url <site>] [--user <u> --pass <p>] [--new-pass <p>]\n  Rewrite the framework.market_cdn_url system setting to an absolute URL (external CDN scenario; the scaffold seed defaults to /cdn = site-served, no setup needed). On first run, if the account is in the forced password-reset period (seed admin must_change=1), it resets the password to obtain a full-privilege token before writing",
+						zh: "ojm market setup [--site-url <站点地址>] [--user <u> --pass <p>] [--new-pass <p>]\n  把系统设置 framework.market_cdn_url 改写为绝对地址（外部真 CDN 场景；脚手架 seed 缺省 /cdn = 本站点自供，免 setup）。首跑若账号处于首次改密期（seed admin must_change=1），会自动改密换全权 token 后再写入",
+						en: "ojm market setup [--site-url <site>] [--user <u> --pass <p>] [--new-pass <p>]\n  Rewrite the framework.market_cdn_url system setting to an absolute URL (external CDN scenario; the scaffold seed defaults to /cdn = site-served, no setup needed). On first run, if the account is in the forced password-reset period (seed admin must_change=1), it resets the password to obtain a full-privilege token before writing",
 					},
 					"publish": {
 						short: { zh: "方案包落进 cdn/ + 包级签名（不碰索引）", en: "Drop a bundle into cdn/ + package-level signature (index untouched)" },

@@ -55,7 +55,7 @@ export async function trialInstall(opts: TrialOptions = {}): Promise<TrialResult
 		const newPass = "trial-pass-1";
 		const setup = await setupMarketUrl({
 			projectRoot: site.root,
-			url: site.baseUrl,
+			siteUrl: site.baseUrl,
 			user: site.admin.user,
 			pass: site.admin.pass,
 			newPass,

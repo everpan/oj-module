@@ -452,7 +452,7 @@ describe("f config ls --show-origin：把「从哪来」摊开", () => {
 describe("g Q7：uninstall 在联网前就拒绝 --registry", () => {
 	it("命令体直接抛用法错误，一次 fetch 都没发", async () => {
 		const fetchFn = vi.fn();
-		await expect(uninstallCommand("demo", { url: "http://x", user: "u", pass: "p", registry: REGISTRY, fetchFn: fetchFn as unknown as typeof fetch }))
+		await expect(uninstallCommand("demo", { siteUrl: "http://x", user: "u", pass: "p", registry: REGISTRY, fetchFn: fetchFn as unknown as typeof fetch }))
 			.rejects
 			.toThrow(/不涉及仓库/);
 		expect(fetchFn).not.toHaveBeenCalled();
@@ -488,7 +488,7 @@ describe("h REG-R5：ojm view 同时显示目录键与物理名", () => {
 
 	it("登录后按目录键取一条，两个名字都打印（物理名不在客户端重算）", async () => {
 		const { fetchFn, calls } = fakeSite();
-		const data = await viewCommand("@acme/demo", { url: "http://site.test", user: "u", pass: "p", fetchFn: fetchFn as unknown as typeof fetch });
+		const data = await viewCommand("@acme/demo", { siteUrl: "http://site.test", user: "u", pass: "p", fetchFn: fetchFn as unknown as typeof fetch });
 		expect(data).toEqual(PKG);
 		expect(calls).toHaveLength(2);
 		expect(calls[0]!.url).toBe("http://site.test/api/auth/login");
@@ -503,7 +503,7 @@ describe("h REG-R5：ojm view 同时显示目录键与物理名", () => {
 
 	it("--json：stdout 只有一行信封，人话改走 stderr", async () => {
 		const { fetchFn } = fakeSite();
-		await viewCommand("@acme/demo", { url: "http://site.test", user: "u", pass: "p", json: true, fetchFn: fetchFn as unknown as typeof fetch });
+		await viewCommand("@acme/demo", { siteUrl: "http://site.test", user: "u", pass: "p", json: true, fetchFn: fetchFn as unknown as typeof fetch });
 		const env = stdoutEnvelope({ out, err, exitCode: undefined });
 		expect(env.command).toBe("view");
 		expect(Object.keys(env.data!).sort()).toEqual(["createdAt", "directoryKey", "name", "scope", "site", "slug"]);

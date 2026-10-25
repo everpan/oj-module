@@ -4,7 +4,7 @@ import process from "node:process";
 import { callApi, login, resolveSite } from "./site";
 
 export interface EnableOptions {
-	url?: string
+	siteUrl?: string
 	user?: string
 	pass?: string
 	/** 测试注入；缺省 globalThis.fetch */

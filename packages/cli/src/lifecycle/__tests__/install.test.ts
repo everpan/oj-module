@@ -71,12 +71,12 @@ describe("resolveSite · 站点寻址（flag > 环境变量 > 缺省模板 serve
 		expect(resolveSite({ user: "u", pass: "p" })).toEqual({ base: "http://127.0.0.1:9778", user: "u", pass: "p" });
 	});
 
-	it("环境变量 OJM_URL/OJM_USER/OJM_PASS 兜底；flag 优先；尾斜杠归一", () => {
-		process.env.OJM_URL = "http://env:9/";
+	it("环境变量 OJM_SITE_URL/OJM_USER/OJM_PASS 兜底；flag 优先；尾斜杠归一", () => {
+		process.env.OJM_SITE_URL = "http://env:9/";
 		process.env.OJM_USER = "eu";
 		process.env.OJM_PASS = "ep";
 		expect(resolveSite({})).toEqual({ base: "http://env:9", user: "eu", pass: "ep" });
-		expect(resolveSite({ url: "http://flag:8/", user: "fu", pass: "fp" }).base).toBe("http://flag:8");
+		expect(resolveSite({ siteUrl: "http://flag:8/", user: "fu", pass: "fp" }).base).toBe("http://flag:8");
 	});
 
 	it("缺凭据即人话报错（凭据只走内存不落盘）", () => {
@@ -251,7 +251,7 @@ describe("schemaVersion 旧记录兼容（P2-10 升版纪律读方侧：高版�
 		const exitBackup = process.exitCode;
 		process.exitCode = 0;
 		try {
-			await installCommand(tgz, { url: "http://x", user: "u", pass: "p", fetchFn, sleep: async () => {} });
+			await installCommand(tgz, { siteUrl: "http://x", user: "u", pass: "p", fetchFn, sleep: async () => {} });
 			expect(process.exitCode).toBe(1);
 		}
 		finally {
@@ -354,7 +354,7 @@ describe("installCommand · file 源端到端（stub fetch：登录 → multipar
 			"/api/_platform/market/install": () => ok({ task_id: "t1" }),
 			"/api/_platform/market/task": () => ok(rec()),
 		});
-		await installCommand(tgz, { url: "http://x", user: "u", pass: "p", fetchFn, sleep: async () => {} });
+		await installCommand(tgz, { siteUrl: "http://x", user: "u", pass: "p", fetchFn, sleep: async () => {} });
 		// 登录体
 		const loginBody = JSON.parse(String(calls[0]?.init?.body));
 		expect(loginBody).toEqual({ username: "u", password: "p" });
@@ -388,7 +388,7 @@ describe("installCommand · file 源端到端（stub fetch：登录 → multipar
 		const exitBackup = process.exitCode;
 		process.exitCode = 0;
 		try {
-			await installCommand(tgz, { url: "http://x", user: "u", pass: "p", fetchFn, sleep: async () => {} });
+			await installCommand(tgz, { siteUrl: "http://x", user: "u", pass: "p", fetchFn, sleep: async () => {} });
 			expect(process.exitCode).toBe(1);
 		}
 		finally {
@@ -406,7 +406,7 @@ describe("installCommand · file 源端到端（stub fetch：登录 → multipar
 			"/api/_platform/market/install": () => ok({ task_id: "t1" }),
 			"/api/_platform/market/task": () => ok(rec()),
 		});
-		await installCommand(tgz, { url: "http://x", user: "u", pass: "p", fetchFn, sleep: async () => {} });
+		await installCommand(tgz, { siteUrl: "http://x", user: "u", pass: "p", fetchFn, sleep: async () => {} });
 		const form = calls[1]?.init?.body as FormData;
 		expect(form.get("sig")).toBeInstanceOf(File);
 		expect((form.get("sig") as File).name).toBe("demo-solution-0.1.0.tgz.sig");
@@ -421,7 +421,7 @@ describe("installCommand · file 源端到端（stub fetch：登录 → multipar
 			"/api/_platform/market/install": () => ok({ task_id: "t1" }),
 			"/api/_platform/market/task": () => ok(rec()),
 		});
-		await installCommand(tgz, { url: "http://x", user: "u", pass: "p", fetchFn, sleep: async () => {} });
+		await installCommand(tgz, { siteUrl: "http://x", user: "u", pass: "p", fetchFn, sleep: async () => {} });
 		const form = calls[1]?.init?.body as FormData;
 		expect(form.get("sig")).toBeNull();
 		expect(logs.join("\n")).toContain("未发现签名侧车");
@@ -433,7 +433,7 @@ describe("installCommand · file 源端到端（stub fetch：登录 → multipar
 		const { fetchFn } = fetchStub({
 			"/api/auth/login": () => ({ ok: true, status: 200, text: async () => JSON.stringify({ code: 401, msg: "invalid credentials" }) }),
 		});
-		await expect(installCommand(tgz, { url: "http://x", user: "u", pass: "bad", fetchFn })).rejects.toThrow(/invalid credentials/);
+		await expect(installCommand(tgz, { siteUrl: "http://x", user: "u", pass: "bad", fetchFn })).rejects.toThrow(/invalid credentials/);
 	});
 });
 
@@ -444,7 +444,7 @@ describe("installCommand · cdn 源（JSON 体 name@version）", () => {
 			"/api/_platform/market/install": () => ok({ task_id: "t1" }),
 			"/api/_platform/market/task": () => ok(rec()),
 		});
-		await installCommand("demo-solution", { url: "http://x", user: "u", pass: "p", fetchFn, sleep: async () => {} });
+		await installCommand("demo-solution", { siteUrl: "http://x", user: "u", pass: "p", fetchFn, sleep: async () => {} });
 		const installCall = calls[1]!;
 		expect((installCall.init?.headers as Record<string, string>)["content-type"]).toBe("application/json");
 		expect(JSON.parse(String(installCall.init?.body))).toEqual({ name: "demo-solution", version: null, source: "cdn" });
@@ -456,7 +456,7 @@ describe("installCommand · cdn 源（JSON 体 name@version）", () => {
 			"/api/_platform/market/install": () => ok({ task_id: "t1" }),
 			"/api/_platform/market/task": () => ok(rec()),
 		});
-		await installCommand("demo-solution@0.2.0", { url: "http://x", user: "u", pass: "p", fetchFn, sleep: async () => {} });
+		await installCommand("demo-solution@0.2.0", { siteUrl: "http://x", user: "u", pass: "p", fetchFn, sleep: async () => {} });
 		expect(JSON.parse(String(calls[1]?.init?.body)).version).toBe("0.2.0");
 	});
 });
@@ -467,7 +467,7 @@ describe("setEnabledCommand · enable/disable 瘦客户端（D8）", () => {
 			"/api/auth/login": () => ok({ access_token: "tok", refresh_token: "r", expires_in: 1 }),
 			"/api/_platform/market/enable": () => ok({ ok: true, message: "启用完成：四处同写" }),
 		});
-		await setEnabledCommand("demo-solution", true, { url: "http://x", user: "u", pass: "p", fetchFn });
+		await setEnabledCommand("demo-solution", true, { siteUrl: "http://x", user: "u", pass: "p", fetchFn });
 		const call = calls[1]!;
 		expect(call.url).toContain("/api/_platform/market/enable");
 		expect(JSON.parse(String(call.init?.body))).toEqual({ name: "demo-solution", enabled: true });
@@ -480,7 +480,7 @@ describe("setEnabledCommand · enable/disable 瘦客户端（D8）", () => {
 				"/api/auth/login": () => ok({ access_token: "tok", refresh_token: "r", expires_in: 1 }),
 				"/api/_platform/market/enable": () => ok({ ok: false, message: "禁用失败：「x」未安装" }),
 			});
-			await setEnabledCommand("x", false, { url: "http://x", user: "u", pass: "p", fetchFn: fetchFn2 });
+			await setEnabledCommand("x", false, { siteUrl: "http://x", user: "u", pass: "p", fetchFn: fetchFn2 });
 			expect(process.exitCode).toBe(1);
 		}
 		finally {
@@ -525,7 +525,7 @@ describe("s5-2② REG-R9 install 源切换：registry（CLI 归一 + 旧站点�
 			"/api/_platform/market/install": () => ok({ task_id: "t1" }),
 			"/api/_platform/market/task": () => ok(rec()),
 		});
-		const r = await installCommand("@acme/demo", { url: "http://site", user: "u", pass: "p", registry: "https://r.example.com/", fetchFn });
+		const r = await installCommand("@acme/demo", { siteUrl: "http://site", user: "u", pass: "p", registry: "https://r.example.com/", fetchFn });
 		expect(r.status).toBe("done");
 		const call = calls.find(c => c.url.includes("/api/_platform/market/install"));
 		expect(call).toBeDefined();
@@ -540,7 +540,7 @@ describe("s5-2② REG-R9 install 源切换：registry（CLI 归一 + 旧站点�
 			"/api/_platform/market/meta": () => ok({ apiVersion: "0.1.0" }),
 			"/api/_platform/market/install": () => ok({ task_id: "t1" }),
 		});
-		await expect(installCommand("@acme/demo", { url: "http://site", user: "u", pass: "p", registry: "https://r.example.com", fetchFn }))
+		await expect(installCommand("@acme/demo", { siteUrl: "http://site", user: "u", pass: "p", registry: "https://r.example.com", fetchFn }))
 			.rejects
 			.toThrow(/版本过低/);
 		expect(calls.some(c => c.url.includes("/api/_platform/market/install"))).toBe(false);

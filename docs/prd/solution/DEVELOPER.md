@@ -396,7 +396,7 @@ ojm sign dist/demo-market-0.1.0.tgz --id <publisher>.<key-name> --check
 
 ```bash
 ojm install dist/demo-market-0.1.0.tgz \
-  --url http://127.0.0.1:9781 --user admin --pass '<新口令>'
+  --site-url http://127.0.0.1:9781 --user admin --pass '<新口令>'
 ```
 
 服务端状态机十阶段（实录全绿）：

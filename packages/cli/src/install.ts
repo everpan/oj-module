@@ -243,7 +243,7 @@ export function parseTarget(target: string): InstallTarget {
 }
 
 export interface InstallOptions {
-	url?: string
+	siteUrl?: string
 	user?: string
 	pass?: string
 	/** file 源身份覆盖（文件名不可解析时的显式出口）；cdn 源同名冲突时报错提示二选一 */

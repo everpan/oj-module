@@ -22,8 +22,8 @@ export const MARKET_CDN_URL_SETTING = "framework.market_cdn_url";
 
 export interface SetupOptions {
 	projectRoot?: string
-	/** 站点地址（缺省取 OJM_URL 或 http://127.0.0.1:9778） */
-	url?: string
+	/** 站点地址（缺省取 OJM_SITE_URL 或 http://127.0.0.1:9778） */
+	siteUrl?: string
 	user?: string
 	pass?: string
 	/** 新口令；不给则随机生成并只在终端打印一次（不落盘、不进日志） */
@@ -44,7 +44,7 @@ export interface SetupResult {
 export async function setupMarketUrl(opts: SetupOptions = {}): Promise<SetupResult> {
 	const projectRoot = opts.projectRoot ?? process.cwd();
 	const layout = resolveCdnLayout(projectRoot);
-	const site = resolveSite({ url: opts.url, user: opts.user, pass: opts.pass });
+	const site = resolveSite({ siteUrl: opts.siteUrl, user: opts.user, pass: opts.pass });
 	const fetchFn = opts.fetchFn ?? fetch;
 
 	const token = await obtainToken(fetchFn, site.base, site.user, site.pass, opts.newPass, projectRoot);

@@ -11,7 +11,7 @@ import { UsageError } from "./exit-codes";
 import { callApi, login, resolveSite } from "./site";
 
 export interface UninstallOptions {
-	url?: string
+	siteUrl?: string
 	user?: string
 	pass?: string
 	/** 仅为**拒绝**而存在（Q7）：给了即用法错误，不读、不传、不影响结果 */

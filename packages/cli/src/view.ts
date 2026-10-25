@@ -46,7 +46,7 @@ export interface PackageView {
 }
 
 export interface ViewOptions {
-	url?: string
+	siteUrl?: string
 	user?: string
 	pass?: string
 	json?: boolean
@@ -56,7 +56,7 @@ export interface ViewOptions {
 
 /**
  * 取一条包映射并打印。
- * 站点寻址沿用 install/uninstall 的同一套（`--url/--user/--pass` 或 `OJM_URL/OJM_USER/OJM_PASS`）；
+ * 站点寻址沿用 install/uninstall 的同一套（`--site-url/--user/--pass` 或 `OJM_SITE_URL/OJM_USER/OJM_PASS`）；
  * 缺凭据是**用法错误**（exit 2）：换个命令参数就能解决，不该和「站点说没有这个包」混成同一档。
  */
 export async function viewCommand(raw: string | undefined, opts: ViewOptions = {}): Promise<PackageView> {

@@ -375,7 +375,7 @@ export async function walkthrough(opts: WalkthroughOptions = {}): Promise<Walkth
 	const site = await bootstrapIsolatedSite({ projectRoot: opts.projectRoot, fixture: opts.fixture, keep: opts.keep, onLog: log });
 	try {
 		const newPass = "trial-pass-1";
-		const setup = await setupMarketUrl({ projectRoot: site.root, url: site.baseUrl, user: site.admin.user, pass: site.admin.pass, newPass });
+		const setup = await setupMarketUrl({ projectRoot: site.root, siteUrl: site.baseUrl, user: site.admin.user, pass: site.admin.pass, newPass });
 		const token = await login(fetch, site.baseUrl, site.admin.user, loginPasswordAfterSetup(setup, newPass, site.admin.pass));
 		const ctx: Ctx = { site, base: site.baseUrl, token, name: spec.name, version: spec.version, log };
 

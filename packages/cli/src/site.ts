@@ -1,6 +1,6 @@
 // 站点瘦客户端（P1-13，D6）：ojm install/enable/disable 共用的站点 HTTP 面。
 // 登录（POST /api/auth/login）→ Bearer 注入 → oj 信封解包（{code,msg,data}，code=0 为成）。
-// 凭据只走内存：flag（--user/--pass）> 环境变量（OJM_URL/OJM_USER/OJM_PASS），不落盘不落配置。
+// 凭据只走内存：flag（--user/--pass）> 环境变量（OJM_SITE_URL/OJM_USER/OJM_PASS），不落盘不落配置。
 // 轮询对齐服务端消费面（§10.2）：GET task?id= 查询参数形态，800ms 起步指数退避、上限 5s，
 // 总超时对齐 TASK_TIMEOUT_MS（30min）——超时报错退出，不悬挂。
 
@@ -42,18 +42,18 @@ export function isFutureSchema(record: TaskRecord): boolean {
 }
 
 export interface SiteAddressing {
-	url?: string
+	siteUrl?: string
 	user?: string
 	pass?: string
 }
 
 /** 站点寻址解析：flag > 环境变量 > 缺省；缺凭据即人话报错（不猜测不交互） */
 export function resolveSite(opts: SiteAddressing): { base: string, user: string, pass: string } {
-	const base = (opts.url ?? process.env.OJM_URL ?? DEFAULT_SITE_URL).replace(/\/+$/, "");
+	const base = (opts.siteUrl ?? process.env.OJM_SITE_URL ?? DEFAULT_SITE_URL).replace(/\/+$/, "");
 	const user = opts.user ?? process.env.OJM_USER ?? "";
 	const pass = opts.pass ?? process.env.OJM_PASS ?? "";
 	if (user === "" || pass === "")
-		throw new Error(`[ojm] 缺少站点凭据：请用 --user/--pass 或环境变量 OJM_USER/OJM_PASS 提供目标站点超管账号（--url / OJM_URL 指定站点地址，缺省 ${DEFAULT_SITE_URL}；凭据只走内存，不落盘）`);
+		throw new Error(`[ojm] 缺少站点凭据：请用 --user/--pass 或环境变量 OJM_USER/OJM_PASS 提供目标站点超管账号（--site-url / OJM_SITE_URL 指定站点地址，缺省 ${DEFAULT_SITE_URL}；凭据只走内存，不落盘）`);
 	return { base, user, pass };
 }
 

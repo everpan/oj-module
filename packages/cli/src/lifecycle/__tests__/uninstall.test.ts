@@ -44,7 +44,7 @@ describe("uninstallCommand · 卸载瘦客户端（P1-15a 缺口 B）", () => {
 			"/api/auth/login": () => ok({ access_token: "tok", refresh_token: "r", expires_in: 1 }),
 			"/api/_platform/market/uninstall": () => ok({ ok: true, message: "卸载完成：四处同删（demo-solution@0.1.0）" }),
 		});
-		await uninstallCommand("demo-solution", { url: "http://x", user: "u", pass: "p", fetchFn });
+		await uninstallCommand("demo-solution", { siteUrl: "http://x", user: "u", pass: "p", fetchFn });
 		// 登录体 + uninstall JSON 体 + Bearer
 		expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({ username: "u", password: "p" });
 		const call = calls[1]!;
@@ -63,7 +63,7 @@ describe("uninstallCommand · 卸载瘦客户端（P1-15a 缺口 B）", () => {
 		const exitBackup = process.exitCode;
 		process.exitCode = 0;
 		try {
-			await uninstallCommand("x", { url: "http://x", user: "u", pass: "p", fetchFn });
+			await uninstallCommand("x", { siteUrl: "http://x", user: "u", pass: "p", fetchFn });
 			expect(process.exitCode).toBe(1);
 		}
 		finally {
@@ -74,7 +74,7 @@ describe("uninstallCommand · 卸载瘦客户端（P1-15a 缺口 B）", () => {
 
 	it("空名 → 人话用法报错（不发网络）", async () => {
 		const { fetchFn, calls } = fetchStub({});
-		await expect(uninstallCommand("", { url: "http://x", user: "u", pass: "p", fetchFn })).rejects.toThrow(/用法/);
+		await expect(uninstallCommand("", { siteUrl: "http://x", user: "u", pass: "p", fetchFn })).rejects.toThrow(/用法/);
 		expect(calls).toHaveLength(0);
 	});
 
@@ -82,6 +82,6 @@ describe("uninstallCommand · 卸载瘦客户端（P1-15a 缺口 B）", () => {
 		const { fetchFn } = fetchStub({
 			"/api/auth/login": () => ({ ok: true, status: 200, text: async () => JSON.stringify({ code: 403, msg: "forbidden" }) }),
 		});
-		await expect(uninstallCommand("x", { url: "http://x", user: "u", pass: "p", fetchFn })).rejects.toThrow(/forbidden/);
+		await expect(uninstallCommand("x", { siteUrl: "http://x", user: "u", pass: "p", fetchFn })).rejects.toThrow(/forbidden/);
 	});
 });
