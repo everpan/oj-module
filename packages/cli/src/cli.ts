@@ -277,6 +277,11 @@ function makeAction(def: HelpEntry, projectRoot: string, lang: Lang, exit: (code
 				const { installCommand } = await import("./install");
 				await installCommand(target ?? "", { siteUrl: opts.siteUrl, user: opts.user, pass: opts.pass, locale: opts.locale, name: opts.name, version: opts.version, registry: opts.registry });
 			};
+		case "list":
+			return async (opts: SiteOpts & { all?: boolean, json?: boolean } = {}) => {
+				const { listCommand } = await import("./list");
+				await listCommand({ siteUrl: opts.siteUrl, user: opts.user, pass: opts.pass, all: !!opts.all, json: !!opts.json });
+			};
 		case "enable":
 		case "disable":
 			return async (name: string | undefined, opts: SiteOpts = {}) => {

@@ -243,6 +243,21 @@ export const HELP_GROUPS: HelpGroup[] = [
 				},
 			},
 			{
+				key: "list",
+				name: "list",
+				zh: "列出站点已装方案（版本 / 启用态 / 可升级 / 签名可信）",
+				en: "List solutions installed on the site (version / enabled / upgradable / trust)",
+				options: [
+					...SITE_OPTIONS,
+					{ raw: "--all", zh: "连未安装的索引行一起列（缺省只列已装）", en: "Include index rows that are not installed (default: installed only)" },
+					{ raw: "--json", zh: "stdout 只放一份 JSON 信封（人话改走 stderr）", en: "Emit a single JSON envelope on stdout (human lines move to stderr)" },
+				],
+				detail: {
+					zh: "ojm list [--site-url <u>] [--user <u>] [--pass <p>] [--all] [--json]\n  读 GET /api/_platform/market/index（superadmin）：只挑已装的行，打「名字 / 已装版本 / 启用态 / 最新版 / 可升级 / 签名可信」\n  --all 连未安装的索引行一起列（installed 显示 -）；升级前看谁落后、禁用后确认状态、卸载前确认名字都靠它\n  退出码：0 成功（清单为空也是 0）/ 1 站点报错 / 2 用法错误（缺凭据）",
+					en: "ojm list [--site-url <u>] [--user <u>] [--pass <p>] [--all] [--json]\n  Reads GET /api/_platform/market/index (superadmin) and keeps installed rows only: name / installed / enabled / latest / upgradable / trust\n  --all also lists index rows that are not installed (installed shows -); use it before upgrading, after disabling, or before uninstalling\n  Exit codes: 0 success (an empty list is still 0) / 1 site error / 2 usage error (missing credentials)",
+				},
+			},
+			{
 				key: "enable",
 				name: "enable [name]",
 				zh: "启用已装方案（四处同写）",

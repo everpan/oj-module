@@ -9,6 +9,15 @@
 
 ### Added
 
+- **`ojm list`（站点已装方案的可查面）**：`ojm list [--site-url] [--user] [--pass] [--all] [--json]`
+  读 `GET /api/_platform/market/index`（superadmin）并只挑已装的行，打
+  「名字 / 已装版本 / 启用态 / 最新版 / 可升级 / 签名可信」，末尾汇总「可升级」与「签名不受信」。
+  `--all` 连未安装的索引行一起列（`installed` 显示 `-`）。
+  此前 CLI **没有任何命令能回答「这个站点上装了什么」**——装完只有一条终态文案，之后核对
+  版本/启用态得登站点翻市场页，CI 无法脚本化。
+  三个派生列（installed/enabled/upgradable/trust_state）都取自站点聚合行，不在 CLI 现算，
+  避免两个真相源各自漂移。清单为空仍是成功（exit 0）。
+
 - **`ojm registry sign --revocations`（REG-R10 吊销清单外置签名）**：输入是吊销清单**正文原文**
   （`GET /api/oj-registry/cdn/revocations` 的响应体，或 `ojm registry export` 产出的
   `registry/revocations.yaml`），输出是 `POST /api/oj-registry/revocations/signature` 的六字段请求体
