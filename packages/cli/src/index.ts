@@ -1,5 +1,5 @@
 import process from "node:process";
-import { buildCli, localizeCacError, reportCliError, rewriteHelpArgv, unknownCommandResult } from "./cli";
+import { buildCli, localizeCacError, reportCliError, reportUnknownCommand, rewriteHelpArgv } from "./cli";
 import { isKnownCommand, resolveLang, usageText } from "./usage";
 import { readCliVersion } from "./versions";
 
@@ -25,13 +25,9 @@ async function main() {
 	});
 	cli.parse(["node", "ojm", ...rewritten]);
 
-	// 未知命令：help 形态报「未知命令」、否则打帮助；均 exit 1（裸 ojm 打帮助退 0 不变）
+	// 未知命令：help 形态报「未知命令」、否则打帮助；均 exit 2（裸 ojm 打帮助退 0 不变）
 	if (unknown !== undefined) {
-		const r = unknownCommandResult(unknown, lang, !!cli.options.help);
-		if (cli.options.help)
-			console.error(r.text);
-		else
-			console.log(r.text);
+		const r = reportUnknownCommand(unknown, lang, !!cli.options.help, rewritten);
 		process.exit(r.code);
 	}
 	if (argv.length === 0)

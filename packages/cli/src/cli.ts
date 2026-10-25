@@ -31,17 +31,35 @@ export function rewriteHelpArgv(argv: string[]): string[] {
  * 未知命令兜底结果（index.ts 打印 + 退出用）。
  * help 形态（ojm nope --help / ojm help nope）：报「未知命令」exit 2——拼错属于**用法错误**，
  * 与业务失败（1）分开，CI 才不会把「脚本写错」当成「发版被拒」。
+ * `summary` 是给机器通道的一句话（`--json` 信封的 message），`text` 是给人看的（可能是一屏帮助）。
  */
-export function unknownCommandResult(cmd: string, lang: Lang, helpRequested: boolean): { text: string, code: number } {
-	if (helpRequested) {
-		return {
-			text: lang === "zh-CN"
-				? `[ojm] 未知命令：${cmd}（ojm --help 查看全部命令）`
-				: `[ojm] Unknown command: ${cmd} (run ojm --help for the full command list)`,
-			code: EXIT_USAGE,
-		};
+export function unknownCommandResult(cmd: string, lang: Lang, helpRequested: boolean): { text: string, code: number, summary: string } {
+	const summary = lang === "zh-CN"
+		? `[ojm] 未知命令：${cmd}（ojm --help 查看全部命令）`
+		: `[ojm] Unknown command: ${cmd} (run ojm --help for the full command list)`;
+	if (helpRequested)
+		return { text: summary, code: EXIT_USAGE, summary };
+	return { text: usageText(lang), code: EXIT_USAGE, summary };
+}
+
+/**
+ * 未知命令的兜底输出。`--json` 下帮助文本改走 stderr、stdout 只留失败信封——
+ * 机器通道的承诺是「一行 JSON 或空」，不能让一屏帮助混进去（实测踩过：CI 在 `ojm nope --json`
+ * 上拿到的是整页帮助，`JSON.parse` 直接炸）。
+ */
+export function reportUnknownCommand(cmd: string, lang: Lang, helpRequested: boolean, argv: string[] = process.argv.slice(2)): { text: string, code: number } {
+	const r = unknownCommandResult(cmd, lang, helpRequested);
+	if (argv.includes("--json")) {
+		console.error(r.text);
+		console.log(JSON.stringify(failEnvelope(cmd, "usage_error", r.summary)));
 	}
-	return { text: usageText(lang), code: EXIT_USAGE };
+	else if (helpRequested) {
+		console.error(r.text);
+	}
+	else {
+		console.log(r.text);
+	}
+	return { text: r.text, code: r.code };
 }
 
 /**

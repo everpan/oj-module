@@ -17,7 +17,7 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { buildCli, localizeCacError, reportCliError } from "../cli";
+import { buildCli, localizeCacError, reportCliError, reportUnknownCommand } from "../cli";
 import { failEnvelope, OK_CODE, okEnvelope } from "../cli-output";
 import { configRows } from "../config-cmd";
 import { EXIT_FAILURE, EXIT_OK, EXIT_USAGE, exitCodeOf, UsageError } from "../exit-codes";
@@ -194,6 +194,22 @@ describe("a 退出码三档：0 成功 / 1 业务失败 / 2 用法错误", () =>
 		const r = await run(["publish", "--id", "test.publisher", "--key", keyPath, "--nope"], dir);
 		expect(r.exitCode).toBe(EXIT_USAGE);
 		expect(r.err.join("\n")).toContain("未知选项：--nope");
+	});
+
+	it("未知命令 + --json：stdout 只有信封，帮助文本改走 stderr（实测踩过的洞）", () => {
+		// 回归：以前 `ojm nope --json` 把整页帮助打到 stdout，CI 的 JSON.parse 直接炸
+		const r = reportUnknownCommand("nope", "zh-CN", false, ["nope", "--json"]);
+		expect(r.code).toBe(EXIT_USAGE);
+		expect(out).toHaveLength(1);
+		const env = JSON.parse(out[0]!) as { ok: boolean, code: string, command: string };
+		expect([env.ok, env.code, env.command]).toEqual([false, "usage_error", "nope"]);
+		expect(err.join("\n")).toContain("工程脚手架"); // 帮助还在，只是在人通道
+		// 不带 --json：帮助照旧走 stdout（交互用户看到的就是帮助）
+		out.length = 0;
+		err.length = 0;
+		reportUnknownCommand("nope", "zh-CN", false, ["nope"]);
+		expect(out.join("\n")).toContain("工程脚手架");
+		expect(err).toHaveLength(0);
 	});
 
 	it("exitCodeOf：只有 UsageError 归 2，其余一律 1（拿不准就归 1）", () => {
