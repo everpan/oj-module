@@ -3,9 +3,9 @@
 // market/solutions 全族失效）。镜像 oj 运行时内省语义：oj 执行工厂拿到返回对象。
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { scanHandlerFile } from "../handler-scan";
+import { handlerAbs, pathKey, scanHandlerFile } from "../handler-scan";
 
 let dir: string;
 let apiSrc: string;
@@ -23,6 +23,14 @@ afterEach(() => {
 function scan(name: string, text: string) {
 	writeFileSync(join(apiSrc, name), text);
 	return scanHandlerFile(join(apiSrc, name), join(dir, "api", "src"));
+}
+
+/** 在相对 api/src 的任意子目录下写一个 handler 并扫（目录段参数化用例） */
+function scanAt(rel: string, text: string) {
+	const file = join(dir, "api", "src", rel);
+	mkdirSync(dirname(file), { recursive: true });
+	writeFileSync(file, text);
+	return scanHandlerFile(file, join(dir, "api", "src"));
 }
 
 describe("handler-scan · 工厂形态（P2-14：export default createXxxApi(env)）", () => {
@@ -107,5 +115,69 @@ const api = {
 export default api;
 `);
 		expect(viaIdent.map(r => `${r.method} ${r.full}`)).toEqual(["DELETE _platform/market/bye"]);
+	});
+});
+
+describe("handler-scan · 目录段参数化（`_name_` → `{name}`，v0.1.27）", () => {
+	// 契约 route 走 matchit 语法（`{id}`），handler 目录走 `_id_`；两者是同一条路由的
+	// 两种写法。扫描器若把目录名原样拼进 full，精确对账永远命中不了，`ojm api --check`
+	// 会把「已实现的参数路由」同时报成「契约未实现」+「handler 未登记」。
+	it("整段 `_id_` 目录 → `{id}`：单段与深层嵌套都转换", () => {
+		const one = scanAt("wiki/_id_/api.ts", "export default { get() { return {}; } };");
+		expect(one.map(r => `${r.method} ${r.full}`)).toEqual(["GET wiki/{id}"]);
+
+		const deep = scanAt("wiki/_id_/item/_sku_/api.ts", "export default { del() { return {}; } };");
+		expect(deep.map(r => `${r.method} ${r.full}`)).toEqual(["DELETE wiki/{id}/item/{sku}"]);
+	});
+
+	it("`dir` 保留磁盘事实，`full` 才是 wire 路径（两者不混用）", () => {
+		const [row] = scanAt("wiki/_id_/api.ts", "export default { get() { return {}; } };");
+		expect(row.dir).toBe("wiki/_id_");
+		expect(row.full).toBe("wiki/{id}");
+		expect(handlerAbs(row)).toBe("/wiki/{id}");
+	});
+
+	it("不满足「整段 _name_」的目录保持字面（与 oj 内省同谓词）", () => {
+		const literal = ["__x__", "___", "_a{b}_", "_shared", "a_id_b"];
+		for (const seg of literal) {
+			const rows = scanAt(`m/${seg}/api.ts`, "export default { get() { return {}; } };");
+			expect(rows.map(r => r.full)).toEqual([`m/${seg}`]);
+		}
+	});
+
+	it("模块段同样适用：`_aa_/bb/api.ts` → `{aa}/bb`", () => {
+		// module-root 布局：apiDir 是模块自己的 api 目录（src/<name>/api），模块名单独传
+		const moduleDir = join(dir, "api", "src", "_aa_");
+		const file = join(moduleDir, "api", "bb", "api.ts");
+		mkdirSync(dirname(file), { recursive: true });
+		writeFileSync(file, "export default { get() { return {}; } };");
+		const rows = scanHandlerFile(file, join(moduleDir, "api"), "_aa_");
+		expect(rows.map(r => r.full)).toEqual(["{aa}/bb"]);
+	});
+
+	it("`.route` 尾巴已是 matchit 写法，不再做 `_` 转换；目录参数与相对尾自由组合", () => {
+		const rows = scanAt("wiki/_id_/api.ts", `
+function get() { return {}; }
+get.route = "{sub}";
+export default { get };
+`);
+		expect(rows.map(r => r.full)).toEqual(["wiki/{id}/{sub}"]);
+	});
+
+	it("绝对 `.route` 不受目录影响（根级挂载，full 即其自身）", () => {
+		const rows = scanAt("wiki/_id_/api.ts", `
+function get() { return {}; }
+get.route = "/audit/{tokenId}";
+export default { get };
+`);
+		expect(rows.map(r => r.full)).toEqual(["audit/{tokenId}"]);
+		expect(handlerAbs(rows[0])).toBe("/audit/{tokenId}");
+	});
+});
+
+describe("handler-scan · 对账键与契约侧同形（参数路由精确命中）", () => {
+	it("`_id_` 目录与 `{id}` 契约段产生同一 pathKey", () => {
+		const [row] = scanAt("wiki/_id_/api.ts", "export default { del() { return {}; } };");
+		expect(pathKey(row.method, row.full)).toBe(pathKey("DELETE", "wiki/{id}"));
 	});
 });

@@ -41,7 +41,7 @@ export interface HandlerRow {
 	tail?: string
 	/** v0.1.64：点分 handler 链（"cccc.get"；顶层动词即方法名） */
 	chain: string
-	/** v0.1.64：组前缀解析后的有效路由全路径（base 相对、无前导 /；绝对 .route 即其自身） */
+	/** v0.1.64：组前缀解析后的有效路由全路径（base 相对、无前导 /；目录段已参数化） */
 	full: string
 	filePath: string
 }
@@ -186,11 +186,36 @@ function resolveRoute(own: string, prefix: string): string {
 	return own.startsWith("/") ? own : (prefix ? `${prefix}/${own}` : own);
 }
 
+/**
+ * 目录段 `_name_` → 参数段 `{name}`（v0.1.27，与 oj 内省同谓词）：只认整段 `_name_`，
+ * 内部名非空且不以 `_` 开头/结尾、不含 `{}`；`__x__` / `___` / `_a{b}_` 保持字面，
+ * `_shared`（无尾下划线）不受影响。
+ *
+ * 为什么扫描器必须转换：**目录镜像就是路由声明**，契约侧 route 用 matchit 语法写 `{id}`，
+ * 磁盘侧写 `_id_`——同一条路由的两种写法。原样拼进 `full` 会让精确对账永远命中不了，
+ * `ojm api --check` 于是把已实现的参数路由同时报成「契约未实现」+「handler 未登记」
+ * 两条互相矛盾的违规（且模糊兜底因静态前缀不同也接不住）。
+ */
+function wireSegmentOf(seg: string): string {
+	const m = /^_([^/{}]+)_$/.exec(seg);
+	if (!m)
+		return seg;
+	const name = m[1];
+	if (name.startsWith("_") || name.endsWith("_"))
+		return seg;
+	return `{${name}}`;
+}
+
+/** 目录镜像 → wire 路径段（逐段参数化；模块段同样适用：`_aa_/bb` → `{aa}/bb`） */
+function wireDirOf(dir: string): string {
+	return dir.split("/").map(wireSegmentOf).join("/");
+}
+
 /** 有效路由全路径（base 相对、无前导 /）：绝对 .route 取其自身，否则目录镜像 + 相对尾 */
 function fullPathOf(dir: string, tail: string | undefined): string {
 	if (tail?.startsWith("/"))
 		return tail.replace(/^\//, "");
-	return [dir, tail].filter(Boolean).join("/");
+	return [wireDirOf(dir), tail].filter(Boolean).join("/");
 }
 
 /** 对账键（方法 + 全路径） */
