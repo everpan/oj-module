@@ -117,7 +117,8 @@ export async function registerSolution(decl: SolutionDecl): Promise<RegisterResu
 		}
 
 		// RBAC（唯一出口）：upsert + 声明消失标 deprecated，deprecated 清单原样汇入
-		const perms = await upsertSolutionPerms({ module: decl.module, roles: decl.roles });
+		// permissions 透传顶层声明——无角色的权限点只能靠它落库（少了这行 = 管理面绑不了）
+		const perms = await upsertSolutionPerms({ module: decl.module, roles: decl.roles, permissions: decl.permissions });
 
 		// 设置项 upsert：存在只覆定义列（value/update 语义 = 管理员改过的值不复活，AC1-15），
 		// 不存在插 default_value（首装 value）

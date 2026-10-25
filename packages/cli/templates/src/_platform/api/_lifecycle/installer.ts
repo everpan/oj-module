@@ -299,6 +299,11 @@ export function declOf(req: InstallRequest): SolutionDecl {
 			title: typeof r.title_key === "string" ? r.title_key : "",
 			permissions: Array.isArray(r.permissions) ? r.permissions.map(String) : [],
 		})),
+		// 顶层 permissions[] 的 code：无角色权限点（系统预置点）唯一能落库的来源，别在此丢弃
+		permissions: (Array.isArray(m.permissions) ? m.permissions : [])
+			.filter(isObj)
+			.map(p => (typeof p.code === "string" ? p.code : ""))
+			.filter(Boolean),
 		settings,
 		routes: (Array.isArray(m.routes) ? m.routes : []).filter(isObj).map(r => ({
 			path: typeof r.path === "string" ? r.path : "",

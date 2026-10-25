@@ -166,3 +166,44 @@ describe("AC2-6：卸载级联清理（唯一减法出口）", () => {
 		expect(rows("SELECT * FROM sys_user_role WHERE role_name = 'superadmin'").length).toBe(1);
 	});
 });
+
+// ── 顶层 permissions[]（REG-R1 下游骨架暴露的缺口）──
+// manifest 契约允许「只声明 permissions[]、不声明 roles」的系统预置权限点：C2-15 校验它、
+// C2-16 才要求 role.permissions ⊆ permissions[].code。但出口只从 roles[].permissions 收集，
+// declOf 又把顶层 permissions 整段丢掉——结果是这类权限点一个都落不了库，管理面绑不了，
+// 等于声明了个寂寞。registry 正是这种形态（它不许声明角色），所以修在这里而不是下游打补丁。
+describe("顶层 permissions[]：无角色的权限点也要落库", () => {
+	it("AC2-1 只声明 permissions、不声明 roles → 权限点进 sys_permission", async () => {
+		await upsertSolutionPerms({
+			module: "oj-registry",
+			roles: [],
+			permissions: ["oj-registry.publish", "oj-registry.admin"],
+		});
+
+		expect(rows("SELECT code, module FROM sys_permission ORDER BY code")).toEqual([
+			{ code: "oj-registry.admin", module: "oj-registry" },
+			{ code: "oj-registry.publish", module: "oj-registry" },
+		]);
+	});
+
+	it("AC2-6 卸载后无角色的权限点一并摘干净（含 custom 角色上的绑定）", async () => {
+		await upsertSolutionPerms({ module: "oj-registry", roles: [], permissions: ["oj-registry.publish"] });
+		dbo.exec("INSERT INTO sys_role (name, module, title) VALUES ('custom.dev', 'custom', '开发者')");
+		dbo.exec("INSERT INTO sys_role_permission (role_name, permission_code) VALUES ('custom.dev', 'oj-registry.publish')");
+
+		await uninstallSolution("oj-registry");
+
+		expect(rows("SELECT * FROM sys_permission WHERE module = 'oj-registry'").length).toBe(0);
+		expect(rows("SELECT * FROM sys_role_permission WHERE permission_code LIKE 'oj-registry.%'").length).toBe(0);
+		// custom 角色本体保留（空绑定），与角色路径同一纪律
+		expect(rows("SELECT * FROM sys_role WHERE name = 'custom.dev'").length).toBe(1);
+	});
+
+	it("G7 攻击者视角：声明权限点不等于拿到权限——落库不产生任何绑定", async () => {
+		// 使坏路径：以为「把 code 写进 manifest 就自动获权」。落库的只是权限点标签行，
+		// 判定仍要角色绑定；没有绑定，decideAccess 对该 code 恒 false。
+		await upsertSolutionPerms({ module: "oj-registry", roles: [], permissions: ["oj-registry.publish"] });
+
+		expect(rows("SELECT * FROM sys_role_permission WHERE permission_code = 'oj-registry.publish'").length).toBe(0);
+	});
+});

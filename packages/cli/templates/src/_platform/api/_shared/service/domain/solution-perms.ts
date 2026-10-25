@@ -15,6 +15,13 @@ export interface SolutionRoleDecl {
 export interface SolutionManifest {
 	module: string
 	roles: SolutionRoleDecl[]
+	/**
+	 * 顶层 `permissions[]` 的 code 清单（契约 C2-15 的声明面）。
+	 * 与 `roles[].permissions` **不是**上下级关系：C2-16 只要求角色引用的 code 先在此声明，
+	 * 反过来「声明了但没有任何角色引用」是合法形态（系统预置权限点，由管理员在管理面自行分配）。
+	 * 漏收集的后果是这类权限点根本不落库 → 管理面绑不上 → 声明形同虚设。
+	 */
+	permissions?: string[]
 }
 
 export interface UpsertResult {
@@ -25,7 +32,8 @@ export interface UpsertResult {
 export async function upsertSolutionPerms(m: SolutionManifest): Promise<UpsertResult> {
 	const deprecated: string[] = [];
 	const declaredRoles = new Set(m.roles.map(r => r.name));
-	const declaredPerms = new Set(m.roles.flatMap(r => r.permissions ?? []));
+	// 权限点全集 = 角色引用的 ∪ 顶层独立声明的（后者是无角色权限点唯一能落库的来源）
+	const declaredPerms = new Set([...m.roles.flatMap(r => r.permissions ?? []), ...(m.permissions ?? [])]);
 
 	for (const role of m.roles) {
 		const existing = await db.table("sys_role").select(["name"]).where({ field: "name", op: "eq", value: role.name }).all() as unknown[];
