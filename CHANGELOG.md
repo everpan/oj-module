@@ -7,6 +7,17 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **`ojm preview` 形态下安装恒定卡在 reloading（reloadConfig 返回 unchanged）**：`ojm preview` 为了
+  SPA 回落与 `platform.root` 改写，会在 config 同目录派生一份 `.ojm-preview.yaml` 并让 `oj serve`
+  读它；而安装器的「安装序号自增 + 匿名端点接线」只写源 `config.yaml`，服务端按派生文件的文档 sha
+  判定，永远看不到差异，于是安装必失败且错误只报 unchanged。
+  现在安装器在派生文件存在时**同步写一份**（源 config 仍是真相，preview 重启后按它重建派生文件）；
+  派生文件不存在（dev / 生产部署形态）只写源 config，不无中生有。
+  同一提交补了模板侧 2 条用例，并修正 `market-api.spec` 里 P-2 遗漏的 `license` 断言
+  （模板用例不在 CI 里跑，之前漂了一版没被发现）。
+
 ### Added
 
 - **`ojm list`（站点已装方案的可查面）**：`ojm list [--site-url] [--user] [--pass] [--all] [--json]`

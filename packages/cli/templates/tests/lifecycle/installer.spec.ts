@@ -260,6 +260,30 @@ describe("runInstall 全绿路径（步骤 stub，register/smoke/audit 走真实
 		expect(await getTask(taskDir, "nope")).toBeNull();
 	});
 
+	it("preview 形态：派生 .ojm-preview.yaml 存在时两份 config 一起自增（否则 reload 恒 unchanged）", async () => {
+		// ojm preview 派生出来的那份才是服务端在读的 config（spa 挂载 + platform.root 改写）
+		const derived = join(root, ".ojm-preview.yaml");
+		await fsp.writeFile(derived, "mounts: []\nserver:\n  reload_api: true\nvars:\n  ojm_install_seq: 0\nauth:\n  anonymous_paths:\n    - /auth/login\n");
+
+		const t = await runInstall(makeReq());
+		expect(t.status).toBe("done");
+
+		const source = new TextDecoder().decode(await fsp.readFile(join(root, "config.yaml")));
+		const preview = new TextDecoder().decode(await fsp.readFile(derived));
+		// 源 config 仍是真相（preview 重启后按它重建派生文件）
+		expect(source).toContain("ojm_install_seq: 1");
+		expect(source).toContain("- /demo-solution/ping");
+		// 派生文件也要变：reloadConfig 按它的文档 sha 判 unchanged
+		expect(preview).toContain("ojm_install_seq: 1");
+		expect(preview).toContain("- /demo-solution/ping");
+	});
+
+	it("非 preview 形态：没有派生文件就不无中生有（dev / 生产部署只写源 config）", async () => {
+		const t = await runInstall(makeReq());
+		expect(t.status).toBe("done");
+		await expect(fsp.access(join(root, ".ojm-preview.yaml"))).rejects.toThrow();
+	});
+
 	it("P2-13 spawn 流式双路径：appliedSeq 仍在（跨 chunk 拼接解析）+ 进度字段形状不变（轮询消费面兼容）", async () => {
 		const base = bundleExec();
 		const exec: ExecFace = {

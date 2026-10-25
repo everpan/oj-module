@@ -338,26 +338,56 @@ async function deployWebStage(req: InstallRequest): Promise<StageResult> {
 	return deployWeb({ ...req, stagingDir: req.staging, integrity });
 }
 
+/** `ojm preview` 派生的 config 文件名（与 CLI 侧 preview-config.ts 的 PREVIEW_CONFIG_NAME 逐字一致） */
+const PREVIEW_CONFIG_NAME = ".ojm-preview.yaml";
+
+/** 与 config 同目录的 preview 派生文件路径（无目录分隔符 = 同目录裸名） */
+function previewSiblingOf(configPath: string): string {
+	const cut = Math.max(configPath.lastIndexOf("/"), configPath.lastIndexOf("\\"));
+	return cut < 0 ? PREVIEW_CONFIG_NAME : `${configPath.slice(0, cut + 1)}${PREVIEW_CONFIG_NAME}`;
+}
+
+/** 把「安装序号自增 + 匿名端点接线」写到一份 config 文本上；`optional` 用于派生文件不存在即跳过 */
+async function patchConfigAt(configPath: string, anonymous: string[], optional = false): Promise<string[]> {
+	let content: string;
+	try {
+		content = new TextDecoder().decode(await fsFace().readFile(configPath));
+	}
+	catch (e) {
+		if (optional)
+			return [];
+		throw e;
+	}
+	const bumped = bumpInstallSeq(content);
+	const patched = anonymous.length > 0 ? appendAnonymousPaths(bumped.content, anonymous) : { content: bumped.content, added: [] };
+	await atomicWriteText(configPath, patched.content);
+	return patched.added;
+}
+
 /**
  * 热更段适配（B-11 reload 触发面）：先落盘触发变更再 reloadAndAssert——reloadConfig 的
  * unchanged 判定基于 config 文档 sha（oj-bin reload_bridge 真源），不落盘变更则热更恒
  * unchanged 必失败。触发变更 = vars.ojm_install_seq 自增（PRD E5 实测先例：vars 段语义值
  * 改动 applied 可热生效，无需改 mounts），经 text-edit 纯文本行操作（R18，注释/键序逐字保留）。
+ *
+ * **preview 形态（`ojm preview`）**：服务端读的是同目录派生出来的 `.ojm-preview.yaml`（spa 挂载 +
+ * platform.root 改写到 dist），安装器改的 `config.yaml` 它根本不看——于是 reload 按文档 sha 判
+ * unchanged，安装恒定卡在 reloading。所以派生文件存在时同步写一份：源 config 仍是真相（preview
+ * 重启后按它重建派生文件），派生文件是当前活视图，两份一起变，reload 才看得到差异。
+ * 派生文件不存在（dev / 生产部署形态）就只写源 config，不无中生有。
  */
 async function reloadStage(req: InstallRequest): Promise<StageResult> {
 	const path = req.configPath ?? "config.yaml";
 	try {
-		const content = new TextDecoder().decode(await fsFace().readFile(path));
-		const bumped = bumpInstallSeq(content);
-		// C2-26 anonymous 运行时接线（P2-15③，观察项 6 收口）：方案匿名端点补进
-		// auth.anonymous_paths（幂等；热改属 restart_pending——reload 消息已明示重启生效）
 		const m = isObj(req.manifest) ? req.manifest : {};
 		const api = isObj(m.api) ? m.api : {};
 		const anonymous = Array.isArray(api.anonymous) ? api.anonymous.filter((x): x is string => typeof x === "string") : [];
-		const patched = anonymous.length > 0 ? appendAnonymousPaths(bumped.content, anonymous) : { content: bumped.content, added: [] };
-		await atomicWriteText(path, patched.content);
+		// C2-26 anonymous 运行时接线（P2-15③，观察项 6 收口）：方案匿名端点补进
+		// auth.anonymous_paths（幂等；热改属 restart_pending——reload 消息已明示重启生效）
+		const added = await patchConfigAt(path, anonymous);
+		await patchConfigAt(previewSiblingOf(path), anonymous, true);
 		// 交接给 smoke：本次真正新增的匿名路径在重启前恒 401（restart_pending）
-		req.deferredAnonymous = patched.added;
+		req.deferredAnonymous = added;
 	}
 	catch (e) {
 		return { stage: "reloading", ok: false, retryable: true, message: `热更失败：config.yaml 安装序号自增/匿名端点接线失败（${String(e)}）——reload unchanged 判定基于 config 文档 sha，无变更则热更不可能生效（B-11，PRD E5 口径）` };

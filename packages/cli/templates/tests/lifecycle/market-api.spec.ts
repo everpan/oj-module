@@ -63,6 +63,7 @@ function manifestFixture(version = "0.1.0"): any {
 		version,
 		summary: "演示方案",
 		author: "oj-module",
+		license: "MIT",
 		changelog: [`${version} 变更条目`],
 		peerRuntime: ">=0.1.0",
 		archive: { file: `demo-solution-${version}.tgz`, sha256: SHA256, size: ARCHIVE.byteLength, signature: signedArchiveFor(ARCHIVE, "demo-solution", version, { keyPair: TEST_KEY }).sig },
@@ -834,9 +835,9 @@ describe("GET index（CDN catalog + shards 拉取 + 本地 state 对比）", () 
 		// REG-CS5④：读面不再发 cache-control: no-cache（服务端缓存头 + 条件请求承载新鲜度）
 		expect(fetchInits.every(i => (i as { headers?: Record<string, string> } | undefined)?.headers?.["cache-control"] === undefined)).toBe(true);
 		expect(last?.data).toEqual([
-			{ name: "demo-solution", latest: "0.2.0", installed: "0.1.0", enabled: true, upgradable: true, available: ["0.1.0", "0.2.0"], changelog: ["0.2.0 变更条目"], publisher: "oj-module", trust_state: "trusted", key_id: "test.publisher", operator: null },
-			{ name: "wiki", latest: "1.3.0", installed: null, enabled: null, upgradable: false, available: ["1.3.0"], changelog: null, publisher: null, trust_state: null, key_id: null, operator: null },
-			{ name: "legacy", latest: null, installed: "9.9.9", enabled: false, upgradable: false, available: [], changelog: null, publisher: null, trust_state: null, key_id: null, operator: null },
+			{ name: "demo-solution", latest: "0.2.0", installed: "0.1.0", enabled: true, upgradable: true, available: ["0.1.0", "0.2.0"], changelog: ["0.2.0 变更条目"], publisher: "oj-module", license: "MIT", trust_state: "trusted", key_id: "test.publisher", operator: null },
+			{ name: "wiki", latest: "1.3.0", installed: null, enabled: null, upgradable: false, available: ["1.3.0"], changelog: null, publisher: null, license: null, trust_state: null, key_id: null, operator: null },
+			{ name: "legacy", latest: null, installed: "9.9.9", enabled: false, upgradable: false, available: [], changelog: null, publisher: null, license: null, trust_state: null, key_id: null, operator: null },
 		]);
 	});
 
