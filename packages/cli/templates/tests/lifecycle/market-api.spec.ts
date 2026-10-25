@@ -350,6 +350,61 @@ describe("POST install（cdn：Form B 索引解析属市场侧，安装器不拼
 	});
 });
 
+describe("REG-CS4 yank（安装侧精确版本拒装）", () => {
+	/** 带 yanked 标记的索引：0.2.0 被下线、0.1.0 正常；latest 已被源方改为 0.1.0 */
+	function yankedCdnFetch(): FetchFace {
+		const bundles = JSON.stringify({
+			seq: 1,
+			issued_at: ISSUED_AT,
+			expires_at: EXPIRES_AT,
+			solutions: [{
+				name: "demo-solution",
+				latest: "0.1.0",
+				versions: [
+					{ version: "0.2.0", file: "demo-solution-0.2.0.tgz", sha256: SHA256, size: ARCHIVE.byteLength, yanked: true, yanked_at: ISSUED_AT },
+					{ version: "0.1.0", file: "demo-solution-0.1.0.tgz", sha256: SHA256, size: ARCHIVE.byteLength },
+				],
+			}],
+		});
+		const manifests = JSON.stringify([manifestFixture("0.2.0"), manifestFixture("0.1.0")]);
+		const bundlesSig = JSON.stringify(signIndex("bundles", SEQ, bundles, TEST_KEY.privateKeyPem, "test.publisher"));
+		const manifestsSig = JSON.stringify(signIndex("manifests", SEQ, manifests, TEST_KEY.privateKeyPem, "test.publisher"));
+		return ((url: string) => {
+			const text = String(url).endsWith("bundles.yaml")
+				? bundles
+				: String(url).endsWith("manifests.yaml") ? manifests : null;
+			if (text !== null)
+				return { ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode(text).buffer as ArrayBuffer };
+			if (String(url).endsWith(".yaml.sig")) {
+				const sig = String(url).includes("manifests") ? manifestsSig : bundlesSig;
+				return { ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode(sig).buffer as ArrayBuffer };
+			}
+			if (String(url).endsWith(".tgz"))
+				return { ok: true, status: 200, arrayBuffer: async () => ARCHIVE.slice().buffer as ArrayBuffer };
+			return { ok: true, status: 200, arrayBuffer: async () => new ArrayBuffer(0) };
+		}) as FetchFace;
+	}
+
+	it("精确安装被下线版本 → 409 拒装（含「下线」人话），不触碰 .tgz", async () => {
+		const api = createMarketApi(makeEnv({ fetch: yankedCdnFetch() }));
+		fetchCalls.length = 0;
+		g.http = { user: { id: 1 }, body: { name: "demo-solution", version: "0.2.0", source: "cdn" } };
+		await api.install.post();
+		expect(last?.status).toBe(409);
+		expect(String(last?.msg)).toContain("下线");
+		expect(fetchCalls.some(u => u.endsWith(".tgz"))).toBe(false);
+	});
+
+	it("latest 路径不命中 yanked（源方已把 latest 改为未下线版本）→ 正常装 0.1.0", async () => {
+		const api = createMarketApi(makeEnv({ fetch: yankedCdnFetch() }));
+		g.http = { user: { id: 1 }, body: { name: "demo-solution", version: null, source: "cdn" } };
+		await api.install.post();
+		expect(last?.status).toBe(200);
+		const taskId = (last?.data as { task_id?: unknown })?.task_id as string;
+		expect((await getTask(taskDir, taskId))?.version).toBe("0.1.0");
+	});
+});
+
 describe("相对基址（feature：/cdn = 本站点自供，按请求源补全同源绝对 URL）", () => {
 	const REL = "/cdn";
 	const HOST = "127.0.0.1:9778";

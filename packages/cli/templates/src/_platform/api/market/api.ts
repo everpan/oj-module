@@ -449,13 +449,19 @@ async function resolveCdn(env: MarketEnv, base: string, name: string, reqVersion
 	const version = reqVersion ?? (typeof entry.latest === "string" ? entry.latest : null);
 	// REG-CS2 `latest` 单调不降：总目录声明的 latest 不得低于本方案已声明版本中的最高版本。
 	// 把 latest 往下改是「让站点装回旧版」的最短路径（yank 之后回退声明），必须挡在解析处。
-	const sorted = versions.map(v => String(v.version)).sort(compareVersions);
-	const highest = sorted.length === 0 ? null : sorted[sorted.length - 1]!;
+	// 已下线版本（REG-CS4 yanked）不计入「已声明最高版本」——否则 yank 掉最高版会把 latest 主动
+	// 下调，被误判成索引回退；latest 本就指向未下线的最高版。
+	const liveSorted = versions.filter(v => v.yanked !== true).map(v => String(v.version)).sort(compareVersions);
+	const highest = liveSorted.length === 0 ? null : liveSorted[liveSorted.length - 1]!;
 	if (typeof entry.latest === "string" && highest !== null && compareVersions(entry.latest, highest) < 0)
 		fail(502, `市场索引中方案「${name}」的 latest 是 ${entry.latest}，低于已声明的最高版本 ${highest}（index_latest_regressed）——索引被回退，请核实源状态后再装`);
 	const hit = versions.find(v => String(v.version) === version);
 	if (version === null || !isObj(hit))
 		fail(404, `市场索引中无方案「${name}」版本「${reqVersion ?? "latest"}」（${base}/bundles.yaml）`);
+	// REG-CS4 yank：精确指定被下线版本 → 拒装（latest 路径不命中，因为索引 rebuilt 时 latest 已跳过 yanked）；
+	// 已装实例不受影响（不在此解析路径内）。错误信息明示「版本已下线」而非「无此版本」，避免误导。
+	if (reqVersion !== null && hit.yanked === true)
+		fail(409, `方案「${name}」版本「${version}」已被发布方下线（REG-CS4 yank），无法安装；已安装实例不受影响。如需继续请联系发布方或改用其他版本`);
 	const list = await g.yaml!.parse((await fetchIndex(env, fetch, base, "manifests", catalog.seq)).text) as unknown;
 	const manifest = (Array.isArray(list) ? list : []).find(m => isObj(m) && m.name === name && String(m.version) === version);
 	if (!isObj(manifest))
