@@ -30,7 +30,7 @@ import { createTrustStore } from "../_lifecycle/trust";
 import { computeUninstallImpact, runUninstall } from "../_lifecycle/uninstall";
 import { respond } from "../_shared/respond";
 import { assertSuperAdmin } from "../_shared/service/infra/access";
-import { journalHeadOf, siteOrigin, withSiteOrigin } from "../_shared/site-facade";
+import { journalHeadOf, readCanonicalOrigin, siteOrigin, withSiteOrigin } from "../_shared/site-facade";
 import { BOOTSTRAP_KEY, seedBootstrapKey } from "./bootstrap";
 
 // 站点编排面共享真源落 _shared/site-facade（P2-16 真机构建钉出：api.ts 是路由入口不可被模块内
@@ -62,6 +62,8 @@ export interface MarketEnv {
 	apiPrefix: string
 	/** 站点 config.yaml 路径（reloading 段 vars.ojm_install_seq 自增落盘处；缺省 config.yaml） */
 	configPath?: string
+	/** canonical origin（REG-CS6：相对 URL 补全用，取自 config.yaml vars.canonical_origin，绝不读请求头 Host） */
+	canonicalOrigin?: string
 	/** CDN 基址（缺省读 sys_setting `framework.market_cdn_url`；测试注入） */
 	cdnBase?: () => Promise<string | null>
 	/** 注入面（DIP）：缺省回落 isolate 全局 fetch / exec.run / server.reloadConfig / 本地 sha384（过渡实现） */
@@ -155,6 +157,7 @@ export function marketEnv(): MarketEnv {
 		siteModulesDir: "dist/web/modules",
 		modulesJsonPath: "dist/web/modules.json",
 		apiPrefix: "/api",
+		configPath: "config.yaml",
 		ledgerHeadOf: journalHeadOf,
 	};
 }
@@ -168,10 +171,53 @@ function fail(status: number, msg: string): never {
 	throw Object.assign(new Error(msg), { status });
 }
 
-function fetchOf(env: MarketEnv): FetchInitFace {
-	// 相对基址（feature：/cdn = 本站点自供）按请求源补全同源绝对 URL；绝对 http(s) 直通。
-	// 无请求上下文（无 Host）不猜原点、原样透传；runInstall 侧的 withSiteOrigin 包裹幂等。
-	return withSiteOrigin(env.fetch ?? (globalThis as { fetch?: FetchInitFace }).fetch as FetchInitFace);
+/**
+ * canonical origin 惰性解析（REG-CS6）：env.canonicalOrigin 若已由测试/部署注入则直接用，
+ * 否则读 config.yaml `vars.canonical_origin`（异步，隔离环境只有异步读盘面）。解析失败/缺省 → undefined
+ * （withSiteOrigin = 不补全、相对 URL 原样透传，fail-closed 不回落请求头）。
+ */
+async function resolveCanonicalOrigin(env: MarketEnv): Promise<string | undefined> {
+	if (env.canonicalOrigin !== undefined) {
+		return env.canonicalOrigin;
+	}
+	if (!env.configPath) {
+		return undefined;
+	}
+	return (await readCanonicalOrigin(env.configPath)) ?? undefined;
+}
+
+async function fetchOf(env: MarketEnv): Promise<FetchInitFace> {
+	// 相对基址（feature：/cdn = 本站点自供）按配置的 canonical origin 补全同源绝对 URL；绝对 http(s) 直通。
+	// REG-CS6：绝不读请求头 Host/x-forwarded-proto——伪造 Host 不能牵引出站。无 canonical origin 则不补全
+	// （相对 URL 原样透传，由下层 fetch 判不可用），fail-closed 而非回落请求头。
+	const co = await resolveCanonicalOrigin(env);
+	return withSiteOrigin(env.fetch ?? (globalThis as { fetch?: FetchInitFace }).fetch as FetchInitFace, co);
+}
+
+/**
+ * REG-CS6：安装需 canonical origin——① 相对市场基址（`market_cdn_url=/cdn` 本站点自供）要补全为
+ * 同源绝对 URL；② 冒烟探针 URL 恒为站点相对路径（`/api/<模块>/<路由>`，isolate fetch 无同源 base，
+ * 相对恒 TypeError）。缺失/非法即明确报错并指向具体设置项（config.yaml `vars.canonical_origin`），
+ * 绝不回落请求头 Host（伪造 Host 会牵引出站）。
+ */
+async function requireCanonicalOrigin(env: MarketEnv): Promise<string> {
+	const co = await resolveCanonicalOrigin(env);
+	if (co === undefined || siteOrigin(co) === null) {
+		fail(503, "安装需要站点 canonical origin（相对市场基址「/cdn」自供需补全为同源绝对 URL，且冒烟探针 URL 恒为站点相对路径）：请在 config.yaml 配置 vars.canonical_origin（站点真实对外地址，如 https://your-site.example.com）。REG-CS6 不读请求头 Host（防伪造 Host 牵引出站），缺失即拒而非回落请求头");
+	}
+	return co;
+}
+
+/**
+ * REG-CS6：相对市场基址（`market_cdn_url=/cdn` 本站点自供）**必须**有 canonical origin 才能补全为
+ * 同源绝对 URL——绝对基址（外部真 CDN）不需要。缺失/非法即明确报错并指向具体设置项
+ * （config.yaml `vars.canonical_origin`），绝不回落请求头 Host（伪造 Host 会牵引出站）。
+ */
+async function assertOriginForRelativeBase(env: MarketEnv, base: string): Promise<void> {
+	if (/^https?:\/\//i.test(base)) {
+		return;
+	}
+	await requireCanonicalOrigin(env);
 }
 
 function execOf(env: MarketEnv): ExecFace {
@@ -607,11 +653,13 @@ async function installBody(env: MarketEnv): Promise<{ task_id: string }> {
 		const base = await cdnBaseOf(env);
 		if (base === null)
 			fail(503, "未配置市场地址（framework.market_cdn_url）——市场安装不可用，请先在系统设置配置 CDN 基址");
-		const r = await resolveCdn(env, base, name, reqVersion, fetchOf(env));
+		// REG-CS6：安装全程（相对基址补全 + 冒烟探针）都需 canonical origin；缺失/非法即明确报错
+		await requireCanonicalOrigin(env);
+		const r = await resolveCdn(env, base, name, reqVersion, await fetchOf(env));
 		manifest = r.manifest;
 		version = r.version;
 		archiveUrl = r.archiveUrl;
-		fetch = fetchOf(env);
+		fetch = await fetchOf(env);
 	}
 	// 第一方 bootstrap key 播种（P2-12，G3 双轨第一轨）：runInstall 之前——market 首装免 TOFU。
 	// key 未回填（null）或信任库已初始化 → no-op（不与运维吊销对抗）
@@ -640,7 +688,7 @@ async function installBody(env: MarketEnv): Promise<{ task_id: string }> {
 			modulesJsonPath: env.modulesJsonPath,
 			apiPrefix: env.apiPrefix,
 			configPath: env.configPath,
-			fetch: withSiteOrigin(fetch),
+			fetch,
 			exec: execOf(env),
 			reload: reloadOf(env),
 			sha384B64: sha384Of(env),
@@ -718,8 +766,9 @@ async function indexBody(env: MarketEnv): Promise<IndexRow[]> {
 	const base = await cdnBaseOf(env);
 	if (base === null)
 		fail(503, "未配置市场地址（framework.market_cdn_url）——卡片区显示「未配置市场地址」（PRD §5.3）");
+	await assertOriginForRelativeBase(env, base);
 	const g = globalThis as { yaml?: { parse: (text: string) => Promise<unknown> } };
-	const catalog = await fetchIndex(env, fetchOf(env), base, "bundles");
+	const catalog = await fetchIndex(env, await fetchOf(env), base, "bundles");
 	let bundles: { solutions?: unknown };
 	try {
 		bundles = await g.yaml!.parse(catalog.text) as { solutions?: unknown };
@@ -732,7 +781,7 @@ async function indexBody(env: MarketEnv): Promise<IndexRow[]> {
 	// manifests.yaml 单次拉取供 changelog/publisher（P2-11）：失败降级 null 不阻断索引（可用性优先）
 	let manifests: Record<string, unknown>[] = [];
 	// 同代校验必须在 try 之外：聚合清单与总目录不同代 = 源正在重建，属拒载不属降级
-	const manifestsText = (await fetchIndex(env, fetchOf(env), base, "manifests", catalog.seq)).text;
+	const manifestsText = (await fetchIndex(env, await fetchOf(env), base, "manifests", catalog.seq)).text;
 	try {
 		const list = await g.yaml!.parse(manifestsText);
 		if (Array.isArray(list))

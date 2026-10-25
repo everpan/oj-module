@@ -54,17 +54,27 @@ describe("SSRF 钉①：探测 URL 永不出站（probeUrlOf）", () => {
 	});
 });
 
-// ============ SSRF 钉②：siteOrigin header 清洗 ============
-describe("SSRF 钉②：siteOrigin 清洗 x-forwarded-proto", () => {
+// ============ SSRF 钉②：siteOrigin 只信配置的 canonical_origin，绝不读请求头（REG-CS6）============
+describe("SSRF 钉②：siteOrigin 只信配置的 canonical_origin，绝不读请求头", () => {
 	afterEach(() => {
 		g.http = undefined;
 	});
-	it("取首个且去空白", () => {
-		g.http = { headers: { "host": "h", "x-forwarded-proto": " https , http " } };
-		expect(siteOrigin()).toEqual({ proto: "https", host: "h" });
+	it("合法 origin → {proto,host}（协议小写化）", () => {
+		expect(siteOrigin("https://Example.com:8080")).toEqual({ proto: "https", host: "Example.com:8080" });
+		expect(siteOrigin("http://h")).toEqual({ proto: "http", host: "h" });
 	});
-	it("无 host → null（非请求上下文跳过探针）", () => {
-		g.http = { headers: {} };
+	it("缺省/空/非法 → null（不补全、不回落请求头）", () => {
+		expect(siteOrigin()).toBeNull();
+		expect(siteOrigin(null)).toBeNull();
+		expect(siteOrigin("")).toBeNull();
+		expect(siteOrigin("not-a-url")).toBeNull();
+		expect(siteOrigin("ftp://x")).toBeNull();
+	});
+	it("伪造 Host/x-forwarded-proto 头完全不被采用——只认入参 canonical_origin", () => {
+		g.http = { headers: { "host": "169.254.169.254", "x-forwarded-proto": "http" } };
+		// 入参给出真实 origin → 用真实 origin；请求头里的恶意 host 被无视
+		expect(siteOrigin("https://real.example.com")).toEqual({ proto: "https", host: "real.example.com" });
+		// 入参缺失 → 即便请求头伪造了 host 也不猜、不回落，返回 null
 		expect(siteOrigin()).toBeNull();
 	});
 });
@@ -270,18 +280,20 @@ afterEach(async () => {
 });
 
 function setHttp(over: Record<string, unknown>) {
-	g.http = { user: { id: 1 }, query: { name: "demo" }, headers: { host: "localhost:9778" }, ...over };
+	// 默认伪造一个与 canonical_origin 不同的 Host 头（REG-CS6：探针补全绝不读请求头 Host，
+	// 即便此处 host 是攻击者的恶意值，出站 URL 也只认配置的 canonical_origin）
+	g.http = { user: { id: 1 }, query: { name: "demo" }, headers: { host: "forged.attacker.invalid" }, ...over };
 	g.json = {
 		ok: (data: unknown) => { last = { status: 200, data }; },
 		fail: (status: number, msg: string) => { last = { status, msg }; },
 	};
 }
 
-function makeEnv() {
+function makeEnv(overrides: Record<string, unknown> = {}) {
 	// modulesJsonPath 钉进临时目录（readFile 失败 → 不打 web 项）：默认值 `dist/web/modules.json`
 	// 是相对 cwd 的，会把模板本机构建产物卷进用例，全绿用例随「模板 build 过没有」摇摆。
 	// P4-2 两条 integrity 用例显式覆盖它。
-	return { ...solutionsEnv(), sharedRoot: root, statePath: join(root, "state.yaml"), modulesJsonPath: join(root, "modules.json") };
+	return { ...solutionsEnv(), sharedRoot: root, statePath: join(root, "state.yaml"), modulesJsonPath: join(root, "modules.json"), ...overrides };
 }
 
 describe("深检端点门（admin 域）", () => {
@@ -307,22 +319,24 @@ describe("深检端点编排（四项）", () => {
 		dbo.prepare("INSERT INTO sys_solution_route (path, module, category, \"order\", title_key, required_permission, enabled, deprecated) VALUES (?,?,?,?,?,?,?,0)").run("/api/demo", "demo", "main", 200, "demo:menu", null, 1);
 		// trusted 状态：无 trust 项、无检查项 → 干净报告（checks=[]）
 		await fsp.writeFile(join(root, "state.yaml"), "solutions:\n  demo:\n    version: \"0.1.0\"\n    enabled: true\n    installedAt: 0\n    trust_state: trusted\n");
+		// REG-CS6：探针补全用配置的 canonical_origin（不读请求头 Host）
 		setHttp({});
-		await createSolutionsApi(makeEnv()).verify.post();
+		await createSolutionsApi(makeEnv({ canonicalOrigin: "http://localhost:9778" })).verify.post();
 		expect(last?.status).toBe(200);
 		const data = last?.data as { ok: boolean, checks: unknown[], advise: string[] };
 		expect(data.ok).toBe(true);
 		expect(data.checks).toEqual([]);
 		expect(data.advise).toEqual([]);
-		// 探针用同源绝对 URL（SSRF 钉①②）
+		// 探针按 canonical_origin 补全为同源绝对 URL（SSRF 钉①②）
 		expect(fetchCalls[0]).toBe("http://localhost:9778/api/demo");
 	});
 
 	it("路由 404 → routes error 项，ok=false", async () => {
 		dbo.prepare("INSERT INTO sys_solution_route (path, module, category, \"order\", title_key, required_permission, enabled, deprecated) VALUES (?,?,?,?,?,?,?,0)").run("/api/demo", "demo", "main", 200, "demo:menu", null, 1);
 		g.fetch = statusFetch(404);
+		// REG-CS6：探针需配置 canonical_origin 才会真正出站（缺配置则跳过 info 项）
 		setHttp({});
-		await createSolutionsApi(makeEnv()).verify.post();
+		await createSolutionsApi(makeEnv({ canonicalOrigin: "http://localhost:9778" })).verify.post();
 		const data = last?.data as { ok: boolean, checks: Array<{ id: string, severity: string }> };
 		expect(data.ok).toBe(false);
 		expect(data.checks.some(c => c.id === "routes" && c.severity === "error")).toBe(true);

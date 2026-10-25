@@ -3,6 +3,7 @@
 // 单一真源：market/api.ts re-export 保持既有引用面；深检/方案域直接 import 本模块。
 
 import type { FetchFace } from "../_lifecycle/steps/download";
+import { fsFace } from "../_lifecycle/atomic";
 
 /** 带缓存指令的拉取面（FetchFace 的超集：oj 全局 fetch/测试 stub 天然满足，少参函数可赋多参形） */
 export type FetchInitFace = (url: string, init?: { headers?: Record<string, string>, redirect?: string }) => Promise<{
@@ -11,24 +12,66 @@ export type FetchInitFace = (url: string, init?: { headers?: Record<string, stri
 	arrayBuffer: () => Promise<ArrayBuffer>
 }>;
 
-/** 站点源（SSRF 钉②：x-forwarded-proto 取首个、去空白）。非请求上下文（CLI/测试无 Host）→ null */
-export function siteOrigin(): { proto: string, host: string } | null {
-	const h = (http as { headers?: Record<string, string | undefined> }).headers ?? {};
-	const host = h.host;
-	if (!host) {
+/**
+ * 站点 canonical origin（REG-CS6 Host 头 SSRF 修复）：**绝不**读请求头 host / x-forwarded-proto——
+ * 伪造 Host（如 169.254.169.254 云元数据）若被用来补全相对 URL，出站请求会被牵引到攻击者指定的
+ * 源。一律走站点配置 `vars.canonical_origin`（模板 config.yaml 随发，部署侧填真实对外地址）。
+ *
+ * - 给定合法 origin（http(s)://host，无路径）→ 返回 {proto, host}；
+ * - 缺失 / 非法 / 空 → 返回 null（不补全、不回落请求头；相对 URL 原样透传，由下层 fetch 判不可用）。
+ *   这是 fail-closed：没有可信源就不替请求「猜」一个，避免把 Host 头当可信输入。
+ */
+export function siteOrigin(canonicalOrigin?: string | null): { proto: string, host: string } | null {
+	if (!canonicalOrigin || !canonicalOrigin.trim()) {
 		return null;
 	}
-	const proto = String(h["x-forwarded-proto"] ?? "http").split(",")[0]!.trim() || "http";
-	return { proto, host };
+	const m = /^(https?):\/\/([^/?#]+)$/i.exec(canonicalOrigin.trim());
+	if (m === null) {
+		return null;
+	}
+	return { proto: m[1]!.toLowerCase(), host: m[2]! };
 }
 
-/** 站点源补全（深检探针复用 siteOrigin；相对 URL → 绝对同源 URL） */
-export function withSiteOrigin(fetch: FetchInitFace): FetchFace {
-	const o = siteOrigin();
+/**
+ * 读站点 canonical origin（config.yaml `vars.canonical_origin`；缺文件/缺字段/解析失败 → null）。
+ * 隔离运行时无 node:fs/yaml：统一走 fsFace() + globalThis.yaml（与 _platform 其余读盘一致）。
+ * 异步：config 读取在隔离环境只有异步面，故 caller（marketEnv/solutionsEnv 是同步的）改为惰性、请求内解析。
+ * 进程级缓存：canonical_origin 是部署期安全设置，不会随请求热更，按 configPath 缓存避免每次请求重复读盘。
+ */
+const canonicalOriginCache = new Map<string, Promise<string | null>>();
+
+export function readCanonicalOrigin(configPath?: string): Promise<string | null> {
+	if (!configPath) {
+		return Promise.resolve(null);
+	}
+	const cached = canonicalOriginCache.get(configPath);
+	if (cached !== undefined) {
+		return cached;
+	}
+	const p = (async () => {
+		try {
+			const bytes = await fsFace().readFile(configPath);
+			const doc = (globalThis as { yaml?: { parse: (t: string) => unknown } }).yaml?.parse(new TextDecoder().decode(bytes)) as { vars?: { canonical_origin?: unknown } } | undefined;
+			const v = doc?.vars?.canonical_origin;
+			return typeof v === "string" && v.trim() !== "" ? v.trim() : null;
+		}
+		catch {
+			return null;
+		}
+	})();
+	canonicalOriginCache.set(configPath, p);
+	return p;
+}
+
+/** 站点源补全（深检探针复用 siteOrigin；相对 URL → 绝对同源 URL；无可信源则不补全） */
+export function withSiteOrigin(fetch: FetchInitFace, canonicalOrigin?: string | null): FetchFace {
+	const o = siteOrigin(canonicalOrigin);
 	if (o === null) {
 		return fetch as FetchFace;
 	}
-	return url => fetch(/^https?:\/\//i.test(url) ? url : `${o.proto}://${o.host}${url}`) as ReturnType<FetchFace>;
+	// init（如 cache-control: no-cache）必须透传——否则按源补全会静默丢掉调用方的请求头。
+	// init 形参可选，故仍可赋给单参的 FetchFace。
+	return (url: string, init?: { headers?: Record<string, string>, redirect?: string }) => fetch(/^https?:\/\//i.test(url) ? url : `${o.proto}://${o.host}${url}`, init) as ReturnType<FetchFace>;
 }
 
 /** 站点迁移账本 head（oj journal 真源 `_oj_migrations`；表缺失/查询失败 → null = 跳过禁降版判定，不猜） */

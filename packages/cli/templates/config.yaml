@@ -83,6 +83,11 @@ db:
 # config 文档 sha，无落盘变更则热更恒失败。勿删行/勿手工回写旧值。）----
 vars:
   ojm_install_seq: 0
+  # canonical_origin（REG-CS6 Host 头 SSRF 修复）：相对 URL（/cdn 本地自供、深检路由可达性探针）
+  # 补全为同源绝对 URL 用的站点权威 origin；**绝不读请求头 Host/x-forwarded-proto**（伪造 Host 会牵引
+  # 出站到攻击者指定源）。部署侧填真实对外地址（如 https://your-site.example.com）；缺省留空 = fail-closed，
+  # 相对 URL 原样透传由下层 fetch 按站点自身地址解析，深检探针则跳过（info 项），绝不猜一个源。
+  # canonical_origin: "https://your-site.example.com"
 
 # ---- 平台 exec 白名单（ojm install 的解压/迁移两处消费；模板逐字对齐 lifecycle steps 命令构造，
 # 不得增删——多一个 token 都会 NotCapable）----

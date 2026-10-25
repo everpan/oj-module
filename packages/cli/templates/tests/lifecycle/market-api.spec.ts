@@ -213,6 +213,10 @@ function makeEnv(overrides: Partial<MarketEnv> = {}): MarketEnv {
 		modulesJsonPath,
 		apiPrefix: "/api/demo-solution",
 		configPath: join(root, "config.yaml"),
+		// REG-CS6：安装全程需 canonical origin（相对基址补全 + 冒烟探针 URL 恒相对）。生产由
+		// config.yaml vars.canonical_origin 供给；此处给固定值让既有安装用例不受缺失影响，
+		// 缺失/非法的专门用例显式覆盖为 undefined。
+		canonicalOrigin: "http://127.0.0.1:9778",
 		cdnBase: async () => CDN,
 		fetch: cdnFetch,
 		exec: bundleExec(),
@@ -405,33 +409,74 @@ describe("REG-CS4 yank（安装侧精确版本拒装）", () => {
 	});
 });
 
-describe("相对基址（feature：/cdn = 本站点自供，按请求源补全同源绝对 URL）", () => {
+describe("相对基址（REG-CS6：/cdn 自供按配置的 canonical_origin 补全，绝不读请求 Host 头防 SSRF）", () => {
 	const REL = "/cdn";
-	const HOST = "127.0.0.1:9778";
-	const relEnv = () => makeEnv({ cdnBase: async () => REL });
+	const FORGED = "169.254.169.254"; // 伪造 Host（云元数据 IP）——绝不可牵引出站
+	const relEnv = (overrides: Partial<MarketEnv> = {}) => makeEnv({ cdnBase: async () => REL, ...overrides });
 
-	it("index：索引与 .sig/manifests 拉取按请求 Host 补全为同源绝对 URL", async () => {
-		const api = createMarketApi(relEnv());
-		g.http = { user: { id: 1 }, headers: { host: HOST } };
-		await api.index.get();
-		expect(last?.status).toBe(200);
-		expect(fetchCalls).toContain(`http://${HOST}/cdn/bundles.yaml`);
-		expect(fetchCalls).toContain(`http://${HOST}/cdn/manifests.yaml`);
-	});
-
-	it("install：archive 分发包同样补全同源绝对 URL", async () => {
-		const api = createMarketApi(relEnv());
-		g.http = { user: { id: 1 }, body: { name: "demo-solution", version: "0.1.0", source: "cdn" }, headers: { host: HOST } };
+	it("自供回归：canonical_origin 配置 → 相对 /cdn URL 按配置 origin 补全绝对 URL（非 Host 头）", async () => {
+		const api = createMarketApi(relEnv({ canonicalOrigin: "http://127.0.0.1:5174" }));
+		fetchCalls.length = 0;
+		g.http = { user: { id: 1 }, body: { name: "demo-solution", version: "0.1.0", source: "cdn" }, headers: { host: FORGED } };
 		await api.install.post();
 		expect(last?.status).toBe(200);
-		expect(fetchCalls).toContain(`http://${HOST}/cdn/demo-solution-0.1.0.tgz`);
+		// 按配置的 canonical origin 补全，而非伪造 Host 头
+		expect(fetchCalls).toContain("http://127.0.0.1:5174/cdn/demo-solution-0.1.0.tgz");
+		expect(fetchCalls.some(u => String(u).includes(FORGED))).toBe(false);
 	});
 
-	it("无请求上下文（无 Host）：不猜原点，原样透传相对 URL", async () => {
-		const api = createMarketApi(relEnv());
-		g.http = { user: { id: 1 } };
+	it("index：canonical_origin 配置 → 索引与 manifests 拉取按配置 origin 补全（非 Host 头）", async () => {
+		const api = createMarketApi(relEnv({ canonicalOrigin: "http://127.0.0.1:5174" }));
+		fetchCalls.length = 0;
+		g.http = { user: { id: 1 }, headers: { host: FORGED } };
 		await api.index.get();
-		expect(fetchCalls).toContain("/cdn/bundles.yaml");
+		expect(last?.status).toBe(200);
+		expect(fetchCalls).toContain("http://127.0.0.1:5174/cdn/bundles.yaml");
+		expect(fetchCalls).toContain("http://127.0.0.1:5174/cdn/manifests.yaml");
+		expect(fetchCalls.some(u => String(u).includes(FORGED))).toBe(false);
+	});
+
+	it("index：canonical_origin 缺失 + 相对基址 → 明确报错指向 vars.canonical_origin（不回落 Host）", async () => {
+		const api = createMarketApi(relEnv({ canonicalOrigin: undefined }));
+		fetchCalls.length = 0;
+		g.http = { user: { id: 1 }, headers: { host: FORGED } };
+		await api.index.get();
+		expect(last?.status).toBe(503);
+		expect(last?.msg).toContain("vars.canonical_origin");
+		// 未发起任何出站；伪造 Host 头绝不被采用
+		expect(fetchCalls.length).toBe(0);
+		expect(fetchCalls.some(u => String(u).includes(FORGED))).toBe(false);
+	});
+
+	it("install：canonical_origin 非法（ftp://）→ 明确报错指向 vars.canonical_origin", async () => {
+		const api = createMarketApi(relEnv({ canonicalOrigin: "ftp://nope" }));
+		fetchCalls.length = 0;
+		g.http = { user: { id: 1 }, body: { name: "demo-solution", version: "0.1.0", source: "cdn" }, headers: { host: FORGED } };
+		await api.install.post();
+		expect(last?.status).toBe(503);
+		expect(last?.msg).toContain("vars.canonical_origin");
+		expect(fetchCalls.length).toBe(0);
+	});
+
+	it("install：canonical_origin 缺失（冒烟探针 URL 恒相对）→ 明确报错指向 vars.canonical_origin", async () => {
+		// 绝对基址（外部 CDN）也要 canonical origin——冒烟探针 URL 恒为站点相对路径
+		const api = createMarketApi(makeEnv({ canonicalOrigin: undefined }));
+		fetchCalls.length = 0;
+		g.http = { user: { id: 1 }, body: { name: "demo-solution", version: "0.1.0", source: "cdn" }, headers: { host: FORGED } };
+		await api.install.post();
+		expect(last?.status).toBe(503);
+		expect(last?.msg).toContain("vars.canonical_origin");
+		expect(fetchCalls.length).toBe(0);
+	});
+
+	it("绝对基址（外部 CDN）index + canonical_origin 缺失 → 无需 origin，索引照常", async () => {
+		const api = createMarketApi(makeEnv({ canonicalOrigin: undefined }));
+		fetchCalls.length = 0;
+		g.http = { user: { id: 1 }, headers: { host: FORGED } };
+		await api.index.get();
+		expect(last?.status).toBe(200);
+		expect(fetchCalls).toContain(`${CDN}bundles.yaml`);
+		expect(fetchCalls.some(u => String(u).includes(FORGED))).toBe(false);
 	});
 });
 
@@ -1149,16 +1194,19 @@ describe("P1-16 接线：marketEnv 生产口径 / exec opts 转发 / operator �
 		expect(mig?.opts).toEqual({ timeoutMs: 600000 });
 	});
 
-	it("smoke 探针同源补全：http.headers.host 在场时相对探针 URL 按请求源补全为绝对 URL（isolate fetch = deno_fetch 无同源 base，相对恒 TypeError——P1-16 接线④）", async () => {
-		const api = createMarketApi(makeEnv({}));
-		g.http = { user: { id: 1 }, body: { name: "demo-solution", version: "0.1.0", source: "cdn" }, headers: { host: "site.example:9781" } };
+	it("smoke 探针补全（REG-CS6）：按配置的 canonical_origin 补全相对探针，绝不读请求 Host 头", async () => {
+		// 配置 canonical origin；伪造 Host 头（云元数据 IP）在场，验证出站不被其牵引
+		const api = createMarketApi(makeEnv({ canonicalOrigin: "http://site.example:9781" }));
+		g.http = { user: { id: 1 }, body: { name: "demo-solution", version: "0.1.0", source: "cdn" }, headers: { host: "169.254.169.254" } };
 		await api.install.post();
 		expect(last?.status).toBe(200);
 		const taskId = (last?.data as { task_id?: unknown })?.task_id as string;
 		expect((await getTask(taskDir, taskId))?.status).toBe("done");
 		// 夹具 manifest 无 health → 探首个非匿名路由 /demo-solution → env.apiPrefix=/api/demo-solution
-		// → 相对探针 /api/demo-solution/demo-solution 补全为请求源绝对 URL
+		// → 相对探针 /api/demo-solution/demo-solution 按 canonical_origin 补全为绝对 URL
 		expect(fetchCalls).toContain("http://site.example:9781/api/demo-solution/demo-solution");
+		// 伪造 Host 头（169.254.169.254）绝不牵引出站
+		expect(fetchCalls.some(u => String(u).includes("169.254.169.254"))).toBe(false);
 		// CDN 拉取（绝对 URL）不受补全影响
 		expect(fetchCalls.some(u => u.startsWith("https://cdn.example.com/"))).toBe(true);
 	});

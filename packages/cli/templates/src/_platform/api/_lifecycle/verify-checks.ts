@@ -222,6 +222,14 @@ export interface SolutionsEnv {
 	statePath: string
 	modulesJsonPath?: string
 	apiPrefix?: string
+	/**
+	 * canonical origin（REG-CS6 Host 头 SSRF 修复）：深检探针补全用的站点权威 origin，
+	 * 取自 config.yaml `vars.canonical_origin`，**绝不读请求头 Host/x-forwarded-proto**。
+	 * 缺失 → null，探针跳过（info 项），不猜、不回落请求头。
+	 */
+	canonicalOrigin?: string
+	/** 站点 config.yaml 路径（canonical origin 读取处；缺省 config.yaml） */
+	configPath?: string
 	/** 深检报告留存目录（默认随 statePath 同目录 verify-reports；P2-8） */
 	verifyReportsDir?: string
 	fetch?: FetchInitFace

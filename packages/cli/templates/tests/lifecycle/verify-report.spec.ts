@@ -129,7 +129,9 @@ function setHttp(over: Record<string, unknown> = {}) {
 function makeEnv() {
 	// modulesJsonPath 同 verify-checks.spec：钉进临时目录（缺文件 → 跳过 web 项），
 	// 不吃模板本机 `dist/web/modules.json`。
-	return { ...solutionsEnv(), sharedRoot: root, statePath: join(root, "state.yaml"), modulesJsonPath: join(root, "modules.json"), verifyReportsDir: reportsDir };
+	// REG-CS6：深检路由可达性探针需配置 canonical_origin 才会真正出站（缺配置则跳过并打 info 项，
+	// 会让「全绿无检查项」类断言多出一项）。此处注入固定 origin + okFetch(200) → 探针通过不打项。
+	return { ...solutionsEnv(), sharedRoot: root, statePath: join(root, "state.yaml"), modulesJsonPath: join(root, "modules.json"), verifyReportsDir: reportsDir, canonicalOrigin: "http://localhost:9778" };
 }
 
 async function insertRoute(perm: string | null) {

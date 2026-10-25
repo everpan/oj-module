@@ -25,7 +25,7 @@ import {
 import { getLastReport, persistReport, verifyReportsDirOf } from "../_lifecycle/verify-report";
 import { respond } from "../_shared/respond";
 import { assertSystemAdmin } from "../_shared/service/infra/access";
-import { journalHeadOf, siteOrigin } from "../_shared/site-facade";
+import { journalHeadOf, readCanonicalOrigin, siteOrigin } from "../_shared/site-facade";
 
 /** 线格式行（与 packages/runtime/src/api/rbac/types.ts 的 SolutionRouteRow 对齐） */
 export type { SolutionRouteRow } from "../_lifecycle/verify-checks";
@@ -41,6 +41,9 @@ export function solutionsEnv(): SolutionsEnv {
 		statePath: "modules/.solutions/state.yaml",
 		modulesJsonPath: "dist/web/modules.json",
 		apiPrefix: "/api",
+		// REG-CS6：深检探针补全用 configured canonical origin，绝不读请求头 Host（防 SSRF）。
+		// 此处不同步读 config（隔离环境只有异步读盘），canonicalOrigin 留待 verifyBody 内惰性解析。
+		configPath: "config.yaml",
 	};
 }
 
@@ -96,8 +99,10 @@ async function verifyBody(env: SolutionsEnv, name: string): Promise<VerifyReport
 
 	const routes = routeRows.map(rowOf);
 
-	// ① 路由可达性（I/O 探针；siteOrigin 复用 = SSRF 钉② header 清洗，probeUrlOf 内建钉①）
-	const reach = await verifyRouteReachability(fetchOf(env), routes, siteOrigin());
+	// ① 路由可达性（I/O 探针；origin 取自配置的 canonical_origin，REG-CS6 绝不读请求头 Host——
+	// 伪造 Host（如 169.254.169.254 云元数据）不能牵引探针出站；缺配置则 null → 跳过探针 info 项）
+	const canonicalOrigin = env.canonicalOrigin ?? (env.configPath ? (await readCanonicalOrigin(env.configPath)) ?? undefined : undefined);
+	const reach = await verifyRouteReachability(fetchOf(env), routes, siteOrigin(canonicalOrigin));
 
 	// ② RBAC 完整性：声明权限点 ↔ sys_permission 实有
 	const declaredPerms = [...new Set(routes.map(r => r.required_permission).filter((p): p is string => p != null))];
