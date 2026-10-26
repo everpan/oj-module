@@ -147,7 +147,30 @@ curl -o /dev/null -w "%{http_code}\n" http://localhost:9779/wiki/space   # 200
 - 装好后的卡片状态文字是「**已启用**」，不是「已装」（「已装」只在列表页 INSTALLED 列）；
 - antd 弹窗对 Escape 不敏感，关闭就点「关 闭」按钮。
 
-## 6. 报错速查
+## 6. 板书：信任模型一张图
+
+```mermaid
+flowchart LR
+    subgraph PUB["发布方（本机）"]
+        K["ojm keygen<br/>Ed25519 密钥对"] --> S["ojm build --bundle<br/>wiki-0.1.3.tgz"]
+        S --> G["ojm sign / market publish<br/>detached 签名 .sig<br/>lesson.local:wiki@0.1.3:sha256"]
+    end
+    subgraph CDN["市场（静态托管 cdn/）"]
+        G --> I["ojm market build-index<br/>catalog.yaml + shards/1.yaml<br/>（签名走分片 archive.signature）"]
+    end
+    subgraph SITE["宿主站点（ojm preview 单服务）"]
+        I -->|"install 拉取 catalog → 分片 → tgz"| V{"服务端验签"}
+        V -->|"签名/sha256 不符"| REJ["拒装<br/>sig_missing / tampered"]
+        V -->|"签名过但 key 未入库"| TOFU{{"needs_trust（TOFU）"}}
+        TOFU -->|"指纹逐字核对后"| TC["ojm trust confirm<br/>或页面「信任并重试」"]
+        TC --> V
+        V -->|"通过"| OK["安装 + 冒烟<br/>enabled / trusted"]
+    end
+```
+
+要点：私钥只在发布方本机；宿主只存公钥，首次安装靠指纹人工核对建立信任（TOFU），之后同 key_id 的包直接放行。
+
+## 7. 报错速查
 
 | 报错 | 原因 | 处理 |
 |---|---|---|
@@ -160,7 +183,7 @@ curl -o /dev/null -w "%{http_code}\n" http://localhost:9779/wiki/space   # 200
 | 冒烟 `/api/wiki/status` 401（进程内卸载后重装） | 匿名准入表没热更：运行中的 oj 在卸载时摘了匿名注册，重装写盘但没生效 | 重启 preview 再重装（P6） |
 | 待信任确认（TOFU） | 新发布方首次安装 | 核对指纹 → `ojm trust confirm --task <id>`（或页面点信任按钮）→ 重试 |
 
-## 7. 过程中的发现
+## 8. 过程中的发现
 
 | # | 发现 | 一句话 |
 |---|---|---|
@@ -173,7 +196,7 @@ curl -o /dev/null -w "%{http_code}\n" http://localhost:9779/wiki/space   # 200
 
 另有两条市场通道的观察：`market setup` 写的 CDN 地址是从 setup 所在工程的 config 推导的（server.host:port + `/cdn`），不是命令行参数；CDN 源安装不取 `.tgz.sig`，签名走分片里的 `archive.signature`。
 
-## 8. 清理与复跑
+## 9. 清理与复跑
 
 ```bash
 ojm uninstall wiki --site-url http://localhost:9779 --user superadmin --pass 123456
