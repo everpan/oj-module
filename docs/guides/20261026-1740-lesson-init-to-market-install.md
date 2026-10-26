@@ -168,6 +168,35 @@ curl -o /dev/null -w "%{http_code}" http://localhost:9778/modules/wiki/0.1.3/ent
 | `冒烟 ... /api/wiki/status 返回 HTTP 404` | Phase 4 | 换 `ojm preview`，别用 `ojm dev` |
 | `待信任确认（发布方 ...）` | Phase 4 | 非错误：核对指纹 → `ojm trust confirm --task <id>` → 重跑 install |
 
+## 附录：远程站点怎么发布（ojm init 的产物部署到服务器之后）
+
+发布方操作全部不变（本机打包、本机签名），**只有 `--site-url` 指向远程**。变的只是「市场面在哪里」与远程站点的一次性部署前提。
+
+### 远程站点一次性前提（部署流水线）
+
+1. 服务端跑过 `ojm build`（`dist/api/versions.json` 等 release 产物随部署走，C2-09 预检要读）；
+2. `config.yaml` 配 `vars.canonical_origin: "https://<真实对外域名>"`——**必须是公网 origin**，REG-CS6 不读 Host 头、fail-closed，配内网地址会导致市场基址补全与深检探针全挂；
+3. release 形态运行（oj serve 单服务，等价 `ojm preview`）；
+4. 服务端 oj ≥ 0.1.86。
+
+### 三条发布通道（按市场面位置选）
+
+| 通道 | 适用 | 发布方动作 | 远程动作 |
+|---|---|---|---|
+| **A. 文件直传**（无需任何市场设施） | 首发、内网、应急 | `ojm build --bundle` → `ojm sign dist/wiki-<v>.tgz --id <pub> --registry-id <id>` → `ojm install dist/wiki-<v>.tgz --site-url https://remote --user superadmin --pass ***`（CLI 自动探测同目录 .sig 随包上传） | 无 |
+| **B. 站点自供 /cdn** | 单站点常规升级 | 在 **CDN 工作副本**（本地 git 副本即可）跑 `ojm market publish --real ../oj-wiki --id <pub>` + `ojm market build-index --id <pub>`，把 `cdn/` 目录随部署 **rsync/CI 同步到远端**（保持 config.yaml 的 /cdn 挂载） | 免 setup；`ojm install wiki@<v> --site-url https://remote` 即从 https://remote/cdn 拉取 |
+| **C. 外部真 CDN** | 多站点共享一个市场 | 同 B，但 cdn/ 目录由 nginx/OSS 静态托管 | `ojm market setup --site-url https://remote --user ... --pass ...` 把 `framework.market_cdn_url` 改写为 CDN 绝对地址（superadmin 角色；首跑自动处理 must_change 改密期） |
+| **D. 外部 registry 源** | 多租户目录分发 | `ojm publish <dir> --registry <url>` 上传目录 + 重建索引 | `ojm install @<scope>/<name>@<v> --registry <url> --site-url https://remote` |
+
+通道 A 已于 2026-10-26 实测：uninstall → `ojm sign` → `ojm install <tgz>`（file 上传 + .sig 随包）→ `TRUST=trusted`、冒烟 ok。
+
+### 远程发布的四个注意
+
+1. **签名 `--registry-id`**：站点侧该比对当前**未从 config 接线**（模板里 `env.registryId` 只有类型与透传，无配置来源），CDN/文件源实际跳过 REG-CS3 比对；但**往外部 registry 发布时服务端有 `registry_id_mismatch` 硬闸**——签名必须等于该 registry 的 canonical_origin。稳妥做法：一律让 registry-id = 目标市场面的 canonical_origin。
+2. **TOFU 信任确认也是远程的**：首次安装报 `待信任确认` 后，`ojm trust confirm --task <id> --site-url https://remote ...` 在发布方本机对远程执行即可，无需登服务器。
+3. **凭据别上命令行**：生产用环境变量 `OJM_SITE_URL` / `OJM_USER` / `OJM_PASS`（install/list/enable/disable/uninstall/trust 全部已支持 `--site-url`，天然远程）。
+4. **回滚远程可用**：`ojm disable wiki --site-url https://remote`（四处同步停用，秒级恢复原状）或 `ojm uninstall wiki --site-url https://remote`（业务表保留需运维手工清理）。
+
 ## 清理
 
 ```bash
