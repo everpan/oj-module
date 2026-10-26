@@ -5,6 +5,42 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 设计依据、迁移记录与陷阱清单见 [`docs/prd/202609110947-oj-module-two-package-consolidation-design.md`](docs/prd/202609110947-oj-module-two-package-consolidation-design.md)。
 
+## [0.2.42] - 2026-10-26
+
+双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步定版 **0.2.42**（延续 0.2.x 线，不进 0.3.x）。
+本轮为代码评审驱动的安全/正确性收口。
+
+### Fixed
+
+- **（关键）`tgz` 体积闸门（REG-CS8）被旧 mtime 绕过**：`extractTarEntrySize` 只锚定 `HH:MM` 时刻，
+  而 `tar -tvzf` 对 >6 月的成员省略时刻只印日期/年份，导致 size 解析为 0，大包（zip bomb）零解压零落盘
+  闸门失效。现统一锚定「日期组」（ISO 日期或月份名），取前一 token 为 size，覆盖 GNU/BSD 近期与旧 mtime 全形态。
+- **市场离线验包预发布版本完整性静默放过（REG-CS1 边界）**：`nameOf`/`versionOf` 按最后一个 `-` 切分，
+  `x-y-z.tgz` 这类预发布包永远匹配不到索引声明，篡改包被「未声明」误判为通过。现以内容摘要兜底匹配索引任一声明条目。
+- **`ojm market bootstrap` 派生 config 把 `/cdn` 的缓存头错挂到 `/` 挂载**：导致读面丢失
+  `max-age=60, stale-while-revalidate=60`，破坏 Q8「yank 最坏 120s 生效」设计。现只改 `web` 指向，
+  最小 SPA 挂载作为 `/cdn` 的同级兄弟追加在 `headers` 块之后。
+- **`--fixture` 未做路径穿越校验**：`../../x@1.0.0` 可把 tgz 写到 `cdn/` 之外。现 `parseFixtureSpec`
+  拒绝含 `..`/路径分隔符的 name/version（fail-closed）。
+- **`ojm market verify` 索引同代校验漏判缺失分片正文**：catalog 钉了某分片但盘上缺正文时仍判通过，
+  安装会 404。现对钉值分片校验正文存在性。
+- **`ojm registry import` 损坏的吊销账本被 fail-open 处理**：损坏账本当成「无记录」放行回退攻击。
+  现区分「缺失 / 合法 / 损坏」三态，损坏即拒载。
+- **`ojm registry import` 落盘夹带未验签分片**：原先按目录整扫 `shards/*.yaml` 拷贝，包内夹带的未验签
+  分片会落到服役目录。现只拷贝 catalog 钉值且已验签的分片。
+- **`reg_source_seq` 写入的 TOCTOU 竞态**：SELECT 再 INSERT 在并发首装同源时撞唯一键，未捕获异常把合法
+  并发安装误判成 500 而非 `index_state_corrupt`。现写入改为 insert-or-update 兜底，且写入失败在 guard 内
+  统一转 `index_state_corrupt`（fail-closed）。
+- **`ojm market yank` 顺序错**：先写 yank 账本再重建索引，缺 `--id` 时索引重建抛错、yank 已记却未生效。
+  现先校验 `--id` 再落账；`market` 未知子命令的帮助补齐 `verify/trial/walkthrough`。
+- **`ojm view` 对缺失/非数字 `createdAt` 抛 `RangeError`**：现回退为「（未知）」。
+
+### Changed
+
+- `market/build-index` 片号取最大值改用 `reduce`（`Math.max(...set)` 在分片数极大时撑爆调用栈）。
+- `cdn-layout` 解析 config 去重（不再重复 `yamlParse`）。
+- `ojm sign` 去冗余：`deriveName`/`deriveVersion` 合并为单次 `deriveIdentity` 调用。
+
 ## [0.3.3] - 2026-10-26
 
 双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步升 **0.3.3**。
