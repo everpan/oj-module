@@ -4,7 +4,19 @@
 > **配套**：[`framework-development-guide.md`](./framework-development-guide.md)（原理）、[`oj-fullstack-tutorial.md`](./oj-fullstack-tutorial.md)（跟做）。
 > **原则**：每一步都有**可判定通过/失败的检查点**，不要只看命令退出码，要核对产物。
 
-### 最近一次基线（2026-10-23 第三次，oj **0.1.86 npm 通道**（module-root 修复转正） / cli+runtime 0.2.25 verdaccio 复用；教程 DDD 形态实演 + --check 模块根缺陷捕获修复）
+### 最近一次基线（2026-10-26，oj 0.1.87 / cli+runtime 0.2.43 工作区态；精简后 config.yaml 必要性验证）
+
+| 项 | 值 |
+| --- | --- |
+| 日期 | 2026-10-26 |
+| 框架包版本 | 工作区态（`feat/ojm` @ 5e9a5401：config.yaml 注释简练化 + 0.2.43 bump；shell-dist 本地重建） |
+| oj | 0.1.87（init 联网下载） |
+| 验证动机 | 模板 config.yaml 注释从 152 行压到 105 行（只动注释、键值零改），用本 playbook 确认没丢必要项 |
+| 范围 | §1 脚手架 → §2 依赖 → build/preview 起服 → 探针 → 市场安装全受力（有意跳过 §4/§5 契约与前端编写：本轮不动那些面） |
+| 结果 | **通过**。① 静态 12 项必要键核对全 ✓（/cdn 挂载、server 四键、migrate_on_start、reload_api、db、vars.ojm_install_seq、platform.modules/root/exec 三命令、fs 段、anonymous_paths 五条；jwt_secret 已 ENC 密封 + secrets 键对追加，非缺项）。② init/install/build/preview 起服，`/`、`/versions.json`、`/api/_system/health`、login、market/index（setup 指向外部 CDN 后）全 200。③ **安装全受力**：market setup → install wiki@0.1.3 → TOFU（新信任库，指纹核对 lesson.ui）→ confirm → 重试 → 装完 trusted——platform.exec 逐字白名单、fs jail、vars 序号自增、迁移门禁、热更端点全程无 NotCapable/404。 |
+| 本次发现并处置 | ① **匿名准入不热更（P6 归因修正）**：运行中的 preview 进程**首次安装** wiki 后，匿名端点 `/api/wiki/status` 也 401（此前只观测到「进程内卸载后重装」触发，曾误判为重装特有）；重启进程即 200。结论改为：**匿名表只在进程启动时加载，任何运行中写入都不热更**——9778 站首装通过是因为 dev 时代的部分安装已把注册写进 manifests.yaml。规避不变：安装后重启（生产滚动发布天然满足）。② 升 runtime 后未重建 shell-dist 会触发 `ojm build` 漂移保护（`pnpm --filter @oj-module/cli build:shell` 解决；shell-dist 已改为构建期生成不入库）。③ 新工程空 cdn/ + seed 缺省 `/cdn` 自供时 market/index 报 502「catalog 拉取失败」属预期（同 10-23 基线 ②）。 |
+
+### 上一次基线（2026-10-23 第三次，oj **0.1.86 npm 通道**（module-root 修复转正） / cli+runtime 0.2.25 verdaccio 复用；教程 DDD 形态实演 + --check 模块根缺陷捕获修复）
 
 | 项 | 值 |
 | --- | --- |

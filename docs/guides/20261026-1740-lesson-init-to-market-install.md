@@ -180,7 +180,7 @@ flowchart LR
 | `安装需要站点 canonical origin`（503） | 没配 canonical_origin | config.yaml 配 `vars.canonical_origin` 并重启 |
 | 预检 `C2-09 无法读取宿主 runtime 版本` | 服务端没跑过 `ojm build`，缺 `dist/api/versions.json` | 先 build 再起服 |
 | 冒烟 `/api/wiki/status` 404 | 用了 `ojm dev` | 换 `ojm preview`（第 2 节） |
-| 冒烟 `/api/wiki/status` 401（进程内卸载后重装） | 匿名准入表没热更：运行中的 oj 在卸载时摘了匿名注册，重装写盘但没生效 | 重启 preview 再重装（P6） |
+| 冒烟 `/api/wiki/status` 401（安装后匿名访问） | 匿名表只在进程启动时加载，运行中的安装写盘不热更 | 重启 preview（P6，2026-10-26 playbook 基线坐实） |
 | 待信任确认（TOFU） | 新发布方首次安装 | 核对指纹 → `ojm trust confirm --task <id>`（或页面点信任按钮）→ 重试 |
 
 ## 8. 过程中的发现
@@ -192,7 +192,7 @@ flowchart LR
 | P3 | `market publish --real` 必须给 `--registry-id` | 本地可占位，外部 registry 必须等于对方 canonical_origin |
 | P4 | `ojm install` 要求站点配 `vars.canonical_origin`，且故意不读 Host 头 | 配公网 origin，换端口/域名要改并重启 |
 | P5 | 安装验证必须用 release 形态：`ojm dev` 下预检读不到 `dist/api/versions.json`，且装的方案 API 不在 dev 服务面 | `ojm build` + `ojm preview` |
-| P6 | 运行中的站点「卸载后立刻重装」会让匿名端点 401（模块已上线、匿名准入丢了），重启即恢复 | 教学场景卸载后重启再装；生产滚动发布本就重启，碰不到 |
+| P6 | 运行中的站点装完 wiki 后（首次安装也一样），匿名端点 `/api/wiki/status` 可能 401，重启 preview 即恢复 | 匿名表只在进程启动时加载，安装写盘不热更（归因经 playbook 2026-10-26 基线修正：并非「卸载后重装」特有） |
 
 另有两条市场通道的观察：`market setup` 写的 CDN 地址是从 setup 所在工程的 config 推导的（server.host:port + `/cdn`），不是命令行参数；CDN 源安装不取 `.tgz.sig`，签名走分片里的 `archive.signature`。
 
