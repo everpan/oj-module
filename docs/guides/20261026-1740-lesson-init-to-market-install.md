@@ -166,7 +166,61 @@ curl -o /dev/null -w "%{http_code}" http://localhost:9778/modules/wiki/0.1.3/ent
 | `安装需要站点 canonical origin`（503） | Phase 4 | config.yaml 配 `vars.canonical_origin` 并重启 |
 | `C2-09 无法读取宿主 runtime 版本` | Phase 4 | 先 `ojm build`（产 dist/api/versions.json） |
 | `冒烟 ... /api/wiki/status 返回 HTTP 404` | Phase 4 | 换 `ojm preview`，别用 `ojm dev` |
+| `冒烟 ... /api/wiki/status 返回 HTTP 401`（进程内 uninstall 后重装） | 热更缺口 P6 | 重启 preview 再重装/重试；匿名表不热更 |
 | `待信任确认（发布方 ...）` | Phase 4 | 非错误：核对指纹 → `ojm trust confirm --task <id>` → 重跑 install |
+
+## 实录：preview 单服务形态的标准远程发布作业（全新工程，2026-10-26 18:30–18:45）
+
+**形态约束**：`ojm dev` = 双端点（vite 5174 + oj 9778，两个 listener）；`ojm preview` = **单服务**（oj 单进程同端口直出 SPA + /api + /cdn 挂载，无 vite）。远程发布验证一律用 preview 形态。preview **不会自动构建**（fail-fast 四查：bin/oj、config.yaml、`dist/web/index.html`、`dist/api/manifests.yaml`），先 `ojm build`。
+
+### 作业步骤（每条均已实测）
+
+```bash
+# ① 全新脚手架（全程不跑 dev）
+ojm init oj-lesson-remote --yes
+cd oj-lesson-remote
+sed -i '' 's/port: 9778/port: 9779/' config.yaml      # 避开已占端口
+# config.yaml → vars.canonical_origin: "http://localhost:9779"（REG-CS6，先于起站配好）
+pnpm install && ojm build
+
+# ② preview 单服务启动
+ojm preview
+# [ojm] preview 已启动：http://localhost:9779
+# 单服务证据：进程树仅此一个 LISTEN（oj @ 127.0.0.1:9779，父进程 ojm 无 socket）
+# 同站点同端口三探针：GET / → 200（SPA）｜/versions.json → 200｜/api/_system/health → {"status":"OK"}
+```
+
+### 远程发布两条通道对该站的实测
+
+**通道 A（文件直传）**——新站点信任库为空，完整 TOFU 流程重放：
+
+```bash
+ojm install ../oj-wiki/dist/wiki-0.1.3.tgz --site-url http://localhost:9779 --user superadmin --pass 123456
+# → 待信任确认（发布方：lesson.pub）+ 指纹 + task id
+ojm trust confirm --task install-<ts>-<id> --site-url http://localhost:9779 --user superadmin --pass 123456
+ojm install ../oj-wiki/dist/wiki-0.1.3.tgz --site-url ...   # → 安装完成：wiki 0.1.3（含冒烟）
+```
+
+**通道 C（外部真 CDN）**——复用已运行的 CDN 工程（9783）：
+
+```bash
+cd oj-lesson-cdn && ojm market setup --site-url http://localhost:9779 --user superadmin --pass 123456
+# → 站点 http://localhost:9779 的市场地址已指向 http://127.0.0.1:9783/cdn
+cd oj-lesson-remote
+ojm uninstall wiki --site-url ...                          # 清场
+ojm install wiki@0.1.3 --site-url ...
+# CDN 服务日志实证 5 次拉取：catalog.yaml{,.sig}、shards/1.yaml{,.sig}、wiki-0.1.3.tgz
+# ⚠ 收尾冒烟 401——见下「热更缺口」；重启 preview 后重跑 install → 安装完成
+```
+
+终态：`list` = wiki 0.1.3 enabled/trusted；`/api/wiki/status` 匿名 ok；`/wiki/space` 200。
+
+### 热更缺口（反常识，P6）：运行中站点 uninstall→reinstall 后匿名端点 401
+
+- **现象**：preview 进程不重启、uninstall wiki 后立刻重装（任一通道），收尾冒烟报 `health 端点 /api/wiki/status 返回 HTTP 401`（注意不是 404——模块已上线，是**匿名准入**丢了）。`curl` 直接探也是 401 `missing or invalid bearer token`。
+- **对照**：`oj-wiki` 工程自己的 `/wiki/status` 匿名靠**宿主 config.yaml**（其第 148 行 anonymous 列表，属工程定制）；方案包经安装器注册后，**oj 运行进程的匿名表在 uninstall 时被摘除、reinstall 写盘后未热更**——重启 preview 即恢复 200。
+- **归因状态**：热更缺口已坐实（重启=恢复）；但同进程 uninstall→**file 源**重装曾有一次冒烟通过（9778 站），CDN 源重装必现 401——是否分源未完全归因，样本不足。
+- **规避**：教学/演练场景，运行中站点做过 uninstall 后，**重启 preview 再重装**（或重装后 smoke 401 即重启重试）；生产滚动发布本就重启进程，不触发。
 
 ## 附录：远程站点怎么发布（ojm init 的产物部署到服务器之后）
 

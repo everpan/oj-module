@@ -96,6 +96,16 @@
 
 **新发现（C 通道）**：① `market setup` 的 CDN 地址不是 CLI 参数，而是从 setup 所在工程的 config（server.host:port + /cdn 前缀）推导——「CDN 工程」必须按该地址可达；② CDN 源安装**不取 .tgz.sig 侧车**，签名走分片 Form B 的 archive.signature（与文件源的 detached 侧车两形态同源，verify.ts 注释）；③ 跨 origin 拉取只需远程站点配 canonical_origin，CDN 侧零配置。
 
+## 追加：preview 单服务形态远程发布（2026-10-26 18:30–18:45）
+
+全新 `ojm init`（ojm-lesson-remote，port 9779，全程不跑 dev）→ config canonical_origin → install → build → `ojm preview`：
+
+- **单服务验证**：进程树仅一个 LISTEN（oj @127.0.0.1:9779；父 ojm 进程无 socket）；`GET /`、`/versions.json`、`/api/_system/health` 三探针同站点同端口全 200。
+- **通道 A 实测**：file 上传安装触发完整 TOFU（新站点空信任库）→ confirm → 重试 → 安装完成。
+- **通道 C 实测**：CDN 工程 `market setup --site-url <9779>` → uninstall → install，CDN 日志实证 5 次拉取。
+- **P6（反常识，热更缺口）**：进程不重启、uninstall→reinstall 后 `/api/wiki/status` 冒烟 **401**（模块已上线、匿名准入丢失；oj 运行进程的匿名表 uninstall 时摘除、reinstall 写盘未热更）。**重启 preview 即恢复 200**，重跑 install 收尾完成。规避：运行中站点 uninstall 过后重启再重装。匿名真源补充：`/wiki/status` 匿名在 oj-wiki 靠宿主 config.yaml（L148 anonymous 列表），方案包依赖安装器注册。
+- **未完全归因**：同进程 uninstall→file 源重装曾冒烟通过（9778 站），CDN 源重装必现 401——是否分源差异样本不足，不下结论。
+
 ## 风险与对策
 
 | 风险 | 对策 |
