@@ -72,6 +72,20 @@ describe("given 一个正常落地的包 When 离线验包", () => {
 	});
 });
 
+describe("given 预发布版本（文件名含连字符）包体被篡改 When 离线验包", () => {
+	it("then 完整性仍能检出（不再因文件名解析错配而静默放过，REG-CS1 边界）", async () => {
+		const root = newProject();
+		await publishPackage({ projectRoot: root, fixture: "demo-solution@0.1.0-rc.1", id: KEY_ID, privateKeyPem: testPem(), registryId: REGISTRY_ID });
+		await buildIndex({ projectRoot: root, id: KEY_ID, privateKeyPem: testPem() });
+		const tgz = join(root, "cdn", "demo-solution-0.1.0-rc.1.tgz");
+		const buf = readFileSync(tgz);
+		buf[buf.length - 1] ^= 0xFF; // 篡改末字节
+		writeFileSync(tgz, buf);
+		const result = await verifyMarket({ projectRoot: root });
+		expect(itemOf(result, "完整性")?.ok).toBe(false);
+	});
+});
+
 describe("given 包体被改了一个字节 When 离线验包", () => {
 	it("then 完整性与包级签名双双打叉（sha256 不符 + 验签不过）", async () => {
 		const root = await seed();
@@ -214,7 +228,7 @@ describe("given 分片正文没了但 catalog 还钉着它 When 离线验包", (
 		const item = itemOf(result, "索引同代");
 		expect(item?.ok).toBe(false);
 		expect(item?.code).toBe("index_generation_mismatch");
-		expect(item?.detail).toContain("不可判定");
+		expect(item?.detail).toContain("正文缺失");
 	});
 });
 

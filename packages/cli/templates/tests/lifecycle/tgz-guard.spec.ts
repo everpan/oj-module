@@ -122,8 +122,26 @@ describe("extractTarEntrySize（REG-CS8 跨实现形态稳健解析）", () => {
 		expect(extractTarEntrySize("drwxr-xr-x  0 ever staff    0 10 17 12:00 wiki-0.2.0/")).toBe(0);
 	});
 
-	it("畸形行（无时间 token）回退 0，不抛错", () => {
+	it("畸形行（无日期组）回退 0，不抛错", () => {
 		expect(extractTarEntrySize("-rw-r--r--  0 ever staff")).toBe(0);
+	});
+
+	it("gNU 旧 mtime 形（省略时刻，只剩 ISO 日期）解析出 size，不漏体积闸门", () => {
+		expect(extractTarEntrySize("-rw-r--r--  0 ever staff   42 2026-10-17 wiki-0.2.0/src/manifest.yaml")).toBe(42);
+	});
+
+	it("bSD 旧 mtime 形（省略时刻，年份替代）解析出 size，不漏体积闸门", () => {
+		expect(extractTarEntrySize("-rw-r--r--  0 ever staff   42 Oct 17 2023 wiki-0.2.0/src/manifest.yaml")).toBe(42);
+	});
+
+	it("旧 mtime 大单条目仍命中 entry_too_large（REG-CS8 不漏）", () => {
+		const big = MAX_SINGLE_ENTRY_BYTES + 1;
+		const r = checkTarVolumeLimits([
+			`-rw-r--r--  0 ever staff   ${big} 2026-10-17 wiki-0.2.0/bomb`,
+		]);
+		expect(r.ok).toBe(false);
+		if (!r.ok)
+			expect(r.code).toBe("entry_too_large");
 	});
 });
 

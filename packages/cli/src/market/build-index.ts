@@ -136,7 +136,7 @@ export async function buildIndex(opts: BuildIndexOptions = {}): Promise<BuildInd
 	/** 每个槽位的编号归属：fresh = 新片（本次写），reuse = 沿用旧片（不写） */
 	type SlotRef = { kind: "fresh", no: number } | { kind: "reuse", shard: ExistingShard };
 	const refs: SlotRef[] = [];
-	let nextFresh = usedNos.size === 0 ? 1 : Math.max(...usedNos) + 1;
+	let nextFresh = usedNos.size === 0 ? 1 : maxOf(usedNos) + 1;
 	const claimed = new Set<number>();
 	for (const body of bodies) {
 		const hit = byBody.get(body);
@@ -370,6 +370,16 @@ function onDiskShardNos(shardsDir: string): number[] {
 		.map(f => Number.parseInt(f, 10))
 		.filter(n => Number.isInteger(n) && n >= 1)
 		.sort((a, b) => a - b);
+}
+
+/** 集合最大值（用 reduce 而非 Math.max(...set)，避免分片数极大时展开参数撑爆调用栈） */
+function maxOf(nums: Set<number>): number {
+	let m = 0;
+	for (const n of nums) {
+		if (n > m)
+			m = n;
+	}
+	return m;
 }
 
 /**

@@ -8,7 +8,23 @@ import { join } from "node:path";
 import { gunzipSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
 
-import { buildEvilZipSlipTgz, buildFixturePackage } from "../fixture";
+import { buildEvilZipSlipTgz, buildFixturePackage, parseFixtureSpec } from "../fixture";
+
+describe("given --fixture 规格含路径穿越 When 解析", () => {
+	it("then 含 .. 的 name 被拒（fail-closed，杜绝 cdn/staging 目录逃逸）", () => {
+		expect(() => parseFixtureSpec("../evil@1.0.0")).toThrow();
+		expect(() => parseFixtureSpec("a/../b@1.0.0")).toThrow();
+	});
+
+	it("then 含路径分隔符的 version 被拒", () => {
+		expect(() => parseFixtureSpec("demo@1.0.0/../../x")).toThrow();
+	});
+
+	it("then 合法 slug/版本仍可解析，缺省补齐", () => {
+		expect(parseFixtureSpec("my-solution@0.2.0")).toEqual({ name: "my-solution", version: "0.2.0" });
+		expect(parseFixtureSpec()).toEqual({ name: "demo-solution", version: "0.1.0" });
+	});
+});
 
 describe("given 合成 fixture 方案树 When 看 migrations 目录", () => {
 	it("then 0.1.0 只有 0001（head 上限 1）", () => {

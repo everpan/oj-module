@@ -93,7 +93,8 @@ export function signCommand(tgz: string, opts: SignOptions = {}): SignResult {
 
 	const bytes = new Uint8Array(fs.readFileSync(tgz));
 	const sha256 = createHash("sha256").update(bytes).digest("hex");
-	const canonical = canonicalString(registryId, deriveName(tgz), deriveVersion(tgz), sha256);
+	const identity = deriveIdentity(path.basename(tgz).replace(/\.tgz$/, ""));
+	const canonical = canonicalString(registryId, identity.name, identity.version, sha256);
 	const privateKeyPem = memoryPem ?? readPrivateKeyPem(keyFile!);
 	const value = signCanonical(privateKeyPem, canonical);
 	const publicKeyHex = exportRawPublicKeyHex(privateKeyPem);
@@ -120,12 +121,4 @@ function deriveIdentity(stem: string): { name: string, version: string } {
 	if (m === null)
 		throw new Error(`[ojm] 无法从文件名推导 <name>-<version>：${stem}.tgz——请按 ojm build --bundle 产物命名（或重命名后再签）`);
 	return { name: m[1]!, version: m[2]! };
-}
-
-function deriveName(tgz: string): string {
-	return deriveIdentity(path.basename(tgz).replace(/\.tgz$/, "")).name;
-}
-
-function deriveVersion(tgz: string): string {
-	return deriveIdentity(path.basename(tgz).replace(/\.tgz$/, "")).version;
 }

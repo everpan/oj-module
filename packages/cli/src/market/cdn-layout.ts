@@ -38,7 +38,8 @@ export function resolveCdnLayout(projectRoot: string): CdnLayout {
 
 /** 从 config 文本解析（纯函数，不落 IO） */
 export function resolveCdnLayoutFromConfig(configText: string, configPath: string): CdnLayout {
-	const doc = isObj(yamlParse(configText)) ? yamlParse(configText) as Record<string, unknown> : {};
+	const parsed = yamlParse(configText);
+	const doc = isObj(parsed) ? parsed : {};
 	const mount = findCdnMount(mountsOf(doc), configPath);
 	const configDir = path.dirname(configPath);
 

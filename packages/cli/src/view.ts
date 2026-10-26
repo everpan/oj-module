@@ -77,7 +77,10 @@ export async function viewCommand(raw: string | undefined, opts: ViewOptions = {
 		"GET",
 		`/api/${REGISTRY_MODULE}/packages/${encodeURIComponent(scope)}/${encodeURIComponent(name)}`,
 	);
-	const when = new Date(Number(data.createdAt)).toISOString().slice(0, 16).replace("T", " ");
+	const createdTs = Number(data.createdAt);
+	const when = Number.isFinite(createdTs) && createdTs > 0
+		? new Date(createdTs).toISOString().slice(0, 16).replace("T", " ")
+		: "（未知）";
 	emit({
 		command: "view",
 		data: { ...data, site: site.base },

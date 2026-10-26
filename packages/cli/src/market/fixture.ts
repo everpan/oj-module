@@ -23,6 +23,15 @@ export interface FixturePackage {
 export const DEFAULT_FIXTURE_NAME = "demo-solution";
 export const DEFAULT_FIXTURE_VERSION = "0.1.0";
 
+/** 方案名/版本的安全字符集（与 cdn 文件名、staging 目录名拼接，须杜绝路径穿越） */
+const SAFE_SPEC = /^[a-z0-9][\w.-]*$/i;
+
+/** fail-closed：name/version 仅允许字母数字 . _ -，且不可含 `..`，否则路径拼接会逃逸出 cdn/staging 目录 */
+function assertSafeSpec(part: string, label: string): void {
+	if (part === "" || !SAFE_SPEC.test(part) || part.includes(".."))
+		throw new Error(`[ojm] --fixture 的 ${label} 含非法字符（仅允许字母数字 . _ -，且不可含 ..）：${part}`);
+}
+
 /** 解析 `--fixture <name>@<version>`；缺省/缺段用默认值补齐 */
 export function parseFixtureSpec(spec?: string): { name: string, version: string } {
 	if (spec === undefined || spec.trim() === "" || spec === "latest")
@@ -32,7 +41,11 @@ export function parseFixtureSpec(spec?: string): { name: string, version: string
 		return { name: spec.trim(), version: DEFAULT_FIXTURE_VERSION };
 	const name = spec.slice(0, at).trim();
 	const version = spec.slice(at + 1).trim();
-	return { name: name === "" ? DEFAULT_FIXTURE_NAME : name, version: version === "" ? DEFAULT_FIXTURE_VERSION : version };
+	const safeName = name === "" ? DEFAULT_FIXTURE_NAME : name;
+	const safeVersion = version === "" ? DEFAULT_FIXTURE_VERSION : version;
+	assertSafeSpec(safeName, "name");
+	assertSafeSpec(safeVersion, "version");
+	return { name: safeName, version: safeVersion };
 }
 
 export function buildFixturePackage(opts: { stagingDir: string, name?: string, version?: string }): FixturePackage {

@@ -140,11 +140,16 @@ export async function bootstrapIsolatedSite(opts: BootstrapOptions = {}): Promis
 	cfg = cfg.replace("__JWT_SECRET__", randomBytes(32).toString("hex"));
 	// 最小 SPA 挂载：真实部署里前端路由（深检会逐条探活）由站点壳承接；没有 web 挂载时
 	// 这些路径一律 404，深检会判成 anomaly。这里放一个 index.html 就够（不构建前端）。
-	// 挂在 /cdn 之后（前缀特异性匹配，顺序无关，仅为可读）。
 	const siteDir = path.join(root, "site");
 	mkdirSync(siteDir, { recursive: true });
 	writeFileSync(path.join(siteDir, "index.html"), "<!doctype html><html><body>ojm trial site</body></html>\n", "utf-8");
-	cfg = cfg.replace("web: ./cdn", `web: ${cdnDir}\n  - prefix: /\n    web: ${siteDir}\n    spa: true`);
+	// 只改 /cdn 的 web 指向（保留其 headers 缓存头，Q8 yank 120s 设计不能丢），
+	// 再把最小 SPA 挂载作为 /cdn 的同级兄弟追加在 headers 块之后（前缀特异性匹配，顺序无关）。
+	cfg = cfg.replace("web: ./cdn", `web: ${cdnDir}`);
+	cfg = cfg.replace(
+		"      Cache-Control: 'max-age=60, stale-while-revalidate=60'",
+		`      Cache-Control: 'max-age=60, stale-while-revalidate=60'\n  - prefix: /\n    web: ${siteDir}\n    spa: true`,
+	);
 	// 安装目标恒为 release 部署：装好的模块落在 dist/api，dev 形态（--api-path src）发现不了。
 	// 故隔离站点以 dist 起站，platform.root 同步改写（oj 校验 root 必须是生效的 api 挂载目录）。
 	// root 相对 **config 所在目录** 解析——config 在隔离根，产物在 <root>/dist/api，故不能写死

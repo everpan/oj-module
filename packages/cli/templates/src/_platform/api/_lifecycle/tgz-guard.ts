@@ -58,36 +58,45 @@ export interface TarVolume {
 
 /**
  * 从 `tar -tvzf` verbose 行提取未压缩体积（字节）。
- * verbose 行形态跨实现有差异，按「时间锚点」稳健解析：先定位含 ":" 的时间 token，
- * 其左侧紧邻的日期区（ISO 日期 / 月日）之前那个数值 token 即 size——
- * 兼容 GNU（`YYYY-MM-DD HH:MM` 合并日期）、GNU 月日形、BSD（`Mon DD HH:MM`）三态。
- * 解析不出（畸形行 / 目录行无尺寸）回退 0，不影响 zip-slip 判定。
+ * 体积恒位于「日期组」紧邻左侧、成员名之前；日期组跨实现形态：
+ *   GNU:  <size> [MM DD | YYYY-MM-DD] [HH:MM]   —— 旧 mtime（>6 月）省略时刻，只剩日期
+ *   BSD:  <size> Mon DD [HH:MM | YYYY]          —— 旧 mtime 省略时刻，只剩年份
+ * 旧实现只锚定 HH:MM，旧 mtime 行（无时刻）回退 0，使大包绕过 REG-CS8 体积闸门（zip bomb）。
+ * 这里分两路：含时刻的行仍按时间回退定位（兼容 GNU-ISO / GNU 月日 / BSD 三态）；
+ * 无时刻的旧 mtime 行改锚定「日期组」（ISO 日期或月份名），取前一 token 为 size。
+ * 无日期组的畸形行回退 0。
  */
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+const MONTH = /^[A-Z]{3}$/i;
+const TIME = /^\d{1,2}:\d{2}(?::\d{2})?$/;
+const DAY_OR_YEAR = /^\d{1,2}$|^\d{4}$/;
+
+/** 定位日期组首 token 索引：含时刻则回退时间锚点；否则锚定 ISO 日期或「月份名 + 其后跟日/年份」 */
+function findDateGroupStart(tokens: string[]): number {
+	const timeIdx = tokens.findIndex(t => TIME.test(t));
+	if (timeIdx >= 1)
+		return ISO_DATE.test(tokens[timeIdx - 1]!) ? timeIdx - 1 : timeIdx - 2;
+	for (let i = tokens.length - 1; i >= 0; i--) {
+		const t = tokens[i]!;
+		if (ISO_DATE.test(t))
+			return i;
+		if (MONTH.test(t)) {
+			const next = tokens[i + 1] ?? "";
+			if (DAY_OR_YEAR.test(next))
+				return i;
+		}
+	}
+	return -1;
+}
+
 export function extractTarEntrySize(line: string): number {
 	const tokens = line.trim().split(/\s+/);
 	if (tokens.length < 2)
 		return 0;
-	let timeIdx = -1;
-	for (let i = 0; i < tokens.length; i++) {
-		if (/^\d{1,2}:\d{2}(?::\d{2})?$/.test(tokens[i]!)) {
-			timeIdx = i;
-			break;
-		}
-	}
-	if (timeIdx < 1)
+	const dateGroupStart = findDateGroupStart(tokens);
+	if (dateGroupStart < 1)
 		return 0;
-	// timeIdx-1：BSD = 日（数字）；GNU-ISO = 日期；GNU 月日形 = 日
-	const beforeTime = tokens[timeIdx - 1]!;
-	let sizeIdx: number;
-	if (/^\d{4}-\d{2}-\d{2}$/.test(beforeTime)) {
-		sizeIdx = timeIdx - 2; // GNU-ISO：日期在 timeIdx-1，size 在 timeIdx-2
-	}
-	else {
-		sizeIdx = timeIdx - 3; // BSD / GNU 月日：月(timeIdx-2) 日(timeIdx-1) 之前是 size
-	}
-	if (sizeIdx < 0)
-		return 0;
-	const n = Number(tokens[sizeIdx]);
+	const n = Number(tokens[dateGroupStart - 1]!.replace(/,/g, ""));
 	return Number.isFinite(n) ? n : 0;
 }
 

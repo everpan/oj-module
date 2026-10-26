@@ -168,7 +168,10 @@ function ledgerPath(origin: string, home: string): string {
 	return path.join(home, ".ojm", "registry", origin, "revocation-seq.json");
 }
 
-function readLedger(origin: string, home: string): SeqLedger | null {
+/** 账本状态：缺失（首次导入）/ 合法 / 损坏（存在但解析或字段非法） */
+type LedgerState = SeqLedger | null | "corrupt";
+
+function readLedger(origin: string, home: string): LedgerState {
 	const raw = readText(ledgerPath(origin, home));
 	if (raw === null)
 		return null;
@@ -177,13 +180,13 @@ function readLedger(origin: string, home: string): SeqLedger | null {
 		doc = JSON.parse(raw);
 	}
 	catch {
-		return null; // 损坏的账本不对外（fail-closed 由判定兜底）
+		return "corrupt"; // 损坏账本必须 fail-closed，不能当成「无记录」放行
 	}
 	const r = asRecord(doc, "revocation 账本");
 	const maxSeq = Number(r.max_seq);
 	const contentSha = String(r.content_sha ?? "");
 	if (!Number.isInteger(maxSeq) || maxSeq < 0)
-		return null;
+		return "corrupt";
 	return { max_seq: maxSeq, content_sha: contentSha };
 }
 
@@ -343,6 +346,8 @@ export function registryImportCommand(opts: RegistryImportOptions): RegistryImpo
 		verified++;
 		// ② seq 护栏（本地账本）
 		const ledger = readLedger(origin, home);
+		if (ledger === "corrupt")
+			throw new RegistryImportError("revocations_not_monotonic", `本源吊销账本损坏（无法读取已记录代次）——为防黑名单被回退，已拒载；请人工检查 ${ledgerPath(origin, home)}`);
 		if (ledger !== null && revocationSeq < ledger.max_seq)
 			throw new RegistryImportError("revocations_not_monotonic", `离线包吊销清单是第 ${revocationSeq} 代，本源已见过第 ${ledger.max_seq} 代或同代内容被替换/缩水（revocations_not_monotonic）——清单被回退，已拒载`);
 		if (ledger !== null && revocationSeq === ledger.max_seq && contentSha !== ledger.content_sha)
@@ -351,6 +356,8 @@ export function registryImportCommand(opts: RegistryImportOptions): RegistryImpo
 	else {
 		// 无 revocations.yaml：记录一次「无清单」导入（seq=0），确保后续更高代不被静默当成首次。
 		const ledger = readLedger(origin, home);
+		if (ledger === "corrupt")
+			throw new RegistryImportError("revocations_not_monotonic", `本源吊销账本损坏——离线包无吊销清单时无法确认未清空黑名单，已拒载；请人工检查 ${ledgerPath(origin, home)}`);
 		if (ledger !== null && ledger.max_seq > 0)
 			throw new RegistryImportError("revocations_not_monotonic", `本源已记录过吊销清单（第 ${ledger.max_seq} 代），离线包却不含清单（等于把黑名单清空），已拒载`);
 	}
@@ -367,15 +374,12 @@ export function registryImportCommand(opts: RegistryImportOptions): RegistryImpo
 		if (revSig !== null)
 			plan.push(f("revocations.yaml.sig"));
 	}
-	// 分片整目录
-	const shardDir = path.join(regDir, "shards");
-	if (fs.existsSync(shardDir)) {
-		for (const name of fs.readdirSync(shardDir).filter(n => n.endsWith(".yaml"))) {
-			plan.push(f(`shards/${name}`));
-			const sig = readText(path.join(shardDir, `${name}.sig`));
-			if (sig !== null)
-				plan.push(f(`shards/${name}.sig`));
-		}
+	// 分片：只拷贝 catalog 钉值且已验签的分片，杜绝包内夹带的未验签分片落到服役目录
+	for (const no of [...pins.keys()].sort((a, b) => a - b)) {
+		plan.push(f(`shards/${no}.yaml`));
+		const sig = readText(path.join(regDir, "shards", `${no}.yaml.sig`));
+		if (sig !== null)
+			plan.push(f(`shards/${no}.yaml.sig`));
 	}
 	// 包体（平铺）：<slug>-<version>.tgz[+.sig]
 	for (const name of fs.readdirSync(regDir).filter(n => n.endsWith(".tgz"))) {

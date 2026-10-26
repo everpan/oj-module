@@ -89,6 +89,9 @@ export async function marketCommand(sub: string, argv: string[]): Promise<void> 
 			const name = target.slice(0, at);
 			const version = target.slice(at + 1);
 			const by = flags.by ?? "local-cli";
+			// 重建索引须给签名身份——先校验再落账，避免「账本已记 yank 但索引未重建」的半成品态
+			if (flags.id === undefined)
+				throw new Error("[ojm] yank 须给定 --id <签名身份> 才能重建索引生效——请补 --id 后重试，已下线条目将随即写进分片正文（REG-CS4）");
 			const r = markYanked(process.cwd(), name, version, { by, reason: flags.reason });
 			if (r.created)
 				console.log(`[ojm] 已下线 ${name}@${version}（操作人 ${by}${flags.reason !== undefined ? `，原因：${flags.reason}` : ""}）——重建索引以生效`);
@@ -142,6 +145,6 @@ export async function marketCommand(sub: string, argv: string[]): Promise<void> 
 			return;
 		}
 		default:
-			throw new Error(`[ojm] 未知子命令：ojm market ${sub}\n可用：setup / publish / yank / build-index`);
+			throw new Error(`[ojm] 未知子命令：ojm market ${sub}\n可用：setup / publish / yank / build-index / verify / trial / walkthrough`);
 	}
 }

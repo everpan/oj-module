@@ -39,7 +39,13 @@ export async function guardAndRecordSourceSeq(source: string, seq: number): Prom
 		return { ok: false, code: "index_stale", prev };
 	if (prev === seq)
 		return { ok: true, prev };
-	await writeSourceSeq(source, seq);
+	try {
+		await writeSourceSeq(source, seq);
+	}
+	catch {
+		// 写失败按 fail-closed 转「状态损坏」——不静默重置（否则防回放被降级成「每次都当第一次见」）
+		return { ok: false, code: "index_state_corrupt", prev: null };
+	}
 	return { ok: true, prev };
 }
 
@@ -66,16 +72,17 @@ export async function readSourceSeq(source: string): Promise<number | null | "co
 	return "corrupt";
 }
 
-/** 写入（首次 insert / 其后 update）；写失败抛 —— 由调用方按 fail-closed 转成 index_state_corrupt */
+/**
+ * 记录某源的最大 seq：先 insert（首见），撞唯一键（并发首见同源）则降级为 update。
+ * 这样消除「SELECT 再 INSERT」的 TOCTOU——并发首装同源不再因唯一键冲突被误判成
+ * index_state_corrupt；任何写失败仍向上抛，由 guard 按 fail-closed 转成 index_state_corrupt。
+ */
 export async function writeSourceSeq(source: string, seq: number): Promise<void> {
 	const now = Math.floor(Date.now() / 1000);
-	const rows = await db.table(SOURCE_SEQ_TABLE)
-		.select(["source_url"])
-		.where({ field: "source_url", op: "eq", value: source })
-		.limit(1)
-		.all() as Array<unknown>;
-	if (rows.length === 0)
+	try {
 		await db.table(SOURCE_SEQ_TABLE).insert({ source_url: source, max_seq: seq, updated_at: now }).run();
-	else
+	}
+	catch {
 		await db.table(SOURCE_SEQ_TABLE).update({ max_seq: seq, updated_at: now }).where({ field: "source_url", op: "eq", value: source }).run();
+	}
 }

@@ -87,12 +87,19 @@ export function verifyMarket(opts: VerifyOptions = {}): VerifyResult {
 		const name = nameOf(file);
 		const version = versionOf(file);
 
+		// 文件名解析对含连字符的 slug / 预发布版本（x-y-z.tgz）不可靠，故以「内容摘要」兜底匹配：
+		// 优先按文件名定位声明；定位不到时改用 sha256 命中索引任一声明条目，
+		// 避免预发布包被「未声明」误判而静默放过篡改。
+		const declaredShas = new Set(declared.values());
 		const want = declared.get(`${name}@${version}`);
+		const ok = want === undefined ? declaredShas.has(sha256) : want === sha256;
 		checks.push({
 			item: "完整性",
-			ok: want === undefined || want === sha256,
+			ok,
 			detail: want === undefined
-				? `${file}：索引未声明该版本，只做了摘要计算（${sha256.slice(0, 12)}…）`
+				? (declaredShas.has(sha256)
+					? `${file}：文件名未解析到精确版本，但 sha256 与索引某条目一致（${sha256.slice(0, 12)}…）`
+					: `${file}：索引未声明该文件名对应版本，且 sha256 与索引任何条目都不一致（疑似篡改或未发布）（${sha256.slice(0, 12)}…）`)
 				: `${file}：${want === sha256 ? `sha256 与索引一致（${sha256.slice(0, 12)}…）` : `sha256 不一致（索引 ${want.slice(0, 12)}… vs 实际 ${sha256.slice(0, 12)}…）`}`,
 		});
 
@@ -241,6 +248,10 @@ export function generationCheck(index: IndexSnapshot): VerifyCheck {
 		return { item: "索引同代", ok: false, code: "index_generation_mismatch", detail: `catalog.yaml 正文是第 ${catalogSeq} 代、签名是第 ${String(catalogSigSeq ?? "无")} 代——源正在重建索引，请稍后重试（index_generation_mismatch）` };
 	const pins = shardPinsOf(index.catalogText!);
 	for (const [no, pinSeq] of pins) {
+		// 钉值分册的正文必须存在：catalog 引用了某分册但盘上缺失 → 安装会 404，须判失败而非放过。
+		if (!fs.existsSync(path.join(index.shardsDir, `${no}.yaml`))) {
+			return { item: "索引同代", ok: false, code: "index_generation_mismatch", detail: `shards/${no}.yaml 正文缺失（catalog 钉第 ${pinSeq} 代）——分册丢失或源正在重建索引，请稍后重试（index_generation_mismatch）` };
+		}
 		const sig = readSigJson(path.join(index.shardsDir, `${no}.yaml.sig`));
 		const sigSeq = sigSeqOf(sig);
 		if (sigSeq === null)
