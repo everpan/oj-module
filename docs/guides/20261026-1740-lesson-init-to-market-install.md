@@ -181,14 +181,41 @@ curl -o /dev/null -w "%{http_code}" http://localhost:9778/modules/wiki/0.1.3/ent
 
 ### 三条发布通道（按市场面位置选）
 
-| 通道 | 适用 | 发布方动作 | 远程动作 |
-|---|---|---|---|
-| **A. 文件直传**（无需任何市场设施） | 首发、内网、应急 | `ojm build --bundle` → `ojm sign dist/wiki-<v>.tgz --id <pub> --registry-id <id>` → `ojm install dist/wiki-<v>.tgz --site-url https://remote --user superadmin --pass ***`（CLI 自动探测同目录 .sig 随包上传） | 无 |
-| **B. 站点自供 /cdn** | 单站点常规升级 | 在 **CDN 工作副本**（本地 git 副本即可）跑 `ojm market publish --real ../oj-wiki --id <pub>` + `ojm market build-index --id <pub>`，把 `cdn/` 目录随部署 **rsync/CI 同步到远端**（保持 config.yaml 的 /cdn 挂载） | 免 setup；`ojm install wiki@<v> --site-url https://remote` 即从 https://remote/cdn 拉取 |
-| **C. 外部真 CDN** | 多站点共享一个市场 | 同 B，但 cdn/ 目录由 nginx/OSS 静态托管 | `ojm market setup --site-url https://remote --user ... --pass ...` 把 `framework.market_cdn_url` 改写为 CDN 绝对地址（superadmin 角色；首跑自动处理 must_change 改密期） |
-| **D. 外部 registry 源** | 多租户目录分发 | `ojm publish <dir> --registry <url>` 上传目录 + 重建索引 | `ojm install @<scope>/<name>@<v> --registry <url> --site-url https://remote` |
+| 通道 | 适用 | 发布方动作 | 远程动作 | 验证状态 |
+|---|---|---|---|---|
+| **A. 文件直传**（无需任何市场设施） | 首发、内网、应急 | `ojm build --bundle` → `ojm sign dist/wiki-<v>.tgz --id <pub> --registry-id <id>` → `ojm install dist/wiki-<v>.tgz --site-url https://remote --user superadmin --pass ***`（CLI 自动探测同目录 .sig 随包上传） | 无 | ✅ 2026-10-26 实测（uninstall→sign→install→trusted→冒烟 ok） |
+| **B. 站点自供 /cdn** | 单站点常规升级 | 在 **CDN 工作副本**（本地 git 副本即可）跑 `ojm market publish --real ../oj-wiki --id <pub>` + `ojm market build-index --id <pub>`，把 `cdn/` 目录随部署 **rsync/CI 同步到远端**（保持 config.yaml 的 /cdn 挂载） | 免 setup；`ojm install wiki@<v> --site-url https://remote` 即从 https://remote/cdn 拉取 | ✅ 主链路 UC4 即此形态（install 经站点自身 /cdn 拉 catalog/shards/tgz） |
+| **C. 外部真 CDN** | 多站点共享一个市场 | 同 B，但 cdn/ 目录由 nginx/OSS 静态托管 | `ojm market setup --site-url https://remote --user ... --pass ...` 把 `framework.market_cdn_url` 改写为 CDN 绝对地址（superadmin 角色；首跑自动处理 must_change 改密期） | ✅ 2026-10-26 实测（见下方实录） |
+| **D. 外部 registry 源** | 多租户目录分发 | `ojm publish <dir> --registry <url>` 上传目录 + 重建索引 | `ojm install @<scope>/<name>@<v> --registry <url> --site-url https://remote`（凭据走 `OJM_REGISTRY_TOKEN`） | ⬜ 未实测：registry 是需要 token 鉴权的外部服务（非静态目录），本机无可起的 registry 服务端 |
 
 通道 A 已于 2026-10-26 实测：uninstall → `ojm sign` → `ojm install <tgz>`（file 上传 + .sig 随包）→ `TRUST=trusted`、冒烟 ok。
+
+### 通道 C 实测实录（本地双工程模拟「发布方 CDN ↔ 远程站点」）
+
+```
+CDN 侧（ojm-lesson-cdn 工程，config server.port=9783）：
+  ojm market publish --real ../oj-wiki --id lesson.pub --registry-id lesson.local
+  ojm market build-index --id lesson.pub          # cdn/ 得 catalog+shards+tgz+sig
+  python3 -m http.server 9783                     # 模拟 nginx/OSS 静态托管（托管工程根，/cdn 为前缀）
+
+远程站点侧（ojm-lesson-scaffold @ 9778）：
+  ojm market setup --site-url http://localhost:9778 --user superadmin --pass 123456
+  # → 市场地址已设置：http://127.0.0.1:9783/cdn
+  #   （绝对地址 = setup 所在工程的 server.host:port + /cdn 前缀，写入远程站点的 framework.market_cdn_url）
+  ojm uninstall wiki --site-url ...               # 清场
+  ojm install wiki@0.1.3 --site-url ...
+  # CDN 服务访问日志（拉取真实发生在此 origin 的证据）：
+  #   GET /cdn/catalog.yaml  → 200      （第 1 次：目录预检）
+  #   GET /cdn/catalog.yaml.sig → 200   （索引验签）
+  #   GET /cdn/shards/1.yaml{,.sig} → 200
+  #   GET /cdn/wiki-0.1.3.tgz → 200
+  # 注意：CDN 源不取 .tgz.sig 侧车——签名走分片 Form B 的 archive.signature（verify.ts 注释两形态同源）
+```
+
+要点：
+1. `market setup` 的地址不是参数，是**从 setup 所在工程的 config 推导**（`server.host:port` + `/cdn` 挂载前缀）——所以「CDN 工程」要能按这个地址被远程访问到；改端口要改 config 再 setup。
+2. 跨 origin 拉取能通，靠远程站点自己的 `canonical_origin`（REG-CS6）做 URL 补全与深检探针，CDN 侧无需任何配置。
+3. 终态复验：`list` = wiki 0.1.3 enabled/trusted，`/api/wiki/status` ok。
 
 ### 远程发布的四个注意
 

@@ -85,6 +85,17 @@
 
 **遗留**：① verify.ts 修复待随 cli 下个版本发布（verdaccio 0.2.42 不含），教案已注明用活代码验证；② 教案落 `docs/guides/20261026-1740-lesson-init-to-market-install.md`（同分支提交）。
 
+## 追加：远程发布通道验证（2026-10-26 18:00–18:25）
+
+| 通道 | 结果 | 证据 |
+|---|---|---|
+| A 文件直传 | ✅（上轮已验） | uninstall→sign→install→trusted→冒烟 ok |
+| B 站点自供 /cdn | ✅ 无需复验 | 主链路 UC4 即此形态 |
+| C 外部真 CDN | ✅ 本轮实测 | 双工程模拟：CDN 工程（ojm-lesson-cdn，config port=9783，python http.server 静态托管）publish+build-index → `ojm market setup --site-url <远程 9778>` 把 framework.market_cdn_url 改写为 `http://127.0.0.1:9783/cdn` → 远程 uninstall/install → **CDN 访问日志实证 6 次 GET /cdn/**（catalog{,.sig}、shards/1.yaml{,.sig}、tgz）→ list=trusted、冒烟 ok |
+| D 外部 registry | ⬜ 未实测 | registry 为需 token（OJM_REGISTRY_TOKEN）鉴权的外部服务，非静态目录，本机无可起的 registry 服务端 |
+
+**新发现（C 通道）**：① `market setup` 的 CDN 地址不是 CLI 参数，而是从 setup 所在工程的 config（server.host:port + /cdn 前缀）推导——「CDN 工程」必须按该地址可达；② CDN 源安装**不取 .tgz.sig 侧车**，签名走分片 Form B 的 archive.signature（与文件源的 detached 侧车两形态同源，verify.ts 注释）；③ 跨 origin 拉取只需远程站点配 canonical_origin，CDN 侧零配置。
+
 ## 风险与对策
 
 | 风险 | 对策 |
