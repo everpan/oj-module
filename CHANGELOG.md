@@ -5,6 +5,19 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 设计依据、迁移记录与陷阱清单见 [`docs/prd/202609110947-oj-module-two-package-consolidation-design.md`](docs/prd/202609110947-oj-module-two-package-consolidation-design.md)。
 
+## [0.2.43] - 2026-10-26
+
+双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步定版 **0.2.43**（延续 0.2.x 线，不进 0.3.x）。
+本轮为市场验包契约一致性修复（教案全链路实测中发现）。
+
+### Fixed
+
+- **`ojm market verify` 把契约可选的 `archive` 当 manifest 必填，真实工程包验包必红**：
+  REG-CS8 引入的 structureCheck 将 `archive` 列入必填字段，但契约 C2-29 明确其可整体省略
+  （Form A 占位仅 file；sha256/size/signature 由索引侧填 Form B），且 `ojm build --bundle`
+  对真实方案逐字拷贝 solution.yaml、从不注入该字段——只有自带占位的 `--fixture` 合成包能验过。
+  现必填集回归 name/version/summary/peerRuntime，并补「摘 archive 重打包验包」回归用例。
+
 ## [0.2.42] - 2026-10-26
 
 双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步定版 **0.2.42**（延续 0.2.x 线，不进 0.3.x）。
