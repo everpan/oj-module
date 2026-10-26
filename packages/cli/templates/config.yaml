@@ -1,117 +1,61 @@
-# oj 服务配置（字段语义见 oj 后端开发手册 oj-api-dev / 或 oj --help）。
-# 本文件由 ojm init 生成；config 内相对路径相对本文件所在目录。
-# 更多能力见手册 §10：vars / broker / tasks / oidc / ws / html_meta / secrets。
-#
-# ---- 证书与密钥的唯一落点：`./config/`（= 工程根/config/，本文件同级的子目录）----
-# 三件套由 `ojm init` 现场签发（dev 缺证时 `ojm dev` 也会补签），逐把的作用与后果：
-#
-#   ① private.pem —— 证书签发私钥（RSA 2048）。只用来给 ③ 签名，**oj 不读它**，
-#      也绝不出部署机、不入仓。丢了不需要恢复：重新签发一套即可（旧的 ③ 作废）。
-#   ② public.pem  —— 与 ① 成对的公钥，oj 启动时拿它验 ③ 的 RS256 签名。
-#      配错路径或与 ③ 不是同一对 → oj 验签失败、启动即拒（读作「证书无效」）。
-#      由 server.public_key_path 引用。
-#   ③ cert.jws    —— JWS 证书（RS256 紧凑三段，payload 仅 nbf/exp），**oj 的启动闸门**：
-#      缺失、过期、签名对不上 → fail-fast 拒启，devkit 手册明确**无任何 config/CLI 绕过开关**。
-#      默认有效期 3650 天（短有效期等于定时炸弹）；过期只能重新签发一套 ①②③。
-#      由 server.certificate_path 引用。
-#
-# 另有一对与上面无关的密钥（jwt_secret 密封用，init 密封成功后追加到本文件末尾）：
-#   secrets.private_key_path  ./config/secrets-private.pem  解 jwt_secret 密文的私钥，只放部署机
-#   secrets.public_key_path   ./config/secrets-public.pem   加密用的公钥，可随代码分发
-#   （密文形如 ENC 后跟方括号包裹的字串；未密封时 config 里是 32 字节十六进制明文）
-#
-# ojm 侧的解析入口是 `resolveCertDir()`，由本文件位置派生；改落点只需动那一处 + 本段注释。
+# oj 服务配置（字段手册见 devkit oj-api-dev / oj --help）。由 ojm init 生成，相对路径相对本文件所在目录。
 
-# 站点挂载（oj v0.1.58 起顶层扁平表：一行=一个 URL 前缀+一个目录，api/web 恰好其一）。
-# 被删除的 server.api_prefix / app_spa_fallback 已由 mounts 取代；
-# ojm dev 的 SPA 深链回落由 ojm 自建静态层负责；ojm preview 为单服务形态，
-# 现场生成派生 config（.ojm-preview.yaml，注入下面的 web 挂载 + spa: true），无需手改。
-#
-# **这里没有 api 挂载是有意的**：本工程是 `src/<name>/{api,web}` 布局，模块分散在
-# `src/<name>/api` 下，而 mounts 的 api 项按 `<目录>/<模块>/manifest.yaml` 单层解析、
-# 不会递归（实测报 `module 'x' missing manifest.yaml`）。源码形态由 `ojm dev` 用
-# `--module-root src` 供给，产物形态由 `ojm preview` 用 `--api-path dist/api` 供给；
-# 两者与 mounts 的 api 项同时出现还会报「module declared in multiple places」。
-# 手写部署（不经 ojm）时才需要自己加回一条 `- prefix: /api` + `api: dist`。
+# ---- 证书三件套在 ./config/（init 已现场签发）----
+#   private.pem  签发私钥：只用于给 cert.jws 签名，oj 不读它；泄露或丢失就重签一套，旧的作废
+#   public.pem   oj 启动时验 cert.jws 签名用（server.public_key_path）
+#   cert.jws     启动闸门：缺失/过期/签名不符直接拒启，无 config/CLI 绕过（默认 10 年有效期）
+# 另有一对 secrets-*.pem：init 密封 jwt_secret 后追加到本文件末尾，同样只放部署机。
+
+# 站点挂载：一行 = 一个 URL 前缀 + 一个目录（api/web 二选一）。
+# 这里不放 api 挂载是有意的：本工程是 src/<name>/{api,web} 布局，源码由 ojm dev
+# 以 --module-root src 供给、产物由 ojm preview 以 --api-path dist/api 供给，都不走 mounts。
+# 手写部署（不用 ojm）时才需要加回一条 `- prefix: /api` + `api: dist`。
 mounts:
-  # 本地模拟 CDN：直出工程根 cdn/（内容见 cdn/README.md）。
-  # seed 的 framework.market_cdn_url 缺省即 /cdn（本站点自供），新工程免 market setup。
-  # 红线：生产请删掉这一条挂载，并把 system 设置 framework.market_cdn_url 指向真 CDN（绝对地址）。
-  # 不得给此挂载设 spa——缺文件必须返回 404，回落 index.html 会让市场解析崩。
+  # 本地市场 CDN：直出工程根 cdn/。seed 里 framework.market_cdn_url 缺省就是 /cdn，本站点自供免 setup。
+  # 生产删掉这条，并把该设置指向真 CDN（绝对地址）。不能设 spa：缺文件必须 404，
+  # 回落 index.html 会让市场解析崩。
   - prefix: /cdn
     web: ./cdn
-    # REG-CS5 缓存头（读面）：索引（catalog/shards）与内容寻址包体统一 60s 新鲜窗口 +
-    # 60s stale-while-revalidate——yank 最坏 120s 生效（Q8）。ETag/If-None-Match→304 由 oj
-    # 静态层原生支持；本头只加在读面（静态挂载），写入面（ojm market build-index）不发 HTTP 头。
+    # 读面缓存 60s：yank 最坏 120s 生效。304 由 oj 静态层自带，这里只管新鲜窗口。
     headers:
       Cache-Control: 'max-age=60, stale-while-revalidate=60'
-  # 生产若由 oj 直出前端（前后端同进程，即 ojm preview 的生产形态），
-  # 取消下一行注释并先 build 出 dist/web（preview 会自动注入等价挂载，无需手改）：
+  # 生产要 oj 直出前端（前后端同端口的 SPA，即 ojm preview 形态）就解开下面三行，先 ojm build。
+  # preview 自己会注入等价挂载，平时不用动。
   # - prefix: "/"
-  #   web: "./dist/web"   # 相对 config.yaml → 工程根/dist/web
+  #   web: "./dist/web"   # 相对本文件 → 工程根/dist/web
   #   spa: true
-  # 嵌套 handler 组（oj v0.1.64）无需配置开关，组织方式见 api.ts 顶部注释。
 
 server:
-  host: 127.0.0.1 # 显式钉死：oj 默认绑 [::1]，localhost 解析序在反代下有坑
+  host: 127.0.0.1 # 钉死 127.0.0.1：oj 默认绑 [::1]，localhost 在反代下解析有坑
   port: 9778
   public_key_path: ./config/public.pem
   certificate_path: ./config/cert.jws
-  # ---- 迁移门禁 ----
-  # auto = dev 缺省（启动即应用）；release 缺省是 verify（账本落后拒启，先 oj migrate）。
-  # 显式写出来：dev 的隐式 DB 副作用不再靠「模式默认值」猜，release 也不会因缺省拒启。
-  migrate_on_start: auto
-  # ---- 入参契约（v0.1.44）----
-  # 契约生成的 .schema 在此生效：违反即 400 且 handler 不执行。
-  # 关掉等于退回「后端零校验」，仅在 .schema 与旧 handler 冲突时临时逃生。
-  schema_validation: true
-  # ---- 单 isolate 堆限额（v0.1.40，默认 256MiB，下限 32MiB）----
-  js_heap_limit_bytes: 268435456
-  # ---- 路由级超时（v0.1.30）：pattern 按声明序首个命中，且是含 base 的全路径 ----
-  route_timeouts: []
-  # ---- 统一响应头（v0.1.30）----
-  response_headers: {}
-  # ---- 热更端点（ojm install 的 reloading 段消费；显式关闭 = 安装器 reloading 段可读失败）----
-  # ojm:reload
-  reload_api: true
-  # ---- 直传路由 PUT {base}/blob/{key} 的体积上限（v0.1.30，默认 1GiB）----
-  # 与 max_upload_bytes（multipart，默认 10MB）是两套闸，别混。
-  blob_upload_max_bytes: 1073741824
-  # ---- CORS（v0.1.35）：缺这一段 = 不挂 CORS 层；credentials 必须配显式 origins ----
+  migrate_on_start: auto # auto=启动即迁移；release 建议 verify（账本落后拒启，先 oj migrate）
+  schema_validation: true # 契约 .schema 违反即 400；仅当 .schema 与旧 handler 冲突时临时关
+  js_heap_limit_bytes: 268435456 # 单 isolate 堆限额（默认 256MiB，下限 32MiB）
+  route_timeouts: [] # 路由级超时；pattern 按声明序首个命中，写含 base 的全路径
+  response_headers: {} # 统一响应头
+  reload_api: true # 热更端点 /ojm:reload：安装器的 reloading 段要用，关掉安装会失败
+  blob_upload_max_bytes: 1073741824 # PUT blob 单文件上限（默认 1GiB；与 multipart 的 10MB 是两道闸）
   cors:
-    origins: [] # 留空 = 放行任意源；要带凭据则必须列出具体源
+    origins: [] # 空 = 放行任意源；要带凭据必须列具体源
     credentials: false
 db:
   default: 'sqlite://db.sqlite' # 相对 config 目录；缺文件自动建空库
 
-# ---- 安装序号（ojm install 每次安装自增一次，作为 reload 热更触发变更——unchanged 判定基于
-# config 文档 sha，无落盘变更则热更恒失败。勿删行/勿手工回写旧值。）----
 vars:
+  # ojm install 每次安装自增一次，用来触发 reload 热更。别删行、别手工回写旧值。
   ojm_install_seq: 0
-  # canonical_origin（REG-CS6 Host 头 SSRF 修复）：相对 URL（/cdn 本地自供、深检路由可达性探针）
-  # 补全为同源绝对 URL 用的站点权威 origin；**绝不读请求头 Host/x-forwarded-proto**（伪造 Host 会牵引
-  # 出站到攻击者指定源）。部署侧填真实对外地址（如 https://your-site.example.com）；缺省留空 = fail-closed，
-  # 相对 URL 原样透传由下层 fetch 按站点自身地址解析，深检探针则跳过（info 项），绝不猜一个源。
+  # 站点对外地址。装方案时服务端拿它把 /cdn 这类相对地址补全成绝对 URL（深检探针也用它）。
+  # 故意不读请求头 Host（防伪造 Host 牵引出站）：不配 = fail-closed，不会替你猜。
   # canonical_origin: "https://your-site.example.com"
 
-# ---- 平台 exec 白名单（ojm install 的解压/迁移两处消费；模板逐字对齐 lifecycle steps 命令构造，
-# 不得增删——多一个 token 都会 NotCapable）----
 platform:
-  # 平台特权模块名单：方案安装器的 reloading 段调 server.reloadConfig 触发热更。
-  # 缺这条 → 装在最后一步报 NotCapable: module '_platform' is not platform-privileged。
-  modules: [_platform]
-  # 受控根 = 后端模块源码根（`src/<name>/api` 的父目录，即 src）。ojm preview 派生 config
-  # 时会改写为 dist，保持与 `--api-path` 同源；手写部署请按实际模块根填写。
-  root: src
-  # ---- U6 信任库加固（P3-1；P2-2 红线 spike 结论）----
-  # 威胁：devkit 0.1.75 语义下 fs: 段对全部模块生效（jail = fs.root），且 trusted_paths 只增不减——
-  # 信任库落在第三方方案模块可写的 fs.root 内即可被其伪造信任锚。加固须两端配合：
-  # ① 本模板已将信任库默认路径移出 modules/ 安装子树（见 _lifecycle 默认 `.solutions/trusted-keys.yaml`，
-  #    落在 fs.root 之外的部署根，第三方方案模块 jail 之外）；
-  # ② **部署侧**须按 oj 语义补 `platform.trusted_paths`（指向运行时信任库目录，该目录须先存在——
-  #    oj 对不存在的 trusted_paths 装配 fail-fast，故不可在模板里硬编码尚未创建的目录）显式授权给
-  #    _platform 特权模块写信任库，并收窄第三方方案模块的 fs.root 至其安装子树，方可彻底隔离。
-  # 本仓负责①（代码路径）；②属部署/上游配置，留作部署清单项（P3-1 备案，不硬编码以免 oj serve 装配失败）。
+  modules: [_platform] # 安装器热更 config 需要 _platform 特权；删了会在装到最后一步报 NotCapable
+  root: src # 后端模块源码根（src/<name>/api 的父目录）；preview 派生 config 时改写成 dist
+  # 信任库默认落在安装子树之外（.solutions/trusted-keys.yaml），第三方方案模块碰不到。
+  # 部署侧还应补 platform.trusted_paths 授权 _platform 写库、并把第三方模块 fs.root 收窄到各自安装子树。
+  # 下面三条命令与安装器逐字对齐（含每个空格），一个 token 都不能动：
   exec:
     _platform:
       allow:
@@ -119,18 +63,14 @@ platform:
         - 'tar -xzf ${path:archive} -C ${path:dest}'
         - 'oj migrate --format json -d ${path:dir} ${raw:module}'
 
-# ---- 方案安装器的落盘面（fs.* 全局）----
-# 安装器要解包到 modules/.staging、写 dist/modules、备份 db.sqlite——全在 config 目录内。
-# 缺本段 = fs.* 抛 NotCapable，且失败发生在任务文件落盘之前：表现为「POST 安装返回 200、
-# 但 task 查询恒 404」，排查成本极高。生产收紧口径见上面 platform 段的 U6 说明
-# （fs.root 收窄到安装子树 + third-party 模块 jail 隔离属部署清单项）。
+# 安装器落盘面：解包到 modules/.staging、写 dist/modules、备份 db.sqlite，全在 config 目录内。
+# 缺这段会 NotCapable，且症状很阴：安装提交返回 200，但 task 查询恒 404。
 fs:
   root: .
   readonly: false
 
-# ---- LDAP 连接段（D1/PRD §4.5 两段式之连接段；oj 插件严格解析本段，未知键启动 fail-fast——只写下列键）----
-# 取消注释并填值即接通目录服务；应用映射段在 DB/设置页（ldap.enabled、ldap_base_dn、
-# ldap_uid_attr、ldap_email_attr，group=ldap，即时生效）。本段改动属 restart_pending，需重启。
+# LDAP 连接段：解开注释填值即接通目录服务；字段映射在「系统设置 → LDAP」里配，改本段要重启。
+# oj 严格解析这段，只写下面这些键，多一个键启动 fail-fast。
 # ldap:
 #  url: "ldap://127.0.0.1:389"
 #  bind_dn: ""
@@ -138,14 +78,14 @@ fs:
 #  timeout_ms: 3000
 #  start_tls: false
 #  tls_skip_verify: false
+
 auth:
   jwt_secret: __JWT_SECRET__ # init 随机生成；生产必须更换
   access_token_duration: 2h
   refresh_token_duration: 720h
-  anonymous_paths: # auth 端点是业务路由，必须显式匿名（漏列则握手 401，见 ojm 开发手册 §8）
+  anonymous_paths: # 不带 token 也能访问的路径；漏列则未登录访问一律 401
     - /auth/login
-    - /auth/ldap-login # D1/AC1-12：LDAP 目录登录（匿名）
+    - /auth/ldap-login # LDAP 目录登录
     - /auth/refresh
     - /auth/logout
-    # 登录页登录方式 Tabs 数据源（C5/AC2-2）：未登录即可读
-    - /system/login-methods
+    - /system/login-methods # 登录页「登录方式」Tabs 的数据源，未登录就要能读
