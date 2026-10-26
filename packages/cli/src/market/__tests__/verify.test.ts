@@ -11,13 +11,16 @@ import { Buffer } from "node:buffer";
 import { generateKeyPairSync } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 import { parse, stringify } from "yaml";
+import { createDeterministicTgz } from "../../deterministic-tar";
 import { recomputeIndex, signIndex } from "../../publish";
+import { signCommand } from "../../sign";
 import { buildIndex } from "../build-index";
 import { publishPackage } from "../publish";
+import { readTgz } from "../scan";
 import { verifyMarket } from "../verify";
 
 const MOUNTS = "  - prefix: /api\n    api: src\n  - prefix: /cdn\n    web: ../cdn\n";
@@ -69,6 +72,34 @@ describe("given 一个正常落地的包 When 离线验包", () => {
 		expect(sigs.every(c => c.ok)).toBe(true);
 		expect(itemOf(result, "manifest 结构")?.ok).toBe(true);
 		expect(result.conclusion).toContain("不构成内容安全性背书");
+	});
+});
+
+describe("given 真实工程包（manifest 按 C2-29 整体省略 archive 占位）When 离线验包", () => {
+	it("then manifest 结构不因此打叉（REG-CS8 回归：ojm build --bundle 不落 archive ≠ 缺必填）", async () => {
+		const root = await seed();
+		const tgz = join(root, "cdn", "demo-solution-0.1.0.tgz");
+		// 解包 → 摘掉根 manifest 的 archive（fixture 有、真实方案无的字段差）→ 确定性重打包 → 重签 → 重建索引
+		const staging = mkdtempSync(join(tmpdir(), "ojm-verify-noarchive-"));
+		for (const e of readTgz(new Uint8Array(readFileSync(tgz)))) {
+			if (e.name.endsWith("/"))
+				continue;
+			const abs = join(staging, e.name);
+			mkdirSync(dirname(abs), { recursive: true });
+			writeFileSync(abs, e.content);
+		}
+		const rootManifestPath = join(staging, "manifest.yaml");
+		const manifest = parse(readFileSync(rootManifestPath, "utf-8")) as Record<string, unknown>;
+		delete manifest.archive;
+		writeFileSync(rootManifestPath, stringify(manifest));
+		await createDeterministicTgz(staging, tgz);
+		signCommand(tgz, { id: KEY_ID, privateKeyPem: testPem(), registryId: REGISTRY_ID });
+		await buildIndex({ projectRoot: root, id: KEY_ID, privateKeyPem: testPem() });
+
+		const result = await verifyMarket({ projectRoot: root });
+
+		expect(itemOf(result, "manifest 结构")?.ok).toBe(true);
+		rmSync(staging, { recursive: true, force: true });
 	});
 });
 

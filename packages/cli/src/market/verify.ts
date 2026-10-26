@@ -295,7 +295,11 @@ export function expiryCheck(text: string | null): VerifyCheck {
 	};
 }
 
-/** manifest 结构：必填字段 + 内嵌原生清单 desc 非空（等值要求已移除，见 §9.3） */
+/**
+ * manifest 结构：必填字段 + 内嵌原生清单 desc 非空（等值要求已移除，见 §9.3）。
+ *  必填不含 archive：契约 C2-29 允许 Form A 整体省略，`ojm build --bundle` 对真实方案的
+ *  落盘形态即省略（fixture 会写 file 占位）——把它当必填会让一切真实工程包验包必红。
+ */
 function structureCheck(bytes: Uint8Array, file: string): VerifyCheck[] {
 	let entries: ReturnType<typeof readTgz>;
 	try {
@@ -308,12 +312,12 @@ function structureCheck(bytes: Uint8Array, file: string): VerifyCheck[] {
 	if (root === undefined)
 		return [{ item: "manifest 结构", ok: false, detail: `${file}：包内缺 manifest.yaml` }];
 	const manifest = (yamlParse(root.content.toString("utf-8")) ?? {}) as Record<string, unknown>;
-	const missing = ["name", "version", "summary", "peerRuntime", "archive"].filter(k => manifest[k] === undefined);
+	const missing = ["name", "version", "summary", "peerRuntime"].filter(k => manifest[k] === undefined);
 	const out: VerifyCheck[] = [{
 		item: "manifest 结构",
 		ok: missing.length === 0,
 		detail: missing.length === 0
-			? `${file}：必填字段齐备（name/version/summary/peerRuntime/archive）`
+			? `${file}：必填字段齐备（name/version/summary/peerRuntime）`
 			: `${file}：缺必填字段 ${missing.join(", ")}`,
 	}];
 
