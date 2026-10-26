@@ -106,6 +106,13 @@
 - **P6（反常识，热更缺口）**：进程不重启、uninstall→reinstall 后 `/api/wiki/status` 冒烟 **401**（模块已上线、匿名准入丢失；oj 运行进程的匿名表 uninstall 时摘除、reinstall 写盘未热更）。**重启 preview 即恢复 200**，重跑 install 收尾完成。规避：运行中站点 uninstall 过后重启再重装。匿名真源补充：`/wiki/status` 匿名在 oj-wiki 靠宿主 config.yaml（L148 anonymous 列表），方案包依赖安装器注册。
 - **未完全归因**：同进程 uninstall→file 源重装曾冒烟通过（9778 站），CDN 源重装必现 401——是否分源差异样本不足，不下结论。
 
+## 追加：市场页面 UI 安装 e2e（2026-10-26 19:00–19:40）
+
+- **页面路径**：登录 → `/oj-market`（oj-market 模块）→ wiki 卡片「安装」→ InstallDialog 打开即自动发起安装（`source:"cdn"`）→ 轮询 task；needs_trust 时展示 key_id+指纹（`data-testid="install-trust-fingerprint"`），点「指纹一致，信任并重试」（client.trust(taskId) 后自动重试）→ done。
+- **实测两轮**：① 全新 key `lesson.ui` 重签 CDN 包（catalog 第 2 代）→ UI 完整走 TOFU（指纹与 keygen 值断言一致 → 信任 → done「冒烟通过：探活/integrity/注册一致性」）；② 卸载后重跑（已信任）直接 done，卡片断言「已启用」。截图存证 /tmp/market-ui-e2e/。
+- **脚本坑三枚**（已写进教案第 5 节）：antd 两字中文按钮名插空格（断言需 `/安\s*装/`）；装好状态文字是「已启用」非「已装」；antd 弹窗 Esc 关不掉，要点「关 闭」。
+- **教案已重写**：两种安装方式并列（第 4 节 CLI / 第 5 节 UI），章节重组、去除重复附录，口语化表述。
+
 ## 风险与对策
 
 | 风险 | 对策 |

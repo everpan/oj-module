@@ -1,300 +1,183 @@
-# 教案：从 `ojm init` 到市场安装验证——以 wiki 方案包为例
+# 教案：脚手架起服 + wiki 方案安装（命令行 / 市场页面两种方式）
 
-- 日期：2026-10-26
-- 配套计划：`docs/plans/20261026-1715-ojm-init-wiki-market-lesson.md`（问题记录 P1–P5 的详版）
-- 工具链：本仓 `@oj-module/cli` 0.2.42 + oj 0.1.87；方案工程：`../oj-wiki`（wiki 0.1.3）
-- 全流程实测通过，本文所有命令与输出均来自该次实录（时长约 20 min）
+记录一次完整实操（2026-10-26）：用 `ojm init` 搭新工程，用 `ojm preview` 起成单服务模式，把 `../oj-wiki` 的 wiki 方案（0.1.3）打包发到市场，再用**命令行**和**市场页面**两种方式把它装上站点。文中命令全部实际跑过，关键输出照实摘录；踩过的坑集中在第 6、7 节。
 
-## 教学目标
+配套计划文档（含 BDD 用例与逐条问题记录 P1–P6）：`docs/plans/20261026-1715-ojm-init-wiki-market-lesson.md`
 
-完成一条完整链路并理解每个闸门的存在理由：
+## 1. 准备
 
-```
-ojm init（搭宿主） → ojm build --bundle（打方案包） → ojm market publish/build-index（发进宿主市场 CDN）
-→ ojm install（市场源安装） → ojm trust confirm（TOFU 信任） → 冒烟验证
-```
-
-学完后应能回答：为什么必须签名？为什么首次安装会被信任闸拦住？为什么 `ojm dev` 下安装永远冒烟失败？
-
-## 前置条件
-
-| 项 | 要求 |
-|---|---|
-| 本仓 | `feat/ojm` 系工具链可用；本地 CLI 入口 `node packages/cli/bin/ojm.mjs`（spawn tsx 直跑 src TS） |
-| 方案工程 | `../oj-wiki`，分支 main，工作区干净；自带 `bin/oj`（0.1.86+） |
-| 依赖供给 | verdaccio 在 4873 运行且已发布 `@oj-module/cli@0.2.42`、`@oj-module/runtime@0.2.42`（`scripts/publish-verdaccio.mjs --publish`）；`~/.npmrc` 有 `@oj-module:registry=http://localhost:4873/` |
-| 端口纪律 | 避开 9781/9782（lifecycle e2e 硬占）；本教案用 5174（dev）/ 9778（preview） |
-
-> 依赖供给为什么是 verdaccio 而不是 `file:`？脚手架的 package.json 由 init 生成、钉 `@oj-module/*` 精确版本；pnpm v12 下 overrides 只能写 `pnpm-workspace.yaml`，且 file: 安装会把 `catalog:`/`workspace:*` 协议带出仓外解析直接报错。**模拟发布是唯一干净供给面**（计划文档 P2）。
-
-## Phase 0 —— 变量约定
-
-```bash
-OJM="node /Users/ever/git/only-js/oj-module/packages/cli/bin/ojm.mjs"   # 本仓活代码 CLI
-SCAFFOLD=/Users/ever/git/only-js/ojm-lesson-scaffold                    # 脚手架工程（宿主）
-WIKI=/Users/ever/git/only-js/oj-wiki                                    # 方案工程（发布方）
-```
-
-> 用活代码而非脚手架 node_modules 里的 cli：本教案执行期修复了 `market verify` 的一个 bug（Phase 3 问题 1），verdaccio 里的 0.2.42 产物不含该修复。
-
-## Phase 1 —— `ojm init` 搭脚手架（UC1）
-
-```bash
-$OJM init $SCAFFOLD --yes
-```
-
-预期要点：联网下载并安装 oj（本次 v0.1.87，≥ MIN_OJ_VERSION 0.1.86 过能力闸门）；「新增 248 项」；产物 = `src/<name>/{api,web}` 单树 + `config.yaml` + `config/` 证书三件套 + `seed.*.sql` + `package.json` + `bin/oj`。
-（离线环境可预置 `bin/oj` + `bin/.oj-version` 再跑 init，幂等跳过下载。）
-
-```bash
-cd $SCAFFOLD && pnpm install        # @oj-module/* 经 ~/.npmrc scope 映射走 verdaccio
-$OJM info                            # 能力探针 --module-root 可用、oj 0.1.87 ✅
-```
-
-**验收 AC1**：`ojm info` 显示「版本要求 >= v0.1.86 ✓ / 能力探针 --module-root 可用」。
-
-## Phase 2 —— 方案工程打包（UC2）
-
-```bash
-cd $WIKI && pnpm bundle             # = ojm build --bundle
-```
-
-预期：`方案包已生成 → dist/wiki-0.1.3.tgz`（835056 字节，sha256 `4a6beb33…4002d`）。
-要点：契约真源是 `src/wiki/solution.yaml`（bundle 级，≠ api 模块的 manifest.yaml）；tgz 是**确定性打包**——同输入两次哈希一致，这是发布留痕与校验的基础。
-
-**验收 AC2**：tgz 存在，名字 = `<name>-<version>.tgz`。
-
-## Phase 3 —— 发布进脚手架的市场 CDN（UC3）
-
-在 `$SCAFFOLD` 下执行（cdn/ 就在工程根）：
-
-```bash
-# ① 发布方密钥（一次性；私钥落 ~/.ojm/keys/lesson.pub/，0600，永不入仓）
-$OJM keygen --id lesson.pub --yes
-#    记录打印的 指纹（sha256(publicKey)）——TOFU 核对要用
-
-# ② 打包 + 包级签名落 cdn/（--real 会进方案工程重跑 ojm build --bundle）
-$OJM market publish --real ../oj-wiki --id lesson.pub --registry-id lesson.local
-#    产出 cdn/wiki-0.1.3.tgz + cdn/wiki-0.1.3.tgz.sig（detached Ed25519）
-
-# ③ 重建三级索引（catalog + shards，多人发布互不覆盖靠全量重建）
-$OJM market build-index --id lesson.pub
-
-# ④ 离线验包
-$OJM market verify --rebuild-index
-```
-
-**验收 AC3**：verify 全绿（7 项）：完整性 / 包级签名 / manifest 结构 / 索引签名×2 / 索引同代 / 索引时效。
-
-### 问题 1（工具链 bug，已修）：真实工程包验包必红「缺必填字段 archive」
-
-- 现象：`--real` 发布的包 `✗ manifest 结构：缺必填字段 archive`，而 `--fixture` 合成包全绿。
-- 根因（反常规：构建侧与校验侧契约自相矛盾）：`market verify`（REG-CS8 提交 c12626c7 引入）把 `archive` 当 manifest 必填；但契约 C2-29（`manifest-contract.ts`）明确 archive **可整体省略**（Form A 占位仅 file；sha256/size/signature 由索引侧填 Form B），且 `bundle.ts` 对真实方案逐字拷贝 solution.yaml、**从不注入** archive。
-- 修复（TDD）：`market/__tests__/verify.test.ts` 加「摘 archive 重打包」回归用例（先红后绿）；`market/verify.ts` 必填集去掉 archive 并注释 C2-29 依据。市场套件 98 项全绿。**该修复需随下个 cli 版本发布。**
-
-### 问题 2（用法约束）：`--registry-id` 必填
-
-`market publish --real` 缺省报错退出。它是 REG-CS3 v2 规范串首段（`<registry_id>:<slug>@<version>:<sha256>`），防「A 签的包被 B 的 CDN 装」。站点未配 canonical_origin 时安装验签跳过该比对，本地可占位（lesson.local）；生产指向外部 registry 时必须等于该站 canonical_origin。
-
-## Phase 4 —— 起站 + 市场源安装 + TOFU（UC4）
-
-**必须用 release 形态验证**（`ojm build` + `ojm preview`），不能用 `ojm dev`——理由见问题 3。
-
-```bash
-# ① 给站点一个权威 origin（REG-CS6 fail-closed，绝不读请求头 Host）
-#    config.yaml → vars.canonical_origin: "http://localhost:9778"
-
-cd $SCAFFOLD && $OJM build           # 产 dist/api/versions.json 等 release 产物
-$OJM preview                          # 单服务：http://localhost:9778（/api + SPA 同进程）
-```
-
-```bash
-# ② 首次安装：被信任闸拦住（TOFU）
-$OJM install wiki@0.1.3 --site-url http://localhost:9778 --user superadmin --pass 123456
-#    → 待信任确认（发布方：lesson.pub）
-#    → 指纹 6ab94df2 2c2449fa … 39742550   ← 与 Phase 3 keygen 打印值逐字核对！
-#    → 确认命令：ojm trust confirm --task install-<ts>-<id>
-
-# ③ 站点侧确认入库（superadmin；写市场安全设置要求 superadmin 角色，admin 会 403）
-$OJM trust confirm --task install-<ts>-<id> --site-url http://localhost:9778 --user superadmin --pass 123456
-
-# ④ 重跑安装
-$OJM install wiki@0.1.3 --site-url http://localhost:9778 --user superadmin --pass 123456
-#    → 安装完成：wiki 0.1.3
-```
-
-### 问题 3（环境约束，两个连环坑）：为什么 ojm dev 下安装必败
-
-| 坑 | 报错 | 原因 |
+| 角色 | 目录 | 说明 |
 |---|---|---|
-| canonical_origin 缺失 | 安装 503，REG-CS6 | 相对市场基址 /cdn 要补全为同源绝对 URL，fail-closed 不猜 Host |
-| 未 build 就装 | 预检 C2-09 拒装 | peerRuntime 比对读**磁盘** `dist/api/versions.json`，dev 形态没有 |
-| dev 下重试 | 冒烟 /api/wiki/status 404 | oj dev 只供给 src（--module-root），安装器写入 dist/ 的 api 不在服务面 |
+| 方案工程（发布方） | `../oj-wiki` | wiki 知识库，契约在 `src/wiki/solution.yaml`（name=wiki，version=0.1.3） |
+| 脚手架站点（安装方） | `~/git/only-js/ojm-lesson-remote` | `ojm init` 产物，本教案起在 9779 端口 |
+| 市场目录（CDN） | `~/git/only-js/ojm-lesson-cdn` | 存放 catalog + 包 + 签名，用静态服务器托在 9783 端口模拟外部 CDN |
 
-**结论：市场安装链路的验证形态 = `ojm build` + `ojm preview`（release 布局），与 lifecycle e2e 同口径。**
+版本：本仓 CLI/runtime 0.2.42（archive 修复将随 0.2.43 发布）、oj 0.1.87。本地跑 CLI 用 `node <oj-module>/packages/cli/bin/ojm.mjs`。
 
-### 验收 AC4
+依赖供给：脚手架 package.json 里的 `@oj-module/*` 从本地 verdaccio（4873 端口）取，`~/.npmrc` 已有 scope 映射。不要图省事用 pnpm 的 `file:` 指向本仓——`catalog:`/`workspace:*` 协议一出仓就解析不了，装不上（见第 7 节 P2）。
 
-```bash
-$OJM list --site-url http://localhost:9778 --user superadmin --pass 123456
-#    NAME  INSTALLED  ENABLED  LATEST  UPGRADABLE  TRUST
-#    wiki  0.1.3      yes      0.1.3   no          trusted
-
-curl -s http://localhost:9778/api/wiki/status
-#    {"code":0,"msg":"ok","data":{"module":"wiki","ok":true,"oj_version":"0.1.87"}}
-
-curl -o /dev/null -w "%{http_code}" http://localhost:9778/wiki/space     # 200（SPA 深链回落）
-curl -o /dev/null -w "%{http_code}" http://localhost:9778/modules/wiki/0.1.3/entry.js   # 200
-```
-
-## 全链路 AC 汇总
-
-| AC | 内容 | 结果 |
-|---|---|---|
-| AC1 | `ojm init` + install + `ojm info` 能力探针通过 | ✅ |
-| AC2 | `ojm build --bundle` 产出确定性 wiki-0.1.3.tgz | ✅ |
-| AC3 | publish + build-index 后 `market verify --rebuild-index` 7 项全绿 | ✅（含问题 1 修复） |
-| AC4 | install + TOFU confirm 后 list=trusted、冒烟 ok、前端路由 200 | ✅ |
-
-## 排错速查（按报错关键词）
-
-| 报错关键词 | 归属 | 处置 |
-|---|---|---|
-| `ERR_PNPM_VERIFY_DEPS_BEFORE_RUN` / `catalog: isn't supported` | 依赖供给 | 用 verdaccio，别用 file: overrides（见前置条件） |
-| `缺少签发方身份：--registry-id` | Phase 3 | 加 `--registry-id <id>`（本地占位，生产 = 站点 canonical_origin） |
-| `缺必填字段 archive` | Phase 3 | cli ≤0.2.42 的 verify bug；用活代码或等下一版 |
-| `安装需要站点 canonical origin`（503） | Phase 4 | config.yaml 配 `vars.canonical_origin` 并重启 |
-| `C2-09 无法读取宿主 runtime 版本` | Phase 4 | 先 `ojm build`（产 dist/api/versions.json） |
-| `冒烟 ... /api/wiki/status 返回 HTTP 404` | Phase 4 | 换 `ojm preview`，别用 `ojm dev` |
-| `冒烟 ... /api/wiki/status 返回 HTTP 401`（进程内 uninstall 后重装） | 热更缺口 P6 | 重启 preview 再重装/重试；匿名表不热更 |
-| `待信任确认（发布方 ...）` | Phase 4 | 非错误：核对指纹 → `ojm trust confirm --task <id>` → 重跑 install |
-
-## 实录：preview 单服务形态的标准远程发布作业（全新工程，2026-10-26 18:30–18:45）
-
-**形态约束**：`ojm dev` = 双端点（vite 5174 + oj 9778，两个 listener）；`ojm preview` = **单服务**（oj 单进程同端口直出 SPA + /api + /cdn 挂载，无 vite）。远程发布验证一律用 preview 形态。preview **不会自动构建**（fail-fast 四查：bin/oj、config.yaml、`dist/web/index.html`、`dist/api/manifests.yaml`），先 `ojm build`。
-
-### 作业步骤（每条均已实测）
+## 2. 搭站点并起服（preview 单服务）
 
 ```bash
-# ① 全新脚手架（全程不跑 dev）
-ojm init oj-lesson-remote --yes
+ojm init oj-lesson-remote --yes          # 联网装 bin/oj（0.1.87），生成 248 个文件
 cd oj-lesson-remote
-sed -i '' 's/port: 9778/port: 9779/' config.yaml      # 避开已占端口
-# config.yaml → vars.canonical_origin: "http://localhost:9779"（REG-CS6，先于起站配好）
-pnpm install && ojm build
-
-# ② preview 单服务启动
+sed -i '' 's/port: 9778/port: 9779/' config.yaml
+# config.yaml 里配上 vars.canonical_origin: "http://localhost:9779"
+pnpm install && ojm build                # preview 不自动构建，缺产物会直接报错退出
 ojm preview
 # [ojm] preview 已启动：http://localhost:9779
-# 单服务证据：进程树仅此一个 LISTEN（oj @ 127.0.0.1:9779，父进程 ojm 无 socket）
-# 同站点同端口三探针：GET / → 200（SPA）｜/versions.json → 200｜/api/_system/health → {"status":"OK"}
 ```
 
-### 远程发布两条通道对该站的实测
+两点说明：
 
-**通道 A（文件直传）**——新站点信任库为空，完整 TOFU 流程重放：
+- **为什么用 preview 而不是 dev**。`ojm dev` 是两套进程：vite 起前端（5174）、oj 起 API（9778），装在这套上的方案 API 不会被 dev 的 oj 供给，冒烟永远 404（P5）。`ojm preview` 是 oj 单进程同时直出 SPA、`/api`、`/cdn`，前后端同站点同端口——这是安装验证要用的形态。
+- **起服前必须配 `vars.canonical_origin`**，值就是站点对外地址。安装时服务端拿它把相对市场地址 `/cdn` 补全成绝对 URL；不配直接 503，而且它故意不读请求头的 Host（防伪造），没有将就的余地（P4）。
+
+确认单服务：看进程监听，整个进程树只有 oj 一个 LISTEN（127.0.0.1:9779），然后三个请求打同一 origin：
 
 ```bash
-ojm install ../oj-wiki/dist/wiki-0.1.3.tgz --site-url http://localhost:9779 --user superadmin --pass 123456
-# → 待信任确认（发布方：lesson.pub）+ 指纹 + task id
-ojm trust confirm --task install-<ts>-<id> --site-url http://localhost:9779 --user superadmin --pass 123456
-ojm install ../oj-wiki/dist/wiki-0.1.3.tgz --site-url ...   # → 安装完成：wiki 0.1.3（含冒烟）
+curl -o /dev/null -w "%{http_code}\n" http://localhost:9779/                    # 200，SPA
+curl -o /dev/null -w "%{http_code}\n" http://localhost:9779/versions.json       # 200
+curl http://localhost:9779/api/_system/health                                    # {"status":"OK",...}
 ```
 
-**通道 C（外部真 CDN）**——复用已运行的 CDN 工程（9783）：
+## 3. 打包并发布到市场
 
 ```bash
-cd oj-lesson-cdn && ojm market setup --site-url http://localhost:9779 --user superadmin --pass 123456
-# → 站点 http://localhost:9779 的市场地址已指向 http://127.0.0.1:9783/cdn
-cd oj-lesson-remote
-ojm uninstall wiki --site-url ...                          # 清场
-ojm install wiki@0.1.3 --site-url ...
-# CDN 服务日志实证 5 次拉取：catalog.yaml{,.sig}、shards/1.yaml{,.sig}、wiki-0.1.3.tgz
-# ⚠ 收尾冒烟 401——见下「热更缺口」；重启 preview 后重跑 install → 安装完成
+# ① 发布方密钥，一次生成长期使用（私钥在 ~/.ojm/keys/<id>/，0600）
+ojm keygen --id lesson.pub --yes        # 打印 key_id 与指纹，后面 TOFU 核对要用
+
+# ② 方案工程打包（进 ../oj-wiki 跑）
+pnpm bundle                             # = ojm build --bundle，产 dist/wiki-0.1.3.tgz
+# 输出：sha256：4a6beb33…（确定性打包，重打哈希不变）
+
+# ③ 发布进市场目录（进 oj-lesson-cdn 跑；--real 会进 oj-wiki 重新打包）
+ojm market publish --real ../oj-wiki --id lesson.pub --registry-id lesson.local
+ojm market build-index --id lesson.pub  # 重建 catalog.yaml + shards/，并签索引
+
+# ④ 离线验包（无需起站点）
+ojm market verify --rebuild-index       # 7 项全绿才算完
 ```
 
-终态：`list` = wiki 0.1.3 enabled/trusted；`/api/wiki/status` 匿名 ok；`/wiki/space` 200。
+`--registry-id` 不能省。它是签名串的第一段（`lesson.local:wiki@0.1.3:<sha256>`），用来防「A 签的包被搬到 B 的 CDN 装」。站点没配 canonical_origin 时这段比对跳过，本地随便占位；往外部 registry 发则必须等于对方的 canonical_origin（P3）。
 
-### 热更缺口（反常识，P6）：运行中站点 uninstall→reinstall 后匿名端点 401
+市场目录里有什么：`cdn/wiki-0.1.3.tgz` + `.tgz.sig`（包级签名）、`cdn/catalog.yaml` + `.sig`、`cdn/shards/1.yaml` + `.sig`。把 `cdn/` 交给任意静态托管（nginx/OSS 都行），就是一个外部 CDN。
 
-- **现象**：preview 进程不重启、uninstall wiki 后立刻重装（任一通道），收尾冒烟报 `health 端点 /api/wiki/status 返回 HTTP 401`（注意不是 404——模块已上线，是**匿名准入**丢了）。`curl` 直接探也是 401 `missing or invalid bearer token`。
-- **对照**：`oj-wiki` 工程自己的 `/wiki/status` 匿名靠**宿主 config.yaml**（其第 148 行 anonymous 列表，属工程定制）；方案包经安装器注册后，**oj 运行进程的匿名表在 uninstall 时被摘除、reinstall 写盘后未热更**——重启 preview 即恢复 200。
-- **归因状态**：热更缺口已坐实（重启=恢复）；但同进程 uninstall→**file 源**重装曾有一次冒烟通过（9778 站），CDN 源重装必现 401——是否分源未完全归因，样本不足。
-- **规避**：教学/演练场景，运行中站点做过 uninstall 后，**重启 preview 再重装**（或重装后 smoke 401 即重启重试）；生产滚动发布本就重启进程，不触发。
+## 4. 安装方式一：命令行
 
-## 附录：远程站点怎么发布（ojm init 的产物部署到服务器之后）
-
-发布方操作全部不变（本机打包、本机签名），**只有 `--site-url` 指向远程**。变的只是「市场面在哪里」与远程站点的一次性部署前提。
-
-### 远程站点一次性前提（部署流水线）
-
-1. 服务端跑过 `ojm build`（`dist/api/versions.json` 等 release 产物随部署走，C2-09 预检要读）；
-2. `config.yaml` 配 `vars.canonical_origin: "https://<真实对外域名>"`——**必须是公网 origin**，REG-CS6 不读 Host 头、fail-closed，配内网地址会导致市场基址补全与深检探针全挂；
-3. release 形态运行（oj serve 单服务，等价 `ojm preview`）；
-4. 服务端 oj ≥ 0.1.86。
-
-### 三条发布通道（按市场面位置选）
-
-| 通道 | 适用 | 发布方动作 | 远程动作 | 验证状态 |
-|---|---|---|---|---|
-| **A. 文件直传**（无需任何市场设施） | 首发、内网、应急 | `ojm build --bundle` → `ojm sign dist/wiki-<v>.tgz --id <pub> --registry-id <id>` → `ojm install dist/wiki-<v>.tgz --site-url https://remote --user superadmin --pass ***`（CLI 自动探测同目录 .sig 随包上传） | 无 | ✅ 2026-10-26 实测（uninstall→sign→install→trusted→冒烟 ok） |
-| **B. 站点自供 /cdn** | 单站点常规升级 | 在 **CDN 工作副本**（本地 git 副本即可）跑 `ojm market publish --real ../oj-wiki --id <pub>` + `ojm market build-index --id <pub>`，把 `cdn/` 目录随部署 **rsync/CI 同步到远端**（保持 config.yaml 的 /cdn 挂载） | 免 setup；`ojm install wiki@<v> --site-url https://remote` 即从 https://remote/cdn 拉取 | ✅ 主链路 UC4 即此形态（install 经站点自身 /cdn 拉 catalog/shards/tgz） |
-| **C. 外部真 CDN** | 多站点共享一个市场 | 同 B，但 cdn/ 目录由 nginx/OSS 静态托管 | `ojm market setup --site-url https://remote --user ... --pass ...` 把 `framework.market_cdn_url` 改写为 CDN 绝对地址（superadmin 角色；首跑自动处理 must_change 改密期） | ✅ 2026-10-26 实测（见下方实录） |
-| **D. 外部 registry 源** | 多租户目录分发 | `ojm publish <dir> --registry <url>` 上传目录 + 重建索引 | `ojm install @<scope>/<name>@<v> --registry <url> --site-url https://remote`（凭据走 `OJM_REGISTRY_TOKEN`） | ⬜ 未实测：registry 是需要 token 鉴权的外部服务（非静态目录），本机无可起的 registry 服务端 |
-
-通道 A 已于 2026-10-26 实测：uninstall → `ojm sign` → `ojm install <tgz>`（file 上传 + .sig 随包）→ `TRUST=trusted`、冒烟 ok。
-
-### 通道 C 实测实录（本地双工程模拟「发布方 CDN ↔ 远程站点」）
-
-```
-CDN 侧（ojm-lesson-cdn 工程，config server.port=9783）：
-  ojm market publish --real ../oj-wiki --id lesson.pub --registry-id lesson.local
-  ojm market build-index --id lesson.pub          # cdn/ 得 catalog+shards+tgz+sig
-  python3 -m http.server 9783                     # 模拟 nginx/OSS 静态托管（托管工程根，/cdn 为前缀）
-
-远程站点侧（ojm-lesson-scaffold @ 9778）：
-  ojm market setup --site-url http://localhost:9778 --user superadmin --pass 123456
-  # → 市场地址已设置：http://127.0.0.1:9783/cdn
-  #   （绝对地址 = setup 所在工程的 server.host:port + /cdn 前缀，写入远程站点的 framework.market_cdn_url）
-  ojm uninstall wiki --site-url ...               # 清场
-  ojm install wiki@0.1.3 --site-url ...
-  # CDN 服务访问日志（拉取真实发生在此 origin 的证据）：
-  #   GET /cdn/catalog.yaml  → 200      （第 1 次：目录预检）
-  #   GET /cdn/catalog.yaml.sig → 200   （索引验签）
-  #   GET /cdn/shards/1.yaml{,.sig} → 200
-  #   GET /cdn/wiki-0.1.3.tgz → 200
-  # 注意：CDN 源不取 .tgz.sig 侧车——签名走分片 Form B 的 archive.signature（verify.ts 注释两形态同源）
-```
-
-要点：
-1. `market setup` 的地址不是参数，是**从 setup 所在工程的 config 推导**（`server.host:port` + `/cdn` 挂载前缀）——所以「CDN 工程」要能按这个地址被远程访问到；改端口要改 config 再 setup。
-2. 跨 origin 拉取能通，靠远程站点自己的 `canonical_origin`（REG-CS6）做 URL 补全与深检探针，CDN 侧无需任何配置。
-3. 终态复验：`list` = wiki 0.1.3 enabled/trusted，`/api/wiki/status` ok。
-
-### 远程发布的四个注意
-
-1. **签名 `--registry-id`**：站点侧该比对当前**未从 config 接线**（模板里 `env.registryId` 只有类型与透传，无配置来源），CDN/文件源实际跳过 REG-CS3 比对；但**往外部 registry 发布时服务端有 `registry_id_mismatch` 硬闸**——签名必须等于该 registry 的 canonical_origin。稳妥做法：一律让 registry-id = 目标市场面的 canonical_origin。
-2. **TOFU 信任确认也是远程的**：首次安装报 `待信任确认` 后，`ojm trust confirm --task <id> --site-url https://remote ...` 在发布方本机对远程执行即可，无需登服务器。
-3. **凭据别上命令行**：生产用环境变量 `OJM_SITE_URL` / `OJM_USER` / `OJM_PASS`（install/list/enable/disable/uninstall/trust 全部已支持 `--site-url`，天然远程）。
-4. **回滚远程可用**：`ojm disable wiki --site-url https://remote`（四处同步停用，秒级恢复原状）或 `ojm uninstall wiki --site-url https://remote`（业务表保留需运维手工清理）。
-
-## 清理
+### 4.1 文件直传（不需要任何市场设施）
 
 ```bash
-# 停 preview：杀后台 ojm preview 进程即可（派生 config .ojm-preview.yaml 自动清理）
-# 卸载 wiki（教案复跑前）：
-$OJM uninstall wiki --site-url http://localhost:9778 --user superadmin --pass 123456
-# verdaccio 可常驻（storage 在 ~/.local/share/verdaccio/）
+# 包要先签名，.sig 放 tgz 旁边，install 会自动随包上传
+ojm sign ../oj-wiki/dist/wiki-0.1.3.tgz --id lesson.pub --registry-id lesson.local
+
+ojm install ../oj-wiki/dist/wiki-0.1.3.tgz \
+  --site-url http://localhost:9779 --user superadmin --pass 123456
 ```
 
-## 板书：一图记住信任模型
+首次安装会停在「待信任确认」（TOFU）：终端打印发布方 key_id 和指纹，核对与 keygen 时打印的值一致后：
+
+```bash
+ojm trust confirm --task install-<时间戳>-<随机串> \
+  --site-url http://localhost:9779 --user superadmin --pass 123456
+ojm install ../oj-wiki/dist/wiki-0.1.3.tgz --site-url ...   # 重跑，完成
+```
+
+站点是新库时完整走一遍上面的流程即可； trust 确认只需 superadmin 账号，不用登服务器。
+
+### 4.2 从市场 CDN 装
+
+站点自供（把 cdn/ 同步到站点所在机器、保持 config 的 `/cdn` 挂载）：免配置，`ojm install wiki@0.1.3 --site-url ...` 直接装。
+
+外部 CDN：先让站点知道市场在哪（在市场目录工程里跑，地址从该工程 config 的 server.host:port + `/cdn` 推导）：
+
+```bash
+cd oj-lesson-cdn
+ojm market setup --site-url http://localhost:9779 --user superadmin --pass 123456
+# 输出：站点 http://localhost:9779 的市场地址已指向 http://127.0.0.1:9783/cdn
+
+ojm install wiki@0.1.3 --site-url http://localhost:9779 --user superadmin --pass 123456
+```
+
+装的过程中站点会去 CDN 拉 catalog → 分片 → 包。验证当天 CDN 服务的访问日志：
 
 ```
-发布方                          宿主站点（市场）
-────────                        ──────────────
-keygen ──私钥签名(.sig)──► cdn/ ──build-index 签索引──► catalog+shards
-                                     │ install: 验 sha256 → 验 Ed25519 规范串
-                                     │   ├─ 签名不符 → 拒（sig_missing / sig_tampered…）
-                                     │   └─ 签名过但 key 未入库 → needs_trust（TOFU）
-trust confirm（核对指纹后入库）──► 重跑 install → 装 + 冒烟 → enabled/trusted
+GET /cdn/catalog.yaml        200
+GET /cdn/catalog.yaml.sig    200
+GET /cdn/shards/1.yaml.sig   200
+GET /cdn/shards/1.yaml       200
+GET /cdn/wiki-0.1.3.tgz      200
 ```
+
+注意没有 `.tgz.sig`：CDN 源不取包级侧车签名，签名信息在分片条目的 `archive.signature` 里（跟文件源的侧车签名等效）。
+
+### 4.3 装完确认
+
+```bash
+ojm list --site-url ... 
+# NAME  INSTALLED  ENABLED  LATEST  UPGRADABLE  TRUST
+# wiki  0.1.3      yes      0.1.3   no          trusted
+
+curl http://localhost:9779/api/wiki/status
+# {"code":0,"msg":"ok","data":{"module":"wiki","ok":true,...}}
+curl -o /dev/null -w "%{http_code}\n" http://localhost:9779/wiki/space   # 200
+```
+
+`list` 显示 trusted、`/api/wiki/status` 匿名可访问、前端路由 200，三件事齐了才算装好了。
+
+## 5. 安装方式二：市场页面（浏览器）
+
+页面入口：登录站点 → 左侧菜单「方案市场」（路由 `/oj-market`）。卡片列出市场上的方案；安装、升级、回滚、启停、卸载都在卡片上操作（仅 superadmin 有操作按钮，其他人只能浏览）。
+
+**首次安装（会碰到信任确认）**：
+
+1. wiki 卡片点「安装」，弹窗自动发起安装并轮询进度；
+2. 未知发布方会停在「待信任确认：发布方密钥不在宿主信任库」，框里给出 key_id 和指纹；
+3. 跟发布方公布的指纹逐字核对，一致就点「指纹一致，信任并重试」；
+4. 弹窗自动续跑，进度条走完显示「done / 冒烟通过：探活、integrity、注册一致性三项全过」，关掉弹窗，卡片状态变成「已启用」。
+
+**自动化 e2e**（playwright，对本仓库 `@playwright/test` 直接写脚本跑，当天两轮通过）：
+
+- 第一轮完整走了 TOFU：登录 → `/oj-market` → 点安装 → 读到 `data-testid="install-trust-fingerprint"` 的指纹并与 keygen 公布值断言一致 → 点「指纹一致，信任并重试」 → 等 `data-testid="install-stage"` 到 done → 截图存证。
+- 第二轮（卸载后重跑）：发布方已信任，跳过 TOFU 直接装到 done，卡片断言「已启用」。
+
+写脚本时三个小坑（都犯过）：
+
+- antd 给两个汉字的中文按钮名中间插空格，按钮文本断言要写 `/安\s*装/` 而不是 `"安装"`；
+- 装好后的卡片状态文字是「**已启用**」，不是「已装」（「已装」只在列表页 INSTALLED 列）；
+- antd 弹窗对 Escape 不敏感，关闭就点「关 闭」按钮。
+
+## 6. 报错速查
+
+| 报错 | 原因 | 处理 |
+|---|---|---|
+| `ERR_PNPM_VERIFY_DEPS_BEFORE_RUN` / `catalog: isn't supported` | 用 pnpm file: 装本仓包 | 走 verdaccio（第 1 节） |
+| `缺少签发方身份：--registry-id` | publish 签名缺参数 | 加 `--registry-id`（本地占位即可，见第 3 节） |
+| `缺必填字段 archive`（market verify） | cli ≤0.2.42 的校验 bug：把契约可选的 archive 当必填，真实工程包必红 | 用本仓活代码 CLI，或等 0.2.43（P1） |
+| `安装需要站点 canonical origin`（503） | 没配 canonical_origin | config.yaml 配 `vars.canonical_origin` 并重启 |
+| 预检 `C2-09 无法读取宿主 runtime 版本` | 服务端没跑过 `ojm build`，缺 `dist/api/versions.json` | 先 build 再起服 |
+| 冒烟 `/api/wiki/status` 404 | 用了 `ojm dev` | 换 `ojm preview`（第 2 节） |
+| 冒烟 `/api/wiki/status` 401（进程内卸载后重装） | 匿名准入表没热更：运行中的 oj 在卸载时摘了匿名注册，重装写盘但没生效 | 重启 preview 再重装（P6） |
+| 待信任确认（TOFU） | 新发布方首次安装 | 核对指纹 → `ojm trust confirm --task <id>`（或页面点信任按钮）→ 重试 |
+
+## 7. 过程中的发现
+
+| # | 发现 | 一句话 |
+|---|---|---|
+| P1 | `market verify` 把契约可选的 `archive` 当 manifest 必填（REG-CS8 引入），真实工程包验包必红，`--fixture` 包才不红 | 已修（verify 必填集去掉 archive + 回归用例），随 0.2.43 发布 |
+| P2 | pnpm v12 不读 package.json 的 `pnpm` 字段；`file:` 装本仓包会把 `catalog:` 协议带出仓解析报错 | 脚手架依赖只能靠 verdaccio 供给 |
+| P3 | `market publish --real` 必须给 `--registry-id` | 本地可占位，外部 registry 必须等于对方 canonical_origin |
+| P4 | `ojm install` 要求站点配 `vars.canonical_origin`，且故意不读 Host 头 | 配公网 origin，换端口/域名要改并重启 |
+| P5 | 安装验证必须用 release 形态：`ojm dev` 下预检读不到 `dist/api/versions.json`，且装的方案 API 不在 dev 服务面 | `ojm build` + `ojm preview` |
+| P6 | 运行中的站点「卸载后立刻重装」会让匿名端点 401（模块已上线、匿名准入丢了），重启即恢复 | 教学场景卸载后重启再装；生产滚动发布本就重启，碰不到 |
+
+另有两条市场通道的观察：`market setup` 写的 CDN 地址是从 setup 所在工程的 config 推导的（server.host:port + `/cdn`），不是命令行参数；CDN 源安装不取 `.tgz.sig`，签名走分片里的 `archive.signature`。
+
+## 8. 清理与复跑
+
+```bash
+ojm uninstall wiki --site-url http://localhost:9779 --user superadmin --pass 123456
+# 业务表保留（需运维手工清理），锁/sidecar/路由/模块清单四处同删
+```
+
+重新演示完整 TOFU 流程：换一个新 key_id（`ojm keygen --id <新id>`）重新 `market publish --id <新id>` 让站点不认识这个发布方即可；已信任的 key_id 不用动（信任库跟方案装没装无关）。
