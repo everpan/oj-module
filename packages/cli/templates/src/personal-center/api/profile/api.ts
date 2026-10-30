@@ -1,11 +1,17 @@
 // POST /api/personal-center/profile —— 保存「我的资料」（个人中心表单入库端点）。
 // 只允许改本人行（http.user.id 权威，不接受 body 传 id）；username 全局唯一，
 // 重名 400；avatar 走 upload 端点（multipart），不在此通道。
+import { isSelfTenant } from "#/_platform/_shared/service/infra/access";
+
 const handler = {
 	async post() {
 		const uid = http.user?.id;
 		if (!uid) {
 			json.fail(401, "unauthorized");
+			return;
+		}
+		if (!(await isSelfTenant())) {
+			json.fail(403, "forbidden");
 			return;
 		}
 		const b = (http.body ?? {}) as {

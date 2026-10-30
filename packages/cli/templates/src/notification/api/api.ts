@@ -7,6 +7,7 @@
 // 出参挂平级 `.response`（动词级优先于组级，组级沿嵌套继承）——oj 运行期据此校验入参、
 // 并供 `oj openapi` 生成 openapi.json → 前端 `ojm api` 生成 __client。
 // `.schema` 是 JSON Schema 严格子集（关键字白名单），union 用类型数组表达（见 userId）。
+import { isSelfTenant } from "#/_platform/_shared/service/infra/access";
 import { clearNotices, markAllRead, markRead, noticesFor, pushBroadcastNotice, pushNotice } from "./_shared/notify";
 
 const notifications = {
@@ -17,6 +18,10 @@ const notifications = {
 		const uid = http.user?.id;
 		if (!uid) {
 			json.fail(401, "unauthorized");
+			return;
+		}
+		if (!(await isSelfTenant())) {
+			json.fail(403, "forbidden");
 			return;
 		}
 		try {
@@ -33,6 +38,10 @@ const notifications = {
 			const uid = http.user?.id;
 			if (!uid) {
 				json.fail(401, "unauthorized");
+				return;
+			}
+			if (!(await isSelfTenant())) {
+				json.fail(403, "forbidden");
 				return;
 			}
 			const body = (http.body ?? {}) as { id?: unknown };
@@ -62,6 +71,10 @@ const notifications = {
 				json.fail(401, "unauthorized");
 				return;
 			}
+			if (!(await isSelfTenant())) {
+				json.fail(403, "forbidden");
+				return;
+			}
 			try {
 				await markAllRead(uid);
 				json.ok(null);
@@ -78,6 +91,10 @@ const notifications = {
 			const uid = http.user?.id;
 			if (!uid) {
 				json.fail(401, "unauthorized");
+				return;
+			}
+			if (!(await isSelfTenant())) {
+				json.fail(403, "forbidden");
 				return;
 			}
 			try {
@@ -133,6 +150,10 @@ const push = {
 			json.fail(401, "unauthorized");
 			return;
 		}
+		if (!(await isSelfTenant())) {
+			json.fail(403, "forbidden");
+			return;
+		}
 		const b = (http.body ?? {}) as {
 			userId?: unknown
 			title?: unknown
@@ -185,6 +206,10 @@ const broadcast = {
 		const uid = http.user?.id;
 		if (!uid) {
 			json.fail(401, "unauthorized");
+			return;
+		}
+		if (!(await isSelfTenant())) {
+			json.fail(403, "forbidden");
 			return;
 		}
 		const b = (http.body ?? {}) as {

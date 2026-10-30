@@ -225,7 +225,7 @@ wecom_login_ticket(ticket_hash) PK；uid / owner_tenant / expires_at / used
 开通入口、企业列表、profile 状态、停用/解绑、首登资料补全（`display_name` 空则强制补全，沿用 `must_change` 类似机制）。
 
 ### 5.7 安全回归清单
-1. 伪造 `X-TENANT-ID` → 403（R6 后由 oj 拦；之前由 `currentAccess()` 拦）。
+1. 伪造 `X-TENANT-ID` → 403（R6 后由 oj 拦；之前由 `currentAccess()` 拦）——**已落地，见 §14**。
 2. 跨租户裸 SQL → 被 `sql_guard: deny` 拒。
 3. 构造器 insert 未显式给 `tenant_id` → 自动落当前租户（且伪造值被拒）。
 4. 同 userid 跨 corp → 两条 `users` 行，互不可见。
@@ -544,3 +544,56 @@ wecom_login_ticket(ticket_hash) PK；uid / owner_tenant / expires_at / used
   `ojm build`（8 个 api 模块 + 站点重建成功）、`ojm api --check`（**0 error / 0 warn**）、eslint（0 error 0 warning）。
 - 未跑：`tests/e2e/templates`（playwright，端口占用同 §10.4/§11.4）；Phase 3 的浏览器侧验证（点开通 → 复制链接 →
   停用 → 表格刷新）顺延到 Phase 4，与真实套件联调一起做。
+
+## 14. §5.7 第 1 项落地：登录态端点的租户自洽守卫（2026-10-30）
+
+### 14.1 发现的洞
+
+§5.7 第 1 项原本被当作「`currentAccess()` 已经拦住了」。复核时发现只对了一半：
+token 只带 `sub`，而构造器按请求头注入 `tenant_id`，所以「A 企业的人带 B 企业的头」
+在 SQL 层就是**查无此行**——但**只有走 `currentAccess()` / `assertPermission` 的端点才会去查这一行**。
+以下端点「登录即可、不挂权限点」，从不进判权出口，伪造头照样能读写：
+
+| 端点 | 后果 |
+| --- | --- |
+| `GET /api/notification/notifications` | 读到别家企业的广播通知与按人通知 |
+| `/notifications/read`、`/read-all`、`/clear`、`del` | 改/清别家企业的通知与回执 |
+| `POST /api/notification/push`、`push-broadcast` | 向别家企业推送、甚至全员广播 |
+| `/api/_platform/contacts`、`/contacts/detail` | 列出别家企业的人员目录（含 email/avatar） |
+| `/api/personal-center/profile`、`/upload` | 「更新 0 行却回 200」；upload 还顺带在 blob 留垃圾文件 |
+
+### 14.2 修法（单一出口，不散落）
+
+- `AccessSnapshot` 增 `exists`（= 本次查询是否命中 users 行），`currentAccess()` 在 `forbidden`/`must_change`
+  之前先判 `!exists → 403`。这一条把所有**已挂权限点**的端点一次性补齐，无需逐个改。
+- 新增 `isSelfTenant()` / `assertTenantSelf()`（同在 `_platform/api/_shared/service/infra/access.ts`），
+  复**同一份** snapshot 与 10s 缓存——给那些必须用 `json.fail` 而非 throw 的 handler 用。
+- 接线：notification（6 处）、notification/del、personal-center profile/upload、contacts、contacts/detail。
+- 为什么不做成中间件：oj 的分发在二进制侧，模块拿不到「所有端点进站」的钩子；R6（token 带租户签名声明）
+  才是根治，届时这一层可降级为防御纵深。
+
+### 14.3 刻意不动的端点（有理由，不是漏）
+
+- `_platform/solutions/routes`、`solutions/verify/last`、`_platform/market/meta`：读的是 B 组**共享表**
+  （`sys_solution_route`）与磁盘报告/CDN 索引，伪造头取到的是同一份数据，加守卫是安全戏法。
+- `web/user-info`、`auth/password`、`home` 演示端点：一律按 `uid` 定位，行不存在 → 404/失败，无跨租户读面。
+  （`user-info` 在伪造头下表现为 404 而非 403；前端把 401 当登出、403 不特殊处理，改语义收益为负。）
+- `system/*`、`market/install|task|index`：走 `assertSystemAdmin`/`assertSuperAdmin` → 已被 14.2 第一条覆盖。
+
+### 14.4 两处连带改动
+
+- `notification/api/manifest.yaml` 补 `deps: { _platform: ^0.1.0 }`：跨模块别名 `#/_platform/…` 触发
+  `oj build` S008（模块未声明依赖）——不是可选项，构建会直接失败。
+- 删掉 `auth/api/_shared/wecom/store.ts` 的 `assertSameTenant`：Phase 1 写下但**从未被调用**的死代码
+  （只复核「传进来的租户 vs 请求头」，不查 users，覆盖不到 14.1 的任一场景），由 `isSelfTenant` 取代。
+
+### 14.5 验证
+
+- 新增 `tests/tenant-forgery.spec.ts`（**11 例**）：9 个端点逐个断言 `403`（push 特意断言「先于 body 校验」，
+  即不能先回 400）、对照组用真实 uid 证明 `read-all`/`profile` 仍 200、未认证仍 `401` 而非 `403`。
+  对照组不取通知列表：`noticesFor` 走 UNION，夹具渲染成 `(SELECT …) UNION ALL (SELECT …)`，
+  sqlite 的 compound select 不接受括号（夹具能力边界，与本层无关）。
+- `tests/rbac-guard.spec.ts` 加 2 例：伪造 sub 对 `currentAccess()` 与 `assertSystemAdmin()` 均 403；真实 uid 对照组 `{ exists: true }`。
+- 已绿：模板 `vitest`（**41 文件 / 806 通过**）、`pnpm test:cli`（580 通过 / 1 跳过）、
+  两侧 `tsc --noEmit`、`ojm build`、`ojm api --check`（0 error / 0 warn）、eslint（0 error 0 warning）。
+

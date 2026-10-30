@@ -4,7 +4,7 @@
 /* eslint-disable test/prefer-lowercase-title -- AC 编号是验收锚点，保留大写 */
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
-import { assertPermission, assertSuperAdmin, assertSystemAdmin, invalidateUser } from "../src/_platform/api/_shared/service/infra/access";
+import { assertPermission, assertSuperAdmin, assertSystemAdmin, currentAccess, invalidateUser } from "../src/_platform/api/_shared/service/infra/access";
 import { installDb } from "./fixture";
 
 let dbo: ReturnType<typeof installDb>;
@@ -150,6 +150,23 @@ describe("禁用与未认证", () => {
 	it("未认证（无 http.user）即拒", async () => {
 		asUser(undefined);
 		await expect(assertPermission("wiki.page.edit")).rejects.toMatchObject({ status: 403 });
+	});
+
+	it("伪造租户头：token 的 sub 在本租户查无此人 → 403（不能只靠「角色为空」兜底）", async () => {
+		// 租户化后 `users` 的查询自动带 `tenant_id = 当前头值`，于是「A 企业的人带 B 企业的头」
+		// 等价于「这一行查不到」。夹具不模拟租户注入（fixture.ts 头注释已声明），
+		// 故用「行不存在」直接钉住这条分支——它就是伪造头在 SQL 层的表现。
+		asUser(987_654_321);
+		await expect(currentAccess()).rejects.toMatchObject({ status: 403 });
+		// 只要求登录态的端点（不走 assertPermission）也必须被挡住
+		await expect(assertSystemAdmin()).rejects.toMatchObject({ status: 403 });
+	});
+
+	it("用户行存在才放行登录态（对照组：同一断言换个真实 uid 即通过）", async () => {
+		const uid = mkUser("u9x");
+		bindRole(uid, "superadmin");
+		asUser(uid);
+		await expect(currentAccess()).resolves.toMatchObject({ exists: true });
 	});
 });
 

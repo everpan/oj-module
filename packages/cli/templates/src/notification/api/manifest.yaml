@@ -1,6 +1,9 @@
 name: notification
 desc: 通知模块（契约化通知读写：读 + 单条已读 + 全部已读 + 清空 + 广播；表与种子归属本模块）
 version: 0.1.0
+deps: # 租户自洽守卫（isSelfTenant）读 _platform 的 users 判定「token 的 sub 是否在本租户」；
+  # 跨模块别名 `#/_platform/…` 的依赖门禁（oj build S008）
+  _platform: ^0.1.0
 tables:
   - notifications
   - notifications_broadcast

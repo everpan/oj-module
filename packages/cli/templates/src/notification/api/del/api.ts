@@ -1,5 +1,6 @@
 // POST /api/notification/del —— 删除一条通知（发射原语 HTTP 入口）。
 // 按人项校验归属，非本人返回 403；广播项仅删本人回执。Bearer 守卫保护。
+import { isSelfTenant } from "#/_platform/_shared/service/infra/access";
 import { delNotice } from "../_shared/notify";
 
 // POST /api/notification/del —— 删除一条通知（发射原语 HTTP 入口）。
@@ -10,6 +11,10 @@ const handler = {
 		const uid = http.user?.id;
 		if (!uid) {
 			json.fail(401, "unauthorized");
+			return;
+		}
+		if (!(await isSelfTenant())) {
+			json.fail(403, "forbidden");
 			return;
 		}
 		const b = (http.body ?? {}) as { id?: unknown, userId?: unknown };

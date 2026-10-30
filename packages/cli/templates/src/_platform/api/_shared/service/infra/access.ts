@@ -9,6 +9,15 @@ import { decideAccess } from "./guard";
 const TTL_MS = 10_000;
 
 interface AccessSnapshot {
+	/**
+	 * token 的 sub 在本租户里是否存在。
+	 *
+	 * 这是「伪造 X-TENANT-ID」的唯一服务端拦截点（R6 `require_signed_claim` 落地前的兜底）：
+	 * token 只带 sub、不带租户，而 `users` 已租户化（构造器自动注入 `tenant_id = 当前头值`），
+	 * 于是「A 企业的人带 B 企业的头」表现为**查无此行**。若这里放行，只要求登录态的端点
+	 * （通知已读、个人资料等）就会带着伪造的租户头去读写别家数据。
+	 */
+	exists: boolean
 	roles: string[]
 	bindings: Record<string, string[]>
 	forbidden: boolean
@@ -31,6 +40,7 @@ async function loadSnapshot(userId: number): Promise<AccessSnapshot> {
 	for (const r of bindRows as { role_name: string, permission_code: string }[])
 		(bindings[r.role_name] ??= []).push(r.permission_code);
 	return {
+		exists: userRows.length > 0,
 		roles,
 		bindings,
 		forbidden: Number((userRows[0] || {}).is_forbidden) === 1,
@@ -67,6 +77,10 @@ export async function currentAccess(): Promise<AccessSnapshot> {
 	if (uid == null)
 		deny();
 	const snap = await snapshot(Number(uid));
+	// 伪造租户头：token 的 sub 在**当前租户**里查无此人（见 AccessSnapshot.exists 注释）。
+	// 与 403 forbidden 同一句话，不给探测者区分「人不存在」与「没权限」的材料。
+	if (!snap.exists)
+		deny();
 	if (snap.forbidden)
 		deny();
 	if (snap.mustChange)
@@ -78,6 +92,27 @@ export async function currentAccess(): Promise<AccessSnapshot> {
 export async function assertPermission(code: string): Promise<void> {
 	const { roles, bindings } = await currentAccess();
 	if (!decideAccess({ roles, bindings }, code))
+		deny();
+}
+
+/**
+ * 租户自洽（§5.3 第四层）：token 的 sub 是否存在于**当前租户**。
+ * 唯一现实成因是伪造 `X-TENANT-ID`——`users` 已租户化，构造器按头值注入，越权即「查无此行」。
+ *
+ * 为什么单独一个出口：那些「登录即可、不挂权限点」的端点（人员目录、通知、我的资料）
+ * 不走 `currentAccess()`（它还会判 must_change/forbidden），但它们同样读租户数据——
+ * 少了这一步，伪造头的人能读到别家企业的广播通知与人员目录。
+ */
+export async function isSelfTenant(): Promise<boolean> {
+	const uid = http.user?.id;
+	if (uid == null)
+		return false;
+	return (await snapshot(Number(uid))).exists;
+}
+
+/** `isSelfTenant` 的断言形态（respond 风格端点用；json.fail 风格的端点直接判 `isSelfTenant()`） */
+export async function assertTenantSelf(): Promise<void> {
+	if (!(await isSelfTenant()))
 		deny();
 }
 

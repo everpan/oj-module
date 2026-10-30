@@ -6,6 +6,8 @@
 //   · 大文件（> max_upload）：服务端已流式直落 blob、字节不进 handler，此时
 //     http.file(0) 会**报错**，必须改走 files[0].key + blob.get(key)。
 // 头像通常远小于阈值，但别写成「只会一种」——换了上传组件/放开体积就会 500。
+import { isSelfTenant } from "#/_platform/_shared/service/infra/access";
+
 function toBase64(bytes: Uint8Array): string {
 	const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 	let out = "";
@@ -23,12 +25,17 @@ function toBase64(bytes: Uint8Array): string {
 	return out;
 }
 
-// POST /api/personal-center/upload —— 头像上传（multipart→base64，P4-3，D7/F4）。
 const handler = {
 	async post() {
 		const uid = http.user?.id;
 		if (!uid) {
 			json.fail(401, "unauthorized");
+			return;
+		}
+		// 写入目标按 uid 定位 users 行：伪造 X-TENANT-ID 时该行在本租户不存在，
+		// 不拦就会「更新 0 行却回 200」，还顺带在 blob 里留下垃圾文件
+		if (!(await isSelfTenant())) {
+			json.fail(403, "forbidden");
 			return;
 		}
 		if (!http.files || http.files.length === 0) {

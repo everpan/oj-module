@@ -60,15 +60,6 @@ export function ensureTenant(tenantId: string): void {
 		fail(403, "tenant header does not match the authenticated tenant");
 }
 
-/** 认证后的一致性复核：用户行必须属于当前请求的租户（R6 落地前 D4 的单点兜底） */
-export function assertSameTenant(userTenantId: string | null): void {
-	const current = http.tenantId;
-	if (current == null || current === "" || userTenantId == null)
-		return;
-	if (current !== userTenantId)
-		fail(403, "tenant header does not match the authenticated tenant");
-}
-
 /** 企微回调推导出来的租户键：直接就是企业 ID（D10：企业代码=corp_id，故 URL/头/隔离列三者同值） */
 export function tenantOfCorp(corpId: string): string {
 	return corpId;
