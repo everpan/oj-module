@@ -65,15 +65,55 @@ export function tenantOfCorp(corpId: string): string {
 	return corpId;
 }
 
+/**
+ * 企业匹配谓词（corp_id 与 auth_corp_id 双列等价命中：代开发拿到的是 corp_id，
+ * 第三方/open_corpid 落到 auth_corp_id）。
+ * 抽取理由：清单 / 启停 / 停企业三处原本各写一份 `or: [...]`，任一处漏一列的表现都是
+ * 「某类企业查不到」，而它只在真实第三方身份下才出现。
+ */
+export function corpScope(corpId: string) {
+	return {
+		or: [
+			{ field: "corp_id", op: "eq", value: corpId },
+			{ field: "auth_corp_id", op: "eq", value: corpId },
+		],
+	};
+}
+
+/** 企业 + 应用（profile 主键的两段：一次授权多家应用时按 agent 逐个命中） */
+export function corpAgentScope(corpId: string, agentId: string) {
+	return {
+		and: [
+			corpScope(corpId),
+			{ field: "agent_id", op: "eq", value: agentId },
+		],
+	};
+}
+
+/**
+ * 吊销某租户的全部会话（refresh token）。
+ *
+ * 用带 `tenant_id` 的裸 SQL 而不是 `truncate()`：后者靠「守卫自动注入当前租户」生效，
+ * 而 `db.asTenant` 一次请求只能设一次、且要求当时还没租户——本次请求是否处于匿名态
+ * 决定了 truncate 的清理范围，边界交给了上游实现。条件写死在 SQL 里，范围自带。
+ */
+export async function revokeTenantSessions(tenantId: string): Promise<number> {
+	return Number(await db.exec("DELETE FROM sys_refresh_token WHERE tenant_id = ?", [tenantId]));
+}
+
+function isUniqueViolation(e: unknown): boolean {
+	return /unique|constraint/i.test(e instanceof Error ? e.message : String(e));
+}
+
 export async function saveProfile(p: Omit<AppProfile, "status"> & { status?: AppProfile["status"] }, deps: WecomStoreDeps): Promise<void> {
 	const now = deps.now();
-	const rows = await db.table("wecom_app_profile").select(["suite_id"]).where({
+	const scope = {
 		and: [
 			{ field: "suite_id", op: "eq", value: p.suiteId },
-			{ field: "corp_id", op: "eq", value: p.corpId },
-			{ field: "agent_id", op: "eq", value: p.agentId },
+			corpAgentScope(p.corpId, p.agentId),
 		],
-	}).all();
+	};
+	const rows = await db.table("wecom_app_profile").select(["suite_id"]).where(scope).all();
 	const cols = {
 		auth_corp_id: p.authCorpId,
 		env: p.env,
@@ -82,10 +122,21 @@ export async function saveProfile(p: Omit<AppProfile, "status"> & { status?: App
 		permanent_code_enc: deps.encrypt(p.permanentCode),
 		update_time: now,
 	};
-	if (rows.length)
-		await db.table("wecom_app_profile").update(cols).where({ and: [{ field: "suite_id", op: "eq", value: p.suiteId }, { field: "corp_id", op: "eq", value: p.corpId }, { field: "agent_id", op: "eq", value: p.agentId }] }).run();
-	else
+	if (rows.length) {
+		await db.table("wecom_app_profile").update(cols).where(scope).run();
+		return;
+	}
+	try {
 		await db.table("wecom_app_profile").insert({ suite_id: p.suiteId, corp_id: p.corpId, agent_id: p.agentId, installed_at: now, ...cols }).run();
+	}
+	catch (e) {
+		// 并发插入者先落（企微 5 秒未拿到 success 就重推，两条 create_auth 撞车是常态）：
+		// 撞 (suite_id, corp_id, agent_id) 即转为更新，不让它以 500 收场——
+		// 否则企微再推第三次，这次授权就有可能在还剩一次重推时被判死。
+		if (!isUniqueViolation(e))
+			throw e;
+		await db.table("wecom_app_profile").update(cols).where(scope).run();
+	}
 }
 
 /**
@@ -93,12 +144,7 @@ export async function saveProfile(p: Omit<AppProfile, "status"> & { status?: App
  * 「企业不存在」与「已停用」返回**同一条文案**（§5.3 枚举风险：不让外部探测哪些企业装过）。
  */
 export async function findProfile(corpId: string, agentId: string | null, deps: WecomStoreDeps): Promise<AppProfile> {
-	const rows = await db.table("wecom_app_profile").select(["*"]).where({
-		or: [
-			{ field: "corp_id", op: "eq", value: corpId },
-			{ field: "auth_corp_id", op: "eq", value: corpId },
-		],
-	}).all() as Array<Record<string, unknown>>;
+	const rows = await db.table("wecom_app_profile").select(["*"]).where(corpScope(corpId)).all() as Array<Record<string, unknown>>;
 	const active = rows.filter(r => String(r.status) === "active");
 	const picked = agentId ? active.filter(r => String(r.agent_id) === agentId) : active;
 	if (picked.length === 0)
@@ -120,12 +166,7 @@ export async function findProfile(corpId: string, agentId: string | null, deps: 
 
 /** 停用/解绑：只改状态，不删行（取消授权也要留痕，§7.5 审计） */
 export async function setProfileStatus(corpId: string, status: AppProfile["status"], deps: WecomStoreDeps): Promise<number> {
-	return Number(await db.table("wecom_app_profile").update({ status, update_time: deps.now() }).where({
-		or: [
-			{ field: "corp_id", op: "eq", value: corpId },
-			{ field: "auth_corp_id", op: "eq", value: corpId },
-		],
-	}).run());
+	return Number(await db.table("wecom_app_profile").update({ status, update_time: deps.now() }).where(corpScope(corpId)).run());
 }
 
 export async function putSuiteTicket(suiteId: string, ticket: string, expiresAt: number, deps: WecomStoreDeps): Promise<void> {

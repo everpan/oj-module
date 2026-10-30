@@ -78,6 +78,9 @@ function installVars(overrides: Record<string, string> = {}): void {
 
 function installKv(): Map<string, string> {
 	const store = new Map<string, string>();
+	// 计数也是真的（有理）：重放防护靠 incr 的原子返回值判断「谁是第一个」，
+	// 恒返回 1 的桩会把这条防线伪装成通过。
+	const counters = new Map<string, number>();
 	g.kv = {
 		get: async (k: string) => store.get(k) ?? null,
 		set: async (k: string, v: string) => {
@@ -85,9 +88,14 @@ function installKv(): Map<string, string> {
 		},
 		del: async (k: string) => {
 			store.delete(k);
+			counters.delete(k);
 		},
 		expire: async () => 1,
-		incr: async () => 1,
+		incr: async (k: string) => {
+			const n = (counters.get(k) ?? 0) + 1;
+			counters.set(k, n);
+			return n;
+		},
 	};
 	return store;
 }
@@ -355,11 +363,15 @@ describe("P1-K：POST /auth/wecom/ticket（票据换会话）", () => {
 });
 
 describe("P1-L：GET/POST /auth/wecom/event（企微指令回调）", () => {
-	const TS = "1700000000";
+	// 必须是「当下」：服务端按 ±5 分钟窗口挡重放，写死历史时间戳等于主动把自己判成重放
+	const nowSecs = () => Math.floor(Date.now() / 1000);
+	const TS = String(nowSecs());
 	const NONCE = "n0nce";
+	const TICKET_XML = "<xml><InfoType>suite_ticket</InfoType><SuiteId>suite_1</SuiteId><SuiteTicket>tk_9</SuiteTicket></xml>";
 
-	function signedQuery(encrypted: string): Record<string, string> {
-		return { timestamp: TS, nonce: NONCE, msg_signature: wecomSignature(TOKEN, TS, NONCE, encrypted) };
+	function signedQuery(encrypted: string, overrides: Partial<Record<string, string>> = {}): Record<string, string> {
+		const query = { timestamp: TS, nonce: NONCE, ...overrides } as Record<string, string>;
+		return { ...query, msg_signature: wecomSignature(TOKEN, query.timestamp, query.nonce, encrypted) };
 	}
 
 	it("URL 验证：验签通过 → 以 text/plain 原样回解出的 echostr（不套信封）", async () => {
@@ -402,5 +414,44 @@ describe("P1-L：GET/POST /auth/wecom/event（企微指令回调）", () => {
 		await (await api()).event.post();
 		expect(out.status).toBe(400);
 		expect(dbo.prepare("SELECT COUNT(*) AS n FROM wecom_suite_ticket").get()).toMatchObject({ n: 0 });
+	});
+
+	it("timestamp 超出 ±5 分钟窗口 → 400（历史回调不得被无限期重放）", async () => {
+		const encrypted = await seal(TICKET_XML);
+		const stale = String(nowSecs() - 8 * 60);
+		request({ query: signedQuery(encrypted, { timestamp: stale }), body: `<xml><Encrypt>${encrypted}</Encrypt></xml>` });
+		await (await api()).event.post();
+		expect(out.status).toBe(400);
+		expect(out.body.msg).toMatch(/超出允许窗口/);
+		expect(dbo.prepare("SELECT COUNT(*) AS n FROM wecom_suite_ticket").get()).toMatchObject({ n: 0 });
+	});
+
+	it("同一条回调连发两次（重放）→ 第二次 400 nonce 重复，票据只落一次", async () => {
+		const encrypted = await seal(TICKET_XML);
+		const body = `<xml><Encrypt>${encrypted}</Encrypt></xml>`;
+		request({ query: signedQuery(encrypted), body });
+		await (await api()).event.post();
+		expect(out.status).toBe(200);
+
+		installJson();
+		request({ query: signedQuery(encrypted), body });
+		await (await api()).event.post();
+		expect(out.status).toBe(400);
+		expect(out.body.msg).toMatch(/nonce 重复/);
+		expect(dbo.prepare("SELECT suite_ticket FROM wecom_suite_ticket WHERE suite_id = ?").get(SUITE)).toMatchObject({ suite_ticket: "tk_9" });
+	});
+
+	it("换一个新 nonce 的同内容回调仍能落（重放闸门没把正常重试误伤）", async () => {
+		const first = await seal(TICKET_XML);
+		request({ query: signedQuery(first), body: `<xml><Encrypt>${first}</Encrypt></xml>` });
+		await (await api()).event.post();
+		expect(out.status).toBe(200);
+
+		installJson();
+		const again = await seal(TICKET_XML.replace("tk_9", "tk_10"));
+		request({ query: signedQuery(again, { nonce: `${NONCE}_2` }), body: `<xml><Encrypt>${again}</Encrypt></xml>` });
+		await (await api()).event.post();
+		expect(out.status).toBe(200);
+		expect(dbo.prepare("SELECT suite_ticket FROM wecom_suite_ticket WHERE suite_id = ?").get(SUITE)).toMatchObject({ suite_ticket: "tk_10" });
 	});
 });

@@ -60,7 +60,16 @@ export function runtimeHttp(): WecomHttp {
 export function runtimeCache(): WecomCache {
 	return {
 		get: key => kv.get(key),
-		set: (key, value, ttlSecs) => kv.set(key, value).then(() => kv.expire(key, ttlSecs)),
+		// kv 没有「带 TTL 的写」，只能写值再设过期——两步之间进程退出、或 expire 失败，
+		// 这个键就变成「永不过期」：corp secret 轮换后旧 token 仍被当作新鲜的，
+		// 表现是长时间 502 而日志一片安静。故显式兜底：设不上过期就删键（宁可每请求回源）。
+		set: async (key, value, ttlSecs) => {
+			await kv.set(key, value);
+			if (!(await kv.expire(key, ttlSecs))) {
+				log.warn("wecom token cached without ttl", "key", key);
+				await kv.del(key);
+			}
+		},
 		del: key => kv.del(key),
 	};
 }

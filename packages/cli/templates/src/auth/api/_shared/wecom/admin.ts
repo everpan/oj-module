@@ -13,7 +13,7 @@ import type { WecomConfig } from "./config";
 import type { WecomStoreDeps } from "./store";
 import { invalidateAllUsers } from "#/_platform/_shared/service/infra/access";
 import { eventUrlOf, installUrlOf } from "./config";
-import { getSuiteTicket, tenantOfCorp } from "./store";
+import { corpScope, getSuiteTicket, revokeTenantSessions, tenantOfCorp } from "./store";
 
 export interface WecomAdminDeps {
 	client: WecomClient
@@ -60,7 +60,7 @@ export async function setAppStatus(
 ): Promise<StatusResult> {
 	const scope = {
 		and: [
-			{ or: [{ field: "corp_id", op: "eq", value: corpId }, { field: "auth_corp_id", op: "eq", value: corpId }] },
+			corpScope(corpId),
 			{ field: "agent_id", op: "eq", value: agentId },
 		],
 	};
@@ -75,14 +75,14 @@ export async function setAppStatus(
 
 	const others = await db.table("wecom_app_profile").select(["agent_id"]).where({
 		and: [
-			{ or: [{ field: "corp_id", op: "eq", value: corpId }, { field: "auth_corp_id", op: "eq", value: corpId }] },
+			corpScope(corpId),
 			{ field: "status", op: "eq", value: "active" },
 		],
 	}).all();
 	if (others.length)
 		return { updated, revokedSessions: 0 };
 
-	const revoked = Number(await db.exec("DELETE FROM sys_refresh_token WHERE tenant_id = ?", [tenantOfCorp(corpId)]));
+	const revoked = await revokeTenantSessions(tenantOfCorp(corpId));
 	invalidateAllUsers();
 	return { updated, revokedSessions: revoked };
 }

@@ -17,7 +17,7 @@ import type { WecomStoreDeps } from "./store";
 // 属预期（日志留痕即可，不影响已落库的 profile）。
 import { invalidateAllUsers } from "#/_platform/_shared/service/infra/access";
 import { recordOp } from "#/_platform/_shared/service/infra/audit";
-import { ensureTenant, getSuiteTicket, putSuiteTicket, saveProfile, setProfileStatus, tenantOfCorp } from "./store";
+import { corpScope, getSuiteTicket, putSuiteTicket, revokeTenantSessions, saveProfile, setProfileStatus, tenantOfCorp } from "./store";
 import { xmlField } from "./xml";
 
 /** suite_ticket 官方有效期 30 分钟（10 分钟推一次）；本地按 30 分钟作废，宁可拒一次也不拿过期票打企微 */
@@ -49,19 +49,14 @@ function requireField(xml: string, name: string, infoType: string): string {
 
 /** 该 corp 的所有应用都标记为停用，并吊销其租户下的全部会话 */
 async function disableCorp(corpId: string, deps: SuiteEventDeps): Promise<void> {
-	const rows = await db.table("wecom_app_profile").select(["agent_id"]).where({
-		or: [
-			{ field: "corp_id", op: "eq", value: corpId },
-			{ field: "auth_corp_id", op: "eq", value: corpId },
-		],
-	}).all() as Array<{ agent_id: string }>;
+	const rows = await db.table("wecom_app_profile").select(["agent_id"]).where(corpScope(corpId)).all() as Array<{ agent_id: string }>;
 	for (const r of rows)
 		await deps.client.invalidateCorpToken(corpId, String(r.agent_id));
 	await setProfileStatus(corpId, "disabled", deps.store);
 	// 会话必须与授权同频：解绑后旧 refresh 串不得继续换新 access token。
-	// truncate 在租户表上只清当前租户（oj 契约），故先绑租户再清。
-	ensureTenant(tenantOfCorp(corpId));
-	await db.table("sys_refresh_token").truncate().run();
+	// tenant 条件写死在 SQL 里（不用 truncate：它的清理范围取决于本请求是否已绑过租户），
+	// 取消授权回调是匿名端点，不该依赖那种隐式前提。
+	await revokeTenantSessions(tenantOfCorp(corpId));
 	invalidateAllUsers();
 }
 

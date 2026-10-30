@@ -14,8 +14,8 @@ import type { WecomCache, WecomHttp } from "../src/auth/api/_shared/wecom/client
 import type { WecomConfig } from "../src/auth/api/_shared/wecom/config";
 import type { WecomStoreDeps } from "../src/auth/api/_shared/wecom/store";
 
-import { afterEach, beforeAll, describe, expect, it } from "vitest";
-import { createWecomClient } from "../src/auth/api/_shared/wecom/client";
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { createWecomClient, runtimeCache } from "../src/auth/api/_shared/wecom/client";
 import {
 	assertEncKey,
 	eventUrlOf,
@@ -166,6 +166,81 @@ describe("P1-A：corp→租户映射表（wecom_app_profile）", () => {
 	it("AuthCorpId（可能是 open_corpid）也能反查到同一行", async () => {
 		await saveProfile({ ...profile(), authCorpId: "open_corp_a" }, storeDeps());
 		expect((await findProfile("open_corp_a", null, storeDeps())).corpId).toBe("ww_corp_a");
+	});
+
+	it("并发首次授权（企微重推）：撞车的一方转为更新，不抛错也不双写", async () => {
+		// 企微 5 秒拿不到 success 就重推，两条 create_auth 同时进 handleSuiteEvent 是常态；
+		// 两条都先看不到行 → 都走 insert → 后到的必须吞掉唯一约束冲突改写为更新，
+		// 否则整条事件以 500 收场，这个企业的授权可能就停在「重推次数用完」那一刻。
+		await Promise.all([saveProfile(profile(), storeDeps()), saveProfile(profile(), storeDeps())]);
+		expect(dbo.prepare("SELECT COUNT(*) AS n FROM wecom_app_profile").get()).toMatchObject({ n: 1 });
+		expect((await findProfile("ww_corp_a", null, storeDeps())).permanentCode).toBe("perm_a");
+	});
+});
+
+describe("P1-A2：token 缓存必须带上有效期（kv 两步写的兜底）", () => {
+	// 本段接管全局 kv/log（runtimeCache 直接读全局），退出时必须还原——同文件后续用例依赖它们
+	let prevKv: unknown;
+	let prevLog: unknown;
+
+	beforeEach(() => {
+		prevKv = g.kv;
+		prevLog = g.log;
+	});
+
+	afterEach(() => {
+		g.kv = prevKv;
+		g.log = prevLog;
+	});
+
+	it("expire 生效：写进去的值带 TTL（expires_in - 300）", async () => {
+		const store = new Map<string, { value: string, exp: number }>();
+		const ttlClock = 1_000_000;
+		g.log = { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} };
+		g.kv = {
+			get: async (k: string) => {
+				const hit = store.get(k);
+				return hit && hit.exp > ttlClock ? hit.value : null;
+			},
+			set: async (k: string, v: string) => {
+				store.set(k, { value: v, exp: Number.POSITIVE_INFINITY });
+			},
+			expire: async (k: string, ttl: number) => {
+				const hit = store.get(k);
+				if (!hit)
+					return false;
+				hit.exp = ttlClock + ttl;
+				return true;
+			},
+			del: async (k: string) => {
+				store.delete(k);
+			},
+		};
+		const cache = runtimeCache();
+		await cache.set("wecom:suite_token:s", "sat_1", 6900);
+		expect(await cache.get("wecom:suite_token:s")).toBe("sat_1");
+	});
+
+	it("expire 没设上（false/0）→ 宁可不缓存也不留永不过期的 token", async () => {
+		const store = new Map<string, string>();
+		const seen: string[] = [];
+		g.log = { debug: () => {}, info: () => {}, warn: (m: string) => seen.push(m), error: () => {} };
+		g.kv = {
+			get: async (k: string) => store.get(k) ?? null,
+			set: async (k: string, v: string) => {
+				store.set(k, v);
+			},
+			expire: async () => 0,
+			del: async (k: string) => {
+				store.delete(k);
+				seen.push(`del:${k}`);
+			},
+		};
+		const cache = runtimeCache();
+		await cache.set("wecom:corp_token:c:1", "corp_tk", 6900);
+		// 没有 TTL 的值必须被撤回：留着它，corp secret 轮换后登录会长期停在 502
+		expect(await cache.get("wecom:corp_token:c:1")).toBeNull();
+		expect(seen.join("|")).toMatch(/del:wecom:corp_token:c:1/);
 	});
 });
 

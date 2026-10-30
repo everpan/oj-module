@@ -29,6 +29,7 @@ import {
 	putLoginState,
 	takeLoginState,
 } from "../_shared/wecom/login";
+import { guardReplay, runtimeReplayGate } from "../_shared/wecom/replay";
 import { claimLoginTicket, ensureTenant, findProfile, issueLoginTicket, runtimeStoreDeps, tenantOfCorp } from "../_shared/wecom/store";
 import { xmlField } from "../_shared/wecom/xml";
 
@@ -60,12 +61,16 @@ function badRequest(message: string): Error {
 /**
  * 校验企微回调签名并解出明文。签名不合法 → 400（不是 401：调用方是企微服务器，
  * 401 会被当成「本站需要鉴权」误导排查）；信封里的原文不回显，避免给探测者提供比对材料。
+ *
+ * 三道顺序不可换：先验签（不给未鉴权请求写 kv）→ 再拦重放（省一次解密，也让
+ * cancel_auth 这种危险性最高的报文止步在落库之前）→ 最后解密。
  */
-function decryptVerified(encrypted: string): { cfg: WecomConfig, plain: string } {
+async function decryptVerified(encrypted: string): Promise<{ cfg: WecomConfig, plain: string }> {
 	const cfg = readWecomConfig();
 	const expected = wecomSignature(cfg.token, query("timestamp"), query("nonce"), encrypted);
 	if (expected !== query("msg_signature"))
 		throw badRequest("回调签名校验失败");
+	await guardReplay(query("timestamp"), query("nonce"), runtimeReplayGate());
 	try {
 		return { cfg, plain: unwrapWecomMessage(encrypted, cfg.encodingAesKey, cfg.suiteId) };
 	}
@@ -190,7 +195,7 @@ const event = {
 	// 企微后台「保存回调 URL」时会 GET 一次：解出 echostr 后**原样明文回**（不套信封、不加引号）
 	async get() {
 		try {
-			const { plain } = decryptVerified(query("echostr"));
+			const { plain } = await decryptVerified(query("echostr"));
 			plainText(plain);
 		}
 		catch (e) {
@@ -206,7 +211,7 @@ const event = {
 			const encrypted = xmlField(xml, "Encrypt");
 			if (!encrypted)
 				throw badRequest("回调报文缺少 Encrypt");
-			const { cfg, plain } = decryptVerified(encrypted);
+			const { cfg, plain } = await decryptVerified(encrypted);
 			const client = createWecomClient({ http: runtimeHttp(), cache: runtimeCache() });
 			await handleSuiteEvent(plain, { cfg, client, store: runtimeStoreDeps(cfg) });
 			plainText("success");
