@@ -39,12 +39,12 @@ describe("applyRoutePrefix", () => {
 	});
 
 	it("p2 保持前导斜杠风格：绝对→/kb，相对→kb", () => {
-		expect(applyRoutePrefix([r("/wiki")], "kb")[0]!.path).toBe("/kb");
-		expect(applyRoutePrefix([r("wiki")], "kb")[0]!.path).toBe("kb");
+		expect(applyRoutePrefix([r("/wiki", {})], "kb")[0]!.path).toBe("/kb");
+		expect(applyRoutePrefix([r("wiki", {})], "kb")[0]!.path).toBe("kb");
 	});
 
 	it("p3 顶层多段路径：仅首段替换，其余段保留", () => {
-		expect(applyRoutePrefix([r("wiki/extra")], "kb")[0]!.path).toBe("kb/extra");
+		expect(applyRoutePrefix([r("wiki/extra", {})], "kb")[0]!.path).toBe("kb/extra");
 	});
 
 	it("p4 缺省 prefix = name 时逐字节零漂移", () => {

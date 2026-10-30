@@ -1,7 +1,7 @@
 import type { Page } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 
-import { apiLogin, enterTemplateApp } from "../fixtures/enter-template-app";
+import { apiHeaders, apiLogin, enterTemplateApp } from "../fixtures/enter-template-app";
 
 /**
  * 通知中心 / 铃铛互动（templates e2e）：
@@ -28,15 +28,15 @@ test.describe.serial("通知中心（templates）", () => {
 		token = await apiLogin(page);
 		// 三类各推一条（广播归 notice；按人 push 缺省收件人 = 当前用户）
 		await page.request.post("/api/notification/push-broadcast", {
-			headers: { Authorization: `Bearer ${token}` },
+			headers: apiHeaders(token),
 			data: { title: "e2e-类型-通知", message: "broadcast notice", category: "notice" },
 		});
 		await page.request.post("/api/notification/push", {
-			headers: { Authorization: `Bearer ${token}` },
+			headers: apiHeaders(token),
 			data: { title: "e2e-类型-私信", message: "personal pm", category: "pm" },
 		});
 		await page.request.post("/api/notification/push", {
-			headers: { Authorization: `Bearer ${token}` },
+			headers: apiHeaders(token),
 			data: { title: "e2e-类型-艾特", message: "personal mention", category: "mention" },
 		});
 		await page.close();

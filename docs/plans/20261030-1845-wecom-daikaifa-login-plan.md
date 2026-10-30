@@ -609,4 +609,86 @@ token 只带 `sub`，而构造器按请求头注入 `tenant_id`，所以「A 企
 | 6 跨租户 refresh | 垫片无注入 | `sys_refresh_token` 是 A 组租户表，换票按 `token_hash` 查，注入后别家租户查不到该行 → 401 |
 | 4 同 userid 跨 corp 两行 | 同上 | 靠 `(tenant_id, username)` 唯一约束：`wecom:<userid>` **不含 corp**，隔离完全来自 `tenant_id`。这把「租户注入失效」的后果放大到「两家企业同一个工号会撞号」——Phase 4 真机用例必须覆盖这条 |
 
+## 15. Phase 4 前置：租户头的冷启动缺口（2026-10-30）
+
+### 15.1 症状
+
+Phase 3 收尾跑模板 e2e 时，`/system` 菜单在整页刷新（F5）后消失、角色全空。这不是页面问题：
+刷新后前端角色被清，说明 `user-info` 没拿到数据。
+
+### 15.2 取证与根因
+
+在 e2e 里挂了一个临时 fetch 探针（已删），打印每个请求的 `X-TENANT-ID`：
+
+| 时刻 | 请求 | 租户头 | 结果 |
+| --- | --- | --- | --- |
+| t=88ms | `GET /api/_platform/solutions/routes` | `null` | 400 `missing tenant header` |
+| t=187ms | `GET /api/web/user-info` | `null` | 400 → shell `useUserStore.reset()`（角色清空） |
+| t>200ms | 后续请求 | `default` | 200 |
+
+根因是**时序**，不是逻辑：租户头在 Phase 3 里由登录模块 `onInit` 注册 header provider 提供，
+而宿主 `packages/cli/shell/src/host.tsx:266` 的 `await hydrateUser()` 与
+`runtime/store/solution-routes.ts`（import 即武装）都在**任何模块 onInit 之前**发请求。
+模块注册的 provider 结构上必然晚一步，晚到的头救不了已经 400 的那两个请求。
+
+### 15.3 修法：租户下沉到 runtime，请求层无条件注入
+
+- 新增 `packages/runtime/src/store/tenant.ts`：`DEFAULT_TENANT`/`TENANT_HEADER`/`TENANT_QUERY_PARAM`、
+  zustand persist（`oj-tenant`）、`bootstrapTenant()`（读 `?tenant=` 并落库）、`currentTenant()`。
+  模块加载时即执行一次 `bootstrapTenant()`（`typeof window` 守卫）。
+- `utils/request/index.ts` 的 `beforeRequest` 在 token / X-Lang 之后**无条件**写 `X-TENANT-ID`，
+  位置在模块 provider 合并**之前** —— 于是「provider 未注册」不再是缺头场景，provider 仍可覆盖。
+- 登录模块删掉 `src/login/web/store/tenant.ts` 与 `onInit` 里的 provider 注册 / `bootstrapTenant()` 调用，
+  改为从 `@oj-module/runtime` 取 `useTenantStore`（登出清理与 `?tenant=` 引导的展示逻辑不变）。
+- `packages/cli/src/build.ts` 的 `RUNTIME_STUB_SOURCE` 补 6 个导出：模块 entry 引用了它们，
+  esbuild 的虚拟 stub 缺一个就报 `No matching export`。
+
+为什么不选「只在 shell 补一刀」：shell 是与 cli 一起预构建的宿主产物，补丁只在宿主侧；
+解决方案模块被装进**别的宿主**（oj-wiki 等）时缺口原样复现。下沉到 runtime 才是按契约修。
+
+### 15.4 连带改动
+
+- `tests/runtime/header-provider.test.ts` 两处断言按新契约改写（`X-TENANT-ID` 不再允许为 null）：
+  「未注册」用例改为断言 `default`，「注销后」改为断言回落到运行时默认值。契约变了就改断言，
+  不保留「provider 缺失即无租户头」的旧说法。
+- `tests/e2e/fixtures/enter-template-app.ts` 增 `apiHeaders(token)`（Bearer + 租户），`apiLogin` 也带租户头；
+  `notification.spec.ts` 的 3 处 `push`/`push-broadcast` 改用该 helper —— `tenant.enable` 后除
+  `anonymous_paths` 白名单外缺头即 400，页外 request 也逃不掉。
+- `my-profile.spec.ts` 补填必填项（`email`/`phoneNumber`）：该页 ProForm 两字段 required 是产品设定，
+  seed 的 admin 两列皆空，不填就卡在校验上、`onFinish` 不触发。此前「测试只填简介」是漏填，
+  不是产品 bug。
+- 顺带修两处**已入库的**类型错误（与租户无关，但卡 `pnpm typecheck`）：
+  `tests/fixtures/host-routes-entry.tsx` 的 `Component` 传的是 ReactElement（改内联零参组件，同 p7-* 夹具写法）；
+  `tests/runtime/route-prefix.test.ts` 调用 `r()` 少传 `meta`。
+- `eslint.config.js` 忽略 `packages/cli/templates/bin/plugins/**`：与 `bin/devkit/global.d.ts` 同理，
+  它是 `ojm vendor` 从 oj 分发整份同步的产物（局部拷贝会触发 plugin ABI mismatch），
+  其 `plugins.lock.json` 不得被 `--fix` 重排版。
+
+### 15.5 验证
+
+| 卡口 | 结果 |
+| --- | --- |
+| 探针复测（重建后） | 6 个冷启动请求全部 `tenant= default`，两个 400 消失 |
+| 模板 `vitest` | 41 文件 / 806 通过 |
+| 根 `vitest run` | 128 文件 / 870 例通过、1 跳过（`uni-dev-smoke` 在 9778 被并行用例占用时按 `skipIf` 自动跳过；单独跑 **4/4 绿**，见 15.6） |
+| `pnpm test:cli` | 49 文件 / 580 通过，1 跳过 |
+| 两侧 `tsc --noEmit`（根 + `src/tsconfig.json`） | 0 error（根需 `NODE_OPTIONS=--max-old-space-size=8192`，默认 4GB 堆会 OOM，见 15.6） |
+| `ojm build` | 8 个模块产物 + 宿主合并完成 |
+| `ojm api --check` | 0 error / 0 warn |
+| `eslint .` | 0 error 0 warning |
+| `pnpm test:e2e:templates` | **6 / 6 通过**（notification N1–N4、system-route-repatch、my-profile P1） |
+
+### 15.6 连带修好的一处真回归（`uni-dev` 冒烟）
+
+跑根 `vitest` 时 `tests/integration/uni-dev-smoke.test.ts` 4 例失败，第一版判断写成「环境超时」——**不成立**，
+单独复跑后定位到真因：脚手架 `config.yaml` 默认 `tenant.enable`，`/api/auth/login` 不在 `anonymous_paths`
+白名单里，而冒烟的裸 `http.request` 不带 `X-TENANT-ID` → 400 `missing tenant header` → 拿不到 token →
+`dev`/`preview` 两例连锁失败（`init` 首轮那次 240s 超时才是负载，复跑 2.6s）。
+
+修法：冒烟里的 `request()` 统一带 `X-TENANT-ID: default`（与 e2e 夹具的 `apiHeaders` 同一口径）。
+复跑 4/4 通过。同一轮根 `vitest` 另有 `shell-importmap` 的 sha256 比对失败 —— 那是 runtime dist 重建后
+`shell-dist` 未重建（宿主产物按字节复制 runtime），`pnpm --filter @oj-module/cli build:shell` 后即绿。
+
+
+
 

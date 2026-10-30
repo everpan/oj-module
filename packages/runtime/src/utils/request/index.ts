@@ -5,6 +5,7 @@ import { isLoginPathname } from "#src/router/extra-info";
 import { useAuthStore } from "#src/store/auth";
 import { currentHeaderProvider } from "#src/store/header-provider";
 import { usePreferencesStore } from "#src/store/preferences";
+import { currentTenant, TENANT_HEADER } from "#src/store/tenant";
 
 import { resolveApiBase } from "#src/utils/api-base";
 import { AUTH_HEADER, LANG_HEADER, REFRESH_TOKEN_PATH } from "./constants";
@@ -41,7 +42,11 @@ const defaultConfig: Options = {
 				}
 				// 语言等所有的接口都需要携带
 				setHeaderSafe(request.headers, LANG_HEADER, usePreferencesStore.getState().language);
-				// D-M9：模块注册的惰性请求头（租户等）——追加式合并，未注册时请求照发
+				// 租户头由运行时直接注入（不经模块 provider）：宿主 shell 的 hydrateUser /
+				// solution-routes 都在任何模块 onInit 之前发请求，靠模块注册必然晚一步
+				// （冷启动实测两个 400 missing tenant header）。见 store/tenant.ts 头注释。
+				setHeaderSafe(request.headers, TENANT_HEADER, currentTenant());
+				// D-M9：模块注册的惰性请求头——追加式合并，未注册时请求照发
 				const headerProvider = currentHeaderProvider();
 				if (headerProvider) {
 					for (const [name, value] of Object.entries(headerProvider())) {

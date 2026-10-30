@@ -120,6 +120,10 @@ describe.skipIf(process.env.CI || ojBusy)("uni-dev e2e 冒烟（真二进制）"
 				path: reqPath,
 				method: init?.method ?? "GET",
 				headers: {
+					// 脚手架 config.yaml 默认 tenant.enable，除 anonymous_paths 白名单外缺
+					// `X-TENANT-ID` 即 400 `missing tenant header`；浏览器侧由运行时注入，
+					// 页外裸 http 调用（本冒烟）必须自己带，单租户场景用部署默认租户。
+					"X-TENANT-ID": "default",
 					...(payload ? { "content-type": "application/json", "content-length": Buffer.byteLength(payload) } : {}),
 					...(init?.token ? { authorization: `Bearer ${init.token}` } : {}),
 				},

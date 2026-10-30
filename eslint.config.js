@@ -86,6 +86,10 @@ export default antfu({
 		"packages/cli/templates/global.d.ts",
 		// ojm init 分发到工程内的 devkit 副本（bin/devkit/），同源 mirror，同样忽略
 		"packages/cli/templates/bin/devkit/global.d.ts",
+		// 同理：bin/plugins 与 bin/.oj-version 是从 oj 分发整体同步的插件包
+		// （必须整份覆盖，局部拷贝会触发 plugin ABI mismatch），其 plugins.lock.json
+		// 由上游生成，不得由 eslint --fix 重排版
+		"packages/cli/templates/bin/plugins/**",
 	],
 	rules: {
 		"style/quotes": ["error", "double"],

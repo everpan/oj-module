@@ -40,9 +40,23 @@ export async function enterTemplateApp(page: Page): Promise<void> {
 	await expect(page.locator(".ant-menu li").first()).toBeVisible({ timeout: 20_000 });
 }
 
+/**
+ * 页外 API 调用的通用头：Bearer + 租户。
+ *
+ * `X-TENANT-ID` 必带：tenant.enable 后除 anonymous_paths 白名单外缺头即
+ * 400 `missing tenant header`。这里写死部署默认租户（前端 `DEFAULT_TENANT` 同值）——
+ * 模板 e2e 跑的是单租户 dev 站点，多租户场景另行带参。
+ */
+export function apiHeaders(token: string): Record<string, string> {
+	return { "Authorization": `Bearer ${token}`, "X-TENANT-ID": "default" };
+}
+
 /** 用页外 request 直登 API，返回 Bearer token（给 push 端点造确定性数据用） */
 export async function apiLogin(page: Page): Promise<string> {
-	const res = await page.request.post("/api/auth/login", { data: { username: "admin", password: "123456" } });
+	const res = await page.request.post("/api/auth/login", {
+		data: { username: "admin", password: "123456" },
+		headers: { "X-TENANT-ID": "default" },
+	});
 	const body = await res.json();
 	if (body.code !== 0)
 		throw new Error(`API login failed: ${JSON.stringify(body)}`);

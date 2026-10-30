@@ -1,7 +1,6 @@
-import { defineModule, useAuthStore } from "@oj-module/runtime";
+import { defineModule, useAuthStore, useTenantStore } from "@oj-module/runtime";
 import { lazy } from "react";
 import { authProvider } from "./auth-provider";
-import { bootstrapTenant, useTenantStore } from "./store/tenant";
 
 /**
  * 登录模块：提供 `/login` 路由与内容区。
@@ -60,13 +59,12 @@ export default defineModule({
 	},
 	lifecycle: {
 		/**
-		 * 租户上下文（L2）：登录模块是最早被加载的模块之一（`loadAll` 全量实例化），
-		 * 在 onInit 里注册请求头 provider，之后每个请求都会带 `X-TENANT-ID`。
-		 * 时序容忍由框架保证：provider 未注册时请求照发（登录前的 guard 请求）。
+		 * 租户上下文（L2）：请求头由**运行时**注入（`runtime/store/tenant.ts`），模块不再注册
+		 * headerProvider——宿主 shell 的 hydrateUser / solution-routes 都在任何模块 onInit 之前
+		 * 就发请求，模块注册必然晚一步（2026-10-30 冷启动 e2e 实测两个 400 missing tenant header）。
+		 * 模块这里只保留「登出清租户」这一业务语义。
 		 */
 		async onInit(ctx) {
-			bootstrapTenant();
-			ctx.register.headerProvider(() => ({ "X-TENANT-ID": useTenantStore.getState().tenant }));
 			// 认证 provider：仅接管「企微票据换会话」，其余方式原样委托内置链（见 auth-provider.ts）。
 			// 注册时机必须在任何登录动作之前——onInit 先于路由渲染。
 			ctx.register.authProvider(authProvider);

@@ -112,6 +112,13 @@ export const useAuthStore = _fn;
 export const useSolutionRoutes = _fn;
 export const useUserStore = _fn;
 export const useTabsStore = _fn;
+// 租户上下文（L2）：请求头由运行时注入，模块只在登出清理 / URL 带 tenant 参数时读写
+export const useTenantStore = _fn;
+export const currentTenant = () => "default";
+export const bootstrapTenant = () => "default";
+export const DEFAULT_TENANT = "default";
+export const TENANT_HEADER = "X-TENANT-ID";
+export const TENANT_QUERY_PARAM = "tenant";
 // 页签 key 唯一正确取口（keepAlive 下 useLocation 是激活页位置，0.1.21）
 export const useTabKey = _fn;
 // 图标

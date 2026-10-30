@@ -114,6 +114,17 @@ export { useSolutionRoutes } from "./store/solution-routes";
 
 export { useTabsStore } from "./store/tabs";
 
+// 租户上下文（L2）：请求层已内置注入 `X-TENANT-ID`，模块只按需读写该 store
+// （登录模块用它做 `?tenant=` 引导与登出清理；业务模块一般无需感知）
+export {
+	bootstrapTenant,
+	currentTenant,
+	DEFAULT_TENANT,
+	TENANT_HEADER,
+	TENANT_QUERY_PARAM,
+	useTenantStore,
+} from "./store/tenant";
+
 export { useUserStore } from "./store/user";
 
 export type { AppInfo } from "./types/app-info";

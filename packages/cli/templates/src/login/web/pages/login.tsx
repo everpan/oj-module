@@ -1,9 +1,8 @@
-import { fetchLoginMethods, getRedirectPath, useAuthStore, withSiteBase } from "@oj-module/runtime";
+import { fetchLoginMethods, getRedirectPath, useAuthStore, useTenantStore, withSiteBase } from "@oj-module/runtime";
 import { Alert, Button, Form, Input, Tabs, Typography } from "antd";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate } from "react-router";
-import { useTenantStore } from "../store/tenant";
 import { parseWecomLanding, wecomAuthorizePath } from "../wecom";
 
 type LoginMethod = "local" | "ldap" | "sso" | "wecom";

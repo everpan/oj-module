@@ -26,9 +26,12 @@ vi.hoisted(() => {
 });
 
 /**
- * D-M9：模块经 ctx.register.headerProvider 注入惰性求值的自定义请求头
- * （租户等），beforeRequest 在 token / X-Lang 注入之后合并进每个请求。
- * provider 未注册时请求照发（时序容忍：登录前 guard 请求无租户头）。
+ * D-M9：模块经 ctx.register.headerProvider 注入惰性求值的自定义请求头，
+ * beforeRequest 在 token / X-Lang / 内置租户头之后合并进每个请求。
+ *
+ * 注意：`X-TENANT-ID` 自 L2 起由运行时无条件注入（默认 default），不再依赖模块
+ * provider —— 宿主 shell 的 hydrateUser / solution-routes 早于任何模块 onInit 发请求。
+ * provider 仍可覆盖它（如按登录态切换租户），未注册时保持运行时默认值。
  */
 
 // ky 走全局 fetch：以桩捕获 Request，断言最终头部
@@ -78,14 +81,14 @@ describe("header provider 注册表（D-M9）", () => {
 		expect((await lastHeaders()).get("X-TENANT-ID")).toBe("t-2");
 	});
 
-	it("未注册时请求零影响（Authorization / X-Lang 照注）", async () => {
+	it("未注册时只剩运行时内置头：Authorization / X-Lang / 租户默认值", async () => {
 		useAuthStore.setState({ token: "tok-0", refreshToken: "r-0" });
 		expect(currentHeaderProvider()).toBeUndefined();
 
 		const headers = await lastHeaders();
 		expect(headers.get("Authorization")).toBe("Bearer tok-0");
 		expect(headers.get("X-Lang")).toBeTruthy();
-		expect(headers.get("X-TENANT-ID")).toBeNull();
+		expect(headers.get("X-TENANT-ID")).toBe("default");
 	});
 
 	it("合并语义 = 追加非替换：provider 头不覆盖已注入的 Authorization", async () => {
@@ -99,7 +102,7 @@ describe("header provider 注册表（D-M9）", () => {
 });
 
 describe("header provider 生命周期注入（D-M9）", () => {
-	it("unloadModule 注销后 provider 头消失", async () => {
+	it("unloadModule 注销后回落到运行时租户默认值", async () => {
 		const { loadAll, unloadModule } = await import("#src/module-loader");
 		await loadAll({
 			modules: [{
@@ -111,6 +114,6 @@ describe("header provider 生命周期注入（D-M9）", () => {
 
 		await unloadModule("header-provider-fixture");
 		expect(currentHeaderProvider()).toBeUndefined();
-		expect((await lastHeaders()).get("X-TENANT-ID")).toBeNull();
+		expect((await lastHeaders()).get("X-TENANT-ID")).toBe("default");
 	});
 });
