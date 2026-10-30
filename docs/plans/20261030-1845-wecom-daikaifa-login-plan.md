@@ -597,3 +597,16 @@ token 只带 `sub`，而构造器按请求头注入 `tenant_id`，所以「A 企
 - 已绿：模板 `vitest`（**41 文件 / 806 通过**）、`pnpm test:cli`（580 通过 / 1 跳过）、
   两侧 `tsc --noEmit`、`ojm build`、`ojm api --check`（0 error / 0 warn）、eslint（0 error 0 warning）。
 
+### 14.6 本层覆盖不到、仍归 Phase 4 的项
+
+`tests/fixture.ts` 的构造器垫片**不模拟租户**（文件头注释已声明，多租户上线后需补）。因此下面三条
+只能在真 oj 运行时验证，L2 用例不做假的通过：
+
+| §5.7 项 | 为什么不在 L2 | 现有保证 |
+| --- | --- | --- |
+| 2 跨租户裸 SQL 被 `sql_guard: deny` 拒 | 垫片无 SQL 守卫 | oj 侧；本仓裸 SQL（`notify.ts` 两处 INSERT…SELECT）已显式写 `tenant_id` 并绑当前租户参数 |
+| 3 构造器 insert 自动落当前租户 | 垫片无注入 | oj 侧；`ensureWecomUser` 等插入从不自己写 `tenant_id` |
+| 6 跨租户 refresh | 垫片无注入 | `sys_refresh_token` 是 A 组租户表，换票按 `token_hash` 查，注入后别家租户查不到该行 → 401 |
+| 4 同 userid 跨 corp 两行 | 同上 | 靠 `(tenant_id, username)` 唯一约束：`wecom:<userid>` **不含 corp**，隔离完全来自 `tenant_id`。这把「租户注入失效」的后果放大到「两家企业同一个工号会撞号」——Phase 4 真机用例必须覆盖这条 |
+
+
