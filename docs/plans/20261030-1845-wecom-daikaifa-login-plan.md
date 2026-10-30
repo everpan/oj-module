@@ -807,11 +807,14 @@ runtime 副本）。浏览器 importmap 取的是 shell-dist 那份，缺导出 
 | `pnpm test:cli` | 49 文件 / **580 例**通过 + 1 skipped |
 | 全仓 `typecheck`（`NODE_OPTIONS=--max-old-space-size=8192`）、模板 `typecheck`/`typecheck:api` | 0 error |
 | `ojm build` / `ojm api --check` / `eslint .` | 通过 / 0 error 0 warn / 0 error |
+| `node scripts/verify-subpath.mjs`（子路径部署回归） | **24 项全 PASS**（含浏览器段：basename 生效、深链刷新命中模块路由、无模块解析失败） |
+
+子路径那一段正好覆盖 §17.2 第 1 条的语境：`siteBase=/oj` 时站点 base 与 API base 是两个
+互不相干的前缀，登录页的授权入口必须落在 `/api/...` 而不是 `/oj/api/...`。
 
 ### 17.6 Phase 4 仍未做
 
-- **子路径部署回归**（`pnpm verify:subpath`）：§17.2 第 1 条说明「站点 base 与 API base 正交」
-  正是这里的坑，值得在子路径形态下再钉一遍；
-- **真实企微套件联调**：需要服务商后台的 suite_id/secret 与一家真企业授权，属**外部阻塞**，
-  交付时须显式说明由谁提供凭据，而不是当作已跳过。
+- **真实企微套件联调**：需要服务商后台的 suite_id/secret 与一家真企业的授权确认，属**外部阻塞**。
+  交付时须显式说明由谁提供凭据、走哪一步验证（`GET /api/auth/wecom/login?corp=` 是否 302 到企微、
+  回跳后是否落成 `?wecom_ticket=&tenant=`），而不是当作已跳过。
 
