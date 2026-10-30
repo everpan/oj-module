@@ -158,4 +158,18 @@ describe("loadAll 引擎（全生命周期 + 三处事件化）", () => {
 		const routes = getRoutes() as Array<{ id?: string }>;
 		expect(routes.every(r => typeof r.id === "string")).toBe(true);
 	});
+
+	it("需求一·多根树：顶层多个不同首段路由各自保留为独立路由（不坍缩）", async () => {
+		await loadAll(manifest([{
+			name: "acme",
+			routes: [
+				{ path: "/crm", handle: { title: "crm", category: "main", order: 200 } },
+				{ path: "/wiki", handle: { title: "wiki", category: "main", order: 210 } },
+			],
+		}]));
+		const ids = getRoutes().map(r => String((r as { id?: string }).id));
+		// 两个一级菜单根都存在、且各只出现一次（首段改写逻辑不得把它们合并到同一路径）
+		expect(ids.filter(p => p === "/crm")).toEqual(["/crm"]);
+		expect(ids.filter(p => p === "/wiki")).toEqual(["/wiki"]);
+	});
 });

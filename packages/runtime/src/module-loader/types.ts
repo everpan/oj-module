@@ -98,6 +98,11 @@ export interface ModuleInstance {
 	definition: ModuleDefinition
 	/** 生效的 web 路由前缀段（缺省 = name）；供 getModuleRoutePrefix 读取 */
 	routePrefix: string
+	/**
+	 * 是否多根模块（顶层路由含多个不同首段）。多根时 routePrefix 仅作命名空间标识，
+	 * 不用于改写路由路径——各根按 entry.ts 原始路径独立注册为一级菜单（需求一）。
+	 */
+	multiRoot: boolean
 	/** missing-deps：声明的依赖模块缺失或加载失败，本模块未执行生命周期（US-9 禁止半加载） */
 	status: "pending" | "loading" | "loaded" | "active" | "error" | "missing-deps"
 	error?: Error

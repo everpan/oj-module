@@ -55,6 +55,28 @@ describe("deriveManifestRoutes（entry.ts → manifest routes）", () => {
 		expect(deriveManifestRoutes(def(undefined))).toEqual([]);
 		expect(deriveManifestRoutes(def([]))).toEqual([]);
 	});
+
+	it("d-4 多根树：每个顶层 category 根各自派生为独立 manifest route（需求一·多根）", () => {
+		// 模块 routes 数组 length>1：/crm 与 /wiki 为两个一级菜单根，各自带 children
+		const d = def([
+			{
+				path: "/crm",
+				handle: { category: "main", order: 200, title: "acme:menu.crm" },
+				children: [{ path: "/crm/customers", handle: { title: "acme:menu.customers" } }],
+			},
+			{
+				path: "/wiki",
+				handle: { category: "main", order: 210, title: "acme:menu.wiki" },
+				children: [{ path: "/wiki/pages", handle: { title: "acme:menu.pages" } }],
+			},
+		]);
+		const out = deriveManifestRoutes(d);
+		// 仅取顶层一级菜单根（children 不进 manifest），两棵根都保留、互不坍缩
+		expect(out).toEqual([
+			{ path: "/crm", category: "main", order: 200, title_key: "acme:menu.crm" },
+			{ path: "/wiki", category: "main", order: 210, title_key: "acme:menu.wiki" },
+		]);
+	});
 });
 
 describe("reconcileManifestRoutes（entry.ts 为准 + 漂移警告）", () => {

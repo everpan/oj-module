@@ -202,31 +202,17 @@ export async function loadAll(manifest: Manifest): Promise<ModuleInstance[]> {
 					+ `期望 ${peerRuntime}，实际 ${manifest.runtimeVersion}。已跳过加载。`
 					+ "修复建议：升级宿主 runtime 或按兼容范围重新构建该模块（US-5）。",
 				);
-				modules.set(entry.name, {
-					definition,
-					routePrefix: entry.routePrefix ?? rootSegmentOf(definition.routes) ?? entry.name,
-					status: "error",
-					error: new Error(
-						`模块 "${entry.name}" peerRuntime 不兼容：期望 ${peerRuntime}，实际 ${manifest.runtimeVersion}`,
-					),
-				});
+				modules.set(entry.name, buildInstance(entry, definition, "error", new Error(
+					`模块 "${entry.name}" peerRuntime 不兼容：期望 ${peerRuntime}，实际 ${manifest.runtimeVersion}`,
+				)));
 				continue;
 			}
 			definitions.set(entry.name, definition);
 			validEntries.push(entry);
-			modules.set(entry.name, {
-				definition,
-				routePrefix: entry.routePrefix ?? rootSegmentOf(definition.routes) ?? entry.name,
-				status: "loaded",
-			});
+			modules.set(entry.name, buildInstance(entry, definition, "loaded"));
 		}
 		else {
-			modules.set(entry.name, {
-				definition: { name: entry.name, description: "", version: "0.0.0", routes: [] },
-				routePrefix: entry.routePrefix ?? entry.name,
-				status: "error",
-				error: new Error("Failed to load module entry"),
-			});
+			modules.set(entry.name, buildInstance(entry, { name: entry.name, description: "", version: "0.0.0", routes: [] }, "error", new Error("Failed to load module entry")));
 		}
 	}
 
@@ -242,12 +228,7 @@ export async function loadAll(manifest: Manifest): Promise<ModuleInstance[]> {
 				`[module-loader] 模块 "${entry.name}" 依赖缺失：${missing.join(", ")} 未加载。`
 				+ "已跳过该模块（不执行生命周期、不注册路由）。修复建议：先部署依赖模块，或在清单中移除该依赖（US-9）。",
 			);
-			modules.set(entry.name, {
-				definition,
-				routePrefix: entry.routePrefix ?? rootSegmentOf(definition.routes) ?? entry.name,
-				status: "missing-deps",
-				error: new Error(`模块 "${entry.name}" 依赖缺失：${missing.join(", ")}`),
-			});
+			modules.set(entry.name, buildInstance(entry, definition, "missing-deps", new Error(`模块 "${entry.name}" 依赖缺失：${missing.join(", ")}`)));
 			validEntries.splice(i, 1);
 			definitions.delete(entry.name);
 		}
@@ -259,7 +240,8 @@ export async function loadAll(manifest: Manifest): Promise<ModuleInstance[]> {
 	// Phase 3: 按序执行生命周期
 	for (const entry of sortedEntries) {
 		const definition = definitions.get(entry.name)!;
-		const ctx = createModuleContext(definition, entry.routePrefix ?? rootSegmentOf(definition.routes) ?? entry.name);
+		const instance = modules.get(entry.name)!;
+		const ctx = createModuleContext(definition, instance.routePrefix);
 
 		try {
 			if (definition.lifecycle?.beforeInit) {
@@ -278,12 +260,7 @@ export async function loadAll(manifest: Manifest): Promise<ModuleInstance[]> {
 		}
 		catch (error) {
 			console.error(`[module-loader] Lifecycle error for "${entry.name}":`, error);
-			modules.set(entry.name, {
-				definition,
-				routePrefix: entry.routePrefix ?? rootSegmentOf(definition.routes) ?? entry.name,
-				status: "error",
-				error: error instanceof Error ? error : new Error(String(error)),
-			});
+			modules.set(entry.name, buildInstance(entry, definition, "error", error instanceof Error ? error : new Error(String(error))));
 		}
 	}
 
@@ -346,6 +323,8 @@ function tagModuleRoutes(routes: AppRouteRecordRaw[], name: string): AppRouteRec
  * 顶层路由 path 的首段替换为 prefix；children 为相对路径不变。
  * 保持原 path 的「前导斜杠」风格：相对 `wiki` → `kb`、绝对 `/wiki` → `/kb`，
  * 因此缺省 prefix = name 时路径字段逐字节不变（零漂移），仅段值一致。
+ * 注意：多根模块（需求一）不走此改写——各根路径在 entry.ts 已是权威绝对路径，
+ * 改写会把多个根首段都覆盖成同一 prefix 而坍缩碰撞；见 getHostRoutes。
  */
 export function applyRoutePrefix(routes: AppRouteRecordRaw[], prefix: string): AppRouteRecordRaw[] {
 	return routes.map((route) => {
@@ -368,6 +347,39 @@ function rootSegmentOf(routes: AppRouteRecordRaw[]): string | undefined {
 	if (typeof p !== "string" || p.length === 0)
 		return undefined;
 	return p.replace(/^\/?/, "").split("/")[0] || undefined;
+}
+
+/**
+ * 是否多根模块：顶层路由的「首段」去重后 > 1 即多根。
+ * 空数组 / 单根（含单根+多子页）/ 多条同首段 → false。
+ * 多根模块下各根按 entry.ts 原始路径独立注册为一级菜单，routePrefix 仅作命名空间。
+ */
+function isMultiRoot(routes: AppRouteRecordRaw[]): boolean {
+	const segments = new Set<string>();
+	for (const r of routes) {
+		const p = typeof r.path === "string" ? r.path : "";
+		const seg = p.replace(/^\/?/, "").split("/")[0];
+		if (seg)
+			segments.add(seg);
+	}
+	return segments.size > 1;
+}
+
+/**
+ * 构造模块实例（统一 routePrefix / multiRoot 计算，消除 loadAll 内散落的重复口径）。
+ * 多根：routePrefix 回落 entry.name（命名空间，不用于路径改写）；
+ * 单根：保持 rootSegmentOf 回落（零漂移不变）。
+ */
+function buildInstance(
+	entry: ManifestModuleEntry,
+	definition: ModuleDefinition,
+	status: ModuleInstance["status"],
+	error?: Error,
+): ModuleInstance {
+	const routes = definition.routes ?? [];
+	const multiRoot = isMultiRoot(routes);
+	const routePrefix = entry.routePrefix ?? (multiRoot ? entry.name : rootSegmentOf(routes) ?? entry.name);
+	return { definition, routePrefix, multiRoot, status, error };
 }
 
 export function getRoutes(): AppRouteRecordRaw[] {
@@ -418,7 +430,13 @@ export function getHostRoutes(): AppRouteRecordRaw[] {
 		const mod = (route.handle as { module?: string } | undefined)?.module;
 		if (!mod)
 			return route;
-		const prefix = modules.get(mod)?.routePrefix ?? mod;
+		const instance = modules.get(mod);
+		// 多根模块（需求一）：各根路径在 entry.ts 已是权威绝对路径，routePrefix 仅作命名空间，
+		// 不重写首段（否则多个根首段都会被改写成同一 prefix 而坍缩碰撞）。admin 根仍由
+		// rewriteAdminPaths 按各自根独立改写。
+		if (instance?.multiRoot)
+			return route;
+		const prefix = instance?.routePrefix ?? mod;
 		return applyRoutePrefix([route], prefix)[0] ?? route;
 	});
 	return rewriteAdminPaths(prefixed);
