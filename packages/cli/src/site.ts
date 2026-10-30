@@ -6,6 +6,21 @@
 
 import process from "node:process";
 
+/**
+ * 租户头（企微代开发多租户，v3 Phase 0）：宿主 `tenant.enable: true` 时 oj 对每个请求
+ * **强制**要求该头——登录这类匿名端点同样不放过，缺即 `400 missing tenant header`。
+ * 浏览器侧由 runtime 请求层统一注入；CLI 是独立进程，必须自己带上，否则
+ * install / enable / list / market setup / walkthrough / trial 全线打不通站点。
+ * CLI 只以默认租户身份做运维操作（与 templates 的 DEFAULT_TENANT 对齐）。
+ */
+export const TENANT_HEADER = "X-TENANT-ID";
+export const DEFAULT_TENANT = "default";
+
+/** 每个发往站点的请求都要带的租户头 */
+export function tenantHeaders(): Record<string, string> {
+	return { [TENANT_HEADER]: DEFAULT_TENANT };
+}
+
 /** 任务记录（线形状镜像；真源 templates/src/_platform/api/_lifecycle/types.ts:65，客户端不 import 模板内部） */
 export interface TaskRecord {
 	/**
@@ -84,7 +99,7 @@ export async function unwrapEnvelope(res: { ok: boolean, status: number, text: (
 export async function login(fetchFn: typeof fetch, base: string, user: string, pass: string): Promise<string> {
 	const data = await unwrapEnvelope(await fetchFn(`${base}/api/auth/login`, {
 		method: "POST",
-		headers: { "content-type": "application/json" },
+		headers: { "content-type": "application/json", ...tenantHeaders() },
 		body: JSON.stringify({ username: user, password: pass }),
 	})) as { access_token?: string };
 	const token = String(data?.access_token ?? "");
@@ -99,6 +114,7 @@ export async function callApi<T>(fetchFn: typeof fetch, base: string, token: str
 		method,
 		headers: {
 			authorization: `Bearer ${token}`,
+			...tenantHeaders(),
 			...(body === undefined ? {} : { "content-type": "application/json" }),
 		},
 		...(body === undefined ? {} : { body: JSON.stringify(body) }),

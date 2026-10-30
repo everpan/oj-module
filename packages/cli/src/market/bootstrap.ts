@@ -138,6 +138,21 @@ export async function bootstrapIsolatedSite(opts: BootstrapOptions = {}): Promis
 		throw new Error(`[ojm] 模板 config 未含 端口: 9778 字面（模板结构变了？）：${configPath}`);
 	}
 	cfg = cfg.replace("__JWT_SECRET__", randomBytes(32).toString("hex"));
+	// 站点对外地址：安装的相对市场基址（/cdn 本站点自供）与深检探针都靠它补全绝对 URL，
+	// 服务端 REG-CS6 刻意不读请求头 Host（防伪造 Host 牵引出站），**缺即拒、不猜**。
+	// 隔离站点的对外地址恒为它自己的 origin（端口本次随机派开），这里替部署侧填好。
+	const originLine = `  canonical_origin: "http://127.0.0.1:${port}"`;
+	if (cfg.includes("canonical_origin:")) {
+		cfg = cfg.split("\n").map(line => (line.includes("canonical_origin:") ? originLine : line)).join("\n");
+	}
+	else {
+		cfg = cfg.includes("\nvars:")
+			? cfg.replace("\nvars:", `\nvars:\n${originLine}`)
+			: `${cfg}\nvars:\n${originLine}`;
+	}
+	if (!cfg.includes(`http://127.0.0.1:${port}`)) {
+		throw new Error(`[ojm] 模板 config 未含 vars 段（模板结构变了？）：${configPath}`);
+	}
 	// 最小 SPA 挂载：真实部署里前端路由（深检会逐条探活）由站点壳承接；没有 web 挂载时
 	// 这些路径一律 404，深检会判成 anomaly。这里放一个 index.html 就够（不构建前端）。
 	const siteDir = path.join(root, "site");

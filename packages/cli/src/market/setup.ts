@@ -15,7 +15,7 @@
 import { randomBytes } from "node:crypto";
 import process from "node:process";
 
-import { resolveSite } from "../site";
+import { resolveSite, tenantHeaders } from "../site";
 import { resolveCdnLayout } from "./cdn-layout";
 
 export const MARKET_CDN_URL_SETTING = "framework.market_cdn_url";
@@ -119,7 +119,7 @@ async function putSetting(fetchFn: typeof fetch, base: string, token: string, ke
 async function postJson(fetchFn: typeof fetch, url: string, body: unknown): Promise<Record<string, unknown>> {
 	const res = await fetchFn(url, {
 		method: "POST",
-		headers: { "content-type": "application/json" },
+		headers: { "content-type": "application/json", ...tenantHeaders() },
 		body: JSON.stringify(body),
 	});
 	return (await unwrap(res)) as Record<string, unknown>;
@@ -128,7 +128,7 @@ async function postJson(fetchFn: typeof fetch, url: string, body: unknown): Prom
 async function putJson(fetchFn: typeof fetch, url: string, token: string, body: unknown): Promise<Record<string, unknown>> {
 	const res = await fetchFn(url, {
 		method: "PUT",
-		headers: { "content-type": "application/json", "authorization": `Bearer ${token}` },
+		headers: { "content-type": "application/json", "authorization": `Bearer ${token}`, ...tenantHeaders() },
 		body: JSON.stringify(body),
 	});
 	return (await unwrap(res)) as Record<string, unknown>;

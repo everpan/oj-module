@@ -10,7 +10,7 @@ import path from "node:path";
 import process from "node:process";
 import { UsageError } from "./exit-codes";
 import { originOf, resolveRegistrySource } from "./registry-source";
-import { callApi, isFutureSchema, login, pollTask, resolveSite, TASK_SCHEMA_VERSION_KNOWN, unwrapEnvelope } from "./site";
+import { callApi, isFutureSchema, login, pollTask, resolveSite, TASK_SCHEMA_VERSION_KNOWN, tenantHeaders, unwrapEnvelope } from "./site";
 
 /**
  * REG-R5 / S5-2②：安装目标的**唯一**归一点（grep 可证——全仓只有这一处把 `@scope/name`
@@ -316,7 +316,7 @@ export async function installCommand(target: string, opts: InstallOptions = {}):
 			}
 			const res = await fetchFn(`${base}/api/_platform/market/install`, {
 				method: "POST",
-				headers: { authorization: `Bearer ${token}` },
+				headers: { authorization: `Bearer ${token}`, ...tenantHeaders() },
 				body: form,
 			});
 			response = await unwrapInstall(res);
