@@ -90,12 +90,13 @@ oj 仅只读评估、不修改（见全局规则「只调整本项目，其余�
 
 ## 4. 待与 oj 确认的关键集成点（v2 修订）
 
-1. **会话校验钩子**：本仓 connector 自签 HttpOnly cookie，oj 的 AuthProvider 接管是否接受外部签发
-   的 cookie / 是否暴露 session 校验入口？（决定 Phase 1 收口可行性）
-2. **X-TENANT-ID 写入权**：本仓 connector 确定当前 tenant 后写 `X-TENANT-ID` 头，oj 是否放行本仓写该头？
-3. **corp→tenant 映射存储**：用 oj KV（oj-kv-redis）还是本仓 `_platform` 表？
-   ⇒ 建议**本仓表**（corp_tenant_map），oj 只透传 `X-TENANT-ID`，不引入 oj 侧新状态。
-4. **WECOM_TENANT 键**：授权安装时由后台写入 `corp_tenant_map`，登录链接带 tenant key。
+> 本节 v2 原始待确认点，已被 §8 详细设计吸收并答复；保留供追溯。
+
+1. **会话校验钩子** → §8.5 已定 Model B：oj 作为会话权威，connector 充 OIDC IdP，无需 oj 接受外部 cookie。
+2. **X-TENANT-ID 写入权** → §8.5：tenant 由 oj 从已认证会话（`id_token.tenant`）服务端派生，前端不手带该头。
+3. **corp→tenant 映射存储** ⇒ **本仓表 `wecom_app_profile`**（PK `corp_id`+`env`），oj 仅透传 `id_token.tenant`，不引入 oj 侧新状态。
+4. **WECOM_TENANT 键** ⇒ 授权安装时后台写 `wecom_app_profile.tenant_key`，登录链接带 `tenant=wecom`（固定 RP 名），
+   connector 按 corp+env 解出 tenant_key 写进 id_token。
 
 ## 5. 关键文件
 
