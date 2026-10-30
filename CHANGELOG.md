@@ -5,6 +5,49 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 设计依据、迁移记录与陷阱清单见 [`docs/prd/202609110947-oj-module-two-package-consolidation-design.md`](docs/prd/202609110947-oj-module-two-package-consolidation-design.md)。
 
+## [0.2.45] - 2026-10-30
+
+双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步定版 **0.2.45**（延续 0.2.x 线，不进 0.3.x）。
+本轮为企业微信代开发登录与多租户底座（需求二）。
+
+### Added
+
+- **多租户底座**：模板 21 张业务表全量加 `tenant_id`（`X-TENANT-ID` 头，`sql_guard: deny` 拒无上下文写入），
+  登录态带租户，`tenant.allow_as_tenant` 支持登录前按企业代码选租户；三张企微表登记进 `tenant.shared_allow`。
+- **企微代开发连接器**：`/auth/wecom/{login,callback,ticket,event}` 四个端点——授权入口 302、
+  回跳换 `userid`、一次性票据换会话、回调验签解密分发。
+  四级凭据链（`suite_ticket` + `suite_secret` → `suite_access_token` → `permanent_code` → 企业 `access_token`），
+  事件覆盖 `suite_ticket` / `create_auth` / `change_auth` / `cancel_auth` / `reset_permanent_code`。
+  `permanent_code` 只以 AES-GCM 密文落库（`permanent_code_enc`，密钥 `wecom_enc_key`），任何接口不回传明文。
+- **JIT 自动建档**：外部员工首次登录即建号（用户名 `wecom:<userid>`，显示名优先取企微姓名、兜底工号），
+  无需注册、无本地口令；外部号命名空间禁止被本地建号占用。
+- **登录页新增「企业微信」方式**：登录方式由后端发现（`local`/`ldap`/`sso`/`wecom`），
+  扫码与企微内静默授权（`snsapi_base`）走同一条回调；回跳落地带一次性票据，不把 token 放进 URL。
+- **代开发后台 `/system/wecom`**（仅超级管理员）：已开通企业清单、按应用启停、生成开通链接（含二维码，
+  10 分钟一次性）并回显应填进企微后台的回调地址；停用按安全事件留痕。
+- **`@oj-module/runtime` 导出 `resolveApiBase()`**：API 端点 base（ky `prefix` 的同一取值口，
+  与站点 base 正交），供整页跳转的后端端点与上传 action 拼 URL；`ojm` 构建期 runtime stub 同步导出。
+
+### Fixed
+
+- **冷启动丢租户头导致角色/权限清空**：租户头下沉到运行时统一注入（每次请求现取），
+  不再依赖登录那一刻写进内存的副本。
+- **点「企业微信」登录后页面原地重载、一个 auth 请求都不发**：授权入口是后端端点却拼了站点 base，
+  根部署下得到 `/auth/wecom/login` 被 SPA 兜底页吞掉；改用 `resolveApiBase()` 拼接。
+- **登录页「企业代码」输入框读屏与 `getByLabel` 都取不到**：受控值不走 antd 表单字段，
+  标签只是视觉文本；补 `htmlFor`/`id` 建立关联。
+- **企微登录失败一律显示「HTTP 401」**：票据换会话未读后端信封，把 `fail(401, "登录票据无效或已使用")`
+  的真实原因盖掉了；改为透出 `msg`。
+
+### Docs
+
+- **新增 `docs/devkit/wecom-daikaifa.md`（随 `ojm init` 分发）**：真实套件联调的**凭据清单**
+  （六项 `vars` 的取值位置/格式/缺失后果、可信域名与可信 IP 备案、`wecom_enc_key` 生成与轮换）、
+  **首次开通顺序**（`suite_ticket` 依赖回调先通，跳序必卡 503）、
+  **用户 / 开发 / 部署三种角色**的操作手册、按错误文案索引的故障速查与上线自检清单。
+- devkit 索引与 skill 入口同步：`README.md`、`SKILL.md`（新增企微触发词与四条红线）、
+  `manual.md` §8.2/§9 增加对应条目；`sync-devkit.mjs` 自动收录，`ojm init` 第 4b 步分发。
+
 ## [0.2.44] - 2026-10-30
 
 双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步定版 **0.2.44**（延续 0.2.x 线，不进 0.3.x）。
