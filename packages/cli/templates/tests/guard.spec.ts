@@ -43,17 +43,23 @@ describe("spike 夹具冒烟：真实迁移 + 运行时全局面 + 事务", () =
 		expect(row.username).toBe("admin");
 	});
 	it("全局 db.query/exec 与运行时同面可用", async () => {
-		const rows = await db.query("SELECT id, username FROM users");
+		const rows = await db.query("SELECT id, username FROM users WHERE tenant_id = ?", ["default"]);
 		expect(rows.length).toBeGreaterThan(0);
+	});
+	it("裸 SQL 漏写 tenant_id 一律拒（sql_guard: deny 的夹具替身）", async () => {
+		await expect(db.query("SELECT id FROM users")).rejects.toThrow(/未写 tenant_id/);
+		await expect(db.exec("DELETE FROM users")).rejects.toThrow(/未写 tenant_id/);
+		// B 组共享表无 tenant_id，照旧放行
+		await expect(db.query("SELECT key FROM sys_setting")).resolves.toBeDefined();
 	});
 	it("db.tx 事务往返：提交持久化 / 回滚不留痕", async () => {
 		await db.tx(async (t) => {
-			await t.exec("INSERT INTO users (username, password_hash) VALUES ('tx-ok', 'x')");
+			await t.exec("INSERT INTO users (tenant_id, username, password_hash) VALUES ('default', 'tx-ok', 'x')");
 		});
 		const ok = dbo.prepare("SELECT COUNT(*) AS n FROM users WHERE username = 'tx-ok'").get() as { n: number };
 		expect(Number(ok.n)).toBe(1);
 		await expect(db.tx(async (t) => {
-			await t.exec("INSERT INTO users (username, password_hash) VALUES ('tx-bad', 'x')");
+			await t.exec("INSERT INTO users (tenant_id, username, password_hash) VALUES ('default', 'tx-bad', 'x')");
 			throw new Error("rollback");
 		})).rejects.toThrow("rollback");
 		const bad = dbo.prepare("SELECT COUNT(*) AS n FROM users WHERE username = 'tx-bad'").get() as { n: number };

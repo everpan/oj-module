@@ -609,6 +609,9 @@ token 只带 `sub`，而构造器按请求头注入 `tenant_id`，所以「A 企
 | 6 跨租户 refresh | 垫片无注入 | `sys_refresh_token` 是 A 组租户表，换票按 `token_hash` 查，注入后别家租户查不到该行 → 401 |
 | 4 同 userid 跨 corp 两行 | 同上 | 靠 `(tenant_id, username)` 唯一约束：`wecom:<userid>` **不含 corp**，隔离完全来自 `tenant_id`。这把「租户注入失效」的后果放大到「两家企业同一个工号会撞号」——Phase 4 真机用例必须覆盖这条 |
 
+> 2026-10-30 补记：上表四项已在 §16 中进入 L2（夹具补了租户注入），真机仍需覆盖的是
+> `sql_guard` 的**真**判据与 `owner_of` 归属守卫。
+
 ## 15. Phase 4 前置：租户头的冷启动缺口（2026-10-30）
 
 ### 15.1 症状
@@ -692,3 +695,51 @@ Phase 3 收尾跑模板 e2e 时，`/system` 菜单在整页刷新（F5）后消�
 
 
 
+## 16. 夹具升级：租户注入进入 L2（2026-10-30）
+
+### 16.1 做了什么
+
+`packages/cli/templates/tests/fixture.ts` 的构造器垫片此前明确「不模拟租户注入」，于是 §5.7 的
+2/3/4/6 只能靠真机。现在补上，判据与迁移同源，不抄清单：
+
+| 环节 | 实现 |
+| --- | --- |
+| 哪些表按租户隔离 | 建库后对每张表跑 `PRAGMA table_info`，**有 `tenant_id` 列即隔离**（A 组 11 张自动识别，迁移改了自动跟随） |
+| 当前租户 | 取 `globalThis.http.tenantId`（与 oj 同源：请求头进来就是它），无请求上下文落 `default`——用例改 `g.http.tenantId` 即可模拟伪造头 |
+| insert | 调用方不写 `tenant_id` 时自动补当前租户；显式给了就按给的落（运维/迁移脚本形态） |
+| select / update / delete / truncate | 自动追加 `<表\|别名>.tenant_id = ?` 谓词（渲染成 `"users"."tenant_id"`，与 oj 日志同形） |
+| 裸 SQL（`db.query`/`db.exec`） | 文本级近似 `sql_guard: deny`：SQL 里出现租户表却整条没有 `tenant_id` → 直接抛错 |
+
+### 16.2 新用例：`tests/tenant-isolation.spec.ts`（10 例）
+
+- §5.7-3：不写 `tenant_id` 落当前租户 / 无上下文落默认 / 显式值不被覆盖；
+- §5.7-6：select 只见本租户、跨租户 update 与 delete 落 **0 行**、`truncate` 只清本租户、
+  别家 `token_hash` 在本租户查不到（换票走不通）；
+- §5.7-4：同一 `wecom:<userid>` 在两家企业各一行；**同租户内重复仍被唯一约束挡住**——
+  这条正是 §14.6 强调的高危项，现在 L2 就能钉。
+- §5.7-2 的样例放在 `guard.spec.ts`（裸 SQL 漏写被拒 + B 组共享表照旧放行），避免两处重复。
+
+### 16.3 被夹具「抓」出来的三处裸 SQL（此前是假绿）
+
+补上守卫后立刻有 7 例失败，全部是裸 SQL 触碰 A 组表却没写 `tenant_id`——**真 oj 本来就会拒**，
+只是垫片不模拟才一直绿：
+
+| 文件 | 问题 | 处置 |
+| --- | --- | --- |
+| `tests/query-utils.spec.ts` | 4 例把 `select … from users` 直接喂给 `paged()`（该函数头注释就写明多租户红线） | SQL 补 `tenant_id = ?`，参数表补 `default` |
+| `tests/lifecycle/trust.spec.ts` | 审计断言 `select … from sys_oplog` 无租户条件 | 同上补 `tenant_id = ?` |
+| `tests/guard.spec.ts` | 2 例夹具冒烟用例直接 `select/insert users` 无租户 | 补 `tenant_id`，并新增 1 例钉住「漏写即拒」 |
+
+这不是「让测试变绿」的改写：三条都是**把不合法 SQL 改成合法 SQL**，改写前的断言在真 oj 上根本跑不到。
+
+### 16.4 仍未模拟（Phase 4 真机补）
+
+- `owner_of` 归属守卫（行级 owner 判定）——模板未用到；
+- `sql_guard` 的**真**判据（词法/别名/子查询级），夹具只是文本近似，构造性绕过挡不住；
+- `notifications` 列表那条 UNION 裸 SQL：夹具把 compound select 渲染成带括号的形式，sqlite 语法不收，
+  与租户无关（见 §14.5），故该端点仍只在 e2e 里覆盖。
+
+### 16.5 验证
+
+模板 `vitest`：**42 文件 / 817 例通过**（原 41/806，新增 10 例 + guard 1 例）；
+模板 `typecheck`（含 tests）、全仓 `eslint` 均 0 error。

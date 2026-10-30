@@ -14,12 +14,15 @@ beforeAll(() => {
 		dbo.prepare("INSERT INTO users (username, password_hash) VALUES (?, 'x')").run(`u${String(i).padStart(3, "0")}`);
 });
 
-const LIST = "select id, username from users where 1=1";
-const COUNT = "select count(*) as c from users where 1=1";
+// 裸 SQL（paged 直通）：租户化表必须显式写 tenant_id 且走参数——tenant.enable + sql_guard: deny
+// 下缺它会被真 oj 拒（夹具的 guardTenantSql 同样拒，见 tests/fixture.ts 头注释）
+const TENANT = "default";
+const LIST = "select id, username from users where tenant_id = ?";
+const COUNT = "select count(*) as c from users where tenant_id = ?";
 
 describe("AC1-24：limit 钳制与截断标记", () => {
 	it("size 静默钳 200，truncated=true（库 301 人=夹具 admin+300）", async () => {
-		const r = await paged<any>(LIST, COUNT, [], { page: 1, size: 500 });
+		const r = await paged<any>(LIST, COUNT, [TENANT], { page: 1, size: 500 });
 		expect(r.size).toBe(200);
 		expect(r.list.length).toBe(200);
 		expect(r.total).toBe(301);
@@ -27,16 +30,16 @@ describe("AC1-24：limit 钳制与截断标记", () => {
 	});
 
 	it("末页 truncated=false", async () => {
-		const r = await paged<any>(LIST, COUNT, [], { page: 2, size: 200 });
+		const r = await paged<any>(LIST, COUNT, [TENANT], { page: 2, size: 200 });
 		expect(r.list.length).toBe(101);
 		expect(r.truncated).toBe(false);
 	});
 
 	it("缺省 page=1 / size=20；页码/尺寸非法值回落（0/负数/非数）", async () => {
-		const d = await paged<any>(LIST, COUNT, [], {});
+		const d = await paged<any>(LIST, COUNT, [TENANT], {});
 		expect(d.page).toBe(1);
 		expect(d.size).toBe(20);
-		const bad = await paged<any>(LIST, COUNT, [], { page: 0, size: -3 });
+		const bad = await paged<any>(LIST, COUNT, [TENANT], { page: 0, size: -3 });
 		expect(bad.page).toBe(1);
 		expect(bad.size).toBe(20);
 	});
@@ -54,9 +57,9 @@ describe("AC1-22：LIKE 模式与 keyword 长度红线", () => {
 	it("LIKE 元字符转义：% _ ! 原样匹配不泛化", async () => {
 		dbo.prepare("INSERT INTO users (username, password_hash) VALUES ('a%b_c!d', 'x')").run();
 		const r = await paged<any>(
-			"select id, username from users where username like ? escape '!'",
-			"select count(*) as c from users where username like ? escape '!'",
-			[likePattern("a%b_c!d")],
+			"select id, username from users where tenant_id = ? and username like ? escape '!'",
+			"select count(*) as c from users where tenant_id = ? and username like ? escape '!'",
+			[TENANT, likePattern("a%b_c!d")],
 			{ size: 10 },
 		);
 		expect(r.list.map((x: any) => x.username)).toEqual(["a%b_c!d"]);

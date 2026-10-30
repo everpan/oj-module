@@ -280,7 +280,7 @@ describe("信任库运维端点（superadmin，R9）", () => {
 		await api.trust.key.del();
 		expect(last).toMatchObject({ status: 400 });
 
-		const rows = await (g.db.query as (sql: string, p?: unknown[]) => Promise<Array<Record<string, unknown>>>)("select action, target, detail from sys_oplog where action like 'solution.trust.%' order by id");
+		const rows = await (g.db.query as (sql: string, p?: unknown[]) => Promise<Array<Record<string, unknown>>>)("select action, target, detail from sys_oplog where tenant_id = ? and action like 'solution.trust.%' order by id", ["default"]);
 		expect(rows.map(r => r.action)).toEqual(["solution.trust.add", "solution.trust.revoke"]);
 		expect(rows[0]).toMatchObject({ target: "ojm.test" });
 		expect(JSON.parse(String(rows[0].detail))).toMatchObject({ key_id: "ojm.test", operator: "admin" });

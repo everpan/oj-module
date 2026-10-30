@@ -9,8 +9,15 @@
 // delete / truncate / all / run / listTables。子集外的调用**直接报「未实现」**，不静默返回空结果
 // （静默空值会把「垫片缺能力」伪装成「业务没数据」，是最难查的一类假绿）。
 //
-// 已知边界（模板当前用不到，不模拟）：租户/归属守卫（`tenant_id` 注入、`owner_of`）——模板是单租户，
-// 开启多租户后本夹具必先补这两条，否则守卫失效也会绿。
+// 已知边界（模板当前用不到，不模拟）：归属守卫（`owner_of`）——**租户已模拟**，见下。
+// 租户模拟（2026-10-30 补，多租户上线后必须有，否则守卫失效也会绿）：
+//   · 哪些表按租户隔离不硬编码，建库后按 PRAGMA 找带 `tenant_id` 列的表（与 0015__tenant.sql 同源，
+//     迁移改了这里自动跟随，不会漂移）；
+//   · 当前租户取 `globalThis.http.tenantId`（与 oj 同源：请求头进来就是它），缺省 `default`；
+//     用例里改 `g.http.tenantId` 即可模拟「伪造 X-TENANT-ID」；
+//   · 三条语义与 oj 对齐：insert 自动补 `tenant_id`、select/update/delete/truncate 自动加
+//     `tenant_id = ?` 谓词、裸 SQL（db.query/db.exec）触碰租户表却无 `tenant_id` 直接拒
+//     （近似 `sql_guard: deny`，是文本级判断，不是解析器）。
 //
 // 分工不变：
 //   · L2（本目录 *.spec.ts）：构造器渲染出**语义等价**的 SQL 后在真 sqlite 上跑——服务层行为、
@@ -28,6 +35,45 @@ const { fileURLToPath } = req("node:url");
 const SRC = join(dirname(fileURLToPath(import.meta.url)), "..", "src");
 
 export const ADMIN = 1;
+
+/** 部署默认租户（与运行时 store/tenant.ts 的 DEFAULT_TENANT 同值） */
+export const DEFAULT_TENANT = "default";
+
+/**
+ * 带 `tenant_id` 列的表 = 租户化表（A 组）。建库时按 PRAGMA 自省后填充，
+ * 不在代码里抄一份清单——迁移口径变了这里跟着变。
+ */
+const TENANT_TABLES = new Set<string>();
+
+/** 当前请求的租户：与 oj 同源（`http.tenantId`），无请求上下文时落部署默认 */
+function currentTenant(): string {
+	const t = (globalThis as any).http?.tenantId;
+	return typeof t === "string" && t.trim() ? t.trim() : DEFAULT_TENANT;
+}
+
+function isTenantScoped(table: string): boolean {
+	return TENANT_TABLES.has(table.toLowerCase());
+}
+
+/**
+ * 裸 SQL 的租户红线段落（近似 `sql_guard: deny`）：SQL 里出现租户表却整条没有 `tenant_id`
+ * 就拒。文本级判断，只挡「整条忘了带租户」这一类，挡不住精心构造的绕过——真判据在 oj 侧。
+ */
+const TENANT_SQL_TABLE_RE = /\b(?:from|into|update|join)\s+"?([a-z_]\w*)"?/gi;
+
+function guardTenantSql(sql: string): void {
+	if (TENANT_TABLES.size === 0)
+		return;
+	const touched = [...sql.matchAll(TENANT_SQL_TABLE_RE)]
+		.map(m => m[1]!.toLowerCase())
+		.filter(t => isTenantScoped(t));
+	if (touched.length === 0 || /\btenant_id\b/i.test(sql))
+		return;
+	throw new Error(
+		`[fixture] 裸 SQL 触碰租户表 ${[...new Set(touched)].join(", ")} 但未写 tenant_id：`
+		+ "tenant.enable + sql_guard: deny 下真 oj 会拒（租户值须走参数，不拼字符串）",
+	);
+}
 
 /** 标识符加引号（保留字列名如 `order` / `group` / `count` 全按字面量处理；`表.列` 逐段加） */
 function quoteIdent(name: string): string {
@@ -268,15 +314,25 @@ class FakeQuery {
 			return this.compileUpdate();
 		if (s.verb === "delete")
 			return this.compileDelete();
-		if (s.verb === "truncate")
-			return { sql: `DELETE FROM ${quoteIdent(s.table)}`, params: [] };
+		if (s.verb === "truncate") {
+			const tenant = this.tenantPredicate();
+			return {
+				sql: `DELETE FROM ${quoteIdent(s.table)}${tenant ? ` WHERE ${tenant.sql}` : ""}`,
+				params: tenant ? tenant.params : [],
+			};
+		}
 		return this.compileSelect(inner);
 	}
 
 	private compileInsert(): Compiled {
-		const rows = (Array.isArray(this.s.values) ? this.s.values : [this.s.values]) as Array<Record<string, unknown>>;
-		if (rows.length === 0)
+		const raw = (Array.isArray(this.s.values) ? this.s.values : [this.s.values]) as Array<Record<string, unknown>>;
+		if (raw.length === 0)
 			throw new Error("[fixture] insert 至少需要一行");
+		// 租户化表：调用方不写 tenant_id 时自动补当前租户（oj 构造器同语义——
+		// 业务代码不该自己写 tenant_id，注入失效才是最危险的失败模式）
+		const rows = isTenantScoped(this.s.table)
+			? raw.map(r => ("tenant_id" in r ? r : { ...r, tenant_id: currentTenant() }))
+			: raw;
 		const cols = Object.keys(rows[0]!);
 		for (const r of rows) {
 			if (Object.keys(r).length !== cols.length)
@@ -309,11 +365,21 @@ class FakeQuery {
 		return { sql: `DELETE FROM ${quoteIdent(this.s.table)}${where.sql}`, params: where.params };
 	}
 
-	/** where 子句（追加进既有 params，返回拼接后的片段） */
+	/** 基表租户谓词（表名/别名限定，与 oj 渲染的 `"users"."tenant_id"` 同形）；共享表返回 null */
+	private tenantPredicate(): Compiled | null {
+		if (!isTenantScoped(this.s.table))
+			return null;
+		return { sql: `${quoteIdent(this.s.alias ?? this.s.table)}.tenant_id = ?`, params: [currentTenant()] };
+	}
+
+	/** where 子句（追加进既有 params，返回拼接后的片段）；租户谓词始终参与 AND */
 	private compileWhereClause(params: unknown[]): Compiled {
-		if (this.s.wheres.length === 0)
-			return { sql: "", params };
 		const parts = this.s.wheres.map(compileWhere);
+		const tenant = this.tenantPredicate();
+		if (tenant)
+			parts.push(tenant);
+		if (parts.length === 0)
+			return { sql: "", params };
 		return {
 			sql: ` WHERE ${parts.map(p => `(${p.sql})`).join(" AND ")}`,
 			params: [...params, ...parts.flatMap(p => p.params)],
@@ -408,10 +474,24 @@ export function installDb(): any {
 			dbo.exec(readFileSync(join(dir, f), "utf8"));
 	}
 
+	// 租户化表自省：有 `tenant_id` 列即按租户隔离（迁移是唯一真相，不在夹具里抄清单）
+	TENANT_TABLES.clear();
+	for (const { name } of dbo.prepare(SQL_LIST_TABLES).all() as Array<{ name: string }>) {
+		const cols = dbo.prepare(`PRAGMA table_info(${quoteIdent(name)})`).all() as Array<{ name: string }>;
+		if (cols.some(c => c.name.toLowerCase() === "tenant_id"))
+			TENANT_TABLES.add(name.toLowerCase());
+	}
+
 	dbo.prepare("INSERT INTO users (id, username, password_hash) VALUES (?, ?, 'x')").run(ADMIN, "admin");
 
-	const query = async (sql: string, params: unknown[] = []) => dbo.prepare(sql).all(...(params as never[]));
-	const exec = async (sql: string, params: unknown[] = []) => Number(dbo.prepare(sql).run(...(params as never[])).changes);
+	const query = async (sql: string, params: unknown[] = []) => {
+		guardTenantSql(sql);
+		return dbo.prepare(sql).all(...(params as never[]));
+	};
+	const exec = async (sql: string, params: unknown[] = []) => {
+		guardTenantSql(sql);
+		return Number(dbo.prepare(sql).run(...(params as never[])).changes);
+	};
 	const table = (name: string) => new FakeQuery(dbo, name);
 	const txInstance = { query, exec, table, listTables: (prefix?: string) => listTables(dbo, prefix), isTx: true };
 	// db.tx 镜像运行时面：BEGIN/COMMIT/ROLLBACK 包裹回调（versions.ts 注释同语义）

@@ -8,8 +8,9 @@
 // 端点；而通知、我的资料、人员目录这些「登录即可」的端点根本不走它们。少了这一步，
 // 伪造头的人能读到别家企业的广播通知、改别家企业的个人资料。
 //
-// 夹具不模拟租户注入（fixture.ts 头注释已声明），故用「sub 在库中不存在」直接钉住
-// 该分支——它就是伪造头在 SQL 层的表现。对照组用真实 uid 证明同一路径照常放行。
+// 夹具自此已模拟租户注入（fixture.ts 头注释），跨租户「查不到、改不动」的地基语义由
+// tenant-isolation.spec.ts 单独钉；本文件仍用「sub 在库中不存在」来钉端点级拦截——
+// 它就是伪造头在 SQL 层的表现，且不依赖构造器能力。对照组用真实 uid 证明同一路径照常放行。
 /* eslint-disable test/prefer-lowercase-title -- 用例标题带端点路径，保留原样更易检索 */
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 
