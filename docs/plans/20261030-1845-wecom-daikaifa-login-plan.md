@@ -76,13 +76,12 @@
 1. `config.yaml` 加 `tenant` 段：`enable: true`、`header_key: X-TENANT-ID`、`sql_guard: deny`、
    `shared_allow: [...]`、`allow_as_tenant: true`、`anonymous_paths`（登录/回调/登录方式发现）。
    注意：开启后**所有** `{base}` 请求缺头即 400，除 `tenant.anonymous_paths` 命中；`require_signed_claim` 先保持 false（等 R6）。
-2. 21 张表逐张定性：租户内数据加 `tenant_id TEXT NOT NULL DEFAULT 'default'`；真正全局的
-   （`_oj_migrations`、`sys_permission`/`sys_role` 若做平台级、`market_history` 若做全局市场流水）标
-   `tenant: false` **并**列进 `shared_allow`。
+2. 21 张表逐张定性（§5.2 A/B 两组，判据：**该表是否可能在无租户上下文时被访问**）。
 3. 清点裸 SQL（`db.raw`/`db.sql`/字符串查询），逐条补 `tenant_id` 条件；构造器查询不动。
 4. 新增迁移 `0015__tenant.sql`（当前最新是 `0014__reg_source_seq`）。
 5. 回归：跨租户裸 SQL 被拒；构造器 insert 自动落当前租户；update/delete 收窄。
-6. **登录前租户来源**（§5.3 决策）先落地，否则 `sql_guard: deny` 会把登录查询打空。
+6. **L2 租户上下文先落地**（§5.3）：`tenantStore` + `headerProvider` 注册 + 登录页企业代码入口 + 默认租户回落；
+   否则 `sql_guard: deny` 会把登录查询打空。
 
 ### Phase 1（connector）
 - `GET /auth/wecom/login?corp=&agent=&env=`：UA 检测 → 企微内 OAuth2 / 外部 qrConnect / 无 corp 时引导输入企业代码。
@@ -107,29 +106,67 @@
 - 映射权威：`wecom_app_profile(suite_id, corp_id, agent_id)` → `tenant_key`。
 
 ### 5.2 DDL（migrations/0015 起）
-```
-users            + tenant_id TEXT NOT NULL DEFAULT 'default', + corp_id TEXT
-sys_user_role    + tenant_id
-sys_refresh_token+ tenant_id      -- 会话必须与租户同域，否则跨租户刷新
-sys_oplog        + tenant_id
-sys_setting      + tenant_id      -- 每租户独立配置（ldap/sso/wecom 开关）
-sys_login_throttle / sys_rate_window + tenant_id
-sys_solution_route / reg_source_seq  + tenant_id
-notification 4 表 + tenant_id
-home 2 表 / demo 1 表 + tenant_id
-wecom_app_profile(suite_id, corp_id, agent_id)  PK 三列；env 标签；*_enc 加密列
-wecom_suite_ticket(suite_id) PK；suite_ticket / expires_at
-wecom_login_ticket(ticket_hash) PK；uid / tenant_id / expires_at / used  -- 一次性回调票据
-```
-> 21 张表的逐张定性表在实施时补进迁移文件头注释，避免「默认 default 蒙混过关」。
 
-### 5.3 登录前租户从哪来（v2 完全缺失的阻塞点）
-`tenant.enable` 后缺头即 400；本地用户登录时还不知道自己属于哪个租户，而 `localLogin` 要查 `users`。
-三个可选，必须选一个写进实现：
-- **L1（推荐）**：`users` 作为**共享目录表**（`tenant: false` + `shared_allow`），登录查询走 `asSystem()`；
-  行内保留 `tenant_id` 仅作归属标注，登录成功后的会话绑定该值。代价：用户目录跨租户可见（与现状一致）。
-- L2：登录请求显式带租户（子域 / 企业代码），`anonymous_paths` + `db.asTenant(tid)`。代价：多租户体验更重，个人用户不知道怎么填。
-- L3：登录端点 `asSystem()`，其余全租户化。最简单但把「登录」变成特权路径，需审计。
+**A. 租户化（加 `tenant_id TEXT NOT NULL DEFAULT 'default'`，受 `sql_guard` 自动注入）**
+```
+users              + tenant_id, + corp_id TEXT   -- 唯一键 (tenant_id, username)
+sys_user_role      + tenant_id                   -- 唯一键 (tenant_id, user_id, role_name)
+sys_refresh_token  + tenant_id                   -- 会话必须与租户同域，否则跨租户刷新
+sys_oplog          + tenant_id
+sys_solution_route + tenant_id
+reg_source_seq     + tenant_id                   -- 若确认为全局发号则改归 B 组
+notification 4 表   + tenant_id
+home 2 表 / demo 1 表 + tenant_id
+```
+
+**B. 共享（`tenant: false` **且** 列进 `tenant.shared_allow`，两者缺一则声明被忽略）**
+```
+_oj_migrations      -- oj 自建自管 DDL
+sys_setting         -- D8：登录方式发现是未登录端点，此刻没有租户上下文
+sys_login_throttle  -- 登录前限频（含企业代码解析），必须全局
+sys_rate_window     -- 同上
+sys_role / sys_permission / sys_role_permission -- 框架角色目录；分配关系在 A 组
+wecom_app_profile(suite_id, corp_id, agent_id) PK 三列；env 标签；*_enc 加密列
+wecom_suite_ticket(suite_id) PK；suite_ticket / expires_at
+wecom_login_ticket(ticket_hash) PK；uid / tenant_id / expires_at / used
+```
+> B 组 = 不受 guard 约束，**只放全局映射/凭证/框架目录，不放租户业务数据**。
+> `wecom_login_ticket` 存 `tenant_id` 是因为它要跨「匿名回调」与「已认证换取」两段，不是租户业务表。
+
+> 21 张表的逐张定性表写进迁移文件头注释，避免「一律 default 蒙混过关」。判据：**该表是否可能在无租户上下文时被访问**。
+
+### 5.3 登录前租户来源 — 已定 L2（登录带租户）
+
+**为什么必须显式决策**：`tenant.enable` 后 `{base}` 请求缺头即 400；`sql_guard: deny` 下匿名请求查租户表会直接抛错
+（`oj-bin/src/bridge/query.rs:1345-1355`：`require tenant context (missing tenant header)`）。而登录前恰恰没有租户上下文。
+
+**L2 落地形态（四层各有出处）**
+
+| 层 | 做法 | 依据 |
+|---|---|---|
+| 租户来源 | `?tenant=<企业代码>` URL 参数 → 持久化 → 缺省回落部署默认租户；多租户且无参数时登录页显示「企业代码」输入框 | 产品决定 |
+| 请求头注入 | `_platform` web 入口注册 `ctx.register.headerProvider(() => tenant ? { "X-TENANT-ID": tenant } : {})` | **框架已有接缝**：`runtime/src/utils/request/index.ts:44-50` 逐请求合并 provider 返回的头；`store/header-provider.ts:1-8` 注释明写「租户等」「登录前 guard 请求无租户头」的时序容忍 |
+| 服务端取租户 | XHR 登录：头已在 → `http.tenantId` 有值 → 构造器自动注入，**不需要** `asTenant`；302 跳转（企微回调，浏览器带不了自定义头）：端点进 `tenant.anonymous_paths`，用 `db.asTenant(serverDerivedTenant)` 补身份 | `bin/devkit/api-manual.md:2969-2977`（`asTenant` 三条件：`allow_as_tenant` + 匿名 + id 非空，且「已带头/已设过 → 抛错」） |
+| 认证后 | 前端继续带 `X-TENANT-ID`，服务端比对「头值 == 该用户行 `tenant_id`」，不符 403（R6 落地后改由 `require_signed_claim` 在 oj 层拦） | §5.6 / §6 |
+
+**配套决策**
+- **D8：`sys_setting` 共享（`tenant: false` + `shared_allow`）**。理由：登录方式发现 `/system/login-methods` 是
+  未登录端点（`settings.ts:73-75` 读 `ldap.enabled`/`sso.enabled`），首次访问时还没有租户头，若该表租户化则必定抛错；
+  且这些开关是部署级语义，不是每 corp 语义。
+- **D9：企微三表共享**（`wecom_app_profile` / `wecom_suite_ticket` / `wecom_login_ticket`）。理由：前者本身就是
+  corp→tenant 的映射权威，查它的时候必然还没有 tenant 上下文；后两者按 suite 全局唯一。共享 = 不受 guard 约束，
+  故这三张表**只放凭证与映射，不放任何租户业务数据**，读取面收敛到 connector。
+- **D10：企业代码 = `corp_id`**（如 `ww1234...`），不是内部 `tenant_key`。客户能从上企微后台看到 corp_id，
+  也能由服务商后台生成带码的专属登录链接；`tenant_key` 不出现在 URL 里。
+- **单租户部署**（绝大多数现状）：默认租户 `default`，登录页不显示企业代码，provider 恒注默认值，UX 与今天一致。
+- **枚举风险**：企业代码解析端点须限频（复用 `sys_login_throttle`），不返回企业列表，错误文案不区分「无此企业」与「已停用」。
+
+**放弃的方案与原因**（记录备查）
+- **L1（`users` 共享表）**：22 处 `users` 查询里 3 处 list 需手加过滤、5 处用户名唯一性语义要重定义；
+  且最敏感的表失去自动注入保护，最坏失效是静默跨租户读用户目录。
+- **L3（登录端点 `asSystem()`）**：`asSystem` 是**请求级**开关（`oj-bin/src/bridge/guard.rs:404`：
+  `if guard == Off || system { return Ok(()) }`），登录 handler 内后续任何查询一并放行；全仓现为 0 处使用，
+  且 devkit 文档标注「业务 handler 禁用」。L1/L3 还都要求用户名全局唯一，与「同 corp 内各自有 admin」冲突。
 
 ### 5.4 connector
 端点表（Phase 1 那张）+ 企微侧细节：
@@ -140,9 +177,13 @@ wecom_login_ticket(ticket_hash) PK；uid / tenant_id / expires_at / used  -- 一
 - 网页授权 `snsapi_base` 需应用**可信域名**；扫码用 qrConnect（`appid`+`agentid`）。
 
 ### 5.5 前端
-- 登录页不再硬编码 `local|ldap|sso` 三元过滤，改为按后端 `methods` 渲染。
+- **租户上下文**：新增 `tenantStore`（persist）：来源优先级 `?tenant=` URL 参数 → 本地持久化 → 部署默认值。
+  在 `_platform` web 入口注册 `ctx.register.headerProvider(() => ({ "X-TENANT-ID": tenantStore.getState().tenant }))`。
+  `runtime/src/utils/request/index.ts:44-50` 会在 token/语言之后逐请求合并（同名头以 provider 为准）。
+- 登录页不再硬编码 `local|ldap|sso` 三元过滤，改为按后端 `methods` 渲染；多租户且无 `?tenant=` 时显示「企业代码」输入框。
 - `AuthProvider(wecom).login()`：跳 `/auth/wecom/login`；回调页读 `ticket` → `POST /auth/wecom/ticket` → 返回 `AuthType` 由 runtime 统一写库。
 - 纯浏览器：无 corp 上下文时展示「输入企业代码」+「服务商授权安装」两条路。
+- 登出/切换租户必须清 `tenantStore` 与 token（否则下一个用户会带着上一个租户的头）。
 
 ### 5.6 代开发后台
 开通入口、企业列表、profile 状态、停用/解绑、首登资料补全（`display_name` 空则强制补全，沿用 `must_change` 类似机制）。
@@ -179,6 +220,12 @@ wecom_login_ticket(ticket_hash) PK；uid / tenant_id / expires_at / used  -- 一
 - 21 张表租户化的迁移风险：存量数据 `default` 租户，**不做**自动归户；升级后由管理端显式分配。
 - 代开发 connector 在本仓实现，oj 只配置，符合「只调整本项目，其余项目只读」。
 
-## 9. 需确认（一个）
+## 9. 决策状态
 
-**Phase 0 的登录前租户方案选 L1 / L2 / L3**（§5.3）。其余按 v3 执行。
+| 项 | 状态 |
+|---|---|
+| 登录前租户来源 | **已定 L2**（§5.3），含 D8/D9/D10 |
+| 会话归属 | 已定 Model C：`_platform` 会话权威（§1-E/F） |
+| 租户隔离机制 | 已定：`tenant.enable` + `sql_guard: deny` + R6 |
+| 上游需求 | 收敛为 R6（阻塞）/ R7（可选） |
+| 未决 | 无；下一步为 Phase 0 实施（首次提交前先产出 21 张表的逐张定性表） |
