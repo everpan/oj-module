@@ -8,8 +8,12 @@ import type { InstallContext } from "./preflight";
 import { fsFace } from "../atomic";
 import { MAX_PACKAGE_BYTES } from "../limits";
 
-/** 最小 fetch 面（结构化：Node fetch/Response 天然满足；测试注入 stub 不真跑网络） */
-export type FetchFace = (url: string) => Promise<{
+/**
+ * 最小 fetch 面（结构化：Node fetch/Response 天然满足；测试注入 stub 不真跑网络）。
+ * init 形参**可选**（cache/头/重定向按需）：少参实现仍可赋给本形，故既有 stub 不受影响；
+ * 探活 Probe 靠它带上租户头（见 steps/smoke.ts）。
+ */
+export type FetchFace = (url: string, init?: { headers?: Record<string, string>, redirect?: string }) => Promise<{
 	ok: boolean
 	status: number
 	arrayBuffer: () => Promise<ArrayBuffer>

@@ -1237,3 +1237,79 @@ describe("P1-16 接线：reconcile 不一致自动修复（重跑 setEnabled）+
 		expect(mig?.opts).toEqual({ timeoutMs: 600000 });
 	});
 });
+
+describe("冒烟探活必须自报租户头（企微代开发多租户 v3 Phase 0）", () => {
+	it("probe fetch 带 X-TENANT-ID: default —— 宿主 tenant.enable 时匿名健康端点也强制要租户头，缺即 400", async () => {
+		const seen: Array<{ url: string, headers?: Record<string, string> }> = [];
+		const t = await runInstall(makeReq({
+			fetch: async (url: string, init?: { headers?: Record<string, string> }) => {
+				seen.push({ url, headers: init?.headers });
+				return { ok: true, status: 200, arrayBuffer: async () => ARCHIVE.slice().buffer };
+			},
+		}));
+		expect(t.status).toBe("done");
+		// 探活命中的是首个非匿名路由 /demo-solution（anonymous 仅 demo-solution/ping）
+		const probe = seen.find(c => c.url === "/api/demo-solution/demo-solution");
+		expect(probe, "smoke 应对首个非匿名路由发起探活").toBeDefined();
+		expect(probe!.headers?.["X-TENANT-ID"]).toBe("default");
+	});
+
+	it("遇「缺租户头即 400」的宿主时因已自报 default 而通过（属性测试，非假绿）", async () => {
+		// 模拟宿主 tenant.enable 的硬 fail-closed：探针缺 X-TENANT-ID 即 400、带 default 即 200。
+		// 本例用 health 端点（smoke 对 health 断言 2xx）——若 smoke 没带租户头，探针必 400 → smoke 失败。
+		// 安装成功(done) 即反向证明租户头确已注入，而非靠「非 health 探活忽略 2xx」蒙混。
+		const seen: Array<{ url: string, headers?: Record<string, string> }> = [];
+		const t = await runInstall(makeReq({
+			manifest: { ...manifestFixture("0.1.0"), health: "/demo-solution/ping" },
+			fetch: async (url: string, init?: { headers?: Record<string, string> }) => {
+				seen.push({ url, headers: init?.headers });
+				// 仅对探活 URL 模拟「缺租户头即 400」；下载 CDN 等一律 200，避免误伤其他阶段。
+				if (url === "/api/demo-solution/demo-solution/ping" && init?.headers?.["X-TENANT-ID"] !== "default") {
+					return { ok: false, status: 400, arrayBuffer: async () => new ArrayBuffer(0) };
+				}
+				return { ok: true, status: 200, arrayBuffer: async () => ARCHIVE.slice().buffer };
+			},
+		}));
+		expect(t.status).toBe("done");
+		const probe = seen.find(c => c.url === "/api/demo-solution/demo-solution/ping");
+		expect(probe, "health 优先被探活").toBeDefined();
+		expect(probe!.headers?.["X-TENANT-ID"]).toBe("default");
+	});
+
+	it("health 端点声明为匿名：探针 401（restart_pending）应判 deferred 而非失败", async () => {
+		// 租户化站点上「本次新增的匿名端点要重启才生效」，探活收 401 是预期，不计入失败（设计 §4.1）。
+		// 复现 reinstall/upgrade 在隔离站点的 401 误判失败：修复前 deferredAnonymous 从未被赋值 → 误失败。
+		const t = await runInstall(makeReq({
+			manifest: {
+				...manifestFixture("0.1.0"),
+				health: "/demo-solution/ping",
+				api: { prefix: "/api/demo-solution", anonymous: ["demo-solution/ping"] },
+			},
+			fetch: async (url: string) => {
+				if (url === "/api/demo-solution/demo-solution/ping") {
+					return { ok: false, status: 401, arrayBuffer: async () => new ArrayBuffer(0) };
+				}
+				return { ok: true, status: 200, arrayBuffer: async () => ARCHIVE.slice().buffer };
+			},
+		}));
+		expect(t.status).toBe("done");
+	});
+
+	it("health 端点收非 401（如 500）：仍判失败（仅 401 转 deferred）", async () => {
+		const t = await runInstall(makeReq({
+			manifest: {
+				...manifestFixture("0.1.0"),
+				health: "/demo-solution/ping",
+				api: { prefix: "/api/demo-solution", anonymous: ["demo-solution/ping"] },
+			},
+			fetch: async (url: string) => {
+				if (url === "/api/demo-solution/demo-solution/ping") {
+					return { ok: false, status: 500, arrayBuffer: async () => new ArrayBuffer(0) };
+				}
+				return { ok: true, status: 200, arrayBuffer: async () => ARCHIVE.slice().buffer };
+			},
+		}));
+		expect(t.status).toBe("partial");
+		expect(t.stage).toBe("smoke");
+	});
+});

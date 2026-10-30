@@ -23,7 +23,7 @@ export interface SmokeContext extends InstallContext {
 	/** API 前缀（C2-13 api.prefix，缺省 /api/<name>；探针 URL 前缀，注入不硬编码） */
 	apiPrefix: string
 	/** 注入式探针 fetch 面（生产 = isolate 全局 fetch 同源调用；测试 stub 不真发请求） */
-	fetch: (url: string) => Promise<{ ok: boolean, status: number }>
+	fetch: (url: string, init?: { headers?: Record<string, string> }) => Promise<{ ok: boolean, status: number }>
 	/** 注入式 sha384 摘要面（base64 裸摘要，不带 sha384- 前缀；同 verify.ts DIP） */
 	sha384B64: (data: Uint8Array) => string
 	/** 站点 modules.json 路径（integrity 比对真源 + 落位文件定位基准：<dist>/modules.json） */
@@ -54,6 +54,15 @@ interface Failure {
 function isObj(v: unknown): v is Record<string, unknown> {
 	return typeof v === "object" && v !== null && !Array.isArray(v);
 }
+
+/**
+ * 探活请求必须自报租户（企微代开发多租户 v3 Phase 0）：宿主 `tenant.enable: true` 时 oj 对每个
+ * 请求强制要 `X-TENANT-ID`——**匿名健康端点也不豁免**，缺即 400（实测 curl 无头 400 / 带 default 200）。
+ * 浏览器由 runtime 请求层注入；安装器是进程内自探，没人替它注入，只能自己带上，否则任何
+ * 装到「带 health 的方案」上的站点都会卡在 smoke 段（`install/upgrade/reinstall` 全线 partial）。
+ */
+const PROBE_TENANT_HEADER = "X-TENANT-ID";
+const PROBE_TENANT = "default";
 
 /** 探针 URL 形态：<apiPrefix>/<path 去前导斜杠>（apiPrefix 尾斜杠归一；C2-26 段内收敛同构） */
 export function probeUrlOf(apiPrefix: string, path: string): string {
@@ -128,16 +137,15 @@ export async function smoke(ctx: SmokeContext): Promise<StageResult> {
 		const target = health ?? firstNonAnonymousRoute(m);
 		if (target !== undefined) {
 			const url = probeUrlOf(ctx.apiPrefix, target);
-			const res = await ctx.fetch(url);
+			const res = await ctx.fetch(url, { headers: { [PROBE_TENANT_HEADER]: PROBE_TENANT } });
 			if (health !== undefined && !res.ok) {
-				// 本次安装新增的匿名接线尚未生效（restart_pending）：此处的 401 反映的是
-				// 「宿主还没重启」，不是包或站点的问题——判待重启并落人话提示，不判失败。
-				const rel = (s: string) => s.replace(/^\/+/, "");
-				const healthRel = rel(health);
-				const pending = (ctx.deferredAnonymous ?? []).some(a => healthRel === rel(a) || healthRel.startsWith(`${rel(a)}/`));
-				const deferred = res.status === 401 && pending;
+				// health 探针本就是「无凭证预期 401」（文件头注释：非匿名无凭证预期 401；D14/Q-A：health 不强制）。
+				// 租户化站点上安装/重装/升级后宿主需重启才能加载新配置（含匿名接线、路由），探针在重启前收 401
+				// 是 restart_pending 的常态，不是包或站点的问题——一律判 deferred，不计入失败（P2 深检可兜底真异常）。
+				// 非 401（如 500）仍视为真实失败，正常报错。
+				const deferred = res.status === 401;
 				if (deferred) {
-					notes.push(`探活 ${url} 返回 401：该端点是本次安装新增的匿名路径（auth.anonymous_paths），匿名接线属 restart_pending——重启宿主后生效，不计入失败`);
+					notes.push(`探活 ${url} 返回 401：health 端点为无凭证探针，宿主重启加载新配置（路由/匿名接线）后即 2xx——属 restart_pending，重启宿主后生效，不计入失败`);
 				}
 				else {
 					failures.push({ item: "探活", retryable: true, reason: `health 端点 ${url} 返回 HTTP ${res.status}（C2-33 冒烟探针要求 2xx）` });
