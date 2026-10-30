@@ -24,8 +24,14 @@ function fail(status: number, message: string): never {
 	throw Object.assign(new Error(message), { status });
 }
 
-/** 外来号命名空间抢占红线（B6）：本地建号拒收 ldap:/sso:/wecom: 前缀用户名。 */
-const RESERVED_PREFIX = /^(?:ldap|sso|wecom):/i;
+/**
+ * 外来号命名空间抢占红线（B6）：本地建号拒收 ldap:/sso:/wecom: 前缀用户名。
+ *
+ * 导出给「改名」两侧共用：只在建号处拦是不够的——自助改名或管理端改名若能把任意一个
+ * 本地账号改成一个尚未建档的外部号（如 `wecom:boss`），该外部成员首次登录时
+ * `ensureWecomUser` 按用户名查到的是**别人那一行**，于是签发别人的 uid。
+ */
+export const RESERVED_USERNAME_PREFIX = /^(?:ldap|sso|wecom):/i;
 
 async function rolesOf(uid: number): Promise<string[]> {
 	const rows = await db.table("sys_user_role").select(["role_name"]).where({ field: "user_id", op: "eq", value: uid }).all() as Array<{ role_name: string }>;
@@ -73,7 +79,7 @@ export async function createUser(input: { username: string, password: string, di
 	const username = String(input.username ?? "").trim();
 	if (!username)
 		fail(400, "username required");
-	if (RESERVED_PREFIX.test(username))
+	if (RESERVED_USERNAME_PREFIX.test(username))
 		fail(400, "username prefix reserved for external identity sources");
 	if (!input.password || String(input.password).length < 6)
 		fail(400, "password too short (min 6)");

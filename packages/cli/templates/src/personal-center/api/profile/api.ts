@@ -1,3 +1,4 @@
+import { RESERVED_USERNAME_PREFIX } from "#/_platform/_shared/service/domain/users";
 // POST /api/personal-center/profile —— 保存「我的资料」（个人中心表单入库端点）。
 // 只允许改本人行（http.user.id 权威，不接受 body 传 id）；username 全局唯一，
 // 重名 400；avatar 走 upload 端点（multipart），不在此通道。
@@ -23,6 +24,12 @@ const handler = {
 		const patch: Record<string, string> = {};
 		if (b.username != null && String(b.username).trim() !== "") {
 			const username = String(b.username).trim();
+			// 与建号同红线（B6）：自助改名不能抢占 ldap:/sso:/wecom: 命名空间——
+			// 否则该外部成员首次登录时 ensureXXXUser 按用户名查到的是**别人那一行**，直接签发别人的 uid。
+			if (RESERVED_USERNAME_PREFIX.test(username)) {
+				json.fail(400, "username prefix reserved for external identity sources");
+				return;
+			}
 			const dup = await db.table("users").select(["id"]).where({ field: "username", op: "eq", value: username }).all();
 			if (dup.some(r => Number(r.id) !== Number(uid))) {
 				json.fail(400, "username already taken");

@@ -26,7 +26,21 @@ interface AccessSnapshot {
 	at: number
 }
 
-const cache = new Map<number, AccessSnapshot>();
+/**
+ * `uid → 快照` 的键必须带上租户（2026-10 多租户）。
+ *
+ * 反例：只按 uid 缓存时，「A 企业的张三」判权后在同一进程里走了「B 企业的张三」的请求——
+ * 后者的 `users` 行按 B 租户查不到（`tenant.enable` 下构造器自动注入谓词），本应 403，
+ * 但缓存里还留着 A 租户那张 `exists: true` 的快照，于是放行。进程不跨请求复用时看不到，
+ * 一旦复用（或在本工程的测试宿主里）就是静默的跨租户放行。
+ */
+const cache = new Map<string, AccessSnapshot>();
+
+/** 当前请求的租户（`X-TENANT-ID` 落到 http.tenantId，与 oj 同源）；无上下文时按空串 */
+function requestTenant(): string {
+	const t = (http as unknown as { tenantId?: unknown }).tenantId;
+	return typeof t === "string" ? t.trim() : "";
+}
 
 async function loadSnapshot(userId: number): Promise<AccessSnapshot> {
 	const userRows = await db.table("users").select(["is_forbidden", "must_change"]).where({ field: "id", op: "eq", value: userId }).all();
@@ -50,17 +64,23 @@ async function loadSnapshot(userId: number): Promise<AccessSnapshot> {
 }
 
 async function snapshot(userId: number): Promise<AccessSnapshot> {
-	const hit = cache.get(userId);
+	const key = `${requestTenant()}|${userId}`;
+	const hit = cache.get(key);
 	if (hit && Date.now() - hit.at < TTL_MS)
 		return hit;
 	const snap = await loadSnapshot(userId);
-	cache.set(userId, snap);
+	cache.set(key, snap);
 	return snap;
 }
 
 /** 写路径（角色分配/绑定调整/紧急吊销/禁用）同步调用：撤销下一次请求即生效。 */
 export function invalidateUser(userId: number): void {
-	cache.delete(userId);
+	// 同一 uid 在各租户下的快照都要失效（见 cache 注释）：漏掉 B 租户那张，
+	// 撤销在另一个租户里就还可能晚一个 TTL 才生效。
+	for (const key of cache.keys()) {
+		if (key.endsWith(`|${userId}`))
+			cache.delete(key);
+	}
 }
 
 export function invalidateAllUsers(): void {
