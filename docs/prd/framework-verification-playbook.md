@@ -4,7 +4,19 @@
 > **配套**：[`framework-development-guide.md`](./framework-development-guide.md)（原理）、[`oj-fullstack-tutorial.md`](./oj-fullstack-tutorial.md)（跟做）。
 > **原则**：每一步都有**可判定通过/失败的检查点**，不要只看命令退出码，要核对产物。
 
-### 最近一次基线（2026-10-26，oj 0.1.87 / cli+runtime 0.2.43 工作区态；精简后 config.yaml 必要性验证）
+### 最近一次基线（2026-10-31，oj 0.1.115 本地 / cli+runtime 0.2.45 工作区态；发布门禁验证 + walkthrough 14/14）
+
+| 项 | 值 |
+| --- | --- |
+| 日期 | 2026-10-31 |
+| 框架包版本 | 工作区态（`feat/ojm` @ e5e2bdcc + 7 处修复未 bump；0.2.45） |
+| oj | 0.1.115（本地 `~/.local/share/oj`）；演练按 playbook 默认走 npm 通道 0.1.110 |
+| 验证动机 | 验证 0.2.45 发布门禁；顺带跑 §0.5 发布态 + §1–§7 全链路 |
+| 范围 | §0.5 双包 pack + 安装 → §1 脚手架 → §2 依赖 → §3 探针 → §4 契约/client → §5 前端 → §6 dev 联调 → §7 preview + market walkthrough |
+| 结果 | **通过（含 7 处缺陷修复）**。walkthrough **14/14**（此前 8/14）；模板 vitest 835、cli vitest 582 全绿；根+模板 tsc、eslint、`verify-subpath` 24/0 全绿。 |
+| 本次发现并处置 | ① **CLI 内置 HTTP 客户端缺 `X-TENANT-ID`**（租户化后服务端强制要租户头）：`ojm install/enable/list/market setup/trial/walkthrough` 全线 400；`site.ts` 的 `callApi`/`login` 及 4 处裸 fetch 统一注入 `tenantHeaders()`（新增 `site-tenant-header.test.ts`，RED→GREEN）。② **trial 隔离站点派生 config 缺 `vars.canonical_origin`**：`bootstrap.ts` 补注入。③ **安装器冒烟探针不报租户头**：租户化站点匿名健康端点一律 400；`smoke.ts` 探针注入 `X-TENANT-ID: default`。④ **`SmokeContext.deferredAnonymous` 死代码**：全仓从未赋值，导致 reinstall/upgrade 对匿名健康端点 401 误判失败；改为 health 探针 401 一律判 restart_pending deferred（非 401 仍判失败）。⑤ **walkthrough harness 三处隔离缺陷**：`NEG_VERSION` 由 `9.9.9` 改 `0.0.9`（低于主链路 latest 0.2.0，不再触发 REG-CS2 单调性回退守卫）；`neg-stranger` 的 `signCommand`/`buildIndex` 补 `registryId: "trial.registry"`（REG-CS3 v2 规范串首段）；neg 用例改用独立方案名 `neg-solution` 避免与主链路 `demo-solution` 共享迁移账本（OJ-9 降级守卫误拦）。 |
+
+### 上一次基线（2026-10-26，oj 0.1.87 / cli+runtime 0.2.43 工作区态；精简后 config.yaml 必要性验证）
 
 | 项 | 值 |
 | --- | --- |
