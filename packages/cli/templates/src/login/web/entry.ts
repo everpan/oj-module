@@ -1,5 +1,6 @@
-import { defineModule } from "@oj-module/runtime";
+import { defineModule, useAuthStore } from "@oj-module/runtime";
 import { lazy } from "react";
+import { bootstrapTenant, useTenantStore } from "./store/tenant";
 
 /**
  * 登录模块：提供 `/login` 路由与内容区。
@@ -55,5 +56,22 @@ export default defineModule({
 	i18n: {
 		"zh-CN": () => import("./locales/zh-CN.json"),
 		"en-US": () => import("./locales/en-US.json"),
+	},
+	lifecycle: {
+		/**
+		 * 租户上下文（L2）：登录模块是最早被加载的模块之一（`loadAll` 全量实例化），
+		 * 在 onInit 里注册请求头 provider，之后每个请求都会带 `X-TENANT-ID`。
+		 * 时序容忍由框架保证：provider 未注册时请求照发（登录前的 guard 请求）。
+		 */
+		async onInit(ctx) {
+			bootstrapTenant();
+			ctx.register.headerProvider(() => ({ "X-TENANT-ID": useTenantStore.getState().tenant }));
+			// 登出必须清租户：否则下一个用户会带着上一个用户的租户头（跨租户请求 fail-closed 403，
+			// 但单租户部署会静默落到别人的 default 视图）。token 由非空转空即视为登出。
+			useAuthStore.subscribe((state, prev) => {
+				if (prev.token && !state.token)
+					useTenantStore.getState().clear();
+			});
+		},
 	},
 });

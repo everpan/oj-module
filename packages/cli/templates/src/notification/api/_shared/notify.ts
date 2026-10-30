@@ -220,9 +220,12 @@ export async function markAllRead(userId: string | number): Promise<void> {
 	// oj 0.1.81 的 orIgnore 仅跟随 VALUES 的 upsert 子句，不与 fromSelect(SELECT 源) 组合
 	// （实测：code 500 "orIgnore with fromSelect is not supported on sqlite"）。原 SQL 三方言通用
 	// （sqlite OR IGNORE / pg ON CONFLICT DO NOTHING / mysql ON DUPLICATE KEY），退回裸 SQL。
+	// 多租户（0015）：裸 SQL 必须显式写 tenant_id 且把当前租户作为绑定参数传进去，
+	// 否则 sql_guard=deny 直接拒（缺列 / 参数不含租户值两种都会被拦）。
+	const tenant = http.tenantId;
 	await db.exec(
-		"INSERT OR IGNORE INTO notifications_broadcast_read (broadcast_id, user_id, read_time) SELECT id, ?, ? FROM notifications_broadcast",
-		[uid, now],
+		"INSERT OR IGNORE INTO notifications_broadcast_read (tenant_id, broadcast_id, user_id, read_time) SELECT tenant_id, id, ?, ? FROM notifications_broadcast WHERE tenant_id = ?",
+		[uid, now, tenant],
 	);
 }
 
@@ -231,9 +234,10 @@ export async function clearNotices(userId: string | number): Promise<void> {
 	const uid = Number(userId);
 	await db.table("notifications").where({ field: "user_id", op: "eq", value: uid }).delete().run();
 	// 保留 db.exec：INSERT OR IGNORE ... SELECT 同 markAllRead（构造器 orIgnore 不与
-	// fromSelect 组合，实测 500），原 SQL 三方言通用。
+	// fromSelect 组合，实测 500），原 SQL 三方言通用。多租户同上：tenant_id 显式 + 绑定参数。
+	const tenant = http.tenantId;
 	await db.exec(
-		"INSERT OR IGNORE INTO notifications_broadcast_hidden (broadcast_id, user_id, create_time) SELECT id, ?, ? FROM notifications_broadcast",
-		[uid, nowStr()],
+		"INSERT OR IGNORE INTO notifications_broadcast_hidden (tenant_id, broadcast_id, user_id, create_time) SELECT tenant_id, id, ?, ? FROM notifications_broadcast WHERE tenant_id = ?",
+		[uid, nowStr(), tenant],
 	);
 }

@@ -5,6 +5,8 @@
 # 元数据校验放行（journalHeadOf：深检 ledger 复核 + P3-11 预锁 guard 的真源），列与 oj 真表逐列对齐。
 tables:
   _oj_migrations:
+    # 共享表（B 组）：oj 迁移 journal，跨租户唯一，不可能带租户上下文访问。
+    tenant: false
     pk: [module, version]
     columns:
       module: {type: text, null: false}
@@ -16,6 +18,10 @@ tables:
     pk: id
     columns:
       id: {type: integer, autoincrement: true}
+      # 租户维度（0015）：外部身份按租户隔离，用户名唯一性收敛到 (tenant_id, username)。
+      tenant_id: {type: text, null: false}
+      # 企微业务键（D3/D6）：tenant_id 是隔离判定列，corp_id 只做可读冗余，不参与判定。
+      corp_id: {type: text}
       username: {type: text, null: false}
       password_hash: {type: text, null: false}
       avatar_base64: {type: text, null: false}
@@ -27,6 +33,9 @@ tables:
       phone_number: {type: text}
       description: {type: text}
   sys_setting:
+    # 共享表（B 组 D8）：登录方式发现 /system/login-methods 是未登录端点，此刻没有租户上下文；
+    # 且这些开关是部署级语义，不是每 corp 语义。
+    tenant: false
     pk: key
     columns:
       key: {type: text, null: false}
@@ -45,6 +54,7 @@ tables:
     pk: id
     columns:
       id: {type: integer, autoincrement: true}
+      tenant_id: {type: text, null: false}
       create_time: {type: integer, null: false}
       user_id: {type: integer, null: false}
       username: {type: text, null: false}
@@ -55,6 +65,9 @@ tables:
       detail: {type: text}
       level: {type: integer, null: false}
   sys_solution_route:
+    # 共享表（B 组）：站点级路由/启用注册表（PK=path，安装/卸载/启停为站点操作），
+    # 语义上不存在按 corp 分叉，也不保证在租户上下文里被访问。
+    tenant: false
     # 0010 重构后形状（站点级路由，path 主键；与 migrations/0010__sys_solution_route.sql 逐列一致）。
     pk: path
     columns:
@@ -67,6 +80,8 @@ tables:
       deprecated: {type: integer, null: false}
       enabled: {type: integer, null: false}
   sys_role:
+    # 共享表（B 组）：框架角色目录（内置角色 + 权限码由模块声明同步而来），分配关系在 A 组。
+    tenant: false
     pk: name
     columns:
       name: {type: text, null: false}
@@ -76,6 +91,7 @@ tables:
       builtin: {type: integer, null: false}
       deprecated: {type: integer, null: false}
   sys_permission:
+    tenant: false
     pk: code
     columns:
       code: {type: text, null: false}
@@ -83,6 +99,7 @@ tables:
       title_key: {type: text}
       deprecated: {type: integer, null: false}
   sys_role_permission:
+    tenant: false
     pk: [role_name, permission_code]
     columns:
       role_name: {type: text, null: false}
@@ -90,11 +107,13 @@ tables:
   sys_user_role:
     pk: [user_id, role_name]
     columns:
+      tenant_id: {type: text, null: false}
       user_id: {type: integer, null: false}
       role_name: {type: text, null: false}
   sys_refresh_token:
     pk: token_hash
     columns:
+      tenant_id: {type: text, null: false}
       token_hash: {type: text, null: false}
       user_id: {type: integer, null: false}
       expires_at: {type: integer, null: false}
@@ -103,12 +122,15 @@ tables:
   # 限速/登录节流状态表（V9__sys_throttle 经迁移创建；rate.ts 经 db.table() 访问，
   # 须在此声明 + 在 manifest.yaml tables 登记，否则 oj 表元数据校验报 unknown table）。
   sys_rate_window:
+    # 共享表（B 组）：限速窗口按调用面计数（IP/账号维度），登录前就要用，无租户上下文。
+    tenant: false
     pk: rate_key
     columns:
       rate_key: {type: text, null: false}
       window_start: {type: integer, null: false}
       count: {type: integer, null: false}
   sys_login_throttle:
+    tenant: false
     pk: pair_key
     columns:
       pair_key: {type: text, null: false}
@@ -117,6 +139,9 @@ tables:
   # 市场操作历史（P4 上收 _platform）：install/enable/disable/uninstall/upgrade/rollback 六类动作留痕。
   # 写入由平台编排面（_lifecycle/history.ts recordHistory）落到本表；市场页只读消费。
   market_history:
+    # 共享表（B 组）：解决方案安装/升级/回滚是**站点级**操作（装一次全站生效），
+    # 按租户隔离会把同一批站点事件割裂成互不可见的碎片。
+    tenant: false
     pk: id
     columns:
       id: {type: integer, autoincrement: true}
@@ -130,6 +155,9 @@ tables:
   # REG-CS2 索引新鲜度：站点按源记住见过的最大 seq（防回放/降级，回退即拒）。
   # 读写由 _lifecycle/source-seq.ts 落到本表；source_url 为业务主键（无自增 id）。
   reg_source_seq:
+    # 共享表（B 组）：索引新鲜度水位属于**站点**（受害者是站点，防回放/降级），
+    # 与租户无关；source-seq.ts 的设计注释即写明「记在站点 DB」。
+    tenant: false
     pk: source_url
     columns:
       source_url: {type: text, null: false}

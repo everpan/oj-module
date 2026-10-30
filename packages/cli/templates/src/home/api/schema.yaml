@@ -4,11 +4,13 @@ tables:
     pk: id
     columns:
       id: {type: integer, autoincrement: true}
+      tenant_id: {type: text, null: false}
       category: {type: text, null: false}
       value: {type: integer, null: false}
   home_line:
     pk: id
     columns:
       id: {type: integer, autoincrement: true}
+      tenant_id: {type: text, null: false}
       day: {type: integer, null: false}
       value: {type: integer, null: false}

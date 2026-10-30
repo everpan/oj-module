@@ -6,6 +6,12 @@
 		"password": "Password",
 		"submit": "Sign in",
 		"success": "Signed in",
+		"tenant": {
+			"label": "Enterprise code",
+			"hint": "Only needed on multi-tenant deployments (e.g. WeCom corp_id); leave empty otherwise",
+			"toggle": "Sign in with enterprise code",
+			"hide": "Hide enterprise code"
+		},
 		"changePwd": {
 			"title": "Change Password",
 			"hint": "After first login or an admin reset, you must change your password before using the system.",

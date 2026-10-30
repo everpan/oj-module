@@ -5,6 +5,7 @@ tables:
     pk: id
     columns:
       id: {type: integer, autoincrement: true}
+      tenant_id: {type: text, null: false}
       user_id: {type: integer, null: true}
       avatar: {type: text, null: false}
       date: {type: text, null: false}
@@ -17,6 +18,7 @@ tables:
     pk: id
     columns:
       id: {type: integer, autoincrement: true}
+      tenant_id: {type: text, null: false}
       avatar: {type: text, null: false}
       date: {type: text, null: false}
       message: {type: text, null: false}
@@ -28,6 +30,7 @@ tables:
     pk: id
     columns:
       id: {type: integer, autoincrement: true}
+      tenant_id: {type: text, null: false}
       broadcast_id: {type: integer, null: false}
       user_id: {type: integer, null: false}
       read_time: {type: text, null: false}
@@ -35,6 +38,7 @@ tables:
     pk: id
     columns:
       id: {type: integer, autoincrement: true}
+      tenant_id: {type: text, null: false}
       broadcast_id: {type: integer, null: false}
       user_id: {type: integer, null: false}
       create_time: {type: text, null: false}

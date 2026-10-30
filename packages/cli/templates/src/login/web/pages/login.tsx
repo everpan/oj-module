@@ -3,12 +3,15 @@ import { Alert, Button, Form, Input, Tabs, Typography } from "antd";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate } from "react-router";
+import { useTenantStore } from "../store/tenant";
 
 type LoginMethod = "local" | "ldap" | "sso";
 
 interface LoginFormValues {
 	username: string
 	password: string
+	/** 企业代码（多租户部署才需要，L2：登录带租户） */
+	tenant?: string
 }
 
 /**
@@ -32,6 +35,9 @@ export default function LoginPage() {
 	const [loading, setLoading] = useState(false);
 	const [methods, setMethods] = useState<LoginMethod[]>(["local"]);
 	const [active, setActive] = useState<LoginMethod>("local");
+	// 企业代码入口默认收起：单租户部署（绝大多数）保持今天的登录页外观，
+	// 只有服务商/客户带 `?tenant=` 或手工展开时才需要填。
+	const [showTenant, setShowTenant] = useState(false);
 
 	useEffect(() => {
 		fetchLoginMethods()
@@ -52,7 +58,10 @@ export default function LoginPage() {
 		setLoading(true);
 		setError(undefined);
 		try {
-			await login({ ...values, method });
+			// L2：登录请求必须带租户头。先落 store（provider 每请求读 getState），再登录。
+			if (values.tenant?.trim())
+				useTenantStore.getState().setTenant(values.tenant);
+			await login({ username: values.username, password: values.password, method });
 			navigate(getRedirectPath(search));
 		}
 		catch (e) {
@@ -78,8 +87,16 @@ export default function LoginPage() {
 			<Form.Item name="password" label={t("login:page.password")} rules={[{ required: true }]}>
 				<Input.Password />
 			</Form.Item>
+			{showTenant && (
+				<Form.Item name="tenant" label={t("login:page.tenant.label")} extra={t("login:page.tenant.hint")}>
+					<Input autoComplete="off" placeholder="ww..." />
+				</Form.Item>
+			)}
 			<Button type="primary" htmlType="submit" block loading={loading}>
 				{t("login:page.submit")}
+			</Button>
+			<Button type="link" size="small" block onClick={() => setShowTenant(v => !v)}>
+				{t(showTenant ? "login:page.tenant.hide" : "login:page.tenant.toggle")}
 			</Button>
 		</Form>
 	);

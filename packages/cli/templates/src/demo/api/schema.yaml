@@ -5,6 +5,7 @@ tables:
     pk: id
     columns:
       id: {type: integer, autoincrement: true}
+      tenant_id: {type: text, null: false}
       title: {type: text, null: false}
       done: {type: integer, null: false}
       create_time: {type: integer, null: false}

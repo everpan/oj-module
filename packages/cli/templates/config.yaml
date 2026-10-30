@@ -89,3 +89,35 @@ auth:
     - /auth/refresh
     - /auth/logout
     - /system/login-methods # 登录页「登录方式」Tabs 的数据源，未登录就要能读
+
+# 多租户（企微代开发 v3 Phase 0）：开启后所有 {base} 请求必须带 X-TENANT-ID，否则 400。
+# 前端由 tenantStore + headerProvider 统一注入（单租户部署恒为 default，UX 不变）。
+tenant:
+  enable: true
+  header_key: X-TENANT-ID
+  sql_guard: deny # 构造器查询自动注入 tenant_id；裸 SQL 漏写/绑错租户直接拒
+  allow_as_tenant: true # 企微 302 回调（浏览器带不了自定义头）用 db.asTenant(服务端推导值) 补身份
+  # 共享表白名单：schema.yaml 里 tenant: false 的表必须在此再列一次，双声明才豁免守卫。
+  # 只放全局映射/凭证/框架目录，不放租户业务数据。
+  shared_allow:
+    - _oj_migrations # oj 迁移 journal（自建自管）
+    - sys_setting # 登录方式发现是未登录端点，此刻无租户上下文（D8）
+    - sys_solution_route # 站点级路由/启用注册表（安装是站点操作）
+    - sys_role # 框架角色目录
+    - sys_permission # 权限码目录
+    - sys_role_permission # 角色→权限映射（同上，分配关系在 sys_user_role）
+    - sys_rate_window # 限速窗口（登录前就要用）
+    - sys_login_throttle # 登录节流（登录前就要用）
+    - market_history # 解决方案安装/升级/回滚是站点级留痕
+    - reg_source_seq # 索引新鲜度水位属于站点（防回放）
+  # 豁免缺租户头的路径（去 base 前缀后的形态）。与 auth.anonymous_paths 同语义，
+  # 但这是「没有租户头也不 400」的逃生口，只给**真的拿不到头**的端点。
+  # 登录类端点不在此列：前端 headerProvider 每请求都注头（单租户恒 default），
+  # 少了头应当直接 400 `missing tenant header`，而不是落进匿名态后被 sql_guard 兜成 500。
+  # `/auth/wecom/**`（企微 302 回调，浏览器带不了自定义头）在 Phase 1 落地时加进来。
+  anonymous_paths:
+    - /system/login-methods # 登录方式发现：读共享表 sys_setting，天然无租户语义
+  # tenant.require_signed_claim：租户头的服务端绑定（平台级 fail-closed）。
+  # 暂保持 false——上游 oj 的 jwt.sign 目前会静默丢弃自定义 claim（需求 R6），
+  # 开启前无法把 tenant 放进 token。R6 落地后改 true，裸头即失去自证能力。
+  require_signed_claim: false

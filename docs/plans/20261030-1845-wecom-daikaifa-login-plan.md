@@ -72,16 +72,14 @@
 
 ## 4. 分阶段
 
-### Phase 0（前置，不做则隔离是空话）
-1. `config.yaml` 加 `tenant` 段：`enable: true`、`header_key: X-TENANT-ID`、`sql_guard: deny`、
-   `shared_allow: [...]`、`allow_as_tenant: true`、`anonymous_paths`（登录/回调/登录方式发现）。
-   注意：开启后**所有** `{base}` 请求缺头即 400，除 `tenant.anonymous_paths` 命中；`require_signed_claim` 先保持 false（等 R6）。
-2. 21 张表逐张定性（§5.2 A/B 两组，判据：**该表是否可能在无租户上下文时被访问**）。
+### Phase 0（前置，不做则隔离是空话）— 已实施，见 §10
+1. `config.yaml` 加 `tenant` 段：`enable`、`header_key`、`sql_guard: deny`、`shared_allow`、
+   `allow_as_tenant: true`、`anonymous_paths`。`require_signed_claim` 保持 false（等 R6）。
+2. 21 张表逐张定性（§5.2 A/B 两组）。
 3. 清点裸 SQL（`db.raw`/`db.sql`/字符串查询），逐条补 `tenant_id` 条件；构造器查询不动。
-4. 新增迁移 `0015__tenant.sql`（当前最新是 `0014__reg_source_seq`）。
-5. 回归：跨租户裸 SQL 被拒；构造器 insert 自动落当前租户；update/delete 收窄。
-6. **L2 租户上下文先落地**（§5.3）：`tenantStore` + `headerProvider` 注册 + 登录页企业代码入口 + 默认租户回落；
-   否则 `sql_guard: deny` 会把登录查询打空。
+4. 新增迁移 `0015__tenant.sql`（+ `.pg` / `.mysql` 方言覆盖；notification/home/demo 各自序号）。
+5. 回归：`templates-tenant-scope.test.ts`（schema 定性 vs config 双声明一致性）+ HTTP 探针。
+6. L2 租户上下文：`tenantStore` + `headerProvider` + 登录页企业代码入口 + 默认租户回落。
 
 ### Phase 1（connector）
 - `GET /auth/wecom/login?corp=&agent=&env=`：UA 检测 → 企微内 OAuth2 / 外部 qrConnect / 无 corp 时引导输入企业代码。
@@ -107,29 +105,31 @@
 
 ### 5.2 DDL（migrations/0015 起）
 
-**A. 租户化（加 `tenant_id TEXT NOT NULL DEFAULT 'default'`，受 `sql_guard` 自动注入）**
+**A. 租户化 11 张（加 `tenant_id TEXT NOT NULL DEFAULT 'default'`，受 `sql_guard` 自动注入）**
 ```
 users              + tenant_id, + corp_id TEXT   -- 唯一键 (tenant_id, username)
-sys_user_role      + tenant_id                   -- 唯一键 (tenant_id, user_id, role_name)
+sys_user_role      + tenant_id                   -- 主键仍 (user_id, role_name)：users.id 全局自增，跨租户不重复
 sys_refresh_token  + tenant_id                   -- 会话必须与租户同域，否则跨租户刷新
 sys_oplog          + tenant_id
-sys_solution_route + tenant_id
-reg_source_seq     + tenant_id                   -- 若确认为全局发号则改归 B 组
 notification 4 表   + tenant_id
 home 2 表 / demo 1 表 + tenant_id
 ```
 
-**B. 共享（`tenant: false` **且** 列进 `tenant.shared_allow`，两者缺一则声明被忽略）**
+**B. 共享 10 张（schema `tenant: false` + config `tenant.shared_allow` 双声明，缺一则声明被忽略）**
 ```
 _oj_migrations      -- oj 自建自管 DDL
 sys_setting         -- D8：登录方式发现是未登录端点，此刻没有租户上下文
-sys_login_throttle  -- 登录前限频（含企业代码解析），必须全局
-sys_rate_window     -- 同上
+sys_solution_route  -- PK=path 的站点级路由/启用注册表；安装是站点操作（见 §10 偏差 1）
 sys_role / sys_permission / sys_role_permission -- 框架角色目录；分配关系在 A 组
+sys_rate_window     -- 登录前限速，必须全局
+sys_login_throttle  -- 同上
+market_history      -- 解决方案安装/升级/回滚是站点级留痕（见 §10 偏差 1）
+reg_source_seq      -- 索引新鲜度水位属于站点（源码注释即「记在站点 DB」，见 §10 偏差 1）
 wecom_app_profile(suite_id, corp_id, agent_id) PK 三列；env 标签；*_enc 加密列
 wecom_suite_ticket(suite_id) PK；suite_ticket / expires_at
 wecom_login_ticket(ticket_hash) PK；uid / tenant_id / expires_at / used
 ```
+> 企微三表随 Phase 1 落地，未落地前不计入 21 张（当前 11 A + 10 B = 21）。
 > B 组 = 不受 guard 约束，**只放全局映射/凭证/框架目录，不放租户业务数据**。
 > `wecom_login_ticket` 存 `tenant_id` 是因为它要跨「匿名回调」与「已认证换取」两段，不是租户业务表。
 
@@ -228,4 +228,48 @@ wecom_login_ticket(ticket_hash) PK；uid / tenant_id / expires_at / used
 | 会话归属 | 已定 Model C：`_platform` 会话权威（§1-E/F） |
 | 租户隔离机制 | 已定：`tenant.enable` + `sql_guard: deny` + R6 |
 | 上游需求 | 收敛为 R6（阻塞）/ R7（可选） |
-| 未决 | 无；下一步为 Phase 0 实施（首次提交前先产出 21 张表的逐张定性表） |
+| 未决 | 无；Phase 0 已实施（§10），下一步 Phase 1 connector |
+
+## 10. Phase 0 实施记录（2026-10-30）
+
+### 10.1 落地清单
+
+| 项 | 落点 |
+|---|---|
+| config `tenant` 段 | `packages/cli/templates/config.yaml`（enable / header_key / sql_guard:deny / shared_allow 10 项 / allow_as_tenant / anonymous_paths / require_signed_claim:false） |
+| schema 定性 | `_platform`：users(+tenant_id,+corp_id)、sys_oplog、sys_user_role、sys_refresh_token 加列；sys_setting、sys_solution_route、sys_role、sys_permission、sys_role_permission、sys_rate_window、sys_login_throttle、market_history、reg_source_seq、_oj_migrations 标 `tenant: false`。notification 4 表 / home 2 表 / demo.todos 加 `tenant_id` |
+| 迁移 | `_platform/0015__tenant.sql`（+`.pg`/`.mysql`）、`notification/0005__tenant`、`home/0002__tenant`、`demo/0002__tenant` |
+| 裸 SQL | `notification/_shared/notify.ts` 两处 `INSERT..SELECT` 显式写 `tenant_id` 并把当前租户当绑定参数（守卫 deny 下缺一即拒）；`paged()` 补红线注释 |
+| 前端 L2 | 新增 `login/web/store/tenant.ts`（`?tenant=` → 持久化 → `default`）；`login/web/entry.ts` onInit 注册 `headerProvider` 并订阅登出清租户；登录页折叠式「企业代码」入口（单租户 UX 不变） |
+| 回归 | `packages/cli/src/__tests__/templates-tenant-scope.test.ts`（4 例：config 门禁 / 二选一定性 / shared_allow 无拼写错 / 21 表 A-B 快照） |
+
+### 10.2 相对 §5.2 的两处偏差（有证据）
+
+**偏差 1：三张表改归 B 组（原计划 A 组）**
+- `sys_solution_route`：PK = `path`，读法是 `where module = ?` 的站点级路由/启用注册表，安装/卸载/启停都是站点操作（`solutions/api.ts:92`、`uninstall.ts:178`、`installer.ts:1083`）。若按租户化，`path` 主键下各租户只会看到自己那几行，而安装只发生一次 → 菜单为空。
+- `market_history`：解决方案安装的站点级留痕，装一次全站生效。
+- `reg_source_seq`：源码注释即写明「记在**站点** DB，受害者是站点」（`_lifecycle/source-seq.ts:3`），租户化会让防回放水位分裂。
+- 结果：A 11 / B 10（原写 12/9）。
+
+**偏差 2：`tenant.anonymous_paths` 只留 `/system/login-methods`**
+- 原计划把 `/auth/login|ldap-login|refresh|logout` 也列进去。实测：列进去后，缺头请求被标为「匿名」放行到 handler，随后构造器查 `users` 触发守卫 → **500 `tenant guard: table(s) ["users"] require tenant context`**。
+- 这些端点由前端 `headerProvider` 每请求注头（单租户恒 `default`），本就不该匿名；移出后缺头直接得 **400 `missing tenant header: X-TENANT-ID`**（语义正确、可观测）。
+- `/auth/wecom/**` 在 Phase 1 落地时再加（那是真带不了头的 302 回跳）。
+
+### 10.3 实测证据（本地 oj 0.1.110 + 迁移后的 dev 库）
+
+| 用例 | 结果 |
+|---|---|
+| `POST /auth/login` 无 `X-TENANT-ID` | 400 `missing tenant header: X-TENANT-ID` |
+| `POST /auth/login` 带 `X-TENANT-ID: default` | 200（SQL trace：`SELECT … FROM users WHERE username = ? AND users.tenant_id = ?`） |
+| 同账号带 `X-TENANT-ID: acme` | 401 `invalid credentials`（跨租户查不到用户 → 隔离生效） |
+| `GET /system/login-methods` 无头 | 200（共享表 `sys_setting`，无需租户） |
+| `POST /notification/notifications/read-all` | 200；裸 SQL trace 为 `INSERT OR IGNORE INTO … (tenant_id, …) SELECT tenant_id, id, ?, ? FROM notifications_broadcast WHERE tenant_id = ?`，守卫放行 |
+| 构造器写 | `INSERT INTO sys_refresh_token (…, tenant_id) VALUES (…)` 自动落当前租户 |
+
+### 10.4 验证与未跑项
+
+- 已绿：`pnpm test:cli`（580 passed）、`@oj-module/core`（32 passed）、templates `typecheck` + `typecheck:api`、`ojm build`、eslint。
+- **未跑**：`tests/e2e/templates`（playwright）。本机 5174 与 9778 已被其他工程（oj-dbx / oj-bin）常驻占用，`ojm dev` 无法按配置端口启动，起不来就无从复用。待占用释放后补跑；API 层已用上表探针覆盖同等语义。
+- 迁移已在本机 dev 库执行成功：`migrate: _platform 2 applied / demo 1 / home 1 / notification 1`（0014→0015）。
+

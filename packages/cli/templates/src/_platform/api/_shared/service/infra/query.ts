@@ -24,7 +24,11 @@ function pageArgs(input: { page?: unknown, size?: unknown }): { page: number, si
 	return { page, size, offset: (page - 1) * size };
 }
 
-/** 双查询分页：listSql/countSql 共用 params（调用方同一 WHERE），limit/offset 参数化（三方言安全）。 */
+/**
+ * 双查询分页：listSql/countSql 共用 params（调用方同一 WHERE），limit/offset 参数化（三方言安全）。
+ * 多租户红线：本函数是裸 SQL 直通，`tenant.enable` + `sql_guard: deny` 下两条 SQL 都必须显式写
+ * `tenant_id` 且 params 里带上当前租户值，否则被守卫拒；新代码优先用下方 `pagedFactory`。
+ */
 export async function paged<T>(
 	listSql: string,
 	countSql: string,
