@@ -1,274 +1,184 @@
-# 需求二：登录/账号体系支持企业微信「代开发自建应用」（多租户）— 修订 v2
+# 需求二：登录/账号体系支持企业微信「代开发自建应用」（多租户）— v3
 
-> 本文档为 v2 修订版。v1 基线（`docs/plans/...` 本文件初版）经三位专家（架构师 / 高级企微开发者 /
-> 微信应用产品经理）评审，并对照**上游 `oj` 源码只读评估**（`/Users/ever/git/only-js/oj-bin`）后修订。
-> 关联需求一（模块多根树路由）已先行完成并合并。
+> v3 = v2 + 第三轮专家复评审（换视角、独立取证）。复评审推翻了 v2 的核心架构（connector 充 OIDC IdP），
+> 依据是 oj 源码与本仓代码的硬证据，详见 §1。v1/v2 的结论**不再作为前提引用**。
 
-## 0. 上游 `oj` 只读评估结论（证据，决定架构可行性）
+## 0. 结论速览
 
-评估对象：`/Users/ever/git/only-js/oj-bin`（Rust 服务，`src/bridge/`）。评估约束：本仓只调整自身，
-oj 仅只读评估、不修改（见全局规则「只调整本项目，其余项目只读」）。
-
-- **结论 A — 租户隔离不是 oj「自动」做的**（关键，推翻 v1 假设）：
-  `src/bridge/guard.rs::check_tenant_raw` 的 `sql_guard` 只做**校验**——
-  裸 SQL 必须显式出现 `tenant_id` 且参数数组含当前租户值才放行；
-  若某表在 schema 注册里**没有 `tenant_id` 列**（`registry.get(t).is_tenant_scoped()==false`），
-  则 `scoped.is_empty()` → **完全不检查 → 零隔离**。
-  `X-TENANT-ID` 头只是「本请求属于哪个租户」的上下文标记，**不是**行级隔离机制。
-  ⇒ **v1「复用 oj 多租户隔离」是空话**：本仓 `_platform` 表（users / sys_user_role 等）当前无
-  `tenant_id` 列，必须自己加列 + 查询过滤 + 把 `sql_guard` 设为 `Deny` 才能隔离。
-
-- **结论 B — oj 没有企微 / 代开发 connector**（关键，推翻 v1「向 oj 提上游需求」）：
-  `src/bridge/` 只有 `oidc.rs`（通用 OIDC RP，RS256 sign/verify，redirect_uri 绑定租户）与
-  `sso.rs`（CAS2）。**无 `wecom`/`wechat`/`daikaifa` 任何代码**。
-  通用 OIDC 无法桥接代开发：企微没有 discovery / JWKS / id_token / PKCE，而是
-  `suite_ticket` / `permanent_code` / `auth_corpid` / 网页授权 `code→userid` 自有协议。
-  ⇒ connector 必须由**本仓**实现（不依赖、不修改 oj）。
-
-- **结论 C — 会话下发走 302 跳转，无显式 Set-Cookie**（`src/bridge/json.rs:274` `json.redirect`
-  返回 3xx + `Location`；`bootstrap.js` `op_json_redirect`）。oj 的 OIDC/SSO 回调用 302 收口。
-  ⇒ 本仓 connector 自行下发 **HttpOnly session cookie** + 302 到 SPA，不用「?code 落地页读 JSON」。
-
-- **结论 D — JIT 账号形态**（`oidc:<tenant>:<sub>`）属 oj auth 插件。**本仓复用 oj 的账号/租户
-  原语**（X-TENANT-ID 上下文、账号建档钩子），但**代开发 connector 逻辑在本仓**实现并写入 X-TENANT-ID。
-
-## 1. 架构结论（v2 修订）
-
-| 层 | 责任 | 实现位置 |
-|---|---|---|
-| 上游 oj | 多租户上下文（`X-TENANT-ID` 头透传）、`sql_guard` 校验、账号/会话原语、AuthProvider 接管钩子 | oj-bin（只读，不改） |
-| 本仓 connector | `/wecom/*` 专用端点（suite 事件接收 + 登录/回调 + `permanent_code` 落库 + corp→tenant 映射 + JIT 建档 + HttpOnly cookie 下发） | `packages/cli/templates/src/_platform/api/wecom/*` |
-| 本仓前端 | 登录页「企业微信」入口（UA 检测）、回调落地读 cookie、代开发后台 UI | `login/web/pages/*` + 新 `_platform` 模块 |
-| 本仓 schema | `_platform` 表加 `tenant_id`/`corp_id` 列 + 全量查询加 tenant 过滤 | `templates/src/_platform/api/schema.yaml` |
-
-**隔离靠「schema 加列 + 查询过滤 + sql_guard=Deny」，不是靠 oj 自动隔离。**
-
-## 2. 相对 v1 的关键修订点
-
-1. **数据隔离前置**：Phase 0 必须先把 `_platform` 的 `users` / `sys_user_role` / 其他租户绑定表加
-   `tenant_id`（建议与 `corp_id` 同源），并让所有查询带 tenant 过滤；`sql_guard` 开 `Deny`。
-   否则后续任何"多租户"都是假的。
-2. **不做 `/oidc/*` 桥接**：改做本仓 `/wecom/*` 专用 connector（oj 通用 OIDC 桥不了代开发）。
-3. **corp→tenant 时机**：授权安装时 JIT 建 `tenant` + `corp→tenant` 映射（`auth_corpid` → tenant_key）；
-   终端登录时从企微回调推导 `auth_corpid` → 映射回 tenant，**早于**「取会话」。
-4. **回调收口**：302 + HttpOnly session cookie（仿 oj redirect 原语），不是 `?code` 落地页读 JSON。
-5. **补全 PM 指出的上线缺口**：开通入口、首次登录资料补全、绑定/解绑/停用同步、纯浏览器降级（UA 检测）。
-
-## 3. 分阶段（重排，Phase 0 前置不可省）
-
-### Phase 0（前置·必须，否则隔离是空话）：`_platform` 多租户 schema 化
-- `schema.yaml`：`users`/`sys_user_role`/ 租户绑定表加 `tenant_id`（与 `corp_id` 同源双列或单列+映射表）。
-- 全量查询加 `tenant_id` 过滤（`db.table().where("tenant_id", ...)` 走构造器，避免裸 SQL 被 `sql_guard` 拒）。
-- 配置 `sql_guard: Deny`（fail-closed：漏写 tenant 的查询直接拒，不靠人工自觉）。
-- 验证：故意写一条跨租户裸 SQL → 被拒（回归用例）。
-
-### Phase 1（本仓 connector）：`/wecom/*` 端点
-- `GET /wecom/login?tenant=<key>`：企微内→网页授权 `code` 跳转；外→返回授权安装/扫码链接。
-- `GET /wecom/callback`：收企微 `code`/`state` → 用 `permanent_code` 换 `corp_token` → `code→userid` →
-  本仓建档（`corp_id`+`userid` 作唯一键，天然按 corp 隔离；首次 JIT 建 `tenant`+映射）；
-  下发 **HttpOnly cookie**（会话） + 302 `/?tenant=<key>`。
-- `POST /wecom/suite/event`：接收企微定时推送的 `suite_ticket`（EncodingAESKey+token 验签）、
-  `create_auth` 授权事件 → 落 `permanent_code` + 建 `corp→tenant` 映射。
-- `permanent_code` / `suite_ticket` 落 `_platform` 加密存储表（复用 oj secret 体系或本仓 KV）。
-
-### Phase 2（前端）：登录页「企业微信」入口 + 回调落地
-- `login.tsx` 加「企业微信」tab（联合类型加 `"wecom"`，同 v1 4 处放宽）。
-- **UA 检测**：企微内置浏览器 → 直接 `window.location.assign('/wecom/login?tenant=...')` 走网页授权；
-  普通浏览器 → 展示授权安装二维码 / 扫码登录。
-- 新增 `wecom-callback.tsx`：读 cookie 进 SPA（不再 `?code` 换 JSON）。
-- `X-TENANT-ID` 透传（若 `runtime/src/utils/request/*` 未消费，则补拦截器）。
-
-### Phase 3（代开发后台 MVP，服务商侧）：开通 + 管理
-- **开通入口**（PM 指出的上线阻塞点）：后台生成「授权安装链接 / 二维码」+ 配置回调 URL。
-- 已授权企业（corp）列表、套件 ticket 状态、permanent_code 是否已落。
-- **绑定 / 解绑 / 停用同步**；首次登录**资料补全页**（企微 userid 无 display_name/email，需补）。
-- 复用需求一的多根路由把它与「系统管理」并列成一级菜单。
-
-### Phase 4：端到端联调 + 回归
-- 真实套件凭证跑通：企微扫码 → 建 `corp+userid` 账号 → cookie → 业务 API 带 `X-TENANT-ID` 隔离。
-- **跨租户泄漏回归用例**（关键）：验证 `sql_guard=Deny` 下缺 tenant 过滤的查询被拒；同 userid 跨 corp 不串号。
-
-## 4. 待与 oj 确认的关键集成点（v2 修订）
-
-> 本节 v2 原始待确认点，已被 §8 详细设计吸收并答复；保留供追溯。
-
-1. **会话校验钩子** → §8.5 已定 Model B：oj 作为会话权威，connector 充 OIDC IdP，无需 oj 接受外部 cookie。
-2. **X-TENANT-ID 写入权** → §8.5：tenant 由 oj 从已认证会话（`id_token.tenant`）服务端派生，前端不手带该头。
-3. **corp→tenant 映射存储** ⇒ **本仓表 `wecom_app_profile`**（PK `corp_id`+`env`），oj 仅透传 `id_token.tenant`，不引入 oj 侧新状态。
-4. **WECOM_TENANT 键** ⇒ 授权安装时后台写 `wecom_app_profile.tenant_key`，登录链接带 `tenant=wecom`（固定 RP 名），
-   connector 按 corp+env 解出 tenant_key 写进 id_token。
-
-## 5. 关键文件
-
-- 前置：`packages/cli/templates/src/_platform/api/schema.yaml`（加列）、
-  `auth/api/_shared/session.ts`（tenant 过滤）、`sql_guard` 配置。
-- connector：`packages/cli/templates/src/_platform/api/wecom/*.ts`（新）。
-- 前端：`login/web/pages/login.tsx`（加 tab）、`wecom-callback.tsx`（新）、
-  `runtime/src/api/user/types.ts:15` + `runtime/src/api/rbac/types.ts:87`（加 `"wecom"`）。
-- 后端：`auth` provider 接管、`issueExternal(uid)` 钩子（`auth/api/_shared/session.ts:169`）。
-
-## 6. 范围外 / 风险
-
-- **代开发 connector 在本仓实现**（结论 B），不修改 oj；oj 仅提供租户上下文 + sql_guard + 账号原语。
-- **多租户隔离是本仓 schema 责任**（结论 A），不是 oj 自动给的；`sql_guard=Deny` 是兜底不是主力。
-- 代开发「服务商」资质前提（`suite_id`/`suite_secret`/`token`/`EncodingAESKey`）由部署方提供，
-  本仓只做代码骨架 + 配置位，不内置任何真实凭证。
-- 跨租户回归必须进 Phase 0/4，否则隔离形同虚设。
-
-## 7. 专家评审要点回溯（v1 → v2 已吸收）
-
-- 架构师：隔离"靠 oj"是假象（结论 A 证实）；corp→tenant 在登录前选定；回调用 cookie 非 JSON 落地页。
-- 高级企微开发者：通用 OIDC 桥不了代开发（结论 B 证实）；需专用 `/wecom/*`；userid 跨 corp 不同 → 两账号即正确隔离。
-- 产品经理：缺开通入口阻塞上线；首登资料补全缺口；缺绑定/解绑/停用；缺纯浏览器降级；Phase 重排为
-  connector → 代开发后台 MVP → 终端登录 → 补缺口。
-
----
-
-## 8. 详细设计（待确认后实施）
-
-### §8.1 租户键约定（先于所有阶段，定调）— 已确认
-- **隔离列统一叫 `tenant_id`**（已确认）：因为 oj `sql_guard` 只认 `tenant_id` 这一列名
-  （`guard.rs::check_tenant_raw` 的 `mentions = cleaned.contains("tenant_id")`）。用别的名字 = 零隔离。
-- **同时保留 `corp_id` 作为企微业务键，并建立映射（已确认）**：
-  - `tenant_id` 是隔离/判定列（sql_guard 用）；`corp_id` 是企微corp 的可读业务标识（如 `ww1234567890`）。
-  - 权威映射 `corp_id ↔ tenant_id` 落在 `wecom_app_profile` 表（PK = (`corp_id`, `env`)，见 §8.2）；
-    同 corp 可有多 env（测试/正式）各自 tenant。
-  - 企微面相关表（如 `users`）**两列共存**：带 `tenant_id`（隔离）+ `corp_id`（可读/排查）；
-    非企微表只需 `tenant_id`。
-  - 对企微场景，`tenant_id` 的取值 = 该授权企业的 tenant 键（如 `wecom:<suite_id>:<corp_id>` 或短哈希），
-    由 `wecom_app_profile` 生成与回查；`corp_id` 本身不参与 sql_guard 判定。
-- 因此：`_platform` 所有租户绑定表都加 `tenant_id`；查询统一 `where tenant_id = ?` 且参数带当前租户
-  （构造器 `db.table().where("tenant_id", tid)`，避免裸 SQL 触发 `sql_guard=Deny` 误拒）。
-
-### §8.2 Phase 0 — 本仓多租户 schema 化（前置，不可跳过）
-**DDL 增量**（`templates/src/_platform/api/schema.yaml`，按现有 migration 机制追加）：
-- `users`：加 `tenant_id TEXT NOT NULL DEFAULT 'default'`；并加企微面列 `corp_id TEXT`（业务可读，可空，非企微用户为 NULL）、
-  `wecom_userid TEXT`（可空）。唯一键改为 `(tenant_id, username)` 防跨租户重名撞库；
-  企微登录建档唯一键为 `(tenant_id, wecom_userid)`（corp_id 仅冗余可读，不参与唯一性/隔离判定）。
-- `sys_user_role`：加 `tenant_id TEXT NOT NULL DEFAULT 'default'`；唯一/外键约束补 tenant 维度。
-- 新增 `wecom_app_profile`（**corp×env → 应用凭证 + 租户 映射权威**，解决「同企业配测试/正式两个应用」）：
-  PK = (`corp_id`, `env`)，`env` ∈ {test, prod, ...}；列含 `suite_id`、`suite_secret_enc`(ENC)、
-  `token`、`encoding_aes_key_enc`(ENC)、`tenant_key`(该 profile 用户落入的 oj 租户)、
-  `permanent_code_enc`(ENC)、`auth_corp_id`、`status`(active/disabled)、`created_at`。
-  → 同一 corp 可有 test/prod 两个 profile，各自独立套件凭证与各自 `tenant_key`（测试/正式数据隔离）；
-  登录时按 (`corp_id`, `env`) 查 profile 取套件凭证与 `tenant_key`，JIT 建档落到对应 tenant。
-  **全部为数据/配置，不含代码**：新增任意 corp 的测试或正式应用 = 写一行，无需改 oj 配置、无需重启。
-- 新增 `wecom_suite_ticket`：`suite_id`(PK)、`suite_ticket`、`expires_at`。→ 企微定时推送的 ticket。
-- （若首登资料补全需要）`users` 已含 `display_name/email/phone_number`，JIT 时留空，靠 Phase 3 补全页填。
-
-**查询改造**（列出须加 `tenant_id` 过滤的 DAO，实施前 `grep` 定位确切文件）：
-- 用户 CRUD / 登录校验 / 角色分配 / 设置读写，全部带 `tenant_id` 过滤。
-- `templates/src/_platform/api/_shared/service/domain/*.ts` 与各 `auth/api/_shared/**` 下的查询。
-
-**配置**：`config.yaml`（或模块 manifest）设 `sql_guard: Deny`（fail-closed）。
-**回归用例**：故意写一条跨租户裸 SQL（无 `tenant_id`）→ 断言被 `sql_guard` 拒（参考 `guard.rs` 测试范式）。
-
-### §8.3 Phase 1 — 本仓 `/wecom/*` connector（OIDC IdP，多租户动态）
-**位置**：在 `_platform` 模块新增 `api/wecom/` 路由组（仅 API，不挂一级菜单）。
-**依赖**：企微服务端 API（`gettoken`/`getuserinfo`/`get_permanent_code` 等）。部署方提供**服务商套件**
-`suite_id`/`suite_secret`/`token`/`EncodingAESKey`——**一个服务商只配一次**（provider suite），不按 corp 写死。
-各 corp 的测试/正式应用以**数据**形式落在 `wecom_app_profile` 表（§8.2）。
-
-**多租户动态性（配置即可用，不写死 IdP）**：
-- oj 侧**仅一次**静态配置 `oidc.rp.wecom` → 指向本 connector（单一 IdP）。**不按 corp / 不按 env 增配 oj**。
-- connector 内部 multiplex 所有 corp 与 env：企微网页授权用**服务商套件 appid**，`corpid`/`auth_corpid`
-  从企微回调取回；再按 (`corp_id`, `env`) 查/建 `wecom_app_profile` 得该应用的 `tenant_key` 与凭证，
-  **JIT 建档**到对应 tenant（新 corp / 新 env 首次授权即自动开通）。
-- 同企业配「测试 + 正式」两个应用 = `wecom_app_profile` 两行（env=test / env=prod，各自套件凭证 +
-  各自 `tenant_key`）；测试/正式数据经不同 `tenant_id` 天然隔离。
-- **全部为配置/数据，零代码、零 oj 重启**：新增任意 corp 的测试或正式应用 = 写一行 `wecom_app_profile`。
-
-| 端点 | 行为 |
+| 项 | v3 结论 |
 |---|---|
-| `GET /wecom/oidc/authorize`(oj RP 调用) | OIDC IdP 的 authorize。UA 检测：企微内置 → 302 企微网页授权（appid=**服务商套件**、`redirect_uri=connector/wecom/oidc/wechat-cb`、`state=<oidc_state>`、`scope=snsapi_base`）；非企微 → 渲染授权/扫码页。 |
-| `GET /wecom/oidc/wechat-cb?code&state` | 用服务商 `corp_token`（套件 permanent_code 换）调 `user/getuserinfo` → 得 `userid` + `corpid`/`auth_corpid`；按 (`corp_id`, `env`) 查/建 `wecom_app_profile` → `tenant_key`；签发 OIDC `code` → 302 oj `/v1/api/oidc/callback?code=...&state=<oidc_state>`。 |
-| `POST /wecom/oidc/token`(oj RP 调用) | 兑换 `code` → 返回 `id_token`（RS256，claims：`iss=connector`、`sub=<wecom_userid>`、`tenant=<corp tenant_key>`、`aud=<oj client>`、`exp`、`nonce`）。 |
-| `GET /wecom/oidc/jwks` | connector RS256 公钥 JWKS（供 oj `op_oidc_verify(token, jwks)` 验签）。 |
-| `POST /wecom/suite/event` | 收企微 `push_suite_ticket`/`create_auth`：验签解密 → 存 `suite_ticket`；`create_auth` 换 `permanent_code`+`auth_corpid` → 写/更新 `wecom_app_profile`（JIT `tenant_key`）→ 通知后台。 |
+| 会话归属 | **`_platform` 保持会话权威**（不改）。企微只是新增一种 `AuthProvider` 登录方式 |
+| 租户隔离 | `tenant.enable` + `sql_guard: deny`（构造器自动注入）+ `tenant_id` 列全覆盖 21 张表 |
+| 租户防伪造 | `tenant.require_signed_claim` 是平台正解，但 **`jwt.sign` 目前无法带自定义 claim**（静默丢弃）→ 上游需求 R6；未落地前用 `currentAccess()` 单点绑定做 fail-closed 兜底 |
+| 代开发协议 | 服务商套件（suite）+ 每 corp 授权（permanent_code 粒度 = suite×corp），**应用维度靠 agentid** |
+| 上线阻塞 | 服务商资质 / 可信域名 / 可信 IP / 回调 URL 备案 —— 代码前必须先备齐 |
+| 关键前置 | Phase 0 不是「加两列」，是 21 张表的租户化 + 登录前租户来源的决策 |
 
-**加密存储**：`suite_secret`/`encoding_aes_key`/`permanent_code` 落 `wecom_app_profile` 的 ENC 列
-（复用 oj secret 体系或本仓 KV `ENC[...]`，不落明文）。
+## 1. 修订史：被推翻的假设与证据
 
-### §8.4 Phase 2 — 前端接线
-- **联合类型放宽**（4 处，同 v1）：`runtime/src/api/user/types.ts:15`、`runtime/src/api/rbac/types.ts:87`、
-  `login/web/pages/login.tsx:7` + `:39` 加 `"wecom"`，走重定向分支。
-- **登录页新增「企业微信」tab**（`login/web/pages/login.tsx`）：点击 → UA 检测后
-  `window.location.assign('/v1/api/oidc/login?tenant=wecom[&env=test]')`（走 oj OIDC RP → connector IdP，
-  见 §8.5）；`tenant=wecom` 为固定 RP 名，`env` 选测试/正式。
-- **环境选择（测试/正式）**：登录入口带 `env`（默认 `prod`；测试用 `test`），随登录 URL 传入；
-  connector 据 (`corp_id`, `env`) 选 `wecom_app_profile`，落到对应 tenant（测试/正式数据隔离）。
-  `env` 透传机制依赖 oj `/oidc/login` 是否转发自定义参数至 IdP authorize（见 §8.9 R5）。
-- **新增 `wecom-callback.tsx`**：oj 完成 OIDC 回调后下发 **oj 会话 cookie**（Model B，会话由 oj 签发）；
-  前端读 oj 会话进 SPA（`useAuthStore` 写 user/tenant），`navigate(getRedirectPath(search))`。
-- **不再手动带 `X-TENANT-ID`**：Model B 下 tenant 由 oj 从已认证会话（`id_token.tenant`）服务端派生，
-  oj 自行注入 `req.tenant_id` 供 `sql_guard` 使用（见 §8.5）；前端只持 oj 会话 cookie，不自行声明租户。
-- **UA 检测工具**：`isWeChatBrowser()`（UA 含 `micromessenger`）。
+> 规则：本节每条都必须有本仓或 oj 源码的 file:line 证据；不引用前两轮的论证链。
 
-### §8.5 会话归属（已确认：Model B，oj 为会话权威）
-**安全前提（已核实 oj 源码）**：oj 的 `req.tenant_id` 来自客户端 `X-TENANT-ID` 头（`http.rs:40`），
-与 `req.user`（已验签主体）**不绑定**；`sql_guard` 只校验查询含 `tenant_id` 且参数带该值，**不验证用户是否属于该租户**
-（`guard.rs::check_tenant_raw` 比对的是 header 值，非认证主体）。⇒ **绝不能让客户端自选 tenant**；
-正确模型：tenant 必须由 oj **已认证的会话**派生，oj 把 tenant 绑进 `req.user`（服务端派生，伪造无效）。
+| # | 曾经的假设 | 实测事实 | 证据 | 影响 |
+|---|---|---|---|---|
+| A | `sql_guard` 只「校验」不「注入」，所以要全量 DAO 手加 `tenant_id` 过滤 | **构造器查询自动注入**：`db.table()` 自动加 `tenant_id`（join 进 ON、子查询递归）、insert 强制当前租户、update/delete 自动收窄、显式改 `tenant_id` 拒绝；只有**裸 SQL** 才是「查漏即拦」 | `bin/devkit/api-manual.md:2946` | Phase 0 工作量从「改几十个 DAO」降到「加列 + 清点裸 SQL」；手加过滤变冗余 |
+| B | 加 `tenant_id` 列即可 | `sql_guard` 非 Off 时，**schema.yaml 声明的每张表都必须有 `tenant_id` 列**，否则 serve 启动 / `oj build` / `oj migrate` 三处 fail-fast；共享表须 `tenant: false` **且** 列进 `tenant.shared_allow`，双声明才豁免（`shared_allow` 为空 = 共享声明被忽略） | `oj-bin/src/config.rs:956-959` | 范围从 2 张表 → **21 张表**（`_platform` 14 / notification 4 / home 2 / demo 1） |
+| C | oj 的 tenant 头无法与用户绑定，所以必须让 oj 当会话权威（connector 充 OIDC IdP） | **平台早已有这个机制**：`tenant.require_signed_claim`（v0.1.41），开启后 `http.tenantId` 只认验签 JWT 的 `claims.tenant`，裸头仅做一致性复核，不符 403；claim 命中时无头也放行 | `bin/devkit/api-manual.md:2907`、`oj-bin/src/config.rs:640-657` | 不需要伪装 IdP；问题变成「怎么把 tenant 放进 claim」 |
+| D | 放 claim 很容易（`jwt.sign({sub, tenant})`） | **`jwt.sign` 会静默丢弃自定义字段**：Rust 侧把入参反序列化后**重建** `Claims{sub, roles, iat, exp}` 再编码，多传的键不报错也不进 token；JS 类型也只声明 `{sub, roles?}` | `oj-bin/src/bridge/crypto.rs:62-67`（struct）、`:87-121`（重建 Claims）；`bin/devkit/global.d.ts:351` | 需上游需求 **R6**（一行级改动）。在此之前只能做模块侧绑定兜底 |
+| E | oj 发会话后前端就能用 | `_platform` 前端会话载体是**自己的 Bearer access_token**（`access_token → token` 存 zustand persist），不存在 cookie 会话；且全部鉴权以 `http.user.id` 当**数字 uid** 用 | `packages/runtime/src/api/user/index.ts:29-31`、`packages/runtime/src/store/auth.ts`、`access.ts:66`、`audit.ts:31`、`profile/api.ts:6` | oj JIT 账号 `oidc:<tenant>:<sub>` 的 id 不属于这个命名空间，Model B 需再造一层映射 → **架构否决** |
+| F | 前端只要跳 oj 的 `/oidc/login` 就完事 | 本仓已有正规接管口：`AuthProvider`（`registerAuthProvider`）——provider 负责换凭证，runtime 统一写库 | `packages/runtime/src/store/auth.ts:36-46` | 登录方式应作为 provider 实现，不碰 oj OIDC |
+| G | `(corp_id, env)` 足以区分同企业测试/正式两个应用 | 代开发授权粒度：`permanent_code` 是 **suite × corp**（同套件同企业只有一个），应用维度是 **agentid**；同 corp 装两个应用 = 同 permanent_code、同 auth_corp_id、不同 agentid | 企微协议事实（本节唯一非源码证据，见我方案 §5.3 的兑换链设计） | profile 主键应为 `(suite_id, corp_id, agent_id)`，`env` 降级为标签 |
+| H | 加 `"wecom"` 改 4 处类型即可 | 还要改：登录方式发现的数据源（只读 `ldap.enabled`/`sso.enabled`）、`sys_setting` 种子、`users` 外来号前缀红线（现只认 `ldap:`/`sso:`） | `settings.ts:73-75`、`seed.sql:29-30`、`users.ts:28` | 前端类型 + 后端发现 + 种子 + 命名空间共 7 处 |
 
-**选定 Model B：oj 作为会话权威**（非 `_platform` 自管会话）。落地形态——本仓 connector 充当 oj 既有 OIDC RP 的 **IdP**，
-oj 配置 `oidc.rp.wecom` 即可，**零改 oj 代码**：
+## 2. 架构（v3）
 
-1. connector 实现 OIDC IdP 端点：`/.well-known/openid-configuration`、`/wecom/oidc/authorize`、
-   `/wecom/oidc/token`、`/wecom/oidc/jwks`（RS256 密钥自管，JWKS 对外）。
-2. 企微验证链：浏览器 → oj `/v1/api/oidc/login?tenant=wecom` → oj 重定向到 connector `authorize`
-   → connector 走企微网页授权拿 `userid`（`code`→`corp_token`→`getuserinfo`）→ connector 签发 `id_token`
-   （RS256，claims：`iss=connector`、`sub=<wecom_userid>`、`tenant=<corp tenant_key>`、`aud=<oj client>`、`exp`、`nonce`）
-   → oj `/oidc/callback` 用 connector JWKS 验签（`op_oidc_verify(token, jwks)`，`oidc.rs:201` 已支持外部 JWKS）
-   → JIT `oidc:<tenant>:<sub>` → oj 发会话 cookie + 把 `tenant` 绑进 `req.user`。
-3. **证据支撑**：`oidc.rp.<tenant>` 配 `issuer/client_id/client_secret`（`oidc.rs:254`）；
-   `op_oidc_verify(token, jwks?)` 支持外部 JWKS（`oidc.rs:201`）；id_token 可带 `tenant` 声明且 JIT 键为
-   `oidc:<tenant>:<sub>`（`oidc.rs:365` 测试断言）。
-4. **效果**：会话由 oj 签发与校验，tenant 来自 oj 验签后的 `id_token.tenant`（服务端派生，客户端不可伪造），
-   跨租户伪造在 oj 层根绝；本仓只实现 connector IdP + 前端接线 + §8.2 schema。
+```
+浏览器 ──登录页「企业微信」──▶ runtime AuthProvider(wecom)
+                                   │ 302
+                                   ▼
+                        _platform /auth/wecom/login?corp=&agent=&env=
+                                   │ 302 企微 OAuth2/qrConnect
+                                   ▼
+                        企微 ──code──▶ /auth/wecom/callback
+                                   │ code→userid（corp access_token）
+                                   │ JIT 建档（users: username=wecom:<userid>）
+                                   │ issueExternal(uid) → TokenBundle
+                                   ▼
+                    302 SPA ?ticket=<一次性> ──▶ provider 取 TokenBundle 写库
+                                   │
+                       后续 API：Bearer access_token (+ tenant 绑定校验)
+                                   ▼
+                              oj  _platform 模块
+                        sql_guard=deny 自动注入 tenant_id
+```
 
-> 注：本仓仅实现「connector 作为 IdP + 前端 + schema」；oj 侧仅做**配置**（`oidc.rp.wecom`）。若 oj 既有 RP
-> 对自定义 IdP / id_token.tenant 取租户的支持存在缺口，按 §8.9 提出的**上游需求**推进（只读评估不在此实现 oj）。
+| 层 | 责任 | 位置 |
+|---|---|---|
+| oj（只读） | 租户头/claim 注入、`sql_guard`、JWT 签发校验 | 上游，仅配置 + 需求 R6 |
+| `_platform` 后端 | 企微 connector、JIT 建档、会话签发（`issueExternal`）、租户绑定 | `templates/src/_platform/api/wecom/*` |
+| `_platform` schema | 21 张表租户化 + 3 张企微表 | `schema.yaml` + `migrations/0015__tenant.sql` 起 |
+| 前端 | 登录页入口、AuthProvider(wecom)、回调落地、代开发后台 | `login/web/*`、`runtime/src/store/auth.ts` 扩展点 |
 
-- **原待确认点 3（corp→tenant 映射存储）**：落本仓 `wecom_app_profile` 表（§8.2）；oj 侧由 `id_token.tenant` 透传，
-  不在 oj 落新状态。
-- **原待确认点 4（WECOM_TENANT 键）**：授权安装时后台写 `wecom_app_profile.tenant_key`，登录链接带 `tenant=wecom`
-  （固定 RP 名），connector 内部按 corp+env 解出 `tenant_key` 写进 id_token。
+## 3. 关键决策
 
-### §8.6 Phase 3 — 代开发后台 MVP（服务商侧）
-- **开通入口**（PM 指出的上线阻塞点）：后台生成「授权安装链接 / 二维码」
-  （第三方授权安装：`https://work.weixin.qq.com/wework_admin/frame_for_third?...` 或套件授权页），
-  并配置回调 URL（`/wecom/suite/event`）。
-- 已授权企业（corp）列表、套件 ticket 状态、permanent_code 是否已落。
-- **绑定 / 解绑 / 停用同步**：改 `wecom_app_profile.status`；停用后该 corp+env 登录拒。
-- **首次登录资料补全页**：JIT 建档 `display_name/email` 为空时，登录后跳补全页。
-- 复用需求一多根路由，与「系统管理」并列成一级菜单。
+| # | 决策 | 理由 |
+|---|---|---|
+| D1 | 会话权威留在 `_platform`，不迁 oj | §1-E/F：SPA 与应用层全链路绑定 `_platform` 的 Bearer + 数字 uid；迁 oj 要再造身份映射，收益为零 |
+| D2 | 企微登录 = `AuthProvider` 的一种 method | 现成接管口，不动 runtime 主流程，可回退 |
+| D3 | 租户列名 `tenant_id`，同时保留 `corp_id` 业务键 | `sql_guard` 只认 `tenant_id`；`corp_id` 供运维排查 |
+| D4 | 租户绑定优先 `require_signed_claim`，落地前用 `currentAccess()` 单点兜底 | 前者平台级 fail-closed；后者是现成的唯一判权咽喉，粒度可审计 |
+| D5 | profile 主键 `(suite_id, corp_id, agent_id)`，`env` 只作标签 | §1-G：permanent_code 粒度是 suite×corp，agentid 才是应用 |
+| D6 | 外部身份沿用 `username` 前缀约定（`wecom:<userid>`），不新开 `wecom_userid` 列 | 与 `ldap:`/`sso:` 一致（`users.ts:28`），复用现有唯一性/展示/审计路径；`corp_id` 单列冗余存储 |
+| D7 | 测试环境用企微**测试企业**，不在正式 corp 内建「测试应用」冒充 | 避开可见范围/审批/数据混杂；技术上 `(suite,corp,agent)` 仍支持多应用 |
 
-### §8.7 Phase 4 — 端到端联调 + 回归
-- 真实套件凭证跑通：企微扫码 → connector 验 userid → oj 发会话（含 `id_token.tenant`）→ 业务请求由 oj 会话派生 `tenant_id` 隔离（无需前端手带 `X-TENANT-ID`）。
-- **跨租户泄漏回归**（关键）：验证 `sql_guard=Deny` 下缺 `tenant_id` 过滤的查询被拒；同 `userid` 跨 corp 不串号
-  （两个 corp 各有独立 `tenant_id`，建档互不可见）。
-- `pnpm test:cli` + `pnpm --filter @oj-module/core test` 全绿；`LoginInfo.method` 联合类型收窄处单测。
+## 4. 分阶段
 
-### §8.8 实施顺序建议（最小可验）
-Phase 0（schema+sql_guard+回归）→ Phase 1（connector 骨架 + wecom_app_profile）→ Phase 2（前端 tab+callback）→
-Phase 1 补全 suite 事件 → Phase 3（后台）→ Phase 4（e2e）。每阶段独立可验、可回退。
+### Phase 0（前置，不做则隔离是空话）
+1. `config.yaml` 加 `tenant` 段：`enable: true`、`header_key: X-TENANT-ID`、`sql_guard: deny`、
+   `shared_allow: [...]`、`allow_as_tenant: true`、`anonymous_paths`（登录/回调/登录方式发现）。
+   注意：开启后**所有** `{base}` 请求缺头即 400，除 `tenant.anonymous_paths` 命中；`require_signed_claim` 先保持 false（等 R6）。
+2. 21 张表逐张定性：租户内数据加 `tenant_id TEXT NOT NULL DEFAULT 'default'`；真正全局的
+   （`_oj_migrations`、`sys_permission`/`sys_role` 若做平台级、`market_history` 若做全局市场流水）标
+   `tenant: false` **并**列进 `shared_allow`。
+3. 清点裸 SQL（`db.raw`/`db.sql`/字符串查询），逐条补 `tenant_id` 条件；构造器查询不动。
+4. 新增迁移 `0015__tenant.sql`（当前最新是 `0014__reg_source_seq`）。
+5. 回归：跨租户裸 SQL 被拒；构造器 insert 自动落当前租户；update/delete 收窄。
+6. **登录前租户来源**（§5.3 决策）先落地，否则 `sql_guard: deny` 会把登录查询打空。
 
-### §8.9 上游 oj 需求（以合理性提出，只读不实现）
-以下为 Model B 成立所需、且当前只读评估**未完全确认**的 oj 行为。若 oj 已支持则为零改动；
-若不支持，按「只读评估不实现 oj」的原则，以**上游需求 / PR** 形式提出（理由已附），由 oj 仓库落地。
+### Phase 1（connector）
+- `GET /auth/wecom/login?corp=&agent=&env=`：UA 检测 → 企微内 OAuth2 / 外部 qrConnect / 无 corp 时引导输入企业代码。
+- `GET /auth/wecom/callback?code&state`：`code→userid` → JIT → `issueExternal(uid)` → 一次性 ticket → 302 SPA。
+- `POST /auth/wecom/ticket`（一次性 ticket 换 TokenBundle，防 token 出现在 URL）。
+- `GET|POST /wecom/suite/event`：URL 验证 `echostr`、`suite_ticket`、`create_auth`、`change_auth`、`cancel_auth` 全量事件。
 
-- **R1 — OIDC RP 须支持自定义 / 静态 IdP（经 discovery 或静态 JWKS）**。
-  理由：connector 作为 IdP 需 oj 经 `<issuer>/.well-known/openid-configuration` 取 JWKS 并交换 code。
-  证据：`oidc.rp.<tenant>` 已带 `issuer`（`oidc.rs:254`），`oidc.verify` 已支持外部 JWKS（`oidc.rs:201`）
-  → 大概率已支持；需确认 discovery 拉取路径与缓存策略（连接器 RS256 公钥轮换时能否热更）。
-- **R2 — `/oidc/callback` 须从 `id_token.tenant` 取租户绑定 JIT 键**，而非仅用 `clients.<id>.tenant`。
-  理由：企微按 corp×env 分租户，tenant 必须来自每次登录的 id_token 声明；若只认 client 固定 tenant，多 corp / 多 env 无法隔离。
-  证据：测试 id_token 含 `tenant` 声明（`oidc.rs:365`）→ 需确认 callback 实际读取该声明作 JIT 键。
-- **R3 — JIT 账号 `oidc:<tenant>:<sub>` 的 sub 唯一性**：企微 `userid` 在单 corp 内唯一，跨 corp / 跨 env 因 `tenant` 不同天然隔离；确认无全局 sub 冲突即可。
-- **R4（兜底）— 若 R1 / R2 不支持**：提 oj 扩展 `POST /v1/api/oidc/external`（或等价），接受**服务端验签的断言**
-  （由配置的受信密钥签名，claims 含 `sub`+`tenant`），直接为已验证外部身份发 oj 会话。
-  理由：这是「外部身份 → oj 会话」的最小受信口子，比把 connector 伪装成 OIDC IdP 更直白；但优先 R1 / R2（复用既有 RP）。
-- **R5 — `/oidc/login` 须支持转发自定义参数至 IdP authorize**（如 `env=test`）。
-  理由：同企业测试 / 正式两个应用需经登录入口把 `env` 透传到 connector，以选 `wecom_app_profile`。
-  证据：未见于只读评估（oj 的 `/oidc/login` 参数透传行为待确认）；若不支持，可改以「登录前先写 `env` 到 cookie / 会话、
-  connector 回调时读取」规避，或在 R4 扩展中一并纳入。
+### Phase 2（前端）
+- `login.tsx` 加 tab（不硬编码三种）、`AuthProvider(wecom)`、`wecom-callback` 落地页（读 ticket 换 token）。
+- `settings.ts` 登录方式发现加 `wecom.enabled`；`seed.sql` 加种子；`users.ts` 前缀红线加 `wecom:`。
+
+### Phase 3（代开发后台）
+- 开通入口（授权安装链接/二维码）、已授权企业列表、profile 状态、停用/解绑、首登资料补全。
+
+### Phase 4（e2e + 安全回归）
+- 真实套件跑通；跨租户越权、伪造 `X-TENANT-ID`、重放 ticket、停用 corp 登录、suite_ticket 过期。
+
+## 5. 详细设计
+
+### 5.1 租户键
+- `tenant_id`：隔离列，text（`wecom:<corp_id>` 形式可读）；`corp_id`：企微业务键；`wecom:<userid>`：外部号用户名。
+- 映射权威：`wecom_app_profile(suite_id, corp_id, agent_id)` → `tenant_key`。
+
+### 5.2 DDL（migrations/0015 起）
+```
+users            + tenant_id TEXT NOT NULL DEFAULT 'default', + corp_id TEXT
+sys_user_role    + tenant_id
+sys_refresh_token+ tenant_id      -- 会话必须与租户同域，否则跨租户刷新
+sys_oplog        + tenant_id
+sys_setting      + tenant_id      -- 每租户独立配置（ldap/sso/wecom 开关）
+sys_login_throttle / sys_rate_window + tenant_id
+sys_solution_route / reg_source_seq  + tenant_id
+notification 4 表 + tenant_id
+home 2 表 / demo 1 表 + tenant_id
+wecom_app_profile(suite_id, corp_id, agent_id)  PK 三列；env 标签；*_enc 加密列
+wecom_suite_ticket(suite_id) PK；suite_ticket / expires_at
+wecom_login_ticket(ticket_hash) PK；uid / tenant_id / expires_at / used  -- 一次性回调票据
+```
+> 21 张表的逐张定性表在实施时补进迁移文件头注释，避免「默认 default 蒙混过关」。
+
+### 5.3 登录前租户从哪来（v2 完全缺失的阻塞点）
+`tenant.enable` 后缺头即 400；本地用户登录时还不知道自己属于哪个租户，而 `localLogin` 要查 `users`。
+三个可选，必须选一个写进实现：
+- **L1（推荐）**：`users` 作为**共享目录表**（`tenant: false` + `shared_allow`），登录查询走 `asSystem()`；
+  行内保留 `tenant_id` 仅作归属标注，登录成功后的会话绑定该值。代价：用户目录跨租户可见（与现状一致）。
+- L2：登录请求显式带租户（子域 / 企业代码），`anonymous_paths` + `db.asTenant(tid)`。代价：多租户体验更重，个人用户不知道怎么填。
+- L3：登录端点 `asSystem()`，其余全租户化。最简单但把「登录」变成特权路径，需审计。
+
+### 5.4 connector
+端点表（Phase 1 那张）+ 企微侧细节：
+- `permanent_code` 每 `(suite, corp)` 一个；`agentid` 从 `get_permanent_code` 的 `auth_info.agent[]` 取。
+- `corp access_token` 走 `suite access_token` + `permanent_code` 换，按 (corp, agent) 缓存，TTL 7200s，遇 `40001/42001` 失效重取。
+- `suite_ticket` 每 10 分钟推送，落库并内存缓存；过期不得发起 API。
+- 回调 URL 需企微后台备案 + `echostr` 验证；API 调用需**可信 IP**。
+- 网页授权 `snsapi_base` 需应用**可信域名**；扫码用 qrConnect（`appid`+`agentid`）。
+
+### 5.5 前端
+- 登录页不再硬编码 `local|ldap|sso` 三元过滤，改为按后端 `methods` 渲染。
+- `AuthProvider(wecom).login()`：跳 `/auth/wecom/login`；回调页读 `ticket` → `POST /auth/wecom/ticket` → 返回 `AuthType` 由 runtime 统一写库。
+- 纯浏览器：无 corp 上下文时展示「输入企业代码」+「服务商授权安装」两条路。
+
+### 5.6 代开发后台
+开通入口、企业列表、profile 状态、停用/解绑、首登资料补全（`display_name` 空则强制补全，沿用 `must_change` 类似机制）。
+
+### 5.7 安全回归清单
+1. 伪造 `X-TENANT-ID` → 403（R6 后由 oj 拦；之前由 `currentAccess()` 拦）。
+2. 跨租户裸 SQL → 被 `sql_guard: deny` 拒。
+3. 构造器 insert 未显式给 `tenant_id` → 自动落当前租户（且伪造值被拒）。
+4. 同 userid 跨 corp → 两条 `users` 行，互不可见。
+5. ticket 重放 → 401；过期 → 401；已停用 corp → 拒绝登录。
+6. `sys_refresh_token` 跨租户刷新 → 拒。
+
+## 6. 上游 oj 需求（以合理性提出，只读不实现）
+
+- **R6（阻塞级）— `jwt.sign` 支持自定义 claims**。
+  现状：`Claims{sub,roles,iat,exp}` 固定，多传字段**静默丢弃**（`crypto.rs:62-67`、`:87-121`）。
+  需求：payload 增加可选 `claims`/至少 `tenant`，编入 token 且 `jwt.verify` 回读；`http.user.claims.tenant` 可用。
+  理由：这是 `tenant.require_signed_claim`（已存在的平台机制）唯一的缺口；补上后多租户绑定在 oj 层 fail-closed，
+  下游模块不需要各自造绑定中间件。改动面：`Claims` 增字段 + `op_jwt_sign` 透传 + `op_jwt_verify` 返回，向后兼容。
+- **R7（可选）— `jwt.verify` 返回完整 claims**，供模块侧自校验（当前只回 `sub/roles/iat/exp`）。
+- 已确认**不需要**的需求（v2 曾提，现撤销）：R1 自定义 IdP、R2 id_token 取租户、R3 sub 唯一性、R4 `/oidc/external`、R5 `env` 透传——因为不再走 OIDC IdP 路线。
+
+## 7. 上线前提（服务商侧 checklist）
+
+1. 服务商资质、第三方应用（suite）创建，拿到 `suite_id/suite_secret/EncodingAESKey/token`。
+2. 应用可信域名（网页授权）、登录回调 URL、指令回调 URL 备案。
+3. 可信 IP 白名单（服务商调企微 API 的出口 IP）。
+4. 测试企业用于联调（D7）。
+5. 数据合规：`permanent_code` = 全 corp 数据权限，必须加密存储 + 最小读取面 + 审计；userid 按最小必要落库。
+
+## 8. 风险 / 范围外
+
+- R6 未落地期间，租户绑定是「模块侧单点校验」，强度低于平台级；必须显式记录为临时态。
+- 21 张表租户化的迁移风险：存量数据 `default` 租户，**不做**自动归户；升级后由管理端显式分配。
+- 代开发 connector 在本仓实现，oj 只配置，符合「只调整本项目，其余项目只读」。
+
+## 9. 需确认（一个）
+
+**Phase 0 的登录前租户方案选 L1 / L2 / L3**（§5.3）。其余按 v3 执行。
