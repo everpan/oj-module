@@ -323,8 +323,8 @@ function tagModuleRoutes(routes: AppRouteRecordRaw[], name: string): AppRouteRec
  * 顶层路由 path 的首段替换为 prefix；children 为相对路径不变。
  * 保持原 path 的「前导斜杠」风格：相对 `wiki` → `kb`、绝对 `/wiki` → `/kb`，
  * 因此缺省 prefix = name 时路径字段逐字节不变（零漂移），仅段值一致。
- * 注意：多根模块（需求一）不走此改写——各根路径在 entry.ts 已是权威绝对路径，
- * 改写会把多个根首段都覆盖成同一 prefix 而坍缩碰撞；见 getHostRoutes。
+ * 注意：多根模块（需求一）不走此改写——「首段替换」会把多个根一起覆盖成同一个 prefix
+ * 而坍缩碰撞；多根由 getHostRoutes 另按「相对根命名空间化、绝对根原样」处理。
  */
 export function applyRoutePrefix(routes: AppRouteRecordRaw[], prefix: string): AppRouteRecordRaw[] {
 	return routes.map((route) => {
@@ -347,6 +347,29 @@ function rootSegmentOf(routes: AppRouteRecordRaw[]): string | undefined {
 	if (typeof p !== "string" || p.length === 0)
 		return undefined;
 	return p.replace(/^\/?/, "").split("/")[0] || undefined;
+}
+
+/**
+ * 多根模块（需求一）的相对根改写：把相对声明的根挂到 `routePrefix` 命名空间下，
+ * 绝对路径原样保留（「顶层绝对即权威」口径，与 addRouteIdByPath 一致）。
+ *
+ * 为什么多根不能直接吃 `applyRoutePrefix`：那条改写是「首段替换」，多根下会把
+ * `/crm` 与 `/wiki` 两个根一起改成同一个首段而坍缩碰撞——故多根必须另走这条路。
+ *
+ * 为什么相对根必须改写：一个多根模块声明 `[crm, wiki]`（相对）时，若不挂命名空间，
+ * 两个根会直接落到站点根 `/crm`、`/wiki`——既可能撞宿主自有路由，也会与另一个同样
+ * 相对声明的多根模块抢同一条路径（后者静默覆盖前者，菜单与路由表都看不出异常）。
+ */
+function namespaceRelativeRoots(routes: AppRouteRecordRaw[], prefix: string): AppRouteRecordRaw[] {
+	const ns = prefix.replace(/^\/+|\/+$/g, "");
+	if (!ns)
+		return routes;
+	return routes.map((route) => {
+		const p = typeof route.path === "string" ? route.path : "";
+		if (!p || p.startsWith("/"))
+			return route;
+		return { ...route, path: `${ns}/${p}` };
+	});
 }
 
 /**
@@ -431,11 +454,15 @@ export function getHostRoutes(): AppRouteRecordRaw[] {
 		if (!mod)
 			return route;
 		const instance = modules.get(mod);
-		// 多根模块（需求一）：各根路径在 entry.ts 已是权威绝对路径，routePrefix 仅作命名空间，
-		// 不重写首段（否则多个根首段都会被改写成同一 prefix 而坍缩碰撞）。admin 根仍由
-		// rewriteAdminPaths 按各自根独立改写。
-		if (instance?.multiRoot)
-			return route;
+		// 多根模块（需求一）：没有唯一根段可替换，故不走 applyRoutePrefix 的「首段替换」
+		// （会把多个根一起改成同一 prefix 而坍缩碰撞），改按各自的声明形态处理：
+		// 绝对根原文保留、相对根挂到 routePrefix 命名空间下。
+		// admin 根仍由 rewriteAdminPaths 按各自根独立改写。
+		if (instance?.multiRoot) {
+			// 相对声明的根仍需命名空间（否则多根会散落到站点根并互相覆盖）；
+			// 绝对路径本身即权威，保持原样（见 namespaceRelativeRoots 注释）
+			return namespaceRelativeRoots([route], instance.routePrefix)[0] ?? route;
+		}
 		const prefix = instance?.routePrefix ?? mod;
 		return applyRoutePrefix([route], prefix)[0] ?? route;
 	});
