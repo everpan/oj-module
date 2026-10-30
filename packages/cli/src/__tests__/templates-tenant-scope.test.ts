@@ -115,10 +115,11 @@ describe("templates 租户定性（A 租户表 / B 共享表）", () => {
 		expect(unknown).toEqual([]);
 	});
 
-	it("t-4 21 张表的 A/B 分组与方案 v3 §5.2 一致（新增表须先定性）", () => {
+	it("t-4 24 张表的 A/B 分组与方案 v3 §5.2 一致（新增表须先定性）", () => {
 		const { tables } = loadSchemaTables();
 		const shared = [...tables].filter(([, d]) => d.tenant === false).map(([n]) => n).sort();
-		expect(tables.size).toBe(21);
+		// Phase 0 落地 21 张（11 A + 10 B）；Phase 1 加企微三表，全部 B 组（D9：查它们时必然还没有租户上下文）
+		expect(tables.size).toBe(24);
 		expect(shared).toEqual([
 			"_oj_migrations",
 			"market_history",
@@ -130,6 +131,9 @@ describe("templates 租户定性（A 租户表 / B 共享表）", () => {
 			"sys_role_permission",
 			"sys_setting",
 			"sys_solution_route",
+			"wecom_app_profile",
+			"wecom_login_ticket",
+			"wecom_suite_ticket",
 		]);
 	});
 });

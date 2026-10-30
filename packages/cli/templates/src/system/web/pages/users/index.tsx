@@ -135,7 +135,7 @@ export default function UsersPage() {
 				onOk={() => createForm.submit()}
 			>
 				<Form form={createForm} layout="vertical" onFinish={values => createMut.mutate(values)}>
-					<Form.Item name="username" label={t("system:users.columns.username")} rules={[{ required: true }]} extra="ldap:/ sso: 为外部身份源保留">
+					<Form.Item name="username" label={t("system:users.columns.username")} rules={[{ required: true }]} extra="ldap:/ sso:/ wecom: 为外部身份源保留">
 						<Input />
 					</Form.Item>
 					<Form.Item name="password" label="Password" rules={[{ required: true }, { min: 6 }]} extra={t("system:users.pwdPlaceholder")}>

@@ -1,6 +1,12 @@
 name: auth
 desc: JWT 鉴权端点（业务路由）：login/refresh/logout；Bearer 守卫由 oj-auth 提供
 version: 0.1.0
+# 企微代开发 connector 的三张表（schema.yaml 定性 + migrations/0001__wecom* 建表）：
+# 共享表，只放 corp→租户映射 / 套件凭证 / 一次性登录票据，不放租户业务数据。
+tables:
+  - wecom_app_profile
+  - wecom_suite_ticket
+  - wecom_login_ticket
 deps: # 两处都用：login/refresh 读 _platform.users（ownership_guard: deny，§3/S003）；
   # 跨模块别名 `#/_platform/…` 的依赖门禁（oj build S008）
   _platform: ^0.1.0

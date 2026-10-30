@@ -81,11 +81,11 @@
 5. 回归：`templates-tenant-scope.test.ts`（schema 定性 vs config 双声明一致性）+ HTTP 探针。
 6. L2 租户上下文：`tenantStore` + `headerProvider` + 登录页企业代码入口 + 默认租户回落。
 
-### Phase 1（connector）
+### Phase 1（connector）— 已实施，见 §11
 - `GET /auth/wecom/login?corp=&agent=&env=`：UA 检测 → 企微内 OAuth2 / 外部 qrConnect / 无 corp 时引导输入企业代码。
-- `GET /auth/wecom/callback?code&state`：`code→userid` → JIT → `issueExternal(uid)` → 一次性 ticket → 302 SPA。
+- `GET /auth/wecom/callback?code&state`：`code→userid` → JIT → 一次性 ticket → 302 SPA（**不在 URL 里带 token**）。
 - `POST /auth/wecom/ticket`（一次性 ticket 换 TokenBundle，防 token 出现在 URL）。
-- `GET|POST /wecom/suite/event`：URL 验证 `echostr`、`suite_ticket`、`create_auth`、`change_auth`、`cancel_auth` 全量事件。
+- `GET|POST /auth/wecom/event`：URL 验证 `echostr`、`suite_ticket`、`create_auth`、`change_auth`、`cancel_auth` 全量事件。
 
 ### Phase 2（前端）
 - `login.tsx` 加 tab（不硬编码三种）、`AuthProvider(wecom)`、`wecom-callback` 落地页（读 ticket 换 token）。
@@ -115,7 +115,7 @@ notification 4 表   + tenant_id
 home 2 表 / demo 1 表 + tenant_id
 ```
 
-**B. 共享 10 张（schema `tenant: false` + config `tenant.shared_allow` 双声明，缺一则声明被忽略）**
+**B. 共享 13 张（schema `tenant: false` + config `tenant.shared_allow` 双声明，缺一则声明被忽略）**
 ```
 _oj_migrations      -- oj 自建自管 DDL
 sys_setting         -- D8：登录方式发现是未登录端点，此刻没有租户上下文
@@ -125,13 +125,14 @@ sys_rate_window     -- 登录前限速，必须全局
 sys_login_throttle  -- 同上
 market_history      -- 解决方案安装/升级/回滚是站点级留痕（见 §10 偏差 1）
 reg_source_seq      -- 索引新鲜度水位属于站点（源码注释即「记在站点 DB」，见 §10 偏差 1）
-wecom_app_profile(suite_id, corp_id, agent_id) PK 三列；env 标签；*_enc 加密列
+wecom_app_profile(suite_id, corp_id, agent_id) PK 三列；env 标签；permanent_code_enc 加密列
 wecom_suite_ticket(suite_id) PK；suite_ticket / expires_at
-wecom_login_ticket(ticket_hash) PK；uid / tenant_id / expires_at / used
+wecom_login_ticket(ticket_hash) PK；uid / owner_tenant / expires_at / used
 ```
-> 企微三表随 Phase 1 落地，未落地前不计入 21 张（当前 11 A + 10 B = 21）。
-> B 组 = 不受 guard 约束，**只放全局映射/凭证/框架目录，不放租户业务数据**。
-> `wecom_login_ticket` 存 `tenant_id` 是因为它要跨「匿名回调」与「已认证换取」两段，不是租户业务表。
+> B 组 = 不受 guard 约束，**只放全局映射/凭证/框架目录，不放租户业务数据**（当前 11 A + 13 B = 24）。
+> `wecom_login_ticket` 要跨「匿名回调」与「已认证换取」两段，故共享；但它**不能**声明 `tenant_id` 列——
+> 共享表带 `tenant_id` 列属自相矛盾（守卫会当租户表要求上下文），故该列命名 `owner_tenant`，
+> 语义仍是「这张票据属于哪个租户」，由 `ensureTenant(owner_tenant)` 在兑换时补上下文。
 
 > 21 张表的逐张定性表写进迁移文件头注释，避免「一律 default 蒙混过关」。判据：**该表是否可能在无租户上下文时被访问**。
 
@@ -169,12 +170,46 @@ wecom_login_ticket(ticket_hash) PK；uid / tenant_id / expires_at / used
   且 devkit 文档标注「业务 handler 禁用」。L1/L3 还都要求用户名全局唯一，与「同 corp 内各自有 admin」冲突。
 
 ### 5.4 connector
-端点表（Phase 1 那张）+ 企微侧细节：
-- `permanent_code` 每 `(suite, corp)` 一个；`agentid` 从 `get_permanent_code` 的 `auth_info.agent[]` 取。
-- `corp access_token` 走 `suite access_token` + `permanent_code` 换，按 (corp, agent) 缓存，TTL 7200s，遇 `40001/42001` 失效重取。
-- `suite_ticket` 每 10 分钟推送，落库并内存缓存；过期不得发起 API。
+
+**端点表（实施后）**
+
+| 方法 | 路径 | 匿名 | 租户来源 | 成功返回 |
+|---|---|---|---|---|
+| GET | `/auth/wecom/login?corp=&agent=&env=` | 是 | 参数 `corp` → `wecom_app_profile` 查表（不猜默认） | 302 到企微（OAuth2 / qrConnect） |
+| GET | `/auth/wecom/callback?code&state` | 是 | `state` 里带的 corp → `ensureTenant(corp)` | 302 到 `{origin}/login?wecom_ticket=…&tenant=…` |
+| POST | `/auth/wecom/ticket` | 是 | 票据行的 `owner_tenant` → `ensureTenant` | `TokenBundle`（access+refresh） |
+| GET | `/auth/wecom/event?msg_signature&timestamp&nonce&echostr` | 是 | 无（套件级） | `text/plain` 原样回 `echostr` |
+| POST | `/auth/wecom/event`（XML 密文） | 是 | 无（套件级） | `text/plain` `success` |
+
+四处都在 `tenant.anonymous_paths`：302 回跳与企微服务器回调**都带不了自定义头**，租户只能服务端用
+`db.asTenant()` 补（§5.3 第三层）。顺序上 `callback` 必须先 `ensureTenant` 再碰 `users`，否则守卫直接抛错。
+
+**部署常量（config `vars:`，6 项）**
+
+| var | 说明 |
+|---|---|
+| `wecom_suite_id` / `wecom_suite_secret` | 代开发模版凭据（部署级，一个部署 = 一套模版） |
+| `wecom_callback_token` / `wecom_encoding_aes_key` | 回调签名 token 与 43 字符 EncodingAESKey |
+| `wecom_enc_key` | `permanent_code` 落库的 AES-GCM 密钥（16/32 字节 hex 或 base64） |
+| `wecom_base_url` | 连接器基址，派生两个地址：回调 URL=`<base>/event`、`redirect_uri`=`<base>/callback` |
+
+> 为什么合成一个 `base_url`：原计划配 `wecom_callback_url` 单值，但 redirect_uri 也需要，两处手填必然漂移；
+> 企微后台要求回调 URL **逐字一致**，改一处漏一处就会「事件收不到、登录回不来」。合成后只有一处可错。
+> 密钥格式在**读配置处** fail-fast（`assertEncKey`）：oj 的 `aesGcmEncrypt` 只收 16/32 字节，
+> 32 个随意字符按 base64 解出 24 字节（AES-192，不支持）——那种错会拖到 `create_auth` 回调才炸，排查成本最高。
+
+**企微侧细节**
+- `permanent_code` 每 `(suite, corp)` 一个；`agentid` 从 `get_permanent_code` 的 `auth_info.agent[]` 取，**逐 agent** 落一行。
+- `corp access_token` = 用 `permanent_code` 当 corpsecret 换（与自建应用同一条 `cgi-bin/gettoken`），按 (corp, agent) 缓存，TTL = `expires_in - 300`，遇 `40001/40014/42001` 失效重取一次。
+- `suite_ticket` 每 10 分钟推送，TTL 记 30 分钟；缺失/过期 → 503，**不拿过期票打企微**。
 - 回调 URL 需企微后台备案 + `echostr` 验证；API 调用需**可信 IP**。
 - 网页授权 `snsapi_base` 需应用**可信域名**；扫码用 qrConnect（`appid`+`agentid`）。
+- 签名与解密：`sha1(sort(token,timestamp,nonce,Encrypt))` + AES-256-CBC。oj 全局 `crypto` **没有 SHA-1、没有 AES-CBC**
+  （只有 `aesGcm*`），故在 `_shared/wecom/crypt.ts` 手写（见 §6 R8）。
+- 明文回包必须 `content-type: text/plain`：`json.raw` 会 JSON 转义（`"echostr"` 带引号 → 企微校验失败），走 `json.stream`。
+- 枚举防护：企业代码解析端点复用 `sys_login_throttle`，「未授权」与「已停用」**同码同文案**；
+  `code→userid` 的各类失败（无效 code / 非本企业成员）统一 401 一句话。
+- 登录票据：`randomHex(32)` 只出现一次在 302 URL，库里存 `sha256Hex`，TTL 180s，`update used=1 where used=0` 原子兑换（并发双花只可能成功一次）。
 
 ### 5.5 前端
 - **租户上下文**：新增 `tenantStore`（persist）：来源优先级 `?tenant=` URL 参数 → 本地持久化 → 部署默认值。
@@ -204,6 +239,13 @@ wecom_login_ticket(ticket_hash) PK；uid / tenant_id / expires_at / used
   理由：这是 `tenant.require_signed_claim`（已存在的平台机制）唯一的缺口；补上后多租户绑定在 oj 层 fail-closed，
   下游模块不需要各自造绑定中间件。改动面：`Claims` 增字段 + `op_jwt_sign` 透传 + `op_jwt_verify` 返回，向后兼容。
 - **R7（可选）— `jwt.verify` 返回完整 claims**，供模块侧自校验（当前只回 `sub/roles/iat/exp`）。
+- **R8（非阻塞，Phase 1 已绕过）— `crypto` 补 `sha1Hex` 与 `aesCbcDecrypt`**。
+  现状：oj 全局 `crypto` 只有 `sha256Hex/md5Hex/aesGcm*` 等，**无 SHA-1、无 AES-CBC**；而企微回调用
+  `sha1(sort(token,timestamp,nonce,Encrypt))` 验签、`AES-256-CBC` + PKCS#7 解密（密钥=b64(EncodingAESKey+"=")，
+  iv=key[0..16]）。当前在 `auth/api/_shared/wecom/crypt.ts` 手写（312 行，S-box 由 FIPS 197 公式在加载时生成，
+  `tests/wecom-crypt.spec.ts` 14 例与 Node `node:crypto`/WebCrypto 逐项对齐）。
+  若上游提供这两个原语，本仓可删掉整份实现（少 312 行需自证正确的密码学代码）。
+  理由：同类「企业微信/钉钉/飞书回调」都是这个组合（sha1 验签 + CBC 解密），不是本项目特有需求。
 - 已确认**不需要**的需求（v2 曾提，现撤销）：R1 自定义 IdP、R2 id_token 取租户、R3 sub 唯一性、R4 `/oidc/external`、R5 `env` 透传——因为不再走 OIDC IdP 路线。
 
 ## 7. 上线前提（服务商侧 checklist）
@@ -227,8 +269,8 @@ wecom_login_ticket(ticket_hash) PK；uid / tenant_id / expires_at / used
 | 登录前租户来源 | **已定 L2**（§5.3），含 D8/D9/D10 |
 | 会话归属 | 已定 Model C：`_platform` 会话权威（§1-E/F） |
 | 租户隔离机制 | 已定：`tenant.enable` + `sql_guard: deny` + R6 |
-| 上游需求 | 收敛为 R6（阻塞）/ R7（可选） |
-| 未决 | 无；Phase 0 已实施（§10），下一步 Phase 1 connector |
+| 上游需求 | 收敛为 R6（阻塞）/ R7（可选）/ R8（非阻塞，Phase 1 已手写绕过） |
+| 未决 | 无；Phase 0 已实施（§10）、Phase 1 已实施（§11），下一步 Phase 2 前端 |
 
 ## 10. Phase 0 实施记录（2026-10-30）
 
@@ -273,3 +315,94 @@ wecom_login_ticket(ticket_hash) PK；uid / tenant_id / expires_at / used
 - **未跑**：`tests/e2e/templates`（playwright）。本机 5174 与 9778 已被其他工程（oj-dbx / oj-bin）常驻占用，`ojm dev` 无法按配置端口启动，起不来就无从复用。待占用释放后补跑；API 层已用上表探针覆盖同等语义。
 - 迁移已在本机 dev 库执行成功：`migrate: _platform 2 applied / demo 1 / home 1 / notification 1`（0014→0015）。
 
+
+## 11. Phase 1 实施记录（2026-10-30）
+
+### 11.1 落地清单
+
+| 项 | 落点 | 说明 |
+|---|---|---|
+| 迁移 | `auth/api/migrations/0001__wecom.sql`（+`.mysql`/`.pg`） | 三张共享表；`.pg` 的时间列用 `BIGINT`，`.mysql` 把 TEXT 收成 VARCHAR 并把索引内联 |
+| 运行时元数据 | `auth/api/schema.yaml` | 与迁移同源的三表声明，全部 `tenant: false`（见 §5.2 D9） |
+| 模块清单 | `auth/api/manifest.yaml` | `tables:` 列出三表 |
+| 加解密原语 | `auth/api/_shared/wecom/crypt.ts`（312 行） | SHA-1 / AES-256-CBC 解密 / PKCS#7 / base64 与 hex 互转 / 企微签名 |
+| XML 取值 | `auth/api/_shared/wecom/xml.ts` | 只从**已验签解密**的明文里取字段；CDATA 与实体解码 |
+| 部署常量 | `auth/api/_shared/wecom/config.ts` | 缺项一次报全；`base_url` 派生回调与 redirect；`assertEncKey` 在读配置处校验密钥尺寸 |
+| 存储 | `auth/api/_shared/wecom/store.ts` | profile 增改查、suite_ticket 读写、一次性票据签发/原子兑换、`ensureTenant` |
+| 凭证链 | `auth/api/_shared/wecom/client.ts` | suite_token / permanent_code / corp_token / code→userid，含缓存与 `40001` 一次重试 |
+| 登录编排 | `auth/api/_shared/wecom/login.ts` | 授权 URL 双形态、state 一次性、JIT 建档、落地地址拼装 |
+| 事件分发 | `auth/api/_shared/wecom/events.ts` | `suite_ticket` / `create_auth` / `change_auth` / `cancel_auth` / `reset_permanent_code` |
+| 端点 | `auth/api/wecom/api.ts`（216 行，4 个 handler） | 见 §5.4 端点表；302 与 `text/plain` 不套 `respond()` 外壳 |
+| 配置 | `packages/cli/templates/config.yaml` | `tenant.shared_allow` +3 表（10→13）；`tenant.anonymous_paths` / `auth.anonymous_paths` 各 +4 路径；`vars:` +6 项 |
+| 登录方式发现 | `_platform/api/_shared/service/domain/settings.ts` | `listLoginMethods()` 读 `wecom.enabled`，开关开但凭据缺 → 前端会收到 400（比静默隐藏好排查） |
+| 种子 | `_platform/api/seed.sql` | `sys_setting` 加 `wecom.enabled=0`（方言种子只含用户/角色，无需改） |
+| 用户名红线 | `_platform/api/_shared/service/domain/users.ts` | 保留前缀 `^(?:ldap\|sso\|wecom):` |
+| 用户页提示 | `system/web/pages/users/index.tsx` | `extra` 文案补 `wecom:` |
+| 契约 | `openapi.json` + `auth/web/__client/*` | 4 路径 / 5 操作；`ojm api --check` 把关 |
+| 回归 | `tests/wecom-crypt.spec.ts`(14) / `wecom-connector.spec.ts`(36) / `wecom-endpoints.spec.ts`(18) | 见 11.3 |
+| 守门 | `packages/cli/src/__tests__/templates-tenant-scope.test.ts` | 表数量快照 21 → 24，共享表清单补三张 |
+
+### 11.2 相对 §5.4 的五处偏差（均有证据）
+
+**偏差 1：事件端点收敛到 `/auth/wecom/event`（原写 `/wecom/suite/event`）**
+- 匿名路径是**按模块前缀**配置的（`config.yaml` 的 `auth.anonymous_paths`），事件端点若挂到别的模块前缀，就要在
+  两处路径清单里各写一条，而它们必须与 `apiPrefix` 保持同步。收进 auth 后：一个前缀、一份清单、一处漏配风险。
+
+**偏差 2：`wecom_callback_url` → `wecom_base_url`**
+- 原计划单值回调 URL，但网页授权的 `redirect_uri` 是第二个地址。手填两处必然漂移，而企微后台要求回调 URL
+  **逐字一致**。改为配基址、派生 `<base>/event` 与 `<base>/callback`（§5.4 部署常量表）。
+
+**偏差 3：`wecom_login_ticket` 的租户列改名 `owner_tenant`**
+- 该表是共享表（`tenant: false`），而共享表再声明 `tenant_id` 列属于自相矛盾——守卫会把它当租户表要求上下文，
+  而它恰恰要在「没有租户上下文」的匿名阶段被读。`templates-tenant-scope.test.ts` 的定性快照会直接报出来。
+- 语义不变：仍是「票据属于哪个租户」，兑换时 `ensureTenant(owner_tenant)` 补上下文再发会话。
+
+**偏差 4：SHA-1 与 AES-256-CBC 手写**
+- oj 全局 `crypto` 无 SHA-1、无 AES-CBC（见 §6 R8）。企微回调验签/解密绕不开，故在 `_shared/wecom/crypt.ts` 实现，
+  并与 Node `node:crypto`、WebCrypto 逐字节对照（`tests/wecom-crypt.spec.ts`）。上游补齐后整份可删。
+
+**偏差 5：`openapi.json` 手工拼装（不是整份重生成）**
+- `oj openapi --module-root src` 在本仓跑不起来：`node_modules/@oj-module/runtime` 是指向仓外的符号链接，
+  生成器报 `module path … escapes project root`。
+- 变通验证：把模板整份复制到 `/tmp` 并把 runtime 实体拷贝进去 → 生成成功（50 路径 / 73 576 字节），
+  但那条路径产出两处失真：`x-oj-file` 前缀带上 `api/`（`auth/api/wecom/api.ts`），且相邻路径条目的 `x-oj-file` 丢失。
+- 故只把新增的 4 路径 / 5 操作按生成器顺序插入提交版 `openapi.json`，`x-oj-file` 手改为 `auth/wecom/api.ts`；
+  随后 `ojm api` 重生成 `__client`、`ojm build` 重生成 `dist/api/routes.js`，`ojm api --check` 双向对账通过。
+
+### 11.3 实测证据
+
+**单测（模板仓 `pnpm exec vitest run`）**：38 文件 / 756 通过。其中三份企微专项：
+
+| 文件 | 例数 | 覆盖的「会静默出错」点 |
+|---|---|---|
+| `wecom-crypt.spec.ts` | 14 | SHA-1 对 OpenSSL、AES-CBC 对 WebCrypto、签名排序、`random\|len\|msg\|receiveid` 解析与 receiveid 不符即拒 |
+| `wecom-connector.spec.ts` | 36 | profile 三种拒绝同码同文案、多应用未指定 agent、suite_ticket 过期不发请求、票据单次兑换/过期/清理、`ensureTenant` 两分支、JIT 幂等与唯一约束撞车、缓存 TTL 与 `40001` 重试、三类事件落库与解绑清会话、授权 URL 双形态、state 取即删、密钥格式 fail-fast |
+| `wecom-endpoints.spec.ts` | 18 | 缺 vars 一次报全、缺 corp、未知 corp、企微内/浏览器两条 302、双应用无 agent、happy path 302 且 URL 无 token、state 重放、非成员 401 不留半截账号、票据兑换、复用 401、租户不符 403、`echostr` 回显、错签名、`suite_ticket` 事件、缺 Encrypt、外来 receiveid |
+
+**真实实例（本地 oj 0.1.110，sqlite，`oj serve` 于 18778 + 迁移后的 dist/api）**：
+
+| 用例 | 结果 |
+|---|---|
+| `GET /auth/wecom/login` 缺 `corp` | 400，引导去登录页填企业代码 |
+| `GET /auth/wecom/login?corp=ww_unknown` | 400 `企业代码无效或应用未开通`（与「已停用」同文案） |
+| `POST /auth/wecom/ticket` 伪造票据 | 401 |
+| `GET /auth/wecom/event` 错签名 | 400 `回调签名校验失败` |
+| 登录端点带伪造 `X-TENANT-ID` | 400（匿名路径不接受外部注入的租户头） |
+| `GET /auth/wecom/event` 真实签名 `echostr` | **200，`text/plain` 回显 `echo_probe_42`**（未 JSON 转义） |
+| `POST /auth/wecom/event` 真实签名 + 加密的 `suite_ticket` | **200 `success`**，且 `wecom_suite_ticket` 落行、`expires_at = now + 1800` |
+
+### 11.4 验证与未跑项
+
+- 已绿：`pnpm test:cli`（580 passed / 1 skipped）、`@oj-module/core`（32 passed）、模板 `vitest`（756 passed）、
+  `tsc -p src/tsconfig.json`、模板 `typecheck`、`ojm build`、`ojm api --check`（0 error / 0 warn）、eslint。
+- **未跑**：`tests/e2e/templates`（playwright）。端口 5174 / 9778 仍被其他工程常驻占用（同 §10.4）；
+  Phase 1 是纯服务端，已用上表真实实例探针覆盖同等语义，Phase 4 再补浏览器链路。
+
+### 11.5 交给 Phase 2 的接口事实（前端按此实现，不要猜）
+
+- 授权入口：`GET /auth/wecom/login?corp=<企业代码>&agent=<可选>&env=<可选>`，**返回 302**，前端用
+  `window.location.assign` 而不是 XHR（XHR 会拿到 opaque redirect）。
+- 回调落点：`{origin}/login?wecom_ticket=<ticket>&tenant=<企业代码>`；页面要先写 `tenantStore`（否则换票时
+  `ensureTenant` 判 403），再 `POST /auth/wecom/ticket {ticket}` 取 `TokenBundle`（与 `local`/`ldap` 同结构）。
+- 票据 180 秒有效、只能用一次；失败一律 401，前端提示「登录已过期，请重新从企业微信进入」。
+- 登录方式列表已含 `wecom`（受 `sys_setting.wecom.enabled` 控制），登录页不该再硬编码 `local|ldap|sso` 三元。

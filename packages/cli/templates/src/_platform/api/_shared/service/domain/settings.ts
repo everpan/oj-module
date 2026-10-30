@@ -68,9 +68,11 @@ export async function updateSetting(actorId: number, key: string, value: string)
 	await recordOp({ action: "setting.update", module: String(row.module), target: key });
 }
 
-/** C5/D2：登录方式发现的数据源——local 恒在，ldap/sso 由设置项开关。 */
+/** C5/D2：登录方式发现的数据源——local 恒在，ldap/sso/wecom 由设置项开关。 */
 export async function listLoginMethods(): Promise<{ methods: string[] }> {
-	const rows = await db.table("sys_setting").select(["key", "value"]).where({ field: "key", op: "in", value: ["ldap.enabled", "sso.enabled"] }).all() as Array<{ key: string, value: string | null }>;
+	const rows = await db.table("sys_setting").select(["key", "value"]).where({ field: "key", op: "in", value: ["ldap.enabled", "sso.enabled", "wecom.enabled"] }).all() as Array<{ key: string, value: string | null }>;
 	const enabled = (k: string) => rows.find(r => r.key === k)?.value === "1";
-	return { methods: ["local", ...(enabled("ldap.enabled") ? ["ldap" as const] : []), ...(enabled("sso.enabled") ? ["sso" as const] : [])] };
+	// wecom 的凭据在部署常量（config vars），这里只报开关：开关开了但凭据没配，
+	// 点进企微登录会拿到 400「企业微信未配置」——比登录页凭空少一个 tab 更容易排查。
+	return { methods: ["local", ...(enabled("ldap.enabled") ? ["ldap" as const] : []), ...(enabled("sso.enabled") ? ["sso" as const] : []), ...(enabled("wecom.enabled") ? ["wecom" as const] : [])] };
 }

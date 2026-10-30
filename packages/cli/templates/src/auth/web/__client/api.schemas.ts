@@ -10,4 +10,9 @@ export const schemas = {
 	"new_password": z.string().min(6)
 }),
 	},
+	"authWecomTicketPost": {
+		body: z.object({
+	"ticket": z.string().min(32).max(128)
+}),
+	},
 };

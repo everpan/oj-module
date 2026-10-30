@@ -35,7 +35,11 @@ server:
   js_heap_limit_bytes: 268435456 # 单 isolate 堆限额（默认 256MiB，下限 32MiB）
   route_timeouts: [] # 路由级超时；pattern 按声明序首个命中，写含 base 的全路径
   response_headers: {} # 统一响应头
-  reload_api: true # 热更端点 /ojm:reload：安装器的 reloading 段要用，关掉安装会失败
+  # 热更端点 /ojm:reload：安装器的 reloading 段要用，关掉安装会失败。
+  # 下面这行是**安装器的文本锚点**（ensureReloadApi 在锚点行下插回 reload_api: true）：
+  # 整行必须逐字等于 `# ojm:reload`，不要删、不要加尾注。
+  # ojm:reload
+  reload_api: true
   blob_upload_max_bytes: 1073741824 # PUT blob 单文件上限（默认 1GiB；与 multipart 的 10MB 是两道闸）
   cors:
     origins: [] # 空 = 放行任意源；要带凭据必须列具体源
@@ -50,11 +54,33 @@ vars:
   # 故意不读请求头 Host（防伪造 Host 牵引出站）：不配 = fail-closed，不会替你猜。
   # canonical_origin: "https://your-site.example.com"
 
+  # ---- 企业微信代开发（服务商侧，部署级常量）----
+  # 一个部署 = 一个服务商账号下的一套代开发模板，所以这 6 个值是「部署」维度，不进 DB。
+  # 「哪个企业装了哪个应用」不写在这里：企微 create_auth 回调推 AuthCode → 换永久授权码 →
+  # 落 wecom_app_profile（主键含 agent_id，同一企业测试/正式两个应用天然并存），
+  # 新增企业只需企业管理员扫码授权，**不改配置、不重启**。
+  # 六项任一为空 → 企微登录整体 400 拒绝服务（宁可不登录，也不明文存 permanent_code）。
+  #   wecom_suite_id          代开发应用模版 id（企微后台「应用管理 → 代开发」里的 SuiteID）
+  #   wecom_suite_secret      套件密钥（SuiteSecret）
+  #   wecom_callback_token    「Token」（回调验签用）
+  #   wecom_encoding_aes_key  「EncodingAESKey」（43 字符，回调解密用）
+  #   wecom_enc_key           permanent_code 落库加密密钥（hex/base64，16 或 32 字节；建议 oj secret keygen）
+  #   wecom_base_url          连接器基址（绝对地址，无尾斜杠），如 https://site.example.com/api/auth/wecom
+  #                           → 企微后台「指令回调URL」填 <base>/event；网页授权 redirect_uri 用 <base>/callback
+  wecom_suite_id: ''
+  wecom_suite_secret: ''
+  wecom_callback_token: ''
+  wecom_encoding_aes_key: ''
+  wecom_enc_key: ''
+  wecom_base_url: ''
+
 platform:
   modules: [_platform] # 安装器热更 config 需要 _platform 特权；删了会在装到最后一步报 NotCapable
   root: src # 后端模块源码根（src/<name>/api 的父目录）；preview 派生 config 时改写成 dist
   # 信任库默认落在安装子树之外（.solutions/trusted-keys.yaml），第三方方案模块碰不到。
-  # 部署侧还应补 platform.trusted_paths 授权 _platform 写库、并把第三方模块 fs.root 收窄到各自安装子树。
+  # U6 加固：第三方模块的 fs 读写范围 = fs.root（= modules/ 安装子树），信任库必须在其外，
+  # 否则方案包可写自己的信任锚（伪造签名来源）。部署侧还应补 platform.trusted_paths 授权
+  # _platform 写库、并把第三方模块 fs.root 收窄到各自安装子树。
   # 下面三条命令与安装器逐字对齐（含每个空格），一个 token 都不能动：
   exec:
     _platform:
@@ -89,6 +115,10 @@ auth:
     - /auth/refresh
     - /auth/logout
     - /system/login-methods # 登录页「登录方式」Tabs 的数据源，未登录就要能读
+    - /auth/wecom/login # 企微授权入口：跳转前必然未登录
+    - /auth/wecom/callback # 企微 302 回跳：code 即凭证，此时还没有本地会话
+    - /auth/wecom/ticket # 一次性票据换 TokenBundle：票据本身就是「刚验过的登录证明」
+    - /auth/wecom/event # 企微指令回调：靠 msg_signature 验签，不走 Bearer
 
 # 多租户（企微代开发 v3 Phase 0）：开启后所有 {base} 请求必须带 X-TENANT-ID，否则 400。
 # 前端由 tenantStore + headerProvider 统一注入（单租户部署恒为 default，UX 不变）。
@@ -110,13 +140,21 @@ tenant:
     - sys_login_throttle # 登录节流（登录前就要用）
     - market_history # 解决方案安装/升级/回滚是站点级留痕
     - reg_source_seq # 索引新鲜度水位属于站点（防回放）
+    - wecom_app_profile # 企微 corp→租户映射权威：查它时必然还没有租户上下文（D9）
+    - wecom_suite_ticket # 套件级凭证，按 suite_id 全局唯一
+    - wecom_login_ticket # 一次性登录票据：跨「匿名 302 回跳」与「已认证换取」两段
   # 豁免缺租户头的路径（去 base 前缀后的形态）。与 auth.anonymous_paths 同语义，
   # 但这是「没有租户头也不 400」的逃生口，只给**真的拿不到头**的端点。
   # 登录类端点不在此列：前端 headerProvider 每请求都注头（单租户恒 default），
   # 少了头应当直接 400 `missing tenant header`，而不是落进匿名态后被 sql_guard 兜成 500。
-  # `/auth/wecom/**`（企微 302 回调，浏览器带不了自定义头）在 Phase 1 落地时加进来。
+  # `/auth/wecom/**` 是例外：企微回调与 302 回跳由浏览器发起，带不了自定义头，
+  # 租户只能由服务端从 profile/票据推导（db.asTenant，见 store.ts::ensureTenant）。
   anonymous_paths:
     - /system/login-methods # 登录方式发现：读共享表 sys_setting，天然无租户语义
+    - /auth/wecom/login # 发起授权：此时还没有任何身份
+    - /auth/wecom/callback # 企微 302 回跳：浏览器带不了头，租户由 state→profile 推导
+    - /auth/wecom/ticket # 一次性票据换会话：租户由票据行携带
+    - /auth/wecom/event # 企微指令回调：验签+解密即认证，无租户语义
   # tenant.require_signed_claim：租户头的服务端绑定（平台级 fail-closed）。
   # 暂保持 false——上游 oj 的 jwt.sign 目前会静默丢弃自定义 claim（需求 R6），
   # 开启前无法把 tenant 放进 token。R6 落地后改 true，裸头即失去自证能力。

@@ -24,8 +24,8 @@ function fail(status: number, message: string): never {
 	throw Object.assign(new Error(message), { status });
 }
 
-/** 外来号命名空间抢占红线（B6）：本地建号拒收 ldap:/sso: 前缀用户名。 */
-const RESERVED_PREFIX = /^(?:ldap|sso):/i;
+/** 外来号命名空间抢占红线（B6）：本地建号拒收 ldap:/sso:/wecom: 前缀用户名。 */
+const RESERVED_PREFIX = /^(?:ldap|sso|wecom):/i;
 
 async function rolesOf(uid: number): Promise<string[]> {
 	const rows = await db.table("sys_user_role").select(["role_name"]).where({ field: "user_id", op: "eq", value: uid }).all() as Array<{ role_name: string }>;

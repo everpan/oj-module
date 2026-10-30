@@ -1,0 +1,48 @@
+# 声明式表结构（§4.2 / D1-C）：auth 模块自有表——企微代开发 connector 的三张表。
+# 结构真源是 migrations/0001__wecom*.sql（S006）；本文件负责「列集/主键/租户定性」的运行时元数据，
+# 与迁移逐列对齐（列集不一致时 oj 的 schema 校验会 fail-fast）。
+#
+# 定性（三处一致：这里 / config.yaml `tenant.shared_allow` / 迁移文件头注释）：
+# 三张表都是**共享表**（`tenant: false`）——它们在「还没有租户上下文」的时刻被读写，
+# 而且本身就是 corp → 租户的映射权威。只放映射/凭证/一次性票据，不放租户业务数据。
+tables:
+  wecom_app_profile:
+    # 共享表：corp → 租户的映射权威，查它时必然还不知道租户（D9）
+    tenant: false
+    pk: [suite_id, corp_id, agent_id]
+    columns:
+      suite_id: {type: text, null: false}
+      corp_id: {type: text, null: false}
+      agent_id: {type: text, null: false}
+      # 企微事件里的 AuthCorpId：第三方应用体系下可能是 open_corpid，故与 corp_id 分列存
+      auth_corp_id: {type: text, null: false}
+      # 测试/正式等部署标签（D5：只作标签，不参与主键）
+      env: {type: text, null: false}
+      corp_name: {type: text}
+      # active / disabled：取消授权只改状态不删行（留痕）
+      status: {type: text, null: false}
+      # permanent_code（= 代开发应用的 secret）的 AES-GCM 密文，禁止明文落库
+      permanent_code_enc: {type: text, null: false}
+      installed_at: {type: integer, null: false}
+      update_time: {type: integer, null: false}
+  wecom_suite_ticket:
+    # 共享表：套件级凭证，按 suite_id 全局唯一（每 10 分钟被企微覆盖一次）
+    tenant: false
+    pk: suite_id
+    columns:
+      suite_id: {type: text, null: false}
+      suite_ticket: {type: text, null: false}
+      expires_at: {type: integer, null: false}
+      update_time: {type: integer, null: false}
+  wecom_login_ticket:
+    # 共享表：一次性登录票据，跨「匿名 302 回跳」与「已认证换取」两段
+    tenant: false
+    pk: ticket_hash
+    columns:
+      ticket_hash: {type: text, null: false}
+      uid: {type: integer, null: false}
+      # 票据绑定的租户。不叫 tenant_id：共享表出现隔离列会被定性红线判为自相矛盾
+      owner_tenant: {type: text, null: false}
+      expires_at: {type: integer, null: false}
+      used: {type: integer, null: false}
+      created_at: {type: integer, null: false}

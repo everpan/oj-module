@@ -882,6 +882,99 @@
 				}
 			}
 		},
+		"/api/auth/wecom/login": {
+			"get": {
+				"operationId": "auth_wecom_login_get",
+				"summary": "GET api/auth/wecom/login",
+				"x-oj-file": "auth/wecom/api.ts",
+				"tags": [
+					"auth"
+				],
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				}
+			}
+		},
+		"/api/auth/wecom/callback": {
+			"get": {
+				"operationId": "auth_wecom_callback_get",
+				"summary": "GET api/auth/wecom/callback",
+				"x-oj-file": "auth/wecom/api.ts",
+				"tags": [
+					"auth"
+				],
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				}
+			}
+		},
+		"/api/auth/wecom/ticket": {
+			"post": {
+				"operationId": "auth_wecom_ticket_post",
+				"summary": "POST api/auth/wecom/ticket",
+				"x-oj-file": "auth/wecom/api.ts",
+				"tags": [
+					"auth"
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"required": [
+									"ticket"
+								],
+								"properties": {
+									"ticket": {
+										"type": "string",
+										"minLength": 32,
+										"maxLength": 128
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				}
+			}
+		},
+		"/api/auth/wecom/event": {
+			"get": {
+				"operationId": "auth_wecom_event_get",
+				"summary": "GET api/auth/wecom/event",
+				"x-oj-file": "auth/wecom/api.ts",
+				"tags": [
+					"auth"
+				],
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				}
+			},
+			"post": {
+				"operationId": "auth_wecom_event_post",
+				"summary": "POST api/auth/wecom/event",
+				"x-oj-file": "auth/wecom/api.ts",
+				"tags": [
+					"auth"
+				],
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				}
+			}
+		},
 		"/api/demo/todos": {
 			"get": {
 				"operationId": "demo_todos_get",

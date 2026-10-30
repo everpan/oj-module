@@ -28,6 +28,9 @@ INSERT OR IGNORE INTO sys_setting (key, module, "group", type, value, default_va
 INSERT OR IGNORE INTO sys_setting (key, module, "group", type, value, default_value, label_key, secret, update_time) VALUES ('framework.market_cdn_url', 'framework', 'security', 'string', '/cdn', '/cdn', 'system:setting.market_cdn_url', 0, 0);
 INSERT OR IGNORE INTO sys_setting (key, module, "group", type, value, default_value, label_key, secret, update_time) VALUES ('ldap.enabled', 'ldap', 'login', 'bool', '0', '0', 'system:setting.ldap_enabled', 0, 0);
 INSERT OR IGNORE INTO sys_setting (key, module, "group", type, value, default_value, label_key, secret, update_time) VALUES ('sso.enabled', 'sso', 'login', 'bool', '0', '0', 'system:setting.sso_enabled', 0, 0);
+-- 企微代开发（登录方式 + 代开发后台总开关）：默认关。开启前须先在 config.yaml vars 填 6 项部署常量，
+-- 否则登录页会出现企微 tab 但点进去 400「企业微信未配置」（宁可报错也不静默隐藏，便于运维定位）。
+INSERT OR IGNORE INTO sys_setting (key, module, "group", type, value, default_value, label_key, secret, update_time) VALUES ('wecom.enabled', 'wecom', 'login', 'bool', '0', '0', 'system:setting.wecom_enabled', 0, 0);
 INSERT OR IGNORE INTO sys_setting (key, module, "group", type, value, default_value, label_key, secret, update_time) VALUES ('ldap_base_dn', 'ldap', 'ldap', 'string', '', '', 'system:setting.ldap_base_dn', 0, 0);
 INSERT OR IGNORE INTO sys_setting (key, module, "group", type, value, default_value, label_key, secret, update_time) VALUES ('ldap_uid_attr', 'ldap', 'ldap', 'string', 'uid', 'uid', 'system:setting.ldap_uid_attr', 0, 0);
 INSERT OR IGNORE INTO sys_setting (key, module, "group", type, value, default_value, label_key, secret, update_time) VALUES ('ldap_email_attr', 'ldap', 'ldap', 'string', 'mail', 'mail', 'system:setting.ldap_email_attr', 0, 0);
