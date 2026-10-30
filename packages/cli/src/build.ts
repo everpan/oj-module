@@ -155,6 +155,8 @@ export const getRedirectPath = _fn;
 // 站点部署 base（子路径部署）：stub 只需占位，元数据读取期不拼 URL
 export const resolveSiteBase = _fn;
 export const withSiteBase = _fn;
+// API 端点 base（整页跳转的后端端点、上传 action 用它拼 URL，与站点 base 正交）
+export const resolveApiBase = _fn;
 export const getYesNoOptions = _fn;
 export const getBooleanOptions = _fn;
 // 模块契约

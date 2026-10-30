@@ -129,6 +129,15 @@ export { useUserStore } from "./store/user";
 
 export type { AppInfo } from "./types/app-info";
 
+/**
+ * API 端点 base（ky `prefix` 的同一取值口，恒不以 `/` 结尾）。
+ *
+ * 与 `withSiteBase()` 正交：站点可挂 `/oj` 而 API 恒在根 `/api`。模块侧要拼
+ * **整页跳转**到某个后端端点（授权入口、文件上传 action 这类浏览器直接访问的
+ * URL，走不了 ky）时必须用它——用站点 base 会被 SPA 兜底页吃掉。
+ */
+export { resolveApiBase } from "./utils/api-base";
+
 export { getAllExpandedKeys } from "./utils/get-all-expanded-keys";
 
 // 应用元信息（构建期注入；模块经此函数获取，不依赖全局 __APP_INFO__ 注入）

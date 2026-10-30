@@ -24,12 +24,19 @@ export const authProvider: AuthProvider = {
 
 		// 服务端只认 `{ ticket }`（schema 校验 minLength 32）：它由 302 落地点带过来，
 		// 只在内存里存在一瞬间，不落 localStorage。
-		const env = await request
-			.post("auth/wecom/ticket", { json: { ticket } })
-			.json<{ code: number, msg?: string, data?: { access_token?: string, refresh_token?: string } }>();
+		//
+		// throwHttpErrors:false —— ky 默认把非 2xx 抛成 HTTPError，message 是
+		// "Request failed with status code 401"，登录页只能原样贴给用户看。
+		// 这里自己读信封，把后端 `fail(401, "登录票据无效或已使用")` 的 msg 透上去。
+		const res = await request.post("auth/wecom/ticket", { json: { ticket }, throwHttpErrors: false });
+		const env = await res
+			.json<{ code: number, msg?: string, data?: { access_token?: string, refresh_token?: string } }>()
+			.catch(() => undefined);
+		if (!res.ok)
+			throw new Error(env?.msg || `企业微信登录失败（HTTP ${res.status}）`);
 		return {
-			token: env.data?.access_token ?? "",
-			refreshToken: env.data?.refresh_token ?? "",
+			token: env?.data?.access_token ?? "",
+			refreshToken: env?.data?.refresh_token ?? "",
 		};
 	},
 

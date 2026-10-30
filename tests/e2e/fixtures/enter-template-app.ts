@@ -14,6 +14,14 @@ const DB_PATH = path.join(REPO_ROOT, "packages/cli/templates/db.sqlite");
 const SEED_PATH = path.join(REPO_ROOT, "packages/cli/templates/src/_platform/api/seed.sql");
 
 /**
+ * 直连 dev 库改数据：给「页面已就绪但业务前置要造数据」的用例用（如企微一次性票据）。
+ * 走 sqlite3 CLI 与 `resetAdminFixture` 同一口径，不经 API——断言的是前端消费而非写入。
+ */
+export function execSql(sql: string): string {
+	return execFileSync("sqlite3", [DB_PATH, sql], { encoding: "utf-8" });
+}
+
+/**
  * 归一 admin 账号夹具（幂等）：口令重置为种子值（123456）+ 清 must_change +
  * 清登录限流窗口。全新 db 的 admin 是 must_change=1，会弹强制改密阻塞 e2e；
  * 上一轮 e2e 若改过口令，本轮 123456 登不上——都靠这里归一。
@@ -26,15 +34,22 @@ export function resetAdminFixture(): void {
 }
 
 /**
- * 进入模板主界面：goto → admin/123456 登录 → 等布局 chrome 就绪。
+ * 进入模板主界面：goto → 登录 → 等布局 chrome 就绪。
  * 前置：resetAdminFixture() 已跑（globalSetup）。
+ *
+ * `account` 缺省 admin/123456；超管专属页面（代开发后台等）传 `{ username: "superadmin" }`。
  */
-export async function enterTemplateApp(page: Page): Promise<void> {
+export async function enterTemplateApp(
+	page: Page,
+	account: { username?: string, password?: string } = {},
+): Promise<void> {
+	const username = account.username ?? "admin";
+	const password = account.password ?? "123456";
 	await page.goto("/");
 	const submit = page.locator("form button[type=\"submit\"]").first();
 	await expect(submit).toBeVisible({ timeout: 15_000 });
-	await page.locator("form input").first().fill("admin");
-	await page.locator("form input[type=\"password\"]").fill("123456");
+	await page.locator("form input").first().fill(username);
+	await page.locator("form input[type=\"password\"]").fill(password);
 	await submit.click();
 	await expect(page.locator("header")).toBeVisible({ timeout: 20_000 });
 	await expect(page.locator(".ant-menu li").first()).toBeVisible({ timeout: 20_000 });

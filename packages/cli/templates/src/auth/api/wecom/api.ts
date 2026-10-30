@@ -1,4 +1,5 @@
 import type { WecomConfig } from "../_shared/wecom/config";
+import type { WecomStoreDeps } from "../_shared/wecom/store";
 // GET  /api/auth/wecom/login?corp=&agent=&env=  —— 发起企微授权（企微内静默 / 浏览器扫码）
 // GET  /api/auth/wecom/callback?code=&state=     —— 企微回跳：code→userid→JIT→一次性票据→302 SPA
 // POST /api/auth/wecom/ticket  {ticket}          —— 一次性票据换 TokenBundle（token 不进 URL）
@@ -160,11 +161,13 @@ const ticket = {
 	// 一次性票据换会话。票据即凭证：先抢所有权（原子 used 0→1）再校验过期，重放与并发双花都只会成功一次。
 	async post() {
 		await respond(async () => {
-			const cfg = readWecomConfig();
 			const raw = String((http.body as { ticket?: string } | null)?.ticket ?? "");
 			if (!raw)
 				throw badRequest("缺少 ticket");
-			const claimed = await claimLoginTicket(crypto.sha256Hex(raw), runtimeStoreDeps(cfg));
+			// 换票只碰 DB 与会话：**不读部署凭据**——加解密在这条路径上用不到，而套件凭据没配好
+			// 时把「已签发的票」判成登录失败，等于把配置事故伪装成票据失效（admin 的 status 同处理）。
+			const storeDeps: WecomStoreDeps = { encrypt: () => "", decrypt: () => "", now: () => Math.floor(Date.now() / 1000) };
+			const claimed = await claimLoginTicket(crypto.sha256Hex(raw), storeDeps);
 			// 票据里的租户是权威：前端落地页必须先 bootstrapTenant（`?tenant=` 由 callback 的 302 带上），
 			// 否则这里拿到的是默认租户头，ensureTenant 会以 403 明确拒绝（而不是悄悄落到 default）
 			ensureTenant(claimed.ownerTenant);

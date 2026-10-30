@@ -1,4 +1,4 @@
-import { fetchLoginMethods, getRedirectPath, useAuthStore, useTenantStore, withSiteBase } from "@oj-module/runtime";
+import { fetchLoginMethods, getRedirectPath, resolveApiBase, useAuthStore, useTenantStore, withSiteBase } from "@oj-module/runtime";
 import { Alert, Button, Form, Input, Tabs, Typography } from "antd";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -123,9 +123,11 @@ export default function LoginPage() {
 	}
 
 	function wecomLogin() {
-		// 整页跳转（站内路径拼部署 base）：后端 302 到企微 OAuth2 / qrConnect。
+		// 整页跳转（拿不到 302 的 opaque redirect）：授权入口是**后端端点**，
+		// 必须拼 API base（部署期可为 /api 或网关前缀）；拼站点 base 只会落到
+		// SPA 兜底页——点击后页面原地重载、一个 auth 请求都不发。
 		// 企业代码不在这里写 store——只有服务端回跳带的 tenant 才是权威值。
-		window.location.assign(withSiteBase(wecomAuthorizePath(corp)));
+		window.location.assign(`${resolveApiBase()}${wecomAuthorizePath(corp)}`);
 	}
 
 	const showTabs = methods.length > 1;
@@ -153,10 +155,18 @@ export default function LoginPage() {
 	);
 
 	// 企微：只需企业代码（服务商后台生成的专属链接会预填，客户也可手输）
+	// 受控值不走 antd 表单（Form.Item 无 name），故显式给 id/htmlFor：
+	// 少了这层关联，标签只是视觉文本，读屏与 getByLabel 都取不到输入框。
+	const wecomCorpId = "wecom-corp";
 	const wecomPanel = (
 		<Form layout="vertical" onFinish={wecomLogin}>
-			<Form.Item label={t("login:page.tenant.label")} extra={t("login:method.wecom.hint")}>
+			<Form.Item
+				label={t("login:page.tenant.label")}
+				htmlFor={wecomCorpId}
+				extra={t("login:method.wecom.hint")}
+			>
 				<Input
+					id={wecomCorpId}
 					autoComplete="off"
 					placeholder="ww..."
 					value={corp}

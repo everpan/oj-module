@@ -743,3 +743,75 @@ Phase 3 收尾跑模板 e2e 时，`/system` 菜单在整页刷新（F5）后消�
 
 模板 `vitest`：**42 文件 / 817 例通过**（原 41/806，新增 10 例 + guard 1 例）；
 模板 `typecheck`（含 tests）、全仓 `eslint` 均 0 error。
+
+## 17. Phase 4 第一段：企微前端链路 e2e（2026-10-30）
+
+真套件（服务商后台 + 真企业授权）跑不了自动化，但**浏览器这一侧的行为**可以钉死。
+新增 `tests/e2e/templates/wecom.spec.ts`（5 例），配套给 e2e 夹具加了两件工具：
+`execSql()`（直连 dev 库投一次性票据）与 `enterTemplateApp(page, { username })`
+（超管账号入口）。
+
+### 17.1 五个用例
+
+| 编号 | 钉住的行为 | 关键判据 |
+| --- | --- | --- |
+| W1 | 登录页按 `wecom.enabled` 长出「企业微信」tab，提交后带企业代码跳授权入口 | 拦到的请求路径是 `/api/auth/wecom/login`，`corp=ww_e2e` |
+| W2 | `/login?wecom_ticket=&tenant=` 落地自动换票并进主界面 | 登录表单消失 + `localStorage["oj-tenant"]` 落成票据租户 |
+| W3 | 票据无效 → 明确文案，且不把人困住 | `.ant-alert` 出现「登录票据无效或已使用」，tab 仍在 |
+| W4 | 非超管进 `/system/wecom` 渲染「无权限」 | 无「生成开通链接」按钮（空表会让人以为只是没企业授权） |
+| W5 | 超管看到开通入口与已开通清单 | 按钮 + Card 标题「已开通企业」（`exact: true`，否则撞空表占位文案） |
+
+票据表 `wecom_login_ticket` 是**共享表**（`tenant: false`）且只存 sha256，所以测试按同口径
+直接投一行等价于「callback 刚签发过一张票」，不伪造企微上游。
+
+### 17.2 e2e 抓出的三个真问题
+
+写完先跑，5 例里 3 例红——**不是测试写错，是三个真缺陷**：
+
+| # | 症状 | 根因 | 修法 |
+| --- | --- | --- | --- |
+| 1 | 点「使用企业微信登录」页面原地重载，一个请求都不发 | `wecomLogin()` 用 `withSiteBase()` 拼**站点** base，而授权入口是**后端端点**；根路径部署下拼出来是 `/auth/wecom/login`，被 SPA 兜底页吃掉 | runtime 导出 `resolveApiBase()`（ky `prefix` 的同一取值口），登录页改拼 API base；同时补 `RUNTIME_STUB_SOURCE` 桩 |
+| 2 | 企微 tab 的企业代码输入框取不到标签 | 该 `Form.Item` 没有 `name`（受控值走模块 state），antd 就不会给控件 `id`/`htmlFor`——标签只是视觉文本，读屏同样读不到 | `Form.Item htmlFor` + `Input id` 显式关联 |
+| 3 | 票据无效时只显示 `Request failed with status code 401` | ky 非 2xx 先抛 `HTTPError`，登录页 `catch` 只能拿到这句英文；后端 `fail(401, "登录票据无效或已使用")` 的 msg 从未被读出来 | 换票请求改 `throwHttpErrors: false`，自己读信封，非 2xx 抛 `Error(env.msg)` |
+
+第 1 条是**纯前端就能撞出来的线上级 bug**（企微登录点不动），单测完全覆盖不到——这正是这一层 e2e 的价值。
+
+### 17.3 顺带的一处健壮性调整
+
+`src/auth/api/wecom/api.ts` 的换票端点此前会 `readWecomConfig()`（为取加密密钥构造 deps）。
+换票只碰 DB 与会话，**不读部署凭据**：凭据缺失时让「已签发的票」判成登录失败，等于把配置事故
+伪装成票据失效。现改为常量 deps（`encrypt/decrypt` 用不到、`now` 取本机秒），admin 的 status
+端点同处理。
+
+### 17.4 一次自伤式排查（记下来避免重犯）
+
+W1~W5 一度**全部**红、页面停在框架 404。以为是 oj 的路由扫描坏了，实为：
+
+新增的 `resolveApiBase` 只重建了 `packages/runtime/dist`，**没重建 `shell-dist`**（宿主 shell 内置的
+runtime 副本）。浏览器 importmap 取的是 shell-dist 那份，缺导出 → 登录模块整块加载失败 →
+`/` 无路由 → 404。`pnpm --filter @oj-module/cli build:shell` 后 5/5 全绿。
+
+同一日志里另有 8 条 `error: route: …/src/<m>/web/__client/api.ts: … escapes project root`——
+**是噪声，不是病因**：oj 在 `--module-root` 下把全树的 `api.ts` 当 dev 路由扫，扫到前端生成物
+（其 import 指向工程外的 runtime），报错后跳过，真实路由 53 条照常加载（日志自己写着
+`8 route declaration(s) skipped`）。仍值得向 oj 提一条：路由发现应跳过 `web/` 或 `__client/`，
+否则哪天这些文件解析得动，就会凭空多出 `/auth/web/__client/…` 这类假路由。
+
+### 17.5 验证
+
+| 关卡 | 结果 |
+| --- | --- |
+| `pnpm test:e2e:templates` | **11 例通过**（原 6 + 企微 5） |
+| 模板 `vitest` | 42 文件 / **817 例**通过 |
+| 全仓 `vitest` | 128 文件 / **870 例**通过 + 1 skipped |
+| `pnpm test:cli` | 49 文件 / **580 例**通过 + 1 skipped |
+| 全仓 `typecheck`（`NODE_OPTIONS=--max-old-space-size=8192`）、模板 `typecheck`/`typecheck:api` | 0 error |
+| `ojm build` / `ojm api --check` / `eslint .` | 通过 / 0 error 0 warn / 0 error |
+
+### 17.6 Phase 4 仍未做
+
+- **子路径部署回归**（`pnpm verify:subpath`）：§17.2 第 1 条说明「站点 base 与 API base 正交」
+  正是这里的坑，值得在子路径形态下再钉一遍；
+- **真实企微套件联调**：需要服务商后台的 suite_id/secret 与一家真企业授权，属**外部阻塞**，
+  交付时须显式说明由谁提供凭据，而不是当作已跳过。
+
