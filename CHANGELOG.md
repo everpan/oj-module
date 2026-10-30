@@ -5,6 +5,17 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 设计依据、迁移记录与陷阱清单见 [`docs/prd/202609110947-oj-module-two-package-consolidation-design.md`](docs/prd/202609110947-oj-module-two-package-consolidation-design.md)。
 
+## [0.2.44] - 2026-10-30
+
+双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步定版 **0.2.44**（延续 0.2.x 线，不进 0.3.x）。
+本轮为模块多根树路由支持（需求一）。
+
+### Added
+
+- **模块路由支持多根树（需求一）**：`entry.ts` 导出数组 `length > 1` 时视为单模块多根，
+  每个根节点作为一级菜单注册，沿用模块 `name` 作路由前缀；`module-loader` 在多根场景跳过
+  `applyRoutePrefix` 合并，所有消费者路径安全。补 `manifest-routes-derive` 与 `loader` 回归用例。
+
 ## [0.2.43] - 2026-10-26
 
 双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步定版 **0.2.43**（延续 0.2.x 线，不进 0.3.x）。
