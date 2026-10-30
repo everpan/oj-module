@@ -125,20 +125,28 @@ oj 仅只读评估、不修改（见全局规则「只调整本项目，其余�
 
 ## 8. 详细设计（待确认后实施）
 
-### §8.1 租户键约定（先于所有阶段，定调）
-- **隔离列统一叫 `tenant_id`**（而非 `corp_id`）：因为 oj `sql_guard` 只认 `tenant_id` 这一列名
+### §8.1 租户键约定（先于所有阶段，定调）— 已确认
+- **隔离列统一叫 `tenant_id`**（已确认）：因为 oj `sql_guard` 只认 `tenant_id` 这一列名
   （`guard.rs::check_tenant_raw` 的 `mentions = cleaned.contains("tenant_id")`）。用别的名字 = 零隔离。
-- 对企微场景，`tenant_id` 的**取值 = 该授权企业的 tenant 键**（如 `wecom:<suite_id>:<corp_id>` 或短哈希）。
-  `corp_id` 仅作为业务可读字段冗余存储，不参与 sql_guard 判定。
+- **同时保留 `corp_id` 作为企微业务键，并建立映射（已确认）**：
+  - `tenant_id` 是隔离/判定列（sql_guard 用）；`corp_id` 是企微corp 的可读业务标识（如 `ww1234567890`）。
+  - 权威映射 `corp_id ↔ tenant_id` 落在 `corp_tenant_map` 表（`corp_id` PK、`tenant_key` UNIQUE）。
+  - 企微面相关表（如 `users`）**两列共存**：带 `tenant_id`（隔离）+ `corp_id`（可读/排查）；
+    非企微表只需 `tenant_id`。
+  - 对企微场景，`tenant_id` 的取值 = 该授权企业的 tenant 键（如 `wecom:<suite_id>:<corp_id>` 或短哈希），
+    由 `corp_tenant_map` 生成与回查；`corp_id` 本身不参与 sql_guard 判定。
 - 因此：`_platform` 所有租户绑定表都加 `tenant_id`；查询统一 `where tenant_id = ?` 且参数带当前租户
   （构造器 `db.table().where("tenant_id", tid)`，避免裸 SQL 触发 `sql_guard=Deny` 误拒）。
 
 ### §8.2 Phase 0 — 本仓多租户 schema 化（前置，不可跳过）
 **DDL 增量**（`templates/src/_platform/api/schema.yaml`，按现有 migration 机制追加）：
-- `users`：加 `tenant_id TEXT NOT NULL DEFAULT 'default'`；唯一键改为 `(tenant_id, username)` 防跨租户重名撞库。
+- `users`：加 `tenant_id TEXT NOT NULL DEFAULT 'default'`；并加企微面列 `corp_id TEXT`（业务可读，可空，非企微用户为 NULL）、
+  `wecom_userid TEXT`（可空）。唯一键改为 `(tenant_id, username)` 防跨租户重名撞库；
+  企微登录建档唯一键为 `(tenant_id, wecom_userid)`（corp_id 仅冗余可读，不参与唯一性/隔离判定）。
 - `sys_user_role`：加 `tenant_id TEXT NOT NULL DEFAULT 'default'`；唯一/外键约束补 tenant 维度。
-- 新增 `corp_tenant_map`：`corp_id`(PK)、`tenant_key`(UNIQUE)、`suite_id`、`permanent_code_enc`(ENC)、
-  `auth_corp_id`、`status`(active/disabled)、`created_at`。→ corp→tenant 映射 + permanent_code 落库。
+- 新增 `corp_tenant_map`（**corp_id ↔ tenant_id 映射权威**）：`corp_id`(PK)、`tenant_key`(UNIQUE)、`suite_id`、
+  `permanent_code_enc`(ENC)、`auth_corp_id`、`status`(active/disabled)、`created_at`。
+  → corp→tenant 映射 + permanent_code 落库；登录时由 `corp_id` 查 `tenant_key` 写入请求的 `tenant_id`。
 - 新增 `wecom_suite_ticket`：`suite_id`(PK)、`suite_ticket`、`expires_at`。→ 企微定时推送的 ticket。
 - （若首登资料补全需要）`users` 已含 `display_name/email/phone_number`，JIT 时留空，靠 Phase 3 补全页填。
 
