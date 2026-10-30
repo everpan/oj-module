@@ -27,6 +27,10 @@
 		"local": "账号密码",
 		"ldap": "LDAP",
 		"sso": "SSO",
-		"sso.action": "使用 SSO 登录"
+		"sso.action": "使用 SSO 登录",
+		"wecom": "企业微信",
+		"wecom.action": "使用企业微信登录",
+		"wecom.hint": "填写企业代码（企微后台可见的 corp_id），或直接使用管理员收到的专属登录链接",
+		"wecom.exchanging": "正在完成企业微信登录…"
 	}
 }

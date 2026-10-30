@@ -27,6 +27,10 @@
 		"local": "Password",
 		"ldap": "LDAP",
 		"sso": "SSO",
-		"sso.action": "Sign in with SSO"
+		"sso.action": "Sign in with SSO",
+		"wecom": "WeCom",
+		"wecom.action": "Sign in with WeCom",
+		"wecom.hint": "Enter the enterprise code (corp_id, visible in the WeCom console), or use the dedicated sign-in link from your admin",
+		"wecom.exchanging": "Completing WeCom sign-in…"
 	}
 }

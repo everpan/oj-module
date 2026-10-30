@@ -406,3 +406,50 @@ wecom_login_ticket(ticket_hash) PK；uid / owner_tenant / expires_at / used
   `ensureTenant` 判 403），再 `POST /auth/wecom/ticket {ticket}` 取 `TokenBundle`（与 `local`/`ldap` 同结构）。
 - 票据 180 秒有效、只能用一次；失败一律 401，前端提示「登录已过期，请重新从企业微信进入」。
 - 登录方式列表已含 `wecom`（受 `sys_setting.wecom.enabled` 控制），登录页不该再硬编码 `local|ldap|sso` 三元。
+
+## 12. Phase 2 实施记录（2026-10-30）
+
+### 12.1 落地清单
+
+| 项 | 落点 | 说明 |
+|---|---|---|
+| 载荷契约 | `packages/runtime/src/api/user/types.ts` | `LoginInfo.method` 增 `wecom`，新增可选 `ticket`（一次性票据，口令留空）；只扩可选字段，旧调用点零改动 |
+| 认证 provider | `login/web/auth-provider.ts` | `login`：wecom 走 `POST auth/wecom/ticket`，其余原样委托 `fetchLogin`；`logout`/`getUserInfo` 委托 `fetchLogout`/`fetchUserInfo` |
+| 注册 | `login/web/entry.ts` | `onInit` 里 `ctx.register.authProvider(...)`，与 `headerProvider` 同一处（登录动作之前） |
+| 登录页 | `login/web/pages/login.tsx` | 方式注册表 `KNOWN_METHODS` 驱动 tab；新增企微面板（企业代码 + 整页跳转）；落地换票 effect（只跑一次） |
+| 纯逻辑 | `login/web/wecom.ts` | `parseWecomLanding` / `wecomAuthorizePath`，零依赖便于 node 侧回归 |
+| 文案 | `login/web/locales/*`、`system/web/locales/*` | `login:method.wecom*`、`system:loginMethodsPage.methodWecom`、`system:setting.wecom_enabled` |
+| 设置页 | `system/web/pages/login-methods/index.tsx` | `METHOD_KEY` 增 `wecom` |
+| 回归 | `tests/wecom-landing.spec.ts`（9 例） | 落地参数解析的四种形态、redirect 不被吞、授权入口缺 corp 仍跳且做 URL 编码 |
+
+### 12.2 三个非显然决定
+
+**决定 1：用 `authProvider` 而不是在页面里 `useAuthStore.setState`**
+- `useAuthStore.login()` 只有两条路：provider 或内置 `auth/login`。企微拿到的是**票据**不是口令，走不了内置路；
+  而 token 的写入/持久化/后续 guard 拉用户信息必须只有**一个**入口（runtime 注释：两套写入路径会让状态不可推理）。
+- 代价是 provider 是**全量接管**，故其余方式一律原样委托内置函数（`fetchLogin/fetchLogout/fetchUserInfo`），
+  行为与未注册时逐字节一致；将来 runtime 改默认链，模板不需要跟着改。
+- 曾评估「直接改 runtime `fetchLogin` 里加一条 wecom 分支」：会让框架耦合某个 IdP 厂商，
+  而 provider 接缝正是为这类扩展准备的（§5.5 的方案也是 provider）。
+
+**决定 2：企微面板不写 `tenantStore`，只有服务端回跳带的 `tenant` 才写**
+- 企业代码是**未经验证的输入**：写进 store 后，用户若取消授权再改用口令登录，会带着一个不存在的租户头，
+  表现为「密码明明对却 401」。故发起授权只把 corp 拼进 URL，租户由后端 302 回跳时的 `?tenant=` 落定
+  （`bootstrapTenant()` 在 `onInit` 已处理，落地 effect 里再显式设一次是为了不依赖加载顺序）。
+
+**决定 3：落地换票用 ref 守卫，只发一次**
+- 票据单次有效：React 18 的 effect 双调用/用户刷新页面都会触发第二次 POST，结果是把真正的错误盖成
+  「登录票据无效或已使用」。第二次直接不发，让用户看到第一次的真实原因。
+
+### 12.3 附改（顺带修的一个真 bug）
+
+- `ssoLogin()` 由 `window.location.assign("/auth/sso")` 改为 `withSiteBase("/auth/sso")`。
+  子路径部署（`window.__OJ_BASE__ = "/oj/"`）下，原写法会把用户跳到宿主机根的 `/auth/sso`（404）。
+  wecom 入口一开始就用 `withSiteBase`，两处保持一致。
+
+### 12.4 验证
+
+- 已绿：模板 `vitest`（39 文件 / **765** 通过，含新增 9 例）、模板 `typecheck`（`tsc --noEmit -p tsconfig.json`）、
+  `ojm build`（login / system 等模块均重建成功）、eslint（0 error 0 warning）。
+- 未跑：`tests/e2e/templates`（playwright，端口占用同 §10.4/§11.4）。前端链路的真机验证顺延到 Phase 4：
+  需要一条真实套件 + 测试企业，才能在企微内完成一次 OAuth2 回跳。

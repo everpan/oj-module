@@ -73,7 +73,8 @@
 		"title": "当前启用的登录方式",
 		"methodLocal": "本地口令",
 		"methodLdap": "LDAP",
-		"methodSso": "SSO 单点登录"
+		"methodSso": "SSO 单点登录",
+		"methodWecom": "企业微信"
 	},
 	"err": {
 		"forbidden": "无权限",
@@ -91,6 +92,7 @@
 		"site_title": "站点标题",
 		"ldap_enabled": "启用 LDAP 登录",
 		"sso_enabled": "启用 SSO 登录",
+		"wecom_enabled": "启用企业微信登录",
 		"ldap_base_dn": "LDAP Base DN",
 		"ldap_uid_attr": "LDAP UID 属性",
 		"ldap_email_attr": "LDAP 邮箱属性"

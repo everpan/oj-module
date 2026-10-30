@@ -1,5 +1,6 @@
 import { defineModule, useAuthStore } from "@oj-module/runtime";
 import { lazy } from "react";
+import { authProvider } from "./auth-provider";
 import { bootstrapTenant, useTenantStore } from "./store/tenant";
 
 /**
@@ -66,6 +67,9 @@ export default defineModule({
 		async onInit(ctx) {
 			bootstrapTenant();
 			ctx.register.headerProvider(() => ({ "X-TENANT-ID": useTenantStore.getState().tenant }));
+			// 认证 provider：仅接管「企微票据换会话」，其余方式原样委托内置链（见 auth-provider.ts）。
+			// 注册时机必须在任何登录动作之前——onInit 先于路由渲染。
+			ctx.register.authProvider(authProvider);
 			// 登出必须清租户：否则下一个用户会带着上一个用户的租户头（跨租户请求 fail-closed 403，
 			// 但单租户部署会静默落到别人的 default 视图）。token 由非空转空即视为登出。
 			useAuthStore.subscribe((state, prev) => {

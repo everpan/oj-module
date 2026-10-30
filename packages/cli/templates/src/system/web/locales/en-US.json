@@ -73,7 +73,8 @@
 		"title": "Enabled login methods",
 		"methodLocal": "Local password",
 		"methodLdap": "LDAP",
-		"methodSso": "SSO"
+		"methodSso": "SSO",
+		"methodWecom": "WeCom"
 	},
 	"err": {
 		"forbidden": "Forbidden",
@@ -91,6 +92,7 @@
 		"site_title": "Site Title",
 		"ldap_enabled": "Enable LDAP login",
 		"sso_enabled": "Enable SSO login",
+		"wecom_enabled": "Enable WeCom login",
 		"ldap_base_dn": "LDAP Base DN",
 		"ldap_uid_attr": "LDAP UID Attribute",
 		"ldap_email_attr": "LDAP Email Attribute"

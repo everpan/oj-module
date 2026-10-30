@@ -8,9 +8,10 @@ const METHOD_KEY: Record<string, string> = {
 	local: "system:loginMethodsPage.methodLocal",
 	ldap: "system:loginMethodsPage.methodLdap",
 	sso: "system:loginMethodsPage.methodSso",
+	wecom: "system:loginMethodsPage.methodWecom",
 };
 
-/** 登录方式发现（C5/D2，只读）：local 恒在，ldap/sso 由设置项开关。 */
+/** 登录方式发现（C5/D2，只读）：local 恒在，ldap/sso/wecom 由设置项开关。 */
 export default function LoginMethodsPage() {
 	const { t } = useTranslation();
 	const query = useQuery({ queryKey: ["system", "login-methods"], queryFn: systemLoginMethodsGet });
