@@ -16,7 +16,7 @@ import { failWith, respond } from "#/_platform/_shared/respond";
 import { clientIp, guardLoginThrottle, noteLoginFailed, noteLoginSucceeded } from "../_shared/login-throttle";
 import { createSession } from "../_shared/session";
 import { createWecomClient, runtimeCache, runtimeHttp } from "../_shared/wecom/client";
-import { loginRedirectOf, readWecomConfig, siteOriginOf } from "../_shared/wecom/config";
+import { loginRedirectOf, readWecomConfig, siteRootOf } from "../_shared/wecom/config";
 import { unwrapWecomMessage, wecomSignature } from "../_shared/wecom/crypt";
 import { handleSuiteEvent } from "../_shared/wecom/events";
 import {
@@ -146,7 +146,7 @@ const callback = {
 			await issueLoginTicket(crypto.sha256Hex(ticket), uid, tenant, LOGIN_TICKET_TTL_SECS, deps);
 			await noteLoginSucceeded(await clientIp(), profile.corpId);
 			log.info("wecom login ok", "tenant", tenant, "agentId", profile.agentId);
-			json.redirect.found(loginLandingUrl({ origin: siteOriginOf(cfg), ticket, tenant }));
+			json.redirect.found(loginLandingUrl({ origin: siteRootOf(cfg), ticket, tenant }));
 		}
 		catch (e) {
 			failWith(e);

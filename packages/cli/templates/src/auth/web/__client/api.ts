@@ -33,7 +33,7 @@ export function createAuthClient(ctx: ModuleContext) {
 	}
 	ctx.register.apiPrefix(API_PREFIX);
 	bindRequest(ctx.utils.request);
-	return { authLoginPost, authLogoutPost, authRefreshPost, authPasswordPut, authLdapLoginPost, authWecomLoginGet, authWecomCallbackGet, authWecomTicketPost, authWecomEventGet, authWecomEventPost };
+	return { authLoginPost, authLogoutPost, authRefreshPost, authPasswordPut, authLdapLoginPost, authWecomAdminAppsGet, authWecomAdminStatusPost, authWecomAdminInstallGet, authWecomLoginGet, authWecomCallbackGet, authWecomTicketPost, authWecomEventGet, authWecomEventPost };
 }
 
 /**
@@ -134,6 +134,76 @@ export async function authLdapLoginPost(): Promise<unknown> {
 		if (typeof env.code === "number" && env.code !== 0)
 			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
 		const data = env.data as unknown;
+		return data;
+	}
+	catch (e) {
+		throw await toApiError(e);
+	}
+}
+
+export type AuthWecomAdminAppsGetData = z.infer<(typeof schemas)["authWecomAdminAppsGet"]["data"]>;
+
+export async function authWecomAdminAppsGet(): Promise<AuthWecomAdminAppsGetData> {
+	const client = ensureReq();
+	try {
+		const env = await client.get(`auth/wecom/admin/apps`).json<OjEnvelope<AuthWecomAdminAppsGetData>>();
+		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
+		if (typeof env.code === "number" && env.code !== 0)
+			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
+		const data = env.data as AuthWecomAdminAppsGetData;
+		if (import.meta.env.DEV) {
+			const { schemas } = await import("./api.schemas");
+			const r = schemas["authWecomAdminAppsGet"].data.safeParse(data);
+			if (!r.success)
+				throw new ContractApiError(-1, `[契约违例] authWecomAdminAppsGet 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
+		}
+		return data;
+	}
+	catch (e) {
+		throw await toApiError(e);
+	}
+}
+
+export type AuthWecomAdminStatusPostBody = z.input<(typeof schemas)["authWecomAdminStatusPost"]["body"]>;
+export type AuthWecomAdminStatusPostData = z.infer<(typeof schemas)["authWecomAdminStatusPost"]["data"]>;
+
+export async function authWecomAdminStatusPost(body: AuthWecomAdminStatusPostBody): Promise<AuthWecomAdminStatusPostData> {
+	const client = ensureReq();
+	try {
+		const env = await client.post(`auth/wecom/admin/status`, { json: body }).json<OjEnvelope<AuthWecomAdminStatusPostData>>();
+		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
+		if (typeof env.code === "number" && env.code !== 0)
+			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
+		const data = env.data as AuthWecomAdminStatusPostData;
+		if (import.meta.env.DEV) {
+			const { schemas } = await import("./api.schemas");
+			const r = schemas["authWecomAdminStatusPost"].data.safeParse(data);
+			if (!r.success)
+				throw new ContractApiError(-1, `[契约违例] authWecomAdminStatusPost 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
+		}
+		return data;
+	}
+	catch (e) {
+		throw await toApiError(e);
+	}
+}
+
+export type AuthWecomAdminInstallGetData = z.infer<(typeof schemas)["authWecomAdminInstallGet"]["data"]>;
+
+export async function authWecomAdminInstallGet(): Promise<AuthWecomAdminInstallGetData> {
+	const client = ensureReq();
+	try {
+		const env = await client.get(`auth/wecom/admin/install`).json<OjEnvelope<AuthWecomAdminInstallGetData>>();
+		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
+		if (typeof env.code === "number" && env.code !== 0)
+			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
+		const data = env.data as AuthWecomAdminInstallGetData;
+		if (import.meta.env.DEV) {
+			const { schemas } = await import("./api.schemas");
+			const r = schemas["authWecomAdminInstallGet"].data.safeParse(data);
+			if (!r.success)
+				throw new ContractApiError(-1, `[契约违例] authWecomAdminInstallGet 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
+		}
 		return data;
 	}
 	catch (e) {

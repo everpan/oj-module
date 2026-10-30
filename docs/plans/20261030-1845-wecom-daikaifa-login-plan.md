@@ -91,8 +91,8 @@
 - `login.tsx` 加 tab（不硬编码三种）、`AuthProvider(wecom)`、`wecom-callback` 落地页（读 ticket 换 token）。
 - `settings.ts` 登录方式发现加 `wecom.enabled`；`seed.sql` 加种子；`users.ts` 前缀红线加 `wecom:`。
 
-### Phase 3（代开发后台）
-- 开通入口（授权安装链接/二维码）、已授权企业列表、profile 状态、停用/解绑、首登资料补全。
+### Phase 3（代开发后台）— 后台部分已实施，见 §13；另两项见 §13.3 遗留
+- 开通入口（授权安装链接；二维码与「首登资料补全」见 §13.3 遗留说明）、已授权企业列表、profile 状态、停用/解绑。
 
 ### Phase 4（e2e + 安全回归）
 - 真实套件跑通；跨租户越权、伪造 `X-TENANT-ID`、重放 ticket、停用 corp 登录、suite_ticket 过期。
@@ -453,3 +453,81 @@ wecom_login_ticket(ticket_hash) PK；uid / owner_tenant / expires_at / used
   `ojm build`（login / system 等模块均重建成功）、eslint（0 error 0 warning）。
 - 未跑：`tests/e2e/templates`（playwright，端口占用同 §10.4/§11.4）。前端链路的真机验证顺延到 Phase 4：
   需要一条真实套件 + 测试企业，才能在企微内完成一次 OAuth2 回跳。
+
+## 13. Phase 3 实施记录（2026-10-30）
+
+### 13.1 落地清单
+
+| 项 | 落点 | 说明 |
+|---|---|---|
+| 领域逻辑 | `auth/api/_shared/wecom/admin.ts` | `listApps` / `setAppStatus` / `createInstall` 三个纯编排函数（不碰 `respond`，便于 L2 直测） |
+| 端点 | `auth/api/wecom/admin/api.ts` | `GET /auth/wecom/admin/apps` · `POST /auth/wecom/admin/status` · `GET /auth/wecom/admin/install`；全部 `assertSuperAdmin()` |
+| 预授权码 | `auth/api/_shared/wecom/client.ts` | 新增 `preAuthCode()`：`suite_access_token → get_pre_auth_code`；与 permanent_code 完全无关（见 13.2 决定 4） |
+| 站点根推导 | `auth/api/_shared/wecom/config.ts` | `siteOriginOf` → `siteRootOf`（剥掉固定后缀 `/api/auth/wecom`，不符即 400）；新增 `installUrlOf()` |
+| 复用 | `auth/api/wecom/api.ts` | 302 回跳改用 `siteRootOf(cfg)`，子路径部署回到 `/oj/login` |
+| 后台页 | `system/web/pages/wecom/index.tsx` | 开通卡片（install URL / 回调 URL / 有效期，均可复制）+ 企业应用表（启停带 Popconfirm） |
+| 路由 | `system/web/entry.ts` | `/system/wecom`（页面内再判 superadmin → `ForbiddenPanel`；路由级不做角色门禁，与 users/roles 同策略） |
+| 文案 | `system/web/locales/{zh-CN,en-US}.json` | `menu.wecom` + `wecom.*`（19 键，中英对齐） |
+| 契约 | `openapi.json`（50→53 路径）+ `auth/web/__client/*` | `ojm api --check` 0 error / 0 warn |
+| 回归 | `tests/wecom-admin.spec.ts`（19 例） | 清单脱敏 / 稳定序 / 停用单应用不吊销 / 停用末个应用只吊销该租户 / 判权缓存失效 / auth_corp_id 定位 / 开通 URL 与子路径 / 503·502 / 端点四类拒绝路径与审计级别 |
+
+### 13.2 五个非显然决定
+
+**决定 1：`siteOriginOf` → `siteRootOf`（偏差，见 13.3）**
+- 回调 302 的目标是 SPA 登录页。子路径部署（`mounts: [{ prefix: /oj }]`）下 SPA 在 `/oj/login`，
+  只取 origin 会回跳到宿主机根（404 或别人家的应用）。
+- 前缀不新增配置项：它等于 `wecom_base_url` 去掉连接器的固定后缀 `/api/auth/wecom`；
+  后缀不匹配时**报错**而不是猜（猜错的表现是「登录回来 404」，比启动期 400 难查一个数量级）。
+
+**决定 2：吊销会话用带 `tenant_id = ?` 的裸 SQL，而不是 `db.asTenant`**
+- `asTenant` 是**请求级且只能设一次**；管理员请求自带自己的租户头（多半是 `default`），调用即抛
+  「tenant already set」。而 `sql_guard: deny` 的守卫是 check-on-miss——带了租户条件就放行。
+- 故 `DELETE FROM sys_refresh_token WHERE tenant_id = ?`（参数化）是这里唯一能用的形态；
+  `tests/wecom-admin.spec.ts` 里把 `db.asTenant` 桩成「一调就抛」，用测试固化这条约束。
+
+**决定 3：停用**一个应用** ≠ 停用**一家企业****
+- 会话按租户（= 企业）发放，而同一企业可以配两个应用（测试/正式，D5 主键含 agent_id）。
+  停用测试应用时若无条件吊销，正式环境的人会被一起踢下线。
+- 实现：停用后回查该企业是否还有 `status='active'` 的应用；有则 `revokedSessions: 0` 直接返回。
+- 无论启停都先 `invalidateCorpToken(corp, agent)`：secret 可能仍在缓存的另一状态里，不失效会导致
+  「刚停用还能登录」。
+
+**决定 4：预授权码与永久码是两条路，不互相复用**
+- 开通入口要的是 `get_pre_auth_code`（套件级、10 分钟、一次有效），它只换「安装向导那一屏同意」；
+  真正的 `permanent_code` 仍由 `create_auth` 回调里的 `auth_code` 换（`/service/v2/get_permanent_code`）。
+- 权限：`assertSuperAdmin()` 而非 `assertSystemAdmin()`。admin 属于某个租户，放进来等于让他看别家企业的
+  corp_id 与开通状态；这三件事（看全部企业、停用某企业、生成安装链接）都是站点级操作。
+
+**决定 5：清单不返回 `permanent_code_enc`**
+- 它是代开发应用的 corpsecret（全 corp 数据权限），连 superadmin 也不需要看——列表与启停都不依赖它。
+  字段白名单写在 `listApps()` 的 `select([...])` 里，回归用例断言键集不含该列且序列化后不含密文片段。
+
+### 13.3 偏差与遗留
+
+**偏差 1：`siteOriginOf` → `siteRootOf`（§13.2 决定 1）**
+- 原 §11 实现只取 `url.origin`，单租户根路径部署下正确、子路径部署下错。改为剥离固定后缀，
+  并把「后缀不符」变成 400 配置错误。`installUrlOf` 的 `redirect_uri` 同时受益。
+
+**偏差 2：`openapi.json` 仍是手工拼装（同 §11.5）**
+- `oj openapi --module-root src` 在本仓仍不可用（runtime 符号链接逃出 project root）。本次过程：
+  模板整份复制到 `/tmp/oa-tpl2` + 实体 `node_modules/@oj-module/runtime` → `oj openapi -o /tmp/oa-openapi.json`
+  产出 53 路径，但前缀是 `/v1/api/…`、`x-oj-file` 形如 `auth/api/wecom/admin/api.ts`。
+- 归一化（`/v1/api/`→`/api/`、`auth/api/x`→`auth/x`、`summary` 里的 `v1/api/`→`api/`）后，先**逐字节复算
+  5 条既有条目**与仓内 `openapi.json` 一致，再只拼接 3 条新路径——避免整份覆盖引入无关 diff。
+
+**遗留 1：开通入口只给链接，没有二维码**
+- 模板当前没有任何二维码依赖（`SHARED_DEPS` 与 catalog 里都没有），而新增一个会进打包体积与 catalog 纪律；
+  链接本身可复制、可邮件发送，`WecomAdmin` 页面已提供一键复制。
+- 待定：① 引 `qrcode`（+catalog 登记）；② 自实现编码器（约 300 行 + 对照测试）；③ 不做。倾向 ③ 或 ①。
+
+**遗留 2：首登资料补全（`display_name` 空则强制补全）未做**
+- §5.6 要求「沿用 `must_change` 类似机制」，这是一条**独立的会话态门禁**（涉及 `currentAccess()` 的第三态、
+  JIT 建档时置空、以及前端一个强制面板），与代开发后台无耦合。单独排期，避免把后台的功能面与登录门禁混在一个提交里。
+
+### 13.4 验证
+
+- 已绿：模板 `vitest`（**40 文件 / 786 通过**，含新增 19 例）、`pnpm test:cli`（**580 通过 / 1 跳过**）、
+  模板 `typecheck`（`tsc --noEmit -p tsconfig.json`）与 `typecheck:api`（`-p src/tsconfig.json`）、
+  `ojm build`（8 个 api 模块 + 站点重建成功）、`ojm api --check`（**0 error / 0 warn**）、eslint（0 error 0 warning）。
+- 未跑：`tests/e2e/templates`（playwright，端口占用同 §10.4/§11.4）；Phase 3 的浏览器侧验证（点开通 → 复制链接 →
+  停用 → 表格刷新）顺延到 Phase 4，与真实套件联调一起做。

@@ -6,7 +6,8 @@
 		"roles": "Roles & Permissions",
 		"oplog": "Audit Log",
 		"settings": "Site Settings",
-		"loginMethods": "Login Methods"
+		"loginMethods": "Login Methods",
+		"wecom": "WeCom Integration"
 	},
 	"common": {
 		"confirm": "Confirm",
@@ -75,6 +76,34 @@
 		"methodLdap": "LDAP",
 		"methodSso": "SSO",
 		"methodWecom": "WeCom"
+	},
+	"wecom": {
+		"title": "Onboard a corporation",
+		"hint": "Click \"Generate install link\" and send the link to the corporation's admin for approval. The callback on the corporation side writes the row into this table after approval. The link expires in 10 minutes and works once, so regenerate it for every onboarding.",
+		"appsTitle": "Onboarded corporations",
+		"genInstall": "Generate install link",
+		"installOk": "Generated. Send the link to the corporation's admin.",
+		"installUrl": "Install link",
+		"callbackUrl": "Callback URL",
+		"expiresIn": "Valid for",
+		"expiresValue": "{{count}} minutes",
+		"col": {
+			"corp": "Corporation",
+			"agent": "App",
+			"env": "Env",
+			"status": "Status",
+			"installedAt": "Onboarded at",
+			"action": "Actions"
+		},
+		"statusActive": "Active",
+		"statusDisabled": "Disabled",
+		"statusOk": "Status updated",
+		"statusOkRevoked": "Status updated; {{count}} login sessions of this corporation were revoked",
+		"disable": "Disable",
+		"enable": "Enable",
+		"disableConfirm": "Disable this app? Members of this corporation will no longer be able to sign in with it.",
+		"enableConfirm": "Enable this app?",
+		"empty": "No corporations onboarded yet"
 	},
 	"err": {
 		"forbidden": "Forbidden",

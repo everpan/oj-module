@@ -882,6 +882,232 @@
 				}
 			}
 		},
+		"/api/auth/wecom/admin/apps": {
+			"get": {
+				"operationId": "auth_wecom_admin_apps_get",
+				"summary": "GET api/auth/wecom/admin/apps",
+				"x-oj-file": "auth/wecom/admin/api.ts",
+				"tags": [
+					"auth"
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "array",
+											"items": {
+												"type": "object",
+												"required": [
+													"suite_id",
+													"corp_id",
+													"agent_id",
+													"auth_corp_id",
+													"env",
+													"status",
+													"installed_at",
+													"update_time"
+												],
+												"properties": {
+													"suite_id": {
+														"type": "string"
+													},
+													"corp_id": {
+														"type": "string"
+													},
+													"agent_id": {
+														"type": "string"
+													},
+													"auth_corp_id": {
+														"type": "string"
+													},
+													"env": {
+														"type": "string"
+													},
+													"corp_name": {
+														"type": [
+															"string",
+															"null"
+														]
+													},
+													"status": {
+														"type": "string",
+														"enum": [
+															"active",
+															"disabled"
+														]
+													},
+													"installed_at": {
+														"type": "number"
+													},
+													"update_time": {
+														"type": "number"
+													}
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/auth/wecom/admin/status": {
+			"post": {
+				"operationId": "auth_wecom_admin_status_post",
+				"summary": "POST api/auth/wecom/admin/status",
+				"x-oj-file": "auth/wecom/admin/api.ts",
+				"tags": [
+					"auth"
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"required": [
+									"corpId",
+									"agentId",
+									"status"
+								],
+								"properties": {
+									"corpId": {
+										"type": "string",
+										"minLength": 1
+									},
+									"agentId": {
+										"type": "string",
+										"minLength": 1
+									},
+									"status": {
+										"type": "string",
+										"enum": [
+											"active",
+											"disabled"
+										]
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"required": [
+												"updated",
+												"revokedSessions"
+											],
+											"properties": {
+												"updated": {
+													"type": "number"
+												},
+												"revokedSessions": {
+													"type": "number"
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/auth/wecom/admin/install": {
+			"get": {
+				"operationId": "auth_wecom_admin_install_get",
+				"summary": "GET api/auth/wecom/admin/install",
+				"x-oj-file": "auth/wecom/admin/api.ts",
+				"tags": [
+					"auth"
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"required": [
+												"installUrl",
+												"callbackUrl",
+												"expiresIn"
+											],
+											"properties": {
+												"installUrl": {
+													"type": "string"
+												},
+												"callbackUrl": {
+													"type": "string"
+												},
+												"expiresIn": {
+													"type": "number"
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
 		"/api/auth/wecom/login": {
 			"get": {
 				"operationId": "auth_wecom_login_get",

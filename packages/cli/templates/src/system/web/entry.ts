@@ -13,6 +13,7 @@ const Roles = lazy(() => import("./pages/roles"));
 const Oplog = lazy(() => import("./pages/oplog"));
 const Settings = lazy(() => import("./pages/settings"));
 const LoginMethods = lazy(() => import("./pages/login-methods"));
+const WecomAdmin = lazy(() => import("./pages/wecom"));
 
 const routes: AppRouteRecordRaw[] = [
 	{
@@ -55,6 +56,13 @@ const routes: AppRouteRecordRaw[] = [
 				path: "/system/login-methods",
 				Component: LoginMethods,
 				handle: { title: "system:menu.loginMethods" },
+			},
+			{
+				// 企微代开发后台（服务商运营面）：页面内再判一次 superadmin（路由级不做角色门禁，
+				// 与 users/roles 页同策略——403 面板比路由消失更容易解释）
+				path: "/system/wecom",
+				Component: WecomAdmin,
+				handle: { title: "system:menu.wecom" },
 			},
 		],
 	},

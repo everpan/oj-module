@@ -92,9 +92,38 @@ export function loginRedirectOf(cfg: WecomConfig): string {
 	return `${cfg.baseUrl}/callback`;
 }
 
-/** 站点 origin：302 回跳落到 SPA 时用（与连接器同域，反代同站部署的前提） */
-export function siteOriginOf(cfg: WecomConfig): string {
-	return new URL(cfg.baseUrl).origin;
+/** 连接器在站点里的固定挂载后缀（模块 apiPrefix `/auth` + 平台 API 前缀 `/api`）：`siteRootOf` 靠它剥离 */
+const CONNECTOR_SUFFIX = "/api/auth/wecom";
+
+/**
+ * 站点根（origin + 子路径前缀，无尾斜杠）：302 回跳落到 SPA 时用。
+ *
+ * 不能只取 origin：子路径部署（oj `mounts: [{ prefix: /oj }]`）时 SPA 的登录页在 `/oj/login`，
+ * 回跳到 `/login` 会打到宿主机根的别的应用（或 404）。前缀不另配一个变量——它就等于
+ * `wecom_base_url` 去掉本连接器的固定后缀，配一处即可，且不匹配时**报错**而不是猜。
+ */
+export function siteRootOf(cfg: WecomConfig): string {
+	const url = new URL(cfg.baseUrl);
+	const path = url.pathname.replace(/\/+$/, "");
+	if (!path.endsWith(CONNECTOR_SUFFIX))
+		throw Object.assign(new Error(`企业微信配置错误：wecom_base_url 必须以 ${CONNECTOR_SUFFIX} 结尾（如 https://site.example.com/oj${CONNECTOR_SUFFIX}）`), { status: 400 });
+	return `${url.origin}${path.slice(0, -CONNECTOR_SUFFIX.length)}`;
+}
+
+/**
+ * 代开发「开通入口」：企业管理员点开 → 企微授权安装页。
+ * `redirect_uri` 落在站点根下的登录页（安装完回站点，指令回调已把 profile 落好）。
+ */
+export function installUrlOf(cfg: WecomConfig, preAuthCode: string, state: string): string {
+	const redirect = `${siteRootOf(cfg)}/login?wecom_installed=1`;
+	const q = new URLSearchParams({
+		suite_id: cfg.suiteId,
+		pre_auth_code: preAuthCode,
+		redirect_uri: redirect,
+	});
+	if (state)
+		q.set("state", state);
+	return `https://open.work.weixin.qq.com/3rdapp/install?${q.toString()}`;
 }
 
 /** 登录方式发现用：只看开关，不读凭据（登录页要先知道「有没有这个方式」） */

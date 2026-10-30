@@ -6,7 +6,8 @@
 		"roles": "角色权限",
 		"oplog": "操作日志",
 		"settings": "站点设置",
-		"loginMethods": "登录方式"
+		"loginMethods": "登录方式",
+		"wecom": "企业微信代开发"
 	},
 	"common": {
 		"confirm": "确认",
@@ -75,6 +76,34 @@
 		"methodLdap": "LDAP",
 		"methodSso": "SSO 单点登录",
 		"methodWecom": "企业微信"
+	},
+	"wecom": {
+		"title": "开通企业",
+		"hint": "点「生成开通链接」后把链接发给企业管理员，由其确认授权；确认后企业侧的回调会写入本表。链接 10 分钟内有效且只能用一次，每次开通都需重新生成。",
+		"appsTitle": "已开通企业",
+		"genInstall": "生成开通链接",
+		"installOk": "已生成，请把链接发给企业管理员",
+		"installUrl": "开通链接",
+		"callbackUrl": "回调地址",
+		"expiresIn": "有效期",
+		"expiresValue": "{{count}} 分钟",
+		"col": {
+			"corp": "企业",
+			"agent": "应用",
+			"env": "环境",
+			"status": "状态",
+			"installedAt": "开通时间",
+			"action": "操作"
+		},
+		"statusActive": "启用",
+		"statusDisabled": "停用",
+		"statusOk": "状态已更新",
+		"statusOkRevoked": "状态已更新，并吊销了该企业 {{count}} 个登录会话",
+		"disable": "停用",
+		"enable": "启用",
+		"disableConfirm": "停用该应用？企业成员将无法用它登录。",
+		"enableConfirm": "启用该应用？",
+		"empty": "暂无已开通企业"
 	},
 	"err": {
 		"forbidden": "无权限",

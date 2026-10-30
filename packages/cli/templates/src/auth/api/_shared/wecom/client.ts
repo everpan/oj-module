@@ -144,6 +144,18 @@ export function createWecomClient(deps: WecomClientDeps) {
 		};
 	}
 
+	/**
+	 * 预授权码（开通入口用）：套件级、10 分钟、一次有效，拼进 install URL 交给企业管理员点开。
+	 * 与 permanent_code 无关——它只换「安装向导里那一屏同意」，真正的永久码仍由 create_auth 回调给。
+	 */
+	async function preAuthCode(suiteAccessToken: string): Promise<{ code: string, expiresIn: number }> {
+		const res = await http.postJson(`${API_BASE}/cgi-bin/service/get_pre_auth_code?suite_access_token=${encodeURIComponent(suiteAccessToken)}`, {});
+		assertOk(res, "get_pre_auth_code");
+		if (!res.pre_auth_code)
+			throw upstream("企微 get_pre_auth_code 未返回 pre_auth_code");
+		return { code: String(res.pre_auth_code), expiresIn: Number(res.expires_in ?? 600) };
+	}
+
 	/** 企业 access_token（代开发 = 自建应用的 gettoken，corpsecret 就是 permanent_code） */
 	async function corpAccessToken(corpId: string, agentId: string, secret: string): Promise<string> {
 		return cachedToken(`wecom:corp_token:${corpId}:${agentId}`, async () => {
@@ -179,7 +191,7 @@ export function createWecomClient(deps: WecomClientDeps) {
 		throw upstream("企微 token 反复失效（40001/42001）");
 	}
 
-	return { suiteAccessToken, permanentCodeByAuthCode, corpAccessToken, invalidateCorpToken, userIdByCode };
+	return { suiteAccessToken, permanentCodeByAuthCode, preAuthCode, corpAccessToken, invalidateCorpToken, userIdByCode };
 }
 
 export type WecomClient = ReturnType<typeof createWecomClient>;
