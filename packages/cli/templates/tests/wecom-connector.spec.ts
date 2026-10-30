@@ -248,6 +248,32 @@ describe("P1-E：JIT 建档（不另注册）", () => {
 		expect((await ensureWecomUser("ww_corp_a", "wangwu")).forbidden).toBe(true);
 		await expect(assertUserActive(uid)).rejects.toThrow(/已被停用/);
 	});
+
+	it("名字只在首次建档取一次：写 display_name，老用户不再调 resolver（不给每次登录加一次上游）", async () => {
+		let calls = 0;
+		const first = await ensureWecomUser("ww_corp_a", "zhaoliu", async () => {
+			calls++;
+			return "赵六";
+		});
+		expect(dbo.prepare("SELECT display_name FROM users WHERE id = ?").get(first.uid)).toMatchObject({ display_name: "赵六" });
+
+		await ensureWecomUser("ww_corp_a", "zhaoliu", async () => {
+			calls++;
+			return "不该被用到";
+		});
+		expect(calls).toBe(1);
+		expect(dbo.prepare("SELECT display_name FROM users WHERE id = ?").get(first.uid)).toMatchObject({ display_name: "赵六" });
+	});
+
+	it("取不到名字（无通讯录权限 / 上游抛错）→ 用工号兜底，建档不失败", async () => {
+		const noName = await ensureWecomUser("ww_corp_a", "sunqi", async () => null);
+		expect(dbo.prepare("SELECT display_name FROM users WHERE id = ?").get(noName.uid)).toMatchObject({ display_name: "sunqi" });
+
+		const thrown = await ensureWecomUser("ww_corp_a", "zhouba", async () => {
+			throw new Error("boom");
+		});
+		expect(dbo.prepare("SELECT display_name FROM users WHERE id = ?").get(thrown.uid)).toMatchObject({ display_name: "zhouba" });
+	});
 });
 
 describe("P1-F：凭证链（client：缓存 + 失效重试 + 错误两态）", () => {
@@ -333,6 +359,53 @@ describe("P1-F：凭证链（client：缓存 + 失效重试 + 错误两态）", 
 			cache: fakeCache(),
 		});
 		await expect(noAgent.permanentCodeByAuthCode("sat", "AUTH")).rejects.toMatchObject({ status: 502 });
+	});
+
+	it("userNameById 拿到真名（去首尾空白）", async () => {
+		const http = stubHttp([{ access_token: "t", expires_in: 7200 }, { errcode: 0, name: " 张三 " }]);
+		const client = createWecomClient({ http, cache: fakeCache() });
+		expect(await client.userNameById("ww_corp_a", "100001", "perm", "zhangsan")).toBe("张三");
+	});
+
+	it("userNameById 权限不足（60011）→ null 而不是抛错：补名失败不能把登录打成 5xx", async () => {
+		const client = createWecomClient({
+			http: stubHttp([{ access_token: "t", expires_in: 7200 }, { errcode: 60011, errmsg: "no privilege to access" }]),
+			cache: fakeCache(),
+		});
+		await expect(client.userNameById("c", "a", "p", "u")).resolves.toBeNull();
+	});
+
+	it("userNameById 遇 40001 → 失效缓存重试一次", async () => {
+		const http = stubHttp([
+			{ access_token: "t", expires_in: 7200 },
+			{ errcode: 40001 },
+			{ access_token: "t2", expires_in: 7200 },
+			{ errcode: 0, name: "李四" },
+		]);
+		const client = createWecomClient({ http, cache: fakeCache() });
+		expect(await client.userNameById("c", "a", "p", "u")).toBe("李四");
+		expect(http.calls).toHaveLength(4);
+	});
+
+	it("userNameById 网络故障 / name 为空 → null（不抛）", async () => {
+		const broken = createWecomClient({
+			http: {
+				async getJson() {
+					throw new Error("unreachable");
+				},
+				async postJson() {
+					throw new Error("unreachable");
+				},
+			},
+			cache: fakeCache(),
+		});
+		await expect(broken.userNameById("c", "a", "p", "u")).resolves.toBeNull();
+
+		const noName = createWecomClient({
+			http: stubHttp([{ access_token: "t", expires_in: 7200 }, { errcode: 0, name: "   " }]),
+			cache: fakeCache(),
+		});
+		await expect(noName.userNameById("c", "a", "p", "u")).resolves.toBeNull();
 	});
 });
 

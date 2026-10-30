@@ -136,7 +136,9 @@ const callback = {
 
 			const client = createWecomClient({ http: runtimeHttp(), cache: runtimeCache() });
 			const userid = await client.userIdByCode(profile.corpId, profile.agentId, profile.permanentCode, code);
-			const { uid, forbidden } = await ensureWecomUser(profile.corpId, userid);
+			// 名字是惰性取的：只有首次建档才多打一次 user/get（老用户零开销），拿不到就用工号兜底
+			const { uid, forbidden } = await ensureWecomUser(profile.corpId, userid, () =>
+				client.userNameById(profile.corpId, profile.agentId, profile.permanentCode, userid));
 			if (forbidden)
 				throw Object.assign(new Error("账号已被停用，请联系管理员"), { status: 403 });
 

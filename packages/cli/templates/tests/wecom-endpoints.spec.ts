@@ -227,7 +227,7 @@ describe("P1-J：GET /auth/wecom/callback（回跳换人 + 发票）", () => {
 		return state;
 	}
 
-	function stubUpstream(userid: string | null = "zhangsan"): void {
+	function stubUpstream(userid: string | null = "zhangsan", memberName: string | null = "张三"): void {
 		g.fetch = async (url: string) => ({
 			ok: true,
 			json: async () => {
@@ -235,6 +235,9 @@ describe("P1-J：GET /auth/wecom/callback（回跳换人 + 发票）", () => {
 					return { access_token: "corp_tk", expires_in: 7200 };
 				if (url.includes("/cgi-bin/auth/getuserinfo"))
 					return userid ? { errcode: 0, userid } : { errcode: 0, openid: "o_ext" };
+				// 通讯录读权限：没有就是 60011，补名必须降级而不是失败
+				if (url.includes("/cgi-bin/user/get"))
+					return memberName ? { errcode: 0, name: memberName } : { errcode: 60011, errmsg: "no privilege" };
 				throw new Error(`stub fetch 未预期：${url}`);
 			},
 		});
@@ -264,9 +267,19 @@ describe("P1-J：GET /auth/wecom/callback（回跳换人 + 发票）", () => {
 		expect(loc.search).not.toMatch(/access_token|refresh_token/);
 		expect(loc.searchParams.get("wecom_ticket")).toBeTruthy();
 
-		const row = dbo.prepare("SELECT username, source, corp_id FROM users WHERE source = 'wecom'").get();
-		expect(row).toMatchObject({ username: "wecom:zhangsan", corp_id: "ww_corp_a" });
+		const row = dbo.prepare("SELECT username, source, corp_id, display_name FROM users WHERE source = 'wecom'").get();
+		expect(row).toMatchObject({ username: "wecom:zhangsan", corp_id: "ww_corp_a", display_name: "张三" });
 		expect(dbo.prepare("SELECT COUNT(*) AS n FROM wecom_login_ticket").get()).toMatchObject({ n: 1 });
+	});
+
+	it("取不到真实姓名（套件无通讯录权限）→ 用工号兜底建档，登录照常成功", async () => {
+		const state = await startLogin();
+		stubUpstream("zhangsan", null);
+		request({ query: { code: "CODE_1", state } });
+		await (await api()).callback.get();
+
+		expect(out.status).toBe(302);
+		expect(dbo.prepare("SELECT display_name FROM users WHERE username = 'wecom:zhangsan'").get()).toMatchObject({ display_name: "zhangsan" });
 	});
 
 	it("state 一次性：同一 state 重放 → 400（不重复发票）", async () => {

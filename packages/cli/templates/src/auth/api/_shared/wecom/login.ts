@@ -76,14 +76,23 @@ export const WECOM_PASSWORD_PLACEHOLDER = "!wecom";
 /**
  * JIT find-or-create（租户由调用方先 ensureTenant 绑好，insert 的 tenant_id 由 sql_guard 自动填）。
  * 返回 uid 与禁用位：禁号仍要拦（企微侧未移除，本地已停用时拒绝签发）。
+ *
+ * `resolveName` 只在**首次建档**时调用一次（老用户不为此多打一次上游）：拿到名字就写进
+ * `display_name`，拿不到（无通讯录权限/上游抖）用工号兜底——用户列表里宁可显示工号，也不要空白行。
  */
-export async function ensureWecomUser(corpId: string, userid: string): Promise<{ uid: number, forbidden: boolean }> {
+export async function ensureWecomUser(
+	corpId: string,
+	userid: string,
+	resolveName?: () => Promise<string | null>,
+): Promise<{ uid: number, forbidden: boolean }> {
 	const username = externalUsername(userid);
 	let rows = await db.table("users").select(["id", "is_forbidden"]).where({ field: "username", op: "eq", value: username }).all() as Array<{ id: number, is_forbidden: number }>;
 	if (!rows.length) {
+		const name = resolveName ? await resolveName().catch(() => null) : null;
 		try {
 			await db.table("users").insert({
 				username,
+				display_name: name?.trim() || userid,
 				password_hash: WECOM_PASSWORD_PLACEHOLDER,
 				avatar_base64: "",
 				source: "wecom",

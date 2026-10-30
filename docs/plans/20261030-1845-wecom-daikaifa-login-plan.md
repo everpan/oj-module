@@ -91,8 +91,9 @@
 - `login.tsx` 加 tab（不硬编码三种）、`AuthProvider(wecom)`、`wecom-callback` 落地页（读 ticket 换 token）。
 - `settings.ts` 登录方式发现加 `wecom.enabled`；`seed.sql` 加种子；`users.ts` 前缀红线加 `wecom:`。
 
-### Phase 3（代开发后台）— 后台部分已实施，见 §13；另两项见 §13.3 遗留
-- 开通入口（授权安装链接；二维码与「首登资料补全」见 §13.3 遗留说明）、已授权企业列表、profile 状态、停用/解绑。
+### Phase 3（代开发后台）— 已实施，见 §13
+- 开通入口（授权安装链接 + 二维码）、已授权企业列表、profile 状态、停用/解绑；「首登资料」改为
+  首次建档自动取企微姓名（取不到用工号兜底），不加门禁——与原文的偏差见 §13.3 偏差 3/4。
 
 ### Phase 4（e2e + 安全回归）
 - 真实套件跑通；跨租户越权、伪造 `X-TENANT-ID`、重放 ticket、停用 corp 登录、suite_ticket 过期。
@@ -469,6 +470,8 @@ wecom_login_ticket(ticket_hash) PK；uid / owner_tenant / expires_at / used
 | 路由 | `system/web/entry.ts` | `/system/wecom`（页面内再判 superadmin → `ForbiddenPanel`；路由级不做角色门禁，与 users/roles 同策略） |
 | 文案 | `system/web/locales/{zh-CN,en-US}.json` | `menu.wecom` + `wecom.*`（19 键，中英对齐） |
 | 契约 | `openapi.json`（50→53 路径）+ `auth/web/__client/*` | `ojm api --check` 0 error / 0 warn |
+| 成员姓名 | `_shared/wecom/client.ts::userNameById` + `login.ts::ensureWecomUser(resolveName)` | 首次建档惰性取 `cgi-bin/user/get`；失败/空名 → 工号兜底（见 13.3 偏差 4） |
+| 二维码 | `system/web/pages/wecom/index.tsx` | antd 内置 `QRCode`（零新依赖）；`expiresIn` 到点置 `expired`，刷新即重生成（见 13.3 偏差 3） |
 | 回归 | `tests/wecom-admin.spec.ts`（19 例） | 清单脱敏 / 稳定序 / 停用单应用不吊销 / 停用末个应用只吊销该租户 / 判权缓存失效 / auth_corp_id 定位 / 开通 URL 与子路径 / 503·502 / 端点四类拒绝路径与审计级别 |
 
 ### 13.2 五个非显然决定
@@ -515,18 +518,28 @@ wecom_login_ticket(ticket_hash) PK；uid / owner_tenant / expires_at / used
 - 归一化（`/v1/api/`→`/api/`、`auth/api/x`→`auth/x`、`summary` 里的 `v1/api/`→`api/`）后，先**逐字节复算
   5 条既有条目**与仓内 `openapi.json` 一致，再只拼接 3 条新路径——避免整份覆盖引入无关 diff。
 
-**遗留 1：开通入口只给链接，没有二维码**
-- 模板当前没有任何二维码依赖（`SHARED_DEPS` 与 catalog 里都没有），而新增一个会进打包体积与 catalog 纪律；
-  链接本身可复制、可邮件发送，`WecomAdmin` 页面已提供一键复制。
-- 待定：① 引 `qrcode`（+catalog 登记）；② 自实现编码器（约 300 行 + 对照测试）；③ 不做。倾向 ③ 或 ①。
+**偏差 3：二维码用 antd 内置 `QRCode`，没有引入新依赖（2026-10-30 与用户确认后落地）**
+- 用户选择「引 qrcode 依赖」，实施时发现不需要引：`antd@6.6` 已导出 `QRCode`（`es/index.d.ts` 实测），
+  而 antd 本来就是硬共享依赖 → **零新依赖、零 importmap/catalog/versions.json 改动**。
+- 若真引第三方（如 `qrcode.react`），代价不止一个 dep：模板依赖经 `external` 只留 `SHARED_DEPS`、其余打进模块，
+  且下游工程的 `package.json` 由 `generatePackageJson()` 按宿主 `versions.json` 生成——新包必须同时进
+  `SHARED_DEPS` → shell 预构建资产 → importmap → `versions.json` → catalog，否则下游 `ojm build` 解析不到裸说明符。
+- 码的有效期与预授权码同频：`expiresIn` 到点把 `QRCode` 置 `status="expired"`（antd 自带「刷新」入口，点击重新生成），
+  避免把过期码发出去后企业管理员只看到企微的「链接无效」。
 
-**遗留 2：首登资料补全（`display_name` 空则强制补全）未做**
-- §5.6 要求「沿用 `must_change` 类似机制」，这是一条**独立的会话态门禁**（涉及 `currentAccess()` 的第三态、
-  JIT 建档时置空、以及前端一个强制面板），与代开发后台无耦合。单独排期，避免把后台的功能面与登录门禁混在一个提交里。
+**偏差 4：首登资料补全改为「首次建档自动取名 + 工号兜底」，不加门禁（2026-10-30 与用户确认后落地）**
+- §5.6 原写「`display_name` 空则强制补全，沿用 `must_change` 类似机制」。实施时改为：
+  JIT 建档时惰性调 `cgi-bin/user/get` 取真实姓名写入 `display_name`，取不到（无通讯录读权限 / 上游抖 / 名字为空）用工号兜底。
+- 理由：门禁要新增 `currentAccess()` 第三态 + 一个补全端点 + 前端强制面板，且会把「套件没开通讯录权限」的
+  企业全员挡在门外；而目标只是「用户列表不要空白行」，自动取名直接达成且用户零打扰。
+- 成本控制：`user/get` 只在**首次建档**时调一次（`ensureWecomUser` 的 `resolveName` 惰性回调），
+  老用户登录零额外上游调用——端点用例用「resolver 只被调 1 次」钉死这一点。
+- 连带收益：`display_name` 不再为空，「首登资料补全」这条遗留自然消失；用户仍可在个人中心自行改名。
 
 ### 13.4 验证
 
-- 已绿：模板 `vitest`（**40 文件 / 786 通过**，含新增 19 例）、`pnpm test:cli`（**580 通过 / 1 跳过**）、
+- 已绿：模板 `vitest`（**40 文件 / 793 通过**，含新增 19 例后台 + 9 例取名/二维码相关）、
+  `pnpm test:cli`（**580 通过 / 1 跳过**）、
   模板 `typecheck`（`tsc --noEmit -p tsconfig.json`）与 `typecheck:api`（`-p src/tsconfig.json`）、
   `ojm build`（8 个 api 模块 + 站点重建成功）、`ojm api --check`（**0 error / 0 warn**）、eslint（0 error 0 warning）。
 - 未跑：`tests/e2e/templates`（playwright，端口占用同 §10.4/§11.4）；Phase 3 的浏览器侧验证（点开通 → 复制链接 →

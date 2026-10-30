@@ -171,6 +171,43 @@ export function createWecomClient(deps: WecomClientDeps) {
 		await cache.del(`wecom:corp_token:${corpId}:${agentId}`);
 	}
 
+	/**
+	 * 成员姓名（best-effort）：只用于把 JIT 号的 `display_name` 从工号变成真名。
+	 *
+	 * 三类失败一律返回 null，绝不抛出：套件没有通讯录读权限（60011/48002）、成员不在可见范围、
+	 * 上游抖动。补名是体验优化，不能因为拿不到名字把登录打成 5xx——
+	 * 调用方拿到 null 就用工号兜底。
+	 * token 复用 `userIdByCode` 刚取的那份缓存（同请求内通常 0 次额外换票）。
+	 */
+	async function userNameById(corpId: string, agentId: string, secret: string, userid: string): Promise<string | null> {
+		for (let attempt = 0; attempt < 2; attempt++) {
+			let token: string;
+			try {
+				token = await corpAccessToken(corpId, agentId, secret);
+			}
+			catch {
+				return null;
+			}
+			let res: Record<string, unknown>;
+			try {
+				res = await http.getJson(`${API_BASE}/cgi-bin/user/get?access_token=${encodeURIComponent(token)}&userid=${encodeURIComponent(userid)}`);
+			}
+			catch {
+				return null;
+			}
+			const errcode = Number(res.errcode ?? 0);
+			if (TOKEN_EXPIRED.has(errcode) && attempt === 0) {
+				await invalidateCorpToken(corpId, agentId);
+				continue;
+			}
+			if (errcode !== 0)
+				return null;
+			const name = res.name == null ? "" : String(res.name).trim();
+			return name || null;
+		}
+		return null;
+	}
+
 	/** 网页授权 code → userid（snsapi_base；非企业成员/超出可见范围 → 401） */
 	async function userIdByCode(corpId: string, agentId: string, secret: string, code: string): Promise<string> {
 		for (let attempt = 0; attempt < 2; attempt++) {
@@ -191,7 +228,7 @@ export function createWecomClient(deps: WecomClientDeps) {
 		throw upstream("企微 token 反复失效（40001/42001）");
 	}
 
-	return { suiteAccessToken, permanentCodeByAuthCode, preAuthCode, corpAccessToken, invalidateCorpToken, userIdByCode };
+	return { suiteAccessToken, permanentCodeByAuthCode, preAuthCode, corpAccessToken, invalidateCorpToken, userIdByCode, userNameById };
 }
 
 export type WecomClient = ReturnType<typeof createWecomClient>;

@@ -1,7 +1,7 @@
 import { request, useUserStore } from "@oj-module/runtime";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { App, Button, Card, Descriptions, Popconfirm, Space, Table, Tag, Typography } from "antd";
-import { useState } from "react";
+import { App, Button, Card, Descriptions, Popconfirm, QRCode, Space, Table, Tag, Typography } from "antd";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { explainError } from "../errors";
@@ -61,6 +61,17 @@ export default function WecomAdminPage() {
 	const isSuper = roles.includes("superadmin");
 
 	const [install, setInstall] = useState<InstallInfo | null>(null);
+	const [expired, setExpired] = useState(false);
+
+	// 预授权码只有 10 分钟：到点把码置灰（antd QRCode 的 expired 态自带「刷新」入口），
+	// 免得操作员把一张已失效的码发出去、企业管理员点开只看到企微的「链接无效」。
+	// 计时器只负责「置灰」，复位放在生成成功那一刻（effect 里同步 setState 会多一次渲染）。
+	useEffect(() => {
+		if (!install)
+			return undefined;
+		const timer = setTimeout(setExpired, install.expiresIn * 1000, true);
+		return () => clearTimeout(timer);
+	}, [install]);
 
 	const appsQuery = useQuery({
 		queryKey: ["system", "wecom-apps"],
@@ -85,6 +96,7 @@ export default function WecomAdminPage() {
 		mutationFn: createInstall,
 		onSuccess: (r) => {
 			setInstall(r);
+			setExpired(false);
 			// 预授权码一次有效：链接只在该页面的内存里，不写 localStorage
 			message.success(t("system:wecom.installOk"));
 		},
@@ -152,17 +164,29 @@ export default function WecomAdminPage() {
 			>
 				<Typography.Paragraph type="secondary">{t("system:wecom.hint")}</Typography.Paragraph>
 				{install && (
-					<Descriptions column={1} size="small" bordered>
-						<Descriptions.Item label={t("system:wecom.installUrl")}>
-							<Typography.Text copyable={{ text: install.installUrl }}>{install.installUrl}</Typography.Text>
-						</Descriptions.Item>
-						<Descriptions.Item label={t("system:wecom.callbackUrl")}>
-							<Typography.Text copyable={{ text: install.callbackUrl }}>{install.callbackUrl}</Typography.Text>
-						</Descriptions.Item>
-						<Descriptions.Item label={t("system:wecom.expiresIn")}>
-							{t("system:wecom.expiresValue", { count: Math.round(install.expiresIn / 60) })}
-						</Descriptions.Item>
-					</Descriptions>
+					<div style={{ display: "flex", gap: 24, alignItems: "flex-start", flexWrap: "wrap" }}>
+						{/* 二维码用 antd 内置 QRCode（同一份共享 antd，不额外引二维码依赖）：
+						    企业管理员多半在手机上收通知，扫码比复制链接快 */}
+						<QRCode
+							value={install.installUrl}
+							size={160}
+							type="svg"
+							bordered
+							status={expired ? "expired" : "active"}
+							onRefresh={() => installMut.mutate()}
+						/>
+						<Descriptions column={1} size="small" bordered style={{ flex: 1, minWidth: 320 }}>
+							<Descriptions.Item label={t("system:wecom.installUrl")}>
+								<Typography.Text copyable={{ text: install.installUrl }}>{install.installUrl}</Typography.Text>
+							</Descriptions.Item>
+							<Descriptions.Item label={t("system:wecom.callbackUrl")}>
+								<Typography.Text copyable={{ text: install.callbackUrl }}>{install.callbackUrl}</Typography.Text>
+							</Descriptions.Item>
+							<Descriptions.Item label={t("system:wecom.expiresIn")}>
+								{t("system:wecom.expiresValue", { count: Math.round(install.expiresIn / 60) })}
+							</Descriptions.Item>
+						</Descriptions>
+					</div>
 				)}
 			</Card>
 			<Card title={t("system:wecom.appsTitle")}>
