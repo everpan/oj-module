@@ -12,7 +12,7 @@
 
 | 侧 | 位置 | 用户工程落点 | 分发链 |
 |---|---|---|---|
-| ojm 模块开发（前端模块、契约、前后端接线） | `devkit/` 顶层 5 个文件 | `.claude/skills/ojm-module-dev/` | `@oj-module/cli` 包 → `ojm init` 第 4b 步 |
+| ojm 模块开发（前端模块、契约、前后端接线） | `devkit/` 顶层 8 个文件 | `.claude/skills/ojm-module-dev/` | `@oj-module/cli` 包 → `ojm init` 第 4b 步 |
 | oj API 开发（后端 handler、全局对象、配置、测试） | `devkit/oj-api-dev/`（oj devkit 快照，仅本仓参考） | `.claude/skills/oj-api-dev/` | oj 二进制自带 → `ojm init` 第 4 步 |
 
 | 文件 | 面向谁 | 用途 |
@@ -22,6 +22,7 @@
 | [`devkit/SKILL.md`](devkit/SKILL.md) | AI agent / 开发者 | agent skill 入口：工作流、红线、新模块 checklist、陷阱速查，按章节号引用手册 |
 | [`devkit/framework-dev.md`](devkit/framework-dev.md) | 框架贡献者（**仅本仓**） | 改 `packages/runtime`、`packages/cli` 时的入口、红线、不变式索引、守卫测试索引 |
 | [`devkit/module-dev-and-cdn-playground.md`](devkit/module-dev-and-cdn-playground.md) | 业务开发者 | 教学文档：开发态 vs 分发态、安装自己的模块会不会重复、本地 CDN 市场链路演练 |
+| [`devkit/wecom-daikaifa.md`](devkit/wecom-daikaifa.md) | 业务开发者 / 部署运维 / 企业员工 | 企业微信代开发集成：凭据清单（六项 `vars` + 可信域名/可信 IP）、首次开通顺序、用户 / 开发 / 部署三角色手册、错误文案速查 |
 | [`devkit/oj-api-dev/api-manual.md`](devkit/oj-api-dev/api-manual.md) | 后端开发者 | 后端开发手册（13 章，oj 侧快照）：模块约定、全局对象 API、鉴权租户、测试、配置 |
 | [`devkit/oj-api-dev/README.md`](devkit/oj-api-dev/README.md) | 后端开发者 | oj 侧索引 + v0.1.66→v0.1.82 逐版落地记录（查「某个能力哪版有的」） |
 

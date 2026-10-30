@@ -193,7 +193,10 @@ export async function initProject(destDir: string, opts: InitOptions = {}): Prom
 	if (fs.existsSync(path.join(cliDevkit, "SKILL.md"))) {
 		const ojmSkillDir = path.join(destDir, ".claude/skills/ojm-module-dev");
 		fs.mkdirSync(ojmSkillDir, { recursive: true });
-		for (const name of ["SKILL.md", "manual.md", "README.md"])
+		// `wecom-daikaifa.md`（企业微信代开发：凭据清单 + 用户/开发/部署三视角）
+		// 随之分发——它讲的是「怎么把一个已经写好的连接器接上真实套件」，
+		// 业务工程拿到模板后自助完成对接要用，不能只留本仓。
+		for (const name of ["SKILL.md", "manual.md", "README.md", "wecom-daikaifa.md"])
 			copyIfAbsent(path.join(cliDevkit, name), path.join(ojmSkillDir, name), report);
 	}
 	else {

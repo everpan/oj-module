@@ -34,9 +34,9 @@ describe("devkit 手册两章节（P2-14：文档存在性）", () => {
  * 本守卫钉死「交付四件套零内部代号」；确需追溯的出处写在框架仓文档，不进 devkit。
  */
 describe("devkit 自包含（零仓库内部代号）", () => {
-	it("sKILL/manual/README/framework-dev/教学文档 不含设计与评审代号", () => {
+	it("sKILL/manual/README/framework-dev/教学文档/企微手册 不含设计与评审代号", () => {
 		const pattern = /\b(P\d+(-[0-9A-Z]+)?|C\d+(-\d+)?|AC-[A-Z]+-?\d*|S0\d{2}|R\d+|D1\d|B-\d+|G\d|M0\d{2})\b/;
-		for (const name of ["SKILL.md", "manual.md", "README.md", "framework-dev.md", "module-dev-and-cdn-playground.md", "menu-rules.md"]) {
+		for (const name of ["SKILL.md", "manual.md", "README.md", "framework-dev.md", "module-dev-and-cdn-playground.md", "menu-rules.md", "wecom-daikaifa.md"]) {
 			const hit = read(`docs/devkit/${name}`).match(pattern);
 			expect(hit?.[0], `docs/devkit/${name} 含内部代号：${hit?.[0]}`).toBeUndefined();
 		}
@@ -44,14 +44,15 @@ describe("devkit 自包含（零仓库内部代号）", () => {
 });
 
 /**
- * devkit 目录结构（2026-10-20 合并 oj-api-dev 快照后；2026-10-21 增教学文档）：
- * docs/devkit/ 一棵树覆盖前后端两侧，但两套分发链不变——顶层 6 个 ojm 侧文件
+ * devkit 目录结构（2026-10-20 合并 oj-api-dev 快照后；2026-10-21 增教学文档；
+ * 2026-10-30 增企微代开发手册）：
+ * docs/devkit/ 一棵树覆盖前后端两侧，但两套分发链不变——顶层 8 个 ojm 侧文件
  * 随 cli 包发货（→ .claude/skills/ojm-module-dev/），oj-api-dev/ 子目录是 oj 侧
  * devkit 的快照（与 ~/.local/share/oj/devkit/ 逐字节一致，仅本仓参考、不发货）。
  * 本守卫钉死这个结构：快照文件若被平铺进顶层，会误随 cli 包发货且与 oj 版本漂移。
  */
 describe("devkit 目录结构（ojm 侧发货 + oj-api-dev 快照子目录）", () => {
-	const OJM_FILES = ["SKILL.md", "manual.md", "README.md", "framework-dev.md", "sql-builder-missing-capabilities-pr.md", "module-dev-and-cdn-playground.md", "menu-rules.md"];
+	const OJM_FILES = ["SKILL.md", "manual.md", "README.md", "framework-dev.md", "sql-builder-missing-capabilities-pr.md", "module-dev-and-cdn-playground.md", "menu-rules.md", "wecom-daikaifa.md"];
 	const SNAPSHOT_FILES = [
 		"SKILL.md",
 		"README.md",
@@ -65,7 +66,7 @@ describe("devkit 目录结构（ojm 侧发货 + oj-api-dev 快照子目录）", 
 		"oidc-integration.md",
 	];
 
-	it("docs/devkit/ 顶层文件恰为 6 个 ojm 侧文件（快照不得平铺进同步源）", () => {
+	it("docs/devkit/ 顶层文件恰为 8 个 ojm 侧文件（快照不得平铺进同步源）", () => {
 		const top = readdirSync(join(ROOT, "docs/devkit"))
 			.filter(n => !n.startsWith(".") && statSync(join(ROOT, "docs/devkit", n)).isFile())
 			.sort();
@@ -93,6 +94,40 @@ describe("devkit 目录结构（ojm 侧发货 + oj-api-dev 快照子目录）", 
 		for (const p of living) {
 			expect(read(p), `${p} 仍引用已删除的 docs/oj-api-dev/`).not.toContain("docs/oj-api-dev");
 		}
+	});
+});
+
+/**
+ * 企微代开发手册是「业务工程自助接上真实套件」的唯一入口（随 `ojm init` 分发），
+ * 必须与模板里的部署常量保持同步：六项 `vars` 少写一项，读者就会在启动时撞 400，
+ * 却不知道这些值该去企微后台哪个页面取。故以 `config.ts` 的 REQUIRED 表为真源
+ * 反向校验手册，并钉死「三视角结构」与分发链路——文档漏发货等于没有。
+ */
+describe("企微代开发手册与部署常量同步", () => {
+	const doc = read("docs/devkit/wecom-daikaifa.md");
+	const config = read("packages/cli/templates/src/auth/api/_shared/wecom/config.ts");
+
+	it("六项部署常量逐个出现在手册（真源：config.ts 的 REQUIRED 表）", () => {
+		const names = [...config.matchAll(/"(wecom_[a-z_]+)"/g)].map(m => m[1]!);
+		const required = [...new Set(names)].sort();
+		expect(required).toHaveLength(6);
+		for (const name of required)
+			expect(doc, `手册缺 ${name} 的取值位置/缺失后果`).toContain(name);
+	});
+
+	it("三个派生地址与开通顺序的硬依赖写清楚", () => {
+		for (const s of ["/api/auth/wecom/event", "/api/auth/wecom/callback", "10 分钟", "503"]) {
+			expect(doc, `手册缺关键事实：${s}`).toContain(s);
+		}
+	});
+
+	it("三视角（用户 / 开发 / 部署）+ 故障速查结构齐备", () => {
+		for (const h of ["## 5. 用户手册", "## 6. 开发手册", "## 7. 部署", "## 8. 故障速查", "## 2. 凭据清单"])
+			expect(doc, `手册缺章节：${h}`).toContain(h);
+	});
+
+	it("ojm init 会分发该文件（否则业务工程拿不到，自治性落空）", () => {
+		expect(read("packages/cli/src/init.ts")).toContain("\"wecom-daikaifa.md\"");
 	});
 });
 

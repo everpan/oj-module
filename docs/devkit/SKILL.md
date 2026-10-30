@@ -1,6 +1,6 @@
 ---
 name: ojm-module-dev
-description: 用 ojm 开发前后端一体工程时使用——新增/修改前端模块（entry.ts、pages、locales）、写 oj handler 的 .schema 与业务逻辑、跑 oj openapi + ojm api 生成 client、注册 provider/布局/插槽、改 web.config.ts，或排查「模块没加载 / 注册不生效 / 请求未绑定 / 铃铛按钮灰」时。触发场景：建模块、加页面、加接口、接管通知或上传、换布局、ojm dev 起不来。
+description: 用 ojm 开发前后端一体工程时使用——新增/修改前端模块（entry.ts、pages、locales）、写 oj handler 的 .schema 与业务逻辑、跑 oj openapi + ojm api 生成 client、注册 provider/布局/插槽、改 web.config.ts，或排查「模块没加载 / 注册不生效 / 请求未绑定 / 铃铛按钮灰」时。触发场景：建模块、加页面、加接口、接管通知或上传、换布局、ojm dev 起不来、接通企业微信代开发（企微登录、多 corp 租户隔离、代开发后台、suite_ticket 收不到）。
 ---
 
 # ojm 模块开发
@@ -16,7 +16,8 @@ description: 用 ojm 开发前后端一体工程时使用——新增/修改前�
 ## 工作流
 
 1. **读章**：建模块 → 手册 §2；加接口（handler .schema → oj openapi → 生成 → 对接）→ §3；
-   接管通知/上传/菜单 → §4；换布局或加插槽 → §5；排查 → §8。
+   接管通知/上传/菜单 → §4；换布局或加插槽 → §5；排查 → §8；
+   **接通企业微信代开发（企微登录 / 多企业租户 / 代开发后台）→ `wecom-daikaifa.md`**。
 2. **建目录**：一个目录 = 一个模块——前端一侧 `src/<模块名>/web/`（`entry.ts` 必备，
    `pages/`、`locales/` 按需），后端一侧 `src/<模块名>/api/`（目录镜像路由的 `api.ts`，
    动词挂 `.schema`）。两侧可只存在一侧。
@@ -93,6 +94,22 @@ description: 用 ojm 开发前后端一体工程时使用——新增/修改前�
 | 改 `schema.yaml` / `migrations/` / `config.yaml` | **必须重启** |
 | 前端 `src/<模块>/web/**` | 模块重建 + 浏览器自动刷新 |
 
+## 企业微信代开发（接通真实套件）
+
+模板已内置企微登录（`src/auth/api/wecom/` + 登录页「企业微信」页签 + `/system/wecom` 代开发后台）。
+接真实套件的**凭据清单、开通顺序、用户/开发/部署三视角、错误文案速查**全在
+`wecom-daikaifa.md`（同目录），这里只列最容易踩的四条：
+
+- **六项 `vars` 任一为空 → 企微登录整体 400**（`wecom_suite_id` / `wecom_suite_secret` /
+  `wecom_callback_token` / `wecom_encoding_aes_key` / `wecom_enc_key` / `wecom_base_url`）。
+  `wecom_base_url` 必须以 `/api/auth/wecom` 结尾，它派生 `<base>/event`（指令回调 URL）与 `<base>/callback`。
+- **`suite_ticket` 是被企微推来的**（每 10 分钟一次、30 分钟过期），所以「回调 URL 打通」必须
+  早于「生成开通链接」，否则 503 且看起来像代码坏了。
+- **新增企业不改配置、不重启**：企业管理员确认授权 → `create_auth` → `wecom_app_profile`。
+  同企业测试+正式两个应用是两行（主键含 `agent_id`），此时登录链接必须带 `&agent=`。
+- **整页跳转拼 API base**：`window.location.assign(resolveApiBase() + wecomAuthorizePath(corp))`；
+  拼站点 base 会被 SPA 兜底页吞掉（页面原地重载、一个请求都不发，控制台无报错）。
+
 ## 新模块 checklist
 
 - [ ] `src/<模块>/web/entry.ts` 默认导出 `defineModule({ name, version, routes, i18n?, lifecycle? })`
@@ -163,3 +180,6 @@ description: 用 ojm 开发前后端一体工程时使用——新增/修改前�
 3 契约与代码生成 / 4 接管框架内置功能（provider）/ 5 布局与插槽 / 6 i18n 与样式 / 7 构建与发布 /
 8 排查 / 9 参考 / 10 CLI 子命令参考（ojm 原生命令 vs oj 透传命令的差异区分）/
 11 方案包打包与分发 / 12 签名与信任 / 13 方案菜单归组规则。
+
+另有 `wecom-daikaifa.md`（同目录）：企业微信代开发集成的凭据清单与三角色手册——凭据从哪取、
+怎么填、按什么顺序开通、用户/开发/部署各自怎么做、错误文案怎么查。**接企微时先读它**。
