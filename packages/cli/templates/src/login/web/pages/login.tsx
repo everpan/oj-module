@@ -1,4 +1,11 @@
-import { fetchLoginMethods, getRedirectPath, resolveApiBase, useAuthStore, useTenantStore, withSiteBase } from "@oj-module/runtime";
+import {
+	DEFAULT_TENANT,
+	fetchLoginMethods,
+	getRedirectPath,
+	resolveApiBase,
+	useAuthStore,
+	useTenantStore,
+} from "@oj-module/runtime";
 import { Alert, Button, Form, Input, Tabs, Typography } from "antd";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -51,12 +58,16 @@ export default function LoginPage() {
 	const [active, setActive] = useState<LoginMethod>("local");
 	// 企业代码入口默认收起：单租户部署（绝大多数）保持今天的登录页外观，
 	// 只有服务商/客户带 `?tenant=` 或手工展开时才需要填。
-	const [showTenant, setShowTenant] = useState(false);
-	// 企微 tab 的企业代码（优先用已持久化的值，单租户的 default 不预填）
-	const [corp, setCorp] = useState(() => {
+	// 例外：持久化租户不是部署默认值时必须展开——租户头是**隐式**跟着请求走的
+	// （runtime 每请求注入），藏起来等于让上一次的租户无声地把这次登录带走。
+	const [showTenant, setShowTenant] = useState(() => useTenantStore.getState().tenant !== DEFAULT_TENANT);
+	// 表单里的企业代码：带上 persisted 值（URL `?tenant=` 已先落到 store），用户看得见才改得动
+	const [tenant] = useState(() => {
 		const current = useTenantStore.getState().tenant;
-		return current === "default" ? "" : current;
+		return current === DEFAULT_TENANT ? "" : current;
 	});
+	// 企微 tab 的企业代码（优先用已持久化的值，单租户的 default 不预填）
+	const [corp, setCorp] = useState(() => tenant);
 
 	// 企微 302 落地参数：只在首次渲染解析一次（ticket 一次性，解析结果必须稳定）
 	const [landing] = useState(() => parseWecomLanding(search));
@@ -104,8 +115,12 @@ export default function LoginPage() {
 		setError(undefined);
 		try {
 			// L2：登录请求必须带租户头。先落 store（provider 每请求读 getState），再登录。
+			// 字段留空即「回到部署默认」——否则上一个用户/上一次企微登录留下的租户头
+			// 会把这次本地登录静默带到别家企业（表现为账号不存在，界面上看不出原因）。
 			if (values.tenant?.trim())
 				useTenantStore.getState().setTenant(values.tenant);
+			else
+				useTenantStore.getState().clear();
 			await login({ username: values.username, password: values.password, method });
 			navigate(getRedirectPath(search));
 		}
@@ -119,7 +134,9 @@ export default function LoginPage() {
 
 	function ssoLogin() {
 		// SSO 重定向端点由宿主/平台提供（如 GET /auth/sso），模板侧仅跳转。
-		window.location.assign(withSiteBase("/auth/sso"));
+		// 与企微同口径拼 API base：它是**后端端点**（要发 302 到 IdP），拼站点 base
+		// 只会落到 SPA 兜底页（点了没反应，一个请求都不发）。
+		window.location.assign(`${resolveApiBase()}/auth/sso`);
 	}
 
 	function wecomLogin() {
@@ -141,7 +158,12 @@ export default function LoginPage() {
 				<Input.Password />
 			</Form.Item>
 			{showTenant && (
-				<Form.Item name="tenant" label={t("login:page.tenant.label")} extra={t("login:page.tenant.hint")}>
+				<Form.Item
+					name="tenant"
+					label={t("login:page.tenant.label")}
+					extra={t("login:page.tenant.hint")}
+					initialValue={tenant}
+				>
 					<Input autoComplete="off" placeholder="ww..." />
 				</Form.Item>
 			)}

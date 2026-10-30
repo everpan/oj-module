@@ -91,6 +91,31 @@ test.describe("企微登录（templates）", () => {
 		// 不把人困在错误页：tab 仍在，切回账号密码就能继续
 		await expect(page.getByRole("tab", { name: "账号密码" })).toBeVisible();
 	});
+
+	/**
+	 * 租户头是**隐式**跟着每个请求走的（runtime 每请求注入 `X-TENANT-ID`），此前登录页把
+	 * 企业代码字段默认收起且不预填持久化值——带 `?tenant=` 进来的用户看不到自己正在
+	 * 往哪家企业登录，下一次本地登录也会被上一次的租户无声带走（表现为账号不存在）。
+	 */
+	test("W6: ?tenant= 落地时企业代码字段自动展开并预填；清空提交即回到部署默认", async ({ page }) => {
+		await page.goto(`/login?tenant=${CORP}`);
+
+		const field = page.getByLabel("企业代码");
+		await expect(field).toBeVisible({ timeout: 15_000 });
+		await expect(field).toHaveValue(CORP);
+
+		// 清空 + 提交：无论登录成败，这一次请求必须已回到部署默认租户
+		await field.fill("");
+		await page.locator("form input").first().fill("admin");
+		await page.locator("form input[type=\"password\"]").fill("login-tenant-probe");
+		const login = page.waitForRequest(req => req.url().includes("/api/auth/login"));
+		await page.getByRole("button", { name: "登 录" }).click();
+
+		expect((await login).headers()["x-tenant-id"]).toBe("default");
+		await expect
+			.poll(() => page.evaluate(() => window.localStorage.getItem("oj-tenant")))
+			.toContain("default");
+	});
 });
 
 test.describe("代开发后台（templates）", () => {

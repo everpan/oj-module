@@ -33,7 +33,9 @@ export function parseWecomLanding(search: string): WecomLanding | null {
 }
 
 /**
- * 授权入口（站内路径，调用方负责 `withSiteBase` 拼部署前缀后整页跳转）。
+ * 授权入口（**后端端点**路径，调用方负责拼 `resolveApiBase()` 后整页跳转）。
+ * 拼站点 base 是错的：请求会落到 SPA 兜底页，点了不动且无从排查——
+ * `/auth/wecom/login` 的真实前缀由部署的 API base 决定（可为 /api 或网关前缀）。
  * `corp` 为空时**照样跳**：后端会回 400 并说明缺企业代码，比前端静默不动更容易排查。
  */
 export function wecomAuthorizePath(corp: string, agent?: string): string {
