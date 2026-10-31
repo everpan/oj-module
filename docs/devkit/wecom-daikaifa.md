@@ -52,16 +52,28 @@
 ### 2.1 六项部署常量（全部填在工程根 `config.yaml` 的 `vars:` 段）
 
 一个部署 = 一套代开发模板，所以这六项是**部署维度**的常量，不进数据库。
-**六项任一为空 → 企微登录整体 400 拒绝服务**（宁可不登录，也不明文存 `permanent_code`）。
 
-| # | 变量 | 从哪取 | 格式 / 校验 | 配错或缺失的后果 |
-|---|---|---|---|---|
-| 1 | `wecom_suite_id` | 企微服务商后台 → 应用管理 → 代开发应用 → 模板详情，即 **SuiteID**（形如 `ww…` / `wwb…`） | 非空字符串 | 400 `企业微信未配置：config vars 缺少 wecom_suite_id`；回调事件还会被判 `SuiteId 与本部署配置不一致` |
-| 2 | `wecom_suite_secret` | 同页 **SuiteSecret**（可重置） | 非空字符串；重置后旧值立即失效 | 换不出 `suite_access_token` → 502 `企微 get_suite_token 失败：errcode=40001 …`；开通链接生成也失败 |
-| 3 | `wecom_callback_token` | 同页 **Token**（字母数字，3–32 位） | 与企微后台**逐字一致** | 保存回调 URL 时 `echostr` 解不解得开；事件被判验签失败，企微持续重推 |
-| 4 | `wecom_encoding_aes_key` | 同页 **EncodingAESKey** | **43 字符** | 同上：回调报文解不开，`suite_ticket` 永远收不到 |
-| 5 | `wecom_enc_key` | **自己生成**，见 §2.4 | hex 32 字符（16 字节）或 64 字符（32 字节），或 base64 解码后 16 / 32 字节。**AES-192（24 字节）不支持** | 400 `企业微信配置错误：wecom_enc_key 必须是 16 或 32 字节的 hex（32/64 字符）或 base64` |
-| 6 | `wecom_base_url` | 你站点的对外地址 + `/api/auth/wecom` | **绝对地址、无尾斜杠、必须以 `/api/auth/wecom` 结尾** | 400 `wecom_base_url 必须是绝对地址` 或 `必须以 /api/auth/wecom 结尾`；配错还会让登录回跳落到别的应用或 404 |
+六项分两层，**来源与必填时序不同**——这是破解「先有 suite 还是先有回调」死锁的关键
+（详见 plan §18）：
+
+- **Tier A（部署方本地生成，创建模版前即可配齐）**：`wecom_callback_token` /
+  `wecom_encoding_aes_key` / `wecom_enc_key` / `wecom_base_url`。这四项决定服务能否启动并响应
+  回调验证，**不依赖企业微信下发**；即使 `suite_id` / `suite_secret` 还空着，服务也能跑通 echostr。
+- **Tier B（企业微信在「代开发模版创建成功」后下发）**：`wecom_suite_id` / `wecom_suite_secret`。
+  只影响登录 / 授权等 suite 流程（login / callback / create_auth）；**回调 URL 验证（echostr）不依赖它们**。
+
+Tier A 任一为空 → 服务启动即 400 拒绝（宁可不登录，也不明文存 `permanent_code`）。
+Tier B 为空时服务仍可启动并响应 echostr，但 suite 流程会 400——先配 Tier A 把回调验证跑通、
+创建模版、拿到 suite 凭据，再补全 Tier B 即可，无需鸡生蛋。
+
+| # | 变量 | 层级 | 从哪取 | 格式 / 校验 | 配错或缺失的后果 |
+|---|---|---|---|---|---|
+| 1 | `wecom_suite_id` | Tier B | 企微服务商后台 → 应用管理 → 代开发应用 → 模板详情（**创建成功后**才有），即 **SuiteID**（形如 `ww…` / `wwb…`） | 非空字符串 | Tier A 配齐时服务可启动并验证回调；此项空 → login/callback/create_auth 等 suite 流程 400 `config vars 缺少 wecom_suite_id`；`event.post` 还会判 `SuiteId 与本部署配置不一致` |
+| 2 | `wecom_suite_secret` | Tier B | 同页 **SuiteSecret**（可重置） | 非空字符串；重置后旧值立即失效 | 换不出 `suite_access_token` → 502 `企微 get_suite_token 失败：errcode=40001 …`；开通链接生成也失败 |
+| 3 | `wecom_callback_token` | Tier A | 同页 **Token**（自设，字母数字 3–32 位） | 与企微后台**逐字一致** | 保存回调 URL 时 `echostr` 解不解得开；事件被判验签失败，企微持续重推 |
+| 4 | `wecom_encoding_aes_key` | Tier A | 同页 **EncodingAESKey**（自设） | **43 字符** | 同上：回调报文解不开，`suite_ticket` 永远收不到 |
+| 5 | `wecom_enc_key` | Tier A | **自己生成**，见 §2.4 | hex 32 字符（16 字节）或 64 字符（32 字节），或 base64 解码后 16 / 32 字节。**AES-192（24 字节）不支持** | 400 `企业微信配置错误：wecom_enc_key 必须是 16 或 32 字节的 hex（32/64 字符）或 base64` |
+| 6 | `wecom_base_url` | Tier A | 你站点的对外地址 + `/api/auth/wecom` | **绝对地址、无尾斜杠、必须以 `/api/auth/wecom` 结尾** | 400 `wecom_base_url 必须是绝对地址` 或 `必须以 /api/auth/wecom 结尾`；配错还会让登录回跳落到别的应用或 404 |
 
 `wecom_base_url` 是唯一「配一处、派生两处」的值——它同时决定：
 
@@ -119,20 +131,34 @@ openssl rand -hex 32        # 输出 64 个 hex 字符，直接贴进 wecom_enc_
 
 ## 4. 首次开通：顺序错了一定卡在 503
 
-这七步有硬依赖，**不能跳序**：
+开通分两个阶段，两阶段之间由「代开发模版创建成功、拿到 suite 凭据」衔接——这正是
+破解鸡生蛋死锁的关键（详见 plan §18）：**回调验证只需 Tier A，不必等 suite**。
 
-| 步 | 动作 | 为什么必须在这一步 | 跳过的症状 |
+### 阶段一：配 Tier A + 跑通回调验证（此时还没有 suite）
+
+| 步 | 动作 | 为什么 | 错序的症状 |
 |---|---|---|---|
-| 1 | 填好 §2.1 六项，重启服务 | 后面每一步都要读这些值 | 400 `企业微信未配置：config vars 缺少 …` |
-| 2 | 站点对外可访问（https），把指令回调 URL 填进企微后台并保存 | 保存动作本身就是第一次验签（GET `echostr`） | 保存失败，`Token`/`EncodingAESKey` 对不上 |
-| 3 | **等 `suite_ticket` 到手**（企微每 10 分钟推一次） | 换 `suite_access_token` 必须有票据，而票据只能由回调推来 | 503 `企微套件票据（suite_ticket）尚未收到：回调 URL 未打通或企微尚未推送` |
-| 4 | 用超级管理员登录，进 `/system/wecom` → 「生成开通链接」 | 开通链接要先换 `pre_auth_code`，而它依赖第 3 步 | 同上 503；或链接生成失败 |
-| 5 | 把链接/二维码发给企业管理员，由其确认授权 | 只有企业管理员能授权；确认后企微推 `create_auth` | 企业侧没有应用；本站无该企业记录 |
-| 6 | 进 `/system/settings` 打开「启用企业微信登录」 | `wecom.enabled` 默认 **关**，只是「发现登录方式」的开关 | 登录页根本看不到「企业微信」页签 |
-| 7 | 企业员工从企微工作台/扫码/专属链接进入 | 首次登录自动建档 | 401 `登录凭据无效或不在应用可见范围内`（多半是可见范围没配） |
+| 1 | 配好 §2.1 的 **Tier A 四项**（`callback_token` / `encoding_aes_key` / `enc_key` / `base_url`），重启服务 | 这四项本地生成，服务凭它们即可启动并响应 echostr | 400 `企业微信未配置：config vars 缺少 …` |
+| 2 | 站点对外 https 可达；把指令回调 URL `<base>/event` 填进企微后台并保存 | 保存动作本身就是第一次验签（GET `echostr`）——而 echostr 只依赖 Tier A | 保存失败：`Token` / `EncodingAESKey` 对不上 |
 
-> **为什么第 3 步容易漏**：`suite_ticket` 是被推送的，不是拉取的。第一次部署时如果回调
+> 阶段一**不需要** `suite_id` / `suite_secret`：企微在「模版创建成功」后才下发它们，而 echostr
+> 验证在创建期就能跑通（receiveid 校验在 suite 未下发时自动放宽，签名仍是唯一鉴权闸门）。
+
+### 阶段二：拿 suite 凭据，再走 suite 流程
+
+| 步 | 动作 | 为什么必须在这一步 | 错序的症状 |
+|---|---|---|---|
+| 3 | 模版创建成功后，从模版详情拿 **SuiteID / SuiteSecret**，填入 §2.1 的 **Tier B**，重启服务 | 否则 `suite_ticket` 推来时 `event.post` 因缺 suite 凭据 400，票据永远收不到 | 日志看不到 `wecom suite_ticket updated`；`/system/wecom` 生成链接报 503 |
+| 4 | **等 `suite_ticket` 到手**（企微每 10 分钟推一次） | 换 `suite_access_token` 必须有票据，而票据只能由回调推来 | 503 `suite_ticket 尚未收到：回调 URL 未打通或企微尚未推送` |
+| 5 | 用超级管理员登录，进 `/system/wecom` → 「生成开通链接」 | 开通链接要先换 `pre_auth_code`，而它依赖第 4 步 | 同上 503；或链接生成失败 |
+| 6 | 把链接/二维码发给企业管理员，由其确认授权 | 只有企业管理员能授权；确认后企微推 `create_auth` | 企业侧没有应用；本站无该企业记录 |
+| 7 | 进 `/system/settings` 打开「启用企业微信登录」 | `wecom.enabled` 默认 **关**，只是「发现登录方式」的开关 | 登录页根本看不到「企业微信」页签 |
+| 8 | 企业员工从企微工作台/扫码/专属链接进入 | 首次登录自动建档 | 401 `登录凭据无效或不在应用可见范围内`（多半是可见范围没配） |
+
+> **为什么第 4 步容易漏**：`suite_ticket` 是被推送的，不是拉取的。第一次部署时如果回调
 > URL 保存得晚，就要等下一个 10 分钟周期。看到 503 不必怀疑代码——先确认回调真的通。
+> **阶段二衔接的新坑**：若第 3 步的 suite 凭据还没填、企微就推来了 `suite_ticket`，那几条会被
+> 400 拒掉（属预期），填好 Tier B 重启后下一个推送周期会自动补上，不必手动回放。
 
 ---
 
@@ -295,7 +321,9 @@ window.location.assign(`${resolveApiBase()}${wecomAuthorizePath(corp)}`);
 
 ### 7.1 上线前 checklist
 
-- [ ] 服务商账号已认证，代开发应用模板已创建（拿到 SuiteID / SuiteSecret / Token / EncodingAESKey）
+- [ ] 服务商账号已认证，代开发应用模板已创建
+- [ ] Tier A 四项已生成并填好（`wecom_callback_token` / `wecom_encoding_aes_key` 在企微后台同页自设；`wecom_enc_key` 见 §2.4 本地生成；`wecom_base_url` 为站点对外地址）
+- [ ] 模版创建成功后拿到 **SuiteID / SuiteSecret**（Tier B），已填入配置并重启（详见 §4 阶段二）
 - [ ] 站点已用 **https** 对外，反向代理放行 `POST /api/auth/wecom/event`（含原始 XML 请求体，不要改写）
 - [ ] 可信域名已备案（含校验文件）
 - [ ] 可信 IP 已列全所有出口 IP
@@ -306,16 +334,17 @@ window.location.assign(`${resolveApiBase()}${wecomAuthorizePath(corp)}`);
 
 ### 7.2 上线顺序
 
-照 §4 的七步走。每步的验收点：
+照 §4 的两阶段八步走。每步的验收点：
 
 | 步 | 验收 |
 |---|---|
-| 1–2 | 企微后台保存回调 URL 成功（说明验签与解密都对） |
-| 3 | 服务日志出现 `wecom suite_ticket updated` |
-| 4 | `/system/wecom` 能出链接，且显示的回调地址与企微后台一致 |
-| 5 | 列表出现该企业；日志出现 `wecom auth applied … agents=…` |
-| 6 | 登录页出现「企业微信」页签 |
-| 7 | 用一个**普通员工**账号登录成功（不要只用管理员自己的号） |
+| 1–2（阶段一） | 企微后台保存回调 URL 成功（说明 Tier A 的验签与解密都对——此时还没有 suite 凭据也照常通） |
+| 3（阶段二） | 填好 Tier B 并重启成功 |
+| 4 | 服务日志出现 `wecom suite_ticket updated` |
+| 5 | `/system/wecom` 能出链接，且显示的回调地址与企微后台一致 |
+| 6 | 列表出现该企业；日志出现 `wecom auth applied … agents=…` |
+| 7 | 登录页出现「企业微信」页签 |
+| 8 | 用一个**普通员工**账号登录成功（不要只用管理员自己的号） |
 
 ### 7.3 启停与解绑
 
