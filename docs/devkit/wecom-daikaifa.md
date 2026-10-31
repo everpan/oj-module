@@ -430,6 +430,7 @@ window.location.assign(`${resolveApiBase()}${wecomAuthorizePath(corp)}`);
 | 502 `企微 … 失败：errcode=60020 … client ip 113.80.7.113` | 调用企微 API 的**服务器出口公网 IP**未在可信 IP 白名单（代开发套件级/服务商级；`get_suite_token` 与「生成开通链接」用的 `get_provider_token` / `get_customized_auth_url` **都必校**） | 企微服务商后台 → 应用管理 → 代开发应用 → 对应套件 → **IP 白名单/可信IP**，把报错里的 `client ip`（例 `113.80.7.113`，即你服务器访问公网的出口 IP，**不是内网 IP**）加进去；多出口/运营商 NAT 就加整段 CIDR。改完等几分钟再点「生成开通链接」。注：此码**不在自动重试验证集**（只有 40001/42001 重换一次），属配置阻断、重试无用 |
 | 502 `企微 … 失败：errcode=48002 api forbidden` | 代开发应用调了第三方应用的 `get_pre_auth_code`（代开发**明确不支持**该接口） | 本系统「生成开通链接」已改用代开发专属的 `get_customized_auth_url`（返回 `qrcode_url`）。若仍见此码：确认跑的是本版代码（`admin.ts` 的 `createInstall` 不再调 `get_pre_auth_code`），并检查是否别处/旧版本在调它 |
 | 502 `企微 … 失败：errcode=40058 state missing` | `get_customized_auth_url` 的 `state` 必填，本系统没传/传空（旧版） | 已改为始终发送 `state`（调用方不传则补默认常量）。若仍见此码：确认跑的是本版代码（`client.ts` 的 `customizedAuthUrl` 始终带 `state`） |
+| 502 `企微 … 失败：errcode=842002 代开发模板尚未上架/上线` | 传入的代开发模板（`templateid_list` 里的 suite_id）只是「创建成功」但**未上线**——`get_customized_auth_url` 只在模板正式上线后才生成 `qrcode_url` | **运营动作，非代码缺陷**：服务商后台 → 应用管理 → 代开发应用上线 → 提交模板上线审核 → 审核通过后手动点「提交上线」。模板状态变「已上线/上架」后再点「生成开通链接」。凭证/参数都对却卡这步，就是模板没上线（创建成功 ≠ 上线） |
 | 502 `企微 … 失败：errcode=40001/40014/42001` | 凭据错或 token 过期（会自动重换一次） | 若持续：核对 SuiteSecret / 是否重置过 |
 | 502 `企微接口不可达` / `HTTP 5xx` | 出网被墙、DNS、代理 | 查机器出网与 DNS |
 | 点登录页「企业微信」按钮页面只闪一下、无请求 | 跳转拼了站点 base 而不是 API base | 见 §6.6 |

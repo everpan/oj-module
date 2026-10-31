@@ -211,6 +211,12 @@ export function createWecomClient(deps: WecomClientDeps) {
 			state: st,
 			templateid_list: templateIds,
 		});
+		// 842002 = 代开发模板未上架/上线：模板创建成功 ≠ 上线，必须到服务商后台
+		// 「应用管理 → 代开发应用上线」提交审核、审核通过后再手动「提交上线」，
+		// 模板正式上线后 get_customized_auth_url 才会生成 qrcode_url。这是后台运营前置动作，
+		// 与代码/参数/凭证无关（否则会先报 40058/60020/40001 之类）。单独挑出给可操作提示。
+		if (Number(res.errcode ?? 0) === 842002)
+			throw upstream("企微 get_customized_auth_url 失败：errcode=842002 代开发模板尚未上架/上线——请到服务商后台「应用管理 → 代开发应用上线」提交模板上线审核，审核通过后手动点「提交上线」，模板正式上线后再生成开通链接");
 		assertOk(res, "get_customized_auth_url");
 		const url = res.qrcode_url ?? res.auth_url;
 		if (!url)

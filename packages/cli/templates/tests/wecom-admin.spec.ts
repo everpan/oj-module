@@ -317,6 +317,25 @@ describe("P3-C：开通入口（createInstall，代开发 get_customized_auth_ur
 		const client = createWecomClient({ http: runtimeHttp(), cache: runtimeCache() });
 		await expect(createInstallForTest(cfg, client, "")).rejects.toMatchObject({ status: 502 });
 	});
+
+	it("get_customized_auth_url 返回 842002（模板未上架/上线）→ 502 且提示去后台提交上线（运营动作，非代码缺陷）", async () => {
+		g.fetch = async (url: string) => ({
+			ok: true,
+			json: async () => {
+				if (url.includes("get_provider_token"))
+					return { provider_access_token: "prov_tk", expires_in: 7200 };
+				if (url.includes("get_customized_auth_url"))
+					return { errcode: 842002, errmsg: "template not on shelves" };
+				throw new Error(`stub fetch 未预期：${url}`);
+			},
+		});
+		const cfg = readWecomConfig();
+		const client = createWecomClient({ http: runtimeHttp(), cache: runtimeCache() });
+		await expect(createInstallForTest(cfg, client, "st_1")).rejects.toMatchObject({
+			status: 502,
+			message: expect.stringContaining("代开发模板尚未上架/上线"),
+		});
+	});
 });
 
 describe("P3-D：端点接线（/auth/wecom/admin/*）", () => {
