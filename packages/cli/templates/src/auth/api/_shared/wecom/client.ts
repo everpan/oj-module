@@ -46,7 +46,7 @@ function withSoftTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
 		return p;
 	const timeout = sleep(ms).then(
 		() => { throw new Error(`超时 ${ms}ms`); },
-		() => {}, // sleep 自身异常不中断主链路
+		() => undefined as never, // sleep 自身异常不中断主链路（返回 never 以免 race 结果退化为 void | T）
 	);
 	return Promise.race([p, timeout]).finally(() => {
 		// 输家 promise 在 race 结束后仍可能 reject，挂 catch 防 unhandled rejection
