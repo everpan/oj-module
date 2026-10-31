@@ -66,10 +66,16 @@ Tier A 任一为空 → 服务启动即 400 拒绝（宁可不登录，也不明
 Tier B 为空时服务仍可启动并响应 echostr，但 suite 流程会 400——先配 Tier A 把回调验证跑通、
 创建模版、拿到 suite 凭据，再补全 Tier B 即可，无需鸡生蛋。
 
+> 📌 **官方术语对齐**：企微服务商后台「代开发应用 → 模板详情 → **基本信息**」页里，
+> 这两项就直接标作 **模板ID** 与 **模板Secret**（英文即 SuiteID / SuiteSecret）。
+> 也就是说：本仓的 `wecom_suite_id` ← 官方「模板ID」，`wecom_suite_secret` ← 官方「模板Secret」，
+> **不是**企业的 CorpID / CorpSecret，也**不是**某个自建应用的 Secret。照着「基本信息」页抄这两格即可。
+> 两者都是「创建模板成功后」才出现在该页，创建前只有 Tier A 的 Token / EncodingAESKey 可设。
+
 | # | 变量 | 层级 | 从哪取 | 格式 / 校验 | 配错或缺失的后果 |
 |---|---|---|---|---|---|
-| 1 | `wecom_suite_id` | Tier B | 企微服务商后台 → 应用管理 → 代开发应用 → 模板详情（**创建成功后**才有），即 **SuiteID**（形如 `ww…` / `wwb…`） | 非空字符串 | Tier A 配齐时服务可启动并验证回调；此项空 → login/callback/create_auth 等 suite 流程 400 `config vars 缺少 wecom_suite_id`；`event.post` 还会判 `SuiteId 与本部署配置不一致` |
-| 2 | `wecom_suite_secret` | Tier B | 同页 **SuiteSecret**（可重置） | 非空字符串；重置后旧值立即失效 | 换不出 `suite_access_token` → 502 `企微 get_suite_token 失败：errcode=40001 …`；开通链接生成也失败 |
+| 1 | `wecom_suite_id` | Tier B | 企微服务商后台 → 应用管理 → 代开发应用 → 模板详情 → **基本信息**页（**创建成功后**才有），标作「**模板ID**」，即 **SuiteID**（形如 `ww…` / `wwb…`） | 非空字符串 | Tier A 配齐时服务可启动并验证回调；此项空 → login/callback/create_auth 等 suite 流程 400 `config vars 缺少 wecom_suite_id`；`event.post` 还会判 `SuiteId 与本部署配置不一致` |
+| 2 | `wecom_suite_secret` | Tier B | 同页「基本信息」标作「**模板Secret**」，即 **SuiteSecret**（可重置） | 非空字符串；重置后旧值立即失效 | 换不出 `suite_access_token` → 502 `企微 get_suite_token 失败：errcode=40001 …`；开通链接生成也失败 |
 | 3 | `wecom_callback_token` | Tier A | 同页 **Token**（自设，字母数字 3–32 位） | 与企微后台**逐字一致** | 保存回调 URL 时 `echostr` 解不解得开；事件被判验签失败，企微持续重推 |
 | 4 | `wecom_encoding_aes_key` | Tier A | 同页 **EncodingAESKey**（自设） | **43 字符** | 同上：回调报文解不开，`suite_ticket` 永远收不到 |
 | 5 | `wecom_enc_key` | Tier A | **自己生成**，见 §2.4 | hex 32 字符（16 字节）或 64 字符（32 字节），或 base64 解码后 16 / 32 字节。**AES-192（24 字节）不支持** | 400 `企业微信配置错误：wecom_enc_key 必须是 16 或 32 字节的 hex（32/64 字符）或 base64` |
@@ -159,6 +165,15 @@ openssl rand -hex 32        # 输出 64 个 hex 字符，直接贴进 wecom_enc_
 | 6 | 把链接/二维码发给企业管理员，由其确认授权 | 只有企业管理员能授权；确认后企微推 `create_auth` | 企业侧没有应用；本站无该企业记录 |
 | 7 | 进 `/system/settings` 打开「启用企业微信登录」 | `wecom.enabled` 默认 **关**，只是「发现登录方式」的开关 | 登录页根本看不到「企业微信」页签 |
 | 8 | 企业员工从企微工作台/扫码/专属链接进入 | 首次登录自动建档 | 401 `登录凭据无效或不在应用可见范围内`（多半是可见范围没配） |
+
+> 🔐 **进 `/system/wecom` 必须用 `superadmin` 账号，不是 `admin`。** 该页是跨租户的服务商
+> 运营面（生成开通链接 = 预授权码、管理所有已授权企业），前端（`system/web/pages/wecom/index.tsx:61`
+> 的 `roles.includes("superadmin")`）与后端 `auth/wecom/admin/*`（每个端点 `assertSuperAdmin()`）
+> 都只放行 `superadmin`。模板 seed 已把 `admin` 从 `superadmin` 角色解绑（收敛为「账号名 = 角色名」，
+> 见 `_platform/api/seed.sql` 的 `DELETE … WHERE role_name='superadmin' AND username='admin'`），
+> 所以拿 `admin` 登录会直接显示「无权限」。请用 `superadmin` 登录（seed 口令 `123456`，
+> **登录后立即改密**）；若坚持让 `admin` 也能进，由 `superadmin` 在 `/system/roles` 把 `admin`
+> 绑到 `superadmin`，但不推荐——这会取消「日常管理员 vs 跨租户运营面」的隔离。
 
 > **为什么第 4 步容易漏**：`suite_ticket` 是被推送的，不是拉取的。第一次部署时如果回调
 > URL 保存得晚，就要等下一个 10 分钟周期。看到 503 不必怀疑代码——先确认回调真的通。

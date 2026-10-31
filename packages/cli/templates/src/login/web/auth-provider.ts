@@ -41,7 +41,15 @@ export const authProvider: AuthProvider = {
 	},
 
 	async logout(): Promise<void> {
-		await fetchLogout({ refreshToken: useAuthStore.getState().refreshToken });
+		// 服务端吊销是「尽力而为」：本地登出（runtime 的 finally → reset）才是真相，
+		// 网络/服务端超时（如反代 `proxy_read_timeout` 短于上游）不应让退出卡死或抛
+		// 未捕获异常（点击退出 → Uncaught TimeoutError）。失败仅记日志，不向上抛。
+		try {
+			await fetchLogout({ refreshToken: useAuthStore.getState().refreshToken });
+		}
+		catch (e) {
+			console.warn("[auth-provider] logout 服务端吊销失败（本地会话已清空）：", e);
+		}
 	},
 
 	getUserInfo: () => fetchUserInfo(),

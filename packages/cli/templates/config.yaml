@@ -9,7 +9,9 @@
 # 站点挂载：一行 = 一个 URL 前缀 + 一个目录（api/web 二选一）。
 # 这里不放 api 挂载是有意的：本工程是 src/<name>/{api,web} 布局，源码由 ojm dev
 # 以 --module-root src 供给、产物由 ojm preview 以 --api-path dist/api 供给，都不走 mounts。
-# 手写部署（不用 ojm）时才需要加回一条 `- prefix: /api` + `api: dist`。
+# 手写部署（不用 ojm）时才需要加回一条 `- prefix: /api` + `api: dist/api`。
+# 注意：手写部署同时要把下面 platform.root 从 `src` 改成 `dist/api`（二者必须同源），
+# 否则 oj serve 报 `platform.root must be mounted as an api mount`。
 mounts:
   # 本地市场 CDN：直出工程根 cdn/。seed 里 framework.market_cdn_url 缺省就是 /cdn，本站点自供免 setup。
   # 生产删掉这条，并把该设置指向真 CDN（绝对地址）。不能设 spa：缺文件必须 404，
@@ -64,8 +66,8 @@ vars:
   #     任一为空 → 启动即 400 拒绝服务（宁可不登录，也不明文存 permanent_code）。
   #   · Tier B 企微创建模版后下发：suite_id / suite_secret；为空时仍可启动并响应 echostr 验证，
   #     仅 login/callback/create_auth 等 suite 流程会 400——先配 Tier A 跑通回调、建模版、拿 suite 再补全。
-  #   wecom_suite_id          代开发应用模版 id（企微后台「应用管理 → 代开发」里的 SuiteID）
-  #   wecom_suite_secret      套件密钥（SuiteSecret）
+  #   wecom_suite_id          代开发应用「模板详情 → 基本信息」页里的「模板ID」（即 SuiteID）；创建模板成功后才出现
+  #   wecom_suite_secret      同页「模板Secret」（即 SuiteSecret，可重置）；不是企业 CorpID/CorpSecret
   #   wecom_callback_token    「Token」（回调验签用）
   #   wecom_encoding_aes_key  「EncodingAESKey」（43 字符，回调解密用）
   #   wecom_enc_key           permanent_code 落库加密密钥（hex/base64，16 或 32 字节；建议 oj secret keygen）
@@ -82,6 +84,10 @@ vars:
 platform:
   modules: [_platform] # 安装器热更 config 需要 _platform 特权；删了会在装到最后一步报 NotCapable
   root: src # 后端模块源码根（src/<name>/api 的父目录）；preview 派生 config 时改写成 dist
+  # ⚠️ 手写部署（不用 ojm，靠 mounts 起站）时：root 必须等于 api 挂载目录，
+  # 否则 oj serve 直接拒启 `platform.root (…) must be mounted as an api mount`。
+  # 编译产物下把这里改成 `dist/api`（与下面 `- prefix: /api  api: dist/api` 同源）。
+  # ojm dev/preview 不受影响：dev 用 --module-root、preview 派生 config 会重写 root。
   # 信任库默认落在安装子树之外（.solutions/trusted-keys.yaml），第三方方案模块碰不到。
   # U6 加固：第三方模块的 fs 读写范围 = fs.root（= modules/ 安装子树），信任库必须在其外，
   # 否则方案包可写自己的信任锚（伪造签名来源）。部署侧还应补 platform.trusted_paths 授权
