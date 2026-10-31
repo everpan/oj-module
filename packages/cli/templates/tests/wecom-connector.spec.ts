@@ -21,6 +21,7 @@ import {
 	eventUrlOf,
 	installUrlOf,
 	loginRedirectOf,
+	readCallbackConfig,
 	readWecomConfig,
 	siteRootOf,
 } from "../src/auth/api/_shared/wecom/config";
@@ -620,7 +621,36 @@ describe("P1-J：部署常量读取（缺项一次报全 / 密钥格式 fail-fas
 
 	it("缺项一次报全（不是报第一个就返回，省掉逐轮补配置的往返）", () => {
 		installVars({ wecom_suite_id: "", wecom_callback_token: "", wecom_enc_key: "" });
-		expect(() => readWecomConfig()).toThrow(/wecom_suite_id.*wecom_callback_token.*wecom_enc_key/);
+		const msg = (() => {
+			try {
+				readWecomConfig();
+				return "";
+			}
+			catch (e) {
+				return (e as Error).message;
+			}
+		})();
+		for (const name of ["wecom_suite_id", "wecom_callback_token", "wecom_enc_key"])
+			expect(msg).toMatch(new RegExp(name));
+	});
+
+	it("readCallbackConfig 只校验 Tier A（token/aeskey/encKey/baseUrl），不依赖 suite 凭据——引导期可独立运行", () => {
+		// 即使 suite 两项全空，只要 Tier A 齐，readCallbackConfig 就不抛（供 echostr 验证用）
+		installVars({ wecom_suite_id: "", wecom_suite_secret: "" });
+		expect(() => readCallbackConfig()).not.toThrow();
+		// Tier A 缺项仍一次报全
+		installVars({ wecom_suite_id: "", wecom_suite_secret: "", wecom_callback_token: "", wecom_enc_key: "" });
+		const msg = (() => {
+			try {
+				readCallbackConfig();
+				return "";
+			}
+			catch (e) {
+				return (e as Error).message;
+			}
+		})();
+		for (const name of ["wecom_callback_token", "wecom_enc_key"])
+			expect(msg).toMatch(new RegExp(name));
 	});
 
 	it("baseUrl 去尾斜杠后拼出两个企微侧地址（回调 URL 要原样填进后台）", () => {

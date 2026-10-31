@@ -10,10 +10,13 @@
 
 import { b64ToBytes } from "./crypt";
 
-export interface WecomConfig {
-	/** 代开发应用模版 id（企微侧即 suite_id），也是回调明文里的 receiveid */
-	suiteId: string
-	suiteSecret: string
+/**
+ * 回调引导配置（Tier A）：echostr URL 验证 + 永久码落库加密所需的全部凭据。
+ * 这四项**全部由部署方在本地生成**，与企业微信无关——所以可以在「创建代开发模版 / 拿到
+ * suite_id」之前就配齐并启动服务、响应企微的 URL 验证。这是打破「先有 suite 还是先有回调」
+ * 死锁的关键（见 plan §18）：鸡生蛋问题里，这四项属于「蛋还没孵出来前就能自己备齐的料」。
+ */
+export interface WecomCallbackConfig {
 	/** 回调签名 token（企微后台「Token」） */
 	token: string
 	/** 回调加密密钥（43 字符 EncodingAESKey） */
@@ -29,14 +32,42 @@ export interface WecomConfig {
 	baseUrl: string
 }
 
-const REQUIRED: Array<[keyof WecomConfig, string]> = [
-	["suiteId", "wecom_suite_id"],
-	["suiteSecret", "wecom_suite_secret"],
+/**
+ * 完整配置（Tier A + Tier B）：login/callback/create_auth 等 suite 流程额外需要
+ * `suiteId` 与 `suiteSecret`——它们由企业微信在「代开发模版创建成功」后下发（模版详情页可见），
+ * 缺失只影响 suite 流程，不影响回调 URL 验证（后者只需 Tier A）。
+ */
+export interface WecomConfig extends WecomCallbackConfig {
+	/** 代开发应用模版 id（企微侧即 suite_id），也是回调明文里的 receiveid */
+	suiteId: string
+	suiteSecret: string
+}
+
+// Tier A：部署方本地生成，创建模版前即可配齐（token / EncodingAESKey / 落库密钥 / 基址）。
+const REQUIRED_CALLBACK: Array<[keyof WecomCallbackConfig, string]> = [
 	["token", "wecom_callback_token"],
 	["encodingAesKey", "wecom_encoding_aes_key"],
 	["encKey", "wecom_enc_key"],
 	["baseUrl", "wecom_base_url"],
 ];
+
+// Tier B：suite 凭据，企业微信在「代开发模版创建成功」后下发（模版详情页可查）。
+const REQUIRED_SUITE: Array<[keyof WecomConfig, string]> = [
+	["suiteId", "wecom_suite_id"],
+	["suiteSecret", "wecom_suite_secret"],
+];
+
+/** 一次性读出六处部署常量（未 trim 的尾斜杠在此归一） */
+function readWecomVars(): WecomConfig {
+	return {
+		token: vars.get("wecom_callback_token") ?? "",
+		encodingAesKey: vars.get("wecom_encoding_aes_key") ?? "",
+		encKey: vars.get("wecom_enc_key") ?? "",
+		baseUrl: (vars.get("wecom_base_url") ?? "").replace(/\/+$/, ""),
+		suiteId: vars.get("wecom_suite_id") ?? "",
+		suiteSecret: vars.get("wecom_suite_secret") ?? "",
+	};
+}
 
 /**
  * 落库密钥格式校验（fail-fast 在**读配置**处，而不是等 create_auth 时在 crypto 里炸）：
@@ -60,26 +91,38 @@ export function assertEncKey(encKey: string): void {
 }
 
 /**
- * 读部署常量。缺任一必需项即 400（「未配置」是运维事实，不是服务端缺陷）：
- * 前半段（suite 凭据）缺失 → 企微登录整体不可用；encKey 缺失则 permanent_code 无法安全落库，
- * 宁可拒服务，也不退化成明文存储（§7.5 数据合规红线）。
+ * 读 Tier A 凭据（token / aeskey / encKey / baseUrl）。**不依赖 suite 凭据**：这是 echostr
+ * URL 验证与永久码落库加密所需的全部东西，部署方本地即可生成。引导期（suite_id 尚未下发）
+ * 服务也能靠它启动并响应企微的回调验证（plan §18）。
  */
-export function readWecomConfig(): WecomConfig {
-	const cfg: WecomConfig = {
-		suiteId: vars.get("wecom_suite_id") ?? "",
-		suiteSecret: vars.get("wecom_suite_secret") ?? "",
-		token: vars.get("wecom_callback_token") ?? "",
-		encodingAesKey: vars.get("wecom_encoding_aes_key") ?? "",
-		encKey: vars.get("wecom_enc_key") ?? "",
-		baseUrl: (vars.get("wecom_base_url") ?? "").replace(/\/+$/, ""),
-	};
-	const missing = REQUIRED.filter(([field]) => !cfg[field]).map(([, name]) => name);
+export function readCallbackConfig(): WecomCallbackConfig {
+	const v = readWecomVars();
+	const missing = REQUIRED_CALLBACK.filter(([field]) => !v[field]).map(([, name]) => name);
 	if (missing.length)
 		throw Object.assign(new Error(`企业微信未配置：config vars 缺少 ${missing.join(" / ")}`), { status: 400 });
-	if (!/^https?:\/\//.test(cfg.baseUrl))
+	if (!/^https?:\/\//.test(v.baseUrl))
 		throw Object.assign(new Error("企业微信配置错误：wecom_base_url 必须是绝对地址（企微回调与 redirect_uri 都要求）"), { status: 400 });
-	assertEncKey(cfg.encKey);
-	return cfg;
+	assertEncKey(v.encKey);
+	return { token: v.token, encodingAesKey: v.encodingAesKey, encKey: v.encKey, baseUrl: v.baseUrl };
+}
+
+/**
+ * 读完整部署常量。缺任一必需项即 400（「未配置」是运维事实，不是服务端缺陷）。
+ * 一次报全 Tier A + Tier B 所有缺失项，省掉逐轮补配置的往返；suite 凭据（Tier B）缺失时
+ * 文案点明「由代开发模版创建成功后下发」，避免运维误以为是本地漏配。
+ *
+ * 注：Tier B 缺失只影响 login/callback/create_auth 等 suite 流程；echostr 验证走
+ * `readCallbackConfig()`，不受此约束（见 api.ts::event.get）。
+ */
+export function readWecomConfig(): WecomConfig {
+	const v = readWecomVars();
+	const missing = [...REQUIRED_CALLBACK, ...REQUIRED_SUITE].filter(([field]) => !v[field]).map(([, name]) => name);
+	if (missing.length)
+		throw Object.assign(new Error(`企业微信未配置：config vars 缺少 ${missing.join(" / ")}（suite 凭据由代开发模版创建成功后下发）`), { status: 400 });
+	if (!/^https?:\/\//.test(v.baseUrl))
+		throw Object.assign(new Error("企业微信配置错误：wecom_base_url 必须是绝对地址（企微回调与 redirect_uri 都要求）"), { status: 400 });
+	assertEncKey(v.encKey);
+	return v;
 }
 
 /** 企微后台「指令回调 URL」：原样填这个（base + /event） */

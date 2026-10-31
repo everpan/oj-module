@@ -185,14 +185,17 @@ wecom_login_ticket(ticket_hash) PK；uid / owner_tenant / expires_at / used
 四处都在 `tenant.anonymous_paths`：302 回跳与企微服务器回调**都带不了自定义头**，租户只能服务端用
 `db.asTenant()` 补（§5.3 第三层）。顺序上 `callback` 必须先 `ensureTenant` 再碰 `users`，否则守卫直接抛错。
 
-**部署常量（config `vars:`，6 项）**
+**部署常量（config `vars:`，6 项，分两层）**
 
-| var | 说明 |
-|---|---|
-| `wecom_suite_id` / `wecom_suite_secret` | 代开发模版凭据（部署级，一个部署 = 一套模版） |
-| `wecom_callback_token` / `wecom_encoding_aes_key` | 回调签名 token 与 43 字符 EncodingAESKey |
-| `wecom_enc_key` | `permanent_code` 落库的 AES-GCM 密钥（16/32 字节 hex 或 base64） |
-| `wecom_base_url` | 连接器基址，派生两个地址：回调 URL=`<base>/event`、`redirect_uri`=`<base>/callback` |
+| var | 说明 | 来源 | 何时必须 |
+|---|---|---|---|
+| `wecom_callback_token` / `wecom_encoding_aes_key` | 回调签名 token 与 43 字符 EncodingAESKey | **部署方本地生成**（企微后台「Token / EncodingAESKey」由你填，非企微下发） | **创建模版前**即可配齐（URL 验证仅依赖这两项 + 基址） |
+| `wecom_enc_key` | `permanent_code` 落库的 AES-GCM 密钥（16/32 字节 hex 或 base64） | 部署方本地生成 | 创建模版前（落库加密，与企微无关） |
+| `wecom_base_url` | 连接器基址，派生两个地址：回调 URL=`<base>/event`、`redirect_uri`=`<base>/callback` | 部署方自有域名 | 创建模版前（回调 URL 要原样填进企微后台） |
+| `wecom_suite_id` / `wecom_suite_secret` | 代开发模版凭据（部署级，一个部署 = 一套模版） | **企业微信在「代开发模版创建成功」后下发**（模版详情页可见） | 模版创建、拿到 suite 之后（login/callback/create_auth 等 suite 流程） |
+
+> 关键分层（见 §18）：前四项（Tier A）本地即可生成，后两项（Tier B）由企微下发。
+> 服务**只需 Tier A 就能启动并响应 echostr 回调验证**——这正是打破「先有 suite 还是先有回调」死锁的落点。
 
 > 为什么合成一个 `base_url`：原计划配 `wecom_callback_url` 单值，但 redirect_uri 也需要，两处手填必然漂移；
 > 企微后台要求回调 URL **逐字一致**，改一处漏一处就会「事件收不到、登录回不来」。合成后只有一处可错。
@@ -817,4 +820,74 @@ runtime 副本）。浏览器 importmap 取的是 shell-dist 那份，缺导出 
 - **真实企微套件联调**：需要服务商后台的 suite_id/secret 与一家真企业的授权确认，属**外部阻塞**。
   交付时须显式说明由谁提供凭据、走哪一步验证（`GET /api/auth/wecom/login?corp=` 是否 302 到企微、
   回跳后是否落成 `?wecom_ticket=&tenant=`），而不是当作已跳过。
+
+## 18. 代开发模版创建的「鸡生蛋」问题与回调配置时序（2026-10-31）
+
+### 18.1 问题陈述（用户提出）
+
+官方教程（https://developer.work.weixin.qq.com/document/path/97112）要求创建代开发模版时填
+「代开发模版回调URL」，且该 URL **必须正确响应企微的 URL 验证（echostr）**。但本仓 §5.4 把启动所需的
+六项部署常量当成一整块硬依赖——其中 `wecom_suite_id` / `wecom_suite_secret` 是**模版创建成功后**才由
+企微下发。于是出现死锁：
+
+> 不启动服务 → 无法响应 echostr → 无法创建模版 → 拿不到 suite 凭据 → 服务因缺 suite 起不来。
+
+### 18.2 官方文档事实（逐一核对）
+
+| 事实 | 出处 |
+|---|---|
+| 创建代开发模版时就要填「代开发模版回调URL」，且需正确响应企微验证 URL 的请求（echostr） | 路径 97112 §2 创建代开发模版，配置标准表 |
+| `wecom_callback_token` / `wecom_encoding_aes_key` 是**开发者在企微后台填写**的（不是企微分配） | 97112 §2 配置标准表「代开发模版回调URL」行 + 企微通用回调配置约定：Token / EncodingAESKey 由开发者设定 |
+| `suite_id` / `suite_secret` 是**模版创建成功后**由企微下发，在模版详情页可见 | 97112 §2/§4：先创建模版、再获取授权二维码；suite 凭据属模版侧 |
+| echostr 验证只需：回调 URL（部署方域名派生）、Token（验签）、EncodingAESKey（解密） | 企微 §消息加解密：签名 = sha1(sort(token, timestamp, nonce, Encrypt))，明文 = AES-256-CBC 解密后取 echostr |
+
+结论：**六项里只有后两项（suite 凭据）依赖企微，前四项（Token/AESKey/落库密钥/基址）全部部署方本地可生成。**
+
+### 18.3 死锁的真正扳机（代码层）
+
+- `readWecomConfig()`（`config.ts`）把六项**全当硬依赖**，缺任一即 400。
+- `decryptVerified()`（`api.ts`）把 `cfg.suiteId` 作为 echostr 解密的 `receiveid`（`crypt.ts::unwrapWecomMessage`）：
+  缺 `suite_id` 时 `receiveid` 比对直接失败。
+- 两处叠加 → echostr 端点（创建模版必须的验证入口）在「拿到 suite 之前」根本无法工作 → 死锁坐实。
+
+### 18.4 解法：配置分两层 + 引导期放宽 receiveid
+
+**A. 配置分层**（已落地于 `config.ts`）：
+
+- `readCallbackConfig()`（Tier A）：只校验 `token` / `encodingAesKey` / `encKey` / `baseUrl`，
+  **不依赖 suite 凭据**。echostr 端点改用它。
+- `readWecomConfig()`（Tier A + Tier B）：校验全部六项，供 login/callback/create_auth 等 suite 流程使用；
+  缺项时一次报全（Tier A 先、Tier B 后），文案点明「suite 凭据由代开发模版创建成功后下发」。
+
+**B. 引导期放宽 receiveid**（已落地于 `crypt.ts` + `api.ts::event.get`）：
+
+- `unwrapWecomMessage(..., tolerant)`：当 `suite_id` 尚未下发（`tolerant=true`）时，跳过 `receiveid` 比对。
+- 放宽是安全的：最外层**签名（基于开发者持有的 token）已是最外层鉴权闸门**，receiveid 仅为防御性兜底
+  （防错配 aeskey）。`suite_id` 配齐后 `event.get` 自动恢复严格比对（`tolerant=false`）。
+- 这样即使企微在「创建表单内联校验」时就推 echostr（此时 suite 还没下发），验证也能通过；
+  若企微是先建模版、再单独配置回调（suite 已存在），严格比对同样成立——两种时序都覆盖。
+
+**C. `event.post`（suite_ticket / create_auth 等）保持严格**：仍走 `readWecomConfig()`（需 suite 凭据），
+因为这些事件只会在模版创建、suite 下发之后才到达，且需 `receiveid` 严格防跨套件污染。
+
+### 18.5 正确的部署时序（落地后）
+
+1. 部署方本地生成四项 Tier A：`wecom_callback_token`、`wecom_encoding_aes_key`（43 字符）、
+   `wecom_enc_key`（16/32 字节 hex/base64）、`wecom_base_url`。**启动服务**（此时无 suite 也能跑 echostr）。
+2. 企微服务商后台「创建代开发模版」，填 logo/名称/介绍/分类/行业；模版回调URL 填
+   `<base>/event`（如 `https://site.example.com/api/auth/wecom/event`），Token / EncodingAESKey 填与配置**一致**的值。
+   企微推 echostr → 本仓 `event.get` 用 Tier A 验签解密 → 验证通过。
+3. 模版创建成功，企微下发 `suite_id` / `suite_secret`（模版详情页可见）。填入配置、重启服务。
+4. 此后 login/callback/create_auth 等 suite 流程全部可用；真实套件联调（§17.6）至此才具备前提。
+
+### 18.6 落地验证
+
+| 关卡 | 结果 |
+| --- | --- |
+| `tests/wecom-connector.spec.ts` | 48 例通过（含新增：缺项一次报全覆盖 Tier A+B、`readCallbackConfig` 只校验 Tier A 不依赖 suite） |
+| `tests/wecom-endpoints.spec.ts` | 23 例通过（含新增：引导期 `suite_id` 为空时 echostr 仍 200 回显） |
+| `tests/wecom-crypt.spec.ts` | 14 例通过（`unwrapWecomMessage` 默认严格，tolerant 仅显式放宽） |
+| 模板 `vitest`（全量） | 44 文件 / **837 例**通过 |
+| 模板 `tsc --noEmit -p src/tsconfig.json` | 0 error |
+
 

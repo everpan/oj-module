@@ -384,6 +384,17 @@ describe("P1-L：GET/POST /auth/wecom/event（企微指令回调）", () => {
 		expect(out.body).toBeNull();
 	});
 
+	it("URL 验证（鸡生蛋解法）：suite_id 尚未下发时也能通过——receiveid 放宽，签名仍是唯一闸门", async () => {
+		// 引导期：模版还没建、suite_id 为空，但 Tier A 凭据（token/aeskey）已配齐，服务应能响应验证。
+		installVars({ wecom_suite_id: "" });
+		const echo = await seal("echo_bootstrap");
+		request({ query: { ...signedQuery(echo), echostr: echo } });
+		await (await api()).event.get();
+		expect(out.status).toBe(200);
+		expect(out.contentType).toContain("text/plain");
+		expect(out.text).toBe("echo_bootstrap");
+	});
+
 	it("签名不符 → 400（不给探测者任何比对材料）", async () => {
 		const echo = await seal("echo_12345");
 		request({ query: { timestamp: TS, nonce: NONCE, msg_signature: "bad", echostr: echo } });

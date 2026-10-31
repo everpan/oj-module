@@ -5,6 +5,32 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 设计依据、迁移记录与陷阱清单见 [`docs/prd/202609110947-oj-module-two-package-consolidation-design.md`](docs/prd/202609110947-oj-module-two-package-consolidation-design.md)。
 
+## [0.2.46] - 2026-10-31
+
+双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步定版 **0.2.46**（延续 0.2.x 线，不进 0.3.x）。
+本轮修复企业微信代开发「创建模版必须先验回调、验回调必须先有 suite 凭据」的鸡生蛋死锁，以及若干登录链路缺陷。
+
+### Fixed
+
+- **代开发模版创建死锁（鸡生蛋）**：原 `readWecomConfig()` 把六项目录常量全当硬依赖，而 echostr 回调验证
+  又把 `suite_id` 作为解密 receiveid——但 `wecom_suite_id` / `wecom_suite_secret` 是**模版创建成功后**才由
+  企微下发，导致「服务起不来 → 验不了回调 → 建不了模版 → 拿不到 suite」的死锁。
+  - 配置分层：`readCallbackConfig()`（Tier A：token / EncodingAESKey / 落库密钥 / 基址，全部部署方本地生成）
+    只校验这四项，**不依赖 suite 凭据**；`readWecomConfig()`（Tier A + Tier B）仍供 suite 流程使用。
+  - 引导期放宽 receiveid：`unwrapWecomMessage(..., tolerant)` 在 `suite_id` 尚未下发时跳过 receiveid 比对
+    （签名已是最外层鉴权闸门，receiveid 仅为防御性兜底）；`suite_id` 配齐后自动恢复严格比对。
+  - 效果：部署方本地生成四项 Tier A 即可启动服务并响应 echostr 验证，模版创建拿到 suite 后再补全，
+    两种企微时序（表单内联校验 / 先建模版后配回调）都覆盖。详见 `docs/plans/20261030-1845-wecom-daikaifa-login-plan.md` §18。
+- **换票端点误读部署凭据**：`/auth/wecom/ticket` 此前调用 `readWecomConfig()` 仅为构造空 deps，导致
+  凭据缺配时把「已签发的票据」误判成登录失败；改为常量 deps，凭据事故不再伪装成票据失效。
+- **企业微信登录故障排查信息不全**：票据无效时后端信封的 `msg`（如「登录票据无效或已使用」）此前未被前端读出，
+  一律显示 `HTTP 401`；换票请求改为读信封并透出真实原因（已在 0.2.45 落地，本轮随版纳入回归）。
+
+### Docs
+
+- `docs/plans/20261030-1845-wecom-daikaifa-login-plan.md` 新增 §18：基于官方文档（路径 97112）核对
+  六项常量的来源与必填时序，给出死锁根因、分层解法与正确部署时序。
+
 ## [0.2.45] - 2026-10-30
 
 双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步定版 **0.2.45**（延续 0.2.x 线，不进 0.3.x）。

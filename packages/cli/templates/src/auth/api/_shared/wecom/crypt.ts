@@ -293,8 +293,12 @@ export function wecomSignature(...parts: string[]): string {
  * 明文结构（企微 §消息加解密）：`random(16B) | msg_len(4B, big-endian) | msg | receiveid`。
  * `receiveid` 对第三方平台/代开发模版是 **suite_id**；不一致即拒（错钥/错套件混用必须 fail-closed，
  * 否则不同套件的回调会互相污染）。43 字符 EncodingAESKey 末尾补 "=" 才是 44 字符 base64（32 字节）。
+ *
+ * `tolerant`（默认 false）：引导期 `suite_id` 尚未下发时，receiveid 无从比对——
+ * 此时放宽该检查。放宽是安全的：最外层签名（基于开发者持有的 `token`）已鉴权，
+ * receiveid 只是防御性兜底（防错配 aeskey）。`suite_id` 配齐后调用方应传 `false` 恢复严格。
  */
-export function unwrapWecomMessage(encryptedB64: string, encodingAesKey: string, expectedReceiver: string): string {
+export function unwrapWecomMessage(encryptedB64: string, encodingAesKey: string, expectedReceiver: string, tolerant = false): string {
 	const key = b64ToBytes(`${encodingAesKey}=`);
 	if (key.length !== 32)
 		throw new Error(`wecom: EncodingAESKey must decode to 32 bytes, got ${key.length}`);
@@ -306,7 +310,8 @@ export function unwrapWecomMessage(encryptedB64: string, encodingAesKey: string,
 		throw new Error("wecom: msg length out of range");
 	const msg = bytesToUtf8(plain.subarray(20, 20 + msgLen));
 	const receiver = bytesToUtf8(plain.subarray(20 + msgLen));
-	if (receiver !== expectedReceiver)
+	// 引导期（suite_id 未下发）且显式 tolerant → 跳过 receiveid 比对；其余情况严格比对。
+	if (!tolerant && receiver !== expectedReceiver)
 		throw new Error(`wecom: receiver mismatch (got ${receiver === "" ? "<empty>" : "other"}, expected suite)`);
 	return msg;
 }

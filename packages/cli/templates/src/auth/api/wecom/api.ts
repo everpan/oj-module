@@ -17,7 +17,7 @@ import { failWith, respond } from "#/_platform/_shared/respond";
 import { clientIp, guardLoginThrottle, noteLoginFailed, noteLoginSucceeded } from "../_shared/login-throttle";
 import { createSession } from "../_shared/session";
 import { createWecomClient, runtimeCache, runtimeHttp } from "../_shared/wecom/client";
-import { loginRedirectOf, readWecomConfig, siteRootOf } from "../_shared/wecom/config";
+import { loginRedirectOf, readCallbackConfig, readWecomConfig, siteRootOf } from "../_shared/wecom/config";
 import { unwrapWecomMessage, wecomSignature } from "../_shared/wecom/crypt";
 import { handleSuiteEvent } from "../_shared/wecom/events";
 import {
@@ -192,11 +192,31 @@ ticket.post.schema = {
 };
 
 const event = {
-	// 企微后台「保存回调 URL」时会 GET 一次：解出 echostr 后**原样明文回**（不套信封、不加引号）
+	// 企微后台「保存回调 URL」时会 GET 一次：解出 echostr 后**原样明文回**（不套信封、不加引号）。
+	//
+	// 只依赖 Tier A 凭据（readCallbackConfig）：token/aeskey/baseUrl/encKey 全部部署方本地生成，
+	// 不需要 suite_id——因此「配齐四项正确即可响应验证」，**不必等代开发模版创建、拿到 suite_id 之后**。
+	// 这正是打破鸡生蛋死锁（plan §18）的落点：先有可验证的回调，才能创建模版、拿到 suite 凭据。
+	//
+	// suite_id 在「模版创建成功」后才下发；URL 验证可能发生在拿到 suite_id 之前（创建表单内联校验），
+	// 此时 receiveid 无从比对 → 走 tolerant（签名已是最外层鉴权闸门，receiveid 仅为防御性兜底）。
 	async get() {
 		try {
-			const { plain } = await decryptVerified(query("echostr"));
-			plainText(plain);
+			const cfg = readCallbackConfig();
+			const encrypted = query("echostr");
+			const expected = wecomSignature(cfg.token, query("timestamp"), query("nonce"), encrypted);
+			if (expected !== query("msg_signature"))
+				throw badRequest("回调签名校验失败");
+			await guardReplay(query("timestamp"), query("nonce"), runtimeReplayGate());
+			const suiteId = (vars.get("wecom_suite_id") ?? "").trim();
+			try {
+				plainText(unwrapWecomMessage(encrypted, cfg.encodingAesKey, suiteId, !suiteId));
+			}
+			catch (e) {
+				// 解密失败只透出「失败」：错钥/未下发套件/被篡改三者不可区分，也不该让外部据此判断哪一环配错
+				log.warn("wecom callback decrypt failed", "reason", (e as Error).message);
+				throw badRequest("回调消息解密失败");
+			}
 		}
 		catch (e) {
 			failWith(e);
