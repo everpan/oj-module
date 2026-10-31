@@ -5,6 +5,32 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 设计依据、迁移记录与陷阱清单见 [`docs/prd/202609110947-oj-module-two-package-consolidation-design.md`](docs/prd/202609110947-oj-module-two-package-consolidation-design.md)。
 
+## [0.2.47] - 2026-10-31
+
+双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步定版 **0.2.47**（延续 0.2.x 线，不进 0.3.x）。
+本轮修复企业微信代开发「生成开通链接」链路的若干上游错误码，并把服务商级凭证补全为独立配置层。
+
+### Fixed
+
+- **代开发开通链接改用 `get_customized_auth_url`**：代开发应用**明确不支持**第三方应用的
+  `get_pre_auth_code`（errcode 48002 api forbidden）。开通入口改为走代开发专属的
+  `get_customized_auth_url`（返回 `qrcode_url`，即企业管理员要扫/开的开通链接）。
+- **服务商级凭证独立成 Tier C**：新增 `wecom_provider_id` / `wecom_provider_secret` 两项
+  （`get_customized_auth_url` 只认 `provider_access_token`，须由服务商 corpid + provider_secret 换得）。
+  取数位置已写精确：`provider_id` = 服务商后台「服务商信息」页 CorpID；`provider_secret` = 服务商后台
+  「应用管理 → 通用开发参数」点「编辑」后的 `ProviderSecret` 字段（不在服务商信息页，也不是 suite_secret）。
+  缺这两项时「生成开通链接」点名 400，且不影响登录（login 走 suite 流程）。
+- **`get_customized_auth_url` 必填 `state`（errcode 40058 state missing）**：调用方未传时补默认常量
+  （限 ≤32 字节 `a-zA-Z0-9`），避免企微拒收空 `state`。
+- **`get_customized_auth_url` 返回 842002（模板未上架/上线）给出可操作中文提示**：842002 是运营前置动作
+  （模板创建成功 ≠ 上线，须到服务商后台「代开发应用上线」提交审核并手动提交上线），非代码缺陷；
+  报错文案现直接指引去后台提交上线，并在 `docs/devkit/wecom-daikaifa.md` 故障速查表补行。
+
+### Docs
+
+- `docs/devkit/wecom-daikaifa.md`：凭据清单补 Tier C（provider 凭证）两项并写精确取数位置；
+  开通流程改走 `get_customized_auth_url`；故障速查表新增 48002 / 40058 / 842002 处置行。
+
 ## [0.2.46] - 2026-10-31
 
 双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步定版 **0.2.46**（延续 0.2.x 线，不进 0.3.x）。
