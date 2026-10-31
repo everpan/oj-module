@@ -12,7 +12,6 @@ import { recordOp } from "#/_platform/_shared/service/infra/audit";
 import { createInstall, listApps, setAppStatus } from "../../_shared/wecom/admin";
 import { createWecomClient, runtimeCache, runtimeHttp } from "../../_shared/wecom/client";
 import { readWecomConfig } from "../../_shared/wecom/config";
-import { runtimeStoreDeps } from "../../_shared/wecom/store";
 
 /** 清单：已授权企业 × 应用（不含 permanent_code，secret 不出库） */
 async function get() {
@@ -92,8 +91,10 @@ status.post.response = {
 };
 
 const install = {
-	// 开通入口：生成 install URL（预授权码 10 分钟有效，故不缓存，每次点都重新换）。
-	// 顺带回「指令回调 URL」——服务商后台要把它逐字填进企微「代开发」配置页。
+	// 开通入口（代开发）：provider_access_token → get_customized_auth_url → qrcode_url。
+	// 该接口**只**对代开发开放（第三方应用那个 get_pre_auth_code 对代开发报 48002）；
+	// 链接有效期以企微返回为准，故不缓存，每次点都重新换。顺带回「指令回调 URL」——
+	// 服务商后台要把它逐字填进企微「代开发」配置页。
 	async get() {
 		await respond(async () => {
 			await assertSuperAdmin();
@@ -102,7 +103,6 @@ const install = {
 			return createInstall(
 				cfg,
 				createWecomClient({ http: runtimeHttp(), cache: runtimeCache() }),
-				runtimeStoreDeps(cfg),
 				state,
 			);
 		});

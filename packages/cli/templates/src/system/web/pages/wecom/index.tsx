@@ -51,7 +51,8 @@ async function createInstall(): Promise<InstallInfo> {
  * 企微代开发后台（服务商运营面，superadmin 独占）：
  *   · 已授权企业 × 应用清单（同一企业测试/正式两个应用各一行）；
  *   · 启停（停用企业最后一个应用时后端同时吊销该企业会话）；
- *   · 开通入口（预授权码 10 分钟有效，每次点都重新换）。
+ *   · 开通入口（点「生成开通链接」→ 后端调企微 get_customized_auth_url 换 qrcode_url，
+ *     企业管理员扫/开即授权，授权成功由 create_auth 回调落库）。
  */
 export default function WecomAdminPage() {
 	const { t } = useTranslation();

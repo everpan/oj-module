@@ -49,11 +49,11 @@
 
 ## 2. 凭据清单
 
-### 2.1 六项部署常量（全部填在工程根 `config.yaml` 的 `vars:` 段）
+### 2.1 八项部署常量（全部填在工程根 `config.yaml` 的 `vars:` 段）
 
-一个部署 = 一套代开发模板，所以这六项是**部署维度**的常量，不进数据库。
+一个部署 = 一套代开发模板，所以这八项是**部署维度**的常量，不进数据库。
 
-六项分两层，**来源与必填时序不同**——这是破解「先有 suite 还是先有回调」死锁的关键
+八项分三层，**来源与必填时序不同**——这是破解「先有 suite 还是先有回调」死锁的关键
 （详见 plan §18）：
 
 - **Tier A（部署方本地生成，创建模版前即可配齐）**：`wecom_callback_token` /
@@ -61,10 +61,14 @@
   回调验证，**不依赖企业微信下发**；即使 `suite_id` / `suite_secret` 还空着，服务也能跑通 echostr。
 - **Tier B（企业微信在「代开发模版创建成功」后下发）**：`wecom_suite_id` / `wecom_suite_secret`。
   只影响登录 / 授权等 suite 流程（login / callback / create_auth）；**回调 URL 验证（echostr）不依赖它们**。
+- **Tier C（服务商后台「通用开发参数」页拿，不是企业、也不是 suite）**：`wecom_provider_id` /
+  `wecom_provider_secret`。**只供「生成开通链接」用**——代开发的开通入口走 `get_customized_auth_url`，
+  该接口只认 `provider_access_token`，而它必须由服务商 corpid + provider_secret 换得。
+  缺它**不影响登录**（login 走 suite 流程），但 `/system/wecom` 点「生成开通链接」会 400 点名缺这两项。
 
 Tier A 任一为空 → 服务启动即 400 拒绝（宁可不登录，也不明文存 `permanent_code`）。
 Tier B 为空时服务仍可启动并响应 echostr，但 suite 流程会 400——先配 Tier A 把回调验证跑通、
-创建模版、拿到 suite 凭据，再补全 Tier B 即可，无需鸡生蛋。
+创建模版、拿到 suite 凭据，再补全 Tier B 即可，无需鸡生蛋。Tier C 可与 Tier B 同一阶段补全。
 
 > 📌 **官方术语对齐**：企微服务商后台「代开发应用 → 模板详情 → **基本信息**」页里，
 > 这两项就直接标作 **模板ID** 与 **模板Secret**（英文即 SuiteID / SuiteSecret）。
@@ -80,6 +84,8 @@ Tier B 为空时服务仍可启动并响应 echostr，但 suite 流程会 400—
 | 4 | `wecom_encoding_aes_key` | Tier A | 同页 **EncodingAESKey**（自设） | **43 字符** | 同上：回调报文解不开，`suite_ticket` 永远收不到 |
 | 5 | `wecom_enc_key` | Tier A | **自己生成**，见 §2.4 | hex 32 字符（16 字节）或 64 字符（32 字节），或 base64 解码后 16 / 32 字节。**AES-192（24 字节）不支持** | 400 `企业微信配置错误：wecom_enc_key 必须是 16 或 32 字节的 hex（32/64 字符）或 base64` |
 | 6 | `wecom_base_url` | Tier A | **基址**：你站点的对外地址 + `/api/auth/wecom`（注意这是基址，**不是**企微后台要填的回调 URL） | **绝对地址、无尾斜杠、必须以 `/api/auth/wecom` 结尾** | 400 `wecom_base_url 必须是绝对地址` 或 `必须以 /api/auth/wecom 结尾`；配错还会让登录回跳落到别的应用或 404 |
+| 7 | `wecom_provider_id` | Tier C | 服务商后台 → **通用开发参数**（注意是**服务商**的 corpid，不是企业 corpid，也不是 suite_id） | 非空字符串 | 只影响「生成开通链接」：`get_provider_token` 换不出 `provider_access_token` → 生成链接 502；此项为空 → 生成链接 400 `config vars 缺少 wecom_provider_id` |
+| 8 | `wecom_provider_secret` | Tier C | 同页「通用开发参数」的 provider_secret（与 `wecom_suite_secret` **不同源**，别填串） | 非空字符串；重置后旧值立即失效 | 换不出 `provider_access_token` → 生成链接 502 `企微 get_provider_token 失败：errcode=40001 …`；此项为空 → 生成链接 400 `config vars 缺少 wecom_provider_secret` |
 
 `wecom_base_url` 是唯一「配一处、派生两处」的值——它同时决定：
 
@@ -160,14 +166,14 @@ openssl rand -hex 32        # 输出 64 个 hex 字符，直接贴进 wecom_enc_
 | 步 | 动作 | 为什么必须在这一步 | 错序的症状 |
 |---|---|---|---|
 | 3 | 模版创建成功后，从模版详情拿 **SuiteID / SuiteSecret**，填入 §2.1 的 **Tier B**，重启服务 | 否则 `suite_ticket` 推来时 `event.post` 因缺 suite 凭据 400，票据永远收不到 | 日志看不到 `wecom suite_ticket updated`；`/system/wecom` 生成链接报 503 |
-| 4 | **等 `suite_ticket` 到手**（企微每 10 分钟推一次） | 换 `suite_access_token` 必须有票据，而票据只能由回调推来 | 503 `suite_ticket 尚未收到：回调 URL 未打通或企微尚未推送` |
-| 5 | 用超级管理员登录，进 `/system/wecom` → 「生成开通链接」 | 开通链接要先换 `pre_auth_code`，而它依赖第 4 步 | 同上 503；或链接生成失败 |
-| 6 | 把链接/二维码发给企业管理员，由其确认授权 | 只有企业管理员能授权；确认后企微推 `create_auth` | 企业侧没有应用；本站无该企业记录 |
+| 4 | **等 `suite_ticket` 到手**（企微每 10 分钟推一次） | 换 `suite_access_token` 必须有票据，而票据只能由回调推来（登录流程要用） | 503 `suite_ticket 尚未收到：回调 URL 未打通或企微尚未推送` |
+| 5 | 配好 §2.1 的 **Tier C**（`wecom_provider_id` / `wecom_provider_secret`，服务商后台「通用开发参数」页取），重启服务；再用超级管理员登录，进 `/system/wecom` → 「生成开通链接」 | 代开发的开通入口走 `get_customized_auth_url`（返回 `qrcode_url`），它只认 `provider_access_token`，而 provider_access_token 必须由服务商 corpid + provider_secret 换得（= Tier C）。**不是**第三方应用的 `get_pre_auth_code`（代开发调它会 48002） | 400 `config vars 缺少 wecom_provider_id / wecom_provider_secret`；或 502 `get_provider_token 失败`（provider_secret 错/重置）；或链接生成失败 |
+| 6 | 把链接/二维码发给企业管理员，由其扫码/打开授权 | 只有企业管理员能授权；确认后企微推 `create_auth` | 企业侧没有应用；本站无该企业记录 |
 | 7 | 进 `/system/settings` 打开「启用企业微信登录」 | `wecom.enabled` 默认 **关**，只是「发现登录方式」的开关 | 登录页根本看不到「企业微信」页签 |
 | 8 | 企业员工从企微工作台/扫码/专属链接进入 | 首次登录自动建档 | 401 `登录凭据无效或不在应用可见范围内`（多半是可见范围没配） |
 
 > 🔐 **进 `/system/wecom` 必须用 `superadmin` 账号，不是 `admin`。** 该页是跨租户的服务商
-> 运营面（生成开通链接 = 预授权码、管理所有已授权企业），前端（`system/web/pages/wecom/index.tsx:61`
+> 运营面（生成开通链接 = 调企微 `get_customized_auth_url` 换 `qrcode_url`、管理所有已授权企业），前端（`system/web/pages/wecom/index.tsx:61`
 > 的 `roles.includes("superadmin")`）与后端 `auth/wecom/admin/*`（每个端点 `assertSuperAdmin()`）
 > 都只放行 `superadmin`。模板 seed 已把 `admin` 从 `superadmin` 角色解绑（收敛为「账号名 = 角色名」，
 > 见 `_platform/api/seed.sql` 的 `DELETE … WHERE role_name='superadmin' AND username='admin'`），
@@ -231,7 +237,7 @@ openssl rand -hex 32        # 输出 64 个 hex 字符，直接贴进 wecom_enc_
 企微只回调**公网 https**，所以本地必须内网穿透。最小闭环：
 
 ```sh
-# 1) 六个 vars 填进工程根 config.yaml 的 vars:（见 §2.1）
+# 1) 八项 vars 填进工程根 config.yaml 的 vars:（见 §2.1，含 Tier C 的 provider 凭证）
 #    其中 wecom_base_url 先写成穿透地址：https://<穿透域名>/api/auth/wecom
 # 2) 起前后端
 pnpm dev
@@ -285,10 +291,12 @@ pnpm dev
 |---|---|---|
 | 已开通企业清单 | `GET /auth/wecom/admin/apps` | **不返回** `permanent_code`，最多到 `corp_name` |
 | 启用 / 停用某企业某应用 | `POST /auth/wecom/admin/status` | 停用是安全动作：**只在该企业没有其它 active 应用时**才吊销该租户会话 |
-| 生成开通链接 | `GET /auth/wecom/admin/install` | 返回 `{installUrl, callbackUrl, expiresIn}`；`callbackUrl` 就是要逐字填进企微后台的那个值 |
+| 生成开通链接 | `GET /auth/wecom/admin/install` | 返回 `{installUrl, callbackUrl, expiresIn}`；`installUrl` 是代开发 `get_customized_auth_url` 返回的 `qrcode_url`（企业管理员扫/开即授权），`callbackUrl` 就是要逐字填进企微后台的那个值 |
 
-开通链接**10 分钟有效且一次性**：过期后界面上的二维码会置灰，重新点一次即可（每次点都重新换
-`pre_auth_code`，不做缓存）。
+开通链接由企微 `get_customized_auth_url` 生成，**有效期以企微返回为准**（文档口径可达 10 天，实测可能较短），
+过期后界面上的二维码会置灰，重新点一次即可（每次点都重新换 `provider_access_token` + 调
+`get_customized_auth_url`，不做缓存）。代开发**不支持**第三方应用的 `get_pre_auth_code`——本接口
+刻意走 `get_customized_auth_url`，踩过 48002 的坑。
 
 权限是**超级管理员**而不是站点 admin：这三件事跨租户（能看别家企业的 corp_id）。
 
@@ -418,7 +426,8 @@ window.location.assign(`${resolveApiBase()}${wecomAuthorizePath(corp)}`);
 | 401 `登录票据无效或已使用` / `登录票据已过期，请重新登录` | 票据被重放，或 180 秒没换 | 重新从入口进 |
 | 400 `授权未完成：企业微信未返回 code` | 用户在授权页点了取消 | 重新授权 |
 | 400 `登录状态已失效，请从企业微信重新进入` | `state` 过期（10 分钟）/ 已用 / 换过部署 | 重新进；跨部署时正常现象 |
-| 502 `企微 … 失败：errcode=60020 … client ip 113.80.7.113` | 调用企微 API 的**服务器出口公网 IP**未在可信 IP 白名单（代开发套件级；get_suite_token 必校） | 企微服务商后台 → 应用管理 → 代开发应用 → 对应套件 → **IP 白名单/可信IP**，把报错里的 `client ip`（例 `113.80.7.113`，即你服务器访问公网的出口 IP，**不是内网 IP**）加进去；多出口/运营商 NAT 就加整段 CIDR。改完等几分钟再点「生成开通链接」。注：此码**不在自动重试验证集**（只有 40001/42001 重换一次），属配置阻断、重试无用 |
+| 502 `企微 … 失败：errcode=60020 … client ip 113.80.7.113` | 调用企微 API 的**服务器出口公网 IP**未在可信 IP 白名单（代开发套件级/服务商级；`get_suite_token` 与「生成开通链接」用的 `get_provider_token` / `get_customized_auth_url` **都必校**） | 企微服务商后台 → 应用管理 → 代开发应用 → 对应套件 → **IP 白名单/可信IP**，把报错里的 `client ip`（例 `113.80.7.113`，即你服务器访问公网的出口 IP，**不是内网 IP**）加进去；多出口/运营商 NAT 就加整段 CIDR。改完等几分钟再点「生成开通链接」。注：此码**不在自动重试验证集**（只有 40001/42001 重换一次），属配置阻断、重试无用 |
+| 502 `企微 … 失败：errcode=48002 api forbidden` | 代开发应用调了第三方应用的 `get_pre_auth_code`（代开发**明确不支持**该接口） | 本系统「生成开通链接」已改用代开发专属的 `get_customized_auth_url`（返回 `qrcode_url`）。若仍见此码：确认跑的是本版代码（`admin.ts` 的 `createInstall` 不再调 `get_pre_auth_code`），并检查是否别处/旧版本在调它 |
 | 502 `企微 … 失败：errcode=40001/40014/42001` | 凭据错或 token 过期（会自动重换一次） | 若持续：核对 SuiteSecret / 是否重置过 |
 | 502 `企微接口不可达` / `HTTP 5xx` | 出网被墙、DNS、代理 | 查机器出网与 DNS |
 | 点登录页「企业微信」按钮页面只闪一下、无请求 | 跳转拼了站点 base 而不是 API base | 见 §6.6 |
@@ -431,7 +440,7 @@ window.location.assign(`${resolveApiBase()}${wecomAuthorizePath(corp)}`);
 ## 9. 一分钟自检
 
 ```text
-[ ] 六个 vars 非空，wecom_base_url 以 /api/auth/wecom 结尾
+[ ] 八个 vars 非空（Tier A/B/C），wecom_base_url 以 /api/auth/wecom 结尾
 [ ] 企微后台的指令回调 URL == <wecom_base_url>/event（逐字）
 [ ] 服务日志有 wecom suite_ticket updated（近期）
 [ ] /system/wecom 列表里有目标企业，status=active

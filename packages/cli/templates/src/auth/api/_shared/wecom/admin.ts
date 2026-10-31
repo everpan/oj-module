@@ -12,8 +12,8 @@ import type { WecomClient } from "./client";
 import type { WecomConfig } from "./config";
 import type { WecomStoreDeps } from "./store";
 import { invalidateAllUsers } from "#/_platform/_shared/service/infra/access";
-import { eventUrlOf, installUrlOf } from "./config";
-import { corpScope, getSuiteTicket, revokeTenantSessions, tenantOfCorp } from "./store";
+import { assertProviderConfig, eventUrlOf } from "./config";
+import { corpScope, revokeTenantSessions, tenantOfCorp } from "./store";
 
 export interface WecomAdminDeps {
 	client: WecomClient
@@ -88,25 +88,30 @@ export async function setAppStatus(
 }
 
 export interface InstallResult {
+	/** 开通链接（代开发 = `get_customized_auth_url` 返回的 qrcode_url，企业管理员扫/开即授权） */
 	installUrl: string
 	/** 企微后台「指令回调 URL」应填这个（逐字） */
 	callbackUrl: string
+	/** 链接有效期（秒，以企微返回为准，可达 10 天） */
 	expiresIn: number
 }
 
-/** 生成开通入口：suite_access_token → 预授权码 → install URL（企业管理员点开即进入授权安装向导） */
+/**
+ * 生成开通入口（代开发）：provider_access_token → get_customized_auth_url → qrcode_url。
+ * 与第三方应用的「预授权码拼安装链接」不是一个接口——代开发**不支持** get_pre_auth_code
+ * （errcode 48002），必须用这个。授权完成由企微回调 create_auth 落库，与这里无关。
+ */
 export async function createInstall(
 	cfg: WecomConfig,
 	client: WecomClient,
-	store: WecomStoreDeps,
 	state: string,
 ): Promise<InstallResult> {
-	const ticket = await getSuiteTicket(cfg.suiteId, store);
-	const token = await client.suiteAccessToken(cfg.suiteId, cfg.suiteSecret, ticket.ticket);
-	const pre = await client.preAuthCode(token);
+	assertProviderConfig(cfg);
+	const providerToken = await client.providerAccessToken(cfg.providerId, cfg.providerSecret);
+	const auth = await client.customizedAuthUrl(providerToken, [cfg.suiteId], state);
 	return {
-		installUrl: installUrlOf(cfg, pre.code, state),
+		installUrl: auth.url,
 		callbackUrl: eventUrlOf(cfg),
-		expiresIn: pre.expiresIn,
+		expiresIn: auth.expiresIn,
 	};
 }

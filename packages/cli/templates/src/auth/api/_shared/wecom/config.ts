@@ -41,6 +41,14 @@ export interface WecomConfig extends WecomCallbackConfig {
 	/** 代开发应用模版 id（企微侧即 suite_id），也是回调明文里的 receiveid */
 	suiteId: string
 	suiteSecret: string
+	/**
+	 * 服务商 corpid（不是企业 corpid，是「服务商」自己的 corpid）。
+	 * 代开发「生成授权链接」走 `get_customized_auth_url`，该接口只认 provider_access_token，
+	 * 而 provider_access_token 由服务商 corpid + provider_secret 换得——与 suite 凭证不同源。
+	 */
+	providerId: string
+	/** 服务商 provider_secret（在服务商后台「通用开发参数」页拿，别和 suite_secret 搞混） */
+	providerSecret: string
 }
 
 // Tier A：部署方本地生成，创建模版前即可配齐（token / EncodingAESKey / 落库密钥 / 基址）。
@@ -57,6 +65,14 @@ const REQUIRED_SUITE: Array<[keyof WecomConfig, string]> = [
 	["suiteSecret", "wecom_suite_secret"],
 ];
 
+// Tier C：服务商凭证（provider_access_token 源）。**仅「生成授权链接」需要**，不影响
+// login/callback/create_auth 等 suite 流程，故不进 readWecomConfig 的必填集合（readWecomConfig
+// 被登录链路复用，缺 provider 凭证不该让登录 400）。createInstall 单独校验。
+const REQUIRED_PROVIDER: Array<[keyof WecomConfig, string]> = [
+	["providerId", "wecom_provider_id"],
+	["providerSecret", "wecom_provider_secret"],
+];
+
 /** 一次性读出六处部署常量（未 trim 的尾斜杠在此归一） */
 function readWecomVars(): WecomConfig {
 	return {
@@ -66,6 +82,8 @@ function readWecomVars(): WecomConfig {
 		baseUrl: (vars.get("wecom_base_url") ?? "").replace(/\/+$/, ""),
 		suiteId: vars.get("wecom_suite_id") ?? "",
 		suiteSecret: vars.get("wecom_suite_secret") ?? "",
+		providerId: vars.get("wecom_provider_id") ?? "",
+		providerSecret: vars.get("wecom_provider_secret") ?? "",
 	};
 }
 
@@ -88,6 +106,16 @@ export function assertEncKey(encKey: string): void {
 	}
 	if (!ok)
 		throw Object.assign(new Error("企业微信配置错误：wecom_enc_key 必须是 16 或 32 字节的 hex（32/64 字符）或 base64"), { status: 400 });
+}
+
+/**
+ * 校验服务商凭证（生成授权链接必需）。缺任一即 400 并点名缺哪两项——
+ * 区分于 suite 凭证：那是「模版创建后下发」，provider 凭证是「服务商后台通用开发参数」里拿的。
+ */
+export function assertProviderConfig(cfg: WecomConfig): void {
+	const missing = REQUIRED_PROVIDER.filter(([field]) => !cfg[field]).map(([, name]) => name);
+	if (missing.length)
+		throw Object.assign(new Error(`企业微信未配置：生成授权链接需要 ${missing.join(" / ")}（服务商后台「通用开发参数」页获取，与 suite 凭证不同源）`), { status: 400 });
 }
 
 /**
@@ -151,22 +179,6 @@ export function siteRootOf(cfg: WecomConfig): string {
 	if (!path.endsWith(CONNECTOR_SUFFIX))
 		throw Object.assign(new Error(`企业微信配置错误：wecom_base_url 必须以 ${CONNECTOR_SUFFIX} 结尾（如 https://site.example.com/oj${CONNECTOR_SUFFIX}）`), { status: 400 });
 	return `${url.origin}${path.slice(0, -CONNECTOR_SUFFIX.length)}`;
-}
-
-/**
- * 代开发「开通入口」：企业管理员点开 → 企微授权安装页。
- * `redirect_uri` 落在站点根下的登录页（安装完回站点，指令回调已把 profile 落好）。
- */
-export function installUrlOf(cfg: WecomConfig, preAuthCode: string, state: string): string {
-	const redirect = `${siteRootOf(cfg)}/login?wecom_installed=1`;
-	const q = new URLSearchParams({
-		suite_id: cfg.suiteId,
-		pre_auth_code: preAuthCode,
-		redirect_uri: redirect,
-	});
-	if (state)
-		q.set("state", state);
-	return `https://open.work.weixin.qq.com/3rdapp/install?${q.toString()}`;
 }
 
 /** 登录方式发现用：只看开关，不读凭据（登录页要先知道「有没有这个方式」） */

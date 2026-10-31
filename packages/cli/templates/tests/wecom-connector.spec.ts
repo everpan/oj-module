@@ -19,7 +19,6 @@ import { createWecomClient, runtimeCache } from "../src/auth/api/_shared/wecom/c
 import {
 	assertEncKey,
 	eventUrlOf,
-	installUrlOf,
 	loginRedirectOf,
 	readCallbackConfig,
 	readWecomConfig,
@@ -668,8 +667,6 @@ describe("P1-J：部署常量读取（缺项一次报全 / 密钥格式 fail-fas
 		expect(siteRootOf(cfg)).toBe("https://site.example.com/oj");
 		expect(loginLandingUrl({ origin: siteRootOf(cfg), ticket: "tk", tenant: "ww_corp_a" }))
 			.toBe("https://site.example.com/oj/login?wecom_ticket=tk&tenant=ww_corp_a");
-		// 开通入口的 redirect_uri 同样要带子路径
-		expect(installUrlOf(cfg, "PAC1", "env=prod")).toContain(`redirect_uri=${encodeURIComponent("https://site.example.com/oj/login?wecom_installed=1")}`);
 	});
 
 	it("baseUrl 后缀不对 → 400（宁可拒，也不猜站点根拼出错误回跳）", () => {

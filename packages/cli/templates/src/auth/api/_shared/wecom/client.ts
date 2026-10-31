@@ -179,15 +179,40 @@ export function createWecomClient(deps: WecomClientDeps) {
 	}
 
 	/**
-	 * 预授权码（开通入口用）：套件级、10 分钟、一次有效，拼进 install URL 交给企业管理员点开。
-	 * 与 permanent_code 无关——它只换「安装向导里那一屏同意」，真正的永久码仍由 create_auth 回调给。
+	 * 服务商级 token（provider_access_token）：代开发「生成授权链接」用，与套件 token 不同源。
+	 * 由服务商 corpid + provider_secret 换得，全部署共享一份（不限 suite）。
+	 * 注意：这是**服务商**凭证，不是 suite 凭证——代开发的 `get_customized_auth_url`
+	 * 只认 provider_access_token（用 suite_access_token 调会报 token 无效类错误）。
 	 */
-	async function preAuthCode(suiteAccessToken: string): Promise<{ code: string, expiresIn: number }> {
-		const res = await http.postJson(`${API_BASE}/cgi-bin/service/get_pre_auth_code?suite_access_token=${encodeURIComponent(suiteAccessToken)}`, {});
-		assertOk(res, "get_pre_auth_code");
-		if (!res.pre_auth_code)
-			throw upstream("企微 get_pre_auth_code 未返回 pre_auth_code");
-		return { code: String(res.pre_auth_code), expiresIn: Number(res.expires_in ?? 600) };
+	async function providerAccessToken(providerId: string, providerSecret: string): Promise<string> {
+		return cachedToken("wecom:provider_token", async () => {
+			const res = await http.postJson(`${API_BASE}/cgi-bin/service/get_provider_token`, {
+				corpid: providerId,
+				provider_secret: providerSecret,
+			});
+			assertOk(res, "get_provider_token");
+			if (!res.provider_access_token)
+				throw upstream("企微 get_provider_token 未返回 provider_access_token");
+			return { token: String(res.provider_access_token), expiresIn: Number(res.expires_in ?? 7200) };
+		});
+	}
+
+	/**
+	 * 代开发授权链接（get_customized_auth_url）：返回 `qrcode_url`（即企业管理员要扫/开的开通链接，
+	 * 运营侧常称 auth_url）。**代开发明确不支持**第三方应用那个 `get_pre_auth_code`（errcode 48002），
+	 * 必须用本接口。链接有效期以企微返回为准（可达 10 天），state 透传给授权成功回调原样回传。
+	 * `templateid_list` 填代开发模板 ID（本系统即 suite_id，代开发模板与 suite 同标识）。
+	 */
+	async function customizedAuthUrl(providerAccessToken: string, templateIds: string[], state: string): Promise<{ url: string, expiresIn: number }> {
+		const res = await http.postJson(`${API_BASE}/cgi-bin/service/get_customized_auth_url?provider_access_token=${encodeURIComponent(providerAccessToken)}`, {
+			state: state ? state.slice(0, 32) : undefined,
+			templateid_list: templateIds,
+		});
+		assertOk(res, "get_customized_auth_url");
+		const url = res.qrcode_url ?? res.auth_url;
+		if (!url)
+			throw upstream("企微 get_customized_auth_url 未返回 qrcode_url");
+		return { url: String(url), expiresIn: Number(res.expires_in ?? 7200) };
 	}
 
 	/** 企业 access_token（代开发 = 自建应用的 gettoken，corpsecret 就是 permanent_code） */
@@ -262,7 +287,7 @@ export function createWecomClient(deps: WecomClientDeps) {
 		throw upstream("企微 token 反复失效（40001/42001）");
 	}
 
-	return { suiteAccessToken, permanentCodeByAuthCode, preAuthCode, corpAccessToken, invalidateCorpToken, userIdByCode, userNameById };
+	return { suiteAccessToken, permanentCodeByAuthCode, providerAccessToken, customizedAuthUrl, corpAccessToken, invalidateCorpToken, userIdByCode, userNameById };
 }
 
 export type WecomClient = ReturnType<typeof createWecomClient>;

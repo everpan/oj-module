@@ -15,7 +15,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { assertSuperAdmin, invalidateAllUsers } from "../src/_platform/api/_shared/service/infra/access";
 import { listApps, setAppStatus } from "../src/auth/api/_shared/wecom/admin";
 import { createWecomClient, runtimeCache, runtimeHttp } from "../src/auth/api/_shared/wecom/client";
-import { installUrlOf, readWecomConfig, siteRootOf } from "../src/auth/api/_shared/wecom/config";
+import { readWecomConfig } from "../src/auth/api/_shared/wecom/config";
 import { installDb } from "./fixture";
 
 const g = globalThis as any;
@@ -51,6 +51,8 @@ function installVars(overrides: Record<string, string> = {}): void {
 	const base: Record<string, string> = {
 		wecom_suite_id: SUITE,
 		wecom_suite_secret: "suite_secret",
+		wecom_provider_id: "provider_1",
+		wecom_provider_secret: "provider_secret",
 		wecom_callback_token: "cb_token",
 		wecom_encoding_aes_key: AES_KEY_B64.replace(/=$/, ""),
 		wecom_enc_key: "0123456789abcdef0123456789abcdef",
@@ -97,10 +99,6 @@ function seedCorp(corpId = "ww_corp_a", agentId = "100001", env = "prod", status
 		.run(SUITE, corpId, agentId, authCorpId, env, `企业 ${corpId}`, status, `gcm(perm_${corpId}_${agentId})`, NOW, NOW);
 }
 
-function seedTicket(ticket = "tk_9", expiresAt = NOW + 1800): void {
-	dbo.prepare("INSERT INTO wecom_suite_ticket (suite_id, suite_ticket, expires_at, update_time) VALUES (?, ?, ?, ?)").run(SUITE, ticket, expiresAt, NOW);
-}
-
 function mkUser(username: string, roles: string[] = []): number {
 	dbo.prepare("INSERT INTO users (username, password_hash) VALUES (?, 'x')").run(username);
 	const id = (dbo.prepare("SELECT id FROM users WHERE username = ?").get(username) as { id: number }).id;
@@ -124,10 +122,10 @@ function fakeClient(): { client: any, invalidated: string[] } {
 
 const deps = { store: { encrypt: (p: string) => `gcm(${p})`, decrypt: (b: string) => b, now: () => NOW } };
 
-/** createInstall 的薄包装：store.now 固定，避免用例依赖真实时钟 */
+/** createInstall 的薄包装：省掉动态 import 的样板 */
 async function createInstallForTest(cfg: ReturnType<typeof readWecomConfig>, client: ReturnType<typeof createWecomClient>, state: string) {
 	const { createInstall } = await import("../src/auth/api/_shared/wecom/admin");
-	return createInstall(cfg, client, deps.store, state);
+	return createInstall(cfg, client, state);
 }
 
 const api = async () => (await import("../src/auth/api/wecom/admin/api")).default;
@@ -251,18 +249,20 @@ describe("P3-B：启停（setAppStatus）", () => {
 	});
 });
 
-describe("P3-C：开通入口（createInstall）", () => {
-	function stubUpstream(preAuth = "PRE_1", expiresIn = 600): string[] {
+describe("P3-C：开通入口（createInstall，代开发 get_customized_auth_url）", () => {
+	// 代开发**不支持** get_pre_auth_code（48002）：本段钉死调用链走 provider_access_token +
+	// get_customized_auth_url，绝不回退到第三方应用的预授权码接口。
+	function stubUpstream(qrcodeUrl = "https://open.work.weixin.qq.com/3rdservice/QR_1", expiresIn = 7200): string[] {
 		const calls: string[] = [];
 		g.fetch = async (url: string) => {
 			calls.push(url);
 			return {
 				ok: true,
 				json: async () => {
-					if (url.includes("get_suite_token"))
-						return { suite_access_token: "suite_tk", expires_in: 7200 };
-					if (url.includes("get_pre_auth_code"))
-						return { pre_auth_code: preAuth, expires_in: expiresIn };
+					if (url.includes("get_provider_token"))
+						return { provider_access_token: "prov_tk", expires_in: 7200 };
+					if (url.includes("get_customized_auth_url"))
+						return { qrcode_url: qrcodeUrl, expires_in: expiresIn };
 					throw new Error(`stub fetch 未预期：${url}`);
 				},
 			};
@@ -270,47 +270,31 @@ describe("P3-C：开通入口（createInstall）", () => {
 		return calls;
 	}
 
-	it("suite_ticket → suite_token → 预授权码 → install URL（redirect_uri 落站点根登录页）", async () => {
-		seedTicket();
+	it("provider_token → get_customized_auth_url → qrcode_url（即开通链接），且绝不调 get_pre_auth_code", async () => {
 		const calls = stubUpstream();
 		const cfg = readWecomConfig();
 		const client = createWecomClient({ http: runtimeHttp(), cache: runtimeCache() });
 
 		const r = await createInstallForTest(cfg, client, "st_1");
-		expect(calls.some(u => u.includes("get_suite_token"))).toBe(true);
-		expect(calls.some(u => u.includes("get_pre_auth_code"))).toBe(true);
+		expect(calls.some(u => u.includes("get_provider_token"))).toBe(true);
+		expect(calls.some(u => u.includes("get_customized_auth_url"))).toBe(true);
+		// 代开发 48002 的根因就是错用了 get_pre_auth_code——这条断言防止回归
+		expect(calls.some(u => u.includes("get_pre_auth_code"))).toBe(false);
+
+		expect(r.installUrl).toBe("https://open.work.weixin.qq.com/3rdservice/QR_1");
 		expect(r.callbackUrl).toBe("https://site.example.com/api/auth/wecom/event");
-		expect(r.expiresIn).toBe(600);
-
-		const url = new URL(r.installUrl);
-		expect(`${url.origin}${url.pathname}`).toBe("https://open.work.weixin.qq.com/3rdapp/install");
-		expect(url.searchParams.get("suite_id")).toBe(SUITE);
-		expect(url.searchParams.get("pre_auth_code")).toBe("PRE_1");
-		expect(url.searchParams.get("redirect_uri")).toBe("https://site.example.com/login?wecom_installed=1");
-		expect(url.searchParams.get("state")).toBe("st_1");
+		expect(r.expiresIn).toBe(7200);
 	});
 
-	it("子路径部署：redirect_uri 保留 /oj（回跳不落到宿主机根）", () => {
-		installVars({ wecom_base_url: "https://site.example.com/oj/api/auth/wecom" });
-		const cfg = readWecomConfig();
-		expect(siteRootOf(cfg)).toBe("https://site.example.com/oj");
-		const url = new URL(installUrlOf(cfg, "PRE_1", ""));
-		expect(url.searchParams.get("redirect_uri")).toBe("https://site.example.com/oj/login?wecom_installed=1");
-		// state 为空时不出现在 URL 里（不塞空串进去骗企微后台）
-		expect(url.searchParams.has("state")).toBe(false);
-	});
-
-	it("缺 suite_ticket（回调未打通/已过期）→ 503，不白跑一趟上游", async () => {
-		const calls = stubUpstream();
+	it("缺 provider 凭证（wecom_provider_id / wecom_provider_secret）→ 400 并点名缺哪两个 vars", async () => {
+		installVars({ wecom_provider_id: "", wecom_provider_secret: "" });
 		const cfg = readWecomConfig();
 		const client = createWecomClient({ http: runtimeHttp(), cache: runtimeCache() });
-		await expect(createInstallForTest(cfg, client, "")).rejects.toMatchObject({ status: 503 });
-		expect(calls).toEqual([]);
+		await expect(createInstallForTest(cfg, client, "")).rejects.toMatchObject({ status: 400 });
 	});
 
-	it("上游 errcode → 502（可重试语义，不是 500）", async () => {
-		seedTicket();
-		g.fetch = async () => ({ ok: true, json: async () => ({ errcode: 40001, errmsg: "invalid credential" }) });
+	it("上游 errcode（如 provider_secret 错）→ 502（可重试语义，不是 500）", async () => {
+		g.fetch = async () => ({ ok: true, json: async () => ({ errcode: 40001, errmsg: "invalid provider secret" }) });
 		const cfg = readWecomConfig();
 		const client = createWecomClient({ http: runtimeHttp(), cache: runtimeCache() });
 		await expect(createInstallForTest(cfg, client, "")).rejects.toMatchObject({ status: 502 });

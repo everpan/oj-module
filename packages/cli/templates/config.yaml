@@ -57,17 +57,22 @@ vars:
   # canonical_origin: "https://your-site.example.com"
 
   # ---- 企业微信代开发（服务商侧，部署级常量）----
-  # 一个部署 = 一个服务商账号下的一套代开发模板，所以这 6 个值是「部署」维度，不进 DB。
+  # 一个部署 = 一个服务商账号下的一套代开发模板，所以这 8 个值是「部署」维度，不进 DB。
   # 「哪个企业装了哪个应用」不写在这里：企微 create_auth 回调推 AuthCode → 换永久授权码 →
   # 落 wecom_app_profile（主键含 agent_id，同一企业测试/正式两个应用天然并存），
   # 新增企业只需企业管理员扫码授权，**不改配置、不重启**。
-  # 六项分两层（来源与必填时序不同，破解「先有 suite 还是先有回调」死锁）：
+  # 分三层（来源与必填时序不同，破解「先有 suite 还是先有回调」死锁）：
   #   · Tier A 本地生成、创建模版前即可配齐：callback_token / encoding_aes_key / enc_key / base_url；
   #     任一为空 → 启动即 400 拒绝服务（宁可不登录，也不明文存 permanent_code）。
   #   · Tier B 企微创建模版后下发：suite_id / suite_secret；为空时仍可启动并响应 echostr 验证，
   #     仅 login/callback/create_auth 等 suite 流程会 400——先配 Tier A 跑通回调、建模版、拿 suite 再补全。
+  #   · Tier C 服务商后台「通用开发参数」页拿（不是企业、也不是 suite）：provider_id / provider_secret；
+  #     只供「生成授权链接」用（get_customized_auth_url 要 provider_access_token）。缺它不影响登录，
+  #     但 /system/wecom 点「生成开通链接」会 400 点名缺这两项。
   #   wecom_suite_id          代开发应用「模板详情 → 基本信息」页里的「模板ID」（即 SuiteID）；创建模板成功后才出现
   #   wecom_suite_secret      同页「模板Secret」（即 SuiteSecret，可重置）；不是企业 CorpID/CorpSecret
+  #   wecom_provider_id       服务商的 corpid（服务商自己的，不是企业 corpid）；在服务商后台「通用开发参数」页
+  #   wecom_provider_secret   服务商 provider_secret（同页）；与 suite_secret 不同源，别填串
   #   wecom_callback_token    「Token」（回调验签用）
   #   wecom_encoding_aes_key  「EncodingAESKey」（43 字符，回调解密用）
   #   wecom_enc_key           permanent_code 落库加密密钥（hex/base64，16 或 32 字节；建议 oj secret keygen）
@@ -76,6 +81,8 @@ vars:
   #                             网页授权 redirect_uri 用 <base>/callback
   wecom_suite_id: ''
   wecom_suite_secret: ''
+  wecom_provider_id: ''
+  wecom_provider_secret: ''
   wecom_callback_token: ''
   wecom_encoding_aes_key: ''
   wecom_enc_key: ''
