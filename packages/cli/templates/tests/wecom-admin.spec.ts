@@ -252,10 +252,12 @@ describe("P3-B：启停（setAppStatus）", () => {
 describe("P3-C：开通入口（createInstall，代开发 get_customized_auth_url）", () => {
 	// 代开发**不支持** get_pre_auth_code（48002）：本段钉死调用链走 provider_access_token +
 	// get_customized_auth_url，绝不回退到第三方应用的预授权码接口。
-	function stubUpstream(qrcodeUrl = "https://open.work.weixin.qq.com/3rdservice/QR_1", expiresIn = 7200): string[] {
+	function stubUpstream(qrcodeUrl = "https://open.work.weixin.qq.com/3rdservice/QR_1", expiresIn = 7200): { calls: string[], bodies: any[] } {
 		const calls: string[] = [];
-		g.fetch = async (url: string) => {
+		const bodies: any[] = [];
+		g.fetch = async (url: string, init?: any) => {
 			calls.push(url);
+			bodies.push(init?.body ? JSON.parse(init.body) : null);
 			return {
 				ok: true,
 				json: async () => {
@@ -267,11 +269,11 @@ describe("P3-C：开通入口（createInstall，代开发 get_customized_auth_ur
 				},
 			};
 		};
-		return calls;
+		return { calls, bodies };
 	}
 
 	it("provider_token → get_customized_auth_url → qrcode_url（即开通链接），且绝不调 get_pre_auth_code", async () => {
-		const calls = stubUpstream();
+		const { calls, bodies } = stubUpstream();
 		const cfg = readWecomConfig();
 		const client = createWecomClient({ http: runtimeHttp(), cache: runtimeCache() });
 
@@ -281,9 +283,25 @@ describe("P3-C：开通入口（createInstall，代开发 get_customized_auth_ur
 		// 代开发 48002 的根因就是错用了 get_pre_auth_code——这条断言防止回归
 		expect(calls.some(u => u.includes("get_pre_auth_code"))).toBe(false);
 
+		const body = bodies.find(b => b && b.templateid_list) as any;
+		expect(body).toBeTruthy();
+		// get_customized_auth_url 要求 state 必填（errcode 40058 state missing）：本系统必传、非空
+		expect(body.state).toBe("st_1");
+		expect(body.templateid_list).toEqual([SUITE]);
+
 		expect(r.installUrl).toBe("https://open.work.weixin.qq.com/3rdservice/QR_1");
 		expect(r.callbackUrl).toBe("https://site.example.com/api/auth/wecom/event");
 		expect(r.expiresIn).toBe(7200);
+	});
+
+	it("调用方没传 state 时仍发默认 state（避免 40058 state missing）", async () => {
+		const { bodies } = stubUpstream();
+		const cfg = readWecomConfig();
+		const client = createWecomClient({ http: runtimeHttp(), cache: runtimeCache() });
+		await createInstallForTest(cfg, client, "");
+		const body = bodies.find(b => b && b.templateid_list) as any;
+		expect(body.state).toBeTruthy();
+		expect(body.state.length).toBeLessThanOrEqual(32);
 	});
 
 	it("缺 provider 凭证（wecom_provider_id / wecom_provider_secret）→ 400 并点名缺哪两个 vars", async () => {

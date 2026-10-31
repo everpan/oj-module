@@ -204,8 +204,11 @@ export function createWecomClient(deps: WecomClientDeps) {
 	 * `templateid_list` 填代开发模板 ID（本系统即 suite_id，代开发模板与 suite 同标识）。
 	 */
 	async function customizedAuthUrl(providerAccessToken: string, templateIds: string[], state: string): Promise<{ url: string, expiresIn: number }> {
+		// state 必填（errcode 40058 state missing），限 ≤32 字节；调用方没传（前端目前不传）就给默认常量。
+		// 注：本系统开通链接不靠 state 携带 env（env 走登录链接），故空时给固定默认值即可。
+		const st = state ? state.slice(0, 32) : "ojmdaikaifa";
 		const res = await http.postJson(`${API_BASE}/cgi-bin/service/get_customized_auth_url?provider_access_token=${encodeURIComponent(providerAccessToken)}`, {
-			state: state ? state.slice(0, 32) : undefined,
+			state: st,
 			templateid_list: templateIds,
 		});
 		assertOk(res, "get_customized_auth_url");
