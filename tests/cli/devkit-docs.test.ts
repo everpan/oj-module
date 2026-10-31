@@ -99,7 +99,7 @@ describe("devkit 目录结构（ojm 侧发货 + oj-api-dev 快照子目录）", 
 
 /**
  * 企微代开发手册是「业务工程自助接上真实套件」的唯一入口（随 `ojm init` 分发），
- * 必须与模板里的部署常量保持同步：六项 `vars` 少写一项，读者就会在启动时撞 400，
+ * 必须与模板里的部署常量保持同步：每项 `vars` 少写一项，读者就会在启动时撞 400，
  * 却不知道这些值该去企微后台哪个页面取。故以 `config.ts` 的 REQUIRED 表为真源
  * 反向校验手册，并钉死「三视角结构」与分发链路——文档漏发货等于没有。
  */
@@ -107,10 +107,10 @@ describe("企微代开发手册与部署常量同步", () => {
 	const doc = read("docs/devkit/wecom-daikaifa.md");
 	const config = read("packages/cli/templates/src/auth/api/_shared/wecom/config.ts");
 
-	it("六项部署常量逐个出现在手册（真源：config.ts 的 REQUIRED 表）", () => {
+	it("八项部署常量逐个出现在手册（真源：config.ts 的 REQUIRED 表）", () => {
 		const names = [...config.matchAll(/"(wecom_[a-z_]+)"/g)].map(m => m[1]!);
 		const required = [...new Set(names)].sort();
-		expect(required).toHaveLength(6);
+		expect(required).toHaveLength(8);
 		for (const name of required)
 			expect(doc, `手册缺 ${name} 的取值位置/缺失后果`).toContain(name);
 	});
