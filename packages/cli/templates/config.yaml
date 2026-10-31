@@ -71,8 +71,9 @@ vars:
   #     但 /system/wecom 点「生成开通链接」会 400 点名缺这两项。
   #   wecom_suite_id          代开发应用「模板详情 → 基本信息」页里的「模板ID」（即 SuiteID）；创建模板成功后才出现
   #   wecom_suite_secret      同页「模板Secret」（即 SuiteSecret，可重置）；不是企业 CorpID/CorpSecret
-  #   wecom_provider_id       服务商的 corpid（服务商自己的，不是企业 corpid）；在服务商后台「通用开发参数」页
-  #   wecom_provider_secret   服务商 provider_secret（同页）；与 suite_secret 不同源，别填串
+  #   wecom_provider_id       服务商的 corpid（服务商自己的，不是企业 corpid）；**位置：服务商后台「服务商信息」页显示的 CorpID**
+  #   wecom_provider_secret   服务商 provider_secret；**位置：服务商后台 → 应用管理 → 通用开发参数（点「编辑」）→ ProviderSecret 字段**，
+  #                           **不在「服务商信息」页**（那里只显示 CorpID），也**不是** suite_secret（suite 那个是另一套）。
   #   wecom_callback_token    「Token」（回调验签用）
   #   wecom_encoding_aes_key  「EncodingAESKey」（43 字符，回调解密用）
   #   wecom_enc_key           permanent_code 落库加密密钥（hex/base64，16 或 32 字节；建议 oj secret keygen）

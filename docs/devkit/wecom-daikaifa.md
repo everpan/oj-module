@@ -61,9 +61,10 @@
   回调验证，**不依赖企业微信下发**；即使 `suite_id` / `suite_secret` 还空着，服务也能跑通 echostr。
 - **Tier B（企业微信在「代开发模版创建成功」后下发）**：`wecom_suite_id` / `wecom_suite_secret`。
   只影响登录 / 授权等 suite 流程（login / callback / create_auth）；**回调 URL 验证（echostr）不依赖它们**。
-- **Tier C（服务商后台「通用开发参数」页拿，不是企业、也不是 suite）**：`wecom_provider_id` /
-  `wecom_provider_secret`。**只供「生成开通链接」用**——代开发的开通入口走 `get_customized_auth_url`，
-  该接口只认 `provider_access_token`，而它必须由服务商 corpid + provider_secret 换得。
+- **Tier C（服务商级凭证，只供「生成开通链接」用）**：`wecom_provider_id`（= 服务商后台
+  **服务商信息**页的 CorpID）/ `wecom_provider_secret`（= 服务商后台 **应用管理 → 通用开发参数** 点「编辑」
+  后的 `ProviderSecret` 字段，**不在**服务商信息页，也**不是** suite 的 secret）。代开发的开通入口走
+  `get_customized_auth_url`，该接口只认 `provider_access_token`，而它必须由服务商 corpid + provider_secret 换得。
   缺它**不影响登录**（login 走 suite 流程），但 `/system/wecom` 点「生成开通链接」会 400 点名缺这两项。
 
 Tier A 任一为空 → 服务启动即 400 拒绝（宁可不登录，也不明文存 `permanent_code`）。
@@ -84,8 +85,8 @@ Tier B 为空时服务仍可启动并响应 echostr，但 suite 流程会 400—
 | 4 | `wecom_encoding_aes_key` | Tier A | 同页 **EncodingAESKey**（自设） | **43 字符** | 同上：回调报文解不开，`suite_ticket` 永远收不到 |
 | 5 | `wecom_enc_key` | Tier A | **自己生成**，见 §2.4 | hex 32 字符（16 字节）或 64 字符（32 字节），或 base64 解码后 16 / 32 字节。**AES-192（24 字节）不支持** | 400 `企业微信配置错误：wecom_enc_key 必须是 16 或 32 字节的 hex（32/64 字符）或 base64` |
 | 6 | `wecom_base_url` | Tier A | **基址**：你站点的对外地址 + `/api/auth/wecom`（注意这是基址，**不是**企微后台要填的回调 URL） | **绝对地址、无尾斜杠、必须以 `/api/auth/wecom` 结尾** | 400 `wecom_base_url 必须是绝对地址` 或 `必须以 /api/auth/wecom 结尾`；配错还会让登录回跳落到别的应用或 404 |
-| 7 | `wecom_provider_id` | Tier C | 服务商后台 → **通用开发参数**（注意是**服务商**的 corpid，不是企业 corpid，也不是 suite_id） | 非空字符串 | 只影响「生成开通链接」：`get_provider_token` 换不出 `provider_access_token` → 生成链接 502；此项为空 → 生成链接 400 `config vars 缺少 wecom_provider_id` |
-| 8 | `wecom_provider_secret` | Tier C | 同页「通用开发参数」的 provider_secret（与 `wecom_suite_secret` **不同源**，别填串） | 非空字符串；重置后旧值立即失效 | 换不出 `provider_access_token` → 生成链接 502 `企微 get_provider_token 失败：errcode=40001 …`；此项为空 → 生成链接 400 `config vars 缺少 wecom_provider_secret` |
+| 7 | `wecom_provider_id` | Tier C | 服务商后台 → **服务商信息**页显示的 CorpID（服务商自己的 corpid，不是企业 corpid，也不是 suite_id） | 非空字符串 | 只影响「生成开通链接」：`get_provider_token` 换不出 `provider_access_token` → 生成链接 502；此项为空 → 生成链接 400 `config vars 缺少 wecom_provider_id` |
+| 8 | `wecom_provider_secret` | Tier C | 服务商后台 → **应用管理 → 通用开发参数**（**点「编辑」按钮**那一栏的 `ProviderSecret` 字段）。**不在「服务商信息」页**（那里只显示 CorpID），也**不是** suite_secret | 非空字符串；重置后旧值立即失效 | 换不出 `provider_access_token` → 生成链接 502 `企微 get_provider_token 失败：errcode=40001 …`；此项为空 → 生成链接 400 `config vars 缺少 wecom_provider_secret` |
 
 `wecom_base_url` 是唯一「配一处、派生两处」的值——它同时决定：
 
