@@ -33,11 +33,36 @@ export interface WecomClientDeps {
 	cache: WecomCache
 }
 
+/**
+ * 软超时：服务端 isolate 无 `setTimeout` / `AbortSignal` 全局，不能用 `AbortSignal.timeout`。
+ * 这里用运行时注入的 `tasks.sleep(ms)` 起一个「到点就 reject」的竞态；fetch 不被真正 abort，
+ * 只是不再等它（后台连接最终由 OS/池回收）。`tasks` 不可用时降级为原 promise（无超时）。
+ * 输家 promise 在 race 结束后仍可能 reject，挂 `.catch` 防 unhandled rejection。
+ */
+function withSoftTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+	const g = globalThis as unknown as { tasks?: { sleep?: (ms: number) => Promise<void> } };
+	const sleep = g.tasks?.sleep;
+	if (typeof sleep !== "function")
+		return p;
+	const timeout = sleep(ms).then(
+		() => { throw new Error(`超时 ${ms}ms`); },
+		() => {}, // sleep 自身异常不中断主链路
+	);
+	return Promise.race([p, timeout]).finally(() => {
+		// 输家 promise 在 race 结束后仍可能 reject，挂 catch 防 unhandled rejection
+		timeout.catch(() => {});
+	});
+}
+
 export function runtimeHttp(): WecomHttp {
 	async function call(url: string, init: RequestInit): Promise<Record<string, unknown>> {
 		let res: Response;
 		try {
-			res = await fetch(url, { ...init, signal: AbortSignal.timeout(TIMEOUT_MS) });
+			// 服务端 isolate 无 `AbortSignal` / `setTimeout` 全局（见 oj-api-dev global.d.ts：
+			// 「本运行时无 timer 全局」），`AbortSignal.timeout()` 直接 ReferenceError。
+			// 用运行时提供的 `tasks.sleep` 做软超时（到点 reject；fetch 仍在后台跑、不 abort），
+			// 拿不到 tasks 时降级为「不超时」——网络层失败仍会被下面 catch 转成 502。
+			res = await withSoftTimeout(fetch(url, init), TIMEOUT_MS);
 		}
 		catch (e) {
 			throw upstream(`企微接口不可达：${(e as Error).message}`);
