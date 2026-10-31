@@ -59,14 +59,19 @@ vars:
   # 「哪个企业装了哪个应用」不写在这里：企微 create_auth 回调推 AuthCode → 换永久授权码 →
   # 落 wecom_app_profile（主键含 agent_id，同一企业测试/正式两个应用天然并存），
   # 新增企业只需企业管理员扫码授权，**不改配置、不重启**。
-  # 六项任一为空 → 企微登录整体 400 拒绝服务（宁可不登录，也不明文存 permanent_code）。
+  # 六项分两层（来源与必填时序不同，破解「先有 suite 还是先有回调」死锁）：
+  #   · Tier A 本地生成、创建模版前即可配齐：callback_token / encoding_aes_key / enc_key / base_url；
+  #     任一为空 → 启动即 400 拒绝服务（宁可不登录，也不明文存 permanent_code）。
+  #   · Tier B 企微创建模版后下发：suite_id / suite_secret；为空时仍可启动并响应 echostr 验证，
+  #     仅 login/callback/create_auth 等 suite 流程会 400——先配 Tier A 跑通回调、建模版、拿 suite 再补全。
   #   wecom_suite_id          代开发应用模版 id（企微后台「应用管理 → 代开发」里的 SuiteID）
   #   wecom_suite_secret      套件密钥（SuiteSecret）
   #   wecom_callback_token    「Token」（回调验签用）
   #   wecom_encoding_aes_key  「EncodingAESKey」（43 字符，回调解密用）
   #   wecom_enc_key           permanent_code 落库加密密钥（hex/base64，16 或 32 字节；建议 oj secret keygen）
-  #   wecom_base_url          连接器基址（绝对地址，无尾斜杠），如 https://site.example.com/api/auth/wecom
-  #                           → 企微后台「指令回调URL」填 <base>/event；网页授权 redirect_uri 用 <base>/callback
+  #   wecom_base_url          连接器基址（绝对地址，无尾斜杠，**这是基址、不是回调 URL**），如 https://site.example.com/api/auth/wecom
+  #                           → 企微后台「指令回调URL」填 <base>/event（必须带 /event，裸 <base> 无 handler 会 404）；
+  #                             网页授权 redirect_uri 用 <base>/callback
   wecom_suite_id: ''
   wecom_suite_secret: ''
   wecom_callback_token: ''

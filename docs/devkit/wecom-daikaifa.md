@@ -73,7 +73,7 @@ Tier B 为空时服务仍可启动并响应 echostr，但 suite 流程会 400—
 | 3 | `wecom_callback_token` | Tier A | 同页 **Token**（自设，字母数字 3–32 位） | 与企微后台**逐字一致** | 保存回调 URL 时 `echostr` 解不解得开；事件被判验签失败，企微持续重推 |
 | 4 | `wecom_encoding_aes_key` | Tier A | 同页 **EncodingAESKey**（自设） | **43 字符** | 同上：回调报文解不开，`suite_ticket` 永远收不到 |
 | 5 | `wecom_enc_key` | Tier A | **自己生成**，见 §2.4 | hex 32 字符（16 字节）或 64 字符（32 字节），或 base64 解码后 16 / 32 字节。**AES-192（24 字节）不支持** | 400 `企业微信配置错误：wecom_enc_key 必须是 16 或 32 字节的 hex（32/64 字符）或 base64` |
-| 6 | `wecom_base_url` | Tier A | 你站点的对外地址 + `/api/auth/wecom` | **绝对地址、无尾斜杠、必须以 `/api/auth/wecom` 结尾** | 400 `wecom_base_url 必须是绝对地址` 或 `必须以 /api/auth/wecom 结尾`；配错还会让登录回跳落到别的应用或 404 |
+| 6 | `wecom_base_url` | Tier A | **基址**：你站点的对外地址 + `/api/auth/wecom`（注意这是基址，**不是**企微后台要填的回调 URL） | **绝对地址、无尾斜杠、必须以 `/api/auth/wecom` 结尾** | 400 `wecom_base_url 必须是绝对地址` 或 `必须以 /api/auth/wecom 结尾`；配错还会让登录回跳落到别的应用或 404 |
 
 `wecom_base_url` 是唯一「配一处、派生两处」的值——它同时决定：
 
@@ -81,6 +81,11 @@ Tier B 为空时服务仍可启动并响应 echostr，但 suite 流程会 400—
 - 网页授权 `redirect_uri` = `<wecom_base_url>/callback`
 - 登录成功后的站点回跳 = 去掉 `/api/auth/wecom` 的那部分（子路径部署也正确，例如
   `https://example.com/oj/api/auth/wecom` → 回跳 `https://example.com/oj/login`）
+
+> ⚠️ **`wecom_base_url` 不是回调 URL 本身，别把它直接填进企微后台。** 企微后台要填的
+> 「指令回调 URL」是 `<wecom_base_url>/event`（**必须带 `/event`**）。裸的 `/api/auth/wecom`
+> 没有任何 handler，企微验签时会打到它 → **404 → 验证失败、模版保存不了**。
+> 派生关系如上：回调 URL = base + `/event`，网页授权回跳 = base + `/callback`。
 
 ### 2.2 两项备案（都在企微后台，不写在代码里）
 
