@@ -13,6 +13,7 @@ import type { WecomConfig, WecomCorpConfig, WecomKind } from "./config";
 import type { WecomStoreDeps } from "./store";
 import { invalidateAllUsers } from "#/_platform/_shared/service/infra/access";
 import { assertProviderConfig, eventUrlOf } from "./config";
+import { provisionTenantAdmin } from "./tenant-admin";
 import { corpScope, revokeTenantSessions, saveProfile, tenantOfCorp } from "./store";
 
 export interface WecomAdminDeps {
@@ -194,6 +195,9 @@ export async function connectCorp(cfg: WecomCorpConfig, client: WecomClient, dep
 		}).run();
 		await client.invalidateCorpToken(cfg.corpId, old);
 	}
+	// 租户具象化：给这个企业配一个本租户的管理员（admin，非 superadmin），否则
+	// 该租户里只有 JIT 出来的员工号，没人能做组织架构同步、也没人能在租户内授权。
+	await provisionTenantAdmin(cfg.corpId);
 	invalidateAllUsers();
 	return { corpId: cfg.corpId, agentId: cfg.agentId, departments: depts.length, members };
 }

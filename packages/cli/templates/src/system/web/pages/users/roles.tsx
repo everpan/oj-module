@@ -11,9 +11,13 @@ import { explainError, isForbidden } from "../errors";
 import { ForbiddenPanel } from "../forbidden";
 
 /**
- * 成员资格（AC1-7，superadmin-only）：整集替换某用户角色。后端无 GET 单用户端点，
+ * 成员资格（AC1-7）：整集替换某用户角色。后端无 GET 单用户端点，
  * 当前角色从 GET /system/users 列表按 uid 回显；写走 PUT /system/users/roles?uid=。
- * admin（非 superadmin）手输 URL 进入后提交会被 service 层 403 → 页面渲染无权限（§3.2）。
+ *
+ * 可见性已从「superadmin-only」放宽到「本租户 admin 也可以」（见 users/index.tsx 的入口）：
+ * 授予 admin 已下放到租户内，否则企业租户永远配不出管理员（平台 superadmin 因租户
+ * 隔离查不到企业租户的用户）。但 **superadmin 仍只许 superadmin 授**——它握着跨租户
+ * 权限，故这里对非 superadmin 直接把该选项置灰，比让他提交后吃 403 清楚。
  */
 export default function UserRolesPage() {
 	const { t } = useTranslation();
@@ -22,6 +26,8 @@ export default function UserRolesPage() {
 	const { uid } = useParams();
 	const queryClient = useQueryClient();
 	const me = useUserStore(s => s.id);
+	const myRoles = useUserStore(s => s.roles);
+	const isSuper = myRoles.includes("superadmin");
 
 	// null = 尚未改动，回显服务端值；一旦勾选即持本地整集
 	const [selected, setSelected] = useState<string[] | null>(null);
@@ -51,7 +57,12 @@ export default function UserRolesPage() {
 		<Card title={`${t("system:userRoles.title")}: ${user?.username ?? `#${uid}`}`}>
 			<Space direction="vertical">
 				<Checkbox.Group
-					options={(rolesQuery.data ?? []).map(r => ({ label: `${r.name}${r.deprecated ? "（已废弃）" : ""}`, value: r.name }))}
+					options={(rolesQuery.data ?? []).map(r => ({
+						label: `${r.name}${r.deprecated ? "（已废弃）" : ""}`,
+						value: r.name,
+						// 非 superadmin 授不了平台级角色：置灰，提交后 403 太晚也太含糊
+						disabled: r.name === "superadmin" && !isSuper,
+					}))}
 					value={value}
 					onChange={v => setSelected(v)}
 				/>

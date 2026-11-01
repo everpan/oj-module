@@ -19,7 +19,8 @@ type UserRow = SystemUsersGetData[number];
 /**
  * 用户管理（C1）：GET /system/users 列表 + 建号 / 禁用切换 / 重置口令。
  * 本人行禁用一切自操作（后端 assertNotSelf 400 兜底，前端不给会失败的按钮，R3）；
- * 成员资格入口仅 superadmin 可见（成员资格写是 superadmin-only，规格 §4）。
+ * 成员资格入口：superadmin 与 **本租户 admin** 均可见（授予 admin 已下放到租户内，
+ * 但授予 superadmin 仍只许 superadmin——见 domain/users.ts::assertMembershipAllowed）。
  * 部门列标出主部门，顶部可按部门筛选（含子部门）——筛选在前端做，名单本来就是一页全量。
  */
 export default function UsersPage() {
@@ -30,6 +31,8 @@ export default function UsersPage() {
 	const me = useUserStore(s => s.id);
 	const myRoles = useUserStore(s => s.roles);
 	const isSuper = myRoles.includes("superadmin");
+	// 任命本租户管理员已下放到租户内的 admin（提权到 superadmin 仍只许 superadmin）
+	const canManageMembership = isSuper || myRoles.includes("admin");
 
 	const [createOpen, setCreateOpen] = useState(false);
 	const [createForm] = Form.useForm<{ username: string, password: string, displayName?: string, email?: string }>();
@@ -129,9 +132,9 @@ export default function UsersPage() {
 					<Button size="small" disabled={String(row.id) === me} onClick={() => setPwdTarget(row)}>
 						{t("system:users.resetPwd")}
 					</Button>
-					{isSuper
-						? (
-							<Button size="small" type="link" onClick={() => navigate(`/system/users/${row.id}/roles`)}>
+						{canManageMembership
+							? (
+								<Button size="small" type="link" onClick={() => navigate(`/system/users/${row.id}/roles`)}>
 								{t("system:users.membership")}
 							</Button>
 						)

@@ -13,9 +13,9 @@
 
 | 你是 | 读 | 大约要做什么 |
 |---|---|---|
-| 部署 / 运维 | §2 §3 §4 §7 §8 | 备凭据、填 `config.yaml`、在后台点「验证并接入」、日常启停与轮换；真机验收照 **§7.5** 打勾 |
+| 部署 / 运维 | §2 §3 §4 §7 §8 **§9** | 备凭据、填 `config.yaml`、在后台点「验证并接入」、日常启停与轮换；真机验收照 **§7.5** 打勾 |
 | 企业管理员（客户 IT） | §2.3 §3 §4.3 §7.5 | 在自家企微后台建自建应用、交出三个值、配可信 IP / 可信域名、把可见范围设成全公司、可选配通讯录事件回调 |
-| 本工程开发者 | §1 §6 §8 | 本地联调、加第二套凭据、写没有真实企业的自动化测试 |
+| 本工程开发者 | §1 §6 §8 **§9** | 本地联调、加第二套凭据、写没有真实企业的自动化测试 |
 | 企业员工（用户） | §5 | 怎么进、要不要注册、进不去怎么办 |
 
 ---
@@ -589,7 +589,114 @@ wecom_allow_coexist: 'true'          # 取值 1 / true / yes
 
 ---
 
-## 9. 故障速查
+## 9. 租户与管理员模型（任命口径）
+
+这一节回答「接进来之后，**谁来管这家企业的数据**」。一句话：**租户键 = 企业 ID；
+superadmin 是平台级的、只留一个；admin 是租户级的、每租户一个。**
+
+### 9.1 租户键就是企业 ID
+
+- `tenantOfCorp(corpId)` 直接返回 `corpId`（`_shared/wecom/store.ts`）。
+- 同一企业的**多个应用**（测试 / 正式、迁移期代开发与自建并存）**共用同一租户**——这是刻意
+  的：企微的 `userid` 是**企业级唯一**，同一个人从不同应用进来就是同一个人（`wecom:<userid>`
+  同一个账号），组织架构也是企业级的同一份。
+- 需要按应用隔离的东西，在**应用这一维**已经隔离了：`wecom_app_profile` 主键
+  `(suite_id, corp_id, agent_id)`；同步任务 / 锁按 `corp_id + agent_id`（`jobScope`）；
+  登录链接带 `corp` + `agent`。
+- 所以「同企业多应用」不需要、也**不该**拆成多个租户（拆了会把同一个人变成两个账号、
+  组织树存两份）。
+
+### 9.2 角色定义全局唯一，角色授予按租户
+
+| 表 | 是否带 `tenant_id` | 含义 |
+|---|---|---|
+| `sys_role` / `sys_permission` / `sys_role_permission` | **无** | 全站只有一套角色定义：superadmin / admin / editor / viewer（`framework` 内置） |
+| `sys_user_role` | **有** | 授予是**按租户**的 |
+
+也就是说：不可能「每租户定义一套角色」，但可以「每租户各授一个 superadmin」——**但不要这么做**，理由见下。
+
+### 9.3 superadmin：平台级，建议只留一个（在 `default` 租户）
+
+- `assertSuperAdmin()` 只判「当前用户在本租户有没有 superadmin」（`_platform/.../access.ts`）。
+- 而 `/system/wecom` 每个端点都过这道闸，且它是**跨租户**的：`listApps()` 列出**所有企业**
+  的档案。
+- **推论**：任何租户里只要有人握着 superadmin，他带自己租户的头访问 `/system/wecom` 就能
+  看到别家企业的档案 → 跨租户越权。
+- 所以：superadmin = 平台级、唯一、只存在于 `default`（平台）租户。代码**没有强制**这条
+  （是运维纪律，不是代码约束）——别给企业租户的人授 superadmin。
+
+### 9.4 admin：租户级，每租户一个（自动开通）
+
+- 企业租户是企微登录时由 `ensureTenant()` **隐式具象化**的（没有「建租户」这个动作），
+  里面只有 JIT 出来的 `wecom:<userid>` 员工号，**默认一个管理员都没有** → 没人能做组织架构
+  同步，也没人能在该租户内授权。
+- 开通时机：自建「验证并接入」（`connectCorp`）与代开发授权（`create_auth`）各挂一次
+  `provisionTenantAdmin()`，幂等。
+  - **尽力而为**（失败只告警，不打断调用方）：`create_auth` 有约 1 秒响应窗口，bcrypt 不该
+    有机会拖垮回调；`connectCorp` 走到那步档案已落库，抛错只会让界面显示「接入失败」。
+  - **补开通道**：superadmin 在 `/system/wecom` → 「租户管理员」→ 重设口令（内部会先
+    `ensureTenantAdmin`）。老租户（本功能上线前就接入的）走这条路补开。
+- 账号名固定 `admin`；初始口令**随机且无人知晓**（只存 bcrypt），`must_change=1`。
+- **口令不存储**：superadmin 重设时**自己输入**新口令 → 他知道 → 线下告知对方。系统没有
+  任何可逆副本，所以「回显已有口令」物理上做不到（bcrypt 单向）。
+- 实现：`auth/api/_shared/wecom/tenant-admin.ts`，是**全仓唯一使用 `db.asSystem()` 的地方**
+  （平台请求绑在 `default`，而 `db.asTenant` 是「请求级、只能设一次」，没有任何正常通道能写
+  企业租户）。框架注释明写「业务 handler 不得使用」，此处是有意识且被审计的**单一例外**，
+  **不得复制到别处**。
+
+### 9.5 任命 admin 已下放到租户内
+
+`assertMembershipAllowed()` 按「被授予的角色」分层，不再一刀切：
+
+| 授予的角色 | 谁能授 |
+|---|---|
+| `superadmin` | **仅 superadmin**（平台级、跨租户） |
+| `admin` | 本租户内握有 `admin` **或** `superadmin` 的人（已下放） |
+| `editor` / `viewer` 等 | 不校验（原行为） |
+
+- **为什么必须下放**：平台 superadmin 因租户隔离**查不到**企业租户的用户（实测
+  `PUT /system/users/roles?uid=` 返回 `404 user not found`）。若 admin 任命也只许
+  superadmin，企业租户就**永远配不出管理员**——两头都够不着。
+- **为什么这样是安全的**：判定侧 `rolesOf()` 读 `sys_user_role` 走请求租户注入，写入侧同样
+  带 `tenant_id`，所以租户 admin 只能影响**自己租户**，越不到别家；而 `superadmin` 握跨租户
+  权限，仍只许 superadmin 授。
+- 前端：成员资格入口对 `admin` 也可见；非 superadmin 时 `superadmin` 选项**置灰**（提交后吃
+  403 太晚也太含糊）。
+
+> ⚠️ **首次登录必须先改密**：`must_change=1` 期间 `currentAccess()` 直接抛 `403 must_change`，
+> **任何**走 `assertSystemAdmin()` 的动作（包括任命角色）都会被拦。管理员登录后会拿到
+> `restricted` 会话，先改密才能做管理操作——这是预期行为，不是故障。
+
+### 9.6 审计：任命留痕带租户维度
+
+`user.roles.update` 的 `detail`：
+
+| 字段 | 说明 |
+|---|---|
+| `added` / `removed` | 本次增 / 删的角色 |
+| `tenant` | **租户维度**（原本只有隐式的 `sys_oplog.tenant_id` 列） |
+| `actorUid` / `targetUid` | 双方 uid |
+| `elevated` | 是否牵涉 `admin` / `superadmin`（授予**或撤销**都算），便于直接筛「任命」类条目 |
+
+严重级：牵涉 `admin` / `superadmin` → `level=4`（warning，与「重设租户管理员口令」同级）；
+普通角色变更 → `6`（info），避免审计被噪声淹没。
+
+> 为什么要显式记 `tenant` + 双方 uid：各租户的管理员**用户名都叫 `admin`**，撞车。审计里
+> `username='admin'` 既可能是 `default` 租户的平台 admin，也可能是某个企业租户的管理员，
+> 只记 username 分不清「哪个租户的 admin 任命了谁」。
+
+### 9.7 登录时要选租户
+
+- 登录页「企业代码」字段默认收起；**开了企业微信登录就默认展开**（判据：
+  `GET /system/login-methods` 的 `methods` 含 `wecom`）。
+- 判据为什么不是「数租户」：匿名请求没有租户上下文，统计租户要动用 `db.asSystem`
+  （不为此破 §9.4 的「仅此一例」）；而「开了企微登录 ⇒ 存在企业租户」语义成立。
+- 运维填 `corp_id` + `admin` + 口令即可登录到该租户做管理；员工走企微登录（`?tenant=`
+  自动回填，无需手填）。
+
+---
+
+## 10. 故障速查
 
 | 现象 / 文案 | 病根 | 处置 |
 |---|---|---|
@@ -628,7 +735,7 @@ wecom_allow_coexist: 'true'          # 取值 1 / true / yes
 
 ---
 
-## 10. 一分钟自检
+## 11. 一分钟自检
 
 ```text
 [ ] 五项 wecom_corp_* + wecom_enc_key + wecom_base_url 非空；代开发那几项留空（或显式开共存）

@@ -1,6 +1,6 @@
 import { request, useUserStore } from "@oj-module/runtime";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Alert, App, Button, Card, Descriptions, Popconfirm, QRCode, Space, Table, Tag, Typography } from "antd";
+import { Alert, App, Button, Card, Descriptions, Input, Modal, Popconfirm, QRCode, Space, Table, Tag, Typography } from "antd";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -47,6 +47,16 @@ interface ConnectResult {
 	members: number
 }
 
+/** GET /auth/wecom/admin/tenant-admin：某企业的租户管理员状态 */
+interface TenantAdminState {
+	corpId: string
+	username: string
+	/** 该租户是否已有一个握着 admin 角色的账号 */
+	exists: boolean
+	/** 是否须改密（开通后恒 true，直到本人改过一次） */
+	mustChange: boolean
+}
+
 /**
  * 端点不在本模块的生成 client 里（`__client` 按模块切分），故直接用 runtime 的 ky 出口。
  * 路径不带前导 `/`：与 request 的 baseURL 拼接口径一致（fetchLogin 同款）。
@@ -77,6 +87,24 @@ async function connectCorp(): Promise<ConnectResult> {
 	const env = await request.post("auth/wecom/admin/connect", { json: {} }).json<{ code: number, data?: ConnectResult }>();
 	if (!env.data)
 		throw new Error("企业微信未返回接入结果");
+	return env.data;
+}
+
+async function fetchTenantAdmin(corpId: string): Promise<TenantAdminState> {
+	const env = await request.get("auth/wecom/admin/tenant-admin", { searchParams: { corpId } }).json<{ code: number, data?: TenantAdminState }>();
+	return env.data ?? { corpId, username: "admin", exists: false, mustChange: false };
+}
+
+/**
+ * 重设租户管理员口令。
+ *
+ * 口令**不由系统生成**：让 superadmin 自己输入，他知道这个值 → 直接告知对方即可。
+ * 后端只存 bcrypt，没有任何可逆副本，所以「系统生成后回显」这条路本来也走不通。
+ */
+async function resetTenantAdminPassword(input: { corpId: string, password: string }): Promise<TenantAdminState> {
+	const env = await request.post("auth/wecom/admin/tenant-admin/password", { json: input }).json<{ code: number, data?: TenantAdminState }>();
+	if (!env.data)
+		throw new Error("企业微信未返回重设结果");
 	return env.data;
 }
 
@@ -154,6 +182,74 @@ export default function WecomAdminPage() {
 		},
 		onError: e => message.error(explainError(e, t)),
 	});
+
+	// 企业清单按 corp_id 去重：租户键就是 corp_id，同一企业的多个应用共用一个租户管理员
+	const corps = [...new Map((appsQuery.data ?? []).map(r => [r.corp_id, { corpId: r.corp_id, name: r.corp_name }])).values()];
+
+	// 租户管理员状态：一个企业一条查询并并发取（企业数量级很小，不值得为它加批量端点）
+	const tenantAdminQuery = useQuery({
+		queryKey: ["system", "wecom-tenant-admin", corps.map(c => c.corpId).join(",")],
+		queryFn: async () => {
+			const out: Record<string, TenantAdminState> = {};
+			await Promise.all(corps.map(async c => {
+				out[c.corpId] = await fetchTenantAdmin(c.corpId);
+			}));
+			return out;
+		},
+		enabled: isSuper && corps.length > 0,
+		retry: false,
+	});
+
+	const [resetTarget, setResetTarget] = useState<{ corpId: string, name: string | null } | null>(null);
+	const [resetPwd, setResetPwd] = useState("");
+
+	const resetMut = useMutation({
+		mutationFn: resetTenantAdminPassword,
+		onSuccess: () => {
+			message.success(t("system:wecom.tenantAdmin.resetOk"));
+			setResetTarget(null);
+			setResetPwd("");
+			queryClient.invalidateQueries({ queryKey: ["system", "wecom-tenant-admin"] });
+		},
+		onError: e => message.error(explainError(e, t)),
+	});
+
+	const tenantAdminColumns = [
+		{
+			title: t("system:wecom.col.corp"),
+			dataIndex: "corpId",
+			render: (_: string, row: { corpId: string, name: string | null }) => (
+				<div>
+					<div>{row.corpId}</div>
+					{row.name && <Typography.Text type="secondary">{row.name}</Typography.Text>}
+				</div>
+			),
+		},
+		{
+			title: t("system:wecom.tenantAdmin.username"),
+			dataIndex: "username",
+			render: (_: unknown, row: { corpId: string }) => tenantAdminQuery.data?.[row.corpId]?.username ?? "-",
+		},
+		{
+			title: t("system:wecom.tenantAdmin.state"),
+			dataIndex: "exists",
+			render: (_: unknown, row: { corpId: string }) => {
+				const s = tenantAdminQuery.data?.[row.corpId];
+				return s?.exists
+					? <Tag color="green">{t("system:wecom.tenantAdmin.exists")}</Tag>
+					: <Tag color="orange">{t("system:wecom.tenantAdmin.missing")}</Tag>;
+			},
+		},
+		{
+			title: t("system:wecom.tenantAdmin.action"),
+			key: "action",
+			render: (_: unknown, row: { corpId: string, name: string | null }) => (
+				<Button size="small" onClick={() => { setResetTarget(row); setResetPwd(""); }}>
+					{t("system:wecom.tenantAdmin.reset")}
+				</Button>
+			),
+		},
+	];
 
 	if (!isSuper)
 		return <ForbiddenPanel t={t} />;
@@ -319,6 +415,39 @@ export default function WecomAdminPage() {
 					</Typography.Paragraph>
 				</Card>
 			)}
+			{corps.length > 0 && (
+				<Card title={t("system:wecom.tenantAdmin.title")}>
+					<Typography.Paragraph type="secondary">
+						{t("system:wecom.tenantAdmin.hint")}
+					</Typography.Paragraph>
+					<Table
+						rowKey={row => row.corpId}
+						size="small"
+						loading={tenantAdminQuery.isLoading}
+						dataSource={corps}
+						columns={tenantAdminColumns}
+						pagination={false}
+					/>
+				</Card>
+			)}
+			<Modal
+				open={resetTarget != null}
+				title={t("system:wecom.tenantAdmin.resetTitle")}
+				onCancel={() => { setResetTarget(null); setResetPwd(""); }}
+				onOk={() => resetMut.mutate({ corpId: resetTarget!.corpId, password: resetPwd })}
+				confirmLoading={resetMut.isPending}
+				okButtonProps={{ disabled: resetPwd.length < 6 }}
+				destroyOnHidden
+			>
+				<Typography.Paragraph type="secondary">
+					{t("system:wecom.tenantAdmin.resetHint", { corpId: resetTarget?.corpId ?? "" })}
+				</Typography.Paragraph>
+				<Input.Password
+					value={resetPwd}
+					onChange={e => setResetPwd(e.target.value)}
+					placeholder={t("system:wecom.tenantAdmin.resetPlaceholder")}
+				/>
+			</Modal>
 			<Card title={t("system:wecom.appsTitle")}>
 				<Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
 					{t("system:wecom.authModeHint")}

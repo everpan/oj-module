@@ -59,13 +59,30 @@ function assertNotSelf(actorId: number, targetUid: number): void {
 		fail(400, "cannot operate on yourself");
 }
 
-/** AC1-8：成员资格（superadmin/admin 分配）仅 superadmin 可动。 */
+/**
+ * AC1-8（已修订）：成员资格提权守卫——按**被授予的角色**分层，不再一刀切。
+ *
+ *   · `superadmin` —— 仍严格只许 superadmin 授。它是**平台级**角色：握着它就能进
+ *     /system/wecom 那类跨租户页面（listApps 列出**所有企业**的档案），一旦租户内可授
+ *     即为跨租户越权，故这条不因下面的修订而放宽。
+ *   · `admin` —— 允许本租户内握有 `admin` 或 `superadmin` 的人任命。
+ *     判定与写入两侧都被租户作用域约束：`rolesOf()` 读 sys_user_role 走请求租户注入，
+ *     下面的写入同样带 tenant_id，所以租户管理员只能影响**自己租户**，不会越到别家。
+ *     动机：企业租户是隐式具象化的，平台 superadmin 因租户隔离查不到企业租户的用户
+ *     （实测 404），若 admin 任命也只许 superadmin，企业租户就永远配不出管理员。
+ *   · 其余角色（editor/viewer 等）—— 不校验，保持原行为。
+ */
 async function assertMembershipAllowed(actorId: number, nextRoles: string[]): Promise<void> {
 	if (!nextRoles.includes("superadmin") && !nextRoles.includes("admin"))
 		return;
 	const actorRoles = await rolesOf(Number(actorId));
-	if (!actorRoles.includes("superadmin"))
-		fail(403, "membership management requires superadmin");
+	const isSuper = actorRoles.includes("superadmin");
+	// 提权到平台级：只许 superadmin
+	if (nextRoles.includes("superadmin") && !isSuper)
+		fail(403, "granting superadmin requires superadmin");
+	// 任命本租户管理员：本租户的 admin 或 superadmin 均可
+	if (nextRoles.includes("admin") && !isSuper && !actorRoles.includes("admin"))
+		fail(403, "membership management requires admin or superadmin");
 }
 
 export async function listUsers(): Promise<UserRow[]> {
@@ -206,11 +223,30 @@ export async function updateUserRoles(actorId: number, targetUid: number, roles:
 			await t.table("sys_user_role").insert({ user_id: targetUid, role_name: role }).run();
 	});
 	invalidateUser(Number(targetUid));
+	// 提权类变更（牵涉 admin / superadmin）单列严重级：任命管理员＝把该租户的最高权限交出去，
+	// 不该和「勾了个 editor」落在同一噪声水平上。收回也算——撤销提权同样是安全事件。
+	const touchesPrivilege = (r: string) => r === "admin" || r === "superadmin";
+	const elevated = next.some(touchesPrivilege) || [...beforeSet].some(touchesPrivilege);
 	await recordOp({
 		action: "user.roles.update",
 		module: "framework",
 		target: await usernameOf(Number(targetUid)),
-		detail: { added: next.filter(r => !beforeSet.has(r)), removed: [...beforeSet].filter(r => !next.includes(r)) },
+		detail: {
+			added: next.filter(r => !beforeSet.has(r)),
+			removed: [...beforeSet].filter(r => !next.includes(r)),
+			// —— 租户维度 ——
+			// 每个租户都有自己的管理员，且**用户名撞车**（都叫 admin）：只记 username 分不清
+			// 「哪个租户的 admin 任命了谁」。sys_oplog.tenant_id 虽由请求租户注入，但那是隐式列，
+			// 显式落一份 + 双方 uid，审计才能直接按租户筛、也能定位到具体两个账号。
+			tenant: http.tenantId ?? "",
+			actorUid: Number(actorId),
+			targetUid: Number(targetUid),
+			// 便于直接筛出「任命/撤销管理员」这类高价值条目，不必去解析 added/removed
+			elevated,
+		},
+		// 4=warning（与「重设租户管理员口令」同级）：提权变更按安全事件留痕；
+		// 普通角色变更（editor/viewer）保持默认 6=info，避免审计被噪声淹没。
+		level: elevated ? 4 : 6,
 	});
 }
 

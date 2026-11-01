@@ -58,8 +58,13 @@ export default function LoginPage() {
 	const [active, setActive] = useState<LoginMethod>("local");
 	// 企业代码入口默认收起：单租户部署（绝大多数）保持今天的登录页外观，
 	// 只有服务商/客户带 `?tenant=` 或手工展开时才需要填。
-	// 例外：持久化租户不是部署默认值时必须展开——租户头是**隐式**跟着请求走的
+	// 例外一：持久化租户不是部署默认值时必须展开——租户头是**隐式**跟着请求走的
 	// （runtime 每请求注入），藏起来等于让上一次的租户无声地把这次登录带走。
+	// 例外二：**开了企业微信登录就默认展开**（见下方 effect）——企微租户的键是 corp_id，
+	//   一旦有企业接入，「登录哪个租户」就是真问题：平台管理员在 default，而各企业的
+	//   管理员在各自的 corp 租户里，收起等于让运维找不到切租户的入口。
+	//   判据用「wecom 是否在登录方式里」而不是去数租户：匿名请求没有租户上下文，
+	//   统计租户要动用 db.asSystem（全仓仅 tenant-admin.ts 一处，不为此破例）。
 	const [showTenant, setShowTenant] = useState(() => useTenantStore.getState().tenant !== DEFAULT_TENANT);
 	// 表单里的企业代码：带上 persisted 值（URL `?tenant=` 已先落到 store），用户看得见才改得动
 	const [tenant] = useState(() => {
@@ -81,10 +86,16 @@ export default function LoginPage() {
 	useEffect(() => {
 		fetchLoginMethods()
 			.then((r) => {
-				const m = r.methods.filter(isKnownMethod);
+				// 先按 string[] 看一眼：runtime 的返回类型把 wecom 排除在外，而这里恰恰要认它
+				const raw: string[] = r.methods;
+				const m = raw.filter(isKnownMethod);
 				if (!m.length)
 					return;
 				setMethods(m);
+				// 有企微登录 ⇒ 有企业租户（租户键 = corp_id）⇒ 默认展开企业代码，
+				// 否则平台/企业两类管理员没法切换登录目标（用户仍可点「收起」手动折叠）。
+				if (raw.includes("wecom"))
+					setShowTenant(true);
 				if (!m.includes("local"))
 					setActive(m[0]);
 			})

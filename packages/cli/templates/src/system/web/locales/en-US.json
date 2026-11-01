@@ -228,6 +228,20 @@
 			"connectConfirm": "Connect checks: whether the app Secret can fetch a token, whether contacts are readable, and whether any member is visible. Re-run it whenever the Corporation ID / AgentId changed or the Secret was rotated.",
 			"connectOk": "Connected: {{depts}} departments visible, {{members}} members in the sample department",
 			"connectHint": "After rotating the app Secret you must click \"Verify and connect\" again, otherwise every call fails with 40001. How many people get synced depends on the app's visible scope — set it to the whole company for a full sync."
+		},
+		"tenantAdmin": {
+			"title": "Tenant administrators",
+			"hint": "Each enterprise tenant (tenant key = corp ID) gets an admin account automatically on provisioning, used to manage that tenant's org chart, members and roles. It is a tenant-level admin and cannot see other enterprises. The initial password is random and known to no one — to take over, reset a password you know here, hand it to the tenant admin, and they will be forced to change it on first login.",
+			"username": "Admin account",
+			"state": "State",
+			"exists": "Provisioned",
+			"missing": "Not provisioned",
+			"action": "Action",
+			"reset": "Reset password",
+			"resetTitle": "Reset tenant admin password",
+			"resetHint": "This resets the tenant admin password of enterprise {{corpId}}. Choose the new password yourself and deliver it out-of-band — only a bcrypt hash is stored, so no existing password can ever be shown. The admin must change it on first login, and their existing sessions are revoked immediately.",
+			"resetPlaceholder": "New password (at least 6 chars)",
+			"resetOk": "Tenant admin password reset"
 		}
 	},
 	"err": {

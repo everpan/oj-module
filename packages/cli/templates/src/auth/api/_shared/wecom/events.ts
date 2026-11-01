@@ -21,6 +21,7 @@ import { invalidateAllUsers } from "#/_platform/_shared/service/infra/access";
 import { recordOp } from "#/_platform/_shared/service/infra/audit";
 import { handleContactChange } from "./contacts";
 import { callbackFields, field, requireField } from "./payload";
+import { provisionTenantAdmin } from "./tenant-admin";
 import { corpScope, ensureTenant, findCorpAuth, getSuiteTicket, putSuiteTicket, revokeTenantSessions, saveProfile, setAuthMode, setProfileStatus, tenantOfCorp } from "./store";
 
 /** suite_ticket 官方有效期 30 分钟（10 分钟推一次）；本地按 30 分钟作废，宁可拒一次也不拿过期票打企微 */
@@ -117,6 +118,8 @@ async function applyAuthCode(authCode: string, state: string | null, deps: Suite
 		// secret 可能已轮换：旧 token 必须立刻作废，否则下一个登录会带着失效 token 打 userinfo
 		await client.invalidateCorpToken(granted.corpId, agentId);
 	}
+	// 租户具象化：代开发企业授权成功即配一个本租户管理员（尽力而为，绝不拖垮 1 秒回调窗口）
+	await provisionTenantAdmin(granted.corpId);
 	await auditAuth("wecom.auth.apply", granted.corpId, { agentIds: granted.agentIds, env });
 	return { corpId: granted.corpId, agentIds: granted.agentIds };
 }
