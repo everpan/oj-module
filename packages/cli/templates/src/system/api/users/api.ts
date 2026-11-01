@@ -25,8 +25,19 @@ get.response = {
 			display_name: { type: ["string", "null"] },
 			email: { type: ["string", "null"] },
 			position: { type: ["string", "null"] },
-			// 所属部门名（主部门在前）；未加入任何部门即空数组
-			departments: { type: "array", items: { type: "string" } },
+			// 所属部门（主部门在前）；未加入任何部门即空数组。带 id 供前端按部门筛选
+			departments: {
+				type: "array",
+				items: {
+					type: "object",
+					required: ["id", "name", "isMain"],
+					properties: {
+						id: { type: "number" },
+						name: { type: ["string", "null"] },
+						isMain: { type: "boolean" },
+					},
+				},
+			},
 			// service 已做 Number(x)===1 布尔归一，此处是真 boolean
 			is_forbidden: { type: "boolean" },
 			must_change: { type: "boolean" },

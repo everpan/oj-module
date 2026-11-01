@@ -3,13 +3,14 @@ import type { SystemUsersGetData } from "../../__client/api";
 import { PlusOutlined } from "@ant-design/icons";
 import { useUserStore } from "@oj-module/runtime";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { App, Button, Form, Input, Modal, Popconfirm, Space, Switch, Table, Tag } from "antd";
-import { useState } from "react";
+import { App, Button, Form, Input, Modal, Popconfirm, Space, Switch, Table, Tag, TreeSelect, Typography } from "antd";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { useNavigate } from "react-router";
 
-import { systemUsersForbiddenPut, systemUsersGet, systemUsersPasswordPut, systemUsersPost } from "../../__client/api";
+import { systemDepartmentsGet, systemUsersForbiddenPut, systemUsersGet, systemUsersPasswordPut, systemUsersPost } from "../../__client/api";
+import { buildTreeData, subtreeIds } from "../departments/tree";
 import { explainError, isForbidden } from "../errors";
 import { ForbiddenPanel } from "../forbidden";
 
@@ -19,6 +20,7 @@ type UserRow = SystemUsersGetData[number];
  * 用户管理（C1）：GET /system/users 列表 + 建号 / 禁用切换 / 重置口令。
  * 本人行禁用一切自操作（后端 assertNotSelf 400 兜底，前端不给会失败的按钮，R3）；
  * 成员资格入口仅 superadmin 可见（成员资格写是 superadmin-only，规格 §4）。
+ * 部门列标出主部门，顶部可按部门筛选（含子部门）——筛选在前端做，名单本来就是一页全量。
  */
 export default function UsersPage() {
 	const { t } = useTranslation();
@@ -33,8 +35,11 @@ export default function UsersPage() {
 	const [createForm] = Form.useForm<{ username: string, password: string, displayName?: string, email?: string }>();
 	const [pwdTarget, setPwdTarget] = useState<UserRow | null>(null);
 	const [pwdForm] = Form.useForm<{ password: string }>();
+	const [deptId, setDeptId] = useState<number | null>(null);
 
 	const usersQuery = useQuery({ queryKey: ["system", "users"], queryFn: systemUsersGet });
+	// 与部门页共用同一份缓存键：那边改完部门，这边的筛选树也跟着新
+	const deptQuery = useQuery({ queryKey: ["system", "departments"], queryFn: systemDepartmentsGet });
 
 	const invalidate = () => queryClient.invalidateQueries({ queryKey: ["system", "users"] });
 
@@ -66,6 +71,15 @@ export default function UsersPage() {
 		onError: e => message.error(explainError(e, t)),
 	});
 
+	const deptRows = useMemo(() => deptQuery.data ?? [], [deptQuery.data]);
+	const deptTree = useMemo(() => buildTreeData(deptRows, d => d.name ?? `#${d.id}`), [deptRows]);
+	// 选中部门 + 全部子部门：筛「研发部」要能带出「研发部/前端组」的人
+	const scope = useMemo(() => (deptId == null ? null : subtreeIds(deptRows, [deptId])), [deptRows, deptId]);
+	const visibleUsers = useMemo(() => {
+		const all = usersQuery.data ?? [];
+		return scope ? all.filter(u => u.departments.some(d => scope.has(d.id))) : all;
+	}, [usersQuery.data, scope]);
+
 	if (usersQuery.error && isForbidden(usersQuery.error))
 		return <ForbiddenPanel t={t} error={usersQuery.error} />;
 
@@ -76,7 +90,14 @@ export default function UsersPage() {
 		{
 			title: t("system:users.columns.departments"),
 			dataIndex: "departments",
-			render: (departments: string[]) => departments.map(d => <Tag key={d}>{d}</Tag>),
+			render: (departments: UserRow["departments"]) => departments.length === 0
+				? <Typography.Text type="secondary">—</Typography.Text>
+				: departments.map(d => (
+					<Tag key={d.id} color={d.isMain ? "blue" : undefined}>
+						{d.name ?? `#${d.id}`}
+						{d.isMain ? ` · ${t("system:users.mainDept")}` : ""}
+					</Tag>
+				)),
 		},
 		{ title: t("system:users.columns.email"), dataIndex: "email" },
 		{
@@ -122,13 +143,28 @@ export default function UsersPage() {
 
 	return (
 		<Space direction="vertical" style={{ width: "100%", paddingTop: 16 }}>
-			<Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
-				{t("system:users.create")}
-			</Button>
+			<Space wrap>
+				<Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
+					{t("system:users.create")}
+				</Button>
+				<TreeSelect
+					allowClear
+					showSearch
+					treeNodeFilterProp="title"
+					loading={deptQuery.isLoading}
+					style={{ width: 240 }}
+					placeholder={t("system:users.filterDept")}
+					treeData={deptTree}
+					// 树是按 antd Tree 口径拼的（key/title），TreeSelect 认的是 value —— 这里换名映射
+					fieldNames={{ label: "title", value: "key", children: "children" }}
+					value={deptId ?? undefined}
+					onChange={(v?: number) => setDeptId(v ?? null)}
+				/>
+			</Space>
 			<Table
 				rowKey="id"
 				loading={usersQuery.isLoading}
-				dataSource={usersQuery.data ?? []}
+				dataSource={visibleUsers}
 				columns={columns}
 				pagination={{ hideOnSinglePage: true }}
 			/>

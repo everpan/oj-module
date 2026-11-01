@@ -35,9 +35,16 @@
 - 同步视图新增 `connected` / `authMode` / `profileStatus` 三个字段：任务状态（跑到哪了）与授权事实
   （能不能同步）分开表达，避免「取消授权后同步状态还写着 done」的自相矛盾。
 - 代开发后台清单新增「授权模式」列（权限三态），服务商一眼看出哪家企业「装了但同步不了」。
+- **用户列表的部门面**（`system/web/pages/users`）：所属部门列标出「· 主部门」，顶部可按部门筛选——
+  选父部门会把子部门的人一并筛出来（部门是树，人挂在叶子上，只按当前节点过滤会漏掉整棵子树）。
+  建树与子孙闭包抽成 `pages/departments/tree.ts`，部门页的「父级选择器不能选自己或子孙」也改用它。
 
 ### Changed
 
+- **`GET /api/system/users` 的 `departments` 形状变更**：`string[]`（部门名）→
+  `Array<{ id: number, name: string | null, isMain: boolean }>`。部门名会重名、也会为空，
+  前端按部门筛选必须有 id；`isMain` 把「主部门」从「数组第一项」的隐含约定变成显式事实。
+  名字为空的部门下发 `null`，不再拼 `#id` 字符串（展示口径归前端）。
 - `users` 领域新增 `upsertSourceUser`：外部源同步建档 `activated=0`（未登录的目录档，§9.1 防 contacts
   被放大），不写逐条审计，且对已「转为本地维护」（`source` 不同）的行一个字段都不改。
 - `markSeen` 同时把 `sync_visible` 拉回 `1`：上一轮因可见范围收窄被判隐的部门，这一轮又出现了，

@@ -38,7 +38,9 @@
 			"actions": "Actions",
 			"position": "Position",
 			"departments": "Departments"
-		}
+		},
+		"mainDept": "Main dept",
+		"filterDept": "Filter by department (incl. sub-depts)"
 	},
 	"userRoles": {
 		"title": "Membership",

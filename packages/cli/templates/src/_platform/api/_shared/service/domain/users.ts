@@ -10,14 +10,22 @@ export interface UserDeps {
 	bcryptHash: (pw: string) => Promise<string>
 }
 
+/** 用户所属的一个部门。带 id 是为了前端能按部门（含子部门）筛选——部门名会重名。 */
+export interface UserDeptRef {
+	id: number
+	/** 部门名（软删/未命名部门为 null，展示口径交给调用方） */
+	name: string | null
+	isMain: boolean
+}
+
 export interface UserRow {
 	id: number
 	username: string
 	display_name: string | null
 	email: string | null
 	position: string | null
-	/** 所属部门名（主部门在前；部门名缺失时退回 `#id`，与部门树展示口径一致） */
-	departments: string[]
+	/** 所属部门（主部门在前） */
+	departments: UserDeptRef[]
 	is_forbidden: boolean
 	must_change: boolean
 	roles: string[]
@@ -66,7 +74,7 @@ export async function listUsers(): Promise<UserRow[]> {
 	const roleMap = new Map<number, string[]>();
 	for (const r of roleRows)
 		(roleMap.get(Number(r.user_id)) ?? roleMap.set(Number(r.user_id), []).get(Number(r.user_id)))!.push(r.role_name);
-	const depts = await departmentNamesByUser();
+	const depts = await departmentsByUser();
 	return rows.map(r => ({
 		id: Number(r.id),
 		username: String(r.username),
@@ -80,20 +88,20 @@ export async function listUsers(): Promise<UserRow[]> {
 	}));
 }
 
-/** uid → 部门名列表（主部门排前）。两次查询而非 join：构造器 join 带值条件有已知缺口。 */
-async function departmentNamesByUser(): Promise<Map<number, string[]>> {
+/** uid → 所属部门（主部门排前）。两次查询而非 join：构造器 join 带值条件有已知缺口。 */
+async function departmentsByUser(): Promise<Map<number, UserDeptRef[]>> {
 	const memberRows = await db.table("sys_dept_member").select(["user_id", "dept_id", "is_main"]).all() as Array<{ user_id: number, dept_id: number, is_main: number }>;
 	if (!memberRows.length)
 		return new Map();
 	const deptRows = await db.table("sys_department").select(["id", "name"]).where({ field: "deleted", op: "eq", value: 0 }).all() as Array<{ id: number, name: string | null }>;
 	const nameOf = new Map(deptRows.map(d => [Number(d.id), d.name == null ? null : String(d.name)]));
-	const out = new Map<number, string[]>();
+	const out = new Map<number, UserDeptRef[]>();
 	// 主部门先落：is_main=1 的行先排一遍，其余后追加
 	const ordered = [...memberRows].sort((a, b) => Number(b.is_main ?? 0) - Number(a.is_main ?? 0));
 	for (const m of ordered) {
 		const uid = Number(m.user_id);
-		const label = nameOf.get(Number(m.dept_id)) ?? `#${Number(m.dept_id)}`;
-		(out.get(uid) ?? out.set(uid, []).get(uid)!).push(label);
+		const id = Number(m.dept_id);
+		(out.get(uid) ?? out.set(uid, []).get(uid)!).push({ id, name: nameOf.get(id) ?? null, isMain: Number(m.is_main ?? 0) === 1 });
 	}
 	return out;
 }

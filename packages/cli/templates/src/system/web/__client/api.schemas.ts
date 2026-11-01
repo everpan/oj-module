@@ -236,7 +236,11 @@ export const schemas = {
 	"display_name": z.string().nullable(),
 	"email": z.string().nullable(),
 	"position": z.string().nullable(),
-	"departments": z.array(z.string()),
+	"departments": z.array(z.object({
+	"id": z.number(),
+	"name": z.string().nullable(),
+	"isMain": z.boolean()
+})),
 	"is_forbidden": z.boolean(),
 	"must_change": z.boolean(),
 	"roles": z.array(z.string())

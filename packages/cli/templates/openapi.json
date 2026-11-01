@@ -4218,7 +4218,26 @@
 													"departments": {
 														"type": "array",
 														"items": {
-															"type": "string"
+															"type": "object",
+															"required": [
+																"id",
+																"name",
+																"isMain"
+															],
+															"properties": {
+																"id": {
+																	"type": "number"
+																},
+																"name": {
+																	"type": [
+																		"string",
+																		"null"
+																	]
+																},
+																"isMain": {
+																	"type": "boolean"
+																}
+															}
 														}
 													},
 													"is_forbidden": {

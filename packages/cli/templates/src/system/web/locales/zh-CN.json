@@ -38,7 +38,9 @@
 			"actions": "操作",
 			"position": "职务",
 			"departments": "所属部门"
-		}
+		},
+		"mainDept": "主部门",
+		"filterDept": "按部门筛选（含子部门）"
 	},
 	"userRoles": {
 		"title": "成员资格",

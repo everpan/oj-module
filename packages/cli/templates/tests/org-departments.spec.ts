@@ -274,7 +274,7 @@ describe("用户侧（改资料 / 删号）", () => {
 		expect(dbo.prepare("SELECT COUNT(*) c FROM users WHERE id = ?").get(solo)).toMatchObject({ c: 0 });
 	});
 
-	it("listUsers 带 departments（主部门在前）与 position", async () => {
+	it("listUsers 带 departments（主部门在前 + isMain）与 position", async () => {
 		const d1 = await mkDept("主");
 		const d2 = await mkDept("副");
 		const uid = mkUser("u_list");
@@ -283,7 +283,20 @@ describe("用户侧（改资料 / 删号）", () => {
 		await updateUserProfile(ADMIN, uid, { position: "tech lead" });
 		const row = (await listUsers()).find(u => u.username === "u_list");
 		expect(row?.position).toBe("tech lead");
-		expect(row?.departments).toEqual(["主", "副"]);
+		// 带 id：前端按部门（含子部门）筛选靠它，部门重名也串不了
+		expect(row?.departments).toEqual([
+			{ id: d1, name: "主", isMain: true },
+			{ id: d2, name: "副", isMain: false },
+		]);
+	});
+
+	it("部门名缺失就下发 null，不在接口里造 `#id` 字符串（展示口径归前端）", async () => {
+		const d = await mkDept("待改名");
+		const uid = mkUser("u_noname");
+		await addMember(d, uid, {}, deps);
+		dbo.prepare("UPDATE sys_department SET name = NULL WHERE id = ?").run(d);
+		const row = (await listUsers()).find(u => u.username === "u_noname");
+		expect(row?.departments).toEqual([{ id: d, name: null, isMain: false }]);
 	});
 
 	it("口径：listDepartments 默认过滤隐藏与软删，开关显式打开才全给", async () => {
