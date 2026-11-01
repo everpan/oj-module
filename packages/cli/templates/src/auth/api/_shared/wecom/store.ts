@@ -169,6 +169,42 @@ export async function findProfile(corpId: string, agentId: string | null, deps: 
 	};
 }
 
+/** 「这家企业能不能同步」的三个事实：装没装 / 什么授权模式 / 是否还启用 */
+export interface ProfileProbe {
+	agentId: string
+	authMode: number
+	status: AppProfile["status"]
+}
+
+/**
+ * 授权探针（组织架构同步面的准入用）：与 `findProfile` 只差一件事——**查不到返回 null 而不是 400**。
+ *
+ * 为什么敢把「没有」当正常状态：调用方是本租户管理员在自己的组织架构页自省，`corp_id`
+ * 取自租户头而不是外部输入，不存在 `findProfile` 要防的枚举面（§5.3）。「本站没装企微」
+ * 是一个要能画成空态的事实，不是错误。
+ *
+ * 选中口径与 `findProfile` 对齐（优选启用中的应用；全停用时退回停用行，让页面能画
+ * 「已取消授权」冻结态），只多一条：没有启用应用时也返回，而不是 400。
+ */
+export async function probeProfile(corpId: string, agentId: string | null): Promise<ProfileProbe | null> {
+	const rows = await db.table("wecom_app_profile").select(["agent_id", "auth_mode", "status"]).where(corpScope(corpId)).all() as Array<Record<string, unknown>>;
+	if (rows.length === 0)
+		return null;
+	const active = rows.filter(r => String(r.status) === "active");
+	const pool = active.length > 0 ? active : rows;
+	const picked = agentId ? pool.filter(r => String(r.agent_id) === agentId) : pool;
+	if (picked.length === 0)
+		return null;
+	if (picked.length > 1)
+		fail(400, "该企业开通了多个应用，同步入口必须带 agent 参数");
+	const r = picked[0]!;
+	return {
+		agentId: String(r.agent_id),
+		authMode: Number(r.auth_mode ?? 0),
+		status: String(r.status) === "disabled" ? "disabled" : "active",
+	};
+}
+
 /** 停用/解绑：只改状态，不删行（取消授权也要留痕，§7.5 审计） */
 export async function setProfileStatus(corpId: string, status: AppProfile["status"], deps: WecomStoreDeps): Promise<number> {
 	return Number(await db.table("wecom_app_profile").update({ status, update_time: deps.now() }).where(corpScope(corpId)).run());

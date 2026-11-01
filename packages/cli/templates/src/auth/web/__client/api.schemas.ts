@@ -19,6 +19,7 @@ export const schemas = {
 	"env": z.string(),
 	"corp_name": z.string().nullable().optional(),
 	"status": z.enum(["active", "disabled"]),
+	"auth_mode": z.number(),
 	"installed_at": z.number(),
 	"update_time": z.number()
 })),
@@ -51,6 +52,9 @@ export const schemas = {
 	"agent": z.string().optional()
 }),
 		data: z.object({
+	"connected": z.boolean(),
+	"authMode": z.number(),
+	"profileStatus": z.string().nullable(),
 	"status": z.enum(["idle", "running", "done", "failed", "cancelled"]),
 	"phase": z.enum(["departments", "members", "reconcile"]),
 	"stats": z.object({
@@ -80,6 +84,9 @@ export const schemas = {
 	"agent": z.string().optional()
 }),
 		data: z.object({
+	"connected": z.boolean(),
+	"authMode": z.number(),
+	"profileStatus": z.string().nullable(),
 	"status": z.enum(["idle", "running", "done", "failed", "cancelled"]),
 	"phase": z.enum(["departments", "members", "reconcile"]),
 	"stats": z.object({
@@ -109,6 +116,9 @@ export const schemas = {
 	"agent": z.string().optional()
 }),
 		data: z.object({
+	"connected": z.boolean(),
+	"authMode": z.number(),
+	"profileStatus": z.string().nullable(),
 	"status": z.enum(["idle", "running", "done", "failed", "cancelled"]),
 	"phase": z.enum(["departments", "members", "reconcile"]),
 	"stats": z.object({

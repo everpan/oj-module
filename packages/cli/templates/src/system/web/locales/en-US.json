@@ -138,7 +138,8 @@
 			"env": "Env",
 			"status": "Status",
 			"installedAt": "Onboarded at",
-			"action": "Actions"
+			"action": "Actions",
+			"authMode": "Auth mode"
 		},
 		"statusActive": "Active",
 		"statusDisabled": "Disabled",
@@ -148,7 +149,61 @@
 		"enable": "Enable",
 		"disableConfirm": "Disable this app? Members of this corporation will no longer be able to sign in with it.",
 		"enableConfirm": "Enable this app?",
-		"empty": "No corporations onboarded yet"
+		"empty": "No corporations onboarded yet",
+		"authModeAdmin": "Admin-authorized",
+		"authModeMember": "Member-authorized",
+		"authModeHint": "In member-authorized mode the app has no contacts permission, so this corporation's org structure cannot be synced. The corporation admin must switch it to admin-authorized in the WeCom console and re-authorize.",
+		"sync": {
+			"updatedAt": "WeCom org structure updated {{time}}",
+			"neverSynced": "WeCom org structure has never been synced",
+			"auto": "auto sync",
+			"syncNow": "Sync now",
+			"retry": "Retry",
+			"resume": "Resume sync",
+			"cancel": "Cancel sync",
+			"syncing": "Reading WeCom org structure…",
+			"syncingProgress": "Syncing: {{done}}/{{total}} departments processed",
+			"done": "Sync finished: {{depts}} departments / {{members}} members",
+			"paused": "Sync paused ({{depts}} departments processed). Click \"Resume sync\" to continue.",
+			"skipped": "{{count}} departments skipped due to permission (normal for departments outside the visible scope)",
+			"cancelled": "Sync cancelled",
+			"ago": {
+				"justNow": "just now",
+				"minutes": "{{count}} minutes ago",
+				"hours": "{{count}} hours ago",
+				"days": "{{count}} days ago"
+			},
+			"memberAuth": {
+				"title": "This corporation uses member-authorized mode: the app has no contacts permission",
+				"hint": "Ask the corporation admin to switch to admin-authorized mode in the WeCom console and re-authorize; then sync becomes available."
+			},
+			"frozen": {
+				"title": "Authorization was revoked or the app is disabled: sync is frozen",
+				"hint": "The data below is the snapshot from the last successful sync. Ask the service provider to re-onboard the corporation."
+			},
+			"err": {
+				"permission": {
+					"title": "The app lacks contacts permission (error {{code}})",
+					"hint": "Corporation admin: WeCom console → App management → this app → Permissions, enable the contacts scopes and submit."
+				},
+				"rateLimited": {
+					"title": "WeCom API rate limited (error {{code}})",
+					"hint": "Backoff already applied. Click \"Resume sync\" in a moment."
+				},
+				"ipWhitelist": {
+					"title": "Server egress IP is not whitelisted by WeCom (error {{code}})",
+					"hint": "The service provider must add the trusted IP in the WeCom console."
+				},
+				"network": {
+					"title": "Cannot reach WeCom ({{code}})",
+					"hint": "Check server network access to WeCom and retry."
+				},
+				"unknown": {
+					"title": "Sync failed (error {{code}})",
+					"hint": "Contact the service provider to investigate, then retry."
+				}
+			}
+		}
 	},
 	"err": {
 		"forbidden": "Forbidden",

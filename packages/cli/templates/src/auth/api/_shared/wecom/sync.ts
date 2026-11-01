@@ -1,7 +1,7 @@
 // 企微组织架构**全量同步**（B2 / 方案 §6.2）：唯一权威来源。
 //
 // 形态是「分片推进」而不是「一个长任务」——服务端 isolate 没有定时器，路由也有超时，
-// 所以一次请求只推一片（默认 4 秒 / 若干部门），进度落在 wecom_sync_job 的游标里，
+// 所以一次请求只推一片（默认 12 秒的预算），进度落在 wecom_sync_job 的游标里，
 // 由调用方轮询驱动。好处是：可续跑、可观测、不受路由超时限制、崩了也不丢进度。
 //
 // 三个阶段（相序固定，游标就是在这三个之间迁移）：
@@ -15,6 +15,7 @@
 //     致命类计入熔断（连续 FATAL_LIMIT 次 → job failed）；
 //   · 错误落库只存脱敏结构（`{errcode, phase, deptId, at}`）：异常原文里可能夹带 URL 上的 token。
 import type { WecomClient, WecomMember } from "./client";
+import type { ProfileProbe } from "./store";
 
 import { markSeen, reconcileHidden, setMainDepartment, upsertDepartment, upsertMember } from "#/_platform/_shared/service/domain/org";
 import { upsertSourceUser } from "#/_platform/_shared/service/domain/users";
@@ -51,7 +52,8 @@ export interface SyncCursor {
 	fatalRun: number
 }
 
-export interface SyncView {
+/** 同步任务本身的状态（只来自 `wecom_sync_job` 这一张表） */
+export interface SyncJobView {
 	status: SyncStatus
 	phase: SyncPhase
 	stats: SyncStats
@@ -65,18 +67,39 @@ export interface SyncView {
 	updateTime: number
 }
 
+/**
+ * 给页面看的完整状态 = 任务状态 + 授权事实。
+ * 两者刻意分开：`status` 是「同步跑到哪了」，`connected`/`authMode` 是「这家企业能不同步」，
+ * 后者来自授权面、前者来自执行面，混在一张表里就会在「取消授权后同步状态还写着 done」时自相矛盾。
+ */
+export interface SyncView extends SyncJobView {
+	/** 本站是否装过企微（有授权记录，含已停用）——false 时页面整条不显示 */
+	connected: boolean
+	/** 0=管理员授权 / 1=成员授权（1 时任何通讯录调用都是 60011，同步入口直接拒绝） */
+	authMode: number
+	/** 授权记录的应用状态；disabled = 已取消授权/被停用，同步冻结但数据保留（§7 黄条） */
+	profileStatus: "active" | "disabled" | null
+}
+
 export interface SyncDeps {
 	client: WecomClient
 	now: () => number
-	/** 单片时间预算（测试可调小；缺省 4000ms） */
+	/** 单片时间预算（测试可调小；缺省见 DEFAULT_BUDGET_MS） */
 	budgetMs?: number
 }
 
 const ORIGIN = "wecom";
-const DEFAULT_BUDGET_MS = 4000;
+/**
+ * 单片的墙钟预算。定 12 秒是两头夹出来的：
+ *   · 上界——路由全局超时 30 秒（`config.yaml server.timeout` 缺省 "30s"），而单次上游调用
+ *     自带 5 秒软超时（client.ts TIMEOUT_MS），预算到期后最多再等一次调用，12+5 < 30；
+ *   · 下界——4 秒（初版）配合 5 次/分的限速，前端串行驱动第 6 次就被 429 掐断，
+ *     500 人的企业要跑好几分钟；12 秒下一片能干完 100+ 次上游调用，正常规模两三次到底。
+ */
+const DEFAULT_BUDGET_MS = 12000;
 /** 连续致命错误上限（方案 §5.1「连续 10 次 → failed」） */
 const FATAL_LIMIT = 10;
-/** 抢锁租约：请求崩溃时锁最多挡住别人这么久（单片 4 秒，120 秒足够宽松） */
+/** 抢锁租约：单片最长 12+5 秒，120 秒留给「请求被平台强杀、finally 都没跑到」的场景 */
 const LOCK_TTL_SECS = 120;
 
 function fail(status: number, message: string): never {
@@ -128,7 +151,7 @@ async function readJob(corpId: string, agentId: string): Promise<JobRow | null> 
 	return rows[0] ?? null;
 }
 
-function toView(job: JobRow | null): SyncView {
+function toView(job: JobRow | null): SyncJobView {
 	if (!job) {
 		return {
 			status: "idle",
@@ -149,7 +172,7 @@ function toView(job: JobRow | null): SyncView {
 		stats: parseJson<SyncStats>(job.stats_text, emptyStats()),
 		progress: { done: cursor.at, total: cursor.depts.length },
 		errCode: job.err_code,
-		errDetail: parseJson<SyncView["errDetail"]>(job.err_detail, null),
+		errDetail: parseJson<SyncJobView["errDetail"]>(job.err_detail, null),
 		startedAt: Number(job.started_at ?? 0),
 		finishedAt: Number(job.finished_at ?? 0),
 		updateTime: Number(job.update_time ?? 0),
@@ -157,8 +180,18 @@ function toView(job: JobRow | null): SyncView {
 }
 
 /** 当前进度（只读本地行，不打上游）：轮询用它，不用 start */
-export async function syncStatus(corpId: string, agentId: string): Promise<SyncView> {
+export async function syncStatus(corpId: string, agentId: string): Promise<SyncJobView> {
 	return toView(await readJob(corpId, agentId));
+}
+
+/** 拼上授权事实（见 SyncView 注释）。probe 为 null = 本站没装企微 */
+export function attachProfile(view: SyncJobView, probe: ProfileProbe | null): SyncView {
+	return {
+		...view,
+		connected: probe !== null,
+		authMode: probe?.authMode ?? 0,
+		profileStatus: probe?.status ?? null,
+	};
 }
 
 async function writeJob(corpId: string, agentId: string, patch: Record<string, unknown>, now: number): Promise<void> {
@@ -203,7 +236,6 @@ async function releaseLock(agentId: string): Promise<void> {
 	await db.table("wecom_sync_lock").where({ field: "agent_id", op: "eq", value: agentId }).delete().run();
 }
 
-/** 单片的提前收手信号：进度已落库，下次 start 从游标继续（不是失败） */
 /**
  * 部门清单：主路径 `department/simplelist`（不带父 id = 应用可见范围内全部部门，一次拿完）。
  * 上游明确写过 `department/list` 性能低（90208），故只当兜底——它多返回 `order`，
@@ -250,7 +282,7 @@ function orderTopDown<T extends { id: string, parentId: string }>(list: T[]): T[
 	return out;
 }
 
-function scrubError(e: unknown, phase: SyncPhase, deptId: string | null, now: number): { errCode: string, errDetail: SyncView["errDetail"] } {
+function scrubError(e: unknown, phase: SyncPhase, deptId: string | null, now: number): { errCode: string, errDetail: SyncJobView["errDetail"] } {
 	if (e instanceof WecomApiError)
 		return { errCode: String(e.errcode), errDetail: { errcode: e.errcode, phase, deptId: deptId ?? undefined, at: now } };
 	const message = e instanceof Error ? e.message : String(e);
@@ -258,7 +290,8 @@ function scrubError(e: unknown, phase: SyncPhase, deptId: string | null, now: nu
 	return { errCode: /超时/.test(message) ? "timeout" : "network", errDetail: { phase, deptId: deptId ?? undefined, at: now } };
 }
 
-function emptyView(status: SyncStatus): SyncView {
+/** 没有 job 行时的空视图（导出给「本站没装企微」的空态用） */
+export function emptyView(status: SyncStatus): SyncJobView {
 	return { ...toView(null), status };
 }
 
@@ -268,7 +301,7 @@ function emptyView(status: SyncStatus): SyncView {
  * 语义取「开始或继续」而不是「必须从零开始」：可续跑是这套分片设计的全部意义，
  * 前端只要在 `status === "running"` 时继续调它（或由用户点「继续」），直到 done/failed。
  */
-export async function startSync(ctx: { corpId: string, agentId: string, secret: string, authMode: number }, deps: SyncDeps): Promise<SyncView> {
+export async function startSync(ctx: { corpId: string, agentId: string, secret: string, authMode: number }, deps: SyncDeps): Promise<SyncJobView> {
 	// 准入判据：成员授权（auth_mode=1）下应用无任何部门权限，跑起来只会得到一片 60011
 	if (Number(ctx.authMode) !== 0)
 		fail(400, "该企业为「成员授权」模式，应用没有通讯录权限：请企业管理员在企微后台把授权模式改为「管理员授权」后再同步");
@@ -325,7 +358,7 @@ interface SliceResult {
 	/** 片内收手（预算用完 / 限流 / 可恢复的致命错）：进度已落库，下次接着推 */
 	paused: boolean
 	errCode: string | null
-	errDetail: SyncView["errDetail"]
+	errDetail: SyncJobView["errDetail"]
 }
 
 async function runSlice(
@@ -455,7 +488,7 @@ async function applyMember(m: WecomMember, corpId: string, deptByOrigin: Map<str
 }
 
 /** 取消：清游标、置 cancelled（不回滚已写入的组织数据——同步幂等，重跑即可） */
-export async function cancelSync(corpId: string, agentId: string, deps: { now: () => number }): Promise<SyncView> {
+export async function cancelSync(corpId: string, agentId: string, deps: { now: () => number }): Promise<SyncJobView> {
 	const now = Math.floor(deps.now() / 1000);
 	const job = await readJob(corpId, agentId);
 	if (!job)

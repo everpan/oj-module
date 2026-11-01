@@ -9,7 +9,7 @@ import type { WecomClient, WecomMember } from "../src/auth/api/_shared/wecom/cli
 
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { WecomApiError } from "../src/auth/api/_shared/wecom/client";
-import { cancelSync, startSync, syncStatus } from "../src/auth/api/_shared/wecom/sync";
+import { attachProfile, cancelSync, emptyView, startSync, syncStatus } from "../src/auth/api/_shared/wecom/sync";
 import { installDb } from "./fixture";
 
 /* eslint-disable test/prefer-lowercase-title -- D/AC 编号是验收锚点，保留大写 */
@@ -259,5 +259,28 @@ describe("B2-D：墓碑回收与归属权（D9/D13）", () => {
 		const { client } = fakeClient([{ id: "1", parentId: "", name: null, order: 0 }], { 1: [] });
 		await startSync(CTX, deps(client));
 		expect(deptRow("1")!.name).toBeNull();
+	});
+});
+
+describe("B2-E：视图拼装（授权事实与任务状态分开算）", () => {
+	it("没授权 → connected=false：页面整条不显示，任务状态仍然是 idle", () => {
+		const view = attachProfile(emptyView("idle"), null);
+		expect(view).toMatchObject({ connected: false, authMode: 0, profileStatus: null, status: "idle" });
+	});
+
+	it("已授权 → 带上模式与应用状态（成员授权 / 已取消授权都由它驱动页面卡片）", () => {
+		const view = attachProfile(emptyView("done"), { agentId: AGENT, authMode: 1, status: "disabled" });
+		expect(view).toMatchObject({ connected: true, authMode: 1, profileStatus: "disabled", status: "done" });
+	});
+
+	it("从未同步过的企业：idle 空视图，进度与统计都归零（不能把 undefined 画成 NaN）", async () => {
+		const view = await syncStatus(TENANT, AGENT);
+		expect(view).toMatchObject({
+			status: "idle",
+			progress: { done: 0, total: 0 },
+			stats: { departments: 0, members: 0, skipped: 0, reconciled: false },
+			errCode: null,
+			errDetail: null,
+		});
 	});
 });

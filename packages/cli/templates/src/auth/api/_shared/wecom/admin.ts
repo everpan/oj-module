@@ -29,13 +29,15 @@ export interface AppRow {
 	env: string
 	corp_name: string | null
 	status: string
+	/** 0=管理员授权 / 1=成员授权：成员授权下这家企业的应用做不了组织架构同步（§2.3） */
+	auth_mode: number
 	installed_at: number
 	update_time: number
 }
 
 export async function listApps(): Promise<AppRow[]> {
 	const rows = await db.table("wecom_app_profile")
-		.select(["suite_id", "corp_id", "agent_id", "auth_corp_id", "env", "corp_name", "status", "installed_at", "update_time"])
+		.select(["suite_id", "corp_id", "agent_id", "auth_corp_id", "env", "corp_name", "status", "auth_mode", "installed_at", "update_time"])
 		.all() as unknown as AppRow[];
 	// 稳定序：先按企业、再按应用；同企业多环境并排，运维一眼能看出「哪两个是同一家」
 	return rows.sort((a, b) => a.corp_id.localeCompare(b.corp_id) || a.agent_id.localeCompare(b.agent_id));

@@ -16,6 +16,8 @@ interface AppRow {
 	env: string
 	corp_name: string | null
 	status: "active" | "disabled"
+	/** 0=管理员授权 / 1=成员授权：成员授权下这家企业的应用做不了组织架构同步 */
+	auth_mode: number
 	installed_at: number
 	update_time: number
 }
@@ -121,6 +123,15 @@ export default function WecomAdminPage() {
 		{ title: t("system:wecom.col.agent"), dataIndex: "agent_id" },
 		{ title: t("system:wecom.col.env"), dataIndex: "env", render: (v: string) => <Tag>{v}</Tag> },
 		{
+			// 权限三态：成员授权是「装了也同步不了」的硬约束（企微侧通讯录接口一律 60011），
+			// 摆在清单上，服务商不用点进去试一遍才知道
+			title: t("system:wecom.col.authMode"),
+			dataIndex: "auth_mode",
+			render: (v: number) => (v === 0
+				? <Tag color="green">{t("system:wecom.authModeAdmin")}</Tag>
+				: <Tag color="orange">{t("system:wecom.authModeMember")}</Tag>),
+		},
+		{
 			title: t("system:wecom.col.status"),
 			dataIndex: "status",
 			render: (v: string) => (
@@ -191,6 +202,9 @@ export default function WecomAdminPage() {
 				)}
 			</Card>
 			<Card title={t("system:wecom.appsTitle")}>
+				<Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
+					{t("system:wecom.authModeHint")}
+				</Typography.Paragraph>
 				<Table<AppRow>
 					rowKey={row => `${row.suite_id}:${row.corp_id}:${row.agent_id}`}
 					size="small"

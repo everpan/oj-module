@@ -24,7 +24,7 @@ get.response = {
 	type: "array",
 	items: {
 		type: "object",
-		required: ["suite_id", "corp_id", "agent_id", "auth_corp_id", "env", "status", "installed_at", "update_time"],
+		required: ["suite_id", "corp_id", "agent_id", "auth_corp_id", "env", "status", "auth_mode", "installed_at", "update_time"],
 		properties: {
 			suite_id: { type: "string" },
 			corp_id: { type: "string" },
@@ -33,6 +33,8 @@ get.response = {
 			env: { type: "string" },
 			corp_name: { type: ["string", "null"] },
 			status: { type: "string", enum: ["active", "disabled"] },
+			// 权限三态（管理员授权 / 成员授权）——服务商一眼看出哪家企业「装了但同步不了」
+			auth_mode: { type: "number" },
 			installed_at: { type: "number" },
 			update_time: { type: "number" },
 		},

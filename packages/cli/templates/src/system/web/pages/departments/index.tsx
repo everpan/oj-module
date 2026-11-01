@@ -37,6 +37,7 @@ import {
 } from "../../__client/api";
 import { explainError, isForbidden } from "../errors";
 import { ForbiddenPanel } from "../forbidden";
+import { WecomSyncBar } from "./sync-bar";
 
 type DeptRow = SystemDepartmentsGetData[number];
 type MemberRow = SystemDepartmentsMembersGetData[number];
@@ -286,6 +287,8 @@ export default function DepartmentsPage() {
 
 	return (
 		<Space direction="vertical" style={{ width: "100%", paddingTop: 16 }}>
+			{/* 企微来源的组织架构：顶部常驻状态条 + 立即同步（没装企微的站点这里什么都不渲染） */}
+			<WecomSyncBar onFinished={() => queryClient.invalidateQueries({ queryKey: ["system"] })} />
 			<Space>
 				<Button
 					type="primary"

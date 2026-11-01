@@ -5,7 +5,7 @@
  */
 
 /** HTTP 状态：ContractApiError.code 优先，HTTPError 回落 response.status */
-function statusOf(e: unknown): number | undefined {
+export function statusOf(e: unknown): number | undefined {
 	const err = e as { code?: number, response?: Response } | null;
 	if (typeof err?.code === "number")
 		return err.code;

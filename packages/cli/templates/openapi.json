@@ -1769,6 +1769,7 @@
 													"auth_corp_id",
 													"env",
 													"status",
+													"auth_mode",
 													"installed_at",
 													"update_time"
 												],
@@ -1800,6 +1801,9 @@
 															"active",
 															"disabled"
 														]
+													},
+													"auth_mode": {
+														"type": "number"
 													},
 													"installed_at": {
 														"type": "number"
@@ -4681,6 +4685,9 @@
 										"data": {
 											"type": "object",
 											"required": [
+												"connected",
+												"authMode",
+												"profileStatus",
 												"status",
 												"phase",
 												"stats",
@@ -4692,6 +4699,18 @@
 												"updateTime"
 											],
 											"properties": {
+												"connected": {
+													"type": "boolean"
+												},
+												"authMode": {
+													"type": "number"
+												},
+												"profileStatus": {
+													"type": [
+														"string",
+														"null"
+													]
+												},
 												"status": {
 													"type": "string",
 													"enum": [
@@ -4839,6 +4858,9 @@
 										"data": {
 											"type": "object",
 											"required": [
+												"connected",
+												"authMode",
+												"profileStatus",
 												"status",
 												"phase",
 												"stats",
@@ -4850,6 +4872,18 @@
 												"updateTime"
 											],
 											"properties": {
+												"connected": {
+													"type": "boolean"
+												},
+												"authMode": {
+													"type": "number"
+												},
+												"profileStatus": {
+													"type": [
+														"string",
+														"null"
+													]
+												},
 												"status": {
 													"type": "string",
 													"enum": [
@@ -5002,6 +5036,9 @@
 										"data": {
 											"type": "object",
 											"required": [
+												"connected",
+												"authMode",
+												"profileStatus",
 												"status",
 												"phase",
 												"stats",
@@ -5013,6 +5050,18 @@
 												"updateTime"
 											],
 											"properties": {
+												"connected": {
+													"type": "boolean"
+												},
+												"authMode": {
+													"type": "number"
+												},
+												"profileStatus": {
+													"type": [
+														"string",
+														"null"
+													]
+												},
 												"status": {
 													"type": "string",
 													"enum": [

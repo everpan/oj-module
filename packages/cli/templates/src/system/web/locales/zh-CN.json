@@ -138,7 +138,8 @@
 			"env": "环境",
 			"status": "状态",
 			"installedAt": "开通时间",
-			"action": "操作"
+			"action": "操作",
+			"authMode": "授权模式"
 		},
 		"statusActive": "启用",
 		"statusDisabled": "停用",
@@ -148,7 +149,61 @@
 		"enable": "启用",
 		"disableConfirm": "停用该应用？企业成员将无法用它登录。",
 		"enableConfirm": "启用该应用？",
-		"empty": "暂无已开通企业"
+		"empty": "暂无已开通企业",
+		"authModeAdmin": "管理员授权",
+		"authModeMember": "成员授权",
+		"authModeHint": "「成员授权」模式下应用没有通讯录权限，该企业的组织架构无法同步——需企业管理员在企微后台改为「管理员授权」后重新授权。",
+		"sync": {
+			"updatedAt": "企微组织架构更新于 {{time}}",
+			"neverSynced": "尚未同步过企微组织架构",
+			"auto": "自动同步",
+			"syncNow": "立即同步",
+			"retry": "重试",
+			"resume": "继续同步",
+			"cancel": "取消同步",
+			"syncing": "正在读取企微组织架构…",
+			"syncingProgress": "正在同步：已处理 {{done}}/{{total}} 个部门",
+			"done": "同步完成：{{depts}} 个部门 / {{members}} 名成员",
+			"paused": "同步已暂停（已处理 {{depts}} 个部门），点「继续同步」接着往下",
+			"skipped": "{{count}} 个部门因权限被跳过（可见范围外的部门属正常）",
+			"cancelled": "已取消同步",
+			"ago": {
+				"justNow": "刚刚",
+				"minutes": "{{count}} 分钟前",
+				"hours": "{{count}} 小时前",
+				"days": "{{count}} 天前"
+			},
+			"memberAuth": {
+				"title": "该企业为「成员授权」模式，应用没有通讯录权限",
+				"hint": "请企业管理员在企微后台把授权模式改为「管理员授权」后重新授权，才能同步组织架构。"
+			},
+			"frozen": {
+				"title": "该企业已取消授权或应用已停用，同步已冻结",
+				"hint": "下方为最后一次同步的数据快照；请联系服务商重新开通后再同步。"
+			},
+			"err": {
+				"permission": {
+					"title": "应用缺少通讯录权限（错误码 {{code}}）",
+					"hint": "企业管理员：企微后台 → 应用管理 → 本应用 → 权限，勾选「通讯录」相关权限并提交。"
+				},
+				"rateLimited": {
+					"title": "企微接口限流（错误码 {{code}}）",
+					"hint": "已自动退避，稍后点「继续同步」即可。"
+				},
+				"ipWhitelist": {
+					"title": "服务器出口 IP 不在企微白名单（错误码 {{code}}）",
+					"hint": "由服务商运维在企微后台补充可信 IP。"
+				},
+				"network": {
+					"title": "无法连接企业微信（{{code}}）",
+					"hint": "请检查服务器网络与企微接口可达性后重试。"
+				},
+				"unknown": {
+					"title": "同步失败（错误码 {{code}}）",
+					"hint": "请联系服务商排查后重试。"
+				}
+			}
+		}
 	},
 	"err": {
 		"forbidden": "无权限",

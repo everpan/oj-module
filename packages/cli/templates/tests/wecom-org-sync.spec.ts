@@ -17,7 +17,7 @@ import { upsertDepartment } from "../src/_platform/api/_shared/service/domain/or
 import { createWecomClient, WecomApiError } from "../src/auth/api/_shared/wecom/client";
 import { handleSuiteEvent } from "../src/auth/api/_shared/wecom/events";
 import { SELF_UPDATE_TTL_SECS, selfUpdate } from "../src/auth/api/_shared/wecom/login";
-import { findProfile, putSuiteTicket, saveProfile } from "../src/auth/api/_shared/wecom/store";
+import { findProfile, probeProfile, putSuiteTicket, saveProfile, setProfileStatus } from "../src/auth/api/_shared/wecom/store";
 import { installDb } from "./fixture";
 
 /* eslint-disable test/prefer-lowercase-title -- D/AC 编号是验收锚点，保留大写 */
@@ -255,6 +255,50 @@ describe("B1-B：授权模式（auth_mode）", () => {
 			.toBe("change_auth");
 		// 旧值保留，同步闸门那侧还有 60011 兜底
 		expect((await findProfile("ww_corp_a", "100001", storeDeps())).authMode).toBe(0);
+	});
+});
+
+describe("B1-D：授权探针（同步入口的准入事实）", () => {
+	const profile = (agentId: string, authMode = 0) => saveProfile({
+		suiteId: CFG.suiteId,
+		corpId: "ww_corp_a",
+		authCorpId: "ww_corp_a",
+		agentId,
+		env: "prod",
+		corpName: null,
+		permanentCode: `perm_${agentId}`,
+		authMode,
+	}, storeDeps());
+
+	it("没装企微 → null：页面据此整条不显示，而不是画红叉", async () => {
+		expect(await probeProfile("ww_unknown", null)).toBeNull();
+	});
+
+	it("装了 → 拿得到 agent + 授权模式；带 agent 可收窄，指错应用 → null", async () => {
+		await profile("100001", 1);
+		expect(await probeProfile("ww_corp_a", null)).toEqual({ agentId: "100001", authMode: 1, status: "active" });
+		expect(await probeProfile("ww_corp_a", "100001")).toMatchObject({ authMode: 1 });
+		expect(await probeProfile("ww_corp_a", "200002")).toBeNull();
+	});
+
+	it("同企业多个启用应用且没带 agent → 400（真歧义，不能瞎挑一个去同步）", async () => {
+		await profile("100001");
+		await profile("200002");
+		await expect(probeProfile("ww_corp_a", null)).rejects.toMatchObject({ status: 400 });
+		expect(await probeProfile("ww_corp_a", "200002")).toMatchObject({ agentId: "200002" });
+	});
+
+	it("企业被停用/取消授权 → 仍探得到（status=disabled），同步面据此画冻结黄条而不是「没装」", async () => {
+		await profile("100001");
+		await setProfileStatus("ww_corp_a", "disabled", storeDeps());
+		expect(await probeProfile("ww_corp_a", null)).toMatchObject({ status: "disabled" });
+	});
+
+	it("停用后再装一个新应用：优先返回启用中的那个（别把活的应用报成冻结）", async () => {
+		await profile("100001");
+		await profile("200002");
+		await db.table("wecom_app_profile").update({ status: "disabled" }).where({ field: "agent_id", op: "eq", value: "100001" }).run();
+		expect(await probeProfile("ww_corp_a", null)).toMatchObject({ agentId: "200002", status: "active" });
 	});
 });
 

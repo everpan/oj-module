@@ -7,16 +7,20 @@
 //      ——伪造 X-TENANT-ID 时 token 的 sub 在目标租户里查无此人，一步拦掉。
 //   3. 门禁：`auth.wecom.sync`（admin/superadmin 天然通过；可绑给自定义角色）。
 //
-// 限速只加在 start/cancel 上（`orgsync:<uid>` 5 次/分）：status 是纯本地行读取、不打上游，
-// 而进度条要 1~2 秒轮询一次——给它套 5 次/分 等于把页面焊死。
+// 限速只加在 start/cancel 上（`orgsync:<uid>` 10 次/分）：status 是纯本地读取、不打上游，
+// 而进度条要 1~2 秒轮询一次——给它套限速等于把页面焊死。
+//
+// 10 次/分是跟单片预算（sync.ts DEFAULT_BUDGET_MS = 12 秒）配平的：一片打满 12 秒，
+// 串行驱动天然只有 5 次/分，10 次是「不挡住正常推进」的余量；再低（初版 5 次）会在
+// 第 6 片直接 429，大企业同步永远走不完。要动其中一个数，两个一起看。
 import { respond } from "#/_platform/_shared/respond";
 import { assertPermission, assertTenantSelf } from "#/_platform/_shared/service/infra/access";
 import { recordOp } from "#/_platform/_shared/service/infra/audit";
 import { rateLimit } from "#/_platform/_shared/service/infra/rate";
 import { createWecomClient, runtimeCache, runtimeHttp } from "../../_shared/wecom/client";
 import { readWecomConfig } from "../../_shared/wecom/config";
-import { findProfile, runtimeStoreDeps } from "../../_shared/wecom/store";
-import { cancelSync, startSync, syncStatus } from "../../_shared/wecom/sync";
+import { findProfile, probeProfile, runtimeStoreDeps } from "../../_shared/wecom/store";
+import { attachProfile, cancelSync, emptyView, startSync, syncStatus } from "../../_shared/wecom/sync";
 
 function currentTenant(): string {
 	const t = (http as unknown as { tenantId?: unknown }).tenantId;
@@ -40,8 +44,12 @@ const STATS = {
 
 const VIEW = {
 	type: "object",
-	required: ["status", "phase", "stats", "progress", "errCode", "errDetail", "startedAt", "finishedAt", "updateTime"],
+	required: ["connected", "authMode", "profileStatus", "status", "phase", "stats", "progress", "errCode", "errDetail", "startedAt", "finishedAt", "updateTime"],
 	properties: {
+		// 授权事实（页面据此决定「整条隐藏 / 成员授权卡片 / 冻结黄条 / 正常同步栏」）
+		connected: { type: "boolean" },
+		authMode: { type: "number" },
+		profileStatus: { type: ["string", "null"] },
 		status: { type: "string", enum: ["idle", "running", "done", "failed", "cancelled"] },
 		phase: { type: "string", enum: ["departments", "members", "reconcile"] },
 		stats: STATS,
@@ -67,12 +75,29 @@ const VIEW = {
 	},
 } as const;
 
-/** 解析当前租户的授权档案（企业代码 = 租户；多应用时必须带 agent） */
+function agentOf(raw: unknown): string | null {
+	const s = String(raw ?? "").trim();
+	return s.length > 0 ? s : null;
+}
+
+/**
+ * 解析当前租户的授权档案（企业代码 = 租户；多应用时必须带 agent）。
+ *
+ * 先 probe 再 findProfile：探针负责把「没装 / 已取消授权」翻译成人话（`findProfile` 为防
+ * 枚举把两者统一成「企业代码无效或应用未开通」，那句文案摆在自家组织架构页上会让人以为
+ * 是自己填错了），findProfile 负责解密出 permanent_code。
+ */
 async function profileOf(tenantId: string, agent: unknown) {
+	const probe = await probeProfile(tenantId, agentOf(agent));
+	if (!probe) {
+		throw Object.assign(new Error("本站尚未开通企业微信：没有可同步的授权记录"), { status: 400 });
+	}
+	if (probe.status !== "active") {
+		throw Object.assign(new Error("该企业已取消授权或应用已停用：组织架构同步已冻结，请联系服务商重新开通"), { status: 400 });
+	}
 	const cfg = readWecomConfig();
-	const deps = runtimeStoreDeps(cfg);
-	const agentId = String(agent ?? "").trim() || null;
-	return { profile: await findProfile(tenantId, agentId, deps), cfg };
+	const profile = await findProfile(tenantId, probe.agentId, runtimeStoreDeps(cfg));
+	return { profile, probe, cfg };
 }
 
 const start = {
@@ -87,10 +112,10 @@ const start = {
 			const tenantId = currentTenant();
 			if (!tenantId)
 				throw Object.assign(new Error("缺少租户上下文"), { status: 400 });
-			await rateLimit(`orgsync:${currentUid()}`, 5, 60_000);
+			await rateLimit(`orgsync:${currentUid()}`, 10, 60_000);
 
 			const body = (http.body ?? {}) as { agent?: unknown };
-			const { profile, cfg } = await profileOf(tenantId, body.agent);
+			const { profile, probe, cfg } = await profileOf(tenantId, body.agent);
 			const view = await startSync(
 				{ corpId: profile.corpId, agentId: profile.agentId, secret: profile.permanentCode, authMode: profile.authMode },
 				{ client: createWecomClient({ http: runtimeHttp(), cache: runtimeCache() }), now: () => Date.now() },
@@ -102,7 +127,7 @@ const start = {
 				target: profile.corpId,
 				detail: { agentId: profile.agentId, status: view.status, phase: view.phase, stats: view.stats, baseUrl: cfg.baseUrl },
 			});
-			return view;
+			return attachProfile(view, probe);
 		});
 	},
 };
@@ -115,7 +140,8 @@ start.post.schema = {
 start.post.response = VIEW;
 
 const status = {
-	// 进度轮询：只读 wecom_sync_job，不打上游、不占限速额度
+	// 进度轮询：只读 wecom_sync_job + 一次授权探针，不打上游、不占限速额度。
+	// 「本站没装企微」在这里是**正常返回**（connected:false），不是 400——页面整条状态栏据此隐藏。
 	async get() {
 		await respond(async () => {
 			await assertPermission("auth.wecom.sync");
@@ -123,8 +149,10 @@ const status = {
 			const tenantId = currentTenant();
 			if (!tenantId)
 				throw Object.assign(new Error("缺少租户上下文"), { status: 400 });
-			const { profile } = await profileOf(tenantId, (http.query as Record<string, unknown>).agent);
-			return syncStatus(profile.corpId, profile.agentId);
+			const probe = await probeProfile(tenantId, agentOf((http.query as Record<string, unknown>).agent));
+			if (!probe)
+				return attachProfile(emptyView("idle"), null);
+			return attachProfile(await syncStatus(tenantId, probe.agentId), probe);
 		});
 	},
 };
@@ -145,9 +173,9 @@ const cancel = {
 			const tenantId = currentTenant();
 			if (!tenantId)
 				throw Object.assign(new Error("缺少租户上下文"), { status: 400 });
-			await rateLimit(`orgsync:${currentUid()}`, 5, 60_000);
+			await rateLimit(`orgsync:${currentUid()}`, 10, 60_000);
 
-			const { profile } = await profileOf(tenantId, (http.body as Record<string, unknown> | undefined)?.agent);
+			const { profile, probe } = await profileOf(tenantId, (http.body as Record<string, unknown> | undefined)?.agent);
 			const view = await cancelSync(profile.corpId, profile.agentId, { now: () => Date.now() });
 			await recordOp({
 				action: "wecom.org.sync.cancel",
@@ -156,7 +184,7 @@ const cancel = {
 				detail: { agentId: profile.agentId, phase: view.phase, stats: view.stats },
 				level: 4,
 			});
-			return view;
+			return attachProfile(view, probe);
 		});
 	},
 };
