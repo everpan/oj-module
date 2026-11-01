@@ -116,3 +116,83 @@ describe("given module-root 布局 When ojm build 后端", () => {
 		expect(existsSync(join(root, "dist", "api"))).toBe(false);
 	});
 });
+
+/**
+ * 假 oj：`secret open` 按 openOk 成败（失败时复述 oj 的真实 stderr），`build` 记 argv 后成功。
+ * 只记非 secret 调用，便于断言「预检之后 build 是否真的跑了」。
+ */
+function fakeOjSeal(projectRoot: string, openOk: boolean): void {
+	mkdirSync(join(projectRoot, "bin"), { recursive: true });
+	const bin = join(projectRoot, "bin", "oj");
+	writeFileSync(bin, [
+		"#!/bin/sh",
+		"if [ \"$1\" = \"secret\" ]; then",
+		...(openOk ? [] : ["  echo 'oj secret open: aes-gcm open failed (sealed value tampered?): aead::Error' >&2"]),
+		`  exit ${openOk ? 0 : 1}`,
+		"fi",
+		"printf '%s\\n' \"$*\" >> \"$(dirname \"$0\")/invoked\"",
+		"exit 0",
+		"",
+	].join("\n"), { mode: 0o755 });
+}
+
+/** flat 布局 + 已密封的 config（路径照 ojm init 的产物写） */
+function newSealedProject(): string {
+	const root = newProject();
+	writeFileSync(
+		join(root, "api", "config.yaml"),
+		"auth:\n  jwt_secret: \"ENC[AgE0ZMU2aDKo5CHab4Kl_TtJduXQLwheLVczTPcvm2g]\"\n"
+		+ "secrets:\n  private_key_path: ./config/secrets-private.pem\n",
+		"utf-8",
+	);
+	return root;
+}
+
+describe("given config 含密封值 When ojm build 后端", () => {
+	// oj build 读不动 config 时只 warn 两行、退出码 0，继续出包时 sql_guard 是关掉的。
+	// ojm 必须在把 oj 叫起来之前就停下，否则「没跑过 tenant 校验的包」会流到部署机上。
+	it("then 解不开就停在出包前，不当成一次成功构建", async () => {
+		const root = newSealedProject();
+		fakeOjSeal(root, false);
+
+		await expect(buildBackend(root)).rejects.toThrow(/密封值解不开/);
+		await expect(buildBackend(root)).rejects.toThrow(/secrets-private\.pem/);
+		expect(existsSync(join(root, "bin", "invoked"))).toBe(false); // 没跑 oj build
+	});
+
+	it("then 解不开时把 oj 的原话带上（排障不用再跑一遍）", async () => {
+		const root = newSealedProject();
+		fakeOjSeal(root, false);
+
+		await expect(buildBackend(root)).rejects.toThrow(/aes-gcm open failed/);
+	});
+
+	it("then 能解开就照常出包", async () => {
+		const root = newSealedProject();
+		fakeOjSeal(root, true);
+
+		expect(await buildBackend(root)).toBe(true);
+		expect(readFileSync(join(root, "bin", "invoked"), "utf-8")).toContain("build -c ");
+	});
+
+	it("then config 无密封值时不额外调用 oj（预检零成本）", async () => {
+		const root = newProject(); // config 只有 server.port
+		fakeOjSeal(root, false);
+
+		expect(await buildBackend(root)).toBe(true);
+		expect(readFileSync(join(root, "bin", "invoked"), "utf-8")).not.toContain("secret");
+	});
+
+	it("then 注释掉的旧密文不算数（不因一行 `#` 挡住构建）", async () => {
+		const root = newProject();
+		writeFileSync(
+			join(root, "api", "config.yaml"),
+			"# auth:\n#   jwt_secret: \"ENC[AgE0ZMU2aDKo5CHab4Kl_TtJduXQLwheLVczTPcvm2g]\"\nserver:\n  port: 9778\n",
+			"utf-8",
+		);
+		fakeOjSeal(root, false);
+
+		expect(await buildBackend(root)).toBe(true);
+		expect(readFileSync(join(root, "bin", "invoked"), "utf-8")).not.toContain("secret");
+	});
+});

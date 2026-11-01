@@ -584,6 +584,9 @@ export async function buildBackend(projectRoot: string): Promise<boolean> {
 	// v0.1.85：`--module-root <dir>` 与 `-d` 互斥（都是「源码树根」）。新布局给 src，
 	// oj 在子树内递归找 manifest.yaml（命中 src/<name>/api/manifest.yaml 即停）。
 	const sourceArgs = layout?.moduleRoot ? ["--module-root", layout.moduleRoot] : ["-d", apiSrc];
+	// 出包前先自己确认 config 能读：读不动时 oj build 会静默关掉 sql_guard（见函数注释）
+	if (configArgs.length)
+		assertSealedValuesOpenable(oj, configPath);
 	execFileSync(oj, [
 		"build",
 		...configArgs,
@@ -602,6 +605,53 @@ export async function buildBackend(projectRoot: string): Promise<boolean> {
 		fs.copyFileSync(versionsSrc, path.join(apiDist, "versions.json"));
 	}
 	return true;
+}
+
+/**
+ * config 里的密封值（`oj secret seal` 产物）在 build 前试解一把——fail-closed。
+ *
+ * **为什么不能只信 oj 的 warn**：实测（oj 0.1.115）config 读不动时 `oj build` **退出码仍是 0**，
+ * 只往 stderr 甩两行「读配置失败 → 镜像目录回落默认 tasks / 本次 build 按 sql_guard=off 处理」，
+ * 然后照常出包。那两行夹在模块清单里极易被忽略，而关掉的 `sql_guard` 正是 tenant 声明校验
+ * （跨模块 SQL 的唯一守卫）——包看起来完好，检查其实没跑。
+ *
+ * 探法就是 oj 自己的排障命令 `oj secret open`：它和 `oj serve` / `oj build` 用同一套密钥解析
+ * （`OJ_SECRET_KEY` → `OJ_SECRET_KEY_FILE` → config 的 `secrets.private_key_path`），
+ * 解不开就非零退出。明文只可能出现在它的 stdout，这里直接丢弃，不落终端也不落日志。
+ */
+function assertSealedValuesOpenable(oj: string, configPath: string): void {
+	// 注释行不算：config 里留着注释掉的旧密文很常见，naive 匹配会让 build 因为一行 `#` 而失败
+	const live = fs.readFileSync(configPath, "utf-8")
+		.split("\n")
+		.filter(line => !line.trimStart().startsWith("#"))
+		.join("\n");
+	const sealed = [...new Set(live.match(/ENC\[[^\]\n]+\]/g) ?? [])];
+	for (const value of sealed) {
+		try {
+			execFileSync(oj, ["secret", "open", "-c", configPath, value], { stdio: ["ignore", "ignore", "pipe"] });
+		}
+		catch (e) {
+			const stderr = String((e as { stderr?: unknown }).stderr ?? "").trim();
+			const detail = stderr || (e as Error).message;
+			throw new Error(
+				`[ojm] config 里的密封值解不开，已停在出包前：${configPath}\n`
+				+ `      oj 说：${detail}\n`
+				+ "\n"
+				+ "不能放行：oj build 遇到读不动的 config 不会失败（退出码 0），只 warn 两行就继续——\n"
+				+ "tasks 镜像目录回落默认值，sql_guard（tenant 声明校验）直接关掉。那种包看着正常，\n"
+				+ "跨模块 SQL 的守卫却没跑过。\n"
+				+ "\n"
+				+ "两类原因，都修得了：\n"
+				+ "  1) 本机加载的私钥与密封时用的公钥不是一对——最常见是换机器/换部署目录时只带了\n"
+				+ "     config.yaml，没带 config/secrets-private.pem；\n"
+				+ "  2) 密文被改过——手工编辑、复制被截断、编辑器把长行折了。\n"
+				+ "\n"
+				+ "单独验一条：oj secret open -c <config> '<那个 ENC[...] 值>'（成功=这条没问题，失败=就是它）\n"
+				+ "修法：把配对私钥带到本机（OJ_SECRET_KEY / OJ_SECRET_KEY_FILE / config 的 secrets.private_key_path\n"
+				+ "      三选一）；密钥确实换了，就在本机重新 oj secret seal 覆写该值（明文走 stdin，别上命令行）。",
+			);
+		}
+	}
 }
 
 /**
