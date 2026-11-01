@@ -19,6 +19,7 @@ export const schemas = {
 	"env": z.string(),
 	"corp_name": z.string().nullable().optional(),
 	"status": z.enum(["active", "disabled"]),
+	"credential_kind": z.enum(["suite", "corp"]),
 	"auth_mode": z.number(),
 	"installed_at": z.number(),
 	"update_time": z.number()
@@ -40,6 +41,24 @@ export const schemas = {
 	"installUrl": z.string(),
 	"callbackUrl": z.string(),
 	"expiresIn": z.number()
+}),
+	},
+	"authWecomAdminOverviewGet": {
+		data: z.object({
+	"kinds": z.array(z.enum(["suite", "corp"])),
+	"configError": z.string().nullable(),
+	"callbackUrl": z.string().nullable(),
+	"corpId": z.string().nullable(),
+	"agentId": z.string().nullable(),
+	"corpCallbackConfigured": z.boolean()
+}),
+	},
+	"authWecomAdminConnectPost": {
+		data: z.object({
+	"corpId": z.string(),
+	"agentId": z.string(),
+	"departments": z.number(),
+	"members": z.number()
 }),
 	},
 	"authWecomTicketPost": {
@@ -108,7 +127,9 @@ export const schemas = {
 }).nullable(),
 	"startedAt": z.number(),
 	"finishedAt": z.number(),
-	"updateTime": z.number()
+	"updateTime": z.number(),
+	"agentId": z.string().nullable(),
+	"credentialKind": z.union([z.literal("suite"), z.literal("corp"), z.literal(null)]).nullable()
 }),
 	},
 	"authWecomSyncCancelPost": {

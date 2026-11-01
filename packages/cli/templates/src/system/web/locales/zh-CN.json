@@ -141,7 +141,8 @@
 			"status": "状态",
 			"installedAt": "开通时间",
 			"action": "操作",
-			"authMode": "授权模式"
+			"authMode": "授权模式",
+			"source": "来源"
 		},
 		"statusActive": "启用",
 		"statusDisabled": "停用",
@@ -205,6 +206,28 @@
 					"hint": "请联系服务商排查后重试。"
 				}
 			}
+		},
+		"source": {
+			"suite": "代开发",
+			"corp": "企业内部应用"
+		},
+		"authModeNone": "—",
+		"configErrorTitle": "部署配置自检未通过",
+		"coexistHint": "本部署同时启用了代开发与企业内部应用（wecom_allow_coexist: 'true'）。",
+		"corp": {
+			"title": "企业内部应用（自建）",
+			"hint": "本部署作为企业内部应用接入：凭据来自 config.yaml 的 wecom_corp_id / wecom_corp_secret / wecom_corp_agent_id。填好后点「验证并接入」，三步校验全过才会登记企业。",
+			"corpId": "企业ID",
+			"agentId": "AgentId",
+			"callbackUrl": "通讯录事件回调地址",
+			"callbackHint": "把上面这个地址填到企微「管理工具 → 通讯录同步 → 设置接收事件服务器」；应用自身的「接收消息」回调请留空——两处 Token 不同，填同一个 URL 会让一半报文验签失败。",
+			"callbackConfigured": "通讯录事件回调凭据",
+			"callbackYes": "已配置（成员变更会实时同步）",
+			"callbackNo": "未配置（只做全量同步；要增量请在企微后台填 Token / EncodingAESKey 到同一地址）",
+			"connect": "验证并接入",
+			"connectConfirm": "接入会依次校验：应用 Secret 能否换 token、能否读通讯录、可见范围内能否读到人。改过企业ID / AgentId 或换过 Secret 都必须重新点一次。",
+			"connectOk": "接入成功：可见范围内 {{depts}} 个部门，示例部门 {{members}} 人",
+			"connectHint": "换过应用 Secret 后必须重新「验证并接入」，否则所有调用都会 40001；同步到多少人取决于「应用可见范围」，要全量请设为全公司。"
 		}
 	},
 	"err": {

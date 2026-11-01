@@ -141,7 +141,8 @@
 			"status": "Status",
 			"installedAt": "Onboarded at",
 			"action": "Actions",
-			"authMode": "Auth mode"
+			"authMode": "Auth mode",
+			"source": "Source"
 		},
 		"statusActive": "Active",
 		"statusDisabled": "Disabled",
@@ -205,6 +206,28 @@
 					"hint": "Contact the service provider to investigate, then retry."
 				}
 			}
+		},
+		"source": {
+			"suite": "Delegated",
+			"corp": "Internal app"
+		},
+		"authModeNone": "—",
+		"configErrorTitle": "Deployment config check failed",
+		"coexistHint": "This deployment runs both delegated (suite) and internal (corp) apps (wecom_allow_coexist: 'true').",
+		"corp": {
+			"title": "Internal app (self-built)",
+			"hint": "This deployment connects as an internal app: credentials come from config.yaml (wecom_corp_id / wecom_corp_secret / wecom_corp_agent_id). Fill them in, then click \"Verify and connect\"; the corporation is registered only after all three checks pass.",
+			"corpId": "Corporation ID",
+			"agentId": "AgentId",
+			"callbackUrl": "Contacts event callback URL",
+			"callbackHint": "Fill this URL into WeCom → Tools → Contacts sync → Set event receiver URL. Leave the app's own message callback empty: the two use different tokens, and pointing both at one URL makes half the payloads fail signature verification.",
+			"callbackConfigured": "Contacts event callback credentials",
+			"callbackYes": "Configured (member changes sync in real time)",
+			"callbackNo": "Not configured (full sync only; to get increments, fill Token / EncodingAESKey for this URL in the WeCom console)",
+			"connect": "Verify and connect",
+			"connectConfirm": "Connect checks: whether the app Secret can fetch a token, whether contacts are readable, and whether any member is visible. Re-run it whenever the Corporation ID / AgentId changed or the Secret was rotated.",
+			"connectOk": "Connected: {{depts}} departments visible, {{members}} members in the sample department",
+			"connectHint": "After rotating the app Secret you must click \"Verify and connect\" again, otherwise every call fails with 40001. How many people get synced depends on the app's visible scope — set it to the whole company for a full sync."
 		}
 	},
 	"err": {

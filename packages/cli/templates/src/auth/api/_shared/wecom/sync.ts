@@ -15,6 +15,7 @@
 //     致命类计入熔断（连续 FATAL_LIMIT 次 → job failed）；
 //   · 错误落库只存脱敏结构（`{errcode, phase, deptId, at}`）：异常原文里可能夹带 URL 上的 token。
 import type { WecomClient, WecomMember } from "./client";
+import type { WecomKind } from "./config";
 import type { ProfileProbe } from "./store";
 
 import { markSeen, reconcileHidden, upsertDepartment } from "#/_platform/_shared/service/domain/org";
@@ -75,10 +76,17 @@ export interface SyncJobView {
 export interface SyncView extends SyncJobView {
 	/** 本站是否装过企微（有授权记录，含已停用）——false 时页面整条不显示 */
 	connected: boolean
-	/** 0=管理员授权 / 1=成员授权（1 时任何通讯录调用都是 60011，同步入口直接拒绝） */
+	/** 0=管理员授权 / 1=成员授权（1 时任何通讯录调用都是 60011，同步入口直接拒绝）；自建行恒 0 */
 	authMode: number
 	/** 授权记录的应用状态；disabled = 已取消授权/被停用，同步冻结但数据保留（§7 黄条） */
 	profileStatus: "active" | "disabled" | null
+	/**
+	 * 本次解析到的应用 id：**多应用/共存企业的分辨锚点**。
+	 * 前端 start / cancel / status 必须原样回传，否则同一家企业两行档案时后端只能 400「必须带 agent」。
+	 */
+	agentId: string | null
+	/** 凭据来源：corp 行没有「授权模式」概念，页面不该给它画成员授权卡片 */
+	credentialKind: WecomKind | null
 }
 
 export interface SyncDeps {
@@ -191,6 +199,8 @@ export function attachProfile(view: SyncJobView, probe: ProfileProbe | null): Sy
 		connected: probe !== null,
 		authMode: probe?.authMode ?? 0,
 		profileStatus: probe?.status ?? null,
+		agentId: probe?.agentId ?? null,
+		credentialKind: probe?.credentialKind ?? null,
 	};
 }
 

@@ -179,21 +179,27 @@ afterEach(() => {
 
 describe("P1-I：GET /auth/wecom/login（发起授权）", () => {
 	it("部署常量缺失 → 400 信封并点出缺哪几个 vars（不是 500）", async () => {
-		installVars({ wecom_suite_id: "", wecom_enc_key: "" });
+		// 登录只依赖「与来源无关」的两项（落库密钥 + 基址）：suite/corp 凭据不进必填集合，
+		// 否则自建应用的部署会在读 wecom_suite_id 处直接 400（两种来源就没法共存了）。
+		installVars({ wecom_enc_key: "", wecom_base_url: "" });
 		request({ query: { corp: "ww_corp_a" } });
 		await (await api()).login.get();
 		expect(out.status).toBe(400);
-		expect(out.body.msg).toMatch(/wecom_suite_id/);
+		expect(out.body.msg).toMatch(/wecom_enc_key/);
+		expect(out.body.msg).toMatch(/wecom_base_url/);
 		expect(out.location).toBeNull();
 	});
 
 	// 代开发模板常只服务一家企业：corp 缺省时从已安装档案自动解析，好让「应用主页」直接填
 	// `https://<域名>/login`（企微后台会因 URL 里的 `${corpid}` 占位符字符拒收）。三种情形分开钉。
-	it("缺企业代码且一家都没装 → 400，指向「生成开通链接」（不猜默认企业）", async () => {
+	it("缺企业代码且一家都没装 → 400，同时给出两种来源的下一步（不猜默认企业）", async () => {
 		request({ query: {} });
 		await (await api()).login.get();
 		expect(out.status).toBe(400);
-		expect(out.body.msg).toMatch(/尚未完成企业微信授权/);
+		expect(out.body.msg).toMatch(/尚未完成企业微信接入/);
+		// 文案要能分诊：代开发去扫码开通，自建应用去后台点「验证并接入」
+		expect(out.body.msg).toMatch(/代开发/);
+		expect(out.body.msg).toMatch(/验证并接入/);
 	});
 
 	it("缺企业代码但只装了一家 → 302 到该企业的授权地址（省掉手填企业代码）", async () => {

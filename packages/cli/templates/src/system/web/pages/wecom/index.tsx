@@ -1,6 +1,6 @@
 import { request, useUserStore } from "@oj-module/runtime";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { App, Button, Card, Descriptions, Popconfirm, QRCode, Space, Table, Tag, Typography } from "antd";
+import { Alert, App, Button, Card, Descriptions, Popconfirm, QRCode, Space, Table, Tag, Typography } from "antd";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -16,7 +16,9 @@ interface AppRow {
 	env: string
 	corp_name: string | null
 	status: "active" | "disabled"
-	/** 0=管理员授权 / 1=成员授权：成员授权下这家企业的应用做不了组织架构同步 */
+	/** 应用来源：suite=代开发 / corp=企业内部应用（自建） */
+	credential_kind: "suite" | "corp"
+	/** 0=管理员授权 / 1=成员授权：成员授权下这家企业的应用做不了组织架构同步；自建行恒 0 */
 	auth_mode: number
 	installed_at: number
 	update_time: number
@@ -28,6 +30,23 @@ interface InstallInfo {
 	expiresIn: number
 }
 
+/** GET /auth/wecom/admin/overview：本部署配了哪几套凭据、回调地址填什么 */
+interface Overview {
+	kinds: Array<"suite" | "corp">
+	configError: string | null
+	callbackUrl: string | null
+	corpId: string | null
+	agentId: string | null
+	corpCallbackConfigured: boolean
+}
+
+interface ConnectResult {
+	corpId: string
+	agentId: string
+	departments: number
+	members: number
+}
+
 /**
  * 端点不在本模块的生成 client 里（`__client` 按模块切分），故直接用 runtime 的 ky 出口。
  * 路径不带前导 `/`：与 request 的 baseURL 拼接口径一致（fetchLogin 同款）。
@@ -35,6 +54,11 @@ interface InstallInfo {
 async function fetchApps(): Promise<AppRow[]> {
 	const env = await request.get("auth/wecom/admin/apps").json<{ code: number, data?: AppRow[] }>();
 	return env.data ?? [];
+}
+
+async function fetchOverview(): Promise<Overview> {
+	const env = await request.get("auth/wecom/admin/overview").json<{ code: number, data?: Overview }>();
+	return env.data ?? { kinds: [], configError: null, callbackUrl: null, corpId: null, agentId: null, corpCallbackConfigured: false };
 }
 
 async function setStatus(input: { corpId: string, agentId: string, status: "active" | "disabled" }): Promise<{ updated: number, revokedSessions: number }> {
@@ -49,12 +73,19 @@ async function createInstall(): Promise<InstallInfo> {
 	return env.data;
 }
 
+async function connectCorp(): Promise<ConnectResult> {
+	const env = await request.post("auth/wecom/admin/connect", { json: {} }).json<{ code: number, data?: ConnectResult }>();
+	if (!env.data)
+		throw new Error("企业微信未返回接入结果");
+	return env.data;
+}
+
 /**
- * 企微代开发后台（服务商运营面，superadmin 独占）：
- *   · 已授权企业 × 应用清单（同一企业测试/正式两个应用各一行）；
- *   · 启停（停用企业最后一个应用时后端同时吊销该企业会话）；
- *   · 开通入口（点「生成开通链接」→ 后端调企微 get_customized_auth_url 换 qrcode_url，
- *     企业管理员扫/开即授权，授权成功由 create_auth 回调落库）。
+ * 企微后台（superadmin 独占），两块卡片按「本部署配了哪套凭据」决定显不显示：
+ *   · 代开发：已授权企业 × 应用清单、启停、开通入口（点「生成开通链接」→ 后端调
+ *     get_customized_auth_url 换 qrcode_url，企业管理员扫/开即授权，由 create_auth 回调落库）；
+ *   · 企业内部应用（自建）：本企业的那一份凭据 + 回调地址 + 「验证并接入」。
+ * 两套可以同时启用（`wecom_allow_coexist: 'true'`），此时两张卡片并列，清单里按「来源」区分。
  */
 export default function WecomAdminPage() {
 	const { t } = useTranslation();
@@ -83,6 +114,14 @@ export default function WecomAdminPage() {
 		retry: false,
 	});
 
+	// 概览读的是**部署常量**而不是库：配置错的时候清单可能是空的，而这里必须还能说清「缺什么」
+	const overviewQuery = useQuery({
+		queryKey: ["system", "wecom-overview"],
+		queryFn: fetchOverview,
+		enabled: isSuper,
+		retry: false,
+	});
+
 	const statusMut = useMutation({
 		mutationFn: setStatus,
 		onSuccess: (r) => {
@@ -106,8 +145,23 @@ export default function WecomAdminPage() {
 		onError: e => message.error(explainError(e, t)),
 	});
 
+	const connectMut = useMutation({
+		mutationFn: connectCorp,
+		onSuccess: (r) => {
+			message.success(t("system:wecom.corp.connectOk", { depts: r.departments, members: r.members }));
+			queryClient.invalidateQueries({ queryKey: ["system", "wecom-apps"] });
+			queryClient.invalidateQueries({ queryKey: ["system", "wecom-overview"] });
+		},
+		onError: e => message.error(explainError(e, t)),
+	});
+
 	if (!isSuper)
 		return <ForbiddenPanel t={t} />;
+
+	const overview = overviewQuery.data;
+	const kinds = overview?.kinds ?? [];
+	const hasSuite = kinds.includes("suite");
+	const hasCorp = kinds.includes("corp");
 
 	const columns = [
 		{
@@ -120,16 +174,26 @@ export default function WecomAdminPage() {
 				</div>
 			),
 		},
+		{
+			// 来源列：共存部署里清单会同时出现两类行，不标出来就分不清「这行是谁装进来的」
+			title: t("system:wecom.col.source"),
+			dataIndex: "credential_kind",
+			render: (v: AppRow["credential_kind"]) => (v === "corp"
+				? <Tag color="blue">{t("system:wecom.source.corp")}</Tag>
+				: <Tag>{t("system:wecom.source.suite")}</Tag>),
+		},
 		{ title: t("system:wecom.col.agent"), dataIndex: "agent_id" },
 		{ title: t("system:wecom.col.env"), dataIndex: "env", render: (v: string) => <Tag>{v}</Tag> },
 		{
 			// 权限三态：成员授权是「装了也同步不了」的硬约束（企微侧通讯录接口一律 60011），
-			// 摆在清单上，服务商不用点进去试一遍才知道
+			// 摆在清单上，服务商不用点进去试一遍才知道。自建应用没有这个概念，显示空值。
 			title: t("system:wecom.col.authMode"),
 			dataIndex: "auth_mode",
-			render: (v: number) => (v === 0
-				? <Tag color="green">{t("system:wecom.authModeAdmin")}</Tag>
-				: <Tag color="orange">{t("system:wecom.authModeMember")}</Tag>),
+			render: (v: number, row: AppRow) => (row.credential_kind === "corp"
+				? <Typography.Text type="secondary">{t("system:wecom.authModeNone")}</Typography.Text>
+				: v === 0
+					? <Tag color="green">{t("system:wecom.authModeAdmin")}</Tag>
+					: <Tag color="orange">{t("system:wecom.authModeMember")}</Tag>),
 		},
 		{
 			title: t("system:wecom.col.status"),
@@ -166,41 +230,95 @@ export default function WecomAdminPage() {
 
 	return (
 		<Space direction="vertical" size="middle" style={{ width: "100%" }}>
-			<Card
-				title={t("system:wecom.title")}
-				extra={(
-					<Button type="primary" loading={installMut.isPending} onClick={() => installMut.mutate()}>
-						{t("system:wecom.genInstall")}
-					</Button>
-				)}
-			>
-				<Typography.Paragraph type="secondary">{t("system:wecom.hint")}</Typography.Paragraph>
-				{install && (
-					<div style={{ display: "flex", gap: 24, alignItems: "flex-start", flexWrap: "wrap" }}>
-						{/* 二维码用 antd 内置 QRCode（同一份共享 antd，不额外引二维码依赖）：
-						    企业管理员多半在手机上收通知，扫码比复制链接快 */}
-						<QRCode
-							value={install.installUrl}
-							size={160}
-							type="svg"
-							bordered
-							status={expired ? "expired" : "active"}
-							onRefresh={() => installMut.mutate()}
-						/>
-						<Descriptions column={1} size="small" bordered style={{ flex: 1, minWidth: 320 }}>
-							<Descriptions.Item label={t("system:wecom.installUrl")}>
-								<Typography.Text copyable={{ text: install.installUrl }}>{install.installUrl}</Typography.Text>
-							</Descriptions.Item>
-							<Descriptions.Item label={t("system:wecom.callbackUrl")}>
-								<Typography.Text copyable={{ text: install.callbackUrl }}>{install.callbackUrl}</Typography.Text>
-							</Descriptions.Item>
-							<Descriptions.Item label={t("system:wecom.expiresIn")}>
-								{t("system:wecom.expiresValue", { count: Math.round(install.expiresIn / 60) })}
-							</Descriptions.Item>
-						</Descriptions>
-					</div>
-				)}
-			</Card>
+			{overview?.configError && (
+				<Alert
+					type="error"
+					showIcon
+					message={t("system:wecom.configErrorTitle")}
+					description={overview.configError}
+				/>
+			)}
+			{hasSuite && hasCorp && (
+				<Alert type="info" showIcon message={t("system:wecom.coexistHint")} />
+			)}
+			{hasSuite && (
+				<Card
+					title={t("system:wecom.title")}
+					extra={(
+						<Button type="primary" loading={installMut.isPending} onClick={() => installMut.mutate()}>
+							{t("system:wecom.genInstall")}
+						</Button>
+					)}
+				>
+					<Typography.Paragraph type="secondary">{t("system:wecom.hint")}</Typography.Paragraph>
+					{install && (
+						<div style={{ display: "flex", gap: 24, alignItems: "flex-start", flexWrap: "wrap" }}>
+							{/* 二维码用 antd 内置 QRCode（同一份共享 antd，不额外引二维码依赖）：
+							    企业管理员多半在手机上收通知，扫码比复制链接快 */}
+							<QRCode
+								value={install.installUrl}
+								size={160}
+								type="svg"
+								bordered
+								status={expired ? "expired" : "active"}
+								onRefresh={() => installMut.mutate()}
+							/>
+							<Descriptions column={1} size="small" bordered style={{ flex: 1, minWidth: 320 }}>
+								<Descriptions.Item label={t("system:wecom.installUrl")}>
+									<Typography.Text copyable={{ text: install.installUrl }}>{install.installUrl}</Typography.Text>
+								</Descriptions.Item>
+								<Descriptions.Item label={t("system:wecom.callbackUrl")}>
+									<Typography.Text copyable={{ text: install.callbackUrl }}>{install.callbackUrl}</Typography.Text>
+								</Descriptions.Item>
+								<Descriptions.Item label={t("system:wecom.expiresIn")}>
+									{t("system:wecom.expiresValue", { count: Math.round(install.expiresIn / 60) })}
+								</Descriptions.Item>
+							</Descriptions>
+						</div>
+					)}
+				</Card>
+			)}
+			{hasCorp && (
+				<Card
+					title={t("system:wecom.corp.title")}
+					extra={(
+						<Popconfirm
+							title={t("system:wecom.corp.connectConfirm")}
+							onConfirm={() => connectMut.mutate()}
+						>
+							<Button type="primary" loading={connectMut.isPending}>
+								{t("system:wecom.corp.connect")}
+							</Button>
+						</Popconfirm>
+					)}
+				>
+					<Typography.Paragraph type="secondary">{t("system:wecom.corp.hint")}</Typography.Paragraph>
+					<Descriptions column={1} size="small" bordered>
+						<Descriptions.Item label={t("system:wecom.corp.corpId")}>
+							<Typography.Text>{overview?.corpId ?? "-"}</Typography.Text>
+						</Descriptions.Item>
+						<Descriptions.Item label={t("system:wecom.corp.agentId")}>
+							<Typography.Text>{overview?.agentId ?? "-"}</Typography.Text>
+						</Descriptions.Item>
+						<Descriptions.Item label={t("system:wecom.corp.callbackUrl")}>
+							{overview?.callbackUrl
+								? <Typography.Text copyable={{ text: overview.callbackUrl }}>{overview.callbackUrl}</Typography.Text>
+								: "-"}
+						</Descriptions.Item>
+						<Descriptions.Item label={t("system:wecom.corp.callbackConfigured")}>
+							{overview?.corpCallbackConfigured
+								? <Tag color="green">{t("system:wecom.corp.callbackYes")}</Tag>
+								: <Tag color="orange">{t("system:wecom.corp.callbackNo")}</Tag>}
+						</Descriptions.Item>
+					</Descriptions>
+					<Typography.Paragraph type="secondary" style={{ marginTop: 12, marginBottom: 0 }}>
+						{t("system:wecom.corp.callbackHint")}
+					</Typography.Paragraph>
+					<Typography.Paragraph type="warning" style={{ marginBottom: 0 }}>
+						{t("system:wecom.corp.connectHint")}
+					</Typography.Paragraph>
+				</Card>
+			)}
 			<Card title={t("system:wecom.appsTitle")}>
 				<Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
 					{t("system:wecom.authModeHint")}

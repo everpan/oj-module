@@ -34,9 +34,9 @@ describe("devkit 手册两章节（P2-14：文档存在性）", () => {
  * 本守卫钉死「交付四件套零内部代号」；确需追溯的出处写在框架仓文档，不进 devkit。
  */
 describe("devkit 自包含（零仓库内部代号）", () => {
-	it("sKILL/manual/README/framework-dev/教学文档/企微手册 不含设计与评审代号", () => {
+	it("sKILL/manual/README/framework-dev/教学文档/企微两本手册 不含设计与评审代号", () => {
 		const pattern = /\b(P\d+(-[0-9A-Z]+)?|C\d+(-\d+)?|AC-[A-Z]+-?\d*|S0\d{2}|R\d+|D1\d|B-\d+|G\d|M0\d{2})\b/;
-		for (const name of ["SKILL.md", "manual.md", "README.md", "framework-dev.md", "module-dev-and-cdn-playground.md", "menu-rules.md", "wecom-daikaifa.md"]) {
+		for (const name of ["SKILL.md", "manual.md", "README.md", "framework-dev.md", "module-dev-and-cdn-playground.md", "menu-rules.md", "wecom-daikaifa.md", "wecom-internal-app.md"]) {
 			const hit = read(`docs/devkit/${name}`).match(pattern);
 			expect(hit?.[0], `docs/devkit/${name} 含内部代号：${hit?.[0]}`).toBeUndefined();
 		}
@@ -45,14 +45,14 @@ describe("devkit 自包含（零仓库内部代号）", () => {
 
 /**
  * devkit 目录结构（2026-10-20 合并 oj-api-dev 快照后；2026-10-21 增教学文档；
- * 2026-10-30 增企微代开发手册）：
- * docs/devkit/ 一棵树覆盖前后端两侧，但两套分发链不变——顶层 8 个 ojm 侧文件
+ * 2026-10-30 增企微代开发手册；2026-11-01 增企业内部应用手册）：
+ * docs/devkit/ 一棵树覆盖前后端两侧，但两套分发链不变——顶层 9 个 ojm 侧文件
  * 随 cli 包发货（→ .claude/skills/ojm-module-dev/），oj-api-dev/ 子目录是 oj 侧
  * devkit 的快照（与 ~/.local/share/oj/devkit/ 逐字节一致，仅本仓参考、不发货）。
  * 本守卫钉死这个结构：快照文件若被平铺进顶层，会误随 cli 包发货且与 oj 版本漂移。
  */
 describe("devkit 目录结构（ojm 侧发货 + oj-api-dev 快照子目录）", () => {
-	const OJM_FILES = ["SKILL.md", "manual.md", "README.md", "framework-dev.md", "sql-builder-missing-capabilities-pr.md", "module-dev-and-cdn-playground.md", "menu-rules.md", "wecom-daikaifa.md"];
+	const OJM_FILES = ["SKILL.md", "manual.md", "README.md", "framework-dev.md", "sql-builder-missing-capabilities-pr.md", "module-dev-and-cdn-playground.md", "menu-rules.md", "wecom-daikaifa.md", "wecom-internal-app.md"];
 	const SNAPSHOT_FILES = [
 		"SKILL.md",
 		"README.md",
@@ -66,7 +66,7 @@ describe("devkit 目录结构（ojm 侧发货 + oj-api-dev 快照子目录）", 
 		"oidc-integration.md",
 	];
 
-	it("docs/devkit/ 顶层文件恰为 8 个 ojm 侧文件（快照不得平铺进同步源）", () => {
+	it("docs/devkit/ 顶层文件恰为 9 个 ojm 侧文件（快照不得平铺进同步源）", () => {
 		const top = readdirSync(join(ROOT, "docs/devkit"))
 			.filter(n => !n.startsWith(".") && statSync(join(ROOT, "docs/devkit", n)).isFile())
 			.sort();
@@ -98,36 +98,75 @@ describe("devkit 目录结构（ojm 侧发货 + oj-api-dev 快照子目录）", 
 });
 
 /**
- * 企微代开发手册是「业务工程自助接上真实套件」的唯一入口（随 `ojm init` 分发），
+ * 企微两本手册是「业务工程自助接上真实企业」的唯一入口（随 `ojm init` 分发），
  * 必须与模板里的部署常量保持同步：每项 `vars` 少写一项，读者就会在启动时撞 400，
  * 却不知道这些值该去企微后台哪个页面取。故以 `config.ts` 的 REQUIRED 表为真源
- * 反向校验手册，并钉死「三视角结构」与分发链路——文档漏发货等于没有。
+ * 反向校验手册——代开发八项进代开发手册，自建五项进自建手册，两项共用两边都要有——
+ * 并钉死「三视角结构」与分发链路：文档漏发货等于没有。
  */
-describe("企微代开发手册与部署常量同步", () => {
-	const doc = read("docs/devkit/wecom-daikaifa.md");
+describe("企微两本手册与部署常量同步", () => {
+	const daikaifa = read("docs/devkit/wecom-daikaifa.md");
+	const internal = read("docs/devkit/wecom-internal-app.md");
 	const config = read("packages/cli/templates/src/auth/api/_shared/wecom/config.ts");
+	// config.ts 里出现的全部变量名即真源；按前缀分派到两本手册
+	const all = [...new Set([...config.matchAll(/"(wecom_[a-z_]+)"/g)].map(m => m[1]!))].sort();
+	const suiteVars = all.filter(n => !n.startsWith("wecom_corp_") && n !== "wecom_allow_coexist");
+	const corpVars = all.filter(n => n.startsWith("wecom_corp_"));
 
-	it("八项部署常量逐个出现在手册（真源：config.ts 的 REQUIRED 表）", () => {
-		const names = [...config.matchAll(/"(wecom_[a-z_]+)"/g)].map(m => m[1]!);
-		const required = [...new Set(names)].sort();
-		expect(required).toHaveLength(8);
-		for (const name of required)
-			expect(doc, `手册缺 ${name} 的取值位置/缺失后果`).toContain(name);
+	it("代开发八项常量逐个出现在代开发手册（真源：config.ts 的 REQUIRED 表）", () => {
+		expect(suiteVars).toHaveLength(8);
+		for (const name of suiteVars)
+			expect(daikaifa, `手册缺 ${name} 的取值位置/缺失后果`).toContain(name);
 	});
 
-	it("三个派生地址与开通顺序的硬依赖写清楚", () => {
-		for (const s of ["/api/auth/wecom/event", "/api/auth/wecom/callback", "10 分钟", "503"]) {
-			expect(doc, `手册缺关键事实：${s}`).toContain(s);
+	it("自建五项常量逐个出现在自建手册，两项共用（enc_key / base_url）两边都要有", () => {
+		expect(corpVars).toHaveLength(5);
+		for (const name of corpVars)
+			expect(internal, `自建手册缺 ${name} 的取值位置/缺失后果`).toContain(name);
+		for (const name of ["wecom_enc_key", "wecom_base_url"]) {
+			expect(internal, `自建手册缺共用项 ${name}`).toContain(name);
+			expect(daikaifa, `代开发手册缺共用项 ${name}`).toContain(name);
 		}
 	});
 
-	it("三视角（用户 / 开发 / 部署）+ 故障速查结构齐备", () => {
-		for (const h of ["## 5. 用户手册", "## 6. 开发手册", "## 7. 部署", "## 8. 故障速查", "## 2. 凭据清单"])
-			expect(doc, `手册缺章节：${h}`).toContain(h);
+	it("共存开关在两本手册都写清楚（两套凭据齐了不显式开就 400）", () => {
+		for (const [name, doc] of [["wecom-daikaifa.md", daikaifa], ["wecom-internal-app.md", internal]] as const)
+			expect(doc, `${name} 未写 wecom_allow_coexist: 'true'`).toContain("wecom_allow_coexist: 'true'");
 	});
 
-	it("ojm init 会分发该文件（否则业务工程拿不到，自治性落空）", () => {
-		expect(read("packages/cli/src/init.ts")).toContain("\"wecom-daikaifa.md\"");
+	it("代开发的三个派生地址与开通顺序的硬依赖写清楚", () => {
+		for (const s of ["/api/auth/wecom/event", "/api/auth/wecom/callback", "10 分钟", "503"]) {
+			expect(daikaifa, `手册缺关键事实：${s}`).toContain(s);
+		}
+	});
+
+	it("自建手册写清「回调只填通讯录同步一处」与自建应用的硬约束", () => {
+		for (const s of [
+			"/api/auth/wecom/event",
+			"通讯录同步",
+			"接收消息", // 应用自身的接收消息回调必须留空
+			"90970", // 自建应用收不到成员变更事件的官方依据
+			"验证并接入",
+			"可见范围",
+		]) {
+			expect(internal, `手册缺关键事实：${s}`).toContain(s);
+		}
+	});
+
+	it("代开发手册三视角（用户 / 开发 / 部署）+ 故障速查结构齐备", () => {
+		for (const h of ["## 5. 用户手册", "## 6. 开发手册", "## 7. 部署", "## 8. 故障速查", "## 2. 凭据清单"])
+			expect(daikaifa, `手册缺章节：${h}`).toContain(h);
+	});
+
+	it("自建手册三视角（用户 / 开发 / 部署）+ 共存 + 故障速查结构齐备", () => {
+		for (const h of ["## 2. 凭据清单", "## 5. 用户手册", "## 6. 开发手册", "## 7. 部署", "## 8. 与代开发共存", "## 9. 故障速查"])
+			expect(internal, `手册缺章节：${h}`).toContain(h);
+	});
+
+	it("ojm init 会分发两本手册（否则业务工程拿不到，自治性落空）", () => {
+		const init = read("packages/cli/src/init.ts");
+		expect(init).toContain("\"wecom-daikaifa.md\"");
+		expect(init).toContain("\"wecom-internal-app.md\"");
 	});
 });
 

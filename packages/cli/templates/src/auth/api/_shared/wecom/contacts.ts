@@ -1,4 +1,5 @@
 import type { WecomClient, WecomDept } from "./client";
+import type { WecomKind } from "./config";
 import type { MemberDetail } from "./login";
 import type { CallbackFields } from "./payload";
 import type { WecomStoreDeps } from "./store";
@@ -32,6 +33,11 @@ const ORIGIN = "wecom";
 export interface ContactEventDeps {
 	client: WecomClient
 	store: WecomStoreDeps
+	/**
+	 * 本次回调**验签命中的**凭据来源（由入口从 `callbackCreds()` 传下来）。
+	 * 同一家企业可能有代开发行与自建行，取哪一行的 secret 决定这次事件读通讯录能不能成。
+	 */
+	credentialKind: WecomKind
 }
 
 /** 一条事件的执行上下文：企业已授权 → 应用 与 永久码（= 企业应用 secret） */
@@ -73,7 +79,7 @@ export async function handleContactChange(fields: CallbackFields, deps: ContactE
 async function applyChange(changeType: string, corpId: string, fields: CallbackFields, deps: ContactEventDeps): Promise<boolean> {
 	if (!corpId)
 		throw new Error("报文里没有企业身份（ToUserName / AuthCorpId 皆空）");
-	const auth = await findCorpAuth(corpId, deps.store);
+	const auth = await findCorpAuth(corpId, deps.store, deps.credentialKind);
 	if (!auth)
 		throw new Error("该企业未授权本站（wecom_app_profile 无记录）");
 	const ctx: CorpCtx = {

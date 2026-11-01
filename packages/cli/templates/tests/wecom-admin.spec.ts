@@ -15,7 +15,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { assertSuperAdmin, invalidateAllUsers } from "../src/_platform/api/_shared/service/infra/access";
 import { listApps, setAppStatus } from "../src/auth/api/_shared/wecom/admin";
 import { createWecomClient, runtimeCache, runtimeHttp } from "../src/auth/api/_shared/wecom/client";
-import { readWecomConfig } from "../src/auth/api/_shared/wecom/config";
+import { readSuiteConfig } from "../src/auth/api/_shared/wecom/config";
 import { installDb } from "./fixture";
 
 const g = globalThis as any;
@@ -123,7 +123,7 @@ function fakeClient(): { client: any, invalidated: string[] } {
 const deps = { store: { encrypt: (p: string) => `gcm(${p})`, decrypt: (b: string) => b, now: () => NOW } };
 
 /** createInstall 的薄包装：省掉动态 import 的样板 */
-async function createInstallForTest(cfg: ReturnType<typeof readWecomConfig>, client: ReturnType<typeof createWecomClient>, state: string) {
+async function createInstallForTest(cfg: ReturnType<typeof readSuiteConfig>, client: ReturnType<typeof createWecomClient>, state: string) {
 	const { createInstall } = await import("../src/auth/api/_shared/wecom/admin");
 	return createInstall(cfg, client, state);
 }
@@ -274,7 +274,7 @@ describe("P3-C：开通入口（createInstall，代开发 get_customized_auth_ur
 
 	it("provider_token → get_customized_auth_url → qrcode_url（即开通链接），且绝不调 get_pre_auth_code", async () => {
 		const { calls, bodies } = stubUpstream();
-		const cfg = readWecomConfig();
+		const cfg = readSuiteConfig();
 		const client = createWecomClient({ http: runtimeHttp(), cache: runtimeCache() });
 
 		const r = await createInstallForTest(cfg, client, "st_1");
@@ -297,7 +297,7 @@ describe("P3-C：开通入口（createInstall，代开发 get_customized_auth_ur
 
 	it("调用方没传 state 时仍发默认 state（避免 40058 state missing）", async () => {
 		const { bodies } = stubUpstream();
-		const cfg = readWecomConfig();
+		const cfg = readSuiteConfig();
 		const client = createWecomClient({ http: runtimeHttp(), cache: runtimeCache() });
 		await createInstallForTest(cfg, client, "");
 		const body = bodies.find(b => b && b.templateid_list) as any;
@@ -307,14 +307,14 @@ describe("P3-C：开通入口（createInstall，代开发 get_customized_auth_ur
 
 	it("缺 provider 凭证（wecom_provider_id / wecom_provider_secret）→ 400 并点名缺哪两个 vars", async () => {
 		installVars({ wecom_provider_id: "", wecom_provider_secret: "" });
-		const cfg = readWecomConfig();
+		const cfg = readSuiteConfig();
 		const client = createWecomClient({ http: runtimeHttp(), cache: runtimeCache() });
 		await expect(createInstallForTest(cfg, client, "")).rejects.toMatchObject({ status: 400 });
 	});
 
 	it("上游 errcode（如 provider_secret 错）→ 502（可重试语义，不是 500）", async () => {
 		g.fetch = async () => ({ ok: true, json: async () => ({ errcode: 40001, errmsg: "invalid provider secret" }) });
-		const cfg = readWecomConfig();
+		const cfg = readSuiteConfig();
 		const client = createWecomClient({ http: runtimeHttp(), cache: runtimeCache() });
 		await expect(createInstallForTest(cfg, client, "")).rejects.toMatchObject({ status: 502 });
 	});
@@ -330,7 +330,7 @@ describe("P3-C：开通入口（createInstall，代开发 get_customized_auth_ur
 				throw new Error(`stub fetch 未预期：${url}`);
 			},
 		});
-		const cfg = readWecomConfig();
+		const cfg = readSuiteConfig();
 		const client = createWecomClient({ http: runtimeHttp(), cache: runtimeCache() });
 		await expect(createInstallForTest(cfg, client, "st_1")).rejects.toMatchObject({
 			status: 502,

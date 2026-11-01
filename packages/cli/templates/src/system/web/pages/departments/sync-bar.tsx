@@ -18,6 +18,10 @@ interface SyncView {
 	connected: boolean
 	authMode: number
 	profileStatus: "active" | "disabled" | null
+	/** 已解析到的应用 id：多应用/共存企业的分辨锚点，start / cancel 要原样回传 */
+	agentId: string | null
+	/** suite=代开发 / corp=企业内部应用（自建）：自建应用没有「授权模式」这回事 */
+	credentialKind: "suite" | "corp" | null
 	status: "idle" | "running" | "done" | "failed" | "cancelled"
 	phase: "departments" | "members" | "reconcile"
 	stats: { departments: number, members: number, skipped: number, reconciled: boolean }
@@ -36,25 +40,45 @@ const MIN_GAP_MS = 6000;
 /** 一轮点击最多推多少片（12 秒/片 ≈ 12 分钟）：兜底防呆，正常企业两三次就到底 */
 const MAX_SLICES = 60;
 
+/**
+ * 已解析到的应用 id。同一家企业有两行档案（代开发 + 自建，迁移期常见）时后端要求带 agent，
+ * 而这个值只有后端知道：首次 status 不带（后端按「本站自建应用优先」解析），拿到后记住，
+ * 后续 start / cancel 原样回传。放模块级是为了跨组件实例复用，不参与渲染。
+ */
+let agentParam: string | null = null;
+
+function withAgent(url: string): string {
+	return agentParam ? `${url}?agent=${encodeURIComponent(agentParam)}` : url;
+}
+
+function agentBody(): { agent?: string } {
+	return agentParam ? { agent: agentParam } : {};
+}
+
+function remember(view: SyncView): SyncView {
+	agentParam = view.agentId ?? agentParam;
+	return view;
+}
+
 async function fetchStatus(): Promise<SyncView> {
-	const env = await request.get("auth/wecom/sync/status").json<{ code: number, data?: SyncView }>();
+	const env = await request.get(withAgent("auth/wecom/sync/status")).json<{ code: number, data?: SyncView }>();
 	if (!env.data)
 		throw new Error("企业微信同步状态读取失败");
-	return env.data;
+	return remember(env.data);
 }
 
 async function pushSlice(): Promise<SyncView> {
-	const env = await request.post("auth/wecom/sync/start", { json: {} }).json<{ code: number, data?: SyncView }>();
+	const env = await request.post("auth/wecom/sync/start", { json: agentBody() }).json<{ code: number, data?: SyncView }>();
 	if (!env.data)
 		throw new Error("企业微信同步未能启动");
-	return env.data;
+	return remember(env.data);
 }
 
 async function cancelSync(): Promise<SyncView> {
-	const env = await request.post("auth/wecom/sync/cancel", { json: {} }).json<{ code: number, data?: SyncView }>();
+	const env = await request.post("auth/wecom/sync/cancel", { json: agentBody() }).json<{ code: number, data?: SyncView }>();
 	if (!env.data)
 		throw new Error("取消同步失败");
-	return env.data;
+	return remember(env.data);
 }
 
 function sleep(ms: number): Promise<void> {
@@ -180,7 +204,8 @@ export function WecomSyncBar({ onFinished }: { onFinished: () => void }) {
 	if (!view || !view.connected)
 		return null;
 
-	if (view.authMode !== 0) {
+	// 成员授权卡片只对代开发成立：自建应用没有「授权模式」，authMode 恒 0（双保险，防上游写脏数据）
+	if (view.credentialKind !== "corp" && view.authMode !== 0) {
 		return (
 			<Alert
 				type="warning"

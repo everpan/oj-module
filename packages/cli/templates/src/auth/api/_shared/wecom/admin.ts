@@ -1,19 +1,19 @@
-// 代开发后台（服务商运营面）的领域逻辑：企业应用清单、启停、开通入口。
+// 企微后台（服务商运营面 + 自建应用接入面）：企业应用清单、启停、开通入口、验证并接入。
 //
-// 三个反常识点，都是踩过的坑：
+// 四个反常识点，都是踩过的坑：
 //   1. **不读部署常量也能停用**：`wecom_base_url` 配错时正是最需要「先把这个企业停掉」的时刻，
-//      所以清单与启停都不依赖 `readWecomConfig`，只有开通入口要（它得调企微换预授权码）。
+//      所以清单与启停都不依赖 `readSuiteConfig`，只有开通入口要（它得调企微换预授权码）。
 //   2. **不能用 `asTenant` 清会话**：管理员请求自带自己的租户头（多半是 `default`），
 //      而 `asTenant` 只能在「请求还没有租户」时调用，否则抛错。故吊销目标企业会话走带
 //      `tenant_id = ?` 的裸 SQL（守卫是 check-on-miss，带了租户条件即放行）。
 //   3. **停用单个应用 ≠ 停用企业**：会话是按租户（= 企业）发的，一个企业可能有测试/正式两个应用。
 //      只有该企业**再没有启用中的应用**时才吊销会话——否则停用测试应用会把正式环境的人踢下线。
 import type { WecomClient } from "./client";
-import type { WecomConfig } from "./config";
+import type { WecomConfig, WecomCorpConfig, WecomKind } from "./config";
 import type { WecomStoreDeps } from "./store";
 import { invalidateAllUsers } from "#/_platform/_shared/service/infra/access";
 import { assertProviderConfig, eventUrlOf } from "./config";
-import { corpScope, revokeTenantSessions, tenantOfCorp } from "./store";
+import { corpScope, revokeTenantSessions, saveProfile, tenantOfCorp } from "./store";
 
 export interface WecomAdminDeps {
 	client: WecomClient
@@ -29,7 +29,9 @@ export interface AppRow {
 	env: string
 	corp_name: string | null
 	status: string
-	/** 0=管理员授权 / 1=成员授权：成员授权下这家企业的应用做不了组织架构同步（§2.3） */
+	/** 应用来源：suite=代开发 / corp=企业内部应用（自建） */
+	credential_kind: WecomKind
+	/** 0=管理员授权 / 1=成员授权：成员授权下这家企业的应用做不了组织架构同步（§2.3）；自建行恒 0 */
 	auth_mode: number
 	installed_at: number
 	update_time: number
@@ -37,7 +39,7 @@ export interface AppRow {
 
 export async function listApps(): Promise<AppRow[]> {
 	const rows = await db.table("wecom_app_profile")
-		.select(["suite_id", "corp_id", "agent_id", "auth_corp_id", "env", "corp_name", "status", "auth_mode", "installed_at", "update_time"])
+		.select(["suite_id", "corp_id", "agent_id", "auth_corp_id", "env", "corp_name", "status", "credential_kind", "auth_mode", "installed_at", "update_time"])
 		.all() as unknown as AppRow[];
 	// 稳定序：先按企业、再按应用；同企业多环境并排，运维一眼能看出「哪两个是同一家」
 	return rows.sort((a, b) => a.corp_id.localeCompare(b.corp_id) || a.agent_id.localeCompare(b.agent_id));
@@ -116,4 +118,82 @@ export async function createInstall(
 		callbackUrl: eventUrlOf(cfg),
 		expiresIn: auth.expiresIn,
 	};
+}
+
+/** 接入校验最多探多少个部门找人（顶层部门常只有子部门，只看第一个会误判「读不到人」） */
+const CONNECT_SAMPLE_DEPTS = 10;
+
+export interface ConnectResult {
+	corpId: string
+	agentId: string
+	/** 应用可见范围内的部门数 */
+	departments: number
+	/** 示例部门里的直属成员数（>0 才说明通讯录权限真的通了） */
+	members: number
+}
+
+/**
+ * 自建应用「验证并接入」：**四步全过才落库**（plan §4.3）。
+ *
+ * 为什么不能启动时自动写一行：自检失败会变成启动失败，而自建模式最常见的失败是客户还没加可信 IP、
+ * 可见范围没配——那是运营动作，不该让服务起不来。所以这一步放在人点的按钮后面。
+ *
+ * 顺序有讲究：
+ *   1. 先**作废 token 缓存**再换 token。换过 Secret 的部署若命中旧缓存，校验会「通过」，
+ *      而真正的问题（旧 secret 已失效）会在下一个登录请求上以 40001 冒出来。
+ *   2. gettoken 验 secret、department/simplelist 验通讯录读权限、user/simplelist 验能读到人——
+ *      这三件事对应三个最容易配错的开关（Secret 抄错 / 可见范围空 / 通讯录权限没给）。
+ */
+export async function connectCorp(cfg: WecomCorpConfig, client: WecomClient, deps: WecomStoreDeps): Promise<ConnectResult> {
+	await client.invalidateCorpToken(cfg.corpId, cfg.agentId);
+	await client.corpAccessToken(cfg.corpId, cfg.agentId, cfg.corpSecret);
+
+	const depts = await client.departmentChildren(cfg.corpId, cfg.agentId, cfg.corpSecret);
+	if (!depts.length)
+		throw Object.assign(new Error("接入校验失败：应用可见范围里没有任何部门（把「应用可见范围」设为全公司，或至少包含一个部门）"), { status: 400 });
+
+	// 顶层部门常常只有子部门、没有直属成员，所以往后再看几个再下结论
+	let members = 0;
+	for (const d of depts.slice(0, CONNECT_SAMPLE_DEPTS)) {
+		members = (await client.deptMembers(cfg.corpId, cfg.agentId, cfg.corpSecret, d.id)).length;
+		if (members)
+			break;
+	}
+	if (!members)
+		throw Object.assign(new Error("接入校验失败：可见范围内读不到成员（请把应用可见范围扩大到至少一名成员）"), { status: 400 });
+
+	await saveProfile({
+		// corp 行没有套件：suite_id 用空串（主键第一段），来源由 credential_kind 表达
+		suiteId: "",
+		corpId: cfg.corpId,
+		authCorpId: cfg.corpId,
+		agentId: cfg.agentId,
+		env: "prod",
+		corpName: null,
+		credentialKind: "corp",
+		permanentCode: cfg.corpSecret,
+		// 自建应用没有「管理员授权 / 成员授权」之分：恒 0，同步闸门据此直接放行
+		authMode: 0,
+	}, deps);
+
+	// 换过 AgentId 的部署会留下旧应用的活跃行：旧行的 secret 已不可用，留着只会让
+	// 「同一企业多应用」的分辨逻辑误判，故随本次接入一并停用。
+	const stale = await db.table("wecom_app_profile").select(["agent_id"]).where({
+		and: [
+			corpScope(cfg.corpId),
+			{ field: "credential_kind", op: "eq", value: "corp" },
+			{ field: "status", op: "eq", value: "active" },
+		],
+	}).all() as Array<{ agent_id: string }>;
+	for (const r of stale) {
+		const old = String(r.agent_id);
+		if (old === cfg.agentId)
+			continue;
+		await db.table("wecom_app_profile").update({ status: "disabled", update_time: deps.now() }).where({
+			and: [corpScope(cfg.corpId), { field: "agent_id", op: "eq", value: old }],
+		}).run();
+		await client.invalidateCorpToken(cfg.corpId, old);
+	}
+	invalidateAllUsers();
+	return { corpId: cfg.corpId, agentId: cfg.agentId, departments: depts.length, members };
 }

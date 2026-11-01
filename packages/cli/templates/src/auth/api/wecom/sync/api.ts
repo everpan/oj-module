@@ -18,7 +18,7 @@ import { assertPermission, assertTenantSelf } from "#/_platform/_shared/service/
 import { recordOp } from "#/_platform/_shared/service/infra/audit";
 import { rateLimit } from "#/_platform/_shared/service/infra/rate";
 import { createWecomClient, runtimeCache, runtimeHttp } from "../../_shared/wecom/client";
-import { readWecomConfig } from "../../_shared/wecom/config";
+import { corpIdentity, readBase } from "../../_shared/wecom/config";
 import { findProfile, probeProfile, runtimeStoreDeps } from "../../_shared/wecom/store";
 import { attachProfile, cancelSync, emptyView, startSync, syncStatus } from "../../_shared/wecom/sync";
 
@@ -44,12 +44,15 @@ const STATS = {
 
 const VIEW = {
 	type: "object",
-	required: ["connected", "authMode", "profileStatus", "status", "phase", "stats", "progress", "errCode", "errDetail", "startedAt", "finishedAt", "updateTime"],
+	required: ["connected", "authMode", "profileStatus", "agentId", "credentialKind", "status", "phase", "stats", "progress", "errCode", "errDetail", "startedAt", "finishedAt", "updateTime"],
 	properties: {
 		// 授权事实（页面据此决定「整条隐藏 / 成员授权卡片 / 冻结黄条 / 正常同步栏」）
 		connected: { type: "boolean" },
 		authMode: { type: "number" },
 		profileStatus: { type: ["string", "null"] },
+		// 分辨锚点：多应用/共存企业下前端必须原样回传（C6）
+		agentId: { type: ["string", "null"] },
+		credentialKind: { type: ["string", "null"], enum: ["suite", "corp", null] },
 		status: { type: "string", enum: ["idle", "running", "done", "failed", "cancelled"] },
 		phase: { type: "string", enum: ["departments", "members", "reconcile"] },
 		stats: STATS,
@@ -81,6 +84,18 @@ function agentOf(raw: unknown): string | null {
 }
 
 /**
+ * 未带 agent 时的兜底：**只有当本租户就是本部署自建的那家企业**才用配置里的 agent。
+ *
+ * 共存下的双应用租户（同一 corp 同时有代开发行与自建行）不带 agent 时探针只能 400，
+ * 而「点进自己组织架构页」不该要求管理员手填应用 id。别家企业没有这个兜底——
+ * 它们的 agent 只能来自登录链接/状态条回传，不由本站配置决定（那正是代开发的意义）。
+ */
+function selfAgentOf(tenantId: string): string | null {
+	const self = corpIdentity();
+	return self && self.corpId === tenantId ? self.agentId : null;
+}
+
+/**
  * 解析当前租户的授权档案（企业代码 = 租户；多应用时必须带 agent）。
  *
  * 先 probe 再 findProfile：探针负责把「没装 / 已取消授权」翻译成人话（`findProfile` 为防
@@ -88,14 +103,15 @@ function agentOf(raw: unknown): string | null {
  * 是自己填错了），findProfile 负责解密出 permanent_code。
  */
 async function profileOf(tenantId: string, agent: unknown) {
-	const probe = await probeProfile(tenantId, agentOf(agent));
+	const probe = await probeProfile(tenantId, agentOf(agent) ?? selfAgentOf(tenantId));
 	if (!probe) {
 		throw Object.assign(new Error("本站尚未开通企业微信：没有可同步的授权记录"), { status: 400 });
 	}
 	if (probe.status !== "active") {
 		throw Object.assign(new Error("该企业已取消授权或应用已停用：组织架构同步已冻结，请联系服务商重新开通"), { status: 400 });
 	}
-	const cfg = readWecomConfig();
+	// 同步只用与来源无关的两项（落库密钥 + 基址）：读整套 suite 配置会把自建部署打成 400
+	const cfg = readBase();
 	const profile = await findProfile(tenantId, probe.agentId, runtimeStoreDeps(cfg));
 	return { profile, probe, cfg };
 }
@@ -149,7 +165,7 @@ const status = {
 			const tenantId = currentTenant();
 			if (!tenantId)
 				throw Object.assign(new Error("缺少租户上下文"), { status: 400 });
-			const probe = await probeProfile(tenantId, agentOf((http.query as Record<string, unknown>).agent));
+			const probe = await probeProfile(tenantId, agentOf((http.query as Record<string, unknown>).agent) ?? selfAgentOf(tenantId));
 			if (!probe)
 				return attachProfile(emptyView("idle"), null);
 			return attachProfile(await syncStatus(tenantId, probe.agentId), probe);

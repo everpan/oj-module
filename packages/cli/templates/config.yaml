@@ -56,8 +56,13 @@ vars:
   # 故意不读请求头 Host（防伪造 Host 牵引出站）：不配 = fail-closed，不会替你猜。
   # canonical_origin: "https://your-site.example.com"
 
-  # ---- 企业微信代开发（服务商侧，部署级常量）----
-  # 一个部署 = 一个服务商账号下的一套代开发模板，所以这 8 个值是「部署」维度，不进 DB。
+  # ---- 企业微信（部署级常量，不进 DB）----
+  # 两种应用来源，**可同时启用**（docs/plans/20261101-2044-wecom-internal-app-plan.md）：
+  #   · 代开发（suite）：一套代开发模板，企业扫码授权即接入，一套部署可服务多家企业；
+  #   · 企业内部应用 / 自建应用（corp）：企业自建应用，一套部署只服务一家企业。
+  # 两套的企业侧数据链路相同（permanent_code 就是当 corpsecret 用的），差别只在凭据来源与回调。
+  # 从代开发迁到自建时请把旧的 suite 变量清空；两套同时生效须显式开 wecom_allow_coexist。
+  # 一个部署 = 一个服务商账号下的一套代开发模板（或一家企业的自建应用），所以这些值是「部署」维度，不进 DB。
   # 「哪个企业装了哪个应用」不写在这里：企微 create_auth 回调推 AuthCode → 换永久授权码 →
   # 落 wecom_app_profile（主键含 agent_id，同一企业测试/正式两个应用天然并存），
   # 新增企业只需企业管理员扫码授权，**不改配置、不重启**。
@@ -74,18 +79,35 @@ vars:
   #   wecom_provider_id       服务商的 corpid（服务商自己的，不是企业 corpid）；**位置：服务商后台「服务商信息」页显示的 CorpID**
   #   wecom_provider_secret   服务商 provider_secret；**位置：服务商后台 → 应用管理 → 通用开发参数（点「编辑」）→ ProviderSecret 字段**，
   #                           **不在「服务商信息」页**（那里只显示 CorpID），也**不是** suite_secret（suite 那个是另一套）。
-  #   wecom_callback_token    「Token」（回调验签用）
-  #   wecom_encoding_aes_key  「EncodingAESKey」（43 字符，回调解密用）
-  #   wecom_enc_key           permanent_code 落库加密密钥（hex/base64，16 或 32 字节；建议 oj secret keygen）
+  #   wecom_callback_token    代开发「指令回调」的 Token（回调验签用）
+  #   wecom_encoding_aes_key  代开发「指令回调」的 EncodingAESKey（43 字符，回调解密用）
+  #   wecom_enc_key           permanent_code / 应用 Secret 的落库加密密钥（hex/base64，16 或 32 字节；建议 oj secret keygen）
   #   wecom_base_url          连接器基址（绝对地址，无尾斜杠，**这是基址、不是回调 URL**），如 https://site.example.com/api/auth/wecom
-  #                           → 企微后台「指令回调URL」填 <base>/event（必须带 /event，裸 <base> 无 handler 会 404）；
+  #                           → 回调 URL 填 <base>/event（必须带 /event，裸 <base> 无 handler 会 404）；
   #                             网页授权 redirect_uri 用 <base>/callback
+  #
+  # 企业内部应用（corp）——一套部署一家企业：
+  #   wecom_corp_id                 企微后台「我的企业 → 企业信息 → 企业ID」；同时是租户键
+  #   wecom_corp_secret             应用详情页「Secret」；**换过后必须到 /system/wecom 重新「验证并接入」**
+  #   wecom_corp_agent_id           应用详情页「AgentId」
+  #   wecom_corp_callback_token     「管理工具 → 通讯录同步 → 接收事件服务器」的 Token（可选；不配 = 不做事件增量）
+  #   wecom_corp_encoding_aes_key   同上 → EncodingAESKey（可选）
+  #   ⚠ 自建应用**收不到**成员通讯录变更事件（官方 90970），事件增量只能靠上面这组「通讯录同步」回调，
+  #     且企微要求该 URL 在企业主体域名下——所以它只适用于私有化单企业部署。
+  #
+  #   wecom_allow_coexist  两套凭据都配齐时必须显式写 'true' 才允许共存（否则 fail-fast）
   wecom_suite_id: ''
   wecom_suite_secret: ''
   wecom_provider_id: ''
   wecom_provider_secret: ''
   wecom_callback_token: ''
   wecom_encoding_aes_key: ''
+  wecom_corp_id: ''
+  wecom_corp_secret: ''
+  wecom_corp_agent_id: ''
+  wecom_corp_callback_token: ''
+  wecom_corp_encoding_aes_key: ''
+  wecom_allow_coexist: ''
   wecom_enc_key: ''
   wecom_base_url: ''
 

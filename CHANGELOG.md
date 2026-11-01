@@ -7,6 +7,63 @@
 
 ## [Unreleased]
 
+## [0.2.50] - 2026-11-01
+
+本轮把企微连接器从「只服务代开发套件」扩到**两种来源可同时生效**：新增**企业内部应用（自建应用）**
+接入（一套部署服务一家企业），并让两种来源在同一部署下共存。企业侧数据链路本来就只有一份
+实现（代开发的 `permanent_code` 就是当 `corpsecret` 用的），所以新增代码集中在**配置解析、
+档案来源判定、事件分派**三处；同步引擎、加解密、报文归一、登录后全程零改动。
+
+**升级提示**：新增迁移 `auth/0003__credential_kind`（三方言，`TEXT` 带 `DEFAULT 'suite'`，
+MySQL 用 `VARCHAR(16)`），部署后先跑 `oj migrate` 再起服；存量代开发部署**无需改配置**，
+迁移后所有旧行按 `suite` 解释。新增 6 个部署常量（`wecom_corp_*` 五项 + `wecom_allow_coexist`；
+`wecom_enc_key` / `wecom_base_url` 两项复用不变），`ojm init` 会随 cli 包多分发一本
+`docs/devkit/wecom-internal-app.md`。
+
+### Added
+
+- **企业内部应用（自建应用）接入**：`config.yaml` 新增 `wecom_corp_id` / `wecom_corp_secret` /
+  `wecom_corp_agent_id`（必填）+ `wecom_corp_callback_token` / `wecom_corp_encoding_aes_key`（可选，
+  只影响事件增量）。判定口径只有「哪套凭据填齐了」，不设 `wecom_mode`——变量填了没有是客观事实，
+  不会与运行期能力漂移。两套凭据同时生效必须显式 `wecom_allow_coexist: 'true'`，否则首个请求 400：
+  从代开发迁到自建却忘了清旧变量属于配置事故，应当被看见而不是被静默择一。
+- **「验证并接入」端点 `POST /api/auth/wecom/admin/connect`（仅 superadmin）**：自建模式没有
+  `create_auth` 回调，档案行只能由这里写入。四步全过才落库——先作废 token 缓存（否则换过 Secret 的部署
+  会命中旧缓存「假装通过」）、`gettoken` 验 Secret、`department/simplelist` 验可见范围、按部门
+  `user/simplelist` 验能读到人（最多探 10 个部门，顶层部门常只有子部门）；换 AgentId 重接时
+  自动停用同企业其它 `corp` 旧行并作废其 token。失败不落半行，可放心重试。
+- **后台概览 `GET /api/auth/wecom/admin/overview`**：返回本部署配了哪几套凭据、应填的回调地址、
+  自建应用的回调凭据是否齐、以及**配置自检结论**（`configError` 而不是直接 400——配错时最需要页面
+  把「配了什么、缺什么」摆出来）。`/system/wecom` 据此画两块卡片：代开发（生成开通链接）与
+  自建（验证并接入），清单新增「来源」列，「授权模式」列对自建行显示 `—`。
+- **两份 devkit 手册（随 `ojm init` 分发）**：新增 `docs/devkit/wecom-internal-app.md`（自建应用的五项
+  凭据从哪取、回调为什么只填「通讯录同步 → 接收事件服务器」一处、四步自检、可见范围/可信 IP/可信域名、
+  单企业私有化的边界、共存配置与故障速查）；`wecom-daikaifa.md` 补 **§10 与自建应用共存**（共存三行配置、
+  页面与清单变化、两组回调凭据不能互相顶替、取消授权只停代开发行、迁移步骤）。
+
+### Changed
+
+- **事件入口按「验签命中的凭据」分派**：`/event` 逐个 Token 试签（SHA1 一次，成本可忽略），
+  `kind=corp` 直接进通讯录变更分支（自建没有套件事件），`kind=suite` 走原有套件 switch。
+  两套回调地址仍是同一个 `<base>/event`，不加路由、不加匿名白名单。日志补 `kind` / `configuredReceiver` /
+  `aesKeyFp`：共存下不写「这次用的哪套钥匙」，排障就退化成猜。
+- **`callbackCreds()` 刻意不经过来源判定**：它列的是「回调钥匙」而不是「启用了哪几种来源」——
+  代开发模板还没建、`suite_id` 为空但 Token/EncodingAESKey 已填时，企微正在该 URL 上做保存校验；
+  按来源过滤会把 URL 验证打成 400，把「先有回调还是先有套件」的死锁装回去。判据只有「这一组的
+  token 与 aeskey 是否都填了」，共存守卫单独做。
+- **档案读取按来源收口**：`findProfile` / `probeProfile` / `findCorpAuth` / `setProfileStatus` 增加可选
+  `kind`。事件入口必须回传本次命中的来源（否则同企业两行会任取一行、拿到别人的 Secret）；
+  `cancel_auth` 只停 `credential_kind='suite'` 的行，且该企业仍有其它活跃应用时不吊销会话——
+  代开发取消授权不该把同一家企业的自建应用一起停掉。
+- **登录入口去掉硬编码默认 AgentId**：配了 `wecom_corp_*` 就把候选范围限定在本部署那家企业
+  （agent 取配置里的），没配才从已装档案解析；共存部署里「配了 corp 但还没点验证并接入」
+  会给明确文案，而不是回落到别家企业。
+- **组织架构同步的视图新增 `agentId` / `credentialKind`**：同企业双应用租户下前端必须原样回传
+  agent，否则「立即同步」一按就 400；自建行不再渲染「成员授权」卡片（自建没有这个闸门）。
+- **配置读取拆成三个入口**：`readBase()`（落库密钥 + 基址，登录/回跳/同步/换票只用它）、
+  `readSuiteConfig()`（仅 suite 流程）、`readCorpConfig()`（仅接入校验）。原先把「只为拿 encKey」
+  却要整套套件凭据的地方，会让自建部署在一条正常登录上 400。
+
 ## [0.2.49] - 2026-11-01
 
 双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步定版 **0.2.49**。本轮交付

@@ -7,7 +7,7 @@
 //
 // permanent_code（= 代开发应用的 secret，全 corp 数据权限）只以 AES-GCM 密文落库（§7.5），
 // 加解密经 deps 注入：Node 侧测试用假实现，运行时走 crypto.aesGcmEncrypt/Decrypt。
-import type { WecomConfig } from "./config";
+import type { WecomBase, WecomKind } from "./config";
 
 export interface WecomStoreDeps {
 	encrypt: (plain: string) => string
@@ -26,6 +26,13 @@ export interface AppProfile {
 	env: string
 	corpName: string | null
 	status: "active" | "disabled"
+	/**
+	 * 这一行的凭据来源（0003 列）。**不是标签，是语义**：
+	 *   · suite 行由 create_auth 写入，permanent_code 里是代开发换来的 secret；
+	 *   · corp 行由「验证并接入」写入，里面是应用详情页的 Secret（suite_id 为空串）。
+	 * 同一 corp_id 两行共存时，靠它决定「取消代开发授权该停哪一行」。
+	 */
+	credentialKind: WecomKind
 	permanentCode: string
 	/** 0=管理员授权 / 1=成员授权（成员授权下应用无任何部门权限，组织架构同步必然 60011，§2.3） */
 	authMode: number
@@ -93,6 +100,30 @@ export function corpAgentScope(corpId: string, agentId: string) {
 }
 
 /**
+ * 企业范围 + 可选的来源过滤。
+ *
+ * 共存部署里**同一家**企业可能同时有代开发行与自建行（迁移期最常见），而「取消代开发授权」
+ * 「复核授权模式」「找 secret」这三件事都只对 suite 行成立。不传 kind = 不过滤（保持
+ * 单来源部署的原行为，`suite_id` 主键天然只有一类行）。
+ */
+function corpKindScope(corpId: string, kind?: WecomKind) {
+	const base = corpScope(corpId);
+	if (!kind)
+		return base;
+	return {
+		and: [
+			base,
+			{ field: "credential_kind", op: "eq", value: kind },
+		],
+	};
+}
+
+/** 行 → 来源（库里的列是 text；只有明确写了 corp 才算自建，其余按代开发） */
+function kindOfRow(r: Record<string, unknown>): WecomKind {
+	return String(r.credential_kind) === "corp" ? "corp" : "suite";
+}
+
+/**
  * 吊销某租户的全部会话（refresh token）。
  *
  * 用带 `tenant_id` 的裸 SQL 而不是 `truncate()`：后者靠「守卫自动注入当前租户」生效，
@@ -121,6 +152,9 @@ export async function saveProfile(p: Omit<AppProfile, "status"> & { status?: App
 		env: p.env,
 		corp_name: p.corpName,
 		status: p.status ?? "active",
+		// 来源同时落在两处：主键里的 suite_id（corp 行为空串）与这一列（可读、可过滤）。
+		// 更新路径也写：存量 suite 行被 corp 接入覆盖时（人工导错）不该留着旧标注。
+		credential_kind: p.credentialKind,
 		permanent_code_enc: deps.encrypt(p.permanentCode),
 		// 授权模式是「该企业应用能不能做组织架构同步」的判据（§2.3）；重授权时必须跟着刷新
 		auth_mode: Number(p.authMode ?? 0),
@@ -146,9 +180,12 @@ export async function saveProfile(p: Omit<AppProfile, "status"> & { status?: App
 /**
  * 按企业代码找应用。`agentId` 为空时要求该企业只有一个启用中的应用。
  * 「企业不存在」与「已停用」返回**同一条文案**（§5.3 枚举风险：不让外部探测哪些企业装过）。
+ *
+ * `agentId` 已唯一确定一行（主键第三段），所以 `kind` 只是**加一层保险**：
+ * 事件路径知道自己验签过的是哪套凭据，带上它就不会在同名 agent 撞车时取错 secret。
  */
-export async function findProfile(corpId: string, agentId: string | null, deps: WecomStoreDeps): Promise<AppProfile> {
-	const rows = await db.table("wecom_app_profile").select(["*"]).where(corpScope(corpId)).all() as Array<Record<string, unknown>>;
+export async function findProfile(corpId: string, agentId: string | null, deps: WecomStoreDeps, kind?: WecomKind): Promise<AppProfile> {
+	const rows = await db.table("wecom_app_profile").select(["*"]).where(corpKindScope(corpId, kind)).all() as Array<Record<string, unknown>>;
 	const active = rows.filter(r => String(r.status) === "active");
 	const picked = agentId ? active.filter(r => String(r.agent_id) === agentId) : active;
 	if (picked.length === 0)
@@ -157,13 +194,14 @@ export async function findProfile(corpId: string, agentId: string | null, deps: 
 		fail(400, "该企业开通了多个应用，登录链接必须带 agent 参数");
 	const r = picked[0]!;
 	return {
-		suiteId: String(r.suite_id),
+		suiteId: String(r.suite_id ?? ""),
 		corpId: String(r.corp_id),
 		authCorpId: r.auth_corp_id == null ? String(r.corp_id) : String(r.auth_corp_id),
 		agentId: String(r.agent_id),
 		env: r.env == null ? "prod" : String(r.env),
 		corpName: r.corp_name == null ? null : String(r.corp_name),
 		status: String(r.status) === "disabled" ? "disabled" : "active",
+		credentialKind: kindOfRow(r),
 		permanentCode: deps.decrypt(String(r.permanent_code_enc)),
 		authMode: Number(r.auth_mode ?? 0),
 	};
@@ -174,6 +212,8 @@ export interface ProfileProbe {
 	agentId: string
 	authMode: number
 	status: AppProfile["status"]
+	/** 来源：corp 行没有「授权模式」概念，页面不该给它画成员授权卡片 */
+	credentialKind: WecomKind
 }
 
 /**
@@ -186,8 +226,8 @@ export interface ProfileProbe {
  * 选中口径与 `findProfile` 对齐（优选启用中的应用；全停用时退回停用行，让页面能画
  * 「已取消授权」冻结态），只多一条：没有启用应用时也返回，而不是 400。
  */
-export async function probeProfile(corpId: string, agentId: string | null): Promise<ProfileProbe | null> {
-	const rows = await db.table("wecom_app_profile").select(["agent_id", "auth_mode", "status"]).where(corpScope(corpId)).all() as Array<Record<string, unknown>>;
+export async function probeProfile(corpId: string, agentId: string | null, kind?: WecomKind): Promise<ProfileProbe | null> {
+	const rows = await db.table("wecom_app_profile").select(["agent_id", "auth_mode", "status", "credential_kind"]).where(corpKindScope(corpId, kind)).all() as Array<Record<string, unknown>>;
 	if (rows.length === 0)
 		return null;
 	const active = rows.filter(r => String(r.status) === "active");
@@ -202,12 +242,17 @@ export async function probeProfile(corpId: string, agentId: string | null): Prom
 		agentId: String(r.agent_id),
 		authMode: Number(r.auth_mode ?? 0),
 		status: String(r.status) === "disabled" ? "disabled" : "active",
+		credentialKind: kindOfRow(r),
 	};
 }
 
-/** 停用/解绑：只改状态，不删行（取消授权也要留痕，§7.5 审计） */
-export async function setProfileStatus(corpId: string, status: AppProfile["status"], deps: WecomStoreDeps): Promise<number> {
-	return Number(await db.table("wecom_app_profile").update({ status, update_time: deps.now() }).where(corpScope(corpId)).run());
+/**
+ * 停用/解绑：只改状态，不删行（取消授权也要留痕，§7.5 审计）。
+ * `kind` 缺省 = 该企业的全部行（单来源部署的原行为）；传 `suite` 才是 cancel_auth 该做的——
+ * 代开发被取消授权时不能顺手把同一家企业的自建应用一起停掉。
+ */
+export async function setProfileStatus(corpId: string, status: AppProfile["status"], deps: WecomStoreDeps, kind?: WecomKind): Promise<number> {
+	return Number(await db.table("wecom_app_profile").update({ status, update_time: deps.now() }).where(corpKindScope(corpId, kind)).run());
 }
 
 /**
@@ -217,15 +262,19 @@ export async function setProfileStatus(corpId: string, status: AppProfile["statu
  *
  * 一并返回 `corpId`（真实企业 ID）：事件里给的可能是 `AuthCorpId`（第三方体系下是 open_corpid），
  * 而租户键只能用真实 corp_id（D10），故由这里统一把「事件身份 → 租户身份」的翻译交出来。
+ *
+ * `kind` 由**事件入口**传下来（本次验签命中的是哪套凭据）：同一家企业双应用时，
+ * 取错 kind 就会拿另一套 secret 去换 token，症状是 40001 而不是「配置错了」。
  */
-export async function findCorpAuth(corpId: string, deps: WecomStoreDeps): Promise<{ corpId: string, permanentCode: string, agentIds: string[] } | null> {
-	const rows = await db.table("wecom_app_profile").select(["corp_id", "agent_id", "permanent_code_enc"]).where(corpScope(corpId)).all() as Array<Record<string, unknown>>;
+export async function findCorpAuth(corpId: string, deps: WecomStoreDeps, kind?: WecomKind): Promise<{ corpId: string, permanentCode: string, agentIds: string[], credentialKind: WecomKind } | null> {
+	const rows = await db.table("wecom_app_profile").select(["corp_id", "agent_id", "permanent_code_enc", "credential_kind"]).where(corpKindScope(corpId, kind)).all() as Array<Record<string, unknown>>;
 	if (rows.length === 0)
 		return null;
 	return {
 		corpId: String(rows[0]!.corp_id),
 		permanentCode: deps.decrypt(String(rows[0]!.permanent_code_enc)),
 		agentIds: rows.map(r => String(r.agent_id)),
+		credentialKind: kindOfRow(rows[0]!),
 	};
 }
 
@@ -286,7 +335,7 @@ export async function claimLoginTicket(ticketHash: string, deps: WecomStoreDeps)
 }
 
 /** 运行时依赖：密钥取自部署常量，加密原语取自 oj 运行时全局 */
-export function runtimeStoreDeps(cfg: WecomConfig): WecomStoreDeps {
+export function runtimeStoreDeps(cfg: WecomBase): WecomStoreDeps {
 	return {
 		encrypt: (plain: string) => crypto.aesGcmEncrypt(plain, cfg.encKey),
 		decrypt: (blob: string) => crypto.aesGcmDecrypt(blob, cfg.encKey),

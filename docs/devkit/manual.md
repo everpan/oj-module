@@ -1569,7 +1569,7 @@ export default async (path: string, html: string) => {
 | 限速/节流/去重窗口在真实请求下永不累积（测试却全绿） | 模块级 `Map`/`let` 不跨请求存活——oj 每请求重建模块（§1.7-3） | 状态落库（模板 0009 先例）或走 oj 持久面 |
 | `ojm build` 报 `introspect api.ts: Error: jwt not configured`（dev 模式正常） | 模块级语句触碰运行时全局，introspect 空沙箱里炸（§1.7-4） | 移进 handler 函数体内按需执行 |
 | 点登录页「企业微信」后页面只闪一下、Network 里一个 auth 请求都没有 | 整页跳转拼成了**站点 base**（根部署下得到 `/auth/wecom/login`，被 SPA 兜底页吞掉） | 改用 `resolveApiBase()` 拼后端端点：`window.location.assign(resolveApiBase() + wecomAuthorizePath(corp))` |
-| 企微登录恒 400 `企业微信未配置：config vars 缺少 …` | 部署常量没填全（六项任一为空即整体拒服务） | 见 `wecom-daikaifa.md` §2.1 的凭据表与缺项后果 |
+| 企微登录恒 400 `企业微信未配置：config vars 缺少 …` | 部署常量没填全（该来源的凭据任一为空即整体拒服务） | 代开发见 `wecom-daikaifa.md` §2.1，企业内部应用见 `wecom-internal-app.md` §2.1 的凭据表与缺项后果 |
 
 ---
 
@@ -1597,9 +1597,12 @@ export default async (path: string, html: string) => {
   写 handler 遇到 `json` / `db` / `kv` / `jwt` / 租户 / 测试的问题查它；
   站点挂载（`mounts`）、密钥信封（`secrets`）、配置变量（`vars`）、跨域（`cors`）、
   schema 校验（`schema_validation`）、`broker` / `tasks` / `oidc` / `ws` 等 oj 侧能力也都在这套手册里。
-- **企业微信代开发对接**：本目录 `wecom-daikaifa.md`——六项部署常量从哪取/怎么填、
+- **企业微信代开发对接**：本目录 `wecom-daikaifa.md`——八项部署常量（Tier A/B/C）从哪取/怎么填、
   可信域名与可信 IP 备案、首次开通顺序（`suite_ticket` 依赖回调先通）、
-  用户 / 开发 / 部署三种角色各自的操作、按错误文案索引的故障速查。接企微时先读它。
+  用户 / 开发 / 部署三种角色各自的操作、按错误文案索引的故障速查、与自建应用共存的语义变化。
+- **企业微信企业内部应用（自建）对接**：本目录 `wecom-internal-app.md`——五项 `wecom_corp_*` 从哪取、
+  回调只填「通讯录同步 → 接收事件服务器」一处、「验证并接入」的四步自检、可见范围决定同步范围、
+  单企业私有化的边界（自建应用收不到成员变更事件）、与代开发共存的配置。接企微时按客户形态选一本。
 - **框架团队内部**：本目录 `framework-dev.md`（改 `packages/runtime`、`packages/cli` 用，
   业务工程不适用）。
 

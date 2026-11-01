@@ -33,7 +33,7 @@ export function createAuthClient(ctx: ModuleContext) {
 	}
 	ctx.register.apiPrefix(API_PREFIX);
 	bindRequest(ctx.utils.request);
-	return { authLoginPost, authLogoutPost, authRefreshPost, authPasswordPut, authLdapLoginPost, authWecomAdminAppsGet, authWecomAdminStatusPost, authWecomAdminInstallGet, authWecomLoginGet, authWecomCallbackGet, authWecomTicketPost, authWecomEventGet, authWecomEventPost, authWecomSyncStartPost, authWecomSyncStatusGet, authWecomSyncCancelPost };
+	return { authLoginPost, authLogoutPost, authRefreshPost, authPasswordPut, authLdapLoginPost, authWecomAdminAppsGet, authWecomAdminStatusPost, authWecomAdminInstallGet, authWecomAdminOverviewGet, authWecomAdminConnectPost, authWecomLoginGet, authWecomCallbackGet, authWecomTicketPost, authWecomEventGet, authWecomEventPost, authWecomSyncStartPost, authWecomSyncStatusGet, authWecomSyncCancelPost };
 }
 
 /**
@@ -203,6 +203,52 @@ export async function authWecomAdminInstallGet(): Promise<AuthWecomAdminInstallG
 			const r = schemas["authWecomAdminInstallGet"].data.safeParse(data);
 			if (!r.success)
 				throw new ContractApiError(-1, `[契约违例] authWecomAdminInstallGet 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
+		}
+		return data;
+	}
+	catch (e) {
+		throw await toApiError(e);
+	}
+}
+
+export type AuthWecomAdminOverviewGetData = z.infer<(typeof schemas)["authWecomAdminOverviewGet"]["data"]>;
+
+export async function authWecomAdminOverviewGet(): Promise<AuthWecomAdminOverviewGetData> {
+	const client = ensureReq();
+	try {
+		const env = await client.get(`auth/wecom/admin/overview`).json<OjEnvelope<AuthWecomAdminOverviewGetData>>();
+		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
+		if (typeof env.code === "number" && env.code !== 0)
+			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
+		const data = env.data as AuthWecomAdminOverviewGetData;
+		if (import.meta.env.DEV) {
+			const { schemas } = await import("./api.schemas");
+			const r = schemas["authWecomAdminOverviewGet"].data.safeParse(data);
+			if (!r.success)
+				throw new ContractApiError(-1, `[契约违例] authWecomAdminOverviewGet 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
+		}
+		return data;
+	}
+	catch (e) {
+		throw await toApiError(e);
+	}
+}
+
+export type AuthWecomAdminConnectPostData = z.infer<(typeof schemas)["authWecomAdminConnectPost"]["data"]>;
+
+export async function authWecomAdminConnectPost(): Promise<AuthWecomAdminConnectPostData> {
+	const client = ensureReq();
+	try {
+		const env = await client.post(`auth/wecom/admin/connect`).json<OjEnvelope<AuthWecomAdminConnectPostData>>();
+		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
+		if (typeof env.code === "number" && env.code !== 0)
+			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
+		const data = env.data as AuthWecomAdminConnectPostData;
+		if (import.meta.env.DEV) {
+			const { schemas } = await import("./api.schemas");
+			const r = schemas["authWecomAdminConnectPost"].data.safeParse(data);
+			if (!r.success)
+				throw new ContractApiError(-1, `[契约违例] authWecomAdminConnectPost 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
 		}
 		return data;
 	}

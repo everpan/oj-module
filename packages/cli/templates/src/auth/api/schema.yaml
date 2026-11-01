@@ -23,6 +23,8 @@ tables:
       status: {type: text, null: false}
       # permanent_code（= 代开发应用的 secret）的 AES-GCM 密文，禁止明文落库
       permanent_code_enc: {type: text, null: false}
+      # 应用来源（0003）：suite=代开发 / corp=企业内部应用（自建）。取消代开发授权只停 suite 行
+      credential_kind: {type: text, null: false}
       # 0=管理员授权 / 1=成员授权（0002）：成员授权下应用无任何部门权限，组织架构同步必然 60011
       auth_mode: {type: integer, null: false}
       installed_at: {type: integer, null: false}

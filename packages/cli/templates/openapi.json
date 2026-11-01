@@ -1771,7 +1771,8 @@
 													"status",
 													"auth_mode",
 													"installed_at",
-													"update_time"
+													"update_time",
+													"credential_kind"
 												],
 												"properties": {
 													"suite_id": {
@@ -1800,6 +1801,13 @@
 														"enum": [
 															"active",
 															"disabled"
+														]
+													},
+													"credential_kind": {
+														"type": "string",
+														"enum": [
+															"suite",
+															"corp"
 														]
 													},
 													"auth_mode": {
@@ -1948,6 +1956,151 @@
 													"type": "string"
 												},
 												"expiresIn": {
+													"type": "number"
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/auth/wecom/admin/overview": {
+			"get": {
+				"operationId": "auth_wecom_admin_overview_get",
+				"summary": "GET api/auth/wecom/admin/overview",
+				"x-oj-file": "auth/wecom/admin/api.ts",
+				"tags": [
+					"auth"
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"required": [
+												"kinds",
+												"configError",
+												"callbackUrl",
+												"corpId",
+												"agentId",
+												"corpCallbackConfigured"
+											],
+											"properties": {
+												"kinds": {
+													"type": "array",
+													"items": {
+														"type": "string",
+														"enum": [
+															"suite",
+															"corp"
+														]
+													}
+												},
+												"configError": {
+													"type": [
+														"string",
+														"null"
+													]
+												},
+												"callbackUrl": {
+													"type": [
+														"string",
+														"null"
+													]
+												},
+												"corpId": {
+													"type": [
+														"string",
+														"null"
+													]
+												},
+												"agentId": {
+													"type": [
+														"string",
+														"null"
+													]
+												},
+												"corpCallbackConfigured": {
+													"type": "boolean"
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/auth/wecom/admin/connect": {
+			"post": {
+				"operationId": "auth_wecom_admin_connect_post",
+				"summary": "POST api/auth/wecom/admin/connect",
+				"x-oj-file": "auth/wecom/admin/api.ts",
+				"tags": [
+					"auth"
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"required": [
+												"corpId",
+												"agentId",
+												"departments",
+												"members"
+											],
+											"properties": {
+												"corpId": {
+													"type": "string"
+												},
+												"agentId": {
+													"type": "string"
+												},
+												"departments": {
+													"type": "number"
+												},
+												"members": {
 													"type": "number"
 												}
 											}
@@ -4888,7 +5041,9 @@
 												"errDetail",
 												"startedAt",
 												"finishedAt",
-												"updateTime"
+												"updateTime",
+												"agentId",
+												"credentialKind"
 											],
 											"properties": {
 												"connected": {
@@ -4998,6 +5153,23 @@
 												},
 												"updateTime": {
 													"type": "number"
+												},
+												"agentId": {
+													"type": [
+														"string",
+														"null"
+													]
+												},
+												"credentialKind": {
+													"type": [
+														"string",
+														"null"
+													],
+													"enum": [
+														"suite",
+														"corp",
+														null
+													]
 												}
 											}
 										}

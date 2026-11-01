@@ -21,7 +21,7 @@ import {
 	eventUrlOf,
 	loginRedirectOf,
 	readCallbackConfig,
-	readWecomConfig,
+	readSuiteConfig,
 	siteRootOf,
 } from "../src/auth/api/_shared/wecom/config";
 import { envOfState, handleSuiteEvent } from "../src/auth/api/_shared/wecom/events";
@@ -105,6 +105,7 @@ function profile(suiteCorpAgent: { corp?: string, agent?: string, env?: string, 
 		agentId: suiteCorpAgent.agent ?? "100001",
 		env: suiteCorpAgent.env ?? "prod",
 		corpName: "测试企业",
+		credentialKind: "suite" as const,
 		permanentCode: suiteCorpAgent.code ?? "perm_a",
 	};
 }
@@ -757,7 +758,7 @@ describe("P1-J：部署常量读取（缺项一次报全 / 密钥格式 fail-fas
 		installVars({ wecom_suite_id: "", wecom_callback_token: "", wecom_enc_key: "" });
 		const msg = (() => {
 			try {
-				readWecomConfig();
+				readSuiteConfig();
 				return "";
 			}
 			catch (e) {
@@ -789,7 +790,7 @@ describe("P1-J：部署常量读取（缺项一次报全 / 密钥格式 fail-fas
 
 	it("baseUrl 去尾斜杠后拼出两个企微侧地址（回调 URL 要原样填进后台）", () => {
 		installVars();
-		const cfg = readWecomConfig();
+		const cfg = readSuiteConfig();
 		expect(cfg.baseUrl).toBe("https://site.example.com/api/auth/wecom");
 		// 不带 callback_format=json：官方文档只给「对外收款」写了这个参数，代开发的通用回调配置只有 XML
 		expect(eventUrlOf(cfg)).toBe("https://site.example.com/api/auth/wecom/event");
@@ -799,7 +800,7 @@ describe("P1-J：部署常量读取（缺项一次报全 / 密钥格式 fail-fas
 
 	it("子路径部署：站点根保留子路径（302 回跳必须落 /oj/login，不是 /login）", () => {
 		installVars({ wecom_base_url: "https://site.example.com/oj/api/auth/wecom" });
-		const cfg = readWecomConfig();
+		const cfg = readSuiteConfig();
 		expect(siteRootOf(cfg)).toBe("https://site.example.com/oj");
 		expect(loginLandingUrl({ origin: siteRootOf(cfg), ticket: "tk", tenant: "ww_corp_a" }))
 			.toBe("https://site.example.com/oj/login?wecom_ticket=tk&tenant=ww_corp_a");
@@ -807,12 +808,12 @@ describe("P1-J：部署常量读取（缺项一次报全 / 密钥格式 fail-fas
 
 	it("baseUrl 后缀不对 → 400（宁可拒，也不猜站点根拼出错误回跳）", () => {
 		installVars({ wecom_base_url: "https://site.example.com/api/wecom" });
-		expect(() => siteRootOf(readWecomConfig())).toThrow(/必须以 \/api\/auth\/wecom 结尾/);
+		expect(() => siteRootOf(readSuiteConfig())).toThrow(/必须以 \/api\/auth\/wecom 结尾/);
 	});
 
 	it("baseUrl 非绝对地址 → 400（相对路径会让 redirect_uri 与回调 URL 双双失效）", () => {
 		installVars({ wecom_base_url: "/api/auth/wecom" });
-		expect(() => readWecomConfig()).toThrow(/绝对地址/);
+		expect(() => readSuiteConfig()).toThrow(/绝对地址/);
 	});
 
 	it("wecom_enc_key 只收 16/32 字节的 hex 或 base64（AES-192 会在加密时才炸，故在读配置处拦住）", () => {

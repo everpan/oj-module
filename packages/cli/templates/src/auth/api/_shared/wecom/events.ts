@@ -59,16 +59,32 @@ async function auditAuth(action: string, corpId: string, detail?: unknown, level
 	}
 }
 
-/** 该 corp 的所有应用都标记为停用，并吊销其租户下的全部会话 */
+/** 该 corp 的代开发应用全部标记为停用；**只有该企业再没有启用中的应用时才吊销会话 */
 async function disableCorp(corpId: string, deps: SuiteEventDeps): Promise<void> {
 	// 取消授权同样是匿名回调：会话清理走裸 SQL，`sql_guard: deny` 下没有租户上下文会被拒——
 	// 而这里拒掉的后果是「旧 refresh 串仍能续命」，属安全红线，故必须绑成功再往下走。
 	ensureTenant(tenantOfCorp(corpId));
-	const rows = await db.table("wecom_app_profile").select(["agent_id"]).where(corpScope(corpId)).all() as Array<{ agent_id: string }>;
+	// 只取 suite 行：共存部署里同一家企业可能还有自建应用，cancel_auth 与它无关（C4）
+	const rows = await db.table("wecom_app_profile").select(["agent_id"]).where({
+		and: [corpScope(corpId), { field: "credential_kind", op: "eq", value: "suite" }],
+	}).all() as Array<{ agent_id: string }>;
 	for (const r of rows)
 		await deps.client.invalidateCorpToken(corpId, String(r.agent_id));
-	await setProfileStatus(corpId, "disabled", deps.store);
-	// 会话必须与授权同频：解绑后旧 refresh 串不得继续换新 access token。
+	await setProfileStatus(corpId, "disabled", deps.store, "suite");
+	await revokeOrKeep(corpId);
+}
+
+/**
+ * 会话与授权同频：解绑后旧 refresh 串不得继续换新 access token。
+ * 但「还有别的应用在用」时不吊销（同 `admin.ts::setAppStatus` 的语义）——否则取消代开发授权
+ * 会把同一家企业自建应用的在线用户一起踢下线。
+ */
+async function revokeOrKeep(corpId: string): Promise<void> {
+	const still = await db.table("wecom_app_profile").select(["agent_id"]).where({
+		and: [corpScope(corpId), { field: "status", op: "eq", value: "active" }],
+	}).all();
+	if (still.length)
+		return;
 	// tenant 条件写死在 SQL 里（不用 truncate：它的清理范围取决于本请求是否已绑过租户），
 	// 取消授权回调是匿名端点，不该依赖那种隐式前提。
 	await revokeTenantSessions(tenantOfCorp(corpId));
@@ -93,6 +109,8 @@ async function applyAuthCode(authCode: string, state: string | null, deps: Suite
 			agentId,
 			env,
 			corpName: granted.corpName,
+			// 来源由这一条路径决定：能走到 create_auth 的只可能是代开发
+			credentialKind: "suite",
 			permanentCode: granted.permanentCode,
 			authMode: granted.authModes[agentId] ?? 0,
 		}, store);
@@ -112,7 +130,8 @@ async function applyAuthCode(authCode: string, state: string | null, deps: Suite
  */
 async function refreshAuthModes(corpId: string, deps: SuiteEventDeps): Promise<void> {
 	try {
-		const auth = await findCorpAuth(corpId, deps.store);
+		// 只对 suite 行成立：自建应用没有「授权模式」这个概念，给它刷 auth_mode 只会写脏数据（C5）
+		const auth = await findCorpAuth(corpId, deps.store, "suite");
 		if (!auth)
 			return;
 		const ticket = await getSuiteTicket(deps.cfg.suiteId, deps.store);
@@ -147,7 +166,7 @@ export async function handleSuiteEvent(payload: unknown, deps: SuiteEventDeps): 
 	// 落进 default 只会被记成「不消费的事件」。
 	// 与下面几个分支的不同：通讯录事件失败**不抛**（事件是加速器，重推补不回来，见 contacts.ts）。
 	if (field(fields, "Event") === "change_contact" || infoType === "change_contact")
-		return await handleContactChange(fields, deps);
+		return await handleContactChange(fields, { client: deps.client, store: deps.store, credentialKind: "suite" });
 
 	switch (infoType) {
 		case "suite_ticket": {

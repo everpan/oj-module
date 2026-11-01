@@ -184,6 +184,7 @@ describe("B1-B：授权模式（auth_mode）", () => {
 			agentId: "100001",
 			env: "prod",
 			corpName: "测试企业",
+			credentialKind: "suite",
 			permanentCode: "perm_a",
 			authMode: 1,
 		}, storeDeps());
@@ -199,6 +200,7 @@ describe("B1-B：授权模式（auth_mode）", () => {
 			agentId: "100001",
 			env: "prod",
 			corpName: null,
+			credentialKind: "suite",
 			permanentCode: "perm_a",
 		} as never, storeDeps());
 		expect((await findProfile("ww_corp_a", "100001", storeDeps())).authMode).toBe(0);
@@ -212,6 +214,7 @@ describe("B1-B：授权模式（auth_mode）", () => {
 			agentId: "100001",
 			env: "prod",
 			corpName: "测试企业",
+			credentialKind: "suite",
 			permanentCode: "perm_a",
 			authMode: 0,
 		}, storeDeps());
@@ -241,6 +244,7 @@ describe("B1-B：授权模式（auth_mode）", () => {
 			agentId: "100001",
 			env: "prod",
 			corpName: "测试企业",
+			credentialKind: "suite",
 			permanentCode: "perm_a",
 			authMode: 0,
 		}, storeDeps());
@@ -266,6 +270,7 @@ describe("B1-D：授权探针（同步入口的准入事实）", () => {
 		agentId,
 		env: "prod",
 		corpName: null,
+		credentialKind: "suite",
 		permanentCode: `perm_${agentId}`,
 		authMode,
 	}, storeDeps());
@@ -276,7 +281,7 @@ describe("B1-D：授权探针（同步入口的准入事实）", () => {
 
 	it("装了 → 拿得到 agent + 授权模式；带 agent 可收窄，指错应用 → null", async () => {
 		await profile("100001", 1);
-		expect(await probeProfile("ww_corp_a", null)).toEqual({ agentId: "100001", authMode: 1, status: "active" });
+		expect(await probeProfile("ww_corp_a", null)).toEqual({ agentId: "100001", authMode: 1, status: "active", credentialKind: "suite" });
 		expect(await probeProfile("ww_corp_a", "100001")).toMatchObject({ authMode: 1 });
 		expect(await probeProfile("ww_corp_a", "200002")).toBeNull();
 	});
@@ -447,6 +452,7 @@ describe("C1：通讯录事件增量（change_contact）", () => {
 			agentId: "100001",
 			env: "prod",
 			corpName: "测试企业",
+			credentialKind: "suite",
 			permanentCode: "perm_a",
 			authMode: 0,
 		}, storeDeps());

@@ -18,7 +18,7 @@ description: 用 ojm 开发前后端一体工程时使用——新增/修改前�
 1. **读章**：建模块 → 手册 §2；加接口（handler .schema → oj openapi → 生成 → 对接）→ §3；
    接管通知/上传/菜单 → §4；换布局或加插槽 → §5；排查 → §8；
    **组织架构 / 通讯录（选人、按部门算收件人、接 LDAP 等新来源）→ §14**；
-   **接通企业微信代开发（企微登录 / 多企业租户 / 代开发后台 / 通讯录同步）→ `wecom-daikaifa.md`**。
+   **接通企业微信（代开发 / 企业内部应用 / 两套共存）→ `wecom-daikaifa.md` + `wecom-internal-app.md`**。
 2. **建目录**：一个目录 = 一个模块——前端一侧 `src/<模块名>/web/`（`entry.ts` 必备，
    `pages/`、`locales/` 按需），后端一侧 `src/<模块名>/api/`（目录镜像路由的 `api.ts`，
    动词挂 `.schema`）。两侧可只存在一侧。
@@ -101,19 +101,34 @@ description: 用 ojm 开发前后端一体工程时使用——新增/修改前�
 | 改 `schema.yaml` / `migrations/` / `config.yaml` | **必须重启** |
 | 前端 `src/<模块>/web/**` | 模块重建 + 浏览器自动刷新 |
 
-## 企业微信代开发（接通真实套件）
+## 企业微信（接通真实套件 / 自建应用）
 
-模板已内置企微登录（`src/auth/api/wecom/` + 登录页「企业微信」页签 + `/system/wecom` 代开发后台）。
-接真实套件的**凭据清单、开通顺序、用户/开发/部署三视角、错误文案速查**全在
-`wecom-daikaifa.md`（同目录），这里只列最容易踩的四条：
+模板已内置企微登录（`src/auth/api/wecom/` + 登录页「企业微信」页签 + `/system/wecom` 后台）。
+两种来源、两本手册，**按客户形态选**：
 
-- **六项 `vars` 任一为空 → 企微登录整体 400**（`wecom_suite_id` / `wecom_suite_secret` /
-  `wecom_callback_token` / `wecom_encoding_aes_key` / `wecom_enc_key` / `wecom_base_url`）。
-  `wecom_base_url` 必须以 `/api/auth/wecom` 结尾，它派生 `<base>/event`（指令回调 URL）与 `<base>/callback`。
+| 客户形态 | 读 | 凭据 |
+|---|---|---|
+| 多家企业（SaaS，扫码即装） | `wecom-daikaifa.md`（同目录） | 代开发套件 8 项 `vars`（Tier A/B/C） |
+| 单企业私有化 | `wecom-internal-app.md`（同目录） | 自建应用 5 项 `wecom_corp_*` + 2 项复用 |
+| 两者同时 | 两本都读，共存看 `wecom-daikaifa.md` §10 | 两套都填 + `wecom_allow_coexist: 'true'` |
+
+两本手册都有**凭据清单、开通顺序、用户/开发/部署三视角、错误文案速查**，接企微时先读它们。
+这里只列最容易踩的五条：
+
+- **凭据填齐 = 启用，没有 `wecom_mode`**。只看「哪套变量填了」：`wecom_suite_id` + `wecom_suite_secret`
+  = 代开发；`wecom_corp_id` + `wecom_corp_secret` + `wecom_corp_agent_id` = 自建。两套都齐必须显式
+  `wecom_allow_coexist: 'true'`，否则首个请求 400（配置事故要看得见，不允许静默择一）。
+  `wecom_enc_key` / `wecom_base_url` 两种来源都要；`wecom_base_url` 必须以 `/api/auth/wecom` 结尾，
+  它派生 `<base>/event`（回调 URL）与 `<base>/callback`（网页授权回跳）。
 - **`suite_ticket` 是被企微推来的**（每 10 分钟一次、30 分钟过期），所以「回调 URL 打通」必须
-  早于「生成开通链接」，否则 503 且看起来像代码坏了。
-- **新增企业不改配置、不重启**：企业管理员确认授权 → `create_auth` → `wecom_app_profile`。
+  早于「生成开通链接」，否则 503 且看起来像代码坏了。自建模式没有 `suite_ticket`。
+- **新增企业不改配置、不重启**（代开发）：企业管理员确认授权 → `create_auth` → `wecom_app_profile`。
   同企业测试+正式两个应用是两行（主键含 `agent_id`），此时登录链接必须带 `&agent=`。
+  **自建模式反过来**：一套部署一家企业，档案行由 `/system/wecom` 点「验证并接入」写入；
+  换过 Secret 必须重新点一次。
+- **自建应用收不到成员变更事件**（官方 90970）：要事件增量，只能让企业管理员另配
+  「通讯录同步 → 接收事件服务器」，且该 URL 必须在企业主体域名下——这就是「SaaS 多企业只能走代开发」的由来。
+  一个 `/event` 端点吃两套回调，靠逐个 Token 试签分辨，两组凭据不能串用。
 - **整页跳转拼 API base**：`window.location.assign(resolveApiBase() + wecomAuthorizePath(corp))`；
   拼站点 base 会被 SPA 兜底页吞掉（页面原地重载、一个请求都不发，控制台无报错）。
 - **通讯录同步是「组织架构底座 + 企微适配器」，不是企微专属功能**：模板的
@@ -200,5 +215,10 @@ description: 用 ojm 开发前后端一体工程时使用——新增/修改前�
 14 组织架构与通讯录（共享读面 7 端点、`scope` 两级门禁、归属权与「转为本地维护」、
 源适配器接点与三条禁令——选人 / 按部门算人 / 接 LDAP 都读它）。
 
-另有 `wecom-daikaifa.md`（同目录）：企业微信代开发集成的凭据清单与三角色手册——凭据从哪取、
-怎么填、按什么顺序开通、用户/开发/部署各自怎么做、错误文案怎么查。**接企微时先读它**。
+另有 `wecom-daikaifa.md`（同目录）：企业微信**代开发**集成的凭据清单与三角色手册——凭据从哪取、
+怎么填、按什么顺序开通、用户/开发/部署各自怎么做、错误文案怎么查。**接代开发时先读它**。
+
+另有 `wecom-internal-app.md`（同目录）：企业微信**企业内部应用（自建应用）**的配置与使用手册——
+五项 `wecom_corp_*` 从哪取、回调为什么只填「通讯录同步」一处、「验证并接入」的四步自检、
+可见范围 / 可信 IP / 可信域名的处置、单企业私有化的边界（自建应用收不到成员变更事件）、
+以及和代开发共存时的配置与页面差异。**接自建应用时先读它**。

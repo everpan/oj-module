@@ -22,7 +22,8 @@
 | [`devkit/SKILL.md`](devkit/SKILL.md) | AI agent / 开发者 | agent skill 入口：工作流、红线、新模块 checklist、陷阱速查，按章节号引用手册 |
 | [`devkit/framework-dev.md`](devkit/framework-dev.md) | 框架贡献者（**仅本仓**） | 改 `packages/runtime`、`packages/cli` 时的入口、红线、不变式索引、守卫测试索引 |
 | [`devkit/module-dev-and-cdn-playground.md`](devkit/module-dev-and-cdn-playground.md) | 业务开发者 | 教学文档：开发态 vs 分发态、安装自己的模块会不会重复、本地 CDN 市场链路演练 |
-| [`devkit/wecom-daikaifa.md`](devkit/wecom-daikaifa.md) | 业务开发者 / 部署运维 / 企业员工 | 企业微信代开发集成：凭据清单（六项 `vars` + 可信域名/可信 IP）、首次开通顺序、用户 / 开发 / 部署三角色手册、错误文案速查 |
+| [`devkit/wecom-daikaifa.md`](devkit/wecom-daikaifa.md) | 业务开发者 / 部署运维 / 企业员工 | 企业微信代开发集成：凭据清单（八项 `vars`，Tier A/B/C + 可信域名/可信 IP）、首次开通顺序、用户 / 开发 / 部署三角色手册、与自建应用共存、错误文案速查 |
+| [`devkit/wecom-internal-app.md`](devkit/wecom-internal-app.md) | 业务开发者 / 部署运维 / 企业管理员 / 企业员工 | 企业微信企业内部应用（自建）集成：五项 `wecom_corp_*` 凭据、回调只填通讯录同步一处、「验证并接入」四步自检、单企业私有化边界、共存配置、故障速查 |
 | [`devkit/oj-api-dev/api-manual.md`](devkit/oj-api-dev/api-manual.md) | 后端开发者 | 后端开发手册（13 章，oj 侧快照）：模块约定、全局对象 API、鉴权租户、测试、配置 |
 | [`devkit/oj-api-dev/README.md`](devkit/oj-api-dev/README.md) | 后端开发者 | oj 侧索引 + v0.1.66→v0.1.82 逐版落地记录（查「某个能力哪版有的」） |
 

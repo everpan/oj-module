@@ -62,32 +62,40 @@ export function buildAuthorizeUrl(opts: {
 /**
  * 代开发模板常只服务一家企业：登录入口不传 corp 时，从已安装档案自动解析，
  * 让「应用主页」直接填 https://<域名>/login 即可（无需 ${corpid} 占位符，避开企微后台对非法 URL 字符的校验）。
- * agent 未指定且该企业多应用时，取首个活跃应用以 corp 维度授权。
+ *
+ * `self` = 本部署自己那家企业内部应用（`wecom_corp_*` 配了什么）。
+ * 共存部署里必须传：否则别家企业通过代开发装进来的档案会把「本站默认登录哪家企业」淹掉，
+ * 本站自己的 `/login` 反倒回 400「已授权多家企业」。传了就按「自己的企业优先」解析，
+ * 且默认 agent 也来自配置，不再依赖写死的应用 id。
  */
-// 未指定 agent 且多应用时，优先作为默认登录应用的 agent（按部署需要调整）
-const DEFAULT_WECOM_AGENT = "1000059";
+export interface SelfApp {
+	corpId: string
+	agentId: string
+}
 
-export async function resolveWecomProfile(agentId: string | null): Promise<{ corpId: string, agentId: string, env: string }> {
+export async function resolveWecomProfile(agentId: string | null, self?: SelfApp): Promise<{ corpId: string, agentId: string, env: string }> {
 	const rows = await db.table("wecom_app_profile")
 		.select(["corp_id", "agent_id", "env", "status"])
 		.where({ field: "status", op: "eq", value: "active" })
 		.all() as Array<{ corp_id: string, agent_id: string, env: string | null, status: string }>;
 	const active = rows.filter(r => String(r.status) === "active");
 	if (!active.length)
-		throw Object.assign(new Error("尚未完成企业微信授权（无已安装应用档案），请先走「生成开通链接」完成授权"), { status: 400 });
-	const corps = [...new Set(active.map(r => r.corp_id))];
+		throw Object.assign(new Error("尚未完成企业微信接入（无可用应用档案）：代开发请先扫码开通；企业内部应用请在后台点「验证并接入」"), { status: 400 });
+	const pool = self ? active.filter(r => String(r.corp_id) === self.corpId) : active;
+	if (!pool.length)
+		throw Object.assign(new Error("本次部署配置的企业内部应用尚未接入：请在后台点「验证并接入」"), { status: 400 });
+	const corps = [...new Set(pool.map(r => String(r.corp_id)))];
 	if (corps.length > 1 && !agentId)
 		throw Object.assign(new Error("已授权多家企业，请在登录链接带 corp 参数以区分"), { status: 400 });
-	const corpId = corps[0]!;
-	const agents = active.filter(r => r.corp_id === corpId);
-	// 指定 agent 就必须命中，未指定则退到默认 agent / 首个活跃应用（agents 非空：active 已非空且
-	// 至少有一个属于 corpId——corps 就是按 active 的 corp_id 去重出来的）
+	const corpId = self ? self.corpId : corps[0]!;
+	const agents = pool.filter(r => String(r.corp_id) === corpId);
+	// 指定 agent 就必须命中；未指定时：自建应用优先取配置里的 agent，否则取首个活跃应用
 	const pick = agentId
-		? agents.find(a => a.agent_id === agentId)
-		: (agents.find(a => a.agent_id === DEFAULT_WECOM_AGENT) ?? agents[0]);
+		? agents.find(a => String(a.agent_id) === agentId)
+		: (self ? agents.find(a => String(a.agent_id) === self.agentId) : undefined) ?? agents[0];
 	if (!pick)
 		throw Object.assign(new Error("指定的 agent 在该企业中不存在"), { status: 400 });
-	return { corpId: pick.corp_id, agentId: pick.agent_id, env: pick.env == null ? "prod" : String(pick.env) };
+	return { corpId: String(pick.corp_id), agentId: String(pick.agent_id), env: pick.env == null ? "prod" : String(pick.env) };
 }
 
 export async function putLoginState(nonce: string, pending: PendingLogin, cache: WecomCache): Promise<void> {
