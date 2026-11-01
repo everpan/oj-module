@@ -5,6 +5,64 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 设计依据、迁移记录与陷阱清单见 [`docs/prd/202609110947-oj-module-two-package-consolidation-design.md`](docs/prd/202609110947-oj-module-two-package-consolidation-design.md)。
 
+## [Unreleased]
+
+## [0.2.48] - 2026-11-01
+
+双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步定版 **0.2.48**。本轮交付
+**组织架构基线**（A1 模型 / A2 CRUD / A3 共享读面——企微与 LDAP 同步的共享底座），
+模板默认口令统一为 `aA123456`；同时修掉企微 `create_auth` 上「授权其实成功、企微却显示
+安装失败」的两个叠加缺陷。
+
+**升级提示**：新增迁移 `0016__org`（三方言），部署后先跑 `oj migrate` 再起服；存量库的
+内置账号口令不会自动改（seed 为 `INSERT OR IGNORE`），详见下方 Changed。
+
+### Added
+
+- **组织架构基线（脚手架模板，企微/LDAP 同步的共享底座）**：新增 `sys_department` / `sys_dept_member`
+  两张租户表（三方言迁移 `0016__org`），`users` 增 `activated` / `position` / `external_status`。
+  设计定位：**CRUD 是基线**，外部来源只是适配器——`origin` 是归属权标识（`local` 全权 CRUD，
+  `wecom`/`ldap`/`sso` 由对应适配器管辖），管理员可对非 local 行执行「转为本地维护」。
+- **管理端**：`GET/POST/PUT/DELETE /api/system/departments`、`PUT .../move`、`POST .../detach`、
+  `GET/POST/PUT/DELETE .../members`（`?id=` 定部门）、`PUT /api/system/users/profile`、
+  `DELETE /api/system/users?uid=`；前端新增「组织架构」页（部门树 + 成员抽屉 + 归属标签）。
+- **共享读面**：`_platform/api/org/{tree,departments,members,user,picker,resolve,is-member}`。
+  两级门禁：`scope=self`（默认，只看自己所在部门及其祖先）／`scope=all`（挂权限点
+  `platform.org.read.all`，已随三方言 seed 注册）。读面只出「看与算」的最小集，
+  不出 `origin` / 负责人关系 / 在职状态；`resolve`/`is-member` 供其他模块直接复用，
+  避免每个消费方自己拉树递归。
+- **通讯录闸门**：`searchContacts` / `contactDetail` 只返回 `activated=1`。组织架构同步会把
+  「从未登录本站」的全员建档，若无此闸门，任何登录账号都能以 keyword 遍历拖走整份企业名册。
+
+### Changed
+
+- **脚手架默认口令由 `123456` 改为 `aA123456`**：`_platform` seed 的四个内置角色开发账号
+ （superadmin/admin/editor/viewer）全部换成 `aA123456` 的 bcrypt 哈希（cost=10、`$2y$` 前缀），
+  三方言 seed 文件同构对齐；`ojm init` 末行提示、devkit 手册/SKILL、market setup 命令示例、
+  欢迎通知文案、e2e/integration 夹具与冒烟脚本同步改。
+
+  ⚠️ **存量 dev 库不会自动改密**：seed 是 `INSERT OR IGNORE`，已存在的账号行保留旧口令。
+  老库登录后仍可用旧口令（或 `PUT /api/auth/password` 改密）；要强制统一请删 `db.sqlite` 重跑
+  `oj migrate` + seed，或直接 `UPDATE users SET password_hash = '<新哈希>'`。
+
+### Fixed
+
+- **企业微信代开发：企业管理员扫码授权后提示「应用安装失败，联系服务商」**（模板 `auth` 模块）。
+  两个叠加缺陷（外加一处可观测性缺口），都在 `POST /auth/wecom/event` 的 `create_auth` 路径上：
+
+  1. **审计写失败被当成了安装失败**：`applyAuthCode` 在 profile 落库之后 `await recordOp(...)`，
+     而 `sys_oplog` 是**租户表**、本端点又在 `tenant.anonymous_paths` 里（企微带不了
+     `X-TENANT-ID`）。`sql_guard: deny` 下这条 insert 被守卫拒（`require tenant context`），
+     于是「授权其实成功、profile 已落库」，企微却收到非 `success` → 页面显示安装失败；
+     且重推时 AuthCode 已被消费，重试必然再失败。现在 `create_auth` / `cancel_auth` 都先按企业
+     绑租户（`ensureTenant`）再落审计，审计失败也只告警不再影响回执。
+     **判别**：`wecom_app_profile` 里已有该企业行 → 授权其实成功了，让企业再扫一次即可。
+  2. **事件处理的出网动作挤占了企微的回执窗口**：企微对 `create_auth` 的回执窗口约 **1 秒**
+     （官方文档写 5 秒，实际按 1 秒卡），而原路径要串行做 `get_suite_token` + `get_permanent_code`
+     两次出网。现在 `suite_ticket` 事件顺手预热 `suite_access_token`（命中缓存则零往返），
+     授权路径只剩一次出网；`suite_secret` 配错也会在票据推送时就进日志，而不是等企业扫码失败。
+  3. 顺带补 `log.error("wecom event failed", …)`：企微侧不透露失败原因，这条日志是唯一排查入口。
+
 ## [0.2.47] - 2026-10-31
 
 双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步定版 **0.2.47**（延续 0.2.x 线，不进 0.3.x）。
