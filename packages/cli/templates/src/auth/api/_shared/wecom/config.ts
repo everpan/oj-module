@@ -153,9 +153,15 @@ export function readWecomConfig(): WecomConfig {
 	return v;
 }
 
-/** 企微后台「指令回调 URL」：原样填这个（base + /event） */
+/**
+ * 企微后台「指令回调 URL / 应用回调 URL」：原样填这个（base + `/event?callback_format=json`）。
+ *
+ * 带 `callback_format=json` 是让上游改发 JSON 包体，业务侧就不必解析 XML（payload.ts 只保留
+ * 一个正则兜底：部分回调业务没有 JSON 文档，见那里的说明）。该参数对不认识它的接口是无害的
+ * 未知 query，故一处配死即可。
+ */
 export function eventUrlOf(cfg: WecomConfig): string {
-	return `${cfg.baseUrl}/event`;
+	return `${cfg.baseUrl}/event?callback_format=json`;
 }
 
 /** 网页授权 redirect_uri（base + /callback） */

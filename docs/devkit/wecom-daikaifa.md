@@ -12,9 +12,9 @@
 
 | 你是 | 读 | 大约要做什么 |
 |---|---|---|
-| 部署 / 服务商运营 | §2 §3 §4 §7 §8 | 备凭据、填后台、按顺序开通、日常启停与轮换 |
+| 部署 / 服务商运营 | §2 §3 §4 §7 §8 | 备凭据、填后台、按顺序开通、日常启停与轮换；真机验收照 **§7.6** 打勾 |
 | 本工程开发者 | §1 §6 §8 | 本地联调、加企业、改前端、写没有真实套件的自动化测试 |
-| 企业管理员（客户的 IT） | §2.5 §2.6 §6.8 §8 | 开四项通讯录权限、选对授权模式、读懂同步页面上的卡片 |
+| 企业管理员（客户的 IT） | §2.5 §2.6 §6.8 §7.6-B §8 | 开四项通讯录权限、选对授权模式、读懂同步页面上的卡片 |
 | 企业员工（用户） | §5 | 怎么进、要不要注册、进不去怎么办 |
 
 ---
@@ -31,7 +31,7 @@
   │
   ├─ suite_ticket ── 每 10 分钟推一次，30 分钟不用即作废 ──▶ wecom_suite_ticket（共享表）
   │
-  └─ 指令回调 URL ──▶ POST <wecom_base_url>/event
+  └─ 指令回调 URL ──▶ POST <wecom_base_url>/event?callback_format=json
         │
         ├─ ① suite_ticket + suite_secret ─▶ suite_access_token（缓存，提前 5 分钟过期）
         │       ├─ get_permanent_code ◀── auth_code（企业管理员确认授权时推 create_auth）
@@ -109,15 +109,19 @@ Tier B 为空时服务仍可启动并响应 echostr，但 suite 流程会 400—
 
 `wecom_base_url` 是唯一「配一处、派生两处」的值——它同时决定：
 
-- 指令回调 URL = `<wecom_base_url>/event`
+- 指令回调 URL = `<wecom_base_url>/event?callback_format=json`
 - 网页授权 `redirect_uri` = `<wecom_base_url>/callback`
 - 登录成功后的站点回跳 = 去掉 `/api/auth/wecom` 的那部分（子路径部署也正确，例如
   `https://example.com/oj/api/auth/wecom` → 回跳 `https://example.com/oj/login`）
 
 > ⚠️ **`wecom_base_url` 不是回调 URL 本身，别把它直接填进企微后台。** 企微后台要填的
-> 「指令回调 URL」是 `<wecom_base_url>/event`（**必须带 `/event`**）。裸的 `/api/auth/wecom`
-> 没有任何 handler，企微验签时会打到它 → **404 → 验证失败、模版保存不了**。
+> 「指令回调 URL / 应用回调 URL」是 `<wecom_base_url>/event?callback_format=json`（**必须带 `/event`**）。
+> 裸的 `/api/auth/wecom` 没有任何 handler，企微验签时会打到它 → **404 → 验证失败、模版保存不了**。
 > 派生关系如上：回调 URL = base + `/event`，网页授权回跳 = base + `/callback`。
+>
+> **`?callback_format=json` 别手删。** 带上它，企微就把包体发成 JSON（信封 `{"tousername","encrypt","agentid"}`）；
+> 不带则发 XML。**两种本服务都收**（归一化在 `payload.ts`），所以老地址不会因为升级而失效；
+> 但 JSON 是主路径——只有真机上确认某类事件不认这个参数时，才需要把它去掉。
 
 ### 2.2 两项备案（都在企微后台，不写在代码里）
 
@@ -190,8 +194,8 @@ openssl rand -hex 32        # 输出 64 个 hex 字符，直接贴进 wecom_enc_
 
 | 企微后台位置 | 值 | 说明 |
 |---|---|---|
-| **模板**回调 URL（指令回调 / 事件接收） | `https://<站点>/api/auth/wecom/event` | 点保存时企微会 GET 一次带 `echostr`：必须**当次就通**，否则保存不了。`suite_ticket` 与 `create_auth` / `change_auth` / `cancel_auth` 都走这里 |
-| **应用**回调 URL（数据回调 / 通讯录变更） | **同上** `https://<站点>/api/auth/wecom/event` | 一个端点吃两种回调，不用再开路由。当前版本收到 `change_contact` 只记一条 `wecom event ignored` 并回 `success`（事件增量尚未上线，靠全量同步兜底），但**现在就要填**：不填等于以后上线事件增量时还得再让每家企业的管理员动一次后台 |
+| **模板**回调 URL（指令回调 / 事件接收） | `https://<站点>/api/auth/wecom/event?callback_format=json` | 点保存时企微会 GET 一次带 `echostr`：必须**当次就通**，否则保存不了。`suite_ticket` 与 `create_auth` / `change_auth` / `cancel_auth` 都走这里 |
+| **应用**回调 URL（数据回调 / 通讯录变更） | **同上** `https://<站点>/api/auth/wecom/event?callback_format=json` | 一个端点吃两种回调，不用再开路由。当前版本收到 `change_contact` 只记一条 `wecom event ignored` 并回 `success`（事件增量尚未上线，靠全量同步兜底），但**现在就要填**：不填等于以后上线事件增量时还得再让每家企业的管理员动一次后台 |
 | 可信域名 | `https://<站点域名>` | 不含路径 |
 | 网页授权 `redirect_uri` | **不用手填**：后端按 `wecom_base_url` 拼出 `https://<站点>/api/auth/wecom/callback` | 企业的授权页里的域名必须与可信域名一致 |
 
@@ -210,7 +214,7 @@ openssl rand -hex 32        # 输出 64 个 hex 字符，直接贴进 wecom_enc_
 | 步 | 动作 | 为什么 | 错序的症状 |
 |---|---|---|---|
 | 1 | 配好 §2.1 的 **Tier A 四项**（`callback_token` / `encoding_aes_key` / `enc_key` / `base_url`），重启服务 | 这四项本地生成，服务凭它们即可启动并响应 echostr | 400 `企业微信未配置：config vars 缺少 …` |
-| 2 | 站点对外 https 可达；把指令回调 URL `<base>/event` 填进企微后台并保存 | 保存动作本身就是第一次验签（GET `echostr`）——而 echostr 只依赖 Tier A | 保存失败：`Token` / `EncodingAESKey` 对不上 |
+| 2 | 站点对外 https 可达；把指令回调 URL `<base>/event?callback_format=json` 填进企微后台并保存 | 保存动作本身就是第一次验签（GET `echostr`）——而 echostr 只依赖 Tier A | 保存失败：`Token` / `EncodingAESKey` 对不上 |
 
 > 阶段一**不需要** `suite_id` / `suite_secret`：企微在「模版创建成功」后才下发它们，而 echostr
 > 验证在创建期就能跑通（receiveid 校验在 suite 未下发时自动放宽，签名仍是唯一鉴权闸门）。
@@ -296,7 +300,7 @@ openssl rand -hex 32        # 输出 64 个 hex 字符，直接贴进 wecom_enc_
 # 2) 起前后端
 pnpm dev
 # 3) 把本地 9778（后端）暴露成 https（任意内网穿透工具）
-# 4) 企微后台 → 指令回调 URL 改成 https://<穿透域名>/api/auth/wecom/event，保存
+# 4) 企微后台 → 指令回调 URL 改成 https://<穿透域名>/api/auth/wecom/event?callback_format=json，保存
 # 5) 等一个推送周期（≤10 分钟）→ 进 /system/wecom 生成开通链接
 ```
 
@@ -470,7 +474,7 @@ window.location.assign(`${resolveApiBase()}${wecomAuthorizePath(corp)}`);
 - [ ] 服务商账号已认证，代开发应用模板已创建
 - [ ] Tier A 四项已生成并填好（`wecom_callback_token` / `wecom_encoding_aes_key` 在企微后台同页自设；`wecom_enc_key` 见 §2.4 本地生成；`wecom_base_url` 为站点对外地址）
 - [ ] 模版创建成功后拿到 **SuiteID / SuiteSecret**（Tier B），已填入配置并重启（详见 §4 阶段二）
-- [ ] 站点已用 **https** 对外，反向代理放行 `POST /api/auth/wecom/event`（含原始 XML 请求体，不要改写）
+- [ ] 站点已用 **https** 对外，反向代理放行 `POST /api/auth/wecom/event`（**请求体原样转发**：默认是 JSON，老地址可能是 XML，都不要改写或按表单解析）
 - [ ] 可信域名已备案（含校验文件）
 - [ ] 可信 IP 已列全所有出口 IP
 - [ ] 服务器时间已 NTP 同步：回调只接受 ±5 分钟内的 `timestamp`，偏得多了**所有**指令都会被拒
@@ -480,7 +484,7 @@ window.location.assign(`${resolveApiBase()}${wecomAuthorizePath(corp)}`);
 - [ ] 部署后先跑 `oj migrate`：组织架构与同步需要 `0016__org`、`auth/0002__org_sync` 两组迁移
 - [ ] 后台清单里「授权模式」是**管理员授权**（成员授权的企业同步不了，§2.6）
 - [ ] 组织架构四项权限已核对（§2.5）；同步一次后页面**没有**「N 个部门因权限被跳过」以外的告警
-- [ ] 同步结果抽查：树有名字、人挂在正确部门、主部门唯一（不是所有人都在「总公司」）
+- [ ] 组织架构同步已照 **§7.6** 逐条打勾（含 C10 的事件增量取证），四个数已回填验收记录
 
 ### 7.2 上线顺序
 
@@ -529,6 +533,71 @@ window.location.assign(`${resolveApiBase()}${wecomAuthorizePath(corp)}`);
 
 同步的审计落在**本租户**（同步只动自己那家企业的数据），所以企业管理员在自己的操作日志里
 就能看到「谁在什么时候同步过、同步到哪一步、跳过了几个部门」。
+
+### 7.6 组织架构同步：真机验收清单
+
+单测只能证明「拿到这样的上游回包时我们这样写库」，证明不了「上游真的这样回」——后者在这里收口（§6.7 列的就是这份清单要验的东西）。每条都写清 **谁点、点什么、看到什么算过、不对去看哪一行**，打勾时请把观测到的数字抄进 §7.6-D。
+
+#### A. 一次性前置（服务商运维，约 10 分钟）
+
+| 项 | 怎么验 | 不过怎么办 |
+|---|---|---|
+| 两组迁移 | `sqlite3 db.sqlite ".tables"` 里有 `wecom_sync_job` 与 `wecom_sync_lock` | 部署后漏跑 `oj migrate`；补跑再起服 |
+| 两个回调地址 | 企微后台「模板回调 URL」与「应用回调 URL」**都**保存成功（两处都填 `/api/auth/wecom/event?callback_format=json`，见 §3） | 只填了模板那个：同步与登录都能用，但通讯录变更事件收不到（C1 要它）。补填应用回调需要企业管理员配合 |
+| 四项权限 | 企微后台权限列表里 §2.5 的 ①~④ 都在，且没有一条停在「待企业确认」 | 重发开通链接**补不了**权限（幂等 upsert，不带权限）；只能让客户管理员在企微里确认那条权限变更消息 |
+| 授权模式 | `/system/wecom` 清单里「授权模式」= 管理员授权 | 成员授权（§2.6）：请企业管理员改，改完企微推 `change_auth`，本系统自动刷新，不用重新开通 |
+| 时间与出网 | §7.1 的 NTP 与可信 IP 两项 | 时钟偏 >5 分钟 → 所有回调被拒；出口 IP 不在白名单 → 同步第 2 步就 60020 |
+
+#### B. 企业管理员侧（客户的 IT，一次性）
+
+| 动作 | 为什么只能本人做 |
+|---|---|
+| 扫码 / 打开开通链接完成授权 | `permanent_code` 只在 `create_auth` 时一次性下发，服务商后台不显示 |
+| 在企微里点「确认权限变更」 | 不确认 = 权限永远「待企业确认」，同步能跑但拿不到姓名与部门名（满屏工号） |
+| （若为成员授权）把授权模式改成管理员授权 | 成员授权下应用没有任何通讯录权限，同步 100% 失败 |
+
+#### C. 逐项验收（每条独立打勾）
+
+| # | 操作 | 期望观测 | 不符时先看 |
+|---|---|---|---|
+| C1 | 组织架构页点「立即同步」，等状态条停下 | 文案变「企微组织架构更新于 **刚刚** · 自动同步」；`SELECT status, stats_text FROM wecom_sync_job` → `done`，`stats.departments` / `stats.members` 都 > 0 | `status=paused` → 再点「继续同步」（分片没推完，不是失败）；`err_code` 非空 → §6.8 的卡片对应项 |
+| C2 | 抽 3 个部门核对人数与层级 | 每个部门的人数与企微后台一致；层级正确；**主部门唯一**（不是所有人都在「总公司」） | 人数全为 0 → 可见范围为「仅部分成员」；层级全平 → 缺 ④ 的父部门 ID |
+| C3 | 看人名 | 显示名是人名（`display_name` 有值） | 满屏 `wecom:<工号>` → 缺 §2.5 ① |
+| C4 | 看职务列 | 有职务 | 全空 → 缺 §2.5 ③ |
+| C5 | 看状态条的跳过计数 | 「N 个部门因权限被跳过」，且 N **远小于**部门总数 | N 与总数接近 → 先查 §2.5 ④ 与可见范围，再查权限是否卡在待确认 |
+| C6 | 让一个**普通员工**登录一次 | 该员工 `users.display_name` / `position` 被回写，`sys_dept_member` 与企微一致 | 登录本身失败看 §8；登录成功但资料没变 → 该员工不在可见范围，或 24 小时内已自更新过（缓存键 `wecom:self:<corp>:<userid>`） |
+| C7 | 先在本地建一个部门，再点一次同步 | 本地部门**不消失、不改名**（D13：源只管辖它自己带来的行） | 本地部门被覆盖 → 严重缺陷，保留现场（`SELECT origin …`）再报 |
+| C8 | 企微后台取消授权 | 组织架构页变冻结黄条（数据保留）；该租户 `sys_refresh_token` 清零 | 页面仍显示可同步 → `wecom_app_profile.status` 没落 `disabled`，查 `cancel_auth` 日志 |
+| C9 | 重新扫码授权 | 清单该行恢复 `active`，`permanent_code_enc` 被重写（密文变化即可） | 仍是 `disabled` → 事件没到，回 A 表查回调地址 |
+| C10 | **事件增量取证（C1 的前置）**：请客户在企微后台改一个部门名或加一个人 | 服务端日志出现 `wecom event ignored … event=change_contact fields=…`，`fields` 里能看到 `ChangeType` / `Id`（部门）或 `UserID`（成员） | 见下 |
+
+C10 的三种结果，正好把 C1 的三个未知量一次性问清：
+
+| 日志 | 说明 | 下一步 |
+|---|---|---|
+| `wecom event ignored … event=change_contact` | 数据回调**收到了**，且用的就是配置里这套 Token/AESKey | C1 可以开工；把 `fields` 那一行抄进验收记录，它就是真实包体的字段清单（顺带确认回调是否已按 `callback_format=json` 发 JSON） |
+| `wecom callback decrypt failed …` | 签名过了但解不开 → 数据回调用的是**另一套**凭据 | 记下同一行的 `envelopeToUser` 与 `aesKeyFp`：前者告诉你报文来自哪个套件/模板，后者证明本进程加载的是哪把钥匙。结论写进 §2.1 的缺口，再决定是否要单独配一套应用侧凭据 |
+| 一条日志都没有 | 事件根本没进本站 | 应用回调 URL 没填（A 表第 2 项），或反代挡了 POST |
+
+日志在工程根 `logs/server-*.log`：
+
+```bash
+grep -h "wecom event ignored\|callback decrypt failed" logs/server-*.log | tail -20
+```
+
+#### D. 验收记录（请回填，别只写「看起来正常」）
+
+| 字段 | 值 |
+|---|---|
+| 企业代码 / 应用 | |
+| 四项权限状态（①~④） | |
+| 部门数 / 人数 / 跳过数 | |
+| 单次全量耗时（`finished_at - started_at`） | |
+| C10 日志原文（`event=` 与 `tags=`） | |
+| 结论 | 通过 / 不通过（不通过项编号） |
+
+> 判定口径是**数字**：部门数、人数、跳过数、耗时四个数写不出来，就等于没验。
+> 跳过数不为 0 不是失败（可见范围外是硬口径）；但「跳过数接近总数」或「主部门不唯一」必须判不通过。
 
 ---
 
@@ -582,7 +651,7 @@ window.location.assign(`${resolveApiBase()}${wecomAuthorizePath(corp)}`);
 
 ```text
 [ ] 八个 vars 非空（Tier A/B/C），wecom_base_url 以 /api/auth/wecom 结尾
-[ ] 企微后台的指令回调 URL == <wecom_base_url>/event（逐字）
+[ ] 企微后台的指令回调 URL == <wecom_base_url>/event?callback_format=json（逐字）
 [ ] 服务日志有 wecom suite_ticket updated（近期）
 [ ] /system/wecom 列表里有目标企业，status=active，授权模式=管理员授权
 [ ] /system/settings 的「启用企业微信登录」= 开

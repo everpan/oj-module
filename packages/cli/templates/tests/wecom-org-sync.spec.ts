@@ -228,7 +228,7 @@ describe("B1-B：授权模式（auth_mode）", () => {
 			},
 		} as never;
 
-		await handleSuiteEvent("<xml><InfoType>change_auth</InfoType><SuiteId>suite_1</SuiteId><AuthCorpId>ww_corp_a</AuthCorpId></xml>", { cfg: CFG, client, store: storeDeps() });
+		await handleSuiteEvent({ InfoType: "change_auth", SuiteId: "suite_1", AuthCorpId: "ww_corp_a" }, { cfg: CFG, client, store: storeDeps() });
 		expect(seen).toEqual(["sat/ww_corp_a/perm_a"]);
 		expect((await findProfile("ww_corp_a", "100001", storeDeps())).authMode).toBe(1);
 	});
@@ -250,7 +250,7 @@ describe("B1-B：授权模式（auth_mode）", () => {
 				throw new Error("企微 get_suite_token 失败：errcode=40001");
 			},
 		} as never;
-		await expect(handleSuiteEvent("<xml><InfoType>change_auth</InfoType><SuiteId>suite_1</SuiteId><AuthCorpId>ww_corp_a</AuthCorpId></xml>", { cfg: CFG, client, store: storeDeps() }))
+		await expect(handleSuiteEvent({ InfoType: "change_auth", SuiteId: "suite_1", AuthCorpId: "ww_corp_a" }, { cfg: CFG, client, store: storeDeps() }))
 			.resolves
 			.toBe("change_auth");
 		// 旧值保留，同步闸门那侧还有 60011 兜底

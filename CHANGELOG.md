@@ -41,6 +41,15 @@
 
 ### Changed
 
+- **企微回调改为 JSON 优先**：下发给企业管理员的回调地址带 `?callback_format=json`，上游认这个参数就发 JSON
+  （信封 `{tousername, encrypt}` 小写、密文里的明文 `{InfoType, …}` 大写，取字段大小写不敏感）。
+  XML 保留为兜底，且只出现在新文件 `_shared/wecom/payload.ts` 一处——`events.ts` / `wecom/api.ts`
+  里再没有格式判断，原 `xml.ts` 删除。之所以不删干净：`callback_format=json` 只在部分回调业务里有文档，
+  而 `suite_ticket` / `create_auth` / `cancel_auth` 所属的通用回调文档至今只写 XML，只留 JSON 等于
+  拿「企业管理员扫码安装」赌上游行为。回调地址换了之后老地址仍可用（XML 兜底），但建议按后台提示重填一次。
+- 未消费事件的日志补上 `MsgType` / `Event` / 字段清单（只记名字，明文里的姓名与工号一律不进日志）：
+  通讯录变更走的是应用侧数据回调（没有 `InfoType`），早先只记 `InfoType` 会把「收到了」记成空白，
+  C1（事件增量）开工前就没法确认投递地址与包体形态。
 - **`GET /api/system/users` 的 `departments` 形状变更**：`string[]`（部门名）→
   `Array<{ id: number, name: string | null, isMain: boolean }>`。部门名会重名、也会为空，
   前端按部门筛选必须有 id；`isMain` 把「主部门」从「数组第一项」的隐含约定变成显式事实。

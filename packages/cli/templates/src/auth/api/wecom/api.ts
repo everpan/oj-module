@@ -1,4 +1,5 @@
 import type { WecomConfig } from "../_shared/wecom/config";
+import type { CallbackFields } from "../_shared/wecom/payload";
 import type { WecomStoreDeps } from "../_shared/wecom/store";
 // GET  /api/auth/wecom/login?corp=&agent=&env=  —— 发起企微授权（企微内静默 / 浏览器扫码）
 // GET  /api/auth/wecom/callback?code=&state=     —— 企微回跳：code→userid→JIT→一次性票据→302 SPA
@@ -30,9 +31,9 @@ import {
 	selfUpdate,
 	takeLoginState,
 } from "../_shared/wecom/login";
+import { callbackFields, field } from "../_shared/wecom/payload";
 import { guardReplay, runtimeReplayGate } from "../_shared/wecom/replay";
 import { claimLoginTicket, ensureTenant, findProfile, issueLoginTicket, runtimeStoreDeps, tenantOfCorp } from "../_shared/wecom/store";
-import { xmlField } from "../_shared/wecom/xml";
 
 // 模块级禁止 readWecomConfig()/createSession()/runtimeHttp()：oj build 的 introspect 在空沙箱里
 // 评估模块（无 vars/jwt/fetch），一律在 handler 内按需构造（§9.4）。
@@ -68,13 +69,14 @@ function badRequest(message: string): Error {
  *   · 一致 → EncodingAESKey 与后台不一致（后台点过「随机生成」、或抄错/抄漏一个字符）。
  *     `aesKeyFp` 是本进程**实际加载**那把钥匙的指纹：改完 config 对不上就说明没生效（没重启/改错文件）。
  */
-function noteDecryptFailure(e: unknown, xml: string, cfg: { encodingAesKey: string, suiteId: string }): void {
+function noteDecryptFailure(e: unknown, envelope: CallbackFields | null, cfg: { encodingAesKey: string, suiteId: string }): void {
 	log.warn(
 		"wecom callback decrypt failed",
 		"reason",
 		(e as Error).message,
 		"envelopeToUser",
-		xmlField(xml, "ToUserName") ?? "",
+		// URL 验证（GET）只有 query 里的 echostr，没有报文信封——那一侧记空串
+		envelope ? field(envelope, "ToUserName") : "",
 		"configuredSuite",
 		cfg.suiteId,
 		"aesKeyFp",
@@ -89,7 +91,7 @@ function noteDecryptFailure(e: unknown, xml: string, cfg: { encodingAesKey: stri
  * 三道顺序不可换：先验签（不给未鉴权请求写 kv）→ 再拦重放（省一次解密，也让
  * cancel_auth 这种危险性最高的报文止步在落库之前）→ 最后解密。
  */
-async function decryptVerified(encrypted: string, xml: string): Promise<{ cfg: WecomConfig, plain: string }> {
+async function decryptVerified(encrypted: string, envelope: CallbackFields): Promise<{ cfg: WecomConfig, plain: string }> {
 	const cfg = readWecomConfig();
 	const expected = wecomSignature(cfg.token, query("timestamp"), query("nonce"), encrypted);
 	if (expected !== query("msg_signature"))
@@ -100,7 +102,7 @@ async function decryptVerified(encrypted: string, xml: string): Promise<{ cfg: W
 	}
 	catch (e) {
 		// 解密失败只对外透出「失败」：错钥/错套件/被篡改三者不可区分，也不该让外部据此判断哪一环配错
-		noteDecryptFailure(e, xml, cfg);
+		noteDecryptFailure(e, envelope, cfg);
 		throw badRequest("回调消息解密失败");
 	}
 }
@@ -248,7 +250,7 @@ const event = {
 			}
 			catch (e) {
 				// 解密失败只透出「失败」：错钥/未下发套件/被篡改三者不可区分，也不该让外部据此判断哪一环配错
-				noteDecryptFailure(e, "", { encodingAesKey: cfg.encodingAesKey, suiteId });
+				noteDecryptFailure(e, null, { encodingAesKey: cfg.encodingAesKey, suiteId });
 				throw badRequest("回调消息解密失败");
 			}
 		}
@@ -257,15 +259,19 @@ const event = {
 		}
 	},
 
-	// 指令回调：验签 → 解密 → 分发（suite_ticket / create_auth / change_auth / cancel_auth /
-	// reset_permanent_code）。回 `success` 才算收下，否则企微 5 秒后重推三次。
+	// 回调（指令 + 应用数据）：验签 → 解密 → 分发（suite_ticket / create_auth / change_auth /
+	// cancel_auth / reset_permanent_code）。回 `success` 才算收下，否则企微 5 秒后重推三次。
+	//
+	// 包体优先 JSON：回调地址带 `?callback_format=json` 下发（config.ts::eventUrlOf），
+	// 上游支持就是 JSON；不支持的事件（见 payload.ts 的说明）退回 XML，归一化那一步在 payload.ts，
+	// 本函数只认字段名。
 	async post() {
 		try {
-			const xml = typeof http.body === "string" ? http.body : "";
-			const encrypted = xmlField(xml, "Encrypt");
+			const envelope = callbackFields(http.body);
+			const encrypted = field(envelope, "Encrypt");
 			if (!encrypted)
-				throw badRequest("回调报文缺少 Encrypt");
-			const { cfg, plain } = await decryptVerified(encrypted, xml);
+				throw badRequest("回调报文缺少 Encrypt（不是企微回调，或中间件改写了请求体）");
+			const { cfg, plain } = await decryptVerified(encrypted, envelope);
 			const client = createWecomClient({ http: runtimeHttp(), cache: runtimeCache() });
 			await handleSuiteEvent(plain, { cfg, client, store: runtimeStoreDeps(cfg) });
 			plainText("success");

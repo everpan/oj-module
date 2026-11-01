@@ -413,6 +413,29 @@ describe("P1-L：GET/POST /auth/wecom/event（企微指令回调）", () => {
 		expect(dbo.prepare("SELECT suite_ticket FROM wecom_suite_ticket WHERE suite_id = ?").get(SUITE)).toMatchObject({ suite_ticket: "tk_9" });
 	});
 
+	it("指令回调（JSON 主路径）：信封小写键 + 明文字段照常落库", async () => {
+		// 回调地址带 ?callback_format=json 下发，上游支持 JSON 时上下两层都是 JSON：
+		// 信封 {"tousername","encrypt","agentid"}（小写），密文解开后是 {"InfoType",…}（大写）。
+		// 这条钉的是「大小写不敏感」这一层，别再让人回头改一次字段名。
+		const plain = JSON.stringify({ InfoType: "suite_ticket", SuiteId: SUITE, SuiteTicket: "tk_json" });
+		const encrypted = await seal(plain);
+		request({ query: signedQuery(encrypted), body: { tousername: SUITE, encrypt: encrypted, agentid: "100001" } });
+		await (await api()).event.post();
+		expect(out.status).toBe(200);
+		expect(out.text).toBe("success");
+		expect(dbo.prepare("SELECT suite_ticket FROM wecom_suite_ticket WHERE suite_id = ?").get(SUITE)).toMatchObject({ suite_ticket: "tk_json" });
+	});
+
+	it("指令回调（JSON 字符串包体）：未经框架解析的原始串也能归一", async () => {
+		const plain = JSON.stringify({ InfoType: "suite_ticket", SuiteId: SUITE, SuiteTicket: "tk_str" });
+		const encrypted = await seal(plain);
+		request({ query: signedQuery(encrypted), body: JSON.stringify({ tousername: SUITE, encrypt: encrypted }) });
+		await (await api()).event.post();
+		expect(out.status).toBe(200);
+		expect(out.text).toBe("success");
+		expect(dbo.prepare("SELECT suite_ticket FROM wecom_suite_ticket WHERE suite_id = ?").get(SUITE)).toMatchObject({ suite_ticket: "tk_str" });
+	});
+
 	it("报文缺 Encrypt → 400", async () => {
 		request({ query: signedQuery("x"), body: "<xml></xml>" });
 		await (await api()).event.post();

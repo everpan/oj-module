@@ -37,6 +37,7 @@ import {
 	putLoginState,
 	takeLoginState,
 } from "../src/auth/api/_shared/wecom/login";
+import { callbackFields, field } from "../src/auth/api/_shared/wecom/payload";
 import {
 	claimLoginTicket,
 	ensureTenant,
@@ -510,7 +511,7 @@ describe("P1-G：事件分发（suite_ticket / 授权 / 解绑）", () => {
 	const deps = (client: unknown) => ({ cfg: CFG, client: client as never, store: storeDeps() });
 
 	it("suite_ticket：落库并给 30 分钟有效期（企微 10 分钟推一次，过期即拒发 API）", async () => {
-		await handleSuiteEvent("<xml><InfoType>suite_ticket</InfoType><SuiteId>suite_1</SuiteId><SuiteTicket>tk_1</SuiteTicket></xml>", deps(fakeClient()));
+		await handleSuiteEvent({ SuiteId: "suite_1", InfoType: "suite_ticket", SuiteTicket: "tk_1" }, deps(fakeClient()));
 		expect(await getSuiteTicket(CFG.suiteId, storeDeps())).toEqual({ ticket: "tk_1", expiresAt: clock + 1800 });
 	});
 
@@ -523,7 +524,7 @@ describe("P1-G：事件分发（suite_ticket / 授权 / 解绑）", () => {
 				return "sat";
 			},
 		} as never;
-		await handleSuiteEvent("<xml><InfoType>suite_ticket</InfoType><SuiteId>suite_1</SuiteId><SuiteTicket>tk_9</SuiteTicket></xml>", deps(warm));
+		await handleSuiteEvent({ SuiteId: "suite_1", InfoType: "suite_ticket", SuiteTicket: "tk_9" }, deps(warm));
 		expect(seen).toEqual(["suite_1/secret_1/tk_9"]);
 
 		// suite_secret 配错时只是预热失败：票据必须照旧落库，否则 create_auth 连门都进不去
@@ -533,7 +534,7 @@ describe("P1-G：事件分发（suite_ticket / 授权 / 解绑）", () => {
 				throw new Error("企微 get_suite_token 失败：errcode=40001");
 			},
 		} as never;
-		await expect(handleSuiteEvent("<xml><InfoType>suite_ticket</InfoType><SuiteId>suite_1</SuiteId><SuiteTicket>tk_10</SuiteTicket></xml>", deps(broken)))
+		await expect(handleSuiteEvent({ SuiteId: "suite_1", InfoType: "suite_ticket", SuiteTicket: "tk_10" }, deps(broken)))
 			.resolves
 			.toBe("suite_ticket");
 		expect((await getSuiteTicket(CFG.suiteId, storeDeps())).ticket).toBe("tk_10");
@@ -542,7 +543,7 @@ describe("P1-G：事件分发（suite_ticket / 授权 / 解绑）", () => {
 	it("create_auth：AuthCode 换永久码 → 每个 agent 一行 profile，并作废旧 corp token", async () => {
 		await putSuiteTicket(CFG.suiteId, "tk_1", clock + 1800, storeDeps());
 		const client = fakeClient();
-		await handleSuiteEvent("<xml><InfoType>create_auth</InfoType><SuiteId>suite_1</SuiteId><AuthCode>AC_1</AuthCode><State>env=test</State></xml>", deps(client));
+		await handleSuiteEvent({ SuiteId: "suite_1", InfoType: "create_auth", AuthCode: "AC_1", State: "env=test" }, deps(client));
 		const rows = dbo.prepare("SELECT agent_id, env, status FROM wecom_app_profile ORDER BY agent_id").all();
 		expect(rows).toEqual([
 			{ agent_id: "100001", env: "test", status: "active" },
@@ -559,7 +560,7 @@ describe("P1-G：事件分发（suite_ticket / 授权 / 解绑）", () => {
 	it("create_auth 匿名回调（无租户头）：审计前先按企业绑租户，行落进该企业 oplog", async () => {
 		await putSuiteTicket(CFG.suiteId, "tk_1", clock + 1800, storeDeps());
 		g.http = {};
-		await handleSuiteEvent("<xml><InfoType>create_auth</InfoType><SuiteId>suite_1</SuiteId><AuthCode>AC_1</AuthCode></xml>", deps(fakeClient()));
+		await handleSuiteEvent({ SuiteId: "suite_1", InfoType: "create_auth", AuthCode: "AC_1" }, deps(fakeClient()));
 		expect(g.http.tenantId).toBe("ww_corp_a");
 		expect(dbo.prepare("SELECT tenant_id, target FROM sys_oplog WHERE action = 'wecom.auth.apply'").get())
 			.toMatchObject({ tenant_id: "ww_corp_a", target: "ww_corp_a" });
@@ -574,7 +575,7 @@ describe("P1-G：事件分发（suite_ticket / 授权 / 解绑）", () => {
 			return orig(name);
 		};
 		try {
-			await expect(handleSuiteEvent("<xml><InfoType>create_auth</InfoType><SuiteId>suite_1</SuiteId><AuthCode>AC_1</AuthCode></xml>", deps(fakeClient())))
+			await expect(handleSuiteEvent({ SuiteId: "suite_1", InfoType: "create_auth", AuthCode: "AC_1" }, deps(fakeClient())))
 				.resolves
 				.toBe("create_auth");
 		}
@@ -590,7 +591,7 @@ describe("P1-G：事件分发（suite_ticket / 授权 / 解绑）", () => {
 		dbo.prepare("INSERT INTO sys_refresh_token (token_hash, tenant_id, user_id, expires_at, revoked, created_at) VALUES ('h', 'ww_corp_a', 1, ?, 0, ?)").run(clock + 100, clock);
 
 		g.http = {};
-		await handleSuiteEvent("<xml><InfoType>cancel_auth</InfoType><SuiteId>suite_1</SuiteId><AuthCorpId>ww_corp_a</AuthCorpId></xml>", deps(fakeClient()));
+		await handleSuiteEvent({ SuiteId: "suite_1", InfoType: "cancel_auth", AuthCorpId: "ww_corp_a" }, deps(fakeClient()));
 
 		expect(dbo.prepare("SELECT DISTINCT status FROM wecom_app_profile").all()).toEqual([{ status: "disabled" }]);
 		expect(dbo.prepare("SELECT COUNT(*) AS n FROM sys_refresh_token").get()).toMatchObject({ n: 0 });
@@ -600,18 +601,60 @@ describe("P1-G：事件分发（suite_ticket / 授权 / 解绑）", () => {
 	});
 
 	it("SuiteId 与本部署不一致 → 400（不同套件的回调不得互相污染）", async () => {
-		await expect(handleSuiteEvent("<xml><InfoType>suite_ticket</InfoType><SuiteId>other</SuiteId><SuiteTicket>t</SuiteTicket></xml>", deps(fakeClient())))
+		await expect(handleSuiteEvent({ SuiteId: "other", InfoType: "suite_ticket", SuiteTicket: "t" }, deps(fakeClient())))
 			.rejects
 			.toMatchObject({ status: 400 });
 	});
 
-	it("不消费的事件（通讯录变更等）回 success 语义的 InfoType，不抛错（否则企微重推三次）", async () => {
-		expect(await handleSuiteEvent("<xml><InfoType>change_contact</InfoType><SuiteId>suite_1</SuiteId></xml>", deps(fakeClient()))).toBe("change_contact");
+	it("不消费的事件回 success 语义的 InfoType，不抛错（否则企微重推三次）", async () => {
+		expect(await handleSuiteEvent({ InfoType: "change_contact", SuiteId: "suite_1" }, deps(fakeClient()))).toBe("change_contact");
+	});
+
+	// C1（事件增量）开工前要靠这条识别「通讯录变更真的推到了本端点」：数据回调没有 InfoType，
+	// 只有 MsgType=event + Event=change_contact，早先只记 InfoType 会把这种情况记成空白。
+	it("数据回调形态（无 InfoType）也能识别出事件名，且日志只留字段名不留值", async () => {
+		const dataCallback = {
+			ToUserName: "ww_corp_a",
+			CreateTime: 1700000000,
+			MsgType: "event",
+			Event: "change_contact",
+			ChangeType: "update_party",
+			Id: 2,
+		};
+		const logged: unknown[][] = [];
+		const orig = g.log;
+		g.log = { ...orig, info: (...args: unknown[]) => void logged.push(args) };
+		try {
+			expect(await handleSuiteEvent(dataCallback, deps(fakeClient()))).toBe("change_contact");
+		}
+		finally {
+			g.log = orig;
+		}
+		const line = logged.find(args => args[0] === "wecom event ignored");
+		expect(line).toContain("change_contact");
+		// 字段清单能告诉后来的人「报文长什么样」；值（部门 id 等）一个都不许进日志
+		expect(field(callbackFields(dataCallback), "ChangeType")).toBe("update_party");
+		expect(JSON.stringify(line)).not.toContain("update_party");
+	});
+
+	// 兜底口径（payload.ts 头的说明）：部分回调业务没有 JSON 文档，收到 XML 也必须能处理。
+	// 同一个事件两种格式走出来的效果必须一模一样，否则「换个格式就静默不认」会在真机上才暴露。
+	it("XML 包体同样能解（兜底）：与 JSON 走同一条路径，结果一致", async () => {
+		const asJson = { SuiteId: "suite_1", InfoType: "create_auth", AuthCode: "AC_xml" };
+		const asXml = [
+			"<xml><SuiteId><![CDATA[suite_1]]></SuiteId><InfoType><![CDATA[create_auth]]></InfoType>",
+			"<AuthCode><![CDATA[AC_xml]]></AuthCode></xml>",
+		].join("");
+		const fromJson = callbackFields(asJson);
+		const fromXml = callbackFields(asXml);
+		expect([...fromXml.values.entries()].sort()).toEqual([...fromJson.values.entries()].sort());
+		// 信封小写、明文大写都认：上游 JSON 信封是 {"tousername","encrypt"}
+		expect(field(callbackFields({ tousername: "ww_corp_a", encrypt: "abc" }), "Encrypt")).toBe("abc");
 	});
 
 	it("create_auth 缺 AuthCode → 400（宁可拒也不落半行 profile）", async () => {
 		await putSuiteTicket(CFG.suiteId, "tk_1", clock + 1800, storeDeps());
-		await expect(handleSuiteEvent("<xml><InfoType>create_auth</InfoType><SuiteId>suite_1</SuiteId></xml>", deps(fakeClient())))
+		await expect(handleSuiteEvent({ SuiteId: "suite_1", InfoType: "create_auth" }, deps(fakeClient())))
 			.rejects
 			.toMatchObject({ status: 400 });
 	});
@@ -715,7 +758,7 @@ describe("P1-J：部署常量读取（缺项一次报全 / 密钥格式 fail-fas
 		installVars();
 		const cfg = readWecomConfig();
 		expect(cfg.baseUrl).toBe("https://site.example.com/api/auth/wecom");
-		expect(eventUrlOf(cfg)).toBe("https://site.example.com/api/auth/wecom/event");
+		expect(eventUrlOf(cfg)).toBe("https://site.example.com/api/auth/wecom/event?callback_format=json");
 		expect(loginRedirectOf(cfg)).toBe("https://site.example.com/api/auth/wecom/callback");
 		expect(siteRootOf(cfg)).toBe("https://site.example.com");
 	});

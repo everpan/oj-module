@@ -323,7 +323,7 @@ phase reconcile   : ⚡ 仅当「本轮完整且 skipped=0」才把未 seen 的�
 | **A3 基线·共享读面** | `_platform/api/org/*`（`tree`/`departments`/`members`/`user`/`picker`/**`resolve`**/`is-member`）+ `scope=self\|all` 两级门禁 + `users.activated` 接入 `contacts` | 零真机；别的模块能开始消费 |
 | **B1 适配器·登录自更新** | `client.ts` 六个读接口 + `auth_mode` 解析与落库 + 登录自更新（节流 + 不建占位部门 + 只写已知部门） | 零真机可编码；真机验 §10-1 |
 | **B2 适配器·全量同步** | `auth/0002__org_sync.*` + `wecom_sync_job` + 分片推进 + 错误卡片 + 权限四项三态 + 手册四节 | **前置**：四项权限在测试企业「已生效」 |
-| **C1 事件增量** | `change_contact`（`create/update/delete` user & party） | **前置**：验完投递地址与 XML 形态（§10-2/3） |
+| **C1 事件增量** | `change_contact`（`create/update/delete` user & party） | **前置**：验完投递地址与包体形态（手册 §7.6-C10：一条 `wecom event ignored … event=change_contact fields=…` 即证明地址与凭据都对） |
 | **C2 LDAP 适配器** | 第二个 L1 适配器（ou → 部门、member → 成员），验证模型通用性 | **前置**：确认 `axis("ldap")` 支持 search |
 | **D 定时** | cron（按 corp 拆任务）+ 敏感字段 oauth2 | 无人值守 |
 
