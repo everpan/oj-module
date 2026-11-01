@@ -67,11 +67,11 @@ export function buildAuthorizeUrl(opts: {
 // 未指定 agent 且多应用时，优先作为默认登录应用的 agent（按部署需要调整）
 const DEFAULT_WECOM_AGENT = "1000059";
 
-export async function resolveWecomProfile(agentId: string | null): Promise<{ corpId: string; agentId: string; env: string }> {
+export async function resolveWecomProfile(agentId: string | null): Promise<{ corpId: string, agentId: string, env: string }> {
 	const rows = await db.table("wecom_app_profile")
 		.select(["corp_id", "agent_id", "env", "status"])
 		.where({ field: "status", op: "eq", value: "active" })
-		.all() as Array<{ corp_id: string; agent_id: string; env: string | null; status: string }>;
+		.all() as Array<{ corp_id: string, agent_id: string, env: string | null, status: string }>;
 	const active = rows.filter(r => String(r.status) === "active");
 	if (!active.length)
 		throw Object.assign(new Error("尚未完成企业微信授权（无已安装应用档案），请先走「生成开通链接」完成授权"), { status: 400 });
@@ -80,15 +80,13 @@ export async function resolveWecomProfile(agentId: string | null): Promise<{ cor
 		throw Object.assign(new Error("已授权多家企业，请在登录链接带 corp 参数以区分"), { status: 400 });
 	const corpId = corps[0]!;
 	const agents = active.filter(r => r.corp_id === corpId);
-	let pick: { corp_id: string; agent_id: string; env: string | null };
-	if (agentId) {
-		pick = agents.find(a => a.agent_id === agentId);
-		if (!pick)
-			throw Object.assign(new Error("指定的 agent 在该企业中不存在"), { status: 400 });
-	} else {
-		// 未指定时优先 DEFAULT_WECOM_AGENT，否则取首个活跃应用
-		pick = agents.find(a => a.agent_id === DEFAULT_WECOM_AGENT) ?? agents[0]!;
-	}
+	// 指定 agent 就必须命中，未指定则退到默认 agent / 首个活跃应用（agents 非空：active 已非空且
+	// 至少有一个属于 corpId——corps 就是按 active 的 corp_id 去重出来的）
+	const pick = agentId
+		? agents.find(a => a.agent_id === agentId)
+		: (agents.find(a => a.agent_id === DEFAULT_WECOM_AGENT) ?? agents[0]);
+	if (!pick)
+		throw Object.assign(new Error("指定的 agent 在该企业中不存在"), { status: 400 });
 	return { corpId: pick.corp_id, agentId: pick.agent_id, env: pick.env == null ? "prod" : String(pick.env) };
 }
 

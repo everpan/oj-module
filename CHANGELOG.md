@@ -7,6 +7,20 @@
 
 ## [Unreleased]
 
+## [0.2.49] - 2026-11-01
+
+双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步定版 **0.2.49**。本轮交付
+**企微通讯录与组织架构同步的完整链路**——适配器读取面（上游错码按权限/限流/致命分类，
+决定跳过、退避还是熔断）、全量同步（分片推进 + 抢锁防重入 + 连续致命熔断 + 墓碑只在
+「完整且零跳过」的轮次回收）、`change_contact` 事件增量，以及管理端常驻的同步状态条与
+按错码给出的自助卡片；同时修掉两处「恢复路径被自己的防护拆掉」的缺陷（重放守卫把企微的
+重推判成 400、永久码回包 `agent` 为空直接判死）与一个出包侧的静默降级（config 里
+`ENC[...]` 解不开时 `sql_guard` 被关掉、退出码仍是 0）。
+
+**升级提示**：新增迁移 `auth/0002__org_sync`（三方言），部署后先跑 `oj migrate` 再起服；
+新增权限点 `auth.wecom.sync`（管理端触发同步的唯一门禁，已随三方言 seed 注册）。`GET /api/system/users`
+的 `departments` 形状变更见下方 Changed（BREAKING，只影响直接消费该接口的前端）。
+
 ### Added
 
 - **企微通讯录事件增量（C1）**：`change_contact` 接进 `/event`（新增 `_shared/wecom/contacts.ts`），
@@ -77,6 +91,11 @@
 
 ### Fixed
 
+- **模板 `auth/_shared/wecom/login.ts::resolveWecomProfile` 在 strict 下少一次收窄，`tsc` 直接红（TS2322）**：
+  `pick` 声明成非可选却接了 `agents.find(...)` 的 `T | undefined`。它不影响 `ojm build`（出包不做类型检查），
+  但谁在模板工程里跑一次 `tsc -p src/tsconfig.json` 就会看到——`pnpm test` 的 `typecheck-coverage` 用例
+  正是这么做的。改成三元取值 + 一次 `if (!pick)` 收口，两条分支（指定 agent 必须命中 / 未指定则退到
+  默认 agent 或首个活跃应用）语义不变。
 - **重放守卫把企微的重推判成 400（`回调 nonce 重复`），瞬态故障的恢复路径被自己拆掉**：nonce 在
   **处理之前**就被记为已用，而企微只在「拿不到 success」时重推——也就是说，需要重推的那一刻正好被
   这道闸挡住。2026-11-01 生产日志即此：`create_auth` 因上游 502 失败 → 5 秒后重推 → 400「nonce 重复」。
