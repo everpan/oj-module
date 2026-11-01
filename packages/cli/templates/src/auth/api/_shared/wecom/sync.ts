@@ -17,10 +17,10 @@
 import type { WecomClient, WecomMember } from "./client";
 import type { ProfileProbe } from "./store";
 
-import { markSeen, reconcileHidden, setMainDepartment, upsertDepartment, upsertMember } from "#/_platform/_shared/service/domain/org";
+import { markSeen, reconcileHidden, upsertDepartment } from "#/_platform/_shared/service/domain/org";
 import { upsertSourceUser } from "#/_platform/_shared/service/domain/users";
 import { WecomApiError } from "./client";
-import { externalUsername } from "./login";
+import { applyMemberDetail, externalUsername } from "./login";
 
 export type SyncStatus = "idle" | "running" | "done" | "failed" | "cancelled";
 export type SyncPhase = "departments" | "members" | "reconcile";
@@ -457,34 +457,16 @@ async function countMembers(corpId: string): Promise<number> {
 	return rows.length;
 }
 
-/** 一个成员：建档（activated=0）→ 状态/职务快照 → 逐部门关联 → 主部门 */
+/**
+ * 一个成员：建档（activated=0）→ 交给 `applyMemberDetail` 写资料与组织关系。
+ *
+ * 这里**只做「建档 + 传参」**：真正的字段口径（只写自己拥有的行、未知部门跳过、主部门兜底）
+ * 在 login.ts::applyMemberDetail 里，登录自更新与事件增量也调它。deptByOrigin 是本片预取的，
+ * 逐人去查会把这个 500 部门的同步打成 N×M 次查询。
+ */
 async function applyMember(m: WecomMember, corpId: string, deptByOrigin: Map<string, number>, orgDeps: { now: () => number }): Promise<void> {
-	const username = externalUsername(m.userid);
-	const uid = await upsertSourceUser({ username, displayName: m.name, source: ORIGIN, corpId });
-	// 快照列只写自己拥有的行（D13）：管理员「转为本地维护」后，同步不再覆盖
-	await db.table("users").update({ position: m.position, external_status: m.status }).where({ and: [
-		{ field: "username", op: "eq", value: username },
-		{ field: "source", op: "eq", value: ORIGIN },
-	] }).run();
-
-	let mainDeptId: number | null = null;
-	for (const [i, originId] of m.departments.entries()) {
-		const deptId = deptByOrigin.get(String(originId));
-		// 未知部门跳过：可见范围只覆盖子树时，人的其他部门不在本地（也不该顺手建）
-		if (!deptId)
-			continue;
-		await upsertMember({
-			userId: uid,
-			deptId,
-			orderNo: m.orders[i] ?? 0,
-			isLeader: (m.leaderInDept[i] ?? 0) === 1,
-		}, orgDeps);
-		const mainOrigin = m.mainDepartment != null ? String(m.mainDepartment) : String(m.departments[0] ?? "");
-		if (String(originId) === mainOrigin)
-			mainDeptId = deptId;
-	}
-	if (mainDeptId != null)
-		await setMainDepartment(uid, mainDeptId, orgDeps);
+	const uid = await upsertSourceUser({ username: externalUsername(m.userid), displayName: m.name, source: ORIGIN, corpId });
+	await applyMemberDetail({ uid, userid: m.userid }, m, { ...orgDeps, deptByOrigin });
 }
 
 /** 取消：清游标、置 cancelled（不回滚已写入的组织数据——同步幂等，重跑即可） */

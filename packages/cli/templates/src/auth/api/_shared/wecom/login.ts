@@ -14,6 +14,8 @@ import type { WecomStoreDeps } from "./store";
 // 四条纪律：① 24h 节流（老用户不重复打上游）；② 整体 try/catch，失败不影响登录；
 // ③ **不建占位部门**——只对已知部门写关联（D10，否则任何登录成员都能凭空造出部门节点）；
 // ④ 只加不摘：人调到新部门只加新的，旧部门由全量同步/事件摘除。
+// 落库只有**一个**函数（applyMemberDetail）：轨二（全量同步）、轨三（事件增量）也调它——
+// 三套写库逻辑必然长歪，而症状只在「某条路径走过来的人组织关系不对」时才暴露。
 import { setMainDepartment, upsertMember } from "#/_platform/_shared/service/domain/org";
 
 export const AUTHORIZE_IN_APP = "https://open.weixin.qq.com/connect/oauth2/authorize";
@@ -177,53 +179,88 @@ async function dbExternalStatus(userid: string): Promise<number | null> {
 	return v == null ? null : Number(v);
 }
 
+/** 一条成员的「外部源口径」快照：登录自更新、全量同步、事件增量三处都写这一个形状 */
+export interface MemberDetail {
+	/** undefined = 这条数据源没给名字，保留原值（空串/空白的名字不写） */
+	name?: string | null
+	/** undefined = 没给，**不写**（别把已知职务清成 null；null = 明确为空，写 null） */
+	position?: string | null
+	/** 同上：undefined = 不知道在职状态，不能覆盖 */
+	status?: number | null
+	departments: string[]
+	orders?: number[]
+	leaderInDept?: number[]
+	mainDepartment?: number | null
+}
+
 /**
- * 把 user/get 的结果写回本地：资料（姓名/职务/在职状态）+ 所属部门关联。
+ * 把一条成员详情写回本地：资料（姓名/职务/在职状态）+ 所属部门关联。
+ *
+ * **三轨共用这一个写入口**（登录自更新 / 全量同步 / 事件增量）：两套写库逻辑必然长歪——
+ * 一处漏了主部门兜底、一处漏了 D13 归属权，症状都是「某类路径走过来的人组织关系不对」，
+ * 而且只在特定组合下才出现。所以这里只认「一条快照」，不认它从哪个轨来。
  *
  * **只加不摘**：人调到新部门只写新部门，旧部门不在这里删——摘除属全量同步/事件增量的职责，
  * 登录路径上删关联会在「企微接口这次只返回部分部门」时把人的组织关系误删。
  * **只写企微拥有的行**（D13）：`source != 'wecom'`（管理员已「转为本地维护」）一律不覆盖。
  */
-async function applyUserDetail(ctx: SelfUpdateCtx, detail: { name: string | null, position: string | null, status: number | null, departments: string[], orders: number[], leaderInDept: number[], mainDepartment: number | null }, deps: SelfUpdateDeps): Promise<void> {
-	const cols: Record<string, unknown> = {
-		position: detail.position,
-		external_status: detail.status,
-		// 走到这里说明真人刚扫码登录过 → 纳入通讯录目录（§9.1）
-		activated: 1,
-	};
+export async function applyMemberDetail(
+	ctx: { uid: number, userid: string },
+	detail: MemberDetail,
+	opts: {
+		now: () => number
+		/** 真人刚登录过 → 纳入通讯录目录（§9.1）。同步与事件建档的人**不算**用过本站。 */
+		activated?: boolean
+		/** 全量同步按片预取的「企微部门 origin_id → 本地 id」；缺省时按本次涉及的部门现查 */
+		deptByOrigin?: Map<string, number>
+	},
+): Promise<void> {
+	const cols: Record<string, unknown> = {};
+	if (detail.position !== undefined)
+		cols.position = detail.position;
+	if (detail.status !== undefined)
+		cols.external_status = detail.status;
+	if (opts.activated)
+		cols.activated = 1;
 	const displayName = detail.name?.trim();
 	if (displayName)
 		cols.display_name = displayName;
-	await db.table("users").update(cols).where({ and: [
-		{ field: "username", op: "eq", value: externalUsername(ctx.userid) },
-		{ field: "source", op: "eq", value: "wecom" },
-	] }).run();
+	if (Object.keys(cols).length) {
+		await db.table("users").update(cols).where({ and: [
+			{ field: "username", op: "eq", value: externalUsername(ctx.userid) },
+			{ field: "source", op: "eq", value: "wecom" },
+		] }).run();
+	}
 
 	if (!detail.departments.length)
 		return;
-	const rows = await db.table("sys_department").select(["id", "origin_id"]).where({ and: [
-		{ field: "origin", op: "eq", value: "wecom" },
-		{ field: "origin_id", op: "in", value: detail.departments },
-	] }).all() as Array<{ id: number, origin_id: string }>;
-	const byOrigin = new Map(rows.map(r => [String(r.origin_id), Number(r.id)]));
-	const orgDeps = { now: deps.store.now };
+	const byOrigin = opts.deptByOrigin ?? await wecomDeptIndex(detail.departments);
+	const orgDeps = { now: opts.now };
 	for (const [i, originId] of detail.departments.entries()) {
-		const deptId = byOrigin.get(originId);
+		const deptId = byOrigin.get(String(originId));
 		// D10：未知部门一律跳过，等全量同步补——这里若能建部门，任何登录成员都能伪造组织架构
 		if (!deptId)
 			continue;
 		await upsertMember({
 			userId: ctx.uid,
 			deptId,
-			orderNo: detail.orders[i] ?? 0,
-			isLeader: (detail.leaderInDept[i] ?? 0) === 1,
+			orderNo: detail.orders?.[i] ?? 0,
+			isLeader: (detail.leaderInDept?.[i] ?? 0) === 1,
 		}, orgDeps);
 	}
 	// 主部门可能缺失（仅当应用对主部门有查看权限时才返回）→ 兜底取 department[0]
-	const mainOrigin = detail.mainDepartment != null ? String(detail.mainDepartment) : detail.departments[0]!;
+	const mainOrigin = detail.mainDepartment != null ? String(detail.mainDepartment) : String(detail.departments[0]!);
 	const mainDept = byOrigin.get(mainOrigin);
-	if (mainDept)
+	if (mainDept != null)
 		await setMainDepartment(ctx.uid, mainDept, orgDeps);
+}
+
+async function wecomDeptIndex(originIds: string[]): Promise<Map<string, number>> {
+	const rows = await db.table("sys_department").select(["id", "origin_id"]).where({ and: [
+		{ field: "origin", op: "eq", value: "wecom" },
+		{ field: "origin_id", op: "in", value: originIds },
+	] }).all() as Array<{ id: number, origin_id: string }>;
+	return new Map(rows.map(r => [String(r.origin_id), Number(r.id)]));
 }
 
 /**
@@ -239,7 +276,8 @@ export async function selfUpdate(ctx: SelfUpdateCtx, deps: SelfUpdateDeps): Prom
 		// null = 无通讯录权限 / 不在可见范围 / 上游抖：本次不更新，也别写节流键（下次登录重试）
 		if (!detail)
 			return { blocked: isBlockedStatus(await dbExternalStatus(ctx.userid)) };
-		await applyUserDetail(ctx, detail, deps);
+		// 真人刚扫码登录过 → 纳入通讯录目录（§9.1）；同步/事件建档的人不算
+		await applyMemberDetail(ctx, detail, { now: deps.store.now, activated: true });
 		await deps.cache.set(key, "1", SELF_UPDATE_TTL_SECS);
 		return { blocked: isBlockedStatus(detail.status) };
 	}

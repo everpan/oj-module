@@ -1,9 +1,8 @@
 import type { WecomClient } from "./client";
 import type { WecomConfig } from "./config";
-import type { CallbackFields } from "./payload";
 import type { WecomStoreDeps } from "./store";
 // 企微「指令回调」事件处理：suite_ticket / create_auth / change_auth / cancel_auth /
-// reset_permanent_code（代开发重置 secret 走后者）。
+// reset_permanent_code（代开发重置 secret 走后者），以及轨三的通讯录变更（contacts.ts）。
 //
 // 为什么这几件事必须由回调驱动（而不是管理端手工录）：
 //   · suite_ticket 每 10 分钟推一次、30 分钟过期，拿不到就换不出 suite_access_token，
@@ -20,7 +19,8 @@ import type { WecomStoreDeps } from "./store";
 // 属预期（日志留痕即可，不影响已落库的 profile）。
 import { invalidateAllUsers } from "#/_platform/_shared/service/infra/access";
 import { recordOp } from "#/_platform/_shared/service/infra/audit";
-import { callbackFields, field } from "./payload";
+import { handleContactChange } from "./contacts";
+import { callbackFields, field, requireField } from "./payload";
 import { corpScope, ensureTenant, findCorpAuth, getSuiteTicket, putSuiteTicket, revokeTenantSessions, saveProfile, setAuthMode, setProfileStatus, tenantOfCorp } from "./store";
 
 /** suite_ticket 官方有效期 30 分钟（10 分钟推一次）；本地按 30 分钟作废，宁可拒一次也不拿过期票打企微 */
@@ -41,13 +41,6 @@ export function envOfState(state: string | null): string {
 	if (kv)
 		return kv[1]!.toLowerCase();
 	return /^(?:prod|test|staging|dev)$/i.test(trimmed) ? trimmed.toLowerCase() : "prod";
-}
-
-function requireField(fields: CallbackFields, name: string, infoType: string): string {
-	const value = field(fields, name);
-	if (!value)
-		throw Object.assign(new Error(`企微事件 ${infoType} 缺少 ${name}`), { status: 400 });
-	return value;
 }
 
 /**
@@ -148,6 +141,14 @@ export async function handleSuiteEvent(payload: unknown, deps: SuiteEventDeps): 
 	if (suiteId && suiteId !== deps.cfg.suiteId)
 		throw Object.assign(new Error("企微事件 SuiteId 与本部署配置不一致"), { status: 400 });
 
+	// 通讯录变更（轨三）：**必须在 switch 之前分流**。两种形态都认——
+	// 应用侧数据回调是 `MsgType=event` + `Event=change_contact`（InfoType 为空），
+	// 代开发指令回调是 `InfoType=change_contact`；后者与 suite_ticket 同用 InfoType 这一列，
+	// 落进 default 只会被记成「不消费的事件」。
+	// 与下面几个分支的不同：通讯录事件失败**不抛**（事件是加速器，重推补不回来，见 contacts.ts）。
+	if (field(fields, "Event") === "change_contact" || infoType === "change_contact")
+		return await handleContactChange(fields, deps);
+
 	switch (infoType) {
 		case "suite_ticket": {
 			const ticket = requireField(fields, "SuiteTicket", infoType);
@@ -186,12 +187,12 @@ export async function handleSuiteEvent(payload: unknown, deps: SuiteEventDeps): 
 			return infoType;
 		}
 		default: {
-			// 通讯录变更等事件本模块不消费：记账即可，回 success 让企微别再推。
+			// 余下的事件（标签变更、外部联系人等）本模块不消费：记账即可，回 success 让企微别再推。
 			//
-			// 记账要记够「能不能开工 C1」的量：指令回调（有 InfoType）与数据回调
-			// （`MsgType=event` + `Event=change_contact`，没有 InfoType）走的是同一个 `/event`，
+			// 记账要记够「这条报文能不能用」的量：指令回调（有 InfoType）与数据回调
+			// （`MsgType=event` + `Event=xxx`，没有 InfoType）走的是同一个 `/event`，
 			// 而两者的 Token/AESKey 未必是同一套。真机验形态时只凭 InfoType 为空无法区分
-			// 「收到了通讯录变更」与「收到了一条别的消息」，所以把 Event 与字段清单一起记下。
+			// 「收到了一条事件」与「收到了一条别的消息」，所以把 Event 与字段清单一起记下。
 			// **只记字段名不记值**：明文里有姓名与工号。
 			const eventName = field(fields, "Event");
 			log.info(

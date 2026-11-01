@@ -516,10 +516,51 @@ export async function reconcileHidden(origin: string, jobId: number, deps: OrgDe
 	] }).run());
 }
 
-/** 外部源侧的部门删除事件：置 deleted（软删，保留壳以防成员关联悬挂） */
-export async function markDeleted(origin: string, originId: string, deps: OrgDeps): Promise<void> {
+/**
+ * 外部源侧的部门删除事件：置 `deleted=1`（软删，保留壳以防成员关联悬挂），**级联到整棵子树**。
+ *
+ * 为什么级联：企微的 `delete_party` 只报被删的那一个 id。可见范围之外的子部门未必各自收到通知，
+ * 不在这里一并标记，子树就会挂在一个已删的父节点上——列表按 `deleted=0` 过滤后它们变成孤儿，
+ * 只能在 `buildTree` 里靠「父不在 → 提根」补救，而那时已经看不出它们本该消失。
+ *
+ * 这也是 `deleted=1` 的**唯一**写入点：`reconcileHidden` 只动 `sync_visible`（可见范围收窄，
+ * 不是删除）——两者混用会把「看不见」和「没了」变成同一件事。
+ */
+export async function markDeleted(origin: string, originId: string, deps: OrgDeps): Promise<number> {
+	const rows = await db.table("sys_department").select(["id", "origin_id", "parent_id"]).where({ field: "origin", op: "eq", value: origin }).all() as Array<Record<string, unknown>>;
+	const rootId = rows.find(r => String(r.origin_id) === originId)?.id;
+	if (rootId == null)
+		return 0;
+	const childrenOf = new Map<number, number[]>();
+	for (const r of rows) {
+		if (r.parent_id == null)
+			continue;
+		const pid = Number(r.parent_id);
+		const list = childrenOf.get(pid);
+		if (list)
+			list.push(Number(r.id));
+		else
+			childrenOf.set(pid, [Number(r.id)]);
+	}
+	// 广度优先收集子树。不加 visited 也不会死循环（真成环时每个节点只会被推一次），
+	// 但结构脏到成环时不该再信任 parent_id，故仍按集合去重。
+	const ids: number[] = [];
+	const seen = new Set<number>();
+	const queue = [Number(rootId)];
+	while (queue.length) {
+		const id = queue.shift()!;
+		if (seen.has(id))
+			continue;
+		seen.add(id);
+		ids.push(id);
+		for (const child of childrenOf.get(id) ?? [])
+			queue.push(child);
+	}
 	await db.table("sys_department").update({ deleted: 1, sync_visible: 0, update_time: deps.now() }).where({ and: [
 		{ field: "origin", op: "eq", value: origin },
-		{ field: "origin_id", op: "eq", value: originId },
+		{ field: "id", op: "in", value: ids },
 	] }).run();
+	// 返回「命中的子树节点数」而不是 affected-rows：三方言 affected-rows 口径不一致，
+	// 且已删的行再删一次可能计 0——调用方要的是「标了几个」，不是「改了几行」。
+	return ids.length;
 }

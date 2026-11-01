@@ -104,7 +104,7 @@ beforeEach(() => {
 afterEach(() => {
 	g.http = {};
 	clock = 1_000_000;
-	for (const t of ["wecom_app_profile", "wecom_suite_ticket", "sys_dept_member", "sys_department", "users", "sys_oplog"])
+	for (const t of ["wecom_app_profile", "wecom_suite_ticket", "sys_dept_member", "sys_department", "users", "sys_oplog", "sys_refresh_token"])
 		dbo.exec(`DELETE FROM ${t}`);
 });
 
@@ -415,5 +415,184 @@ describe("B1-C：登录自更新（轨一）", () => {
 		const uid = mkUser("wecom:zhangsan");
 		const res = await selfUpdate({ ...ctx, uid }, { client: clientOf(new Error("上游炸了")), cache: memCache(), store: storeDeps() });
 		expect(res.blocked).toBe(false);
+	});
+});
+
+// 轨三：事件增量。全程**只有一条纪律**要钉住——事件是加速器，不是权威：
+//   写对了就立刻可见（不必等下一次全量），写错了也绝不抛（抛了企微重推三次，而重推补不回来）。
+describe("C1：通讯录事件增量（change_contact）", () => {
+	/** 应用侧数据回调（90970）：企业身份在 ToUserName，没有 InfoType */
+	const appEvent = (extra: Record<string, unknown>) => ({
+		ToUserName: "ww_corp_a",
+		FromUserName: "sys",
+		CreateTime: 1_700_000_000,
+		MsgType: "event",
+		Event: "change_contact",
+		...extra,
+	});
+
+	/** 代开发指令回调（91134）：企业身份在 AuthCorpId，事件名在 InfoType，字段往往只有一个 id */
+	const suiteEvent = (extra: Record<string, unknown>) => ({
+		SuiteId: "suite_1",
+		AuthCorpId: "ww_corp_a",
+		InfoType: "change_contact",
+		...extra,
+	});
+
+	async function authorized(): Promise<void> {
+		await saveProfile({
+			suiteId: CFG.suiteId,
+			corpId: "ww_corp_a",
+			authCorpId: "ww_corp_a",
+			agentId: "100001",
+			env: "prod",
+			corpName: "测试企业",
+			permanentCode: "perm_a",
+			authMode: 0,
+		}, storeDeps());
+	}
+
+	/** 只实现两个回源接口的桩：member/dept 缺省 = 拿不到（无权限 / 不在可见范围） */
+	function clientOf(opts: { member?: unknown, dept?: unknown } = {}) {
+		const calls = { member: 0, dept: 0 };
+		return {
+			calls,
+			async userDetail() {
+				calls.member++;
+				return opts.member ?? null;
+			},
+			async departmentDetail() {
+				calls.dept++;
+				if (!opts.dept)
+					throw new Error("企微 department/get 失败：errcode=60011");
+				return opts.dept;
+			},
+		};
+	}
+
+	const deps = (client: unknown) => ({ cfg: CFG, client: client as never, store: storeDeps() });
+
+	async function wecomDept(originId: string, name = `部门${originId}`, parentId: number | null = null): Promise<number> {
+		return upsertDepartment({ origin: "wecom", originId, parentId, name }, { now: () => clock });
+	}
+
+	function mkUser(username: string, extra: Record<string, unknown> = {}): number {
+		dbo.prepare("INSERT INTO users (username, password_hash, display_name, source, activated) VALUES (?, '!wecom', ?, 'wecom', ?)")
+			.run(username, extra.displayName ?? username, extra.activated ?? 0);
+		return (dbo.prepare("SELECT id FROM users WHERE username = ?").get(username) as { id: number }).id;
+	}
+
+	const uidOf = (username: string) => (dbo.prepare("SELECT id FROM users WHERE username = ?").get(username) as { id: number } | undefined)?.id;
+
+	it("create_user（应用侧）：建档但不置 activated，姓名/部门/主部门照事件落库", async () => {
+		await authorized();
+		const d1 = await wecomDept("1");
+		const d2 = await wecomDept("2");
+		const client = clientOf();
+		await handleSuiteEvent(appEvent({
+			ChangeType: "create_user",
+			UserID: "zhangsan",
+			Name: "张三",
+			Department: "1|2",
+			MainDepartment: "2",
+			IsLeaderInDept: "1|0",
+		}), deps(client));
+
+		// 回源拿不到（无通讯录权限）→ 退回事件自带字段，而不是什么都不写
+		expect(client.calls.member).toBe(1);
+		expect(dbo.prepare("SELECT display_name, source, activated FROM users WHERE username = 'wecom:zhangsan'").get())
+			.toMatchObject({ display_name: "张三", source: "wecom", activated: 0 });
+		const uid = uidOf("wecom:zhangsan")!;
+		expect(dbo.prepare("SELECT dept_id, is_leader, is_main FROM sys_dept_member WHERE user_id = ? ORDER BY dept_id").all(uid))
+			.toEqual([{ dept_id: d1, is_leader: 1, is_main: 0 }, { dept_id: d2, is_leader: 0, is_main: 1 }]);
+	});
+
+	it("create_user（代开发形态只有 UserID）：回源拿全量快照，职务/排序/在职状态都补上", async () => {
+		await authorized();
+		const d1 = await wecomDept("1");
+		await handleSuiteEvent(suiteEvent({ ChangeType: "create_user", UserID: "lisi" }), deps(clientOf({
+			member: { userid: "lisi", name: "李四", position: "经理", status: 1, departments: ["1"], orders: [5], leaderInDept: [1], mainDepartment: 1 },
+		})));
+
+		expect(dbo.prepare("SELECT display_name, position, external_status FROM users WHERE username = 'wecom:lisi'").get())
+			.toMatchObject({ display_name: "李四", position: "经理", external_status: 1 });
+		expect(dbo.prepare("SELECT dept_id, order_no, is_leader, is_main FROM sys_dept_member WHERE user_id = ?").get(uidOf("wecom:lisi")))
+			.toMatchObject({ dept_id: d1, order_no: 5, is_leader: 1, is_main: 1 });
+	});
+
+	it("update_user + NewUserID：同一行改名（不新建）+ 吊销旧会话", async () => {
+		await authorized();
+		const uid = mkUser("wecom:zhangsan", { activated: 1 });
+		dbo.prepare("INSERT INTO sys_refresh_token (token_hash, user_id, expires_at, revoked, created_at) VALUES ('h1', ?, 0, 0, 0)").run(uid);
+
+		await handleSuiteEvent(appEvent({ ChangeType: "update_user", UserID: "zhangsan", NewUserID: "zhangsan2", Name: "张三" }), deps(clientOf()));
+
+		expect(uidOf("wecom:zhangsan")).toBeUndefined();
+		// 同一行：id 不变、activated 保持（登录过就是登录过）
+		expect(dbo.prepare("SELECT id, display_name, activated FROM users WHERE username = 'wecom:zhangsan2'").get())
+			.toMatchObject({ id: uid, display_name: "张三", activated: 1 });
+		expect(dbo.prepare("SELECT COUNT(*) AS n FROM sys_refresh_token WHERE user_id = ?").get(uid)).toMatchObject({ n: 0 });
+	});
+
+	it("delete_user：置 external_status=5 并摘掉部门关联，但**不删账号**", async () => {
+		await authorized();
+		const d1 = await wecomDept("1");
+		const uid = mkUser("wecom:zhangsan", { displayName: "张三", activated: 1 });
+		dbo.prepare("INSERT INTO sys_dept_member (tenant_id, user_id, dept_id, order_no, is_leader, is_main, update_time) VALUES ('default', ?, ?, 0, 0, 1, 0)").run(uid, d1);
+		dbo.prepare("INSERT INTO sys_refresh_token (token_hash, user_id, expires_at, revoked, created_at) VALUES ('h2', ?, 0, 0, 0)").run(uid);
+
+		await handleSuiteEvent(appEvent({ ChangeType: "delete_user", UserID: "zhangsan" }), deps(clientOf()));
+
+		// 账号留着（角色、历史操作、文件归属都挂在 users.id 上）；只摘组织关系与外部状态
+		expect(dbo.prepare("SELECT display_name, external_status, is_forbidden FROM users WHERE id = ?").get(uid))
+			.toMatchObject({ display_name: "张三", external_status: 5, is_forbidden: 0 });
+		expect(dbo.prepare("SELECT COUNT(*) AS n FROM sys_dept_member WHERE user_id = ?").get(uid)).toMatchObject({ n: 0 });
+		expect(dbo.prepare("SELECT COUNT(*) AS n FROM sys_refresh_token WHERE user_id = ?").get(uid)).toMatchObject({ n: 0 });
+	});
+
+	it("create_party / update_party：落库并解析出本地父 id（事件给的是企微部门 id）", async () => {
+		await authorized();
+		const parent = await wecomDept("1");
+		await handleSuiteEvent(appEvent({ ChangeType: "create_party", Id: 2, Name: "研发部", ParentId: "1" }), deps(clientOf()));
+
+		expect(dbo.prepare("SELECT origin, origin_id, name, parent_id, deleted FROM sys_department WHERE origin_id = '2'").get())
+			.toMatchObject({ origin: "wecom", origin_id: "2", name: "研发部", parent_id: parent, deleted: 0 });
+	});
+
+	it("delete_party：deleted=1 并**级联到整棵子树**（企微只报被删的那一个 id）", async () => {
+		await authorized();
+		const root = await wecomDept("1");
+		const mid = await wecomDept("2", "子部门", root);
+		const leaf = await wecomDept("3", "孙部门", mid);
+
+		await handleSuiteEvent(appEvent({ ChangeType: "delete_party", Id: 1 }), deps(clientOf()));
+
+		// 子树一并标记：否则它们会挂在一个已删父节点下，列表过滤后变成孤儿
+		for (const id of [root, mid, leaf])
+			expect(dbo.prepare("SELECT deleted, sync_visible FROM sys_department WHERE id = ?").get(id)).toMatchObject({ deleted: 1, sync_visible: 0 });
+	});
+
+	it("回源与事件都没有名字：不建无名部门，也不抛（事件是加速器，失败等全量兜底）", async () => {
+		await authorized();
+		await expect(handleSuiteEvent(suiteEvent({ ChangeType: "create_party", Id: 9 }), deps(clientOf())))
+			.resolves
+			.toBe("create_party");
+		expect(dbo.prepare("SELECT COUNT(*) AS n FROM sys_department").get()).toMatchObject({ n: 0 });
+	});
+
+	it("不认识的 ChangeType（标签变更等）：不写任何东西，也不报错", async () => {
+		await authorized();
+		await expect(handleSuiteEvent(appEvent({ ChangeType: "update_tag", TagId: 4 }), deps(clientOf())))
+			.resolves
+			.toBe("update_tag");
+		expect(dbo.prepare("SELECT COUNT(*) AS n FROM users").get()).toMatchObject({ n: 0 });
+		expect(dbo.prepare("SELECT COUNT(*) AS n FROM sys_department").get()).toMatchObject({ n: 0 });
+	});
+
+	it("未授权企业的通讯录事件：照旧回事件名，不抛、不写（重推三次也补不回来）", async () => {
+		await expect(handleSuiteEvent(appEvent({ ChangeType: "create_user", UserID: "zhangsan", Name: "张三" }), deps(clientOf())))
+			.resolves
+			.toBe("create_user");
+		expect(dbo.prepare("SELECT COUNT(*) AS n FROM users").get()).toMatchObject({ n: 0 });
 	});
 });

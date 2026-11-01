@@ -1,10 +1,10 @@
 # 企微通讯录 / 组织架构同步：最终方案（评审修订版 v2）
 
-> 状态：**A1–A3、B1、B2 已实施**（2026-11-01），含 §5.4 的用户页（所属部门 / 主部门列 + 按部门含子部门筛选）。
-> 余下见 §8 分期表：`C1` 事件增量 / `C2` LDAP /
-> `D` 定时，以及三处**明确未做**的项——① superadmin 跨租户手动触发同步（需绕过租户守卫 + 双写审计）；
+> 状态：**A1–A3、B1、B2、C1 已实施**（2026-11-01），含 §5.4 的用户页（所属部门 / 主部门列 + 按部门含子部门筛选）。
+> 余下见 §8 分期表：`C2` LDAP / `D` 定时，以及四处**明确未做**的项——① superadmin 跨租户手动触发同步（需绕过租户守卫 + 双写审计）；
 > ② 四项权限的「未申请 / 待确认 / 已生效」三态展示（企微未开放查询接口，改为按症状反推，见手册 §2.5）；
-> ③ `OrgPicker` 的 runtime export 段（D12，改 runtime 导出要双包 lockstep 发版）。
+> ③ `OrgPicker` 的 runtime export 段（D12，改 runtime 导出要双包 lockstep 发版）；
+> ④ 离职成员的保留期匿名化（§9.3）——需要定时清扫，随 `D` 一起做（C1 已先把账号与组织关系分开处理）。
 > v1 经三位专家（企微开发 / 产品运营 / 架构师）评审 + 三位专家（安全合规 / 数据建模 / 交付运维）交叉质辩后修订；
 > §12 记录每条意见的采纳与驳回。
 > 需求：① 企微代开发自建应用已接入，把组织架构同步进本站；② 做成**共享能力**，别让每个业务模块各建一套；
@@ -286,6 +286,25 @@ phase reconcile   : ⚡ 仅当「本轮完整且 skipped=0」才把未 seen 的�
 纪律：事件是**加速器不是权威**——任何失败都照旧回 `success`（否则企微重推三次），只记 `err_code` 等下一次全量兜底。
 ⚡ **P2a 先做不依赖事件的兜底**（`resolve` + Picker + 消费示范），P2b 开工前必须验完「事件投递地址」。
 
+#### 实施记录（2026-11-01）
+
+代码落点：`auth/api/_shared/wecom/contacts.ts`（新增），分流点在 `events.ts`（`switch(InfoType)` 之前）。
+落库**只有一条路径**：轨一的 `login.ts::applyMemberDetail` 被提升为导出函数，轨二（`sync.ts::applyMember`）
+与轨三都调它——同步侧原来那份逐字段复制已删除。这比「两边都写对」更可靠：字段口径只有一处。
+
+| 决策 | 取值与理由 |
+|---|---|
+| 成员事件是否出网 | **出网一次** `user/get`。事件不带 `order` / `status`，代开发形态连姓名都不带；回源拿不到（无权限/不在可见范围）才退回事件自带字段，缺的字段**不写**（`undefined` ≠ `null`，不能把已知职务清空） |
+| 部门事件是否出网 | **出网一次** `department/get`。父级取值三态：上游详情 > 事件 `ParentId` > **保持本地现值**——两者都没给时写 `null` 会把整棵子树拍平到根（事件里 `ParentId` 空串既可能是根、也可能是「没带」，光看值分不出来） |
+| `delete_user` | `external_status=5` + 删 `sys_dept_member` + 删该用户 refresh 记录；**账号保留**、`is_forbidden` 不动（那是本站管理员的手动启停）。保留期匿名化需要定时清扫，随 `D` |
+| `NewUserID` | **改 `username` 的同一行**（不新建），并吊销会话。新号已有本地行时**不合并**，记一笔放弃——两行合并是「谁是真身」的判断题，不该在 1 秒窗口里赌 |
+| `delete_party` | `org.ts::markDeleted` 扩展为**级联整棵子树**：企微只报被删的那一个 id，可见范围外的子部门未必各自收到通知，不级联就会留下挂死在已删父节点下的孤儿 |
+| 企业身份 | 应用侧在 `ToUserName`、代开发在 `AuthCorpId`；租户键一律用 profile 里的**真实 `corp_id`**（`findCorpAuth` 现在一并返回），不能用事件给的 id 反推 |
+| 不认识的 `ChangeType`（`update_tag` 等） | 不写、不报错，记一条 `not consumed` |
+
+验收：`tests/wecom-org-sync.spec.ts::C1`（错误分流/改名/离职/级联删除/无名部门/未知类型/未授权，共 10 例）+
+`tests/wecom-endpoints.spec.ts`（两种报文形态端到端各 1 例 + 未授权 1 例，含「日志不含姓名与工号」）。
+
 ### 6.4 页面文案（不暴露三轨名词）
 
 > 企微组织架构更新于 **X 分钟前** · 自动同步 · [立即同步]
@@ -323,7 +342,7 @@ phase reconcile   : ⚡ 仅当「本轮完整且 skipped=0」才把未 seen 的�
 | **A3 基线·共享读面** | `_platform/api/org/*`（`tree`/`departments`/`members`/`user`/`picker`/**`resolve`**/`is-member`）+ `scope=self\|all` 两级门禁 + `users.activated` 接入 `contacts` | 零真机；别的模块能开始消费 |
 | **B1 适配器·登录自更新** | `client.ts` 六个读接口 + `auth_mode` 解析与落库 + 登录自更新（节流 + 不建占位部门 + 只写已知部门） | 零真机可编码；真机验 §10-1 |
 | **B2 适配器·全量同步** | `auth/0002__org_sync.*` + `wecom_sync_job` + 分片推进 + 错误卡片 + 权限四项三态 + 手册四节 | **前置**：四项权限在测试企业「已生效」 |
-| **C1 事件增量** | `change_contact`（`create/update/delete` user & party） | **前置**：验完投递地址与包体形态（手册 §7.6-C10：一条 `wecom event ignored … event=change_contact fields=…` 即证明地址与凭据都对） |
+| **C1 事件增量** | ✅ `change_contact`（`create/update/delete` user & party）：`auth/_shared/wecom/contacts.ts`；成员写入复用轨一同一函数 | **已实施**（2026-11-01）：前置的真机形态验证见手册 §7.6-C10；单测 `wecom-org-sync.spec.ts::C1`（10 例）+ 端点接线 `wecom-endpoints.spec.ts`（3 例）。保留期匿名化随 `D` |
 | **C2 LDAP 适配器** | 第二个 L1 适配器（ou → 部门、member → 成员），验证模型通用性 | **前置**：确认 `axis("ldap")` 支持 search |
 | **D 定时** | cron（按 corp 拆任务）+ 敏感字段 oauth2 | 无人值守 |
 

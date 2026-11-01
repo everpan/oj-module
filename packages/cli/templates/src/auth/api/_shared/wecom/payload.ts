@@ -48,6 +48,17 @@ export function field(fields: CallbackFields, name: string): string {
 	return fields.values.get(name.toLowerCase()) ?? "";
 }
 
+/**
+ * 必填字段：缺了直接 400。文案是给运维排查用的（企微侧只会显示「应用安装失败」），
+ * 不含值——明文字段里有姓名与工号。
+ */
+export function requireField(fields: CallbackFields, name: string, infoType: string): string {
+	const value = field(fields, name);
+	if (!value)
+		throw Object.assign(new Error(`企微事件 ${infoType} 缺少 ${name}`), { status: 400 });
+	return value;
+}
+
 function isCallbackFields(v: unknown): v is CallbackFields {
 	return typeof v === "object" && v !== null && (v as CallbackFields).values instanceof Map;
 }

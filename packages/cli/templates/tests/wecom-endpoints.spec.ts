@@ -167,7 +167,7 @@ beforeEach(() => {
 	installKv();
 	installCrypto();
 	g.fetch = async () => ({ ok: true, json: async () => ({}) });
-	for (const t of ["wecom_app_profile", "wecom_suite_ticket", "wecom_login_ticket", "sys_refresh_token", "sys_login_throttle", "sys_rate_window", "sys_oplog"])
+	for (const t of ["wecom_app_profile", "wecom_suite_ticket", "wecom_login_ticket", "sys_refresh_token", "sys_login_throttle", "sys_rate_window", "sys_oplog", "sys_dept_member", "sys_department"])
 		dbo.exec(`DELETE FROM ${t}`);
 	// JIT 建号是跨用例污染源：每个用例都从「本企业还没建过号」起步
 	dbo.exec("DELETE FROM users WHERE source = 'wecom'");
@@ -378,11 +378,12 @@ describe("P1-L：GET/POST /auth/wecom/event（企微指令回调）", () => {
 		return { ...query, msg_signature: wecomSignature(TOKEN, query.timestamp, query.nonce, encrypted) };
 	}
 
-	/** 抓这一段里所有 log.info 的 (msg, kv)：验收看的是日志，不是只看 HTTP 200 */
-	async function captureInfo(fn: () => Promise<void>): Promise<unknown[][]> {
+	/** 抓这一段里所有 log.info / log.warn 的 (msg, kv)：验收看的是日志，不是只看 HTTP 200 */
+	async function captureLogs(fn: () => Promise<void>): Promise<unknown[][]> {
 		const lines: unknown[][] = [];
 		const orig = g.log;
-		g.log = { ...orig, info: (msg: string, ...kv: unknown[]) => void lines.push([msg, kv]) };
+		const push = (msg: string, ...kv: unknown[]) => void lines.push([msg, kv]);
+		g.log = { ...orig, info: push, warn: push };
 		try {
 			await fn();
 		}
@@ -463,9 +464,11 @@ describe("P1-L：GET/POST /auth/wecom/event（企微指令回调）", () => {
 		expect(dbo.prepare("SELECT suite_ticket FROM wecom_suite_ticket WHERE suite_id = ?").get(SUITE)).toMatchObject({ suite_ticket: "tk_str" });
 	});
 
-	it("数据回调 change_contact（应用侧形态：MsgType/Event，无 InfoType）→ 回 success 且日志留证", async () => {
+	it("数据回调 change_contact（应用侧形态：MsgType/Event，无 InfoType）→ 走轨三建档", async () => {
 		// 90970「成员变更通知」的原样字段：ToUserName/FromUserName/CreateTime/MsgType=event/
-		// Event=change_contact/ChangeType/UserID/Name/Department。这条是手册 §7.6-C10 要抓的形态。
+		// Event=change_contact/ChangeType/UserID/Name/Department。
+		// 这条钉的是整条接线：解密 → 按 Event 分流（InfoType 为空）→ 绑租户 → 落库。
+		seedCorp();
 		const plain = [
 			"<xml>",
 			"<ToUserName><![CDATA[ww_corp_a]]></ToUserName>",
@@ -481,7 +484,7 @@ describe("P1-L：GET/POST /auth/wecom/event（企微指令回调）", () => {
 		].join("");
 		// 应用回调的 receiveid 是 **corpid**（90968 附注），不是 suiteid——信封 ToUserName 也是它
 		const encrypted = await seal(plain, "ww_corp_a");
-		const lines = await captureInfo(async () => {
+		const lines = await captureLogs(async () => {
 			request({
 				query: signedQuery(encrypted),
 				body: `<xml><ToUserName><![CDATA[ww_corp_a]]></ToUserName><Encrypt><![CDATA[${encrypted}]]></Encrypt></xml>`,
@@ -489,29 +492,25 @@ describe("P1-L：GET/POST /auth/wecom/event（企微指令回调）", () => {
 			await (await api()).event.post();
 		});
 
-		// 不消费也要回 success：否则企微 5 秒后重推三次
+		// 无论处理成没成，都必须回 success：否则企微 5 秒后重推三次
 		expect(out.status).toBe(200);
 		expect(out.text).toBe("success");
+		expect(logOf(lines, "wecom change_contact applied")).toEqual(["changeType", "create_user", "corpId", "ww_corp_a"]);
 
-		const kv = logOf(lines, "wecom event ignored");
-		expect(kv).toEqual([
-			"infoType",
-			"",
-			"msgType",
-			"event",
-			"event",
-			"change_contact",
-			"fields",
-			"ToUserName,FromUserName,CreateTime,MsgType,Event,ChangeType,UserID,Name,Department",
-		]);
-		// 字段清单用来判断 C1 能不能开工；**值一律不进日志**（姓名、工号都在明文里）
+		// 上游在本用例里拿不到 token（user/get 取不到）→ 退回事件自带字段：
+		// 姓名落库、**activated 保持 0**（建档 ≠ 用过本站，§9.1 的通讯录目录只收登录过的人）
+		expect(dbo.prepare("SELECT display_name, source, activated FROM users WHERE username = ?").get("wecom:zhangsan"))
+			.toMatchObject({ display_name: "张三", source: "wecom", activated: 0 });
+		// 值一律不进日志（姓名、工号都在明文里）
 		expect(JSON.stringify(lines)).not.toContain("张三");
 		expect(JSON.stringify(lines)).not.toContain("zhangsan");
 	});
 
-	it("数据回调 change_contact（代开发形态：InfoType）→ 同样留证，别被读成「没有日志」", async () => {
+	it("数据回调 change_contact（代开发形态：InfoType）→ 同样进轨三，只给 Id 也能落库", async () => {
 		// 91134「成员通知事件」走的是模板指令回调，字段是 SuiteId/AuthCorpId/InfoType=change_contact，
-		// 没有 MsgType/Event。两种形态都要认得出——否则验收时看 event= 为空会误判成「事件没到」。
+		// 没有 MsgType/Event。它与 suite_ticket 同用 InfoType 那一列，分流必须在 switch 之前——
+		// 落进 default 只会被记成「不消费的事件」，页面永远等不到部门。
+		seedCorp();
 		const plain = [
 			"<xml>",
 			"<SuiteId><![CDATA[suite_1]]></SuiteId>",
@@ -519,28 +518,37 @@ describe("P1-L：GET/POST /auth/wecom/event（企微指令回调）", () => {
 			"<InfoType><![CDATA[change_contact]]></InfoType>",
 			"<ChangeType><![CDATA[update_party]]></ChangeType>",
 			"<Id>2</Id>",
+			"<Name><![CDATA[研发部]]></Name>",
+			"<ParentId>1</ParentId>",
 			"</xml>",
 		].join("");
 		const encrypted = await seal(plain);
-		const lines = await captureInfo(async () => {
+		const lines = await captureLogs(async () => {
 			request({ query: signedQuery(encrypted), body: `<xml><Encrypt><![CDATA[${encrypted}]]></Encrypt></xml>` });
 			await (await api()).event.post();
 		});
 
 		expect(out.status).toBe(200);
 		expect(out.text).toBe("success");
-		const kv = logOf(lines, "wecom event ignored");
-		expect(kv).toEqual([
-			"infoType",
-			"change_contact",
-			"msgType",
-			"",
-			"event",
-			"",
-			"fields",
-			"SuiteId,AuthCorpId,InfoType,ChangeType,Id",
-		]);
-		expect(JSON.stringify(lines)).not.toContain("update_party");
+		expect(logOf(lines, "wecom change_contact applied")).toEqual(["changeType", "update_party", "corpId", "ww_corp_a"]);
+		expect(dbo.prepare("SELECT origin, origin_id, name, deleted FROM sys_department WHERE origin = 'wecom'").get())
+			.toMatchObject({ origin: "wecom", origin_id: "2", name: "研发部", deleted: 0 });
+		expect(JSON.stringify(lines)).not.toContain("研发部");
+	});
+
+	it("未授权企业的通讯录事件：只记一笔，照旧回 success（事件是加速器不是权威）", async () => {
+		// 没 seedCorp：企业没授权、没有永久码，什么都不该写——但也不能抛，
+		// 否则企微重推三次，而重推补不回「这家企业没授权」。
+		const plain = "<xml><ToUserName><![CDATA[ww_corp_z]]></ToUserName><MsgType>event</MsgType><Event>change_contact</Event><ChangeType>delete_user</ChangeType><UserID>lisi</UserID></xml>";
+		const encrypted = await seal(plain, "ww_corp_z");
+		const lines = await captureLogs(async () => {
+			request({ query: signedQuery(encrypted), body: `<xml><ToUserName><![CDATA[ww_corp_z]]></ToUserName><Encrypt><![CDATA[${encrypted}]]></Encrypt></xml>` });
+			await (await api()).event.post();
+		});
+		expect(out.status).toBe(200);
+		expect(out.text).toBe("success");
+		expect(JSON.stringify(logOf(lines, "wecom change_contact ignored"))).toContain("未授权");
+		expect(dbo.prepare("SELECT COUNT(*) AS n FROM users WHERE source = 'wecom'").get()).toMatchObject({ n: 0 });
 	});
 
 	it("报文缺 Encrypt → 400", async () => {

@@ -9,6 +9,19 @@
 
 ### Added
 
+- **企微通讯录事件增量（C1）**：`change_contact` 接进 `/event`（新增 `_shared/wecom/contacts.ts`），
+  两种报文形态都认——应用侧数据回调（`MsgType=event` + `Event=change_contact`，企业身份在 `ToUserName`）
+  与代开发指令回调（`InfoType=change_contact`，企业身份在 `AuthCorpId`）。分流必须放在 `switch(InfoType)`
+  之前：后者与 `suite_ticket` 同用 `InfoType` 那一列，落进 `default` 只会被记成「不消费的事件」。
+  `create_user`/`update_user` 回源 `user/get` 拿全量快照（事件不带排序与在职状态，代开发形态连姓名都没有），
+  拿不到才退回事件自带字段；`delete_user` 置 `external_status=5` 并摘掉部门关联、**保留账号**；
+  `NewUserID` 是同一行改名 + 吊销会话，绝不新建行；`delete_party` 是 `deleted=1` 的唯一写入点，
+  且**级联整棵子树**（企微只报被删的那一个 id，不级联就会留下挂在已删父节点下的孤儿）。
+  纪律：事件是加速器不是权威——任何失败只记日志、照旧回 `success`，否则企微重推三次，
+  而重推补不回一次已判死的失败；兜底永远是下一轮全量同步。
+- **成员写库收敛到一个函数**：`login.ts::applyMemberDetail`（原私有的 `applyUserDetail`）同时服务登录自更新、
+  全量同步与事件增量，`sync.ts` 里那份逐字段复制的 `applyMember` 已删除——三套写库逻辑必然长歪，
+  而症状只在「某条路径走过来的人组织关系不对」时才暴露。
 - **企微适配器读取面（B1）**：`client.ts` 新增六个通讯录接口（`departmentChildren` / `departmentDetail` /
   `departmentList` / `deptMembers` / `deptMembersDetail` / `userDetail`），并把上游错码分成三类
   （`WecomApiError.kind`）：权限类 `60011`/`48002` 跳过并计数、限流类 `45009`/`45033` 指数退避重试三次、
@@ -78,6 +91,12 @@
 - `GET /api/auth/wecom/event`（回调地址验证）不再比对 `receiveid`：「模板/指令回调 URL」验证时是
   suite_id，「应用回调 URL」验证时是 corpid，而 GET 只有 `echostr`、没有报文信封，无从挑一个值来比。
   签名（token 只有本部署与企微知道）仍是唯一闸门，该路径不写任何状态；POST 侧照旧严格比对。
+- **`docs/devkit/wecom-daikaifa.md` 触犯「devkit 零内部代号」守卫**（`tests/cli/devkit-docs.test.ts`
+  的 `\bC\d+\b` 分支）：§7.6-C 表把十行验收项写成 `C1`…`C10`，正撞上设计代号形制，`pnpm test`
+  在 CI 上是红的（`test:cli` 不含该文件，本地只看 `test:cli` 会漏）。验收行改为纯序号，正文里对它们的
+  三处引用（§7.1 清单、§7.6-D 记录表、§8 故障速查）同步改成描述性指代；顺带把一行里的 `D13` 换成白话。
+  同一处把日志 `reason=` 文案改成代码里的原文（`该企业未授权本站（wecom_app_profile 无记录）` 等），
+  只为 `grep` 时能直接命中。
 
 ## [0.2.48] - 2026-11-01
 

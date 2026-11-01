@@ -610,9 +610,9 @@ describe("P1-G：事件分发（suite_ticket / 授权 / 解绑）", () => {
 		expect(await handleSuiteEvent({ InfoType: "change_contact", SuiteId: "suite_1" }, deps(fakeClient()))).toBe("change_contact");
 	});
 
-	// C1（事件增量）开工前要靠这条识别「通讯录变更真的推到了本端点」：数据回调没有 InfoType，
-	// 只有 MsgType=event + Event=change_contact，早先只记 InfoType 会把这种情况记成空白。
-	it("数据回调形态（无 InfoType）也能识别出事件名，且日志只留字段名不留值", async () => {
+	// 数据回调没有 InfoType，只有 MsgType=event + Event=change_contact：分流靠 Event 认，
+	// 认不出就会落进 default 被记成「不消费的事件」——而这条正是轨三的全部输入。
+	it("数据回调形态（无 InfoType）也能分流到轨三，且日志只留 ChangeType 不留值", async () => {
 		const dataCallback = {
 			ToUserName: "ww_corp_a",
 			CreateTime: 1700000000,
@@ -623,18 +623,22 @@ describe("P1-G：事件分发（suite_ticket / 授权 / 解绑）", () => {
 		};
 		const logged: unknown[][] = [];
 		const orig = g.log;
-		g.log = { ...orig, info: (...args: unknown[]) => void logged.push(args) };
+		const push = (...args: unknown[]) => void logged.push(args);
+		// 失败那条是 warn（成功才是 info）：两个都要抓，否则「没抛错」会掩盖「根本没走到轨三」
+		g.log = { ...orig, info: push, warn: push };
 		try {
-			expect(await handleSuiteEvent(dataCallback, deps(fakeClient()))).toBe("change_contact");
+			// 返回值是 ChangeType（日志只用它记一行），不是事件名
+			expect(await handleSuiteEvent(dataCallback, deps(fakeClient()))).toBe("update_party");
 		}
 		finally {
 			g.log = orig;
 		}
-		const line = logged.find(args => args[0] === "wecom event ignored");
-		expect(line).toContain("change_contact");
-		// 字段清单能告诉后来的人「报文长什么样」；值（部门 id 等）一个都不许进日志
-		expect(field(callbackFields(dataCallback), "ChangeType")).toBe("update_party");
-		expect(JSON.stringify(line)).not.toContain("update_party");
+		// 这家企业在本用例里没授权：失败只记一笔，绝不抛（抛了企微就重推三次）
+		const line = logged.find(args => args[0] === "wecom change_contact ignored");
+		expect(line).toBeDefined();
+		// ChangeType 是协议枚举，记下来才有排查价值；姓名/工号这类明文值一个都不许进日志
+		expect(line).toContain("update_party");
+		expect(JSON.stringify(line)).toContain("未授权");
 	});
 
 	// 兜底口径（payload.ts 头的说明）：部分回调业务没有 JSON 文档，收到 XML 也必须能处理。

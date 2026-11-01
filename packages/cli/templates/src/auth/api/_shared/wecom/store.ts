@@ -214,12 +214,16 @@ export async function setProfileStatus(corpId: string, status: AppProfile["statu
  * 该企业已授权的应用 + 共享的永久授权码。
  * 用于 `change_auth` 复核授权模式：事件只带 AuthCorpId（**没有 AuthCode**），
  * 只能拿已落库的 permanent_code 去 `get_auth_info` 反查。未授权企业返回 null。
+ *
+ * 一并返回 `corpId`（真实企业 ID）：事件里给的可能是 `AuthCorpId`（第三方体系下是 open_corpid），
+ * 而租户键只能用真实 corp_id（D10），故由这里统一把「事件身份 → 租户身份」的翻译交出来。
  */
-export async function findCorpAuth(corpId: string, deps: WecomStoreDeps): Promise<{ permanentCode: string, agentIds: string[] } | null> {
-	const rows = await db.table("wecom_app_profile").select(["agent_id", "permanent_code_enc"]).where(corpScope(corpId)).all() as Array<Record<string, unknown>>;
+export async function findCorpAuth(corpId: string, deps: WecomStoreDeps): Promise<{ corpId: string, permanentCode: string, agentIds: string[] } | null> {
+	const rows = await db.table("wecom_app_profile").select(["corp_id", "agent_id", "permanent_code_enc"]).where(corpScope(corpId)).all() as Array<Record<string, unknown>>;
 	if (rows.length === 0)
 		return null;
 	return {
+		corpId: String(rows[0]!.corp_id),
 		permanentCode: deps.decrypt(String(rows[0]!.permanent_code_enc)),
 		agentIds: rows.map(r => String(r.agent_id)),
 	};

@@ -54,7 +54,7 @@
   ├─ 轨一 登录自更新：某员工登录时顺手 user/get 一次（24h 节流）→ 补姓名/职务/部门
   ├─ 轨二 全量同步：/system/departments 点「立即同步」→ department/simplelist + user/list
   │       └─ 分片推进（一片 12 秒）+ 调用方轮询 → 进度落在 wecom_sync_job
-  └─ 轨三 事件增量：change_contact（尚未上线，靠轨二兜底）
+  └─ 轨三 事件增量：change_contact（成员/部门增删改即时落库；失败只记日志，等轨二兜底）
         ↓
    sys_department / sys_dept_member（origin='wecom'）+ users（activated=0）
 ```
@@ -197,7 +197,7 @@ openssl rand -hex 32        # 输出 64 个 hex 字符，直接贴进 wecom_enc_
 | 企微后台位置 | 值 | 说明 |
 |---|---|---|
 | **模板**回调 URL（指令回调 / 事件接收） | `https://<站点>/api/auth/wecom/event` | 点保存时企微会 GET 一次带 `echostr`：必须**当次就通**，否则保存不了。`suite_ticket` 与 `create_auth` / `change_auth` / `cancel_auth` 都走这里 |
-| **应用**回调 URL（数据回调 / 通讯录变更） | **同上** `https://<站点>/api/auth/wecom/event` | 一个端点吃两种回调，不用再开路由。当前版本收到 `change_contact` 只记一条 `wecom event ignored` 并回 `success`（事件增量尚未上线，靠全量同步兜底），但**现在就要填**：不填等于以后上线事件增量时还得再让每家企业的管理员动一次后台 |
+| **应用**回调 URL（数据回调 / 通讯录变更） | **同上** `https://<站点>/api/auth/wecom/event` | 一个端点吃两种回调，不用再开路由。`change_contact`（成员/部门增删改）走的就是这里，收到即落库、**不必等下一次全量同步**；处理失败只记一条 `wecom change_contact ignored …` 并照旧回 `success`（否则企微重推三次） |
 | 可信域名 | `https://<站点域名>` | 不含路径 |
 | 网页授权 `redirect_uri` | **不用手填**：后端按 `wecom_base_url` 拼出 `https://<站点>/api/auth/wecom/callback` | 企业的授权页里的域名必须与可信域名一致 |
 
@@ -486,7 +486,7 @@ window.location.assign(`${resolveApiBase()}${wecomAuthorizePath(corp)}`);
 - [ ] 部署后先跑 `oj migrate`：组织架构与同步需要 `0016__org`、`auth/0002__org_sync` 两组迁移
 - [ ] 后台清单里「授权模式」是**管理员授权**（成员授权的企业同步不了，§2.6）
 - [ ] 组织架构四项权限已核对（§2.5）；同步一次后页面**没有**「N 个部门因权限被跳过」以外的告警
-- [ ] 组织架构同步已照 **§7.6** 逐条打勾（含 C10 的事件增量取证），四个数已回填验收记录
+- [ ] 组织架构同步已照 **§7.6** 逐条打勾（含最后一行的「事件增量」验收），四个数已回填验收记录
 
 ### 7.2 上线顺序
 
@@ -545,7 +545,7 @@ window.location.assign(`${resolveApiBase()}${wecomAuthorizePath(corp)}`);
 | 项 | 怎么验 | 不过怎么办 |
 |---|---|---|
 | 两组迁移 | `sqlite3 db.sqlite ".tables"` 里有 `wecom_sync_job` 与 `wecom_sync_lock` | 部署后漏跑 `oj migrate`；补跑再起服 |
-| 两个回调地址 | 企微后台「模板回调 URL」与「应用回调 URL」**都**保存成功（两处都填 `/api/auth/wecom/event`，见 §3） | 只填了模板那个：同步与登录都能用，但通讯录变更事件收不到（C1 要它）。补填应用回调需要企业管理员配合 |
+| 两个回调地址 | 企微后台「模板回调 URL」与「应用回调 URL」**都**保存成功（两处都填 `/api/auth/wecom/event`，见 §3） | 只填了模板那个：同步与登录都能用，但通讯录变更事件收不到（事件增量那条验收需要它）。补填应用回调需要企业管理员配合 |
 | 四项权限 | 企微后台权限列表里 §2.5 的 ①~④ 都在，且没有一条停在「待企业确认」 | 重发开通链接**补不了**权限（幂等 upsert，不带权限）；只能让客户管理员在企微里确认那条权限变更消息 |
 | 授权模式 | `/system/wecom` 清单里「授权模式」= 管理员授权 | 成员授权（§2.6）：请企业管理员改，改完企微推 `change_auth`，本系统自动刷新，不用重新开通 |
 | 时间与出网 | §7.1 的 NTP 与可信 IP 两项 | 时钟偏 >5 分钟 → 所有回调被拒；出口 IP 不在白名单 → 同步第 2 步就 60020 |
@@ -562,23 +562,27 @@ window.location.assign(`${resolveApiBase()}${wecomAuthorizePath(corp)}`);
 
 | # | 操作 | 期望观测 | 不符时先看 |
 |---|---|---|---|
-| C1 | 组织架构页点「立即同步」，等状态条停下 | 文案变「企微组织架构更新于 **刚刚** · 自动同步」；`SELECT status, stats_text FROM wecom_sync_job` → `done`，`stats.departments` / `stats.members` 都 > 0 | `status=paused` → 再点「继续同步」（分片没推完，不是失败）；`err_code` 非空 → §6.8 的卡片对应项 |
-| C2 | 抽 3 个部门核对人数与层级 | 每个部门的人数与企微后台一致；层级正确；**主部门唯一**（不是所有人都在「总公司」） | 人数全为 0 → 可见范围为「仅部分成员」；层级全平 → 缺 ④ 的父部门 ID |
-| C3 | 看人名 | 显示名是人名（`display_name` 有值） | 满屏 `wecom:<工号>` → 缺 §2.5 ① |
-| C4 | 看职务列 | 有职务 | 全空 → 缺 §2.5 ③ |
-| C5 | 看状态条的跳过计数 | 「N 个部门因权限被跳过」，且 N **远小于**部门总数 | N 与总数接近 → 先查 §2.5 ④ 与可见范围，再查权限是否卡在待确认 |
-| C6 | 让一个**普通员工**登录一次 | 该员工 `users.display_name` / `position` 被回写，`sys_dept_member` 与企微一致 | 登录本身失败看 §8；登录成功但资料没变 → 该员工不在可见范围，或 24 小时内已自更新过（缓存键 `wecom:self:<corp>:<userid>`） |
-| C7 | 先在本地建一个部门，再点一次同步 | 本地部门**不消失、不改名**（D13：源只管辖它自己带来的行） | 本地部门被覆盖 → 严重缺陷，保留现场（`SELECT origin …`）再报 |
-| C8 | 企微后台取消授权 | 组织架构页变冻结黄条（数据保留）；该租户 `sys_refresh_token` 清零 | 页面仍显示可同步 → `wecom_app_profile.status` 没落 `disabled`，查 `cancel_auth` 日志 |
-| C9 | 重新扫码授权 | 清单该行恢复 `active`，`permanent_code_enc` 被重写（密文变化即可） | 仍是 `disabled` → 事件没到，回 A 表查回调地址 |
-| C10 | **事件增量取证（C1 的前置）**：请客户在企微后台改一个部门名或加一个人 | 服务端日志出现 `wecom event ignored … event=change_contact fields=…`，`fields` 里能看到 `ChangeType` / `Id`（部门）或 `UserID`（成员） | 见下 |
+| 1 | 组织架构页点「立即同步」，等状态条停下 | 文案变「企微组织架构更新于 **刚刚** · 自动同步」；`SELECT status, stats_text FROM wecom_sync_job` → `done`，`stats.departments` / `stats.members` 都 > 0 | `status=paused` → 再点「继续同步」（分片没推完，不是失败）；`err_code` 非空 → §6.8 的卡片对应项 |
+| 2 | 抽 3 个部门核对人数与层级 | 每个部门的人数与企微后台一致；层级正确；**主部门唯一**（不是所有人都在「总公司」） | 人数全为 0 → 可见范围为「仅部分成员」；层级全平 → 缺 ④ 的父部门 ID |
+| 3 | 看人名 | 显示名是人名（`display_name` 有值） | 满屏 `wecom:<工号>` → 缺 §2.5 ① |
+| 4 | 看职务列 | 有职务 | 全空 → 缺 §2.5 ③ |
+| 5 | 看状态条的跳过计数 | 「N 个部门因权限被跳过」，且 N **远小于**部门总数 | N 与总数接近 → 先查 §2.5 ④ 与可见范围，再查权限是否卡在待确认 |
+| 6 | 让一个**普通员工**登录一次 | 该员工 `users.display_name` / `position` 被回写，`sys_dept_member` 与企微一致 | 登录本身失败看 §8；登录成功但资料没变 → 该员工不在可见范围，或 24 小时内已自更新过（缓存键 `wecom:self:<corp>:<userid>`） |
+| 7 | 先在本地建一个部门，再点一次同步 | 本地部门**不消失、不改名**（数据源只管辖它自己带来的行） | 本地部门被覆盖 → 严重缺陷，保留现场（`SELECT origin …`）再报 |
+| 8 | 企微后台取消授权 | 组织架构页变冻结黄条（数据保留）；该租户 `sys_refresh_token` 清零 | 页面仍显示可同步 → `wecom_app_profile.status` 没落 `disabled`，查 `cancel_auth` 日志 |
+| 9 | 重新扫码授权 | 清单该行恢复 `active`，`permanent_code_enc` 被重写（密文变化即可） | 仍是 `disabled` → 事件没到，回 A 表查回调地址 |
+| 10 | **事件增量（轨三）**：请客户在企微后台改一个部门名，或加/删一个人 | 服务端日志出现 `wecom change_contact applied … changeType=…`；**不点「立即同步」**，刷新组织架构页也能看到变化 | 见下 |
 
-C10 的三种结果，正好把 C1 的三个未知量一次性问清：
+最后一行的几种结果，一次就能分清「事件到了没 / 处理成没成 / 是哪种投递形态」：
 
 | 日志 | 说明 | 下一步 |
 |---|---|---|
-| `wecom event ignored … event=change_contact fields=…` | 数据回调（**应用侧形态**：`MsgType=event` / `Event`）**收到了**，且用的就是配置里这套 Token/AESKey | C1 可以开工；把 `fields` 那一行抄进验收记录，它就是真实包体的字段清单 |
-| `wecom event ignored … infoType=change_contact fields=…`，且 `event=` 为空 | 同一条变更走的是**模板指令回调**（代开发形态：`SuiteId` / `AuthCorpId` / `InfoType`）。两种形态都会到，`event=` 空不代表事件没到 | 同样算「收到了」；`fields` 里看得到 `ChangeType` 与 `Id`（部门）或 `UserID`（成员）即可 |
+| `wecom change_contact applied … changeType=create_user`（`msgType=event`、`event=change_contact`） | 数据回调（**应用侧形态**：`ToUserName` / `MsgType=event` / `Event`）收到了，且落库成功 | 正常。`fields` 之类不再需要抄，日志里 `changeType` 与 `corpId` 就够定位 |
+| `wecom change_contact applied … changeType=update_party`（`infoType=change_contact`、`event=` 为空） | 同一条变更走的是**模板指令回调**（代开发形态：`SuiteId` / `AuthCorpId` / `InfoType`）。两种形态都会到，`event=` 空不代表事件没到 | 同样正常。两种形态由同一个端点吃下，不需要为它单独配地址或凭据 |
+| `wecom change_contact ignored … reason=该企业未授权本站（wecom_app_profile 无记录）` | 报文到了、也解密了，但 `wecom_app_profile` 里没有这个企业 | 回 §7.6-A 核对：这家企业的开通流程是否真的走完（清单里要有行、`status=active`） |
+| `wecom change_contact ignored … reason=企微事件 change_contact 缺少 UserID` / `…缺少 Id` | 明文里没有该有的字段：报文形态与文档不符，或被中间件改写 | 把 `changeType` 与原始明文交给开发；**别**靠重推解决（重推是同一份报文） |
+| `wecom change_contact ignored … reason=部门事件既没有名字、本地也没有这一行：不建无名部门` | 代开发形态只给部门 `Id`，而回源 `department/get` 又拿不到（无通讯录读权限） | 补 §2.5 的 ①/④；补齐后点一次「立即同步」即可补上，不用等事件 |
+| `wecom change_contact not consumed … changeType=update_tag` | 标签变更等本系统不消费的类型 | 正常，无需处理 |
 | `wecom callback decrypt failed … reason=bad padding` | 签名过了但**钥匙**不对 → 数据回调用的是**另一套**凭据 | 记下同一行的 `envelopeToUser` 与 `aesKeyFp`：前者告诉你报文来自哪个套件/模板，后者证明本进程加载的是哪把钥匙。结论写进 §2.1 的缺口，再决定是否要单独配一套应用侧凭据 |
 | `wecom callback decrypt failed … reason=receiver mismatch` | 钥匙对、但报文自称的身份（`receiveid`）既不等于配置的 `suite_id`、也不等于信封里的 `ToUserName` | 多见于信封缺 `ToUserName`；先确认服务端不是 0.2.48 或更早（那些版本只认 `suite_id`，所有数据回调都会这样，见下方注） |
 | 一条日志都没有 | 事件根本没进本站 | 应用回调 URL 没填（A 表第 2 项），或反代挡了 POST |
@@ -591,7 +595,7 @@ C10 的三种结果，正好把 C1 的三个未知量一次性问清：
 日志在工程根 `logs/server-*.log`：
 
 ```bash
-grep -h "wecom event ignored\|callback decrypt failed" logs/server-*.log | tail -20
+grep -h "wecom change_contact\|wecom event ignored\|callback decrypt failed" logs/server-*.log | tail -20
 ```
 
 #### D. 验收记录（请回填，别只写「看起来正常」）
@@ -602,7 +606,7 @@ grep -h "wecom event ignored\|callback decrypt failed" logs/server-*.log | tail 
 | 四项权限状态（①~④） | |
 | 部门数 / 人数 / 跳过数 | |
 | 单次全量耗时（`finished_at - started_at`） | |
-| C10 日志原文（`event=` 与 `tags=`） | |
+| 事件增量行日志原文（`event=` 与 `tags=`） | |
 | 结论 | 通过 / 不通过（不通过项编号） |
 
 > 判定口径是**数字**：部门数、人数、跳过数、耗时四个数写不出来，就等于没验。
@@ -624,7 +628,7 @@ grep -h "wecom event ignored\|callback decrypt failed" logs/server-*.log | tail 
 | 400 `回调 timestamp 超出允许窗口：请检查服务器时间，或该请求为历史回调的重放` | 服务器时钟与真实时间偏差超过 5 分钟，或这条回调是被人回放的旧报文 | 校服务器时间（NTP）；校正后企微的重推会自动成功 |
 | 400 `回调 nonce 重复：同一条指令回调已被处理过（重放请求已拒绝）` | 同一条指令被投递了两次（企微重试、或反代重复转发） | 首次生效、重放被拒属预期保护；若常态出现，查反代是否重复转发 POST |
 | 企微后台保存回调 URL 失败 | `Token` / `EncodingAESKey` 与 `config.yaml` 不一致 | 逐字对齐（43 字符别多空格） |
-| 日志 `wecom callback decrypt failed … reason=pkcs7: bad padding` | 签名已经过了（说明后台 Token 与本部署一致），所以**钥匙不对**只剩两种：**EncodingAESKey 与后台不一致**（后台点过「随机生成」、或抄错/抄多一个字符），或这条推送其实来自**另一个模板**（那把钥匙解不开这份密文） | 先看 `aesKeyFp` 有没有变：改完 config 对不上 = 新配置没生效（没重启 / 改的不是运行中那份 config），重抄 43 字符到 `vars.wecom_encoding_aes_key`、**重启生效**，再回后台点一次「保存」触发 echostr 验证（页面会当场报验证失败）。`aesKeyFp` 没变仍 `bad padding` → 这条推送不是本套件的，`envelopeToUser` 告诉你它自称是谁（**它是 corpid 也正常**，见 §7.6-C10 注），去「应用与模板上线」核对回调地址填在哪 |
+| 日志 `wecom callback decrypt failed … reason=pkcs7: bad padding` | 签名已经过了（说明后台 Token 与本部署一致），所以**钥匙不对**只剩两种：**EncodingAESKey 与后台不一致**（后台点过「随机生成」、或抄错/抄多一个字符），或这条推送其实来自**另一个模板**（那把钥匙解不开这份密文） | 先看 `aesKeyFp` 有没有变：改完 config 对不上 = 新配置没生效（没重启 / 改的不是运行中那份 config），重抄 43 字符到 `vars.wecom_encoding_aes_key`、**重启生效**，再回后台点一次「保存」触发 echostr 验证（页面会当场报验证失败）。`aesKeyFp` 没变仍 `bad padding` → 这条推送不是本套件的，`envelopeToUser` 告诉你它自称是谁（**它是 corpid 也正常**，见 §7.6-C 表最后一行下方那条注），去「应用与模板上线」核对回调地址填在哪 |
 | 日志 `wecom callback decrypt failed … reason=receiver mismatch` | 钥匙对、但报文自称的身份两边都对不上（配置的 `suite_id` 与信封 `ToUserName` 都不是它） | 信封缺 `ToUserName` 时会这样；先确认服务端不是 0.2.48 或更早（那些版本只认 `suite_id`）。仍复现就把整行日志（含 `envelopeToUser` / `configuredSuite` / `aesKeyFp`）留档 |
 | 企业管理员扫码/打开开通链接后提示「**应用安装失败，联系服务商**」 | 企微推 `create_auth` 后**约 1 秒内**没拿到纯文本 `success`（它只看 body 是不是 `success`，不看 HTTP 200）。三类原因：① 事件没到（指令回调 URL 不是当前地址 / 改过没重新上线）；② 处理里同步出网超预算（`get_suite_token` + `get_permanent_code` 是两次往返）；③ 处理过程抛错（如审计表在租户守卫下被拒） | 先翻服务日志：有 `wecom event failed … reason=<文案>` → 按文案修（缺配置/验签/解密各自有明确文案）；**一条日志都没有** → 事件根本没到，回 §4 第 2 步验回调，并到「应用与模板上线」核对指令回调 URL 是否就是当前地址。若后台清单里**已有该企业且 status=active** → 授权其实成功了（失败发生在 profile 落库之后），让企业管理员再扫一次即可 |
 | 400 `企业代码无效或应用未开通` | corp_id 打错，或该企业没装本应用 | 核对 corp_id（`ww` 开头）；确认已在后台清单里 |
@@ -637,6 +641,7 @@ grep -h "wecom event ignored\|callback decrypt failed" logs/server-*.log | tail 
 | 卡片「企微接口限流（错误码 45009 / 45033）」 | 触发企微频率/并发限制（大企业全量同步常见） | 已自动退避三次；仍失败就点「继续同步」，游标停在原部门，不会丢进度 |
 | 卡片「服务器出口 IP 不在企微白名单（60020）」 | 同上方 60020 行 | 同上方处置（加可信 IP） |
 | 状态条「N 个部门因权限被跳过」 | 这些部门在应用**可见范围外**（或负责人/父部门权限缺失） | 常态可忽略；若 N 与总部门数接近，先查 §2.5 ④ 与可见范围（§2.4 的话术可以直接发给企业管理员） |
+| 企微后台改完通讯录，页面**没变**（也没点过同步） | 事件没到，或到了但处理失败。事件是加速器不是权威：失败**不会**报错、也不会重推成功 | `grep "wecom change_contact" logs/server-*.log \| tail`：`applied` = 已落库（刷新页面即可见）；`ignored … reason=…` = 按 reason 修（未授权 / 缺字段 / 无通讯录读权限）；一条都没有 = 应用回调 URL 没填（§3 第 2 项）。急着要数据就先点一次「立即同步」，全量同步是权威 |
 | 409 `同步正在进行，请稍后再试` | 同一企业同一应用已有同步在跑（另一个标签页 / 上一次请求崩了留下锁） | 等一次轮询周期再点；崩溃残留的锁 120 秒后可被抢占，不用人工清 |
 | 429 `rate limited` | `start`/`cancel` 限速 10 次/分（同一账号在两个页面同时驱动，或手动连点） | 等一分钟再点；进度已落库，不需要从头重来 |
 | 点「立即同步」后按钮立刻回到可点、进度没动 | 这一片被限流或上游抖动提前收手（状态仍是 `running`） | 正常现象：再点「继续同步」；页面每 2 秒会自己刷新状态 |
