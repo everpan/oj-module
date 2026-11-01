@@ -385,6 +385,20 @@ async function runSlice(
 			return done({ failed: true, errCode: scrubbed.errCode, errDetail: scrubbed.errDetail });
 		}
 		const ordered = orderTopDown(list);
+		// 代开发 simplelist 不带部门名（见 client.ts departmentDetail 注释）：逐部门回源 department/get 补名字。
+		// 已有名字则跳过（普通企业 simplelist 可能带名字，不重复打上游）；单部门失败非致命，留空不影响骨架。
+		for (const d of ordered) {
+			if (d.name)
+				continue;
+			try {
+				const detail = await deps.client.departmentDetail(corpId, agentId, secret, d.id);
+				if (detail.name)
+					d.name = detail.name;
+			}
+			catch {
+				// 无权限 / 不在可见范围 / 上游抖动：名字留空，不因单部门失败中断整轮
+			}
+		}
 		const localByOrigin = new Map<string, number>();
 		const placedIds: number[] = [];
 		for (const d of ordered) {
