@@ -7,6 +7,54 @@
 
 ## [Unreleased]
 
+## [0.2.51] - 2026-11-02
+
+本轮补上「企业接进来之后**谁来管**」这一环。此前企业租户是隐式具象化的，里面只有 JIT 出来的
+员工号、**没有管理员**——没人能做组织架构同步，也没人能在租户内授权；而平台 superadmin 因租户
+隔离又够不着企业租户（实测 `PUT /system/users/roles?uid=` 返回 `404 user not found`），两头都
+落空。故新增**每租户自动开通一个租户级管理员**，并把 `admin` 的任命权下放到租户内。
+
+**升级提示**：无新增迁移、无需改配置。**已接入的老租户（本版本之前接入的）不会自动补管理员**，
+需由 superadmin 在 `/system/wecom` → 「租户管理员」→ 重设口令补开，或等下一次「验证并接入」/
+代开发授权时自动开通。
+
+### Added
+
+- **每租户自动开通租户管理员**（`auth/api/_shared/wecom/tenant-admin.ts`）：自建「验证并接入」
+  （`connectCorp`）与代开发授权（`create_auth`）两处各挂一次 `provisionTenantAdmin()`，幂等、
+  **尽力而为**（失败只告警：`create_auth` 有约 1 秒响应窗口，bcrypt 不该有机会拖垮回调；
+  `connectCorp` 走到那步档案已落库，抛错只会显示「接入失败」）。账号名固定 `admin`，随机初始
+  口令（**无人知晓**，只存 bcrypt）+ `must_change=1`。
+  ⚠️ 注意：`must_change=1` 期间 `currentAccess()` 会抛 `403 must_change`，管理员首次登录
+  **必须先改密**才能做任何管理动作（含任命角色）。
+- **`GET /api/auth/wecom/admin/tenant-admin?corpId=`（查状态）与 `POST .../tenant-admin/password`
+  （重设口令）**：均 `assertSuperAdmin` + `recordOp`（改密 `level=4`，detail 不记口令）。
+  口令**不存储**——superadmin 自己输入新口令，他知道即可线下告知对方；系统只有 bcrypt，
+  无法（也不应）回显已有口令，故没有可逆副本需要保护。
+- **后台「租户管理员」管理页**（`/system/wecom`）：按企业列出管理员开通状态，提供重设口令表单。
+- **审计补租户维度**：`user.roles.update` 的 detail 增加 `tenant` / `actorUid` / `targetUid` /
+  `elevated`；牵涉 `admin`/`superadmin`（授予**或撤销**）时 `level=4`，普通角色保持 `6`。
+  原因：各租户管理员**用户名都叫 `admin`**，撞车，只记 username 分不清是谁任命的。
+- **登录页**：开了企业微信登录时「企业代码」字段默认展开（判据用 `login-methods` 含 `wecom`——
+  匿名请求没有租户上下文，数租户要动用 `db.asSystem`，不为此破例）。
+
+### Changed
+
+- **任命 `admin` 下放到租户内**：`assertMembershipAllowed()` 改为按「被授予的角色」分层——
+  授 `admin` 允许本租户内握有 `admin` 或 `superadmin` 的人；授 `superadmin` **仍只许 superadmin**
+  （它握跨租户权限：`/system/wecom` 的 `listApps()` 列出所有企业，租户内可授即为越权）；
+  `editor`/`viewer` 维持不校验。判定侧 `rolesOf()` 走请求租户注入、写入侧同样带 `tenant_id`，
+  故租户 admin 只能影响自己租户。
+- 用户管理页「成员资格」入口对 `admin` 也可见；非 superadmin 时 `superadmin` 角色选项置灰
+  （提交后吃 403 太晚也太含糊）。
+
+### 内部约束
+
+- `db.asSystem()` **仅 `tenant-admin.ts` 一处**使用：平台请求绑在 `default` 租户，而
+  `db.asTenant` 是「请求级、只能设一次」，没有任何正常通道能写企业租户，开通租户管理员又是
+  平台动作而非业务写。框架注释明写「业务 handler 不得使用」，此处是有意识且被审计的**单一
+  例外**，**不得复制到别处**。
+
 ## [0.2.50] - 2026-11-01
 
 本轮把企微连接器从「只服务代开发套件」扩到**两种来源可同时生效**：新增**企业内部应用（自建应用）**
