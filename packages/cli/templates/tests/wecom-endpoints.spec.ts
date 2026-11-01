@@ -565,6 +565,41 @@ describe("P1-L：GET/POST /auth/wecom/event（企微指令回调）", () => {
 		expect(dbo.prepare("SELECT COUNT(*) AS n FROM wecom_suite_ticket").get()).toMatchObject({ n: 0 });
 	});
 
+	// 2026-11-01 生产时序：create_auth → 上游 502 → 企微 5 秒后重推 → 被「nonce 重复」挡回。
+	// 重推是瞬态故障唯一的恢复路径，让它废在重放守卫上等于把恢复路径拆了。
+	it("处理失败的 nonce 会被放回：重推按真实原因重试，不被判成重放", async () => {
+		const plain = "<xml><InfoType>suite_ticket</InfoType><SuiteId>other_suite</SuiteId><SuiteTicket>tk_x</SuiteTicket></xml>";
+		const encrypted = await seal(plain);
+		const query = signedQuery(encrypted, { nonce: "retry_once" });
+		const body = `<xml><Encrypt>${encrypted}</Encrypt></xml>`;
+
+		request({ query, body });
+		await (await api()).event.post();
+		expect(out.status).toBe(400);
+		expect(out.body.msg).toMatch(/SuiteId/);
+
+		// 同一条报文重推（企微的语义）：仍按真实原因失败，而不是 400「nonce 重复」
+		request({ query, body });
+		await (await api()).event.post();
+		expect(out.body.msg).toMatch(/SuiteId/);
+		expect(out.body.msg).not.toMatch(/nonce 重复/);
+	});
+
+	it("处理成功的 nonce 仍然挡重放（同一份成功报文重推 → 400「nonce 重复」）", async () => {
+		const encrypted = await seal(TICKET_XML);
+		const query = signedQuery(encrypted, { nonce: "ok_once" });
+		const body = `<xml><Encrypt>${encrypted}</Encrypt></xml>`;
+
+		request({ query, body });
+		await (await api()).event.post();
+		expect(out.text).toBe("success");
+
+		request({ query, body });
+		await (await api()).event.post();
+		expect(out.status).toBe(400);
+		expect(out.body.msg).toMatch(/nonce 重复/);
+	});
+
 	it("EncodingAESKey 与后台不一致（签名过、解密爆 pkcs7）→ 400，日志点名是哪一侧配错", async () => {
 		// 用户实报的原样症状：WARN reason=pkcs7: bad padding。签名先过说明后台 Token 与本部署一致，
 		// 所以只回一句 bad padding 等于没给线索——日志必须带「外层 ToUserName / 配置套件 / 实际加载的密钥指纹」。

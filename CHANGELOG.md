@@ -77,6 +77,16 @@
 
 ### Fixed
 
+- **重放守卫把企微的重推判成 400（`回调 nonce 重复`），瞬态故障的恢复路径被自己拆掉**：nonce 在
+  **处理之前**就被记为已用，而企微只在「拿不到 success」时重推——也就是说，需要重推的那一刻正好被
+  这道闸挡住。2026-11-01 生产日志即此：`create_auth` 因上游 502 失败 → 5 秒后重推 → 400「nonce 重复」。
+  现在 `guardReplay` 返回一次**占用**（`ReplayClaim`），处理失败（含解密失败、URL 验证失败）一律
+  `release()` 放回；处理成功才留下，重放仍被挡（两条路径都有用例钉住）。
+- **`get_permanent_code` 回包 `auth_info.agent` 为空 → 直接 502，企业管理员看到「应用安装失败」，
+  而 `auth_code` 已经用掉（一次有效）**：改为拿刚换到的 `permanent_code` 回源 `get_auth_info` 复核
+  一次（同形接口，只在异常路径多一次往返）；另外 `agent` 给成单个对象（非数组）也认。取不到时
+  记 `wecom agent list missing in get_permanent_code`（只记回包键名）再判死，下一次复现就能看出
+  是哪种形态，不用再猜。
 - **`ojm build` 在 config 读不动时照旧出包，`sql_guard` 被静默关掉**：`oj build` 遇到解不开的
   `ENC[...]`（换机器只带了 config.yaml、密钥不成对，或密文被改）**不失败**——退出码 0，只往 stderr
   甩两行「镜像目录回落默认 tasks / 本次 build 按 sql_guard=off」，夹在模块清单里极易被忽略，产出的包

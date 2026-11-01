@@ -1,5 +1,6 @@
 import type { WecomConfig } from "../_shared/wecom/config";
 import type { CallbackFields } from "../_shared/wecom/payload";
+import type { ReplayClaim } from "../_shared/wecom/replay";
 import type { WecomStoreDeps } from "../_shared/wecom/store";
 // GET  /api/auth/wecom/login?corp=&agent=&env=  —— 发起企微授权（企微内静默 / 浏览器扫码）
 // GET  /api/auth/wecom/callback?code=&state=     —— 企微回跳：code→userid→JIT→一次性票据→302 SPA
@@ -123,21 +124,35 @@ function unwrapAccepting(encrypted: string, cfg: WecomConfig, candidates: string
  * 三道顺序不可换：先验签（不给未鉴权请求写 kv）→ 再拦重放（省一次解密，也让
  * cancel_auth 这种危险性最高的报文止步在落库之前）→ 最后解密。
  */
-async function decryptVerified(encrypted: string, envelope: CallbackFields): Promise<{ cfg: WecomConfig, plain: string }> {
+async function decryptVerified(encrypted: string, envelope: CallbackFields): Promise<{ cfg: WecomConfig, plain: string, claim: ReplayClaim }> {
 	const cfg = readWecomConfig();
 	const expected = wecomSignature(cfg.token, query("timestamp"), query("nonce"), encrypted);
 	if (expected !== query("msg_signature"))
 		throw badRequest("回调签名校验失败");
-	await guardReplay(query("timestamp"), query("nonce"), runtimeReplayGate());
+	const claim = await guardReplay(query("timestamp"), query("nonce"), runtimeReplayGate());
 	try {
 		// 信封的 ToUserName 就是这条报文的身份：套件事件里是 suiteid，应用数据回调里是 corpid，
 		// 与 receiveid 必然一致（两者在同一份密文/明文里，签名已经覆盖）。
-		return { cfg, plain: unwrapAccepting(encrypted, cfg, [cfg.suiteId, field(envelope, "ToUserName")]) };
+		return { cfg, plain: unwrapAccepting(encrypted, cfg, [cfg.suiteId, field(envelope, "ToUserName")]), claim };
 	}
 	catch (e) {
+		// 解不开的这一条不能占住 nonce：企微重推是它唯一的恢复路径，占住就把重推挡成 400
+		await claim.release();
 		// 解密失败只对外透出「失败」：错钥/错套件/被篡改三者不可区分，也不该让外部据此判断哪一环配错
 		noteDecryptFailure(e, envelope, cfg);
 		throw badRequest("回调消息解密失败");
+	}
+}
+
+/** 放回一次 nonce 占用；放回失败只告警——它不该盖住真正的失败原因 */
+async function releaseClaim(claim: ReplayClaim | undefined): Promise<void> {
+	if (!claim)
+		return;
+	try {
+		await claim.release();
+	}
+	catch (e) {
+		log.warn("wecom replay nonce release failed", "reason", (e as Error).message);
 	}
 }
 
@@ -278,7 +293,7 @@ const event = {
 			const expected = wecomSignature(cfg.token, query("timestamp"), query("nonce"), encrypted);
 			if (expected !== query("msg_signature"))
 				throw badRequest("回调签名校验失败");
-			await guardReplay(query("timestamp"), query("nonce"), runtimeReplayGate());
+			const claim = await guardReplay(query("timestamp"), query("nonce"), runtimeReplayGate());
 			const suiteId = (vars.get("wecom_suite_id") ?? "").trim();
 			try {
 				// receiveid 一律不比对：GET 只有 echostr、没有报文信封，无从知道该比哪一个——
@@ -288,6 +303,8 @@ const event = {
 				plainText(unwrapWecomMessage(encrypted, cfg.encodingAesKey, suiteId, true));
 			}
 			catch (e) {
+				// 验证没通过就放回 nonce：企微后台点「保存」会连着验几次，占住会把后几次都挡成 400
+				await claim.release();
 				// 解密失败只透出「失败」：错钥/未下发套件/被篡改三者不可区分，也不该让外部据此判断哪一环配错
 				noteDecryptFailure(e, null, { encodingAesKey: cfg.encodingAesKey, suiteId });
 				throw badRequest("回调消息解密失败");
@@ -304,17 +321,22 @@ const event = {
 	// 包体形态按官方文档是 XML（见 payload.ts 的开头），但归一化那一层两种都认，
 	// 所以本函数只认字段名，不认格式。
 	async post() {
+		let claim: ReplayClaim | undefined;
 		try {
 			const envelope = callbackFields(http.body);
 			const encrypted = field(envelope, "Encrypt");
 			if (!encrypted)
 				throw badRequest("回调报文缺少 Encrypt（不是企微回调，或中间件改写了请求体）");
-			const { cfg, plain } = await decryptVerified(encrypted, envelope);
+			const verified = await decryptVerified(encrypted, envelope);
+			claim = verified.claim;
 			const client = createWecomClient({ http: runtimeHttp(), cache: runtimeCache() });
-			await handleSuiteEvent(plain, { cfg, client, store: runtimeStoreDeps(cfg) });
+			await handleSuiteEvent(verified.plain, { cfg: verified.cfg, client, store: runtimeStoreDeps(verified.cfg) });
 			plainText("success");
 		}
 		catch (e) {
+			// 处理失败必须放回 nonce：企微只在「拿不到 success」时重推，而那正是需要重推的时刻；
+			// 占住不放，重推会被自己的重放守卫判成 400，瞬态故障的恢复路径当场断掉。
+			await releaseClaim(claim);
 			// 企微侧只会显示「应用安装失败，联系服务商」，原因一概不透露——这里是唯一能查到
 			// 「哪一环拒了这条事件」的地方（缺这一行，这场失败在运维视角是零信息）。
 			const err = e as Error & { status?: number };

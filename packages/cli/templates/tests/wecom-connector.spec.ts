@@ -426,15 +426,44 @@ describe("P1-F：凭证链（client：缓存 + 失效重试 + 错误两态）", 
 		await expect(client.userIdByCode("c", "a", "p", "CODE")).rejects.toMatchObject({ status: 502 });
 	});
 
-	it("get_permanent_code 缺 corpid / agent 列表为空 → 502（不静默落一行空 profile）", async () => {
+	it("get_permanent_code 缺 corpid / agent 列表为空且复核也没有 → 502（不静默落一行空 profile）", async () => {
 		const noAgent = createWecomClient({
+			// suite_access_token 由调用方传入，所以这里的应答从 get_permanent_code 开始
 			http: stubHttp([
-				{ suite_access_token: "sat", expires_in: 7200 },
 				{ permanent_code: "perm", auth_corp_info: { corpid: "ww_x" }, auth_info: { agent: [] } },
+				// 回源复核（get_auth_info）同样没有应用 → 这时才判死
+				{ auth_info: { agent: [] } },
 			]),
 			cache: fakeCache(),
 		});
 		await expect(noAgent.permanentCodeByAuthCode("sat", "AUTH")).rejects.toMatchObject({ status: 502 });
+	});
+
+	// 2026-11-01 生产日志：create_auth 拿到永久码，但 auth_info.agent 是空的 → 上一版直接 502，
+	// 企业管理员看到「应用安装失败」，而永久码白白作废（auth_code 一次有效）。
+	it("get_permanent_code 的 agent 为空 → 拿刚换到的永久码回源 get_auth_info 补齐", async () => {
+		const http = stubHttp([
+			{ permanent_code: "perm", auth_corp_info: { corpid: "ww_x" }, auth_info: { agent: [] } },
+			{ auth_info: { agent: [{ agentid: 1000012, auth_mode: 1 }] } },
+		]);
+		const client = createWecomClient({ http, cache: fakeCache() });
+
+		const granted = await client.permanentCodeByAuthCode("sat", "AUTH");
+
+		expect(granted.agentIds).toEqual(["1000012"]);
+		expect(granted.authModes["1000012"]).toBe(1);
+		expect(http.calls.some(u => u.includes("/service/get_auth_info"))).toBe(true);
+	});
+
+	it("auth_info.agent 给成单个对象（不是数组）也认——少一次「明明有应用却判成没授权」", async () => {
+		const client = createWecomClient({
+			http: stubHttp([
+				{ permanent_code: "perm", auth_corp_info: { corpid: "ww_x" }, auth_info: { agent: { agentid: 1000011, auth_mode: 0 } } },
+			]),
+			cache: fakeCache(),
+		});
+
+		expect((await client.permanentCodeByAuthCode("sat", "AUTH")).agentIds).toEqual(["1000011"]);
 	});
 
 	it("userNameById 拿到真名（去首尾空白）", async () => {

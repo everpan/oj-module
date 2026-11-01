@@ -13,6 +13,11 @@
 //   2. nonce 幂等：kv.incr 原子计数，首次才写入 TTL。计数而不是读改写，是为了
 //      「两个并发同 nonce」也只有一个拿到 1（oj 的 kv 在配了 Redis 时是多实例共享的）。
 //
+// ⚡ 幂等是「处理成功」才算数：拿到的是一次**占用**（ReplayClaim），调用方处理失败必须
+// `release()` 放回。不放回的后果不是理论问题——企微只在「拿不到 success」时重推，而那正是
+// 需要重推的时刻；占用不放，重推会被自己的重放守卫判成 400，恢复路径当场死掉
+// （2026-11-01 生产日志：create_auth 因上游 502 失败 → 重推 400「nonce 重复」）。
+//
 // 两条都回调 400：它不是「本站要鉴权」的问题，401 会把排查带偏。
 const REPLAY_WINDOW_SECS = 5 * 60;
 /** 计数键存活时间：只要盖住重放窗口即可，避免 kv 无界增长 */
@@ -40,11 +45,19 @@ export function runtimeReplayGate(): ReplayGate {
 	};
 }
 
+/** 一次 nonce 占用：处理成功就不必管（TTL 到期自然消失）；失败必须 `release()` */
+export interface ReplayClaim {
+	release: () => Promise<void>
+}
+
 /**
- * 校验一次回调的时效与唯一性。通过 => void；不通过 => 抛 400。
+ * 校验一次回调的时效与唯一性。通过 => 返回占用凭据；不通过 => 抛 400。
  * 调用时机：**签名校验之后、解密之前**（先验签避免给未鉴权的请求写 kv，再拦重放省一次解密）。
+ *
+ * 占用是「这次报文归我处理」，不是「这条报文已经处理成功」——所以失败路径必须放回：
+ * 企微的重推是瞬态故障唯一的恢复手段，被自己的重放守卫挡掉等于把恢复路径拆了。
  */
-export async function guardReplay(timestampRaw: string, nonce: string, gate: ReplayGate): Promise<void> {
+export async function guardReplay(timestampRaw: string, nonce: string, gate: ReplayGate): Promise<ReplayClaim> {
 	const ts = Number(timestampRaw);
 	if (!Number.isInteger(ts) || ts <= 0)
 		fail(400, "回调 timestamp 非法");
@@ -63,4 +76,12 @@ export async function guardReplay(timestampRaw: string, nonce: string, gate: Rep
 		log.warn("wecom replay nonce ttl not set", "key", key);
 		await gate.del(key);
 	}
+	return {
+		// 直接 del，不做「是不是我占的那一次」的判断：oj 的 kv 没有 CAS，incr 的返回值
+		// 也已被消费在 seen 上。代价是并发同 nonce 时（同一秒内两次投递）可能多放过一次，
+		// 但放回的时机只在「处理失败」，而失败的这一条本来就该让企微重推。
+		release: async () => {
+			await gate.del(key);
+		},
+	};
 }

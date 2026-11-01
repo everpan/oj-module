@@ -176,10 +176,18 @@ export interface WecomMember {
 /**
  * 授权信息里的应用列表（`auth_info.agent`）——`get_permanent_code` 与 `get_auth_info` 同形，
  * 抽出来是为了两处对 auth_mode 的读法永远一致（同步闸门认的就是这个值）。
+ *
+ * **数组与单对象都认**：官方示例是数组，但 2026-11-01 的生产回包在代开发 v2 上给的是空列表
+ * （见 permanentCodeByAuthCode 的回源兜底）。单对象形态认下来没有代价，少一次「明明有应用却
+ * 判成没授权」的误杀。
  */
 function agentListOf(authInfo: unknown): Array<Record<string, unknown>> {
 	const list = (authInfo as Record<string, unknown> | undefined)?.agent;
-	return Array.isArray(list) ? list.map(a => a as Record<string, unknown>) : [];
+	if (Array.isArray(list))
+		return list.map(a => a as Record<string, unknown>);
+	if (list && typeof list === "object")
+		return [list as Record<string, unknown>];
+	return [];
 }
 
 /**
@@ -245,18 +253,41 @@ export function createWecomClient(deps: WecomClientDeps) {
 		const res = await http.postJson(`${API_BASE}/cgi-bin/service/v2/get_permanent_code?suite_access_token=${encodeURIComponent(suiteAccessToken)}`, { auth_code: authCode });
 		assertOk(res, "get_permanent_code");
 		const authCorp = (res.auth_corp_info ?? {}) as Record<string, unknown>;
-		const agents = agentListOf(res.auth_info);
-		const agentIds = agents.map(a => String(a.agentid)).filter(Boolean);
 		if (!res.permanent_code || !authCorp.corpid)
 			throw upstream("企微 get_permanent_code 返回缺少 permanent_code / corpid");
+		let authInfo = res.auth_info;
+		let agents = agentListOf(authInfo);
+		if (agents.length === 0) {
+			// 代开发 v2 出现过「永久码拿到了、auth_info.agent 却是空的」（2026-11-01 生产日志）。
+			// 此时别急着判死：永久码已经在手，`get_auth_info` 是同形的复核接口，能补回应用列表。
+			// 只记字段名，不记值——回包里没有任何可公开的东西。
+			log.warn(
+				"wecom agent list missing in get_permanent_code",
+				"keys",
+				Object.keys(res).join(","),
+				"authInfoKeys",
+				authInfo && typeof authInfo === "object" ? Object.keys(authInfo as Record<string, unknown>).join(",") : typeof authInfo,
+			);
+			try {
+				authInfo = await authInfoByPermanentCode(suiteAccessToken, String(authCorp.corpid), String(res.permanent_code));
+				agents = agentListOf(authInfo);
+			}
+			catch (e) {
+				log.warn("wecom get_auth_info fallback failed", "reason", (e as Error).message);
+			}
+		}
+		const agentIds = agents.map(a => String(a.agentid)).filter(Boolean);
+		// 列表有元素却取不到 agentid：字段被改名的信号，记下键名（不记值）省下一次盲猜
+		if (agents.length > 0 && agentIds.length === 0)
+			log.warn("wecom agent item has no agentid", "keys", Object.keys(agents[0]!).join(","));
 		if (agentIds.length === 0)
-			throw upstream("企微 get_permanent_code 未返回授权应用（auth_info.agent 为空）");
+			throw upstream("企微 get_permanent_code 未返回授权应用（auth_info.agent 为空，get_auth_info 复核也没有）");
 		return {
 			permanentCode: String(res.permanent_code),
 			corpId: String(authCorp.corpid),
 			corpName: authCorp.corp_name == null ? null : String(authCorp.corp_name),
 			agentIds,
-			authModes: readAuthModes(res.auth_info),
+			authModes: readAuthModes(authInfo),
 			state: res.state == null ? null : String(res.state),
 		};
 	}
@@ -268,12 +299,17 @@ export function createWecomClient(deps: WecomClientDeps) {
 	 * 不刷新就会一直按「可同步」对待。
 	 */
 	async function authModesByPermanentCode(suiteAccessToken: string, corpId: string, permanentCode: string): Promise<Record<string, number>> {
+		return readAuthModes(await authInfoByPermanentCode(suiteAccessToken, corpId, permanentCode));
+	}
+
+	/** `get_auth_info` 的原始 `auth_info`：授权模式刷新与「永久码回包缺 agent」的回源兜底共用 */
+	async function authInfoByPermanentCode(suiteAccessToken: string, corpId: string, permanentCode: string): Promise<unknown> {
 		const res = await http.postJson(`${API_BASE}/cgi-bin/service/get_auth_info?suite_access_token=${encodeURIComponent(suiteAccessToken)}`, {
 			auth_corpid: corpId,
 			permanent_code: permanentCode,
 		});
 		assertOk(res, "get_auth_info");
-		return readAuthModes(res.auth_info);
+		return res.auth_info;
 	}
 
 	/**
