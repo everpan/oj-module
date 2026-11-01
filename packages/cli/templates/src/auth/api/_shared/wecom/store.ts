@@ -27,6 +27,8 @@ export interface AppProfile {
 	corpName: string | null
 	status: "active" | "disabled"
 	permanentCode: string
+	/** 0=管理员授权 / 1=成员授权（成员授权下应用无任何部门权限，组织架构同步必然 60011，§2.3） */
+	authMode: number
 }
 
 /** 套件票据：企微每 10 分钟推一次，有效期 30 分钟；过期不得发起任何套件级 API 调用 */
@@ -120,6 +122,8 @@ export async function saveProfile(p: Omit<AppProfile, "status"> & { status?: App
 		corp_name: p.corpName,
 		status: p.status ?? "active",
 		permanent_code_enc: deps.encrypt(p.permanentCode),
+		// 授权模式是「该企业应用能不能做组织架构同步」的判据（§2.3）；重授权时必须跟着刷新
+		auth_mode: Number(p.authMode ?? 0),
 		update_time: now,
 	};
 	if (rows.length) {
@@ -161,12 +165,33 @@ export async function findProfile(corpId: string, agentId: string | null, deps: 
 		corpName: r.corp_name == null ? null : String(r.corp_name),
 		status: String(r.status) === "disabled" ? "disabled" : "active",
 		permanentCode: deps.decrypt(String(r.permanent_code_enc)),
+		authMode: Number(r.auth_mode ?? 0),
 	};
 }
 
 /** 停用/解绑：只改状态，不删行（取消授权也要留痕，§7.5 审计） */
 export async function setProfileStatus(corpId: string, status: AppProfile["status"], deps: WecomStoreDeps): Promise<number> {
 	return Number(await db.table("wecom_app_profile").update({ status, update_time: deps.now() }).where(corpScope(corpId)).run());
+}
+
+/**
+ * 该企业已授权的应用 + 共享的永久授权码。
+ * 用于 `change_auth` 复核授权模式：事件只带 AuthCorpId（**没有 AuthCode**），
+ * 只能拿已落库的 permanent_code 去 `get_auth_info` 反查。未授权企业返回 null。
+ */
+export async function findCorpAuth(corpId: string, deps: WecomStoreDeps): Promise<{ permanentCode: string, agentIds: string[] } | null> {
+	const rows = await db.table("wecom_app_profile").select(["agent_id", "permanent_code_enc"]).where(corpScope(corpId)).all() as Array<Record<string, unknown>>;
+	if (rows.length === 0)
+		return null;
+	return {
+		permanentCode: deps.decrypt(String(rows[0]!.permanent_code_enc)),
+		agentIds: rows.map(r => String(r.agent_id)),
+	};
+}
+
+/** 授权模式变更：只改 auth_mode，不动 secret / 状态（改状态是 cancel_auth 的事） */
+export async function setAuthMode(corpId: string, agentId: string, authMode: number, deps: WecomStoreDeps): Promise<void> {
+	await db.table("wecom_app_profile").update({ auth_mode: Number(authMode), update_time: deps.now() }).where(corpAgentScope(corpId, agentId)).run();
 }
 
 export async function putSuiteTicket(suiteId: string, ticket: string, expiresAt: number, deps: WecomStoreDeps): Promise<void> {

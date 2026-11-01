@@ -23,6 +23,8 @@ tables:
       status: {type: text, null: false}
       # permanent_code（= 代开发应用的 secret）的 AES-GCM 密文，禁止明文落库
       permanent_code_enc: {type: text, null: false}
+      # 0=管理员授权 / 1=成员授权（0002）：成员授权下应用无任何部门权限，组织架构同步必然 60011
+      auth_mode: {type: integer, null: false}
       installed_at: {type: integer, null: false}
       update_time: {type: integer, null: false}
   wecom_suite_ticket:
@@ -46,3 +48,32 @@ tables:
       expires_at: {type: integer, null: false}
       used: {type: integer, null: false}
       created_at: {type: integer, null: false}
+  # 组织架构同步（0002）：**租户表**（不进 shared_allow）——同步只在调用方自己的租户内跑，
+  # 没有「查它时还不知道租户」的时刻；跨租户只由 superadmin 面读元数据。
+  wecom_sync_job:
+    pk: [tenant_id, agent_id]
+    columns:
+      tenant_id: {type: text, null: false}
+      corp_id: {type: text, null: false}
+      agent_id: {type: text, null: false}
+      # idle / running / done / failed / cancelled
+      status: {type: text, null: false}
+      # departments / members / reconcile
+      phase: {type: text, null: false}
+      # 续跑游标与计数都是 JSON 文本：字段演进不该每次都动三方言迁移
+      cursor_text: {type: text}
+      stats_text: {type: text}
+      # 只存脱敏后的结构化错码（异常原文可能夹带 URL 上的 token，§7）
+      err_code: {type: text}
+      err_detail: {type: text}
+      started_at: {type: integer, null: false}
+      finished_at: {type: integer, null: false}
+      update_time: {type: integer, null: false}
+  wecom_sync_lock:
+    pk: [tenant_id, agent_id]
+    columns:
+      tenant_id: {type: text, null: false}
+      agent_id: {type: text, null: false}
+      # 抢锁者标识（请求 id），只用于日志对账
+      owner: {type: text, null: false}
+      taken_at: {type: integer, null: false}

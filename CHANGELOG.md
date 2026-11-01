@@ -7,6 +7,34 @@
 
 ## [Unreleased]
 
+### Added
+
+- **企微适配器读取面（B1）**：`client.ts` 新增六个通讯录接口（`departmentChildren` / `departmentDetail` /
+  `departmentList` / `deptMembers` / `deptMembersDetail` / `userDetail`），并把上游错码分成三类
+  （`WecomApiError.kind`）：权限类 `60011`/`48002` 跳过并计数、限流类 `45009`/`45033` 指数退避重试三次、
+  其余立即失败。同步器靠这个分类决定「跳过 / 停片 / 熔断」，不再一律 502。
+- **授权模式（`auth_mode`）全链路**：`get_permanent_code` 解析并落库；`change_auth` 事件带不带 AuthCode
+  ——用已存永久码调 `get_auth_info` 复核（企微后台切换「管理员授权 ⇄ 成员授权」时只有这条路径能跟上）。
+  成员授权下部门接口必然 `60011`，故它是同步入口的准入判据（400 明确文案，不发起任何上游调用）。
+- **登录自更新（轨一）**：登录成功顺手 `user/get` 一次，回写姓名/职务/在职状态与所属部门。四条纪律：
+  24h 节流、整体 try/catch 不影响登录、**不建占位部门**（D10）、只写 `source='wecom'` 的行（D13）。
+  在职状态 `2`/`5`（已禁用/退出企业）→ 登录侧 403。
+- **全量同步（B2）**：`wecom_sync_job` / `wecom_sync_lock` 两张租户表（三方言 `auth/0002__org_sync`）+
+  `POST /api/auth/wecom/sync/start`、`GET .../status`、`POST .../cancel`。分片推进（单请求 4 秒预算，
+  进度落游标，调用方轮询驱动）、抢锁防重入（120 秒租约可抢回崩溃残留）、权限类跳过、
+  致命类连续 10 次熔断、错误明细只存脱敏结构 `{errcode, phase, deptId, at}`。
+  墓碑回收**只在「本轮完整且零跳过」时执行**（D9）——否则一次上游抖动会被读成「部门被删」。
+  新增权限点 `auth.wecom.sync`（管理端触发同步唯一门禁）。
+- 模板分发补上企微全套回归（`tests/wecom-*.spec.ts` 七份）：源码本来就分发，测试不跟着走等于用户工程
+  升级后没有任何本地自检手段。
+
+### Changed
+
+- `users` 领域新增 `upsertSourceUser`：外部源同步建档 `activated=0`（未登录的目录档，§9.1 防 contacts
+  被放大），不写逐条审计，且对已「转为本地维护」（`source` 不同）的行一个字段都不改。
+- `markSeen` 同时把 `sync_visible` 拉回 `1`：上一轮因可见范围收窄被判隐的部门，这一轮又出现了，
+  只写 `seen_job_id` 会让它永远隐身（reconcile 只置 0，没有任何地方置回 1）。
+
 ## [0.2.48] - 2026-11-01
 
 双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步定版 **0.2.48**。本轮交付

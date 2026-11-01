@@ -16,3 +16,6 @@ INSERT IGNORE INTO sys_user_role (user_id, role_name) SELECT id, 'editor' FROM u
 INSERT IGNORE INTO sys_user_role (user_id, role_name) SELECT id, 'viewer' FROM users WHERE username = 'viewer';
 -- 组织架构共享读面全量权限点（基线 seed 同款，注释不重复）：scope=all 挂 platform.org.read.all
 INSERT IGNORE INTO sys_permission (code, module, title_key, deprecated) VALUES ('platform.org.read.all', 'framework', 'system:perm.platform_org_read_all', 0);
+-- 企微组织架构同步（B2）：触发同步是打上游的动作，挂权限点；admin/superadmin 天然通过，
+-- 只有自定义角色需要显式绑定（与 platform.org.read.all 同一条纪律：不落库就永远绑不上）。
+INSERT IGNORE INTO sys_permission (code, module, title_key, deprecated) VALUES ('auth.wecom.sync', 'auth', 'system:perm.auth_wecom_sync', 0);

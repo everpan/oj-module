@@ -72,6 +72,16 @@ include:
   - tests/rbac-tables.spec.ts
   - tests/rbac-users.spec.ts
   - tests/seed-role-accounts.spec.ts
+  # 企微连接器与组织同步：源码本就分发（src/auth/api），对应回归也必须跟着走，
+  # 否则用户工程升级后改配置/换套件时没有任何本地自检手段。
+  - tests/wecom-admin.spec.ts
+  - tests/wecom-client-timeout.spec.ts
+  - tests/wecom-connector.spec.ts
+  - tests/wecom-crypt.spec.ts
+  - tests/wecom-endpoints.spec.ts
+  - tests/wecom-landing.spec.ts
+  - tests/wecom-org-sync.spec.ts
+  - tests/wecom-sync.spec.ts
   - tests/lifecycle/atomic-state.spec.ts
   - tests/lifecycle/deploy-smoke.spec.ts
   - tests/lifecycle/migrate.spec.ts

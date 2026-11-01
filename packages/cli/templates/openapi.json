@@ -4634,6 +4634,490 @@
 					}
 				}
 			}
+		},
+		"/api/auth/wecom/sync/start": {
+			"post": {
+				"operationId": "auth_wecom_sync_start_post",
+				"summary": "POST api/auth/wecom/sync/start",
+				"x-oj-file": "auth/wecom/sync/api.ts",
+				"tags": [
+					"auth"
+				],
+				"requestBody": {
+					"required": false,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"properties": {
+									"agent": {
+										"type": "string"
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"required": [
+												"status",
+												"phase",
+												"stats",
+												"progress",
+												"errCode",
+												"errDetail",
+												"startedAt",
+												"finishedAt",
+												"updateTime"
+											],
+											"properties": {
+												"status": {
+													"type": "string",
+													"enum": [
+														"idle",
+														"running",
+														"done",
+														"failed",
+														"cancelled"
+													]
+												},
+												"phase": {
+													"type": "string",
+													"enum": [
+														"departments",
+														"members",
+														"reconcile"
+													]
+												},
+												"stats": {
+													"type": "object",
+													"required": [
+														"departments",
+														"members",
+														"skipped",
+														"reconciled"
+													],
+													"properties": {
+														"departments": {
+															"type": "number"
+														},
+														"members": {
+															"type": "number"
+														},
+														"skipped": {
+															"type": "number"
+														},
+														"reconciled": {
+															"type": "boolean"
+														}
+													}
+												},
+												"progress": {
+													"type": "object",
+													"required": [
+														"done",
+														"total"
+													],
+													"properties": {
+														"done": {
+															"type": "number"
+														},
+														"total": {
+															"type": "number"
+														}
+													}
+												},
+												"errCode": {
+													"type": [
+														"string",
+														"null"
+													]
+												},
+												"errDetail": {
+													"type": [
+														"object",
+														"null"
+													],
+													"properties": {
+														"errcode": {
+															"type": "number"
+														},
+														"phase": {
+															"type": "string",
+															"enum": [
+																"departments",
+																"members",
+																"reconcile"
+															]
+														},
+														"deptId": {
+															"type": "string"
+														},
+														"at": {
+															"type": "number"
+														}
+													}
+												},
+												"startedAt": {
+													"type": "number"
+												},
+												"finishedAt": {
+													"type": "number"
+												},
+												"updateTime": {
+													"type": "number"
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/auth/wecom/sync/status": {
+			"get": {
+				"operationId": "auth_wecom_sync_status_get",
+				"summary": "GET api/auth/wecom/sync/status",
+				"x-oj-file": "auth/wecom/sync/api.ts",
+				"tags": [
+					"auth"
+				],
+				"parameters": [
+					{
+						"name": "agent",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"required": [
+												"status",
+												"phase",
+												"stats",
+												"progress",
+												"errCode",
+												"errDetail",
+												"startedAt",
+												"finishedAt",
+												"updateTime"
+											],
+											"properties": {
+												"status": {
+													"type": "string",
+													"enum": [
+														"idle",
+														"running",
+														"done",
+														"failed",
+														"cancelled"
+													]
+												},
+												"phase": {
+													"type": "string",
+													"enum": [
+														"departments",
+														"members",
+														"reconcile"
+													]
+												},
+												"stats": {
+													"type": "object",
+													"required": [
+														"departments",
+														"members",
+														"skipped",
+														"reconciled"
+													],
+													"properties": {
+														"departments": {
+															"type": "number"
+														},
+														"members": {
+															"type": "number"
+														},
+														"skipped": {
+															"type": "number"
+														},
+														"reconciled": {
+															"type": "boolean"
+														}
+													}
+												},
+												"progress": {
+													"type": "object",
+													"required": [
+														"done",
+														"total"
+													],
+													"properties": {
+														"done": {
+															"type": "number"
+														},
+														"total": {
+															"type": "number"
+														}
+													}
+												},
+												"errCode": {
+													"type": [
+														"string",
+														"null"
+													]
+												},
+												"errDetail": {
+													"type": [
+														"object",
+														"null"
+													],
+													"properties": {
+														"errcode": {
+															"type": "number"
+														},
+														"phase": {
+															"type": "string",
+															"enum": [
+																"departments",
+																"members",
+																"reconcile"
+															]
+														},
+														"deptId": {
+															"type": "string"
+														},
+														"at": {
+															"type": "number"
+														}
+													}
+												},
+												"startedAt": {
+													"type": "number"
+												},
+												"finishedAt": {
+													"type": "number"
+												},
+												"updateTime": {
+													"type": "number"
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/auth/wecom/sync/cancel": {
+			"post": {
+				"operationId": "auth_wecom_sync_cancel_post",
+				"summary": "POST api/auth/wecom/sync/cancel",
+				"x-oj-file": "auth/wecom/sync/api.ts",
+				"tags": [
+					"auth"
+				],
+				"requestBody": {
+					"required": false,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"properties": {
+									"agent": {
+										"type": "string"
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"required": [
+												"status",
+												"phase",
+												"stats",
+												"progress",
+												"errCode",
+												"errDetail",
+												"startedAt",
+												"finishedAt",
+												"updateTime"
+											],
+											"properties": {
+												"status": {
+													"type": "string",
+													"enum": [
+														"idle",
+														"running",
+														"done",
+														"failed",
+														"cancelled"
+													]
+												},
+												"phase": {
+													"type": "string",
+													"enum": [
+														"departments",
+														"members",
+														"reconcile"
+													]
+												},
+												"stats": {
+													"type": "object",
+													"required": [
+														"departments",
+														"members",
+														"skipped",
+														"reconciled"
+													],
+													"properties": {
+														"departments": {
+															"type": "number"
+														},
+														"members": {
+															"type": "number"
+														},
+														"skipped": {
+															"type": "number"
+														},
+														"reconciled": {
+															"type": "boolean"
+														}
+													}
+												},
+												"progress": {
+													"type": "object",
+													"required": [
+														"done",
+														"total"
+													],
+													"properties": {
+														"done": {
+															"type": "number"
+														},
+														"total": {
+															"type": "number"
+														}
+													}
+												},
+												"errCode": {
+													"type": [
+														"string",
+														"null"
+													]
+												},
+												"errDetail": {
+													"type": [
+														"object",
+														"null"
+													],
+													"properties": {
+														"errcode": {
+															"type": "number"
+														},
+														"phase": {
+															"type": "string",
+															"enum": [
+																"departments",
+																"members",
+																"reconcile"
+															]
+														},
+														"deptId": {
+															"type": "string"
+														},
+														"at": {
+															"type": "number"
+														}
+													}
+												},
+												"startedAt": {
+													"type": "number"
+												},
+												"finishedAt": {
+													"type": "number"
+												},
+												"updateTime": {
+													"type": "number"
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
 		}
 	},
 	"tags": [

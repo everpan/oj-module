@@ -1,3 +1,5 @@
+import type { WecomCache, WecomClient } from "./client";
+import type { WecomStoreDeps } from "./store";
 // 企微登录领域服务：授权链接构造、state 一次性票据、code→userid、JIT 建档。
 //
 // 两条入口（都落在同一个回调上）：
@@ -7,7 +9,12 @@
 //
 // JIT（无独立注册）：外部身份沿用 `wecom:<userid>` 用户名前缀（D6），口令哈希占位 `!wecom`
 // （任何口令都验不过，低信任来源不接管本地号，同 ldap 的 `!ldap`）；外层租户由 corp_id 决定。
-import type { WecomCache } from "./client";
+//
+// 轨一「登录自更新」（方案 §6.1）：登录成功后顺手 user/get 一次，补本人资料与所属部门。
+// 四条纪律：① 24h 节流（老用户不重复打上游）；② 整体 try/catch，失败不影响登录；
+// ③ **不建占位部门**——只对已知部门写关联（D10，否则任何登录成员都能凭空造出部门节点）；
+// ④ 只加不摘：人调到新部门只加新的，旧部门由全量同步/事件摘除。
+import { setMainDepartment, upsertMember } from "#/_platform/_shared/service/domain/org";
 
 export const AUTHORIZE_IN_APP = "https://open.weixin.qq.com/connect/oauth2/authorize";
 export const AUTHORIZE_QRCODE = "https://open.work.weixin.qq.com/wwopen/sso/qrConnect";
@@ -136,4 +143,108 @@ export async function assertUserActive(uid: number): Promise<void> {
 export function loginLandingUrl(opts: { origin: string, ticket: string, tenant: string }): string {
 	const q = new URLSearchParams({ wecom_ticket: opts.ticket, tenant: opts.tenant });
 	return `${opts.origin}/login?${q.toString()}`;
+}
+
+// ---------------------------------------------------------------------------
+// 轨一：登录自更新（方案 §6.1）
+// ---------------------------------------------------------------------------
+
+/** 节流窗口：一个企业上万员工每天登录都会触发，不节流就是把 user/get 打成常驻流量 */
+export const SELF_UPDATE_TTL_SECS = 24 * 60 * 60;
+
+export interface SelfUpdateCtx {
+	uid: number
+	userid: string
+	corpId: string
+	agentId: string
+	permanentCode: string
+}
+
+export interface SelfUpdateDeps {
+	client: WecomClient
+	cache: WecomCache
+	store: WecomStoreDeps
+}
+
+/** 企微在职状态里「不该再放进来」的两档：2=已禁用、5=退出企业（4=未激活仍可登录） */
+function isBlockedStatus(status: number | null): boolean {
+	return status === 2 || status === 5;
+}
+
+async function dbExternalStatus(userid: string): Promise<number | null> {
+	const rows = await db.table("users").select(["external_status"]).where({ field: "username", op: "eq", value: externalUsername(userid) }).all() as Array<{ external_status: number | null }>;
+	const v = rows[0]?.external_status;
+	return v == null ? null : Number(v);
+}
+
+/**
+ * 把 user/get 的结果写回本地：资料（姓名/职务/在职状态）+ 所属部门关联。
+ *
+ * **只加不摘**：人调到新部门只写新部门，旧部门不在这里删——摘除属全量同步/事件增量的职责，
+ * 登录路径上删关联会在「企微接口这次只返回部分部门」时把人的组织关系误删。
+ * **只写企微拥有的行**（D13）：`source != 'wecom'`（管理员已「转为本地维护」）一律不覆盖。
+ */
+async function applyUserDetail(ctx: SelfUpdateCtx, detail: { name: string | null, position: string | null, status: number | null, departments: string[], orders: number[], leaderInDept: number[], mainDepartment: number | null }, deps: SelfUpdateDeps): Promise<void> {
+	const cols: Record<string, unknown> = {
+		position: detail.position,
+		external_status: detail.status,
+		// 走到这里说明真人刚扫码登录过 → 纳入通讯录目录（§9.1）
+		activated: 1,
+	};
+	const displayName = detail.name?.trim();
+	if (displayName)
+		cols.display_name = displayName;
+	await db.table("users").update(cols).where({ and: [
+		{ field: "username", op: "eq", value: externalUsername(ctx.userid) },
+		{ field: "source", op: "eq", value: "wecom" },
+	] }).run();
+
+	if (!detail.departments.length)
+		return;
+	const rows = await db.table("sys_department").select(["id", "origin_id"]).where({ and: [
+		{ field: "origin", op: "eq", value: "wecom" },
+		{ field: "origin_id", op: "in", value: detail.departments },
+	] }).all() as Array<{ id: number, origin_id: string }>;
+	const byOrigin = new Map(rows.map(r => [String(r.origin_id), Number(r.id)]));
+	const orgDeps = { now: deps.store.now };
+	for (const [i, originId] of detail.departments.entries()) {
+		const deptId = byOrigin.get(originId);
+		// D10：未知部门一律跳过，等全量同步补——这里若能建部门，任何登录成员都能伪造组织架构
+		if (!deptId)
+			continue;
+		await upsertMember({
+			userId: ctx.uid,
+			deptId,
+			orderNo: detail.orders[i] ?? 0,
+			isLeader: (detail.leaderInDept[i] ?? 0) === 1,
+		}, orgDeps);
+	}
+	// 主部门可能缺失（仅当应用对主部门有查看权限时才返回）→ 兜底取 department[0]
+	const mainOrigin = detail.mainDepartment != null ? String(detail.mainDepartment) : detail.departments[0]!;
+	const mainDept = byOrigin.get(mainOrigin);
+	if (mainDept)
+		await setMainDepartment(ctx.uid, mainDept, orgDeps);
+}
+
+/**
+ * 登录自更新入口。**永不抛出**：任何失败只告警并放过登录（拿不到就用兜底值）。
+ * 返回值 `blocked` 供调用方在换会话前拦「企微侧已离职/禁用」的账号。
+ */
+export async function selfUpdate(ctx: SelfUpdateCtx, deps: SelfUpdateDeps): Promise<{ blocked: boolean }> {
+	const key = `wecom:self:${ctx.corpId}:${ctx.userid}`;
+	try {
+		if (await deps.cache.get(key))
+			return { blocked: isBlockedStatus(await dbExternalStatus(ctx.userid)) };
+		const detail = await deps.client.userDetail(ctx.corpId, ctx.agentId, ctx.permanentCode, ctx.userid);
+		// null = 无通讯录权限 / 不在可见范围 / 上游抖：本次不更新，也别写节流键（下次登录重试）
+		if (!detail)
+			return { blocked: isBlockedStatus(await dbExternalStatus(ctx.userid)) };
+		await applyUserDetail(ctx, detail, deps);
+		await deps.cache.set(key, "1", SELF_UPDATE_TTL_SECS);
+		return { blocked: isBlockedStatus(detail.status) };
+	}
+	catch (e) {
+		log.warn("wecom self-update skipped", "userid", ctx.userid, "reason", (e as Error).message);
+		return { blocked: false };
+	}
 }

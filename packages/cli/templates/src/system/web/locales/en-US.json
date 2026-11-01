@@ -172,6 +172,7 @@
 		"ldap_email_attr": "LDAP Email Attribute"
 	},
 	"perm": {
-		"platform_org_read_all": "Org directory: read all"
+		"platform_org_read_all": "Org directory: read all",
+		"auth_wecom_sync": "WeCom org sync"
 	}
 }

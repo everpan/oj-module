@@ -493,7 +493,7 @@ describe("P1-G：事件分发（suite_ticket / 授权 / 解绑）", () => {
 				return "sat";
 			},
 			async permanentCodeByAuthCode() {
-				return { permanentCode: "perm_new", corpId: "ww_corp_a", corpName: "测试企业", agentIds: ["100001", "100002"], state: null, ...overrides };
+				return { permanentCode: "perm_new", corpId: "ww_corp_a", corpName: "测试企业", agentIds: ["100001", "100002"], authModes: { 100001: 0, 100002: 0 }, state: null, ...overrides };
 			},
 			async corpAccessToken() {
 				return "ct";

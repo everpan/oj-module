@@ -46,4 +46,91 @@ export const schemas = {
 	"ticket": z.string().min(32).max(128)
 }),
 	},
+	"authWecomSyncStartPost": {
+		body: z.object({
+	"agent": z.string().optional()
+}),
+		data: z.object({
+	"status": z.enum(["idle", "running", "done", "failed", "cancelled"]),
+	"phase": z.enum(["departments", "members", "reconcile"]),
+	"stats": z.object({
+	"departments": z.number(),
+	"members": z.number(),
+	"skipped": z.number(),
+	"reconciled": z.boolean()
+}),
+	"progress": z.object({
+	"done": z.number(),
+	"total": z.number()
+}),
+	"errCode": z.string().nullable(),
+	"errDetail": z.object({
+	"errcode": z.number().optional(),
+	"phase": z.enum(["departments", "members", "reconcile"]).optional(),
+	"deptId": z.string().optional(),
+	"at": z.number().optional()
+}).nullable(),
+	"startedAt": z.number(),
+	"finishedAt": z.number(),
+	"updateTime": z.number()
+}),
+	},
+	"authWecomSyncStatusGet": {
+		query: z.object({
+	"agent": z.string().optional()
+}),
+		data: z.object({
+	"status": z.enum(["idle", "running", "done", "failed", "cancelled"]),
+	"phase": z.enum(["departments", "members", "reconcile"]),
+	"stats": z.object({
+	"departments": z.number(),
+	"members": z.number(),
+	"skipped": z.number(),
+	"reconciled": z.boolean()
+}),
+	"progress": z.object({
+	"done": z.number(),
+	"total": z.number()
+}),
+	"errCode": z.string().nullable(),
+	"errDetail": z.object({
+	"errcode": z.number().optional(),
+	"phase": z.enum(["departments", "members", "reconcile"]).optional(),
+	"deptId": z.string().optional(),
+	"at": z.number().optional()
+}).nullable(),
+	"startedAt": z.number(),
+	"finishedAt": z.number(),
+	"updateTime": z.number()
+}),
+	},
+	"authWecomSyncCancelPost": {
+		body: z.object({
+	"agent": z.string().optional()
+}),
+		data: z.object({
+	"status": z.enum(["idle", "running", "done", "failed", "cancelled"]),
+	"phase": z.enum(["departments", "members", "reconcile"]),
+	"stats": z.object({
+	"departments": z.number(),
+	"members": z.number(),
+	"skipped": z.number(),
+	"reconciled": z.boolean()
+}),
+	"progress": z.object({
+	"done": z.number(),
+	"total": z.number()
+}),
+	"errCode": z.string().nullable(),
+	"errDetail": z.object({
+	"errcode": z.number().optional(),
+	"phase": z.enum(["departments", "members", "reconcile"]).optional(),
+	"deptId": z.string().optional(),
+	"at": z.number().optional()
+}).nullable(),
+	"startedAt": z.number(),
+	"finishedAt": z.number(),
+	"updateTime": z.number()
+}),
+	},
 };

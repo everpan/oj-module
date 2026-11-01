@@ -7,6 +7,9 @@ tables:
   - wecom_app_profile
   - wecom_suite_ticket
   - wecom_login_ticket
+  # 0002 组织架构同步：租户表（与上面三张共享表定性相反，见 schema.yaml）
+  - wecom_sync_job
+  - wecom_sync_lock
 deps: # 两处都用：login/refresh 读 _platform.users（ownership_guard: deny，§3/S003）；
   # 跨模块别名 `#/_platform/…` 的依赖门禁（oj build S008）
   _platform: ^0.1.0

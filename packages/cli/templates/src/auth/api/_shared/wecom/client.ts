@@ -118,6 +118,88 @@ function assertOk(res: Record<string, unknown>, what: string): void {
 
 const TOKEN_EXPIRED = new Set([40001, 40014, 42001]);
 
+/**
+ * 错码三分类（方案 §5.1）。同步器按 kind 决定处置，**不再一律当 502**：
+ *   · permission：该部门不在应用权限/可见范围内 → 跳过并计数，本轮不判失败（否则一个部门无权限就整轮 failed）；
+ *   · ratelimit：指数退避重试（企微每企业 ≤1 万次/分、15 万次/小时，正常量级撞不到，撞到就是并发高了）；
+ *   · fatal：60020（出口 IP 未白名单）/ 46004（成员已删）/ 网络等——重试无用，计入熔断。
+ */
+export type WecomErrorKind = "permission" | "ratelimit" | "fatal";
+
+const PERMISSION_CODES = new Set([48002, 60011]);
+const RATELIMIT_CODES = new Set([45009, 45033]);
+
+export class WecomApiError extends Error {
+	readonly kind: WecomErrorKind;
+	readonly errcode: number;
+	constructor(what: string, errcode: number, errmsg: string) {
+		super(`企微 ${what} 失败：errcode=${errcode} ${errmsg}`.trimEnd());
+		this.name = "WecomApiError";
+		this.errcode = errcode;
+		this.kind = PERMISSION_CODES.has(errcode) ? "permission" : RATELIMIT_CODES.has(errcode) ? "ratelimit" : "fatal";
+		// 502：对上层仍是「上游出错」，路由信封口径不变；kind 只给同步器分流用
+		Object.assign(this, { status: 502 });
+	}
+}
+
+/** 退避用的软 sleep：isolate 无 timer 全局，拿不到 tasks 就退化成「不等待直接重试」 */
+function softSleep(ms: number): Promise<void> {
+	const g = globalThis as unknown as { tasks?: { sleep?: (ms: number) => Promise<void> } };
+	const sleep = g.tasks?.sleep;
+	if (typeof sleep !== "function")
+		return Promise.resolve();
+	return sleep(ms).catch(() => undefined);
+}
+
+/** 通讯录部门（simplelist/list 的公共形态）：企微部门 id 是数字，这里统一按字符串处理（§4.1 origin_id） */
+export interface WecomDept {
+	id: string
+	parentId: string
+	name: string | null
+	nameEn: string | null
+	order: number
+}
+
+/** 通讯录成员（user/list 的形态）：`department` / `order` / `is_leader_in_dept` 逐位对应 */
+export interface WecomMember {
+	userid: string
+	name: string | null
+	departments: string[]
+	orders: number[]
+	leaderInDept: number[]
+	mainDepartment: number | null
+	position: string | null
+	/** 1=已激活 2=已禁用 4=未激活 5=退出企业（§4.3，只存快照不改 is_forbidden） */
+	status: number | null
+}
+
+/**
+ * 授权信息里的应用列表（`auth_info.agent`）——`get_permanent_code` 与 `get_auth_info` 同形，
+ * 抽出来是为了两处对 auth_mode 的读法永远一致（同步闸门认的就是这个值）。
+ */
+function agentListOf(authInfo: unknown): Array<Record<string, unknown>> {
+	const list = (authInfo as Record<string, unknown> | undefined)?.agent;
+	return Array.isArray(list) ? list.map(a => a as Record<string, unknown>) : [];
+}
+
+/**
+ * agent_id → auth_mode。auth_mode 在 agent 项上（每个应用各自一条）；老回包里偶尔只在
+ * auth_info 顶层给，故两级都读，缺省按 0（管理员授权）——成员授权会导致同步 100% 60011，
+ * 不能靠猜成 1。
+ */
+function readAuthModes(authInfo: unknown): Record<string, number> {
+	const top = (authInfo as Record<string, unknown> | undefined)?.auth_mode;
+	const modes: Record<string, number> = {};
+	for (const a of agentListOf(authInfo)) {
+		const agentId = String(a.agentid ?? "");
+		if (!agentId)
+			continue;
+		const mode = Number(a.auth_mode ?? top ?? 0);
+		modes[agentId] = Number.isFinite(mode) ? mode : 0;
+	}
+	return modes;
+}
+
 export function createWecomClient(deps: WecomClientDeps) {
 	const { http, cache } = deps;
 
@@ -156,15 +238,15 @@ export function createWecomClient(deps: WecomClientDeps) {
 		corpId: string
 		corpName: string | null
 		agentIds: string[]
+		/** agent_id → auth_mode（0=管理员授权 / 1=成员授权）；成员授权下应用无任何部门权限（§2.3） */
+		authModes: Record<string, number>
 		state: string | null
 	}> {
 		const res = await http.postJson(`${API_BASE}/cgi-bin/service/v2/get_permanent_code?suite_access_token=${encodeURIComponent(suiteAccessToken)}`, { auth_code: authCode });
 		assertOk(res, "get_permanent_code");
 		const authCorp = (res.auth_corp_info ?? {}) as Record<string, unknown>;
-		const agentList = ((res.auth_info ?? {}) as Record<string, unknown>).agent;
-		const agentIds = Array.isArray(agentList)
-			? agentList.map(a => String((a as Record<string, unknown>).agentid)).filter(Boolean)
-			: [];
+		const agents = agentListOf(res.auth_info);
+		const agentIds = agents.map(a => String(a.agentid)).filter(Boolean);
 		if (!res.permanent_code || !authCorp.corpid)
 			throw upstream("企微 get_permanent_code 返回缺少 permanent_code / corpid");
 		if (agentIds.length === 0)
@@ -174,8 +256,24 @@ export function createWecomClient(deps: WecomClientDeps) {
 			corpId: String(authCorp.corpid),
 			corpName: authCorp.corp_name == null ? null : String(authCorp.corp_name),
 			agentIds,
+			authModes: readAuthModes(res.auth_info),
 			state: res.state == null ? null : String(res.state),
 		};
+	}
+
+	/**
+	 * 复核授权模式（`get_auth_info`）：`change_auth` 事件只带 AuthCorpId、**不带 AuthCode**，
+	 * 所以刷新 auth_mode 只能拿已存的 permanent_code 反查。企业管理员在后台把「管理员授权」
+	 * 切成「成员授权」（或反向）就靠这条路径同步——切过去以后部门接口一律 60011，
+	 * 不刷新就会一直按「可同步」对待。
+	 */
+	async function authModesByPermanentCode(suiteAccessToken: string, corpId: string, permanentCode: string): Promise<Record<string, number>> {
+		const res = await http.postJson(`${API_BASE}/cgi-bin/service/get_auth_info?suite_access_token=${encodeURIComponent(suiteAccessToken)}`, {
+			auth_corpid: corpId,
+			permanent_code: permanentCode,
+		});
+		assertOk(res, "get_auth_info");
+		return readAuthModes(res.auth_info);
 	}
 
 	/**
@@ -240,6 +338,127 @@ export function createWecomClient(deps: WecomClientDeps) {
 	}
 
 	/**
+	 * 通讯录类 GET 的公共通道：token 失效重取 + 三类错码分流。
+	 *
+	 * 重试上限是有意的：token 失效最多换两次（企微侧提前失效是常态），限流退避最多三次
+	 * （500ms/1s/2s），其余错码立即抛——同步器靠 kind 决定「跳过并计数」还是「计入熔断」，
+	 * 所以**必须把 errcode 带出去**，不能像 assertOk 那样拍平成一句中文。
+	 */
+	async function corpGet(
+		corpId: string,
+		agentId: string,
+		secret: string,
+		path: string,
+		params: Record<string, string | number | undefined>,
+		what: string,
+	): Promise<Record<string, unknown>> {
+		const qs = Object.entries(params)
+			.filter(([, v]) => v != null && v !== "")
+			.map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`)
+			.join("&");
+		for (let attempt = 0; ; attempt++) {
+			const token = await corpAccessToken(corpId, agentId, secret);
+			const res = await http.getJson(`${API_BASE}${path}?access_token=${encodeURIComponent(token)}${qs ? `&${qs}` : ""}`);
+			const errcode = Number(res.errcode ?? 0);
+			if (!errcode)
+				return res;
+			if (TOKEN_EXPIRED.has(errcode) && attempt < 2) {
+				await invalidateCorpToken(corpId, agentId);
+				continue;
+			}
+			const err = new WecomApiError(what, errcode, String(res.errmsg ?? ""));
+			if (err.kind === "ratelimit" && attempt < 2) {
+				await softSleep(500 * 2 ** attempt);
+				continue;
+			}
+			throw err;
+		}
+	}
+
+	function toDept(raw: Record<string, unknown>): WecomDept {
+		return {
+			id: String(raw.id ?? ""),
+			parentId: raw.parentid == null ? "" : String(raw.parentid),
+			name: raw.name == null ? null : String(raw.name),
+			nameEn: raw.name_en == null ? null : String(raw.name_en),
+			order: Number(raw.order ?? 0),
+		};
+	}
+
+	/**
+	 * 子部门 id 列表（接口 1）：全量同步的**主路径**——官方 90208 明写 `department/list` 性能低。
+	 * `parentOriginId` 缺省时企微返回「应用可见范围内所有部门」，这既是 BFS 的起点，也是兜底路径。
+	 */
+	async function departmentChildren(corpId: string, agentId: string, secret: string, parentOriginId?: string): Promise<WecomDept[]> {
+		const res = await corpGet(corpId, agentId, secret, "/cgi-bin/department/simplelist", { id: parentOriginId }, "department/simplelist");
+		const list = Array.isArray(res.department_id) ? res.department_id as Array<Record<string, unknown>> : [];
+		return list.filter(d => d && d.id != null).map(toDept);
+	}
+
+	/** 单部门详情（接口 2）：simplelist 不带名字，名字只能从这里取（未授权时 name 为空） */
+	async function departmentDetail(corpId: string, agentId: string, secret: string, originId: string): Promise<WecomDept> {
+		const res = await corpGet(corpId, agentId, secret, "/cgi-bin/department/get", { id: originId }, "department/get");
+		const d = res.department as Record<string, unknown> | undefined;
+		if (!d || d.id == null)
+			throw upstream("企微 department/get 未返回部门详情");
+		return toDept(d);
+	}
+
+	/** 一次拿全量部门（接口 3）：降级兜底，1/2 因权限拿不到时用 */
+	async function departmentList(corpId: string, agentId: string, secret: string, parentOriginId?: string): Promise<WecomDept[]> {
+		const res = await corpGet(corpId, agentId, secret, "/cgi-bin/department/list", { id: parentOriginId }, "department/list");
+		const list = Array.isArray(res.department) ? res.department as Array<Record<string, unknown>> : [];
+		return list.filter(d => d && d.id != null).map(toDept);
+	}
+
+	function toMember(raw: Record<string, unknown>, detail: boolean): WecomMember {
+		const departments = Array.isArray(raw.department) ? raw.department.map(d => String(d)) : [];
+		const orders = detail && Array.isArray(raw.order) ? raw.order.map(o => Number(o)) : [];
+		const leader = detail && Array.isArray(raw.is_leader_in_dept) ? raw.is_leader_in_dept.map(o => Number(o)) : [];
+		return {
+			userid: String(raw.userid ?? ""),
+			name: raw.name == null ? null : String(raw.name),
+			departments,
+			orders,
+			leaderInDept: leader,
+			mainDepartment: detail && raw.main_department != null ? Number(raw.main_department) : null,
+			position: detail && raw.position != null ? String(raw.position) : null,
+			status: detail && raw.status != null ? Number(raw.status) : null,
+		};
+	}
+
+	/** 部门成员（接口 4，轻量）：`user/simplelist` 无 fetch_child，子部门要调用方自己递归 */
+	async function deptMembers(corpId: string, agentId: string, secret: string, deptOriginId: string): Promise<WecomMember[]> {
+		const res = await corpGet(corpId, agentId, secret, "/cgi-bin/user/simplelist", { department_id: deptOriginId }, "user/simplelist");
+		const list = Array.isArray(res.userlist) ? res.userlist as Array<Record<string, unknown>> : [];
+		return list.filter(u => u && u.userid != null).map(u => toMember(u, false));
+	}
+
+	/** 部门成员详情（接口 5，重量）：职务 / 排序 / 主部门 / 在职状态只有这里有；同一部门只该调一次 */
+	async function deptMembersDetail(corpId: string, agentId: string, secret: string, deptOriginId: string): Promise<WecomMember[]> {
+		const res = await corpGet(corpId, agentId, secret, "/cgi-bin/user/list", { department_id: deptOriginId }, "user/list");
+		const list = Array.isArray(res.userlist) ? res.userlist as Array<Record<string, unknown>> : [];
+		return list.filter(u => u && u.userid != null).map(u => toMember(u, true));
+	}
+
+	/**
+	 * 单成员详情（接口 6）：**登录自更新**用它，四次/次调用就够。
+	 *
+	 * best-effort：任何失败（无权限 / 不在可见范围 / 上游抖）返回 null，绝不抛出——
+	 * 补资料是体验优化，不能因为拿不到把登录打成 5xx。调用方拿到 null 就保留兜底值。
+	 */
+	async function userDetail(corpId: string, agentId: string, secret: string, userid: string): Promise<WecomMember | null> {
+		try {
+			const res = await corpGet(corpId, agentId, secret, "/cgi-bin/user/get", { userid }, "user/get");
+			// 回包偶尔不带 userid（老接口/精简回包）：入参就是权威，用入参补
+			return toMember({ ...res, userid: res.userid ?? userid }, true);
+		}
+		catch {
+			return null;
+		}
+	}
+
+	/**
 	 * 成员姓名（best-effort）：只用于把 JIT 号的 `display_name` 从工号变成真名。
 	 *
 	 * 三类失败一律返回 null，绝不抛出：套件没有通讯录读权限（60011/48002）、成员不在可见范围、
@@ -248,32 +467,9 @@ export function createWecomClient(deps: WecomClientDeps) {
 	 * token 复用 `userIdByCode` 刚取的那份缓存（同请求内通常 0 次额外换票）。
 	 */
 	async function userNameById(corpId: string, agentId: string, secret: string, userid: string): Promise<string | null> {
-		for (let attempt = 0; attempt < 2; attempt++) {
-			let token: string;
-			try {
-				token = await corpAccessToken(corpId, agentId, secret);
-			}
-			catch {
-				return null;
-			}
-			let res: Record<string, unknown>;
-			try {
-				res = await http.getJson(`${API_BASE}/cgi-bin/user/get?access_token=${encodeURIComponent(token)}&userid=${encodeURIComponent(userid)}`);
-			}
-			catch {
-				return null;
-			}
-			const errcode = Number(res.errcode ?? 0);
-			if (TOKEN_EXPIRED.has(errcode) && attempt === 0) {
-				await invalidateCorpToken(corpId, agentId);
-				continue;
-			}
-			if (errcode !== 0)
-				return null;
-			const name = res.name == null ? "" : String(res.name).trim();
-			return name || null;
-		}
-		return null;
+		const detail = await userDetail(corpId, agentId, secret, userid);
+		const name = detail?.name?.trim();
+		return name || null;
 	}
 
 	/** 网页授权 code → userid（snsapi_base；非企业成员/超出可见范围 → 401） */
@@ -296,7 +492,23 @@ export function createWecomClient(deps: WecomClientDeps) {
 		throw upstream("企微 token 反复失效（40001/42001）");
 	}
 
-	return { suiteAccessToken, permanentCodeByAuthCode, providerAccessToken, customizedAuthUrl, corpAccessToken, invalidateCorpToken, userIdByCode, userNameById };
+	return {
+		suiteAccessToken,
+		permanentCodeByAuthCode,
+		authModesByPermanentCode,
+		providerAccessToken,
+		customizedAuthUrl,
+		corpAccessToken,
+		invalidateCorpToken,
+		userIdByCode,
+		userNameById,
+		userDetail,
+		departmentChildren,
+		departmentDetail,
+		departmentList,
+		deptMembers,
+		deptMembersDetail,
+	};
 }
 
 export type WecomClient = ReturnType<typeof createWecomClient>;

@@ -119,6 +119,56 @@ export async function createUser(input: { username: string, password: string, di
 	return uid;
 }
 
+/**
+ * 外部源（企微 / LDAP）同步建档：按用户名 find-or-create，返回 uid。
+ *
+ * 与 `createUser` 的三处刻意差异：
+ *   1. **activated=0**：同步灌进来的是「目录档」，要等真人登录过才算活人（§9.1，否则
+ *      contacts 会被一次同步放大成整份企业名册）；
+ *   2. 不写审计：按部门批量建号，逐条审计会把 sys_oplog 打爆（同步入口自己记一条总量）；
+ *   3. 归属权（D13）：已存在行的 `source` 与本次来源不同（管理员已「转为本地维护」）→
+ *      只回 id，**一个字段都不改**，改名/改职务都归本地管。
+ *
+ * 口令哈希仍用 `!<source>` 占位（与 `!wecom` / `!ldap` 同义：任何口令都验不过）。
+ */
+export async function upsertSourceUser(input: { username: string, displayName?: string | null, source: string, corpId?: string | null }): Promise<number> {
+	const username = String(input.username ?? "").trim();
+	if (!username)
+		fail(400, "username required");
+	const rows = await db.table("users").select(["id", "source"]).where({ field: "username", op: "eq", value: username }).all() as Array<{ id: number, source: string | null }>;
+	if (rows.length) {
+		const row = rows[0]!;
+		const name = input.displayName?.trim();
+		// 同步只改自己拥有的行：名字变了（改名/补上真名）就更新，其余字段（职务/状态）由调用方另写
+		if (name && String(row.source ?? "") === input.source)
+			await db.table("users").update({ display_name: name }).where({ field: "id", op: "eq", value: Number(row.id) }).run();
+		return Number(row.id);
+	}
+	try {
+		const inserted = await db.table("users").insert({
+			username,
+			display_name: input.displayName?.trim() || username,
+			password_hash: `!${input.source}`,
+			avatar_base64: "",
+			source: input.source,
+			corp_id: input.corpId ?? null,
+			must_change: 0,
+			is_forbidden: 0,
+			activated: 0,
+		}).returning(["id"]).run() as Array<{ id: number }>;
+		return Number(inserted[0]!.id);
+	}
+	catch (e) {
+		// 并发（两片撞同一人 / 两个部门同时处理）唯一约束兜底：回查复用，同 saveProfile 先例
+		if (!/unique|constraint/i.test(e instanceof Error ? e.message : String(e)))
+			throw e;
+		const again = await db.table("users").select(["id"]).where({ field: "username", op: "eq", value: username }).all() as Array<{ id: number }>;
+		if (!again.length)
+			throw e;
+		return Number(again[0]!.id);
+	}
+}
+
 /** AC1-7：整集替换角色（sys_user_role 权威源），写后失效持有者判权缓存。 */
 export async function updateUserRoles(actorId: number, targetUid: number, roles: string[]): Promise<void> {
 	assertNotSelf(actorId, targetUid);

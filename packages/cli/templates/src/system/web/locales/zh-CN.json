@@ -172,6 +172,7 @@
 		"ldap_email_attr": "LDAP 邮箱属性"
 	},
 	"perm": {
-		"platform_org_read_all": "组织架构全量读权限"
+		"platform_org_read_all": "组织架构全量读权限",
+		"auth_wecom_sync": "企业微信组织架构同步"
 	}
 }

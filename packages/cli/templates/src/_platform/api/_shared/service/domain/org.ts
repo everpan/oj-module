@@ -486,11 +486,14 @@ export async function upsertMember(input: {
 /**
  * 标记「本轮同步命中」（墓碑回收的正面证据）。
  * 只作用于**指定 origin**——漏了这个条件，本地建的部门会被第一轮同步集体判死（D13）。
+ *
+ * 顺带把 `sync_visible` 拉回 1：上一轮因可见范围收窄被判隐的部门，这一轮又出现了，
+ * 只写 `seen_job_id` 会让它永远隐身（reconcile 只置 0，没有任何地方置回 1）。
  */
 export async function markSeen(origin: string, deptIds: number[], jobId: number, deps: OrgDeps): Promise<void> {
 	if (!deptIds.length)
 		return;
-	await db.table("sys_department").update({ seen_job_id: jobId, update_time: deps.now() }).where({ and: [
+	await db.table("sys_department").update({ seen_job_id: jobId, sync_visible: 1, update_time: deps.now() }).where({ and: [
 		{ field: "origin", op: "eq", value: origin },
 		{ field: "id", op: "in", value: deptIds },
 	] }).run();

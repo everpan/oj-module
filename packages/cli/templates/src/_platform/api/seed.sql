@@ -39,3 +39,6 @@ INSERT OR IGNORE INTO sys_setting (key, module, "group", type, value, default_va
 INSERT OR IGNORE INTO sys_setting (key, module, "group", type, value, default_value, label_key, secret, update_time) VALUES ('ldap_base_dn', 'ldap', 'ldap', 'string', '', '', 'system:setting.ldap_base_dn', 0, 0);
 INSERT OR IGNORE INTO sys_setting (key, module, "group", type, value, default_value, label_key, secret, update_time) VALUES ('ldap_uid_attr', 'ldap', 'ldap', 'string', 'uid', 'uid', 'system:setting.ldap_uid_attr', 0, 0);
 INSERT OR IGNORE INTO sys_setting (key, module, "group", type, value, default_value, label_key, secret, update_time) VALUES ('ldap_email_attr', 'ldap', 'ldap', 'string', 'mail', 'mail', 'system:setting.ldap_email_attr', 0, 0);
+-- 企微组织架构同步（B2）：触发同步是打上游的动作，挂权限点；admin/superadmin 天然通过，
+-- 只有自定义角色需要显式绑定（与 platform.org.read.all 同一条纪律：不落库就永远绑不上）。
+INSERT OR IGNORE INTO sys_permission (code, module, title_key, deprecated) VALUES ('auth.wecom.sync', 'auth', 'system:perm.auth_wecom_sync', 0);

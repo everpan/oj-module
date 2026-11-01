@@ -27,6 +27,7 @@ import {
 	LOGIN_TICKET_TTL_SECS,
 	loginLandingUrl,
 	putLoginState,
+	selfUpdate,
 	takeLoginState,
 } from "../_shared/wecom/login";
 import { guardReplay, runtimeReplayGate } from "../_shared/wecom/replay";
@@ -158,18 +159,28 @@ const callback = {
 				throw badRequest("登录状态缺失：请从企业微信重新进入");
 
 			const deps = runtimeStoreDeps(cfg);
-			const pending = await takeLoginState(state, runtimeCache());
+			const cache = runtimeCache();
+			const pending = await takeLoginState(state, cache);
 			const profile = await findProfile(pending.corpId, pending.agentId, deps);
 			// 顺序刚性：先绑租户再碰 users（JIT 建号是租户表写入，守卫 deny 下缺上下文即拒）
 			ensureTenant(tenantOfCorp(profile.corpId));
 
-			const client = createWecomClient({ http: runtimeHttp(), cache: runtimeCache() });
+			const client = createWecomClient({ http: runtimeHttp(), cache });
 			const userid = await client.userIdByCode(profile.corpId, profile.agentId, profile.permanentCode, code);
 			// 名字是惰性取的：只有首次建档才多打一次 user/get（老用户零开销），拿不到就用工号兜底
 			const { uid, forbidden } = await ensureWecomUser(profile.corpId, userid, () =>
 				client.userNameById(profile.corpId, profile.agentId, profile.permanentCode, userid));
 			if (forbidden)
 				throw Object.assign(new Error("账号已被停用，请联系管理员"), { status: 403 });
+
+			// 轨一：登录自更新（方案 §6.1）。节流 24h、失败不影响登录；但企微侧已离职/禁用的
+			// 账号必须在这里拦下——本站的 is_forbidden 永远以管理员为准，不能被 IdP 反向覆盖。
+			const self = await selfUpdate(
+				{ uid, userid, corpId: profile.corpId, agentId: profile.agentId, permanentCode: profile.permanentCode },
+				{ client, cache, store: deps },
+			);
+			if (self.blocked)
+				throw Object.assign(new Error("账号在企业微信中已被停用或已退出企业，请联系企业管理员"), { status: 403 });
 
 			// 票据而不是 token 进 URL：token 会留在浏览器历史/Referer/反代日志里
 			const ticket = crypto.randomHex(32);

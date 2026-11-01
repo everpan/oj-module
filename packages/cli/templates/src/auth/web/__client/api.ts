@@ -33,7 +33,7 @@ export function createAuthClient(ctx: ModuleContext) {
 	}
 	ctx.register.apiPrefix(API_PREFIX);
 	bindRequest(ctx.utils.request);
-	return { authLoginPost, authLogoutPost, authRefreshPost, authPasswordPut, authLdapLoginPost, authWecomAdminAppsGet, authWecomAdminStatusPost, authWecomAdminInstallGet, authWecomLoginGet, authWecomCallbackGet, authWecomTicketPost, authWecomEventGet, authWecomEventPost };
+	return { authLoginPost, authLogoutPost, authRefreshPost, authPasswordPut, authLdapLoginPost, authWecomAdminAppsGet, authWecomAdminStatusPost, authWecomAdminInstallGet, authWecomLoginGet, authWecomCallbackGet, authWecomTicketPost, authWecomEventGet, authWecomEventPost, authWecomSyncStartPost, authWecomSyncStatusGet, authWecomSyncCancelPost };
 }
 
 /**
@@ -281,6 +281,78 @@ export async function authWecomEventPost(): Promise<unknown> {
 		if (typeof env.code === "number" && env.code !== 0)
 			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
 		const data = env.data as unknown;
+		return data;
+	}
+	catch (e) {
+		throw await toApiError(e);
+	}
+}
+
+export type AuthWecomSyncStartPostBody = z.input<(typeof schemas)["authWecomSyncStartPost"]["body"]>;
+export type AuthWecomSyncStartPostData = z.infer<(typeof schemas)["authWecomSyncStartPost"]["data"]>;
+
+export async function authWecomSyncStartPost(body: AuthWecomSyncStartPostBody): Promise<AuthWecomSyncStartPostData> {
+	const client = ensureReq();
+	try {
+		const env = await client.post(`auth/wecom/sync/start`, { json: body }).json<OjEnvelope<AuthWecomSyncStartPostData>>();
+		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
+		if (typeof env.code === "number" && env.code !== 0)
+			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
+		const data = env.data as AuthWecomSyncStartPostData;
+		if (import.meta.env.DEV) {
+			const { schemas } = await import("./api.schemas");
+			const r = schemas["authWecomSyncStartPost"].data.safeParse(data);
+			if (!r.success)
+				throw new ContractApiError(-1, `[契约违例] authWecomSyncStartPost 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
+		}
+		return data;
+	}
+	catch (e) {
+		throw await toApiError(e);
+	}
+}
+
+export type AuthWecomSyncStatusGetQuery = z.input<(typeof schemas)["authWecomSyncStatusGet"]["query"]>;
+export type AuthWecomSyncStatusGetData = z.infer<(typeof schemas)["authWecomSyncStatusGet"]["data"]>;
+
+export async function authWecomSyncStatusGet(query: AuthWecomSyncStatusGetQuery): Promise<AuthWecomSyncStatusGetData> {
+	const client = ensureReq();
+	try {
+		const env = await client.get(`auth/wecom/sync/status`, { searchParams: query as Record<string, string | number | boolean> }).json<OjEnvelope<AuthWecomSyncStatusGetData>>();
+		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
+		if (typeof env.code === "number" && env.code !== 0)
+			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
+		const data = env.data as AuthWecomSyncStatusGetData;
+		if (import.meta.env.DEV) {
+			const { schemas } = await import("./api.schemas");
+			const r = schemas["authWecomSyncStatusGet"].data.safeParse(data);
+			if (!r.success)
+				throw new ContractApiError(-1, `[契约违例] authWecomSyncStatusGet 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
+		}
+		return data;
+	}
+	catch (e) {
+		throw await toApiError(e);
+	}
+}
+
+export type AuthWecomSyncCancelPostBody = z.input<(typeof schemas)["authWecomSyncCancelPost"]["body"]>;
+export type AuthWecomSyncCancelPostData = z.infer<(typeof schemas)["authWecomSyncCancelPost"]["data"]>;
+
+export async function authWecomSyncCancelPost(body: AuthWecomSyncCancelPostBody): Promise<AuthWecomSyncCancelPostData> {
+	const client = ensureReq();
+	try {
+		const env = await client.post(`auth/wecom/sync/cancel`, { json: body }).json<OjEnvelope<AuthWecomSyncCancelPostData>>();
+		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
+		if (typeof env.code === "number" && env.code !== 0)
+			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
+		const data = env.data as AuthWecomSyncCancelPostData;
+		if (import.meta.env.DEV) {
+			const { schemas } = await import("./api.schemas");
+			const r = schemas["authWecomSyncCancelPost"].data.safeParse(data);
+			if (!r.success)
+				throw new ContractApiError(-1, `[契约违例] authWecomSyncCancelPost 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
+		}
 		return data;
 	}
 	catch (e) {

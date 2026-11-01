@@ -19,7 +19,7 @@ import type { WecomStoreDeps } from "./store";
 // 属预期（日志留痕即可，不影响已落库的 profile）。
 import { invalidateAllUsers } from "#/_platform/_shared/service/infra/access";
 import { recordOp } from "#/_platform/_shared/service/infra/audit";
-import { corpScope, ensureTenant, getSuiteTicket, putSuiteTicket, revokeTenantSessions, saveProfile, setProfileStatus, tenantOfCorp } from "./store";
+import { corpScope, ensureTenant, findCorpAuth, getSuiteTicket, putSuiteTicket, revokeTenantSessions, saveProfile, setAuthMode, setProfileStatus, tenantOfCorp } from "./store";
 import { xmlField } from "./xml";
 
 /** suite_ticket 官方有效期 30 分钟（10 分钟推一次）；本地按 30 分钟作废，宁可拒一次也不拿过期票打企微 */
@@ -100,12 +100,41 @@ async function applyAuthCode(authCode: string, state: string | null, deps: Suite
 			env,
 			corpName: granted.corpName,
 			permanentCode: granted.permanentCode,
+			authMode: granted.authModes[agentId] ?? 0,
 		}, store);
 		// secret 可能已轮换：旧 token 必须立刻作废，否则下一个登录会带着失效 token 打 userinfo
 		await client.invalidateCorpToken(granted.corpId, agentId);
 	}
 	await auditAuth("wecom.auth.apply", granted.corpId, { agentIds: granted.agentIds, env });
 	return { corpId: granted.corpId, agentIds: granted.agentIds };
+}
+
+/**
+ * `change_auth` 后复核授权模式并落库。
+ *
+ * 失败**只告警**：回调窗口 1 秒，一次上游抖动不该把通知打成失败（重推也补不回被误判的
+ * 授权模式，反而让企业管理员看到「配置失败」）。代价是 auth_mode 短期仍是旧值，
+ * 同步闸门那侧还有 60011 兜底（见 sync 的 permission 分支）。
+ */
+async function refreshAuthModes(corpId: string, deps: SuiteEventDeps): Promise<void> {
+	try {
+		const auth = await findCorpAuth(corpId, deps.store);
+		if (!auth)
+			return;
+		const ticket = await getSuiteTicket(deps.cfg.suiteId, deps.store);
+		const suiteToken = await deps.client.suiteAccessToken(deps.cfg.suiteId, deps.cfg.suiteSecret, ticket.ticket);
+		const modes = await deps.client.authModesByPermanentCode(suiteToken, corpId, auth.permanentCode);
+		for (const agentId of auth.agentIds) {
+			const mode = modes[agentId];
+			if (mode == null)
+				continue;
+			await setAuthMode(corpId, agentId, mode, deps.store);
+			log.info("wecom auth_mode refreshed", "corpId", corpId, "agentId", agentId, "authMode", mode);
+		}
+	}
+	catch (e) {
+		log.warn("wecom auth_mode refresh skipped", "corpId", corpId, "reason", (e as Error).message);
+	}
 }
 
 /** 处理一条已验签并解密的回调明文；返回值仅用于日志（未知 InfoType 也回 success，不触发重推） */
@@ -135,9 +164,13 @@ export async function handleSuiteEvent(plaintext: string, deps: SuiteEventDeps):
 			return infoType;
 		}
 		case "change_auth": {
-			// 可见范围/权限/启停变化：MVP 只做「数据可见性不加码」——不改状态、不动 secret，
-			// 靠下次登录重新走 userinfo（企微会拒掉已移出可见范围的成员）。停用/解绑走 cancel_auth。
+			// 可见范围/权限/启停变化。其中**「管理员授权 ⇄ 成员授权」切换**必须跟：切到成员授权后
+			// 部门接口一律 60011，同步闸门还按旧值放行就会一直 502。官方要求服务商自行调
+			// `get_auth_info` 复核——通知本身只带 AuthCorpId（没有 AuthCode），只能拿已存永久码反查。
+			// 其余变化（可见范围收窄等）仍是「下次登录重新走 userinfo」，不在回调里处理。
 			const authCorpId = requireField(plaintext, "AuthCorpId", infoType);
+			ensureTenant(tenantOfCorp(authCorpId));
+			await refreshAuthModes(authCorpId, deps);
 			log.info("wecom auth changed", "corpId", authCorpId);
 			return infoType;
 		}
