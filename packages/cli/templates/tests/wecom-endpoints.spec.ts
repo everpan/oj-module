@@ -187,11 +187,30 @@ describe("P1-I：GET /auth/wecom/login（发起授权）", () => {
 		expect(out.location).toBeNull();
 	});
 
-	it("缺企业代码 → 400，引导去登录页填（不猜默认企业）", async () => {
+	// 代开发模板常只服务一家企业：corp 缺省时从已安装档案自动解析，好让「应用主页」直接填
+	// `https://<域名>/login`（企微后台会因 URL 里的 `${corpid}` 占位符字符拒收）。三种情形分开钉。
+	it("缺企业代码且一家都没装 → 400，指向「生成开通链接」（不猜默认企业）", async () => {
 		request({ query: {} });
 		await (await api()).login.get();
 		expect(out.status).toBe(400);
-		expect(out.body.msg).toMatch(/企业代码/);
+		expect(out.body.msg).toMatch(/尚未完成企业微信授权/);
+	});
+
+	it("缺企业代码但只装了一家 → 302 到该企业的授权地址（省掉手填企业代码）", async () => {
+		seedCorp();
+		request({ query: {}, headers: { "user-agent": "Mozilla/5.0 Chrome/120" } });
+		await (await api()).login.get();
+		expect(out.status).toBe(302);
+		expect(out.location).toContain("appid=ww_corp_a");
+	});
+
+	it("缺企业代码且装了多家 → 400，要求链接里带 corp 参数区分", async () => {
+		seedCorp("ww_corp_a");
+		seedCorp("ww_corp_b");
+		request({ query: {} });
+		await (await api()).login.get();
+		expect(out.status).toBe(400);
+		expect(out.body.msg).toMatch(/corp/);
 	});
 
 	it("未授权企业 → 400（文案不区分「没装」与「已停用」）", async () => {
@@ -585,19 +604,20 @@ describe("P1-L：GET/POST /auth/wecom/event（企微指令回调）", () => {
 		expect(out.body.msg).not.toMatch(/nonce 重复/);
 	});
 
-	it("处理成功的 nonce 仍然挡重放（同一份成功报文重推 → 400「nonce 重复」）", async () => {
+	// 重放闸门的本体：同 nonce 已被占用、而首推还没标「已落库」——此刻重复投递必须挡下
+	// （可能是真重放，也可能是首推仍在处理中；两种都不该并发出第二份副作用）。
+	it("同 nonce 已被占用且未标已落库 → 400「nonce 重复」（重放闸门本体）", async () => {
 		const encrypted = await seal(TICKET_XML);
-		const query = signedQuery(encrypted, { nonce: "ok_once" });
+		const query = signedQuery(encrypted, { nonce: "inflight" });
 		const body = `<xml><Encrypt>${encrypted}</Encrypt></xml>`;
-
-		request({ query, body });
-		await (await api()).event.post();
-		expect(out.text).toBe("success");
+		// 模拟「首推正在处理」：计数已到 1，但没有 applied 标记
+		await g.kv.incr("wecom:nonce:inflight");
 
 		request({ query, body });
 		await (await api()).event.post();
 		expect(out.status).toBe(400);
 		expect(out.body.msg).toMatch(/nonce 重复/);
+		expect(dbo.prepare("SELECT COUNT(*) AS n FROM wecom_suite_ticket").get()).toMatchObject({ n: 0 });
 	});
 
 	it("EncodingAESKey 与后台不一致（签名过、解密爆 pkcs7）→ 400，日志点名是哪一侧配错", async () => {
@@ -640,19 +660,24 @@ describe("P1-L：GET/POST /auth/wecom/event（企微指令回调）", () => {
 		expect(dbo.prepare("SELECT COUNT(*) AS n FROM wecom_suite_ticket").get()).toMatchObject({ n: 0 });
 	});
 
-	it("同一条回调连发两次（重放）→ 第二次 400 nonce 重复，票据只落一次", async () => {
+	// 处理成功后的重推：回 success 而不是 400——企微只在「拿不到 success」时重推，首推若因回包慢
+	// 被判超时，重推再被挡成 400，管理员端就会看到「应用安装失败」。副作用仍然只发生一次。
+	it("同一条回调连发两次（成功后的重推）→ 第二次幂等回 success，票据只落一次", async () => {
 		const encrypted = await seal(TICKET_XML);
 		const body = `<xml><Encrypt>${encrypted}</Encrypt></xml>`;
 		request({ query: signedQuery(encrypted), body });
 		await (await api()).event.post();
 		expect(out.status).toBe(200);
+		expect(out.text).toBe("success");
 
 		installJson();
 		request({ query: signedQuery(encrypted), body });
 		await (await api()).event.post();
-		expect(out.status).toBe(400);
-		expect(out.body.msg).toMatch(/nonce 重复/);
+		expect(out.status).toBe(200);
+		expect(out.text).toBe("success");
+		// 幂等成功不等于重放执行：库里仍是首推那次的值
 		expect(dbo.prepare("SELECT suite_ticket FROM wecom_suite_ticket WHERE suite_id = ?").get(SUITE)).toMatchObject({ suite_ticket: "tk_9" });
+		expect(dbo.prepare("SELECT COUNT(*) AS n FROM wecom_suite_ticket").get()).toMatchObject({ n: 1 });
 	});
 
 	it("换一个新 nonce 的同内容回调仍能落（重放闸门没把正常重试误伤）", async () => {

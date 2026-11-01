@@ -2126,6 +2126,202 @@ const paths = createWikiPaths(getModuleRoutePrefix("wiki"));
 
 ---
 
+## §14 组织架构与通讯录（直接用现成底座，别自己搭）
+
+站点内置一套组织架构底座：**部门 / 成员 / 归属权**由 `_platform` 内核负责，外部通讯录
+（企业微信，将来 LDAP）只是往这套底座灌数据的**适配器**。模块的活儿只有两种：
+**读**（谁在哪个部门）或**算**（某部门含下级一共有谁）。
+
+命中任一条就来本章，别另起一套：
+
+| 需求 | 该用 | 别做 |
+|---|---|---|
+| 页面要选人 / 选部门 | 共享读面 `/api/_platform/org/*`（§14.2） | 自己查 `users` 全表、前端自己拼树 |
+| 通知 / 审批要「某部门及其下级的所有人」 | `POST /api/_platform/org/resolve`（或后端直调 `resolveUserIds`） | 前端拉全树、在 JS 里递归 |
+| 只是「找个人」 | 通讯录 `searchContacts`（§14.6） | 拿组织架构树当通讯录用 |
+| 要给组织架构接一个新来源（LDAP / 钉钉 / HR） | 领域层适配器接点（§14.5） | 另建一套表；或把外部字段写进 `sys_department` |
+
+### 14.1 数据在哪：两张租户表 + `users` 加三列
+
+| 表 | 关键列 | 语义 |
+|---|---|---|
+| `sys_department` | `id` / `parent_id` / `name` / `name_en` / `order_no` | 结构：**`parent_id` 是本地 id，不是外部 id** |
+| | `origin` / `origin_id` | 归属权 + 外部主键。唯一约束是 `(tenant_id, origin, origin_id)` |
+| | `sync_visible` / `deleted` / `seen_job_id` | 同步态：可见性只由同步轮次维护；软删只由外部源的删除事件置；`seen_job_id` 是墓碑回收的正面证据 |
+| `sys_dept_member` | `user_id` / `dept_id` / `order_no` / `is_leader` / `is_main` | 多对多。**全是本地 id，与来源无关**——接任何适配器都不用动这张表 |
+| `users` | `activated` / `position` / `external_status` | 见下方第二段 |
+
+两条必须记住的语义：
+
+1. **`parent_id` 是本地 id**。本地手建的部门可以和同步来的部门混挂在一棵树上，外部重构层级
+   也不会打乱你本地的结构。
+2. **`origin` 是归属权，不是「来源标签」**。`local` = 本站管理员全权 CRUD；
+   `wecom` / `ldap` / `sso` = 对应适配器管辖。**任何同步与回收只作用于自己 `origin` 的行**——
+   这是「本地建的部门不会被第一轮同步抹掉」的根本机制，也是适配器可插拔与本地 CRUD 能共存的唯一原因。
+
+`users` 那三列的用途别搞混：`activated` 是「**这个号被真人用过**」的证据（管理员建号 / 各来源登录
+建档置 1，**同步建档默认 0**）；`position` 是职务；`external_status` 是外部源的在职状态快照
+（**绝不自动改写 `is_forbidden`**，否则会和本站管理员的手动启停互相覆盖）。
+
+### 14.2 后端复用：共享读面（推荐直调领域函数）
+
+7 个端点，全在 `_platform` 模块下（前缀 `/api/_platform`）：
+
+| 端点 | 出什么 | 关键参数 |
+|---|---|---|
+| `GET /org/tree` | 部门**平表**（前端按 `parentId` 组装）+ 成员数 | `scope` |
+| `GET /org/departments` | 部门平铺分页（大企业别一次拉全树） | `scope`、`parent`（`0` = 只取根层）、`keyword`、`page`、`size`≤200 |
+| `GET /org/members` | 成员分页 + 部门名路径 | `scope`、`dept`、`includeSub`、`keyword`、`page`、`size` |
+| `GET /org/user` | 某人的部门路径 / 主部门 / 职务 | `scope`、`uid`（不给即自己） |
+| `GET /org/picker` | 人 + 部门混合（选人组件一次拿全） | `keyword`（**必填且 ≥2**）、`limit`≤50 |
+| `POST /org/resolve` | 部门（含子部门）→ `userIds`（去重升序） | body `deptIds` / `userIds` / `includeSub` |
+| `GET /org/is-member` | 某人是否在某部门（含子部门）下 | `dept` 必填、`uid`（不给即自己） |
+
+**两级门禁**（默认最小集，要全量请申请权限点）：
+
+- `scope=self`（默认）：只看「我在哪」——我所在部门 + 它的祖先链，以及这些部门里的直属成员。
+  **不含兄弟部门**：组织架构含层级 + 人名，比通讯录敏感得多，且同步会把「从未登录本站、
+  无从同意」的全员灌进来。
+- `scope=all`：全量，需权限点 `platform.org.read.all`（`superadmin` / `admin` 天然通过）。
+
+三条硬限制（踩了只会觉得「接口坏了」）：
+
+- 限速 60 次/分/人（键 `org:<uid>`）；批量场景用 `resolve` / 分页，别循环打单条。
+- `keyword` 一律 ≥2 字：读面是**枚举面**，单字能把整份名册拖走——与通讯录同一条红线。
+- `includeSub` 在 `self` 档**只对「我所在部门」生效**：对祖先部门请求展开会 **400**。
+  这是刻意的——祖先一展开就是整棵子树，等于绕过自身路径限制；宁可报错也不静默截断成
+  「看着对其实少人」的结果。
+
+字段口径：读面**一律不出** `origin` / `is_leader` / `external_status`，且**返回字段与 `scope` 无关**。
+消费方不用按档位分支解析——归属与在职是管理语义，不归消费面。
+
+**后端直调**（同进程内，不走 HTTP，省一次序列化与鉴权）：
+
+```ts
+import { resolveReadFace, resolveUserIds } from "#/_platform/_shared/service/domain/org-read";
+
+async function post() {
+	await respond(async () => {
+		// 登录态 → 租户自洽 → 限速 → scope 解析 → all 档验权限 → 算可见集，一次做完
+		const reader = await resolveReadFace((http.query as Record<string, unknown>).scope);
+		const userIds = await resolveUserIds(reader, { deptIds: [42], includeSub: true });
+		return { userIds };
+	});
+}
+```
+
+`resolveReadFace` 是那 7 个端点**共用的守卫入口**——自己写 handler 也用它，别重抄一遍守卫
+（重抄必然长歪；它内部的顺序是「先租户自洽再限速」，伪造租户头的人不该消耗别人的限速窗口）。
+
+> ⚠️ 跨模块别名要在**自己模块** `manifest.yaml` 的 `deps` 里声明 `_platform: ^0.1.0`，
+> 否则 `oj build` 构建期直接报错（§1.8）。这是「跨模块依赖」的门禁，不是可选的注释。
+
+### 14.3 前端怎么用：给自己的模块出端点，别借别人的 client
+
+前端模块能 import 的只有三类（§2.6），**别人的 `__client` 与 `#/_platform` 都不在其中**。
+所以前端消费组织架构的唯一正路是「借壳」：
+
+1. 在**自己模块**的 handler 里调 `resolveReadFace` + 需要的那几个读函数（§14.2）；
+2. 跑 `oj openapi` + `ojm api`，生成本模块的 `src/<模块>/web/__client/api.ts`；
+3. 页面用本模块 client 调。
+
+多一层 handler 换来三件事：接口形状由**你自己的契约**决定（只出页面要的字段）、框架内部实现不进你的
+bundle、契约变更走你自己的版本号。仓库里 `src/system/web/pages/departments` 的组织架构页就是这条路的
+另一个方向（它消费的是管理端 `/api/system/departments`，见 §14.4）。
+
+### 14.4 管理端 CRUD：只有「管组织架构」的模块才该碰
+
+管理端在 `system` 模块下，一律 `assertSystemAdmin` 门禁：
+
+| 端点 | 用途 |
+|---|---|
+| `GET /api/system/departments` | 部门平表 + 成员数（**含**不可见与软删壳，管理员要看全量） |
+| `POST` / `PUT` / `DELETE /api/system/departments` | 增 / 改 / 删（本地部门才可删；有子部门时**拒绝**而不是级联删） |
+| `PUT /api/system/departments/move` | 改父节点 |
+| `POST /api/system/departments/detach?id=` | **「转为本地维护」**：`origin` 改为 `local`，此后同步不再改写这一行 |
+| `GET` / `POST` / `PUT` / `DELETE /api/system/departments/members?id=` | 部门成员的增删查改 |
+
+四条归属规则（写在领域层，绕不过去）：
+
+1. **本地的行**（`origin='local'`）：全权 CRUD。
+2. **外部源的行**：结构字段（名称 / 层级 / 删除）**不可本地改**——改了下一轮同步就被覆盖，
+   所以直接拒。加人/移人不受限：「谁在这个部门」本站始终可调。
+3. **要接管某一行**就用「转为本地维护」（`detach`）；反向操作（转回外部源）**不提供**——
+   转回去后下一次同步立刻按源口径改写，语义不可控。
+4. **删本地部门是软删壳还是真删**：本地删除走真删（有子部门则拒绝）；`deleted=1` 只由外部源的
+   删除事件置，两者别混用——「看不见」和「没了」不是一回事。
+
+### 14.5 自己写一个源适配器（企微是现成范本）
+
+领域层**完全不认企微**：所有写路径都以「源」为参数。新适配器只需实现「取快照 → 喂给这几个函数」，
+领域层与读面一行都不用改。
+
+| 接点（`#/_platform/_shared/service/domain/...`） | 用途 | 纪律 |
+|---|---|---|
+| `org::upsertDepartment({ origin, originId, parentId, name, orderNo })` | 按 `(origin, origin_id)` 幂等写部门，返回本地 id | 只写结构字段；**不动** `sync_visible` / `deleted` / `origin` |
+| `org::upsertMember({ userId, deptId, ... })` | 按 `(user_id, dept_id)` 幂等写成员关联 | |
+| `org::markSeen(origin, deptIds, jobId, deps)` | 标记「本轮同步命中」，并把 `sync_visible` 拉回 1 | 必带 `origin`，否则会误伤本地行 |
+| `org::reconcileHidden(origin, jobId, deps)` | 墓碑回收：上一轮见过、这一轮没见 → 置不可见 | **只在调用方确认本轮完整（零跳过）后调用** |
+| `org::markDeleted(origin, originId, deps)` | 外部源侧的删除事件 → `deleted=1`，**级联整棵子树** | 这是 `deleted=1` 的唯一写入点 |
+| `users::upsertSourceUser({ username, displayName, source, corpId })` | 外部源建档，返回 uid | `activated=0`（目录档）；已「转为本地维护」的行一个字段都不改 |
+
+**一次全量同步的顺序**（照抄即可）：
+
+```
+抢锁（本地租约，可抢回崩溃残留）
+  → 遍历部门：upsertDepartment → markSeen
+  → 遍历成员：upsertSourceUser → applyMemberDetail（写姓名/职务/在职 + 部门关联）
+  → 只有「本轮完整且零跳过」才 reconcileHidden
+  → 放锁，记录统计
+```
+
+三条禁令（每一条都对应一次真实事故形状）：
+
+1. **墓碑回收前必须确认本轮完整**。上游抖一下就被读成「这些部门被删了」，表现是组织架构大面积消失。
+   权限类错误（接口无权限）要**计数并跳过**、限流类要退避重试，别混进「完整」的判据里。
+2. **事件增量是加速器，不是权威**。事件处理**任何失败都不回非 `success`**——上游拿不到 `success`
+   会重推三次，而重推补不回一次已经判死的失败，只会让企业管理员在后台看到「应用安装失败」；
+   真正的兜底永远是下一轮全量同步。这条与「回调必须回 `success`」是一体两面。
+3. **别复用别家的任务表**。企微那对 `wecom_sync_job` / `wecom_sync_lock` 带 `corp_id` / `agent_id` 列，
+   LDAP 直接复用会被这两个字段绑死——**先另建 `ldap_sync_*` 把模型跑通**，两个源都成立再谈泛化
+   （泛化要改已发布的迁移，代价远大于两张小表）。
+
+**接 LDAP 前必须先回答的问题**：oj 的 `axis("ldap")` 有没有等价 `ldapsearch` 的遍历能力。
+现状 `auth/.../ldap-login` 只有**认证**、没有目录同步；没有 search 就只能裸连或自带 client。
+这是开工第一天的第一个问题，别边写边猜。
+
+**验收**（这组断言能同时证明「适配器隔离」与「本地 CRUD 保底」）：
+LDAP 侧改名 / 删人后，`origin='ldap'` 的行跟着变，而 `origin='wecom'` 的行与本地手建的行
+**一行不动**；本地手建的部门没有被同步覆盖。
+
+### 14.6 通讯录 ≠ 组织架构
+
+| | 通讯录 `searchContacts` / `contactDetail` | 组织架构读面 `/org/*` |
+|---|---|---|
+| 形状 | 扁平（id / username / 显示名；详情才给 email / 头像） | 层级（部门树 + 成员归属 + 部门路径） |
+| 谁可见 | 登录即可，`keyword` ≥2、限速 | 登录 + `scope` 门禁（默认只看自己那条路径） |
+| **只出活人** | ✅ 只出 `activated=1` | 出全部可见成员（含同步灌进来的目录档） |
+| 典型用途 | 「找个人」「选人」 | 「算收件人」「按部门做访问控制」 |
+
+通讯录那条「只出 `activated=1`」不是优化而是**红线**：同步会把从未登录本站的全员建档，
+若通讯录也出这批号，任何登录账号都能用 `keyword`（60 次/分）把整份企业名册遍历走。
+所以「同步来的号不出现在通讯录里」是**正确行为**，不是 bug——要全员可见，让那个人先登录一次，
+或者走组织架构读面（有 `scope` 门禁）。
+
+### 14.7 症状 → 病根 → 药方
+
+| 症状 | 病根 | 药方 |
+|---|---|---|
+| 读面 403「该部门不在可见范围内」 | `scope` 是默认的 `self`，那部门不在你自己那条路径上 | 换成 `scope=all`（需 `platform.org.read.all`），或改问自己所在部门 |
+| 读面 400「只展开自己所在部门」 | `includeSub` 撞上了祖先部门或兄弟部门 | 只在「我所在部门」上展开；要全量就申请权限点 |
+| `oj build` 报 `#/_platform/...` 找不到模块 | `manifest.yaml` 的 `deps` 没声明 `_platform` | 加 `_platform: ^0.1.0` |
+| 同步后本地手建的部门「不见了」 | 适配器漏了 `origin` 条件（`markSeen` / `reconcileHidden` 都必带） | 带上 `origin`；回收只在完整轮次执行 |
+| 管理员改不动某个部门（400） | 该行 `origin` 不是 `local` | 先「转为本地维护」（`POST /api/system/departments/detach?id=`） |
+| 组织架构页有人、通讯录搜不到他 | 那人是同步建档（`activated=0`），从没登录过本站 | 正确行为，见 §14.6 |
+| 同步进度条一开就 429 | 限速按「单片 12 秒打满 → 天然 5 次/分」配平（给 10 次余量），自己并发打就超了 | start/cancel 串行驱动；status 不限速，可 1~2 秒轮询 |
+
+---
+
 ## 附录：章节目录
 
 | 章 | 内容 | 什么时候读 |
@@ -2143,3 +2339,4 @@ const paths = createWikiPaths(getModuleRoutePrefix("wiki"));
 | §11 方案包：打包与分发 | build --bundle、Form A/B、分发源、索引规范、引用式方案（api 段省略 tables/deps，引用包内原生 manifest） | 发布方案包 |
 | §12 签名与信任 | keygen/sign/install 发布流程、信任库、TOFU、bootstrap key | 首次签名发布；管理信任 |
 | §13 方案菜单归组规则 | 单根模块约定（根路由=第一级菜单）、自定义根路径 `web.route_prefix`（构建写 modules.json、运行时只改根段、getModuleRoutePrefix 单点消费）、category 三值（普通/hidden/admin）、admin 真重写 `/system/<模块 root>/*` + 视觉归组、menu.main 统一、模块内路径助手、开发者 DO/DON'T | 写方案要让菜单按模块分组、admin 归系统设置 |
+| §14 组织架构与通讯录 | 内置底座（两张租户表 + `users` 三列）、共享读面 7 端点与两级 `scope` 门禁、前端怎么「借壳」出自己端点、归属权四条规则与管理端 CRUD、源适配器接点与三条禁令（企微为范本，LDAP 前置）、通讯录与组织架构的分工 | 页面要选人/选部门、通知要按部门算收件人、要接新的组织数据来源 |

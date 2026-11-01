@@ -17,7 +17,8 @@ description: 用 ojm 开发前后端一体工程时使用——新增/修改前�
 
 1. **读章**：建模块 → 手册 §2；加接口（handler .schema → oj openapi → 生成 → 对接）→ §3；
    接管通知/上传/菜单 → §4；换布局或加插槽 → §5；排查 → §8；
-   **接通企业微信代开发（企微登录 / 多企业租户 / 代开发后台）→ `wecom-daikaifa.md`**。
+   **组织架构 / 通讯录（选人、按部门算收件人、接 LDAP 等新来源）→ §14**；
+   **接通企业微信代开发（企微登录 / 多企业租户 / 代开发后台 / 通讯录同步）→ `wecom-daikaifa.md`**。
 2. **建目录**：一个目录 = 一个模块——前端一侧 `src/<模块名>/web/`（`entry.ts` 必备，
    `pages/`、`locales/` 按需），后端一侧 `src/<模块名>/api/`（目录镜像路由的 `api.ts`，
    动词挂 `.schema`）。两侧可只存在一侧。
@@ -73,6 +74,12 @@ description: 用 ojm 开发前后端一体工程时使用——新增/修改前�
   **拿用户/角色等信息：读走 `useUserStore` / `useAuthStore` / `useAccess`（`AccessControl` 门禁），
   写走契约 client（`ojm api` 生成模块自有 `__client`，或复用 runtime 导出的 `api/rbac` / `api/user`），
   绝不 import 框架 `#src/*`**——设计动机与红线见手册 §2.8。
+- **组织架构/通讯录是内置底座，别自己搭**：部门与成员是 `_platform` 的两张租户表
+  （`sys_department` / `sys_dept_member`），外部来源（企微 / LDAP）只是往这套模型灌数据的**适配器**。
+  要「谁在哪个部门」用共享读面 `/api/_platform/org/*` 或后端直调
+  `#/_platform/_shared/service/domain/org-read`（`resolveReadFace` 一次做完守卫）；要「某部门含下级的所有人」
+  用 `org/resolve`。**别自己建部门表、别自己调企微通讯录接口、别拉全树在 JS 里递归**。
+  跨模块别名须在自己模块 `manifest.yaml` 的 `deps` 里声明 `_platform: ^0.1.0`。详见手册 §14。
 - **后端方法名是 `del`，不是 `delete`**（写成 `delete` 返回 405）。
 - **加一张新表是三件套，不是只写 `schema.yaml`**：`src/<模块>/api/migrations/{seq:04}__*.sql`（DDL 的真正定义（实际 SQL），
   DDL 只进 migrations）+ `schema.yaml`（声明，与 migration 逐字段一致）+ `manifest.yaml` 的 `tables:`
@@ -109,6 +116,11 @@ description: 用 ojm 开发前后端一体工程时使用——新增/修改前�
   同企业测试+正式两个应用是两行（主键含 `agent_id`），此时登录链接必须带 `&agent=`。
 - **整页跳转拼 API base**：`window.location.assign(resolveApiBase() + wecomAuthorizePath(corp))`；
   拼站点 base 会被 SPA 兜底页吞掉（页面原地重载、一个请求都不发，控制台无报错）。
+- **通讯录同步是「组织架构底座 + 企微适配器」，不是企微专属功能**：模板的
+  `src/auth/api/wecom/{sync,contacts}.ts` 只负责「取快照 → 喂给领域层」，模型与读面在 `_platform`
+  （手册 §14）。要按部门算人、要选人、要给组织架构接 LDAP，一律读 §14，不要在企微代码里加分支。
+  同步/事件增量与回调解密是**两条独立纪律**：回调必须回 `success`，而事件处理失败**也照样回 `success`**
+  （重推补不回已判死的失败，兜底是下一轮全量同步）。
 
 ## 新模块 checklist
 
@@ -172,14 +184,21 @@ description: 用 ojm 开发前后端一体工程时使用——新增/修改前�
 | 限速/节流/计数真实请求下永不累积（测试全绿） | 模块级 `Map`/`let` 不跨请求存活（每请求重建模块） | 状态落库（模板迁移 0009 先例）或 oj 持久面 |
 | `ojm build` 报 `introspect api.ts: jwt not configured` | 模块级语句碰运行时全局，introspect 空沙箱炸 | 移进 handler 函数体内（manual §1.7-4） |
 | 页签怎么点都关不掉、无报错提示 | `beforeClose` 守卫 fail-safe 否决（守卫抛错按取消处理） | 先查控制台 `[tabs] beforeClose` 报错；确认弹窗逻辑与 `resolve(true/false)` 收口（manual §6.4） |
+| 组织架构读面 403「该部门不在可见范围内」 | `scope` 默认 `self`，只看得到自己那条部门路径 | 换 `scope=all`（需权限点 `platform.org.read.all`），或改问自己所在部门（manual §14.2） |
+| 组织架构读面 400「只展开自己所在部门」 | `includeSub` 用在了祖先/兄弟部门上（self 档只允许展开自己所在部门） | 收窄到「我所在部门」，或申请 `scope=all`（manual §14.2） |
+| `oj build` 报 `#/_platform/...` 找不到模块 | 跨模块别名没在 `manifest.yaml` 的 `deps` 里声明 | 加 `_platform: ^0.1.0`（manual §14.2） |
+| 同步一轮之后本地手建的部门消失了 | 适配器漏了 `origin` 条件（同步与回收都必须只动自己的行） | `markSeen` / `reconcileHidden` 带 `origin`；回收只在「本轮完整零跳过」时执行（manual §14.5） |
+| 组织架构里有这个人，通讯录搜不到 | 他是同步建档（`activated=0`，从没登录过本站），通讯录只出活人 | 正确行为；让他登录一次，或走组织架构读面（manual §14.6） |
 
 ## 手册
 
-`manual.md`（同目录）共 13 章：1 工程结构（module-root 单树 / 两处产物根 / **§1.7 handler 四红线** /
+`manual.md`（同目录）共 14 章：1 工程结构（module-root 单树 / 两处产物根 / **§1.7 handler 四红线** /
 **§1.8 `#` 别名与 TS 投影**——oj 运行时实测钉出，后端 handler 必读）/ 2 写前端模块 /
 3 契约与代码生成 / 4 接管框架内置功能（provider）/ 5 布局与插槽 / 6 i18n 与样式 / 7 构建与发布 /
 8 排查 / 9 参考 / 10 CLI 子命令参考（ojm 原生命令 vs oj 透传命令的差异区分）/
-11 方案包打包与分发 / 12 签名与信任 / 13 方案菜单归组规则。
+11 方案包打包与分发 / 12 签名与信任 / 13 方案菜单归组规则 /
+14 组织架构与通讯录（共享读面 7 端点、`scope` 两级门禁、归属权与「转为本地维护」、
+源适配器接点与三条禁令——选人 / 按部门算人 / 接 LDAP 都读它）。
 
 另有 `wecom-daikaifa.md`（同目录）：企业微信代开发集成的凭据清单与三角色手册——凭据从哪取、
 怎么填、按什么顺序开通、用户/开发/部署各自怎么做、错误文案怎么查。**接企微时先读它**。

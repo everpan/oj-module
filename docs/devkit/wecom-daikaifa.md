@@ -330,6 +330,11 @@ pnpm dev
 
 ### 6.3 数据面：三张共享表 + 五张租户表
 
+> **模型归 `_platform`，企微只是适配器**：`sys_department` / `sys_dept_member` 与共享读面
+> `/api/_platform/org/*` 属于**组织架构底座**——不接企微的部署也有它，接 LDAP 也只是换一个喂数据的源。
+> 要选人、要按部门（含下级）算收件人、要给组织架构加新来源，读 `manual.md` 的 **§14**；
+> 本节只讲企微这一半的落库事实与坑。
+
 | 表 | 是否租户表 | 存什么 | 为什么这样放 |
 |---|---|---|---|
 | `wecom_app_profile` | **共享**（`tenant: false`） | 企业 × 应用 → 密文 `permanent_code`、`corp_name`、`env`、`status`、`auth_mode` | 它是「corp → 租户」映射的**权威表**；登录前还没确定租户，必须是部署级 |
