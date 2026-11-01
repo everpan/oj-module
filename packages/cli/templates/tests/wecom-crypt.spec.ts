@@ -80,13 +80,22 @@ describe("aes256CbcDecrypt 对 WebCrypto", () => {
 
 	it("pKCS#7 非法填充硬失败（不返回半截明文）", () => {
 		expect(() => pkcs7Unpad(new Uint8Array(16))).toThrow(/bad padding/); // 全 0 填充
-		const tooBig = new Uint8Array(16).fill(0);
-		tooBig[15] = 17;
-		expect(() => pkcs7Unpad(tooBig)).toThrow(/bad padding/);
+		const tooBig = new Uint8Array(64).fill(33);
+		expect(() => pkcs7Unpad(tooBig)).toThrow(/bad padding/); // 33 > 企微的 32 字节补位块
 		const inconsistent = new Uint8Array(16).fill(0);
 		inconsistent[14] = 3;
 		inconsistent[15] = 3;
 		expect(() => pkcs7Unpad(inconsistent)).toThrow(/bad padding/);
+	});
+
+	it("企微的补位块是 32 字节：补位 17~32 必须能去掉（按 16 卡上限会误杀一半真实报文）", () => {
+		// 90968「概述」：数据采用 PKCS#7 填充至 **32 字节**的倍数。官方 demo 的 block_size 也是 32，
+		// 所以末字节可能取到 17~32；只认 1~16 会让这些报文全判 bad padding。
+		for (const pad of [1, 16, 17, 20, 31, 32]) {
+			const block = new Uint8Array(64).fill(0x41);
+			block.fill(pad, 64 - pad);
+			expect(pkcs7Unpad(block).length).toBe(64 - pad);
+		}
 	});
 });
 

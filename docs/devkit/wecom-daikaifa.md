@@ -577,9 +577,16 @@ C10 的三种结果，正好把 C1 的三个未知量一次性问清：
 
 | 日志 | 说明 | 下一步 |
 |---|---|---|
-| `wecom event ignored … event=change_contact` | 数据回调**收到了**，且用的就是配置里这套 Token/AESKey | C1 可以开工；把 `fields` 那一行抄进验收记录，它就是真实包体的字段清单 |
-| `wecom callback decrypt failed …` | 签名过了但解不开 → 数据回调用的是**另一套**凭据 | 记下同一行的 `envelopeToUser` 与 `aesKeyFp`：前者告诉你报文来自哪个套件/模板，后者证明本进程加载的是哪把钥匙。结论写进 §2.1 的缺口，再决定是否要单独配一套应用侧凭据 |
+| `wecom event ignored … event=change_contact fields=…` | 数据回调（**应用侧形态**：`MsgType=event` / `Event`）**收到了**，且用的就是配置里这套 Token/AESKey | C1 可以开工；把 `fields` 那一行抄进验收记录，它就是真实包体的字段清单 |
+| `wecom event ignored … infoType=change_contact fields=…`，且 `event=` 为空 | 同一条变更走的是**模板指令回调**（代开发形态：`SuiteId` / `AuthCorpId` / `InfoType`）。两种形态都会到，`event=` 空不代表事件没到 | 同样算「收到了」；`fields` 里看得到 `ChangeType` 与 `Id`（部门）或 `UserID`（成员）即可 |
+| `wecom callback decrypt failed … reason=bad padding` | 签名过了但**钥匙**不对 → 数据回调用的是**另一套**凭据 | 记下同一行的 `envelopeToUser` 与 `aesKeyFp`：前者告诉你报文来自哪个套件/模板，后者证明本进程加载的是哪把钥匙。结论写进 §2.1 的缺口，再决定是否要单独配一套应用侧凭据 |
+| `wecom callback decrypt failed … reason=receiver mismatch` | 钥匙对、但报文自称的身份（`receiveid`）既不等于配置的 `suite_id`、也不等于信封里的 `ToUserName` | 多见于信封缺 `ToUserName`；先确认服务端不是 0.2.48 或更早（那些版本只认 `suite_id`，所有数据回调都会这样，见下方注） |
 | 一条日志都没有 | 事件根本没进本站 | 应用回调 URL 没填（A 表第 2 项），或反代挡了 POST |
+
+> **别拿 `envelopeToUser` 和 `configuredSuite` 比大小**。`receiveid` 的含义随场景变（企微 90968 附注）：
+> 第三方事件的回调是 suite_id（`suite_ticket` / `create_auth`），**企业应用（含代开发应用的数据回调）是
+> corpid**。所以数据回调那一行的 `envelopeToUser` 本来就是企业代码、与 `configuredSuite` 不同——服务端
+> 0.2.48 之后的版本就是按「两个候选都试」解密的，这个差异本身不是故障。
 
 日志在工程根 `logs/server-*.log`：
 
@@ -617,7 +624,8 @@ grep -h "wecom event ignored\|callback decrypt failed" logs/server-*.log | tail 
 | 400 `回调 timestamp 超出允许窗口：请检查服务器时间，或该请求为历史回调的重放` | 服务器时钟与真实时间偏差超过 5 分钟，或这条回调是被人回放的旧报文 | 校服务器时间（NTP）；校正后企微的重推会自动成功 |
 | 400 `回调 nonce 重复：同一条指令回调已被处理过（重放请求已拒绝）` | 同一条指令被投递了两次（企微重试、或反代重复转发） | 首次生效、重放被拒属预期保护；若常态出现，查反代是否重复转发 POST |
 | 企微后台保存回调 URL 失败 | `Token` / `EncodingAESKey` 与 `config.yaml` 不一致 | 逐字对齐（43 字符别多空格） |
-| 日志 `wecom callback decrypt failed … reason=pkcs7: bad padding` | 签名已经过了（说明后台 Token 与本部署一致），所以解不开只剩两种：**EncodingAESKey 与后台不一致**（后台点过「随机生成」、或抄错/抄多一个字符），或这条推送其实来自**另一个模板** | 看同一行日志的两个字段：`envelopeToUser` ≠ `configuredSuite` → 回调地址填在了别的模板上，去「应用与模板上线」核对；两者相同 → 从「模板详情 → 回调配置」重抄 43 字符到 `vars.wecom_encoding_aes_key`，**重启生效**，再回后台点一次「保存」触发 echostr 验证（页面会当场报验证失败）。`aesKeyFp` 没变 = 新配置没生效（没重启 / 改的不是运行中那份 config） |
+| 日志 `wecom callback decrypt failed … reason=pkcs7: bad padding` | 签名已经过了（说明后台 Token 与本部署一致），所以**钥匙不对**只剩两种：**EncodingAESKey 与后台不一致**（后台点过「随机生成」、或抄错/抄多一个字符），或这条推送其实来自**另一个模板**（那把钥匙解不开这份密文） | 先看 `aesKeyFp` 有没有变：改完 config 对不上 = 新配置没生效（没重启 / 改的不是运行中那份 config），重抄 43 字符到 `vars.wecom_encoding_aes_key`、**重启生效**，再回后台点一次「保存」触发 echostr 验证（页面会当场报验证失败）。`aesKeyFp` 没变仍 `bad padding` → 这条推送不是本套件的，`envelopeToUser` 告诉你它自称是谁（**它是 corpid 也正常**，见 §7.6-C10 注），去「应用与模板上线」核对回调地址填在哪 |
+| 日志 `wecom callback decrypt failed … reason=receiver mismatch` | 钥匙对、但报文自称的身份两边都对不上（配置的 `suite_id` 与信封 `ToUserName` 都不是它） | 信封缺 `ToUserName` 时会这样；先确认服务端不是 0.2.48 或更早（那些版本只认 `suite_id`）。仍复现就把整行日志（含 `envelopeToUser` / `configuredSuite` / `aesKeyFp`）留档 |
 | 企业管理员扫码/打开开通链接后提示「**应用安装失败，联系服务商**」 | 企微推 `create_auth` 后**约 1 秒内**没拿到纯文本 `success`（它只看 body 是不是 `success`，不看 HTTP 200）。三类原因：① 事件没到（指令回调 URL 不是当前地址 / 改过没重新上线）；② 处理里同步出网超预算（`get_suite_token` + `get_permanent_code` 是两次往返）；③ 处理过程抛错（如审计表在租户守卫下被拒） | 先翻服务日志：有 `wecom event failed … reason=<文案>` → 按文案修（缺配置/验签/解密各自有明确文案）；**一条日志都没有** → 事件根本没到，回 §4 第 2 步验回调，并到「应用与模板上线」核对指令回调 URL 是否就是当前地址。若后台清单里**已有该企业且 status=active** → 授权其实成功了（失败发生在 profile 落库之后），让企业管理员再扫一次即可 |
 | 400 `企业代码无效或应用未开通` | corp_id 打错，或该企业没装本应用 | 核对 corp_id（`ww` 开头）；确认已在后台清单里 |
 | 400 `该企业开通了多个应用，登录链接必须带 agent 参数` | 同企业装了测试+正式两个应用 | 链接加 `&agent=<agentid>` |

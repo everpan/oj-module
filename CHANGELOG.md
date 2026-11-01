@@ -62,6 +62,23 @@
   串行天然 5 次/分），初版组合会让第 6 片直接 429，大企业同步永远走不完。上限由路由全局超时 30 秒
   与单次上游软超时 5 秒夹定。
 
+### Fixed
+
+- **企微数据回调（`change_contact` 等）此前一律 400，通讯录变更在生产上是「静默丢事件」**。两个缺陷
+  叠加，只有把真报文投进跑着的服务才看得见（单测两处都用了自己造的包体，正好绕开）：
+  1. **`receiveid` 比错了值**：`receiveid` 的含义随场景变（企微 90968 附注）——第三方事件的回调是
+     **suite_id**（`suite_ticket` / `create_auth`），**企业应用（含代开发应用的数据回调）是 corpid**。
+     原实现只拿 `suite_id` 比，数据回调必然 `receiver mismatch`。改为按候选值依次试
+     （`wecom/api.ts::unwrapAccepting`，候选 = `suite_id` + 信封里的 `ToUserName`——它就在同一份签名
+     报文里，天然等于这条报文的身份），且**只对 `receiver mismatch` 换下一个**：`bad padding` 是密钥
+     不对，换个值也解不开。
+  2. **PKCS#7 补位块长按 16 卡上限**：企微补到 **32 字节**的倍数（90968「概述」，官方 demo 的
+     `block_size` 也是 32），补位值会落在 1~32；原实现 `pad > 16` 直接判 `bad padding`，把约一半
+     真实报文挡在门外（补位值由报文长度决定，几乎是掷硬币）。
+- `GET /api/auth/wecom/event`（回调地址验证）不再比对 `receiveid`：「模板/指令回调 URL」验证时是
+  suite_id，「应用回调 URL」验证时是 corpid，而 GET 只有 `echostr`、没有报文信封，无从挑一个值来比。
+  签名（token 只有本部署与企微知道）仍是唯一闸门，该路径不写任何状态；POST 侧照旧严格比对。
+
 ## [0.2.48] - 2026-11-01
 
 双包 lockstep：`@oj-module/runtime` 与 `@oj-module/cli` 同步定版 **0.2.48**。本轮交付

@@ -64,10 +64,14 @@ function badRequest(message: string): Error {
  * 解不开时把「哪一侧配错」记进日志——只回一句 `pkcs7: bad padding` 等于没给线索。
  *
  * 能先验签通过才走到解密，说明后台 Token 与本部署一致；于是解不开只剩两类：
- *   · `envelopeToUser` 与本部署 suite 不一致 → 这条推送属于**另一个套件/模板**（回调地址填在别的
- *     模板上，或换过模板而 config 没跟上）；
- *   · 一致 → EncodingAESKey 与后台不一致（后台点过「随机生成」、或抄错/抄漏一个字符）。
+ *   · `bad padding` → **钥匙不对**：EncodingAESKey 与后台不一致（后台点过「随机生成」、或抄错/抄漏
+ *     一个字符），或这条推送其实来自另一个套件/模板（那把钥匙解不开这份密文）。
  *     `aesKeyFp` 是本进程**实际加载**那把钥匙的指纹：改完 config 对不上就说明没生效（没重启/改错文件）。
+ *   · `receiver mismatch` → **钥匙对、身份不对**。`receiveid` 已按候选试过（见 unwrapAccepting：
+ *     suite_id + 信封 `ToUserName`），两边都对不上只剩两种：信封里没有 `ToUserName`，或这条推送
+ *     既不属本部署套件、receiveid 也不是它自己声称的身份（伪造/转发）。
+ *
+ * 注意 `envelopeToUser` **不等于** `configuredSuite` 是正常的：数据回调的 `ToUserName` 是 corpid。
  */
 function noteDecryptFailure(e: unknown, envelope: CallbackFields | null, cfg: { encodingAesKey: string, suiteId: string }): void {
 	log.warn(
@@ -85,6 +89,34 @@ function noteDecryptFailure(e: unknown, envelope: CallbackFields | null, cfg: { 
 }
 
 /**
+ * 按「可能合法的 receiveid」依次尝试解密。
+ *
+ * receiveid 的含义随场景变（90968 附注）：**第三方事件的回调是 suiteid**（suite_ticket / create_auth
+ * / cancel_auth），**企业应用（含代开发应用的数据回调）是 corpid**（通讯录变更就走这条）。
+ * 我们一个端点吃两种，只认 suiteid 会把所有数据回调判成「解密失败」——而真正的错是「比错了值」。
+ *
+ * 只对 `receiver mismatch` 换下一个候选：`bad padding` 说明密钥就不对，换谁都解不开，直接抛。
+ */
+function unwrapAccepting(encrypted: string, cfg: WecomConfig, candidates: string[]): string {
+	let lastErr: unknown;
+	const tried = new Set<string>();
+	for (const receiver of candidates) {
+		if (!receiver || tried.has(receiver))
+			continue;
+		tried.add(receiver);
+		try {
+			return unwrapWecomMessage(encrypted, cfg.encodingAesKey, receiver);
+		}
+		catch (e) {
+			if (!/receiver mismatch/.test((e as Error).message))
+				throw e;
+			lastErr = e;
+		}
+	}
+	throw lastErr ?? new Error("wecom: 没有可比对的 receiveid（suite_id 未配置？）");
+}
+
+/**
  * 校验企微回调签名并解出明文。签名不合法 → 400（不是 401：调用方是企微服务器，
  * 401 会被当成「本站需要鉴权」误导排查）；信封里的原文不回显，避免给探测者提供比对材料。
  *
@@ -98,7 +130,9 @@ async function decryptVerified(encrypted: string, envelope: CallbackFields): Pro
 		throw badRequest("回调签名校验失败");
 	await guardReplay(query("timestamp"), query("nonce"), runtimeReplayGate());
 	try {
-		return { cfg, plain: unwrapWecomMessage(encrypted, cfg.encodingAesKey, cfg.suiteId) };
+		// 信封的 ToUserName 就是这条报文的身份：套件事件里是 suiteid，应用数据回调里是 corpid，
+		// 与 receiveid 必然一致（两者在同一份密文/明文里，签名已经覆盖）。
+		return { cfg, plain: unwrapAccepting(encrypted, cfg, [cfg.suiteId, field(envelope, "ToUserName")]) };
 	}
 	catch (e) {
 		// 解密失败只对外透出「失败」：错钥/错套件/被篡改三者不可区分，也不该让外部据此判断哪一环配错
@@ -234,8 +268,9 @@ const event = {
 	// 不需要 suite_id——因此「配齐四项正确即可响应验证」，**不必等代开发模版创建、拿到 suite_id 之后**。
 	// 这正是打破鸡生蛋死锁（plan §18）的落点：先有可验证的回调，才能创建模版、拿到 suite 凭据。
 	//
-	// suite_id 在「模版创建成功」后才下发；URL 验证可能发生在拿到 suite_id 之前（创建表单内联校验），
-	// 此时 receiveid 无从比对 → 走 tolerant（签名已是最外层鉴权闸门，receiveid 仅为防御性兜底）。
+	// suite_id 在「模版创建成功」后才下发；URL 验证可能发生在拿到 suite_id 之前（创建表单内联校验）。
+	// 加上「应用回调 URL 验证时 receiveid 是 corpid」这一层，GET 根本无从挑一个值来比 → 一律 tolerant，
+	// 见下面 try 里的说明（签名是唯一闸门，本端点不落状态）。
 	async get() {
 		try {
 			const cfg = readCallbackConfig();
@@ -246,7 +281,11 @@ const event = {
 			await guardReplay(query("timestamp"), query("nonce"), runtimeReplayGate());
 			const suiteId = (vars.get("wecom_suite_id") ?? "").trim();
 			try {
-				plainText(unwrapWecomMessage(encrypted, cfg.encodingAesKey, suiteId, !suiteId));
+				// receiveid 一律不比对：GET 只有 echostr、没有报文信封，无从知道该比哪一个——
+				// 「模板/指令回调 URL」验证时 receiveid 是 suiteid，「应用回调 URL」验证时是 corpid。
+				// 放宽是安全的：签名已过（token 只有本部署与企微知道），回包只是把解出的 echostr 原样返回，
+				// 不写任何状态；真正的 receiveid 比对在 POST 那条路径上（见 unwrapAccepting）。
+				plainText(unwrapWecomMessage(encrypted, cfg.encodingAesKey, suiteId, true));
 			}
 			catch (e) {
 				// 解密失败只透出「失败」：错钥/未下发套件/被篡改三者不可区分，也不该让外部据此判断哪一环配错

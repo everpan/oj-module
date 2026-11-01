@@ -5,10 +5,11 @@
 //   2. 企微事件端点必须回**纯文本** success / echostr（JSON 信封 = 企微判失败 → 重推三次）；
 //   3. 回调链的租户来自服务端推导（state→profile → db.asTenant），且票据只能兑换一次。
 //
-// json / vars / kv / fetch / crypto 全部桩掉（oj 运行时全局同名同面）；密文用 WebCrypto 现造，
+// json / vars / kv / fetch / crypto 全部桩掉（oj 运行时全局同名同面）；密文用 node:crypto 现造，
 // 与 wecom-crypt.spec.ts 同一对照物，不拿自实现给自己背书。
 /* eslint-disable test/prefer-lowercase-title -- AC 编号是验收锚点，保留大写 */
-import { webcrypto } from "node:crypto";
+import { Buffer } from "node:buffer";
+import { createCipheriv, webcrypto } from "node:crypto";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { bytesToB64, sha1Hex, utf8Bytes, wecomSignature } from "../src/auth/api/_shared/wecom/crypt";
 import { installDb } from "./fixture";
@@ -110,21 +111,24 @@ function installCrypto(): void {
 	Object.defineProperty(globalThis, "crypto", { value: c, configurable: true });
 }
 
-/** 企微侧 webhook 的密文包（random|len|msg|receiveid → AES-256-CBC/PKCS#7） */
+/**
+ * 企微侧 webhook 的密文包（random|len|msg|receiveid → AES-256-CBC，PKCS#7 **补到 32 字节**）。
+ *
+ * 补到 32 而不是 16：企微（90968）就是这么补的，补位值会落在 1~32——用 WebCrypto 的默认补位
+ * （固定 16 字节块）会永远只覆盖到 1~16，正好把线上约一半的报文排除在测试之外（真踩过）。
+ * 所以这里用 node:crypto 并关掉自动补位，自己按 32 补。
+ */
 async function seal(plain: string, receiveId = SUITE): Promise<string> {
 	const msg = utf8Bytes(plain);
 	const head = webcrypto.getRandomValues(new Uint8Array(16));
 	const len = new Uint8Array(4);
 	new DataView(len.buffer).setUint32(0, msg.length);
 	const recv = utf8Bytes(receiveId);
-	const buf = new Uint8Array(20 + msg.length + recv.length);
-	buf.set(head, 0);
-	buf.set(len, 16);
-	buf.set(msg, 20);
-	buf.set(recv, 20 + msg.length);
-	const key = await webcrypto.subtle.importKey("raw", AES_KEY, { name: "AES-CBC" }, false, ["encrypt"]);
-	const cipher = new Uint8Array(await webcrypto.subtle.encrypt({ name: "AES-CBC", iv: AES_KEY.subarray(0, 16) }, key, buf));
-	return bytesToB64(cipher);
+	const body = Buffer.concat([Buffer.from(head), Buffer.from(len), Buffer.from(msg), Buffer.from(recv)]);
+	const pad = 32 - (body.length % 32);
+	const cipher = createCipheriv("aes-256-cbc", Buffer.from(AES_KEY), Buffer.from(AES_KEY.subarray(0, 16)));
+	cipher.setAutoPadding(false);
+	return Buffer.concat([cipher.update(Buffer.concat([body, Buffer.alloc(pad, pad)])), cipher.final()]).toString("base64");
 }
 
 function request(opts: { query?: Record<string, string>, body?: unknown, headers?: Record<string, string>, tenantId?: string } = {}): void {
@@ -374,6 +378,27 @@ describe("P1-L：GET/POST /auth/wecom/event（企微指令回调）", () => {
 		return { ...query, msg_signature: wecomSignature(TOKEN, query.timestamp, query.nonce, encrypted) };
 	}
 
+	/** 抓这一段里所有 log.info 的 (msg, kv)：验收看的是日志，不是只看 HTTP 200 */
+	async function captureInfo(fn: () => Promise<void>): Promise<unknown[][]> {
+		const lines: unknown[][] = [];
+		const orig = g.log;
+		g.log = { ...orig, info: (msg: string, ...kv: unknown[]) => void lines.push([msg, kv]) };
+		try {
+			await fn();
+		}
+		finally {
+			g.log = orig;
+		}
+		return lines;
+	}
+
+	/** 取某条日志的 kv 片段；没这条就当场失败，别让后面的断言在 undefined 上跑 */
+	function logOf(lines: unknown[][], msg: string): unknown {
+		const line = lines.find(a => a[0] === msg);
+		expect(line, `没抓到日志：${msg}`).toBeDefined();
+		return line![1];
+	}
+
 	it("URL 验证：验签通过 → 以 text/plain 原样回解出的 echostr（不套信封）", async () => {
 		const echo = await seal("echo_12345");
 		request({ query: { ...signedQuery(echo), echostr: echo } });
@@ -436,6 +461,86 @@ describe("P1-L：GET/POST /auth/wecom/event（企微指令回调）", () => {
 		expect(out.status).toBe(200);
 		expect(out.text).toBe("success");
 		expect(dbo.prepare("SELECT suite_ticket FROM wecom_suite_ticket WHERE suite_id = ?").get(SUITE)).toMatchObject({ suite_ticket: "tk_str" });
+	});
+
+	it("数据回调 change_contact（应用侧形态：MsgType/Event，无 InfoType）→ 回 success 且日志留证", async () => {
+		// 90970「成员变更通知」的原样字段：ToUserName/FromUserName/CreateTime/MsgType=event/
+		// Event=change_contact/ChangeType/UserID/Name/Department。这条是手册 §7.6-C10 要抓的形态。
+		const plain = [
+			"<xml>",
+			"<ToUserName><![CDATA[ww_corp_a]]></ToUserName>",
+			"<FromUserName><![CDATA[sys]]></FromUserName>",
+			"<CreateTime>1700000000</CreateTime>",
+			"<MsgType><![CDATA[event]]></MsgType>",
+			"<Event><![CDATA[change_contact]]></Event>",
+			"<ChangeType><![CDATA[create_user]]></ChangeType>",
+			"<UserID><![CDATA[zhangsan]]></UserID>",
+			"<Name><![CDATA[张三]]></Name>",
+			"<Department>1</Department>",
+			"</xml>",
+		].join("");
+		// 应用回调的 receiveid 是 **corpid**（90968 附注），不是 suiteid——信封 ToUserName 也是它
+		const encrypted = await seal(plain, "ww_corp_a");
+		const lines = await captureInfo(async () => {
+			request({
+				query: signedQuery(encrypted),
+				body: `<xml><ToUserName><![CDATA[ww_corp_a]]></ToUserName><Encrypt><![CDATA[${encrypted}]]></Encrypt></xml>`,
+			});
+			await (await api()).event.post();
+		});
+
+		// 不消费也要回 success：否则企微 5 秒后重推三次
+		expect(out.status).toBe(200);
+		expect(out.text).toBe("success");
+
+		const kv = logOf(lines, "wecom event ignored");
+		expect(kv).toEqual([
+			"infoType",
+			"",
+			"msgType",
+			"event",
+			"event",
+			"change_contact",
+			"fields",
+			"ToUserName,FromUserName,CreateTime,MsgType,Event,ChangeType,UserID,Name,Department",
+		]);
+		// 字段清单用来判断 C1 能不能开工；**值一律不进日志**（姓名、工号都在明文里）
+		expect(JSON.stringify(lines)).not.toContain("张三");
+		expect(JSON.stringify(lines)).not.toContain("zhangsan");
+	});
+
+	it("数据回调 change_contact（代开发形态：InfoType）→ 同样留证，别被读成「没有日志」", async () => {
+		// 91134「成员通知事件」走的是模板指令回调，字段是 SuiteId/AuthCorpId/InfoType=change_contact，
+		// 没有 MsgType/Event。两种形态都要认得出——否则验收时看 event= 为空会误判成「事件没到」。
+		const plain = [
+			"<xml>",
+			"<SuiteId><![CDATA[suite_1]]></SuiteId>",
+			"<AuthCorpId><![CDATA[ww_corp_a]]></AuthCorpId>",
+			"<InfoType><![CDATA[change_contact]]></InfoType>",
+			"<ChangeType><![CDATA[update_party]]></ChangeType>",
+			"<Id>2</Id>",
+			"</xml>",
+		].join("");
+		const encrypted = await seal(plain);
+		const lines = await captureInfo(async () => {
+			request({ query: signedQuery(encrypted), body: `<xml><Encrypt><![CDATA[${encrypted}]]></Encrypt></xml>` });
+			await (await api()).event.post();
+		});
+
+		expect(out.status).toBe(200);
+		expect(out.text).toBe("success");
+		const kv = logOf(lines, "wecom event ignored");
+		expect(kv).toEqual([
+			"infoType",
+			"change_contact",
+			"msgType",
+			"",
+			"event",
+			"",
+			"fields",
+			"SuiteId,AuthCorpId,InfoType,ChangeType,Id",
+		]);
+		expect(JSON.stringify(lines)).not.toContain("update_party");
 	});
 
 	it("报文缺 Encrypt → 400", async () => {

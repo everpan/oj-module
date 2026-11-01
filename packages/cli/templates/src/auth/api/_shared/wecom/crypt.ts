@@ -12,6 +12,8 @@
 // 逆 S 盒由置换求逆（加载期一次性，<5ms）。
 
 const BLOCK = 16;
+/** 企微的 PKCS#7 补位块长（90968：填充至 32 字节的倍数），与 AES 的 16 字节块是两回事 */
+const PAD_BLOCK = 32;
 
 /** GF(2^8) 乘法，域多项式 x^8+x^4+x^3+x+1（0x11B），AES 唯一乘法 */
 function gmul(a: number, b: number): number {
@@ -153,12 +155,18 @@ export function aes256CbcDecrypt(cipher: Uint8Array, key: Uint8Array, iv: Uint8A
 	return out;
 }
 
-/** PKCS#7 去填充（1..16 字节，逐字节校验；非法抛错） */
+/**
+ * PKCS#7 去填充（逐字节校验；非法抛错）。
+ *
+ * 补位长度上限是 **32**，不是 AES 的块长 16：企微（90968「概述」）明确写「数据采用 PKCS#7 填充至
+ * **32 字节**的倍数」，官方各语言 demo 里 block_size 也等于 32。按 16 卡上限会让补位 17~32 的报文
+ * 一律判成 `bad padding`——而那恰好是真实回调里约一半的情况（补位值由报文长度决定）。
+ */
 export function pkcs7Unpad(data: Uint8Array): Uint8Array {
 	if (data.length === 0 || data.length % BLOCK !== 0)
 		throw new Error("pkcs7: bad length");
 	const pad = data[data.length - 1]!;
-	if (pad < 1 || pad > BLOCK || pad > data.length)
+	if (pad < 1 || pad > PAD_BLOCK || pad > data.length)
 		throw new Error("pkcs7: bad padding");
 	for (let i = data.length - pad; i < data.length; i++) {
 		if (data[i] !== pad)
@@ -291,12 +299,14 @@ export function wecomSignature(...parts: string[]): string {
  * 解出企微消息明文（`<xml>…</xml>` 或裸 `echostr`）。
  *
  * 明文结构（企微 §消息加解密）：`random(16B) | msg_len(4B, big-endian) | msg | receiveid`。
- * `receiveid` 对第三方平台/代开发模版是 **suite_id**；不一致即拒（错钥/错套件混用必须 fail-closed，
- * 否则不同套件的回调会互相污染）。43 字符 EncodingAESKey 末尾补 "=" 才是 44 字符 base64（32 字节）。
+ * `receiveid` 的含义**随场景变**（90968 附注）：第三方事件的回调是 **suite_id**（suite_ticket /
+ * create_auth），企业应用的回调（含代开发应用的数据回调，通讯录变更就走这条）是 **corpid**。
+ * 不一致即拒（错钥/错套件混用必须 fail-closed）——但调用方得按场景给出候选值，
+ * 见 `wecom/api.ts::unwrapAccepting`。43 字符 EncodingAESKey 末尾补 "=" 才是 44 字符 base64（32 字节）。
  *
- * `tolerant`（默认 false）：引导期 `suite_id` 尚未下发时，receiveid 无从比对——
- * 此时放宽该检查。放宽是安全的：最外层签名（基于开发者持有的 `token`）已鉴权，
- * receiveid 只是防御性兜底（防错配 aeskey）。`suite_id` 配齐后调用方应传 `false` 恢复严格。
+ * `tolerant`（默认 false）：拿不到可比对的 receiveid 时放宽（引导期没有 suite_id、或 GET 只有
+ * echostr 没有报文信封）。放宽是安全的：最外层签名（基于开发者持有的 `token`）已鉴权，
+ * receiveid 只是防御性兜底（防错配 aeskey）。
  */
 export function unwrapWecomMessage(encryptedB64: string, encodingAesKey: string, expectedReceiver: string, tolerant = false): string {
 	const key = b64ToBytes(`${encodingAesKey}=`);
