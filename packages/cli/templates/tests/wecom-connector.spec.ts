@@ -514,6 +514,31 @@ describe("P1-G：事件分发（suite_ticket / 授权 / 解绑）", () => {
 		expect(await getSuiteTicket(CFG.suiteId, storeDeps())).toEqual({ ticket: "tk_1", expiresAt: clock + 1800 });
 	});
 
+	it("suite_ticket 顺势预热 suite token（授权路径只剩一次出网），换票失败也不影响票据落库", async () => {
+		const seen: string[] = [];
+		const warm = {
+			...fakeClient(),
+			async suiteAccessToken(suiteId: string, secret: string, ticket: string) {
+				seen.push(`${suiteId}/${secret}/${ticket}`);
+				return "sat";
+			},
+		} as never;
+		await handleSuiteEvent("<xml><InfoType>suite_ticket</InfoType><SuiteId>suite_1</SuiteId><SuiteTicket>tk_9</SuiteTicket></xml>", deps(warm));
+		expect(seen).toEqual(["suite_1/secret_1/tk_9"]);
+
+		// suite_secret 配错时只是预热失败：票据必须照旧落库，否则 create_auth 连门都进不去
+		const broken = {
+			...fakeClient(),
+			async suiteAccessToken() {
+				throw new Error("企微 get_suite_token 失败：errcode=40001");
+			},
+		} as never;
+		await expect(handleSuiteEvent("<xml><InfoType>suite_ticket</InfoType><SuiteId>suite_1</SuiteId><SuiteTicket>tk_10</SuiteTicket></xml>", deps(broken)))
+			.resolves
+			.toBe("suite_ticket");
+		expect((await getSuiteTicket(CFG.suiteId, storeDeps())).ticket).toBe("tk_10");
+	});
+
 	it("create_auth：AuthCode 换永久码 → 每个 agent 一行 profile，并作废旧 corp token", async () => {
 		await putSuiteTicket(CFG.suiteId, "tk_1", clock + 1800, storeDeps());
 		const client = fakeClient();
@@ -528,16 +553,50 @@ describe("P1-G：事件分发（suite_ticket / 授权 / 解绑）", () => {
 		expect(dbo.prepare("SELECT action FROM sys_oplog WHERE action = 'wecom.auth.apply'").all()).toHaveLength(1);
 	});
 
+	// 回归：线上「应用安装失败，联系服务商」的正因——回调是匿名请求（无 X-TENANT-ID），
+	// sys_oplog 是租户表，sql_guard: deny 下不绑租户就写会被守卫拒；而它发生在 profile 已落库之后，
+	// 于是「授权其实成功了，企微却判失败」。鉴据：审计行必须落在该企业自己的租户下。
+	it("create_auth 匿名回调（无租户头）：审计前先按企业绑租户，行落进该企业 oplog", async () => {
+		await putSuiteTicket(CFG.suiteId, "tk_1", clock + 1800, storeDeps());
+		g.http = {};
+		await handleSuiteEvent("<xml><InfoType>create_auth</InfoType><SuiteId>suite_1</SuiteId><AuthCode>AC_1</AuthCode></xml>", deps(fakeClient()));
+		expect(g.http.tenantId).toBe("ww_corp_a");
+		expect(dbo.prepare("SELECT tenant_id, target FROM sys_oplog WHERE action = 'wecom.auth.apply'").get())
+			.toMatchObject({ tenant_id: "ww_corp_a", target: "ww_corp_a" });
+	});
+
+	it("审计写失败不得把 create_auth 打成失败（授权已落库，企微必须拿到 success）", async () => {
+		await putSuiteTicket(CFG.suiteId, "tk_1", clock + 1800, storeDeps());
+		const orig = g.db.table;
+		g.db.table = (name: string) => {
+			if (name === "sys_oplog")
+				throw new Error("tenant guard: table(s) [\"sys_oplog\"] require tenant context (missing tenant header)");
+			return orig(name);
+		};
+		try {
+			await expect(handleSuiteEvent("<xml><InfoType>create_auth</InfoType><SuiteId>suite_1</SuiteId><AuthCode>AC_1</AuthCode></xml>", deps(fakeClient())))
+				.resolves
+				.toBe("create_auth");
+		}
+		finally {
+			g.db.table = orig;
+		}
+		expect(dbo.prepare("SELECT COUNT(*) AS n FROM wecom_app_profile").get()).toMatchObject({ n: 2 });
+	});
+
 	it("cancel_auth：profile 全部停用 + 该租户 refresh 串清空（解绑后旧会话不得续命）", async () => {
 		await saveProfile(profile({ agent: "100001" }), storeDeps());
 		await saveProfile(profile({ agent: "100002" }), storeDeps());
 		dbo.prepare("INSERT INTO sys_refresh_token (token_hash, tenant_id, user_id, expires_at, revoked, created_at) VALUES ('h', 'ww_corp_a', 1, ?, 0, ?)").run(clock + 100, clock);
 
+		g.http = {};
 		await handleSuiteEvent("<xml><InfoType>cancel_auth</InfoType><SuiteId>suite_1</SuiteId><AuthCorpId>ww_corp_a</AuthCorpId></xml>", deps(fakeClient()));
 
 		expect(dbo.prepare("SELECT DISTINCT status FROM wecom_app_profile").all()).toEqual([{ status: "disabled" }]);
 		expect(dbo.prepare("SELECT COUNT(*) AS n FROM sys_refresh_token").get()).toMatchObject({ n: 0 });
 		expect(dbo.prepare("SELECT level FROM sys_oplog WHERE action = 'wecom.auth.cancel'").get()).toMatchObject({ level: 4 });
+		// 清会话是裸 SQL，deny 档下同样要租户上下文
+		expect(g.http.tenantId).toBe("ww_corp_a");
 	});
 
 	it("SuiteId 与本部署不一致 → 400（不同套件的回调不得互相污染）", async () => {

@@ -12,12 +12,14 @@ import type { WecomStoreDeps } from "./store";
 //   · 企业解绑/取消授权只在 cancel_auth 出现。
 // 因此这里不是「可选的后台功能」，是代开发模式的下限能力。
 //
-// 响应纪律：处理完返回（路由回纯文本 success）。企微 5 秒内拿不到 success 会重推三次；
-// 重推对我们是幂等的（profile upsert / ticket 覆盖），但 AuthCode 一次有效，重推时已换取过 → 502，
+// 响应纪律：处理完返回（路由回纯文本 success）。企微对 `create_auth` 的窗口是 **约 1 秒**
+// （官方文档写 5 秒，实际按 1 秒卡；超时/非 success 一律在企业管理员浏览器上显示
+// 「应用安装失败，联系服务商」）。拿不到 success 会重推三次；重推对我们是幂等的
+// （profile upsert / ticket 覆盖），但 AuthCode 一次有效，重推时已换取过 → 502，
 // 属预期（日志留痕即可，不影响已落库的 profile）。
 import { invalidateAllUsers } from "#/_platform/_shared/service/infra/access";
 import { recordOp } from "#/_platform/_shared/service/infra/audit";
-import { corpScope, getSuiteTicket, putSuiteTicket, revokeTenantSessions, saveProfile, setProfileStatus, tenantOfCorp } from "./store";
+import { corpScope, ensureTenant, getSuiteTicket, putSuiteTicket, revokeTenantSessions, saveProfile, setProfileStatus, tenantOfCorp } from "./store";
 import { xmlField } from "./xml";
 
 /** suite_ticket 官方有效期 30 分钟（10 分钟推一次）；本地按 30 分钟作废，宁可拒一次也不拿过期票打企微 */
@@ -47,8 +49,27 @@ function requireField(xml: string, name: string, infoType: string): string {
 	return value;
 }
 
+/**
+ * 事件路径的审计。两处纪律：
+ *   1. 调用前必须先 `ensureTenant(corp)`——`sys_oplog` 是租户表，本端点又是匿名路径（企微带不了
+ *      `X-TENANT-ID`），`sql_guard: deny` 下不带租户上下文的 insert 会被守卫直接拒；
+ *   2. 审计失败**只告警**：它发生在 profile 已落库之后，一次成功的授权不能因为写日志失败
+ *      变成企业管理员看到的「应用安装失败」。
+ */
+async function auditAuth(action: string, corpId: string, detail?: unknown, level?: number): Promise<void> {
+	try {
+		await recordOp({ action, module: "auth", target: corpId, detail, level });
+	}
+	catch (e) {
+		log.warn("wecom auth audit skipped", "action", action, "corpId", corpId, "reason", (e as Error).message);
+	}
+}
+
 /** 该 corp 的所有应用都标记为停用，并吊销其租户下的全部会话 */
 async function disableCorp(corpId: string, deps: SuiteEventDeps): Promise<void> {
+	// 取消授权同样是匿名回调：会话清理走裸 SQL，`sql_guard: deny` 下没有租户上下文会被拒——
+	// 而这里拒掉的后果是「旧 refresh 串仍能续命」，属安全红线，故必须绑成功再往下走。
+	ensureTenant(tenantOfCorp(corpId));
 	const rows = await db.table("wecom_app_profile").select(["agent_id"]).where(corpScope(corpId)).all() as Array<{ agent_id: string }>;
 	for (const r of rows)
 		await deps.client.invalidateCorpToken(corpId, String(r.agent_id));
@@ -67,6 +88,9 @@ async function applyAuthCode(authCode: string, state: string | null, deps: Suite
 	const suiteToken = await client.suiteAccessToken(cfg.suiteId, cfg.suiteSecret, suiteTicket.ticket);
 	const granted = await client.permanentCodeByAuthCode(suiteToken, authCode);
 	const env = envOfState(state ?? granted.state);
+	// 拿到企业身份就绑租户：profile 表虽共享，但其后的审计与后续写库都在这个租户下。
+	// 顺序不能挪到审计里——那样 saveProfile 之后才发现守卫拒，profile 已落库却回失败。
+	ensureTenant(tenantOfCorp(granted.corpId));
 	for (const agentId of granted.agentIds) {
 		await saveProfile({
 			suiteId: cfg.suiteId,
@@ -80,7 +104,7 @@ async function applyAuthCode(authCode: string, state: string | null, deps: Suite
 		// secret 可能已轮换：旧 token 必须立刻作废，否则下一个登录会带着失效 token 打 userinfo
 		await client.invalidateCorpToken(granted.corpId, agentId);
 	}
-	await recordOp({ action: "wecom.auth.apply", module: "auth", target: granted.corpId, detail: { agentIds: granted.agentIds, env } });
+	await auditAuth("wecom.auth.apply", granted.corpId, { agentIds: granted.agentIds, env });
 	return { corpId: granted.corpId, agentIds: granted.agentIds };
 }
 
@@ -96,6 +120,11 @@ export async function handleSuiteEvent(plaintext: string, deps: SuiteEventDeps):
 			const ticket = requireField(plaintext, "SuiteTicket", infoType);
 			await putSuiteTicket(deps.cfg.suiteId, ticket, deps.store.now() + SUITE_TICKET_TTL_SECS, deps.store);
 			log.info("wecom suite_ticket updated", "suiteId", deps.cfg.suiteId);
+			// 顺势换一次 suite_access_token（命中缓存则 0 次往返）：create_auth 只有约 1 秒窗口，
+			// 这里先换掉，企业管理员扫码那条路径就只剩 get_permanent_code 一次出网。
+			// 副产品：suite_secret 配错会在票据推送时就进日志，而不是等某家企业扫码失败。
+			await deps.client.suiteAccessToken(deps.cfg.suiteId, deps.cfg.suiteSecret, ticket)
+				.catch((e: Error) => log.warn("wecom suite token warmup failed", "reason", e.message));
 			return infoType;
 		}
 		case "create_auth":
@@ -115,7 +144,7 @@ export async function handleSuiteEvent(plaintext: string, deps: SuiteEventDeps):
 		case "cancel_auth": {
 			const authCorpId = requireField(plaintext, "AuthCorpId", infoType);
 			await disableCorp(authCorpId, deps);
-			await recordOp({ action: "wecom.auth.cancel", module: "auth", target: authCorpId, level: 4 });
+			await auditAuth("wecom.auth.cancel", authCorpId, undefined, 4);
 			log.warn("wecom auth cancelled", "corpId", authCorpId);
 			return infoType;
 		}

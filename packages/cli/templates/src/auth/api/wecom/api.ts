@@ -18,7 +18,7 @@ import { clientIp, guardLoginThrottle, noteLoginFailed, noteLoginSucceeded } fro
 import { createSession } from "../_shared/session";
 import { createWecomClient, runtimeCache, runtimeHttp } from "../_shared/wecom/client";
 import { loginRedirectOf, readCallbackConfig, readWecomConfig, siteRootOf } from "../_shared/wecom/config";
-import { unwrapWecomMessage, wecomSignature } from "../_shared/wecom/crypt";
+import { sha1Hex, unwrapWecomMessage, wecomSignature } from "../_shared/wecom/crypt";
 import { handleSuiteEvent } from "../_shared/wecom/events";
 import {
 	assertUserActive,
@@ -59,13 +59,36 @@ function badRequest(message: string): Error {
 }
 
 /**
+ * 解不开时把「哪一侧配错」记进日志——只回一句 `pkcs7: bad padding` 等于没给线索。
+ *
+ * 能先验签通过才走到解密，说明后台 Token 与本部署一致；于是解不开只剩两类：
+ *   · `envelopeToUser` 与本部署 suite 不一致 → 这条推送属于**另一个套件/模板**（回调地址填在别的
+ *     模板上，或换过模板而 config 没跟上）；
+ *   · 一致 → EncodingAESKey 与后台不一致（后台点过「随机生成」、或抄错/抄漏一个字符）。
+ *     `aesKeyFp` 是本进程**实际加载**那把钥匙的指纹：改完 config 对不上就说明没生效（没重启/改错文件）。
+ */
+function noteDecryptFailure(e: unknown, xml: string, cfg: { encodingAesKey: string, suiteId: string }): void {
+	log.warn(
+		"wecom callback decrypt failed",
+		"reason",
+		(e as Error).message,
+		"envelopeToUser",
+		xmlField(xml, "ToUserName") ?? "",
+		"configuredSuite",
+		cfg.suiteId,
+		"aesKeyFp",
+		sha1Hex(cfg.encodingAesKey).slice(0, 8),
+	);
+}
+
+/**
  * 校验企微回调签名并解出明文。签名不合法 → 400（不是 401：调用方是企微服务器，
  * 401 会被当成「本站需要鉴权」误导排查）；信封里的原文不回显，避免给探测者提供比对材料。
  *
  * 三道顺序不可换：先验签（不给未鉴权请求写 kv）→ 再拦重放（省一次解密，也让
  * cancel_auth 这种危险性最高的报文止步在落库之前）→ 最后解密。
  */
-async function decryptVerified(encrypted: string): Promise<{ cfg: WecomConfig, plain: string }> {
+async function decryptVerified(encrypted: string, xml: string): Promise<{ cfg: WecomConfig, plain: string }> {
 	const cfg = readWecomConfig();
 	const expected = wecomSignature(cfg.token, query("timestamp"), query("nonce"), encrypted);
 	if (expected !== query("msg_signature"))
@@ -75,8 +98,8 @@ async function decryptVerified(encrypted: string): Promise<{ cfg: WecomConfig, p
 		return { cfg, plain: unwrapWecomMessage(encrypted, cfg.encodingAesKey, cfg.suiteId) };
 	}
 	catch (e) {
-		// 解密失败只透出「失败」：错钥/错套件/被篡改三者不可区分，也不该让外部据此判断哪一环配错
-		log.warn("wecom callback decrypt failed", "reason", (e as Error).message);
+		// 解密失败只对外透出「失败」：错钥/错套件/被篡改三者不可区分，也不该让外部据此判断哪一环配错
+		noteDecryptFailure(e, xml, cfg);
 		throw badRequest("回调消息解密失败");
 	}
 }
@@ -214,7 +237,7 @@ const event = {
 			}
 			catch (e) {
 				// 解密失败只透出「失败」：错钥/未下发套件/被篡改三者不可区分，也不该让外部据此判断哪一环配错
-				log.warn("wecom callback decrypt failed", "reason", (e as Error).message);
+				noteDecryptFailure(e, "", { encodingAesKey: cfg.encodingAesKey, suiteId });
 				throw badRequest("回调消息解密失败");
 			}
 		}
@@ -231,12 +254,16 @@ const event = {
 			const encrypted = xmlField(xml, "Encrypt");
 			if (!encrypted)
 				throw badRequest("回调报文缺少 Encrypt");
-			const { cfg, plain } = await decryptVerified(encrypted);
+			const { cfg, plain } = await decryptVerified(encrypted, xml);
 			const client = createWecomClient({ http: runtimeHttp(), cache: runtimeCache() });
 			await handleSuiteEvent(plain, { cfg, client, store: runtimeStoreDeps(cfg) });
 			plainText("success");
 		}
 		catch (e) {
+			// 企微侧只会显示「应用安装失败，联系服务商」，原因一概不透露——这里是唯一能查到
+			// 「哪一环拒了这条事件」的地方（缺这一行，这场失败在运维视角是零信息）。
+			const err = e as Error & { status?: number };
+			log.error("wecom event failed", "status", err.status ?? 500, "reason", err.message);
 			// 失败必须让企微看到非 success：它重推三次，正好覆盖「suite_ticket 未到/上游抖」这类瞬态
 			failWith(e);
 		}

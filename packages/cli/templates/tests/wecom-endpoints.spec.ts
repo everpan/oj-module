@@ -10,7 +10,7 @@
 /* eslint-disable test/prefer-lowercase-title -- AC 编号是验收锚点，保留大写 */
 import { webcrypto } from "node:crypto";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { bytesToB64, utf8Bytes, wecomSignature } from "../src/auth/api/_shared/wecom/crypt";
+import { bytesToB64, sha1Hex, utf8Bytes, wecomSignature } from "../src/auth/api/_shared/wecom/crypt";
 import { installDb } from "./fixture";
 
 const g = globalThis as any;
@@ -425,6 +425,36 @@ describe("P1-L：GET/POST /auth/wecom/event（企微指令回调）", () => {
 		await (await api()).event.post();
 		expect(out.status).toBe(400);
 		expect(dbo.prepare("SELECT COUNT(*) AS n FROM wecom_suite_ticket").get()).toMatchObject({ n: 0 });
+	});
+
+	it("EncodingAESKey 与后台不一致（签名过、解密爆 pkcs7）→ 400，日志点名是哪一侧配错", async () => {
+		// 用户实报的原样症状：WARN reason=pkcs7: bad padding。签名先过说明后台 Token 与本部署一致，
+		// 所以只回一句 bad padding 等于没给线索——日志必须带「外层 ToUserName / 配置套件 / 实际加载的密钥指纹」。
+		const warns: unknown[][] = [];
+		const orig = g.log;
+		g.log = { ...orig, warn: (msg: string, ...kv: unknown[]) => warns.push([msg, kv]) };
+		try {
+			const encrypted = await seal(TICKET_XML);
+			// 后台用真钥匙加密，本部署加载另一把 43 字符（仍解 32 字节，不会先撞长度校验）
+			installVars({ wecom_encoding_aes_key: "Q".repeat(43) });
+			request({
+				query: signedQuery(encrypted),
+				body: `<xml><ToUserName><![CDATA[${SUITE}]]></ToUserName><Encrypt><![CDATA[${encrypted}]]></Encrypt></xml>`,
+			});
+			await (await api()).event.post();
+		}
+		finally {
+			g.log = orig;
+		}
+
+		expect(out.status).toBe(400);
+		expect(out.body.msg).toMatch(/解密失败/);
+		const hit = warns.find(w => w[0] === "wecom callback decrypt failed");
+		expect(hit).toBeDefined();
+		const kv = hit![1] as unknown[];
+		expect(kv).toContain("pkcs7: bad padding");
+		expect(kv).toContain(SUITE); // envelopeToUser 与 configuredSuite 同值 → 指向「密钥不一致」而不是「套件不对」
+		expect(kv).toContain(sha1Hex("Q".repeat(43)).slice(0, 8));
 	});
 
 	it("timestamp 超出 ±5 分钟窗口 → 400（历史回调不得被无限期重放）", async () => {

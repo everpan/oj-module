@@ -82,7 +82,7 @@ Tier B 为空时服务仍可启动并响应 echostr，但 suite 流程会 400—
 | 1 | `wecom_suite_id` | Tier B | 企微服务商后台 → 应用管理 → 代开发应用 → 模板详情 → **基本信息**页（**创建成功后**才有），标作「**模板ID**」，即 **SuiteID**（形如 `ww…` / `wwb…`） | 非空字符串 | Tier A 配齐时服务可启动并验证回调；此项空 → login/callback/create_auth 等 suite 流程 400 `config vars 缺少 wecom_suite_id`；`event.post` 还会判 `SuiteId 与本部署配置不一致` |
 | 2 | `wecom_suite_secret` | Tier B | 同页「基本信息」标作「**模板Secret**」，即 **SuiteSecret**（可重置） | 非空字符串；重置后旧值立即失效 | 换不出 `suite_access_token` → 502 `企微 get_suite_token 失败：errcode=40001 …`；开通链接生成也失败 |
 | 3 | `wecom_callback_token` | Tier A | 同页 **Token**（自设，字母数字 3–32 位） | 与企微后台**逐字一致** | 保存回调 URL 时 `echostr` 解不解得开；事件被判验签失败，企微持续重推 |
-| 4 | `wecom_encoding_aes_key` | Tier A | 同页 **EncodingAESKey**（自设） | **43 字符** | 同上：回调报文解不开，`suite_ticket` 永远收不到 |
+| 4 | `wecom_encoding_aes_key` | Tier A | 同页 **EncodingAESKey**（自设，43 字符） | **43 字符**，且与企微后台**逐字一致**（差一个字符就是 `pkcs7: bad padding`） | 回调报文解不开、`suite_ticket` 永远收不到；企业管理员扫码后提示「应用安装失败」 |
 | 5 | `wecom_enc_key` | Tier A | **自己生成**，见 §2.4 | hex 32 字符（16 字节）或 64 字符（32 字节），或 base64 解码后 16 / 32 字节。**AES-192（24 字节）不支持** | 400 `企业微信配置错误：wecom_enc_key 必须是 16 或 32 字节的 hex（32/64 字符）或 base64` |
 | 6 | `wecom_base_url` | Tier A | **基址**：你站点的对外地址 + `/api/auth/wecom`（注意这是基址，**不是**企微后台要填的回调 URL） | **绝对地址、无尾斜杠、必须以 `/api/auth/wecom` 结尾** | 400 `wecom_base_url 必须是绝对地址` 或 `必须以 /api/auth/wecom 结尾`；配错还会让登录回跳落到别的应用或 404 |
 | 7 | `wecom_provider_id` | Tier C | 服务商后台 → **服务商信息**页显示的 CorpID（服务商自己的 corpid，不是企业 corpid，也不是 suite_id） | 非空字符串 | 只影响「生成开通链接」：`get_provider_token` 换不出 `provider_access_token` → 生成链接 502；此项为空 → 生成链接 400 `config vars 缺少 wecom_provider_id` |
@@ -178,7 +178,7 @@ openssl rand -hex 32        # 输出 64 个 hex 字符，直接贴进 wecom_enc_
 > 的 `roles.includes("superadmin")`）与后端 `auth/wecom/admin/*`（每个端点 `assertSuperAdmin()`）
 > 都只放行 `superadmin`。模板 seed 已把 `admin` 从 `superadmin` 角色解绑（收敛为「账号名 = 角色名」，
 > 见 `_platform/api/seed.sql` 的 `DELETE … WHERE role_name='superadmin' AND username='admin'`），
-> 所以拿 `admin` 登录会直接显示「无权限」。请用 `superadmin` 登录（seed 口令 `123456`，
+> 所以拿 `admin` 登录会直接显示「无权限」。请用 `superadmin` 登录（seed 口令 `aA123456`，
 > **登录后立即改密**）；若坚持让 `admin` 也能进，由 `superadmin` 在 `/system/roles` 把 `admin`
 > 绑到 `superadmin`，但不推荐——这会取消「日常管理员 vs 跨租户运营面」的隔离。
 
@@ -420,6 +420,8 @@ window.location.assign(`${resolveApiBase()}${wecomAuthorizePath(corp)}`);
 | 400 `回调 timestamp 超出允许窗口：请检查服务器时间，或该请求为历史回调的重放` | 服务器时钟与真实时间偏差超过 5 分钟，或这条回调是被人回放的旧报文 | 校服务器时间（NTP）；校正后企微的重推会自动成功 |
 | 400 `回调 nonce 重复：同一条指令回调已被处理过（重放请求已拒绝）` | 同一条指令被投递了两次（企微重试、或反代重复转发） | 首次生效、重放被拒属预期保护；若常态出现，查反代是否重复转发 POST |
 | 企微后台保存回调 URL 失败 | `Token` / `EncodingAESKey` 与 `config.yaml` 不一致 | 逐字对齐（43 字符别多空格） |
+| 日志 `wecom callback decrypt failed … reason=pkcs7: bad padding` | 签名已经过了（说明后台 Token 与本部署一致），所以解不开只剩两种：**EncodingAESKey 与后台不一致**（后台点过「随机生成」、或抄错/抄多一个字符），或这条推送其实来自**另一个模板** | 看同一行日志的两个字段：`envelopeToUser` ≠ `configuredSuite` → 回调地址填在了别的模板上，去「应用与模板上线」核对；两者相同 → 从「模板详情 → 回调配置」重抄 43 字符到 `vars.wecom_encoding_aes_key`，**重启生效**，再回后台点一次「保存」触发 echostr 验证（页面会当场报验证失败）。`aesKeyFp` 没变 = 新配置没生效（没重启 / 改的不是运行中那份 config） |
+| 企业管理员扫码/打开开通链接后提示「**应用安装失败，联系服务商**」 | 企微推 `create_auth` 后**约 1 秒内**没拿到纯文本 `success`（它只看 body 是不是 `success`，不看 HTTP 200）。三类原因：① 事件没到（指令回调 URL 不是当前地址 / 改过没重新上线）；② 处理里同步出网超预算（`get_suite_token` + `get_permanent_code` 是两次往返）；③ 处理过程抛错（如审计表在租户守卫下被拒） | 先翻服务日志：有 `wecom event failed … reason=<文案>` → 按文案修（缺配置/验签/解密各自有明确文案）；**一条日志都没有** → 事件根本没到，回 §4 第 2 步验回调，并到「应用与模板上线」核对指令回调 URL 是否就是当前地址。若后台清单里**已有该企业且 status=active** → 授权其实成功了（失败发生在 profile 落库之后），让企业管理员再扫一次即可 |
 | 400 `企业代码无效或应用未开通` | corp_id 打错，或该企业没装本应用 | 核对 corp_id（`ww` 开头）；确认已在后台清单里 |
 | 400 `该企业开通了多个应用，登录链接必须带 agent 参数` | 同企业装了测试+正式两个应用 | 链接加 `&agent=<agentid>` |
 | 401 `登录凭据无效或不在应用可见范围内` | code 无效 / 员工不在应用可见范围 / 非本企业成员 | 企微后台检查应用可见范围 |
