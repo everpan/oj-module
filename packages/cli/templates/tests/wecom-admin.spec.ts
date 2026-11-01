@@ -290,8 +290,8 @@ describe("P3-C：开通入口（createInstall，代开发 get_customized_auth_ur
 		expect(body.templateid_list).toEqual([SUITE]);
 
 		expect(r.installUrl).toBe("https://open.work.weixin.qq.com/3rdservice/QR_1");
-		// 下发给管理员填进企微后台的地址带 callback_format=json：让上游改发 JSON 包体
-		expect(r.callbackUrl).toBe("https://site.example.com/api/auth/wecom/event?callback_format=json");
+		// 下发给管理员的就是文档里的地址（不带 callback_format=json，依据见 config.ts::eventUrlOf）
+		expect(r.callbackUrl).toBe("https://site.example.com/api/auth/wecom/event");
 		expect(r.expiresIn).toBe(7200);
 	});
 

@@ -31,7 +31,7 @@
   │
   ├─ suite_ticket ── 每 10 分钟推一次，30 分钟不用即作废 ──▶ wecom_suite_ticket（共享表）
   │
-  └─ 指令回调 URL ──▶ POST <wecom_base_url>/event?callback_format=json
+  └─ 指令回调 URL ──▶ POST <wecom_base_url>/event
         │
         ├─ ① suite_ticket + suite_secret ─▶ suite_access_token（缓存，提前 5 分钟过期）
         │       ├─ get_permanent_code ◀── auth_code（企业管理员确认授权时推 create_auth）
@@ -109,19 +109,21 @@ Tier B 为空时服务仍可启动并响应 echostr，但 suite 流程会 400—
 
 `wecom_base_url` 是唯一「配一处、派生两处」的值——它同时决定：
 
-- 指令回调 URL = `<wecom_base_url>/event?callback_format=json`
+- 指令回调 URL = `<wecom_base_url>/event`
 - 网页授权 `redirect_uri` = `<wecom_base_url>/callback`
 - 登录成功后的站点回跳 = 去掉 `/api/auth/wecom` 的那部分（子路径部署也正确，例如
   `https://example.com/oj/api/auth/wecom` → 回跳 `https://example.com/oj/login`）
 
 > ⚠️ **`wecom_base_url` 不是回调 URL 本身，别把它直接填进企微后台。** 企微后台要填的
-> 「指令回调 URL / 应用回调 URL」是 `<wecom_base_url>/event?callback_format=json`（**必须带 `/event`**）。
+> 「指令回调 URL / 应用回调 URL」是 `<wecom_base_url>/event`（**必须带 `/event`**）。
 > 裸的 `/api/auth/wecom` 没有任何 handler，企微验签时会打到它 → **404 → 验证失败、模版保存不了**。
 > 派生关系如上：回调 URL = base + `/event`，网页授权回跳 = base + `/callback`。
 >
-> **`?callback_format=json` 别手删。** 带上它，企微就把包体发成 JSON（信封 `{"tousername","encrypt","agentid"}`）；
-> 不带则发 XML。**两种本服务都收**（归一化在 `payload.ts`），所以老地址不会因为升级而失效；
-> 但 JSON 是主路径——只有真机上确认某类事件不认这个参数时，才需要把它去掉。
+> **别给这个 URL 加 `?callback_format=json`。** 这个参数只在「对外收款」的指令回调文档（97478）里有说明；
+> 代开发 / 第三方应用所属的**通用回调配置**（96238 §3.2）只写 XML 信封，「部门通知事件」（92655）
+> 虽然给了 JSON 示例、但示例地址同样不带它 —— 也就是说**我们这类回调没有文档依据**。
+> 服务端两种包体都收（归一化在 `payload.ts`，XML / JSON 谁先来都不影响），所以哪天上游默认改 JSON
+> 也不用动这里；但在文档给出依据前，地址就照文档写，别自己加参数。
 
 ### 2.2 两项备案（都在企微后台，不写在代码里）
 
@@ -194,8 +196,8 @@ openssl rand -hex 32        # 输出 64 个 hex 字符，直接贴进 wecom_enc_
 
 | 企微后台位置 | 值 | 说明 |
 |---|---|---|
-| **模板**回调 URL（指令回调 / 事件接收） | `https://<站点>/api/auth/wecom/event?callback_format=json` | 点保存时企微会 GET 一次带 `echostr`：必须**当次就通**，否则保存不了。`suite_ticket` 与 `create_auth` / `change_auth` / `cancel_auth` 都走这里 |
-| **应用**回调 URL（数据回调 / 通讯录变更） | **同上** `https://<站点>/api/auth/wecom/event?callback_format=json` | 一个端点吃两种回调，不用再开路由。当前版本收到 `change_contact` 只记一条 `wecom event ignored` 并回 `success`（事件增量尚未上线，靠全量同步兜底），但**现在就要填**：不填等于以后上线事件增量时还得再让每家企业的管理员动一次后台 |
+| **模板**回调 URL（指令回调 / 事件接收） | `https://<站点>/api/auth/wecom/event` | 点保存时企微会 GET 一次带 `echostr`：必须**当次就通**，否则保存不了。`suite_ticket` 与 `create_auth` / `change_auth` / `cancel_auth` 都走这里 |
+| **应用**回调 URL（数据回调 / 通讯录变更） | **同上** `https://<站点>/api/auth/wecom/event` | 一个端点吃两种回调，不用再开路由。当前版本收到 `change_contact` 只记一条 `wecom event ignored` 并回 `success`（事件增量尚未上线，靠全量同步兜底），但**现在就要填**：不填等于以后上线事件增量时还得再让每家企业的管理员动一次后台 |
 | 可信域名 | `https://<站点域名>` | 不含路径 |
 | 网页授权 `redirect_uri` | **不用手填**：后端按 `wecom_base_url` 拼出 `https://<站点>/api/auth/wecom/callback` | 企业的授权页里的域名必须与可信域名一致 |
 
@@ -214,7 +216,7 @@ openssl rand -hex 32        # 输出 64 个 hex 字符，直接贴进 wecom_enc_
 | 步 | 动作 | 为什么 | 错序的症状 |
 |---|---|---|---|
 | 1 | 配好 §2.1 的 **Tier A 四项**（`callback_token` / `encoding_aes_key` / `enc_key` / `base_url`），重启服务 | 这四项本地生成，服务凭它们即可启动并响应 echostr | 400 `企业微信未配置：config vars 缺少 …` |
-| 2 | 站点对外 https 可达；把指令回调 URL `<base>/event?callback_format=json` 填进企微后台并保存 | 保存动作本身就是第一次验签（GET `echostr`）——而 echostr 只依赖 Tier A | 保存失败：`Token` / `EncodingAESKey` 对不上 |
+| 2 | 站点对外 https 可达；把指令回调 URL `<base>/event` 填进企微后台并保存 | 保存动作本身就是第一次验签（GET `echostr`）——而 echostr 只依赖 Tier A | 保存失败：`Token` / `EncodingAESKey` 对不上 |
 
 > 阶段一**不需要** `suite_id` / `suite_secret`：企微在「模版创建成功」后才下发它们，而 echostr
 > 验证在创建期就能跑通（receiveid 校验在 suite 未下发时自动放宽，签名仍是唯一鉴权闸门）。
@@ -300,7 +302,7 @@ openssl rand -hex 32        # 输出 64 个 hex 字符，直接贴进 wecom_enc_
 # 2) 起前后端
 pnpm dev
 # 3) 把本地 9778（后端）暴露成 https（任意内网穿透工具）
-# 4) 企微后台 → 指令回调 URL 改成 https://<穿透域名>/api/auth/wecom/event?callback_format=json，保存
+# 4) 企微后台 → 指令回调 URL 改成 https://<穿透域名>/api/auth/wecom/event，保存
 # 5) 等一个推送周期（≤10 分钟）→ 进 /system/wecom 生成开通链接
 ```
 
@@ -543,7 +545,7 @@ window.location.assign(`${resolveApiBase()}${wecomAuthorizePath(corp)}`);
 | 项 | 怎么验 | 不过怎么办 |
 |---|---|---|
 | 两组迁移 | `sqlite3 db.sqlite ".tables"` 里有 `wecom_sync_job` 与 `wecom_sync_lock` | 部署后漏跑 `oj migrate`；补跑再起服 |
-| 两个回调地址 | 企微后台「模板回调 URL」与「应用回调 URL」**都**保存成功（两处都填 `/api/auth/wecom/event?callback_format=json`，见 §3） | 只填了模板那个：同步与登录都能用，但通讯录变更事件收不到（C1 要它）。补填应用回调需要企业管理员配合 |
+| 两个回调地址 | 企微后台「模板回调 URL」与「应用回调 URL」**都**保存成功（两处都填 `/api/auth/wecom/event`，见 §3） | 只填了模板那个：同步与登录都能用，但通讯录变更事件收不到（C1 要它）。补填应用回调需要企业管理员配合 |
 | 四项权限 | 企微后台权限列表里 §2.5 的 ①~④ 都在，且没有一条停在「待企业确认」 | 重发开通链接**补不了**权限（幂等 upsert，不带权限）；只能让客户管理员在企微里确认那条权限变更消息 |
 | 授权模式 | `/system/wecom` 清单里「授权模式」= 管理员授权 | 成员授权（§2.6）：请企业管理员改，改完企微推 `change_auth`，本系统自动刷新，不用重新开通 |
 | 时间与出网 | §7.1 的 NTP 与可信 IP 两项 | 时钟偏 >5 分钟 → 所有回调被拒；出口 IP 不在白名单 → 同步第 2 步就 60020 |
@@ -575,7 +577,7 @@ C10 的三种结果，正好把 C1 的三个未知量一次性问清：
 
 | 日志 | 说明 | 下一步 |
 |---|---|---|
-| `wecom event ignored … event=change_contact` | 数据回调**收到了**，且用的就是配置里这套 Token/AESKey | C1 可以开工；把 `fields` 那一行抄进验收记录，它就是真实包体的字段清单（顺带确认回调是否已按 `callback_format=json` 发 JSON） |
+| `wecom event ignored … event=change_contact` | 数据回调**收到了**，且用的就是配置里这套 Token/AESKey | C1 可以开工；把 `fields` 那一行抄进验收记录，它就是真实包体的字段清单 |
 | `wecom callback decrypt failed …` | 签名过了但解不开 → 数据回调用的是**另一套**凭据 | 记下同一行的 `envelopeToUser` 与 `aesKeyFp`：前者告诉你报文来自哪个套件/模板，后者证明本进程加载的是哪把钥匙。结论写进 §2.1 的缺口，再决定是否要单独配一套应用侧凭据 |
 | 一条日志都没有 | 事件根本没进本站 | 应用回调 URL 没填（A 表第 2 项），或反代挡了 POST |
 
@@ -651,7 +653,7 @@ grep -h "wecom event ignored\|callback decrypt failed" logs/server-*.log | tail 
 
 ```text
 [ ] 八个 vars 非空（Tier A/B/C），wecom_base_url 以 /api/auth/wecom 结尾
-[ ] 企微后台的指令回调 URL == <wecom_base_url>/event?callback_format=json（逐字）
+[ ] 企微后台的指令回调 URL == <wecom_base_url>/event（逐字）
 [ ] 服务日志有 wecom suite_ticket updated（近期）
 [ ] /system/wecom 列表里有目标企业，status=active，授权模式=管理员授权
 [ ] /system/settings 的「启用企业微信登录」= 开

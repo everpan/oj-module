@@ -403,7 +403,8 @@ describe("P1-L：GET/POST /auth/wecom/event（企微指令回调）", () => {
 		expect(out.body.msg).toMatch(/签名/);
 	});
 
-	it("指令回调：验签+解密 → 落 suite_ticket → 回纯文本 success", async () => {
+	it("指令回调（文档形态：XML）→ 落 suite_ticket → 回纯文本 success", async () => {
+		// 96238 §3.2 的报文就是这个形状，也是线上真正会到的形态
 		const plain = "<xml><InfoType>suite_ticket</InfoType><SuiteId>suite_1</SuiteId><SuiteTicket>tk_9</SuiteTicket></xml>";
 		const encrypted = await seal(plain);
 		request({ query: signedQuery(encrypted), body: `<xml><Encrypt><![CDATA[${encrypted}]]></Encrypt></xml>` });
@@ -413,9 +414,10 @@ describe("P1-L：GET/POST /auth/wecom/event（企微指令回调）", () => {
 		expect(dbo.prepare("SELECT suite_ticket FROM wecom_suite_ticket WHERE suite_id = ?").get(SUITE)).toMatchObject({ suite_ticket: "tk_9" });
 	});
 
-	it("指令回调（JSON 主路径）：信封小写键 + 明文字段照常落库", async () => {
-		// 回调地址带 ?callback_format=json 下发，上游支持 JSON 时上下两层都是 JSON：
-		// 信封 {"tousername","encrypt","agentid"}（小写），密文解开后是 {"InfoType",…}（大写）。
+	it("指令回调（JSON 包体）：信封小写键 + 明文字段照常落库", async () => {
+		// 回调地址不带 callback_format=json（文档没覆盖这个参数，见 config.ts::eventUrlOf），
+		// 但归一化那层两种都认：万一上游改发 JSON，上下两层分别是
+		// {"tousername","encrypt","agentid"}（小写）与 {"InfoType",…}（大写）。
 		// 这条钉的是「大小写不敏感」这一层，别再让人回头改一次字段名。
 		const plain = JSON.stringify({ InfoType: "suite_ticket", SuiteId: SUITE, SuiteTicket: "tk_json" });
 		const encrypted = await seal(plain);

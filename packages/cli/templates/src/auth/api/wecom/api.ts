@@ -262,9 +262,8 @@ const event = {
 	// 回调（指令 + 应用数据）：验签 → 解密 → 分发（suite_ticket / create_auth / change_auth /
 	// cancel_auth / reset_permanent_code）。回 `success` 才算收下，否则企微 5 秒后重推三次。
 	//
-	// 包体优先 JSON：回调地址带 `?callback_format=json` 下发（config.ts::eventUrlOf），
-	// 上游支持就是 JSON；不支持的事件（见 payload.ts 的说明）退回 XML，归一化那一步在 payload.ts，
-	// 本函数只认字段名。
+	// 包体形态按官方文档是 XML（见 payload.ts 的开头），但归一化那一层两种都认，
+	// 所以本函数只认字段名，不认格式。
 	async post() {
 		try {
 			const envelope = callbackFields(http.body);

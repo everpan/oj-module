@@ -639,7 +639,7 @@ describe("P1-G：事件分发（suite_ticket / 授权 / 解绑）", () => {
 
 	// 兜底口径（payload.ts 头的说明）：部分回调业务没有 JSON 文档，收到 XML 也必须能处理。
 	// 同一个事件两种格式走出来的效果必须一模一样，否则「换个格式就静默不认」会在真机上才暴露。
-	it("XML 包体同样能解（兜底）：与 JSON 走同一条路径，结果一致", async () => {
+	it("XML（文档形态）与 JSON 归一化结果一致：两种包体走同一条路径", async () => {
 		const asJson = { SuiteId: "suite_1", InfoType: "create_auth", AuthCode: "AC_xml" };
 		const asXml = [
 			"<xml><SuiteId><![CDATA[suite_1]]></SuiteId><InfoType><![CDATA[create_auth]]></InfoType>",
@@ -758,7 +758,8 @@ describe("P1-J：部署常量读取（缺项一次报全 / 密钥格式 fail-fas
 		installVars();
 		const cfg = readWecomConfig();
 		expect(cfg.baseUrl).toBe("https://site.example.com/api/auth/wecom");
-		expect(eventUrlOf(cfg)).toBe("https://site.example.com/api/auth/wecom/event?callback_format=json");
+		// 不带 callback_format=json：官方文档只给「对外收款」写了这个参数，代开发的通用回调配置只有 XML
+		expect(eventUrlOf(cfg)).toBe("https://site.example.com/api/auth/wecom/event");
 		expect(loginRedirectOf(cfg)).toBe("https://site.example.com/api/auth/wecom/callback");
 		expect(siteRootOf(cfg)).toBe("https://site.example.com");
 	});

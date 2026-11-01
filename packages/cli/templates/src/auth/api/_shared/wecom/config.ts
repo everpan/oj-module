@@ -154,14 +154,19 @@ export function readWecomConfig(): WecomConfig {
 }
 
 /**
- * 企微后台「指令回调 URL / 应用回调 URL」：原样填这个（base + `/event?callback_format=json`）。
+ * 企微后台「指令回调 URL / 应用回调 URL」：原样填这个（base + `/event`）。
  *
- * 带 `callback_format=json` 是让上游改发 JSON 包体，业务侧就不必解析 XML（payload.ts 只保留
- * 一个正则兜底：部分回调业务没有 JSON 文档，见那里的说明）。该参数对不认识它的接口是无害的
- * 未知 query，故一处配死即可。
+ * **不带 `?callback_format=json`**——查过官方文档才这么定的：该参数只在「对外收款」的指令回调
+ * 文档（97478）里有说明，而代开发 / 第三方应用所属的**通用回调配置**（96238 §3.2）至今只写
+ * XML 外层信封（`<ToUserName><AgentID><Encrypt>`），全文没有这个参数；「部门通知事件」（92655）
+ * 虽给了 JSON 示例，但示例地址同样不带它，也没说怎么切过去。
+ *
+ * 也就是说：给我们这类回调加上它，是**文档未覆盖**的行为。省下的只是服务端一次正则，
+ * 代价却是把「企业管理员扫码能否装成功」押在上游实现上。服务端两种包体都认（payload.ts），
+ * 上游哪天默认改 JSON 也不用动这里。
  */
 export function eventUrlOf(cfg: WecomConfig): string {
-	return `${cfg.baseUrl}/event?callback_format=json`;
+	return `${cfg.baseUrl}/event`;
 }
 
 /** 网页授权 redirect_uri（base + /callback） */
