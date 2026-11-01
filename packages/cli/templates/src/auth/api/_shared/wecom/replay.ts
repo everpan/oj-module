@@ -27,6 +27,8 @@ export interface ReplayGate {
 	/** 原子自增并返回新值（kv.incr 同语义） */
 	incr: (key: string) => Promise<number>
 	expire: (key: string, ttlSecs: number) => Promise<unknown>
+	get: (key: string) => Promise<string | null>
+	set: (key: string, ttlSecs: number) => Promise<unknown>
 	del: (key: string) => Promise<unknown>
 	now: () => number
 }
@@ -40,6 +42,8 @@ export function runtimeReplayGate(): ReplayGate {
 	return {
 		incr: key => kv.incr(key),
 		expire: (key, ttlSecs) => kv.expire(key, ttlSecs),
+		get: key => kv.get(key),
+		set: async (key, ttlSecs) => { await kv.set(key, "1"); if (!(await kv.expire(key, ttlSecs))) { log.warn("wecom applied marker ttl not set", "key", key); await kv.del(key); } },
 		del: key => kv.del(key),
 		now: () => Math.floor(Date.now() / 1000),
 	};
@@ -48,6 +52,16 @@ export function runtimeReplayGate(): ReplayGate {
 /** 一次 nonce 占用：处理成功就不必管（TTL 到期自然消失）；失败必须 `release()` */
 export interface ReplayClaim {
 	release: () => Promise<void>
+}
+
+/** 重推且首次已成功落库：抛出后由调用方直接回 success（幂等），不让企微卡在「应用安装失败」。 */
+export class ReplayAlreadyApplied extends Error {
+	constructor() { super("nonce 已成功处理（幂等成功）"); }
+}
+
+/** 处理成功后调用：标记该 nonce 已落库成功，供重推幂等回 success（避免首次偏慢被企微判超时、重推又被重放守卫挡成 400）。 */
+export async function markApplied(nonce: string, gate: ReplayGate): Promise<void> {
+	await gate.set("wecom:applied:" + nonce, NONCE_TTL_SECS);
 }
 
 /**
@@ -68,8 +82,14 @@ export async function guardReplay(timestampRaw: string, nonce: string, gate: Rep
 
 	const key = `wecom:nonce:${nonce}`;
 	const seen = Number(await gate.incr(key));
-	if (seen !== 1)
+	if (seen !== 1) {
+		// 重推场景：若首次处理已成功落库（标了 applied 标记），直接幂等回 success，
+		// 不让企微卡在「应用安装失败」。未标记者说明首推仍在进行或已失败（失败会 release 让重推重放），维持 400。
+		const applied = await gate.get("wecom:applied:" + nonce);
+		if (applied)
+			throw new ReplayAlreadyApplied();
 		fail(400, "回调 nonce 重复：同一条指令回调已被处理过（重放请求已拒绝）");
+	}
 	// 首次访问才有资格设 TTL：设不上就删键——留一个没有过期的计数键既让它永久增长，
 	// 也会把未来的同一 nonce（虽概率极低）误判成重放。
 	if (!(await gate.expire(key, NONCE_TTL_SECS))) {

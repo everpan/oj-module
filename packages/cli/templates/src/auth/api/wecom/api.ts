@@ -25,6 +25,7 @@ import { handleSuiteEvent } from "../_shared/wecom/events";
 import {
 	assertUserActive,
 	buildAuthorizeUrl,
+	resolveWecomProfile,
 	ensureWecomUser,
 	LOGIN_TICKET_TTL_SECS,
 	loginLandingUrl,
@@ -33,7 +34,7 @@ import {
 	takeLoginState,
 } from "../_shared/wecom/login";
 import { callbackFields, field } from "../_shared/wecom/payload";
-import { guardReplay, runtimeReplayGate } from "../_shared/wecom/replay";
+import { guardReplay, runtimeReplayGate, ReplayAlreadyApplied, markApplied } from "../_shared/wecom/replay";
 import { claimLoginTicket, ensureTenant, findProfile, issueLoginTicket, runtimeStoreDeps, tenantOfCorp } from "../_shared/wecom/store";
 
 // 模块级禁止 readWecomConfig()/createSession()/runtimeHttp()：oj build 的 introspect 在空沙箱里
@@ -52,7 +53,7 @@ function query(name: string): string {
 
 /** 纯文本 200（企微事件回执专用；信封会被判失败并触发重推） */
 function plainText(body: string): void {
-	const stream = json.stream({ contentType: "text/plain; charset=utf-8" });
+	const stream = json.stream({ contentType: "text/plain; charset=utf-8", status: 200 });
 	stream.write(body);
 	stream.end();
 }
@@ -162,22 +163,28 @@ const login = {
 	async get() {
 		try {
 			const cfg = readWecomConfig();
+			const deps = runtimeStoreDeps(cfg);
+
 			const corp = query("corp");
 			const agent = query("agent");
-			if (!corp)
-				throw badRequest("缺少企业代码（corp）：请使用企业管理员收到的登录链接，或在登录页填写企业代码");
 
-			// 企业代码解析是**未登录可调的枚举面**（§5.3）：复用登录节流，维度 (IP, 企业代码)
 			const ip = await clientIp();
-			await guardLoginThrottle(ip, corp);
-
-			const deps = runtimeStoreDeps(cfg);
-			const profile = await findProfile(corp, agent || null, deps).catch(async (e: Error & { status?: number }) => {
-				// 只有「企业代码无效/多应用未指定」计失败；配置类错误（缺 vars）不该污染节流计数
-				if (e.status === 400)
-					await noteLoginFailed(ip, corp);
-				throw e;
-			});
+			// 企业代码解析是**未登录可调的枚举面**（§5.3）：复用登录节流，维度 (IP, 企业代码）。
+			// corp 缺省时（代开发模板常只服务一家企业）自动从已安装档案解析，省去手动填企业代码，
+			// 也让「应用主页」可直接填 https://<域名>/login（无需 ${corpid} 占位符，企微后台会因非法 URL 字符拒收）。
+			let profile: { corpId: string; agentId: string; env: string };
+			if (corp) {
+				await guardLoginThrottle(ip, corp);
+				profile = await findProfile(corp, agent || null, deps).catch(async (e: Error & { status?: number }) => {
+					// 只有「企业代码无效/多应用未指定」计失败；配置类错误（缺 vars）不该污染节流计数
+					if (e.status === 400)
+						await noteLoginFailed(ip, corp);
+					throw e;
+				});
+			} else {
+				profile = await resolveWecomProfile(agent || null);
+				await guardLoginThrottle(ip, profile.corpId);
+			}
 
 			const state = crypto.randomHex(16);
 			await putLoginState(state, { corpId: profile.corpId, agentId: profile.agentId, env: profile.env }, runtimeCache());
@@ -329,11 +336,20 @@ const event = {
 				throw badRequest("回调报文缺少 Encrypt（不是企微回调，或中间件改写了请求体）");
 			const verified = await decryptVerified(encrypted, envelope);
 			claim = verified.claim;
+
 			const client = createWecomClient({ http: runtimeHttp(), cache: runtimeCache() });
 			await handleSuiteEvent(verified.plain, { cfg: verified.cfg, client, store: runtimeStoreDeps(verified.cfg) });
+			// 处理成功即标记 nonce 已落库：企微重推时命中即幂等回 success，解开「首推偏慢被企微判超时、
+			// 重推又被重放守卫挡 400」的死局——管理员端不再卡在「应用安装失败」。
+			await markApplied(query("nonce"), runtimeReplayGate()).catch(() => {});
 			plainText("success");
 		}
 		catch (e) {
+			// 重推且首推已成功落库：幂等回 success，管理员端不再卡在「应用安装失败」。
+			if (e instanceof ReplayAlreadyApplied) {
+				plainText("success");
+				return;
+			}
 			// 处理失败必须放回 nonce：企微只在「拿不到 success」时重推，而那正是需要重推的时刻；
 			// 占住不放，重推会被自己的重放守卫判成 400，瞬态故障的恢复路径当场断掉。
 			await releaseClaim(claim);

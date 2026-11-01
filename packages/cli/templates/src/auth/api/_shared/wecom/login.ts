@@ -44,18 +44,52 @@ export function isWecomUa(ua: string): boolean {
  */
 export function buildAuthorizeUrl(opts: {
 	corpId: string
-	agentId: string
+	agentId?: string
 	redirectUri: string
 	state: string
 	inWecom: boolean
 }): string {
 	const redirect = encodeURIComponent(opts.redirectUri);
 	const appid = encodeURIComponent(opts.corpId);
-	const agentid = encodeURIComponent(opts.agentId);
+	// 多应用未指定 agent 时省略 agentid：以 corp 维度授权（企微回跳只给 userid，不绑定具体应用）
+	const agent = opts.agentId ? `&agentid=${encodeURIComponent(opts.agentId)}` : "";
 	if (opts.inWecom) {
-		return `${AUTHORIZE_IN_APP}?appid=${appid}&redirect_uri=${redirect}&response_type=code&scope=snsapi_base&state=${encodeURIComponent(opts.state)}&agentid=${agentid}#wechat_redirect`;
+		return `${AUTHORIZE_IN_APP}?appid=${appid}&redirect_uri=${redirect}&response_type=code&scope=snsapi_base&state=${encodeURIComponent(opts.state)}${agent}#wechat_redirect`;
 	}
-	return `${AUTHORIZE_QRCODE}?appid=${appid}&agentid=${agentid}&redirect_uri=${redirect}&state=${encodeURIComponent(opts.state)}`;
+	return `${AUTHORIZE_QRCODE}?appid=${appid}${agent}&redirect_uri=${redirect}&state=${encodeURIComponent(opts.state)}`;
+}
+
+/**
+ * 代开发模板常只服务一家企业：登录入口不传 corp 时，从已安装档案自动解析，
+ * 让「应用主页」直接填 https://<域名>/login 即可（无需 ${corpid} 占位符，避开企微后台对非法 URL 字符的校验）。
+ * agent 未指定且该企业多应用时，取首个活跃应用以 corp 维度授权。
+ */
+// 未指定 agent 且多应用时，优先作为默认登录应用的 agent（按部署需要调整）
+const DEFAULT_WECOM_AGENT = "1000059";
+
+export async function resolveWecomProfile(agentId: string | null): Promise<{ corpId: string; agentId: string; env: string }> {
+	const rows = await db.table("wecom_app_profile")
+		.select(["corp_id", "agent_id", "env", "status"])
+		.where({ field: "status", op: "eq", value: "active" })
+		.all() as Array<{ corp_id: string; agent_id: string; env: string | null; status: string }>;
+	const active = rows.filter(r => String(r.status) === "active");
+	if (!active.length)
+		throw Object.assign(new Error("尚未完成企业微信授权（无已安装应用档案），请先走「生成开通链接」完成授权"), { status: 400 });
+	const corps = [...new Set(active.map(r => r.corp_id))];
+	if (corps.length > 1 && !agentId)
+		throw Object.assign(new Error("已授权多家企业，请在登录链接带 corp 参数以区分"), { status: 400 });
+	const corpId = corps[0]!;
+	const agents = active.filter(r => r.corp_id === corpId);
+	let pick: { corp_id: string; agent_id: string; env: string | null };
+	if (agentId) {
+		pick = agents.find(a => a.agent_id === agentId);
+		if (!pick)
+			throw Object.assign(new Error("指定的 agent 在该企业中不存在"), { status: 400 });
+	} else {
+		// 未指定时优先 DEFAULT_WECOM_AGENT，否则取首个活跃应用
+		pick = agents.find(a => a.agent_id === DEFAULT_WECOM_AGENT) ?? agents[0]!;
+	}
+	return { corpId: pick.corp_id, agentId: pick.agent_id, env: pick.env == null ? "prod" : String(pick.env) };
 }
 
 export async function putLoginState(nonce: string, pending: PendingLogin, cache: WecomCache): Promise<void> {

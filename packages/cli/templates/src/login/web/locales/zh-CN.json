@@ -31,6 +31,8 @@
 		"wecom": "企业微信",
 		"wecom.action": "使用企业微信登录",
 		"wecom.hint": "填写企业代码（企微后台可见的 corp_id），或直接使用管理员收到的专属登录链接",
+		"wecom.agent": "应用 ID（agentid）",
+		"wecom.agentHint": "留空使用该企业下唯一应用；多应用部署请填管理员提供的 agentid",
 		"wecom.exchanging": "正在完成企业微信登录…"
 	}
 }

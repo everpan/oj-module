@@ -66,8 +66,13 @@ export default function LoginPage() {
 		const current = useTenantStore.getState().tenant;
 		return current === DEFAULT_TENANT ? "" : current;
 	});
-	// 企微 tab 的企业代码（优先用已持久化的值，单租户的 default 不预填）
-	const [corp, setCorp] = useState(() => tenant);
+	// 企微深链入口：应用「主页」配成 /login?corp=<corpId>&agent=<agentId>，
+	// 成员从企微内点开即带参到达——据此预填企业代码/应用，并由下方 effect 自动发起授权。
+	const urlCorp = new URLSearchParams(search).get("corp")?.trim() ?? "";
+	const urlAgent = new URLSearchParams(search).get("agent")?.trim() ?? "";
+	// 企微 tab 的企业代码（优先用 URL 深链带的，其次已持久化的值，单租户的 default 不预填）
+	const [corp, setCorp] = useState(() => urlCorp || tenant);
+	const [agent, setAgent] = useState(() => urlAgent);
 
 	// 企微 302 落地参数：只在首次渲染解析一次（ticket 一次性，解析结果必须稳定）
 	const [landing] = useState(() => parseWecomLanding(search));
@@ -110,6 +115,23 @@ export default function LoginPage() {
 		})();
 	}, [landing, login, navigate, search]);
 
+	// 企微深链自动入口：带 ?corp= 到达（且非回跳落地 / 非出错）且企微方式可用时，
+	// 直接整页发起授权——「点开即登录」，无需手动点「企业微信」tab。
+	const autoFiredRef = useRef(false);
+	useEffect(() => {
+		const c = new URLSearchParams(search).get("corp")?.trim() ?? "";
+		// 企微内（wxwork UA）从「应用主页」点开即自动发起授权；带 ?corp= 的深链同样自动发起。
+		const inWecom = typeof navigator !== "undefined" && /wxwork/i.test(navigator.userAgent);
+		if ((!c && !inWecom) || landing || autoFiredRef.current)
+			return;
+		if (new URLSearchParams(search).get("error"))
+			return;
+		if (!methods.includes("wecom"))
+			return;
+		autoFiredRef.current = true;
+		window.location.assign(`${resolveApiBase()}${wecomAuthorizePath(corp, agent)}`);
+	}, [landing, methods, search, corp, agent]);
+
 	async function onFinish(values: LoginFormValues, method: LoginMethod) {
 		setLoading(true);
 		setError(undefined);
@@ -144,7 +166,7 @@ export default function LoginPage() {
 		// 必须拼 API base（部署期可为 /api 或网关前缀）；拼站点 base 只会落到
 		// SPA 兜底页——点击后页面原地重载、一个 auth 请求都不发。
 		// 企业代码不在这里写 store——只有服务端回跳带的 tenant 才是权威值。
-		window.location.assign(`${resolveApiBase()}${wecomAuthorizePath(corp)}`);
+		window.location.assign(`${resolveApiBase()}${wecomAuthorizePath(corp, agent)}`);
 	}
 
 	const showTabs = methods.length > 1;
@@ -180,6 +202,7 @@ export default function LoginPage() {
 	// 受控值不走 antd 表单（Form.Item 无 name），故显式给 id/htmlFor：
 	// 少了这层关联，标签只是视觉文本，读屏与 getByLabel 都取不到输入框。
 	const wecomCorpId = "wecom-corp";
+	const wecomAgentId = "wecom-agent";
 	const wecomPanel = (
 		<Form layout="vertical" onFinish={wecomLogin}>
 			<Form.Item
@@ -193,6 +216,19 @@ export default function LoginPage() {
 					placeholder="ww..."
 					value={corp}
 					onChange={e => setCorp(e.target.value)}
+				/>
+			</Form.Item>
+			<Form.Item
+				label={t("login:method.wecom.agent")}
+				htmlFor={wecomAgentId}
+				extra={t("login:method.wecom.agentHint")}
+			>
+				<Input
+					id={wecomAgentId}
+					autoComplete="off"
+					placeholder="1000..."
+					value={agent}
+					onChange={e => setAgent(e.target.value)}
 				/>
 			</Form.Item>
 			<Button type="primary" htmlType="submit" block>
