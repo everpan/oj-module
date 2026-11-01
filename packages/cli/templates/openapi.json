@@ -783,6 +783,854 @@
 				}
 			}
 		},
+		"/api/_platform/org/tree": {
+			"get": {
+				"operationId": "_platform_org_tree_get",
+				"summary": "GET api/_platform/org/tree",
+				"x-oj-file": "_platform/org/tree/api.ts",
+				"tags": [
+					"_platform"
+				],
+				"parameters": [
+					{
+						"name": "scope",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "string",
+							"enum": [
+								"self",
+								"all"
+							]
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "array",
+											"items": {
+												"type": "object",
+												"required": [
+													"id",
+													"parentId",
+													"name",
+													"orderNo",
+													"memberCount"
+												],
+												"properties": {
+													"id": {
+														"type": "number"
+													},
+													"parentId": {
+														"type": [
+															"number",
+															"null"
+														]
+													},
+													"name": {
+														"type": [
+															"string",
+															"null"
+														]
+													},
+													"nameEn": {
+														"type": [
+															"string",
+															"null"
+														]
+													},
+													"orderNo": {
+														"type": "number"
+													},
+													"memberCount": {
+														"type": "number"
+													}
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/_platform/org/departments": {
+			"get": {
+				"operationId": "_platform_org_departments_get",
+				"summary": "GET api/_platform/org/departments",
+				"x-oj-file": "_platform/org/departments/api.ts",
+				"tags": [
+					"_platform"
+				],
+				"parameters": [
+					{
+						"name": "scope",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "string",
+							"enum": [
+								"self",
+								"all"
+							]
+						}
+					},
+					{
+						"name": "parent",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "number"
+						}
+					},
+					{
+						"name": "keyword",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "page",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "number",
+							"minimum": 1
+						}
+					},
+					{
+						"name": "size",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "number",
+							"minimum": 1,
+							"maximum": 200
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"required": [
+												"list",
+												"total",
+												"page",
+												"size",
+												"truncated"
+											],
+											"properties": {
+												"list": {
+													"type": "array",
+													"items": {
+														"type": "object",
+														"required": [
+															"id",
+															"parentId",
+															"name",
+															"orderNo",
+															"memberCount"
+														],
+														"properties": {
+															"id": {
+																"type": "number"
+															},
+															"parentId": {
+																"type": [
+																	"number",
+																	"null"
+																]
+															},
+															"name": {
+																"type": [
+																	"string",
+																	"null"
+																]
+															},
+															"nameEn": {
+																"type": [
+																	"string",
+																	"null"
+																]
+															},
+															"orderNo": {
+																"type": "number"
+															},
+															"memberCount": {
+																"type": "number"
+															}
+														}
+													}
+												},
+												"total": {
+													"type": "number"
+												},
+												"page": {
+													"type": "number"
+												},
+												"size": {
+													"type": "number"
+												},
+												"truncated": {
+													"type": "boolean"
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/_platform/org/members": {
+			"get": {
+				"operationId": "_platform_org_members_get",
+				"summary": "GET api/_platform/org/members",
+				"x-oj-file": "_platform/org/members/api.ts",
+				"tags": [
+					"_platform"
+				],
+				"parameters": [
+					{
+						"name": "scope",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "string",
+							"enum": [
+								"self",
+								"all"
+							]
+						}
+					},
+					{
+						"name": "dept",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "number"
+						}
+					},
+					{
+						"name": "includeSub",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "keyword",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "page",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "number",
+							"minimum": 1
+						}
+					},
+					{
+						"name": "size",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "number",
+							"minimum": 1,
+							"maximum": 200
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"required": [
+												"list",
+												"total",
+												"page",
+												"size",
+												"truncated"
+											],
+											"properties": {
+												"list": {
+													"type": "array",
+													"items": {
+														"type": "object",
+														"required": [
+															"userId",
+															"username",
+															"deptId",
+															"deptPath",
+															"isMain"
+														],
+														"properties": {
+															"userId": {
+																"type": "number"
+															},
+															"username": {
+																"type": "string"
+															},
+															"displayName": {
+																"type": [
+																	"string",
+																	"null"
+																]
+															},
+															"deptId": {
+																"type": "number"
+															},
+															"deptPath": {
+																"type": "array",
+																"items": {
+																	"type": "string"
+																}
+															},
+															"isMain": {
+																"type": "boolean"
+															}
+														}
+													}
+												},
+												"total": {
+													"type": "number"
+												},
+												"page": {
+													"type": "number"
+												},
+												"size": {
+													"type": "number"
+												},
+												"truncated": {
+													"type": "boolean"
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/_platform/org/user": {
+			"get": {
+				"operationId": "_platform_org_user_get",
+				"summary": "GET api/_platform/org/user",
+				"x-oj-file": "_platform/org/user/api.ts",
+				"tags": [
+					"_platform"
+				],
+				"parameters": [
+					{
+						"name": "scope",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "string",
+							"enum": [
+								"self",
+								"all"
+							]
+						}
+					},
+					{
+						"name": "uid",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "number"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"required": [
+												"userId",
+												"username",
+												"position",
+												"mainDeptId",
+												"mainDeptPath",
+												"departments"
+											],
+											"properties": {
+												"userId": {
+													"type": "number"
+												},
+												"username": {
+													"type": "string"
+												},
+												"displayName": {
+													"type": [
+														"string",
+														"null"
+													]
+												},
+												"position": {
+													"type": [
+														"string",
+														"null"
+													]
+												},
+												"mainDeptId": {
+													"type": [
+														"number",
+														"null"
+													]
+												},
+												"mainDeptPath": {
+													"type": "array",
+													"items": {
+														"type": "string"
+													}
+												},
+												"departments": {
+													"type": "array",
+													"items": {
+														"type": "object",
+														"required": [
+															"deptId",
+															"deptPath"
+														],
+														"properties": {
+															"deptId": {
+																"type": "number"
+															},
+															"deptPath": {
+																"type": "array",
+																"items": {
+																	"type": "string"
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/_platform/org/picker": {
+			"get": {
+				"operationId": "_platform_org_picker_get",
+				"summary": "GET api/_platform/org/picker",
+				"x-oj-file": "_platform/org/picker/api.ts",
+				"tags": [
+					"_platform"
+				],
+				"parameters": [
+					{
+						"name": "scope",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "string",
+							"enum": [
+								"self",
+								"all"
+							]
+						}
+					},
+					{
+						"name": "keyword",
+						"in": "query",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"minLength": 2
+						}
+					},
+					{
+						"name": "limit",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "number",
+							"minimum": 1,
+							"maximum": 50
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"required": [
+												"departments",
+												"users"
+											],
+											"properties": {
+												"departments": {
+													"type": "array",
+													"items": {
+														"type": "object",
+														"required": [
+															"id",
+															"parentId",
+															"name",
+															"orderNo",
+															"memberCount"
+														],
+														"properties": {
+															"id": {
+																"type": "number"
+															},
+															"parentId": {
+																"type": [
+																	"number",
+																	"null"
+																]
+															},
+															"name": {
+																"type": [
+																	"string",
+																	"null"
+																]
+															},
+															"nameEn": {
+																"type": [
+																	"string",
+																	"null"
+																]
+															},
+															"orderNo": {
+																"type": "number"
+															},
+															"memberCount": {
+																"type": "number"
+															}
+														}
+													}
+												},
+												"users": {
+													"type": "array",
+													"items": {
+														"type": "object",
+														"required": [
+															"userId",
+															"username",
+															"deptId",
+															"deptPath",
+															"isMain"
+														],
+														"properties": {
+															"userId": {
+																"type": "number"
+															},
+															"username": {
+																"type": "string"
+															},
+															"displayName": {
+																"type": [
+																	"string",
+																	"null"
+																]
+															},
+															"deptId": {
+																"type": "number"
+															},
+															"deptPath": {
+																"type": "array",
+																"items": {
+																	"type": "string"
+																}
+															},
+															"isMain": {
+																"type": "boolean"
+															}
+														}
+													}
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/_platform/org/resolve": {
+			"post": {
+				"operationId": "_platform_org_resolve_post",
+				"summary": "POST api/_platform/org/resolve",
+				"x-oj-file": "_platform/org/resolve/api.ts",
+				"tags": [
+					"_platform"
+				],
+				"parameters": [
+					{
+						"name": "scope",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "string",
+							"enum": [
+								"self",
+								"all"
+							]
+						}
+					}
+				],
+				"requestBody": {
+					"required": false,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"properties": {
+									"deptIds": {
+										"type": "array",
+										"items": {
+											"type": "number"
+										}
+									},
+									"userIds": {
+										"type": "array",
+										"items": {
+											"type": "number"
+										}
+									},
+									"includeSub": {
+										"type": "boolean"
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"required": [
+												"userIds"
+											],
+											"properties": {
+												"userIds": {
+													"type": "array",
+													"items": {
+														"type": "number"
+													}
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/_platform/org/is-member": {
+			"get": {
+				"operationId": "_platform_org_is_member_get",
+				"summary": "GET api/_platform/org/is-member",
+				"x-oj-file": "_platform/org/is-member/api.ts",
+				"tags": [
+					"_platform"
+				],
+				"parameters": [
+					{
+						"name": "scope",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "string",
+							"enum": [
+								"self",
+								"all"
+							]
+						}
+					},
+					{
+						"name": "uid",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "number"
+						}
+					},
+					{
+						"name": "dept",
+						"in": "query",
+						"required": true,
+						"schema": {
+							"type": "number"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"required": [
+												"isMember"
+											],
+											"properties": {
+												"isMember": {
+													"type": "boolean"
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
 		"/api/auth/login": {
 			"post": {
 				"operationId": "auth_login_post",
@@ -1811,6 +2659,764 @@
 				}
 			}
 		},
+		"/api/system/departments": {
+			"get": {
+				"operationId": "system_departments_get",
+				"summary": "GET api/system/departments",
+				"x-oj-file": "system/departments/api.ts",
+				"tags": [
+					"system"
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "array",
+											"items": {
+												"type": "object",
+												"required": [
+													"id",
+													"origin",
+													"originId",
+													"parentId",
+													"name",
+													"orderNo",
+													"syncVisible",
+													"deleted",
+													"memberCount"
+												],
+												"properties": {
+													"id": {
+														"type": "number"
+													},
+													"origin": {
+														"type": "string"
+													},
+													"originId": {
+														"type": "string"
+													},
+													"parentId": {
+														"type": [
+															"number",
+															"null"
+														]
+													},
+													"name": {
+														"type": [
+															"string",
+															"null"
+														]
+													},
+													"nameEn": {
+														"type": [
+															"string",
+															"null"
+														]
+													},
+													"orderNo": {
+														"type": "number"
+													},
+													"syncVisible": {
+														"type": "boolean"
+													},
+													"deleted": {
+														"type": "boolean"
+													},
+													"memberCount": {
+														"type": "number"
+													}
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			},
+			"post": {
+				"operationId": "system_departments_post",
+				"summary": "POST api/system/departments",
+				"x-oj-file": "system/departments/api.ts",
+				"tags": [
+					"system"
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"required": [
+									"name"
+								],
+								"properties": {
+									"name": {
+										"type": "string",
+										"minLength": 1
+									},
+									"parentId": {
+										"type": [
+											"number",
+											"null"
+										]
+									},
+									"nameEn": {
+										"type": [
+											"string",
+											"null"
+										]
+									},
+									"orderNo": {
+										"type": "number"
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"required": [
+												"id"
+											],
+											"properties": {
+												"id": {
+													"type": "number"
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			},
+			"put": {
+				"operationId": "system_departments_put",
+				"summary": "PUT api/system/departments",
+				"x-oj-file": "system/departments/api.ts",
+				"tags": [
+					"system"
+				],
+				"parameters": [
+					{
+						"name": "id",
+						"in": "query",
+						"required": true,
+						"schema": {
+							"type": "number"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"properties": {
+									"name": {
+										"type": "string",
+										"minLength": 1
+									},
+									"nameEn": {
+										"type": [
+											"string",
+											"null"
+										]
+									},
+									"orderNo": {
+										"type": "number"
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"required": [
+												"ok"
+											],
+											"properties": {
+												"ok": {
+													"type": "boolean"
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			},
+			"delete": {
+				"operationId": "system_departments_delete",
+				"summary": "DELETE api/system/departments",
+				"x-oj-file": "system/departments/api.ts",
+				"tags": [
+					"system"
+				],
+				"parameters": [
+					{
+						"name": "id",
+						"in": "query",
+						"required": true,
+						"schema": {
+							"type": "number"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"required": [
+												"ok"
+											],
+											"properties": {
+												"ok": {
+													"type": "boolean"
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/system/departments/move": {
+			"put": {
+				"operationId": "system_departments_move_put",
+				"summary": "PUT api/system/departments/move",
+				"x-oj-file": "system/departments/move/api.ts",
+				"tags": [
+					"system"
+				],
+				"parameters": [
+					{
+						"name": "id",
+						"in": "query",
+						"required": true,
+						"schema": {
+							"type": "number"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"required": [
+									"parentId"
+								],
+								"properties": {
+									"parentId": {
+										"type": [
+											"number",
+											"null"
+										]
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"required": [
+												"ok"
+											],
+											"properties": {
+												"ok": {
+													"type": "boolean"
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/system/departments/detach": {
+			"post": {
+				"operationId": "system_departments_detach_post",
+				"summary": "POST api/system/departments/detach",
+				"x-oj-file": "system/departments/detach/api.ts",
+				"tags": [
+					"system"
+				],
+				"parameters": [
+					{
+						"name": "id",
+						"in": "query",
+						"required": true,
+						"schema": {
+							"type": "number"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"required": [
+												"ok"
+											],
+											"properties": {
+												"ok": {
+													"type": "boolean"
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/system/departments/members": {
+			"get": {
+				"operationId": "system_departments_members_get",
+				"summary": "GET api/system/departments/members",
+				"x-oj-file": "system/departments/members/api.ts",
+				"tags": [
+					"system"
+				],
+				"parameters": [
+					{
+						"name": "id",
+						"in": "query",
+						"required": true,
+						"schema": {
+							"type": "number"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "array",
+											"items": {
+												"type": "object",
+												"required": [
+													"userId",
+													"deptId",
+													"orderNo",
+													"isLeader",
+													"isMain",
+													"username"
+												],
+												"properties": {
+													"userId": {
+														"type": "number"
+													},
+													"deptId": {
+														"type": "number"
+													},
+													"orderNo": {
+														"type": "number"
+													},
+													"isLeader": {
+														"type": "boolean"
+													},
+													"isMain": {
+														"type": "boolean"
+													},
+													"username": {
+														"type": "string"
+													},
+													"displayName": {
+														"type": [
+															"string",
+															"null"
+														]
+													}
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			},
+			"post": {
+				"operationId": "system_departments_members_post",
+				"summary": "POST api/system/departments/members",
+				"x-oj-file": "system/departments/members/api.ts",
+				"tags": [
+					"system"
+				],
+				"parameters": [
+					{
+						"name": "id",
+						"in": "query",
+						"required": true,
+						"schema": {
+							"type": "number"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"required": [
+									"userId"
+								],
+								"properties": {
+									"userId": {
+										"type": "number"
+									},
+									"isLeader": {
+										"type": "boolean"
+									},
+									"isMain": {
+										"type": "boolean"
+									},
+									"orderNo": {
+										"type": "number"
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"required": [
+												"ok"
+											],
+											"properties": {
+												"ok": {
+													"type": "boolean"
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			},
+			"put": {
+				"operationId": "system_departments_members_put",
+				"summary": "PUT api/system/departments/members",
+				"x-oj-file": "system/departments/members/api.ts",
+				"tags": [
+					"system"
+				],
+				"parameters": [
+					{
+						"name": "id",
+						"in": "query",
+						"required": true,
+						"schema": {
+							"type": "number"
+						}
+					},
+					{
+						"name": "userId",
+						"in": "query",
+						"required": true,
+						"schema": {
+							"type": "number"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"properties": {
+									"isLeader": {
+										"type": "boolean"
+									},
+									"isMain": {
+										"type": "boolean"
+									},
+									"orderNo": {
+										"type": "number"
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"required": [
+												"ok"
+											],
+											"properties": {
+												"ok": {
+													"type": "boolean"
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			},
+			"delete": {
+				"operationId": "system_departments_members_delete",
+				"summary": "DELETE api/system/departments/members",
+				"x-oj-file": "system/departments/members/api.ts",
+				"tags": [
+					"system"
+				],
+				"parameters": [
+					{
+						"name": "id",
+						"in": "query",
+						"required": true,
+						"schema": {
+							"type": "number"
+						}
+					},
+					{
+						"name": "userId",
+						"in": "query",
+						"required": true,
+						"schema": {
+							"type": "number"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"required": [
+												"ok"
+											],
+											"properties": {
+												"ok": {
+													"type": "boolean"
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
 		"/api/system/login-methods": {
 			"get": {
 				"operationId": "system_login_methods_get",
@@ -2574,6 +4180,8 @@
 													"username",
 													"display_name",
 													"email",
+													"position",
+													"departments",
 													"is_forbidden",
 													"must_change",
 													"roles"
@@ -2596,6 +4204,18 @@
 															"string",
 															"null"
 														]
+													},
+													"position": {
+														"type": [
+															"string",
+															"null"
+														]
+													},
+													"departments": {
+														"type": "array",
+														"items": {
+															"type": "string"
+														}
 													},
 													"is_forbidden": {
 														"type": "boolean"
@@ -2684,6 +4304,148 @@
 											"properties": {
 												"id": {
 													"type": "number"
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			},
+			"delete": {
+				"operationId": "system_users_delete",
+				"summary": "DELETE api/system/users",
+				"x-oj-file": "system/users/api.ts",
+				"tags": [
+					"system"
+				],
+				"parameters": [
+					{
+						"name": "uid",
+						"in": "query",
+						"required": true,
+						"schema": {
+							"type": "number"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"required": [
+												"ok"
+											],
+											"properties": {
+												"ok": {
+													"type": "boolean"
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/system/users/profile": {
+			"put": {
+				"operationId": "system_users_profile_put",
+				"summary": "PUT api/system/users/profile",
+				"x-oj-file": "system/users/profile/api.ts",
+				"tags": [
+					"system"
+				],
+				"parameters": [
+					{
+						"name": "uid",
+						"in": "query",
+						"required": true,
+						"schema": {
+							"type": "number"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"properties": {
+									"displayName": {
+										"type": [
+											"string",
+											"null"
+										]
+									},
+									"email": {
+										"type": [
+											"string",
+											"null"
+										]
+									},
+									"position": {
+										"type": [
+											"string",
+											"null"
+										]
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"required": [
+												"ok"
+											],
+											"properties": {
+												"ok": {
+													"type": "boolean"
 												}
 											}
 										}

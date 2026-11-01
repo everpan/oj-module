@@ -55,7 +55,7 @@ describe("auth store login 信封级失败（F12）", () => {
 			refreshToken: "new-refresh",
 		});
 
-		await useAuthStore.getState().login({ username: "admin", password: "123456" });
+		await useAuthStore.getState().login({ username: "admin", password: "aA123456" });
 		expect(useAuthStore.getState().token).toBe("new-token");
 	});
 });

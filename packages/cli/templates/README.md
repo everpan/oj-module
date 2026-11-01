@@ -11,7 +11,7 @@ pnpm build      # 构建：oj build + 前端全站合并到 dist/web
 pnpm preview    # 预览：oj migrate + server（release 产物）
 ```
 
-登录账号：`admin` / `123456`（见 `api/src/_platform/seed.sql`）。
+登录账号：`admin` / `aA123456`（见 `api/src/_platform/seed.sql`）。
 
 ## 系统管理模块
 

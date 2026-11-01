@@ -76,7 +76,7 @@ ojm dev
 
 # 1) 【免 setup】脚手架 seed 的 framework.market_cdn_url 缺省即 /cdn（本站点自供，
 #    dev 形态 ojm 已把 /cdn 反代给 oj 子进程）。只有指向外部真 CDN 时才需要：
-#    ojm market setup --user superadmin --pass 123456 --new-pass <你的口令>
+#    ojm market setup --user superadmin --pass aA123456 --new-pass <你的口令>
 
 # 2) 发包：合成 fixture（或 --real 走 ojm build --bundle）→ 确定性 tgz → 包级签名
 #    --rebuild-index 顺带重建索引
@@ -165,7 +165,7 @@ node "$CLI_PKG/bin/ojm.mjs" market verify --rebuild-index
 node "$CLI_PKG/bin/ojm.mjs" build                 # 生成 api/dist + web/dist（含 api/dist/versions.json）
 # config：platform.root 改成 api/dist（安装目标恒为 release 部署，root 必须与 --api-path 同源）
 (bin/oj serve -c config.yaml -b /api --api-path api/dist --console-log &)
-node "$CLI_PKG/bin/ojm.mjs" market setup --site-url http://127.0.0.1:9778 --user superadmin --pass 123456 --new-pass <新口令>
+node "$CLI_PKG/bin/ojm.mjs" market setup --site-url http://127.0.0.1:9778 --user superadmin --pass aA123456 --new-pass <新口令>
 # 市场页点安装 → 首次停在「待信任」→ 核对指纹 → ojm trust confirm --task <id> → 重试 → done
 ```
 

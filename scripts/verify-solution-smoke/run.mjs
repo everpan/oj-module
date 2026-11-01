@@ -26,7 +26,7 @@ const PORT = Number(process.env.PORT ?? 9781);
 const BASE = process.env.BASE ?? `http://127.0.0.1:${PORT}`;
 const KEY_ID = "smoke.local";
 const TGZ = process.env.TGZ ?? "/tmp/demo-solution-0.1.0.tgz";
-const ADMIN_PASS = "123456";
+const ADMIN_PASS = "aA123456";
 const NEW_PASS = "smoke-pass-123";
 const KEY_HOME = path.join(os.homedir(), ".ojm", "keys", KEY_ID);
 

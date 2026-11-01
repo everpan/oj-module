@@ -48,7 +48,7 @@
 | 框架包版本 | `cli`/`runtime` `0.2.25`（**verdaccio 发布态**：双包 `scripts/publish-verdaccio.mjs --publish` 上本地 verdaccio，演练工程从 verdaccio 取 `@oj-module/cli-0.2.25.tgz` 解包 + `pnpm install` 解析 runtime/cli 0.2.25——比 §0.5 pack 态多验了 prepack 产物与 registry 通道；npmjs 复核 0.2.25 缺席（latest 仍 0.2.23），模拟零污染） |
 | oj | `0.1.85` + 本地构建 `0f8a6e2`（openapi module-root 修；npm latest 0.1.85 无此修，契约链仍需换 bin/oj 旁路，**0.1.86 发布后抬 MIN_OJ_VERSION 回归**） |
 | 验证动机 | 0.2.25（market CDN 相对路径 `/cdn` 本站点自供 + 脚手架免 setup）发布前演练；`publish-verdaccio.mjs` 固化后首跑 |
-| 结果 | **§1–§7 全链路通过**：init 248 项（module-root 齐、`.gitignore`/`openapi.json` 在根）→ install 1.5s（**runtime+cli 0.2.25 均走 verdaccio scope 映射**，零旁路）→ info 三版全 0.2.25 对齐 → §3 探针 1 api file(s) + 零 runner 路径泄漏 → §4 books 六文件 → `oj openapi --module-root src`（0f8a6e2 修复实证，含 `/api/books/{list,create}`）→ `ojm api` 出 `src/books/web/__client`（派生名 + `BooksListGetData` 存活）→ `--check` 0/0 → §5 `ojm build` 7 后端模块 books 2 api file(s)、`dist/web` 产物齐（modules.json 8 模块含 books）、tsc 0 error → §6 dev：5174 登录 superadmin/123456 → user-info ok → `/api/books/list` 种子 2 条（迁移+种子经反代真跑）→ **§7 market 免 setup 首演**：起站后**未跑任何 setup**，市场 index 直接报「`/cdn/bundles.yaml` 返回 HTTP 404」（seed 缺省 `/cdn` 生效 + dev 反代拿到干净 404，非 index.html 的 YAML 解析错）→ fixture 发布 + build-index 后 index 出卡片 → install → needs_trust（TOFU，指纹 949dbd75… 一致）→ trust confirm → 重装推进至 smoke 段（仅因「新方案路由要 oj serve 重启才注册」停 partial——既有已知口径，非缺陷）→ walkthrough **14/14 PASS**（隔离站点内跑全链）→ §7 preview 单服务 index/deep/api 全 200。 |
+| 结果 | **§1–§7 全链路通过**：init 248 项（module-root 齐、`.gitignore`/`openapi.json` 在根）→ install 1.5s（**runtime+cli 0.2.25 均走 verdaccio scope 映射**，零旁路）→ info 三版全 0.2.25 对齐 → §3 探针 1 api file(s) + 零 runner 路径泄漏 → §4 books 六文件 → `oj openapi --module-root src`（0f8a6e2 修复实证，含 `/api/books/{list,create}`）→ `ojm api` 出 `src/books/web/__client`（派生名 + `BooksListGetData` 存活）→ `--check` 0/0 → §5 `ojm build` 7 后端模块 books 2 api file(s)、`dist/web` 产物齐（modules.json 8 模块含 books）、tsc 0 error → §6 dev：5174 登录 superadmin/aA123456 → user-info ok → `/api/books/list` 种子 2 条（迁移+种子经反代真跑）→ **§7 market 免 setup 首演**：起站后**未跑任何 setup**，市场 index 直接报「`/cdn/bundles.yaml` 返回 HTTP 404」（seed 缺省 `/cdn` 生效 + dev 反代拿到干净 404，非 index.html 的 YAML 解析错）→ fixture 发布 + build-index 后 index 出卡片 → install → needs_trust（TOFU，指纹 949dbd75… 一致）→ trust confirm → 重装推进至 smoke 段（仅因「新方案路由要 oj serve 重启才注册」停 partial——既有已知口径，非缺陷）→ walkthrough **14/14 PASS**（隔离站点内跑全链）→ §7 preview 单服务 index/deep/api 全 200。 |
 | 本次发现并处置 | ① **免 setup 闭环实证**（0.2.25 特性）：seed `/cdn` 缺省 + 消费侧 `withSiteOrigin` 按请求源补全 + `ojm dev` `/cdn` 反代三件套在真站点全通；`market setup` 降级为外部真 CDN 可选步骤。② **npm scope 映射压过显式 `--registry`**：`npm view @oj-module/cli --registry https://registry.npmjs.org` 仍查 verdaccio（映射优先级高于 --registry）——核官方源须 curl registry URL 直查（本轮差点误判「真发布泄露」）。③ **client 调用需显式空参**：`booksListGet({})`（query 无 required 时形参仍必填），`booksListGet()` 是 TS2554——写演练页时注意。④ 手册 §5/§6 判据两处小漂移（本轮实踩）：产物根是 `dist/web`（非 `web/dist`）；后端模块 7 个（notifications 为 web 模块，不进 oj build 列表）。均已在本轮核对中按实改口径记录，未改手册正文（判据随模板组合浮动，以输出实查为准）。 |
 | 与上一基线差异 | 0.2.24 → 0.2.25 增量 = market CDN 相对路径（本站点自供）+ 脚手架免 setup + `publish-verdaccio.mjs`；演练形态从 §0.5 pack 态升级为 verdaccio 发布态（多验 prepack + registry 通道） |
 
@@ -121,7 +121,7 @@
 | oj | `0.1.82`（`listTables(prefix?)` / `truncate()` / `count(distinct)` 随本轮迁移用上） |
 | 验证动机 | 把 0.1.81 迁移收尾到 0.1.82（`uninstall` IN→`startswith`、`rate` 改 `truncate`、`solution-perms` 最后一处裸 SQL、`query`/`oplog` 工厂化分页），并建立模板 **L1（`oj test`）回归通道**——构造器是 oj 二进制内纯 Rust 实现，vitest 夹具原理上够不着真 `table()`，真执行面必须走 L1（边界论证见 §9.1） |
 | 结果 | ① 模板 api `tsc --noEmit` **0 error**；② 模板 L1（`oj test -c config.yaml -d src -t tests`，5 用例：login-methods 匿名 / todos 无 keyword·keyword=契约·keyword=% / notification join+UNION+lit）**5/5 passed，连跑三次幂等**；③ `tests/cli/init.test.ts` **14/14**（两份 0.1.82 新指南随 init 分发，旧 devkit 缺文件时容忍）；④ 模板 L2 vitest 基线 **190 failed \| 409 passed (599)，19/33 文件**——单一根因族（夹具无 builder 面，86 直接 TypeError + 104 级联），本轮按 §9.1 政策记录不硬修；⑤ 6 处 stale `MARKET_HISTORY_DDL` 全清（market_history 真源=平台迁移 0012）；⑥ vendored devkit 与上游 0.1.82 全量对齐（`docs/devkit/oj-api-dev/` 10 文件） |
-| 本次发现并处置 | ① **`oplog.ts` whereIf `""` 归一化真 bug**：可选过滤缺失值被归一成 `""`，而 whereIf 的跳过集是 `undefined/null/false/[]`——`""` 是合法值会照发 `action = ''` 把结果过滤空（与旧 `if (filter.x)` 语义相悖）；修为归一化 `undefined`（api-manual §whereIf 契约）。② **L1 登录 401 排查**（本地 dev 库口令被首登改密流程改成 `12345678` → seed 重放 `INSERT OR IGNORE` 不复位 → admin/123456 恒 401）：处置不是改 seed，而是按框架正道加 **fixtures 专用账号**（`src/_platform/fixtures/l1-test-user.sql`，`l1tester`/`l1test1234`，additive `INSERT OR IGNORE` + superadmin 绑定，仅 `oj test` 灌入）——seed 的 admin 是 `must_change=1` 生产语义（判权端点恒 403）且口令必然随用户首登漂移，L1 不能绑它。③ L1 三处契约坑（client path 相对 base 多写 `/api` 即 404；L1 `expect` 无 `toHaveLength`；`oj test` 每轮重放 迁移→seed→fixtures，断言须按唯一键收敛到自己行）——全部记入 §9.1。④ `docs/devkit/sql-builder-missing-capabilities-pr.md` 闭环：7 项诉求全闭（6 项随 0.1.81/0.1.82 落地 + 1 项 sqlite 组合限制 sanctioned 绕行），并订正原文档一处误判（`like` 的 escape 逃生舱本就存在，上游复核同判「1 条误报」） |
+| 本次发现并处置 | ① **`oplog.ts` whereIf `""` 归一化真 bug**：可选过滤缺失值被归一成 `""`，而 whereIf 的跳过集是 `undefined/null/false/[]`——`""` 是合法值会照发 `action = ''` 把结果过滤空（与旧 `if (filter.x)` 语义相悖）；修为归一化 `undefined`（api-manual §whereIf 契约）。② **L1 登录 401 排查**（本地 dev 库口令被首登改密流程改成 `aA12345678` → seed 重放 `INSERT OR IGNORE` 不复位 → admin/aA123456 恒 401）：处置不是改 seed，而是按框架正道加 **fixtures 专用账号**（`src/_platform/fixtures/l1-test-user.sql`，`l1tester`/`l1test1234`，additive `INSERT OR IGNORE` + superadmin 绑定，仅 `oj test` 灌入）——seed 的 admin 是 `must_change=1` 生产语义（判权端点恒 403）且口令必然随用户首登漂移，L1 不能绑它。③ L1 三处契约坑（client path 相对 base 多写 `/api` 即 404；L1 `expect` 无 `toHaveLength`；`oj test` 每轮重放 迁移→seed→fixtures，断言须按唯一键收敛到自己行）——全部记入 §9.1。④ `docs/devkit/sql-builder-missing-capabilities-pr.md` 闭环：7 项诉求全闭（6 项随 0.1.81/0.1.82 落地 + 1 项 sqlite 组合限制 sanctioned 绕行），并订正原文档一处误判（`like` 的 escape 逃生舱本就存在，上游复核同判「1 条误报」） |
 | 与 0.2.9 基线差异 | 0.2.9 记录的是 0.1.81 改造的端到端回归（打包态 §1–§7）；本轮模板 api.ts 契约面无改动，未重跑全套打包态 e2e，改以「tsc + L1 + L2 基线 + init 单测」四件套验证迁移收尾；L2 的 190 红是 L1/L2 边界结构性欠账（非本轮新增回归），政策见 §9.1 |
 
 ### 上一次基线（2026-10-19 复跑，oj 0.1.80 / cli+runtime 0.2.8 打包态）
@@ -157,7 +157,7 @@
 | 框架包版本 | `cli`/`runtime` `0.2.1`（**双包 lockstep**：runtime 自 0.2.0 升 0.2.1 与 cli 对齐，提交 `34ac3d09`；宿主 shell-dist 已重建，versions.json 记录 runtime 0.2.1） |
 | oj | `0.1.74`（本机预置 `bin/`，同 §0 旁路 1） |
 | 结果 | **全链路通过（§1–§6）**：`ojm init`（76 项新增）→ `pnpm install`（§0 旁路 2：本地 tgz 覆盖 cli+runtime）→ JsRuntime 探针通过 → `oj openapi` + `ojm api` + `--check` 0 error / 0 warn → `ojm build`（后端模块含 system 13 端点、modules.json 含 home/demo/login/personal-center/notification/system）→ `tsc` 0 error → `ojm dev`：seed ok、21 路由方法入参校验、登录/系统管理联调全对。`ojm preview`（§7）本次未跑（dev 已验证，避免端口冲突），列为可选。 |
-| 本次新增验证点（用户要求：验证模板内置模块） | **系统管理模板模块 + 核心模块存在性联调**：以 `admin/123456` 登录（首登 `must_change=1` → 改密 `PUT /api/auth/password` 清悬挂）→ 带 token 直打 `system/settings`(200, items.module ∈ {framework,ldap,market,sso})、`system/users`(1)、`system/roles`(4)、`system/oplog`(4 条)、`system/permissions`(200)、`system/login-methods`(200)、`notifications`(4 条) 全部 200，无 token 返回 401；`web/hello`、`web/user-info`(admin/superadmin)、`web/get-async-routes` 全部 200；`modules.json` 注册 6 模块（home/demo/login/personal-center/notification/system）且各自 `entry.js` 可达（notification 版本 0.0.2，路径非空）。 |
+| 本次新增验证点（用户要求：验证模板内置模块） | **系统管理模板模块 + 核心模块存在性联调**：以 `admin/aA123456` 登录（首登 `must_change=1` → 改密 `PUT /api/auth/password` 清悬挂）→ 带 token 直打 `system/settings`(200, items.module ∈ {framework,ldap,market,sso})、`system/users`(1)、`system/roles`(4)、`system/oplog`(4 条)、`system/permissions`(200)、`system/login-methods`(200)、`notifications`(4 条) 全部 200，无 token 返回 401；`web/hello`、`web/user-info`(admin/superadmin)、`web/get-async-routes` 全部 200；`modules.json` 注册 6 模块（home/demo/login/personal-center/notification/system）且各自 `entry.js` 可达（notification 版本 0.0.2，路径非空）。 |
 | 与 0.1.20 基线差异 | 除双包升 0.2.1 与 shell-dist 重建外，无任何功能回退；本次模板已内置完整 `system` 模块（13 系统端点 + 6 页面），无需手动补 books 演示模块即可验证「模块存在」诉求。 |
 | 复跑关键坑（新增已知项，见 §9） | 登录限速：`sys_rate_window`（per-IP 30/min）+ `sys_login_throttle`（per-(IP,user) 连败阻断）在反复失败登录后会以 `401 invalid credentials` 掩盖，并非口令错误。复跑前 `DELETE FROM sys_login_throttle; DELETE FROM sys_rate_window;` 清表，或冷起新 db（`rm -f api/db.sqlite*` 后 `ojm dev` 重建 seed）即可一次性成功登录。 |
 
@@ -190,7 +190,7 @@
 | 日期 | 2026-10-11 |
 | 框架包版本 | `cli`/`runtime` `0.1.12`（源码 CLI 验证；宿主 versions.json 钉版） |
 | oj | `0.1.60`（`@oj-bin/oj` 通道；本环境无 npm registry 网络，把本机 0.1.60 安装预置进 `bin/` 以绕过 `ojm vendor` 下载，效果等价） |
-| 结果 | **后端全链路通过**：`ojm init` → 生成 `mounts:` 配置 → `oj serve` 正常启动（migrations/seed 应用、6 模块/12 路由注册、证书有效、`/api/health` 200）→ 登录 `admin/123456` 返回 token、无 token 401、带 token 读 `/notifications`/`/web/hello` 200。`pnpm install` 因沙箱无 npm 网络未完成，§4–§7 前端链路待联网复跑。 |
+| 结果 | **后端全链路通过**：`ojm init` → 生成 `mounts:` 配置 → `oj serve` 正常启动（migrations/seed 应用、6 模块/12 路由注册、证书有效、`/api/health` 200）→ 登录 `admin/aA123456` 返回 token、无 token 401、带 token 读 `/notifications`/`/web/hello` 200。`pnpm install` 因沙箱无 npm 网络未完成，§4–§7 前端链路待联网复跑。 |
 | 新增验证点 | oj v0.1.58 起 `server.api_prefix` 等 5 键已删除、改顶层 `mounts:`（旧键 fail-fast，见 §9）；`readOjApiPrefix` 改读 `mounts:`，`ojm info` 显示 `base: /api` 正确。 |
 
 ### 历史基线（2026-09-11，记录用，后续对照）
@@ -269,7 +269,7 @@ node "$CLI_PKG/bin/ojm.mjs" init my-books --yes
 
 **检查点**
 
-- [ ] 退出码 0，末行提示 `登录 superadmin / 123456`（角色账号见 devkit 手册 §1.1）
+- [ ] 退出码 0，末行提示 `登录 superadmin / aA123456`（角色账号见 devkit 手册 §1.1）
 - [ ] 目录齐全：`api/src/{_platform,auth,web,notifications,notification,personal-center,system}`、`api/.ojm-api-exempt.json`、`web/src/{demo,home,login,personal-center,notification,notifications,system}`、`web.config.ts`、`tsconfig.json`、`global.d.ts`、`env.d.ts`、`bin/oj`、`bin/.oj-version`、`.claude/skills/{oj-api-dev,ojm-module-dev}/`
 - [ ] **工程根有 `.gitignore`**（发布包不携带模板 `.gitignore`——npm/pnpm pack 剥离点文件，改由 init 现场生成，`ensureGitignore`；0.2.5 曾因 include 清单收录它而 fail-fast，见 §9）
 - [ ] **工程根有 `openapi.json`**（新流水线唯一事实源，模板随附）+ `web/src/<模块>/__client/` 预生成（`ojm api --check` 开箱即过）
@@ -412,7 +412,7 @@ pnpm exec tsc --noEmit -p tsconfig.json     # typecheck
 pnpm exec ojm dev        # 默认 5174；oj 9778
 # 另一个终端：
 TOKEN=$(curl -s -X POST http://127.0.0.1:9778/api/auth/login \
-  -H 'content-type: application/json' -d '{"username":"superadmin","password":"123456"}' \
+  -H 'content-type: application/json' -d '{"username":"superadmin","password":"aA123456"}' \
   | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>console.log(JSON.parse(s).data.access_token))")
 curl -s "http://127.0.0.1:9778/api/books/list?keyword=设计" -H "authorization: Bearer $TOKEN"
 curl -s -X POST http://127.0.0.1:9778/api/books/create -H "authorization: Bearer $TOKEN" \
@@ -530,7 +530,7 @@ node "$CLI_PKG/bin/ojm.mjs" build                      # dist/api + web/dist（�
 #     root: dist/api
 (../bin/oj serve -c config.yaml -b /api --api-path dist/api --console-log &)
 
-node "$CLI_PKG/bin/ojm.mjs" market setup --site-url http://127.0.0.1:9778 --user superadmin --pass 123456 --new-pass <新口令>
+node "$CLI_PKG/bin/ojm.mjs" market setup --site-url http://127.0.0.1:9778 --user superadmin --pass aA123456 --new-pass <新口令>
 # → 市场页（或 GET /api/_platform/market/index）出现方案卡片
 
 # 安装（首次必然停在待信任）

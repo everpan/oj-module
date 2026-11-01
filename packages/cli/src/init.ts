@@ -245,7 +245,7 @@ export async function initProject(destDir: string, opts: InitOptions = {}): Prom
 		console.log(`[ojm]   · 跳过 ${item}`);
 	for (const item of report.warnings)
 		console.warn(`[ojm]   ! ${item}`);
-	console.log("[ojm] 下一步：pnpm install && pnpm dev（登录 superadmin / 123456，角色账号见 devkit 手册 §1.1）");
+	console.log("[ojm] 下一步：pnpm install && pnpm dev（登录 superadmin / aA123456，角色账号见 devkit 手册 §1.1）");
 }
 
 /** 默认密封器：bin/oj secret keygen + seal（失败返回 null，不抛） */

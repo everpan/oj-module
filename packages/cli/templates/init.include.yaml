@@ -59,6 +59,8 @@ include:
   - tests/auth-throttle.spec.ts
   - tests/guard.spec.ts
   - tests/l1-builder.test.ts
+  - tests/org-departments.spec.ts
+  - tests/org-read.spec.ts
   - tests/query-utils.spec.ts
   - tests/rbac-audit.spec.ts
   - tests/rbac-contacts.spec.ts

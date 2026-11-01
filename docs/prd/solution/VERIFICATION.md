@@ -117,9 +117,9 @@ node packages/cli/bin/ojm.mjs sign /tmp/demo-solution-0.1.0.tgz --id smoke.local
 
 # 首登强制改密（否则安装报 403 password change required）
 TOKEN=$(curl -s -X POST $BASE/api/auth/login -H 'content-type: application/json' \
-  -d '{"username":"admin","password":"123456"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["data"]["access_token"])')
+  -d '{"username":"admin","password":"aA123456"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["data"]["access_token"])')
 curl -s -X PUT $BASE/api/auth/password -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
-  -d '{"old_password":"123456","new_password":"smoke-pass-123"}' >/dev/null
+  -d '{"old_password":"aA123456","new_password":"smoke-pass-123"}' >/dev/null
 TOKEN=$(curl -s -X POST $BASE/api/auth/login -H 'content-type: application/json' \
   -d '{"username":"admin","password":"smoke-pass-123"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["data"]["access_token"])')
 

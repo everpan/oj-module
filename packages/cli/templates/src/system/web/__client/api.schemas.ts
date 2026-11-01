@@ -4,6 +4,122 @@
 import { z } from "@oj-module/runtime";
 
 export const schemas = {
+	"systemDepartmentsGet": {
+		data: z.array(z.object({
+	"id": z.number(),
+	"origin": z.string(),
+	"originId": z.string(),
+	"parentId": z.number().nullable(),
+	"name": z.string().nullable(),
+	"nameEn": z.string().nullable().optional(),
+	"orderNo": z.number(),
+	"syncVisible": z.boolean(),
+	"deleted": z.boolean(),
+	"memberCount": z.number()
+})),
+	},
+	"systemDepartmentsPost": {
+		body: z.object({
+	"name": z.string().min(1),
+	"parentId": z.number().nullable().optional(),
+	"nameEn": z.string().nullable().optional(),
+	"orderNo": z.number().optional()
+}),
+		data: z.object({
+	"id": z.number()
+}),
+	},
+	"systemDepartmentsPut": {
+		query: z.object({
+	"id": z.number()
+}),
+		body: z.object({
+	"name": z.string().min(1).optional(),
+	"nameEn": z.string().nullable().optional(),
+	"orderNo": z.number().optional()
+}),
+		data: z.object({
+	"ok": z.boolean()
+}),
+	},
+	"systemDepartmentsDelete": {
+		query: z.object({
+	"id": z.number()
+}),
+		data: z.object({
+	"ok": z.boolean()
+}),
+	},
+	"systemDepartmentsMovePut": {
+		query: z.object({
+	"id": z.number()
+}),
+		body: z.object({
+	"parentId": z.number().nullable()
+}),
+		data: z.object({
+	"ok": z.boolean()
+}),
+	},
+	"systemDepartmentsDetachPost": {
+		query: z.object({
+	"id": z.number()
+}),
+		data: z.object({
+	"ok": z.boolean()
+}),
+	},
+	"systemDepartmentsMembersGet": {
+		query: z.object({
+	"id": z.number()
+}),
+		data: z.array(z.object({
+	"userId": z.number(),
+	"deptId": z.number(),
+	"orderNo": z.number(),
+	"isLeader": z.boolean(),
+	"isMain": z.boolean(),
+	"username": z.string(),
+	"displayName": z.string().nullable().optional()
+})),
+	},
+	"systemDepartmentsMembersPost": {
+		query: z.object({
+	"id": z.number()
+}),
+		body: z.object({
+	"userId": z.number(),
+	"isLeader": z.boolean().optional(),
+	"isMain": z.boolean().optional(),
+	"orderNo": z.number().optional()
+}),
+		data: z.object({
+	"ok": z.boolean()
+}),
+	},
+	"systemDepartmentsMembersPut": {
+		query: z.object({
+	"id": z.number(),
+	"userId": z.number()
+}),
+		body: z.object({
+	"isLeader": z.boolean().optional(),
+	"isMain": z.boolean().optional(),
+	"orderNo": z.number().optional()
+}),
+		data: z.object({
+	"ok": z.boolean()
+}),
+	},
+	"systemDepartmentsMembersDelete": {
+		query: z.object({
+	"id": z.number(),
+	"userId": z.number()
+}),
+		data: z.object({
+	"ok": z.boolean()
+}),
+	},
 	"systemLoginMethodsGet": {
 		data: z.object({
 	"methods": z.array(z.string())
@@ -119,6 +235,8 @@ export const schemas = {
 	"username": z.string(),
 	"display_name": z.string().nullable(),
 	"email": z.string().nullable(),
+	"position": z.string().nullable(),
+	"departments": z.array(z.string()),
 	"is_forbidden": z.boolean(),
 	"must_change": z.boolean(),
 	"roles": z.array(z.string())
@@ -133,6 +251,27 @@ export const schemas = {
 }),
 		data: z.object({
 	"id": z.number()
+}),
+	},
+	"systemUsersDelete": {
+		query: z.object({
+	"uid": z.number()
+}),
+		data: z.object({
+	"ok": z.boolean()
+}),
+	},
+	"systemUsersProfilePut": {
+		query: z.object({
+	"uid": z.number()
+}),
+		body: z.object({
+	"displayName": z.string().nullable().optional(),
+	"email": z.string().nullable().optional(),
+	"position": z.string().nullable().optional()
+}),
+		data: z.object({
+	"ok": z.boolean()
 }),
 	},
 	"systemUsersForbiddenPut": {

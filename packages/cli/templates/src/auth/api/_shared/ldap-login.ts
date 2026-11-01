@@ -74,6 +74,8 @@ export function createLdapLogin(session: Pick<Session, "issueExternal">, gateway
 					email: firstAttr(entries[0].attrs, emailAttr) || null,
 					must_change: 0,
 					is_forbidden: 0,
+					// 能走到这里说明 LDAP bind 成功 = 真人本人在登录，进通讯录目录
+					activated: 1,
 				}).run();
 			}
 			catch (e) {

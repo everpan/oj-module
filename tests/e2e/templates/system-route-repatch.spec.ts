@@ -41,7 +41,7 @@ test.describe("system 模块路由登录后重登记（templates）", () => {
 		const password = page.locator("form input[type=\"password\"]");
 		await expect(password).toBeVisible({ timeout: 15_000 });
 		await page.locator("form input").first().fill("admin");
-		await password.fill("123456");
+		await password.fill("aA123456");
 		await page.locator("form button[type=\"submit\"]").first().click();
 		await expect(page.locator("header")).toBeVisible({ timeout: 20_000 });
 

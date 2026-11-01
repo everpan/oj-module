@@ -62,7 +62,7 @@ describe("given 站点可直连且凭据未悬挂 When setup", () => {
 		const root = newProject();
 		const site = fakeSite();
 
-		const result = await setupMarketUrl({ projectRoot: root, user: "admin", pass: "123456", siteUrl: "http://127.0.0.1:9778", fetchFn: site.fetchFn });
+		const result = await setupMarketUrl({ projectRoot: root, user: "admin", pass: "aA123456", siteUrl: "http://127.0.0.1:9778", fetchFn: site.fetchFn });
 
 		expect(result.cdnBaseUrl).toBe("http://127.0.0.1:9778/cdn");
 		const put = site.calls.find(c => c.url.endsWith("/api/system/settings"))!;
@@ -77,12 +77,12 @@ describe("given seed admin 处于 must_change 悬挂期 When setup", () => {
 		const root = newProject();
 		const site = fakeSite({ restricted: true });
 
-		const result = await setupMarketUrl({ projectRoot: root, user: "admin", pass: "123456", newPass: "newpass-123", siteUrl: "http://127.0.0.1:9778", fetchFn: site.fetchFn });
+		const result = await setupMarketUrl({ projectRoot: root, user: "admin", pass: "aA123456", newPass: "newpass-123", siteUrl: "http://127.0.0.1:9778", fetchFn: site.fetchFn });
 
 		expect(result.changedPassword).toBe(true);
 		const pwd = site.calls.find(c => c.url.endsWith("/api/auth/password"))!;
 		expect(pwd.method).toBe("PUT");
-		expect(pwd.body).toEqual({ old_password: "123456", new_password: "newpass-123" });
+		expect(pwd.body).toEqual({ old_password: "aA123456", new_password: "newpass-123" });
 		const put = site.calls.find(c => c.url.endsWith("/api/system/settings"))!;
 		expect(put.auth).toBe("Bearer token-full");
 	});
@@ -96,7 +96,7 @@ describe("given 站点不可达 When setup", () => {
 		};
 		const fetchFn = failing as unknown as typeof fetch;
 
-		await expect(setupMarketUrl({ projectRoot: root, user: "admin", pass: "123456", siteUrl: "http://127.0.0.1:9778", fetchFn }))
+		await expect(setupMarketUrl({ projectRoot: root, user: "admin", pass: "aA123456", siteUrl: "http://127.0.0.1:9778", fetchFn }))
 			.rejects
 			.toThrow(/ojm dev/);
 	});
@@ -107,7 +107,7 @@ describe("given 改密后写设置仍被拒 When setup", () => {
 		const root = newProject();
 		const site = fakeSite({ restricted: true, rejectSettings: true });
 
-		await expect(setupMarketUrl({ projectRoot: root, user: "admin", pass: "123456", newPass: "newpass-123", siteUrl: "http://127.0.0.1:9778", fetchFn: site.fetchFn }))
+		await expect(setupMarketUrl({ projectRoot: root, user: "admin", pass: "aA123456", newPass: "newpass-123", siteUrl: "http://127.0.0.1:9778", fetchFn: site.fetchFn }))
 			.rejects
 			.toThrow(/must_change|权限|设置/);
 	});
@@ -115,7 +115,7 @@ describe("given 改密后写设置仍被拒 When setup", () => {
 
 describe("given setup 返回 changedPassword When 选 setup 后的登录口令", () => {
 	it("then 改密已发生用 newPass，未改密用原种子口令（must_change=0 是当前 seed 常态）", () => {
-		expect(loginPasswordAfterSetup({ siteUrl: "", cdnBaseUrl: "", changedPassword: true }, "new-pass", "123456")).toBe("new-pass");
-		expect(loginPasswordAfterSetup({ siteUrl: "", cdnBaseUrl: "", changedPassword: false }, "new-pass", "123456")).toBe("123456");
+		expect(loginPasswordAfterSetup({ siteUrl: "", cdnBaseUrl: "", changedPassword: true }, "new-pass", "aA123456")).toBe("new-pass");
+		expect(loginPasswordAfterSetup({ siteUrl: "", cdnBaseUrl: "", changedPassword: false }, "new-pass", "aA123456")).toBe("aA123456");
 	});
 });

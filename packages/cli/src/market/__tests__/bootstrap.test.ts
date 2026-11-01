@@ -120,7 +120,7 @@ describe("given 一个装了 oj 二进制的源工程 When 自举隔离站点", 
 		const site = await bootstrapIsolatedSite({ projectRoot: src, starter });
 
 		expect(site.admin.user).toBe("superadmin");
-		expect(site.admin.pass).toBe("123456");
+		expect(site.admin.pass).toBe("aA123456");
 		await site.cleanup();
 	});
 

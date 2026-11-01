@@ -113,10 +113,10 @@ admin 首登强制改密，期间安装端点 403 `password change required`：
 ```bash
 TOKEN=$(curl -s -X POST http://127.0.0.1:9781/api/auth/login \
   -H 'Content-Type: application/json' \
-  -d '{"username":"admin","password":"123456"}' | jq -r .data.access_token)
+  -d '{"username":"admin","password":"aA123456"}' | jq -r .data.access_token)
 curl -s -X PUT http://127.0.0.1:9781/api/auth/password \
   -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-  -d '{"old_password":"123456","new_password":"<新口令>"}'
+  -d '{"old_password":"aA123456","new_password":"<新口令>"}'
 ```
 
 > 响应字段是 `data.access_token`（snake_case）；悬挂期 `restricted: true`，改密成功才换发正式 token。

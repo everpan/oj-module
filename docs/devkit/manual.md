@@ -13,8 +13,9 @@
 ### 1.1 脚手架产物
 
 `ojm init <目录>` 生成（幂等补缺，重跑只补缺失文件，**永不覆盖已有文件**）。
-模板拷贝按 `packages/cli/templates/init.include.yaml` **白名单**执行——未收录的
-路径一律不拷（demo-only 演示模块、模板自运行产物都在清单外）。
+模板拷贝按框架内置的 **`init.include.yaml` 白名单**执行——未收录的路径一律不拷
+（demo-only 演示模块、模板自运行产物都在清单外）。该清单是**框架侧文件**，`ojm init`
+从 cli 包内读取，**不在你的工程里**——你在工程里找不到它，也改不到它。
 
 布局是 **module-root：一个目录 = 一个模块**，前后端同处 `src/<name>/`，各占一侧
 （`api/` 与 `web/` 可以只存在一侧，两侧皆无则不是模块）：
@@ -60,7 +61,7 @@
 - **`config.yaml` 在工程根**，不是 `api/config.yaml`。oj 把「项目根」锚定在 **config
   所在目录**，所有 `fs.*` 相对路径、`db.default`、`platform.root`、`mounts[].web`
   都相对它解析；证书与密钥落在同级的 `config/`（`ojm` 侧由 `resolveConfigPath()` /
-  `resolveCertDir()` 单点派生，见 `packages/cli/src/layout.ts`）。
+  `resolveCertDir()` 单点派生，你不需要自己拼路径）。
 - **产物有两个根**：后端 `api/dist`（oj 扁平 release，`<name>-<ver>/` 与
   `manifests.yaml` 同层），站点 `web/dist`（`modules/` + `modules.json`）。
   `config.yaml` 上移到工程根后，两者不再同名 `dist`。
@@ -75,7 +76,7 @@
 > **历史布局仍被识别**：`web/src/<name>`（uni-dev）与 `web/<name>`（框架根仓）照旧可用，
 > 只是 `ojm init` 不再产出。两套源码树**互斥**——同时存在时 `ojm` 直接报错，而不是静默选一个。
 
-登录账号：**账号名=内置角色名**一一对应，口令均 `123456`，且全部**免首登改密**（must_change=0，纯开发便利，勿用于生产）：
+登录账号：**账号名=内置角色名**一一对应，口令均 `aA123456`，且全部**免首登改密**（must_change=0，纯开发便利，勿用于生产）：
 
 | 账号 | 角色 | 能干什么 |
 |---|---|---|
@@ -86,6 +87,13 @@
 
 > 旧脚手架库（admin 绑 superadmin / must_change=1）**无需手工迁移**：seed 每次启动幂等重放，
 > 自动收敛为账号名=角色名并清零 must_change（`DELETE` 旧绑定 + `UPDATE`，见 `_platform/api/seed.sql`）。
+>
+> ⚠️ **但口令不会被 seed 改**：建号语句是 `INSERT OR IGNORE`，已存在的账号行原样保留。
+> 口令在 2026-11-01 由 `123456` 改为 `aA123456`（bcrypt cost=10、`$2y$` 前缀），
+> **更早建好的 dev 库里仍是旧口令**——拿 `aA123456` 登不上时先怀疑这个，别去查登录链路。
+> 要统一：删 `db.sqlite` 重跑 `oj migrate`（seed 随服务启动重放），或直接
+> `UPDATE users SET password_hash = '<aA123456 的哈希>' WHERE username IN ('superadmin','admin','editor','viewer');`。
+> 哈希现成值从 `src/_platform/api/seed.sql` 里 grep `$2y$10$` 即可。
 
 端口：前端 devServer **5174**，oj 后端 **9778**
 （以工程根 `config.yaml` 的 `server.port` 为准）。
@@ -343,7 +351,7 @@ export default defineModule({
 `defineModule` 字段：`name`（= 目录名）、`description`、`version`、
 `peerRuntime`、`routes`、`i18n?`、`lifecycle?`。
 
-> 页面组件用**静态 import 或 `lazy()` 都行**：模板（`packages/cli/templates/src/*/web/entry.ts`）
+> 页面组件用**静态 import 或 `lazy()` 都行**：模板自带模块（`src/home/web/entry.ts` 等）
 > 用静态 import，多页面模块可对非首屏页面用 `lazy(() => import("./pages/x"))` 做代码分割。
 > 单个页面就用静态 import，少一层间接。
 
@@ -398,10 +406,11 @@ export default defineModule({
 可服务的同源路径）。直接 `import "vditor/dist/..."` 其它深路径会命中前缀 external 但无
 importmap 键，构建期报错——需要新深路径请联系框架方在共享表登记。
 
-### 2.7 本版本共享依赖钉版（0.2.20 快照）
+### 2.7 本版本共享依赖钉版（0.2.47 快照）
 
-宿主经 importmap 提供以下单例（模块 `devDependencies` 须对齐，供 `tsc` 用）；完整 68 项矩阵以
-`pnpm exec ojm info` 或 `packages/cli/shell-dist/versions.json`（构建期生成）为准。
+宿主经 importmap 提供以下单例（模块 `devDependencies` 须对齐，供 `tsc` 用）；完整矩阵以
+`pnpm exec ojm info` 为准——**别抄本节表格当真相**，本表是撰写时的快照，升级 cli 后
+以 `ojm info` 输出为准。
 
 | 包 | 钉版 |
 | --- | --- |
@@ -427,7 +436,8 @@ importmap 键，构建期报错——需要新深路径请联系框架方在共�
 | `pinyin-pro` | 3.29.3 |
 | `vditor` | 4.0.0 |
 
-框架包版本：`@oj-module/runtime` / `@oj-module/cli` 为 `0.2.20`（**双包 lockstep**）；
+框架包版本：`@oj-module/runtime` / `@oj-module/cli` 为 `0.2.47`（**双包 lockstep**，
+以 `packages/*/package.json` 或 `ojm info` 为准——本表是撰写时快照）；
 `@plane/kit` / `@plane/editor` 是独立版本线（当前 `0.1.20`，随宿主 importmap 提供，
 不参与 lockstep）。`oj` 二进制最低版本门禁 `MIN_OJ_VERSION = 0.1.85`——这个版本带来
 `--module-root`（`src/<name>/{api,web}` 布局的源码树根，与 `-d/--api-path` **互斥**）；
@@ -988,7 +998,7 @@ export default {
 - **归属校验返回 403**：跨用户 `del` / `read` 他人按人项，原语返回 `false`，端点 `json.fail(403, "forbidden")`——
   与「按人隔离」对称（A 推给 B 后 A 不可见、B 不可删/读 A 的）。
 
-**验证**：`pnpm dev` → `admin / 123456` 登录 → 右上角铃铛有蓝点 → 点开 →
+**验证**：`pnpm dev` → `admin / aA123456` 登录 → 右上角铃铛有蓝点 → 点开 →
 点任意一条蓝点消失 → 「全部已读」全清 → 「清空」列表变空。
 
 **加接口的通用流水线**：
@@ -1569,11 +1579,11 @@ export default async (path: string, html: string) => {
 
 | 想抄什么 | 抄这里 |
 |---|---|
-| 带页面的模块（路由 / i18n / order） | `src/home/web/entry.ts`、`src/demo/web/entry.ts`（模板 `packages/cli/templates/src/*/web/`） |
+| 带页面的模块（路由 / i18n / order） | `src/home/web/entry.ts`、`src/demo/web/entry.ts` |
 | 接管通知 provider（四方法全量） | `src/notification/web/entry.ts` |
 | 上传 provider（action + headers 方法） | `src/personal-center/web/entry.ts` |
 | 无页面模块（`routes: []`） | 同 `src/notification/web/entry.ts` |
-| handler `.schema` 入参 + 平级 `.response` 出参写法（GET + POST、参数段） | `src/notification/api/api.ts`、模板 `packages/cli/templates/src/notification/api/api.ts` |
+| handler `.schema` 入参 + 平级 `.response` 出参写法（GET + POST、参数段） | `src/notification/api/api.ts` |
 | handler 写法（嵌套组列表 / 写入 / 403 归属） | `src/notification/api/api.ts`（模块根单文件，`read`/`read-all`/`clear` 子组） |
 | 统一异常出口 `respond()`（service 抛 `Error & {status}` → 信封 `json.fail`） | 模板 `src/_platform/api/_shared/respond.ts` + 各 handler 用法（§1.7-1） |
 | 生成物长什么样（含工厂） | `src/notification/web/__client/api.ts` |
@@ -1632,8 +1642,8 @@ export default async (path: string, html: string) => {
 产物见 §1.1（工程根 `config.yaml` + `config/` 证书 + `src/<模块>/{api,web}` 单树 + `bin/`、
 `web.config.ts`、两份 tsconfig 等）。`tsconfig.paths.json` 与 `package.json` /
 `pnpm-workspace.yaml` / `.gitignore` 由 init **现场生成**（不进白名单，模板目录里那份只服务模板自身）。
-模板拷贝按 `packages/cli/templates/init.include.yaml` 白名单——demo-only 演示模块
-与模板自运行产物不在清单内，不会进工程（§1.1）。
+模板拷贝按框架内置 `init.include.yaml` 白名单——demo-only 演示模块
+与模板自运行产物不在清单内，不会进工程（清单是框架侧文件，工程里看不到，见 §1.1）。
 `bin/oj` 缺失时自动经 npm 包 `@oj-bin/oj` 下载（与 `ojm vendor` 同款，受
 `MIN_OJ_VERSION` 门禁约束）；下载失败即报错——可先 `ojm vendor`，或把本机 oj
 预置进 `bin/` 后重跑（`bin/oj` 已在则跳过下载，init 幂等）。

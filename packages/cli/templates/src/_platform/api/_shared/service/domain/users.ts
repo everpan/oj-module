@@ -15,6 +15,9 @@ export interface UserRow {
 	username: string
 	display_name: string | null
 	email: string | null
+	position: string | null
+	/** 所属部门名（主部门在前；部门名缺失时退回 `#id`，与部门树展示口径一致） */
+	departments: string[]
 	is_forbidden: boolean
 	must_change: boolean
 	roles: string[]
@@ -58,20 +61,41 @@ async function assertMembershipAllowed(actorId: number, nextRoles: string[]): Pr
 }
 
 export async function listUsers(): Promise<UserRow[]> {
-	const rows = await db.table("users").select(["id", "username", "display_name", "email", "is_forbidden", "must_change"]).orderBy([{ field: "username" }]).all() as Array<Record<string, unknown>>;
+	const rows = await db.table("users").select(["id", "username", "display_name", "email", "position", "is_forbidden", "must_change"]).orderBy([{ field: "username" }]).all() as Array<Record<string, unknown>>;
 	const roleRows = await db.table("sys_user_role").select(["user_id", "role_name"]).all() as Array<{ user_id: number, role_name: string }>;
 	const roleMap = new Map<number, string[]>();
 	for (const r of roleRows)
 		(roleMap.get(Number(r.user_id)) ?? roleMap.set(Number(r.user_id), []).get(Number(r.user_id)))!.push(r.role_name);
+	const depts = await departmentNamesByUser();
 	return rows.map(r => ({
 		id: Number(r.id),
 		username: String(r.username),
 		display_name: r.display_name == null ? null : String(r.display_name),
 		email: r.email == null ? null : String(r.email),
+		position: r.position == null ? null : String(r.position),
+		departments: depts.get(Number(r.id)) ?? [],
 		is_forbidden: Number(r.is_forbidden) === 1,
 		must_change: Number(r.must_change) === 1,
 		roles: roleMap.get(Number(r.id)) ?? [],
 	}));
+}
+
+/** uid → 部门名列表（主部门排前）。两次查询而非 join：构造器 join 带值条件有已知缺口。 */
+async function departmentNamesByUser(): Promise<Map<number, string[]>> {
+	const memberRows = await db.table("sys_dept_member").select(["user_id", "dept_id", "is_main"]).all() as Array<{ user_id: number, dept_id: number, is_main: number }>;
+	if (!memberRows.length)
+		return new Map();
+	const deptRows = await db.table("sys_department").select(["id", "name"]).where({ field: "deleted", op: "eq", value: 0 }).all() as Array<{ id: number, name: string | null }>;
+	const nameOf = new Map(deptRows.map(d => [Number(d.id), d.name == null ? null : String(d.name)]));
+	const out = new Map<number, string[]>();
+	// 主部门先落：is_main=1 的行先排一遍，其余后追加
+	const ordered = [...memberRows].sort((a, b) => Number(b.is_main ?? 0) - Number(a.is_main ?? 0));
+	for (const m of ordered) {
+		const uid = Number(m.user_id);
+		const label = nameOf.get(Number(m.dept_id)) ?? `#${Number(m.dept_id)}`;
+		(out.get(uid) ?? out.set(uid, []).get(uid)!).push(label);
+	}
+	return out;
 }
 
 /** B6：建号——拒外来号前缀、口令 ≥6、默认 must_change=1。返回新用户 id。 */
@@ -87,7 +111,9 @@ export async function createUser(input: { username: string, password: string, di
 	if (exists.length)
 		fail(400, "username exists");
 	const hash = await deps.bcryptHash(String(input.password));
-	const rows = await db.table("users").insert({ username, password_hash: hash, display_name: input.displayName ?? null, email: input.email ?? null, must_change: 1 }).returning(["id"]).run() as Array<{ id: number }>;
+	// activated=1：管理员建号是「明确要这个人」的动作，立刻进通讯录目录。
+	// 与同步建档相反——同步会把全企业名册灌进来，那批号必须等真人登录才算 activated（见 contacts.ts 门禁）。
+	const rows = await db.table("users").insert({ username, password_hash: hash, display_name: input.displayName ?? null, email: input.email ?? null, must_change: 1, activated: 1 }).returning(["id"]).run() as Array<{ id: number }>;
 	const uid = Number(rows[0].id);
 	await recordOp({ action: "user.create", module: "framework", target: username });
 	return uid;
@@ -160,4 +186,58 @@ export async function setForbidden(actorId: number, targetUid: number, forbidden
 	});
 	invalidateUser(Number(targetUid));
 	await recordOp({ action: "user.forbidden.update", module: "framework", target: await usernameOf(Number(targetUid)), detail: { forbidden } });
+}
+
+/**
+ * 改资料（基线 CRUD 的用户侧）。
+ *
+ * 只放行与来源无关的展示字段（displayName / email / position）——用户名即外部身份的主键
+ * （`wecom:<userid>` 这类），改名会让下一次登录认错人（B6 命名空间抢占，见
+ * RESERVED_USERNAME_PREFIX）。`is_forbidden` 走 setForbidden、口令走 changePasswordByAdmin，
+ * 都不在这里——它们是带副作用的动作（级联删 refresh），混进通用 PATCH 会让「改个邮箱」也强退。
+ */
+export async function updateUserProfile(actorId: number, targetUid: number, patch: { displayName?: string | null, email?: string | null, position?: string | null }): Promise<void> {
+	const rows = await db.table("users").select(["id"]).where({ field: "id", op: "eq", value: targetUid }).all();
+	if (!rows.length)
+		fail(404, "user not found");
+	const cols: Record<string, unknown> = {};
+	if (patch.displayName !== undefined)
+		cols.display_name = patch.displayName == null ? null : String(patch.displayName).trim() || null;
+	if (patch.email !== undefined)
+		cols.email = patch.email == null ? null : String(patch.email).trim() || null;
+	if (patch.position !== undefined)
+		cols.position = patch.position == null ? null : String(patch.position).trim() || null;
+	if (!Object.keys(cols).length)
+		return;
+	await db.table("users").update(cols).where({ field: "id", op: "eq", value: targetUid }).run();
+	await recordOp({ action: "user.profile.update", module: "framework", target: await usernameOf(Number(targetUid)), detail: { fields: Object.keys(cols), actor: Number(actorId) } });
+}
+
+/**
+ * 删用户（基线 CRUD）。
+ *
+ * 级联清单是手工维护的——这些表都是逻辑外键（无 FK 约束），漏清任何一张都会留下
+ * 指向已删用户的悬空行：`sys_dept_member`（部门成员）/ `sys_user_role`（角色）
+ * / `sys_refresh_token`（会话）。删完立即失效判权缓存，否则被删者手上的 token
+ * 还能用满一个 TTL。
+ */
+export async function deleteUser(actorId: number, targetUid: number): Promise<void> {
+	assertNotSelf(actorId, targetUid);
+	const rows = await db.table("users").select(["id", "username"]).where({ field: "id", op: "eq", value: targetUid }).all() as Array<{ id: number, username: string }>;
+	if (!rows.length)
+		fail(404, "user not found");
+	const roles = await rolesOf(Number(targetUid));
+	if (roles.includes("superadmin")) {
+		const supers = await db.table("sys_user_role").select([{ fn: "count", as: "c" }]).where({ field: "role_name", op: "eq", value: "superadmin" }).all() as Array<{ c: number }>;
+		if (Number(supers[0]?.c ?? 0) <= 1)
+			fail(400, "cannot delete the last superadmin");
+	}
+	await db.tx(async (t) => {
+		await t.table("sys_dept_member").where({ field: "user_id", op: "eq", value: targetUid }).delete().run();
+		await t.table("sys_user_role").where({ field: "user_id", op: "eq", value: targetUid }).delete().run();
+		await t.table("sys_refresh_token").where({ field: "user_id", op: "eq", value: targetUid }).delete().run();
+		await t.table("users").where({ field: "id", op: "eq", value: targetUid }).delete().run();
+	});
+	invalidateUser(Number(targetUid));
+	await recordOp({ action: "user.delete", module: "framework", target: String(rows[0]!.username) });
 }

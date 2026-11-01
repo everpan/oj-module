@@ -233,10 +233,10 @@ async function main() {
 	await startSite();
 	log(`# P1-16 真机走查（walkthrough-market-fullchain AC0-7）\n\n- 站点：${BASE}（templates/api release 形态）；CDN：${CDN_BASE}（oj-market 0.1.0，sha256 ${sha.slice(0, 12)}…）\n- 分发包：修复副本构建（oj-market 仓 api 模块 manifest 尚名 demo-market——走查发现①，仓未改动）`);
 	// 登录改密 + 市场地址（走查前置）
-	const login = await api("/api/auth/login", { method: "POST", body: { username: "admin", password: "123456" } });
+	const login = await api("/api/auth/login", { method: "POST", body: { username: "admin", password: "aA123456" } });
 	if (!login.data?.access_token)
 		throw new Error(`login 失败：${login.text?.slice(0, 200)}`);
-	const changed = await api("/api/auth/password", { method: "PUT", token: login.data.access_token, body: { old_password: "123456", new_password: "walk-pass-123" } });
+	const changed = await api("/api/auth/password", { method: "PUT", token: login.data.access_token, body: { old_password: "aA123456", new_password: "walk-pass-123" } });
 	token = changed.data?.access_token;
 	if (!token)
 		throw new Error(`改密失败：${changed.text?.slice(0, 200)}`);

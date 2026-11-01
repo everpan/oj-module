@@ -1,6 +1,7 @@
 // BDD：通讯录——searchContacts 目录（AC1-22/23）+ contactDetail 详情 + 接口级限速。
 // 读模型红线：目录只出 id/username/display_name（无 email/avatar/roles，安全评审 P2）；
 // 禁用用户不出目录（AC1-23）；keyword≥2（AC1-22）；limit 钳 200（AC1-24）。
+// 另有 activated 门禁（方案 §9.1 阻断项，A3 引入）：同步灌进来的「从未登录」账号不进目录。
 /* eslint-disable test/prefer-lowercase-title -- AC 编号是验收锚点，保留大写 */
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
@@ -10,9 +11,10 @@ import { installDb } from "./fixture";
 let dbo: ReturnType<typeof installDb>;
 const g = globalThis as any;
 
-function mkUser(username: string, opts: { displayName?: string, email?: string, forbidden?: boolean } = {}): number {
-	dbo.prepare("INSERT INTO users (username, password_hash, display_name, email, is_forbidden) VALUES (?, 'x', ?, ?, ?)")
-		.run(username, opts.displayName ?? null, opts.email ?? null, opts.forbidden ? 1 : 0);
+/** activated 默认 1：夹具造的是「真人用过的号」（同步阶段的占位号见 AC1-23 第二例） */
+function mkUser(username: string, opts: { displayName?: string, email?: string, forbidden?: boolean, activated?: boolean } = {}): number {
+	dbo.prepare("INSERT INTO users (username, password_hash, display_name, email, is_forbidden, activated) VALUES (?, 'x', ?, ?, ?, ?)")
+		.run(username, opts.displayName ?? null, opts.email ?? null, opts.forbidden ? 1 : 0, opts.activated === false ? 0 : 1);
 	return (dbo.prepare("SELECT id FROM users WHERE username = ?").get(username) as { id: number }).id;
 }
 
@@ -49,6 +51,14 @@ describe("AC1-23：禁用用户不出目录", () => {
 		mkUser("c_dave", { displayName: "卡罗 dave", forbidden: true });
 		const r = await searchContacts("卡罗");
 		expect(r.map(u => u.username)).toEqual(["c_carol"]);
+	});
+
+	// §9.1 阻断项：组织架构同步会把全企业名册灌进 users（activated=0）。若目录不设这道闸门，
+	// 任何登录账号都能用 keyword 把整份名册拖走——所以「同步占位号」必须查不到、详情也打不开。
+	it("activated=0（同步建档、从未登录）不出现在结果中", async () => {
+		mkUser("c_frank", { displayName: "卡罗 frank", activated: false });
+		const r = await searchContacts("卡罗");
+		expect(r.map(u => u.username)).not.toContain("c_frank");
 	});
 });
 

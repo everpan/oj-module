@@ -32,6 +32,14 @@ tables:
       email: {type: text}
       phone_number: {type: text}
       description: {type: text}
+      # 0016：是否登录过本站。同步会为「从未登录」的全员建档，contacts 只返回 activated=1，
+      # 否则任何登录账号都能以 60 次/分把整份企业名册拖走（方案 §9.1）。存量行迁移时置 1。
+      activated: {type: integer, null: false}
+      # 职务（与来源无关的通用字段）
+      position: {type: text}
+      # 外部源侧的状态快照（企微 1/2/4/5）。**绝不**自动改写 is_forbidden——那会和
+      # 本站管理员的手动启停互相覆盖（方案 §4.3）
+      external_status: {type: integer}
   sys_setting:
     # 共享表（B 组 D8）：登录方式发现 /system/login-methods 是未登录端点，此刻没有租户上下文；
     # 且这些开关是部署级语义，不是每 corp 语义。
@@ -163,3 +171,43 @@ tables:
       source_url: {type: text, null: false}
       max_seq: {type: integer, null: false}
       updated_at: {type: integer, null: false}
+  # ---- 0016：组织架构领域（CRUD 基线 + 外部源适配器的落点）----
+  # 定位（方案 §14）：CRUD 是基线，企微 / LDAP 只是适配器 → 表里不出现任何 wecom_* / ldap_* 字段。
+  # origin 是**归属权**标识（D13）：local = 本站管理员全权；wecom/ldap/sso = 该适配器管辖，
+  # 同步与回收只作用于自己 origin 的行，绝不碰别的（否则本地建的部门会被同步干掉）。
+  sys_department:
+    # 租户表：组织架构天然按租户隔离（企微部署下 tenant_id = corp_id），
+    # 只在有租户上下文时被读写，与 users / sys_oplog 同组（0015 A 组口径）。
+    pk: id
+    columns:
+      id: {type: integer, autoincrement: true}
+      tenant_id: {type: text, null: false}
+      origin: {type: text, null: false}
+      # 外部源主键（企微部门 id / LDAP entryUUID）；origin='local' 时由应用层生成稳定串
+      origin_id: {type: text, null: false}
+      # 本地父部门 id（不是外部 id）：本地部门与同步部门可混挂，且不随外部调整而变
+      parent_id: {type: integer}
+      # 未获权限时为 NULL（企微代开发未授权「部门名」即如此），展示层用 origin_id 兜底
+      name: {type: text}
+      name_en: {type: text}
+      order_no: {type: integer, null: false}
+      # 同步可见性，**仅由同步轮次维护**（失去可见范围 → 0）；本地部门恒 1
+      sync_visible: {type: integer, null: false}
+      # 软删除。只由外部源的删除事件置 1（D9）：本地删除走真删
+      deleted: {type: integer, null: false}
+      # 最近一次完整全量命中的 job（墓碑回收前必先校验本轮完整且无 skip）
+      seen_job_id: {type: integer}
+      update_time: {type: integer, null: false}
+  # 成员 ↔ 部门（多对多）：企微一人可在多个部门，order_no / is_leader 与 department[] 逐位对应。
+  # 全本地 id 关联，**与来源完全无关**——接任何适配器都不用动这张表。
+  sys_dept_member:
+    pk: id
+    columns:
+      id: {type: integer, autoincrement: true}
+      tenant_id: {type: text, null: false}
+      user_id: {type: integer, null: false}
+      dept_id: {type: integer, null: false}
+      order_no: {type: integer, null: false}
+      is_leader: {type: integer, null: false}
+      is_main: {type: integer, null: false}
+      update_time: {type: integer, null: false}

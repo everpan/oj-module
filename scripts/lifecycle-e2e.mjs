@@ -438,10 +438,10 @@ async function boot() {
 	buildCdnBundles();
 	({ srv: cdn.srv, hits: cdn.hits } = await startCdn(CDN_DIR, 9782));
 	await startSite();
-	// 登录（seed admin/123456，must_change）→ 改密换正式 token
-	const login = await api("/api/auth/login", { method: "POST", body: { username: "admin", password: "123456" } });
+	// 登录（seed admin/aA123456，must_change）→ 改密换正式 token
+	const login = await api("/api/auth/login", { method: "POST", body: { username: "admin", password: "aA123456" } });
 	must(login.data?.access_token, `login 失败：${JSON.stringify(login.json)?.slice(0, 200)}`);
-	const changed = await api("/api/auth/password", { method: "PUT", token: login.data.access_token, body: { old_password: "123456", new_password: "e2e-pass-123" } });
+	const changed = await api("/api/auth/password", { method: "PUT", token: login.data.access_token, body: { old_password: "aA123456", new_password: "e2e-pass-123" } });
 	token = changed.data?.access_token;
 	must(token, `改密失败：${JSON.stringify(changed.json)?.slice(0, 200)}`);
 	// 市场地址（framework.market_cdn_url，security 组 super-only 写——AC-P1-16 后端位）

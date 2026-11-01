@@ -72,14 +72,14 @@ ojm market verify --rebuild-index       # 7 项全绿才算完
 ojm sign ../oj-wiki/dist/wiki-0.1.3.tgz --id lesson.pub --registry-id lesson.local
 
 ojm install ../oj-wiki/dist/wiki-0.1.3.tgz \
-  --site-url http://localhost:9779 --user superadmin --pass 123456
+  --site-url http://localhost:9779 --user superadmin --pass aA123456
 ```
 
 首次安装会停在「待信任确认」（TOFU）：终端打印发布方 key_id 和指纹，核对与 keygen 时打印的值一致后：
 
 ```bash
 ojm trust confirm --task install-<时间戳>-<随机串> \
-  --site-url http://localhost:9779 --user superadmin --pass 123456
+  --site-url http://localhost:9779 --user superadmin --pass aA123456
 ojm install ../oj-wiki/dist/wiki-0.1.3.tgz --site-url ...   # 重跑，完成
 ```
 
@@ -93,10 +93,10 @@ ojm install ../oj-wiki/dist/wiki-0.1.3.tgz --site-url ...   # 重跑，完成
 
 ```bash
 cd oj-lesson-cdn
-ojm market setup --site-url http://localhost:9779 --user superadmin --pass 123456
+ojm market setup --site-url http://localhost:9779 --user superadmin --pass aA123456
 # 输出：站点 http://localhost:9779 的市场地址已指向 http://127.0.0.1:9783/cdn
 
-ojm install wiki@0.1.3 --site-url http://localhost:9779 --user superadmin --pass 123456
+ojm install wiki@0.1.3 --site-url http://localhost:9779 --user superadmin --pass aA123456
 ```
 
 装的过程中站点会去 CDN 拉 catalog → 分片 → 包。验证当天 CDN 服务的访问日志：
@@ -199,7 +199,7 @@ flowchart LR
 ## 9. 清理与复跑
 
 ```bash
-ojm uninstall wiki --site-url http://localhost:9779 --user superadmin --pass 123456
+ojm uninstall wiki --site-url http://localhost:9779 --user superadmin --pass aA123456
 # 业务表保留（需运维手工清理），锁/sidecar/路由/模块清单四处同删
 ```
 

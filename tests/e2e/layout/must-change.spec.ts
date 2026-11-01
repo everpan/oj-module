@@ -66,7 +66,7 @@ test.describe("must-change", () => {
 
 		// 登录表单（antd Form.Item + label，兼容中英文 locale）
 		await page.getByLabel(/用户名|Username/).fill("admin");
-		await page.getByLabel(/密码|Password/).fill("123456");
+		await page.getByLabel(/密码|Password/).fill("aA123456");
 		// antd Button htmlType="submit" → 渲染成 <button type="submit">；
 		// 文案含空格（「登 录」）且随 locale 变化，按类型选最稳
 		await page.locator("button[type=\"submit\"]").click();

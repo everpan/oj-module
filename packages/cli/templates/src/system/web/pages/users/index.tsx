@@ -72,6 +72,12 @@ export default function UsersPage() {
 	const columns = [
 		{ title: t("system:users.columns.username"), dataIndex: "username" },
 		{ title: t("system:users.columns.displayName"), dataIndex: "display_name" },
+		{ title: t("system:users.columns.position"), dataIndex: "position" },
+		{
+			title: t("system:users.columns.departments"),
+			dataIndex: "departments",
+			render: (departments: string[]) => departments.map(d => <Tag key={d}>{d}</Tag>),
+		},
 		{ title: t("system:users.columns.email"), dataIndex: "email" },
 		{
 			title: t("system:users.columns.roles"),

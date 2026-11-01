@@ -99,6 +99,8 @@ export async function ensureWecomUser(
 				corp_id: corpId,
 				must_change: 0,
 				is_forbidden: 0,
+				// 走到这里说明真人正在扫码登录 → 这位是「用过本站」的活人，进通讯录目录
+				activated: 1,
 			}).run();
 		}
 		catch (e) {

@@ -9,6 +9,7 @@ import { createSystemClient } from "./__client/api";
 
 const Users = lazy(() => import("./pages/users"));
 const UserRoles = lazy(() => import("./pages/users/roles"));
+const Departments = lazy(() => import("./pages/departments"));
 const Roles = lazy(() => import("./pages/roles"));
 const Oplog = lazy(() => import("./pages/oplog"));
 const Settings = lazy(() => import("./pages/settings"));
@@ -36,6 +37,11 @@ const routes: AppRouteRecordRaw[] = [
 				path: "/system/users/:uid/roles",
 				Component: UserRoles,
 				handle: { title: "system:menu.userRoles", hideInMenu: true },
+			},
+			{
+				path: "/system/departments",
+				Component: Departments,
+				handle: { title: "system:menu.departments" },
 			},
 			{
 				path: "/system/roles",

@@ -2,6 +2,11 @@
 // 目录红线：只出 id/username/display_name——不含 email/avatar/roles（防低权账号拖走全员邮箱喂钓鱼，安全评审 P2）；
 // 详情端点才给 email/avatar。默认排除 is_forbidden=1（AC1-23：管理域仍可见，目录与管理分离）。
 // keyword≥2、LIKE 转义复用 query.ts；solutions 同 isolate import searchContacts 直调，无 HTTP 往返（AC1-25）。
+//
+// ⚡ **只出 activated=1**（方案 §9.1 阻断项）：本表设计时隐含「users 里都是本人登录过的账号」，
+// 组织架构同步会为「从未登录本站、也从未同意过」的全员建档——前提一破，任何登录账号都能以
+// 60 次/分把整份企业名册 keyword 遍历走。activated 即「这个号被真人用过」的证据：
+// 管理员建号 / 各来源登录建档置 1，同步建档默认 0（B2 才引入同步，届时显式写 0）。
 export interface ContactRow {
 	id: number
 	username: string
@@ -22,6 +27,7 @@ export async function searchContacts(keyword: unknown, opts: { limit?: unknown }
 	return await db.table("users")
 		.select(["id", "username", "display_name"])
 		.where({ field: "is_forbidden", op: "eq", value: 0 })
+		.where({ field: "activated", op: "eq", value: 1 })
 		.where({ or: [
 			{ field: "username", op: "contains", value: kw },
 			{ field: "display_name", op: "contains", value: kw },
@@ -36,6 +42,7 @@ export async function contactDetail(id: number): Promise<Record<string, unknown>
 		.select(["id", "username", "display_name", "email", "avatar_base64"])
 		.where({ field: "id", op: "eq", value: id })
 		.where({ field: "is_forbidden", op: "eq", value: 0 })
+		.where({ field: "activated", op: "eq", value: 1 })
 		.all();
 	if (!rows[0])
 		throw Object.assign(new Error("contact not found"), { status: 404 });

@@ -25,7 +25,7 @@ function getFreePort(): Promise<number> {
 /**
  * P6 Task 10：uni-dev 全链真二进制冒烟（设计 §9 首跑登录闭环 + §6 preview）。
  *
- * init → dev（真 oj）→ POST /api/auth/login（admin/123456）→ user-info →
+ * init → dev（真 oj）→ POST /api/auth/login（admin/aA123456）→ user-info →
  * 收尾 → build → preview（migrate → oj serve 单服务：API + web 挂载 SPA 同进程）→
  * GET / 200 → 深链 200 → 带 token /api/web/hello 200 → 收尾。
  *
@@ -160,7 +160,7 @@ describe.skipIf(process.env.CI || ojBusy)("uni-dev e2e 冒烟（真二进制）"
 
 		const login = await request(devPort, "/api/auth/login", {
 			method: "POST",
-			body: { username: "admin", password: "123456" },
+			body: { username: "admin", password: "aA123456" },
 		});
 		expect(login.status).toBe(200);
 		const envelope = JSON.parse(login.text) as { code: number, data?: { access_token?: string } };
@@ -201,7 +201,7 @@ describe.skipIf(process.env.CI || ojBusy)("uni-dev e2e 冒烟（真二进制）"
 
 		const login = await request(previewPort, "/api/auth/login", {
 			method: "POST",
-			body: { username: "admin", password: "123456" },
+			body: { username: "admin", password: "aA123456" },
 		});
 		const token = (JSON.parse(login.text) as { data?: { access_token?: string } }).data?.access_token;
 		expect(token).toBeTruthy();

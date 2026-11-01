@@ -7,7 +7,8 @@
 		"oplog": "Audit Log",
 		"settings": "Site Settings",
 		"loginMethods": "Login Methods",
-		"wecom": "WeCom Integration"
+		"wecom": "WeCom Integration",
+		"departments": "Departments"
 	},
 	"common": {
 		"confirm": "Confirm",
@@ -16,7 +17,9 @@
 		"saved": "Saved",
 		"search": "Search",
 		"reset": "Reset",
-		"create": "Create"
+		"create": "Create",
+		"edit": "Edit",
+		"delete": "Delete"
 	},
 	"users": {
 		"create": "Create User",
@@ -32,7 +35,9 @@
 			"email": "Email",
 			"roles": "Roles",
 			"status": "Account status (forbidden / password change)",
-			"actions": "Actions"
+			"actions": "Actions",
+			"position": "Position",
+			"departments": "Departments"
 		}
 	},
 	"userRoles": {
@@ -49,6 +54,46 @@
 		"permissions": "Bound Permissions",
 		"titleKey": "Title Key",
 		"readonlyHint": "Read-only view: roles and bindings are managed by solution tooling (upsertSolutionPerms)"
+	},
+	"departments": {
+		"create": "New Department",
+		"edit": "Edit Department",
+		"view": "View",
+		"createHint": "Org structure is shared baseline data; WeCom/LDAP are only adapters writing into it",
+		"members": "Members",
+		"memberCount": "Members",
+		"detach": "Manage locally",
+		"detachHint": "Once detached, sync no longer rewrites this department — rename/move/delete all open up",
+		"readonlyHint": "This department is maintained by an external source; structural fields are read-only",
+		"unnamed": "(unnamed)",
+		"hidden": "Out of visible scope",
+		"removed": "Deleted at source",
+		"root": "(top level)",
+		"selectUser": "Select user",
+		"addMember": "Add member",
+		"removeMember": "Remove",
+		"noMembers": "No members",
+		"confirmDelete": "Delete this department? Its member links are removed too",
+		"confirmRemoveMember": "Remove this user from the department?",
+		"yes": "Yes",
+		"no": "No",
+		"origin": {
+			"local": "Local",
+			"wecom": "WeCom",
+			"ldap": "LDAP",
+			"sso": "SSO"
+		},
+		"columns": {
+			"name": "Name",
+			"nameEn": "English name",
+			"parent": "Parent"
+		},
+		"memberColumns": {
+			"user": "User",
+			"main": "Main",
+			"leader": "Leader",
+			"actions": "Actions"
+		}
 	},
 	"oplog": {
 		"filterAction": "Action",
@@ -125,5 +170,8 @@
 		"ldap_base_dn": "LDAP Base DN",
 		"ldap_uid_attr": "LDAP UID Attribute",
 		"ldap_email_attr": "LDAP Email Attribute"
+	},
+	"perm": {
+		"platform_org_read_all": "Org directory: read all"
 	}
 }

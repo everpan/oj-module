@@ -100,12 +100,16 @@ export function createSession(deps: SessionDeps = runtimeDeps()) {
 	return {
 		/** B1+D14：本地登录——先验口令后查禁用；号不存在/口令错/禁用统一 401（不泄露账号状态）。 */
 		async localLogin(username: string, password: string): Promise<TokenBundle> {
-			const rows = await db.table("users").select(["id", "password_hash", "is_forbidden"]).where({ field: "username", op: "eq", value: String(username ?? "") }).all() as Array<Record<string, unknown>>;
+			const rows = await db.table("users").select(["id", "password_hash", "is_forbidden", "activated"]).where({ field: "username", op: "eq", value: String(username ?? "") }).all() as Array<Record<string, unknown>>;
 			const row = rows[0];
 			if (!row || !(await deps.bcryptVerify(String(password ?? ""), String(row.password_hash))))
 				fail(401, "invalid credentials");
 			if (Number(row.is_forbidden) === 1)
 				fail(401, "invalid credentials");
+			// 首次成功登录 = 这个号确实有真人在用 → 放行到通讯录目录（同步建的全员档初始 activated=0）。
+			// 只在 0→1 时写一次，老用户登录不产生额外 UPDATE。
+			if (Number(row.activated) === 0)
+				await db.table("users").update({ activated: 1 }).where({ field: "id", op: "eq", value: Number(row.id) }).run();
 			return issueFor(Number(row.id));
 		},
 

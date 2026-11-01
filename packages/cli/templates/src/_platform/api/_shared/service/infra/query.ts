@@ -15,7 +15,8 @@ export interface PageResult<T> {
 const MAX_SIZE = 200;
 const DEFAULT_SIZE = 20;
 
-function pageArgs(input: { page?: unknown, size?: unknown }): { page: number, size: number, offset: number } {
+/** 分页参数归一（非法回落默认，size 静默钳 200）；导给「内存分页」的读面复用，避免钳制口径分叉 */
+export function pageArgs(input: { page?: unknown, size?: unknown }): { page: number, size: number, offset: number } {
 	const rawPage = Number.parseInt(String(input.page ?? ""), 10);
 	const rawSize = Number.parseInt(String(input.size ?? ""), 10);
 	const page = Number.isFinite(rawPage) && rawPage >= 1 ? rawPage : 1;

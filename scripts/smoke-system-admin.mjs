@@ -3,7 +3,7 @@
 // 前置（一次性，见 docs/plans/2026-10-16-system-admin-handover.md §6）：
 //   临时工程已 `ojm init`，已 `oj openapi` + `ojm api` 生成 __client，
 //   `pnpm dev` 起在 http://localhost:5174，后端 db 处于**初始 seed 态**
-//   （仅 admin/123456 且 must_change=1；本脚本会改密并建号，跑完须重置 db 才能复跑）。
+//   （仅 admin/aA123456 且 must_change=1；本脚本会改密并建号，跑完须重置 db 才能复跑）。
 //
 // 用法：node scripts/smoke-system-admin.mjs [base]         # 默认 http://localhost:5174
 //
@@ -44,7 +44,7 @@ page.setDefaultTimeout(15000);
 
 try {
 	// AC1-27：首登 must_change 悬挂期，任何管理端点 403 → 页面渲染引导卡而非错误边界
-	await login(page, "admin", "123456");
+	await login(page, "admin", "aA123456");
 	await page.goto(`${BASE}/system/users`);
 	const guidedBtn = page.getByRole("button", { name: /去修改密码|Change password/ });
 	let guided = false;
@@ -58,7 +58,7 @@ try {
 	if (guided)
 		await guidedBtn.click();
 	await page.waitForURL(u => String(u).includes("/change-password"), { timeout: 10000 });
-	await changePassword(page, "123456", "admin888");
+	await changePassword(page, "aA123456", "admin888");
 	ok("改密后回登录页（旧会话吊销）", page.url().includes("/login"), page.url());
 
 	// AC1-3/7：新密码重登 → 菜单 + 6 页可用

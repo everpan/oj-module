@@ -21,7 +21,7 @@
 > ⚠️ 那两份 guide 有**已知陈旧处**，以源码为准：
 > dev 端口实际是 **3333**（guide 写的 5173 已过时；注意与 `ojm dev` 的前端 devServer
 > **5174** 不是一回事——前者是本仓 vite，后者是业务工程 devServer）；包版本以
-> `packages/*/package.json` 为准（撰写时实际 **0.2.20**，仅供参考，以当前 package.json 为准）。
+> `packages/*/package.json` 为准（撰写时实际 **0.2.47**，仅供参考，以当前 package.json 为准）。
 
 ## §2 两包结构与依赖方向
 
@@ -139,7 +139,7 @@ pnpm test tests/shell                       # 宿主全量
 **一键发布**：`node scripts/publish-packages.mjs`（lockstep 门禁 → 构建 → 守卫测试 →
 runtime → cli → registry 复核；`--dry-run` 只演练）。下面的手动步骤是它的展开参考。
 
-- **两包**同版本号（`@oj-module/runtime` + `@oj-module/cli`，当前 `0.2.20`），后续发版保持
+- **两包**同版本号（`@oj-module/runtime` + `@oj-module/cli`，当前 `0.2.47`），后续发版保持
   lockstep；`@plane/kit` / `@plane/editor` 不在发布集内（脚本里已注释）。
 - **必须 `pnpm publish`**——用 `npm publish` 会漏出 `workspace:*` / `catalog:` 字面量。
 - **顺序：先 `runtime` 后 `cli`**。`runtime` 未公开时，新 `cli` 的精确依赖会悬空，

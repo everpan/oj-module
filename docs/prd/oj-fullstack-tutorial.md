@@ -45,7 +45,7 @@ pnpm install
 pnpm dev            # 前端 devServer(5174) + oj 后端（9778），src/** 保存即热更
 ```
 
-浏览器打开 `http://localhost:5174`，用脚手架种子账号登录：**superadmin / 123456**（四个内置角色账号 superadmin/admin/editor/viewer，账号名=角色名、口令均 123456、免首登改密，见 `src/_platform/api/seed.sql`；生产部署须改密或删除）。
+浏览器打开 `http://localhost:5174`，用脚手架种子账号登录：**superadmin / aA123456**（四个内置角色账号 superadmin/admin/editor/viewer，账号名=角色名、口令均 aA123456、免首登改密，见 `src/_platform/api/seed.sql`；生产部署须改密或删除）。
 
 > `ojm init` 是**幂等补缺**：对已有工程重跑只补缺失文件。首次会联网下载 oj 二进制到 `bin/oj`（sha256 校验），并现场签发本地 dev 证书（`config/` 三件套）。
 >
@@ -430,7 +430,7 @@ export default books;
 # 登录拿 token（auth 已在 anonymous_paths，无需 token）
 TOKEN=$(curl -s -X POST http://127.0.0.1:9778/api/auth/login \
   -H 'content-type: application/json' \
-  -d '{"username":"superadmin","password":"123456"}' | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>console.log(JSON.parse(s).data.access_token))")
+  -d '{"username":"superadmin","password":"aA123456"}' | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>console.log(JSON.parse(s).data.access_token))")
 
 # 列表（带 Bearer）
 curl -s "http://127.0.0.1:9778/api/books?keyword=设计" -H "authorization: Bearer $TOKEN"
@@ -617,7 +617,7 @@ export default function BooksPage() {
 
 ## 6. 联调与验证
 
-1. `pnpm dev` 起来，登录 `superadmin / 123456`；
+1. `pnpm dev` 起来，登录 `superadmin / aA123456`；
 2. 左侧出现「图书管理」，点进去应看到 3 条种子数据；
 3. 输入关键词搜索 → Network 里 `GET /api/books?keyword=…` 返回 200；
 4. 新增一本 → `POST /api/books` 200，列表刷新；

@@ -22,9 +22,9 @@ export function execSql(sql: string): string {
 }
 
 /**
- * 归一 admin 账号夹具（幂等）：口令重置为种子值（123456）+ 清 must_change +
+ * 归一 admin 账号夹具（幂等）：口令重置为种子值（aA123456）+ 清 must_change +
  * 清登录限流窗口。全新 db 的 admin 是 must_change=1，会弹强制改密阻塞 e2e；
- * 上一轮 e2e 若改过口令，本轮 123456 登不上——都靠这里归一。
+ * 上一轮 e2e 若改过口令，本轮 aA123456 登不上——都靠这里归一。
  */
 export function resetAdminFixture(): void {
 	const grep = execFileSync("grep", ["-oE", String.raw`\$2y\$10\$[A-Za-z0-9./]+`, SEED_PATH], { encoding: "utf-8" });
@@ -37,14 +37,14 @@ export function resetAdminFixture(): void {
  * 进入模板主界面：goto → 登录 → 等布局 chrome 就绪。
  * 前置：resetAdminFixture() 已跑（globalSetup）。
  *
- * `account` 缺省 admin/123456；超管专属页面（代开发后台等）传 `{ username: "superadmin" }`。
+ * `account` 缺省 admin/aA123456；超管专属页面（代开发后台等）传 `{ username: "superadmin" }`。
  */
 export async function enterTemplateApp(
 	page: Page,
 	account: { username?: string, password?: string } = {},
 ): Promise<void> {
 	const username = account.username ?? "admin";
-	const password = account.password ?? "123456";
+	const password = account.password ?? "aA123456";
 	await page.goto("/");
 	const submit = page.locator("form button[type=\"submit\"]").first();
 	await expect(submit).toBeVisible({ timeout: 15_000 });
@@ -69,7 +69,7 @@ export function apiHeaders(token: string): Record<string, string> {
 /** 用页外 request 直登 API，返回 Bearer token（给 push 端点造确定性数据用） */
 export async function apiLogin(page: Page): Promise<string> {
 	const res = await page.request.post("/api/auth/login", {
-		data: { username: "admin", password: "123456" },
+		data: { username: "admin", password: "aA123456" },
 		headers: { "X-TENANT-ID": "default" },
 	});
 	const body = await res.json();

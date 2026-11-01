@@ -1,5 +1,5 @@
 // BDD：脚手架 seed 内置角色开发账号——账号名=角色名一一对应（superadmin/admin/editor/viewer），
-// 口令均 123456，must_change=0 免首登改密（纯开发便利，生产部署须改密/删除）。
+// 口令均 aA123456，must_change=0 免首登改密（纯开发便利，生产部署须改密/删除）。
 // 旧库收敛：历史 seed 把 admin 绑在 superadmin 且 must_change=1，seed 幂等重放即收敛
 // （DELETE 旧绑定 + UPDATE must_change=0），无需手工迁移。
 // 直接重放 _platform 迁移 + seed.sql 到内存 sqlite（installDb 不 replay seed，故自给自足）。
@@ -54,9 +54,13 @@ describe("seed 内置角色开发账号", () => {
 		expect(roles.map(r => r.role_name)).toEqual([username]);
 	});
 
-	it("四个角色账号口令一致（123456 的 bcrypt，复用 seed 既有哈希）", () => {
+	// 钉字面量而不是只钉「四者一致」：一致但整体换过口令时，文档/脚本里的口令说明会静默失效
+	// （2026-11-01 由 123456 换 aA123456 时就是这么发生的）。哈希由 `bcrypt.hash('aA123456', 10)`
+	// 生成后手工改写为 $2y$ 前缀（与 seed 既有口径同；$2a$/$2b$/$2y$ 三前缀等价）。
+	it("四个角色账号口令一致，且等于默认的 aA123456 哈希", () => {
 		const hashes = dbo.prepare("SELECT username, password_hash h FROM users WHERE username IN ('superadmin','admin','editor','viewer')").all() as Array<{ username: string, h: string }>;
 		expect(new Set(hashes.map(r => r.h)).size).toBe(1);
+		expect(hashes[0]!.h).toBe("$2y$10$9HEtASi9jG0VIBMMVqxAmOqrE4f6wiezhGmi50iPG1s1MXlncSO0e");
 	});
 
 	it("旧库收敛：legacy admin(superadmin 绑定 + must_change=1) 经重放收敛为账号名=角色名", () => {

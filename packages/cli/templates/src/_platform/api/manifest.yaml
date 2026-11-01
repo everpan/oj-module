@@ -16,3 +16,6 @@ tables:
   - sys_rate_window
   - sys_login_throttle
   - reg_source_seq
+  # 0016 组织架构领域（CRUD 基线 + 外部源适配器的落点；两张都是租户表）
+  - sys_department
+  - sys_dept_member

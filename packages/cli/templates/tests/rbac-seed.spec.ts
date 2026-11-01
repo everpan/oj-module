@@ -54,3 +54,14 @@ describe("seed 内置角色开发账号（账号名=角色名，2026-10-22 口�
 		expect(row).toBeUndefined();
 	});
 });
+
+describe("组织架构共享读面权限点（方案 D5）", () => {
+	// 钉这个不是测 seed 有没有写，而是防「端点挂了权限点、库里却没这一行」——
+	// 那种状态下 createRole / updateBindings 会因 code 不存在而 400，权限点永远绑不上，
+	// 表现是「scope=all 谁都进不去，管理员也束手无策」。
+	it("seed 出 platform.org.read.all（未 deprecated），管理员才绑得上", () => {
+		const row = dbo.prepare("SELECT * FROM sys_permission WHERE code = 'platform.org.read.all'").get() as Record<string, unknown> | undefined;
+		expect(row).toBeDefined();
+		expect(Number(row?.deprecated)).toBe(0);
+	});
+});

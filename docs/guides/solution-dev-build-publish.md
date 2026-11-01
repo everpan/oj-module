@@ -218,7 +218,7 @@ ojm market verify --rebuild-index
 oj serve -c config.yaml -b /api --api-path dist/api --console-log
 
 # ⑤ 把市场地址指向本站点自供的 /cdn（仅外部真 CDN 才需要绝对地址）
-ojm market setup --site-url http://127.0.0.1:9778 --user superadmin --pass 123456 --new-pass <新口令>
+ojm market setup --site-url http://127.0.0.1:9778 --user superadmin --pass aA123456 --new-pass <新口令>
 
 # ⑥ 安装（首次必然停在 needs_trust）
 ojm install erp@0.1.0 --site-url http://127.0.0.1:9778 --user superadmin --pass <新口令>
