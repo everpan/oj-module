@@ -4,7 +4,20 @@
 > **配套**：[`framework-development-guide.md`](./framework-development-guide.md)（原理）、[`oj-fullstack-tutorial.md`](./oj-fullstack-tutorial.md)（跟做）。
 > **原则**：每一步都有**可判定通过/失败的检查点**，不要只看命令退出码，要核对产物。
 
-### 最近一次基线（2026-10-31，oj 0.1.115 本地 / cli+runtime 0.2.45 工作区态；发布门禁验证 + walkthrough 14/14）
+### 最近一次基线（2026-11-02，oj 0.1.116 / cli+runtime 0.2.53 打包态；内联早跳 + 路由级角色过滤回归）
+
+| 项 | 值 |
+| --- | --- |
+| 日期 | 2026-11-02 |
+| 框架包版本 | `cli`/`runtime` **0.2.53**（§0.5 双包 pack；runtime 未发 npm → cli 依赖改 file: tgz + 工程 pnpm-workspace overrides） |
+| oj | `0.1.116`（`ojm init` 自动安装；探针 `web v0.1.0 (1 api file(s))` 通过） |
+| 验证动机 | 0.2.53 发布前全链路回归：首屏内联早跳（P0）、CJS require 构建门禁、`handle.roles` 路由级过滤（企微集成/站点设置仅超管）、react-countup 共享化 |
+| 范围 | §0.5 双包 pack + 安装 → §1 init（315 项）→ §2 安装（本地 tgz + overrides）→ §3 探针 → §4 openapi + `ojm api`（6 契约 / 0 error）→ §5 build（6 后端 + 7 前端模块）+ tsc → §6 dev（9778/5175）→ §7 preview（release/js）。§7.1–§7.5 市场链路本轮未跑 |
+| 结果 | **通过**。构建产物核对：`dist/web/index.html` 含内联 `data-ojm-entry`（静态 module 标签 0 个）；modules.json 7 模块；importmap 无 echarts/editor/vditor，react-countup 为 `/assets/react-countup.js` 共享资产；home entry 无 rolldown require 桩；tsc 0 error；dev/preview 根 200、login 200（tenant 头）、settings superadmin 200 / admin **403**、users admin 200 |
+| 本次发现并处置（手册） | ① §0.5 `pnpm install --dir cli-pkg` 在 pnpm ≥11 因 esbuild postinstall 未审批失败 → 补 `allowBuilds` 步骤；② 未发版时 cli 的精确 runtime 依赖需改 `file:` tgz，且 overrides 必须写 `pnpm-workspace.yaml`（package.json 的 `pnpm.overrides` 被 pnpm ≥11 忽略）；③ §6 登录 curl 缺 `X-TENANT-ID: default`（租户默认开启，否则 400）；④ §10 探针 manifest 缺 `desc` 字段（`oj build` 直接 parse 失败）；⑤ §1/§4 目录判据仍是旧平铺布局（`api/src`、`web/src`）→ 全部改 module-root（`src/<name>/{api,web}`） |
+| 未改代码的观察 | ① `ojm init` 当前仍会拷入 `src/demo`（web 演示模块），新工程 modules.json 含 demo@0.1.0；如产品要求下线需同时删模板 + `init.include.yaml` 条目；② dev 在 5174 被占用时自动改用 5175（按 `ojm dev` 输出判断端口，勿硬编码） |
+
+### 上一次基线（2026-10-31，oj 0.1.115 本地 / cli+runtime 0.2.45 工作区态；发布门禁验证 + walkthrough 14/14）
 
 | 项 | 值 |
 | --- | --- |
@@ -253,10 +266,18 @@ mkdir -p /tmp/ojm-verify
 pnpm --dir "$OJM_REPO/packages/cli" pack --pack-destination /tmp/ojm-verify
 tar -xzf /tmp/ojm-verify/oj-module-cli-*.tgz -C /tmp/ojm-verify
 mv /tmp/ojm-verify/package "$CLI_PKG"
+
+# pnpm ≥11：cli 依赖 esbuild，postinstall 默认被拦（ERR_PNPM_IGNORED_BUILDS）。解包目录先放 allowBuilds
+printf 'allowBuilds:\n  esbuild: true\n' > "$CLI_PKG/pnpm-workspace.yaml"
+
+# 双包未发版时（npm 上还是旧版本）：runtime 先 pack，再把 cli 的精确版本依赖改成本地 tgz
+pnpm --dir "$OJM_REPO/packages/runtime" pack --pack-destination /tmp/ojm-verify
+node -e "const fs=require('fs');const f='$CLI_PKG/package.json';const p=JSON.parse(fs.readFileSync(f,'utf8'));p.dependencies['@oj-module/runtime']='file:../oj-module-runtime-<ver>.tgz';fs.writeFileSync(f,JSON.stringify(p,null,2)+'\n')"
+
 pnpm install --dir "$CLI_PKG"                    # 发布包 manifest 已被 pnpm pack 改写为真实 semver，可独立安装
 ```
 
-后续所有 `ojm` 命令走 `$CLI_PKG/bin/ojm.mjs`（**不要**再走 `$OJM_REPO/packages/cli/bin/ojm.mjs`）。runtime 未发版时：在 my-books 里 `pnpm add -D <runtime 本地 tgz>`（同样先 `pnpm --dir packages/runtime pack`）——**务必 `-D` 装进 devDependencies**，否则 `ojm build` 的 C4/D12 门禁会拒（`@oj-module/runtime` 是硬共享依赖，禁止进 `dependencies`，由宿主 importmap 统一提供，自带产生双实例）；§0 旁路 2 的 symlink 仅作 store 不全时兜底。整体通过后如需确认 registry 形态，再 `pnpm dlx @oj-module/cli@<ver> init` 复跑一次 §1。
+后续所有 `ojm` 命令走 `$CLI_PKG/bin/ojm.mjs`（**不要**再走 `$OJM_REPO/packages/cli/bin/ojm.mjs`）。runtime 未发版时：在 my-books 里 `pnpm add -D <runtime 本地 tgz>`（同样先 `pnpm --dir packages/runtime pack`）——**务必 `-D` 装进 devDependencies**，否则 `ojm build` 的 C4/D12 门禁会拒（`@oj-module/runtime` 是硬共享依赖，禁止进 `dependencies`，由宿主 importmap 统一提供，自带产生双实例）；§0 旁路 2 的 symlink 仅作 store 不全时兜底。**pnpm ≥11 的 overrides 只认 `pnpm-workspace.yaml` 的 `overrides:` 段，写在 `package.json` 的 `pnpm.overrides` 会被忽略**（2026-11-02 实测：只改 package.json 仍去 npm 找 0.2.53 报 404）。整体通过后如需确认 registry 形态，再 `pnpm dlx @oj-module/cli@<ver> init` 复跑一次 §1。
 
 ## 1. 脚手架（`ojm init`）
 
@@ -270,7 +291,7 @@ node "$CLI_PKG/bin/ojm.mjs" init my-books --yes
 **检查点**
 
 - [ ] 退出码 0，末行提示 `登录 superadmin / aA123456`（角色账号见 devkit 手册 §1.1）
-- [ ] 目录齐全：`api/src/{_platform,auth,web,notifications,notification,personal-center,system}`、`api/.ojm-api-exempt.json`、`web/src/{demo,home,login,personal-center,notification,notifications,system}`、`web.config.ts`、`tsconfig.json`、`global.d.ts`、`env.d.ts`、`bin/oj`、`bin/.oj-version`、`.claude/skills/{oj-api-dev,ojm-module-dev}/`
+- [ ] 目录齐全（**module-root 布局，0.2.20+**）：`src/<name>/{api,web}`（2026-11-02 实测 10 个：`_platform/auth/web/notification/personal-center/system/home/login/oj-market/demo`）、工程根 `.ojm-api-exempt.json`、`config.yaml`、`cdn/`、`web.config.ts`、`tsconfig.json`、`global.d.ts`、`env.d.ts`、`bin/{oj,.oj-version,plugins,devkit}`、`.claude/skills/{oj-api-dev,ojm-module-dev}/`
 - [ ] **工程根有 `.gitignore`**（发布包不携带模板 `.gitignore`——npm/pnpm pack 剥离点文件，改由 init 现场生成，`ensureGitignore`；0.2.5 曾因 include 清单收录它而 fail-fast，见 §9）
 - [ ] **工程根有 `openapi.json`**（新流水线唯一事实源，模板随附）+ `web/src/<模块>/__client/` 预生成（`ojm api --check` 开箱即过）
 - [ ] handler 契约为新约定：动词挂 `.schema`（params/query/body 入参）+ **平级 `.response`**（出参，oj v0.1.72+）；无 `contract.ts` / `routes.json` / `openapi.yaml`
@@ -339,13 +360,13 @@ printf 'name: web\ndesc: probe\nversion: 0.1.0\n' > /tmp/_oj_probe/src/web/manif
 
 ## 4. 契约 → 前端 client
 
-在 `api/src/books/` 下补 6 个后端文件（manifest/schema/migration/seed + 2 handler），
+在 `src/books/api/` 下补 6 个后端文件（manifest/schema/migration/seed + 2 handler），
 handler 按**新约定**写契约——**无 `contract.ts`**：入参挂 `.schema`（params/query/body），
 出参挂**平级 `.response`**（oj v0.1.72+；范本照 `packages/cli/templates/api/src/notification/api.ts`、
 `apps/playground-oj/api/src/demo/todos/api.ts`）：
 
 ```ts
-// api/src/books/list/api.ts
+// src/books/api/list/api.ts
 const list = {
 	async get() { /* ...db.query...; json.ok(rows) */ },
 };
@@ -376,7 +397,7 @@ node "$CLI_PKG/bin/ojm.mjs" api --check
 - [ ] `ojm api` 输出「契约 N 份；写入 2 个文件」——产物 `web/src/books/__client/{api.ts, api.schemas.ts}`（**`__client` 目录名**，旧 `client/` 已改名）
 - [ ] client 导出 **operationId 派生名**：`booksListGet` / `BooksListGetQuery` / `BooksListGetData` / `booksCreatePost`（= `camelCase(路径_方法)`，**不是**旧 `defineApi` 的人类命名如 `listBooks`）
 - [ ] **出参类型存活**：`BooksListGetData` 非 `unknown`（`.response` 经 `responses.200.content` 信封进 client——新约定与旧 `.schema.response` 的等价性验证点）
-- [ ] **不生成** `api/src/books/routes.json` / `openapi.yaml`（旧产物已清理；`api/docs/openapi.yaml` 仅 `--docs` 时产生）
+- [ ] **不生成** `src/books/api/routes.json` / `openapi.yaml`（旧产物已清理；`docs/openapi.yaml` 仅 `--docs` 时产生）
 - [ ] `ojm api --check` 退出码 0：`0 error / 0 warn`（无 dist 时第三腿 routes.js 对账给 hint 不判违规）
 - [ ] 工程根存在 `api/.ojm-api-exempt.json`（`{"modules":["web","notifications"],"paths":["/auth/*"]}`，内置 `auth`/`web`/`notifications` 端点有意无业务契约；init 自 cli 0.1.5 起内置）
 
@@ -412,7 +433,8 @@ pnpm exec tsc --noEmit -p tsconfig.json     # typecheck
 pnpm exec ojm dev        # 默认 5174；oj 9778
 # 另一个终端：
 TOKEN=$(curl -s -X POST http://127.0.0.1:9778/api/auth/login \
-  -H 'content-type: application/json' -d '{"username":"superadmin","password":"aA123456"}' \
+  -H 'content-type: application/json' -H 'X-TENANT-ID: default' \
+  -d '{"username":"superadmin","password":"aA123456"}' \
   | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>console.log(JSON.parse(s).data.access_token))")
 curl -s "http://127.0.0.1:9778/api/books/list?keyword=设计" -H "authorization: Bearer $TOKEN"
 curl -s -X POST http://127.0.0.1:9778/api/books/create -H "authorization: Bearer $TOKEN" \
@@ -817,7 +839,7 @@ cd my-books && pnpm install
 ./bin/oj --version
 rm -rf /tmp/_oj_probe && mkdir -p /tmp/_oj_probe/src/web/hello \
   && printf 'export default { get() { json.ok({ ok: true }); } };\n' > /tmp/_oj_probe/src/web/hello/api.ts \
-  && printf 'name: web\nversion: 0.1.0\n' > /tmp/_oj_probe/src/web/manifest.yaml \
+  && printf 'name: web\ndesc: probe\nversion: 0.1.0\n' > /tmp/_oj_probe/src/web/manifest.yaml \
   && ./bin/oj build -d /tmp/_oj_probe/src -o /tmp/_oj_probe/out   # §3 探针（坏二进制约在此 panic）
 # …补 books 后端（.schema 入参 + 平级 .response 出参）→ ./bin/oj openapi -c config.yaml --module-root src -b /api -o openapi.json
 #   → ojm api（+ --check）→ 补前端 →
