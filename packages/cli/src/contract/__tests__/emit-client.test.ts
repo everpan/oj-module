@@ -125,6 +125,24 @@ describe("emitClient 注入安全：模块名含特殊字符不破坏源码", ()
 	});
 });
 
+describe("emitClient 多根聚合归属（owner）", () => {
+	it("owner 与 module 不同 → 落 MODULE_OWNER，护栏对比归属模块；MODULE_PREFIX 仍是 api 前缀", () => {
+		const ir = irFromOpenapi(DOC, { base: "/v1/api" });
+		const { "api.ts": apiTs } = emitClient(ir, { target: "module", module: "system", owner: "app" });
+		expect(apiTs).toContain("export const MODULE_PREFIX = \"/system\";");
+		expect(apiTs).toContain("export const MODULE_OWNER = \"/app\";");
+		expect(apiTs).toContain("ctx.module.name !== MODULE_OWNER.slice(1)");
+		expect(apiTs).not.toContain("ctx.module.name !== MODULE_PREFIX.slice(1)");
+	});
+
+	it("owner 缺省 = module → 生成物与历史逐字一致（不出现 MODULE_OWNER）", () => {
+		const ir = irFromOpenapi(DOC, { base: "/v1/api" });
+		const { "api.ts": apiTs } = emitClient(ir, { target: "module", module: "system", owner: "system" });
+		expect(apiTs).not.toContain("MODULE_OWNER");
+		expect(apiTs).toContain("ctx.module.name !== MODULE_PREFIX.slice(1)");
+	});
+});
+
 describe("emitClient 空 IR 报错", () => {
 	it("iR 为空抛错（无端点无需生成）", () => {
 		expect(() => emitClient([], { target: "module", module: "x" })).toThrow();

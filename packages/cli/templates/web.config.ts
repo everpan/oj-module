@@ -10,24 +10,17 @@
  * 登记了不存在的前端入口才报错。
  *
  * 注意：这里的登记顺序只影响模块加载顺序，**不决定侧边栏导航顺序**——
- * 菜单顺序由各模块 entry 路由的 handle.order 决定（≥0 主菜单区升序；
- * <0 底部固定区，pin 在侧边栏底部；同 order 按根 path 字母序）。
- * `home` 必须第一个登记（shell 的 "/" 重定向到它）。
+ * 菜单顺序由各根路由的 handle.order 决定（≥0 主菜单区升序；<0 底部固定区，
+ * pin 在侧边栏底部；同 order 按根 path 字母序）。
  */
 const allModules = [
-	// /home 必须是首个模块：shell 的 "/" → VITE_BASE_HOME_PATH（=/home）重定向
-	{ name: "home", entry: "src/home/web/entry.ts" },
-	// /login 路由由模块提供：shell 宿主不挂 runtime 内置 baseRoutes
-	{ name: "login", entry: "src/login/web/entry.ts" },
-	// 个人中心：runtime 用户菜单固定导航 /personal-center/my-profile，缺则点击落空
-	{ name: "personal-center", entry: "src/personal-center/web/entry.ts" },
-	// 通知：onInit 注册 notificationsApi provider（四方法全必填），
-	// 通知铃的互动（单条已读/全部已读/清空）由此生效；未登记则永远回落内置只读兜底
-	{ name: "notification", entry: "src/notification/web/entry.ts" },
-	// 系统管理：用户/成员资格/角色权限/操作日志/站点设置/登录方式（oj 后端 /api/system/*）
-	{ name: "system", entry: "src/system/web/entry.ts" },
+	// 框架内置页面：首页/登录/个人中心/通知/系统管理聚合成**一个多根模块**。
+	// 各根按 handle.order 排序（/home 1、/personal-center 110、/system -100 底部），
+	// 与拆分时的菜单逐项一致；/login、/change-password、/notification-center 走 hideInMenu。
+	{ name: "app", entry: "src/app/web/entry.ts" },
 	// 解决方案市场：第一方能力（消费 _platform 编排面 /api/_platform/market/*，
-	// R29：第三方方案不得仿照此调用面），默认随脚手架下发
+	// R29：第三方方案不得仿照此调用面），默认随脚手架下发。保持独立模块——
+	// 可选能力，删目录即可下线。
 	{ name: "oj-market", entry: "src/oj-market/web/entry.ts" },
 	// #region demo-only
 	// 以下为模板内置的演示模块（about/access/exception/outside/route-nest），
@@ -49,4 +42,17 @@ export default {
 	/** 产物 URL 前缀，留空表示同源相对路径 */
 	baseUrl: "",
 	modules: allModules,
+	/**
+	 * 生成 client 的归属模块：`api 前缀 → 承载其 __client 的 web 模块`。
+	 *
+	 * 多根聚合模块把多个业务域的页面/client 收进 `src/app/web`，故五个 api 前缀的
+	 * 生成物都落在 `src/app/web/<api 前缀>/__client`（与页面同级，页面相对导入不变）。
+	 * 不配则回落同名模块（`src/<api 前缀>/web/__client`，历史行为）。
+	 */
+	clientOwners: {
+		"home": "app",
+		"personal-center": "app",
+		"notification": "app",
+		"system": "app",
+	},
 };

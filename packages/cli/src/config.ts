@@ -48,6 +48,15 @@ export interface ModulesConfig {
 	 * `(path, html) => string | { html, cacheControl? } | Promise<…>`）。
 	 */
 	htmlTransform?: string
+	/**
+	 * 生成 client 的归属模块：`api 前缀 → 承载其 __client 的 web 模块`。
+	 *
+	 * 缺省（不配）= 同名模块，即 `src/<api 前缀>/web/__client`（历史行为，零漂移）。
+	 * 多根聚合模块把多个业务域的页面/client 收进同一个 web 模块时配它：生成物落
+	 * `src/<归属模块>/web/<api 前缀>/__client`，页面相对导入 `../__client` 不变。
+	 * 只影响 `ojm api` 的落盘位置与生成物里的认领护栏，不影响路由与后端。
+	 */
+	clientOwners?: Record<string, string>
 }
 
 const DEFAULT_CONFIG: Required<Pick<ModulesConfig, "baseUrl" | "siteBase">> = {

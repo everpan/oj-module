@@ -33,7 +33,7 @@ export function create_platformClient(ctx: ModuleContext) {
 	}
 	ctx.register.apiPrefix(API_PREFIX);
 	bindRequest(ctx.utils.request);
-	return { platformContactsGet, platformContactsDetailGet, platformMarketInstallPost, platformMarketInstallCancelPost, platformMarketTaskGet, platformMarketEnablePost, platformMarketMetaGet, platformMarketTrustGet, platformMarketTrustPost, platformMarketTrustKeyPost, platformMarketTrustKeyDelete, platformMarketIndexGet, platformMarketUninstallImpactGet, platformMarketUninstallPost, platformMarketHistoryGet, platformSolutionsRoutesGet, platformSolutionsVerifyPost, platformSolutionsVerifyLastGet, platformOrgTreeGet, platformOrgDepartmentsGet, platformOrgMembersGet, platformOrgUserGet, platformOrgPickerGet, platformOrgResolvePost, platformOrgIsMemberGet };
+	return { platformContactsGet, platformContactsDetailGet, platformMarketInstallPost, platformMarketInstallCancelPost, platformMarketTaskGet, platformMarketEnablePost, platformMarketMetaGet, platformMarketTrustGet, platformMarketTrustPost, platformMarketTrustKeyPost, platformMarketTrustKeyDelete, platformMarketIndexGet, platformMarketUninstallImpactGet, platformMarketUninstallPost, platformMarketHistoryGet, platformOrgDepartmentsGet, platformOrgIsMemberGet, platformOrgMembersGet, platformOrgPickerGet, platformOrgResolvePost, platformOrgTreeGet, platformOrgUserGet, platformSolutionsRoutesGet, platformSolutionsVerifyPost, platformSolutionsVerifyLastGet };
 }
 
 /**
@@ -64,14 +64,23 @@ async function toApiError(e: unknown): Promise<unknown> {
 	return e;
 }
 
-export async function platformContactsGet(): Promise<unknown> {
+export type PlatformContactsGetQuery = z.input<(typeof schemas)["platformContactsGet"]["query"]>;
+export type PlatformContactsGetData = z.infer<(typeof schemas)["platformContactsGet"]["data"]>;
+
+export async function platformContactsGet(query: PlatformContactsGetQuery): Promise<PlatformContactsGetData> {
 	const client = ensureReq();
 	try {
-		const env = await client.get(`_platform/contacts`).json<OjEnvelope<unknown>>();
+		const env = await client.get(`_platform/contacts`, { searchParams: query as Record<string, string | number | boolean> }).json<OjEnvelope<PlatformContactsGetData>>();
 		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
 		if (typeof env.code === "number" && env.code !== 0)
 			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
-		const data = env.data as unknown;
+		const data = env.data as PlatformContactsGetData;
+		if (import.meta.env.DEV) {
+			const { schemas } = await import("./api.schemas");
+			const r = schemas["platformContactsGet"].data.safeParse(data);
+			if (!r.success)
+				throw new ContractApiError(-1, `[契约违例] platformContactsGet 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
+		}
 		return data;
 	}
 	catch (e) {
@@ -79,14 +88,23 @@ export async function platformContactsGet(): Promise<unknown> {
 	}
 }
 
-export async function platformContactsDetailGet(): Promise<unknown> {
+export type PlatformContactsDetailGetQuery = z.input<(typeof schemas)["platformContactsDetailGet"]["query"]>;
+export type PlatformContactsDetailGetData = z.infer<(typeof schemas)["platformContactsDetailGet"]["data"]>;
+
+export async function platformContactsDetailGet(query: PlatformContactsDetailGetQuery): Promise<PlatformContactsDetailGetData> {
 	const client = ensureReq();
 	try {
-		const env = await client.get(`_platform/contacts/detail`).json<OjEnvelope<unknown>>();
+		const env = await client.get(`_platform/contacts/detail`, { searchParams: query as Record<string, string | number | boolean> }).json<OjEnvelope<PlatformContactsDetailGetData>>();
 		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
 		if (typeof env.code === "number" && env.code !== 0)
 			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
-		const data = env.data as unknown;
+		const data = env.data as PlatformContactsDetailGetData;
+		if (import.meta.env.DEV) {
+			const { schemas } = await import("./api.schemas");
+			const r = schemas["platformContactsDetailGet"].data.safeParse(data);
+			if (!r.success)
+				throw new ContractApiError(-1, `[契约违例] platformContactsDetailGet 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
+		}
 		return data;
 	}
 	catch (e) {
@@ -402,75 +420,6 @@ export async function platformMarketHistoryGet(): Promise<PlatformMarketHistoryG
 	}
 }
 
-export async function platformSolutionsRoutesGet(): Promise<unknown> {
-	const client = ensureReq();
-	try {
-		const env = await client.get(`_platform/solutions/routes`).json<OjEnvelope<unknown>>();
-		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
-		if (typeof env.code === "number" && env.code !== 0)
-			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
-		const data = env.data as unknown;
-		return data;
-	}
-	catch (e) {
-		throw await toApiError(e);
-	}
-}
-
-export async function platformSolutionsVerifyPost(): Promise<unknown> {
-	const client = ensureReq();
-	try {
-		const env = await client.post(`_platform/solutions/verify`).json<OjEnvelope<unknown>>();
-		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
-		if (typeof env.code === "number" && env.code !== 0)
-			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
-		const data = env.data as unknown;
-		return data;
-	}
-	catch (e) {
-		throw await toApiError(e);
-	}
-}
-
-export async function platformSolutionsVerifyLastGet(): Promise<unknown> {
-	const client = ensureReq();
-	try {
-		const env = await client.get(`_platform/solutions/verify/last`).json<OjEnvelope<unknown>>();
-		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
-		if (typeof env.code === "number" && env.code !== 0)
-			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
-		const data = env.data as unknown;
-		return data;
-	}
-	catch (e) {
-		throw await toApiError(e);
-	}
-}
-
-export type PlatformOrgTreeGetQuery = z.input<(typeof schemas)["platformOrgTreeGet"]["query"]>;
-export type PlatformOrgTreeGetData = z.infer<(typeof schemas)["platformOrgTreeGet"]["data"]>;
-
-export async function platformOrgTreeGet(query: PlatformOrgTreeGetQuery): Promise<PlatformOrgTreeGetData> {
-	const client = ensureReq();
-	try {
-		const env = await client.get(`_platform/org/tree`, { searchParams: query as Record<string, string | number | boolean> }).json<OjEnvelope<PlatformOrgTreeGetData>>();
-		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
-		if (typeof env.code === "number" && env.code !== 0)
-			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
-		const data = env.data as PlatformOrgTreeGetData;
-		if (import.meta.env.DEV) {
-			const { schemas } = await import("./api.schemas");
-			const r = schemas["platformOrgTreeGet"].data.safeParse(data);
-			if (!r.success)
-				throw new ContractApiError(-1, `[契约违例] platformOrgTreeGet 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
-		}
-		return data;
-	}
-	catch (e) {
-		throw await toApiError(e);
-	}
-}
-
 export type PlatformOrgDepartmentsGetQuery = z.input<(typeof schemas)["platformOrgDepartmentsGet"]["query"]>;
 export type PlatformOrgDepartmentsGetData = z.infer<(typeof schemas)["platformOrgDepartmentsGet"]["data"]>;
 
@@ -495,6 +444,30 @@ export async function platformOrgDepartmentsGet(query: PlatformOrgDepartmentsGet
 	}
 }
 
+export type PlatformOrgIsMemberGetQuery = z.input<(typeof schemas)["platformOrgIsMemberGet"]["query"]>;
+export type PlatformOrgIsMemberGetData = z.infer<(typeof schemas)["platformOrgIsMemberGet"]["data"]>;
+
+export async function platformOrgIsMemberGet(query: PlatformOrgIsMemberGetQuery): Promise<PlatformOrgIsMemberGetData> {
+	const client = ensureReq();
+	try {
+		const env = await client.get(`_platform/org/is-member`, { searchParams: query as Record<string, string | number | boolean> }).json<OjEnvelope<PlatformOrgIsMemberGetData>>();
+		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
+		if (typeof env.code === "number" && env.code !== 0)
+			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
+		const data = env.data as PlatformOrgIsMemberGetData;
+		if (import.meta.env.DEV) {
+			const { schemas } = await import("./api.schemas");
+			const r = schemas["platformOrgIsMemberGet"].data.safeParse(data);
+			if (!r.success)
+				throw new ContractApiError(-1, `[契约违例] platformOrgIsMemberGet 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
+		}
+		return data;
+	}
+	catch (e) {
+		throw await toApiError(e);
+	}
+}
+
 export type PlatformOrgMembersGetQuery = z.input<(typeof schemas)["platformOrgMembersGet"]["query"]>;
 export type PlatformOrgMembersGetData = z.infer<(typeof schemas)["platformOrgMembersGet"]["data"]>;
 
@@ -511,30 +484,6 @@ export async function platformOrgMembersGet(query: PlatformOrgMembersGetQuery): 
 			const r = schemas["platformOrgMembersGet"].data.safeParse(data);
 			if (!r.success)
 				throw new ContractApiError(-1, `[契约违例] platformOrgMembersGet 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
-		}
-		return data;
-	}
-	catch (e) {
-		throw await toApiError(e);
-	}
-}
-
-export type PlatformOrgUserGetQuery = z.input<(typeof schemas)["platformOrgUserGet"]["query"]>;
-export type PlatformOrgUserGetData = z.infer<(typeof schemas)["platformOrgUserGet"]["data"]>;
-
-export async function platformOrgUserGet(query: PlatformOrgUserGetQuery): Promise<PlatformOrgUserGetData> {
-	const client = ensureReq();
-	try {
-		const env = await client.get(`_platform/org/user`, { searchParams: query as Record<string, string | number | boolean> }).json<OjEnvelope<PlatformOrgUserGetData>>();
-		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
-		if (typeof env.code === "number" && env.code !== 0)
-			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
-		const data = env.data as PlatformOrgUserGetData;
-		if (import.meta.env.DEV) {
-			const { schemas } = await import("./api.schemas");
-			const r = schemas["platformOrgUserGet"].data.safeParse(data);
-			if (!r.success)
-				throw new ContractApiError(-1, `[契约违例] platformOrgUserGet 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
 		}
 		return data;
 	}
@@ -592,22 +541,117 @@ export async function platformOrgResolvePost(input: { query: PlatformOrgResolveP
 	}
 }
 
-export type PlatformOrgIsMemberGetQuery = z.input<(typeof schemas)["platformOrgIsMemberGet"]["query"]>;
-export type PlatformOrgIsMemberGetData = z.infer<(typeof schemas)["platformOrgIsMemberGet"]["data"]>;
+export type PlatformOrgTreeGetQuery = z.input<(typeof schemas)["platformOrgTreeGet"]["query"]>;
+export type PlatformOrgTreeGetData = z.infer<(typeof schemas)["platformOrgTreeGet"]["data"]>;
 
-export async function platformOrgIsMemberGet(query: PlatformOrgIsMemberGetQuery): Promise<PlatformOrgIsMemberGetData> {
+export async function platformOrgTreeGet(query: PlatformOrgTreeGetQuery): Promise<PlatformOrgTreeGetData> {
 	const client = ensureReq();
 	try {
-		const env = await client.get(`_platform/org/is-member`, { searchParams: query as Record<string, string | number | boolean> }).json<OjEnvelope<PlatformOrgIsMemberGetData>>();
+		const env = await client.get(`_platform/org/tree`, { searchParams: query as Record<string, string | number | boolean> }).json<OjEnvelope<PlatformOrgTreeGetData>>();
 		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
 		if (typeof env.code === "number" && env.code !== 0)
 			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
-		const data = env.data as PlatformOrgIsMemberGetData;
+		const data = env.data as PlatformOrgTreeGetData;
 		if (import.meta.env.DEV) {
 			const { schemas } = await import("./api.schemas");
-			const r = schemas["platformOrgIsMemberGet"].data.safeParse(data);
+			const r = schemas["platformOrgTreeGet"].data.safeParse(data);
 			if (!r.success)
-				throw new ContractApiError(-1, `[契约违例] platformOrgIsMemberGet 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
+				throw new ContractApiError(-1, `[契约违例] platformOrgTreeGet 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
+		}
+		return data;
+	}
+	catch (e) {
+		throw await toApiError(e);
+	}
+}
+
+export type PlatformOrgUserGetQuery = z.input<(typeof schemas)["platformOrgUserGet"]["query"]>;
+export type PlatformOrgUserGetData = z.infer<(typeof schemas)["platformOrgUserGet"]["data"]>;
+
+export async function platformOrgUserGet(query: PlatformOrgUserGetQuery): Promise<PlatformOrgUserGetData> {
+	const client = ensureReq();
+	try {
+		const env = await client.get(`_platform/org/user`, { searchParams: query as Record<string, string | number | boolean> }).json<OjEnvelope<PlatformOrgUserGetData>>();
+		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
+		if (typeof env.code === "number" && env.code !== 0)
+			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
+		const data = env.data as PlatformOrgUserGetData;
+		if (import.meta.env.DEV) {
+			const { schemas } = await import("./api.schemas");
+			const r = schemas["platformOrgUserGet"].data.safeParse(data);
+			if (!r.success)
+				throw new ContractApiError(-1, `[契约违例] platformOrgUserGet 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
+		}
+		return data;
+	}
+	catch (e) {
+		throw await toApiError(e);
+	}
+}
+
+export type PlatformSolutionsRoutesGetData = z.infer<(typeof schemas)["platformSolutionsRoutesGet"]["data"]>;
+
+export async function platformSolutionsRoutesGet(): Promise<PlatformSolutionsRoutesGetData> {
+	const client = ensureReq();
+	try {
+		const env = await client.get(`_platform/solutions/routes`).json<OjEnvelope<PlatformSolutionsRoutesGetData>>();
+		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
+		if (typeof env.code === "number" && env.code !== 0)
+			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
+		const data = env.data as PlatformSolutionsRoutesGetData;
+		if (import.meta.env.DEV) {
+			const { schemas } = await import("./api.schemas");
+			const r = schemas["platformSolutionsRoutesGet"].data.safeParse(data);
+			if (!r.success)
+				throw new ContractApiError(-1, `[契约违例] platformSolutionsRoutesGet 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
+		}
+		return data;
+	}
+	catch (e) {
+		throw await toApiError(e);
+	}
+}
+
+export type PlatformSolutionsVerifyPostQuery = z.input<(typeof schemas)["platformSolutionsVerifyPost"]["query"]>;
+export type PlatformSolutionsVerifyPostData = z.infer<(typeof schemas)["platformSolutionsVerifyPost"]["data"]>;
+
+export async function platformSolutionsVerifyPost(query: PlatformSolutionsVerifyPostQuery): Promise<PlatformSolutionsVerifyPostData> {
+	const client = ensureReq();
+	try {
+		const env = await client.post(`_platform/solutions/verify`, { searchParams: query as Record<string, string | number | boolean> }).json<OjEnvelope<PlatformSolutionsVerifyPostData>>();
+		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
+		if (typeof env.code === "number" && env.code !== 0)
+			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
+		const data = env.data as PlatformSolutionsVerifyPostData;
+		if (import.meta.env.DEV) {
+			const { schemas } = await import("./api.schemas");
+			const r = schemas["platformSolutionsVerifyPost"].data.safeParse(data);
+			if (!r.success)
+				throw new ContractApiError(-1, `[契约违例] platformSolutionsVerifyPost 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
+		}
+		return data;
+	}
+	catch (e) {
+		throw await toApiError(e);
+	}
+}
+
+export type PlatformSolutionsVerifyLastGetQuery = z.input<(typeof schemas)["platformSolutionsVerifyLastGet"]["query"]>;
+export type PlatformSolutionsVerifyLastGetData = z.infer<(typeof schemas)["platformSolutionsVerifyLastGet"]["data"]>;
+
+export async function platformSolutionsVerifyLastGet(query: PlatformSolutionsVerifyLastGetQuery): Promise<PlatformSolutionsVerifyLastGetData> {
+	const client = ensureReq();
+	try {
+		const env = await client.get(`_platform/solutions/verify/last`, { searchParams: query as Record<string, string | number | boolean> }).json<OjEnvelope<PlatformSolutionsVerifyLastGetData>>();
+		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
+		if (typeof env.code === "number" && env.code !== 0)
+			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
+		const data = env.data as PlatformSolutionsVerifyLastGetData;
+		if (import.meta.env.DEV) {
+			const { schemas } = await import("./api.schemas");
+			const r = schemas["platformSolutionsVerifyLastGet"].data.safeParse(data);
+			if (!r.success)
+				throw new ContractApiError(-1, `[契约违例] platformSolutionsVerifyLastGet 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
 		}
 		return data;
 	}

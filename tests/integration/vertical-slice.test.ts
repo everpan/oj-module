@@ -8,7 +8,7 @@
  *  4. ojm build 产物：modules.json 字段完整、integrity 与文件一致、无 blob/data import、
  *     模块内无共享依赖实现代码（react 未被打进模块）。
  *
- * 运行前若产物不存在会自动构建（shell 预构建 + playground ojm build）。
+ * 运行前若产物不存在会自动构建（shell 预构建 + 模板工程模块构建）。
  */
 
 import { execFileSync } from "node:child_process";
@@ -21,10 +21,10 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { buildModules } from "../../packages/cli/src/build";
 import { isSharedDep, SHARED_DEPS } from "../../packages/cli/src/shared-deps";
 import {
-	PLAYGROUND_DIR,
-	PLAYGROUND_DIST_DIR,
 	PROJECT_ROOT,
 	SHELL_DIST_DIR,
+	TEMPLATE_DIR,
+	TEMPLATE_DIST_DIR,
 } from "../helpers/paths";
 
 interface ModuleManifestEntry {
@@ -54,12 +54,12 @@ function resolveShell() {
 	return htmlPath;
 }
 
-function resolvePlayground() {
-	const manifestPath = path.join(PLAYGROUND_DIST_DIR, "modules.json");
+function resolveTemplate() {
+	const manifestPath = path.join(TEMPLATE_DIST_DIR, "modules.json");
 	if (!existsSync(manifestPath)) {
 		// eslint-disable-next-line no-console
-		console.log("[test] 构建 playground 模块（缺失 dist）…");
-		return buildModules(PLAYGROUND_DIR);
+		console.log("[test] 构建模板工程模块（缺失 dist）…");
+		return buildModules(TEMPLATE_DIR);
 	}
 	return Promise.resolve();
 }
@@ -73,7 +73,10 @@ function parseImportmap(html: string): Record<string, string> {
 }
 
 function parseHostChunkName(html: string): string {
-	const m = html.match(/<script type="module"[^>]*src="(\/assets\/[^"]+\.js)"/);
+	// 0.2.53 起宿主入口改为内联早跳脚本：<script data-ojm-entry="/assets/index-*.js">，
+	// 由它再注入 <script type="module" src=…>；旧形态保留兜底。
+	const legacyHost = html.match(/<script type="module"[^>]*src="(\/assets\/[^"]+\.js)"/);
+	const m = html.match(/data-ojm-entry="(\/assets\/[^"]+\.js)"/) ?? legacyHost;
 	if (!m)
 		throw new Error("index.html 未引用宿主 chunk");
 	return m[1];
@@ -125,7 +128,7 @@ describe("p1 垂直切片：importmap 与单例", () => {
 
 	beforeAll(async () => {
 		const htmlPath = resolveShell();
-		await resolvePlayground();
+		await resolveTemplate();
 
 		const html = readFileSync(htmlPath, "utf-8");
 		importmap = parseImportmap(html);
@@ -134,9 +137,9 @@ describe("p1 垂直切片：importmap 与单例", () => {
 		const hostCode = readFileSync(path.join(SHELL_DIST_DIR, hostName), "utf-8");
 		hostSpecifiers = bareSharedSpecifiers(hostCode);
 
-		// 收集 demo 模块（entry + chunks）中出现的共享裸说明符
+		// 收集模板模块（entry + chunks）中出现的共享裸说明符
 		moduleSpecifiers = new Set<string>();
-		const modulesDir = path.join(PLAYGROUND_DIST_DIR, "modules");
+		const modulesDir = path.join(TEMPLATE_DIST_DIR, "modules");
 		for (const file of walkFiles(modulesDir)) {
 			for (const s of bareSharedSpecifiers(readFileSync(file, "utf-8")))
 				moduleSpecifiers.add(s);
@@ -161,7 +164,7 @@ describe("p1 垂直切片：importmap 与单例", () => {
 			expect(resolveViaImportmap(spec, importmap), `宿主 ${spec} 未映射`).not.toBeNull();
 	});
 
-	it("demo 模块的共享裸说明符都能经 importmap 解析", () => {
+	it("模板模块的共享裸说明符都能经 importmap 解析", () => {
 		expect(moduleSpecifiers.size).toBeGreaterThan(0);
 		for (const spec of moduleSpecifiers)
 			expect(resolveViaImportmap(spec, importmap), `模块 ${spec} 未映射`).not.toBeNull();
@@ -182,11 +185,11 @@ describe("p1 垂直切片：importmap 与单例", () => {
 
 describe("p1 垂直切片：ojm build 产物契约", () => {
 	beforeAll(async () => {
-		await resolvePlayground();
+		await resolveTemplate();
 	});
 
 	it("modules.json 字段完整且 integrity 与文件一致", () => {
-		const manifestPath = path.join(PLAYGROUND_DIST_DIR, "modules.json");
+		const manifestPath = path.join(TEMPLATE_DIST_DIR, "modules.json");
 		expect(existsSync(manifestPath)).toBe(true);
 		const manifest = JSON.parse(readFileSync(manifestPath, "utf-8")) as ModuleManifestEntry[];
 		expect(manifest.length).toBeGreaterThan(0);
@@ -197,29 +200,30 @@ describe("p1 垂直切片：ojm build 产物契约", () => {
 			expect(mod.entry).toBeTruthy();
 			expect(mod.integrity).toBeTruthy();
 
-			const entryFile = path.join(PLAYGROUND_DIST_DIR, mod.entry.replace(/^\//, ""));
+			const entryFile = path.join(TEMPLATE_DIST_DIR, mod.entry.replace(/^\//, ""));
 			expect(existsSync(entryFile), `${mod.name} entry 缺失`).toBe(true);
 			expect(sha384(entryFile)).toBe(mod.integrity);
 
 			for (const chunk of mod.chunks ?? []) {
-				const chunkFile = path.join(PLAYGROUND_DIST_DIR, chunk.url.replace(/^\//, ""));
+				const chunkFile = path.join(TEMPLATE_DIST_DIR, chunk.url.replace(/^\//, ""));
 				expect(existsSync(chunkFile), `${mod.name} chunk 缺失`).toBe(true);
 				expect(sha384(chunkFile)).toBe(chunk.integrity);
 			}
 		}
 	});
 
-	it("模块产物无 blob:/data: import", () => {
-		const modulesDir = path.join(PLAYGROUND_DIST_DIR, "modules");
+	it("模块产物无 blob:/data: import（内联 import 会让模块失去 L2 完整性保护）", () => {
+		const modulesDir = path.join(TEMPLATE_DIST_DIR, "modules");
 		for (const file of walkFiles(modulesDir)) {
 			const code = readFileSync(file, "utf-8");
-			expect(code).not.toMatch(/["'](?:blob:|data:)/);
-			expect(code).not.toMatch(/["'](?:blob:|data:)/);
+			// 只查 import 形态：echarts 等内联依赖自带 `data:image/svg+xml` 字面量（toDataURL），
+			// 那是正常运行期字符串，不是 import
+			expect(code).not.toMatch(/(?:from\s*|import\s*\(\s*)["'](?:blob:|data:)/);
 		}
 	});
 
 	it("模块内未打入共享依赖实现（react 未进模块）", () => {
-		const modulesDir = path.join(PLAYGROUND_DIST_DIR, "modules");
+		const modulesDir = path.join(TEMPLATE_DIST_DIR, "modules");
 		for (const file of walkFiles(modulesDir)) {
 			const code = readFileSync(file, "utf-8");
 			// 生产 react 内含此字符串；若模块打进了 react 实现，则会命中

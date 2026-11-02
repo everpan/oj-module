@@ -163,12 +163,19 @@ function topologicalSort(entries: ManifestModuleEntry[], definitions: Map<string
 }
 
 async function mergeI18nResources(definition: ModuleDefinition) {
-	if (!definition.i18n)
-		return;
-
-	for (const [locale, loader] of Object.entries(definition.i18n)) {
-		const resources = await loader();
-		i18next.addResourceBundle(locale, definition.name, resources.default || resources);
+	// 模块自身命名空间（= name）
+	if (definition.i18n) {
+		for (const [locale, loader] of Object.entries(definition.i18n)) {
+			const resources = await loader();
+			i18next.addResourceBundle(locale, definition.name, resources.default || resources);
+		}
+	}
+	// 附加命名空间（多根聚合模块：一个 entry 承载多个业务域，各域沿用原命名空间）
+	for (const [namespace, bundle] of Object.entries(definition.i18nNamespaces ?? {})) {
+		for (const [locale, loader] of Object.entries(bundle)) {
+			const resources = await loader();
+			i18next.addResourceBundle(locale, namespace, resources.default || resources);
+		}
 	}
 }
 

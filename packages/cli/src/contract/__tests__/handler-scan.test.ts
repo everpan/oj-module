@@ -181,3 +181,26 @@ describe("handler-scan · 对账键与契约侧同形（参数路由精确命中
 		expect(pathKey(row.method, row.full)).toBe(pathKey("DELETE", "wiki/{id}"));
 	});
 });
+
+describe("handler-scan · 工厂返回本地对象（const api = { … }; return api）", () => {
+	it("回归：聚合工厂 return 标识符时仍展开动词与嵌套组（solutions/api.ts 形态）", () => {
+		const rows = scan("api.ts", `
+import type { Env } from "./types";
+export function createApi(env: Env) {
+\tconst routes = { async get() {} };
+\tconst verify = {
+\t\tasync post() {},
+\t\tlast: { async get() {} },
+\t};
+\tconst api = { routes, verify };
+\treturn api;
+}
+export default createApi({} as Env);
+`);
+		expect(rows.map(r => pathKey(r.method, handlerAbs(r))).sort()).toEqual([
+			"GET /_platform/market/routes",
+			"GET /_platform/market/verify/last",
+			"POST /_platform/market/verify",
+		]);
+	});
+});

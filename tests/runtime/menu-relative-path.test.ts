@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import { addRouteIdByPath } from "#src/router/utils/add-route-id-by-path";
 import { generateMenuItemsFromRoutes } from "#src/router/utils/generate-menu-items-from-routes";
-import { PLAYGROUND_DIR } from "../helpers/paths";
+import { TEMPLATE_DIR } from "../helpers/paths";
 
 /**
  * 菜单 key 必须是可导航的绝对路径（契约）。
@@ -70,12 +70,12 @@ describe("菜单生成器：相对 path 解析为绝对路径", () => {
 		expect(nested?.children?.[0]?.key).toBe("/a/b/c");
 	});
 
-	it("仓库 demo 模块的相对子路由生成绝对 key（防回归）", async () => {
-		// 直接读 playground demo entry 源码校验其相对 path 声明仍在，
-		// 生成器必须对其产出可导航 key
+	it("模板模块的根路由为绝对路径（多根聚合不得依赖 routePrefix 改写）", async () => {
+		// 多根模块里各根必须是绝对路径：相对根会被挂到 routePrefix 命名空间下，
+		// URL 与菜单 key 都会漂移（详见 module-loader::namespaceRelativeRoots）
 		const { readFileSync } = await import("node:fs");
-		const source = readFileSync(path.join(PLAYGROUND_DIR, "web/src/demo/entry.ts"), "utf-8");
-		expect(source).toContain("path: \"detail\"");
+		const source = readFileSync(path.join(TEMPLATE_DIR, "src/app/web/home/routes.ts"), "utf-8");
+		expect(source).toContain("path: \"/home\"");
 
 		const routes = [
 			{

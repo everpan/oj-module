@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { PLAYGROUND_DIR, PROJECT_ROOT } from "../helpers/paths";
+import { PROJECT_ROOT, TEMPLATE_DIR } from "../helpers/paths";
 
 /**
  * 构建期全局的自包含性（A26）。
@@ -89,7 +89,7 @@ describe("构建期全局自包含（A26）", () => {
 	});
 
 	it("模块工程无需复制构建期 define（B9 解除）", () => {
-		const config = path.join(PLAYGROUND_DIR, "vite.config.ts");
+		const config = path.join(TEMPLATE_DIR, "vite.config.ts");
 		expect(
 			fs.existsSync(config),
 			"外部模块工程不应需要 vite 配置（ojm build 以编程式 build() 驱动）",

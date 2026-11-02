@@ -4,8 +4,9 @@ import type { IrEndpoint } from "./ir";
 import type { OpenApiDoc } from "./openapi-ir";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, relative, sep } from "node:path";
-import { apiModuleRoots, apiModulesSrc, apiSrcOf, legacyApiModuleRoots, resolveConfigPath, tryResolveLayout, webSrcOf } from "../layout";
+import { apiModuleRoots, apiModulesSrc, apiSrcOf, legacyApiModuleRoots, resolveConfigPath, tryResolveLayout } from "../layout";
 import { readOjAnonymousPaths } from "../oj-config";
+import { clientDirOf, loadClientOwners } from "./client-path";
 import { emitClient } from "./emit-client";
 import { planStubWrites } from "./emit-stub";
 import { handlerAbs, implementedRouteKeys, pathKey, scanHandlerFile, VERB_OF, walkApiFiles } from "./handler-scan";
@@ -308,11 +309,10 @@ async function checkFromOpenapi(openapiPath: string, cwd: string, _exemption: Ap
 	// 契约工具的扫描单元是「模块 api 根」而不是整棵源码树：module-root 布局里
 	// `src/<name>/api` 的 `api` 段不属于路由，且 `web/__client/api.ts` 不能被当 handler。
 	const roots = layout ? apiModuleRoots(layout) : legacyApiModuleRoots(cwd);
-	const clientDirOf = (module: string) =>
-		join(layout ? webSrcOf(layout, module) : join(cwd, "web/src", module), "__client");
+	const owners = await loadClientOwners(layout?.projectRoot ?? cwd);
 	for (const [module, eps] of groupIrByModule(ir)) {
-		const client = emitClient(eps, { target: "module", module });
-		const clientDir = clientDirOf(module);
+		const client = emitClient(eps, { target: "module", module, owner: owners[module] });
+		const clientDir = clientDirOf(layout, cwd, module, owners);
 		for (const [file, content] of [["api.ts", client["api.ts"]], ["api.schemas.ts", client["api.schemas.ts"]]] as const) {
 			const p = join(clientDir, file);
 			if (!existsSync(p) || readFileSync(p, "utf8") !== content)

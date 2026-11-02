@@ -4,6 +4,29 @@
 import { z } from "@oj-module/runtime";
 
 export const schemas = {
+	"platformContactsGet": {
+		query: z.object({
+	"keyword": z.string().min(2),
+	"limit": z.number().optional()
+}),
+		data: z.array(z.object({
+	"id": z.number(),
+	"username": z.string(),
+	"display_name": z.string().nullable()
+})),
+	},
+	"platformContactsDetailGet": {
+		query: z.object({
+	"id": z.number()
+}),
+		data: z.object({
+	"id": z.number(),
+	"username": z.string(),
+	"display_name": z.string().nullable(),
+	"email": z.string().nullable(),
+	"avatar_base64": z.string().nullable()
+}),
+	},
 	"platformMarketInstallPost": {
 		body: z.object({
 	"source": z.enum(["cdn", "file"]),
@@ -102,19 +125,6 @@ export const schemas = {
 
 }).catchall(z.unknown())),
 	},
-	"platformOrgTreeGet": {
-		query: z.object({
-	"scope": z.enum(["self", "all"]).optional()
-}),
-		data: z.array(z.object({
-	"id": z.number(),
-	"parentId": z.number().nullable(),
-	"name": z.string().nullable(),
-	"nameEn": z.string().nullable().optional(),
-	"orderNo": z.number(),
-	"memberCount": z.number()
-})),
-	},
 	"platformOrgDepartmentsGet": {
 		query: z.object({
 	"scope": z.enum(["self", "all"]).optional(),
@@ -136,6 +146,16 @@ export const schemas = {
 	"page": z.number(),
 	"size": z.number(),
 	"truncated": z.boolean()
+}),
+	},
+	"platformOrgIsMemberGet": {
+		query: z.object({
+	"scope": z.enum(["self", "all"]).optional(),
+	"uid": z.number().optional(),
+	"dept": z.number()
+}),
+		data: z.object({
+	"isMember": z.boolean()
 }),
 	},
 	"platformOrgMembersGet": {
@@ -160,24 +180,6 @@ export const schemas = {
 	"page": z.number(),
 	"size": z.number(),
 	"truncated": z.boolean()
-}),
-	},
-	"platformOrgUserGet": {
-		query: z.object({
-	"scope": z.enum(["self", "all"]).optional(),
-	"uid": z.number().optional()
-}),
-		data: z.object({
-	"userId": z.number(),
-	"username": z.string(),
-	"displayName": z.string().nullable().optional(),
-	"position": z.string().nullable(),
-	"mainDeptId": z.number().nullable(),
-	"mainDeptPath": z.array(z.string()),
-	"departments": z.array(z.object({
-	"deptId": z.number(),
-	"deptPath": z.array(z.string())
-}))
 }),
 	},
 	"platformOrgPickerGet": {
@@ -218,14 +220,76 @@ export const schemas = {
 	"userIds": z.array(z.number())
 }),
 	},
-	"platformOrgIsMemberGet": {
+	"platformOrgTreeGet": {
+		query: z.object({
+	"scope": z.enum(["self", "all"]).optional()
+}),
+		data: z.array(z.object({
+	"id": z.number(),
+	"parentId": z.number().nullable(),
+	"name": z.string().nullable(),
+	"nameEn": z.string().nullable().optional(),
+	"orderNo": z.number(),
+	"memberCount": z.number()
+})),
+	},
+	"platformOrgUserGet": {
 		query: z.object({
 	"scope": z.enum(["self", "all"]).optional(),
-	"uid": z.number().optional(),
-	"dept": z.number()
+	"uid": z.number().optional()
 }),
 		data: z.object({
-	"isMember": z.boolean()
+	"userId": z.number(),
+	"username": z.string(),
+	"displayName": z.string().nullable().optional(),
+	"position": z.string().nullable(),
+	"mainDeptId": z.number().nullable(),
+	"mainDeptPath": z.array(z.string()),
+	"departments": z.array(z.object({
+	"deptId": z.number(),
+	"deptPath": z.array(z.string())
+}))
+}),
+	},
+	"platformSolutionsRoutesGet": {
+		data: z.array(z.object({
+	"path": z.string(),
+	"module": z.string(),
+	"category": z.enum(["main", "admin", "hidden"]),
+	"order": z.number(),
+	"title_key": z.string().nullable(),
+	"required_permission": z.string().nullable(),
+	"enabled": z.boolean()
+})),
+	},
+	"platformSolutionsVerifyPost": {
+		query: z.object({
+	"name": z.string().min(1)
+}),
+		data: z.object({
+	"ok": z.boolean(),
+	"checks": z.array(z.object({
+	"id": z.string(),
+	"severity": z.enum(["error", "warn", "info"]),
+	"subject": z.string(),
+	"advise_key": z.string()
+})),
+	"advise": z.array(z.string())
+}),
+	},
+	"platformSolutionsVerifyLastGet": {
+		query: z.object({
+	"name": z.string().min(1)
+}),
+		data: z.object({
+	"ok": z.boolean(),
+	"checks": z.array(z.object({
+	"id": z.string(),
+	"severity": z.enum(["error", "warn", "info"]),
+	"subject": z.string(),
+	"advise_key": z.string()
+})),
+	"advise": z.array(z.string())
 }),
 	},
 };

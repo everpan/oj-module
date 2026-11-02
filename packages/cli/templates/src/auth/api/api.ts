@@ -9,6 +9,30 @@ import { createSession } from "./_shared/session";
 // 模块级禁止 createSession()：oj build 的 introspect 在无 jwt 的空沙箱里评估模块（§9.4），
 // runtimeDeps() 读 g.jwt 会直接炸构建——session 在 handler 内按需构造（无状态，纯闭包）。
 
+/** 会话票据（TokenBundle）：登录 / 刷新 / 改密三处同形（D14 + AC1-27） */
+const tokenBundle = {
+	type: "object",
+	required: ["access_token", "refresh_token", "expires_in", "restricted", "user"],
+	properties: {
+		access_token: { type: "string" },
+		refresh_token: { type: "string" },
+		expires_in: { type: "number" },
+		restricted: { type: "boolean" },
+		user: {
+			type: "object",
+			required: ["id", "username", "display_name", "avatar_base64", "must_change", "roles"],
+			properties: {
+				id: { type: "number" },
+				username: { type: "string" },
+				display_name: { type: ["string", "null"] },
+				avatar_base64: { type: ["string", "null"] },
+				must_change: { type: "boolean" },
+				roles: { type: "array", items: { type: "string" } },
+			},
+		},
+	},
+};
+
 const login = {
 	// POST /api/auth/login —— 本地登录（D14：先验口令后查禁用，三种失败统一 401）。
 	// B5/AC1-26：(IP, username) 连败阈值 → 429 + 指数 backoff；粗粒度 per-IP 窗口防撞库扫描。
@@ -72,5 +96,40 @@ password.put.schema = {
 		},
 	},
 };
+
+// 入参：本地账号口令（两种失败统一 401，不泄露账号状态——D14）
+login.post.schema = {
+	body: {
+		type: "object",
+		required: ["username", "password"],
+		properties: {
+			username: { type: "string", minLength: 1 },
+			password: { type: "string", minLength: 1 },
+		},
+	},
+};
+login.post.response = tokenBundle;
+
+// 登出：吊销给定 refresh 串（无业务返回体）
+logout.post.schema = {
+	body: {
+		type: "object",
+		required: ["refresh_token"],
+		properties: { refresh_token: { type: "string", minLength: 1 } },
+	},
+};
+logout.post.response = { type: "null" };
+
+// 刷新：旧串轮换（reuse 检测在 service 内）
+refresh.post.schema = {
+	body: {
+		type: "object",
+		required: ["refresh_token"],
+		properties: { refresh_token: { type: "string", minLength: 1 } },
+	},
+};
+refresh.post.response = tokenBundle;
+
+password.put.response = tokenBundle;
 
 export default { login, logout, refresh, password };

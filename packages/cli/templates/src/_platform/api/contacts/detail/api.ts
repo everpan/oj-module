@@ -4,7 +4,7 @@ import { contactDetail } from "../../_shared/service/domain/contacts";
 import { assertTenantSelf } from "../../_shared/service/infra/access";
 import { rateLimit } from "../../_shared/service/infra/rate";
 
-export default {
+const handler = {
 	async get() {
 		await respond(async () => {
 			const uid = http.user?.id;
@@ -19,3 +19,27 @@ export default {
 		});
 	},
 };
+
+// 入参：id 必填（详情按 id 取单条）
+handler.get.schema = {
+	query: {
+		type: "object",
+		required: ["id"],
+		properties: { id: { type: "number" } },
+	},
+};
+
+// 出参：详情比目录多 email/avatar（安全评审 P2：仅详情端点给）
+handler.get.response = {
+	type: "object",
+	required: ["id", "username", "display_name", "email", "avatar_base64"],
+	properties: {
+		id: { type: "number" },
+		username: { type: "string" },
+		display_name: { type: ["string", "null"] },
+		email: { type: ["string", "null"] },
+		avatar_base64: { type: ["string", "null"] },
+	},
+};
+
+export default handler;

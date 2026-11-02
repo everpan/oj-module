@@ -101,14 +101,20 @@ include:
   - src/personal-center/api
   - src/system/api
   - src/web/api
-  # —— web 前端模块（home 只列页面源码，__client 见顶部说明）——
+  # —— web 前端模块 ——
   - src/_platform/web
   - src/auth/web
-  - src/home/web/entry.ts
-  - src/home/web/locales
-  - src/home/web/pages
-  - src/login/web
-  - src/notification/web
+  # 框架内置页面聚合为一个多根模块（首页/登录/个人中心/通知/系统管理）。
+  # home 只列 routes/locales/pages：其 api 模块是 demo-only 不进脚手架，__client
+  # 留着会指向不存在的端点（见顶部说明），故逐子路径收录而不是整棵 src/app/web。
+  - src/app/web/entry.ts
+  - src/app/web/home/routes.ts
+  - src/app/web/home/locales
+  - src/app/web/home/pages
+  - src/app/web/login
+  - src/app/web/notification
+  - src/app/web/personal-center
+  - src/app/web/system
   # 解决方案市场：默认第一方能力。逐子路径收录——__tests__ 不进脚手架
   # （用户工程无 web 侧 vitest 基建，拷了是死文件）
   - src/oj-market/web/entry.ts
@@ -119,6 +125,4 @@ include:
   - src/oj-market/web/locales
   - src/oj-market/web/pages
   - src/oj-market/web/utils
-  - src/personal-center/web
-  - src/system/web
   - src/web/web

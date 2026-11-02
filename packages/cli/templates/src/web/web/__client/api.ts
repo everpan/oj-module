@@ -64,14 +64,22 @@ async function toApiError(e: unknown): Promise<unknown> {
 	return e;
 }
 
-export async function webGetAsyncRoutesGet(): Promise<unknown> {
+export type WebGetAsyncRoutesGetData = z.infer<(typeof schemas)["webGetAsyncRoutesGet"]["data"]>;
+
+export async function webGetAsyncRoutesGet(): Promise<WebGetAsyncRoutesGetData> {
 	const client = ensureReq();
 	try {
-		const env = await client.get(`web/get-async-routes`).json<OjEnvelope<unknown>>();
+		const env = await client.get(`web/get-async-routes`).json<OjEnvelope<WebGetAsyncRoutesGetData>>();
 		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
 		if (typeof env.code === "number" && env.code !== 0)
 			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
-		const data = env.data as unknown;
+		const data = env.data as WebGetAsyncRoutesGetData;
+		if (import.meta.env.DEV) {
+			const { schemas } = await import("./api.schemas");
+			const r = schemas["webGetAsyncRoutesGet"].data.safeParse(data);
+			if (!r.success)
+				throw new ContractApiError(-1, `[契约违例] webGetAsyncRoutesGet 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
+		}
 		return data;
 	}
 	catch (e) {
@@ -79,14 +87,22 @@ export async function webGetAsyncRoutesGet(): Promise<unknown> {
 	}
 }
 
-export async function webHelloGet(): Promise<unknown> {
+export type WebHelloGetData = z.infer<(typeof schemas)["webHelloGet"]["data"]>;
+
+export async function webHelloGet(): Promise<WebHelloGetData> {
 	const client = ensureReq();
 	try {
-		const env = await client.get(`web/hello`).json<OjEnvelope<unknown>>();
+		const env = await client.get(`web/hello`).json<OjEnvelope<WebHelloGetData>>();
 		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
 		if (typeof env.code === "number" && env.code !== 0)
 			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
-		const data = env.data as unknown;
+		const data = env.data as WebHelloGetData;
+		if (import.meta.env.DEV) {
+			const { schemas } = await import("./api.schemas");
+			const r = schemas["webHelloGet"].data.safeParse(data);
+			if (!r.success)
+				throw new ContractApiError(-1, `[契约违例] webHelloGet 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
+		}
 		return data;
 	}
 	catch (e) {
@@ -94,14 +110,22 @@ export async function webHelloGet(): Promise<unknown> {
 	}
 }
 
-export async function webUserInfoGet(): Promise<unknown> {
+export type WebUserInfoGetData = z.infer<(typeof schemas)["webUserInfoGet"]["data"]>;
+
+export async function webUserInfoGet(): Promise<WebUserInfoGetData> {
 	const client = ensureReq();
 	try {
-		const env = await client.get(`web/user-info`).json<OjEnvelope<unknown>>();
+		const env = await client.get(`web/user-info`).json<OjEnvelope<WebUserInfoGetData>>();
 		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
 		if (typeof env.code === "number" && env.code !== 0)
 			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
-		const data = env.data as unknown;
+		const data = env.data as WebUserInfoGetData;
+		if (import.meta.env.DEV) {
+			const { schemas } = await import("./api.schemas");
+			const r = schemas["webUserInfoGet"].data.safeParse(data);
+			if (!r.success)
+				throw new ContractApiError(-1, `[契约违例] webUserInfoGet 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
+		}
 		return data;
 	}
 	catch (e) {

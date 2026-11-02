@@ -167,7 +167,7 @@ async function listMigrationFiles(env: SolutionsEnv, name: string, version: stri
 }
 
 export function createSolutionsApi(env: SolutionsEnv) {
-	return {
+	const api = {
 		// GET /api/_platform/solutions/routes —— 前端归并数据源（登录即可）。
 		routes: {
 			async get() {
@@ -217,6 +217,65 @@ export function createSolutionsApi(env: SolutionsEnv) {
 			},
 		},
 	};
+
+	// ---- 契约（v0.1.72：入参 .schema / 出参平级 .response）----
+	// 路由行出参：SolutionRouteRow（前端归并与深检共用形状）
+	const routeRow = {
+		type: "object",
+		required: ["path", "module", "category", "order", "title_key", "required_permission", "enabled"],
+		properties: {
+			path: { type: "string" },
+			module: { type: "string" },
+			category: { type: "string", enum: ["main", "admin", "hidden"] },
+			order: { type: "number" },
+			title_key: { type: ["string", "null"] },
+			required_permission: { type: ["string", "null"] },
+			enabled: { type: "boolean" },
+		},
+	};
+	api.routes.get.response = { type: "array", items: routeRow };
+
+	// 深检报告出参：VerifyReport（ok/checks/advise）
+	const verifyReport = {
+		type: "object",
+		required: ["ok", "checks", "advise"],
+		properties: {
+			ok: { type: "boolean" },
+			checks: {
+				type: "array",
+				items: {
+					type: "object",
+					required: ["id", "severity", "subject", "advise_key"],
+					properties: {
+						id: { type: "string" },
+						severity: { type: "string", enum: ["error", "warn", "info"] },
+						subject: { type: "string" },
+						advise_key: { type: "string" },
+					},
+				},
+			},
+			advise: { type: "array", items: { type: "string" } },
+		},
+	};
+	// verify：name 必填（端点门，缺参 400）
+	api.verify.post.schema = {
+		query: {
+			type: "object",
+			required: ["name"],
+			properties: { name: { type: "string", minLength: 1 } },
+		},
+	};
+	api.verify.post.response = verifyReport;
+	api.verify.last.get.schema = {
+		query: {
+			type: "object",
+			required: ["name"],
+			properties: { name: { type: "string", minLength: 1 } },
+		},
+	};
+	api.verify.last.get.response = verifyReport;
+
+	return api;
 }
 
 export default createSolutionsApi(solutionsEnv());

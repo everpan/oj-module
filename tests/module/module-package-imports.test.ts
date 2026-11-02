@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { MODULES_DIR, PLAYGROUND_DIR, PROJECT_ROOT } from "../helpers/paths";
+import { MODULES_DIR, PROJECT_ROOT, TEMPLATE_DIR } from "../helpers/paths";
 
 /**
  * P3.2 包名化契约（设计文档 D3）：模块工程只允许
@@ -29,9 +29,9 @@ function collectTsFiles(dir: string, out: string[] = []): string[] {
 }
 
 describe("模块包名化（P3.2 / D3）", () => {
-	it("modules 与 playground 模块源码零 #src import", () => {
+	it("modules 与模板模块源码零 #src import", () => {
 		const offenders: string[] = [];
-		for (const dir of [MODULES_DIR, path.join(PLAYGROUND_DIR, "web")]) {
+		for (const dir of [MODULES_DIR, path.join(TEMPLATE_DIR, "src")]) {
 			for (const file of collectTsFiles(dir)) {
 				if (fs.readFileSync(file, "utf-8").includes("from \"#src/")) {
 					offenders.push(file);
@@ -43,7 +43,7 @@ describe("模块包名化（P3.2 / D3）", () => {
 
 	it("每个模块 entry 均从包名导入框架契约", () => {
 		const missing: string[] = [];
-		for (const dir of [MODULES_DIR, path.join(PLAYGROUND_DIR, "web")]) {
+		for (const dir of [MODULES_DIR, path.join(TEMPLATE_DIR, "src")]) {
 			for (const name of fs.readdirSync(dir)) {
 				const entry = path.join(dir, name, "entry.ts");
 				if (fs.existsSync(entry) && !fs.readFileSync(entry, "utf-8").includes(RUNTIME_PACKAGE)) {

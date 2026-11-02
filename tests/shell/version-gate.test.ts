@@ -3,7 +3,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { checkSharedVersions, readHostVersions, validateSharedVersions } from "../../packages/cli/src/versions";
-import { PLAYGROUND_DIR, SHELL_DIST_DIR } from "../helpers/paths";
+import { SHELL_DIST_DIR, TEMPLATE_DIR } from "../helpers/paths";
 
 /**
  * P4.5 / C4 / D12：版本矩阵门禁。
@@ -54,21 +54,21 @@ describe("validateSharedVersions 纯校验（P4.5 / C4）", () => {
 });
 
 describe("checkSharedVersions 集成（P4.5）", () => {
-	it("playground（monorepo 安装版本与宿主同源）通过", () => {
-		expect(() => checkSharedVersions(PLAYGROUND_DIR, SHELL_DIST_DIR)).not.toThrow();
+	it("模板工程（monorepo 安装版本与宿主同源）通过", () => {
+		expect(() => checkSharedVersions(TEMPLATE_DIR, SHELL_DIST_DIR)).not.toThrow();
 	});
 
 	it("宿主缺 versions.json 显式报错（防止静默跳过门禁）", () => {
-		expect(() => checkSharedVersions(PLAYGROUND_DIR, path.join(SHELL_DIST_DIR, "nonexistent")))
+		expect(() => checkSharedVersions(TEMPLATE_DIR, path.join(SHELL_DIST_DIR, "nonexistent")))
 			.toThrow();
 	});
 });
 
 describe("门禁与实际安装一致性（P4.5）", () => {
-	it("playground node_modules 中 react 实际版本与宿主一致", () => {
+	it("模板工程 node_modules 中 react 实际版本与宿主一致", () => {
 		const host = readHostVersions(SHELL_DIST_DIR);
 		const installed = JSON.parse(
-			fs.readFileSync(path.join(PLAYGROUND_DIR, "node_modules/react/package.json"), "utf-8"),
+			fs.readFileSync(path.join(TEMPLATE_DIR, "node_modules/react/package.json"), "utf-8"),
 		);
 		expect(installed.version).toBe(host.react);
 	});

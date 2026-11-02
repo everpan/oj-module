@@ -12,7 +12,6 @@ packages:
   - docs
   - packages/*
   - packages/cli/templates
-  - apps/*
 
 allowBuilds:
   esbuild: true

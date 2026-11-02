@@ -115,7 +115,7 @@ describe("templates 租户定性（A 租户表 / B 共享表）", () => {
 		expect(unknown).toEqual([]);
 	});
 
-	it("t-4 28 张表的 A/B 分组与方案 v3 §5.2 一致（新增表须先定性）", () => {
+	it("t-4 27 张表的 A/B 分组与方案 v3 §5.2 一致（新增表须先定性）", () => {
 		const { tables } = loadSchemaTables();
 		const shared = [...tables].filter(([, d]) => d.tenant === false).map(([n]) => n).sort();
 		// Phase 0 落地 21 张（11 A + 10 B）；Phase 1 加企微三表，全部 B 组（D9：查它们时必然还没有租户上下文）
@@ -124,7 +124,8 @@ describe("templates 租户定性（A 租户表 / B 共享表）", () => {
 		// auth/0002 加 wecom_sync_job / wecom_sync_lock 两张，同属 A 组：同步只在调用方自己的租户内跑
 		// （D7 不接受 corpId 参数），故不进 shared_allow——跨租户读元数据那条另走显式 tenant_id 的裸 SQL。
 		// 改这张表清单 = 改租户隔离边界，必须同步 config.yaml 的 tenant.shared_allow（t-2/t-3 会把关）。
-		expect(tables.size).toBe(28);
+		// 2026-11-02 demo 模块下线（ecc7b35e）删掉 demo/api/schema.yaml 的 todos 表，28 → 27。
+		expect(tables.size).toBe(27);
 		expect(shared).toEqual([
 			"_oj_migrations",
 			"market_history",

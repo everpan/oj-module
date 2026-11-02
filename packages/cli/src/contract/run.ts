@@ -8,7 +8,8 @@ import { basename, dirname, join } from "node:path";
 import process from "node:process";
 import { promisify } from "node:util";
 import { stringify as stringifyYaml } from "yaml";
-import { apiModuleRoots, apiModulesSrc, apiSrcOf, legacyApiModuleRoots, scanModules, tryResolveLayout, webSrcOf } from "../layout";
+import { apiModuleRoots, apiModulesSrc, apiSrcOf, legacyApiModuleRoots, scanModules, tryResolveLayout } from "../layout";
+import { clientDirOf, loadClientOwners } from "./client-path";
 import { emitClient } from "./emit-client";
 import { applyStubWrites, planStubWrites } from "./emit-stub";
 import { implementedRouteKeys } from "./handler-scan";
@@ -83,10 +84,11 @@ async function runFromOpenapi(openapiPath: string, cwd: string, result: RunResul
 	const ir = irFromOpenapi(doc, { rawPaths });
 	const byModule = groupIrByModule(ir);
 	const layout = tryResolveLayout(cwd);
+	const owners = await loadClientOwners(layout?.projectRoot ?? cwd);
 	result.contracts += byModule.size;
 	for (const [module, eps] of byModule) {
-		const client = emitClient(eps, { target: "module", module });
-		const clientDir = join(layout ? webSrcOf(layout, module) : join(cwd, "web/src", module), "__client");
+		const client = emitClient(eps, { target: "module", module, owner: owners[module] });
+		const clientDir = clientDirOf(layout, cwd, module, owners);
 		writeIfChanged(join(clientDir, "api.ts"), client["api.ts"], result);
 		writeIfChanged(join(clientDir, "api.schemas.ts"), client["api.schemas.ts"], result);
 	}

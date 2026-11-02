@@ -137,6 +137,11 @@ notifications.read.post.schema = {
 		properties: { id: { type: "string" } },
 	},
 };
+notifications.read.post.response = { type: "null" };
+
+// read-all / clear：无入参、无返回体（json.ok(null)）——只声明出参，入参留空。
+notifications["read-all"].post.response = { type: "null" };
+notifications.clear.post.response = { type: "null" };
 
 // POST /api/notification/push —— 给指定用户推一条按人通知（发射原语 HTTP 入口）。
 // 真正逻辑在 _shared/notify.pushNotice（任一后端模块也可直接 import 调用，无需走 HTTP）。
@@ -239,6 +244,12 @@ const broadcast = {
 	},
 };
 
+push.post.response = {
+	type: "object",
+	required: ["id"],
+	properties: { id: { type: "string" } },
+};
+
 broadcast.post.schema = {
 	body: {
 		type: "object",
@@ -251,6 +262,12 @@ broadcast.post.schema = {
 			category: { type: "string", enum: ["notice", "pm", "mention"] },
 		},
 	},
+};
+
+broadcast.post.response = {
+	type: "object",
+	required: ["id"],
+	properties: { id: { type: "string" } },
 };
 
 export default { notifications, push, "push-broadcast": broadcast };

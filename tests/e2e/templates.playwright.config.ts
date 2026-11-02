@@ -4,8 +4,8 @@ import { defineConfig } from "@playwright/test";
 
 /**
  * 模板工程（packages/cli/templates）专属 e2e：通知中心/铃铛互动/我的资料入库等
- * 模板形态特性。与主 config（layout=playground、api=playground-oj）分文件，
- * 避免三者抢 5174 端口——本套件与主套件不要并行跑。
+ * 模板形态特性。2026-11-02 起这是**唯一**的 e2e 套件（apps/playground* 下线），
+ * 跑前确认没有其他服务占用 5174。
  *
  * globalSetup 负责 admin 夹具归一（口令/must_change/限流），详见 fixtures/enter-template-app.ts。
  */

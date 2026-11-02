@@ -49,4 +49,6 @@ handler.post.schema = {
 	},
 };
 
+handler.post.response = { type: "null" };
+
 export default handler;

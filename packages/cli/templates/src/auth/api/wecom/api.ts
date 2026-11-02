@@ -320,6 +320,29 @@ ticket.post.schema = {
 		},
 	},
 };
+// 出参：TicketBundle（issueExternal 签发，同 TokenBundle）
+ticket.post.response = {
+	type: "object",
+	required: ["access_token", "refresh_token", "expires_in", "restricted", "user"],
+	properties: {
+		access_token: { type: "string" },
+		refresh_token: { type: "string" },
+		expires_in: { type: "number" },
+		restricted: { type: "boolean" },
+		user: {
+			type: "object",
+			required: ["id", "username", "display_name", "avatar_base64", "must_change", "roles"],
+			properties: {
+				id: { type: "number" },
+				username: { type: "string" },
+				display_name: { type: ["string", "null"] },
+				avatar_base64: { type: ["string", "null"] },
+				must_change: { type: "boolean" },
+				roles: { type: "array", items: { type: "string" } },
+			},
+		},
+	},
+};
 
 const event = {
 	// 企微后台「保存回调 URL」时会 GET 一次：解出 echostr 后**原样明文回**（不套信封、不加引号）。

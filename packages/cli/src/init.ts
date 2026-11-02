@@ -240,6 +240,17 @@ export async function initProject(destDir: string, opts: InitOptions = {}): Prom
 	//     与 pnpm-workspace.yaml 同型，改由 init 现场生成
 	ensureGitignore(destDir, report);
 
+	// 5d) 旧布局冲突提示：0.2.54 起 home/login/personal-center/notification/system 的
+	//     web 侧聚合成 src/app/web 多根模块。init 只补缺不删除——老工程重跑 init 会
+	//     同时留下旧目录，扫描后同名路由注册两遍（菜单重复、行为不一致）。
+	const mergedEntry = path.join(destDir, "src", "app", "web", "entry.ts");
+	if (fs.existsSync(mergedEntry)) {
+		const leftovers = ["home", "login", "personal-center", "notification", "system"]
+			.filter(name => fs.existsSync(path.join(destDir, "src", name, "web", "entry.ts")));
+		if (leftovers.length > 0)
+			report.warnings.push(`检测到旧布局的前端模块目录（${leftovers.map(n => `src/${n}/web`).join("、")}）与新的聚合模块 src/app/web 并存——路由会重复注册。请手工删除这些旧 web 目录（其 api 侧保留）。`);
+	}
+
 	console.log(`[ojm] init 完成：${destDir}`);
 	console.log(`[ojm]   新增 ${report.created.length} 项，跳过（已存在）${report.skipped.length} 项`);
 	for (const item of report.skipped)

@@ -7,6 +7,48 @@
 
 ## [Unreleased]
 
+## [0.2.54] - 2026-11-02
+
+本轮把脚手架「收敛成一个应用」：模板的五个框架内置模块（首页 / 登录 / 个人中心 / 通知 /
+系统管理）合并为**一个多根模块** `src/app/web`——一个 `entry.ts` 承载多个顶层路由，
+各根仍是独立一级菜单，URL / 菜单顺序 / i18n key 全部不变；同时补齐了模板全部接口的
+`.schema` + `.response` 契约，并清理了两套 `apps/playground*` 手工靶场。
+
+**升级提示（老工程）**：`ojm init` 只补缺不删除。重跑 init 后会同时存在旧的
+`src/<name>/web` 与新 `src/app/web`，同名路由会注册两遍——init 会打印告警，请手工删除
+这五个旧 `web` 目录（`src/<name>/api` 保留）。新工程无此问题。
+
+### Added
+
+- **多根模块 i18n**（`i18nNamespaces`）：一个 entry 可登记多个命名空间，聚合模块沿用各根
+  原命名空间（`t("system:menu.users")` / `useTranslation("system")` 零改动）。
+- **`web.config.ts` 的 `clientOwners`**：api 前缀 → 承载其 `__client` 的 web 模块。生成物落
+  `src/<归属>/web/<api 前缀>/__client`（页面相对导入不变），生成 client 的认领护栏改为
+  对比归属模块（`MODULE_OWNER`）；缺省行为与生成物字节保持不变。
+- **模板接口契约全覆盖**：86 个端点全部声明入参 `.schema` 与出参 `.response`，`openapi.json`
+  与 `__client` 同步重产（4 个 302 / 裸 body 端点按规范不声明 response）。
+
+### Changed
+
+- **模板模块聚合**：`home` / `login` / `personal-center` / `notification` / `system` 的 web 侧
+  合并为 `src/app/web`（多根，按 `handle.order` 排菜单）；`system` 的模块级 `requiredRoles`
+  下移到 `/system` 根路由的 `handle.roles`（菜单可见性不变）。`src/app/web` 内按根分目录
+  （`<root>/routes.ts` + `pages/` + `__client/`）。`oj-market` 保持独立模块。
+- **`ojm api` stub 规划**：工厂 `return` 本地对象（`const api = { routes, verify }; return api`）
+  现在能正确识别为已实现路由，不再生成重复 stub（solutions 聚合形态）。
+
+### Removed
+
+- **`apps/playground` 与 `apps/playground-oj`**：templates 出现前的手工靶场（各存一份模块源码
+  副本）。测试与 e2e 一律改用 `packages/cli/templates`；`test:e2e` 只剩模板套件。
+- 模板 `src/<name>/web` 的五个旧目录（内容已迁入 `src/app/web/<name>`）。
+
+### Fixed
+
+- `tests/cli/cli-build` 等仍以 playground 为靶场的用例改指模板工程；`ojm build` 产物契约
+  （单文件 / 共享依赖 external / modules.json integrity）覆盖聚合模块。
+
+
 ## [0.2.51] - 2026-11-02
 
 本轮补上「企业接进来之后**谁来管**」这一环。此前企业租户是隐式具象化的，里面只有 JIT 出来的

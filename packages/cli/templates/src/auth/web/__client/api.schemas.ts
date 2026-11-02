@@ -4,10 +4,89 @@
 import { z } from "@oj-module/runtime";
 
 export const schemas = {
+	"authLoginPost": {
+		body: z.object({
+	"username": z.string().min(1),
+	"password": z.string().min(1)
+}),
+		data: z.object({
+	"access_token": z.string(),
+	"refresh_token": z.string(),
+	"expires_in": z.number(),
+	"restricted": z.boolean(),
+	"user": z.object({
+	"id": z.number(),
+	"username": z.string(),
+	"display_name": z.string().nullable(),
+	"avatar_base64": z.string().nullable(),
+	"must_change": z.boolean(),
+	"roles": z.array(z.string())
+})
+}),
+	},
+	"authLogoutPost": {
+		body: z.object({
+	"refresh_token": z.string().min(1)
+}),
+		data: z.null(),
+	},
+	"authRefreshPost": {
+		body: z.object({
+	"refresh_token": z.string().min(1)
+}),
+		data: z.object({
+	"access_token": z.string(),
+	"refresh_token": z.string(),
+	"expires_in": z.number(),
+	"restricted": z.boolean(),
+	"user": z.object({
+	"id": z.number(),
+	"username": z.string(),
+	"display_name": z.string().nullable(),
+	"avatar_base64": z.string().nullable(),
+	"must_change": z.boolean(),
+	"roles": z.array(z.string())
+})
+}),
+	},
 	"authPasswordPut": {
 		body: z.object({
 	"old_password": z.string().min(1),
 	"new_password": z.string().min(6)
+}),
+		data: z.object({
+	"access_token": z.string(),
+	"refresh_token": z.string(),
+	"expires_in": z.number(),
+	"restricted": z.boolean(),
+	"user": z.object({
+	"id": z.number(),
+	"username": z.string(),
+	"display_name": z.string().nullable(),
+	"avatar_base64": z.string().nullable(),
+	"must_change": z.boolean(),
+	"roles": z.array(z.string())
+})
+}),
+	},
+	"authLdapLoginPost": {
+		body: z.object({
+	"username": z.string().min(1),
+	"password": z.string().min(1)
+}),
+		data: z.object({
+	"access_token": z.string(),
+	"refresh_token": z.string(),
+	"expires_in": z.number(),
+	"restricted": z.boolean(),
+	"user": z.object({
+	"id": z.number(),
+	"username": z.string(),
+	"display_name": z.string().nullable(),
+	"avatar_base64": z.string().nullable(),
+	"must_change": z.boolean(),
+	"roles": z.array(z.string())
+})
 }),
 	},
 	"authWecomAdminAppsGet": {
@@ -24,6 +103,16 @@ export const schemas = {
 	"installed_at": z.number(),
 	"update_time": z.number()
 })),
+	},
+	"authWecomAdminOverviewGet": {
+		data: z.object({
+	"kinds": z.array(z.enum(["suite", "corp"])),
+	"configError": z.string().nullable(),
+	"callbackUrl": z.string().nullable(),
+	"corpId": z.string().nullable(),
+	"agentId": z.string().nullable(),
+	"corpCallbackConfigured": z.boolean()
+}),
 	},
 	"authWecomAdminStatusPost": {
 		body: z.object({
@@ -43,16 +132,6 @@ export const schemas = {
 	"expiresIn": z.number()
 }),
 	},
-	"authWecomAdminOverviewGet": {
-		data: z.object({
-	"kinds": z.array(z.enum(["suite", "corp"])),
-	"configError": z.string().nullable(),
-	"callbackUrl": z.string().nullable(),
-	"corpId": z.string().nullable(),
-	"agentId": z.string().nullable(),
-	"corpCallbackConfigured": z.boolean()
-}),
-	},
 	"authWecomAdminConnectPost": {
 		data: z.object({
 	"corpId": z.string(),
@@ -61,9 +140,46 @@ export const schemas = {
 	"members": z.number()
 }),
 	},
+	"authWecomAdminTenantAdminGet": {
+		query: z.object({
+	"corpId": z.string().min(1)
+}),
+		data: z.object({
+	"corpId": z.string(),
+	"username": z.string(),
+	"exists": z.boolean(),
+	"mustChange": z.boolean()
+}),
+	},
+	"authWecomAdminTenantAdminPasswordPost": {
+		body: z.object({
+	"corpId": z.string().min(1),
+	"password": z.string().min(6)
+}),
+		data: z.object({
+	"corpId": z.string(),
+	"username": z.string(),
+	"exists": z.boolean(),
+	"mustChange": z.boolean()
+}),
+	},
 	"authWecomTicketPost": {
 		body: z.object({
 	"ticket": z.string().min(32).max(128)
+}),
+		data: z.object({
+	"access_token": z.string(),
+	"refresh_token": z.string(),
+	"expires_in": z.number(),
+	"restricted": z.boolean(),
+	"user": z.object({
+	"id": z.number(),
+	"username": z.string(),
+	"display_name": z.string().nullable(),
+	"avatar_base64": z.string().nullable(),
+	"must_change": z.boolean(),
+	"roles": z.array(z.string())
+})
 }),
 	},
 	"authWecomSyncStartPost": {
@@ -74,6 +190,8 @@ export const schemas = {
 	"connected": z.boolean(),
 	"authMode": z.number(),
 	"profileStatus": z.string().nullable(),
+	"agentId": z.string().nullable(),
+	"credentialKind": z.union([z.literal("suite"), z.literal("corp"), z.literal(null)]).nullable(),
 	"status": z.enum(["idle", "running", "done", "failed", "cancelled"]),
 	"phase": z.enum(["departments", "members", "reconcile"]),
 	"stats": z.object({
@@ -106,6 +224,8 @@ export const schemas = {
 	"connected": z.boolean(),
 	"authMode": z.number(),
 	"profileStatus": z.string().nullable(),
+	"agentId": z.string().nullable(),
+	"credentialKind": z.union([z.literal("suite"), z.literal("corp"), z.literal(null)]).nullable(),
 	"status": z.enum(["idle", "running", "done", "failed", "cancelled"]),
 	"phase": z.enum(["departments", "members", "reconcile"]),
 	"stats": z.object({
@@ -127,9 +247,7 @@ export const schemas = {
 }).nullable(),
 	"startedAt": z.number(),
 	"finishedAt": z.number(),
-	"updateTime": z.number(),
-	"agentId": z.string().nullable(),
-	"credentialKind": z.union([z.literal("suite"), z.literal("corp"), z.literal(null)]).nullable()
+	"updateTime": z.number()
 }),
 	},
 	"authWecomSyncCancelPost": {
@@ -140,6 +258,8 @@ export const schemas = {
 	"connected": z.boolean(),
 	"authMode": z.number(),
 	"profileStatus": z.string().nullable(),
+	"agentId": z.string().nullable(),
+	"credentialKind": z.union([z.literal("suite"), z.literal("corp"), z.literal(null)]).nullable(),
 	"status": z.enum(["idle", "running", "done", "failed", "cancelled"]),
 	"phase": z.enum(["departments", "members", "reconcile"]),
 	"stats": z.object({

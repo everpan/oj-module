@@ -23,8 +23,13 @@ export const MODULES_DIR = path.join(PROJECT_ROOT, "web");
 /** 模块清单 */
 export const MANIFEST_PATH = path.join(PROJECT_ROOT, "manifest.json");
 
-/** 模拟外部工程（playground）目录 */
-export const PLAYGROUND_DIR = path.join(PROJECT_ROOT, "apps/playground");
+/**
+ * 模板工程（= 唯一的模块工程靶场）目录。
+ *
+ * 2026-11-02 起 `apps/playground` 与 `apps/playground-oj` 下线：templates 本身就是
+ * 可 `ojm dev/build` 的模块工程，且自带 e2e；测试一律以它为「外部工程」样本。
+ */
+export const TEMPLATE_DIR = path.join(PROJECT_ROOT, "packages/cli/templates");
 
-/** playground 构建产物目录（D11 布局：dist/web） */
-export const PLAYGROUND_DIST_DIR = path.join(PLAYGROUND_DIR, "dist", "web");
+/** 模板工程构建产物目录（D11 布局：dist/web） */
+export const TEMPLATE_DIST_DIR = path.join(TEMPLATE_DIR, "dist", "web");

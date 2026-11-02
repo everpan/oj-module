@@ -2,7 +2,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { readModuleDefinition } from "../../packages/cli/src/build";
-import { MODULES_DIR, PLAYGROUND_DIR, PROJECT_ROOT } from "../helpers/paths";
+import { MODULES_DIR, PROJECT_ROOT, TEMPLATE_DIR } from "../helpers/paths";
 
 /**
  * P3.4 / B10：模块元数据（name/version）由真实 import 解析，
@@ -22,13 +22,15 @@ describe("build-modules 真实 import 解析元数据（P3.4 / B10）", () => {
 		expect(definition.version).toBe("1.0.0");
 	});
 
-	it("解析 playground demo 模块元数据（含 peerRuntime）", async () => {
-		const definition = await readModuleDefinition(path.join(PLAYGROUND_DIR, "web/src/demo/entry.ts"), PROJECT_ROOT);
-		expect(definition.name).toBe("demo");
+	it("解析模板聚合模块元数据（含 peerRuntime 与多根）", async () => {
+		const definition = await readModuleDefinition(path.join(TEMPLATE_DIR, "src/app/web/entry.ts"), PROJECT_ROOT);
+		expect(definition.name).toBe("app");
 		expect(definition.version).toBe("0.1.0");
 		// `^0.0.0` 在 semver 下等价于「恰好 0.0.0」，宿主一升级就误判不兼容，
 		// 故声明为开放范围（宿主 runtime 尚未发版，workspace 内为 0.0.0）
 		expect(definition.peerRuntime).toBe(">=0.0.0");
+		// 多根聚合：顶层路由首段去重 > 1（首页/登录/个人中心/通知/系统管理）
+		expect(definition.routes?.length ?? 0).toBeGreaterThan(1);
 	});
 
 	it("default 导出缺 name 时报错", async () => {

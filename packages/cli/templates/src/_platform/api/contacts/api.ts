@@ -6,7 +6,7 @@ import { searchContacts } from "../_shared/service/domain/contacts";
 import { assertTenantSelf } from "../_shared/service/infra/access";
 import { rateLimit } from "../_shared/service/infra/rate";
 
-export default {
+const handler = {
 	// GET /api/_platform/contacts?keyword=&limit= —— 人员目录（AC1-22~24）。
 	async get() {
 		await respond(async () => {
@@ -23,3 +23,31 @@ export default {
 		});
 	},
 };
+
+// 入参：keyword 必填（服务层红线 2~64 字符），limit 可选（钳 200）
+handler.get.schema = {
+	query: {
+		type: "object",
+		required: ["keyword"],
+		properties: {
+			keyword: { type: "string", minLength: 2 },
+			limit: { type: "number" },
+		},
+	},
+};
+
+// 出参：目录红线只出 id/username/display_name（不含 email/avatar/roles）
+handler.get.response = {
+	type: "array",
+	items: {
+		type: "object",
+		required: ["id", "username", "display_name"],
+		properties: {
+			id: { type: "number" },
+			username: { type: "string" },
+			display_name: { type: ["string", "null"] },
+		},
+	},
+};
+
+export default handler;

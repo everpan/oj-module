@@ -161,7 +161,23 @@ function defaultExportObject(sf: ts.SourceFile, decls: Map<string, ts.ObjectLite
  * 旧逻辑直接 dottedNameOf(call.expression) 对 CallExpression 返回 undefined → 扫成 0 路由，
  * 致使 ojm api --check 把 market 全族端点判为「未实现 / stub 缺失」。此处穿透一层取被调函数名。
  */
-function factoryReturnObjects(sf: ts.SourceFile, call: ts.CallExpression): ts.ObjectLiteralExpression[] {
+/**
+ * 取函数体内 `const <name> = { … }` 的对象字面量初始化器（工厂 return 标识符时用）。
+ * 只认直接声明，不追闭包/别名——够用即可，追深了会把无关对象当路由组。
+ */
+function objectLiteralOf(body: ts.Block, name: string): ts.ObjectLiteralExpression | undefined {
+	for (const st of body.statements) {
+		if (!ts.isVariableStatement(st))
+			continue;
+		for (const d of st.declarationList.declarations) {
+			if (ts.isIdentifier(d.name) && d.name.text === name && d.initializer && ts.isObjectLiteralExpression(d.initializer))
+				return d.initializer;
+		}
+	}
+	return undefined;
+}
+
+function factoryReturnObjects(sf: ts.SourceFile, call: ts.CallExpression, decls: Map<string, ts.ObjectLiteralExpression>): ts.ObjectLiteralExpression[] {
 	// `export default createXxxApi(marketEnv())`：`call.expression` 为带实参的调用表达式，
 	// 函数名在其 `.expression`；`export default obj.createXxxApi(marketEnv())` 同样穿透。
 	const target = ts.isCallExpression(call.expression) ? call.expression.expression : call.expression;
@@ -171,10 +187,31 @@ function factoryReturnObjects(sf: ts.SourceFile, call: ts.CallExpression): ts.Ob
 	for (const stmt of sf.statements) {
 		if (!ts.isFunctionDeclaration(stmt) || stmt.name?.text !== callee || stmt.body === undefined)
 			continue;
+		// 工厂体内的局部对象声明（`const routes = {…}`）合并进声明表：
+		// return 的对象里用简写属性引用它们时，walk 才能解析到组。
+		for (const st of stmt.body.statements) {
+			if (!ts.isVariableStatement(st))
+				continue;
+			for (const d of st.declarationList.declarations) {
+				if (ts.isIdentifier(d.name) && d.initializer && ts.isObjectLiteralExpression(d.initializer))
+					decls.set(d.name.text, d.initializer);
+			}
+		}
 		const out: ts.ObjectLiteralExpression[] = [];
 		for (const st of stmt.body.statements) {
-			if (ts.isReturnStatement(st) && st.expression !== undefined && ts.isObjectLiteralExpression(st.expression))
+			if (!ts.isReturnStatement(st) || st.expression === undefined)
+				continue;
+			if (ts.isObjectLiteralExpression(st.expression)) {
 				out.push(st.expression);
+				continue;
+			}
+			// `const api = { routes, verify }; … return api;` 形态（聚合工厂）：
+			// 返回标识符时回溯同函数体内的 object literal 初始化器。
+			if (ts.isIdentifier(st.expression)) {
+				const local = objectLiteralOf(stmt.body, st.expression.text);
+				if (local)
+					out.push(local);
+			}
 		}
 		return out;
 	}
@@ -317,7 +354,7 @@ export function scanHandlerFile(filePath: string, apiDir: string, moduleName = "
 				? expr
 				: (ts.isIdentifier(expr) ? callDecls.get(expr.text) : undefined);
 			if (callExpr) {
-				for (const obj of factoryReturnObjects(sf, callExpr))
+				for (const obj of factoryReturnObjects(sf, callExpr, decls))
 					walk(obj, "", "", 1);
 			}
 		}

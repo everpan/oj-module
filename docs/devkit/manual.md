@@ -45,13 +45,21 @@
 │   ├── _platform/         # 框架级：users 表 / rbac / 市场编排 / 生命周期
 │   │   ├── api/           #   + _shared/（respond、service/、site-facade）
 │   │   └── web/           #   仅 __client 生成物（无页面）
+│   ├── app/web/           # 框架内置页面**多根模块**（一个 entry 多个根）：
+│   │   ├── entry.ts       #   routes 聚合 + i18nNamespaces + 生命周期
+│   │   ├── home/          #   /home               （routes.ts + pages + locales + __client）
+│   │   ├── login/         #   /login、/change-password
+│   │   ├── personal-center/  # /personal-center/my-profile
+│   │   ├── notification/  #   /notification-center
+│   │   └── system/        #   /system/*（根上 handle.roles = 系统管理员）
+│   ├── oj-market/web/     # 解决方案市场（独立模块，删目录即下线）
 │   ├── auth/api/          # login / refresh / logout / ldap-login
-│   ├── system/{api,web}/  # 用户 / 角色 / 权限 / 设置 / oplog / login-methods
-│   ├── notification/{api,web}/      # 通知互动（表 + push + del）
-│   ├── personal-center/{api,web}/   # 头像上传
+│   ├── system/api/        # 用户 / 角色 / 权限 / 设置 / oplog / login-methods（后端）
+│   ├── notification/api/  # 通知互动（表 + push + del）
+│   ├── personal-center/api/   # 头像上传
 │   └── web/{api,web}/     # root 级 /api/web（hello / user-info / get-async-routes 在 api 侧）
-├── api/dist/              # 后端产物（release 根：<name>-<ver>/ + manifests.yaml + versions.json）—构建后才有
-├── web/dist/              # 站点产物（shell + modules/ + modules.json）—构建后才有
+├── dist/api/              # 后端产物（release 根：<name>-<ver>/ + manifests.yaml + versions.json）—构建后才有
+├── dist/web/              # 站点产物（shell + modules/ + modules.json）—构建后才有
 ├── bin/                   # oj 二进制 + plugins/ + devkit/（不入库）
 └── .claude/skills/        # ojm-module-dev（本 devkit）+ oj-api-dev（随 oj 二进制）
 ```
@@ -62,13 +70,12 @@
   所在目录**，所有 `fs.*` 相对路径、`db.default`、`platform.root`、`mounts[].web`
   都相对它解析；证书与密钥落在同级的 `config/`（`ojm` 侧由 `resolveConfigPath()` /
   `resolveCertDir()` 单点派生，你不需要自己拼路径）。
-- **产物有两个根**：后端 `api/dist`（oj 扁平 release，`<name>-<ver>/` 与
-  `manifests.yaml` 同层），站点 `web/dist`（`modules/` + `modules.json`）。
-  `config.yaml` 上移到工程根后，两者不再同名 `dist`。
+- **产物有两个根**：后端 `dist/api`（oj 扁平 release，`<name>-<ver>/` 与
+  `manifests.yaml` 同层），站点 `dist/web`（`modules/` + `modules.json`）。
 - **`src/` 下每个目录都得是一个模块**：脚本 / 共享库请放在 `src/` 之外，否则
   `ojm dev/build` 会以「既无 `api/manifest.yaml` 也无 `web/entry.ts`」直接报错。
 
-> 模板里还有一批 demo-only 模块（`src/{demo,home}/api`、`src/{about,access,exception,
+> 模板里还有一批 demo-only 模块（`src/home/api`、`src/{about,access,exception,
 > outside,route-nest}/web`）仅供模板自演示，**不进脚手架**；其 `web.config.ts` 条目带
 > `// #region demo-only` 标记，init 拷贝时整段剥离。新布局的清单是「扫描 + 覆盖」并集，
 > 注释掉不会让模块消失——要「不构建」必须写 `enabled: false`。
@@ -289,14 +296,14 @@ export default {
 	baseUrl: "", // 模块产物 URL 前缀（可填 CDN 绝对域）；与站点部署位置无关
 	// siteBase: "/oj", // 站点挂在 https://host/oj/ 下时才需要（默认根路径），见 §13 的路径空间一节
 	modules: [
-		// home 必须保留且尽量靠前：shell 预构建把 "/" → VITE_BASE_HOME_PATH（=/home）
-		// 重定向，缺 /home 路由会让登录回跳 / 点 logo 落错误边界。
-		{ name: "home", entry: "src/home/web/entry.ts", enabled: true },
-		// login 必须保留：shell 宿主只消费模块路由、不挂 runtime 内置 baseRoutes，
-		// 缺它 `/login` 无路由可跳（登出会落空）。
-		{ name: "login", entry: "src/login/web/entry.ts", enabled: true },
+		// 框架内置页面聚合为一个**多根模块**（/home /login /personal-center
+		// /notification /system）：一个 entry 多个根，各根按 handle.order 排菜单。
+		// 缺 /home 会让登录回跳 / 点 logo 落错误边界；缺 /login 则登出无路由可跳。
+		{ name: "app", entry: "src/app/web/entry.ts", enabled: true },
 		{ name: "books", entry: "src/books/web/entry.ts", enabled: true },
 	],
+	// 多根聚合模块的 client 归属（生成物落 src/app/web/<api 前缀>/__client）：
+	// clientOwners: { home: "app", "personal-center": "app", notification: "app", system: "app" },
 };
 ```
 
@@ -351,7 +358,7 @@ export default defineModule({
 `defineModule` 字段：`name`（= 目录名）、`description`、`version`、
 `peerRuntime`、`routes`、`i18n?`、`lifecycle?`。
 
-> 页面组件用**静态 import 或 `lazy()` 都行**：模板自带模块（`src/home/web/entry.ts` 等）
+> 页面组件用**静态 import 或 `lazy()` 都行**：模板自带模块（`src/app/web/home/entry.ts` 等）
 > 用静态 import，多页面模块可对非首屏页面用 `lazy(() => import("./pages/x"))` 做代码分割。
 > 单个页面就用静态 import，少一层间接。
 
@@ -1349,7 +1356,7 @@ useEffect(() => {
    复用展示不同内容（列表页/`index` 路由），离开时必须 `resetTableTitle(tabKey)`，否则再进来看到
    上一个内容的标题。
 
-推荐形态（照 `src/home/web/pages/`、`src/personal-center/web/pages/my-profile/` 抄）：
+推荐形态（照 `src/app/web/home/pages/`、`src/app/web/personal-center/pages/my-profile/` 抄）：
 `BasicContent` 包一层 → 搜索区 + `BasicTable` → 新增/编辑用 antd `Modal` + `Form`
 → 提交后重新拉列表。数据来自 §3.4 的生成函数，**页面里直接 import 裸函数调用**。
 
@@ -1402,7 +1409,7 @@ useEffect(() => {
   `useEffect` 重新注册（上面的形态天然满足）。
 - 同一 key 关闭流程进行中再次触发被忽略（per-key in-flight 去重），双击不会弹两个框。
 
-可运行示例见 playground-oj `web/src/demo/pages/guard.tsx`（本仓 playground 仍是历史布局；
+可运行示例见模板工程 `src/app/web/*/pages/` 下的页面（layouts/权限门同源）；
 模板侧对应 `src/<模块>/web/pages/`，表单 dirty → 关页签弹确认）。
 
 ### 6.5 两份 tsconfig：`typecheck` 与 `typecheck:api`
@@ -1556,7 +1563,7 @@ export default async (path: string, html: string) => {
 | 登录 401 且 msg 不是 `invalid credentials` | `/auth/*` 不在 `anonymous_paths` | 加进工程根 `config.yaml`，重启 |
 | 登出/回登录页空白或 404 | 工程缺 `login` 模块（shell 无内置登录回落） | 在 `web.config.ts` 保留 `login` |
 | 登录后 / 点 logo 落 React Router 错误边界 | 工程缺 `home` 模块 | 在 `web.config.ts` 保留 `home`（尽量靠前） |
-| 通知铃 404 `no route matched`（`/api/notifications`） | 前端 `notification` 模块没加载 / 没注册 `notificationsApi`，回落到内置只读兜底——而脚手架不再提供 root 级 `/api/notifications` 模块 | 保留 `web.config.ts` 的 `notification` 登记，onInit 里注册四方法（模板 `src/notification/web/entry.ts`）；后端由 `src/notification/api` 提供 `/api/notification/*` |
+| 通知铃 404 `no route matched`（`/api/notifications`） | 前端 `notification` 模块没加载 / 没注册 `notificationsApi`，回落到内置只读兜底——而脚手架不再提供 root 级 `/api/notifications` 模块 | 保留 `web.config.ts` 的 `notification` 登记，onInit 里注册四方法（模板 `src/app/web/notification/entry.ts`）；后端由 `src/notification/api` 提供 `/api/notification/*` |
 | `@types/react` / `typescript` 装成 `*` | 宿主 versions.json 未列 | 安装后按实际版本钉死（`*` 不可复现） |
 | 迁移账本落后、服务拒绝启动 | release `verify` 闸 | 先 `ojm migrate -d api/dist`（透传自动补 `-c`） |
 | `seed.sql` 没生效 / 语法错 | 按 `;` 朴素切分，注释里有分号 | 去掉注释里的分号字面量 |
@@ -1579,14 +1586,14 @@ export default async (path: string, html: string) => {
 
 | 想抄什么 | 抄这里 |
 |---|---|
-| 带页面的模块（路由 / i18n / order） | `src/home/web/entry.ts`、`src/demo/web/entry.ts` |
-| 接管通知 provider（四方法全量） | `src/notification/web/entry.ts` |
-| 上传 provider（action + headers 方法） | `src/personal-center/web/entry.ts` |
-| 无页面模块（`routes: []`） | 同 `src/notification/web/entry.ts` |
+| 带页面的模块（路由 / i18n / order） | `src/app/web/home/entry.ts`、`src/app/web/entry.ts` |
+| 接管通知 provider（四方法全量） | `src/app/web/notification/entry.ts` |
+| 上传 provider（action + headers 方法） | `src/app/web/personal-center/entry.ts` |
+| 无页面模块（`routes: []`） | 同 `src/app/web/notification/entry.ts` |
 | handler `.schema` 入参 + 平级 `.response` 出参写法（GET + POST、参数段） | `src/notification/api/api.ts` |
 | handler 写法（嵌套组列表 / 写入 / 403 归属） | `src/notification/api/api.ts`（模块根单文件，`read`/`read-all`/`clear` 子组） |
 | 统一异常出口 `respond()`（service 抛 `Error & {status}` → 信封 `json.fail`） | 模板 `src/_platform/api/_shared/respond.ts` + 各 handler 用法（§1.7-1） |
-| 生成物长什么样（含工厂） | `src/notification/web/__client/api.ts` |
+| 生成物长什么样（含工厂） | `src/app/web/notification/__client/api.ts` |
 | 建表三件套 | `src/notification/api/{schema.yaml,manifest.yaml,migrations/}` |
 | 全局类型（`window.$message` 等） | 工程根 `env.d.ts` |
 
@@ -2229,7 +2236,7 @@ async function post() {
 3. 页面用本模块 client 调。
 
 多一层 handler 换来三件事：接口形状由**你自己的契约**决定（只出页面要的字段）、框架内部实现不进你的
-bundle、契约变更走你自己的版本号。仓库里 `src/system/web/pages/departments` 的组织架构页就是这条路的
+bundle、契约变更走你自己的版本号。仓库里 `src/app/web/system/pages/departments` 的组织架构页就是这条路的
 另一个方向（它消费的是管理端 `/api/system/departments`，见 §14.4）。
 
 ### 14.4 管理端 CRUD：只有「管组织架构」的模块才该碰

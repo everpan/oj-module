@@ -7,7 +7,7 @@ import { createSession } from "../_shared/session";
 
 // 模块级禁止 createSession()/runtimeLdapGateway()：oj build introspect 的空沙箱无 jwt/axis（§9.4）。
 
-export default {
+const handler = {
 	async post() {
 		const body = http.body || {};
 		const username = String(body.username ?? "");
@@ -27,3 +27,39 @@ export default {
 		});
 	},
 };
+
+// 入参与本地登录同形（username/password）；出参同 TokenBundle
+handler.post.schema = {
+	body: {
+		type: "object",
+		required: ["username", "password"],
+		properties: {
+			username: { type: "string", minLength: 1 },
+			password: { type: "string", minLength: 1 },
+		},
+	},
+};
+handler.post.response = {
+	type: "object",
+	required: ["access_token", "refresh_token", "expires_in", "restricted", "user"],
+	properties: {
+		access_token: { type: "string" },
+		refresh_token: { type: "string" },
+		expires_in: { type: "number" },
+		restricted: { type: "boolean" },
+		user: {
+			type: "object",
+			required: ["id", "username", "display_name", "avatar_base64", "must_change", "roles"],
+			properties: {
+				id: { type: "number" },
+				username: { type: "string" },
+				display_name: { type: ["string", "null"] },
+				avatar_base64: { type: ["string", "null"] },
+				must_change: { type: "boolean" },
+				roles: { type: "array", items: { type: "string" } },
+			},
+		},
+	},
+};
+
+export default handler;

@@ -363,8 +363,8 @@ printf 'name: web\ndesc: probe\nversion: 0.1.0\n' > /tmp/_oj_probe/src/web/manif
 
 在 `src/books/api/` 下补 6 个后端文件（manifest/schema/migration/seed + 2 handler），
 handler 按**新约定**写契约——**无 `contract.ts`**：入参挂 `.schema`（params/query/body），
-出参挂**平级 `.response`**（oj v0.1.72+；范本照 `packages/cli/templates/api/src/notification/api.ts`、
-`apps/playground-oj/api/src/demo/todos/api.ts`）：
+出参挂**平级 `.response`**（oj v0.1.72+；范本照 `packages/cli/templates/src/notification/api/api.ts`、
+`packages/cli/templates/src/home/api/line/api.ts`）：
 
 ```ts
 // src/books/api/list/api.ts

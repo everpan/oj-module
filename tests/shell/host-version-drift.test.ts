@@ -92,7 +92,7 @@ describe("宿主与框架共享依赖版本一致（A25）", () => {
 			"package.json",
 			"packages/runtime/package.json",
 			"packages/cli/package.json",
-			"apps/playground/package.json",
+			"packages/cli/templates/package.json",
 		];
 		const hardcoded: string[] = [];
 

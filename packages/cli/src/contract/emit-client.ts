@@ -229,8 +229,8 @@ function emitEndpoint(ep: IrEndpoint): string {
 }`;
 }
 
-function emitPrelude(target: "module" | "internal", module?: string, endpointNames: string[] = [], wirePrefix?: string): string {
-	const binding = target === "module"
+function emitPrelude(target: "module" | "internal", module?: string, endpointNames: string[] = [], wirePrefix?: string, owner?: string): string {
+	let binding = target === "module"
 		? `let req: ScopedRequestLike | undefined;
 
 /** 线上 API 前缀（ojm api 从契约抽取，唯一真源，勿手改）：请求基址 + 前缀登记用 */
@@ -274,6 +274,20 @@ function ensureReq(): ScopedRequestLike {
 		: `function ensureReq(): ScopedRequestLike {
 	return request;
 }`;
+
+	// 多根聚合模块：client 落在归属模块目录下，认领护栏的对比基准随之改为归属模块名。
+	// 缺省（未配 clientOwners）owner === module，生成物与历史逐字一致（快照不变）。
+	if (target === "module" && owner && owner !== module) {
+		binding = binding
+			.replace(
+				`export const MODULE_PREFIX = ${JSON.stringify(`/${module}`)};`,
+				`export const MODULE_PREFIX = ${JSON.stringify(`/${module}`)};
+
+/** 认领方模块（web.config clientOwners 指定）：跨模块认领护栏对比基准 */
+export const MODULE_OWNER = ${JSON.stringify(`/${owner}`)};`,
+			)
+			.replaceAll("MODULE_PREFIX.slice(1)", "MODULE_OWNER.slice(1)");
+	}
 
 	const ctxImport = target === "module"
 		? "import type { ModuleContext } from \"@oj-module/runtime\";\n"
@@ -344,7 +358,7 @@ ${entries.join("\n")}
 }
 
 /** 发射双产物：api.ts（类型 + 请求函数 + 工厂）与 api.schemas.ts（DEV 校验 schema） */
-export function emitClient(ir: IrEndpoint[], opts: { target: "module" | "internal", module?: string }): { "api.ts": string, "api.schemas.ts": string } {
+export function emitClient(ir: IrEndpoint[], opts: { target: "module" | "internal", module?: string, /** client 归属模块（多根聚合）；缺省 = module */ owner?: string }): { "api.ts": string, "api.schemas.ts": string } {
 	if (ir.length === 0)
 		throw new Error("[ojm-api] client 发射失败：IR 为空——openapi.json 里没有任何端点（operationId + tags），无需生成；请检查 \`oj openapi\` 产物。");
 	if (opts.target === "module" && !opts.module) {
@@ -362,7 +376,7 @@ export function emitClient(ir: IrEndpoint[], opts: { target: "module" | "interna
 			+ "——register.apiPrefix 一模块一值，urlPrefix 映射须整模块一致（不同前缀请拆模块）。",
 		);
 	}
-	const sections: string[] = [emitPrelude(opts.target, opts.module, ir.map(ep => ep.name), wirePrefixes.size === 1 ? wirePrefixes.values().next().value : undefined)];
+	const sections: string[] = [emitPrelude(opts.target, opts.module, ir.map(ep => ep.name), wirePrefixes.size === 1 ? wirePrefixes.values().next().value : undefined, opts.owner)];
 	for (const ep of ir) {
 		const types = emitTypes(ep);
 		if (types.length)

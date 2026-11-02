@@ -155,10 +155,9 @@ describe("cli 的 Node/浏览器边界（R6 硬分区）", () => {
 
 describe("模块源码不得 import cli（R6）", () => {
 	const moduleRoots = [
-		path.join(PROJECT_ROOT, "apps/playground/web/src"),
-		path.join(PROJECT_ROOT, "apps/playground-oj/web/src"),
 		// 根 App 链自己的模块目录（架构评审：vite alias 也把它当模块树，此前漏检）
 		path.join(PROJECT_ROOT, "web/src"),
+		// 模板工程 = 唯一模块工程样本（apps/playground* 已于 2026-11-02 下线）
 		path.join(CLI_DIR, "templates/src"),
 	];
 

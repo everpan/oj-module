@@ -114,28 +114,41 @@ describe("initProject", () => {
 		expect(fs.existsSync(path.join(dest, "global.d.ts"))).toBe(true);
 
 		// 前端模块与工程文件
-		// home 提供 /home：shell 预构建把 VITE_BASE_HOME_PATH 定为 /home，
+		// 框架内置页面（首页/登录/个人中心/通知/系统管理）聚合为一个多根模块 src/app/web：
+		// 一个 entry 多个根，菜单顺序由各根 handle.order 决定；i18n 沿用各根原命名空间。
+		const appEntry = path.join(dest, "src/app/web/entry.ts");
+		expect(fs.existsSync(appEntry)).toBe(true);
+		const appEntrySrc = fs.readFileSync(appEntry, "utf-8");
+		expect(appEntrySrc).toContain("name: \"app\"");
+		expect(appEntrySrc).toContain("i18nNamespaces");
+		// 一目录一模块：原模块目录的 web 侧必须消失，否则扫描会多出模块、路由重复
+		for (const mod of ["home", "login", "personal-center", "notification", "system"])
+			expect(fs.existsSync(path.join(dest, `src/${mod}/web`))).toBe(false);
+		// home 根提供 /home：shell 预构建把 VITE_BASE_HOME_PATH 定为 /home，
 		// 登录回跳 / logo / tabbar 均指向它，缺则落错误边界
-		expect(fs.existsSync(path.join(dest, "src/home/web/entry.ts"))).toBe(true);
-		expect(fs.existsSync(path.join(dest, "src/home/web/pages/index.tsx"))).toBe(true);
+		expect(fs.readFileSync(path.join(dest, "src/app/web/home/routes.ts"), "utf-8")).toContain("path: \"/home\"");
+		expect(fs.existsSync(path.join(dest, "src/app/web/home/pages/index.tsx"))).toBe(true);
+		// home 的 api 模块是 demo-only 不进脚手架，其 __client 指向不存在的端点，同样不拷
+		expect(fs.existsSync(path.join(dest, "src/app/web/home/__client"))).toBe(false);
 		// demo 已于 2026-11-02 彻底下线（模板删除 + 白名单移除）
 		expect(fs.existsSync(path.join(dest, "src/demo"))).toBe(false);
-		// login 模块提供 /login：shell 宿主不挂 runtime 内置 baseRoutes，
+		// login 根提供 /login：shell 宿主不挂 runtime 内置 baseRoutes，
 		// 缺它则登出/回跳登录无路由可跳
-		const loginEntry = path.join(dest, "src/login/web/entry.ts");
-		expect(fs.existsSync(loginEntry)).toBe(true);
-		expect(fs.existsSync(path.join(dest, "src/login/web/pages/login.tsx"))).toBe(true);
-		expect(fs.readFileSync(loginEntry, "utf-8")).toContain("path: \"/login\"");
+		const loginRoutes = path.join(dest, "src/app/web/login/routes.ts");
+		expect(fs.existsSync(loginRoutes)).toBe(true);
+		expect(fs.existsSync(path.join(dest, "src/app/web/login/pages/login.tsx"))).toBe(true);
+		expect(fs.readFileSync(loginRoutes, "utf-8")).toContain("path: \"/login\"");
 		const modulesConfig = fs.readFileSync(path.join(dest, "web.config.ts"), "utf-8");
-		expect(modulesConfig).toContain("\"home\"");
-		expect(modulesConfig).toContain("\"login\"");
+		expect(modulesConfig).toContain("\"app\"");
+		expect(modulesConfig).toContain("src/app/web/entry.ts");
+		// client 归属：五个 api 前缀的生成物都落 src/app/web/<前缀>/__client
+		expect(modulesConfig).toContain("clientOwners");
 		// personal-center（设计 T1）：runtime user-menu 固定导航 /personal-center/my-profile，
 		// 模板缺它则点击落空（与缺 home/login 同型）
-		expect(modulesConfig).toContain("\"personal-center\"");
-		expect(fs.existsSync(path.join(dest, "src/personal-center/web/entry.ts"))).toBe(true);
-		expect(fs.existsSync(path.join(dest, "src/personal-center/web/pages/my-profile/index.tsx"))).toBe(true);
-		expect(fs.existsSync(path.join(dest, "src/personal-center/web/locales/zh-CN.json"))).toBe(true);
-		expect(fs.existsSync(path.join(dest, "src/personal-center/web/locales/en-US.json"))).toBe(true);
+		expect(fs.existsSync(path.join(dest, "src/app/web/personal-center/routes.ts"))).toBe(true);
+		expect(fs.existsSync(path.join(dest, "src/app/web/personal-center/pages/my-profile/index.tsx"))).toBe(true);
+		expect(fs.existsSync(path.join(dest, "src/app/web/personal-center/locales/zh-CN.json"))).toBe(true);
+		expect(fs.existsSync(path.join(dest, "src/app/web/personal-center/locales/en-US.json"))).toBe(true);
 		// 后端（T2）：manifest + upload handler（handler `.schema` 取代旧 contract.ts）；
 		// 生成物（routes.json/openapi.yaml）不进模板，单一事实源改 openapi.json
 		expect(fs.existsSync(path.join(dest, "src/personal-center/api/manifest.yaml"))).toBe(true);
@@ -179,16 +192,16 @@ describe("initProject", () => {
 		const notificationContract = fs.readFileSync(path.join(dest, "src/notification/api/_shared/notify.ts"), "utf-8");
 		for (const name of ["markRead", "markAllRead", "clearNotices"])
 			expect(notificationContract).toContain(name);
-		// web 侧：entry 注册四方法 provider + ojm api 生成 client 签入模板（评审 b5）
-		const notificationEntry = fs.readFileSync(path.join(dest, "src/notification/web/entry.ts"), "utf-8");
+		// web 侧：notification 根的 onInit 注册四方法 provider + ojm api 生成 client 签入模板（评审 b5）
+		const notificationRoutes = fs.readFileSync(path.join(dest, "src/app/web/notification/routes.ts"), "utf-8");
 		for (const name of ["fetchNotifications", "markRead", "markAllRead", "clearAll"])
-			expect(notificationEntry).toContain(name);
-		expect(fs.existsSync(path.join(dest, "src/notification/web/__client/api.ts"))).toBe(true);
-		expect(fs.existsSync(path.join(dest, "src/notification/web/__client/api.schemas.ts"))).toBe(true);
-		// web.config.ts 必须登记 notification：未登记的模块不加载，provider 不注册，
-		// 通知铃将永远停留在内置只读兜底（BDD 5.4#2 的前提）
-		expect(modulesConfig).toContain("\"notification\"");
-		expect(modulesConfig).toContain("src/notification/web/entry.ts");
+			expect(notificationRoutes).toContain(name);
+		expect(fs.existsSync(path.join(dest, "src/app/web/notification/__client/api.ts"))).toBe(true);
+		expect(fs.existsSync(path.join(dest, "src/app/web/notification/__client/api.schemas.ts"))).toBe(true);
+		// provider 不注册则通知铃永远停留在内置只读兜底（BDD 5.4#2 的前提）：
+		// app 模块由 web.config 登记，notification 根在其 onInit 里接线
+		expect(modulesConfig).toContain("src/app/web/entry.ts");
+		expect(notificationRoutes).toContain("ctx.register.notificationsApi");
 		const pkg = JSON.parse(fs.readFileSync(path.join(dest, "package.json"), "utf-8"));
 		expect(pkg.scripts.dev).toContain("ojm dev");
 		expect(pkg.scripts.preview).toContain("ojm preview");
@@ -305,14 +318,13 @@ describe("initProject", () => {
 
 		// 1b) demo-only api 模块的前端 __client 生成物同样不拷（旧派生规则）：
 		//     client 留着会指向不存在的端点；home 的页面源码照拷，demo 已整体下线
-		for (const mod of ["src/demo/web/__client", "src/home/web/__client"])
+		for (const mod of ["src/demo/web/__client", "src/app/web/home/__client"])
 			expect(fs.existsSync(path.join(dest, mod))).toBe(false);
 		expect(fs.existsSync(path.join(dest, "src/demo"))).toBe(false);
-		expect(fs.existsSync(path.join(dest, "src/home/web/entry.ts"))).toBe(true);
 
 		// 2) 默认模块照常在（oj-market 0.2.8 起默认下发：方案市场前端 +
 		//    _platform 市场编排面 /api/_platform/market/*）
-		for (const mod of ["src/home/web", "src/login/web", "src/notification/web", "src/oj-market/web"])
+		for (const mod of ["src/app/web", "src/app/web/login", "src/app/web/notification", "src/oj-market/web"])
 			expect(fs.existsSync(path.join(dest, mod))).toBe(true);
 		//    其 __tests__ 不进脚手架（用户工程无 web 侧 vitest 基建）
 		expect(fs.existsSync(path.join(dest, "src/oj-market/web/__tests__"))).toBe(false);
@@ -327,8 +339,8 @@ describe("initProject", () => {
 		expect(config).not.toContain("#region demo-only");
 		expect(config).not.toContain("#endregion");
 		// 剥离不能误伤默认条目
-		for (const entry of ["src/home/web/entry.ts", "src/notification/web/entry.ts"])
-			expect(config).toContain(entry);
+		expect(config).toContain("src/app/web/entry.ts");
+		expect(config).toContain("src/oj-market/web/entry.ts");
 
 		// 4) openapi.json：demo-only 模块（demo/home）的端点被裁掉——留着会让
 		//    新工程一上手跑 `ojm api --check` 就报「有契约无 handler」；白名单内
@@ -622,6 +634,6 @@ describe("initProject 既有 bin/oj 能力闸门", () => {
 
 		await initProject(dest, { yes: true });
 		expect(fs.existsSync(path.join(dest, "config.yaml"))).toBe(true);
-		expect(fs.existsSync(path.join(dest, "src/home/web/entry.ts"))).toBe(true);
+		expect(fs.existsSync(path.join(dest, "src/app/web/entry.ts"))).toBe(true);
 	});
 });

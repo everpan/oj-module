@@ -72,4 +72,7 @@ del.schema = {
 	},
 };
 
+// 出参无业务载荷（service 返回 void → data 为 null）
+del.response = { type: "null" };
+
 export default { get, post, del };

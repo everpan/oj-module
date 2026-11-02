@@ -88,6 +88,14 @@ export interface ModuleDefinition {
 	routes: AppRouteRecordRaw[]
 	lifecycle?: ModuleLifecycle
 	i18n?: ModuleI18n
+	/**
+	 * 附加 i18n 命名空间：`命名空间 → 资源`，与 `i18n`（恒以 `name` 为命名空间）可并用。
+	 *
+	 * 多根聚合模块（一个 entry 承载多个业务域、每个域各自成根）用它在**不改 key**
+	 * 的前提下沿用原命名空间：`t("system:menu.users")` / `useTranslation("system")`
+	 * 照旧生效，菜单标题也无需重写（`<ns>:menu.<key>` 语法不变）。
+	 */
+	i18nNamespaces?: Record<string, ModuleI18n>
 	config?: ModuleConfig
 	/** 兼容的宿主 runtime 版本（semver 范围），宿主加载前校验，不兼容则拒绝加载并显式报错 */
 	peerRuntime?: string

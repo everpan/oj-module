@@ -226,7 +226,7 @@ deps:
 
 - **查当前版本**：`pnpm exec ojm info` → 「共享依赖版本矩阵」。
 - **要让 `tsc` 通过**：矩阵只保证**运行时**由宿主提供，工程 `node_modules` 不一定有这些包 → 把用到的包加进**自己的 `devDependencies`**（版本对齐宿主）。`ojm init` 已为模板用到的那些钉好版本（antd / react / icons / react-router / react-i18next / echarts / echarts-for-react / react-countup / dayjs）。
-- 脚手架 `src/home/web/` 的统计卡片 + 折线 / 柱 / 饼图就是矩阵演示（`react-countup` + `echarts` + `echarts-for-react` + `dayjs`）。
+- 脚手架 `src/app/web/home/` 的统计卡片 + 折线 / 柱 / 饼图就是矩阵演示（`react-countup` + `echarts` + `echarts-for-react` + `dayjs`）。
 - 完整矩阵（含深路径条目与按包新增的步骤）见 [`framework-development-guide.md`](./framework-development-guide.md) §3.4。
 
 ---
@@ -660,7 +660,7 @@ pnpm preview      # = ojm preview：oj migrate（ver 门禁）→ oj serve 单�
 | `typecheck` 报 `Property 'env' does not exist on type 'ImportMeta'` | 缺 `env.d.ts` | 补 `env.d.ts` 并加进 tsconfig `include`（新版 init 已内置） |
 | 登录 401，且 msg 不是 `invalid credentials` | `/auth/*` 未在 `anonymous_paths` | 补进根 `config.yaml` 后重启 |
 | 新增了模块目录或端点文件但接口 404 | 路由表未重建 | **重启** `ojm dev`（改 api.ts 内容才免重启） |
-| 通知铃请求 `/api/notifications` 404 | root 级兜底端点未随迁 module-root | 当前模板由 `src/notification/web/` 注册 `notificationsApi` provider，端点在 `/api/notification/notifications`；通知读不到先查 provider 是否注册 |
+| 通知铃请求 `/api/notifications` 404 | root 级兜底端点未随迁 module-root | 当前模板由 `src/app/web/notification/` 注册 `notificationsApi` provider，端点在 `/api/notification/notifications`；通知读不到先查 provider 是否注册 |
 | DELETE 请求 405 | 方法名写成了 `delete` | 改为 `del` |
 | 契约（`.schema`/`.response`）改了但前端类型没变 | 忘了重跑生成 | `./bin/oj openapi … && pnpm exec ojm api`；CI 用 `ojm api --check` 兜底 |
 | 迁移账本落后 / 启动被拒（M004） | release `verify` 门禁 | `oj migrate -c config.yaml -d dist/api` |

@@ -2,7 +2,7 @@
 // B4：roles 出自 sys_user_role 权威源（users.roles JSON 列已被 0003 移除，D10）——
 // 体验层角色走本资料接口，不进 JWT claims；avatar 读 avatar_base64，email 读 0007 迁移列。
 // 响应一律走 json.ok/json.fail 信封（oj 红线）。
-export default {
+const handler = {
 	async get() {
 		const uid = http.user?.id;
 		if (!uid) {
@@ -35,3 +35,23 @@ export default {
 		}
 	},
 };
+
+// 出参：登录链用户资料（roles 出自 sys_user_role，permissions 预留恒空）
+handler.get.response = {
+	type: "object",
+	required: ["id", "avatar", "username", "displayName", "email", "phoneNumber", "description", "roles", "mustChange", "permissions"],
+	properties: {
+		id: { type: "string" },
+		avatar: { type: "string" },
+		username: { type: "string" },
+		displayName: { type: "string" },
+		email: { type: "string" },
+		phoneNumber: { type: "string" },
+		description: { type: "string" },
+		roles: { type: "array", items: { type: "string" } },
+		mustChange: { type: "boolean" },
+		permissions: { type: "array", items: { type: "string" } },
+	},
+};
+
+export default handler;
