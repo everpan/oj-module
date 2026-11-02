@@ -807,6 +807,23 @@ export async function buildModules(
 			},
 		});
 
+		// 运行期 require 门禁：CJS 依赖 require 了 external 共享包时，rolldown 只留一个浏览器
+		// 不可用的 require 桩（"Calling `require` for ..."），表现为模块加载即抛错、页面空白。
+		// 这类依赖必须移出 bundle 走宿主 importmap（shell 侧有 CJS→ESM 垫片）。
+		const builtEntry = path.join(moduleOutDir, "entry.js");
+		if (fs.existsSync(builtEntry)) {
+			const code = fs.readFileSync(builtEntry, "utf-8");
+			if (code.includes("doesn't expose the `require` function")) {
+				const specs = [...new Set([...code.matchAll(/ne\("([^"]+)"\)/g)].map(m => m[1]))];
+				throw new Error(
+					`[ojm] ${definition.name}@${definition.version} 产物含运行期 require(${specs.join(", ") || "?"})`
+					+ "——浏览器没有 require，模块加载即抛错。"
+					+ "根因：该 CJS 依赖被标为 bundle（自带副本），但它 require 的共享包被 external 了。"
+					+ "修复：把它从 SHARED_DEPS 的 bundle 列表移回共享资产，或改用该依赖的 ESM 入口。",
+				);
+			}
+		}
+
 		const prefix = `${baseUrl}/modules/${definition.name}/${definition.version}/`;
 		const chunks: ChunkEntry[] = [];
 		const css: string[] = [];

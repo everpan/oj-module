@@ -54,9 +54,10 @@ const routes: AppRouteRecordRaw[] = [
 				handle: { title: "system:menu.oplog" },
 			},
 			{
+				// 站点设置（证书/站点级开关）：仅超管可见可访问
 				path: "/system/settings",
 				Component: Settings,
-				handle: { title: "system:menu.settings" },
+				handle: { title: "system:menu.settings", roles: ["superadmin"] },
 			},
 			{
 				path: "/system/login-methods",
@@ -64,11 +65,10 @@ const routes: AppRouteRecordRaw[] = [
 				handle: { title: "system:menu.loginMethods" },
 			},
 			{
-				// 企微代开发后台（服务商运营面）：页面内再判一次 superadmin（路由级不做角色门禁，
-				// 与 users/roles 页同策略——403 面板比路由消失更容易解释）
+				// 企微代开发后台（服务商运营面）：仅超管可见（路由级 roles + 页面内二次判定）
 				path: "/system/wecom",
 				Component: WecomAdmin,
-				handle: { title: "system:menu.wecom" },
+				handle: { title: "system:menu.wecom", roles: ["superadmin"] },
 			},
 		],
 	},

@@ -32,6 +32,9 @@ describe("shell 产物与 importmap（P4.3 / B11）", () => {
 	it("importmap 覆盖共享表全部带 asset 条目", () => {
 		const importmap = readImportmap();
 		for (const dep of SHARED_DEPS) {
+			// bundle 依赖（软共享缺席→模块自带副本兜底）按设计不进 importmap
+			if (dep.bundle)
+				continue;
 			expect(importmap[dep.specifier], `${dep.specifier} 无 importmap 映射`).toBeTruthy();
 		}
 	});

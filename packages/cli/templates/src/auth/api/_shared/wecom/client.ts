@@ -518,11 +518,18 @@ export function createWecomClient(deps: WecomClientDeps) {
 				await invalidateCorpToken(corpId, agentId);
 				continue;
 			}
-			if (errcode !== 0)
+			if (errcode !== 0) {
+				// 部署侧错误（IP 白名单 / 限流）不是用户凭据问题：按 502 抛，避免被统一成 401 把排查带偏
+				log.warn("wecom getuserinfo rejected", "errcode", String(errcode), "errmsg", String(res.errmsg ?? ""));
+				if (errcode === 60020 || errcode === 45009)
+					throw upstream(`企微 auth/getuserinfo 失败：errcode=${errcode} ${String(res.errmsg ?? "")}`.trim());
 				rejectCode();
+			}
 			const userid = res.userid == null ? "" : String(res.userid);
-			if (!userid)
+			if (!userid) {
+				log.warn("wecom getuserinfo no userid", "keys", Object.keys(res).join(","));
 				rejectCode(); // 非企业成员（外部联系人）时企微只给 openid，不认作本应用用户
+			}
 			return userid;
 		}
 		throw upstream("企微 token 反复失效（40001/42001）");

@@ -100,7 +100,7 @@ export function rewriteIndexHtml(html: string, siteBase: string | undefined, api
 		out = rewriteImportmap(out, base);
 		// 属性值：只要以单个 "/" 开头（排除 "//host"）。importmap 是脚本正文、非属性，
 		// 上一步已处理，二者不重叠。
-		out = out.replace(/(\b(?:href|src)=")(\/[^/"][^"]*|\/")/g, (_m, attr: string, url: string) =>
+		out = out.replace(/(\b(?:href|src|data-ojm-entry)=")(\/[^/"][^"]*|\/")/g, (_m, attr: string, url: string) =>
 			`${attr}${withSiteBase(url, base)}`);
 		globals.push(`window.__OJ_BASE__=${JSON.stringify(base)};`);
 	}

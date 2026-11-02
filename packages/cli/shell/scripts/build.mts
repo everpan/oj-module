@@ -73,20 +73,53 @@ function planeSiblingEntry(specifier: string): string | undefined {
  */
 const ASSET_BUILD_LOG_OVERRIDE: Record<string, "silent"> = { "import-is-undefined": "silent" };
 
+/**
+ * 首屏早跳（P0）：企微工作台打开 /login 时，不下载宿主静态图（~10.8MB / 105 请求），
+ * 内联脚本直接 302 到 /auth/wecom/login，只花 index.html 的 ~1.9KB(br)。
+ *
+ * 为什么必须内联：ESM 是「先取完整静态依赖图再执行」，写在 host entry 里的 location.replace
+ * 只有等共享资产全部到齐才会执行，对首屏零收益。这里把 module 入口从静态标签改为运行期注入：
+ * 需要渲染时才拉宿主，需要跳转时一条 JS 即可。
+ */
+const BOOT_JS = "(function(){try{var ua=(navigator.userAgent||\"\").toLowerCase(),p=location.pathname;while(p.length>1&&p.charAt(p.length-1)===\"/\")p=p.slice(0,-1);if(ua.indexOf(\"wxwork\")>=0&&p.slice(-6)===\"/login\"&&!new URLSearchParams(location.search).get(\"wecom_ticket\")){var a=(typeof window.__OJ_API_BASE__===\"string\"&&window.__OJ_API_BASE__.trim())||\"/api\";while(a.length>1&&a.charAt(a.length-1)===\"/\")a=a.slice(0,-1);location.replace(a+\"/auth/wecom/login\");return}}catch(e){}var s=document.createElement(\"script\");s.type=\"module\";s.src=document.currentScript.getAttribute(\"data-ojm-entry\");document.head.appendChild(s);})();";
+
 function injectImportmap(map: Record<string, string>) {
-	return {
+	let nonce = "";
+	const pre = {
 		name: "inject-importmap",
-		transformIndexHtml(html: string) {
-			// P6.2 / §4.8：构建期随机 nonce——内联 importmap 必须带 nonce，
-			// 否则被 CSP script-src 'self' 拦掉；每次 build 轮换，不加 strict-dynamic
-			const nonce = generateNonce();
-			const cspMeta = `<meta http-equiv="Content-Security-Policy" content="${generateCsp(defaultTrustedOrigins, nonce).replace(/\n/g, " ")}" />`;
-			const script = `<script type="importmap" nonce="${nonce}">${JSON.stringify({ imports: map }, null, 2)}</script>`;
-			return html.replace("<!--CSP-->", cspMeta).replace("<!--IMPORTMAP-->", script);
+		transformIndexHtml: {
+			order: "pre" as const,
+			handler(html: string) {
+				// P6.2 / §4.8：构建期随机 nonce——内联 importmap 必须带 nonce，
+				// 否则被 CSP script-src 'self' 拦掉；每次 build 轮换，不加 strict-dynamic
+				nonce = generateNonce();
+				const cspMeta = `<meta http-equiv="Content-Security-Policy" content="${generateCsp(defaultTrustedOrigins, nonce).replace(/\n/g, " ")}" />`;
+				const script = `<script type="importmap" nonce="${nonce}">${JSON.stringify({ imports: map }, null, 2)}</script>`;
+				return html.replace("<!--CSP-->", cspMeta).replace("<!--IMPORTMAP-->", script);
+			},
 		},
 	};
+	const post = {
+		name: "inject-early-boot",
+		transformIndexHtml: {
+			order: "post" as const,
+			handler(html: string) {
+				const open = html.indexOf("<script type=\"module\"");
+				if (open < 0)
+					throw new Error("[shell] 未找到宿主 module 入口脚本，无法注入首屏早跳");
+				const close = html.indexOf("</script>", open) + "</script>".length;
+				const tag = html.slice(open, close);
+				const src = /src="([^"]+)"/.exec(tag)?.[1];
+				if (!src)
+					throw new Error("[shell] 宿主入口脚本缺少 src，无法注入首屏早跳");
+				// data-ojm-entry 由 site-base.ts 一并按 siteBase 重写（子路径部署）
+				const boot = `<script nonce="${nonce}" data-ojm-entry="${src}">${BOOT_JS}</script>`;
+				return html.slice(0, open) + boot + html.slice(close);
+			},
+		},
+	};
+	return [pre, post];
 }
-
 /**
  * react 家族（react / react-dom / react-dom/client / react/jsx-runtime /
  * react/jsx-dev-runtime）在 npm 中仅有 CJS 产物、无 ESM 入口，且用
@@ -585,7 +618,7 @@ async function buildHost() {
 		root: shellDir,
 		logLevel: "warn",
 		define: { "process.env.NODE_ENV": JSON.stringify("production") },
-		plugins: [react(), injectImportmap(await autoGenerateSubpathAssets(generateImportmap()))],
+		plugins: [react(), ...injectImportmap(await autoGenerateSubpathAssets(generateImportmap()))],
 		build: {
 			outDir: distDir,
 			emptyOutDir: false,

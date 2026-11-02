@@ -59,16 +59,19 @@ describe("生成器（P4.1）", () => {
 		}
 	});
 
-	it("vditor 入表：主入口与 CSS 主样式有 importmap 键（软共享）", () => {
-		// 主入口（UMD → shell 预构建为 ESM 资产）与 CSS（nprogress 同款样式垫片）
+	it("vditor 入表但按 bundle 语义不进 importmap（软件共享，模块自带副本兜底）", () => {
+		// 主入口（UMD）与 CSS（nprogress 同款样式垫片）都在共享表内，但标了 bundle：
+		// 宿主不预构建、不进 importmap，模块 import 时自带副本（省宿主体积）
 		expect(isSharedDep("vditor")).toBe(true);
 		expect(isSharedDep("vditor/dist/index.css")).toBe(true);
 		const importmap = generateImportmap();
-		expect(importmap.vditor).toBe("/assets/vditor.js");
-		expect(importmap["vditor/dist/index.css"]).toBe("/assets/vditor-index-css.js");
+		expect(importmap.vditor).toBeUndefined();
+		expect(importmap["vditor/dist/index.css"]).toBeUndefined();
+		expect(generateShellEntries().find(e => e.pkg === "vditor")).toBeUndefined();
 		// 软共享：模块可声明 devDependencies 对齐版本，缺席时兜底而不硬失败（C7）
 		const dep = SHARED_DEPS.find(d => d.specifier === "vditor");
 		expect(dep?.hard).toBe(false);
+		expect(dep?.bundle).toBe(true);
 	});
 
 	it("共享表条目均含必要字段", () => {

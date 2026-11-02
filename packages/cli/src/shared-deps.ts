@@ -139,7 +139,9 @@ export const SHARED_DEPS: SharedDepEntry[] = [
 	{ specifier: "react-error-boundary", asset: "react-error-boundary", hard: false },
 	{ specifier: "react-jss", asset: "react-jss", hard: false },
 	{ specifier: "clsx", asset: "clsx", hard: false },
-	{ specifier: "react-countup", asset: "react-countup", hard: false, bundle: true },
+	// react-countup 只有 CJS 入口（main: build），其 require("react") 在模块自打包时会退化成
+	// 浏览器不可用的 require 桩 → 必须走宿主共享资产（shell 侧有 CJS→ESM 垫片）
+	{ specifier: "react-countup", asset: "react-countup", hard: false },
 	{ specifier: "simplebar-react", asset: "simplebar-react", hard: false },
 	{ specifier: "spin-delay", asset: "spin-delay", hard: false },
 	{ specifier: "tailwind-merge", asset: "tailwind-merge", hard: false },
