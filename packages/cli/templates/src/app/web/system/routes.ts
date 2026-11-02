@@ -4,7 +4,7 @@ import { SettingOutlined } from "@ant-design/icons";
 
 import { createElement, lazy } from "react";
 
-import { createSystemClient } from "./__client/api";
+import { createSystemClient } from "./__client";
 
 const Users = lazy(() => import("./pages/users"));
 const UserRoles = lazy(() => import("./pages/users/roles"));

@@ -19,7 +19,7 @@ import { PROJECT_ROOT } from "./helpers/paths";
  *
  * 本 spec 全程从真实文件取证，不硬编码期望值：
  *   - SYSTEM_ROLES ← templates/src/app/web/system/routes.ts（`/system` 根的路由级门禁）
- *   - 账号角色绑定 ← templates/src/_platform/api 的 migrations + seed.sql 重放
+ *   - 账号角色绑定 ← templates/src/app/api/_platform 的 migrations + seed.sql 重放
  *     （内存 sqlite，口径同 templates/tests/seed-role-accounts.spec.ts）
  * 判定式与 runtime getRoutes() 同款（命中任一角色即放行）。改 routes.ts 的
  * SYSTEM_ROLES 前先跑本 spec；变异验证：只留 ["admin"] 时 superadmin 相关
@@ -31,7 +31,7 @@ const { DatabaseSync: Db } = req("node:sqlite") as { DatabaseSync: typeof Databa
 
 const TEMPLATES_DIR = `${PROJECT_ROOT}/packages/cli/templates`;
 const SYSTEM_ENTRY = `${TEMPLATES_DIR}/src/app/web/system/routes.ts`;
-const PLATFORM_API = `${TEMPLATES_DIR}/src/_platform/api`;
+const PLATFORM_API = `${TEMPLATES_DIR}/src/app/api/_platform`;
 
 /** 从 routes.ts 源码读取真实的角色门禁配置（不 import 模块，避免拉起整棵页面依赖树） */
 function readRequiredRoles(): string[] {

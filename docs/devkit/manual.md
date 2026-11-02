@@ -42,22 +42,25 @@
 │   ├── tsconfig.json      # 后端 typecheck 工程（extends 上两者，exclude */web）
 │   ├── .ojm-builtin.json  # 框架自带方案名单（init 派生，可手改/删除；打包排除 + info 折叠，见 §11）
 │   ├── styles.css
-│   ├── _platform/         # 框架级：users 表 / rbac / 市场编排 / 生命周期
-│   │   ├── api/           #   + _shared/（respond、service/、site-facade）
-│   │   └── web/           #   仅 __client 生成物（无页面）
-│   ├── app/web/           # 框架内置页面**多根模块**（一个 entry 多个根）：
-│   │   ├── entry.ts       #   routes 聚合 + i18nNamespaces + 生命周期
-│   │   ├── home/          #   /home               （routes.ts + pages + locales + __client）
-│   │   ├── login/         #   /login、/change-password
-│   │   ├── personal-center/  # /personal-center/my-profile
-│   │   ├── notification/  #   /notification-center
-│   │   └── system/        #   /system/*（根上 handle.roles = 系统管理员）
+│   ├── app/               # 整个应用（后端模块 + 前端聚合模块）
+│   │   ├── api/           # 后端模块（模块名 = URL 前缀，各自仍是独立 oj 模块）
+│   │   │   ├── _platform/ #   users 表 / rbac / 市场编排 / 生命周期 + _shared/
+│   │   │   ├── auth/      #   login / refresh / logout / ldap-login
+│   │   │   ├── system/    #   用户 / 角色 / 权限 / 设置 / oplog / login-methods
+│   │   │   ├── notification/  # 通知互动（表 + push + del）
+│   │   │   ├── personal-center/  # 头像上传
+│   │   │   └── web/       #   root 级 /api/web（hello / user-info / get-async-routes）
+│   │   └── web/           # 前端**多根聚合模块**（一个 entry 多个根）
+│   │       ├── entry.ts   #   routes 聚合 + i18nNamespaces + 生命周期
+│   │       ├── home/      #   /home（routes.ts + pages + locales + __client）
+│   │       ├── login/     #   /login、/change-password
+│   │       ├── personal-center/  # /personal-center/my-profile
+│   │       ├── notification/     # /notification-center
+│   │       ├── system/    #   /system/*（根上 handle.roles = 系统管理员）
+│   │       ├── auth/      #   仅 __client（无页面）
+│   │       ├── _platform/ #   仅 __client（oj-market 引用）
+│   │       └── web/       #   仅 __client
 │   ├── oj-market/web/     # 解决方案市场（独立模块，删目录即下线）
-│   ├── auth/api/          # login / refresh / logout / ldap-login
-│   ├── system/api/        # 用户 / 角色 / 权限 / 设置 / oplog / login-methods（后端）
-│   ├── notification/api/  # 通知互动（表 + push + del）
-│   ├── personal-center/api/   # 头像上传
-│   └── web/{api,web}/     # root 级 /api/web（hello / user-info / get-async-routes 在 api 侧）
 ├── dist/api/              # 后端产物（release 根：<name>-<ver>/ + manifests.yaml + versions.json）—构建后才有
 ├── dist/web/              # 站点产物（shell + modules/ + modules.json）—构建后才有
 ├── bin/                   # oj 二进制 + plugins/ + devkit/（不入库）
@@ -72,10 +75,13 @@
   `resolveCertDir()` 单点派生，你不需要自己拼路径）。
 - **产物有两个根**：后端 `dist/api`（oj 扁平 release，`<name>-<ver>/` 与
   `manifests.yaml` 同层），站点 `dist/web`（`modules/` + `modules.json`）。
-- **`src/` 下每个目录都得是一个模块**：脚本 / 共享库请放在 `src/` 之外，否则
-  `ojm dev/build` 会以「既无 `api/manifest.yaml` 也无 `web/entry.ts`」直接报错。
+- **`src/` 下的顶层目录必须是一个模块**（`api/manifest.yaml` 或 `web/entry.ts`）：
+  脚本 / 共享库请放在 `src/` 之外。应用容器 `src/app` 是唯一例外——它的 `api/<name>/`
+  子目录各自是独立模块（模块名 = 子目录名 = URL 前缀，oj 的 `--module-root` 递归发现）。
+- **前端 client 入口是 `__client/index.ts`**（0.2.54 起，旧名 `api.ts` 会被 oj dev
+  当路由扫描）。页面导入写 `from "../__client"`。
 
-> 模板里还有一批 demo-only 模块（`src/home/api`、`src/{about,access,exception,
+> 模板里还有一批 demo-only 模块（`src/app/api/home`、`src/{about,access,exception,
 > outside,route-nest}/web`）仅供模板自演示，**不进脚手架**；其 `web.config.ts` 条目带
 > `// #region demo-only` 标记，init 拷贝时整段剥离。新布局的清单是「扫描 + 覆盖」并集，
 > 注释掉不会让模块消失——要「不构建」必须写 `enabled: false`。
@@ -100,7 +106,7 @@
 > **更早建好的 dev 库里仍是旧口令**——拿 `aA123456` 登不上时先怀疑这个，别去查登录链路。
 > 要统一：删 `db.sqlite` 重跑 `oj migrate`（seed 随服务启动重放），或直接
 > `UPDATE users SET password_hash = '<aA123456 的哈希>' WHERE username IN ('superadmin','admin','editor','viewer');`。
-> 哈希现成值从 `src/_platform/api/seed.sql` 里 grep `$2y$10$` 即可。
+> 哈希现成值从 `src/app/api/_platform/seed.sql` 里 grep `$2y$10$` 即可。
 
 端口：前端 devServer **5174**，oj 后端 **9778**
 （以工程根 `config.yaml` 的 `server.port` 为准）。
@@ -154,9 +160,9 @@
 src/<模块>/api/<路径...>/api.ts   →   /api/<模块>/<路径...>
 ```
 
-`src/web/api/hello/api.ts` → `GET|POST /api/web/hello`。
+`src/app/api/web/hello/api.ts` → `GET|POST /api/web/hello`。
 
-注意中间的 `api` 是**布局分隔符，不是路由段**（`src/web/api/hello` ↔ `/api/web/hello`，
+注意中间的 `api` 是**布局分隔符，不是路由段**（`src/app/api/web/hello` ↔ `/api/web/hello`，
 不是 `/api/web/api/hello`）——`ojm` 的契约扫描按「模块的 api 侧目录」逐模块进行，
 不会把 `src` 整棵当扫描根（历史布局同理：`api/src/web/hello/api.ts`）。
 
@@ -217,13 +223,14 @@ src/<模块>/api/<路径...>/api.ts   →   /api/<模块>/<路径...>
 
    | 文件位置 | 到 `_platform/_shared` 的写法 |
    |---|---|
-   | `src/system/api/<x>/api.ts` | `../../../_platform/api/_shared/...` |
-   | `src/system/api/<x>/<y>/api.ts` | `../../../../_platform/api/_shared/...` |
-   | `src/auth/api/<z>/api.ts` | `../../../_platform/api/_shared/...` |
-   | `src/_platform/api/<x>/api.ts` | `../_shared/...` |
-   | `src/_platform/api/<x>/<y>/api.ts` | `../../_shared/...` |
+   | `src/app/api/system/<x>/api.ts` | `../../_platform/_shared/...` |
+   | `src/app/api/system/<x>/<y>/api.ts` | `../../../_platform/_shared/...` |
+   | `src/app/api/auth/<z>/api.ts` | `../../_platform/_shared/...` |
+   | `src/app/api/_platform/<x>/api.ts` | `../_shared/...` |
+   | `src/app/api/_platform/<x>/<y>/api.ts` | `../../_shared/...` |
 
-   > 历史布局把 `src/<m>/api` 换成 `api/src/<m>` 后同构，深度不变。
+   > 历史布局把 `src/<m>/api` 换成 `api/src/<m>` 后同构，深度不变；内置模块收进
+   > `src/app/api/<m>` 后比原 `src/<m>/api` **少一层**（上表已按新布局校准）。
 3. **模块级可变状态不跨请求存活。** oj **每请求重建 handler 模块实例**（实测：模块级
    计数器连打三次恒为初值）——`let` / `Map` / `Set` 级状态一律视为**单请求作用域**。
    需要跨请求的状态（限速、节流、去重窗口、判权缓存）**必须落库**或走 oj 持久面。
@@ -287,7 +294,7 @@ src/<模块名>/web/
 > 就是忘了登记，结果模块安静地没加载、按钮安静地灰着，**全程没有一个报错**。
 
 **建档顺序很重要**（有接口的模块）：先写 handler 的 `.schema` → 跑 `oj openapi` + `ojm api` → 再写 `entry.ts`。
-生成前 `import { createXxxClient } from "./__client/api"` 必然 ts 报红，
+生成前 `import { createXxxClient } from "./__client"` 必然 ts 报红，
 那不是你写错了，是产物还没生成。完整流水线见 §3.4。
 
 ```ts
@@ -316,7 +323,7 @@ import { BookOutlined } from "@ant-design/icons";
 import { defineModule } from "@oj-module/runtime";
 import { createElement, lazy } from "react";
 
-import { createBooksClient } from "./__client/api";
+import { createBooksClient } from "./__client";
 
 const Books = lazy(() => import("./pages/index"));
 
@@ -483,7 +490,7 @@ const roles = useUserStore(s => s.roles);
 
 **写（改密/改角色/改设置）→ 走契约 API client，不碰框架内部**
 
-- 框架已把 `auth/*`、`system/*`、`web/*` 等端点经 OpenAPI 契约定义，并从 `@oj-module/runtime` 导出类型化 fetch（如 `api/rbac` 的 `fetchChangePassword`、`fetchRbacUpdateUserRoles`，`api/user` 的 `fetchUserInfo`）。要调框架内置写接口，直接复用这些导出。**但更推荐模块 own 自己的契约**：在**自己模块的 handler 动词**上写 `.schema`，跑 `oj openapi` + `ojm api` 生成 `src/<模块>/web/__client/api.ts`，模块经自己的 client 调框架端点——接口由契约（versioned OpenAPI）对齐，而非把框架源文件打进来。
+- 框架已把 `auth/*`、`system/*`、`web/*` 等端点经 OpenAPI 契约定义，并从 `@oj-module/runtime` 导出类型化 fetch（如 `api/rbac` 的 `fetchChangePassword`、`fetchRbacUpdateUserRoles`，`api/user` 的 `fetchUserInfo`）。要调框架内置写接口，直接复用这些导出。**但更推荐模块 own 自己的契约**：在**自己模块的 handler 动词**上写 `.schema`，跑 `oj openapi` + `ojm api` 生成 `src/<模块>/web/__client/index.ts`，模块经自己的 client 调框架端点——接口由契约（versioned OpenAPI）对齐，而非把框架源文件打进来。
 - 底层都走同一个 `request` 单例 + 契约 URL；模块侧请求被 `defineModule` 的 `ctx` 收敛到登记过的 `apiPrefix`，越界 / `../` 穿越 / 逐请求 prefix 覆盖均被拒（请求边界见 §2.6 + `tests/runtime/scoped-request.test.ts`）。
 
 **场景：模块记录自己的操作日志（写端）**
@@ -537,7 +544,7 @@ oj openapi -c config.yaml --module-root src -b /api -o openapi.json   →  OpenA
 ojm api   →  irFromOpenapi  →  emitZodFromJsonSchema / emitClient
         │
         ▼
-src/<模块>/web/__client/{api.ts, api.schemas.ts}（+ stub / mock）
+src/<模块>/web/__client/{index.ts, api.schemas.ts}（+ stub / mock）
 ```
 
 `openapi.json` 即权威文档源，`ojm api --docs` 直接聚合它渲染文档站。`.schema` / `.response`
@@ -556,7 +563,7 @@ src/<模块>/web/__client/{api.ts, api.schemas.ts}（+ stub / mock）
 
 | 工程形态 | 权威源 | 产物流向 |
 |---|---|---|
-| **module-root**（`ojm init` 产物，推荐） | 后端 `src/<模块>/api/**/api.ts` 上的 `.schema` | `src/<模块>/web/__client/{api.ts, api.schemas.ts}`（由 `ojm api` 消费 `openapi.json` 生成）；stub → `src/<模块>/api/<路径>/api.ts`（未实现 handler 时补骨架） |
+| **module-root**（`ojm init` 产物，推荐） | 后端 `src/<模块>/api/**/api.ts` 上的 `.schema` | `src/<模块>/web/__client/{index.ts, api.schemas.ts}`（由 `ojm api` 消费 `openapi.json` 生成）；stub → `src/<模块>/api/<路径>/api.ts`（未实现 handler 时补骨架） |
 | **uni-dev**（历史布局） | 后端 `api/src/<模块>/**/api.ts` 上的 `.schema` | `web/src/<模块>/__client/…`；stub → `api/src/<模块>/<路径>/api.ts` |
 | 纯前端 | 仅消费他人 `openapi.json` | `__client/` 全部落前端侧，无 stub |
 
@@ -569,7 +576,7 @@ src/<模块>/web/__client/{api.ts, api.schemas.ts}（+ stub / mock）
 以目录名作 `MODULE_PREFIX`（跨模块认领护栏的对比基准），只改一边会让 dev 控制台报「正在认领
 别人的 client」。与旧 `apiPrefix` 字面相等约束同源，只是不再手写字段。
 
-> 工程里有两个 "web"：前端侧 `src/web/web/`，与后端 `src/web/api/`（提供 user-info 等内置接口）。
+> 工程里有两个 "web"：前端侧 `src/app/web/web/`，与后端 `src/app/api/web/`（提供 user-info 等内置接口）。
 > 豁免清单里的 `"modules": ["web"]` 指的是**后者**。
 
 ### 3.3 handler `.schema`（入参）+ `.response`（出参）写法（JSON Schema 子集）
@@ -636,7 +643,7 @@ minLength / maxLength / pattern / enum / nullable / minItems / maxItems / defaul
 **上传文件（multipart/form-data）**：当前 `ojm api` 的 openapi 流水线**不生成** form 通道的
 前端 client（文件部件是二进制，不进 JSON Schema）。惯例走 antd `Upload` **直连**后端
 （不经 JSON client），handler 用 `http.files` / `http.file(i)` 读字节，仅平级声明
-`.response`（见 `src/personal-center/api/upload/api.ts` 范本）。
+`.response`（见 `src/app/api/personal-center/upload/api.ts` 范本）。
 
 **不要手写 `content-type`**：运行时（ky）见到 `FormData` 会自己补 `multipart/form-data;
 boundary=…`，手写反而丢 boundary。
@@ -646,7 +653,7 @@ boundary=…`，手写反而丢 boundary。
 
 ### 3.4 生成物使用契约
 
-生成的 `src/<模块>/web/__client/api.ts` 导出：
+生成的 `src/<模块>/web/__client/index.ts` 导出：
 
 - 裸请求函数（`fetchNotifications`、`markRead`…）——**直接 import 调用**；
 - `API_PREFIX` 常量——契约前缀的唯一真源；
@@ -672,7 +679,7 @@ const booksClient = createBooksClient(ctx);
 > 目录却不在」只有一种解释：那个模块的 `__client/` 从没生成过（模板里的
 > personal-center 上传走 antd Upload 直连，不经过 JSON client，故没人 import 它的 `__client`）。
 > 你在自己工程跑一次 `ojm api`，它就会出现。
-> 判断某模块**要不要用** client 的标准只有一个：代码里有没有人 import `./__client/api`。
+> 判断某模块**要不要用** client 的标准只有一个：代码里有没有人 import `./__client`。
 > 有就在 onInit 里 `create<Module>Client(ctx)` 一次；没有就什么都不写，
 > 生成了但没人 import 也不报错。
 
@@ -683,7 +690,7 @@ const booksClient = createBooksClient(ctx);
 
 ### 3.5 生成物勿手改
 
-`__client/api.ts`、`__client/api.schemas.ts` **重跑即覆盖**（eslint 已忽略这些路径）。
+`__client/index.ts`、`__client/api.schemas.ts` **重跑即覆盖**（eslint 已忽略这些路径）。
 改需求 = 改 handler 的 `.schema`（或路由），重跑 `oj openapi` + `ojm api`。
 
 **唯一例外：stub。** `src/<模块>/api/**/api.ts` 的 stub 文件头带指纹
@@ -832,7 +839,7 @@ export default { get };
 3. **生成规范**：`oj openapi -c config.yaml --module-root src -b /api -o openapi.json`
    （历史布局用 `-d api/src`；项目级单文件、含全部模块；组级 `.schema`/`.response` 已由
    oj 内省期合并）。
-4. **生成 client**：`ojm api` → `src/<模块>/web/__client/{api.ts, api.schemas.ts}`
+4. **生成 client**：`ojm api` → `src/<模块>/web/__client/{index.ts, api.schemas.ts}`
    （历史布局 `web/src/<模块>/__client/`）。
 5. **改前端消费点**：函数名从旧人类命名（`fetchNotifications`）改为
    `camelCase(operationId)`（`notificationNotificationsGet`）——用「逐字节比对」识别，
@@ -904,9 +911,9 @@ Provider 就是：「这块别用框架自带的了，换成我的实现。」�
 
 ### 4.4 案例：接管通知功能（标准四文件）
 
-**① handler `.schema`**（`src/notification/api/api.ts` 上各动词挂的 `.schema`）——见 §3.3 与 §3.4。
+**① handler `.schema`**（`src/app/api/notification/api.ts` 上各动词挂的 `.schema`）——见 §3.3 与 §3.4。
 
-**② handler**（`src/notification/api/api.ts`，模块根嵌套组——组名 = 路径段，oj v0.1.64）：
+**② handler**（`src/app/api/notification/api.ts`，模块根嵌套组——组名 = 路径段，oj v0.1.64）：
 
 ```ts
 const notifications = {
@@ -939,7 +946,7 @@ export default { notifications, /* push, "push-broadcast" 等同理 */ };
 ```ts
 import type { NotificationsApiProvider } from "@oj-module/runtime";
 import { defineModule } from "@oj-module/runtime";
-import { createNotificationClient } from "./__client/api";
+import { createNotificationClient } from "./__client";
 
 export default defineModule({
 	name: "notification",
@@ -964,7 +971,7 @@ export default defineModule({
 **⑤ 跨模块发射原语（任何后端模块都能推通知）**
 
 通知不是「只有通知模块自己用」的功能——下单、审核、@我等其它模块也需要给某个人推一条提醒。
-把发射逻辑收敛成 `src/notification/api/_shared/notify.ts` 里的纯函数原语，其它模块**别名导入
+把发射逻辑收敛成 `src/app/api/notification/_shared/notify.ts` 里的纯函数原语，其它模块**别名导入
 直接调用，无需走 HTTP**：
 
 ```ts
@@ -997,7 +1004,7 @@ export default {
   不带 `node_modules`——dev 能跑、release 或装到站点后必炸。后端共享代码放本模块
   `api/_shared/`，跨模块走 `#/<模块名>/_shared/...` 别名；类型与 runtime 的
   `@oj-module/runtime/notify` 保持同形即可（共享契约类型单一真源在 runtime）。
-- **`_shared` 必须嵌进所属模块的 api 侧**（`src/notification/api/_shared/`）：
+- **`_shared` 必须嵌进所属模块的 api 侧**（`src/app/api/notification/_shared/`）：
   `src/` 下每个目录都得是模块（`api/manifest.yaml` 或 `web/entry.ts`），`src/_shared` 会被
   `ojm dev/build` 判成坏目录；放进模块内则是「无 `api.ts` 的纯工具目录」，不产生路由。
   （历史布局同理：`api/src/notification/_shared/`，而 `api/src/_shared` 会被 oj 当成缺
@@ -1563,7 +1570,7 @@ export default async (path: string, html: string) => {
 | 登录 401 且 msg 不是 `invalid credentials` | `/auth/*` 不在 `anonymous_paths` | 加进工程根 `config.yaml`，重启 |
 | 登出/回登录页空白或 404 | 工程缺 `login` 模块（shell 无内置登录回落） | 在 `web.config.ts` 保留 `login` |
 | 登录后 / 点 logo 落 React Router 错误边界 | 工程缺 `home` 模块 | 在 `web.config.ts` 保留 `home`（尽量靠前） |
-| 通知铃 404 `no route matched`（`/api/notifications`） | 前端 `notification` 模块没加载 / 没注册 `notificationsApi`，回落到内置只读兜底——而脚手架不再提供 root 级 `/api/notifications` 模块 | 保留 `web.config.ts` 的 `notification` 登记，onInit 里注册四方法（模板 `src/app/web/notification/entry.ts`）；后端由 `src/notification/api` 提供 `/api/notification/*` |
+| 通知铃 404 `no route matched`（`/api/notifications`） | 前端 `notification` 模块没加载 / 没注册 `notificationsApi`，回落到内置只读兜底——而脚手架不再提供 root 级 `/api/notifications` 模块 | 保留 `web.config.ts` 的 `notification` 登记，onInit 里注册四方法（模板 `src/app/web/notification/entry.ts`）；后端由 `src/app/api/notification` 提供 `/api/notification/*` |
 | `@types/react` / `typescript` 装成 `*` | 宿主 versions.json 未列 | 安装后按实际版本钉死（`*` 不可复现） |
 | 迁移账本落后、服务拒绝启动 | release `verify` 闸 | 先 `ojm migrate -d api/dist`（透传自动补 `-c`） |
 | `seed.sql` 没生效 / 语法错 | 按 `;` 朴素切分，注释里有分号 | 去掉注释里的分号字面量 |
@@ -1590,11 +1597,11 @@ export default async (path: string, html: string) => {
 | 接管通知 provider（四方法全量） | `src/app/web/notification/entry.ts` |
 | 上传 provider（action + headers 方法） | `src/app/web/personal-center/entry.ts` |
 | 无页面模块（`routes: []`） | 同 `src/app/web/notification/entry.ts` |
-| handler `.schema` 入参 + 平级 `.response` 出参写法（GET + POST、参数段） | `src/notification/api/api.ts` |
-| handler 写法（嵌套组列表 / 写入 / 403 归属） | `src/notification/api/api.ts`（模块根单文件，`read`/`read-all`/`clear` 子组） |
-| 统一异常出口 `respond()`（service 抛 `Error & {status}` → 信封 `json.fail`） | 模板 `src/_platform/api/_shared/respond.ts` + 各 handler 用法（§1.7-1） |
-| 生成物长什么样（含工厂） | `src/app/web/notification/__client/api.ts` |
-| 建表三件套 | `src/notification/api/{schema.yaml,manifest.yaml,migrations/}` |
+| handler `.schema` 入参 + 平级 `.response` 出参写法（GET + POST、参数段） | `src/app/api/notification/api.ts` |
+| handler 写法（嵌套组列表 / 写入 / 403 归属） | `src/app/api/notification/api.ts`（模块根单文件，`read`/`read-all`/`clear` 子组） |
+| 统一异常出口 `respond()`（service 抛 `Error & {status}` → 信封 `json.fail`） | 模板 `src/app/api/_platform/_shared/respond.ts` + 各 handler 用法（§1.7-1） |
+| 生成物长什么样（含工厂） | `src/app/web/notification/__client/index.ts` |
+| 建表三件套 | `src/app/api/notification/{schema.yaml,manifest.yaml,migrations/}` |
 | 全局类型（`window.$message` 等） | 工程根 `env.d.ts` |
 
 另有：
@@ -2016,7 +2023,7 @@ ojm trust revoke <key_id>        # 吊销：阻断新装/升级，不动已装�
 
 ### 12.3 第一方 bootstrap key（首装免 TOFU）
 
-平台模板内置第一方发布方**公钥**（`src/_platform/api/market/bootstrap.ts` 的
+平台模板内置第一方发布方**公钥**（`src/app/api/_platform/market/bootstrap.ts` 的
 `BOOTSTRAP_KEY`）：信任库文件首次初始化时自动播种一次——**market 方案首装免 TOFU 直接过
 验签**。发布时序（平台发行人执行）：`ojm keygen` → 签 oj-market 首发包 → 公钥 + key_id
 回填 `BOOTSTRAP_KEY` 随模板发布。播种纪律：库已初始化（含空库）不播种——运维 `revoke`
@@ -2232,7 +2239,7 @@ async function post() {
 所以前端消费组织架构的唯一正路是「借壳」：
 
 1. 在**自己模块**的 handler 里调 `resolveReadFace` + 需要的那几个读函数（§14.2）；
-2. 跑 `oj openapi` + `ojm api`，生成本模块的 `src/<模块>/web/__client/api.ts`；
+2. 跑 `oj openapi` + `ojm api`，生成本模块的 `src/<模块>/web/__client/index.ts`；
 3. 页面用本模块 client 调。
 
 多一层 handler 换来三件事：接口形状由**你自己的契约**决定（只出页面要的字段）、框架内部实现不进你的

@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
  * 布局 A（`src/<name>/{api,web}`）的 tsconfig 覆盖不变量。
  *
  * 单树布局下"前后端分面"只能靠 `exclude` 表达，而负向 glob 最容易踩的坑是命中了
- * **同名的模块目录**：宽 glob（任意层 `web`）会把「模块名就叫 web」的 `src/web/api`
+ * **同名的模块目录**：宽 glob（任意层 `web`）会把「模块名就叫 web」的 `src/app/api/web`
  * 整棵排除（实测漏检 3 个后端文件，`typecheck:api` 依然全绿）；同理任意层 `api`
  * 会连带排除 `src/oj-market/web/api`（只因被 entry 引用才侥幸回到图里）。
  *
@@ -77,11 +77,11 @@ describe("模板 tsconfig 覆盖不变量（布局 A：src/<name>/{api,web}）",
 	 * 定向回归：模块名与布局分隔符撞名（`web` 模块的后端、`oj-market` 前端里叫 api 的目录）。
 	 * 这两个都不是假想形态——模板里就有，且都曾被宽 glob 误伤过。
 	 */
-	it("同名目录不被对面一侧的排除规则误伤（src/web/api、src/oj-market/web/api）", () => {
+	it("同名目录不被对面一侧的排除规则误伤（src/app/api/web、src/oj-market/web/api）", () => {
 		const api = listFiles("src/tsconfig.json");
 		const web = listFiles("tsconfig.json");
 
-		expect(api).toContain("src/web/api/user-info/api.ts");
+		expect(api).toContain("src/app/api/web/user-info/api.ts");
 		expect(web).toContain("src/oj-market/web/api/defaultClient.ts");
 		// 反向：两侧各只收自己那一面（路径形如 src/<name>/api|web/…）
 		expect([...api].filter(f => f.split("/")[2] !== "api")).toEqual([]);

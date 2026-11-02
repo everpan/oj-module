@@ -72,7 +72,7 @@ function emit() {
 }
 
 describe("emitClient (module target)", () => {
-	const { "api.ts": apiTs, "api.schemas.ts": schemasTs } = emit();
+	const { "index.ts": apiTs, "api.schemas.ts": schemasTs } = emit();
 
 	it("aPI_PREFIX / MODULE_PREFIX 用 JSON 字符串字面量（注入安全）", () => {
 		expect(apiTs).toContain("export const API_PREFIX = \"/wiki\";");
@@ -114,7 +114,7 @@ describe("emitClient (module target)", () => {
 describe("emitClient 注入安全：模块名含特殊字符不破坏源码", () => {
 	it("module 名含 -/$ 时 MODULE_PREFIX/工厂名仍走字符串字面量（API_PREFIX 取 IR wirePrefix）", () => {
 		const ir = irFromOpenapi(DOC, { base: "/v1/api" });
-		const { "api.ts": apiTs } = emitClient(ir, { target: "module", module: "weird-name" });
+		const { "index.ts": apiTs } = emitClient(ir, { target: "module", module: "weird-name" });
 		// module 选项只影响 MODULE_PREFIX 与 create<Module>Client 名
 		expect(apiTs).toContain("export const MODULE_PREFIX = \"/weird-name\";");
 		expect(apiTs).toContain("export function createWeirdNameClient(");
@@ -128,7 +128,7 @@ describe("emitClient 注入安全：模块名含特殊字符不破坏源码", ()
 describe("emitClient 多根聚合归属（owner）", () => {
 	it("owner 与 module 不同 → 落 MODULE_OWNER，护栏对比归属模块；MODULE_PREFIX 仍是 api 前缀", () => {
 		const ir = irFromOpenapi(DOC, { base: "/v1/api" });
-		const { "api.ts": apiTs } = emitClient(ir, { target: "module", module: "system", owner: "app" });
+		const { "index.ts": apiTs } = emitClient(ir, { target: "module", module: "system", owner: "app" });
 		expect(apiTs).toContain("export const MODULE_PREFIX = \"/system\";");
 		expect(apiTs).toContain("export const MODULE_OWNER = \"/app\";");
 		expect(apiTs).toContain("ctx.module.name !== MODULE_OWNER.slice(1)");
@@ -137,7 +137,7 @@ describe("emitClient 多根聚合归属（owner）", () => {
 
 	it("owner 缺省 = module → 生成物与历史逐字一致（不出现 MODULE_OWNER）", () => {
 		const ir = irFromOpenapi(DOC, { base: "/v1/api" });
-		const { "api.ts": apiTs } = emitClient(ir, { target: "module", module: "system", owner: "system" });
+		const { "index.ts": apiTs } = emitClient(ir, { target: "module", module: "system", owner: "system" });
 		expect(apiTs).not.toContain("MODULE_OWNER");
 		expect(apiTs).toContain("ctx.module.name !== MODULE_PREFIX.slice(1)");
 	});

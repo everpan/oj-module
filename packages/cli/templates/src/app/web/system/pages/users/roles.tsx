@@ -6,7 +6,7 @@ import { useTranslation } from "react-i18next";
 
 import { useNavigate, useParams } from "react-router";
 
-import { systemRolesGet, systemUsersGet, systemUsersRolesPut } from "../../__client/api";
+import { systemRolesGet, systemUsersGet, systemUsersRolesPut } from "../../__client";
 import { explainError, isForbidden } from "../errors";
 import { ForbiddenPanel } from "../forbidden";
 

@@ -16,6 +16,8 @@
  * - 本文件编译进 `host.js`，其余共享依赖编译进各自的单入口 ESM（见 scripts/build.mts）。
  */
 
+import type { RouteObject } from "react-router";
+
 import type { HostModule } from "./preload";
 import { StyleProvider } from "@ant-design/cssinjs";
 import {
@@ -145,10 +147,42 @@ function buildShellChildren() {
  * 路由表；随后 SPA 登录（不刷新页面）菜单回来了，但 /system/* 仍不在路由表里，
  * 直达恒落 catch-all 404「返回首页」，须硬刷新才恢复。
  */
+/**
+ * 宿主路由根（Boot 建表与登录后重登记共用同一形状，children 按当前角色快照生成）。
+ *
+ * 路由根只渲染容器（Outlet），整站 chrome 由模块自带的 ContainerLayout 提供；
+ * 宿主不叠加自己的 Layout chrome，避免「宿主侧栏 + 模块侧栏」双层嵌套。
+ * element 里同时挂 LayoutEffects（暗色类/动态标题/NProgress，与 App 链同源，偏差 4）
+ * 与页面级 ErrorBoundary（模块路由不经 runtime LayoutRoot，缺它时渲染抛错整页白屏）。
+ */
+function buildShellRoot(): RouteObject {
+	return {
+		path: "/",
+		id: SHELL_ROOT_ID,
+		element: (
+			<ErrorBoundary FallbackComponent={PageError}>
+				<LayoutEffects />
+				<Outlet />
+			</ErrorBoundary>
+		),
+		children: buildShellChildren(),
+	};
+}
+
 function repatchShellRoutes(): void {
 	if (!shellRouter)
 		return;
-	shellRouter.patchRoutes(SHELL_ROOT_ID, buildShellChildren());
+	// patchRoutes 只增不删：Boot 期按演示角色（admin）登记的 /system 已存在时，
+	// 再次 patch 同 path 的新表不会替换旧表——superadmin 登录后菜单能拿到全部
+	// 子项（access store 新表），但渲染路由仍是 Boot 期缺「站点设置/企微集成」
+	// 的旧树，SPA 点击落 catch-all 404（2026-11-02 实测，硬刷新才恢复）。
+	// 先 _internalSetRoutes 重建根（丢全部动态子路由，RR 7.18 起落入 HMR 树；
+	// runtime resolveLoginRoute 同源用法），再按当前角色整棵补回。
+	const internal = (shellRouter as unknown as { _internalSetRoutes?: (routes: RouteObject[]) => void })._internalSetRoutes;
+	if (internal)
+		internal.call(shellRouter, [buildShellRoot()]);
+	else
+		shellRouter.patchRoutes(SHELL_ROOT_ID, buildShellChildren());
 	// patchRoutes 不触发重匹配（同 AuthGuard 补 replace 的语义）：登录重定向
 	// 竞态下当前可能已停在 404 兜底上，按当前路径 replace 一次强制重新匹配。
 	// state.location 为 basename 相对路径，直接回填不会双重拼接部署前缀。
@@ -196,7 +230,7 @@ function Boot() {
 			try {
 				// P0 企微内早跳：跳过首屏与全部模块加载，直接进入企微授权
 				if (typeof navigator !== "undefined" && /wxwork/i.test(navigator.userAgent) && location.pathname.endsWith("/login") && !new URLSearchParams(location.search).get("wecom_ticket")) {
-					window.location.assign(resolveApiBase() + "/auth/wecom/login");
+					window.location.assign(`${resolveApiBase()}/auth/wecom/login`);
 					return;
 				}
 
@@ -283,31 +317,7 @@ function Boot() {
 				// 管理页菜单点击必 404（wiki admin/contacts 回归，2026-10）。
 				// children 走 buildShellChildren 统一构建口：登录后 repatchShellRoutes
 				// 按同一构建口重登记（B16 回归，2026-10-24）。
-				shellRouter = createBrowserRouter([
-					{
-						// 路由根只渲染容器（Outlet），整站 chrome 由模块自带的
-						// ContainerLayout 提供；宿主不叠加自己的 Layout chrome，
-						// 避免「宿主侧栏 + 模块侧栏」双层嵌套（布局混乱）。
-						path: "/",
-						id: SHELL_ROOT_ID,
-						// 全局副作用与 <Outlet /> 并列挂载：LayoutEffects 不含
-						// AuthGuard（宿主免登录），但暗色类/动态标题/NProgress
-						// 必须与 App 链路同源（偏差 4）
-						//
-						// 页面级错误边界（增量⑥）：模块路由默认 layout:"container"，
-						// **不经过** runtime 的 LayoutRoot（其自带 ErrorBoundary）——
-						// 模块页面渲染抛错时只剩 React Router 默认 ErrorBoundary，
-						// 表现为整页白屏。宿主链在此与 LayoutRoot 同构地包一层
-						// （ErrorBoundary + PageError，两者均自 runtime 出口取得）。
-						element: (
-							<ErrorBoundary FallbackComponent={PageError}>
-								<LayoutEffects />
-								<Outlet />
-							</ErrorBoundary>
-						),
-						children: buildShellChildren(),
-					},
-				], {
+				shellRouter = createBrowserRouter([buildShellRoot()], {
 					/**
 					 * 子路径部署（oj `mounts: [{ prefix: /oj, web: dist, spa: true }]`）：
 					 * 不设 basename 时 react-router 看到的是含前缀的 `/oj/wiki/...`，

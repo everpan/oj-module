@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, Descriptions, Tag } from "antd";
 import { useTranslation } from "react-i18next";
 
-import { systemLoginMethodsGet } from "../../__client/api";
+import { systemLoginMethodsGet } from "../../__client";
 
 const METHOD_KEY: Record<string, string> = {
 	local: "system:loginMethodsPage.methodLocal",

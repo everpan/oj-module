@@ -1,4 +1,4 @@
-import type { SystemDepartmentsGetData, SystemDepartmentsMembersGetData } from "../../__client/api";
+import type { SystemDepartmentsGetData, SystemDepartmentsMembersGetData } from "../../__client";
 
 import { PlusOutlined } from "@ant-design/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -32,7 +32,7 @@ import {
 	systemDepartmentsPost,
 	systemDepartmentsPut,
 	systemUsersGet,
-} from "../../__client/api";
+} from "../../__client";
 import { explainError, isForbidden } from "../errors";
 import { ForbiddenPanel } from "../forbidden";
 import { WecomSyncBar } from "./sync-bar";

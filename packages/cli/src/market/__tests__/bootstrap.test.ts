@@ -68,7 +68,7 @@ describe("given 一个装了 oj 二进制的源工程 When 自举隔离站点", 
 
 		const site = await bootstrapIsolatedSite({ projectRoot: src, starter });
 
-		expect(existsSync(join(site.root, "src", "_platform", "api", "seed.sql"))).toBe(true);
+		expect(existsSync(join(site.root, "src", "app", "api", "_platform", "seed.sql"))).toBe(true);
 		expect(existsSync(join(site.root, "bin", "oj"))).toBe(true);
 		expect(existsSync(join(site.root, "bin", "plugins", "auth.wasm"))).toBe(true);
 		expect(site.root).not.toBe(src);

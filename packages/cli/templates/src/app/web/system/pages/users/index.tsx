@@ -1,4 +1,4 @@
-import type { SystemUsersGetData } from "../../__client/api";
+import type { SystemUsersGetData } from "../../__client";
 
 import { PlusOutlined } from "@ant-design/icons";
 import { useUserStore } from "@oj-module/runtime";
@@ -9,7 +9,7 @@ import { useTranslation } from "react-i18next";
 
 import { useNavigate } from "react-router";
 
-import { systemDepartmentsGet, systemUsersForbiddenPut, systemUsersGet, systemUsersPasswordPut, systemUsersPost } from "../../__client/api";
+import { systemDepartmentsGet, systemUsersForbiddenPut, systemUsersGet, systemUsersPasswordPut, systemUsersPost } from "../../__client";
 import { buildTreeData, subtreeIds } from "../departments/tree";
 import { explainError, isForbidden } from "../errors";
 import { ForbiddenPanel } from "../forbidden";

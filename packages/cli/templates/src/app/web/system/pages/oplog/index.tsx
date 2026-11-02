@@ -4,7 +4,7 @@ import dayjs from "dayjs";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { systemOplogGet } from "../../__client/api";
+import { systemOplogGet } from "../../__client";
 import { isForbidden } from "../errors";
 import { ForbiddenPanel } from "../forbidden";
 

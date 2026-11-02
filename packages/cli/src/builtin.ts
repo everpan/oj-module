@@ -64,9 +64,16 @@ export function readBuiltinModules(projectRoot: string): Set<string> {
 export function deriveBuiltinModules(include: Iterable<string>): Set<string> {
 	const mods = new Set<string>();
 	for (const p of include) {
-		const m = /^src\/([^/]+)\/(?:api|web)(?:\/|$)/.exec(p)?.[1];
-		if (m)
-			mods.add(m);
+		// 聚合容器下的后端模块：src/app/api/<name>（模块名取 api 的下一段，不是容器名）
+		const nested = /^src\/[^/]+\/api\/([^/]+)(?:\/|$)/.exec(p)?.[1];
+		if (nested) {
+			mods.add(nested);
+			continue;
+		}
+		// 平铺后端 src/<name>/api 与前端 src/<name>/web/...
+		const flat = /^src\/([^/]+)\/(?:api|web)(?:\/|$)/.exec(p)?.[1];
+		if (flat)
+			mods.add(flat);
 	}
 	return mods;
 }

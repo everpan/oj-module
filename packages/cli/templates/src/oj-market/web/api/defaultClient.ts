@@ -28,7 +28,7 @@ import {
 	platformMarketTrustPost,
 	platformMarketUninstallImpactGet,
 	platformMarketUninstallPost,
-} from "../../../_platform/web/__client/api";
+} from "../../../app/web/_platform/__client";
 
 // 绑定运行时 request 到生成 client 的模块级单槽（生成 client 是静态单例，必须由某处
 // bindRequest；此处兜底确保市场子应用无论挂载顺序都能拿到请求实例）。与 _platform 模块

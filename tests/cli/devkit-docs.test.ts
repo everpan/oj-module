@@ -107,7 +107,7 @@ describe("devkit 目录结构（ojm 侧发货 + oj-api-dev 快照子目录）", 
 describe("企微两本手册与部署常量同步", () => {
 	const daikaifa = read("docs/devkit/wecom-daikaifa.md");
 	const internal = read("docs/devkit/wecom-internal-app.md");
-	const config = read("packages/cli/templates/src/auth/api/_shared/wecom/config.ts");
+	const config = read("packages/cli/templates/src/app/api/auth/_shared/wecom/config.ts");
 	// config.ts 里出现的全部变量名即真源；按前缀分派到两本手册
 	const all = [...new Set([...config.matchAll(/"(wecom_[a-z_]+)"/g)].map(m => m[1]!))].sort();
 	const suiteVars = all.filter(n => !n.startsWith("wecom_corp_") && n !== "wecom_allow_coexist");

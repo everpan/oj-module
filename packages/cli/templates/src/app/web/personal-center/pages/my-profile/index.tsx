@@ -7,7 +7,7 @@ import {
 import { BasicContent, FormAvatarItem, useUserStore } from "@oj-module/runtime";
 import { App, Form, Input } from "antd";
 
-import { personalCenterProfilePost } from "../../__client/api";
+import { personalCenterProfilePost } from "../../__client";
 
 export default function Profile() {
 	const currentUser = useUserStore();

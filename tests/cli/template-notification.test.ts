@@ -51,7 +51,7 @@ describe("模板 notification 模块（G5，BDD 5.4#1）", () => {
 	it("签入模板的 client 生成物与现场生成逐字节一致（评审 b5）", async () => {
 		const cwd = makeTemplateProject();
 		await runApi({ cwd });
-		for (const file of ["api.ts", "api.schemas.ts"]) {
+		for (const file of ["index.ts", "api.schemas.ts"]) {
 			const generated = readFileSync(join(cwd, `src/app/web/notification/__client/${file}`), "utf-8");
 			const committed = readFileSync(join(TEMPLATES, `src/app/web/notification/__client/${file}`), "utf-8");
 			expect(generated).toBe(committed);

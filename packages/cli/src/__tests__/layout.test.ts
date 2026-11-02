@@ -111,7 +111,7 @@ describe("resolveLayout / 历史布局", () => {
 	it("web/<name>/entry.ts 识别为 flat，web 产物落 build/（框架根仓约定不变），api 产物归 dist/api", () => {
 		const root = newRoot();
 		writeFile(root, "web/home/entry.ts", "export default {};\n");
-		writeFile(root, "web/home/__client/api.ts", "export {};\n");
+		writeFile(root, "web/home/__client/index.ts", "export {};\n");
 
 		const layout = resolveLayout(root);
 		expect(layout.kind).toBe("flat");
@@ -175,5 +175,34 @@ describe("路径取值函数", () => {
 		expect(moduleDir(layout, "wiki")).toBe(join(layout.modulesSrc, "wiki"));
 		expect(apiSrcOf(layout, "wiki")).toBe(join(layout.modulesSrc, "wiki", "api"));
 		expect(webSrcOf(layout, "wiki")).toBe(join(layout.modulesSrc, "wiki", "web"));
+	});
+});
+
+/**
+ * 聚合容器：src/app 同时有 web 侧（多根前端模块）与 api 下多个后端模块。
+ * 模块身份取 api 下那层目录名（= URL 前缀），与平铺 src/<name>/api 并存且互不干扰。
+ */
+describe("resolveLayout / 聚合容器（src/app/api/<name>）", () => {
+	it("api 子目录各自成模块，web 侧仍是 app 模块", () => {
+		const root = newRoot();
+		writeFile(root, "src/app/api/system/manifest.yaml", "name: system\nversion: 0.1.0\n");
+		writeFile(root, "src/app/api/system/users/api.ts", "export default { get() {} };\n");
+		writeFile(root, "src/app/api/notification/manifest.yaml", "name: notification\nversion: 0.1.0\n");
+		writeFile(root, "src/app/web/entry.ts", "export default {};\n");
+		const layout = resolveLayout(root);
+		const mods = scanModules(layout);
+
+		expect(mods.map(m => m.name)).toEqual(["app", "notification", "system"]);
+		expect(mods.find(m => m.name === "system")?.apiSrc).toBe(join(root, "src/app/api/system"));
+		expect(mods.find(m => m.name === "system")?.webSrc).toBeUndefined();
+		expect(apiSrcOf(layout, "system")).toBe(join(root, "src/app/api/system"));
+		expect(webSrcOf(layout, "app")).toBe(join(root, "src/app/web"));
+	});
+
+	it("同名后端模块重复（旧 src/system/api + 新 src/app/api/system）→ 明确报错", () => {
+		const root = newRoot();
+		writeFile(root, "src/system/api/manifest.yaml", "name: system\nversion: 0.1.0\n");
+		writeFile(root, "src/app/api/system/manifest.yaml", "name: system\nversion: 0.1.0\n");
+		expect(() => resolveLayout(root)).toThrowError(/模块名重复：system/);
 	});
 });

@@ -36,7 +36,7 @@ describe("urlPrefix 前缀映射（D-M8）", () => {
 			route: "/{slug}/projects/{project_id}/issues",
 			data: { type: "object", properties: { list: { type: "array", items: { type: "object", properties: { id: { type: "string" } }, required: ["id"] } } }, required: ["list"] },
 		})];
-		const { "api.ts": api } = emitClient(ir, { target: "module", module: "workitems" });
+		const { "index.ts": api } = emitClient(ir, { target: "module", module: "workitems" });
 		expect(api).toContain("export const API_PREFIX = \"/workspaces\"");
 		expect(api).toContain("export const MODULE_PREFIX = \"/workitems\"");
 		expect(api).toContain("ctx.register.apiPrefix(API_PREFIX)");
@@ -48,7 +48,7 @@ describe("urlPrefix 前缀映射（D-M8）", () => {
 
 	it("emitClient：无 urlPrefix 时两前缀同值（既有工程零漂移）", () => {
 		const ir = [mkEp({ name: "getOrderList", apiPrefix: "/order", route: "/list", data: { type: "object", properties: {}, required: [] } })];
-		const { "api.ts": api } = emitClient(ir, { target: "module", module: "order" });
+		const { "index.ts": api } = emitClient(ir, { target: "module", module: "order" });
 		expect(api).toContain("export const API_PREFIX = \"/order\"");
 		expect(api).toContain("export const MODULE_PREFIX = \"/order\"");
 	});

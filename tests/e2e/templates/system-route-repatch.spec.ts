@@ -54,4 +54,29 @@ test.describe("system 模块路由登录后重登记（templates）", () => {
 		await expect(page.locator("body")).toContainText("用户管理", { timeout: 10_000 });
 		await expect(page.locator("body")).not.toContainText("返回首页");
 	});
+
+	/**
+	 * 路由级角色子项（站点设置/企微集成）在 SPA 登录后可达（0.2.54 回归）。
+	 *
+	 * Boot 期无 token → shell 播种演示角色 admin → 按 admin 过滤出 /system（不含
+	 * 超管专属子项）并建表；随后 superadmin 登录只调 patchRoutes（只增不删），
+	 * 同 path 的旧 /system 表遮蔽新表 → 菜单有子项、点击落 catch-all 404。
+	 * 修复：重登记先 _internalSetRoutes 重建根再补子树（按当前角色整棵替换）。
+	 */
+	test("superadmin SPA 登录后，站点设置 / 企微集成 可点开而非 404", async ({ page }) => {
+		await enterTemplateApp(page, { username: "superadmin" });
+		await page.getByText("系统管理", { exact: true }).first().click();
+
+		const settings = page.getByText("站点设置", { exact: true }).first();
+		await expect(settings).toBeVisible({ timeout: 10_000 });
+		await settings.click();
+		await expect(page.locator("body")).toContainText("站点标题", { timeout: 10_000 });
+		await expect(page.locator("body")).not.toContainText("返回首页");
+
+		const wecom = page.getByText("企微集成", { exact: true }).first();
+		await expect(wecom).toBeVisible({ timeout: 10_000 });
+		await wecom.click();
+		await expect(page.locator("body")).toContainText("部署配置自检", { timeout: 10_000 });
+		await expect(page.locator("body")).not.toContainText("返回首页");
+	});
 });

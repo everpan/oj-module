@@ -307,17 +307,21 @@ async function checkFromOpenapi(openapiPath: string, cwd: string, _exemption: Ap
 	const violations: CheckViolation[] = [];
 	const layout = tryResolveLayout(cwd);
 	// 契约工具的扫描单元是「模块 api 根」而不是整棵源码树：module-root 布局里
-	// `src/<name>/api` 的 `api` 段不属于路由，且 `web/__client/api.ts` 不能被当 handler。
+	// `src/<name>/api` 的 `api` 段不属于路由，且 `web/__client/index.ts` 不能被当 handler。
 	const roots = layout ? apiModuleRoots(layout) : legacyApiModuleRoots(cwd);
 	const owners = await loadClientOwners(layout?.projectRoot ?? cwd);
 	for (const [module, eps] of groupIrByModule(ir)) {
 		const client = emitClient(eps, { target: "module", module, owner: owners[module] });
 		const clientDir = clientDirOf(layout, cwd, module, owners);
-		for (const [file, content] of [["api.ts", client["api.ts"]], ["api.schemas.ts", client["api.schemas.ts"]]] as const) {
+		for (const [file, content] of [["index.ts", client["index.ts"]], ["api.schemas.ts", client["api.schemas.ts"]]] as const) {
 			const p = join(clientDir, file);
 			if (!existsSync(p) || readFileSync(p, "utf8") !== content)
 				violations.push({ level: "error", kind: "artifact-stale", message: `[ojm-api] 生成物过期或缺失：${relative(cwd, p)}——请重跑 ojm api 使其与 openapi.json 同步。`, filePath: p });
 		}
+		// 旧生成物（0.2.54 前叫 api.ts）：不删会被 oj dev 当路由扫描并因 import 逃逸报错
+		const legacy = join(clientDir, "api.ts");
+		if (existsSync(legacy))
+			violations.push({ level: "error", kind: "artifact-stale", message: `[ojm-api] 旧生成物仍在：${relative(cwd, legacy)}——入口已改为 index.ts，请重跑 ojm api（会删除旧文件）。`, filePath: legacy });
 	}
 	const apiSrcDir = layout ? apiModulesSrc(layout) : join(cwd, "api/src");
 	if (existsSync(apiSrcDir)) {

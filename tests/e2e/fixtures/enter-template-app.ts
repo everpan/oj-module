@@ -11,7 +11,7 @@ import { expect } from "@playwright/test";
  */
 const REPO_ROOT = path.resolve(import.meta.dirname, "../../..");
 const DB_PATH = path.join(REPO_ROOT, "packages/cli/templates/db.sqlite");
-const SEED_PATH = path.join(REPO_ROOT, "packages/cli/templates/src/_platform/api/seed.sql");
+const SEED_PATH = path.join(REPO_ROOT, "packages/cli/templates/src/app/api/_platform/seed.sql");
 
 /**
  * 直连 dev 库改数据：给「页面已就绪但业务前置要造数据」的用例用（如企微一次性票据）。

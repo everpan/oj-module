@@ -17,6 +17,9 @@ export const API_PREFIX = "/web";
 /** 认领身份前缀（契约 apiPrefix，字面等于模块目录名）：跨模块认领护栏对比基准 */
 export const MODULE_PREFIX = "/web";
 
+/** 认领方模块（web.config clientOwners 指定）：跨模块认领护栏对比基准 */
+export const MODULE_OWNER = "/app";
+
 /**
  * 模块 entry 的 onInit 里一行创建（构造即 install）：完成 apiPrefix 登记 +
  * scoped request 绑定，返回绑好前缀的端点函数集合。一模块一 client；
@@ -28,8 +31,8 @@ export function createWebClient(ctx: ModuleContext) {
 	// 单槽、卸载互相耦合；跨模块需求应由本模块创建后经 provider 暴露。
 	// 注意对比基准是 MODULE_PREFIX（目录名）而非 API_PREFIX——D-M8 映射时线上前缀
 	// 属于别的命名空间，认领身份仍按目录名。
-	if (import.meta.env.DEV && ctx.module.name !== MODULE_PREFIX.slice(1)) {
-		console.warn(`[ojm-api] 模块 "${ctx.module.name}" 正在认领 ${MODULE_PREFIX} 的 client——跨模块认领会共享 request 单槽、卸载互相耦合；应由 "${MODULE_PREFIX.slice(1)}" 模块在自身 onInit 创建，跨模块需求经 provider 暴露。`);
+	if (import.meta.env.DEV && ctx.module.name !== MODULE_OWNER.slice(1)) {
+		console.warn(`[ojm-api] 模块 "${ctx.module.name}" 正在认领 ${MODULE_PREFIX} 的 client——跨模块认领会共享 request 单槽、卸载互相耦合；应由 "${MODULE_OWNER.slice(1)}" 模块在自身 onInit 创建，跨模块需求经 provider 暴露。`);
 	}
 	ctx.register.apiPrefix(API_PREFIX);
 	bindRequest(ctx.utils.request);

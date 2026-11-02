@@ -39,11 +39,11 @@ const runtimeStub: Plugin = {
 /** 生成物落盘到 repo 内临时目录（node_modules/.cache 下，保证 workspace 依赖可解析）→ bundle → import */
 async function bundleClient(files: Record<string, string>, dev: boolean) {
 	const dir = mkdtempSync(join(repoRoot, "node_modules/.cache/ojm-client-test-"));
-	writeFileSync(join(dir, "api.ts"), files["api.ts"]);
+	writeFileSync(join(dir, "index.ts"), files["index.ts"]);
 	writeFileSync(join(dir, "api.schemas.ts"), files["api.schemas.ts"]);
 	const outdir = join(dir, "out");
 	await build({
-		entryPoints: [join(dir, "api.ts")],
+		entryPoints: [join(dir, "index.ts")],
 		bundle: true,
 		format: "esm",
 		splitting: true,
@@ -52,7 +52,7 @@ async function bundleClient(files: Record<string, string>, dev: boolean) {
 		plugins: [runtimeStub],
 		logLevel: "silent",
 	});
-	const mod = await import(pathToFileURL(join(outdir, "api.js")).href);
+	const mod = await import(pathToFileURL(join(outdir, "index.js")).href);
 	return { mod, outdir };
 }
 
@@ -141,22 +141,22 @@ const ir = [
 describe("emitClient（AC-D5/D6/D8/D15）", () => {
 	it("快照：module 目标双产物（bindRequest 持有者 + 类型推导 + DEV 校验 + raw 通道）", () => {
 		const files = emitClient(ir, { target: "module", module: "order" });
-		expect(files["api.ts"]).toMatchSnapshot();
+		expect(files["index.ts"]).toMatchSnapshot();
 		expect(files["api.schemas.ts"]).toMatchSnapshot();
 	});
 
 	it("internal 目标：无 bindRequest，直接绑 #src/utils/request", () => {
 		const files = emitClient(ir, { target: "internal" });
-		expect(files["api.ts"]).not.toContain("bindRequest");
-		expect(files["api.ts"]).toContain("import { request } from \"#src/utils/request\"");
+		expect(files["index.ts"]).not.toContain("bindRequest");
+		expect(files["index.ts"]).toContain("import { request } from \"#src/utils/request\"");
 	});
 
 	it("internal 目标：z 直取 zod（runtime 树内自引包名成环）；module 目标走 runtime re-export", () => {
 		const internal = emitClient(ir, { target: "internal" });
-		expect(internal["api.ts"]).toContain("from \"zod\"");
+		expect(internal["index.ts"]).toContain("from \"zod\"");
 		expect(internal["api.schemas.ts"]).toContain("import { z } from \"zod\"");
 		const module_ = emitClient(ir, { target: "module", module: "order" });
-		expect(module_["api.ts"]).toContain("from \"@oj-module/runtime\"");
+		expect(module_["index.ts"]).toContain("from \"@oj-module/runtime\"");
 		expect(module_["api.schemas.ts"]).toContain("import { z } from \"@oj-module/runtime\"");
 	});
 
@@ -165,7 +165,7 @@ describe("emitClient（AC-D5/D6/D8/D15）", () => {
 			mkEp({ name: "getSilent", apiPrefix: "/order", route: "/silent", data: { type: "object", properties: { ok: { type: "boolean" } }, required: ["ok"] }, ignoreLoading: true }),
 		];
 		const files = emitClient(withFlag, { target: "module", module: "order" });
-		expect(files["api.ts"]).toContain("{ ignoreLoading: true }");
+		expect(files["index.ts"]).toContain("{ ignoreLoading: true }");
 	});
 
 	it("未 bindRequest 即调用 → 人话报错指路 entry.ts onInit", async () => {
@@ -291,7 +291,7 @@ describe("emitClient（AC-D5/D6/D8/D15）", () => {
 		expect(files["api.schemas.ts"]).not.toContain("downloadFile: {\n\t\tdata");
 
 		const dir = mkdtempSync(join(repoRoot, "node_modules/.cache/ojm-tsc-test-"));
-		writeFileSync(join(dir, "api.ts"), files["api.ts"]);
+		writeFileSync(join(dir, "index.ts"), files["index.ts"]);
 		writeFileSync(join(dir, "api.schemas.ts"), files["api.schemas.ts"]);
 		// 与 apps/playground/typings.d.ts 同款最小 ImportMeta.env 声明（模块工程无 vite 依赖的形态）
 		writeFileSync(join(dir, "typings.d.ts"), "interface ImportMeta { readonly env: { readonly DEV: boolean } }\n");
@@ -311,7 +311,7 @@ describe("emitClient（AC-D5/D6/D8/D15）", () => {
 					"@oj-module/runtime": [join(repoRoot, "packages/runtime/dist/index.d.ts")],
 				},
 			},
-			include: ["api.ts", "api.schemas.ts", "typings.d.ts"],
+			include: ["index.ts", "api.schemas.ts", "typings.d.ts"],
 		}));
 		const tscPkg = createRequire(join(repoRoot, "packages/cli/index.js")).resolve("typescript/package.json");
 		const tscBin = join(tscPkg, "..", "bin", "tsc");
@@ -332,8 +332,8 @@ describe("emitClient（AC-D5/D6/D8/D15）", () => {
 	it("生产构建（DEV=false）：zod 与 api.schemas 被摇出产物（AC-D15）", async () => {
 		const { outdir } = await bundleClient(emitClient(ir, { target: "module", module: "order" }), false);
 		const outFiles = readdirSync(outdir).filter(f => f.endsWith(".js"));
-		expect(outFiles).toEqual(["api.js"]);
-		const code = readFileSync(join(outdir, "api.js"), "utf8");
+		expect(outFiles).toEqual(["index.js"]);
+		const code = readFileSync(join(outdir, "index.js"), "utf8");
 		expect(code).not.toContain("api.schemas");
 		expect(code).not.toContain("_zod");
 	});
@@ -371,13 +371,13 @@ const formIr = [
 describe("emitClient：multipart/form-data（form 槽）", () => {
 	it("快照：Form 类型 + FormData 组装函数 + body 走 FormData（无 json / 不设 content-type）", () => {
 		const files = emitClient(formIr, { target: "module", module: "personal-center" });
-		expect(files["api.ts"]).toMatchSnapshot();
+		expect(files["index.ts"]).toMatchSnapshot();
 		expect(files["api.schemas.ts"]).toMatchSnapshot();
 	});
 
 	it("形态：文本部件走 schemas 的 form 槽；文件部件只有 File/Blob（binary 不进 zod/schemas）", () => {
 		const files = emitClient(formIr, { target: "module", module: "personal-center" });
-		const api = files["api.ts"];
+		const api = files["index.ts"];
 		// 单槽直接传 form 对象（{ fields, files }），多槽打包 input.form
 		expect(api).toContain("export type UploadAvatarForm = {");
 		expect(api).toContain("files: { avatar: File | Blob, gallery?: Array<File | Blob> }");
@@ -468,14 +468,14 @@ describe("emitClient：multipart/form-data（form 槽）", () => {
 describe("工厂（create<Module>Client，构造即 install，BDD §4）", () => {
 	it("5.1#1 module 目标：生成 API_PREFIX 常量 + createOrderClient 工厂（登记前缀 + 绑定 request + 返回端点函数）", () => {
 		const files = emitClient(ir, { target: "module", module: "order" });
-		expect(files["api.ts"]).toContain("export const API_PREFIX = \"/order\";");
-		expect(files["api.ts"]).toContain("export function createOrderClient(ctx: ModuleContext)");
+		expect(files["index.ts"]).toContain("export const API_PREFIX = \"/order\";");
+		expect(files["index.ts"]).toContain("export function createOrderClient(ctx: ModuleContext)");
 		// 工厂体内：登记前缀（唯一真源常量）+ 绑定 scoped request
-		expect(files["api.ts"]).toContain("ctx.register.apiPrefix(API_PREFIX);");
-		expect(files["api.ts"]).toContain("bindRequest(ctx.utils.request);");
+		expect(files["index.ts"]).toContain("ctx.register.apiPrefix(API_PREFIX);");
+		expect(files["index.ts"]).toContain("bindRequest(ctx.utils.request);");
 		// 返回对象覆盖全部端点函数
 		for (const name of ["getOrderList", "getOrderDetail", "createOrder", "updateOrder", "downloadFile"])
-			expect(files["api.ts"]).toContain(name);
+			expect(files["index.ts"]).toContain(name);
 	});
 
 	it("5.2#2 连字符模块名 camelize：personal-center → createPersonalCenterClient", () => {
@@ -484,20 +484,20 @@ describe("工厂（create<Module>Client，构造即 install，BDD §4）", () =>
 			mkEp({ name: "listCenterFeed", apiPrefix: "/personal-center", route: "/feed" }),
 		];
 		const files = emitClient(pc, { target: "module", module: "personal-center" });
-		expect(files["api.ts"]).toContain("export const API_PREFIX = \"/personal-center\";");
-		expect(files["api.ts"]).toContain("export function createPersonalCenterClient(ctx: ModuleContext)");
+		expect(files["index.ts"]).toContain("export const API_PREFIX = \"/personal-center\";");
+		expect(files["index.ts"]).toContain("export function createPersonalCenterClient(ctx: ModuleContext)");
 	});
 
 	it("5.3#3 bindRequest 保留导出且标 @deprecated（指路工厂）", () => {
 		const files = emitClient(ir, { target: "module", module: "order" });
-		expect(files["api.ts"]).toContain("@deprecated");
-		expect(files["api.ts"]).toMatch(/export function bindRequest\(/);
+		expect(files["index.ts"]).toContain("@deprecated");
+		expect(files["index.ts"]).toMatch(/export function bindRequest\(/);
 	});
 
 	it("5.4#4 internal 目标：不含 API_PREFIX 与工厂（无 ctx 可收，形状不变）", () => {
 		const files = emitClient(ir, { target: "internal" });
-		expect(files["api.ts"]).not.toContain("API_PREFIX");
-		expect(files["api.ts"]).not.toContain("createOrderClient");
+		expect(files["index.ts"]).not.toContain("API_PREFIX");
+		expect(files["index.ts"]).not.toContain("createOrderClient");
 	});
 
 	it("5.5#5 行为：工厂构造即接线——apiPrefix 已登记、端点经 factory 调用打到 stub", async () => {

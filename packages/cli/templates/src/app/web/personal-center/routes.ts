@@ -3,7 +3,7 @@ import { ProfileCardIcon, RiAccountCircleLine, useAuthStore } from "@oj-module/r
 
 import { createElement, lazy } from "react";
 
-import { createPersonalCenterClient } from "./__client/api";
+import { createPersonalCenterClient } from "./__client";
 
 const MyProfile = lazy(() => import("./pages/my-profile"));
 

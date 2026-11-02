@@ -1,10 +1,10 @@
-import type { SystemPermissionsGetData, SystemRolesGetData } from "../../__client/api";
+import type { SystemPermissionsGetData, SystemRolesGetData } from "../../__client";
 
 import { useQuery } from "@tanstack/react-query";
 import { Alert, Space, Table, Tabs, Tag } from "antd";
 import { useTranslation } from "react-i18next";
 
-import { systemPermissionsGet, systemRolesGet } from "../../__client/api";
+import { systemPermissionsGet, systemRolesGet } from "../../__client";
 import { isForbidden } from "../errors";
 import { ForbiddenPanel } from "../forbidden";
 

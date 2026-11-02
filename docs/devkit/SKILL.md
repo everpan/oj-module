@@ -103,7 +103,7 @@ description: 用 ojm 开发前后端一体工程时使用——新增/修改前�
 
 ## 企业微信（接通真实套件 / 自建应用）
 
-模板已内置企微登录（`src/auth/api/wecom/` + 登录页「企业微信」页签 + `/system/wecom` 后台）。
+模板已内置企微登录（`src/app/api/auth/wecom/` + 登录页「企业微信」页签 + `/system/wecom` 后台）。
 两种来源、两本手册，**按客户形态选**：
 
 | 客户形态 | 读 | 凭据 |
@@ -132,7 +132,7 @@ description: 用 ojm 开发前后端一体工程时使用——新增/修改前�
 - **整页跳转拼 API base**：`window.location.assign(resolveApiBase() + wecomAuthorizePath(corp))`；
   拼站点 base 会被 SPA 兜底页吞掉（页面原地重载、一个请求都不发，控制台无报错）。
 - **通讯录同步是「组织架构底座 + 企微适配器」，不是企微专属功能**：模板的
-  `src/auth/api/wecom/{sync,contacts}.ts` 只负责「取快照 → 喂给领域层」，模型与读面在 `_platform`
+  `src/app/api/auth/wecom/{sync,contacts}.ts` 只负责「取快照 → 喂给领域层」，模型与读面在 `_platform`
   （手册 §14）。要按部门算人、要选人、要给组织架构接 LDAP，一律读 §14，不要在企微代码里加分支。
   同步/事件增量与回调解密是**两条独立纪律**：回调必须回 `success`，而事件处理失败**也照样回 `success`**
   （重推补不回已判死的失败，兜底是下一轮全量同步）。
@@ -187,7 +187,7 @@ description: 用 ojm 开发前后端一体工程时使用——新增/修改前�
 | 登录 401 且 msg 不是 `invalid credentials` | `/auth/*` 不在 `anonymous_paths` | 加进工程根 `config.yaml`，重启 |
 | WS 连接 401（「文件在却连不上」） | 模块写了 `ws.ts`，但其 `/ws` 路由不在 `anonymous_paths`（oj v0.1.30+ WS 握手也过鉴权） | 匿名 WS 加进 `anonymous_paths`；受保护 WS 带 Bearer/Cookie 是正当用法。`ojm api --check` 会对此 warn |
 | 登出/回登录页落空，或登录后落错误边界 | 工程缺 `login` / `home` 模块 | 在 `web.config.ts` 保留两者 |
-| 通知铃 404 `no route matched`（`/api/notifications`） | 前端 `notification` 模块没加载 / 没注册 `notificationsApi`，回落到内置只读兜底；脚手架不再提供 root 级 `/api/notifications` | 保留 `src/app/web/notification/entry.ts` 的登记 + onInit 注册四方法；后端由 `src/notification/api` 出 `/api/notification/*` |
+| 通知铃 404 `no route matched`（`/api/notifications`） | 前端 `notification` 模块没加载 / 没注册 `notificationsApi`，回落到内置只读兜底；脚手架不再提供 root 级 `/api/notifications` | 保留 `src/app/web/notification/entry.ts` 的登记 + onInit 注册四方法；后端由 `src/app/api/notification` 出 `/api/notification/*` |
 | `oj serve` 启动即退，报 `config uses removed server.* site keys (v0.1.58): api_prefix` | 用了 oj v0.1.58 起删除的旧站点键（`api_prefix`/`app_path`/`app_prefix`/`static_sites`/`app_spa_fallback`） | 改 `server.api_prefix: /api` 为顶层 `mounts:`（module-root 写 `{prefix: "/api", api: "api/dist"}`；历史布局写 `api: "src"`、源码交给 `-d`）；迁移完整 YAML 由报错给出 |
 | 改完 `mounts:` 仍全 404 | `api:` 指向目录不对（相对 config 所在目录） | module-root 指向产物目录 `"api/dist"`、历史布局指向源码树 `"src"`；`-c` 指向工程根 `config.yaml`（ojm dev/preview 已内置）。module-root 模板**故意不写 api 挂载**（源码交给 `--module-root src`、产物交给 `--api-path api/dist`，同时出现会报 module declared in multiple places） |
 | `oj serve` 启动即退，报 `module '_shared' missing manifest.yaml` | 把共享后端代码放到了扫描根顶层（`src/_shared/`）——oj 把扫描根下的顶层目录都当模块；历史布局是 `api/src/_shared/` | 嵌进所属模块：`src/<模块>/api/_shared/`（历史布局 `api/src/<模块>/_shared/`），用 `#<本模块>/...` 别名 |

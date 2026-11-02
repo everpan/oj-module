@@ -357,8 +357,15 @@ ${entries.join("\n")}
 `;
 }
 
-/** 发射双产物：api.ts（类型 + 请求函数 + 工厂）与 api.schemas.ts（DEV 校验 schema） */
-export function emitClient(ir: IrEndpoint[], opts: { target: "module" | "internal", module?: string, /** client 归属模块（多根聚合）；缺省 = module */ owner?: string }): { "api.ts": string, "api.schemas.ts": string } {
+/**
+ * 发射双产物：index.ts（类型 + 请求函数 + 工厂）与 api.schemas.ts（DEV 校验 schema）。
+ *
+ * 入口文件名是 `index.ts` 而非 `api.ts`：oj dev 的 `--module-root` 扫描会把模块目录下
+ * **任何 `api.ts`** 当路由文件导入，聚合模块（src/app 同时有 api/ 与 web/）里的
+ * `web/<root>/__client/index.ts` 会被误扫（import 逃逸 project root 直接报错）。
+ * `index.ts` 不在扫描名单内，且 `from "../__client"` 的导入更短。
+ */
+export function emitClient(ir: IrEndpoint[], opts: { target: "module" | "internal", module?: string, /** client 归属模块（多根聚合）；缺省 = module */ owner?: string }): { "index.ts": string, "api.schemas.ts": string } {
 	if (ir.length === 0)
 		throw new Error("[ojm-api] client 发射失败：IR 为空——openapi.json 里没有任何端点（operationId + tags），无需生成；请检查 \`oj openapi\` 产物。");
 	if (opts.target === "module" && !opts.module) {
@@ -386,7 +393,7 @@ export function emitClient(ir: IrEndpoint[], opts: { target: "module" | "interna
 		sections.push(emitEndpoint(ep));
 	}
 	return {
-		"api.ts": `${sections.join("\n\n")}\n`,
+		"index.ts": `${sections.join("\n\n")}\n`,
 		"api.schemas.ts": emitSchemas(ir, opts.target),
 	};
 }

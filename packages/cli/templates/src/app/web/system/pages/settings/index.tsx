@@ -1,13 +1,13 @@
 import type { TFunction } from "i18next";
 
-import type { SystemSettingsGetData } from "../../__client/api";
+import type { SystemSettingsGetData } from "../../__client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { App, Button, Card, Input, Space, Switch, Tooltip } from "antd";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { systemSettingsGet, systemSettingsPut } from "../../__client/api";
+import { systemSettingsGet, systemSettingsPut } from "../../__client";
 import { explainError, isForbidden } from "../errors";
 import { ForbiddenPanel } from "../forbidden";
 

@@ -11,7 +11,7 @@ import {
 	notificationNotificationsGet,
 	notificationNotificationsReadAllPost,
 	notificationNotificationsReadPost,
-} from "../../__client/api";
+} from "../../__client";
 
 type Item = Awaited<ReturnType<typeof notificationNotificationsGet>>[number];
 type CatFilter = "all" | NoticeCategory;

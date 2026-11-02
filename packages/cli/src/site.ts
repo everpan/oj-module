@@ -21,7 +21,7 @@ export function tenantHeaders(): Record<string, string> {
 	return { [TENANT_HEADER]: DEFAULT_TENANT };
 }
 
-/** 任务记录（线形状镜像；真源 templates/src/_platform/api/_lifecycle/types.ts:65，客户端不 import 模板内部） */
+/** 任务记录（线形状镜像；真源 templates/src/app/api/_platform/_lifecycle/types.ts:65，客户端不 import 模板内部） */
 export interface TaskRecord {
 	/**
 	 * 记录 schema 版本（P2-10 线形状镜像）：缺省（undefined）=旧记录=v1 语义照常渲染；

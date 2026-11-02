@@ -48,7 +48,7 @@ ojm api --docs
 
 `ojm init` 产出的模板工程已切换为 oj `.schema` 形态，开箱即走新口径：
 
-- **handler 直接挂 `.schema` + 平级 `.response`**：如 `api/src/notification/api.ts` 的每个动词（含 `del/` 子目录、`personal-center/upload`）挂 `.schema` 入参（`params/query/body`）与平级 `.response` 出参（oj v0.1.72+），无 `contract.ts`。
+- **handler 直接挂 `.schema` + 平级 `.response`**：如 `api/src/app/api/notification.ts` 的每个动词（含 `del/` 子目录、`personal-center/upload`）挂 `.schema` 入参（`params/query/body`）与平级 `.response` 出参（oj v0.1.72+），无 `contract.ts`。
 - **模板随附 `openapi.json`**（项目根）与预生成的 `web/src/<模块>/__client/`——`ojm api --check` 开箱通过，无需先跑 `oj openapi`。
 - 改完 handler 的 `.schema` 后：`oj openapi ... -o openapi.json` 重生成规范，`ojm api` 重生成 `__client`，`ojm api --check` 对账。
 - 端点方法名来自 `operationId`（如 `notificationNotificationsGet`），与旧 `contract.ts` 的人类命名（`fetchNotifications`）不同；前端 module `entry.ts` 用 `createXxxClient(ctx)` 工厂，内部调用这些派生名。

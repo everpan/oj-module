@@ -68,6 +68,7 @@ export default antfu({
 		"**/client/api.ts",
 		"**/client/api.schemas.ts",
 		"**/__client/api.ts",
+		"**/__client/index.ts",
 		"**/__client/api.schemas.ts",
 		"**/openapi.yaml",
 		"**/routes.json",

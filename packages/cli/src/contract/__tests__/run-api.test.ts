@@ -46,9 +46,9 @@ describe("runApi 消费 openapi.json（新口径 Task #4）", () => {
 		const result = await runApi({ cwd: dir, openapi: "openapi.json" });
 		expect(result.contracts).toBe(2);
 
-		const wikiApi = join(dir, "web/src/wiki/__client/api.ts");
+		const wikiApi = join(dir, "web/src/wiki/__client/index.ts");
 		const wikiSchemas = join(dir, "web/src/wiki/__client/api.schemas.ts");
-		const userApi = join(dir, "web/src/user/__client/api.ts");
+		const userApi = join(dir, "web/src/user/__client/index.ts");
 		expect(existsSync(wikiApi)).toBe(true);
 		expect(existsSync(wikiSchemas)).toBe(true);
 		expect(existsSync(userApi)).toBe(true);

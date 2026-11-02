@@ -45,14 +45,17 @@ export default {
 	/**
 	 * 生成 client 的归属模块：`api 前缀 → 承载其 __client 的 web 模块`。
 	 *
-	 * 多根聚合模块把多个业务域的页面/client 收进 `src/app/web`，故五个 api 前缀的
-	 * 生成物都落在 `src/app/web/<api 前缀>/__client`（与页面同级，页面相对导入不变）。
+	 * 框架内置后端全部收在 `src/app/api/<前缀>`（模块名即 URL 前缀），前端页面收在
+	 * `src/app/web`；生成物统一落 `src/app/web/<api 前缀>/__client`，页面相对导入不变。
 	 * 不配则回落同名模块（`src/<api 前缀>/web/__client`，历史行为）。
 	 */
 	clientOwners: {
+		"_platform": "app",
+		"auth": "app",
 		"home": "app",
 		"personal-center": "app",
 		"notification": "app",
 		"system": "app",
+		"web": "app",
 	},
 };

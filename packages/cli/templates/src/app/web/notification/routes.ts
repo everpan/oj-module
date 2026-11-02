@@ -4,7 +4,7 @@ import { BellOutlined } from "@ant-design/icons";
 
 import { createElement, lazy } from "react";
 
-import { createNotificationClient } from "./__client/api";
+import { createNotificationClient } from "./__client";
 
 const NotificationCenter = lazy(() => import("./pages/center"));
 

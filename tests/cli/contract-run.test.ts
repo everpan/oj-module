@@ -38,7 +38,7 @@ describe("runApi（AC-D7 编排 + 幂等写盘）", () => {
 		const result = await runApi({ cwd });
 
 		// client 双产物 → web/src/order/__client/（模块名 = apiPrefix 去首斜杠，AC-D9）
-		const client = readFileSync(join(cwd, "web/src/order/__client/api.ts"), "utf8");
+		const client = readFileSync(join(cwd, "web/src/order/__client/index.ts"), "utf8");
 		expect(client).toContain("export function bindRequest");
 		expect(client).toContain("export async function getOrderList");
 		expect(client).toContain("export async function getOrderDetail");
@@ -58,7 +58,7 @@ describe("runApi（AC-D7 编排 + 幂等写盘）", () => {
 		const cwd = makeProject();
 		await runApi({ cwd });
 		// 翻译层退役后，openapi.json 是全部模块的单一事实源——含无后端的纯前端模块
-		const demoClient = readFileSync(join(cwd, "web/src/demo/__client/api.ts"), "utf8");
+		const demoClient = readFileSync(join(cwd, "web/src/demo/__client/index.ts"), "utf8");
 		expect(demoClient).toContain("export async function getDashboard");
 		expect(existsSync(join(cwd, "web/src/demo/__client/api.schemas.ts"))).toBe(true);
 		// 模块在 openapi.json 声明即出 stub（dev 实现后填充；人不实现也不阻断构建）

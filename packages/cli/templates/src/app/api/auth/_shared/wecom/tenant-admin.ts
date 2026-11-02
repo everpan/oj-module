@@ -61,15 +61,12 @@ function randomPassword(): string {
 
 /** 跨租户读：指定租户下的管理员行（asSystem 例外，见文件头） */
 async function adminRow(tenantId: string): Promise<{ id: number, must_change: number } | null> {
-	const rows = await db.asSystem().table("users")
-		.select(["id", "must_change"])
-		.where({
-			and: [
-				{ field: "tenant_id", op: "eq", value: tenantId },
-				{ field: "username", op: "eq", value: TENANT_ADMIN_USERNAME },
-			],
-		})
-		.all() as Array<{ id: number, must_change: number | null }>;
+	const rows = await db.asSystem().table("users").select(["id", "must_change"]).where({
+		and: [
+			{ field: "tenant_id", op: "eq", value: tenantId },
+			{ field: "username", op: "eq", value: TENANT_ADMIN_USERNAME },
+		],
+	}).all() as Array<{ id: number, must_change: number | null }>;
 	if (!rows.length)
 		return null;
 	return { id: Number(rows[0]!.id), must_change: Number(rows[0]!.must_change ?? 0) };
@@ -77,15 +74,12 @@ async function adminRow(tenantId: string): Promise<{ id: number, must_change: nu
 
 /** 跨租户读：该用户在本租户是否握着 admin 角色（账号存在 ≠ 有角色，可能被收回过） */
 async function hasAdminRole(tenantId: string, uid: number): Promise<boolean> {
-	const roles = await db.asSystem().table("sys_user_role")
-		.select(["role_name"])
-		.where({
-			and: [
-				{ field: "tenant_id", op: "eq", value: tenantId },
-				{ field: "user_id", op: "eq", value: uid },
-			],
-		})
-		.all() as Array<{ role_name: string }>;
+	const roles = await db.asSystem().table("sys_user_role").select(["role_name"]).where({
+		and: [
+			{ field: "tenant_id", op: "eq", value: tenantId },
+			{ field: "user_id", op: "eq", value: uid },
+		],
+	}).all() as Array<{ role_name: string }>;
 	return roles.some(r => String(r.role_name) === TENANT_ADMIN_ROLE);
 }
 
@@ -176,15 +170,12 @@ export async function setTenantAdminPassword(tenantId: string, password: string)
 	if (!row)
 		throw Object.assign(new Error("租户管理员建档失败"), { status: 500 });
 
-	await db.asSystem().table("users")
-		.update({ password_hash: await bcrypt.hash(password), must_change: 1 })
-		.where({
-			and: [
-				{ field: "tenant_id", op: "eq", value: tenantId },
-				{ field: "username", op: "eq", value: TENANT_ADMIN_USERNAME },
-			],
-		})
-		.run();
+	await db.asSystem().table("users").update({ password_hash: await bcrypt.hash(password), must_change: 1 }).where({
+		and: [
+			{ field: "tenant_id", op: "eq", value: tenantId },
+			{ field: "username", op: "eq", value: TENANT_ADMIN_USERNAME },
+		],
+	}).run();
 
 	// 改密后旧会话必须失效。跨租户删 refresh 走带 tenant_id 条件的裸 SQL
 	// （先例见 store.ts::revokeTenantSessions：守卫是 check-on-miss，带了租户条件即放行）

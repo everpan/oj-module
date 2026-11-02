@@ -2,7 +2,7 @@ import type { OjSchemaDiag } from "./emit-oj-schema";
 import type { IrEndpoint } from "./ir";
 import type { OpenApiDoc } from "./openapi-ir";
 import { execFile as execFileCb } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { basename, dirname, join } from "node:path";
 import process from "node:process";
@@ -89,8 +89,16 @@ async function runFromOpenapi(openapiPath: string, cwd: string, result: RunResul
 	for (const [module, eps] of byModule) {
 		const client = emitClient(eps, { target: "module", module, owner: owners[module] });
 		const clientDir = clientDirOf(layout, cwd, module, owners);
-		writeIfChanged(join(clientDir, "api.ts"), client["api.ts"], result);
+		writeIfChanged(join(clientDir, "index.ts"), client["index.ts"], result);
 		writeIfChanged(join(clientDir, "api.schemas.ts"), client["api.schemas.ts"], result);
+		// 迁移：0.2.54 起入口文件从 api.ts 改为 index.ts。旧文件必须删——oj dev 的
+		// --module-root 扫描会把模块目录下任何 api.ts 当路由导入（聚合模块的
+		// web/<root>/__client/index.ts 会直接报 import 逃逸）。
+		const legacy = join(clientDir, "api.ts");
+		if (existsSync(legacy)) {
+			rmSync(legacy);
+			result.written.push(legacy);
+		}
 	}
 	// stub：oj 目录镜像树（人碰过的文件永不写——plan 阶段已按指纹判好）。
 	// 已实现键全量扫一遍传入：嵌套组（模块根单文件）实现的端点不再生成镜像 stub。

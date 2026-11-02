@@ -21,8 +21,8 @@ import { invalidateAllUsers } from "#/_platform/_shared/service/infra/access";
 import { recordOp } from "#/_platform/_shared/service/infra/audit";
 import { handleContactChange } from "./contacts";
 import { callbackFields, field, requireField } from "./payload";
-import { provisionTenantAdmin } from "./tenant-admin";
 import { corpScope, ensureTenant, findCorpAuth, getSuiteTicket, putSuiteTicket, revokeTenantSessions, saveProfile, setAuthMode, setProfileStatus, tenantOfCorp } from "./store";
+import { provisionTenantAdmin } from "./tenant-admin";
 
 /** suite_ticket 官方有效期 30 分钟（10 分钟推一次）；本地按 30 分钟作废，宁可拒一次也不拿过期票打企微 */
 const SUITE_TICKET_TTL_SECS = 30 * 60;

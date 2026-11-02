@@ -1,9 +1,9 @@
+import { respond } from "#/_platform/_shared/respond";
 // GET /api/auth/wecom/admin/tenant-admin?corpId= —— 查某企业的租户管理员状态。
 //
 // 权限：仅 superadmin。这是**跨租户**的平台级视图（查的是别家企业的管理员有没有开通），
 // 与同目录其它端点一致。只读，不存在也不建——建号由开通流程与 password 端点负责。
 import { assertSuperAdmin } from "#/_platform/_shared/service/infra/access";
-import { respond } from "#/_platform/_shared/respond";
 import { tenantAdminState } from "../../../_shared/wecom/tenant-admin";
 
 async function get() {

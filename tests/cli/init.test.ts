@@ -66,17 +66,17 @@ describe("initProject", () => {
 		expect(configText).not.toContain("__JWT_SECRET__");
 		// users 表归属 _platform 伪模块（§3-D2 归属图单源，参考 oj sample）；
 		// DDL 归 migrations（S006 seed 纪律：seed 只放数据，oj build 检查）
-		expect(fs.existsSync(path.join(dest, "src/_platform/api/seed.sql"))).toBe(true);
-		expect(fs.existsSync(path.join(dest, "src/_platform/api/migrations/0001__create_users.sql"))).toBe(true);
-		expect(fs.existsSync(path.join(dest, "src/_platform/api/schema.yaml"))).toBe(true);
+		expect(fs.existsSync(path.join(dest, "src/app/api/_platform/seed.sql"))).toBe(true);
+		expect(fs.existsSync(path.join(dest, "src/app/api/_platform/migrations/0001__create_users.sql"))).toBe(true);
+		expect(fs.existsSync(path.join(dest, "src/app/api/_platform/schema.yaml"))).toBe(true);
 		// auth 模块（§8：auth 端点是业务路由；anonymous_paths 显式匿名）
-		expect(fs.existsSync(path.join(dest, "src/auth/api/manifest.yaml"))).toBe(true);
+		expect(fs.existsSync(path.join(dest, "src/app/api/auth/manifest.yaml"))).toBe(true);
 		// DDD reshape：会话聚合三动词收模块根 api.ts 嵌套组（login/logout/refresh 组名=路径段）
-		expect(fs.existsSync(path.join(dest, "src/auth/api/api.ts"))).toBe(true);
-		expect(fs.existsSync(path.join(dest, "src/auth/api/_shared/session.ts"))).toBe(true);
-		expect(fs.readFileSync(path.join(dest, "src/auth/api/manifest.yaml"), "utf-8")).toMatch(/_platform:\s*\^?0\.1\.0/);
-		expect(fs.existsSync(path.join(dest, "src/web/api/manifest.yaml"))).toBe(true);
-		expect(fs.readFileSync(path.join(dest, "src/web/api/manifest.yaml"), "utf-8")).toMatch(/^name:\s*web/m);
+		expect(fs.existsSync(path.join(dest, "src/app/api/auth/api.ts"))).toBe(true);
+		expect(fs.existsSync(path.join(dest, "src/app/api/auth/_shared/session.ts"))).toBe(true);
+		expect(fs.readFileSync(path.join(dest, "src/app/api/auth/manifest.yaml"), "utf-8")).toMatch(/_platform:\s*\^?0\.1\.0/);
+		expect(fs.existsSync(path.join(dest, "src/app/api/web/manifest.yaml"))).toBe(true);
+		expect(fs.readFileSync(path.join(dest, "src/app/api/web/manifest.yaml"), "utf-8")).toMatch(/^name:\s*web/m);
 
 		// 证书三件套（现场签发；config.yaml 在工程根 → 证书落 <根>/config/）
 		for (const name of ["private.pem", "public.pem", "cert.jws"])
@@ -151,14 +151,14 @@ describe("initProject", () => {
 		expect(fs.existsSync(path.join(dest, "src/app/web/personal-center/locales/en-US.json"))).toBe(true);
 		// 后端（T2）：manifest + upload handler（handler `.schema` 取代旧 contract.ts）；
 		// 生成物（routes.json/openapi.yaml）不进模板，单一事实源改 openapi.json
-		expect(fs.existsSync(path.join(dest, "src/personal-center/api/manifest.yaml"))).toBe(true);
-		expect(fs.existsSync(path.join(dest, "src/personal-center/api/contract.ts"))).toBe(false);
-		expect(fs.existsSync(path.join(dest, "src/personal-center/api/upload/api.ts"))).toBe(true);
-		expect(fs.existsSync(path.join(dest, "src/personal-center/api/routes.json"))).toBe(false);
+		expect(fs.existsSync(path.join(dest, "src/app/api/personal-center/manifest.yaml"))).toBe(true);
+		expect(fs.existsSync(path.join(dest, "src/app/api/personal-center/contract.ts"))).toBe(false);
+		expect(fs.existsSync(path.join(dest, "src/app/api/personal-center/upload/api.ts"))).toBe(true);
+		expect(fs.existsSync(path.join(dest, "src/app/api/personal-center/routes.json"))).toBe(false);
 		// 头像上传链路（T3）：users 表补 avatar_base64 列，user-info 返回它
-		expect(fs.existsSync(path.join(dest, "src/_platform/api/migrations/0002__add_users_avatar_base64.sql"))).toBe(true);
-		expect(fs.readFileSync(path.join(dest, "src/_platform/api/schema.yaml"), "utf-8")).toContain("avatar_base64");
-		expect(fs.readFileSync(path.join(dest, "src/web/api/user-info/api.ts"), "utf-8")).toContain("avatar_base64");
+		expect(fs.existsSync(path.join(dest, "src/app/api/_platform/migrations/0002__add_users_avatar_base64.sql"))).toBe(true);
+		expect(fs.readFileSync(path.join(dest, "src/app/api/_platform/schema.yaml"), "utf-8")).toContain("avatar_base64");
+		expect(fs.readFileSync(path.join(dest, "src/app/api/web/user-info/api.ts"), "utf-8")).toContain("avatar_base64");
 		expect(fs.existsSync(path.join(dest, "web.config.ts"))).toBe(true);
 		expect(fs.existsSync(path.join(dest, "tsconfig.json"))).toBe(true);
 		expect(fs.existsSync(path.join(dest, ".gitignore"))).toBe(true);
@@ -179,24 +179,24 @@ describe("initProject", () => {
 		// notification 模块（G5 契约化通知互动 + DDD reshape）：表/种子/迁移归属本模块，
 		// handler 收模块根嵌套组单文件（notifications 含 read/read-all/clear 子组 +
 		// push + "push-broadcast" 字符串键组），_shared/notify 共享发射原语，del/ 例外保留
-		expect(fs.readFileSync(path.join(dest, "src/notification/api/manifest.yaml"), "utf-8")).toContain("notifications");
-		expect(fs.existsSync(path.join(dest, "src/notification/api/migrations/0001__create_notifications.sql"))).toBe(true);
-		expect(fs.existsSync(path.join(dest, "src/notification/api/seed.sql"))).toBe(true);
-		expect(fs.existsSync(path.join(dest, "src/notification/api/api.ts"))).toBe(true);
-		expect(fs.existsSync(path.join(dest, "src/notification/api/_shared/notify.ts"))).toBe(true);
-		expect(fs.existsSync(path.join(dest, "src/notification/api/del/api.ts"))).toBe(true);
-		const notificationApi = fs.readFileSync(path.join(dest, "src/notification/api/api.ts"), "utf-8");
+		expect(fs.readFileSync(path.join(dest, "src/app/api/notification/manifest.yaml"), "utf-8")).toContain("notifications");
+		expect(fs.existsSync(path.join(dest, "src/app/api/notification/migrations/0001__create_notifications.sql"))).toBe(true);
+		expect(fs.existsSync(path.join(dest, "src/app/api/notification/seed.sql"))).toBe(true);
+		expect(fs.existsSync(path.join(dest, "src/app/api/notification/api.ts"))).toBe(true);
+		expect(fs.existsSync(path.join(dest, "src/app/api/notification/_shared/notify.ts"))).toBe(true);
+		expect(fs.existsSync(path.join(dest, "src/app/api/notification/del/api.ts"))).toBe(true);
+		const notificationApi = fs.readFileSync(path.join(dest, "src/app/api/notification/api.ts"), "utf-8");
 		for (const marker of ["notifications", "push", "push-broadcast"])
 			expect(notificationApi).toContain(marker);
 		// 迁移后 notification 走 handler `.schema`（contract.ts 已删），已读/清空原语在 _shared/notify
-		const notificationContract = fs.readFileSync(path.join(dest, "src/notification/api/_shared/notify.ts"), "utf-8");
+		const notificationContract = fs.readFileSync(path.join(dest, "src/app/api/notification/_shared/notify.ts"), "utf-8");
 		for (const name of ["markRead", "markAllRead", "clearNotices"])
 			expect(notificationContract).toContain(name);
 		// web 侧：notification 根的 onInit 注册四方法 provider + ojm api 生成 client 签入模板（评审 b5）
 		const notificationRoutes = fs.readFileSync(path.join(dest, "src/app/web/notification/routes.ts"), "utf-8");
 		for (const name of ["fetchNotifications", "markRead", "markAllRead", "clearAll"])
 			expect(notificationRoutes).toContain(name);
-		expect(fs.existsSync(path.join(dest, "src/app/web/notification/__client/api.ts"))).toBe(true);
+		expect(fs.existsSync(path.join(dest, "src/app/web/notification/__client/index.ts"))).toBe(true);
 		expect(fs.existsSync(path.join(dest, "src/app/web/notification/__client/api.schemas.ts"))).toBe(true);
 		// provider 不注册则通知铃永远停留在内置只读兜底（BDD 5.4#2 的前提）：
 		// app 模块由 web.config 登记，notification 根在其 onInit 里接线
@@ -256,7 +256,7 @@ describe("initProject", () => {
 			expect(fs.existsSync(path.join(dest, rel)), rel).toBe(true);
 
 		// 后端 tsconfig 只收后端（排除 web 侧）；前端 tsconfig 反向排除 api。
-		// 排除 glob 必须是「精确一层」：宽 glob 会把「模块名就叫 web」的 src/web/api
+		// 排除 glob 必须是「精确一层」：宽 glob 会把「模块名就叫 web」的 src/app/api/web
 		// 整棵排除（实测漏检 3 个后端文件，typecheck 全绿但没检查）。
 		const apiTsconfig = JSON.parse(fs.readFileSync(path.join(dest, "src/tsconfig.json"), "utf-8"));
 		expect(apiTsconfig.include).toContain(".");
@@ -275,11 +275,29 @@ describe("initProject", () => {
 		const aliasPaths = JSON.parse(
 			fs.readFileSync(pathsFile, "utf-8").replace(/^\s*\/\/.*$/gm, ""),
 		).compilerOptions.paths as Record<string, string[]>;
-		const apiModules = fs.readdirSync(path.join(dest, "src"))
-			.filter(name => fs.existsSync(path.join(dest, "src", name, "api/manifest.yaml")));
-		expect(Object.keys(aliasPaths).sort()).toEqual(apiModules.map(name => `#/${name}/*`).sort());
-		for (const name of apiModules)
-			expect(aliasPaths[`#/${name}/*`]).toEqual([`./src/${name}/api/*`]);
+		// api 模块两种落法都要认：平铺 src/<name>/api 与聚合容器 src/app/api/<name>
+		const apiRoots: { name: string, rel: string }[] = [];
+		for (const ent of fs.readdirSync(path.join(dest, "src"), { withFileTypes: true })) {
+			if (!ent.isDirectory() || ent.name.startsWith("."))
+				continue;
+			const apiDir = path.join(dest, "src", ent.name, "api");
+			if (!fs.existsSync(apiDir))
+				continue;
+			if (fs.existsSync(path.join(apiDir, "manifest.yaml"))) {
+				apiRoots.push({ name: ent.name, rel: `src/${ent.name}/api` });
+				continue;
+			}
+			// 聚合容器：api 下每个带 manifest 的子目录都是一个模块（模块名 = 子目录名）
+			for (const sub of fs.readdirSync(apiDir, { withFileTypes: true })) {
+				if (!sub.isDirectory() || sub.name.startsWith(".") || sub.name === "node_modules")
+					continue;
+				if (fs.existsSync(path.join(apiDir, sub.name, "manifest.yaml")))
+					apiRoots.push({ name: sub.name, rel: `src/${ent.name}/api/${sub.name}` });
+			}
+		}
+		expect(Object.keys(aliasPaths).sort()).toEqual(apiRoots.map(m => `#/${m.name}/*`).sort());
+		for (const m of apiRoots)
+			expect(aliasPaths[`#/${m.name}/*`]).toEqual([`./${m.rel}/*`]);
 		// 类型兜底：`#*` 的 ambient 声明（非模块文件，放 global.d.ts 里不生效）
 		expect(fs.existsSync(path.join(dest, "types/oj-modules.d.ts"))).toBe(true);
 
@@ -307,7 +325,7 @@ describe("initProject", () => {
 		// 1) demo-only 模块文件一律不拷
 		for (const mod of [
 			"src/demo/api",
-			"src/home/api",
+			"src/app/api/home",
 			"src/about",
 			"src/access",
 			"src/exception",

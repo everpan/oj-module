@@ -8,7 +8,7 @@ import { TEMPLATE_DIR } from "../helpers/paths";
  * 多根聚合模块的 client 接线回归（D11 scoped request）。
  *
  * 规则（两条，各自都能独立踩坑）：
- *   1. `__client/api.ts` 的工厂必须在同一根的 `routes.ts` 里创建——构造即 install
+ *   1. `__client/index.ts` 的工厂必须在同一根的 `routes.ts` 里创建——构造即 install
  *      完成 apiPrefix 登记 + scoped request 绑定；只 import 不创建 = 运行时
  *      「请求未绑定」/「尚未登记 API 前缀」（2026-09-10 回归）。
  *   2. 生成物落盘位置与认领护栏一致：client 在 `<模块>/web/<api 前缀>/__client`
@@ -26,7 +26,7 @@ function walk(dir: string, out: string[] = []): string[] {
 	return out;
 }
 
-/** `<...>/<归属模块>/web/<api 前缀>/__client/api.ts` → { owner, apiModule, webDir } */
+/** `<...>/<归属模块>/web/<api 前缀>/__client/index.ts` → { owner, apiModule, webDir } */
 function locate(clientFile: string): { owner: string, apiModule: string, webDir: string } {
 	const rel = path.relative(TEMPLATE_DIR, clientFile).split(path.sep);
 	const webIdx = rel.indexOf("web");
@@ -42,7 +42,7 @@ function locate(clientFile: string): { owner: string, apiModule: string, webDir:
 }
 
 const allClients = walk(path.join(TEMPLATE_DIR, "src"))
-	.filter(f => f.endsWith(path.join("__client", "api.ts")));
+	.filter(f => f.endsWith(path.join("__client", "index.ts")));
 
 /**
  * 只测「真正被页面消费」的 client：

@@ -1,3 +1,4 @@
+import { respond } from "#/_platform/_shared/respond";
 // POST /api/auth/wecom/admin/tenant-admin/password —— 重设某企业的租户管理员口令。
 //
 // 权限：仅 superadmin（跨租户的平台级动作）。
@@ -12,7 +13,6 @@
 //   · 级联删 refresh —— 改密后旧会话立即失效，避免旧 token 继续可用。
 import { assertSuperAdmin } from "#/_platform/_shared/service/infra/access";
 import { recordOp } from "#/_platform/_shared/service/infra/audit";
-import { respond } from "#/_platform/_shared/respond";
 import { setTenantAdminPassword } from "../../../../_shared/wecom/tenant-admin";
 
 async function post() {

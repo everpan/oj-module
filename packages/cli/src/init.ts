@@ -240,15 +240,22 @@ export async function initProject(destDir: string, opts: InitOptions = {}): Prom
 	//     与 pnpm-workspace.yaml 同型，改由 init 现场生成
 	ensureGitignore(destDir, report);
 
-	// 5d) 旧布局冲突提示：0.2.54 起 home/login/personal-center/notification/system 的
-	//     web 侧聚合成 src/app/web 多根模块。init 只补缺不删除——老工程重跑 init 会
-	//     同时留下旧目录，扫描后同名路由注册两遍（菜单重复、行为不一致）。
-	const mergedEntry = path.join(destDir, "src", "app", "web", "entry.ts");
-	if (fs.existsSync(mergedEntry)) {
-		const leftovers = ["home", "login", "personal-center", "notification", "system"]
-			.filter(name => fs.existsSync(path.join(destDir, "src", name, "web", "entry.ts")));
-		if (leftovers.length > 0)
-			report.warnings.push(`检测到旧布局的前端模块目录（${leftovers.map(n => `src/${n}/web`).join("、")}）与新的聚合模块 src/app/web 并存——路由会重复注册。请手工删除这些旧 web 目录（其 api 侧保留）。`);
+	// 5d) 旧布局冲突提示：0.2.54 起因/app 同时承载前端聚合模块与后端模块。
+	//     init 只补缺不删除——老工程重跑 init 会同时留下旧目录：
+	//       · src/<name>/web 与 src/app/web 同名路由注册两遍（菜单重复）；
+	//       · src/<name>/api 与 src/app/api/<name> 模块名重复（ojm 扫描直接报错）。
+	const mergedWeb = path.join(destDir, "src", "app", "web", "entry.ts");
+	const mergedApi = path.join(destDir, "src", "app", "api");
+	if (fs.existsSync(mergedWeb) || fs.existsSync(mergedApi)) {
+		const appModules = ["home", "login", "personal-center", "notification", "system", "_platform", "auth", "web"];
+		const oldWeb = appModules.filter(name => fs.existsSync(path.join(destDir, "src", name, "web", "entry.ts")));
+		if (oldWeb.length > 0)
+			report.warnings.push(`检测到旧布局的前端模块目录（${oldWeb.map(n => `src/${n}/web`).join("、")}）与新聚合模块 src/app/web 并存——路由会重复注册。请手工删除这些旧 web 目录。`);
+		const oldApi = appModules.filter(name =>
+			fs.existsSync(path.join(destDir, "src", name, "api", "manifest.yaml"))
+			&& fs.existsSync(path.join(mergedApi, name, "manifest.yaml")));
+		if (oldApi.length > 0)
+			report.warnings.push(`检测到旧布局的后端模块目录（${oldApi.map(n => `src/${n}/api`).join("、")}）与新位置 src/app/api/<name> 同名——模块名重复会让 ojm 扫描报错。请手工删除这些旧 api 目录。`);
 	}
 
 	console.log(`[ojm] init 完成：${destDir}`);
@@ -411,9 +418,10 @@ function pruneUnincludedApiPaths(destDir: string, include: Set<string>, report: 
 	// 只裁本次新建的 openapi.json：init 是幂等补缺，不改动既有工程文件
 	if (!report.created.includes("openapi.json"))
 		return;
-	// 白名单里 `src/<name>/api` 这条（整模块收录）决定「脚手架有哪些后端模块」
+	// 白名单里的 api 侧条目决定「脚手架有哪些后端模块」：
+	// 平铺 `src/<name>/api` 与聚合容器 `src/app/api/<name>` 都要认。
 	const mods = new Set([...include]
-		.map(p => /^src\/([^/]+)\/api$/.exec(p)?.[1])
+		.map(p => /^src\/([^/]+)\/api$/.exec(p)?.[1] ?? /^src\/[^/]+\/api\/([^/]+)$/.exec(p)?.[1])
 		.filter((m): m is string => !!m));
 	if (mods.size === 0)
 		return;

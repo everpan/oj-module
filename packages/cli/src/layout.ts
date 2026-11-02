@@ -6,13 +6,16 @@
  *
  * 三种布局（互斥）：
  *   module-root  <project>/src/<name>/{api,web}   新布局：一目录一模块（设计 v2）
+ *                也支持聚合容器：src/app/{api/<模块>,web}——app 的 web 侧是多根前端模块，
+ *                api 侧每个子目录各自是独立后端模块（模块名 = 子目录名 = URL 前缀）
  *   new           <project>/web/src/<name>        历史 uni-dev 布局
  *   flat          <project>/web/<name>            框架根仓 dogfooding（产物落 build/）
  *
  * module-root 的判定只认「模块根标记文件」而不是单纯的 src/ 存在性：工程里
  * 常有不属于模块的 src/（脚本、共享库），凭目录名猜会误判。
  * `src/<x>/api/manifest.yaml` 与 `src/<x>/web/entry.ts` 是唯一真源（设计 C-6：
- * 一侧可缺省，两侧皆无则不是模块）。
+ * 一侧可缺省，两侧皆无则不是模块）。聚合容器下后端模块根是 `src/app/api/<x>/manifest.yaml`
+ * （见 collectApiRoots）。
  *
  * 产物根（2026-10-22 起收进工程根单一 dist/，原 {web,api}/dist 与源码混树）：
  *   dist/api   oj 扁平 release 根（<name>-<version>/ 同层兄弟 + manifests.yaml），三种布局一致
@@ -31,7 +34,7 @@ export type LayoutKind = "module-root" | "new" | "flat";
 /** 模块一侧的可缺省组合：两侧皆无不是模块（设计 C-6） */
 export interface ModuleSides {
 	name: string
-	/** 后端源码目录 `<project>/src/<name>/api`（无此侧为 undefined） */
+	/** 后端源码目录（`src/<name>/api` 或聚合容器 `src/app/api/<name>`；无此侧为 undefined） */
 	apiSrc?: string
 	/** 前端源码目录 `<project>/src/<name>/web`（无此侧为 undefined） */
 	webSrc?: string
@@ -82,13 +85,44 @@ function isFile(p: string): boolean {
  * 坏目录只在 module-root 被判定为当前布局后才报错（见 resolveLayout），
  * 否则一个恰好带 `src/utils/api/` 的历史工程会被误伤。
  */
+/** 递归扫描时跳过的目录名（产物 / 依赖 / 生成物，均不可能承载模块根） */
+const SCAN_SKIP_DIRS = new Set(["node_modules", "dist", "build", "__client", ".cache", ".git"]);
+
+/**
+ * 收集一个容器目录下的后端模块根。
+ *
+ * 两种形态并存（oj 的 `--module-root` 支持任意深度）：
+ *   · `<container>/api/manifest.yaml`          —— 模块根在 api 自身（src/<name>/api）
+ *   · `<container>/api/<name>/manifest.yaml`   —— 聚合容器下的子模块（src/app/api/system）
+ *
+ * 后者用于「一个应用目录承载多个业务域」：src/app 的 web 侧是多根聚合模块，
+ * api 侧按业务域分成 system / notification / … 各自仍是独立模块（模块名 = 目录名
+ * = URL 前缀，故不能并成一个 app 模块）。命中模块根即停，不再往 api 内部递归。
+ */
+function collectApiRoots(container: string, out: string[]): void {
+	const apiDir = path.join(container, "api");
+	if (isFile(path.join(apiDir, "manifest.yaml"))) {
+		out.push(apiDir);
+		return;
+	}
+	if (!isDir(apiDir))
+		return;
+	for (const ent of fs.readdirSync(apiDir, { withFileTypes: true })
+		.filter(e => e.isDirectory() && !e.name.startsWith(".") && !SCAN_SKIP_DIRS.has(e.name))
+		.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))) {
+		if (isFile(path.join(apiDir, ent.name, "manifest.yaml")))
+			out.push(path.join(apiDir, ent.name));
+	}
+}
+
 function scanModuleRoot(projectRoot: string): { modules: ModuleSides[], broken: string[] } | null {
 	const srcDir = path.join(projectRoot, "src");
 	if (!isDir(srcDir))
 		return null;
 
-	const modules: ModuleSides[] = [];
+	const byName = new Map<string, ModuleSides>();
 	const broken: string[] = [];
+	const apiOwners = new Map<string, string>();
 	// 按名字排序：readdir 的顺序取决于文件系统与创建历史（同一份源码在不同机器上可能不同），
 	// 而枚举顺序会进入构建顺序与产物内容——不排序则「同布局两次构建 sha256 相等」无法保证。
 	const entries = fs.readdirSync(srcDir, { withFileTypes: true })
@@ -96,22 +130,41 @@ function scanModuleRoot(projectRoot: string): { modules: ModuleSides[], broken: 
 		.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
 	for (const ent of entries) {
 		const dir = path.join(srcDir, ent.name);
-		const apiDir = path.join(dir, "api");
 		const webDir = path.join(dir, "web");
-		const hasApi = isFile(path.join(apiDir, "manifest.yaml"));
 		const hasWeb = isFile(path.join(webDir, "entry.ts"));
-		if (!hasApi && !hasWeb) {
+		const apiRoots: string[] = [];
+		collectApiRoots(dir, apiRoots);
+		if (!hasWeb && apiRoots.length === 0) {
 			// 只把「有 api/ 或 web/ 子目录但缺标记」算坏目录；纯共享库目录（无两者）静默跳过
-			if (isDir(apiDir) || isDir(webDir))
+			if (isDir(path.join(dir, "api")) || isDir(webDir))
 				broken.push(ent.name);
 			continue;
 		}
-		modules.push({
-			name: ent.name,
-			apiSrc: hasApi ? apiDir : undefined,
-			webSrc: hasWeb ? webDir : undefined,
-		});
+		if (hasWeb)
+			byName.set(ent.name, { name: ent.name, webSrc: webDir });
+		for (const apiDir of apiRoots) {
+			// 模块名：平铺 src/system/api → system（api 的父目录）；
+			// 聚合 src/app/api/system → system（api 下方那层目录本身）。
+			const name = path.basename(apiDir) === "api"
+				? path.basename(path.dirname(apiDir))
+				: path.basename(apiDir);
+			const prev = apiOwners.get(name);
+			if (prev) {
+				throw new Error(
+					`[ojm] 后端模块名重复：${name} 同时出现在 ${path.relative(projectRoot, prev)} 与 `
+					+ `${path.relative(projectRoot, apiDir)}。模块名即 URL 前缀，必须唯一——`
+					+ "删掉旧布局目录（或改名）后重试。",
+				);
+			}
+			apiOwners.set(name, apiDir);
+			const hit = byName.get(name);
+			if (hit)
+				hit.apiSrc = apiDir;
+			else
+				byName.set(name, { name, apiSrc: apiDir });
+		}
 	}
+	const modules = [...byName.values()].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
 	return { modules, broken };
 }
 
@@ -244,7 +297,7 @@ export function legacyApiModuleRoots(projectRoot: string): ApiModuleRoot[] {
  * 为什么不直接 walk `apiModulesSrc(layout)`：module-root 布局的树根是 `src`，模块的
  * api 侧在 `<src>/<name>/api`，中间那层 `api` 是**布局分隔符、不是路由段**。拿 `src`
  * 当扫描根会双重出错——路由镜像多出 `api` 段（`system/api/users` ≠ 真实 `system/users`），
- * 且 `src/<name>/web/__client/api.ts` 这种前端生成物也会被当 handler 扫进来。
+ * 且 `src/<name>/web/__client/index.ts` 这种前端生成物也会被当 handler 扫进来。
  *
  * module-root → 按 `<name>/api/manifest.yaml` 判模块（与 build 同源，name 取 manifest）；
  * 历史布局    → `<project>/api/src` 的一级目录即模块。
@@ -267,9 +320,12 @@ export function moduleDir(layout: ProjectLayout, name: string): string {
  * 历史布局为 `<project>/api/src/<name>`——不在 modulesSrc 之下，必须走 projectRoot。
  */
 export function apiSrcOf(layout: ProjectLayout, name: string): string {
-	return layout.kind === "module-root"
-		? path.join(layout.modulesSrc, name, "api")
-		: path.join(layout.projectRoot, "api", "src", name);
+	if (layout.kind !== "module-root")
+		return path.join(layout.projectRoot, "api", "src", name);
+	// 聚合容器（src/app/api/<name>）与平铺（src/<name>/api）并存，以扫描结果为准；
+	// 找不到时回落旧口径，保证报错信息里的路径仍指向「本该在的位置」。
+	const hit = scanModules(layout).find(m => m.name === name)?.apiSrc;
+	return hit ?? path.join(layout.modulesSrc, name, "api");
 }
 
 /**

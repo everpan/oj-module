@@ -20,18 +20,18 @@ import type { ProjectLayout } from "./layout";
 import fs from "node:fs";
 import path from "node:path";
 import { parse } from "yaml";
-import { tryResolveLayout } from "./layout";
+import { scanModules, tryResolveLayout } from "./layout";
 
 /** 生成物文件名（工程根）。`src/tsconfig.json` 以 `../tsconfig.paths.json` 引用 */
 export const ALIAS_PATHS_FILE = "tsconfig.paths.json";
 
 /** 生成物头注释：tsconfig 允许注释，且这是唯一会被 `ojm` 覆写的 tsconfig */
 const HEADER = [
-	"// 由 ojm 生成：ojm init / ojm build / ojm dev 会按 src/*/api/manifest.yaml 重写本文件，请勿手改。",
+	"// 由 ojm 生成：ojm init / ojm build / ojm dev 会按模块清单重写本文件，请勿手改。",
 	"//",
-	"// oj 别名 `#/<模块名>/…` 锚在目标模块根（本布局下即 src/<模块名>/api）。tsconfig 的",
-	"// paths 只能静态全局映射，且每条规则的替换值只允许一个 `*`（`./src/*/api/*` 会被 TS",
-	"// 以 TS5062 拒掉），故按模块逐条枚举。",
+	"// oj 别名 `#/<模块名>/…` 锚在目标模块根（src/<模块名>/api 或 src/app/api/<模块名>）。",
+	"// tsconfig 的 paths 只能静态全局映射，且每条规则的替换值只允许一个 `*`（`./src/*/api/*`",
+	"// 会被 TS 以 TS5062 拒掉），故按模块逐条枚举。",
 ].join("\n");
 
 /** 读模块根 manifest 的 `name`（oj 的模块身份）；读不到/格式坏时回落到目录名 */
@@ -58,14 +58,13 @@ export function aliasPathEntries(layout: ProjectLayout): Record<string, string[]
 	if (layout.kind !== "module-root")
 		return {};
 	const entries: Record<string, string[]> = {};
-	for (const mod of fs.readdirSync(layout.modulesSrc, { withFileTypes: true })) {
-		if (!mod.isDirectory() || mod.name.startsWith("."))
+	// 以扫描结果为准：既覆盖平铺 src/<name>/api，也覆盖聚合容器 src/app/api/<name>
+	for (const mod of scanModules(layout)) {
+		if (!mod.apiSrc)
 			continue;
-		const apiDir = path.join(layout.modulesSrc, mod.name, "api");
-		if (!fs.existsSync(path.join(apiDir, "manifest.yaml")))
-			continue;
-		const name = manifestName(apiDir, mod.name);
-		entries[`#/${name}/*`] = [`./${path.posix.join("src", mod.name, "api", "*")}`];
+		const name = manifestName(mod.apiSrc, mod.name);
+		const rel = path.relative(layout.projectRoot, mod.apiSrc).split(path.sep).join("/");
+		entries[`#/${name}/*`] = [`./${rel}/*`];
 	}
 	return entries;
 }

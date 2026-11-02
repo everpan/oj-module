@@ -45,7 +45,7 @@ pnpm install
 pnpm dev            # 前端 devServer(5174) + oj 后端（9778），src/** 保存即热更
 ```
 
-浏览器打开 `http://localhost:5174`，用脚手架种子账号登录：**superadmin / aA123456**（四个内置角色账号 superadmin/admin/editor/viewer，账号名=角色名、口令均 aA123456、免首登改密，见 `src/_platform/api/seed.sql`；生产部署须改密或删除）。
+浏览器打开 `http://localhost:5174`，用脚手架种子账号登录：**superadmin / aA123456**（四个内置角色账号 superadmin/admin/editor/viewer，账号名=角色名、口令均 aA123456、免首登改密，见 `src/app/api/_platform/seed.sql`；生产部署须改密或删除）。
 
 > `ojm init` 是**幂等补缺**：对已有工程重跑只补缺失文件。首次会联网下载 oj 二进制到 `bin/oj`（sha256 校验），并现场签发本地 dev 证书（`config/` 三件套）。
 >
@@ -67,13 +67,15 @@ my-books/
 ├── web.config.ts          # 前端配置（可选覆盖：加载顺序/siteBase/htmlTransform）；模块清单不靠它
 ├── seed.mysql.sql / seed.pg.sql  # 方言种子（部署到 mysql/pg 用；sqlite 用模块内 seed.sql）
 ├── .claude/skills/{oj-api-dev,ojm-module-dev}/   # 后端 / 模块开发手册（按需读）
-├── src/                   # 唯一源码树：一模块一目录，api/web 恰好一侧有内容
-│   ├── _platform/api/     # 框架级共有表（users 等）+ 生命周期引擎 + 平台编排面（无业务路由前缀）
-│   ├── auth/api/          # login/refresh/logout（业务路由）+ _shared/session.ts
-│   ├── oj-market/         # 市场页（本站点自供市场时的卡片/安装 UI）
-│   ├── notification/      # 通知模块（api/ 读写 + web/ 注册通知 provider）
-│   ├── system/ personal-center/ web/ demo/   # 框架内置业务模块
-│   └── home/web/ login/web/  # 首页 / 登录（shell 预构建的 HOME 与登录路由目标，不可删）
+├── src/
+│   ├── app/               # 整个应用：api 下多个后端模块 + web 前端多根模块
+│   │   ├── api/
+│   │   │   ├── _platform/ #   框架级共有表（users 等）+ 生命周期引擎 + 平台编排面
+│   │   │   ├── auth/      #   login/refresh/logout + _shared/session.ts
+│   │   │   ├── system/ notification/ personal-center/ web/   # 框架内置后端模块
+│   │   │   └── （home 的 api 是 demo-only，不进脚手架）
+│   │   └── web/           #   前端聚合模块：entry.ts + home/login/… 各根（routes/pages/__client）
+│   └── oj-market/         # 市场页（可选第一方模块，删目录即下线）
 ├── cdn/                   # 本地模拟市场源（config.yaml 的 /cdn 挂载直出）
 ├── dist/api/              # oj build 产物（build 后出现）
 ├── dist/web/              # 构建全站：index.html + assets/ + modules/ + modules.json + versions.json
@@ -151,7 +153,7 @@ export default books;
 | 形态 | 规则 | 适合 |
 | --- | --- | --- |
 | **嵌套 handler 组（v0.1.64，推荐）** | 单文件 default 导出里组名 = 路径段，组可再嵌子组（≤4 层）；模块根文件的动词键 = 聚合根本身的操作 | 同一聚合的多个操作聚在一处（本演练的 books 就是） |
-| 目录镜像 | `src/<name>/api/<路径...>/api.ts` → `/api/<name>/<路径...>` | 不同聚合各自独立演化（例：`src/web/api/hello/api.ts` → `/api/web/hello`） |
+| 目录镜像 | `src/<name>/api/<路径...>/api.ts` → `/api/<name>/<路径...>` | 不同聚合各自独立演化（例：`src/app/api/web/hello/api.ts` → `/api/web/hello`） |
 
 DDD 判据速查（完整版见模块手册 §3.9）：**同一聚合的操作进同一个实体组，不同聚合才拆目录**；
 `del` 是保留动词键不能作组名；出现动词命名的组/目录（`list/`、`create/`）是旧形态信号。
@@ -171,10 +173,10 @@ DDD 判据速查（完整版见模块手册 §3.9）：**同一聚合的操作�
 | `kv.get/set/del/expire` | KV 存储（auth 会话用） |
 | `jwt.sign/verify`、`bcrypt.hash/verify`、`crypto.sha256Hex/randomHex` | 令牌与加密 |
 
-### 2.4 `src/_platform/api/`（框架级共有表）
+### 2.4 `src/app/api/_platform/`（框架级共有表）
 
 ```
-_platform/api/
+src/app/api/_platform/
 ├── manifest.yaml                     # name/desc/version + tables: [users, …]
 ├── schema.yaml                       # 声明式表结构（tables.<表>.columns…）
 ├── migrations/0001__create_users.sql # DDL 只写这里
@@ -189,12 +191,12 @@ _platform/api/
 - **DDL 进 `migrations/`，数据进 `seed.sql`**（S006）。`seed.sql` 每次启动重放，必须幂等（`INSERT OR IGNORE`），按 `;` 朴素切分，注释里也别出现分号。
 - **`manifest.yaml` 的 `tables` 与 `schema.yaml` 的 `tables` 必须双向一致**（S005）。
 
-### 2.5 `src/auth/api/`（登录链）
+### 2.5 `src/app/api/auth/`（登录链）
 
 `login/refresh/logout` 三个端点 + `_shared/session.ts`（签发逻辑）。跨模块读 `users` 表时，`manifest.yaml` 要用 `deps` 声明归属：
 
 ```yaml
-# src/auth/api/manifest.yaml
+# src/app/api/auth/manifest.yaml
 name: auth
 desc: JWT 鉴权端点（业务路由）
 version: 0.1.0
@@ -453,7 +455,7 @@ curl -s -X POST http://127.0.0.1:9778/api/books \
 # 1) 汇总：扫描 src/ 下全部 handler 的 .schema/.response → 工程根 openapi.json
 ./bin/oj openapi -c config.yaml --module-root src -b /api -o openapi.json
 
-# 2) 生成前端 client（产物：src/books/web/__client/api.ts + api.schemas.ts）
+# 2) 生成前端 client（产物：src/books/web/__client/index.ts + api.schemas.ts）
 pnpm exec ojm api
 
 # 3) 对账（CI 会跑）：生成物同步 / route 双向对账 / routes.js 无 drift
@@ -461,7 +463,7 @@ pnpm exec ojm api --check
 ```
 
 > **oj 版本要求**：`--module-root` 需 oj ≥ 0.1.85；且 openapi 的裸包解析截断缺陷（module-root 下预生成 `__client` 内省 fail-fast）修复在 **0.1.86**。若第 1 步报
-> `dev routes: …web/__client/api.ts: cannot resolve '@oj-module/runtime/contract/errors'`
+> `dev routes: …web/__client/index.ts: cannot resolve '@oj-module/runtime/contract/errors'`
 > 即你的 oj 早于该修——`ojm vendor` 重装 ≥ 0.1.86（未发布前用含修复的本地构建覆盖 `bin/oj`）。症状与根因见验证手册 §9。
 >
 > `ojm api` 只认工程根的 `openapi.json`：找不到即报错指引先跑第 1 步。
@@ -481,7 +483,7 @@ import { BookOutlined } from "@ant-design/icons";
 import { defineModule } from "@oj-module/runtime";
 import { createElement, lazy } from "react";
 
-import { createBooksClient } from "./__client/api";
+import { createBooksClient } from "./__client";
 
 const Books = lazy(() => import("./pages/index"));
 
@@ -540,13 +542,13 @@ export default defineModule({
 ### 5.4 页面 `src/books/web/pages/index.tsx`
 
 ```tsx
-import type { BooksGetData } from "../__client/api";
+import type { BooksGetData } from "../__client";
 import { BasicContent, BasicTable } from "@oj-module/runtime";
 import { Button, Card, Form, Input, InputNumber, Modal, Space, message } from "antd";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { booksGet, booksPost } from "../__client/api";
+import { booksGet, booksPost } from "../__client";
 
 export default function BooksPage() {
   const { t } = useTranslation();

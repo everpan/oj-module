@@ -43,7 +43,13 @@ export function runtimeReplayGate(): ReplayGate {
 		incr: key => kv.incr(key),
 		expire: (key, ttlSecs) => kv.expire(key, ttlSecs),
 		get: key => kv.get(key),
-		set: async (key, ttlSecs) => { await kv.set(key, "1"); if (!(await kv.expire(key, ttlSecs))) { log.warn("wecom applied marker ttl not set", "key", key); await kv.del(key); } },
+		set: async (key, ttlSecs) => {
+			await kv.set(key, "1");
+			if (!(await kv.expire(key, ttlSecs))) {
+				log.warn("wecom applied marker ttl not set", "key", key);
+				await kv.del(key);
+			}
+		},
 		del: key => kv.del(key),
 		now: () => Math.floor(Date.now() / 1000),
 	};
@@ -61,7 +67,7 @@ export class ReplayAlreadyApplied extends Error {
 
 /** 处理成功后调用：标记该 nonce 已落库成功，供重推幂等回 success（避免首次偏慢被企微判超时、重推又被重放守卫挡成 400）。 */
 export async function markApplied(nonce: string, gate: ReplayGate): Promise<void> {
-	await gate.set("wecom:applied:" + nonce, NONCE_TTL_SECS);
+	await gate.set(`wecom:applied:${nonce}`, NONCE_TTL_SECS);
 }
 
 /**
@@ -85,7 +91,7 @@ export async function guardReplay(timestampRaw: string, nonce: string, gate: Rep
 	if (seen !== 1) {
 		// 重推场景：若首次处理已成功落库（标了 applied 标记），直接幂等回 success，
 		// 不让企微卡在「应用安装失败」。未标记者说明首推仍在进行或已失败（失败会 release 让重推重放），维持 400。
-		const applied = await gate.get("wecom:applied:" + nonce);
+		const applied = await gate.get(`wecom:applied:${nonce}`);
 		if (applied)
 			throw new ReplayAlreadyApplied();
 		fail(400, "回调 nonce 重复：同一条指令回调已被处理过（重放请求已拒绝）");

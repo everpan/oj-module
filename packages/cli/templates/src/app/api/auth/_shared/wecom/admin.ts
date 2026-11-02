@@ -13,8 +13,8 @@ import type { WecomConfig, WecomCorpConfig, WecomKind } from "./config";
 import type { WecomStoreDeps } from "./store";
 import { invalidateAllUsers } from "#/_platform/_shared/service/infra/access";
 import { assertProviderConfig, eventUrlOf } from "./config";
-import { provisionTenantAdmin } from "./tenant-admin";
 import { corpScope, revokeTenantSessions, saveProfile, tenantOfCorp } from "./store";
+import { provisionTenantAdmin } from "./tenant-admin";
 
 export interface WecomAdminDeps {
 	client: WecomClient
