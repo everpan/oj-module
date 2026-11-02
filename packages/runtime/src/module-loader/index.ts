@@ -405,6 +405,28 @@ function buildInstance(
 	return { definition, routePrefix, multiRoot, status, error };
 }
 
+/**
+ * 按 `handle.roles` 递归过滤路由（菜单与路由表同源）。
+ *
+ * 模块级 `config.requiredRoles` 只能整包放行/拦截；一个模块里既有全员可见页、
+ * 又有仅超管可见页（/system/settings、/system/wecom）时，需要路由级粒度。
+ * 语义与前端静态路由（generateRoutesByFrontend）一致：未声明 = 不限制；
+ * 声明了则命中任一角色才保留，否则连同子树一起剔除。
+ */
+function filterRoutesByRoles(routes: AppRouteRecordRaw[], roles: string[]): AppRouteRecordRaw[] {
+	const out: AppRouteRecordRaw[] = [];
+	for (const route of routes) {
+		const required = route.handle?.roles;
+		if (required?.length && !required.some(role => roles.includes(role)))
+			continue;
+		const children = "children" in route && Array.isArray(route.children)
+			? filterRoutesByRoles(route.children as AppRouteRecordRaw[], roles)
+			: undefined;
+		out.push(children ? { ...route, children } as AppRouteRecordRaw : route);
+	}
+	return out;
+}
+
 export function getRoutes(): AppRouteRecordRaw[] {
 	// P5.9 / B16：模块级 requiredRoles 在路由注入前过滤——
 	// 无角色的用户拿不到路由本身（菜单同源），而非渲染后 403
@@ -428,7 +450,7 @@ export function getRoutes(): AppRouteRecordRaw[] {
 			// 注意：此处保留原始路由根（不按 routePrefix 改写）——改写是宿主建表取口
 			// getHostRoutes() 的职责（与 rewriteAdminPaths 同源），getRoutes() 只供
 			// access store 登记 / keep-alive 聚合等「无需重写」的场景。
-			routes.push(...resolveRouteLayouts(tagModuleRoutes(instance.definition.routes, instance.definition.name)));
+			routes.push(...filterRoutesByRoles(resolveRouteLayouts(tagModuleRoutes(instance.definition.routes, instance.definition.name)), roles));
 		}
 	}
 	// 菜单选中态依赖 useMatches 的 match.id（=path）。在出口统一补 id，
