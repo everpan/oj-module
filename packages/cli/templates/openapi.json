@@ -9,7 +9,7 @@
 			"get": {
 				"operationId": "_platform_contacts_get",
 				"summary": "GET api/_platform/contacts",
-				"x-oj-file": "_platform/api/contacts/api.ts",
+				"x-oj-file": "app/api/_platform/contacts/api.ts",
 				"tags": [
 					"_platform"
 				],
@@ -89,7 +89,7 @@
 			"get": {
 				"operationId": "_platform_contacts_detail_get",
 				"summary": "GET api/_platform/contacts/detail",
-				"x-oj-file": "_platform/api/contacts/detail/api.ts",
+				"x-oj-file": "app/api/_platform/contacts/detail/api.ts",
 				"tags": [
 					"_platform"
 				],
@@ -171,7 +171,7 @@
 			"post": {
 				"operationId": "_platform_market_install_post",
 				"summary": "POST api/_platform/market/install",
-				"x-oj-file": "_platform/api/market/api.ts",
+				"x-oj-file": "app/api/_platform/market/api.ts",
 				"tags": [
 					"_platform"
 				],
@@ -248,7 +248,7 @@
 			"post": {
 				"operationId": "_platform_market_install_cancel_post",
 				"summary": "POST api/_platform/market/install/cancel",
-				"x-oj-file": "_platform/api/market/api.ts",
+				"x-oj-file": "app/api/_platform/market/api.ts",
 				"tags": [
 					"_platform"
 				],
@@ -317,7 +317,7 @@
 			"get": {
 				"operationId": "_platform_market_task_get",
 				"summary": "GET api/_platform/market/task",
-				"x-oj-file": "_platform/api/market/api.ts",
+				"x-oj-file": "app/api/_platform/market/api.ts",
 				"tags": [
 					"_platform"
 				],
@@ -367,7 +367,7 @@
 			"post": {
 				"operationId": "_platform_market_enable_post",
 				"summary": "POST api/_platform/market/enable",
-				"x-oj-file": "_platform/api/market/api.ts",
+				"x-oj-file": "app/api/_platform/market/api.ts",
 				"tags": [
 					"_platform"
 				],
@@ -429,7 +429,7 @@
 			"get": {
 				"operationId": "_platform_market_meta_get",
 				"summary": "GET api/_platform/market/meta",
-				"x-oj-file": "_platform/api/market/api.ts",
+				"x-oj-file": "app/api/_platform/market/api.ts",
 				"tags": [
 					"_platform"
 				],
@@ -474,7 +474,7 @@
 			"get": {
 				"operationId": "_platform_market_trust_get",
 				"summary": "GET api/_platform/market/trust",
-				"x-oj-file": "_platform/api/market/api.ts",
+				"x-oj-file": "app/api/_platform/market/api.ts",
 				"tags": [
 					"_platform"
 				],
@@ -512,7 +512,7 @@
 			"post": {
 				"operationId": "_platform_market_trust_post",
 				"summary": "POST api/_platform/market/trust",
-				"x-oj-file": "_platform/api/market/api.ts",
+				"x-oj-file": "app/api/_platform/market/api.ts",
 				"tags": [
 					"_platform"
 				],
@@ -570,7 +570,7 @@
 			"post": {
 				"operationId": "_platform_market_trust_key_post",
 				"summary": "POST api/_platform/market/trust/key",
-				"x-oj-file": "_platform/api/market/api.ts",
+				"x-oj-file": "app/api/_platform/market/api.ts",
 				"tags": [
 					"_platform"
 				],
@@ -630,7 +630,7 @@
 			"delete": {
 				"operationId": "_platform_market_trust_key_delete",
 				"summary": "DELETE api/_platform/market/trust/key",
-				"x-oj-file": "_platform/api/market/api.ts",
+				"x-oj-file": "app/api/_platform/market/api.ts",
 				"tags": [
 					"_platform"
 				],
@@ -680,7 +680,7 @@
 			"get": {
 				"operationId": "_platform_market_index_get",
 				"summary": "GET api/_platform/market/index",
-				"x-oj-file": "_platform/api/market/api.ts",
+				"x-oj-file": "app/api/_platform/market/api.ts",
 				"tags": [
 					"_platform"
 				],
@@ -723,7 +723,7 @@
 			"get": {
 				"operationId": "_platform_market_uninstall_impact_get",
 				"summary": "GET api/_platform/market/uninstall-impact",
-				"x-oj-file": "_platform/api/market/api.ts",
+				"x-oj-file": "app/api/_platform/market/api.ts",
 				"tags": [
 					"_platform"
 				],
@@ -773,7 +773,7 @@
 			"post": {
 				"operationId": "_platform_market_uninstall_post",
 				"summary": "POST api/_platform/market/uninstall",
-				"x-oj-file": "_platform/api/market/api.ts",
+				"x-oj-file": "app/api/_platform/market/api.ts",
 				"tags": [
 					"_platform"
 				],
@@ -831,7 +831,7 @@
 			"get": {
 				"operationId": "_platform_market_history_get",
 				"summary": "GET api/_platform/market/history",
-				"x-oj-file": "_platform/api/market/api.ts",
+				"x-oj-file": "app/api/_platform/market/api.ts",
 				"tags": [
 					"_platform"
 				],
@@ -874,7 +874,7 @@
 			"get": {
 				"operationId": "_platform_org_departments_get",
 				"summary": "GET api/_platform/org/departments",
-				"x-oj-file": "_platform/api/org/departments/api.ts",
+				"x-oj-file": "app/api/_platform/org/departments/api.ts",
 				"tags": [
 					"_platform"
 				],
@@ -1025,7 +1025,7 @@
 			"get": {
 				"operationId": "_platform_org_is_member_get",
 				"summary": "GET api/_platform/org/is-member",
-				"x-oj-file": "_platform/api/org/is-member/api.ts",
+				"x-oj-file": "app/api/_platform/org/is-member/api.ts",
 				"tags": [
 					"_platform"
 				],
@@ -1102,7 +1102,7 @@
 			"get": {
 				"operationId": "_platform_org_members_get",
 				"summary": "GET api/_platform/org/members",
-				"x-oj-file": "_platform/api/org/members/api.ts",
+				"x-oj-file": "app/api/_platform/org/members/api.ts",
 				"tags": [
 					"_platform"
 				],
@@ -1258,7 +1258,7 @@
 			"get": {
 				"operationId": "_platform_org_picker_get",
 				"summary": "GET api/_platform/org/picker",
-				"x-oj-file": "_platform/api/org/picker/api.ts",
+				"x-oj-file": "app/api/_platform/org/picker/api.ts",
 				"tags": [
 					"_platform"
 				],
@@ -1417,7 +1417,7 @@
 			"post": {
 				"operationId": "_platform_org_resolve_post",
 				"summary": "POST api/_platform/org/resolve",
-				"x-oj-file": "_platform/api/org/resolve/api.ts",
+				"x-oj-file": "app/api/_platform/org/resolve/api.ts",
 				"tags": [
 					"_platform"
 				],
@@ -1508,7 +1508,7 @@
 			"get": {
 				"operationId": "_platform_org_tree_get",
 				"summary": "GET api/_platform/org/tree",
-				"x-oj-file": "_platform/api/org/tree/api.ts",
+				"x-oj-file": "app/api/_platform/org/tree/api.ts",
 				"tags": [
 					"_platform"
 				],
@@ -1600,7 +1600,7 @@
 			"get": {
 				"operationId": "_platform_org_user_get",
 				"summary": "GET api/_platform/org/user",
-				"x-oj-file": "_platform/api/org/user/api.ts",
+				"x-oj-file": "app/api/_platform/org/user/api.ts",
 				"tags": [
 					"_platform"
 				],
@@ -1722,7 +1722,7 @@
 			"get": {
 				"operationId": "_platform_solutions_routes_get",
 				"summary": "GET api/_platform/solutions/routes",
-				"x-oj-file": "_platform/api/solutions/api.ts",
+				"x-oj-file": "app/api/_platform/solutions/api.ts",
 				"tags": [
 					"_platform"
 				],
@@ -1807,7 +1807,7 @@
 			"post": {
 				"operationId": "_platform_solutions_verify_post",
 				"summary": "POST api/_platform/solutions/verify",
-				"x-oj-file": "_platform/api/solutions/api.ts",
+				"x-oj-file": "app/api/_platform/solutions/api.ts",
 				"tags": [
 					"_platform"
 				],
@@ -1904,7 +1904,7 @@
 			"get": {
 				"operationId": "_platform_solutions_verify_last_get",
 				"summary": "GET api/_platform/solutions/verify/last",
-				"x-oj-file": "_platform/api/solutions/api.ts",
+				"x-oj-file": "app/api/_platform/solutions/api.ts",
 				"tags": [
 					"_platform"
 				],
@@ -2001,7 +2001,7 @@
 			"post": {
 				"operationId": "auth_login_post",
 				"summary": "POST api/auth/login",
-				"x-oj-file": "auth/api/api.ts",
+				"x-oj-file": "app/api/auth/api.ts",
 				"tags": [
 					"auth"
 				],
@@ -2125,7 +2125,7 @@
 			"post": {
 				"operationId": "auth_logout_post",
 				"summary": "POST api/auth/logout",
-				"x-oj-file": "auth/api/api.ts",
+				"x-oj-file": "app/api/auth/api.ts",
 				"tags": [
 					"auth"
 				],
@@ -2183,7 +2183,7 @@
 			"post": {
 				"operationId": "auth_refresh_post",
 				"summary": "POST api/auth/refresh",
-				"x-oj-file": "auth/api/api.ts",
+				"x-oj-file": "app/api/auth/api.ts",
 				"tags": [
 					"auth"
 				],
@@ -2302,7 +2302,7 @@
 			"put": {
 				"operationId": "auth_password_put",
 				"summary": "PUT api/auth/password",
-				"x-oj-file": "auth/api/api.ts",
+				"x-oj-file": "app/api/auth/api.ts",
 				"tags": [
 					"auth"
 				],
@@ -2426,7 +2426,7 @@
 			"post": {
 				"operationId": "auth_ldap_login_post",
 				"summary": "POST api/auth/ldap-login",
-				"x-oj-file": "auth/api/ldap-login/api.ts",
+				"x-oj-file": "app/api/auth/ldap-login/api.ts",
 				"tags": [
 					"auth"
 				],
@@ -2550,7 +2550,7 @@
 			"get": {
 				"operationId": "auth_wecom_admin_apps_get",
 				"summary": "GET api/auth/wecom/admin/apps",
-				"x-oj-file": "auth/api/wecom/admin/api.ts",
+				"x-oj-file": "app/api/auth/wecom/admin/api.ts",
 				"tags": [
 					"auth"
 				],
@@ -2650,7 +2650,7 @@
 			"get": {
 				"operationId": "auth_wecom_admin_overview_get",
 				"summary": "GET api/auth/wecom/admin/overview",
-				"x-oj-file": "auth/api/wecom/admin/api.ts",
+				"x-oj-file": "app/api/auth/wecom/admin/api.ts",
 				"tags": [
 					"auth"
 				],
@@ -2736,7 +2736,7 @@
 			"post": {
 				"operationId": "auth_wecom_admin_status_post",
 				"summary": "POST api/auth/wecom/admin/status",
-				"x-oj-file": "auth/api/wecom/admin/api.ts",
+				"x-oj-file": "app/api/auth/wecom/admin/api.ts",
 				"tags": [
 					"auth"
 				],
@@ -2819,7 +2819,7 @@
 			"get": {
 				"operationId": "auth_wecom_admin_install_get",
 				"summary": "GET api/auth/wecom/admin/install",
-				"x-oj-file": "auth/api/wecom/admin/api.ts",
+				"x-oj-file": "app/api/auth/wecom/admin/api.ts",
 				"tags": [
 					"auth"
 				],
@@ -2874,7 +2874,7 @@
 			"post": {
 				"operationId": "auth_wecom_admin_connect_post",
 				"summary": "POST api/auth/wecom/admin/connect",
-				"x-oj-file": "auth/api/wecom/admin/api.ts",
+				"x-oj-file": "app/api/auth/wecom/admin/api.ts",
 				"tags": [
 					"auth"
 				],
@@ -2933,7 +2933,7 @@
 			"get": {
 				"operationId": "auth_wecom_admin_tenant_admin_get",
 				"summary": "GET api/auth/wecom/admin/tenant-admin",
-				"x-oj-file": "auth/api/wecom/admin/tenant-admin/api.ts",
+				"x-oj-file": "app/api/auth/wecom/admin/tenant-admin/api.ts",
 				"tags": [
 					"auth"
 				],
@@ -3003,7 +3003,7 @@
 			"post": {
 				"operationId": "auth_wecom_admin_tenant_admin_password_post",
 				"summary": "POST api/auth/wecom/admin/tenant-admin/password",
-				"x-oj-file": "auth/api/wecom/admin/tenant-admin/password/api.ts",
+				"x-oj-file": "app/api/auth/wecom/admin/tenant-admin/password/api.ts",
 				"tags": [
 					"auth"
 				],
@@ -3086,7 +3086,7 @@
 			"get": {
 				"operationId": "auth_wecom_login_get",
 				"summary": "GET api/auth/wecom/login",
-				"x-oj-file": "auth/api/wecom/api.ts",
+				"x-oj-file": "app/api/auth/wecom/api.ts",
 				"tags": [
 					"auth"
 				],
@@ -3101,7 +3101,7 @@
 			"get": {
 				"operationId": "auth_wecom_callback_get",
 				"summary": "GET api/auth/wecom/callback",
-				"x-oj-file": "auth/api/wecom/api.ts",
+				"x-oj-file": "app/api/auth/wecom/api.ts",
 				"tags": [
 					"auth"
 				],
@@ -3116,7 +3116,7 @@
 			"post": {
 				"operationId": "auth_wecom_ticket_post",
 				"summary": "POST api/auth/wecom/ticket",
-				"x-oj-file": "auth/api/wecom/api.ts",
+				"x-oj-file": "app/api/auth/wecom/api.ts",
 				"tags": [
 					"auth"
 				],
@@ -3236,7 +3236,7 @@
 			"get": {
 				"operationId": "auth_wecom_event_get",
 				"summary": "GET api/auth/wecom/event",
-				"x-oj-file": "auth/api/wecom/api.ts",
+				"x-oj-file": "app/api/auth/wecom/api.ts",
 				"tags": [
 					"auth"
 				],
@@ -3249,7 +3249,7 @@
 			"post": {
 				"operationId": "auth_wecom_event_post",
 				"summary": "POST api/auth/wecom/event",
-				"x-oj-file": "auth/api/wecom/api.ts",
+				"x-oj-file": "app/api/auth/wecom/api.ts",
 				"tags": [
 					"auth"
 				],
@@ -3264,7 +3264,7 @@
 			"post": {
 				"operationId": "auth_wecom_sync_start_post",
 				"summary": "POST api/auth/wecom/sync/start",
-				"x-oj-file": "auth/api/wecom/sync/api.ts",
+				"x-oj-file": "app/api/auth/wecom/sync/api.ts",
 				"tags": [
 					"auth"
 				],
@@ -3461,7 +3461,7 @@
 			"get": {
 				"operationId": "auth_wecom_sync_status_get",
 				"summary": "GET api/auth/wecom/sync/status",
-				"x-oj-file": "auth/api/wecom/sync/api.ts",
+				"x-oj-file": "app/api/auth/wecom/sync/api.ts",
 				"tags": [
 					"auth"
 				],
@@ -3653,7 +3653,7 @@
 			"post": {
 				"operationId": "auth_wecom_sync_cancel_post",
 				"summary": "POST api/auth/wecom/sync/cancel",
-				"x-oj-file": "auth/api/wecom/sync/api.ts",
+				"x-oj-file": "app/api/auth/wecom/sync/api.ts",
 				"tags": [
 					"auth"
 				],
@@ -3850,7 +3850,7 @@
 			"post": {
 				"operationId": "home_line_post",
 				"summary": "POST api/home/line",
-				"x-oj-file": "home/api/line/api.ts",
+				"x-oj-file": "app/api/home/line/api.ts",
 				"tags": [
 					"home"
 				],
@@ -3910,7 +3910,7 @@
 			"get": {
 				"operationId": "home_pie_get",
 				"summary": "GET api/home/pie",
-				"x-oj-file": "home/api/pie/api.ts",
+				"x-oj-file": "app/api/home/pie/api.ts",
 				"tags": [
 					"home"
 				],
@@ -3977,7 +3977,7 @@
 			"get": {
 				"operationId": "notification_notifications_get",
 				"summary": "GET api/notification/notifications",
-				"x-oj-file": "notification/api/api.ts",
+				"x-oj-file": "app/api/notification/api.ts",
 				"tags": [
 					"notification"
 				],
@@ -4068,7 +4068,7 @@
 			"post": {
 				"operationId": "notification_notifications_read_post",
 				"summary": "POST api/notification/notifications/read",
-				"x-oj-file": "notification/api/api.ts",
+				"x-oj-file": "app/api/notification/api.ts",
 				"tags": [
 					"notification"
 				],
@@ -4125,7 +4125,7 @@
 			"post": {
 				"operationId": "notification_notifications_read_all_post",
 				"summary": "POST api/notification/notifications/read-all",
-				"x-oj-file": "notification/api/api.ts",
+				"x-oj-file": "app/api/notification/api.ts",
 				"tags": [
 					"notification"
 				],
@@ -4164,7 +4164,7 @@
 			"post": {
 				"operationId": "notification_notifications_clear_post",
 				"summary": "POST api/notification/notifications/clear",
-				"x-oj-file": "notification/api/api.ts",
+				"x-oj-file": "app/api/notification/api.ts",
 				"tags": [
 					"notification"
 				],
@@ -4203,7 +4203,7 @@
 			"post": {
 				"operationId": "notification_push_post",
 				"summary": "POST api/notification/push",
-				"x-oj-file": "notification/api/api.ts",
+				"x-oj-file": "app/api/notification/api.ts",
 				"tags": [
 					"notification"
 				],
@@ -4292,7 +4292,7 @@
 			"post": {
 				"operationId": "notification_push_broadcast_post",
 				"summary": "POST api/notification/push-broadcast",
-				"x-oj-file": "notification/api/api.ts",
+				"x-oj-file": "app/api/notification/api.ts",
 				"tags": [
 					"notification"
 				],
@@ -4375,7 +4375,7 @@
 			"post": {
 				"operationId": "notification_del_post",
 				"summary": "POST api/notification/del",
-				"x-oj-file": "notification/api/del/api.ts",
+				"x-oj-file": "app/api/notification/del/api.ts",
 				"tags": [
 					"notification"
 				],
@@ -4438,7 +4438,7 @@
 			"post": {
 				"operationId": "personal_center_profile_post",
 				"summary": "POST api/personal-center/profile",
-				"x-oj-file": "personal-center/api/profile/api.ts",
+				"x-oj-file": "app/api/personal-center/profile/api.ts",
 				"tags": [
 					"personal-center"
 				],
@@ -4501,7 +4501,7 @@
 			"post": {
 				"operationId": "personal_center_upload_post",
 				"summary": "POST api/personal-center/upload",
-				"x-oj-file": "personal-center/api/upload/api.ts",
+				"x-oj-file": "app/api/personal-center/upload/api.ts",
 				"tags": [
 					"personal-center"
 				],
@@ -4540,7 +4540,7 @@
 			"get": {
 				"operationId": "system_departments_get",
 				"summary": "GET api/system/departments",
-				"x-oj-file": "system/api/departments/api.ts",
+				"x-oj-file": "app/api/system/departments/api.ts",
 				"tags": [
 					"system"
 				],
@@ -4632,7 +4632,7 @@
 			"post": {
 				"operationId": "system_departments_post",
 				"summary": "POST api/system/departments",
-				"x-oj-file": "system/api/departments/api.ts",
+				"x-oj-file": "app/api/system/departments/api.ts",
 				"tags": [
 					"system"
 				],
@@ -4711,7 +4711,7 @@
 			"put": {
 				"operationId": "system_departments_put",
 				"summary": "PUT api/system/departments",
-				"x-oj-file": "system/api/departments/api.ts",
+				"x-oj-file": "app/api/system/departments/api.ts",
 				"tags": [
 					"system"
 				],
@@ -4791,7 +4791,7 @@
 			"delete": {
 				"operationId": "system_departments_delete",
 				"summary": "DELETE api/system/departments",
-				"x-oj-file": "system/api/departments/api.ts",
+				"x-oj-file": "app/api/system/departments/api.ts",
 				"tags": [
 					"system"
 				],
@@ -4848,7 +4848,7 @@
 			"post": {
 				"operationId": "system_departments_detach_post",
 				"summary": "POST api/system/departments/detach",
-				"x-oj-file": "system/api/departments/detach/api.ts",
+				"x-oj-file": "app/api/system/departments/detach/api.ts",
 				"tags": [
 					"system"
 				],
@@ -4905,7 +4905,7 @@
 			"get": {
 				"operationId": "system_departments_members_get",
 				"summary": "GET api/system/departments/members",
-				"x-oj-file": "system/api/departments/members/api.ts",
+				"x-oj-file": "app/api/system/departments/members/api.ts",
 				"tags": [
 					"system"
 				],
@@ -4989,7 +4989,7 @@
 			"post": {
 				"operationId": "system_departments_members_post",
 				"summary": "POST api/system/departments/members",
-				"x-oj-file": "system/api/departments/members/api.ts",
+				"x-oj-file": "app/api/system/departments/members/api.ts",
 				"tags": [
 					"system"
 				],
@@ -5071,7 +5071,7 @@
 			"put": {
 				"operationId": "system_departments_members_put",
 				"summary": "PUT api/system/departments/members",
-				"x-oj-file": "system/api/departments/members/api.ts",
+				"x-oj-file": "app/api/system/departments/members/api.ts",
 				"tags": [
 					"system"
 				],
@@ -5155,7 +5155,7 @@
 			"delete": {
 				"operationId": "system_departments_members_delete",
 				"summary": "DELETE api/system/departments/members",
-				"x-oj-file": "system/api/departments/members/api.ts",
+				"x-oj-file": "app/api/system/departments/members/api.ts",
 				"tags": [
 					"system"
 				],
@@ -5220,7 +5220,7 @@
 			"put": {
 				"operationId": "system_departments_move_put",
 				"summary": "PUT api/system/departments/move",
-				"x-oj-file": "system/api/departments/move/api.ts",
+				"x-oj-file": "app/api/system/departments/move/api.ts",
 				"tags": [
 					"system"
 				],
@@ -5298,7 +5298,7 @@
 			"get": {
 				"operationId": "system_login_methods_get",
 				"summary": "GET api/system/login-methods",
-				"x-oj-file": "system/api/login-methods/api.ts",
+				"x-oj-file": "app/api/system/login-methods/api.ts",
 				"tags": [
 					"system"
 				],
@@ -5348,7 +5348,7 @@
 			"get": {
 				"operationId": "system_oplog_get",
 				"summary": "GET api/system/oplog",
-				"x-oj-file": "system/api/oplog/api.ts",
+				"x-oj-file": "app/api/system/oplog/api.ts",
 				"tags": [
 					"system"
 				],
@@ -5493,7 +5493,7 @@
 			"post": {
 				"operationId": "system_oplog_post",
 				"summary": "POST api/system/oplog",
-				"x-oj-file": "system/api/oplog/api.ts",
+				"x-oj-file": "app/api/system/oplog/api.ts",
 				"tags": [
 					"system"
 				],
@@ -5573,7 +5573,7 @@
 			"get": {
 				"operationId": "system_permissions_get",
 				"summary": "GET api/system/permissions",
-				"x-oj-file": "system/api/permissions/api.ts",
+				"x-oj-file": "app/api/system/permissions/api.ts",
 				"tags": [
 					"system"
 				],
@@ -5638,7 +5638,7 @@
 			"get": {
 				"operationId": "system_roles_get",
 				"summary": "GET api/system/roles",
-				"x-oj-file": "system/api/roles/api.ts",
+				"x-oj-file": "app/api/system/roles/api.ts",
 				"tags": [
 					"system"
 				],
@@ -5723,7 +5723,7 @@
 			"post": {
 				"operationId": "system_roles_post",
 				"summary": "POST api/system/roles",
-				"x-oj-file": "system/api/roles/api.ts",
+				"x-oj-file": "app/api/system/roles/api.ts",
 				"tags": [
 					"system"
 				],
@@ -5802,7 +5802,7 @@
 			"delete": {
 				"operationId": "system_roles_delete",
 				"summary": "DELETE api/system/roles",
-				"x-oj-file": "system/api/roles/api.ts",
+				"x-oj-file": "app/api/system/roles/api.ts",
 				"tags": [
 					"system"
 				],
@@ -5852,7 +5852,7 @@
 			"put": {
 				"operationId": "system_roles_bindings_put",
 				"summary": "PUT api/system/roles/bindings",
-				"x-oj-file": "system/api/roles/bindings/api.ts",
+				"x-oj-file": "app/api/system/roles/bindings/api.ts",
 				"tags": [
 					"system"
 				],
@@ -5923,7 +5923,7 @@
 			"get": {
 				"operationId": "system_settings_get",
 				"summary": "GET api/system/settings",
-				"x-oj-file": "system/api/settings/api.ts",
+				"x-oj-file": "app/api/system/settings/api.ts",
 				"tags": [
 					"system"
 				],
@@ -6034,7 +6034,7 @@
 			"put": {
 				"operationId": "system_settings_put",
 				"summary": "PUT api/system/settings",
-				"x-oj-file": "system/api/settings/api.ts",
+				"x-oj-file": "app/api/system/settings/api.ts",
 				"tags": [
 					"system"
 				],
@@ -6096,7 +6096,7 @@
 			"get": {
 				"operationId": "system_users_get",
 				"summary": "GET api/system/users",
-				"x-oj-file": "system/api/users/api.ts",
+				"x-oj-file": "app/api/system/users/api.ts",
 				"tags": [
 					"system"
 				],
@@ -6210,7 +6210,7 @@
 			"post": {
 				"operationId": "system_users_post",
 				"summary": "POST api/system/users",
-				"x-oj-file": "system/api/users/api.ts",
+				"x-oj-file": "app/api/system/users/api.ts",
 				"tags": [
 					"system"
 				],
@@ -6285,7 +6285,7 @@
 			"delete": {
 				"operationId": "system_users_delete",
 				"summary": "DELETE api/system/users",
-				"x-oj-file": "system/api/users/api.ts",
+				"x-oj-file": "app/api/system/users/api.ts",
 				"tags": [
 					"system"
 				],
@@ -6342,7 +6342,7 @@
 			"put": {
 				"operationId": "system_users_forbidden_put",
 				"summary": "PUT api/system/users/forbidden",
-				"x-oj-file": "system/api/users/forbidden/api.ts",
+				"x-oj-file": "app/api/system/users/forbidden/api.ts",
 				"tags": [
 					"system"
 				],
@@ -6409,7 +6409,7 @@
 			"put": {
 				"operationId": "system_users_password_put",
 				"summary": "PUT api/system/users/password",
-				"x-oj-file": "system/api/users/password/api.ts",
+				"x-oj-file": "app/api/system/users/password/api.ts",
 				"tags": [
 					"system"
 				],
@@ -6477,7 +6477,7 @@
 			"put": {
 				"operationId": "system_users_profile_put",
 				"summary": "PUT api/system/users/profile",
-				"x-oj-file": "system/api/users/profile/api.ts",
+				"x-oj-file": "app/api/system/users/profile/api.ts",
 				"tags": [
 					"system"
 				],
@@ -6564,7 +6564,7 @@
 			"put": {
 				"operationId": "system_users_roles_put",
 				"summary": "PUT api/system/users/roles",
-				"x-oj-file": "system/api/users/roles/api.ts",
+				"x-oj-file": "app/api/system/users/roles/api.ts",
 				"tags": [
 					"system"
 				],
@@ -6634,7 +6634,7 @@
 			"get": {
 				"operationId": "web_get_async_routes_get",
 				"summary": "GET api/web/get-async-routes",
-				"x-oj-file": "web/api/get-async-routes/api.ts",
+				"x-oj-file": "app/api/web/get-async-routes/api.ts",
 				"tags": [
 					"web"
 				],
@@ -6690,7 +6690,7 @@
 			"get": {
 				"operationId": "web_hello_get",
 				"summary": "GET api/web/hello",
-				"x-oj-file": "web/api/hello/api.ts",
+				"x-oj-file": "app/api/web/hello/api.ts",
 				"tags": [
 					"web"
 				],
@@ -6744,7 +6744,7 @@
 			"get": {
 				"operationId": "web_user_info_get",
 				"summary": "GET api/web/user-info",
-				"x-oj-file": "web/api/user-info/api.ts",
+				"x-oj-file": "app/api/web/user-info/api.ts",
 				"tags": [
 					"web"
 				],

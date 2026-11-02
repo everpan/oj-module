@@ -7,22 +7,61 @@
 
 ## [Unreleased]
 
-## [0.2.54] - 2026-11-02
+## [0.2.55] - 2026-11-02
 
-本轮把脚手架「收敛成一个应用」：前端五个框架内置模块（首页 / 登录 / 个人中心 / 通知 /
-系统管理）合并为**一个多根模块** `src/app/web`，后端模块（`_platform` / `auth` /
-`notification` / `personal-center` / `system` / `web`）统一收进 `src/app/api/<name>`——
-脚手架顶层只剩 `src/app` 与可选能力 `src/oj-market`，不再散落同名目录。URL（`/api/system/*`）、
-菜单顺序、i18n key 全部不变；同时补齐模板全部接口的 `.schema` + `.response` 契约，
-并清理了两套 `apps/playground*` 手工靶场。
+本轮完成「整个应用装进一个目录」：0.2.54 只把前端五个内置模块并成了 `src/app/web`，后端
+仍散落在 `src/<name>/api`——同名目录成对出现（`src/system/{api,web}`），看起来像重复模块。
+本版把六个后端模块一并收进 `src/app/api/<name>`，脚手架顶层只剩 `src/app` 与可选能力
+`src/oj-market`；同时修掉三处施工期缺陷（超管菜单点击 404、客户单入口被 dev 扫描、
+`init` 产出的契约 tags 漂移）。
 
 **升级提示（老工程）**：
-- `ojm init` 只补缺不删除。重跑后旧的 `src/<name>/web`、`src/<name>/api` 会与新
-  `src/app/{web,api}` 并存，同名模块/路由会重复注册——init 会打印告警，请手工删除旧
-  `src/<name>/web` 与 `src/<name>/api`。
-- **生成 client 入口由 `__client/api.ts` 改为 `__client/index.ts`**（旧的 `api.ts` 会被
-  oj dev 当路由扫描）。重跑 `ojm api` 自动迁移（写新文件并删除旧文件）；页面导入改为
+- 重跑 `ojm init` 只补缺不删除。若同时存在旧 `src/<name>/{web,api}` 与新 `src/app/{web,api}`，
+  同名模块/路由会重复注册（`ojm` 扫描会直接报「模块名重复」）——init 会打印告警，请手工删除
+  旧目录。新工程无此问题。
+- **生成 client 入口由 `__client/api.ts` 改为 `__client/index.ts`**（`api.ts` 会被 oj dev
+  当路由扫描）。重跑 `ojm api` 自动迁移（写新文件并删除旧文件）；页面导入改为
   `from "../__client"`。
+
+### Changed
+
+- **后端模块收进应用容器**：`_platform` / `auth` / `notification` / `personal-center` /
+  `system` / `web` 的 api 侧从 `src/<name>/api` 迁到 `src/app/api/<name>`（模块名仍是
+  `<name>`，URL 前缀 `/api/<name>/*` 不变）。`layout.scanModules` 支持「容器下多模块」
+  递归发现（同名模块直接报错），`ojm api` / `tsconfig.paths.json` / `.ojm-builtin.json` /
+  `init` 白名单 / `apiSrcOf` 同步适配；`ojm new` 生成的用户模块仍用 `src/<name>/api`。
+- **生成 client 入口改名 `api.ts` → `index.ts`**（页面导入 `from "../__client"`）：oj dev 的
+  `--module-root` 扫描会把模块目录下任何 `api.ts` 当路由导入；聚合容器 `src/app` 同时含
+  `api/` 与 `web/` 时，`web/<root>/__client/api.ts` 会被误扫并因 import 逃逸 project root 报错。
+  `ojm api` 写新文件并删除旧文件，`--check` 对残留 `api.ts` 报错。
+- **`web.config.ts` 的 `clientOwners` 扩到全部内置前缀**（`_platform` / `auth` / `web` 也归 `app`），
+  生成物统一落 `src/app/web/<前缀>/__client`。
+
+### Fixed
+
+- **superadmin 登录后「站点设置 / 企微集成」点击 404（shell 路由重登记）**：Boot 期无 token 时
+  按演示角色 `admin` 建路由表（超管专属子项被过滤）；登录后 `patchRoutes` 只增不删，同 path 的
+  旧 `/system` 树遮蔽新树 → 菜单里有、点击落 catch-all。重登记改为先 `_internalSetRoutes`
+  重建根、再按当前角色整棵补回（RR 7.18，与 runtime `resolveLoginRoute` 同源）。
+- **`ojm init` 产出的 `openapi.json` 顶层 `tags` 未随路径裁剪**：裁掉 demo-only 模块端点后
+  仍留着 `home` tag，与新工程的实际模块集不一致（重跑 `oj openapi` 即消失，属漂移噪声）。
+  现在 `tags` 与 `paths` 同步裁剪。
+- **`ojm init` 旧布局告警扩展**：除旧 `src/<name>/web` 外，同时检测旧 `src/<name>/api` 与
+  `src/app/api/<name>` 并存（模块名重复会让扫描直接失败）。
+- **模板 `openapi.json` 的 `x-oj-file` 仍是旧布局**：86 个端点全写着 `<mod>/api/…api.ts`，与
+  `src/app/api/<mod>/…` 对不上——随包下发的契约与工程实际文件不一致（`ojm api` 不受影响，
+  但重跑 `oj openapi` 会整份 diff）。已按新布局重产（仅 `x-oj-file` 变化）。
+
+## [0.2.54] - 2026-11-02
+
+本轮把脚手架「收敛成一个应用」：模板的五个框架内置模块（首页 / 登录 / 个人中心 / 通知 /
+系统管理）合并为**一个多根模块** `src/app/web`——一个 `entry.ts` 承载多个顶层路由，
+各根仍是独立一级菜单，URL / 菜单顺序 / i18n key 全部不变；同时补齐了模板全部接口的
+`.schema` + `.response` 契约，并清理了两套 `apps/playground*` 手工靶场。
+
+**升级提示（老工程）**：`ojm init` 只补缺不删除。重跑 init 后会同时存在旧的
+`src/<name>/web` 与新 `src/app/web`，同名路由会注册两遍——init 会打印告警，请手工删除
+这五个旧 `web` 目录（`src/<name>/api` 保留）。新工程无此问题。
 
 ### Added
 
@@ -40,14 +79,6 @@
   合并为 `src/app/web`（多根，按 `handle.order` 排菜单）；`system` 的模块级 `requiredRoles`
   下移到 `/system` 根路由的 `handle.roles`（菜单可见性不变）。`src/app/web` 内按根分目录
   （`<root>/routes.ts` + `pages/` + `__client/`）。`oj-market` 保持独立模块。
-- **后端模块收进应用容器**：`_platform` / `auth` / `notification` / `personal-center` /
-  `system` / `web` 的 api 侧从 `src/<name>/api` 迁到 `src/app/api/<name>`（模块名仍是
-  `<name>`，URL 前缀不变）。`layout.scanModules` / `ojm api` / `tsconfig.paths.json` /
-  `.ojm-builtin.json` 全部支持这种「容器下多模块」形态。`ojm new` 生成的用户模块仍用
-  `src/<name>/api`。
-- **生成 client 入口改名 `api.ts` → `index.ts`**（页面导入 `from "../__client"`）：oj dev 的
-  `--module-root` 扫描会把模块目录下任何 `api.ts` 当路由导入；聚合容器 `src/app` 同时含
-  `api/` 与 `web/` 时，`web/<root>/__client/api.ts` 会被误扫并因 import 逃逸 project root 报错。
 - **`ojm api` stub 规划**：工厂 `return` 本地对象（`const api = { routes, verify }; return api`）
   现在能正确识别为已实现路由，不再生成重复 stub（solutions 聚合形态）。
 
@@ -61,13 +92,6 @@
 
 - `tests/cli/cli-build` 等仍以 playground 为靶场的用例改指模板工程；`ojm build` 产物契约
   （单文件 / 共享依赖 external / modules.json integrity）覆盖聚合模块。
-- **`ojm init` 产出的 `openapi.json` 顶层 `tags` 未随路径裁剪**：裁掉 demo-only 模块端点后
-  仍留着 `home` tag，与新工程的实际模块集不一致（重跑 `oj openapi` 即消失，属漂移噪声）。
-  现在 `tags` 与 `paths` 同步裁剪。
-- **superadmin 登录后「站点设置 / 企微集成」点击 404（shell 路由重登记）**：Boot 期无 token 时
-  按演示角色 `admin` 建路由表（不含超管专属子项）；登录后 `patchRoutes` 只增不删，同 path 的
-  旧 `/system` 树遮蔽新树 → 菜单里有、点击落 catch-all。重登记改为先 `_internalSetRoutes`
-  重建根、再按当前角色整棵补回（RR 7.18，与 runtime `resolveLoginRoute` 同源）。
 
 
 ## [0.2.51] - 2026-11-02
