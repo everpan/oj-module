@@ -7,9 +7,14 @@
 		<title>React Antd Admin · Shell</title>
 		<!--CSP-->
 		<!--IMPORTMAP-->
+		<style>
+			.boot-skeleton{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;color:#999;font-size:14px;background:#fff;z-index:9999}
+			.boot-skeleton:after{content:"";width:18px;height:18px;margin-left:8px;border:2px solid #d9d9d9;border-top-color:#1677ff;border-radius:50%;animation:bs-spin .8s linear infinite}
+			@keyframes bs-spin{to{transform:rotate(360deg)}}
+		</style>
 	</head>
 	<body>
-		<div id="root"></div>
+		<div id="root"><div class="boot-skeleton">加载中…</div></div>
 		<script type="module" src="/src/host.tsx"></script>
 	</body>
 </html>

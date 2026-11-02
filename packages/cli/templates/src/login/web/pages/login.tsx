@@ -54,6 +54,8 @@ export default function LoginPage() {
 	const login = useAuthStore(s => s.login);
 	const [error, setError] = useState<string>();
 	const [loading, setLoading] = useState(false);
+	const [known, setKnown] = useState(false);
+	const inWecom = typeof navigator !== "undefined" && /wxwork/i.test(navigator.userAgent);
 	const [methods, setMethods] = useState<LoginMethod[]>(["local"]);
 	const [active, setActive] = useState<LoginMethod>("local");
 	// 企业代码入口默认收起：单租户部署（绝大多数）保持今天的登录页外观，
@@ -86,6 +88,7 @@ export default function LoginPage() {
 	useEffect(() => {
 		fetchLoginMethods()
 			.then((r) => {
+				setKnown(true);
 				// 先按 string[] 看一眼：runtime 的返回类型把 wecom 排除在外，而这里恰恰要认它
 				const raw: string[] = r.methods;
 				const m = raw.filter(isKnownMethod);
@@ -100,6 +103,7 @@ export default function LoginPage() {
 					setActive(m[0]);
 			})
 			.catch(() => {
+				setKnown(true);
 				// 发现失败时回落单表单（local），不阻断登录。
 			});
 	}, []);
@@ -132,12 +136,11 @@ export default function LoginPage() {
 	useEffect(() => {
 		const c = new URLSearchParams(search).get("corp")?.trim() ?? "";
 		// 企微内（wxwork UA）从「应用主页」点开即自动发起授权；带 ?corp= 的深链同样自动发起。
-		const inWecom = typeof navigator !== "undefined" && /wxwork/i.test(navigator.userAgent);
 		if ((!c && !inWecom) || landing || autoFiredRef.current)
 			return;
 		if (new URLSearchParams(search).get("error"))
 			return;
-		if (!methods.includes("wecom"))
+		if (known && !methods.includes("wecom"))
 			return;
 		autoFiredRef.current = true;
 		window.location.assign(`${resolveApiBase()}${wecomAuthorizePath(corp, agent)}`);

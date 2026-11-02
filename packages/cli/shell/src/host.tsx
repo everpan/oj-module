@@ -26,6 +26,7 @@ import {
 	LayoutEffects,
 	loadAll,
 	PageError,
+	resolveApiBase,
 	setupI18n,
 	useAccessStore,
 	useAuthStore,
@@ -193,6 +194,12 @@ function Boot() {
 		let cancelled = false;
 		(async () => {
 			try {
+				// P0 企微内早跳：跳过首屏与全部模块加载，直接进入企微授权
+				if (typeof navigator !== "undefined" && /wxwork/i.test(navigator.userAgent) && location.pathname.endsWith("/login") && !new URLSearchParams(location.search).get("wecom_ticket")) {
+					window.location.assign(resolveApiBase() + "/auth/wecom/login");
+					return;
+				}
+
 				ensureI18n(); // setupI18n 为同步初始化，无需等待
 
 				// 模块清单与宿主版本矩阵并行拉取（versions.json 提供
