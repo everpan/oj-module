@@ -16,7 +16,7 @@ import { ALIAS_PATHS_FILE, syncAliasPaths } from "./alias-paths";
 import { assertModuleList, loadSiteConfig, mergeModuleList, resolveModuleEntry } from "./config";
 import { moduleDir, resolveConfigPath, resolveLayout, scanModules, tryResolveLayout } from "./layout";
 import { requireModuleRootCapability } from "./oj-caps";
-import { isSharedDep, SHARED_DEPS } from "./shared-deps";
+import { isPrebuiltDep, isSharedDep, SHARED_DEPS } from "./shared-deps";
 import { normalizeSiteBase, rewriteIndexHtml } from "./site-base";
 import { resolveOjBin } from "./vendor";
 import { checkSharedVersions, resolveShellDist } from "./versions";
@@ -790,7 +790,7 @@ export async function buildModules(
 				rolldownOptions: {
 					// 只把共享依赖留给宿主 importmap；
 					// 相对路径 / 绝对路径是模块自身代码，需要打包
-					external: (id: string) => !id.startsWith(".") && !path.isAbsolute(id) && isSharedDep(id),
+					external: (id: string) => !id.startsWith(".") && !path.isAbsolute(id) && isPrebuiltDep(id),
 					output: {
 						// P7.x / e2e：模块产物内联动态 import（lazy 页面、i18n 等），
 						// 输出为**单文件**。原因：

@@ -30,7 +30,7 @@ import {
 	parseDynamicRequires,
 	parseEsmExports,
 } from "../../src/esm-exports";
-import { generateImportmap, generateShellEntries, isSharedDep, SHARED_DEPS } from "../../src/shared-deps";
+import { generateImportmap, generateShellEntries, isPrebuiltDep, SHARED_DEPS } from "../../src/shared-deps";
 
 import { defaultTrustedOrigins, generateCsp, generateNonce } from "../src/csp";
 
@@ -119,7 +119,7 @@ function makeExternalShared(currentPkg: string): import("esbuild").Plugin {
 		name: "ojm-external-shared",
 		setup(b) {
 			b.onResolve({ filter: /.*/ }, (args) => {
-				if (isSharedDep(args.path) && args.path !== currentPkg)
+				if (isPrebuiltDep(args.path) && args.path !== currentPkg)
 					return { path: args.path, external: true };
 				return null;
 			});
@@ -188,7 +188,7 @@ function requireShimBanner(specifiers: string[]): string {
  */
 async function repairDynamicRequires(name: string, pkg: string, shim: string): Promise<void> {
 	const assetPath = resolve(assetsDir, `${name}.js`);
-	const required = parseDynamicRequires(readFileSync(assetPath, "utf-8")).filter(isSharedDep);
+	const required = parseDynamicRequires(readFileSync(assetPath, "utf-8")).filter(isPrebuiltDep);
 	if (!required.length)
 		return;
 	console.warn(
@@ -510,6 +510,11 @@ async function autoGenerateSubpathAssets(base: Record<string, string>): Promise<
 					.sort((a, b) => b.specifier.length - a.specifier.length)[0];
 				if (!parent)
 					continue; // 与共享表无关，交给浏览器/其它机制
+				// bundle 依赖（软共享缺席→模块自带副本兜底）不应经 importmap 共享：
+				// 若某个共享资产误 import 了它，这里跳过生成垫片，让下方
+				// collectUnresolvedSpecifiers 门禁直接报错，而非静默产出一个死垫片
+				if (parent.bundle)
+					continue;
 				if (SUBPATH_PARENT_REEXPORTS.has(parent.specifier) && parent.asset) {
 					if (parent.specifier === "@ant-design/icons" && spec.includes("/es/icons/")) {
 						// 图标深路径不能用父包资产 icons.js 兜底：父包 default 是通用
@@ -587,7 +592,7 @@ async function buildHost() {
 			sourcemap: "hidden",
 			rollupOptions: {
 				input: resolve(shellDir, "index.html"),
-				external: (id: string) => isSharedDep(id),
+				external: (id: string) => isPrebuiltDep(id),
 			},
 			minify: false,
 		},

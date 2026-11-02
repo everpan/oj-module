@@ -20,6 +20,18 @@ export interface SharedDepEntry {
 	asset?: string
 	/** 硬共享：模块不得自带 */
 	hard: boolean
+	/**
+	 * 软共享但「不进宿主首屏」：宿主 shell 不预构建该资产、importmap 不列该键，
+	 * 模块若 import 它则自行打包进模块产物（设计文档 §4.3 的「软共享缺席→模块自带
+	 * 副本兜底」语义）。用于**仅模块使用、宿主与共享 chunk 永不 import**的重型依赖
+	 * （编辑器 / 图表 / Markdown / 拖拽 …），避免把它们 5~6MB 的体量无谓铺进
+	 * shell-dist 并要求公开链路多传一堆文件。宿主侧有真实 import 的共享依赖
+	 * （antd / pro-components / icons 内部依赖的 motion / react-jss / dayjs /
+	 * zustand 等）绝不能标 bundle —— 否则会被 antd 等共享 chunk 经 importmap 解析
+	 * 不到而 404。判定依据：宿主 host.tsx + runtime.js 的传递 import 图，以及
+	 * antd/pro-components/icons 的传递依赖图，都不含这些说明符。
+	 */
+	bundle?: boolean
 }
 
 export const SHARED_DEPS: SharedDepEntry[] = [
@@ -58,7 +70,7 @@ export const SHARED_DEPS: SharedDepEntry[] = [
 	 *     scopes 多版本共存兜底（C7）」——缺席时模块可自带副本而不硬失败。
 	 *     代价：多副本会重复约 5.4 MB 资产，故 scopes 只作兜底、默认仍走宿主。
 	 */
-	{ specifier: "@plane/editor", asset: "editor", hard: false },
+	{ specifier: "@plane/editor", asset: "editor", hard: false, bundle: true },
 	// 注：@rc-component/form（antd 6 Form 底层）曾尝试单例化以修 my-profile
 	// 崩溃（React #130），假说未证实——多副本并非充分根因，已回退；见
 	// docs/prd/202609010056-playground-full-modules-plan.md 差异项 D2。
@@ -108,10 +120,10 @@ export const SHARED_DEPS: SharedDepEntry[] = [
 	{ specifier: "dayjs/plugin/weekday", asset: "dayjs-plugin-weekday", hard: false },
 	{ specifier: "dayjs/plugin/weekOfYear", asset: "dayjs-plugin-weekOfYear", hard: false },
 	{ specifier: "dayjs/plugin/weekYear", asset: "dayjs-plugin-weekYear", hard: false },
-	{ specifier: "echarts", asset: "echarts", hard: false },
-	{ specifier: "echarts/charts", asset: "echarts-charts", hard: false },
-	{ specifier: "echarts/features.js", asset: "echarts-features", hard: false },
-	{ specifier: "echarts-for-react", asset: "echarts-for-react", hard: false },
+	{ specifier: "echarts", asset: "echarts", hard: false, bundle: true },
+	{ specifier: "echarts/charts", asset: "echarts-charts", hard: false, bundle: true },
+	{ specifier: "echarts/features.js", asset: "echarts-features", hard: false, bundle: true },
+	{ specifier: "echarts-for-react", asset: "echarts-for-react", hard: false, bundle: true },
 	{ specifier: "motion", asset: "motion", hard: false },
 	{ specifier: "motion/react", asset: "motion-react", hard: false },
 	{ specifier: "@dnd-kit/core", asset: "dnd-kit-core", hard: false },
@@ -127,7 +139,7 @@ export const SHARED_DEPS: SharedDepEntry[] = [
 	{ specifier: "react-error-boundary", asset: "react-error-boundary", hard: false },
 	{ specifier: "react-jss", asset: "react-jss", hard: false },
 	{ specifier: "clsx", asset: "clsx", hard: false },
-	{ specifier: "react-countup", asset: "react-countup", hard: false },
+	{ specifier: "react-countup", asset: "react-countup", hard: false, bundle: true },
 	{ specifier: "simplebar-react", asset: "simplebar-react", hard: false },
 	{ specifier: "spin-delay", asset: "spin-delay", hard: false },
 	{ specifier: "tailwind-merge", asset: "tailwind-merge", hard: false },
@@ -147,8 +159,8 @@ export const SHARED_DEPS: SharedDepEntry[] = [
 	 * 直接 import 它们，会命中前缀 external 但无 importmap 键 → 构建期深路径报错，
 	 * 属预期拦截（与 dayjs/plugin/* 同规则）。
 	 */
-	{ specifier: "vditor", asset: "vditor", hard: false },
-	{ specifier: "vditor/dist/index.css", asset: "vditor-index-css", hard: false },
+	{ specifier: "vditor", asset: "vditor", hard: false, bundle: true },
+	{ specifier: "vditor/dist/index.css", asset: "vditor-index-css", hard: false, bundle: true },
 ];
 
 /** 判断一个裸说明符是否命中共享表（命中主包前缀的深路径也按共享处理） */
@@ -161,7 +173,7 @@ export function isSharedDep(id: string): boolean {
  */
 export function generateShellEntries(): { name: string, pkg: string }[] {
 	return SHARED_DEPS
-		.filter(dep => dep.asset && dep.specifier !== "@oj-module/runtime")
+		.filter(dep => dep.asset && !dep.bundle && dep.specifier !== "@oj-module/runtime")
 		.map(dep => ({ name: dep.asset!, pkg: dep.specifier }));
 }
 
@@ -172,9 +184,13 @@ export function generateShellEntries(): { name: string, pkg: string }[] {
 export function generateImportmap(baseUrl = ""): Record<string, string> {
 	const map: Record<string, string> = {};
 	for (const dep of SHARED_DEPS) {
-		if (dep.asset) {
+		if (dep.asset && !dep.bundle) {
 			map[dep.specifier] = `${baseUrl}/assets/${dep.asset}.js`;
 		}
 	}
 	return map;
+}
+
+export function isPrebuiltDep(id: string): boolean {
+	return SHARED_DEPS.some(dep => !dep.bundle && (id === dep.specifier || id.startsWith(`${dep.specifier}/`)));
 }
