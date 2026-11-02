@@ -6,7 +6,7 @@
 import type { SessionDeps } from "../src/app/api/auth/_shared/session";
 
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
-import { changePasswordByAdmin, createUser, listUsers, setForbidden, updateUserRoles } from "../src/app/api/_platform/_shared/service/domain/users";
+import { changePasswordByAdmin, createUser, deleteUser, listUsers, setForbidden, updateUserProfile, updateUserRoles } from "../src/app/api/_platform/_shared/service/domain/users";
 import { createSession } from "../src/app/api/auth/_shared/session";
 import { installDb } from "./fixture";
 
@@ -147,6 +147,58 @@ describe("B7：口令重置与禁用（级联吊销）", () => {
 		await setForbidden(1, uid, true);
 		expect(dbo.prepare("SELECT COUNT(*) c FROM sys_oplog WHERE action = 'user.password.reset'").get()).toBeDefined();
 		expect(dbo.prepare("SELECT COUNT(*) c FROM sys_oplog WHERE action = 'user.forbidden.update'").get()).toBeDefined();
+	});
+});
+
+describe("红线：只有 superadmin 能改 superadmin 账号", () => {
+	function mkUserWithRole(username: string, role: string): number {
+		seedRole(role);
+		const uid = mkUser(username);
+		dbo.prepare("INSERT INTO sys_user_role (user_id, role_name) VALUES (?, ?)").run(uid, role);
+		return uid;
+	}
+
+	it("admin 重置 superadmin 口令 / 启停 / 改资料 / 删除 → 403，且库里一个字段都没动", async () => {
+		seedRole("admin");
+		const actor = mkUserWithRole("u_admin1", "admin");
+		const target = mkUserWithRole("u_super1", "superadmin");
+		await expect(changePasswordByAdmin(actor, target, "newpw123", bcryptDeps)).rejects.toMatchObject({ status: 403 });
+		await expect(setForbidden(actor, target, true)).rejects.toMatchObject({ status: 403 });
+		await expect(updateUserProfile(actor, target, { displayName: "renamed", email: "x@y.z" })).rejects.toMatchObject({ status: 403 });
+		await expect(deleteUser(actor, target)).rejects.toMatchObject({ status: 403 });
+		const row = dbo.prepare("SELECT password_hash, is_forbidden, display_name, email FROM users WHERE id = ?").get(target) as { password_hash: string, is_forbidden: number, display_name: string | null, email: string | null };
+		expect(row.password_hash).toBe("x");
+		expect(Number(row.is_forbidden)).toBe(0);
+		expect(row.display_name).toBeNull();
+		expect(row.email).toBeNull();
+	});
+
+	it("admin 清空 superadmin 的角色 → 403（成员资格只拦授予方向，反向降级靠这条）", async () => {
+		seedRole("admin");
+		const actor = mkUserWithRole("u_admin2", "admin");
+		const target = mkUserWithRole("u_super2", "superadmin");
+		await expect(updateUserRoles(actor, target, [])).rejects.toMatchObject({ status: 403 });
+		await expect(updateUserRoles(actor, target, ["viewer"])).rejects.toMatchObject({ status: 403 });
+		expect(rolesOf(target)).toEqual(["superadmin"]);
+	});
+
+	it("superadmin 操作 superadmin → 放行（红线不是禁止改超管，而是限定谁能改）", async () => {
+		const actor = mkUserWithRole("u_super3", "superadmin");
+		const target = mkUserWithRole("u_super4", "superadmin");
+		await changePasswordByAdmin(actor, target, "newpw123", bcryptDeps);
+		await setForbidden(actor, target, true);
+		const row = dbo.prepare("SELECT password_hash, is_forbidden FROM users WHERE id = ?").get(target) as { password_hash: string, is_forbidden: number };
+		expect(row.password_hash).toBe("hashed:newpw123");
+		expect(Number(row.is_forbidden)).toBe(1);
+	});
+
+	it("admin 操作普通用户照旧放行（门禁只盯 superadmin 目标，不能把整页封死）", async () => {
+		seedRole("admin");
+		const actor = mkUserWithRole("u_admin3", "admin");
+		const target = mkUser("u_plain");
+		await changePasswordByAdmin(actor, target, "newpw123", bcryptDeps);
+		await setForbidden(actor, target, true);
+		expect(Number((dbo.prepare("SELECT is_forbidden FROM users WHERE id = ?").get(target) as { is_forbidden: number }).is_forbidden)).toBe(1);
 	});
 });
 

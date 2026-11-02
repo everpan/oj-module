@@ -99,10 +99,9 @@
 	},
 	"oplog": {
 		"filterAction": "操作 (action)",
-		"filterUsername": "用户名（前缀匹配）",
+		"filterUsername": "用户名（包含匹配）",
 		"filterModule": "模块",
-		"filterLimit": "条数上限",
-		"truncated": "结果已按上限截断，请缩小过滤范围",
+		"total": "共 {{total}} 条",
 		"columns": {
 			"time": "时间",
 			"username": "用户名",

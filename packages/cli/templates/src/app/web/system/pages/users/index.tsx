@@ -13,12 +13,15 @@ import { systemDepartmentsGet, systemUsersForbiddenPut, systemUsersGet, systemUs
 import { buildTreeData, subtreeIds } from "../departments/tree";
 import { explainError, isForbidden } from "../errors";
 import { ForbiddenPanel } from "../forbidden";
+import { canManageUser } from "./can-manage";
 
 type UserRow = SystemUsersGetData[number];
 
 /**
  * 用户管理（C1）：GET /system/users 列表 + 建号 / 禁用切换 / 重置口令。
  * 本人行禁用一切自操作（后端 assertNotSelf 400 兜底，前端不给会失败的按钮，R3）；
+ * superadmin 行也禁用一切操作，除非当前登录者是 superadmin（红线：只有 superadmin 能改
+ * superadmin——后端 assertCanManageTarget 403 兜底，前端把按钮置灰）；
  * 成员资格入口：superadmin 与 **本租户 admin** 均可见（授予 admin 已下放到租户内，
  * 但授予 superadmin 仍只许 superadmin——见 domain/users.ts::assertMembershipAllowed）。
  * 部门列标出主部门，顶部可按部门筛选（含子部门）——筛选在前端做，名单本来就是一页全量。
@@ -117,8 +120,10 @@ export default function UsersPage() {
 						title={t("system:users.forbidden")}
 						description={`${row.username} → ${forbidden ? "false" : "true"}`}
 						onConfirm={() => forbiddenMut.mutate({ uid: row.id, forbidden: !forbidden })}
+						// 置灰的 Switch 不会触发 Popconfirm，这里只是把「为什么点不了」挡在确认框之前
+						disabled={String(row.id) === me || !canManageUser(myRoles, row.roles)}
 					>
-						<Switch size="small" checked={forbidden} disabled={String(row.id) === me} />
+						<Switch size="small" checked={forbidden} disabled={String(row.id) === me || !canManageUser(myRoles, row.roles)} />
 					</Popconfirm>
 					{row.must_change ? <Tag color="orange">{t("system:users.firstLoginHint")}</Tag> : null}
 				</Space>
@@ -127,20 +132,23 @@ export default function UsersPage() {
 		{
 			title: t("system:users.columns.actions"),
 			key: "actions",
-			render: (_: unknown, row: UserRow) => (
-				<Space>
-					<Button size="small" disabled={String(row.id) === me} onClick={() => setPwdTarget(row)}>
-						{t("system:users.resetPwd")}
-					</Button>
-					{canManageMembership
-						? (
-							<Button size="small" type="link" onClick={() => navigate(`/system/users/${row.id}/roles`)}>
-								{t("system:users.membership")}
-							</Button>
-						)
-						: null}
-				</Space>
-			),
+			render: (_: unknown, row: UserRow) => {
+				const manageable = canManageUser(myRoles, row.roles);
+				return (
+					<Space>
+						<Button size="small" disabled={String(row.id) === me || !manageable} onClick={() => setPwdTarget(row)}>
+							{t("system:users.resetPwd")}
+						</Button>
+						{canManageMembership
+							? (
+								<Button size="small" type="link" disabled={!manageable} onClick={() => navigate(`/system/users/${row.id}/roles`)}>
+									{t("system:users.membership")}
+								</Button>
+							)
+							: null}
+					</Space>
+				);
+			},
 		},
 	];
 

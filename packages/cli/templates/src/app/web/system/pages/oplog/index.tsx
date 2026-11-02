@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Alert, Button, Form, Input, InputNumber, Space, Table, Tooltip } from "antd";
+import { Button, Form, Input, Space, Table, Tooltip } from "antd";
 import dayjs from "dayjs";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -12,20 +12,26 @@ interface OplogFilters {
 	action?: string
 	username?: string
 	module?: string
-	limit?: number
 }
 
+const DEFAULT_PAGE_SIZE = 20;
+const PAGE_SIZE_OPTIONS = [20, 50, 100];
+
 /**
- * 操作日志（AC1-29/D13）：action 精确 / username 前缀 / module 精确，limit 钳 200。
- * truncated=true 表示结果被截断（服务端 paged），顶部提示缩小过滤范围。
+ * 操作日志（AC1-29/D13）：action 精确 / username 包含 / module 精确。
+ *
+ * 分页交给服务端：`page` + `limit`（每页条数，钳 200），响应带 `total`，页面按 total 出页码。
+ * 不再有「结果被截断」的横幅——记录再多也能通过页码翻到，不必靠缩小过滤范围。
  */
 export default function OplogPage() {
 	const { t } = useTranslation();
 	const [filters, setFilters] = useState<OplogFilters>({});
+	const [page, setPage] = useState(1);
+	const [size, setSize] = useState(DEFAULT_PAGE_SIZE);
 
 	const query = useQuery({
-		queryKey: ["system", "oplog", filters],
-		queryFn: () => systemOplogGet(filters),
+		queryKey: ["system", "oplog", filters, page, size],
+		queryFn: () => systemOplogGet({ ...filters, page, limit: size }),
 	});
 
 	if (query.error && isForbidden(query.error))
@@ -50,12 +56,14 @@ export default function OplogPage() {
 		<Space direction="vertical" style={{ width: "100%", paddingTop: 16 }}>
 			<Form
 				layout="inline"
-				onFinish={values => setFilters({
-					action: values.action || undefined,
-					username: values.username || undefined,
-					module: values.module || undefined,
-					limit: values.limit || undefined,
-				})}
+				onFinish={(values) => {
+					setFilters({
+						action: values.action || undefined,
+						username: values.username || undefined,
+						module: values.module || undefined,
+					});
+					setPage(1);
+				}}
 			>
 				<Form.Item name="action" label={t("system:oplog.filterAction")}>
 					<Input allowClear />
@@ -66,25 +74,42 @@ export default function OplogPage() {
 				<Form.Item name="module" label={t("system:oplog.filterModule")}>
 					<Input allowClear />
 				</Form.Item>
-				<Form.Item name="limit" label={t("system:oplog.filterLimit")} initialValue={50}>
-					<InputNumber min={1} max={200} />
-				</Form.Item>
 				<Form.Item>
 					<Space>
 						<Button type="primary" htmlType="submit">{t("system:common.search")}</Button>
-						<Button onClick={() => { setFilters({}); }}>
+						<Button
+							onClick={() => {
+								setFilters({});
+								setPage(1);
+							}}
+						>
 							{t("system:common.reset")}
 						</Button>
 					</Space>
 				</Form.Item>
 			</Form>
-			{query.data?.truncated ? <Alert type="warning" showIcon message={t("system:oplog.truncated")} /> : null}
 			<Table
 				rowKey="id"
 				loading={query.isLoading}
 				dataSource={query.data?.list ?? []}
 				columns={columns}
-				pagination={{ hideOnSinglePage: true, pageSize: 50 }}
+				pagination={{
+					current: page,
+					pageSize: size,
+					total: query.data?.total ?? 0,
+					showSizeChanger: true,
+					pageSizeOptions: PAGE_SIZE_OPTIONS,
+					showTotal: total => t("system:oplog.total", { total }),
+					onChange: (nextPage, nextSize) => {
+						// 改每页条数后原页码可能越界：统一回第 1 页
+						if (nextSize !== size) {
+							setSize(nextSize);
+							setPage(1);
+							return;
+						}
+						setPage(nextPage);
+					},
+				}}
 			/>
 		</Space>
 	);

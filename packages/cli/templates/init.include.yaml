@@ -74,6 +74,8 @@ include:
   # 角色页展示层过滤 superadmin（后端 listRoles 仍返回；页面源码随 src/app/web/system 下发）
   - tests/roles-page.spec.ts
   - tests/seed-role-accounts.spec.ts
+  # 用户页行级门禁：只有 superadmin 能改 superadmin 账号（后端 assertCanManageTarget 的另一面）
+  - tests/users-page.spec.ts
   # 企微连接器与组织同步：源码本就分发（src/app/api/auth），对应回归也必须跟着走，
   # 否则用户工程升级后改配置/换套件时没有任何本地自检手段。
   - tests/wecom-admin.spec.ts

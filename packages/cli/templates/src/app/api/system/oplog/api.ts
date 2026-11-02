@@ -1,5 +1,5 @@
 import { respond } from "#/_platform/_shared/respond";
-// GET /api/system/oplog?action=&username=&module=&limit= —— 操作日志查询（AC1-29；D13 admin 可查）。
+// GET /api/system/oplog?action=&username=&module=&page=&limit= —— 操作日志查询（AC1-29；D13 admin 可查）。
 // POST /api/system/oplog —— 操作日志写入（C3；登录态即可，解决方案模块记录自身操作）。
 import { assertSystemAdmin, currentAccess } from "#/_platform/_shared/service/infra/access";
 import { recordOp } from "#/_platform/_shared/service/infra/audit";
@@ -16,10 +16,12 @@ get.schema = {
 		type: "object",
 		properties: {
 			action: { type: "string" },
-			// username 前缀匹配（service likePattern），非精确
+			// username 包含匹配（子串，service 走 contains），非精确
 			username: { type: "string" },
 			module: { type: "string" },
-			// 分页大小，service paged 钳 200
+			// 页码（1 起）；service 的 pageArgs 非法回落 1
+			page: { type: "number", minimum: 1 },
+			// 每页条数 1~200（schema 兜住；service 的 pageArgs 再钳一次）
 			limit: { type: "number", minimum: 1, maximum: 200 },
 		},
 	},

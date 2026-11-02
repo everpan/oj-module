@@ -21,7 +21,7 @@ export interface OplogPage {
 	truncated: boolean
 }
 
-export async function searchOplog(filter: { action?: unknown, username?: unknown, module?: unknown, limit?: unknown }): Promise<OplogPage> {
+export async function searchOplog(filter: { action?: unknown, username?: unknown, module?: unknown, page?: unknown, limit?: unknown }): Promise<OplogPage> {
 	// 构造器（v0.1.82）：可选过滤走 whereIf，条件写一份（mk 工厂），count + list 复用；
 	// username 走语义 op contains（引擎转义 %/_/!，等价旧 LIKE ? ESCAPE '!' 的 %kw%）。
 	// 照抄口径：devkit scenarios 场景 42 ④。
@@ -35,6 +35,8 @@ export async function searchOplog(filter: { action?: unknown, username?: unknown
 		.whereIf(action, { field: "action", op: "eq", value: action })
 		.whereIf(module, { field: "module", op: "eq", value: module })
 		.whereIf(username, { field: "username", op: "contains", value: username });
-	const r = await pagedFactory<OplogRow>(mk, { size: filter.limit });
+	// page/limit 成对：limit 是每页条数（pageArgs 钳 200），缺省第 1 页 / 20 条。
+	// total 由 count 查询单独给出，页面按 total 算页数——不再靠 truncated 提示「结果被截断」。
+	const r = await pagedFactory<OplogRow>(mk, { page: filter.page, size: filter.limit });
 	return { list: r.list, total: r.total, truncated: r.truncated };
 }

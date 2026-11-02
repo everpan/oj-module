@@ -7,6 +7,28 @@
 
 ## [Unreleased]
 
+### Added
+
+- **操作日志改为服务端分页**：`GET /api/system/oplog` 新增 `page` 查询参数（与既有 `limit`
+  配对，size 仍钳 200），响应带 `total`；页面改为 antd 表格分页（20/50/100 可切换、显示
+  「共 N 条」），删除「结果已按上限截断，请缩小过滤范围」的提示。此前列表硬顶 200 条，
+  日志攒多之后只能靠缩范围才能看到目标记录。
+  回归：`tests/rbac-settings.spec.ts` 钉住「page/limit 只作用在 list 查询、count 不带分页、
+  缺省/非法分页参数回落」，以及真库切片语义（`total` 是全量而非本页条数、末页
+  `truncated=false`、越界页 list 为空但 total 不变）。
+
+### Fixed
+
+- **`/system/users` 按角色控制操作（admin 越权改 superadmin）**：此前 `admin` 能重置
+  `superadmin` 账号的口令、切换其禁用状态——口令一改就等于接管那个平台级账号（superadmin
+  可跨租户），禁用则让平台失去最高权限；顺带连「把 superadmin 的角色清空」也能做成
+  （成员资格守卫只管授予方向，`next` 为空时直接放行）。新增
+  `assertCanManageTarget`：目标账号持有 `superadmin` 时，操作者本身必须是 `superadmin`，
+  覆盖重置口令 / 启停 / 改资料 / 删除 / 整集替换角色五条写路径（403）。页面同步把
+  superadmin 行的「重置口令」「状态开关」「成员资格」置灰（`canManageUser`），不给会失败的
+  按钮。回归：`tests/rbac-users.spec.ts`（五条路径 403 + 库内字段一个没动 + 超管改超管放行
+  + admin 改普通用户照旧）、`tests/users-page.spec.ts`（置灰判定，与后端同口径）。
+
 ## [0.2.56] - 2026-11-02
 
 ### Added

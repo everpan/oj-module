@@ -3,6 +3,7 @@
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { listLoginMethods, listSettings, updateSetting } from "../src/app/api/_platform/_shared/service/domain/settings";
+import { recordOp } from "../src/app/api/_platform/_shared/service/infra/audit";
 import { searchOplog } from "../src/app/api/_platform/_shared/service/infra/oplog";
 import { installDb } from "./fixture";
 
@@ -27,6 +28,8 @@ describe("AC1-29/D13：操作日志查询（admin 可查）", () => {
 	// 按 api-manual §1153 契约建模（引擎语义的忠实复刻，非新逻辑）。
 	function fakeTable() {
 		const conds: Array<{ test: unknown, cond: any }> = [];
+		// 分页同样只记录不执行：count 查询不该带 limit/offset，list 查询必须带上
+		const paging: { limit: number | null, offset: number | null } = { limit: null, offset: null };
 		const b: any = {
 			whereIf: (test: unknown, cond: any) => {
 				if (test !== undefined && test !== null && test !== false && !(Array.isArray(test) && test.length === 0))
@@ -35,17 +38,23 @@ describe("AC1-29/D13：操作日志查询（admin 可查）", () => {
 			},
 			select: () => b,
 			orderBy: () => b,
-			limit: () => b,
-			offset: () => b,
+			limit: (n: number) => {
+				paging.limit = n;
+				return b;
+			},
+			offset: (n: number) => {
+				paging.offset = n;
+				return b;
+			},
 			// 固定非零 total：保证 count/list 两条路径都构造（total=0 跳过 list 的行为
 			// 由 query-utils.spec 的 pagedFactory 用例覆盖，这里只关心条件发射）
 			all: async () => [{ c: 42 }],
 		};
-		return { b, conds };
+		return { b, conds, paging };
 	}
 
-	/** 以假构造器跑 searchOplog，回传 count 构造发射的条件（并校验 count/list 同条件） */
-	async function captureConds(filter: Parameters<typeof searchOplog>[0]) {
+	/** 以假构造器跑 searchOplog，回传 count/list 两次构造（[0]=count，[1]=list） */
+	async function captureBuilt(filter: Parameters<typeof searchOplog>[0]) {
 		const built: Array<ReturnType<typeof fakeTable>> = [];
 		const prevDb = g.db;
 		g.db = {
@@ -63,6 +72,12 @@ describe("AC1-29/D13：操作日志查询（admin 可查）", () => {
 		}
 		expect(built).toHaveLength(2); // count + list 各构造一次
 		expect(built[1].conds).toEqual(built[0].conds); // mk 工厂：两组条件一致
+		return built;
+	}
+
+	/** 回传 count 构造发射的条件 */
+	async function captureConds(filter: Parameters<typeof searchOplog>[0]) {
+		const built = await captureBuilt(filter);
 		return built[0].conds;
 	}
 
@@ -86,6 +101,61 @@ describe("AC1-29/D13：操作日志查询（admin 可查）", () => {
 			{ test: "auth.deny", cond: { field: "action", op: "eq", value: "auth.deny" } },
 		]);
 		expect(conds.some(c => (c.cond as { field?: string }).field === "level")).toBe(false);
+	});
+
+	it("page/limit 只作用在 list 查询：limit=size、offset=(page-1)*size，count 不带分页", async () => {
+		const [count, list] = await captureBuilt({ action: "user.create", page: 3, limit: 10 });
+		expect(count!.paging).toEqual({ limit: null, offset: null });
+		expect(list!.paging).toEqual({ limit: 10, offset: 20 });
+	});
+
+	it("缺省/非法分页参数：第 1 页 20 条，size 静默钳 200", async () => {
+		expect((await captureBuilt({}))[1]!.paging).toEqual({ limit: 20, offset: 0 });
+		expect((await captureBuilt({ page: 0, limit: "abc" }))[1]!.paging).toEqual({ limit: 20, offset: 0 });
+		expect((await captureBuilt({ page: 2, limit: 10_000 }))[1]!.paging).toEqual({ limit: 200, offset: 200 });
+	});
+});
+
+// 真库分页语义：上面用假构造器只钉「参数怎么发」，这里钉「切片/总数/还剩多少」算得对——
+// 页导航能否正确显示页数全靠 total，靠 truncated 提示「结果被截断」的旧交互已删除。
+describe("AC1-29：操作日志分页（真库切片 + total）", () => {
+	async function seedOplog(n: number) {
+		for (let i = 1; i <= n; i++)
+			await recordOp({ action: "test.page", module: "framework", target: `t${i}` });
+	}
+
+	it("按 id 倒序切页：total 是全量而不是本页条数", async () => {
+		await seedOplog(5);
+		const p1 = await searchOplog({ page: 1, limit: 2 });
+		expect(p1.total).toBe(5);
+		expect(p1.list.map(r => r.target)).toEqual(["t5", "t4"]);
+		expect(p1.truncated).toBe(true);
+
+		const p2 = await searchOplog({ page: 2, limit: 2 });
+		expect(p2.list.map(r => r.target)).toEqual(["t3", "t2"]);
+		expect(p2.truncated).toBe(true);
+
+		// 末页：5 条 / 每页 2 → 第 3 页只剩 1 条，truncated=false（页导航据此停在第 3 页）
+		const p3 = await searchOplog({ page: 3, limit: 2 });
+		expect(p3.list.map(r => r.target)).toEqual(["t1"]);
+		expect(p3.truncated).toBe(false);
+	});
+
+	it("越界页：list 为空但 total 仍为全量（前端据此纠正页码，而不是显示 0 条）", async () => {
+		await seedOplog(3);
+		const far = await searchOplog({ page: 99, limit: 20 });
+		expect(far.list).toEqual([]);
+		expect(far.total).toBe(3);
+		expect(far.truncated).toBe(false);
+	});
+
+	it("过滤与分页叠加：total 按过滤后的集合算", async () => {
+		await seedOplog(5);
+		await recordOp({ action: "other.act", module: "framework", target: "x" });
+		const r = await searchOplog({ action: "test.page", page: 1, limit: 2 });
+		expect(r.total).toBe(5);
+		expect(r.list).toHaveLength(2);
+		expect(r.list.every(x => x.action === "test.page")).toBe(true);
 	});
 });
 

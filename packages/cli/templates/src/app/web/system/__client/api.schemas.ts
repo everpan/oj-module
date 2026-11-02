@@ -130,6 +130,7 @@ export const schemas = {
 	"action": z.string().optional(),
 	"username": z.string().optional(),
 	"module": z.string().optional(),
+	"page": z.number().min(1).optional(),
 	"limit": z.number().min(1).max(200).optional()
 }),
 		data: z.object({

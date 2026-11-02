@@ -263,12 +263,16 @@ describe("用户侧（改资料 / 删号）", () => {
 		expect(dbo.prepare("SELECT COUNT(*) c FROM sys_refresh_token WHERE user_id = ?").get(uid)).toMatchObject({ c: 0 });
 	});
 
-	it("删号：禁止删自己；最后一个 superadmin 拒删", async () => {
+	it("删号：禁止删自己；非 superadmin 删 superadmin → 403（最后超管的实际防线）", async () => {
 		await expect(deleteUser(ADMIN, ADMIN)).rejects.toMatchObject({ status: 400 });
 		const solo = mkUser("u_sup");
 		dbo.prepare("INSERT INTO sys_user_role (user_id, role_name) VALUES (?, 'superadmin')").run(solo);
-		await expect(deleteUser(ADMIN, solo)).rejects.toMatchObject({ status: 400 });
-		// 有两个 superadmin 时允许删（兜底只保最后一个）
+		// 目标门禁先于「最后一个 superadmin」计数：普通 admin 连碰都碰不到它。
+		// 计数兜底（400）因此在真实路径上不可达——操作者本身是 superadmin 时，
+		// 库里必然已有 ≥2 个 superadmin——保留它只为挡住未来的新写路径。
+		await expect(deleteUser(ADMIN, solo)).rejects.toMatchObject({ status: 403 });
+		expect(dbo.prepare("SELECT COUNT(*) c FROM users WHERE id = ?").get(solo)).toMatchObject({ c: 1 });
+		// 操作者升为 superadmin 后允许删（第二个超管在场）
 		dbo.prepare("INSERT INTO sys_user_role (user_id, role_name) VALUES (?, 'superadmin')").run(ADMIN);
 		await deleteUser(ADMIN, solo);
 		expect(dbo.prepare("SELECT COUNT(*) c FROM users WHERE id = ?").get(solo)).toMatchObject({ c: 0 });

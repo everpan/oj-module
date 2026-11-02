@@ -99,10 +99,9 @@
 	},
 	"oplog": {
 		"filterAction": "Action",
-		"filterUsername": "Username (prefix)",
+		"filterUsername": "Username (contains)",
 		"filterModule": "Module",
-		"filterLimit": "Limit",
-		"truncated": "Results truncated by limit; narrow your filters",
+		"total": "{{total}} total",
 		"columns": {
 			"time": "Time",
 			"username": "Username",

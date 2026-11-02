@@ -1,5 +1,6 @@
 // 账号管理应用服务（管理域 /api/system/users，AC1-7~10 + B6 建号加固）。
 // 红线：admin 不碰 superadmin/admin 成员资格（AC1-8，service 按 actor 角色自查）；
+// 只有 superadmin 能改 superadmin 账号（口令/启停/资料/删除/角色，见 assertCanManageTarget）；
 // 禁止操作自己（AC1-10 注）；最后 superadmin 兜底（服务端二次防线）；
 // 角色唯一权威源 sys_user_role + 写时失效（AC1-7/D10）；禁用/重置口令级联删 refresh（§3.1）。
 // bcrypt 经注入（Node 侧全局不可 stub，同 session.ts 约定）。
@@ -57,6 +58,27 @@ async function usernameOf(uid: number): Promise<string> {
 function assertNotSelf(actorId: number, targetUid: number): void {
 	if (Number(actorId) === Number(targetUid))
 		fail(400, "cannot operate on yourself");
+}
+
+/**
+ * 红线（RBAC 保护红线）：只有 superadmin 能改 superadmin。
+ *
+ * 与 `assertMembershipAllowed` 的分工：那条按**被授予的角色**管提权方向（谁能任命 admin /
+ * superadmin），这条按**目标账号当前的角色**管反向——谁能动一个已经是 superadmin 的号。
+ * 缺了它，同一租户的 admin 可以：重置 superadmin 口令（知道口令即接管账号，而 superadmin
+ * 是平台级、能跨租户）／把人禁用／把角色整集清空——后者连 `assertMembershipAllowed`
+ * 都拦不住（`next` 里没有 admin/superadmin 时它直接放行）。故口令/启停/资料/删除/角色
+ * 五条写路径统一走这里。
+ *
+ * 读角色走 `rolesOf()`，与写入同受请求租户注入约束：只能影响本租户的人。
+ */
+async function assertCanManageTarget(actorId: number, targetUid: number): Promise<void> {
+	const targetRoles = await rolesOf(Number(targetUid));
+	if (!targetRoles.includes("superadmin"))
+		return;
+	if ((await rolesOf(Number(actorId))).includes("superadmin"))
+		return;
+	fail(403, "modifying a superadmin requires superadmin");
 }
 
 /**
@@ -200,6 +222,7 @@ export async function updateUserRoles(actorId: number, targetUid: number, roles:
 	const target = await db.table("users").select(["id"]).where({ field: "id", op: "eq", value: targetUid }).all();
 	if (!target.length)
 		fail(404, "user not found");
+	await assertCanManageTarget(actorId, targetUid);
 	const next = [...new Set(roles.map(String))];
 	if (next.length) {
 		const known = await db.table("sys_role").select(["name"]).where({ field: "name", op: "in", value: next }).all();
@@ -258,6 +281,7 @@ export async function changePasswordByAdmin(actorId: number, targetUid: number, 
 	const rows = await db.table("users").select(["id"]).where({ field: "id", op: "eq", value: targetUid }).all();
 	if (!rows.length)
 		fail(404, "user not found");
+	await assertCanManageTarget(actorId, targetUid);
 	const hash = await deps.bcryptHash(String(newPassword));
 	await db.tx(async (t) => {
 		await t.table("users").update({ password_hash: hash, must_change: 1 }).where({ field: "id", op: "eq", value: targetUid }).run();
@@ -273,6 +297,7 @@ export async function setForbidden(actorId: number, targetUid: number, forbidden
 	const rows = await db.table("users").select(["id"]).where({ field: "id", op: "eq", value: targetUid }).all();
 	if (!rows.length)
 		fail(404, "user not found");
+	await assertCanManageTarget(actorId, targetUid);
 	await db.tx(async (t) => {
 		await t.table("users").update({ is_forbidden: forbidden ? 1 : 0 }).where({ field: "id", op: "eq", value: targetUid }).run();
 		if (forbidden)
@@ -294,6 +319,7 @@ export async function updateUserProfile(actorId: number, targetUid: number, patc
 	const rows = await db.table("users").select(["id"]).where({ field: "id", op: "eq", value: targetUid }).all();
 	if (!rows.length)
 		fail(404, "user not found");
+	await assertCanManageTarget(actorId, targetUid);
 	const cols: Record<string, unknown> = {};
 	if (patch.displayName !== undefined)
 		cols.display_name = patch.displayName == null ? null : String(patch.displayName).trim() || null;
@@ -320,6 +346,7 @@ export async function deleteUser(actorId: number, targetUid: number): Promise<vo
 	const rows = await db.table("users").select(["id", "username"]).where({ field: "id", op: "eq", value: targetUid }).all() as Array<{ id: number, username: string }>;
 	if (!rows.length)
 		fail(404, "user not found");
+	await assertCanManageTarget(actorId, targetUid);
 	const roles = await rolesOf(Number(targetUid));
 	if (roles.includes("superadmin")) {
 		const supers = await db.table("sys_user_role").select([{ fn: "count", as: "c" }]).where({ field: "role_name", op: "eq", value: "superadmin" }).all() as Array<{ c: number }>;

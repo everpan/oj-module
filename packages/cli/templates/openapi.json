@@ -5378,6 +5378,15 @@
 						}
 					},
 					{
+						"name": "page",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "number",
+							"minimum": 1
+						}
+					},
+					{
 						"name": "limit",
 						"in": "query",
 						"required": false,
