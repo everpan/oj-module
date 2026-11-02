@@ -5,11 +5,10 @@ import { buildModules } from "../../packages/cli/src/build";
 import { PROJECT_ROOT } from "../helpers/paths";
 
 /**
- * vditor 回升共享表（0.1.16）后的模块侧契约：
- *   1. `import Vditor from "vditor"` 与 `import "vditor/dist/index.css"` 走 external，
- *      产物只留裸说明符，由宿主 importmap 解析（单文件，不内联 UMD 实现）；
- *   2. 深路径不再触发「前缀命中但无 importmap 键」的构建期报错——两个已登记键
- *      （vditor / vditor/dist/index.css）必须能原样通过 `ojm build`。
+ * vditor 的模块侧契约（2026-11-02 起标 `bundle: true`，不再进宿主 shell-dist）：
+ *   1. `import Vditor from "vditor"` 由模块自带副本——产物内联 UMD 实现，
+ *      不留裸说明符（宿主 importmap 已无 vditor 键，否则运行期 Failed to resolve）；
+ *   2. `import "vditor/dist/index.css"` 同样由模块侧 CSS 管线处理，不产出裸导入。
  *
  * 夹具走 build-layout.test.ts 同款 buildModules + .tmp-fx 模式；vditor 不在
  * 根 node_modules（仅 cli devDependencies），夹具本地 symlink 到 cli 的解析处，
@@ -65,17 +64,16 @@ afterAll(() => {
 		fs.rmSync(root, { recursive: true, force: true });
 });
 
-describe("vditor 共享化后模块产物 external（0.1.16）", () => {
-	it("vditor 与其 CSS 留作裸说明符，UMD 实现不内联", async () => {
+describe("vditor bundle 后模块产物自带实现（2026-11-02）", () => {
+	it("vditor 内联进模块产物，不留裸说明符", async () => {
 		const root = makeFixture();
 		await buildModules(root);
 
 		const entry = fs.readFileSync(path.join(root, "dist/web/modules/vdfx/0.1.0/entry.js"), "utf-8");
-		// external：裸说明符原样保留（宿主 importmap 解析）
-		expect(entry).toMatch(/from\s*["']vditor["']/);
-		expect(entry).toMatch(/import\s*["']vditor\/dist\/index\.css["']/);
-		// 不内联：vditor 的 webpack UMD 标记不得出现在模块产物
-		expect(entry).not.toContain("webpackUniversalModuleDefinition");
-		expect(entry).not.toContain("Vditor v4.0.0");
+		// bundle：宿主不再提供 vditor 资产，模块必须自带实现（裸导入会 Failed to resolve）
+		expect(entry).not.toMatch(/from\s*["']vditor["']/);
+		expect(entry).not.toMatch(/import\s*["']vditor\/dist\/index\.css["']/);
+		// 内联实现的特征串（UMD 包装会被 rolldown 改写，靠 vditor 自身类名判定）
+		expect(entry).toContain("vditor-reset");
 	});
 });

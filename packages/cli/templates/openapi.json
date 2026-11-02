@@ -9,7 +9,7 @@
 			"get": {
 				"operationId": "_platform_contacts_get",
 				"summary": "GET api/_platform/contacts",
-				"x-oj-file": "_platform/contacts/api.ts",
+				"x-oj-file": "_platform/api/contacts/api.ts",
 				"tags": [
 					"_platform"
 				],
@@ -24,7 +24,7 @@
 			"get": {
 				"operationId": "_platform_contacts_detail_get",
 				"summary": "GET api/_platform/contacts/detail",
-				"x-oj-file": "_platform/contacts/detail/api.ts",
+				"x-oj-file": "_platform/api/contacts/detail/api.ts",
 				"tags": [
 					"_platform"
 				],
@@ -39,7 +39,7 @@
 			"post": {
 				"operationId": "_platform_market_install_post",
 				"summary": "POST api/_platform/market/install",
-				"x-oj-file": "_platform/market/api.ts",
+				"x-oj-file": "_platform/api/market/api.ts",
 				"tags": [
 					"_platform"
 				],
@@ -116,7 +116,7 @@
 			"post": {
 				"operationId": "_platform_market_install_cancel_post",
 				"summary": "POST api/_platform/market/install/cancel",
-				"x-oj-file": "_platform/market/api.ts",
+				"x-oj-file": "_platform/api/market/api.ts",
 				"tags": [
 					"_platform"
 				],
@@ -185,7 +185,7 @@
 			"get": {
 				"operationId": "_platform_market_task_get",
 				"summary": "GET api/_platform/market/task",
-				"x-oj-file": "_platform/market/api.ts",
+				"x-oj-file": "_platform/api/market/api.ts",
 				"tags": [
 					"_platform"
 				],
@@ -235,7 +235,7 @@
 			"post": {
 				"operationId": "_platform_market_enable_post",
 				"summary": "POST api/_platform/market/enable",
-				"x-oj-file": "_platform/market/api.ts",
+				"x-oj-file": "_platform/api/market/api.ts",
 				"tags": [
 					"_platform"
 				],
@@ -297,7 +297,7 @@
 			"get": {
 				"operationId": "_platform_market_meta_get",
 				"summary": "GET api/_platform/market/meta",
-				"x-oj-file": "_platform/market/api.ts",
+				"x-oj-file": "_platform/api/market/api.ts",
 				"tags": [
 					"_platform"
 				],
@@ -342,7 +342,7 @@
 			"get": {
 				"operationId": "_platform_market_trust_get",
 				"summary": "GET api/_platform/market/trust",
-				"x-oj-file": "_platform/market/api.ts",
+				"x-oj-file": "_platform/api/market/api.ts",
 				"tags": [
 					"_platform"
 				],
@@ -380,7 +380,7 @@
 			"post": {
 				"operationId": "_platform_market_trust_post",
 				"summary": "POST api/_platform/market/trust",
-				"x-oj-file": "_platform/market/api.ts",
+				"x-oj-file": "_platform/api/market/api.ts",
 				"tags": [
 					"_platform"
 				],
@@ -438,7 +438,7 @@
 			"post": {
 				"operationId": "_platform_market_trust_key_post",
 				"summary": "POST api/_platform/market/trust/key",
-				"x-oj-file": "_platform/market/api.ts",
+				"x-oj-file": "_platform/api/market/api.ts",
 				"tags": [
 					"_platform"
 				],
@@ -498,7 +498,7 @@
 			"delete": {
 				"operationId": "_platform_market_trust_key_delete",
 				"summary": "DELETE api/_platform/market/trust/key",
-				"x-oj-file": "_platform/market/api.ts",
+				"x-oj-file": "_platform/api/market/api.ts",
 				"tags": [
 					"_platform"
 				],
@@ -548,7 +548,7 @@
 			"get": {
 				"operationId": "_platform_market_index_get",
 				"summary": "GET api/_platform/market/index",
-				"x-oj-file": "_platform/market/api.ts",
+				"x-oj-file": "_platform/api/market/api.ts",
 				"tags": [
 					"_platform"
 				],
@@ -591,7 +591,7 @@
 			"get": {
 				"operationId": "_platform_market_uninstall_impact_get",
 				"summary": "GET api/_platform/market/uninstall-impact",
-				"x-oj-file": "_platform/market/api.ts",
+				"x-oj-file": "_platform/api/market/api.ts",
 				"tags": [
 					"_platform"
 				],
@@ -641,7 +641,7 @@
 			"post": {
 				"operationId": "_platform_market_uninstall_post",
 				"summary": "POST api/_platform/market/uninstall",
-				"x-oj-file": "_platform/market/api.ts",
+				"x-oj-file": "_platform/api/market/api.ts",
 				"tags": [
 					"_platform"
 				],
@@ -699,7 +699,7 @@
 			"get": {
 				"operationId": "_platform_market_history_get",
 				"summary": "GET api/_platform/market/history",
-				"x-oj-file": "_platform/market/api.ts",
+				"x-oj-file": "_platform/api/market/api.ts",
 				"tags": [
 					"_platform"
 				],
@@ -738,148 +738,11 @@
 				}
 			}
 		},
-		"/api/_platform/solutions/routes": {
-			"get": {
-				"operationId": "_platform_solutions_routes_get",
-				"summary": "GET api/_platform/solutions/routes",
-				"x-oj-file": "_platform/solutions/api.ts",
-				"tags": [
-					"_platform"
-				],
-				"responses": {
-					"200": {
-						"description": "OK"
-					}
-				}
-			}
-		},
-		"/api/_platform/solutions/verify": {
-			"post": {
-				"operationId": "_platform_solutions_verify_post",
-				"summary": "POST api/_platform/solutions/verify",
-				"x-oj-file": "_platform/solutions/api.ts",
-				"tags": [
-					"_platform"
-				],
-				"responses": {
-					"200": {
-						"description": "OK"
-					}
-				}
-			}
-		},
-		"/api/_platform/solutions/verify/last": {
-			"get": {
-				"operationId": "_platform_solutions_verify_last_get",
-				"summary": "GET api/_platform/solutions/verify/last",
-				"x-oj-file": "_platform/solutions/api.ts",
-				"tags": [
-					"_platform"
-				],
-				"responses": {
-					"200": {
-						"description": "OK"
-					}
-				}
-			}
-		},
-		"/api/_platform/org/tree": {
-			"get": {
-				"operationId": "_platform_org_tree_get",
-				"summary": "GET api/_platform/org/tree",
-				"x-oj-file": "_platform/org/tree/api.ts",
-				"tags": [
-					"_platform"
-				],
-				"parameters": [
-					{
-						"name": "scope",
-						"in": "query",
-						"required": false,
-						"schema": {
-							"type": "string",
-							"enum": [
-								"self",
-								"all"
-							]
-						}
-					}
-				],
-				"responses": {
-					"200": {
-						"description": "OK",
-						"x-oj-response-enforced": false,
-						"content": {
-							"application/json": {
-								"schema": {
-									"type": "object",
-									"required": [
-										"code",
-										"msg",
-										"data"
-									],
-									"properties": {
-										"code": {
-											"type": "integer"
-										},
-										"msg": {
-											"type": "string"
-										},
-										"data": {
-											"type": "array",
-											"items": {
-												"type": "object",
-												"required": [
-													"id",
-													"parentId",
-													"name",
-													"orderNo",
-													"memberCount"
-												],
-												"properties": {
-													"id": {
-														"type": "number"
-													},
-													"parentId": {
-														"type": [
-															"number",
-															"null"
-														]
-													},
-													"name": {
-														"type": [
-															"string",
-															"null"
-														]
-													},
-													"nameEn": {
-														"type": [
-															"string",
-															"null"
-														]
-													},
-													"orderNo": {
-														"type": "number"
-													},
-													"memberCount": {
-														"type": "number"
-													}
-												}
-											}
-										}
-									}
-								}
-							}
-						}
-					}
-				}
-			}
-		},
 		"/api/_platform/org/departments": {
 			"get": {
 				"operationId": "_platform_org_departments_get",
 				"summary": "GET api/_platform/org/departments",
-				"x-oj-file": "_platform/org/departments/api.ts",
+				"x-oj-file": "_platform/api/org/departments/api.ts",
 				"tags": [
 					"_platform"
 				],
@@ -1026,11 +889,88 @@
 				}
 			}
 		},
+		"/api/_platform/org/is-member": {
+			"get": {
+				"operationId": "_platform_org_is_member_get",
+				"summary": "GET api/_platform/org/is-member",
+				"x-oj-file": "_platform/api/org/is-member/api.ts",
+				"tags": [
+					"_platform"
+				],
+				"parameters": [
+					{
+						"name": "scope",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "string",
+							"enum": [
+								"self",
+								"all"
+							]
+						}
+					},
+					{
+						"name": "uid",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "number"
+						}
+					},
+					{
+						"name": "dept",
+						"in": "query",
+						"required": true,
+						"schema": {
+							"type": "number"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"required": [
+												"isMember"
+											],
+											"properties": {
+												"isMember": {
+													"type": "boolean"
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
 		"/api/_platform/org/members": {
 			"get": {
 				"operationId": "_platform_org_members_get",
 				"summary": "GET api/_platform/org/members",
-				"x-oj-file": "_platform/org/members/api.ts",
+				"x-oj-file": "_platform/api/org/members/api.ts",
 				"tags": [
 					"_platform"
 				],
@@ -1182,133 +1122,11 @@
 				}
 			}
 		},
-		"/api/_platform/org/user": {
-			"get": {
-				"operationId": "_platform_org_user_get",
-				"summary": "GET api/_platform/org/user",
-				"x-oj-file": "_platform/org/user/api.ts",
-				"tags": [
-					"_platform"
-				],
-				"parameters": [
-					{
-						"name": "scope",
-						"in": "query",
-						"required": false,
-						"schema": {
-							"type": "string",
-							"enum": [
-								"self",
-								"all"
-							]
-						}
-					},
-					{
-						"name": "uid",
-						"in": "query",
-						"required": false,
-						"schema": {
-							"type": "number"
-						}
-					}
-				],
-				"responses": {
-					"200": {
-						"description": "OK",
-						"x-oj-response-enforced": false,
-						"content": {
-							"application/json": {
-								"schema": {
-									"type": "object",
-									"required": [
-										"code",
-										"msg",
-										"data"
-									],
-									"properties": {
-										"code": {
-											"type": "integer"
-										},
-										"msg": {
-											"type": "string"
-										},
-										"data": {
-											"type": "object",
-											"required": [
-												"userId",
-												"username",
-												"position",
-												"mainDeptId",
-												"mainDeptPath",
-												"departments"
-											],
-											"properties": {
-												"userId": {
-													"type": "number"
-												},
-												"username": {
-													"type": "string"
-												},
-												"displayName": {
-													"type": [
-														"string",
-														"null"
-													]
-												},
-												"position": {
-													"type": [
-														"string",
-														"null"
-													]
-												},
-												"mainDeptId": {
-													"type": [
-														"number",
-														"null"
-													]
-												},
-												"mainDeptPath": {
-													"type": "array",
-													"items": {
-														"type": "string"
-													}
-												},
-												"departments": {
-													"type": "array",
-													"items": {
-														"type": "object",
-														"required": [
-															"deptId",
-															"deptPath"
-														],
-														"properties": {
-															"deptId": {
-																"type": "number"
-															},
-															"deptPath": {
-																"type": "array",
-																"items": {
-																	"type": "string"
-																}
-															}
-														}
-													}
-												}
-											}
-										}
-									}
-								}
-							}
-						}
-					}
-				}
-			}
-		},
 		"/api/_platform/org/picker": {
 			"get": {
 				"operationId": "_platform_org_picker_get",
 				"summary": "GET api/_platform/org/picker",
-				"x-oj-file": "_platform/org/picker/api.ts",
+				"x-oj-file": "_platform/api/org/picker/api.ts",
 				"tags": [
 					"_platform"
 				],
@@ -1467,7 +1285,7 @@
 			"post": {
 				"operationId": "_platform_org_resolve_post",
 				"summary": "POST api/_platform/org/resolve",
-				"x-oj-file": "_platform/org/resolve/api.ts",
+				"x-oj-file": "_platform/api/org/resolve/api.ts",
 				"tags": [
 					"_platform"
 				],
@@ -1486,7 +1304,7 @@
 					}
 				],
 				"requestBody": {
-					"required": false,
+					"required": true,
 					"content": {
 						"application/json": {
 							"schema": {
@@ -1554,11 +1372,103 @@
 				}
 			}
 		},
-		"/api/_platform/org/is-member": {
+		"/api/_platform/org/tree": {
 			"get": {
-				"operationId": "_platform_org_is_member_get",
-				"summary": "GET api/_platform/org/is-member",
-				"x-oj-file": "_platform/org/is-member/api.ts",
+				"operationId": "_platform_org_tree_get",
+				"summary": "GET api/_platform/org/tree",
+				"x-oj-file": "_platform/api/org/tree/api.ts",
+				"tags": [
+					"_platform"
+				],
+				"parameters": [
+					{
+						"name": "scope",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "string",
+							"enum": [
+								"self",
+								"all"
+							]
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "array",
+											"items": {
+												"type": "object",
+												"required": [
+													"id",
+													"parentId",
+													"name",
+													"orderNo",
+													"memberCount"
+												],
+												"properties": {
+													"id": {
+														"type": "number"
+													},
+													"parentId": {
+														"type": [
+															"number",
+															"null"
+														]
+													},
+													"name": {
+														"type": [
+															"string",
+															"null"
+														]
+													},
+													"nameEn": {
+														"type": [
+															"string",
+															"null"
+														]
+													},
+													"orderNo": {
+														"type": "number"
+													},
+													"memberCount": {
+														"type": "number"
+													}
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/_platform/org/user": {
+			"get": {
+				"operationId": "_platform_org_user_get",
+				"summary": "GET api/_platform/org/user",
+				"x-oj-file": "_platform/api/org/user/api.ts",
 				"tags": [
 					"_platform"
 				],
@@ -1579,14 +1489,6 @@
 						"name": "uid",
 						"in": "query",
 						"required": false,
-						"schema": {
-							"type": "number"
-						}
-					},
-					{
-						"name": "dept",
-						"in": "query",
-						"required": true,
 						"schema": {
 							"type": "number"
 						}
@@ -1615,11 +1517,64 @@
 										"data": {
 											"type": "object",
 											"required": [
-												"isMember"
+												"userId",
+												"username",
+												"position",
+												"mainDeptId",
+												"mainDeptPath",
+												"departments"
 											],
 											"properties": {
-												"isMember": {
-													"type": "boolean"
+												"userId": {
+													"type": "number"
+												},
+												"username": {
+													"type": "string"
+												},
+												"displayName": {
+													"type": [
+														"string",
+														"null"
+													]
+												},
+												"position": {
+													"type": [
+														"string",
+														"null"
+													]
+												},
+												"mainDeptId": {
+													"type": [
+														"number",
+														"null"
+													]
+												},
+												"mainDeptPath": {
+													"type": "array",
+													"items": {
+														"type": "string"
+													}
+												},
+												"departments": {
+													"type": "array",
+													"items": {
+														"type": "object",
+														"required": [
+															"deptId",
+															"deptPath"
+														],
+														"properties": {
+															"deptId": {
+																"type": "number"
+															},
+															"deptPath": {
+																"type": "array",
+																"items": {
+																	"type": "string"
+																}
+															}
+														}
+													}
 												}
 											}
 										}
@@ -1631,11 +1586,56 @@
 				}
 			}
 		},
+		"/api/_platform/solutions/routes": {
+			"get": {
+				"operationId": "_platform_solutions_routes_get",
+				"summary": "GET api/_platform/solutions/routes",
+				"x-oj-file": "_platform/api/solutions/api.ts",
+				"tags": [
+					"_platform"
+				],
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				}
+			}
+		},
+		"/api/_platform/solutions/verify": {
+			"post": {
+				"operationId": "_platform_solutions_verify_post",
+				"summary": "POST api/_platform/solutions/verify",
+				"x-oj-file": "_platform/api/solutions/api.ts",
+				"tags": [
+					"_platform"
+				],
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				}
+			}
+		},
+		"/api/_platform/solutions/verify/last": {
+			"get": {
+				"operationId": "_platform_solutions_verify_last_get",
+				"summary": "GET api/_platform/solutions/verify/last",
+				"x-oj-file": "_platform/api/solutions/api.ts",
+				"tags": [
+					"_platform"
+				],
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				}
+			}
+		},
 		"/api/auth/login": {
 			"post": {
 				"operationId": "auth_login_post",
 				"summary": "POST api/auth/login",
-				"x-oj-file": "auth/api.ts",
+				"x-oj-file": "auth/api/api.ts",
 				"tags": [
 					"auth"
 				],
@@ -1650,7 +1650,7 @@
 			"post": {
 				"operationId": "auth_logout_post",
 				"summary": "POST api/auth/logout",
-				"x-oj-file": "auth/api.ts",
+				"x-oj-file": "auth/api/api.ts",
 				"tags": [
 					"auth"
 				],
@@ -1665,7 +1665,7 @@
 			"post": {
 				"operationId": "auth_refresh_post",
 				"summary": "POST api/auth/refresh",
-				"x-oj-file": "auth/api.ts",
+				"x-oj-file": "auth/api/api.ts",
 				"tags": [
 					"auth"
 				],
@@ -1680,7 +1680,7 @@
 			"put": {
 				"operationId": "auth_password_put",
 				"summary": "PUT api/auth/password",
-				"x-oj-file": "auth/api.ts",
+				"x-oj-file": "auth/api/api.ts",
 				"tags": [
 					"auth"
 				],
@@ -1719,7 +1719,7 @@
 			"post": {
 				"operationId": "auth_ldap_login_post",
 				"summary": "POST api/auth/ldap-login",
-				"x-oj-file": "auth/ldap-login/api.ts",
+				"x-oj-file": "auth/api/ldap-login/api.ts",
 				"tags": [
 					"auth"
 				],
@@ -1734,7 +1734,7 @@
 			"get": {
 				"operationId": "auth_wecom_admin_apps_get",
 				"summary": "GET api/auth/wecom/admin/apps",
-				"x-oj-file": "auth/wecom/admin/api.ts",
+				"x-oj-file": "auth/api/wecom/admin/api.ts",
 				"tags": [
 					"auth"
 				],
@@ -1769,10 +1769,10 @@
 													"auth_corp_id",
 													"env",
 													"status",
+													"credential_kind",
 													"auth_mode",
 													"installed_at",
-													"update_time",
-													"credential_kind"
+													"update_time"
 												],
 												"properties": {
 													"suite_id": {
@@ -1830,11 +1830,97 @@
 				}
 			}
 		},
+		"/api/auth/wecom/admin/overview": {
+			"get": {
+				"operationId": "auth_wecom_admin_overview_get",
+				"summary": "GET api/auth/wecom/admin/overview",
+				"x-oj-file": "auth/api/wecom/admin/api.ts",
+				"tags": [
+					"auth"
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"required": [
+												"kinds",
+												"configError",
+												"callbackUrl",
+												"corpId",
+												"agentId",
+												"corpCallbackConfigured"
+											],
+											"properties": {
+												"kinds": {
+													"type": "array",
+													"items": {
+														"type": "string",
+														"enum": [
+															"suite",
+															"corp"
+														]
+													}
+												},
+												"configError": {
+													"type": [
+														"string",
+														"null"
+													]
+												},
+												"callbackUrl": {
+													"type": [
+														"string",
+														"null"
+													]
+												},
+												"corpId": {
+													"type": [
+														"string",
+														"null"
+													]
+												},
+												"agentId": {
+													"type": [
+														"string",
+														"null"
+													]
+												},
+												"corpCallbackConfigured": {
+													"type": "boolean"
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
 		"/api/auth/wecom/admin/status": {
 			"post": {
 				"operationId": "auth_wecom_admin_status_post",
 				"summary": "POST api/auth/wecom/admin/status",
-				"x-oj-file": "auth/wecom/admin/api.ts",
+				"x-oj-file": "auth/api/wecom/admin/api.ts",
 				"tags": [
 					"auth"
 				],
@@ -1917,7 +2003,7 @@
 			"get": {
 				"operationId": "auth_wecom_admin_install_get",
 				"summary": "GET api/auth/wecom/admin/install",
-				"x-oj-file": "auth/wecom/admin/api.ts",
+				"x-oj-file": "auth/api/wecom/admin/api.ts",
 				"tags": [
 					"auth"
 				],
@@ -1968,97 +2054,11 @@
 				}
 			}
 		},
-		"/api/auth/wecom/admin/overview": {
-			"get": {
-				"operationId": "auth_wecom_admin_overview_get",
-				"summary": "GET api/auth/wecom/admin/overview",
-				"x-oj-file": "auth/wecom/admin/api.ts",
-				"tags": [
-					"auth"
-				],
-				"responses": {
-					"200": {
-						"description": "OK",
-						"x-oj-response-enforced": false,
-						"content": {
-							"application/json": {
-								"schema": {
-									"type": "object",
-									"required": [
-										"code",
-										"msg",
-										"data"
-									],
-									"properties": {
-										"code": {
-											"type": "integer"
-										},
-										"msg": {
-											"type": "string"
-										},
-										"data": {
-											"type": "object",
-											"required": [
-												"kinds",
-												"configError",
-												"callbackUrl",
-												"corpId",
-												"agentId",
-												"corpCallbackConfigured"
-											],
-											"properties": {
-												"kinds": {
-													"type": "array",
-													"items": {
-														"type": "string",
-														"enum": [
-															"suite",
-															"corp"
-														]
-													}
-												},
-												"configError": {
-													"type": [
-														"string",
-														"null"
-													]
-												},
-												"callbackUrl": {
-													"type": [
-														"string",
-														"null"
-													]
-												},
-												"corpId": {
-													"type": [
-														"string",
-														"null"
-													]
-												},
-												"agentId": {
-													"type": [
-														"string",
-														"null"
-													]
-												},
-												"corpCallbackConfigured": {
-													"type": "boolean"
-												}
-											}
-										}
-									}
-								}
-							}
-						}
-					}
-				}
-			}
-		},
 		"/api/auth/wecom/admin/connect": {
 			"post": {
 				"operationId": "auth_wecom_admin_connect_post",
 				"summary": "POST api/auth/wecom/admin/connect",
-				"x-oj-file": "auth/wecom/admin/api.ts",
+				"x-oj-file": "auth/api/wecom/admin/api.ts",
 				"tags": [
 					"auth"
 				],
@@ -2113,11 +2113,164 @@
 				}
 			}
 		},
+		"/api/auth/wecom/admin/tenant-admin": {
+			"get": {
+				"operationId": "auth_wecom_admin_tenant_admin_get",
+				"summary": "GET api/auth/wecom/admin/tenant-admin",
+				"x-oj-file": "auth/api/wecom/admin/tenant-admin/api.ts",
+				"tags": [
+					"auth"
+				],
+				"parameters": [
+					{
+						"name": "corpId",
+						"in": "query",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"minLength": 1
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"required": [
+												"corpId",
+												"username",
+												"exists",
+												"mustChange"
+											],
+											"properties": {
+												"corpId": {
+													"type": "string"
+												},
+												"username": {
+													"type": "string"
+												},
+												"exists": {
+													"type": "boolean"
+												},
+												"mustChange": {
+													"type": "boolean"
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/auth/wecom/admin/tenant-admin/password": {
+			"post": {
+				"operationId": "auth_wecom_admin_tenant_admin_password_post",
+				"summary": "POST api/auth/wecom/admin/tenant-admin/password",
+				"x-oj-file": "auth/api/wecom/admin/tenant-admin/password/api.ts",
+				"tags": [
+					"auth"
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"required": [
+									"corpId",
+									"password"
+								],
+								"properties": {
+									"corpId": {
+										"type": "string",
+										"minLength": 1
+									},
+									"password": {
+										"type": "string",
+										"minLength": 6
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"required": [
+												"corpId",
+												"username",
+												"exists",
+												"mustChange"
+											],
+											"properties": {
+												"corpId": {
+													"type": "string"
+												},
+												"username": {
+													"type": "string"
+												},
+												"exists": {
+													"type": "boolean"
+												},
+												"mustChange": {
+													"type": "boolean"
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
 		"/api/auth/wecom/login": {
 			"get": {
 				"operationId": "auth_wecom_login_get",
 				"summary": "GET api/auth/wecom/login",
-				"x-oj-file": "auth/wecom/api.ts",
+				"x-oj-file": "auth/api/wecom/api.ts",
 				"tags": [
 					"auth"
 				],
@@ -2132,7 +2285,7 @@
 			"get": {
 				"operationId": "auth_wecom_callback_get",
 				"summary": "GET api/auth/wecom/callback",
-				"x-oj-file": "auth/wecom/api.ts",
+				"x-oj-file": "auth/api/wecom/api.ts",
 				"tags": [
 					"auth"
 				],
@@ -2147,7 +2300,7 @@
 			"post": {
 				"operationId": "auth_wecom_ticket_post",
 				"summary": "POST api/auth/wecom/ticket",
-				"x-oj-file": "auth/wecom/api.ts",
+				"x-oj-file": "auth/api/wecom/api.ts",
 				"tags": [
 					"auth"
 				],
@@ -2182,7 +2335,7 @@
 			"get": {
 				"operationId": "auth_wecom_event_get",
 				"summary": "GET api/auth/wecom/event",
-				"x-oj-file": "auth/wecom/api.ts",
+				"x-oj-file": "auth/api/wecom/api.ts",
 				"tags": [
 					"auth"
 				],
@@ -2195,7 +2348,7 @@
 			"post": {
 				"operationId": "auth_wecom_event_post",
 				"summary": "POST api/auth/wecom/event",
-				"x-oj-file": "auth/wecom/api.ts",
+				"x-oj-file": "auth/api/wecom/api.ts",
 				"tags": [
 					"auth"
 				],
@@ -2206,17 +2359,214 @@
 				}
 			}
 		},
-		"/api/demo/todos": {
-			"get": {
-				"operationId": "demo_todos_get",
-				"summary": "GET api/demo/todos",
-				"x-oj-file": "demo/todos/api.ts",
+		"/api/auth/wecom/sync/start": {
+			"post": {
+				"operationId": "auth_wecom_sync_start_post",
+				"summary": "POST api/auth/wecom/sync/start",
+				"x-oj-file": "auth/api/wecom/sync/api.ts",
 				"tags": [
-					"demo"
+					"auth"
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"properties": {
+									"agent": {
+										"type": "string"
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"required": [
+												"connected",
+												"authMode",
+												"profileStatus",
+												"agentId",
+												"credentialKind",
+												"status",
+												"phase",
+												"stats",
+												"progress",
+												"errCode",
+												"errDetail",
+												"startedAt",
+												"finishedAt",
+												"updateTime"
+											],
+											"properties": {
+												"connected": {
+													"type": "boolean"
+												},
+												"authMode": {
+													"type": "number"
+												},
+												"profileStatus": {
+													"type": [
+														"string",
+														"null"
+													]
+												},
+												"agentId": {
+													"type": [
+														"string",
+														"null"
+													]
+												},
+												"credentialKind": {
+													"type": [
+														"string",
+														"null"
+													],
+													"enum": [
+														"suite",
+														"corp",
+														null
+													]
+												},
+												"status": {
+													"type": "string",
+													"enum": [
+														"idle",
+														"running",
+														"done",
+														"failed",
+														"cancelled"
+													]
+												},
+												"phase": {
+													"type": "string",
+													"enum": [
+														"departments",
+														"members",
+														"reconcile"
+													]
+												},
+												"stats": {
+													"type": "object",
+													"required": [
+														"departments",
+														"members",
+														"skipped",
+														"reconciled"
+													],
+													"properties": {
+														"departments": {
+															"type": "number"
+														},
+														"members": {
+															"type": "number"
+														},
+														"skipped": {
+															"type": "number"
+														},
+														"reconciled": {
+															"type": "boolean"
+														}
+													}
+												},
+												"progress": {
+													"type": "object",
+													"required": [
+														"done",
+														"total"
+													],
+													"properties": {
+														"done": {
+															"type": "number"
+														},
+														"total": {
+															"type": "number"
+														}
+													}
+												},
+												"errCode": {
+													"type": [
+														"string",
+														"null"
+													]
+												},
+												"errDetail": {
+													"type": [
+														"object",
+														"null"
+													],
+													"properties": {
+														"errcode": {
+															"type": "number"
+														},
+														"phase": {
+															"type": "string",
+															"enum": [
+																"departments",
+																"members",
+																"reconcile"
+															]
+														},
+														"deptId": {
+															"type": "string"
+														},
+														"at": {
+															"type": "number"
+														}
+													}
+												},
+												"startedAt": {
+													"type": "number"
+												},
+												"finishedAt": {
+													"type": "number"
+												},
+												"updateTime": {
+													"type": "number"
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/auth/wecom/sync/status": {
+			"get": {
+				"operationId": "auth_wecom_sync_status_get",
+				"summary": "GET api/auth/wecom/sync/status",
+				"x-oj-file": "auth/api/wecom/sync/api.ts",
+				"tags": [
+					"auth"
 				],
 				"parameters": [
 					{
-						"name": "keyword",
+						"name": "agent",
 						"in": "query",
 						"required": false,
 						"schema": {
@@ -2247,33 +2597,342 @@
 										"data": {
 											"type": "object",
 											"required": [
-												"list",
-												"total"
+												"connected",
+												"authMode",
+												"profileStatus",
+												"agentId",
+												"credentialKind",
+												"status",
+												"phase",
+												"stats",
+												"progress",
+												"errCode",
+												"errDetail",
+												"startedAt",
+												"finishedAt",
+												"updateTime"
 											],
 											"properties": {
-												"list": {
-													"type": "array",
-													"items": {
-														"type": "object",
-														"required": [
-															"id",
-															"title",
-															"done"
-														],
-														"properties": {
-															"id": {
-																"type": "number"
-															},
-															"title": {
-																"type": "string"
-															},
-															"done": {
-																"type": "boolean"
-															}
+												"connected": {
+													"type": "boolean"
+												},
+												"authMode": {
+													"type": "number"
+												},
+												"profileStatus": {
+													"type": [
+														"string",
+														"null"
+													]
+												},
+												"agentId": {
+													"type": [
+														"string",
+														"null"
+													]
+												},
+												"credentialKind": {
+													"type": [
+														"string",
+														"null"
+													],
+													"enum": [
+														"suite",
+														"corp",
+														null
+													]
+												},
+												"status": {
+													"type": "string",
+													"enum": [
+														"idle",
+														"running",
+														"done",
+														"failed",
+														"cancelled"
+													]
+												},
+												"phase": {
+													"type": "string",
+													"enum": [
+														"departments",
+														"members",
+														"reconcile"
+													]
+												},
+												"stats": {
+													"type": "object",
+													"required": [
+														"departments",
+														"members",
+														"skipped",
+														"reconciled"
+													],
+													"properties": {
+														"departments": {
+															"type": "number"
+														},
+														"members": {
+															"type": "number"
+														},
+														"skipped": {
+															"type": "number"
+														},
+														"reconciled": {
+															"type": "boolean"
 														}
 													}
 												},
-												"total": {
+												"progress": {
+													"type": "object",
+													"required": [
+														"done",
+														"total"
+													],
+													"properties": {
+														"done": {
+															"type": "number"
+														},
+														"total": {
+															"type": "number"
+														}
+													}
+												},
+												"errCode": {
+													"type": [
+														"string",
+														"null"
+													]
+												},
+												"errDetail": {
+													"type": [
+														"object",
+														"null"
+													],
+													"properties": {
+														"errcode": {
+															"type": "number"
+														},
+														"phase": {
+															"type": "string",
+															"enum": [
+																"departments",
+																"members",
+																"reconcile"
+															]
+														},
+														"deptId": {
+															"type": "string"
+														},
+														"at": {
+															"type": "number"
+														}
+													}
+												},
+												"startedAt": {
+													"type": "number"
+												},
+												"finishedAt": {
+													"type": "number"
+												},
+												"updateTime": {
+													"type": "number"
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/auth/wecom/sync/cancel": {
+			"post": {
+				"operationId": "auth_wecom_sync_cancel_post",
+				"summary": "POST api/auth/wecom/sync/cancel",
+				"x-oj-file": "auth/api/wecom/sync/api.ts",
+				"tags": [
+					"auth"
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"properties": {
+									"agent": {
+										"type": "string"
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"required": [
+												"connected",
+												"authMode",
+												"profileStatus",
+												"agentId",
+												"credentialKind",
+												"status",
+												"phase",
+												"stats",
+												"progress",
+												"errCode",
+												"errDetail",
+												"startedAt",
+												"finishedAt",
+												"updateTime"
+											],
+											"properties": {
+												"connected": {
+													"type": "boolean"
+												},
+												"authMode": {
+													"type": "number"
+												},
+												"profileStatus": {
+													"type": [
+														"string",
+														"null"
+													]
+												},
+												"agentId": {
+													"type": [
+														"string",
+														"null"
+													]
+												},
+												"credentialKind": {
+													"type": [
+														"string",
+														"null"
+													],
+													"enum": [
+														"suite",
+														"corp",
+														null
+													]
+												},
+												"status": {
+													"type": "string",
+													"enum": [
+														"idle",
+														"running",
+														"done",
+														"failed",
+														"cancelled"
+													]
+												},
+												"phase": {
+													"type": "string",
+													"enum": [
+														"departments",
+														"members",
+														"reconcile"
+													]
+												},
+												"stats": {
+													"type": "object",
+													"required": [
+														"departments",
+														"members",
+														"skipped",
+														"reconciled"
+													],
+													"properties": {
+														"departments": {
+															"type": "number"
+														},
+														"members": {
+															"type": "number"
+														},
+														"skipped": {
+															"type": "number"
+														},
+														"reconciled": {
+															"type": "boolean"
+														}
+													}
+												},
+												"progress": {
+													"type": "object",
+													"required": [
+														"done",
+														"total"
+													],
+													"properties": {
+														"done": {
+															"type": "number"
+														},
+														"total": {
+															"type": "number"
+														}
+													}
+												},
+												"errCode": {
+													"type": [
+														"string",
+														"null"
+													]
+												},
+												"errDetail": {
+													"type": [
+														"object",
+														"null"
+													],
+													"properties": {
+														"errcode": {
+															"type": "number"
+														},
+														"phase": {
+															"type": "string",
+															"enum": [
+																"departments",
+																"members",
+																"reconcile"
+															]
+														},
+														"deptId": {
+															"type": "string"
+														},
+														"at": {
+															"type": "number"
+														}
+													}
+												},
+												"startedAt": {
+													"type": "number"
+												},
+												"finishedAt": {
+													"type": "number"
+												},
+												"updateTime": {
 													"type": "number"
 												}
 											}
@@ -2290,7 +2949,7 @@
 			"post": {
 				"operationId": "home_line_post",
 				"summary": "POST api/home/line",
-				"x-oj-file": "home/line/api.ts",
+				"x-oj-file": "home/api/line/api.ts",
 				"tags": [
 					"home"
 				],
@@ -2350,7 +3009,7 @@
 			"get": {
 				"operationId": "home_pie_get",
 				"summary": "GET api/home/pie",
-				"x-oj-file": "home/pie/api.ts",
+				"x-oj-file": "home/api/pie/api.ts",
 				"tags": [
 					"home"
 				],
@@ -2417,7 +3076,7 @@
 			"get": {
 				"operationId": "notification_notifications_get",
 				"summary": "GET api/notification/notifications",
-				"x-oj-file": "notification/api.ts",
+				"x-oj-file": "notification/api/api.ts",
 				"tags": [
 					"notification"
 				],
@@ -2508,7 +3167,7 @@
 			"post": {
 				"operationId": "notification_notifications_read_post",
 				"summary": "POST api/notification/notifications/read",
-				"x-oj-file": "notification/api.ts",
+				"x-oj-file": "notification/api/api.ts",
 				"tags": [
 					"notification"
 				],
@@ -2541,7 +3200,7 @@
 			"post": {
 				"operationId": "notification_notifications_read_all_post",
 				"summary": "POST api/notification/notifications/read-all",
-				"x-oj-file": "notification/api.ts",
+				"x-oj-file": "notification/api/api.ts",
 				"tags": [
 					"notification"
 				],
@@ -2556,7 +3215,7 @@
 			"post": {
 				"operationId": "notification_notifications_clear_post",
 				"summary": "POST api/notification/notifications/clear",
-				"x-oj-file": "notification/api.ts",
+				"x-oj-file": "notification/api/api.ts",
 				"tags": [
 					"notification"
 				],
@@ -2571,7 +3230,7 @@
 			"post": {
 				"operationId": "notification_push_post",
 				"summary": "POST api/notification/push",
-				"x-oj-file": "notification/api.ts",
+				"x-oj-file": "notification/api/api.ts",
 				"tags": [
 					"notification"
 				],
@@ -2628,7 +3287,7 @@
 			"post": {
 				"operationId": "notification_push_broadcast_post",
 				"summary": "POST api/notification/push-broadcast",
-				"x-oj-file": "notification/api.ts",
+				"x-oj-file": "notification/api/api.ts",
 				"tags": [
 					"notification"
 				],
@@ -2679,7 +3338,7 @@
 			"post": {
 				"operationId": "notification_del_post",
 				"summary": "POST api/notification/del",
-				"x-oj-file": "notification/del/api.ts",
+				"x-oj-file": "notification/api/del/api.ts",
 				"tags": [
 					"notification"
 				],
@@ -2718,7 +3377,7 @@
 			"post": {
 				"operationId": "personal_center_profile_post",
 				"summary": "POST api/personal-center/profile",
-				"x-oj-file": "personal-center/profile/api.ts",
+				"x-oj-file": "personal-center/api/profile/api.ts",
 				"tags": [
 					"personal-center"
 				],
@@ -2781,7 +3440,7 @@
 			"post": {
 				"operationId": "personal_center_upload_post",
 				"summary": "POST api/personal-center/upload",
-				"x-oj-file": "personal-center/upload/api.ts",
+				"x-oj-file": "personal-center/api/upload/api.ts",
 				"tags": [
 					"personal-center"
 				],
@@ -2820,7 +3479,7 @@
 			"get": {
 				"operationId": "system_departments_get",
 				"summary": "GET api/system/departments",
-				"x-oj-file": "system/departments/api.ts",
+				"x-oj-file": "system/api/departments/api.ts",
 				"tags": [
 					"system"
 				],
@@ -2912,7 +3571,7 @@
 			"post": {
 				"operationId": "system_departments_post",
 				"summary": "POST api/system/departments",
-				"x-oj-file": "system/departments/api.ts",
+				"x-oj-file": "system/api/departments/api.ts",
 				"tags": [
 					"system"
 				],
@@ -2991,7 +3650,7 @@
 			"put": {
 				"operationId": "system_departments_put",
 				"summary": "PUT api/system/departments",
-				"x-oj-file": "system/departments/api.ts",
+				"x-oj-file": "system/api/departments/api.ts",
 				"tags": [
 					"system"
 				],
@@ -3071,7 +3730,7 @@
 			"delete": {
 				"operationId": "system_departments_delete",
 				"summary": "DELETE api/system/departments",
-				"x-oj-file": "system/departments/api.ts",
+				"x-oj-file": "system/api/departments/api.ts",
 				"tags": [
 					"system"
 				],
@@ -3085,84 +3744,6 @@
 						}
 					}
 				],
-				"responses": {
-					"200": {
-						"description": "OK",
-						"x-oj-response-enforced": false,
-						"content": {
-							"application/json": {
-								"schema": {
-									"type": "object",
-									"required": [
-										"code",
-										"msg",
-										"data"
-									],
-									"properties": {
-										"code": {
-											"type": "integer"
-										},
-										"msg": {
-											"type": "string"
-										},
-										"data": {
-											"type": "object",
-											"required": [
-												"ok"
-											],
-											"properties": {
-												"ok": {
-													"type": "boolean"
-												}
-											}
-										}
-									}
-								}
-							}
-						}
-					}
-				}
-			}
-		},
-		"/api/system/departments/move": {
-			"put": {
-				"operationId": "system_departments_move_put",
-				"summary": "PUT api/system/departments/move",
-				"x-oj-file": "system/departments/move/api.ts",
-				"tags": [
-					"system"
-				],
-				"parameters": [
-					{
-						"name": "id",
-						"in": "query",
-						"required": true,
-						"schema": {
-							"type": "number"
-						}
-					}
-				],
-				"requestBody": {
-					"required": true,
-					"content": {
-						"application/json": {
-							"schema": {
-								"type": "object",
-								"required": [
-									"parentId"
-								],
-								"properties": {
-									"parentId": {
-										"type": [
-											"number",
-											"null"
-										]
-									}
-								}
-							}
-						}
-					}
-				},
 				"responses": {
 					"200": {
 						"description": "OK",
@@ -3206,7 +3787,7 @@
 			"post": {
 				"operationId": "system_departments_detach_post",
 				"summary": "POST api/system/departments/detach",
-				"x-oj-file": "system/departments/detach/api.ts",
+				"x-oj-file": "system/api/departments/detach/api.ts",
 				"tags": [
 					"system"
 				],
@@ -3263,7 +3844,7 @@
 			"get": {
 				"operationId": "system_departments_members_get",
 				"summary": "GET api/system/departments/members",
-				"x-oj-file": "system/departments/members/api.ts",
+				"x-oj-file": "system/api/departments/members/api.ts",
 				"tags": [
 					"system"
 				],
@@ -3347,7 +3928,7 @@
 			"post": {
 				"operationId": "system_departments_members_post",
 				"summary": "POST api/system/departments/members",
-				"x-oj-file": "system/departments/members/api.ts",
+				"x-oj-file": "system/api/departments/members/api.ts",
 				"tags": [
 					"system"
 				],
@@ -3429,7 +4010,7 @@
 			"put": {
 				"operationId": "system_departments_members_put",
 				"summary": "PUT api/system/departments/members",
-				"x-oj-file": "system/departments/members/api.ts",
+				"x-oj-file": "system/api/departments/members/api.ts",
 				"tags": [
 					"system"
 				],
@@ -3513,7 +4094,7 @@
 			"delete": {
 				"operationId": "system_departments_members_delete",
 				"summary": "DELETE api/system/departments/members",
-				"x-oj-file": "system/departments/members/api.ts",
+				"x-oj-file": "system/api/departments/members/api.ts",
 				"tags": [
 					"system"
 				],
@@ -3574,11 +4155,89 @@
 				}
 			}
 		},
+		"/api/system/departments/move": {
+			"put": {
+				"operationId": "system_departments_move_put",
+				"summary": "PUT api/system/departments/move",
+				"x-oj-file": "system/api/departments/move/api.ts",
+				"tags": [
+					"system"
+				],
+				"parameters": [
+					{
+						"name": "id",
+						"in": "query",
+						"required": true,
+						"schema": {
+							"type": "number"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"required": [
+									"parentId"
+								],
+								"properties": {
+									"parentId": {
+										"type": [
+											"number",
+											"null"
+										]
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"required": [
+												"ok"
+											],
+											"properties": {
+												"ok": {
+													"type": "boolean"
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
 		"/api/system/login-methods": {
 			"get": {
 				"operationId": "system_login_methods_get",
 				"summary": "GET api/system/login-methods",
-				"x-oj-file": "system/login-methods/api.ts",
+				"x-oj-file": "system/api/login-methods/api.ts",
 				"tags": [
 					"system"
 				],
@@ -3628,7 +4287,7 @@
 			"get": {
 				"operationId": "system_oplog_get",
 				"summary": "GET api/system/oplog",
-				"x-oj-file": "system/oplog/api.ts",
+				"x-oj-file": "system/api/oplog/api.ts",
 				"tags": [
 					"system"
 				],
@@ -3773,7 +4432,7 @@
 			"post": {
 				"operationId": "system_oplog_post",
 				"summary": "POST api/system/oplog",
-				"x-oj-file": "system/oplog/api.ts",
+				"x-oj-file": "system/api/oplog/api.ts",
 				"tags": [
 					"system"
 				],
@@ -3853,7 +4512,7 @@
 			"get": {
 				"operationId": "system_permissions_get",
 				"summary": "GET api/system/permissions",
-				"x-oj-file": "system/permissions/api.ts",
+				"x-oj-file": "system/api/permissions/api.ts",
 				"tags": [
 					"system"
 				],
@@ -3918,7 +4577,7 @@
 			"get": {
 				"operationId": "system_roles_get",
 				"summary": "GET api/system/roles",
-				"x-oj-file": "system/roles/api.ts",
+				"x-oj-file": "system/api/roles/api.ts",
 				"tags": [
 					"system"
 				],
@@ -4003,7 +4662,7 @@
 			"post": {
 				"operationId": "system_roles_post",
 				"summary": "POST api/system/roles",
-				"x-oj-file": "system/roles/api.ts",
+				"x-oj-file": "system/api/roles/api.ts",
 				"tags": [
 					"system"
 				],
@@ -4082,7 +4741,7 @@
 			"delete": {
 				"operationId": "system_roles_delete",
 				"summary": "DELETE api/system/roles",
-				"x-oj-file": "system/roles/api.ts",
+				"x-oj-file": "system/api/roles/api.ts",
 				"tags": [
 					"system"
 				],
@@ -4108,7 +4767,7 @@
 			"put": {
 				"operationId": "system_roles_bindings_put",
 				"summary": "PUT api/system/roles/bindings",
-				"x-oj-file": "system/roles/bindings/api.ts",
+				"x-oj-file": "system/api/roles/bindings/api.ts",
 				"tags": [
 					"system"
 				],
@@ -4155,7 +4814,7 @@
 			"get": {
 				"operationId": "system_settings_get",
 				"summary": "GET api/system/settings",
-				"x-oj-file": "system/settings/api.ts",
+				"x-oj-file": "system/api/settings/api.ts",
 				"tags": [
 					"system"
 				],
@@ -4266,7 +4925,7 @@
 			"put": {
 				"operationId": "system_settings_put",
 				"summary": "PUT api/system/settings",
-				"x-oj-file": "system/settings/api.ts",
+				"x-oj-file": "system/api/settings/api.ts",
 				"tags": [
 					"system"
 				],
@@ -4304,7 +4963,7 @@
 			"get": {
 				"operationId": "system_users_get",
 				"summary": "GET api/system/users",
-				"x-oj-file": "system/users/api.ts",
+				"x-oj-file": "system/api/users/api.ts",
 				"tags": [
 					"system"
 				],
@@ -4418,7 +5077,7 @@
 			"post": {
 				"operationId": "system_users_post",
 				"summary": "POST api/system/users",
-				"x-oj-file": "system/users/api.ts",
+				"x-oj-file": "system/api/users/api.ts",
 				"tags": [
 					"system"
 				],
@@ -4493,7 +5152,7 @@
 			"delete": {
 				"operationId": "system_users_delete",
 				"summary": "DELETE api/system/users",
-				"x-oj-file": "system/users/api.ts",
+				"x-oj-file": "system/api/users/api.ts",
 				"tags": [
 					"system"
 				],
@@ -4546,11 +5205,98 @@
 				}
 			}
 		},
+		"/api/system/users/forbidden": {
+			"put": {
+				"operationId": "system_users_forbidden_put",
+				"summary": "PUT api/system/users/forbidden",
+				"x-oj-file": "system/api/users/forbidden/api.ts",
+				"tags": [
+					"system"
+				],
+				"parameters": [
+					{
+						"name": "uid",
+						"in": "query",
+						"required": true,
+						"schema": {
+							"type": "number"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"required": [
+									"forbidden"
+								],
+								"properties": {
+									"forbidden": {
+										"type": "boolean"
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				}
+			}
+		},
+		"/api/system/users/password": {
+			"put": {
+				"operationId": "system_users_password_put",
+				"summary": "PUT api/system/users/password",
+				"x-oj-file": "system/api/users/password/api.ts",
+				"tags": [
+					"system"
+				],
+				"parameters": [
+					{
+						"name": "uid",
+						"in": "query",
+						"required": true,
+						"schema": {
+							"type": "number"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"required": [
+									"password"
+								],
+								"properties": {
+									"password": {
+										"type": "string",
+										"minLength": 6
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				}
+			}
+		},
 		"/api/system/users/profile": {
 			"put": {
 				"operationId": "system_users_profile_put",
 				"summary": "PUT api/system/users/profile",
-				"x-oj-file": "system/users/profile/api.ts",
+				"x-oj-file": "system/api/users/profile/api.ts",
 				"tags": [
 					"system"
 				],
@@ -4633,98 +5379,11 @@
 				}
 			}
 		},
-		"/api/system/users/forbidden": {
-			"put": {
-				"operationId": "system_users_forbidden_put",
-				"summary": "PUT api/system/users/forbidden",
-				"x-oj-file": "system/users/forbidden/api.ts",
-				"tags": [
-					"system"
-				],
-				"parameters": [
-					{
-						"name": "uid",
-						"in": "query",
-						"required": true,
-						"schema": {
-							"type": "number"
-						}
-					}
-				],
-				"requestBody": {
-					"required": true,
-					"content": {
-						"application/json": {
-							"schema": {
-								"type": "object",
-								"required": [
-									"forbidden"
-								],
-								"properties": {
-									"forbidden": {
-										"type": "boolean"
-									}
-								}
-							}
-						}
-					}
-				},
-				"responses": {
-					"200": {
-						"description": "OK"
-					}
-				}
-			}
-		},
-		"/api/system/users/password": {
-			"put": {
-				"operationId": "system_users_password_put",
-				"summary": "PUT api/system/users/password",
-				"x-oj-file": "system/users/password/api.ts",
-				"tags": [
-					"system"
-				],
-				"parameters": [
-					{
-						"name": "uid",
-						"in": "query",
-						"required": true,
-						"schema": {
-							"type": "number"
-						}
-					}
-				],
-				"requestBody": {
-					"required": true,
-					"content": {
-						"application/json": {
-							"schema": {
-								"type": "object",
-								"required": [
-									"password"
-								],
-								"properties": {
-									"password": {
-										"type": "string",
-										"minLength": 6
-									}
-								}
-							}
-						}
-					}
-				},
-				"responses": {
-					"200": {
-						"description": "OK"
-					}
-				}
-			}
-		},
 		"/api/system/users/roles": {
 			"put": {
 				"operationId": "system_users_roles_put",
 				"summary": "PUT api/system/users/roles",
-				"x-oj-file": "system/users/roles/api.ts",
+				"x-oj-file": "system/api/users/roles/api.ts",
 				"tags": [
 					"system"
 				],
@@ -4770,7 +5429,7 @@
 			"get": {
 				"operationId": "web_get_async_routes_get",
 				"summary": "GET api/web/get-async-routes",
-				"x-oj-file": "web/get-async-routes/api.ts",
+				"x-oj-file": "web/api/get-async-routes/api.ts",
 				"tags": [
 					"web"
 				],
@@ -4785,7 +5444,7 @@
 			"get": {
 				"operationId": "web_hello_get",
 				"summary": "GET api/web/hello",
-				"x-oj-file": "web/hello/api.ts",
+				"x-oj-file": "web/api/hello/api.ts",
 				"tags": [
 					"web"
 				],
@@ -4800,561 +5459,13 @@
 			"get": {
 				"operationId": "web_user_info_get",
 				"summary": "GET api/web/user-info",
-				"x-oj-file": "web/user-info/api.ts",
+				"x-oj-file": "web/api/user-info/api.ts",
 				"tags": [
 					"web"
 				],
 				"responses": {
 					"200": {
 						"description": "OK"
-					}
-				}
-			}
-		},
-		"/api/auth/wecom/sync/start": {
-			"post": {
-				"operationId": "auth_wecom_sync_start_post",
-				"summary": "POST api/auth/wecom/sync/start",
-				"x-oj-file": "auth/wecom/sync/api.ts",
-				"tags": [
-					"auth"
-				],
-				"requestBody": {
-					"required": false,
-					"content": {
-						"application/json": {
-							"schema": {
-								"type": "object",
-								"properties": {
-									"agent": {
-										"type": "string"
-									}
-								}
-							}
-						}
-					}
-				},
-				"responses": {
-					"200": {
-						"description": "OK",
-						"x-oj-response-enforced": false,
-						"content": {
-							"application/json": {
-								"schema": {
-									"type": "object",
-									"required": [
-										"code",
-										"msg",
-										"data"
-									],
-									"properties": {
-										"code": {
-											"type": "integer"
-										},
-										"msg": {
-											"type": "string"
-										},
-										"data": {
-											"type": "object",
-											"required": [
-												"connected",
-												"authMode",
-												"profileStatus",
-												"status",
-												"phase",
-												"stats",
-												"progress",
-												"errCode",
-												"errDetail",
-												"startedAt",
-												"finishedAt",
-												"updateTime"
-											],
-											"properties": {
-												"connected": {
-													"type": "boolean"
-												},
-												"authMode": {
-													"type": "number"
-												},
-												"profileStatus": {
-													"type": [
-														"string",
-														"null"
-													]
-												},
-												"status": {
-													"type": "string",
-													"enum": [
-														"idle",
-														"running",
-														"done",
-														"failed",
-														"cancelled"
-													]
-												},
-												"phase": {
-													"type": "string",
-													"enum": [
-														"departments",
-														"members",
-														"reconcile"
-													]
-												},
-												"stats": {
-													"type": "object",
-													"required": [
-														"departments",
-														"members",
-														"skipped",
-														"reconciled"
-													],
-													"properties": {
-														"departments": {
-															"type": "number"
-														},
-														"members": {
-															"type": "number"
-														},
-														"skipped": {
-															"type": "number"
-														},
-														"reconciled": {
-															"type": "boolean"
-														}
-													}
-												},
-												"progress": {
-													"type": "object",
-													"required": [
-														"done",
-														"total"
-													],
-													"properties": {
-														"done": {
-															"type": "number"
-														},
-														"total": {
-															"type": "number"
-														}
-													}
-												},
-												"errCode": {
-													"type": [
-														"string",
-														"null"
-													]
-												},
-												"errDetail": {
-													"type": [
-														"object",
-														"null"
-													],
-													"properties": {
-														"errcode": {
-															"type": "number"
-														},
-														"phase": {
-															"type": "string",
-															"enum": [
-																"departments",
-																"members",
-																"reconcile"
-															]
-														},
-														"deptId": {
-															"type": "string"
-														},
-														"at": {
-															"type": "number"
-														}
-													}
-												},
-												"startedAt": {
-													"type": "number"
-												},
-												"finishedAt": {
-													"type": "number"
-												},
-												"updateTime": {
-													"type": "number"
-												}
-											}
-										}
-									}
-								}
-							}
-						}
-					}
-				}
-			}
-		},
-		"/api/auth/wecom/sync/status": {
-			"get": {
-				"operationId": "auth_wecom_sync_status_get",
-				"summary": "GET api/auth/wecom/sync/status",
-				"x-oj-file": "auth/wecom/sync/api.ts",
-				"tags": [
-					"auth"
-				],
-				"parameters": [
-					{
-						"name": "agent",
-						"in": "query",
-						"required": false,
-						"schema": {
-							"type": "string"
-						}
-					}
-				],
-				"responses": {
-					"200": {
-						"description": "OK",
-						"x-oj-response-enforced": false,
-						"content": {
-							"application/json": {
-								"schema": {
-									"type": "object",
-									"required": [
-										"code",
-										"msg",
-										"data"
-									],
-									"properties": {
-										"code": {
-											"type": "integer"
-										},
-										"msg": {
-											"type": "string"
-										},
-										"data": {
-											"type": "object",
-											"required": [
-												"connected",
-												"authMode",
-												"profileStatus",
-												"status",
-												"phase",
-												"stats",
-												"progress",
-												"errCode",
-												"errDetail",
-												"startedAt",
-												"finishedAt",
-												"updateTime",
-												"agentId",
-												"credentialKind"
-											],
-											"properties": {
-												"connected": {
-													"type": "boolean"
-												},
-												"authMode": {
-													"type": "number"
-												},
-												"profileStatus": {
-													"type": [
-														"string",
-														"null"
-													]
-												},
-												"status": {
-													"type": "string",
-													"enum": [
-														"idle",
-														"running",
-														"done",
-														"failed",
-														"cancelled"
-													]
-												},
-												"phase": {
-													"type": "string",
-													"enum": [
-														"departments",
-														"members",
-														"reconcile"
-													]
-												},
-												"stats": {
-													"type": "object",
-													"required": [
-														"departments",
-														"members",
-														"skipped",
-														"reconciled"
-													],
-													"properties": {
-														"departments": {
-															"type": "number"
-														},
-														"members": {
-															"type": "number"
-														},
-														"skipped": {
-															"type": "number"
-														},
-														"reconciled": {
-															"type": "boolean"
-														}
-													}
-												},
-												"progress": {
-													"type": "object",
-													"required": [
-														"done",
-														"total"
-													],
-													"properties": {
-														"done": {
-															"type": "number"
-														},
-														"total": {
-															"type": "number"
-														}
-													}
-												},
-												"errCode": {
-													"type": [
-														"string",
-														"null"
-													]
-												},
-												"errDetail": {
-													"type": [
-														"object",
-														"null"
-													],
-													"properties": {
-														"errcode": {
-															"type": "number"
-														},
-														"phase": {
-															"type": "string",
-															"enum": [
-																"departments",
-																"members",
-																"reconcile"
-															]
-														},
-														"deptId": {
-															"type": "string"
-														},
-														"at": {
-															"type": "number"
-														}
-													}
-												},
-												"startedAt": {
-													"type": "number"
-												},
-												"finishedAt": {
-													"type": "number"
-												},
-												"updateTime": {
-													"type": "number"
-												},
-												"agentId": {
-													"type": [
-														"string",
-														"null"
-													]
-												},
-												"credentialKind": {
-													"type": [
-														"string",
-														"null"
-													],
-													"enum": [
-														"suite",
-														"corp",
-														null
-													]
-												}
-											}
-										}
-									}
-								}
-							}
-						}
-					}
-				}
-			}
-		},
-		"/api/auth/wecom/sync/cancel": {
-			"post": {
-				"operationId": "auth_wecom_sync_cancel_post",
-				"summary": "POST api/auth/wecom/sync/cancel",
-				"x-oj-file": "auth/wecom/sync/api.ts",
-				"tags": [
-					"auth"
-				],
-				"requestBody": {
-					"required": false,
-					"content": {
-						"application/json": {
-							"schema": {
-								"type": "object",
-								"properties": {
-									"agent": {
-										"type": "string"
-									}
-								}
-							}
-						}
-					}
-				},
-				"responses": {
-					"200": {
-						"description": "OK",
-						"x-oj-response-enforced": false,
-						"content": {
-							"application/json": {
-								"schema": {
-									"type": "object",
-									"required": [
-										"code",
-										"msg",
-										"data"
-									],
-									"properties": {
-										"code": {
-											"type": "integer"
-										},
-										"msg": {
-											"type": "string"
-										},
-										"data": {
-											"type": "object",
-											"required": [
-												"connected",
-												"authMode",
-												"profileStatus",
-												"status",
-												"phase",
-												"stats",
-												"progress",
-												"errCode",
-												"errDetail",
-												"startedAt",
-												"finishedAt",
-												"updateTime"
-											],
-											"properties": {
-												"connected": {
-													"type": "boolean"
-												},
-												"authMode": {
-													"type": "number"
-												},
-												"profileStatus": {
-													"type": [
-														"string",
-														"null"
-													]
-												},
-												"status": {
-													"type": "string",
-													"enum": [
-														"idle",
-														"running",
-														"done",
-														"failed",
-														"cancelled"
-													]
-												},
-												"phase": {
-													"type": "string",
-													"enum": [
-														"departments",
-														"members",
-														"reconcile"
-													]
-												},
-												"stats": {
-													"type": "object",
-													"required": [
-														"departments",
-														"members",
-														"skipped",
-														"reconciled"
-													],
-													"properties": {
-														"departments": {
-															"type": "number"
-														},
-														"members": {
-															"type": "number"
-														},
-														"skipped": {
-															"type": "number"
-														},
-														"reconciled": {
-															"type": "boolean"
-														}
-													}
-												},
-												"progress": {
-													"type": "object",
-													"required": [
-														"done",
-														"total"
-													],
-													"properties": {
-														"done": {
-															"type": "number"
-														},
-														"total": {
-															"type": "number"
-														}
-													}
-												},
-												"errCode": {
-													"type": [
-														"string",
-														"null"
-													]
-												},
-												"errDetail": {
-													"type": [
-														"object",
-														"null"
-													],
-													"properties": {
-														"errcode": {
-															"type": "number"
-														},
-														"phase": {
-															"type": "string",
-															"enum": [
-																"departments",
-																"members",
-																"reconcile"
-															]
-														},
-														"deptId": {
-															"type": "string"
-														},
-														"at": {
-															"type": "number"
-														}
-													}
-												},
-												"startedAt": {
-													"type": "number"
-												},
-												"finishedAt": {
-													"type": "number"
-												},
-												"updateTime": {
-													"type": "number"
-												}
-											}
-										}
-									}
-								}
-							}
-						}
 					}
 				}
 			}
@@ -5366,9 +5477,6 @@
 		},
 		{
 			"name": "auth"
-		},
-		{
-			"name": "demo"
 		},
 		{
 			"name": "home"

@@ -16,6 +16,7 @@
 import { copyFileSync, existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import process from "node:process";
+import { pathToFileURL } from "node:url";
 import { collectDynamicRequires, collectUnresolvedSpecifiers } from "../packages/cli/src/esm-exports";
 
 const root = resolve(import.meta.dirname, "..");
@@ -147,10 +148,15 @@ function main() {
 	].join(""));
 }
 
-try {
-	main();
-}
-catch (error) {
-	console.error(`[inject-importmap] ${(error as Error).message}`);
-	process.exit(1);
+// 只有直接执行才跑 main：被单元测试 import 时不得触碰真实 build/ 目录，
+// 更不能 process.exit（一次失败会把整个 vitest worker 杀掉，级联 40+ 套件失败）
+const invokedDirectly = process.argv[1] != null && import.meta.url === pathToFileURL(resolve(process.argv[1])).href;
+if (invokedDirectly) {
+	try {
+		main();
+	}
+	catch (error) {
+		console.error(`[inject-importmap] ${(error as Error).message}`);
+		process.exit(1);
+	}
 }
