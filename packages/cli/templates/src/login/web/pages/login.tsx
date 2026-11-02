@@ -84,6 +84,11 @@ export default function LoginPage() {
 	// 企微 302 落地参数：只在首次渲染解析一次（ticket 一次性，解析结果必须稳定）
 	const [landing] = useState(() => parseWecomLanding(search));
 	const exchangedRef = useRef(false);
+	// 仅「认证中 / 已失败」两态：企微内、回跳落地、或 ?corp 深链即进入认证态，
+	// 直接展示「认证中」，不渲染登录表单；只有认证失败（换票失败 / 企微方式不可用）才回落表单。
+	const [phase, setPhase] = useState<"auth" | "form">(
+		inWecom || landing || urlCorp ? "auth" : "form",
+	);
 
 	useEffect(() => {
 		fetchLoginMethods()
@@ -125,6 +130,7 @@ export default function LoginPage() {
 			}
 			catch (e) {
 				setError(e instanceof Error ? e.message : String(e));
+				setPhase("form");
 				setLoading(false);
 			}
 		})();
@@ -138,10 +144,14 @@ export default function LoginPage() {
 		// 企微内（wxwork UA）从「应用主页」点开即自动发起授权；带 ?corp= 的深链同样自动发起。
 		if ((!c && !inWecom) || landing || autoFiredRef.current)
 			return;
-		if (new URLSearchParams(search).get("error"))
+		if (new URLSearchParams(search).get("error")) {
+			setPhase("form");
 			return;
-		if (known && !methods.includes("wecom"))
+		}
+		if (known && !methods.includes("wecom")) {
+			setPhase("form");
 			return;
+		}
 		autoFiredRef.current = true;
 		window.location.assign(`${resolveApiBase()}${wecomAuthorizePath(corp, agent)}`);
 	}, [landing, methods, search, corp, agent]);
@@ -259,6 +269,18 @@ export default function LoginPage() {
 		return form(m);
 	}
 
+	// 认证态：只展示「认证中」，不渲染任何登录表单（满足「只有登录失败才出现 login」）
+	if (phase === "auth") {
+		return (
+			<>
+				<Typography.Title level={3}>
+					{t("login:page.title")}
+				</Typography.Title>
+				<Alert style={{ marginBottom: 16 }} type="info" message={t("login:method.wecom.exchanging")} showIcon />
+			</>
+		);
+	}
+
 	return (
 		<>
 			<Typography.Title level={3}>
@@ -267,26 +289,20 @@ export default function LoginPage() {
 			<Typography.Paragraph type="secondary">
 				{t("login:page.subtitle")}
 			</Typography.Paragraph>
-			{landing && loading && (
-				<Alert style={{ marginBottom: 16 }} type="info" message={t("login:method.wecom.exchanging")} showIcon />
-			)}
 			{error && <Alert style={{ marginBottom: 16 }} type="error" message={error} showIcon />}
-			{/* 换票期间不渲染 tab：避免用户在跳转前又点一次登录 */}
-			{landing && loading
-				? null
-				: showTabs
-					? (
-						<Tabs
-							activeKey={active}
-							onChange={key => setActive(key as LoginMethod)}
-							items={methods.map(m => ({
-								key: m,
-								label: t(`login:method.${m}`),
-								children: panelOf(m),
-							}))}
-						/>
-					)
-					: panelOf(methods[0] ?? "local")}
+			{showTabs
+				? (
+					<Tabs
+						activeKey={active}
+						onChange={key => setActive(key as LoginMethod)}
+						items={methods.map(m => ({
+							key: m,
+							label: t(`login:method.${m}`),
+							children: panelOf(m),
+						}))}
+					/>
+				)
+				: panelOf(methods[0] ?? "local")}
 		</>
 	);
 }
