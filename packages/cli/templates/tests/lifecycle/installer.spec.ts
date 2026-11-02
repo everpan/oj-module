@@ -12,22 +12,22 @@
 // 过期（30min）可接管。setEnabled 四处同写（D12/AC-P1-6）：锁摘除/恢复 + sidecar + route + modules。
 // 步骤面全 stub 注入（DIP）：fetch/exec/tar/reload 不真跑；register/smoke/audit 走真实内存库夹具。
 /* eslint-disable test/prefer-lowercase-title -- 任务/AC 编号是验收锚点，保留大写（register.spec 同约定） */
-import type { FsFace } from "../../src/_platform/api/_lifecycle/atomic";
-import type { InstallRequest } from "../../src/_platform/api/_lifecycle/installer";
-import type { StateStore } from "../../src/_platform/api/_lifecycle/state";
-import type { ExecFace } from "../../src/_platform/api/_lifecycle/steps/extract";
+import type { FsFace } from "../../src/app/api/_platform/_lifecycle/atomic";
+import type { InstallRequest } from "../../src/app/api/_platform/_lifecycle/installer";
+import type { StateStore } from "../../src/app/api/_platform/_lifecycle/state";
+import type { ExecFace } from "../../src/app/api/_platform/_lifecycle/steps/extract";
 import { createHash } from "node:crypto";
 import * as fsp from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { defaultTestKey, nodeVerifyEd25519, signedArchiveFor } from "../../../src/lifecycle/__tests__/helpers";
-import { atomicWriteText } from "../../src/_platform/api/_lifecycle/atomic";
-import { gcVersions, reconcile, runInstall, setEnabled, STAGES } from "../../src/_platform/api/_lifecycle/installer";
-import { acquireTaskLock, commitLockEntry, parseLock, readLock, serializeLock, writeLock } from "../../src/_platform/api/_lifecycle/lock";
-import { createStateStore } from "../../src/_platform/api/_lifecycle/state";
-import { getTask, readTasks, redact, sweepTimedOut, writeTask } from "../../src/_platform/api/_lifecycle/tasks";
-import { createTrustStore } from "../../src/_platform/api/_lifecycle/trust";
+import { atomicWriteText } from "../../src/app/api/_platform/_lifecycle/atomic";
+import { gcVersions, reconcile, runInstall, setEnabled, STAGES } from "../../src/app/api/_platform/_lifecycle/installer";
+import { acquireTaskLock, commitLockEntry, parseLock, readLock, serializeLock, writeLock } from "../../src/app/api/_platform/_lifecycle/lock";
+import { createStateStore } from "../../src/app/api/_platform/_lifecycle/state";
+import { getTask, readTasks, redact, sweepTimedOut, writeTask } from "../../src/app/api/_platform/_lifecycle/tasks";
+import { createTrustStore } from "../../src/app/api/_platform/_lifecycle/trust";
 import { installDb } from "../fixture";
 
 const g = globalThis as any;

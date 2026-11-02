@@ -7,6 +7,7 @@ import { useTranslation } from "react-i18next";
 import { systemPermissionsGet, systemRolesGet } from "../../__client";
 import { isForbidden } from "../errors";
 import { ForbiddenPanel } from "../forbidden";
+import { visibleRoles } from "./visible-roles";
 
 type RoleRow = SystemRolesGetData[number];
 type PermRow = SystemPermissionsGetData[number];
@@ -19,6 +20,7 @@ export default function RolesPage() {
 	const { t } = useTranslation();
 	const rolesQuery = useQuery({ queryKey: ["system", "roles"], queryFn: systemRolesGet });
 	const permsQuery = useQuery({ queryKey: ["system", "permissions"], queryFn: systemPermissionsGet });
+	const rows = visibleRoles(rolesQuery.data ?? []);
 
 	if ((rolesQuery.error && isForbidden(rolesQuery.error)) || (permsQuery.error && isForbidden(permsQuery.error)))
 		return <ForbiddenPanel t={t} error={rolesQuery.error ?? permsQuery.error} />;
@@ -75,7 +77,7 @@ export default function RolesPage() {
 					children: (
 						<>
 							<Alert style={{ marginBottom: 12 }} type="info" showIcon message={t("system:rolesPage.readonlyHint")} />
-							<Table rowKey="name" loading={rolesQuery.isLoading} dataSource={rolesQuery.data ?? []} columns={roleColumns} pagination={{ hideOnSinglePage: true }} />
+							<Table rowKey="name" loading={rolesQuery.isLoading} dataSource={rows} columns={roleColumns} pagination={{ hideOnSinglePage: true }} />
 						</>
 					),
 				},

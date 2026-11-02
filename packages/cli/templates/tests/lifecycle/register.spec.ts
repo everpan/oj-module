@@ -8,7 +8,7 @@
 /* eslint-disable test/prefer-lowercase-title -- 任务/AC 编号是验收锚点，保留大写（DB/P1-5） */
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
-import { checkOccupancy, queryAllRegistered, queryRegistered, registerSolution } from "../../src/_platform/api/_lifecycle/steps/register";
+import { checkOccupancy, queryAllRegistered, queryRegistered, registerSolution } from "../../src/app/api/_platform/_lifecycle/steps/register";
 import { installDb } from "../fixture";
 
 let dbo: ReturnType<typeof installDb>;

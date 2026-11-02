@@ -4,8 +4,8 @@
 /* eslint-disable test/prefer-lowercase-title -- AC 编号是验收锚点，保留大写 */
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 
-import { esc, firstAttr } from "../src/auth/api/_shared/ldap";
-import { createLdapLogin } from "../src/auth/api/_shared/ldap-login";
+import { esc, firstAttr } from "../src/app/api/auth/_shared/ldap";
+import { createLdapLogin } from "../src/app/api/auth/_shared/ldap-login";
 import { installDb } from "./fixture";
 
 let dbo: ReturnType<typeof installDb>;

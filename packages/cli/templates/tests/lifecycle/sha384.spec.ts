@@ -4,7 +4,7 @@
 import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { bytesToBase64, sha384B64, sha384Bytes } from "../../src/_platform/api/_lifecycle/sha384";
+import { bytesToBase64, sha384B64, sha384Bytes } from "../../src/app/api/_platform/_lifecycle/sha384";
 
 const hex = (bytes: Uint8Array): string => Array.from(bytes, b => b.toString(16).padStart(2, "0")).join("");
 

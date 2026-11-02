@@ -1,11 +1,11 @@
 // BDD：登录链——B1 登录顺序（D14 统一 401）、B2 首登改密（AC1-27）、B3 refresh 轮换/reuse 检测（AC1-13）、B4 JWT 仅 sub。
 // deps 全注入（Node 侧 crypto 只读不可 stub，设计 §9.1）；fake bcrypt 以 `hashed:<pw>` 为口令哈希约定。
 /* eslint-disable test/prefer-lowercase-title -- AC 编号是验收锚点，保留大写 */
-import type { SessionDeps } from "../src/auth/api/_shared/session";
+import type { SessionDeps } from "../src/app/api/auth/_shared/session";
 
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
-import { assertPermission } from "../src/_platform/api/_shared/service/infra/access";
-import { createSession } from "../src/auth/api/_shared/session";
+import { assertPermission } from "../src/app/api/_platform/_shared/service/infra/access";
+import { createSession } from "../src/app/api/auth/_shared/session";
 import { installDb } from "./fixture";
 
 let dbo: ReturnType<typeof installDb>;

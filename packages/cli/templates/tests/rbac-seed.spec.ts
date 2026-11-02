@@ -8,7 +8,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 
 import { installDb } from "./fixture";
 
-const SEED = join(dirname(fileURLToPath(import.meta.url)), "..", "src", "_platform", "api", "seed.sql");
+const SEED = join(dirname(fileURLToPath(import.meta.url)), "..", "src", "app", "api", "_platform", "seed.sql");
 let dbo: ReturnType<typeof installDb>;
 
 beforeAll(() => {

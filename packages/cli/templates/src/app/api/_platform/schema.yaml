@@ -37,6 +37,11 @@ tables:
       activated: {type: integer, null: false}
       # 职务（与来源无关的通用字段）
       position: {type: text}
+      # 工号（0017，可空）：与姓名/用户名分开的独立工号列，租户内有值时唯一。
+      # 必须在这里声明——列只落库而不进白名单时，任何模块 select 它都会被构造器拒为
+      # `unknown column 'employee_no'`（/system/departments 依赖 /system/users 的选人列表，
+      # 曾因此在打开部门页时整页报错）。
+      employee_no: {type: text}
       # 外部源侧的状态快照（企微 1/2/4/5）。**绝不**自动改写 is_forbidden——那会和
       # 本站管理员的手动启停互相覆盖（方案 §4.3）
       external_status: {type: integer}

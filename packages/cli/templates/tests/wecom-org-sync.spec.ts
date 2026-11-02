@@ -9,15 +9,15 @@
 //   · **登录自更新节流**：上万员工每天登录，不节流就是把 user/get 打成常驻流量；
 //     但 `user/get` 拿不到（无权限/不在可见范围）时**不能**写节流键，否则这一整天都补不上资料。
 //   · **D10 不建占位部门**：登录路径若能顺手建部门，任何成员都能凭空造出组织节点。
-import type { WecomCache, WecomHttp } from "../src/auth/api/_shared/wecom/client";
-import type { WecomStoreDeps } from "../src/auth/api/_shared/wecom/store";
+import type { WecomCache, WecomHttp } from "../src/app/api/auth/_shared/wecom/client";
+import type { WecomStoreDeps } from "../src/app/api/auth/_shared/wecom/store";
 
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { upsertDepartment } from "../src/_platform/api/_shared/service/domain/org";
-import { createWecomClient, WecomApiError } from "../src/auth/api/_shared/wecom/client";
-import { handleSuiteEvent } from "../src/auth/api/_shared/wecom/events";
-import { SELF_UPDATE_TTL_SECS, selfUpdate } from "../src/auth/api/_shared/wecom/login";
-import { findProfile, probeProfile, putSuiteTicket, saveProfile, setProfileStatus } from "../src/auth/api/_shared/wecom/store";
+import { upsertDepartment } from "../src/app/api/_platform/_shared/service/domain/org";
+import { createWecomClient, WecomApiError } from "../src/app/api/auth/_shared/wecom/client";
+import { handleSuiteEvent } from "../src/app/api/auth/_shared/wecom/events";
+import { SELF_UPDATE_TTL_SECS, selfUpdate } from "../src/app/api/auth/_shared/wecom/login";
+import { findProfile, probeProfile, putSuiteTicket, saveProfile, setProfileStatus } from "../src/app/api/auth/_shared/wecom/store";
 import { installDb } from "./fixture";
 
 /* eslint-disable test/prefer-lowercase-title -- D/AC 编号是验收锚点，保留大写 */

@@ -5,7 +5,7 @@
 import * as fsp from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 
-import { appendAnonymousPaths, bumpInstallSeq, ensureReloadApi, hasAnchor, insertAnchor } from "../../src/_platform/api/_lifecycle/text-edit";
+import { appendAnonymousPaths, bumpInstallSeq, ensureReloadApi, hasAnchor, insertAnchor } from "../../src/app/api/_platform/_lifecycle/text-edit";
 
 describe("insertAnchor（R18）", () => {
 	it("带注释的 config.yaml 插入后注释/缩进/空行/键序逐字保留", () => {

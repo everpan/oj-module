@@ -3,7 +3,7 @@
 // 无 prerelease > 有 prerelease；「1.0」「1.0.0」「1.0.0.0」视为相等（安装器容错口径）。
 import { describe, expect, it } from "vitest";
 
-import { compareVersions } from "../../src/_platform/api/_lifecycle/semver";
+import { compareVersions } from "../../src/app/api/_platform/_lifecycle/semver";
 
 const cases: Array<[a: string, b: string, expected: -1 | 0 | 1]> = [
 	// 主版本数值比较（非字典序）

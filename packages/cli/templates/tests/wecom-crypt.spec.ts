@@ -17,7 +17,7 @@ import {
 	unwrapWecomMessage,
 	utf8Bytes,
 	wecomSignature,
-} from "../src/auth/api/_shared/wecom/crypt";
+} from "../src/app/api/auth/_shared/wecom/crypt";
 
 const req = createRequire(import.meta.url);
 const nodeCrypto = req("node:crypto") as typeof import("node:crypto");

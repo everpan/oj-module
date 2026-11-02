@@ -5,11 +5,11 @@
 //   · 权限类错码是「跳过并计数」——一旦有跳过就**不许回收**（否则一次上游抖会被读成「部门被删」）；
 //   · 限流/可恢复致命错要停在原部门（游标不前进），下一次重试同一部门；
 //   · 本地建的部门/成员一根毛都不碰（D13 归属权）。
-import type { WecomClient, WecomMember } from "../src/auth/api/_shared/wecom/client";
+import type { WecomClient, WecomMember } from "../src/app/api/auth/_shared/wecom/client";
 
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { WecomApiError } from "../src/auth/api/_shared/wecom/client";
-import { attachProfile, cancelSync, emptyView, startSync, syncStatus } from "../src/auth/api/_shared/wecom/sync";
+import { WecomApiError } from "../src/app/api/auth/_shared/wecom/client";
+import { attachProfile, cancelSync, emptyView, startSync, syncStatus } from "../src/app/api/auth/_shared/wecom/sync";
 import { installDb } from "./fixture";
 
 /* eslint-disable test/prefer-lowercase-title -- D/AC 编号是验收锚点，保留大写 */

@@ -12,10 +12,10 @@
 import { Buffer } from "node:buffer";
 import { webcrypto } from "node:crypto";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { assertSuperAdmin, invalidateAllUsers } from "../src/_platform/api/_shared/service/infra/access";
-import { listApps, setAppStatus } from "../src/auth/api/_shared/wecom/admin";
-import { createWecomClient, runtimeCache, runtimeHttp } from "../src/auth/api/_shared/wecom/client";
-import { readSuiteConfig } from "../src/auth/api/_shared/wecom/config";
+import { assertSuperAdmin, invalidateAllUsers } from "../src/app/api/_platform/_shared/service/infra/access";
+import { listApps, setAppStatus } from "../src/app/api/auth/_shared/wecom/admin";
+import { createWecomClient, runtimeCache, runtimeHttp } from "../src/app/api/auth/_shared/wecom/client";
+import { readSuiteConfig } from "../src/app/api/auth/_shared/wecom/config";
 import { installDb } from "./fixture";
 
 const g = globalThis as any;
@@ -124,11 +124,11 @@ const deps = { store: { encrypt: (p: string) => `gcm(${p})`, decrypt: (b: string
 
 /** createInstall 的薄包装：省掉动态 import 的样板 */
 async function createInstallForTest(cfg: ReturnType<typeof readSuiteConfig>, client: ReturnType<typeof createWecomClient>, state: string) {
-	const { createInstall } = await import("../src/auth/api/_shared/wecom/admin");
+	const { createInstall } = await import("../src/app/api/auth/_shared/wecom/admin");
 	return createInstall(cfg, client, state);
 }
 
-const api = async () => (await import("../src/auth/api/wecom/admin/api")).default;
+const api = async () => (await import("../src/app/api/auth/wecom/admin/api")).default;
 
 beforeAll(() => {
 	dbo = installDb();

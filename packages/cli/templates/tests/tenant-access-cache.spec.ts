@@ -11,7 +11,7 @@
 // 这里把「同一 uid 换租户必须重查」钉死，顺手钉住写时失效不得漏掉别的租户。
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { currentAccess, invalidateAllUsers, invalidateUser, isSelfTenant } from "../src/_platform/api/_shared/service/infra/access";
+import { currentAccess, invalidateAllUsers, invalidateUser, isSelfTenant } from "../src/app/api/_platform/_shared/service/infra/access";
 import { installDb } from "./fixture";
 
 const g = globalThis as any;

@@ -8,15 +8,15 @@
 //      反过来也钉住：返回字段与 scope 无关，消费模块不该按档位分支解析。
 //
 // 另外钉住 §9.1 阻断项：通讯录只出 activated=1，同步灌进来的「从未登录」账号不得被检索到。
-import type { OrgDeps } from "../src/_platform/api/_shared/service/domain/org";
+import type { OrgDeps } from "../src/app/api/_platform/_shared/service/domain/org";
 
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { contactDetail, searchContacts } from "../src/_platform/api/_shared/service/domain/contacts";
+import { contactDetail, searchContacts } from "../src/app/api/_platform/_shared/service/domain/contacts";
 import {
 	addMember,
 	createDepartment,
 	deleteDepartment,
-} from "../src/_platform/api/_shared/service/domain/org";
+} from "../src/app/api/_platform/_shared/service/domain/org";
 import {
 	isMemberOf,
 	pageDepartments,
@@ -28,10 +28,10 @@ import {
 	resolveReader,
 	resolveReadFace,
 	resolveUserIds,
-} from "../src/_platform/api/_shared/service/domain/org-read";
-import { createUser } from "../src/_platform/api/_shared/service/domain/users";
-import { invalidateUser } from "../src/_platform/api/_shared/service/infra/access";
-import { ensureWecomUser } from "../src/auth/api/_shared/wecom/login";
+} from "../src/app/api/_platform/_shared/service/domain/org-read";
+import { createUser } from "../src/app/api/_platform/_shared/service/domain/users";
+import { invalidateUser } from "../src/app/api/_platform/_shared/service/infra/access";
+import { ensureWecomUser } from "../src/app/api/auth/_shared/wecom/login";
 import { ADMIN, installDb } from "./fixture";
 
 let dbo: ReturnType<typeof installDb>;

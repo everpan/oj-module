@@ -4,7 +4,7 @@
 // 四条负向是 G7 的重点：水位写坏 / 表不存在 / 值非法都必须**拒**，不能静默当「第一次见」——
 // 静默重置等于把「防回放」降级成「每次都当第一次见」，攻击者先破坏状态再回放即可穿透。
 import { beforeEach, describe, expect, it } from "vitest";
-import { guardAndRecordSourceSeq, readSourceSeq, SOURCE_SEQ_TABLE } from "../../src/_platform/api/_lifecycle/source-seq";
+import { guardAndRecordSourceSeq, readSourceSeq, SOURCE_SEQ_TABLE } from "../../src/app/api/_platform/_lifecycle/source-seq";
 import { installDb } from "../fixture";
 
 const SRC = "https://cdn.example.com/solutions";

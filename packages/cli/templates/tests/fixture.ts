@@ -1,6 +1,6 @@
 // 后端 BDD 夹具：node:sqlite 内存库 + **真实迁移文件**建表，装到 globalThis.db——
 // 与 oj 运行时注入的全局同名同面，service 代码不改一行即可被测。
-// 夹具直接读 src/<模块>/api/migrations/*.sql，与迁移不可能漂移（沿用 oj-wiki 先例）。
+// 夹具直接读 src/app/api/<模块>/migrations/*.sql，与迁移不可能漂移（沿用 oj-wiki 先例）。
 //
 // **构造器垫片（db.table / listTables）**：oj 的构造器是二进制内的 Rust 实现，Node 侧无可复用
 // 模块，故这里按手册契约（oj-api-dev api-manual「查询构造器」）写一层**最小 JS 渲染层**——
@@ -33,6 +33,8 @@ const { join, dirname } = req("node:path");
 const { fileURLToPath } = req("node:url");
 
 const SRC = join(dirname(fileURLToPath(import.meta.url)), "..", "src");
+/** 后端模块根（0.2.55 布局：`src/app/api/<模块>`）；迁移按目录发现，不在夹具里抄模块清单。 */
+const API_ROOT = join(SRC, "app", "api");
 
 export const ADMIN = 1;
 
@@ -465,9 +467,9 @@ function listTables(dbo: any, prefix?: string): string[] {
 /** 建内存库 + 注入全局；返回 DatabaseSync 供用例直插数据/断言。 */
 export function installDb(): any {
 	const dbo = new DatabaseSync(":memory:");
-	// 重放 src 下全部模块的迁移（方言专属文件除外）
-	for (const mod of readdirSync(SRC)) {
-		const dir = join(SRC, mod, "api", "migrations");
+	// 重放 src/app/api 下全部模块的迁移（方言专属文件除外）
+	for (const mod of readdirSync(API_ROOT)) {
+		const dir = join(API_ROOT, mod, "migrations");
 		if (!existsSync(dir))
 			continue;
 		for (const f of readdirSync(dir).filter((f: string) => f.endsWith(".sql") && !/\.(?:mysql|pg)\.sql$/.test(f)).sort())

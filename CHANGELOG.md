@@ -7,6 +7,35 @@
 
 ## [Unreleased]
 
+## [0.2.56] - 2026-11-02
+
+### Added
+
+- **模板 schema 列白名单守卫（回归）**：`packages/cli/src/__tests__/templates-schema-columns.test.ts`
+  逐条核对迁移里 `ALTER TABLE … ADD COLUMN` 的列是否在该表的 `schema.yaml` 声明——漏声明时
+  构造器会在发 SQL 前拒成 `unknown column 'x' in on '<表>'`（线上表现为 500 且日志无 SQL）；
+  同时钉住 0017 三方言迁移齐备与 `users.employee_no` 的声明。
+- **`users.employee_no` 的库侧语义回归**：`tests/rbac-tables.spec.ts` 断言列落库、唯一索引按
+  `(tenant_id, employee_no)` 且为部分索引（NULL 不占位）、同租户重复被拒 / 跨租户可重复。
+- **角色页过滤回归**：`tests/roles-page.spec.ts`（展示层只精确隐去 `superadmin`），
+  `tests/rbac-roles.spec.ts` 反向钉住 `listRoles()` 必须原样返回它（成员资格页依赖）。
+- **模板 `users` 表增 `employee_no`（工号，0017 三方言）**：可空列 + 租户内唯一（sqlite/pg 部分
+  索引 `WHERE employee_no IS NOT NULL`，mysql 靠 NULL 可重复的唯一键等效），并在 `_platform`
+  的 `schema.yaml` 同步声明。此前只有列没有声明时，任何模块 `select` 它都会被构造器拒为
+  `unknown column 'employee_no'`——`/system/departments` 因依赖 `/system/users` 的选人列表，
+  打开部门页就整页 500。迁移文件与下游既有 0017 逐字一致（校验和相同），已应用过的库不会重复
+  `ADD COLUMN`。
+
+### Fixed
+
+- **`/system/roles` 过滤 `superadmin`**：该角色是平台级（跨租户），不属于站点可分配的角色目录，
+  不再出现在角色展示页；成员资格页仍保留它作为可授予项（仅 superadmin 可勾选）。
+- **模板后端 BDD 套件恢复可跑（0.2.55 布局迁移遗留）**：`tests/fixture.ts` 仍按
+  `src/<模块>/api/migrations` 找迁移，49 个 spec 仍 import 旧模块路径，`vitest run` 在建库处
+  即报 `no such table: users`——整套测试静默失效。夹具改按 `src/app/api/<模块>/migrations`
+  重放、`vitest.config.ts` 的 `#/<模块>/…` 别名与 seed 路径同步到新布局，顺带把已下线
+  `todos` 表的 truncate 用例改用 `home_pie`。
+
 ## [0.2.55] - 2026-11-02
 
 本轮完成「整个应用装进一个目录」：0.2.54 只把前端五个内置模块并成了 `src/app/web`，后端

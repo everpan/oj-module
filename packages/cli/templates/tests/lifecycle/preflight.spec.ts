@@ -1,5 +1,5 @@
-import type { SolutionState, StateStore } from "../../src/_platform/api/_lifecycle/state";
-import type { InstallContext } from "../../src/_platform/api/_lifecycle/steps/preflight";
+import type { SolutionState, StateStore } from "../../src/app/api/_platform/_lifecycle/state";
+import type { InstallContext } from "../../src/app/api/_platform/_lifecycle/steps/preflight";
 // BDD：安装预检规则引擎（P1-5，R7/R8/R9/R24，十阶段状态机 stage 1）。
 // 规则真源：docs/prd/solution/202610171254-lifecycle-manifest-contract.md（C2-01~33 安装列）；
 // 期望真源：packages/cli/src/lifecycle/__tests__/fixtures/（fixture-valid 零违规、fixture-invalid 七码齐报）。
@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
-import { preflight } from "../../src/_platform/api/_lifecycle/steps/preflight";
+import { preflight } from "../../src/app/api/_platform/_lifecycle/steps/preflight";
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), "../../../src/lifecycle/__tests__/fixtures");
 const VALID = parse(readFileSync(join(FIXTURES, "fixture-valid/manifest.yaml"), "utf8")) as any;

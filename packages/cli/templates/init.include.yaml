@@ -40,7 +40,7 @@ include:
   - src/styles.css
   # 后端 typecheck 工程（package.json 的 typecheck:api 指向它）；只收后端、排除 web
   - src/tsconfig.json
-  # —— 后端：配置 / 种子 / 测试 / 默认模块（模块源码在 src/<name>/api）——
+  # —— 后端：配置 / 种子 / 测试 / 默认模块（模块源码在 src/app/api/<模块>）——
   - config.yaml
   - .ojm-api-exempt.json
   - seed.mysql.sql
@@ -71,8 +71,10 @@ include:
   - tests/rbac-solution-perms.spec.ts
   - tests/rbac-tables.spec.ts
   - tests/rbac-users.spec.ts
+  # 角色页展示层过滤 superadmin（后端 listRoles 仍返回；页面源码随 src/app/web/system 下发）
+  - tests/roles-page.spec.ts
   - tests/seed-role-accounts.spec.ts
-  # 企微连接器与组织同步：源码本就分发（src/auth/api），对应回归也必须跟着走，
+  # 企微连接器与组织同步：源码本就分发（src/app/api/auth），对应回归也必须跟着走，
   # 否则用户工程升级后改配置/换套件时没有任何本地自检手段。
   - tests/wecom-admin.spec.ts
   - tests/wecom-client-timeout.spec.ts

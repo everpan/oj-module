@@ -3,11 +3,11 @@
 // 禁止操作自己（AC1-10 注）；roles 写 sys_user_role 唯一权威源 + 写时失效（AC1-7/D10）；
 // 禁用/重置口令级联删 refresh（§3.1 吊销联动）。
 /* eslint-disable test/prefer-lowercase-title -- AC 编号是验收锚点，保留大写 */
-import type { SessionDeps } from "../src/auth/api/_shared/session";
+import type { SessionDeps } from "../src/app/api/auth/_shared/session";
 
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
-import { changePasswordByAdmin, createUser, listUsers, setForbidden, updateUserRoles } from "../src/_platform/api/_shared/service/domain/users";
-import { createSession } from "../src/auth/api/_shared/session";
+import { changePasswordByAdmin, createUser, listUsers, setForbidden, updateUserRoles } from "../src/app/api/_platform/_shared/service/domain/users";
+import { createSession } from "../src/app/api/auth/_shared/session";
 import { installDb } from "./fixture";
 
 let dbo: ReturnType<typeof installDb>;

@@ -1,4 +1,4 @@
-import type { OrgDeps } from "../src/_platform/api/_shared/service/domain/org";
+import type { OrgDeps } from "../src/app/api/_platform/_shared/service/domain/org";
 
 // BDD：组织架构领域（0016，方案 A1+A2）——CRUD 基线 + 归属权（D13）+ 保底出口（D14）。
 //
@@ -23,8 +23,8 @@ import {
 	updateDepartment,
 	updateMember,
 	upsertDepartment,
-} from "../src/_platform/api/_shared/service/domain/org";
-import { deleteUser, listUsers, updateUserProfile } from "../src/_platform/api/_shared/service/domain/users";
+} from "../src/app/api/_platform/_shared/service/domain/org";
+import { deleteUser, listUsers, updateUserProfile } from "../src/app/api/_platform/_shared/service/domain/users";
 import { ADMIN, installDb } from "./fixture";
 
 let dbo: ReturnType<typeof installDb>;

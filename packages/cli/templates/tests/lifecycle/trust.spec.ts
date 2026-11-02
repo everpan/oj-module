@@ -2,17 +2,17 @@
 // store 层：空库/幂等/首次绑定不可改/多 key/吊销/损坏 fail-closed/.bak 回落/并发读不见半截/审计。
 // 端点层：GET /market/trust、POST /market/trust/key、DELETE /market/trust/key?key_id=（del 动词 + query，system/roles 同款先例）。
 /* eslint-disable test/prefer-lowercase-title -- 端点动词/路径是验收锚点，保留大写（market-api.spec 同约定） */
-import type { FsFace } from "../../src/_platform/api/_lifecycle/atomic";
-import type { MarketEnv } from "../../src/_platform/api/market/api";
+import type { FsFace } from "../../src/app/api/_platform/_lifecycle/atomic";
+import type { MarketEnv } from "../../src/app/api/_platform/market/api";
 import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
 import * as fsp from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createTrustStore, isValidKeyId } from "../../src/_platform/api/_lifecycle/trust";
-import { invalidateAllUsers } from "../../src/_platform/api/_shared/service/infra/access";
-import { createMarketApi, marketEnv } from "../../src/_platform/api/market/api";
+import { createTrustStore, isValidKeyId } from "../../src/app/api/_platform/_lifecycle/trust";
+import { invalidateAllUsers } from "../../src/app/api/_platform/_shared/service/infra/access";
+import { createMarketApi, marketEnv } from "../../src/app/api/_platform/market/api";
 import { installDb } from "../fixture";
 
 const g = globalThis as any;

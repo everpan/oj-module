@@ -80,14 +80,15 @@ describe("§5.7-6 读写自动按当前租户过滤", () => {
 	});
 
 	it("truncate 只清本租户（A 组表）", async () => {
+		// 用 home_pie 而非旧 demo 的 todos：后者已随示例模块删除，迁移里没有这张表。
 		asTenant("acme");
-		await db.table("todos").insert({ title: "acme-todo" }).run();
+		await db.table("home_pie").insert({ category: "acme-pie", value: 1 }).run();
 		asTenant("globex");
-		await db.table("todos").insert({ title: "globex-todo" }).run();
+		await db.table("home_pie").insert({ category: "globex-pie", value: 2 }).run();
 
 		asTenant("acme");
-		await db.table("todos").truncate().run();
-		expect(rows("SELECT title FROM todos")).toEqual([{ title: "globex-todo" }]);
+		await db.table("home_pie").truncate().run();
+		expect(rows("SELECT category FROM home_pie")).toEqual([{ category: "globex-pie" }]);
 	});
 
 	it("refresh token 换票：别家的 token_hash 在本租户查不到", async () => {

@@ -8,19 +8,19 @@
 // 快照逐数组 ⊇ 声明，少 = 注册丢失判失败）collect-all 全败齐报。
 // entry 浏览器加载不在安装器验（Node import 必假绿——设计 §4.1），注释钉口径。
 // fetch/sha384/query/reload 面经 ctx 注入 stub（同 steps-fs 范式），fs 为 globalThis.fs 面。
-import type { FsFace } from "../../src/_platform/api/_lifecycle/atomic";
-import type { StateStore } from "../../src/_platform/api/_lifecycle/state";
-import type { DeployWebContext, ModuleEntry } from "../../src/_platform/api/_lifecycle/steps/deploy-web";
-import type { ReloadContext, ReloadFace, ReloadResult } from "../../src/_platform/api/_lifecycle/steps/reload";
-import type { SmokeContext } from "../../src/_platform/api/_lifecycle/steps/smoke";
+import type { FsFace } from "../../src/app/api/_platform/_lifecycle/atomic";
+import type { StateStore } from "../../src/app/api/_platform/_lifecycle/state";
+import type { DeployWebContext, ModuleEntry } from "../../src/app/api/_platform/_lifecycle/steps/deploy-web";
+import type { ReloadContext, ReloadFace, ReloadResult } from "../../src/app/api/_platform/_lifecycle/steps/reload";
+import type { SmokeContext } from "../../src/app/api/_platform/_lifecycle/steps/smoke";
 import { createHash } from "node:crypto";
 import * as fsp from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { deployWeb, posixPath, upsertModulesJson } from "../../src/_platform/api/_lifecycle/steps/deploy-web";
-import { reloadAndAssert } from "../../src/_platform/api/_lifecycle/steps/reload";
-import { probeUrlOf, smoke } from "../../src/_platform/api/_lifecycle/steps/smoke";
+import { deployWeb, posixPath, upsertModulesJson } from "../../src/app/api/_platform/_lifecycle/steps/deploy-web";
+import { reloadAndAssert } from "../../src/app/api/_platform/_lifecycle/steps/reload";
+import { probeUrlOf, smoke } from "../../src/app/api/_platform/_lifecycle/steps/smoke";
 
 const g = globalThis as any;
 

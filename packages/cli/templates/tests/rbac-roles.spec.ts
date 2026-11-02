@@ -4,8 +4,8 @@
 /* eslint-disable test/prefer-lowercase-title -- AC 编号是验收锚点，保留大写 */
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 
-import { createRole, deleteRole, listPermissions, listRoles, updateBindings } from "../src/_platform/api/_shared/service/domain/roles";
-import { assertPermission } from "../src/_platform/api/_shared/service/infra/access";
+import { createRole, deleteRole, listPermissions, listRoles, updateBindings } from "../src/app/api/_platform/_shared/service/domain/roles";
+import { assertPermission } from "../src/app/api/_platform/_shared/service/infra/access";
 import { installDb } from "./fixture";
 
 let dbo: ReturnType<typeof installDb>;
@@ -155,5 +155,13 @@ describe("列表支撑（C2 页面数据源）", () => {
 		const perms = await listPermissions();
 		expect(perms.find(p => p.code === "wiki.old")?.deprecated).toBe(true);
 		expect(perms.find(p => p.code === "wiki.new")?.deprecated).toBe(false);
+	});
+
+	it("listRoles 原样返回 superadmin（只在 /system/roles 展示层隐去）", async () => {
+		// 成员资格页（users/roles.tsx）把 superadmin 当可授予项（仅 superadmin 可勾选），
+		// 页面数据源里少了它会让「授予超级管理员」直接不可用。过滤只做在展示层。
+		dbo.prepare("INSERT INTO sys_role (name, module, builtin) VALUES ('superadmin', 'framework', 1)").run();
+		const roles = await listRoles();
+		expect(roles.map(r => r.name)).toContain("superadmin");
 	});
 });

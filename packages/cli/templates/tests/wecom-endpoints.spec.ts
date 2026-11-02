@@ -11,7 +11,7 @@
 import { Buffer } from "node:buffer";
 import { createCipheriv, webcrypto } from "node:crypto";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { bytesToB64, sha1Hex, utf8Bytes, wecomSignature } from "../src/auth/api/_shared/wecom/crypt";
+import { bytesToB64, sha1Hex, utf8Bytes, wecomSignature } from "../src/app/api/auth/_shared/wecom/crypt";
 import { installDb } from "./fixture";
 
 const g = globalThis as any;
@@ -147,7 +147,7 @@ function seedCorp(corpId = "ww_corp_a", agentId = "100001"): void {
 		.run(SUITE, corpId, agentId, corpId, `gcm(perm_${corpId})`);
 }
 
-const api = async () => (await import("../src/auth/api/wecom/api")).default;
+const api = async () => (await import("../src/app/api/auth/wecom/api")).default;
 
 beforeAll(() => {
 	dbo = installDb();

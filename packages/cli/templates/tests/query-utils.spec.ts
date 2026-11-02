@@ -3,7 +3,7 @@
 /* eslint-disable test/prefer-lowercase-title -- AC 编号是验收锚点，保留大写 */
 import { beforeAll, describe, expect, it } from "vitest";
 
-import { likePattern, paged, pagedFactory } from "../src/_platform/api/_shared/service/infra/query";
+import { likePattern, paged, pagedFactory } from "../src/app/api/_platform/_shared/service/infra/query";
 import { installDb } from "./fixture";
 
 let dbo: ReturnType<typeof installDb>;

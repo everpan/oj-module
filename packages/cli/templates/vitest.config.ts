@@ -7,13 +7,13 @@ const srcDir = fileURLToPath(new URL("./src", import.meta.url));
 
 export default defineConfig({
 	root: fileURLToPath(new URL(".", import.meta.url)),
-	// `#/<模块名>/…` 是 oj 的模块别名（锚在目标模块根，本布局下即 `src/<模块名>/api`）。
+	// `#/<模块名>/…` 是 oj 的模块别名（锚在目标模块根，0.2.55 布局下即 `src/app/api/<模块名>`）。
 	// oj build / ojm dev 在打包器里解析它，vitest 走 vite 的 resolve，必须在此显式映射，
 	// 否则跨模块 import 的后端 spec 会以「Cannot find module」整文件跳过。
 	// 形如 `#x`（锚本模块根）与导入方相对，静态 alias 表达不了——模板后端不用这种形态，
 	// 一旦引入需先补 vitest 侧解析（或改写成 `#/<模块名>/…`）。
 	resolve: {
-		alias: [{ find: /^#\/([^/]+)\/(.*)$/, replacement: `${srcDir}/$1/api/$2` }],
+		alias: [{ find: /^#\/([^/]+)\/(.*)$/, replacement: `${srcDir}/app/api/$1/$2` }],
 	},
 	test: {
 		include: ["tests/**/*.spec.ts"],

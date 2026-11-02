@@ -4,8 +4,8 @@
 // 拒绝：绝对路径、任何 `..` 段、l/h 条目、空成员名、反斜杠路径；`./` 前缀相对合法。
 import { describe, expect, it } from "vitest";
 
-import { MAX_ENTRIES, MAX_PACKAGE_BYTES, MAX_SINGLE_ENTRY_BYTES, MAX_UNPACKED_BYTES } from "../../src/_platform/api/_lifecycle/limits";
-import { accumulateTarVolume, checkTarVolumeLimits, extractTarEntrySize, validateTarListing } from "../../src/_platform/api/_lifecycle/tgz-guard";
+import { MAX_ENTRIES, MAX_PACKAGE_BYTES, MAX_SINGLE_ENTRY_BYTES, MAX_UNPACKED_BYTES } from "../../src/app/api/_platform/_lifecycle/limits";
+import { accumulateTarVolume, checkTarVolumeLimits, extractTarEntrySize, validateTarListing } from "../../src/app/api/_platform/_lifecycle/tgz-guard";
 
 describe("validateTarListing（R1）", () => {
 	it("正常成员列表通过", () => {

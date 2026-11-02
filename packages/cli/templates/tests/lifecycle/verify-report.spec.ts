@@ -1,8 +1,8 @@
 // BDD：P2-8 深检报告结构 + 留存 N=10 + 可信性项（trust_state）+ i18n 降级项 + 设值不进报告。
 // 纯模块单测（verify-report.ts）+ 端点编排（persist-on-POST / GET verify/last / 降级项 / secret 不泄漏）。
 /* eslint-disable test/prefer-lowercase-title -- 端点动词/路径是验收锚点，保留大写（verify-checks.spec 同约定） */
-import type { FsFace } from "../../src/_platform/api/_lifecycle/atomic";
-import type { VerifyReport } from "../../src/_platform/api/_lifecycle/verify-report";
+import type { FsFace } from "../../src/app/api/_platform/_lifecycle/atomic";
+import type { VerifyReport } from "../../src/app/api/_platform/_lifecycle/verify-report";
 import * as fsp from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -12,8 +12,8 @@ import {
 	persistReport,
 	VERIFY_REPORTS_KEEP,
 	verifyReportsDirOf,
-} from "../../src/_platform/api/_lifecycle/verify-report";
-import { createSolutionsApi, solutionsEnv } from "../../src/_platform/api/solutions/api";
+} from "../../src/app/api/_platform/_lifecycle/verify-report";
+import { createSolutionsApi, solutionsEnv } from "../../src/app/api/_platform/solutions/api";
 import { installDb } from "../fixture";
 
 const g = globalThis as any;

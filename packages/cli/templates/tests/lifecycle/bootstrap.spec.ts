@@ -5,14 +5,14 @@
 //    与 PEM 私钥块实体（header 后跟 ≥100 字符 base64 体；tasks.ts redact 正则与测试假体
 //    体长 <100 不误伤）双口径扫描。
 // ③ 集成（market-api.spec）：信任库为空 + bootstrapKey 注入 → cdn 安装直达 done 不落 needs_trust。
-import type { FsFace } from "../../src/_platform/api/_lifecycle/atomic";
+import type { FsFace } from "../../src/app/api/_platform/_lifecycle/atomic";
 import * as fsp from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createTrustStore } from "../../src/_platform/api/_lifecycle/trust";
-import { BOOTSTRAP_KEY, seedBootstrapKey } from "../../src/_platform/api/market/bootstrap";
+import { createTrustStore } from "../../src/app/api/_platform/_lifecycle/trust";
+import { BOOTSTRAP_KEY, seedBootstrapKey } from "../../src/app/api/_platform/market/bootstrap";
 
 const g = globalThis as any;
 

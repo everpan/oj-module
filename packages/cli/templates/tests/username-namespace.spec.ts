@@ -16,9 +16,9 @@
 //   · 端到端：改名被拒之后，真正的外部成员 JIT 登录拿到的是**新建**的那一行。
 
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { invalidateAllUsers } from "../src/_platform/api/_shared/service/infra/access";
-import { ensureWecomUser, externalUsername } from "../src/auth/api/_shared/wecom/login";
-import profile from "../src/personal-center/api/profile/api";
+import { invalidateAllUsers } from "../src/app/api/_platform/_shared/service/infra/access";
+import { ensureWecomUser, externalUsername } from "../src/app/api/auth/_shared/wecom/login";
+import profile from "../src/app/api/personal-center/profile/api";
 import { installDb } from "./fixture";
 
 const g = globalThis as any;

@@ -4,14 +4,14 @@
 // 只保证读回自己写出的内容；任何不符格式的字节一律视为损坏 → 空状态，损坏上下文并入
 // 读结果（corruptNote 出口，禁 console——release isolate console 抛 BadResource，Finding A）。
 // fs 依赖经 globalThis.fs 注入（平台 isolate 注入 FsApi；测试注入 node:fs/promises 适配）。
-import type { FsFace } from "../../src/_platform/api/_lifecycle/atomic";
+import type { FsFace } from "../../src/app/api/_platform/_lifecycle/atomic";
 import * as fsp from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { atomicWriteText } from "../../src/_platform/api/_lifecycle/atomic";
-import { createStateStore } from "../../src/_platform/api/_lifecycle/state";
+import { atomicWriteText } from "../../src/app/api/_platform/_lifecycle/atomic";
+import { createStateStore } from "../../src/app/api/_platform/_lifecycle/state";
 
 const g = globalThis as any;
 

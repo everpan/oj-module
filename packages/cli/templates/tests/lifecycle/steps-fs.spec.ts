@@ -6,11 +6,11 @@
 // 命令构造为纯函数，argv 逐字断言（与平台 exec 白名单逐字对齐，S1-2 基座）；
 // exec/fetch/sha256 面经 ctx 注入 stub，不真跑网络；合法夹具集成用例的 exec stub 落到真实系统 tar
 // （与生产同路径：isolate 不内嵌解压，exec.run 系统 tar）。
-import type { FsFace } from "../../src/_platform/api/_lifecycle/atomic";
-import type { StateStore } from "../../src/_platform/api/_lifecycle/state";
-import type { DownloadContext } from "../../src/_platform/api/_lifecycle/steps/download";
-import type { ExecFace, ExtractContext } from "../../src/_platform/api/_lifecycle/steps/extract";
-import type { VerifyContext } from "../../src/_platform/api/_lifecycle/steps/verify";
+import type { FsFace } from "../../src/app/api/_platform/_lifecycle/atomic";
+import type { StateStore } from "../../src/app/api/_platform/_lifecycle/state";
+import type { DownloadContext } from "../../src/app/api/_platform/_lifecycle/steps/download";
+import type { ExecFace, ExtractContext } from "../../src/app/api/_platform/_lifecycle/steps/extract";
+import type { VerifyContext } from "../../src/app/api/_platform/_lifecycle/steps/verify";
 import { execFile as execFileCb } from "node:child_process";
 import { createHash } from "node:crypto";
 import * as fsp from "node:fs/promises";
@@ -19,10 +19,10 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { defaultTestKey, nodeVerifyEd25519, signedArchiveFor } from "../../../src/lifecycle/__tests__/helpers";
-import { archiveFileOf, download } from "../../src/_platform/api/_lifecycle/steps/download";
-import { buildExtractCmd, buildListCmd, checkModuleManifest, extract } from "../../src/_platform/api/_lifecycle/steps/extract";
-import { verify } from "../../src/_platform/api/_lifecycle/steps/verify";
-import { createTrustStore } from "../../src/_platform/api/_lifecycle/trust";
+import { archiveFileOf, download } from "../../src/app/api/_platform/_lifecycle/steps/download";
+import { buildExtractCmd, buildListCmd, checkModuleManifest, extract } from "../../src/app/api/_platform/_lifecycle/steps/extract";
+import { verify } from "../../src/app/api/_platform/_lifecycle/steps/verify";
+import { createTrustStore } from "../../src/app/api/_platform/_lifecycle/trust";
 
 const execFileP = promisify(execFileCb);
 const g = globalThis as any;

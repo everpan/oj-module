@@ -7,16 +7,16 @@
 // rollbackGuard 纯函数：目标产物 max seq < 账本 head = 降版部署，禁止（OJ-9/M003 同源红线）；
 // seq 为数值非版本号，直接数值比较（semver.ts 不适用）。
 // exec/fs 面注入 stub（同 steps-fs 范式），不真跑 oj/sqlite。
-import type { FsFace } from "../../src/_platform/api/_lifecycle/atomic";
-import type { StateStore } from "../../src/_platform/api/_lifecycle/state";
-import type { ExecFace } from "../../src/_platform/api/_lifecycle/steps/extract";
-import type { MigrateContext } from "../../src/_platform/api/_lifecycle/steps/migrate";
+import type { FsFace } from "../../src/app/api/_platform/_lifecycle/atomic";
+import type { StateStore } from "../../src/app/api/_platform/_lifecycle/state";
+import type { ExecFace } from "../../src/app/api/_platform/_lifecycle/steps/extract";
+import type { MigrateContext } from "../../src/app/api/_platform/_lifecycle/steps/migrate";
 import * as fsp from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { parseLock } from "../../src/_platform/api/_lifecycle/lock";
-import { buildMigrateCmd, maxAppliedSeq, migrate, migrateSvcDirOf, parseMigrateOutput, rollbackGuard } from "../../src/_platform/api/_lifecycle/steps/migrate";
+import { parseLock } from "../../src/app/api/_platform/_lifecycle/lock";
+import { buildMigrateCmd, maxAppliedSeq, migrate, migrateSvcDirOf, parseMigrateOutput, rollbackGuard } from "../../src/app/api/_platform/_lifecycle/steps/migrate";
 
 const g = globalThis as any;
 const DB_BYTES = new TextEncoder().encode("sqlite-header-bytes\n");

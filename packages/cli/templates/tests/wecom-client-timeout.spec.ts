@@ -11,7 +11,7 @@
 //   4. tasks 缺失 → 安全降级为「不超时」，快速请求正常返回。
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { runtimeHttp } from "../src/auth/api/_shared/wecom/client";
+import { runtimeHttp } from "../src/app/api/auth/_shared/wecom/client";
 
 const g = globalThis as any;
 

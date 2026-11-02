@@ -5,7 +5,7 @@
 /* eslint-disable test/prefer-lowercase-title -- 端点路径是验收锚点 */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import api from "../../src/_platform/api/solutions/api";
+import api from "../../src/app/api/_platform/solutions/api";
 import { installDb } from "../fixture";
 
 let dbo: ReturnType<typeof installDb>;

@@ -14,11 +14,11 @@
 /* eslint-disable test/prefer-lowercase-title -- 用例标题带端点路径，保留原样更易检索 */
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 
-import { invalidateUser } from "../src/_platform/api/_shared/service/infra/access";
-import notification from "../src/notification/api/api";
-import notificationDel from "../src/notification/api/del/api";
-import profile from "../src/personal-center/api/profile/api";
-import upload from "../src/personal-center/api/upload/api";
+import { invalidateUser } from "../src/app/api/_platform/_shared/service/infra/access";
+import notification from "../src/app/api/notification/api";
+import notificationDel from "../src/app/api/notification/del/api";
+import profile from "../src/app/api/personal-center/profile/api";
+import upload from "../src/app/api/personal-center/upload/api";
 import { installDb } from "./fixture";
 
 const g = globalThis as any;

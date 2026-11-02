@@ -15,16 +15,16 @@
 //
 // 夹具即真实库（真迁移 + 真 sqlite）：0003__credential_kind 的默认值也一起被这层覆盖到。
 /* eslint-disable test/prefer-lowercase-title -- AC 编号是验收锚点，保留大写 */
-import type { WecomStoreDeps } from "../src/auth/api/_shared/wecom/store";
+import type { WecomStoreDeps } from "../src/app/api/auth/_shared/wecom/store";
 import { Buffer } from "node:buffer";
 import { createCipheriv, webcrypto } from "node:crypto";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { connectCorp } from "../src/auth/api/_shared/wecom/admin";
-import { createWecomClient, runtimeCache, runtimeHttp } from "../src/auth/api/_shared/wecom/client";
-import { callbackCreds, configuredKinds, corpIdentity, readBase, readCorpConfig, readSuiteConfig, wecomKinds } from "../src/auth/api/_shared/wecom/config";
-import { bytesToB64, utf8Bytes, wecomSignature } from "../src/auth/api/_shared/wecom/crypt";
-import { handleSuiteEvent } from "../src/auth/api/_shared/wecom/events";
-import { findCorpAuth, findProfile, probeProfile, saveProfile } from "../src/auth/api/_shared/wecom/store";
+import { connectCorp } from "../src/app/api/auth/_shared/wecom/admin";
+import { createWecomClient, runtimeCache, runtimeHttp } from "../src/app/api/auth/_shared/wecom/client";
+import { callbackCreds, configuredKinds, corpIdentity, readBase, readCorpConfig, readSuiteConfig, wecomKinds } from "../src/app/api/auth/_shared/wecom/config";
+import { bytesToB64, utf8Bytes, wecomSignature } from "../src/app/api/auth/_shared/wecom/crypt";
+import { handleSuiteEvent } from "../src/app/api/auth/_shared/wecom/events";
+import { findCorpAuth, findProfile, probeProfile, saveProfile } from "../src/app/api/auth/_shared/wecom/store";
 import { installDb } from "./fixture";
 
 const g = globalThis as any;
@@ -209,8 +209,8 @@ function stubUpstream(opts: { depts?: Array<{ id: string, name?: string }>, memb
 	return { calls };
 }
 
-const wecomApi = async () => (await import("../src/auth/api/wecom/api")).default;
-const adminApi = async () => (await import("../src/auth/api/wecom/admin/api")).default;
+const wecomApi = async () => (await import("../src/app/api/auth/wecom/api")).default;
+const adminApi = async () => (await import("../src/app/api/auth/wecom/admin/api")).default;
 
 /** 回调 timestamp 必须新鲜：重放守卫拒 ±5 分钟以外的报文，用固定值会让整段用例假红 */
 const nowSecs = () => String(Math.floor(Date.now() / 1000));

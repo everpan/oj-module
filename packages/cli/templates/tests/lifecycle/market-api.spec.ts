@@ -7,11 +7,11 @@
 // 简报 `task/:id` 段参数形态在模板 http 面无先例（contacts/detail?id= 同款 query 惯例），备案于任务报告。
 // 步骤面全 stub 注入（DIP）：fetch/exec/reload 不真跑；register/smoke/audit 走真实内存库夹具。
 /* eslint-disable test/prefer-lowercase-title -- 端点动词/路径是验收锚点，保留大写（installer.spec 同约定） */
-import type { FsFace } from "../../src/_platform/api/_lifecycle/atomic";
-import type { FetchFace } from "../../src/_platform/api/_lifecycle/steps/download";
-import type { ExecFace } from "../../src/_platform/api/_lifecycle/steps/extract";
-import type { ReloadFace } from "../../src/_platform/api/_lifecycle/steps/reload";
-import type { MarketEnv } from "../../src/_platform/api/market/api";
+import type { FsFace } from "../../src/app/api/_platform/_lifecycle/atomic";
+import type { FetchFace } from "../../src/app/api/_platform/_lifecycle/steps/download";
+import type { ExecFace } from "../../src/app/api/_platform/_lifecycle/steps/extract";
+import type { ReloadFace } from "../../src/app/api/_platform/_lifecycle/steps/reload";
+import type { MarketEnv } from "../../src/app/api/_platform/market/api";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import * as fsp from "node:fs/promises";
@@ -22,14 +22,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { parse } from "yaml";
 import { defaultTestKey, nodeVerifyEd25519, signedArchiveFor } from "../../../src/lifecycle/__tests__/helpers";
 import { signIndex } from "../../../src/publish";
-import { readLock, writeLock } from "../../src/_platform/api/_lifecycle/lock";
-import { compareVersions } from "../../src/_platform/api/_lifecycle/semver";
-import { createStateStore } from "../../src/_platform/api/_lifecycle/state";
-import { getTask, writeTask } from "../../src/_platform/api/_lifecycle/tasks";
-import { createTrustStore } from "../../src/_platform/api/_lifecycle/trust";
-import { invalidateAllUsers } from "../../src/_platform/api/_shared/service/infra/access";
-import { createMarketApi, marketEnv, parseVersionsJson, versionsJsonPathOf } from "../../src/_platform/api/market/api";
-import { localIndexSource } from "../../src/_platform/api/market/index-source";
+import { readLock, writeLock } from "../../src/app/api/_platform/_lifecycle/lock";
+import { compareVersions } from "../../src/app/api/_platform/_lifecycle/semver";
+import { createStateStore } from "../../src/app/api/_platform/_lifecycle/state";
+import { getTask, writeTask } from "../../src/app/api/_platform/_lifecycle/tasks";
+import { createTrustStore } from "../../src/app/api/_platform/_lifecycle/trust";
+import { invalidateAllUsers } from "../../src/app/api/_platform/_shared/service/infra/access";
+import { createMarketApi, marketEnv, parseVersionsJson, versionsJsonPathOf } from "../../src/app/api/_platform/market/api";
+import { localIndexSource } from "../../src/app/api/_platform/market/index-source";
 import { installDb } from "../fixture";
 
 function hexToBytes(hex: string): Uint8Array {
@@ -305,7 +305,7 @@ describe("权限门（R9：市场编排 superadmin 独占，meta 登录即可）
 	it("pair-pin：meta apiVersion === _platform/manifest.yaml version（手工镜像漂移防护，P2-9）", async () => {
 		// API_VERSION（market/api.ts）与 _platform/manifest.yaml version 为手工同步的双真源；
 		// 本测试经 meta 端点间接钉住 API_VERSION，漂移即红（peerPlatform 预检口径失真）。
-		const manifestPath = join(dirname(fileURLToPath(import.meta.url)), "../../src/_platform/api/manifest.yaml");
+		const manifestPath = join(dirname(fileURLToPath(import.meta.url)), "../../src/app/api/_platform/manifest.yaml");
 		const manifestVersion = (parse(readFileSync(manifestPath, "utf8")) as { version: string }).version;
 		const api = createMarketApi(makeEnv());
 		g.http = { user: { id: 1 } };

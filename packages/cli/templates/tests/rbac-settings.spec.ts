@@ -2,8 +2,8 @@
 /* eslint-disable test/prefer-lowercase-title -- AC 编号是验收锚点，保留大写 */
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 
-import { listLoginMethods, listSettings, updateSetting } from "../src/_platform/api/_shared/service/domain/settings";
-import { searchOplog } from "../src/_platform/api/_shared/service/infra/oplog";
+import { listLoginMethods, listSettings, updateSetting } from "../src/app/api/_platform/_shared/service/domain/settings";
+import { searchOplog } from "../src/app/api/_platform/_shared/service/infra/oplog";
 import { installDb } from "./fixture";
 
 let dbo: ReturnType<typeof installDb>;

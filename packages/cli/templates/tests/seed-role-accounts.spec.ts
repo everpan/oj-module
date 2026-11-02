@@ -16,7 +16,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 const req = createRequire(import.meta.url);
 const { DatabaseSync: Db } = req("node:sqlite") as { DatabaseSync: typeof DatabaseSync };
 
-const PLATFORM_API = join(dirname(fileURLToPath(import.meta.url)), "..", "src", "_platform", "api");
+const PLATFORM_API = join(dirname(fileURLToPath(import.meta.url)), "..", "src", "app", "api", "_platform");
 
 let dbo: InstanceType<typeof DatabaseSync>;
 

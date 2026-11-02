@@ -5,7 +5,7 @@
 //   · 参数要裁剪、要能容忍少了 tenant（此时沿用本地租户，不是登录失败）；
 //   · 授权入口即使没填企业代码也要跳（后端会回 400 说明缺什么，比前端静默不动好排查）。
 import { describe, expect, it } from "vitest";
-import { parseWecomLanding, wecomAuthorizePath } from "../src/login/web/wecom";
+import { parseWecomLanding, wecomAuthorizePath } from "../src/app/web/login/wecom";
 
 describe("p2-A：回跳落地参数解析", () => {
 	it("带齐 ticket 与 tenant → 解析出两者", () => {

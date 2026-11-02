@@ -10,12 +10,12 @@
 // deps 全注入：store 用 `enc:` 前后缀假加密（Node 侧 crypto 只读，设计 §9.1），
 // client 的 http/kv 用内存桩——真实网络与 AES 已由 wecom-crypt.spec / 运行时保证。
 /* eslint-disable test/prefer-lowercase-title -- D/AC 编号是验收锚点，保留大写 */
-import type { WecomCache, WecomHttp } from "../src/auth/api/_shared/wecom/client";
-import type { WecomConfig } from "../src/auth/api/_shared/wecom/config";
-import type { WecomStoreDeps } from "../src/auth/api/_shared/wecom/store";
+import type { WecomCache, WecomHttp } from "../src/app/api/auth/_shared/wecom/client";
+import type { WecomConfig } from "../src/app/api/auth/_shared/wecom/config";
+import type { WecomStoreDeps } from "../src/app/api/auth/_shared/wecom/store";
 
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { createWecomClient, runtimeCache } from "../src/auth/api/_shared/wecom/client";
+import { createWecomClient, runtimeCache } from "../src/app/api/auth/_shared/wecom/client";
 import {
 	assertEncKey,
 	eventUrlOf,
@@ -23,8 +23,8 @@ import {
 	readCallbackConfig,
 	readSuiteConfig,
 	siteRootOf,
-} from "../src/auth/api/_shared/wecom/config";
-import { envOfState, handleSuiteEvent } from "../src/auth/api/_shared/wecom/events";
+} from "../src/app/api/auth/_shared/wecom/config";
+import { envOfState, handleSuiteEvent } from "../src/app/api/auth/_shared/wecom/events";
 import {
 	assertUserActive,
 	buildAuthorizeUrl,
@@ -36,8 +36,8 @@ import {
 	loginLandingUrl,
 	putLoginState,
 	takeLoginState,
-} from "../src/auth/api/_shared/wecom/login";
-import { callbackFields, field } from "../src/auth/api/_shared/wecom/payload";
+} from "../src/app/api/auth/_shared/wecom/login";
+import { callbackFields, field } from "../src/app/api/auth/_shared/wecom/payload";
 import {
 	claimLoginTicket,
 	ensureTenant,
@@ -48,7 +48,7 @@ import {
 	saveProfile,
 	setProfileStatus,
 	tenantOfCorp,
-} from "../src/auth/api/_shared/wecom/store";
+} from "../src/app/api/auth/_shared/wecom/store";
 import { installDb } from "./fixture";
 
 let dbo: ReturnType<typeof installDb>;
