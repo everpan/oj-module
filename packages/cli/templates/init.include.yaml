@@ -20,9 +20,9 @@
 # `pnpm dev` 时忽略产物，不进发布包、也不进用户工程。守卫：
 # tests/cli/release-manifest.test.ts 逐条核对清单条目落在 tarball 内。
 #
-# 注意 web/src/{demo,home}/__client 不在清单：其 api 模块（api/src/demo、
-# api/src/home）是 demo-only 不进脚手架，client 生成物留着会指向不存在的端点，
-# 故 demo/home 只列页面源码（entry/locales/pages），不列整棵模块目录。
+# 注意 web/src/{home}/__client 不在清单：其 api 模块（api/src/home）是 demo-only
+# 不进脚手架，client 生成物留着会指向不存在的端点，故 home 只列页面源码
+# （entry/locales/pages），不列整棵模块目录。
 include:
   # —— 工程级文件 ——
   - README.md
@@ -101,12 +101,9 @@ include:
   - src/personal-center/api
   - src/system/api
   - src/web/api
-  # —— web 前端模块（demo/home 只列页面源码，__client 见顶部说明）——
+  # —— web 前端模块（home 只列页面源码，__client 见顶部说明）——
   - src/_platform/web
   - src/auth/web
-  - src/demo/web/entry.ts
-  - src/demo/web/locales
-  - src/demo/web/pages
   - src/home/web/entry.ts
   - src/home/web/locales
   - src/home/web/pages

@@ -30,14 +30,13 @@ const allModules = [
 	// R29：第三方方案不得仿照此调用面），默认随脚手架下发
 	{ name: "oj-market", entry: "src/oj-market/web/entry.ts" },
 	// #region demo-only
-	// 以下为模板内置的演示模块（demo/about/access/exception/outside/route-nest），
+	// 以下为模板内置的演示模块（about/access/exception/outside/route-nest），
 	// 用于把 templates 当可运行 demo 直接跑；其文件不在 `ojm init` 的
 	// init.include.yaml 白名单里，不拷入新工程，故本区间连同这些条目会被
 	// init 一并剥离，脚手架产出的配置不会残留指向缺失文件的死条目。
 	//
 	// 注意：新布局的清单是「扫描 + 覆盖」并集——注释掉不会让它们消失，
 	// 扫描仍会捡到 `src/<name>/web/entry.ts`。要「不构建」必须写 `enabled: false`。
-	{ name: "demo", entry: "src/demo/web/entry.ts", enabled: false },
 	{ name: "about", entry: "src/about/web/entry.ts", enabled: false },
 	{ name: "access", entry: "src/access/web/entry.ts", enabled: false },
 	{ name: "exception", entry: "src/exception/web/entry.ts", enabled: false },

@@ -118,7 +118,8 @@ describe("initProject", () => {
 		// 登录回跳 / logo / tabbar 均指向它，缺则落错误边界
 		expect(fs.existsSync(path.join(dest, "src/home/web/entry.ts"))).toBe(true);
 		expect(fs.existsSync(path.join(dest, "src/home/web/pages/index.tsx"))).toBe(true);
-		expect(fs.existsSync(path.join(dest, "src/demo/web/entry.ts"))).toBe(true);
+		// demo 已于 2026-11-02 彻底下线（模板删除 + 白名单移除）
+		expect(fs.existsSync(path.join(dest, "src/demo"))).toBe(false);
 		// login 模块提供 /login：shell 宿主不挂 runtime 内置 baseRoutes，
 		// 缺它则登出/回跳登录无路由可跳
 		const loginEntry = path.join(dest, "src/login/web/entry.ts");
@@ -303,15 +304,15 @@ describe("initProject", () => {
 			expect(fs.existsSync(path.join(dest, mod))).toBe(false);
 
 		// 1b) demo-only api 模块的前端 __client 生成物同样不拷（旧派生规则）：
-		//     client 留着会指向不存在的端点；但 demo/home 的页面源码照拷
+		//     client 留着会指向不存在的端点；home 的页面源码照拷，demo 已整体下线
 		for (const mod of ["src/demo/web/__client", "src/home/web/__client"])
 			expect(fs.existsSync(path.join(dest, mod))).toBe(false);
-		expect(fs.existsSync(path.join(dest, "src/demo/web/entry.ts"))).toBe(true);
+		expect(fs.existsSync(path.join(dest, "src/demo"))).toBe(false);
 		expect(fs.existsSync(path.join(dest, "src/home/web/entry.ts"))).toBe(true);
 
 		// 2) 默认模块照常在（oj-market 0.2.8 起默认下发：方案市场前端 +
 		//    _platform 市场编排面 /api/_platform/market/*）
-		for (const mod of ["src/home/web", "src/demo/web", "src/login/web", "src/notification/web", "src/oj-market/web"])
+		for (const mod of ["src/home/web", "src/login/web", "src/notification/web", "src/oj-market/web"])
 			expect(fs.existsSync(path.join(dest, mod))).toBe(true);
 		//    其 __tests__ 不进脚手架（用户工程无 web 侧 vitest 基建）
 		expect(fs.existsSync(path.join(dest, "src/oj-market/web/__tests__"))).toBe(false);
@@ -336,7 +337,7 @@ describe("initProject", () => {
 			paths: Record<string, unknown>
 		};
 		const openapiPaths = Object.keys(openapi.paths);
-		for (const mod of ["demo", "home"])
+		for (const mod of ["home"])
 			expect(openapiPaths.some(p => p.startsWith(`/api/${mod}/`))).toBe(false);
 		expect(openapiPaths.some(p => p.startsWith("/api/system/"))).toBe(true);
 

@@ -8,7 +8,6 @@
 		"paths": {
 			"#/_platform/*": ["./src/_platform/api/*"],
 			"#/auth/*": ["./src/auth/api/*"],
-			"#/demo/*": ["./src/demo/api/*"],
 			"#/home/*": ["./src/home/api/*"],
 			"#/notification/*": ["./src/notification/api/*"],
 			"#/personal-center/*": ["./src/personal-center/api/*"],

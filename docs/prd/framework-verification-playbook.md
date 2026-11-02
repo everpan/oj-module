@@ -15,7 +15,8 @@
 | 范围 | §0.5 双包 pack + 安装 → §1 init（315 项）→ §2 安装（本地 tgz + overrides）→ §3 探针 → §4 openapi + `ojm api`（6 契约 / 0 error）→ §5 build（6 后端 + 7 前端模块）+ tsc → §6 dev（9778/5175）→ §7 preview（release/js）。§7.1–§7.5 市场链路本轮未跑 |
 | 结果 | **通过**。构建产物核对：`dist/web/index.html` 含内联 `data-ojm-entry`（静态 module 标签 0 个）；modules.json 7 模块；importmap 无 echarts/editor/vditor，react-countup 为 `/assets/react-countup.js` 共享资产；home entry 无 rolldown require 桩；tsc 0 error；dev/preview 根 200、login 200（tenant 头）、settings superadmin 200 / admin **403**、users admin 200 |
 | 本次发现并处置（手册） | ① §0.5 `pnpm install --dir cli-pkg` 在 pnpm ≥11 因 esbuild postinstall 未审批失败 → 补 `allowBuilds` 步骤；② 未发版时 cli 的精确 runtime 依赖需改 `file:` tgz，且 overrides 必须写 `pnpm-workspace.yaml`（package.json 的 `pnpm.overrides` 被 pnpm ≥11 忽略）；③ §6 登录 curl 缺 `X-TENANT-ID: default`（租户默认开启，否则 400）；④ §10 探针 manifest 缺 `desc` 字段（`oj build` 直接 parse 失败）；⑤ §1/§4 目录判据仍是旧平铺布局（`api/src`、`web/src`）→ 全部改 module-root（`src/<name>/{api,web}`） |
-| 未改代码的观察 | ① `ojm init` 当前仍会拷入 `src/demo`（web 演示模块），新工程 modules.json 含 demo@0.1.0；如产品要求下线需同时删模板 + `init.include.yaml` 条目；② dev 在 5174 被占用时自动改用 5175（按 `ojm dev` 输出判断端口，勿硬编码） |
+| 未改代码的观察 | dev 在 5174 被占用时自动改用 5175（按 `ojm dev` 输出判断端口，勿硬编码） |
+| 演练后变更 | 按产品要求**彻底下线 demo**：删模板 `src/demo`、`init.include.yaml` 3 条、`web.config.ts` demo 条目；init 由 315 项降为 305 项，白名单校验与 18 项 init 测试全过 |
 
 ### 上一次基线（2026-10-31，oj 0.1.115 本地 / cli+runtime 0.2.45 工作区态；发布门禁验证 + walkthrough 14/14）
 
