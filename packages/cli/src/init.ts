@@ -418,7 +418,10 @@ function pruneUnincludedApiPaths(destDir: string, include: Set<string>, report: 
 	if (mods.size === 0)
 		return;
 	const openapiPath = path.join(destDir, "openapi.json");
-	const doc = JSON.parse(fs.readFileSync(openapiPath, "utf-8")) as { paths?: Record<string, unknown> };
+	const doc = JSON.parse(fs.readFileSync(openapiPath, "utf-8")) as {
+		paths?: Record<string, unknown>
+		tags?: { name?: string }[]
+	};
 	const paths = doc.paths ?? {};
 	const dropped = Object.keys(paths).filter((p) => {
 		const mod = /^\/api\/([^/]+)\//.exec(p)?.[1];
@@ -428,6 +431,10 @@ function pruneUnincludedApiPaths(destDir: string, include: Set<string>, report: 
 		return;
 	for (const p of dropped)
 		delete paths[p];
+	// 顶层 tags 也要同步：只裁路径会留下指向不存在模块的 tag（契约自相矛盾，
+	// oj openapi 重产时又会消失，属 drift 噪声）。
+	if (Array.isArray(doc.tags))
+		doc.tags = doc.tags.filter(t => typeof t.name !== "string" || mods.has(t.name));
 	fs.writeFileSync(openapiPath, `${JSON.stringify(doc, null, "\t")}\n`);
 	report.created.push(`openapi.json 裁掉未收录 api 模块端点 ${dropped.length} 条`);
 }

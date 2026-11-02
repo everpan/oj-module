@@ -47,6 +47,9 @@
 
 - `tests/cli/cli-build` 等仍以 playground 为靶场的用例改指模板工程；`ojm build` 产物契约
   （单文件 / 共享依赖 external / modules.json integrity）覆盖聚合模块。
+- **`ojm init` 产出的 `openapi.json` 顶层 `tags` 未随路径裁剪**：裁掉 demo-only 模块端点后
+  仍留着 `home` tag，与新工程的实际模块集不一致（重跑 `oj openapi` 即消失，属漂移噪声）。
+  现在 `tags` 与 `paths` 同步裁剪。
 
 
 ## [0.2.51] - 2026-11-02

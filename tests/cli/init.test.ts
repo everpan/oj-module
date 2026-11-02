@@ -347,11 +347,15 @@ describe("initProject", () => {
 		//    模块的端点照留
 		const openapi = JSON.parse(fs.readFileSync(path.join(dest, "openapi.json"), "utf-8")) as {
 			paths: Record<string, unknown>
+			tags?: { name?: string }[]
 		};
 		const openapiPaths = Object.keys(openapi.paths);
 		for (const mod of ["home"])
 			expect(openapiPaths.some(p => p.startsWith(`/api/${mod}/`))).toBe(false);
 		expect(openapiPaths.some(p => p.startsWith("/api/system/"))).toBe(true);
+		// tags 与 paths 同步裁剪：留着 home tag 会让产出契约自相矛盾
+		expect(openapi.tags?.some(t => t.name === "home") ?? false).toBe(false);
+		expect(openapi.tags?.some(t => t.name === "system") ?? false).toBe(true);
 
 		// 5) 模板自运行产物/元数据不泄漏进用户工程：白名单自身、模板的
 		//    package.json（由 init 现场生成）、各级 node_modules 均不在拷贝结果里

@@ -4,7 +4,20 @@
 > **配套**：[`framework-development-guide.md`](./framework-development-guide.md)（原理）、[`oj-fullstack-tutorial.md`](./oj-fullstack-tutorial.md)（跟做）。
 > **原则**：每一步都有**可判定通过/失败的检查点**，不要只看命令退出码，要核对产物。
 
-### 最近一次基线（2026-11-02，oj 0.1.116 / cli+runtime 0.2.53 打包态；内联早跳 + 路由级角色过滤回归）
+### 最近一次基线（2026-11-02，oj 0.1.116 / cli+runtime 0.2.54 打包态；模板模块聚合 + 契约全覆盖回归）
+
+| 项 | 值 |
+| --- | --- |
+| 日期 | 2026-11-02 |
+| 框架包版本 | `cli`/`runtime` **0.2.54**（§0.5 双包 pack；runtime 未发 npm → cli 依赖改 `file:` tgz + 工程 `pnpm-workspace.yaml` overrides） |
+| oj | `0.1.116`（`ojm init` 自动安装；探针 `web v0.1.0 (1 api file(s))` 通过，构建机路径零泄漏） |
+| 验证动机 | 0.2.54 发布前全链路回归：模板五个框架内置模块（home/login/personal-center/notification/system）聚合为 `src/app/web` 多根模块、`i18nNamespaces`、`clientOwners`、86 端点 `.schema`+`.response` 全覆盖、`apps/playground*` 下线 |
+| 范围 | §0.5 双包 pack + 安装 → §1 init（312 项）→ §2 安装（本地 tgz + overrides）→ §3 探针 → §4 `oj openapi` + `ojm api`（6 契约 / 0 error）→ §5 build（6 后端 + 2 前端模块）+ tsc → §6 dev（84 routes / 80 input contracts）→ §7 preview（release/js，带 dist `--check` 0/0）→ §7.5 C/D/E（`ojm new` 四类拒绝、`build --bundle` 确定性打包、内置排除与两段式零增量）。§7.1–§7.4 市场链路本轮未跑 |
+| 结果 | **通过**。① 脚手架：`src/app/web` 六根齐全（home/login/personal-center/notification/system），旧 `src/{home,login,personal-center,notification,system}/web` 零残留，demo-only 模块零泄漏；`src/.ojm-builtin.json` 含 `app`/`oj-market`。② 契约：`ojm api` 6 契约 / 写入 0 / 跳过未变 12；`--check` 0 error / 0 warn（无 dist 时第三腿跳过，preview 后带 dist 复跑仍 0/0）。③ 构建：后端 6 模块（_platform 11 / auth 7 / notification 2 / personal-center 2 / system 15 / web 3 api file），前端 2 模块（app、oj-market），app 单 chunk 1.6MB + integrity；`tsc` 0 error。④ dev：`routes: 84 method-row(s), 69 pattern(s), 40 api file(s)`、`input contracts: 80`；登录 superadmin 成功；`system/settings` superadmin 200 / admin **403** / 无 token 401；通知走 provider `/api/notification/notifications` 200；5174 根 200、`/login` 200、app/oj-market entry.js 200、importmap 含 runtime。⑤ preview：migrate 门禁过、release 路由来自 `dist/api`、API 链复跑全对、SPA 深链 200。⑥ 菜单序轴与拆分时逐项一致（`/home` 1、`/personal-center` 110、`/oj-market` 200、`/system` -100；login 3 处 + notification 1 处 `hideInMenu`）。 |
+| 本次发现并处置 | ① **init 产出 `openapi.json` 的顶层 `tags` 未随路径裁剪（已修）**：`pruneUnincludedApiPaths` 只删路径，留着 `home` tag——产出契约与实际模块集不一致，`oj openapi` 重产即消失（drift 噪声）。修法 = `tags` 按同一白名单模块集过滤；`tests/cli/init` 增回归断言（18/18 绿）。② 首次 `ojm init` 报告「跳过 global.d.ts」属预期：init 先拷 devkit 版 `global.d.ts`，模板同名条目随后跳过（devkit 优先）。③ 上游既有：oj 0.1.116 的 `api-manual.md:267` 仍引用仓内路径 `docs/migration.md`（devkit 自包含检查命中 1 条，非本轮回归）。④ 观察：`oj-market` 未声明 `peerRuntime`，故 `modules.json` 该条无 `peerRuntime`（第一方可选模块、无版本门禁，沿用现状）。 |
+| 未改代码的观察 | §4 中「init 随附 openapi.json 重新生成后哈希不同」的差异**仅**是本次修复的 stale tag（paths/operations 逐条相等），非契约漂移。 |
+
+### 上一次基线（2026-11-02，oj 0.1.116 / cli+runtime 0.2.53 打包态；内联早跳 + 路由级角色过滤回归）
 
 | 项 | 值 |
 | --- | --- |
@@ -424,7 +437,7 @@ pnpm exec tsc --noEmit -p tsconfig.json     # typecheck
 - [ ] 输出「已合并宿主站点 → web/dist」「构建 books@0.1.0」「清单已生成」
 - [ ] `web/dist/` 含 `index.html`、`assets/`、`modules/`、`modules.json`、`versions.json`
 - [ ] `web/dist/modules/books/0.1.0/entry.js` 存在（带 `integrity`）
-- [ ] `modules.json` 含 `home` / `demo` / `login` / `books`（**`home` / `login` 不可少**：shell 预构建把 `VITE_BASE_HOME_PATH` 定为 `/home` 且不挂 runtime 内置登录兜底，缺则登录回跳 / 登出 / 点 logo 落错误边界）
+- [ ] `modules.json` 含 `app`（框架内置页面多根模块：/home /login /personal-center /notification /system）+ 用户模块。**`app` 不可少**：shell 预构建把 `VITE_BASE_HOME_PATH` 定为 `/home` 且不挂 runtime 内置登录兜底，缺 `/home` / `/login` 则登录回跳 / 登出 / 点 logo 落错误边界
 - [ ] `modules.json` 中 books 条目 `peerRuntime` 与宿主 runtime 版本相容
 - [ ] **typecheck 0 error**（含生成的 `__client/api.ts`——页面 import 的 `booksListGet`/`BooksListGetData` 等 operationId 派生名须对得上）
 
@@ -724,7 +737,7 @@ node "$CLI_PKG/bin/ojm.mjs" market publish --real . --id demo.publisher
 - [ ] `pnpm install` 成功，`cli`/`runtime` 两包版本一致（未发版按 §0 旁路 2）
 - [ ] oj 二进制通过 §3 探针（JsRuntime 能初始化），版本 ≥ 门禁 0.1.73
 - [ ] `ojm api` 生成 `web/src/books/__client`（operationId 派生名、出参类型存活）；`--check` 无 drift（内置 `auth`/`web`/`notifications` 经 `api/.ojm-api-exempt.json` 豁免，见 §4）
-- [ ] `ojm build` 产出全部后端模块 + 合并站点 + `modules.json`（含 home/login/books）
+- [ ] `ojm build` 产出全部后端模块 + 合并站点 + `modules.json`（含 `app` + 用户模块）
 - [ ] `typecheck` 0 error
 - [ ] `ojm dev`：登录 / 列表过滤 / 新增 / 401 / 通知兜底全对
 - [ ] （可选）`ojm preview` 通过 migrate、服务与带 dist 的 `--check` 三腿
