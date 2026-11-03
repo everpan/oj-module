@@ -109,6 +109,13 @@ export function startOj(
 
 	let settled = false;
 	let pollTimer: NodeJS.Timeout | undefined;
+	// oj 端口被占用时 stderr 通常会带这些签名（Rust 绑定失败 / 系统错误码）；命中即
+	// 补一条「先杀占用进程」的可操作提示，避免只甩晦涩的 oj 原生报错。
+	const portInUseHint = (text: string): string => {
+		if (/Address already in use|EADDRINUSE|os error 98|os error 10048|地址已被使用|端口已被占用/i.test(text))
+			return "\n可能原因：后端端口被占用（通常是上次 ojm dev 未正常退出留下的 oj 孤儿进程）。请先结束占用进程再重试。";
+		return "";
+	};
 	const ready = new Promise<void>((resolve, reject) => {
 		const intervalMs = poll.intervalMs ?? 500;
 		const timeoutMs = poll.timeoutMs ?? 10_000;
@@ -129,8 +136,9 @@ export function startOj(
 		}, intervalMs);
 		pollTimer.unref();
 		child.once("exit", (code) => {
+			const hint = portInUseHint(stderrTail);
 			finish(new Error(
-				`[ojm] oj 进程异常退出（code ${code}）。\n`
+				`[ojm] oj 进程异常退出（code ${code}）。${hint}\n`
 				+ `stderr 尾部：\n${stderrTail.trim() || "（无输出）"}`,
 			));
 		});
@@ -141,8 +149,9 @@ export function startOj(
 			finish(new Error(`[ojm] 无法启动 oj（${binPath}）：${err.message}${hint}`));
 		});
 		const timeout = setTimeout(() => {
+			const hint = portInUseHint(stderrTail);
 			finish(new Error(
-				`[ojm] oj 健康检查超时（${Math.round(timeoutMs / 1000)}s）：${healthUrl} 一直不可达。\n`
+				`[ojm] oj 健康检查超时（${Math.round(timeoutMs / 1000)}s）：${healthUrl} 一直不可达。${hint}\n`
 				+ `stderr 尾部：\n${stderrTail.trim() || "（无输出）"}`,
 			));
 		}, timeoutMs);

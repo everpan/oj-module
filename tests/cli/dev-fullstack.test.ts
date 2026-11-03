@@ -1,4 +1,5 @@
 import type { AddressInfo } from "node:net";
+import type { DevOptions } from "../../packages/cli/src/dev";
 import type { OjProcess } from "../../packages/cli/src/oj";
 import { Buffer } from "node:buffer";
 import fs from "node:fs";
@@ -20,10 +21,16 @@ import { devServer, shutdownDev } from "../../packages/cli/src/dev";
 
 const FIXTURE_ROOT = path.join(process.cwd(), ".tmp-dev-fx");
 
-function makeFixture(kind: "fullstack" | "frontend" | "module-root", base = "/api"): { root: string, port: number } {
+// 顺序发号（非随机）：ojm dev 现会对 oj 后端端口做预检，前端 dev server 又复用同一
+// 端口号，若两个 fixture 抽到同一随机端口会相互误判「端口被占用」而失败。发号保证
+// 同文件内各 fixture 端口互斥（并行用例也各自拿到不同号）。
+let fixturePortSeq = 21000;
+function makeFixture(kind: "fullstack" | "frontend" | "module-root", base = "/api", port?: number): { root: string, port: number } {
 	fs.mkdirSync(FIXTURE_ROOT, { recursive: true });
 	const root = fs.mkdtempSync(path.join(FIXTURE_ROOT, `dev-${kind}-`));
-	const port = 21000 + Math.floor(Math.random() * 1000); // 并行测试端口区间不得重叠（playground-oj 设计 §10）
+	// 并行测试端口区间不得重叠（playground-oj 设计 §10）。oj 后端端口默认落在此区间；
+	// 需要显式占用该端口的用例（端口冲突预检）应传入区间外的端口以避免与并行用例相撞。
+	const usedPort = port ?? fixturePortSeq++;
 	fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({ type: "module" }));
 	if (kind === "module-root") {
 		// 新布局：源码根 <root>/src，config 在仓库根；模块两侧至少一侧有标记文件
@@ -48,16 +55,16 @@ function makeFixture(kind: "fullstack" | "frontend" | "module-root", base = "/ap
 	].join("\n"));
 	if (kind === "fullstack") {
 		fs.mkdirSync(path.join(root, "api/src"), { recursive: true });
-		fs.writeFileSync(path.join(root, "api/config.yaml"), `server:\n  host: 127.0.0.1\n  port: ${port}\nmounts:\n  - prefix: ${base}\n    api: src\n  - prefix: /cdn\n    web: ../cdn\n`);
+		fs.writeFileSync(path.join(root, "api/config.yaml"), `server:\n  host: 127.0.0.1\n  port: ${usedPort}\nmounts:\n  - prefix: ${base}\n    api: src\n  - prefix: /cdn\n    web: ../cdn\n`);
 	}
 	if (kind === "module-root") {
-		fs.writeFileSync(path.join(root, "config.yaml"), `server:\n  host: 127.0.0.1\n  port: ${port}\nmounts:\n  - prefix: ${base}\n    api: src\n`);
+		fs.writeFileSync(path.join(root, "config.yaml"), `server:\n  host: 127.0.0.1\n  port: ${usedPort}\nmounts:\n  - prefix: ${base}\n    api: src\n`);
 		// 能力探针：新布局起 oj 前要先确认 --module-root 可用（否则 fail-fast）
 		fs.mkdirSync(path.join(root, "bin"), { recursive: true });
 		const oj = path.join(root, "bin", "oj");
 		fs.writeFileSync(oj, "#!/bin/sh\ncase \"$1 $2\" in\n  \"build --help\") echo '      --module-root <GLOB>  模块根 glob' ;;\n  \"-V \"*) echo 'oj 0.1.999' ;;\nesac\nexit 0\n", { mode: 0o755 });
 	}
-	return { root, port };
+	return { root, port: usedPort };
 }
 
 function listenOn(server: http.Server): Promise<number> {
@@ -191,6 +198,37 @@ describe("devServer 全栈接线", () => {
 		const feRes = await get(fePort, "/cdn/bundles.yaml");
 		expect(feRes.status).toBe(404); // 静态层对未知带后缀路径的既有 404（非反代、非崩溃）
 		await stopServer(feServer);
+	});
+
+	it("后端 oj 端口被占用时：禁止启动并给出清晰提示，且绝不调用 ojStarter（不留下 oj 孤儿）", async () => {
+		// oj 后端端口用区间外的值，避免与并行用例的随机端口相撞
+		const ojPort = 44021;
+		const { root } = makeFixture("fullstack", "/api", ojPort);
+		// 占用 oj 后端端口，模拟「上次 ojm dev 未正常退出、遗留 oj 孤儿进程」
+		const occupier = http.createServer((_req, res) => res.end("busy"));
+		await new Promise<void>((resolve, reject) => {
+			occupier.listen(ojPort, "127.0.0.1", () => resolve());
+			occupier.once("error", reject);
+		});
+
+		let ojStarterCalled = false;
+		const recordingStarter: NonNullable<DevOptions["ojStarter"]> = () => {
+			ojStarterCalled = true;
+			return { port: 0, ready: Promise.resolve(), stop: async () => {} };
+		};
+
+		await expect(
+			devServer(root, {
+				port: 44099, // 前端 dev 端口（与 oj 端口错开，避免自动顺延干扰断言）
+				shellDist: path.join(root, "shell-dist"),
+				buildModulesFn: async () => {},
+				ojStarter: recordingStarter,
+			}),
+		).rejects.toThrow(/被占用/);
+
+		// 关键不变量：端口冲突时不能半启动——既不拉起 oj，也不创建前端 http server
+		expect(ojStarterCalled).toBe(false);
+		await stopServer(occupier);
 	});
 
 	it("module-root 布局：oj 收到 --module-root <root>/src（不是 --api-path），config 取自仓库根", async () => {

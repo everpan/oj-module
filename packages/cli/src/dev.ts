@@ -39,7 +39,8 @@ import { resolveCdnLayout } from "./market/cdn-layout";
 import { startOj } from "./oj";
 import { requireModuleRootCapability } from "./oj-caps";
 import { ensureDevCert } from "./oj-cert";
-import { readOjApiPrefix } from "./oj-config";
+import { readOjApiPrefix, readOjPort, readOjServerField } from "./oj-config";
+import { isPortOccupied } from "./port-check";
 import { createStaticHandler, decodeReqPath, listenOnFreePort } from "./static-handler";
 import { resolveShellDist } from "./versions";
 
@@ -107,6 +108,21 @@ export async function devServer(projectRoot: string, opts: DevOptions = {}): Pro
 			? ["--module-root", layout.moduleRoot]
 			: resolve(projectRoot, "api/src");
 		apiBase = readOjApiPrefix(configPath);
+		// 后端端口预检：被占用（通常上次 ojm dev 未正常退出、遗留 oj 孤儿进程仍在跑）
+		// 直接禁止启动并给清晰指引，避免 oj 健康检查超时后才以晦涩信息失败。
+		const backendPort = readOjPort(configPath);
+		const backendHost = readOjServerField(configPath, "host") || "127.0.0.1";
+		if (await isPortOccupied(backendPort, backendHost)) {
+			throw new Error(
+				`[ojm] 后端 API 端口 ${backendPort} 已被占用，已禁止启动 ojm dev。\n`
+				+ "        原因通常是：上一次 ojm dev 未正常退出，遗留的 oj 进程仍在占用该端口。\n"
+				+ "        （oj 后端默认端口 9778；若 config.yaml 的 server.port 改过则为对应值。）\n\n"
+				+ "        请先结束占用该端口的进程，再重新运行 ojm dev：\n"
+				+ `          macOS / Linux： lsof -ti tcp:${backendPort} | xargs kill -9\n`
+				+ `          Windows：        netstat -ano | findstr :${backendPort}  找到 PID 后  taskkill /PID <PID> /F\n\n`
+				+ "        已停止启动，未留下新的 oj 孤儿进程。",
+			);
+		}
 		await ensureDevCert(configPath);
 		const fallbackStarter = (cfg: string, b: string, apiSrc: string | string[]) => startOj(cfg, b, apiSrc);
 		const starter: NonNullable<DevOptions["ojStarter"]> = opts.ojStarter ?? fallbackStarter;

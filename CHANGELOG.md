@@ -29,6 +29,14 @@
   按钮。回归：`tests/rbac-users.spec.ts`（五条路径 403 + 库内字段一个没动 + 超管改超管放行
   + admin 改普通用户照旧）、`tests/users-page.spec.ts`（置灰判定，与后端同口径）。
 
+- **`ojm dev` 后端端口预检（避免静默失败 / 孤儿进程）**：全栈形态启动前先探测 oj 后端端口
+  （`server.port`，默认 9778）是否已被占用——通常是上次 `ojm dev` 未正常退出遗留的 oj 孤儿
+  进程。被占用时直接给出清晰指引（含 macOS / Linux / Windows 的查杀命令）并**禁止启动**，
+  不再等 oj 健康检查超时才以晦涩信息失败；同时收紧 `startOj` 错误提示：stderr 命中端口占用
+  签名时补「先结束占用进程」的可操作提示（`ojm dev` 与 `ojm preview` 通用）。
+  回归：`packages/cli/src/__tests__/port-check.test.ts`、`tests/cli/dev-fullstack.test.ts`
+  （端口被占用时禁止启动且不调用 ojStarter）。
+
 ## [0.2.56] - 2026-11-02
 
 ### Added
