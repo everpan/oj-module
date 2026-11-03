@@ -65,6 +65,59 @@ export interface SolutionSnapshot {
 	permissions: string[]
 }
 
+/** 角色 title 的裸 i18n key 形状（`pm:role.sales`；0018 迁移回填同口径） */
+const TITLE_KEY_SHAPE = /^[a-z][\w-]*:/;
+
+/**
+ * 站点默认语言（R4）：sys_setting `site.language`，无行/空值回退 zh-CN
+ * （与前端 preference 缺省同值；未来设置面落库即自动生效）。
+ */
+export async function siteLanguage(): Promise<string> {
+	const rows = await db.table("sys_setting").select(["value"]).where({ field: "key", op: "eq", value: "site.language" }).all() as Array<{ value: string | null }>;
+	const v = rows[0]?.value;
+	return typeof v === "string" && v.trim() ? v.trim() : "zh-CN";
+}
+
+/**
+ * 角色 title 落库前解析（R1，registering 段消费；升级重装同路径 = R3 重解析）。
+ * 仅 title 命中 key 形状才尝试；ns（冒号前段）=== 模块名才读本包 locale（跨 ns 不越界）；
+ * dotted path 取值须为非空 string。数据源 = 方案包 `web/modules/<ns>/locales/<lang>.json`
+ * （bundle 侧随包，见 cli bundle.ts）。任何失败（无文件/坏 JSON/缺 key/非 string）保留原文
+ * 并继续——翻译永不失败安装（R1 红线）。
+ */
+export async function resolveDeclTitles(
+	decl: SolutionDecl,
+	stagingDir: string,
+	lang: string,
+	readFile: (path: string) => Promise<Uint8Array>,
+): Promise<SolutionDecl> {
+	const roles = [...decl.roles];
+	for (let i = 0; i < roles.length; i++) {
+		const title = roles[i]!.title;
+		if (!TITLE_KEY_SHAPE.test(title)) {
+			continue;
+		}
+		const ns = title.slice(0, title.indexOf(":"));
+		if (ns !== decl.module) {
+			continue;
+		}
+		try {
+			const bytes = await readFile(`${stagingDir}/web/modules/${ns}/locales/${lang}.json`);
+			let node: unknown = JSON.parse(new TextDecoder().decode(bytes));
+			for (const part of title.slice(title.indexOf(":") + 1).split(".")) {
+				node = node == null ? undefined : (node as Record<string, unknown>)[part];
+			}
+			if (typeof node === "string" && node.trim()) {
+				roles[i] = { ...roles[i]!, title: node };
+			}
+		}
+		catch {
+			// 解析失败 = 回退原文（R1）
+		}
+	}
+	return { ...decl, roles };
+}
+
 /** 首段提取（/wiki/docs → wiki）——占用判定粒度：前缀段冲突即整段首段比较（P1-5 备案③） */
 function firstSeg(path: string): string {
 	return path.split("/")[1] ?? "";

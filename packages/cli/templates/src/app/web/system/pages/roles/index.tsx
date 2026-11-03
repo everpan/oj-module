@@ -38,7 +38,13 @@ export default function RolesPage() {
 			),
 		},
 		{ title: "module", dataIndex: "module" },
-		{ title: "title", dataIndex: "title" },
+		{
+			// R2：solution 角色带 title_key → 按当前语言实时翻译，title（安装期解析文本）兜底；
+			// custom/builtin 无 key 原样显示 title（对齐下方权限点 title_key 的渲染先例）
+			title: "title",
+			dataIndex: "title",
+			render: (_: string, row: RoleRow) => (row.title_key ? t(row.title_key, { defaultValue: row.title ?? "" }) : row.title),
+		},
 		{ title: t("system:rolesPage.holders"), dataIndex: "holders" },
 		{
 			title: t("system:rolesPage.permissions"),

@@ -31,7 +31,7 @@ import { download } from "./steps/download";
 import { extract } from "./steps/extract";
 import { maxAppliedSeq, migrate, rollbackGuard } from "./steps/migrate";
 import { preflight } from "./steps/preflight";
-import { registerSolution } from "./steps/register";
+import { registerSolution, resolveDeclTitles, siteLanguage } from "./steps/register";
 import { reloadAndAssert } from "./steps/reload";
 import { smoke } from "./steps/smoke";
 import { verify } from "./steps/verify";
@@ -261,7 +261,8 @@ async function lockCommitStage(req: InstallRequest): Promise<StageResult> {
 }
 
 /**
- * manifest.yaml（C2 形状）→ SolutionDecl（D10 出口入参）：roles[].title_key → title、
+ * manifest.yaml（C2 形状）→ SolutionDecl（D10 出口入参）：roles[].title/title_key 透传
+ * （title 此刻仍是原始 key，registering 段落库前经 resolveDeclTitles 按站点语言解析，R1/R4）、
  * settings.groups[].items[] 摊平、enum options 序列化为 JSON 字符串（sys_setting.options 形态）。
  */
 export function declOf(req: InstallRequest): SolutionDecl {
@@ -297,6 +298,7 @@ export function declOf(req: InstallRequest): SolutionDecl {
 		roles: (Array.isArray(m.roles) ? m.roles : []).filter(isObj).map(r => ({
 			name: typeof r.name === "string" ? r.name : "",
 			title: typeof r.title_key === "string" ? r.title_key : "",
+			title_key: typeof r.title_key === "string" ? r.title_key : undefined,
 			permissions: Array.isArray(r.permissions) ? r.permissions.map(String) : [],
 		})),
 		// 顶层 permissions[] 的 code：无角色权限点（系统预置点）唯一能落库的来源，别在此丢弃
@@ -316,7 +318,10 @@ export function declOf(req: InstallRequest): SolutionDecl {
 }
 
 async function registerStage(req: InstallRequest): Promise<StageResult> {
-	return registerSolution(declOf(req));
+	// R1/R4：落库前按站点默认语言解析角色 title（数据源 = 包内 locales，staging 此刻仍在；
+	// 解析失败回退原文绝不失败安装）。fsFace 注入读文件面（测试 stub 同 DIP 纪律）。
+	const decl = await resolveDeclTitles(declOf(req), req.staging, await siteLanguage(), p => fsFace().readFile(p));
+	return registerSolution(decl);
 }
 
 async function deployWebStage(req: InstallRequest): Promise<StageResult> {

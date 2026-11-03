@@ -175,6 +175,7 @@ export const schemas = {
 	"name": z.string(),
 	"module": z.string(),
 	"title": z.string().nullable(),
+	"title_key": z.string().nullable(),
 	"description": z.string().nullable(),
 	"builtin": z.boolean(),
 	"deprecated": z.boolean(),

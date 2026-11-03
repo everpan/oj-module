@@ -9,6 +9,8 @@ export interface RoleRow {
 	name: string
 	module: string
 	title: string | null
+	/** 原始 i18n key（R2：solution 角色安装期解析锚；custom/builtin 为 null，UI 据此实时翻译） */
+	title_key: string | null
 	description: string | null
 	builtin: boolean
 	deprecated: boolean
@@ -60,7 +62,7 @@ async function invalidateHolders(roleName: string): Promise<void> {
 }
 
 export async function listRoles(): Promise<RoleRow[]> {
-	const roles = await db.table("sys_role").select(["name", "module", "title", "description", "builtin", "deprecated"]).orderBy([{ field: "name" }]).all() as Array<Record<string, unknown>>;
+	const roles = await db.table("sys_role").select(["name", "module", "title", "title_key", "description", "builtin", "deprecated"]).orderBy([{ field: "name" }]).all() as Array<Record<string, unknown>>;
 	const holders = await db.table("sys_user_role").select(["role_name", { fn: "count", as: "c" }]).groupBy(["role_name"]).all() as Array<{ role_name: string, c: number }>;
 	const binds = await db.table("sys_role_permission").select(["role_name", "permission_code"]).orderBy([{ field: "permission_code" }]).all() as Array<{ role_name: string, permission_code: string }>;
 	const holderMap = new Map(holders.map(h => [h.role_name, Number(h.c)]));
@@ -71,6 +73,7 @@ export async function listRoles(): Promise<RoleRow[]> {
 		name: String(r.name),
 		module: String(r.module),
 		title: r.title == null ? null : String(r.title),
+		title_key: r.title_key == null ? null : String(r.title_key),
 		description: r.description == null ? null : String(r.description),
 		builtin: Number(r.builtin) === 1,
 		deprecated: Number(r.deprecated) === 1,

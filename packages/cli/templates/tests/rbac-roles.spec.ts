@@ -157,6 +157,15 @@ describe("列表支撑（C2 页面数据源）", () => {
 		expect(perms.find(p => p.code === "wiki.new")?.deprecated).toBe(false);
 	});
 
+	it("listRoles 带出 title_key（R2：solution 角色 UI 实时翻译锚；custom/builtin 为 null）", async () => {
+		// solution 角色带 title_key（0018 起）；custom 角色管理员手填 title、无 key
+		dbo.prepare("INSERT INTO sys_role (name, module, title, title_key, builtin) VALUES ('pm.sales', 'pm', '销售', 'pm:role.sales', 0)").run();
+		await createRole({ name: "custom.tk", title: "手填" });
+		const roles = await listRoles();
+		expect(roles.find(x => x.name === "pm.sales")?.title_key).toBe("pm:role.sales");
+		expect(roles.find(x => x.name === "custom.tk")?.title_key).toBe(null);
+	});
+
 	it("listRoles 原样返回 superadmin（只在 /system/roles 展示层隐去）", async () => {
 		// 成员资格页（users/roles.tsx）把 superadmin 当可授予项（仅 superadmin 可勾选），
 		// 页面数据源里少了它会让「授予超级管理员」直接不可用。过滤只做在展示层。

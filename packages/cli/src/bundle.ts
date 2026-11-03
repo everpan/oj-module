@@ -308,6 +308,16 @@ async function assembleBundle(projectRoot: string, layout: ProjectLayout, plan: 
 			}
 			fs.mkdirSync(path.join(root, "web", "modules"), { recursive: true });
 			fs.cpSync(ownWeb, path.join(root, "web", "modules", name), { recursive: true });
+			// R1 数据源随包（计划 docs/plans/20261103-0948）：安装期角色 title 解析读
+			// <包>/web/modules/<name>/locales/<lang>.json——构建产物不含 locales（源码 JSON
+			// 被 vite 内联进 JS chunk），故从源码树复制双语；目录不存在（纯后端段缺 locales）静默跳过。
+			for (const lang of ["zh-CN", "en-US"]) {
+				const src = path.join(webSrcOf(layout, name), "locales", `${lang}.json`);
+				if (fs.existsSync(src)) {
+					fs.mkdirSync(path.join(root, "web", "modules", name, "locales"), { recursive: true });
+					fs.copyFileSync(src, path.join(root, "web", "modules", name, "locales", `${lang}.json`));
+				}
+			}
 			const web = m.web as Record<string, unknown>;
 			for (const rel of [web.entry, ...(Array.isArray(web.css) ? web.css : [])]) {
 				if (typeof rel === "string" && !fs.existsSync(path.join(root, "web", rel))) {

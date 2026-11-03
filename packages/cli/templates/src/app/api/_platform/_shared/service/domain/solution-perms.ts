@@ -7,7 +7,10 @@
 export interface SolutionRoleDecl {
 	/** 完整角色名（含 `<module>.` 前缀，AC1-11 由安装器侧前缀校验） */
 	name: string
+	/** 解析后的可读文本（站点默认语言；解析失败 = 原始 key，R1 回退） */
 	title: string
+	/** 原始 i18n key（R2：UI 实时翻译锚，对齐 sys_permission.title_key 先例；解析失败与 title 同值） */
+	title_key?: string
 	/** 声明绑定：insert-if-absent 写入，管理员调整永不被覆写（AC1-15） */
 	permissions?: string[]
 }
@@ -37,12 +40,13 @@ export async function upsertSolutionPerms(m: SolutionManifest): Promise<UpsertRe
 
 	for (const role of m.roles) {
 		const existing = await db.table("sys_role").select(["name"]).where({ field: "name", op: "eq", value: role.name }).all() as unknown[];
-		// upsert：行存在只覆盖元数据（title），name/builtin 不动（AC2-2 元数据覆盖）
+		// upsert：行存在只覆盖元数据（title/title_key——R3 升级即重解析：新包 locale 改进随升级传播），
+		// name/builtin 不动（AC2-2 元数据覆盖）
 		if (existing.length) {
-			await db.table("sys_role").update({ title: role.title }).where({ field: "name", op: "eq", value: role.name }).run();
+			await db.table("sys_role").update({ title: role.title, title_key: role.title_key ?? null }).where({ field: "name", op: "eq", value: role.name }).run();
 		}
 		else {
-			await db.table("sys_role").insert({ name: role.name, module: m.module, title: role.title, builtin: 0 }).run();
+			await db.table("sys_role").insert({ name: role.name, module: m.module, title: role.title, title_key: role.title_key ?? null, builtin: 0 }).run();
 			// 声明绑定只在角色创建时写一次（角色级 insert-if-absent，AC1-15 红线）：
 			// 升级/重装对已存在角色永不补写声明绑定——管理员撤过的绑定不复活；
 			// 新版本给既有角色新增权限点时，由管理员显式勾选（insert-if-absent 的取舍边界，§9.5）。
