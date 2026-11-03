@@ -88,6 +88,23 @@ web 段入包时（cpSync ownWeb 之后）追加：源码 `webSrcOf(layout, name
 
 关键决策回顾：安装期解析（非打包期）守住 R4"站点默认语言"语义；跨 ns 不越界解析守住包边界（只读本包 locale）。
 
+## 9. 需求方反馈（实现后回执）
+
+逐条对照 R1–R6 与验收 1–5：
+
+| 项 | 结论 |
+|----|------|
+| R1 注册时解析 | ✅ 实现含回退（缺文件/缺 key/坏 JSON/非 string → 存裸 key，安装不失败）。**前提补充**：原需求假设"翻译源 = 模块打包的 web/locales/<lang>.json"——实测构建产物里没有该文件（vite 把动态 import 的 JSON 内联进 JS chunk），故 bundle 侧新增动作：自动从源码复制 `locales/{zh-CN,en-US}.json` 进包 `web/modules/<name>/locales/`（方案作者零感知） |
+| R2 title_key 列 | ✅ 0018 三方言（sqlite/mysql/pg）+ 存量回填。口径说明：sqlite 无 REGEXP，回填用 `GLOB '[a-z]*:*'` 近似（首字符小写字母 + 含冒号）——真实数据里含冒号的 title 只可能是裸 key（内置中文不含冒号），pg/mysql 用完整正则同义 |
+| R3 升级即重解析 | ✅ 元数据覆盖路径每次安装重解析覆写 title + title_key |
+| R4 站点语言 | ⚠️ **有偏差需决策**：后端当前不存在站点语言设置（语言是前端浏览器偏好，不在库）。实现为查 `sys_setting` 的 `site.language` 键，无行回退 zh-CN——机制就位，今天所有安装实际按 zh-CN 解析。是否补一个真正的站点设置项（管理面 UI + seed）由需求方定 |
+| R5 范围仅角色 | ✅ sys_permission 未动 |
+| R6 code 不变 | ✅ name/code/绑定关系未动 |
+| AC1–AC4 | ✅ 12 个新用例逐条钉住（首装/升级/缺 key/回填 + resolver 边界 + 迁移一致性） |
+| AC5 无回归 | ✅ 页面渲染 title（= 解析文本）无回归。**补充说明**："UI 多语言实时切换走 title_key"对**角色**尚未接线——roles API/页面暂不返回 `sys_role.title_key`（sys_permission 的 title_key 翻译早已接通）。列已就位，接线属后续小改动（API 出参 + 页面 render），是否本期做由需求方定 |
+
+**需要需求方决策的三件事**：① 是否补 `site.language` 真实设置项（R4 语义完整化）；② 角色页是否本期接线 title_key 实时翻译（AC5 未要求，机制已具备）；③ sqlite GLOB 回填近似口径是否接受（pg/mysql 已用完整正则）。
+
 ## 7. 风险
 
 - sqlite GLOB 回填口径比正则宽（`[a-z]*:*`）：首个字符小写字母 + 含冒号即回填；对真实数据（裸 key/中文）无差。

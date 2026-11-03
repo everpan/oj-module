@@ -144,6 +144,8 @@ description: 用 ojm 开发前后端一体工程时使用——新增/修改前�
 - [ ] `web.config.ts` 的 `modules` 里已登记（`enabled` 缺省即启用；module-root 下扫描已能捡到，登记用于排序/覆盖）
 - [ ] 路由 `handle.layout` 选对了（有页面用 `"container"`；无页面模块 `routes: []`）
 - [ ] 菜单标题用命名空间语法 `"<模块名>:menu.<key>"`，且 `locales/<lang>.json` 里有这个 key
+- [ ] manifest 声明了 `roles[]` → 每个 `title_key` 用 `"<模块名>:role.<slug>"` 形状（ns 必须 = 模块名），
+      且双语 locale 里都有对应嵌套 key `{"role":{…}}`——安装时解析成 `sys_role.title`，缺失则存裸 key（不失败）
 - [ ] 有接口 → handler 动词挂了 `.schema`（入参）+ 平级 `.response`（出参，oj v0.1.72+）→ `oj openapi` + `ojm api` 跑过 → onInit 里 `create<Module>Client(ctx)`
 - [ ] 接管了某功能 → provider 方法数与类型定义**一个不差**
 - [ ] 有后端 → handler 四红线过一遍（manual §1.7：respond 收口 / import 深度 / 无模块级状态 / 无模块级运行时全局）
