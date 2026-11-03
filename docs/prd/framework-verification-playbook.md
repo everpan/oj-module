@@ -4,7 +4,20 @@
 > **配套**：[`framework-development-guide.md`](./framework-development-guide.md)（原理）、[`oj-fullstack-tutorial.md`](./oj-fullstack-tutorial.md)（跟做）。
 > **原则**：每一步都有**可判定通过/失败的检查点**，不要只看命令退出码，要核对产物。
 
-### 最近一次基线（2026-11-02，oj 0.1.116 / cli+runtime 0.2.55 打包态；src/app 全量收敛 + 模板契约 x-oj-file 校正）
+### 最近一次基线（2026-11-03，oj 0.1.116 / cli+runtime 0.2.57 打包态；重点=§7.1–§7.4 发布市场全链路）
+
+| 项 | 值 |
+| --- | --- |
+| 日期 | 2026-11-03 |
+| 框架包版本 | `cli`/`runtime` **0.2.57**（§0.5 双包 pack；均未发 npm → 工程 `pnpm-workspace.yaml` overrides 双双指 `file:` tgz——注意模板 overrides 段已有 `@redocly/cli` 钉版，**合并进既有段**，重复键会被 pnpm 拒） |
+| oj | `0.1.116`（npm 通道，init 自动装；探针无告警。0.2.57 新特性实证：init/vendor 装后 **oj devkit 10 文件覆盖同步进 `.claude/skills/oj-api-dev/`**） |
+| 验证动机 | 0.2.57（角色 title 落库翻译 + vendor devkit 同步）发布前演练；重点补 2026-11-02 基线未跑的 §7.1–§7.4 市场链路 |
+| 范围 | §0.5 双包 pack → §1 init（320 项）→ §2 安装（本地 tgz overrides）→ **§7.1 方案骨架 → §7.2 发布 CDN → §7.3 安装/TOFU/升级/重装 → §7.4 walkthrough**。§4/§5 宿主内开发面未跑（本轮不动该面，同 2026-10-26 先例） |
+| 结果 | **通过**。① init 320 项、`.claude/skills/{oj-api-dev(10 文件),ojm-module-dev(6 文件)}` 双 skill 落地、devkit 零内部引用、devDeps 精确 0.2.57。② `ojm new erp --layout none --api` 骨架 → `ojm build` → `build --bundle erp` 两次 sha256 一致（C2-32）。③ keygen → `market publish --real .` → cdn 落 `catalog.yaml(+sig)/shards/tgz(+sig)`，`market verify` **7 项全 ✓**；同版本重发幂等（0 片重写）。④ release 起站（`platform.root: dist/api` + `--api-path dist/api` + `vars.canonical_origin`）→ `/cdn/catalog.yaml` 200 application/yaml → setup → 首装 needs_trust（指纹与 keygen 逐字一致）→ trust confirm → 重试 **11 段全 ok** → 升级 0.1.1（11/11、双版本目录共存、锁推进）→ 重启后匿名 `/api/erp/ping {pong:true}` → 同版本重装走重装路径。⑤ walkthrough `--fixture erp@0.1.0` **14/14 PASS**；`--only neg-evil` 1/1（原子性）；两份报告脱敏 grep 恒空 |
+| 本次发现并处置（手册漂移 5 处 + 已知坑复证 4 条） | ① **§7.2 publish 缺 `--registry-id`**（REG-CS3 v2 规范串首段，防跨仓库重放，必填；REG-CS6：站点 env.registryId 未配置则安装侧跳过比对，本地演练任意值可用）——手册命令行已补。② **§7.2 cdn 六件套口径过期**：`bundles.yaml/manifests.yaml` 已被 **v2 索引**（`catalog.yaml(+.sig)` + `shards/` 分片，带代次）取代；`market verify` 由 5 项扩为 **7 项**（增「索引同代」「索引时效」）——手册检查点已改。③ **§7.3 install 响应字段是 `data.task_id`**（手册写 `id`）——已改。④ **§7.4 `--fixture` 必须 `@0.1.0`**：主链硬编码 0.1.0→0.2.0（upgrade 自产 0.2.0、rollback 回装 0.1.0），给 0.1.1 时 upgrade/rollback 两项 FAIL（首跑 12/2 即此因）——**非框架缺陷**，手册已补一句口径。⑤ **§7.1 手写六文件形态已被 `ojm new` 骨架替代**（module-root：`src/<name>/{solution.yaml,api,web}`）；骨架**不声明 `api.anonymous`**——匿名探活需作者自加（C2-26：相对路径、首段=方案段，如 `[erp/ping]`）；升版本要同步 4 处（solution.yaml `version`+`web.entry`+`archive.file`、`api/manifest.yaml` version、web/entry.ts `version`），漏改被 C2-27/C2-29 fail-fast 点名（全量列出，行为正确）。已知坑复证：⑥ 匿名表/新方案路由**不热更**，装后必须重启进程再探活（10-26 ①）；⑦ seed superadmin `must_change=0`，`market setup` 不改密、`--new-pass` 后旧口令仍可登录（10-23 ⑥）；⑧ **9778 被占时 serve 直接退出而 health 200 来自旧进程**——演练前先 `lsof -ti :9778` 清场，判活必须看 serve.log 而非 curl；⑨ `vars.canonical_origin` 手写部署必须自配（REG-CS6 fail-closed，模板注释占位默认注释着），缺它 install 503 |
+| 手册同步 | §7.2 命令补 `--registry-id oj-registry`、六件套→v2 索引口径、verify 5→7 项；§7.3 `data.id`→`data.task_id`；§7.4 补 fixture 版本口径一句 |
+
+### 上一次基线（2026-11-02，oj 0.1.116 / cli+runtime 0.2.55 打包态；src/app 全量收敛 + 模板契约 x-oj-file 校正）
 
 | 项 | 值 |
 | --- | --- |
@@ -544,10 +557,12 @@ node "$CLI_PKG/bin/ojm.mjs" build --bundle
 node "$CLI_PKG/bin/ojm.mjs" keygen --id demo.publisher --out ./keys --yes
 #   记下 fingerprint（市场卡片与 trust confirm 都要核对它）
 
-# 2) 落包 + 重建索引（--real 走真构建；发布方密钥与 --id 必须同时给）
+# 2) 落包 + 重建索引（--real 走真构建；发布方密钥与 --id 必须同时给；
+#    --registry-id 是 REG-CS3 v2 规范串首段（防跨仓库重放），必填——往 registry 发布时
+#    须等于该站 canonical_origin，本地自供 CDN 任意值即可（站点未配 registryId 则安装侧跳过比对））
 cd <host>
 node "$CLI_PKG/bin/ojm.mjs" market publish --real ../solution-demo \
-  --id demo.publisher --key ../keys/private.pem --rebuild-index
+  --id demo.publisher --key ../keys/private.pem --registry-id oj-registry --rebuild-index
 
 # 3) 离线验包（不起站点、不装、不要凭据）
 node "$CLI_PKG/bin/ojm.mjs" market verify --rebuild-index
@@ -555,8 +570,8 @@ node "$CLI_PKG/bin/ojm.mjs" market verify --rebuild-index
 
 **检查点**
 
-- [ ] `cdn/` 下六件套齐全：`<name>-<version>.tgz`、`.tgz.sig`、`bundles.yaml`、`manifests.yaml` 及两份 `.yaml.sig`
-- [ ] `market verify` 五项全 ✓（完整性 / 包级签 / 索引签 ×2 / manifest 结构），末行带边界声明
+- [ ] `cdn/` 下 v2 索引件齐全：`<name>-<version>.tgz`、`.tgz.sig`、`catalog.yaml`、`catalog.yaml.sig`、`shards/`（分片带代次）
+- [ ] `market verify` 七项全 ✓（完整性 / 包级签 / manifest 结构 / 索引签 ×2 / 索引同代 / 索引时效），末行带边界声明
 - [ ] `curl <站点>/cdn/bundles.yaml` 返回 YAML（不是 index.html）——dev 形态陷阱见 §9
 - [ ] 重发同版本且字节一致 → 幂等；字节不同 → 报冲突并提示升 version
 
@@ -586,7 +601,7 @@ node "$CLI_PKG/bin/ojm.mjs" market setup --site-url http://127.0.0.1:9778 --user
 curl -s -X POST http://127.0.0.1:9778/api/_platform/market/install \
   -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' \
   -d '{"name":"demo-solution","version":"0.1.0","source":"cdn"}'
-# → {data:{id:"install-..."}}；轮询 GET /api/_platform/market/task?id=<id> 到 status=needs_trust
+# → {data:{task_id:"install-..."}}；轮询 GET /api/_platform/market/task?id=<task_id> 到 status=needs_trust
 #   响应的 trust.fingerprint 必须与 keygen 输出逐字一致
 
 node "$CLI_PKG/bin/ojm.mjs" trust confirm --task <task-id> --site-url http://127.0.0.1:9778 --user superadmin --pass <新口令>
@@ -613,13 +628,15 @@ walkthrough——它在隔离站点上按固定形状（setup → act → assert
 收尾把报告（AC 表 + 失败文案表）脱敏后落盘 `logs/walkthrough-<ts>.md`。
 
 ```bash
-node "$CLI_PKG/bin/ojm.mjs" market walkthrough --fixture <name>@<version>
+# fixture 必须是 <name>@0.1.0：主链硬编码 0.1.0→0.2.0（upgrade 自产 0.2.0、rollback 回装 0.1.0），
+# 给其它版本时 upgrade/rollback 两项必 FAIL（fixture 缺失，非框架缺陷）
+node "$CLI_PKG/bin/ojm.mjs" market walkthrough --fixture <name>@0.1.0
 # 主链路 9 项：✓ index / ✓ install / ✓ reinstall / ✓ enable / ✓ verify / ✓ history /
 #              ✓ upgrade（0.1.0→0.2.0）/ ✓ rollback（账本超前拦截）/ ✓ uninstall
 # 负向 5 项（预期失败口径，全 PASS = 每道防线都真的拦住了）：
 #   ✓ neg-tamper（翻转 tgz 1B → failed@verifying，零落盘）
 #   ✓ neg-nosig（删 .sig 重建索引 → sig_missing）
-#   ✓ neg-badindex（bundles.yaml 追加字节 → 安装 POST 即 502 拒载）
+#   ✓ neg-badindex（catalog.yaml 追加字节 → 安装 POST 即 502 拒载）
 #   ✓ neg-stranger（未登记 key → needs_trust → confirm → done；cleanup 显式 revoke + 信任库快照 diff 为空）
 #   ✓ neg-evil（手造 zip-slip tgz file 源上传 → 400 拒在解包前，R1 三步范式）
 # 全部通过（14 项）：14 PASS / 0 FAIL
