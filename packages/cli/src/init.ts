@@ -496,6 +496,8 @@ logs/
 # 现场签发的开发证书与凭据私钥（ojm dev 缺证时自动签发，见 oj-cert.ts）；私钥绝不入仓
 config/*.pem
 config/cert.jws
+# 开发态本地覆盖层（方案 A'）：dev 自动供给的本机密钥 + dev jwt_secret；git 不跟踪
+config.local.yaml
 # 构建产物（ojm build：站点 dist/web + 后端 release dist/api）
 dist/
 `;

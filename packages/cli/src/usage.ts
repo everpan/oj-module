@@ -111,8 +111,18 @@ export const HELP_GROUPS: HelpGroup[] = [
 				zh: "启动开发服务器（/api 反代 oj + 模块重建 + SSE 刷新）",
 				en: "Start dev server (/api proxy to oj + module rebuild + SSE refresh)",
 				detail: {
-					zh: "ojm dev [port]\n  开发模式快捷键（仅 TTY 终端，类 Vite）：\n    r  强制重建并热更新    h  显示帮助    c  清屏    o  浏览器打开\n    q  退出（后端 oj 一并终止）\n  port 缺省 5174（oj 后端端口以 config.yaml 的 server.port 为准）",
-					en: "ojm dev [port]\n  Dev-mode shortcuts (TTY only, Vite-like):\n    r  force rebuild + hot reload    h  show help    c  clear screen    o  open browser\n    q  quit (terminates the oj backend as well)\n  port defaults to 5174 (the oj backend port comes from config.yaml server.port)",
+					zh: "ojm dev [port]\n  开发模式快捷键（仅 TTY 终端，类 Vite）：\n    r  强制重建并热更新    h  显示帮助    c  清屏    o  浏览器打开\n    q  退出（后端 oj 一并终止）\n  port 缺省 5174（oj 后端端口以 config.yaml 的 server.port 为准）\n  首次 clone 无本机密钥时自动供给 dev 密钥 + 随机 jwt_secret（方案 A'），并合并 config.local.yaml 后启动",
+					en: "ojm dev [port]\n  Dev-mode shortcuts (TTY only, Vite-like):\n    r  force rebuild + hot reload    h  show help    c  clear screen    o  open browser\n    q  quit (terminates the oj backend as well)\n  port defaults to 5174 (the oj backend port comes from config.yaml server.port)\n  On first clone without local keys, dev auto-provisions a dev keypair + random jwt_secret (plan A') and starts after merging config.local.yaml",
+				},
+			},
+			{
+				key: "rekey",
+				name: "rekey",
+				zh: "重生开发态本机密钥并重封 dev jwt_secret（不动 tracked config）",
+				en: "Regenerate the dev-local keypair and re-seal the dev jwt_secret (tracked config untouched)",
+				detail: {
+					zh: "ojm rekey\n  删除 config/secrets-*.pem → 重新 keygen → 重封 dev jwt_secret 写入 config.local.yaml\n  仅影响 gitignored 的本地文件，tracked config.yaml 零改动（方案 A' 第 8 点）\n  用于本机 dev 密钥对误删/损坏、或想轮换 dev jwt_secret；之后 ojm dev 自动用新密钥重合并重起",
+					en: "ojm rekey\n  Deletes config/secrets-*.pem → keygen again → re-seal the dev jwt_secret into config.local.yaml\n  Only affects gitignored local files; the tracked config.yaml is untouched (plan A' point 8)\n  Use when the local dev keypair was deleted/corrupted, or to rotate the dev jwt_secret; ojm dev then re-merges and restarts with the new key",
 				},
 			},
 			{

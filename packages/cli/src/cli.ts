@@ -121,6 +121,13 @@ function makeAction(def: HelpEntry, projectRoot: string, lang: Lang, exit: (code
 				const portArg = Number(port);
 				await devServer(projectRoot, { port: Number.isFinite(portArg) && portArg > 0 ? portArg : 5174 });
 			};
+		case "rekey":
+			return async () => {
+				const { rekeyCommand } = await import("./rekey");
+				const result = rekeyCommand(projectRoot);
+				console.log(`[ojm] 已重新生成开发态本机密钥与 dev jwt_secret：${path.relative(projectRoot, result.localPath) || result.localPath}`);
+				console.log("[ojm] 仅影响 gitignored 的 config.local.yaml 与 config/secrets-*.pem；tracked config.yaml 未改动。下次 ojm dev 会用新密钥自动重合并重起。");
+			};
 		case "build":
 			return async (opts: { bundle?: unknown, out?: string } = {}) => {
 				// mri 可选值：裸 --bundle 得到 ""，--bundle name / --bundle=name 得到字符串

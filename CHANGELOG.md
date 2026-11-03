@@ -9,6 +9,16 @@
 
 ### Added
 
+- **开发者共享工程时本机密钥/凭据自动供给（方案 A'）**：`ojm dev` 在工程中缺失
+  `config/secrets-*.pem` 时自动 `oj secret keygen` 生成开发密钥对、并用本机公钥密封随机
+  `jwt_secret` 写入 gitignored 的 `config.local.yaml`（dev 覆盖层，可手编辑）；随后深合并
+  tracked `config.yaml` 与 `config.local.yaml` → `<configDir>/.ojm-tmp-config.yaml`（同样
+  gitignored）交给 `oj serve -c`，**绝不写回 tracked config**。合并产物每次 `ojm dev` 现合现用，
+  团队改 tracked 模板的非密字段自动生效、本机密钥零丢失；另新增 `ojm rekey` 重生成开发密钥并
+  轮换 dev `jwt_secret`（只动本地文件，手写部署路径零改动）。密钥存在即跳过、损坏即自愈重生成
+  （幂等，已签发会话不失效）。回归：`tests/cli/dev-secrets.test.ts`（G1 首次供给 / G2 幂等 /
+  G3 非 jwt ENC 红线 / G6 历史 `api/` 布局 co-locate / G7 模板 drift 自动重合并 + rekey）。
+
 - **操作日志改为服务端分页**：`GET /api/system/oplog` 新增 `page` 查询参数（与既有 `limit`
   配对，size 仍钳 200），响应带 `total`；页面改为 antd 表格分页（20/50/100 可切换、显示
   「共 N 条」），删除「结果已按上限截断，请缩小过滤范围」的提示。此前列表硬顶 200 条，
@@ -18,6 +28,14 @@
   `truncated=false`、越界页 list 为空但 total 不变）。
 
 ### Fixed
+
+- **`ojm dev` 失败提示不再被吞（方案 A'）**：`startOj` 在 oj 进程异常退出 / 健康检查超时的
+  错误信息里，stderr 为空时改读 `<configDir>/logs/server-*.log` 最新文件兜底抽取真实错误行
+  （如 `jwt_secret decrypt failed`），替换原先无意义的「（无输出）」——即开发者 clone 后缺本机
+  密钥导致启动失败的告警不再被静默吞掉。同时：**非 jwt 的 `ENC[...]`（如 `wecom_enc_key`
+  落库加密键）本机私钥解不开时清晰报错、要求提供真实私钥，绝不自动用 dev 随机密钥重封**，
+  防止破坏已加密数据（数据安全红线）。回归：`tests/cli/oj-process.test.ts`（G4 日志兜底）、
+  `tests/cli/dev-secrets.test.ts`（G3 红线）。
 
 - **`/system/users` 按角色控制操作（admin 越权改 superadmin）**：此前 `admin` 能重置
   `superadmin` 账号的口令、切换其禁用状态——口令一改就等于接管那个平台级账号（superadmin

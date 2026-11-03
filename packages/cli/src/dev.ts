@@ -33,6 +33,7 @@ import { buildModules } from "./build";
 import { loadContractMocks, resolveMock } from "./contract/mock";
 import { loadProjectMocks, mockStatusCode } from "./dev-mock";
 import { createReloadHub, proxyApi, proxyWsUpgrade, sseScript } from "./dev-proxy";
+import { mergeConfigForDev } from "./dev-secrets";
 import { loadHtmlTransform } from "./html-transform";
 import { resolveConfigPath, resolveLayout } from "./layout";
 import { resolveCdnLayout } from "./market/cdn-layout";
@@ -123,10 +124,16 @@ export async function devServer(projectRoot: string, opts: DevOptions = {}): Pro
 				+ "        已停止启动，未留下新的 oj 孤儿进程。",
 			);
 		}
-		await ensureDevCert(configPath);
+		// 开发态本地密钥/凭据自动供给（方案 A'）：供给本机 secrets 密钥 + dev jwt_secret，
+		// 深合并 tracked config.yaml 与 gitignored config.local.yaml → .ojm-tmp-config.yaml。
+		// tracked 里的 ENC[...] 仅作 prod 资产，dev 完全忽略；非 jwt 的 ENC 解不开则清晰报错
+		// （红线，防用 dev 随机密钥重封破坏已加密数据）。合并产物与 config.yaml 同目录，oj
+		// 相对路径解析不变。
+		const effectiveConfigPath = mergeConfigForDev(projectRoot, configPath);
+		await ensureDevCert(effectiveConfigPath);
 		const fallbackStarter = (cfg: string, b: string, apiSrc: string | string[]) => startOj(cfg, b, apiSrc);
 		const starter: NonNullable<DevOptions["ojStarter"]> = opts.ojStarter ?? fallbackStarter;
-		oj = starter(configPath, apiBase, apiSource);
+		oj = starter(effectiveConfigPath, apiBase, apiSource);
 		try {
 			await oj.ready; // 失败人话报错（stderr 尾部），fail-fast
 		}

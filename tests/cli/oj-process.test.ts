@@ -18,7 +18,7 @@ import { startOj } from "../../packages/cli/src/oj";
 
 const FIXTURE_ROOT = path.join(process.cwd(), ".tmp-oj-fx");
 
-function makeFixture(mode: "healthy" | "exit" | "silent"): { root: string, configPath: string, port: number } {
+function makeFixture(mode: "healthy" | "exit" | "silent" | "logonly"): { root: string, configPath: string, port: number } {
 	fs.mkdirSync(FIXTURE_ROOT, { recursive: true });
 	const root = fs.mkdtempSync(path.join(FIXTURE_ROOT, `oj-${mode}-`));
 	// 并行测试端口区间不得重叠（2026-09-04 flaky 根因，见 playground-oj 设计 §10）
@@ -37,13 +37,52 @@ function makeFixture(mode: "healthy" | "exit" | "silent"): { root: string, confi
 		"#!/usr/bin/env node",
 		"import fs from \"node:fs\";",
 		"import http from \"node:http\";",
+		"import crypto from \"node:crypto\";",
+		"import path from \"node:path\";",
 		"const argv = process.argv.slice(2);",
 		`fs.writeFileSync(${argsFile}, JSON.stringify(argv));`,
 		`fs.writeFileSync(${envFile}, JSON.stringify({ ojPluginsDir: process.env.OJ_PLUGINS_DIR ?? null }));`,
 		"const mode = process.env.STUB_OJ_MODE ?? \"healthy\";",
+		"// 凭据密封桩：keygen/seal/open 用同一把对称密钥派生（sha256(pem)），密钥不配对即解密失败",
+		"if (argv[0] === \"secret\") {",
+		"\tconst sub = argv[1];",
+		"\tif (sub === \"keygen\") {",
+		"\t\tconst dir = argv[argv.indexOf(\"--out-dir\") + 1];",
+		"\t\tconst { privateKey, publicKey } = crypto.generateKeyPairSync(\"ed25519\");",
+		"\t\tfs.writeFileSync(dir + \"/secrets-private.pem\", privateKey.export({ type: \"pkcs8\", format: \"pem\" }));",
+		"\t\tfs.writeFileSync(dir + \"/secrets-public.pem\", publicKey.export({ type: \"spki\", format: \"pem\" }));",
+		"\t\tprocess.exit(0);",
+		"\t}",
+		"\tconst pub = argv[argv.indexOf(\"-k\") + 1];",
+		"\tconst key = crypto.createHash(\"sha256\").update(fs.readFileSync(pub)).digest();",
+		"\tif (sub === \"seal\") {",
+		"\t\tconst plain = fs.readFileSync(0, \"utf-8\");",
+		"\t\tconst nonce = crypto.randomBytes(12);",
+		"\t\tconst cipher = crypto.createCipheriv(\"aes-256-gcm\", key, nonce);",
+		"\t\tconst ct = Buffer.concat([cipher.update(plain, \"utf-8\"), cipher.final()]);",
+		"\t\tconst tag = cipher.getAuthTag();",
+		"\t\tprocess.stdout.write(\"ENC[\" + Buffer.concat([nonce, tag, ct]).toString(\"base64\") + \"]\");",
+		"\t\tprocess.exit(0);",
+		"\t}",
+		"\tconst privPem = fs.readFileSync(pub);",
+		"\tconst pubPem = crypto.createPublicKey(crypto.createPrivateKey(privPem)).export({ type: \"spki\", format: \"pem\" });",
+		"\tconst key2 = crypto.createHash(\"sha256\").update(pubPem).digest();",
+		"\tconst enc = argv[argv.length - 1];",
+		"\tconst raw = Buffer.from(enc.slice(4, -1), \"base64\");",
+		"\tconst nonce = raw.subarray(0, 12); const tag = raw.subarray(12, 28); const ct = raw.subarray(28);",
+		"\ttry { const d = crypto.createDecipheriv(\"aes-256-gcm\", key2, nonce); d.setAuthTag(tag); d.update(ct); d.final(); process.exit(0); }",
+		"\tcatch { process.stderr.write(\"open failed\\n\"); process.exit(1); }",
+		"}",
 		"if (mode === \"exit\") {",
 		"\tconsole.error(\"boom-fatal: certificate not found\");",
 		"\tprocess.exit(7);",
+		"}",
+		"if (mode === \"logonly\") {",
+		"\tconst configPath = argv[argv.indexOf(\"-c\") + 1];",
+		"\tconst logsDir = path.join(path.dirname(configPath), \"logs\");",
+		"\tfs.mkdirSync(logsDir, { recursive: true });",
+		"\tfs.writeFileSync(path.join(logsDir, 'server-' + Date.now() + '_' + process.pid + '.log'), \"FATAL: jwt_secret decrypt failed: private key mismatch\\n[oj] 2026-11-03T00:00:00Z ERROR auth setup aborted\\n\");",
+		"\tprocess.exit(1);",
 		"}",
 		"const configText = fs.readFileSync(argv[argv.indexOf(\"-c\") + 1], \"utf-8\");",
 		"const port = Number(configText.match(/port:\\s*(\\d+)/)[1]);",
@@ -192,5 +231,24 @@ describe("startOj 子进程编排", () => {
 		expect(all).toContain("  permission, status, create_time");
 		// 裸 handler console.log 原样透传，不加 [oj] 前缀
 		expect(all).toContain("plain-console-log-from-handler");
+	});
+
+	it("失败不吞提示（G4）：oj 只落盘 logs/、stderr 空 → ready 拒绝信息含日志真实错误行（非「无输出」）", async () => {
+		const { root, configPath } = makeFixture("logonly");
+		process.env.STUB_OJ_MODE = "logonly";
+		const proc = startOj(configPath, "/api", path.join(root, "api/src"), { intervalMs: 20, timeoutMs: 3000 });
+		// 关键不变量：错误信息必须来自 logs/server-*.log（非 stderr），不再只剩「（无输出）」
+		let err: Error | undefined;
+		try {
+			await proc.ready;
+		}
+		catch (e) {
+			err = e as Error;
+		}
+		expect(err).toBeDefined();
+		expect(err!.message).toContain("jwt_secret decrypt failed");
+		expect(err!.message).not.toContain("（无输出）");
+		await proc.stop();
+		delete process.env.STUB_OJ_MODE;
 	});
 });

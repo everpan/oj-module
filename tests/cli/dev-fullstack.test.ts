@@ -7,6 +7,7 @@ import http from "node:http";
 import path from "node:path";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { devServer, shutdownDev } from "../../packages/cli/src/dev";
+import { resolveMergedConfigPath } from "../../packages/cli/src/dev-secrets";
 
 /**
  * 设计 §4（P3）：ojm dev 全栈接线。
@@ -21,6 +22,37 @@ import { devServer, shutdownDev } from "../../packages/cli/src/dev";
 
 const FIXTURE_ROOT = path.join(process.cwd(), ".tmp-dev-fx");
 
+/**
+ * 写桩 oj（Node）：支持 `secret keygen/seal/open`（密钥不配对即解密失败，GCM 验签）
+ * 与能力探针 `build --help`（含 --module-root）/` -V`。devServer 走 A' 合并配置时会
+ * 调用 `oj secret` 自动供给本机密钥；ojStarter 由测试注入，故 serve 不真正监听。
+ */
+function writeStubOj(root: string): void {
+	const binDir = path.join(root, "bin");
+	fs.mkdirSync(binDir, { recursive: true });
+	fs.writeFileSync(path.join(binDir, "oj"), [
+		"#!/usr/bin/env node",
+		"import fs from \"node:fs\";",
+		"import crypto from \"node:crypto\";",
+		"const argv = process.argv.slice(2);",
+		"const cmd = (argv[0] || \"\") + \" \" + (argv[1] || \"\");",
+		"if (cmd === \"build --help\") { console.log(\"      --module-root <GLOB>  模块根 glob\"); process.exit(0); }",
+		"if (argv[0] === \"-V\") { console.log(\"oj 0.1.999\"); process.exit(0); }",
+		"if (argv[0] === \"secret\") {",
+		"\tconst sub = argv[1];",
+		"\tif (sub === \"keygen\") { const dir = argv[argv.indexOf(\"--out-dir\") + 1]; const { privateKey, publicKey } = crypto.generateKeyPairSync(\"ed25519\"); fs.writeFileSync(dir + \"/secrets-private.pem\", privateKey.export({ type: \"pkcs8\", format: \"pem\" })); fs.writeFileSync(dir + \"/secrets-public.pem\", publicKey.export({ type: \"spki\", format: \"pem\" })); process.exit(0); }",
+		"\tconst pub = argv[argv.indexOf(\"-k\") + 1]; const key = crypto.createHash(\"sha256\").update(fs.readFileSync(pub)).digest();",
+		"\tif (sub === \"seal\") { const plain = fs.readFileSync(0, \"utf-8\"); const nonce = crypto.randomBytes(12); const cipher = crypto.createCipheriv(\"aes-256-gcm\", key, nonce); const ct = Buffer.concat([cipher.update(plain, \"utf-8\"), cipher.final()]); const tag = cipher.getAuthTag(); process.stdout.write(\"ENC[\" + Buffer.concat([nonce, tag, ct]).toString(\"base64\") + \"]\"); process.exit(0); }",
+		"\tconst privPem = fs.readFileSync(pub); const pubPem = crypto.createPublicKey(crypto.createPrivateKey(privPem)).export({ type: \"spki\", format: \"pem\" }); const key2 = crypto.createHash(\"sha256\").update(pubPem).digest();",
+		"\tconst enc = argv[argv.length - 1]; const raw = Buffer.from(enc.slice(4, -1), \"base64\"); const nonce = raw.subarray(0, 12); const tag = raw.subarray(12, 28); const ct = raw.subarray(28);",
+		"\ttry { const d = crypto.createDecipheriv(\"aes-256-gcm\", key2, nonce); d.setAuthTag(tag); d.update(ct); d.final(); process.exit(0); } catch { process.stderr.write(\"open failed\\n\"); process.exit(1); }",
+		"}",
+		"process.exit(0);",
+		"",
+	].join("\n"));
+	fs.chmodSync(path.join(binDir, "oj"), 0o755);
+}
+
 // 顺序发号（非随机）：ojm dev 现会对 oj 后端端口做预检，前端 dev server 又复用同一
 // 端口号，若两个 fixture 抽到同一随机端口会相互误判「端口被占用」而失败。发号保证
 // 同文件内各 fixture 端口互斥（并行用例也各自拿到不同号）。
@@ -32,6 +64,7 @@ function makeFixture(kind: "fullstack" | "frontend" | "module-root", base = "/ap
 	// 需要显式占用该端口的用例（端口冲突预检）应传入区间外的端口以避免与并行用例相撞。
 	const usedPort = port ?? fixturePortSeq++;
 	fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({ type: "module" }));
+	writeStubOj(root); // devServer 走 A' 合并配置会自动供给本机密钥（需桩 oj 支持 secret）
 	if (kind === "module-root") {
 		// 新布局：源码根 <root>/src，config 在仓库根；模块两侧至少一侧有标记文件
 		fs.mkdirSync(path.join(root, "src/wiki/api"), { recursive: true });
@@ -59,10 +92,6 @@ function makeFixture(kind: "fullstack" | "frontend" | "module-root", base = "/ap
 	}
 	if (kind === "module-root") {
 		fs.writeFileSync(path.join(root, "config.yaml"), `server:\n  host: 127.0.0.1\n  port: ${usedPort}\nmounts:\n  - prefix: ${base}\n    api: src\n`);
-		// 能力探针：新布局起 oj 前要先确认 --module-root 可用（否则 fail-fast）
-		fs.mkdirSync(path.join(root, "bin"), { recursive: true });
-		const oj = path.join(root, "bin", "oj");
-		fs.writeFileSync(oj, "#!/bin/sh\ncase \"$1 $2\" in\n  \"build --help\") echo '      --module-root <GLOB>  模块根 glob' ;;\n  \"-V \"*) echo 'oj 0.1.999' ;;\nesac\nexit 0\n", { mode: 0o755 });
 	}
 	return { root, port: usedPort };
 }
@@ -110,7 +139,8 @@ function stubOjUpstream(expectedBase = "/api") {
 			(upPort: number, configPath: string) =>
 				(cfg: string, base: string, apiSrc: string | string[]): OjProcess => {
 					expect(path.isAbsolute(cfg)).toBe(true);
-					expect(cfg).toBe(configPath);
+					// A'：dev 传给 oj 的是合并产物 .ojm-tmp-config.yaml，而非 tracked config.yaml
+					expect(cfg).toBe(resolveMergedConfigPath(configPath));
 					expect(base).toBe(expectedBase);
 					const srcs = (Array.isArray(apiSrc) ? apiSrc : [apiSrc]).filter(
 						s => s !== "" && !s.startsWith("-"),
@@ -244,7 +274,7 @@ describe("devServer 全栈接线", () => {
 			buildModulesFn: async () => {},
 			ojStarter: (cfg: string, base: string, apiSource: string | string[]): OjProcess => {
 				seen = apiSource;
-				return up.starter(upPort, configPath)(cfg, base, "");
+				return up.starter(upPort, configPath)(cfg, base, apiSource);
 			},
 		});
 

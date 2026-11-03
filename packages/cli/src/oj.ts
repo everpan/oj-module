@@ -9,7 +9,10 @@
  * 由 `ojm vendor` 的最低版本门禁挡住（见 src/vendor.ts 的 MIN_OJ_VERSION）。
  *
  * 健康判据：GET {base}/health 状态码 <400（oj 内置匿名健康端点；2xx/3xx 均视为就绪）。
- * 秒退：ready 拒绝，错误信息带 stderr 尾部（证书缺失等常见错因可直接读出）。
+ * 秒退：ready 拒绝，错误信息优先带 stderr 尾部（证书缺失等常见错因可直接读出）；
+ * 若 oj 把 FATAL 落盘到 logs/ 而未进 stderr（手册说 `--console-log` 会镜像到终端，但
+ * 部分环境仍可能只落盘），再读 `<configDir>/logs/server-*.log` 最新文件兜底，绝不输出
+ * 无意义的 "(无输出)"（方案 A' 失败提示不吞，评审 E-1）。
  */
 
 import type { Buffer } from "node:buffer";
@@ -20,6 +23,43 @@ import path from "node:path";
 import process from "node:process";
 import { readOjPluginsDir, readOjPort } from "./oj-config";
 import { resolveOjBin } from "./vendor";
+
+/**
+ * logs/ 兜底（评审 E-1）：oj 启动期 FATAL 有时只落盘不进 stderr。
+ * 给定 oj 的日志目录（通常 `<configDir>/logs`），挑最新的 `server-*.log`，
+ * 抽出 ERROR/FATAL/panic 等关键行（没有则取末 30 行），供失败信息兜底展示。
+ * 找不到日志目录 / 文件即返回空串（调用方维持 "(无输出)"）。
+ */
+function readLatestLogError(logsDir: string): string {
+	if (!logsDir || !fs.existsSync(logsDir))
+		return "";
+	let entries: fs.Dirent[];
+	try {
+		entries = fs.readdirSync(logsDir, { withFileTypes: true });
+	}
+	catch {
+		return "";
+	}
+	const logs = entries
+		.filter(e => e.isFile() && /^server-.*\.log$/.test(e.name))
+		.map((e) => {
+			try {
+				return { name: e.name, mtime: fs.statSync(path.join(logsDir, e.name)).mtimeMs };
+			}
+			catch {
+				return null;
+			}
+		})
+		.filter((x): x is { name: string, mtime: number } => x !== null)
+		.sort((a, b) => b.mtime - a.mtime);
+	if (logs.length === 0)
+		return "";
+	const text = fs.readFileSync(path.join(logsDir, logs[0].name), "utf-8");
+	const lines = text.split(/\r?\n/);
+	const keyLines = lines.filter(l => /error|fatal|panic|denied|invalid|unable|cannot|fail|exception|refused/i.test(l));
+	const picked = keyLines.length > 0 ? keyLines.slice(-30) : lines.slice(-30);
+	return picked.join("\n").trim();
+}
 
 export interface OjProcess {
 	port: number
@@ -63,8 +103,12 @@ export function startOj(
 	apiSource: string | string[],
 	poll: StartOjPoll = {},
 	extraArgs: string[] = [],
+	logsDir?: string,
 ): OjProcess {
 	const port = readOjPort(configPath);
+	// logs/ 兜底目录（评审 E-1）：oj FATAL 有时只落盘不进 stderr。缺省按 config 同级
+	// 的 logs/（与 oj 默认 logs_dir 一致）；调用方可显式覆盖（preview 派生 config 等）。
+	const resolvedLogsDir = logsDir ?? path.join(path.dirname(configPath), "logs");
 	// 约定：vendor 二进制在 <project>/bin/oj。工程根不能按「config 往上两级」算：
 	// module-root 布局的 config 在仓库根（<project>/config.yaml），往上两级会越过工程，
 	// 落到父目录找 bin/oj。改为「向上找最近的含 bin/ 的目录」，两种布局都成立。
@@ -137,9 +181,11 @@ export function startOj(
 		pollTimer.unref();
 		child.once("exit", (code) => {
 			const hint = portInUseHint(stderrTail);
+			// A' 失败提示不吞：stderr 空时读 logs/ 最新 server-*.log 兜底（评审 E-1）
+			const tail = stderrTail.trim() || readLatestLogError(resolvedLogsDir);
 			finish(new Error(
 				`[ojm] oj 进程异常退出（code ${code}）。${hint}\n`
-				+ `stderr 尾部：\n${stderrTail.trim() || "（无输出）"}`,
+				+ `stderr 尾部：\n${tail || "（无输出）"}`,
 			));
 		});
 		// spawn 本身失败（如 ENOENT）只发 error 不发 exit，必须单独兜住
@@ -150,9 +196,10 @@ export function startOj(
 		});
 		const timeout = setTimeout(() => {
 			const hint = portInUseHint(stderrTail);
+			const tail = stderrTail.trim() || readLatestLogError(resolvedLogsDir);
 			finish(new Error(
 				`[ojm] oj 健康检查超时（${Math.round(timeoutMs / 1000)}s）：${healthUrl} 一直不可达。${hint}\n`
-				+ `stderr 尾部：\n${stderrTail.trim() || "（无输出）"}`,
+				+ `stderr 尾部：\n${tail || "（无输出）"}`,
 			));
 		}, timeoutMs);
 		timeout.unref();
