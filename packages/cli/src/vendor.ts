@@ -80,6 +80,30 @@ export function ojBinName(platform: string = process.platform): string {
 }
 
 /**
+ * oj devkit 文档同步（计划 docs/plans/20261103-1020-vendor-devkit-sync）：bin/devkit
+ * （@oj-bin/oj postinstall 落盘，与 bin/oj 同版本）→ 工程 `.claude/skills/oj-api-dev/`，
+ * 全部 `.md` **覆盖**拷入——skill 文档始终与已装 oj 版本一致（vendor/init 共用出口）。
+ * bin/devkit 缺失（旧版 oj/异常安装）→ ok:false，调用方记跳过、不失败。
+ * global.d.ts 不在此同步：工程根那份是模板自有变体、用户可编辑（init 首装 copyIfAbsent）。
+ */
+export function syncOjDevkit(projectRoot: string, binDir: string, log: (msg: string) => void = () => {}): { ok: boolean, files: string[] } {
+	const devkitDir = path.join(binDir, "devkit");
+	if (!fs.existsSync(path.join(devkitDir, "SKILL.md")))
+		return { ok: false, files: [] };
+	const skillDir = path.join(projectRoot, ".claude", "skills", "oj-api-dev");
+	fs.mkdirSync(skillDir, { recursive: true });
+	const files: string[] = [];
+	for (const name of fs.readdirSync(devkitDir)) {
+		if (!name.endsWith(".md"))
+			continue;
+		fs.copyFileSync(path.join(devkitDir, name), path.join(skillDir, name));
+		files.push(name);
+	}
+	log(`[ojm] oj devkit 文档已同步 → .claude/skills/oj-api-dev/（${files.length} 个文件，与已装 oj 同版本）`);
+	return { ok: true, files };
+}
+
+/**
  * 工程内 oj 二进制路径的**唯一口径**（<projectRoot>/bin/oj）。
  *
  * 早前 oj.ts / preview.ts / build.ts / info.ts 各拼一遍，拼法还不一致
@@ -222,6 +246,12 @@ function installFromNpm(version: string, binDir: string, run: NpmRun, log: (msg:
 	}
 }
 
+/** devkit 同步 + 缺失时的人话跳过行（vendorCommand 两个调用点共用） */
+function syncDevkitOrSkip(projectRoot: string, binDir: string, log: (msg: string) => void): void {
+	if (!syncOjDevkit(projectRoot, binDir, log).ok)
+		log("[ojm] bin/devkit 缺失，跳过 oj devkit 文档同步（旧版 oj 或异常安装；skill 文档不更新）");
+}
+
 /**
  * US-1..US-5 编排：解析目标版本（tag 缺省经 npm view 追 latest，显式 tag 去 v 前缀）
  * → 本地已是该版本则跳过（--force 除外）→ 临时目录安装 + 拷贝 → 报告版本 → 探针冒烟。
@@ -244,6 +274,8 @@ export async function vendorCommand(
 	const local = readLocalVersion(binDir);
 	if (!opts.force && local === `v${version}`) {
 		log(`[ojm] oj 已是 v${version}，跳过。`);
+		// 文档同步不随版本跳过：用户删过 skill 目录后重跑 vendor 即补齐（R4）
+		syncDevkitOrSkip(projectRoot, binDir, log);
 		const result = probe(binDir);
 		if (!result.ok)
 			reportProbeFailure(log, result.detail);
@@ -255,6 +287,7 @@ export async function vendorCommand(
 		log(`[ojm] 本地 ${local ?? "未安装"} → v${version}`);
 	installFromNpm(version, binDir, run, log);
 	log(`[ojm] oj ${local ? `${local} → ` : ""}v${version} 安装完成：${path.join(binDir, ojBinName(process.platform))}`);
+	syncDevkitOrSkip(projectRoot, binDir, log);
 	// 安装后冒烟：发布二进制可能因构建机路径被烤进而不可用（见 probeOjRuntime）
 	const result = probe(binDir);
 	if (!result.ok)

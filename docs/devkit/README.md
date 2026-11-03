@@ -10,7 +10,7 @@
 | 侧 | 本仓位置 | 用户工程里的落点 | 分发链 |
 |---|---|---|---|
 | ojm 模块开发（前端模块、契约、前后端对接） | 本目录顶层 9 个文件 | `.claude/skills/ojm-module-dev/` | `@oj-module/cli` 包 → `ojm init` 第 4b 步 |
-| oj API 开发（后端 handler、全局对象、配置、测试） | `oj-api-dev/` 子目录（快照） | `.claude/skills/oj-api-dev/` | **oj 二进制自带**（`bin/devkit/`）→ `ojm init` 第 4 步 |
+| oj API 开发（后端 handler、全局对象、配置、测试） | `oj-api-dev/` 子目录（快照） | `.claude/skills/oj-api-dev/` | **oj 二进制自带**（`bin/devkit/`）→ `ojm init` 第 4 步 / `ojm vendor` 装·升后同步（0.2.57 起共用 `syncOjDevkit`，全量 `.md` **覆盖**——文档始终与已装 oj 版本一致） |
 
 > **`oj-api-dev/` 子目录是快照，不是本仓维护的文档**：它与本机 oj 的
 > `~/.local/share/oj/devkit/`（oj release 下载）逐字节一致，改它没有意义——
