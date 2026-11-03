@@ -1,0 +1,131 @@
+// 后端构建编排（SRP 拆分自 build.ts，2026-11-03，计划 docs/plans/20261103-0930）：
+// 编排 `bin/oj build` 生成 api/dist 产物——别名投影、能力闸门、密封值试解、
+// 宿主 versions.json 双落点都在这一段，前端构建见 module-build.ts。
+import { execFileSync } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
+import { ALIAS_PATHS_FILE, syncAliasPaths } from "../alias-paths";
+import { resolveConfigPath, tryResolveLayout } from "../layout";
+import { requireModuleRootCapability } from "../oj-caps";
+import { resolveOjBin } from "../vendor";
+import { resolveShellDist } from "../versions";
+
+/**
+ * 构建后端（api/src 存在时编排 `bin/oj build`，D8）。
+ *
+ * 绝不在此处跑 migrate：oj build 本身零磁盘副作用，`ojm build` 保持零 DB
+ * 副作用（CI/无 DB 环境可跑）；迁移由 preview 在起服务前应用（设计 §6）。
+ * 无后端源码返回 false（纯前端工程跳过）。
+ */
+export async function buildBackend(projectRoot: string): Promise<boolean> {
+	// 没有模块源码的工程（如 market 的隔离站点根）直接跳过——不能因为探测不到布局就抛
+	const layout = tryResolveLayout(projectRoot);
+	const moduleRoot = layout?.kind === "module-root";
+	const apiSrc = moduleRoot
+		? layout.modulesSrc
+		: path.join(projectRoot, "api/src");
+	if (!fs.existsSync(apiSrc))
+		return false;
+
+	const oj = resolveOjBin(projectRoot);
+	if (!fs.existsSync(oj)) {
+		throw new Error(
+			`[ojm] 找到 ${path.relative(projectRoot, apiSrc) || "."} 但缺少 ${oj}。\n`
+			+ "请重跑 ojm init 幂等补缺（不会覆盖 config 与用户代码）。",
+		);
+	}
+	// 能力闸门先于任何写入：失败时磁盘上不留半成品
+	if (moduleRoot)
+		requireModuleRootCapability(projectRoot);
+
+	// 别名投影：模块增删后要让 TS 的 paths 跟上（否则 `#/<模块名>/…` 在编辑器/typecheck
+	// 里解析不到，退化成 any）。内容未变不写盘。
+	const syncedPaths = syncAliasPaths(projectRoot);
+	if (syncedPaths === "created" || syncedPaths === "updated")
+		console.log(`[ojm] 已${syncedPaths === "created" ? "生成" : "更新"} ${ALIAS_PATHS_FILE}（\`#/<模块名>/…\` 的 TS paths 投影）`);
+
+	const apiDist = layout?.apiDist ?? path.join(projectRoot, "dist", "api");
+	console.log("[ojm] oj build（后端）…");
+	// 必须显式给 -c：oj build 的 -c 缺省是 ./config.yaml（相对 CWD），而 config 在
+	// <project>/config/ 下——漏传会静默读不到配置，连带 tasks 镜像目录回落默认 "tasks"、
+	// sql_guard 声明校验不生效（oj 只 warn 两行，极易被忽略）。
+	const configPath = resolveConfigPath(projectRoot);
+	const configArgs = fs.existsSync(configPath) ? ["-c", configPath] : [];
+	// --no-minify：oj 的 swc minify 当前会把产物压坏，必须绕开。实测两种坏法：
+	//   1) `const rows = await db.query(...); rows[0]` → 压成 `await db.query(...)[0]`，
+	//      下标先于 await 求值，Promise 上取 [0] 得 undefined（登录恒 401）；
+	//   2) `if (cond) x = y` → 压成 `cond && x = y`，赋值作 && 右项缺括号 →
+	//      SyntaxError: Invalid left-hand side in assignment（端点 500）。
+	// 0.1.32 / 0.1.50 均复现。产物体积换正确性，等上游修好再撤这个旗标。
+	// v0.1.85：`--module-root <dir>` 与 `-d` 互斥（都是「源码树根」）。新布局给 src，
+	// oj 在子树内递归找 manifest.yaml（命中 src/<name>/api/manifest.yaml 即停）。
+	const sourceArgs = layout?.moduleRoot ? ["--module-root", layout.moduleRoot] : ["-d", apiSrc];
+	// 出包前先自己确认 config 能读：读不动时 oj build 会静默关掉 sql_guard（见函数注释）
+	if (configArgs.length)
+		assertSealedValuesOpenable(oj, configPath);
+	execFileSync(oj, [
+		"build",
+		...configArgs,
+		...sourceArgs,
+		"-o",
+		apiDist,
+		"--no-minify",
+	], { stdio: "inherit" });
+	// 宿主 versions.json 双落点：站点壳从 shell-dist 拷进 dist/web（mergeShellSite），
+	// 而方案安装器读的是 `dist/api/versions.json`（B-11：与 manifests.yaml 同层，用于
+	// peerRuntime 强制比对）。两处必须同源，否则新工程 `ojm build` 完仍装不上方案——
+	// preflight 直接 C2-09 fail-closed「无法读取宿主 runtime 版本」。
+	const versionsSrc = path.join(resolveShellDist(), "versions.json");
+	if (fs.existsSync(versionsSrc)) {
+		fs.mkdirSync(apiDist, { recursive: true });
+		fs.copyFileSync(versionsSrc, path.join(apiDist, "versions.json"));
+	}
+	return true;
+}
+
+/**
+ * config 里的密封值（`oj secret seal` 产物）在 build 前试解一把——fail-closed。
+ *
+ * **为什么不能只信 oj 的 warn**：实测（oj 0.1.115）config 读不动时 `oj build` **退出码仍是 0**，
+ * 只往 stderr 甩两行「读配置失败 → 镜像目录回落默认 tasks / 本次 build 按 sql_guard=off 处理」，
+ * 然后照常出包。那两行夹在模块清单里极易被忽略，而关掉的 `sql_guard` 正是 tenant 声明校验
+ * （跨模块 SQL 的唯一守卫）——包看起来完好，检查其实没跑。
+ *
+ * 探法就是 oj 自己的排障命令 `oj secret open`：它和 `oj serve` / `oj build` 用同一套密钥解析
+ * （`OJ_SECRET_KEY` → `OJ_SECRET_KEY_FILE` → config 的 `secrets.private_key_path`），
+ * 解不开就非零退出。明文只可能出现在它的 stdout，这里直接丢弃，不落终端也不落日志。
+ */
+function assertSealedValuesOpenable(oj: string, configPath: string): void {
+	// 注释行不算：config 里留着注释掉的旧密文很常见，naive 匹配会让 build 因为一行 `#` 而失败
+	const live = fs.readFileSync(configPath, "utf-8")
+		.split("\n")
+		.filter(line => !line.trimStart().startsWith("#"))
+		.join("\n");
+	const sealed = [...new Set(live.match(/ENC\[[^\]\n]+\]/g) ?? [])];
+	for (const value of sealed) {
+		try {
+			execFileSync(oj, ["secret", "open", "-c", configPath, value], { stdio: ["ignore", "ignore", "pipe"] });
+		}
+		catch (e) {
+			const stderr = String((e as { stderr?: unknown }).stderr ?? "").trim();
+			const detail = stderr || (e as Error).message;
+			throw new Error(
+				`[ojm] config 里的密封值解不开，已停在出包前：${configPath}\n`
+				+ `      oj 说：${detail}\n`
+				+ "\n"
+				+ "不能放行：oj build 遇到读不动的 config 不会失败（退出码 0），只 warn 两行就继续——\n"
+				+ "tasks 镜像目录回落默认值，sql_guard（tenant 声明校验）直接关掉。那种包看着正常，\n"
+				+ "跨模块 SQL 的守卫却没跑过。\n"
+				+ "\n"
+				+ "两类原因，都修得了：\n"
+				+ "  1) 本机加载的私钥与密封时用的公钥不是一对——最常见是换机器/换部署目录时只带了\n"
+				+ "     config.yaml，没带 config/secrets-private.pem；\n"
+				+ "  2) 密文被改过——手工编辑、复制被截断、编辑器把长行折了。\n"
+				+ "\n"
+				+ "单独验一条：oj secret open -c <config> '<那个 ENC[...] 值>'（成功=这条没问题，失败=就是它）\n"
+				+ "修法：把配对私钥带到本机（OJ_SECRET_KEY / OJ_SECRET_KEY_FILE / config 的 secrets.private_key_path\n"
+				+ "      三选一）；密钥确实换了，就在本机重新 oj secret seal 覆写该值（明文走 stdin，别上命令行）。",
+			);
+		}
+	}
+}
