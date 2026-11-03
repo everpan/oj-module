@@ -162,7 +162,10 @@ function fail(msg) {
 /** 执行一条命令；成功返回 stdout（inherit 模式为 undefined），失败向上抛。 */
 function sh(cmd, cargs, { cwd = ROOT, ...rest } = {}) {
 	console.log(`$ ${cmd} ${cargs.join(" ")}`);
-	return execFileSync(cmd, cargs, { cwd, ...rest });
+	// shell:true 让 OS shell 解析命令：Windows 下 pnpm/npm/git 实为 .cmd/.exe，
+	// execFileSync 直接 spawn 文件名无法补扩展名（ENOENT）——经 shell 后 cmd.exe /
+	// /bin/sh 会正常解析 pnpm.cmd / pnpm，跨平台一致（win32/macOS/Linux 均可用）。
+	return execFileSync(cmd, cargs, { cwd, shell: true, ...rest });
 }
 /** pnpm 命令的薄封装（本脚本几乎只调 pnpm）。 */
 function pnpm(cargs, opts = {}) {
@@ -311,7 +314,7 @@ function checkLockstep() {
 }
 /** 1. 工作区干净性（pnpm publish 要求干净树） */
 function checkCleanTree() {
-	if (execFileSync("git", ["status", "--porcelain"], { cwd: ROOT, encoding: "utf-8" }).trim())
+	if (execFileSync("git", ["status", "--porcelain"], { cwd: ROOT, encoding: "utf-8", shell: true }).trim())
 		fail("工作区不干净——pnpm publish 要求干净树，请先提交全部改动。");
 }
 /**
@@ -325,12 +328,12 @@ function checkCleanTree() {
 function loginToRegistry() {
 	// npm login 是交互命令，必须 inherit stdio 把真实 TTY 交给 npm；
 	// 否则 pnpm/npm 判定为非交互终端会拒绝（与 web 2FA 发布同理）。
-	execFileSync("npm", ["login", `--registry=${REGISTRY}`], { stdio: "inherit" });
+	execFileSync("npm", ["login", `--registry=${REGISTRY}`], { stdio: "inherit", shell: true });
 }
 
 function checkLoggedIn() {
 	try {
-		execFileSync("npm", ["whoami", `--registry=${REGISTRY}`], { stdio: "pipe" });
+		execFileSync("npm", ["whoami", `--registry=${REGISTRY}`], { stdio: "pipe", shell: true });
 		return;
 	}
 	catch {
@@ -344,7 +347,7 @@ function checkLoggedIn() {
 	}
 	// 登录成功后复核一次：确认 token 已生效再继续，避免带着失效态进发布步骤
 	try {
-		execFileSync("npm", ["whoami", `--registry=${REGISTRY}`], { stdio: "pipe" });
+		execFileSync("npm", ["whoami", `--registry=${REGISTRY}`], { stdio: "pipe", shell: true });
 	}
 	catch {
 		fail(`登录后 whoami 仍失败——请确认登录的 registry（${REGISTRY}）与发布目标一致，再跑本命令。`);
