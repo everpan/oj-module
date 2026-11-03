@@ -197,7 +197,8 @@ export async function initProject(destDir: string, opts: InitOptions = {}): Prom
 		// 业务工程拿到模板后自助完成对接要用，不能只留本仓：
 		//   · `wecom-daikaifa.md`  企业微信代开发（服务商模板）：凭据清单 + 用户/开发/部署三视角；
 		//   · `wecom-internal-app.md` 企业内部应用（自建）：五项 corp 凭据 + 验证并接入 + 共存。
-		for (const name of ["SKILL.md", "manual.md", "README.md", "wecom-daikaifa.md", "wecom-internal-app.md"])
+		//   · `publish-walkthrough.md` 方案包发布全流程（新手照做版）：打包/签名/CDN/安装一条链。
+		for (const name of ["SKILL.md", "manual.md", "README.md", "wecom-daikaifa.md", "wecom-internal-app.md", "publish-walkthrough.md"])
 			copyIfAbsent(path.join(cliDevkit, name), path.join(ojmSkillDir, name), report);
 	}
 	else {
