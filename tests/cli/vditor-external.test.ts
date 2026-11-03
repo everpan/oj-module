@@ -45,7 +45,8 @@ function makeFixture(): string {
 	fs.writeFileSync(path.join(modulesDir, "entry.tsx"), ENTRY);
 	fs.writeFileSync(
 		path.join(root, "web.config.ts"),
-		`export default { baseUrl: "", modules: [{ name: "vdfx", entry: "${modulesDir}/entry.tsx" }] };\n`,
+		// Windows 绝对路径含反斜杠，裸插值会被当 JS 转义吃掉，须 JSON.stringify 转义。
+		`export default { baseUrl: "", modules: [{ name: "vdfx", entry: ${JSON.stringify(path.join(modulesDir, "entry.tsx"))} }] };\n`,
 	);
 	fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({ name: "vdfx-proj", type: "module" }));
 	// cli 是 vditor 唯一的声明方（devDependencies → catalog）；夹具经 symlink 获得同版本包
@@ -54,7 +55,8 @@ function makeFixture(): string {
 	fs.symlinkSync(
 		path.join(PROJECT_ROOT, "packages/cli/node_modules/vditor"),
 		path.join(nodeModules, "vditor"),
-		"dir",
+		// Windows 目录 symlink 需提权；junction 无此限制。
+		process.platform === "win32" ? "junction" : "dir",
 	);
 	return root;
 }

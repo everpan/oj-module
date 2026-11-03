@@ -2,9 +2,14 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+
 import { initProject, resolveVersionMatrix } from "../../packages/cli/src/init";
 import { readOjApiPrefix, readOjPort, readOjServerField } from "../../packages/cli/src/oj-config";
 import { PROJECT_ROOT } from "../helpers/paths";
+
+// bin/oj 桩是 shebang 脚本，Windows 无法 spawn（vendor.test.ts 同款 posixOnly）；
+// 仅依赖其真实执行的用例在 win32 下跳过，其余平台照常运行。
+const posixOnly = process.platform === "win32" ? it.skip : it;
 
 /**
  * 设计 §3：`ojm init` 产物契约（TDD）。
@@ -50,7 +55,7 @@ function fakeOjInstall(binDir: string): Promise<void> {
 const initOpts = { yes: true, ojInstaller: fakeOjInstall } as const;
 
 describe("initProject", () => {
-	it("按设计 §3 生成全栈工程全树", async () => {
+	posixOnly("按设计 §3 生成全栈工程全树", async () => {
 		const dest = path.join(tmpRoot(), "demo-proj");
 		await initProject(dest, initOpts);
 
@@ -588,7 +593,7 @@ describe("initProject 凭据密封", () => {
 		});
 	}
 
-	it("oj 可用 → jwt_secret 换成 ENC[...] 并写 secrets 段", async () => {
+	posixOnly("oj 可用 → jwt_secret 换成 ENC[...] 并写 secrets 段", async () => {
 		const dest = path.join(tmpRoot(), "seal-ok");
 		await initProject(dest, { yes: true, ojInstaller: sealableOj });
 		const config = fs.readFileSync(path.join(dest, "config.yaml"), "utf-8");
@@ -632,7 +637,7 @@ describe("initProject 既有 bin/oj 能力闸门", () => {
 		};
 	}
 
-	it("既有 bin/oj 低于最低版本 → 抛错且给出 ojm vendor --force 处置", async () => {
+	posixOnly("既有 bin/oj 低于最低版本 → 抛错且给出 ojm vendor --force 处置", async () => {
 		const dest = path.join(tmpRoot(), "old-oj");
 		await preinstalledOj("0.1.84")(path.join(dest, "bin"));
 
@@ -643,7 +648,7 @@ describe("initProject 既有 bin/oj 能力闸门", () => {
 		expect(fs.existsSync(path.join(dest, "config.yaml"))).toBe(false);
 	});
 
-	it("版本够但 --module-root 缺失 → 抛错（声明新、能力旧）", async () => {
+	posixOnly("版本够但 --module-root 缺失 → 抛错（声明新、能力旧）", async () => {
 		const dest = path.join(tmpRoot(), "caps-miss");
 		await preinstalledOj("0.2.0")(path.join(dest, "bin"));
 

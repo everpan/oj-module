@@ -6,8 +6,13 @@ import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
 import { afterAll, describe, expect, it, vi } from "vitest";
+
 import { devServer, shutdownDev } from "../../packages/cli/src/dev";
 import { resolveMergedConfigPath } from "../../packages/cli/src/dev-secrets";
+
+// bin/oj 桩是 shebang 脚本，Windows 无法 spawn（vendor.test.ts 同款 posixOnly）；
+// 仅依赖其真实执行的用例在 win32 下跳过，其余平台照常运行。
+const posixOnly = process.platform === "win32" ? it.skip : it;
 
 /**
  * 设计 §4（P3）：ojm dev 全栈接线。
@@ -166,7 +171,7 @@ async function stopServer(server: http.Server) {
 }
 
 describe("devServer 全栈接线", () => {
-	it("全栈模式：/api/* 反代 oj 不进 mock；server.close 回收 oj", async () => {
+	posixOnly("全栈模式：/api/* 反代 oj 不进 mock；server.close 回收 oj", async () => {
 		const { root, port } = makeFixture("fullstack");
 		const configPath = path.join(root, "api/config.yaml");
 		const up = stubOjUpstream();
@@ -195,7 +200,7 @@ describe("devServer 全栈接线", () => {
 		up.server.close();
 	});
 
-	it("/cdn 反代：config 有 /cdn 挂载时直发 oj（不剥前缀）；无挂载工程回落静态不崩", async () => {
+	posixOnly("/cdn 反代：config 有 /cdn 挂载时直发 oj（不剥前缀）；无挂载工程回落静态不崩", async () => {
 		const { root, port } = makeFixture("fullstack");
 		const configPath = path.join(root, "api/config.yaml");
 		const up = stubOjUpstream();
@@ -261,7 +266,7 @@ describe("devServer 全栈接线", () => {
 		await stopServer(occupier);
 	});
 
-	it("module-root 布局：oj 收到 --module-root <root>/src（不是 --api-path），config 取自仓库根", async () => {
+	posixOnly("module-root 布局：oj 收到 --module-root <root>/src（不是 --api-path），config 取自仓库根", async () => {
 		const { root, port } = makeFixture("module-root");
 		const configPath = path.join(root, "config.yaml");
 		const up = stubOjUpstream();
@@ -405,7 +410,7 @@ describe("devServer 全栈接线", () => {
 		await stopServer(server);
 	}, 15000);
 
-	it("f2：反代前缀跟随 config.yaml 的 server.base（非 /api 时 /api/* 不再进 oj）", async () => {
+	posixOnly("f2：反代前缀跟随 config.yaml 的 server.base（非 /api 时 /api/* 不再进 oj）", async () => {
 		const { root, port } = makeFixture("fullstack", "/apiv2");
 		const configPath = path.join(root, "api/config.yaml");
 		const up = stubOjUpstream("/apiv2");
@@ -431,7 +436,7 @@ describe("devServer 全栈接线", () => {
 		up.server.close();
 	});
 
-	it("f3：oj.ready 拒绝（health 超时/启动即退）→ 回收 oj 子进程后再抛错", async () => {
+	posixOnly("f3：oj.ready 拒绝（health 超时/启动即退）→ 回收 oj 子进程后再抛错", async () => {
 		const { root, port } = makeFixture("fullstack");
 		let stopped = false;
 		await expect(devServer(root, {
@@ -500,7 +505,7 @@ describe("shutdownDev（前端终止 → 后端 oj 随之消亡）", () => {
 		expect(exited).toBe(0);
 	});
 
-	it("devServer 注册 SIGINT / SIGTERM 优雅停机（前端进程被信号杀时 oj 一起亡）", async () => {
+	posixOnly("devServer 注册 SIGINT / SIGTERM 优雅停机（前端进程被信号杀时 oj 一起亡）", async () => {
 		const { root, port } = makeFixture("fullstack");
 		const configPath = path.join(root, "api/config.yaml");
 		const up = stubOjUpstream();

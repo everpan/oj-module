@@ -1,8 +1,13 @@
 import fs from "node:fs";
 import path from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
+
 import { buildBackend, buildModules, readModuleDefinition } from "../../packages/cli/src/build";
 import { PROJECT_ROOT } from "../helpers/paths";
+
+// bin/oj 桩是 shebang 脚本，Windows 无法 spawn（vendor.test.ts 同款 posixOnly）；
+// 仅依赖其真实执行的用例在 win32 下跳过，其余平台照常运行。
+const posixOnly = process.platform === "win32" ? it.skip : it;
 
 /**
  * 设计 §5（D8/D11）：build 的布局感知与职责边界。
@@ -32,7 +37,9 @@ function makeFixture(): string {
 	fs.writeFileSync(path.join(modulesDir, "entry.ts"), ENTRY);
 	fs.writeFileSync(
 		path.join(root, "web.config.ts"),
-		`export default { baseUrl: "", modules: [{ name: "fx", entry: "${modulesDir}/entry.ts" }] };\n`,
+		// modulesDir 在 Windows 含反斜杠，裸插值会被 JS 字符串当转义吃掉（\G/\o…），
+		// 必须 JSON.stringify 正确转义后再写进生成的源码。
+		`export default { baseUrl: "", modules: [{ name: "fx", entry: ${JSON.stringify(path.join(modulesDir, "entry.ts"))} }] };\n`,
 	);
 	fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({ name: "fx-proj", type: "module" }));
 	return root;
@@ -111,7 +118,7 @@ describe("buildBackend（oj build 编排，D8）", () => {
 		expect(await buildBackend(root)).toBe(false);
 	});
 
-	it("有 api/src 时 spawn bin/oj build：绝对路径参数、不含 migrate", async () => {
+	posixOnly("有 api/src 时 spawn bin/oj build：绝对路径参数、不含 migrate", async () => {
 		const root = makeFixture();
 		makeStubOj(root);
 
@@ -131,7 +138,7 @@ describe("buildBackend（oj build 编排，D8）", () => {
 		expect(args).toContain("--no-minify");
 	});
 
-	it("有 api/config.yaml → 传 -c：否则 oj build 读不到 config（tasks 目录回落默认、sql_guard 失效）", async () => {
+	posixOnly("有 api/config.yaml → 传 -c：否则 oj build 读不到 config（tasks 目录回落默认、sql_guard 失效）", async () => {
 		const root = makeFixture();
 		makeStubOj(root);
 		fs.mkdirSync(path.join(root, "api"), { recursive: true });

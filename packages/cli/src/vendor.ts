@@ -104,6 +104,20 @@ export function syncOjDevkit(projectRoot: string, binDir: string, log: (msg: str
 }
 
 /**
+ * bin/ 下实际存在的 oj 文件名：Windows 原生二进制是 oj.exe，但也兼容无扩展名的
+ * `oj`（手动放置 / 脚本桩）。仅 win32 做回落，POSIX 恒为 `oj` 不受影响。
+ */
+function ojBinIn(binDir: string, platform: NodeJS.Platform = process.platform): string {
+	const primary = path.join(binDir, ojBinName(platform));
+	if (platform === "win32" && !fs.existsSync(primary)) {
+		const bare = path.join(binDir, "oj");
+		if (fs.existsSync(bare))
+			return bare;
+	}
+	return primary;
+}
+
+/**
  * 工程内 oj 二进制路径的**唯一口径**（<projectRoot>/bin/oj）。
  *
  * 早前 oj.ts / preview.ts / build.ts / info.ts 各拼一遍，拼法还不一致
@@ -111,12 +125,12 @@ export function syncOjDevkit(projectRoot: string, binDir: string, log: (msg: str
  * 整套同版本，路径算错会拿到半新半旧的组合。统一到这里。
  */
 export function resolveOjBin(projectRoot: string): string {
-	return path.join(projectRoot, "bin", ojBinName());
+	return ojBinIn(path.join(projectRoot, "bin"));
 }
 
 /** 本地版本只认 .oj-version 标记；bin/oj 缺失或标记缺失都视为未安装（N6，格式 vX.Y.Z） */
 export function readLocalVersion(binDir: string, platform: NodeJS.Platform = process.platform): string | null {
-	if (!fs.existsSync(path.join(binDir, ojBinName(platform))))
+	if (!fs.existsSync(ojBinIn(binDir, platform)))
 		return null;
 	const marker = path.join(binDir, ".oj-version");
 	if (!fs.existsSync(marker))

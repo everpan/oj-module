@@ -2,7 +2,7 @@ import type { OjSchemaDiag } from "./emit-oj-schema";
 import type { IrEndpoint } from "./ir";
 import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, posix, sep } from "node:path";
 import { emitOjSchemaLine } from "./emit-oj-schema";
 import { splitRoute, wirePrefixOf } from "./ir";
 import { jsonSchemaToSample } from "./json-schema-sample";
@@ -147,8 +147,12 @@ export async function planStubWrites(ir: IrEndpoint[], opts: PlanStubOptions): P
 
 	const writes: StubWrite[] = [];
 	for (const [, { module, dir, endpoints }] of [...groups.entries()].sort()) {
-		const apiRoot = opts.apiRootOf ? opts.apiRootOf(module) : join(opts.apiSrcDir, module);
-		const filePath = join(apiRoot, dir, "api.ts");
+		// filePath 统一 POSIX 分隔符：契约/manifest/指纹键都按 `/` 比对，Windows 上
+		// path.join 会产出 `\`，导致落盘路径失配（stub 找不到、快照漂移）。
+		// fs 侧 Windows 同样接受 `/`，无需回转分隔符。
+		const apiRootRaw = opts.apiRootOf ? opts.apiRootOf(module) : posix.join(opts.apiSrcDir, module);
+		const apiRoot = apiRootRaw.split(sep).join("/");
+		const filePath = posix.join(apiRoot, dir, "api.ts");
 		// 模板天然 lint-clean（F6）→ 直接哈希发射内容；注入缝仅供测试/特殊工程对齐
 		const body = await fix(emitStubBody(endpoints, opts.diag), filePath);
 		const fingerprint = `// ojm-api:stub ${endpoints.map(e => e.name).sort().join(",")} sha256:${hashContent(body)}\n`;

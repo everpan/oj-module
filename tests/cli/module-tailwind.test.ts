@@ -37,7 +37,8 @@ function makeFixture(withCss: boolean): string {
 		fs.writeFileSync(path.join(modulesDir, "styles.css"), TEMPLATE_STYLES);
 	fs.writeFileSync(
 		path.join(root, "web.config.ts"),
-		`export default { baseUrl: "", modules: [{ name: "fx", entry: "${modulesDir}/entry.ts" }] };\n`,
+		// Windows 绝对路径含反斜杠，裸插值会被当 JS 转义吃掉，须 JSON.stringify 转义。
+		`export default { baseUrl: "", modules: [{ name: "fx", entry: ${JSON.stringify(path.join(modulesDir, "entry.ts"))} }] };\n`,
 	);
 	fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({ name: "fx-proj", type: "module" }));
 	return root;

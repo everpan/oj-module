@@ -108,7 +108,8 @@ afterAll(() => {
 	fs.rmSync(FIXTURE_ROOT, { recursive: true, force: true });
 });
 
-describe("startOj 子进程编排", () => {
+// bin/oj 桩是 shebang 脚本，Windows CreateProcess 只认 PE，无法 spawn（vendor.test.ts 同款 posixOnly）。
+describe.skipIf(process.platform === "win32")("startOj 子进程编排", () => {
 	it("健康路径：spawn 参数 serve/-c/-b/--api-path 全按契约，ready resolve，stop() 回收", async () => {
 		const { root, configPath, port } = makeFixture("healthy");
 		const apiSrc = path.join(root, "api/src");

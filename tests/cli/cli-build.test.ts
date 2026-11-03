@@ -66,7 +66,8 @@ describe("ojm build 产出模块 chunk", () => {
 		// 版本矩阵门禁（checkSharedVersions）要读 projectRoot/package.json 与 node_modules：
 		// 给最小 package.json + 复用模板已安装的依赖，避免为构建再装一份
 		fs.writeFileSync(path.join(WORK, "package.json"), JSON.stringify({ name: "tmp-cli-build", type: "module" }));
-		fs.symlinkSync(path.join(TEMPLATE, "node_modules"), path.join(WORK, "node_modules"), "dir");
+		// Windows 建目录符号链接需管理员权限（EPERM）；junction 无需提权且同为目录重解析点。
+		fs.symlinkSync(path.join(TEMPLATE, "node_modules"), path.join(WORK, "node_modules"), process.platform === "win32" ? "junction" : "dir");
 		await buildModules(WORK);
 		DIST = path.join(WORK, "dist", "web");
 		MODULE_DIR = path.join(DIST, "modules/app/0.1.0");

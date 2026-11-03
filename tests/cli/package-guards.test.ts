@@ -220,7 +220,8 @@ describe("旧 scope 零残留（R7）", () => {
 				if (entry.name.startsWith(".tmp-"))
 					continue;
 				// docs/archive 保留历史改名痕迹，不回写
-				if (path.relative(PROJECT_ROOT, full) === "docs/archive")
+				// Windows 下 path.relative 产出 `docs\archive`，不能与 POSIX 字面量硬比。
+				if (path.relative(PROJECT_ROOT, full) === path.join("docs", "archive"))
 					continue;
 				walk(full, hit);
 				continue;

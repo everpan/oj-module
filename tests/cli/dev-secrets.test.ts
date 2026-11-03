@@ -91,7 +91,8 @@ afterAll(() => {
 	fs.rmSync(FIXTURE_ROOT, { recursive: true, force: true });
 });
 
-describe("开发态本地密钥供给（方案 A'）", () => {
+// 桩 oj 经 shebang 脚本执行 secret keygen/seal/open，Windows 无法 spawn（vendor.test.ts 同款 posixOnly）。
+describe.skipIf(process.platform === "win32")("开发态本地密钥供给（方案 A'）", () => {
 	it("首次 clone 无密钥（G1）：自动生成密钥 + 写 config.local.yaml + 合并；tracked config.yaml 字节未变", async () => {
 		const { root, configPath } = makeFixture("module-root");
 		const tracked = "auth:\n  jwt_secret: \"prod-enc-placeholder\"\napp:\n  title: Demo\n";

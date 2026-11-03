@@ -16,6 +16,8 @@ import { describe, expect, it } from "vitest";
  */
 
 const TEMPLATES = path.join(process.cwd(), "packages/cli/templates");
+/** tsc --listFiles 在 Windows 输出正斜杠 `D:/...`，path.join 产出反斜杠 `D:\...`；统一成 POSIX 再比前缀 */
+const TEMPLATES_POSIX = TEMPLATES.split(path.sep).join("/");
 
 /** eslint/ts 之外的杂项扩展：`.d.ts` 也算 TS 源（如生成的声明），一并要求被覆盖 */
 const SOURCE_EXT = /\.(?:ts|tsx|mts|cts)$/;
@@ -31,10 +33,10 @@ function listFiles(configRel: string): Set<string> {
 	], { encoding: "utf-8", maxBuffer: 32 * 1024 * 1024 });
 	const files = new Set<string>();
 	for (const line of out.split("\n")) {
-		const p = line.trim();
-		if (!path.isAbsolute(p) || !p.startsWith(TEMPLATES))
+		const p = line.trim().replace(/\\/g, "/");
+		if (!p.startsWith(`${TEMPLATES_POSIX}/`))
 			continue;
-		const rel = path.relative(TEMPLATES, p).split(path.sep).join("/");
+		const rel = p.slice(TEMPLATES_POSIX.length + 1);
 		// 只看 src/：工程根的 global.d.ts / env.d.ts 是两侧共用的环境声明，本来就在两个工程里
 		if (rel.startsWith("src/"))
 			files.add(rel);
