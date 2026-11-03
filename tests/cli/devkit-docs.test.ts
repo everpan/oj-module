@@ -65,6 +65,8 @@ describe("devkit 目录结构（ojm 侧发货 + oj-api-dev 快照子目录）", 
 		"oj-modules.d.ts",
 		"oidc-implementation.md",
 		"oidc-integration.md",
+		"db-guide.md",
+		"deploy-tunnel-recipe.md",
 	];
 
 	it("docs/devkit/ 顶层文件恰为 10 个 ojm 侧文件（快照不得平铺进同步源）", () => {
@@ -74,7 +76,7 @@ describe("devkit 目录结构（ojm 侧发货 + oj-api-dev 快照子目录）", 
 		expect(top).toEqual([...OJM_FILES].sort());
 	});
 
-	it("docs/devkit/oj-api-dev/ 恰为 10 个 oj 侧快照文件", () => {
+	it("docs/devkit/oj-api-dev/ 恰为 12 个 oj 侧快照文件", () => {
 		const snap = readdirSync(join(ROOT, "docs/devkit/oj-api-dev")).sort();
 		expect(snap).toEqual([...SNAPSHOT_FILES].sort());
 	});

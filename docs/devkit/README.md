@@ -53,6 +53,8 @@
 | `api-manual.md` | 后端开发手册（13 章）：模块约定、全局对象 API、鉴权租户、测试、配置、构建发布 |
 | `scenarios.md` | 场景速查（照抄就能跑） |
 | `sql-builder-guide.md` | SQL 构造器专题指引（v0.1.82） |
+| `db-guide.md` | db 新人手册：配库 → 建表 → 增删改查 → 事务的上手路径与安全边界（逐 API 穷举仍以 api-manual 为准） |
+| `deploy-tunnel-recipe.md` | 部署级隧道 recipe：跳板机后的库在部署层打通的配方（平台不做进程内 SSH 隧道） |
 | `oj-test-guide.md` | `oj test` L1 测试专题指引 |
 | `global.d.ts` / `oj-modules.d.ts` | handler 全局对象 TS 类型 + `#` 导入别名 ambient 兜底 |
 | `oidc-implementation.md` / `oidc-integration.md` | OIDC 演示走读与集成说明 |
@@ -111,7 +113,7 @@ flowchart LR
   `.claude/skills/ojm-module-dev/` 再 init）。源文件只在仓库 `docs/devkit/` 顶层一处维护。
 - **oj 侧**：手册与 skill 随 oj 版本发布；升级 oj 后用新 `bin/devkit/` 覆盖旧拷贝。
   框架贡献者要把本仓快照同步到新版：从 `~/.local/share/oj/devkit/` 整目录覆盖
-  `docs/devkit/oj-api-dev/`（10 个文件，保持逐字节一致以便对账）。
+  `docs/devkit/oj-api-dev/`（oj v0.1.116 起 12 个文件，保持逐字节一致以便对账）。
 
 > 本目录顶层 9 个文件是**自包含**的：业务工程拿到即可读懂，不需要工程仓库里的
 > 其它文档。`oj-api-dev/` 子目录是 oj 侧快照，同样自包含（其自身 README 即索引），

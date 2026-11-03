@@ -13,7 +13,12 @@
 PG 的 `$N` 占位符自管）就会锁死到单一引擎，迁移时须逐条改写。**仅当构造器不支持的语句
 （DDL、部分非 CRUD 语义）才退回 `db.query` / `db.exec`**，且仍须用 `?` 绑定参数、避免方言特有语法。
 
-## 2. 能力矩阵（v0.1.82）
+## 2. 能力矩阵（v0.1.88）
+
+> **适用范围（v0.1.88）**：构造器只为宿主认识的三种方言生成 SQL——`sqlite` / `mysql` /
+> `postgres`。接了新方言插件时构造器与 `toSQL()` 一律 `OJ_DB_UNSUPPORTED`
+> （`e.data.capability = query_build` / `query_sql`），裸 SQL（`db.query`/`db.exec`/`db.tx`）
+> 才是该方言上一期的可用面。下表「✅ 全方言」= 三内置方言。
 
 | 能力 | 构造器写法 | 方言可移植 | 备注 |
 |---|---|---|---|
@@ -88,8 +93,10 @@ DELETE 无此坑（删行必「变更」，匹配行 = 变更行），但归属�
 - **不要用 `if (n === 1)` 判幂等**：pg/sqlite 返回 `0`。靠唯一约束 + 事务保证「不会重复写」，
   行数只读「写几条」。
 - mysql **无主键表**直接报错：`orIgnore on mysql requires a primary key on table '...'`。
-- mysql 上 `orIgnore` 与 `returning` **互斥**（`orIgnore with returning is not supported on mysql`）：
-  mysql 无 RETURNING，而 `ON DUPLICATE KEY UPDATE` 又无法在同一语句回带自增 id。
+- **mysql 上别组合 `orIgnore()` + `returning(['id'])`**：mysql 无 RETURNING，取 id 靠同连接
+  `SELECT LAST_INSERT_ID()`；而 `ON DUPLICATE KEY UPDATE <pk> = <pk>` 的恒等赋值不会刷新
+  `LAST_INSERT_ID()`，跳过重复行时拿到的是该连接上的旧值（首次则是 0）。要「幂等 + 拿 id」：
+  先用唯一键 `select` 出 id，或普通 `insert` 后接 `OJ_DB_CONSTRAINT` 当已存在。
 - 实现**不用 `INSERT IGNORE`**：它会把 NOT NULL 违例 / 截断等**所有**错误降级为警告（静默数据
   损坏面），且 sea-query 该路径上游零测试、组合后疑似产出非法 `ON DUPLICATE KEY IGNORE`。
 
@@ -117,9 +124,10 @@ DELETE 无此坑（删行必「变更」，匹配行 = 变更行），但归属�
 - mysql：`CAST(? AS CHAR)`
 - postgres：`CAST(? AS TEXT)`
 
-`lit` 必须是**标量**（数组/对象/嵌套报 `lit column must be a scalar`）；`as` 必填过别名形状
-（`^[A-Za-z_][A-Za-z0-9_]*$`，违例 `illegal alias`），与 `*` 混用直接拒
-（`literal column cannot mix with select '*'`）。**真正的计算列用 `case`**，不要拼字符串进
+`lit` 必须是**标量**（数组/对象/嵌套报 `lit column '<as>' needs a scalar value
+(string/number/bool/null)`）；`as` 必填过别名形状
+（`^[A-Za-z_][A-Za-z0-9_]*$`，违例 `illegal alias`），与 `*` 混用报
+`select '*' must be the only column`。**真正的计算列用 `case`**，不要拼字符串进
 `lit`（会破坏参数化、引入注入面）。
 
 ### 3.5 模糊搜索：用语义 op，别手写 `LIKE`
@@ -179,4 +187,6 @@ v0.1.81 前「别名混入真名」会让归属与租户两条守卫**同时静�
 8. **字面 `%`/`_` 匹配**（v0.1.82 明文）：`{op:"like", value:"a!_b", escape:"!"}`——模式原样成形，
    自选转义符（白名单 `! / | ~ # @`）；纯模糊搜仍用 `contains`。
 
-迁移后同一 handler 在多引擎跑通，无需按方言分支。
+迁移后同一 handler 在**三内置方言**上跑通，无需按方言分支；新方言（插件声明名）上一期只有
+裸 SQL 路径，构造器报 `OJ_DB_UNSUPPORTED`——别为了「多一个方言」把 SQL 写成分支兜底
+（`else` 会把错 SQL 静默发给新方言，见 `db-guide.md` §10.7）。
