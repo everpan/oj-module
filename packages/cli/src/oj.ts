@@ -128,10 +128,27 @@ export function startOj(
 	// 注入条件：用户未在 toml 显式声明 plugins_dir（env 优先级更高，注入会覆盖），
 	// 且 bin/plugins 确实存在（缺失时保持 oj 原行为，不生次生错误）。
 	const pluginsDir = path.join(projectRoot, "bin", "plugins");
-	const env: NodeJS.ProcessEnv | undefined
-		= !readOjPluginsDir(configPath) && fs.existsSync(pluginsDir)
-			? { ...process.env, OJ_PLUGINS_DIR: pluginsDir }
-			: undefined;
+	// win32：oj 是原生 Windows 二进制，从 Git Bash / MSYS 终端启动时继承 MSYS 风格 PATH
+	// （如 `/c/WINDOWS/system32`），Windows CreateProcess 无法按该形式解析可执行文件 → 内部
+	// `tar` 等系统工具 "command not found in PATH"（市场安装解包即挂）。追加原生 Windows 系统
+	// 目录（tar.exe 所在）；cmd/PowerShell 用户 PATH 本就含这些，无副作用。
+	// win32: Git Bash/MSYS 把 PATH 写成 /usr/bin 这类 Unix 风格条目，oj 内部按 Windows 规则检索命令
+	// 时无法据此定位 tar.exe（系统 tar 在 C:\Windows\System32），市场安装解包会报 tar not found in PATH。
+	// 剔除无盘符的 Unix 风格条目、仅保留 Windows 绝对路径，并兜底补上系统目录与 Git bin。
+	// cmd/PowerShell 用户 PATH 本就全是 Windows 形态，过滤无副作用。
+	const env: NodeJS.ProcessEnv | undefined = (() => {
+		let base: NodeJS.ProcessEnv = process.env;
+		if (process.platform === "win32") {
+			const cur = process.env.PATH ?? process.env.Path ?? "";
+			const winEntries = cur.split(";").filter(e => /^[A-Z]:[\\/]/i.test(e.trim()));
+			const sysDirs = ["C:\\Windows\\System32", "C:\\Windows", "C:\\Program Files\\Git\\usr\\bin"];
+			const missing = sysDirs.filter(d => !winEntries.some(e => e.toLowerCase().startsWith(d.toLowerCase())));
+			base = { ...process.env, PATH: [...winEntries, ...missing].join(";") };
+		}
+		return !readOjPluginsDir(configPath) && fs.existsSync(pluginsDir)
+			? { ...base, OJ_PLUGINS_DIR: pluginsDir }
+			: base;
+	})();
 
 	let stderrTail = "";
 	// --console-log：oj 新版终端默认静默（console_log 缺省 false，只落 logs/），

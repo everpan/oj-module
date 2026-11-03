@@ -118,9 +118,12 @@ export async function bootstrapIsolatedSite(opts: BootstrapOptions = {}): Promis
 	}
 	writeFileSync(configPath, readFileSync(path.join(templateDir, "config.yaml"), "utf-8"), "utf-8");
 
-	// 2) oj 二进制与插件（startOj 按 <root>/bin/oj 解析；plugins 让 auth 插件可用）
+	// 2) oj 二进制与插件（startOj 按 <root>/bin/oj[.exe] 解析；plugins 让 auth 插件可用）。
+	// 跨平台：ojBin 在 Windows 为 bin/oj.exe、Linux/macOS 为 bin/oj——拷贝目标文件名必须
+	// 与源一致（path.basename），否则 Windows 下落盘成无扩展名的 `oj`，后续 resolveOjBin
+	// 按 bin/oj.exe 解析会找不到、后端构建检查也报「缺少 bin/oj.exe」（trial/walkthrough 隔离站点挂死）。
 	mkdirSync(path.join(root, "bin"), { recursive: true });
-	cpSync(ojBin, path.join(root, "bin", "oj"), { recursive: true });
+	cpSync(ojBin, path.join(root, "bin", path.basename(ojBin)), { recursive: true });
 	const versionMarker = path.join(projectRoot, "bin", ".oj-version");
 	if (existsSync(versionMarker)) {
 		cpSync(versionMarker, path.join(root, "bin", ".oj-version"));

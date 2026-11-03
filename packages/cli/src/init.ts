@@ -328,7 +328,10 @@ function copyTemplates(
 	for (const entry of fs.readdirSync(srcDir, { withFileTypes: true })) {
 		const src = path.join(srcDir, entry.name);
 		const dest = path.join(destDir, entry.name);
-		const srcRel = path.relative(rootDir, src);
+		// 跨平台：path.relative 在 Windows 返回反斜杠，而 include 集合与
+		// hasIncludedDescendant 的前缀对比都用正斜杠，必须归一后再比，
+		// 否则嵌套目录（src/app/api/<mod> 等）被误判为「未收录」整棵 skip。
+		const srcRel = path.relative(rootDir, src).split(path.sep).join("/");
 		const listed = include.has(srcRel);
 		if (!underIncluded && !listed && !hasIncludedDescendant(include, srcRel))
 			continue;
@@ -390,7 +393,11 @@ function readInitInclude(templatesDir: string): Set<string> {
 	const doc = yaml.parse(fs.readFileSync(yamlPath, "utf-8")) as { include?: string[] } | null;
 	const out = new Set<string>();
 	for (const raw of doc?.include ?? []) {
-		const p = path.normalize(raw).replace(/^(\.\/)+/, "");
+		// 跨平台：include 清单用正斜杠书写，但 path.normalize 在 Windows 会把
+		// 正斜杠折成反斜杠，导致与 srcRel（path.relative 在 Windows 同样出反斜杠）
+		// 的对比永远落空、整棵 src 子树被 skip。这里只把反斜杠归正、剥 ./ 前缀，
+		// 不引入平台分隔符（修复：Windows 下 init 不拷贝 src 树）。
+		const p = raw.replace(/\\/g, "/").replace(/^(\.\/)+/, "");
 		out.add(p);
 		if (!fs.existsSync(path.join(templatesDir, p)))
 			throw new Error(`init.include.yaml 收录了不存在的路径：${p}（拼写错误或模板缺文件？）`);
