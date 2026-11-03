@@ -18,7 +18,8 @@ description: 用 ojm 开发前后端一体工程时使用——新增/修改前�
 1. **读章**：建模块 → 手册 §2；加接口（handler .schema → oj openapi → 生成 → 对接）→ §3；
    接管通知/上传/菜单 → §4；换布局或加插槽 → §5；排查 → §8；
    **组织架构 / 通讯录（选人、按部门算收件人、接 LDAP 等新来源）→ §14**；
-   **接通企业微信（代开发 / 企业内部应用 / 两套共存）→ `wecom-daikaifa.md` + `wecom-internal-app.md`**。
+   **接通企业微信（代开发 / 企业内部应用 / 两套共存）→ `wecom-daikaifa.md` + `wecom-internal-app.md`**；
+   **把方案包发出去（打包/签名/CDN/安装一条链，新手照敲）→ `publish-walkthrough.md`**。
 2. **建目录**：一个目录 = 一个模块——前端一侧 `src/<模块名>/web/`（`entry.ts` 必备，
    `pages/`、`locales/` 按需），后端一侧 `src/<模块名>/api/`（目录镜像路由的 `api.ts`，
    动词挂 `.schema`）。两侧可只存在一侧。
