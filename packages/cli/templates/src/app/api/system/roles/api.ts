@@ -19,11 +19,12 @@ get.response = {
 	type: "array",
 	items: {
 		type: "object",
-		required: ["name", "module", "title", "description", "builtin", "deprecated", "holders", "permissions"],
+		required: ["name", "module", "title", "title_key", "description", "builtin", "deprecated", "holders", "permissions"],
 		properties: {
 			name: { type: "string" },
 			module: { type: "string" },
 			title: { type: ["string", "null"] },
+			title_key: { type: ["string", "null"] },
 			description: { type: ["string", "null"] },
 			builtin: { type: "boolean" },
 			deprecated: { type: "boolean" },

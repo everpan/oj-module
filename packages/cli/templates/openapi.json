@@ -5679,6 +5679,7 @@
 													"name",
 													"module",
 													"title",
+													"title_key",
 													"description",
 													"builtin",
 													"deprecated",
@@ -5693,6 +5694,12 @@
 														"type": "string"
 													},
 													"title": {
+														"type": [
+															"string",
+															"null"
+														]
+													},
+													"title_key": {
 														"type": [
 															"string",
 															"null"

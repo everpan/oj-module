@@ -76,6 +76,8 @@ web 段入包时（cpSync ownWeb 之后）追加：源码 `webSrcOf(layout, name
 - [x] T5 全量验证：templates BDD 1034/1034 · cli 604 通过 + 1 skip · eslint 0 问题 · tsc 0 错误
 - [x] T6 版本 bump 0.2.57（双 package.json + build:shell 重建 + host-versions 同步 68 项）
 - [x] T7 计划文档补状态与总结
+- [x] T8 需求方决策②接线：角色 title_key 实时翻译打通（roles.ts 出参 → API 契约 → ojm api 再生 →
+      角色页 title 列 `t(title_key, {defaultValue: title})`；listRoles 带 title_key 用例；ojm api --check 0 drift）
 
 ## 8. 总结（本阶段关键过程与耗时）
 
@@ -104,6 +106,8 @@ web 段入包时（cpSync ownWeb 之后）追加：源码 `webSrcOf(layout, name
 | AC5 无回归 | ✅ 页面渲染 title（= 解析文本）无回归。**补充说明**："UI 多语言实时切换走 title_key"对**角色**尚未接线——roles API/页面暂不返回 `sys_role.title_key`（sys_permission 的 title_key 翻译早已接通）。列已就位，接线属后续小改动（API 出参 + 页面 render），是否本期做由需求方定 |
 
 **需要需求方决策的三件事**：① 是否补 `site.language` 真实设置项（R4 语义完整化）；② 角色页是否本期接线 title_key 实时翻译（AC5 未要求，机制已具备）；③ sqlite GLOB 回填近似口径是否接受（pg/mysql 已用完整正则）。
+
+> **决策回执**：② 已执行（T8，0.2.57 内完成——roles API 出参 + 契约再生 + 角色页 `t(title_key, {defaultValue: title})`，与权限点渲染先例同款）；①③ 待定。
 
 ## 7. 风险
 
