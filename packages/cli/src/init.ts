@@ -154,8 +154,10 @@ export async function initProject(destDir: string, opts: InitOptions = {}): Prom
 	// 3) oj 二进制：从最新 release 联网下载（sha256 校验 → tar 解包 → chmod），
 	//    无内置兜底；bin/oj 已在则幂等跳过，缺 .oj-version 标记视为未装
 	const binDir = path.join(destDir, "bin");
-	if (fs.existsSync(path.join(binDir, "oj"))) {
-		report.skipped.push("bin/oj");
+	// Windows 上二进制名是 oj.exe，不能硬编码 `oj`（预置 bin/oj.exe 会被误判为未装而触发联网下载）。
+	const ojBin = resolveOjBin(destDir);
+	if (fs.existsSync(ojBin)) {
+		report.skipped.push(`bin/${path.basename(ojBin)}`);
 	}
 	else {
 		const installer = opts.ojInstaller ?? ((dir: string) => vendorCommand(path.dirname(dir), { force: false }));
