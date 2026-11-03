@@ -15,6 +15,10 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { parse, stringify } from "yaml";
 import { buildBundle } from "../../bundle";
 
+// Windows 上 GNU tar 会把绝对路径里的 `C:` 当成「远程主机:路径」（Cannot connect to C: resolve failed）。
+// --force-local 强制按本地文件处理；仅 GNU tar 支持，macOS/Linux 路径无冒号不会触发，故仅 win32 加。
+const TAR_LOCAL = process.platform === "win32" ? ["--force-local"] : [];
+
 const FIXTURE_VALID = join(dirname(fileURLToPath(import.meta.url)), "fixtures/fixture-valid");
 
 let project: string;
@@ -326,7 +330,7 @@ function writeManifest(m: unknown): void {
 }
 
 function tarList(tgz: string): string[] {
-	return execFileSync("tar", ["-tvzf", tgz], { encoding: "utf8", shell: true })
+	return execFileSync("tar", [...TAR_LOCAL, "-tvzf", tgz], { encoding: "utf8", shell: true })
 		// 铁律②（P1-6）：tar 输出恒带尾随换行，trim 后再 split
 		.trim()
 		.split("\n")

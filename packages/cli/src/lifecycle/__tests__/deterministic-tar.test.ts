@@ -10,6 +10,10 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createDeterministicTgz } from "../../deterministic-tar";
 
+// Windows 上 GNU tar 会把绝对路径里的 `C:` 当成「远程主机:路径」（Cannot connect to C: resolve failed）。
+// --force-local 强制按本地文件处理；仅 GNU tar 支持，macOS/Linux 路径无冒号不会触发，故仅 win32 加。
+const TAR_LOCAL = process.platform === "win32" ? ["--force-local"] : [];
+
 let dir: string;
 let outDir: string;
 
@@ -97,7 +101,7 @@ describe("createDeterministicTgz · 产物可被系统 tar 消费（extract 段�
 		const { names } = await packAndList("a.tgz");
 		const extractDir = join(outDir, "unpacked");
 		mkdirSync(extractDir);
-		execFileSync("tar", ["-xzf", join(outDir, "a.tgz"), "-C", extractDir], { shell: true });
+		execFileSync("tar", [...TAR_LOCAL, "-xzf", join(outDir, "a.tgz"), "-C", extractDir], { shell: true });
 		const root = join(extractDir, names[0]!.slice(0, -1));
 		expect(readFileSync(join(root, "b-dir/zh.txt"), "utf8")).toBe("中文内容\n");
 		expect(existsSync(join(root, "b-dir/empty-dir"))).toBe(true);
@@ -130,7 +134,7 @@ describe("createDeterministicTgz · 打包自检（C2-30 构建列）", () => {
 // ── 助手 ──
 
 function tarList(tgz: string): string[] {
-	return execFileSync("tar", ["-tvzf", tgz], { encoding: "utf8", shell: true })
+	return execFileSync("tar", [...TAR_LOCAL, "-tvzf", tgz], { encoding: "utf8", shell: true })
 		// 铁律②（P1-6）：tar 输出恒带尾随换行，trim 后再 split
 		.trim()
 		.split("\n");

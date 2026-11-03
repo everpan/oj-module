@@ -6,6 +6,11 @@ import { afterAll, describe, expect, it } from "vitest";
 
 import { PROJECT_ROOT } from "../helpers/paths";
 
+// Windows 上 GNU tar 会把绝对路径里的 `C:` 当成「远程主机:路径」去解析，
+// 报 `Cannot connect to C: resolve failed`。--force-local 强制按本地文件处理。
+// 该选项仅 GNU tar 支持；macOS/Linux 路径无冒号、不会触发远程解析，故仅 win32 加。
+const TAR_LOCAL = process.platform === "win32" ? ["--force-local"] : [];
+
 /**
  * 发布清单守卫（架构评审 P1 落地）：把「发布走 pnpm」这条口头约定钉成机器断言。
  *
@@ -45,12 +50,12 @@ interface PackedManifest {
 }
 
 function manifestOf(tgz: string): { raw: string, json: PackedManifest } {
-	const raw = execFileSync("tar", ["-xzOf", tgz, "package/package.json"], { encoding: "utf-8", shell: true });
+	const raw = execFileSync("tar", [...TAR_LOCAL, "-xzOf", tgz, "package/package.json"], { encoding: "utf-8", shell: true });
 	return { raw, json: JSON.parse(raw) };
 }
 
 function entriesOf(tgz: string): string[] {
-	return execFileSync("tar", ["-tzf", tgz], { encoding: "utf-8", shell: true }).split("\n");
+	return execFileSync("tar", [...TAR_LOCAL, "-tzf", tgz], { encoding: "utf-8", shell: true }).split("\n");
 }
 
 /** 发布态不得残留包管理协议字面量（workspace/catalog/link/file） */
