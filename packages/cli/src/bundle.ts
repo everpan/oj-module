@@ -366,6 +366,57 @@ export async function buildBundle(projectRoot: string, opts: { out?: string, nam
 }
 
 /**
+ * `ojm build` 末尾的用户方案摘要（2026-11-03，计划 docs/plans/20261103-0925）：
+ * 明确回答「我的方案构建进了吗、能不能打包」。判定口径与 resolveContractTargets 同源
+ * （模块级契约 ∪ 根契约，减内置名单）——摘要里列出的就是 --bundle 将要打包的那批。
+ * 只报告不裁决：不调 resolveLayout（构建末尾不因摘要崩溃），log 可注入供测试断言。
+ */
+export function summarizeBuiltSolutions(projectRoot: string, built: readonly { name: string, version: string }[], log: (line: string) => void = console.log): void {
+	const builtin = readBuiltinModules(projectRoot);
+	const rootSolution = path.join(projectRoot, "solution.yaml");
+	const rootManifest = path.join(projectRoot, "manifest.yaml");
+	const rootContract = fs.existsSync(rootSolution) ? rootSolution : fs.existsSync(rootManifest) ? rootManifest : undefined;
+	const rootName = rootContract ? peekContractName(rootContract) : undefined;
+
+	// 用户方案候选：模块级契约（非内置）∪ 根契约 name（按名去重——「根压 src」只是打包取哪份契约，摘要里是同一个方案）
+	const names = new Set<string>();
+	for (const c of collectModuleContracts(projectRoot)) {
+		if (!builtin.has(c.moduleDir!))
+			names.add(c.moduleDir!);
+	}
+	if (rootName !== undefined && !builtin.has(rootName))
+		names.add(rootName);
+
+	const builtByName = new Map(built.map(b => [b.name, b]));
+	if (names.size === 0) {
+		log("[ojm] 用户方案 0 份（ojm new <name> 创建后即可 ojm build --bundle 打包）");
+	}
+	else {
+		const all = [...names].sort();
+		const ok = all.filter(n => builtByName.has(n));
+		const missing = all.filter(n => !builtByName.has(n));
+		const builtList = ok.map(n => `${n}@${builtByName.get(n)!.version}`).join("、") || "无";
+		if (missing.length === 0)
+			log(`[ojm] 用户方案 ${all.length} 份已构建：${builtList}（ojm build --bundle 打包）`);
+		else
+			log(`[ojm] 用户方案 ${all.length} 份中 ${ok.length} 份已构建：${builtList}；未构建：${missing.join("、")}（查 web.config.ts 登记/enabled）`);
+	}
+
+	const builtinBuilt = built.filter(b => builtin.has(b.name));
+	if (builtinBuilt.length > 0)
+		log(`[ojm] 框架自带模块 ${builtinBuilt.length} 份已构建（不参与用户打包）`);
+
+	// module-root 口径（src/ 树在即适用；flat/new 工程模块不在 src/）：非内置且无契约的模块不会被打包——提前点名，别等 --bundle 才发现
+	if (fs.existsSync(path.join(projectRoot, "src"))) {
+		for (const b of built) {
+			if (builtin.has(b.name) || names.has(b.name))
+				continue;
+			log(`[ojm] ⚠️ 模块 ${b.name}@${b.version} 缺方案契约（src/${b.name}/solution.yaml），不会被打包`);
+		}
+	}
+}
+
+/**
  * C2-31 分层核对：模块级 manifest 仅 oj 原生键，且 name/version 与 bundle 级逐一相等
  * （oj 启动强校验同源）。
  *

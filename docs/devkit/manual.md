@@ -1446,6 +1446,7 @@ pnpm dev               # 开发：devServer + oj 后端（src/<模块>/api 保�
 # Ctrl+C（SIGINT）/ kill（SIGTERM）终止 dev 时，前端与后端 oj 一起终止：
 # 先关 SSE 通道 → 停 oj 子进程 → 打印「后端 oj 已随前端一起终止」，不留 oj 孤儿占端口
 pnpm build             # = ojm build：oj build（生成 routes.js）+ 前端全站合并到 web/dist
+#   末尾打印用户方案摘要：哪些方案已构建、可 --bundle 打包；没进构建的方案点名（查登记/enabled）
 pnpm preview           # = ojm preview：oj migrate（verify 闸）→ oj serve 单服务（API + 静态 SPA 同进程）
 pnpm typecheck         # = tsc --noEmit（前端工程）
 pnpm typecheck:api     # = tsc --noEmit -p src/tsconfig.json（后端工程，见 §6.5）
