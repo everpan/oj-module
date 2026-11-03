@@ -135,7 +135,10 @@ function makeAction(def: HelpEntry, projectRoot: string, lang: Lang, exit: (code
 				}
 				const { buildBackend, buildModules } = await import("./build");
 				await buildBackend(projectRoot);
-				await buildModules(projectRoot, { mergeSite: true });
+				const built = await buildModules(projectRoot, { mergeSite: true });
+				// 用户方案摘要（计划 20261103-0925）：构建末尾点名「我的方案」是否进构建、能否打包
+				const { summarizeBuiltSolutions } = await import("./bundle");
+				summarizeBuiltSolutions(projectRoot, built);
 			};
 		case "new":
 			return async (name: string | undefined, extra: string[] = [], opts: { layout?: string, api?: boolean } = {}) => {
