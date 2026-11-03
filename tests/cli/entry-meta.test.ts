@@ -53,4 +53,20 @@ describe("build-modules 真实 import 解析元数据（P3.4 / B10）", () => {
 		expect(definition.name).toBe("chainable-stub");
 		expect(definition.version).toBe("0.0.0");
 	});
+
+	/**
+	 * 回归（Windows 卡死修复）：裸导入桩的 onResolve 必须排除入口与 Windows 盘符绝对路径，
+	 * 否则入口自身会被桩化成「可 thenable 的代理」，mod.default 变代理 → async return
+	 * 被 thenable 接管而永不 settle → 事件循环排空 → Node 以退出码 0 静默退出
+	 * （pnpm dev 起不来）。本用例在 type:module 仓库内跑通，即守住入口不被误桩、元数据
+	 * 正常读回真实对象。
+	 */
+	it("windows 卡死回归：入口不被裸导入桩误伤为 thenable 代理（盘符绝对路径排除）", async () => {
+		const definition = await readModuleDefinition(path.join(MODULES_DIR, "home/entry.ts"), PROJECT_ROOT);
+		expect(definition.name).toBe("home");
+		expect(definition.version).toBe("1.0.0");
+		// 取到的必须是真实定义对象，而非被桩成的 thenable 代理（否则 await 会卡死）
+		expect(typeof definition).toBe("object");
+		expect(Array.isArray(definition)).toBe(false);
+	});
 });

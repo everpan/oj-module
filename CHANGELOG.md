@@ -44,6 +44,17 @@
   Windows 仍走 `npm`）并补单测覆盖两条平台分支。回归：
   `packages/cli/src/__tests__/vendor.test.ts`。
 
+- **`pnpm dev` 在 Windows 上因元数据读取入口被误桩为 thenable 代理而挂死（静默退出码 0）**：
+  `readModuleDefinition` 用 esbuild 把 entry 打包读模块元数据；其裸导入桩 `makeBareImportStubPlugin`
+  的 `onResolve({ filter: /^[^./#]/ })` 在 Windows 上因入口是盘符绝对路径（`d:/...`，以字母开头）
+  命中该过滤，被桩化成 `new Proxy(function(){},{get:()=>value,apply:()=>value})` 这个可 thenable
+  的代理——整个入口模块的 `default` 变成该代理，`async` 函数 `return definition` 时被当 thenable
+  接管、其 `.then` 永不回调 → Promise 永 pending → 事件循环排空 → Node 以退出码 0 静默退出，开发
+  服务器起不来（macOS/Linux 绝对路径以 `/` 开头已被过滤排除，故 Windows-only）。修复：在
+  `onResolve` 内排除入口（`args.kind === "entry-point"`）与 Windows 盘符绝对路径
+  （`/^[a-zA-Z]:/`），裸导入桩只命中真正的裸包名。回归：`tests/cli/entry-meta.test.ts`
+  （新增「入口不被裸导入桩误伤为 thenable 代理」用例）。
+
 ## [0.2.56] - 2026-11-02
 
 ### Added

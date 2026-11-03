@@ -297,7 +297,20 @@ function makeBareImportStubPlugin(namesBySpec: Map<string, string[]>): EsbuildPl
 	return {
 		name: "ojm-bare-import-stub",
 		setup(b) {
-			b.onResolve({ filter: /^[^./#]/ }, args => ({ path: args.path, namespace: "ojm-bare-stub" }));
+			b.onResolve({ filter: /^[^./#]/ }, (args) => {
+				// 排除入口自身与绝对路径：entryPoints 在 Windows 上以盘符绝对路径（d:/...）
+				// 传入，会命中上面的裸说明符过滤被桩化成「可 thenable 的代理」——
+				// 整个入口模块变成 new Proxy(function(){},{get:()=>value,apply:()=>value})，
+				// mod.default 因而是一个 thenable，async readModuleDefinition 执行 return
+				// 时被当 thenable 接管、其 .then 永远不回调 resolve → Promise 永 pending →
+				// 事件循环排空 → Node 以退出码 0 静默退出（pnpm dev 起不来）。
+				// macOS/Linux 绝对路径以 / 开头已被过滤排除，故这是 Windows-only bug。
+				if (args.kind === "entry-point")
+					return null;
+				if (/^[a-z]:/i.test(args.path))
+					return null;
+				return { path: args.path, namespace: "ojm-bare-stub" };
+			});
 			b.onLoad({ filter: /.*/, namespace: "ojm-bare-stub" }, (args) => {
 				const names = namesBySpec.get(args.path) ?? [];
 				return {
@@ -348,6 +361,10 @@ export async function readModuleDefinition(entryFile: string, projectRoot: strin
 			// 会让非 entry.ts 文件名（如测试夹具）的产物对不上后续 import 路径
 			entryNames: "entry",
 			bundle: true,
+			// ESM 输出 + import() 加载：入口经下方 onResolve 修正后不会被裸导入桩误伤为
+			// thenable 代理，Windows/macOS 行为一致（此前 Windows 卡死的根因是入口被桩化成
+			// 代理导致 async return 被 thenable 接管而永不 settle）。元数据读取只需取
+			// `.default`，无需 CJS 语义。
 			format: "esm",
 			platform: "node",
 			packages: "external",
@@ -360,6 +377,8 @@ export async function readModuleDefinition(entryFile: string, projectRoot: strin
 			logLevel: "silent",
 		});
 		const bundled = path.join(outDir, "entry.js");
+		// 加载桩化产物（ESM）：入口不会被裸导入桩误伤为 thenable 代理（见 onResolve 修正），
+		// 故 mod.default 是真实定义，import() 正常 settle。
 		const mod = await import(pathToFileURL(bundled).href);
 		const definition = mod.default;
 		if (!definition?.name || !definition?.version) {
