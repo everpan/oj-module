@@ -273,9 +273,10 @@ export async function vendorCommand(
 	const binDir = path.join(projectRoot, "bin");
 	const local = readLocalVersion(binDir);
 	if (!opts.force && local === `v${version}`) {
-		log(`[ojm] oj 已是 v${version}，跳过。`);
-		// 文档同步不随版本跳过：用户删过 skill 目录后重跑 vendor 即补齐（R4）
+		// 文档同步不随版本跳过：用户删过 skill 目录后重跑 vendor 即补齐（R4）。
+		// 先同步再打跳过行——「已是 vX」保持命令收尾行（既有门禁断言末行）。
 		syncDevkitOrSkip(projectRoot, binDir, log);
+		log(`[ojm] oj 已是 v${version}，跳过。`);
 		const result = probe(binDir);
 		if (!result.ok)
 			reportProbeFailure(log, result.detail);
