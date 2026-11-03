@@ -104,6 +104,12 @@ describe("buildBundle · 正路径", () => {
 		expect(tarList(r.tgz).some(n => n.endsWith("/modules.json"))).toBe(false);
 	});
 
+	it("r1 前提：模块源码 locales 双语随包（安装期角色 title 解析数据源，计划 20261103-0948）", async () => {
+		const names = tarList((await pack()).tgz);
+		expect(names).toContain("demo-solution-0.1.0/web/modules/demo-solution/locales/zh-CN.json");
+		expect(names).toContain("demo-solution-0.1.0/web/modules/demo-solution/locales/en-US.json");
+	});
+
 	it("solution.yaml 作为 bundle 契约（优先于 manifest.yaml，避开 oj 按 manifest.yaml 枚举 api 后端的冲突）", async () => {
 		// 根目录若用 manifest.yaml 当 bundle 契约，会被 oj 的 api 模块搜索枚举误判为 api 模块；
 		// 故解决方案改用 solution.yaml，bundle 工具优先认它（manifest.yaml 仅旧方案回退）。

@@ -100,6 +100,8 @@ tables:
       name: {type: text, null: false}
       module: {type: text, null: false}
       title: {type: text}
+      # 原始 i18n key（R2，0018）：title = 安装期解析文本，本列存原文供 UI 实时翻译（sys_permission 先例）
+      title_key: {type: text}
       description: {type: text}
       builtin: {type: integer, null: false}
       deprecated: {type: integer, null: false}
