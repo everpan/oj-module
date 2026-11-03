@@ -26,6 +26,26 @@ import { readBuiltinModules } from "./builtin";
 import { tryResolveLayout } from "./layout";
 import { assertValidSolutionName, RESERVED_NAMES } from "./manifest-contract";
 
+/**
+ * 内建聚合模块 app 的 web 路由根（src/app/web 下各 routes.ts 的顶层 path）：
+ * 这些路径由框架内置页面独占。ojm new 生成的默认路由为 /name，
+ * 若 name 命中其中之一，会与内置页面撞 route id，导致运行时白屏。
+ * 这里在脚手架阶段即拒绝，避免生成即炸。
+ *
+ * 与 readBuiltinModules（内建模块名）互补：内建模块名只覆盖 home /
+ * personal-center / system，而 login / change-password / notification-center 是
+ * app 聚合内的路由根，并非独立内建模块名，故单列此表。
+ * app 路由根增删时此处须同步。
+ */
+const BUILTIN_ROUTE_ROOTS = new Set([
+	"home",
+	"login",
+	"change-password",
+	"notification-center",
+	"personal-center",
+	"system",
+]);
+
 export interface NewSolutionOptions {
 	/** 示例路由布局（默认 container；none = 无外壳裸页面） */
 	layout?: "container" | "none"
@@ -74,6 +94,13 @@ export function createSolution(projectRoot: string, name: string, opts: NewSolut
 		throw new Error(
 			`[ojm] 「${name}」是框架自带方案（见 src/.ojm-builtin.json；ojm info --all 可看全名单）。`
 			+ "想改造自带模块：`ojm new <新名>` 生成骨架后把代码复制过去（自带身份按目录名判定，复制即脱离）。",
+		);
+	}
+	if (BUILTIN_ROUTE_ROOTS.has(name)) {
+		throw new Error(
+			`[ojm] 「${name}」与框架内置页面路由根（${[...BUILTIN_ROUTE_ROOTS].join("/")}）撞车——`
+			+ `ojm new 生成的默认路由 /${name} 会与内置 ${name} 页面冲突（route id 碰撞白屏）。`
+			+ "请换一个不与内置页面撞名的方案名。",
 		);
 	}
 	const dir = path.join(projectRoot, "src", name);

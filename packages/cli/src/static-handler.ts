@@ -15,7 +15,7 @@
 
 import type http from "node:http";
 import { existsSync, readFileSync, statSync } from "node:fs";
-import { extname, normalize, resolve } from "node:path";
+import { extname, normalize, resolve, sep } from "node:path";
 
 const MIME: Record<string, string> = {
 	".html": "text/html; charset=utf-8",
@@ -185,7 +185,12 @@ export function createStaticHandler(opts: StaticHandlerOptions): (req: http.Inco
 			res.end("400 Bad Request: malformed URL encoding");
 			return;
 		}
-		const rel = normalize(urlPath).replace(/^(\.\.[/\\])+/, "");
+		// URL 路径是「类 Unix 斜杠语义」，不能用 path.normalize 的 OS 方言：
+		// 在 Windows 上 path.normalize("/assets/x.js") 会变成 "\\assets\\x.js"，
+		// 既让下方 /__ojm_reload.js 等精确匹配全部落空（404），又让 resolveFile
+		// 把前导反斜杠当成「盘符根」解析到 C:\\assets\\...（错位 404）。统一转回
+		// 正斜杠——POSIX 上 path.sep 即 "/" 此换行为 no-op，跨平台安全。
+		const rel = normalize(urlPath).split(sep).join("/").replace(/^(\.\.[/\\])+/, "");
 
 		if (opts.reload) {
 			if (rel === "/__ojm_reload") {

@@ -37,7 +37,9 @@ const warnedUnknownLayouts = new Set<string>();
  */
 export function resolveLayoutComponent(handle?: Partial<RouteMeta>): ComponentType {
 	const name = handle?.layout;
-	if (!name)
+	// "none" 是显式声明的「不套任何布局」哨兵（types.ts / PRD §4），语义与未声明一致
+	// → 直接渲染 Outlet，不视为未知布局、不告警（否则首页等 layout:"none" 路由会刷屏）。
+	if (!name || name === "none")
 		return Outlet;
 	const registered = getRegisteredLayout(name);
 	if (registered)
