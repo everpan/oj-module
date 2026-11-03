@@ -42,6 +42,7 @@
 | [39](#sc39) | 实时日志流式消费：`exec.spawn` 句柄（`for await` stdout/stderr）/ `exec.run` onStdout/onStderr 回调（v0.1.78） | §6 exec |
 | [40](#sc40) | 长任务中途 kill：`exec.run` 超时整组击杀 / `exec.spawn().kill()` 主动击杀（v0.1.78） | §6 exec |
 | [41](#场景-41通知回执合并--幂等写入构造器补齐能力v0181) | 通知回执合并 + 幂等写入：join ON 值条件 / 字面量列 `scope` / `orIgnore` / `fromSelect`（v0.1.81 补齐，替代手写 `db.query`） | §6 db / 查询构造器 |
+| [42](#场景-42运行期动态登记数据源-client-轴v0191) | 运行期把 DSN 登记为命名库：`db.client.register("rep", dsn)` → `DB("rep")` 直接可用（复用 L1 访问控制 + L2 内省）；未声明 `db_access.<name>` 的动态库默认 deny | §6 db / `db.client` |
 
 ---
 
@@ -568,7 +569,7 @@ db: analytics        # ★ 该模块里字面 db.* 的调用落到 analytics（�
 | `--db analytics` 报了别的库连不上的错 | 深瘦身装配会打开 config 里**所有** `db:` 连接；任一 DSN 打不开即失败，与 `--db` 指向哪个库无关 |
 | 想用 `oj serve --db` 切库 | 没有这个旗标：运行期按模块 `manifest.db` 路由，`serve` 恒以 `default` 为基库 |
 
-> 机制与边界详见仓库 `docs/migration.md` §3.8、`docs/db-guide.md` §1.1。
+> 机制与边界详见仓库 `docs/migration.md` §3.8、`docs/devkit/db-guide.md` §1.1。
 
 ---
 
@@ -638,7 +639,7 @@ expect(toBigInt(m.toString()) + 1n === m + 1n).toBe(true);   // BigInt 精确
 | 并发下仍然分配出重复序号 | `max+1` 本身有竞态——改用 `db.nextSeq(name)`（v0.1.24，单语句原子） |
 | 同一条 SQL 混用字符串/数字参数后报 `invalid byte sequence … 0x00` | **v0.1.24 起平台自动按参数形态分缓存键，无需再规避**；若仍出现，检查 PG 插件是否随宿主重建 |
 | `db param: u64 value … is not supported on this path` | 在 PG/SQLite 上用了 `toUBigInt()`——它们的 bigint 是 i64；改存 text 或换 MySQL `BIGINT UNSIGNED` |
-| MySQL: `column 'x' has MySQL type 'DECIMAL' … does not decode yet` | 读侧不支持该列类型（`DECIMAL`/`JSON`/时间/`BIT`/`GEOMETRY`）——**报错而非静默给 `null`**；在 SQL 里 `cast(x as char) as x`，别用 `select *`。`BOOLEAN`/`TINYINT(1)` 读出是 `1`/`0` |
+| MySQL: `column 'x' has MySQL type 'GEOMETRY' … does not decode yet` | 读侧**仍未支持**的类型（`GEOMETRY` 家族、`SET` 等）——**报错而非静默给 `null`**；`cast(x as char) as x` / `ST_AsText(x) as x`。`DECIMAL`/时间/`JSON`/`BIT` 自 v0.1.94 起可直接读（见场景 48）。`BOOLEAN`/`TINYINT(1)` 读出是 `1`/`0` |
 
 > 完整契约（值域分流表、接受/拒绝矩阵、u64 与已知债）见仓库 `docs/numeric-limits.md`。
 
@@ -1092,11 +1093,14 @@ auth:
 ```ts
 // src/auth/login/api.ts
 export default {
-  post() {
+  async post() {
     const { username, password } = http.body;
-    const row = db.table("users").where("username", username).first();
-    if (!row || !bcrypt.verify(password, row.password_hash)) json.fail(401, "invalid credentials");
-    const token = jwt.sign({ sub: row.id, roles: JSON.parse(row.roles) }, { expiresIn: 86400 });
+    // where 收 {field,op,value} 条件树；没有 first()，取一行用 .all() + 解构首元素
+    const [row] = await db.table("users")
+      .where({ field: "username", op: "eq", value: username }).all();
+    if (!row || !(await bcrypt.verify(password, row.password_hash))) json.fail(401, "invalid credentials");
+    // jwt.sign 只收 payload（exp 由 config 的 access_token_duration 决定，不接受 expiresIn）
+    const token = jwt.sign({ sub: String(row.id), roles: JSON.parse(row.roles) });
     // v0.1.46 起同名头可重复：两枚 cookie 同响应双发（此前响应头单值，csrf 只能
     // 经 body 下发 + 前端写 document.cookie）。oj_csrf 非 HttpOnly——双提交要 JS 读得到。
     json.header("set-cookie",
@@ -1506,7 +1510,7 @@ export default {
     // 应用层加密：输出 base64(nonce12 ‖ ciphertext ‖ tag16)，每次密文都不同（随机 nonce）
     const ct = crypto.aesGcmEncrypt(phone, KEY);
 
-    await db.table("user").insert({ name: http.param("name", ""), phone_enc: ct }).exec();
+    await db.table("user").insert({ name: http.param("name", ""), phone_enc: ct }).run();
     json.ok({ ok: true });
   },
 };
@@ -1774,7 +1778,7 @@ export default {
     // ② 搬运：服务端 rename / CopyObject，字节不过桥（src 转正后即消失）
     await blob.move(key, dst);
     const body = isText ? new TextDecoder().decode(await blob.get(dst)) : "";
-    db.table("file").insert({ id, key: dst, body, binary: !isText }).save();
+    await db.table("file").insert({ id, key: dst, body, binary: !isText }).run();
     json.ok({ key: dst, url: await blob.url(dst), binary: !isText });
   },
 };
@@ -3182,3 +3186,1396 @@ curl localhost:9778/v1/api/sys/order/list/           # prefix 含 / 分段
 | `--module-root` 指向 dist 或仓库根 | 前者报 `is a release tree`（只认源码树）；后者可能命中过多（`too many module roots`）或把非业务目录里的 manifest 卷进来——指向真正的模块树根 |
 | 树内就地 build 过（`dist/` 与模块根同级）再用 `--module-root .` | 不会撞车：扫描整棵跳过含 `manifests.yaml` 锁的 release 树（产物里的 manifest 是原样副本，跳过即不重复登记）；但 release 跑法仍用 `-d dist` |
 | 平铺树项目以为要改命令 | 不需要——不带 `--module-root` 时全部路径走今日语义（`name` = 目录名强校验仍在），构建产物与 openapi 生成物与 v0.1.84 逐字节一致 |
+
+## 场景 44：把数据库错误分流成「可重试 / 冲突 / 能力缺失」（结构化错误面，v0.1.88）
+
+**要解决的**：以前 db 报错只能读文案——`if (e.message.includes("Duplicate"))` 一改版就碎，
+重试决策靠猜。v0.1.88 起每个 db 错误都带稳定 `code` 与结构化属性。
+
+### ① 一次性分类（推荐写法）
+
+```ts
+// _shared/dberr.ts —— 全项目共用。返回 { code, msg } 交给 json.fail，
+// 不要发明 HttpError 之类的全局（oj 的响应只经 json.ok / json.fail 写回）。
+export function dbFail(e: unknown): { code: number; msg: string } {
+  const err = e as { code?: string; retryable?: boolean; sessionDisposition?: string;
+                     data?: { vendor_code?: unknown; capability?: string; dialect?: string };
+                     message?: string };
+  switch (err.code) {
+    case "OJ_DB_CONSTRAINT":
+      return { code: 409, msg: "conflict" };                    // 唯一键 / 外键
+    case "OJ_DB_TIMEOUT":
+    case "OJ_DB_CONNECTION":
+    case "OJ_DB_CAPACITY":
+      return { code: 503, msg: "database busy, retry later" };  // err.retryable 通常为 true
+    case "OJ_DB_UNSUPPORTED":
+      return { code: 500, msg: `db capability missing: ${err.data?.capability}` };
+    case "OJ_DB_CANCELLED":
+      return { code: 499, msg: "cancelled" };
+    default:
+      log.error("db failed", { code: err.code, msg: err.message });
+      return { code: 500, msg: "internal database error" };
+  }
+}
+```
+
+```ts
+// handler 里这样用（json.ok / json.fail 才是写回通道，别在 .catch 里 fire-and-forget）：
+export async function get(): Promise<void> {
+  try {
+    json.ok(await db.table("account").select(["id"]).all());
+  } catch (e) {
+    const f = dbFail(e);
+    json.fail(f.code, f.msg);
+  }
+}
+```
+
+### ② 幂等插入：冲突当成功
+
+```ts
+export async function ensureUser(id: number, name: string): Promise<void> {
+  try {
+    await db.table("account").insert({ id, name }).run();
+  } catch (e) {
+    if ((e as { code?: string }).code === "OJ_DB_CONSTRAINT") return;   // 已存在 → 幂等成功
+    throw e;
+  }
+}
+```
+
+> 换成 `.orIgnore()` 也能幂等，但那时**唯一键冲突根本不会抛**（mysql 渲染
+> `ON DUPLICATE KEY UPDATE <pk> = <pk>`，pg/sqlite 渲染 `ON CONFLICT DO NOTHING`）——
+> 再写 `catch OJ_DB_CONSTRAINT` 就是死代码；`orIgnore` 下该 catch 只兜 NOT NULL / 外键等
+> **非**唯一键约束。
+
+### ③ 有界重试（只重试可重试的，且尊重会话处置）
+
+```ts
+export async function withDbRetry<T>(fn: () => Promise<T>, tries = 3): Promise<T> {
+  let last: unknown;
+  for (let i = 0; i < tries; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      const err = e as { retryable?: boolean; sessionDisposition?: string };
+      last = e;
+      if (err.retryable !== true) throw e;                 // 语法错/约束错重试无意义
+      if (err.sessionDisposition === "close") throw e;      // 连接已废，重试也拿不到好连接
+      await tasks.sleep(50 * 2 ** i);                       // 退避
+    }
+  }
+  throw last;
+}
+```
+
+### ④ 验证
+
+```bash
+curl -X POST localhost:9778/v1/api/user/account/ -d '{"id":1,"name":"a"}'   # 首次 200
+curl -X POST localhost:9778/v1/api/user/account/ -d '{"id":1,"name":"a"}'   # 幂等路径：200（不 500）
+# 关掉数据库后再请求 → {"code":503,...}（不是笼统 500）；dev 日志里有 _sql 画像
+```
+
+### ⑤ 常见坑
+
+| 坑 | 说明 |
+|---|---|
+| 用 `e.message` 匹配错误类型 | 用 `e.code`；引擎原始码看 `e.data.vendor_code`（mysql 数字如 `1062`、pg SQLSTATE 串如 `"23505"`）。**未知厂商码不会瞎猜**，一律落 `OJ_DB_INTERNAL` |
+| 升级后 `^ffi db ` 匹配失效 | v0.1.88 去掉了宿主的重复前缀：`ffi db query: db query: <原文>` → `db query: <原文>`（`e.code` 等结构化字段不受影响） |
+| 以为 `e.data` 是 JSON 字符串 | 已解析为对象（`e.data.capability` 直接可用）；`e.retryable` 已是布尔 |
+| 无脑 `while(true)` 重试 | 先判 `e.retryable === true`；`sessionDisposition === "close"` 时重试只会继续打挂库 |
+| 新方言插件上构造器报 `OJ_DB_UNSUPPORTED` 就以为坏了 | 预期：宿主只为 sqlite/mysql/postgres 生成 SQL，其他方言上一期只有裸 SQL 路径；`e.data.capability` 会点名是哪个 API |
+
+## 场景 45：把 `db.dialect()` 分支迁移成「能力位 + 白名单」（v0.1.88）
+
+**要解决的**：v0.1.88 起方言名是**开放集**（插件 `describe()` 声明什么就是什么），
+`db.dialect()` 不再收窄成三个字面量、也不再对未知名报错。存量代码里的
+`if (db.dialect() === "mysql") A else B` 会在新方言接入后把 B **静默**发给它——
+`ON DUPLICATE KEY` 发给 Oracle、`$1` 发给 sqlite，报错却落在引擎侧，看着像方言 bug。
+
+### ① 先删：这些分支平台已经替你做了
+
+| 存量写法 | 替换 |
+|---|---|
+| 拼占位符：`d === "postgres" ? sql.replace(/\?/g, () => `$${++i}`) : sql` | 一律写 `?`——宿主按能力位改写（`placeholder_dollar` → `$n`；`placeholder_colon` 由插件内部改写） |
+| 取自增 id：`d === "postgres" ? sql + " returning id" : …` | `await db.table("t").insert({...}).returning(["id"]).run()`——取 id 路线由构造器按**具体方言**决定（mysql 两步 `LAST_INSERT_ID()`，其余 `RETURNING`），不是按 `caps.id` 推的 |
+| 列目录：`d === "sqlite" ? "select name from sqlite_master …" : "select table_name from information_schema …"` | `await db.listTables("user_")`（三内置方言同口径，SQL 是引擎常量；其他方言 `OJ_DB_UNSUPPORTED`） |
+| 取号：`select max(id)+1`（并为此分支） | `await db.nextSeq("order_no")` |
+
+### ② 保留：真方言特有的 SQL 走白名单 + 响亮失败
+
+```ts
+// _shared/dialect.ts —— 全项目唯一的方言分派点，集中受审
+const UPSERT_SQL = {
+  sqlite:   "insert into account (id,name) values (?,?) on conflict(id) do update set name=excluded.name",
+  postgres: "insert into account (id,name) values (?,?) on conflict(id) do update set name=excluded.name",
+  mysql:    "insert into account (id,name) values (?,?) on duplicate key update name=values(name)",
+} as const;
+type UpsertDialect = keyof typeof UPSERT_SQL;
+
+export async function upsertAccount(id: number, name: string): Promise<void> {
+  const d = db.dialect();                       // 声明名，可能是任何值（含 "oracle"）
+  if (!(d in UPSERT_SQL)) {
+    // 关键：不猜、不兜底、不当成 mysql/postgres 硬跑
+    throw new Error(`upsertAccount: dialect ${d} 未适配（已支持 ${Object.keys(UPSERT_SQL).join("/")}）`);
+  }
+  await db.exec(UPSERT_SQL[d as UpsertDialect], [id, name]);
+}
+```
+
+要点：白名单**用对象键**（新增方言必须补键，忘了编译期就红）；**不写 `else` 兜底**；
+错误信息点名「函数 + 方言 + 已支持集」，比引擎的 `ORA-00933` 好排一百倍。
+
+### ③ 能力问题不要问方言，直接调用
+
+```ts
+async function listReportIds(): Promise<unknown[]> {
+  try {
+    return await db.table("report").select(["id"]).all();
+  } catch (e: any) {
+    if (e.code !== "OJ_DB_UNSUPPORTED") throw e;    // 宿主不替该方言生成 SQL
+    return db.query("select id from report");       // 裸 SQL 路径始终可用
+  }
+}
+```
+
+### ④ 验证
+
+```bash
+# 1) 三内置方言：改造前后行为应逐字一致（占位符/取 id/列目录结果不变）
+# 2) 方言能力面：看装上的插件声明了什么
+./bin/oj info | sed -n '/^## plugins/,/^## generic_axes/p'
+# db 轴插件每项形如：
+#   - oj-db-mysql 0.1.x (abi 12)
+#     desc: …
+#     caps: placeholder=? id=two_step stream cancel
+# （sqlite 那行没有 cancel；postgres 是 placeholder=$ id=returning stream cancel；
+#   能力串由 DialectInfo::summary() 生成，与启动横幅同源）
+curl -s localhost:9778/v1/api/user/account/          # 构造器可用则正常返回
+# 3) 若接了新方言插件：构造器路径应 500 且 e.data.capability 点名 API；
+#    upsert 路径应报「未适配（已支持 …）」，而不是引擎语法错误
+```
+
+### ⑤ 常见坑
+
+| 坑 | 说明 |
+|---|---|
+| `d === "mysql" ? A : B` | **最危险的写法**：新方言静默拿 B。改成白名单 + `throw` |
+| 用 `db.dialect()` 判断「能不能用构造器」 | 问不出正确答案（能力位不在这条通道上）；直接调用并接 `OJ_DB_UNSUPPORTED` |
+| 在 handler 里读 `plugins()` 的 `caps` 自己分派 | `caps` 是给运维核对装配的外显（`GET {base}/plugins`、`oj info`），不是业务能力探测入口 |
+| 把 `db.dialect()` 缓存成模块常量 | `db = DB(name)`，命名库之间可能不同方言；`db.tx` 句柄同面——缓存会跨库读错 |
+| 以为新方言上 `?` 也要自己改 | JS 侧永远写 `?`；改写归宿主（`$n`）或插件内部（`:n`） |
+
+## 场景 46：给库上访问控制（只读库 / 谁可以访问哪个库，v0.1.89）
+
+**要解决的**：一个进程里挂了多个库（`db:` 段），任何模块的 handler 都能 `DB("analytics")`
+读写任何一个——没有库级授权。`db_access:` 段补上这一层：谁能访问哪个库、能做什么。
+
+> 它是**宿主侧护栏层**，不是数据库权限：`read_only` 是文本级判定（真写防线仍是 DB 账号
+> GRANT），`max_rows` 对 `db.query` 是取回后截断（不是限流）。两者都要配才算设防。
+
+### ① 先灰度：`warn` 档看日志，别直接 `deny`
+
+```yaml
+# config.yaml
+db:
+  default:   "sqlite://db.sqlite"
+  analytics: "mysql://root@10.0.0.5:3306/olap"
+
+db_access:
+  defaults:
+    enforce: warn          # 只告警放行 —— 分类是词法，先看清有没有误判
+  analytics:
+    read_only: true        # 拦 write / ddl
+    max_rows: 1000         # 缺省=不限；范围 [1, 100000]
+    allow:                 # 四维并集；不写 = 不限制
+      roles: [admin, dba]
+```
+
+`warn` 档语句照常执行，服务端落前缀 `DB_ACCESS_DENY` 的日志（按 `(alias, reason)` 聚合
+计数，不会被刷爆）。跑一周确认无误报，再把 `defaults.enforce` 改成 `deny`。
+
+### ② 为什么要写 `enforce` 在 `defaults` 里
+
+`analytics:` 是**覆盖条目**，未声明的键**逐键继承** `defaults`。所以下面这种写法
+**等于没设防**（该库 `enforce` 继承 `off`）：
+
+```yaml
+db_access:
+  analytics:
+    read_only: true        # ❌ 没有 enforce，read_only 不生效
+```
+
+这正是逐键继承要防的事：设好全局 `deny` 后，给某库加一条局部微调不会把设防悄悄打回原点。
+逐库不想继承就把 `enforce` 显式写一遍。
+
+### ③ 定时任务怎么授权
+
+任务桥跑 `run_task`，没有 user / 没有模块上下文 / 没有租户——`roles`、`modules`、
+`tenants` 三维**都取不到身份**，只能靠 `sources`：
+
+```yaml
+db_access:
+  defaults:
+    enforce: deny
+    allow:
+      sources: [http]
+  analytics:
+    read_only: true
+    allow:
+      sources: [http, task]    # ← 定时任务走 task
+```
+
+⚠️ `sources` **只有** `http` / `task` 两个取值：WS 帧跑在 HTTP 桥上按 `http` 计，
+写 `ws` / `anon` 永不命中。
+
+### ④ 前端列库用 `db.allowed()`，不要硬编码别名
+
+```ts
+// src/admin/db_picker/api.ts
+export async function get() {
+  // 只列当前调用主体**有权限**的库（含能力位），未授权的不出现
+  const list = db.allowed();
+  // [{ alias:"default", dialect:"sqlite", read_only:false, allow_ddl:false,
+  //    allow_dangerous:false, max_rows:null, enforce:"off" }, …]
+  return json.ok({ list: list.map((x) => ({
+    alias: x.alias,
+    writable: !x.read_only,
+    capped: x.max_rows,
+  })) });
+}
+```
+
+硬编码 `db:` 段的全部别名 = **假入口**：列出来点了才报错。
+
+### ⑤ `deny` 档被拒时怎么修
+
+| 报错里的 `reason` | 含义 | 修法 |
+|---|---|---|
+| `db_not_granted` | `allow` 四维全不中（或取不到身份） | 找管理员给对应维度授权；定时任务加 `sources: [task]` |
+| `db_read_only` | 该库只读而语句被判写类 | 改只读语句，或放开 `read_only` |
+| `db_ddl_denied` | DDL 未放开 | 放开 `allow_ddl`，或走 `oj migrate` |
+| `db_dangerous_write` | UPDATE/DELETE 无 WHERE（或多表 / 恒真谓词） | 补 WHERE，或放开 `allow_dangerous` |
+| `db_unknown_risk` | 词法分不出类别（fail-closed） | **改用 `db.table()` 构造器**——它走精确意图判定，不依赖词法 |
+
+```ts
+// 裸 SQL 在 deny 档被判 unknown 的典型：串未闭合 / 注释断词 / CTE / 窗口函数
+await db.query("select * from t where name like '%a\\%'");   // ❌ db_unknown_risk
+// 构造器路径不猜词法：意图由 verb 决定，不会落 unknown
+const rows = await db.table("t").select(["id", "name"]).where({ field: "name", op: "like", value: "a%" }).all();
+```
+
+### ⑥ 常见坑
+
+| 坑 | 说明 |
+|---|---|
+| 只写 `read_only: true` 没写 `enforce` | 该库 `enforce` 继承 defaults（默认 `off`）→ **等于没设防** |
+| `allow` 写多维以为更严 | 是**并集**：任一维度命中即过，声明更多维只会**放宽**。「且」语义本阶段做不到 |
+| `allow: { roles: [] }` | 声明且为空 = **无人可过**，不是「不限制」 |
+| 用 `db.asTenant()` 命中 `tenants` 维 | 不作数：`tenants` 只认服务端注入的租户（否则匿名 handler 可自授租户） |
+| 用 `db.asSystem()` 绕过 | `asSystem` **只绕过租户防护**，不豁免访问控制（v0.1.89 有意的行为变更） |
+| 配了 `db_access` 就以为库安全了 | 不约束平台自生成 SQL 与 `oj migrate` 等 CLI 通道；`read_only` 也不是 DB GRANT 的替代品 |
+
+## 场景 47：画连接树（库 → 表 → 列/索引/外键，v0.1.90）
+
+**要解决的**：管理后台要像 dbx 一样把库结构展开成树。以前只能 `db.listTables` 拿表名，列/索引/
+外键得自己按方言拼 `information_schema`——而 oj 宿主认识的三种方言各有各的写法。`db.listColumns`
+/ `listIndexes` / `listForeignKeys` 把这三层都成了**同构返回**，业务零分支。
+
+### ① 三 op 并发拉一棵树节点
+
+```ts
+export async function describeTable(table: string) {
+  const [cols, idx, fk] = await Promise.all([
+    db.listColumns(table),
+    db.listIndexes(table),
+    db.listForeignKeys(table),
+  ]);
+  // cols:  {name, nativeType, nullable, default, primaryKey}[]
+  // idx:   {name, unique, primary, origin, columns}[]
+  // fk:    {name, columns, refTable, refColumns}[]   (sqlite 的 name 为 null)
+  return json.ok({ cols, idx, fk });
+}
+```
+
+三个 op 是**独立能力**，未知方言各自 `OJ_DB_UNSUPPORTED`（不会「部分成功」逼出半截语义）。
+`origin` 已是 `c`/`u`/`pk` 统一口径，**前端不再按方言分支**画图标。
+
+### ② 先 `listTables` 校验表名，再内省（空数组 ≠ 失败）
+
+内省 op 对「表不存在 / 不可见 / 在别的 schema」一律返回**空数组**，不报错也不区分原因——所以
+空数组不能当成「出错了」。要校验就用 `listTables` 先问：
+
+```ts
+const tables = await db.listTables();
+if (!tables.includes(table)) return json.fail(404, "table not found");
+const info = await describeTable(table);   // 此时空数组才是真异常
+```
+
+sqlite 表名含 `.`（跨库前缀）、超长、含控制字符 → 同样空数组（被挡）；`listColumns("foo_bar")`
+的 `_` 是字面量不是通配符。
+
+### ③ 类型不是归一化的——前端自己映射
+
+`nativeType` 是方言**原始声明文本**：sqlite `INTEGER`、mysql `varchar(64)`、pg
+`character varying(32)` / `integer[]`。要显示成统一类型请前端写映射表，**别假设三方言同串**。
+
+### ④ `db_access` 授权维也会挡内省
+
+`deny` 档 + 未授权主体，连 `listTables` 一起都枚举不到（`db_not_granted`）。前端库选择器应
+**先 `db.allowed()` 再内省**，不要对硬编码别名调 `listColumns`（点了才报错 = 假入口）。
+只读库（read_only）**不影响内省**——内省恒只读，否则 UI 连展开都做不到。
+
+## 场景 42：运行期动态登记数据源（client 轴，v0.1.91）
+
+**什么时候用**：dbx 的「运行期增删连接」——运维/管理后台在运行期把一个 DSN（mysql/postgres/
+sqlite）登记成命名库，前端立刻用 `DB("rep")` 读写，无需重启/改配置。
+
+**配置（`db_client:`）**：
+
+```yaml
+db_client:
+  enabled: true
+  max_entries: 64
+  allow:
+    roles: [dba]          # 谁能调 register/test/delete/reRegister/list（四维并集）
+```
+
+> 装配期 fail-loud：`enabled=true` 且 `allow` 四维全缺 → 拒启动；`max_entries==0` 同样拒启动。
+
+**登记（管理面，只此一处暴露；使用面走 `DB(name)`）**：
+
+```js
+const r = await db.client.register("rep", "mysql://user:pass@host/db");
+// r = {alias, dialect, dsn, registeredBy, registeredAtMs, queries}（dsn 已脱敏）
+await db.client.test("mysql://user:pass@host/db");          // {ok, dialect?, error?}（不落库）
+await db.client.reRegister("rep", "mysql://...");            // 替换已登记连接
+const names = await db.client.list();                        // dsn 已脱敏
+db.client.has("rep");                                        // 同步 bool
+await db.client.delete("rep");                               // 删库 + 自动驱逐 DB() 缓存
+```
+
+**使用面（与静态库完全一致）**：
+
+```js
+const rows = await DB("rep").query("select * from t where id = ?", [id]);
+const cols = await DB("rep").listColumns("t");
+```
+
+**红线**：
+
+- 未声明 `db_access.<name>` 的动态库**默认 deny**（fail-closed）——登记成功后直接 `DB("rep").query`
+  仍报 `db_not_granted`。要放开，必须在 `db_access.<name>.allow` 显式授权（与静态库同形）。
+- 登记门 `db.asSystem()` **不豁免**；管理员通道走 `db_client.allow.roles`。
+- 连接错误与 `db.client.list` 的 `dsn` 全脱敏（`user:pass@` → `***`）。
+- 不持久化（进程内存）、不跨进程、`max_entries` 封顶；热重载保留、`kill -HUP` 整进程重建丢失。
+
+**耐久登记（应用侧负责，L4）**：框架只提供 `register` 实例化能力、**不**自动落盘。需要跨重启保留，应用自己
+存 `(name, 密文 dsn)` 并启动时回放：
+
+```js
+// 登记时：实例化 + 应用自己落盘（dsn 经 ENC[...] 密封，绝不存明文）
+const enc = await secret.seal(dsn);                              // 复用既有凭据密封
+await db.query("insert into app_db_registry(alias, enc_dsn) values (?, ?)", [name, enc]);
+await db.client.register(name, dsn);
+
+// 删除时：销毁实例 + 应用自己删行
+await db.client.delete(name);
+await db.query("delete from app_db_registry where alias = ?", [name]);
+
+// 启动初始化（init handler）：读行解封 + 逐条重建（单条不可达 → 跳过，不 brick 启动）
+for (const { alias, enc_dsn } of await db.query("select alias, enc_dsn from app_db_registry")) {
+  try { await db.client.register(alias, await secret.open(enc_dsn)); }
+  catch (e) { log.warn(`skip re-register ${alias}: ${e}`); }
+}
+```
+
+> 存储介质 / 表结构 / 加密 / 备份全是应用关切；框架不感知、不提供 `db_client.persistence` 这类自动落盘配置。
+> 多实例各自回放、都指向同一真实 DB 即可保持一致（DB 实例本就是 per-process 连接池）。
+
+**变体：运行期动态授权（U-1，v0.1.93）——零重启放行角色**
+
+`register` 只构造实例、实例默认 deny（见上「红线」）。要让某个**角色**在**不重启**的前提下查该库，用
+`db.access.grant`（与 `db.client` 同特权门；`db_client.enabled=false` 或 caller 不在 `allow` → 拒）：
+
+```js
+// 管理 handler：登记后立刻按角色放行（默认只读）
+await db.client.register("rep", dsn);
+await db.access.grant("rep", { roles: ["analyst"] });   // analyst 角色即可查，无需重启
+
+// 任意其它 handler（含不同模块、不同 isolate）按名解析即吃到新策略：
+const rows = await DB("rep").query("select * from t where id = ?", [id]);
+
+// 撤销 → 回落 config（非删 config）；对纯 config 兜底项 revoke 会显式报错（防越权/DoS）
+await db.access.revoke("rep");
+```
+
+要点：grant 必须至少限制 allow 一维（空 allow = 对全员放行，被 host 拒）；运行期 grant 只注入放行维、
+不覆盖 config 的 `enforce`/`read_only`/`max_rows`（防提权）；grant/revoke 落 `DB_ACCESS_AUDIT`。
+
+**变体：跨 isolate 连接失效（U-3，v0.1.93）**
+
+`db.client.delete` / `reRegister` 把别名 epoch +1；`DB(name)` 每次调用比对 epoch 自动失效 JS 缓存。
+但需要跨 isolate 强一致的应用（如「随用随取」回放），可用 `db.epoch` 主动探测：
+
+```js
+// 应用侧「随用随取」配方：缺失则回放登记；epoch 变化说明连接被删/轮换，重新回放
+if (!db.client.has("rep")) await db.client.register("rep", dsn);
+const ep = db.epoch("rep");
+// 把 ep 存起来，下次请求比对；不一致 → 重新 register 回放（host 重解析 accessor，天然一致）
+```
+
+> 正确性不依赖 JS 持有的 epoch：查询 op 始终按名从 host registry 重解析 accessor。即便恶意 handler
+> 覆写缓存 epoch 跳过失效，也拿不到已删连接（host 直接报未登记）。
+
+## 场景 48：读写十进制 / 时间 / JSON / UUID / 数组列（v0.1.94）
+
+> 一句话：**读**这些列不用再 cast（v0.1.94 起 mysql / postgres 插件直接解码），**写**仍然要显式
+> `::type` —— 新类型只读，没有对称编码。
+
+### ① 表结构（真库里早已存在的普通列）
+
+```sql
+-- postgres
+create table invoice (
+  id       int4 primary key,
+  amount   numeric(18,4) not null,
+  paid_at  timestamptz,
+  meta     jsonb,
+  ext_id   uuid,
+  tags     text[]
+);
+```
+
+```sql
+-- mysql
+create table invoice (
+  id      int primary key,
+  amount  decimal(18,4) not null,
+  paid_at timestamp null,
+  meta    json,
+  flags   bit(5)
+);
+```
+
+### ② 读：类型 → JS 值（照抄可用）
+
+```ts
+import type { Ctx } from "oj";
+
+export async function get(ctx: Ctx): Promise<unknown> {
+  const id = Number(ctx.query.id);
+  const [row] = await db.query(
+    "select id, amount, paid_at, meta, ext_id, tags from invoice where id = ?", [id],
+  );
+  if (!row) return null;
+
+  return {
+    id: row.id,
+    // 十进制是**字符串**：要算钱用字符串/大数运算，别 Number()（会丢精度）
+    amount: row.amount,            //  "1234.5678"
+    amountFen: Math.round(Number(row.amount) * 100),   //  只在小额时这么干
+    paidAt: row.paid_at,           //  "2026-09-19T10:11:12.345678Z"（带 Z = UTC）
+    // JSON 列是 **JSON 文本**，要不要 parse 由你决定
+    meta: row.meta === null ? null : JSON.parse(row.meta as string),
+    extId: row.ext_id,             //  "2f9e8f3a-1c4b-4d5e-8f6a-7b8c9d0e1f2a"
+    tags: row.tags,                //  ["a", null, "c"] —— 数组元素 NULL 保留为 null
+  };
+}
+```
+
+### ③ 写：必须显式转回列类型（PG 严格类型）
+
+```ts
+// 正确：在 SQL 里给参数定型
+await db.exec(
+  "insert into invoice (id, amount, paid_at, meta, ext_id, tags) \
+   values (?, ?::numeric, ?::timestamptz, ?::jsonb, ?::uuid, ?::text[])",
+  [1, "1234.5678", "2026-09-19T10:11:12.345678Z", JSON.stringify({ a: 1 }),
+   "2f9e8f3a-1c4b-4d5e-8f6a-7b8c9d0e1f2a", ["a", "c"]],
+);
+
+// 错误：直接绑字符串 → column "amount" is of type numeric but expression is of type text (42804)
+await db.exec("insert into invoice (id, amount) values (?, ?)", [1, "1234.5678"]);
+```
+
+MySQL 会隐式转换，但**别依赖**——同一段代码搬到 PG 就炸。
+
+### ④ 排障：还剩哪些列不能读
+
+- MySQL 仍报错的：`GEOMETRY` 家族、`SET` → `select ST_AsText(shape) as shape` 或
+  `cast(x as char) as x`；
+- PG 仍报错的：`timetz`、`bit`/`varbit`、范围类型、几何（`point`/`line`…）、复合类型、
+  **多维数组** → `cast(x as text) as x`；
+- 别对遗留宽表用 `select *`：一列不支持就整行报错（这是有意的，静默 `null` 是错值）。
+  列出需要的列，或先把不支持的类型 cast 掉。
+
+> 完整口径（每个类型的输出格式、PG `numeric` 去尾零的成因、MySQL/PG 标度差异）见
+> `db-guide.md` §10.6；报错文案与限制表见 `api-manual.md` §13。
+
+## 场景 49：多步表单跨请求事务（`db.session`，v0.1.95）
+
+> 一句话：一个事务要横跨多个 HTTP 请求（向导、审批、批量导入确认），就别想「把连接留住」——
+> 用**会话 id**（`tx_ab12_…`）当凭据，服务端按 id 找回那条连接与事务。
+
+`db.tx` 的事务边界是**一个请求**：handler 返回即提交。多步流程每步一个请求，必须用 `db.session`。
+
+### ① 开配置（默认关，不开就是「能力不存在」）
+
+```yaml
+db_session:
+  enabled: true
+  allow: { roles: ["draft-editor"] }   # 空 allow 会被装配期拒绝启动
+  max_sessions: 32
+  max_per_owner: 8
+  idle_timeout_secs: 300               # 5 分钟没人动 → 自动回滚
+  max_lifetime_secs: 1800              # 无论如何最长 30 分钟
+  require_identity: true               # 匿名请求不能开会话
+```
+
+改这段要**重启**（热更归类 `restart_pending`），但重启外的热更**不会**丢掉已开的会话。
+
+### ② 步骤 1：开会话 + 写草稿 + 把 id 存到会话外
+
+```ts
+// src/draft/start/api.ts
+export async function post(ctx: Ctx) {
+  const uid = http.user?.id;
+  if (!uid) { json.fail(401, "login required"); return; }
+
+  const s = await db.session.begin();            // 默认 DB("default")
+  // 事务内的写入在提交前对别的请求不可见 —— id 必须存到事务**外**（kv / 另一条连接）
+  await db.session.exec(s.id,
+    "insert into draft (uid, body, state) values (?, ?, 'open')", [uid, http.body.text]);
+
+  await kv.set(`draft-session:${uid}`, s.id);   // 生产建议存进你自己的业务表
+  await kv.expire(`draft-session:${uid}`, 900); // 别让它比会话活得久
+  json.ok({ sessionId: s.id.slice(0, 8) });     // 前端只需要知道"有待续的会话"
+}
+```
+
+`s.id` 是 **bearer token**：拿到就能改你的事务。不要放进 URL / 前端日志 / 错误上报。
+
+### ③ 步骤 2：后续请求 attach，之后所有写法都走这条连接
+
+```ts
+// src/draft/continue/api.ts
+export async function post(ctx: Ctx) {
+  const uid = http.user?.id;
+  const id = await kv.get(`draft-session:${uid}`);
+  if (!id) { json.fail(409, "no open draft session (it may have expired)"); return; }
+
+  await db.session.attach(id);                   // 本请求绑定
+  // 下面三条全部落在同一个事务里
+  await db.exec("update draft set body = ? where uid = ?", [http.body.text, uid]);
+  const rows = await db.table("draft").where({ field: "uid", op: "eq", value: uid }).all();
+  await db.session.touch(id);                    // 长表单：只推空闲计时，不延长总寿命
+  json.ok({ rows });
+}
+```
+
+`attach` 是**请求级**的：请求结束自动解绑，会话本身留着。一个请求只能绑一个别名。
+
+### ④ 步骤 3：提交或放弃；`finally` 里用 `close` 兜底
+
+```ts
+// src/draft/submit/api.ts
+export async function post(ctx: Ctx) {
+  const uid = http.user?.id;
+  const id = await kv.get(`draft-session:${uid}`);
+  if (!id) { json.fail(409, "no open draft session"); return; }
+
+  try {
+    if (http.body.action === "discard") {
+      await db.session.rollback(id);
+      json.ok({ ok: true, discarded: true });
+      return;
+    }
+    await db.session.exec(id, "update draft set state = 'submitted' where uid = ?", [uid]);
+    await db.session.commit(id);
+    json.ok({ ok: true });
+  } finally {
+    await kv.del(`draft-session:${uid}`).catch(() => {});
+    // close 是幂等的：已 commit/rollback 过就什么都不做，失败也不上抛
+    await db.session.close(id).catch(() => {});
+  }
+}
+```
+
+### ⑤ 常见坑
+
+| 现象 | 原因 | 处置 |
+|---|---|---|
+| `db session: cross-request transactions are disabled (set db_session.enabled: true …)` | 没开 `db_session.enabled` | 按文案开配置并重启；`allow` 必须命中调用方 |
+| `tx session tx_ab12_… not found (unknown, expired, or owned by another caller)`（和「别人的会话」文案一样） | id 拼错 / 已结束 / 已过期 / 主体不同 | 刻意不区分，防探测；检查生命周期与归属（自己的已结束会话会给更具体的 `is closed (commit)` / `expired (idle_timeout)`） |
+| `db session: BEGIN is not allowed inside a cross-request transaction` | 会话里手写事务控制（`SET`/`USE` 同禁） | 用 `commit`/`rollback` 结束；MySQL 这些语句隐式提交会让回滚变成假回滚 |
+| `attached to db 'x', not 'y' (detach first)` | `begin` 与后续语句不在同一别名 | detach 后用开始会话的那个别名 |
+| `a db session is attached to this request; db.tx cannot nest inside it (detach first)` | 请求里已 attach 会话又开 `db.tx` | 二选一，别叠加；反向是 `per-request transaction active on this request; finish db.tx before opening a session` |
+| `db session lifetime exhausted during query` | 超过 `max_lifetime_secs` | 拆批；到点的会话会被回滚丢弃（连接不归还） |
+| 开了会话后同别名别的请求卡住 | **sqlite 池只有 1 条连接** | 跨请求事务只用 mysql/postgres |
+| 每隔几分钟数据「自己没了」 | 空闲超时回收（日志 `DB_SESSION_TIMEOUT`） | 每步之间 `touch`；别把会话当持久存储，落盘由业务表负责 |
+
+> 方法面、三道门（`enabled`+`allow` / `db_access` / 身份）、六条硬规则见 `db-guide.md` §4.5；
+> 报错文案与限制表见 `api-manual.md` §13。
+
+---
+
+## 场景 50：跨请求取消长导出（`db.cancel`，v0.1.96）
+
+> 一句话：请求 A 开了条大导出流，用户在页面 B 点「停止」——用**执行 id**（`exec_…`）当凭据，
+> 同一主体的任意请求都能把这条流停掉。
+
+`db.stream` 的 `AbortSignal` 只能被**同一个请求**触发；要跨请求停止（前端取消按钮、管理员
+终止失控导出），走 `db.cancel(executionId)`。
+
+### ① 发起方：开流时把执行 id 存起来
+
+```ts
+// src/export/run/api.ts
+export async function post(ctx: Ctx) {
+  const uid = http.user?.id;
+  const s = json.stream({ contentType: "text/csv" });
+  s.write("id,name\n");
+  await db.stream("select id, name from account order by id", null, {
+    onOpen: (xid) => kv.set(`export-run:${uid}`, xid),   // 存到请求外，B 才拿得到
+    onRow: (row) => s.write(`${row.id},${row.name}\n`),
+  });
+  s.end();
+  await kv.del(`export-run:${uid}`);
+  json.ok({ done: true });
+}
+```
+
+异步迭代形态用 `it.executionId()`：
+
+```ts
+const it = db.stream(sql, params);
+const xid = await it.executionId();   // 触发开流；拿句柄后再开始消费
+for await (const row of it) { /* … */ }
+```
+
+### ② 停止方：同一主体的任意请求
+
+```ts
+// src/export/stop/api.ts
+export async function post(ctx: Ctx) {
+  const xid = await kv.get(`export-run:${http.user.id}`);
+  if (!xid) { json.ok({ stopped: false }); return; }
+  // 幂等：重复 cancel 返回同值；未知/已结束/他人 id 一律 "execution … not found"
+  const r = await db.cancel(xid);
+  json.ok({ stopped: r.cancelled });
+}
+```
+
+### ③ 发起方的观感
+
+被取消后，发起方**下一次拉取抛错**（不是静默结束——别把取消误判成「数据取完了」）：
+
+```
+db stream exec_c90… was cancelled via db.cancel (cursor closed; rows already delivered are kept)
+```
+
+已交付的行保留；后端真取消（mysql `KILL QUERY` / pg `pg_cancel_backend`），sqlite 等协作式
+（游标丢弃、连接回池）。
+
+### ④ 常见坑
+
+| 现象 | 原因 | 处置 |
+|---|---|---|
+| `execution exec_… not found`（和「别人的执行」文案一样） | id 拼错 / 流已结束并 close / 主体不同 | 刻意不区分，防探测；`executionId` 只在流**登记期内**可消（close/收尾后即失效，重复 cancel 也可能落在此文案） |
+| 取消后业务把「导出中断」当成「导出完成」 | 发起方没接住 cancelled 错误 | `onRow` 回调形态的 Promise 会 reject；迭代形态下一次拉取抛错——按错误分流，别吞 |
+| `db.cancel` 报 not found 但流明明在跑 | 执行 id 没存住（只在 `onOpen` 里一闪而过） | `onOpen` / `executionId()` 拿到后先落 `kv`/业务表，再开始消费 |
+| 非流式查询想取消 | `db.cancel` **只覆盖流式执行** | 非流式 `db.query/exec` 无后端句柄，是已知限制；长查询请改 `db.stream`（顺带获得取消能力） |
+| 给前端返回了完整 id | id 是 bearer 凭据 | 只回前 8 字符（`xid.slice(0, 8)`）；日志/错误里引擎只出前缀 |
+
+> 机制与红线见 `db-guide.md` §3.1 的 `db.cancel` 条目；报错文案见 `api-manual.md` §13。
+
+---
+
+## 场景 51：对象浏览器目录内省（`db.catalog`，v0.1.100）
+
+> 一句话：连接树要「有哪些视图/函数/序列」，点开对象要「源码/注释/约束/行数」——
+> 一个 `db.catalog(kind, arg?)` 出口，三方言统一信封 `{kind, dialect, items}`。
+
+```ts
+// 连接树二级节点（全库清单，无 arg）
+const views = await db.catalog("views");      // [{name, ddl}]
+const routines = await db.catalog("routines"); // [{name, type: "FUNCTION"|"PROCEDURE"}]
+const seqs = await db.catalog("sequences");   // pg 原生 / mysql 为 auto_increment 模拟
+const stats = await db.catalog("stats");      // [{name, rowsEstimate, sizeBytes}]（只估算）
+
+// 点开对象（arg = 对象名）
+const ddl = await db.catalog("ddl", "v_report");   // [{name, ddl}]
+const cmts = await db.catalog("comment", "t");     // [{table, column, comment}]
+const cons = await db.catalog("constraints", "t"); // [{name, type: "pk"|"uq"|"ck", definition, columns}]
+```
+
+### 常见坑
+
+| 现象 | 原因 | 处置 |
+|---|---|---|
+| `OJ_DB_UNSUPPORTED`（`e.data.capability` 点名） | kind × 方言不在能力矩阵（批 a：sqlite 仅 views/ddl；`ddl`×pg 仅视图定义） | **报错不静默回落**——按 capability 分流禁用入口，或等批 b |
+| mysql 的 `ddl` 对视图返回 `Create View` 语义但字段叫 `ddl` | 统一信封字段名 | 前端只读 `items[].ddl`/`.name`，别依赖底层列名 |
+| `constraints` 的 `columns` 在 pg 上是 `[]` | pg 的 `definition`（`pg_get_constraintdef`）自带列信息 | 前端优先渲染 `definition`，`columns` 作 mysql 路径的补充 |
+| `stats.rowsEstimate` 与真实行数差一个量级 | 统计是估算（`reltuples`/`information_schema`），且非实时 | 展示时标「约」；要精确数走 `db.query("select count(*) …")` |
+
+## 场景 52：连接凭据加密入库与重放（`secret.seal/open`，v0.1.101）
+
+> 一句话：方案包要把用户登记的 DSN 存进自有表、进程重启后重放 `db.client.register`——
+> DSN 用部署公钥加密落库（表泄漏不带出密码），重放时用部署私钥解出（每次落审计）。
+
+```ts
+// POST /dbx/connections：登记 → 加密入库 → db.client.register
+const tok = secret.seal(dsn);                       // "ENC[...]"：同一明文两次密文不同
+await db.table("my_connections").insert({ name, dsn_cipher: tok }).run();
+await db.client.register(name, dsn);
+
+// boot 重放（进程重启后 db_client 是内存态，须从自有表灌回）：
+const rows = await db.table("my_connections").select(["name", "dsn_cipher"]).all();
+for (const r of rows) {
+  const dsn = secret.open(r.dsn_cipher);            // 需部署私钥；每次落 SECRET_OPEN 审计
+  await db.client.register(r.name, dsn);
+}
+```
+
+### 常见坑
+
+| 现象 | 原因 | 处置 |
+|---|---|---|
+| `secret axis not configured` | 该装配没有任何密钥（无私钥且无 `secrets.public_key_path`） | 配 `secrets.private_key_path`（或 `OJ_SECRET_KEY`/`OJ_SECRET_KEY_FILE`）；仅加密需求可只配 `secrets.public_key_path`（seal-only） |
+| `secret.open` 报 `no private key` | 装配是 seal-only（只有公钥，如构建机） | 解密权在部署机；开发期本地放一份私钥或回退模块自有加密（`crypto.aesGcm`） |
+| 拿密文做等值查询/判重 | 信封随机化：同一明文两次 seal 密文必然不同 | 密文列只存取，不检索；要判重另存明文哈希列 |
+| 改了 `secrets.public_key_path` 后旧密文解不开 | 公钥换了但私钥没换（两把钥匙不成对） | 密钥对要成对轮换：旧私钥解 → 新公钥重封；表里留 `key_version` 列提示重录 |
+| 密文里含 `ENC[` 开头被 config 解析盯上？ | 不会——config 解密只发生在 config.yaml 加载期 | 业务表里的 `ENC[...]` 与 config 无关，只经 `secret.open` 解 |
+
+## 场景 53：慢查询护栏与结果集大小闸（REQ-05，v0.1.103）
+
+> 一句话：交互查询 30s、导出 10min、内省 10s 三档天然不同——全局单值超时兜不住；
+> 语句级超时（按别名配、调用侧收紧）+ 结果集字节上限（fail 缺省 / truncate 显式信令）
+> 各管一维，与 `max_rows` 并存先到先生效。
+
+```yaml
+# config.yaml
+db_access:
+  defaults:
+    statement_timeout_ms: 30000   # 上限；调用侧只能收紧，传更大值 OJ_DB_CAPACITY 点名本键
+    max_result_bytes: 67108864    # 行 JSON 编码字节；与 max_rows 并存
+    on_exceed: fail               # fail（缺省：结构化错）| truncate（部分行 + 显式信令）
+```
+
+```ts
+// 交互查询：按调用收紧
+try {
+  const rows = await db.query(sql, params, { timeoutMs: 5000 });
+} catch (e) {
+  if (e.code === "OJ_DB_TIMEOUT") { /* e.data.cancelled / e.data.timeout_ms；retryable=true */ }
+  if (e.code === "OJ_DB_CAPACITY") { /* e.data.limit_bytes / counted_bytes —— 结果太大 */ }
+}
+
+// 导出长档：pump 全程竞速（消费慢也计入）
+await db.stream(bigSql, params, { timeoutMs: 600000 });
+
+// truncate 档：拿「已截断」显式信令（fail 档则以中途错行表达，catch 同上）
+const it = db.stream(sql);
+for await (const row of it) { out.push(row); }
+const inf = await it.info();            // {rows, bytes, truncated}——迭代结束后仍可读
+if (inf.truncated) warn(`result truncated at ${inf.bytes} bytes`);
+```
+
+### 常见坑
+
+| 现象 | 原因 | 处置 |
+|---|---|---|
+| sqlite 上单条递归 CTE 超时「不生效」 | 同步步进饿死 current_thread 定时器——deadline 只在驱动让步点触发 | 网络型后端（mysql/pg）准点生效；sqlite 大查询靠 `max_result_bytes` + `max_rows` 挡（见 api-manual §13 架构边界行） |
+| 超时了但 `e.data.cancelled === false` | 插件轴宿主只弃句柄，服务端语句可能仍在跑（真取消 = ABI 13 车） | UI 文案说「已超时」即可，**别说「已向数据库下发取消」**——除非后端是 sqlite 内置（cancelled=true） |
+| `timeoutMs` 传得比配置大，报 `OJ_DB_CAPACITY` | 只能收紧（REQ 单向阀） | 要放大上限改 config `db_access.<alias>.statement_timeout_ms` |
+| truncate 后拿 `it.info()` 报 not found | 旧用法：流 close 后注册表已摘 | v0.1.103 起 bootstrap 在自然结束前快照——`it.info()` 结束后照读；中途想看随时调 |
+
+## 场景 54：任务式导出大表（U-18，v0.1.104）
+
+Web 后台「导出全部订单」：请求不能挂着等 5 分钟——`db.export` 发起即返 taskId，
+Rust 消费任务把结果流式写成 blob 产物，前端轮询进度条。
+
+**配置**（`db_export:` 段，全有缺省，可省略）：
+
+```yaml
+db_export:
+  global_concurrency: 4      # 进程级并发上限
+  per_subject_concurrency: 2 # 每用户并发上限
+  max_bytes: 536870912       # 单任务产物上限（超限 failed，不静默截断）
+  ttl_secs: 86400            # 产物保留 24h，宿主清扫器自动删
+```
+
+**代码**：
+
+```ts
+// 发起（立即返回，不用等查询跑完）
+const { taskId } = await db.export({
+  sql: "select * from orders where status = ?",
+  params: ["paid"],
+  format: "csv",              // 或 "jsonl"（行 JSON）；未知格式 → OJ_DB_UNSUPPORTED
+  fileName: "orders-paid.csv", // 下载时浏览器另存为原名（local 后端保真）
+  maxBytes: 64 * 1024 * 1024, // 可选；缺省用配置上限，只能收紧
+});
+
+// 轮询（不确定进度条 + rows/bytes 文本；没有 percent——流式无总行数）
+for (;;) {
+  const st = await db.exportStatus(taskId);
+  if (st.state === "done") return redirect(await blob.url(st.blobKey));
+  if (st.state === "failed") throw new Error(st.error);
+  if (st.state === "cancelled") break;
+  ui.progress(`${st.rows} rows / ${st.bytes} bytes`);
+  await sleep(1000);
+}
+
+// 停止按钮：幂等，重复点不报错
+await db.exportCancel(taskId);
+```
+
+**验证**：done 后 `blob.url(st.blobKey)` 下载；csv 带 BOM/表头，`
+` 行尾恒定
+（数据交换格式，跨平台打开一致）。
+
+**常见坑**：
+
+| 坑 | 解 |
+|---|---|
+| 拿 taskId 当 SQL 句柄想改参数 | taskId 只代表任务；参数在发起时定死。重做 = 新 export |
+| 进度条想做 percent | 没有总行数（做 percent 需额外 COUNT 且有竞态）——用不确定进度条 + rows/bytes 文本 |
+| 重启后轮询报 not found | 有意语义：旧 taskId 一律 not found（不是 failed，防误读成 SQL 错）；跨重启恢复不做 |
+| 产物链接 404 | TTL 24h 到点清扫（live 任务豁免）；长任务产物要在窗口内下载 |
+| 并发发起被拒 | 「global … limit reached」= 全局满，「per-subject …」= 本人满——文案区分，前端可分别提示 |
+
+## 场景 55：对象树画出「库 / schema」层（REQ-04，v0.1.105）
+
+桌面 dbx 迁移过来的连接树缺「库 → schema」两级——不是不会画，是旧内视全部钉死在
+DSN 那一个库。`listSchemas` / `listDatabases` 给清单，`forSchema` 给**钉住一个
+schema 的只读内视句柄**，连接树四级「连接 → 库 → schema → 表」可画满。
+
+**代码**：
+
+```ts
+// 连接下展开：库/schema 清单（系统目录平台已滤；跨方言同构）
+const dbs = await db.listDatabases();          // [{name, owner?, isDefault?, comment?}]
+const schemas = await db.listSchemas("app");   // 可选前缀过滤
+
+// 点开某个 schema：受限句柄（只读五件内视，无 query/exec/stream）
+const scope = db.forSchema("app_log");
+const tables = await scope.listTables();       // 该 schema 的表
+const cols = await scope.listColumns(tables[0]);
+```
+
+**验证**：pg 建 `create schema s1; create table s1.t(...)` 后 `listSchemas()` 含
+`s1`、`forSchema("s1").listTables()` 返回 `t`、默认 `listTables()` **不越**
+schema；mysql 建第二个库同理（schema≡database，两腿同源）。
+
+**常见坑**：
+
+| 坑 | 解 |
+|---|---|
+| sqlite 上 forSchema 报 unsupported | 预期：sqlite 无 schema 概念；清单腿给 database_list（main + attached） |
+| pg 想 forDatabase 跨库 | database=独立连接，物理不可行；listDatabases 只出清单，跨库=再登记别名 |
+| forSchema(畸形名) 拿到 [] 当成功 | 空数组=无对象或名畸形（不报错不泄漏）；先 listSchemas 确认 |
+| 句柄上没有 query/exec | 有意收窄：内视句柄只读。要跑 SQL 用原实例（受 db_access 管辖） |
+
+## 场景 56：看一条 SQL 的执行计划（`db.explain`，G3，v0.1.108）
+
+**需求**：慢查询排查 / 验证索引有没有被用上，要在 handler 里拿到跨方言统一的计划树。
+
+**代码**（pg / mysql 通用；sqlite 与不支持方言结构化报错）：
+
+```ts
+export async function get() {
+  const { plan } = await db.explain(
+    "select * from orders where user_id = ? order by created_at desc limit 20",
+    [42],
+  );
+  // plan: { category, operation, relation, accessPath, cost:{startup,total},
+  //         rowsEstimate, width, extra, children: PlanNode[] }
+  return { plan };
+}
+```
+
+**验证**：pg 下 `operation` 可能是 `Index Scan`、`accessPath` 出 `using index …`、
+`cost.total`/`rowsEstimate` 有值；mysql 下 `operation` 是 `access_type`（`ALL`/`ref`/
+`range`…）、`cost` 来自 `cost_info.prefix_cost`。带参语句走绑定参数，不是拼串。
+
+**常见坑**：
+
+| 坑 | 解 |
+|---|---|
+| 想拿「真实执行」的行数（ANALYZE） | `db.explain` 只出优化器估算，**不执行语句**、无副作用；实测跑一遍或用数据库自带 ANALYZE |
+| 传了 `EXPLAIN select …` 全串 | 只传内层语句，前缀框架自己拼（pg 文本计划 / mysql `FORMAT=JSON`） |
+| 部署版本老的引擎上 `db.explain(...)` TypeError | v0.1.108 才有；跨版本先探 `typeof db.explain === "function"` 再调 |
+| sqlite 上报 `OJ_DB_UNSUPPORTED`（capability=`explain`） | 预期——目前只 pg/mysql；看错误/限制表 |
+| `db_access` Deny 的库上 explain | 一样拒（内层语句先过租户/访问护栏，`explain select …; drop table` 按 DDL 拒） |
+
+## 场景 57：DDL 生成——正向取表定义 + 反向出 ALTER 集（U-14，v0.1.109）
+
+**需求**：表结构页显示建表语句（PR-2）、结构比较页出 ALTER 预览（PR-9）。
+
+**代码**（pg / mysql 通用；sqlite 结构化报错）：
+
+```ts
+// 正向：单对象源码
+export async function get() {
+  const { items } = await db.catalog("ddl", "orders");
+  return { ddl: items[0]?.ddl ?? "" };
+}
+
+// 反向：listColumns/listIndexes/listForeignKeys 拼 from，UI 改 to → diff + ALTER 集
+export async function post() {
+  const { http } = globalThis as any;
+  const body = http.body;
+  const from = {
+    columns: await db.listColumns("orders"),
+    indexes: await db.listIndexes("orders"),
+    foreignKeys: await db.listForeignKeys("orders"),
+  };
+  const { diff, statements } = await db.ddlDiff({
+    objectType: "table", name: "orders", from, to: body.to,
+  });
+  return { diff, statements }; // UI 确认后逐条 exec（DDL 须 allow_ddl）
+}
+```
+
+**验证**：pg 下 `catalog("ddl")` 对普通表出拼接 DDL（`CREATE TABLE` + 序列 +
+`ADD CONSTRAINT` + `CREATE INDEX` + `COMMENT ON`），对视图出 `CREATE VIEW` 原文；
+mysql 出 `SHOW CREATE TABLE`。`ddlDiff` 加一列 → `statements` 尾段一条
+`ADD COLUMN`（pg 双引号 / mysql 反引号），`diff.columns.added` 含新列名。
+
+**常见坑**：
+
+| 坑 | 解 |
+|---|---|
+| `to` 只传 `columns`，旧索引/约束去向不明 | 缺省维度 = **不参与** diff，不是删除——`to` 要全维度都带（from 照上面三件拼）；只有显式 `indexes: []` 才是「删全部索引」 |
+| 照抄 mysql `SHOW CREATE` 重放后自增计数不对 | 输出含 `AUTO_INCREMENT=<当前值>` 是实时计数器；固化前剥掉该行或接受该值 |
+| 事务里重放 ddlDiff 语句 | MySQL DDL 隐式提交断事务；走 `db.exec` + `allow_ddl`，逐条执行 |
+| pg 跨库重放报 `relation "ix_x" already exists` | 索引名同 schema 唯一——重放前自行换索引名（生成器不管这个） |
+| 老引擎上 `db.ddlDiff` TypeError | v0.1.109 才有；跨版本先探 `typeof db.ddlDiff === "function"`（与 explain 同款） |
+
+## 场景 58：给 agent 开接口——MCP 双线路（v0.1.110）
+
+让 Claude / Cursor 等 agent 直接调 oj 接口。两条线路共享同一份 tool 定义
+（OpenAPI 链），按分发场景选：
+
+**线路 B（推荐，服务在线时）**：serve 内建端点，路由变更自动反映。
+
+```yaml
+# config.yaml
+server:
+  mcp: { enabled: true }        # {base}/mcp（streamable HTTP MCP）
+  rpc: { enabled: true }        # {base}/rpc（裸 JSON-RPC 2.0，可选）
+```
+
+```bash
+# MCP client 直接配 URL（Claude Code / Cursor 的 remote server 形态）
+# url: http://<host>:9778/v1/api/mcp    headers: Authorization: Bearer <jwt>
+```
+
+**线路 A（服务在别处 / 要给第三方文件）**：离线生成零依赖 stdio server。
+
+```bash
+./bin/oj mcp -c config.yaml -d src -o mcp/mcp-server.js
+OJ_BASE=http://localhost:9778 OJ_TOKEN=<jwt> node mcp/mcp-server.js
+```
+
+```json
+{ "mcpServers": { "oj": { "command": "node", "args": ["mcp/mcp-server.js"],
+  "env": { "OJ_BASE": "http://localhost:9778", "OJ_TOKEN": "<jwt>" } } } }
+```
+
+裸 JSON-RPC（无 MCP client 的脚本环境）：
+
+```bash
+curl -s http://localhost:9778/v1/api/rpc -H 'content-type: application/json' \
+  -H 'accept: application/json' -d \
+  '{"jsonrpc":"2.0","id":1,"method":"user_account_get","params":{"query":{"id":"1"}}}'
+# → {"jsonrpc":"2.0","id":1,"result":[...]}        # 成功：result = 信封 data
+curl -s http://localhost:9778/v1/api/rpc -H 'content-type: application/json' -d \
+  '{"jsonrpc":"2.0","id":2,"method":"user_account_post","params":{"body":{}}}'
+# → {"jsonrpc":"2.0","id":2,"error":{"code":400,"message":"name required"}}
+#   业务错误 = JSON-RPC error 对象（code 取业务码；MCP 侧则是 isError:true）
+```
+
+| 坑 | 解 |
+|---|---|
+| 启动 fail-fast：`server.mcp.enabled requires an auth plugin` | `mcp.enabled`/`rpc.enabled` 但无 `auth:` 段——装 oj-auth 配 `auth:`，或显式对应 `allow_anonymous: true`（仅内网演示；`sample/` 故意不带） |
+| `tools/list` 空 | `server.mcp.modules` 白名单 fail-closed（无交集 = 空 catalog，不回落全集）——核对模块名 |
+| 直接 `curl {base}/mcp` 吃 406 | 须显式 `Accept: application/json`（`*/*` 被拒） |
+| agent 把写接口当只读直接调 | GET tool 带 `readOnlyHint`——写操作别注册成 GET；DELETE 自动带 `destructiveHint` 走确认链 |
+| 线路 A 缺新接口 | 路由变更须**重跑 `oj mcp`**（文件型快照）；线路 B 自动。产物头注释 spec_hash 可比对 |
+| `tools/call` 业务报错却是 HTTP 200 | MCP 结果映射与 HTTP 状态解耦：看 `result.isError` + `content[0].text`（业务 msg），不是 JSON-RPC error |
+| SSE 流式端点（`json.stream`/`json.sse`）经 MCP 恒报错 | 有意：不缓冲流——MCP/JSON-RPC 只接统一信封端点 |
+| 非 localhost `http://` 分发线路 A | 产物启动时 stderr 警告 Bearer 明文——上 https 或 SSH 隧道 |
+
+## 场景 59：读含未解码类型列的表（`$<type>:` 降级契约，v0.1.111）
+
+表里有个 `inet` / `point` / `interval` 列，旧版 `select *` 直接整条 400
+（`column 'ip' has type 'INET' which this plugin does not decode yet`）。v0.1.111 起
+PG 按**列声明类型**降级为可逆编码，整表可读。
+
+① 查询侧——降级清单走**响应头**（HTTP 消费方读，handler 内不感知）：
+
+```bash
+curl -s -D - http://localhost:9778/v1/api/server/?id=1 -H 'Authorization: Bearer <jwt>'
+# X-OJ-Degraded: [{"col":"ip","type":"inet"}]      ← 按 {col,type} 去重；干净结果不打头
+# body 里 ip 列的值 = "$inet:MCsrMi4zLjQ="（$<type>:<base64>，base64 = 协议原始字节）
+```
+
+② 导出侧——清单走任务状态（JS 可读），产物编码值原样落盘：
+
+```ts
+export default {
+  async post() {
+    const { taskId } = await db.export({ sql: "select * from server", format: "csv" });
+    // 轮询至 done 后：st.degraded = [{"col":"ip","type":"inet"}]（干净导出 []）
+    const st = await db.exportStatus(taskId);
+    json.ok({ taskId, degraded: st.degraded, blobKey: st.blobKey });
+  },
+};
+```
+
+③ 解码（消费方拿到清单后）：`atob(payload)` 得协议原始字节——**可逆不保证可读**；
+要可读文本请查询时就 `cast(ip as text) as ip`（那本来就不报错了）。
+
+| 坑 | 解 |
+|---|---|
+| 嗅探 `$` 前缀判定降级列 | 权威面只有 `X-OJ-Degraded` 头 / `exportStatus.degraded`；前缀是编码不是判定依据（TEXT 字面量可能撞形） |
+| handler 里想读 X-OJ-Degraded | 它是响应面元数据，handler 内不感知（`json.header` 只写不读）；handler 需要的场景走导出任务状态或 SQL 里显式 cast |
+| MySQL 表期待对称行为 | `GEOMETRY` 家族仍整条报错（sqlx-mysql 0.9 无公开字节出口，v0.1.111 未降级）；先 `ST_AsText(g) as g` |
+| 等 `db.stream` 批次也带降级汇总 | **v0.1.112 已补**：`it.info().degraded`（流式无响应头通道，info() 是权威面；`await it.info()`——info() 是 async）；流式大表导出走 `db.export` |
+
+## 场景 60：改列名不动数据（`previousName`，REQ-13，v0.1.112）
+
+结构编辑器里把 `email` 改成 `contact_email`——不声明意图时 diff 只能按「删一列 + 加一列」
+渲染，数据随之丢失。v0.1.112 起在 to 列上带 `previousName` 即产单条
+`RENAME COLUMN`（改名不动数据，索引/约束成员自动跟随）：
+
+```ts
+export default {
+  async post() {
+    const from = { columns: await db.listColumns("account") }; // from 侧忽略 previousName
+    const to = {
+      columns: (await db.listColumns("account")).map((c) =>
+        c.name === "email" ? { ...c, name: "contact_email", previousName: "email" } : c,
+      ),
+    };
+    const out = await db.ddlDiff({
+      objectType: "table",
+      name: "account",
+      from,                       // from.columns[].previousName 不参与（严格忽略）
+      to,
+    });
+    // out.statements = ["ALTER TABLE \"account\" RENAME COLUMN \"email\" TO \"contact_email\""]
+    // out.diff.columns.renamed = [{from:"email", to:"contact_email"}]
+    for (const s of out.statements) await db.asSystem().exec(s); // 执行仍走 allow_ddl
+    json.ok({ statements: out.statements, warnings: out.warnings });
+  },
+};
+```
+
+| 坑 | 解 |
+|---|---|
+| 想要「重排 + 改名」一步到位 | 可以——RENAME 先于列位置/类型变更发出，后续语句一律打在新名上 |
+| 两列互换名字（a→b、b→a） | 显式拒绝（`capability=ddl_diff_rename_swap`）——先经第三个临时名两步走 |
+| MySQL 5.7 执行 RENAME COLUMN 报错 | 语法需 MySQL 8.0+，报错 fail-loud；5.7 走 ADD+迁移+DROP 手工迁移 |
+| 漏填 `previousName` 的同型一删一增 | statements 仍是 DROP+ADD（数据丢），但 `warnings` 给「疑似改名」——UI 应把 warning 渲染成「看起来是改名，要保留数据请确认」 |
+
+## 场景 61：数据库结构 diff 的告警消费（v0.1.112）
+
+`db.ddlDiff` 输出三键：`diff`（结构化四维）/ `statements`（有序可重放）/ `warnings`
+（结构化 diff 说不清的语义坑，v0.1.112 起新增）。保存按钮的判定顺序：
+
+```ts
+const out = await db.ddlDiff({ objectType: "table", name, from, to });
+if (out.warnings.length > 0) {
+  // 当前唯一形态：同型一删一增（如 int 列 email 删了、varchar 列 email 加了）——
+  // 判定上像删+加（类型变了），又像改名（名字一样）。「疑似重命名，数据会丢失」。
+  // UI：弹出「这看起来是改名，确认按 DROP+ADD 执行吗？」，用户可回去补 previousName。
+  return json.ok({ needConfirm: out.warnings });
+}
+for (const s of out.statements) await db.asSystem().exec(s);
+json.ok({ applied: out.statements.length });
+```
+
+| 坑 | 解 |
+|---|---|
+| 想从 `warnings` 反推安全执行 | 不要——warning 是「人来看」的信号，不是机器可消解的冲突集；要么改 spec（补 previousName），要么人确认 |
+| `schema` 定向（跨 schema 建/改表） | spec 顶层加 `"schema": "app"`——语句渲染 `"app"."t"` / `` `app`.`t` ``，diff 键仍裸名；NUL/控制字符拒（报错点名 schema） |
+
+## 场景 62：数据库会话排障（`catalog("processlist")`，REQ-10 一期，v0.1.112）
+
+谁锁了我的表、哪条 SQL 在跑——运维面板直接读活会话（PG/MySQL 双方言同键集）：
+
+```ts
+export default {
+  async get() {
+    const pl = await db.catalog("processlist"); // {items:[{id,user,database,host,state,elapsedSec,query}], truncated}
+    const slow = pl.items
+      .filter((s) => (s.elapsedSec ?? 0) > 30 && s.state !== "idle")
+      .map((s) => ({ id: s.id, user: s.user, db: s.database, secs: s.elapsedSec, sql: s.query }));
+    json.ok({ slow, truncated: pl.truncated, users: (await db.catalog("users")).items });
+  },
+};
+```
+
+配套 kind：`users`（`{name,host}`，mysql host 含 `%` 通配）/ `roles`（`{name}`）/
+`triggers`（`{name,table,timing,events,body,order,enabled}`，PG timing/events 从触发器
+定义文本解析，body/order 为 null）。
+
+| 坑 | 解 |
+|---|---|
+| `forSchema("x").catalog("processlist")` 报 `OJ_DB_UNSUPPORTED(for_schema)` | 预期——四类 kind 是全实例/全库语义，拒绝 scope 不静默；sqlite 上四类整体 unsupported |
+| PG 的 `elapsedSec` 是 `now()-query_start` | 秒级整数；idle 会话也有值（上次查询以来的空闲时长），按 `state` 过滤 |
+| `truncated: true` | 会话数超 1000 上限被截断——运维页给「结果不完整」提示，别当全量清单 |
+| 想 KILL 会话 | `KILL` 语句自 v0.1.112 分类为 Write：只读会话/只读 allow 面一律拒绝，执行走写面 + `allow_ddl` 无关（KILL 非 DDL，但要写权限） |
+
+## 场景 63：建表保真——分区表与 MySQL 表选项（`partitionBy`/`options`，REQ-09 §4.2，v0.1.113）
+
+`ddlDiff` 建表路径（`from=null`）保真渲染分区与表选项，与 `catalog("ddl")` 互为逆运算
+（抓回 DDL → 切出 `partitionBy` 文本 → `ddlDiff(create)` 重放 → 二次抓回一致）：
+
+```ts
+export default {
+  async post({ name }: { name: string }) {
+    // 1) 抓回既有分区表的建表语句。
+    const c = await db.catalog("ddl", name);
+    const ddl = c.items[0].ddl;
+    const part = (ddl.match(/PARTITION BY ([\s\S]+)$/) || [])[1]?.replace(/\s*\*\/\s*$/, "").trim();
+    // 2) 逆运算：从抓回 DDL 重建 structure 并生成副本建表语句。
+    const cols = (await db.listColumns(name)).map((x) => ({ name: x.name, nativeType: x.nativeType }));
+    const out = await db.ddlDiff({ objectType: "table", name: `${name}_copy`, from: null,
+      to: { columns: cols, partitionBy: part } });
+    // 3) 执行（MySQL 分区 DDL 不受 prepared 协议支持——走迁移通道，勿 db.exec）。
+    return json.ok({ statements: out.statements });
+  },
+};
+```
+
+MySQL 表选项：`to.options = {engine, charset, collate, comment}`（固定序渲染，comment
+单引号翻倍）；PG 给 `options` → 参数错误。
+
+| 坑 | 解 |
+|---|---|
+| 改分区/表选项（from 非 null 两侧不同） | `OJ_DB_UNSUPPORTED`（`ddl_diff_partition`/`ddl_diff_table_options`）——不支持自动迁移，手写迁移 |
+| `db.exec` 重放含分区的建表语句 MySQL 1064 | 分区 DDL 不走 prepared 协议——迁移通道/raw 执行；PG 无此限制 |
+| `partitionBy` 带 `;`/换行 | 合法（语句体信任类，拒 NUL/限 64 KiB）——但别混进第二条语句，prepared 重放会被服务端拒 |
+| SHOW CREATE 的分区段在版本注释里（`/*!50100 PARTITION BY ... */`） | 抓回文本要剥尾部 `*/`；本场景的正则已处理 |
+
+## 场景 64：建视图/例程/触发器等非表对象（`objectType` 扩值，REQ-09 §4.4，v0.1.113）
+
+```ts
+export default {
+  async post() {
+    // 建视图：definition 即完整 SELECT。
+    const v = await db.ddlDiff({ objectType: "view", name: "v_orders", from: null,
+      to: { definition: "SELECT id, total FROM orders WHERE total > 100" } });
+    // 视图定义变更：文本不同 → PG CREATE OR REPLACE VIEW / MySQL ALTER VIEW。
+    const v2 = await db.ddlDiff({ objectType: "view", name: "v_orders",
+      from: { definition: "SELECT id FROM orders" },
+      to: { definition: "SELECT id, total FROM orders" } });
+    // 例程/触发器/索引/序列：create（definition 原样整条）+ drop（to:null）。
+    const f = await db.ddlDiff({ objectType: "routine", name: "f_tax", from: null,
+      to: { definition: "CREATE FUNCTION f_tax(x numeric) RETURNS numeric AS $$ SELECT x * 0.1 $$ LANGUAGE sql" } });
+    return json.ok({ create: v.statements, alter: v2.statements, diff: v2.diff.definition,
+                     routine: f.statements });
+  },
+};
+```
+
+| 坑 | 解 |
+|---|---|
+| MySQL drop index 报缺 table | `from.table` 必填（`DROP INDEX ix ON tbl`）；create 路径不强制 |
+| PG drop 重载函数报签名错 | `from.type`（function/procedure）+ `from.args`（签名文本）必填 |
+| index/sequence/routine/trigger 想逐字段 diff | 不支持——只 create/drop 两头，字段级请求参数错误 |
+| view definition 相同却产语句 | 不会——文本严格相等 → 零语句 |
+
+## 场景 65：表改名（`previousName` 表级，REQ-09 §4.1 缺口补齐，v0.1.113）
+
+```ts
+export default {
+  async post({ oldName, newName }: { oldName: string; newName: string }) {
+    const cols = (await db.listColumns(oldName)).map((x) => ({ name: x.name, nativeType: x.nativeType }));
+    const out = await db.ddlDiff({ objectType: "table", name: newName, previousName: oldName,
+      from: { columns: cols }, to: { columns: cols } });
+    // statements[0] 恒为 ALTER TABLE old RENAME TO new；diff.renamed 恒在。
+    return json.ok({ statements: out.statements, renamed: out.diff.renamed });
+  },
+};
+```
+
+| 坑 | 解 |
+|---|---|
+| 和列改名混用 | 表 RENAME 恒首条，列 RENAME 次之且用新表名——顺序已钉，无需手工排 |
+| schema 段 | 旧引用两段限定（`"schema"."old"`），但 RENAME TO 目标只许裸名（`RENAME TO "new"`）——两方言同律，跨 schema 移动另走 SET SCHEMA |
+| `to: null` 想删表 | 参数错误（v0.1.113 起）——ddlDiff 不产 DROP TABLE，删表走显式迁移 |
+
+## 场景 66：给非流式长查询装「取消按钮」（`onOpen` + `db.cancel`，REQ-11，v0.1.114）
+
+后台报表跑 `db.query` 大聚合，用户刷新/关闭页面后要能真正停掉它——不用改 `db.stream`，
+给 `db.query` 挂上 `onOpen` 回调即登记为可跨请求取消的池执行：
+
+```ts
+// src/report/run/api.ts —— 发起端：onOpen 拿执行 id 落 kv（跨请求句柄）
+export default {
+  async get({ reportId }: { reportId: string }) {
+    let xid = "";
+    const rows = await db.query(
+      "select region, sum(amount) s from orders group by region", [],
+      {
+        onOpen: (executionId) => { xid = executionId; },
+        onProgress: (ev) => { /* 需要推进度条才挂；只为取消可省略 */ },
+      },
+    );
+    // 正常跑完：清掉句柄（幂等，多清无害）
+    if (xid) await kv.del(`cancel:${reportId}`);
+    return json.ok({ rows });
+  },
+};
+
+// src/report/cancel/api.ts —— 停止端：任意后续请求（同主体）调 db.cancel
+export default {
+  async post({ reportId }: { reportId: string }) {
+    const xid = await kv.get(`cancel:${reportId}`);
+    if (!xid) return json.fail(404, "no running report");
+    const r = await db.cancel(xid);
+    await kv.del(`cancel:${reportId}`);
+    return json.ok(r); // {cancelled, alias}
+  },
+};
+```
+
+| 坑 | 解 |
+|---|---|
+| 不带回调就指望能取消 | executionId 只经 `onOpen`/`it.executionId()` 暴露给 JS——直路 `db.query` 无回调拿不到 id，`db.cancel` 报 not found（挂断联动 v0.1.114 起仍覆盖它） |
+| 取消后发起端当「没数据」 | 发起端 reject `db exec exec_… was cancelled via db.cancel`（`e.code=OJ_DB_CANCELLED`）——按错误分流（前端显示「已取消」，不是空结果） |
+| 挂在 `db.tx` / `db.session` 里 | 事务/会话内执行不登记（会话锁定单连接），取消语义只覆盖直连池执行 |
+| 把执行 id 回给前端 | bearer 凭据：存服务端 `kv`，前端只回 `slice(0, 8)` 用于对账 |
+
+> 机制与错误码见 `db-guide.md` §3 / §11.6.5；挂断联动的尽力取消语义见 api-manual §13。
+
+## 场景 67：大导出实时进度条（`db.stream` 的 `onProgress`，REQ-11 G3，v0.1.114）
+
+场景 50 的导出加进度：不用自己数行，`onProgress` 每 100ms 推一次
+`{rows, bytes, elapsedMs}`（bytes 为在飞已计量字节），WS/SSE 推给前端：
+
+```ts
+// src/export/orders/api.ts
+export default {
+  async get() {
+    const s = json.stream({ contentType: "text/csv" });
+    s.write("id,name\n");
+    const t0 = Date.now();
+    await db.stream("select id, name from orders order by id", null, {
+      onRow: (row) => s.write(`${row.id},${row.name}\n`),
+      onProgress: (ev) => {
+        // 100ms 节流；进度可经 ws 房间推前端：{pct: 未知总量时只报 rows/elapsedMs}
+        ws.broadcast("export-progress", { rows: ev.rows, bytes: ev.bytes, elapsedMs: ev.elapsedMs, running: true });
+      },
+    });
+    ws.broadcast("export-progress", { rows: 0, bytes: 0, elapsedMs: Date.now() - t0, running: false });
+    s.end();
+  },
+};
+```
+
+| 坑 | 解 |
+|---|---|
+| 拿 `fetching`/`sent` 当进度相位写 UI | `onProgress` 的相位是 `sent`/`fetching`/`done`——done **恒发**；流式的进度只报行数字节数，别等 done 才算「有进度」 |
+| 每行回调里自己打点拖慢导出 | 行回调在泵循环上——重活（落库/网络）请挪走；`onProgress` 已节流，直接用它 |
+| 总量未知想算百分比 | bytes/rows 是累计值不是占比——无总量时分段不定，前端按速率画条形即可；要百分比先 `count(*)` |
+
+## 场景 68：CSV 批量导入 + 取消按钮组合（`db.import` 三件，REQ-12，v0.1.115）
+
+运营后台把一份 50 万行 CSV 灌进 `users` 表，要进度条和「取消」按钮，且刷新页面任务
+不丢。导入是**长任务**：发起即返 taskId，Rust consumer 分批落库，taskId 存 kv 即跨
+请求句柄（与导出任务 `exp_`、执行 `exec_` 前缀隔离）：
+
+```ts
+// src/admin/import/api.ts —— 发起：上传 blob → 起任务 → taskId 落 kv
+export default {
+  async post({ table }: { table: string }) {
+    const up = await blob.uploadUrl("imports/daily.csv");   // 前端 PUT 直传后拿到 key
+    const { taskId } = await db.import({
+      table,                        // 必须在 schema.yaml 登记（白名单源头）
+      blobKey: up.key,
+      format: "csv",
+      columns: ["id", "name"],      // 生产用法显式给——缺省列序是表头/键排序序
+      mode: "append",
+      // onError: "skip", maxErrors: 50,   // 脏数据多时再开：坏行进 samples 行不落库
+    });
+    await kv.set(`imp:${table}`, taskId);   // 跨请求/跨刷新句柄
+    return json.ok({ taskId });
+  },
+};
+
+// src/admin/import/status/api.ts —— 轮询：进度 + 终态 + 坏行样本
+export default {
+  async get({ table }: { table: string }) {
+    const taskId = await kv.get(`imp:${table}`);
+    if (!taskId) return json.ok({ state: "none" });
+    const st = await db.importStatus(taskId);
+    if (st.state === "failed" && st.samples?.length) {
+      // st.samples[i].line = 源文件绝对行号（csv header 计 1）——直接定位原行
+      return json.fail(400, `import failed: ${st.error}; first bad line ${st.samples[0].line}: ${st.samples[0].reason}`);
+    }
+    return json.ok(st);   // {state, rows, bytes, errors, ...}
+  },
+};
+
+// src/admin/import/cancel/api.ts —— 取消：幂等；已提交批不回退（sqlite 除外：全单事务整回滚）
+export default {
+  async post({ table }: { table: string }) {
+    const taskId = await kv.get(`imp:${table}`);
+    if (taskId) await db.importCancel(taskId);
+    return json.ok({ cancelled: true });
+  },
+};
+```
+
+| 坑 | 解 |
+|---|---|
+| 导入租户 scoped 表被 `import_under_guard` 拒 | sql_guard 下 scoped 表 fail-closed 是刻意设计（守卫无法证明每行都属于当前租户）——用非 scoped staging 表导入后按租户 `insert ... select`，等逐行租户强制能力 |
+| 重复导入同一份文件报主键冲突 | append 不误称幂等——重复跑撞约束是预期；要「同文件重放安全」用 `mode:"upsert"`（MySQL 表上须先建唯一键；sqlite 仅 `conflictKeys:["rowid"]`） |
+| 取消后 sqlite 上 rows=0 / 网络库 rows>0 | sqlite 全单事务：cancel/fail 整回滚；PG/MySQL 每批事务：已提交批保留。按 state 分流，勿假设 rows>0 |
+| 大 CSV 把内存吃爆 | blob 源走 `read_range` 1MiB 窗口流式读，缓冲有界；别用内联 `rows` 传大数据（`max_rows` 100 万 / `max_bytes` 512MiB 配额，超限登记前/中途拒，点名键不静默截断） |
+| 想拿 `samples` 的 line 当「第 N 条数据」 | line 是源文件绝对行号（csv header 计 1）——给运营指原文件行定位；换算数据条数自行减 header 偏移 |
+
+## 场景 69：零配置静态站优化——压缩、两档缓存与 HEAD 探针（v0.1.116）
+
+**需求**：`oj serve` 单进程出 API + SPA 静态，无前置 nginx 也要有 gzip/brotli 压缩与
+正确缓存策略；uptime 探针不再吃 405。
+
+**配置（零配置即生效，以下是全量可调面）**：
+
+```yaml
+server:
+  static:                      # 全默认 = 压缩与策略双开
+    compression: true          # false = 不协商不压缩（逐字节回退 v0.1.115）
+    compress_min_length: 1024
+    brotli_quality: 5          # 1..=11；高首页延迟敏感就别拉满
+    gzip_level: 6              # 1..=9
+    compress_cache_dir:        # 缺省 <config_dir>/compress-cache；"" = 内存直压
+    web_cache_policy: auto     # auto | none
+```
+
+**代码（什么都不用写）**：`dist` 里是任意 SPA 构建产物（Vite/webpack 均可）。
+
+**验证**：
+
+```bash
+curl -sI -H 'Accept-Encoding: br' https://host/assets/index-B2R7x9cW.js | grep -iE 'content-encoding|vary|cache-control|etag'
+# content-encoding: br / vary: Accept-Encoding / cache-control: public, max-age=31536000, immutable / etag: W/"…"
+curl -sI https://host/ | grep -i cache-control        # → no-cache（HTML 恒校验）
+curl -sI https://host/modules.json | grep -i cache-control  # → no-cache（清单恒校验）
+curl -I https://host/v1/api/some-get-only/            # → 200 空体（HEAD 镜像 GET），不再 405
+```
+
+**常见坑**：
+- 未哈希文件名（`antd.js`、`config-production.js`）**不会**被 immutable——恒 `no-cache`
+  恒校验，升版即生效；要长缓存给该挂载 `mounts[].headers` 显式配 `Cache-Control`。
+- 前置 CDN 必须按 `Vary: Accept-Encoding` 分键；确认不了 → `compression: false`。
+- HEAD 探针**真实执行 handler**：选轻路由；受保护端点无 token 探针得 401 属正常语义。
+- 只读根部署（distroless 等）：`compress_cache_dir: ""` 或指 tmpfs，写失败自动回退内存直压。
