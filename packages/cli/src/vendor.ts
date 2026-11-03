@@ -180,10 +180,23 @@ function reportProbeFailure(log: (msg: string) => void, detail: string): void {
 /** npm 执行器（测试注入）；返回 stdout */
 export type NpmRun = (args: string[], cwd: string) => string;
 
-const NPM_CMD = process.platform === "win32" ? "npm.cmd" : "npm";
+/**
+ * npm 执行规格：按平台决定 execFileSync 的命令行。
+ *
+ * Windows 上 npm 实为 `npm.cmd` 批处理文件——`CreateProcess` 无法直接执行 `.cmd`
+ * （否则 `spawnSync npm.cmd EINVAL`，连 `npm view` 这步都过不去），必须由 `cmd.exe /c`
+ * 包裹运行。其余平台直接以 `npm` 执行即可。
+ */
+export function npmExecSpec(platform: string, args: string[]): { cmd: string, execArgs: string[] } {
+	if (platform === "win32")
+		return { cmd: "cmd.exe", execArgs: ["/c", "npm.cmd", ...args] };
+	return { cmd: "npm", execArgs: args };
+}
 
-const defaultRun: NpmRun = (args, cwd) =>
-	execFileSync(NPM_CMD, args, { cwd, encoding: "utf-8", maxBuffer: 16 * 1024 * 1024 });
+export const defaultRun: NpmRun = (args, cwd) => {
+	const { cmd, execArgs } = npmExecSpec(process.platform, args);
+	return execFileSync(cmd, execArgs, { cwd, encoding: "utf-8", maxBuffer: 16 * 1024 * 1024 });
+};
 
 export interface VendorDeps {
 	run?: NpmRun

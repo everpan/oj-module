@@ -37,6 +37,13 @@
   回归：`packages/cli/src/__tests__/port-check.test.ts`、`tests/cli/dev-fullstack.test.ts`
   （端口被占用时禁止启动且不调用 ojStarter）。
 
+- **`ojm vendor` 在 Windows 上启动失败（spawnSync npm.cmd EINVAL）**：此前 npm 执行器在
+  Windows 用 `execFileSync("npm.cmd", ...)` 直跑批处理文件，而 `CreateProcess` 无法直接执行
+  `.cmd`，抛 `EINVAL`，连 `npm view @oj-bin/oj version` 这一步都没过去，上游 oj 装不上。改为
+  Windows 下以 `cmd.exe /c npm.cmd` 包裹执行；提取 `npmExecSpec(platform, args)` 纯函数（非
+  Windows 仍走 `npm`）并补单测覆盖两条平台分支。回归：
+  `packages/cli/src/__tests__/vendor.test.ts`。
+
 ## [0.2.56] - 2026-11-02
 
 ### Added
