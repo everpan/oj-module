@@ -326,7 +326,7 @@ function writeManifest(m: unknown): void {
 }
 
 function tarList(tgz: string): string[] {
-	return execFileSync("tar", ["-tvzf", tgz], { encoding: "utf8" })
+	return execFileSync("tar", ["-tvzf", tgz], { encoding: "utf8", shell: true })
 		// 铁律②（P1-6）：tar 输出恒带尾随换行，trim 后再 split
 		.trim()
 		.split("\n")

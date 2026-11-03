@@ -100,7 +100,7 @@ function fail(msg) {
 }
 
 function run(cargs) {
-	execFileSync("pnpm", cargs, { cwd: ROOT, stdio: "inherit" });
+	execFileSync("pnpm", cargs, { cwd: ROOT, stdio: "inherit", shell: true });
 }
 
 function readVersion(rel) {
@@ -122,14 +122,14 @@ function checkLockstep() {
 
 /** 1. 工作区干净性（pnpm publish 要求干净树） */
 function checkCleanTree() {
-	if (execFileSync("git", ["status", "--porcelain"], { cwd: ROOT, encoding: "utf-8" }).trim())
+	if (execFileSync("git", ["status", "--porcelain"], { cwd: ROOT, encoding: "utf-8", shell: true }).trim())
 		fail("工作区不干净——pnpm publish 要求干净树，请先提交全部改动。");
 }
 
 /** 1. verdaccio 可达性（本地服务没起时给出可执行指引，而不是发布中途才拒连） */
 function checkRegistryUp() {
 	try {
-		execFileSync("curl", ["-sf", "-o", "/dev/null", REGISTRY], { stdio: "pipe" });
+		execFileSync("curl", ["-sf", "-o", "/dev/null", REGISTRY], { stdio: "pipe", shell: true });
 	}
 	catch {
 		fail(`verdaccio 不可达（${REGISTRY}）——先启动本地服务（如 npx verdaccio），再跑本命令。`);

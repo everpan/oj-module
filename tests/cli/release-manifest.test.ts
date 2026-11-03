@@ -29,7 +29,7 @@ afterAll(() => {
 
 /** 跑 pnpm pack 并返回 tarball 路径 */
 function pack(pkgDir: string, name: string): string {
-	execFileSync("pnpm", ["pack", "--pack-destination", outDir], { cwd: path.join(PROJECT_ROOT, pkgDir), stdio: "pipe" });
+	execFileSync("pnpm", ["pack", "--pack-destination", outDir], { cwd: path.join(PROJECT_ROOT, pkgDir), stdio: "pipe", shell: true });
 	const tarball = fs.readdirSync(outDir).find(f => f.startsWith(name) && f.endsWith(".tgz"));
 	if (!tarball)
 		throw new Error(`pnpm pack 未产出 ${name} 的 tarball`);
@@ -45,12 +45,12 @@ interface PackedManifest {
 }
 
 function manifestOf(tgz: string): { raw: string, json: PackedManifest } {
-	const raw = execFileSync("tar", ["-xzOf", tgz, "package/package.json"], { encoding: "utf-8" });
+	const raw = execFileSync("tar", ["-xzOf", tgz, "package/package.json"], { encoding: "utf-8", shell: true });
 	return { raw, json: JSON.parse(raw) };
 }
 
 function entriesOf(tgz: string): string[] {
-	return execFileSync("tar", ["-tzf", tgz], { encoding: "utf-8" }).split("\n");
+	return execFileSync("tar", ["-tzf", tgz], { encoding: "utf-8", shell: true }).split("\n");
 }
 
 /** 发布态不得残留包管理协议字面量（workspace/catalog/link/file） */

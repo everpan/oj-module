@@ -49,6 +49,7 @@ function resolveShell() {
 		execFileSync("pnpm", ["--filter", "@oj-module/cli", "build:shell"], {
 			cwd: PROJECT_ROOT,
 			stdio: "inherit",
+			shell: true,
 		});
 	}
 	return htmlPath;
