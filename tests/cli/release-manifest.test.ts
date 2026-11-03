@@ -64,8 +64,9 @@ function protocolLeaks(pkg: PackedManifest): [string, string][] {
 	return Object.entries(fields).filter(([, v]) => typeof v === "string" && /^(?:workspace|catalog|link|file):/.test(v)) as [string, string][];
 }
 
+// Windows 上 pnpm pack 冷启动较慢，单测默认 5s 会偶发超时；三条都显式放宽到 60s。
 describe("发布清单（走真实 pnpm pack 路径）", () => {
-	it("runtime：协议已改写、peer 为真实范围、包内无 .ts 源", () => {
+	it("runtime：协议已改写、peer 为真实范围、包内无 .ts 源", { timeout: 60_000 }, () => {
 		const tgz = pack("packages/runtime", "oj-module-runtime-");
 		const { json } = manifestOf(tgz);
 		expect(json.version).toBe(sourceVersion("packages/runtime"));
@@ -80,7 +81,7 @@ describe("发布清单（走真实 pnpm pack 路径）", () => {
 		expect(entries).toContain("package/dist/contract/index.js");
 	});
 
-	it("cli：无 workspace 协议、runtime 精确且 lockstep、无 sourcemap、bin 双入口", () => {
+	it("cli：无 workspace 协议、runtime 精确且 lockstep、无 sourcemap、bin 双入口", { timeout: 60_000 }, () => {
 		const tgz = pack("packages/cli", "oj-module-cli-");
 		const { raw, json } = manifestOf(tgz);
 		expect(json.version).toBe(sourceVersion("packages/cli"));
@@ -104,7 +105,7 @@ describe("发布清单（走真实 pnpm pack 路径）", () => {
 	 * 曾收录 `.gitignore`，tarball 里没有它 → readInitInclude fail-fast →
 	 * 用户工程 init 整体中断、只剩空目录。白名单条目必须逐条落在 tarball 内。
 	 */
-	it("cli：init.include.yaml 每条收录路径都在 tarball 内", () => {
+	it("cli：init.include.yaml 每条收录路径都在 tarball 内", { timeout: 60_000 }, () => {
 		const tgz = pack("packages/cli", "oj-module-cli-");
 		const inTarball = new Set(entriesOf(tgz).map(e => e.replace(/^package\//, "").replace(/\/$/, "")));
 		const listText = fs.readFileSync(
