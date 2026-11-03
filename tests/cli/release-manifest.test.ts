@@ -6,10 +6,20 @@ import { afterAll, describe, expect, it } from "vitest";
 
 import { PROJECT_ROOT } from "../helpers/paths";
 
-// Windows 上 GNU tar 会把绝对路径里的 `C:` 当成「远程主机:路径」去解析，
-// 报 `Cannot connect to C: resolve failed`。--force-local 强制按本地文件处理。
-// 该选项仅 GNU tar 支持；macOS/Linux 路径无冒号、不会触发远程解析，故仅 win32 加。
-const TAR_LOCAL = process.platform === "win32" ? ["--force-local"] : [];
+// GNU tar 把 Windows 盘符绝对路径里的 `C:` 当「远程主机:路径」（Cannot connect to C: resolve failed），
+// 需 --force-local；但 Windows 自带 bsdtar 不支持该选项（报 Option --force-local is not supported），
+// 且 bsdtar 本就不做远程解析。按实际解析到的 tar 版本决定：仅 win32 + GNU tar 才加。POSIX 恒不加。
+const TAR_LOCAL: string[] = (() => {
+	if (process.platform !== "win32")
+		return [];
+	try {
+		const version = execFileSync("tar", ["--version"], { encoding: "utf-8", shell: true });
+		return /GNU tar/i.test(version) ? ["--force-local"] : [];
+	}
+	catch {
+		return [];
+	}
+})();
 
 /**
  * 发布清单守卫（架构评审 P1 落地）：把「发布走 pnpm」这条口头约定钉成机器断言。
@@ -55,7 +65,8 @@ function manifestOf(tgz: string): { raw: string, json: PackedManifest } {
 }
 
 function entriesOf(tgz: string): string[] {
-	return execFileSync("tar", [...TAR_LOCAL, "-tzf", tgz], { encoding: "utf-8", shell: true }).split("\n");
+	// bsdtar on Windows emits CRLF; strip \r so entry names match POSIX/GNU output.
+	return execFileSync("tar", [...TAR_LOCAL, "-tzf", tgz], { encoding: "utf-8", shell: true }).replace(/\r/g, "").split("\n");
 }
 
 /** 发布态不得残留包管理协议字面量（workspace/catalog/link/file） */

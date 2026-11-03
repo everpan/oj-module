@@ -15,9 +15,20 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { parse, stringify } from "yaml";
 import { buildBundle } from "../../bundle";
 
-// Windows 上 GNU tar 会把绝对路径里的 `C:` 当成「远程主机:路径」（Cannot connect to C: resolve failed）。
-// --force-local 强制按本地文件处理；仅 GNU tar 支持，macOS/Linux 路径无冒号不会触发，故仅 win32 加。
-const TAR_LOCAL = process.platform === "win32" ? ["--force-local"] : [];
+// GNU tar 把 Windows 盘符绝对路径里的 `C:` 当「远程主机:路径」（Cannot connect to C: resolve failed），
+// 需 --force-local；但 Windows 自带 bsdtar 不支持该选项（报 Option --force-local is not supported），
+// 且 bsdtar 本就不做远程解析。按实际解析到的 tar 版本决定：仅 win32 + GNU tar 才加。POSIX 恒不加。
+const TAR_LOCAL: string[] = (() => {
+	if (process.platform !== "win32")
+		return [];
+	try {
+		const version = execFileSync("tar", ["--version"], { encoding: "utf-8", shell: true });
+		return /GNU tar/i.test(version) ? ["--force-local"] : [];
+	}
+	catch {
+		return [];
+	}
+})();
 
 const FIXTURE_VALID = join(dirname(fileURLToPath(import.meta.url)), "fixtures/fixture-valid");
 
@@ -332,6 +343,8 @@ function writeManifest(m: unknown): void {
 function tarList(tgz: string): string[] {
 	return execFileSync("tar", [...TAR_LOCAL, "-tvzf", tgz], { encoding: "utf8", shell: true })
 		// 铁律②（P1-6）：tar 输出恒带尾随换行，trim 后再 split
+		// bsdtar on Windows emits CRLF; strip \r before splitting.
+		.replace(/\r/g, "")
 		.trim()
 		.split("\n")
 		.map(line => line.split(" ").pop()!);
