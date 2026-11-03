@@ -63,9 +63,9 @@ export const DEFAULT_PREFERENCES = {
 	/* ================== Footer ================== */
 	enableFooter: true,
 	fixedFooter: true,
-	companyName: "Condor Hero",
-	companyWebsite: "http://github.com/condorheroblog/",
-	copyrightDate: "2023",
+	companyName: "Omni Solution",
+	companyWebsite: "http://github.com/everpan",
+	copyrightDate: "2026",
 	ICPNumber: "",
 	ICPLink: "",
 } satisfies PreferencesState;
