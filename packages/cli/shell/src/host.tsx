@@ -35,7 +35,12 @@ import {
 	usePreferences,
 	useUserStore,
 } from "@oj-module/runtime";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+	MutationCache,
+	QueryCache,
+	QueryClient,
+	QueryClientProvider,
+} from "@tanstack/react-query";
 import { ConfigProvider, theme } from "antd";
 import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
@@ -52,7 +57,48 @@ import { collectPreloads } from "./preload";
 import { resolveSiteBase } from "./site-urls";
 import { assertTrustedModules } from "./trust";
 
-const queryClient = new QueryClient();
+/**
+ * 全局失败收敛（框架层唯一构造点）。
+ *
+ * 宿主是唯一构造 QueryClient 的地方：模块页面的 useQuery/useQueryClient 上下文
+ * 都来自此处，`ojm build` 对 shell-dist 全量合并，工程侧没有注入 defaults 的缝隙。
+ * 原先裸 `new QueryClient()` 走 TanStack 默认 `retry: 3`，导致「必然失败也白等 3 次
+ * 重试 + 请求层逐次弹 toast 刷屏」。
+ *
+ * 这里两处收敛：
+ * - `retry: 1`：保留一次瞬时抖动重试，去掉默认 3 次的无效等待（mutations 默认不重试）；
+ * - `QueryCache/MutationCache` onError：请求层 {@link handleErrorResponse} 已对
+ *   HTTP 错误体弹 toast，此处只兜底「请求层未触达」的失败（网络中断 / 解析异常 /
+ *   非响应错误），避免与其重复弹窗。
+ */
+function isHttpError(error: unknown): boolean {
+	const maybe = error as { response?: { status?: unknown } } | null;
+	return Boolean(maybe?.response && typeof maybe.response.status === "number");
+}
+
+function surfaceQueryError(error: unknown): void {
+	if (isHttpError(error))
+		return; // 请求层已弹 toast，避免重复
+	const message = error instanceof Error && /fetch|network|timeout/i.test(error.message)
+		? "网络异常，请检查网络连接后重试"
+		: error instanceof Error
+			? error.message
+			: "请求失败";
+	window.$message?.error(message);
+}
+
+const queryClient = new QueryClient({
+	defaultOptions: {
+		queries: {
+			retry: 1,
+		},
+		mutations: {
+			retry: 0,
+		},
+	},
+	queryCache: new QueryCache({ onError: surfaceQueryError }),
+	mutationCache: new MutationCache({ onError: surfaceQueryError }),
+});
 
 // 免登录演示宿主：无登录流程填充 user store，头像/用户名恒为空兜底
 // （UserIcon 人形图标）。播种演示用户（与 App 链 fake 数据一致），
