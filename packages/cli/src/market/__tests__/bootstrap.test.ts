@@ -6,9 +6,44 @@
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { bootstrapIsolatedSite } from "../bootstrap";
+
+// 桩 oj 用进程内实现（与 init.test.ts 同套路）：bin/oj 是 shebang 脚本，Windows 上
+// execFileSync 无法 spawn（ENOENT 会让能力闸门走「跳过版本校验」分支，被测形态失真）。
+// 且 buildBackend 自接入 mergeConfigForDev 后要供给 dev 密钥，桩必须带 secret 能力：
+// keygen 落一对 PEM、seal 回 ENC[...]、open 恒成功（与真实 oj 的退出码语义一致）。
+vi.mock("node:child_process", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("node:child_process")>();
+	const mfs = await import("node:fs");
+	const mpath = await import("node:path");
+	const execFileSync = (file: string, args: readonly string[]): string => {
+		// 真实 spawn 的语义：文件不存在即 ENOENT（「没装 oj」用例依赖这条）
+		if (!mfs.existsSync(String(file)))
+			throw new Error(`spawnSync ${file} ENOENT`);
+		const a = [...args];
+		if (a[0] === "-V")
+			return "oj 0.1.85";
+		if (a[0] === "build")
+			return a.includes("--help") ? "      --module-root <MODULE_ROOT>  源码树根" : "";
+		if (a[0] === "secret") {
+			if (a[1] === "keygen") {
+				const keysDir = a[a.indexOf("--out-dir") + 1]!;
+				mfs.mkdirSync(keysDir, { recursive: true });
+				mfs.writeFileSync(mpath.join(keysDir, "secrets-private.pem"), "PRIV\n");
+				mfs.writeFileSync(mpath.join(keysDir, "secrets-public.pem"), "PUB\n");
+				return "";
+			}
+			if (a[1] === "seal")
+				return "ENC[TESTSEALED]";
+			if (a[1] === "open")
+				return "TESTPLAIN";
+		}
+		return "";
+	};
+	return { ...actual, execFileSync };
+});
 
 /** 假 oj 进程：不起真进程，ready 立即就绪（与 dev.ts 的 ojStarter 注入同形态） */
 function fakeStarter() {
