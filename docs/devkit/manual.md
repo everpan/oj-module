@@ -1537,6 +1537,26 @@ flowchart LR
   例如 `ojm migrate -d api/dist`、`ojm schema diff` 等价于带绝对 `-c` 的 `oj` 调用——
   不用再手敲 `-c`。**完整命令参考与「oj 原生命令 vs ojm 透传」的差异区分见 §10。**
 
+**静态层与传输（oj ≥ 0.1.116 内建，0.1.118 起支持 h2c）**：单服务部署时 `oj serve` 自己就是
+静态服务器，压缩与缓存不必靠外挂 nginx，下面四条直接决定首屏体验：
+
+- **压缩**：默认开，协商 br > gzip，可压资源恒带 `Vary: Accept-Encoding`；压缩产物落
+  `<config_dir>/compress-cache/`（派生数据，可整删重建；只读根设 `compress_cache_dir: ""`
+  走内存直压）。`server.static.brotli_quality` 默认 5（1..=11），q11 能再省约 12% 字节，
+  代价是**每个新版本资产的第一个请求要在线冷压**（实测 antd 单文件 2.2MB 约 1.4s）——
+  流量入口集中、首访敏感就别拉满。
+- **缓存按文件名判**：stem 末段 ≥8 位且数字字母兼具 → `public, max-age=31536000, immutable`；
+  其余一律 `no-cache` 恒校验（`config-production.js` 这类纯字母词不会被误钉）。**所以产物里的
+  共享资产与入口 chunk 必须内容寻址命名**，否则跨版本要么全量重下、要么全量 304。
+  本仓构建期已强制（`hashifySharedAssets` / `hashifyHostEntry`）。
+- **传输**：0.1.118 起明文端口上 h2c（HTTP/2 prior knowledge）与 HTTP/1.1 **同端口共存**，
+  零配置；但**只支持 prior knowledge，没有 `Upgrade: h2c` 路径**，且进程内无 TLS 终结——
+  **浏览器连不上 h2c**。要让浏览器走 h2，必须前置 nginx/caddy 做 TLS-ALPN，反代到源站那一跳
+  可选 h2c。WS 握手仍必须走 HTTP/1.1（无 RFC 8441）。
+- **前置缓存层**：CDN/反代**必须按 `Vary: Accept-Encoding` 分键**；确认不了就让
+  `server.static.compression: false`，压缩交给前置层一家做——两层都压等于白费 CPU 且易出
+  「br 解成乱码」。
+
 **按路由注入 HTML（`htmlTransform`，SEO / IM 链接预览）**：SPA 的服务端只有一份
 `index.html`——想让 `/issues/<id>` 这类路由带自己的 `<title>`/`og:*`（微信、Slack、飞书预览
 与不执行 JS 的爬虫只看服务端 HTML，客户端 `document.title` 无效），在 `web.config.ts` 配：

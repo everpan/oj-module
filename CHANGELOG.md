@@ -36,6 +36,13 @@
 
 ### Changed
 
+- **devkit 同步到 oj 0.1.118**：`docs/devkit/oj-api-dev/` 快照按「整目录覆盖、逐字节一致」
+  刷新——`api-manual` 补「WS 握手走 HTTP/1.1」注 + 限制表新增「入站传输协议（h2c）」行；
+  `scenarios` 新增场景 70（h2c 验证命令、`node:http2` 客户端、升级式客户端静默回落 1.1、
+  WS 必须 1.1）；`SKILL`/`README` 同步索引与陷阱行。ojm 侧补上此前完全空白的一节
+  「静态层与传输」（manual §7，随 cli 发包）：压缩/缓存的默认值与两档判定（文件名哈希 →
+  `immutable`，其余 `no-cache`）、h2c 只支持 prior knowledge 且浏览器连不上（要 h2 得前置
+  TLS 反代）、前置 CDN 必须按 `Vary: Accept-Encoding` 分键。SKILL 陷阱表同步一行。
 - **首屏依赖图预取（弱网布局可见 −4.4%）**：宿主入口 `index.html` 此前**一条 `modulepreload` 都
   没有**，57 个静态资产（raw 7166KB、br 1471KB、依赖深度 3）全靠浏览器逐层发现——HTTP/1.1 只有
   6 条连接，后两层 38 个文件要白等 RTT。构建期用 `es-module-lexer` 算出入口的**静态闭包**

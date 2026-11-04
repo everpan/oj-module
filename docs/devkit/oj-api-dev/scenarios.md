@@ -4588,3 +4588,42 @@ curl -I https://host/v1/api/some-get-only/            # → 200 空体（HEAD �
 - 前置 CDN 必须按 `Vary: Accept-Encoding` 分键；确认不了 → `compression: false`。
 - HEAD 探针**真实执行 handler**：选轻路由；受保护端点无 token 探针得 401 属正常语义。
 - 只读根部署（distroless 等）：`compress_cache_dir: ""` 或指 tmpfs，写失败自动回退内存直压。
+
+## 场景 70：直连 HTTP/2（h2c）——验证与客户端要点（v0.1.118）
+
+**需求**：无前置反代，客户端直连 `oj serve` 的明文端口也要用上 HTTP/2 多路复用；
+搞清哪些客户端能用、WS 为什么仍走 1.1。
+
+**机制**：服务端按连接前导自动识别协议——h2c（HTTP/2 prior knowledge）与 HTTP/1.1
+共存于同一端口，**配置零变更**。仅支持 prior knowledge（客户端直接以 h2 起手），无
+`Upgrade: h2c` 升级路径。
+
+**验证**：
+
+```bash
+# prior knowledge 直连 → 服务器按 h2 应答
+curl -s --http2-prior-knowledge http://localhost:9778/v1/api/user/account/ \
+  -o /dev/null -w '%{http_version}\n'        # → 2
+# 普通 --http2（先发 1.1 再 Upgrade）无升级路径：静默按 HTTP/1.1 完成，不报错
+curl -s --http2 http://localhost:9778/v1/api/user/account/ \
+  -o /dev/null -w '%{http_version}\n'        # → 1.1
+```
+
+**代码（Node 侧 prior knowledge）**：
+
+```js
+import { connect } from "node:http2";
+const c = connect("http://localhost:9778");
+const req = c.request({ ":path": "/v1/api/user/account/?id=1" });
+req.on("response", (h) => console.log(h[":status"])); // 200
+req.end();
+```
+
+**常见坑**：
+- 明文 `http://` 上的 HTTP/2 **只能 prior knowledge**——浏览器/`fetch`/axios/undici
+  缺省配置在无 TLS 时只会说 1.1；要用 h2c 请显式选 h2 客户端（`node:http2`、
+  `curl --http2-prior-knowledge`、Go `http2.Transport` 等）。
+- **WebSocket 必须以 HTTP/1.1 发起**（RFC 8441 h2 extended CONNECT 未实现）——常规
+  WS 库本就经 1.1 `Upgrade` 握手，无需改动；勿把 WS 握手塞进 h2 连接。
+- 浏览器场景的 h2 由前置反代（nginx/caddy）TLS-ALPN 协商，与源站本特性无关；
+  反代→源站一跳按需选协议即可。

@@ -210,6 +210,7 @@ description: 用 ojm 开发前后端一体工程时使用——新增/修改前�
 | `oj build` 报 `#/_platform/...` 找不到模块 | 跨模块别名没在 `manifest.yaml` 的 `deps` 里声明 | 加 `_platform: ^0.1.0`（manual §14.2） |
 | 同步一轮之后本地手建的部门消失了 | 适配器漏了 `origin` 条件（同步与回收都必须只动自己的行） | `markSeen` / `reconcileHidden` 带 `origin`；回收只在「本轮完整零跳过」时执行（manual §14.5） |
 | 组织架构里有这个人，通讯录搜不到 | 他是同步建档（`activated=0`，从没登录过本站），通讯录只出活人 | 正确行为；让他登录一次，或走组织架构读面（manual §14.6） |
+| 以为要外挂 nginx 才有 gzip/br 与长缓存 | `oj serve` 自 0.1.116 内建：br>gzip 协商 + 按文件名哈希判 `immutable`；0.1.118 起明文端口还有 h2c | 零配置即可；但**浏览器连不上 h2c**（只支持 prior knowledge、进程内无 TLS），要让浏览器走 h2 才需要前置 nginx/caddy TLS 终结。CDN 必须按 `Vary: Accept-Encoding` 分键（manual §7） |
 
 ## 手册
 

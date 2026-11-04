@@ -794,6 +794,10 @@ handler 链 / 文件）。以前这类键被**静默忽略**——拼错的通�
 `GET {base}/{...path}/ws`：`src/news/ws.ts` → `/v1/api/news/ws`；根级 `ws.ts` → `/v1/api/ws`。
 同目录 `ws.ts` 与 `ws.js` 并存时 `.ts` 优先（release 下 `.js` 优先）。
 
+> **WS 握手走 HTTP/1.1 Upgrade**（v0.1.118）：明文 h2c 连接上不提供 WS（RFC 8441
+> extended CONNECT 未实现）——常规 WS 客户端本就以 1.1 发起握手，无需改动；勿把 WS
+> 握手塞进 h2 连接。见 §13 限制表「入站传输协议」与 `scenarios.md` 场景 70。
+
 **路径口径与 `api.ts` 同源（v0.1.87）**：`--module-root` 布局下由模块索引给出
 `{prefix}/{模块根内路径}`——中间的 `api` 是**布局分隔符**（模块根本身），不是路由段：
 
@@ -3803,6 +3807,7 @@ await db.query("select id from account where id = " + id, []);   // 禁止
 | web 挂载无目录列表 / Range | 未知扩展名按 `application/octet-stream`；SPA 深链回落需挂载显式 `spa: true`（v0.1.58 起逐挂载，默认关——静默把 404 变 200 会掩盖错配，见 `scenarios.md` 场景 2）；HTML 缓存头可配 `server.html_cache_control`（v0.1.25，只作用于 HTML）；ETag/压缩/默认缓存 v0.1.116 起内建（见 `server.static:` 配置参考与限制表）；Range 仍经前置反代补；web 挂载仅 GET/HEAD（其余方法 405） |
 | 静态压缩与默认缓存（v0.1.116 OJ-9/10） | 默认开：br>gzip 协商 + 压缩产物落盘缓存（`server.static.compress_cache_dir`，派生数据可整删；只读根设 `""` 走纯内存直压）+ 两档制缓存（哈希段→immutable 一年、**其余 no-cache 恒校验**——`config-production.js` 类纯字母词不会被误钉）。前端缓存层/CDN **必须按 `Vary: Accept-Encoding` 分键**，不能确认就 `server.static.compression: false` 让前置层独揽压缩。`off`/`none` 逐字节回退 v0.1.115 |
 | API HEAD 镜像 GET（v0.1.116 OJ-11） | 仅声明 `get()` 的端点 HEAD 不再 405：以 GET 语义贯穿（`http.method` 见 `"GET"`）、同状态码/同头/空体、显式 `head()` 恒优先、非安全方法 405（带 `Allow`）。**HEAD 真实执行 handler**——重查询/副作用随探针触发，探针选轻路由；按状态码族判活（401≠服务不可用；过期期 HEAD 同 403）；`HEAD /blob/{key}` 维持 404，下载型健康检查用 `/health` |
+| 入站传输协议（v0.1.118） | 明文端口上 **h2c（HTTP/2 prior knowledge）与 HTTP/1.1 共存**，零配置（服务端按连接前导自动识别）。仅 prior knowledge——无 `Upgrade: h2c` 升级路径，升级式客户端（普通 `curl --http2`、浏览器）按 HTTP/1.1 完成，不报错。**进程内无 TLS 终结**：浏览器场景的 h2 由前置反代（nginx/caddy）TLS-ALPN 承担。WS 握手必须走 HTTP/1.1（无 RFC 8441），见第 4 章「ws.ts」注 |
 | 多挂载（v0.1.58） | 同类前缀归一后重复 → 启动报错；挂载目录缺失/非目录 → 启动报错；命中挂载内 miss **不跨挂载**回落；`spa` 逐挂载显式（配对 web 恒无回落）；`html_meta`/`html_cache_control` 是全局键、按命中挂载根生效 |
 | search 引擎原生 FTS（v0.1.61） | sqlite trigram 对 **<3 字符查询静默零命中**（共享模块自动 LIKE 回退）；sqlite 实现仅支持整型自增 PK（外部内容表只认 rowid）；`sql_guard: deny` 模式与 FTS 裸查询互斥（deny 部署要么关守卫要么不用 search）；mysql InnoDB FULLTEXT 同事务可见性需实测（文档含糊区）；score 为引擎原始分不可跨引擎比较；`docs_fts*`/`oj_ver*` 影子表会进 `oj schema diff` 的 D002 噪音；pg 实现 v0.1.68 修复（自写 `$n` 与统一占位符计数校验冲突 + `ts_headline` 签名错——highlight 的 fragments 键为 `_doc` 文档级片段）；短词回退大小写三方言一致（pg 用 `ILIKE`，v0.1.68 起） |
 | 动态 meta 每次 HTML 请求**多派发一次 JS** | `server.html_meta_handler`（v0.1.25）：每次送 HTML 都调一次该 handler（无缓存层）。高流量站点请让 handler 只读缓存/轻查询，并用返回的 `cache_control` 让中间层替你挡住重复请求 |

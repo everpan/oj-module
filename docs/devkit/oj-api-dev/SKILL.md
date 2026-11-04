@@ -418,6 +418,7 @@ oj（only-js）是一个低代码后端框架：你用 JS/TS 写 handler，框�
 | `db.exec` 重放 ddlDiff 产的分区建表语句 MySQL 1064（v0.1.113 登记） | MySQL 分区 DDL 不受 prepared 协议支持——走迁移通道/raw 执行；非分区语句不受影响 |
 | table 的 ddlDiff `to:null` 曾静默零语句（v0.1.113 已改为参数错误） | DROP TABLE 是独立高危语义，不进 ddlDiff——删表走显式迁移；objectType=view/index/sequence/routine/trigger 的 to:null 才是 drop |
 | MySQL 表改名语句序（v0.1.113） | 表 `previousName` 产 `ALTER TABLE old RENAME TO new`（**RENAME TO**，非 RENAME TABLE）恒首条；与列级 previousName 同 spec 时表 rename 在先、列 rename 用新表名 |
+| 直连想用 HTTP/2 但 curl/fetch 都跑成 1.1（v0.1.118） | 明文端口仅支持 **h2c prior knowledge**（无 `Upgrade: h2c`）——显式用 `curl --http2-prior-knowledge` / `node:http2`；升级式客户端静默按 1.1 完成，不是故障。**WS 必须走 HTTP/1.1**（无 RFC 8441）；浏览器 h2 由反代 ALPN 承担。见场景 70 |
 
 ## 手册
 
