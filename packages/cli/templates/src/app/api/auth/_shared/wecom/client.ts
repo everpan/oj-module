@@ -15,6 +15,8 @@
 
 const API_BASE = "https://qyapi.weixin.qq.com";
 const TIMEOUT_MS = 5000;
+/** 软超时的检查步长：主链路一结束，最坏再挂一个步长就收尾 */
+const TIMEOUT_STEP_MS = 50;
 const TOKEN_SKEW_SECS = 300;
 
 export interface WecomHttp {
@@ -37,6 +39,14 @@ export interface WecomClientDeps {
  * 软超时：服务端 isolate 无 `setTimeout` / `AbortSignal` 全局，不能用 `AbortSignal.timeout`。
  * 这里用运行时注入的 `tasks.sleep(ms)` 起一个「到点就 reject」的竞态；fetch 不被真正 abort，
  * 只是不再等它（后台连接最终由 OS/池回收）。`tasks` 不可用时降级为原 promise（无超时）。
+ *
+ * **必须短步长**：oj 运行时要等请求上下文里所有未完成的异步任务（含 `tasks.sleep`）
+ * 结束才 flush 响应。早期实现挂一条 `sleep(5000)` 做竞态，上游 100ms 就返回时那条
+ * sleep 仍在飞，于是每个调企微接口的请求都被白拖到 5s 才发得出响应——登录回调
+ * `/api/auth/wecom/callback` 实测恒定 5011ms，正是企微工作台进入 5-6s 白屏的来源。
+ * 改成按 `TIMEOUT_STEP_MS` 逐段 sleep 并检查 settled 后，主链路一结束、最多再挂
+ * 一个步长即收尾（<=50ms），超时语义不变。
+ *
  * 输家 promise 在 race 结束后仍可能 reject，挂 `.catch` 防 unhandled rejection。
  */
 function withSoftTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
@@ -44,11 +54,21 @@ function withSoftTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
 	const sleep = g.tasks?.sleep;
 	if (typeof sleep !== "function")
 		return p;
-	const timeout = sleep(ms).then(
-		() => { throw new Error(`超时 ${ms}ms`); },
-		() => undefined as never, // sleep 自身异常不中断主链路（返回 never 以免 race 结果退化为 void | T）
-	);
+	let settled = false;
+	const deadline = Date.now() + ms;
+	const timeout = (async () => {
+		for (;;) {
+			const left = deadline - Date.now();
+			if (settled || left <= 0)
+				break;
+			await sleep(Math.min(left, TIMEOUT_STEP_MS));
+		}
+		if (!settled)
+			throw new Error(`超时 ${ms}ms`);
+		return undefined as never;
+	})();
 	return Promise.race([p, timeout]).finally(() => {
+		settled = true;
 		// 输家 promise 在 race 结束后仍可能 reject，挂 catch 防 unhandled rejection
 		timeout.catch(() => {});
 	});
