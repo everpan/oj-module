@@ -147,6 +147,22 @@ describe("rewriteIndexHtml：构建期把全站 URL 挪到部署前缀", () => {
 		expect(twice).not.toContain("/oj/oj");
 	});
 
+	it("data-ojm-preload 是逗号列表，逐条加前缀（整串当一个 URL 会全 404）", () => {
+		const html = [
+			"<html><head>",
+			"\t\t<script type=\"importmap\" nonce=\"n1\">{\"imports\":{}}</script>",
+			"</head><body>",
+			"\t\t<script nonce=\"n1\" data-ojm-preload=\"/assets/a.js,/assets/b.js\" data-ojm-entry=\"/assets/index.js\"></script>",
+			"</body></html>",
+		].join("\n");
+		const out = rewriteIndexHtml(html, "/oj");
+		expect(out).toContain("data-ojm-preload=\"/oj/assets/a.js,/oj/assets/b.js\"");
+		// 同标签上的单值属性照旧走通用规则
+		expect(out).toContain("data-ojm-entry=\"/oj/assets/index.js\"");
+		// 幂等：已带前缀的条目不重复加
+		expect(rewriteIndexHtml(out, "/oj")).not.toContain("/oj/oj");
+	});
+
 	it("缺带 nonce 的 importmap 时 fail-closed（不产出会被 CSP 拦掉的内联脚本）", () => {
 		const broken = "<html><head></head><body></body></html>";
 		expect(() => rewriteIndexHtml(broken, "/oj")).toThrow(/缺少带 nonce 的 importmap/);

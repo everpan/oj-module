@@ -271,6 +271,68 @@ export function parseBareSpecifiers(source: string): string[] {
 	return [...found];
 }
 
+/**
+ * 产物的**静态**依赖说明符：`import … from "x"`、副作用 `import "x"`、再导出。
+ *
+ * 与 {@link parseBareSpecifiers} 的差别有两点，都是为了算「首屏静态闭包」：
+ *   - **排除动态 `import("x")`**：那是懒加载，不在首屏关键路径上，预取它会白拉；
+ *   - **保留相对/绝对路径**：闭包要顺着 `/assets/x.hash.js` 继续走，不能只看裸名。
+ *
+ * 静态图的切分口径与浏览器一致（缓存模块记录前先取完整静态图），所以这里能算出
+ * 「浏览器一定会请求的最小集合」。
+ */
+export function parseStaticSpecifiers(source: string): string[] {
+	const [imports] = lex(source);
+	const found = new Set<string>();
+	for (const imp of imports) {
+		// d === -1 才是静态导入；`import("x")` 的 d 是 `(` 的偏移
+		if (imp.d !== -1 || !imp.n)
+			continue;
+		found.add(imp.n);
+	}
+	return [...found];
+}
+
+/**
+ * 首屏静态依赖闭包：从入口出发，顺着**静态** import 一直走到没得走。
+ *
+ * 这就是浏览器一定会请求的集合（ESM 语义：先取完整静态图再执行），所以可以放心
+ * 全量预取；动态 `import()` 不在其中。裸说明符经 importmap 解析，相对路径按当前
+ * 文件所在目录拼。
+ *
+ * `readAsset` 返回 undefined 表示读不到（跨源 CDN 资产、或缺失文件）：该 URL 仍算
+ * 闭包成员（预取它对浏览器有效），但不再往下展开。
+ *
+ * 与构建脚本共用同一份实现，是为了让测试能重算一遍对撞产物——两套实现必然漂移。
+ */
+export function collectStaticClosure(
+	entryUrl: string,
+	importmap: Record<string, string>,
+	readAsset: (url: string) => string | undefined,
+): string[] {
+	const seen = new Set<string>();
+	const queue = [entryUrl];
+	while (queue.length) {
+		const url = queue.shift()!;
+		if (seen.has(url))
+			continue;
+		seen.add(url);
+		const source = readAsset(url);
+		if (source === undefined)
+			continue;
+		for (const spec of parseStaticSpecifiers(source)) {
+			const target = spec.startsWith("/")
+				? spec
+				: spec.startsWith(".")
+					? resolve("/", url.slice(0, url.lastIndexOf("/") + 1), spec)
+					: importmap[spec];
+			if (target)
+				queue.push(target);
+		}
+	}
+	return [...seen];
+}
+
 /** 一处「资产引用了 importmap 未登记的裸说明符」 */
 export interface UnresolvedSpecifier {
 	file: string

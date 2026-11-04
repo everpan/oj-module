@@ -36,6 +36,25 @@
 
 ### Changed
 
+- **首屏依赖图预取（弱网布局可见 −4.4%）**：宿主入口 `index.html` 此前**一条 `modulepreload` 都
+  没有**，57 个静态资产（raw 7166KB、br 1471KB、依赖深度 3）全靠浏览器逐层发现——HTTP/1.1 只有
+  6 条连接，后两层 38 个文件要白等 RTT。构建期用 `es-module-lexer` 算出入口的**静态闭包**
+  （`import()` 不算，预取动态导入等于白拉），写进 `<script data-ojm-preload="url1,url2,...">`，
+  由 `BOOT_JS` 在建 module script 之前逐条插入 `<link rel="modulepreload">`。
+  实测 Chromium，**同一份 dist 只改这一个属性**做 A/B（各 3 轮，避免跨副本差异）：RTT 60ms /
+  20Mbps 下 shell 静态资产末 **1378→1316ms（−57ms，−4.1%）**、布局可见 1460→1402ms；
+  RTT 150ms / 10Mbps 下布局可见 **3146→3008ms（−138ms，−4.4%）**。收益≈省 1 个 RTT 而非省字节
+  （传输量两边完全相同，请求数 63→63），所以 RTT 越大越值钱、带宽越大越不明显。
+  **与上一版的 −26% 不冲突也不等同**：那个数字是在 `entry.js` 还有 1.7MB 时量的，模块体积把
+  静态图收益放大了；本次 echarts 按需注册后 `entry.js` 降到 918KB（br 205KB），静态图不再是
+  主要矛盾，预取的净收益回到 ~1 RTT 的真实水位。
+  闭包算法复用 `esm-exports.ts` 的 `parseStaticSpecifiers` / `collectStaticClosure`，构建与测试
+  跑同一份代码（防两套正则漂移）；构建期闭包为空直接 fail（防词法解析失效后静默退回瀑布）。
+  **刻意不写成 HTML 静态 `<link>`**：企微工作台早跳路径（`/auth/wecom/login`）会把 10.8MB / 105
+  请求照单全收。另修 `rewriteIndexHtml` 的子路径部署——`data-ojm-preload` 是逗号列表，旧单值正则
+  会把整串当一个 URL 加前缀导致预取全 404（退化回瀑布，不白屏但慢），新增幂等用例防 `/oj/oj`。
+  回归：`tests/shell/shell-importmap.test.ts`（每条指向真实资产、不重复、恰好等于静态闭包、
+  少 = 退回瀑布 / 多 = 白拉）、`tests/cli/site-base.test.ts`（逐条加前缀）。
 - **模板首页图表改 echarts 按需注册（模块产物 −46%）**：`app` 模块此前 `import ReactECharts from
   "echarts-for-react"`，后者 `import * as echarts from "echarts"`（整包 index），把全部图表类型 +
   全部组件 + 全部渲染器打进单文件 `entry.js`。实测 1,697,666 B 里 echarts 918 KB + zrender 221 KB，

@@ -102,6 +102,10 @@ export function rewriteIndexHtml(html: string, siteBase: string | undefined, api
 		// 上一步已处理，二者不重叠。
 		out = out.replace(/(\b(?:href|src|data-ojm-entry)=")(\/[^/"][^"]*|\/")/g, (_m, attr: string, url: string) =>
 			`${attr}${withSiteBase(url, base)}`);
+		// data-ojm-preload 是**逗号分隔的 URL 列表**（构建期算好的首屏静态闭包），
+		// 上面那条单值正则匹配不到列表，漏改会让子路径部署下预取全 404（退化回瀑布，不白屏但慢）
+		out = out.replace(/(\bdata-ojm-preload=")([^"]*)"/g, (_m, attr: string, list: string) =>
+			`${attr}${list.split(",").map(url => url.startsWith("/") ? withSiteBase(url, base) : url).join(",")}"`);
 		globals.push(`window.__OJ_BASE__=${JSON.stringify(base)};`);
 	}
 	if (api) {

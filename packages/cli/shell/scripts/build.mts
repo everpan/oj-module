@@ -30,6 +30,7 @@ import { build } from "vite";
 import {
 	collectDynamicRequires,
 	collectExportGaps,
+	collectStaticClosure,
 	collectUnresolvedSpecifiers,
 	formatExportGap,
 	parseBareSpecifiers,
@@ -93,8 +94,26 @@ const ASSET_BUILD_LOG_OVERRIDE: Record<string, "silent"> = { "import-is-undefine
  * 为什么必须内联：ESM 是「先取完整静态依赖图再执行」，写在 host entry 里的 location.replace
  * 只有等共享资产全部到齐才会执行，对首屏零收益。这里把 module 入口从静态标签改为运行期注入：
  * 需要渲染时才拉宿主，需要跳转时一条 JS 即可。
+ *
+ * 同段还负责**展平首屏依赖瀑布**（2026-11-04）：`data-ojm-preload` 是构建期算好的静态闭包
+ * （见 collectPreloadClosure），在拉起 module 入口前一次性把 57 条 modulepreload 塞进 head。
+ *
+ * 为什么不能写成 HTML 里的静态 `<link rel="modulepreload">`：那样企微早跳路径也会照单全收，
+ * 把 P0 省下的 10MB 又拉回来。放在这段「先判断再预取」的脚本里，两条路径互不干扰。
+ *
+ * 收益（Chromium，同一份 dist 只改这一个属性做 A/B，各 3 轮）：
+ *   RTT 60ms / 20Mbps 静态资产末 1378→1316ms（−57ms）；RTT 150ms / 10Mbps 布局可见
+ *   3146→3008ms（−138ms，−4.4%）。省的是 RTT 不是字节（请求数与传输量两边相同），
+ *   所以 RTT 越大越值钱、带宽越大越不明显。HTTP/1.1 只有 6 条连接，深度 3 的依赖图意味着
+ *   后两层要排队等 RTT；预取把「发现」和「传输」拆开，连接一空就有活干。
  */
-const BOOT_JS = "(function(){try{var ua=(navigator.userAgent||\"\").toLowerCase(),p=location.pathname;while(p.length>1&&p.charAt(p.length-1)===\"/\")p=p.slice(0,-1);if(ua.indexOf(\"wxwork\")>=0&&p.slice(-6)===\"/login\"&&!new URLSearchParams(location.search).get(\"wecom_ticket\")){var a=(typeof window.__OJ_API_BASE__===\"string\"&&window.__OJ_API_BASE__.trim())||\"/api\";while(a.length>1&&a.charAt(a.length-1)===\"/\")a=a.slice(0,-1);location.replace(a+\"/auth/wecom/login\");return}}catch(e){}var s=document.createElement(\"script\");s.type=\"module\";s.src=document.currentScript.getAttribute(\"data-ojm-entry\");document.head.appendChild(s);})();";
+const BOOT_JS = [
+	"(function(){var cs=document.currentScript;",
+	"try{var ua=(navigator.userAgent||\"\").toLowerCase(),p=location.pathname;while(p.length>1&&p.charAt(p.length-1)===\"/\")p=p.slice(0,-1);if(ua.indexOf(\"wxwork\")>=0&&p.slice(-6)===\"/login\"&&!new URLSearchParams(location.search).get(\"wecom_ticket\")){var a=(typeof window.__OJ_API_BASE__===\"string\"&&window.__OJ_API_BASE__.trim())||\"/api\";while(a.length>1&&a.charAt(a.length-1)===\"/\")a=a.slice(0,-1);location.replace(a+\"/auth/wecom/login\");return}}catch(e){}",
+	// 预取必须在建 module script 之前：link 先入队，入口模块解析出依赖时它们已在飞
+	"var pl=cs.getAttribute(\"data-ojm-preload\");if(pl){var ps=pl.split(\",\");for(var i=0;i<ps.length;i++){var l=document.createElement(\"link\");l.rel=\"modulepreload\";l.href=ps[i];document.head.appendChild(l);}}",
+	"var s=document.createElement(\"script\");s.type=\"module\";s.src=cs.getAttribute(\"data-ojm-entry\");document.head.appendChild(s);})();",
+].join("");
 
 function injectImportmap(map: Record<string, string>) {
 	let nonce = "";
@@ -703,14 +722,30 @@ function hashifySharedAssets(map: Record<string, string>): Record<string, string
 }
 
 /**
+ * 首屏静态依赖闭包：直接复用 esm-exports 的实现（测试用同一份代码重算对撞，
+ * 两边各写一套必然漂移）。
+ *
+ * 裸说明符经 importmap 解析（产物里对共享依赖保持裸名）；跨源 CDN 资产读不到盘，
+ * 但仍是闭包成员——预取它对浏览器同样有效。
+ */
+function collectPreloadClosure(entryUrl: string, importmap: Record<string, string>): string[] {
+	return collectStaticClosure(entryUrl, importmap, (url) => {
+		const file = url.startsWith("/") ? resolve(distDir, url.replace(/^\//, "")) : undefined;
+		return file && existsSync(file) ? readFileSync(file, "utf-8") : undefined;
+	});
+}
+
+/**
  * 宿主入口 chunk 补一次内容寻址。
  *
  * vite 自己的哈希是 base64url 8 位，**不保证含数字**——实测 `index-xZhmujjM.js`
  * 就是全字母，落到 oj serve 的 no-cache 档，每次开页都要多花一个协商 RTT。
  * 入口 chunk 只被 index.html 引用（无相对导入的子 chunk，构建产物只有一个），
  * 改名 + 直接替换 html 里的文件名即可。
+ *
+ * 改名之后所有 URL 才是终态，所以预取闭包也在这里算：名字早一步算就是错的。
  */
-function hashifyHostEntry(): void {
+function hashifyHostEntry(importmap: Record<string, string>): void {
 	const htmlPath = resolve(distDir, "index.html");
 	let html = readFileSync(htmlPath, "utf-8");
 	for (const file of readdirSync(assetsDir)) {
@@ -723,7 +758,17 @@ function hashifyHostEntry(): void {
 		renameSync(resolve(assetsDir, file), resolve(assetsDir, target));
 		html = html.split(file).join(target);
 	}
+
+	const entry = /data-ojm-entry="([^"]+)"/.exec(html)?.[1];
+	if (!entry)
+		throw new Error("[shell] index.html 缺少 data-ojm-entry，无法算首屏预取闭包");
+	const preload = collectPreloadClosure(entry, importmap).filter(url => url !== entry);
+	// 闭包里少一个就说明静态图解析有漏（例如新引入了相对路径导入），直接炸掉比线上慢一截好
+	if (preload.length === 0)
+		throw new Error("[shell] 首屏预取闭包为空——静态依赖解析失效，检查 es-module-lexer 与 importmap");
+	html = html.replace("data-ojm-entry=\"", `data-ojm-preload="${preload.join(",")}" data-ojm-entry="`);
 	writeFileSync(htmlPath, html);
+	console.log(`[shell] 首屏预取 ${preload.length} 条（连同入口共 ${preload.length + 1} 个静态资产）`);
 }
 
 async function buildHost() {
@@ -745,7 +790,7 @@ async function buildHost() {
 			minify: false,
 		},
 	});
-	hashifyHostEntry();
+	hashifyHostEntry(importmap);
 }
 
 /**

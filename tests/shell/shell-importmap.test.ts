@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
 	collectDynamicRequires,
 	collectExportGaps,
+	collectStaticClosure,
 	collectUnresolvedSpecifiers,
 	formatExportGap,
 	parseEsmImports,
@@ -189,5 +190,39 @@ describe("共享资产内容寻址（immutable 缓存）", () => {
 			).toBe(`${base}.${hash}.js`);
 			expect(assetHash(content)).toBe(hash);
 		}
+	});
+});
+
+/**
+ * 首屏预取闭包（2026-11-04）。
+ *
+ * 宿主入口的静态依赖图是 3 层深、约 57 个文件（浏览器 ESM 语义：先取完整静态图
+ * 再执行）。HTTP/1.1 只有 6 条连接，逐层发现意味着后两层要白等 RTT——实测同一份
+ * dist 只改这一个属性做 A/B：RTT 150ms / 10Mbps 布局可见 3146→3008ms（−4.4%），
+ * RTT 60ms 静态资产末 1378→1316ms。省的是 RTT 不是字节。浏览器拿不到 h2c
+ * （只认 TLS 上的 h2），所以这个展平对 1.1 是刚需。
+ *
+ * 守卫口径：产物里的 data-ojm-preload 必须**恰好**等于入口的静态闭包。
+ * 少一条 = 该层退回瀑布；多一条 = 白拉一个用不上的资产。
+ */
+describe("首屏预取闭包（data-ojm-preload）", () => {
+	const html = fs.readFileSync(path.join(SHELL_DIST, "index.html"), "utf-8");
+	const entry = /data-ojm-entry="([^"]+)"/.exec(html)?.[1] ?? "";
+	const urls = (/data-ojm-preload="([^"]*)"/.exec(html)?.[1] ?? "").split(",").filter(Boolean);
+
+	it("每条都指向真实资产，且不含入口自身、不重复", () => {
+		expect(urls.length, "index.html 缺少 data-ojm-preload（shell 构建未注入）").toBeGreaterThan(0);
+		expect(urls).not.toContain(entry);
+		expect(new Set(urls).size).toBe(urls.length);
+		for (const url of urls)
+			expect(fs.existsSync(path.join(SHELL_DIST, url.replace(/^\//, ""))), `${url} 不存在`).toBe(true);
+	});
+
+	it("恰好等于宿主入口的静态闭包（少 = 退回瀑布，多 = 白拉）", () => {
+		const expected = collectStaticClosure(entry, readImportmap(), (url) => {
+			const file = path.join(SHELL_DIST, url.replace(/^\//, ""));
+			return fs.existsSync(file) ? fs.readFileSync(file, "utf-8") : undefined;
+		}).filter(url => url !== entry);
+		expect([...urls].sort()).toEqual(expected.sort());
 	});
 });
