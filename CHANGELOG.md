@@ -151,6 +151,15 @@
 
 ### Fixed
 
+- **MySQL 两步取 id 缺陷已由上游 oj 0.1.120 修复，本仓口径同步**：`returning(["id"])` 在 mysql 上
+  拆成 `INSERT` + `SELECT LAST_INSERT_ID()` 两条语句、各自向池取连接，可能读到别的连接的上一次
+  插入（建号返回 59 真值 5；广播 `b:58` 真值 `b:1`）。上游 `oj-bin` 提交 `2550bd5`（tag `v0.1.120`）
+  新增 `Exec::Owned` 短事务臂，把两条语句钉在同一连接、失败整条回滚。模板无需改动（此前也没有绕行）。
+  本仓同步：playbook §9 对应行改为「已由上游修复」并给复验口径、§11 **U2** 标为已关闭（编号保留，
+  防旧引用悬空）、文首结论与附录 A 第三轮发现 ⑥ 加注后续状态；`docs/migration/oj-requirement-mysql-two-step-id.md`
+  补 §10 落地结果；`docs/devkit/oj-api-dev/` 快照按「整目录覆盖、逐字节一致」刷新到 oj 0.1.120
+  （连带补上此前缺的 0.1.119 压缩缓存分层行）。
+
 - **模板在 MySQL / PostgreSQL 真库上起站即失败（方言迁移件缺失）**：`home`、`notification` 两个模块的
   建表迁移只有 sqlite 基础件（`INTEGER PRIMARY KEY AUTOINCREMENT`），却已各自存在 `0002` / `0005`
   的 `.mysql.sql` 覆盖——覆盖是**按版本号替换**，没写方言版的 `0001` 仍会执行基础件，MySQL 直接

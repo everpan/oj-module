@@ -816,8 +816,9 @@ const id = rows[0].id;
 - pg / sqlite：渲染 `INSERT ... RETURNING "id"`，**单语句一次往返**（不再需要
   「exec 之后查 `last_insert_rowid()`」这种会串号的写法）。
 - mysql：方言无 RETURNING，只接受**单列**（`mysql returning accepts exactly one column
-  (no RETURNING support)`），在同一连接上两步取 `LAST_INSERT_ID()`
-  ——并发请放 `db.tx` 内。
+  (no RETURNING support)`），两步取 `LAST_INSERT_ID()`——**宿主把这两条语句钉在同一连接**
+  （池路径自动包一次短事务，事务内则直接用会话），调用方无需为「取 id 串号」再包 `db.tx`。
+  取 id 或提交失败会回滚整条短事务并报错，不会留下「写进去了但没有 id」的半成品。
 
 同一 `resolve_target` 路由：有活跃事务走会话，否则走池——DML 与查询天然同事务。
 
@@ -2209,7 +2210,8 @@ const rows = await db.table("user").insert({ name: "neo", age: 1 }).returning(["
 - pg / sqlite：sea-query 渲染 `INSERT ... RETURNING "id"`，**单语句一次往返**取回——
   替代原先「exec 后再查 `last_insert_rowid()` 可能读到并发插入」的裸 SQL 写法。
 - mysql：方言无 RETURNING，`returning` 只接受**单列**；op 在同一执行目标上两步
-  （insert + `SELECT LAST_INSERT_ID()`），**并发下请放进 `db.tx`** 保证同连接。
+  （insert + `SELECT LAST_INSERT_ID()`），**两条语句由宿主钉在同一连接**（池路径自动包短事务），
+  无需为串号自行包 `db.tx`；任一步失败整条短事务回滚。
 
 **toSQL / toJSON / fromJSON**：
 

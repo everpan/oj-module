@@ -1,9 +1,9 @@
 # 上游 PR 草案：MySQL `returning(["id"])` 两步取 id 未钉同一连接
 
-> 状态：**待提交上游（草案，2026-11-05 定位）**
-> 上游基线：`oj-bin@f63303d`（v0.1.119 开发线）；缺陷在 **v0.1.118 及更早**复现。
+> 状态：**已落地（oj `0.1.120`，2026-11-05；上游 `oj-bin` 提交 `2550bd5` / tag `v0.1.120`）**
+> 上游基线（定位时）：`oj-bin@f63303d`（v0.1.119 开发线）；缺陷在 **v0.1.118 及更早**复现。
 > 复现环境：MySQL 8.4.11 / PostgreSQL 16.15（Apple container），oj 0.1.118，ojm 模板 0.2.67。
-> 本仓关联：`docs/prd/framework-verification-playbook.md` §9 对应行、§11 **U2**（ojm 侧不改模板绕行）。
+> 本仓关联：`docs/prd/framework-verification-playbook.md` §9 对应行、§11 **U2**（已关闭）。
 
 ## 1. 结论
 
@@ -211,6 +211,24 @@ async fn exec_with_last_id(&self, sql: &str, params: &[Value]) -> BridgeResult<V
 
 ## 9. ojm 侧后续
 
-- 上游修复并发布后：删除 playbook §11 **U2**，§9 对应行改为「已由 oj x.y.z 修复」，附录 A 记一条基线。
+- 上游修复并发布后：§11 **U2** 标为已关闭（编号保留，防旧引用悬空），§9 对应行改为「已由 oj 0.1.120 修复」，
+  附录 A 第三轮基线的发现 ⑥ 加注后续状态。
 - 修复前：模板**不做绕行**（不改成「insert 后按唯一键回查」——多一次查询且依赖唯一键，且只覆盖两处，
   其余 `returning` 调用点仍错）。文档口径保持「MySQL 上不要信任 insert 返回的 id」。
+
+## 10. 落地结果（2026-11-05）
+
+- **上游实现**：`oj-bin` `src/bridge/query.rs` 新增 `Exec::Owned(Box<dyn TxSession>)` 臂；路由为
+  `ExecRoute::LastId` 且目标是池时先 `begin()` 开一次短事务，insert / `SELECT LAST_INSERT_ID()` /
+  commit 全在同一连接，失败 rollback。因 `begin()` 是 `DataAccessor` 的共同抽象，核心 `SqlxAccessor`
+  与 FFI 插件 `oj-db-mysql` **一处修两边**；pg/sqlite 仍走单语句 `RETURNING`，零影响。
+- **取舍**：采用**方案 A（池臂包短事务）**——比方案 B 多 1 次 begin/commit 往返，但零额外连接管理代码、
+  且顺带把「insert 成功、取 id 失败」变成原子回滚。方案 B（`exec_with_last_id` 钉 `PoolConnection`）留作
+  后续优化候选，不阻塞本次修复。
+- **回归**：`query_tests.rs` 新增 `PinProbe` 夹具（`TxSession` 记录是否走钉住的会话，`query_with_params`
+  故意返回 `999` 模拟另一条连接）与三条用例——「钉同连接」「取 id 失败回滚」「insert 失败回滚且不再查
+  `LAST_INSERT_ID`」。红绿验证：移除 `if route == ExecRoute::LastId` 守卫后三条全红
+  （`data:[{"id":999}]`）、恢复后全绿；根 crate 全量 `1093 passed / 0 failed`。
+- **发布**：`oj/Cargo.toml` `0.1.119` → `0.1.120`，`docs/devkit/` 五处口径同步（api-manual / db-guide /
+  scenarios / SKILL / README），tag `v0.1.120` 已推 `origin`。
+- **本仓**：模板无需改动（此前也未做绕行）；`docs/devkit/oj-api-dev/` 快照已同步到 oj 0.1.120（逐字节一致）。

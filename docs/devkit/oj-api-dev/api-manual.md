@@ -2006,7 +2006,7 @@ json.ok(plugins());
   写错/漏项插件**装配期即被拒载**并点名（`unknown capability "…"` / `missing capability group "…"`）。
 - **哪个位影响执行**：`placeholder_*`（决定占位符改写）、`stream`、`cancel` 影响执行；
   `id_*` 只是**登记与对账**——取 id 由构造器按具体方言决定（只有 mysql 走两步
-  `LAST_INSERT_ID()`），别自己据 `caps.id` 分派。
+  `LAST_INSERT_ID()`，且 v0.1.120 起宿主把两步钉在同一连接），别自己据 `caps.id` 分派。
 - 三内置方言的完整串（与启动横幅 `[oj-serve] plugin … | caps: …`、`oj info` 逐字同源）：
   `placeholder=? id=two_step stream`（sqlite）/ `placeholder=? id=two_step stream cancel`（mysql）
   / `placeholder=$ id=returning stream cancel`（postgres）。
@@ -2872,7 +2872,7 @@ mounts:
 | `html_meta` | 无 | （v0.1.20）**构建期** per-route meta 目录名（相对各 web 挂载根）：送 HTML 前读 `<挂载根>/<dir>/<path>.json`，把 `title`/`description`/`canonical`/`og:*`/`twitter:*` 注入 `<head>`（值 HTML 转义、**不注入脚本**；目录自身不可公开访问）。只覆盖构建期已知路由 |
 | `html_meta_handler` | 无 | （v0.1.25）**动态** meta 源 = 业务 handler 的路由路径，见下「静态站点与 per-route meta」。静态 JSON 打底、动态按 key 覆盖；装配期校验它必须命中一个 **GET** 路由（拼错启动即报错） |
 | `html_cache_control` | 无 | （v0.1.25）HTML 响应的 `Cache-Control`（**只管 HTML**，js/css/图片不受影响）。动态 handler 返回的 `cache_control` 优先；两项都没有 = 不加头 |
-| `static` | 全默认 | （v0.1.116）静态层压缩与默认缓存策略子段，七键：`compression: true`（false = 不协商不压缩，连 Vary 也不加，逐字节同 v0.1.115）/ `compress_min_length: 1024` / `compress_types: []`（缺省=内置集 html/htm/css/js/mjs/json/map/txt/md/svg/xml/yaml/yml/woff/ttf；给出=全量替换）/ `brotli_quality: 5`（1..=11 越界启动报错）/ `gzip_level: 6`（1..=9）/ `compress_cache_dir`（未配置=`<config_dir>/compress-cache`；显式 `""`=纯内存直压；相对→相对 config 目录；**目录是派生数据可整删**）/ `web_cache_policy: auto`（`auto`=两档制：文件名哈希段→`immutable` 一年、**其余一律 `no-cache` 恒校验**；`none`=不加任何 Cache-Control）。图片/pdf/woff2 硬排除即列 `compress_types` 也不压。压缩协商 br>gzip、压缩产物落盘缓存 + single-flight 并发钳、可压资源恒带 `Vary: Accept-Encoding`（identity 变体亦带）、ETag 弱化 `W/` + 弱比较 304。默认行为变更见 CHANGELOG v0.1.116 |
+| `static` | 全默认 | （v0.1.116）静态层压缩与默认缓存策略子段，七键：`compression: true`（false = 不协商不压缩，连 Vary 也不加，逐字节同 v0.1.115）/ `compress_min_length: 1024` / `compress_types: []`（缺省=内置集 html/htm/css/js/mjs/json/map/txt/md/svg/xml/yaml/yml/woff/ttf；给出=全量替换）/ `brotli_quality: 5`（1..=11 越界启动报错）/ `gzip_level: 6`（1..=9）/ `compress_cache_dir`（未配置=`<config_dir>/compress-cache`；显式 `""`=纯内存直压；相对→相对 config 目录；**目录是派生数据可整删**；v0.1.119 起缓存文件按 `<键前 2 hex>/` 子目录分层落盘，旧版平铺文件启动时自动迁入子目录，语义不变）/ `web_cache_policy: auto`（`auto`=两档制：文件名哈希段→`immutable` 一年、**其余一律 `no-cache` 恒校验**；`none`=不加任何 Cache-Control）。图片/pdf/woff2 硬排除即列 `compress_types` 也不压。压缩协商 br>gzip、压缩产物落盘缓存 + single-flight 并发钳、可压资源恒带 `Vary: Accept-Encoding`（identity 变体亦带）、ETag 弱化 `W/` + 弱比较 304。默认行为变更见 CHANGELOG v0.1.116 |
 | `logs_dir` | 无（= config 目录下 `./logs`） | 日志目录（终端输出完整镜像落盘；每次启动新建文件 `server-<启动秒>_<pid>.log`，按 `logs_max_m` 滚动、保留 `logs_keep_files` 个）；不存在自动创建 |
 | `logs_max_m` | `100` | 单个日志文件大小上限（单位 M；**<100 按 100 生效**），超过滚动为 `base.1.log` 依次后移 |
 | `logs_keep_files` | `10` | 日志文件保留个数（含活动文件，超出删除；最小生效值 2） |
