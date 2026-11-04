@@ -60,7 +60,9 @@
 │   │       ├── auth/      #   仅 __client（无页面）
 │   │       ├── _platform/ #   仅 __client（oj-market 引用）
 │   │       └── web/       #   仅 __client
-│   ├── oj-market/web/     # 解决方案市场（独立模块，删目录即下线）
+│   ├── oj-market/web/     # 解决方案市场（独立模块，删目录即下线；双根 /oj-market + /publish）
+│   │   ├── entry.ts       #   routes 聚合：市场根 + 发布管理根，两个 i18n 命名空间
+│   │   └── publish/       #   发布管理（/publish：routes + pages + locales + __client）
 ├── dist/api/              # 后端产物（release 根：<name>-<ver>/ + manifests.yaml + versions.json）—构建后才有
 ├── dist/web/              # 站点产物（shell + modules/ + modules.json）—构建后才有
 ├── bin/                   # oj 二进制 + plugins/ + devkit/（不入库）
