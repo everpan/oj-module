@@ -37,13 +37,20 @@ export default function RolesPage() {
 				</Space>
 			),
 		},
-		{ title: "module", dataIndex: "module" },
+		{ title: t("system:rolesPage.columns.module"), dataIndex: "module" },
 		{
 			// R2：solution 角色带 title_key → 按当前语言实时翻译，title（安装期解析文本）兜底；
-			// custom/builtin 无 key 原样显示 title（对齐下方权限点 title_key 的渲染先例）
-			title: "title",
+			// 内置角色（builtin）的 title 是种子里的站点默认语言文本，按角色名再兜一层 locale；
+			// custom 角色无 key 原样显示 title（对齐下方权限点 title_key 的渲染先例）
+			title: t("system:rolesPage.columns.title"),
 			dataIndex: "title",
-			render: (_: string, row: RoleRow) => (row.title_key ? t(row.title_key, { defaultValue: row.title ?? "" }) : row.title),
+			render: (_: string, row: RoleRow) => {
+				if (row.title_key)
+					return t(row.title_key, { defaultValue: row.title ?? "" });
+				return row.builtin
+					? t(`system:rolesPage.roleTitle.${row.name}`, { defaultValue: row.title ?? row.name })
+					: row.title;
+			},
 		},
 		{ title: t("system:rolesPage.holders"), dataIndex: "holders" },
 		{
@@ -55,11 +62,11 @@ export default function RolesPage() {
 
 	const permColumns = [
 		{
-			title: "code",
+			title: t("system:rolesPage.columns.code"),
 			dataIndex: "code",
 			render: (code: string, row: PermRow) => (row.deprecated ? <Tag color="default">{code}</Tag> : <span>{code}</span>),
 		},
-		{ title: "module", dataIndex: "module" },
+		{ title: t("system:rolesPage.columns.module"), dataIndex: "module" },
 		{
 			// title_key 是跨模块 namespace（如 wiki:perm.*），本模块 locale 不命中回退 code（R6）
 			title: t("system:rolesPage.titleKey"),

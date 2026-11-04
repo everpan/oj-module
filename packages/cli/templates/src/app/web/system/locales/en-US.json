@@ -40,12 +40,15 @@
 			"departments": "Departments"
 		},
 		"mainDept": "Main dept",
-		"filterDept": "Filter by department (incl. sub-depts)"
+		"filterDept": "Filter by department (incl. sub-depts)",
+		"password": "Password",
+		"usernameHint": "ldap:/ sso:/ wecom: prefixes are reserved for external identity sources"
 	},
 	"userRoles": {
 		"title": "Membership",
 		"saved": "Roles updated",
-		"none": "(no roles)"
+		"none": "(no roles)",
+		"deprecated": " (deprecated)"
 	},
 	"rolesPage": {
 		"tabRoles": "Roles",
@@ -55,7 +58,18 @@
 		"holders": "Holders",
 		"permissions": "Bound Permissions",
 		"titleKey": "Title Key",
-		"readonlyHint": "Read-only view: roles and bindings are managed by solution tooling (upsertSolutionPerms)"
+		"readonlyHint": "Read-only view: roles and bindings are managed by solution tooling (upsertSolutionPerms)",
+		"columns": {
+			"module": "Module",
+			"title": "Title",
+			"code": "Code"
+		},
+		"roleTitle": {
+			"superadmin": "Super Admin",
+			"admin": "Administrator",
+			"editor": "Editor",
+			"viewer": "Viewer"
+		}
 	},
 	"departments": {
 		"create": "New Department",
@@ -256,7 +270,14 @@
 		}
 	},
 	"setting": {
+		"group": {
+			"general": "General",
+			"security": "Security",
+			"login": "Login Methods",
+			"ldap": "LDAP"
+		},
 		"site_title": "Site Title",
+		"market_cdn_url": "Market CDN URL",
 		"ldap_enabled": "Enable LDAP login",
 		"sso_enabled": "Enable SSO login",
 		"wecom_enabled": "Enable WeCom login",

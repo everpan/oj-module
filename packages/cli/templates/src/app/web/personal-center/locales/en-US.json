@@ -2,5 +2,20 @@
 	"menu": {
 		"personalCenter": "Personal Center",
 		"profile": "My Profile"
+	},
+	"profile": {
+		"title": "My Profile",
+		"avatar": "Avatar",
+		"avatarRequired": "Please upload an avatar!",
+		"username": "Username",
+		"usernameRequired": "Please enter your username!",
+		"email": "Email",
+		"emailRequired": "Please enter your email!",
+		"phoneNumber": "Phone",
+		"phoneNumberRequired": "Please enter your phone number!",
+		"description": "Bio",
+		"descriptionPlaceholder": "Bio",
+		"updated": "Profile updated",
+		"updateFailed": "Failed to update profile: {{message}}"
 	}
 }

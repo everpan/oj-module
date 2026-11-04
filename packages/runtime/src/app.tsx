@@ -1,4 +1,5 @@
 import { StyleProvider } from "@ant-design/cssinjs";
+import { enUSIntl, ProConfigProvider, zhCNIntl } from "@ant-design/pro-components";
 import { theme as antdTheme, ConfigProvider } from "antd";
 import dayjs from "dayjs";
 import { Suspense, useCallback, useEffect } from "react";
@@ -39,6 +40,17 @@ export default function App() {
 	 */
 	const getAntdLocale = () => {
 		return ANT_DESIGN_LOCALE[language as keyof typeof ANT_DESIGN_LOCALE];
+	};
+
+	/**
+	 * ProComponents internationalization
+	 *
+	 * 只切 antd 的 locale 不够：ProForm 的「重置/提交」等文案取自 pro-components 自己的
+	 * intl（`useIntl()` 优先读 ProConfigContext），不显式注入就会一直是中文。
+	 * @link https://procomponents.ant.design/components/config-provider
+	 */
+	const getProIntl = () => {
+		return language === "en-US" ? enUSIntl : zhCNIntl;
 	};
 
 	/**
@@ -137,14 +149,16 @@ export default function App() {
 					},
 				}}
 			>
-				<AntdApp>
-					<JSSThemeProvider>
-						<Suspense fallback={null}>
-							{enableCheckUpdates ? <AppVersionMonitor checkUpdatesInterval={checkUpdatesInterval} /> : null}
-							<RouterProvider router={router} />
-						</Suspense>
-					</JSSThemeProvider>
-				</AntdApp>
+				<ProConfigProvider intl={getProIntl()}>
+					<AntdApp>
+						<JSSThemeProvider>
+							<Suspense fallback={null}>
+								{enableCheckUpdates ? <AppVersionMonitor checkUpdatesInterval={checkUpdatesInterval} /> : null}
+								<RouterProvider router={router} />
+							</Suspense>
+						</JSSThemeProvider>
+					</AntdApp>
+				</ProConfigProvider>
 			</ConfigProvider>
 		</StyleProvider>
 	);

@@ -57,8 +57,9 @@ export * from "./icons";
 export { LayoutEffects } from "./layout/layout-effects";
 
 // i18n 初始化（宿主链路必需：shell 曾以空 resources 自行 init，导致框架
-// translation 命名空间（preferences/common 等）丢失——e2e 基线偏差 2）
-export { setupI18n } from "./locales";
+// translation 命名空间（preferences/common 等）丢失——e2e 基线偏差 2）。
+// ANT_DESIGN_LOCALE 由宿主 ConfigProvider 直接消费：语言键 → antd locale 的映射只留一处。
+export { ANT_DESIGN_LOCALE, setupI18n } from "./locales";
 
 // 模块加载（宿主消费外部模块时使用；模块工程一般不直接调用）
 export {

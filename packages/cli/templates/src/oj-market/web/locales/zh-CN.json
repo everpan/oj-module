@@ -45,7 +45,20 @@
 		"installing": "安装中",
 		"uninstalling": "卸载中",
 		"progress": "进度",
-		"stage": "阶段",
+		"stage": {
+			"preflight": "预检",
+			"downloading": "下载中",
+			"verifying": "校验中",
+			"extracting": "解包中",
+			"migrating": "数据迁移",
+			"lock_commit": "提交版本锁",
+			"registering": "注册模块",
+			"deploying_web": "部署前端",
+			"reloading": "重载配置",
+			"smoke": "冒烟探活",
+			"audit": "终态审计",
+			"done": "完成"
+		},
 		"status": {
 			"running": "进行中",
 			"done": "完成",

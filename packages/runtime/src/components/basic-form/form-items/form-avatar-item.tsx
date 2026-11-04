@@ -2,6 +2,7 @@ import { UploadOutlined } from "@ant-design/icons";
 
 import { Avatar, Button, Upload } from "antd";
 import ImgCrop from "antd-img-crop";
+import { useTranslation } from "react-i18next";
 
 import { getUploadApiProvider } from "#src/store/api-provider";
 import { resolveApiBase } from "#src/utils/api-base";
@@ -12,13 +13,7 @@ interface FormAvatarItemProps {
 }
 
 export function FormAvatarItem({ value, onChange }: FormAvatarItemProps) {
-	// const { t } = useTranslation();
-
-	// const onSelect: TreeProps["onSelect"] = (selectedKeys) => {
-	// 	onChange?.(selectedKeys);
-	// };
-
-	// D9：未注册 uploadProvider 时回落内置 root 级 /upload + 死头（沿用现状）。
+	const { t } = useTranslation();	// D9：未注册 uploadProvider 时回落内置 root 级 /upload + 死头（沿用现状）。
 	const uploadProvider = getUploadApiProvider();
 	const uploadAction = uploadProvider?.action ?? `${resolveApiBase()}/upload`;
 	const uploadHeaders = uploadProvider?.headers() ?? { authorization: "authorization-text" };
@@ -45,17 +40,17 @@ export function FormAvatarItem({ value, onChange }: FormAvatarItemProps) {
 							// 	console.log(info.file, info.fileList);
 							// }
 							if (info.file.status === "done") {
-								window.$message?.success(`${info.file.name} file uploaded successfully`);
+								window.$message?.success(t("common.uploadSuccess", { name: info.file.name }));
 								// AC-D16：上传响应为 oj 信封，取 data
 								onChange?.((info.file.response as OjEnvelope<string> | undefined)?.data);
 							}
 							else if (info.file.status === "error") {
-								window.$message?.error(`${info.file.name} file upload failed.`);
+								window.$message?.error(t("common.uploadFailed", { name: info.file.name }));
 							}
 						}}
 					>
 						<Button icon={<UploadOutlined />}>
-							更换头像
+							{t("common.avatarChange")}
 						</Button>
 					</Upload>
 				</ImgCrop>

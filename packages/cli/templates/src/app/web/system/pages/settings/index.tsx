@@ -93,7 +93,7 @@ export default function SettingsPage() {
 	return (
 		<Space direction="vertical" style={{ width: "100%", paddingTop: 16 }}>
 			{groups.map(g => (
-				<Card key={g.group} title={g.group}>
+				<Card key={g.group} title={t(`system:setting.group.${g.group}`, { defaultValue: g.group })}>
 					<Space direction="vertical" style={{ width: "100%" }}>
 						{g.items.map(item => (
 							<SettingRow key={item.key} item={item} t={t} onSave={(key, value) => putMut.mutate({ key, value })} />

@@ -188,10 +188,10 @@ export default function UsersPage() {
 				onOk={() => createForm.submit()}
 			>
 				<Form form={createForm} layout="vertical" onFinish={values => createMut.mutate(values)}>
-					<Form.Item name="username" label={t("system:users.columns.username")} rules={[{ required: true }]} extra="ldap:/ sso:/ wecom: 为外部身份源保留">
+					<Form.Item name="username" label={t("system:users.columns.username")} rules={[{ required: true }]} extra={t("system:users.usernameHint")}>
 						<Input />
 					</Form.Item>
-					<Form.Item name="password" label="Password" rules={[{ required: true }, { min: 6 }]} extra={t("system:users.pwdPlaceholder")}>
+					<Form.Item name="password" label={t("system:users.password")} rules={[{ required: true }, { min: 6 }]} extra={t("system:users.pwdPlaceholder")}>
 						<Input.Password />
 					</Form.Item>
 					<Form.Item name="displayName" label={t("system:users.columns.displayName")}>
@@ -211,7 +211,7 @@ export default function UsersPage() {
 				onOk={() => pwdForm.submit()}
 			>
 				<Form form={pwdForm} layout="vertical" onFinish={values => pwdTarget && pwdMut.mutate({ uid: pwdTarget.id, password: values.password })}>
-					<Form.Item name="password" label="Password" rules={[{ required: true }, { min: 6 }]} extra={t("system:users.pwdPlaceholder")}>
+					<Form.Item name="password" label={t("system:users.password")} rules={[{ required: true }, { min: 6 }]} extra={t("system:users.pwdPlaceholder")}>
 						<Input.Password />
 					</Form.Item>
 				</Form>

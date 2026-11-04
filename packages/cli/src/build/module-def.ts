@@ -89,6 +89,7 @@ export const useAccess = _fn;
 export const usePreferences = _fn;
 // i18n 初始化（宿主链路消费）
 export const setupI18n = _fn;
+export const ANT_DESIGN_LOCALE = _obj;
 // 全局副作用（宿主链路消费）
 export const LayoutEffects = _fn;
 export const accessControlCodes = _obj;

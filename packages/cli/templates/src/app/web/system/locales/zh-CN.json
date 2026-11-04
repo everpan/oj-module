@@ -40,12 +40,15 @@
 			"departments": "所属部门"
 		},
 		"mainDept": "主部门",
-		"filterDept": "按部门筛选（含子部门）"
+		"filterDept": "按部门筛选（含子部门）",
+		"password": "口令",
+		"usernameHint": "ldap:/ sso:/ wecom: 为外部身份源保留"
 	},
 	"userRoles": {
 		"title": "成员资格",
 		"saved": "角色已更新",
-		"none": "（无角色）"
+		"none": "（无角色）",
+		"deprecated": "（已废弃）"
 	},
 	"rolesPage": {
 		"tabRoles": "角色",
@@ -55,7 +58,18 @@
 		"holders": "持有者",
 		"permissions": "已绑定权限点",
 		"titleKey": "标题键",
-		"readonlyHint": "只读视图：角色与绑定由解决方案工具链（upsertSolutionPerms）管理"
+		"readonlyHint": "只读视图：角色与绑定由解决方案工具链（upsertSolutionPerms）管理",
+		"columns": {
+			"module": "模块",
+			"title": "标题",
+			"code": "编码"
+		},
+		"roleTitle": {
+			"superadmin": "超级管理员",
+			"admin": "系统管理员",
+			"editor": "编辑",
+			"viewer": "访客"
+		}
 	},
 	"departments": {
 		"create": "新建部门",
@@ -256,7 +270,14 @@
 		}
 	},
 	"setting": {
+		"group": {
+			"general": "常规",
+			"security": "安全",
+			"login": "登录方式",
+			"ldap": "LDAP"
+		},
 		"site_title": "站点标题",
+		"market_cdn_url": "市场 CDN 地址",
 		"ldap_enabled": "启用 LDAP 登录",
 		"sso_enabled": "启用 SSO 登录",
 		"wecom_enabled": "启用企业微信登录",

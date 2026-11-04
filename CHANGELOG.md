@@ -9,6 +9,13 @@
 
 ### Added
 
+- **模板 i18n 守卫（回归）**：`tests/cli/template-i18n.test.ts` 静态扫源码与 seed——`t("ns:key")`
+  引用的键、seed 里写死的 `ns:key`（内置角色名、设置分组）、`InstallStage` 全部枚举值，都必须在
+  `zh-CN` / `en-US` 两份 locale 里同时存在；namespace 列表从 `entry.ts` 的 `i18nNamespaces`
+  读取，新增模块不漏。配有真浏览器用例 `tests/e2e/templates/framework-i18n.spec.ts`（切 en-US
+  后断言「更换头像 / 重置 / 提交 / Email」）与
+  `tests/e2e/templates/system-settings-i18n.spec.ts`（`/system/settings` 中英双断言）。
+
 - **开发者共享工程时本机密钥/凭据自动供给（方案 A'）**：`ojm dev` 在工程中缺失
   `config/secrets-*.pem` 时自动 `oj secret keygen` 生成开发密钥对、并用本机公钥密封随机
   `jwt_secret` 写入 gitignored 的 `config.local.yaml`（dev 覆盖层，可手编辑）；随后深合并
@@ -28,6 +35,26 @@
   `truncated=false`、越界页 list 为空但 total 不变）。
 
 ### Fixed
+
+- **脚手架模板里的漏译（页面整块直出键名）**：`/personal-center/my-profile` 整页（标题、头像、
+  用户名、邮箱、手机号、简介、必填提示、更新成功/失败）、`/system/roles` 列头与四个内置角色名、
+  `/system/users` 的 `Password` 标签与外部身份源提示、成员资格页的「已废弃」标记、
+  `/system/settings` 的分组标题与 `market_cdn_url`、解决方案市场安装过程的 12 个阶段名，此前
+  都写死中文或直接渲染键名。全部接入 `useTranslation()` 并补齐 `zh-CN` / `en-US` 两份文案（内置
+  角色与设置分组这类来自 seed 的文案走 `defaultValue` 兜底，库里的值仍可覆盖）。
+
+- **框架层两处硬编码文案不随语言切换**：`FormAvatarItem` 的「更换头像」与上传成功/失败提示、
+  ProForm 操作栏的「重 置 / 提 交」。根因有两层——文案本身没走 `t()`；且 `ProComponents` 的
+  intl 读 `ProConfigProvider`（`ConfigProvider locale` 只管 antd 自身），而脚手架实际跑的是
+  `packages/cli/shell/src/host.tsx` 的宿主 Provider，原先连 antd locale 都没设。现在宿主与
+  `runtime` 的 App 链同源：`ConfigProvider locale={ANT_DESIGN_LOCALE[language]}`
+  （该映射从 runtime 单一导出）+ `ProConfigProvider intl={zhCNIntl|enUSIntl}`。
+
+- **`market/bootstrap` 单测整片飘红**：`buildBackend` 接入 `mergeConfigForDev` 后要供给 dev 密钥，
+  而该套件给源工程造的 `bin/oj` 桩只会答 `-V` / `build --help`，`secret keygen|seal` 一律回
+  `fake-oj` → 13 例里 12 例在「开发密钥供给失败」处挂掉。桩改成与 `init.test.ts` 同套路的进程内
+  假 oj（按参数分派 version/build/keygen/seal/open），顺带去掉 shebang 脚本在 Windows 无法 spawn
+  的隐患。
 
 - **`ojm dev` 失败提示不再被吞（方案 A'）**：`startOj` 在 oj 进程异常退出 / 健康检查超时的
   错误信息里，stderr 为空时改读 `<configDir>/logs/server-*.log` 最新文件兜底抽取真实错误行

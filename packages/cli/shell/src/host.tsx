@@ -20,7 +20,9 @@ import type { RouteObject } from "react-router";
 
 import type { HostModule } from "./preload";
 import { StyleProvider } from "@ant-design/cssinjs";
+import { enUSIntl, ProConfigProvider, zhCNIntl } from "@ant-design/pro-components";
 import {
+	ANT_DESIGN_LOCALE,
 	AntdApp,
 	ErrorBoundary,
 	getHostRoutes,
@@ -415,10 +417,11 @@ function Boot() {
  *   window.$message/$modal/$notification。
  */
 function HostProviders() {
-	const { isDark, themeColorPrimary, themeRadius, sideCollapsedWidth } = usePreferences();
+	const { language, isDark, themeColorPrimary, themeRadius, sideCollapsedWidth } = usePreferences();
 	return (
 		<StyleProvider layer hashPriority="high">
 			<ConfigProvider
+				locale={ANT_DESIGN_LOCALE[language as keyof typeof ANT_DESIGN_LOCALE]}
 				theme={{
 					cssVar: {},
 					hashed: false,
@@ -436,11 +439,13 @@ function HostProviders() {
 					},
 				}}
 			>
-				<AntdApp>
-					<QueryClientProvider client={queryClient}>
-						<Boot />
-					</QueryClientProvider>
-				</AntdApp>
+				<ProConfigProvider intl={language === "en-US" ? enUSIntl : zhCNIntl}>
+					<AntdApp>
+						<QueryClientProvider client={queryClient}>
+							<Boot />
+						</QueryClientProvider>
+					</AntdApp>
+				</ProConfigProvider>
 			</ConfigProvider>
 		</StyleProvider>
 	);

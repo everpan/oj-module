@@ -6,10 +6,12 @@ import {
 } from "@ant-design/pro-components";
 import { BasicContent, FormAvatarItem, useUserStore } from "@oj-module/runtime";
 import { App, Form, Input } from "antd";
+import { useTranslation } from "react-i18next";
 
 import { personalCenterProfilePost } from "../../__client";
 
 export default function Profile() {
+	const { t } = useTranslation();
 	const currentUser = useUserStore();
 	const { message } = App.useApp();
 	const getAvatarURL = () => {
@@ -39,16 +41,16 @@ export default function Profile() {
 				description: values.description,
 			});
 			await useUserStore.getState().getUserInfo();
-			message.success("更新基本信息成功");
+			message.success(t("personal-center:profile.updated"));
 		}
 		catch (e) {
-			message.error(`更新基本信息失败：${e instanceof Error ? e.message : String(e)}`);
+			message.error(t("personal-center:profile.updateFailed", { message: e instanceof Error ? e.message : String(e) }));
 		}
 	};
 
 	return (
 		<BasicContent className="max-w-md ml-10">
-			<h3>我的资料</h3>
+			<h3>{t("personal-center:profile.title")}</h3>
 			<ProForm
 				layout="vertical"
 				onFinish={handleFinish}
@@ -60,11 +62,11 @@ export default function Profile() {
 			>
 				<Form.Item
 					name="avatar"
-					label="头像"
+					label={t("personal-center:profile.avatar")}
 					rules={[
 						{
 							required: true,
-							message: "请输入您的昵称!",
+							message: t("personal-center:profile.avatarRequired"),
 						},
 					]}
 				>
@@ -72,31 +74,31 @@ export default function Profile() {
 				</Form.Item>
 				<ProFormText
 					name="username"
-					label="用户名"
+					label={t("personal-center:profile.username")}
 					rules={[
 						{
 							required: true,
-							message: "请输入您的用户名!",
+							message: t("personal-center:profile.usernameRequired"),
 						},
 					]}
 				/>
 				<ProFormText
 					name="email"
-					label="邮箱"
+					label={t("personal-center:profile.email")}
 					rules={[
 						{
 							required: true,
-							message: "请输入您的邮箱!",
+							message: t("personal-center:profile.emailRequired"),
 						},
 					]}
 				/>
 				<ProFormDigit
 					name="phoneNumber"
-					label="联系电话"
+					label={t("personal-center:profile.phoneNumber")}
 					rules={[
 						{
 							required: true,
-							message: "请输入您的联系电话!",
+							message: t("personal-center:profile.phoneNumberRequired"),
 						},
 					]}
 				>
@@ -105,8 +107,8 @@ export default function Profile() {
 				<ProFormTextArea
 					allowClear
 					name="description"
-					label="个人简介"
-					placeholder="个人简介"
+					label={t("personal-center:profile.description")}
+					placeholder={t("personal-center:profile.descriptionPlaceholder")}
 				/>
 			</ProForm>
 		</BasicContent>

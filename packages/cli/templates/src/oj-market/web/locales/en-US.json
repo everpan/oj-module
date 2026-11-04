@@ -45,7 +45,20 @@
 		"installing": "Installing",
 		"uninstalling": "Uninstalling",
 		"progress": "Progress",
-		"stage": "Stage",
+		"stage": {
+			"preflight": "Preflight",
+			"downloading": "Downloading",
+			"verifying": "Verifying",
+			"extracting": "Extracting",
+			"migrating": "Migrating data",
+			"lock_commit": "Committing version lock",
+			"registering": "Registering module",
+			"deploying_web": "Deploying web assets",
+			"reloading": "Reloading config",
+			"smoke": "Smoke check",
+			"audit": "Final audit",
+			"done": "Done"
+		},
 		"status": {
 			"running": "Running",
 			"done": "Done",

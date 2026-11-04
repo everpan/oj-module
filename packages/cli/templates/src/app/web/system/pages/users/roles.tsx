@@ -58,7 +58,7 @@ export default function UserRolesPage() {
 			<Space direction="vertical">
 				<Checkbox.Group
 					options={(rolesQuery.data ?? []).map(r => ({
-						label: `${r.name}${r.deprecated ? "（已废弃）" : ""}`,
+						label: `${r.name}${r.deprecated ? t("system:userRoles.deprecated") : ""}`,
 						value: r.name,
 						// 非 superadmin 授不了平台级角色：置灰，提交后 403 太晚也太含糊
 						disabled: r.name === "superadmin" && !isSuper,
