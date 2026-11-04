@@ -116,6 +116,18 @@ export function CardItem({ row, busy, canManage = true, onInstall, onEnableToggl
 					</Tag>
 				</div>
 			)}
+			{/* 发布者：展示签出的 key_id（离线可验的发布身份）；无签名就不占位 */}
+			{typeof row.publisher_key === "string" && row.publisher_key.trim() !== "" && (
+				<div
+					data-testid={`card-publisher-${row.name}`}
+					title={row.publisher_key}
+					style={{ marginBottom: 12, color: "var(--oo-text-secondary, #888)", fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+				>
+					{t("oj-market:card:publisher")}
+					:
+					{row.publisher_key}
+				</div>
+			)}
 			<Space wrap>
 				<Button type="primary" size="small" loading={busy} onClick={() => onInstall(row)} disabled={busy || !canManage} title={manageTip}>
 					{installed ? t("oj-market:card:upgrade") : t("oj-market:card:install")}

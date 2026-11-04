@@ -46,4 +46,24 @@ describe("detailDrawer 方案详情（BDD）", () => {
 		expect(screen.queryByText("简介")).toBeNull();
 		expect(screen.queryByText("详细介绍")).toBeNull();
 	});
+
+	it("given 带 publisher_key When 打开 Then 详情展示发布者（签出的 key_id，长串可折行）", () => {
+		renderWithProviders(
+			<DetailDrawer row={{ ...row, publisher_key: "demo-solution.wecom-everpan.macbook" }} open canManage {...handlers} />,
+			new InMemoryMarketClient(),
+		);
+		expect(screen.getByText("发布者")).toBeTruthy();
+		const pub = screen.getByTestId("detail-publisher");
+		expect(pub.textContent).toBe("demo-solution.wecom-everpan.macbook");
+		expect(pub.style.wordBreak).toBe("break-all");
+	});
+
+	it("given 未声明 publisher_key When 打开 Then 不出现发布者行（不显示占位符）", () => {
+		renderWithProviders(
+			<DetailDrawer row={{ ...row, publisher_key: undefined }} open canManage {...handlers} />,
+			new InMemoryMarketClient(),
+		);
+		expect(screen.queryByTestId("detail-publisher")).toBeNull();
+		expect(screen.queryByText("发布者")).toBeNull();
+	});
 });

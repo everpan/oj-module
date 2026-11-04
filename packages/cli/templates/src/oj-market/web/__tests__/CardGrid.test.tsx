@@ -91,6 +91,21 @@ describe("cardGrid 卡片网格（BDD）", () => {
 		expect(screen.queryByTestId("card-description-alpha")).toBeNull();
 	});
 
+	it("given 索引带 publisher_key When 渲染 Then 卡片显示发布者（签出的 key_id，全文进 title）", () => {
+		renderWithProviders(
+			<CardGrid rows={[{ ...installed, publisher_key: "demo-solution.wecom-everpan" }]} {...handlers} />,
+			new InMemoryMarketClient(),
+		);
+		const pub = screen.getByTestId("card-publisher-alpha");
+		expect(pub.textContent).toContain("demo-solution.wecom-everpan");
+		expect(pub.getAttribute("title")).toBe("demo-solution.wecom-everpan");
+	});
+
+	it("given 索引未声明 publisher_key When 渲染 Then 卡片不出现发布者行（不显示占位符）", () => {
+		renderWithProviders(<CardGrid rows={[installed]} {...handlers} />, new InMemoryMarketClient());
+		expect(screen.queryByTestId("card-publisher-alpha")).toBeNull();
+	});
+
 	it("given 未安装卡片 When 渲染 Then 安装按钮显示「安装」而非「升级」，且无回滚按钮", () => {
 		renderWithProviders(<CardGrid rows={[notInstalled]} {...handlers} />, new InMemoryMarketClient());
 		expect(screen.getByText("安装")).toBeTruthy();

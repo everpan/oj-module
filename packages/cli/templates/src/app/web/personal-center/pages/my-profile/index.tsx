@@ -83,6 +83,11 @@ export default function Profile() {
 					]}
 				/>
 				<ProFormText
+					name="displayName"
+					label={t("personal-center:profile.displayName")}
+					disabled
+				/>
+				<ProFormText
 					name="email"
 					label={t("personal-center:profile.email")}
 					rules={[

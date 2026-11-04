@@ -10,6 +10,7 @@ const initialState = {
 	id: "",
 	avatar: "",
 	username: "",
+	displayName: "",
 	email: "",
 	phoneNumber: "",
 	description: "",

@@ -25,6 +25,8 @@ export interface UserInfoType {
 	id: string
 	avatar: string
 	username: string
+	/** 显示名（后端 web/user-info 下发；与登录名 username 不同，仅用于展示） */
+	displayName?: string
 	email: string
 	phoneNumber: string
 	description: string

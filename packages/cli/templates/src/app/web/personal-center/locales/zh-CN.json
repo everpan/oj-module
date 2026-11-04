@@ -9,6 +9,7 @@
 		"avatarRequired": "请上传头像!",
 		"username": "用户名",
 		"usernameRequired": "请输入您的用户名!",
+		"displayName": "显示名",
 		"email": "邮箱",
 		"emailRequired": "请输入您的邮箱!",
 		"phoneNumber": "联系电话",

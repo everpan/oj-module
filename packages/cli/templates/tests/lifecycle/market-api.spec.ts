@@ -821,7 +821,7 @@ describe("GET index（CDN catalog + shards 拉取 + 本地 state 对比）", () 
 		expect(String(last?.msg)).toContain("未配置市场地址");
 	});
 
-	it("聚合对比：CDN 最新版本 + 本地已装/enabled + upgradable + available/changelog/publisher/license/summary/description/trust/key_id/operator（P2-11）；本地独有方案也列出；拉取不带 no-cache", async () => {
+	it("聚合对比：CDN 最新版本 + 本地已装/enabled + upgradable + available/changelog/publisher/publisher_key/license/summary/description/trust/key_id/operator（P2-11）；本地独有方案也列出；拉取不带 no-cache", async () => {
 		const env = makeEnv();
 		const state = await createStateStore(env.statePath);
 		await state.write({
@@ -837,9 +837,9 @@ describe("GET index（CDN catalog + shards 拉取 + 本地 state 对比）", () 
 		// REG-CS5④：读面不再发 cache-control: no-cache（服务端缓存头 + 条件请求承载新鲜度）
 		expect(fetchInits.every(i => (i as { headers?: Record<string, string> } | undefined)?.headers?.["cache-control"] === undefined)).toBe(true);
 		expect(last?.data).toEqual([
-			{ name: "demo-solution", latest: "0.2.0", installed: "0.1.0", enabled: true, upgradable: true, available: ["0.1.0", "0.2.0"], changelog: ["0.2.0 变更条目"], publisher: "oj-module", license: "MIT", summary: "演示方案", description: LATEST_DESCRIPTION, trust_state: "trusted", key_id: "test.publisher", operator: null },
-			{ name: "wiki", latest: "1.3.0", installed: null, enabled: null, upgradable: false, available: ["1.3.0"], changelog: null, publisher: null, license: null, summary: null, description: null, trust_state: null, key_id: null, operator: null },
-			{ name: "legacy", latest: null, installed: "9.9.9", enabled: false, upgradable: false, available: [], changelog: null, publisher: null, license: null, summary: null, description: null, trust_state: null, key_id: null, operator: null },
+			{ name: "demo-solution", latest: "0.2.0", installed: "0.1.0", enabled: true, upgradable: true, available: ["0.1.0", "0.2.0"], changelog: ["0.2.0 变更条目"], publisher: "oj-module", publisher_key: "test.publisher", license: "MIT", summary: "演示方案", description: LATEST_DESCRIPTION, trust_state: "trusted", key_id: "test.publisher", operator: null },
+			{ name: "wiki", latest: "1.3.0", installed: null, enabled: null, upgradable: false, available: ["1.3.0"], changelog: null, publisher: null, publisher_key: null, license: null, summary: null, description: null, trust_state: null, key_id: null, operator: null },
+			{ name: "legacy", latest: null, installed: "9.9.9", enabled: false, upgradable: false, available: [], changelog: null, publisher: null, publisher_key: null, license: null, summary: null, description: null, trust_state: null, key_id: null, operator: null },
 		]);
 	});
 

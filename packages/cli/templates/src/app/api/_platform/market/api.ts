@@ -818,8 +818,10 @@ interface IndexRow {
 	available: string[]
 	/** 最新版 changelog（C2-08，R27 卡片版本对比；分片条目缺 changelog → null） */
 	changelog: unknown
-	/** 最新版发布方（manifest author，C2-07；分片条目缺 author → null） */
+	/** 最新版发布方（manifest author，C2-07；分片条目缺 author → null，自报字段） */
 	publisher: string | null
+	/** 最新版包级签名 key_id（Form B archive.signature.key_id，经 Ed25519 验签的发布身份；缺签名 → null） */
+	publisher_key: string | null
 	/** 最新版许可（manifest license，C2-07 SPDX 简化式；分片条目缺/非字符串 → null） */
 	license: string | null
 	/** 方案简介（manifest summary，C2-04 单行 1..200；分片条目缺/非字符串 → null） */
@@ -903,6 +905,11 @@ async function indexBody(env: MarketEnv): Promise<IndexRow[]> {
 		const manifestOf = (version: string | null): Record<string, unknown> | undefined =>
 			version === null ? undefined : merged.find(v => String(v.version) === version);
 		const m = manifestOf(latest) ?? manifestOf(side?.version ?? null);
+		// 发布者：取最新版 Form B archive.signature.key_id（Ed25519 验签过的签名身份，离线可验）；
+		// manifest.author 是自报字段，二者不同。缺签名/畸形 → null（不拿自报值冒充）。
+		const rawArchive: unknown = m?.archive;
+		const rawSig: unknown = isObj(rawArchive) ? rawArchive.signature : undefined;
+		const publisherKey = isObj(rawSig) && typeof rawSig.key_id === "string" ? rawSig.key_id : null;
 		rows.push({
 			name,
 			latest,
@@ -912,6 +919,7 @@ async function indexBody(env: MarketEnv): Promise<IndexRow[]> {
 			available,
 			changelog: m?.changelog ?? null,
 			publisher: typeof m?.author === "string" ? m.author : null,
+			publisher_key: publisherKey,
 			license: typeof m?.license === "string" ? m.license : null,
 			summary: typeof m?.summary === "string" ? m.summary : null,
 			description: typeof m?.description === "string" ? m.description : null,
@@ -931,6 +939,7 @@ async function indexBody(env: MarketEnv): Promise<IndexRow[]> {
 				available: [],
 				changelog: null,
 				publisher: null,
+				publisher_key: null,
 				license: null,
 				summary: null,
 				description: null,
