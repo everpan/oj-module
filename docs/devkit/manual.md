@@ -1925,9 +1925,9 @@ module-root 下数据源是「扫描 + `web.config.ts` 登记」并集（未登�
 一个脚手架可放多份用户方案（`ojm new` 逐个生成，各自一份 `src/<name>/solution.yaml`），
 `ojm build --bundle` 无参时全部打包、逐个校验独立出包；框架自带方案自动排除（名单见
 `src/.ojm-builtin.json`，`ojm info` 默认折叠自带模块）。
-**从开发到发布的完整过程视角（新手照做版，含签名/私钥纪律与多人各自发包纪律）见本目录**
-[`publish-walkthrough.md`](./publish-walkthrough.md)；仓内深度过程视角另见
-[`docs/guides/solution-dev-build-publish.md`](../guides/solution-dev-build-publish.md)（不随 cli 包发货）。
+**从开发到发布的完整过程视角（新手照做版，含签名/私钥纪律与多人各自发包纪律）见本目录
+[`publish-walkthrough.md`](./publish-walkthrough.md)**——那份文件同样随包分发、自包含，
+发布链路只读它 + 本章即可闭环。
 
 ### 11.1 打包：`ojm build --bundle`
 
