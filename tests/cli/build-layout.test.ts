@@ -53,12 +53,15 @@ function makeStubOj(root: string): string {
 		"#!/usr/bin/env node",
 		"import fs from \"node:fs\";",
 		"import crypto from \"node:crypto\";",
+		"import path from \"node:path\";",
 		"const argv = process.argv.slice(2);",
 		// 只记 build：buildBackend 传 config 时会先走 dev 配置合并链路（secret keygen/seal/open），
 		// 全都记会覆盖掉断言要读的那一条
 		`if (argv[0] === "build") fs.writeFileSync(${JSON.stringify(path.join(root, "oj-args.json"))}, JSON.stringify(argv));`,
 		"if (argv[0] !== \"secret\") process.exit(0);",
-		// 凭据密封桩（与 dev-secrets.test.ts 同款）：keygen 出密钥对，seal 用公钥派生密钥加密
+		// 凭据密封桩（与 dev-secrets.test.ts 同款）：keygen 出密钥对，seal/open 都以
+		// sha256(公钥 PEM) 派生 AES-256-GCM 密钥——密钥不配对即 GCM 验签失败，
+		// 别写成「open 一律 exit 0」，否则坏密钥/配对错也照样放行，桩就失去鉴别力
 		"const sub = argv[1];",
 		"if (sub === \"keygen\") {",
 		"\tconst dir = argv[argv.indexOf(\"--out-dir\") + 1];",
@@ -67,10 +70,23 @@ function makeStubOj(root: string): string {
 		"\tfs.writeFileSync(dir + \"/secrets-public.pem\", publicKey.export({ type: \"spki\", format: \"pem\" }));",
 		"\tprocess.exit(0);",
 		"}",
-		// 不带 -k 的 open 是 build 前的密封值预检（私钥走 config 的 secrets.private_key_path），视为可解
 		"const kIdx = argv.indexOf(\"-k\");",
-		"if (sub === \"open\" && kIdx === -1) process.exit(0);",
-		"const key = crypto.createHash(\"sha256\").update(fs.readFileSync(argv[kIdx + 1])).digest();",
+		"let pubPem;",
+		"if (sub === \"seal\") {",
+		"\tpubPem = fs.readFileSync(argv[kIdx + 1]);",
+		"}",
+		"else {",
+		"\t// open 的私钥来源：显式 -k；或 build 前预检的 -c（私钥由 config 的",
+		"\t// secrets.private_key_path 指定，相对 config 文件所在目录解析）",
+		"\tlet privPath = argv[kIdx + 1];",
+		"\tif (kIdx === -1) {",
+		"\t\tconst cfg = argv[argv.indexOf(\"-c\") + 1];",
+		"\t\tconst rel = /private_key_path:\\s*['\\\"]?([^'\\\"\\n]+)['\\\"]?/.exec(fs.readFileSync(cfg, \"utf-8\"))[1].trim();",
+		"\t\tprivPath = path.resolve(path.dirname(cfg), rel);",
+		"\t}",
+		"\tpubPem = crypto.createPublicKey(crypto.createPrivateKey(fs.readFileSync(privPath))).export({ type: \"spki\", format: \"pem\" });",
+		"}",
+		"const key = crypto.createHash(\"sha256\").update(pubPem).digest();",
 		"if (sub === \"seal\") {",
 		"\tconst plain = fs.readFileSync(0, \"utf-8\");",
 		"\tconst nonce = crypto.randomBytes(12);",
@@ -79,7 +95,18 @@ function makeStubOj(root: string): string {
 		"\tprocess.stdout.write(\"ENC[\" + Buffer.concat([nonce, cipher.getAuthTag(), ct]).toString(\"base64\") + \"]\");",
 		"\tprocess.exit(0);",
 		"}",
-		"process.exit(0);",
+		"const raw = Buffer.from(argv[argv.length - 1].slice(4, -1), \"base64\");",
+		"try {",
+		"\tconst d = crypto.createDecipheriv(\"aes-256-gcm\", key, raw.subarray(0, 12));",
+		"\td.setAuthTag(raw.subarray(12, 28));",
+		"\td.update(raw.subarray(28));",
+		"\td.final();",
+		"\tprocess.exit(0);",
+		"}",
+		"catch {",
+		"\tprocess.stderr.write(\"secret open failed: key mismatch\\n\");",
+		"\tprocess.exit(1);",
+		"}",
 		"",
 	].join("\n"));
 	fs.chmodSync(stub, 0o755);
