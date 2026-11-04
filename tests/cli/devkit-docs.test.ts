@@ -53,7 +53,7 @@ describe("devkit 自包含（零仓库内部代号）", () => {
  * 本守卫钉死这个结构：快照文件若被平铺进顶层，会误随 cli 包发货且与 oj 版本漂移。
  */
 describe("devkit 目录结构（ojm 侧发货 + oj-api-dev 快照子目录）", () => {
-	const OJM_FILES = ["SKILL.md", "manual.md", "README.md", "framework-dev.md", "sql-builder-missing-capabilities-pr.md", "module-dev-and-cdn-playground.md", "menu-rules.md", "wecom-daikaifa.md", "wecom-internal-app.md", "publish-walkthrough.md"];
+	const OJM_FILES = ["SKILL.md", "manual.md", "README.md", "framework-dev.md", "sql-builder-missing-capabilities-pr.md", "module-dev-and-cdn-playground.md", "menu-rules.md", "wecom-daikaifa.md", "wecom-internal-app.md", "wecom-multi-corp-links.md", "publish-walkthrough.md"];
 	const SNAPSHOT_FILES = [
 		"SKILL.md",
 		"README.md",
@@ -69,7 +69,7 @@ describe("devkit 目录结构（ojm 侧发货 + oj-api-dev 快照子目录）", 
 		"deploy-tunnel-recipe.md",
 	];
 
-	it("docs/devkit/ 顶层文件恰为 10 个 ojm 侧文件（快照不得平铺进同步源）", () => {
+	it("docs/devkit/ 顶层文件恰为 11 个 ojm 侧文件（快照不得平铺进同步源）", () => {
 		const top = readdirSync(join(ROOT, "docs/devkit"))
 			.filter(n => !n.startsWith(".") && statSync(join(ROOT, "docs/devkit", n)).isFile())
 			.sort();
