@@ -1583,6 +1583,8 @@ export default async (path: string, html: string) => {
 | dev 起不来，日志一堆 route error（Cannot find module） | handler 相对 import 多写了一层——按**目录**解析不是按文件（§1.7-2） | 按 §1.7 深度表改 |
 | 限速/节流/去重窗口在真实请求下永不累积（测试却全绿） | 模块级 `Map`/`let` 不跨请求存活——oj 每请求重建模块（§1.7-3） | 状态落库（模板 0009 先例）或走 oj 持久面 |
 | `ojm build` 报 `introspect api.ts: Error: jwt not configured`（dev 模式正常） | 模块级语句触碰运行时全局，introspect 空沙箱里炸（§1.7-4） | 移进 handler 函数体内按需执行 |
+| `ojm build` 报「config 里的密封值解不开，已停在出包前：.ojm-tmp-config.yaml」 | 合并产物里有解不开的密文：dev jwt 坏了，或 `config.local.yaml` 覆盖带进了外来 `ENC[...]`（预检兜底——oj build 读不动 config 退出码仍是 0，只 warn 两行） | 报错里附了 oj 原话与「单独验一条」的命令逐条排查；jwt 坏了删 `config.local.yaml` 的 `auth.jwt_secret` 行，重跑 `ojm dev` 重新密封 |
+| `ojm build` 报「配置中 /… 是 ENC[...] 密文，但本机没有能解开的私钥」 | tracked config 里有**非 jwt** 的生产密文（如落库加密键；红线，dev 不会用随机密钥重封——否则破坏已加密数据） | 向团队取配对私钥放到 `config/secrets-private.pem`，或在 `config.local.yaml` 覆盖该字段为可解密的明文/ENC |
 | 点登录页「企业微信」后页面只闪一下、Network 里一个 auth 请求都没有 | 整页跳转拼成了**站点 base**（根部署下得到 `/auth/wecom/login`，被 SPA 兜底页吞掉） | 改用 `resolveApiBase()` 拼后端端点：`window.location.assign(resolveApiBase() + wecomAuthorizePath(corp))` |
 | 企微登录恒 400 `企业微信未配置：config vars 缺少 …` | 部署常量没填全（该来源的凭据任一为空即整体拒服务） | 代开发见 `wecom-daikaifa.md` §2.1，企业内部应用见 `wecom-internal-app.md` §2.1 的凭据表与缺项后果 |
 
@@ -1682,13 +1684,29 @@ export default async (path: string, html: string) => {
   极端情况下（3s 未退）升级 `SIGKILL`，并在进程退出时以 `kill()` 强杀作为最后手段，防止 oj 孤儿化。
 - 内置 `openapi.json` watch：规范变更 → 自动重跑 `ojm api` → 产物写入 `web/` 触发模块重建 + 刷新。
   **新模块目录的诞生不在 watch 范围**——新建后端模块目录要先重启 `ojm dev`（目录注册发生在启动期）。
+- **配置合并（方案 A'，与 `ojm build` 同链路）**：起 oj 前自动供给本机密钥——`config/secrets-{private,public}.pem`
+  缺失则 `oj secret keygen`；`config.local.yaml`（gitignored、可手编）缺 dev `jwt_secret` 则随机生成并密封。
+  tracked `config.yaml` 与 local 深合并成 `.ojm-tmp-config.yaml`（git 不跟踪、与 config.yaml 同目录）交给
+  `oj serve -c`——tracked 里的 prod `ENC[...]` 仅作 prod 资产，jwt 被本机 dev 密文覆盖；**非 jwt**
+  的 ENC 解不开会红线报错（dev 不会用随机密钥重封，防破坏已加密落库数据）。
 
 #### `ojm build`
 
 构建后端与前端产物（设计 §5）：
 
 1. **后端**：`oj build`——生成 `api/dist/routes.js`（目录镜像路由 + 参数路由在此确定）；
-2. **前端**：模块构建 + **全站合并**到 `web/dist/`（仅 `build` 做清场合并）。
+2. **前端**：模块构建 + **全站合并**到 `web/dist/`（仅 `build` 做清场合并）；
+3. **配置**：与 dev 同一条合并链路（见 `ojm dev`）——tracked `config.yaml` + gitignored
+   `config.local.yaml` 深合并成 `.ojm-tmp-config.yaml`，`-c` 指向合并产物。全新 clone 的机器只有
+   本机 dev 密钥对，tracked 的 prod `ENC[...]`（如 init 密封的 `auth.jwt_secret`）按设计解不开——
+   合并链路里 jwt 已被本机 dev 密文覆盖，build 不再误杀；编译本身不需要密文明文，产物也不嵌
+   config（部署侧自带）。
+
+> **出包预检（fail-closed）**：合并产物里每条 `ENC[...]` 先 `oj secret open` 试解一把——oj build
+> 读不动 config 只 warn 两行、退出码仍是 0（`sql_guard` 关、`tasks` 镜像目录回落默认），ojm 必须
+> 在出包前拦住。tracked 里**非 jwt** 的 `ENC[...]` 解不开则红线报错（真实生产数据密钥，dev 不会
+> 用随机密钥重封）——把配对私钥放到 `config/secrets-private.pem`，或在 `config.local.yaml` 覆盖
+> 该字段。处置速查见 §8 排障表。
 
 > release 下只有 `routes.js` 里的路由存在，目录镜像路由不生效——所以参数路由要先
 > `ojm build` 再测（见 §7）。

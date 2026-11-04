@@ -5,6 +5,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { ALIAS_PATHS_FILE, syncAliasPaths } from "../alias-paths";
+import { mergeConfigForDev } from "../dev-secrets";
 import { resolveConfigPath, tryResolveLayout } from "../layout";
 import { requireModuleRootCapability } from "../oj-caps";
 import { resolveOjBin } from "../vendor";
@@ -50,7 +51,15 @@ export async function buildBackend(projectRoot: string): Promise<boolean> {
 	// <project>/config/ 下——漏传会静默读不到配置，连带 tasks 镜像目录回落默认 "tasks"、
 	// sql_guard 声明校验不生效（oj 只 warn 两行，极易被忽略）。
 	const configPath = resolveConfigPath(projectRoot);
-	const configArgs = fs.existsSync(configPath) ? ["-c", configPath] : [];
+	// 与 dev 同一条合并链路（方案 A'）：tracked + gitignored config.local.yaml 深合并 →
+	// .ojm-tmp-config.yaml，-c 指向合并产物。全新 clone 的机器只有本机 dev 密钥对，tracked
+	// 的 prod ENC（jwt_secret）按设计解不开——直接喂 tracked 会让密封值预检误杀（dev 能跑、
+	// build 必挂）。合并产物里 jwt 已被本机 dev 密文覆盖，而编译本身不需要密文明文，产物也不
+	// 嵌 config（部署侧自带）。产物与 config.yaml 同目录，secrets.private_key_path 等相对路径
+	// 解析不变；非 jwt 的 ENC 解不开仍由链路内红线抛错（防护不降级）。
+	let effectiveConfigPath: string | undefined;
+	if (fs.existsSync(configPath))
+		effectiveConfigPath = mergeConfigForDev(projectRoot, configPath);
 	// --no-minify：oj 的 swc minify 当前会把产物压坏，必须绕开。实测两种坏法：
 	//   1) `const rows = await db.query(...); rows[0]` → 压成 `await db.query(...)[0]`，
 	//      下标先于 await 求值，Promise 上取 [0] 得 undefined（登录恒 401）；
@@ -61,11 +70,11 @@ export async function buildBackend(projectRoot: string): Promise<boolean> {
 	// oj 在子树内递归找 manifest.yaml（命中 src/<name>/api/manifest.yaml 即停）。
 	const sourceArgs = layout?.moduleRoot ? ["--module-root", layout.moduleRoot] : ["-d", apiSrc];
 	// 出包前先自己确认 config 能读：读不动时 oj build 会静默关掉 sql_guard（见函数注释）
-	if (configArgs.length)
-		assertSealedValuesOpenable(oj, configPath);
+	if (effectiveConfigPath)
+		assertSealedValuesOpenable(oj, effectiveConfigPath);
 	execFileSync(oj, [
 		"build",
-		...configArgs,
+		...(effectiveConfigPath ? ["-c", effectiveConfigPath] : []),
 		...sourceArgs,
 		"-o",
 		apiDist,
@@ -90,6 +99,10 @@ export async function buildBackend(projectRoot: string): Promise<boolean> {
  * 只往 stderr 甩两行「读配置失败 → 镜像目录回落默认 tasks / 本次 build 按 sql_guard=off 处理」，
  * 然后照常出包。那两行夹在模块清单里极易被忽略，而关掉的 `sql_guard` 正是 tenant 声明校验
  * （跨模块 SQL 的唯一守卫）——包看起来完好，检查其实没跑。
+ *
+ * 对象是**合并产物**（`mergeConfigForDev` 出的 .ojm-tmp-config.yaml）：tracked 的 prod jwt
+ * ENC 在合并时已被本机 dev 密文覆盖，能走到这里的密文本机都该解得开——解不开只可能是本机
+ * dev jwt 坏了或 local 覆盖里带了别的密文，属兜底双保险（第一道闸是链路内红线）。
  *
  * 探法就是 oj 自己的排障命令 `oj secret open`：它和 `oj serve` / `oj build` 用同一套密钥解析
  * （`OJ_SECRET_KEY` → `OJ_SECRET_KEY_FILE` → config 的 `secrets.private_key_path`），
@@ -121,6 +134,9 @@ function assertSealedValuesOpenable(oj: string, configPath: string): void {
 				+ "  1) 本机加载的私钥与密封时用的公钥不是一对——最常见是换机器/换部署目录时只带了\n"
 				+ "     config.yaml，没带 config/secrets-private.pem；\n"
 				+ "  2) 密文被改过——手工编辑、复制被截断、编辑器把长行折了。\n"
+				+ "\n"
+				+ "dev 机提示：jwt_secret 由 config.local.yaml 供给（本机密钥可轮换）；若解不开的就是它，\n"
+				+ "      删掉 config.local.yaml 里的 auth.jwt_secret 行，重跑一次 ojm dev 会重新密封。\n"
 				+ "\n"
 				+ "单独验一条：oj secret open -c <config> '<那个 ENC[...] 值>'（成功=这条没问题，失败=就是它）\n"
 				+ "修法：把配对私钥带到本机（OJ_SECRET_KEY / OJ_SECRET_KEY_FILE / config 的 secrets.private_key_path\n"

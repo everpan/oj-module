@@ -15,6 +15,7 @@
 | 模块在哪 | 工程内源码：`src/A/api` + `src/A/web`（历史布局：`api/src/A` + `web/src/A`） | 一个 `.tgz` 包（`ojm build --bundle` 产出） |
 | 谁登记它 | `ojm build` 扫描 `src/*/web/entry.ts`（`web.config.ts` 可选覆盖）→ 生成 `web/dist/modules.json` | 安装器往目标站点 upsert |
 | 跑起来靠 | `ojm dev` 直跑源码，改一行刷新即见 | 安装器十阶段（下载→验签→解压→迁移→注册→热更→冒烟） |
+| config 读哪份 | tracked `config.yaml` + gitignored `config.local.yaml` 深合并成 `.ojm-tmp-config.yaml`——dev 与 build 同一条链路，jwt 被本机 dev 密文覆盖 | 产物不嵌 config，部署侧自带自己的 config（tracked prod `ENC[...]` 那份） |
 | 典型场景 | 你在写它 | 别人（或另一个站点）装它 |
 
 一句话：**开发态没有「安装」这个动作**。`ojm dev` 起的站点直接扫描 `src/` 产生路由（`oj build --module-root src`）、读 `modules.json` 装配菜单——你写的模块 A 此刻「已经在跑」，只是还没打过包。

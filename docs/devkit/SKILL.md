@@ -201,6 +201,7 @@ description: 用 ojm 开发前后端一体工程时使用——新增/修改前�
 | dev 日志 route error（Cannot find module）/ 端点 404 | handler 相对 import 多一层——按**目录**解析 | 改用 `#/<模块名>/…` 别名（与深度无关）；存量代码按 manual §1.7 深度表改 |
 | 限速/节流/计数真实请求下永不累积（测试全绿） | 模块级 `Map`/`let` 不跨请求存活（每请求重建模块） | 状态落库（模板迁移 0009 先例）或 oj 持久面 |
 | `ojm build` 报 `introspect api.ts: jwt not configured` | 模块级语句碰运行时全局，introspect 空沙箱炸 | 移进 handler 函数体内（manual §1.7-4） |
+| `ojm build` 报「密封值解不开」/「本机没有能解开的私钥」 | 出包预检 fail-closed：合并产物兜底 + tracked 非 jwt 红线（manual §10.1） | jwt 坏了删 `config.local.yaml` 的 `auth.jwt_secret` 行重跑 `ojm dev`；非 jwt 取配对私钥或 local 覆盖该字段 |
 | 页签怎么点都关不掉、无报错提示 | `beforeClose` 守卫 fail-safe 否决（守卫抛错按取消处理） | 先查控制台 `[tabs] beforeClose` 报错；确认弹窗逻辑与 `resolve(true/false)` 收口（manual §6.4） |
 | 组织架构读面 403「该部门不在可见范围内」 | `scope` 默认 `self`，只看得到自己那条部门路径 | 换 `scope=all`（需权限点 `platform.org.read.all`），或改问自己所在部门（manual §14.2） |
 | 组织架构读面 400「只展开自己所在部门」 | `includeSub` 用在了祖先/兄弟部门上（self 档只允许展开自己所在部门） | 收窄到「我所在部门」，或申请 `scope=all`（manual §14.2） |
