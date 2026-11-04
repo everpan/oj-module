@@ -105,7 +105,9 @@ export function useMenu() {
 		if (key.startsWith("solgroup:")) {
 			return;
 		}
-		if (key === removeTrailingSlash(pathname)) {
+		/* 落地页菜单 key 是「父路径 + /」（与 route id 同形）：导航前去掉尾斜杠，URL 保持规范 */
+		const targetPath = removeTrailingSlash(key);
+		if (targetPath === removeTrailingSlash(pathname)) {
 			return;
 		}
 		/* 1. 非混合导航模式 2. 混合导航模式下的侧边导航 */
@@ -115,7 +117,7 @@ export function useMenu() {
 				window.open(key);
 			}
 			else {
-				navigate(key);
+				navigate(targetPath);
 			}
 		}
 		else {
@@ -124,10 +126,10 @@ export function useMenu() {
 			const targetMenu = findDeepestFirstItem(rootMenu?.children ?? []);
 			/* 点击顶部的导航默认跳转到菜单下的第一个子项 */
 			if (!targetMenu) {
-				navigate(key);
+				navigate(targetPath);
 			}
 			else {
-				navigate(targetMenu.key);
+				navigate(removeTrailingSlash(targetMenu.key));
 			}
 		}
 	};

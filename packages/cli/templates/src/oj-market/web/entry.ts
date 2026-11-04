@@ -1,4 +1,6 @@
 import type { ModuleContext, ModuleI18n } from "@oj-module/runtime";
+
+import { AppstoreOutlined } from "@ant-design/icons";
 import { defineModule, OutsidePageIcon } from "@oj-module/runtime";
 import { createElement } from "react";
 import MarketApp from "./pages/MarketApp";
@@ -37,7 +39,10 @@ export default defineModule({
 				{
 					index: true,
 					Component: MarketApp,
-					handle: { title: "oj-market:menu.list" },
+					handle: {
+						title: "oj-market:menu.list",
+						icon: createElement(AppstoreOutlined),
+					},
 				},
 				...publishRoutes,
 			],

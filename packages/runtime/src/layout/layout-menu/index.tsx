@@ -8,12 +8,11 @@ import { useMatches } from "react-router";
 import { useDeviceType } from "#src/hooks/use-device-type";
 import { usePreferences } from "#src/hooks/use-preferences";
 
-import { removeTrailingSlash } from "#src/router/utils/remove-trailing-slash";
 import { useAccessStore } from "#src/store/access";
 import { cn } from "#src/utils/cn";
 
 import { useStyles } from "./style";
-import { getParentKeys } from "./utils";
+import { getParentKeys, resolveSelectedKeys } from "./utils";
 
 interface LayoutMenuProps {
 	mode?: MenuProps["mode"]
@@ -50,34 +49,7 @@ export default function LayoutMenu({
 	}, [wholeMenus, bottomMenus]);
 
 	const getSelectedKeys = useMemo(
-		() => {
-			// First, try to find a route that specifies currentActiveMenu (highest priority)
-			const currentActiveMatch = matches.findLast(routeItem =>
-				routeItem.handle?.currentActiveMenu,
-			);
-
-			// If found, return the currentActiveMenu path with its parent keys
-			if (currentActiveMatch?.handle?.currentActiveMenu) {
-				const activeMenuPath = removeTrailingSlash(currentActiveMatch.handle.currentActiveMenu);
-				const parentKeys = menuParentKeys[activeMenuPath] || [];
-				return [...parentKeys, activeMenuPath];
-			}
-
-			// Fallback: Find the last visible route (not hidden in menu)
-			const latestVisibleMatch = matches.findLast(routeItem =>
-				routeItem.handle?.hideInMenu !== true,
-			);
-
-			// If found, return the route ID path with its parent keys
-			if (latestVisibleMatch?.id) {
-				const routePath = removeTrailingSlash(latestVisibleMatch.id);
-				const parentKeys = menuParentKeys[routePath] || [];
-				return [...parentKeys, routePath];
-			}
-
-			// Default return empty array if no matches found
-			return [];
-		},
+		() => resolveSelectedKeys(matches, menuParentKeys),
 		[matches, menuParentKeys],
 	);
 

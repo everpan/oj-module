@@ -1,7 +1,10 @@
 import type { ReactElement } from "react";
+import type { UIMatch } from "react-router";
 
+import type { RouteMeta } from "#src/router/types";
 import type { MenuItemType } from "./types";
 import { cloneElement, isValidElement } from "react";
+import { removeTrailingSlash } from "#src/router/utils/remove-trailing-slash";
 import { isString } from "#src/utils/is";
 
 /**
@@ -33,6 +36,39 @@ export function translateMenus(menus: MenuItemType[], t: (key: string) => string
 
 		return translatedMenu;
 	});
+}
+
+/**
+ * 解析当前路由应选中的菜单 key 数组（含父链）。
+ *
+ * 菜单 key 与路由 id 同一空间：index 落地页的 id/key 是「父路径 + /」。这里**不能**
+ * 去掉尾斜杠——否则落在落地页时把选中态算到父级 SubMenu 的 key 上（落地页不亮），
+ * 或反过来让同 key 的落地页在兄弟页常亮（2026-11-05 方案清单）。
+ */
+export function resolveSelectedKeys(
+	matches: UIMatch<unknown, RouteMeta>[],
+	menuParentKeys: Record<string, string[]>,
+): string[] {
+	// currentActiveMenu 优先级最高：隐藏页可指定高亮哪个菜单
+	const currentActiveMatch = matches.findLast(routeItem =>
+		routeItem.handle?.currentActiveMenu,
+	);
+
+	if (currentActiveMatch?.handle?.currentActiveMenu) {
+		const activeMenuPath = removeTrailingSlash(currentActiveMatch.handle.currentActiveMenu);
+		return [...(menuParentKeys[activeMenuPath] || []), activeMenuPath];
+	}
+
+	// 回落：最后一个可见路由的 id 就是菜单 key（index 路由的 id 自带尾斜杠）
+	const latestVisibleMatch = matches.findLast(routeItem =>
+		routeItem.handle?.hideInMenu !== true,
+	);
+
+	if (latestVisibleMatch?.id) {
+		return [...(menuParentKeys[latestVisibleMatch.id] || []), latestVisibleMatch.id];
+	}
+
+	return [];
 }
 
 /**

@@ -151,10 +151,18 @@
 
 ### Fixed
 
+- **「方案清单」选中后一直高亮（切到兄弟页仍常亮）**：index 落地页的菜单 key 沿用了父路径，与父级
+  SubMenu 的 key 重复（antd Menu 要求 key 唯一）；父链 key 始终在 `selectedKeys` 里，落地页因同
+  key 被连带选中——点「方案清单」再点「发布历史」，两项同时高亮。现在落地页 key 取「父路径 + /」
+  （与 `addRouteIdByPath` 给 index 路由的 id 同形），`resolveSelectedKeys` 不再去掉 match.id 的尾
+  斜杠，选中态只会落在当前页；导航前统一去尾斜杠，URL 保持 `/oj-market` 形态。顺带给「方案清单」
+  补默认图标（`AppstoreOutlined`）。回归：`tests/runtime/menu-relative-path.test.ts`（key 唯一 /
+  落地页选中 / 兄弟页不选）+ 真浏览器点击三步核查。
+
 - **子菜单里的落地页（index 路由）不进菜单**：`generateMenuItemsFromRoutes` 一律过滤 index 子路由，
   这在单页根（`/home`、`/about` 的菜单项就是根自身）是正确的，但父路由还有别的可见子页时，根会
   渲染成子菜单，落地页就彻底消失——方案市场改成单根三子页后「方案清单」在菜单里看不见
-  （真浏览器实测）。现在按「有非 index 可见子页才收录落地页」判定：落地页以父绝对路径为 key
+  （真浏览器实测）。现在按「有非 index 可见子页才收录落地页」判定：落地页以「父路径 + /」为 key
   排在子菜单首位，单页根形态不变。回归：`tests/runtime/menu-relative-path.test.ts` 两条
   （三子页含落地页 / 单页根仍是叶子）。
 
