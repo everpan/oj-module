@@ -33,12 +33,14 @@
 | `wecom-daikaifa.md` | 企业微信代开发集成：**凭据清单**（8 项 `vars`，按 Tier A/B/C 分层的来源与必填时序 + 可信域名/可信 IP 备案）、首次开通顺序（含 `suite_ticket` 依赖与引导期死锁的破法）、**用户 / 开发 / 部署三角色手册**、错误文案速查、与自建应用共存的语义变化 |
 | `wecom-internal-app.md` | 企业微信**企业内部应用（自建应用）**集成：5 项 `wecom_corp_*` 凭据 + 2 项复用、回调只填「通讯录同步」一处、「验证并接入」四步自检、可见范围与可信 IP/域名、单企业私有化的边界（自建应用收不到成员变更事件）、共存配置、故障速查 |
 | `wecom-multi-corp-links.md` | **平台运维 / 服务商运营**：一套部署服务 N 家企业的**专属登录链接运维清单**（方案一，运维零代码改动）——前置检查、逐企业接入 6 步、链接格式与参数、员工四入口、逐企业验收打勾、故障速查、日常运维；含企微工作台内早跳透传 `corp`/`agent` 的修复说明 |
+| `wecom-customer-reauth-guide.md` | **客户企业微信管理员（可直接转发）**：站点重新部署后的**重新授权与数据恢复操作单**——服务商填写信息区、重新授权（管理员授权 / 可见范围全公司）、首次登录改密、组织架构同步、员工重新登录、角色权限重配、验收打勾、故障速查 |
 
-> 上表 10 项 + 本文件 `README.md` = 顶层 11 个文件，全部随 cli 包发货。
+> 上表 11 项 + 本文件 `README.md` = 顶层 12 个文件，全部随 cli 包发货。
 > `ojm init` 第 4b 步**只分发其中 6 个**给业务工程：`SKILL.md` / `manual.md` / `README.md` /
 > `wecom-daikaifa.md` / `wecom-internal-app.md` / `publish-walkthrough.md`。
-> 其余 5 个（`framework-dev.md`、`menu-rules.md`、`module-dev-and-cdn-playground.md`、
-> `sql-builder-missing-capabilities-pr.md`、`wecom-multi-corp-links.md`）是框架贡献者或专题材料，只在 cli 包内可取。
+> 其余 6 个（`framework-dev.md`、`menu-rules.md`、`module-dev-and-cdn-playground.md`、
+> `sql-builder-missing-capabilities-pr.md`、`wecom-multi-corp-links.md`、
+> `wecom-customer-reauth-guide.md`）是框架贡献者或专题材料，只在 cli 包内可取。
 
 后端 handler 本身的写法（`json` 信封、`db` 查询、`manifest.yaml`、`oj test`）、
 站点挂载（`mounts`）、密钥信封（`secrets`）、vars、cors、schema 校验、broker/tasks/oidc/ws 等
