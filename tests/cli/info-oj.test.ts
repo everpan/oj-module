@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildCli } from "../../packages/cli/src/cli";
@@ -70,7 +71,7 @@ describe("usage 契约", () => {
 
 describe("ojm info 后端段（桩注入）", () => {
 	it("版本行 + 证书行 + port/base 齐全", async () => {
-		const root = fs.mkdtempSync(path.join(path.dirname(PROJECT_ROOT), ".tmp-info-fx-"));
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "ojm-info-fx-"));
 		try {
 			fs.mkdirSync(path.join(root, "api"), { recursive: true });
 			fs.writeFileSync(path.join(root, "api/config.yaml"), "server:\n  host: 127.0.0.1\n  port: 9778\n  base: /api\n");
@@ -95,7 +96,7 @@ describe("ojm info 后端段（桩注入）", () => {
 	});
 
 	it("bin/oj 不可探测 → 仅告警不失败", async () => {
-		const root = fs.mkdtempSync(path.join(path.dirname(PROJECT_ROOT), ".tmp-info-fx-"));
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "ojm-info-fx-"));
 		try {
 			fs.mkdirSync(path.join(root, "bin"), { recursive: true });
 			fs.writeFileSync(path.join(root, "bin/oj"), "not-executable");
@@ -110,7 +111,7 @@ describe("ojm info 后端段（桩注入）", () => {
 	});
 
 	it("服务未运行（health 为 null）→ 证书行提示无法探测，port/base 仍输出", async () => {
-		const root = fs.mkdtempSync(path.join(path.dirname(PROJECT_ROOT), ".tmp-info-fx-"));
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "ojm-info-fx-"));
 		try {
 			fs.mkdirSync(path.join(root, "api"), { recursive: true });
 			fs.writeFileSync(path.join(root, "api/config.yaml"), "server:\n  host: 127.0.0.1\n  port: 9778\n  base: /api\n");
@@ -127,7 +128,7 @@ describe("ojm info 后端段（桩注入）", () => {
 	});
 
 	it("安装标记低于最低版本 → 提示 ojm vendor 升级（oj 启动子命令门禁）", async () => {
-		const root = fs.mkdtempSync(path.join(path.dirname(PROJECT_ROOT), ".tmp-info-fx-"));
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "ojm-info-fx-"));
 		try {
 			fs.mkdirSync(path.join(root, "bin"), { recursive: true });
 			fs.writeFileSync(path.join(root, "bin/oj"), "#!/bin/sh\necho oj\n");
@@ -146,7 +147,7 @@ describe("ojm info 后端段（桩注入）", () => {
 	});
 
 	it("安装标记与现场版本不一致 → drift 告警（ojm vendor --force 提示）", async () => {
-		const root = fs.mkdtempSync(path.join(path.dirname(PROJECT_ROOT), ".tmp-info-fx-"));
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "ojm-info-fx-"));
 		try {
 			fs.mkdirSync(path.join(root, "bin"), { recursive: true });
 			fs.writeFileSync(path.join(root, "bin/oj"), "#!/bin/sh\necho oj\n");
@@ -164,7 +165,7 @@ describe("ojm info 后端段（桩注入）", () => {
 	});
 
 	it("f4：bin/oj 存在但 config.yaml 缺失 → 默认真实现不崩溃，证书行无法探测", async () => {
-		const root = fs.mkdtempSync(path.join(path.dirname(PROJECT_ROOT), ".tmp-info-fx-"));
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "ojm-info-fx-"));
 		try {
 			fs.mkdirSync(path.join(root, "bin"), { recursive: true });
 			fs.writeFileSync(path.join(root, "bin/oj"), "not-executable");
