@@ -289,14 +289,12 @@ describe("initProject", () => {
 		// 后端构建产物落点仍是扁平根 dist/api（layout.apiDist 恒为 <project>/dist/api）
 		expect(fs.existsSync(path.join(dest, "api"))).toBe(false);
 
-		// 工程根：config.yaml + config/ + 种子 + 后端 tsconfig / vitest / tests / 豁免清单
+		// 工程根：config.yaml + config/ + 后端 tsconfig / vitest / tests / 豁免清单
 		for (const rel of [
 			"config.yaml",
 			"config/private.pem",
 			"config/public.pem",
 			"config/cert.jws",
-			"seed.mysql.sql",
-			"seed.pg.sql",
 			"vitest.config.ts",
 			"src/tsconfig.json",
 			"tests",

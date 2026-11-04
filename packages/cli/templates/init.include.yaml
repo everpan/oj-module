@@ -40,11 +40,11 @@ include:
   - src/styles.css
   # 后端 typecheck 工程（package.json 的 typecheck:api 指向它）；只收后端、排除 web
   - src/tsconfig.json
-  # —— 后端：配置 / 种子 / 测试 / 默认模块（模块源码在 src/app/api/<模块>）——
+  # —— 后端：配置 / 测试 / 默认模块（模块源码在 src/app/api/<模块>）——
+  # 方言 seed 不在这里列：它们是模块资产（`src/app/api/<模块>/seed.<dialect>.sql`），
+  # 根级副本会与模块内那份漂移（历史上一份只含 4 条设置、且 mysql 侧裸写保留字列），已删除。
   - config.yaml
   - .ojm-api-exempt.json
-  - seed.mysql.sql
-  - seed.pg.sql
   - vitest.config.ts
   # —— tests 逐条白名单（不收 tests/ 整目录）——
   # 业务工程只拷「纯 node:sqlite 夹具、零 cli 包环境假设」的测试。以下 6 个不分发

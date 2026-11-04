@@ -65,7 +65,6 @@ my-books/
 ├── openapi.json           # 契约唯一事实源（oj openapi 产物，勿手改）
 ├── .ojm-api-exempt.json   # 契约对账豁免清单（ojm api --check 用）
 ├── web.config.ts          # 前端配置（可选覆盖：加载顺序/siteBase/htmlTransform）；模块清单不靠它
-├── seed.mysql.sql / seed.pg.sql  # 方言种子（部署到 mysql/pg 用；sqlite 用模块内 seed.sql）
 ├── .claude/skills/{oj-api-dev,ojm-module-dev}/   # 后端 / 模块开发手册（按需读）
 ├── src/
 │   ├── app/               # 整个应用：api 下多个后端模块 + web 前端多根模块

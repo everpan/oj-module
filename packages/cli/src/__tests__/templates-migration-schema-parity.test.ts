@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
@@ -128,6 +128,63 @@ function insertCountsByTable(sql: string): Map<string, number> {
 		out.set(table, (out.get(table) ?? 0) + 1);
 	}
 	return out;
+}
+
+/** 模板内所有 `seed*.sql`（跳过依赖与产物目录），返回相对模板根的路径 */
+function seedSqlFiles(): string[] {
+	const out: string[] = [];
+	const skip = new Set(["node_modules", "dist", "compress-cache", "logs", ".git"]);
+	const visit = (dir: string) => {
+		for (const entry of readdirSync(dir)) {
+			if (skip.has(entry))
+				continue;
+			const full = join(dir, entry);
+			if (statSync(full).isDirectory())
+				visit(full);
+			else if (/^seed.*\.sql$/i.test(entry))
+				out.push(relative(templatesRoot, full));
+		}
+	};
+	visit(templatesRoot);
+	return out;
+}
+
+/**
+ * mysql 保留字里最容易被当成列名的一批。不求穷举——目标是把「裸 key」这类**必然 1064**
+ * 的写法挡在模板里，而不是当 SQL 解析器（真语法错误由真库演练兜底）。
+ */
+const MYSQL_RESERVED = new Set([
+	"key",
+	"group",
+	"order",
+	"desc",
+	"index",
+	"rank",
+	"range",
+	"system",
+	"interval",
+	"condition",
+	"references",
+	"usage",
+	"values",
+	"table",
+]);
+
+/** `INSERT ... (列清单)` 里裸写的保留字（反引号 / 双引号包起来的合法，跳过） */
+function bareReservedColumns(sql: string): string[] {
+	const hits: string[] = [];
+	const re = /\bINSERT\s+(?:OR\s+IGNORE\s+|IGNORE\s+)?INTO\s+[`"\w]+\s*\(([^)]*)\)/gi;
+	for (const m of executableSql(sql).matchAll(re)) {
+		for (const raw of m[1].split(",")) {
+			const col = raw.trim();
+			if (!col || col.startsWith("`") || col.startsWith("\""))
+				continue;
+			const name = col.split(".").pop()!.replace(/\W/g, "").toLowerCase();
+			if (MYSQL_RESERVED.has(name))
+				hits.push(col);
+		}
+	}
+	return hits;
 }
 
 /** 解析单文件里的 `CREATE TABLE` → 表 → 列 → 首词类型（去掉引号与长度参数） */
@@ -450,5 +507,34 @@ describe("templates 迁移 ↔ schema.yaml / manifest.yaml 结构一致", () => 
 		}
 
 		expect(violations).toEqual([]);
+	});
+
+	/**
+	 * 2026-11-05 实踩：模板根曾有 `seed.mysql.sql` / `seed.pg.sql` 的旧副本——只有 4 条
+	 * sys_setting（模块内真件 22 条），且 mysql 那份把保留字 `key` 裸写，照文档部署必
+	 * `1064 near 'key, module, ...'`。它既不在 m-5/m-6 的扫描范围（只扫 `src/<模块>/`），
+	 * 也没有任何执行路径天天跑它，坏了大半年没人发现。这条守卫钉两件事：
+	 *   1) `seed*.sql` 只允许活在模块目录（根级/别处出现即违规，从源头禁掉第二份真源）；
+	 *   2) mysql 方言件的 INSERT 列名里，保留字必须反引号（裸写 = 该方言必然语法错）。
+	 */
+	it("m-8 seed*.sql 只活在模块目录，且 mysql 保留字列必须反引号（根级副本会漂移）", () => {
+		const misplaced = seedSqlFiles().filter((rel) => {
+			return !rel.startsWith(join("src", "app", "api") + sep);
+		});
+		expect(misplaced).toEqual([]);
+
+		const unescaped: string[] = [];
+		for (const module of modulesWithApi()) {
+			const file = join(apiRoot, module, "seed.mysql.sql");
+			if (!existsSync(file))
+				continue;
+			for (const col of bareReservedColumns(readFileSync(file, "utf-8")))
+				unescaped.push(`${module}/seed.mysql.sql: 列 ${col} 未转义`);
+		}
+		expect(unescaped).toEqual([]);
+
+		// 反证：检测器对坏样本必须命中（否则这条守卫只是恒绿）
+		expect(bareReservedColumns("INSERT IGNORE INTO t (key, module) VALUES ('a','b')")).toEqual(["key"]);
+		expect(bareReservedColumns("INSERT IGNORE INTO t (`key`, module) VALUES ('a','b')")).toEqual([]);
 	});
 });

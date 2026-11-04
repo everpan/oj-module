@@ -35,7 +35,6 @@
 ├── env.d.ts               # ImportMeta.env 类型补丁
 ├── types/oj-modules.d.ts  # `declare module "#*"` 别名兜底（非模块文件的 ambient 声明）
 ├── .ojm-api-exempt.json
-├── seed.mysql.sql / seed.pg.sql
 ├── vitest.config.ts       # 后端 BDD（include tests/**/*.spec.ts）
 ├── tests/                 # 后端 BDD 测试（node:sqlite 内存库 + 真实迁移建表）
 ├── src/
@@ -204,6 +203,13 @@ src/<模块>/api/<路径...>/api.ts   →   /api/<模块>/<路径...>
 | `schema.yaml` | 声明；加可空列 / 加表 reconcile 能收敛，但**改类型与改名必须走 migrations** |
 
 > `seed.sql` 按 `;` 朴素切分，**注释里不许出现分号字面量**，否则语法错。
+
+> **mysql / pg 部署要自己切方言 seed**：oj 只认字面 `seed.sql`（无方言回落，`src/seed.rs`
+> 里是常量），三方言都会执行它，而 `INSERT OR IGNORE`、未转义的保留字列在 mysql/pg 上直接
+> 1064 → **拒启**。所以方言件按模块存放（`src/app/api/<模块>/seed.mysql.sql` /
+> `seed.pg.sql`，与基础件同表同条数），部署到 mysql/pg 时把要用的那份覆盖成同目录的
+> `seed.sql` 再起服；工程根**不再**有方言 seed 副本（历史上那份只含部分设置、且 mysql 侧
+> 裸写 `key`，已删除）。
 
 > **框架自带 `_platform` 模块的迁移已压平为单条基线**（`0001__baseline.sql` 及
 > `.mysql.sql` / `.pg.sql` 两个方言版）：新工程按基线一次建表，不再有 0002…0018 的增量链。
