@@ -19,27 +19,33 @@
 shell-dist/
 ├── index.html                  # 含构建期注入的 importmap
 ├── versions.json               # 共享依赖实际安装版本矩阵（版本门禁真源）
-└── assets/
-    ├── index-<hash>.js         # 宿主应用（host.tsx 编译产物）
-    ├── runtime.js              # 拷贝自 @oj-module/runtime 的 dist
-    ├── contract.js             # @oj-module/runtime/contract 子路径资产
-    ├── contract-errors.js      # @oj-module/runtime/contract/errors（zod-free）
-    ├── react.js                # 以下为各共享依赖的单入口自包含 ESM
-    ├── react-dom.js
-    ├── react-dom-client.js
-    ├── jsx-runtime.js
-    ├── jsx-dev-runtime.js
-    ├── react-router.js
-    ├── react-router-dom.js
-    ├── react-query.js
-    ├── antd.js
-    ├── icons.js
-    ├── cssinjs.js
-    ├── i18next.js
-    ├── react-i18next.js
-    ├── dayjs.js
-    └── clsx.js
+└── assets/                     # 全部 .js 都是内容寻址命名 <name>.<hash>.js
+    ├── index.<hash>.js         # 宿主应用（host.tsx 编译产物）
+    ├── runtime.<hash>.js       # 拷贝自 @oj-module/runtime 的 dist
+    ├── contract.<hash>.js      # @oj-module/runtime/contract 子路径资产
+    ├── contract-errors.<hash>.js # @oj-module/runtime/contract/errors（zod-free）
+    ├── react.<hash>.js         # 以下为各共享依赖的单入口自包含 ESM
+    ├── react-dom.<hash>.js
+    ├── react-dom-client.<hash>.js
+    ├── jsx-runtime.<hash>.js
+    ├── jsx-dev-runtime.<hash>.js
+    ├── react-router.<hash>.js
+    ├── react-router-dom.<hash>.js
+    ├── react-query.<hash>.js
+    ├── antd.<hash>.js
+    ├── icons.<hash>.js
+    ├── cssinjs.<hash>.js
+    ├── i18next.<hash>.js
+    ├── react-i18next.<hash>.js
+    ├── dayjs.<hash>.js
+    └── clsx.<hash>.js
 ```
+
+哈希段是 10 位 base36，且**强制**同时含数字与字母——因为 `oj serve` ≥ 0.1.116 的
+默认缓存策略按文件名判定：末段 ≥8 位且数字字母都有才发 `immutable, max-age=31536000`，
+否则 `no-cache`（每次开页多一个协商 RTT）。共享资产的内容跨构建稳定，所以名字也稳定
+（浏览器跨版本直接复用）；`runtime.js` 例外——它内嵌 `__APP_INFO__.lastBuildTime`，
+每次构建都会变名。
 
 ## 单例是怎么保证的
 
@@ -48,10 +54,10 @@ shell-dist/
 ```jsonc
 {
   "imports": {
-    "react": "/assets/react.js",
-    "react-dom/client": "/assets/react-dom-client.js",
-    "@oj-module/runtime": "/assets/runtime.js",
-    "antd": "/assets/antd.js"
+    "react": "/assets/react.<hash>.js",
+    "react-dom/client": "/assets/react-dom-client.<hash>.js",
+    "@oj-module/runtime": "/assets/runtime.<hash>.js",
+    "antd": "/assets/antd.<hash>.js"
     // …
   }
 }
@@ -78,7 +84,7 @@ shell-dist/
 pnpm --filter @oj-module/cli build:shell   # 全量构建（含 runtime 完整构建）→ packages/cli/shell-dist/
 ```
 
-`scripts/build.mts` 会先构建 `@oj-module/runtime`（完整：js + d.ts）并把 `runtime.js` 拷进 `assets/`，随后逐个构建共享依赖入口，最后构建宿主并注入 importmap。
+`scripts/build.mts` 会先构建 `@oj-module/runtime`（完整：js + d.ts）并把 `runtime.js` 拷进 `assets/`，随后逐个构建共享依赖入口，最后构建宿主并注入 importmap。共享资产与宿主入口 chunk 在落盘后统一改名为 `<name>.<hash>.js`，importmap / `index.html` 的引用同步改写（见 `hashifySharedAssets` / `hashifyHostEntry`）。
 
 `shell-dist/` 是**随仓库分发的预置产物**（`.gitignore` 中已显式放行），改动宿主源码或升级共享依赖后需要重新构建并提交。
 

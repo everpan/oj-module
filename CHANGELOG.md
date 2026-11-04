@@ -36,6 +36,18 @@
 
 ### Changed
 
+- **共享资产改内容寻址命名（命中 oj serve 的长缓存）**：`shell-dist/assets` 下的共享资产与宿主
+  入口 chunk 从 `/assets/antd.js` 改成 `/assets/antd.<hash>.js`（10 位 base36，且**强制**同时
+  含数字与字母）。触发点：`oj serve` ≥ 0.1.116 的默认缓存策略按**文件名**判定——stem 末段
+  ≥8 位且数字字母都有才发 `public, max-age=31536000, immutable`，否则 `no-cache`。实测升级到
+  0.1.117 后旧名一律 `no-cache`，改名后 **65/65 资产全部 `immutable`**，浏览器跨版本直接复用。
+  哈希刻意不用 base64url：vite 自己的 `index-xZhmujjM.js` 就是全字母，会漏判（实测 no-cache），
+  故宿主入口 chunk 构建后也补一次改名。
+  连带修 `vite.config.ts` 里指向 `shell-dist/assets/pro-components.js` 的别名（硬编码 →
+  按前缀解析）——否则别名指向已改名文件，runtime 源码级测试全线 `Failed to resolve import`。
+  回归：`tests/shell/shell-importmap.test.ts` 新增「assets 下全部 .js 满足 immutable 判定」
+  与「文件名哈希 == 内容哈希」两条，`tests/helpers/paths.ts` 增 `shellAssetPath()`。
+
 - **`@oj-module/runtime` 产物开启压缩**：`packages/runtime/vite.config.ts` 的 `minify: false` →
   `true`（全量压缩，含标识符）。runtime.js 是每个宿主工程都要下载的单份产物，此前不压缩 = 白付
   约 20% gzip：**1155→851KB raw、277→215KB gzip**。本包不发 sourcemap，产物本就不可断点；

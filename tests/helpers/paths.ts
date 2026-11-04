@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import path from "node:path";
 
 /**
@@ -33,3 +34,17 @@ export const TEMPLATE_DIR = path.join(PROJECT_ROOT, "packages/cli/templates");
 
 /** 模板工程构建产物目录（D11 布局：dist/web） */
 export const TEMPLATE_DIST_DIR = path.join(TEMPLATE_DIR, "dist", "web");
+
+/**
+ * shell-dist 里某个共享资产的真实路径。
+ *
+ * 产物已**内容寻址**（`<name>.<hash>.js`，哈希为了命中 oj serve 的 immutable
+ * 缓存判定），所以不能硬编码 `assets/runtime.js`。传逻辑名（如 `runtime`、`antd`）。
+ */
+export function shellAssetPath(base: string): string {
+	const dir = path.join(SHELL_DIST_DIR, "assets");
+	const hit = fs.readdirSync(dir).find(f => f.startsWith(`${base}.`) && f.endsWith(".js"));
+	if (!hit)
+		throw new Error(`${dir} 下找不到 ${base}.<hash>.js——请先 pnpm --filter @oj-module/cli build:shell`);
+	return path.join(dir, hit);
+}

@@ -3,9 +3,14 @@
  *
  * 产物（cli 包根 shell-dist/）：
  *   index.html                  —— importmap 由 cli 的 SHARED_DEPS 单一来源生成（P4.1/P4.3）
- *   assets/<name>.js            —— 各共享依赖的单入口自包含 ESM
- *   assets/index-<hash>.js      —— 宿主应用（host.tsx，external 全部共享依赖）
- *   assets/runtime.js           —— 拷贝自 @oj-module/runtime 的 dist
+ *   assets/<name>.<hash>.js     —— 各共享依赖的单入口自包含 ESM（内容寻址命名）
+ *   assets/index.<hash>.js      —— 宿主应用（host.tsx，external 全部共享依赖）
+ *   assets/runtime.js           —— 拷贝自 @oj-module/runtime 的 dist，随后同样改名为
+ *                                  runtime.<hash>.js
+ *
+ * 为什么带哈希段：oj serve ≥ 0.1.116 的默认缓存策略按文件名判定（末段 ≥8 位且
+ * 数字字母都有 → immutable 一年，否则 no-cache），无哈希名每次请求都要多一个协商
+ * RTT。改名发生在构建末段，importmap 与 index.html 引用同步改写。
  *
  * 关键：每个共享依赖单独打包、相互 external（经 importmap 解析），
  * 从而宿主与模块命中同一份 react / antd / runtime 实例（单例，D5）。
@@ -13,7 +18,7 @@
  */
 
 import { execSync } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { parse, resolve } from "node:path";
 import process from "node:process";
@@ -31,7 +36,14 @@ import {
 	parseDynamicRequires,
 	parseEsmExports,
 } from "../../src/esm-exports";
-import { generateImportmap, generateShellEntries, isPrebuiltDep, SHARED_DEPS } from "../../src/shared-deps";
+import {
+	generateImportmap,
+	generateShellEntries,
+	hashedAssetFileName,
+	isImmutableAssetFileName,
+	isPrebuiltDep,
+	SHARED_DEPS,
+} from "../../src/shared-deps";
 
 import { defaultTrustedOrigins, generateCsp, generateNonce } from "../src/csp";
 
@@ -655,13 +667,73 @@ async function autoGenerateSubpathAssets(base: Record<string, string>): Promise<
 	return map;
 }
 
+/**
+ * 内容寻址改名：共享资产 `<name>.js` → `<name>.<hash>.js`，并同步改写 importmap。
+ *
+ * 时机很关键：必须在**全部**共享资产（含 autoGenerateSubpathAssets 自动补的子路径
+ * 资产）落盘之后、构建宿主之前——宿主构建期注入的 importmap 是只读快照。
+ *
+ * 哈希取产物字节本身（`.map` 不动，故产物尾部 `sourceMappingURL` 仍指向真实文件，
+ * js 字节与哈希严格一一对应）。模块侧只认 importmap，无需任何改动。
+ */
+function hashifySharedAssets(map: Record<string, string>): Record<string, string> {
+	const renamed = new Map<string, string>();
+	for (const file of readdirSync(assetsDir)) {
+		if (!file.endsWith(".js"))
+			continue;
+		const target = hashedAssetFileName(file.slice(0, -3), readFileSync(resolve(assetsDir, file)));
+		// 断言而非静默：oj serve 的 immutable 判定是「末段 ≥8 且数字字母都有」，
+		// 哪天哈希算法被换掉（如换回纯 base64url）这里立刻炸，不会静默退回 no-cache
+		if (!isImmutableAssetFileName(target))
+			throw new Error(`[shell] 资产名 ${target} 不满足 oj serve 的 immutable 判定（末段须 ≥8 位且同时含数字与字母）`);
+		renameSync(resolve(assetsDir, file), resolve(assetsDir, target));
+		renamed.set(`/assets/${file}`, `/assets/${target}`);
+	}
+
+	const out: Record<string, string> = {};
+	const missing: string[] = [];
+	for (const [spec, url] of Object.entries(map)) {
+		out[spec] = renamed.get(url) ?? url;
+		if (!existsSync(resolve(distDir, out[spec].replace(/^\//, ""))))
+			missing.push(`  · ${spec} → ${out[spec]}`);
+	}
+	if (missing.length)
+		throw new Error(`[shell] importmap 指向的资产不存在（改名后未同步）：\n${missing.join("\n")}`);
+	return out;
+}
+
+/**
+ * 宿主入口 chunk 补一次内容寻址。
+ *
+ * vite 自己的哈希是 base64url 8 位，**不保证含数字**——实测 `index-xZhmujjM.js`
+ * 就是全字母，落到 oj serve 的 no-cache 档，每次开页都要多花一个协商 RTT。
+ * 入口 chunk 只被 index.html 引用（无相对导入的子 chunk，构建产物只有一个），
+ * 改名 + 直接替换 html 里的文件名即可。
+ */
+function hashifyHostEntry(): void {
+	const htmlPath = resolve(distDir, "index.html");
+	let html = readFileSync(htmlPath, "utf-8");
+	for (const file of readdirSync(assetsDir)) {
+		if (!file.endsWith(".js") || isImmutableAssetFileName(file))
+			continue;
+		// vite 的产物名形如 `index-xZhmujjM.js`：去掉它那段不合规的哈希再挂我们自己的，
+		// 避免 `index-xZhmujjM.i0kqbxp050.js` 这种双哈希
+		const base = file.slice(0, -3).replace(/-[\w-]{8}$/, "");
+		const target = hashedAssetFileName(base, readFileSync(resolve(assetsDir, file)));
+		renameSync(resolve(assetsDir, file), resolve(assetsDir, target));
+		html = html.split(file).join(target);
+	}
+	writeFileSync(htmlPath, html);
+}
+
 async function buildHost() {
 	console.log("[shell] 构建宿主 host.js + index.html");
+	const importmap = hashifySharedAssets(await autoGenerateSubpathAssets(generateImportmap()));
 	await build({
 		root: shellDir,
 		logLevel: "warn",
 		define: { "process.env.NODE_ENV": JSON.stringify("production") },
-		plugins: [react(), ...injectImportmap(await autoGenerateSubpathAssets(generateImportmap()))],
+		plugins: [react(), ...injectImportmap(importmap)],
 		build: {
 			outDir: distDir,
 			emptyOutDir: false,
@@ -673,6 +745,7 @@ async function buildHost() {
 			minify: false,
 		},
 	});
+	hashifyHostEntry();
 }
 
 /**

@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 /**
  * 共享依赖表 —— 单一常量源（设计文档 §4.3，解决 B11 / B12）。
  *
@@ -182,6 +184,10 @@ export function generateShellEntries(): { name: string, pkg: string }[] {
 /**
  * 由共享表生成 importmap：说明符 → /assets/<asset>.js。
  * baseUrl 供宿主部署在子路径时使用。
+ *
+ * 注意：这里给出的是**逻辑名**。shell 构建落盘时会把每个资产改名成
+ * `<asset>.<hash>.js`（见 `hashedAssetFileName`），importmap 由构建脚本同步改写，
+ * 运行时拿到的仍是 `/assets/<asset>.<hash>.js`。
  */
 export function generateImportmap(baseUrl = ""): Record<string, string> {
 	const map: Record<string, string> = {};
@@ -195,4 +201,38 @@ export function generateImportmap(baseUrl = ""): Record<string, string> {
 
 export function isPrebuiltDep(id: string): boolean {
 	return SHARED_DEPS.some(dep => !dep.bundle && (id === dep.specifier || id.startsWith(`${dep.specifier}/`)));
+}
+
+/**
+ * 共享资产的内容哈希段：10 位 base36，且**保证**同时含数字与字母。
+ *
+ * 为什么必须保证：oj serve ≥ 0.1.116 的默认缓存策略按**文件名**判定
+ * （`serve/src/static_files.rs::default_cache_control`）——文件名 stem 按 `-` `_` `.`
+ * 切段，末段 ≥8 位且同时含数字与字母才发 `public, max-age=31536000, immutable`，
+ * 其余一律 `no-cache`。纯 base36 有十万分之一量级会全数字（vite 的 base64url 更糟：
+ * 8 位全字母约 19%），漏判就白丢一年缓存。这里按「缺哪类补哪类」定长补齐，
+ * 让每个资产 100% 命中长缓存，而不是赌概率。
+ *
+ * 9 位 base36 ≈ 46.5 bit，65 个资产量级碰撞概率可忽略。
+ */
+export function assetHash(content: string | Uint8Array): string {
+	const digest = createHash("sha256").update(content).digest();
+	const body = digest.readBigUInt64BE(0).toString(36).slice(0, 9).padStart(9, "0");
+	// 已有字母 → 补数字；全数字 → 补字母。两类必在其一，补齐另一类即可。
+	return /[a-z]/.test(body) ? `${body}0` : `${body}z`;
+}
+
+/** 内容寻址文件名：`<base>.<hash>.js`（js 与 map 同为 .js 后缀，map 保持原名不动） */
+export function hashedAssetFileName(base: string, content: string | Uint8Array): string {
+	return `${base}.${assetHash(content)}.js`;
+}
+
+/**
+ * 与 oj serve 的 `default_cache_control` 同口径：末段 ≥8 位且数字字母都有 → 可发 immutable。
+ * 构建期用它断言产物名，避免哪天哈希算法换掉后长缓存静默失效。
+ */
+export function isImmutableAssetFileName(fileName: string): boolean {
+	const stem = fileName.replace(/\.[^.]*$/, "");
+	const seg = stem.split(/[-_.]/).pop() ?? "";
+	return seg.length >= 8 && /\d/.test(seg) && /[a-z]/i.test(seg);
 }

@@ -1,5 +1,6 @@
 /// <reference types="vitest/config" />
 
+import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { cleanupSVG, isEmptyColor, parseColors, runSVGO, SVG } from "@iconify/tools";
@@ -19,6 +20,24 @@ import { author, dependencies, license, name, version } from "./package.json";
 // 共享表内说明符一律 external，经注入的 importmap（scripts/inject-importmap.mts）
 // 解析到 shell 已验证的单例资产（react/antd/runtime 单例，D5/D12）。
 import { isSharedDep } from "./packages/cli/src/shared-deps";
+
+/**
+ * shell-dist 里某个共享资产的真实路径。
+ *
+ * 共享资产已内容寻址（`<name>.<hash>.js`，为了命中 oj serve 的 immutable 缓存判定），
+ * 文件名每次内容变化都会变，因此别名必须在配置加载时按前缀解析，不能硬编码。
+ * 未构建 shell-dist 时退回逻辑名（`<name>.js`），保留原有报错信息。
+ */
+function shellAsset(name: string): string {
+	const dir = path.resolve("packages/cli/shell-dist/assets");
+	try {
+		const hit = fs.readdirSync(dir).find(f => f.startsWith(`${name}.`) && f.endsWith(".js"));
+		if (hit)
+			return path.join(dir, hit);
+	}
+	catch {}
+	return path.join(dir, `${name}.js`);
+}
 
 const __APP_INFO__ = {
 	// P6.5 执行中发现：devDependencies 全清单被打进产物等于向攻击者公开
@@ -51,7 +70,9 @@ export default defineConfig({
 			{ find: "@plane/kit", replacement: path.resolve("packages/kit/src/index.ts") },
 			{ find: "#web", replacement: path.resolve("web") },
 			// 见上方 test.deps：让 pro-components 走「已构建」的干净 ESM 资产
-			{ find: /^@ant-design\/pro-.*$/, replacement: path.resolve("packages/cli/shell-dist/assets/pro-components.js") },
+			// 共享资产已内容寻址（`<name>.<hash>.js`），真实文件名每次构建都会变，
+			// 故按前缀解析而不是硬编码（未构建 shell-dist 时退回逻辑名，与旧行为一致）
+			{ find: /^@ant-design\/pro-.*$/, replacement: shellAsset("pro-components") },
 		],
 	},
 	plugins: [

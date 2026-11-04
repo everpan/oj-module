@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { PROJECT_ROOT, TEMPLATE_DIR } from "../helpers/paths";
+import { PROJECT_ROOT, shellAssetPath, TEMPLATE_DIR } from "../helpers/paths";
 
 /**
  * 构建期全局的自包含性（A26）。
@@ -21,7 +21,8 @@ import { PROJECT_ROOT, TEMPLATE_DIR } from "../helpers/paths";
 const RUNTIME_PKG_DIR = path.join(PROJECT_ROOT, "packages/runtime");
 const RUNTIME_VITE_CONFIG = path.join(RUNTIME_PKG_DIR, "vite.config.ts");
 const RUNTIME_DIST_JS = path.join(RUNTIME_PKG_DIR, "dist/runtime.js");
-const SHELL_RUNTIME_JS = path.join(PROJECT_ROOT, "packages/cli/shell-dist/assets/runtime.js");
+// 产物已内容寻址（runtime.<hash>.js），按逻辑名解析真实文件
+const SHELL_RUNTIME_JS = shellAssetPath("runtime");
 
 /** 已知的构建期注入全局：产物里若还留着裸标识符，就是没人注入 */
 const BUILD_TIME_GLOBALS = ["__APP_INFO__"];

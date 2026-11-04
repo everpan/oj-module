@@ -11,8 +11,13 @@ import {
 	parseEsmImports,
 	readShellImportmap,
 } from "../../packages/cli/src/esm-exports";
-import { SHARED_DEPS } from "../../packages/cli/src/shared-deps";
-import { PROJECT_ROOT } from "../helpers/paths";
+import {
+	assetHash,
+	hashedAssetFileName,
+	isImmutableAssetFileName,
+	SHARED_DEPS,
+} from "../../packages/cli/src/shared-deps";
+import { PROJECT_ROOT, shellAssetPath } from "../helpers/paths";
 
 const SHELL_DIST = path.join(PROJECT_ROOT, "packages/cli/shell-dist");
 const RUNTIME_DIST_JS = path.join(PROJECT_ROOT, "packages/runtime/dist/runtime.js");
@@ -49,7 +54,7 @@ describe("shell 产物与 importmap（P4.3 / B11）", () => {
 	});
 
 	it("runtime.js 与 runtime 包 dist 完全一致（sha256）", () => {
-		const shellRuntime = fs.readFileSync(path.join(SHELL_DIST, "assets/runtime.js"));
+		const shellRuntime = fs.readFileSync(shellAssetPath("runtime"));
 		const pkgRuntime = fs.readFileSync(RUNTIME_DIST_JS);
 		const h = (buf: string) => createHash("sha256").update(buf).digest("hex");
 		expect(h(shellRuntime.toString("utf8"))).toBe(h(pkgRuntime.toString("utf8")));
@@ -78,8 +83,8 @@ describe("图标深路径内联（回归守卫）", () => {
 			.filter(spec => spec.startsWith("@ant-design/icons/es/icons/"));
 		expect(iconEntries, "图标深路径应内联进消费方资产，不再单独占 importmap 条目与一次请求").toEqual([]);
 
-		for (const asset of ["antd.js", "pro-components.js"]) {
-			const source = fs.readFileSync(path.join(SHELL_DIST, "assets", asset), "utf-8");
+		for (const asset of ["antd", "pro-components"]) {
+			const source = fs.readFileSync(shellAssetPath(asset), "utf-8");
 			expect(
 				source.includes("@ant-design/icons/es/icons/"),
 				`${asset} 仍残留图标深路径（内联未生效），会退化成每个图标一次请求`,
@@ -88,7 +93,7 @@ describe("图标深路径内联（回归守卫）", () => {
 	});
 
 	it("antd 从父包按名取图标（default 指向具体组件而非通用 Icon 壳）", () => {
-		const source = fs.readFileSync(path.join(SHELL_DIST, "assets/antd.js"), "utf-8");
+		const source = fs.readFileSync(shellAssetPath("antd"), "utf-8");
 		const consumed = parseEsmImports(source)
 			.find(imp => imp.specifier === "@ant-design/icons");
 		expect(consumed, "antd.js 应从 \"@ant-design/icons\" 导入图标").toBeTruthy();
@@ -141,12 +146,48 @@ describe("共享资产可加载性（R14 / A22 / A23）", () => {
 	it("runtime.js 依赖的共享具名导出全部可解析", () => {
 		const importmap = readShellImportmap(SHELL_DIST);
 		// 框架产物是最大的消费方，且 A22 的第一例就是它 import 的 zustand/create
-		const runtimeSource = fs.readFileSync(path.join(SHELL_DIST, "assets/runtime.js"), "utf-8");
+		const runtimeSource = fs.readFileSync(shellAssetPath("runtime"), "utf-8");
 		// 产物已压缩（`from"react"` 无空白），故按词法解析出的说明符比对
 		const consumed = new Set(parseEsmImports(runtimeSource).map(imp => imp.specifier));
 		for (const spec of ["zustand", "react", "react-router", "antd", "react-i18next"]) {
 			expect(importmap[spec], `${spec} 无 importmap 映射`).toBeTruthy();
 			expect(consumed.has(spec), `runtime.js 应消费 ${spec}`).toBe(true);
+		}
+	});
+});
+
+/**
+ * 内容寻址命名（缓存命中率的硬前提）。
+ *
+ * oj serve ≥ 0.1.116 按**文件名**判定 Cache-Control：stem 末段 ≥8 位且同时含数字
+ * 与字母才发 `immutable, max-age=31536000`，否则 `no-cache`（每次开页多一个协商
+ * RTT）。此前共享资产是 `/assets/antd.js` 这类无哈希名 → 全部落 no-cache。
+ * 这里钉两件事：名字必须够格长缓存、名字必须真的由内容算出（不是随机/时间戳，
+ * 否则内容没变也会让用户重下）。
+ */
+describe("共享资产内容寻址（immutable 缓存）", () => {
+	it("assets 下全部 .js 都满足 immutable 判定（含宿主入口 chunk）", () => {
+		const files = fs.readdirSync(path.join(SHELL_DIST, "assets")).filter(f => f.endsWith(".js"));
+		expect(files.length).toBeGreaterThan(50);
+		const bad = files.filter(f => !isImmutableAssetFileName(f));
+		expect(
+			bad,
+			`以下资产名落不进 oj serve 的 immutable 档（末段须 ≥8 位且数字字母都有），会静默退化 no-cache：${bad.join(", ")}`,
+		).toEqual([]);
+	});
+
+	it("importmap 每个值都指向带哈希段的资产，且哈希等于内容哈希", () => {
+		const importmap = readImportmap();
+		for (const [specifier, url] of Object.entries(importmap)) {
+			const match = url.match(/^\/assets\/(.+)\.([0-9a-z]{10})\.js$/);
+			expect(match, `${specifier} → ${url}：importmap 值必须是内容寻址名`).toBeTruthy();
+			const [, base, hash] = match!;
+			const content = fs.readFileSync(path.join(SHELL_DIST, url.replace(/^\//, "")));
+			expect(
+				hashedAssetFileName(base, content),
+				`${specifier} 的文件名与内容对不上（改了产物却复用旧名 = 用户拿到过期缓存）`,
+			).toBe(`${base}.${hash}.js`);
+			expect(assetHash(content)).toBe(hash);
 		}
 	});
 });
