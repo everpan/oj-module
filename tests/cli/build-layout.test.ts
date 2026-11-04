@@ -49,10 +49,39 @@ function makeStubOj(root: string): string {
 	const binDir = path.join(root, "bin");
 	fs.mkdirSync(binDir, { recursive: true });
 	const stub = path.join(binDir, "oj");
-	fs.writeFileSync(
-		stub,
-		`#!/usr/bin/env node\nimport fs from "node:fs";\nfs.writeFileSync(${JSON.stringify(path.join(root, "oj-args.json"))}, JSON.stringify(process.argv.slice(2)));\n`,
-	);
+	fs.writeFileSync(stub, [
+		"#!/usr/bin/env node",
+		"import fs from \"node:fs\";",
+		"import crypto from \"node:crypto\";",
+		"const argv = process.argv.slice(2);",
+		// 只记 build：buildBackend 传 config 时会先走 dev 配置合并链路（secret keygen/seal/open），
+		// 全都记会覆盖掉断言要读的那一条
+		`if (argv[0] === "build") fs.writeFileSync(${JSON.stringify(path.join(root, "oj-args.json"))}, JSON.stringify(argv));`,
+		"if (argv[0] !== \"secret\") process.exit(0);",
+		// 凭据密封桩（与 dev-secrets.test.ts 同款）：keygen 出密钥对，seal 用公钥派生密钥加密
+		"const sub = argv[1];",
+		"if (sub === \"keygen\") {",
+		"\tconst dir = argv[argv.indexOf(\"--out-dir\") + 1];",
+		"\tconst { privateKey, publicKey } = crypto.generateKeyPairSync(\"ed25519\");",
+		"\tfs.writeFileSync(dir + \"/secrets-private.pem\", privateKey.export({ type: \"pkcs8\", format: \"pem\" }));",
+		"\tfs.writeFileSync(dir + \"/secrets-public.pem\", publicKey.export({ type: \"spki\", format: \"pem\" }));",
+		"\tprocess.exit(0);",
+		"}",
+		// 不带 -k 的 open 是 build 前的密封值预检（私钥走 config 的 secrets.private_key_path），视为可解
+		"const kIdx = argv.indexOf(\"-k\");",
+		"if (sub === \"open\" && kIdx === -1) process.exit(0);",
+		"const key = crypto.createHash(\"sha256\").update(fs.readFileSync(argv[kIdx + 1])).digest();",
+		"if (sub === \"seal\") {",
+		"\tconst plain = fs.readFileSync(0, \"utf-8\");",
+		"\tconst nonce = crypto.randomBytes(12);",
+		"\tconst cipher = crypto.createCipheriv(\"aes-256-gcm\", key, nonce);",
+		"\tconst ct = Buffer.concat([cipher.update(plain, \"utf-8\"), cipher.final()]);",
+		"\tprocess.stdout.write(\"ENC[\" + Buffer.concat([nonce, cipher.getAuthTag(), ct]).toString(\"base64\") + \"]\");",
+		"\tprocess.exit(0);",
+		"}",
+		"process.exit(0);",
+		"",
+	].join("\n"));
 	fs.chmodSync(stub, 0o755);
 	fs.mkdirSync(path.join(root, "api/src/web"), { recursive: true });
 	fs.writeFileSync(path.join(root, "api/src/web/manifest.yaml"), "name: \"web\"\nversion: \"0.1.0\"\n");
@@ -151,7 +180,11 @@ describe("buildBackend（oj build 编排，D8）", () => {
 		expect(args).toContain("-c");
 		const cfgFlag = args[args.indexOf("-c") + 1];
 		expect(path.isAbsolute(cfgFlag)).toBe(true);
-		expect(cfgFlag).toBe(configPath);
+		// -c 指向 dev 合并产物（tracked + config.local.yaml，与 config.yaml 同目录），
+		// 不是 tracked 本身：tracked 的 prod 密文在开发机上解不开
+		expect(cfgFlag).toBe(path.join(path.dirname(configPath), ".ojm-tmp-config.yaml"));
+		// 合并产物里 tracked 的内容仍在（只叠加了 dev 覆盖，没丢配置）
+		expect(fs.readFileSync(cfgFlag, "utf-8")).toContain("port: 9778");
 	});
 
 	it("bin/oj 缺失 → 人话报错指向 init 补缺", async () => {
