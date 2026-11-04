@@ -9,6 +9,13 @@
 
 ### Added
 
+- **市场卡片展示方案简介与详细描述**：`GET /_platform/market/index` 每行新增 `summary`
+  （分片条目 `manifest.summary`，C2-04）与 `description`（`manifest.description`，C2-05），
+  与 publisher/license/changelog 同取自最新版条目，缺口/非字符串 → `null`。卡片在版本行上方
+  显示简介（单行）与详细描述（限 3 行，全文进 `title`），详情抽屉展示全文并保留换行；
+  未声明就不占位，不显示「未知」占位符。回归：`market-api.spec.ts` 精确行断言 + 模板 web
+  卡片/详情抽屉各两条用例（声明显示、未声明不占位）。
+
 - **模板 i18n 守卫（回归）**：`tests/cli/template-i18n.test.ts` 静态扫源码与 seed——`t("ns:key")`
   引用的键、seed 里写死的 `ns:key`（内置角色名、设置分组）、`InstallStage` 全部枚举值，都必须在
   `zh-CN` / `en-US` 两份 locale 里同时存在；namespace 列表从 `entry.ts` 的 `i18nNamespaces`
@@ -43,6 +50,12 @@
   **63**（PostgreSQL 标识符上限 63 字节且超长静默截断，MySQL 64 字符，取最严值）。
   `ojm build --bundle` 构建期 fail-fast（缺 prefix / 格式或长度不符 / 表名未带前缀），
   引用式方案只要有 schema.yaml 同样检查。夹具同步改名 `note` → `demo_solution_note`。
+
+- **C2-12c 补第一方保留前缀段**：`schema.yaml` 的 `prefix` 现禁止以 `oj_` / `ojm_` 开头
+  （整段留给 oj 引擎 / ojm CLI，含 `oj_crm_` 之类派生形式），构建期 fail-fast。框架表
+  （`users` / `sys_*` / `wecom_*` 等）保持裸名作为保留的框架命名空间，方案表名一律带
+  自选前缀后与框架表名天然不重叠——无需给框架表再加一轮前缀。回归：`manifest-contract.test.ts`
+  保留段四条 + 合法前缀对照 + 非法格式不重复报，`bundle.test.ts` 构建期一条。
 
 - **devkit 同步到 oj 0.1.118**：`docs/devkit/oj-api-dev/` 快照按「整目录覆盖、逐字节一致」
   刷新——`api-manual` 补「WS 握手走 HTTP/1.1」注 + 限制表新增「入站传输协议（h2c）」行；

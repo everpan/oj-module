@@ -148,7 +148,7 @@ flowchart LR
 | api 段 | — | 纯前端方案可省 | C2-12 |
 | api.module | ⬜ | 存在时必须 `=== name` | C2-12 |
 | api.tables | ⬜ | 与 `schema.yaml` tables 逐一相等 | C2-12a |
-| schema.yaml.prefix | ✅（有表时） | 作者自选：`^[a-z][a-z0-9_]*_$`、≤32 字符；`tables` 每个键以该前缀开头且总长 ≤63（PG 63 字节最紧） | C2-12c |
+| schema.yaml.prefix | ✅（有表时） | 作者自选：`^[a-z][a-z0-9_]*_$`、≤32 字符，且不得以 `oj_` / `ojm_` 开头（第一方保留段）；`tables` 每个键以该前缀开头且总长 ≤63（PG 63 字节最紧） | C2-12c |
 | api.deps | ⬜ | 键匹配 name 正则或 `_platform`；值=范围算子 | C2-12b |
 | **api.prefix** | ⬜ | 默认 `/api/<name>`；显式须 `^\/api\/[a-z][a-z0-9-]{0,63}$`，模块段 ∉ 保留名；占用检测 | C2-13 |
 | web.route_prefix | ⬜ | 默认 `/<name>`；同上 | C2-14 |
@@ -226,7 +226,7 @@ flowchart LR
 
 ### 4.13 市场索引扩展与深检报告（C2-41/42）
 
-`GET /api/_platform/market/index` 的 IndexRow 增补：`available[]`（可下载版本）、`changelog`（透传）、`trust_state`(`trusted`/`untrusted`/`absent`)、`publisher`（= `key_id` 的 `<publisher>` 段）；`operator` 不挂 IndexRow（回落 `market_history`）。
+`GET /api/_platform/market/index` 的 IndexRow 增补：`available[]`（可下载版本）、`changelog`（透传）、`trust_state`(`trusted`/`untrusted`/`absent`)、`publisher`（= `key_id` 的 `<publisher>` 段）、`license`、`summary`（C2-04，卡片单行简介）、`description`（C2-05，卡片正文/详情全文；字段缺失 → `null`）；`operator` 不挂 IndexRow（回落 `market_history`）。
 
 深检 `POST /api/_platform/solutions/verify?name=`（admin 域）返回 `VerifyReport={ok, checks[], advise[]}`；item 结构：`id`(routes/rbac/settings/ledger/i18n/trust) / `severity`(error/warn/info) / `subject`(差异主体，永不含设置值) / `advise_key`(双语可行动 key)。报告落 `.solutions/verify-reports/` 时间序保留 N=10。
 

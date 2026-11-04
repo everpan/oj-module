@@ -822,6 +822,10 @@ interface IndexRow {
 	publisher: string | null
 	/** 最新版许可（manifest license，C2-07 SPDX 简化式；分片条目缺/非字符串 → null） */
 	license: string | null
+	/** 方案简介（manifest summary，C2-04 单行 1..200；分片条目缺/非字符串 → null） */
+	summary: string | null
+	/** 方案详细描述（manifest description，C2-05 ≤2000；分片条目缺/非字符串 → null） */
+	description: string | null
 	/** 本地安装的发布方 key 状态（P2-6 sidecar；未装 → null） */
 	trust_state: "trusted" | "untrusted" | "absent" | null
 	/** 本地安装记录的签名 key id（sidecar archive.key_id；未装/P1 时代条目 → null） */
@@ -853,8 +857,9 @@ async function lastInstallOperatorOf(name: string): Promise<string | null> {
  *
  * 三级化后市场页的拉取形态：1 catalog + catalog 指向的全部分片（去重）——`available`
  * 回滚候选要版本全集，故页面比安装多拉几片；安装侧仍 ≤ 1 catalog + 1 shard（resolveCdn）。
- * 版本条目即 Form B manifest：latest 的 changelog/publisher 直接从分片条目取，不再有
- * 独立的聚合清单拉取。分片拉取/验签失败即 502（REG-CS1：可用性不再压过完整性）。
+ * 版本条目即 Form B manifest：latest 的 changelog/publisher/summary/description 直接从
+ * 分片条目取，不再有独立的聚合清单拉取。分片拉取/验签失败即 502（REG-CS1：可用性不再
+ * 压过完整性）。
  */
 async function indexBody(env: MarketEnv): Promise<IndexRow[]> {
 	// 对账即服务（P1-10 接线③）：市场页刷新即对账时点——锁 ↔ 账本 head 自愈 + enabled 不一致
@@ -908,6 +913,8 @@ async function indexBody(env: MarketEnv): Promise<IndexRow[]> {
 			changelog: m?.changelog ?? null,
 			publisher: typeof m?.author === "string" ? m.author : null,
 			license: typeof m?.license === "string" ? m.license : null,
+			summary: typeof m?.summary === "string" ? m.summary : null,
+			description: typeof m?.description === "string" ? m.description : null,
 			trust_state: side?.trust_state ?? null,
 			key_id: side?.archive?.key_id ?? null,
 			operator: await lastInstallOperatorOf(name),
@@ -925,6 +932,8 @@ async function indexBody(env: MarketEnv): Promise<IndexRow[]> {
 				changelog: null,
 				publisher: null,
 				license: null,
+				summary: null,
+				description: null,
 				trust_state: side.trust_state ?? null,
 				key_id: side.archive?.key_id ?? null,
 				operator: await lastInstallOperatorOf(name),

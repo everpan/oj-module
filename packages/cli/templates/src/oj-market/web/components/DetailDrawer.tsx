@@ -14,7 +14,7 @@ export interface DetailDrawerProps {
 	onRollback: (row: IndexRow) => void
 }
 
-/** 方案详情抽屉：只读展示卡片元信息（含双版本对比）+ 安装/回滚/历史入口 */
+/** 方案详情抽屉：只读展示卡片元信息（含双版本对比）+ 完整简介/描述 + 安装/回滚/历史入口 */
 export function DetailDrawer({ row, open, onClose, canManage = true, onInstall, onHistory, onRollback }: DetailDrawerProps) {
 	const { t } = useTranslation();
 	// 非 superadmin：写操作禁用并解释原因，历史（只读）保持可用。
@@ -38,6 +38,17 @@ export function DetailDrawer({ row, open, onClose, canManage = true, onInstall, 
 						<Descriptions.Item label={t("oj-market:card:upgradable")}>
 							{row.upgradable ? <Tag color="gold">{t("oj-market:card:upgradable")}</Tag> : "-"}
 						</Descriptions.Item>
+						{/* 卡片上的 description 被限行，抽屉给全文（保留换行，长串不撑破抽屉） */}
+						{typeof row.summary === "string" && row.summary.trim() !== "" && (
+							<Descriptions.Item label={t("oj-market:card:summary")}>
+								<span data-testid="detail-summary">{row.summary}</span>
+							</Descriptions.Item>
+						)}
+						{typeof row.description === "string" && row.description.trim() !== "" && (
+							<Descriptions.Item label={t("oj-market:card:description")}>
+								<div data-testid="detail-description" style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{row.description}</div>
+							</Descriptions.Item>
+						)}
 					</Descriptions>
 					<Space style={{ marginTop: 16 }}>
 						<Button type="primary" onClick={() => onInstall(row)} disabled={!canManage} title={manageTip}>

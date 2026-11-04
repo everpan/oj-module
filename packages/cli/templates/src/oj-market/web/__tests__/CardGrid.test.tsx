@@ -73,6 +73,24 @@ describe("cardGrid 卡片网格（BDD）", () => {
 		expect(screen.queryByTestId("card-license-alpha")).toBeNull();
 	});
 
+	it("given 索引带 summary/description When 渲染 Then 卡片显示简介与描述（描述全文进 title 供查看）", () => {
+		const description = "详细描述：提供示例 CRUD、菜单路由与安装/升级/回滚全链路。";
+		renderWithProviders(
+			<CardGrid rows={[{ ...installed, summary: "一句话说清方案做什么", description }]} {...handlers} />,
+			new InMemoryMarketClient(),
+		);
+		expect(screen.getByTestId("card-summary-alpha").textContent).toContain("一句话说清方案做什么");
+		const desc = screen.getByTestId("card-description-alpha");
+		expect(desc.textContent).toContain(description);
+		expect(desc.getAttribute("title")).toBe(description);
+	});
+
+	it("given 索引未声明 summary/description When 渲染 Then 卡片不出现简介/描述块（不显示占位符）", () => {
+		renderWithProviders(<CardGrid rows={[installed]} {...handlers} />, new InMemoryMarketClient());
+		expect(screen.queryByTestId("card-summary-alpha")).toBeNull();
+		expect(screen.queryByTestId("card-description-alpha")).toBeNull();
+	});
+
 	it("given 未安装卡片 When 渲染 Then 安装按钮显示「安装」而非「升级」，且无回滚按钮", () => {
 		renderWithProviders(<CardGrid rows={[notInstalled]} {...handlers} />, new InMemoryMarketClient());
 		expect(screen.getByText("安装")).toBeTruthy();

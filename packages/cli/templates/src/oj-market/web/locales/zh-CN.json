@@ -25,6 +25,8 @@
 		"retry": "重试",
 		"version": "版本",
 		"license": "许可",
+		"summary": "简介",
+		"description": "详细介绍",
 		"latest": "最新",
 		"installed": "已装",
 		"notInstalled": "未安装",

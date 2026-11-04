@@ -331,6 +331,15 @@ describe("buildBundle · 校验先于打包（fail-fast）", () => {
 		await expect(pack()).rejects.toThrow(/C2-12c.*demo_solution_note/);
 	});
 
+	it("c2-12c：prefix 落在第一方保留段 → 构建期拒绝", async () => {
+		const m = readManifest();
+		m.api.tables = ["oj_note"];
+		writeManifest(m);
+		const schemaPath = join(project, "api/src/demo-solution/schema.yaml");
+		writeFileSync(schemaPath, "prefix: oj_\ntables:\n  oj_note: {}\n");
+		await expect(pack()).rejects.toThrow(/C2-12c.*保留段/);
+	});
+
 	it("c2-25：locales 缺引用 key → 构建期 fail-fast", async () => {
 		const m = readManifest();
 		m.roles[0].title_key = "demo-solution:role.absent";

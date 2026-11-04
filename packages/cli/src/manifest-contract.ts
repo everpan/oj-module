@@ -686,6 +686,17 @@ export function checkLocalesComplete(m: unknown, zhText: string, enText: string)
 const TABLE_PREFIX_RE = /^[a-z][a-z0-9_]*_$/;
 
 /**
+ * 第一方保留的表前缀段：oj 引擎 / ojm CLI 的命名空间。
+ *
+ * 框架表（_platform / auth / home / notification 下的 users / sys_* / wecom_* 等）保持裸名，
+ * 是保留的框架命名空间；方案表名一律带作者自选前缀，与框架表名天然不重叠。把 `oj_` / `ojm_`
+ * 整段留给第一方，防止方案先占用、日后框架想用时反被占（S002 归属图以表名为全局主键）。
+ * 按「段」保留（startsWith），不只禁精确值——整个命名空间都归第一方。
+ * 注：下划线开头的 `_oj_`（oj 内建账本 `_oj_migrations`）本就不满足 TABLE_PREFIX_RE，无需列举。
+ */
+const RESERVED_TABLE_PREFIX_SEGMENTS = ["oj_", "ojm_"];
+
+/**
  * 跨库可移植的表名上限：PostgreSQL 标识符上限 63 **字节**（NAMEDATALEN-1），
  * MySQL 是 64 字符、SQLite 无实际限制——取最严的 63。表名字符集限定 ASCII，
  * 字符数 = 字节数，因此 63 字符在三种库上都安全。
@@ -729,6 +740,12 @@ export function checkSchemaTablePrefix(schemaYamlText: string): string[] {
 	}
 	if (typeof prefix === "string" && prefix.length > MAX_PREFIX_LEN) {
 		out.push(v("C2-12c", `schema.yaml 的 prefix「${prefix}」长 ${prefix.length} 字符，超过上限 ${MAX_PREFIX_LEN}——表名总长须 ≤${MAX_TABLE_NAME_LEN}，前缀过长会吃掉表名可用空间；请改用更短的方案前缀（如 crm_）`));
+	}
+	if (typeof prefix === "string" && TABLE_PREFIX_RE.test(prefix)) {
+		const seg = RESERVED_TABLE_PREFIX_SEGMENTS.find(s => prefix.startsWith(s));
+		if (seg !== undefined) {
+			out.push(v("C2-12c", `schema.yaml 的 prefix「${prefix}」落在第一方保留段「${seg}*」——oj 引擎 / ojm CLI 的表命名空间由框架独占，方案不得占用，请改用自有前缀（如 crm_、acme_）`));
+		}
 	}
 
 	if (typeof prefix === "string" && prefix !== "") {

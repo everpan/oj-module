@@ -17,7 +17,9 @@ export interface CardItemProps {
 }
 
 /**
- * 单张方案卡片：版本/状态标识（enabled/disabled/upgradable）+ 动作按钮。
+ * 单张方案卡片：方案简介/详细描述 + 版本/状态标识（enabled/disabled/upgradable）+ 动作按钮。
+ * 卡片上先展示 summary（单行）与 description（最多 3 行，完整文案见详情抽屉），让人不必点
+ * 详情就能判断方案提供什么；索引未声明这两项就不占位（与 license 同口径）。
  * 双版本展示（P1-15b）：已装且可升级时并列「已装 installed → 最新 latest」（upgradable 对比），
  * 否则单版本。已装方案提供回滚入口（RollbackDialog 选旧版降级安装）。
  */
@@ -44,6 +46,35 @@ export function CardItem({ row, busy, canManage = true, onInstall, onEnableToggl
 				</Space>
 			)}
 		>
+			{/* 方案「提供什么」：summary 单行、description 限 3 行；title 与详情抽屉给全文 */}
+			{typeof row.summary === "string" && row.summary.trim() !== "" && (
+				<div
+					data-testid={`card-summary-${row.name}`}
+					title={row.summary}
+					style={{ marginBottom: 8, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+				>
+					{row.summary}
+				</div>
+			)}
+			{typeof row.description === "string" && row.description.trim() !== "" && (
+				<div
+					data-testid={`card-description-${row.name}`}
+					title={row.description}
+					style={{
+						marginBottom: 12,
+						color: "var(--oo-text-secondary, #888)",
+						fontSize: 12,
+						lineHeight: 1.6,
+						display: "-webkit-box",
+						WebkitLineClamp: 3,
+						WebkitBoxOrient: "vertical",
+						overflow: "hidden",
+						whiteSpace: "pre-wrap",
+					}}
+				>
+					{row.description}
+				</div>
+			)}
 			<div style={{ minHeight: 40, color: "var(--oo-text-secondary, #888)", marginBottom: 12 }} data-testid={`card-versions-${row.name}`}>
 				{dualVersion
 					? (

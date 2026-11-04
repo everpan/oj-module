@@ -280,6 +280,23 @@ describe("checkSchemaTablePrefix（C2-12c：schema.yaml 表前缀）", () => {
 		const v = checkTablesAgainstSchema(m, "tables:\n  note: {}\n");
 		expect(v[0]).toContain("C2-12c");
 	});
+
+	it("prefix 落在第一方保留段（oj_ / ojm_ 开头）→ C2-12c，整段禁用含派生形式", () => {
+		for (const p of ["oj_", "ojm_", "oj_crm_", "ojm_tools_"]) {
+			const v = checkSchemaTablePrefix(`prefix: ${p}\ntables:\n  ${p}note: {}\n`);
+			expect(v.some(x => x.includes("C2-12c") && x.includes("保留段"))).toBe(true);
+		}
+	});
+
+	it("自有前缀不落在保留段 → 零违规（保留段检查的对照）", () => {
+		expect(checkSchemaTablePrefix("prefix: crm_\ntables:\n  crm_note: {}\n")).toEqual([]);
+	});
+
+	it("_oj_ 因下划线开头只报语法违规，不重复报保留段", () => {
+		const v = checkSchemaTablePrefix("prefix: _oj_\ntables:\n  _oj_note: {}\n");
+		expect(v[0]).toContain("必须匹配");
+		expect(v.every(x => !x.includes("保留段"))).toBe(true);
+	});
 });
 
 describe("checkLocalesComplete（C2-25：构建期缺 key fail-fast）", () => {

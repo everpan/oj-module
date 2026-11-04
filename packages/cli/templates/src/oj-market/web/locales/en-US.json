@@ -25,6 +25,8 @@
 		"retry": "Retry",
 		"version": "Version",
 		"license": "License",
+		"summary": "Summary",
+		"description": "Description",
 		"latest": "Latest",
 		"installed": "Installed",
 		"notInstalled": "Not installed",

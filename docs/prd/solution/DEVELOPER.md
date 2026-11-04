@@ -240,7 +240,9 @@ health: /demo-market/ping
 ### 4.3 schema.yaml 表前缀（C2-12c）
 
 表名在**全库共享**（oj 归属图以表名为主键），两个方案都建 `note` 表就会在安装期
-S002 撞车。方案自己给表名加前缀，把归属编码进名字：
+S002 撞车。方案自己给表名加前缀，把归属编码进名字。第一方框架表（`_platform` / auth /
+home / notification 下的 `users`、`sys_*`、`wecom_*` 等）保持裸名，是**保留的框架命名空间**；
+方案表名一律带前缀，与框架表名天然不重叠，不必给框架表再加前缀。
 
 ```yaml
 # api/src/demo-market/schema.yaml
@@ -256,13 +258,17 @@ tables:
   避免表名被模块名拖到数据库上限之外。
 - 前缀要尽量**全局唯一**（建议带厂商/方案标识）；构建期只能保证本包内的表都归这个前缀，
   跨方案的唯一性靠发布约定与市场审核。
+- **禁用第一方保留段**：前缀不得以 `oj_` / `ojm_` 开头（整段留给 oj 引擎 / ojm CLI），
+  `oj_crm_` 之类派生形式同样拒绝；下划线开头的 `_oj_`（oj 内建账本 `_oj_migrations`）
+  本就不符合前缀语法。违规在 `ojm build --bundle` 直接 fail-fast，请改用自有前缀
+  （如 `crm_`、`acme_`）。
 - 长度红线：
   - 表名总长 **≤63**——PostgreSQL 标识符上限 63 字节（`NAMEDATALEN-1`，超长会**静默截断**）、
     MySQL 64 字符、SQLite 无实际限制，取最严的 63 保证跨库可移植；
   - 前缀 **≤32**——给表名留出至少 31 字符的可用空间。
 - `api.tables` 的每一项也必须带同一前缀（它必须与 schema 表集逐一相等）。
-- 执行点：`ojm build --bundle` 的文件面校验；缺 `prefix`、前缀格式/长度不符、表名未带前缀
-  都会 fail-fast（引用式方案只要有 schema.yaml 同样检查）。
+- 执行点：`ojm build --bundle` 的文件面校验；缺 `prefix`、前缀格式/长度不符、落在第一方
+  保留段、表名未带前缀都会 fail-fast（引用式方案只要有 schema.yaml 同样检查）。
 
 ### 4.4 分层红线（OJ-X）
 
