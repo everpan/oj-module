@@ -107,9 +107,20 @@ const ASSET_BUILD_LOG_OVERRIDE: Record<string, "silent"> = { "import-is-undefine
  *   所以 RTT 越大越值钱、带宽越大越不明显。HTTP/1.1 只有 6 条连接，深度 3 的依赖图意味着
  *   后两层要排队等 RTT；预取把「发现」和「传输」拆开，连接一空就有活干。
  */
+/**
+ * 企微内早跳透传到 `/auth/wecom/login` 的白名单参数。
+ *
+ * 多企业部署的专属链接形如 `/login?corp=X&agent=Y`，从企微工作台打开时必须把
+ * 企业代码带到授权入口：后端 `resolveWecomProfile` 只认 `corp` / `agent`，不带时
+ * 会被 `corpSelf()` 吸到本企业（多家档案则直接 400「已授权多家企业」）。
+ * 白名单而非整串透传：`wecom_ticket`（一次性票据）、`redirect`、`error` 等一律不带，
+ * 既不泄漏票据，也不把 SPA 参数塞进企微授权入口。host.tsx 的第二道早跳同口径。
+ */
+const EARLY_JUMP_PARAMS = ["corp", "agent"] as const;
+
 const BOOT_JS = [
 	"(function(){var cs=document.currentScript;",
-	"try{var ua=(navigator.userAgent||\"\").toLowerCase(),p=location.pathname;while(p.length>1&&p.charAt(p.length-1)===\"/\")p=p.slice(0,-1);if(ua.indexOf(\"wxwork\")>=0&&p.slice(-6)===\"/login\"&&!new URLSearchParams(location.search).get(\"wecom_ticket\")){var a=(typeof window.__OJ_API_BASE__===\"string\"&&window.__OJ_API_BASE__.trim())||\"/api\";while(a.length>1&&a.charAt(a.length-1)===\"/\")a=a.slice(0,-1);location.replace(a+\"/auth/wecom/login\");return}}catch(e){}",
+	`try{var ua=(navigator.userAgent||"").toLowerCase(),p=location.pathname;while(p.length>1&&p.charAt(p.length-1)==="/")p=p.slice(0,-1);if(ua.indexOf("wxwork")>=0&&p.slice(-6)==="/login"&&!new URLSearchParams(location.search).get("wecom_ticket")){var a=(typeof window.__OJ_API_BASE__==="string"&&window.__OJ_API_BASE__.trim())||"/api";while(a.length>1&&a.charAt(a.length-1)==="/")a=a.slice(0,-1);var q=new URLSearchParams(location.search),w=new URLSearchParams(),k=${JSON.stringify(EARLY_JUMP_PARAMS)};for(var i=0;i<k.length;i++){var v=(q.get(k[i])||"").trim();if(v)w.set(k[i],v)}var qs=w.toString();location.replace(a+"/auth/wecom/login"+(qs?"?"+qs:""));return}}catch(e){}`,
 	// 预取必须在建 module script 之前：link 先入队，入口模块解析出依赖时它们已在飞
 	"var pl=cs.getAttribute(\"data-ojm-preload\");if(pl){var ps=pl.split(\",\");for(var i=0;i<ps.length;i++){var l=document.createElement(\"link\");l.rel=\"modulepreload\";l.href=ps[i];document.head.appendChild(l);}}",
 	"var s=document.createElement(\"script\");s.type=\"module\";s.src=cs.getAttribute(\"data-ojm-entry\");document.head.appendChild(s);})();",

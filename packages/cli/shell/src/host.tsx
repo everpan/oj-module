@@ -268,6 +268,29 @@ function ensureI18n() {
 	}
 }
 
+/**
+ * 企微内 P0 早跳的目标 URL。只白名单透传 `corp` / `agent`：多企业专属链接
+ * `/login?corp=X&agent=Y` 从工作台打开时，后端 `resolveWecomProfile` 必须拿到
+ * 企业代码才能落到正确租户；不带参数会被 `corpSelf()` 吸到本企业，多家档案则
+ * 直接 400「已授权多家企业」。票据 / redirect / error 等一律不透传。
+ *
+ * 与 index.html 内联 BOOT_JS（build.mts）同口径——那道先执行，这里是兜底：
+ * 内联脚本被 CSP 拦下或抛异常时，模块加载完仍会走到这里。
+ */
+const EARLY_JUMP_PARAMS = ["corp", "agent"] as const;
+
+function wecomEarlyJumpUrl(): string {
+	const src = new URLSearchParams(location.search);
+	const pass = new URLSearchParams();
+	for (const key of EARLY_JUMP_PARAMS) {
+		const v = src.get(key)?.trim();
+		if (v)
+			pass.set(key, v);
+	}
+	const qs = pass.toString();
+	return `${resolveApiBase()}/auth/wecom/login${qs ? `?${qs}` : ""}`;
+}
+
 function Boot() {
 	const [router, setRouter] = useState<ReturnType<typeof createBrowserRouter> | null>(null);
 	const [error, setError] = useState<string | null>(null);
@@ -276,9 +299,10 @@ function Boot() {
 		let cancelled = false;
 		(async () => {
 			try {
-				// P0 企微内早跳：跳过首屏与全部模块加载，直接进入企微授权
+				// P0 企微内早跳：跳过首屏与全部模块加载，直接进入企微授权。
+				// 带 corp/agent 的专属链接要把企业代码透传过去（见 wecomEarlyJumpUrl）。
 				if (typeof navigator !== "undefined" && /wxwork/i.test(navigator.userAgent) && location.pathname.endsWith("/login") && !new URLSearchParams(location.search).get("wecom_ticket")) {
-					window.location.assign(`${resolveApiBase()}/auth/wecom/login`);
+					window.location.assign(wecomEarlyJumpUrl());
 					return;
 				}
 
