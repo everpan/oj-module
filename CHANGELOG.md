@@ -36,6 +36,14 @@
 
 ### Changed
 
+- **schema.yaml 新增方案表前缀（C2-12c）**：方案模块的 `schema.yaml` 必须声明
+  `prefix: <短前缀>_`（作者自选，小写字母开头、≤32 字符，如 `crm_`；不强制等于模块名，
+  长模块名可用短前缀），且每张表名以该前缀开头。表名在全库共享，两个独立方案都建 `note`
+  会在安装期撞 S002；前缀把归属编码进名字后，跨方案撞表被大幅压低。表名总长同步收紧到
+  **63**（PostgreSQL 标识符上限 63 字节且超长静默截断，MySQL 64 字符，取最严值）。
+  `ojm build --bundle` 构建期 fail-fast（缺 prefix / 格式或长度不符 / 表名未带前缀），
+  引用式方案只要有 schema.yaml 同样检查。夹具同步改名 `note` → `demo_solution_note`。
+
 - **devkit 同步到 oj 0.1.118**：`docs/devkit/oj-api-dev/` 快照按「整目录覆盖、逐字节一致」
   刷新——`api-manual` 补「WS 握手走 HTTP/1.1」注 + 限制表新增「入站传输协议（h2c）」行；
   `scenarios` 新增场景 70（h2c 验证命令、`node:http2` 客户端、升级式客户端静默回落 1.1、

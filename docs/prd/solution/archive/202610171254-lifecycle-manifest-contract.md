@@ -114,8 +114,9 @@ archive:           # tgz 内为占位（Form A）；CDN 聚合为真源（Form B
 |---|---|---|---|---|---|
 | api 段 | — | 纯前端方案（无 api 产物）可省略；省略时 §2.3/§2.4 内字段一并缺省 | ✅ | ✅ | C2-12 |
 | api.module | ⬜ | 存在时必须 `=== name`（PRD §5.2「与 name 一致」）；其余值拒绝 | ✅ | ✅ | C2-12 |
-| api.tables | ⬜ | string[]：每项 `^[a-z][a-z0-9_]{0,63}$`；存在时必须与 `api/src/<name>/schema.yaml` 的 tables 键集**逐一相等**（oj 冗余校验同源，不一致 fail-fast） | ✅ 对照 schema.yaml | ✅ 语法（oj 安装后冗余校验兜底） | C2-12a |
+| api.tables | ⬜ | string[]：每项 `^[a-z][a-z0-9_]{0,62}$`（表名 ≤63：PostgreSQL 标识符上限 63 字节、MySQL 64 字符，取最严值）；存在时必须与 `api/src/<name>/schema.yaml` 的 tables 键集**逐一相等**（oj 冗余校验同源，不一致 fail-fast） | ✅ 对照 schema.yaml | ✅ 语法（oj 安装后冗余校验兜底） | C2-12a |
 | api.deps | ⬜ | map：键匹配 C2-01 语法或 `_platform`；值 = §2.2 范围算子语法；依赖存在性由 oj serve S004 检查兜底（安装器不做存在性，避免共享根状态依赖进入纯函数校验） | ✅ 语法 | ✅ 语法 | C2-12b |
+| schema.yaml.prefix | ✅（有表时） | 作者自选表前缀：匹配 `^[a-z][a-z0-9_]*_$` 且 ≤32 字符（给表名留 ≥31 字符）；`tables` 每个键必须以该前缀开头、总长 ≤63。跨方案唯一性靠发布约定（构建期只能验证本包内归属） | ✅ fail-fast（对照 `api/src/<name>/schema.yaml`） | 随包下发；oj 忽略未知顶层键（不参与安装校验） | C2-12c |
 | api.prefix | ⬜ | 默认 `/api/<name>`；显式给出时须匹配 `^\/api\/[a-z][a-z0-9-]{0,63}$`，且去 `/api/` 后的首段 ∉ 保留名（§4.2）；安装期做**占用检测**（已被已装方案/框架内建占用 → 拒装并报占用者） | ✅ 语法+保留名 | ✅ 语法+保留名+占用 | C2-13 |
 | web.route_prefix | ⬜ | 默认 `/<name>`；显式给出时须匹配 `^\/[a-z][a-z0-9-]{0,63}$`，首段 ∉ 保留名；安装期占用检测 | ✅ | ✅ | C2-14 |
 
@@ -318,7 +319,7 @@ oj 0.1.76 `oj/src/manifest.rs:7-22`（`Manifest` struct）+ `:25-47`（`validate
 | C2-03~08 | 身份可选字段 + changelog | ✅ | 仅 summary 非空 | — |
 | C2-09 | peerRuntime 对宿主 versions.json | 语法 | ✅ 强制比对 | — |
 | C2-10/11 | peerOj/Framework/Platform | 语法（P1） | 声明不强制（P1） | P2 meta 握手 |
-| C2-12~14（含 12a/12b） | prefix 语法/保留名；api.tables 对照 schema.yaml；api.deps 语法 | ✅ | ✅ | 占用检测：preflight |
+| C2-12~14（含 12a/12b/12c） | prefix 语法/保留名；api.tables 对照 schema.yaml；schema.yaml 表前缀；api.deps 语法 | ✅ | ✅ | 占用检测：preflight |
 | C2-26 | anonymous 语法/段内收敛/登录禁令 | ✅ | ✅ | config 并入校验：reload 段（R18） |
 | C2-15/16 | RBAC 前缀/悬空引用 | ✅ | ✅ | 注册 upsert：register 段（P1-8） |
 | C2-17~21 | 路由三值/path/title_key | ✅ | ✅ | 双源一致 warn 可配 fail：registering 段（A1） |

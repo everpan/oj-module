@@ -35,7 +35,7 @@ flowchart LR
 
 1. **写契约** `src/<name>/solution.yaml`（推荐模块级位置；工程根 `solution.yaml` 为旧写法仍可）：
    - 身份段：`name` / `version` / `summary`；
-   - `api` 段（纯前端方案可整段省略）：模块名、挂载前缀、`tables`（必须与 `api/src/schema.yaml` 表集一致）、`deps`、`anonymous_paths`；
+   - `api` 段（纯前端方案可整段省略）：模块名、挂载前缀、`tables`（必须与 `api/src/<模块>/schema.yaml` 表集一致，且表名带该文件的 `prefix`）、`deps`、`anonymous_paths`；
    - `web` 段（纯后端方案可整段省略）：`entry` / `css` / `integrity`；
    - `routes`：可由 web 侧 `entry.ts` 的路由 handle 自动派生（单一真源），手工书写仅在未迁移方案兼容；
    - 文件名刻意**不叫 `manifest.yaml`、也绝不放进 `<模块>/api/`**：oj 按 `manifest.yaml` 枚举后端模块，两条枚举必须互不干扰（手册 §1.2）。

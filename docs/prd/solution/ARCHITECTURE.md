@@ -148,6 +148,7 @@ flowchart LR
 | api 段 | — | 纯前端方案可省 | C2-12 |
 | api.module | ⬜ | 存在时必须 `=== name` | C2-12 |
 | api.tables | ⬜ | 与 `schema.yaml` tables 逐一相等 | C2-12a |
+| schema.yaml.prefix | ✅（有表时） | 作者自选：`^[a-z][a-z0-9_]*_$`、≤32 字符；`tables` 每个键以该前缀开头且总长 ≤63（PG 63 字节最紧） | C2-12c |
 | api.deps | ⬜ | 键匹配 name 正则或 `_platform`；值=范围算子 | C2-12b |
 | **api.prefix** | ⬜ | 默认 `/api/<name>`；显式须 `^\/api\/[a-z][a-z0-9-]{0,63}$`，模块段 ∉ 保留名；占用检测 | C2-13 |
 | web.route_prefix | ⬜ | 默认 `/<name>`；同上 | C2-14 |

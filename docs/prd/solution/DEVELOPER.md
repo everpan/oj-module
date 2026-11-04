@@ -146,7 +146,7 @@ my-solution/
 │   ├── config.yaml       # 方案工程自己的 oj 配置（dev/serve 用）
 │   └── src/<name>/       # oj 原生模块（目录名 === 方案名）
 │       ├── manifest.yaml # 七键原生清单（C2-31 分层，作者一般不手写）
-│       ├── schema.yaml   # 声明式表结构
+│       ├── schema.yaml   # 声明式表结构（prefix + tables；C2-12c）
 │       ├── migrations/0001__init.sql
 │       └── ping/api.ts   # 匿名健康探针
 └── web/src/<name>/
@@ -192,7 +192,7 @@ my-solution/
 | summary | 单行非空 | 必须 === 原生清单 `desc`（C2-31 构建期核对） |
 | changelog | **必填**（C2-08，R27） | string[] 每条对应一个用户可感知变更，勿写「修复若干问题」 |
 | peerRuntime | 如 `">=0.1.78"` | P1 安装预检强制，对宿主 `versions.json` 比对，读不到即 fail-closed |
-| api.module/prefix/tables | `api.module: <name>`，`api.tables: [note]` | `tables` 必须 === `schema.yaml` 表 keys |
+| api.module/prefix/tables | `api.module: <name>`，`api.tables: [demo_market_note]` | `tables` 必须 === `schema.yaml` 表 keys；表名必须带 `schema.yaml` 的 `prefix`（C2-12c，见 §4.3） |
 | api.anonymous | 如 `[demo-market/ping]` | 首段必须 === 模块段；health 探针须匿名可达 |
 | web.entry/integrity | `web.entry: modules/<name>/<version>/entry.js` | entry 版本段必须 === version；integrity 须手工回填（见 §5.2） |
 | permissions/roles | code 强制 `<name>.` 前缀 | role name = `<name>.<role>`；权限码不得悬空引用 |
@@ -212,7 +212,7 @@ peerRuntime: ">=0.1.78"
 
 api:
   module: demo-market
-  tables: [note]          # 必须 === schema.yaml 的表 keys
+  tables: [demo_market_note]   # 必须 === schema.yaml 的表 keys，且带方案前缀（C2-12c）
   anonymous: [demo-market/ping]
 
 web:
@@ -237,7 +237,34 @@ settings:
 health: /demo-market/ping
 ```
 
-### 4.3 分层红线（OJ-X）
+### 4.3 schema.yaml 表前缀（C2-12c）
+
+表名在**全库共享**（oj 归属图以表名为主键），两个方案都建 `note` 表就会在安装期
+S002 撞车。方案自己给表名加前缀，把归属编码进名字：
+
+```yaml
+# api/src/demo-market/schema.yaml
+prefix: demo_market_        # 自行选择：小写字母开头、以 `_` 结尾、≤32 字符
+tables:
+  demo_market_note:         # 每张表都必须以 prefix 开头，表名总长 ≤63
+    pk: id
+    columns:
+      id: {type: integer, autoincrement: true}
+```
+
+- 前缀**由作者选择**，不强制等于模块名：长模块名可用 `crm_`、`wecom_` 这类短前缀，
+  避免表名被模块名拖到数据库上限之外。
+- 前缀要尽量**全局唯一**（建议带厂商/方案标识）；构建期只能保证本包内的表都归这个前缀，
+  跨方案的唯一性靠发布约定与市场审核。
+- 长度红线：
+  - 表名总长 **≤63**——PostgreSQL 标识符上限 63 字节（`NAMEDATALEN-1`，超长会**静默截断**）、
+    MySQL 64 字符、SQLite 无实际限制，取最严的 63 保证跨库可移植；
+  - 前缀 **≤32**——给表名留出至少 31 字符的可用空间。
+- `api.tables` 的每一项也必须带同一前缀（它必须与 schema 表集逐一相等）。
+- 执行点：`ojm build --bundle` 的文件面校验；缺 `prefix`、前缀格式/长度不符、表名未带前缀
+  都会 fail-fast（引用式方案只要有 schema.yaml 同样检查）。
+
+### 4.4 分层红线（OJ-X）
 
 - bundle 级 `manifest.yaml`（C2 契约全字段）**≠** 原生级 `api/<name>-<version>/manifest.yaml`（仅 oj 原生七键）。
 - **严禁把 bundle 字段混入原生级文件**——oj 对未知键静默忽略，上游收紧解析即全量炸装。
@@ -287,7 +314,7 @@ ojm build --bundle
 **构建即校验两道闸**（坏清单出不了包）：
 
 1. 契约校验（字段/白名单/保留名/键空间）→ 可读违规清单；
-2. 文件面校验（`tables`↔`schema`、C2-25 `locales` 双语齐备）。
+2. 文件面校验（`tables`↔`schema`、C2-12c 表前缀、C2-25 `locales` 双语齐备）。
 
 确定性打包（C2-32）：固定 mtime=0、成员字典序、权限 0644/0755、无 owner——sha256 即发布完整性锚。
 

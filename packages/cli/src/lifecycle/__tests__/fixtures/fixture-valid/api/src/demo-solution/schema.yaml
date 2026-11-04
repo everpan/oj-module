@@ -1,7 +1,10 @@
 # 声明式表结构（形态对齐 apps/playground-oj/api/src/demo/schema.yaml）。
-# 契约 C2-12：bundle manifest 的 api.tables 必须与本表 keys 一致（oj 冗余校验 fail-fast）。
+# C2-12c：prefix 必须 = 模块名 kebab→snake 再补尾部 `_`（demo-solution → demo_solution_），
+# 且每张表名以它开头——表名全库共享，前缀把归属编码进名字，避免方案之间撞表。
+prefix: demo_solution_
+# 契约 C2-12a：bundle manifest 的 api.tables 必须与本表 keys 一致（oj 冗余校验 fail-fast）。
 tables:
-  note:
+  demo_solution_note:
     pk: id
     columns:
       id: {type: integer, autoincrement: true}

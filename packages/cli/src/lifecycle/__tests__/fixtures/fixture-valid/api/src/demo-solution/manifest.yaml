@@ -6,4 +6,4 @@ name: demo-solution
 desc: manifest.yaml 契约全字段合法夹具
 version: 0.1.0
 tables:
-  - note
+  - demo_solution_note

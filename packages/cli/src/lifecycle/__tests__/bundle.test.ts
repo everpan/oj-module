@@ -53,8 +53,8 @@ function makePrebuiltArtifacts(): void {
 	const apiDist = join(project, "dist/api/demo-solution-0.1.0");
 	mkdirSync(join(apiDist, "ping"), { recursive: true });
 	mkdirSync(join(apiDist, "migrations"), { recursive: true });
-	writeFileSync(join(apiDist, "manifest.yaml"), "name: demo-solution\ndesc: manifest.yaml 契约全字段合法夹具\nversion: 0.1.0\ntables:\n  - note\n");
-	writeFileSync(join(apiDist, "schema.yaml"), "tables:\n  note: {}\n");
+	writeFileSync(join(apiDist, "manifest.yaml"), "name: demo-solution\ndesc: manifest.yaml 契约全字段合法夹具\nversion: 0.1.0\ntables:\n  - demo_solution_note\n");
+	writeFileSync(join(apiDist, "schema.yaml"), "prefix: demo_solution_\ntables:\n  demo_solution_note: {}\n");
 	writeFileSync(join(apiDist, "routes.js"), "export {};\n");
 	writeFileSync(join(apiDist, "ping/api.js"), "export async function ping() {}\n");
 	// 站点构建产物（dist/web/modules/<name>/<version>/entry.js + css，对应 web.entry/css 声明）
@@ -317,9 +317,18 @@ describe("buildBundle · 校验先于打包（fail-fast）", () => {
 
 	it("c2-12a：api.tables 与 schema.yaml 表集不一致 → 构建期拒绝", async () => {
 		const m = readManifest();
-		m.api.tables = ["note", "ghost"];
+		m.api.tables = ["demo_solution_note", "ghost"];
 		writeManifest(m);
 		await expect(pack()).rejects.toThrow(/C2-12a/);
+	});
+
+	it("c2-12c：schema.yaml 缺 prefix / 表名未带方案前缀 → 构建期拒绝", async () => {
+		const schemaPath = join(project, "api/src/demo-solution/schema.yaml");
+		writeFileSync(schemaPath, "tables:\n  demo_solution_note: {}\n");
+		await expect(pack()).rejects.toThrow(/C2-12c.*prefix/);
+
+		writeFileSync(schemaPath, "prefix: demo_solution_\ntables:\n  note: {}\n");
+		await expect(pack()).rejects.toThrow(/C2-12c.*demo_solution_note/);
 	});
 
 	it("c2-25：locales 缺引用 key → 构建期 fail-fast", async () => {

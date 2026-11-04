@@ -297,8 +297,8 @@ export function validateContract(m: unknown): string[] {
 			}
 			if (api.tables !== undefined) {
 				const t = api.tables;
-				if (!Array.isArray(t) || !t.every(x => typeof x === "string" && /^[a-z][a-z0-9_]{0,63}$/.test(x))) {
-					v0.push(v("C2-12a", "api.tables 每项必须匹配 ^[a-z][a-z0-9_]{0,63}$ 的字符串（与 api/src/<name>/schema.yaml 表集逐一相等另行对照）"));
+				if (!Array.isArray(t) || !t.every(x => typeof x === "string" && /^[a-z][a-z0-9_]{0,62}$/.test(x))) {
+					v0.push(v("C2-12a", "api.tables 每项必须匹配 ^[a-z][a-z0-9_]{0,62}$ 的字符串（≤63 字符：PostgreSQL 标识符上限 63 字节、MySQL 64 字符，取最严值；与 api/src/<name>/schema.yaml 表集逐一相等另行对照）"));
 				}
 			}
 			if (api.deps !== undefined) {
@@ -682,30 +682,96 @@ export function checkLocalesComplete(m: unknown, zhText: string, enText: string)
 	return out;
 }
 
+/** C2-12c prefix 语法：小写字母开头，仅小写字母/数字/下划线，且以 `_` 结尾 */
+const TABLE_PREFIX_RE = /^[a-z][a-z0-9_]*_$/;
+
 /**
- * C2-12a api.tables 与 `api/src/<name>/schema.yaml` 表集逐一相等（oj 冗余校验同源，不一致 fail-fast）。
+ * 跨库可移植的表名上限：PostgreSQL 标识符上限 63 **字节**（NAMEDATALEN-1），
+ * MySQL 是 64 字符、SQLite 无实际限制——取最严的 63。表名字符集限定 ASCII，
+ * 字符数 = 字节数，因此 63 字符在三种库上都安全。
+ */
+const MAX_TABLE_NAME_LEN = 63;
+
+/** 前缀上限：给表名留 ≥31 字符（63 - 32），避免前缀把表名的可用空间吃光 */
+const MAX_PREFIX_LEN = 32;
+
+/**
+ * C2-12c `schema.yaml` 的 `prefix` 与逐表前缀校验。
+ *
+ * 表名在**全库共享**（oj 归属图以表名为主键），前缀把模块归属编码进名字，
+ * 让两个独立发布的方案不会因为都叫 `note` 而在安装期 S002 拒启。
+ * 前缀由作者选择（短、可读、尽量全局唯一），不强制由模块名派生——长模块名
+ * 可以用 `crm_` 之类短前缀，避免表名被模块名拖到数据库上限之外。
+ *
+ * 入参为 schema.yaml 文本（fs 在调用方）。YAML 解析失败返回 []——那是 C2-12a
+ * 的判罚面，同一事故不重复报两遍。
+ */
+export function checkSchemaTablePrefix(schemaYamlText: string): string[] {
+	let doc: unknown;
+	try {
+		doc = parse(schemaYamlText);
+	}
+	catch {
+		return [];
+	}
+	if (!isObj(doc) || !isObj(doc.tables))
+		return []; // 缺 tables / 非映射由 C2-12a 报
+
+	const keys = Object.keys(doc.tables);
+	const out: string[] = [];
+	const prefix = doc.prefix;
+
+	if (prefix === undefined) {
+		out.push(v("C2-12c", "schema.yaml 缺 prefix：必须声明表前缀（如 prefix: crm_；小写字母开头、以 _ 结尾、≤32 字符，建议与方案名相关且全局唯一）；表名在全库共享，前缀把归属编码进名字，避免方案之间撞表"));
+	}
+	else if (typeof prefix !== "string" || !TABLE_PREFIX_RE.test(prefix)) {
+		out.push(v("C2-12c", `schema.yaml 的 prefix「${String(prefix)}」必须匹配 ^[a-z][a-z0-9_]*_$（小写字母开头、仅小写字母/数字/下划线、以 _ 结尾）`));
+	}
+	if (typeof prefix === "string" && prefix.length > MAX_PREFIX_LEN) {
+		out.push(v("C2-12c", `schema.yaml 的 prefix「${prefix}」长 ${prefix.length} 字符，超过上限 ${MAX_PREFIX_LEN}——表名总长须 ≤${MAX_TABLE_NAME_LEN}，前缀过长会吃掉表名可用空间；请改用更短的方案前缀（如 crm_）`));
+	}
+
+	if (typeof prefix === "string" && prefix !== "") {
+		const offenders = keys.filter(k => !k.startsWith(prefix));
+		if (offenders.length > 0) {
+			out.push(v("C2-12c", `表名必须以本方案前缀「${prefix}」开头：${offenders.map(k => `「${k}」→「${prefix}${k}」`).join("、")}`));
+		}
+	}
+	// 表名语法/总长（引用式方案没有 api.tables 语法列兜底，这里一并查）
+	const malformed = keys.filter(k => !/^[a-z][a-z0-9_]{0,62}$/.test(k));
+	if (malformed.length > 0) {
+		out.push(v("C2-12c", `schema.yaml 表名必须匹配 ^[a-z][a-z0-9_]{0,62}$（小写字母开头，仅小写字母/数字/下划线，≤${MAX_TABLE_NAME_LEN} 字符——PostgreSQL 上限 63 字节、MySQL 64 字符，取最严值）：${malformed.join("、")}`));
+	}
+	return out;
+}
+
+/**
+ * C2-12a api.tables 与 `api/src/<name>/schema.yaml` 表集逐一相等（oj 冗余校验同源，不一致 fail-fast）；
+ * 同时执行 C2-12c 表前缀校验——引用式方案（api.tables 缺省）只要 schema.yaml 存在也必须带前缀。
  * 入参为 schema.yaml 文本（fs 在调用方）。
  */
 export function checkTablesAgainstSchema(m: unknown, schemaYamlText: string): string[] {
+	const prefixViolations = checkSchemaTablePrefix(schemaYamlText);
+
 	if (!isObj(m) || !isObj(m.api) || m.api.tables === undefined)
-		return [];
+		return prefixViolations;
 	const declared = m.api.tables;
 	if (!Array.isArray(declared))
-		return []; // 语法违规归 validateContract（C2-12a 语法列），此处只对照表集
+		return prefixViolations; // 语法违规归 validateContract（C2-12a 语法列），此处只对照表集
 	let schemaTables: unknown;
 	try {
 		const doc = parse(schemaYamlText);
 		schemaTables = isObj(doc) ? doc.tables : undefined;
 	}
 	catch {
-		return [v("C2-12a", "schema.yaml 不是合法 YAML，无法对照 api.tables 表集")];
+		return [...prefixViolations, v("C2-12a", "schema.yaml 不是合法 YAML，无法对照 api.tables 表集")];
 	}
 	if (!isObj(schemaTables)) {
-		return [v("C2-12a", "schema.yaml 缺 tables 映射，无法对照 api.tables 表集（oj 冗余校验同源）")];
+		return [...prefixViolations, v("C2-12a", "schema.yaml 缺 tables 映射，无法对照 api.tables 表集（oj 冗余校验同源）")];
 	}
 	const schemaKeys = new Set(Object.keys(schemaTables));
 	const declaredKeys = new Set(declared.filter(x => typeof x === "string"));
-	const out: string[] = [];
+	const out: string[] = [...prefixViolations];
 	const missingInSchema = [...declaredKeys].filter(k => !schemaKeys.has(k));
 	const undeclaredInManifest = [...schemaKeys].filter(k => !declaredKeys.has(k));
 	if (missingInSchema.length > 0) {

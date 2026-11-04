@@ -14,7 +14,7 @@ import { parse } from "yaml";
 // 跨端引用（双端一致钉）：被测实现同仓分居两运行时（计划 §1「两运行时取舍」），
 // 测试直接互调，比「两套件各读同一夹具」更强——漂移即本文件红。
 import { preflight } from "../../../templates/src/app/api/_platform/_lifecycle/steps/preflight";
-import { checkLocalesComplete, checkTablesAgainstSchema, parseManifest, RESERVED_NAMES, reservedNameSuggestions, validateContract } from "../../manifest-contract";
+import { checkLocalesComplete, checkSchemaTablePrefix, checkTablesAgainstSchema, parseManifest, RESERVED_NAMES, reservedNameSuggestions, validateContract } from "../../manifest-contract";
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), "fixtures");
 const readText = (p: string) => readFileSync(join(FIXTURES, p), "utf8");
@@ -214,16 +214,71 @@ describe("rEG-CS7 保留名扩项（红队 F5）", () => {
 describe("checkTablesAgainstSchema（C2-12a：构建 ✅ 对照 schema.yaml）", () => {
 	const SCHEMA = readText("fixture-valid/api/src/demo-solution/schema.yaml");
 
-	it("fixture-valid tables [note] 与 schema.yaml 表集一致 → 零违规", () => {
+	it("fixture-valid tables 与 schema.yaml 表集一致 → 零违规", () => {
 		expect(checkTablesAgainstSchema(structuredClone(VALID), SCHEMA)).toEqual([]);
 	});
 
 	it("tables 与 schema.yaml 表集不一致 → C2-12a 且指明差额", () => {
 		const m = structuredClone(VALID);
-		(m.api as any).tables = ["note", "ghost"];
+		(m.api as any).tables = ["demo_solution_note", "ghost"];
 		const v = checkTablesAgainstSchema(m, SCHEMA);
 		expect(v[0]).toContain("C2-12a");
 		expect(v[0]).toContain("ghost");
+	});
+});
+
+describe("checkSchemaTablePrefix（C2-12c：schema.yaml 表前缀）", () => {
+	const SCHEMA = readText("fixture-valid/api/src/demo-solution/schema.yaml");
+
+	it("fixture-valid 声明 prefix 且表名带前缀 → 零违规", () => {
+		expect(checkSchemaTablePrefix(SCHEMA)).toEqual([]);
+	});
+
+	it("允许自选短前缀（长模块名可用 crm_ 之类，不强制由模块名派生）", () => {
+		expect(checkSchemaTablePrefix("prefix: dm_\ntables:\n  dm_note: {}\n")).toEqual([]);
+	});
+
+	it("缺 prefix → C2-12c", () => {
+		const v = checkSchemaTablePrefix("tables:\n  demo_solution_note: {}\n");
+		expect(v[0]).toContain("C2-12c");
+		expect(v[0]).toContain("prefix");
+	});
+
+	it("prefix 不以 _ 结尾 → C2-12c 语法违规", () => {
+		const v = checkSchemaTablePrefix("prefix: demo_solution\ntables:\n  demo_solution_note: {}\n");
+		expect(v[0]).toContain("C2-12c");
+		expect(v[0]).toContain("_ 结尾");
+	});
+
+	it("prefix 超过 32 字符 → C2-12c（吃掉表名可用空间）", () => {
+		const long = `${"a".repeat(33)}_`;
+		const v = checkSchemaTablePrefix(`prefix: ${long}\ntables:\n  ${long}note: {}\n`);
+		expect(v[0]).toContain("C2-12c");
+		expect(v[0]).toContain("超过上限 32");
+	});
+
+	it("表名未带前缀 → C2-12c 并给出改名建议", () => {
+		const v = checkSchemaTablePrefix("prefix: demo_solution_\ntables:\n  note: {}\n");
+		expect(v[0]).toContain("C2-12c");
+		expect(v[0]).toContain("demo_solution_note");
+	});
+
+	it("表名总长边界：63 合法、64 拒绝（PostgreSQL 上限 63 字节）", () => {
+		const p = "ab_";
+		const name63 = `${p}${"c".repeat(60)}`; // 3 + 60 = 63
+		const name64 = `${p}${"c".repeat(61)}`; // 3 + 61 = 64
+		expect(name63.length).toBe(63);
+		expect(checkSchemaTablePrefix(`prefix: ${p}\ntables:\n  ${name63}: {}\n`)).toEqual([]);
+		const v = checkSchemaTablePrefix(`prefix: ${p}\ntables:\n  ${name64}: {}\n`);
+		expect(v[0]).toContain("C2-12c");
+		expect(v[0]).toContain("63 字符");
+	});
+
+	it("引用式方案（api.tables 缺省）也做前缀检查", () => {
+		const m = structuredClone(VALID);
+		delete (m.api as any).tables;
+		const v = checkTablesAgainstSchema(m, "tables:\n  note: {}\n");
+		expect(v[0]).toContain("C2-12c");
 	});
 });
 

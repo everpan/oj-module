@@ -26,7 +26,7 @@ peerPlatform: '>=0.1.0' # C2-11（P2 起对宿主 API_VERSION 强制；本仓 AP
 api:
   module: demo-solution # C2-12（存在时必须 === name）
   prefix: /api/demo-solution # C2-13（默认形态显式写出）
-  tables: [note] # 与 schema.yaml 表集一致（oj 冗余校验同源）
+  tables: [demo_solution_note] # 与 schema.yaml 表集一致（oj 冗余校验同源）；表名带 C2-12c 前缀
   deps: # 键 = 模块名（C2-01 语法或 _platform）；值 = 范围算子语法
     _platform: '>=0.1.0'
   anonymous: # C2-26：首段 === 模块段；无登录语义端点
