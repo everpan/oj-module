@@ -36,6 +36,14 @@
 
 ### Changed
 
+- **`@oj-module/runtime` 产物开启压缩**：`packages/runtime/vite.config.ts` 的 `minify: false` →
+  `true`（全量压缩，含标识符）。runtime.js 是每个宿主工程都要下载的单份产物，此前不压缩 = 白付
+  约 20% gzip：**1155→851KB raw、277→215KB gzip**。本包不发 sourcemap，产物本就不可断点；
+  A22/A23/R14 门禁与测试的裸说明符扫描已走 `es-module-lexer`，压缩不影响判定。
+  回归：`tests/shell/shell-importmap.test.ts`、`tests/cli/shared-deps.test.ts`、
+  `tests/runtime/runtime-declarations.test.ts` 的「行首正则扫 `from "x"`」全部换成词法解析
+  （压缩后是 `from"x"`，无空白）。
+
 - **脚手架首屏瘦身（`ojm init` 产物传输量 −18.7%、请求数 −45%）**：以 gzip 静态服务 +
   Playwright 量化 `/login` 首屏，三项改动从 **115 请求 / 2654KB** 降到 **63 请求 / 2157KB**。
   ① 图标深路径内联：antd 内部逐个默认导入 `@ant-design/icons/es/icons/<Name>`，此前每个图标

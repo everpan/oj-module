@@ -142,9 +142,11 @@ describe("共享资产可加载性（R14 / A22 / A23）", () => {
 		const importmap = readShellImportmap(SHELL_DIST);
 		// 框架产物是最大的消费方，且 A22 的第一例就是它 import 的 zustand/create
 		const runtimeSource = fs.readFileSync(path.join(SHELL_DIST, "assets/runtime.js"), "utf-8");
+		// 产物已压缩（`from"react"` 无空白），故按词法解析出的说明符比对
+		const consumed = new Set(parseEsmImports(runtimeSource).map(imp => imp.specifier));
 		for (const spec of ["zustand", "react", "react-router", "antd", "react-i18next"]) {
 			expect(importmap[spec], `${spec} 无 importmap 映射`).toBeTruthy();
-			expect(runtimeSource, `runtime.js 应消费 ${spec}`).toContain(`from "${spec}"`);
+			expect(consumed.has(spec), `runtime.js 应消费 ${spec}`).toBe(true);
 		}
 	});
 });

@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
+import { parseBareSpecifiers } from "../../packages/cli/src/esm-exports";
 import { PROJECT_ROOT } from "../helpers/paths";
 
 const RUNTIME_DIST = path.join(PROJECT_ROOT, "packages/runtime/dist");
@@ -54,10 +55,8 @@ describe("runtime 包元数据定稿（P3.5）", () => {
 		const peers = new Set(Object.keys(pkg.peerDependencies ?? {}));
 
 		const source = fs.readFileSync(path.join(PROJECT_ROOT, "packages/runtime/dist/runtime.js"), "utf-8");
-		// 仅匹配 import/export 语句（jsdoc 注释文本里的 "#src/..." 示例不算导入）
-		const specifiers = [...source.matchAll(/^\s*(?:import|export)[^;]*?from\s*"([^"]+)"/gm)]
-			.map(m => m[1])
-			.filter(spec => !spec.startsWith(".") && !spec.startsWith("/"));
+		// 词法扫描（es-module-lexer）：产物已压缩，行首正则与双引号假设都不再成立
+		const specifiers = parseBareSpecifiers(source);
 		// bare 说明符归一为包名：react/jsx-runtime → react，@dnd-kit/core 保持
 		// 自引用子路径（@oj-module/runtime/contract/errors）由本包 exports
 		// 提供，不属于 peerDependencies（不能声明自己）

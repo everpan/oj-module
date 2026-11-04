@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
+import { parseBareSpecifiers } from "../../packages/cli/src/esm-exports";
 import { generateImportmap, generateShellEntries, isSharedDep, SHARED_DEPS } from "../../packages/cli/src/shared-deps";
 import { PROJECT_ROOT } from "../helpers/paths";
 
@@ -35,10 +36,8 @@ describe("共享依赖单一常量源（P4.1 / B11）", () => {
 
 	it("runtime 产物的全部裸说明符都能被 importmap 解析（运行期不崩）", () => {
 		const source = fs.readFileSync(path.join(PROJECT_ROOT, "packages/runtime/dist/runtime.js"), "utf-8");
-		// 行首锚定 import/export 语句（P3.5 教训：jsdoc 注释文本是假阳性源）
-		const specifiers = [...source.matchAll(/^\s*(?:import|export)[^;]*?from\s*"([^"]+)"/gm)]
-			.map(m => m[1])
-			.filter(spec => !spec.startsWith(".") && !spec.startsWith("/"));
+		// 词法扫描（es-module-lexer）：runtime 产物已压缩，行首正则不再成立
+		const specifiers = parseBareSpecifiers(source);
 		const importmap = generateImportmap();
 		const unmapped = specifiers.filter(spec => !(spec in importmap));
 		expect(unmapped, `产物裸导入无 importmap 映射：${unmapped.join(", ")}`).toEqual([]);

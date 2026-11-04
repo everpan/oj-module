@@ -88,7 +88,11 @@ export default defineConfig({
 		outDir: "dist",
 		emptyOutDir: true,
 		sourcemap: false,
-		minify: false,
+		// 首屏传输治理（2026-11-04）：runtime.js 是每个宿主工程都要下载的单份产物，
+		// 不压缩 = 白付约 20% gzip（277→221KB）。lib 模式下 vite 只在显式开启时压缩，
+		// 且这里开的是**全量**压缩（含标识符）——本包不发 sourcemap，产物本就不可断点，
+		// 换传输体积更划算。导出面判定走 es-module-lexer，压缩不影响门禁。
+		minify: true,
 		// 偏差 3：单入口 lib 构建，CSS 统一产出 runtime.css（随后由
 		// scripts/inline-css.mjs 内联回 runtime.js）
 		cssCodeSplit: false,
