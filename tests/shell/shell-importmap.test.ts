@@ -8,6 +8,7 @@ import {
 	collectExportGaps,
 	collectUnresolvedSpecifiers,
 	formatExportGap,
+	parseEsmImports,
 	readShellImportmap,
 } from "../../packages/cli/src/esm-exports";
 import { SHARED_DEPS } from "../../packages/cli/src/shared-deps";
@@ -56,33 +57,45 @@ describe("shell 产物与 importmap（P4.3 / B11）", () => {
 });
 
 /**
- * 图标子路径默认导出（回归：tabbar 关闭 × 丢失）。
+ * 图标深路径内联（回归：tabbar 关闭 × 丢失 / 首屏 51 个 0.5KB 小请求）。
  *
  * antd 6 内部用**默认导入**引用图标：
  *   `import CloseOutlined from "@ant-design/icons/es/icons/CloseOutlined"`
- * 若这类深路径被错映射到父包资产 icons.js，default 会退化成 `@ant-design/icons`
- * 的 default —— 通用 `<Icon />` 壳（无 icon prop），渲染出空的
- * `<span class="anticon">`：关闭 ×、Typography 复制、Tabs 更多菜单等一起消失。
+ * 这类深路径曾经每条都映射到独立 shim 资产（每个图标一个文件、一次请求），
+ * 而 shim 必须把 default 修正为同名具名导出 —— 直接用父包 icons.js 兜底会让
+ * default 退化成通用 `<Icon />` 壳（无 icon prop），渲染出空的
+ * `<span class="anticon">`（关闭 ×、Typography 复制、Tabs 更多菜单一起消失）。
  *
- * 守卫：每个图标深路径必须映射到「按名取父包具名导出修正 default」的独立 shim，
- * 其源码须含该图标名（证明 default 指向具名图标组件而非通用壳）。
+ * 现在构建期（inlineIconSubpathDefaults）把深路径内联成
+ * `export { CloseOutlined as default } from "@ant-design/icons"`，
+ * 产物只剩一条具名导入。守卫这两点：深路径不再出现，且图标确实按名取自父包
+ * （default 语义仍指向具体组件，父包实例仍单例）。
  */
-describe("图标子路径默认导出（回归守卫）", () => {
-	it("图标深路径映射到按名修正 default 的 shim，而非父包 icons.js", () => {
+describe("图标深路径内联（回归守卫）", () => {
+	it("importmap 与产物里都不再有图标深路径", () => {
 		const importmap = readImportmap();
-		const iconEntries = Object.entries(importmap)
-			.filter(([spec]) => spec.startsWith("@ant-design/icons/es/icons/"));
-		expect(iconEntries.length, "importmap 应包含 antd 使用的图标深路径").toBeGreaterThan(0);
-		for (const [spec, url] of iconEntries) {
-			expect(url, `${spec} 不得回退到父包 icons.js（其 default 为通用 Icon 壳）`).not.toBe("/assets/icons.js");
-			const file = path.join(SHELL_DIST, url.replace(/^\//, ""));
-			expect(fs.existsSync(file), `${spec} → ${url} 文件缺失`).toBe(true);
-			const name = spec.split("/").pop()!;
+		const iconEntries = Object.keys(importmap)
+			.filter(spec => spec.startsWith("@ant-design/icons/es/icons/"));
+		expect(iconEntries, "图标深路径应内联进消费方资产，不再单独占 importmap 条目与一次请求").toEqual([]);
+
+		for (const asset of ["antd.js", "pro-components.js"]) {
+			const source = fs.readFileSync(path.join(SHELL_DIST, "assets", asset), "utf-8");
 			expect(
-				fs.readFileSync(file, "utf-8"),
-				`${spec} 的 shim 应按名取图标组件修正 default（见 buildIconsSubpathAsset）`,
-			).toContain(`["${name}"]`);
+				source.includes("@ant-design/icons/es/icons/"),
+				`${asset} 仍残留图标深路径（内联未生效），会退化成每个图标一次请求`,
+			).toBe(false);
 		}
+	});
+
+	it("antd 从父包按名取图标（default 指向具体组件而非通用 Icon 壳）", () => {
+		const source = fs.readFileSync(path.join(SHELL_DIST, "assets/antd.js"), "utf-8");
+		const consumed = parseEsmImports(source)
+			.find(imp => imp.specifier === "@ant-design/icons");
+		expect(consumed, "antd.js 应从 \"@ant-design/icons\" 导入图标").toBeTruthy();
+		expect(
+			consumed!.names,
+			"关闭 × 用的 CloseOutlined 必须按名从父包取（通用 Icon 壳会渲染成空的 anticon）",
+		).toContain("CloseOutlined");
 	});
 });
 

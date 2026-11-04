@@ -6,7 +6,6 @@ import { SearchOutlined } from "@ant-design/icons";
 import { useDebounceFn, useKeyPress, useLocalStorageState } from "ahooks";
 import { Divider, Empty, Input, Modal } from "antd";
 
-import { match } from "pinyin-pro";
 import { isValidElement, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
@@ -37,6 +36,20 @@ function transformMenuToFlatMenu(menus: MenuItemType[], flatMap: MenuItemType[] 
 }
 
 const searchHistoryLocalStorageKey = `__search-history-${location.hostname}__`;
+
+/**
+ * pinyin-pro 按需加载（2026-11-04 首屏体积治理）。
+ *
+ * 它只在「用户真的敲了搜索词、且不是纯子串命中」时才用得上，却是首屏 159KB(gz)
+ * 的固定开销。改为首次搜索时动态 import：共享依赖仍在 importmap 里（宿主单例），
+ * 未搜索过的会话一个字节都不下载。模块加载器自身会缓存，故只需在本地记住 match。
+ */
+let pinyinMatch: typeof import("pinyin-pro").match | undefined;
+async function getPinyinMatch() {
+	if (!pinyinMatch)
+		pinyinMatch = (await import("pinyin-pro")).match;
+	return pinyinMatch;
+}
 
 export function GlobalSearch() {
 	const wholeMenus = useAccessStore(state => state.wholeMenus);
@@ -113,14 +126,15 @@ export function GlobalSearch() {
 		scrollSelectedIntoView(activeIndex);
 	}
 
-	const { run: setSearch } = useDebounceFn((e) => {
+	const { run: setSearch } = useDebounceFn(async (e) => {
 		const inputValue = e.target.value?.trim()?.toLocaleLowerCase();
 		if (!inputValue) {
 			setResultOptions([]);
 			setActiveKey("");
 			return;
 		}
-		const matchRoutes = searchMenuList.filter((menuItem) => {
+		// 先按子串筛（不依赖 pinyin-pro），剩下的才需要拼音匹配
+		const candidates = searchMenuList.map((menuItem) => {
 			let labelText = "";
 			if (isValidElement(menuItem.label)) {
 				labelText = (menuItem.label as ReactElement<{ children: string }>).props.children;
@@ -128,11 +142,17 @@ export function GlobalSearch() {
 			if (isString(menuItem.label)) {
 				labelText = menuItem.label;
 			}
-			const translatedLowerCaseLabel = t(labelText)?.toLocaleLowerCase();
-			const containsInputValue = translatedLowerCaseLabel?.includes(inputValue);
-
-			return containsInputValue || match(translatedLowerCaseLabel, inputValue);
+			return { menuItem, label: t(labelText)?.toLocaleLowerCase() };
 		});
+		const bySubstring = candidates.filter(c => c.label?.includes(inputValue));
+		const rest = candidates.filter(c => !c.label?.includes(inputValue));
+		if (rest.length > 0) {
+			const match = await getPinyinMatch();
+			bySubstring.push(...rest.filter(c => match(c.label, inputValue)));
+		}
+		// 保持菜单原顺序（子串命中与拼音命中交错时不因分组而重排）
+		const hitKeys = new Set(bySubstring.map(c => c.menuItem.key));
+		const matchRoutes = searchMenuList.filter(item => hitKeys.has(item.key));
 		const activeName = matchRoutes[0]?.key ?? "";
 		setActiveKey(activeName);
 		setResultOptions(matchRoutes);

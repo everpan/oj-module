@@ -57,6 +57,7 @@
 		"@redocly/cli": "catalog:",
 		"@tailwindcss/vite": "catalog:",
 		"cac": "catalog:",
+		"es-module-lexer": "catalog:",
 		"esbuild": "catalog:",
 		"tailwindcss": "catalog:",
 		"tsx": "catalog:",

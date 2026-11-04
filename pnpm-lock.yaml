@@ -306,6 +306,9 @@ catalogs:
     echarts-for-react:
       specifier: ^3.0.6
       version: 3.0.6
+    es-module-lexer:
+      specifier: ^2.3.2
+      version: 2.3.2
     esbuild:
       specifier: ^0.28.2
       version: 0.28.2
@@ -684,6 +687,9 @@ importers:
       cac:
         specifier: 'catalog:'
         version: 6.7.14
+      es-module-lexer:
+        specifier: 'catalog:'
+        version: 2.3.2
       esbuild:
         specifier: 'catalog:'
         version: 0.28.2

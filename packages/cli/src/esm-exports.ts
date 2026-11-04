@@ -14,13 +14,18 @@
  * 本模块只做「扫描产物文本、回答谁导出/导入了什么」，不含修复逻辑，
  * 供 shell 构建（门禁，失败即中断）与 tests/ 共用，避免两套正则漂移。
  *
- * 解析口径：只认**行首**的 `import` / `export`。esbuild 与 vite 在
- * `minify: false` 下顶层语句一律顶格输出，依赖内部的代码有缩进，
- * 借此把「字符串字面量里恰好写了 import」这类误报压到最低。
+ * 解析口径：`es-module-lexer` 真词法扫描，而非行首正则。
+ * 早先的实现假设「esbuild/vite 在 `minify: false` 下顶层语句一律顶格」，一旦
+ * 共享资产开启压缩（`minifyWhitespace` 会把 `export{a as b}` / `}from"react"`
+ * 挤成一行且行内任意位置），行首锚定的正则全部失配 → 门禁集体误报「零具名导出」
+ * 和「裸说明符未登记」。词法扫描只依赖语法、与压缩/换行无关，故换掉。
+ * 顺带消灭了「字符串字面量里恰好写了 import/from」的误报（原先靠行首锚定压制）。
  */
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
+
+import { ImportType, initSync, parse as lexModule } from "es-module-lexer";
 
 /** 一个 ESM 文件的导出面 */
 export interface EsmExports {
@@ -57,22 +62,6 @@ export interface EsmImport {
 }
 
 /**
- * `export { a, b as c }`（本地导出块）与 `export { a, b as c } from "x"`（再导出）
- * 的公共部分：取出**对外暴露**的名字（`b as c` 取 `c`）。
- */
-function exportedNamesFromClause(clause: string): string[] {
-	return clause
-		.split(",")
-		.map(part => part.trim())
-		.filter(Boolean)
-		.map((part) => {
-			const as = part.split(/\s+as\s+/);
-			return (as[as.length - 1] ?? part).trim();
-		})
-		.filter(name => name !== "default");
-}
-
-/**
  * `import { a, b as c }` 中被**请求**的名字。
  *
  * 注意方向：导入取 `as` **左**边的原名（`b as c` 取 `b`），
@@ -88,51 +77,75 @@ function importedNamesFromClause(clause: string): string[] {
 		.filter(name => name !== "default");
 }
 
+/** wasm 实例化只需一次；按需初始化，避免「只是 import 一下」的消费方付启动开销 */
+let lexReady = false;
+function lex(source: string): ReturnType<typeof lexModule> {
+	if (!lexReady) {
+		initSync();
+		lexReady = true;
+	}
+	return lexModule(source);
+}
+
+/** 语句文本；`ss`/`se` 是 lexer 给出的整条语句区间（含分号） */
+function statementAt(source: string, ss: number, se: number): string {
+	return source.slice(ss, se);
+}
+
+/**
+ * 从一条 `import … from "x"` / `export … from "x"` 语句里分出关键字与子句。
+ *
+ * 语句边界已由 lexer 确定，这里只处理语句内部的切片，因此不再需要行首锚定，
+ * 压缩后（`import{a as b}from"react"`）同样成立。
+ */
+function clauseOf(statement: string): { keyword: "import" | "export", clause: string } | undefined {
+	const head = /^\s*(import|export)\b/.exec(statement);
+	if (!head)
+		return undefined;
+	const rest = statement.slice(head[0].length);
+	// `from` 后必须紧跟说明符字符串，才不会误取子句里的同名标识符
+	const fromIdx = rest.search(/\bfrom\s*["']/);
+	if (fromIdx < 0)
+		return undefined;
+	return { keyword: head[1] as "import" | "export", clause: rest.slice(0, fromIdx) };
+}
+
 /** 解析产物的静态导出面 */
 export function parseEsmExports(source: string): EsmExports {
+	const [imports, exports] = lex(source);
 	const names = new Set<string>();
+	let hasDefault = false;
 
-	// 收集全部 export 子句（本地导出块 + 再导出），具名与 default 两种判定共用
-	const clauses: string[] = [];
-	for (const m of source.matchAll(/^export\s*\{([^}]*)\}(?:\s*from\s*["'][^"']+["'])?\s*(?:;\s*)?$/gm)) {
-		clauses.push(m[1] ?? "");
+	for (const exp of exports) {
+		if (exp.n === "default")
+			hasDefault = true;
+		else
+			names.add(exp.n);
 	}
 
-	for (const clause of clauses) {
-		for (const name of exportedNamesFromClause(clause))
-			names.add(name);
-	}
+	// `export * from "x"` 不产生具名导出（静态不可展开），lexer 也不把它列进 exports，
+	// 只能从「语句以 export 开头、星号之后不带 as」反推。
+	// `export * as ns from "x"` 是有名字的导出（ns），导出面仍可静态确定，不算在内。
+	const hasStarReexport = imports.some((imp) => {
+		if (imp.t !== ImportType.Static || imp.ss < 0)
+			return false;
+		return /^export\s*\*(?!\s*as\b)/.test(statementAt(source, imp.ss, imp.se));
+	});
 
-	// 声明式导出：export const/let/var/function/class/async function
-	for (const m of source.matchAll(/^export\s+(?:declare\s+)?(?:async\s+)?(?:const|let|var|function\*?|class)\s+([A-Za-z_$][\w$]*)/gm)) {
-		names.add(m[1]!);
-	}
-
-	// default 有两副面孔：声明式 `export default …`，或子句里的 `x as default`
-	// （esbuild 产出的正是后者，形如 `rad_shim_xxx_default as default`）
-	const hasDefaultClause = clauses.some(clause => clause
-		.split(",")
-		.map(part => part.trim())
-		.some(part => /\bas\s+default$/.test(part)));
-
-	return {
-		names,
-		hasDefault: /^export\s+default\b/m.test(source) || hasDefaultClause,
-		hasStarReexport: /^export\s*\*/m.test(source),
-	};
+	return { names, hasDefault, hasStarReexport };
 }
 
 /**
  * 解析产物消费了哪些说明符的哪些具名导出。
  *
- * 覆盖三种形态（均为 esbuild / vite 非压缩产物的常见写法）：
- *   `import { a, b as c } from "x"`、`import { a } from "x"`（多行）、
- *   `export { a } from "x"`（再导出同样是消费）。
+ * 覆盖：`import { a, b as c } from "x"`、`import X, { a } from "x"`、
+ * `export { a } from "x"`（再导出同样是消费）。
  *
  * 不覆盖：`import * as ns from "x"`、动态 `import("x")` 后取属性——
  * 这些都拿不到具名绑定，无从校验。
  */
 export function parseEsmImports(source: string): EsmImport[] {
+	const [imports] = lex(source);
 	const found = new Map<string, { names: Set<string>, needsDefault: boolean }>();
 
 	const slot = (specifier: string) => {
@@ -144,25 +157,30 @@ export function parseEsmImports(source: string): EsmImport[] {
 		return entry;
 	};
 
-	// 具名导入（允许跨行）；用 [^;]*? 兜住语句边界，避免跨越到下一条语句
-	for (const m of source.matchAll(/^import\s*\{([^}]*)\}\s*from\s*["']([^"']+)["']/gm)) {
-		const entry = slot(m[2]!);
-		for (const name of importedNamesFromClause(m[1] ?? ""))
-			entry.names.add(name);
-	}
+	for (const imp of imports) {
+		// 动态 import / import.meta 不带静态具名绑定
+		if (imp.t !== ImportType.Static || imp.ss < 0 || !imp.n)
+			continue;
+		const parsed = clauseOf(statementAt(source, imp.ss, imp.se));
+		if (!parsed)
+			continue;
 
-	// 具名再导出
-	for (const m of source.matchAll(/^export\s*\{([^}]*)\}\s*from\s*["']([^"']+)["']/gm)) {
-		const entry = slot(m[2]!);
-		for (const name of importedNamesFromClause(m[1] ?? ""))
-			entry.names.add(name);
-	}
+		const entry = slot(imp.n);
+		const brace = /\{([^}]*)\}/.exec(parsed.clause);
+		if (brace) {
+			for (const name of importedNamesFromClause(brace[1] ?? ""))
+				entry.names.add(name);
+		}
 
-	// default 导入：`import X from "x"`（X 非 { 、非 *）
-	// 不能假定它一定可用——只有 default 的包若 shim 没兜住，浏览器同样是
-	// "does not provide an export named 'default'"
-	for (const m of source.matchAll(/^import\s+([A-Za-z_$][\w$]*)\s+from\s*["']([^"']+)["']/gm)) {
-		slot(m[2]!).needsDefault = true;
+		// default 导入：子句去掉 `{…}` 后仍剩标识符（`X` / `X,`）。
+		// `* as ns` 是命名空间导入，不消费 default。
+		// 不能假定它一定可用——只有 default 的包若 shim 没兜住，浏览器同样是
+		// "does not provide an export named 'default'"。
+		if (parsed.keyword === "import") {
+			const head = parsed.clause.replace(/\{[^}]*\}/g, "").trim();
+			if (head && !head.startsWith("*"))
+				entry.needsDefault = true;
+		}
 	}
 
 	return [...found].map(([specifier, entry]) => ({
@@ -233,18 +251,20 @@ export function collectDynamicRequires(distDir: string): DynamicRequireHit[] {
 }
 
 /**
- * 产物引用的全部裸说明符（三种形态：具名/副作用 import、`import("x")`、再导出）。
+ * 产物引用的全部裸说明符（静态/副作用 import、`import("x")`、再导出）。
  *
  * 浏览器只能解析 importmap 里登记过的裸说明符，漏一个就是
  * `Failed to resolve module specifier` 白屏。
  */
 export function parseBareSpecifiers(source: string): string[] {
+	const [imports] = lex(source);
 	const found = new Set<string>();
-	// 行首锚定，规避字符串字面量里的假阳性（P3.5 教训）
-	const pattern = /^import\s*\(\s*["']([^"']+)["']\s*\)|^(?:import|export)\s[^;]*?from\s*["']([^"']+)["']|^import\s+["']([^"']+)["']/gm;
-	for (const m of source.matchAll(pattern)) {
-		const spec = m[1] ?? m[2] ?? m[3];
-		if (!spec || spec.startsWith(".") || spec.startsWith("/") || spec.startsWith("data:") || spec.startsWith("http"))
+	// lexer 已给出每条语句的说明符原文；非字符串字面量（`import(x)`）为 undefined，跳过
+	for (const imp of imports) {
+		const spec = imp.n;
+		if (!spec)
+			continue;
+		if (spec.startsWith(".") || spec.startsWith("/") || spec.startsWith("data:") || spec.startsWith("http"))
 			continue;
 		found.add(spec);
 	}

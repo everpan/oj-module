@@ -34,6 +34,21 @@
   缺省/非法分页参数回落」，以及真库切片语义（`total` 是全量而非本页条数、末页
   `truncated=false`、越界页 list 为空但 total 不变）。
 
+### Changed
+
+- **脚手架首屏瘦身（`ojm init` 产物传输量 −18.7%、请求数 −45%）**：以 gzip 静态服务 +
+  Playwright 量化 `/login` 首屏，三项改动从 **115 请求 / 2654KB** 降到 **63 请求 / 2157KB**。
+  ① 图标深路径内联：antd 内部逐个默认导入 `@ant-design/icons/es/icons/<Name>`，此前每个图标
+  产出一个 0.5KB shim 资产并单独发一次请求（实测 51 个），现在构建期解析成
+  `export { <Name> as default } from "@ant-design/icons"`，父包仍 external 单例；
+  ② `pinyin-pro`（gz 159KB）由 `global-search` 顶层导入改为命中候选后再 `import()`，首屏不再下载；
+  ③ 共享资产开启 `minifyWhitespace + minifySyntax`（不动标识符，antd gz 691→539KB、
+  pro-components 272→220KB、icons 258→237KB）。
+  随之把 `esm-exports` 的解析从「行首正则」换成 `es-module-lexer` 词法扫描——压缩后
+  `export{a as b}from"x"` 不再顶格，旧口径会让 A22/A23/R14 门禁集体误报。
+  回归：`tests/shell/shell-importmap.test.ts` 改钉「深路径已内联 + antd 按名取 `CloseOutlined`」，
+  全量 `vitest run` 876 例、`test:cli` 615 例与 templates e2e 均通过。
+
 ### Fixed
 
 - **脚手架模板里的漏译（页面整块直出键名）**：`/personal-center/my-profile` 整页（标题、头像、

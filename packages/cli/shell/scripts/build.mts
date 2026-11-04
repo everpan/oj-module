@@ -27,6 +27,7 @@ import {
 	collectExportGaps,
 	collectUnresolvedSpecifiers,
 	formatExportGap,
+	parseBareSpecifiers,
 	parseDynamicRequires,
 	parseEsmExports,
 } from "../../src/esm-exports";
@@ -160,6 +161,45 @@ function makeExternalShared(currentPkg: string): import("esbuild").Plugin {
 	};
 }
 
+/**
+ * 图标深路径内联（首屏请求数治理，2026-11-04）。
+ *
+ * antd 内部用**默认导入**逐个引用图标（`import CloseOutlined from
+ * "@ant-design/icons/es/icons/CloseOutlined"`），这些说明符被 external 后只能靠
+ * importmap 解析——每个图标都要单独产出一个 shim 资产并单独发一次请求：实测
+ * /login 首屏 115 个请求里有 51 个是这样 0.5KB 的小文件（HTTP/1.1 下 6 条连接 →
+ * 9 轮 RTT，100ms 网络下白送近 1 秒）。
+ *
+ * 内联：打包 antd 等资产时把深路径解析成「从父包具名导出的 default」虚拟模块，
+ * 产物里只剩 `import { CloseOutlined } from "@ant-design/icons"`（父包仍 external、
+ * 仍单例），图标文件与 importmap 条目一起消失。
+ *
+ * 跳过当前包自己（打 @ant-design/icons 时不能自引用）。走 deep import 的模块工程
+ * 不受影响：module-build 的 assertResolvableSpecifiers 本就拒绝深路径（importmap
+ * 无前缀通配），约束未变。
+ */
+function inlineIconSubpathDefaults(currentPkg: string): import("esbuild").Plugin {
+	const NS = "ojm-icon-inline";
+	return {
+		name: "ojm-inline-icon-subpath",
+		setup(b) {
+			if (currentPkg === "@ant-design/icons")
+				return;
+			b.onResolve({ filter: /^@ant-design\/icons\/es\/icons\/[^/]+$/ }, args => ({
+				path: args.path,
+				namespace: NS,
+			}));
+			b.onLoad({ filter: /.*/, namespace: NS }, (args) => {
+				const icon = args.path.split("/").pop()!;
+				return {
+					contents: `export { ${icon} as default } from "@ant-design/icons";`,
+					loader: "js",
+				};
+			});
+		},
+	};
+}
+
 /** 把一份入口 shim 打成自包含 ESM 资产 */
 async function bundleShim(name: string, pkg: string, shim: string, banner?: string) {
 	const shimPath = resolve(shellDir, `.ojm-shim-${name}.mjs`);
@@ -173,7 +213,14 @@ async function bundleShim(name: string, pkg: string, shim: string, banner?: stri
 			target: "es2020",
 			// Spike A 坑 2：浏览器顶层求值会抛 process is not defined（风险 R15）
 			define: { "process.env.NODE_ENV": JSON.stringify("production") },
-			plugins: [makeExternalShared(pkg)],
+			plugins: [inlineIconSubpathDefaults(pkg), makeExternalShared(pkg)],
+			// 共享资产是首屏最大的一坨（antd 3.5MB 裸文本），此前完全不压缩：
+			// 空白与语法级压缩即可省下 ~30% gzip（antd 691→539KB / pro-components 272→220KB），
+			// 且**不动标识符** —— ① 调试栈里的函数名仍可读；② esbuild 的 CJS 垫片标记
+			// （`__require` / `__rad_require`）保持原样，A23 门禁的正则仍能命中。
+			// 导出面判定不受影响：esm-exports 已改为 es-module-lexer 词法扫描。
+			minifyWhitespace: true,
+			minifySyntax: true,
 			// @plane/kit、@plane/editor 已解耦出 cli 依赖：构建期从 monorepo 同级包
 			// 目录解析入口（不再经 cli node_modules），其余共享依赖仍走原解析
 			...(planeSiblingEntry(pkg) ? { alias: { [pkg]: planeSiblingEntry(pkg)! } } : {}),
@@ -390,9 +437,6 @@ const SUBPATH_PARENT_REEXPORTS = new Set([
 	"@ant-design/icons",
 ]);
 
-/** 捕获三种裸导入形式：from "…" / import("…") / 副作用 import "…" */
-const BARE_IMPORT_RE = /\bimport\s*\(\s*["']([^"']+)["']\s*\)|\bfrom\s+["']([^"']+)["']|\bimport\s+["']([^"']+)["']/g;
-
 /** 自动生成的子路径资产名统一加 ojm- 前缀，避免与 SHARED_DEPS 显式资产名冲突 */
 function subpathAssetName(spec: string): string {
 	return `ojm-${spec.replace(/[^a-z0-9]+/gi, "-")}`;
@@ -532,10 +576,9 @@ async function autoGenerateSubpathAssets(base: Record<string, string>): Promise<
 			if (!file.endsWith(".js"))
 				continue;
 			const src = readFileSync(resolve(assetsDir, file), "utf-8");
-			BARE_IMPORT_RE.lastIndex = 0;
-			for (let mm = BARE_IMPORT_RE.exec(src); mm; mm = BARE_IMPORT_RE.exec(src)) {
-				const spec = mm[1] ?? mm[2] ?? mm[3];
-				if (!spec || [".", "/", "data:"].some(p => spec.startsWith(p)) || map[spec])
+			// 词法扫描而非 `from "…"` 正则：产物已压缩，`}from"x"` 没有空白且不顶格
+			for (const spec of parseBareSpecifiers(src)) {
+				if (map[spec])
 					continue;
 				// 最长匹配（含子路径）的父共享依赖
 				const parent = [...SHARED_DEPS]
