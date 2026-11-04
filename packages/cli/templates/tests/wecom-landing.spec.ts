@@ -4,8 +4,26 @@
 //   · 落地参数解析必须区分「企微回跳」与「普通打开登录页」（后者不能触发换票）；
 //   · 参数要裁剪、要能容忍少了 tenant（此时沿用本地租户，不是登录失败）；
 //   · 授权入口即使没填企业代码也要跳（后端会回 400 说明缺什么，比前端静默不动好排查）。
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { getWecomBootError, onInit } from "../src/app/web/login/routes";
 import { parseWecomLanding, wecomAuthorizePath } from "../src/app/web/login/wecom";
+
+// p2-C：企微回跳的换票必须发生在首帧 render 之前，且成功后把 URL 改到首页——
+// 否则宿主 shell（无 AuthGuard）会先把登录页画出来再跳，工作台进入时「闪一下」。
+// 这里把 runtime 全部桩掉，只锁 onInit 的编排：谁被调用、顺序、URL 改没改。
+const mocks = vi.hoisted(() => ({
+	login: vi.fn(),
+	setTenant: vi.fn(),
+	registerAuthProvider: vi.fn(),
+	replaceState: vi.fn(),
+}));
+
+vi.mock("@oj-module/runtime", () => ({
+	useAuthStore: { getState: () => ({ login: mocks.login }), subscribe: vi.fn() },
+	useTenantStore: { getState: () => ({ setTenant: mocks.setTenant, clear: vi.fn() }) },
+	getRedirectPath: () => "/home",
+	resolveSiteBase: () => "/",
+}));
 
 describe("p2-A：回跳落地参数解析", () => {
 	it("带齐 ticket 与 tenant → 解析出两者", () => {
@@ -31,6 +49,41 @@ describe("p2-A：回跳落地参数解析", () => {
 		const search = "?wecom_ticket=tk_1&tenant=ww_corp_a&redirect=%2Fsystem%2Fusers";
 		expect(parseWecomLanding(search)).toEqual({ ticket: "tk_1", tenant: "ww_corp_a" });
 		expect(new URLSearchParams(search).get("redirect")).toBe("/system/users");
+	});
+});
+
+describe("p2-C：回跳换票提前到 onInit（登录页不闪）", () => {
+	const ctx = { register: { authProvider: mocks.registerAuthProvider } } as never;
+	const g = globalThis as any;
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		g.window = { location: { search: "" }, history: { replaceState: mocks.replaceState } };
+	});
+
+	it("无 ticket：不换票、不改 URL", async () => {
+		await onInit(ctx);
+		expect(mocks.login).not.toHaveBeenCalled();
+		expect(mocks.replaceState).not.toHaveBeenCalled();
+	});
+
+	it("带 ticket：首帧前换票成功，URL 改到首页（登录页不挂载）", async () => {
+		g.window.location.search = "?wecom_ticket=tk_1&tenant=ww_corp_a";
+		mocks.login.mockResolvedValue(undefined);
+		await onInit(ctx);
+		expect(mocks.setTenant).toHaveBeenCalledWith("ww_corp_a");
+		expect(mocks.login).toHaveBeenCalledTimes(1);
+		expect(mocks.login).toHaveBeenCalledWith(expect.objectContaining({ method: "wecom", ticket: "tk_1" }));
+		expect(mocks.replaceState).toHaveBeenCalledWith(null, "", "/home");
+		expect(getWecomBootError()).toBe("");
+	});
+
+	it("换票失败：错误留给登录页首帧显示表单，不改写 URL", async () => {
+		g.window.location.search = "?wecom_ticket=bad&tenant=ww_corp_a";
+		mocks.login.mockRejectedValue(new Error("登录票据无效或已使用"));
+		await onInit(ctx);
+		expect(mocks.replaceState).not.toHaveBeenCalled();
+		expect(getWecomBootError()).toContain("登录票据无效或已使用");
 	});
 });
 

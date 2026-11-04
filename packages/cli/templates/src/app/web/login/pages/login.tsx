@@ -10,6 +10,7 @@ import { Alert, Button, Form, Input, Tabs, Typography } from "antd";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate } from "react-router";
+import { getWecomBootError } from "../routes";
 import { parseWecomLanding, wecomAuthorizePath } from "../wecom";
 
 type LoginMethod = "local" | "ldap" | "sso" | "wecom";
@@ -52,7 +53,9 @@ export default function LoginPage() {
 	const navigate = useNavigate();
 	const { search } = useLocation();
 	const login = useAuthStore(s => s.login);
-	const [error, setError] = useState<string>();
+	// onInit 阶段换票若失败，首帧直接显示表单与错误（不再闪「认证中」）
+	const bootError = getWecomBootError();
+	const [error, setError] = useState<string | undefined>(bootError || undefined);
 	const [loading, setLoading] = useState(false);
 	const [known, setKnown] = useState(false);
 	const inWecom = typeof navigator !== "undefined" && /wxwork/i.test(navigator.userAgent);
@@ -83,11 +86,11 @@ export default function LoginPage() {
 
 	// 企微 302 落地参数：只在首次渲染解析一次（ticket 一次性，解析结果必须稳定）
 	const [landing] = useState(() => parseWecomLanding(search));
-	const exchangedRef = useRef(false);
 	// 仅「认证中 / 已失败」两态：企微内、回跳落地、或 ?corp 深链即进入认证态，
 	// 直接展示「认证中」，不渲染登录表单；只有认证失败（换票失败 / 企微方式不可用）才回落表单。
+	// 换票成功时 onInit 已把 URL 改到首页，路由首帧就落在 /home，本组件根本不会挂载；bootError 非空即换票失败。
 	const [phase, setPhase] = useState<"auth" | "form">(
-		inWecom || landing || urlCorp ? "auth" : "form",
+		bootError ? "form" : inWecom || landing || urlCorp ? "auth" : "form",
 	);
 
 	useEffect(() => {
@@ -113,28 +116,9 @@ export default function LoginPage() {
 			});
 	}, []);
 
-	useEffect(() => {
-		// 换票只做一次：ticket 单次有效，重复 POST 只会拿到 401 并盖掉真正的错误
-		if (!landing || exchangedRef.current)
-			return;
-		exchangedRef.current = true;
-		void (async () => {
-			setLoading(true);
-			setError(undefined);
-			try {
-				// 租户先落 store：provider 每请求读 getState，服务端会比对「头值 == 票据租户」
-				if (landing.tenant)
-					useTenantStore.getState().setTenant(landing.tenant);
-				await login({ username: "", password: "", method: "wecom", ticket: landing.ticket });
-				navigate(getRedirectPath(search), { replace: true });
-			}
-			catch (e) {
-				setError(e instanceof Error ? e.message : String(e));
-				setPhase("form");
-				setLoading(false);
-			}
-		})();
-	}, [landing, login, navigate, search]);
+	// 企微票据换会话已提前到模块 onInit（见 login/routes.ts::exchangeWecomTicketOnBoot）：
+	// 成功时 URL 已在首帧前改到首页，本页不挂载；失败时 bootError 已在上面落成表单 + 错误态。
+	// 这里不再发第二次 POST——票据一次性，重复换只会拿到 401 并盖掉真正的错误。
 
 	// 企微深链自动入口：带 ?corp= 到达（且非回跳落地 / 非出错）且企微方式可用时，
 	// 直接整页发起授权——「点开即登录」，无需手动点「企业微信」tab。
@@ -142,7 +126,8 @@ export default function LoginPage() {
 	useEffect(() => {
 		const c = new URLSearchParams(search).get("corp")?.trim() ?? "";
 		// 企微内（wxwork UA）从「应用主页」点开即自动发起授权；带 ?corp= 的深链同样自动发起。
-		if ((!c && !inWecom) || landing || autoFiredRef.current)
+		// 换票失败后不再自动重发授权：否则废票 → 重新授权 → 再换一次废票会原地打转。
+		if ((!c && !inWecom) || landing || getWecomBootError() || autoFiredRef.current)
 			return;
 		if (new URLSearchParams(search).get("error")) {
 			setPhase("form");

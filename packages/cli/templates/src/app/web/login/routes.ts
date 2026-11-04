@@ -1,9 +1,59 @@
 import type { AppRouteRecordRaw, ModuleContext } from "@oj-module/runtime";
 
-import { useAuthStore, useTenantStore } from "@oj-module/runtime";
+import { getRedirectPath, resolveSiteBase, useAuthStore, useTenantStore } from "@oj-module/runtime";
 import { lazy } from "react";
 
 import { authProvider } from "./auth-provider";
+import { parseWecomLanding } from "./wecom";
+
+/**
+ * onInit 阶段「企微票据换会话」失败的原因。登录页首帧读一次：非空就直接显示表单与错误，
+ * 不再进「认证中」态，也不再自动重发授权（避免废票 → 重授权 → 再失败的循环）。
+ */
+let wecomBootError = "";
+
+export function getWecomBootError(): string {
+	return wecomBootError;
+}
+
+/**
+ * 企微回跳落地（`/login?wecom_ticket=…`）的换票**提前到首帧 render 之前**。
+ *
+ * 原来放在 LoginPage 的 useEffect 里：路由先把登录页（全屏外壳 + 品牌位 + 「认证中」）
+ * 画出来，等一个 POST 换完票、token 落 store 后才 Navigate 到首页——工作台进入时
+ * 登录页明显闪一下。模块 onInit 在宿主建路由之前被 await，在这里换完票即把 URL 改成
+ * 首页（见下方 shell 无 AuthGuard 的说明），路由首帧就落在 /home，登录页一次都不挂载。
+ *
+ * 失败不阻断启动：保持 /login，错误记下来交给登录页首帧显示表单与错误，用户可改用
+ * 本地登录 / 重新授权；一次性票据在成功改 URL 时一并从地址栏与历史里抹掉。
+ */
+async function exchangeWecomTicketOnBoot(): Promise<void> {
+	const landing = parseWecomLanding(window.location.search);
+	if (!landing)
+		return;
+	try {
+		// 租户由 tenant.ts::bootstrapTenant 在模块作用域从 ?tenant= 落地；这里补一次，
+		// 让换票请求的 X-TENANT-ID 与票据租户严格一致（服务端会比对两者）。
+		if (landing.tenant)
+			useTenantStore.getState().setTenant(landing.tenant);
+		await useAuthStore.getState().login({
+			username: "",
+			password: "",
+			method: "wecom",
+			ticket: landing.ticket,
+		});
+		// 宿主 shell 链**没有 AuthGuard**（免登录演示能力绕开 LayoutRoot），所以「已登录」
+		// 不会自动把 /login 跳走。宿主在 loadAll（即本 onInit）之后才 createBrowserRouter，
+		// 此刻先把 URL 换成首页，路由首帧就落在 /home，登录页一次都不挂载。
+		// runtime 自有链带 AuthGuard，这处 replace 也无害（守卫同样跳首页）。
+		const base = resolveSiteBase().replace(/\/+$/, "");
+		window.history.replaceState(null, "", `${base}${getRedirectPath(window.location.search)}`);
+	}
+	catch (e) {
+		// 失败保持 /login：bootError 交给登录页首帧显示表单与错误，不再闪「认证中」
+		wecomBootError = e instanceof Error ? e.message : String(e);
+	}
+}
 
 /**
  * 登录根 `/login`（+ 强制改密 `/change-password`）。
@@ -68,4 +118,7 @@ export async function onInit(ctx: ModuleContext) {
 		if (prev.token && !state.token)
 			useTenantStore.getState().clear();
 	});
+	// 必须在 provider 注册之后、首帧 render 之前：企微回跳的票据在这里换完，
+	// 登录页就不会先闪一下再跳首页（见 exchangeWecomTicketOnBoot 注释）。
+	await exchangeWecomTicketOnBoot();
 }
