@@ -364,12 +364,14 @@ export const HELP_GROUPS: HelpGroup[] = [
 				en: "Generate an Ed25519 signing key pair",
 				options: [
 					{ raw: "--id <id>", zh: "发布方 key id（形如 publisher.key）", en: "Publisher key id (e.g. publisher.key)" },
+					{ raw: "--credential <token>", zh: "在线兑换发布凭证（也读 OJM_PUBLISH_CREDENTIAL；与 --id 互斥）", en: "Redeem a publishing credential online (also reads OJM_PUBLISH_CREDENTIAL; mutually exclusive with --id)" },
+					{ raw: "--site-url <url>", zh: "兑换站点（缺省 OJM_SITE_URL / http://127.0.0.1:9778）", en: "Site for redemption (defaults to OJM_SITE_URL / http://127.0.0.1:9778)" },
 					{ raw: "--out <dir>", zh: "输出目录（缺省 ~/.ojm/keys/<id>/；指到工程树内须 --yes）", en: "Output directory (default ~/.ojm/keys/<id>/; pointing inside the project tree requires --yes)" },
 					{ raw: "--yes", zh: "确认私钥落盘到工程树内（私钥入仓即泄露）", en: "Acknowledge writing the private key inside the project tree (a private key in the repo is leaked)" },
 				],
 				detail: {
-					zh: "ojm keygen --id <publisher.id> [--out <dir>] [--yes]\n  私钥默认 ~/.ojm/keys/<id>/ 永不出目录；打印公钥 hex 供 ojm trust add / 模板回填",
-					en: "ojm keygen --id <publisher.id> [--out <dir>] [--yes]\n  The private key stays under ~/.ojm/keys/<id>/ by default; prints the public key hex for ojm trust add / template backfill",
+					zh: "ojm keygen --id <publisher.id> [--out <dir>] [--yes]\n  私钥默认 ~/.ojm/keys/<id>/ 永不出目录；打印公钥 hex 供 ojm trust add / 模板回填\n\nojm keygen --credential <token> [--site-url <url>] [--out <dir>] [--yes]\n  凭证兑换：key_id 由站点按「产品名.用户名」算好下发，CLI 不推导；凭证一次性，兑换即作废\n  失败（过期/已用/已撤销/网络）不落任何密钥文件；兑换成功再走与离线版完全相同的落盘流程",
+					en: "ojm keygen --id <publisher.id> [--out <dir>] [--yes]\n  The private key stays under ~/.ojm/keys/<id>/ by default; prints the public key hex for ojm trust add / template backfill\n\nojm keygen --credential <token> [--site-url <url>] [--out <dir>] [--yes]\n  Credential redemption: key_id is derived server-side as <product>.<username>, the CLI never re-derives it; the credential is single-use\n  Any failure (expired/used/revoked/network) writes no key files; on success the same keygen flow as the offline path runs",
 				},
 			},
 			{

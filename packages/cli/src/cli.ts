@@ -223,9 +223,21 @@ function makeAction(def: HelpEntry, projectRoot: string, lang: Lang, exit: (code
 				await mergeManifests(out ?? "", inputs);
 			};
 		case "keygen":
-			return async (opts: { id?: string, out?: string, yes?: boolean } = {}) => {
-				const { keygenCommand } = await import("./keygen");
-				keygenCommand({ id: opts.id, out: opts.out, yes: opts.yes });
+			return async (opts: { id?: string, out?: string, yes?: boolean, credential?: string, siteUrl?: string } = {}) => {
+				const { exchangePublishCredential, keygenCommand } = await import("./keygen");
+				// 令牌解析：--credential > OJM_PUBLISH_CREDENTIAL；都没有则走原离线路径（逐字节不变）
+				const credential = (opts.credential ?? process.env.OJM_PUBLISH_CREDENTIAL ?? "").trim();
+				if (credential === "") {
+					keygenCommand({ id: opts.id, out: opts.out, yes: opts.yes });
+					return;
+				}
+				// 身份只来自凭证：--id 是另一条（离线）路径的入口，同时给必然有一方被静默忽略
+				if (opts.id !== undefined)
+					throw new UsageError("[ojm] --credential 与 --id 不能同时使用：凭证已绑定发布身份（要自定义身份请走离线 ojm keygen --id）");
+				const identity = await exchangePublishCredential(credential, { siteUrl: opts.siteUrl });
+				const who = identity.display_name === null ? identity.username : `${identity.display_name}（${identity.username}）`;
+				console.log(`[ojm] 凭证已兑换：产品 ${identity.product} / 申请人 ${who}`);
+				keygenCommand({ id: identity.key_id, out: opts.out, yes: opts.yes });
 			};
 		case "sign":
 			return async (file: string | undefined, opts: { id?: string, key?: string, check?: boolean, registryId?: string } = {}) => {

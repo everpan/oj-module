@@ -2078,12 +2078,21 @@ flowchart LR
 # ① 一次性：生成 Ed25519 密钥对（私钥 ~/.ojm/keys/<id>/ 永不出目录——--out 指进工程树须 --yes）
 ojm keygen --id <publisher>.<key-name>
 
+# ①' 或：用站点「发布管理」页签发的一次性凭证换身份（key_id 由站点算好下发，CLI 不推导）
+#     凭证兑换即作废；失败不落任何密钥文件；与 --id 互斥（同时给 exit 2）
+ojm keygen --credential <token> [--site-url <站点>]
+OJM_PUBLISH_CREDENTIAL=<token> ojm keygen
+
 # ② 每次发布：签名（产物 = 同目录 <tgz>.sig；--check 离线自检，不必靠装失败发现签错）
 ojm sign dist/<name>-<version>.tgz --id <publisher>.<key-name> --check
 
 # ③ 安装/分发：.sig 自动探测随包上传
 ojm install dist/<name>-<version>.tgz --site-url <站点> --user superadmin --pass …
 ```
+
+凭证通道的站点地址：`--site-url` > `OJM_SITE_URL` > `http://127.0.0.1:9778`；兑换端点匿名可达，
+不需要 `--user/--pass`。key_id 形如 `<产品名>.<编码后用户名>`（例：`demo-solution.wecom-everpan`），
+由站点按申请时的产品名与账号算好——想让身份完全自定义就继续走上面的离线 `--id`。
 
 宿主验签六码（失败文案双语，`--locale` 切换）：`sig_missing`（缺签）/ `sig_alg`（算法
 不受接受）/ `sig_key`（key_id 命名空间违约）/ `tampered`（验签不过）/ `unknown_key`
