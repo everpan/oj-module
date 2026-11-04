@@ -38,6 +38,8 @@ export interface MarketPublishOptions {
 	check?: boolean
 	/** 签发方 registry 身份（REG-CS3 v2 防跨仓库重放；透传 signCommand --registry-id） */
 	registryId?: string
+	/** 命令层是否紧接着重建索引（仅用于措辞：true 时不打印「索引未重建」） */
+	rebuildIndex?: boolean
 }
 
 export interface MarketPublishResult {
@@ -88,7 +90,9 @@ export async function publishPackage(opts: MarketPublishOptions = {}): Promise<M
 		const size = fs.statSync(tgzPath).size;
 		console.log(`[ojm] 包已落 CDN → ${path.relative(projectRoot, tgzPath)}（${size} 字节）`);
 		console.log(`[ojm] 发布方 ${signed.keyId}；指纹 ${signed.fingerprint}`);
-		console.log("[ojm] 索引未重建：多人场景请由维护者跑 ojm market build-index");
+		// 带了 --rebuild-index 时由命令层紧接着重建索引，这里不能再报「未重建」（否则前后两句自相矛盾）
+		if (opts.rebuildIndex !== true)
+			console.log("[ojm] 索引未重建：多人场景请由维护者跑 ojm market build-index");
 
 		return {
 			name,

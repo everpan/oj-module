@@ -109,6 +109,7 @@ export async function marketCommand(sub: string, argv: string[]): Promise<void> 
 				key: flags.key,
 				check: flags.check,
 				registryId: flags.registryId,
+				rebuildIndex: flags.rebuildIndex === true,
 			});
 			if (flags.rebuildIndex === true)
 				await buildIndex({ id: flags.id, key: flags.key, check: flags.check });
