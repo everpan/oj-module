@@ -1,38 +1,37 @@
 import type { AppRouteRecordRaw, ModuleContext } from "@oj-module/runtime";
 
-import { KeyOutlined } from "@ant-design/icons";
+import { HistoryOutlined, KeyOutlined } from "@ant-design/icons";
 
 import { createElement, lazy } from "react";
 
 import { createPublishClient } from "./__client";
 
 const PublishPage = lazy(() => import("./pages"));
+const ReleaseHistoryPage = lazy(() => import("./pages/history"));
 
 /**
- * 发布管理根 `/publish`（独立一级菜单）。
+ * 「方案市场」下的两个子页（单模单根：菜单只有 `/oj-market` 一个根）。
  *
- * 与「审核类」页面不同，这里**不挂 handle.roles**：申请发布凭证是普通登录用户的能力，
- * 超管多出来的只是「看到所有租户的记录」，由后端按角色决定返回范围，前端不重复判权。
+ * 路径是**相对父路由**声明的：`publish` → `/oj-market/publish`，`history` → `/oj-market/history`。
+ * 发布管理不挂 handle.roles：申请发布凭证是普通登录用户的能力，超管多出来的只是
+ * 「看到所有租户的凭证」，由后端按角色决定返回范围，前端不重复判权。
  */
 export const routes: AppRouteRecordRaw[] = [
 	{
-		path: "/publish",
+		path: "publish",
+		Component: PublishPage,
 		handle: {
-			layout: "container",
-			order: 115,
 			title: "publish:menu.publish",
 			icon: createElement(KeyOutlined),
 		},
-		children: [
-			{
-				index: true,
-				Component: PublishPage,
-				handle: {
-					title: "publish:menu.publish",
-					icon: createElement(KeyOutlined),
-				},
-			},
-		],
+	},
+	{
+		path: "history",
+		Component: ReleaseHistoryPage,
+		handle: {
+			title: "publish:menu.history",
+			icon: createElement(HistoryOutlined),
+		},
 	},
 ];
 

@@ -1556,3 +1556,147 @@ describe("P1-16 接线：marketEnv 生产口径 / exec opts 转发 / operator �
 		}
 	});
 });
+
+// ── 发布历史（GET /market/releases）────────────────────────────────────────────
+// 数据源是签名索引本身：每次读先把索引里出现过的 product@version 幂等补进 market_release，
+// 再按发布时间倒序分页。索引读不到不阻断查询（返回已入库行 + syncError）。
+
+interface ReleasePageData {
+	list: Array<{ id: number, product: string, version: string, published_at: number, published_at_source: string, yanked: number }>
+	total: number
+	page: number
+	size: number
+	syncError: string | null
+}
+
+/** HEAD 可读 Last-Modified 的 CDN 面（其余请求复用 cdnFetch 的完整夹具） */
+function headAwareFetch(lastModified: string): FetchFace {
+	return (async (url: string, init?: { method?: string }) => {
+		if (init?.method === "HEAD") {
+			return {
+				ok: true,
+				status: 200,
+				arrayBuffer: async () => new ArrayBuffer(0),
+				headers: { get: (name: string) => name.toLowerCase() === "last-modified" ? lastModified : null },
+			};
+		}
+		return cdnFetch(url);
+	}) as FetchFace;
+}
+
+/** 换一版分片正文（并按其字节重签，seq 与 catalog 同代），用于构造「索引说已下线」） */
+function shardWithYanked(): { body: string, sig: string } {
+	const body = JSON.stringify({
+		solutions: [{
+			name: "demo-solution",
+			latest: "0.2.0",
+			versions: [
+				{ ...manifestFixture("0.2.0"), description: LATEST_DESCRIPTION },
+				{ ...manifestFixture("0.1.0"), yanked: true },
+			],
+		}],
+	});
+	return { body, sig: JSON.stringify(signIndex("shard", SEQ, body, TEST_KEY.privateKeyPem, "test.publisher")) };
+}
+
+describe("GET /market/releases（发布历史：索引对账落库 + 分页）", () => {
+	it("首读把索引里全部 product@version 补进历史：产品/版本/发布时间齐全，无 HEAD 头时回落索引 issued_at（source=index）", async () => {
+		const api = createMarketApi(makeEnv());
+		g.http = { user: { id: 1 } };
+		await api.releases.get();
+		expect(last?.status).toBe(200);
+		const page = last?.data as ReleasePageData;
+		expect(page.syncError).toBeNull();
+		expect(page.total).toBe(3);
+		expect(page.list.map(r => `${r.product}@${r.version}`)).toEqual(["wiki@1.3.0", "demo-solution@0.1.0", "demo-solution@0.2.0"]);
+		expect(page.list.every(r => r.published_at === ISSUED_AT && r.published_at_source === "index")).toBe(true);
+		// 每行先试 HEAD（拿真正的落 CDN 时刻），失败才回落——不是完全不问源
+		expect(fetchInits.some(i => (i as { method?: string } | undefined)?.method === "HEAD")).toBe(true);
+	});
+
+	it("HEAD 拿得到 Last-Modified → 用文件时间并标 source=file（索引时间只作兜底，不冒充精确）", async () => {
+		const api = createMarketApi(makeEnv({ fetch: headAwareFetch("Wed, 01 Oct 2025 00:00:00 GMT") }));
+		g.http = { user: { id: 1 } };
+		await api.releases.get();
+		expect(last?.status).toBe(200);
+		const page = last?.data as ReleasePageData;
+		const expected = Math.floor(Date.parse("Wed, 01 Oct 2025 00:00:00 GMT") / 1000);
+		expect(page.list.every(r => r.published_at === expected && r.published_at_source === "file")).toBe(true);
+	});
+
+	it("幂等 + append-only：二次读不重复插入，已入库的 published_at 不被索引时间改写", async () => {
+		// 预置一行「上次记录的历史」：发布时间是事实，哪怕与本次索引的时间不同也不该被刷新
+		dbo.prepare("INSERT INTO market_release (product, version, published_at, published_at_source, yanked, first_seen_at) VALUES (?, ?, ?, ?, ?, ?)")
+			.run("demo-solution", "0.2.0", 1_600_000_000, "file", 0, 1_600_000_000);
+		const api = createMarketApi(makeEnv());
+		g.http = { user: { id: 1 } };
+		await api.releases.get();
+		await api.releases.get();
+		expect(last?.status).toBe(200);
+		const page = last?.data as ReleasePageData;
+		expect(page.total).toBe(3);
+		const rows = dbo.prepare("SELECT product, version, published_at FROM market_release ORDER BY product, version").all() as Array<{ product: string, version: string, published_at: number }>;
+		expect(rows).toHaveLength(3);
+		expect(rows.find(r => r.product === "demo-solution" && r.version === "0.2.0")?.published_at).toBe(1_600_000_000);
+	});
+
+	it("yanked 跟随索引（0→1 与 1→0 双向）：下线是当前状态，不是历史事实的改写", async () => {
+		// 1→0：库里记着已下线，索引又回到在架
+		dbo.prepare("INSERT INTO market_release (product, version, published_at, published_at_source, yanked, first_seen_at) VALUES (?, ?, ?, ?, ?, ?)")
+			.run("demo-solution", "0.2.0", ISSUED_AT, "index", 1, ISSUED_AT);
+		const api = createMarketApi(makeEnv());
+		g.http = { user: { id: 1 } };
+		await api.releases.get();
+		expect(last?.status).toBe(200);
+		expect((dbo.prepare("SELECT yanked FROM market_release WHERE product = ? AND version = ?").get("demo-solution", "0.2.0") as { yanked: number }).yanked).toBe(0);
+
+		// 0→1：换一版已签名的分片，其中 0.1.0 标了 yanked
+		const yanked = shardWithYanked();
+		const fetchFn = (async (url: string) => {
+			if (String(url).endsWith("shards/1.yaml.sig"))
+				return { ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode(yanked.sig).buffer as ArrayBuffer };
+			if (String(url).endsWith("shards/1.yaml"))
+				return { ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode(yanked.body).buffer as ArrayBuffer };
+			return cdnFetch(url);
+		}) as FetchFace;
+		const api2 = createMarketApi(makeEnv({ fetch: fetchFn }));
+		g.http = { user: { id: 1 } };
+		await api2.releases.get();
+		expect(last?.status).toBe(200);
+		expect((dbo.prepare("SELECT yanked FROM market_release WHERE product = ? AND version = ?").get("demo-solution", "0.1.0") as { yanked: number }).yanked).toBe(1);
+	});
+
+	it("索引读不到（验签失败）→ 200 + 已入库历史 + syncError 人话（观测面不阻断页面）", async () => {
+		const api = createMarketApi(makeEnv());
+		g.http = { user: { id: 1 } };
+		await api.releases.get();
+		expect((last?.data as ReleasePageData).total).toBe(3);
+
+		const brokenFetch = (async (url: string) => {
+			if (String(url).endsWith("shards/1.yaml.sig"))
+				return { ok: false, status: 503, arrayBuffer: async () => new ArrayBuffer(0) };
+			return cdnFetch(url);
+		}) as FetchFace;
+		const api2 = createMarketApi(makeEnv({ fetch: brokenFetch }));
+		g.http = { user: { id: 1 } };
+		await api2.releases.get();
+		expect(last?.status).toBe(200);
+		const page = last?.data as ReleasePageData;
+		expect(page.total).toBe(3);
+		expect(page.syncError).toContain("index_sig_missing");
+	});
+
+	it("门与分页：匿名 401；page/limit 透传并按发布时间倒序取页", async () => {
+		const api = createMarketApi(makeEnv());
+		g.http = {};
+		await api.releases.get();
+		expect(last?.status).toBe(401);
+
+		g.http = { user: { id: 1 }, query: { page: "2", limit: "1" } };
+		await api.releases.get();
+		expect(last?.status).toBe(200);
+		const page = last?.data as ReleasePageData;
+		expect(page).toMatchObject({ page: 2, size: 1, total: 3 });
+		expect(page.list).toHaveLength(1);
+	});
+});

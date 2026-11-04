@@ -125,6 +125,21 @@ export const schemas = {
 
 }).catchall(z.unknown())),
 	},
+	"platformMarketReleasesGet": {
+		query: z.object({
+	"page": z.number().min(1).optional(),
+	"limit": z.number().min(1).max(200).optional()
+}),
+		data: z.object({
+	"list": z.array(z.object({
+
+}).catchall(z.unknown())),
+	"total": z.number(),
+	"page": z.number(),
+	"size": z.number(),
+	"syncError": z.string().nullable().optional()
+}),
+	},
 	"platformOrgDepartmentsGet": {
 		query: z.object({
 	"scope": z.enum(["self", "all"]).optional(),

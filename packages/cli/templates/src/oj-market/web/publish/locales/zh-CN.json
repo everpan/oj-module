@@ -1,6 +1,27 @@
 {
 	"menu": {
-		"publish": "发布管理"
+		"publish": "发布管理",
+		"history": "发布历史"
+	},
+	"history": {
+		"title": "发布历史",
+		"subtitle": "签名索引里出现过的每一次发版：产品、版本与发布身份都来自索引本身，按发布时间倒序。",
+		"empty": "还没有发布记录",
+		"syncFailed": "暂时读不到市场索引，下面是已入库的历史记录",
+		"indexTime": "索引时间",
+		"publishedAtHint": "优先取分发包落 CDN 的时间（Last-Modified）；源不提供时用索引生成时间，会标注「索引时间」",
+		"total": "共 {{total}} 条",
+		"columns": {
+			"product": "产品名",
+			"version": "版本",
+			"publisher": "发布身份",
+			"publishedAt": "发布时间",
+			"status": "状态"
+		},
+		"status": {
+			"active": "在架",
+			"yanked": "已下线"
+		}
 	},
 	"page": {
 		"title": "发布管理",

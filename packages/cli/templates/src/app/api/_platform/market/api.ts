@@ -33,6 +33,7 @@ import { createTrustStore } from "../_lifecycle/trust";
 import { computeUninstallImpact, runUninstall } from "../_lifecycle/uninstall";
 import { respond } from "../_shared/respond";
 import { assertSuperAdmin } from "../_shared/service/infra/access";
+import { pageArgs } from "../_shared/service/infra/query";
 import { journalHeadOf, readCanonicalOrigin, siteOrigin, withSiteOrigin } from "../_shared/site-facade";
 import { BOOTSTRAP_KEY, seedBootstrapKey } from "./bootstrap";
 import { httpIndexSource, indexPathOf } from "./index-source";
@@ -863,16 +864,28 @@ async function lastInstallOperatorOf(name: string): Promise<string | null> {
  * 分片条目取，不再有独立的聚合清单拉取。分片拉取/验签失败即 502（REG-CS1：可用性不再
  * 压过完整性）。
  */
-async function indexBody(env: MarketEnv): Promise<IndexRow[]> {
-	// 对账即服务（P1-10 接线③）：市场页刷新即对账时点——锁 ↔ 账本 head 自愈 + enabled 不一致
-	// 自动修复先行（失败只记日志，不阻断索引），失败站点的市场页每次打开都在尝试自愈
-	await reconcileOf(env);
+interface IndexSnapshot {
+	base: string
+	/** catalog 的签名时效（发布时间兜底；索引缺时效 → null） */
+	issuedAt: number | null
+	solutions: Array<{ name: string, shards: number[] }>
+	shardDocs: Map<number, ShardSolution[]>
+}
+
+/**
+ * 读整份签名索引（catalog + 它指向的全部分片）。
+ *
+ * 市场卡片（indexBody）与发布历史（syncReleases）都要「全量版本视图」，读取与验签只有这一份：
+ * 两处各写一遍 `fetchIndex` 循环，迟早漂移成「卡片看得见、历史看不见」。
+ */
+async function readIndexSnapshot(env: MarketEnv): Promise<IndexSnapshot> {
 	const base = await cdnBaseOf(env);
 	if (base === null)
 		fail(503, "未配置市场地址（framework.market_cdn_url）——卡片区显示「未配置市场地址」（PRD §5.3）");
 	await assertOriginForRelativeBase(env, base);
 	const source = await indexSourceOf(env, base);
 	const catalog = await fetchIndex(env, source, base, "catalog");
+	const times = await indexTimesOfText(catalog.text);
 	const { pins, solutions } = await parseCatalog(catalog.text, base);
 	// 拉取 catalog 指向的全部分片（去重、升序确定性）；每片都过签名 + 钉值同代校验
 	const shardDocs = new Map<number, ShardSolution[]>();
@@ -880,6 +893,14 @@ async function indexBody(env: MarketEnv): Promise<IndexRow[]> {
 		const shard = await fetchIndex(env, source, base, "shard", no, pins.get(no)!);
 		shardDocs.set(no, await parseShard(shard.text, `shards/${no}.yaml`));
 	}
+	return { base, issuedAt: times?.issued_at ?? null, solutions, shardDocs };
+}
+
+async function indexBody(env: MarketEnv): Promise<IndexRow[]> {
+	// 对账即服务（P1-10 接线③）：市场页刷新即对账时点——锁 ↔ 账本 head 自愈 + enabled 不一致
+	// 自动修复先行（失败只记日志，不阻断索引），失败站点的市场页每次打开都在尝试自愈
+	await reconcileOf(env);
+	const { solutions, shardDocs } = await readIndexSnapshot(env);
 	const local = (await createStateStore(env.statePath)).read().solutions;
 	const rows: IndexRow[] = [];
 	const seen = new Set<string>();
@@ -950,6 +971,106 @@ async function indexBody(env: MarketEnv): Promise<IndexRow[]> {
 		}
 	}
 	return rows;
+}
+
+/** 发布历史行（市场索引里出现过的每个 product@version） */
+interface ReleaseRow {
+	id: number
+	product: string
+	version: string
+	key_id: string | null
+	sha256: string | null
+	size: number | null
+	published_at: number
+	/** 时间来源：file = tgz 的 Last-Modified；index = 索引生成时间兜底 */
+	published_at_source: "file" | "index"
+	yanked: number
+}
+
+/**
+ * 取单版本的「发布时间」。
+ *
+ * 优先 HEAD 分发包读 `Last-Modified`——那是包落进 CDN 的时刻，也就是真正的发版时间。
+ * 读不到（源不吐该头 / 网络失败 / file 名缺失）才回落到索引生成时间：`ojm market publish`
+ * 与 `build-index` 在推荐流程里紧邻执行，两者差值只有重建索引的耗时。
+ *
+ * 只对**首次入库**的版本调一次（已入库的 published_at 不再改写）——历史一旦记录就是事实，
+ * 不该被后续重新发布/重新建索引刷新。
+ */
+async function archivePublishedAt(env: MarketEnv, base: string, file: unknown, fallback: number): Promise<{ at: number, source: "file" | "index" }> {
+	if (typeof file !== "string" || file === "")
+		return { at: fallback, source: "index" };
+	try {
+		// HEAD 不在 FetchInitFace 的最小形状里（安装面只需要 GET），但运行时 fetch 原生支持：
+		// 这里显式窄化一次，避免为「读一个头」再造第二种下载实现。
+		const head = await fetchOf(env) as unknown as (url: string, init?: { method?: string }) => Promise<{ headers?: { get: (n: string) => string | null } }>;
+		const res = await head(`${base}/${encodeURIComponent(file)}`, { method: "HEAD" });
+		const raw = res.headers?.get?.("last-modified") ?? res.headers?.get?.("Last-Modified") ?? null;
+		if (raw !== null && raw !== "") {
+			const at = Math.floor(Date.parse(raw) / 1000);
+			if (Number.isFinite(at) && at > 0)
+				return { at, source: "file" };
+		}
+	}
+	catch {}
+	return { at: fallback, source: "index" };
+}
+
+/**
+ * 把索引里出现过的版本同步进 `market_release`（幂等：只补新行）。
+ *
+ * 为什么不做成「发版时由 CLI 上报」：`ojm market publish` 是纯本地操作（不登录、可离线），
+ * 加一条上报链路就得再造一套写端授权的信任面；而**签名索引本身就是发版事实**——
+ * 站点已经在读它，历史直接从这里落库，既不用新协议，也不会出现「上报成功但包里没有」的分叉。
+ *
+ * 索引拉取/验签失败由调用方兜住（历史是观测面，不阻断页面：返回已入库行 + syncError）。
+ */
+async function syncReleases(env: MarketEnv): Promise<void> {
+	const snapshot = await readIndexSnapshot(env);
+	const fallbackAt = snapshot.issuedAt ?? (env.now?.() ?? Math.floor(Date.now() / 1000));
+	const now = env.now?.() ?? Math.floor(Date.now() / 1000);
+
+	const existingRows = await db.table("market_release").select(["id", "product", "version", "yanked"]).all() as Array<Record<string, unknown>>;
+	const existing = new Map(existingRows.map(r => [`${String(r.product)}@${String(r.version)}`, { id: Number(r.id), yanked: Number(r.yanked) }]));
+
+	for (const sol of snapshot.shardDocs.values()) {
+		for (const entry of sol) {
+			for (const v of entry.versions) {
+				const version = typeof v.version === "string" ? v.version : "";
+				if (version === "")
+					continue;
+				const dedupeKey = `${entry.name}@${version}`;
+				const yanked = v.yanked === true ? 1 : 0;
+				const prior = existing.get(dedupeKey);
+				if (prior !== undefined) {
+					// 已入库的 published_at 是事实、不再改写；但 yank 状态是「当前是否在架」，跟随索引
+					if (prior.yanked !== yanked)
+						await db.table("market_release").update({ yanked }).where({ field: "id", op: "eq", value: prior.id }).run();
+					continue;
+				}
+				const archive = isObj(v.archive) ? v.archive : {};
+				const sig = isObj(archive.signature) ? archive.signature : {};
+				const { at, source } = await archivePublishedAt(env, snapshot.base, archive.file, fallbackAt);
+				try {
+					await db.table("market_release").insert({
+						product: entry.name,
+						version,
+						key_id: typeof sig.key_id === "string" ? sig.key_id : null,
+						sha256: typeof archive.sha256 === "string" ? archive.sha256 : null,
+						size: typeof archive.size === "number" ? archive.size : null,
+						published_at: at,
+						published_at_source: source,
+						yanked,
+						first_seen_at: now,
+					}).run();
+					existing.set(dedupeKey, { id: -1, yanked });
+				}
+				catch {
+					// 并发同步（两个页面同时打开）撞唯一键：另一路已写入，跳过即可
+				}
+			}
+		}
+	}
 }
 
 /** 四端点组（oj v0.1.64 嵌套组：组名 = 路径段）；全业务体经 respond 收口（status 语义不落 500） */
@@ -1174,6 +1295,42 @@ export function createMarketApi(env: MarketEnv) {
 				});
 			},
 		},
+
+		// GET /api/_platform/market/releases —— 发布历史（登录即可读；与市场卡片同口径的「浏览开放」）。
+		//
+		// 数据源是签名索引本身：每次读取先把索引里出现过的 product@version 补进 market_release
+		// （只补新行，published_at 一次写定），再按发布时间倒序分页返回。索引拉不到/验签失败
+		// 不阻断查询：返回已入库行 + syncError，页面照常显示历史并提示「暂时读不到索引」。
+		"releases": {
+			async get() {
+				await respond(async () => {
+					const uid = (http as { user?: { id?: unknown } }).user?.id;
+					if (uid == null)
+						fail(401, "unauthorized");
+					let syncError: string | null = null;
+					try {
+						await syncReleases(env);
+					}
+					catch (e) {
+						syncError = e instanceof Error ? e.message : String(e);
+					}
+					const q = (http.query ?? {}) as Record<string, unknown>;
+					const { page, size, offset } = pageArgs({ page: q.page, size: q.limit });
+					const total = Number(
+						(await db.table("market_release").select([{ fn: "count", as: "c" }]).all() as Array<Record<string, unknown>>)[0]?.c ?? 0,
+					);
+					const list = total === 0
+						? []
+						: await db.table("market_release")
+							.select(["id", "product", "version", "key_id", "sha256", "size", "published_at", "published_at_source", "yanked"])
+							.orderBy([{ field: "published_at", dir: "desc" }, { field: "id", dir: "desc" }])
+							.limit(size)
+							.offset(offset)
+							.all() as unknown as ReleaseRow[];
+					return { list, total, page, size, syncError };
+				});
+			},
+		},
 	};
 }
 
@@ -1211,5 +1368,25 @@ marketApi["uninstall-impact"].get.response = { type: "object", additionalPropert
 marketApi.uninstall.post.schema = { body: { type: "object", required: ["name"], properties: { name: { type: "string" } } } };
 marketApi.uninstall.post.response = { type: "object", additionalProperties: true };
 marketApi.history.get.response = { type: "array", items: { type: "object", additionalProperties: true } };
+marketApi.releases.get.schema = {
+	query: {
+		type: "object",
+		properties: {
+			page: { type: "number", minimum: 1 },
+			limit: { type: "number", minimum: 1, maximum: 200 },
+		},
+	},
+};
+marketApi.releases.get.response = {
+	type: "object",
+	required: ["list", "total", "page", "size"],
+	properties: {
+		list: { type: "array", items: { type: "object", additionalProperties: true } },
+		total: { type: "number" },
+		page: { type: "number" },
+		size: { type: "number" },
+		syncError: { type: ["string", "null"] },
+	},
+};
 
 export default marketApi;

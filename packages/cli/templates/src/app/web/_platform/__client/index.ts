@@ -36,7 +36,7 @@ export function create_platformClient(ctx: ModuleContext) {
 	}
 	ctx.register.apiPrefix(API_PREFIX);
 	bindRequest(ctx.utils.request);
-	return { platformContactsGet, platformContactsDetailGet, platformMarketInstallPost, platformMarketInstallCancelPost, platformMarketTaskGet, platformMarketEnablePost, platformMarketMetaGet, platformMarketTrustGet, platformMarketTrustPost, platformMarketTrustKeyPost, platformMarketTrustKeyDelete, platformMarketIndexGet, platformMarketUninstallImpactGet, platformMarketUninstallPost, platformMarketHistoryGet, platformOrgDepartmentsGet, platformOrgIsMemberGet, platformOrgMembersGet, platformOrgPickerGet, platformOrgResolvePost, platformOrgTreeGet, platformOrgUserGet, platformSolutionsRoutesGet, platformSolutionsVerifyPost, platformSolutionsVerifyLastGet };
+	return { platformContactsGet, platformContactsDetailGet, platformMarketInstallPost, platformMarketInstallCancelPost, platformMarketTaskGet, platformMarketEnablePost, platformMarketMetaGet, platformMarketTrustGet, platformMarketTrustPost, platformMarketTrustKeyPost, platformMarketTrustKeyDelete, platformMarketIndexGet, platformMarketUninstallImpactGet, platformMarketUninstallPost, platformMarketHistoryGet, platformMarketReleasesGet, platformOrgDepartmentsGet, platformOrgIsMemberGet, platformOrgMembersGet, platformOrgPickerGet, platformOrgResolvePost, platformOrgTreeGet, platformOrgUserGet, platformSolutionsRoutesGet, platformSolutionsVerifyPost, platformSolutionsVerifyLastGet };
 }
 
 /**
@@ -415,6 +415,30 @@ export async function platformMarketHistoryGet(): Promise<PlatformMarketHistoryG
 			const r = schemas["platformMarketHistoryGet"].data.safeParse(data);
 			if (!r.success)
 				throw new ContractApiError(-1, `[契约违例] platformMarketHistoryGet 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
+		}
+		return data;
+	}
+	catch (e) {
+		throw await toApiError(e);
+	}
+}
+
+export type PlatformMarketReleasesGetQuery = z.input<(typeof schemas)["platformMarketReleasesGet"]["query"]>;
+export type PlatformMarketReleasesGetData = z.infer<(typeof schemas)["platformMarketReleasesGet"]["data"]>;
+
+export async function platformMarketReleasesGet(query: PlatformMarketReleasesGetQuery): Promise<PlatformMarketReleasesGetData> {
+	const client = ensureReq();
+	try {
+		const env = await client.get(`_platform/market/releases`, { searchParams: query as Record<string, string | number | boolean> }).json<OjEnvelope<PlatformMarketReleasesGetData>>();
+		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
+		if (typeof env.code === "number" && env.code !== 0)
+			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
+		const data = env.data as PlatformMarketReleasesGetData;
+		if (import.meta.env.DEV) {
+			const { schemas } = await import("./api.schemas");
+			const r = schemas["platformMarketReleasesGet"].data.safeParse(data);
+			if (!r.success)
+				throw new ContractApiError(-1, `[契约违例] platformMarketReleasesGet 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
 		}
 		return data;
 	}

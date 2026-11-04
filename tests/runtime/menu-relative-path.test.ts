@@ -70,8 +70,7 @@ describe("菜单生成器：相对 path 解析为绝对路径", () => {
 		expect(nested?.children?.[0]?.key).toBe("/a/b/c");
 	});
 
-	it("模板模块的根路由为绝对路径（多根聚合不得依赖 routePrefix 改写）", async () => {
-		// 多根模块里各根必须是绝对路径：相对根会被挂到 routePrefix 命名空间下，
+	it("模板模块的根路由为绝对路径（多根聚合不得依赖 routePrefix 改写）", async () => { // 多根模块里各根必须是绝对路径：相对根会被挂到 routePrefix 命名空间下，
 		// URL 与菜单 key 都会漂移（详见 module-loader::namespaceRelativeRoots）
 		const { readFileSync } = await import("node:fs");
 		const source = readFileSync(path.join(TEMPLATE_DIR, "src/app/web/home/routes.ts"), "utf-8");
@@ -88,6 +87,45 @@ describe("菜单生成器：相对 path 解析为绝对路径", () => {
 		] as AppRouteRecordRaw[];
 		const [group] = generateMenuItemsFromRoutes(routes);
 		expect(group.children?.[0]?.key).toBe("/demo/detail");
+	});
+});
+
+/**
+ * index 落地页在子菜单里的可见性契约。
+ *
+ * 父路由带 index 子路由 = 「父路径就是落地页」。单页根（/home、/about）的菜单项就是根自身，
+ * index 子路由不进菜单；但父路由还有别的可见子页时（根渲染成子菜单），落地页必须作为
+ * 菜单项出现——否则展开分组后没有入口回到默认页（2026-11-05 方案市场：方案清单丢失）。
+ */
+describe("菜单生成器：子菜单里的 index 落地页", () => {
+	it("given 落地页 + 子页 When 生成菜单 Then 落地页以父绝对路径为 key 排首位", () => {
+		const routes = [
+			{
+				path: "/oj-market",
+				handle: { title: "oj-market:menu.main" },
+				children: [
+					{ index: true, handle: { title: "oj-market:menu.list" } },
+					{ path: "publish", handle: { title: "publish:menu.publish" } },
+					{ path: "history", handle: { title: "publish:menu.history" } },
+				],
+			},
+		] as AppRouteRecordRaw[];
+
+		const [group] = generateMenuItemsFromRoutes(routes);
+		expect(group.children?.map(c => c.key)).toEqual(["/oj-market", "/oj-market/publish", "/oj-market/history"]);
+	});
+
+	it("given 只有落地页 When 生成菜单 Then 根仍是叶子（单页根形态不变）", () => {
+		const routes = [
+			{
+				path: "/home",
+				handle: { title: "home:menu.home" },
+				children: [{ index: true, handle: { title: "home:menu.home" } }],
+			},
+		] as AppRouteRecordRaw[];
+
+		const [group] = generateMenuItemsFromRoutes(routes);
+		expect(group.children).toBeUndefined();
 	});
 });
 

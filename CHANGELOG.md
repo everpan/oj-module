@@ -9,6 +9,19 @@
 
 ### Added
 
+- **发布历史（记录 + 查询页）**：`GET /api/_platform/market/releases` 每次读取先把签名索引
+  （catalog + 全部分片）里出现过的 `product@version` 幂等补进新表 `market_release`，再按发布时间
+  倒序分页返回产品 / 版本 / 发布身份 / 发布时间 / 在架状态。**不新增发版上报协议**：`ojm market
+  publish` 是纯本地离线操作，加一条上报链路只会多一套写端授权面与「上报成功但包里没有」的分叉，
+  而签名索引本身就是发版事实。发布时间优先 `HEAD` 分发包读 `Last-Modified`（真正的落 CDN 时刻），
+  取不到回落索引 `issued_at`，由 `published_at_source: "file" | "index"` 标明来源，页面给兜底行打
+  「索引时间」标签；`published_at` 首次写定后不再改写（历史是事实），`yanked` 跟随索引（在架是当前
+  状态）。索引读不到时返回已入库行 + `syncError`（观测面不阻断页面）。表与 `market_history` /
+  `publish_credential` 同为站点级共享表（`tenant.shared_allow`）。迁移三方言齐备
+  （`0002__market_release.{sql,mysql.sql,pg.sql}`）。回归：`market-api.spec.ts` 六条（索引落库 /
+  Last-Modified 优先 / 幂等 append-only / yanked 双向 / syncError 降级 / 401+分页）+
+  `publish-history-page.test.tsx` 四条。
+
 - **市场卡片展示方案简介与详细描述**：`GET /_platform/market/index` 每行新增 `summary`
   （分片条目 `manifest.summary`，C2-04）与 `description`（`manifest.description`，C2-05），
   与 publisher/license/changelog 同取自最新版条目，缺口/非字符串 → `null`。卡片在版本行上方
@@ -42,6 +55,15 @@
   `truncated=false`、越界页 list 为空但 total 不变）。
 
 ### Changed
+
+- **方案市场收敛为单模单根，发布管理页并入 oj-market**：此前 `/oj-market`（市场）与 `/publish`
+  （发布管理）是两个一级菜单根，组织上割裂。现在 `src/oj-market/web/entry.ts` 只声明一个
+  `/oj-market` 根，子页用相对路径声明——`/oj-market`（方案清单）、`/oj-market/publish`
+  （发布管理）、`/oj-market/history`（发布历史），`layout: "container"` 只由根声明一次；发布管理
+  的 `routes/pages/locales/__client` 整体迁到 `src/oj-market/web/publish/`，`web.config.ts` 的
+  `clientOwners.publish` 指向 `oj-market`。`publish:menu.*` 命名空间保持不变（页面文案零改动），
+  新增 `oj-market:menu.list`。回归：`publish-page.test.tsx` 路径断言 + `module-client-wiring`
+  继续覆盖 client 落位 + 真浏览器菜单核查（一级「方案市场」下三项、点击落到对应 URL）。
 
 - **schema.yaml 新增方案表前缀（C2-12c）**：方案模块的 `schema.yaml` 必须声明
   `prefix: <短前缀>_`（作者自选，小写字母开头、≤32 字符，如 `crm_`；不强制等于模块名，
@@ -128,6 +150,13 @@
   全量 `vitest run` 876 例、`test:cli` 615 例与 templates e2e 均通过。
 
 ### Fixed
+
+- **子菜单里的落地页（index 路由）不进菜单**：`generateMenuItemsFromRoutes` 一律过滤 index 子路由，
+  这在单页根（`/home`、`/about` 的菜单项就是根自身）是正确的，但父路由还有别的可见子页时，根会
+  渲染成子菜单，落地页就彻底消失——方案市场改成单根三子页后「方案清单」在菜单里看不见
+  （真浏览器实测）。现在按「有非 index 可见子页才收录落地页」判定：落地页以父绝对路径为 key
+  排在子菜单首位，单页根形态不变。回归：`tests/runtime/menu-relative-path.test.ts` 两条
+  （三子页含落地页 / 单页根仍是叶子）。
 
 - **脚手架模板里的漏译（页面整块直出键名）**：`/personal-center/my-profile` 整页（标题、头像、
   用户名、邮箱、手机号、简介、必填提示、更新成功/失败）、`/system/roles` 列头与四个内置角色名、

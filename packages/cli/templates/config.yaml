@@ -181,6 +181,7 @@ tenant:
     - sys_rate_window # 限速窗口（登录前就要用）
     - sys_login_throttle # 登录节流（登录前就要用）
     - market_history # 解决方案安装/升级/回滚是站点级留痕
+    - market_release # 发布历史：CDN 是站点级的，历史按站点归口
     - reg_source_seq # 索引新鲜度水位属于站点（防回放）
     - wecom_app_profile # 企微 corp→租户映射权威：查它时必然还没有租户上下文（D9）
     - wecom_suite_ticket # 套件级凭证，按 suite_id 全局唯一

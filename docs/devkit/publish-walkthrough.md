@@ -10,7 +10,7 @@
 ```mermaid
 flowchart LR
   A["① 构建 ojm build"] --> B["② 打包 ojm build --bundle"]
-  B --> C["③ 身份 发布管理申请凭证 → ojm keygen --credential"]
+  B --> C["③ 身份 方案市场→发布管理 申请凭证 → ojm keygen --credential"]
   C --> D["④ 签名 ojm sign --check"]
   D --> E["⑤ 发布 ojm market publish"]
   E --> F["⑥ 重建索引 ojm market build-index"]
@@ -67,7 +67,7 @@ ojm build --bundle crm  #    只打 src/crm/ 这一份（多方案工程用）
 > 此时除改密外的写接口一律 `403 password change required`——先在页面或 `PUT /api/auth/password`
 > 改掉临时口令，再申请凭证。
 
-1. 浏览器进 **发布管理 → 申请发布凭证**，填产品名（如 `demo-solution`）；
+1. 浏览器进 **方案市场 → 发布管理 → 申请发布凭证**，填产品名（如 `demo-solution`）；
 2. 复制弹窗里的凭证或整条命令（**只显示这一次**，关闭后只能撤销重申请）；
 3. 本机执行其中一条：
 
@@ -86,7 +86,10 @@ OJM_PUBLISH_CREDENTIAL=<token> ojm keygen     # 或走环境变量，避免令�
 - **它不替你建信任**：公钥是本地生成的，站点在兑换时拿不到，所以首装仍是陌生 key →
   `needs_trust`，仍要按 §6 逐字核对指纹后 `trust confirm`。凭证解决的是「身份命名与归属」，
   不是「信任免检」。
-- 兑换完成后，「发布管理」页该条记录变为**已兑换**并显示 key_id。
+- 兑换完成后，「方案市场 → 发布管理」该条记录变为**已兑换**并显示 key_id。
+- 发版之后，「方案市场 → 发布历史」（`/oj-market/history`）按发布时间倒序列出所有产品/版本：
+  数据由站点从签名索引对账落库，**不需要 CLI 额外上报**；发布时间优先取分发包落 CDN 的
+  `Last-Modified`，源不提供时回落索引生成时间并标「索引时间」标签。
 
 ### 2.1 没有站点时：离线自建身份（旁路）
 
@@ -262,7 +265,8 @@ TOFU 没有免检通道：**只有模板内置的 oj-market（第一方包）用
 - [ ] `solution.yaml` 的 `version` 已升，与文件名一致；
 - [ ] `ojm build` + `ojm build --bundle` 均通过，sha256 记进发布单；
 - [ ] `ojm sign … --check` 通过，`.sig` 与 tgz 同目录；
-- [ ] 发布身份来自站点凭证（有发布管理页时），「发布管理」页该条已变**已兑换**；
+- [ ] 发布身份来自站点凭证（有发布管理页时），「方案市场 → 发布管理」页该条已变**已兑换**；
+- [ ] 发版后「方案市场 → 发布历史」能看到这次的 产品 / 版本 / 发布时间（时间来源为索引兜底时会标「索引时间」）；
 - [ ] 新 key 首次发布：指纹已提前交给运维（免得卡在 needs_trust）；
 - [ ] `ojm market verify` 末行「全部校验通过（N 项）」，无未通过项；
 - [ ] 多人团队：索引重建触发点已约定（维护者或 CI）。

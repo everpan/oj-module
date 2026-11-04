@@ -10,6 +10,7 @@ import type {
 	IndexRow,
 	InstallInput,
 	MarketHistory,
+	ReleasePage,
 	TaskRecord,
 	UninstallImpact,
 } from "../types";
@@ -33,6 +34,8 @@ export interface MarketClient {
 	enable: (input: EnableInput) => Promise<{ ok: boolean, message: string }>
 	/** 市场操作历史（_platform 只读端点 /_platform/market/history） */
 	history: () => Promise<MarketHistory[]>
+	/** 发布历史（登录即可读；服务端每次读先与签名索引对账） */
+	releases: (input?: { page?: number, limit?: number }) => Promise<ReleasePage>
 	/** 卸载影响面预检（P3 U1；服务端返回供二次确认，P1-15a 补齐后接通） */
 	uninstallImpact: (name: string) => Promise<UninstallImpact>
 	/** 卸载（P1-15a 补齐后接通） */

@@ -60,9 +60,9 @@
 │   │       ├── auth/      #   仅 __client（无页面）
 │   │       ├── _platform/ #   仅 __client（oj-market 引用）
 │   │       └── web/       #   仅 __client
-│   ├── oj-market/web/     # 解决方案市场（独立模块，删目录即下线；双根 /oj-market + /publish）
-│   │   ├── entry.ts       #   routes 聚合：市场根 + 发布管理根，两个 i18n 命名空间
-│   │   └── publish/       #   发布管理（/publish：routes + pages + locales + __client）
+│   ├── oj-market/web/     # 解决方案市场（独立模块，删目录即下线；单根 /oj-market 挂三个子页）
+│   │   ├── entry.ts       #   routes 聚合：/oj-market 根（方案清单 index）+ 发布管理/发布历史子路由
+│   │   └── publish/       #   发布管理 + 发布历史（/oj-market/publish、/oj-market/history：routes + pages + locales + __client）
 ├── dist/api/              # 后端产物（release 根：<name>-<ver>/ + manifests.yaml + versions.json）—构建后才有
 ├── dist/web/              # 站点产物（shell + modules/ + modules.json）—构建后才有
 ├── bin/                   # oj 二进制 + plugins/ + devkit/（不入库）
@@ -2083,7 +2083,7 @@ flowchart LR
 ### 12.1 发布流程（作者侧，三步）
 
 ```bash
-# ① 一次性：拿发布身份。站点有「发布管理」页时，用页面签发的一次性凭证兑换（key_id 由站点算好下发，
+# ① 一次性：拿发布身份。站点有「方案市场 → 发布管理」页时，用页面签发的一次性凭证兑换（key_id 由站点算好下发，
 #    CLI 不推导；兑换即作废；失败不落任何密钥文件；与 --id 互斥，同时给 exit 2）：
 ojm keygen --credential <token> [--site-url <站点>]
 OJM_PUBLISH_CREDENTIAL=<token> ojm keygen

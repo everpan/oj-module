@@ -1,6 +1,7 @@
 {
 	"menu": {
-		"main": "Market"
+		"main": "Market",
+		"list": "Solutions"
 	},
 	"perm": {
 		"view": "View solution market"

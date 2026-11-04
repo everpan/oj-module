@@ -1,6 +1,27 @@
 {
 	"menu": {
-		"publish": "Publishing"
+		"publish": "Publishing",
+		"history": "Release history"
+	},
+	"history": {
+		"title": "Release history",
+		"subtitle": "Every release recorded in the signed index, newest first. Product, version and publisher all come from the index itself.",
+		"empty": "No releases yet",
+		"syncFailed": "The market index is temporarily unreachable; showing records already stored",
+		"indexTime": "index time",
+		"publishedAtHint": "Uses the CDN file's Last-Modified when available; otherwise falls back to the index build time, tagged “index time”",
+		"total": "{{total}} in total",
+		"columns": {
+			"product": "Product",
+			"version": "Version",
+			"publisher": "Publisher key",
+			"publishedAt": "Published at",
+			"status": "Status"
+		},
+		"status": {
+			"active": "Available",
+			"yanked": "Yanked"
+		}
 	},
 	"page": {
 		"title": "Publishing",

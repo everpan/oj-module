@@ -103,3 +103,27 @@ export interface UninstallImpact {
 	affectedRoles: number
 	affectedUsers: number
 }
+
+/** 发布历史一行（`market_release`；来源是签名索引，追加式记录） */
+export interface ReleaseRow {
+	id: number
+	product: string
+	version: string
+	key_id: string | null
+	sha256: string | null
+	size: number | null
+	published_at: number
+	/** file = 分发包 Last-Modified；index = 索引生成时间兜底 */
+	published_at_source: "file" | "index"
+	yanked: number
+}
+
+/** 发布历史分页结果 */
+export interface ReleasePage {
+	list: ReleaseRow[]
+	total: number
+	page: number
+	size: number
+	/** 本次同步索引失败的人话（页面照常显示已入库历史） */
+	syncError: string | null
+}
