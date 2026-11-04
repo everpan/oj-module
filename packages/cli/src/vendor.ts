@@ -43,8 +43,12 @@ export const NPM_PKG = "@oj-bin/oj";
  * `__client` 内省 fail-fast，`oj openapi --module-root` 契约链整体不可用）修复于
  * 0.1.86（oj-bin 0f8a6e2，第三次基线发布通道实证）；module-root 工程是 0.2.20 起
  * 的默认布局，门禁必须盖住契约链（见 playbook §9 与 2026-10-23 第三次基线）。
+ * **0.2.68 抬到 0.1.121**：模板的方言 seed（`seed.mysql.sql` / `seed.pg.sql`）依赖
+ * 0.1.121 的「方言件胜出、`seed.sql` 兜底」选择语义（oj-bin 7d70b90）；更早的 oj
+ * 只读 `seed.sql`，三方言执行同一份 sqlite 写法 → mysql/pg 上 1064 拒启。模板不再
+ * 教「部署期手工覆盖」，门禁必须盖住这条链路（见 playbook §11 U1）。
  */
-export const MIN_OJ_VERSION = "0.1.86";
+export const MIN_OJ_VERSION = "0.1.121";
 
 /** 按段数值比较（字符串比较会把 0.1.9 判成大于 0.1.69）；非数字段按 0 处理 */
 export function isSupportedOjVersion(version: string): boolean {

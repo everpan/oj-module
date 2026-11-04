@@ -199,17 +199,18 @@ src/<模块>/api/<路径...>/api.ts   →   /api/<模块>/<路径...>
 | 文件 | 何时生效 |
 |---|---|
 | `migrations/*.sql` | 启动（dev `migrate_on_start: auto`）；release 默认 `verify`，账本落后则**拒绝启动** |
-| `seed.sql` | **每次启动都重放**（sqlite 默认库）——必须幂等，用 `INSERT OR IGNORE` |
+| `seed.sql` / `seed.<方言>.sql` | **每次启动都重放**——方言件（`.sqlite` / `.mysql` / `.pg`）存在即胜出、`seed.sql` 兜底、绝不双跑（oj ≥ 0.1.121）；必须幂等 |
 | `schema.yaml` | 声明；加可空列 / 加表 reconcile 能收敛，但**改类型与改名必须走 migrations** |
 
 > `seed.sql` 按 `;` 朴素切分，**注释里不许出现分号字面量**，否则语法错。
 
-> **mysql / pg 部署要自己切方言 seed**：oj 只认字面 `seed.sql`（无方言回落，`src/seed.rs`
-> 里是常量），三方言都会执行它，而 `INSERT OR IGNORE`、未转义的保留字列在 mysql/pg 上直接
-> 1064 → **拒启**。所以方言件按模块存放（`src/app/api/<模块>/seed.mysql.sql` /
-> `seed.pg.sql`，与基础件同表同条数），部署到 mysql/pg 时把要用的那份覆盖成同目录的
-> `seed.sql` 再起服；工程根**不再**有方言 seed 副本（历史上那份只含部分设置、且 mysql 侧
-> 裸写 `key`，已删除）。
+> **方言 seed 放好即生效（oj ≥ 0.1.121，已是 `ojm` 最低版本门禁）**：方言件按模块存放
+> （`src/app/api/<模块>/seed.mysql.sql` / `seed.pg.sql`，与基础件同表同条数），启动时按当前库
+> 方言自动选——方言件胜出、`seed.sql` 兜底、**绝不双跑**；成功日志打 `file=` / `dialect=`，
+> 模块只有别的方言件或文件名拼错（如 `seed.postgres.sql`）会 warn，`oj check` 的 seed 检查会报错。
+> 更早的 oj 只认字面 `seed.sql`（会把 sqlite 写法原样下发 mysql/pg → 1064），已低于门禁，
+> `ojm vendor` / `ojm info` 会直接拒绝。工程根**不再**有方言 seed 副本（历史上那份只含部分
+> 设置、且 mysql 侧裸写 `key`，已删除）。
 
 > **框架自带 `_platform` 模块的迁移已压平为单条基线**（`0001__baseline.sql` 及
 > `.mysql.sql` / `.pg.sql` 两个方言版）：新工程按基线一次建表，不再有 0002…0018 的增量链。

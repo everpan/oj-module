@@ -1,9 +1,11 @@
 # 上游需求草案：seed 按数据库方言选择文件（`seed.<dialect>.sql`）
 
-> 状态：**已提出，待上游排期**（2026-11-05 起草；上游基线 `oj-bin@2550bd5` / oj `0.1.120`）。
+> 状态：**已落地**（2026-11-05 起草；上游 `oj-bin` 提交 `7d70b90` / tag `v0.1.121`）。
 > 本仓关联：`docs/prd/framework-verification-playbook.md` §9「保留字让 seed 无法三方言共用一份」、
 > §11 **U1**（本条即 U1 的正式化提案）。
 > 命名与迁移的文件级方言覆盖**完全同构**（`{seq:04}__{desc}.{dialect}.sql`），见 §3 最后一行。
+> 落地口径：`seed.<sqlite|mysql|pg>.sql` 存在即胜出、`seed.sql` 兜底、绝不双跑；不匹配/错名 warn，
+> S003/S006 覆盖全部变体且幂等判据按文件方言。§11 的四个开放问题按本文建议全部采纳。
 
 ## 1. 结论
 
@@ -207,16 +209,23 @@ fn seed_files(mdir: &Path) -> Vec<PathBuf> {
 P4 的设计动机是本仓实测的 4 条 vs 22 条漂移；但它对「方言件合法地多一条 UPDATE」这类正常写法
 会误报，所以只 warn、给豁免注释，且不阻塞 P1-P3。
 
-## 10. 模板侧联动（等 oj 发版后，本仓做）
+## 10. 模板侧联动（✅ 2026-11-05 全部完成）
 
-1. 部署手册去掉「把 `seed.<dialect>.sql` 覆盖成 `seed.sql`」整个动作；`docs/devkit/manual.md`
-   的提示块重写为「同名方言件放好，oj 自动选」；
-2. `m-8` 守卫保留（根级副本仍然禁止，杜绝第二份真源）；
-3. `framework-verification-playbook.md` §9 对应行 + §11 U1 收口，并用 `oj-test-mysql` /
-   `oj-test-pg` 各起一次服，验证「不覆盖也能灌满 22 条 sys_setting」；
-4. devkit 快照（`docs/devkit/oj-api-dev/`）按发版内容整目录同步。
+1. ✅ 部署手册去掉「把 `seed.<dialect>.sql` 覆盖成 `seed.sql`」整个动作；`docs/devkit/manual.md`
+   的提示块重写为「同名方言件放好，oj 自动选」，并写明 `file=` / `dialect=` 日志判据；
+2. ✅ `m-8` 守卫保留（根级副本仍然禁止，杜绝第二份真源）；
+3. ✅ `framework-verification-playbook.md` §9 对应行 + §11 U1 收口；**真库验证**：
+   用 `oj 0.1.121` + 同一模块（`seed.sql` 插 `generic`、`seed.mysql.sql` 插 `mysql`、
+   `seed.pg.sql` 插 `pg`）分别起服——mysql 只落 `mysql`、pg 只落 `pg`，日志分别是
+   `seed ok … file=…/seed.mysql.sql dialect="mysql"` 与 `…/seed.pg.sql dialect="postgres"`，
+   通用件零执行（未做任何覆盖）；
+4. ✅ devkit 快照（`docs/devkit/oj-api-dev/`）按发版内容整目录同步；`MIN_OJ_VERSION`
+   0.1.86 → 0.1.121（方言选择是模板的前置能力）。
 
 ## 11. 开放问题（附建议）
+
+> 2026-11-05 落地时四项**全部按建议采纳**（命名 `seed.<dialect>.sql`；通用件继续参与检查；
+> 缺匹配 warn；允许不同构，一致性 warn 留 P4）。
 
 | # | 问题 | 建议 |
 | --- | --- | --- |

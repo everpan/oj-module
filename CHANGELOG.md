@@ -56,6 +56,15 @@
 
 ### Changed
 
+- **最低 oj 版本抬到 `0.1.121`，模板方言 seed 不再教手工覆盖**：模板的 `seed.mysql.sql` /
+  `seed.pg.sql` 依赖 oj 0.1.121 的「方言件胜出、`seed.sql` 兜底、绝不双跑」语义（oj-bin
+  `7d70b90`）；此前 oj 只读 `seed.sql`，同一份 sqlite 写法下发 mysql/pg 直接 1064 拒启，
+  devkit 手册因此写了一条「部署时把方言件覆盖成 `seed.sql`」的部署期约定。现 `MIN_OJ_VERSION`
+  0.1.86 → 0.1.121（`ojm vendor` / `ojm init` / `ojm info` 同一门禁），手册改为「方言件放好
+  即生效」并写明启动日志的 `file=` / `dialect=` 判据；`oj check` S003/S006 覆盖全部变体、
+  幂等判据按文件方言。回归：`tests/cli/vendor.test.ts` 新增 0.1.120 拒绝断言；
+  `tests/cli/init.test.ts` 的模拟 oj 版本同步到 0.1.121。
+
 - **方案市场收敛为单模单根，发布管理页并入 oj-market**：此前 `/oj-market`（市场）与 `/publish`
   （发布管理）是两个一级菜单根，组织上割裂。现在 `src/oj-market/web/entry.ts` 只声明一个
   `/oj-market` 根，子页用相对路径声明——`/oj-market`（方案清单）、`/oj-market/publish`

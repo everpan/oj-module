@@ -2515,7 +2515,10 @@ try {
   未装插件 → 启动报 `unknown db scheme`。
 - `DB("name")` 按名取库；查询构造器自动按库方言出 SQL；裸 SQL **统一用 `?` 占位符**
   （0.1.67 起，postgres 由宿主自动改写 `$n`；存量 `$n` 继续有效，见「统一占位符」节）。
-- `seed.sql` 启动时对 `default` 库重放，**三方言**（幂等靠 S006 门禁 + 引擎按方言改写）。
+- seed 启动时对 `default` 库重放，**三方言**（幂等靠 S006 门禁 + 引擎按方言改写）。
+  v0.1.121 起按文件名分方言：`seed.<sqlite|mysql|pg>.sql` 存在即胜出，`seed.sql` 兜底，
+  **绝不双跑**；方言件可直接用本方言原生幂等写法（`INSERT IGNORE` / `ON CONFLICT` /
+  `OR REPLACE`），S006 按文件方言判定。
 - mysql/pg 连不上启动 fail-fast（连接串错/库未建）。
 - **按库运维（v0.1.21）**：`oj migrate` / `oj test fixture` / `oj schema diff` 的 `--db <name>`
   即上方键名；缺省 `default`，未声明 fail-fast。账本 `_oj_migrations`、schema 收敛、

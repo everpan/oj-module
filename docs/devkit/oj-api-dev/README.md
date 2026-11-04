@@ -40,6 +40,14 @@ cp bin/devkit/global.d.ts bin/devkit/oj-modules.d.ts .                       # �
 手册与 skill 随 oj 版本一起发布。升级 oj 后，用新包里的 `devkit/` 覆盖旧拷贝即可。
 源文件与反馈入口在仓库 `docs/devkit/`。
 
+v0.1.121 已落地部分：**seed 按文件名分方言**——`seed.<sqlite|mysql|pg>.sql`（标签同迁移）
+存在即胜出、`seed.sql` 兜底，**绝不双跑**；只有别的方言的 seed → 跳过 + warn（不再全库静默
+不生效），标签写错（`seed.postgres.sql` / `Seed.Sql` / `seed..sql`）→ warn 提示规范名，`oj check`
+S006 报错。S003/S006 覆盖全部变体，幂等判据按文件所属方言（mysql 件可用 `INSERT IGNORE`
++ `ON DUPLICATE KEY`、sqlite 件可用 `OR REPLACE`、pg 件可用 `ON CONFLICT`），注释/字符串里的
+关键字不再参与判定；成功日志加 `file=` / `dialect=`。见 api-manual §2「seed.sql / seed.<方言>.sql」、
+db-guide、oj-test-guide、SKILL 陷阱速查。
+
 v0.1.92 已落地部分：**动态数据源登记的实例化能力（L4，client 轴）**——把 `db.client.register` /
 `reRegister` / `delete` / `list` / `has` / `test`（L3 v0.1.91 引入）正式确立为 **DB 实例的实例化 /
 生命周期 API**：`register(name, dsn)` 即 `db = new DB(name, dsn)` 构造实例、`delete` 销毁 + 驱逐缓存、
