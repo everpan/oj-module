@@ -66,6 +66,7 @@
 | [`migration/contract-to-openapi-schema.md`](migration/contract-to-openapi-schema.md) | 旧 `contract.ts` / `defineApi` 工程 → 新 `openapi.json` + handler `.schema` 流水线的迁移方法论与检查清单 |
 | [`migration/oj-requirement-response-outside-schema.md`](migration/oj-requirement-response-outside-schema.md) | 上游需求留档（✅ oj v0.1.72 已实现）：响应契约可声明在 `.schema` 之外（平级 `.response`），`.schema` 只承载入参 |
 | [`migration/oj-requirement-delete-method-key.md`](migration/oj-requirement-delete-method-key.md) | 上游需求留档（✅ oj v0.1.73 已实现）：`oj openapi` 把 `del` 动词归一为 `delete` 操作键（旧版产出非法 `"del"` 致 `--check` 漂移） |
+| [`migration/oj-requirement-mysql-two-step-id.md`](migration/oj-requirement-mysql-two-step-id.md) | 上游 PR 草案（待修）：MySQL `returning(["id"])` 的 INSERT 与 `LAST_INSERT_ID()` 跨连接，返回值是别人的 id；含真库复现、根因坐标、两套修法与验收 |
 | [`guides/api-codegen-openapi.md`](guides/api-codegen-openapi.md) | 新口径总览：`.schema` 权威源 + `openapi.json` → `__client` 的日常用法与已知限制 |
 
 ---
