@@ -11,7 +11,7 @@
 ```mermaid
 flowchart LR
   A["① 构建 ojm build"] --> B["② 打包 ojm build --bundle"]
-  B --> C["③ 身份 ojm keygen（一次性）"]
+  B --> C["③ 身份 ojm keygen（--id 离线 / --credential 凭证）"]
   C --> D["④ 签名 ojm sign --check"]
   D --> E["⑤ 发布 ojm market publish"]
   E --> F["⑥ 重建索引 ojm market build-index"]
@@ -64,6 +64,26 @@ ojm keygen --id acme.alice.macbook     # 例：<团队/产品>.<人名>.<环境>
 - 期望输出里有一行 **fingerprint**（`sha256(公钥)`）——**抄下来发给运维**，TOFU 核对要用（§8）。
 - 落点 `~/.ojm/keys/<id>/`：`private.pem`（权限 0600）+ `public.hex`。
 - key_id 必须**全小写、至少两段**（`<publisher>.<id>`），禁裸通用名如 `mykey`——违约包能签出来但装不进（`sig_key` 拒装）。
+
+### 2.1 站点签发身份：凭证通道（推荐）
+
+站点有「发布管理」页时，身份不用自己起名，也不必和运维核对 fingerprint（TOFU 由站点代劳）：
+
+1. 浏览器进 **发布管理 → 申请发布凭证**，填产品名（如 `demo-solution`）；
+2. 复制弹窗里的凭证或整条命令（**只显示这一次**，关闭后只能撤销重申请）；
+3. 本机执行其中一条：
+
+```bash
+ojm keygen --credential <token>
+OJM_PUBLISH_CREDENTIAL=<token> ojm keygen     # 或走环境变量，避免令牌进 shell 历史
+```
+
+- key_id 由站点按 `<产品名>.<编码后用户名>` 算好下发（例：`demo-solution.wecom-everpan`），
+  CLI 不做任何推导；想完全自定义身份就继续用上面的离线 `--id`。
+- 凭证**一次性**：兑换成功即作废；兑换失败（已用/已过期/已撤销/网络不通）**不写入任何密钥文件**。
+- 站点地址：`--site-url` > `OJM_SITE_URL` > `http://127.0.0.1:9778`；兑换端点匿名可达，不需要 `--user/--pass`。
+- `--credential` 与 `--id` 互斥（同时给 exit 2）；`--out` / `--yes` 仍按离线版规则生效。
+- 兑换完成后，「发布管理」页该条记录变为**已兑换**并显示 key_id；后续 §3 起的签名/发布流程完全一致。
 
 私钥纪律（逐条照做，违者 = 任何人都能以你的身份发包）：
 
