@@ -15,11 +15,12 @@
 判据只有一条：**每节的检查点逐条打勾**——退出码 0 只是入场券，产物与响应体才算数。
 历史演练记录集中在文末 [附录 A](#附录-a-历史基线从新到旧逐条可追溯)，日常执行不用读。
 
-> **上次演练结论（2026-11-05，cli/runtime 工作区 0.2.66 / oj 0.1.116）**：快线全绿。
-> `info` 三行同版本 0.2.66；`api --check` **0 error / 0 warn**；`build` 出 **8 个后端模块**
-> + `dist/web`（`modules.json` 2 模块：`app` / `oj-market`，`app` 产物内含 `publish`）；
-> dev 起服 `routes: 90` / `input contracts: 86`，登录、发布凭证申请/兑换/一次性复核、
-> `sign --check` 全通。详见附录 A 首条。
+> **上次演练结论（2026-11-05 第二轮，cli/runtime 工作区 0.2.66 / oj 0.1.118）**：普通用户全链绿。
+> 建号 `publisher01` → 首登改密（改密前写端 403）→ 申请凭证 `normal-user-demo.publisher01`
+> （7 天、一次性）→ `keygen --credential` → `market publish --fixture` → `verify` **8 项全 ✓**
+> → 首装 `needs_trust`（指纹逐字一致）→ `trust confirm` → 装成 → `ping {pong:true}`。
+> 顺带修 3 处文档缺口（canonical_origin / 别对 dev 装 / 租户头）与 1 处措辞错误（产品名不独占）。
+> 详见附录 A 首条。
 
 > **退出码会被管道吞掉**：`node ojm.mjs xxx 2>&1 | tail` 之后 `$?` 是 `tail` 的退出码。
 > 判「命令是否失败」时先落文件再看 `$?`（`cmd > out 2>&1; echo $?`），别用管道末尾的值。
@@ -74,7 +75,7 @@ node ../bin/ojm.mjs dev
 - [ ] 日志出现 `routes: N method-row(s)` 与 `input contracts: M ...`（本机实测 90 / 86），末尾 `oj serve listening`
 - [ ] `curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:9778/api/auth/login` → **405**（路由在，只是方法不对）
 - [ ] 登录 `superadmin / aA123456` 返回 `code:0` 且 `data.access_token` 非空
-- [ ] 发布身份（站点有「发布管理」页时）：
+- [ ] 拿**普通用户**走一遍发布身份（发布凭证是登录用户就能申请，不要求超管；也验证建号→改密链路）：
 
 ```bash
 TK=$(curl -s -X POST http://127.0.0.1:9778/api/auth/login \
@@ -82,9 +83,26 @@ TK=$(curl -s -X POST http://127.0.0.1:9778/api/auth/login \
   -d '{"username":"superadmin","password":"aA123456"}' \
   | node -pe 'JSON.parse(require("fs").readFileSync(0,"utf8")).data.access_token')
 
-TOKEN=$(curl -s -X POST http://127.0.0.1:9778/api/publish/credential \
+# 1) 超管建普通用户（默认 must_change=1，即首次登录必须先改密）
+curl -s -X POST http://127.0.0.1:9778/api/system/users \
+  -H 'content-type: application/json' -H 'X-TENANT-ID: default' -H "authorization: Bearer $TK" \
+  -d '{"username":"publisher01","password":"pub123456","displayName":"普通发布者"}'
+# 期望 code:0 + data.id
+
+# 2) 普通用户首次登录 → 改密（不改密，所有写接口都是 403 password change required）
+PT=$(curl -s -X POST http://127.0.0.1:9778/api/auth/login \
   -H 'content-type: application/json' -H 'X-TENANT-ID: default' \
-  -H "authorization: Bearer $TK" -d '{"product":"quickline-demo"}' \
+  -d '{"username":"publisher01","password":"pub123456"}' \
+  | node -pe 'JSON.parse(require("fs").readFileSync(0,"utf8")).data.access_token')
+curl -s -X PUT http://127.0.0.1:9778/api/auth/password \
+  -H 'content-type: application/json' -H 'X-TENANT-ID: default' -H "authorization: Bearer $PT" \
+  -d '{"old_password":"pub123456","new_password":"pub654321"}'
+# 期望 code:0 + 新的 access_token；用它替换 $PT
+
+# 3) 普通用户申请凭证 → key_id 的人名段必须是本账号
+TOKEN=$(curl -s -X POST http://127.0.0.1:9778/api/publish/credential \
+  -H 'content-type: application/json' -H 'X-TENANT-ID: default' -H "authorization: Bearer $PT" \
+  -d '{"product":"quickline-demo"}' \
   | node -pe 'JSON.parse(require("fs").readFileSync(0,"utf8")).data.token')
 
 # --out 用绝对路径：相对路径按进程 cwd 解析，脚本里容易落到仓库根
@@ -92,15 +110,18 @@ node ../bin/ojm.mjs keygen --credential "$TOKEN" \
   --site-url http://127.0.0.1:9778 --out /tmp/quickline-keys --yes
 ```
 
-- [ ] 打印 `凭证已兑换：产品 quickline-demo / 申请人 superadmin`，`/tmp/quickline-keys/` 有 `private.pem` + `public.hex`
+- [ ] 改密前直接申请凭证 → **403 `password change required`**（悬挂期只放行改密）
+- [ ] 申请返回 `key_id=quickline-demo.publisher01`（人名段 = 账号归一化，不是超管）
+- [ ] 打印 `凭证已兑换：产品 quickline-demo / 申请人 普通发布者（publisher01）`，`/tmp/quickline-keys/` 有 `private.pem` + `public.hex`
 - [ ] 同一 token 再兑一次 → 打印「发布凭证无效或已失效…」且**退出码 1**、不写入任何密钥文件
+- [ ] 列表可见性：普通用户看到自己的 1 条、**没有** `owner_tenant` 字段；超管看到全部且带 `owner_tenant`
 - [ ] 列表中该条 `status=used`、`used_at` 非空
 - [ ] 用这把密钥做签名自检（没有用户方案包时，拿 `dist/<模块>-0.1.0.tgz` 代替即可）：
 
 ```bash
-node ../bin/ojm.mjs sign dist/web-0.1.0.tgz --id quickline-demo.superadmin \
+node ../bin/ojm.mjs sign dist/web-0.1.0.tgz --id quickline-demo.publisher01 \
   --key /tmp/quickline-keys/private.pem --registry-id oj-registry --check
-# 期望：[ojm] 自检通过：签名与包体匹配（指纹 e479e207…）
+# 期望：[ojm] 自检通过：签名与包体匹配（指纹 …）
 ```
 
 - [ ] 停服：`pkill -f "bin/ojm.mjs dev"`
@@ -605,12 +626,12 @@ node "$CLI_PKG/bin/ojm.mjs" market publish --real . --id demo.publisher
 - [ ] `ojm dev`：登录 / 列表过滤 / 新增 / 401 / 通知兜底全对
 - [ ] （可选）`ojm preview` 通过 migrate、服务与带 dist 的 `--check` 三腿
 - [ ] 〔方案链路〕
-  - [ ] 发布身份：凭证通道兑换成功、`~/.ojm/keys/<key_id>/` 落盘；同一 token 重兑被 400 拒且不落盘（或离线 `--id` 的 fingerprint 已记录）
+  - [ ] 发布身份：普通用户（新建 → 改密 → 申请）凭证兑换成功、`~/.ojm/keys/<key_id>/` 落盘、key_id 人名段 = 该账号；同一 token 重兑被 400 拒且不落盘（或离线 `--id` 的 fingerprint 已记录）
   - [ ] 方案工程 `oj build` 出 `api/dist/<name>-<version>/`（含路由行）、`ojm build --bundle` 出 tgz（sha256 稳定）
-  - [ ] `ojm market publish --real --rebuild-index` 后 `cdn/` 的 v2 索引件齐全（`catalog.yaml(+.sig)` + `shards/` + tgz(+.sig)），`market verify --rebuild-index` 七项全 ✓
+  - [ ] `ojm market publish --real --rebuild-index` 后 `cdn/` 的 v2 索引件齐全（`catalog.yaml(+.sig)` + `shards/` + tgz(+.sig)），`market verify --rebuild-index` 末行「全部校验通过（N 项）」（N 随包数/分片数变化，不按固定条数核对）
   - [ ] 宿主 `ojm build` 后 `api/dist/versions.json` **存在**（C2-09 前置；缺则该步是回归）
   - [ ] 市场卡片可见 → 首装 `needs_trust`（指纹逐字核对）→ `trust confirm` → 重试 `status=done` 且 11 段全 ok
-  - [ ] 装后 `/api/<name>/ping` 返回 `code:0`；`api/dist/manifests.yaml` 出现 `<name>: <version>`
+  - [ ] 装后 `curl -H 'X-TENANT-ID: default' /api/<name>/ping` 返回 `code:0`；`api/dist/manifests.yaml` 出现 `<name>: <version>`
   - [ ] （§7.4）walkthrough 14 项 AC 表全 PASS，含 neg-* 五项负向防线与 neg-stranger 信任库快照 diff 为空
   - [ ] （§7.5，0.2.23 起）`ojm new` 守卫四拒零写入；`info` 默认折叠自带 / `--all` 平铺；
         `build --bundle` 无参只出用户方案（自带跳过有日志）、`--bundle <name>` 单份、
@@ -663,6 +684,11 @@ node "$CLI_PKG/bin/ojm.mjs" market publish --real . --id demo.publisher
 | `oj serve` / `ojm dev` 报 `module _platform: at seq 19: applied migration V1__create_users is different than filesystem one V1__baseline` | 迁移账本压平后老 dev 库仍记着旧文件名，与文件系统新基线不一致 | 删**真库** `packages/cli/templates/db.sqlite`（连带 `-shm`/`-wal`）重启重建。`packages/cli/templates/api/db.sqlite` 是历史残留，删它没用。压平不提供 shim，也不做双基线兼容 |
 | `ojm keygen --out ./keys` 把密钥写进了仓库根 | `keygenCommand` 按 `opts.cwd ?? process.cwd()` 解析相对路径，脚本的 cwd 未必是你以为的目录 | 脚本里一律给绝对路径（`--out /tmp/xxx-keys`）；测试用例同理 |
 | `keygen --credential` 返回 `400 发布凭证无效或已失效（可能已兑换、已过期或已撤销）` | 凭证是**一次性令牌**，兑换成功即 `used=1`；过期/撤销同文案 | 回站点「发布管理」重新申请；同一 token 不能给第二台机器或第二次 CI 复用 |
+| 新建用户申请凭证返回 `403 password change required` | 建号默认 `must_change=1`，「悬挂期」只放行改密，其它写端一律 403 | 先 `PUT /api/auth/password`（本人 + 旧口令）改密，用返回的新 token 再申请 |
+| 安装返回 `503 安装需要站点 canonical origin` | `config.yaml` 缺 `vars.canonical_origin`，而市场基址是相对路径 `/cdn`；REG-CS6 不读 Host 头 | 本地演练填 `http://127.0.0.1:9778`（模板默认注释掉），重启后重试 |
+| 安装 partial：`reloading` 阶段 `reloadConfig 返回 unchanged` | 对着 `ojm dev` 装——dev 的文件监听先在安装器之前 reload 了 config，安装器自己 reload 时已无变化 | 安装验证只对 `oj serve` release 形态做（`ojm preview` 同理不行：它服务派生 config） |
+| 装完 `curl /api/<name>/ping` 返回 `400 missing tenant header` | 漏了 `X-TENANT-ID` | 探针加 `-H 'X-TENANT-ID: default'`；这是缺参数，不是安装失败 |
+| 两个账号用同一产品名各申请一张凭证都成功 | 站点只保证 **key_id 唯一**（`<product>.<username>`），产品名不是独占命名空间 | 文档不得宣称「站点替你裁决产品归属」；同名方案的发布权靠团队约定 + 市场包名/版本冲突拦截 |
 
 ### 9.1 构造器迁移后的 L1/L2 边界与 vitest 190 红基线（2026-10-20）
 
@@ -739,7 +765,20 @@ node "$CLI_PKG/bin/ojm.mjs" build && npx tsc --noEmit -p tsconfig.json && node "
 > 基线的价值是「某版本当时到底验了什么、踩了什么」，属于事实档案，不参与日常执行；
 > 新基线追加在本节最前面，最近一次的结果同时摘到文首「上次演练结论」。
 
-### 最近一次基线（2026-11-05，oj 0.1.116 / cli+runtime 工作区 0.2.66；快线 + 发布凭证通道）
+### 最近一次基线（2026-11-05 第二轮，oj 0.1.118 / cli+runtime 工作区 0.2.66；普通用户凭证 → 落包 → 安装）
+
+| 项 | 值 |
+| --- | --- |
+| 日期 | 2026-11-05（第二轮） |
+| 框架包版本 | 工作区态 `feat/ojm` @ `0cde80c37` 之后（cli/runtime/shell 均 0.2.66；未发版） |
+| oj | 起站用 PATH 上的 `0.1.118`（模板 `bin/oj` 为 0.1.116；本轮未验 vendor 形态） |
+| 验证动机 | 发布身份文档改为「站点凭证为主、离线 `--id` 为旁路」后，用**普通用户**（非超管）走一遍申请 → 兑换 → 发包 → 安装，核对文档口径 |
+| 范围 | §0.3 快线扩展：删库重建 dev → 超管建 `publisher01` → 首登改密 → 普通用户申请凭证 → `keygen --credential` → 重兑复核 → `market publish --fixture normal-user-demo@0.1.0 --rebuild-index` → `market verify` → 安装（先 dev 后 release）→ `needs_trust` → `trust confirm` → 重装 → ping |
+| 结果 | **通过**。① 建号 `publisher01`（id=5，`must_change=1`）；改密前申请凭证 **403 `password change required`**，`PUT /api/auth/password` 后 `must_change=false`。② 申请返回 64 位 token、`key_id=normal-user-demo.publisher01`、TTL **7.00 天**；普通用户列表只见自己 1 条且**无** `owner_tenant` 字段，超管列表带 `owner_tenant=default`。③ `keygen --credential` 打印「凭证已兑换：产品 normal-user-demo / 申请人 普通发布者（publisher01）」，落 `/tmp/normal-user-keys/{private.pem,public.hex}`，指纹 `56ad85af…e15464`；同 token 重兑 **exit=1**、目标目录未创建；列表 `status=used`、`used_at` 非空。④ `market publish --fixture normal-user-demo@0.1.0 --id normal-user-demo.publisher01 --rebuild-index --check`：1092 字节、sha256 `9d1fc92b…`、规范串 `oj-registry:normal-user-demo@0.1.0:9d1fc92b…`，索引第 1 代 1 片。⑤ `market verify --rebuild-index` **8 项全 ✓**（完整性 / 包级签名 / manifest×2 / catalog 签名 / 分片签名 / 同代 / 时效）。⑥ 首装 `needs_trust`，指纹与 keygen **逐字一致**；`trust confirm` → 重装 **`安装完成：normal-user-demo 0.1.0`**；`curl -H 'X-TENANT-ID: default' /api/normal-user-demo/ping` → `{"pong":true,"version":"0.1.0"}`。 |
+| 本次发现并处置 | ① **新建账号必须先改密**：`must_change=1` 悬挂期除改密外写端全 403——已写进 playbook §0.3/§9 与 walkthrough §2。② **本地 `/cdn` 自供安装需要 `vars.canonical_origin`**（模板默认注释）：缺了 install 503 REG-CS6——已写进 walkthrough §6/§7 与 §9。③ **不能对着 `ojm dev` 装**：dev 的文件监听先吃掉 config 改动，安装器 reload 判 `unchanged` → partial（reloading）——安装只对 `oj serve` release 形态做，已写进 §9 与 walkthrough §6。④ **ping 要带 `X-TENANT-ID`**，否则 400 `missing tenant header`——已写进 §8 与 walkthrough §6。⑤ **产品名不是独占命名空间**：另建 `publisher02` 用同名 `normal-user-demo` 申请**同样成功**（得到 `normal-user-demo.publisher02`），文档原先「不会撞名或冒用别人的产品」是错的，已改为「只保证 key_id 唯一，产品归属靠团队约定 + 市场包名/版本冲突」；跨租户同名账号共用 key_id 的风险记入 §9。⑥ `market publish --rebuild-index` 先打「索引未重建」再打「索引已重建」，自相矛盾——已修 `publish.ts`（带 `rebuildIndex` 时不打印）。⑦ 复证仓库态坑：`dist/api/manifests.yaml` 残留 `demo: 0.1.0` 会让 `oj serve` 报 `lock points to missing version dir`，清除后 `ojm build` 重建即愈（§9 已有条目）。 |
+| 手册同步 | §0.3 快线改为「普通用户」主路径（建号/改密/申请/key_id 归属/可见范围五个检查点）；§8 判据补普通用户、租户头、N 项口径；§9 新增 6 条；walkthrough §2 补「谁能申请 + 产品名不独占」、§6 补 canonical_origin / 别对 dev 装 / 租户头、§7 新增 5 行速查 |
+
+### 2026-11-05 第一轮（oj 0.1.116 / cli+runtime 工作区 0.2.66；快线 + 发布凭证通道）
 
 | 项 | 值 |
 | --- | --- |

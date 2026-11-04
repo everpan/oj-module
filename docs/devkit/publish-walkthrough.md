@@ -59,6 +59,14 @@ ojm build --bundle crm  #    只打 src/crm/ 这一份（多方案工程用）
 身份名不自拟：站点要靠它在「发布管理」页留档，说清「谁、为哪个产品」发的包。
 所以主流程是「先申请凭证，再在本机兑换」：
 
+> 站点保证的是 **key_id 唯一**（同一产品名 + 同一账号 → 同一个身份，同一身份换机重申请是允许的），
+> 不是产品名独占：不同账号申请同名产品会各自得到 `<产品名>.<自己的账号>`。
+> 所以「谁有资格发这个方案」仍靠团队约定与市场侧的包名/版本冲突拦截，不能指望站点替你裁决。
+
+> 谁能申请：**任何登录用户**，不要求超管。但新建账号首次登录处于「必须先改密」状态，
+> 此时除改密外的写接口一律 `403 password change required`——先在页面或 `PUT /api/auth/password`
+> 改掉临时口令，再申请凭证。
+
 1. 浏览器进 **发布管理 → 申请发布凭证**，填产品名（如 `demo-solution`）；
 2. 复制弹窗里的凭证或整条命令（**只显示这一次**，关闭后只能撤销重申请）；
 3. 本机执行其中一条：
@@ -191,6 +199,8 @@ ojm build
 # ① 站点以 release 形态起（dev/preview 完不成安装的热更段）
 #    先把 config.yaml 的 platform.root 从 src 改成 dist/api——必须与 --api-path 同源，
 #    否则 oj serve 直接拒启：platform.root (...) must be mounted as an api mount
+#    再配 vars.canonical_origin（本地演练填 http://127.0.0.1:9778）：市场基址 /cdn 是相对路径，
+#    服务端要靠它补全成绝对 URL；缺了安装直接 503（REG-CS6 不读 Host 头，不会替你猜）
 oj serve -c config.yaml -b /api --api-path dist/api
 
 # ② 市场地址：本地自供 /cdn 是模板默认，**不需要 setup**；
@@ -198,6 +208,8 @@ oj serve -c config.yaml -b /api --api-path dist/api
 #    ojm market setup --site-url http://127.0.0.1:9778 --user superadmin --pass <当前口令> --new-pass <新口令>
 
 # ③ 安装（从 CDN 拉：name[@version]；直传文件则给 tgz 路径，.sig 同目录自动随包）
+#    只对 release 站点装；别对着 `ojm dev` 装——dev 的文件监听会在安装器 reload 之前
+#    先吃掉 config 改动，安装器自己再 reload 时得到 unchanged，判 partial（reloading）
 ojm install crm@1.0.0 --site-url http://127.0.0.1:9778 --user superadmin --pass <口令>
 
 # ④ 首装陌生 key 必停在 needs_trust：响应 trust.fingerprint 与 §2 记下的指纹【逐字】核对
@@ -209,7 +221,9 @@ ojm install crm@1.0.0 --site-url http://127.0.0.1:9778 --user superadmin --pass 
 `<口令>` 就是登录站点用的那个：没跑过 `market setup` 时是脚手架种子口令（`superadmin / aA123456`），
 跑过则用 `--new-pass` 设的新口令。
 
-通过判据：`dist/api/manifests.yaml` 出现 `<name>: <version>`；**重启一次 `oj serve`**（新方案路由要重启才注册，热更只覆盖 vars）后 `curl /api/<name>/ping` 返回 `code:0`。
+通过判据：`dist/api/manifests.yaml` 出现 `<name>: <version>`；**重启一次 `oj serve`**（新方案路由要重启才注册，热更只覆盖 vars）后
+`curl -H 'X-TENANT-ID: default' /api/<name>/ping` 返回 `code:0`——**不带租户头会 400 `missing tenant header`**，
+那是缺参数，不是装失败。
 
 TOFU 没有免检通道：**只有模板内置的 oj-market（第一方包）用内置 bootstrap 公钥首装免核对**；
 你自己 keygen 出来的任何身份——包括站点凭证下发的——首装都要人工核指纹。key 轮换 = 新 key_id
@@ -225,6 +239,10 @@ TOFU 没有免检通道：**只有模板内置的 oj-market（第一方包）用
 | `tampered` | 签完又动过包，或传输损坏 | 重打包重签；核对 sha256 |
 | `sig_key` | key_id 不是 `<publisher>.<id>` 全小写两段式 | 凭证通道回「发布管理」重申请（产品名须小写合规）；离线旁路换合规 id 重 keygen 再重签 |
 | `keygen --credential` 报「发布凭证无效或已失效」 | 一次性令牌已兑换/已过期/已撤销，或站点地址不对 | 回「发布管理」重新申请；同一 token 不能给第二台机器 |
+| 申请凭证 403 `password change required` | 新建账号首次登录还在「必须先改密」悬挂期 | 先改密（页面或 `PUT /api/auth/password`），再申请 |
+| 安装 503 `安装需要站点 canonical origin` | `config.yaml` 的 `vars.canonical_origin` 没配，而市场基址是相对路径 `/cdn` | 配成站点对外地址（本地演练 `http://127.0.0.1:9778`）后重启 |
+| 安装 partial（stage `reloading`，`reloadConfig 返回 unchanged`） | 对着 `ojm dev` 装：dev 的文件监听先吃掉了 config 改动 | 换成 `oj serve` release 形态再装；别在 dev 上验证安装 |
+| 装完 `curl /api/<name>/ping` 返回 400 `missing tenant header` | 少了 `X-TENANT-ID` 头 | 加 `-H 'X-TENANT-ID: default'` 再探 |
 | `sig_alg` / `sig_format` | 签名算法/.sig 结构不符 | 用当前 ojm 重签（旧版本工具产物） |
 | `needs_trust`（第五终态，非成功） | 站点第一次见这个 key | 与发布方逐字核对指纹 → `trust confirm --task <id>` → 重跑 install |
 | publish 报「包冲突：…字节不一致」 | 同 name@version 已有字节不同的包 | **升 version 重发**；确需覆盖先删 CDN 旧 tgz |
