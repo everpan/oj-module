@@ -5,14 +5,15 @@ import { routes as homeRoutes } from "./home/routes";
 import { onInit as loginOnInit, routes as loginRoutes } from "./login/routes";
 import { onInit as notificationOnInit, routes as notificationRoutes } from "./notification/routes";
 import { onInit as personalCenterOnInit, routes as personalCenterRoutes } from "./personal-center/routes";
+import { onInit as publishOnInit, routes as publishRoutes } from "./publish/routes";
 import { onInit as systemOnInit, routes as systemRoutes } from "./system/routes";
 
 /**
- * 应用模块（多根聚合）：一个 entry 承载六个业务根，各根独立成一级菜单。
+ * 应用模块（多根聚合）：一个 entry 承载七个业务根，各根独立成一级菜单。
  *
- * 为什么聚合：这六个根（首页/登录/个人中心/通知/系统管理）是脚手架的框架内置页面，
- * 同版本发布、同生命周期、缺一不可，拆成六个模块只会把工程目录、web.config 登记、
- * modules.json 与首屏模块入口请求都放大六倍。聚合后仍是「一目录一模块」，但模块内
+ * 为什么聚合：这七个根（首页/登录/个人中心/发布管理/通知/系统管理）是脚手架的框架内置页面，
+ * 同版本发布、同生命周期、缺一不可，拆成七个模块只会把工程目录、web.config 登记、
+ * modules.json 与首屏模块入口请求都放大七倍。聚合后仍是「一目录一模块」，但模块内
  * 按根分目录（`<root>/routes.ts` + `pages/` + `__client/`），页面相对导入不变。
  *
  * 结构约定（多根模块）：
@@ -23,7 +24,7 @@ import { onInit as systemOnInit, routes as systemRoutes } from "./system/routes"
  *   - 门禁挂根路由：`/system` 的 `handle.roles` 等价于原先的模块级 requiredRoles。
  *
  * i18n 用 `i18nNamespaces` 沿用各根**原命名空间**（home / login / personal-center /
- * notification / system），因此 `t("system:menu.users")`、`useTranslation("system")`
+ * publish / notification / system），因此 `t("system:menu.users")`、`useTranslation("system")`
  * 与菜单标题 `<ns>:menu.<key>` 全部零改动。
  */
 const i18nNamespaces: Record<string, ModuleI18n> = {
@@ -43,6 +44,10 @@ const i18nNamespaces: Record<string, ModuleI18n> = {
 		"zh-CN": () => import("./notification/locales/zh-CN.json"),
 		"en-US": () => import("./notification/locales/en-US.json"),
 	},
+	"publish": {
+		"zh-CN": () => import("./publish/locales/zh-CN.json"),
+		"en-US": () => import("./publish/locales/en-US.json"),
+	},
 	"system": {
 		"zh-CN": () => import("./system/locales/zh-CN.json"),
 		"en-US": () => import("./system/locales/en-US.json"),
@@ -51,13 +56,14 @@ const i18nNamespaces: Record<string, ModuleI18n> = {
 
 export default defineModule({
 	name: "app",
-	description: "应用模块：框架内置页面（首页/登录/个人中心/通知/系统管理），多根聚合",
+	description: "应用模块：框架内置页面（首页/登录/个人中心/发布管理/通知/系统管理），多根聚合",
 	version: "0.1.0",
 	peerRuntime: ">=0.0.0",
 	routes: [
 		...homeRoutes,
 		...loginRoutes,
 		...personalCenterRoutes,
+		...publishRoutes,
 		...notificationRoutes,
 		...systemRoutes,
 	],
@@ -70,6 +76,7 @@ export default defineModule({
 		async onInit(ctx: ModuleContext) {
 			await loginOnInit(ctx);
 			await personalCenterOnInit(ctx);
+			publishOnInit(ctx);
 			await notificationOnInit(ctx);
 			await systemOnInit(ctx);
 		},

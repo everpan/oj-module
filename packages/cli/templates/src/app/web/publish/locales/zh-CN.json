@@ -1,0 +1,59 @@
+{
+	"menu": {
+		"publish": "发布管理"
+	},
+	"page": {
+		"title": "发布管理",
+		"subtitle": "发布凭证是一次性令牌：兑换后换到一个长期有效的发布身份（key_id），凭证本身随即作废。",
+		"apply": "申请发布凭证",
+		"empty": "还没有申请过发布凭证",
+		"total": "共 {{total}} 条"
+	},
+	"apply": {
+		"title": "申请发布凭证",
+		"product": "产品名",
+		"productExtra": "要发布的解决方案名（小写字母开头，仅 a-z、0-9、-）。发布身份 = 产品名.你的用户名，申请后不可更改。",
+		"productRequired": "请填写产品名",
+		"ok": "生成凭证",
+		"cancel": "取消"
+	},
+	"issued": {
+		"title": "凭证已生成（只显示这一次）",
+		"warning": "关闭后无法再次查看明文，只能重新申请。请先复制凭证或下方命令。",
+		"identity": "发布身份",
+		"token": "凭证",
+		"command": "在本机执行",
+		"expires": "有效期至",
+		"copy": "复制",
+		"copied": "已复制",
+		"done": "我已保存"
+	},
+	"columns": {
+		"product": "产品名",
+		"keyId": "发布身份",
+		"applicant": "申请人",
+		"tokenHint": "凭证标识",
+		"status": "状态",
+		"createdAt": "申请时间",
+		"usedAt": "兑换时间",
+		"expiresAt": "有效期至",
+		"tenant": "归属租户",
+		"actions": "操作"
+	},
+	"status": {
+		"active": "待兑换",
+		"used": "已兑换",
+		"revoked": "已撤销",
+		"expired": "已过期"
+	},
+	"revoke": {
+		"action": "撤销",
+		"confirm": "撤销后该凭证立刻作废，确定？",
+		"ok": "撤销",
+		"done": "已撤销"
+	},
+	"filter": {
+		"tenant": "按租户筛选",
+		"tenantPlaceholder": "留空查看全部租户"
+	}
+}

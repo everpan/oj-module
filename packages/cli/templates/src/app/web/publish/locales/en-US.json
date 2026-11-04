@@ -1,0 +1,59 @@
+{
+	"menu": {
+		"publish": "Publishing"
+	},
+	"page": {
+		"title": "Publishing",
+		"subtitle": "A publishing credential is single-use: redeeming it mints a long-lived publishing identity (key_id).",
+		"apply": "Request credential",
+		"empty": "No publishing credential yet",
+		"total": "{{total}} in total"
+	},
+	"apply": {
+		"title": "Request publishing credential",
+		"product": "Product",
+		"productExtra": "The solution name you are publishing (lowercase, a-z0-9- only). Identity = product + your username; it cannot be changed later.",
+		"productRequired": "Product is required",
+		"ok": "Generate",
+		"cancel": "Cancel"
+	},
+	"issued": {
+		"title": "Credential created (shown once)",
+		"warning": "You will not be able to view it again. Copy it now, or copy the command below.",
+		"token": "Credential",
+		"command": "Command",
+		"copy": "Copy",
+		"copied": "Copied",
+		"identity": "Identity",
+		"expires": "Valid until",
+		"done": "Saved"
+	},
+	"columns": {
+		"product": "Product",
+		"keyId": "Identity",
+		"applicant": "Applicant",
+		"tokenHint": "Credential",
+		"status": "Status",
+		"createdAt": "Requested",
+		"usedAt": "Redeemed",
+		"expiresAt": "Valid until",
+		"tenant": "Tenant",
+		"actions": "Actions"
+	},
+	"status": {
+		"active": "Pending",
+		"used": "Redeemed",
+		"revoked": "Revoked",
+		"expired": "Expired"
+	},
+	"revoke": {
+		"action": "Revoke",
+		"confirm": "Revoking invalidates this credential immediately. Continue?",
+		"ok": "Revoke",
+		"done": "Revoked"
+	},
+	"filter": {
+		"tenant": "Filter by tenant",
+		"tenantPlaceholder": "Leave empty for all tenants"
+	}
+}

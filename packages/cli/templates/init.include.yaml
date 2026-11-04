@@ -126,6 +126,7 @@ include:
   - src/app/web/login
   - src/app/web/notification
   - src/app/web/personal-center
+  - src/app/web/publish
   - src/app/web/system
   # 解决方案市场：默认第一方能力。逐子路径收录——__tests__ 不进脚手架
   # （用户工程无 web 侧 vitest 基建，拷了是死文件）
