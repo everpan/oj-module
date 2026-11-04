@@ -1,9 +1,11 @@
 import type { EChartsOption } from "echarts";
 import { Card } from "antd";
-import ReactECharts from "echarts-for-react";
+import ReactEChartsCore from "echarts-for-react/esm/core";
 import { useTranslation } from "react-i18next";
 
-/** 柱状图：演示 `echarts` + `echarts-for-react`（共享依赖，宿主 importmap 提供）。 */
+import { echarts } from "./echarts-setup";
+
+/** 柱状图：按需注册的 `echarts` + `echarts-for-react/esm/core`（见 echarts-setup.ts）。 */
 export default function BarChart() {
 	const { t } = useTranslation();
 	const categories = [
@@ -25,7 +27,7 @@ export default function BarChart() {
 	};
 	return (
 		<Card title={t("home:views")}>
-			<ReactECharts opts={{ height: 320, width: "auto" }} option={option} />
+			<ReactEChartsCore echarts={echarts} opts={{ height: 320, width: "auto" }} option={option} />
 		</Card>
 	);
 }

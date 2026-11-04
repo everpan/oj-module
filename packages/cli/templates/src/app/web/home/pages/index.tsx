@@ -19,8 +19,9 @@ const wrapperCol: ColProps = {
 
 /**
  * 首页：结构对齐 playground home，用自带的统计卡片与三类图表
- * 演示宿主共享依赖矩阵（echarts / echarts-for-react / react-countup / dayjs /
- * antd / @ant-design/icons / react-i18next 均由宿主 importmap 单例提供）。
+ * 演示依赖矩阵（react-countup / dayjs / antd / @ant-design/icons / react-i18next
+ * 由宿主 importmap 单例提供；echarts 由模块自打包并按需注册，
+ * 见 `./components/echarts-setup.ts`）。
  */
 export default function HomePage() {
 	return (

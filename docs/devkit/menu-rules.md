@@ -278,7 +278,7 @@ export default {
 
 | 位置 | 动作 | 不配的后果 |
 |---|---|---|
-| `<dist>/index.html` | importmap 映射值、`<script src>`、`<link href>` 统一加 `/oj` 前缀 | HTML 指向 `/assets/react.js`，在 `/oj` 挂载下 404 → 白屏 |
+| `<dist>/index.html` | importmap 映射值、`<script src>`、`<link href>` 统一加 `/oj` 前缀 | HTML 指向 `/assets/react.<hash>.js`，在 `/oj` 挂载下 404 → 白屏 |
 | `<dist>/index.html` | `<head>` 注入 `<script nonce>window.__OJ_BASE__="/oj/"</script>`（复用 importmap 的 nonce，否则被 CSP 拦掉） | 运行期拿不到真实部署前缀 |
 | 运行期 Router | runtime 与宿主 shell 都经 `resolveSiteBase()` 取 basename，即 `window.__OJ_BASE__` | Router 不剥 `/oj`，`/oj/wiki/...` 匹配不到 `/wiki/...`（深链刷新落 404 页） |
 
@@ -301,6 +301,9 @@ export default {
 根路径部署（`siteBase` 留空）时产物与旧版**逐字节一致**，无需任何迁移。
 
 实测依据（2026-10-21，站点以 `mounts: [{prefix: /oj, web: web/dist, spa: true}]` 挂起）：
+
+> 下表的资产文件名是当时的 `/assets/react.js`。当前产物改为内容寻址命名
+> （`/assets/react.<hash>.js`，10 位 base36），**前缀判断逻辑不变**，只是文件名多一段哈希。
 
 | 请求 | 结果 | 说明 |
 |---|---|---|

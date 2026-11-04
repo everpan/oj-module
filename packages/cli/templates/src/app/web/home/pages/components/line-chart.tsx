@@ -1,12 +1,14 @@
 import type { EChartsOption } from "echarts";
 import { Card, Radio } from "antd";
 import dayjs from "dayjs";
-import ReactECharts from "echarts-for-react";
+import ReactEChartsCore from "echarts-for-react/esm/core";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { echarts } from "./echarts-setup";
+
 /**
- * 折线图：演示 `echarts` + `echarts-for-react` + `dayjs`（共享依赖）。
+ * 折线图：按需注册的 `echarts` + `echarts-for-react/esm/core`（见 echarts-setup.ts）。
  * 数据为静态演示值——真实业务请走模块契约 + `ojm api` 生成的 client
  * （参考 `demo` 模块的裸 fetch 与教程里 books 模块的契约式接法）。
  */
@@ -69,7 +71,7 @@ export default function LineChart() {
 				</Radio.Group>
 			)}
 		>
-			<ReactECharts opts={{ height: 320, width: "auto" }} option={option} />
+			<ReactEChartsCore echarts={echarts} opts={{ height: 320, width: "auto" }} option={option} />
 		</Card>
 	);
 }

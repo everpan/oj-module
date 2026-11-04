@@ -5,7 +5,7 @@
  * docs/devkit/framework-dev.md）。
  *
  * 只同步**顶层文件**：`docs/devkit/oj-api-dev/` 是 oj 侧 devkit 的快照
- * （10 个文件，与 ~/.local/share/oj/devkit/ 逐字节一致），仅本仓参考、
+ * （12 个文件，与 ~/.local/share/oj/devkit/ 逐字节一致），仅本仓参考、
  * 不随 cli 包发货——用户工程的 oj-api-dev skill 由 oj 二进制分发。
  * 结构与刷新口径见 docs/devkit/README.md。
  *

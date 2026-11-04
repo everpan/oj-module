@@ -23,15 +23,18 @@ export interface SharedDepEntry {
 	/** 硬共享：模块不得自带 */
 	hard: boolean
 	/**
-	 * 软共享但「不进宿主首屏」：宿主 shell 不预构建该资产、importmap 不列该键，
-	 * 模块若 import 它则自行打包进模块产物（设计文档 §4.3 的「软共享缺席→模块自带
-	 * 副本兜底」语义）。用于**仅模块使用、宿主与共享 chunk 永不 import**的重型依赖
-	 * （编辑器 / 图表 / Markdown / 拖拽 …），避免把它们 5~6MB 的体量无谓铺进
-	 * shell-dist 并要求公开链路多传一堆文件。宿主侧有真实 import 的共享依赖
-	 * （antd / pro-components / icons 内部依赖的 motion / react-jss / dayjs /
-	 * zustand 等）绝不能标 bundle —— 否则会被 antd 等共享 chunk 经 importmap 解析
-	 * 不到而 404。判定依据：宿主 host.tsx + runtime.js 的传递 import 图，以及
-	 * antd/pro-components/icons 的传递依赖图，都不含这些说明符。
+	 * 模块自打包：宿主 shell 不预构建该资产、importmap 不列该键，模块若 import 它
+	 * 则自行打包进模块产物（设计文档 §4.3 的「软共享缺席→模块自带副本兜底」语义）。
+	 * 用于**仅模块使用、宿主与共享 chunk 永不 import**的重型依赖（编辑器 / 图表 /
+	 * Markdown），避免把它们 5~6MB 的体量无谓铺进 shell-dist 并要求公开链路多传
+	 * 一堆文件。宿主侧有真实 import 的共享依赖（antd / pro-components / icons 内部
+	 * 依赖的 motion / react-jss / dayjs / zustand / @dnd-kit 等）绝不能标 bundle ——
+	 * 否则会被 antd 等共享 chunk 经 importmap 解析不到而 404。判定依据：宿主
+	 * host.tsx + runtime.js 的传递 import 图，以及 antd/pro-components/icons 的
+	 * 传递依赖图，都不含这些说明符。
+	 *
+	 * ⚠️ 本档位**不计入宿主版本一致性保障**：模块把副本打进产物，多副本不会报错，
+	 * 只会重复体积。体积怎么控，见 docs/devkit/manual.md §2.6。
 	 */
 	bundle?: boolean
 }
@@ -68,9 +71,10 @@ export const SHARED_DEPS: SharedDepEntry[] = [
 	 *   - 无单例语义。kit 必须唯一是因为多副本 = 两份 antd 上下文树；编辑器资产
 	 *     把 @tiptap/*、@plane/ui 等**全部内联**在自身里，跨边界穿过的只有 React
 	 *     家族（那是独立的硬共享条目），多一份编辑器副本不会拆散任何 context。
-	 *   - 不是每个模块都用编辑器。软共享的语义正是「默认由宿主提供，允许 importmap
-	 *     scopes 多版本共存兜底（C7）」——缺席时模块可自带副本而不硬失败。
-	 *     代价：多副本会重复约 5.4 MB 资产，故 scopes 只作兜底、默认仍走宿主。
+	 *   - 不是每个模块都用编辑器。软共享的语义是「允许缺席」——宿主**不预构建**
+	 *     这份资产（bundle: true，不进 shell-dist、不进 importmap），模块 import 它
+	 *     就自己打进产物。代价是每个用编辑器的模块各带一份约 5.4 MB，换来宿主
+	 *     分发体积不被没人用的重型依赖撑大。
 	 */
 	{ specifier: "@plane/editor", asset: "editor", hard: false, bundle: true },
 	// 注：@rc-component/form（antd 6 Form 底层）曾尝试单例化以修 my-profile
@@ -122,6 +126,9 @@ export const SHARED_DEPS: SharedDepEntry[] = [
 	{ specifier: "dayjs/plugin/weekday", asset: "dayjs-plugin-weekday", hard: false },
 	{ specifier: "dayjs/plugin/weekOfYear", asset: "dayjs-plugin-weekOfYear", hard: false },
 	{ specifier: "dayjs/plugin/weekYear", asset: "dayjs-plugin-weekYear", hard: false },
+	// echarts 家族：模块自打包。整包 index（`import * as echarts from "echarts"`）会让
+	// 单个模块产物从 ~180KB 涨到 1.7MB（实测 echarts 918KB + zrender 221KB 占 87%），
+	// 故脚手架改用 `echarts/core` 按需注册；接入方写法见 docs/devkit/manual.md §2.6。
 	{ specifier: "echarts", asset: "echarts", hard: false, bundle: true },
 	{ specifier: "echarts/charts", asset: "echarts-charts", hard: false, bundle: true },
 	{ specifier: "echarts/features.js", asset: "echarts-features", hard: false, bundle: true },
@@ -149,18 +156,21 @@ export const SHARED_DEPS: SharedDepEntry[] = [
 	{ specifier: "tailwind-merge", asset: "tailwind-merge", hard: false },
 	/**
 	 * Markdown 编辑器（Vditor v4，M5 回升自下游 oj-wiki）：npm 包是 webpack **UMD**
-	 * 单产物（main=dist/index.js，无 ESM 出口、仅 default 导出），走 starShim + esbuild
-	 * 的既有 CJS/UMD interop 链路打包成 ESM 资产（与 react 家族同路，无需新机制）。
+	 * 单产物（main=dist/index.js，无 ESM 出口、仅 default 导出）。bundle: true 表示
+	 * 宿主不预构建 —— CJS/UMD interop 交给模块自己的 rolldown 打包链路处理。
 	 *
-	 * 软共享：无单例语义（多副本只是重复体积，不拆 context），且不是每个模块都用。
-	 * 体积大（gzip ≈700 KiB），故**惰性生效**：importmap 只做映射，宿主 shell 自身
-	 * 不 import vditor ⇒ /assets/vditor.js 仅在模块产物真正 import 它时才被拉取，
-	 * 不进宿主首屏。
+	 * 为什么不预构建：体积大（gzip ≈700 KiB）且不是每个模块都用。宿主为它留一份
+	 * /assets/vditor.js，等于给所有站点无条件加 700 KiB 分发体积，而只有编辑器页
+	 * 才用得上。改由模块自带后，代价转给「真正 import 它的那个模块」。
+	 *
+	 * 副作用（写文档时容易说错）：模块产物是单文件（codeSplitting: false），
+	 * 所以 `import("vditor")` 会被内联回去，**动态导入并不能把它从首屏摘掉**；
+	 * 要省这笔体积只能把编辑器页拆成独立模块/方案。
 	 *
 	 * 深路径只登记 CSS 主样式（nprogress 同款样式垫片）。vditor 其余 dist 深路径
 	 * （lute / i18n / icons / 主题 CSS…）是**运行期经 cdn 选项按需拉取的资源**而非
 	 * import 说明符，由模块侧自行处理（自注入或指向宿主可服务的路径）；若模块代码
-	 * 直接 import 它们，会命中前缀 external 但无 importmap 键 → 构建期深路径报错，
+	 * 直接 import 它们，会命中前缀 external 但无共享表键 → 构建期深路径报错，
 	 * 属预期拦截（与 dayjs/plugin/* 同规则）。
 	 */
 	{ specifier: "vditor", asset: "vditor", hard: false, bundle: true },

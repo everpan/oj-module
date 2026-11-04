@@ -70,8 +70,10 @@ description: 用 ojm 开发前后端一体工程时使用——新增/修改前�
 - **上传文件**：当前 `ojm api` 的 openapi 流水线不生成 form 通道的前端 client（文件部件不进 JSON Schema），
   惯例走 antd `Upload` **直连**后端（不经 JSON client），handler 用 `http.files` / `http.file(i)` 读字节，
   仅平级声明 `.response`。不要手写 `content-type`（运行时按 boundary 自动补）。
-- **前端模块的 import 只有三类**：`@oj-module/runtime`、宿主 importmap 提供的共享依赖、
-  自身相对路径。共享依赖不进工程 `dependencies`（宿主提供单例，模块不得打包副本）。
+- **前端模块的 import 只有三类**：`@oj-module/runtime`、共享依赖（裸说明符）、自身相对路径。
+  共享依赖分两档：**宿主 importmap 单例**（`react` / `antd` / `dayjs` …，模块不得打包副本）
+  与**模块自打包**（`echarts` 家族 / `vditor` / `@plane/editor`，宿主不提供、模块自带，
+  体积记在模块产物上）。两档都写 `devDependencies`；分档口径与体积控制见手册 §2.6。
   **拿用户/角色等信息：读走 `useUserStore` / `useAuthStore` / `useAccess`（`AccessControl` 门禁），
   写走契约 client（`ojm api` 生成模块自有 `__client`，或复用 runtime 导出的 `api/rbac` / `api/user`），
   绝不 import 框架 `#src/*`**——设计动机与红线见手册 §2.8。

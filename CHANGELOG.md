@@ -36,6 +36,16 @@
 
 ### Changed
 
+- **模板首页图表改 echarts 按需注册（模块产物 −46%）**：`app` 模块此前 `import ReactECharts from
+  "echarts-for-react"`，后者 `import * as echarts from "echarts"`（整包 index），把全部图表类型 +
+  全部组件 + 全部渲染器打进单文件 `entry.js`。实测 1,697,666 B 里 echarts 918 KB + zrender 221 KB，
+  占 **87%**，而首页只画折线/柱状/饼图。改为 `echarts/core` + `use([BarChart, LineChart, PieChart,
+  GridComponent, LegendComponent, TooltipComponent, CanvasRenderer])`、组件换
+  `echarts-for-react/esm/core`（注册清单集中在 `home/pages/components/echarts-setup.ts`）：
+  **1,697,666 → 918,319 B（−45.9%）**，gzip 255,662 B。
+  按需注册的典型失败模式是「少注册一个就静默空白、不报错」，故新增真浏览器回归
+  `tests/e2e/templates/home-charts.spec.ts`：三张图 canvas 有实际尺寸 + 控制台无
+  「is used but not imported / not exists」告警。新增图表类型时必须同步 `echarts-setup.ts`。
 - **共享资产改内容寻址命名（命中 oj serve 的长缓存）**：`shell-dist/assets` 下的共享资产与宿主
   入口 chunk 从 `/assets/antd.js` 改成 `/assets/antd.<hash>.js`（10 位 base36，且**强制**同时
   含数字与字母）。触发点：`oj serve` ≥ 0.1.116 的默认缓存策略按**文件名**判定——stem 末段
@@ -47,6 +57,7 @@
   按前缀解析）——否则别名指向已改名文件，runtime 源码级测试全线 `Failed to resolve import`。
   回归：`tests/shell/shell-importmap.test.ts` 新增「assets 下全部 .js 满足 immutable 判定」
   与「文件名哈希 == 内容哈希」两条，`tests/helpers/paths.ts` 增 `shellAssetPath()`。
+
 
 - **`@oj-module/runtime` 产物开启压缩**：`packages/runtime/vite.config.ts` 的 `minify: false` →
   `true`（全量压缩，含标识符）。runtime.js 是每个宿主工程都要下载的单份产物，此前不压缩 = 白付

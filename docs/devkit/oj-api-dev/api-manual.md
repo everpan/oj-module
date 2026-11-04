@@ -1359,7 +1359,8 @@ fs:
 exec.run(argv: string[], opts?: {
   timeoutMs?: number;   // 缺省 30_000，硬上限 600_000（传更大值被钳到上限，不报错）
   stdin?: string;       // 可选，一次性写入后关闭写端（子进程读到 EOF）
-}): Promise<{ code: number; stdout: string; stderr: string }>
+}): Promise<{ code: number; stdout: string; stderr: string; encoding?: "lossy" }>
+// encoding 仅在输出含非法 UTF-8 字节（有损解码过）时出现，见下「返回 vs 抛错边界」
 ```
 
 另有流式消费形态：句柄式 `exec.spawn`（`for await` 消费 stdout/stderr）+ `exec.run` 的 `onStdout`/`onStderr` 回调，详见下方「exec 流式形态（v0.1.78）」小节。`stdin?` 自 v0.1.83 起**三形态一致支持**（含回调与 `exec.spawn`）。
@@ -1405,13 +1406,17 @@ platform:
 - **命令解析（模板首 token）**：必须是**裸名**——不接受占位符、不含 `/` `\` 路径分隔符。
   `"oj"` 特判解析为服务进程自身（`current_exe()`，serve 进程即 bin/oj，同版本自保证）；
   其余裸名在**宿主侧**按父进程 PATH 解析为**绝对路径**后 spawn（子进程 env 已清空、不继承
-  PATH，宿主侧解析消除 execvp 回落默认路径的不确定性）。解析失败 →
-  `exec: command resolve failed for '<name>': …`。注意：**子进程拿到的 argv[0] 是解析后的
-  绝对路径**，不是模板首 token 原文。
+  PATH，宿主侧解析消除 execvp 回落默认路径的不确定性）。**Windows 额外按 `PATHEXT`
+  补全扩展名**（`tar` → `tar.exe`、`cmd` → `cmd.exe`；`PATHEXT` 缺失时回落系统默认列表；
+  同一目录先精确名、再逐扩展名；名字本身已带已知扩展名（`tar.exe`）则不再追加，不会出现
+  `tar.exe.exe`）——只搜 PATH 目录（空条目跳过，**绝不搜当前目录**）。
+  解析失败 → `exec: command resolve failed for '<name>': …`。注意：**子进程拿到的 argv[0]
+  是解析后的绝对路径**，不是模板首 token 原文。
 - **返回 vs 抛错边界**：进程正常跑到退出（**含非 0 退出码**）= 返回 `{code, stdout, stderr}`
   （信号终止映射 `code = 128 + signal`，TERM=15 → 143）；执行环境失败 = **抛错**——未授权 /
-  模板失配 / 歧义 / 占位符路径越界为 `NotCapable` 类，超时 / 输出超限 / spawn 失败 /
-  UTF-8 解码失败为普通 Error 类（文案见下表）。
+  模板失配 / 歧义 / 占位符路径越界为 `NotCapable` 类，超时 / 输出超限 / spawn 失败为普通
+  Error 类（文案见下表）。**非 UTF-8 输出不再抛错**：缓冲形态与回调形态一致，按有损解码
+  （非法序列 → U+FFFD）返回，并在结果上标记 `encoding: "lossy"`（仅此时出现）。
 - **硬限制**：
   - stdout + stderr **流式合计 10MB 上限**（边读边计数；超限 kill 进程组 + 抛错，已收部分
     不随错返回）；
@@ -1419,7 +1424,8 @@ platform:
     击杀（含孙进程）再兜底杀直接子进程（Windows 无进程组对应物，仅杀直接子进程）；**stdin
     写入也在超时窗口内**——子进程不读 stdin 且输入大时 write 阻塞 → 超时兜底组杀（大 DDL /
     大输入显式调大 `timeoutMs`）；
-  - stdout / stderr 强制 UTF-8 解码，非法序列抛错（二进制输出不在本原语范围）；
+  - stdout / stderr 按 UTF-8 解码，非法序列**有损替换为 U+FFFD** 并在结果标记
+    `encoding: "lossy"`（二进制输出请用 `exec.spawn` 取原始字节）；
   - 子进程 cwd = **fs.root**；env 默认**空表**，仅 `env` 白名单透传（值不进 JS 面，PATH
     不继承）。cwd 钉定**不构成隔离边界**（无 OS 级 chroot）——文件可达性由 `${path:}` 校验
     承载，**不要**给子进程传越出授权集合的路径；
@@ -1452,12 +1458,13 @@ WSL / MSYS**：
   `Deno.Command.output` / Node `child_process` 同口径），不做 CRLF→LF 归一——
   二进制 / 压缩包管道必须保真；跨平台文本比对请用 `trimEnd()` 或 `split(/\r?\n/)`，
   **不要**在跨平台代码里写死 `"\n"`。
-- **Windows 子进程输出是本地代码页（GBK / CP1252 等），不是 UTF-8**（v0.1.79）：
-  输出含非 ASCII（中文路径、中文报错、`ping` 的本地化文案等）时，exec 的 UTF-8
-  强制解码即抛 `exec: stdout is not valid UTF-8 (binary output unsupported)`
-  （stderr 同文案）。要 UTF-8 输出，把 `chcp 65001` 写进 `cmd /c` 语句
-  （`["cmd","/c","chcp 65001 >nul && echo <语句>"]`）——这是 Windows 控制台的既有
-  行为，不是 oj 的限制。
+- **Windows 子进程输出是本地代码页（GBK / CP1252 等），不是 UTF-8**（v0.1.79 起；
+  有损解码自 v0.1.117）：输出含非 ASCII（中文路径、中文报错、`ping` 的本地化文案、`tar -tvzf`
+  的本地化月份名等）时，缓冲形态与回调形态一致，按**有损解码**返回（非法序列 → U+FFFD），
+  并在结果上标记 `encoding: "lossy"`；`exec.spawn` 仍给原始字节由 JS 自行解码。
+  **`chcp 65001` 只改控制台代码页，不改变子进程写入管道的编码**（管道走进程 ACP）——
+  不能作为跨平台输出转 UTF-8 的可靠手段；需精确字节请用 `exec.spawn` 取原始
+  `Uint8Array` 并按实际代码页解码（如 `new TextDecoder("gbk")`）。
 - **`%VAR%` 要用带字面前后缀的占位符**（v0.1.79）：`cmd /c echo %VAR%` 的 `%…%` 是 cmd 的
   变量定界符、无法拆成独立 token，模板写成 `cmd /c echo %${raw:NAME}%`，JS 侧照旧传
   `["cmd","/c","echo","%VAR%"]`。**别与 `cmd /c echo ${raw:word}` 并存**——后者是前者的
@@ -1490,7 +1497,7 @@ WSL / MSYS**：
     });
 
 - **exec.spawn(argv, opts?)** 返回句柄 { rid, pid, stdout, stderr, kill, exit }：h.stdout / h.stderr 为 AsyncIterable<Uint8Array>，EOF 时迭代自然结束；h.exit() 等待子进程退出返回 { code }；h.kill() 主动整组击杀。
-- **exec.run(argv, opts?)** 向后兼容：无 onStdout / onStderr 时，行为、返回形状与 v0.1.75 完全一致（{ code, stdout, stderr }，非 UTF-8 输出**抛**）；带回调时逐块转发给回调，返回形状**同样是 { code, stdout, stderr }**（v0.1.79 订正：此前文档称「返回 { code }、不缓冲整段」，实现实际是把全部分块攒在内存后 merge，只是解码改走**有损** TextDecoder、非法 UTF-8 变 U+FFFD 而**不抛**）。要真正的逐块流式（不占内存、拿原始字节）请用 `exec.spawn`。
+- **exec.run(argv, opts?)** 向后兼容：无 onStdout / onStderr 时返回 { code, stdout, stderr }（非 UTF-8 输出**有损解码**、结果带 `encoding: "lossy"`，不再抛错）；带回调时逐块转发给回调，返回形状**同样是 { code, stdout, stderr }**（v0.1.79 订正：此前文档称「返回 { code }、不缓冲整段」，实现实际是把全部分块攒在内存后 merge，只是解码改走**有损** TextDecoder、非法 UTF-8 变 U+FFFD 而**不抛**）。要真正的逐块流式（不占内存、拿原始字节）请用 `exec.spawn`。
 - **opts 差异**：timeoutMs?（缺省 30_000，硬上限 600_000，超出钳制）两形态共用；**stdin? 三形态都支持**（v0.1.83 订正：此前仅无回调的 `exec.run` 支持，回调 / `exec.spawn` 形态传了会被**静默丢弃**、子进程 stdin 恒为 null）——语义一致：一次性写入后关闭写端；子进程不读且输入大导致 write 阻塞时，由超时兜底组杀（与缓冲形态同窗口）。
 - **背压（重要）**：stdout/stderr 经有界 mpsc（16 槽 x 8KiB）送消费端；JS 不 for await 拉取 到 通道满 到 drain 在 send 上挂起 到 子进程管道满 到 子进程自然暂停（真实子进程语义，正确背压）。不消费流 = 子进程在输出填满管道时阻塞，不是 bug，也别指望 exit() 在流未消费时返回——先消费（或 break）再 exit()。
 - **资源回收（每请求）**：句柄 rid 进 OpState.resource_table；close()（JS 释放 / runtime 归还 / 异常丢弃都覆盖）同步整组击杀子进程，杜绝跨请求/租户泄漏与 next_rid 回绕 panic。drain 任务与子进程同生命周期：handle close 到 kill 到 管道 EOF 到 drain 自然结束。
@@ -1502,7 +1509,7 @@ WSL / MSYS**：
   |---|---|---|---|
   | 输出合计 > 10MiB | **抛** `exec output limit exceeded` | 不抛：整组击杀，`code = 137`，回调收到的块被截断 | 同左（流提前 EOF，`code = 137`） |
   | `timeoutMs` 到期 | **抛** `exec timed out after N ms` | 不抛：整组击杀，`code = 137` | 同左（`code = 137`） |
-  | 输出非 UTF-8 | **抛** `exec: stdout is not valid UTF-8` | 不抛：`stdout` / `stderr` 为有损解码（U+FFFD） | 不抛：给原始 `Uint8Array`，JS 自行解码 |
+  | 输出非 UTF-8 | 不抛：有损解码（U+FFFD），结果标记 `encoding: "lossy"` | 不抛：`stdout` / `stderr` 为有损解码（U+FFFD），同样标记 `encoding: "lossy"` | 不抛：给原始 `Uint8Array`，JS 自行解码（无 `encoding` 字段） |
   | 内存占用 | 全量（≤10MiB 封顶） | 全量（≤10MiB 封顶） | 仅当前块（16 槽 × 8KiB 背压） |
 
   **别用 `try/catch` 的成功当「跑完了」**：回调 / 流式形态下超时与超限不抛错，只把 `code` 打成 137 并截断输出——必须同时校验 `code`，且不要拿被截断的 stdout 当完整结果（安全判定只认原始字节，见上表）。
@@ -1524,8 +1531,11 @@ Error）：
 | `exec: spawn failed for '<abs>': <e>` | Error | 进程启动失败 |
 | `exec timed out after <N> ms (process group killed)` | Error | 超时到期（整组击杀）——**仅无回调的 `exec.run` 抛**；回调 / `exec.spawn` 形态不抛，只把 `code` 打成 137 并截断输出（v0.1.79 订正） |
 | `exec output limit exceeded (10485760 bytes cap, stdout+stderr combined)` | Error | 输出合计超 10MB——**仅无回调的 `exec.run` 抛**；回调 / `exec.spawn` 形态同上为 `code = 137` + 截断（v0.1.79 订正） |
-| `exec: stdout is not valid UTF-8 (binary output unsupported)` / `exec: stderr is not valid UTF-8 (binary output unsupported)` | Error | 输出流非 UTF-8——**仅无回调的 `exec.run` 抛**（Windows 上本地代码页（GBK / CP1252）输出含非 ASCII 即落此条，见 §6「Windows 平台命令形态」，v0.1.79）；回调形态改走有损解码（U+FFFD）、`exec.spawn` 给原始字节，两者均不抛 |
 | `exec: stdin write failed: <e>` | Error | stdin 写入失败 |
+
+> v0.1.117 起，非 UTF-8 输出**不再抛** `exec: stdout/stderr is not valid UTF-8`：缓冲形态与回调
+> 形态都改为有损解码（U+FFFD）并在结果标记 `encoding: "lossy"`；`exec.spawn` 仍给原始字节。
+> 该错误文案已废止（Windows 本地代码页 / `tar -tvzf` 本地化月份名等均走有损路径）。
 
 ### yaml —— YAML 读写原语（v0.1.75，无特权，始终可用）
 
@@ -3864,7 +3874,7 @@ await db.query("select id from account where id = " + id, []);   // 禁止
 | `crypto.md5Hex` 已密码学破损（v0.1.75） | MD5 仅限**非安全场景**（缓存键/etag/旧系统兼容），**不得用于凭据/签名/完整性校验**；入参分流同 `sha256Hex`（string 走 UTF-8，`Uint8Array`/`ArrayBuffer` 走原始字节，其余抛 TypeError） |
 | `platform:` 段 fail-closed（v0.1.75） | 不配 = 全部平台特权不可用（`NotCapable: platform not configured …`）；特权面 = 特权模块 fs 读写扩展（`fs.root ∪ trusted_paths`，且 `fs:` 须已配置）+ `exec.run`（见下两条）；tasks/WS 上下文无模块归属 → 特权恒不可用 |
 | `exec.run` 授权 ≠ `platform.modules`（v0.1.75） | **两名单相互独立**：exec 特权只看 `platform.exec.<模块>` 是否列出该模块——只配 `modules` 不配 `exec`（或反之）拿不到对应面；未授权/模板失配/歧义/`${path:}` 越界一律 `NotCapable` 点名（文案见 §6「exec」错误表） |
-| `exec.run` 运行面硬限制（v0.1.75） | stdout+stderr **流式合计 10MB** 上限（超限杀进程组抛错，已收部分不返回）；`timeoutMs` 缺省 30s、硬上限 600s（超出**钳制**不报错）；输出强制 UTF-8（二进制不支持）；cwd 钉在 fs.root 但**非隔离边界**（路径防线在 `${path:}` 占位符校验，勿传越界相对路径）；未配 `fs:` → exec 整体不可用；子进程 argv[0] 是宿主解析后的**绝对路径**（非模板首 token 原文）；信号终止 `code = 128 + signal`，非 0 退出码**不抛错**照常返回 |
+| `exec.run` 运行面硬限制（v0.1.75） | stdout+stderr **流式合计 10MB** 上限（超限杀进程组抛错，已收部分不返回）；`timeoutMs` 缺省 30s、硬上限 600s（超出**钳制**不报错）；输出按 UTF-8 解码，非法序列**有损替换为 U+FFFD** 并标记 `encoding:"lossy"`（二进制请用 `exec.spawn`）；cwd 钉在 fs.root 但**非隔离边界**（路径防线在 `${path:}` 占位符校验，勿传越界相对路径）；未配 `fs:` → exec 整体不可用；子进程 argv[0] 是宿主解析后的**绝对路径**（非模板首 token 原文）；信号终止 `code = 128 + signal`，非 0 退出码**不抛错**照常返回 |
 | `yaml.parse` 三预算（v0.1.75） | 输入 1 MiB / 节点 100_000（含 alias 展开）/ 深度 128，超限抛错点名**不崩进程**；重复键后键覆盖，多文档 / 非字符串键 / NaN·Inf 一律拒绝（不静默强转）；**stringify 禁用于 config.yaml 回写**（serde_yaml 丢注释，回写走文本手术三步模式） |
 | `platform.root` 不得与其他 api 挂载树同径或互为父子（v0.1.75） | 启动报错（`… anti-squatting tripwire would be silently disabled`）——受控根必须独立于市场安装树；特权模块只能由部署方放入 `platform.root` 并把该目录列为 `mounts[].api` 条目 |
 | `http.module` 写属性抛 `TypeError: Cannot assign to read only property …`（v0.1.76） | `http.module` 是框架授信依据（归属守卫 / bound_db / 平台特权换装）故冻结只读：strict（ESM / api 文件 CJS 包装）下写 / delete 抛 TypeError；`require()` 引入的 CJS 代码（`new Function`，sloppy）写它**静默无效**。两条路径都改不了框架状态（JS 只持快照拷贝）——只读用即可，测试要伪造模块身份走真实路由（e2e 同款），无可写变体 |

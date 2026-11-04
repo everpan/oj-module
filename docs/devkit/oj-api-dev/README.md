@@ -145,6 +145,13 @@ sqlite = 客户端早停（category 仍 `OJ_DB_CANCELLED`）；新错误码 `OJ_
 无句柄、不取消）；④ 插件轴 query 经宿主侧复用 stream vtable 真杀（零 ABI），插件 exec 取消
 记 ABI 13 车。见 db-guide §3 / §11.6.5、scenarios 场景 66/67、api-manual §13、SKILL 陷阱速查。
 
+v0.1.117 已落地部分：**Windows `exec.run` 命令解析与编码修复**——① 裸名按 `PATHEXT`
+补全扩展名（`tar` → `tar.exe`、`cmd` → `cmd.exe`；只搜 PATH 目录、绝不搜 CWD），修复
+Windows 上 `ojm market install` 解包恒报 `command resolve failed`；② 缓冲形态非 UTF-8 输出
+改为有损解码（U+FFFD）并与回调形态一致，结果新增 `encoding: "lossy"` 标记（不再抛
+`exec: stdout is not valid UTF-8`）。见 api-manual §6「命令解析」「Windows 平台命令形态」、
+SKILL 陷阱速查。
+
 v0.1.116 已落地部分：**前端性能专项三件（OJ-9/10/11）**——`oj serve` 静态层按需压缩
 （br>gzip 协商 + 产物落盘缓存 + single-flight 并发钳 + 弱比较 304，`server.static:` 子段七键，
 默认开）、两档制默认缓存策略（文件名哈希段→immutable 一年、其余一律 no-cache 恒校验，默认开）、

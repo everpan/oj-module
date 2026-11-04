@@ -1,11 +1,14 @@
 import type { EChartsOption } from "echarts";
 import { Card, Segmented } from "antd";
-import ReactECharts from "echarts-for-react";
+import ReactEChartsCore from "echarts-for-react/esm/core";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { echarts } from "./echarts-setup";
+
 /**
- * 饼图：演示 `echarts` + `echarts-for-react` + antd `Segmented` 联动。
+ * 饼图：按需注册的 `echarts` + `echarts-for-react/esm/core` + antd `Segmented` 联动
+ * （注册清单见 echarts-setup.ts）。
  * 数据为静态演示值（各渠道 × 品类）。
  */
 const VALUES: Record<string, number[]> = {
@@ -59,7 +62,7 @@ export default function PieChart() {
 				/>
 			)}
 		>
-			<ReactECharts opts={{ height: 320, width: "auto" }} option={option} />
+			<ReactEChartsCore echarts={echarts} opts={{ height: 320, width: "auto" }} option={option} />
 		</Card>
 	);
 }

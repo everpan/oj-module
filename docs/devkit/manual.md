@@ -391,66 +391,113 @@ export default defineModule({
 
 ### 2.6 前端模块能 import 什么
 
-**只有三类**：
+**只有三类来源**：
 
 1. `@oj-module/runtime`（含 `/contract`、`/contract/errors` 子路径）；
-2. 宿主 **importmap 提供的共享依赖**；
+2. 共享依赖（写法上都是裸说明符 import，见下表的两个档位）；
 3. 自身相对路径。
 
-框架内部的 `#src/*` 在构建期被拦。共享依赖由宿主提供**单例**，
-模块工程**不得**打包自己的副本——只在 `devDependencies` 里对齐版本（供 `tsc` 用）。
+框架内部的 `#src/*` 在构建期被拦。
 
-共享依赖矩阵关键项：`react`、`react-dom`、`react-router`、`@tanstack/react-query`、
-`antd`（含 `locale/*`）、`@ant-design/icons`、`@ant-design/pro-components`、
-`i18next`、`react-i18next`、`zustand`、`dayjs`、`echarts`、`echarts-for-react`、
-`motion`、`@dnd-kit/*`、`keepalive-for-react`、`simplebar-react`、`nprogress`、
-`react-countup`、`ahooks`、`ky`、`clsx`、`tailwind-merge`、`pinyin-pro`、`vditor`。
-查实际矩阵：`pnpm exec ojm info`。
+共享依赖按**谁出这份 JS** 分两档。两档写法一样，体积责任与失败形态完全不同——
+把它们混为一谈，是「白屏」和「产物莫名变大一倍」的最常见来源：
 
-#### vditor（Markdown 编辑器，软共享）
+| 档位 | 谁提供 | importmap 有键 | 典型包 |
+| --- | --- | --- | --- |
+| **宿主共享（单例）** | `shell-dist` 预构建资产 | 有 | `react` / `react-dom` / `react-router` / `antd`（含 `locale/*`）/ `@ant-design/icons` / `@ant-design/pro-components` / `i18next` / `react-i18next` / `zustand` / `dayjs` / `motion` / `@dnd-kit/*` / `keepalive-for-react` / `simplebar-react` / `nprogress` / `react-countup` / `ahooks` / `ky` / `clsx` / `tailwind-merge` / `pinyin-pro` |
+| **模块自打包** | 模块自己的产物 | **无** | `echarts` 家族、`vditor`、`@plane/editor` |
 
-模块侧写法不变：`import Vditor from "vditor"` + `import "vditor/dist/index.css"`。
-两个说明符均由宿主 importmap 供包（`/assets/vditor.js`、`/assets/vditor-index-css.js`），
-模块**不得**再把 vditor 写进 `dependencies` 自打包——放 `devDependencies` 对齐版本供 `tsc` 用。
-资产惰性加载：importmap 只做映射，宿主自身不 import vditor，`/assets/vditor.js` 仅在
-模块产物真正 import 它（进编辑器页）时才被浏览器拉取，不进宿主首屏。
+- 第一档由宿主提供**单例**：模块工程**不得**打包自己的副本（多副本 = 双 store / 双 antd
+  context 树），只在 `devDependencies` 里对齐版本供 `tsc` 用。
+- 第二档宿主**不提供**：模块必须自带，体积记在模块产物上。依赖同样放 `devDependencies`
+  （构建期能解析即可），但要自己控体积——见下面两节。
 
-注意：vditor 运行期还要按需加载 lute / i18n / 图标 / 主题 CSS 等资源（默认走第三方 CDN，
-宿主 CSP 通常不放行）。这部分**不随共享资产分发**，由模块自行处理（自注入或指向宿主
-可服务的同源路径）。直接 `import "vditor/dist/..."` 其它深路径会命中前缀 external 但无
-importmap 键，构建期报错——需要新深路径请联系框架方在共享表登记。
+判定口径：`packages/cli/src/shared-deps.ts` 里带 `bundle: true` 的条目就是第二档。
+版本矩阵查 `pnpm exec ojm info`（宿主 `versions.json`，两档都在里面，故它只回答「钉哪个版本」，
+不回答「谁提供 JS」）。
 
-### 2.7 本版本共享依赖钉版（0.2.47 快照）
+#### vditor（Markdown 编辑器，模块自打包）
 
-宿主经 importmap 提供以下单例（模块 `devDependencies` 须对齐，供 `tsc` 用）；完整矩阵以
-`pnpm exec ojm info` 为准——**别抄本节表格当真相**，本表是撰写时的快照，升级 cli 后
-以 `ojm info` 输出为准。
+写法：`import Vditor from "vditor"` + `import "vditor/dist/index.css"`。
 
-| 包 | 钉版 |
-| --- | --- |
-| `react` / `react-dom` | 19.2.8 |
-| `react-router` | 7.18.2 |
-| `@tanstack/react-query` | 5.102.8 |
-| `antd` | 6.6.1 |
-| `@ant-design/icons` | 6.3.2 |
-| `@ant-design/pro-components` | 3.1.12-0 |
-| `i18next` / `react-i18next` | 26.4.0 / 17.0.12 |
-| `zustand` | 5.0.15 |
-| `dayjs` | 1.11.23 |
-| `echarts` / `echarts-for-react` | 6.1.0 / 3.0.6 |
-| `motion` | 12.43.0 |
-| `@dnd-kit/core` | 6.3.1 |
-| `keepalive-for-react` | 5.0.11 |
-| `simplebar-react` | 3.3.2 |
-| `nprogress` | 0.2.0 |
-| `react-countup` | 6.5.3 |
-| `ahooks` | 3.9.7 |
-| `ky` | 2.0.2 |
-| `clsx` / `tailwind-merge` | 2.1.1 / 3.6.0 |
-| `pinyin-pro` | 3.29.3 |
-| `vditor` | 4.0.0 |
+但这两个说明符**没有 importmap 键**——宿主不预构建 `/assets/vditor.js`，构建时整份打进
+模块产物 `entry.js`（gzip ≈ 700 KiB）。由此有两条推论：
 
-框架包版本：`@oj-module/runtime` / `@oj-module/cli` 为 `0.2.47`（**双包 lockstep**，
+- 动态导入**不能**省这笔体积：模块产物是单文件（`codeSplitting: false`），
+  `import("vditor")` 会被内联回同一个文件。要把它从首屏摘掉，只能把编辑器页拆成独立模块/方案。
+- 运行期还要按需加载 lute / i18n / 图标 / 主题 CSS（默认走第三方 CDN，宿主 CSP 通常不放行）。
+  这部分**不随产物分发**，由模块自行处理（自注入或指向宿主可服务的同源路径）；
+  直接 `import "vditor/dist/..."` 其它深路径会命中前缀 external 但无 importmap 键，构建期报错。
+
+#### echarts（图表，模块自打包 + 必须按需注册）
+
+`echarts` / `echarts/charts` / `echarts/features.js` / `echarts-for-react` 同属第二档。
+**默认写法会把整包打进去**：`import ReactECharts from "echarts-for-react"` 内部是
+`import * as echarts from "echarts"`（index 全量），全部图表类型 + 组件 + 渲染器一起进
+`entry.js`。脚手架实测：单文件 1,697,666 B 里 echarts 918 KB + zrender 221 KB，占 **87%**，
+而首页只画折线/柱状/饼图三种。
+
+按需注册写法（脚手架 `src/app/web/home/pages/components/echarts-setup.ts` 可整段照抄）：
+
+```ts
+// echarts-setup.ts —— 注册清单集中一处，新增图表类型只改这里
+import { BarChart, LineChart, PieChart } from "echarts/charts";
+import { GridComponent, LegendComponent, TooltipComponent } from "echarts/components";
+import * as echarts from "echarts/core";
+import { CanvasRenderer } from "echarts/renderers";
+
+echarts.use([
+  BarChart, LineChart, PieChart,
+  GridComponent, LegendComponent, TooltipComponent,
+  CanvasRenderer,
+]);
+export { echarts };
+```
+
+```tsx
+import ReactEChartsCore from "echarts-for-react/esm/core";
+import { echarts } from "./echarts-setup";
+
+// 组件里渲染：把按需注册过的实例传进去（不传就走整包默认实例）
+return <ReactEChartsCore echarts={echarts} option={option} opts={{ height: 320, width: "auto" }} />;
+```
+
+同一份页面实测：`entry.js` 1,697,666 → **918,319 B（−45.9%）**。
+
+⚠️ 按需注册最容易踩的坑是**静默空白**：少 `use()` 一个图表类型或组件（例如柱状图漏了
+`GridComponent`、图例漏了 `LegendComponent`），echarts 不抛错、只是画不出来。新增图时
+先补注册清单，再用真页面看一眼。
+
+### 2.7 共享依赖钉版（快照，以 `ojm info` 为准）
+
+版本矩阵的真源是宿主 `versions.json`（`pnpm exec ojm info` 直接打印）。下表是撰写时的快照，
+升级 cli 后会变——**别抄表格当真相**；`档位` 列才是长期有效的信息。
+
+| 包 | 钉版 | 档位 |
+| --- | --- | --- |
+| `react` / `react-dom` | 19.2.8 | 宿主 |
+| `react-router` | 7.18.2 | 宿主 |
+| `@tanstack/react-query` | 5.102.8 | 宿主 |
+| `antd` | 6.6.1 | 宿主 |
+| `@ant-design/icons` | 6.3.2 | 宿主 |
+| `@ant-design/pro-components` | 3.1.12-0 | 宿主 |
+| `i18next` / `react-i18next` | 26.4.0 / 17.0.12 | 宿主 |
+| `zustand` | 5.0.15 | 宿主 |
+| `dayjs` | 1.11.23 | 宿主 |
+| `echarts` / `echarts-for-react` | 6.1.0 / 3.0.6 | **自打包** |
+| `motion` | 12.43.0 | 宿主 |
+| `@dnd-kit/core` | 6.3.1 | 宿主 |
+| `keepalive-for-react` | 5.0.11 | 宿主 |
+| `simplebar-react` | 3.3.2 | 宿主 |
+| `nprogress` | 0.2.0 | 宿主 |
+| `react-countup` | 6.5.3 | 宿主 |
+| `ahooks` | 3.9.7 | 宿主 |
+| `ky` | 2.0.2 | 宿主 |
+| `clsx` / `tailwind-merge` | 2.1.1 / 3.6.0 | 宿主 |
+| `pinyin-pro` | 3.29.3 | 宿主 |
+| `vditor` | 4.0.0 | **自打包** |
+
+框架包版本：`@oj-module/runtime` / `@oj-module/cli` 为 `0.2.66`（**双包 lockstep**，
 以 `packages/*/package.json` 或 `ojm info` 为准——本表是撰写时快照）；
 `@plane/kit` / `@plane/editor` 是独立版本线（当前 `0.1.20`，随宿主 importmap 提供，
 不参与 lockstep）。`oj` 二进制最低版本门禁 `MIN_OJ_VERSION = 0.1.85`——这个版本带来

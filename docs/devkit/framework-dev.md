@@ -21,7 +21,8 @@
 > ⚠️ 那两份 guide 有**已知陈旧处**，以源码为准：
 > dev 端口实际是 **3333**（guide 写的 5173 已过时；注意与 `ojm dev` 的前端 devServer
 > **5174** 不是一回事——前者是本仓 vite，后者是业务工程 devServer）；包版本以
-> `packages/*/package.json` 为准（撰写时实际 **0.2.47**，仅供参考，以当前 package.json 为准）。
+> `packages/*/package.json` 为准（本文件随 cli 发布，**不写死包版本号**——版本每轮 lockstep
+> 都会变，写死必然漂移）。
 
 ## §2 两包结构与依赖方向
 
@@ -38,7 +39,9 @@ pnpm 改写成**精确版本**，不是 `^` 范围）。
 - **双入口别搞混**：给模块作者用的加在 `src/index.ts`；框架自己怎么启动看 `src/index.tsx`。
 - `#src/*` alias 指向 `packages/runtime/src/*`（由 `packages/runtime/package.json`
   的 `imports` 字段与 vite alias **双声明**，即「模块仅 import 三类」不变式）。
-- 业务工程**不打包共享依赖**——宿主经 importmap 提供单例。
+- 业务工程**不打包宿主共享依赖**——宿主经 importmap 提供单例。例外是 `shared-deps.ts` 里
+  标了 `bundle: true` 的重型依赖（echarts 家族 / vditor / @plane/editor）：宿主不提供，
+  模块自带，见手册 §2.6。
 
 ## §3 常用命令
 
@@ -71,8 +74,9 @@ pnpm test tests/shell                       # 宿主全量
 
 ### 4.1 四条通用红线
 
-1. **共享依赖只能有一个版本**：安装走 `catalog:`，产物走宿主（cli 内置
+1. **宿主共享依赖只能有一个版本**：安装走 `catalog:`，产物走宿主（cli 内置
    `shell-dist`）importmap 单例。私自写死 `react@18` 会导致「双 React」崩溃。
+   （`bundle: true` 的自打包档不在其列——它们本就由各模块自带。）
 2. **`packages/runtime/dist`、`packages/cli/shell-dist` 随仓库提交**
    （`.gitignore` 为它们开了例外）。**改了源码必须重建并提交产物**，
    否则本地/CI 跑的是旧产物——历史上多次出现「方法不存在」。
@@ -139,7 +143,7 @@ pnpm test tests/shell                       # 宿主全量
 **一键发布**：`node scripts/publish-packages.mjs`（lockstep 门禁 → 构建 → 守卫测试 →
 runtime → cli → registry 复核；`--dry-run` 只演练）。下面的手动步骤是它的展开参考。
 
-- **两包**同版本号（`@oj-module/runtime` + `@oj-module/cli`，当前 `0.2.47`），后续发版保持
+- **两包**同版本号（`@oj-module/runtime` + `@oj-module/cli`，两处 `package.json` 恒等），后续发版保持
   lockstep；`@plane/kit` / `@plane/editor` 不在发布集内（脚本里已注释）。
 - **必须 `pnpm publish`**——用 `npm publish` 会漏出 `workspace:*` / `catalog:` 字面量。
 - **顺序：先 `runtime` 后 `cli`**。`runtime` 未公开时，新 `cli` 的精确依赖会悬空，
@@ -169,13 +173,14 @@ runtime → cli → registry 复核；`--dry-run` 只演练）。下面的手动
   `docs/devkit/` 归置进 cli 包 `packages/cli/devkit/`，随 `@oj-module/cli` 发布
   （`package.json#files` 白名单已含 `devkit`）；
 - `packages/cli/src/init.ts` 第 4b 步：从 cli 包内置 devkit 多拷一份到
-  工程的 `.claude/skills/ojm-module-dev/`（拷 `SKILL.md` / `manual.md` /
-  `README.md`，已存在则幂等跳过）。
+  工程的 `.claude/skills/ojm-module-dev/`（连同企微两本手册与发布 walkthrough，共 6 个文件；
+  已存在则幂等跳过）。`framework-dev.md` / `menu-rules.md` / 教学文档 / SQL 构造器 PR 记录
+  只随 cli 包、不进业务工程——它们是框架贡献者或专题材料，`ojm init` 有意不分发。
 
 `packages/cli/devkit/` 是发布副本、由 prepack 生成，已加进 `.gitignore` 不入库；
 源仍是仓库 `docs/devkit/` 顶层，改文档只动那里一处。
 
-> `docs/devkit/oj-api-dev/` 是 **oj 侧 devkit 的快照**（10 个文件，与
+> `docs/devkit/oj-api-dev/` 是 **oj 侧 devkit 的快照**（12 个文件，与
 > `~/.local/share/oj/devkit/` 逐字节一致），仅供本仓 grep 后端手册，
 > **不随 cli 包发货**（`sync-devkit.mjs` 只同步顶层文件）——用户工程的
 > `oj-api-dev` skill 由 oj 二进制分发。升级本机 oj 后要同步快照：

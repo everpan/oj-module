@@ -14,8 +14,9 @@ const Home = lazy(() => import("./pages/index"));
  * 工程缺 `/home` 路由时这些跳转会落到错误边界。
  *
  * 结构对齐 playground-oj/web/src/home；页面用统计卡片 + 折线/柱/饼图
- * 演示宿主共享依赖矩阵（echarts / echarts-for-react / react-countup / dayjs /
- * antd / @ant-design/icons / react-i18next，均由宿主 importmap 提供单例）。
+ * 演示依赖矩阵（react-countup / dayjs / antd / @ant-design/icons / react-i18next
+ * 由宿主 importmap 提供单例；echarts 属模块自打包的重型依赖，走按需注册，
+ * 见 `pages/components/echarts-setup.ts`）。
  * 图表数据为静态演示值——真实业务走模块契约 + `ojm api` 生成的 client。
  */
 export const routes: AppRouteRecordRaw[] = [

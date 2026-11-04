@@ -12,14 +12,17 @@
 
 | 侧 | 位置 | 用户工程落点 | 分发链 |
 |---|---|---|---|
-| ojm 模块开发（前端模块、契约、前后端接线） | `devkit/` 顶层 8 个文件 | `.claude/skills/ojm-module-dev/` | `@oj-module/cli` 包 → `ojm init` 第 4b 步 |
+| ojm 模块开发（前端模块、契约、前后端接线） | `devkit/` 顶层 10 个文件 | `.claude/skills/ojm-module-dev/` | `@oj-module/cli` 包 → `ojm init` 第 4b 步（分发其中 6 个） |
 | oj API 开发（后端 handler、全局对象、配置、测试） | `devkit/oj-api-dev/`（oj devkit 快照，仅本仓参考） | `.claude/skills/oj-api-dev/` | oj 二进制自带 → `ojm init` 第 4 步 |
 
 | 文件 | 面向谁 | 用途 |
 |---|---|---|
 | [`devkit/README.md`](devkit/README.md) | 所有人 | 整棵树的入口说明：两侧文件索引、安装、两条分发链、快照刷新 |
-| [`devkit/manual.md`](devkit/manual.md) | 业务开发者 | 模块开发手册（12 章）：工程结构、写模块、契约与代码生成、接管框架内置功能、布局、i18n、构建发布、排查、CLI 子命令参考 |
+| [`devkit/manual.md`](devkit/manual.md) | 业务开发者 | 模块开发手册（14 章）：工程结构、写模块、契约与代码生成、接管框架内置功能、布局、i18n、构建发布、排查、CLI 子命令参考、方案包打包与分发、签名与信任、组织架构与通讯录 |
 | [`devkit/SKILL.md`](devkit/SKILL.md) | AI agent / 开发者 | agent skill 入口：工作流、红线、新模块 checklist、陷阱速查，按章节号引用手册 |
+| [`devkit/publish-walkthrough.md`](devkit/publish-walkthrough.md) | 业务开发者 | 方案包发布全流程（新手照做版）：构建打包 → 签名 → `market publish` → build-index → verify/trial → install |
+| [`devkit/menu-rules.md`](devkit/menu-rules.md) | 业务开发者 | 方案菜单归组规则专题：单根模块、`web.route_prefix`、`category` 三值语义、admin 重写（手册 §13 展开版） |
+| [`devkit/sql-builder-missing-capabilities-pr.md`](devkit/sql-builder-missing-capabilities-pr.md) | 框架贡献者（**仅本仓**） | 构造器能力缺口 PR 参考：7 项诉求的闭环记录 |
 | [`devkit/framework-dev.md`](devkit/framework-dev.md) | 框架贡献者（**仅本仓**） | 改 `packages/runtime`、`packages/cli` 时的入口、红线、不变式索引、守卫测试索引 |
 | [`devkit/module-dev-and-cdn-playground.md`](devkit/module-dev-and-cdn-playground.md) | 业务开发者 | 教学文档：开发态 vs 分发态、安装自己的模块会不会重复、本地 CDN 市场链路演练 |
 | [`devkit/wecom-daikaifa.md`](devkit/wecom-daikaifa.md) | 业务开发者 / 部署运维 / 企业员工 | 企业微信代开发集成：凭据清单（八项 `vars`，Tier A/B/C + 可信域名/可信 IP）、首次开通顺序、用户 / 开发 / 部署三角色手册、与自建应用共存、错误文案速查 |

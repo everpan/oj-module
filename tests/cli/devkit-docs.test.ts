@@ -85,6 +85,50 @@ describe("devkit 目录结构（ojm 侧发货 + oj-api-dev 快照子目录）", 
 		expect(existsSync(join(ROOT, "docs/oj-api-dev"))).toBe(false);
 	});
 
+	/**
+	 * 计数漂移守卫（2026-11-04）：README 曾长期写「顶层 9 个文件」「8 个文件」、
+	 * framework-dev 与 sync-devkit 注释写「快照 10 个文件」，而实际是 10 / 12。
+	 * 这类句子没有守卫就会随每次加文件而失真，读者按数字去数会对不上。
+	 */
+	it("文档里的 devkit 文件计数与目录实际数量一致", () => {
+		for (const p of ["docs/devkit/README.md", "docs/README.md"])
+			expect(read(p), `${p} 未按实际写「顶层 ${OJM_FILES.length} 个文件」`).toContain(`顶层 ${OJM_FILES.length} 个文件`);
+		expect(read("docs/devkit/README.md")).toContain(`**ojm 侧的 ${OJM_FILES.length} 个文件**`);
+		for (const p of ["docs/devkit/framework-dev.md", "packages/cli/scripts/sync-devkit.mjs"])
+			expect(read(p), `${p} 未按实际写「${SNAPSHOT_FILES.length} 个文件」`).toContain(`${SNAPSHOT_FILES.length} 个文件`);
+	});
+
+	/**
+	 * 档位一致性守卫（2026-11-04）：文档曾把 echarts / vditor 写成「宿主 importmap
+	 * 提供的单例」，而 shared-deps 里它们是 `bundle: true`（宿主不提供、模块自打包）——
+	 * 照着文档写方案的人会以为不用管体积，实测单模块因此多背 1.1MB。
+	 * 真源是源码的 bundle 标志，文档必须跟它对齐。
+	 */
+	it("手册 §2.6 档位与 shared-deps 的 bundle 标志一致", () => {
+		const src = read("packages/cli/src/shared-deps.ts");
+		const bundlePkgs = [...new Set(
+			src.split("\n")
+				.filter(l => l.includes("bundle: true"))
+				.map(l => l.match(/specifier: "([^"]+)"/)?.[1])
+				.filter((s): s is string => s !== undefined)
+				// 深路径归一成主包名：echarts/charts → echarts；@scope/pkg 原样保留
+				.map(s => (s.startsWith("@") ? s : s.split("/")[0]!)),
+		)];
+		expect(bundlePkgs.length).toBeGreaterThan(0);
+
+		const manual = read("docs/devkit/manual.md");
+		const section = manual.slice(manual.indexOf("### 2.6"), manual.indexOf("### 2.8"));
+		expect(section.length).toBeGreaterThan(0);
+
+		for (const pkg of bundlePkgs) {
+			expect(section, `手册 §2.6 未提 ${pkg}`).toContain(`\`${pkg}\``);
+			// 「宿主」档的表格行不得出现自打包包名
+			const hostRows = section.split("\n").filter(l => l.startsWith("|") && l.includes("宿主"));
+			for (const row of hostRows)
+				expect(row, `手册把 ${pkg} 归到宿主共享档，与 shared-deps 的 bundle: true 矛盾`).not.toContain(`\`${pkg}\``);
+		}
+	});
+
 	it("本仓维护的活文档零 docs/oj-api-dev 旧路径引用（历史 plan 档案除外）", () => {
 		// 只扫本仓维护的活文档；docs/superpowers/ 与 .superpowers/ 是历史计划档案，
 		// 记录当时的路径事实，按「如实记录」不回改。快照子目录是上游字节 vendored，
