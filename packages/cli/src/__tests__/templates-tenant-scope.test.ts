@@ -125,10 +125,12 @@ describe("templates 租户定性（A 租户表 / B 共享表）", () => {
 		// （D7 不接受 corpId 参数），故不进 shared_allow——跨租户读元数据那条另走显式 tenant_id 的裸 SQL。
 		// 改这张表清单 = 改租户隔离边界，必须同步 config.yaml 的 tenant.shared_allow（t-2/t-3 会把关）。
 		// 2026-11-02 demo 模块下线（ecc7b35e）删掉 demo/api/schema.yaml 的 todos 表，28 → 27。
-		expect(tables.size).toBe(27);
+		// 2026-11 发布凭证加 publish_credential：共享表（CLI 兑换无租户语义，归属走 owner_tenant），27 → 28。
+		expect(tables.size).toBe(28);
 		expect(shared).toEqual([
 			"_oj_migrations",
 			"market_history",
+			"publish_credential",
 			"reg_source_seq",
 			"sys_login_throttle",
 			"sys_permission",

@@ -1,0 +1,6 @@
+name: publish
+desc: 发布凭证与发布身份（业务路由）：申请 / 列表 / 撤销 / 一次性兑换。凭证兑换即作废，Ed25519 密钥长期有效；身份只由服务端推导，CLI 不重复实现编码规则。
+version: 0.1.0
+tables:
+  # 共享表（B 组）：兑换发生在 CLI，无业务租户语义；租户归属走 owner_tenant 列
+  - publish_credential
