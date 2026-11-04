@@ -1,9 +1,10 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { checkApi } from "../../packages/cli/src/contract/check";
 import { runApi } from "../../packages/cli/src/contract/run";
 import { writeOpenapiJson } from "./_fixtures";
+import { mkTmp } from "./_tmpdir";
 
 /**
  * AC-D10：`ojm api --check` 三重校验——
@@ -17,7 +18,7 @@ import { writeOpenapiJson } from "./_fixtures";
 const tmpDirs: string[] = [];
 
 function makeProject(withContract = true): string {
-	const dir = mkdtempSync(join(process.cwd(), "node_modules/.cache/ojm-check-test-"));
+	const dir = mkTmp(process.cwd(), "ojm-check-test-");
 	tmpDirs.push(dir);
 	mkdirSync(join(dir, "api/src/order"), { recursive: true });
 	if (withContract) {
@@ -219,7 +220,7 @@ export default [
 	});
 
 	it("③routes.js 的短方法名 del 归一为 DELETE（DELETE 端点不误报 drift）", async () => {
-		const cwd = mkdtempSync(join(process.cwd(), "node_modules/.cache/ojm-check-del-"));
+		const cwd = mkTmp(process.cwd(), "ojm-check-del-");
 		tmpDirs.push(cwd);
 		mkdirSync(join(cwd, "api/src/order"), { recursive: true });
 		writeOpenapiJson(cwd, [
@@ -247,7 +248,7 @@ export default [
 	});
 
 	it("pOST + 响应端点：生成 + stub 落盘后 --check 零违规", async () => {
-		const cwd = mkdtempSync(join(process.cwd(), "node_modules/.cache/ojm-check-form-"));
+		const cwd = mkTmp(process.cwd(), "ojm-check-form-");
 		tmpDirs.push(cwd);
 		mkdirSync(join(cwd, "api/src/personal-center"), { recursive: true });
 		writeOpenapiJson(cwd, [

@@ -1,9 +1,10 @@
 import type { ApiSpec } from "./_fixtures";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { checkApi } from "../../packages/cli/src/contract/check";
 import { writeOpenapiJson } from "./_fixtures";
+import { mkTmp } from "./_tmpdir";
 
 /**
  * v0.1.64 跨仓同步：oj 嵌套 handler 组（非动词键 + 对象 = 子组；组级 `.route` 作
@@ -17,7 +18,7 @@ import { writeOpenapiJson } from "./_fixtures";
 const tmpDirs: string[] = [];
 
 function makeProjectIn(module: string, specs: ApiSpec[]): string {
-	const dir = mkdtempSync(join(process.cwd(), "node_modules/.cache/ojm-nest-test-"));
+	const dir = mkTmp(process.cwd(), "ojm-nest-test-");
 	tmpDirs.push(dir);
 	mkdirSync(join(dir, `api/src/${module}`), { recursive: true });
 	writeOpenapiJson(dir, specs);

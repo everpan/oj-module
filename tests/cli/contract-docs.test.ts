@@ -1,8 +1,9 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { inlineRedocScript, runApiDocs } from "../../packages/cli/src/contract/run";
 import { writeOpenapiJson } from "./_fixtures";
+import { mkTmp } from "./_tmpdir";
 
 /**
  * R5：`ojm api --docs`——聚合 openapi.json（oj v0.1.71 产物）的 paths → redoc 渲染静态站。
@@ -18,7 +19,7 @@ const stubFetchJs = async (_url: string) => "/* redoc bundle stub */";
 const tmpDirs: string[] = [];
 
 function makeProject(): string {
-	const dir = mkdtempSync(join(process.cwd(), "node_modules/.cache/ojm-docs-test-"));
+	const dir = mkTmp(process.cwd(), "ojm-docs-test-");
 	tmpDirs.push(dir);
 	mkdirSync(join(dir, "api/src/order"), { recursive: true });
 	writeOpenapiJson(dir, [
@@ -48,7 +49,7 @@ describe("runApiDocs（R5 redoc 文档站）", () => {
 	}, 120_000);
 
 	it("纯前端形态（无 api/src）→ 同样落 <root>/src/docs/<name>/api/", async () => {
-		const dir = mkdtempSync(join(process.cwd(), "node_modules/.cache/ojm-docs-fe-"));
+		const dir = mkTmp(process.cwd(), "ojm-docs-fe-");
 		tmpDirs.push(dir);
 		writeOpenapiJson(dir, [
 			{ module: "demo", route: "/dashboard", method: "GET", data: { type: "object", properties: { visitors: { type: "number" } }, required: ["visitors"] } },
@@ -60,7 +61,7 @@ describe("runApiDocs（R5 redoc 文档站）", () => {
 	}, 120_000);
 
 	it("修正B：module-root 布局 → 落 src/docs/<name>/api（树外，不参与模块枚举/路由扫描）", async () => {
-		const dir = mkdtempSync(join(process.cwd(), "node_modules/.cache/ojm-docs-mr-"));
+		const dir = mkTmp(process.cwd(), "ojm-docs-mr-");
 		tmpDirs.push(dir);
 		// 构造 module-root：src/<name>/{api/manifest.yaml, web/entry.ts}
 		const name = "wiki";

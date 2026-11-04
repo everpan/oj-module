@@ -1,8 +1,9 @@
-import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { createContractRegen } from "../../packages/cli/src/contract/watch";
 import { writeOpenapiJson } from "./_fixtures";
+import { mkTmp } from "./_tmpdir";
 
 /**
  * AC-D7 watch 集成：契约变更 → 去抖合并 → runApi 重生成 → 产物落 modules 树
@@ -15,7 +16,7 @@ import { writeOpenapiJson } from "./_fixtures";
 const tmpDirs: string[] = [];
 
 function makeProject(): string {
-	const dir = mkdtempSync(join(process.cwd(), "node_modules/.cache/ojm-watch-test-"));
+	const dir = mkTmp(process.cwd(), "ojm-watch-test-");
 	tmpDirs.push(dir);
 	mkdirSync(join(dir, "api/src/order"), { recursive: true });
 	writeOpenapiJson(dir, [

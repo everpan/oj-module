@@ -1,9 +1,10 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { checkApi } from "../../packages/cli/src/contract/check";
 import { runApi } from "../../packages/cli/src/contract/run";
 import { writeOpenapiJson } from "./_fixtures";
+import { mkTmp } from "./_tmpdir";
 
 /**
  * D12 / F19：`ojm api --check` 豁免清单（api/.ojm-api-exempt.json）。
@@ -17,7 +18,7 @@ import { writeOpenapiJson } from "./_fixtures";
 const tmpDirs: string[] = [];
 
 function makeProject(): string {
-	const dir = mkdtempSync(join(process.cwd(), "node_modules/.cache/ojm-exempt-test-"));
+	const dir = mkTmp(process.cwd(), "ojm-exempt-test-");
 	tmpDirs.push(dir);
 	mkdirSync(join(dir, "api/src/order"), { recursive: true });
 	// 一个合法契约（提供非豁免回归基线）

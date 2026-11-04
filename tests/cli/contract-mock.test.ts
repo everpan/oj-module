@@ -1,9 +1,9 @@
 import type { ContractMockRoute } from "../../packages/cli/src/contract/mock";
-import { mkdtempSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { rmSync } from "node:fs";
 import { afterAll, describe, expect, it } from "vitest";
 import { exampleFromJsonSchema, loadContractMocks, matchContractRoute, resolveMock } from "../../packages/cli/src/contract/mock";
 import { writeOpenapiJson } from "./_fixtures";
+import { mkTmp } from "./_tmpdir";
 
 /**
  * AC-D14 纯前端契约 mock：openapi.json（oj v0.1.71 产物）驱动示例值响应。
@@ -129,7 +129,7 @@ describe("resolveMock（手写优先，契约兜底）", () => {
 
 describe("loadContractMocks（dev 启动装载）", () => {
 	it("从 openapi.json 装载 mock 路由表（data 为 JSON Schema）", async () => {
-		const dir = mkdtempSync(join(process.cwd(), "node_modules/.cache/ojm-mock-test-"));
+		const dir = mkTmp(process.cwd(), "ojm-mock-test-");
 		tmpDirs.push(dir);
 		writeOpenapiJson(dir, [
 			{ module: "demo", route: "/dashboard", method: "GET", data: { type: "object", properties: { visitors: { type: "number" } }, required: ["visitors"] } },

@@ -1,8 +1,9 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { runApi } from "../../packages/cli/src/contract/run";
 import { writeOpenapiJson } from "./_fixtures";
+import { mkTmp } from "./_tmpdir";
 
 /**
  * AC-D7：`ojm api` 编排（发现 openapi.json → IR → 逐模块发射 __client → 写盘；
@@ -16,7 +17,7 @@ import { writeOpenapiJson } from "./_fixtures";
 const tmpDirs: string[] = [];
 
 function makeProject(): string {
-	const dir = mkdtempSync(join(process.cwd(), "node_modules/.cache/ojm-run-test-"));
+	const dir = mkTmp(process.cwd(), "ojm-run-test-");
 	tmpDirs.push(dir);
 	mkdirSync(join(dir, "api/src/order"), { recursive: true });
 	writeOpenapiJson(dir, [
@@ -74,7 +75,7 @@ describe("runApi（AC-D7 编排 + 幂等写盘）", () => {
 	});
 
 	it("无 openapi.json → 人话报错指路 `oj openapi`", async () => {
-		const cwd = mkdtempSync(join(process.cwd(), "node_modules/.cache/ojm-run-noopenapi-"));
+		const cwd = mkTmp(process.cwd(), "ojm-run-noopenapi-");
 		tmpDirs.push(cwd);
 		mkdirSync(join(cwd, "api/src"), { recursive: true });
 		await expect(runApi({ cwd })).rejects.toThrowError(/openapi\.json/);

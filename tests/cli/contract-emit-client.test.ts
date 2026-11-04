@@ -2,7 +2,7 @@ import type { ScopedRequestLike } from "@oj-module/runtime/contract";
 import type { Plugin } from "esbuild";
 import type { ResponsePromiseLike } from "../../packages/runtime/contract/scoped-request-like";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -10,6 +10,7 @@ import { build } from "esbuild";
 import { describe, expect, it, vi } from "vitest";
 import { emitClient } from "../../packages/cli/src/contract/emit-client";
 import { mkEp } from "./_fixtures";
+import { mkTmp } from "./_tmpdir";
 
 /**
  * AC-D5/D6/D8/D15：api.ts + api.schemas.ts 发射器（翻译层退役后，IR 由 JSON Schema 构造）。
@@ -38,7 +39,7 @@ const runtimeStub: Plugin = {
 
 /** 生成物落盘到 repo 内临时目录（node_modules/.cache 下，保证 workspace 依赖可解析）→ bundle → import */
 async function bundleClient(files: Record<string, string>, dev: boolean) {
-	const dir = mkdtempSync(join(repoRoot, "node_modules/.cache/ojm-client-test-"));
+	const dir = mkTmp(repoRoot, "ojm-client-test-");
 	writeFileSync(join(dir, "index.ts"), files["index.ts"]);
 	writeFileSync(join(dir, "api.schemas.ts"), files["api.schemas.ts"]);
 	const outdir = join(dir, "out");
@@ -290,7 +291,7 @@ describe("emitClient（AC-D5/D6/D8/D15）", () => {
 		expect(files["api.schemas.ts"]).toContain("downloadFile");
 		expect(files["api.schemas.ts"]).not.toContain("downloadFile: {\n\t\tdata");
 
-		const dir = mkdtempSync(join(repoRoot, "node_modules/.cache/ojm-tsc-test-"));
+		const dir = mkTmp(repoRoot, "ojm-tsc-test-");
 		writeFileSync(join(dir, "index.ts"), files["index.ts"]);
 		writeFileSync(join(dir, "api.schemas.ts"), files["api.schemas.ts"]);
 		// 与 apps/playground/typings.d.ts 同款最小 ImportMeta.env 声明（模块工程无 vite 依赖的形态）

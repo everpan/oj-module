@@ -81,7 +81,7 @@ runtime → cli；颠倒则消费端装不上）。
 「手滑敲个命令」不会变成真发布。
 
 流程（5 步，任一失败即中止；已发布的版本自动跳过，可安全重跑）：
-  1/5 前置校验      lockstep 同版门禁 + 工作区干净 + npm 登录态（dry-run 跳过登录）
+  1/5 前置校验      lockstep 同版门禁 + 工作区干净（仅实发）+ npm 登录态（dry-run 均跳过，可带未提交改动验证）
   2/5 产物重建      runtime build + cli build:shell（宿主外壳预打包）
   3/5 守卫测试      vitest run tests/cli/ tests/shell/kit-shared.test.ts
   4/5 发布          runtime → cli（pnpm publish --access public --no-provenance）
@@ -90,7 +90,7 @@ runtime → cli；颠倒则消费端装不上）。
 选项：
   --publish       实发（显式动作，不可逆）。不带它又不带 --dry-run = 意图不明，
                   直接 fail-fast；与 --dry-run 互斥
-  --dry-run       演练：只构建 + 守卫测试，不发布（也不要求登录、不做 registry 复核）
+  --dry-run       演练：只构建 + 守卫测试，不发布（也不要求登录、不检查工作区干净、不做 registry 复核；可带未提交改动验证）
   --skip-tests    跳过守卫测试（应急；发布前须手动补跑 pnpm vitest run tests/cli）
   --tag <tag>     dist-tag，默认 latest（发 beta 等预发布通道时用）
   --otp <code>    npm 2FA 验证码（TOTP 类账户必填）；省略则发布前交互索取，
@@ -419,7 +419,10 @@ async function verifyRegistry(target) {
 async function main() {
 	console.log("== 1/5 前置校验 ==");
 	const target = checkLockstep();
-	checkCleanTree();
+	// 工作区干净性仅实发校验：pnpm publish 要求干净树；dry-run 是本地演练，
+	// 允许带着未提交改动验证（构建 + 守卫测试），无需先提交。
+	if (!DRY_RUN)
+		checkCleanTree();
 	// 登录校验仅 dry-run 跳过；web 2FA 同样要查——token 失效时 web 审批链路
 	// 不会触发（无浏览器链接），只会在发布中途报迷惑性 404。
 	if (!DRY_RUN)
