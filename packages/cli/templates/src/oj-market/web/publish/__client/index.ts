@@ -18,7 +18,7 @@ export const API_PREFIX = "/publish";
 export const MODULE_PREFIX = "/publish";
 
 /** 认领方模块（web.config clientOwners 指定）：跨模块认领护栏对比基准 */
-export const MODULE_OWNER = "/app";
+export const MODULE_OWNER = "/oj-market";
 
 /**
  * 模块 entry 的 onInit 里一行创建（构造即 install）：完成 apiPrefix 登记 +

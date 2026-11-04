@@ -20,7 +20,7 @@ const allModules = [
 	{ name: "app", entry: "src/app/web/entry.ts" },
 	// 解决方案市场：第一方能力（消费 _platform 编排面 /api/_platform/market/*，
 	// R29：第三方方案不得仿照此调用面），默认随脚手架下发。保持独立模块——
-	// 可选能力，删目录即可下线。
+	// 可选能力，删目录即可下线；发布管理页（/publish）也在这个模块里。
 	{ name: "oj-market", entry: "src/oj-market/web/entry.ts" },
 	// #region demo-only
 	// 以下为模板内置的演示模块（about/access/exception/outside/route-nest），
@@ -45,16 +45,17 @@ export default {
 	/**
 	 * 生成 client 的归属模块：`api 前缀 → 承载其 __client 的 web 模块`。
 	 *
-	 * 框架内置后端全部收在 `src/app/api/<前缀>`（模块名即 URL 前缀），前端页面收在
-	 * `src/app/web`；生成物统一落 `src/app/web/<api 前缀>/__client`，页面相对导入不变。
-	 * 不配则回落同名模块（`src/<api 前缀>/web/__client`，历史行为）。
+	 * 框架内置后端收在 `src/app/api/<前缀>`（模块名即 URL 前缀），页面多数收在
+	 * `src/app/web`；发布管理页已迁到方案市场，故 `publish` 的生成物跟页面一起落
+	 * `src/oj-market/web/publish/__client`。不配则回落同名模块
+	 * （`src/<api 前缀>/web/__client`，历史行为）。
 	 */
 	clientOwners: {
 		"_platform": "app",
 		"auth": "app",
 		"home": "app",
 		"personal-center": "app",
-		"publish": "app",
+		"publish": "oj-market",
 		"notification": "app",
 		"system": "app",
 		"web": "app",

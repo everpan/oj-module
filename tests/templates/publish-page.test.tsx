@@ -9,17 +9,17 @@ import i18n from "i18next";
 import { I18nextProvider, initReactI18next } from "react-i18next";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-import zhCN from "../../packages/cli/templates/src/app/web/publish/locales/zh-CN.json";
+import zhCN from "../../packages/cli/templates/src/oj-market/web/publish/locales/zh-CN.json";
 
-vi.mock("../../packages/cli/templates/src/app/web/publish/__client", () => ({
+vi.mock("../../packages/cli/templates/src/oj-market/web/publish/__client", () => ({
 	createPublishClient: vi.fn(),
 	publishCredentialGet: vi.fn(),
 	publishCredentialPost: vi.fn(),
 	publishCredentialRevokePost: vi.fn(),
 }));
 
-const client = await import("../../packages/cli/templates/src/app/web/publish/__client");
-const { default: PublishPage } = await import("../../packages/cli/templates/src/app/web/publish/pages");
+const client = await import("../../packages/cli/templates/src/oj-market/web/publish/__client");
+const { default: PublishPage } = await import("../../packages/cli/templates/src/oj-market/web/publish/pages");
 
 const TOKEN = "a".repeat(64);
 
