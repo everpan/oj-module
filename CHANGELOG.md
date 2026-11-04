@@ -151,6 +151,33 @@
 
 ### Fixed
 
+- **模板在 MySQL / PostgreSQL 真库上起站即失败（方言迁移件缺失）**：`home`、`notification` 两个模块的
+  建表迁移只有 sqlite 基础件（`INTEGER PRIMARY KEY AUTOINCREMENT`），却已各自存在 `0002` / `0005`
+  的 `.mysql.sql` 覆盖——覆盖是**按版本号替换**，没写方言版的 `0001` 仍会执行基础件，MySQL 直接
+  `1064 near 'AUTOINCREMENT'`；pg 侧同样缺 `0001` / `0003` / `0004`。补齐
+  `home/{0001.mysql,0001.pg,0002.pg}`、`notification/{0001,0003,0004}.{mysql,pg}`、`0005.pg`
+  共 10 个方言迁移与 4 份方言 seed（`home`、`notification` 各两份）。回归：`templates-migration-schema-parity`
+  新增 **m-5**——任一模块按方言实际执行的迁移 + seed 文件里不得出现该方言不支持的语法
+  （`AUTOINCREMENT`、`INSERT OR IGNORE`、MySQL 的 `CREATE INDEX IF NOT EXISTS`）。
+
+- **`_platform` 的两份方言 seed 一条 `sys_setting` 都没有**：手抄基线时整段漏掉 8 条设置默认值
+  （`sys_setting` 的 `key` / `group` 列在 MySQL 要反引号、pg 要双引号，被跳过），部署到 mysql/pg 后
+  设置页与登录方式发现缺默认值；另有拼接产生 `VALUES (…); ON CONFLICT DO NOTHING;` 双终止符，
+  会被 seed 的朴素 `;` 切分器切出孤立语句（PG 报 `syntax error at or near "ON"`）。两份方言 seed
+  已补齐 8 条并去掉多余分号。回归 **m-6**：方言 seed 与基础 seed 的表×条数必须一致，且每行只允许
+  一个语句终止符。
+
+- **PostgreSQL 上登录恒 500 `db exec: integer out of range`**：`_platform` 的 pg 基线把毫秒 epoch
+  列声明成 `INTEGER`（int4 上限 2.1e9，`Date.now()` 是 1.7e12），写入 `sys_rate_window` 即溢出；
+  同病的还有 `sys_login_throttle.blocked_until`、`sys_oplog.create_time`、`sys_setting.update_time`
+  以及 `sys_refresh_token` / `sys_user_role` 的 `user_id`。统一改 `BIGINT`（MySQL 同名列本就是
+  BIGINT）。回归 **m-7**：mysql 为 `BIGINT` 的时间列，pg 不得收窄为 `INTEGER`。
+
+- **PostgreSQL 上通知列表 500 `UNION types integer and text cannot be matched`**：`noticesFor` 的
+  UNION 第 4 列左分支是整数 `is_read`、右分支取文本 `read_time`，sqlite/mysql 宽松放行，pg 严格
+  要求同型。广播分支改为 `CASE WHEN r.read_time IS NULL THEN 0 ELSE 1 END AS is_read`，
+  `mapItem` 统一按整数判已读——三方言共用同一份 SQL，不再按方言分叉。
+
 - **「方案清单」选中后一直高亮（切到兄弟页仍常亮）**：index 落地页的菜单 key 沿用了父路径，与父级
   SubMenu 的 key 重复（antd Menu 要求 key 唯一）；父链 key 始终在 `selectedKeys` 里，落地页因同
   key 被连带选中——点「方案清单」再点「发布历史」，两项同时高亮。现在落地页 key 取「父路径 + /」

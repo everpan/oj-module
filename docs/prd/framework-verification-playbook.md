@@ -15,12 +15,11 @@
 判据只有一条：**每节的检查点逐条打勾**——退出码 0 只是入场券，产物与响应体才算数。
 历史演练记录集中在文末 [附录 A](#附录-a-历史基线从新到旧逐条可追溯)，日常执行不用读。
 
-> **上次演练结论（2026-11-05 第二轮，cli/runtime 工作区 0.2.66 / oj 0.1.118）**：普通用户全链绿。
-> 建号 `publisher01` → 首登改密（改密前写端 403）→ 申请凭证 `normal-user-demo.publisher01`
-> （7 天、一次性）→ `keygen --credential` → `market publish --fixture` → `verify` **8 项全 ✓**
-> → 首装 `needs_trust`（指纹逐字一致）→ `trust confirm` → 装成 → `ping {pong:true}`。
-> 顺带修 3 处文档缺口（canonical_origin / 别对 dev 装 / 租户头）与 1 处措辞错误（产品名不独占）。
-> 详见附录 A 首条。
+> **上次演练结论（2026-11-05 第三轮，cli/runtime 工作区 0.2.67 / oj 0.1.118）**：MySQL 8.4 与 PostgreSQL 16 双真库快线均通过。
+> 两库迁移账本一致（`_platform 2 / auth 3 / home 2 / notification 5 / publish 1`，29 表 / `sys_setting` 8 条），
+> 登录、凭证、`sign --check`、home 与通知接口全绿。代价是暴露 6 处方言缺陷并全部修好
+> （10 个方言迁移 + 4 份方言 seed / pg 基线 BIGINT / pg UNION 同型），另记 1 处上游缺陷（MySQL 两步取 id）。
+> 详见附录 A 首条与 §11。
 
 > **退出码会被管道吞掉**：`node ojm.mjs xxx 2>&1 | tail` 之后 `$?` 是 `tail` 的退出码。
 > 判「命令是否失败」时先落文件再看 `$?`（`cmd > out 2>&1; echo $?`），别用管道末尾的值。
@@ -679,7 +678,7 @@ node "$CLI_PKG/bin/ojm.mjs" market publish --real . --id demo.publisher
 | `pnpm install` 卡死：20min+ 无 lockfile、`node_modules` 近空、pnpm 进程低 CPU 干等 | 直连 `registry.npmjs.org` 被限速（实测 ~18KB/s，单个 tarball 30s 下不完），pnpm 卡在元数据解析段 | 本机 pnpm store 已预热（装过同版本矩阵）时 `pnpm install --offline`，实测 1.6s 完成；store 不全时换镜像源或等限速恢复。**环境问题，非框架缺陷** |
 | 新模块 `entry.ts` 被 `tsc` 拦：`TS2322 (ctx) => void 不匹配 (ctx) => Promise<void>` | `lifecycle.onInit` 签名要求返回 Promise；照抄老模块时容易漏 `async` | 写 `async onInit(ctx)`（范本：模板 `src/app/web/notification/entry.ts`；devkit SKILL「注册时机」红线已补明） |
 | `ojm init` 报 `init.include.yaml 收录了不存在的路径：.gitignore`，工程只剩空目录 | npm/pnpm pack 剥离 `.gitignore` 点文件（npm-packlist always-exclude，`files` 字段绕不过）；include 白名单收录它 → 安装包缺文件 → `readInitInclude` fail-fast 在拷贝任何文件前中断。**演练盲区**：playbook 当时用源码树 CLI 演练，源码树里该文件存在故全绿——演练形态 ≠ 发包形态 | cli ≥ 0.2.6 已修：`.gitignore` 改由 init 现场生成（`ensureGitignore`，与 `pnpm-workspace.yaml` 同型），include 清单移除该条目；守卫：`tests/cli/release-manifest.test.ts` 逐条核对清单条目落在 tarball 内；演练按 §0.5 用本地 pack 的发布包 |
-| 通知「全部已读」在 sqlite 开发库 500：`markAllRead` 用 `db.table(...).fromSelect(...).orIgnore()` | oj 0.1.81 在 sqlite 上 `orIgnore` 的 upsert 子句只跟随 VALUES，不支持 SELECT 源（实测 `orIgnore with fromSelect is not supported on sqlite`）——构造器无法表达「`INSERT OR IGNORE ... SELECT`」 | 退回裸 `db.exec("INSERT OR IGNORE INTO ... SELECT ...")`（sqlite `OR IGNORE` / pg `ON CONFLICT DO NOTHING` / mysql `ON DUPLICATE KEY` 三方言通用）；**`orIgnore` + `fromSelect` 组合在 sqlite 上不可用**，别用。上游需求见 §「向上游改进需求」F |
+| 通知「全部已读」在 sqlite 开发库 500：`markAllRead` 用 `db.table(...).fromSelect(...).orIgnore()` | oj 0.1.81 在 sqlite 上 `orIgnore` 的 upsert 子句只跟随 VALUES，不支持 SELECT 源（实测 `orIgnore with fromSelect is not supported on sqlite`）——构造器无法表达「`INSERT OR IGNORE ... SELECT`」 | 退回裸 `db.exec("INSERT OR IGNORE INTO ... SELECT ...")`（sqlite `OR IGNORE` / pg `ON CONFLICT DO NOTHING` / mysql `ON DUPLICATE KEY` 三方言通用）；**`orIgnore` + `fromSelect` 组合在 sqlite 上不可用**，别用。上游需求见 §11 **U3** |
 | `ojm dev` 报 `@oj-module/runtime: 安装版本 0.2.66 与宿主严格相等校验失败（期望 0.2.25）` | 全局 `ojm` 与本机工程的 runtime 版本不一致——C4/D12 门禁要求严格相等，防双实例 | 用与仓库同版本的源码 CLI（`node packages/cli/bin/ojm.mjs`，或模板工程里的 `node ../bin/ojm.mjs`）；发版形态用与工程同版本的 cli。**不要改工程 runtime 去迁就旧 cli**（那只是把门禁哄过去，跑的不是你要验的代码） |
 | `oj serve` / `ojm dev` 报 `module _platform: at seq 19: applied migration V1__create_users is different than filesystem one V1__baseline` | 迁移账本压平后老 dev 库仍记着旧文件名，与文件系统新基线不一致 | 删**真库** `packages/cli/templates/db.sqlite`（连带 `-shm`/`-wal`）重启重建。`packages/cli/templates/api/db.sqlite` 是历史残留，删它没用。压平不提供 shim，也不做双基线兼容 |
 | `ojm keygen --out ./keys` 把密钥写进了仓库根 | `keygenCommand` 按 `opts.cwd ?? process.cwd()` 解析相对路径，脚本的 cwd 未必是你以为的目录 | 脚本里一律给绝对路径（`--out /tmp/xxx-keys`）；测试用例同理 |
@@ -689,6 +688,13 @@ node "$CLI_PKG/bin/ojm.mjs" market publish --real . --id demo.publisher
 | 安装 partial：`reloading` 阶段 `reloadConfig 返回 unchanged` | 对着 `ojm dev` 装——dev 的文件监听先在安装器之前 reload 了 config，安装器自己 reload 时已无变化 | 安装验证只对 `oj serve` release 形态做（`ojm preview` 同理不行：它服务派生 config） |
 | 装完 `curl /api/<name>/ping` 返回 `400 missing tenant header` | 漏了 `X-TENANT-ID` | 探针加 `-H 'X-TENANT-ID: default'`；这是缺参数，不是安装失败 |
 | 两个账号用同一产品名各申请一张凭证都成功 | 站点只保证 **key_id 唯一**（`<product>.<username>`），产品名不是独占命名空间 | 文档不得宣称「站点替你裁决产品归属」；同名方案的发布权靠团队约定 + 市场包名/版本冲突拦截 |
+| MySQL 上 `ojm dev` 启动即退：`1064 ... near 'AUTOINCREMENT, category TEXT NOT NULL DEFAULT ...'`（`module=home`） | `home`/`notification` 的建表迁移只有 sqlite 基础件（`INTEGER PRIMARY KEY AUTOINCREMENT`），却各自已有 0002/0005 的 `.mysql.sql` 覆盖——覆盖是**按版本号替换**，0001 仍回落基础件；pg 侧同样缺 0001/0003/0004 | 已修（工作区，随下一版发布）：补齐 `home/{0001.mysql,0001.pg,0002.pg}`、`notification/{0001,0003,0004}.{mysql,pg}`、`0005.pg` 与四份方言 seed。守卫 `templates-migration-schema-parity` **m-5**：方言实际执行的迁移/seed 不得含 `AUTOINCREMENT`、`INSERT OR IGNORE`、mysql 的 `CREATE INDEX IF NOT EXISTS` |
+| MySQL/PG 上 `_platform` seed 报语法错，或整段设置不生效 | **oj 0.1.118 只读 `seed.sql`**，不会按方言回落 `seed.<dialect>.sql`（把 `seed.sql` 移走后探测：`_platform` seed 被静默跳过，无告警）。方言 seed 目前是**部署期手工替换**约定（devkit 手册树结构写着「部署到 mysql/pg 用」） | 演练期按部署口径把 `seed.<dialect>.sql` 覆盖成 `seed.sql`（用完还原）；长期待办见 §11 **U1** |
+| `_platform/seed.mysql.sql` / `seed.pg.sql` 里一条 `sys_setting` 都没有 | 手抄基线时漏了 8 条设置默认值（`sys_setting` 的 `key`/`group` 在 mysql 要反引号、pg 要双引号，整段跳过），部署后设置页与登录方式发现缺默认值 | 已修：两份方言 seed 补齐 8 条；守卫 **m-6**：方言 seed 与基础 seed 的表×条数必须一致，且一行只允许一个语句终止符（`; ON CONFLICT` 这类拼接会切出孤立语句） |
+| PG 上登录恒 500：`db exec: integer out of range`（`INSERT INTO sys_rate_window`） | `_platform` 的 pg 基线把毫秒 epoch 列声明成 `INTEGER`（int4 上限 2.1e9，`Date.now()` 是 1.7e12），mysql 同名列是 `BIGINT`；同病：`sys_login_throttle.blocked_until`、`sys_oplog.create_time`、`sys_setting.update_time` | 已修：pg 基线这批列与 `sys_refresh_token.{expires_at,created_at,user_id}`、`sys_user_role.user_id`、`sys_oplog.user_id` 统一 `BIGINT`；守卫 **m-7**：mysql 为 BIGINT 的时间列在 pg 不得收窄为 INTEGER |
+| PG 上通知列表 500：`UNION types integer and text cannot be matched` | `noticesFor` 的 UNION 第 4 列左分支是 `is_read`（整数）、右分支取 `read_time`（文本）；sqlite/mysql 宽松放行，pg 严格要求同型 | 已修：广播分支改 `CASE WHEN r.read_time IS NULL THEN 0 ELSE 1 END AS is_read`，`mapItem` 统一按整数判已读（三方言同一份 SQL） |
+| MySQL 上新建用户/推送广播返回的 id 与真实行不符（建号返回 59 实际 5；广播返回 `b:58` 实际 `b:1`） | `returning(["id"])` 在 mysql 走两步 `SELECT LAST_INSERT_ID()`，宿主在**连接池**上执行第二步，取到别的连接最后一次插入值（日志里 INSERT 与 LAST_INSERT_ID 是两条独立 SQL）；pg 原生 `RETURNING` 无此问题 | **上游缺陷，本仓未修**。落库数据正确，但所有依赖 insert 返回 id 的端点（建号/推送/广播）返回值不可信。复现：MySQL 冷库连发两次 `POST /api/system/users`，对比 `data.id` 与 `SELECT id FROM users`。待提上游见 §11 **U2** |
+| 同一份模板在 mysql/pg 上跑，`key`/`group` 等保留字列让 seed 无法三方言共用一份 | sqlite/pg 用双引号当标识符，mysql 只在 `ANSI_QUOTES` 下才认双引号；`key` 在 mysql 是保留字 | 方言 seed 必须整段重写这三类语句（只改 `INSERT OR IGNORE` 前缀不够）；基础 `seed.sql` 仍是唯一真源，方言件靠 m-6 对齐 |
 
 ### 9.1 构造器迁移后的 L1/L2 边界与 vitest 190 红基线（2026-10-20）
 
@@ -758,6 +764,16 @@ node "$CLI_PKG/bin/ojm.mjs" build && npx tsc --noEmit -p tsconfig.json && node "
 
 > 每次框架发版后跑一遍本文档，把 §「最近一次基线」更新为新版本与结果。
 
+## 11. 向上游改进需求（本仓绕不过去的 oj 内核缺口）
+
+> 只收录**本仓模板/CLI 侧无法自行修好**的项；能就地修的已写进 §9。编号稳定，§9 与附录 A 按编号引用。
+
+| 编号 | 诉求 | 现状与影响（实测） | 验收口径 |
+| --- | --- | --- | --- |
+| U1 | **seed 按 db 方言回落**：`seed.sql` 缺失或按方言优先取 `seed.<dialect>.sql` | oj 0.1.118 只读 `seed.sql`，不认 `seed.mysql.sql` / `seed.pg.sql`；`seed.sql` 移走后**静默跳过 seed 且无告警**。模板因此只能让方言 seed 走「部署期手工覆盖」约定，mysql/pg 用户升级模板时极易漏 | 起服日志显式打印实际执行的 seed 文件名；方言件存在即优先，缺省回落 `seed.sql`；找不到任何 seed 时给出 warn 而非静默 |
+| U2 | **mysql `returning(["id"])` 两步取 id 钉同一连接** | 构造器 `.returning(["id"])` 在 mysql 上渲染为 `INSERT` + `SELECT LAST_INSERT_ID()` 两条独立 SQL，第二步在**连接池**上执行，可能落到别的连接 → 取到别人的 id（实测建号返回 59、真实 id 5；广播返回 `b:58`、真实 `b:1`）。落库数据正确，只有返回值不可信；pg 原生 `RETURNING` 无恙 | 两条 SQL 在同一连接内执行（事务或显式取连接）；模板侧可关掉全部「用 insert 返回 id」的写法，但监听/推送链路仍依赖上游修 |
+| U3 | **构造器支持 `INSERT OR IGNORE ... SELECT`**（或给 `orIgnore` + `fromSelect` 补 sqlite 实现） | oj 0.1.81 起 sqlite 上 `orIgnore` 的 upsert 子句只跟随 VALUES，`fromSelect` 直接报 `orIgnore with fromSelect is not supported on sqlite`；模板「通知全部已读」只能退回裸 `db.exec` 三方言拼 SQL（§9 对应行） | `db.table(...).fromSelect(...).orIgnore()` 在 sqlite 可执行；或提供方言无关的 ignore-insert 表达式 |
+
 ---
 
 ## 附录 A 历史基线（从新到旧，逐条可追溯）
@@ -765,7 +781,21 @@ node "$CLI_PKG/bin/ojm.mjs" build && npx tsc --noEmit -p tsconfig.json && node "
 > 基线的价值是「某版本当时到底验了什么、踩了什么」，属于事实档案，不参与日常执行；
 > 新基线追加在本节最前面，最近一次的结果同时摘到文首「上次演练结论」。
 
-### 最近一次基线（2026-11-05 第二轮，oj 0.1.118 / cli+runtime 工作区 0.2.66；普通用户凭证 → 落包 → 安装）
+### 最近一次基线（2026-11-05 第三轮，oj 0.1.118 / cli+runtime 工作区 0.2.67；MySQL 与 PostgreSQL 双真库演练）
+
+| 项 | 值 |
+| --- | --- |
+| 日期 | 2026-11-05（第三轮） |
+| 框架包版本 | 工作区态 `feat/ojm` @ `03f911698`（cli/runtime/shell 均 0.2.67；本轮修复未发版，随下一版发布） |
+| oj | 0.1.118（PATH 上的 release；模板 `bin/oj` 同版本） |
+| 验证动机 | 此前所有基线都跑在 sqlite 上，mysql/pg 方言件从没被真实执行过。用本机容器里的两个真库各跑一遍 §0.3 快线，回答「模板换库到底能不能起站」 |
+| 环境 | `container list -a` → `oj-test-mysql`（`mysql:8.4.11`，`192.168.64.2:3306`，root/root）、`oj-test-postgres`（`PostgreSQL 16.15`，`192.168.64.3:5432`，postgres/postgres）。两条线各自 `DROP/CREATE DATABASE ojtest`，`config.local.yaml` 的 `db.default` 分别指向 `mysql://…/ojtest` 与 `postgres://…/ojtest` |
+| 范围 | §0.3 快线（双线各一遍）：`ojm dev` 起服 → 迁移与 seed → 超管登录 → 建 `publisher01` → 首登改密 → 申请发布凭证 → `keygen --credential` → 同 token 重兑 → 可见性（普通用户 vs 超管）→ `sign --check` → `/api/home/pie`、`POST /api/home/line` → 通知列表 / 推送广播 / 已读 |
+| 结果 | **通过（两条线）**。① 迁移账本一致：`_platform 2 / auth 3 / home 2 / notification 5 / publish 1`，两库均 **29 张表**、`sys_setting` **8 条**、`publish_credential.used=1`。② 起服行数 `routes: 91 method-row(s), 75 pattern(s), 43 api file(s)`；`GET /api/auth/login` → 405（路由在）。③ 登录 token 156 字符；MySQL 建号返回 id 不可信（见发现 6），PG 建号 id=5 正确。④ 改密前申请凭证 **403 `password change required`**，改密后成功，`key_id=quickline-demo.publisher01`、7 天有效期。⑤ `keygen` 落 `/tmp/quickline-keys/{private.pem,public.hex}`，MySQL 指纹 `15be072a…f9150`、PG `82633a42…`；同 token 重兑 **exit=1** 且不落文件。⑥ 普通用户列表 1 条、无 `owner_tenant`；超管列表带 `owner_tenant=default`。⑦ `sign dist/web-0.1.0.tgz --check` 通过。⑧ `/api/home/pie` 200、`POST /api/home/line` → `[71,84,93,99,100,97,90]`；通知列表 4 条；广播 + 已读在 PG 上 `isRead:true`。⑨ PG `sys_rate_window.window_start` 实为 `bigint`，`notifications 4 / broadcast 1 / read 1` |
+| 本次发现并处置 | ① **MySQL 起站即 1064**：`home`/`notification` 只有 sqlite 基础迁移，0001 没方言件（覆盖按版本号替换，0002 有 `.mysql.sql` 不会救 0001）；pg 侧同样缺 0001/0003/0004 → 补齐 10 个方言迁移 + 4 份方言 seed，守卫 **m-5**。② **`_platform` seed 在 mysql/pg 上整段 1064 或被静默跳过**：oj 0.1.118 只读 `seed.sql`，不按方言回落 → 演练期按部署口径覆盖（用后还原），长期诉求记 §11 **U1**。③ **两份 `_platform` 方言 seed 一条 `sys_setting` 都没有** → 补齐 8 条，守卫 **m-6**（表×条数对齐 + 一行只允许一个语句终止符，防 `; ON CONFLICT` 拼接）。④ **PG 登录恒 500 `integer out of range`**：基线把毫秒 epoch 列写成 `INTEGER`（int4 上限 2.1e9 vs `Date.now()` 1.7e12）→ 8 组时间/用户 id 列改 `BIGINT`，守卫 **m-7**。⑤ **PG 通知列表 500 `UNION types integer and text cannot be matched`**：广播分支第 4 列取 `read_time`（文本）→ 改 `CASE WHEN … THEN 0 ELSE 1 END AS is_read`，`mapItem` 统一按整数判已读。⑥ **MySQL `returning(["id"])` 返回错 id**（建号 59→5、广播 `b:58`→`b:1`）：两步 `SELECT LAST_INSERT_ID()` 跑在池上不同连接，**上游缺陷未修**，记 §11 **U2**。⑦ 保留字 `key`/`group` 让 seed 无法三方言共用一份（mysql 须反引号、pg/sqlite 双引号）→ 方言 seed 整段重写 |
+| 手册同步 | §9 新增 7 条（MySQL 1064 / seed 无方言回落 / 方言 seed 缺 sys_setting / PG int4 溢出 / PG UNION 异型 / MySQL 两步取 id / 保留字 seed）；新增 **§11 向上游改进需求**（U1 seed 方言回落、U2 mysql 两步取 id 钉连接、U3 `orIgnore`+`fromSelect`）；回归守卫 3 条（m-5/m-6/m-7） |
+
+### 上一次基线（2026-11-05 第二轮，oj 0.1.118 / cli+runtime 工作区 0.2.66；普通用户凭证 → 落包 → 安装）
 
 | 项 | 值 |
 | --- | --- |

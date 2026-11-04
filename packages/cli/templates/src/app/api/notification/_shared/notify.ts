@@ -69,11 +69,9 @@ function splitId(id: string): [scope: "u" | "b", raw: string] {
 function mapItem(r: Row): NoticeItem {
 	const scope = String(r.scope);
 	const isBroadcast = scope === "broadcast";
-	// UNION 结果列名取首分支（userQ）=> 位置 4 名为 is_read。按人项此处即存储整数列；
-	// 广播项此处实际承载回执 read_time（非空即已读，与原始 SQL 的 (read_time IS NOT NULL AND <> '') 等价）。
-	const isRead = isBroadcast
-		? (r.is_read != null && String(r.is_read) !== "")
-		: Number(r.is_read) === 1;
+	// UNION 结果列名取首分支（userQ）=> 位置 4 名为 is_read，两分支都输出整数 0/1
+	// （按人项取存储列，广播项由回执 EXISTS 推导），故统一按整数判已读。
+	const isRead = Number(r.is_read) === 1;
 	return {
 		id: (isBroadcast ? "b:" : "u:") + String(r.id),
 		scope: isBroadcast ? "broadcast" : "user",
@@ -172,7 +170,9 @@ export async function noticesFor(
 		"b.id",
 		"b.avatar",
 		"b.date",
-		"r.read_time",
+		// 第 4 列与首分支 is_read 同型（整数）：pg 的 UNION 不允许 integer/text 混排，
+		// sqlite/mysql 会隐式放宽；回执存在即已读 → 0/1，mapItem 统一按 Number(...) === 1 判定。
+		{ case: { when: [{ cond: { field: "r.read_time", op: "isnull" }, then: 0 }], else: 1 }, as: "is_read" },
 		"b.message",
 		"b.title",
 		"b.link",

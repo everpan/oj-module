@@ -1,0 +1,14 @@
+-- 0001（postgres 方言）：home 两表建表。口径同基础件。
+-- 方言差异：AUTOINCREMENT → BIGSERIAL（SERIAL 系允许 seed 显式写 id）；TEXT 在 pg 合法且可带默认值。
+CREATE TABLE IF NOT EXISTS home_pie (
+  id BIGSERIAL PRIMARY KEY,
+  category TEXT NOT NULL DEFAULT '',
+  value INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS home_line (
+  id BIGSERIAL PRIMARY KEY,
+  day INTEGER NOT NULL DEFAULT 0,
+  value INTEGER NOT NULL DEFAULT 0
+);
+

@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
@@ -102,6 +102,63 @@ function migrationsFor(module: string, dialect: "base" | "mysql" | "pg"): string
 function hasDialectOverrides(module: string, dialect: "mysql" | "pg"): boolean {
 	const dir = join(apiRoot, module, "migrations");
 	return existsSync(dir) && readdirSync(dir).some(f => f.endsWith(`.${dialect}.sql`));
+}
+
+/** 只留可执行语句：`--` 行注释里的示例语法不算方言违规 */
+function executableSql(sql: string): string {
+	return sql.split("\n").filter(line => !line.trim().startsWith("--")).join("\n");
+}
+
+/**
+ * 各方言必须拒绝的 SQLite 专有写法。命中任意一条，该方言在真库上必然语法错
+ * （2026-11-05 演练实踩：home 0001 只写 sqlite 版，MySQL 报 1064 AUTOINCREMENT）。
+ * `CREATE INDEX IF NOT EXISTS` 在 pg 合法，故只列 mysql。
+ */
+const DIALECT_ONLY_SQLITE: Record<"mysql" | "pg", RegExp[]> = {
+	mysql: [/\bAUTOINCREMENT\b/i, /\bINSERT\s+OR\s+IGNORE\b/i, /\bCREATE\s+(?:UNIQUE\s+)?INDEX\s+IF\s+NOT\s+EXISTS\b/i],
+	pg: [/\bAUTOINCREMENT\b/i, /\bINSERT\s+OR\s+IGNORE\b/i],
+};
+
+/** `INSERT [OR IGNORE|IGNORE] INTO <表>` 按表计数（剥注释，避免注释里的示例语句算数） */
+function insertCountsByTable(sql: string): Map<string, number> {
+	const out = new Map<string, number>();
+	const re = /\bINSERT\s+(?:OR\s+IGNORE\s+|IGNORE\s+)?INTO\s+([`"\w]+)/gi;
+	for (const m of executableSql(sql).matchAll(re)) {
+		const table = m[1].replace(/[`"]/g, "");
+		out.set(table, (out.get(table) ?? 0) + 1);
+	}
+	return out;
+}
+
+/** 解析单文件里的 `CREATE TABLE` → 表 → 列 → 首词类型（去掉引号与长度参数） */
+function columnTypes(file: string): Map<string, Map<string, string>> {
+	const out = new Map<string, Map<string, string>>();
+	const sql = readFileSync(file, "utf-8");
+	for (const m of sql.matchAll(/CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?([`"\w]+)\s*\(([\s\S]*?)\)\s*(?:ENGINE|;)/gi)) {
+		const table = m[1].replace(/[`"]/g, "");
+		const cols = new Map<string, string>();
+		for (const raw of m[2].split("\n")) {
+			const line = raw.trim().replace(/,$/, "");
+			if (!line || line.startsWith("--") || isConstraintLine(line))
+				continue;
+			const [, name, type] = line.match(/^([`"\w]+)\s+([a-z]+)/i) ?? [];
+			if (name && type)
+				cols.set(name.replace(/[`"]/g, "").toLowerCase(), type.toUpperCase());
+		}
+		out.set(table, cols);
+	}
+	return out;
+}
+
+/** seed 装配规则：`seed.<dialect>.sql` 存在则必胜，否则回落 `seed.sql` */function seedFor(module: string, dialect: "base" | "mysql" | "pg"): string | null {
+	const dir = join(apiRoot, module);
+	if (dialect !== "base") {
+		const override = join(dir, `seed.${dialect}.sql`);
+		if (existsSync(override))
+			return override;
+	}
+	const base = join(dir, "seed.sql");
+	return existsSync(base) ? base : null;
 }
 
 /** 取出 `CREATE TABLE <name> ( ... )` 的 (表名, 列名集合)，能处理引号与嵌套括号 */
@@ -309,6 +366,86 @@ describe("templates 迁移 ↔ schema.yaml / manifest.yaml 结构一致", () => 
 							violations.push(`${module}/${dialect}: ${table}.${c} 在 schema.yaml 声明但方言迁移未建列`);
 					}
 				}
+			}
+		}
+
+		expect(violations).toEqual([]);
+	});
+
+	it("m-5 任一方言实际执行的迁移与 seed 不含该方言不支持的语法（方言覆盖须整条链路可执行）", () => {
+		const violations: string[] = [];
+
+		for (const module of modulesWithApi()) {
+			for (const dialect of ["mysql", "pg"] as const) {
+				const files = [...migrationsFor(module, dialect)];
+				const seed = seedFor(module, dialect);
+				if (seed)
+					files.push(seed);
+
+				for (const file of files) {
+					const sql = executableSql(readFileSync(file, "utf-8"));
+					for (const re of DIALECT_ONLY_SQLITE[dialect]) {
+						if (re.test(sql))
+							violations.push(`${module}/${dialect}: ${relative(apiRoot, file)} 含该方言不支持的语法 ${re}`);
+					}
+				}
+			}
+		}
+
+		expect(violations).toEqual([]);
+	});
+
+	it("m-6 方言 seed 与基础 seed 覆盖同一批表、同样条数（漏段 = 部署面静默缺数据）", () => {
+		const violations: string[] = [];
+
+		for (const module of modulesWithApi()) {
+			const baseSeed = seedFor(module, "base");
+			if (!baseSeed)
+				continue;
+			const expected = insertCountsByTable(readFileSync(baseSeed, "utf-8"));
+
+			for (const dialect of ["mysql", "pg"] as const) {
+				const seed = seedFor(module, dialect);
+				if (!seed || seed === baseSeed)
+					continue;
+
+				// seed 按 `;` 朴素切分：一行出现第二个终止符会切出孤立语句（如 `; ON CONFLICT DO NOTHING`）
+				for (const [i, line] of readFileSync(seed, "utf-8").split("\n").entries()) {
+					if (line.trim().startsWith("--"))
+						continue;
+					if ((line.match(/;/g) ?? []).length > 1)
+						violations.push(`${module}/${dialect} seed: 第 ${i + 1} 行有多个语句终止符（拼接错会切出孤立语句）`);
+				}
+
+				const actual = insertCountsByTable(readFileSync(seed, "utf-8"));
+				for (const table of new Set([...expected.keys(), ...actual.keys()])) {
+					if ((expected.get(table) ?? 0) !== (actual.get(table) ?? 0)) {
+						violations.push(
+							`${module}/${dialect} seed: ${table} 基础 ${expected.get(table) ?? 0} 条 / 方言 ${actual.get(table) ?? 0} 条`,
+						);
+					}
+				}
+			}
+		}
+
+		expect(violations).toEqual([]);
+	});
+
+	it("m-7 _platform 基线的 BIGINT 时间列在 pg 不得收窄为 INTEGER（毫秒 epoch 超出 int32）", () => {
+		const dir = join(apiRoot, "_platform", "migrations");
+		const mysql = columnTypes(join(dir, "0001__baseline.mysql.sql"));
+		const pg = columnTypes(join(dir, "0001__baseline.pg.sql"));
+		// 只盯时间语义列：*_at / *_time / *_start / *_until（秒级与毫秒级 epoch 都要求 64 位）
+		const TIME_COLUMN = /(?:^|_)(?:at|time|start|until)$/;
+		const violations: string[] = [];
+
+		for (const [table, cols] of mysql) {
+			for (const [col, type] of cols) {
+				if (type !== "BIGINT" || !TIME_COLUMN.test(col))
+					continue;
+				const pgType = pg.get(table)?.get(col);
+				if (pgType && pgType !== "BIGINT")
+					violations.push(`${table}.${col}: mysql=BIGINT / pg=${pgType}`);
 			}
 		}
 
