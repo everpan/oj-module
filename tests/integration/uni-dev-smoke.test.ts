@@ -7,6 +7,7 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
+import { SHARED_DEPS } from "../../packages/cli/src/shared-deps";
 import { PROJECT_ROOT } from "../helpers/paths";
 
 /** 取一个内核保证空闲的端口（listen(0) 由 OS 分配后即刻让出） */
@@ -55,6 +56,32 @@ describe.skipIf(process.env.CI || ojBusy)("uni-dev e2e 冒烟（真二进制）"
 			killTree(proc);
 		fs.rmSync(root, { recursive: true, force: true });
 	});
+
+	/**
+	 * 补 bundle 类共享依赖（SHARED_DEPS 里 bundle: true 的条目）。
+	 *
+	 * 这类依赖不打进宿主 importmap，而是打进模块产物，构建期必须能从工程
+	 * node_modules 解析（模板的 echarts / echarts-for-react 就是这一类）。
+	 * 但 init 只落 package.json、不装依赖（下一步才是 `pnpm install`），而冒烟
+	 * 又跑在本仓未发版的版本上——真装会去 registry 找当前版本（找不到）。
+	 * 故从本仓 node_modules 软链一份模拟「已安装」；不进 bundle 的共享依赖
+	 * （react / antd 等）走宿主 importmap，本来就不需要装。
+	 */
+	function linkBundledSharedDeps(projectRoot: string): void {
+		const modulesDir = path.join(projectRoot, "node_modules");
+		fs.mkdirSync(modulesDir, { recursive: true });
+		for (const dep of SHARED_DEPS) {
+			// 只处理包根（含 / 的深路径条目如 echarts/charts 不是独立目录）
+			if (!dep.bundle || dep.specifier.includes("/"))
+				continue;
+			const from = path.join(PROJECT_ROOT, "node_modules", dep.specifier);
+			const to = path.join(modulesDir, dep.specifier);
+			if (!fs.existsSync(from) || fs.existsSync(to))
+				continue;
+			// windows 下 junction 不需要管理员权限，且能跨盘
+			fs.symlinkSync(from, to, process.platform === "win32" ? "junction" : "dir");
+		}
+	}
 
 	function killTree(proc: ChildProcess) {
 		if (!proc.pid || proc.exitCode !== null)
@@ -150,6 +177,8 @@ describe.skipIf(process.env.CI || ojBusy)("uni-dev e2e 冒烟（真二进制）"
 		// module-root 布局（0.2.20 起）：config.yaml 在工程根，证书落 config/（config.yaml 同级）
 		expect(fs.existsSync(path.join(root, "config.yaml"))).toBe(true);
 		expect(fs.existsSync(path.join(root, "config/cert.jws"))).toBe(true);
+		// 依赖留给 dev/build 用例：init 不负责安装，bundle 类共享依赖要软链补上
+		linkBundledSharedDeps(root);
 	}, 240_000);
 
 	it("dev：登录链经反代全通（首跑闭环）", async () => {

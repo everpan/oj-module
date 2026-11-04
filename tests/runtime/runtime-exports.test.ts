@@ -188,11 +188,16 @@ describe("runtime 主入口出口白名单 (P3.1)", () => {
 	});
 
 	it("cli 的 runtime stub 覆盖全部运行时出口（防漂移，P3.4）", () => {
-		const stubSource = fs.readFileSync(
-			path.join(PROJECT_ROOT, "packages/cli/src/build.ts"),
-			"utf-8",
-		);
+		// 扫整个 build/ 目录而不是钉死某个文件：2026-11 build.ts 按 SRP 拆成
+		// build/{module-def,module-build,backend,site-merge}.ts 后，钉死路径会读到
+		// 只剩 re-export 的 facade，截出空 stub → 全部出口误报「未同步」
+		const buildDir = path.join(PROJECT_ROOT, "packages/cli/src/build");
+		const stubSource = fs.readdirSync(buildDir)
+			.filter(file => file.endsWith(".ts"))
+			.map(file => fs.readFileSync(path.join(buildDir, file), "utf-8"))
+			.join("\n");
 		const stubBlock = stubSource.match(/RUNTIME_STUB_SOURCE = `([^`]+)`/)?.[1] ?? "";
+		expect(stubBlock, "未在 packages/cli/src/build/*.ts 里找到 RUNTIME_STUB_SOURCE").not.toBe("");
 		const stubExports = new Set([...stubBlock.matchAll(/export const (\w+)/g)].map(m => m[1]));
 		const runtimeExports = Object.keys(Runtime).filter(k => (Runtime as Record<string, unknown>)[k] !== undefined);
 		const missing = runtimeExports.filter(key => !stubExports.has(key));
