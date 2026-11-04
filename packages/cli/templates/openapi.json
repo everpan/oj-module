@@ -4536,6 +4536,368 @@
 				}
 			}
 		},
+		"/api/publish/credential": {
+			"get": {
+				"operationId": "publish_credential_get",
+				"summary": "GET api/publish/credential",
+				"x-oj-file": "app/api/publish/api.ts",
+				"tags": [
+					"publish"
+				],
+				"parameters": [
+					{
+						"name": "page",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "number",
+							"minimum": 1
+						}
+					},
+					{
+						"name": "limit",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "number",
+							"minimum": 1,
+							"maximum": 200
+						}
+					},
+					{
+						"name": "tenant",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"required": [
+												"list",
+												"total"
+											],
+											"properties": {
+												"list": {
+													"type": "array",
+													"items": {
+														"type": "object",
+														"required": [
+															"id",
+															"product",
+															"key_id",
+															"username",
+															"token_hint",
+															"status",
+															"expires_at",
+															"created_at"
+														],
+														"properties": {
+															"id": {
+																"type": "number"
+															},
+															"product": {
+																"type": "string"
+															},
+															"key_id": {
+																"type": "string"
+															},
+															"username": {
+																"type": "string"
+															},
+															"display_name": {
+																"type": [
+																	"string",
+																	"null"
+																]
+															},
+															"token_hint": {
+																"type": "string"
+															},
+															"status": {
+																"type": "string",
+																"enum": [
+																	"active",
+																	"used",
+																	"revoked",
+																	"expired"
+																]
+															},
+															"expires_at": {
+																"type": "number"
+															},
+															"used_at": {
+																"type": [
+																	"number",
+																	"null"
+																]
+															},
+															"created_at": {
+																"type": "number"
+															},
+															"owner_tenant": {
+																"type": "string"
+															}
+														}
+													}
+												},
+												"total": {
+													"type": "number"
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			},
+			"post": {
+				"operationId": "publish_credential_post",
+				"summary": "POST api/publish/credential",
+				"x-oj-file": "app/api/publish/api.ts",
+				"tags": [
+					"publish"
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"required": [
+									"product"
+								],
+								"properties": {
+									"product": {
+										"type": "string"
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"required": [
+												"token",
+												"key_id",
+												"product",
+												"expires_at"
+											],
+											"properties": {
+												"token": {
+													"type": "string"
+												},
+												"key_id": {
+													"type": "string"
+												},
+												"product": {
+													"type": "string"
+												},
+												"token_hint": {
+													"type": "string"
+												},
+												"expires_at": {
+													"type": "number"
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/publish/credential/revoke": {
+			"post": {
+				"operationId": "publish_credential_revoke_post",
+				"summary": "POST api/publish/credential/revoke",
+				"x-oj-file": "app/api/publish/api.ts",
+				"tags": [
+					"publish"
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"required": [
+									"id"
+								],
+								"properties": {
+									"id": {
+										"type": "number"
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"required": [
+												"ok"
+											],
+											"properties": {
+												"ok": {
+													"type": "boolean"
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/publish/credential/exchange": {
+			"post": {
+				"operationId": "publish_credential_exchange_post",
+				"summary": "POST api/publish/credential/exchange",
+				"x-oj-file": "app/api/publish/api.ts",
+				"tags": [
+					"publish"
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"required": [
+									"token"
+								],
+								"properties": {
+									"token": {
+										"type": "string"
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"required": [
+												"key_id",
+												"product",
+												"username"
+											],
+											"properties": {
+												"key_id": {
+													"type": "string"
+												},
+												"product": {
+													"type": "string"
+												},
+												"username": {
+													"type": "string"
+												},
+												"display_name": {
+													"type": [
+														"string",
+														"null"
+													]
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
 		"/api/system/departments": {
 			"get": {
 				"operationId": "system_departments_get",
@@ -6861,6 +7223,9 @@
 		},
 		{
 			"name": "personal-center"
+		},
+		{
+			"name": "publish"
 		},
 		{
 			"name": "system"

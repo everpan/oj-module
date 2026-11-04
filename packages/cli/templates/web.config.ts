@@ -54,6 +54,7 @@ export default {
 		"auth": "app",
 		"home": "app",
 		"personal-center": "app",
+		"publish": "app",
 		"notification": "app",
 		"system": "app",
 		"web": "app",

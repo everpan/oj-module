@@ -76,6 +76,7 @@ include:
   - tests/seed-role-accounts.spec.ts
   # 发布凭证：身份推导规则是跨端共用的口径，随源码下发，用户工程可本地自检
   - tests/publish-identity.spec.ts
+  - tests/publish-credential.spec.ts
   # 用户页行级门禁：只有 superadmin 能改 superadmin 账号（后端 assertCanManageTarget 的另一面）
   - tests/users-page.spec.ts
   # 企微连接器与组织同步：源码本就分发（src/app/api/auth），对应回归也必须跟着走，

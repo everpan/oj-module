@@ -113,7 +113,10 @@ describe("initProject", () => {
 		// users 表归属 _platform 伪模块（§3-D2 归属图单源，参考 oj sample）；
 		// DDL 归 migrations（S006 seed 纪律：seed 只放数据，oj build 检查）
 		expect(fs.existsSync(path.join(dest, "src/app/api/_platform/seed.sql"))).toBe(true);
-		expect(fs.existsSync(path.join(dest, "src/app/api/_platform/migrations/0001__create_users.sql"))).toBe(true);
+		// _platform 的结构已压平成一条三方言基线（0001–0018 是发版前的演进中间态）
+		expect(fs.existsSync(path.join(dest, "src/app/api/_platform/migrations/0001__baseline.sql"))).toBe(true);
+		expect(fs.existsSync(path.join(dest, "src/app/api/_platform/migrations/0001__baseline.mysql.sql"))).toBe(true);
+		expect(fs.existsSync(path.join(dest, "src/app/api/_platform/migrations/0001__baseline.pg.sql"))).toBe(true);
 		expect(fs.existsSync(path.join(dest, "src/app/api/_platform/schema.yaml"))).toBe(true);
 		// auth 模块（§8：auth 端点是业务路由；anonymous_paths 显式匿名）
 		expect(fs.existsSync(path.join(dest, "src/app/api/auth/manifest.yaml"))).toBe(true);
@@ -202,8 +205,7 @@ describe("initProject", () => {
 		expect(fs.existsSync(path.join(dest, "src/app/api/personal-center/contract.ts"))).toBe(false);
 		expect(fs.existsSync(path.join(dest, "src/app/api/personal-center/upload/api.ts"))).toBe(true);
 		expect(fs.existsSync(path.join(dest, "src/app/api/personal-center/routes.json"))).toBe(false);
-		// 头像上传链路（T3）：users 表补 avatar_base64 列，user-info 返回它
-		expect(fs.existsSync(path.join(dest, "src/app/api/_platform/migrations/0002__add_users_avatar_base64.sql"))).toBe(true);
+		// 头像上传链路（T3）：users 表补 avatar_base64 列（压平后并入 0001 基线），user-info 返回它
 		expect(fs.readFileSync(path.join(dest, "src/app/api/_platform/schema.yaml"), "utf-8")).toContain("avatar_base64");
 		expect(fs.readFileSync(path.join(dest, "src/app/api/web/user-info/api.ts"), "utf-8")).toContain("avatar_base64");
 		expect(fs.existsSync(path.join(dest, "web.config.ts"))).toBe(true);

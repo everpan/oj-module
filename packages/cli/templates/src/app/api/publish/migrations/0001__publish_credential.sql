@@ -9,8 +9,12 @@
 --   · 一次性兑换令牌：兑换成功后 used=1，再兑即拒；未兑换前可用 revoked 手动作废
 --   · key_id 在**申请时**就算好落库，兑换只回读——CLI 不实现任何编码规则（单一真源）
 --   · 只存 token_hash（sha256），明文只在申请响应里出现一次
+--
+-- 主键用自增 id 而非 token_hash：列表分页与撤销都按行 id 操作（pagedFactory 也按 id 排序），
+-- 用 hash 做主键会让这两件事都得先算 hash 再反查。token_hash 仍唯一。
 CREATE TABLE IF NOT EXISTS publish_credential (
-  token_hash TEXT PRIMARY KEY,
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  token_hash TEXT NOT NULL,
   token_hint TEXT NOT NULL,
   uid INTEGER NOT NULL,
   username TEXT NOT NULL,
@@ -25,6 +29,7 @@ CREATE TABLE IF NOT EXISTS publish_credential (
   created_at INTEGER NOT NULL,
   created_ip TEXT
 );
+CREATE UNIQUE INDEX IF NOT EXISTS uk_publish_credential_token ON publish_credential (token_hash);
 
 -- 「发布管理」页的主查询：按租户 + 本人 + 时间倒序
 CREATE INDEX IF NOT EXISTS idx_publish_credential_owner

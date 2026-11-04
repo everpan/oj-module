@@ -9,8 +9,9 @@
 tables:
   publish_credential:
     tenant: false
-    pk: token_hash
+    pk: id
     columns:
+      id: {type: integer, null: false, autoincrement: true}
       # 只存 sha256(明文)：明文只在申请响应里出现一次
       token_hash: {type: text, null: false}
       # 明文前 8 位，仅供「发布管理」页识别是哪一张，不参与任何校验
