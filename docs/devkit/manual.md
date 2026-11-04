@@ -2081,16 +2081,17 @@ flowchart LR
 ### 12.1 发布流程（作者侧，三步）
 
 ```bash
-# ① 一次性：生成 Ed25519 密钥对（私钥 ~/.ojm/keys/<id>/ 永不出目录——--out 指进工程树须 --yes）
-ojm keygen --id <publisher>.<key-name>
-
-# ①' 或：用站点「发布管理」页签发的一次性凭证换身份（key_id 由站点算好下发，CLI 不推导）
-#     凭证兑换即作废；失败不落任何密钥文件；与 --id 互斥（同时给 exit 2）
+# ① 一次性：拿发布身份。站点有「发布管理」页时，用页面签发的一次性凭证兑换（key_id 由站点算好下发，
+#    CLI 不推导；兑换即作废；失败不落任何密钥文件；与 --id 互斥，同时给 exit 2）：
 ojm keygen --credential <token> [--site-url <站点>]
 OJM_PUBLISH_CREDENTIAL=<token> ojm keygen
 
-# ② 每次发布：签名（产物 = 同目录 <tgz>.sig；--check 离线自检，不必靠装失败发现签错）
-ojm sign dist/<name>-<version>.tgz --id <publisher>.<key-name> --check
+# ①' 旁路：只在没有「发布管理」页（纯自建/离线 CDN）或 CI 临时密钥时自建 key_id——
+#    站点侧没有这条身份记录，产品归属与申请人无从追溯，只能靠超管为陌生指纹手工放行：
+ojm keygen --id <publisher>.<key-name>   # 私钥 ~/.ojm/keys/<id>/ 永不出目录；--out 指进工程树须 --yes
+
+# ② 每次发布：签名（--id 填上一步拿到的 key_id；产物 = 同目录 <tgz>.sig；--check 离线自检）
+ojm sign dist/<name>-<version>.tgz --id <key_id> --check
 
 # ③ 安装/分发：.sig 自动探测随包上传
 ojm install dist/<name>-<version>.tgz --site-url <站点> --user superadmin --pass …
@@ -2098,7 +2099,7 @@ ojm install dist/<name>-<version>.tgz --site-url <站点> --user superadmin --pa
 
 凭证通道的站点地址：`--site-url` > `OJM_SITE_URL` > `http://127.0.0.1:9778`；兑换端点匿名可达，
 不需要 `--user/--pass`。key_id 形如 `<产品名>.<编码后用户名>`（例：`demo-solution.wecom-everpan`），
-由站点按申请时的产品名与账号算好——想让身份完全自定义就继续走上面的离线 `--id`。
+由站点按申请时的产品名与账号算好。
 
 宿主验签六码（失败文案双语，`--locale` 切换）：`sig_missing`（缺签）/ `sig_alg`（算法
 不受接受）/ `sig_key`（key_id 命名空间违约）/ `tampered`（验签不过）/ `unknown_key`
@@ -2108,8 +2109,9 @@ ojm install dist/<name>-<version>.tgz --site-url <站点> --user superadmin --pa
 
 **TOFU = Trust On First Use（首次使用即信任）**：陌生发布方的第一个包，安装器无法判断
 该不该信，于是把公钥指纹摆出来让人核对——核对通过才入库，之后同一 key_id 直接放行。
-信任的建立因此有两条路：**第一方**走模板内置公钥免核对（§12.3），**第三方**走本节的
-人工核对。
+信任的建立因此有两条路：**模板内置的 oj-market 方案**用内置公钥免核对（§12.3），其余来源
+（含你自己 keygen 的身份、站点凭证下发的身份）一律走本节的人工核对——凭证只定 key_id 归属，
+站点在兑换时拿不到你的公钥，无法代为建立信任。
 
 - 信任库 = `.solutions/trusted-keys.yaml`（key_id → 公钥 + added_at；首次绑定不可改，
   轮换 = 新增 key_id）。

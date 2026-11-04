@@ -32,7 +32,7 @@
 |---|---|
 | `SKILL.md` | Claude Code 等 agent 的 skill 入口：工作流、红线、新模块 checklist、陷阱速查，按章节号引用手册 |
 | `manual.md` | 模块开发手册（14 章）：工程结构（module-root 单树 + 两处产物根；含 §1.7 handler 四红线——oj 运行时实测钉出，后端必读；§1.8 `#` 别名与 TS 投影）、写模块、契约与代码生成（含 §3.10 旧 contract.ts 工程迁移指南）、provider 接管（覆盖框架内置功能）、布局、i18n、构建发布、排查、CLI 子命令参考（ojm 原生命令 vs oj 透传命令）、方案包打包与分发（含 §11.1.1 引用式方案）、签名与信任、§13.1.1 web.route_prefix 自定义根路径、**§14 组织架构与通讯录**（内置部门/成员底座 + 共享读面 7 端点 + `scope` 两级门禁 + 归属权四条规则 + 源适配器接点，选人与按部门算人都读它） |
-| `publish-walkthrough.md` | 方案包发布全流程（**新手照做版**）：构建打包 → **拿发布身份（站点一次性凭证 `--credential`，或离线 `--id`）** → 签名 → `market publish` 落 CDN → build-index → verify/trial 验证 → install + TOFU，含多人各自独立发包纪律与失败速查（手册 §11/§12 的过程版） |
+| `publish-walkthrough.md` | 方案包发布全流程（**新手照做版**）：构建打包 → **拿发布身份（「发布管理」申请凭证 → `ojm keygen --credential`；无站点才用离线 `--id`）** → 签名 → `market publish` 落 CDN → build-index → verify/trial 验证 → install + TOFU，含多人各自独立发包纪律与失败速查（手册 §11/§12 的过程版） |
 | `framework-dev.md` | 框架贡献者路线（**仅框架仓库**）：改 `packages/runtime`、`packages/cli` 时的入口与红线 |
 | `module-dev-and-cdn-playground.md` | 教学文档：开发态 ≠ 分发态、「怎么安装自己的模块 / 会不会重复」、本地 CDN 市场链路五步跑通（setup → publish → build-index → verify → 安装） |
 | `sql-builder-missing-capabilities-pr.md` | 构造器能力缺口 PR 参考（**仅框架仓库**）：7 项诉求的闭环记录 |

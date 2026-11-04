@@ -376,13 +376,15 @@ solution-demo/
 ## 7.2 发布到市场源（CDN）
 
 ```bash
-# 0) 发布身份二选一。站点有「发布管理」页时优先用一次性凭证（key_id 由站点算好、TOFU 由站点记录）：
+# 0) 发布身份二选一。站点有「发布管理」页时优先用一次性凭证（key_id 由站点按产品名+账号下发；
+#    它只定身份归属，不预置信任——首装仍会 needs_trust）：
 node "$CLI_PKG/bin/ojm.mjs" keygen --credential <token> --site-url http://127.0.0.1:9778
 #    凭证来自 发布管理 → 申请发布凭证（填产品名），明文只显示一次；兑换即作废，失败不落盘。
 #    站点地址优先级 --site-url > OJM_SITE_URL > http://127.0.0.1:9778；兑换端点匿名可达，不需要账号口令。
 #    拿到 key_id 形如 <产品名>.<编码用户名>，落点 ~/.ojm/keys/<key_id>/。
 
-# 1) 或者：离线自建身份（无该页面 / CI 临时密钥；一次生成，长期复用；私钥永不入仓）
+# 1) 旁路：只在没有「发布管理」页（纯自建/离线 CDN）或 CI 临时密钥时自建身份；
+#    站点侧没有这条身份记录，只能靠超管为陌生指纹手工确认信任
 node "$CLI_PKG/bin/ojm.mjs" keygen --id demo.publisher --out ./keys --yes
 #   记下 fingerprint（市场卡片与 trust confirm 都要核对它）
 #   两条路都产出同一形状的私钥；--credential 与 --id 互斥（同时给 exit 2）。

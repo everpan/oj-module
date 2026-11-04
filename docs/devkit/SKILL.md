@@ -147,8 +147,11 @@ description: 用 ojm 开发前后端一体工程时使用——新增/修改前�
 
 | 路径 | 命令 | 何时用 |
 |---|---|---|
-| 站点凭证（推荐） | `ojm keygen --credential <token>` | 站点有「发布管理」页；key_id 由站点算好、TOFU 由站点记录 |
-| 离线自建 | `ojm keygen --id <publisher>.<key-name>` | 站点无该页、CI 临时密钥、或要完全自定义 key_id |
+| 站点凭证（推荐） | `ojm keygen --credential <token>` | 站点有「发布管理」页；key_id 由站点按产品名+账号下发（信任仍需首装核对） |
+| 离线自建（旁路） | `ojm keygen --id <publisher>.<key-name>` | 只在站点没有「发布管理」页（纯自建/离线 CDN）或 CI 临时密钥时用 |
+
+站点有「发布管理」页时**不要自建 key_id**：站点侧没有这条身份记录，产品归属与申请人无从追溯，
+能不能装只能靠超管为陌生指纹手工放行。
 
 - 凭证是**一次性兑换令牌**：站点「发布管理 → 申请发布凭证」填产品名 → 明文只显示一次 →
   本机 `ojm keygen --credential <token>`（或 `OJM_PUBLISH_CREDENTIAL=<token> ojm keygen`，
@@ -157,8 +160,10 @@ description: 用 ojm 开发前后端一体工程时使用——新增/修改前�
   **不需要 `--user/--pass`**。`--credential` 与 `--id` 互斥（同时给 exit 2）。
 - 下发的 key_id 形如 `<产品名>.<编码后用户名>`（例：`demo-solution.wecom-everpan`），CLI 不做推导；
   它同时是 `~/.ojm/keys/<key_id>/` 的目录名——**不要拿它拼路径或改名**，否则签名侧找不到私钥。
+  凭证只解决「身份命名与归属」，**不预置信任**：公钥在本地生成，站点兑换时拿不到，首装照样
+  `needs_trust`，仍要核对指纹。
 - 两条路的私钥纪律完全一致：只活在 `~/.ojm/keys/<id>/`、不入仓不入包、一次发布固定一把。
-  签名/发布/安装全流程见 `publish-walkthrough.md`（§2 离线、§2.1 凭证、§3 签名起）。
+  签名/发布/安装全流程见 `publish-walkthrough.md`（§2 凭证、§2.1 离线旁路、§3 签名起）。
 
 ## 新模块 checklist
 
