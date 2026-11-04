@@ -6,7 +6,7 @@ import {
 	useAuthStore,
 	useTenantStore,
 } from "@oj-module/runtime";
-import { Alert, Button, Form, Input, Tabs, Typography } from "antd";
+import { Alert, Button, Divider, Form, Input, Tabs, Typography } from "antd";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate } from "react-router";
@@ -71,6 +71,8 @@ export default function LoginPage() {
 	//   判据用「wecom 是否在登录方式里」而不是去数租户：匿名请求没有租户上下文，
 	//   统计租户要动用 db.asSystem（全仓仅 tenant-admin.ts 一处，不为此破例）。
 	const [showTenant, setShowTenant] = useState(() => useTenantStore.getState().tenant !== DEFAULT_TENANT);
+	// 「其他企业」折叠：仅服务商 / 多企业共存部署才需要手填企业代码
+	const [showOtherCorp, setShowOtherCorp] = useState(false);
 	// 表单里的企业代码：带上 persisted 值（URL `?tenant=` 已先落到 store），用户看得见才改得动
 	const [tenant] = useState(() => {
 		const current = useTenantStore.getState().tenant;
@@ -170,15 +172,24 @@ export default function LoginPage() {
 		window.location.assign(`${resolveApiBase()}/auth/sso`);
 	}
 
-	function wecomLogin() {
+	/**
+	 * 一键扫码登录：默认不传 corp/agent，后端 `corpSelf()` 从部署常量 `wecom_corp_*`
+	 * 自动解析本企业（api.ts::login → resolveWecomProfile），用户不必填企业代码。
+	 * 普通浏览器 UA 下后端 302 到企微 qrConnect 扫码页；企微内 UA 走 oauth2 静默。
+	 * 只有「其他企业」折叠里才带 corp/agent（服务商 / 多企业共存部署）。
+	 */
+	function wecomLogin(withCorp = false) {
 		// 整页跳转（拿不到 302 的 opaque redirect）：授权入口是**后端端点**，
 		// 必须拼 API base（部署期可为 /api 或网关前缀）；拼站点 base 只会落到
 		// SPA 兜底页——点击后页面原地重载、一个 auth 请求都不发。
 		// 企业代码不在这里写 store——只有服务端回跳带的 tenant 才是权威值。
-		window.location.assign(`${resolveApiBase()}${wecomAuthorizePath(corp, agent)}`);
+		window.location.assign(`${resolveApiBase()}${wecomAuthorizePath(withCorp ? corp : "", withCorp ? agent : "")}`);
 	}
 
-	const showTabs = methods.length > 1;
+	// 企微一键扫码不进 Tabs：它要「点一次」就走，藏在 tab 里等于多一次点击。
+	const tabMethods = methods.filter(m => m !== "wecom");
+	const showWecomQuick = methods.includes("wecom");
+	const showTabs = tabMethods.length > 1;
 
 	const form = (method: LoginMethod) => (
 		<Form<LoginFormValues> layout="vertical" onFinish={values => onFinish(values, method)}>
@@ -207,50 +218,41 @@ export default function LoginPage() {
 		</Form>
 	);
 
-	// 企微：只需企业代码（服务商后台生成的专属链接会预填，客户也可手输）
-	// 受控值不走 antd 表单（Form.Item 无 name），故显式给 id/htmlFor：
-	// 少了这层关联，标签只是视觉文本，读屏与 getByLabel 都取不到输入框。
+	// 企微一键扫码：默认可见、不藏在 tab 里，点一次即进入企微授权（浏览器扫码 / 企微内静默）。
+	// 企业代码 / 应用 ID 收进折叠，只服务服务商多企业场景；单企业部署用户什么都不用填。
 	const wecomCorpId = "wecom-corp";
 	const wecomAgentId = "wecom-agent";
-	const wecomPanel = (
-		<Form layout="vertical" onFinish={wecomLogin}>
-			<Form.Item
-				label={t("login:page.tenant.label")}
-				htmlFor={wecomCorpId}
-				extra={t("login:method.wecom.hint")}
-			>
-				<Input
-					id={wecomCorpId}
-					autoComplete="off"
-					placeholder="ww..."
-					value={corp}
-					onChange={e => setCorp(e.target.value)}
-				/>
-			</Form.Item>
-			<Form.Item
-				label={t("login:method.wecom.agent")}
-				htmlFor={wecomAgentId}
-				extra={t("login:method.wecom.agentHint")}
-			>
-				<Input
-					id={wecomAgentId}
-					autoComplete="off"
-					placeholder="1000..."
-					value={agent}
-					onChange={e => setAgent(e.target.value)}
-				/>
-			</Form.Item>
-			<Button type="primary" htmlType="submit" block>
-				{t("login:method.wecom.action")}
+	const wecomQuickPanel = (
+		<>
+			<Typography.Title level={4} style={{ marginTop: 0 }}>
+				{t("login:method.wecom.scan.title")}
+			</Typography.Title>
+			<Typography.Paragraph type="secondary">
+				{t("login:method.wecom.scan.hint")}
+			</Typography.Paragraph>
+			<Button type="primary" block size="large" onClick={() => wecomLogin()}>
+				{t("login:method.wecom.scan.action")}
 			</Button>
-		</Form>
+			<Button type="link" size="small" block onClick={() => setShowOtherCorp(v => !v)}>
+				{t(showOtherCorp ? "login:method.wecom.otherCorpHide" : "login:method.wecom.otherCorp")}
+			</Button>
+			{showOtherCorp && (
+				<Form layout="vertical" onFinish={() => wecomLogin(true)} style={{ marginTop: 8 }}>
+					<Form.Item label={t("login:page.tenant.label")} htmlFor={wecomCorpId} extra={t("login:method.wecom.hint")}>
+						<Input id={wecomCorpId} autoComplete="off" placeholder="ww..." value={corp} onChange={e => setCorp(e.target.value)} />
+					</Form.Item>
+					<Form.Item label={t("login:method.wecom.agent")} htmlFor={wecomAgentId} extra={t("login:method.wecom.agentHint")}>
+						<Input id={wecomAgentId} autoComplete="off" placeholder="1000..." value={agent} onChange={e => setAgent(e.target.value)} />
+					</Form.Item>
+					<Button htmlType="submit" block>{t("login:method.wecom.action")}</Button>
+				</Form>
+			)}
+		</>
 	);
 
 	function panelOf(m: LoginMethod) {
 		if (m === "sso")
 			return <Button type="primary" block onClick={ssoLogin}>{t("login:method.sso.action")}</Button>;
-		if (m === "wecom")
-			return wecomPanel;
 		return form(m);
 	}
 
@@ -275,19 +277,25 @@ export default function LoginPage() {
 				{t("login:page.subtitle")}
 			</Typography.Paragraph>
 			{error && <Alert style={{ marginBottom: 16 }} type="error" message={error} showIcon />}
+			{showWecomQuick && (
+				<>
+					{wecomQuickPanel}
+					<Divider plain>{t("login:method.wecom.orLocal")}</Divider>
+				</>
+			)}
 			{showTabs
 				? (
 					<Tabs
 						activeKey={active}
 						onChange={key => setActive(key as LoginMethod)}
-						items={methods.map(m => ({
+						items={tabMethods.map(m => ({
 							key: m,
 							label: t(`login:method.${m}`),
 							children: panelOf(m),
 						}))}
 					/>
 				)
-				: panelOf(methods[0] ?? "local")}
+				: panelOf(tabMethods[0] ?? "local")}
 		</>
 	);
 }

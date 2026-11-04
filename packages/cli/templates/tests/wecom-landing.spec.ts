@@ -87,6 +87,15 @@ describe("p2-C：回跳换票提前到 onInit（登录页不闪）", () => {
 	});
 });
 
+describe("p2-D：一键扫码登录路径（不要求用户填企业代码）", () => {
+	it("不带 corp/agent 时是纯入口路径，由后端 corpSelf() 自动解析本企业", () => {
+		// 登录页「企业微信一键登录」按钮走这条：点一次即跳，用户不必输企业代码。
+		// 带上 corp 就退回「先填企业代码再点」的两步式，锁住这个契约。
+		expect(wecomAuthorizePath("", "")).toBe("/auth/wecom/login");
+		expect(wecomAuthorizePath("", "")).not.toContain("corp=");
+	});
+});
+
 describe("p2-B：授权入口拼装", () => {
 	it("企业代码 → 站内路径（部署前缀由调用方 withSiteBase 拼）", () => {
 		expect(wecomAuthorizePath("ww_corp_a")).toBe("/auth/wecom/login?corp=ww_corp_a");

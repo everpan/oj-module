@@ -33,6 +33,12 @@
 		"wecom.hint": "填写企业代码（企微后台可见的 corp_id），或直接使用管理员收到的专属登录链接",
 		"wecom.agent": "应用 ID（agentid）",
 		"wecom.agentHint": "留空使用该企业下唯一应用；多应用部署请填管理员提供的 agentid",
-		"wecom.exchanging": "正在完成企业微信登录…"
+		"wecom.exchanging": "正在完成企业微信登录…",
+		"wecom.scan.title": "企业微信扫码登录",
+		"wecom.scan.hint": "打开企业微信 App，用「扫一扫」扫码确认后自动进入，无需输入账号密码",
+		"wecom.scan.action": "使用企业微信一键登录",
+		"wecom.otherCorp": "其他企业？使用企业代码登录",
+		"wecom.otherCorpHide": "收起企业代码",
+		"wecom.orLocal": "或使用账号密码登录"
 	}
 }
