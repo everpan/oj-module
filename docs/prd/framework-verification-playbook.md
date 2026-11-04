@@ -693,7 +693,7 @@ node "$CLI_PKG/bin/ojm.mjs" market publish --real . --id demo.publisher
 | `_platform/seed.mysql.sql` / `seed.pg.sql` 里一条 `sys_setting` 都没有 | 手抄基线时漏了 8 条设置默认值（`sys_setting` 的 `key`/`group` 在 mysql 要反引号、pg 要双引号，整段跳过），部署后设置页与登录方式发现缺默认值 | 已修：两份方言 seed 补齐 8 条；守卫 **m-6**：方言 seed 与基础 seed 的表×条数必须一致，且一行只允许一个语句终止符（`; ON CONFLICT` 这类拼接会切出孤立语句） |
 | PG 上登录恒 500：`db exec: integer out of range`（`INSERT INTO sys_rate_window`） | `_platform` 的 pg 基线把毫秒 epoch 列声明成 `INTEGER`（int4 上限 2.1e9，`Date.now()` 是 1.7e12），mysql 同名列是 `BIGINT`；同病：`sys_login_throttle.blocked_until`、`sys_oplog.create_time`、`sys_setting.update_time` | 已修：pg 基线这批列与 `sys_refresh_token.{expires_at,created_at,user_id}`、`sys_user_role.user_id`、`sys_oplog.user_id` 统一 `BIGINT`；守卫 **m-7**：mysql 为 BIGINT 的时间列在 pg 不得收窄为 INTEGER |
 | PG 上通知列表 500：`UNION types integer and text cannot be matched` | `noticesFor` 的 UNION 第 4 列左分支是 `is_read`（整数）、右分支取 `read_time`（文本）；sqlite/mysql 宽松放行，pg 严格要求同型 | 已修：广播分支改 `CASE WHEN r.read_time IS NULL THEN 0 ELSE 1 END AS is_read`，`mapItem` 统一按整数判已读（三方言同一份 SQL） |
-| MySQL 上新建用户/推送广播返回的 id 与真实行不符（建号返回 59 实际 5；广播返回 `b:58` 实际 `b:1`） | `returning(["id"])` 在 mysql 走两步 `SELECT LAST_INSERT_ID()`，宿主在**连接池**上执行第二步，取到别的连接最后一次插入值（日志里 INSERT 与 LAST_INSERT_ID 是两条独立 SQL）；pg 原生 `RETURNING` 无此问题 | **已由上游修复**（oj `0.1.120`，`oj-bin` 提交 `2550bd5` / tag `v0.1.120`）：池路径自开短事务（`Exec::Owned`），insert 与 `SELECT LAST_INSERT_ID()` 钉同一连接，事务外也安全；取 id / commit 失败整条回滚。本仓处置=升级 oj ≥ 0.1.120，模板无需改动（此前也未做绕行）。复验：MySQL 冷库连发两次 `POST /api/system/users`，`data.id` 必须落在 `SELECT id FROM users` 的新行上。见 §11 **U2**（已关闭） |
+| MySQL 上新建用户/推送广播返回的 id 与真实行不符（建号返回 59 实际 5；广播返回 `b:58` 实际 `b:1`） | `returning(["id"])` 在 mysql 走两步 `SELECT LAST_INSERT_ID()`，宿主在**连接池**上执行第二步，取到别的连接最后一次插入值（日志里 INSERT 与 LAST_INSERT_ID 是两条独立 SQL）；pg 原生 `RETURNING` 无此问题 | **已由上游修复**（oj `0.1.120`，`oj-bin` 提交 `2550bd5` / tag `v0.1.120`）：池路径自开短事务（`Exec::Owned`），insert 与 `SELECT LAST_INSERT_ID()` 钉同一连接，事务外也安全；取 id / commit 失败整条回滚。本仓处置=升级 oj ≥ 0.1.120，模板无需改动（此前也未做绕行）。复验：MySQL 冷库连发两次 `POST /api/system/users`，`data.id` 必须落在 `SELECT id FROM users` 的新行上（2026-11-05 已在 oj 0.1.120 上实测：串行 3/3、并发 30/30、广播 10/10 一致，见附录 A「补充复验」）。见 §11 **U2**（已关闭） |
 | 同一份模板在 mysql/pg 上跑，`key`/`group` 等保留字列让 seed 无法三方言共用一份 | sqlite/pg 用双引号当标识符，mysql 只在 `ANSI_QUOTES` 下才认双引号；`key` 在 mysql 是保留字 | 方言 seed 必须整段重写这三类语句（只改 `INSERT OR IGNORE` 前缀不够）；基础 `seed.sql` 仍是唯一真源，方言件靠 m-6 对齐 |
 
 ### 9.1 构造器迁移后的 L1/L2 边界与 vitest 190 红基线（2026-10-20）
@@ -780,6 +780,23 @@ node "$CLI_PKG/bin/ojm.mjs" build && npx tsc --noEmit -p tsconfig.json && node "
 
 > 基线的价值是「某版本当时到底验了什么、踩了什么」，属于事实档案，不参与日常执行；
 > 新基线追加在本节最前面，最近一次的结果同时摘到文首「上次演练结论」。
+
+### 补充复验（2026-11-05，oj 0.1.120；MySQL 两步取 id 修复实测）
+
+> 只验 §11 **U2** 的修复，不重跑整条快线（其余段落沿用上一轮结论）。
+
+| 项 | 值 |
+| --- | --- |
+| oj | `0.1.120`（`oj-bin` tag `v0.1.120` / 提交 `2550bd5`；本机 `bin/oj` 与 `~/.local/share/oj` 同版本） |
+| 框架包 | 工作区 `feat/ojm`（cli/runtime 0.2.67，未发版） |
+| 环境 | `oj-test-mysql`（`mysql:8.4`，`192.168.64.2:3306`，root/root）；`DROP/CREATE DATABASE ojtest` 冷库；`config.local.yaml` 只覆盖 `db.default` 指向该库 |
+| 注意 | **U1 仍未修**：oj 0.1.120 依旧只读 `seed.sql`，故演练仍按部署口径把三份 `seed.mysql.sql` 覆盖成 `seed.sql`（`_platform` / `home` / `notification`），跑完还原（`git status` 干净） |
+| 起服 | `routes: 91 method-row(s), 75 pattern(s), 43 api file(s)`；`input contracts: 87 route-method(s)` |
+| 串行建号 | 连发 3 次 `POST /api/system/users` → 返回 `id` = **5 / 6 / 7**；`SELECT id,username FROM users` = `5 idprobe1 / 6 idprobe2 / 7 idprobe3` → **3/3 一致** |
+| 并发建号 | 30 路并发（不同用户名）→ 返回 id 是 8…37 的一个乱序排列，逐条与库内 `(username,id)` 对照 → **30/30 一致**（0 mismatch） |
+| 并发广播 | 10 路并发 `POST /api/notification/push-broadcast` → `b:11…b:20` 是 11…20 的乱序排列，按 `title` 逐条对照 `notifications_broadcast.id` → **10/10 一致** |
+| SQL 追踪 | 单条广播的 `_sql.events`：`INSERT INTO notifications_broadcast …` 与 `SELECT LAST_INSERT_ID() AS id` **均 `inTx: true`**（同一短事务，即 `Exec::Owned`）——旧版两条都是 `inTx: false` 且各自 acquire |
+| 结论 | **修复生效**：§9 中「所有依赖 insert 返回 id 的端点返回值不可信」可下线；模板无需改动 |
 
 ### 最近一次基线（2026-11-05 第三轮，oj 0.1.118 / cli+runtime 工作区 0.2.67；MySQL 与 PostgreSQL 双真库演练）
 

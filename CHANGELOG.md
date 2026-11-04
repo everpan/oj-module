@@ -158,7 +158,9 @@
   本仓同步：playbook §9 对应行改为「已由上游修复」并给复验口径、§11 **U2** 标为已关闭（编号保留，
   防旧引用悬空）、文首结论与附录 A 第三轮发现 ⑥ 加注后续状态；`docs/migration/oj-requirement-mysql-two-step-id.md`
   补 §10 落地结果；`docs/devkit/oj-api-dev/` 快照按「整目录覆盖、逐字节一致」刷新到 oj 0.1.120
-  （连带补上此前缺的 0.1.119 压缩缓存分层行）。
+  （连带补上此前缺的 0.1.119 压缩缓存分层行）。**MySQL 真库复验通过**（oj 0.1.120 + 模板 0.2.67）：
+  串行建号 3/3、并发建号 30/30、并发广播 10/10 返回 id 与库内真值一致；`_sql` 追踪显示
+  `INSERT` 与 `SELECT LAST_INSERT_ID()` **同为 `inTx: true`**（同一短事务）。
 
 - **模板在 MySQL / PostgreSQL 真库上起站即失败（方言迁移件缺失）**：`home`、`notification` 两个模块的
   建表迁移只有 sqlite 基础件（`INTEGER PRIMARY KEY AUTOINCREMENT`），却已各自存在 `0002` / `0005`
