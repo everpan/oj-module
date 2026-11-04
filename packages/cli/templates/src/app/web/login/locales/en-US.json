@@ -34,11 +34,10 @@
 		"wecom.agent": "App ID (agentid)",
 		"wecom.agentHint": "Leave empty if the corp has a single app; otherwise use the agentid provided by your admin",
 		"wecom.exchanging": "Completing WeCom sign-in…",
-		"wecom.scan.title": "Sign in with WeCom QR",
 		"wecom.scan.hint": "Open the WeCom app, scan with 「Scan」 and confirm — no username or password needed",
 		"wecom.scan.action": "One-tap sign in with WeCom",
 		"wecom.otherCorp": "Another enterprise? Sign in with an enterprise code",
-		"wecom.otherCorpHide": "Hide enterprise code",
-		"wecom.orLocal": "or sign in with a password"
+		"wecom.otherCorpHide": "Hide enterprise code"
+
 	}
 }

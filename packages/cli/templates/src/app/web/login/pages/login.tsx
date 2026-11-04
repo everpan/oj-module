@@ -6,7 +6,7 @@ import {
 	useAuthStore,
 	useTenantStore,
 } from "@oj-module/runtime";
-import { Alert, Button, Divider, Form, Input, Tabs, Typography } from "antd";
+import { Alert, Button, Form, Input, Skeleton, Tabs, Typography } from "antd";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate } from "react-router";
@@ -20,7 +20,7 @@ type LoginMethod = "local" | "ldap" | "sso" | "wecom";
  * 后端 `methods` 是**发现结果**、这里是**渲染能力**：后端多报一种而本页没有对应
  * renderer 时宁可不显示（点了也没实现），新增方式 = 这里加一项 + 渲染分支加一路。
  */
-const KNOWN_METHODS: LoginMethod[] = ["local", "ldap", "sso", "wecom"];
+const KNOWN_METHODS: LoginMethod[] = ["wecom", "local", "ldap", "sso"];
 
 function isKnownMethod(x: string): x is LoginMethod {
 	return (KNOWN_METHODS as string[]).includes(x);
@@ -60,7 +60,7 @@ export default function LoginPage() {
 	const [known, setKnown] = useState(false);
 	const inWecom = typeof navigator !== "undefined" && /wxwork/i.test(navigator.userAgent);
 	const [methods, setMethods] = useState<LoginMethod[]>(["local"]);
-	const [active, setActive] = useState<LoginMethod>("local");
+	const [active, setActive] = useState<LoginMethod>("wecom");
 	// 企业代码入口默认收起：单租户部署（绝大多数）保持今天的登录页外观，
 	// 只有服务商/客户带 `?tenant=` 或手工展开时才需要填。
 	// 例外一：持久化租户不是部署默认值时必须展开——租户头是**隐式**跟着请求走的
@@ -101,16 +101,15 @@ export default function LoginPage() {
 				setKnown(true);
 				// 先按 string[] 看一眼：runtime 的返回类型把 wecom 排除在外，而这里恰恰要认它
 				const raw: string[] = r.methods;
-				const m = raw.filter(isKnownMethod);
+				// 按 KNOWN_METHODS 排序：企微是主入口，排第一个 tab 并默认选中，
+				// 「使用企业微信一键登录」首帧即可见，点一次就走。
+				const m = raw.filter(isKnownMethod).sort(
+					(a, b) => KNOWN_METHODS.indexOf(a) - KNOWN_METHODS.indexOf(b),
+				);
 				if (!m.length)
 					return;
 				setMethods(m);
-				// 有企微登录 ⇒ 有企业租户（租户键 = corp_id）⇒ 默认展开企业代码，
-				// 否则平台/企业两类管理员没法切换登录目标（用户仍可点「收起」手动折叠）。
-				if (raw.includes("wecom"))
-					setShowTenant(true);
-				if (!m.includes("local"))
-					setActive(m[0]);
+				setActive(m.includes("wecom") ? "wecom" : m[0]);
 			})
 			.catch(() => {
 				setKnown(true);
@@ -186,10 +185,9 @@ export default function LoginPage() {
 		window.location.assign(`${resolveApiBase()}${wecomAuthorizePath(withCorp ? corp : "", withCorp ? agent : "")}`);
 	}
 
-	// 企微一键扫码不进 Tabs：它要「点一次」就走，藏在 tab 里等于多一次点击。
-	const tabMethods = methods.filter(m => m !== "wecom");
-	const showWecomQuick = methods.includes("wecom");
-	const showTabs = tabMethods.length > 1;
+	// 所有登录方式收进同一组 Tabs，同一时刻只渲染当前面板；默认选中企微（见上方 effect），
+	// 一键按钮首帧即可见、点一次就走，账号密码收在另一个 tab，不再上下平铺。
+	const showTabs = methods.length > 1;
 
 	const form = (method: LoginMethod) => (
 		<Form<LoginFormValues> layout="vertical" onFinish={values => onFinish(values, method)}>
@@ -224,9 +222,6 @@ export default function LoginPage() {
 	const wecomAgentId = "wecom-agent";
 	const wecomQuickPanel = (
 		<>
-			<Typography.Title level={4} style={{ marginTop: 0 }}>
-				{t("login:method.wecom.scan.title")}
-			</Typography.Title>
 			<Typography.Paragraph type="secondary">
 				{t("login:method.wecom.scan.hint")}
 			</Typography.Paragraph>
@@ -253,6 +248,8 @@ export default function LoginPage() {
 	function panelOf(m: LoginMethod) {
 		if (m === "sso")
 			return <Button type="primary" block onClick={ssoLogin}>{t("login:method.sso.action")}</Button>;
+		if (m === "wecom")
+			return wecomQuickPanel;
 		return form(m);
 	}
 
@@ -277,25 +274,24 @@ export default function LoginPage() {
 				{t("login:page.subtitle")}
 			</Typography.Paragraph>
 			{error && <Alert style={{ marginBottom: 16 }} type="error" message={error} showIcon />}
-			{showWecomQuick && (
-				<>
-					{wecomQuickPanel}
-					<Divider plain>{t("login:method.wecom.orLocal")}</Divider>
-				</>
-			)}
-			{showTabs
-				? (
-					<Tabs
-						activeKey={active}
-						onChange={key => setActive(key as LoginMethod)}
-						items={tabMethods.map(m => ({
-							key: m,
-							label: t(`login:method.${m}`),
-							children: panelOf(m),
-						}))}
-					/>
-				)
-				: panelOf(tabMethods[0] ?? "local")}
+			{/* 登录方式发现完成前不渲染表单区：否则首帧先画账号密码、再切成默认企微 tab，
+			    工作台用户会看到一次无谓的闪动（见 8b06d4e1 的闪屏回归）。 */}
+			{!known
+				? <Skeleton active paragraph={{ rows: 4 }} />
+				: showTabs
+					? (
+						<Tabs
+							destroyInactiveTabPane
+							activeKey={active}
+							onChange={key => setActive(key as LoginMethod)}
+							items={methods.map(m => ({
+								key: m,
+								label: t(`login:method.${m}`),
+								children: panelOf(m),
+							}))}
+						/>
+					)
+					: panelOf(methods[0] ?? "local")}
 		</>
 	);
 }
