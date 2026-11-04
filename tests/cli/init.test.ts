@@ -1,15 +1,55 @@
+// @vitest-environment node
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { initProject, resolveVersionMatrix } from "../../packages/cli/src/init";
 import { readOjApiPrefix, readOjPort, readOjServerField } from "../../packages/cli/src/oj-config";
 import { PROJECT_ROOT } from "../helpers/paths";
 
-// bin/oj 桩是 shebang 脚本，Windows 无法 spawn（vendor.test.ts 同款 posixOnly）；
-// 仅依赖其真实执行的用例在 win32 下跳过，其余平台照常运行。
-const posixOnly = process.platform === "win32" ? it.skip : it;
+// 桩 oj 用 vi.mock 进程内实现：shebang 脚本在 Windows 无法被 execFileSync spawn
+// （ENOENT 会让能力闸门走「跳过版本校验」的告警分支——stderr 噪音且被测形态失真），
+// 进程内桩三平台通吃，用例不再需要 win32 跳过。行为按 bin 路径注册（各安装器自注册）。
+const fakeOj = vi.hoisted(() => {
+	interface OjBehavior { version: string, help: string, secret: "none" | "seal" }
+	return { registry: new Map<string, OjBehavior>() };
+});
+
+vi.mock("node:child_process", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("node:child_process")>();
+	const mfs = await import("node:fs");
+	const mpath = await import("node:path");
+	const execFileSync = (file: string, args: readonly string[]): string => {
+		const behavior = fakeOj.registry.get(String(file));
+		if (!behavior)
+			throw new Error(`spawnSync ${file} ENOENT`);
+		const a = [...args];
+		if (a[0] === "-V")
+			return behavior.version;
+		if (a[0] === "build")
+			return behavior.help; // probeOjCaps 的 `build --help` 能力探针
+		if (a[0] === "secret") {
+			if (behavior.secret === "none")
+				throw new Error("Command failed"); // 旧版 oj：无 secret 子命令
+			if (a[1] === "keygen") {
+				const keysDir = a[3]!; // --out-dir <dir>
+				mfs.mkdirSync(keysDir, { recursive: true });
+				mfs.writeFileSync(mpath.join(keysDir, "secrets-private.pem"), "PRIV\n");
+				mfs.writeFileSync(mpath.join(keysDir, "secrets-public.pem"), "PUB\n");
+				return "";
+			}
+			if (a[1] === "seal")
+				return "ENC[TESTSEALED]";
+		}
+		return "";
+	};
+	return { ...actual, execFileSync };
+});
+
+beforeEach(() => {
+	fakeOj.registry.clear();
+});
 
 /**
  * 设计 §3：`ojm init` 产物契约（TDD）。
@@ -49,13 +89,14 @@ function fakeOjInstall(binDir: string): Promise<void> {
 	fs.writeFileSync(path.join(binDir, "devkit/global.d.ts"), "types\n");
 	fs.writeFileSync(path.join(binDir, "devkit/sql-builder-guide.md"), "guide\n");
 	fs.writeFileSync(path.join(binDir, "devkit/oj-test-guide.md"), "guide\n");
+	fakeOj.registry.set(path.join(binDir, "oj"), { version: "oj 0.1.86", help: "      --module-root <MODULE_ROOT>  源码树根", secret: "none" });
 	return Promise.resolve();
 }
 
 const initOpts = { yes: true, ojInstaller: fakeOjInstall } as const;
 
 describe("initProject", () => {
-	posixOnly("按设计 §3 生成全栈工程全树", async () => {
+	it("按设计 §3 生成全栈工程全树", async () => {
 		const dest = path.join(tmpRoot(), "demo-proj");
 		await initProject(dest, initOpts);
 
@@ -107,7 +148,8 @@ describe("initProject", () => {
 		// bin/oj（桩安装器模拟 @oj-bin/oj 产物：可执行 + 版本标记）
 		const oj = path.join(dest, "bin/oj");
 		expect(fs.existsSync(oj)).toBe(true);
-		expect(fs.statSync(oj).mode & 0o111).not.toBe(0);
+		// Windows 的 statSync mode 不携带执行位（chmod 只影响只读位），按平台判定可执行语义
+		expect(process.platform === "win32" || (fs.statSync(oj).mode & 0o111) !== 0).toBe(true);
 		expect(fs.readFileSync(path.join(dest, "bin/.oj-version"), "utf-8").trim()).toBe("v0.1.86");
 
 		// devkit 拷贝
@@ -590,10 +632,11 @@ describe("initProject 凭据密封", () => {
 				"exit 0",
 			].join("\n"));
 			fs.chmodSync(bin, 0o755);
+			fakeOj.registry.set(bin, { version: "oj 0.1.86", help: "      --module-root <MODULE_ROOT>  源码树根", secret: "seal" });
 		});
 	}
 
-	posixOnly("oj 可用 → jwt_secret 换成 ENC[...] 并写 secrets 段", async () => {
+	it("oj 可用 → jwt_secret 换成 ENC[...] 并写 secrets 段", async () => {
 		const dest = path.join(tmpRoot(), "seal-ok");
 		await initProject(dest, { yes: true, ojInstaller: sealableOj });
 		const config = fs.readFileSync(path.join(dest, "config.yaml"), "utf-8");
@@ -633,11 +676,12 @@ describe("initProject 既有 bin/oj 能力闸门", () => {
 				"exit 0",
 			].join("\n"));
 			fs.chmodSync(bin, 0o755);
+			fakeOj.registry.set(bin, { version: `oj ${version}`, help, secret: "none" });
 			return Promise.resolve();
 		};
 	}
 
-	posixOnly("既有 bin/oj 低于最低版本 → 抛错且给出 ojm vendor --force 处置", async () => {
+	it("既有 bin/oj 低于最低版本 → 抛错且给出 ojm vendor --force 处置", async () => {
 		const dest = path.join(tmpRoot(), "old-oj");
 		await preinstalledOj("0.1.84")(path.join(dest, "bin"));
 
@@ -648,7 +692,7 @@ describe("initProject 既有 bin/oj 能力闸门", () => {
 		expect(fs.existsSync(path.join(dest, "config.yaml"))).toBe(false);
 	});
 
-	posixOnly("版本够但 --module-root 缺失 → 抛错（声明新、能力旧）", async () => {
+	it("版本够但 --module-root 缺失 → 抛错（声明新、能力旧）", async () => {
 		const dest = path.join(tmpRoot(), "caps-miss");
 		await preinstalledOj("0.2.0")(path.join(dest, "bin"));
 
