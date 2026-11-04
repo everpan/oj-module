@@ -151,6 +151,22 @@
 
 ### Fixed
 
+- **模板根不再有方言 seed 副本，`m-8` 守卫钉住真源唯一**：`packages/cli/templates/seed.mysql.sql` /
+  `seed.pg.sql` 是历史残留——只有 4 条 `sys_setting`（模块内真件 22 条），且 mysql 那份把保留字
+  `key` 裸写。照 devkit 手册的部署口径把它覆盖成 `seed.sql`，mysql 起服必
+  `1064 near 'key, module, ...'`；而 `m-5`/`m-6` 只扫 `src/<模块>/`，坏了大半年没人发现。
+  删除两份副本、`init.include.yaml` 不再分发（真源只在 `src/app/api/<模块>/`）、
+  `init.test.ts` 去断言、教程与 devkit 手册目录树同步并补「部署 mysql/pg 用模块内方言件、
+  不再需要工程根副本」。新增守卫 **m-8**：模板内 `seed*.sql` 只允许出现在 `src/app/api/` 下，
+  mysql 方言件 `INSERT` 列清单里的保留字必须反引号（带坏/好样本反证，避免恒绿）。
+
+- **seed 方言支持已向上游提案（U1）**：新文档
+  [`docs/migration/oj-requirement-seed-dialect.md`](docs/migration/oj-requirement-seed-dialect.md)
+  给出「`seed.<dialect>.sql` 存在即胜出、`seed.sql` 兜底不双跑」的完整契约——含三方言实踩取证、
+  上游代码坐标（`seed.rs:17` 常量 / `checks.rs:119,236` 只扫 `seed.sql` / `insert_is_idempotent`
+  不认原生 `INSERT IGNORE`）、11 条 BDD 验收、四期分档，以及与迁移 `{desc}.{dialect}.sql`
+  同构的命名理由；playbook §9 对应行与 §11 **U1** 已挂指针（未改动上游代码）。
+
 - **MySQL 两步取 id 缺陷已由上游 oj 0.1.120 修复，本仓口径同步**：`returning(["id"])` 在 mysql 上
   拆成 `INSERT` + `SELECT LAST_INSERT_ID()` 两条语句、各自向池取连接，可能读到别的连接的上一次
   插入（建号返回 59 真值 5；广播 `b:58` 真值 `b:1`）。上游 `oj-bin` 提交 `2550bd5`（tag `v0.1.120`）
