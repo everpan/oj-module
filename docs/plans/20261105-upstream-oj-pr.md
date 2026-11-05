@@ -99,3 +99,83 @@ cron 驱动改独立 OS 线程 + current_thread runtime（同 `TaskPool` worker�
 | US-4 | 验收 5（启动降级）、3（卸载顺序） | uninstall reload 失败回滚编排 |
 
 > 提交上游后，本仓计划书「US-1~US-4 阻塞跟踪」状态可更新为「已提交 PR #xxx」，真机复测通过后再标记验收项绿。
+
+## 7. 交互调用与重启流程图（mermaid）
+
+> 绝大多数是**热装配主路**（PID 不变、亚秒级生效）；只有涉及特权面 / ABI / `server.*` 的少数变更才走**换进程**（P4 纯壳 supervisor）。两图分别对应这两条路径，并标注本提案 US-1~US-4 的上游触点。
+
+### 7.1 安装热装配交互时序图（免重启主路）
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant T as 模板安装器 runInstall
+    participant API as oj server (reloadConfig)
+    participant RL as do_reload / generation_key
+    participant APP as App::from_config（每代重建）
+    participant DISP as 匿名 dispatch 短路
+    participant CRON as cron（独立 OS 线程）
+    participant CL as 请求方
+
+    Note over T,CL: 锁后 reloading 段：装配生效主路（PID 不变）
+    T->>API: reloadConfig()
+    API->>RL: do_reload
+    RL->>RL: generation_key = sha256(归一 config) ⊕ sha256(manifests.yaml) [US-1]
+    alt generation_key 变化
+        RL->>APP: 触发每代重建 pipeline
+        APP->>APP: 编译 anon:Matcher(auth + tenant anonymous_paths) [US-2]
+        APP->>DISP: admit() 在 guard.verify 前短路命中 anon
+        RL->>CRON: 旧池停机 + 超时 → 新池在独立线程保活 [US-3]
+    end
+    API-->>T: { applied: [vars, modules], restart_pending: [...] }
+    alt restart_pending 为空
+        T->>T: 任务 done（热装载覆盖部分已生效）
+    else restart_pending 非空
+        T->>T: 任务 partial + restart.required:true（无守护形态）
+        T->>CL: 提示人工 / 外层管理器重启 oj serve
+    end
+    CL->>DISP: 新匿名端点请求
+    DISP-->>CL: 跳过验签直接放行（按 ModuleEntry.prefix 匹配）
+```
+
+### 7.2 重启判定与换进程流程图（少数特例）
+
+```mermaid
+flowchart TD
+    START([reloadConfig 返回 restart_pending 非空]) --> Q{运行形态?}
+    Q -->|T1 无守护 / T3 外部管理器| P[任务标 partial + restart.required:true]
+    P --> P1[人工或外层 Restart=always 重启 oj serve]
+    P1 --> BOOT[新进程启动]
+    Q -->|T2 有壳 oj supervise| R[worker 调 POST /_system/restart]
+    R --> S[worker 优雅退出:<br/>停 cron → 停 accept → 等在途请求（上限 30s）]
+    S --> X[exit 78]
+    X --> SP[父进程 spawn 新 worker<br/>boot.seq+1 经 env 下发]
+    SP --> BOOT
+    BOOT --> D{模块版本目录 / manifest.yaml 缺失? [US-4]}
+    D -->|缺失| SKIP[跳过该模块 + 点名 + /_system/config 标 degraded<br/>不全站拒启]
+    D -->|解析失败 / name 不符 / version 错位| ERR[仍 Err fail-fast（构建错误不掩盖）]
+    SKIP --> READY[新 worker ready（专用 fd JSON）<br/>（boot, generation）单调]
+    ERR --> READY
+    READY --> DONE[新代生效，续跑 smoke → done]
+```
+
+### 7.3 卸载顺序与启动降级（US-4 收口）
+
+```mermaid
+flowchart TD
+    U0([卸载触发]) --> U1[预检：影响面 / 空锁]
+    U1 -->|拒| U1X[零改动返回]
+    U1 -->|过| U2[DB 级联事务 → sidecar → modules.json → 摘锁]
+    U2 --> U3[触发 reload 断言 applied 含 modules、restart_pending 为空]
+    U3 -->|reload 成功| U4[删版本目录 / staging / siteModulesDir（best-effort）]
+    U3 -->|reload 失败| U5[锁写回 → 再 reload 回旧代（幂等）]
+    U5 --> U6[目录未删，不留缺目录状态，返回失败可重试]
+    U4 --> UDONE([卸载完成，PID 不变])
+
+    S0([oj 启动自检]) --> S1{锁内模块版本目录 / manifest.yaml 缺失?}
+    S1 -->|缺失| S2[跳过该模块 + 点名 + degraded 标记]
+    S1 -->|解析失败 / name 不符 / version 错位| S3[仍 Err 全站拒启（构建错误不掩盖）]
+    S2 --> S4([其余模块正常装配])
+```
+
+> 图 7.2 / 7.3 中「reload 失败锁写回」「摘锁即掉挂载」的运行时成立前提，正是本提案 US-1（generation_key 驱动 do_reload 真正按 manifests 摘要重装配）与 US-4（启动降级）。本仓 `uninstall.ts` 已实现上述编排，上游落位后「摘锁即生效」才在真机成立。
