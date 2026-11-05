@@ -120,14 +120,14 @@ sequenceDiagram
     Note over T,CL: 锁后 reloading 段：装配生效主路（PID 不变）
     T->>API: reloadConfig()
     API->>RL: do_reload
-    RL->>RL: generation_key = sha256(归一 config) XOR sha256(manifests.yaml) [US-1]
+    RL->>RL: generation_key = sha256(归一 config) XOR sha256(manifests.yaml) (US-1)
     alt generation_key 变化
         RL->>APP: 触发每代重建 pipeline
-        APP->>APP: 编译 anon:Matcher(auth + tenant anonymous_paths) [US-2]
+        APP->>APP: 编译 anon:Matcher(auth + tenant anonymous_paths) (US-2)
         APP->>DISP: admit() 在 guard.verify 前短路命中 anon
-        RL->>CRON: 旧池停机 + 超时 → 新池在独立线程保活 [US-3]
+        RL->>CRON: 旧池停机 + 超时 → 新池在独立线程保活 (US-3)
     end
-    API-->>T: { applied: [vars, modules], restart_pending: [...] }
+    API-->>T: 返回 applied 含 vars/modules 与 restart_pending 列表
     alt restart_pending 为空
         T->>T: 任务 done（热装载覆盖部分已生效）
     else restart_pending 非空
@@ -151,7 +151,7 @@ flowchart TD
     S --> X[exit 78]
     X --> SP[父进程 spawn 新 worker<br/>boot.seq+1 经 env 下发]
     SP --> BOOT
-    BOOT --> D{模块版本目录 / manifest.yaml 缺失? [US-4]}
+    BOOT --> D{模块版本目录 / manifest.yaml 缺失?}
     D -->|缺失| SKIP[跳过该模块 + 点名 + /_system/config 标 degraded<br/>不全站拒启]
     D -->|解析失败 / name 不符 / version 错位| ERR[仍 Err fail-fast（构建错误不掩盖）]
     SKIP --> READY[新 worker ready（专用 fd JSON）<br/>（boot, generation）单调]
