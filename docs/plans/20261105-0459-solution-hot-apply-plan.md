@@ -210,7 +210,7 @@ PoC-2 实测（同一工程、同一台机、同一份产物，只改 `vars.ojm_
 generation_key = sha256(归一 config 文档) ⊕ sha256(dist/api/manifests.yaml 原文)
 ```
 
-- 安装器不再需要「为了触发 reload 而写 config」这一隐式约定，但仍保留 seq 自增（人类可读的安装序号）。
+- 安装器不再需要「为了触发 reload 而写 config」这一隐式约定，**模板 config.yaml 的 `vars.ojm_install_seq` 哨兵已删除**（R18 修订：unchanged = 已是最新装配 = 幂等成功，不再依赖 config 文档 sha 触发）；安装/升级/降级由 manifests 锁 diff 自然触发装配。
 - `diff_configs` 的返回里新增 `modules` 段（锁内容增删按 `+name@ver` / `-name@ver` 计入 `applied`）。
 - 卸载只需摘锁 + 触发 reload，即产生新的 `generation_key`（解决 F1 的卸载空转）。
 - 不加 HTTP `scope` 参数：减少一个对外契约面，语义由「锁变了就是模块变了」自然表达。

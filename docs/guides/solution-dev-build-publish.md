@@ -233,7 +233,7 @@ ojm install erp@0.1.0 --site-url http://127.0.0.1:9778 --user superadmin --pass 
 #     lock_commit / registering / deploying_web / reloading / smoke / audit
 ```
 
-通过判据：`dist/api/manifests.yaml` 出现 `<name>: <version>`；装后探活 `curl /api/<name>/ping` 返回 `code:0`（匿名端点无需 token；非匿名端点带 token 探）。新装的方案路由要 `oj serve` 重启才注册（热更只覆盖 `[vars]` 段），探活前先重启一次。
+通过判据：`dist/api/manifests.yaml` 出现 `<name>: <version>`；装后探活 `curl /api/<name>/ping` 返回 `code:0`（匿名端点无需 token；非匿名端点带 token 探）。新装的方案路由要 `oj serve` 重启才注册——reload 由 manifests 锁 diff 驱动装配（oj 0.1.122+），但新模块的路由/模块注册属 restart_pending，热改不即时生效，探活前先重启一次。
 
 ### 7.3 装成后全量自检（不污染工程）
 

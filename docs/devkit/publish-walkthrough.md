@@ -224,7 +224,7 @@ ojm install crm@1.0.0 --site-url http://127.0.0.1:9778 --user superadmin --pass 
 `<口令>` 就是登录站点用的那个：没跑过 `market setup` 时是脚手架种子口令（`superadmin / aA123456`），
 跑过则用 `--new-pass` 设的新口令。
 
-通过判据：`dist/api/manifests.yaml` 出现 `<name>: <version>`；**重启一次 `oj serve`**（新方案路由要重启才注册，热更只覆盖 vars）后
+通过判据：`dist/api/manifests.yaml` 出现 `<name>: <version>`；**重启一次 `oj serve`**（新方案路由要重启才注册——reload 由 manifests 锁 diff 驱动装配，但新模块路由/模块注册属 restart_pending，热改不即时生效）后
 `curl -H 'X-TENANT-ID: default' /api/<name>/ping` 返回 `code:0`——**不带租户头会 400 `missing tenant header`**，
 那是缺参数，不是装失败。
 

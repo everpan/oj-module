@@ -436,7 +436,8 @@ node "$CLI_PKG/bin/ojm.mjs" market verify --rebuild-index
 > 故起站为 `--api-path dist/api` 且 `platform.root: dist/api`（写 `dist` 会撞反抢占 tripwire，
 > 与 api 挂载重叠直接被拒）。另两条 module-root 专属注意：① 宿主 `bin/oj` 与 `bin/plugins/*`
 > 必须 rustc 版本一致（本地 rustc 构建的 oj 配 npm 拉来的 plugins 会指纹不符拒载，同源拷贝即可）；
-> ② 安装新方案的**新路由**要 oj serve 重启才注册（热更只覆盖 [vars] 段），装后探活前先重启。
+> ② 安装新方案的**新路由**要 oj serve 重启才注册——reload 由 manifests 锁 diff 驱动装配（oj 0.1.122+），
+> 但新模块的路由/模块注册（modules.json、sys_solution_route）属 **restart_pending**，热改不即时生效，装后探活前先重启。
 
 ```bash
 cd <host>
@@ -912,7 +913,7 @@ node "$CLI_PKG/bin/ojm.mjs" build && npx tsc --noEmit -p tsconfig.json && node "
 | oj | 0.1.87（init 联网下载） |
 | 验证动机 | 模板 config.yaml 注释从 152 行压到 105 行（只动注释、键值零改），用本 playbook 确认没丢必要项 |
 | 范围 | §1 脚手架 → §2 依赖 → build/preview 起服 → 探针 → 市场安装全受力（有意跳过 §4/§5 契约与前端编写：本轮不动那些面） |
-| 结果 | **通过**。① 静态 12 项必要键核对全 ✓（/cdn 挂载、server 四键、migrate_on_start、reload_api、db、vars.ojm_install_seq、platform.modules/root/exec 三命令、fs 段、anonymous_paths 五条；jwt_secret 已 ENC 密封 + secrets 键对追加，非缺项）。② init/install/build/preview 起服，`/`、`/versions.json`、`/api/_system/health`、login、market/index（setup 指向外部 CDN 后）全 200。③ **安装全受力**：market setup → install wiki@0.1.3 → TOFU（新信任库，指纹核对 lesson.ui）→ confirm → 重试 → 装完 trusted——platform.exec 逐字白名单、fs jail、vars 序号自增、迁移门禁、热更端点全程无 NotCapable/404。 |
+| 结果 | **通过**。① 静态必要键核对全 ✓（/cdn 挂载、server 四键、migrate_on_start、reload_api、db、platform.modules/root/exec 三命令、fs 段、anonymous_paths 五条；jwt_secret 已 ENC 密封 + secrets 键对追加，非缺项）。② init/install/build/preview 起服，`/`、`/versions.json`、`/api/_system/health`、login、market/index（setup 指向外部 CDN 后）全 200。③ **安装全受力**：market setup → install wiki@0.1.3 → TOFU（新信任库，指纹核对 lesson.ui）→ confirm → 重试 → 装完 trusted——platform.exec 逐字白名单、fs jail、迁移门禁、热更端点（锁 diff 触发装配，不再依赖 config 哨兵）全程无 NotCapable/404。 |
 | 本次发现并处置 | ① **匿名准入不热更（P6 归因修正）**：运行中的 preview 进程**首次安装** wiki 后，匿名端点 `/api/wiki/status` 也 401（此前只观测到「进程内卸载后重装」触发，曾误判为重装特有）；重启进程即 200。结论改为：**匿名表只在进程启动时加载，任何运行中写入都不热更**——9778 站首装通过是因为 dev 时代的部分安装已把注册写进 manifests.yaml。规避不变：安装后重启（生产滚动发布天然满足）。② 升 runtime 后未重建 shell-dist 会触发 `ojm build` 漂移保护（`pnpm --filter @oj-module/cli build:shell` 解决；shell-dist 已改为构建期生成不入库）。③ 新工程空 cdn/ + seed 缺省 `/cdn` 自供时 market/index 报 502「catalog 拉取失败」属预期（同 10-23 基线 ②）。 |
 
 ### 上一次基线（2026-10-23 第三次，oj **0.1.86 npm 通道**（module-root 修复转正） / cli+runtime 0.2.25 verdaccio 复用；教程 DDD 形态实演 + --check 模块根缺陷捕获修复）
