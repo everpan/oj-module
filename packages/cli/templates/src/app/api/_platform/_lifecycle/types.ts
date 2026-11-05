@@ -23,6 +23,22 @@ export interface InstallContext {
 	hostVersions?: Record<string, string>
 	/** 宿主平台编排面 API 版本（C2-11 peerPlatform 比对真源；镜像 GET /api/_platform/market/meta 的 apiVersion，即 market/api.ts 的 API_VERSION 常量，与 _platform/manifest.yaml 版本手工同步） */
 	hostApiVersion?: string
+	/**
+	 * 宿主能力集（P0 §3.9：ojInfo().capabilities，装配期冻结、任何模块可读）。由调用方从 ojInfo 注入；
+	 * 与 manifest.requiresCapabilities 配对做写锁前门禁。缺省 undefined = 宿主未上报，
+	 * 此时若模板声明了 requiresCapabilities 则 fail-closed（视为能力缺失）。
+	 */
+	capabilities?: string[]
+	/**
+	 * 站点 config.yaml 已存在的 auth.anonymous_paths（P0 §3.2 质辩1 / E8：装前残留匿名检测真源）。
+	 * 由调用方在 preflight 前读 config 注入（preflight 保持只读 ctx 的纯校验段纪律）；缺省 [] 视为无残留。
+	 */
+	existingAnonymousPaths?: string[]
+	/**
+	 * 本次热更返回的待重启段（reloading 段捕获自 reloadAndAssert；非空 = 部分生效、需宿主重启后完全生效）。
+	 * installer 终态判定据其标 partial + restartRequired（无守护形态，P0 §3.6 / 验收 15）。瞬态，不落盘。
+	 */
+	restartPending?: string[]
 	/** 目标站点数据库句柄（本段不消费；P1-8 register 段起使用） */
 	db?: unknown
 	/**
@@ -99,4 +115,6 @@ export interface TaskRecord {
 	appliedSeq?: number
 	/** 取消安装标记（U5，P3-8）：用户中止触发的终态（status 仍取 failed/partial——D11 共用失败终态，此标记供 UI 区分「取消」与「失败」） */
 	cancelled?: boolean
+	/** 无守护形态部分生效标记（P0 §3.6 / 验收 15）：热更返回待重启段非空、且无 supervisor 自动换进程 → 装完仍须宿主重启才完全生效。UI 据其展示「重启提示」而非「成功」 */
+	restartRequired?: boolean
 }

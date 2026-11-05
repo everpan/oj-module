@@ -9,6 +9,7 @@
 
 import type { OpEntry } from "../_shared/service/infra/audit";
 import type { StateStore } from "./state";
+import type { ReloadFace } from "./steps/reload";
 import { uninstallSolution } from "../_shared/service/domain/solution-perms";
 import { invalidateAllUsers } from "../_shared/service/infra/access";
 import { auditOp } from "../_shared/service/infra/audit";
@@ -91,6 +92,18 @@ export async function collectRetainedTables(name: string, manifestPath: string):
 	return [...candidates].filter(t => existing.has(t));
 }
 
+/**
+ * 回退某方案的 DB 注册（P0 补偿清单 §3.5 复用）：单一事务内删 sys_solution_route + 级联清
+ * 角色/权限（uninstallSolution 双维度级联）。与 runUninstall 的 DB 步同原语，避免两套 DB 回滚逻辑。
+ * 行已不存在 = no-op（幂等安全）。
+ */
+export async function revertRegistrations(name: string): Promise<void> {
+	await db.tx(async (t) => {
+		await t.table("sys_solution_route").where({ field: "module", op: "eq", value: name }).delete().run();
+		await uninstallSolution(name, t);
+	});
+}
+
 /** 卸载影响面预检（GET uninstall-impact 消费面）：返回前端二次确认所需的影响计数 */
 export interface UninstallImpact {
 	name: string
@@ -111,6 +124,8 @@ export interface UninstallInput {
 	now?: number
 	/** 审计出口（缺省 auditOp；测试注入记录器） */
 	audit?: (entry: OpEntry) => void
+	/** 热更面（P0 §3.4 第5步：卸载摘锁后 reload 触达装配以真正摘除模块；缺省不 reload——依赖 US-1 上游 manifests 摘要驱动才实际掉挂载）。reload 失败 → 锁写回 + 再 reload 回旧代（模块仍挂载、可重试） */
+	reload?: ReloadFace
 }
 
 export interface UninstallResult {
@@ -184,16 +199,52 @@ export async function runUninstall(input: UninstallInput): Promise<UninstallResu
 		return { ok: false, message: `卸载失败：权限级联清理失败（${String(e)}）——事务已回滚，锁/路由/角色/权限未改动（fail-closed）` };
 	}
 
-	// ② sidecar 删条目（patch 值 null = 删除该方案键）
+	// ① 锁摘除（先失可达性：模块停止装配；在此之前任一失败锁均保留 = fail-closed）
+	try {
+		await writeLock(input.lockPath, remaining);
+	}
+	catch (e) {
+		audit(false, `锁写失败：${String(e)}`);
+		return { ok: false, message: `卸载失败：锁写失败（${String(e)}）——DB 级联已回滚、sidecar/modules 未动（fail-closed）` };
+	}
+
+	// ② reload 触达装配以真正摘除模块（P0 §3.4 第5步：先失可达性）；缺省无 reload 面则跳过（依赖
+	// US-1 上游 manifests 摘要驱动才实际掉挂载）。reload 失败 → 锁写回 + 再 reload 回旧代——
+	// 模块仍挂载，且此时 sidecar/modules.json/版本目录均未删（下面才删），故锁写回即**一致回滚**，
+	// 不残留半卸状态，返回失败可重试（fail-closed）。
+	if (input.reload !== undefined) {
+		try {
+			await input.reload.reloadConfig();
+		}
+		catch (e) {
+			try {
+				await writeLock(input.lockPath, lock);
+			}
+			catch {
+				// 锁写回失败不掩盖 reload 失败终态
+			}
+			try {
+				await input.reload.reloadConfig();
+			}
+			catch {
+				// 回滚 reload 也失败：模块仍按原锁挂载，下次卸载重试
+			}
+			audit(false, `reload 失败，已回写锁并恢复旧代：${String(e)}`);
+			return { ok: false, message: `卸载失败：reload 失败（${String(e)}）——已回写锁恢复旧代（模块仍挂载、元数据未删），请稍后重试` };
+		}
+	}
+
+	// ③ 再失文件前先清元数据：sidecar 删条目 / modules.json 删条目（reload 成功才走到这里，回滚已不可达）
+	// sidecar 删条目（patch 值 null = 删除该方案键）
 	try {
 		await input.state.write({ solutions: { [name]: null } } as unknown as Parameters<typeof input.state.write>[0]);
 	}
 	catch (e) {
 		audit(false, `sidecar 写失败：${String(e)}`);
-		return { ok: false, message: `卸载失败：sidecar 写失败（${String(e)}）——DB 级联已提交，锁未摘（fail-closed）` };
+		return { ok: false, message: `卸载失败：sidecar 写失败（${String(e)}）——锁已摘、reload 已生效，模块已停装配；sidecar 残留待重装自愈` };
 	}
 
-	// ③ modules.json 删条目（条目不存在 = api-only 方案，天然一致）
+	// modules.json 删条目（条目不存在 = api-only 方案，天然一致）
 	try {
 		const list = JSON.parse(new TextDecoder().decode(await f.readFile(input.modulesJsonPath))) as unknown[];
 		if (!Array.isArray(list)) {
@@ -204,19 +255,10 @@ export async function runUninstall(input: UninstallInput): Promise<UninstallResu
 	}
 	catch (e) {
 		audit(false, `modules.json 写失败：${String(e)}`);
-		return { ok: false, message: `卸载失败：modules.json 写失败（${String(e)}）——DB 级联已提交、sidecar 已删，锁未摘（fail-closed）` };
+		return { ok: false, message: `卸载失败：modules.json 写失败（${String(e)}）——锁已摘、reload 已生效、sidecar 已删，modules.json 残留待重装自愈` };
 	}
 
-	// ① 锁摘除（最后执行：模块停止装配；在此之前任一失败锁均保留 = fail-closed）
-	try {
-		await writeLock(input.lockPath, remaining);
-	}
-	catch (e) {
-		audit(false, `锁写失败：${String(e)}`);
-		return { ok: false, message: `卸载失败：锁写失败（${String(e)}）——DB 级联/sidecar/modules 已更新，锁残留` };
-	}
-
-	// 版本目录移除（缺失不报错，幂等）
+	// ④ 版本目录移除（缺失不报错，幂等）；再失文件（P0 §3.4：先失可达性再失文件）
 	// —— 但 Q4 业务表清单须在版本目录移除前从 manifest 取得（manifest 在版本目录内）——
 	let retained: string[] = [];
 	try {

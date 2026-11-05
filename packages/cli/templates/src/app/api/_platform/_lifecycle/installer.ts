@@ -24,8 +24,9 @@ import type { ReloadFace } from "./steps/reload";
 import type { InstallContext, InstallStage, StageResult, TaskRecord, TaskStatus } from "./types";
 import { auditOp } from "../_shared/service/infra/audit";
 import { atomicWriteText, fsFace, randomId } from "./atomic";
+import { compensate } from "./compensate";
 import { recordHistory } from "./history";
-import { acquireTaskLock, commitLockEntry, readLock, writeLock } from "./lock";
+import { acquireTaskLock, commitLockEntry, readLock, revertLock, writeLock } from "./lock";
 import { deployWeb } from "./steps/deploy-web";
 import { download } from "./steps/download";
 import { extract } from "./steps/extract";
@@ -36,7 +37,7 @@ import { reloadAndAssert } from "./steps/reload";
 import { smoke } from "./steps/smoke";
 import { verify } from "./steps/verify";
 import { getTask, readTasks, sweepTimedOut, writeTask } from "./tasks";
-import { appendAnonymousPaths, bumpInstallSeq } from "./text-edit";
+import { appendAnonymousPaths, bumpInstallSeq, readAnonymousPaths } from "./text-edit";
 import { createTrustStore } from "./trust";
 
 // db/http 为 oj isolate 注入全局（同模板 service 层惯例，register.ts/audit.ts 同款；测试由夹具装 globalThis.db）
@@ -397,7 +398,10 @@ async function reloadStage(req: InstallRequest): Promise<StageResult> {
 	catch (e) {
 		return { stage: "reloading", ok: false, retryable: true, message: `热更失败：config.yaml 安装序号自增/匿名端点接线失败（${String(e)}）——reload unchanged 判定基于 config 文档 sha，无变更则热更不可能生效（B-11，PRD E5 口径）` };
 	}
-	return reloadAndAssert(req);
+	const rr = await reloadAndAssert(req);
+	// 捕获待重启段（P0 §3.6 / 验收 15）：非空 = 部分生效，installer 终态据其标 partial + restartRequired
+	req.restartPending = rr.restartPending;
+	return rr;
 }
 
 /** 终态审计（AC-P1-14）：done/partial 都落 oplog；自身失败仅日志（附录 B-5，不阻断任务终态） */
@@ -492,13 +496,7 @@ async function cancelCleanup(req: InstallRequest, lockBefore: Record<string, str
 		// staging 已不存在（首装取消 / 重复回退）不掩盖取消终态
 	}
 	try {
-		if (lockExisted) {
-			await writeLock(`${req.sharedRoot}/manifests.yaml`, lockBefore);
-		}
-		else {
-			// 首装：装前本无锁文件，取消后也不该留空锁（空锁拒启 S1-1.2）
-			await f.remove(`${req.sharedRoot}/manifests.yaml`, { force: true });
-		}
+		await revertLock(req.sharedRoot, lockBefore, lockExisted);
 	}
 	catch {
 		// 锁回退失败由 reconcile 对账兜底（D11）
@@ -569,6 +567,15 @@ export async function runInstall(req: InstallRequest): Promise<TaskRecord> {
 		}
 		catch {
 			lockExisted = false;
+		}
+		// P0 §3.2 质辩1 / E8：写锁前读 config 的 auth.anonymous_paths，注入 preflight 做残留检测
+		// （preflight 保持只读 ctx 的纯校验段纪律，不自己读盘）。config 缺失/解析失败 → 视为无残留。
+		try {
+			const cfg = new TextDecoder().decode(await fsFace().readFile(req.configPath ?? "config.yaml"));
+			req.existingAnonymousPaths = readAnonymousPaths(cfg);
+		}
+		catch {
+			req.existingAnonymousPaths = [];
 		}
 		// P2-13 段内进度：migrating 段 spawn 流式路径逐块触发；写链串行（回调 fire-and-forget
 		// 防交错），失败静默（进度观测面不阻断安装）
@@ -658,8 +665,27 @@ export async function runInstall(req: InstallRequest): Promise<TaskRecord> {
 					}
 				}
 				else {
-					// 失败语义②：锁后 partial——部分生效，不回滚已落位产物，给回滚指引 key
+				// 失败语义②：锁后 partial——执行补偿回滚到装前代（旧代继续服务、任务可重试），
+				// 不再「不回滚已落位产物」：消除失败放大匿名面/残留注册（final §0 缺陷之三）。
+				// 补偿各步独立 try/catch，单步失败仍尽力回滚其余步，结果进 task.stages 供运维定位。
+					const comp = await compensate({
+						name: req.name,
+						version: req.version,
+						configPath: req.configPath ?? "config.yaml",
+						deferredAnonymous: req.deferredAnonymous ?? [],
+						sharedRoot: req.sharedRoot,
+						modulesJsonPath: req.modulesJsonPath,
+						lockBefore,
+						lockExisted,
+						reload: req.reload,
+					});
+					for (const s of comp.steps) {
+						task.stages.push({ stage: `compensate.${s.step}`, ok: s.ok, message: s.message });
+					}
 					task.status = "partial";
+					if (!comp.allOk) {
+						task.message = `${r.message}；补偿回滚存在失败步（${comp.steps.filter(s => !s.ok).map(s => s.step).join("、")}），可重试`;
+					}
 				}
 				req.outcome = { ...req.outcome, status: task.status, failedStage: def.name };
 				break;
@@ -737,8 +763,22 @@ export async function runInstall(req: InstallRequest): Promise<TaskRecord> {
 			});
 		}
 		if (task.status === "done") {
-			task.stage = "done";
-			task.progress = 100;
+			// 无守护形态部分生效判定（P0 §3.6 / 验收 15）：热更返回的待重启段非空，且无 supervisor
+			// 自动换进程（P4 暂未实施）——安装产物已落位，但宿主须重启才完全生效（匿名接线/路由等
+			// restart_pending 段）。此时不判 done（避免「假成功」误导，final §0 缺陷之四），改标 partial
+			// + restartRequired，由 UI 展示重启提示。失败语义②的补偿不触发（本次安装成功，无需回滚）。
+			const pending = req.restartPending ?? [];
+			if (pending.length > 0) {
+				task.status = "partial";
+				task.restartRequired = true;
+				task.stage = "reloading";
+				req.outcome = { ...req.outcome, status: "partial", failedStage: "reloading" };
+				task.message = `安装已落位但需宿主重启才完全生效：待重启段 [${pending.join("、")}]（无守护形态无自动换进程；请重启 oj serve 后生效）。其余阶段均成功（partial，可重试以复检）`;
+			}
+			else {
+				task.stage = "done";
+				task.progress = 100;
+			}
 		}
 		task.finishedAt = Date.now();
 		await writeTask(req.taskDir, task);

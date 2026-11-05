@@ -1313,3 +1313,25 @@ describe("冒烟探活必须自报租户头（企微代开发多租户 v3 Phase 
 		expect(t.stage).toBe("smoke");
 	});
 });
+
+describe("Phase 3：无守护 partial 判定（P0 §3.6 / 验收 15）", () => {
+	it("热更返回待重启段非空 → 装完标 partial + restartRequired（不判 done，避免假成功）", async () => {
+		// 无守护形态（P4 supervisor 未实施）：匿名接线等 restart_pending 段需宿主重启才完全生效，
+		// 不应报 done 误导。reload 返回 restart_pending 非空即标 partial + restartRequired。
+		const t = await runInstall(makeReq({
+			reload: { reloadConfig: async () => ({ generation: 1, unchanged: false, applied: ["vars"], restart_pending: ["auth"], kept_listener: [] }) },
+		}));
+		expect(t.status).toBe("partial");
+		expect(t.restartRequired).toBe(true);
+		expect(t.message).toContain("待重启段");
+		expect(t.message).toContain("重启");
+		// 安装产物已落位（非失败语义②补偿）：锁/版本目录仍在，任务非 failed
+		expect(t.stage).not.toBe("failed");
+	});
+
+	it("热更待重启段为空 → 正常 done（restartRequired 不置位）", async () => {
+		const t = await runInstall(makeReq());
+		expect(t.status).toBe("done");
+		expect(t.restartRequired).toBeUndefined();
+	});
+});

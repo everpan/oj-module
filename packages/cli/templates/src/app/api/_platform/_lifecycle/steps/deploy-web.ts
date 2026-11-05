@@ -188,3 +188,31 @@ export async function deployWeb(ctx: DeployWebContext): Promise<StageResult> {
 		message: `部署完成：staging web/ → ${ctx.siteModulesDir}/，modules.json 已 upsert ${ctx.name}（entry ${entry.entry}${integrity ? `；integrity ${integrity}` : ""}；D13 原子写，读者永不见半截 JSON）`,
 	};
 }
+
+/**
+ * 移除 modules.json 中指定 name 的条目（P0 补偿清单 §3.5）：读→filter→原子写，与 upsert 同纪律
+ * （D13，原子写读者无感）；清单不存在 = 该模块从未入清单，视为已移除返回 removed=false；清单损坏
+ * 上抛 fail-closed。返回 removed 标志供补偿流程断言「写出后该 name 条目确已不存在」。
+ */
+export async function removeModulesJsonEntry(name: string, opts: { modulesJsonPath: string }): Promise<{ removed: boolean }> {
+	const f = fsFace();
+	let list: unknown;
+	try {
+		list = JSON.parse(new TextDecoder().decode(await f.readFile(opts.modulesJsonPath)));
+	}
+	catch (e) {
+		if (isMissingPath(e)) {
+			return { removed: false };
+		}
+		throw e;
+	}
+	if (!Array.isArray(list)) {
+		throw new TypeError("modules.json 顶层不是数组，拒绝修改（避免覆盖丢失既有条目）");
+	}
+	const next = list.filter(e => !(isObj(e) && e.name === name));
+	const removed = next.length !== list.length;
+	if (removed) {
+		await atomicWriteText(opts.modulesJsonPath, `${JSON.stringify(next, null, 2)}\n`);
+	}
+	return { removed };
+}

@@ -35,6 +35,8 @@ export interface StageResult {
 	ok: boolean
 	message: string
 	retryable?: boolean
+	/** 热更返回的待重启段（S1-5.2 restart_pending）；非空 = 部分生效、需宿主重启后才完全生效。installer 终态判定据其标 partial + restartRequired（无守护形态，P0 §3.6 / 验收 15） */
+	restartPending?: string[]
 }
 
 export async function reloadAndAssert(ctx: ReloadContext): Promise<StageResult> {
@@ -77,5 +79,5 @@ export async function reloadAndAssert(ctx: ReloadContext): Promise<StageResult> 
 	const pending = Array.isArray(r.restart_pending) && r.restart_pending.length > 0
 		? `；待重启段 [${r.restart_pending.join("、")}]（anonymous_paths 热改属 restart_pending，S1-5）`
 		: "";
-	return { stage: "reloading", ok: true, message: `热更完成：generation ${r.generation ?? "?"}，已生效段 [${r.applied.join("、")}]${pending}` };
+	return { stage: "reloading", ok: true, message: `热更完成：generation ${r.generation ?? "?"}，已生效段 [${r.applied.join("、")}]${pending}`, restartPending: Array.isArray(r.restart_pending) ? r.restart_pending : [] };
 }

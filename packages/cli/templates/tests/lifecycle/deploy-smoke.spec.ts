@@ -337,15 +337,13 @@ describe("smoke 探活（D14/Q-A：health 不强制）", () => {
 		expect(r.message).toContain("不计入失败");
 	});
 
-	it("health 401 与否声明 anonymous 无关（统一 deferred，不放宽真失败靠非 401）", async () => {
-		// 旧语义按 deferredAnonymous 白名单区分是否 deferred；该字段从未被调用方赋值（死代码），
-		// 且设计明确「health 不强制、无凭证预期 401」，故改为 health 401 一律 deferred。
-		// 真失败仍由非 401（如 500，见下条）兜底，不靠 anonymous 白名单。
+	it("health 401 与是否声明 anonymous 无关（统一 deferred，真失败靠非 401 兜底）", async () => {
+		// 设计明确「health 不强制、无凭证预期 401」，故 health 401 一律 deferred，
+		// 真失败仍由非 401（如 500，见下条）兜底。
 		await seedDeployed();
 		const r = await smoke(smCtx({
 			manifest: solManifest({ health: "/demo-solution/ping" }),
 			fetch: async () => ({ ok: false, status: 401 }),
-			deferredAnonymous: ["/demo-solution/other"],
 		}));
 		expect(r.ok).toBe(true);
 		expect(r.message).toContain("restart_pending");
@@ -393,6 +391,16 @@ describe("smoke 探活（D14/Q-A：health 不强制）", () => {
 			query: async () => null,
 		}));
 		expect(r.ok).toBe(true);
+	});
+
+	it("无 health：首个非匿名路由 404 → 探活失败（P0 §3.5：首个路由 404/连通失败 = 冒烟失败，避免假成功）", async () => {
+		await seedDeployed();
+		const r = await smoke(smCtx({
+			fetch: async () => ({ ok: false, status: 404 }),
+		}));
+		expect(r.ok).toBe(false);
+		expect(r.message).toContain("探活");
+		expect(r.message).toContain("404");
 	});
 });
 

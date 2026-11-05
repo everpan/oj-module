@@ -196,6 +196,42 @@ describe("POST uninstall 卸载编排（superadmin，R9）", () => {
 	});
 });
 
+describe("Phase 4：卸载 reload 失败回滚（P0 §3.4 第5步，依赖 US-1 manifests 摘要驱动的装配面，本仓先落编排）", () => {
+	it("卸载摘锁后 reload 失败 → 锁写回(模块仍挂载) + ok:false + 版本目录不删（fail-closed 一致回滚）", async () => {
+		await seedInstalled();
+		const api = createMarketApi(makeEnv({
+			reload: {
+				reloadConfig: async () => {
+					throw new Error("reload boom");
+				},
+			},
+		}));
+		g.http = { user: { id: 1 }, body: { name: "demo-solution" } };
+		await api.uninstall.post();
+		// 锁写回：模块仍挂载（other 保留 + demo-solution 恢复）
+		expect(await readLock(join(sharedRoot, "manifests.yaml"))).toEqual({ "demo-solution": "0.1.0", "other": "1.0.0" });
+		// 版本目录未删（先失可达性再失文件；reload 失败即停，不删文件）
+		await expect(fsp.readdir(join(sharedRoot, "demo-solution-0.1.0"))).resolves.toBeDefined();
+		// sidecar 未删（元数据一致回滚，非半卸）
+		const state = await createStateStore(statePath);
+		expect(state.read().solutions["demo-solution"]).toBeDefined();
+		expect(last?.status).toBe(200);
+		expect(last?.data).toMatchObject({ ok: false });
+		expect(String((last?.data as { message?: string } | undefined)?.message)).toContain("reload 失败");
+	});
+
+	it("卸载 reload 成功 → 版本目录正常移除、锁摘除（既有行为不破坏）", async () => {
+		await seedInstalled();
+		const api = createMarketApi(makeEnv({ reload: { reloadConfig: async () => ({ unchanged: false, applied: ["vars"], restart_pending: [] }) } }));
+		g.http = { user: { id: 1 }, body: { name: "demo-solution" } };
+		await api.uninstall.post();
+		expect(last?.status).toBe(200);
+		expect(last?.data).toMatchObject({ ok: true });
+		expect(await readLock(join(sharedRoot, "manifests.yaml"))).toEqual({ other: "1.0.0" });
+		await expect(fsp.readdir(join(sharedRoot, "demo-solution-0.1.0"))).rejects.toBeTruthy();
+	});
+});
+
 describe("P3-3 卸载级联单一事务（fail-closed：中段失败整段回滚、锁不摘、无半残）", () => {
 	it("权限级联中段失败 → 事务回滚（route/角色/权限零残）、锁/sidecar/modules/版本目录原样保留", async () => {
 		await seedInstalled();

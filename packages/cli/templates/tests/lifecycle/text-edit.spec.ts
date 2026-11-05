@@ -5,7 +5,7 @@
 import * as fsp from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 
-import { appendAnonymousPaths, bumpInstallSeq, ensureReloadApi, hasAnchor, insertAnchor } from "../../src/app/api/_platform/_lifecycle/text-edit";
+import { appendAnonymousPaths, bumpInstallSeq, ensureReloadApi, hasAnchor, insertAnchor, removeAnonymousPaths } from "../../src/app/api/_platform/_lifecycle/text-edit";
 
 describe("insertAnchor（R18）", () => {
 	it("带注释的 config.yaml 插入后注释/缩进/空行/键序逐字保留", () => {
@@ -173,5 +173,49 @@ describe("p2-15③ C2-26 anonymous 运行时接线（appendAnonymousPaths：conf
 
 	it("键缺失 = 可读报错不猜位置（用户删键 = 显式退出匿名模型）", () => {
 		expect(() => appendAnonymousPaths("server:\n  reload_api: true\n", ["x/y"])).toThrow(/anonymous_paths/);
+	});
+});
+
+describe("removeAnonymousPaths（P0 §3.5 补偿清单：appendAnonymousPaths 逆操作）", () => {
+	const BASE = "auth:\n  anonymous_paths:\n    - /auth/login\n    # 行内注释保留\n    - /system/login-methods\n";
+
+	it("追加后移除 = 还原到追加前形态（注释/缩进/既有项逐字保留）", () => {
+		const added = appendAnonymousPaths(BASE, ["demo-solution/ping", "demo-solution/health"]);
+		const r = removeAnonymousPaths(added.content, ["demo-solution/ping", "demo-solution/health"]);
+		expect(r.removed).toEqual(["/demo-solution/ping", "/demo-solution/health"]);
+		expect(r.content).toBe(BASE);
+	});
+
+	it("只移除指定项，其余匿名条目不动", () => {
+		const added = appendAnonymousPaths(BASE, ["demo-solution/ping", "demo-solution/health"]);
+		const r = removeAnonymousPaths(added.content, ["demo-solution/ping"]);
+		expect(r.removed).toEqual(["/demo-solution/ping"]);
+		expect(r.content).toContain("- /demo-solution/health");
+		expect(r.content).toContain("- /auth/login");
+		expect(r.content).toContain("- /system/login-methods");
+	});
+
+	it("幂等：未含的路径不在列表内 → removed=[] 且内容不变", () => {
+		const added = appendAnonymousPaths(BASE, ["demo-solution/ping"]);
+		const r = removeAnonymousPaths(added.content, ["other/not-present"]);
+		expect(r.removed).toEqual([]);
+		expect(r.content).toBe(added.content);
+	});
+
+	it("连续两次移除同一批路径，第二次为 no-op（防重复副作用）", () => {
+		const added = appendAnonymousPaths(BASE, ["demo-solution/ping"]);
+		const once = removeAnonymousPaths(added.content, ["demo-solution/ping"]);
+		const twice = removeAnonymousPaths(once.content, ["demo-solution/ping"]);
+		expect(twice.removed).toEqual([]);
+		expect(twice.content).toBe(once.content);
+	});
+
+	it("键缺失 = 没东西可删，no-op（不报错）", () => {
+		const r = removeAnonymousPaths("server:\n  reload_api: true\n", ["x/y"]);
+		expect(r.removed).toEqual([]);
+	});
+
+	it("空路径列表 = no-op", () => {
+		expect(removeAnonymousPaths(BASE, []).removed).toEqual([]);
 	});
 });

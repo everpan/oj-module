@@ -52,6 +52,9 @@ const RANGE_RE = /^(>=|<=|[><^=])?([0-9A-Z.-]+)$/i;
 /** C2-26①：anonymous 相对路径语法（无前导斜杠、无通配符；首字符 [a-z0-9] 使 _system/_platform 天然禁入） */
 const ANONYMOUS_RE = /^[a-z0-9][a-z0-9\-_.]*(?:\/[a-z0-9][a-z0-9\-_.]*)*$/;
 
+/** P0 §3.2 匿名保留段黑名单（显式拒装清单；与 C2-26 段内收敛互补——C2-26 挡「跨段」，本清单挡「保留段本身」） */
+const ANON_RESERVED_PREFIXES = ["_platform", "_system", "auth", "_lifecycle"];
+
 /** C2-17：路由 path 语法（首段首字符为字母；无参数段/通配符/尾斜杠） */
 const ROUTE_PATH_RE = /^\/[a-z][a-z0-9\-_]*(?:\/[a-z0-9\-_]+)*$/;
 
@@ -205,6 +208,18 @@ export async function preflight(ctx: InstallContext): Promise<StageResult> {
 		return e === undefined ? undefined : `${key}@${e.version}`;
 	};
 
+	// ── P0 §3.9 宿主能力门禁：模板声明所需 host 能力子集（manifest.requiresCapabilities），
+	// 宿主 ojInfo().capabilities 缺项即写锁前失败（零痕迹，不碰锁/库表/清单）。缺省 undefined 视为
+	// 宿主未上报 → fail-closed（能力缺失即拒）。既有模板不声明 → 门禁恒放行（不依赖上游 US-1 即先落地）。
+	const requires = Array.isArray(m.requiresCapabilities) ? m.requiresCapabilities as unknown[] : [];
+	if (requires.length > 0) {
+		const caps = ctx.capabilities ?? [];
+		const missing = requires.filter(c => typeof c === "string" && !caps.includes(c));
+		if (missing.length > 0) {
+			v.push({ clause: "C2-cap", code: "host_capability", detail: `宿主 oj 不支持本方案所需能力 ${JSON.stringify(missing)}（请升级 oj 至具备 ${JSON.stringify(requires)} 的版本后再装）` });
+		}
+	}
+
 	// ── C2-01 身份 name：白名单 + 保留名（§4.2，market 经 R9 恢复保留）──
 	if (typeof m.name !== "string" || !NAME_RE.test(m.name)) {
 		v.push({ clause: "C2-01", detail: `name「${String(m.name)}」不匹配 ^[a-z][a-z0-9-]{0,63}$（小写字母开头，仅小写字母/数字/连字符）` });
@@ -288,6 +303,8 @@ export async function preflight(ctx: InstallContext): Promise<StageResult> {
 	// ── api 段（C2-12/12a/12b/13/26）──
 	// C2-26② 段内收敛的「本方案段」：api.prefix 缺省 = name
 	let apiSeg = name;
+	// P0 §3.2 质辩1 / E8：本 manifest 声明的匿名条目集合（供下方 config 残留检测比对）
+	const declaredSet = new Set<string>();
 	const api = m.api;
 	if (api !== undefined) {
 		if (!isObj(api)) {
@@ -354,8 +371,12 @@ export async function preflight(ctx: InstallContext): Promise<StageResult> {
 							v.push({ clause: "C2-26", detail: `anonymous「${a}」不匹配相对路径语法 ^[a-z0-9][a-z0-9\\-_.]*(/[a-z0-9][a-z0-9\\-_.]*)*$（无前导斜杠/通配符；_system/_platform 段禁入）` });
 							continue;
 						}
+						declaredSet.add(a);
 						if (a.split("/")[0] !== apiSeg) {
 							v.push({ clause: "C2-26", detail: `anonymous「${a}」越段：首段必须 = 本方案段「${apiSeg}」（R8 段内收敛；_system/_platform 等保留段因此禁入）` });
+						}
+						if (ANON_RESERVED_PREFIXES.includes(a.split("/")[0] ?? "")) {
+							v.push({ clause: "C2-26", detail: `anonymous「${a}」指向保留段（${ANON_RESERVED_PREFIXES.join("/")}），禁用于匿名接线（P0 §3.2 黑名单）` });
 						}
 						if (LOGIN_ENDPOINT_RE.test(a)) {
 							v.push({ clause: "C2-26", detail: `anonymous「${a}」命中登录语义端点禁令（R8/S1 纵深防御：login/logout/token/session/signin/signup/auth）` });
@@ -367,6 +388,31 @@ export async function preflight(ctx: InstallContext): Promise<StageResult> {
 					}
 				}
 			}
+		}
+	}
+
+	// ── P0 §3.2 质辩1 / E8：config 残留匿名检测（写锁前拒装，避免同 prefix 换装静默继承）──
+	// 站点 config 已存在的 auth.anonymous_paths 中，凡落在目标 prefix（apiSeg）下却未被本次 manifest
+	// 声明的条目，一律拒装。运行期新增的匿名条目卸载即失效，仅「启动期已在 config 的残留」构成暴露面——
+	// 此处只挡安装入口，不挡已运行实例。真源 = ctx.existingAnonymousPaths（调用方写锁前读 config 注入；
+	// preflight 保持只读 ctx 的纯校验段纪律）。
+	// **保留段条目不在此查**：config 里 /auth/*、/_platform/* 等属宿主内建（如 /auth/login），方案永不
+	// 能注入（C2-26 段内收敛已挡住方案声明保留段匿名），故保留段 config 条目绝不会是方案残留——
+	// 纳入比对只会误伤宿主内建匿名端点（F4 假阳性）。
+	{
+		const existing = ctx.existingAnonymousPaths ?? [];
+		const residual: string[] = [];
+		// config 条目带前导斜杠（appendAnonymousPaths 统一补 /），归一去斜杠再取首段，
+		// 与 manifest 相对形态（无前导 /）保持一致比对口径。
+		const norm = (p: string) => p.replace(/^\//, "");
+		for (const e of existing) {
+			const seg = norm(e).split("/")[0] ?? "";
+			if (seg === apiSeg && !declaredSet.has(norm(e))) {
+				residual.push(e);
+			}
+		}
+		if (residual.length > 0) {
+			v.push({ clause: "C2-26", code: "anonymous_residual", detail: `config 已存在未被本次 manifest 声明的匿名条目（同 prefix 换装会静默继承）：${residual.join("、")}——请先清理 config.yaml 的 auth.anonymous_paths 后再安装` });
 		}
 	}
 

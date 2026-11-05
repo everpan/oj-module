@@ -237,7 +237,14 @@ function execOf(env: MarketEnv): ExecFace {
 
 function reloadOf(env: MarketEnv): ReloadFace {
 	const g = globalThis as { server?: { reloadConfig: ReloadFace["reloadConfig"] } };
-	return env.reload ?? { reloadConfig: () => g.server!.reloadConfig() };
+	// env 显式注入优先；其次平台 server.reloadConfig（生产 oj 提供）；均缺失（dev/test 无 server）
+	// 回落 no-op——等价于「不 reload」，保持卸载旧语义（reload 实际掉挂载依赖 US-1 上游 manifests
+	// 摘要驱动，未到位前回落 no-op 不阻断卸载主流程）。
+	if (env.reload !== undefined)
+		return env.reload;
+	if (g.server?.reloadConfig !== undefined)
+		return { reloadConfig: () => g.server!.reloadConfig() };
+	return { reloadConfig: async () => ({ unchanged: true, applied: [], restart_pending: [] }) };
 }
 
 function sha384Of(env: MarketEnv): (data: Uint8Array) => string {
@@ -1270,6 +1277,7 @@ export function createMarketApi(env: MarketEnv) {
 						state: await createStateStore(env.statePath),
 						modulesJsonPath: env.modulesJsonPath,
 						operator: (await operatorOf()) ?? undefined,
+						reload: reloadOf(env),
 					});
 					// P3-11 宿主打磨：方案已不存在 = 资源缺失语义 → 404（非 200 {ok:false}）；
 					// 其余领域拒绝（空锁拒启/级联失败等）维持 200 {ok:false} 人话在 message。
