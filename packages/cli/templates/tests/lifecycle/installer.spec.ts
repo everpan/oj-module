@@ -156,7 +156,7 @@ function makeReq(overrides: Partial<InstallRequest> = {}): InstallRequest {
 		configPath: join(root, "config.yaml"),
 		fetch: async () => ({ ok: true, status: 200, arrayBuffer: async () => ARCHIVE.slice().buffer }),
 		exec: bundleExec(),
-		reload: { reloadConfig: async () => ({ generation: 1, unchanged: false, applied: ["vars"], restart_pending: [], kept_listener: [] }) },
+		reload: { reloadConfig: async () => ({ generation: 1, unchanged: false, applied: [`+demo-solution@${version}`], restart_pending: [], kept_listener: [] }) },
 		sha256Hex: d => createHash("sha256").update(d).digest("hex"),
 		verifyEd25519: nodeVerifyEd25519,
 		trustPath,
@@ -1319,7 +1319,7 @@ describe("Phase 3：无守护 partial 判定（P0 §3.6 / 验收 15）", () => {
 		// 无守护形态（P4 supervisor 未实施）：匿名接线等 restart_pending 段需宿主重启才完全生效，
 		// 不应报 done 误导。reload 返回 restart_pending 非空即标 partial + restartRequired。
 		const t = await runInstall(makeReq({
-			reload: { reloadConfig: async () => ({ generation: 1, unchanged: false, applied: ["vars"], restart_pending: ["auth"], kept_listener: [] }) },
+			reload: { reloadConfig: async () => ({ generation: 1, unchanged: false, applied: ["+demo-solution@0.1.0"], restart_pending: ["auth"], kept_listener: [] }) },
 		}));
 		expect(t.status).toBe("partial");
 		expect(t.restartRequired).toBe(true);

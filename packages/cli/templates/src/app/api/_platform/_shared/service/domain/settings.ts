@@ -68,11 +68,15 @@ export async function updateSetting(actorId: number, key: string, value: string)
 	await recordOp({ action: "setting.update", module: String(row.module), target: key });
 }
 
-/** C5/D2：登录方式发现的数据源——local 恒在，ldap/sso/wecom 由设置项开关。 */
-export async function listLoginMethods(): Promise<{ methods: string[] }> {
-	const rows = await db.table("sys_setting").select(["key", "value"]).where({ field: "key", op: "in", value: ["ldap.enabled", "sso.enabled", "wecom.enabled"] }).all() as Array<{ key: string, value: string | null }>;
+/**
+ * C5/D2：登录方式发现的数据源——local 恒在，ldap/sso/wecom 由设置项开关。
+ * 同时回传站点标题（framework.site_title，非 secret），供登录页匿名设置浏览器标签。
+ */
+export async function listLoginMethods(): Promise<{ methods: string[], site_title: string }> {
+	const rows = await db.table("sys_setting").select(["key", "value"]).where({ field: "key", op: "in", value: ["ldap.enabled", "sso.enabled", "wecom.enabled", "framework.site_title"] }).all() as Array<{ key: string, value: string | null }>;
 	const enabled = (k: string) => rows.find(r => r.key === k)?.value === "1";
+	const siteTitle = rows.find(r => r.key === "framework.site_title")?.value ?? "";
 	// wecom 的凭据在部署常量（config vars），这里只报开关：开关开了但凭据没配，
 	// 点进企微登录会拿到 400「企业微信未配置」——比登录页凭空少一个 tab 更容易排查。
-	return { methods: ["local", ...(enabled("ldap.enabled") ? ["ldap" as const] : []), ...(enabled("sso.enabled") ? ["sso" as const] : []), ...(enabled("wecom.enabled") ? ["wecom" as const] : [])] };
+	return { methods: ["local", ...(enabled("ldap.enabled") ? ["ldap" as const] : []), ...(enabled("sso.enabled") ? ["sso" as const] : []), ...(enabled("wecom.enabled") ? ["wecom" as const] : [])], site_title: siteTitle };
 }

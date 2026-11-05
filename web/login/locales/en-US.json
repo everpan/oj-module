@@ -6,6 +6,8 @@
 		"local": "Password",
 		"ldap": "LDAP",
 		"sso": "SSO",
+		"wecom": "WeCom",
+		"wecomPending": "WeCom login will be available in a later stage",
 		"ldapPending": "LDAP login will be available in a later stage",
 		"ssoPending": "SSO login will be available in a later stage"
 	},

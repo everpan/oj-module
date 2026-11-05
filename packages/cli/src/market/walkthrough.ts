@@ -71,6 +71,17 @@ export interface WalkthroughResult {
 }
 
 /**
+ * 安装成功终态：oj 0.1.122 起，无守护形态安装会落 partial（vars/auth 等冻结段热改属
+ * restart_pending，需进程重启才完全生效）——这是正确终态（P0 §3.6 / 验收 15），不是失败。
+ * 真正的失败 partial（锁后异常 + 补偿回滚）不会带 restartRequired，故以它区分二者。
+ * 本 walkthrough 在每次安装后置重启（IsolatedSite.restart），模拟真实「部署 → 重启」时序，
+ * 让模块真正上线。
+ */
+function installSucceeded(task: TaskRecord): boolean {
+	return task.status === "done" || (task.status === "partial" && task.restartRequired === true);
+}
+
+/**
  * neg-* 专用版本：与主链路（0.1.0/0.2.0）完全隔离，收尾整包摘除。
  * 必须低于主链路 latest（0.2.0），否则发布后它会成为 latest，摘除时 REG-CS2 单调性守卫
  * 会把它判成「latest 回退」而拒建索引，导致负向用例的安装拒绝断言没机会跑（9.9.9 曾踩此坑）。
@@ -96,8 +107,8 @@ const OPS: Op[] = [
 		title: "安装（11 段）",
 		run: async (ctx) => {
 			const task = await install(ctx, ctx.version);
-			const done = task.status === "done";
-			return { ok: done, detail: done ? `${task.stages.length} 段全 ok` : `status=${task.status} stage=${task.stage ?? "?"}：${task.message}` };
+			const ok = installSucceeded(task);
+			return { ok, detail: ok ? `${task.stages.length} 段全 ok（终态 ${task.status}${task.restartRequired ? " + restartRequired" : ""}，已重启激活）` : `status=${task.status} stage=${task.stage ?? "?"}：${task.message}` };
 		},
 	},
 	{
@@ -106,7 +117,7 @@ const OPS: Op[] = [
 		run: async (ctx) => {
 			await ensureInstalled(ctx);
 			const task = await install(ctx, ctx.version);
-			const ok = task.status === "done";
+			const ok = installSucceeded(task);
 			return { ok, detail: ok ? "重装成功（未报方案名占用）" : `status=${task.status}：${task.message}` };
 		},
 	},
@@ -159,7 +170,7 @@ const OPS: Op[] = [
 			await ensureInstalled(ctx); // 前置：0.1.0 在列（账本 head=1）
 			await publishVersion(ctx, "0.2.0");
 			const task = await install(ctx, "0.2.0");
-			if (task.status !== "done")
+			if (!installSucceeded(task))
 				return { ok: false, detail: `升级安装未 done：status=${task.status} stage=${task.stage ?? "?"}：${task.message}` };
 			const card = await indexCard(ctx);
 			const distDir = resolveLayout(ctx.site.root).apiDist;
@@ -189,7 +200,7 @@ const OPS: Op[] = [
 			if (card?.installed !== "0.2.0") {
 				await publishVersion(ctx, "0.2.0");
 				const pre = await install(ctx, "0.2.0");
-				if (pre.status !== "done")
+				if (!installSucceeded(pre))
 					return { ok: false, detail: `前置安装 0.2.0 未 done：status=${pre.status}：${pre.message}` };
 				card = await indexCard(ctx);
 			}
@@ -320,7 +331,7 @@ const OPS: Op[] = [
 					return { ok: false, detail: `未停 needs_trust：status=${first.status}：${first.message}` };
 				await callApi(fetch, ctx.base, ctx.token, "POST", "/api/_platform/market/trust", { task_id: first.id });
 				const second = await installOnce(ctx, NEG_VERSION, NEG_NAME);
-				if (second.status !== "done")
+				if (!installSucceeded(second))
 					return { ok: false, detail: `确认后重装未 done：status=${second.status}：${second.message}` };
 				// 收尾（F3）：显式 revoke 陌生 key，快照 diff 断言无残留——不靠 uninstall 兜底（它本就不摘信任）
 				const del = await callApi<{ revoked?: boolean }>(fetch, ctx.base, ctx.token, "DELETE", `/api/_platform/market/trust/key?key_id=${encodeURIComponent("stranger.publisher")}`);
@@ -417,13 +428,18 @@ export async function walkthrough(opts: WalkthroughOptions = {}): Promise<Walkth
 	}
 }
 
-/** 安装 + 轮询；needs_trust 时自动确认（隔离站点，无外部信任可言） */
+/**
+ * 安装 + 轮询；needs_trust 时自动确认（隔离站点，无外部信任可言）。
+ * 成功（done 或 restartRequired 的 partial）后置重启，激活冻结段，模拟真实部署时序。
+ */
 async function install(ctx: Ctx, version: string): Promise<TaskRecord> {
 	let task = await installOnce(ctx, version);
 	if (task.status === "needs_trust") {
 		await callApi(fetch, ctx.base, ctx.token, "POST", "/api/_platform/market/trust", { task_id: task.id });
 		task = await installOnce(ctx, version);
 	}
+	if (installSucceeded(task))
+		await ctx.site.restart();
 	return task;
 }
 
@@ -462,7 +478,7 @@ async function ensureInstalled(ctx: Ctx): Promise<void> {
 	if (card?.installed === ctx.version)
 		return;
 	const task = await install(ctx, ctx.version);
-	if (task.status !== "done")
+	if (!installSucceeded(task))
 		throw new Error(`前置安装失败：status=${task.status}：${task.message}`);
 }
 

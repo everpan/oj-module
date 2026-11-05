@@ -222,7 +222,7 @@ describe("Phase 4：卸载 reload 失败回滚（P0 §3.4 第5步，依赖 US-1 
 
 	it("卸载 reload 成功 → 版本目录正常移除、锁摘除（既有行为不破坏）", async () => {
 		await seedInstalled();
-		const api = createMarketApi(makeEnv({ reload: { reloadConfig: async () => ({ unchanged: false, applied: ["vars"], restart_pending: [] }) } }));
+		const api = createMarketApi(makeEnv({ reload: { reloadConfig: async () => ({ generation: 1, unchanged: false, applied: ["-demo-solution@0.1.0"], restart_pending: [] }) } }));
 		g.http = { user: { id: 1 }, body: { name: "demo-solution" } };
 		await api.uninstall.post();
 		expect(last?.status).toBe(200);

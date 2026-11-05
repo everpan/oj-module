@@ -5777,7 +5777,8 @@
 										"data": {
 											"type": "object",
 											"required": [
-												"methods"
+												"methods",
+												"site_title"
 											],
 											"properties": {
 												"methods": {
@@ -5785,6 +5786,9 @@
 													"items": {
 														"type": "string"
 													}
+												},
+												"site_title": {
+													"type": "string"
 												}
 											}
 										}

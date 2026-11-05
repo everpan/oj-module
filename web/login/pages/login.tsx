@@ -4,7 +4,7 @@ import { fetchLoginMethods } from "@oj-module/runtime";
 import { useQuery } from "@tanstack/react-query";
 import { Tabs } from "antd";
 import { AnimatePresence, motion } from "motion/react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { PasswordLogin } from "./components/password-login";
@@ -32,6 +32,13 @@ export default function Login() {
 		staleTime: 60_000,
 	});
 	const methods = loginMethods?.methods ?? ["local"];
+
+	// 站点标题（framework.site_title）经匿名端点回传，登录页即可设置浏览器标签；
+	// 其他已登录页保持随菜单（layout-effects 的路由标题），此处仅在登录页生效。
+	useEffect(() => {
+		if (loginMethods?.site_title)
+			document.title = loginMethods.site_title;
+	}, [loginMethods?.site_title]);
 
 	return (
 		<FormModeContext value={providedValue}>

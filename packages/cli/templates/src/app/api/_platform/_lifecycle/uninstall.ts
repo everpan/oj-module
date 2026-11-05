@@ -9,13 +9,14 @@
 
 import type { OpEntry } from "../_shared/service/infra/audit";
 import type { StateStore } from "./state";
-import type { ReloadFace } from "./steps/reload";
+import type { ReloadFace, ReloadResult } from "./steps/reload";
 import { uninstallSolution } from "../_shared/service/domain/solution-perms";
 import { invalidateAllUsers } from "../_shared/service/infra/access";
 import { auditOp } from "../_shared/service/infra/audit";
 import { atomicWriteText, fsFace } from "./atomic";
 import { recordHistory } from "./history";
 import { readLock, writeLock } from "./lock";
+import { assertReloadApplied } from "./steps/reload";
 
 // db 为 oj isolate 注入全局（同模板 service 层惯例，installer.ts 同款；测试由夹具装 globalThis.db）
 declare const db: {
@@ -64,6 +65,21 @@ function manifestTables(yamlText: string): string[] {
 /** 模块 slug 规范化（连字符→下划线）作表前缀；db.listTables 内部按字面量前缀匹配（自动转义 %/_），无需手拼通配 */
 export function moduleTablePrefix(name: string): string {
 	return `${name.replace(/-/g, "_")}_`;
+}
+
+/**
+ * 卸载期判断方案是否含 api 模块（决定 oj 是否产出 -name@ver 装配条目）：读版本目录内 C2 manifest.yaml
+ * 的顶层 `api:` 段。reload 断言时版本目录仍在（删除在 reload 之后），故可读。读失败/无 api 段 → false
+ * （web-only 方案 oj 不产模块条目，符号不强制，仅校验 reload 已探测锁变更）。
+ */
+async function uninstallHasApi(name: string, version: string, sharedRoot: string): Promise<boolean> {
+	try {
+		const text = new TextDecoder().decode(await fsFace().readFile(`${sharedRoot}/${name}-${version}/manifest.yaml`));
+		return /^api\s*:/m.test(text);
+	}
+	catch {
+		return false;
+	}
 }
 
 /** 收集需保留的业务表（Q4）：声明 + 前缀兜底；仅返回实际存在的表名 */
@@ -209,12 +225,13 @@ export async function runUninstall(input: UninstallInput): Promise<UninstallResu
 	}
 
 	// ② reload 触达装配以真正摘除模块（P0 §3.4 第5步：先失可达性）；缺省无 reload 面则跳过（依赖
-	// US-1 上游 manifests 摘要驱动才实际掉挂载）。reload 失败 → 锁写回 + 再 reload 回旧代——
-	// 模块仍挂载，且此时 sidecar/modules.json/版本目录均未删（下面才删），故锁写回即**一致回滚**，
-	// 不残留半卸状态，返回失败可重试（fail-closed）。
+	// US-1 上游 manifests 摘要驱动才实际掉挂载）。reload 失败 / 返回 unchanged / 未真正摘除模块 →
+	// 锁写回 + 再 reload 回旧代——模块仍挂载，且此时 sidecar/modules.json/版本目录均未删（下面才删），
+	// 故锁写回即**一致回滚**，不残留半卸状态，返回失败可重试（fail-closed）。
 	if (input.reload !== undefined) {
+		let r: ReloadResult;
 		try {
-			await input.reload.reloadConfig();
+			r = await input.reload.reloadConfig();
 		}
 		catch (e) {
 			try {
@@ -231,6 +248,26 @@ export async function runUninstall(input: UninstallInput): Promise<UninstallResu
 			}
 			audit(false, `reload 失败，已回写锁并恢复旧代：${String(e)}`);
 			return { ok: false, message: `卸载失败：reload 失败（${String(e)}）——已回写锁恢复旧代（模块仍挂载、元数据未删），请稍后重试` };
+		}
+		// 卸载空转回归守卫（§2.7）：reload 须真实摘除模块——unchanged 即「锁摘了但装配没掉挂载」，
+		// 正是本 PR 修复的回归；api 模块还须 applied 含 -name@ver（web-only 无 api 段，oj 不产模块条目，仅校验 unchanged）。
+		const hasApi = await uninstallHasApi(name, version, input.sharedRoot);
+		const a = assertReloadApplied(r, { hasApi, kind: "uninstall", name, version });
+		if (!a.ok) {
+			try {
+				await writeLock(input.lockPath, lock);
+			}
+			catch {
+				// 锁写回失败不掩盖 reload 断言失败终态
+			}
+			try {
+				await input.reload.reloadConfig();
+			}
+			catch {
+				// 回滚 reload 也失败：模块仍按原锁挂载，下次卸载重试
+			}
+			audit(false, `reload 未真正摘除模块，已回写锁并恢复旧代：${a.message}`);
+			return { ok: false, message: `卸载失败：${a.message}——已回写锁恢复旧代（模块仍挂载、元数据未删），请稍后重试` };
 		}
 	}
 

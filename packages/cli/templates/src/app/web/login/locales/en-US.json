@@ -30,6 +30,7 @@
 		"sso.action": "Sign in with SSO",
 		"wecom": "WeCom",
 		"wecom.action": "Sign in with WeCom",
+		"wecomPending": "WeCom login will be available in a later stage",
 		"wecom.hint": "Enter the enterprise code (corp_id, visible in the WeCom console), or use the dedicated sign-in link from your admin",
 		"wecom.agent": "App ID (agentid)",
 		"wecom.agentHint": "Leave empty if the corp has a single app; otherwise use the agentid provided by your admin",

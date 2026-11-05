@@ -257,6 +257,23 @@ function sha256Of(env: MarketEnv): (data: Uint8Array) => string {
 	return env.sha256Hex ?? ((data: Uint8Array) => g.crypto!.sha256Hex!(data));
 }
 
+/**
+ * 宿主能力集（P0 §3.9 / §2.3）：从 ojInfo().build.capabilities 读取（v0.1.122 增量能力位闭集：
+ * reload.assemble_modules / reload.anon_per_reload / reload.cron_survives）。注入安装上下文后，
+ * preflight 据 manifest.requiresCapabilities 做写锁前门禁——宿主缺能力即 fail-closed（零痕迹）。
+ * ojInfo 不可用时回落空数组（等同未上报 → 若模板声明了 requiresCapabilities 则拒装）。
+ */
+function capabilitiesOf(): string[] {
+	try {
+		const info = (globalThis as { ojInfo?: () => any }).ojInfo?.();
+		const caps = info?.build?.capabilities;
+		return Array.isArray(caps) ? caps : [];
+	}
+	catch {
+		return [];
+	}
+}
+
 /** CDN 基址：注入面优先，缺省读设置表（值/缺省值俱空 = 未配置；表异常视同未配置，消费端给可读错误） */
 async function cdnBaseOf(env: MarketEnv): Promise<string | null> {
 	if (env.cdnBase) {
@@ -794,6 +811,8 @@ async function installBody(env: MarketEnv): Promise<{ task_id: string }> {
 			hostVersions: await hostVersionsOf(env),
 			// 宿主平台编排面 API 版本（C2-11 peerPlatform 比对真源；与 meta 端点 apiVersion、_platform/manifest.yaml 版本同源，手工同步）
 			hostApiVersion: API_VERSION,
+			// 宿主能力集（P0 §3.9）：ojInfo().build.capabilities，preflight 的 requiresCapabilities 门禁据此生效
+			capabilities: capabilitiesOf(),
 			trustPath: env.trustPath,
 			registryId: env.registryId,
 			cancel: () => {

@@ -10,9 +10,10 @@ async function get() {
 }
 get.response = {
 	type: "object",
-	required: ["methods"],
+	required: ["methods", "site_title"],
 	properties: {
 		methods: { type: "array", items: { type: "string" } },
+		site_title: { type: "string" },
 	},
 };
 

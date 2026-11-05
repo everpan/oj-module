@@ -207,9 +207,15 @@ function bundleExec(): ExecFace {
 	};
 }
 
-const reloadStub: ReloadFace = {
-	reloadConfig: async () => ({ generation: 1, unchanged: false, applied: ["vars"], restart_pending: [], kept_listener: [] }),
-};
+// reload 桩：按被安装版本产出 applied 模块符号（+name@ver，v0.1.122 双符号契约），
+// 供 reloadAndAssert 终态校验（R18）。默认 0.1.0 覆盖绝大多数用例；跨片索引用例（REG-CS5）
+// 安装 1.0.2499 / 1.0.0，须按实装版本注入对应桩，否则符号不匹配 → reloading 段判 partial。
+function reloadStubFor(version: string): ReloadFace {
+	return {
+		reloadConfig: async () => ({ generation: 1, unchanged: false, applied: [`+demo-solution@${version}`], restart_pending: [], kept_listener: [] }),
+	};
+}
+const reloadStub: ReloadFace = reloadStubFor("0.1.0");
 
 function makeEnv(overrides: Partial<MarketEnv> = {}): MarketEnv {
 	return {
@@ -1192,7 +1198,7 @@ describe("REG-CS5 三级索引（装箱分片 + 条件请求 + DIP 读取源 + �
 	}
 
 	it("BDD① 装箱分片：2500 版本跨 3 片，latest 安装只拉最高片（≤ 1 catalog + 1 shard）→ done", async () => {
-		const api = createMarketApi(makeEnv({ fetch: bigIndexFetch() }));
+		const api = createMarketApi(makeEnv({ fetch: bigIndexFetch(), reload: reloadStubFor("1.0.2499") }));
 		fetchCalls.length = 0;
 		g.http = { user: { id: 1 }, body: { name: "demo-solution", version: null, source: "cdn" } };
 		await api.install.post();
@@ -1210,7 +1216,7 @@ describe("REG-CS5 三级索引（装箱分片 + 条件请求 + DIP 读取源 + �
 	});
 
 	it("BDD① 回落低片：显式指定最低版本 → 先试最高片未中，逐片回落到 1 号片命中 → done", async () => {
-		const api = createMarketApi(makeEnv({ fetch: bigIndexFetch() }));
+		const api = createMarketApi(makeEnv({ fetch: bigIndexFetch(), reload: reloadStubFor("1.0.0") }));
 		fetchCalls.length = 0;
 		g.http = { user: { id: 1 }, body: { name: "demo-solution", version: "1.0.0", source: "cdn" } };
 		await api.install.post();

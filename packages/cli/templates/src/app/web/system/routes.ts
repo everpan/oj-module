@@ -12,7 +12,6 @@ const Departments = lazy(() => import("./pages/departments"));
 const Roles = lazy(() => import("./pages/roles"));
 const Oplog = lazy(() => import("./pages/oplog"));
 const Settings = lazy(() => import("./pages/settings"));
-const LoginMethods = lazy(() => import("./pages/login-methods"));
 const WecomAdmin = lazy(() => import("./pages/wecom"));
 
 /**
@@ -75,11 +74,6 @@ export const routes: AppRouteRecordRaw[] = [
 				path: "/system/settings",
 				Component: Settings,
 				handle: { title: "system:menu.settings", roles: ["superadmin"] },
-			},
-			{
-				path: "/system/login-methods",
-				Component: LoginMethods,
-				handle: { title: "system:menu.loginMethods" },
 			},
 			{
 				// 企微代开发后台（服务商运营面）：仅超管可见（路由级 roles + 页面内二次判定）

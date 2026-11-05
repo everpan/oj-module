@@ -84,7 +84,9 @@ export interface SolutionRouteRow {
 }
 
 export interface LoginMethods {
-	methods: Array<"local" | "ldap" | "sso">
+	methods: Array<"local" | "ldap" | "sso" | "wecom">
+	/** 站点标题（framework.site_title），登录页匿名设置浏览器标签 */
+	site_title: string
 }
 
 /** 操作日志写端入参（POST /api/system/oplog；module 为调用方自身模块名）。脱敏红线：detail 不得含口令/密钥/token。 */

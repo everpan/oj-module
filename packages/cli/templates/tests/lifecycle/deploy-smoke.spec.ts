@@ -267,19 +267,19 @@ describe("reloadAndAssert（stage=reloading：R18 unchanged=失败）", () => {
 				? async () => {
 					throw new Error("server.reloadConfig: reload in progress (busy)");
 				}
-				: async () => result ?? { generation: 8, unchanged: false, applied: ["vars"], restart_pending: [], kept_listener: [] },
+				: async () => result ?? { generation: 8, unchanged: false, applied: ["+demo-solution@0.1.0"], restart_pending: [], kept_listener: [] },
 		};
 		return { manifest: solManifest(), name: "demo-solution", version: "0.1.0", state: stateStore(), reload: face };
 	}
 
-	it("成功：applied 含 vars（缺省 expected）→ ok=true，message 含 generation", async () => {
+	it("成功：applied 含 +name@ver（api 模块装配）→ ok=true，message 含 generation", async () => {
 		const r = await reloadAndAssert(rlCtx());
 		expect(r.stage).toBe("reloading");
 		expect(r.ok).toBe(true);
 		expect(r.message).toContain("8");
 	});
 
-	it("unchanged → ok=false（R18：幂等回显 = config 改写未生效）", async () => {
+	it("unchanged → ok=false（R18：幂等回显 = 锁变更未触发装配）", async () => {
 		const r = await reloadAndAssert(rlCtx({ generation: 7, unchanged: true, applied: [] }));
 		expect(r.ok).toBe(false);
 		expect(r.message).toContain("unchanged");
@@ -292,10 +292,10 @@ describe("reloadAndAssert（stage=reloading：R18 unchanged=失败）", () => {
 		expect(r.message).toContain("busy");
 	});
 
-	it("expected 段键未生效：applied 缺 vars → ok=false（R18 以实际生效值断言）", async () => {
-		const r = await reloadAndAssert({ ...rlCtx({ generation: 8, unchanged: false, applied: ["mounts"], restart_pending: [], kept_listener: [] }), expected: ["mounts", "vars"] });
+	it("模块符号缺失：applied 不含 +name@ver → ok=false（R18/§2.7 卸载空转回归拦截点）", async () => {
+		const r = await reloadAndAssert(rlCtx({ generation: 8, unchanged: false, applied: ["mounts"], restart_pending: [], kept_listener: [] }));
 		expect(r.ok).toBe(false);
-		expect(r.message).toContain("vars");
+		expect(r.message).toContain("demo-solution@0.1.0");
 	});
 
 	it("返回形状违约（applied 非数组）→ ok=false retryable=false", async () => {

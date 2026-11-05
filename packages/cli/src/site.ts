@@ -43,6 +43,8 @@ export interface TaskRecord {
 	appliedSeq?: number
 	startedAt: number
 	finishedAt?: number
+	/** 无守护形态部分生效：冻结段（auth/vars）热改属 restart_pending，需宿主重启才完全生效 */
+	restartRequired?: boolean
 }
 
 /** 模板 serve 缺省端口（templates/config.yaml server.port: 9778；host 显式钉 127.0.0.1） */
