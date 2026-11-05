@@ -103,8 +103,8 @@ export interface TaskRecord {
 	/** 0-100 整体进度（按 STAGES 表完成数折算） */
 	progress: number
 	message: string
-	/** 各 stage 明细日志（UI 详情日志区数据源） */
-	stages: { stage: InstallStage, ok: boolean, message: string }[]
+	/** 各 stage 明细日志（UI 详情日志区数据源；补偿子步形如 `compensate.<step>`，故 stage 为 string 而非窄类型 InstallStage） */
+	stages: { stage: string, ok: boolean, message: string }[]
 	/** 失败/partial 终态：reason + retryable + 指引文案 key（契约附录 A） */
 	error?: { reason: string, retryable: boolean, hintKey?: string }
 	/** needs_trust 终态：待确认的发布方 key（POST /market/trust {task_id} 消费；指纹供人确认） */
