@@ -15,9 +15,11 @@
 - **安装**：同时改 `config.yaml`（追加 anon、bump `ojm_install_seq`）+ `manifests.yaml`（锁加条目）。
 - **卸载**：**只改 `manifests.yaml`（摘锁），`config.yaml` 一字不动**。
 
+> **锁在哪（务必对齐）**：`manifests.yaml` 不是 dev 树 `src/`、也不是前端树 `dist/web`，而是 **`oj serve` 的 served 布局 `dist/api/manifests.yaml`**——这是 server 装配模块的真源。build 期 `migrate.ts` 把 `src/<name>/{api,web}` 物化进 `dist/api` 与 `dist/web`，并写出这份锁（oj 以「目录含 `manifests.yaml`」判 `is_release`）；版本目录 `dist/api/<name>-<ver>/`、`versions.json` 同根。`config.yaml` 在 jail 根（vars `ojm_install_seq` 自增），前端产物在另根 `dist/web/modules` + `dist/web/modules.json`。安装/卸载在部署后**运行时**改的正是 served 树里这份锁。
+
 若 reload 的变化检测只看 `config.yaml`，卸载时 `config` 未变 → `unchanged=true` → 不重装装配 → 模块仍挂载（**卸载空转**）。故方案核心只有一条：
 
-> **`_system/config/reload` 必须同时以 `manifests.yaml`（锁）为变化检测与重装对象，并据此重装 module pipeline + 重编译 anon 表；cron 不被 reload 拆掉。**
+> **`_system/config/reload` 必须同时以 served 布局的 `manifests.yaml`（`dist/api/manifests.yaml`，oj 装配真源）为变化检测与重装对象，并据此重装 module pipeline + 重编译 anon 表；cron 不被 reload 拆掉。**（注意：扫描的是 `oj serve` 实际读取的 served 形态，不是 `src/` 或 build 中间产物——否则运行时改锁 reload 仍读旧，卸载空转无解。）
 
 满足此条后，安装/卸载只需在落盘后调用一次 reload，绝大多数场景 PID 不变、亚秒级生效。
 
@@ -25,6 +27,7 @@
 
 ### 2.1 reload 覆盖 manifests 装配（原 US-1 实质）
 
+- **锁的物理位置（与 §1 对齐）**：reload 必须重扫的是 `oj serve` 实际读取的 served 布局 **`dist/api/manifests.yaml`**（版本目录 `dist/api/<name>-<ver>/`、`versions.json` 同根），不是 dev `src/` 也不是前端 `dist/web/modules`。装/卸在运行时改的正是这份 served 锁，故只有扫描 served 形态才能感知变化；扫错路径则 reload 永远读旧锁，「卸载空转」无解。
 - reload 的变化检测与重装范围必须包含 `manifests.yaml`（锁）：锁增删模块即产生新 `generation` 并触发装配 → 解决「卸载空转」。
 - 每次 reload 重建 `AppState.pipeline` 时从 manifests 重装 module 集合；响应 `applied` 须报告本次变化的模块（`+name@ver` / `-name@ver`），供模板侧 `reloadAndAssert` 断言（期望 `applied` 含 `modules`）。
 - `unchanged` 语义：manifests 或 config 任一变化即 `unchanged=false`；*两者均未变*才 `true`（模板侧据此判 reload 真生效，见 §5）。
