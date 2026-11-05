@@ -35,6 +35,11 @@ export const routes: AppRouteRecordRaw[] = [
 				handle: {
 					title: "home:menu.home",
 					icon: createElement(HomeOutlined),
+					// 首页是 /home 根的 index 子路由，运行时匹配到的叶子路由 id 为 `/home/`（带尾斜杠），
+					// 而菜单项 key 是父级 `/home`，selectedKeys 取叶子 id 导致高亮对不上——
+					// 复刻 react-antd-admin 时「首页」菜单项不亮。用 currentActiveMenu 显式声明高亮 /home
+					// （框架既定机制：页面指定高亮哪个菜单），对齐 playground / react-antd-admin 的选中态。
+					currentActiveMenu: "/home",
 				},
 			},
 		],
