@@ -28,14 +28,16 @@
 ### 2.1 reload 覆盖 manifests 装配（原 US-1 实质）
 
 - **锁的物理位置（与 §1 对齐）**：reload 必须重扫的是 `oj serve` 实际读取的 served 布局 **`dist/api/manifests.yaml`**（版本目录 `dist/api/<name>-<ver>/`、`versions.json` 同根），不是 dev `src/` 也不是前端 `dist/web/modules`。装/卸在运行时改的正是这份 served 锁，故只有扫描 served 形态才能感知变化；扫错路径则 reload 永远读旧锁，「卸载空转」无解。
-- reload 的变化检测与重装范围必须包含 `manifests.yaml`（锁）：锁增删模块即产生新 `generation` 并触发装配 → 解决「卸载空转」。
-- 每次 reload 重建 `AppState.pipeline` 时从 manifests 重装 module 集合；响应 `applied` 须报告本次变化的模块（`+name@ver` / `-name@ver`），供模板侧 `reloadAndAssert` 断言（期望 `applied` 含 `modules`）。
-- `unchanged` 语义：manifests 或 config 任一变化即 `unchanged=false`；*两者均未变*才 `true`（模板侧据此判 reload 真生效，见 §5）。
+- **变化检测短路是唯一缺口（核心改动小）**：`do_reload` → `App::from_config` 本就会重读 `manifests.yaml` 重建路由表，故「路由重装」几乎免费；真正缺口在变化检测——sha 只算 `config.yaml`，卸载只改锁 → `unchanged=true` → 根本走不到装配。安装今天其实能装上（config 被改），但 `applied` 报的是 config 段名而非模块名 → 模板侧 `reloadAndAssert` 必败。故核心改动 = sha 纳入锁文件 + 锁 diff 进 `applied`（见 §2.7 双符号格式）。
+- **暗礁一：StableState.modules / SchemaRegistry 冻结（提案原低估的工作量）**：Backend 复用路径下，`modules` map（`ModuleCtx`：http.module、deps 守卫、db 绑定重定向）与 `SchemaRegistry`（表白名单，SQL 红线的来源）都是启动期冻结的 `Arc`。只重建路由表会让热装模块「路由通但上下文全丢」——deps 守卫不设防、表白名单没它的表。修法：将这两个字段收进**单一 `ArcSwap<AssemblyState>`**（modules + schema 打包），每代原子换表，复用现有装配函数按新锁重建；**不要对两字段各做一次 swap**（否则在途请求可能在两次 swap 之间读到「新 modules + 旧 schema」，对刚装模块的表做白名单外 SQL）。不重建 Backend、不二次 init 插件、不触 `Arc::get_mut` 红线；deps 守卫与 db 重定向随 `AssemblyState` 同步失效/重定向，uninstall 后依赖方须同步失活。
+- 每次 reload 重建 `AppState.pipeline` 时从 manifests 重装 module 集合；`applied` 须按 §2.7 双符号格式报告本次变化模块（`+name@ver` / `-name@ver`），供模板侧 `reloadAndAssert` 分符号断言。
+- `unchanged` 语义：manifests 或 config 任一变化即 `unchanged=false`；*两者均未变*才 `true`（模板侧据此判 reload 真生效，见 §2.7 / §5）。
 - 不引入额外 HTTP `scope` 参数（少一个对外契约面）。
 
 ### 2.2 reload 重编译匿名表（原 US-2 实质，路线 C）
 
 - 每次 reload 重建 `pipeline` 时，由 `auth.anonymous_paths` + `tenant.anonymous_paths` **重编译** `anon:Matcher`（不依赖「每代单独存表」）。
+- 匹配实现直接复用 serve 已有的同语义 `path_matches`（不另写一套匹配逻辑），仅把「matcher 源」从插件 init 期固化的 `OnceLock<Guard>` 改为每代重编译——**不动插件 ABI**（这正是提案选路线 C 而非改 anon 表的根本原因，也对应上游「oj-auth anon 表进程级冻结」暗礁二）。
 - `admit()` 在 `guard.verify` **之前**短路：命中 `anon` 即跳过验签。
 - 匹配按 `ModuleEntry.prefix` 计算（可与模块名不同、可多段），不按「首段 = 模块名」。
 - 保留段黑名单：`_platform` / `_system` / `auth` / `_lifecycle` 下的新增匿名条目一律拒装（模板侧 preflight 已挡声明，上游 dispatch 亦须 honor，双保险）。
@@ -54,14 +56,16 @@
 - 不放 market meta（那是模板版本，回答不了宿主能力）；不做反向门禁（老模板不可变，靠 oj 保持老语义）。
 - 老 oj（无 `capabilities` 或不含 `reload.assemble_modules`）视为能力缺失 → 模板侧 fail-closed（声明了 requiresCapabilities 即拒），避免「静默卸载空转」。
 
-### 2.4 cron 独立 OS 线程（US-3，不可省边界）
+### 2.4 cron 存活校验（US-3，先验证不重建）
 
-cron 驱动改独立 OS 线程 + current_thread runtime（同 `TaskPool` worker），生命周期随进程而非随 reload 的临时 rt——否则「装完 cron 生效」是假的。
+**降级为验证优先**：现有 `do_reload` 已是「新池先建、旧池后停、SIGTERM flag 指针换代」，cron 大概率已随 reload 存活，**不急着改造**。但 US-3 不可省为空——它须作为**硬验收闸口**（见 §5 验收 7），证明 reload 后 cron 真活着，否则「装完 cron 生效」是假象。仅当验收 7 实测失守才进入重建路径。
 
-- 旧池停机加超时（保 N-1 代，超时记 warn），避免卡死 worker 挂死整次 reload。
-- commit 与 `current_sha` / tasking 落定顺序调整为「tasking 就绪 → commit → current_sha」，消除 SIGTERM 停不到新池的窗口。
+重建路径（仅在验收 7 失守时启用，不默认实施）：cron 驱动改独立 OS 线程 + current_thread runtime（同 `TaskPool` worker），生命周期随进程而非随 reload 的临时 rt。
 
-> 此条与「是否调用 reload」正交：无论 reload 怎么实现，只要它重建事件循环/cron 池，cron 就会静默停摆。故 US-3 不能折叠进 reload，必须单列。
+- **双红线（验收 7 须同时守住）**：① reload 触发后原 cron **仍触发**（约 5 分钟后）；② **不双发**——旧池 `SIGTERM` flag 须真取消旧任务，否则新旧池短暂并存会把同一任务 fire 两次。
+- 若需重建：旧池停机加超时（保 N-1 代，超时记 warn），避免卡死 worker 挂死整次 reload；commit 与 `current_sha` / tasking 落定顺序调整为「tasking 就绪 → commit → current_sha」，消除 SIGTERM 停不到新池的窗口。
+
+> 此条与「是否调用 reload」正交：无论 reload 怎么实现，只要它重建事件循环/cron 池，cron 就会静默停摆**或双发**。故 US-3 不能折叠进 reload，必须单列为验收闸口。
 
 ### 2.5 启动自检降级（US-4，不可省边界）
 
@@ -77,6 +81,17 @@ reload 返回的 `restart_pending` 非空（触及特权面 / 插件 ABI / `serv
 - **T1 无守护 / T3 外部管理器**：提示人工或外层 `Restart=always` 重启 `oj serve`。
 - **T2 有壳 `oj supervise`**：worker 调 `POST /_system/restart` 自动换进程，续跑 smoke → done（纯壳 supervisor 为独立提案，不在本 PR）。
 
+### 2.7 契约细节：applied 双符号格式 + unchanged 语义
+
+（供模板侧 `reloadAndAssert` 与上游对齐，避免格式对不上导致验收假绿）
+
+- `applied` 为变化模块列表，每条 **必须带 op 符号** 且可解析为 `(op, name, ver)`：
+  - 安装生效：`+name@ver`
+  - 卸载生效：`-name@ver`
+- 模板侧 `reloadAndAssert` 据此**分符号断言**：安装期望集合含 `+name@ver`；卸载期望集合含 `-name@ver`；两者都要求 `applied` **真包含该条目**，而非泛泛「`applied ⊇ modules`」字符串包含。
+- `unchanged` 语义：`manifests` 或 `config` 任一变化即 `false`；*两者均未变*才 `true`。要求 `unchanged===false` 仅在我们「刚做了确有变更的安装/卸载」时成立；纯 no-op reload 应允许 `unchanged=true` 且 `applied` 为空（模板不得据此误判失败）。
+- 此契约是「卸载空转」回归的唯一拦截点，无论实现走原方案还是本简化方案都必须保留。
+
 ## 3. 三轨形态与判定（不变）
 
 | 轨 | 形态 | 安装结果 |
@@ -89,7 +104,7 @@ reload 返回的 `restart_pending` 非空（触及特权面 / 插件 ABI / `serv
 
 ## 4. 范围与排除
 
-- **本 PR 包含**：`_system/config/reload` 覆盖 manifests 装配（§2.1）+ 重编译 anon（§2.2）+ `ojInfo().capabilities`（§2.3）+ cron 独立线程（§2.4）+ 启动降级（§2.5）。
+- **本 PR 包含**：`_system/config/reload` 覆盖 manifests 装配（§2.1，含暗礁一 ArcSwap）+ 重编译 anon（§2.2）+ `ojInfo().capabilities`（§2.3）+ cron 存活校验（§2.4，先验证不重建）+ 启动降级（§2.5）+ applied/unchanged 契约（§2.7）。
 - **本 PR 不含**：P4 纯壳 `oj supervise`（换进程路径，独立提案）；WS 主动断开（P1）；seed 随装（P3）；cron 随装（后续项）。
 - **不做**：文件监听驱动重扫；全量 seed 重放；补跑空窗内错过 cron 触发；反向兼容门禁（新 oj + 老模板靠 oj 保持老语义）。
 
@@ -99,12 +114,12 @@ reload 返回的 `restart_pending` 非空（触及特权面 / 插件 ABI / `serv
 
 | 上游项 | 真机复测验收 | 本仓已落桩 |
 |---|---|---|
-| §2.1 reload 覆盖 manifests | 验收 1（generation+1）、3（卸载顺序真源，解卸载空转）、16（capabilities 缺失写锁前失败生效） | preflight 门禁读端 + `reloadAndAssert`（`unchanged===false` 且 `applied⊇modules`） |
+| §2.1 reload 覆盖 manifests | 验收 1（generation+1）、3（卸载顺序真源，解卸载空转）、16（capabilities 缺失写锁前失败生效） | preflight 门禁读端 + `reloadAndAssert`（§2.7：`unchanged===false` 且 `applied` 含 `+name@ver`/`-name@ver`） |
 | §2.2 reload 重编译 anon | 验收 2（匿名 200 真生效） | 无守护 partial 判定已就位 |
-| §2.4 cron 独立线程 | 验收 7（reload 触发 5 分钟后原 cron 仍触发） | — |
+| §2.4 cron 存活校验 | 验收 7（reload 后原 cron 仍触发 + 不双发：旧池 SIGTERM 须取消旧任务） | — |
 | §2.5 启动降级 | 验收 5（缺目录跳过、启动降级） | uninstall reload 失败回滚编排 |
 
-> 关键安全网：`reloadAndAssert` 断言 `unchanged===false` 且 `applied` 含 `modules`，是把「reload 是否真的重装了模块」变成可观测、可 fail 的契约——无论采用原方案还是本简化方案都必须保留，它是「卸载空转」回归的唯一拦截点。
+> 关键安全网：`reloadAndAssert` 按 §2.7 **双符号**断言 `unchanged===false` 且 `applied` 含 `+name@ver`（装）/ `-name@ver`（卸），是把「reload 是否真的重装了模块」变成可观测、可 fail 的契约——无论采用原方案还是本简化方案都必须保留，它是「卸载空转」回归的唯一拦截点。
 
 > 提交上游后，本仓计划书「US-1~US-4 阻塞跟踪」状态可更新为「已提交 PR #xxx」，真机复测通过后再标记验收项绿。
 
@@ -121,7 +136,7 @@ sequenceDiagram
     participant API as oj server (_system/config/reload)
     participant RL as reload 重装装配 (R1/R2)
     participant ANON as 匿名 dispatch 短路 (R3)
-    participant CRON as cron (独立 OS 线程) (US-3)
+    participant CRON as cron 存活校验 (US-3)
     participant CL as 请求方
 
     Note over T,CL: 锁后 reloading 段：装配生效主路（PID 不变）
@@ -130,7 +145,7 @@ sequenceDiagram
     RL->>RL: 锁变更即重装 module pipeline，generation+1
     RL->>ANON: 重编译 anon:Matcher (auth + tenant anonymous_paths)
     ANON->>ANON: admit() 在 guard.verify 前短路命中 anon
-    API->>CRON: reload 不拆 cron 池，旧池停机+超时，新池独立线程保活
+    API->>CRON: reload 须保活 cron 池（新池先建旧池后停，SIGTERM 取消旧任务防双发）
     API-->>T: 返回 generation+1、applied 含 modules、restart_pending 列表
     alt restart_pending 为空
         T->>T: 任务 done (热装载覆盖部分已生效)
