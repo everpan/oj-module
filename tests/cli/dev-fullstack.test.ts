@@ -471,6 +471,28 @@ describe("devServer 全栈接线", () => {
 
 		await stopServer(server);
 	});
+
+	it("server.close() 摘除进程级 handler：同进程多次 devServer 不累积监听器", async () => {
+		const { root, port } = makeFixture("frontend");
+		const baseline = {
+			sigint: process.listenerCount("SIGINT"),
+			sigterm: process.listenerCount("SIGTERM"),
+			exit: process.listenerCount("exit"),
+		};
+		// 连开三次：每次关闭后进程级 SIGINT/SIGTERM/exit 监听数必须回到基线，
+		// 否则守卫测试跑到第 11 个实例会触发 MaxListenersExceededWarning。
+		for (let i = 0; i < 3; i++) {
+			const server = await devServer(root, {
+				port,
+				shellDist: path.join(root, "shell-dist"),
+				buildModulesFn: async () => {},
+			});
+			await stopServer(server);
+			expect(process.listenerCount("SIGINT")).toBe(baseline.sigint);
+			expect(process.listenerCount("SIGTERM")).toBe(baseline.sigterm);
+			expect(process.listenerCount("exit")).toBe(baseline.exit);
+		}
+	});
 });
 
 describe("shutdownDev（前端终止 → 后端 oj 随之消亡）", () => {

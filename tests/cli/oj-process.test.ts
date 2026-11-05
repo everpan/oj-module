@@ -191,10 +191,19 @@ describe.skipIf(process.platform === "win32")("startOj 子进程编排", () => {
 	it("秒退 → ready 拒绝且 stderr 尾部在错误信息里", async () => {
 		const { root, configPath } = makeFixture("exit");
 		process.env.STUB_OJ_MODE = "exit";
-		const proc = startOj(configPath, "/api", path.join(root, "api/src"), { intervalMs: 20, timeoutMs: 3000 });
-		await expect(proc.ready).rejects.toThrowError(/boom-fatal/);
-		await proc.stop();
-		delete process.env.STUB_OJ_MODE;
+		// 桩刻意往 stderr 打一条假 FATAL 以验证透传 + 人话报错。它经 startOj 的
+		// process.stderr 透传会原样落到终端，被误读成真实「certificate not found」故障；
+		// 这里只在本用例内抑制外泄（生产透传行为不变），stderrTail 仍在错误信息里被断言。
+		const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+		try {
+			const proc = startOj(configPath, "/api", path.join(root, "api/src"), { intervalMs: 20, timeoutMs: 3000 });
+			await expect(proc.ready).rejects.toThrowError(/boom-fatal/);
+			await proc.stop();
+		}
+		finally {
+			stderrSpy.mockRestore();
+			delete process.env.STUB_OJ_MODE;
+		}
 	});
 
 	it("永不监听 → 注入超时后 ready 拒绝且报错提到健康检查超时", async () => {

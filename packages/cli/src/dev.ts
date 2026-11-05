@@ -230,12 +230,6 @@ export async function devServer(projectRoot: string, opts: DevOptions = {}): Pro
 		proxyWsUpgrade(ojTarget)(req, socket, head);
 	});
 
-	// 退出回收：server 关闭 → SSE 通道 + oj 子进程一并回收
-	server.on("close", () => {
-		hub.close();
-		void oj?.stop();
-	});
-
 	// 终端 Ctrl+C / `kill`（SIGINT / SIGTERM）终止 dev 进程时，后端 oj 必须随之消亡：
 	// 起一个统一优雅停机，先停 oj 再退出；并打印后端终止信息。
 	// 终端 Ctrl-C 是进程组信号：外层 bin 转发一份 + 组送达一份，内层会收到
@@ -249,13 +243,24 @@ export async function devServer(projectRoot: string, opts: DevOptions = {}): Pro
 		shuttingDown = true;
 		void shutdownDev(server, oj, hub);
 	};
-	process.on("SIGINT", shutdown);
-	process.on("SIGTERM", shutdown);
-
 	// 兜底：dev 进程以任何非优雅路径退出（未走 SIGINT/SIGTERM，如未捕获异常）时，
 	// 同步强杀 oj，确保它不孤儿化继续占端口（shutdownDev 已停则 kill 为 no-op）。
-	process.once("exit", () => {
+	const killOjOnExit = () => {
 		oj?.kill?.();
+	};
+	process.on("SIGINT", shutdown);
+	process.on("SIGTERM", shutdown);
+	process.once("exit", killOjOnExit);
+
+	// 退出回收：server 关闭 → SSE 通道 + oj 子进程一并回收，并摘除本实例注册的
+	// 进程级信号/exit handler。devServer 可在同一进程被多次调用（编程式 / 测试），
+	// 不摘除会累积闭包、触发 MaxListenersExceededWarning（与 preview 的 stop 同款）。
+	server.on("close", () => {
+		hub.close();
+		void oj?.stop();
+		process.removeListener("SIGINT", shutdown);
+		process.removeListener("SIGTERM", shutdown);
+		process.removeListener("exit", killOjOnExit);
 	});
 
 	// 端口被占用时自动顺延，避免 `EADDRINUSE` 直接让 `pnpm dev` 以非零码退出
