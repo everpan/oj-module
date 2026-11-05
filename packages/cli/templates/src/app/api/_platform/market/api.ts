@@ -65,7 +65,7 @@ export interface MarketEnv {
 	modulesJsonPath: string
 	/** API 前缀（smoke 探针 URL 前缀） */
 	apiPrefix: string
-	/** 站点 config.yaml 路径（reloading 段 vars.ojm_install_seq 自增落盘处；缺省 config.yaml） */
+	/** 站点 config.yaml 路径（reloading 段 anonymous_paths 接线落盘处；缺省 config.yaml） */
 	configPath?: string
 	/** canonical origin（REG-CS6：相对 URL 补全用，取自 config.yaml vars.canonical_origin，绝不读请求头 Host） */
 	canonicalOrigin?: string
@@ -237,13 +237,13 @@ function execOf(env: MarketEnv): ExecFace {
 
 function reloadOf(env: MarketEnv): ReloadFace {
 	const g = globalThis as { server?: { reloadConfig: ReloadFace["reloadConfig"] } };
-	// env 显式注入优先；其次平台 server.reloadConfig（生产 oj 提供）；均缺失（dev/test 无 server）
-	// 回落 no-op——等价于「不 reload」，保持卸载旧语义（reload 实际掉挂载依赖 US-1 上游 manifests
-	// 摘要驱动，未到位前回落 no-op 不阻断卸载主流程）。
+	// env 显式注入优先；其次平台 server.reloadConfig（生产 oj 提供，oj 0.1.123+ 支持 force 透传）；
+	// 均缺失（dev/test 无 server）回落 no-op——等价于「不 reload」，保持卸载旧语义（reload 实际掉
+	// 挂载依赖 US-1 上游 manifests 摘要驱动，未到位前回落 no-op 不阻断卸载主流程）；force 透传给宿主。
 	if (env.reload !== undefined)
 		return env.reload;
 	if (g.server?.reloadConfig !== undefined)
-		return { reloadConfig: () => g.server!.reloadConfig() };
+		return { reloadConfig: (force?: boolean) => g.server!.reloadConfig(force) };
 	return { reloadConfig: async () => ({ unchanged: true, applied: [], restart_pending: [] }) };
 }
 
@@ -719,6 +719,8 @@ async function installBody(env: MarketEnv): Promise<{ task_id: string }> {
 	if (name === "")
 		fail(400, "name is required");
 	const reqVersion = body.version == null || body.version === "" ? null : String(body.version);
+	// force 透传（oj 0.1.123+ reloadConfig(force)）：body.force 或 query.force=1 任一为真即强制重装配
+	const force = body.force === true || String((http as { query?: Record<string, unknown> }).query?.force ?? "") === "1";
 
 	let manifest: unknown;
 	let version: string;
@@ -814,6 +816,7 @@ async function installBody(env: MarketEnv): Promise<{ task_id: string }> {
 			// 宿主能力集（P0 §3.9）：ojInfo().build.capabilities，preflight 的 requiresCapabilities 门禁据此生效
 			capabilities: capabilitiesOf(),
 			trustPath: env.trustPath,
+			force,
 			registryId: env.registryId,
 			cancel: () => {
 				if (!cancelled) {
@@ -1371,7 +1374,7 @@ marketApi.install.post.schema = {
 	body: {
 		type: "object",
 		required: ["source", "name"],
-		properties: { source: { type: "string", enum: ["cdn", "file"] }, name: { type: "string" }, version: { type: ["string", "null"] } },
+		properties: { source: { type: "string", enum: ["cdn", "file"] }, name: { type: "string" }, version: { type: ["string", "null"] }, force: { type: "boolean" } },
 	},
 };
 marketApi.install.post.response = { type: "object", properties: { task_id: { type: "string" } }, additionalProperties: true };

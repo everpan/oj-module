@@ -50,8 +50,6 @@ db:
   default: 'sqlite://db.sqlite' # 相对 config 目录；缺文件自动建空库
 
 vars:
-  # ojm install 每次安装自增一次，用来触发 reload 热更。别删行、别手工回写旧值。
-  ojm_install_seq: 0
   # 站点对外地址。装方案时服务端拿它把 /cdn 这类相对地址补全成绝对 URL（深检探针也用它）。
   # 故意不读请求头 Host（防伪造 Host 牵引出站）：不配 = fail-closed，不会替你猜。
   # canonical_origin: "https://your-site.example.com"

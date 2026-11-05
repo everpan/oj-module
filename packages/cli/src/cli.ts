@@ -295,9 +295,9 @@ function makeAction(def: HelpEntry, projectRoot: string, lang: Lang, exit: (code
 					exit(EXIT_FAILURE);
 			};
 		case "install":
-			return async (target: string | undefined, opts: SiteOpts & { locale?: string, name?: string, version?: string, registry?: string } = {}) => {
+			return async (target: string | undefined, opts: SiteOpts & { locale?: string, name?: string, version?: string, registry?: string, force?: boolean } = {}) => {
 				const { installCommand } = await import("./install");
-				await installCommand(target ?? "", { siteUrl: opts.siteUrl, user: opts.user, pass: opts.pass, locale: opts.locale, name: opts.name, version: opts.version, registry: opts.registry });
+				await installCommand(target ?? "", { siteUrl: opts.siteUrl, user: opts.user, pass: opts.pass, locale: opts.locale, name: opts.name, version: opts.version, registry: opts.registry, force: opts.force });
 			};
 		case "list":
 			return async (opts: SiteOpts & { all?: boolean, json?: boolean } = {}) => {

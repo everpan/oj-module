@@ -18,7 +18,7 @@ import { installDb } from "../fixture";
 
 const g = globalThis as any;
 
-const BASE_CONFIG = "mounts: []\nserver:\n  reload_api: true\nvars:\n  ojm_install_seq: 0\nauth:\n  anonymous_paths:\n    - /auth/login\n    - /system/login-methods\n";
+const BASE_CONFIG = "mounts: []\nserver:\n  reload_api: true\nvars:\n  other: 1\nauth:\n  anonymous_paths:\n    - /auth/login\n    - /system/login-methods\n";
 
 function nodeFsFace() {
 	return {

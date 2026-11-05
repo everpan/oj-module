@@ -47,6 +47,12 @@ export interface InstallContext {
 	 * 跨方案碰撞仍由 apiSeg/route_prefix 首段占用兜住；缺省 false 保持 P1-5「同名拒装」钉面。
 	 */
 	reinstall?: boolean
+	/**
+	 * 强制热更（oj 0.1.123+ reloadConfig(force)）：绕过「unchanged=已是最新装配」幂等短路，
+	 * 强制触发一次重装配——运维显式重装配用，不依赖锁 diff / 文档 sha 变化。缺省 false。
+	 * 仅供 install 路径消费（reloading 段透传给 reload 面）；uninstall 恒严格（忽略 force）。
+	 */
+	force?: boolean
 }
 
 /** 阶段结果（全 stage 通用结构形状；stage 取值为各 step 自己的字面量，编排层以 StageDef.name 为准） */

@@ -8,9 +8,10 @@
 //   冻结/特权段**如实归入 restart_pending**——旧版把 vars 静默误标进 applied 已修正。
 // 并发撞锁 → 抛 `reload in progress (busy)`（409）；归一/装配失败 → 抛 HTTP 400；交接中断 / cron
 // 拉起失败 → 抛 500（old task pool did not stop within 10s 等，新代任务就地收场）。
-// 终态断言（R18 / §2.7）：unchanged = 锁变更未实际触发装配 → 判失败（卸载空转/安装未挂载回归，重试
-// 不自愈）；applied 须含预期模块符号（装 +name@ver / 卸 -name@ver）。web-only（无 api 段）oj 不产
-// 模块条目，符号不强制，仅校验 unchanged=false（锁变更已被探测）。reload 面经 ctx 注入（DIP）。
+// 终态断言（R18 修订 / §2.7）：安装路径 unchanged=true = 已是最新装配 = 幂等成功（不再判失败）；
+// 卸载 unchanged=true = 空转回归仍判失败。applied 符号：卸载强制 -name@ver；安装默认不强制
+// +name@ver（smoke 段行为化校验挂载是否真通——探活拿到 200 即证模块已装配）。force 透传
+// （v0.1.123）要求 reload 实际重跑（unchanged=false），否则判失败。reload 面经 ctx 注入（DIP）。
 
 import type { InstallContext } from "./preflight";
 
@@ -24,7 +25,8 @@ export interface ReloadResult {
 }
 
 export interface ReloadFace {
-	reloadConfig: () => Promise<ReloadResult>
+	/** oj 0.1.123+ 支持 reloadConfig(force)：force=true 强制重装配，绕过 unchanged 幂等短路 */
+	reloadConfig: (force?: boolean) => Promise<ReloadResult>
 }
 
 export interface ReloadContext extends InstallContext {
@@ -64,16 +66,20 @@ export function moduleSymbolOf(name: string, version: string, kind: "install" | 
 }
 
 /**
- * reload 终态断言（R18 / §2.7）：
+ * reload 终态断言（R18 修订 / §2.7）：
  * - 形状违约（非对象 / applied 非数组 / unchanged 非布尔）→ 失败。
- * - unchanged=true（config 与 manifests 锁双双未变）→ 失败：锁变更未实际触发装配，正是「卸载空转 /
- *   安装未挂载」回归的签名，重试不自愈；提示宿主须开启 reload_api 且 oj ≥ v0.1.122。
- * - 模块符号（装 +name@ver / 卸 -name@ver）：仅当 hasApi 为真时强制——web-only 方案 oj 不产模块
- *   条目，符号空缺属正常，此时只依赖 unchanged=false 守卫。
- * - 附加段键（ctx.expected，如 mounts/tenant/tasks）逐一 ∈ applied。
+ * - unchanged=true（config 与 manifests 锁双双未变）：
+ *     · 卸载（kind=uninstall）→ 失败：锁未摘除 = 卸载空转回归（重试不自愈）。
+ *     · 安装 + force=true → 失败：--force 要求强制重装配，宿主却报告无变更可重做（装配径失效）。
+ *     · 安装 + 非强制 → **成功**：unchanged = 已是最新装配 = 幂等成功（R18 修订：不再视为失败；
+ *       升级/重装本就由 manifests 锁 diff 自然触发 unchanged=false，盘上本就一致时 idempotent ok）。
+ * - 模块符号（卸 -name@ver）：仅卸载且 hasApi 为真时强制——卸载必须显式拆装；安装**默认不强制**
+ *   +name@ver（R18 修订：smoke 段行为化校验挂载是否真通——探活端点 200 即证模块已装配，不必在
+ *   reload 层重复断言；锁 diff 自会驱动装配，applied 空属正常幂等态）。
+ * - 附加段键（ctx.expected，如 mounts/tenant/tasks）逐一 ∈ applied（覆盖项保留）。
  * 返回 {ok, message?} 供调用方生成人话。
  */
-export function assertReloadApplied(r: ReloadResult, opts: { hasApi: boolean, kind: "install" | "uninstall", name: string, version: string, additional?: string[], /** 重装（模块已挂载）：oj 装配不重做，applied 不含 +name@ver（无模块装配变更），仅校验 unchanged=false；全新安装仍强制模块符号 */ reinstall?: boolean }): { ok: boolean, message?: string } {
+export function assertReloadApplied(r: ReloadResult, opts: { hasApi: boolean, kind: "install" | "uninstall", name: string, version: string, additional?: string[], /** 强制热更（oj 0.1.123+ reloadConfig(force)）：unchanged 时须失败（强制装配未生效） */ force?: boolean }): { ok: boolean, message?: string } {
 	if (typeof r !== "object" || r === null || !Array.isArray(r.applied) || typeof r.unchanged !== "boolean") {
 		return {
 			ok: false,
@@ -86,15 +92,28 @@ export function assertReloadApplied(r: ReloadResult, opts: { hasApi: boolean, ki
 		return { ok: true };
 	}
 	if (r.unchanged) {
+		if (opts.kind === "uninstall") {
+			return {
+				ok: false,
+				message: "reloadConfig 返回 unchanged——卸载后锁未变化，疑似卸载空转（锁未摘除）；请确认宿主已开启 reload_api 且 oj ≥ v0.1.122",
+			};
+		}
+		if (opts.force === true) {
+			return {
+				ok: false,
+				message: "reloadConfig 返回 unchanged——--force 要求强制重装配，但宿主报告无变更可重做（锁 diff / 文档 sha 变化后仍 unchanged 说明强制装配未生效）；请确认宿主 oj ≥ v0.1.123 且 reload_api 已开启",
+			};
+		}
+		// 非强制安装：unchanged = 已是最新装配 = 幂等成功（R18 修订）
 		return {
-			ok: false,
-			message: "reloadConfig 返回 unchanged——本次锁变更未实际触发装配（卸载空转 / 安装未挂载回归，重试不自愈）；请确认宿主已开启 reload_api 且 oj ≥ v0.1.122",
+			ok: true,
+			message: "reloadConfig 返回 unchanged——当前已是最新装配（幂等成功，R18 修订：锁 / 文档未变化即无需重装配）",
 		};
 	}
-	// 重装路径（模块已挂载）：oj 装配不变更，applied 为空属正常（无模块装配 diff），此时只依赖
-	// unchanged=false 守卫；卸载与全新安装仍强制模块符号（装 +name@ver / 卸 -name@ver）。
-	const requireSymbol = opts.hasApi && !(opts.kind === "install" && opts.reinstall === true);
-	const symbol = requireSymbol ? moduleSymbolOf(opts.name, opts.version, opts.kind) : undefined;
+	// 模块符号：仅卸载且 hasApi 为真时强制 -name@ver（R18 修订：安装默认不强制 +name@ver，
+	// 由 smoke 段行为化校验挂载；本层只拦卸载空转——锁未摘除 = 未实际拆除）。
+	const requireSymbol = opts.kind === "uninstall" && opts.hasApi;
+	const symbol = requireSymbol ? moduleSymbolOf(opts.name, opts.version, "uninstall") : undefined;
 	const missing = [...(symbol ? [symbol] : []), ...(opts.additional ?? [])].filter(k => !r.applied.includes(k));
 	if (missing.length > 0) {
 		return {
@@ -108,13 +127,14 @@ export function assertReloadApplied(r: ReloadResult, opts: { hasApi: boolean, ki
 export async function reloadAndAssert(ctx: ReloadContext): Promise<StageResult> {
 	let r: ReloadResult;
 	try {
-		r = await ctx.reload.reloadConfig();
+		r = await ctx.reload.reloadConfig(ctx.force === true ? ctx.force : undefined);
 	}
 	catch (e) {
 		return { stage: "reloading", ok: false, retryable: true, message: `热更失败：reloadConfig 抛错（${String(e)}）——并发 busy / 归一装配失败 / 交接中断 / cron 拉起失败均可重试（R18）` };
 	}
-	// 安装路径：manifest 有 api 段 → 强制 applied 含 +name@ver（模块已装配）；web-only 仅校验 unchanged。
-	const a = assertReloadApplied(r, { hasApi: hasApiModule(ctx.manifest), kind: "install", name: ctx.name, version: ctx.version, additional: ctx.expected, reinstall: ctx.reinstall === true });
+	// 安装路径（R18 修订）：默认不强制 +name@ver——模块装配由锁 diff 驱动，smoke 段行为化校验挂载；
+	// 仅 force 未生效 / ctx.expected 覆盖项缺失 / 形状违约会判失败。
+	const a = assertReloadApplied(r, { hasApi: hasApiModule(ctx.manifest), kind: "install", name: ctx.name, version: ctx.version, additional: ctx.expected, force: ctx.force === true });
 	if (!a.ok) {
 		return { stage: "reloading", ok: false, retryable: false, message: `热更失败：${a.message}` };
 	}

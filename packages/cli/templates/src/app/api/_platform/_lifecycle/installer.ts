@@ -37,7 +37,7 @@ import { reloadAndAssert } from "./steps/reload";
 import { smoke } from "./steps/smoke";
 import { verify } from "./steps/verify";
 import { getTask, readTasks, sweepTimedOut, writeTask } from "./tasks";
-import { appendAnonymousPaths, bumpInstallSeq, readAnonymousPaths } from "./text-edit";
+import { appendAnonymousPaths, readAnonymousPaths } from "./text-edit";
 import { createTrustStore } from "./trust";
 
 // db/http 为 oj isolate 注入全局（同模板 service 层惯例，register.ts/audit.ts 同款；测试由夹具装 globalThis.db）
@@ -67,7 +67,7 @@ export interface InstallRequest extends InstallContext {
 	modulesJsonPath: string
 	/** API 前缀（smoke 探针 URL 前缀，C2-13） */
 	apiPrefix: string
-	/** 站点 config.yaml 路径（reloading 段 vars.ojm_install_seq 自增落盘处；缺省 config.yaml） */
+	/** 站点 config.yaml 路径（reloading 段 anonymous_paths 接线落盘处；缺省 config.yaml） */
 	configPath?: string
 	/** 注入面（DIP）：下载 / exec（tar+oj）/ 热更 / sha384（R10 integrity 重算） */
 	fetch: FetchFace
@@ -353,7 +353,11 @@ function previewSiblingOf(configPath: string): string {
 	return cut < 0 ? PREVIEW_CONFIG_NAME : `${configPath.slice(0, cut + 1)}${PREVIEW_CONFIG_NAME}`;
 }
 
-/** 把「安装序号自增 + 匿名端点接线」写到一份 config 文本上；`optional` 用于派生文件不存在即跳过 */
+/**
+ * 把「匿名端点接线」写到一份 config 文本上；`optional` 用于派生文件不存在即跳过。
+ * 仅当匿名端点确有新增（added 非空）才落盘——无谓重写会改动 config 文档 sha，反而引发假阳性
+ * （reload unchanged 判定基于文档 sha + 锁 diff；盘上本就一致时什么都不写才是正确的幂等态）。
+ */
 async function patchConfigAt(configPath: string, anonymous: string[], optional = false): Promise<string[]> {
 	let content: string;
 	try {
@@ -364,17 +368,22 @@ async function patchConfigAt(configPath: string, anonymous: string[], optional =
 			return [];
 		throw e;
 	}
-	const bumped = bumpInstallSeq(content);
-	const patched = anonymous.length > 0 ? appendAnonymousPaths(bumped.content, anonymous) : { content: bumped.content, added: [] };
+	if (anonymous.length === 0)
+		return [];
+	const patched = appendAnonymousPaths(content, anonymous);
+	if (patched.added.length === 0)
+		return [];
 	await atomicWriteText(configPath, patched.content);
 	return patched.added;
 }
 
 /**
- * 热更段适配（B-11 reload 触发面）：先落盘触发变更再 reloadAndAssert——reloadConfig 的
- * unchanged 判定基于 config 文档 sha（oj-bin reload_bridge 真源），不落盘变更则热更恒
- * unchanged 必失败。触发变更 = vars.ojm_install_seq 自增（PRD E5 实测先例：vars 段语义值
- * 改动 applied 可热生效，无需改 mounts），经 text-edit 纯文本行操作（R18，注释/键序逐字保留）。
+ * 热更段适配（B-11 reload 触发面，R18 修订）：先落盘 anonymous_paths 接线再 reloadAndAssert。
+ * oj 0.1.122+ 的 `unchanged` 由 **manifests 锁 diff 自然触发**（安装/升级/降级即锁变化），
+ * 不再依赖 config 文档 sha（旧的 vars.ojm_install_seq 哨兵已删）；本段只做 anonymous_paths
+ * 接线（且幂等、仅 added 非空才落盘），其余变更（模块装配）由锁 diff 驱动，无需此处制造。
+ * 触发变更判定 = 文档 sha 或锁 diff 任一变化（oj-bin reload_bridge 真源）；盘上本就一致则
+ * `unchanged=true` = 已是最新装配 = 幂等成功（R18 修订：不再视为失败）。
  *
  * **preview 形态（`ojm preview`）**：服务端读的是同目录派生出来的 `.ojm-preview.yaml`（spa 挂载 +
  * platform.root 改写到 dist），安装器改的 `config.yaml` 它根本不看——于是 reload 按文档 sha 判
@@ -396,7 +405,7 @@ async function reloadStage(req: InstallRequest): Promise<StageResult> {
 		req.deferredAnonymous = added;
 	}
 	catch (e) {
-		return { stage: "reloading", ok: false, retryable: true, message: `热更失败：config.yaml 安装序号自增/匿名端点接线失败（${String(e)}）——reload unchanged 判定基于 config 文档 sha，无变更则热更不可能生效（B-11，PRD E5 口径）` };
+		return { stage: "reloading", ok: false, retryable: true, message: `热更失败：config.yaml 匿名端点接线失败（${String(e)}）——reload 由锁 diff / 文档 sha 变化触发，接线本身失败则热更无变更可落` };
 	}
 	const rr = await reloadAndAssert(req);
 	// 捕获待重启段（P0 §3.6 / 验收 15）：非空 = 部分生效，installer 终态据其标 partial + restartRequired

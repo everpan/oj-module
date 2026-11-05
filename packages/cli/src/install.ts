@@ -254,6 +254,11 @@ export interface InstallOptions {
 	locale?: string
 	/** REG-R9②：从指定 registry 源安装（白名单在服务端；旧站点 API < 0.2.0 不支持 → exit 1） */
 	registry?: string
+	/**
+	 * 强制重装配（oj 0.1.123+ reloadConfig(force)）：旁路「unchanged=已是最新装配」幂等短路，
+	 * 强制宿主重做一次装配。运维显式重装配用；缺省 false。
+	 */
+	force?: boolean
 	/** 测试注入；缺省 globalThis.fetch */
 	fetchFn?: typeof fetch
 	/** 测试注入；缺省真睡 */
@@ -269,6 +274,8 @@ export async function installCommand(target: string, opts: InstallOptions = {}):
 	const fetchFn = opts.fetchFn ?? globalThis.fetch;
 	const { base, user, pass } = resolveSite(opts);
 	const token = await login(fetchFn, base, user, pass);
+	// force 透传（oj 0.1.123+ reloadConfig(force) 逃逸舱）：仅运维显式重装配时用；常规安装走锁 diff
+	const forceQ = opts.force === true ? "?force=1" : "";
 
 	let response: { task_id: string };
 	if (opts.registry !== undefined) {
@@ -282,13 +289,13 @@ export async function installCommand(target: string, opts: InstallOptions = {}):
 		if (!isSiteApiAtLeast(meta.apiVersion, "0.2.0"))
 			throw new Error(`[ojm] 目标站点平台 API 版本过低（需 ≥ 0.2.0 才支持 --registry 源安装，实为 ${meta.apiVersion ?? "未知"}）——请升级目标站点的 oj-module，或改用 CDN/file 源`);
 		const registryOrigin = originOf(src.url) ?? src.url;
-		response = await callApi<{ task_id: string }>(fetchFn, base, token, "POST", "/api/_platform/market/install", {
+		response = await callApi<{ task_id: string }>(fetchFn, base, token, "POST", `/api/_platform/market/install${forceQ}`, {
 			name: slug,
 			version: opts.version ?? version,
 			source: "registry",
 			registry: registryOrigin,
 		});
-		console.log(`[ojm] 已从 registry 源提交安装任务（源 ${registryOrigin}，物理名 ${slug}）`);
+		console.log(`[ojm] 已从 registry 源提交安装任务（源 ${registryOrigin}，物理名 ${slug}${opts.force === true ? "，强制重装配" : ""}）`);
 	}
 	else {
 		const parsed = parseTarget(target);
@@ -314,7 +321,7 @@ export async function installCommand(target: string, opts: InstallOptions = {}):
 			else {
 				console.log(`[ojm] 未发现签名侧车（${path.basename(sigPath)}）——宿主验签硬 fail-closed，未签名包将被拒（sig_missing）；签名方法见 devkit「签名与信任」`);
 			}
-			const res = await fetchFn(`${base}/api/_platform/market/install`, {
+			const res = await fetchFn(`${base}/api/_platform/market/install${forceQ}`, {
 				method: "POST",
 				headers: { authorization: `Bearer ${token}`, ...tenantHeaders() },
 				body: form,
@@ -324,7 +331,7 @@ export async function installCommand(target: string, opts: InstallOptions = {}):
 		else {
 			if (opts.name !== undefined && opts.name !== parsed.name)
 				throw new Error(`[ojm] --name「${opts.name}」与目标「${parsed.name}」不一致——请二选一`);
-			response = await callApi<{ task_id: string }>(fetchFn, base, token, "POST", "/api/_platform/market/install", {
+			response = await callApi<{ task_id: string }>(fetchFn, base, token, "POST", `/api/_platform/market/install${forceQ}`, {
 				name: parsed.name,
 				version: opts.version ?? parsed.version,
 				source: "cdn",
