@@ -120,7 +120,7 @@ sequenceDiagram
     Note over T,CL: 锁后 reloading 段：装配生效主路（PID 不变）
     T->>API: reloadConfig()
     API->>RL: do_reload
-    RL->>RL: generation_key = sha256(归一 config) ⊕ sha256(manifests.yaml) [US-1]
+    RL->>RL: generation_key = sha256(归一 config) XOR sha256(manifests.yaml) [US-1]
     alt generation_key 变化
         RL->>APP: 触发每代重建 pipeline
         APP->>APP: 编译 anon:Matcher(auth + tenant anonymous_paths) [US-2]
