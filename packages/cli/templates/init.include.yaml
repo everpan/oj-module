@@ -83,6 +83,8 @@ include:
   - tests/users-page.spec.ts
   # 企微连接器与组织同步：源码本就分发（src/app/api/auth），对应回归也必须跟着走，
   # 否则用户工程升级后改配置/换套件时没有任何本地自检手段。
+  # 方案安装入口（Phase B T3）的纯函数钉测：零基建依赖，随源码下发
+  - tests/solutions-entry.spec.ts
   - tests/wecom-admin.spec.ts
   - tests/wecom-client-timeout.spec.ts
   - tests/wecom-connector.spec.ts
