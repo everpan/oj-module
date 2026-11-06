@@ -142,6 +142,7 @@ beforeEach(async () => {
 		fail: (status: number, msg: string) => {
 			last = { status, msg };
 		},
+		header: () => {},
 	};
 	last = null;
 });
@@ -183,6 +184,34 @@ describe("POST upload（签名鉴权：canonical cdn-upload:<registry_id>:<name>
 		});
 		expect(String(rows[0].sig_value)).toMatch(/^[A-Z0-9+/]+={0,2}$/i);
 		expect(JSON.parse(rows[0].manifest)).toMatchObject({ name: "demo-solution", version: "0.1.0" });
+	});
+
+	it("parity 三方一致（v4 §特性）：推送响应 ↔ DB 行 ↔ detail API Form B 条目——同一真源零漂移", async () => {
+		const { createCdnUploadApi } = await import("../../src/oj-market/api/cdn/api");
+		const api = createCdnUploadApi(makeEnv());
+		await pushSig(api);
+		g.http = httpFor(FILE, ARCHIVE);
+		await api.upload.post();
+		expect(last?.status).toBe(200);
+		const pushed = last?.data as Record<string, unknown>;
+		const row = dbo.prepare("SELECT * FROM market_release WHERE product=? AND version=?").get("demo-solution", "0.1.0");
+		// detail API（安装解析数据源；env 不在 detail 路径上，空对象即可——构造仅闭合引用）
+		const { createMarketApi } = await import("../../src/oj-market/api/api");
+		const market = createMarketApi({} as never);
+		g.http = { query: { name: "demo-solution" } };
+		await market.catalog.detail.get();
+		expect(last?.status).toBe(200);
+		const detail = last?.data as { product: string, latest: string, versions: Array<Record<string, unknown>> };
+		const formB = detail.versions[0]!.archive as Record<string, unknown>;
+		const sig = formB.signature as Record<string, unknown>;
+		// 三方逐字段一致：sha256 / size / key_id（签名三字段 + registry_id 经 detail 合成面）
+		expect(pushed).toMatchObject({ sha256: SHA256, size: ARCHIVE.byteLength, key_id: KEY_ID });
+		expect(row).toMatchObject({ sha256: SHA256, size: ARCHIVE.byteLength, key_id: KEY_ID });
+		expect(formB).toMatchObject({ file: FILE, sha256: SHA256, size: ARCHIVE.byteLength });
+		expect(sig).toMatchObject({ alg: "Ed25519", key_id: KEY_ID, canon: "v2", registry_id: REGISTRY });
+		expect(sig.value).toBe(row.sig_value);
+		// CLI 侧推送形态（remote-push.ts）与本端点验签口径同一条 canonical 公式——
+		// 跨进程 wire parity 由 remote-push.test（客户端公式）+ 本 spec（服务端公式）夹住
 	});
 
 	it("未信任 key → 403（附 trust add 指引）；fail-fast 不消费 body", async () => {

@@ -125,25 +125,25 @@
 ## 任务清单（BDD · Phase A：远端发布与 DB 目录化）
 
 ### 特性：签名推送（v2 保留 + v4 收紧）
-- [ ] 信任库成员 + 有效签名（canonical 含 registry_id）→ 200；未信任 key → 403（附 trust add 指引）；换字节 → 401（**服务端重算 sha256** 断言：sig 声明值与实收字节不符拒签）；registry_id 不符（跨站重放）→ 401
-- [ ] name 所有权数据表：非首发 key 推既有 name 新版本 → 409；首发 key 正常
-- [ ] 非法文件名数据表 → 400；路径逃逸 fail-closed；大文件 413；头先验 fail-fast（无头大 body → 403 不消费 body）；限速按 key_id 生效断言
-- [ ] pair 约束：tgz 无 sig → 409；sig 五字段非法 → 400；同字节幂等（含补缺文件自愈）/ 异字节 409 **不碰盘**（数据表含并发撞键仲裁）
-- [ ] manifest：体积闸（解压炸弹）→ 413；坏 manifest → 400 零落盘；入库字段钳制数据表（summary/description/name/version 逐字一致）
-- [ ] CLI：sig→tgz 顺序、origin 校验表、**错误文案数据表**（401/403/409→bump version/半成功→「重跑本命令幂等补齐」）、exitCode 1
+- [x] 信任库成员 + 有效签名（canonical 含 registry_id）→ 200；未信任 key → 403（附 trust add 指引）；换字节 → 401（**服务端重算 sha256** 断言：sig 声明值与实收字节不符拒签）；registry_id 不符（跨站重放）→ 401
+- [x] name 所有权数据表：非首发 key 推既有 name 新版本 → 409；首发 key 正常
+- [x] 非法文件名数据表 → 400；路径逃逸 fail-closed；大文件 413；头先验 fail-fast（无头大 body → 403 不消费 body）；限速按 key_id 生效断言
+- [x] pair 约束：tgz 无 sig → 409；sig 五字段非法 → 400；同字节幂等（含补缺文件自愈）/ 异字节 409 **不碰盘**（数据表含并发撞键仲裁）
+- [x] manifest：体积闸（解压炸弹）→ 413；坏 manifest → 400 零落盘；入库字段钳制数据表（summary/description/name/version 逐字一致）
+- [x] CLI：sig→tgz 顺序、origin 校验表、**错误文案数据表**（401/403/409→bump version/半成功→「重跑本命令幂等补齐」）、exitCode 1
 
 ### 特性：DB 目录 + 分页 JSON API（v4）
-- [ ] 0003 迁移三方言 ALTER 成功；既有行不破坏（releases 端点照常读）
-- [ ] **场景：pair 完成写行**：tgz+sig 齐 → market_release 行落库（product+version 唯一，published_at_source='upload'）；旧行 NULL 列由回填补齐；发布成败审计落 `market_history`（action=publish）
-- [ ] **场景：manifest 抽取**：行内 manifest = 包内嵌抽取物（坏包被 pair 挡在库外）
-- [ ] **场景：清单分页**：25 包 `?page=2&size=10` → 第 11–20 条 + total=25；非法 page/size 收敛（pageArgs 口径，数据表）；排序稳定断言（同 published_at 按 product 升序）；清单不含 yanked
-- [ ] 市场卡片翻页 UI：`indexBody` 接分页数据源 + 翻页控件（展示字段不变，§四）
-- [ ] **场景：单包详情**：versions 全量含 `yanked:true` 条目；未知 name → 404；`?version=` 过滤；latest = 未 yanked 的 semver max
-- [ ] **场景：安装链路照旧**：详情拿到包地址 → 下载/包级验签/解包原流程零改动（既有 installer 测试锚）；yanked 精确版本 409 人话语义保留
-- [ ] **场景：yank 端点**：签名 + key 匹配 → 200（清单即摘除、详情标 yanked）；key 不符 403；未知版本 404；重复幂等 200；by/reason 审计落 market_history；unyank 恢复同模型；CLI 错误映射/exitCode 对齐
-- [ ] **场景：origin 拼装数据表**：绝对基址剥 `/cdn`；相对基址走 canonical_origin；剥不出 → 503 指向设置项
+- [x] 0003 迁移三方言 ALTER 成功；既有行不破坏（releases 端点照常读）
+- [x] **场景：pair 完成写行**：tgz+sig 齐 → market_release 行落库（product+version 唯一，published_at_source='upload'）；旧行 NULL 列由回填补齐；发布成败审计落 `market_history`（action=publish）
+- [x] **场景：manifest 抽取**：行内 manifest = 包内嵌抽取物（坏包被 pair 挡在库外）
+- [x] **场景：清单分页**：25 包 `?page=2&size=10` → 第 11–20 条 + total=25；非法 page/size 收敛（pageArgs 口径，数据表）；排序稳定断言（同 published_at 按 product 升序）；清单不含 yanked
+- [x] 市场卡片翻页 UI：`indexBody` 接分页数据源 + 翻页控件（展示字段不变，§四）
+- [x] **场景：单包详情**：versions 全量含 `yanked:true` 条目；未知 name → 404；`?version=` 过滤；latest = 未 yanked 的 semver max
+- [x] **场景：安装链路照旧**：详情拿到包地址 → 下载/包级验签/解包原流程零改动（既有 installer 测试锚）；yanked 精确版本 409 人话语义保留
+- [x] **场景：yank 端点**：签名 + key 匹配 → 200（清单即摘除、详情标 yanked）；key 不符 403；未知版本 404；重复幂等 200；by/reason 审计落 market_history；unyank 恢复同模型；CLI 错误映射/exitCode 对齐
+- [x] **场景：origin 拼装数据表**：绝对基址剥 `/cdn`；相对基址走 canonical_origin；剥不出 → 503 指向设置项
 - [ ] **场景：匿名接线**：anonymous_paths 放行断言（catalog 两条 GET、upload）+ 重启生效口径
-- [ ] **场景：parity（v4 重定义）**：CLI 推送响应（sha256/size/key_id）↔ DB 行 ↔ detail API 三方一致
+- [x] **场景：parity（v4 重定义）**：CLI 推送响应（sha256/size/key_id）↔ DB 行 ↔ detail API 三方一致
 - [ ] **场景：回填命令**：cdn/ 存量扫描 → upsert 落库（幂等重入，重复跑行数不变）；灾备演练：清表 → 扫描恢复（数据表：含 .sig 缺失行的降级）
 
 ### 发版与文档
