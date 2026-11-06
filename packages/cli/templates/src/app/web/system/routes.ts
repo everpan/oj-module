@@ -4,6 +4,10 @@ import { SettingOutlined } from "@ant-design/icons";
 
 import { createElement, lazy } from "react";
 
+// 方案安装入口（Phase B T3）：平台内置编排面 /api/oj-market/*（api 随脚手架内置，R29
+// 第一方专用）由 system 域代管。用生成物明示的 bindRequest 逃生门而非
+// createOjMarketClient 工厂——后者 DEV 有跨模块认领告警（该 client 名义属 oj-market）。
+import { bindRequest as bindMarketRequest } from "../../../oj-market/web/__client";
 import { createSystemClient } from "./__client";
 
 const Users = lazy(() => import("./pages/users"));
@@ -13,6 +17,7 @@ const Roles = lazy(() => import("./pages/roles"));
 const Oplog = lazy(() => import("./pages/oplog"));
 const Settings = lazy(() => import("./pages/settings"));
 const WecomAdmin = lazy(() => import("./pages/wecom"));
+const Solutions = lazy(() => import("./pages/solutions"));
 
 /**
  * `/system` 根的角色门禁（对齐后端 assertSystemAdmin，access.ts:87）——
@@ -76,6 +81,12 @@ export const routes: AppRouteRecordRaw[] = [
 				handle: { title: "system:menu.settings", roles: ["superadmin"] },
 			},
 			{
+				// 方案安装（Phase B T3，出厂未装态的首装入口）：仅超管可见可访问
+				path: "/system/solutions",
+				Component: Solutions,
+				handle: { title: "system:menu.solutions", roles: ["superadmin"] },
+			},
+			{
 				// 企微代开发后台（服务商运营面）：仅超管可见（路由级 roles + 页面内二次判定）
 				path: "/system/wecom",
 				Component: WecomAdmin,
@@ -85,7 +96,13 @@ export const routes: AppRouteRecordRaw[] = [
 	},
 ];
 
-/** 构造即接线：登记 /system 前缀 + 绑定 scoped request（D11 前缀收敛）。 */
+/**
+ * 构造即接线：登记 /system 前缀 + 绑定 scoped request（D11 前缀收敛）；
+ *  另登记 /oj-market（平台内置市场编排面，R29 第一方）并绑定其生成 client——
+ *  方案安装页（/system/solutions）出厂未装态即经此调用安装端点。
+ */
 export async function onInit(ctx: ModuleContext) {
 	createSystemClient(ctx);
+	ctx.register.apiPrefix("/oj-market");
+	bindMarketRequest(ctx.utils.request);
 }

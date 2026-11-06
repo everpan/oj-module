@@ -1,3 +1,4 @@
+import { Buffer } from "node:buffer";
 // @vitest-environment node
 import fs from "node:fs";
 import os from "node:os";
@@ -388,25 +389,29 @@ describe("initProject", () => {
 			expect(fs.existsSync(path.join(dest, mod))).toBe(false);
 		expect(fs.existsSync(path.join(dest, "src/demo"))).toBe(false);
 
-		// 2) 默认模块照常在（oj-market 0.2.8 起默认下发：方案市场前端 +
-		//    _platform 市场编排面 /api/_platform/market/*）
-		for (const mod of ["src/app/web", "src/app/web/login", "src/app/web/notification", "src/oj-market/web"])
+		// 2) 默认模块照常在（src/app 前端 + 各内置 api）；oj-market **出厂未装**（Phase B T2）：
+		//    页面源码不拷（装后经方案包供给），但 api 编排面照拷（src/oj-market/api）+
+		//    两份 __client 生成物照拷（ojm api --check 面：openapi 里 /api/oj-market/*
+		//    与 publish 契约的生成物对账需要落点，同 app/web/_platform 先例）
+		for (const mod of ["src/app/web", "src/app/web/login", "src/app/web/notification", "src/oj-market/api", "src/oj-market/web/__client", "src/oj-market/web/publish/__client"])
 			expect(fs.existsSync(path.join(dest, mod))).toBe(true);
-		//    其 __tests__ 不进脚手架（用户工程无 web 侧 vitest 基建）
+		//    市场页面源码不进脚手架（其 __tests__ 随之不在；entry 不在 = 扫描不装 = 出厂未装）
 		expect(fs.existsSync(path.join(dest, "src/oj-market/web/__tests__"))).toBe(false);
-		expect(fs.existsSync(path.join(dest, "src/oj-market/web/entry.ts"))).toBe(true);
+		expect(fs.existsSync(path.join(dest, "src/oj-market/web/entry.ts"))).toBe(false);
+		expect(fs.existsSync(path.join(dest, "src/oj-market/web/pages"))).toBe(false);
 
 		// 3) web.config.ts：demo 条目与 #region 标记一并剥离（不留指向缺失文件的死条目）；
-		//    oj-market 条目保留（默认模块，不再走 demo-only 剥离）
+		//    oj-market 模块登记一并摘除（Phase B T2：出厂未装，改由方案包经安装器装载——
+		//    登记残留会报「entry 不存在」）；publish client 归属（clientOwners）不变
 		const config = fs.readFileSync(path.join(dest, "web.config.ts"), "utf-8");
 		for (const name of ["about", "access", "exception", "outside", "route-nest"])
 			expect(config).not.toContain(`"${name}"`);
-		expect(config).toContain("\"oj-market\"");
+		expect(config).not.toContain("src/oj-market/web/entry.ts");
 		expect(config).not.toContain("#region demo-only");
 		expect(config).not.toContain("#endregion");
 		// 剥离不能误伤默认条目
 		expect(config).toContain("src/app/web/entry.ts");
-		expect(config).toContain("src/oj-market/web/entry.ts");
+		expect(config).toContain("\"publish\": \"oj-market\"");
 
 		// 4) openapi.json：demo-only 模块（demo/home）的端点被裁掉——留着会让
 		//    新工程一上手跑 `ojm api --check` 就报「有契约无 handler」；白名单内
@@ -745,5 +750,40 @@ describe("initProject 既有 bin/oj 能力闸门", () => {
 		await initProject(dest, { yes: true });
 		expect(fs.existsSync(path.join(dest, "config.yaml"))).toBe(true);
 		expect(fs.existsSync(path.join(dest, "src/app/web/entry.ts"))).toBe(true);
+	});
+});
+
+describe("init --yes：随站 bundle 落位（Phase B T3b）", () => {
+	function seedBundles(dir: string): void {
+		fs.mkdirSync(dir, { recursive: true });
+		fs.writeFileSync(path.join(dir, "oj-market-0.2.0.tgz"), Buffer.from([1, 2, 3]));
+		fs.writeFileSync(path.join(dir, "oj-market-0.2.0.tgz.sig"), JSON.stringify({ alg: "Ed25519" }));
+	}
+
+	it("--yes：tgz+sig 拷入 cdn/ 并写 bundles.json 意图标记（name/version 自文件名解析）", async () => {
+		const dest = path.join(tmpRoot(), "bundle-yes");
+		const bundles = path.join(tmpRoot(), "bundles-src");
+		seedBundles(bundles);
+		await initProject(dest, { ...initOpts, bundlesDir: bundles });
+		expect(fs.existsSync(path.join(dest, "cdn/oj-market-0.2.0.tgz"))).toBe(true);
+		expect(fs.existsSync(path.join(dest, "cdn/oj-market-0.2.0.tgz.sig"))).toBe(true);
+		const marker = JSON.parse(fs.readFileSync(path.join(dest, "cdn/bundles.json"), "utf-8"));
+		expect(marker.solutions).toEqual([{ name: "oj-market", version: "0.2.0", file: "oj-market-0.2.0.tgz" }]);
+	});
+
+	it("交互式（无 --yes）：零 bundle 动作（手动口径，决策 #1 两路径并存）", async () => {
+		const dest = path.join(tmpRoot(), "bundle-interactive");
+		const bundles = path.join(tmpRoot(), "bundles-src2");
+		seedBundles(bundles);
+		await initProject(dest, { ojInstaller: fakeOjInstall, bundlesDir: bundles });
+		expect(fs.existsSync(path.join(dest, "cdn/bundles.json"))).toBe(false);
+		expect(fs.existsSync(path.join(dest, "cdn/oj-market-0.2.0.tgz"))).toBe(false);
+	});
+
+	it("bundles 源缺失：warning 且不失败（市场保持出厂未装）", async () => {
+		const dest = path.join(tmpRoot(), "bundle-missing");
+		await initProject(dest, { ...initOpts, bundlesDir: path.join(tmpRoot(), "nope") });
+		expect(fs.existsSync(path.join(dest, "config.yaml"))).toBe(true);
+		expect(fs.existsSync(path.join(dest, "cdn/bundles.json"))).toBe(false);
 	});
 });

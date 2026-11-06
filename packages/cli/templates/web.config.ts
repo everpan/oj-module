@@ -18,12 +18,12 @@ const allModules = [
 	// 各根按 handle.order 排序（/home 1、/personal-center 110、/system -100 底部），
 	// 与拆分时的菜单逐项一致；/login、/change-password、/notification-center 走 hideInMenu。
 	{ name: "app", entry: "src/app/web/entry.ts" },
-	// 解决方案市场：第一方能力（消费本模块 api 面 /api/oj-market/*（src/oj-market/api，deps 依赖 _platform 内核），
-	// R29：第三方方案不得仿照此调用面），默认随脚手架下发。保持独立模块——
-	// 可选能力，不想要就改 `enabled: false`（不要删目录：src/app、src/oj-market
-	// 受完整性门禁保护，删改会让 ojm build 失败，见 src/README.md）；
-	// 发布管理页（/publish）也在这个模块里。
-	{ name: "oj-market", entry: "src/oj-market/web/entry.ts" },
+	// 解决方案市场（Phase B T2 起）：UI 为纯 web 方案包（src/oj-market/solution.yaml，
+	// 出厂未装），superadmin 经 system 域首装后由安装器供给——故本清单不再登记
+	// oj-market。模板工程里它仍被 src/ 扫描捡进构建（打包源），用户工程则没有
+	// web/entry.ts（白名单只下发 __client 生成物），登记了就是死条目。api 编排面
+	// （/api/oj-market/*，R29 第三方不得仿照）随脚手架内置不受影响；发布管理页
+	// （/publish）随方案包走，clientOwners 里 publish 归属 oj-market 不变。
 	// #region demo-only
 	// 以下为模板内置的演示模块（about/access/exception/outside/route-nest），
 	// 用于把 templates 当可运行 demo 直接跑；其文件不在 `ojm init` 的

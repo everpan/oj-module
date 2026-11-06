@@ -49,7 +49,7 @@
 	],
 	"scripts": {
 		"build:shell": "tsx shell/scripts/build.mts",
-		"prepack": "node scripts/sync-devkit.mjs && node scripts/sync-host-versions.mjs"
+		"prepack": "node scripts/sync-devkit.mjs && node scripts/sync-host-versions.mjs && node scripts/sync-bundles.mjs"
 	},
 	"dependencies": {
 		"@faker-js/faker": "catalog:",

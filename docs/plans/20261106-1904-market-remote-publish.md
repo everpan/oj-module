@@ -241,13 +241,13 @@
 
 阶段 1（实施）：
 
-- [ ] T1 打包：oj-market 构建为 solution 包（复用 ojm build 产物形态 + 平台签名）+ 随站点产物分发落位 + 版本 bump 至 **0.2.0**（entry.ts 现值 0.1.0）
-- [ ] T2 shell 改造：摘除 `app/web/entry.ts` 静态 import；出厂未装态（空态菜单/路由缺省行为）
-- [ ] T3 安装入口：shell system 域「方案安装」接线既有 `POST /market/install`（superadmin）
-- [ ] T3b `ojm init --yes` 接线：包落位 + 意图标记（init 侧）；启动段对账收敛实现（模板侧，与 reconcile/migrate_on_start 同段定着锚行）+ 上拉不下拉规则 + 失败降级
-- [ ] T3c 常规包轨：标准发包流程验证（平台 key + name 所有权 409）+ 市场内升级 + 启动收敛不降级 + 运行中自升级 reload 语义用例
-- [ ] T4 BDD 用例落地：特性 1/2 场景进 installer/market-api spec；特性 3 回归锚
-- [ ] T5 文档同步：devkit 手册双拷贝、usage、README、R29 标注
+- [x] T1 打包：oj-market 构建为 solution 包（复用 ojm build 产物形态 + 平台签名）+ 随站点产物分发落位 + 版本 bump 至 **0.2.0**（entry.ts 现值 0.1.0）
+- [x] T2 shell 改造：摘除 `app/web/entry.ts` 静态 import；出厂未装态（空态菜单/路由缺省行为）
+- [x] T3 安装入口：shell system 域「方案安装」接线既有 `POST /market/install`（superadmin）
+- [x] T3b `ojm init --yes` 接线：包落位 + 意图标记（init 侧）；启动段对账收敛实现（模板侧，与 reconcile/migrate_on_start 同段定着锚行）+ 上拉不下拉规则 + 失败降级
+- [x] T3c 常规包轨：标准发包流程验证（平台 key + name 所有权 409）+ 市场内升级 + 启动收敛不降级 + 运行中自升级 reload 语义用例
+- [x] T4 BDD 用例落地：特性 1/2 场景进 installer/market-api spec；特性 3 回归锚
+- [x] T5 文档同步：devkit 手册双拷贝、usage、README、R29 标注
 
 ### 风险与开放问题（Phase B）
 
@@ -260,20 +260,52 @@
 
 ## 总结
 
-**Phase A 已按 v4 口径全部落地**（任务清单 A1–A9 全勾），Phase B（方案化改造）按计划暂不执行。
+**Phase A、Phase B 均已按口径落地**（Phase A：A1–A9 全勾，见上文；Phase B：T1–T5 全勾）。
 
-- **关键过程**：计划编制 11-06 19:04 起；实施 11-07 00:42–02:21，7 个提交
+- **Phase A 关键过程**：计划编制 11-06 19:04 起；实施 11-07 00:42–02:21，7 个提交
   （514c260e0 → 22b19a82f），主线为 catalog/registry_id 发现面（A6）→ 签名推送与
   yank API 化、索引面 CLI 侧整建制退役（A6）→ parity 三方一致用例（A6 收尾）→
-  根套件残留清零（别名/验面抽取/client 接线/白名单，a8de24367）→ 站点侧回填端点
-  三用（A7）→ 匿名面双列接线（A8）→ breaking 说明/迁移指南/发版材料（A9）。
-  全程 TDD：BDD 用例先行（backfill.spec 9 例、anonymous-wiring.spec 3 例、
-  parity/market-api 回归锚），每个 RED→GREEN 留痕；实施中 ruled 10 项（触发口径取
-  superadmin 端点、`**` 一条覆盖、openapi 生成物原样入库、devkit 单真源同步等），
-  反常识发现 2 项（manifestOfUpload staging 常量 upload.tgz、assertSuperAdmin 匿名亦 403）
-  均已记入 ledger 与文档。
-- **终态验证**：根套件 939 passed | 1 skipped（940）；cli 套件 638 passed | 1 skipped（639）；
-  templates 套件 1118/1118；packages/cli 与 templates 双 tsc 零错；ojm init --yes →
-  ojm build 冒烟工程全链路绿。三个测试套件 + 双 typecheck 为 Phase A 完成判据，全过。
-- **耗时**：实施约 1 小时 40 分（00:42–02:21），加计划编制与收尾验证合计约 3 小时；
-  文档改写（迁移指南/devkit 双拷贝/CHANGELOG/walkthrough）占收尾段约 1/3。
+  根套件残留清零（a8de24367）→ 站点侧回填端点三用（A7）→ 匿名面双列接线（A8）→
+  breaking 说明/迁移指南/发版材料（A9）。全程 TDD，实施中 ruled 10 项。
+- **Phase B 关键过程**（11-07 05:25 起，分支 feat/market-solution-module，5 个提交
+  a55590c8f → 211c145）：
+  - T1 打包：solution.yaml 纯 web 契约 + entry 0.2.0 基线 + builtin 名单分歧钉测
+    （market-bundle.test 4 用例，scratch 工程真 buildBundle）；真机 build/bundle/sign 全链。
+  - T2 shell 改造：白名单补收 src/oj-market/api（**顺带修复 v4 迁移 42369d5b6 漏收
+    白名单、脚手架零 /api/oj-market/* 的既有缺陷**）+ web 侧仅留双 __client 生成物 +
+    web.config 摘登记；init.test demo-only 用例先行 RED。
+  - T3 安装入口：/system/solutions 页（superadmin）+ market-entry 纯函数 9 用例
+    （状态推导/任务终态，needs_trust 非成功态）+ onInit 前缀登记/bindRequest 逃生门
+    （避开生成 client 工厂 DEV 认领告警）。
+  - T3b init --yes 接线：**关键裁决**——oj 启动段 ext_boot 有 2s 看门狗
+    （oj-bin runtime.rs BOOT_TIMEOUT，terminate 正被借出跑请求的 isolate），安装全程
+    不可在 boot 内跑；收敛挂点改为 oj-market **index 端点（对账即服务先例）**，首个
+    编排请求触发、幂等、失败吞咽。_platform 侧 bundle-converge.ts（规则+编排 10 用例）
+    + local-archive.ts（Form A 补摘要共享抽取，installBody 重构锚定 616 lifecycle 全绿）
+    + init 落位 3 用例 + prepack sync-bundles.mjs 收编已签名 bundle。
+  - T3c/T4（锚定既有套件，零新码——裁决）：name 所有权 409（M1/minors + publish 套件）、
+    市场内升级（market-api install 升级路径）、启动收敛不降级（bundle-converge spec
+    数据表第 4 行）、reload 语义（installer reloading 段套件）；特性 1/2 场景锚
+    market-api/installer/uninstall/trust 既有 BDD 面。UI 级「菜单无市场项/入口可见」
+    为结构性行为（白名单 + 路由注入），模板测试无路由表 harness，留待 e2e。
+  - T5 文档：publish-walkthrough §7.5 第一方 bundle 发布流程、manual 目录树口径、
+    src/README、solution.yaml description（R29 + 收敛语义）；devkit 双拷贝已刷新。
+- **终态验证**：根套件 942 passed | 1 skipped（943）；cli 套件 642 passed | 1 skipped；
+  templates 套件 1148/1148；packages/cli 与 templates 双 tsc 零错；uni-dev e2e 冒烟
+  （真二进制 build/dev）4/4。
+- **Phase B 耗时**：约 1 小时 35 分（05:25–07:00），T2 的白名单考古与 T3b 的挂点裁决
+  （ext_boot 看门狗）各占约 20 分钟，其余为 TDD 循环与文档。
+- **终审与修复**（11-07 07:00–07:25，fresh reviewer 全分支 09e9c1bbd..954ea666e，
+  0 Critical / 2 Important / 4 Minor，commit aa285e0f3）：
+  - Important-1 卸载墓碑：故意卸载会被 index 收敛当漂移纠正自动重装（违背特性 2）——
+    pruneBundledMarker 在卸载成功时摘除意图标记条目（spec 用例 RED→GREEN）。
+  - Important-2 失败冷却 + 审计：持久失败条目每次 index 请求全量重装且无观测——
+    10 分钟冷却窗（cooling 桶 + taskDir 冷却文件，成功后清键）+ market_history
+    审计（operator "bundle-converge"）；bundle-converge.spec 扩至 14 用例。
+  - 附带：T5 devkit 文档破坏自包含守卫（R29 代号 / docs/plans/ 包外路径），
+    devkit-docs 2 失败 RED→GREEN 修复。
+  - Minor 3 项记帐不修（ledger：entry.file 校验、init 文件名 prerelease 解析、
+    sync-bundles 未签名静默丢弃）。
+  - 修复后终态：根 942+1s / cli 642+1s / templates 1152/1152 / tsc×3 零错。
+- **遗留**（发布期）：BOOTSTRAP_KEY 公钥回填（发布人手工，walkthrough §7.5）；
+  运行中自升级 reload 语义为剩余边角（双轨正常态，计划风险节已列）。
