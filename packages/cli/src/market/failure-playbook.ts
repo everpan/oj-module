@@ -21,13 +21,13 @@ export const FAILURE_PLAYBOOK: FailurePlaybookEntry[] = [
 	{
 		code: "sig_missing",
 		stage: "verifying",
-		cause: "分发包未签名：发布方未做 detached 签名，或 CDN 目录里 .sig 被裁剪",
-		next: "请发布方重发 `ojm market publish --check` 复核签名后重建索引",
+		cause: "分发包未签名：发布方未做 detached 签名，或目录行无签名列（遗留行未经回填）",
+		next: "请发布方重发 `ojm market publish --check` 复核签名；遗留行跑站点扫描回填补齐",
 	},
 	{
 		code: "tampered",
 		stage: "verifying",
-		cause: "包体或签名与索引不符：分发包被篡改，或同版本号被换包重发",
+		cause: "包体与目录行 sha256 不符：分发包被篡改，或同版本号被换包重发",
 		next: "从可信源重新获取分发包；发布方应升版本号重发（同版本号只允许一份字节）",
 	},
 	{
@@ -41,12 +41,6 @@ export const FAILURE_PLAYBOOK: FailurePlaybookEntry[] = [
 		stage: "migrating",
 		cause: "包内迁移最大 seq 低于账本 head：禁降版部署（OJ-9 红线），库保持原状",
 		next: "正道是升级到新版本；确需回退请联系运维走对账自愈，勿强行降版",
-	},
-	{
-		code: "index_sig",
-		stage: "安装前（索引解析）",
-		cause: "市场索引签名校验失败：catalog.yaml / shards/*.yaml 被篡改或签名与字节不符",
-		next: "重建索引并签名 `ojm market build-index`；同时核对 CDN 目录写入来源",
 	},
 	{
 		code: "zip_slip",

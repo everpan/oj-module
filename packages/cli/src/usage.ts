@@ -462,8 +462,8 @@ export const HELP_GROUPS: HelpGroup[] = [
 			{
 				key: "market",
 				name: "market [sub] [...rest]",
-				zh: "本地模拟 CDN 与市场链路（setup / publish / build-index / verify / trial）",
-				en: "Local mock CDN and marketplace pipeline (setup / publish / build-index / verify / trial)",
+				zh: "市场链路（setup / publish 远端签名推送 / yank / verify / trial / walkthrough）",
+				en: "Marketplace pipeline (setup / remote signed publish / yank / verify / trial / walkthrough)",
 				allowUnknownOptions: true,
 				options: [
 					{ raw: "--site-url <url>", zh: "站点地址", en: "Site URL" },
@@ -472,38 +472,40 @@ export const HELP_GROUPS: HelpGroup[] = [
 					{ raw: "--new-pass <pass>", zh: "首次改密期的新密码（setup）", en: "New password during the forced-reset period (setup)" },
 					{ raw: "--fixture <name@version>", zh: "合成 fixture 方案包（publish / trial）", en: "Synthesize a fixture bundle (publish / trial)" },
 					{ raw: "--real <project>", zh: "走真实方案工程发包（publish）", en: "Publish from a real solution project (publish)" },
-					{ raw: "--id <key>", zh: "签名 key id", en: "Signing key id" },
+					{ raw: "--id <key>", zh: "签名 key id（publish / yank 的发布身份）", en: "Signing key id (publisher identity for publish / yank)" },
 					{ raw: "--key <pem>", zh: "签名私钥 pem", en: "Signing private key pem" },
-					{ raw: "--rebuild-index", zh: "发包后顺带重建索引（publish）", en: "Rebuild the index after publishing (publish)" },
+					{ raw: "--registry-id <registry>", zh: "签发方 registry 身份（包级签名 canonical 首段）", en: "Signer registry identity (first segment of the package signature canonical)" },
+					{ raw: "--reason <原因>", zh: "下线原因（yank 审计留痕）", en: "Yank reason (audit trail)" },
+					{ raw: "--restore", zh: "恢复在架（yank 的反向操作）", en: "Restore to listing (reverse of yank)" },
 					{ raw: "--check", zh: "离线自检签名", en: "Offline signature self-check" },
 				],
 				subs: {
-					"setup": {
+					setup: {
 						short: { zh: "framework.market_cdn_url 指向外部真 CDN（脚手架缺省 /cdn 免 setup）", en: "Point framework.market_cdn_url at an external CDN (scaffold defaults to /cdn, no setup needed)" },
 						zh: "ojm market setup [--site-url <站点地址>] [--user <u> --pass <p>] [--new-pass <p>]\n  把系统设置 framework.market_cdn_url 改写为绝对地址（外部真 CDN 场景；脚手架 seed 缺省 /cdn = 本站点自供，免 setup）。首跑若账号处于首次改密期（seed admin must_change=1），会自动改密换全权 token 后再写入",
 						en: "ojm market setup [--site-url <site>] [--user <u> --pass <p>] [--new-pass <p>]\n  Rewrite the framework.market_cdn_url system setting to an absolute URL (external CDN scenario; the scaffold seed defaults to /cdn = site-served, no setup needed). On first run, if the account is in the forced password-reset period (seed admin must_change=1), it resets the password to obtain a full-privilege token before writing",
 					},
-					"publish": {
-						short: { zh: "方案包落进 cdn/ + 包级签名（不碰索引）", en: "Drop a bundle into cdn/ + package-level signature (index untouched)" },
-						zh: "ojm market publish [--fixture <name@version>] [--real <方案工程>] [--id <key>] [--key <pem>] [--rebuild-index] [--check]\n  把方案包落进 cdn/：合成 fixture（或 --real 走 ojm build --bundle）→ 确定性 tgz → 包级 detached 签名 <name>-<version>.tgz.sig。不碰索引（索引由 build-index 扫描重建，多人发布才不会互相覆盖）",
-						en: "ojm market publish [--fixture <name@version>] [--real <project>] [--id <key>] [--key <pem>] [--rebuild-index] [--check]\n  Drop a solution bundle into cdn/: synthesize a fixture (or --real via ojm build --bundle) → deterministic tgz → package-level detached signature <name>-<version>.tgz.sig. Does not touch the index (the index is rebuilt by build-index so concurrent publishers don't overwrite each other)",
+					publish: {
+						short: { zh: "远端签名推送发布到目标站点市场（不经账号口令）", en: "Publish to a target site's market via signed push (no account credentials)" },
+						zh: "ojm market publish --site-url <url> [--fixture <name@version> | --real <方案工程>] --id <key> [--key <pem>] --registry-id <registry> [--check]\n  构建 + 包级签名后经签名推送发进目标站点市场：catalog 探测站点身份（registry_id）→ 先推 .sig 旁车再推 .tgz（pair 约束）→ 服务端重算 sha256 验签落库（market_release 目录行 + cdn/ 字节）。半成功（sig 已推 tgz 被拒）重跑本命令幂等补齐。签名身份 = ojm keygen --credential 兑换的发布 key（须经站点信任库）",
+						en: "ojm market publish --site-url <url> [--fixture <name@version> | --real <project>] --id <key> [--key <pem>] --registry-id <registry> [--check]\n  Build + package-sign, then signed-push into the target site's market: discover the site identity via catalog (registry_id) → push the .sig sidecar before the .tgz (pair constraint) → the server recomputes sha256, verifies the signature and lands the row (market_release catalog row + cdn/ bytes). Half-success (sig pushed, tgz rejected): re-run this command to idempotently complete. Signing identity = publish key exchanged via ojm keygen --credential (must be in the site trust store)",
 					},
-					"build-index": {
-						short: { zh: "扫描重建三级索引（catalog + shards）并签名", en: "Rebuild the three-tier index (catalog + shards) from a scan and sign" },
-						zh: "ojm market build-index [--id <key>] [--key <pem>] [--check]\n  扫描 cdn/*.tgz、提取包内 manifest，全量重建 catalog.yaml（包名→分片号）+ shards/<n>.yaml（每片 ≤1000 版本）并签名。原子落盘（先分片后 catalog）；结果只取决于目录内容：连续执行字节一致",
-						en: "ojm market build-index [--id <key>] [--key <pem>] [--check]\n  Scan cdn/*.tgz, extract each bundle's manifest, fully rebuild catalog.yaml (name→shard) + shards/<n>.yaml (≤1000 versions each) and sign them. Atomic landing (shards before catalog); the result depends only on directory content: consecutive runs are byte-identical",
+					yank: {
+						short: { zh: "签名下线/恢复某版本（仅发布者本人）", en: "Signed yank/restore of a version (publisher only)" },
+						zh: "ojm market yank <name>@<version> --site-url <url> --id <key> [--key <pem>] [--reason <原因>] [--by <操作人>] [--restore]\n  签名下线（或 --restore 恢复）目标站点市场目录里的某版本：清单即摘除、详情保留 yanked 标记、阻断新装/升级；不动已装方案。仅该行发布者本人可操作（服务端按行 key_id 仲裁）；重复下线幂等",
+						en: "ojm market yank <name>@<version> --site-url <url> --id <key> [--key <pem>] [--reason <reason>] [--by <operator>] [--restore]\n  Signed-yank (or --restore) a version in the target site's market catalog: removed from listing, kept in detail with yanked flag, new installs/upgrades blocked; already-installed solutions untouched. Only the row's publisher may operate (server arbitrates by row key_id); repeated yank is idempotent",
 					},
-					"verify": {
-						short: { zh: "离线验包（sha256 / 验签 / 索引 / manifest 结构）", en: "Offline bundle verification (sha256 / signatures / index / manifest)" },
-						zh: "ojm market verify [--file <tgz>] [--rebuild-index]\n  离线验包（不起站点、不装、不要凭据）：sha256 完整性 / 包级 Ed25519 验签 / 索引验签（catalog 与各分片分列）/ manifest 结构分列输出。--rebuild-index 额外双向比对「扫描重建的索引」与盘上索引：既报落了包却没重建（索引缺条目），也报索引声明了、盘上包却没了的反向漂移。注意：校验通过只说明来源与完整性，不构成内容安全性背书",
-						en: "ojm market verify [--file <tgz>] [--rebuild-index]\n  Offline bundle verification (no site, no install, no credentials): sha256 integrity / package-level Ed25519 signature / index signature (catalog and each shard listed separately) / manifest structure in separate sections. --rebuild-index additionally runs a two-way comparison of the index rebuilt from a scan against the one on disk: it reports both a dropped bundle whose index entry is missing, and the reverse drift where the index declares a version whose tgz is gone. Note: passing only proves origin and integrity — it is not an endorsement of content safety",
+					verify: {
+						short: { zh: "离线验包（包级验签 + manifest 结构）", en: "Offline bundle verification (package signature + manifest structure)" },
+						zh: "ojm market verify [--file <tgz>]\n  离线验包（不起站点、不装、不要凭据）：包级 Ed25519 detached 验签（信任锚）+ manifest 结构（必填字段 / 原生清单 desc / 0001 迁移跨版本一致）。注意：校验通过只说明来源与完整性，不构成内容安全性背书",
+						en: "ojm market verify [--file <tgz>]\n  Offline bundle verification (no site, no install, no credentials): package-level Ed25519 detached signature (trust anchor) + manifest structure (required fields / native manifest desc / 0001 migration consistency across versions). Note: passing only proves origin and integrity — it is not an endorsement of content safety",
 					},
-					"trial": {
+					trial: {
 						short: { zh: "一次性隔离站点试装，跑完即毁", en: "Full install trial in a throwaway isolated site" },
 						zh: "ojm market trial [--fixture <name@version>] [--keep]\n  在一次性隔离站点（随机端口 + 一次性 DB/密钥/凭据/信任库/CDN）里跑完整安装，跑完即毁；--keep 保留现场供排查",
 						en: "ojm market trial [--fixture <name@version>] [--keep]\n  Run a full install in a throwaway isolated site (random port + throwaway DB/keys/credentials/trust store/CDN), destroyed right after; --keep preserves the scene for debugging",
 					},
-					"walkthrough": {
+					walkthrough: {
 						short: { zh: "隔离站点跑全套市场操作并出 AC 表", en: "Run the full marketplace operation set in an isolated site, print an AC table" },
 						zh: "ojm market walkthrough [--only <op>] [--strict] [--keep]\n  隔离站点跑全套市场操作并出 AC 表",
 						en: "ojm market walkthrough [--only <op>] [--strict] [--keep]\n  Run the full marketplace operation set in an isolated site and print an AC table",

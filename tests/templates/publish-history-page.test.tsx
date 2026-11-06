@@ -29,7 +29,7 @@ beforeAll(() => {
 });
 
 function page(over: Partial<ReleasePage> = {}): ReleasePage {
-	return { list: [], total: 0, page: 1, size: 20, syncError: null, ...over };
+	return { list: [], total: 0, page: 1, size: 20, ...over };
 }
 
 function row(over: Partial<ReleaseRow> = {}): ReleaseRow {
@@ -82,30 +82,28 @@ describe("发布历史页", () => {
 		expect(client.calls).toContain("releases:1:20");
 	});
 
-	it("given 发布时间来自索引兜底 When 渲染 Then 打「索引时间」标签（不冒充精确落包时刻）", async () => {
+	it("given 发布时间来自 file 回填（上传前的存量包）When 渲染 Then 打「回填时间」标签（不冒充精确落包时刻）", async () => {
 		const client = new InMemoryMarketClient({
 			releasePage: page({
-				list: [row({ id: 1, published_at_source: "index" }), row({ id: 2, version: "0.1.0", yanked: 1 })],
+				list: [row({ id: 1, published_at_source: "file" }), row({ id: 2, version: "0.1.0", yanked: 1, published_at_source: "upload" })],
 				total: 2,
 			}),
 		});
 		renderPage(client);
 
-		await waitFor(() => expect(screen.getByText("索引时间")).toBeTruthy());
+		await waitFor(() => expect(screen.getByText("回填时间")).toBeTruthy());
 		expect(screen.getByText("已下线")).toBeTruthy();
-		// file 来源不给标签：只有一行索引时间
-		expect(screen.getAllByText("索引时间")).toHaveLength(1);
+		// upload 来源不给标签：只有一行回填时间
+		expect(screen.getAllByText("回填时间")).toHaveLength(1);
 	});
 
-	it("given 索引暂时读不到 When 渲染 Then 显示告警并照常展示已入库历史", async () => {
+	it("given 发布时间来自 upload（签名推送直写）When 渲染 Then 不给时间来源标签", async () => {
 		const client = new InMemoryMarketClient({
-			releasePage: page({ list: [row()], total: 1, syncError: "index_sig_missing: 分片签名不可达" }),
+			releasePage: page({ list: [row({ published_at_source: "upload" })], total: 1 }),
 		});
 		renderPage(client);
 
-		await waitFor(() => expect(screen.getByText("暂时读不到市场索引，下面是已入库的历史记录")).toBeTruthy());
-		expect(screen.getByText("index_sig_missing: 分片签名不可达")).toBeTruthy();
-		// 历史本身仍然可见——观测面故障不阻断页面
-		expect(screen.getByText("demo-solution")).toBeTruthy();
+		await waitFor(() => expect(screen.getByText("demo-solution")).toBeTruthy());
+		expect(screen.queryByText("回填时间")).toBeNull();
 	});
 });

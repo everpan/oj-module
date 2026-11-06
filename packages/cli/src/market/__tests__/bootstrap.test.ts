@@ -5,7 +5,8 @@
 // 冲突都是不可逆后果。故每条断言都直接查文件系统与配置内容，不靠口头约定。
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it, vi } from "vitest";
 
 import { bootstrapIsolatedSite } from "../bootstrap";
@@ -45,11 +46,21 @@ vi.mock("node:child_process", async (importOriginal) => {
 	return { ...actual, execFileSync };
 });
 
-/** 假 oj 进程：不起真进程，ready 立即就绪（与 dev.ts 的 ojStarter 注入同形态） */
+/**
+ * 假 oj 进程：不起真进程，ready 立即就绪（与 dev.ts 的 ojStarter 注入同形态）。
+ *  起站语义顺带模拟 migrate_on_start：建 market_release 目录表（真 oj serve 起站即应用迁移），
+ *  bootstrap 的目录行 seed 依赖该表存在。
+ */
 function fakeStarter() {
 	const started: Array<{ configPath: string, base: string, apiSrc: string }> = [];
 	const starter = (configPath: string, base: string, apiSrc: string) => {
 		started.push({ configPath, base, apiSrc });
+		const db = new DatabaseSync(join(dirname(configPath), "db.sqlite"));
+		db.prepare(
+			"CREATE TABLE IF NOT EXISTS market_release (id INTEGER PRIMARY KEY AUTOINCREMENT, product TEXT NOT NULL, version TEXT NOT NULL, key_id TEXT, sha256 TEXT, size INTEGER, published_at INTEGER NOT NULL, published_at_source TEXT NOT NULL, yanked INTEGER NOT NULL DEFAULT 0, first_seen_at INTEGER NOT NULL, sig_alg TEXT, sig_value TEXT, sig_public_key TEXT, sig_registry_id TEXT, manifest TEXT)",
+		).run();
+		db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS uk_market_release_version ON market_release (product, version)").run();
+		db.close();
 		return {
 			port: Number(/port: (\d+)/.exec(readFileSync(configPath, "utf-8"))?.[1] ?? "0"),
 			ready: Promise.resolve(),
@@ -159,7 +170,7 @@ describe("given 一个装了 oj 二进制的源工程 When 自举隔离站点", 
 		await site.cleanup();
 	});
 
-	it("then CDN 目录在临时根内且已落好 fixture 包与索引", async () => {
+	it("then CDN 目录在临时根内且已落好 fixture 包；目录行已 seed 进隔离库", async () => {
 		const src = newSourceProject();
 		const { starter } = fakeStarter();
 
@@ -167,10 +178,16 @@ describe("given 一个装了 oj 二进制的源工程 When 自举隔离站点", 
 
 		expect(site.cdnDir.startsWith(site.root)).toBe(true);
 		expect(existsSync(join(site.cdnDir, "demo-solution-0.1.0.tgz"))).toBe(true);
-		// REG-CS5 三级索引：catalog.yaml（提交点）+ shards/<n>.yaml（版本明细）及其 .sig
-		expect(existsSync(join(site.cdnDir, "catalog.yaml"))).toBe(true);
-		expect(existsSync(join(site.cdnDir, "catalog.yaml.sig"))).toBe(true);
-		expect(readdirSync(join(site.cdnDir, "shards")).some(f => /^1\.yaml$/.test(f))).toBe(true);
+		expect(existsSync(join(site.cdnDir, "demo-solution-0.1.0.tgz.sig"))).toBe(true);
+		// A6 DB 目录化：索引文件（catalog.yaml/shards）不再生成——目录真源 = market_release 行
+		expect(existsSync(join(site.cdnDir, "catalog.yaml"))).toBe(false);
+		// 目录行 seed（站点内部通道）：安装解析/index 卡片/releases 的直读数据源
+		const { DatabaseSync } = await import("node:sqlite");
+		const db = new DatabaseSync(site.dbPath);
+		const rows = db.prepare("SELECT product, version, key_id, sig_registry_id FROM market_release").all() as Array<Record<string, unknown>>;
+		db.close();
+		expect(rows).toHaveLength(1);
+		expect(rows[0]).toMatchObject({ product: "demo-solution", version: "0.1.0", key_id: "trial.publisher", sig_registry_id: "trial.registry" });
 		expect(site.cdnBaseUrl).toBe(`${site.baseUrl}/cdn`);
 		await site.cleanup();
 	});

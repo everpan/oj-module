@@ -185,7 +185,8 @@ export function recomputeIndex(text: string): string {
 
 /**
  * 索引文件唯一写入口（REG-CS5 原子落盘，红队 F2）：先落 `<路径>.tmp.<pid>.<rand>` 再 `rename`
- * 覆盖。全仓（build-index / publish）只此一条写索引的路径——`grep writeFileSync` 可证没有直写。
+ * 覆盖。全仓只此一条写索引的路径——`grep writeFileSync` 可证没有直写（A6：市场侧索引
+ * 生成器 build-index 已随 DB 目录化退役，本写入口现服务 registry-* 留档面）。
  * 临时文件后缀非 `.yaml`，读取器永不把它当索引；进程被杀最多残留一个 tmp，由下次重建扫掉。
  */
 export function writeIndexFile(file: string, text: string): void {
@@ -266,7 +267,7 @@ export function publishCommand(dir: string, opts: PublishOptions = {}): PublishR
 	for (const no of shardNos)
 		shardSigs.set(no, signIndex("shard", pins.get(no)!, shardTexts.get(no)!, privateKeyPem, keyId));
 
-	// 原子落盘，顺序固定「先分片 → 再 catalog」（catalog 是提交点；与 build-index 同一纪律）
+	// 原子落盘，顺序固定「先分片 → 再 catalog」（catalog 是提交点）
 	// `--dry-run`：同一份计算、同一个顺序，只是不执行写——写盘清单照常返回，CI 可先比对
 	const writes: string[] = [];
 	for (const no of shardNos) {
