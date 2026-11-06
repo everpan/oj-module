@@ -54,11 +54,20 @@ import {
 
 单路由导航使用 `resolveRoutePath(route)` 计算最终 path：`category: "admin"` 会返回 `/system/...`，普通路由保持原 path，已重写的 admin path 不会重复添加前缀。相对 admin path 会从 `getRoutes()` 生成的绝对 `id` 补全模块根。
 
+admin 子树内的**后代路由**（自身不声明 `category`，继承自父级）传祖先链获取重写后 path——链从模块根到直接父级：
+
 ```ts
 const target = resolveRoutePath(route);
 if (target)
   navigate(target);
+
+// admin 子树后代：category 继承自父级，传祖先链
+const childTarget = resolveRoutePath(childRoute, moduleRootRoute, adminParentRoute);
+if (childTarget)
+  navigate(childTarget); // "/system/<模块根>/admin/..."
 ```
+
+链式调用下：原绝对路径优先取 `getRoutes()` 生成的 `id`（index 路由含尾斜杠），无 id 时按链拼接；链上无 admin 祖先时仅拼接绝对路径不重写，已重写 id 幂等原样返回。
 
 > `antd`、`react`、`react-router`、`@tanstack/react-query` 等共享依赖**不从 runtime 转出**。模块请直接 import 这些包，由 importmap 命中宿主提供的同一份实例。
 

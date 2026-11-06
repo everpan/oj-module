@@ -29,7 +29,9 @@
 
 - **`resolveRoutePath(route)` 公开导出（runtime）**：单路由导航 path 计算——`handle.category
   === "admin"` 时复用与框架相同的 `/system/<模块根>/*` 重写算法（对已重写路径幂等），普通路由
-  原样返回 `path`；相对 admin path 以已生成的绝对 `id` 补全模块根。下游导航不再需要自行维护
+  原样返回 `path`；相对 admin path 以已生成的绝对 `id` 补全模块根。admin 子树内的后代路由
+  （`category` 继承自父级、自身不声明）以 `resolveRoutePath(child, ...ancestors)` 传祖先链
+  （模块根到直接父级）计算，结果为 `/system + 原绝对路径`。下游导航不再需要自行维护
   admin 路径映射。用法见 `packages/runtime/README.md` 与 devkit manual。
 
 ### Changed

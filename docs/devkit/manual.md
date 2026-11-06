@@ -2259,6 +2259,8 @@ const paths = createWikiPaths(getModuleRoutePrefix("wiki"));
 
 下游主动导航时调用公开纯函数 `resolveRoutePath(route)` 获取最终 path，不复制重写规则。相对 admin path 会从 `getRoutes()` 生成的绝对 `id` 补全模块根；普通路由 path 原样返回，已重写 path 不重复添加 `/system`。
 
+admin 子树内的后代路由自身不声明 `category`（继承自父级），调用时追加祖先链 `resolveRoutePath(child, moduleRoot, ..., parent)`（链从模块根到直接父级）：重写结果为 `/system + 原绝对路径`（与 admin 嵌套深度无关），原绝对路径优先取已生成的 `id`（index 路由含尾斜杠），无 id 按链拼接；链上无 admin 祖先时仅拼接绝对路径，已重写 id 幂等。
+
 > `/system` 是框架侧断言，方案只标 `category: "admin"`，挂载点交给框架；宿主缺 `/system` 时告警一次。
 
 ### 13.3 menu.main 统一 + 路径助手

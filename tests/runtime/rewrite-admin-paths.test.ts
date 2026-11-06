@@ -144,3 +144,63 @@ describe("resolveRoutePath：单路由导航 path", () => {
 		expect(resolveRoutePath(route)).toBe(want);
 	});
 });
+
+describe("resolveRoutePath：admin 子树后代（category 继承自祖先链）", () => {
+	const root = r("/wiz-pm", { module: "wiz-pm" });
+	const adminParent = r("admin", { module: "wiz-pm", category: "admin" });
+
+	it.each([
+		{
+			name: "相对子路由按链拼接并重写",
+			route: r("data", { module: "wiz-pm" }),
+			chain: [root, adminParent],
+			want: "/system/wiz-pm/admin/data",
+		},
+		{
+			name: "已生成原始 id 优先，链仅供 admin 判定",
+			route: { ...r("data", { module: "wiz-pm" }), id: "/wiz-pm/admin/data" },
+			chain: [root, adminParent],
+			want: "/system/wiz-pm/admin/data",
+		},
+		{
+			name: "admin 嵌套在链深层，重写与深度无关",
+			route: r("data", { module: "a" }),
+			chain: [r("/a", { module: "a" }), r("b", { module: "a" }), r("admin", { module: "a", category: "admin" })],
+			want: "/system/a/b/admin/data",
+		},
+		{
+			name: "链无 admin 祖先：仅拼接绝对路径，不重写",
+			route: r("data", { module: "wiki" }),
+			chain: [r("/wiki", { module: "wiki" }), r("admin", { module: "wiki" })],
+			want: "/wiki/admin/data",
+		},
+		{
+			name: "index 子路由尾斜杠与框架 id 同源",
+			route: { index: true, handle: { title: "index", module: "wiz-pm" } },
+			chain: [root, adminParent],
+			want: "/system/wiz-pm/admin/",
+		},
+		{
+			name: "已重写 id 幂等原样返回",
+			route: { ...r("data", { module: "wiz-pm" }), id: "/system/wiz-pm/admin/data" },
+			chain: [root, adminParent],
+			want: "/system/wiz-pm/admin/data",
+		},
+	])("$name", ({ route, chain, want }) => {
+		expect(resolveRoutePath(route, ...chain)).toBe(want);
+	});
+
+	it("与框架全管线一致：链式结果等于 rewriteAdminPaths 后子树 id", () => {
+		const withIds = addRouteIdByPath(wikiRoutes());
+		const rootNode = withIds[0];
+		const adminNode = rootNode.children!.find(c => c.handle?.category === "admin")!;
+		const contacts = adminNode.children!.find(c => c.path === "contacts")!;
+
+		const rewritten = rewriteAdminPaths(withIds);
+		const hoistedAdmin = rewritten.find(c => c.path === "/system/wiki/admin")!;
+		const rewrittenContacts = hoistedAdmin.children!.find(c => c.path === "contacts")!;
+
+		expect(resolveRoutePath(contacts, rootNode, adminNode)).toBe((rewrittenContacts as AppRouteRecordRaw & { id?: string }).id);
+		expect(resolveRoutePath(contacts, rootNode, adminNode)).toBe("/system/wiki/admin/contacts");
+	});
+});

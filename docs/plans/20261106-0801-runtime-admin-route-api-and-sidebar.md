@@ -68,6 +68,37 @@
 - 菜单展开动画期间的瞬时测量会得到错误几何关系；验收必须等待动画结束后再断言。
 - 单路由 helper 对相对 admin path 依赖 `route.id` 提供绝对路径；上游 `getRoutes()` 已保证生成该 id。
 
+## 补遗：admin 子树后代的 path 计算（2026-11-06 下游反馈）
+
+### 需求与用户故事
+
+作为下游模块开发者，我需要计算 `category === "admin"` 子树内**后代路由**的导航 path；子路由自身不声明 `category`（继承自父级），现有单路由入参看不到继承语境，`resolveRoutePath({ path: "data" })` 只会返回 `"data"`。
+
+### 调查证据
+
+- admin 语境存在于**树结构**中：`processRoute` 逐节点判 `handle.category`，命中后整棵子树 hoist。由前缀代数：hoist 后 admin 根新绝对路径 = `/system + <admin 原绝对路径>`（`systemKey + rootAbs + suffix`，而 `suffix = adminAbs − rootAbs`），后代同理 = `/system + <后代原绝对路径>`——与 admin 嵌套深度、模块 root 位置无关。
+- 后代「原绝对路径」的框架真源是 `addRouteIdByPath` 生成的 `id`；源定义（无 id）时按祖先链拼接（`resolveAbs` 同语义）。index 路由 id 为 `父绝对路径 + "/"`（尾斜杠）。
+- 幂等性自然成立：已重写 id（`/system/...`）不以 admin 原绝对路径为前缀，原样返回。
+
+### BDD 验收用例
+
+| Given 入参 | When | Then |
+| --- | --- | --- |
+| 子路由 `data`，链 = [模块根 `/wiz-pm`, admin 父 `admin`]，无 id | 调用链式 helper | `/system/wiz-pm/admin/data` |
+| 子路由带原始 id `/wiz-pm/admin/data`，同链 | 调用链式 helper | `/system/wiz-pm/admin/data`（id 优先，链仅供 admin 判定） |
+| admin 嵌套在链第 3 层，后代 `data` | 调用链式 helper | `/system/a/b/admin/data`（深度无关） |
+| 链无 admin 祖先（`/wiki` > `admin` > `data`） | 调用链式 helper | `/wiki/admin/data`（仅拼接绝对路径，不重写） |
+| index 子路由，admin 父链 | 调用链式 helper | `/system/wiz-pm/admin/`（尾斜杠与框架 id 同源） |
+| 子路由带已重写 id `/system/wiz-pm/admin/data` | 调用链式 helper | 原样返回（幂等） |
+| 真实树（wiki fixture）经框架全管线重写 | 链式 helper 结果 | 与重写后子树 id 逐一相等 |
+
+### 实施任务
+
+- [x] 链式用例先行（含真实树一致性用例），确认失败。
+- [x] `resolveRoutePath(route, ...ancestors)` 变参扩展：单路由分支行为不变；后代分支按前缀代数 `/system + 原绝对路径` 实现（不重建树、不跑 rewriteAdminPaths）。
+- [x] 文档同步（runtime README、devkit manual / menu-rules、CHANGELOG Unreleased）。
+- [x] 测试、typecheck、lint、runtime build 通过；并入 feat/ojm。
+
 ## 阶段总结
 
 2026-11-06 08:01–08:30，约 30 分钟。
