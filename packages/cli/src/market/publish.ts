@@ -17,6 +17,7 @@ import process from "node:process";
 
 import { buildBundle } from "../bundle";
 import { createDeterministicTgz } from "../deterministic-tar";
+import { assertDefaultModulesUntouched } from "../scaffold-guard";
 import { signCommand } from "../sign";
 import { resolveCdnLayout } from "./cdn-layout";
 import { buildFixturePackage, parseFixtureSpec } from "./fixture";
@@ -126,6 +127,8 @@ async function buildFixture(args: { fixture?: string, staging: string, cdnDir: s
 
 /** `--real`：走既有 ojm build --bundle，产物搬到 CDN 目录（一次只发一份：多方案工程请显式指定） */
 async function buildRealPackage(solutionRoot: string, staging: string, cdnDir: string): Promise<{ name: string, version: string, tgzPath: string, sha256: string, preExisted: boolean }> {
+	// 与 ojm build 同一道完整性门禁：发布链路同样不许携带被改过的默认模块
+	assertDefaultModulesUntouched(solutionRoot);
 	const builtList = await buildBundle(solutionRoot, { out: staging });
 	if (builtList.length !== 1) {
 		throw new Error(

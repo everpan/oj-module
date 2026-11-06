@@ -7,6 +7,8 @@
  *
  * 幂等补缺：对既有工程重跑只补缺失文件（bin/oj 已在则跳过下载，但先过 §7 能力闸门），
  * config.yaml 与用户文件永不覆盖——「重新 init 覆盖脚手架」是审阅记录二明令禁止的行为。
+ * 唯一例外是 `--yes`：默认方案的显式恢复入口，仅覆盖/清理上游自治的保护根
+ * （src/app、src/oj-market，见 scaffold-guard.ts），自定义模块与工程配置仍不动。
  */
 
 import { execFileSync } from "node:child_process";
@@ -14,18 +16,23 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
-import { fileURLToPath } from "node:url";
-import yaml from "yaml";
 import { ALIAS_PATHS_FILE, syncAliasPaths } from "./alias-paths";
 import { BUILTIN_LIST_FILE, writeBuiltinList } from "./builtin";
 import { resolveCertDir, resolveConfigPath } from "./layout";
 import { probeOjCaps } from "./oj-caps";
 import { mintDevCert } from "./oj-cert";
+import {
+	isProtectedRel,
+	readInitInclude,
+	removeExtraProtectedFiles,
+	cliRoot as resolveCliRoot,
+	templatesRoot,
+} from "./scaffold-guard";
 import { isSupportedOjVersion, MIN_OJ_VERSION, resolveOjBin, syncOjDevkit, vendorCommand } from "./vendor";
 import { readHostVersions } from "./versions";
 
 export interface InitOptions {
-	/** 跳过非空目录确认（自动化/测试用） */
+	/** 跳过非空目录确认（自动化/测试用）；对既有工程同时恢复上游自治的保护根 */
 	yes?: boolean
 	/** 注入桩 oj 安装器（测试）；默认 vendorCommand 经 npm 包 @oj-bin/oj 联网安装 */
 	ojInstaller?: (binDir: string) => Promise<void>
@@ -109,26 +116,34 @@ export async function initProject(destDir: string, opts: InitOptions = {}): Prom
 	}
 
 	const report: InitReport = { created: [], skipped: [], warnings: [] };
-	const cliRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
+	const cliRoot = resolveCliRoot();
 
 	// 0) 已有 bin/oj 先过能力闸门（评审 BLOCKING #8）：早前「bin/oj 存在即跳过」
 	//    会让从旧工程带来的 0.1.84 静默过关，等 `ojm build` 才死在 --module-root 不认。
 	assertExistingOjUsable(destDir, report);
 
-	// 1) 模板（占位符替换 + 幂等跳过）
-	const templatesDir = path.join(cliRoot, "templates");
+	// 1) 模板（占位符替换 + 幂等跳过；--yes 时保护根内改为覆盖恢复）
+	const templatesDir = templatesRoot();
 	const jwtSecret = crypto.randomBytes(32).toString("hex");
 	const projectName = path.basename(destDir);
 	const include = readInitInclude(templatesDir);
 	copyTemplates(templatesDir, destDir, {
 		__JWT_SECRET__: jwtSecret,
 		__PROJECT_NAME__: projectName,
-	}, report, include, templatesDir);
+	}, report, include, templatesDir, false, !!opts.yes);
 	pruneUnincludedApiPaths(destDir, include, report);
 
+	// 1a') --yes 恢复的清理面：删除保护根内模板没有的文件（留着会让 build 门禁
+	//      永久失败——extra 漂移不因 init 补缺而消失，必须显式清掉）
+	if (opts.yes) {
+		for (const rel of removeExtraProtectedFiles(destDir))
+			report.created.push(`恢复：删除多出文件 ${rel}`);
+	}
+
 	// 1a) src/.ojm-builtin.json：脚手架自带模块身份（名单派生自上面的白名单，单一真源）。
-	//     copyIfAbsent：旧工程重跑 init 时缺失才补写，已存在不覆盖用户手改。
-	const builtinStatus = writeBuiltinList(destDir, include);
+	//     copyIfAbsent：旧工程重跑 init 时缺失才补写，已存在不覆盖用户手改；
+	//     --yes 恢复语义下重写为上游名单。
+	const builtinStatus = writeBuiltinList(destDir, include, { overwrite: !!opts.yes });
 	if (builtinStatus === "created")
 		report.created.push(`src/${BUILTIN_LIST_FILE}`);
 	else if (builtinStatus === "skipped")
@@ -317,6 +332,9 @@ async function sealJwtSecret(destDir: string, report: InitReport, seal: Sealer =
  * created/skipped（demo 模块/模板自运行产物/元数据的大头在清单外）。清单外的
  * 目录仅在「有收录子孙」时才穿行（如 `api/`、`web/src/`、`web/src/demo/`——
  * 只收录了后者底下的 entry/locales/pages），穿行时未收录的子项继续被挡下。
+ *
+ * `restore`（--yes）：上游自治保护根（scaffold-guard.PROTECTED_ROOTS）内的
+ * 已存在文件改为覆盖写入——这是默认方案的显式恢复入口，其余文件仍不覆盖。
  */
 function copyTemplates(
 	srcDir: string,
@@ -326,6 +344,7 @@ function copyTemplates(
 	include: Set<string>,
 	rootDir: string,
 	underIncluded = false,
+	restore = false,
 ): void {
 	for (const entry of fs.readdirSync(srcDir, { withFileTypes: true })) {
 		const src = path.join(srcDir, entry.name);
@@ -343,22 +362,34 @@ function copyTemplates(
 			if (!dirHasFiles(src))
 				continue;
 			fs.mkdirSync(dest, { recursive: true });
-			copyTemplates(src, dest, placeholders, report, include, rootDir, underIncluded || listed);
+			copyTemplates(src, dest, placeholders, report, include, rootDir, underIncluded || listed, restore);
 			continue;
 		}
+		// 恢复判定用 srcRel（模板相对 == 工程相对，已归一正斜杠）；destRel 是相对
+		// 当前递归层 destDir 的短路径，只配做报告标签，做不了保护根判定
 		const destRel = path.relative(destDir, dest);
 		if (fs.existsSync(dest)) {
+			if (restore && isProtectedRel(srcRel)) {
+				writeTemplateFile(src, dest, placeholders);
+				report.created.push(`恢复（--yes 覆盖）${srcRel}`);
+				continue;
+			}
 			report.skipped.push(destRel);
 			continue;
 		}
-		let content = fs.readFileSync(src, "utf-8");
-		for (const [token, value] of Object.entries(placeholders))
-			content = content.replaceAll(token, value);
-		content = stripRegion(content, "demo-only");
-		fs.mkdirSync(path.dirname(dest), { recursive: true });
-		fs.writeFileSync(dest, content);
+		writeTemplateFile(src, dest, placeholders);
 		report.created.push(destRel);
 	}
+}
+
+/** 读模板 → 占位符替换 → 剥 demo-only 区间 → 落盘（创建与 --yes 恢复共用一条变换链） */
+function writeTemplateFile(src: string, dest: string, placeholders: Record<string, string>): void {
+	let content = fs.readFileSync(src, "utf-8");
+	for (const [token, value] of Object.entries(placeholders))
+		content = content.replaceAll(token, value);
+	content = stripRegion(content, "demo-only");
+	fs.mkdirSync(path.dirname(dest), { recursive: true });
+	fs.writeFileSync(dest, content);
 }
 
 /** srcRel 是否为白名单里某条收录路径的祖先目录——决定清单外目录要不要穿行 */
@@ -380,31 +411,6 @@ function dirHasFiles(dir: string): boolean {
 			return true;
 	}
 	return false;
-}
-
-/**
- * 读取模板根 `init.include.yaml` 的 `include` 白名单，归一为相对模板根的路径集合。
- * 清单随模板一起发布，缺失即安装包损坏——直接 fail-fast，不留「静默少拷」的
- * 退化路径。条目指向不存在的路径同样 fail-fast：拼错一个目录名不会当场报错，
- * 只会在用户工程里留下难以追溯的缺文件（旧 exclude 清单没有这类校验面）。
- */
-function readInitInclude(templatesDir: string): Set<string> {
-	const yamlPath = path.join(templatesDir, "init.include.yaml");
-	if (!fs.existsSync(yamlPath))
-		throw new Error(`模板缺少 init.include.yaml：${yamlPath}（安装包损坏？）`);
-	const doc = yaml.parse(fs.readFileSync(yamlPath, "utf-8")) as { include?: string[] } | null;
-	const out = new Set<string>();
-	for (const raw of doc?.include ?? []) {
-		// 跨平台：include 清单用正斜杠书写，但 path.normalize 在 Windows 会把
-		// 正斜杠折成反斜杠，导致与 srcRel（path.relative 在 Windows 同样出反斜杠）
-		// 的对比永远落空、整棵 src 子树被 skip。这里只把反斜杠归正、剥 ./ 前缀，
-		// 不引入平台分隔符（修复：Windows 下 init 不拷贝 src 树）。
-		const p = raw.replace(/\\/g, "/").replace(/^(\.\/)+/, "");
-		out.add(p);
-		if (!fs.existsSync(path.join(templatesDir, p)))
-			throw new Error(`init.include.yaml 收录了不存在的路径：${p}（拼写错误或模板缺文件？）`);
-	}
-	return out;
 }
 
 /**

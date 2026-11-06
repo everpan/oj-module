@@ -77,11 +77,11 @@ export const HELP_GROUPS: HelpGroup[] = [
 				zh: "前后端一体化工程脚手架（幂等补缺）",
 				en: "Full-stack project scaffolding (idempotent, fills gaps only)",
 				options: [
-					{ raw: "--yes", zh: "非交互：缺省回答一律 yes", en: "Non-interactive: default all answers to yes" },
+					{ raw: "--yes", zh: "非交互：跳过非空确认，并把框架自带模块（src/app、src/oj-market）恢复为当前版本（丢弃其中的本地修改）", en: "Non-interactive: skip the non-empty check and restore built-in modules (src/app, src/oj-market) to upstream (local edits there are discarded)" },
 				],
 				detail: {
-					zh: "ojm init [dir] [--yes]\n  前后端一体化工程脚手架（幂等补缺：重跑只补缺失文件，永不覆盖已有文件）",
-					en: "ojm init [dir] [--yes]\n  Full-stack project scaffolding (idempotent: re-runs only fill missing files, never overwrite existing ones)",
+					zh: "ojm init [dir] [--yes]\n  前后端一体化工程脚手架（重跑只补缺失文件；已有文件永不覆盖）\n  --yes 恢复模式：覆盖 src/app 与 src/oj-market 为当前 CLI 携带的上游版本，\n  并删除这些目录内多出的文件（会丢弃其中的本地修改，先备份；\n  下游自定义模块与工程配置不受影响）。CLI 升级后构建前需先跑一次。",
+					en: "ojm init [dir] [--yes]\n  Full-stack project scaffolding (re-runs only fill missing files; existing files are never overwritten)\n  --yes restore mode: overwrites src/app & src/oj-market with the upstream version\n  carried by this CLI and removes extra files there (local edits in those two\n  directories are discarded — back up first; your own modules and project config\n  are untouched). Run once after a CLI upgrade before building.",
 				},
 			},
 			{
@@ -135,8 +135,8 @@ export const HELP_GROUPS: HelpGroup[] = [
 					{ raw: "--out <dir>", zh: "--bundle 输出目录（缺省 dist/）", en: "Output directory for --bundle (default dist/)" },
 				],
 				detail: {
-					zh: "ojm build [--bundle [name]] [--out <dir>]\n  构建后端（oj build）与模块产物（含全站合并）\n  --bundle 产出 dist/<name>-<version>.tgz + sha256（市场安装器的上游产物）",
-					en: "ojm build [--bundle [name]] [--out <dir>]\n  Builds the backend (oj build) and module artifacts (including the site-wide merge)\n  --bundle produces dist/<name>-<version>.tgz + sha256 (upstream artifact for the marketplace installer)",
+					zh: "ojm build [--bundle [name]] [--out <dir>]\n  构建后端（oj build）与模块产物（含全站合并）\n  --bundle 产出 dist/<name>-<version>.tgz + sha256（市场安装器的上游产物）\n  构建前校验框架自带模块（src/app、src/oj-market）未被本地修改——\n  与上游模板不一致即拒绝构建（内置模块自治契约，见 src/README.md）",
+					en: "ojm build [--bundle [name]] [--out <dir>]\n  Builds the backend (oj build) and module artifacts (including the site-wide merge)\n  --bundle produces dist/<name>-<version>.tgz + sha256 (upstream artifact for the marketplace installer)\n  Before building, verifies the built-in modules (src/app, src/oj-market) are unmodified —\n  any drift from the upstream templates rejects the build (built-in module autonomy, see src/README.md)",
 				},
 			},
 			{

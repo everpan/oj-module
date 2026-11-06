@@ -130,6 +130,10 @@ function makeAction(def: HelpEntry, projectRoot: string, lang: Lang, exit: (code
 			};
 		case "build":
 			return async (opts: { bundle?: unknown, out?: string } = {}) => {
+				// 脚手架完整性门禁（内置模块自治契约）：普通与 --bundle 汇合前执行，
+				// 失败零产物——默认模块上游自治，本地修改不允许进包
+				const { assertDefaultModulesUntouched } = await import("./scaffold-guard");
+				assertDefaultModulesUntouched(projectRoot);
 				// mri 可选值：裸 --bundle 得到 ""，--bundle name / --bundle=name 得到字符串
 				const bundle = opts.bundle !== undefined;
 				const bundleName = typeof opts.bundle === "string" && opts.bundle !== "" ? opts.bundle : undefined;

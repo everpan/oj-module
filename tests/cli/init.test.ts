@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { initProject, resolveVersionMatrix } from "../../packages/cli/src/init";
 import { readOjApiPrefix, readOjPort, readOjServerField } from "../../packages/cli/src/oj-config";
+import { collectDefaultModuleDrift } from "../../packages/cli/src/scaffold-guard";
 import { PROJECT_ROOT } from "../helpers/paths";
 
 // 桩 oj 用 vi.mock 进程内实现：shebang 脚本在 Windows 无法被 execFileSync spawn
@@ -604,6 +605,44 @@ describe("initProject", () => {
 		await initProject(dest, initOpts);
 		const yaml = fs.readFileSync(path.join(dest, "pnpm-workspace.yaml"), "utf-8");
 		expect(yaml).toMatch(/allowBuilds:\n\s+esbuild:\s*true/);
+	});
+
+	/**
+	 * 内置模块自治契约的基线：init 产物必须与 cli 包内模板逐字节一致（保护集内
+	 * 无占位符/demo 区间，scaffold-guard.test.ts 已钉），否则 `ojm build` 门禁对
+	 * 全新工程一上手就假阳性。
+	 */
+	it("门禁基线：刚 init 的工程与上游模板零漂移", async () => {
+		const dest = path.join(tmpRoot(), "guard-clean");
+		await initProject(dest, initOpts);
+		expect(collectDefaultModuleDrift(dest)).toEqual({ modified: [], missing: [], extra: [] });
+	});
+
+	/**
+	 * `--yes` = 默认方案的显式恢复入口：覆盖已改的默认文件、删除保护根内多出文件；
+	 * 下游自定义模块（src/crm）与工程级配置（config.yaml）不受影响。
+	 * 无 --yes：非空目录直接拒绝（既有语义，永不覆盖）。
+	 */
+	it("--yes 恢复默认模块：覆盖魔改、删除多出；自定义模块与 config.yaml 保留", async () => {
+		const dest = path.join(tmpRoot(), "guard-restore");
+		await initProject(dest, initOpts);
+
+		const entryPath = path.join(dest, "src/app/web/entry.ts");
+		fs.writeFileSync(entryPath, `${fs.readFileSync(entryPath, "utf-8")}\n// 本地魔改\n`);
+		fs.writeFileSync(path.join(dest, "src/app/web/extra-page.tsx"), "export default null;\n");
+		fs.mkdirSync(path.join(dest, "src/crm/web"), { recursive: true });
+		fs.writeFileSync(path.join(dest, "src/crm/web/entry.ts"), "export default null;\n");
+		const configPath = path.join(dest, "config.yaml");
+		const configTampered = `${fs.readFileSync(configPath, "utf-8")}# user config\n`;
+		fs.writeFileSync(configPath, configTampered);
+
+		await initProject(dest, initOpts);
+
+		expect(fs.readFileSync(entryPath, "utf-8")).not.toContain("本地魔改");
+		expect(fs.existsSync(path.join(dest, "src/app/web/extra-page.tsx"))).toBe(false);
+		expect(collectDefaultModuleDrift(dest)).toEqual({ modified: [], missing: [], extra: [] });
+		expect(fs.readFileSync(path.join(dest, "src/crm/web/entry.ts"), "utf-8")).toBe("export default null;\n");
+		expect(fs.readFileSync(configPath, "utf-8")).toBe(configTampered);
 	});
 });
 
