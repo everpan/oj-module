@@ -575,22 +575,31 @@ interface IndexRow {
 	operator: string | null
 }
 
-/** 最近一次安装操作人（回落 market_history 行；表不存在/查询失败/无行 → null，观测面不阻断索引） */
-async function lastInstallOperatorOf(name: string): Promise<string | null> {
+/**
+ * 一页产品的最近一次安装操作人（批量版，minor M6：一次 op:"in" 查询替代逐产品串行——
+ * 倒序下每产品首行即最新；表不存在/查询失败 → 空 Map，观测面不阻断索引，全员 null）。
+ */
+async function lastInstallOperatorsOf(names: string[]): Promise<Map<string, string | null>> {
+	const map = new Map<string, string | null>();
+	if (names.length === 0)
+		return map;
 	try {
 		const rows = await db.table("market_history")
-			.select(["operator"])
-			.where({ field: "solution", op: "eq", value: name })
+			.select(["solution", "operator"])
 			.where({ field: "action", op: "eq", value: "install" })
+			.where({ field: "solution", op: "in", value: names })
 			.orderBy([{ field: "created_at", dir: "desc" }, { field: "rowid", dir: "desc" }])
-			.limit(1)
-			.all() as Array<{ operator: unknown }>;
-		const op = rows[0]?.operator;
-		return typeof op === "string" ? op : null;
+			.all() as Array<{ solution: unknown, operator: unknown }>;
+		for (const r of rows) {
+			const name = String(r.solution);
+			if (!map.has(name))
+				map.set(name, typeof r.operator === "string" ? r.operator : null);
+		}
 	}
 	catch {
-		return null;
+		// 观测面失败不阻断索引（与单查版同口径）
 	}
+	return map;
 }
 
 /**
@@ -625,6 +634,8 @@ async function indexBody(env: MarketEnv, q: Record<string, unknown>): Promise<{ 
 	}
 	const names = [...byProduct.keys()].sort((a, b) => a < b ? -1 : a > b ? 1 : 0);
 	const total = names.length;
+	// operator 批量预取（一次 in 查询；缺产品 → null，与逐行单查口径一致）
+	const operators = await lastInstallOperatorsOf(names.slice(offset, offset + size));
 	const list: IndexRow[] = [];
 	for (const name of names.slice(offset, offset + size)) {
 		const vers = byProduct.get(name)!;
@@ -649,7 +660,7 @@ async function indexBody(env: MarketEnv, q: Record<string, unknown>): Promise<{ 
 			description: typeof m?.description === "string" ? m.description : null,
 			trust_state: side?.trust_state ?? null,
 			key_id: side?.archive?.key_id ?? null,
-			operator: await lastInstallOperatorOf(name),
+			operator: operators.get(name) ?? null,
 		});
 	}
 	return { list, total, page, size };

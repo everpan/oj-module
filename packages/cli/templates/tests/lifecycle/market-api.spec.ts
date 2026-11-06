@@ -1099,6 +1099,22 @@ describe("GET index（v4 §四：DB 目录分页 + 本地 state 对比；索引�
 		expect(d.list.find(r => r.name === "demo-solution")?.operator).toBe("alice");
 	});
 
+	it("operator 批量口径一致（minor M6：一页多产品，每产品取各自最近一次 install operator，互不穿串）", async () => {
+		const ins = dbo.prepare("insert into market_history (solution, version, action, status, operator, message, created_at) values (?, ?, ?, ?, ?, ?, ?)");
+		ins.run("demo-solution", "0.1.0", "install", "done", "alice", "", 1700000000);
+		ins.run("demo-solution", "0.1.1", "install", "done", "bob", "", 1700000001); // 更近一次 → demo 应取 bob
+		ins.run("wiki", "1.0.0", "install", "done", "carol", "", 1700000002);
+		seedRelease("demo-solution", "0.1.1");
+		seedRelease("wiki", "1.0.0");
+		const api = createMarketApi(makeEnv());
+		g.http = { user: { id: 1 } };
+		await api.index.get();
+		expect(last?.status).toBe(200);
+		const d = last?.data as { list: Array<{ name: string, operator: string | null }> };
+		expect(d.list.find(r => r.name === "demo-solution")?.operator).toBe("bob");
+		expect(d.list.find(r => r.name === "wiki")?.operator).toBe("carol");
+	});
+
 	it("P2-12 bootstrap key（G3 双轨第一轨）：信任库为空 + bootstrapKey 注入 → cdn 首装直达 done 不落 needs_trust", async () => {
 		seedRelease("demo-solution", "0.1.0", { manifest: manifestFixture("0.1.0") });
 		await fsp.rm(join(sharedRoot, ".solutions", "trusted-keys.yaml"), { force: true }); // beforeEach 已播种，删库文件模拟全新站点
