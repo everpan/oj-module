@@ -278,12 +278,13 @@ export async function ojMarketTrustKeyDelete(query: OjMarketTrustKeyDeleteQuery)
 	}
 }
 
+export type OjMarketIndexGetQuery = z.input<(typeof schemas)["ojMarketIndexGet"]["query"]>;
 export type OjMarketIndexGetData = z.infer<(typeof schemas)["ojMarketIndexGet"]["data"]>;
 
-export async function ojMarketIndexGet(): Promise<OjMarketIndexGetData> {
+export async function ojMarketIndexGet(query: OjMarketIndexGetQuery): Promise<OjMarketIndexGetData> {
 	const client = ensureReq();
 	try {
-		const env = await client.get(`oj-market/index`).json<OjEnvelope<OjMarketIndexGetData>>();
+		const env = await client.get(`oj-market/index`, { searchParams: query as Record<string, string | number | boolean> }).json<OjEnvelope<OjMarketIndexGetData>>();
 		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
 		if (typeof env.code === "number" && env.code !== 0)
 			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");

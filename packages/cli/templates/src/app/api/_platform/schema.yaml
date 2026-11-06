@@ -190,18 +190,9 @@ tables:
       sig_alg: {type: text}
       sig_value: {type: text}
       sig_public_key: {type: text}
+      # A5 增补：包级 canonical 首段（签发方 registry 身份）——install verify 重构规范串用
+      sig_registry_id: {type: text}
       manifest: {type: text}
-  # REG-CS2 索引新鲜度：站点按源记住见过的最大 seq（防回放/降级，回退即拒）。
-  # 读写由 _lifecycle/source-seq.ts 落到本表；source_url 为业务主键（无自增 id）。
-  reg_source_seq:
-    # 共享表（B 组）：索引新鲜度水位属于**站点**（受害者是站点，防回放/降级），
-    # 与租户无关；source-seq.ts 的设计注释即写明「记在站点 DB」。
-    tenant: false
-    pk: source_url
-    columns:
-      source_url: {type: text, null: false}
-      max_seq: {type: integer, null: false}
-      updated_at: {type: integer, null: false}
   # ---- 0016：组织架构领域（CRUD 基线 + 外部源适配器的落点）----
   # 定位（方案 §14）：CRUD 是基线，企微 / LDAP 只是适配器 → 表里不出现任何 wecom_* / ldap_* 字段。
   # origin 是**归属权**标识（D13）：local = 本站管理员全权；wecom/ldap/sso = 该适配器管辖，

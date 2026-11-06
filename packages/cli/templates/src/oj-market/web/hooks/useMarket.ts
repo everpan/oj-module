@@ -1,4 +1,4 @@
-import type { IndexRow, MarketHistory, TaskRecord } from "../types";
+import type { IndexPage, MarketHistory, TaskRecord } from "../types";
 import { useCallback, useEffect, useState } from "react";
 import { useMarketClient } from "../api/context";
 import { poll } from "../utils/poll";
@@ -8,10 +8,10 @@ import { poll } from "../utils/poll";
 // 故非 ok 变体也声明 data?: undefined（ok 变体 data: T，访问结果为 T | undefined）。
 export type LoadState<T> = { status: "loading", data?: undefined } | { status: "ok", data: T } | { status: "error", error: string, data?: undefined };
 
-/** 卡片索引加载（含重试）；消费 GET /oj-market/index */
-export function useMarketIndex(): LoadState<IndexRow[]> & { retry: () => void } {
+/** 卡片索引加载（含重试）；消费 GET /oj-market/index（v4 §四 DB 目录分页） */
+export function useMarketIndex(page = 1, size = 20): LoadState<IndexPage> & { retry: () => void } {
 	const client = useMarketClient();
-	const [state, setState] = useState<LoadState<IndexRow[]>>({ status: "loading" });
+	const [state, setState] = useState<LoadState<IndexPage>>({ status: "loading" });
 	// 重试不复跑「先同步 set loading 再拉取」的加载函数（effect 内同步 set 触发
 	// react/set-state-in-effect），改为事件里置 loading + 递增 nonce 驱动 effect 重跑。
 	const [nonce, setNonce] = useState(0);
@@ -19,13 +19,13 @@ export function useMarketIndex(): LoadState<IndexRow[]> & { retry: () => void } 
 	useEffect(() => {
 		let active = true;
 		client
-			.index()
+			.index({ page, size })
 			.then(data => active && setState({ status: "ok", data }))
 			.catch(e => active && setState({ status: "error", error: e instanceof Error ? e.message : String(e) }));
 		return () => {
 			active = false;
 		};
-	}, [client, nonce]);
+	}, [client, nonce, page, size]);
 
 	const retry = useCallback(() => {
 		setState({ status: "loading" });

@@ -7,7 +7,7 @@
 
 import type {
 	EnableInput,
-	IndexRow,
+	IndexPage,
 	InstallInput,
 	MarketHistory,
 	ReleasePage,
@@ -19,8 +19,8 @@ import type {
 export interface MarketClient {
 	/** 登录即可：{ apiVersion }（peerPlatform 预检口径） */
 	meta: () => Promise<{ apiVersion: string }>
-	/** 卡片数据源（superadmin） */
-	index: () => Promise<IndexRow[]>
+	/** 卡片数据源（superadmin；v4 §四 DB 目录分页，行字段不变） */
+	index: (input?: { page?: number, size?: number }) => Promise<IndexPage>
 	/** 触发安装，返回轮询用 task_id */
 	install: (input: InstallInput) => Promise<{ task_id: string }>
 	/** 任务轮询消费面（query 形态 ?id=） */
@@ -34,7 +34,7 @@ export interface MarketClient {
 	enable: (input: EnableInput) => Promise<{ ok: boolean, message: string }>
 	/** 市场操作历史（_platform 只读端点 /oj-market/history） */
 	history: () => Promise<MarketHistory[]>
-	/** 发布历史（登录即可读；服务端每次读先与签名索引对账） */
+	/** 发布历史（登录即可读；v4 §四 直读 market_release 上传行，零索引依赖） */
 	releases: (input?: { page?: number, limit?: number }) => Promise<ReleasePage>
 	/** 卸载影响面预检（P3 U1；服务端返回供二次确认，P1-15a 补齐后接通） */
 	uninstallImpact: (name: string) => Promise<UninstallImpact>

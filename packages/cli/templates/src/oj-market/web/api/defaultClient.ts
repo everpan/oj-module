@@ -9,7 +9,7 @@
 
 import type {
 	EnableInput,
-	IndexRow,
+	IndexPage,
 	InstallInput,
 	MarketHistory,
 	ReleasePage,
@@ -72,17 +72,23 @@ export const httpMarketClient: MarketClient = {
 		// 生成 client 已解包信封 + DEV 校验；此处仅对齐领域类型。
 		return (await ojMarketMetaGet()) as { apiVersion: string };
 	},
-	async index() {
+	async index(input: { page?: number, size?: number } = {}) {
 		// 唯一需 silentError 的端点：直连 request 抑制「未配置市场地址」的全局 toast。
+		// v4 §四：分页数据源（{list,total,page,size}）；503（市场地址未配置）归空页——空态由卡片区文案承载。
 		try {
+			const params: Record<string, string> = {};
+			if (input.page != null)
+				params.page = String(input.page);
+			if (input.size != null)
+				params.size = String(input.size);
 			const r = await (request as unknown as HttpGetLike)
-				.get<OjEnvelope<IndexRow[]>>(`${MARKET}/index`, { silentError: true, retry: 0 });
+				.get<OjEnvelope<IndexPage>>(`${MARKET}/index`, { searchParams: params, silentError: true, retry: 0 });
 			const env = await r.json();
 			return env.data!;
 		}
 		catch (e) {
 			if (isUnconfigured(e))
-				return [];
+				return { list: [], total: 0, page: 1, size: 20 };
 			throw e;
 		}
 	},

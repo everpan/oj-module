@@ -1,14 +1,12 @@
-import type { SourceSeqVerdict } from "#/_platform/_lifecycle/source-seq";
-// 编排端点 + 市场索引（P1-12，R9/ISP）：/api/oj-market/* 端点族同文件嵌套 handler 组
-// （oj v0.1.64 组形态，notification/api.ts 同款；组名 = 路径段，路由不变；嵌套组最深 4 层，oj bridge/mod.rs walker）。
+// 编排端点 + 市场目录（P1-12，R9/ISP；v4 §四：市场域 api 自 _platform 迁入本模块）：/api/oj-market/*
+// 端点族同文件嵌套 handler 组（oj v0.1.64 组形态，notification/api.ts 同款；组名 = 路径段）。
 // 门（R9）：install/task/index 全 assertSuperAdmin 独占（市场页是「市场即样例」的第一方特权
 // 例外，R29；权限码不构成门）；meta 登录即可（peerPlatform 预检先于判权）。
-// 职责边界（ISP）：端点只做 门禁 + Form B 索引解析（安装器不拼 URL，installer.ts 同纪律）+
+// 职责边界（ISP）：端点只做 门禁 + 目录解析（安装器不拼 URL，installer.ts 同纪律）+
 // InstallRequest 组装；任务生命周期/失败三分/终态审计全归 runInstall 状态机（P1-10），端点不重复编排。
-// CDN 基址：sys_setting `framework.market_cdn_url`（PRD §5.3，缺省空 = 市场不可用，可读错误不崩）；
-// 索引拉取走 IndexSource DIP（REG-CS5 三级化：catalog.yaml + shards/<n>.yaml）——读面带
-// ETag/If-None-Match 条件请求（304 不重传），不再发 cache-control: no-cache（Q8：新鲜度由
-// 服务端 max-age=60, stale-while-revalidate=60 + 索引自身 expires_at 共同承载）。
+// 目录真源 = market_release 表（DB 目录化 v4；签名索引机制整建制退役）——install 解析/index
+// 卡片/releases 历史全部直读 DB 合成 Form B 形状，包字节仍从 CDN 基址静态拉。
+// CDN 基址：sys_setting `framework.market_cdn_url`（PRD §5.3，缺省空 = 市场不可用，可读错误不崩）。
 // 站点路径缺省（marketEnv）：oj serve release 布局生产口径（P1-16 接线 B3/B4）——共享根 = serve
 // 挂载根 dist（锁 dist/manifests.yaml、版本目录 dist/<name>-<ver>/、versions.json 同根），
 // 暂存/任务/sidecar 留 dist 外（R13 不与装配树冲突）；全字段可注入覆盖（测试 stub 同款）。
@@ -19,14 +17,12 @@ import type { FetchFace } from "#/_platform/_lifecycle/steps/download";
 import type { ExecFace } from "#/_platform/_lifecycle/steps/extract";
 import type { ReloadFace } from "#/_platform/_lifecycle/steps/reload";
 import type { FetchInitFace } from "#/_platform/_shared/site-facade";
-import type { IndexKind, IndexSource } from "./index-source";
 import { atomicWriteText, fsFace } from "#/_platform/_lifecycle/atomic";
 import { recordHistory } from "#/_platform/_lifecycle/history";
 import { latestAppliedSeqOf, reconcile, runInstall, setEnabled } from "#/_platform/_lifecycle/installer";
 import { manifestOfUpload as sharedManifestOfUpload } from "#/_platform/_lifecycle/manifest-of-upload";
 import { compareVersions } from "#/_platform/_lifecycle/semver";
 import { sha384B64 } from "#/_platform/_lifecycle/sha384";
-import { guardAndRecordSourceSeq } from "#/_platform/_lifecycle/source-seq";
 import { createStateStore } from "#/_platform/_lifecycle/state";
 import { getTask, readTasks } from "#/_platform/_lifecycle/tasks";
 import { createTrustStore } from "#/_platform/_lifecycle/trust";
@@ -37,7 +33,6 @@ import { pageArgs } from "#/_platform/_shared/service/infra/query";
 import { journalHeadOf, readCanonicalOrigin, siteOrigin, withSiteOrigin } from "#/_platform/_shared/site-facade";
 import { BOOTSTRAP_KEY, seedBootstrapKey } from "./bootstrap";
 import { authenticateSignedKey, verifyCanonicalSig } from "./cdn/api";
-import { httpIndexSource, indexPathOf } from "./index-source";
 
 // 站点编排面共享真源落 _shared/site-facade（P2-16 真机构建钉出：api.ts 是路由入口不可被模块内
 // import）；此处 re-export 保持既有引用面（market-api.spec / 历史 import 路径）不变。
@@ -75,11 +70,6 @@ export interface MarketEnv {
 	canonicalOrigin?: string
 	/** CDN 基址（缺省读 sys_setting `framework.market_cdn_url`；测试注入） */
 	cdnBase?: () => Promise<string | null>
-	/**
-	 * 索引读取源注入（DIP，REG-CS5③）：缺省按 CDN 基址 + fetchOf 构造 HTTP 源
-	 * （ETag/If-None-Match 条件请求）；本地目录索引 / 测试夹具可直注（localIndexSource）。
-	 */
-	indexSource?: IndexSource
 	/** 注入面（DIP）：缺省回落 isolate 全局 fetch / exec.run / server.reloadConfig / 本地 sha384（过渡实现） */
 	fetch?: FetchFace
 	exec?: ExecFace
@@ -222,18 +212,6 @@ async function requireCanonicalOrigin(env: MarketEnv): Promise<string> {
 	return co;
 }
 
-/**
- * REG-CS6：相对市场基址（`market_cdn_url=/cdn` 本站点自供）**必须**有 canonical origin 才能补全为
- * 同源绝对 URL——绝对基址（外部真 CDN）不需要。缺失/非法即明确报错并指向具体设置项
- * （config.yaml `vars.canonical_origin`），绝不回落请求头 Host（伪造 Host 会牵引出站）。
- */
-async function assertOriginForRelativeBase(env: MarketEnv, base: string): Promise<void> {
-	if (/^https?:\/\//i.test(base)) {
-		return;
-	}
-	await requireCanonicalOrigin(env);
-}
-
 function execOf(env: MarketEnv): ExecFace {
 	const g = globalThis as { exec?: { run: ExecFace["run"] } };
 	return env.exec ?? { run: (argv, opts) => g.exec!.run(argv, opts) };
@@ -295,234 +273,6 @@ async function cdnBaseOf(env: MarketEnv): Promise<string | null> {
 }
 
 /** 索引签名算法标识（与 ojm publish 同源：Ed25519；C2-35） */
-const INDEX_SIG_ALG = "Ed25519";
-
-/** 索引规范串（REG-CS1，与 ojm publish indexCanonical 逐字一致）：`index:<kind>:<seq>:<sha256hex>` */
-function indexCanonical(env: MarketEnv, kind: IndexKind, seq: number, text: string): string {
-	const sha256 = sha256Of(env)(new TextEncoder().encode(text));
-	return `index:${kind}:${seq}:${sha256}`;
-}
-
-/** Ed25519 验签面（P2-3；env 注入优先，缺省回落 isolate 全局 crypto.verifyEd25519） */
-function verifyEd25519Of(env: MarketEnv): (publicKey: string, msg: string, sigBase64: string) => boolean {
-	const g = globalThis as { crypto?: { verifyEd25519?: (pk: string, msg: string, sig: string) => boolean } };
-	return env.verifyEd25519 ?? ((pk, msg, sig) => g.crypto!.verifyEd25519!(pk, msg, sig));
-}
-
-/** 验签判定：ok + 代次（读方据此做同代校验；seq 为 null = 旧格式签名，一律拒） */
-interface IndexSigVerdict {
-	ok: boolean
-	seq: number | null
-}
-
-/**
- * 索引签名校验（REG-CS1，G4 fail-closed 口径）：解析 detached .sig 六字段 → 结构校验 →
- * 重算规范串（含 seq）→ verifyEd25519。返回 ok 仅当签名完整、覆盖代次且匹配索引字节。
- * 注：发布方信任（key 是否在信任库/bootstrap）由安装期 TOFU/信任库承载，此处仅做完整性（防 CDN 索引篡改）。
- */
-function verifyIndexSig(env: MarketEnv, kind: IndexKind, text: string, sigText: string): IndexSigVerdict {
-	let sig: unknown;
-	try {
-		sig = JSON.parse(sigText);
-	}
-	catch {
-		return { ok: false, seq: null };
-	}
-	if (!isObj(sig))
-		return { ok: false, seq: null };
-	const { alg, value, public_key: publicKey, seq } = sig as { alg?: unknown, value?: unknown, public_key?: unknown, seq?: unknown };
-	if (alg !== INDEX_SIG_ALG || typeof value !== "string" || typeof publicKey !== "string")
-		return { ok: false, seq: null };
-	// 签名未覆盖代次 = 旧格式（无法防「新总目录 + 旧分册」），拒
-	if (typeof seq !== "number" || !Number.isInteger(seq) || seq < 1)
-		return { ok: false, seq: null };
-	return { ok: verifyEd25519Of(env)(publicKey, indexCanonical(env, kind, seq, text), value), seq };
-}
-
-/** 索引正文的代次（顶层 `seq`；纯内容形态（分片）无顶层键 → null，代次只由 .sig 承载） */
-async function indexSeqOfText(text: string): Promise<number | null> {
-	const g = globalThis as { yaml?: { parse: (t: string) => Promise<unknown> } };
-	try {
-		const doc = await g.yaml!.parse(text) as unknown;
-		if (doc === null || typeof doc !== "object" || Array.isArray(doc))
-			return null;
-		const seq = (doc as Record<string, unknown>).seq;
-		return typeof seq === "number" && Number.isInteger(seq) && seq >= 1 ? seq : null;
-	}
-	catch {
-		return null;
-	}
-}
-
-/** 缺签名/空签名的人话（两步可执行下一步，与 CLI `ojm market verify` 同一文案口径） */
-const SIG_MISSING_NEXT = "完整性无保障，已拒载。下一步：① 让源执行 ojm market build-index --id <publisher.id> 重建并签名；② 或对既有索引补签 ojm publish <目录> --id <publisher.id>";
-
-/**
- * 拉取索引并校验签名（REG-CS1，G4 fail-closed）——三级化后（catalog + shards）：
- * ① `.sig` 缺失 / 空 / 拉不到 → **拒载**（502）——不再「滚动发布期容忍」：
- *    容忍等于把索引完整性交给发布方自觉，谁改了索引都能装。
- * ② 签名不符或未覆盖代次 → 拒载（index_sig_mismatch）。
- * ③ 同代校验改「钉值」口径：catalog 正文 `shards: {<片号>: <代次>}` 钉每片的代次，
- *    分片签名 seq 必须等于钉值（`expectSeq`）——不等即拒（index_generation_mismatch，
- *    提示「源正在重建索引」）。byte 级相同的分片可跨代复用，故钉值而非恒等于 catalog 代次。
- * ④ catalog 另过两道新鲜度闸（REG-CS2，见 `guardCatalogFreshness`）：时效过期 `index_expired`、
- *    seq 回退 `index_stale`——回放与镜像落后在此处被挡住。
- *
- * `no` = 分片号（catalog 省略）；`expectSeq` = catalog 对该片的钉值（取 catalog 本身时省略）。
- * 关键：四类拒载都在 try 之外抛出——fail-closed 不能被任何 catch 吞掉。
- */
-async function fetchIndex(env: MarketEnv, source: IndexSource, base: string, kind: IndexKind, no?: number, expectSeq?: number): Promise<{ text: string, seq: number }> {
-	// 人话里的文件名与 CDN 布局逐字一致（indexPathOf 单点）：shards/<n>.yaml，不是 shard/<n>.yaml
-	const label = indexPathOf(kind, no);
-	const file = await source.read(kind, no);
-	if (file === null)
-		fail(502, `市场索引 ${label} 拉取失败（请检查市场地址与网络）`);
-	const sigText = file.sig;
-	if (sigText === null || sigText.trim() === "")
-		fail(502, `市场索引 ${label} 缺签名文件 ${label}.sig（index_sig_missing）——${SIG_MISSING_NEXT}`);
-	const verdict = verifyIndexSig(env, kind, file.body, sigText);
-	if (!verdict.ok || verdict.seq === null)
-		fail(502, `市场索引 ${label} 签名校验失败（index_sig_mismatch：索引被篡改、签名不符或签名未覆盖代次，G4 fail-closed）——请重新发布并签名`);
-	const seq = verdict.seq;
-	// 正文自带代次时（catalog）必须与签名一致——防止「改了正文没换签名」的半个写入；
-	// 分片正文是纯内容（无顶层 seq），代次只由签名 + catalog 钉值携带，故不过此闸。
-	const textSeq = await indexSeqOfText(file.body);
-	if (textSeq !== null && textSeq !== seq)
-		fail(502, `市场索引 ${label} 正文是第 ${textSeq} 代、签名是第 ${seq} 代（index_generation_mismatch）——源正在重建索引，请稍后重试`);
-	if (expectSeq !== undefined && expectSeq !== seq)
-		fail(502, `市场索引 ${label} 签名是第 ${seq} 代，总目录钉的是第 ${expectSeq} 代（index_generation_mismatch）——源正在重建索引，请稍后重试`);
-	// ④ 新鲜度只在 catalog 上判一次：代次真源与时效盖章都在它身上，分片跟着走
-	if (kind === "catalog")
-		await guardCatalogFreshness(env, base, file.body, seq);
-	return { text: file.body, seq };
-}
-
-/**
- * REG-CS2 索引新鲜度（防回放/降级）：总目录过了签名之后还要过时效与代次水位两道闸。
- *
- * - `expires_at` 已过 → `index_expired`：索引自带失效时刻，源停止运营超过 TTL 就不再可信。
- *   （§5.3 可用性通道的「窗口内用缓存副本」由 HTTP 缓存层兑现——服务端
- *    `max-age=60, stale-while-revalidate=60` + 读取器条件请求；到达读取器手里的副本
- *    自身过期即拒，与§5.3 不冲突。）
- * - `seq` 小于本源见过的最大代次 → `index_stale`：镜像落后或旧索引被回放。
- * - 水位读不到/写不进 → `index_state_corrupt`：fail-closed，不静默重置成「第一次见」。
- */
-async function guardCatalogFreshness(env: MarketEnv, base: string, text: string, seq: number): Promise<void> {
-	const times = await indexTimesOfText(text);
-	if (times === null)
-		fail(502, "市场索引 catalog.yaml 缺 issued_at / expires_at（index_expired）——索引未带时效，请让源执行 ojm market build-index 重建");
-	const now = env.now?.() ?? Math.floor(Date.now() / 1000);
-	if (now > times.expires_at)
-		fail(502, `市场索引 catalog.yaml 已于 ${new Date(times.expires_at * 1000).toISOString()} 失效（index_expired）——源未在其自声明的有效期内重建索引，请让源执行 ojm market build-index 后再装`);
-
-	let verdict: SourceSeqVerdict;
-	try {
-		verdict = await guardAndRecordSourceSeq(base, seq);
-	}
-	catch {
-		fail(502, "市场索引代次水位写不进去（index_state_corrupt）——reg_source_seq 不可写，防回放保护失效，已拒载。请检查站点数据库权限后重试");
-	}
-	if (verdict.ok)
-		return;
-	if (verdict.code === "index_stale")
-		fail(502, `市场索引 catalog.yaml 是第 ${seq} 代，本源已见过第 ${verdict.prev} 代（index_stale）——源可能被回放或镜像落后，请核实源状态后再装`);
-	fail(502, "市场索引代次水位不可读（index_state_corrupt）——reg_source_seq 记录损坏，请检查站点数据库后重试（不静默重置，否则防回放形同虚设）");
-}
-
-/**
- * catalog 解析（REG-CS5：包名 → 分片号 + 片号 → 代次钉值）。畸形即拒不猜——索引是签名过的
- * 不可信输入，结构破损与字节被改同类对待（G4 fail-closed）。
- */
-async function parseCatalog(text: string, base: string): Promise<{ pins: Map<number, number>, solutions: Array<{ name: string, shards: number[] }> }> {
-	const g = globalThis as { yaml?: { parse: (t: string) => Promise<unknown> } };
-	let doc: unknown;
-	try {
-		doc = await g.yaml!.parse(text);
-	}
-	catch {
-		fail(502, `市场索引解析失败：${base}/catalog.yaml 不是合法索引`);
-	}
-	if (!isObj(doc))
-		fail(502, `市场索引解析失败：${base}/catalog.yaml 不是键值文档`);
-	const pins = new Map<number, number>();
-	if (isObj(doc.shards)) {
-		for (const [k, v] of Object.entries(doc.shards)) {
-			const no = Number(k);
-			if (Number.isInteger(no) && no >= 1 && typeof v === "number" && Number.isInteger(v) && v >= 1)
-				pins.set(no, v);
-		}
-	}
-	if (pins.size === 0)
-		fail(502, "市场索引 catalog.yaml 的分片钉值为空（index_generation_mismatch）——索引结构破损，请让源执行 ojm market build-index 重建");
-	const solutions: Array<{ name: string, shards: number[] }> = [];
-	for (const s of Array.isArray(doc.solutions) ? doc.solutions : []) {
-		if (!isObj(s) || typeof s.name !== "string" || s.name === "")
-			continue;
-		// 片号须是已钉值正整数：指向未钉片的方案 = 结构破损，拒载（不静默跳过，那会伪装成「没有该方案」）
-		const nos = Array.isArray(s.shards) ? s.shards.filter((n): n is number => typeof n === "number" && Number.isInteger(n) && n >= 1 && pins.has(n)) : [];
-		if (nos.length === 0)
-			fail(502, `市场索引 catalog.yaml 中方案「${s.name}」未指向任何已钉分片（index_generation_mismatch）——索引结构破损，请让源执行 ojm market build-index 重建`);
-		solutions.push({ name: s.name, shards: nos });
-	}
-	return { pins, solutions };
-}
-
-/** 分片内的方案条目（版本条目 = Form B manifest：name/version/archive/yanked/yanked_at + manifest 全字段） */
-interface ShardSolution {
-	name: string
-	latest: string | null
-	versions: Array<Record<string, unknown>>
-}
-
-/** 分片解析（纯内容无 meta：`{solutions: [{name, latest, versions}]}`；结构破损即拒，不猜） */
-async function parseShard(text: string, label: string): Promise<ShardSolution[]> {
-	const g = globalThis as { yaml?: { parse: (t: string) => Promise<unknown> } };
-	let doc: unknown;
-	try {
-		doc = await g.yaml!.parse(text);
-	}
-	catch {
-		fail(502, `市场索引 ${label} 不是合法索引（解析失败）`);
-	}
-	if (!isObj(doc) || !Array.isArray(doc.solutions))
-		fail(502, `市场索引 ${label} 解析失败：缺 solutions 数组——索引结构破损，请让源执行 ojm market build-index 重建`);
-	const out: ShardSolution[] = [];
-	for (const s of doc.solutions) {
-		if (!isObj(s) || typeof s.name !== "string" || s.name === "")
-			continue;
-		out.push({
-			name: s.name,
-			latest: typeof s.latest === "string" ? s.latest : null,
-			versions: Array.isArray(s.versions) ? s.versions.filter(isObj) : [],
-		});
-	}
-	return out;
-}
-
-/** 索引读取源（DIP，REG-CS5③）：注入面优先，缺省按 CDN 基址 + fetchOf 构造 HTTP 源 */
-async function indexSourceOf(env: MarketEnv, base: string): Promise<IndexSource> {
-	return env.indexSource ?? httpIndexSource(await fetchOf(env), base);
-}
-
-/** 索引时效（顶层 `issued_at` / `expires_at`；缺任一或非数 → null，按 REG-CS2 拒） */
-async function indexTimesOfText(text: string): Promise<{ issued_at: number, expires_at: number } | null> {
-	const g = globalThis as { yaml?: { parse: (t: string) => Promise<unknown> } };
-	try {
-		const doc = await g.yaml!.parse(text) as unknown;
-		if (doc === null || typeof doc !== "object" || Array.isArray(doc))
-			return null;
-		const issuedAt = (doc as Record<string, unknown>).issued_at;
-		const expiresAt = (doc as Record<string, unknown>).expires_at;
-		if (typeof issuedAt !== "number" || typeof expiresAt !== "number")
-			return null;
-		return { issued_at: issuedAt, expires_at: expiresAt };
-	}
-	catch {
-		return null;
-	}
-}
-
-/** http.user.id → username（operator 历史留痕，uninstall 端点同款反查；查询失败不阻断编排） */
 async function operatorOf(): Promise<string | null> {
 	const uid = (http as { user?: { id?: unknown } }).user?.id;
 	if (uid == null) {
@@ -583,59 +333,32 @@ interface ResolvedBundle {
 }
 
 /**
- * Form B 索引解析（安装器不拼 URL——市场侧职责，installer.ts 同纪律）：
- * catalog.yaml 定包名 → 分片号（无版本明细）→ 分片内按版本精确取（版本条目即 manifest，
- * 原 manifests.yaml 聚合清单并入分片，装一个包不再有第三份全量拉取）→ 分发包 URL =
- * base + 条目 archive.file。分片按号**降序**尝试：装箱口径下新版本进新片，最高片持有
- * 最新版——latest 安装只拉 1 片（REG-CS5 验收：一次安装索引请求 ≤ 1 catalog + 1 shard）。
+ * DB 目录解析（v4 §四：安装解析改走 market_release 表——签名索引机制退役，目录行即 Form B
+ * 条目真源；安装器不拼 URL，市场侧职责同纪律）。latest = 未 yanked 的 semver max（API 计算，
+ * 非存储列）；精确版本被 yank → 409 人话（REG-CS4 语义保留）；archive 由服务端组表正名
+ * （formBEntryOf 逐字 <name>-<version>.tgz，P2-11 投毒加固语义随服务端构造自然成立）。
+ * 分发包 URL = CDN 基址 + file（包字节仍静态拉，不变）。
  */
-async function resolveCdn(env: MarketEnv, base: string, name: string, reqVersion: string | null, fetch: FetchInitFace): Promise<ResolvedBundle> {
-	const source = httpIndexSource(fetch, base);
-	// 总目录（catalog）= 代次与时效真源；分片钉值同代才可用（REG-CS1③）
-	const catalog = await fetchIndex(env, source, base, "catalog");
-	const { pins, solutions } = await parseCatalog(catalog.text, base);
-	const entry = solutions.find(s => s.name === name);
-	if (entry === undefined)
-		fail(404, `市场索引中无方案「${name}」（${base}/catalog.yaml）`);
-	// 降序：最高片先试（latest 路径一片即中）；精确老版本落在低片时继续往下，直到找到或找遍
-	for (const no of [...entry.shards].sort((a, b) => b - a)) {
-		const pin = pins.get(no);
-		if (pin === undefined)
-			fail(502, `市场索引 catalog.yaml 钉值缺 shards/${no}.yaml（index_generation_mismatch）——源正在重建索引，请稍后重试`);
-		const shard = await fetchIndex(env, source, base, "shard", no, pin);
-		const sol = (await parseShard(shard.text, `shards/${no}.yaml`)).find(s => s.name === name);
-		if (sol === undefined)
-			continue;
-		// REG-CS2 `latest` 单调不降（三级化后移到分片条目）：分片声明的 latest 不得低于本片
-		// 已声明版本中的最高未下线版本。把 latest 往下改是「让站点装回旧版」的最短路径
-		// （yank 之后回退声明），必须挡在解析处。已下线版本（REG-CS4 yanked）不计入——
-		// 否则 yank 掉最高版会把 latest 主动下调，被误判成索引回退；latest 本就指向未下线的最高版。
-		const liveSorted = sol.versions.filter(v => v.yanked !== true).map(v => String(v.version)).sort(compareVersions);
-		const highest = liveSorted.length === 0 ? null : liveSorted[liveSorted.length - 1]!;
-		if (sol.latest !== null && highest !== null && compareVersions(sol.latest, highest) < 0)
-			fail(502, `市场索引中方案「${name}」的 latest 是 ${sol.latest}，低于已声明的最高版本 ${highest}（index_latest_regressed）——索引被回退，请核实源状态后再装`);
-		const version = reqVersion ?? sol.latest;
-		if (version !== null) {
-			const hit = sol.versions.find(v => String(v.version) === version);
-			if (hit !== undefined) {
-				// REG-CS4 yank：精确指定被下线版本 → 拒装（latest 路径不命中，源方 rebuilt 时 latest 已跳过 yanked）；
-				// 已装实例不受影响（不在此解析路径内）。错误信息明示「版本已下线」而非「无此版本」，避免误导。
-				if (reqVersion !== null && hit.yanked === true)
-					fail(409, `方案「${name}」版本「${version}」已被发布方下线（REG-CS4 yank），无法安装；已安装实例不受影响。如需继续请联系发布方或改用其他版本`);
-				// P2-11 索引投毒加固：archive.file 逐字 <name>-<version>.tgz（索引是签名过的不可信输入，
-				// 过弱形态可拼宿主任意路径；逐字等值排除 ../、绝对路径、异名、异版本）
-				const archive = isObj(hit.archive) ? hit.archive : {};
-				const file = typeof archive.file === "string" ? archive.file : "";
-				if (file !== `${name}-${version}.tgz`) {
-					fail(502, `索引分发包 file「${file}」须逐字为 <name>-<version>.tgz（「${name}-${version}.tgz」）——索引投毒加固（P2-11），疑似被篡改的索引`);
-				}
-				// 版本条目即 Form B manifest（原 manifests.yaml 并入分片）：取到条目即取到 manifest
-				return { version, archiveUrl: `${base}/${file}`, manifest: hit };
-			}
-		}
-		// 版本不在这片（更低分片或真没有）：继续往低片找
-	}
-	fail(404, `市场索引中无方案「${name}」版本「${reqVersion ?? "latest"}」（${base}/catalog.yaml → shards）`);
+async function resolveFromDb(base: string, name: string, reqVersion: string | null): Promise<ResolvedBundle> {
+	const rows = await db.table("market_release")
+		.select(["product", "version", "key_id", "sha256", "size", "yanked", "sig_alg", "sig_value", "sig_public_key", "sig_registry_id", "manifest"])
+		.where({ field: "product", op: "eq", value: name })
+		.all() as Array<Record<string, unknown>>;
+	if (rows.length === 0)
+		fail(404, `市场目录中无方案「${name}」——若为存量分发包，请站点 superadmin 先执行目录回填（扫描 cdn/ 存量补录 market_release）后再安装`);
+	const live = rows.filter(r => Number(r.yanked) !== 1).map(r => String(r.version)).sort(compareVersions);
+	const version = reqVersion ?? (live.length === 0 ? null : live[live.length - 1]!);
+	if (version === null)
+		fail(409, `方案「${name}」的全部版本均已被发布方下线，无法安装；已安装实例不受影响。如需继续请联系发布方`);
+	const row = rows.find(r => String(r.version) === version);
+	if (row === undefined)
+		fail(404, `市场目录中无方案「${name}」版本「${version}」——可用版本：${live.join("、") || "（无）"}`);
+	if (reqVersion !== null && Number(row.yanked) === 1)
+		fail(409, `方案「${name}」版本「${version}」已被发布方下线（yank），无法安装；已安装实例不受影响。如需继续请联系发布方或改用其他版本`);
+	const entry = formBEntryOf(name, row);
+	const archive = isObj(entry.archive) ? entry.archive : {};
+	const file = typeof archive.file === "string" ? archive.file : `${name}-${version}.tgz`;
+	return { version, archiveUrl: `${base}/${file}`, manifest: entry };
 }
 
 /** 上传载荷字节（upload/api.ts 先例双路径：小文件字节在手，大文件已流式落 blob 须走 blob.get） */
@@ -752,7 +475,7 @@ async function installBody(env: MarketEnv): Promise<{ task_id: string }> {
 			fail(503, "未配置市场地址（framework.market_cdn_url）——市场安装不可用，请先在系统设置配置 CDN 基址");
 		// REG-CS6：安装全程（相对基址补全 + 冒烟探针）都需 canonical origin；缺失/非法即明确报错
 		await requireCanonicalOrigin(env);
-		const r = await resolveCdn(env, base, name, reqVersion, await fetchOf(env));
+		const r = await resolveFromDb(base, name, reqVersion);
 		manifest = r.manifest;
 		version = r.version;
 		archiveUrl = r.archiveUrl;
@@ -867,91 +590,56 @@ async function lastInstallOperatorOf(name: string): Promise<string | null> {
 }
 
 /**
- * GET index 主体：CDN catalog + shards ⊕ 本地 sidecar state——CDN 序优先，本地独有方案殿后。
- *
- * 三级化后市场页的拉取形态：1 catalog + catalog 指向的全部分片（去重）——`available`
- * 回滚候选要版本全集，故页面比安装多拉几片；安装侧仍 ≤ 1 catalog + 1 shard（resolveCdn）。
- * 版本条目即 Form B manifest：latest 的 changelog/publisher/summary/description 直接从
- * 分片条目取，不再有独立的聚合清单拉取。分片拉取/验签失败即 502（REG-CS1：可用性不再
- * 压过完整性）。
+ * GET index 主体（v4 §四：DB 目录分页数据源）——market_release 行按 product 聚合 ⊕ 本地
+ * sidecar state join（installed/enabled/trust_state/key_id 是站点本地语义，目录 API 不带）。
+ * 行字段口径不变（展示字段不变，卡片 UI 加翻页）：latest = 未 yanked semver max（API 计算，
+ * 非存储列）；changelog/publisher/summary/description/license 取 latest 版 manifest 列
+ * （manifestSummaryOf JSON 解析，缺字段 → null）；publisher_key = latest 行 key_id（发布者
+ * 身份单一真相）；available = 未 yanked 版本升序全集（回滚候选）。规模小 → 全量行 JS 聚合 +
+ * 内存分页（catalog 同口径）；本地独有方案（DB 无行）殿后。对账即服务（P1-10 接线③）不变。
  */
-interface IndexSnapshot {
-	base: string
-	/** catalog 的签名时效（发布时间兜底；索引缺时效 → null） */
-	issuedAt: number | null
-	solutions: Array<{ name: string, shards: number[] }>
-	shardDocs: Map<number, ShardSolution[]>
-}
-
-/**
- * 读整份签名索引（catalog + 它指向的全部分片）。
- *
- * 市场卡片（indexBody）与发布历史（syncReleases）都要「全量版本视图」，读取与验签只有这一份：
- * 两处各写一遍 `fetchIndex` 循环，迟早漂移成「卡片看得见、历史看不见」。
- */
-async function readIndexSnapshot(env: MarketEnv): Promise<IndexSnapshot> {
-	const base = await cdnBaseOf(env);
-	if (base === null)
-		fail(503, "未配置市场地址（framework.market_cdn_url）——卡片区显示「未配置市场地址」（PRD §5.3）");
-	await assertOriginForRelativeBase(env, base);
-	const source = await indexSourceOf(env, base);
-	const catalog = await fetchIndex(env, source, base, "catalog");
-	const times = await indexTimesOfText(catalog.text);
-	const { pins, solutions } = await parseCatalog(catalog.text, base);
-	// 拉取 catalog 指向的全部分片（去重、升序确定性）；每片都过签名 + 钉值同代校验
-	const shardDocs = new Map<number, ShardSolution[]>();
-	for (const no of [...pins.keys()].sort((a, b) => a - b)) {
-		const shard = await fetchIndex(env, source, base, "shard", no, pins.get(no)!);
-		shardDocs.set(no, await parseShard(shard.text, `shards/${no}.yaml`));
-	}
-	return { base, issuedAt: times?.issued_at ?? null, solutions, shardDocs };
-}
-
-async function indexBody(env: MarketEnv): Promise<IndexRow[]> {
+async function indexBody(env: MarketEnv, q: Record<string, unknown>): Promise<{ list: IndexRow[], total: number, page: number, size: number }> {
 	// 对账即服务（P1-10 接线③）：市场页刷新即对账时点——锁 ↔ 账本 head 自愈 + enabled 不一致
 	// 自动修复先行（失败只记日志，不阻断索引），失败站点的市场页每次打开都在尝试自愈
 	await reconcileOf(env);
-	const { solutions, shardDocs } = await readIndexSnapshot(env);
+	const { page, size, offset } = pageArgs({ page: q.page, size: q.size });
+	const rows = await db.table("market_release")
+		.select(["product", "version", "key_id", "yanked", "manifest"])
+		.all() as Array<Record<string, unknown>>;
+	const byProduct = new Map<string, Array<Record<string, unknown>>>();
+	for (const r of rows) {
+		const product = String(r.product);
+		const list = byProduct.get(product) ?? [];
+		list.push(r);
+		byProduct.set(product, list);
+	}
 	const local = (await createStateStore(env.statePath)).read().solutions;
-	const rows: IndexRow[] = [];
-	const seen = new Set<string>();
-	for (const entry of solutions) {
-		const name = entry.name;
-		if (seen.has(name))
-			continue;
-		seen.add(name);
-		// 合并该包全部分片的版本条目（降序拼：最高片持有最新版，latest 取首片即得）
-		const merged: Array<Record<string, unknown>> = [];
-		let latest: string | null = null;
-		for (const no of [...entry.shards].sort((a, b) => b - a)) {
-			const sol = shardDocs.get(no)?.find(s => s.name === name);
-			if (sol === undefined)
-				continue;
-			if (latest === null)
-				latest = sol.latest;
-			merged.push(...sol.versions);
-		}
+	// 本地独有（DB 无行）也列出：目录表空 ≠ 本地没装（回填前旧世界）
+	for (const name of Object.keys(local)) {
+		if (!byProduct.has(name))
+			byProduct.set(name, []);
+	}
+	const names = [...byProduct.keys()].sort((a, b) => a < b ? -1 : a > b ? 1 : 0);
+	const total = names.length;
+	const list: IndexRow[] = [];
+	for (const name of names.slice(offset, offset + size)) {
+		const vers = byProduct.get(name)!;
 		const side = local[name];
-		// available：版本全集（缺段/畸形 → [] 降级）；分片内升序、跨片重排为全局升序
-		const available = merged.map(v => typeof v.version === "string" ? v.version : "").filter(x => x !== "").sort(compareVersions);
-		const manifestOf = (version: string | null): Record<string, unknown> | undefined =>
-			version === null ? undefined : merged.find(v => String(v.version) === version);
-		const m = manifestOf(latest) ?? manifestOf(side?.version ?? null);
-		// 发布者：取最新版 Form B archive.signature.key_id（Ed25519 验签过的签名身份，离线可验）；
-		// manifest.author 是自报字段，二者不同。缺签名/畸形 → null（不拿自报值冒充）。
-		const rawArchive: unknown = m?.archive;
-		const rawSig: unknown = isObj(rawArchive) ? rawArchive.signature : undefined;
-		const publisherKey = isObj(rawSig) && typeof rawSig.key_id === "string" ? rawSig.key_id : null;
-		rows.push({
+		const live = vers.filter(r => Number(r.yanked) !== 1).map(r => String(r.version)).sort(compareVersions);
+		const latest = live.length === 0 ? null : live[live.length - 1]!;
+		const latestRow = latest === null ? undefined : vers.find(r => String(r.version) === latest);
+		const installedRow = side === undefined ? undefined : vers.find(r => String(r.version) === side.version);
+		const m = manifestSummaryOf(latestRow) ?? manifestSummaryOf(installedRow);
+		list.push({
 			name,
 			latest,
 			installed: side?.version ?? null,
 			enabled: side?.enabled ?? null,
 			upgradable: latest !== null && side !== undefined && compareVersions(side.version, latest) < 0,
-			available,
+			available: live,
 			changelog: m?.changelog ?? null,
 			publisher: typeof m?.author === "string" ? m.author : null,
-			publisher_key: publisherKey,
+			publisher_key: latestRow?.key_id != null ? String(latestRow.key_id) : null,
 			license: typeof m?.license === "string" ? m.license : null,
 			summary: typeof m?.summary === "string" ? m.summary : null,
 			description: typeof m?.description === "string" ? m.description : null,
@@ -960,31 +648,10 @@ async function indexBody(env: MarketEnv): Promise<IndexRow[]> {
 			operator: await lastInstallOperatorOf(name),
 		});
 	}
-	for (const [name, side] of Object.entries(local)) {
-		if (!seen.has(name)) {
-			rows.push({
-				name,
-				latest: null,
-				installed: side.version,
-				enabled: side.enabled,
-				upgradable: false,
-				available: [],
-				changelog: null,
-				publisher: null,
-				publisher_key: null,
-				license: null,
-				summary: null,
-				description: null,
-				trust_state: side.trust_state ?? null,
-				key_id: side.archive?.key_id ?? null,
-				operator: await lastInstallOperatorOf(name),
-			});
-		}
-	}
-	return rows;
+	return { list, total, page, size };
 }
 
-/** 发布历史行（市场索引里出现过的每个 product@version） */
+/** 发布历史行（market_release 上传写入行；v4 §四：数据源换 DB 直读，索引 syncReleases 退役） */
 interface ReleaseRow {
 	id: number
 	product: string
@@ -993,95 +660,9 @@ interface ReleaseRow {
 	sha256: string | null
 	size: number | null
 	published_at: number
-	/** 时间来源：file = tgz 的 Last-Modified；index = 索引生成时间兜底 */
-	published_at_source: "file" | "index"
+	/** 时间来源：file = 回填扫描读 tgz mtime；upload = 上传端点接收时刻（DB 目录化后唯一真源口径） */
+	published_at_source: "file" | "upload"
 	yanked: number
-}
-
-/**
- * 取单版本的「发布时间」。
- *
- * 优先 HEAD 分发包读 `Last-Modified`——那是包落进 CDN 的时刻，也就是真正的发版时间。
- * 读不到（源不吐该头 / 网络失败 / file 名缺失）才回落到索引生成时间：`ojm market publish`
- * 与 `build-index` 在推荐流程里紧邻执行，两者差值只有重建索引的耗时。
- *
- * 只对**首次入库**的版本调一次（已入库的 published_at 不再改写）——历史一旦记录就是事实，
- * 不该被后续重新发布/重新建索引刷新。
- */
-async function archivePublishedAt(env: MarketEnv, base: string, file: unknown, fallback: number): Promise<{ at: number, source: "file" | "index" }> {
-	if (typeof file !== "string" || file === "")
-		return { at: fallback, source: "index" };
-	try {
-		// HEAD 不在 FetchInitFace 的最小形状里（安装面只需要 GET），但运行时 fetch 原生支持：
-		// 这里显式窄化一次，避免为「读一个头」再造第二种下载实现。
-		const head = await fetchOf(env) as unknown as (url: string, init?: { method?: string }) => Promise<{ headers?: { get: (n: string) => string | null } }>;
-		const res = await head(`${base}/${encodeURIComponent(file)}`, { method: "HEAD" });
-		const raw = res.headers?.get?.("last-modified") ?? res.headers?.get?.("Last-Modified") ?? null;
-		if (raw !== null && raw !== "") {
-			const at = Math.floor(Date.parse(raw) / 1000);
-			if (Number.isFinite(at) && at > 0)
-				return { at, source: "file" };
-		}
-	}
-	catch {}
-	return { at: fallback, source: "index" };
-}
-
-/**
- * 把索引里出现过的版本同步进 `market_release`（幂等：只补新行）。
- *
- * 为什么不做成「发版时由 CLI 上报」：`ojm market publish` 是纯本地操作（不登录、可离线），
- * 加一条上报链路就得再造一套写端授权的信任面；而**签名索引本身就是发版事实**——
- * 站点已经在读它，历史直接从这里落库，既不用新协议，也不会出现「上报成功但包里没有」的分叉。
- *
- * 索引拉取/验签失败由调用方兜住（历史是观测面，不阻断页面：返回已入库行 + syncError）。
- */
-async function syncReleases(env: MarketEnv): Promise<void> {
-	const snapshot = await readIndexSnapshot(env);
-	const fallbackAt = snapshot.issuedAt ?? (env.now?.() ?? Math.floor(Date.now() / 1000));
-	const now = env.now?.() ?? Math.floor(Date.now() / 1000);
-
-	const existingRows = await db.table("market_release").select(["id", "product", "version", "yanked"]).all() as Array<Record<string, unknown>>;
-	const existing = new Map(existingRows.map(r => [`${String(r.product)}@${String(r.version)}`, { id: Number(r.id), yanked: Number(r.yanked) }]));
-
-	for (const sol of snapshot.shardDocs.values()) {
-		for (const entry of sol) {
-			for (const v of entry.versions) {
-				const version = typeof v.version === "string" ? v.version : "";
-				if (version === "")
-					continue;
-				const dedupeKey = `${entry.name}@${version}`;
-				const yanked = v.yanked === true ? 1 : 0;
-				const prior = existing.get(dedupeKey);
-				if (prior !== undefined) {
-					// 已入库的 published_at 是事实、不再改写；但 yank 状态是「当前是否在架」，跟随索引
-					if (prior.yanked !== yanked)
-						await db.table("market_release").update({ yanked }).where({ field: "id", op: "eq", value: prior.id }).run();
-					continue;
-				}
-				const archive = isObj(v.archive) ? v.archive : {};
-				const sig = isObj(archive.signature) ? archive.signature : {};
-				const { at, source } = await archivePublishedAt(env, snapshot.base, archive.file, fallbackAt);
-				try {
-					await db.table("market_release").insert({
-						product: entry.name,
-						version,
-						key_id: typeof sig.key_id === "string" ? sig.key_id : null,
-						sha256: typeof archive.sha256 === "string" ? archive.sha256 : null,
-						size: typeof archive.size === "number" ? archive.size : null,
-						published_at: at,
-						published_at_source: source,
-						yanked,
-						first_seen_at: now,
-					}).run();
-					existing.set(dedupeKey, { id: -1, yanked });
-				}
-				catch {
-					// 并发同步（两个页面同时打开）撞唯一键：另一路已写入，跳过即可
-				}
-			}
-		}
-	}
 }
 
 // ── v4 §三：目录 JSON API（匿名可读，DB 直读合成单协议 shape）────────────────────────────
@@ -1119,12 +700,14 @@ function formBEntryOf(product: string, row: Record<string, unknown>): Record<str
 	if (typeof row.size === "number")
 		archive.size = row.size;
 	if (typeof row.sig_alg === "string" && row.sig_alg !== "")
-		archive.signature = { alg: row.sig_alg, key_id: row.key_id, public_key: row.sig_public_key, value: row.sig_value, canon: "v2" };
+		archive.signature = { alg: row.sig_alg, key_id: row.key_id, public_key: row.sig_public_key, value: row.sig_value, canon: "v2", registry_id: typeof row.sig_registry_id === "string" ? row.sig_registry_id : "" };
 	return { ...base, name: product, version: String(row.version), yanked: Number(row.yanked) === 1, archive };
 }
 
 /** market_release 行 → manifest 摘要对象（catalog 展示字段源；NULL/坏行 → null 降级） */
-function manifestSummaryOf(row: Record<string, unknown>): Record<string, unknown> | null {
+function manifestSummaryOf(row: Record<string, unknown> | undefined): Record<string, unknown> | null {
+	if (row === undefined)
+		return null;
 	if (typeof row.manifest !== "string" || row.manifest === "")
 		return null;
 	try {
@@ -1192,7 +775,7 @@ async function detailBody(q: Record<string, unknown>): Promise<Record<string, un
 	if (name === "")
 		fail(400, "name is required");
 	const rows = await db.table("market_release")
-		.select(["product", "version", "key_id", "sha256", "size", "yanked", "sig_alg", "sig_value", "sig_public_key", "manifest"])
+		.select(["product", "version", "key_id", "sha256", "size", "yanked", "sig_alg", "sig_value", "sig_public_key", "sig_registry_id", "manifest"])
 		.where({ field: "product", op: "eq", value: name })
 		.all() as Array<Record<string, unknown>>;
 	if (rows.length === 0)
@@ -1413,7 +996,7 @@ export function createMarketApi(env: MarketEnv) {
 			async get() {
 				await respond(async () => {
 					await assertSuperAdmin();
-					return await indexBody(env);
+					return await indexBody(env, (http.query ?? {}) as Record<string, unknown>);
 				});
 			},
 		},
@@ -1510,22 +1093,14 @@ export function createMarketApi(env: MarketEnv) {
 
 		// GET /api/oj-market/releases —— 发布历史（登录即可读；与市场卡片同口径的「浏览开放」）。
 		//
-		// 数据源是签名索引本身：每次读取先把索引里出现过的 product@version 补进 market_release
-		// （只补新行，published_at 一次写定），再按发布时间倒序分页返回。索引拉不到/验签失败
-		// 不阻断查询：返回已入库行 + syncError，页面照常显示历史并提示「暂时读不到索引」。
+		// 数据源 = market_release 上传写入行（v4 §四 DB 目录化：索引对账 syncReleases 已退役，
+		// 发布历史即目录表按 published_at 倒序分页直读，零索引依赖）。
 		"releases": {
 			async get() {
 				await respond(async () => {
 					const uid = (http as { user?: { id?: unknown } }).user?.id;
 					if (uid == null)
 						fail(401, "unauthorized");
-					let syncError: string | null = null;
-					try {
-						await syncReleases(env);
-					}
-					catch (e) {
-						syncError = e instanceof Error ? e.message : String(e);
-					}
 					const q = (http.query ?? {}) as Record<string, unknown>;
 					const { page, size, offset } = pageArgs({ page: q.page, size: q.limit });
 					const total = Number(
@@ -1539,7 +1114,7 @@ export function createMarketApi(env: MarketEnv) {
 							.limit(size)
 							.offset(offset)
 							.all() as unknown as ReleaseRow[];
-					return { list, total, page, size, syncError };
+					return { list, total, page, size };
 				});
 			},
 		},
@@ -1574,7 +1149,22 @@ marketApi.trust.key.post.schema = { body: { type: "object", required: ["key_id",
 marketApi.trust.key.post.response = { type: "object", additionalProperties: true };
 marketApi.trust.key.del.schema = { query: { type: "object", required: ["key_id"], properties: { key_id: { type: "string" } } } };
 marketApi.trust.key.del.response = { type: "object", additionalProperties: true };
-marketApi.index.get.response = { type: "array", items: { type: "object", additionalProperties: true } };
+marketApi.index.get.schema = {
+	query: {
+		type: "object",
+		properties: { page: { type: "number", minimum: 1 }, size: { type: "number", minimum: 1, maximum: 200 } },
+	},
+};
+marketApi.index.get.response = {
+	type: "object",
+	required: ["list", "total", "page", "size"],
+	properties: {
+		list: { type: "array", items: { type: "object", additionalProperties: true } },
+		total: { type: "number" },
+		page: { type: "number" },
+		size: { type: "number" },
+	},
+};
 marketApi.catalog.get.schema = {
 	query: {
 		type: "object",
@@ -1626,7 +1216,6 @@ marketApi.releases.get.response = {
 		total: { type: "number" },
 		page: { type: "number" },
 		size: { type: "number" },
-		syncError: { type: ["string", "null"] },
 	},
 };
 

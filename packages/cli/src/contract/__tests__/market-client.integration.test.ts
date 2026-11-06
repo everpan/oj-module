@@ -86,20 +86,21 @@ describe("httpMarketClient · 统一委托生成 client 集成回归", () => {
 		expect(r).toEqual({ apiVersion: "1.2.3" });
 	});
 
-	it("index() → GET oj-market/index，返回 IndexRow[]", async () => {
+	it("index() → GET oj-market/index，返回分页 IndexPage", async () => {
 		const rows = [{ name: "a", latest: "1.0", installed: "1.0", enabled: true, upgradable: false }];
-		mock = mockRequest(() => ({ data: rows }));
+		const page = { list: rows, total: 1, page: 1, size: 20 };
+		mock = mockRequest(() => ({ data: page }));
 		bindMock(mock);
 		const r = await httpMarketClient.index();
 		expect(mock.calls[0]).toMatchObject({ method: "get", url: "oj-market/index" });
-		expect(r).toEqual(rows);
+		expect(r).toEqual(page);
 	});
 
-	it("index() 遇 503（未配置市场地址）→ [] 空态，不抛（PRD §5.3）", async () => {
+	it("index() 遇 503（未配置市场地址）→ 空分页空态，不抛（PRD §5.3）", async () => {
 		mock = mockRequest(c => (c.url === "oj-market/index" ? { status: 503 } : { data: {} }));
 		bindMock(mock);
 		const r = await httpMarketClient.index();
-		expect(r).toEqual([]);
+		expect(r).toEqual({ list: [], total: 0, page: 1, size: 20 });
 		// 503 是配置态而非故障：silentError 抑制全局 toast + retry:0 不重试（原
 		// market-client-unconfigured 用例的断言并入此处——工厂形态退役后唯一活口）
 		expect(mock.calls).toHaveLength(1);

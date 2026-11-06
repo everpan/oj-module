@@ -1,5 +1,5 @@
 name: oj-market
-desc: 解决方案市场模块 api 面（市场目录 catalog/detail/yank、发布推送 cdn/upload、方案生命周期编排 install/enable/uninstall、信任库管理 trust）。表（market_release/market_history/reg_source_seq）与安装引擎归 _platform 内核，本模块经 deps 声明跨模块依赖。
+desc: 解决方案市场模块 api 面（市场目录 catalog/detail/yank、发布推送 cdn/upload、方案生命周期编排 install/enable/uninstall、信任库管理 trust）。表（market_release/market_history）与安装引擎归 _platform 内核，本模块经 deps 声明跨模块依赖。
 version: 0.1.0
 deps: # 跨模块别名 `#/_platform/…` 的依赖门禁（oj build S008）+ 表归属守卫：
   # 读 market_release/market_history（_platform 拥有的 tenant:false 共享目录表）+

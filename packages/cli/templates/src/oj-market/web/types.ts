@@ -52,7 +52,7 @@ export interface TaskRecord {
 	appliedSeq?: number
 }
 
-/** 卡片数据源行（GET /oj-market/index）：CDN 三级索引（catalog + shards）⊕ 本地 sidecar state */
+/** 卡片数据源行（GET /oj-market/index）：DB 目录聚合 ⊕ 本地 sidecar state（v4 §四） */
 export interface IndexRow {
 	name: string
 	latest: string | null
@@ -104,7 +104,7 @@ export interface UninstallImpact {
 	affectedUsers: number
 }
 
-/** 发布历史一行（`market_release`；来源是签名索引，追加式记录） */
+/** 发布历史一行（`market_release` 上传写入行；v4 §四 DB 目录化后索引 syncReleases 退役） */
 export interface ReleaseRow {
 	id: number
 	product: string
@@ -113,8 +113,8 @@ export interface ReleaseRow {
 	sha256: string | null
 	size: number | null
 	published_at: number
-	/** file = 分发包 Last-Modified；index = 索引生成时间兜底 */
-	published_at_source: "file" | "index"
+	/** file = 回填扫描读 tgz mtime；upload = 上传端点接收时刻（DB 目录化后唯一真源口径） */
+	published_at_source: "file" | "upload"
 	yanked: number
 }
 
@@ -124,6 +124,12 @@ export interface ReleasePage {
 	total: number
 	page: number
 	size: number
-	/** 本次同步索引失败的人话（页面照常显示已入库历史） */
-	syncError: string | null
+}
+
+/** 卡片索引分页结果（v4 §四：indexBody 改 DB 目录分页数据源，展示字段不变） */
+export interface IndexPage {
+	list: IndexRow[]
+	total: number
+	page: number
+	size: number
 }

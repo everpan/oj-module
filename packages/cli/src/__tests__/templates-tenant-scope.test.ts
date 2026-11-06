@@ -115,7 +115,7 @@ describe("templates 租户定性（A 租户表 / B 共享表）", () => {
 		expect(unknown).toEqual([]);
 	});
 
-	it("t-4 29 张表的 A/B 分组与方案 v3 §5.2 一致（新增表须先定性）", () => {
+	it("t-4 28 张表的 A/B 分组与方案 v3 §5.2 一致（新增表须先定性）", () => {
 		const { tables } = loadSchemaTables();
 		const shared = [...tables].filter(([, d]) => d.tenant === false).map(([n]) => n).sort();
 		// Phase 0 落地 21 张（11 A + 10 B）；Phase 1 加企微三表，全部 B 组（D9：查它们时必然还没有租户上下文）
@@ -127,13 +127,12 @@ describe("templates 租户定性（A 租户表 / B 共享表）", () => {
 		// 2026-11-02 demo 模块下线（ecc7b35e）删掉 demo/api/schema.yaml 的 todos 表，28 → 27。
 		// 2026-11 发布凭证加 publish_credential：共享表（CLI 兑换无租户语义，归属走 owner_tenant），27 → 28。
 		// 2026-11 发布历史加 market_release：共享表（发布物落在站点级 CDN，历史按站点归口），28 → 29。
-		expect(tables.size).toBe(29);
+		expect(tables.size).toBe(28);
 		expect(shared).toEqual([
 			"_oj_migrations",
 			"market_history",
 			"market_release",
 			"publish_credential",
-			"reg_source_seq",
 			"sys_login_throttle",
 			"sys_permission",
 			"sys_rate_window",

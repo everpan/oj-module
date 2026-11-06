@@ -116,6 +116,8 @@ interface SidecarSig {
 	public_key: string
 	value: string
 	canon: string
+	/** 包级 canonical 首段（REG-CS3 签发方 registry 身份；install verify 重构规范串用，A5 增补落列） */
+	registry_id: string
 }
 
 /** 五字段结构校验（400 人话分流；加密学校验在 install verify 段——此处不重复） */
@@ -129,7 +131,7 @@ function parseSidecarSig(text: string): SidecarSig {
 	}
 	if (!isObj(parsed))
 		fail(400, ".sig 旁车必须是 JSON 对象（{alg,key_id,public_key,value,canon}）");
-	const { alg, key_id: keyId, public_key: publicKey, value, canon } = parsed;
+	const { alg, key_id: keyId, public_key: publicKey, value, canon, registry_id: registryId } = parsed;
 	if (alg !== "Ed25519")
 		fail(400, `.sig alg 须为 "Ed25519"，实为「${String(alg)}」`);
 	if (typeof keyId !== "string" || !isValidKeyId(keyId))
@@ -140,7 +142,9 @@ function parseSidecarSig(text: string): SidecarSig {
 		fail(400, ".sig value 须为非空标准 base64 签名");
 	if (canon !== "v2")
 		fail(400, `.sig canon 须为 "v2"（canon_stale 一律拒），实为「${String(canon)}」`);
-	return { alg, key_id: keyId, public_key: publicKey, value, canon };
+	if (typeof registryId !== "string" || registryId === "")
+		fail(400, `.sig registry_id 须为非空字符串（REG-CS3 签发方身份）：「${String(registryId)}」`);
+	return { alg, key_id: keyId, public_key: publicKey, value, canon, registry_id: registryId };
 }
 
 // ── 签名请求共享「验面」（上传端点与 market yank 端点同一鉴权序，勿各写一遍）────────────────
@@ -345,6 +349,7 @@ async function tgzUploadBody(env: CdnUploadEnv, file: ParsedUploadFile, rawName:
 				sig_alg: sig.alg,
 				sig_value: sig.value,
 				sig_public_key: sig.public_key,
+				sig_registry_id: sig.registry_id,
 				manifest: JSON.stringify(stored),
 			}).run();
 		});

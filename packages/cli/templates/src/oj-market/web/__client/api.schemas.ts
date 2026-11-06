@@ -78,9 +78,18 @@ export const schemas = {
 }).catchall(z.unknown()),
 	},
 	"ojMarketIndexGet": {
-		data: z.array(z.object({
+		query: z.object({
+	"page": z.number().min(1).optional(),
+	"size": z.number().min(1).max(200).optional()
+}),
+		data: z.object({
+	"list": z.array(z.object({
 
 }).catchall(z.unknown())),
+	"total": z.number(),
+	"page": z.number(),
+	"size": z.number()
+}),
 	},
 	"ojMarketCatalogGet": {
 		query: z.object({
@@ -144,8 +153,7 @@ export const schemas = {
 }).catchall(z.unknown())),
 	"total": z.number(),
 	"page": z.number(),
-	"size": z.number(),
-	"syncError": z.string().nullable().optional()
+	"size": z.number()
 }),
 	},
 	"ojMarketCdnUploadPost": {
