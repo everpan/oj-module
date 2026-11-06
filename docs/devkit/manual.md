@@ -2065,6 +2065,12 @@ flowchart TD
 ```
 
 - **needs_trust 确认后重试同一安装**即可续跑；一切消费面须把它当**非成功态**渲染。
+- **`partial` 不都是失败**：oj 0.1.122+ 首装 11 段全 `ok` 也可以终态 `partial`（`restart_pending`
+  正常语义——新模块的路由/模块注册要宿主重启，message 明示待重启段）；重启宿主后 retry 同一条
+  install → `done`，冒烟三项（探活 / integrity / 注册一致性）全过。partial 仅在 `reloading` 段
+  报 `unchanged` 时才是真失败（对着 dev 装的典型症状）。
+- **preflight 含匿名面检查（`anonymous_residual`）**：实际匿名可达的端点必须在方案契约
+  `api.anonymous` 里声明（`ojm new --api` 骨架已自带 ping 的声明）；漏声明的包拒装且不可自动重试。
 
 ### 11.4 生命周期命令与站点寻址约定
 

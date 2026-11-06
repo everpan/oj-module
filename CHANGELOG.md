@@ -42,6 +42,10 @@
 
 ### Fixed
 
+- **`ojm new --api` 骨架 `solution.yaml` 补 `api.anonymous` 声明（市场线演练实测缺陷）**：
+  骨架 ping 端点匿名可达但契约漏声明，安装预检 `anonymous_residual` 拒装——合成 fixture 因声明了
+  `anonymous: ["<name>/ping"]` 而装得进，真骨架反而装不进。模板补声明一行，测试钉住；
+  已用旧模板生成的工程需手工补该行（或删目录重新 `ojm new`）。
 - **admin 路由重写后菜单选中态丢失（runtime 0.2.67 缺陷，下游反馈）**：`rewriteAdminPaths` 以
   `{ ...route, path }` 改写路径但保留重写前的 `id`，菜单 key 与 `useMatches().id` 处于两个路径
   空间 → 当前页面不高亮、「系统管理」菜单收起。现于重写单点对整个子树重算 id

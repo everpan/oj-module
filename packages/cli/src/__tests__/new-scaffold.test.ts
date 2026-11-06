@@ -56,4 +56,17 @@ describe("ojm new --api 骨架可路由（BDD）", () => {
 			expect(doc[key], `solution.yaml 缺 ${key}（market verify 必填）`).toBeDefined();
 		expect((doc.archive as Record<string, unknown>).file).toBe("crm-0.1.0.tgz");
 	});
+
+	it("给定 createSolution(api: true)，api 段声明 ping 匿名（安装预检 anonymous_residual 防线，20261106 市场线实测）", async () => {
+		const root = projectRoot();
+		const result = createSolution(root, "crm", { api: true, layout: "none" });
+		const { parse: yamlParse } = await import("yaml");
+		const doc = yamlParse(fs.readFileSync(path.join(result.dir, "solution.yaml"), "utf8")) as Record<string, unknown>;
+
+		// Then：ping 匿名可达必须在契约里声明（fixture.ts 同形状）；漏声明 = 真包装不进（preflight 拒）
+		const api = doc.api as Record<string, unknown>;
+		expect(api.module).toBe("crm");
+		expect(api.prefix).toBe("/api/crm");
+		expect(api.anonymous).toEqual(["crm/ping"]);
+	});
 });

@@ -406,8 +406,9 @@ API 全链路再通一遍（登录/列表/新增）；
 ### 7.1.0 骨架生成（推荐）
 
 > **0.2.68+ 守卫**：`ojm new` 必须在 **ojm 工程内**跑（独立目录被「不是 ojm 工程」拒，零写入；
-> 2026-11-06 演练实测）。单方案分发链路相应变为：宿主内 `ojm new <name>` → `ojm build --bundle <name>` →
-> `market publish --fixture <name>@<ver>`；`publish --real` 仅限单方案工程（多方案明确拒绝并指路，§7.5 F）。
+> 2026-11-06 演练实测）。宿主内多方案分发走显式四步：`ojm build --bundle <name>` → `ojm sign` →
+> `cp tgz+.sig cdn/` → `ojm market build-index`（= devkit publish-walkthrough §4.2；`publish --real`
+> 仅限单方案工程，多方案明确拒绝并指路 §7.5 F；**`publish --fixture` 是合成测试包，不是发布通道**）。
 
 ```bash
 # 在宿主工程根内：
@@ -858,6 +859,25 @@ node "$CLI_PKG/bin/ojm.mjs" build && npx tsc --noEmit -p tsconfig.json && node "
 | 结果 | **通过**。① §7.1/§7.2：骨架五必填齐；包 `oj-registry:demo-solution@0.1.0:6e9d7c6b…`、发布方指纹 `77937f63…000f48`；CDN v2 件齐（catalog.yaml+.sig / tgz+.sig / shards）；verify「全部校验通过（8 项）」；幂等重发无冲突。② §7.3：首装 11 段全 ok 但 `status=partial`（restart_pending，message 明示待重启段 `[auth]`）→ 重启宿主 → retry **done** 冒烟三项全过；`manifests.yaml` 锁 `demo-solution: 0.1.0`；`/api/demo-solution/ping` → `pong:true`。③ §7.4：**14 PASS / 0 FAIL**（主链 9 + 负向 5），报告落盘且脱敏 grep 零命中。④ §7.5：scripts 含 new/bundle/typecheck:api；自带折叠 N=2、`--all` 平铺；五类拒绝全命中且零写入（重名 / kebab / 保留名 auth / 内置名 home / usage rc=2）；无参打包仅用户方案、`--bundle crm` 单份、sha256 确定性；E3 坏契约 fail-fast 指名 `bad` 且 tgz 零增量（3→3）；零用户方案报错指路 `ojm new`；F 多方案 `--real` exit 1 并给出显式链路（`--bundle <name>` → `sign` → `build-index`） |
 | 本次发现并处置 | ① **§7.1.0 独立工程形态被 0.2.68 守卫拦下**（`ojm new` 要求工程上下文，独立目录拒且零写入）→ 链路改为宿主内 new → `--bundle <name>` → `publish --fixture`，§7.1.0 已补注。② **首装终态是 partial 不是 done**（oj 0.1.122+ restart_pending 语义，11 段全 ok、待重启段明示）→ §7.3 检查点已改为「partial → 重启 → retry done」两段口径。③ **§7.2 检查点 `/cdn/bundles.yaml` 过时**：v2 索引真名 `catalog.yaml`（200），`bundles.yaml` 文件不存在（404）→ 检查点已改名。④ **§7.5 E 与 §1.5 门禁双层交互**：塞自带契约先被门禁拦（extra 漂移）；删名单绕行会**同时失去自带排除**（同一真源），实测 `app` 被打包且 `dist/app-0.1.0.tgz` 残留 → E 已补 0.2.68 口径注。⑤ `market setup --new-pass` 只设了市场地址，superadmin 口令未变（setup 输出未提改密结果）——观察项，不阻断（trust confirm 用原口令通过）。⑥ install/task 探询漏 `X-TENANT-ID` 得 400——§8 既有发现④再次命中，§7.3 脚本已补头。⑦ 演练 fixture 教训：`--layout none` 方案被塞进 `api:` 段而 api/ 不存在时，打包 fail-fast「缺少 oj build 产物 dist/api/<name>」——契约声明与目录必须同源。 |
 | 手册同步 | §7.1.0 补 0.2.68 守卫注与新链路；§7.2 检查点 bundles.yaml → catalog.yaml；§7.3 install 脚本补租户头、检查点补 partial→done 两段语义；§7.5 E 补门禁双层口径注；文首结论并提市场线 |
+
+#### 市场线补段之二：真实骨架包闭环 + `ojm new` 骨架缺陷修复（同日晚）
+
+> 首轮市场线的安装/装成验的是 `publish --fixture` **合成的最小合法包**（fixture.ts 现场合成，
+> 非 §7.1 真实骨架）；文档口径核对时发现并当场用 §4.2 显式四步把真实骨架包重走了一遍。
+
+- **发现并修复（框架缺陷）**：`ojm new --api` 骨架的 `solution.yaml` 漏了 `api.anonymous` 声明——
+  ping 匿名可达但契约未声明，安装预检 **`anonymous_residual`** 拒装（合成 fixture 因声明了
+  `anonymous: ["<name>/ping"]` 而装得进，正好构成对照）。已修 `new.ts` 模板（补声明一行），
+  TDD 用例钉住（`new-scaffold.test.ts`，红→绿）。
+- **真实包闭环**：`ojm build` → `build --bundle demo-solution` → `sign --check`（指纹 `77937f63…`）→
+  `cp tgz+.sig cdn/` → `build-index`（第 3 代）→ `install` → **`安装完成：demo-solution 0.1.0`** →
+  重启宿主 → `/api/demo-solution/ping` pong。途中复证两条既有判罚：**卸载会把
+  `dist/api/<name>-<ver>` 版本目录一并移除**（重发同版本前必须先 `ojm build`，手册 §7 已有该行的
+  药方被实测命中）；契约声明 `api:` 段而产物缺失 → 打包 fail-fast「缺少本方案的站点产物」。
+- **手册同步**：publish-walkthrough §0 前提补「匿名端点须在 `api.anonymous` 声明」与「保护根」两条；
+  §4.1 补 `--fixture` 非发布通道警示；§6 补首装终态两段式与 setup 改密实情；§7 表补
+  `anonymous_residual` / restart_pending 两行、卸载删产物并进「缺少站点产物」行；manual §11.3 补
+  partial 两态语义与 anonymous_residual 预检；playbook §7.1.0 链路更正（`--fixture` 非发布通道）。 |
 
 ### 最近一次基线（2026-11-06，oj 0.1.124 / cli+runtime 工作区 0.2.68；快线 + 脚手架门禁 + 仓库回归）
 

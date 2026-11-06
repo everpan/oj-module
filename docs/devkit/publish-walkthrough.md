@@ -24,7 +24,13 @@ flowchart LR
 1. 方案契约在位：`src/<模块>/solution.yaml`（`name` / `version` / `summary`；纯前端可省 `api` 段，纯后端可省 `web` 段）；
 2. 前端入口在位：`src/<模块>/web/entry.ts`。module-root 布局（0.2.20+）以**扫描**为准，
    `web.config.ts` 的 `modules` 登记只影响加载顺序，漏登记**不会**漏构建（登记了不存在的 entry 才会报错）；
-3. 双语 locale 在位：`src/<模块>/web/locales/{zh-CN,en-US}.json`（key 必须嵌套，如 `{"menu":{"main":"…"}}`）。
+3. 双语 locale 在位：`src/<模块>/web/locales/{zh-CN,en-US}.json`（key 必须嵌套，如 `{"menu":{"main":"…"}}`）；
+4. **匿名端点已在契约声明**：凡不带 token 可访问的端点（`ojm new` 骨架的 `ping` 就是），必须在
+   `solution.yaml` 的 `api.anonymous` 里列出（如 `anonymous: ["<模块>/ping"]`，模块相对路径）——
+   漏声明安装预检 `anonymous_residual` 直接拒装（0.2.68 起 `ojm new --api` 骨架已自带这行；
+   自己加端点时记得同步维护这份清单）。
+5. **别把方案建进保护根**：`src/app`、`src/oj-market` 受完整性门禁保护（0.2.68+，见 `src/README.md`），
+   `ojm build` 会先比对上游模板、有漂移即拒；用户方案放 `src/<你的名字>/`。
 
 ---
 
@@ -151,6 +157,12 @@ ojm market publish --real . \
 `cdn/` 是**三级索引**布局：`catalog.yaml`（+`.sig`）、`shards/<n>.yaml`（+`.sig`）、
 `<name>-<version>.tgz`（+`.tgz.sig`）；分片数随方案数增长，不要按固定文件数核对。
 
+> **`--real` 仅限单方案工程**（`src/` 下只有一份 `solution.yaml`）；`ojm new` 生成的方案长在宿主工程里
+> （宿主还自带 `app`/`oj-market`），多方案工程走 §4.2 显式四步。
+> **`--fixture` 不是发布通道**：`ojm market publish --fixture <name>@<ver>` / `trial` / `walkthrough`
+> 里的 fixture 是**现场合成的最小合法测试包**（固定 ping 形状），专供演练与隔离验证——
+> 它不会打包你的真实代码，别拿它发真方案。
+
 > 引用式方案（契约 `api` 段省略 `tables`/`deps`）会打印「引用式方案…非漏配」提示——那是合法形态，不是错误。
 
 ### 4.2 多方案工程（显式四步）
@@ -207,7 +219,9 @@ ojm build
 oj serve -c config.yaml -b /api --api-path dist/api
 
 # ② 市场地址：本地自供 /cdn 是模板默认，**不需要 setup**；
-#    只有指向外部真 CDN 才要执行（首跑可能强制改密，故下一步的 --pass 用新口令）：
+#    只有指向外部真 CDN 才要执行。注意 setup 不一定改密：账号不在「必须改密」悬挂期时
+#    （当前 seed 的 superadmin 就是），--new-pass 不生效、原口令继续可用——
+#    2026-11-06 演练实踩：setup 后拿新口令登录得 401。真触发了改密闭环才用新口令：
 #    ojm market setup --site-url http://127.0.0.1:9778 --user superadmin --pass <当前口令> --new-pass <新口令>
 
 # ③ 安装（从 CDN 拉：name[@version]；直传文件则给 tgz 路径，.sig 同目录自动随包）
@@ -221,10 +235,14 @@ ojm trust confirm --task <task-id> --site-url http://127.0.0.1:9778 --user super
 ojm install crm@1.0.0 --site-url http://127.0.0.1:9778 --user superadmin --pass <口令>   # 重跑续跑
 ```
 
-`<口令>` 就是登录站点用的那个：没跑过 `market setup` 时是脚手架种子口令（`superadmin / aA123456`），
-跑过则用 `--new-pass` 设的新口令。
+`<口令>` 就是登录站点用的那个：没跑过 `market setup` 时是脚手架种子口令（`superadmin / aA123456`）；
+跑过 setup 也不一定变——只在真触发了「必须改密」闭环时才用 `--new-pass` 的新口令（见 ②）。
 
-通过判据：`dist/api/manifests.yaml` 出现 `<name>: <version>`；**重启一次 `oj serve`**（新方案路由要重启才注册——reload 由 manifests 锁 diff 驱动装配，但新模块路由/模块注册属 restart_pending，热改不即时生效）后
+**首装终态两段式（oj 0.1.122+ 正常语义）**：install 走完 11 段全 ok 但 `status=partial`——
+message 明示 `restart_pending`（新模块的路由/模块注册要宿主重启才生效，如「待重启段 [auth]」）。
+**重启一次 `oj serve`** 后再 retry 同一条 install → `status=done`、冒烟三项（探活/完整性/注册一致性）全过。
+
+通过判据：`dist/api/manifests.yaml` 出现 `<name>: <version>`；重启后
 `curl -H 'X-TENANT-ID: default' /api/<name>/ping` 返回 `code:0`——**不带租户头会 400 `missing tenant header`**，
 那是缺参数，不是装失败。
 
@@ -245,12 +263,14 @@ TOFU 没有免检通道：**只有模板内置的 oj-market（第一方包）用
 | 申请凭证 403 `password change required` | 新建账号首次登录还在「必须先改密」悬挂期 | 先改密（页面或 `PUT /api/auth/password`），再申请 |
 | 安装 503 `安装需要站点 canonical origin` | `config.yaml` 的 `vars.canonical_origin` 没配，而市场基址是相对路径 `/cdn` | 配成站点对外地址（本地演练 `http://127.0.0.1:9778`）后重启 |
 | 安装 partial（stage `reloading`，`reloadConfig 返回 unchanged`） | 对着 `ojm dev` 装：dev 的文件监听先吃掉了 config 改动 | 换成 `oj serve` release 形态再装；别在 dev 上验证安装 |
+| 安装 partial（11 段全 ok，message 含 `restart_pending` /「请重启 oj serve」） | **正常语义**（oj 0.1.122+）：新模块的路由/模块注册要宿主重启 | 重启 `oj serve` 后 retry 同一条 install → `done`（§6 首装终态两段式） |
+| 安装拒 `anonymous_residual`（preflight，不可自动重试） | 有端点实际匿名可达，但 `solution.yaml` 的 `api.anonymous` 没声明（换包时含上一版声明了、新包漏声明的残留比对） | 把该端点补进 `anonymous: ["<模块>/<路由>"]`（模块相对路径），重打包重签重发；`ojm new --api` 骨架 0.2.68 起自带 ping 声明 |
 | 装完 `curl /api/<name>/ping` 返回 400 `missing tenant header` | 少了 `X-TENANT-ID` 头 | 加 `-H 'X-TENANT-ID: default'` 再探 |
 | `sig_alg` / `sig_format` | 签名算法/.sig 结构不符 | 用当前 ojm 重签（旧版本工具产物） |
 | `needs_trust`（第五终态，非成功） | 站点第一次见这个 key | 与发布方逐字核对指纹 → `trust confirm --task <id>` → 重跑 install |
 | publish 报「包冲突：…字节不一致」 | 同 name@version 已有字节不同的包 | **升 version 重发**；确需覆盖先删 CDN 旧 tgz |
 | publish 报「一次只发布一份方案」 | 多方案工程走了自动链路 | §4.2 显式四步 |
-| 打包报「缺少本方案的站点产物」 | 没先 `ojm build`，或前端入口不在 `src/<模块>/web/entry.ts`（module-root 扫描不到；`web.config.ts` 漏登记**不是**原因） | 补 entry / 先构建再打包 |
+| 打包报「缺少本方案的站点产物」 | 没先 `ojm build`；或**卸载方案时把 `dist/api/<name>-<ver>` 一并移除了**（2026-11-06 实测：卸载四同删含版本目录，重发同版本前必须重建）；或前端入口不在 `src/<模块>/web/entry.ts` | 先 `ojm build` 再 `--bundle`；补 entry |
 | 打包报「缺少 bundle 级契约」 | 没有 `solution.yaml` | 补契约（§0 前提 1） |
 | 装不到刚发的包 | 索引没重建 | `ojm market build-index`（§4.3 纪律 2），确认 `cdn/` 的 catalog + 分片 + tgz(+sig) 已同步 |
 | 装成后 404 | 方案路由没注册 | 重启 `oj serve`（§6 通过判据） |
