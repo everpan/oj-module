@@ -40,6 +40,7 @@
 		},
 		"mainDept": "Main dept",
 		"filterDept": "Filter by department (incl. sub-depts)",
+		"searchPlaceholder": "Search by username / display name",
 		"password": "Password",
 		"usernameHint": "ldap:/ sso:/ wecom: prefixes are reserved for external identity sources"
 	},

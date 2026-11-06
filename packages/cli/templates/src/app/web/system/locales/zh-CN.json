@@ -40,6 +40,7 @@
 		},
 		"mainDept": "主部门",
 		"filterDept": "按部门筛选（含子部门）",
+		"searchPlaceholder": "按用户名/显示名搜索",
 		"password": "口令",
 		"usernameHint": "ldap:/ sso:/ wecom: 为外部身份源保留"
 	},
