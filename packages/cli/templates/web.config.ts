@@ -20,7 +20,9 @@ const allModules = [
 	{ name: "app", entry: "src/app/web/entry.ts" },
 	// 解决方案市场：第一方能力（消费 _platform 编排面 /api/_platform/market/*，
 	// R29：第三方方案不得仿照此调用面），默认随脚手架下发。保持独立模块——
-	// 可选能力，删目录即可下线；发布管理页（/publish）也在这个模块里。
+	// 可选能力，不想要就改 `enabled: false`（不要删目录：src/app、src/oj-market
+	// 受完整性门禁保护，删改会让 ojm build 失败，见 src/README.md）；
+	// 发布管理页（/publish）也在这个模块里。
 	{ name: "oj-market", entry: "src/oj-market/web/entry.ts" },
 	// #region demo-only
 	// 以下为模板内置的演示模块（about/access/exception/outside/route-nest），

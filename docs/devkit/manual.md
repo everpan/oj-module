@@ -12,7 +12,8 @@
 
 ### 1.1 脚手架产物
 
-`ojm init <目录>` 生成（幂等补缺，重跑只补缺失文件，**永不覆盖已有文件**）。
+`ojm init <目录>` 生成（幂等补缺，重跑只补缺失文件，**已有文件永不覆盖**；`--yes` 是唯一
+例外，见 §1.9 恢复语义）。
 模板拷贝按框架内置的 **`init.include.yaml` 白名单**执行——未收录的路径一律不拷
 （demo-only 演示模块、模板自运行产物都在清单外）。该清单是**框架侧文件**，`ojm init`
 从 cli 包内读取，**不在你的工程里**——你在工程里找不到它，也改不到它。
@@ -39,7 +40,8 @@
 ├── tests/                 # 后端 BDD 测试（node:sqlite 内存库 + 真实迁移建表）
 ├── src/
 │   ├── tsconfig.json      # 后端 typecheck 工程（extends 上两者，exclude */web）
-│   ├── .ojm-builtin.json  # 框架自带方案名单（init 派生，可手改/删除；打包排除 + info 折叠，见 §11）
+│   ├── README.md          # src 分区说明（内置模块自治契约的人话版，动手前必读）
+│   ├── .ojm-builtin.json  # 框架自带方案名单（init 派生，可手改/删除；打包排除 + info 折叠 + build 门禁开关，见 §11）
 │   ├── styles.css
 │   ├── app/               # 整个应用（后端模块 + 前端聚合模块）
 │   │   ├── api/           # 后端模块（模块名 = URL 前缀，各自仍是独立 oj 模块）
@@ -59,7 +61,7 @@
 │   │       ├── auth/      #   仅 __client（无页面）
 │   │       ├── _platform/ #   仅 __client（oj-market 引用）
 │   │       └── web/       #   仅 __client
-│   ├── oj-market/web/     # 解决方案市场（独立模块，删目录即下线；单根 /oj-market 挂三个子页）
+│   ├── oj-market/web/     # 解决方案市场（独立模块，enabled: false 下线；单根 /oj-market 挂三个子页）
 │   │   ├── entry.ts       #   routes 聚合：/oj-market 根（方案清单 index）+ 发布管理/发布历史子路由
 │   │   └── publish/       #   发布管理 + 发布历史（/oj-market/publish、/oj-market/history：routes + pages + locales + __client）
 ├── dist/api/              # 后端产物（release 根：<name>-<ver>/ + manifests.yaml + versions.json）—构建后才有
@@ -282,6 +284,35 @@ oj 的 `#` 导入与目录深度无关（后端解析规则见 `oj-api-dev` 手�
   直接报错（与表归属校验同一套归属图）；模块名写错的别名同样在构建期被拦下。
 - `#` 与 Node `package.json#imports` 共用命名空间：工程里若出现 `#` 开头的 imports 键，
   `oj build` 直接失败（避免两套解析器分叉）。
+
+### 1.9 内置模块自治契约（build 门禁）
+
+**`src/app/`（框架内置页面与后端）和 `src/oj-market/` 是上游自治的，下游不许改。**
+`ojm build`（含 `--bundle`）与 `ojm market publish --real` 在任何产物写入前，把这两个目录
+逐文件与**当前 cli 包内模板**比对（上游模板即基线；比较前行尾归一，git autocrlf 不误报）：
+
+| 漂移 | 判定 |
+| --- | --- |
+| 改了内容 | `modified` — 拦 |
+| 删了白名单文件 | `missing` — 拦 |
+| 目录里多出文件 | `extra` — 拦 |
+
+被拦时构建直接失败、**零产物**，报错点名全部差异文件，并给出唯一正路：
+
+- 功能需求/缺陷 → **提交上游 issue**，等新版本下发；
+- 确认放弃本地修改 → `ojm init --yes` 恢复上游版本（见下）。
+
+没有绕过开关。这不是安全边界——删掉 `src/.ojm-builtin.json`（门禁开关）会整体退回旧行为，
+但没人替你兜底升级时的功能漂移；`enabled: false` 是下线某个自带能力的正确姿势（不是删目录）。
+
+**`ojm init --yes`（恢复/升级模式）**：日常重跑 init 永不覆盖；`--yes` 额外把 `src/app`、
+`src/oj-market` 恢复成当前 CLI 携带的上游版本（覆盖白名单文件、删除目录内多出文件、重写
+`.ojm-builtin.json` 为上游名单）。**会丢弃这两个目录里的本地修改，执行前先备份**；下游自定义
+模块（`src/<你的模块>/`）与工程配置（config.yaml / web.config.ts / package.json 等）不受影响。
+
+**CLI 升级后必须先同步**：新版 CLI 的模板就是新基线，旧版默认模块（即使一行没改）与新模板
+不一致即被拦——升级 cli 后先跑一次 `ojm init --yes` 再 build。dev 不拦，本地随便试验；
+发布产物必须过门禁。
 
 ---
 

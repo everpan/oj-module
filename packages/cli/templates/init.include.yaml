@@ -37,6 +37,8 @@ include:
   - types
   - web.config.ts
   - openapi.json
+  # src 下的模块分区说明（内置模块自治契约的人话版，动手前必读）
+  - src/README.md
   - src/styles.css
   # 后端 typecheck 工程（package.json 的 typecheck:api 指向它）；只收后端、排除 web
   - src/tsconfig.json

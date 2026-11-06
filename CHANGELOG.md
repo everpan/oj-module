@@ -9,6 +9,48 @@
 
 ### Added
 
+- **脚手架完整性门禁（内置模块自治契约）**：`ojm init` 搭出的工程里，框架默认模块
+  （`src/app` 内置模块与 `src/oj-market`）属上游自治，下游不得本地修改。`ojm build`（普通与
+  `--bundle`）与 `ojm market publish --real` 在任何产物写入前逐文件比对工程与**当前 cli 包内
+  模板**（上游模板即基线，不另立哈希 lock），内容修改 / 白名单文件缺失 / 保护目录内多出文件
+  三类漂移均 fail-fast：报错按类点名文件、说明「需求请提交上游」、给出 `ojm init --yes` 恢复
+  处置（不提供绕过开关）。门禁开关 = `src/.ojm-builtin.json` 存在（旧工程缺失则退化现状不拦；
+  删除开关文件同样退回旧行为——门禁不是安全边界，见 `templates/src/README.md` 的人话版契约）。
+  **「必须先同步上游」**：CLI 升级后工程里的旧版默认模块（即使非用户手改）与新模板必不一致 →
+  构建被拦，先跑 `ojm init --yes` 同步再 build。dev 不拦，允许本地试验。回归：
+  `tests/cli/scaffold-guard.test.ts`（12 条）、`init.test.ts` 零漂移基线与 `--yes` 恢复、
+  `cli.test.ts` 门禁失败零产物两条。
+
+- **`ojm init --yes` 恢复语义（限定范围）**：此前 `--yes` 只跳过非空目录确认；现追加为
+  默认方案的显式恢复/升级入口——仅覆盖 `src/app`、`src/oj-market` 内的白名单文件、删除这些
+  目录内模板没有的文件、重写 `src/.ojm-builtin.json` 为上游名单；下游自定义模块与工程级配置
+  （config.yaml / web.config.ts / package.json 等）不受影响。无 `--yes` 行为不变（幂等补缺、
+  已存在永不覆盖）。CLI 升级后先跑一次再 build。
+
+- **`resolveRoutePath(route)` 公开导出（runtime）**：单路由导航 path 计算——`handle.category
+  === "admin"` 时复用与框架相同的 `/system/<模块根>/*` 重写算法（对已重写路径幂等），普通路由
+  原样返回 `path`；相对 admin path 以已生成的绝对 `id` 补全模块根。下游导航不再需要自行维护
+  admin 路径映射。用法见 `packages/runtime/README.md` 与 devkit manual。
+
+### Changed
+
+- **`category: "admin"` 未显式声明 `layout` 时默认 `"container"`**：admin 子树提升为顶级路由后
+  未声明布局会丢失整站 chrome；显式声明（含 `"none"`）永远优先。模板 admin 示例已去掉冗余
+  `layout: "container"`。
+
+### Fixed
+
+- **admin 路由重写后菜单选中态丢失（runtime 0.2.67 缺陷，下游反馈）**：`rewriteAdminPaths` 以
+  `{ ...route, path }` 改写路径但保留重写前的 `id`，菜单 key 与 `useMatches().id` 处于两个路径
+  空间 → 当前页面不高亮、「系统管理」菜单收起。现于重写单点对整个子树重算 id
+  （`addRouteIdByPath`，含 index 路由尾斜杠），id 与菜单 key 恒同处一个绝对路径空间，
+  下游无需任何补偿配置。
+- **侧边栏底部菜单展开遮挡主菜单（runtime）**：底部固定区 `shrink-0` 完全不收缩，视口矮时
+  主菜单滚动视口被压成 0px 且无法滚动。现主菜单区 `flex-1 min-h-10`（至少保留一个菜单项的
+  滚动视口）、底部区展开态可滚动，两面板几何零重叠。新增 300px 视口真实浏览器回归用例
+  `tests/e2e/templates/sidebar-menu-overflow.spec.ts`。
+
+
 - **发布历史（记录 + 查询页）**：`GET /api/_platform/market/releases` 每次读取先把签名索引
   （catalog + 全部分片）里出现过的 `product@version` 幂等补进新表 `market_release`，再按发布时间
   倒序分页返回产品 / 版本 / 发布身份 / 发布时间 / 在架状态。**不新增发版上报协议**：`ojm market
