@@ -314,12 +314,11 @@ TOFU 没有免检通道：**只有模板内置的 oj-market（第一方包）用
 ## 7.5 第一方随站 bundle（oj-market 自身）发布流程
 
 > 仅框架发布人需要；业务方案发布用 §1–§6 常规流程。oj-market 市场 UI 是第一方
-> **纯 web 方案包**（契约 `templates/src/oj-market/solution.yaml`，R29 第一方专用，
+> **纯 web 方案包**（契约 `templates/src/oj-market/solution.yaml`，第一方专用，
 > 第三方方案不得仿照 `/api/oj-market/*` 调用面），**出厂未装**：
 
 - **打包**：templates 工程 `pnpm build` → `ojm build --bundle oj-market`
-  （产 `templates/dist/oj-market-<ver>.tgz`，版本基线 0.2.0 起，双轨版本见
-  docs/plans/20261106-1904-market-remote-publish.md §衍生规划）；
+  （产 `templates/dist/oj-market-<ver>.tgz`，版本基线 0.2.0 起；双轨版本：包版本随 entry.ts，平台 api 版本随脚手架）；
 - **签名**：`ojm sign <tgz> --id <publisher>.<key> --registry-id <registry>` 产 .sig 旁车
   （私钥永不出 `~/.ojm/keys/`，手工动作）；
 - **收编**：`pnpm prepack` 的 `scripts/sync-bundles.mjs` 把 templates/dist 里**已签名**

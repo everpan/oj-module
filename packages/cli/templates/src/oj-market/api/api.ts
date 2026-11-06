@@ -19,7 +19,7 @@ import type { ExecFace } from "#/_platform/_lifecycle/steps/extract";
 import type { ReloadFace } from "#/_platform/_lifecycle/steps/reload";
 import type { FetchInitFace } from "#/_platform/_shared/site-facade";
 import { atomicWriteText, fsFace } from "#/_platform/_lifecycle/atomic";
-import { convergeBundledSolutions } from "#/_platform/_lifecycle/bundle-converge";
+import { convergeBundledSolutions, pruneBundledMarker } from "#/_platform/_lifecycle/bundle-converge";
 import { recordHistory } from "#/_platform/_lifecycle/history";
 import { latestAppliedSeqOf, reconcile, runInstall, setEnabled } from "#/_platform/_lifecycle/installer";
 import { localArchiveManifestOf } from "#/_platform/_lifecycle/local-archive";
@@ -524,12 +524,22 @@ async function installBody(env: MarketEnv): Promise<{ task_id: string }> {
 async function runBundleConverge(env: MarketEnv): Promise<void> {
 	try {
 		const cdnDir = env.cdnDir ?? "cdn";
-		await convergeBundledSolutions({
+		const r = await convergeBundledSolutions({
 			markerPath: `${cdnDir}/bundles.json`,
 			cdnDir,
 			statePath: env.statePath,
 			installLocal: (entry, archive) => installBundledArchive(env, entry, archive),
+			// 失败冷却（终审 Important-2）：持久失败（如 BOOTSTRAP_KEY 未回填期的 needs_trust、
+			// 包被篡改）不在每次 index 请求全量重装——10 分钟窗内跳过，窗外自愈重试
+			cooldownPath: `${env.taskDir}/.bundle-converge-cooldown.json`,
 		});
+		// 失败观测（终审 Important-2）：冷却窗内每请求重试一次记一条审计，超窗后安静——
+		// 连续失败有痕可查，不刷爆 market_history
+		for (const failed of r.failed) {
+			const m = failed.match(/^([a-z][a-z0-9-]{0,63})@([^（]+)（/);
+			if (m)
+				await recordHistory({ solution: m[1]!, version: m[2]!, action: "install", status: "failed", operator: "bundle-converge", message: `随站 bundle 收敛失败（10 分钟后自愈重试）：${failed}` });
+		}
 	}
 	catch {
 		// marker 损坏/状态不可读等静默——下次对账再试
@@ -1138,6 +1148,11 @@ export function createMarketApi(env: MarketEnv) {
 					// 其余领域拒绝（空锁拒启/级联失败等）维持 200 {ok:false} 人话在 message。
 					if (!r.ok && r.reason === "not-installed")
 						fail(404, r.message);
+					// 卸载墓碑（终审 Important-1）：随站 bundle 的意图标记摘除本方案——否则
+					// 下次 index 收敛会把这次故意卸载当漂移自动重装，「卸载后仅可经 system 域
+					// 入口重装」落空。重装路径：system 页引导 backfill 重建目录行后手动安装。
+					if (r.ok)
+						await pruneBundledMarker(`${(env.cdnDir ?? "cdn")}/bundles.json`, name);
 					return r;
 				});
 			},

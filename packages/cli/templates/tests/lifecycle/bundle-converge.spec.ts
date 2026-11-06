@@ -79,7 +79,7 @@ describe("bundle 启动收敛：执行编排（真实 marker/cdn/状态文件 + 
 
 	it("marker 缺失 → 零动作安静返回（无 bundle 的站点/旧工程）", async () => {
 		const r = await convergeBundledSolutions(env());
-		expect(r).toEqual({ installed: [], upgraded: [], skipped: [], failed: [] });
+		expect(r).toEqual({ installed: [], upgraded: [], skipped: [], failed: [], cooling: [] });
 		expect(installLocal).not.toHaveBeenCalled();
 	});
 
@@ -139,5 +139,126 @@ describe("bundle 启动收敛：执行编排（真实 marker/cdn/状态文件 + 
 		await fsp.writeFile(join(cdnDir, "oj-market-0.2.0.tgz"), new Uint8Array([1]));
 		await convergeBundledSolutions(env());
 		expect(installLocal.mock.calls[0]![1].sig).toBeNull();
+	});
+});
+
+describe("bundle 收敛：卸载墓碑（终审 Important-1）", () => {
+	let root: string;
+
+	beforeEach(async () => {
+		root = await fsp.mkdtemp(join(tmpdir(), "ojm-bundle-prune-"));
+		g.fs = nodeFsFace();
+	});
+
+	afterEach(async () => {
+		g.fs = undefined;
+		await fsp.rm(root, { recursive: true, force: true });
+	});
+
+	it("pruneBundledMarker：摘除指定条目、其余保留；marker 缺失/损坏安静 no-op", async () => {
+		const { pruneBundledMarker } = await import("../../src/app/api/_platform/_lifecycle/bundle-converge");
+		const marker = join(root, "bundles.json");
+		await fsp.writeFile(marker, JSON.stringify({ solutions: [
+			{ name: "oj-market", version: "0.2.0", file: "oj-market-0.2.0.tgz" },
+			{ name: "wiki", version: "1.0.0", file: "wiki-1.0.0.tgz" },
+		] }));
+		await pruneBundledMarker(marker, "oj-market");
+		const after = JSON.parse(await fsp.readFile(marker, "utf-8"));
+		expect(after.solutions).toEqual([{ name: "wiki", version: "1.0.0", file: "wiki-1.0.0.tgz" }]);
+		// 幂等：再摘同名（条目已不在）不报错
+		await pruneBundledMarker(marker, "oj-market");
+		// marker 缺失 no-op
+		await pruneBundledMarker(join(root, "nope.json"), "oj-market");
+	});
+
+	it("卸载摘碑后收敛不再自动重装（installLocal 零调用）", async () => {
+		const { pruneBundledMarker } = await import("../../src/app/api/_platform/_lifecycle/bundle-converge");
+		const cdnDir = join(root, "cdn");
+		const statePath = join(root, ".solutions", "state.yaml");
+		const markerPath = join(cdnDir, "bundles.json");
+		await fsp.mkdir(cdnDir, { recursive: true });
+		await fsp.mkdir(join(root, ".solutions"), { recursive: true });
+		await fsp.writeFile(markerPath, JSON.stringify({ solutions: [{ name: "oj-market", version: "0.2.0", file: "oj-market-0.2.0.tgz" }] }));
+		await fsp.writeFile(join(cdnDir, "oj-market-0.2.0.tgz"), new Uint8Array([1]));
+		const installLocal = vi.fn(async () => {});
+		// 未装 → 装
+		const cdnDirArg = cdnDir;
+		const r1 = await convergeBundledSolutions({ markerPath, cdnDir: cdnDirArg, statePath, installLocal });
+		expect(r1.installed).toEqual(["oj-market@0.2.0"]);
+		// 卸载 = 摘碑（端点侧 runUninstall 成功后调用；状态条目由卸载面清除，此处模拟无条目）
+		await pruneBundledMarker(markerPath, "oj-market");
+		const r2 = await convergeBundledSolutions({ markerPath, cdnDir: cdnDirArg, statePath, installLocal });
+		expect(r2).toEqual({ installed: [], upgraded: [], skipped: [], failed: [], cooling: [] });
+		expect(installLocal).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe("bundle 收敛：失败冷却（终审 Important-2）", () => {
+	let root: string;
+	let cdnDir: string;
+	let statePath: string;
+	let markerPath: string;
+	let cooldownPath: string;
+	const installLocal = vi.fn<(entry: { name: string, version: string, file: string }, archive: { bytes: Uint8Array, sig: unknown | null }) => Promise<void>>();
+
+	const env = (now: () => number) => ({
+		markerPath,
+		cdnDir,
+		statePath,
+		installLocal,
+		cooldownPath,
+		now,
+	});
+
+	beforeEach(async () => {
+		root = await fsp.mkdtemp(join(tmpdir(), "ojm-bundle-cooldown-"));
+		cdnDir = join(root, "cdn");
+		statePath = join(root, ".solutions", "state.yaml");
+		markerPath = join(cdnDir, "bundles.json");
+		cooldownPath = join(root, ".converge-cooldown.json");
+		await fsp.mkdir(cdnDir, { recursive: true });
+		await fsp.mkdir(join(root, ".solutions"), { recursive: true });
+		await fsp.writeFile(markerPath, JSON.stringify({ solutions: [{ name: "oj-market", version: "0.2.0", file: "oj-market-0.2.0.tgz" }] }));
+		await fsp.writeFile(join(cdnDir, "oj-market-0.2.0.tgz"), new Uint8Array([1]));
+		g.fs = nodeFsFace();
+		installLocal.mockReset();
+	});
+
+	afterEach(async () => {
+		g.fs = undefined;
+		await fsp.rm(root, { recursive: true, force: true });
+	});
+
+	it("失败后在冷却窗内不再重试（cooling 桶），出窗恢复重试；成功清除冷却", async () => {
+		let t = 1_000_000;
+		installLocal.mockRejectedValueOnce(new Error("验签失败"));
+		const r1 = await convergeBundledSolutions(env(() => t));
+		expect(r1.failed).toHaveLength(1);
+		// 窗内（10 分钟 = 600_000ms）：cooling，installLocal 不再被调
+		t += 60_000;
+		const r2 = await convergeBundledSolutions(env(() => t));
+		expect(r2.cooling).toEqual(["oj-market@0.2.0"]);
+		expect(installLocal).toHaveBeenCalledTimes(1);
+		// 出窗：重试并成功 → 冷却清除；此后同版本 skip
+		t += 600_000;
+		const r3 = await convergeBundledSolutions(env(() => t));
+		expect(r3.installed).toEqual(["oj-market@0.2.0"]);
+		expect(installLocal).toHaveBeenCalledTimes(2);
+		// 成功清除冷却：冷却文件已无该键
+		const cd = JSON.parse(await fsp.readFile(cooldownPath, "utf-8"));
+		expect(cd).toEqual({});
+	});
+
+	it("无 cooldownPath（调用方不启用）→ 行为与既有口径一致（全部进 failed 重试）", async () => {
+		let calls = 0;
+		installLocal.mockImplementation(async () => {
+			calls++;
+			throw new Error("boom");
+		});
+		const envNoCd = () => ({ markerPath, cdnDir, statePath, installLocal });
+		await convergeBundledSolutions(envNoCd());
+		const r2 = await convergeBundledSolutions(envNoCd());
+		expect(r2.failed).toHaveLength(1);
+		expect(calls).toBe(2);
 	});
 });

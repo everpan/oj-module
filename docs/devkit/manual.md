@@ -62,7 +62,7 @@
 │   │       ├── _platform/ #   仅 __client（oj-market 引用）
 │   │       └── web/       #   仅 __client
 │   ├── oj-market/         # 解决方案市场（Phase B 起「出厂未装」分层）
-│   │   ├── api/           #   编排面随脚手架内置：/api/oj-market/*（安装/目录/下线/信任/回填；R29 第一方专用）
+│   │   ├── api/           #   编排面随脚手架内置：/api/oj-market/*（安装/目录/下线/信任/回填；第一方专用）
 │   │   └── web/__client/  #   生成物落点（ojm api --check 对账；页面源码随第一方方案包分发，不在脚手架）
 │   ├── （方案包装后）      #   市场 UI = 纯 web 第一方方案包：superadmin 经 system 域「方案安装」首装；
 │   │                      #   ojm init --yes 落位的随站 bundle 由首个市场请求自动收敛（上拉不下拉）
