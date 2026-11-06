@@ -213,4 +213,12 @@ describe("B7：列表（用户管理页数据源）", () => {
 		expect(u2?.roles).toEqual(["editor"]);
 		expect(JSON.stringify(users)).not.toContain("password_hash");
 	});
+	it("U3：listUsers 返回 employee_no / phone_number（users 表既有列；未设置即 null）", async () => {
+		const uid = mkUser("u_emp");
+		dbo.prepare("UPDATE users SET employee_no = ?, phone_number = ? WHERE id = ?").run("E001", "13800000000", uid);
+		mkUser("u_emp2");
+		const users = await listUsers();
+		expect(users.find(u => u.username === "u_emp")).toMatchObject({ employee_no: "E001", phone_number: "13800000000" });
+		expect(users.find(u => u.username === "u_emp2")).toMatchObject({ employee_no: null, phone_number: null });
+	});
 });
