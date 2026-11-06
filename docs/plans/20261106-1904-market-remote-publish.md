@@ -147,7 +147,7 @@
 - [x] **场景：回填命令**：cdn/ 存量扫描 → upsert 落库（幂等重入，重复跑行数不变）；灾备演练：清表 → 扫描恢复（数据表：含 .sig 缺失行的降级）
 
 ### 发版与文档
-- [ ] breaking 说明（纯静态市场源退出 + 2×2 矩阵 + 回滚口径 + 匿名面重启生效）+ 迁移指南（含信任库迁移）+ usage/help 同步 + `docs/guides/solution-dev-build-publish.md` + devkit 手册**双份拷贝**（docs/devkit/ 与 packages/cli/devkit/）+ failure-playbook 错误文案
+- [x] breaking 说明（纯静态市场源退出 + 2×2 矩阵 + 回滚口径 + 匿名面重启生效）+ 迁移指南（含信任库迁移）+ usage/help 同步 + `docs/guides/solution-dev-build-publish.md` + devkit 手册**双份拷贝**（docs/devkit/ 与 packages/cli/devkit/）+ failure-playbook 错误文案
 
 ## 风险与开放问题
 
@@ -260,4 +260,20 @@
 
 ## 总结
 
-（实施后填写）
+**Phase A 已按 v4 口径全部落地**（任务清单 A1–A9 全勾），Phase B（方案化改造）按计划暂不执行。
+
+- **关键过程**：计划编制 11-06 19:04 起；实施 11-07 00:42–02:21，7 个提交
+  （514c260e0 → 22b19a82f），主线为 catalog/registry_id 发现面（A6）→ 签名推送与
+  yank API 化、索引面 CLI 侧整建制退役（A6）→ parity 三方一致用例（A6 收尾）→
+  根套件残留清零（别名/验面抽取/client 接线/白名单，a8de24367）→ 站点侧回填端点
+  三用（A7）→ 匿名面双列接线（A8）→ breaking 说明/迁移指南/发版材料（A9）。
+  全程 TDD：BDD 用例先行（backfill.spec 9 例、anonymous-wiring.spec 3 例、
+  parity/market-api 回归锚），每个 RED→GREEN 留痕；实施中 ruled 10 项（触发口径取
+  superadmin 端点、`**` 一条覆盖、openapi 生成物原样入库、devkit 单真源同步等），
+  反常识发现 2 项（manifestOfUpload staging 常量 upload.tgz、assertSuperAdmin 匿名亦 403）
+  均已记入 ledger 与文档。
+- **终态验证**：根套件 939 passed | 1 skipped（940）；cli 套件 638 passed | 1 skipped（639）；
+  templates 套件 1118/1118；packages/cli 与 templates 双 tsc 零错；ojm init --yes →
+  ojm build 冒烟工程全链路绿。三个测试套件 + 双 typecheck 为 Phase A 完成判据，全过。
+- **耗时**：实施约 1 小时 40 分（00:42–02:21），加计划编制与收尾验证合计约 3 小时；
+  文档改写（迁移指南/devkit 双拷贝/CHANGELOG/walkthrough）占收尾段约 1/3。
