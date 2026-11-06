@@ -75,7 +75,8 @@ export function fsFace(): FsFace {
 
 const encoder = new TextEncoder();
 
-export async function atomicWriteText(path: string, content: string): Promise<void> {
+/** 字节原子写（上传端点落 tgz/.sig 用）：同目录 tmp + rename，语义同 atomicWriteText */
+export async function atomicWriteBytes(path: string, data: Uint8Array): Promise<void> {
 	const f = fsFace();
 	// tmp 与目标同目录：保证 rename 不跨文件系统；随机后缀防并发写者互踩同一 tmp
 	const slash = path.lastIndexOf("/");
@@ -86,7 +87,7 @@ export async function atomicWriteText(path: string, content: string): Promise<vo
 		await f.mkdir(dir, { recursive: true });
 	}
 	try {
-		await f.writeFile(tmp, encoder.encode(content));
+		await f.writeFile(tmp, data);
 		await f.rename(tmp, path);
 	}
 	catch (e) {
@@ -98,4 +99,8 @@ export async function atomicWriteText(path: string, content: string): Promise<vo
 		}
 		throw e;
 	}
+}
+
+export async function atomicWriteText(path: string, content: string): Promise<void> {
+	await atomicWriteBytes(path, encoder.encode(content));
 }

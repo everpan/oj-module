@@ -22,13 +22,12 @@ import type { FetchInitFace } from "../_shared/site-facade";
 import type { IndexKind, IndexSource } from "./index-source";
 import { atomicWriteText, fsFace } from "../_lifecycle/atomic";
 import { latestAppliedSeqOf, reconcile, runInstall, setEnabled } from "../_lifecycle/installer";
+import { manifestOfUpload as sharedManifestOfUpload } from "../_lifecycle/manifest-of-upload";
 import { compareVersions } from "../_lifecycle/semver";
 import { sha384B64 } from "../_lifecycle/sha384";
 import { guardAndRecordSourceSeq } from "../_lifecycle/source-seq";
 import { createStateStore } from "../_lifecycle/state";
-import { flattenBundleRoot } from "../_lifecycle/steps/extract";
 import { getTask, readTasks } from "../_lifecycle/tasks";
-import { validateTarListing } from "../_lifecycle/tgz-guard";
 import { createTrustStore } from "../_lifecycle/trust";
 import { computeUninstallImpact, runUninstall } from "../_lifecycle/uninstall";
 import { respond } from "../_shared/respond";
@@ -668,34 +667,12 @@ async function uploadSig(): Promise<Record<string, unknown> | null> {
 }
 
 /**
- * file 源 manifest 提取：上传包先过 R1 三步范式（tar -tvzf 列表 → validateTarListing →
- * tar -xzf -C staging）再读 manifest.yaml——未校验不解包，zip-slip 拒在信任边界外。
- * 预解包产物与安装器 extracting 段同目录幂等（staging 就位即止，rename 归 lock_commit）。
+ * file 源 manifest 提取：R1 三步范式 + 体积闸 + 解包扁平化 + manifest.yaml 解析——
+ * 实现已上收 _lifecycle/manifest-of-upload.ts（v4：与 CDN 上传端点/回填命令共用同一抽取
+ * 管线，勿各写一遍）；此处仅注入 env 参数保持既有调用面。
  */
 async function manifestOfUpload(env: MarketEnv, bytes: Uint8Array, exec: ExecFace): Promise<unknown> {
-	const f = fsFace();
-	const staged = `${env.staging}/upload.tgz`; // 常量名不含用户输入，无穿越面；download 段按 manifest.archive.file 重写正名
-	await f.mkdir(env.staging, { recursive: true });
-	await f.writeFile(staged, bytes);
-	const listed = await exec.run(["tar", "-tvzf", staged]);
-	if (listed.code !== 0)
-		fail(400, `上传包列表失败（tar -tvzf）：${(listed.stderr || listed.stdout).trim()}——包体损坏？`);
-	// 铁律②：tar 输出恒带尾随换行，先 trim 尾部空行再 split（extract.ts 同款）
-	const lines = listed.stdout.replace(/\n+$/, "").split("\n");
-	const v = validateTarListing(lines);
-	if (!v.ok)
-		fail(400, `上传包含非法成员「${v.offender}」——R1 zip-slip 防护拒收（list→validate→extract 三步范式）`);
-	const extracted = await exec.run(["tar", "-xzf", staged, "-C", env.staging]);
-	if (extracted.code !== 0)
-		fail(400, `上传包解包失败（tar -xzf）：${(extracted.stderr || extracted.stdout).trim()}`);
-	await flattenBundleRoot(env.staging);
-	const g = globalThis as { yaml?: { parse: (text: string) => Promise<unknown> } };
-	try {
-		return await g.yaml!.parse(new TextDecoder().decode(await f.readFile(`${env.staging}/manifest.yaml`)));
-	}
-	catch (e) {
-		return fail(400, `上传包 manifest.yaml 不可解析：${String(e)}`);
-	}
+	return sharedManifestOfUpload({ stagingDir: env.staging, bytes, exec });
 }
 
 /**

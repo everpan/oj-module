@@ -82,6 +82,37 @@ export function withSiteOrigin(fetch: FetchInitFace, canonicalOrigin?: string | 
 	return (url: string, init?: { headers?: Record<string, string>, redirect?: string }) => fetch(/^https?:\/\//i.test(url) ? url : `${o.proto}://${o.host}${url}`, init) as ReturnType<FetchFace>;
 }
 
+/**
+ * 读站点 config.yaml `vars.<key>`（缺文件/缺字段/解析失败 → null）。
+ * 与 readCanonicalOrigin 同机制（fsFace + yaml 异步面 + 按 configPath 进程级缓存）：
+ * vars 下部署期常量皆走此口，勿各写一份读盘。
+ */
+const siteVarCache = new Map<string, Promise<string | null>>();
+
+export function readSiteVar(configPath: string | undefined, key: string): Promise<string | null> {
+	if (!configPath) {
+		return Promise.resolve(null);
+	}
+	const cacheKey = `${configPath}::${key}`;
+	const cached = siteVarCache.get(cacheKey);
+	if (cached !== undefined) {
+		return cached;
+	}
+	const p = (async () => {
+		try {
+			const bytes = await fsFace().readFile(configPath);
+			const doc = await (globalThis as { yaml?: { parse: (t: string) => Promise<unknown> } }).yaml?.parse(new TextDecoder().decode(bytes)) as { vars?: Record<string, unknown> } | undefined;
+			const v = doc?.vars?.[key];
+			return typeof v === "string" && v.trim() !== "" ? v.trim() : null;
+		}
+		catch {
+			return null;
+		}
+	})();
+	siteVarCache.set(cacheKey, p);
+	return p;
+}
+
 /** 站点迁移账本 head（oj journal 真源 `_oj_migrations`；表缺失/查询失败 → null = 跳过禁降版判定，不猜） */
 export async function journalHeadOf(name: string): Promise<number | bigint | null> {
 	try {
