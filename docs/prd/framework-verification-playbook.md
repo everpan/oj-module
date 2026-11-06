@@ -15,11 +15,12 @@
 判据只有一条：**每节的检查点逐条打勾**——退出码 0 只是入场券，产物与响应体才算数。
 历史演练记录集中在文末 [附录 A](#附录-a-历史基线从新到旧逐条可追溯)，日常执行不用读。
 
-> **上次演练结论（2026-11-06，cli/runtime 工作区 0.2.68 / oj 0.1.124）**：快线（templates）+ §1.5 脚手架门禁演练 + §6.5 仓库回归套件均通过。
+> **上次演练结论（2026-11-06，cli/runtime 工作区 0.2.68 / oj 0.1.124）**：快线（templates）+ §1.5 脚手架门禁演练 + §6.5 仓库回归套件均通过；
+> **市场线 §7.1–§7.5 同日通过**（发布 → CDN → TOFU 安装装成 → walkthrough 14/14 → 新命令特性）。
 > 0.2.68 六项修复/新增逐项验证：admin 路由 id 同步、侧栏遮挡、`resolveRoutePath`（含祖先链扩展）、admin 默认 layout、
 > 脚手架完整性门禁（篡改拦截 / `--yes` 恢复 / 自定义模块共存 / 开关语义）、`ojm init --yes` 恢复语义。
-> e2e 21 通过 / 4 失败均为既有 wecom 用例（与本批无关）。全量线（§0.5/§1–§7）本轮未跑，发版前补。
-> 详见附录 A 首条。
+> e2e 21 通过 / 4 失败均为既有 wecom 用例（与本批无关）。全量线发布形态（§0.5 pack）未跑，发版前补。
+> 详见附录 A 首条与市场线补段。
 
 > **退出码会被管道吞掉**：`node ojm.mjs xxx 2>&1 | tail` 之后 `$?` 是 `tail` 的退出码。
 > 判「命令是否失败」时先落文件再看 `$?`（`cmd > out 2>&1; echo $?`），别用管道末尾的值。
@@ -404,7 +405,12 @@ API 全链路再通一遍（登录/列表/新增）；
 
 ### 7.1.0 骨架生成（推荐）
 
+> **0.2.68+ 守卫**：`ojm new` 必须在 **ojm 工程内**跑（独立目录被「不是 ojm 工程」拒，零写入；
+> 2026-11-06 演练实测）。单方案分发链路相应变为：宿主内 `ojm new <name>` → `ojm build --bundle <name>` →
+> `market publish --fixture <name>@<ver>`；`publish --real` 仅限单方案工程（多方案明确拒绝并指路，§7.5 F）。
+
 ```bash
+# 在宿主工程根内：
 node "$CLI_PKG/bin/ojm.mjs" new demo-solution --layout none --api
 # → src/demo-solution/solution.yaml
 #    src/demo-solution/api/{manifest.yaml,api.ts}
@@ -475,7 +481,7 @@ node "$CLI_PKG/bin/ojm.mjs" market verify --rebuild-index
 - [ ] 走凭证时：打印「凭证已兑换：产品 … / 申请人 …」，`~/.ojm/keys/<key_id>/` 出现 `private.pem`（0600）+ `public.hex`；同一 token 二次兑换报「发布凭证无效或已失效」且不落盘
 - [ ] `cdn/` 下 v2 索引件齐全：`<name>-<version>.tgz`、`.tgz.sig`、`catalog.yaml`、`catalog.yaml.sig`、`shards/`（分片带代次）
 - [ ] `market verify` 七项全 ✓（完整性 / 包级签 / manifest 结构 / 索引签 ×2 / 索引同代 / 索引时效），末行带边界声明
-- [ ] `curl <站点>/cdn/bundles.yaml` 返回 YAML（不是 index.html）——dev 形态陷阱见 §9
+- [ ] `curl <站点>/cdn/catalog.yaml` 返回 YAML（不是 index.html）——v2 索引真名是 `catalog.yaml`（`bundles.yaml` 是旧称，0.2.68 实测 404）；dev 形态陷阱见 §9
 - [ ] 重发同版本且字节一致 → 幂等；字节不同 → 报冲突并提示升 version
 
 ## 7.3 市场链路验证（安装 → TOFU → 装成）
@@ -503,10 +509,10 @@ node "$CLI_PKG/bin/ojm.mjs" market setup --site-url http://127.0.0.1:9778 --user
 
 # 安装（首次必然停在待信任）
 curl -s -X POST http://127.0.0.1:9778/api/_platform/market/install \
-  -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+  -H "authorization: Bearer $TOKEN" -H 'X-TENANT-ID: default' -H 'content-type: application/json' \
   -d '{"name":"demo-solution","version":"0.1.0","source":"cdn"}'
 # → {data:{task_id:"install-..."}}；轮询 GET /api/_platform/market/task?id=<task_id> 到 status=needs_trust
-#   响应的 trust.fingerprint 必须与 keygen 输出逐字一致
+#   响应的 trust.fingerprint 必须与 keygen 输出逐字一致（install/task 探询都要带 X-TENANT-ID）
 
 node "$CLI_PKG/bin/ojm.mjs" trust confirm --task <task-id> --site-url http://127.0.0.1:9778 --user superadmin --pass <新口令>
 # 重试同一条 install → 期望 status=done，11 段全 ok
@@ -519,8 +525,10 @@ node "$CLI_PKG/bin/ojm.mjs" market trial --fixture <name>@<version>
 
 - [ ] `market/index` 卡片含目标方案与 latest 版本（空则回看 setup 写入的市场地址）
 - [ ] 首次安装 `status=needs_trust`，`trust.fingerprint` 与发布方公布值一致（**逐字核对再确认**）
-- [ ] `trust confirm` 后重试，`status=done` 且 11 段全 `ok`：`preflight / downloading / verifying /
-      extracting / migrating / lock_commit / registering / deploying_web / reloading / smoke / audit`
+- [ ] `trust confirm` 后重试，11 段全 `ok`：`preflight / downloading / verifying /
+      extracting / migrating / lock_commit / registering / deploying_web / reloading / smoke / audit`。
+      **oj 0.1.122+ 终态语义**：首装 11 段全 ok 但 `status=partial`（`restart_pending`——新路由/模块注册要宿主重启，
+      message 明示「请重启 oj serve 后生效」）；重启后再 retry 同一条 install → `status=done` 且冒烟三项全过
 - [ ] 装后探活：`curl /api/<name>/ping` 返回 `code:0`（匿名端点，无需 token）
 - [ ] 安装锁 `dist/api/manifests.yaml`（module-root；平铺宿主为 `api/dist/manifests.yaml`）出现 `<name>: <version>`；`dist/api/<name>-<version>/` 存在
 - [ ] 再装同版本 → 走重装路径而非「方案名已被占用」；`market verify --rebuild-index` 无漂移
@@ -628,6 +636,12 @@ sha256sum dist/crm-0.1.0.tgz && node "$CLI_PKG/bin/ojm.mjs" build --bundle crm &
 - [ ] tgz 内固定 `manifest.yaml` 命名；`tar -tzf` 无私钥形态文件（`*.pem/*.key/.env*` 等）
 
 **E. 自带排除与负向口径**
+
+> **0.2.68+ 口径（2026-11-06 实测）**：「给自带模块塞临时契约」会**先被 §1.5 门禁拦下**（`src/app`
+> 受保护，塞文件即 extra 漂移，build 拒绝零产物）——双层防御的第一层。删 `src/.ojm-builtin.json`
+> 绕行会**同时失去自带排除**（门禁名单与排除名单同一真源）：实测 `app` 被打进包并在 `dist/` 残留
+> `app-0.1.0.tgz`。故 E1/E2 的对抗路径验证到「门禁拦截」为止；正常路径「自带不参与打包」由 D 的
+> 无参打包份数（仅用户方案）证明。
 
 ```bash
 # 给自带模块塞一份临时契约：无参打包必须跳过它、按名打包必须拒绝
@@ -834,6 +848,16 @@ node "$CLI_PKG/bin/ojm.mjs" build && npx tsc --noEmit -p tsconfig.json && node "
 
 > 基线的价值是「某版本当时到底验了什么、踩了什么」，属于事实档案，不参与日常执行；
 > 新基线追加在本节最前面，最近一次的结果同时摘到文首「上次演练结论」。
+
+### 市场线补段（2026-11-06 同日，oj 0.1.124 / cli+runtime 工作区 0.2.68；§7.1–§7.5）
+
+| 项 | 值 |
+| --- | --- |
+| 宿主 | §1.5 门禁演练同一脚手架（`/tmp/ojm-verify-guard/guard-drill`，0.2.68 init 产物 + runtime symlink；release 形态 `platform.root: dist/api` + `vars.canonical_origin: http://127.0.0.1:9778`） |
+| 范围 | §7.1 `ojm new demo-solution --layout none --api` → build → `--bundle`（sha256 两次一致、routes.js 有路由行、tgz 无密钥形态文件）；§7.2 `keygen --id demo.publisher` 离线身份 → `market publish --fixture demo-solution@0.1.0 --rebuild-index` → `market verify` 8 项全过 → 幂等重发；§7.3 release 起站 → `market setup` → install → `needs_trust`（指纹逐字一致）→ `trust confirm` → 重装 → 重启宿主 → 复检 done → ping；§7.4 `market walkthrough --fixture demo-solution@0.1.0`；§7.5 A–F 全步 |
+| 结果 | **通过**。① §7.1/§7.2：骨架五必填齐；包 `oj-registry:demo-solution@0.1.0:6e9d7c6b…`、发布方指纹 `77937f63…000f48`；CDN v2 件齐（catalog.yaml+.sig / tgz+.sig / shards）；verify「全部校验通过（8 项）」；幂等重发无冲突。② §7.3：首装 11 段全 ok 但 `status=partial`（restart_pending，message 明示待重启段 `[auth]`）→ 重启宿主 → retry **done** 冒烟三项全过；`manifests.yaml` 锁 `demo-solution: 0.1.0`；`/api/demo-solution/ping` → `pong:true`。③ §7.4：**14 PASS / 0 FAIL**（主链 9 + 负向 5），报告落盘且脱敏 grep 零命中。④ §7.5：scripts 含 new/bundle/typecheck:api；自带折叠 N=2、`--all` 平铺；五类拒绝全命中且零写入（重名 / kebab / 保留名 auth / 内置名 home / usage rc=2）；无参打包仅用户方案、`--bundle crm` 单份、sha256 确定性；E3 坏契约 fail-fast 指名 `bad` 且 tgz 零增量（3→3）；零用户方案报错指路 `ojm new`；F 多方案 `--real` exit 1 并给出显式链路（`--bundle <name>` → `sign` → `build-index`） |
+| 本次发现并处置 | ① **§7.1.0 独立工程形态被 0.2.68 守卫拦下**（`ojm new` 要求工程上下文，独立目录拒且零写入）→ 链路改为宿主内 new → `--bundle <name>` → `publish --fixture`，§7.1.0 已补注。② **首装终态是 partial 不是 done**（oj 0.1.122+ restart_pending 语义，11 段全 ok、待重启段明示）→ §7.3 检查点已改为「partial → 重启 → retry done」两段口径。③ **§7.2 检查点 `/cdn/bundles.yaml` 过时**：v2 索引真名 `catalog.yaml`（200），`bundles.yaml` 文件不存在（404）→ 检查点已改名。④ **§7.5 E 与 §1.5 门禁双层交互**：塞自带契约先被门禁拦（extra 漂移）；删名单绕行会**同时失去自带排除**（同一真源），实测 `app` 被打包且 `dist/app-0.1.0.tgz` 残留 → E 已补 0.2.68 口径注。⑤ `market setup --new-pass` 只设了市场地址，superadmin 口令未变（setup 输出未提改密结果）——观察项，不阻断（trust confirm 用原口令通过）。⑥ install/task 探询漏 `X-TENANT-ID` 得 400——§8 既有发现④再次命中，§7.3 脚本已补头。⑦ 演练 fixture 教训：`--layout none` 方案被塞进 `api:` 段而 api/ 不存在时，打包 fail-fast「缺少 oj build 产物 dist/api/<name>」——契约声明与目录必须同源。 |
+| 手册同步 | §7.1.0 补 0.2.68 守卫注与新链路；§7.2 检查点 bundles.yaml → catalog.yaml；§7.3 install 脚本补租户头、检查点补 partial→done 两段语义；§7.5 E 补门禁双层口径注；文首结论并提市场线 |
 
 ### 最近一次基线（2026-11-06，oj 0.1.124 / cli+runtime 工作区 0.2.68；快线 + 脚手架门禁 + 仓库回归）
 
