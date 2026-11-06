@@ -132,6 +132,10 @@ export function collectDefaultModuleDrift(projectRoot: string): ScaffoldDrift | 
 	if (!guardEnabled(projectRoot))
 		return null;
 	const templatesDir = templatesRoot();
+	// 工程即 cli 包内 templates 自身（上游源仓）：基线 == 自身，比较无意义
+	// （白名单外的 demo-only 文件在 extra 轴上必误报），直接放行
+	if (path.resolve(projectRoot) === path.resolve(templatesDir))
+		return null;
 	const expected = protectedTemplateFiles(templatesDir, readInitInclude(templatesDir));
 	const expectedSet = new Set(expected);
 	const drift: ScaffoldDrift = { modified: [], missing: [], extra: [] };

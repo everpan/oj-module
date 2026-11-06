@@ -28,7 +28,7 @@ import process from "node:process";
 import { loadModulesConfig } from "./config";
 import { resolveConfigPath, resolveLayout } from "./layout";
 import { startOj } from "./oj";
-import { readOjApiPrefix } from "./oj-config";
+import { readOjApiPrefix, readOjServerField } from "./oj-config";
 import { hasRootApiMount, parseMounts, writePreviewConfig } from "./preview-config";
 import { normalizeSiteBase } from "./site-base";
 import { resolveOjBin } from "./vendor";
@@ -119,8 +119,10 @@ export async function runPreview(projectRoot: string, opts: PreviewOptions = {})
 		preview.cleanup();
 		throw error;
 	}
-	console.log(`[ojm] oj 已就绪（release/js，单服务：${base} API + 静态 SPA 同进程）：http://127.0.0.1:${oj.port}`);
-	console.log(`\n[ojm] preview 已启动：http://localhost:${oj.port}${sitePrefix === "/" ? "" : sitePrefix}`);
+	// 提示跟随 config 的 server.host（绑定是 oj 自己做的，提示不能再硬编码 localhost）
+	const host = readOjServerField(preview.configPath, "host") || "127.0.0.1";
+	console.log(`[ojm] oj 已就绪（release/js，单服务：${base} API + 静态 SPA 同进程）：http://${host}:${oj.port}`);
+	console.log(`\n[ojm] preview 已启动：http://${host}:${oj.port}${sitePrefix === "/" ? "" : sitePrefix}`);
 	console.log(`[ojm] 静态由 oj web 挂载直出（spa 深链回落）；派生 config ${path.basename(preview.configPath)} 为本进程临时产物，退出自动清理`);
 
 	// 退出回收：派生 config 必须随 oj 一起消亡（test/integration 断言其不存在）

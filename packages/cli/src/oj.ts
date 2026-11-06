@@ -21,7 +21,7 @@ import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
 import process from "node:process";
-import { readOjPluginsDir, readOjPort } from "./oj-config";
+import { readOjPluginsDir, readOjPort, readOjServerField } from "./oj-config";
 import { resolveOjBin } from "./vendor";
 
 /**
@@ -59,6 +59,17 @@ function readLatestLogError(logsDir: string): string {
 	const keyLines = lines.filter(l => /error|fatal|panic|denied|invalid|unable|cannot|fail|exception|refused/i.test(l));
 	const picked = keyLines.length > 0 ? keyLines.slice(-30) : lines.slice(-30);
 	return picked.join("\n").trim();
+}
+
+/**
+ * 健康轮询目标 host：跟随 server.host（用户改绑局域网 IP 时回环探测会永不就绪），
+ * 通配地址（0.0.0.0 / :: / 空）回退 127.0.0.1——通配绑定时回环必然可达。
+ */
+export function healthHostOf(host: string | undefined): string {
+	if (!host)
+		return "127.0.0.1";
+	const trimmed = host.trim();
+	return trimmed === "" || trimmed === "0.0.0.0" || trimmed === "::" ? "127.0.0.1" : trimmed;
 }
 
 export interface OjProcess {
@@ -118,7 +129,7 @@ export function startOj(
 	// clap 拒掉）：历史布局传目录 → `--api-path <dir>`；module-root 布局传**已拼好的
 	// 旗标数组** → `["--module-root", "<project>/src"]`。
 	const apiArgs = Array.isArray(apiSource) ? apiSource : ["--api-path", apiSource];
-	const healthUrl = `http://127.0.0.1:${port}${base}/health`;
+	const healthUrl = `http://${healthHostOf(readOjServerField(configPath, "host"))}:${port}${base}/health`;
 
 	// 插件目录发现显式化：oj 的 resolve_plugins_dir 依赖 current_exe() 启发式，而
 	// Linux glibc 发行包的 bin/oj 是 ld-linux 启动器（exec 加载器而非二进制），
