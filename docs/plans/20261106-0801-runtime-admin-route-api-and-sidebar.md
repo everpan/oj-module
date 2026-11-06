@@ -99,6 +99,15 @@
 - [x] 文档同步（runtime README、devkit manual / menu-rules、CHANGELOG Unreleased）。
 - [x] 测试、typecheck、lint、runtime build 通过；并入 feat/ojm。
 
+### 补遗阶段总结
+
+2026-11-06 09:10–09:25，约 15 分钟。关键过程：
+
+1. 关键推导：hoist 公式 `systemKey + rootAbs + suffix` 在链前缀代数下坍缩为 `/system + adminAbs`，后代同理 `/system + 原绝对路径`——与 admin 嵌套深度、模块 root 位置无关，无需重建树跑 rewriteAdminPaths。
+2. 真实树一致性用例钉住公式：链式结果必须等于框架全管线（addRouteIdByPath → rewriteAdminPaths）重写后的子树 id。
+3. index 路由尾斜杠（`父绝对路径 + "/"`）与框架 id 语义对齐；已重写 id 因不以原路径为前缀而天然幂等，无需特判。
+4. CLI stub `resolveRoutePath = _fn` 签名无关，零改动；类型坑同前（union 无 `id`，测试侧收窄断言）。
+
 ## 阶段总结
 
 2026-11-06 08:01–08:30，约 30 分钟。
