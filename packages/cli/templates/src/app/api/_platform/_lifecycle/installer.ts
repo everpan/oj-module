@@ -302,11 +302,15 @@ export function declOf(req: InstallRequest): SolutionDecl {
 			title_key: typeof r.title_key === "string" ? r.title_key : undefined,
 			permissions: Array.isArray(r.permissions) ? r.permissions.map(String) : [],
 		})),
-		// 顶层 permissions[] 的 code：无角色权限点（系统预置点）唯一能落库的来源，别在此丢弃
+		// 顶层 permissions[] 透传 code + title_key（R2 展示锚随落库走，别在校验后丢弃）：
+		// 无角色权限点（系统预置点）唯一能落库的来源
 		permissions: (Array.isArray(m.permissions) ? m.permissions : [])
 			.filter(isObj)
-			.map(p => (typeof p.code === "string" ? p.code : ""))
-			.filter(Boolean),
+			.map(p => ({
+				code: typeof p.code === "string" ? p.code : "",
+				title_key: typeof p.title_key === "string" ? p.title_key : undefined,
+			}))
+			.filter(p => p.code !== ""),
 		settings,
 		routes: (Array.isArray(m.routes) ? m.routes : []).filter(isObj).map(r => ({
 			path: typeof r.path === "string" ? r.path : "",

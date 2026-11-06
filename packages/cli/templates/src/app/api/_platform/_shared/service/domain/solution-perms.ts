@@ -15,16 +15,22 @@ export interface SolutionRoleDecl {
 	permissions?: string[]
 }
 
+export interface SolutionPermDecl {
+	code: string
+	/** 原始 i18n key（R2 展示锚：C2-15 必填校验的落地处，缺省 null = 展示回退裸 code） */
+	title_key?: string
+}
+
 export interface SolutionManifest {
 	module: string
 	roles: SolutionRoleDecl[]
 	/**
-	 * 顶层 `permissions[]` 的 code 清单（契约 C2-15 的声明面）。
+	 * 顶层 `permissions[]` 声明（契约 C2-15；code + title_key）。
 	 * 与 `roles[].permissions` **不是**上下级关系：C2-16 只要求角色引用的 code 先在此声明，
 	 * 反过来「声明了但没有任何角色引用」是合法形态（系统预置权限点，由管理员在管理面自行分配）。
 	 * 漏收集的后果是这类权限点根本不落库 → 管理面绑不上 → 声明形同虚设。
 	 */
-	permissions?: string[]
+	permissions?: SolutionPermDecl[]
 }
 
 export interface UpsertResult {
@@ -35,15 +41,21 @@ export interface UpsertResult {
 export async function upsertSolutionPerms(m: SolutionManifest): Promise<UpsertResult> {
 	const deprecated: string[] = [];
 	const declaredRoles = new Set(m.roles.map(r => r.name));
-	// 权限点全集 = 角色引用的 ∪ 顶层独立声明的（后者是无角色权限点唯一能落库的来源）
-	const declaredPerms = new Set([...m.roles.flatMap(r => r.permissions ?? []), ...(m.permissions ?? [])]);
+	// 权限点全集 = 角色引用的 ∪ 顶层独立声明的（后者是无角色权限点唯一能落库的来源）；
+	// title_key 是 R2 展示锚，随 code 一起落库
+	const declaredPerms = new Map<string, string | undefined>([
+		// 角色引用的裸 code 先入（无 title_key），顶层声明（C2-15 携 title_key）后入覆盖——后者权威
+		...m.roles.flatMap(r => r.permissions ?? []).map(c => [c, undefined] as const),
+		...m.permissions?.map(p => [p.code, p.title_key] as const) ?? [],
+	]);
 
 	for (const role of m.roles) {
 		const existing = await db.table("sys_role").select(["name"]).where({ field: "name", op: "eq", value: role.name }).all() as unknown[];
-		// upsert：行存在只覆盖元数据（title/title_key——R3 升级即重解析：新包 locale 改进随升级传播），
+		// upsert：行存在只覆盖元数据（title/title_key——R3 升级即重解析：新包 locale 改进随升级传播；
+		// deprecated 复位 = 重声明回到声明态，对齐 settings/routes 注册面纪律），
 		// name/builtin 不动（AC2-2 元数据覆盖）
 		if (existing.length) {
-			await db.table("sys_role").update({ title: role.title, title_key: role.title_key ?? null }).where({ field: "name", op: "eq", value: role.name }).run();
+			await db.table("sys_role").update({ title: role.title, title_key: role.title_key ?? null, deprecated: 0 }).where({ field: "name", op: "eq", value: role.name }).run();
 		}
 		else {
 			await db.table("sys_role").insert({ name: role.name, module: m.module, title: role.title, title_key: role.title_key ?? null, builtin: 0 }).run();
@@ -58,12 +70,15 @@ export async function upsertSolutionPerms(m: SolutionManifest): Promise<UpsertRe
 		}
 	}
 
-	// 权限点行独立于角色创建：声明里的新 code 一律 upsert 插入（AC2-1「新增声明 → upsert 插入新行」——
-	// 含既有角色新增权限点的场景；绑定是否自动挂上由上面的角色级规则决定）
-	for (const code of declaredPerms) {
+	// 权限点行独立于角色创建：声明里的新 code 一律 upsert（AC2-1「新增声明 → 插入新行」——
+	// 含既有角色新增权限点的场景；绑定是否自动挂上由上面的角色级规则决定）。
+	// 既有行覆写 title_key（R3）并复位 deprecated（重声明回到声明态）；code 是行身份，不动。
+	for (const [code, titleKey] of declaredPerms) {
 		const p = await db.table("sys_permission").select(["code"]).where({ field: "code", op: "eq", value: code }).all() as unknown[];
 		if (!p.length)
-			await db.table("sys_permission").insert({ code, module: m.module }).run();
+			await db.table("sys_permission").insert({ code, module: m.module, title_key: titleKey ?? null }).run();
+		else
+			await db.table("sys_permission").update({ title_key: titleKey ?? null, deprecated: 0 }).where({ field: "code", op: "eq", value: code }).run();
 	}
 
 	// 声明消失 → 行保留标 deprecated（AC2-3/4）：行与绑定全留，判决不突变；
