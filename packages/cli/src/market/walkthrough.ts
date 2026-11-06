@@ -95,7 +95,7 @@ const OPS: Op[] = [
 		key: "index",
 		title: "市场索引出卡片",
 		run: async (ctx) => {
-			const rows = await callApi<Array<Record<string, unknown>>>(fetch, ctx.base, ctx.token, "GET", "/api/_platform/market/index");
+			const rows = await callApi<Array<Record<string, unknown>>>(fetch, ctx.base, ctx.token, "GET", "/api/oj-market/index");
 			const hit = (rows ?? []).find(r => r.name === ctx.name);
 			return hit === undefined
 				? { ok: false, detail: `索引里没有 ${ctx.name}（拿到 ${(rows ?? []).length} 张卡）` }
@@ -126,10 +126,10 @@ const OPS: Op[] = [
 		title: "禁用 / 启用",
 		run: async (ctx) => {
 			await ensureInstalled(ctx);
-			const off = await callApi<{ ok?: boolean, message?: string }>(fetch, ctx.base, ctx.token, "POST", "/api/_platform/market/enable", { name: ctx.name, enabled: false });
+			const off = await callApi<{ ok?: boolean, message?: string }>(fetch, ctx.base, ctx.token, "POST", "/api/oj-market/enable", { name: ctx.name, enabled: false });
 			if (off.ok !== true)
 				return { ok: false, detail: `禁用被拒：${off.message ?? "?"}` };
-			const on = await callApi<{ ok?: boolean, message?: string }>(fetch, ctx.base, ctx.token, "POST", "/api/_platform/market/enable", { name: ctx.name, enabled: true });
+			const on = await callApi<{ ok?: boolean, message?: string }>(fetch, ctx.base, ctx.token, "POST", "/api/oj-market/enable", { name: ctx.name, enabled: true });
 			return on.ok === true
 				? { ok: true, detail: "disable → enable 双向成功" }
 				: { ok: false, detail: `启用被拒：${on.message ?? "?"}` };
@@ -158,7 +158,7 @@ const OPS: Op[] = [
 		key: "history",
 		title: "操作历史可读",
 		run: async (ctx) => {
-			const rows = await callApi<unknown[]>(fetch, ctx.base, ctx.token, "GET", "/api/_platform/market/history");
+			const rows = await callApi<unknown[]>(fetch, ctx.base, ctx.token, "GET", "/api/oj-market/history");
 			const n = Array.isArray(rows) ? rows.length : 0;
 			return n > 0 ? { ok: true, detail: `历史 ${n} 条` } : { ok: false, detail: "历史为空" };
 		},
@@ -228,7 +228,7 @@ const OPS: Op[] = [
 			if (installed === null)
 				await ensureInstalled(ctx); // 未装过：先装 ctx.version
 			const target = installed ?? ctx.version;
-			const res = await callApi<{ ok?: boolean, message?: string }>(fetch, ctx.base, ctx.token, "POST", "/api/_platform/market/uninstall", { name: ctx.name });
+			const res = await callApi<{ ok?: boolean, message?: string }>(fetch, ctx.base, ctx.token, "POST", "/api/oj-market/uninstall", { name: ctx.name });
 			if (res.ok !== true)
 				return { ok: false, detail: `卸载被拒：${res.message ?? "?"}` };
 			const dir = path.join(ctx.site.root, "api", "dist", `${ctx.name}-${target}`);
@@ -329,12 +329,12 @@ const OPS: Op[] = [
 				const first = await installOnce(ctx, NEG_VERSION, NEG_NAME);
 				if (first.status !== "needs_trust")
 					return { ok: false, detail: `未停 needs_trust：status=${first.status}：${first.message}` };
-				await callApi(fetch, ctx.base, ctx.token, "POST", "/api/_platform/market/trust", { task_id: first.id });
+				await callApi(fetch, ctx.base, ctx.token, "POST", "/api/oj-market/trust", { task_id: first.id });
 				const second = await installOnce(ctx, NEG_VERSION, NEG_NAME);
 				if (!installSucceeded(second))
 					return { ok: false, detail: `确认后重装未 done：status=${second.status}：${second.message}` };
 				// 收尾（F3）：显式 revoke 陌生 key，快照 diff 断言无残留——不靠 uninstall 兜底（它本就不摘信任）
-				const del = await callApi<{ revoked?: boolean }>(fetch, ctx.base, ctx.token, "DELETE", `/api/_platform/market/trust/key?key_id=${encodeURIComponent("stranger.publisher")}`);
+				const del = await callApi<{ revoked?: boolean }>(fetch, ctx.base, ctx.token, "DELETE", `/api/oj-market/trust/key?key_id=${encodeURIComponent("stranger.publisher")}`);
 				const after = await trustKeys(ctx);
 				const revoked = del.revoked === true;
 				const noResidue = JSON.stringify(after) === JSON.stringify(before);
@@ -435,7 +435,7 @@ export async function walkthrough(opts: WalkthroughOptions = {}): Promise<Walkth
 async function install(ctx: Ctx, version: string): Promise<TaskRecord> {
 	let task = await installOnce(ctx, version);
 	if (task.status === "needs_trust") {
-		await callApi(fetch, ctx.base, ctx.token, "POST", "/api/_platform/market/trust", { task_id: task.id });
+		await callApi(fetch, ctx.base, ctx.token, "POST", "/api/oj-market/trust", { task_id: task.id });
 		task = await installOnce(ctx, version);
 	}
 	if (installSucceeded(task))
@@ -444,7 +444,7 @@ async function install(ctx: Ctx, version: string): Promise<TaskRecord> {
 }
 
 async function installOnce(ctx: Ctx, version: string, name: string = ctx.name): Promise<TaskRecord> {
-	const started = await callApi<{ task_id?: string, id?: string }>(fetch, ctx.base, ctx.token, "POST", "/api/_platform/market/install", { name, version, source: "cdn" });
+	const started = await callApi<{ task_id?: string, id?: string }>(fetch, ctx.base, ctx.token, "POST", "/api/oj-market/install", { name, version, source: "cdn" });
 	const taskId = String(started.task_id ?? started.id ?? "");
 	if (taskId === "")
 		throw new Error("[ojm] 安装接口未返回 task id");
@@ -458,7 +458,7 @@ async function installFile(ctx: Ctx, tgzPath: string, version: string): Promise<
 	form.append("version", version);
 	form.append("source", "file");
 	form.append("file", new Blob([fs.readFileSync(tgzPath)], { type: "application/gzip" }), path.basename(tgzPath));
-	const res = await fetch(`${ctx.base}/api/_platform/market/install`, {
+	const res = await fetch(`${ctx.base}/api/oj-market/install`, {
 		method: "POST",
 		headers: { authorization: `Bearer ${ctx.token}`, ...tenantHeaders() },
 		body: form,
@@ -468,7 +468,7 @@ async function installFile(ctx: Ctx, tgzPath: string, version: string): Promise<
 
 /** 信任库 key_id 快照（GET /market/trust；neg-stranger 的 diff 断言用） */
 async function trustKeys(ctx: Ctx): Promise<string[]> {
-	const res = await callApi<{ keys?: Array<{ key_id?: string }> }>(fetch, ctx.base, ctx.token, "GET", "/api/_platform/market/trust");
+	const res = await callApi<{ keys?: Array<{ key_id?: string }> }>(fetch, ctx.base, ctx.token, "GET", "/api/oj-market/trust");
 	return (res.keys ?? []).map(k => k.key_id ?? "").filter(id => id !== "").sort();
 }
 
@@ -484,7 +484,7 @@ async function ensureInstalled(ctx: Ctx): Promise<void> {
 
 /** 索引卡片（本方案一行；upgrade/rollback/uninstall 与 index op 同一消费面） */
 async function indexCard(ctx: Ctx): Promise<Record<string, unknown> | undefined> {
-	const rows = await callApi<Array<Record<string, unknown>>>(fetch, ctx.base, ctx.token, "GET", "/api/_platform/market/index");
+	const rows = await callApi<Array<Record<string, unknown>>>(fetch, ctx.base, ctx.token, "GET", "/api/oj-market/index");
 	return (rows ?? []).find(r => r.name === ctx.name);
 }
 

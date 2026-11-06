@@ -167,802 +167,6 @@
 				}
 			}
 		},
-		"/api/_platform/market/install": {
-			"post": {
-				"operationId": "_platform_market_install_post",
-				"summary": "POST api/_platform/market/install",
-				"x-oj-file": "app/api/_platform/market/api.ts",
-				"tags": [
-					"_platform"
-				],
-				"requestBody": {
-					"required": true,
-					"content": {
-						"application/json": {
-							"schema": {
-								"type": "object",
-								"required": [
-									"source",
-									"name"
-								],
-								"properties": {
-									"source": {
-										"type": "string",
-										"enum": [
-											"cdn",
-											"file"
-										]
-									},
-									"name": {
-										"type": "string"
-									},
-									"version": {
-										"type": [
-											"string",
-											"null"
-										]
-									},
-									"force": {
-										"type": "boolean"
-									}
-								}
-							}
-						}
-					}
-				},
-				"responses": {
-					"200": {
-						"description": "OK",
-						"x-oj-response-enforced": false,
-						"content": {
-							"application/json": {
-								"schema": {
-									"type": "object",
-									"required": [
-										"code",
-										"msg",
-										"data"
-									],
-									"properties": {
-										"code": {
-											"type": "integer"
-										},
-										"msg": {
-											"type": "string"
-										},
-										"data": {
-											"type": "object",
-											"properties": {
-												"task_id": {
-													"type": "string"
-												}
-											},
-											"additionalProperties": true
-										}
-									}
-								}
-							}
-						}
-					}
-				}
-			}
-		},
-		"/api/_platform/market/install/cancel": {
-			"post": {
-				"operationId": "_platform_market_install_cancel_post",
-				"summary": "POST api/_platform/market/install/cancel",
-				"x-oj-file": "app/api/_platform/market/api.ts",
-				"tags": [
-					"_platform"
-				],
-				"requestBody": {
-					"required": true,
-					"content": {
-						"application/json": {
-							"schema": {
-								"type": "object",
-								"required": [
-									"name"
-								],
-								"properties": {
-									"name": {
-										"type": "string"
-									}
-								}
-							}
-						}
-					}
-				},
-				"responses": {
-					"200": {
-						"description": "OK",
-						"x-oj-response-enforced": false,
-						"content": {
-							"application/json": {
-								"schema": {
-									"type": "object",
-									"required": [
-										"code",
-										"msg",
-										"data"
-									],
-									"properties": {
-										"code": {
-											"type": "integer"
-										},
-										"msg": {
-											"type": "string"
-										},
-										"data": {
-											"type": "object",
-											"properties": {
-												"ok": {
-													"type": "boolean"
-												},
-												"name": {
-													"type": "string"
-												},
-												"requested": {
-													"type": "boolean"
-												}
-											},
-											"additionalProperties": true
-										}
-									}
-								}
-							}
-						}
-					}
-				}
-			}
-		},
-		"/api/_platform/market/task": {
-			"get": {
-				"operationId": "_platform_market_task_get",
-				"summary": "GET api/_platform/market/task",
-				"x-oj-file": "app/api/_platform/market/api.ts",
-				"tags": [
-					"_platform"
-				],
-				"parameters": [
-					{
-						"name": "id",
-						"in": "query",
-						"required": true,
-						"schema": {
-							"type": "string"
-						}
-					}
-				],
-				"responses": {
-					"200": {
-						"description": "OK",
-						"x-oj-response-enforced": false,
-						"content": {
-							"application/json": {
-								"schema": {
-									"type": "object",
-									"required": [
-										"code",
-										"msg",
-										"data"
-									],
-									"properties": {
-										"code": {
-											"type": "integer"
-										},
-										"msg": {
-											"type": "string"
-										},
-										"data": {
-											"type": "object",
-											"additionalProperties": true
-										}
-									}
-								}
-							}
-						}
-					}
-				}
-			}
-		},
-		"/api/_platform/market/enable": {
-			"post": {
-				"operationId": "_platform_market_enable_post",
-				"summary": "POST api/_platform/market/enable",
-				"x-oj-file": "app/api/_platform/market/api.ts",
-				"tags": [
-					"_platform"
-				],
-				"requestBody": {
-					"required": true,
-					"content": {
-						"application/json": {
-							"schema": {
-								"type": "object",
-								"required": [
-									"name",
-									"enabled"
-								],
-								"properties": {
-									"name": {
-										"type": "string"
-									},
-									"enabled": {
-										"type": "boolean"
-									}
-								}
-							}
-						}
-					}
-				},
-				"responses": {
-					"200": {
-						"description": "OK",
-						"x-oj-response-enforced": false,
-						"content": {
-							"application/json": {
-								"schema": {
-									"type": "object",
-									"required": [
-										"code",
-										"msg",
-										"data"
-									],
-									"properties": {
-										"code": {
-											"type": "integer"
-										},
-										"msg": {
-											"type": "string"
-										},
-										"data": {
-											"type": "object",
-											"additionalProperties": true
-										}
-									}
-								}
-							}
-						}
-					}
-				}
-			}
-		},
-		"/api/_platform/market/meta": {
-			"get": {
-				"operationId": "_platform_market_meta_get",
-				"summary": "GET api/_platform/market/meta",
-				"x-oj-file": "app/api/_platform/market/api.ts",
-				"tags": [
-					"_platform"
-				],
-				"responses": {
-					"200": {
-						"description": "OK",
-						"x-oj-response-enforced": false,
-						"content": {
-							"application/json": {
-								"schema": {
-									"type": "object",
-									"required": [
-										"code",
-										"msg",
-										"data"
-									],
-									"properties": {
-										"code": {
-											"type": "integer"
-										},
-										"msg": {
-											"type": "string"
-										},
-										"data": {
-											"type": "object",
-											"properties": {
-												"apiVersion": {
-													"type": "string"
-												}
-											},
-											"additionalProperties": true
-										}
-									}
-								}
-							}
-						}
-					}
-				}
-			}
-		},
-		"/api/_platform/market/trust": {
-			"get": {
-				"operationId": "_platform_market_trust_get",
-				"summary": "GET api/_platform/market/trust",
-				"x-oj-file": "app/api/_platform/market/api.ts",
-				"tags": [
-					"_platform"
-				],
-				"responses": {
-					"200": {
-						"description": "OK",
-						"x-oj-response-enforced": false,
-						"content": {
-							"application/json": {
-								"schema": {
-									"type": "object",
-									"required": [
-										"code",
-										"msg",
-										"data"
-									],
-									"properties": {
-										"code": {
-											"type": "integer"
-										},
-										"msg": {
-											"type": "string"
-										},
-										"data": {
-											"type": "object",
-											"additionalProperties": true
-										}
-									}
-								}
-							}
-						}
-					}
-				}
-			},
-			"post": {
-				"operationId": "_platform_market_trust_post",
-				"summary": "POST api/_platform/market/trust",
-				"x-oj-file": "app/api/_platform/market/api.ts",
-				"tags": [
-					"_platform"
-				],
-				"requestBody": {
-					"required": true,
-					"content": {
-						"application/json": {
-							"schema": {
-								"type": "object",
-								"required": [
-									"task_id"
-								],
-								"properties": {
-									"task_id": {
-										"type": "string"
-									}
-								}
-							}
-						}
-					}
-				},
-				"responses": {
-					"200": {
-						"description": "OK",
-						"x-oj-response-enforced": false,
-						"content": {
-							"application/json": {
-								"schema": {
-									"type": "object",
-									"required": [
-										"code",
-										"msg",
-										"data"
-									],
-									"properties": {
-										"code": {
-											"type": "integer"
-										},
-										"msg": {
-											"type": "string"
-										},
-										"data": {
-											"type": "object",
-											"additionalProperties": true
-										}
-									}
-								}
-							}
-						}
-					}
-				}
-			}
-		},
-		"/api/_platform/market/trust/key": {
-			"post": {
-				"operationId": "_platform_market_trust_key_post",
-				"summary": "POST api/_platform/market/trust/key",
-				"x-oj-file": "app/api/_platform/market/api.ts",
-				"tags": [
-					"_platform"
-				],
-				"requestBody": {
-					"required": true,
-					"content": {
-						"application/json": {
-							"schema": {
-								"type": "object",
-								"required": [
-									"key_id",
-									"public_key"
-								],
-								"properties": {
-									"key_id": {
-										"type": "string"
-									},
-									"public_key": {
-										"type": "string"
-									}
-								}
-							}
-						}
-					}
-				},
-				"responses": {
-					"200": {
-						"description": "OK",
-						"x-oj-response-enforced": false,
-						"content": {
-							"application/json": {
-								"schema": {
-									"type": "object",
-									"required": [
-										"code",
-										"msg",
-										"data"
-									],
-									"properties": {
-										"code": {
-											"type": "integer"
-										},
-										"msg": {
-											"type": "string"
-										},
-										"data": {
-											"type": "object",
-											"additionalProperties": true
-										}
-									}
-								}
-							}
-						}
-					}
-				}
-			},
-			"delete": {
-				"operationId": "_platform_market_trust_key_delete",
-				"summary": "DELETE api/_platform/market/trust/key",
-				"x-oj-file": "app/api/_platform/market/api.ts",
-				"tags": [
-					"_platform"
-				],
-				"parameters": [
-					{
-						"name": "key_id",
-						"in": "query",
-						"required": true,
-						"schema": {
-							"type": "string"
-						}
-					}
-				],
-				"responses": {
-					"200": {
-						"description": "OK",
-						"x-oj-response-enforced": false,
-						"content": {
-							"application/json": {
-								"schema": {
-									"type": "object",
-									"required": [
-										"code",
-										"msg",
-										"data"
-									],
-									"properties": {
-										"code": {
-											"type": "integer"
-										},
-										"msg": {
-											"type": "string"
-										},
-										"data": {
-											"type": "object",
-											"additionalProperties": true
-										}
-									}
-								}
-							}
-						}
-					}
-				}
-			}
-		},
-		"/api/_platform/market/index": {
-			"get": {
-				"operationId": "_platform_market_index_get",
-				"summary": "GET api/_platform/market/index",
-				"x-oj-file": "app/api/_platform/market/api.ts",
-				"tags": [
-					"_platform"
-				],
-				"responses": {
-					"200": {
-						"description": "OK",
-						"x-oj-response-enforced": false,
-						"content": {
-							"application/json": {
-								"schema": {
-									"type": "object",
-									"required": [
-										"code",
-										"msg",
-										"data"
-									],
-									"properties": {
-										"code": {
-											"type": "integer"
-										},
-										"msg": {
-											"type": "string"
-										},
-										"data": {
-											"type": "array",
-											"items": {
-												"type": "object",
-												"additionalProperties": true
-											}
-										}
-									}
-								}
-							}
-						}
-					}
-				}
-			}
-		},
-		"/api/_platform/market/uninstall-impact": {
-			"get": {
-				"operationId": "_platform_market_uninstall_impact_get",
-				"summary": "GET api/_platform/market/uninstall-impact",
-				"x-oj-file": "app/api/_platform/market/api.ts",
-				"tags": [
-					"_platform"
-				],
-				"parameters": [
-					{
-						"name": "name",
-						"in": "query",
-						"required": true,
-						"schema": {
-							"type": "string"
-						}
-					}
-				],
-				"responses": {
-					"200": {
-						"description": "OK",
-						"x-oj-response-enforced": false,
-						"content": {
-							"application/json": {
-								"schema": {
-									"type": "object",
-									"required": [
-										"code",
-										"msg",
-										"data"
-									],
-									"properties": {
-										"code": {
-											"type": "integer"
-										},
-										"msg": {
-											"type": "string"
-										},
-										"data": {
-											"type": "object",
-											"additionalProperties": true
-										}
-									}
-								}
-							}
-						}
-					}
-				}
-			}
-		},
-		"/api/_platform/market/uninstall": {
-			"post": {
-				"operationId": "_platform_market_uninstall_post",
-				"summary": "POST api/_platform/market/uninstall",
-				"x-oj-file": "app/api/_platform/market/api.ts",
-				"tags": [
-					"_platform"
-				],
-				"requestBody": {
-					"required": true,
-					"content": {
-						"application/json": {
-							"schema": {
-								"type": "object",
-								"required": [
-									"name"
-								],
-								"properties": {
-									"name": {
-										"type": "string"
-									}
-								}
-							}
-						}
-					}
-				},
-				"responses": {
-					"200": {
-						"description": "OK",
-						"x-oj-response-enforced": false,
-						"content": {
-							"application/json": {
-								"schema": {
-									"type": "object",
-									"required": [
-										"code",
-										"msg",
-										"data"
-									],
-									"properties": {
-										"code": {
-											"type": "integer"
-										},
-										"msg": {
-											"type": "string"
-										},
-										"data": {
-											"type": "object",
-											"additionalProperties": true
-										}
-									}
-								}
-							}
-						}
-					}
-				}
-			}
-		},
-		"/api/_platform/market/history": {
-			"get": {
-				"operationId": "_platform_market_history_get",
-				"summary": "GET api/_platform/market/history",
-				"x-oj-file": "app/api/_platform/market/api.ts",
-				"tags": [
-					"_platform"
-				],
-				"responses": {
-					"200": {
-						"description": "OK",
-						"x-oj-response-enforced": false,
-						"content": {
-							"application/json": {
-								"schema": {
-									"type": "object",
-									"required": [
-										"code",
-										"msg",
-										"data"
-									],
-									"properties": {
-										"code": {
-											"type": "integer"
-										},
-										"msg": {
-											"type": "string"
-										},
-										"data": {
-											"type": "array",
-											"items": {
-												"type": "object",
-												"additionalProperties": true
-											}
-										}
-									}
-								}
-							}
-						}
-					}
-				}
-			}
-		},
-		"/api/_platform/market/releases": {
-			"get": {
-				"operationId": "_platform_market_releases_get",
-				"summary": "GET api/_platform/market/releases",
-				"x-oj-file": "app/api/_platform/market/api.ts",
-				"tags": [
-					"_platform"
-				],
-				"parameters": [
-					{
-						"name": "page",
-						"in": "query",
-						"required": false,
-						"schema": {
-							"type": "number",
-							"minimum": 1
-						}
-					},
-					{
-						"name": "limit",
-						"in": "query",
-						"required": false,
-						"schema": {
-							"type": "number",
-							"minimum": 1,
-							"maximum": 200
-						}
-					}
-				],
-				"responses": {
-					"200": {
-						"description": "OK",
-						"x-oj-response-enforced": false,
-						"content": {
-							"application/json": {
-								"schema": {
-									"type": "object",
-									"required": [
-										"code",
-										"msg",
-										"data"
-									],
-									"properties": {
-										"code": {
-											"type": "integer"
-										},
-										"msg": {
-											"type": "string"
-										},
-										"data": {
-											"type": "object",
-											"required": [
-												"list",
-												"total",
-												"page",
-												"size"
-											],
-											"properties": {
-												"list": {
-													"type": "array",
-													"items": {
-														"type": "object",
-														"additionalProperties": true
-													}
-												},
-												"total": {
-													"type": "number"
-												},
-												"page": {
-													"type": "number"
-												},
-												"size": {
-													"type": "number"
-												},
-												"syncError": {
-													"type": [
-														"string",
-														"null"
-													]
-												}
-											}
-										}
-									}
-								}
-							}
-						}
-					}
-				}
-			}
-		},
 		"/api/_platform/org/departments": {
 			"get": {
 				"operationId": "_platform_org_departments_get",
@@ -7315,6 +6519,1042 @@
 					}
 				}
 			}
+		},
+		"/api/oj-market/install": {
+			"post": {
+				"operationId": "oj_market_install_post",
+				"summary": "POST api/oj-market/install",
+				"x-oj-file": "oj-market/api/api.ts",
+				"tags": [
+					"oj-market"
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"required": [
+									"source",
+									"name"
+								],
+								"properties": {
+									"source": {
+										"type": "string",
+										"enum": [
+											"cdn",
+											"file"
+										]
+									},
+									"name": {
+										"type": "string"
+									},
+									"version": {
+										"type": [
+											"string",
+											"null"
+										]
+									},
+									"force": {
+										"type": "boolean"
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"properties": {
+												"task_id": {
+													"type": "string"
+												}
+											},
+											"additionalProperties": true
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/oj-market/install/cancel": {
+			"post": {
+				"operationId": "oj_market_install_cancel_post",
+				"summary": "POST api/oj-market/install/cancel",
+				"x-oj-file": "oj-market/api/api.ts",
+				"tags": [
+					"oj-market"
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"required": [
+									"name"
+								],
+								"properties": {
+									"name": {
+										"type": "string"
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"properties": {
+												"ok": {
+													"type": "boolean"
+												},
+												"name": {
+													"type": "string"
+												},
+												"requested": {
+													"type": "boolean"
+												}
+											},
+											"additionalProperties": true
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/oj-market/task": {
+			"get": {
+				"operationId": "oj_market_task_get",
+				"summary": "GET api/oj-market/task",
+				"x-oj-file": "oj-market/api/api.ts",
+				"tags": [
+					"oj-market"
+				],
+				"parameters": [
+					{
+						"name": "id",
+						"in": "query",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"additionalProperties": true
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/oj-market/enable": {
+			"post": {
+				"operationId": "oj_market_enable_post",
+				"summary": "POST api/oj-market/enable",
+				"x-oj-file": "oj-market/api/api.ts",
+				"tags": [
+					"oj-market"
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"required": [
+									"name",
+									"enabled"
+								],
+								"properties": {
+									"name": {
+										"type": "string"
+									},
+									"enabled": {
+										"type": "boolean"
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"additionalProperties": true
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/oj-market/meta": {
+			"get": {
+				"operationId": "oj_market_meta_get",
+				"summary": "GET api/oj-market/meta",
+				"x-oj-file": "oj-market/api/api.ts",
+				"tags": [
+					"oj-market"
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"properties": {
+												"apiVersion": {
+													"type": "string"
+												}
+											},
+											"additionalProperties": true
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/oj-market/trust": {
+			"get": {
+				"operationId": "oj_market_trust_get",
+				"summary": "GET api/oj-market/trust",
+				"x-oj-file": "oj-market/api/api.ts",
+				"tags": [
+					"oj-market"
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"additionalProperties": true
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			},
+			"post": {
+				"operationId": "oj_market_trust_post",
+				"summary": "POST api/oj-market/trust",
+				"x-oj-file": "oj-market/api/api.ts",
+				"tags": [
+					"oj-market"
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"required": [
+									"task_id"
+								],
+								"properties": {
+									"task_id": {
+										"type": "string"
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"additionalProperties": true
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/oj-market/trust/key": {
+			"post": {
+				"operationId": "oj_market_trust_key_post",
+				"summary": "POST api/oj-market/trust/key",
+				"x-oj-file": "oj-market/api/api.ts",
+				"tags": [
+					"oj-market"
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"required": [
+									"key_id",
+									"public_key"
+								],
+								"properties": {
+									"key_id": {
+										"type": "string"
+									},
+									"public_key": {
+										"type": "string"
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"additionalProperties": true
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			},
+			"delete": {
+				"operationId": "oj_market_trust_key_delete",
+				"summary": "DELETE api/oj-market/trust/key",
+				"x-oj-file": "oj-market/api/api.ts",
+				"tags": [
+					"oj-market"
+				],
+				"parameters": [
+					{
+						"name": "key_id",
+						"in": "query",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"additionalProperties": true
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/oj-market/index": {
+			"get": {
+				"operationId": "oj_market_index_get",
+				"summary": "GET api/oj-market/index",
+				"x-oj-file": "oj-market/api/api.ts",
+				"tags": [
+					"oj-market"
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "array",
+											"items": {
+												"type": "object",
+												"additionalProperties": true
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/oj-market/catalog": {
+			"get": {
+				"operationId": "oj_market_catalog_get",
+				"summary": "GET api/oj-market/catalog",
+				"x-oj-file": "oj-market/api/api.ts",
+				"tags": [
+					"oj-market"
+				],
+				"parameters": [
+					{
+						"name": "page",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "number",
+							"minimum": 1
+						}
+					},
+					{
+						"name": "size",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "number",
+							"minimum": 1,
+							"maximum": 200
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"additionalProperties": true
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/oj-market/catalog/detail": {
+			"get": {
+				"operationId": "oj_market_catalog_detail_get",
+				"summary": "GET api/oj-market/catalog/detail",
+				"x-oj-file": "oj-market/api/api.ts",
+				"tags": [
+					"oj-market"
+				],
+				"parameters": [
+					{
+						"name": "name",
+						"in": "query",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "version",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"additionalProperties": true
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/oj-market/yank": {
+			"post": {
+				"operationId": "oj_market_yank_post",
+				"summary": "POST api/oj-market/yank",
+				"x-oj-file": "oj-market/api/api.ts",
+				"tags": [
+					"oj-market"
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"required": [
+									"product",
+									"version"
+								],
+								"properties": {
+									"product": {
+										"type": "string"
+									},
+									"version": {
+										"type": "string"
+									},
+									"reason": {
+										"type": "string"
+									},
+									"by": {
+										"type": "string"
+									},
+									"restore": {
+										"type": "boolean"
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"additionalProperties": true
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/oj-market/uninstall-impact": {
+			"get": {
+				"operationId": "oj_market_uninstall_impact_get",
+				"summary": "GET api/oj-market/uninstall-impact",
+				"x-oj-file": "oj-market/api/api.ts",
+				"tags": [
+					"oj-market"
+				],
+				"parameters": [
+					{
+						"name": "name",
+						"in": "query",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"additionalProperties": true
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/oj-market/uninstall": {
+			"post": {
+				"operationId": "oj_market_uninstall_post",
+				"summary": "POST api/oj-market/uninstall",
+				"x-oj-file": "oj-market/api/api.ts",
+				"tags": [
+					"oj-market"
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"required": [
+									"name"
+								],
+								"properties": {
+									"name": {
+										"type": "string"
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"additionalProperties": true
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/oj-market/history": {
+			"get": {
+				"operationId": "oj_market_history_get",
+				"summary": "GET api/oj-market/history",
+				"x-oj-file": "oj-market/api/api.ts",
+				"tags": [
+					"oj-market"
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "array",
+											"items": {
+												"type": "object",
+												"additionalProperties": true
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/oj-market/releases": {
+			"get": {
+				"operationId": "oj_market_releases_get",
+				"summary": "GET api/oj-market/releases",
+				"x-oj-file": "oj-market/api/api.ts",
+				"tags": [
+					"oj-market"
+				],
+				"parameters": [
+					{
+						"name": "page",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "number",
+							"minimum": 1
+						}
+					},
+					{
+						"name": "limit",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "number",
+							"minimum": 1,
+							"maximum": 200
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"required": [
+												"list",
+												"total",
+												"page",
+												"size"
+											],
+											"properties": {
+												"list": {
+													"type": "array",
+													"items": {
+														"type": "object",
+														"additionalProperties": true
+													}
+												},
+												"total": {
+													"type": "number"
+												},
+												"page": {
+													"type": "number"
+												},
+												"size": {
+													"type": "number"
+												},
+												"syncError": {
+													"type": [
+														"string",
+														"null"
+													]
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/oj-market/cdn/upload": {
+			"post": {
+				"operationId": "oj_market_cdn_upload_post",
+				"summary": "POST api/oj-market/cdn/upload",
+				"x-oj-file": "oj-market/api/cdn/api.ts",
+				"tags": [
+					"oj-market"
+				],
+				"parameters": [
+					{
+						"name": "name",
+						"in": "query",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"additionalProperties": true
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
 		}
 	},
 	"tags": [
@@ -7329,6 +7569,9 @@
 		},
 		{
 			"name": "notification"
+		},
+		{
+			"name": "oj-market"
 		},
 		{
 			"name": "personal-center"

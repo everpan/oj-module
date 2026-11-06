@@ -21,7 +21,7 @@ export interface InstallContext {
 	state: StateStore
 	/** 宿主 versions.json（C2-09 peerRuntime 比对真源；键 = 包名，runtime 取 @oj-module/runtime） */
 	hostVersions?: Record<string, string>
-	/** 宿主平台编排面 API 版本（C2-11 peerPlatform 比对真源；镜像 GET /api/_platform/market/meta 的 apiVersion，即 market/api.ts 的 API_VERSION 常量，与 _platform/manifest.yaml 版本手工同步） */
+	/** 宿主平台编排面 API 版本（C2-11 peerPlatform 比对真源；镜像 GET /api/oj-market/meta 的 apiVersion，即 market/api.ts 的 API_VERSION 常量，与 _platform/manifest.yaml 版本手工同步） */
 	hostApiVersion?: string
 	/**
 	 * 宿主能力集（P0 §3.9：ojInfo().capabilities，装配期冻结、任何模块可读）。由调用方从 ojInfo 注入；

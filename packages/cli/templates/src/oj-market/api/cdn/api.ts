@@ -1,5 +1,5 @@
 // CDN 上传端点（Phase A v4 §二）：签名推送 + pair 约束 + DB 目录真源写行。
-// POST /api/_platform/cdn/upload?name=<file> —— 发布方（ojm market publish 远端模式）推
+// POST /api/oj-market/cdn/upload?name=<file> —— 发布方（ojm market publish 远端模式）推
 // .tgz + .sig 旁车；不经账号口令（企微用户无障碍），签名鉴权 = X-OJM-Key-Id / X-OJM-Signature
 // 头 + 信任库 + Ed25519；无角色检查（信任库成员即发布身份）。
 //
@@ -19,19 +19,19 @@
 // 非 NULL 且不符 → 409；NULL（syncReleases 遗留）不建立所有权，首个上传采用并绑定；
 // 换主 = 站点 superadmin 操作（端点不提供）。
 //
-// 匿名面：config.yaml auth.anonymous_paths 增 /api/_platform/cdn/upload（restart_pending
+// 匿名面：config.yaml auth.anonymous_paths 增 /api/oj-market/cdn/upload（restart_pending
 // 冻结段，重启生效，发版说明提醒）。审计：发布成败落 market_history（action=publish，
 // operator = key_id）；验签前的请求（401/403/413/429/400 文件名）不是已知身份的发布行为，不留痕。
 
-import type { ExecFace } from "../_lifecycle/steps/extract";
-import { atomicWriteBytes, fsFace } from "../_lifecycle/atomic";
-import { recordHistory } from "../_lifecycle/history";
-import { MAX_PACKAGE_BYTES } from "../_lifecycle/limits";
-import { manifestOfUpload } from "../_lifecycle/manifest-of-upload";
-import { createTrustStore, isValidKeyId } from "../_lifecycle/trust";
-import { respond } from "../_shared/respond";
-import { rateLimit } from "../_shared/service/infra/rate";
-import { readSiteVar } from "../_shared/site-facade";
+import type { ExecFace } from "#/_platform/_lifecycle/steps/extract";
+import { atomicWriteBytes, fsFace } from "#/_platform/_lifecycle/atomic";
+import { recordHistory } from "#/_platform/_lifecycle/history";
+import { MAX_PACKAGE_BYTES } from "#/_platform/_lifecycle/limits";
+import { manifestOfUpload } from "#/_platform/_lifecycle/manifest-of-upload";
+import { createTrustStore, isValidKeyId } from "#/_platform/_lifecycle/trust";
+import { respond } from "#/_platform/_shared/respond";
+import { rateLimit } from "#/_platform/_shared/service/infra/rate";
+import { readSiteVar } from "#/_platform/_shared/site-facade";
 
 /** 上传体积闸 = 分发包体积闸（单源 limits.ts，杜绝散落） */
 export const MAX_UPLOAD_BYTES = MAX_PACKAGE_BYTES;
@@ -189,7 +189,7 @@ export async function authenticateSignedKey(env: SignedAuthEnv, rateBucket: stri
 }
 
 /** canonical 验签（Ed25519；verifyEd25519 面注入优先，缺省 isolate 全局） */
-export function verifyCanonicalSig(env: SignedAuthEnv, publicKey: string, canonical: string, signature: string): boolean {
+export function verifyCanonicalSig(env: { verifyEd25519?: SignedAuthEnv["verifyEd25519"] }, publicKey: string, canonical: string, signature: string): boolean {
 	return verifyEd25519Of({ verifyEd25519: env.verifyEd25519 })(publicKey, canonical, signature);
 }
 
@@ -204,7 +204,7 @@ function sha256Of(env: CdnUploadEnv): (data: Uint8Array) => string {
 	return env.sha256Hex ?? ((data: Uint8Array) => g.crypto!.sha256Hex!(data));
 }
 
-function verifyEd25519Of(env: CdnUploadEnv): (publicKey: string, msg: string, sigBase64: string) => boolean {
+function verifyEd25519Of(env: { verifyEd25519?: SignedAuthEnv["verifyEd25519"] }): (publicKey: string, msg: string, sigBase64: string) => boolean {
 	const g = globalThis as { crypto?: { verifyEd25519?: (pk: string, msg: string, sig: string) => boolean } };
 	return env.verifyEd25519 ?? ((pk, msg, sig) => g.crypto!.verifyEd25519!(pk, msg, sig));
 }
@@ -223,7 +223,7 @@ async function uploadBytes(): Promise<Uint8Array | null> {
 }
 
 /** registry_id 解析：注入优先，缺省 config.yaml vars.registry_id；俱缺 → null（调用方 503） */
-async function resolveRegistryId(env: CdnUploadEnv): Promise<string | null> {
+async function resolveRegistryId(env: SignedAuthEnv): Promise<string | null> {
 	if (env.registryId !== undefined)
 		return env.registryId;
 	return await readSiteVar(env.configPath, "registry_id");
@@ -400,7 +400,7 @@ async function uploadBody(env: CdnUploadEnv): Promise<Record<string, unknown>> {
 	return await tgzUploadBody(env, file, rawName, bytes, sha256, keyId);
 }
 
-/** 单端点组（oj 嵌套组：组名 = 路径段）→ POST /api/_platform/cdn/upload */
+/** 单端点组（oj 嵌套组：组名 = 路径段）→ POST /api/oj-market/cdn/upload */
 export function createCdnUploadApi(env: CdnUploadEnv) {
 	return {
 		upload: {

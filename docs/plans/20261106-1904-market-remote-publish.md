@@ -8,6 +8,12 @@
   3. 远端无人跑 build-index → 索引须**转 DB 管理**，发布与展示都从 DB 获取
   4. 目录信息经 **JSON API 暴露**——本站点与远端市场统一走 JSON 协议，不读索引文件
 
+## 变更记录
+
+- **2026-11-06（A4 完成后）**：市场域 api（market/ + cdn/ 两面）自 `_platform` 迁入 `src/oj-market/api/`
+  （路由 `/api/oj-market/*`，评估与执行记录见 `docs/plans/20261106-2255-market-api-to-oj-market.md`）；
+  本文 `/api/_platform/{market,cdn}` 路径引用已全部改为新路径。表/迁移/安装引擎留 `_platform`。
+
 ## 评审记录
 
 ### 第一/二轮（2026-11-06，三位专家，v2 已全部采纳）
@@ -53,24 +59,24 @@
 
 ### 二、上传端点（v2 骨架 + v4 四处收紧）
 
-`POST /api/_platform/cdn/upload?name=<file>`：
+`POST /api/oj-market/cdn/upload?name=<file>`：
 
 - 签名鉴权：canonical **`cdn-upload:<registry_id>:<name>:<sha256>`**（v4 加首段 registry_id = 站点身份，消解跨站重放；与本站包级签名 REG-CS3 canonical 首段对齐）；X-OJM-Key-Id + X-OJM-Signature 头、TrustStore + verifyEd25519、无角色检查、文件名白名单、大文件显式 413。
 - **硬约束：sha256 一律取服务端从实收 tgz 字节重算值重构 canonical 验签，禁止取 .sig 声明值**（防签名-字节重绑；「换字节 → 401」的实现口径）。站内重放（无 timestamp/nonce）因内容哈希绑定退化为同字节幂等，无实害——不引入时间戳，此推理写入测试注释。
 - 校验序：先验 X-OJM 头（403 fail-fast）→ 再消费 body（413 由 `MAX_PACKAGE_BYTES`；部署文档要求反代 body cap 兜底——端点层是收完再拒）。
 - **处理顺序（钉死）**：查库比对（同 name+version：同字节 → 幂等 200 并补缺文件〔自愈〕；异字节 → 409 **不碰盘**，防「文件先被换、DB 后拒」的字节持久损坏）→ staging 解包抽 manifest（复用 `manifestOfUpload` 移入 `_lifecycle`；validate 与 extract 之间加 `checkTarVolumeLimits` 体积闸〔REG-CS8 三限〕；`manifest.name/version` 与上传文件名逐字一致；summary ≤200 / description ≤2000 等入库钳制）→ 原子落盘（临时名 + rename）→ `db.tx` 写行（唯一键并发仲裁，撞键重读比对 sha256 定幂等/冲突）→ 任一步失败 CDN 零痕迹。
   - 注：FS+DB 无同事务，「同事务」措辞作废——`db.tx` 只包 DB 段（uninstall.ts:27 先例）；中断靠同字节重传自愈。
-- 匿名面：模板 config.yaml `auth.anonymous_paths` 增加 `/api/_platform/cdn/upload`（restart_pending 冻结段，重启生效，发版说明提醒）。
+- 匿名面：模板 config.yaml `auth.anonymous_paths` 增加 `/api/oj-market/cdn/upload`（restart_pending 冻结段，重启生效，发版说明提醒）。
 - `createCdnUploadApi(env)` 注入面、respond() 收口、pair 约束（sig 先 tgz 后、sig 五字段合法）——v2 原样保留。限速按 key_id（rateLimit 基建现成）。
 
 ### 三、目录 JSON API（匿名可读，分页）
 
-- `GET /api/_platform/market/catalog?page=&size=` → `{ api_version, page, size, total, truncated, items: [{ product, latest, publisher(key_id), versions_count, summary? }] }`（page/size 回显 + truncated 截断标记——PageResult 站点惯例，通用分页器直用）。page/size 复用 `pageArgs`（非法值**收敛**不报错、size 钳位，站点既有惯例；默认 size=20）；排序键钉死 `published_at desc, product asc`（防翻页重复/丢条目）；规模小 → 全量行 JS 聚合（`compareVersions` 已有）+ 内存分页，latest 由 API 计算（未 yanked 的 semver max，非存储列——`index_latest_regressed` 守卫自然消失）；**清单不含 yanked 行**；`Cache-Control: no-store`（防中间代理缓存陈旧目录）；`api_version` 字段给契约演进留逃生门。
-- `GET /api/_platform/market/catalog/detail?name=<name>[&version=]` → `{ product, latest, versions: [Form B 条目] }`。**详情保留 yanked 条目（`yanked:true`）**——安装侧「精确版本拒装 409 人话」依赖条目可见 + yanked 标记，清单摘除/详情保留分离保全两侧语义；versions 按 semver 降序；`archive.file` 正名校验留在服务端组表处。
-- `POST /api/_platform/market/yank`（v4 新增）：body `{ product, version, reason? }` + X-OJM-Key-Id/Signature，canonical **`market-yank:<registry_id>:<product>:<version>`**，TrustStore 校验；授权：key_id 须匹配该行 key_id（不符 403）、版本不存在 404、重复 yank 幂等 200；by/reason 审计落 `market_history`；恢复（unyank）同模型。superadmin 管理通道可覆盖/换主。
-- 匿名面：`auth.anonymous_paths` 增加 `/api/_platform/market/catalog*`（同 §二重启口径）。
+- `GET /api/oj-market/catalog?page=&size=` → `{ api_version, page, size, total, truncated, items: [{ product, latest, publisher(key_id), versions_count, summary? }] }`（page/size 回显 + truncated 截断标记——PageResult 站点惯例，通用分页器直用）。page/size 复用 `pageArgs`（非法值**收敛**不报错、size 钳位，站点既有惯例；默认 size=20）；排序键钉死 `published_at desc, product asc`（防翻页重复/丢条目）；规模小 → 全量行 JS 聚合（`compareVersions` 已有）+ 内存分页，latest 由 API 计算（未 yanked 的 semver max，非存储列——`index_latest_regressed` 守卫自然消失）；**清单不含 yanked 行**；`Cache-Control: no-store`（防中间代理缓存陈旧目录）；`api_version` 字段给契约演进留逃生门。
+- `GET /api/oj-market/catalog/detail?name=<name>[&version=]` → `{ product, latest, versions: [Form B 条目] }`。**详情保留 yanked 条目（`yanked:true`）**——安装侧「精确版本拒装 409 人话」依赖条目可见 + yanked 标记，清单摘除/详情保留分离保全两侧语义；versions 按 semver 降序；`archive.file` 正名校验留在服务端组表处。
+- `POST /api/oj-market/yank`（v4 新增）：body `{ product, version, reason? }` + X-OJM-Key-Id/Signature，canonical **`market-yank:<registry_id>:<product>:<version>`**，TrustStore 校验；授权：key_id 须匹配该行 key_id（不符 403）、版本不存在 404、重复 yank 幂等 200；by/reason 审计落 `market_history`；恢复（unyank）同模型。superadmin 管理通道可覆盖/换主。
+- 匿名面：`auth.anonymous_paths` 增加 `/api/oj-market/catalog*`（同 §二重启口径）。
 - 错误文案卫生：匿名读端点（catalog/detail）的 message 不得含路径/SQL/内部拓扑——`failWith` 现状原样透传 err.message（respond.ts:7-14），而 trust.ts 等既有文案内嵌 fs 路径，勿照搬。
-- origin 拼装（v4 修正）：`siteOrigin` 正则不接受带路径绝对 URL，不可直接复用——绝对基址**剥尾部 `/cdn` 得 origin**（剥不出 → 503 指向设置项）；相对基址走 `requireCanonicalOrigin`。两条路径进数据表用例。远端消费侧拼 `{origin}/api/_platform/market/catalog...`。
+- origin 拼装（v4 修正）：`siteOrigin` 正则不接受带路径绝对 URL，不可直接复用——绝对基址**剥尾部 `/cdn` 得 origin**（剥不出 → 503 指向设置项）；相对基址走 `requireCanonicalOrigin`。两条路径进数据表用例。远端消费侧拼 `{origin}/api/oj-market/catalog...`。
 
 ### 四、消费侧改造（`market/api.ts`）
 
@@ -164,7 +170,7 @@
 | 3 | 自更新（市场经自己升级自己） | 21:20 拍板**双轨**：随站 bundle 收敛（平台轨）+ **按常规 solution 包对 oj-market 发包并升级**（市场轨，已装站点 superadmin 经市场升级，与普通包无异）——推翻此前「不做」初判 |
 | 4 | 权限面 | 保持 **superadmin 门禁**（沿用 R9），不新增 `platform.market.*` 权限点 |
 
-**可行性核实**（三点）：solution 体系已支持携带前端——安装器 `deploy-web` 把包内 `web/` 产物部署到 `<dist>/modules/<name>/<version>/` 并原子 upsert `modules.json`（D13：读者永不见半截 JSON，损坏拒 upsert），shell 按 `name/entry/peerRuntime/css/integrity` 动态装载；安装编排端点在**平台后端**（`POST /api/_platform/market/install`，superadmin，R9，交 `runInstall` 状态机 + `/install/cancel`；bootstrap key 播种免首装 TOFU）——市场 UI 拆走后仍在；挂点只读核查 `../oj-bin`（21:16）——安装全管线模板侧进程内执行（migrate 走 `exec.run(["oj","migrate",--format,json,-d,dir,module])` 白名单契约，S1-6 实测），**init 期无 dist 无 DB、同步安装不可行** → 收敛锚定**站点启动段**（与 `migrate_on_start` / `reconcile()` 同段，每次启动幂等对账），**oj 二进制零改动、无跨仓发版**。
+**可行性核实**（三点）：solution 体系已支持携带前端——安装器 `deploy-web` 把包内 `web/` 产物部署到 `<dist>/modules/<name>/<version>/` 并原子 upsert `modules.json`（D13：读者永不见半截 JSON，损坏拒 upsert），shell 按 `name/entry/peerRuntime/css/integrity` 动态装载；安装编排端点在**平台后端**（`POST /api/oj-market/install`，superadmin，R9，交 `runInstall` 状态机 + `/install/cancel`；bootstrap key 播种免首装 TOFU）——市场 UI 拆走后仍在；挂点只读核查 `../oj-bin`（21:16）——安装全管线模板侧进程内执行（migrate 走 `exec.run(["oj","migrate",--format,json,-d,dir,module])` 白名单契约，S1-6 实测），**init 期无 dist 无 DB、同步安装不可行** → 收敛锚定**站点启动段**（与 `migrate_on_start` / `reconcile()` 同段，每次启动幂等对账），**oj 二进制零改动、无跨仓发版**。
 
 ### 方案（Phase B）
 
@@ -215,7 +221,7 @@
 
 **特性 3：契约回归（静态口径）**
 
-- 场景：市场 UI 调用面不变：拆分后 UI 仍消费 `/api/_platform/market/*`（既有 market-api 测试面全量回归为锚）
+- 场景：市场 UI 调用面不变：拆分后 UI 仍消费 `/api/oj-market/*`（A4→A5 间已完成市场 api 自 _platform 迁入 oj-market 模块，既有 market-api 测试面全量回归为锚）
 - 文档任务：包 README + manifest 标注 R29 第一方专用（无运行时用例）
 
 **特性 4：常规包轨（已装站点按普通包对 oj-market 发包并升级）**

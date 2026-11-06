@@ -152,7 +152,7 @@ export async function pollTask(fetchFn: typeof fetch, base: string, token: strin
 	let interval = interval0;
 	let waited = 0;
 	for (;;) {
-		const record = await callApi<TaskRecord>(fetchFn, base, token, "GET", `/api/_platform/market/task?id=${encodeURIComponent(taskId)}`);
+		const record = await callApi<TaskRecord>(fetchFn, base, token, "GET", `/api/oj-market/task?id=${encodeURIComponent(taskId)}`);
 		if (isTerminal(record.status))
 			return record;
 		if (waited + interval > timeoutMs)

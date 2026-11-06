@@ -18,7 +18,7 @@ const allModules = [
 	// 各根按 handle.order 排序（/home 1、/personal-center 110、/system -100 底部），
 	// 与拆分时的菜单逐项一致；/login、/change-password、/notification-center 走 hideInMenu。
 	{ name: "app", entry: "src/app/web/entry.ts" },
-	// 解决方案市场：第一方能力（消费 _platform 编排面 /api/_platform/market/*，
+	// 解决方案市场：第一方能力（消费本模块 api 面 /api/oj-market/*（src/oj-market/api，deps 依赖 _platform 内核），
 	// R29：第三方方案不得仿照此调用面），默认随脚手架下发。保持独立模块——
 	// 可选能力，不想要就改 `enabled: false`（不要删目录：src/app、src/oj-market
 	// 受完整性门禁保护，删改会让 ojm build 失败，见 src/README.md）；

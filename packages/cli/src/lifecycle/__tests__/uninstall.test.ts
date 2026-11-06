@@ -1,6 +1,6 @@
 import process from "node:process";
 // BDD：ojm uninstall 瘦客户端（P1-15a 缺口 B，D6/D8 同款）——纯转发：
-// 登录 → POST /api/_platform/market/uninstall {name} → 打印服务端人话 message；
+// 登录 → POST /api/oj-market/uninstall {name} → 打印服务端人话 message；
 // ok:false（未装/空锁拒启）置 exitCode 1。fetch 全 stub 不真发网络（install.test.ts 同范式）。
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { uninstallCommand } from "../../uninstall";
@@ -42,13 +42,13 @@ describe("uninstallCommand · 卸载瘦客户端（P1-15a 缺口 B）", () => {
 	it("登录后 POST uninstall {name}（Bearer 注入）→ 打印服务端 message", async () => {
 		const { fetchFn, calls } = fetchStub({
 			"/api/auth/login": () => ok({ access_token: "tok", refresh_token: "r", expires_in: 1 }),
-			"/api/_platform/market/uninstall": () => ok({ ok: true, message: "卸载完成：四处同删（demo-solution@0.1.0）" }),
+			"/api/oj-market/uninstall": () => ok({ ok: true, message: "卸载完成：四处同删（demo-solution@0.1.0）" }),
 		});
 		await uninstallCommand("demo-solution", { siteUrl: "http://x", user: "u", pass: "p", fetchFn });
 		// 登录体 + uninstall JSON 体 + Bearer
 		expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({ username: "u", password: "p" });
 		const call = calls[1]!;
-		expect(call.url).toContain("/api/_platform/market/uninstall");
+		expect(call.url).toContain("/api/oj-market/uninstall");
 		expect(call.init?.method).toBe("POST");
 		expect((call.init?.headers as Record<string, string>).authorization).toBe("Bearer tok");
 		expect(JSON.parse(String(call.init?.body))).toEqual({ name: "demo-solution" });
@@ -58,7 +58,7 @@ describe("uninstallCommand · 卸载瘦客户端（P1-15a 缺口 B）", () => {
 	it("ok:false（域逻辑拒绝）→ message 照打 + exitCode 1", async () => {
 		const { fetchFn } = fetchStub({
 			"/api/auth/login": () => ok({ access_token: "tok", refresh_token: "r", expires_in: 1 }),
-			"/api/_platform/market/uninstall": () => ok({ ok: false, message: "卸载失败：「x」未安装（锁与 sidecar 均无记录）" }),
+			"/api/oj-market/uninstall": () => ok({ ok: false, message: "卸载失败：「x」未安装（锁与 sidecar 均无记录）" }),
 		});
 		const exitBackup = process.exitCode;
 		process.exitCode = 0;

@@ -68,7 +68,7 @@ export async function trialInstall(opts: TrialOptions = {}): Promise<TrialResult
 		if (task.status === "needs_trust") {
 			const fingerprint = task.trust?.fingerprint ?? "";
 			log(`[ojm] 待信任发布方 ${task.trust?.key_id ?? "?"}，指纹 ${fingerprint.slice(0, 16)}…（隔离站点，自动确认）`);
-			await callApi(fetch, site.baseUrl, token, "POST", "/api/_platform/market/trust", { task_id: task.id });
+			await callApi(fetch, site.baseUrl, token, "POST", "/api/oj-market/trust", { task_id: task.id });
 			task = await installOnce(site.baseUrl, token, spec.name, spec.version);
 		}
 
@@ -86,7 +86,7 @@ export async function trialInstall(opts: TrialOptions = {}): Promise<TrialResult
 /** 一次安装 + 轮询到终态 */
 async function installOnce(base: string, token: string, name: string, version: string): Promise<TaskRecord> {
 	// 站点返回 {task_id}（安装同步跑完后回填）；mock 兼容 id 形态
-	const started = await callApi<{ task_id?: string, id?: string }>(fetch, base, token, "POST", "/api/_platform/market/install", {
+	const started = await callApi<{ task_id?: string, id?: string }>(fetch, base, token, "POST", "/api/oj-market/install", {
 		name,
 		version,
 		source: "cdn",

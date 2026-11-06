@@ -52,7 +52,7 @@ export interface TaskRecord {
 	appliedSeq?: number
 }
 
-/** 卡片数据源行（GET /_platform/market/index）：CDN 三级索引（catalog + shards）⊕ 本地 sidecar state */
+/** 卡片数据源行（GET /oj-market/index）：CDN 三级索引（catalog + shards）⊕ 本地 sidecar state */
 export interface IndexRow {
 	name: string
 	latest: string | null
@@ -69,14 +69,14 @@ export interface IndexRow {
 	description?: string | null
 }
 
-/** 安装输入（POST /_platform/market/install） */
+/** 安装输入（POST /oj-market/install） */
 export interface InstallInput {
 	name: string
 	version?: string | null
 	source?: "cdn" | "file"
 }
 
-/** 启用/停用输入（POST /_platform/market/enable） */
+/** 启用/停用输入（POST /oj-market/enable） */
 export interface EnableInput {
 	name: string
 	enabled: boolean

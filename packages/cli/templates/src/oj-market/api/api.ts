@@ -1,5 +1,5 @@
-import type { SourceSeqVerdict } from "../_lifecycle/source-seq";
-// 编排端点 + 市场索引（P1-12，R9/ISP）：/api/_platform/market/* 端点族同文件嵌套 handler 组
+import type { SourceSeqVerdict } from "#/_platform/_lifecycle/source-seq";
+// 编排端点 + 市场索引（P1-12，R9/ISP）：/api/oj-market/* 端点族同文件嵌套 handler 组
 // （oj v0.1.64 组形态，notification/api.ts 同款；组名 = 路径段，路由不变；嵌套组最深 4 层，oj bridge/mod.rs walker）。
 // 门（R9）：install/task/index 全 assertSuperAdmin 独占（市场页是「市场即样例」的第一方特权
 // 例外，R29；权限码不构成门）；meta 登录即可（peerPlatform 预检先于判权）。
@@ -15,28 +15,28 @@ import type { SourceSeqVerdict } from "../_lifecycle/source-seq";
 // file 源上传形态：照 personal-center/upload/api.ts 先例（http.files 双路径，大文件走 blob）；
 // 上传包先过 R1 三步范式（list→validate→extract）取出 manifest.yaml 供 preflight——
 // 未校验不解包，zip-slip 在信任边界外被拒。
-import type { FetchFace } from "../_lifecycle/steps/download";
-import type { ExecFace } from "../_lifecycle/steps/extract";
-import type { ReloadFace } from "../_lifecycle/steps/reload";
-import type { FetchInitFace } from "../_shared/site-facade";
+import type { FetchFace } from "#/_platform/_lifecycle/steps/download";
+import type { ExecFace } from "#/_platform/_lifecycle/steps/extract";
+import type { ReloadFace } from "#/_platform/_lifecycle/steps/reload";
+import type { FetchInitFace } from "#/_platform/_shared/site-facade";
 import type { IndexKind, IndexSource } from "./index-source";
-import { atomicWriteText, fsFace } from "../_lifecycle/atomic";
-import { recordHistory } from "../_lifecycle/history";
-import { latestAppliedSeqOf, reconcile, runInstall, setEnabled } from "../_lifecycle/installer";
-import { manifestOfUpload as sharedManifestOfUpload } from "../_lifecycle/manifest-of-upload";
-import { compareVersions } from "../_lifecycle/semver";
-import { sha384B64 } from "../_lifecycle/sha384";
-import { guardAndRecordSourceSeq } from "../_lifecycle/source-seq";
-import { createStateStore } from "../_lifecycle/state";
-import { getTask, readTasks } from "../_lifecycle/tasks";
-import { createTrustStore } from "../_lifecycle/trust";
-import { computeUninstallImpact, runUninstall } from "../_lifecycle/uninstall";
-import { respond } from "../_shared/respond";
-import { assertSuperAdmin } from "../_shared/service/infra/access";
-import { pageArgs } from "../_shared/service/infra/query";
-import { journalHeadOf, readCanonicalOrigin, siteOrigin, withSiteOrigin } from "../_shared/site-facade";
-import { authenticateSignedKey, verifyCanonicalSig } from "../cdn/api";
+import { atomicWriteText, fsFace } from "#/_platform/_lifecycle/atomic";
+import { recordHistory } from "#/_platform/_lifecycle/history";
+import { latestAppliedSeqOf, reconcile, runInstall, setEnabled } from "#/_platform/_lifecycle/installer";
+import { manifestOfUpload as sharedManifestOfUpload } from "#/_platform/_lifecycle/manifest-of-upload";
+import { compareVersions } from "#/_platform/_lifecycle/semver";
+import { sha384B64 } from "#/_platform/_lifecycle/sha384";
+import { guardAndRecordSourceSeq } from "#/_platform/_lifecycle/source-seq";
+import { createStateStore } from "#/_platform/_lifecycle/state";
+import { getTask, readTasks } from "#/_platform/_lifecycle/tasks";
+import { createTrustStore } from "#/_platform/_lifecycle/trust";
+import { computeUninstallImpact, runUninstall } from "#/_platform/_lifecycle/uninstall";
+import { respond } from "#/_platform/_shared/respond";
+import { assertSuperAdmin } from "#/_platform/_shared/service/infra/access";
+import { pageArgs } from "#/_platform/_shared/service/infra/query";
+import { journalHeadOf, readCanonicalOrigin, siteOrigin, withSiteOrigin } from "#/_platform/_shared/site-facade";
 import { BOOTSTRAP_KEY, seedBootstrapKey } from "./bootstrap";
+import { authenticateSignedKey, verifyCanonicalSig } from "./cdn/api";
 import { httpIndexSource, indexPathOf } from "./index-source";
 
 // 站点编排面共享真源落 _shared/site-facade（P2-16 真机构建钉出：api.ts 是路由入口不可被模块内
@@ -1260,7 +1260,7 @@ async function yankBody(env: MarketEnv): Promise<Record<string, unknown>> {
 /** 四端点组（oj v0.1.64 嵌套组：组名 = 路径段）；全业务体经 respond 收口（status 语义不落 500） */
 export function createMarketApi(env: MarketEnv) {
 	return {
-		// POST /api/_platform/market/install —— 安装编排（superadmin，R9）
+		// POST /api/oj-market/install —— 安装编排（superadmin，R9）
 		"install": {
 			async post() {
 				await respond(async () => {
@@ -1268,7 +1268,7 @@ export function createMarketApi(env: MarketEnv) {
 					return await installBody(env);
 				});
 			},
-			// POST /api/_platform/market/install/cancel —— 取消进行中的安装（superadmin，U5/P3-12）。
+			// POST /api/oj-market/install/cancel —— 取消进行中的安装（superadmin，U5/P3-12）。
 			// 按方案名寻址（R17 任务互斥：同名同时至多一个 running install）；写取消标记文件
 			// （isolate 按请求隔离，FS 是唯一跨请求通道），runInstall 的 cancel 闭包在段间/migrate
 			// spawn 逐块探测命中 → h.kill + 回退装前态（P3-8 语义）；终态 failed/partial + cancelled
@@ -1292,7 +1292,7 @@ export function createMarketApi(env: MarketEnv) {
 				},
 			},
 		},
-		// GET /api/_platform/market/task?id= —— 任务轮询消费面（superadmin，§10.2 800ms 轮询）。
+		// GET /api/oj-market/task?id= —— 任务轮询消费面（superadmin，§10.2 800ms 轮询）。
 		// 简报 `task/:id` 段参数形态在模板 http 面无先例，照 contacts/detail?id= 惯例走 query（报告备案）。
 		"task": {
 			async get() {
@@ -1308,7 +1308,7 @@ export function createMarketApi(env: MarketEnv) {
 				});
 			},
 		},
-		// POST /api/_platform/market/enable —— 生命周期开关（superadmin；P1-13 瘦客户端触发面）。
+		// POST /api/oj-market/enable —— 生命周期开关（superadmin；P1-13 瘦客户端触发面）。
 		// 端点只做门禁 + 取参 + SetEnabledInput 组装，四处同写全归 setEnabled（D12，installer.ts 同纪律）；
 		// 领域拒绝（未装/空锁/版本目录缺失）返回 {ok:false, message} 200——操作已执行、被域逻辑拒绝，
 		// 人话在 message，CLI/市场页照 ok 位渲染。
@@ -1335,7 +1335,7 @@ export function createMarketApi(env: MarketEnv) {
 				});
 			},
 		},
-		// GET /api/_platform/market/meta —— 登录即可（{apiVersion}，peerPlatform 预检；非 superadmin）
+		// GET /api/oj-market/meta —— 登录即可（{apiVersion}，peerPlatform 预检；非 superadmin）
 		"meta": {
 			async get() {
 				await respond(async () => {
@@ -1408,7 +1408,7 @@ export function createMarketApi(env: MarketEnv) {
 				},
 			},
 		},
-		// GET /api/_platform/market/index —— 市场索引聚合（superadmin，R9）
+		// GET /api/oj-market/index —— 市场索引聚合（superadmin，R9）
 		"index": {
 			async get() {
 				await respond(async () => {
@@ -1417,7 +1417,7 @@ export function createMarketApi(env: MarketEnv) {
 				});
 			},
 		},
-		// GET /api/_platform/market/catalog —— 市场目录清单（v4 §三：**匿名可读**，分页 JSON；
+		// GET /api/oj-market/catalog —— 市场目录清单（v4 §三：**匿名可读**，分页 JSON；
 		// DB 直读合成单协议 shape，远端市场消费同一 shape）。no-store 防中间代理缓存陈旧目录。
 		"catalog": {
 			async get() {
@@ -1425,7 +1425,7 @@ export function createMarketApi(env: MarketEnv) {
 					return await catalogBody((http.query ?? {}) as Record<string, unknown>);
 				});
 			},
-			// GET /api/_platform/market/catalog/detail?name=[&version=] —— 单包详情（匿名可读；
+			// GET /api/oj-market/catalog/detail?name=[&version=] —— 单包详情（匿名可读；
 			// 保留 yanked 条目 + 服务端组表 archive 正名，安装解析数据源，§四）
 			detail: {
 				async get() {
@@ -1435,7 +1435,7 @@ export function createMarketApi(env: MarketEnv) {
 				},
 			},
 		},
-		// POST /api/_platform/market/yank —— 签名下线/恢复（v4 §三，发布者本人；清单摘除/详情保留）。
+		// POST /api/oj-market/yank —— 签名下线/恢复（v4 §三，发布者本人；清单摘除/详情保留）。
 		// yank 不动已装方案（G5），仅目录摘除 + 阻断新装/升级；重复操作幂等 200；legacy 行 403 指向 superadmin。
 		"yank": {
 			async post() {
@@ -1444,7 +1444,7 @@ export function createMarketApi(env: MarketEnv) {
 				});
 			},
 		},
-		// GET /api/_platform/market/uninstall-impact?name= —— 卸载影响面预检（superadmin，R9）。
+		// GET /api/oj-market/uninstall-impact?name= —— 卸载影响面预检（superadmin，R9）。
 		// 返回前端二次确认所需的影响计数（角色数 + 受影响用户数），不改动任何状态。
 		"uninstall-impact": {
 			async get() {
@@ -1463,7 +1463,7 @@ export function createMarketApi(env: MarketEnv) {
 				});
 			},
 		},
-		// POST /api/_platform/market/uninstall —— 卸载编排（superadmin，R9）。
+		// POST /api/oj-market/uninstall —— 卸载编排（superadmin，R9）。
 		// 端点只做门禁 + 取参 + operator 反查（历史留痕），四处同删全归 runUninstall（uninstall.ts 同纪律）；
 		// 领域拒绝（未装/空锁拒启）返回 {ok:false, message} 200——人话在 message，CLI/市场页照 ok 位渲染。
 		"uninstall": {
@@ -1492,7 +1492,7 @@ export function createMarketApi(env: MarketEnv) {
 			},
 		},
 
-		// GET /api/_platform/market/history —— 市场操作历史（只读消费面，供前端 HistoryDrawer）。
+		// GET /api/oj-market/history —— 市场操作历史（只读消费面，供前端 HistoryDrawer）。
 		// 平台级审计面（P4 上收 _platform）：install/enable/disable/uninstall/upgrade/rollback 留痕
 		// 由 _lifecycle/history.ts recordHistory 写入；本端点仅登录用户可读（非匿名名单，Bearer 守卫保护）。
 		// 表不存在/查询失败一律返回空数组（历史是观测面，不阻断主流程，与终态审计附录 B-5 同语义）。
@@ -1508,7 +1508,7 @@ export function createMarketApi(env: MarketEnv) {
 			},
 		},
 
-		// GET /api/_platform/market/releases —— 发布历史（登录即可读；与市场卡片同口径的「浏览开放」）。
+		// GET /api/oj-market/releases —— 发布历史（登录即可读；与市场卡片同口径的「浏览开放」）。
 		//
 		// 数据源是签名索引本身：每次读取先把索引里出现过的 product@version 补进 market_release
 		// （只补新行，published_at 一次写定），再按发布时间倒序分页返回。索引拉不到/验签失败

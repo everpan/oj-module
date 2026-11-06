@@ -1,9 +1,9 @@
 // BDD：编排端点 + 市场索引（P1-12，R9/ISP）。
-// 四端点同挂 _platform/market 组（oj v0.1.64 嵌套 handler 组，notification/api.ts 同形态）：
-//   POST /api/_platform/market/install   superadmin——runInstall 编排（端点不重复编排，P1-10 状态机负责推进）
-//   GET  /api/_platform/market/task?id=  superadmin——任务轮询消费面（§10.2；内容写侧已脱敏，读侧无秘密可泄）
-//   GET  /api/_platform/market/meta      登录即可——{apiVersion}（peerPlatform 预检）
-//   GET  /api/_platform/market/index     superadmin——CDN 三级索引（catalog.yaml + shards/<n>.yaml，ETag/If-None-Match 条件请求）+ 本地 state 对比
+// 四端点同挂 oj-market 模块 api 根（v4 起自 _platform/market 迁入，manifest deps 声明 _platform）：
+//   POST /api/oj-market/install   superadmin——runInstall 编排（端点不重复编排，P1-10 状态机负责推进）
+//   GET  /api/oj-market/task?id=  superadmin——任务轮询消费面（§10.2；内容写侧已脱敏，读侧无秘密可泄）
+//   GET  /api/oj-market/meta      登录即可——{apiVersion}（peerPlatform 预检）
+//   GET  /api/oj-market/index     superadmin——CDN 三级索引（catalog.yaml + shards/<n>.yaml，ETag/If-None-Match 条件请求）+ 本地 state 对比
 // 简报 `task/:id` 段参数形态在模板 http 面无先例（contacts/detail?id= 同款 query 惯例），备案于任务报告。
 // 步骤面全 stub 注入（DIP）：fetch/exec/reload 不真跑；register/smoke/audit 走真实内存库夹具。
 /* eslint-disable test/prefer-lowercase-title -- 端点动词/路径是验收锚点，保留大写（installer.spec 同约定） */
@@ -11,7 +11,7 @@ import type { FsFace } from "../../src/app/api/_platform/_lifecycle/atomic";
 import type { FetchFace } from "../../src/app/api/_platform/_lifecycle/steps/download";
 import type { ExecFace } from "../../src/app/api/_platform/_lifecycle/steps/extract";
 import type { ReloadFace } from "../../src/app/api/_platform/_lifecycle/steps/reload";
-import type { MarketEnv } from "../../src/app/api/_platform/market/api";
+import type { MarketEnv } from "../../src/oj-market/api/api";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import * as fsp from "node:fs/promises";
@@ -30,8 +30,8 @@ import { createStateStore } from "../../src/app/api/_platform/_lifecycle/state";
 import { getTask, writeTask } from "../../src/app/api/_platform/_lifecycle/tasks";
 import { createTrustStore } from "../../src/app/api/_platform/_lifecycle/trust";
 import { invalidateAllUsers } from "../../src/app/api/_platform/_shared/service/infra/access";
-import { createMarketApi, marketEnv, parseVersionsJson, versionsJsonPathOf } from "../../src/app/api/_platform/market/api";
-import { localIndexSource } from "../../src/app/api/_platform/market/index-source";
+import { createMarketApi, marketEnv, parseVersionsJson, versionsJsonPathOf } from "../../src/oj-market/api/api";
+import { localIndexSource } from "../../src/oj-market/api/index-source";
 import { installDb } from "../fixture";
 
 function hexToBytes(hex: string): Uint8Array {

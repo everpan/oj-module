@@ -1,10 +1,10 @@
-// `ojm list`（站点已装方案的可查面）：登录 → GET /api/_platform/market/index → 只挑已装的打表。
+// `ojm list`（站点已装方案的可查面）：登录 → GET /api/oj-market/index → 只挑已装的打表。
 //
 // 为什么需要它：到 0.3.2 为止，CLI **没有任何一条命令能回答「这个站点上装了什么」**——
 // 装完只有一条终态文案，之后要核对版本/启用态得登站点翻市场页。运维与 CI 都需要一个
 // 可脚本化的清单（升级前看谁落后、禁用后确认状态、卸载前确认名字）。
 //
-// 为什么复用 `GET /_platform/market/index` 而不是新增端点：这一条已经把三件事聚合好了——
+// 为什么复用 `GET /oj-market/index` 而不是新增端点：这一条已经把三件事聚合好了——
 // sidecar 里的 installed/enabled、索引里的 latest/available（算 upgradable）、信任库判定
 // 出的 trust_state。新增一个「只列已装」的端点等于让两个真相源各自漂移，而站点侧那边
 // 本来就要维护全量行（市场页在用）。
@@ -59,7 +59,7 @@ function asTrustState(raw: unknown): TrustState {
 
 /** 取一份已装清单（`--all` 时含未装）。不打印、不 exit 的纯函数层，便于 CI 直接在进程内用。 */
 export async function fetchInstalled(fetchFn: typeof fetch, base: string, token: string, all: boolean): Promise<SolutionRow[]> {
-	const rows = await callApi<MarketIndexRow[]>(fetchFn, base, token, "GET", "/api/_platform/market/index");
+	const rows = await callApi<MarketIndexRow[]>(fetchFn, base, token, "GET", "/api/oj-market/index");
 	const out: SolutionRow[] = [];
 	for (const raw of rows) {
 		const name = String(raw.name ?? "").trim();

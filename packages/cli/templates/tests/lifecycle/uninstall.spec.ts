@@ -6,7 +6,7 @@
 // 0012（IF NOT EXISTS）随 installDb 重放建立，守卫语义（表不存在静默跳过）单列一例。
 /* eslint-disable test/prefer-lowercase-title -- 端点动词/路径是验收锚点，保留大写（market-api.spec 同约定） */
 import type { FsFace } from "../../src/app/api/_platform/_lifecycle/atomic";
-import type { MarketEnv } from "../../src/app/api/_platform/market/api";
+import type { MarketEnv } from "../../src/oj-market/api/api";
 import * as fsp from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -15,7 +15,7 @@ import { readLock, writeLock } from "../../src/app/api/_platform/_lifecycle/lock
 import { createStateStore } from "../../src/app/api/_platform/_lifecycle/state";
 import { collectRetainedTables, moduleTablePrefix } from "../../src/app/api/_platform/_lifecycle/uninstall";
 import { invalidateAllUsers } from "../../src/app/api/_platform/_shared/service/infra/access";
-import { createMarketApi } from "../../src/app/api/_platform/market/api";
+import { createMarketApi } from "../../src/oj-market/api/api";
 import { installDb } from "../fixture";
 
 const g = globalThis as any;

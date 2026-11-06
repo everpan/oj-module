@@ -19,8 +19,8 @@ import {
 
 	verifyRouteReachability,
 } from "../../src/app/api/_platform/_lifecycle/verify-checks";
-import { siteOrigin } from "../../src/app/api/_platform/market/api";
 import { createSolutionsApi, solutionsEnv } from "../../src/app/api/_platform/solutions/api";
+import { siteOrigin } from "../../src/oj-market/api/api";
 import { installDb } from "../fixture";
 
 const g = globalThis as any;

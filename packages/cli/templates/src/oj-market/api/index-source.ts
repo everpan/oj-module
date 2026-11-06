@@ -8,8 +8,8 @@
 //   shards/<n>.yaml     分片：{solutions: [{name, latest, versions: [<Form B 条目>]}]}——
 //                          纯内容无 meta，代次由 .sig 与 catalog 钉值携带；版本条目即 manifest
 
-import type { FetchInitFace } from "../_shared/site-facade";
-import { fsFace } from "../_lifecycle/atomic";
+import type { FetchInitFace } from "#/_platform/_shared/site-facade";
+import { fsFace } from "#/_platform/_lifecycle/atomic";
 
 /** 索引文件种类（REG-CS1：签名覆盖 (kind, seq)；与 ojm publish 的 IndexKind 逐字同集合） */
 export type IndexKind = "catalog" | "shard";

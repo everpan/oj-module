@@ -1,4 +1,4 @@
-// ojm enable/disable（P1-13，D8）：生命周期开关瘦客户端——POST /api/_platform/market/enable
+// ojm enable/disable（P1-13，D8）：生命周期开关瘦客户端——POST /api/oj-market/enable
 // 触发站点侧 setEnabled 四处同写（锁/sidecar/route/modules.json，D12）。本地零状态，纯转发。
 import process from "node:process";
 import { callApi, login, resolveSite } from "./site";
@@ -21,7 +21,7 @@ export async function setEnabledCommand(name: string, enabled: boolean, opts: En
 	const fetchFn = opts.fetchFn ?? globalThis.fetch;
 	const { base, user, pass } = resolveSite(opts);
 	const token = await login(fetchFn, base, user, pass);
-	const result = await callApi<{ ok: boolean, message: string }>(fetchFn, base, token, "POST", "/api/_platform/market/enable", { name: name.trim(), enabled });
+	const result = await callApi<{ ok: boolean, message: string }>(fetchFn, base, token, "POST", "/api/oj-market/enable", { name: name.trim(), enabled });
 	console.log(`[ojm] ${result.message}`);
 	if (!result.ok)
 		process.exitCode = 1;

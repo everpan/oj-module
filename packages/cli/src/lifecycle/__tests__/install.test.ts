@@ -96,7 +96,7 @@ describe("pollTask · 轮询退避（800ms 起步指数退避、上限 5s、超�
 		sleepLog.length = 0;
 		let n = 0;
 		const { fetchFn } = fetchStub({
-			"/api/_platform/market/task": () => ok(n++ < 2 ? rec({ status: "running", progress: 30 * n }) : rec()),
+			"/api/oj-market/task": () => ok(n++ < 2 ? rec({ status: "running", progress: 30 * n }) : rec()),
 		});
 		const r = await pollTask(fetchFn, "http://x", "tok", "t1", { sleep });
 		expect(r.status).toBe("done");
@@ -107,7 +107,7 @@ describe("pollTask · 轮询退避（800ms 起步指数退避、上限 5s、超�
 		sleepLog.length = 0;
 		let n = 0;
 		const { fetchFn } = fetchStub({
-			"/api/_platform/market/task": () => ok(rec({ status: n++ < 5 ? "running" : "done", progress: 10 + n })),
+			"/api/oj-market/task": () => ok(rec({ status: n++ < 5 ? "running" : "done", progress: 10 + n })),
 		});
 		const r = await pollTask(fetchFn, "http://x", "tok", "t1", { sleep, timeoutMs: 20_000 });
 		expect(r.status).toBe("done");
@@ -117,7 +117,7 @@ describe("pollTask · 轮询退避（800ms 起步指数退避、上限 5s、超�
 	it("超时报错：总等待预算耗尽即人话退出", async () => {
 		sleepLog.length = 0;
 		const { fetchFn } = fetchStub({
-			"/api/_platform/market/task": () => ok(rec({ status: "running" })),
+			"/api/oj-market/task": () => ok(rec({ status: "running" })),
 		});
 		await expect(pollTask(fetchFn, "http://x", "tok", "t1", { sleep, timeoutMs: 1000 })).rejects.toThrow(/超时/);
 		expect(sleepLog).toEqual([800]);
@@ -125,7 +125,7 @@ describe("pollTask · 轮询退避（800ms 起步指数退避、上限 5s、超�
 
 	it("查询参数形态：task?id=<id>（非路径段，P1-12 裁决）", async () => {
 		const { fetchFn, calls } = fetchStub({
-			"/api/_platform/market/task": () => ok(rec()),
+			"/api/oj-market/task": () => ok(rec()),
 		});
 		await pollTask(fetchFn, "http://x", "tok", "t1", { sleep });
 		expect(calls[0]?.url).toContain("task?id=t1");
@@ -233,7 +233,7 @@ describe("schemaVersion 旧记录兼容（P2-10 升版纪律读方侧：高版�
 
 	it("pollTask：高版本记录原样返回不炸（轮询消费面兼容）", async () => {
 		const { fetchFn } = fetchStub({
-			"/api/_platform/market/task": () => ok(rec({ status: "done", schemaVersion: 99 })),
+			"/api/oj-market/task": () => ok(rec({ status: "done", schemaVersion: 99 })),
 		});
 		const r = await pollTask(fetchFn, "http://x", "tok", "t1", { sleep: async () => {} });
 		expect(r.status).toBe("done");
@@ -245,8 +245,8 @@ describe("schemaVersion 旧记录兼容（P2-10 升版纪律读方侧：高版�
 		writeFileSync(tgz, "fake-tgz-bytes");
 		const { fetchFn } = fetchStub({
 			"/api/auth/login": () => ok({ access_token: "tok", refresh_token: "r", expires_in: 1 }),
-			"/api/_platform/market/install": () => ok({ task_id: "t1" }),
-			"/api/_platform/market/task": () => ok(rec({ status: "done", schemaVersion: 99 })),
+			"/api/oj-market/install": () => ok({ task_id: "t1" }),
+			"/api/oj-market/task": () => ok(rec({ status: "done", schemaVersion: 99 })),
 		});
 		const exitBackup = process.exitCode;
 		process.exitCode = 0;
@@ -351,8 +351,8 @@ describe("installCommand · file 源端到端（stub fetch：登录 → multipar
 		writeFileSync(tgz, "fake-tgz-bytes");
 		const { fetchFn, calls } = fetchStub({
 			"/api/auth/login": () => ok({ access_token: "tok-1", refresh_token: "r", expires_in: 1 }),
-			"/api/_platform/market/install": () => ok({ task_id: "t1" }),
-			"/api/_platform/market/task": () => ok(rec()),
+			"/api/oj-market/install": () => ok({ task_id: "t1" }),
+			"/api/oj-market/task": () => ok(rec()),
 		});
 		await installCommand(tgz, { siteUrl: "http://x", user: "u", pass: "p", fetchFn, sleep: async () => {} });
 		// 登录体
@@ -378,8 +378,8 @@ describe("installCommand · file 源端到端（stub fetch：登录 → multipar
 		writeFileSync(tgz, "fake-tgz-bytes");
 		const { fetchFn } = fetchStub({
 			"/api/auth/login": () => ok({ access_token: "tok", refresh_token: "r", expires_in: 1 }),
-			"/api/_platform/market/install": () => ok({ task_id: "t1" }),
-			"/api/_platform/market/task": () => ok(rec({
+			"/api/oj-market/install": () => ok({ task_id: "t1" }),
+			"/api/oj-market/task": () => ok(rec({
 				status: "failed",
 				stage: "migrating",
 				error: { reason: "迁移失败", retryable: true, hintKey: "lifecycle.stage.migrating.hint" },
@@ -403,8 +403,8 @@ describe("installCommand · file 源端到端（stub fetch：登录 → multipar
 		writeFileSync(`${tgz}.sig`, JSON.stringify({ alg: "Ed25519", key_id: "test.publisher", public_key: "a".repeat(64), value: "AAAA", canon: "v2", registry_id: "test.registry" }));
 		const { fetchFn, calls } = fetchStub({
 			"/api/auth/login": () => ok({ access_token: "tok", refresh_token: "r", expires_in: 1 }),
-			"/api/_platform/market/install": () => ok({ task_id: "t1" }),
-			"/api/_platform/market/task": () => ok(rec()),
+			"/api/oj-market/install": () => ok({ task_id: "t1" }),
+			"/api/oj-market/task": () => ok(rec()),
 		});
 		await installCommand(tgz, { siteUrl: "http://x", user: "u", pass: "p", fetchFn, sleep: async () => {} });
 		const form = calls[1]?.init?.body as FormData;
@@ -418,8 +418,8 @@ describe("installCommand · file 源端到端（stub fetch：登录 → multipar
 		writeFileSync(tgz, "fake-tgz-bytes");
 		const { fetchFn, calls } = fetchStub({
 			"/api/auth/login": () => ok({ access_token: "tok", refresh_token: "r", expires_in: 1 }),
-			"/api/_platform/market/install": () => ok({ task_id: "t1" }),
-			"/api/_platform/market/task": () => ok(rec()),
+			"/api/oj-market/install": () => ok({ task_id: "t1" }),
+			"/api/oj-market/task": () => ok(rec()),
 		});
 		await installCommand(tgz, { siteUrl: "http://x", user: "u", pass: "p", fetchFn, sleep: async () => {} });
 		const form = calls[1]?.init?.body as FormData;
@@ -441,8 +441,8 @@ describe("installCommand · cdn 源（JSON 体 name@version）", () => {
 	it("source=cdn 的 JSON 体 + 版本缺省 null", async () => {
 		const { fetchFn, calls } = fetchStub({
 			"/api/auth/login": () => ok({ access_token: "tok", refresh_token: "r", expires_in: 1 }),
-			"/api/_platform/market/install": () => ok({ task_id: "t1" }),
-			"/api/_platform/market/task": () => ok(rec()),
+			"/api/oj-market/install": () => ok({ task_id: "t1" }),
+			"/api/oj-market/task": () => ok(rec()),
 		});
 		await installCommand("demo-solution", { siteUrl: "http://x", user: "u", pass: "p", fetchFn, sleep: async () => {} });
 		const installCall = calls[1]!;
@@ -453,8 +453,8 @@ describe("installCommand · cdn 源（JSON 体 name@version）", () => {
 	it("@version 透传", async () => {
 		const { fetchFn, calls } = fetchStub({
 			"/api/auth/login": () => ok({ access_token: "tok", refresh_token: "r", expires_in: 1 }),
-			"/api/_platform/market/install": () => ok({ task_id: "t1" }),
-			"/api/_platform/market/task": () => ok(rec()),
+			"/api/oj-market/install": () => ok({ task_id: "t1" }),
+			"/api/oj-market/task": () => ok(rec()),
 		});
 		await installCommand("demo-solution@0.2.0", { siteUrl: "http://x", user: "u", pass: "p", fetchFn, sleep: async () => {} });
 		expect(JSON.parse(String(calls[1]?.init?.body)).version).toBe("0.2.0");
@@ -465,11 +465,11 @@ describe("setEnabledCommand · enable/disable 瘦客户端（D8）", () => {
 	it("pOST enable {name, enabled} → 打印服务端 message；ok:false 非零退出", async () => {
 		const { fetchFn, calls } = fetchStub({
 			"/api/auth/login": () => ok({ access_token: "tok", refresh_token: "r", expires_in: 1 }),
-			"/api/_platform/market/enable": () => ok({ ok: true, message: "启用完成：四处同写" }),
+			"/api/oj-market/enable": () => ok({ ok: true, message: "启用完成：四处同写" }),
 		});
 		await setEnabledCommand("demo-solution", true, { siteUrl: "http://x", user: "u", pass: "p", fetchFn });
 		const call = calls[1]!;
-		expect(call.url).toContain("/api/_platform/market/enable");
+		expect(call.url).toContain("/api/oj-market/enable");
 		expect(JSON.parse(String(call.init?.body))).toEqual({ name: "demo-solution", enabled: true });
 		expect(logs.join("\n")).toContain("启用完成：四处同写");
 
@@ -478,7 +478,7 @@ describe("setEnabledCommand · enable/disable 瘦客户端（D8）", () => {
 		try {
 			const { fetchFn: fetchFn2 } = fetchStub({
 				"/api/auth/login": () => ok({ access_token: "tok", refresh_token: "r", expires_in: 1 }),
-				"/api/_platform/market/enable": () => ok({ ok: false, message: "禁用失败：「x」未安装" }),
+				"/api/oj-market/enable": () => ok({ ok: false, message: "禁用失败：「x」未安装" }),
 			});
 			await setEnabledCommand("x", false, { siteUrl: "http://x", user: "u", pass: "p", fetchFn: fetchFn2 });
 			expect(process.exitCode).toBe(1);
@@ -521,13 +521,13 @@ describe("s5-2② REG-R9 install 源切换：registry（CLI 归一 + 旧站点�
 	it("installCommand registry：新站点（apiVersion 0.2.0）POST source=registry + registry=origin（slug 归一）", async () => {
 		const { fetchFn, calls } = fetchStub({
 			"/api/auth/login": () => ok({ access_token: "tok" }),
-			"/api/_platform/market/meta": () => ok({ apiVersion: "0.2.0" }),
-			"/api/_platform/market/install": () => ok({ task_id: "t1" }),
-			"/api/_platform/market/task": () => ok(rec()),
+			"/api/oj-market/meta": () => ok({ apiVersion: "0.2.0" }),
+			"/api/oj-market/install": () => ok({ task_id: "t1" }),
+			"/api/oj-market/task": () => ok(rec()),
 		});
 		const r = await installCommand("@acme/demo", { siteUrl: "http://site", user: "u", pass: "p", registry: "https://r.example.com/", fetchFn });
 		expect(r.status).toBe("done");
-		const call = calls.find(c => c.url.includes("/api/_platform/market/install"));
+		const call = calls.find(c => c.url.includes("/api/oj-market/install"));
 		expect(call).toBeDefined();
 		const body = JSON.parse(String(call!.init!.body));
 		expect(body).toMatchObject({ name: "acme-demo", source: "registry", registry: "https://r.example.com" });
@@ -537,12 +537,12 @@ describe("s5-2② REG-R9 install 源切换：registry（CLI 归一 + 旧站点�
 	it("installCommand registry：旧站点（apiVersion 0.1.0）→ 抛「站点版本过低」且不 POST install", async () => {
 		const { fetchFn, calls } = fetchStub({
 			"/api/auth/login": () => ok({ access_token: "tok" }),
-			"/api/_platform/market/meta": () => ok({ apiVersion: "0.1.0" }),
-			"/api/_platform/market/install": () => ok({ task_id: "t1" }),
+			"/api/oj-market/meta": () => ok({ apiVersion: "0.1.0" }),
+			"/api/oj-market/install": () => ok({ task_id: "t1" }),
 		});
 		await expect(installCommand("@acme/demo", { siteUrl: "http://site", user: "u", pass: "p", registry: "https://r.example.com", fetchFn }))
 			.rejects
 			.toThrow(/版本过低/);
-		expect(calls.some(c => c.url.includes("/api/_platform/market/install"))).toBe(false);
+		expect(calls.some(c => c.url.includes("/api/oj-market/install"))).toBe(false);
 	});
 });

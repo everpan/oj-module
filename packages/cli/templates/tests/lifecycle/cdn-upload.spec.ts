@@ -1,5 +1,5 @@
 // BDD：CDN 上传端点（Phase A v4 §二：签名推送 + pair 约束 + DB 目录真源写行）。
-// POST /api/_platform/cdn/upload?name=<file> —— 发布方（ojm market publish 远端模式）经
+// POST /api/oj-market/cdn/upload?name=<file> —— 发布方（ojm market publish 远端模式）经
 // X-OJM-Key-Id / X-OJM-Signature 签名推送发布 .tgz + .sig 旁车；pair 约束（sig 先 tgz 后），
 // 处理顺序钉死：查库比对 → staging 解包抽 manifest（体积闸）→ 原子落盘 → db.tx 写行。
 // 鉴权序：先验头（403 fail-fast，不消费 body）→ 再消费 body（413）→ 服务端重算 sha256
@@ -7,7 +7,7 @@
 /* eslint-disable test/prefer-lowercase-title -- 端点动词/路径是验收锚点，保留大写（market-api.spec 同约定） */
 import type { FsFace } from "../../src/app/api/_platform/_lifecycle/atomic";
 import type { ExecFace } from "../../src/app/api/_platform/_lifecycle/steps/extract";
-import type { CdnUploadEnv } from "../../src/app/api/_platform/cdn/api";
+import type { CdnUploadEnv } from "../../src/oj-market/api/cdn/api";
 import { createHash } from "node:crypto";
 import * as fsp from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -157,7 +157,7 @@ afterEach(async () => {
 
 describe("POST upload（签名鉴权：canonical cdn-upload:<registry_id>:<name>:<sha256>，服务端重算）", () => {
 	it("信任 key + 有效签名 + pair 齐 → 200：tgz 落 cdn/、market_release 行落库（published_at_source='upload'）", async () => {
-		const { createCdnUploadApi } = await import("../../src/app/api/_platform/cdn/api");
+		const { createCdnUploadApi } = await import("../../src/oj-market/api/cdn/api");
 		const api = createCdnUploadApi(makeEnv());
 		await pushSig(api);
 		expect(last?.status).toBe(200);
@@ -186,7 +186,7 @@ describe("POST upload（签名鉴权：canonical cdn-upload:<registry_id>:<name>
 	});
 
 	it("未信任 key → 403（附 trust add 指引）；fail-fast 不消费 body", async () => {
-		const { createCdnUploadApi } = await import("../../src/app/api/_platform/cdn/api");
+		const { createCdnUploadApi } = await import("../../src/oj-market/api/cdn/api");
 		const api = createCdnUploadApi(makeEnv());
 		const foreign = generateKeyPair();
 		g.http = httpFor(FILE, ARCHIVE, { ...uploadSignature(FILE, ARCHIVE, { key: foreign }), "x-ojm-key-id": "foreign.publisher" });
@@ -199,7 +199,7 @@ describe("POST upload（签名鉴权：canonical cdn-upload:<registry_id>:<name>
 	});
 
 	it("换字节 → 401：服务端从实收字节重算 sha256 重构 canonical，声明值与实收不符即拒签", async () => {
-		const { createCdnUploadApi } = await import("../../src/app/api/_platform/cdn/api");
+		const { createCdnUploadApi } = await import("../../src/oj-market/api/cdn/api");
 		const api = createCdnUploadApi(makeEnv());
 		// 对「别的字节」签名，却上传 ARCHIVE——重算后 canonical 不匹配
 		const other = new TextEncoder().encode("other-bytes\n");
@@ -212,7 +212,7 @@ describe("POST upload（签名鉴权：canonical cdn-upload:<registry_id>:<name>
 	});
 
 	it("registry_id 不符（跨站重放：对别的站点身份签的 canonical）→ 401", async () => {
-		const { createCdnUploadApi } = await import("../../src/app/api/_platform/cdn/api");
+		const { createCdnUploadApi } = await import("../../src/oj-market/api/cdn/api");
 		const api = createCdnUploadApi(makeEnv());
 		g.http = httpFor(FILE, ARCHIVE, uploadSignature(FILE, ARCHIVE, { registryId: "other.registry" }));
 		await api.upload.post();
@@ -220,7 +220,7 @@ describe("POST upload（签名鉴权：canonical cdn-upload:<registry_id>:<name>
 	});
 
 	it("缺 X-OJM 头 → 401（签名制不经账号口令，企微用户无障碍；无角色检查）", async () => {
-		const { createCdnUploadApi } = await import("../../src/app/api/_platform/cdn/api");
+		const { createCdnUploadApi } = await import("../../src/oj-market/api/cdn/api");
 		const api = createCdnUploadApi(makeEnv());
 		g.http = httpFor(FILE, ARCHIVE, {});
 		await api.upload.post();
@@ -228,7 +228,7 @@ describe("POST upload（签名鉴权：canonical cdn-upload:<registry_id>:<name>
 	});
 
 	it("registry_id 未配置（env 与 vars.registry_id 俱缺）→ 503 指向设置项", async () => {
-		const { createCdnUploadApi } = await import("../../src/app/api/_platform/cdn/api");
+		const { createCdnUploadApi } = await import("../../src/oj-market/api/cdn/api");
 		const api = createCdnUploadApi(makeEnv({ registryId: undefined }));
 		await pushSig(api);
 		g.http = httpFor(FILE, ARCHIVE);
@@ -240,7 +240,7 @@ describe("POST upload（签名鉴权：canonical cdn-upload:<registry_id>:<name>
 
 describe("POST upload（name 所有权：product → 首发 key_id 绑定不可改，v4 §一）", () => {
 	it("非首发 key 推既有 name 新版本 → 409；首发 key 推新版本 → 200", async () => {
-		const { createCdnUploadApi } = await import("../../src/app/api/_platform/cdn/api");
+		const { createCdnUploadApi } = await import("../../src/oj-market/api/cdn/api");
 		const api = createCdnUploadApi(makeEnv());
 		// 首发：demo-solution@0.1.0（key = test.publisher）
 		await pushSig(api);
@@ -269,7 +269,7 @@ describe("POST upload（name 所有权：product → 首发 key_id 绑定不可�
 	});
 
 	it("遗留行 key_id 为 NULL（syncReleases 时代）不建立所有权：首个上传采用并绑定", async () => {
-		const { createCdnUploadApi } = await import("../../src/app/api/_platform/cdn/api");
+		const { createCdnUploadApi } = await import("../../src/oj-market/api/cdn/api");
 		const api = createCdnUploadApi(makeEnv());
 		dbo.prepare("INSERT INTO market_release (product,version,key_id,sha256,size,published_at,published_at_source,yanked,first_seen_at) VALUES (?,?,NULL,NULL,NULL,?,'index',0,?)")
 			.run("demo-solution", "0.0.9", 1000, 1000);
@@ -291,7 +291,7 @@ describe("POST upload（文件名白名单 + 体积 + 限速）", () => {
 		["demo-solution.tgz", "缺版本段"],
 		["Demo-0.1.0.tgz", "大写开头（C2-01 小写锚）"],
 	])("非法文件名 %s → 400（%s）", async (name) => {
-		const { createCdnUploadApi } = await import("../../src/app/api/_platform/cdn/api");
+		const { createCdnUploadApi } = await import("../../src/oj-market/api/cdn/api");
 		const api = createCdnUploadApi(makeEnv());
 		g.http = httpFor(name, ARCHIVE, uploadSignature(name, ARCHIVE));
 		await api.upload.post();
@@ -300,7 +300,7 @@ describe("POST upload（文件名白名单 + 体积 + 限速）", () => {
 	});
 
 	it("name 缺失 → 400", async () => {
-		const { createCdnUploadApi } = await import("../../src/app/api/_platform/cdn/api");
+		const { createCdnUploadApi } = await import("../../src/oj-market/api/cdn/api");
 		const api = createCdnUploadApi(makeEnv());
 		g.http = { query: {}, headers: uploadSignature(FILE, ARCHIVE), files: [{}], file: async () => ARCHIVE };
 		await api.upload.post();
@@ -308,7 +308,7 @@ describe("POST upload（文件名白名单 + 体积 + 限速）", () => {
 	});
 
 	it("大文件 → 413（MAX_PACKAGE_BYTES 闸）", async () => {
-		const { createCdnUploadApi, MAX_UPLOAD_BYTES } = await import("../../src/app/api/_platform/cdn/api");
+		const { createCdnUploadApi, MAX_UPLOAD_BYTES } = await import("../../src/oj-market/api/cdn/api");
 		const big = new Uint8Array(MAX_UPLOAD_BYTES + 1);
 		const api = createCdnUploadApi(makeEnv());
 		g.http = httpFor(FILE, big);
@@ -318,7 +318,7 @@ describe("POST upload（文件名白名单 + 体积 + 限速）", () => {
 	});
 
 	it("限速按 key_id 生效：超限 → 429", async () => {
-		const { createCdnUploadApi, UPLOAD_RATE_LIMIT } = await import("../../src/app/api/_platform/cdn/api");
+		const { createCdnUploadApi, UPLOAD_RATE_LIMIT } = await import("../../src/oj-market/api/cdn/api");
 		const api = createCdnUploadApi(makeEnv());
 		for (let i = 0; i < UPLOAD_RATE_LIMIT.limit; i++) {
 			g.http = httpFor(SIG_FILE, SIG_BYTES);
@@ -333,7 +333,7 @@ describe("POST upload（文件名白名单 + 体积 + 限速）", () => {
 
 describe("POST upload（pair 约束：sig 先 tgz 后）", () => {
 	it("tgz 无 sig 旁车 → 409", async () => {
-		const { createCdnUploadApi } = await import("../../src/app/api/_platform/cdn/api");
+		const { createCdnUploadApi } = await import("../../src/oj-market/api/cdn/api");
 		const api = createCdnUploadApi(makeEnv());
 		g.http = httpFor(FILE, ARCHIVE);
 		await api.upload.post();
@@ -350,7 +350,7 @@ describe("POST upload（pair 约束：sig 先 tgz 后）", () => {
 		["value 非 base64", { alg: "Ed25519", key_id: KEY_ID, public_key: TEST_KEY.publicKeyHex, value: "!!not-b64!!", canon: "v2" }],
 		["缺 key_id", { alg: "Ed25519", public_key: TEST_KEY.publicKeyHex, value: "AA==", canon: "v2" }],
 	])("sig 五字段非法（%s）→ 400", async (_label, sig) => {
-		const { createCdnUploadApi } = await import("../../src/app/api/_platform/cdn/api");
+		const { createCdnUploadApi } = await import("../../src/oj-market/api/cdn/api");
 		const api = createCdnUploadApi(makeEnv());
 		const bad = new TextEncoder().encode(JSON.stringify(sig));
 		g.http = httpFor(SIG_FILE, bad, uploadSignature(SIG_FILE, bad));
@@ -360,7 +360,7 @@ describe("POST upload（pair 约束：sig 先 tgz 后）", () => {
 	});
 
 	it("同字节重传 → 200 幂等（行数不变、published_at 不改写）", async () => {
-		const { createCdnUploadApi } = await import("../../src/app/api/_platform/cdn/api");
+		const { createCdnUploadApi } = await import("../../src/oj-market/api/cdn/api");
 		const api = createCdnUploadApi(makeEnv());
 		await pushSig(api);
 		g.http = httpFor(FILE, ARCHIVE);
@@ -377,7 +377,7 @@ describe("POST upload（pair 约束：sig 先 tgz 后）", () => {
 	});
 
 	it("幂等自愈：行在而 tgz 文件丢失 → 同字节重传补齐文件（含 sig 缺失一并补）", async () => {
-		const { createCdnUploadApi } = await import("../../src/app/api/_platform/cdn/api");
+		const { createCdnUploadApi } = await import("../../src/oj-market/api/cdn/api");
 		const api = createCdnUploadApi(makeEnv());
 		await pushSig(api);
 		g.http = httpFor(FILE, ARCHIVE);
@@ -398,7 +398,7 @@ describe("POST upload（pair 约束：sig 先 tgz 后）", () => {
 	});
 
 	it("异字节同版本 → 409 不碰盘（防「文件先被换、DB 后拒」的字节持久损坏）", async () => {
-		const { createCdnUploadApi } = await import("../../src/app/api/_platform/cdn/api");
+		const { createCdnUploadApi } = await import("../../src/oj-market/api/cdn/api");
 		const api = createCdnUploadApi(makeEnv());
 		await pushSig(api);
 		g.http = httpFor(FILE, ARCHIVE);
@@ -415,7 +415,7 @@ describe("POST upload（pair 约束：sig 先 tgz 后）", () => {
 
 describe("POST upload（manifest 抽取 + 入库钳制）", () => {
 	it("体积闸：tar 清单单条目超大（解压炸弹）→ 413 零落盘", async () => {
-		const { createCdnUploadApi } = await import("../../src/app/api/_platform/cdn/api");
+		const { createCdnUploadApi } = await import("../../src/oj-market/api/cdn/api");
 		const bombListing = "-rw-r--r-- 0/0 300000000 2026-01-01 00:00 big.bin\n";
 		const api = createCdnUploadApi(makeEnv({ exec: uploadExec({ listing: bombListing }) }));
 		await pushSig(api);
@@ -428,7 +428,7 @@ describe("POST upload（manifest 抽取 + 入库钳制）", () => {
 	});
 
 	it("manifest.name/version 与上传文件名不符 → 400 零落盘", async () => {
-		const { createCdnUploadApi } = await import("../../src/app/api/_platform/cdn/api");
+		const { createCdnUploadApi } = await import("../../src/oj-market/api/cdn/api");
 		const api = createCdnUploadApi(makeEnv({ exec: uploadExec({ manifest: { ...MANIFEST, version: "9.9.9" } }) }));
 		await pushSig(api);
 		g.http = httpFor(FILE, ARCHIVE);
@@ -440,7 +440,7 @@ describe("POST upload（manifest 抽取 + 入库钳制）", () => {
 	});
 
 	it("坏 manifest（解析失败）→ 400 零落盘", async () => {
-		const { createCdnUploadApi } = await import("../../src/app/api/_platform/cdn/api");
+		const { createCdnUploadApi } = await import("../../src/oj-market/api/cdn/api");
 		const badExec: ExecFace = {
 			run: async (argv) => {
 				if (argv[0] === "tar" && argv[1] === "-tvzf")
@@ -462,7 +462,7 @@ describe("POST upload（manifest 抽取 + 入库钳制）", () => {
 	});
 
 	it("入库钳制：summary>200/description>2000 截断入库（catalog 展示字段）", async () => {
-		const { createCdnUploadApi } = await import("../../src/app/api/_platform/cdn/api");
+		const { createCdnUploadApi } = await import("../../src/oj-market/api/cdn/api");
 		const fat = { ...MANIFEST, summary: "s".repeat(300), description: "d".repeat(3000) };
 		const api = createCdnUploadApi(makeEnv({ exec: uploadExec({ manifest: fat }) }));
 		await pushSig(api);
@@ -478,7 +478,7 @@ describe("POST upload（manifest 抽取 + 入库钳制）", () => {
 
 describe("POST upload（发布审计落 market_history）", () => {
 	it("发布成功 → action=publish status=success（operator=key_id）；409 冲突也记 failed", async () => {
-		const { createCdnUploadApi } = await import("../../src/app/api/_platform/cdn/api");
+		const { createCdnUploadApi } = await import("../../src/oj-market/api/cdn/api");
 		const api = createCdnUploadApi(makeEnv());
 		await pushSig(api);
 		g.http = httpFor(FILE, ARCHIVE);

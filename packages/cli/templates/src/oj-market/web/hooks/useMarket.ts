@@ -8,7 +8,7 @@ import { poll } from "../utils/poll";
 // 故非 ok 变体也声明 data?: undefined（ok 变体 data: T，访问结果为 T | undefined）。
 export type LoadState<T> = { status: "loading", data?: undefined } | { status: "ok", data: T } | { status: "error", error: string, data?: undefined };
 
-/** 卡片索引加载（含重试）；消费 GET /_platform/market/index */
+/** 卡片索引加载（含重试）；消费 GET /oj-market/index */
 export function useMarketIndex(): LoadState<IndexRow[]> & { retry: () => void } {
 	const client = useMarketClient();
 	const [state, setState] = useState<LoadState<IndexRow[]>>({ status: "loading" });

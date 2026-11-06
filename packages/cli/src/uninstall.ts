@@ -1,4 +1,4 @@
-// ojm uninstall（P1-15a，缺口 B）：卸载瘦客户端——POST /api/_platform/market/uninstall
+// ojm uninstall（P1-15a，缺口 B）：卸载瘦客户端——POST /api/oj-market/uninstall
 // 触发站点侧 runUninstall 四处同删（锁/sidecar/sys_solution_route/modules.json + 权限级联）。
 // 本地零状态，纯转发（enable.ts 同款）；operator 由站点侧按登录用户反查，CLI 不传。
 //
@@ -34,7 +34,7 @@ export async function uninstallCommand(name: string, opts: UninstallOptions = {}
 	const { base, user, pass } = resolveSite(opts);
 	const token = await login(fetchFn, base, user, pass);
 	console.log(`[ojm] 该包来自站点 ${base} 的已装清单（卸载不涉及仓库源）`);
-	const result = await callApi<{ ok: boolean, message: string }>(fetchFn, base, token, "POST", "/api/_platform/market/uninstall", { name: name.trim() });
+	const result = await callApi<{ ok: boolean, message: string }>(fetchFn, base, token, "POST", "/api/oj-market/uninstall", { name: name.trim() });
 	console.log(`[ojm] ${result.message}`);
 	if (!result.ok)
 		process.exitCode = 1;

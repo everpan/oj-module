@@ -17,11 +17,12 @@
    - `domain/`：管理域共享服务（多模块共用的「系统管理」域逻辑，所有权归 `_platform` 的 `sys_*` 表）
      - `users.ts` / `roles.ts` / `settings.ts` / `solution-perms.ts` / `contacts.ts`
 2. **`_lifecycle/`** —— 方案生命周期引擎（安装/卸载/注册/验签/信任的声明式状态机，
-   与编排端点 `market/api.ts` 职责分离，见 `market/api.ts` 顶部 ISP 注释）。
+   与编排端点（市场域 api 已迁 oj-market 模块，见下）职责分离。
 3. **编排 API 面** —— 经 oj 扫描 `src/**/api.ts` 暴露，路径前缀即目录名：
    - `contacts/api.ts` → `/api/_platform/contacts`
-   - `market/api.ts` → `/api/_platform/market`（方案市场，全 superadmin 门禁，R9）
    - `solutions/api.ts` → `/api/_platform/solutions`（方案路由/验签数据源）
+   - 市场域 api（方案市场/发布推送/生命周期编排/信任库）自 v4 起迁 `src/oj-market/api/`
+     → `/api/oj-market/*`（模块 manifest 声明 `deps: [_platform]`；表与引擎仍归本内核）
 
 ## 边界约定
 
