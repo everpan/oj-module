@@ -569,6 +569,75 @@ describe("POST upload（manifest 抽取 + 入库钳制）", () => {
 	});
 });
 
+describe("POST upload（旁车幂等重推留痕，minor M3）", () => {
+	it("给定 已配对发布，当 同字节 .sig 重推，则 200 幂等且 market_history 补一条 publish/success（message 含「幂等」）", async () => {
+		const { createCdnUploadApi } = await import("../../src/oj-market/api/cdn/api");
+		const api = createCdnUploadApi(makeEnv());
+		await pushSig(api);
+		g.http = httpFor(FILE, ARCHIVE);
+		await api.upload.post();
+		expect(last?.status).toBe(200);
+		const before = dbo.prepare("SELECT COUNT(*) c FROM market_history WHERE action='publish' AND status='success'").all()[0].c;
+		// 同字节重推旁车 → 幂等 200 + 留痕
+		g.http = httpFor(SIG_FILE, SIG_BYTES);
+		await api.upload.post();
+		expect(last?.status).toBe(200);
+		const after = dbo.prepare("SELECT COUNT(*) c FROM market_history WHERE action='publish' AND status='success'").all()[0].c;
+		expect(after).toBe(before + 1);
+		const row = dbo.prepare("SELECT * FROM market_history WHERE action='publish' AND status='success' ORDER BY rowid DESC LIMIT 1").get();
+		expect(row).toMatchObject({ solution: "demo-solution", version: "0.1.0", operator: KEY_ID });
+		expect(String(row.message)).toContain("幂等");
+	});
+});
+
+describe("POST upload（并发与错误面收口，minors M1/M4）", () => {
+	it("数据表 所有权竞态：预检后他方并发插入同 product 异 key 行 → 写事务内复核 409（首发绑定双绑防线）", async () => {
+		const { createCdnUploadApi } = await import("../../src/oj-market/api/cdn/api");
+		const api = createCdnUploadApi(makeEnv());
+		await pushSig(api);
+		// 模拟竞态：db.tx 被调用时（预检已通过）先提交他方首发行
+		const origTx = g.db.tx.bind(g.db);
+		let injected = false;
+		g.db.tx = async (fn: unknown) => {
+			if (!injected) {
+				injected = true;
+				dbo.prepare("INSERT INTO market_release (product,version,key_id,sha256,size,published_at,published_at_source,yanked,first_seen_at) VALUES (?,?,?,?,?,?,?,?,?)")
+					.run("demo-solution", "0.0.1", "other.publisher", "deadbeef", 1, 1000, "upload", 0, 1000);
+			}
+			return origTx(fn as never);
+		};
+		g.http = httpFor(FILE, ARCHIVE);
+		await api.upload.post();
+		g.db.tx = origTx;
+		expect(last?.status).toBe(409);
+		expect(String(last?.msg)).toContain("所有权");
+		// 本方 tgz 字节已回收（他方 0.0.1 行不受波及）
+		expect(await fsp.readdir(cdnDir)).not.toContain(FILE);
+		expect(dbo.prepare("SELECT COUNT(*) c FROM market_release WHERE version='0.1.0'").all()[0].c).toBe(0);
+	});
+
+	it("数据表 db.tx 抛底层 SQL 错误 → 500 信封固定人话（不含 SQL 文本），审计 message 保留细节", async () => {
+		const { createCdnUploadApi } = await import("../../src/oj-market/api/cdn/api");
+		const api = createCdnUploadApi(makeEnv());
+		await pushSig(api);
+		const origTx = g.db.tx.bind(g.db);
+		g.db.tx = async () => {
+			throw new Error("SQLITE_ERROR: no such table: market_release");
+		};
+		g.http = httpFor(FILE, ARCHIVE);
+		await api.upload.post();
+		g.db.tx = origTx;
+		expect(last?.status).toBe(500);
+		expect(String(last?.msg)).not.toContain("SQLITE");
+		expect(String(last?.msg)).toContain("写库");
+		// 审计保留细节（观测面内部）
+		const row = dbo.prepare("SELECT * FROM market_history WHERE action='publish' AND status='failed' ORDER BY rowid DESC LIMIT 1").get();
+		expect(String(row.message)).toContain("SQLITE");
+		// 本方字节回收
+		expect(await fsp.readdir(cdnDir)).not.toContain(FILE);
+	});
+});
+
 describe("POST upload（发布审计落 market_history）", () => {
 	it("发布成功 → action=publish status=success（operator=key_id）；409 冲突也记 failed", async () => {
 		const { createCdnUploadApi } = await import("../../src/oj-market/api/cdn/api");

@@ -130,16 +130,17 @@ async function auditPublish(row: { name: string, version: string, keyId: string,
 async function sigUploadBody(env: CdnUploadEnv, file: ParsedUploadFile, rawName: string, bytes: Uint8Array, sha256: string, keyId: string): Promise<Record<string, unknown>> {
 	const sigPath = `${env.cdnDir}/${rawName}`;
 	const existing = await readFileOrNull(sigPath);
-	if (existing !== null && sha256Of(env)(existing) === sha256)
+	if (existing !== null && sha256Of(env)(existing) === sha256) {
+		// 幂等重推留痕（minor M3）：重推不是发布动作，但发布留痕口径成败俱记——补一条 success 审计
+		await auditPublish({ name: file.name, version: file.version, keyId, status: "success", message: `幂等重推 .sig 旁车（${rawName} 内容未变，行未动）` });
 		return { ok: true, name: rawName, kind: "sig", sha256, idempotent: true };
-	const sig = parseSidecarSig(new TextDecoder().decode(bytes));
+	}
+	parseSidecarSig(new TextDecoder().decode(bytes)); // 结构校验（400 人话分流）；内容列在 tgz pair 时从盘上旁车读取
 	// 已配对（market_release 行在）后禁止换签：pair 完整是已发布事实，签名与 tgz 绑定不可拆换
 	const paired = await db.table("market_release").select(["id"]).where({ field: "product", op: "eq", value: file.name }).where({ field: "version", op: "eq", value: file.version }).limit(1).all() as unknown[];
 	if (paired.length > 0 && existing !== null && sha256Of(env)(existing) !== sha256)
 		fail(409, `「${file.name}@${file.version}」的 .sig 已与 tgz 配对入库，不接受换签——请升 version 重发`);
 	await atomicWriteBytes(sigPath, bytes);
-	void sig;
-	void keyId;
 	return { ok: true, name: rawName, kind: "sig", sha256 };
 }
 
@@ -202,8 +203,15 @@ async function tgzUploadBody(env: CdnUploadEnv, file: ParsedUploadFile, rawName:
 	await atomicWriteBytes(tgzPath, bytes);
 	const now = nowOf(env);
 	try {
-		// ⑤ db.tx 写行（只包 DB 段；FS+DB 无同事务，中断靠同字节重传自愈）
+		// ⑤ db.tx 写行（只包 DB 段；FS+DB 无同事务，中断靠同字节重传自愈）。
+		// 所有权复核在事务内重读（minor M1）：预检在事务外，两发布方并发首发同 product 的
+		// 竞态窗口（预检通过 → 他方先落行）只能由写事务内重读仲裁——SQLite 单写者序列化，
+		// 后入事务必见先提交行。
 		await db.tx(async (t) => {
+			const ownersNow = await t.table("market_release").select(["key_id"]).where({ field: "product", op: "eq", value: file.name }).limit(1).all() as Array<{ key_id: unknown }>;
+			const ownerNow = ownersNow[0]?.key_id;
+			if (typeof ownerNow === "string" && ownerNow !== "" && ownerNow !== keyId)
+				fail(409, `name 所有权：「${file.name}」已由 key「${ownerNow}」首发绑定（并发复核），key「${keyId}」不得发布——换主 = 站点 superadmin 操作`);
 			await t.table("market_release").insert({
 				product: file.name,
 				version: file.version,
@@ -223,23 +231,30 @@ async function tgzUploadBody(env: CdnUploadEnv, file: ParsedUploadFile, rawName:
 		});
 	}
 	catch (e) {
-		// 唯一键并发仲裁：撞键 = 并发同版本上传先落一方——重读比对 sha256 定幂等/冲突
+		// 唯一键并发仲裁：撞键 = 并发同版本上传先落一方——重读比对 sha256 定幂等/冲突。
+		// tx 内业务 fail（409 并发复核）也走此 catch：err.status 在，原样重抛（信封取 status）。
+		const status = (e as { status?: number }).status;
 		const again = (await db.table("market_release")
 			.select(["sha256"])
 			.where({ field: "product", op: "eq", value: file.name })
 			.where({ field: "version", op: "eq", value: file.version })
 			.limit(1)
 			.all()) as Array<{ sha256: unknown }>;
-		if (again.length > 0 && String(again[0]!.sha256) === sha256) {
+		if (status === undefined && again.length > 0 && String(again[0]!.sha256) === sha256) {
 			await healIfMissing(tgzPath, bytes);
 			return { ok: true, name: file.name, version: file.version, sha256, size: bytes.byteLength, key_id: keyId, idempotent: true };
 		}
-		// 仲裁失败：回收本方字节（盘上若已是他方字节则不动——按 sha256 判别）
+		// 仲裁失败/业务拒绝：回收本方字节（盘上若已是他方字节则不动——按 sha256 判别）。
+		// minor M4：底层错误不原样上抛（SQL 文本泄进 500 信封）——人话出口，细节只进审计。
 		const onDisk = await readFileOrNull(tgzPath);
 		if (onDisk !== null && sha256Of(env)(onDisk) === sha256)
 			await fsFace().remove(tgzPath, { force: true }).catch(() => {});
+		if (typeof status === "number") {
+			await auditPublish({ name: file.name, version: file.version, keyId, status: "failed", message: `409 并发复核拒绝：${(e as Error).message}` });
+			throw e;
+		}
 		await auditPublish({ name: file.name, version: file.version, keyId, status: "failed", message: `写库失败/冲突：${String(e)}` });
-		throw e;
+		fail(500, `「${file.name}@${file.version}」写库失败（已回收本次字节，cdn/ 无残留）——请重试；持续失败请站点 superadmin 查 market_history 审计明细`);
 	}
 	await auditPublish({ name: file.name, version: file.version, keyId, status: "success", message: `签名推送发布成功（${rawName}，${bytes.byteLength} 字节）` });
 	return { ok: true, name: file.name, version: file.version, sha256, size: bytes.byteLength, key_id: keyId };
