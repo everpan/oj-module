@@ -1,0 +1,14 @@
+{
+	"//": "由 ojm init 生成（名单派生自模板白名单）。可手改/删除：删名 = 该模块恢复参与打包与 ojm info 显示；删整个文件 = 退化为无内置概念。",
+	"modules": [
+		"_platform",
+		"app",
+		"auth",
+		"notification",
+		"oj-market",
+		"personal-center",
+		"publish",
+		"system",
+		"web"
+	]
+}
