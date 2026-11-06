@@ -295,5 +295,17 @@
   （真二进制 build/dev）4/4。
 - **Phase B 耗时**：约 1 小时 35 分（05:25–07:00），T2 的白名单考古与 T3b 的挂点裁决
   （ext_boot 看门狗）各占约 20 分钟，其余为 TDD 循环与文档。
+- **终审与修复**（11-07 07:00–07:25，fresh reviewer 全分支 09e9c1bbd..954ea666e，
+  0 Critical / 2 Important / 4 Minor，commit aa285e0f3）：
+  - Important-1 卸载墓碑：故意卸载会被 index 收敛当漂移纠正自动重装（违背特性 2）——
+    pruneBundledMarker 在卸载成功时摘除意图标记条目（spec 用例 RED→GREEN）。
+  - Important-2 失败冷却 + 审计：持久失败条目每次 index 请求全量重装且无观测——
+    10 分钟冷却窗（cooling 桶 + taskDir 冷却文件，成功后清键）+ market_history
+    审计（operator "bundle-converge"）；bundle-converge.spec 扩至 14 用例。
+  - 附带：T5 devkit 文档破坏自包含守卫（R29 代号 / docs/plans/ 包外路径），
+    devkit-docs 2 失败 RED→GREEN 修复。
+  - Minor 3 项记帐不修（ledger：entry.file 校验、init 文件名 prerelease 解析、
+    sync-bundles 未签名静默丢弃）。
+  - 修复后终态：根 942+1s / cli 642+1s / templates 1152/1152 / tsc×3 零错。
 - **遗留**（发布期）：BOOTSTRAP_KEY 公钥回填（发布人手工，walkthrough §7.5）；
   运行中自升级 reload 语义为剩余边角（双轨正常态，计划风险节已列）。
