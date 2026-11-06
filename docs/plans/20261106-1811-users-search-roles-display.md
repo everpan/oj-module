@@ -31,21 +31,21 @@
 
 ### 特性 1：用户关键词搜索
 
-- [ ] **场景：关键词命中用户名** —— given 关键字 `zhang` when 过滤 then 命中 username 含 zhang 的行（数据表见测试）
-- [ ] **场景：关键词命中显示名** —— given 关键字 `张` when 过滤 then 命中 display_name 含 张 的行
-- [ ] **场景：大小写不敏感 / 空白关键字** —— `ZHANG` ≡ `zhang`；trim 后为空 → 全部可见
-- [ ] **场景：display_name 为 null** —— 不抛错、不匹配
+- [x] **场景：关键词命中用户名** —— given 关键字 `zhang` when 过滤 then 命中 username 含 zhang 的行（数据表见测试）
+- [x] **场景：关键词命中显示名** —— given 关键字 `张` when 过滤 then 命中 display_name 含 张 的行
+- [x] **场景：大小写不敏感 / 空白关键字** —— `ZHANG` ≡ `zhang`；trim 后为空 → 全部可见
+- [x] **场景：display_name 为 null** —— 不抛错、不匹配
 
 ### 特性 2：成员资格角色语言化 + 模块分组
 
-- [ ] **场景：title_key 解析** —— given title_key=`wiki:role.editor` when roleLabel then 返回 t(key) 的译文，缺译文回退 title
-- [ ] **场景：内置角色 locale 键** —— given builtin 且无 title_key when roleLabel then 查 `system:rolesPage.roleTitle.<name>`，缺键回退 title→name
-- [ ] **场景：custom 角色** —— given 非 builtin 无 title_key when roleLabel then 原样 title，title 空回退 name
-- [ ] **场景：按模块分组** —— given 混合 module 的角色列表 when 渲染 then 同 module 聚为一组、组标题为模块名
+- [x] **场景：title_key 解析** —— given title_key=`wiki:role.editor` when roleLabel then 返回 t(key) 的译文，缺译文回退 title
+- [x] **场景：内置角色 locale 键** —— given builtin 且无 title_key when roleLabel then 查 `system:rolesPage.roleTitle.<name>`，缺键回退 title→name
+- [x] **场景：custom 角色** —— given 非 builtin 无 title_key when roleLabel then 原样 title，title 空回退 name
+- [x] **场景：按模块分组** —— given 混合 module 的角色列表 when 渲染 then 同 module 聚为一组、组标题为模块名
 
 ### 发版
 
-- [ ] 两包版本 0.2.71 + host-versions.json 同步 + build:shell 重建 + 相关测试全绿
+- [x] 两包版本 0.2.71 + host-versions.json 同步 + build:shell 重建 + 相关测试全绿
 
 ## 问题记录
 
@@ -53,4 +53,12 @@
 
 ## 总结
 
-（实施后填写）
+全部完成（2026-11-06 18:11–18:16，约 5 分钟编码 + 3 分钟发版）：
+
+1. **用户搜索**：`pages/users/match-keyword.ts` 纯函数（username + display_name，大小写不敏感，空白全可见）+ 用户页搜索框（zh「按用户名/显示名搜索」/ en 对应）；users 表无 nickname 列，「昵称/display」按 display_name 口径实现（见问题记录）。
+2. **成员资格角色语言化分组**：`pages/roles/role-label.ts` 纯函数抽出角色页 R2 渲染口径（title_key → 内置 locale → title → name），角色页与成员资格页共用；成员资格页按 `module` 分组渲染（每组独立 Checkbox.Group，整集替换保存语义不变）。
+3. **发版 0.2.71**：cli + runtime lockstep 升版，`vendor/host-versions.json` 3 处同步，`build:shell` 重建宿主（版本矩阵 68 项，runtime 三入口 0.2.71）。
+
+关键过程：TDD 先落 15 个 BDD 用例再实现；`useMemo` 初次落在提前 return 之后（hooks 违规）已上移；eslint 修复把续行改出 mixed-spaces，拆变量消续行（与既往 eslint 续行坑一致）。验证：cli 测试 672 过 1 跳过、tsc 干净、eslint 干净。
+
+提交：`feat(system): …`（35e62cbe 前序）+ `chore(release): 0.2.71`，已并入 feat/ojm。
