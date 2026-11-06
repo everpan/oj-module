@@ -15,11 +15,11 @@
 判据只有一条：**每节的检查点逐条打勾**——退出码 0 只是入场券，产物与响应体才算数。
 历史演练记录集中在文末 [附录 A](#附录-a-历史基线从新到旧逐条可追溯)，日常执行不用读。
 
-> **上次演练结论（2026-11-05 第三轮，cli/runtime 工作区 0.2.67 / oj 0.1.118）**：MySQL 8.4 与 PostgreSQL 16 双真库快线均通过。
-> 两库迁移账本一致（`_platform 2 / auth 3 / home 2 / notification 5 / publish 1`，29 表 / `sys_setting` 8 条），
-> 登录、凭证、`sign --check`、home 与通知接口全绿。代价是暴露 6 处方言缺陷并全部修好
-> （10 个方言迁移 + 4 份方言 seed / pg 基线 BIGINT / pg UNION 同型），另记 1 处上游缺陷（MySQL 两步取 id，已由 oj 0.1.120 修复，见 §9/§11 U2）。
-> 详见附录 A 首条与 §11。
+> **上次演练结论（2026-11-06，cli/runtime 工作区 0.2.68 / oj 0.1.124）**：快线（templates）+ §1.5 脚手架门禁演练 + §6.5 仓库回归套件均通过。
+> 0.2.68 六项修复/新增逐项验证：admin 路由 id 同步、侧栏遮挡、`resolveRoutePath`（含祖先链扩展）、admin 默认 layout、
+> 脚手架完整性门禁（篡改拦截 / `--yes` 恢复 / 自定义模块共存 / 开关语义）、`ojm init --yes` 恢复语义。
+> e2e 21 通过 / 4 失败均为既有 wecom 用例（与本批无关）。全量线（§0.5/§1–§7）本轮未跑，发版前补。
+> 详见附录 A 首条。
 
 > **退出码会被管道吞掉**：`node ojm.mjs xxx 2>&1 | tail` 之后 `$?` 是 `tail` 的退出码。
 > 判「命令是否失败」时先落文件再看 `$?`（`cmd > out 2>&1; echo $?`），别用管道末尾的值。
@@ -172,6 +172,41 @@ node "$CLI_PKG/bin/ojm.mjs" init my-books --yes
 - [ ] 若出现「`@types/react` / `typescript` 回退 `*`」告警 → 记下，安装后必须钉版
 - [ ] **未出现「oj 二进制自检失败」告警**（cli ≥ 0.1.4 安装后自动冒烟）；若出现，按 §3 换自建二进制
 - [ ] npm 通道 oj 低于门禁时按 §0 旁路 1 预置 `bin/oj` 后重跑（init 幂等）
+- [ ] **`src/.ojm-builtin.json` 存在**（内置模块自治名单，0.2.68+；删了它门禁就关——见 §1.5）
+- [ ] **`src/README.md` 存在**（人话契约：默认模块上游自治、build 拦截、`--yes` 恢复、`enabled: false` 下线姿势）
+
+## 1.5 内置模块自治门禁与 `--yes` 恢复（0.2.68+）
+
+> 默认模块（`src/app` 内置模块、`src/oj-market`）**上游自治**：`ojm build` 先与**当前 CLI 包内 templates**
+> 逐文件比对（门禁开关 = `src/.ojm-builtin.json` 存在），三类漂移（内容被修改 / 缺失 / 多出）都
+> fail-fast 零产物。CLI 升级后，工程内旧版默认模块即使没手改也会与新模板不一致——**先 `ojm init --yes` 再 build**。
+> `--yes` 只动 `src/app/**` 与 `src/oj-market/**`（覆盖白名单文件、删模板没有的文件、重写名单），
+> 下游自定义模块与工程级配置（config.yaml / web.config.ts / package.json）不碰；会丢弃这些目录的本地修改，先备份。
+> 门禁不是安全边界：无绕过开关，但删名单文件即退回旧行为（不建议）。
+
+```bash
+node "$CLI_PKG/bin/ojm.mjs" build; echo $?          # 新脚手架基线：门禁开、零漂移 → 0
+printf '// drift\n' >> src/app/web/system/routes.ts # 篡改默认模块 + 造 extra
+touch src/app/web/extra-page.tsx
+node "$CLI_PKG/bin/ojm.mjs" build; echo $?          # 期望 1：分组列出「内容被修改 / 多出」，
+                                                    # 报错含「上游自治」与「ojm init --yes」，且无新产物
+node "$CLI_PKG/bin/ojm.mjs" init . --yes            # 恢复：覆盖白名单、删 extra、重写名单
+node "$CLI_PKG/bin/ojm.mjs" build; echo $?          # 期望 0
+rm src/.ojm-builtin.json                            # 旧行为退路：门禁关
+node "$CLI_PKG/bin/ojm.mjs" build; echo $?          # 期望 0（篡改也放行——门禁已关）
+node "$CLI_PKG/bin/ojm.mjs" init . --yes            # 名单重写回来，门禁重新生效
+```
+
+**检查点**
+
+- [ ] 新脚手架 `.ojm-builtin.json` + `src/README.md` 就位，基线 build 通过（零漂移）
+- [ ] 篡改默认模块（改内容 + 加 extra）→ build 退出码非 0，按「内容被修改 / 缺失 / 多出」分组列文件、指路 `ojm init --yes`，dist/ 无新产物
+- [ ] `ojm init . --yes` 后：篡改恢复为模板内容、extra 被删；下游自定义模块（`src/crm`，须 `defineModule({name,version,…})` + `locales/` 齐备）与工程配置原样，且能进 `modules.json`
+- [ ] 删 `src/.ojm-builtin.json` → 门禁关（旧工程语义，篡改也放行）；`init --yes` 后名单恢复
+- [ ] §0.3 快线（templates 树自身）无 `.ojm-builtin.json`，门禁关——build 不受影响（预期）
+
+> 自定义模块被 build 拦下时先看是不是自己的问题：entry 缺 `name`/`version`（必须 `defineModule`）
+> 或缺 `locales/` 会先被 buildModules 校验拦——拦的是你的模块，不是门禁。
 
 ## 2. 安装依赖
 
@@ -331,6 +366,21 @@ curl -s http://127.0.0.1:9778/api/notifications -H "authorization: Bearer $TOKEN
 > curl 默认 `*/*` 不触发回落。curl 验证请带 `-H 'Accept: text/html'`。
 
 用完停服：`pkill -f "ojm dev"; pkill -f "bin/oj"`。
+
+## 6.5 仓库内回归套件（runtime 修复的演练层）
+
+§6 的浏览器检查点覆盖不到的 runtime 行为，由仓库内两套套件钉住；框架改动后至少跑这两条：
+
+```bash
+pnpm test          # vitest 单测（含 admin 重写全管线、resolveRoutePath 单路由+祖先链、门禁/init）
+pnpm test:e2e      # playwright 浏览器套件（真实 shell-dist + templates：登录/菜单/侧栏/系统页）
+```
+
+**检查点**
+
+- [ ] `pnpm test` 全绿（0.2.68 起：admin 子树 id 与 `/system/<模块根>/admin/*` 同空间、`resolveRoutePath(route[, ...ancestors])` 祖先链结果 === 框架全管线重写后 id、`category:"admin"` 未声明 layout 默认 `container`、门禁三态漂移、`--yes` 恢复范围）
+- [ ] `pnpm test:e2e`：侧栏主菜单与底部「系统设置」同时展开互不遮挡、各自可滚（`sidebar-menu-overflow` 用例）；系统页登录/渲染/i18n 通过
+- [ ] e2e 已知挂账：**4 个既有 wecom 失败**（W1/W6 登录页企微 tab、W4/W5 `/system/wecom` 404）——非本批回归，修复前每次演练如实核对失败清单是否仍为这 4 条，多了才算回归
 
 ## 7. 预览（可选，验证 release 形态）
 
@@ -618,6 +668,8 @@ node "$CLI_PKG/bin/ojm.mjs" market publish --real . --id demo.publisher
 ## 8. 一次通过判据（汇总清单）
 
 - [ ] `ojm init` 成功：devDeps 含 `@oj-module/{cli,runtime}`（非 `*`）、根级 `openapi.json` + `__client` 预生成、handler 为新约定（`.schema` 入参 + 平级 `.response`，无 `contract.ts`/`routes.json`/`openapi.yaml`）、`env.d.ts` 在 include
+- [ ] （0.2.68+）§1.5 门禁全过：篡改拦截 / `init --yes` 恢复 / 自定义模块共存 / `.ojm-builtin.json` 开关语义
+- [ ] （0.2.68）§6.5 仓库回归：`pnpm test` 全绿；`pnpm test:e2e` 通过数不降、失败清单仍为既有 4 条 wecom
 - [ ] `pnpm install` 成功，`cli`/`runtime` 两包版本一致（未发版按 §0 旁路 2）
 - [ ] oj 二进制通过 §3 探针（JsRuntime 能初始化），版本 ≥ 门禁 0.1.73
 - [ ] `ojm api` 生成 `src/books/web/__client`（`index.ts`；operationId 派生名、出参类型存活）；`--check` 无 drift（内置 `auth`/`web`/`notifications` 经 `api/.ojm-api-exempt.json` 豁免，见 §4）
@@ -752,6 +804,7 @@ pnpm install --dir "$CLI_PKG"
 # npm 通道 oj 低于门禁时先预置（§0 旁路 1）：mkdir my-books/bin && cp ~/.local/share/oj/oj my-books/bin/oj
 #   && cp -R ~/.local/share/oj/{devkit,plugins} my-books/bin/ && printf 'v0.1.74\n' > my-books/bin/.oj-version
 node "$CLI_PKG/bin/ojm.mjs" init my-books --yes
+# §1.5 门禁演练（0.2.68+）：篡改 src/app 一文件 → build 应 exit 1 并指路 --yes；init --yes 后 build 应过
 cd my-books && pnpm install
 ./bin/oj --version
 rm -rf /tmp/_oj_probe && mkdir -p /tmp/_oj_probe/src/web/hello \
@@ -781,6 +834,19 @@ node "$CLI_PKG/bin/ojm.mjs" build && npx tsc --noEmit -p tsconfig.json && node "
 
 > 基线的价值是「某版本当时到底验了什么、踩了什么」，属于事实档案，不参与日常执行；
 > 新基线追加在本节最前面，最近一次的结果同时摘到文首「上次演练结论」。
+
+### 最近一次基线（2026-11-06，oj 0.1.124 / cli+runtime 工作区 0.2.68；快线 + 脚手架门禁 + 仓库回归）
+
+| 项 | 值 |
+| --- | --- |
+| 日期 | 2026-11-06 |
+| 框架包版本 | 工作区态 `feat/ojm` @ `cc1e70f94`（cli/runtime/shell 均 0.2.68；未发版） |
+| oj | 0.1.124（`ojm init` vendor 进演练工程 `bin/oj`） |
+| 验证动机 | 下游反馈六项修复/新增后回归：admin 路由 id 同步（菜单选中态）、侧栏主/底菜单遮挡、`resolveRoutePath` 公开导出（含 admin 子树后代祖先链扩展）、admin 默认 `layout: "container"`、脚手架完整性门禁、`ojm init --yes` 恢复语义 |
+| 范围 | §0.3 快线（templates：`info` / `api --check` / `build` / 删库重建 dev + HTTP 检查点）；§1.5 门禁演练（`/tmp` 全新脚手架，源码 CLI + §0 旁路 2 symlink runtime）；§6.5 仓库回归（`pnpm test` + `pnpm test:e2e`）。全量线 §0.5/§1–§7 本轮未跑（打包面无改动，发版前补） |
+| 结果 | **通过**。① 快线：`info` cli/runtime/shell 三行 0.2.68；`api --check` **0 error / 0 warn**；build 产物 `modules.json` = `app,oj-market`、`dist/api/versions.json` 在；dev `routes: 91 method-row(s), 75 pattern(s), 43 api file(s)`、`input contracts: 87`；`GET /api/auth/login` → 405；登录 token 156 字符；带租户头 `GET /api/system/users` code:0、`GET /api/notification/notifications` code:0 数组、无 token **401**。② §1.5 门禁：新脚手架 `.ojm-builtin.json` + `src/README.md` 就位、基线零漂移 build 过；篡改 `system/routes.ts` + 造 `extra-page.tsx` → build **exit 1**，分组列出「内容被修改（1）/ 多出（1）」并指路「上游自治 / `ojm init --yes`」；`init . --yes` 后篡改恢复、extra 删除；自定义 `src/crm`（`defineModule` + locales）全程保留并进 `modules.json`（`app,oj-market,crm`）；删 `.ojm-builtin.json` → 门禁关（篡改也放行 exit 0）；`init --yes` 后名单恢复、门禁重新生效（final build 0）。③ §6.5 回归：单测全绿（含 `resolveRoutePath` 祖先链 17 例，其中真实树一致性用例钉住「链式结果 === rewriteAdminPaths 重写后子树 id」）；e2e **21 通过 / 4 失败**，失败均为既有 wecom 用例（W1/W6 登录页企微 tab、W4/W5 `/system/wecom` 404），与 0.2.67 基线完全一致，非本批回归。 |
+| 本次发现并处置 | ① 演练 fixture 教训（非缺陷）：自定义模块 entry 必须是 `defineModule({name,version,…})` + `locales/{zh-CN,en-US}.json`，缺了被 buildModules 校验拦（「default 导出缺少 name 或 version」）——拦的是你的模块不是门禁，已写进 §1.5 末注。② 快线 HTTP 探活别臆测端点：`/api/home/stats` 404（模板无此路由），改用 `/api/system/users` 判鉴权链路。③ `init --yes` 的恢复行为正确（篡改内容被还原、extra 被删），但控制台汇总只打「新增 N 项，跳过 M 项」，`恢复（--yes 覆盖）`逐文件行未输出——行为已由终态验证，输出措辞记为待打磨，不阻断。 |
+| 手册同步 | 新增 **§1.5**（门禁 + `--yes` 恢复演练）；§1 检查点补 `.ojm-builtin.json` / `src/README.md`；新增 **§6.5** 仓库回归套件（runtime 修复的演练层 + wecom 4 例既有失败挂账）；§8 补两条判据（门禁 / 仓库回归）；§10 TL;DR 加 §1.5 一行；文首「上次演练结论」换为本条 |
 
 ### 补充复验（2026-11-05，oj 0.1.120；MySQL 两步取 id 修复实测）
 
