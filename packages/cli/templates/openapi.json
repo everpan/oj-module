@@ -6826,6 +6826,21 @@
 				}
 			}
 		},
+		"/api/oj-market/backfill": {
+			"post": {
+				"operationId": "oj_market_backfill_post",
+				"summary": "POST api/oj-market/backfill",
+				"x-oj-file": "oj-market/api/api.ts",
+				"tags": [
+					"oj-market"
+				],
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				}
+			}
+		},
 		"/api/oj-market/trust": {
 			"get": {
 				"operationId": "oj_market_trust_get",
