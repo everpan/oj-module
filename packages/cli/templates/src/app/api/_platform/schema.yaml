@@ -185,6 +185,12 @@ tables:
       published_at_source: {type: text, null: false}
       yanked: {type: integer, null: false}
       first_seen_at: {type: integer, null: false}
+      # v4 DB 目录化（0003 扩列）：签名推送直写的目录真源——签名三字段 + 包内嵌 manifest
+      # 抽取物。旧行（syncReleases 时代）此四列 = NULL，由站点侧扫描回填命令补齐（计划 §六）。
+      sig_alg: {type: text}
+      sig_value: {type: text}
+      sig_public_key: {type: text}
+      manifest: {type: text}
   # REG-CS2 索引新鲜度：站点按源记住见过的最大 seq（防回放/降级，回退即拒）。
   # 读写由 _lifecycle/source-seq.ts 落到本表；source_url 为业务主键（无自增 id）。
   reg_source_seq:

@@ -322,6 +322,18 @@ describe("权限门（R9：市场编排 superadmin 独占，meta 登录即可）
 	});
 });
 
+describe("0003 迁移（market_release 扩列演化，v4 §一：表演化非新建）", () => {
+	it("sig_alg/sig_value/sig_public_key/manifest 四列就位，既有列与表不破坏（releases 端点照常读）", () => {
+		const cols = (dbo.prepare("PRAGMA table_info(market_release)").all() as Array<{ name: string }>).map(c => c.name);
+		// 新增四列（DB 目录化：签名三字段 + 包内嵌 manifest 抽取物）
+		for (const c of ["sig_alg", "sig_value", "sig_public_key", "manifest"])
+			expect(cols).toContain(c);
+		// 既有九列不破坏（0002 形状原样保留，列名沿用 product 不改 name）
+		for (const c of ["id", "product", "version", "key_id", "sha256", "size", "published_at", "published_at_source", "yanked", "first_seen_at"])
+			expect(cols).toContain(c);
+	});
+});
+
 describe("POST install（cdn：Form B 索引解析属市场侧，安装器不拼 URL）", () => {
 	it("指定版本：解析 catalog+shard → runInstall 推进至 done，task 文件全 stage 就位且索引拉取不带 no-cache", async () => {
 		const api = createMarketApi(makeEnv());
