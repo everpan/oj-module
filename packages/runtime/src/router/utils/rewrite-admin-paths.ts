@@ -1,5 +1,7 @@
 import type { AppRouteRecordRaw } from "#src/router/types";
 
+import { addRouteIdByPath } from "./add-route-id-by-path";
+
 /**
  * admin 路由真重写（0.2.17，单根模块约定 + menu.main 统一）：
  *
@@ -15,6 +17,16 @@ import type { AppRouteRecordRaw } from "#src/router/types";
  * 本函数不改写宿主 /system 路由树本身。
  */
 const SYSTEM_KEY = "/system";
+
+/** 单路由导航 path：admin 复用同一重写算法；相对 path 以已计算的绝对 id 补全模块根。 */
+export function resolveRoutePath(route: AppRouteRecordRaw & { id?: string }): string | undefined {
+	if (route.handle?.category !== "admin")
+		return route.path;
+	const sourcePath = route.id ?? route.path;
+	if (!sourcePath || sourcePath === SYSTEM_KEY || sourcePath.startsWith(`${SYSTEM_KEY}/`))
+		return sourcePath;
+	return rewriteAdminPaths([{ ...route, path: sourcePath }])[0]?.path;
+}
 
 /** 解析路由绝对路径（与 generate-menu-items-from-routes 同语义） */
 function resolveAbs(path: string | undefined, parentAbs: string): string {
@@ -48,7 +60,8 @@ function processRoute(
 		// 真重写：/system + 模块 root 路径 + 原后缀（保留 admin 子树内的相对层级）
 		const suffix = abs.slice(rootAbs.length) || "";
 		const newAbs = `${systemKey}${rootAbs}${suffix}`;
-		hoisted.push({ ...route, path: newAbs });
+		// path 与 useMatches 消费的 id 必须同源；按新绝对路径重算整个子树（含 index 尾斜杠）
+		hoisted.push(...addRouteIdByPath([{ ...route, path: newAbs }], newAbs));
 		return null; // 从原树摘除
 	}
 

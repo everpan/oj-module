@@ -13,7 +13,8 @@ import ParentLayout from "#src/layout/parent-layout";
  * - `"parent"` → ParentLayout（自身含 Outlet，用于嵌套菜单场景）
  * - `"container"` → ContainerLayout（整站 chrome：header / sidebar / tabbar / footer）
  * - `"fullscreen"` → FullscreenLayout（全屏外壳：视口 + 品牌区 + 工具区 + 页脚，无 chrome）
- * - `"none"` / 未声明 → Outlet（无 chrome，页面 / 子路由直接渲染）
+ * - `"none"` / 普通路由未声明 → Outlet（无 chrome，页面 / 子路由直接渲染）
+ * - `"admin"` 未声明 → ContainerLayout（admin 提升后是顶级页面，显式 layout 仍优先）
  *
  * 模块登记优先于内建表（G1）：模块可注册新名或覆盖内建名。
  */
@@ -29,14 +30,15 @@ const warnedUnknownLayouts = new Set<string>();
 /**
  * 根据路由 `handle.layout` 解析所用布局组件（P2.2，设计文档 D9；G1 模块登记优先）。
  *
- * 未声明即 `none` 是 D9 的目标态（P2.7 dogfooding 验证后自迁移期默认 `container` 翻转）：
- * 布局必须显式声明，框架不做隐式推导；后端下发的父级路由需在 handle 中携带 layout。
+ * 普通路由未声明即 `none` 是 D9 的目标态（P2.7 dogfooding 验证后自迁移期默认 `container` 翻转）；
+ * `category: "admin"` 是唯一例外，未声明时默认 `container`，避免提升为顶级路由后丢失整站 chrome。
  *
  * 非内建且模块注册表未命中的名字 warn-once 一次并回落 Outlet——
  * 后端下发了模块布局名而提供方模块未加载时，这条 warn 是唯一线索（评审 A6）。
  */
 export function resolveLayoutComponent(handle?: Partial<RouteMeta>): ComponentType {
-	const name = handle?.layout;
+	// admin 提升后是顶级页面，未显式声明时默认整站 chrome；显式 layout（含 none）优先
+	const name = handle?.layout ?? (handle?.category === "admin" ? "container" : undefined);
 	// "none" 是显式声明的「不套任何布局」哨兵（types.ts / PRD §4），语义与未声明一致
 	// → 直接渲染 Outlet，不视为未知布局、不告警（否则首页等 layout:"none" 路由会刷屏）。
 	if (!name || name === "none")

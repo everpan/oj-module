@@ -53,8 +53,8 @@ export default defineModule({
         { path: "space",        handle: { title: "wiki:menu.space",        layout: "parent" } },
         { path: "status",       handle: { title: "wiki:menu.status",       layout: "parent" } },
         { path: "collections",  handle: { title: "wiki:menu.collections",  layout: "parent" } },
-        // admin 页面：标 category:"admin"，路径会被真重写为 /system/wiki/...（§2）
-        { path: "admin",        handle: { title: "wiki:menu.admin", category: "admin", layout: "container" } },
+        // admin 页面：标 category:"admin"，默认 container，路径真重写为 /system/wiki/...（§2）
+        { path: "admin",        handle: { title: "wiki:menu.admin", category: "admin" } },
         // 仅可达、不进菜单的页面：category:"hidden"
         { path: "status/detail", handle: { title: "wiki:menu.statusDetail", category: "hidden" } },
       ],
@@ -67,7 +67,7 @@ export default defineModule({
 
 - 模块**只有一个根路由**，它渲染成侧栏第一级菜单项。根路由下的页面是其 `children`，按 `category` 决定是否在菜单出现（见 §1）。
 - 根路由的 `handle.title` 用 `<模块名>:menu.main`（这是「模块标题」与「该模块在 /system 下的管理子组标题」共用的同一个 key，见 §4）。
-- `layout` 语义：`container` = 全站外壳（顶栏/侧栏/页签/页脚）；`parent` = 仅 Outlet 包裹（分组路由，无额外外壳）；深嵌套分组路由必须用 `parent`，否则会叠加出双层外壳（双击 chrome）。根路由与 admin 路由保留 `container`。
+- `layout` 语义：`container` = 全站外壳（顶栏/侧栏/页签/页脚）；`parent` = 仅 Outlet 包裹（分组路由，无额外外壳）；深嵌套分组路由必须用 `parent`，否则会叠加出双层外壳（双击 chrome）。根路由保留 `container`；admin 路由未声明 `layout` 时默认 `container`，显式配置仍优先。
 - `module` 由 module-loader 在 `getRoutes()` 注册时按 `definition.name` 自动注入，**你不用写**；旧 bundle 也带标。
 - 不要为了归组父菜单去手写一个额外的「分组根路由」——第一级菜单就是模块根路由本身。
 
@@ -111,6 +111,16 @@ export default defineModule({
 ```ts
 // rewriteAdminPaths 语义（非突变）
 "/wiki/admin"  (category:"admin")  ──►  hoist + 重写  ──►  "/system/wiki/admin"
+```
+
+下游需要主动导航时，从公开入口调用 `resolveRoutePath(route)`，不要复制这套映射规则。它接收单条 route 并返回最终 path：admin 添加 `/system`，普通路由原样返回，已重写 path 幂等；相对 admin path 使用 `getRoutes()` 生成的绝对 `id` 补全模块根。
+
+```ts
+import { resolveRoutePath } from "@oj-module/runtime";
+
+const target = resolveRoutePath(route);
+if (target)
+  navigate(target);
 ```
 
 > 真重写 vs 旧视觉归组：旧版只在菜单层把 admin 挪到 /system，路由 URL 仍是 `/wiki/admin`，
@@ -341,7 +351,7 @@ headless chromium 核对「`/` 重定向到 `/oj/<首个模块路由>`」与「�
 
 - 在 `entry.ts` 路由 handle 直接声明归组/菜单元数据（**真源**）：
   `{ title: "wiki:menu.space", layout: "parent" }`、
-  `{ title: "wiki:menu.admin", category: "admin", layout: "container" }`
+  `{ title: "wiki:menu.admin", category: "admin" }`
 - 模块只设**一个根路由**，其余页面作其 `children`；根路由 `title` 用 `<模块>:menu.main`。
 - `manifest.yaml` 的 `routes[]` **不必手写**：构建期从 entry.ts handle 自动派生并覆盖；漂移时警告一次并以 entry.ts 为准。
 - 在 `locales/{zh-CN,en-US}.json` 里补嵌套的 `menu.main`（根菜单标题 + 系统设置管理子组标题共用）。

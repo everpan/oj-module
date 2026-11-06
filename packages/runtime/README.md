@@ -48,7 +48,16 @@ import {
   getRegisteredStore,
   getRoutes,
   loadAll,
+  resolveRoutePath,
 } from "@oj-module/runtime";
+```
+
+单路由导航使用 `resolveRoutePath(route)` 计算最终 path：`category: "admin"` 会返回 `/system/...`，普通路由保持原 path，已重写的 admin path 不会重复添加前缀。相对 admin path 会从 `getRoutes()` 生成的绝对 `id` 补全模块根。
+
+```ts
+const target = resolveRoutePath(route);
+if (target)
+  navigate(target);
 ```
 
 > `antd`、`react`、`react-router`、`@tanstack/react-query` 等共享依赖**不从 runtime 转出**。模块请直接 import 这些包，由 importmap 命中宿主提供的同一份实例。
@@ -87,7 +96,7 @@ export default defineModule({
 ## 内置能力（非出口，但影响模块行为）
 
 - **路由级缓存**：KeepAlive 位于宿主固定层，缓存开关由各模块路由的 `handle.keepAlive` 汇总得出，不依赖任何具体布局组件是否存在。
-- **布局语义**：`handle.layout` 决定该路由用哪层布局包裹（`container` / `parent` / `none`）。迁移期未声明时按 `container` 处理，保持既有行为。
+- **布局语义**：`handle.layout` 决定该路由用哪层布局包裹（`container` / `parent` / `none`）。普通路由未声明时为 `none`；`category: "admin"` 未声明时自动使用 `container`，显式配置始终优先。
 - **兜底页**：`NotFound`（404）与 `UnknownComponent`（后端下发路由找不到前端组件）由框架内置，模块无需提供；需要自定义时用自己的路由覆盖。
 
 ## 构建

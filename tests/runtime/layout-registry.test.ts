@@ -83,6 +83,12 @@ describe("layout-registry（G1，BDD 5.1）", () => {
 		warn.mockRestore();
 	});
 
+	it("admin 未声明布局默认 container，显式 layout 优先", () => {
+		expect(resolveLayoutComponent({ category: "admin" })).toBe(ContainerLayout);
+		expect(resolveLayoutComponent({ category: "admin", layout: "parent" })).toBe(ParentLayout);
+		expect(resolveLayoutComponent({ category: "admin", layout: "none" })).toBe(Outlet);
+	});
+
 	it("resolveRouteLayouts 走同一注册表（有 Component 的节点不受影响）", () => {
 		registerLayout("mod-a", "container", ModA);
 		const Page = vi.fn() as unknown as ComponentType;

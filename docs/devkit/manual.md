@@ -1150,13 +1150,11 @@ export default {
 | `container` | `ContainerLayout` | **有页面的业务路由必写**。完整外壳：顶栏 + 侧边/顶部导航 + 页签（keepAlive）+ 主内容 + 可选页脚 + 回到顶部 + 水印 |
 | `parent` | `ParentLayout` | 嵌套父级，自身只渲染 `<Outlet/>`（不挂任何 chrome），用于「菜单分组 / 多级路由」的父节点 |
 | `fullscreen` | `FullscreenLayout` | 全屏外壳：占满视口 + 品牌区（logo + 应用标题）+ 右上角工具（布局预览/主题/语言）+ 横幅 + 页脚，**无侧边栏/页签**。登录页即用它 |
-| `none` | 裸 `<Outlet/>` | 不挂任何外壳，页面裸渲染。**不写 `layout` 时运行时回落为此值** |
+| `none` | 裸 `<Outlet/>` | 不挂任何外壳，页面裸渲染。普通路由不写 `layout` 时回落为此值；`category: "admin"` 未声明时默认 `container` |
 
 > 红线（见 SKILL.md）：有页面的路由 handle 忘写 `layout: "container"`，页面会**裸奔**
-> （无侧边栏/页签/顶栏），且 `keepAlive` 失效。
->
-> 迁移说明：类型定义里 `handle.layout` 当前标了默认 `"container"` 仅为向后兼容，
-> **目标态是改为 `"none"`**——不要依赖默认值，每个路由都显式写 `layout`。
+> （无侧边栏/页签/顶栏），且 `keepAlive` 失效。唯一例外是 `category: "admin"`：未声明时默认
+> `container`，需要其他布局时仍可显式覆盖。
 
 ### 5.2 路由如何选布局
 
@@ -2174,7 +2172,7 @@ export default defineModule({
     handle: { title: "wiki:menu.main", layout: "container" },
     children: [
       { path: "space",       handle: { title: "wiki:menu.space",       layout: "parent" } },
-      { path: "admin",       handle: { title: "wiki:menu.admin", category: "admin", layout: "container" } },
+      { path: "admin",       handle: { title: "wiki:menu.admin", category: "admin" } },
       { path: "status/detail", handle: { title: "wiki:menu.statusDetail", category: "hidden" } },
     ],
   }],
@@ -2226,7 +2224,9 @@ const paths = createWikiPaths(getModuleRoutePrefix("wiki"));
 
 - 省略 / `""` / 旧 `"main"` → 普通可见菜单项。**`"main"` 不再产生合成父菜单**（扁平 main 归组已取消），新代码直接省略。
 - `"hidden"` → 有效路由但**不进菜单**（等价于 `hideInMenu: true`），用于详情页等。
-- `"admin"` → 路由层被 `rewriteAdminPaths` 真重写为 `/system/<模块 root path>/*`（运行时 URL 真正归到系统设置），菜单层再被 `groupSolutionMenus` 收进 `/system` 子组 `solgroup:admin:<模块>`。
+- `"admin"` → 路由层被 `rewriteAdminPaths` 真重写为 `/system/<模块 root path>/*`（运行时 URL 真正归到系统设置），菜单层再被 `groupSolutionMenus` 收进 `/system` 子组 `solgroup:admin:<模块>`；未声明 `layout` 时默认 `container`，显式配置优先。
+
+下游主动导航时调用公开纯函数 `resolveRoutePath(route)` 获取最终 path，不复制重写规则。相对 admin path 会从 `getRoutes()` 生成的绝对 `id` 补全模块根；普通路由 path 原样返回，已重写 path 不重复添加 `/system`。
 
 > `/system` 是框架侧断言，方案只标 `category: "admin"`，挂载点交给框架；宿主缺 `/system` 时告警一次。
 
@@ -2242,7 +2242,7 @@ const paths = createWikiPaths(getModuleRoutePrefix("wiki"));
 
 - 在 `entry.ts` 路由 handle 直接声明归组/菜单元数据（**真源**）：
   `{ title: "wiki:menu.space", layout: "parent" }`、
-  `{ title: "wiki:menu.admin", category: "admin", layout: "container" }`
+  `{ title: "wiki:menu.admin", category: "admin" }`
 - 模块只设一个根路由，根 `title` 用 `<模块>:menu.main`；`manifest.yaml` 的 `routes[]` 不必手写（构建期从 handle 派生覆盖）。
 - 在 `locales/{zh-CN,en-US}.json` 里补嵌套的 `menu.main`。
 - `admin` 路由统一 `category: "admin"`；模块内路径走 `paths.ts` 助手，`currentActiveMenu` 写绝对路径且从助手派生。

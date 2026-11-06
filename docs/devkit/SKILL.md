@@ -51,7 +51,7 @@ description: 用 ojm 开发前后端一体工程时使用——新增/修改前�
   历史布局漏登记 = 模块安静不加载；module-root 下登记是可选的，但**排序仍靠它**。
 - **`home` / `login` 模块必须保留**：shell 预构建把 `/` 重定向到 `/home`，且宿主只消费
   模块路由、不挂内置登录页。删掉它们 → 登录回跳落错误边界、`/login` 无路由可跳。
-- **布局级路由 handle 必写 `layout: "container"`**：不写页面会裸渲染（无侧边栏/页签），
+- **布局级路由 handle 必写 `layout: "container"`**（`category: "admin"` 除外，未声明时框架默认 `container`）：不写页面会裸渲染（无侧边栏/页签），
   且 `keepAlive` 失效。`"container" | "parent" | "none" | 自定义名`。
 - **注册时机**：一切 `ctx.register.*` 必须在 `lifecycle.onInit` 内、且在 onInit 返回前完成。
   拖到 `onActivate` 或某个异步回调里注册不保证生效。`onInit` 签名是 **async**（返回
