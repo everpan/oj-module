@@ -311,6 +311,26 @@ TOFU 没有免检通道：**只有模板内置的 oj-market（第一方包）用
 
 ---
 
+## 7.5 第一方随站 bundle（oj-market 自身）发布流程
+
+> 仅框架发布人需要；业务方案发布用 §1–§6 常规流程。oj-market 市场 UI 是第一方
+> **纯 web 方案包**（契约 `templates/src/oj-market/solution.yaml`，R29 第一方专用，
+> 第三方方案不得仿照 `/api/oj-market/*` 调用面），**出厂未装**：
+
+- **打包**：templates 工程 `pnpm build` → `ojm build --bundle oj-market`
+  （产 `templates/dist/oj-market-<ver>.tgz`，版本基线 0.2.0 起，双轨版本见
+  docs/plans/20261106-1904-market-remote-publish.md §衍生规划）；
+- **签名**：`ojm sign <tgz> --id <publisher>.<key> --registry-id <registry>` 产 .sig 旁车
+  （私钥永不出 `~/.ojm/keys/`，手工动作）；
+- **收编**：`pnpm prepack` 的 `scripts/sync-bundles.mjs` 把 templates/dist 里**已签名**
+  的 tgz+.sig 收进 `shell-dist/bundles/` 随 cli 包发布（未签名不收；dist 未构建则告警跳过）；
+- **信任根基**：把签名公钥（64 hex）+ key_id 回填 `templates/src/oj-market/api/bootstrap.ts`
+  的 `BOOTSTRAP_KEY`（模板内只有公钥；不回填则首装落 needs_trust 走 TOFU）；
+- **分发**：`ojm init --yes` 把 bundle 拷入新工程 `cdn/` 并写 `bundles.json` 意图标记——
+  站点首个市场编排请求（如 superadmin 打开 system 域「方案安装」）自动收敛安装；
+  **上拉不下拉**：未装→装、bundle 新→升级、bundle ≤ 已装（市场轨升过）→ 跳过不降级。
+  交互式 init 零动作（保持手动口径）；bundle 缺失告警不失败。
+
 ## 8. 发布前 checklist
 
 - [ ] `solution.yaml` 的 `version` 已升，与文件名一致；

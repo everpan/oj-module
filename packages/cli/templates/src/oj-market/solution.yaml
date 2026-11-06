@@ -8,6 +8,7 @@ name: oj-market
 version: 0.2.0
 title: 方案市场
 summary: 官方 方案市场 UI——方案清单/发布管理/发布历史（第一方专用，R29）
+description: 第一方专用方案包（R29 红线）：第三方方案不得仿照 /api/oj-market/* 调用面。api 编排面（install/catalog/yank/trust）随站点脚手架内置，本包仅承载市场 UI（纯 web，无 DB 迁移）。出厂未装：superadmin 经 system 域「方案安装」首装；ojm init --yes 落位的随站 bundle 由首个市场编排请求自动收敛（上拉不下拉）。
 changelog:
   - 0.2.0 Phase B 首包：市场 UI 模块化随站分发（出厂未装，superadmin 经 system 域首装）
 peerRuntime: '>=0.0.0'
