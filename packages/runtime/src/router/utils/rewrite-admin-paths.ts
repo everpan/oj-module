@@ -1,5 +1,7 @@
 import type { AppRouteRecordRaw } from "#src/router/types";
 
+import { addRouteIdByPath } from "./add-route-id-by-path";
+
 /**
  * admin 路由真重写（0.2.17，单根模块约定 + menu.main 统一）：
  *
@@ -15,6 +17,47 @@ import type { AppRouteRecordRaw } from "#src/router/types";
  * 本函数不改写宿主 /system 路由树本身。
  */
 const SYSTEM_KEY = "/system";
+
+/**
+ * 单路由导航 path：admin 复用同一重写算法；相对 path 以已计算的绝对 id 补全模块根。
+ *
+ * admin 子树内的后代路由（自身不声明 category，继承自父级）传祖先链获取重写后
+ * 路径：`resolveRoutePath(child, moduleRoot, ..., parent)`（链从模块根到直接父级）。
+ * 由重写前缀代数（systemKey + rootAbs + suffix，suffix 以模块 root 为基准），
+ * 后代重写结果恒为 `/system + 原绝对路径`，与 admin 嵌套深度无关；原绝对路径
+ * 优先取框架生成的 `id`（含 index 尾斜杠），无 id 时按链拼接。链上无 admin
+ * 祖先时仅拼接绝对路径，不做重写；已重写 id 不以原路径为前缀，自然幂等。
+ */
+export function resolveRoutePath(
+	route: AppRouteRecordRaw & { id?: string },
+	...ancestors: (AppRouteRecordRaw & { id?: string })[]
+): string | undefined {
+	if (ancestors.length === 0) {
+		if (route.handle?.category !== "admin")
+			return route.path;
+		const sourcePath = route.id ?? route.path;
+		if (!sourcePath || sourcePath === SYSTEM_KEY || sourcePath.startsWith(`${SYSTEM_KEY}/`))
+			return sourcePath;
+		return rewriteAdminPaths([{ ...route, path: sourcePath }])[0]?.path;
+	}
+
+	const chainAbs = ancestors.reduce((abs, node) => resolveAbs(node.path, abs), "/");
+	const sourcePath = route.index
+		? `${chainAbs}/`
+		: route.id ?? resolveAbs(route.path, chainAbs);
+	let adminPrefix: string | undefined;
+	{
+		let abs = "/";
+		for (const node of ancestors) {
+			abs = resolveAbs(node.path, abs);
+			if (node.handle?.category === "admin")
+				adminPrefix = abs; // 嵌套 admin 时取最近一个
+		}
+	}
+	if (!sourcePath || !adminPrefix || !sourcePath.startsWith(adminPrefix))
+		return sourcePath;
+	return `${SYSTEM_KEY}${sourcePath}`;
+}
 
 /** 解析路由绝对路径（与 generate-menu-items-from-routes 同语义） */
 function resolveAbs(path: string | undefined, parentAbs: string): string {
@@ -48,7 +91,8 @@ function processRoute(
 		// 真重写：/system + 模块 root 路径 + 原后缀（保留 admin 子树内的相对层级）
 		const suffix = abs.slice(rootAbs.length) || "";
 		const newAbs = `${systemKey}${rootAbs}${suffix}`;
-		hoisted.push({ ...route, path: newAbs });
+		// path 与 useMatches 消费的 id 必须同源；按新绝对路径重算整个子树（含 index 尾斜杠）
+		hoisted.push(...addRouteIdByPath([{ ...route, path: newAbs }], newAbs));
 		return null; // 从原树摘除
 	}
 

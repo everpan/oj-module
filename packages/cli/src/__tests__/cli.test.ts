@@ -21,6 +21,12 @@ let exitSpy: ReturnType<typeof vi.fn>;
 // 提升式 mock：vitest 测试体内注册的 vi.mock 拦不到 cli.ts 的 dynamic import，须 hoisted 顶层注册
 const buildBundleMock = vi.hoisted(() => vi.fn(async () => [{ file: "x.tgz" }]));
 vi.mock("../bundle", () => ({ buildBundle: buildBundleMock }));
+// 脚手架完整性门禁（scaffold-guard）：门禁失败必须先于一切产物写入
+const guardMock = vi.hoisted(() => vi.fn());
+vi.mock("../scaffold-guard", () => ({ assertDefaultModulesUntouched: guardMock }));
+const buildBackendMock = vi.hoisted(() => vi.fn(async () => {}));
+const buildModulesMock = vi.hoisted(() => vi.fn(async () => []));
+vi.mock("../build", () => ({ buildBackend: buildBackendMock, buildModules: buildModulesMock }));
 const vendorCommandMock = vi.hoisted(() => vi.fn(async () => {}));
 vi.mock("../vendor", () => ({ vendorCommand: vendorCommandMock }));
 // REG-CS3 v2：sign 的 --registry-id 曾只被 signCommand 要求、却没在 CLI 上接线，命令成死路
@@ -39,6 +45,9 @@ afterEach(() => {
 	buildBundleMock.mockClear();
 	vendorCommandMock.mockClear();
 	signCommandMock.mockClear();
+	guardMock.mockClear();
+	buildBackendMock.mockClear();
+	buildModulesMock.mockClear();
 });
 
 interface RunResult { out: string, unknown: string[], exitCode: number | undefined }
@@ -212,6 +221,28 @@ describe("参数映射", () => {
 	it("sign --registry-id 映射到 signCommand.registryId（REG-CS3 v2 规范串首段）", async () => {
 		await run(["sign", "demo-0.1.0.tgz", "--id", "acme.market", "--registry-id", "oj-registry"], "zh-CN", tmp, () => signCommandMock.mock.calls.length > 0);
 		expect(signCommandMock).toHaveBeenCalledWith("demo-0.1.0.tgz", { id: "acme.market", key: undefined, check: undefined, registryId: "oj-registry" });
+	});
+});
+
+describe("脚手架完整性门禁", () => {
+	it("门禁失败 → 普通 build 不执行（零产物）、exit 1", async () => {
+		guardMock.mockImplementation(() => {
+			throw new Error("[ojm] 框架默认模块与上游模板不一致，已拒绝构建");
+		});
+		const r = await run(["build"], "zh-CN", tmp);
+		expect(guardMock).toHaveBeenCalledWith(tmp);
+		expect(buildBackendMock).not.toHaveBeenCalled();
+		expect(buildModulesMock).not.toHaveBeenCalled();
+		expect(r.exitCode).toBe(1);
+	});
+
+	it("门禁失败 → --bundle 同样不进 buildBundle", async () => {
+		guardMock.mockImplementation(() => {
+			throw new Error("[ojm] 框架默认模块与上游模板不一致，已拒绝构建");
+		});
+		const r = await run(["build", "--bundle", "demo"], "zh-CN", tmp);
+		expect(buildBundleMock).not.toHaveBeenCalled();
+		expect(r.exitCode).toBe(1);
 	});
 });
 

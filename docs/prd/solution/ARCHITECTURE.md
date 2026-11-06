@@ -148,6 +148,7 @@ flowchart LR
 | api 段 | — | 纯前端方案可省 | C2-12 |
 | api.module | ⬜ | 存在时必须 `=== name` | C2-12 |
 | api.tables | ⬜ | 与 `schema.yaml` tables 逐一相等 | C2-12a |
+| schema.yaml.prefix | ✅（有表时） | 作者自选：`^[a-z][a-z0-9_]*_$`、≤32 字符，且不得以 `oj_` / `ojm_` 开头（第一方保留段）；`tables` 每个键以该前缀开头且总长 ≤63（PG 63 字节最紧） | C2-12c |
 | api.deps | ⬜ | 键匹配 name 正则或 `_platform`；值=范围算子 | C2-12b |
 | **api.prefix** | ⬜ | 默认 `/api/<name>`；显式须 `^\/api\/[a-z][a-z0-9-]{0,63}$`，模块段 ∉ 保留名；占用检测 | C2-13 |
 | web.route_prefix | ⬜ | 默认 `/<name>`；同上 | C2-14 |
@@ -167,7 +168,7 @@ flowchart LR
 | permissions[] | ⬜ | `code` 必填 `^<name>\.[a-z0-9_]+(\.[a-z0-9_]+)*$`（`framework.*`/`system.*`/`market.*` 等不可达）；`title_key` 必填；本 manifest 内唯一 | C2-15 |
 | roles[] | ⬜ | `name` 必填 `^<name>\.[a-z0-9-]{1,64}$`；`title_key` 必填；`permissions[]` 须 ∈ permissions[].code（悬空引用双端拒绝）；本 manifest 内唯一 | C2-16 |
 
-升级稳定性（非校验项）：注册 upsert 只加法 + 元数据覆盖，声明消失标 `deprecated`（P1-8 语义）。
+升级稳定性（非校验项）：注册 upsert 只加法 + 元数据覆盖，声明消失标 `deprecated`（P1-8 语义）；**重声明复位 `deprecated=0`**（对齐 settings/routes 注册面纪律）。`title_key` 随行落库（`sys_role.title_key` / `sys_permission.title_key`，R2 展示锚）：展示页按当前语言实时翻译、`title`/`code` 兜底；升级即重解析覆写（R3，新包 locale 改进随升级传播）。
 
 ### 4.7 路由分类区块（D4 三值）
 
@@ -225,7 +226,7 @@ flowchart LR
 
 ### 4.13 市场索引扩展与深检报告（C2-41/42）
 
-`GET /api/_platform/market/index` 的 IndexRow 增补：`available[]`（可下载版本）、`changelog`（透传）、`trust_state`(`trusted`/`untrusted`/`absent`)、`publisher`（= `key_id` 的 `<publisher>` 段）；`operator` 不挂 IndexRow（回落 `market_history`）。
+`GET /api/_platform/market/index` 的 IndexRow 增补：`available[]`（可下载版本）、`changelog`（透传）、`trust_state`(`trusted`/`untrusted`/`absent`)、`publisher`（= `key_id` 的 `<publisher>` 段）、`license`、`summary`（C2-04，卡片单行简介）、`description`（C2-05，卡片正文/详情全文；字段缺失 → `null`）；`operator` 不挂 IndexRow（回落 `market_history`）。
 
 深检 `POST /api/_platform/solutions/verify?name=`（admin 域）返回 `VerifyReport={ok, checks[], advise[]}`；item 结构：`id`(routes/rbac/settings/ledger/i18n/trust) / `severity`(error/warn/info) / `subject`(差异主体，永不含设置值) / `advise_key`(双语可行动 key)。报告落 `.solutions/verify-reports/` 时间序保留 N=10。
 
@@ -332,7 +333,7 @@ sequenceDiagram
 | 1 | 后端模块 | 共享根 `manifests.yaml`(`<module>:<version>`) + 物理目录 | 迁移后落锁 |
 | 2 | 路由分类 | `sys_solution_route`(category/path/order/title_key/enabled) | 注册 |
 | 3 | 业务设置 | `sys_setting`(`module=<name>`, group, items) | 注册 |
-| 4 | RBAC | `sys_role`/`sys_permission`(`module=<name>`) + 初始 `sys_role_permission` | 注册 |
+| 4 | RBAC | `sys_role`(title/title_key)/`sys_permission`(code/title_key, `module=<name>`) + 初始 `sys_role_permission` | 注册 |
 | 5 | 前端入口 | 站点 `modules.json`(name/entry/integrity/css/chunks/enabled) | 前端落位 |
 | 6 | 前端路由 | `entry.js` `defineModule.routes`（运行时事实源） | 宿主 getRoutes() |
 | 7 | 前端 i18n | `entry.js` `defineModule.i18n` → 命名空间 `<name>` | 宿主加载 entry |

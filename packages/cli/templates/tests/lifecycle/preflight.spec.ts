@@ -305,3 +305,71 @@ describe("preflight · C2 夹具（双端唯一真源）", () => {
 		}
 	});
 });
+
+describe("p0 §3.9 宿主能力门禁（写锁前失败，零痕迹）", () => {
+	it("老 oj（capabilities 不含所需）+ 新模板声明 requiresCapabilities → 写锁前 failed(host_capability)，retryable=false", async () => {
+		const m = structuredClone(VALID);
+		m.requiresCapabilities = ["reload.modules_in_key", "anon.per_generation"];
+		const r = await preflight(ctx({ manifest: m, capabilities: [] }));
+		expect(r.ok).toBe(false);
+		expect(r.code).toBe("host_capability");
+		expect(r.retryable).toBe(false);
+		expect(r.message).toContain("reload.modules_in_key");
+	});
+
+	it("宿主 capability 未上报（undefined）+ 模板声明 → fail-closed 同拒", async () => {
+		const m = structuredClone(VALID);
+		m.requiresCapabilities = ["reload.api"];
+		const r = await preflight(ctx({ manifest: m })); // 无 capabilities
+		expect(r.ok).toBe(false);
+		expect(r.code).toBe("host_capability");
+	});
+
+	it("宿主具备所需能力 → 放行", async () => {
+		const m = structuredClone(VALID);
+		m.requiresCapabilities = ["reload.api", "reload.modules_in_key"];
+		const r = await preflight(ctx({ manifest: m, capabilities: ["reload.api", "reload.modules_in_key", "anon.per_generation"] }));
+		expect(r.ok).toBe(true);
+	});
+
+	it("既有模板不声明 requiresCapabilities → 门禁恒放行（不依赖上游 US-1 即先落地）", async () => {
+		const r = await preflight(ctx({ capabilities: [] }));
+		expect(r.ok).toBe(true);
+	});
+});
+
+describe("p0 §3.2 质辩1 / E7·E8 匿名保留段与残留检测（写锁前拒装）", () => {
+	it("e7 方案声明保留段匿名条目 → 拒装（C2-26）", async () => {
+		const m = structuredClone(VALID);
+		m.api.anonymous = ["_platform/health"];
+		const r = await preflight(ctx({ manifest: m }));
+		expect(r.ok).toBe(false);
+		expect(r.message).toContain("C2-26");
+		expect(r.message).toContain("_platform");
+	});
+
+	it("e8 config 存在未被本 manifest 声明的同 prefix 匿名残留 → 拒装（anonymous_residual）", async () => {
+		const m = structuredClone(VALID);
+		m.api.anonymous = ["demo-solution/ping"];
+		const r = await preflight(ctx({ manifest: m, existingAnonymousPaths: ["/demo-solution/legacy"] }));
+		expect(r.ok).toBe(false);
+		expect(r.code).toBe("anonymous_residual");
+		expect(r.message).toContain("/demo-solution/legacy");
+	});
+
+	it("e8 config 残留条目恰为本 manifest 已声明 → 不误伤放行", async () => {
+		const m = structuredClone(VALID);
+		m.api.anonymous = ["demo-solution/ping"];
+		const r = await preflight(ctx({ manifest: m, existingAnonymousPaths: ["/demo-solution/ping"] }));
+		expect(r.ok).toBe(true);
+	});
+
+	it("e8 config 残留指向保留段 → 不误伤放行（保留段属宿主内建，方案无法注入，非方案残留）", async () => {
+		const m = structuredClone(VALID);
+		m.api.anonymous = ["demo-solution/ping"];
+		// /_platform/health 是宿主内建匿名端点（如 /auth/login），方案 C2-26 已挡住声明保留段匿名，
+		// 故 config 里的保留段条目绝不会是方案残留——纳入比对只会误伤宿主内建，须放行。
+		const r = await preflight(ctx({ manifest: m, existingAnonymousPaths: ["/_platform/health", "/auth/login"] }));
+		expect(r.ok).toBe(true);
+	});
+});

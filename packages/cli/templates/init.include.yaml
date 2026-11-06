@@ -37,14 +37,16 @@ include:
   - types
   - web.config.ts
   - openapi.json
+  # src 下的模块分区说明（内置模块自治契约的人话版，动手前必读）
+  - src/README.md
   - src/styles.css
   # 后端 typecheck 工程（package.json 的 typecheck:api 指向它）；只收后端、排除 web
   - src/tsconfig.json
-  # —— 后端：配置 / 种子 / 测试 / 默认模块（模块源码在 src/app/api/<模块>）——
+  # —— 后端：配置 / 测试 / 默认模块（模块源码在 src/app/api/<模块>）——
+  # 方言 seed 不在这里列：它们是模块资产（`src/app/api/<模块>/seed.<dialect>.sql`），
+  # 根级副本会与模块内那份漂移（历史上一份只含 4 条设置、且 mysql 侧裸写保留字列），已删除。
   - config.yaml
   - .ojm-api-exempt.json
-  - seed.mysql.sql
-  - seed.pg.sql
   - vitest.config.ts
   # —— tests 逐条白名单（不收 tests/ 整目录）——
   # 业务工程只拷「纯 node:sqlite 夹具、零 cli 包环境假设」的测试。以下 6 个不分发
@@ -74,6 +76,9 @@ include:
   # 角色页展示层过滤 superadmin（后端 listRoles 仍返回；页面源码随 src/app/web/system 下发）
   - tests/roles-page.spec.ts
   - tests/seed-role-accounts.spec.ts
+  # 发布凭证：身份推导规则是跨端共用的口径，随源码下发，用户工程可本地自检
+  - tests/publish-identity.spec.ts
+  - tests/publish-credential.spec.ts
   # 用户页行级门禁：只有 superadmin 能改 superadmin 账号（后端 assertCanManageTarget 的另一面）
   - tests/users-page.spec.ts
   # 企微连接器与组织同步：源码本就分发（src/app/api/auth），对应回归也必须跟着走，
@@ -105,6 +110,7 @@ include:
   - src/app/api/auth
   - src/app/api/notification
   - src/app/api/personal-center
+  - src/app/api/publish
   - src/app/api/system
   - src/app/api/web
   # —— web 前端模块 ——
@@ -132,5 +138,6 @@ include:
   - src/oj-market/web/hooks
   - src/oj-market/web/locales
   - src/oj-market/web/pages
+  - src/oj-market/web/publish
   - src/oj-market/web/utils
   - src/app/web/web

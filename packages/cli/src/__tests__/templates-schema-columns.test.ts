@@ -88,12 +88,25 @@ describe("templates 后端 schema.yaml 列白名单", () => {
 		expect(violations).toEqual([]);
 	});
 
-	it("s-2 回归锚点：0017 三方言迁移齐备，users.employee_no 已声明为 text", () => {
+	it("s-2 回归锚点：_platform 基线为 0001、增量 0002（发布历史）三方言齐备，且基线里确有 users.employee_no", () => {
 		const migDir = join(srcRoot, "app", "api", "_platform", "migrations");
-		for (const file of ["0017__users_employee_no.sql", "0017__users_employee_no.mysql.sql", "0017__users_employee_no.pg.sql"])
+		for (const file of [
+			"0001__baseline.sql",
+			"0001__baseline.mysql.sql",
+			"0001__baseline.pg.sql",
+			"0002__market_release.sql",
+			"0002__market_release.mysql.sql",
+			"0002__market_release.pg.sql",
+		])
 			expect(existsSync(join(migDir, file)), `缺迁移 ${file}`).toBe(true);
+
+		// 0001 是压平后的结构基线，已应用过的库不会重跑——新增结构只能追加新序号，
+		// 不得回改基线（否则老库拿不到）。序号必须从 0001 起连续、无空洞。
+		const seqs = [...new Set(readdirSync(migDir).map(f => f.slice(0, 4)))].sort();
+		expect(seqs).toEqual(["0001", "0002"]);
 
 		const schema = parse(readFileSync(join(srcRoot, "app", "api", "_platform", "schema.yaml"), "utf-8")) as SchemaDoc;
 		expect(schema.tables?.users?.columns?.employee_no).toMatchObject({ type: "text" });
+		expect(readFileSync(join(migDir, "0001__baseline.sql"), "utf-8")).toContain("employee_no");
 	});
 });

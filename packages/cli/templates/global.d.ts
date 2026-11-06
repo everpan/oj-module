@@ -121,16 +121,18 @@ interface JsonApi {
 		permanentRedirect: (url: string) => void // 308 永久 + 方法保持
 	}
 	// 流式响应（v0.1.35）：开流后逐块 write，绕过 {code,msg,data} 信封。
-	// opts：{ status?, contentType? }；返回 writer 必须显式 end()（或 handler 返回即自动关流）。
-	stream: (opts?: { status?: number, contentType?: string }) => StreamWriter
+	// opts：{ status?, contentType?, fileName?, disposition? }——fileName + disposition:
+	// "attachment"（缺省）按原名附件下载、"inline" 内联；返回 writer 必须显式 end()（或 handler 返回即自动关流）。
+	// write 按入参类型分发：Uint8Array/ArrayBuffer/TypedArray/DataView 走字节通道（二进制无损），string 走 UTF-8 文本通道。
+	stream: (opts?: { status?: number, contentType?: string, fileName?: string, disposition?: "attachment" | "inline" }) => StreamWriter
 	// SSE 便捷封装：自动 text/event-stream + 数据帧 `data: <c>\n\n`；
 	// opts：{ status?, heartbeatSecs? }（心跳默认 15s，保活穿透代理）。
-	sse: (opts?: { status?: number, heartbeatSecs?: number }) => StreamWriter
+	sse: (opts?: { status?: number, heartbeatSecs?: number, fileName?: string, disposition?: "attachment" | "inline" }) => StreamWriter
 }
 
 // 流式写入器（json.stream/json.sse 返回）。
 interface StreamWriter {
-	write: (chunk: string) => void
+	write: (chunk: string | Uint8Array) => void
 	end: () => void
 }
 

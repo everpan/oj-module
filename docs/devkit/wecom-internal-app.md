@@ -615,7 +615,7 @@ superadmin 是平台级的、只留一个；admin 是租户级的、每租户一
 
 | 表 | 是否带 `tenant_id` | 含义 |
 |---|---|---|
-| `sys_role` / `sys_permission` / `sys_role_permission` | **无** | 全站只有一套角色定义：superadmin / admin / editor / viewer（`framework` 内置） |
+| `sys_role` / `sys_permission` / `sys_role_permission` | **无** | 角色定义全站一套，不按租户分：内置四角色（superadmin / admin / editor / viewer）+ 各方案声明安装注册的角色（`solution.yaml` 的 `roles[]`），同池共存 |
 | `sys_user_role` | **有** | 授予是**按租户**的 |
 
 也就是说：不可能「每租户定义一套角色」，但可以「每租户各授一个 superadmin」——**但不要这么做**，理由见下。

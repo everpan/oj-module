@@ -157,6 +157,7 @@ export const getModules = () => [];
 export const getModule = () => undefined;
 export const getRoutes = () => [];
 export const getHostRoutes = () => [];
+export const resolveRoutePath = _fn;
 // 模块生效 web 路由前缀段取值口（R1.3：写进 modules.json 的 routePrefix，未声明回落 name）
 export const getModuleRoutePrefix = _fn;
 export const getRegisteredStore = () => undefined;

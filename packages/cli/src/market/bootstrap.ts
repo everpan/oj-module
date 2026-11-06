@@ -69,6 +69,14 @@ export interface IsolatedSite {
 	cleanup: () => Promise<void>
 	/** 销毁清单（--keep 时给人看这里到底有什么） */
 	teardownReport: () => string[]
+	/**
+	 * 重启隔离站点 oj serve（停当前进程，按同一派生 config 重新起站）。
+	 * 用途：无守护形态安装会落 partial（vars/auth 等冻结段热改属 restart_pending，需进程
+	 * 重启才激活）。walkthrough 在每次安装后置重启，模拟真实「部署 → 重启」时序，让模块真正
+	 * 上线（路由/匿名端点注册），使后续深检/升级/重装断言落到活跃态而非空洞的 partial。
+	 * token 仍有效（jwt_secret 落在 config 文件，重启不变）；DB 在同根，会话延续。
+	 */
+	restart: () => Promise<void>
 }
 
 export interface BootstrapOptions {
@@ -178,8 +186,13 @@ export async function bootstrapIsolatedSite(opts: BootstrapOptions = {}): Promis
 	// 隔离站点直接预置被测方案的探活路径——与 scripts/verify-solution-smoke/bootstrap-host.mjs 同手法，
 	// 让 trial 验的是安装机制本身，而不是重启时序。
 	const healthPath = `/${parseFixtureSpec(opts.fixture).name}/ping`;
-	if (!cfg.includes(`- ${healthPath}`))
-		cfg = cfg.replace(/^(\s*)- \/system\/login-methods$/m, `$1- /system/login-methods\n$1- ${healthPath}`);
+	// 锚点行可能带行内注释与缩进（模板 config.yaml 的 /system/login-methods 即如此），
+	// 故用 lookahead 容忍尾注释；命中第一个 anonymous_paths 列表项（auth 守卫读取的那个，
+	// 与安装器 appendAnonymousPaths 同目标）即可——旧写法用 `$` 硬锚尾，注释使其失配导致预置
+	// 静默失效，安装器随后自己补匿名路径 → auth 进 restart_pending → 无守护形态判 partial。
+	const loginAnchor = /^(\s*)- \/system\/login-methods(?=\s*(?:#.*)?$)/m;
+	if (loginAnchor.test(cfg) && !cfg.includes(`- ${healthPath}`))
+		cfg = cfg.replace(loginAnchor, `$1- /system/login-methods\n$1- ${healthPath}`);
 	// fs 段：模板自 0.2.13 起已自带（安装器落盘面）；旧模板没有时才补，避免重复键
 	if (!/^fs:/m.test(cfg))
 		cfg = `${cfg.trimEnd()}\nfs:\n  root: .\n  readonly: false\n`;
@@ -237,6 +250,16 @@ export async function bootstrapIsolatedSite(opts: BootstrapOptions = {}): Promis
 	process.on("SIGINT", onSignal);
 	process.on("SIGTERM", onSignal);
 
+	// 重启：停当前进程后按同一派生 config 重新起站（激活冻结段）；cleanup 持有的是本作用域的
+	// `oj` 变量引用，故重启后 cleanup 停的是新进程（闭包捕获变量，非值）。
+	const restart = async () => {
+		log("[ojm] 隔离站点重启 oj serve（激活冻结段 auth/vars）…");
+		await oj.stop();
+		oj = starter(configPath, "/api", resolveLayout(root).apiDist);
+		await oj.ready;
+		log(`[ojm] 隔离站点重启就绪：http://127.0.0.1:${port}（根 ${root}）`);
+	};
+
 	return {
 		root,
 		port,
@@ -249,6 +272,7 @@ export async function bootstrapIsolatedSite(opts: BootstrapOptions = {}): Promis
 		admin: { user: SEED_ADMIN_USER, pass: SEED_ADMIN_PASS },
 		cleanup,
 		teardownReport: () => teardownReport(root, port),
+		restart,
 	};
 }
 

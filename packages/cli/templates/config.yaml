@@ -50,8 +50,6 @@ db:
   default: 'sqlite://db.sqlite' # 相对 config 目录；缺文件自动建空库
 
 vars:
-  # ojm install 每次安装自增一次，用来触发 reload 热更。别删行、别手工回写旧值。
-  ojm_install_seq: 0
   # 站点对外地址。装方案时服务端拿它把 /cdn 这类相对地址补全成绝对 URL（深检探针也用它）。
   # 故意不读请求头 Host（防伪造 Host 牵引出站）：不配 = fail-closed，不会替你猜。
   # canonical_origin: "https://your-site.example.com"
@@ -160,6 +158,7 @@ auth:
     - /auth/wecom/callback # 企微 302 回跳：code 即凭证，此时还没有本地会话
     - /auth/wecom/ticket # 一次性票据换 TokenBundle：票据本身就是「刚验过的登录证明」
     - /auth/wecom/event # 企微指令回调：靠 msg_signature 验签，不走 Bearer
+    - /publish/credential/exchange # 凭证换发布身份：凭证自身即持有型证明，CLI 可能没有账号密码
 
 # 多租户（企微代开发 v3 Phase 0）：开启后所有 {base} 请求必须带 X-TENANT-ID，否则 400。
 # 前端由 tenantStore + headerProvider 统一注入（单租户部署恒为 default，UX 不变）。
@@ -180,10 +179,12 @@ tenant:
     - sys_rate_window # 限速窗口（登录前就要用）
     - sys_login_throttle # 登录节流（登录前就要用）
     - market_history # 解决方案安装/升级/回滚是站点级留痕
+    - market_release # 发布历史：CDN 是站点级的，历史按站点归口
     - reg_source_seq # 索引新鲜度水位属于站点（防回放）
     - wecom_app_profile # 企微 corp→租户映射权威：查它时必然还没有租户上下文（D9）
     - wecom_suite_ticket # 套件级凭证，按 suite_id 全局唯一
     - wecom_login_ticket # 一次性登录票据：跨「匿名 302 回跳」与「已认证换取」两段
+    - publish_credential # 发布凭证：CLI 兑换那一跳没有业务租户语义，归属走 owner_tenant 列
   # 豁免缺租户头的路径（去 base 前缀后的形态）。与 auth.anonymous_paths 同语义，
   # 但这是「没有租户头也不 400」的逃生口，只给**真的拿不到头**的端点。
   # 登录类端点不在此列：前端 headerProvider 每请求都注头（单租户恒 default），
@@ -196,6 +197,7 @@ tenant:
     - /auth/wecom/callback # 企微 302 回跳：浏览器带不了头，租户由 state→profile 推导
     - /auth/wecom/ticket # 一次性票据换会话：租户由票据行携带
     - /auth/wecom/event # 企微指令回调：验签+解密即认证，无租户语义
+    - /publish/credential/exchange # 凭证兑换：CLI 的裸 fetch 不带租户头；表本身是共享表（B 组）
   # tenant.require_signed_claim：租户头的服务端绑定（平台级 fail-closed）。
   # 暂保持 false——上游 oj 的 jwt.sign 目前会静默丢弃自定义 claim（需求 R6），
   # 开启前无法把 tenant 放进 token。R6 落地后改 true，裸头即失去自证能力。

@@ -238,15 +238,27 @@ version: "0.1.0"
   → `GET {base}/wiki/ws`，**不是** `{base}/wiki/api/ws`（`api` 是模块根即布局分隔符，
   不是路由段）。v0.1.86 及以前 WS 多出这一层，前端按文档连即 404。
 
-### seed.sql（可选）
+### seed.sql / seed.<方言>.sql（可选，v0.1.121 起分方言）
 
-- 模块 `seed.sql` 启动时对 `default` 库重放（**三方言**；建库结构演进归
+- 模块 seed 启动时对 `default` 库重放（**三方言**；建库结构演进归
   `migrations/` / `schema.yaml`）。
+- **按文件名选方言件**：`seed.sqlite.sql` / `seed.mysql.sql` / `seed.pg.sql`
+  （标签同迁移文件，注意 pg 写 `pg` 不是 `postgres`）。同一目录内
+  **方言件胜出、`seed.sql` 兜底、绝不双跑**：有 `seed.mysql.sql` 就只跑它，
+  `seed.sql` 被跳过（启动日志 warn 列出被跳过的文件）。
+- 只有**别的方言**的 seed（如只有 `seed.mysql.sql` 却在 pg 上启动）→ 跳过并 warn，
+  不报错；文件名不规范（`seed.postgres.sql` / `Seed.Sql` / `seed..sql`）→ 忽略并
+  warn 提示规范名，`oj check` 报 S006。
 - 语句按 `;` 切分 → **语句内不得含分号字面量**。
-- 幂等 INSERT 保证可重复执行（每次启动都重放）：写 sqlite 惯用法
+- 幂等 INSERT 保证可重复执行（每次启动都重放）：通用件写 sqlite 惯用法
   `INSERT OR IGNORE INTO …`，引擎按目标方言自动改写（mysql → `INSERT IGNORE`、
   pg → 句尾 `ON CONFLICT DO NOTHING`）；`OR REPLACE` / `ON CONFLICT` /
-  `ON DUPLICATE KEY` 不翻译。
+  `ON DUPLICATE KEY` 不翻译。**方言件可用本方言原生幂等写法**（sqlite 件：
+  `OR IGNORE` / `OR REPLACE` / `ON CONFLICT`；mysql 件：`INSERT IGNORE` /
+  `ON DUPLICATE KEY`；pg 件：`ON CONFLICT`），S006 按文件所属方言判定，
+  不会把 mysql 写法拿到 pg 件上误判。
+- 成功日志打印实际执行的文件与方言：
+  `seed ok module=… file=… dialect=mysql stmts=N`。
 - `oj build` 不执行 seed（构建零磁盘副作用，db 用内存库）。
 
 ### dist 产物布局（预览）
@@ -298,7 +310,7 @@ tables:
 | 文件 | 时机 | 纪律 |
 |---|---|---|
 | `migrations/{seq:04}__{desc}[.方言].sql` | 启动（auto）/ `oj migrate` | 只前向；账本 `_oj_migrations`（`module` 列区分模块）；序列空洞/乱序 S007 报错 |
-| `seed.sql`（模块级） | 每次启动重放 | 幂等 `INSERT OR IGNORE`；按 `;` 切分，语句内不得含分号字面量（S006）；语句前置 `--` 注释行允许（v0.1.66 起，改写判定先剥注释） |
+| `seed.sql` / `seed.<方言>.sql`（模块级） | 每次启动重放 | 方言件（`.sqlite` / `.mysql` / `.pg`）胜出、`seed.sql` 兜底，**绝不双跑**（v0.1.121）；幂等 `INSERT OR IGNORE`（方言件可用本方言原生幂等写法）；按 `;` 切分，语句内不得含分号字面量（S006）；语句前置 `--` 注释行允许（v0.1.66 起，改写判定先剥注释） |
 | `fixtures/*.sql` | 仅 `oj test` / `oj test fixture` 灌入 | 演示/测试数据，不进 release 产物 |
 
 ### 命令
@@ -2006,7 +2018,7 @@ json.ok(plugins());
   写错/漏项插件**装配期即被拒载**并点名（`unknown capability "…"` / `missing capability group "…"`）。
 - **哪个位影响执行**：`placeholder_*`（决定占位符改写）、`stream`、`cancel` 影响执行；
   `id_*` 只是**登记与对账**——取 id 由构造器按具体方言决定（只有 mysql 走两步
-  `LAST_INSERT_ID()`），别自己据 `caps.id` 分派。
+  `LAST_INSERT_ID()`，且 v0.1.120 起宿主把两步钉在同一连接），别自己据 `caps.id` 分派。
 - 三内置方言的完整串（与启动横幅 `[oj-serve] plugin … | caps: …`、`oj info` 逐字同源）：
   `placeholder=? id=two_step stream`（sqlite）/ `placeholder=? id=two_step stream cancel`（mysql）
   / `placeholder=$ id=returning stream cancel`（postgres）。
@@ -2872,7 +2884,7 @@ mounts:
 | `html_meta` | 无 | （v0.1.20）**构建期** per-route meta 目录名（相对各 web 挂载根）：送 HTML 前读 `<挂载根>/<dir>/<path>.json`，把 `title`/`description`/`canonical`/`og:*`/`twitter:*` 注入 `<head>`（值 HTML 转义、**不注入脚本**；目录自身不可公开访问）。只覆盖构建期已知路由 |
 | `html_meta_handler` | 无 | （v0.1.25）**动态** meta 源 = 业务 handler 的路由路径，见下「静态站点与 per-route meta」。静态 JSON 打底、动态按 key 覆盖；装配期校验它必须命中一个 **GET** 路由（拼错启动即报错） |
 | `html_cache_control` | 无 | （v0.1.25）HTML 响应的 `Cache-Control`（**只管 HTML**，js/css/图片不受影响）。动态 handler 返回的 `cache_control` 优先；两项都没有 = 不加头 |
-| `static` | 全默认 | （v0.1.116）静态层压缩与默认缓存策略子段，七键：`compression: true`（false = 不协商不压缩，连 Vary 也不加，逐字节同 v0.1.115）/ `compress_min_length: 1024` / `compress_types: []`（缺省=内置集 html/htm/css/js/mjs/json/map/txt/md/svg/xml/yaml/yml/woff/ttf；给出=全量替换）/ `brotli_quality: 5`（1..=11 越界启动报错）/ `gzip_level: 6`（1..=9）/ `compress_cache_dir`（未配置=`<config_dir>/compress-cache`；显式 `""`=纯内存直压；相对→相对 config 目录；**目录是派生数据可整删**）/ `web_cache_policy: auto`（`auto`=两档制：文件名哈希段→`immutable` 一年、**其余一律 `no-cache` 恒校验**；`none`=不加任何 Cache-Control）。图片/pdf/woff2 硬排除即列 `compress_types` 也不压。压缩协商 br>gzip、压缩产物落盘缓存 + single-flight 并发钳、可压资源恒带 `Vary: Accept-Encoding`（identity 变体亦带）、ETag 弱化 `W/` + 弱比较 304。默认行为变更见 CHANGELOG v0.1.116 |
+| `static` | 全默认 | （v0.1.116）静态层压缩与默认缓存策略子段，七键：`compression: true`（false = 不协商不压缩，连 Vary 也不加，逐字节同 v0.1.115）/ `compress_min_length: 1024` / `compress_types: []`（缺省=内置集 html/htm/css/js/mjs/json/map/txt/md/svg/xml/yaml/yml/woff/ttf；给出=全量替换）/ `brotli_quality: 5`（1..=11 越界启动报错）/ `gzip_level: 6`（1..=9）/ `compress_cache_dir`（未配置=`<config_dir>/compress-cache`；显式 `""`=纯内存直压；相对→相对 config 目录；**目录是派生数据可整删**；v0.1.119 起缓存文件按 `<键前 2 hex>/` 子目录分层落盘，旧版平铺文件启动时自动迁入子目录，语义不变）/ `web_cache_policy: auto`（`auto`=两档制：文件名哈希段→`immutable` 一年、**其余一律 `no-cache` 恒校验**；`none`=不加任何 Cache-Control）。图片/pdf/woff2 硬排除即列 `compress_types` 也不压。压缩协商 br>gzip、压缩产物落盘缓存 + single-flight 并发钳、可压资源恒带 `Vary: Accept-Encoding`（identity 变体亦带）、ETag 弱化 `W/` + 弱比较 304。默认行为变更见 CHANGELOG v0.1.116 |
 | `logs_dir` | 无（= config 目录下 `./logs`） | 日志目录（终端输出完整镜像落盘；每次启动新建文件 `server-<启动秒>_<pid>.log`，按 `logs_max_m` 滚动、保留 `logs_keep_files` 个）；不存在自动创建 |
 | `logs_max_m` | `100` | 单个日志文件大小上限（单位 M；**<100 按 100 生效**），超过滚动为 `base.1.log` 依次后移 |
 | `logs_keep_files` | `10` | 日志文件保留个数（含活动文件，超出删除；最小生效值 2） |
@@ -3416,7 +3428,8 @@ ldap:                            # 不透明段里的 bind_pw 同样支持
 
 `oj build` 内建结构检查 S001–S008：S001 模块目录/manifest 合法性、S002 表归属唯一、
 S003 跨模块 SQL 须声明 deps、S004 deps 版本范围可满足、S005 `tables` 与 schema.yaml
-一致、S006 seed.sql 纪律（禁 DDL/禁非幂等 insert/只碰本模块及 deps 表）、S007 迁移
+一致、S006 seed 纪律（禁 DDL/禁非幂等 insert/只碰本模块及 deps 表；覆盖
+`seed.sql` 与各 `seed.<方言>.sql`，幂等判据按文件所属方言）、S007 迁移
 序列合法、S008 导入别名（`#` 目标存在、跨模块须在 deps 声明、manifest.yaml 只在模块根）。
 违规 fail build；`oj build --check` 只查不落盘，作 CI 门禁。
 
@@ -3483,7 +3496,8 @@ oj-v<version>-<triple>/
 └── devkit/               # 本手册 + SKILL.md + global.d.ts（agent/编辑器类型提示）
 ```
 
-目标机部署：解包 → 项目目录放 `config.yaml` + `dist/` + `seed.sql`（可选）+
+目标机部署：解包 → 项目目录放 `config.yaml` + `dist/` + `seed.sql`（可选，或分方言的
+`seed.<方言>.sql`）+
 vendored `node_modules/`（不打进 tgz）→ `./oj migrate -c config.yaml -d dist`
 （release 默认 `migrate_on_start: verify`，账本落后会拒启 M004；config `db:` 段有命名库时
 加 `--db <name>` 逐库跑）→ `./oj serve -c config.yaml --api-path dist`。
@@ -3643,7 +3657,7 @@ cargo run -p oj-cert -- renew -k config/private.pem --days 365
 | release 换版本（改锁指向新版本目录） | **否**——`dist/manifests.yaml` 仅启动时读取，需重启 |
 | 证书 / 公钥文件被覆盖 | 是（notify 事件驱动，不轮询 mtime） |
 | `config.yaml` | 否（重启生效） |
-| `seed.sql` | 否（仅启动重放） |
+| `seed.sql` / `seed.<方言>.sql` | 否（仅启动重放） |
 | `manifest.yaml` 新增/删除模块 | 否（重启生效） |
 | schema.yaml / migrations 变更 | 否（重启或 oj migrate 生效；dev auto 在下次启动收敛） |
 | `node_modules` 新增包 | 否（已加载包缓存于进程，重启生效） |
@@ -3842,7 +3856,7 @@ await db.query("select id from account where id = " + id, []);   // 禁止
 | `WhereCond.and/or` 嵌套未展开 | 多个 `where()` 即 AND；复杂条件用 `db.query` 参数化 SQL |
 | `orIgnore()` + `fromSelect()` 组合在 **sqlite** 不支持（v0.1.82 明文，构造期拒绝） | sqlite 的 upsert 子句只能跟 VALUES；报 `orIgnore with fromSelect is not supported on sqlite (its upsert clause only follows VALUES)`。pg / mysql 支持 SELECT 源。绕行走裸 `db.exec("insert or ignore into … select …", [...])`（`OR IGNORE` 会把 NOT NULL/CHECK 违例一并静默跳过，数据面比 ON CONFLICT 宽）或先查后插 |
 | schema 回滚无自动机制 | 迁移只前向；破坏性变更前备份，反向变更写新 seq 迁移 |
-| fixtures/ 不进 release 产物 | 演示数据走 fixtures（oj test / oj test fixture）；参考数据走模块 seed.sql |
+| fixtures/ 不进 release 产物 | 演示数据走 fixtures（oj test / oj test fixture）；参考数据走模块 seed（`seed.sql`，或分方言的 `seed.<方言>.sql`） |
 | `db param: u64 value … is not supported on this path`（v0.1.24） | 在 PG/SQLite 上用了 `toUBigInt()`——它们的 bigint 是 i64；改存 text，或把该列放到 MySQL `BIGINT UNSIGNED` |
 | `_name_` 目录段必须整段且参数名合法（v0.1.27） | `__x__`/`___`/`_a{b}_` 不转换（保持字面）；转换产物由 `oj build` 期 pattern 试插校验把关，非法/同位异名即构建失败 |
 | 同层异名 `_x_` 目录是结构性冲突（v0.1.27） | `_aa_/` 与 `_bb_/` 并存 → 后者启动丢弃并告警（matchit 同位异名规则，与 `.route` 同） |
@@ -3910,7 +3924,8 @@ await db.query("select id from account where id = " + id, []);   // 禁止
   prepared statement 缓存会给出协议级报错（`invalid byte sequence for encoding "UTF8": 0x00`
   等）；换 SQL 文本或保持参数形态稳定。
 - `{id}.json` 混字面 pattern 非法——matchit 参数段不得混字面，拆成静态多段由 handler 校验。
-- `seed.sql` 不得含分号字面量（按 `;` 切分）；用 `INSERT OR IGNORE` 保证幂等。
+- seed 不得含分号字面量（按 `;` 切分）；用 `INSERT OR IGNORE` 保证幂等。方言相关的
+  写法别混装进通用件——拆成 `seed.<方言>.sql`（v0.1.121 起方言件胜出、`seed.sql` 兜底）。
 - postgres 占位符 **0.1.67 起也用 `?`**（宿主自动改写 `$n`；`$n` 存量写法继续有效）；jsonb 存在性用 `jsonb_exists(doc, 'key')`，勿写裸 `?` 运算符。
 - 上传 413 双闸：`max_upload_bytes`（信封 413）+ axum 层 2x 硬顶（裸 413）——客户端看到
   的 413 未必带 oj 信封。

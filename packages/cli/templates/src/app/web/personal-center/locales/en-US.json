@@ -9,6 +9,7 @@
 		"avatarRequired": "Please upload an avatar!",
 		"username": "Username",
 		"usernameRequired": "Please enter your username!",
+		"displayName": "Display name",
 		"email": "Email",
 		"emailRequired": "Please enter your email!",
 		"phoneNumber": "Phone",

@@ -25,6 +25,10 @@ export interface UserRow {
 	display_name: string | null
 	email: string | null
 	position: string | null
+	/** 工号（tenant 内唯一，未设置即 null）——U3：列表接口透出 users 表既有列 */
+	employee_no: string | null
+	/** 手机号（未设置即 null）——U3：列表接口透出 users 表既有列 */
+	phone_number: string | null
 	/** 所属部门（主部门在前） */
 	departments: UserDeptRef[]
 	is_forbidden: boolean
@@ -108,7 +112,7 @@ async function assertMembershipAllowed(actorId: number, nextRoles: string[]): Pr
 }
 
 export async function listUsers(): Promise<UserRow[]> {
-	const rows = await db.table("users").select(["id", "username", "display_name", "email", "position", "is_forbidden", "must_change"]).orderBy([{ field: "username" }]).all() as Array<Record<string, unknown>>;
+	const rows = await db.table("users").select(["id", "username", "display_name", "email", "position", "employee_no", "phone_number", "is_forbidden", "must_change"]).orderBy([{ field: "username" }]).all() as Array<Record<string, unknown>>;
 	const roleRows = await db.table("sys_user_role").select(["user_id", "role_name"]).all() as Array<{ user_id: number, role_name: string }>;
 	const roleMap = new Map<number, string[]>();
 	for (const r of roleRows)
@@ -120,6 +124,8 @@ export async function listUsers(): Promise<UserRow[]> {
 		display_name: r.display_name == null ? null : String(r.display_name),
 		email: r.email == null ? null : String(r.email),
 		position: r.position == null ? null : String(r.position),
+		employee_no: r.employee_no == null ? null : String(r.employee_no),
+		phone_number: r.phone_number == null ? null : String(r.phone_number),
 		departments: depts.get(Number(r.id)) ?? [],
 		is_forbidden: Number(r.is_forbidden) === 1,
 		must_change: Number(r.must_change) === 1,

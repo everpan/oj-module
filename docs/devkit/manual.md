@@ -12,7 +12,8 @@
 
 ### 1.1 脚手架产物
 
-`ojm init <目录>` 生成（幂等补缺，重跑只补缺失文件，**永不覆盖已有文件**）。
+`ojm init <目录>` 生成（幂等补缺，重跑只补缺失文件，**已有文件永不覆盖**；`--yes` 是唯一
+例外，见 §1.9 恢复语义）。
 模板拷贝按框架内置的 **`init.include.yaml` 白名单**执行——未收录的路径一律不拷
 （demo-only 演示模块、模板自运行产物都在清单外）。该清单是**框架侧文件**，`ojm init`
 从 cli 包内读取，**不在你的工程里**——你在工程里找不到它，也改不到它。
@@ -35,12 +36,12 @@
 ├── env.d.ts               # ImportMeta.env 类型补丁
 ├── types/oj-modules.d.ts  # `declare module "#*"` 别名兜底（非模块文件的 ambient 声明）
 ├── .ojm-api-exempt.json
-├── seed.mysql.sql / seed.pg.sql
 ├── vitest.config.ts       # 后端 BDD（include tests/**/*.spec.ts）
 ├── tests/                 # 后端 BDD 测试（node:sqlite 内存库 + 真实迁移建表）
 ├── src/
 │   ├── tsconfig.json      # 后端 typecheck 工程（extends 上两者，exclude */web）
-│   ├── .ojm-builtin.json  # 框架自带方案名单（init 派生，可手改/删除；打包排除 + info 折叠，见 §11）
+│   ├── README.md          # src 分区说明（内置模块自治契约的人话版，动手前必读）
+│   ├── .ojm-builtin.json  # 框架自带方案名单（init 派生，可手改/删除；打包排除 + info 折叠 + build 门禁开关，见 §11）
 │   ├── styles.css
 │   ├── app/               # 整个应用（后端模块 + 前端聚合模块）
 │   │   ├── api/           # 后端模块（模块名 = URL 前缀，各自仍是独立 oj 模块）
@@ -60,7 +61,9 @@
 │   │       ├── auth/      #   仅 __client（无页面）
 │   │       ├── _platform/ #   仅 __client（oj-market 引用）
 │   │       └── web/       #   仅 __client
-│   ├── oj-market/web/     # 解决方案市场（独立模块，删目录即下线）
+│   ├── oj-market/web/     # 解决方案市场（独立模块，enabled: false 下线；单根 /oj-market 挂三个子页）
+│   │   ├── entry.ts       #   routes 聚合：/oj-market 根（方案清单 index）+ 发布管理/发布历史子路由
+│   │   └── publish/       #   发布管理 + 发布历史（/oj-market/publish、/oj-market/history：routes + pages + locales + __client）
 ├── dist/api/              # 后端产物（release 根：<name>-<ver>/ + manifests.yaml + versions.json）—构建后才有
 ├── dist/web/              # 站点产物（shell + modules/ + modules.json）—构建后才有
 ├── bin/                   # oj 二进制 + plugins/ + devkit/（不入库）
@@ -198,10 +201,24 @@ src/<模块>/api/<路径...>/api.ts   →   /api/<模块>/<路径...>
 | 文件 | 何时生效 |
 |---|---|
 | `migrations/*.sql` | 启动（dev `migrate_on_start: auto`）；release 默认 `verify`，账本落后则**拒绝启动** |
-| `seed.sql` | **每次启动都重放**（sqlite 默认库）——必须幂等，用 `INSERT OR IGNORE` |
+| `seed.sql` / `seed.<方言>.sql` | **每次启动都重放**——方言件（`.sqlite` / `.mysql` / `.pg`）存在即胜出、`seed.sql` 兜底、绝不双跑（oj ≥ 0.1.121）；必须幂等 |
 | `schema.yaml` | 声明；加可空列 / 加表 reconcile 能收敛，但**改类型与改名必须走 migrations** |
 
 > `seed.sql` 按 `;` 朴素切分，**注释里不许出现分号字面量**，否则语法错。
+
+> **方言 seed 放好即生效（oj ≥ 0.1.121，已是 `ojm` 最低版本门禁）**：方言件按模块存放
+> （`src/app/api/<模块>/seed.mysql.sql` / `seed.pg.sql`，与基础件同表同条数），启动时按当前库
+> 方言自动选——方言件胜出、`seed.sql` 兜底、**绝不双跑**；成功日志打 `file=` / `dialect=`，
+> 模块只有别的方言件或文件名拼错（如 `seed.postgres.sql`）会 warn，`oj check` 的 seed 检查会报错。
+> 更早的 oj 只认字面 `seed.sql`（会把 sqlite 写法原样下发 mysql/pg → 1064），已低于门禁，
+> `ojm vendor` / `ojm info` 会直接拒绝。工程根**不再**有方言 seed 副本（历史上那份只含部分
+> 设置、且 mysql 侧裸写 `key`，已删除）。
+
+> **框架自带 `_platform` 模块的迁移已压平为单条基线**（`0001__baseline.sql` 及
+> `.mysql.sql` / `.pg.sql` 两个方言版）：新工程按基线一次建表，不再有 0002…0018 的增量链。
+> 老开发库的迁移账本里记着旧序号，**基线不会被重放**——若库结构落后（例如缺新列），
+> 直接删 `api/db.sqlite` 重启即可（dev 自动重跑迁移 + seed），本项目**不提供兼容 shim**。
+> 基线必须三方言同步：只写 sqlite 版会让同一模块在 mysql/pg 部署上建表失败。
 
 ### 1.7 handler 四红线（oj 运行时实测钉出，2026-10-16 RBAC 阶段）
 
@@ -267,6 +284,35 @@ oj 的 `#` 导入与目录深度无关（后端解析规则见 `oj-api-dev` 手�
   直接报错（与表归属校验同一套归属图）；模块名写错的别名同样在构建期被拦下。
 - `#` 与 Node `package.json#imports` 共用命名空间：工程里若出现 `#` 开头的 imports 键，
   `oj build` 直接失败（避免两套解析器分叉）。
+
+### 1.9 内置模块自治契约（build 门禁）
+
+**`src/app/`（框架内置页面与后端）和 `src/oj-market/` 是上游自治的，下游不许改。**
+`ojm build`（含 `--bundle`）与 `ojm market publish --real` 在任何产物写入前，把这两个目录
+逐文件与**当前 cli 包内模板**比对（上游模板即基线；比较前行尾归一，git autocrlf 不误报）：
+
+| 漂移 | 判定 |
+| --- | --- |
+| 改了内容 | `modified` — 拦 |
+| 删了白名单文件 | `missing` — 拦 |
+| 目录里多出文件 | `extra` — 拦 |
+
+被拦时构建直接失败、**零产物**，报错点名全部差异文件，并给出唯一正路：
+
+- 功能需求/缺陷 → **提交上游 issue**，等新版本下发；
+- 确认放弃本地修改 → `ojm init --yes` 恢复上游版本（见下）。
+
+没有绕过开关。这不是安全边界——删掉 `src/.ojm-builtin.json`（门禁开关）会整体退回旧行为，
+但没人替你兜底升级时的功能漂移；`enabled: false` 是下线某个自带能力的正确姿势（不是删目录）。
+
+**`ojm init --yes`（恢复/升级模式）**：日常重跑 init 永不覆盖；`--yes` 额外把 `src/app`、
+`src/oj-market` 恢复成当前 CLI 携带的上游版本（覆盖白名单文件、删除目录内多出文件、重写
+`.ojm-builtin.json` 为上游名单）。**会丢弃这两个目录里的本地修改，执行前先备份**；下游自定义
+模块（`src/<你的模块>/`）与工程配置（config.yaml / web.config.ts / package.json 等）不受影响。
+
+**CLI 升级后必须先同步**：新版 CLI 的模板就是新基线，旧版默认模块（即使一行没改）与新模板
+不一致即被拦——升级 cli 后先跑一次 `ojm init --yes` 再 build。dev 不拦，本地随便试验；
+发布产物必须过门禁。
 
 ---
 
@@ -379,7 +425,7 @@ export default defineModule({
 | `icon` | `createElement(XxxOutlined)` |
 | `keepAlive` | 页面缓存（多 tab 开启时有效；与 layout 解绑；相对/绝对声明均可，key 取路由绝对路径） |
 | `hideInMenu` | 不在菜单显示 |
-| `roles` / `permissions` | 路由级权限（页面级 / 按钮级） |
+| `roles` / `permissions` | 路由级权限（页面级 / 按钮级）；可绑定的角色/权限点目录由方案契约声明供给（§11.5） |
 | `iframeLink` | 内嵌 iframe 的外链地址 |
 
 > 另有**模块级** `config.requiredRoles` / `config.requiredPermissions`——它在路由
@@ -1135,13 +1181,11 @@ export default {
 | `container` | `ContainerLayout` | **有页面的业务路由必写**。完整外壳：顶栏 + 侧边/顶部导航 + 页签（keepAlive）+ 主内容 + 可选页脚 + 回到顶部 + 水印 |
 | `parent` | `ParentLayout` | 嵌套父级，自身只渲染 `<Outlet/>`（不挂任何 chrome），用于「菜单分组 / 多级路由」的父节点 |
 | `fullscreen` | `FullscreenLayout` | 全屏外壳：占满视口 + 品牌区（logo + 应用标题）+ 右上角工具（布局预览/主题/语言）+ 横幅 + 页脚，**无侧边栏/页签**。登录页即用它 |
-| `none` | 裸 `<Outlet/>` | 不挂任何外壳，页面裸渲染。**不写 `layout` 时运行时回落为此值** |
+| `none` | 裸 `<Outlet/>` | 不挂任何外壳，页面裸渲染。普通路由不写 `layout` 时回落为此值；`category: "admin"` 未声明时默认 `container` |
 
 > 红线（见 SKILL.md）：有页面的路由 handle 忘写 `layout: "container"`，页面会**裸奔**
-> （无侧边栏/页签/顶栏），且 `keepAlive` 失效。
->
-> 迁移说明：类型定义里 `handle.layout` 当前标了默认 `"container"` 仅为向后兼容，
-> **目标态是改为 `"none"`**——不要依赖默认值，每个路由都显式写 `layout`。
+> （无侧边栏/页签/顶栏），且 `keepAlive` 失效。唯一例外是 `category: "admin"`：未声明时默认
+> `container`，需要其他布局时仍可显式覆盖。
 
 ### 5.2 路由如何选布局
 
@@ -1919,9 +1963,9 @@ module-root 下数据源是「扫描 + `web.config.ts` 登记」并集（未登�
 一个脚手架可放多份用户方案（`ojm new` 逐个生成，各自一份 `src/<name>/solution.yaml`），
 `ojm build --bundle` 无参时全部打包、逐个校验独立出包；框架自带方案自动排除（名单见
 `src/.ojm-builtin.json`，`ojm info` 默认折叠自带模块）。
-**从开发到发布的完整过程视角（新手照做版，含签名/私钥纪律与多人各自发包纪律）见本目录**
-[`publish-walkthrough.md`](./publish-walkthrough.md)；仓内深度过程视角另见
-[`docs/guides/solution-dev-build-publish.md`](../guides/solution-dev-build-publish.md)（不随 cli 包发货）。
+**从开发到发布的完整过程视角（新手照做版，含签名/私钥纪律与多人各自发包纪律）见本目录
+[`publish-walkthrough.md`](./publish-walkthrough.md)**——那份文件同样随包分发、自包含，
+发布链路只读它 + 本章即可闭环。
 
 ### 11.1 打包：`ojm build --bundle`
 
@@ -2021,6 +2065,14 @@ flowchart TD
 ```
 
 - **needs_trust 确认后重试同一安装**即可续跑；一切消费面须把它当**非成功态**渲染。
+- **`partial` 不都是失败**：oj 0.1.122+ 首装 11 段全 `ok` 也可以终态 `partial`（`restart_pending`
+  正常语义——新模块的路由/模块注册要宿主重启，message 明示待重启段）；重启宿主后 retry 同一条
+  install → `done`，冒烟三项（探活 / integrity / 注册一致性）全过。partial 仅在 `reloading` 段
+  报 `unchanged` 时才是真失败（对着 dev 装的典型症状）。
+- **preflight 含匿名面检查（`anonymous_residual`）**：实际匿名可达的端点必须在方案契约
+  `api.anonymous` 里声明（`ojm new --api` 骨架已自带 ping 的声明）；漏声明的包拒装且不可自动重试。
+- **preflight 含 RBAC 声明校验**：`permissions[]` / `roles[]` 的命名前缀、`title_key`
+  必填、悬空引用双端拒绝——形状细则与注册/管理面见 §11.5。
 
 ### 11.4 生命周期命令与站点寻址约定
 
@@ -2041,6 +2093,61 @@ flowchart TD
 
 > `enable`/`disable`/`uninstall` 失败多半是「站点地址/凭据没给对」或「站点没这个方案」——
 > 先 `ojm info` 贴出版本矩阵与模块清单，确认目标站点与方案名无误再重试。
+
+### 11.5 方案自管理角色/权限（声明 → 安装注册 → 管理面 → 多语言）
+
+方案可以自带角色与权限点目录，装进站点后由管理员在「系统管理 → 角色权限」页分配——
+**声明属方案契约（`solution.yaml`），不是 `api/manifest.yaml`**（后者是 oj 原生七键清单，
+写方案级字段安装期被白名单拒装；见 §1.2）。
+
+**声明面（`solution.yaml`，两段都可选）**：
+
+```yaml
+permissions:                       # code 强制 <name>. 前缀；title_key 必填 <name>:perm.*；包内唯一
+  - code: wiki.doc.create
+    title_key: wiki:perm.doc_create
+  - code: wiki.doc.read            # 无角色引用也合法（系统预置点，管理员在管理面自行分配）
+    title_key: wiki:perm.doc_read
+roles:                             # name 强制 <name>.<role>；title_key 必填 <name>:role.*；
+  - name: wiki.editor              # permissions ⊆ permissions[].code（悬空引用双端拒绝）
+    title_key: wiki:role.editor
+    permissions: [wiki.doc.create, wiki.doc.read]
+```
+
+**安装注册（registering 段，唯一出口 `upsertSolutionPerms`）**：
+
+- **title 安装期解析**：`title` 由 `title_key` 经包内
+  `web/modules/<name>/locales/<站点默认语言>.json` 解析落库（站点默认语言读 `sys_setting`
+  `site.language`，缺省 zh-CN）；ns ≠ 本方案名不越界读；任何解析失败保留原文、**绝不拒装**。
+- **title_key 随行落库（展示锚）**：`sys_role.title_key` / `sys_permission.title_key` 存原始 key，
+  展示页按当前语言实时翻译、`title`/`code` 兜底。
+- **升级即重解析**：新版本 locale 文案改进随升级覆写元数据（title/title_key）；
+  存量站点的权限点补 title_key 也是同一条路——**重装同版本方案即触发覆写**。
+- **只加法**：声明绑定 insert-if-absent（管理员撤过的绑定不复活）；声明消失 →
+  行保留标 `deprecated`（装机告警清单）；**重声明复位 `deprecated=0`**；
+  卸载双维级联清理。除该出口外不得直写 `sys_role`/`sys_permission`。
+- **落库不产生任何授权**：声明权限点只建目录行，判权仍走角色绑定——别以为把 code 写进
+  manifest 就等于拿到权限。
+
+**管理面（`/api/system/*`，需系统管理员——superadmin 或 admin，其余角色 403；`custom`/`wiki.*` 命名空间互斥）**：
+
+| 端点 | 作用 | 红线 |
+|---|---|---|
+| `GET /api/system/roles` | 角色清单（module 归属 / title+title_key / holders / 已绑权限） | `superadmin` 行前端展示层隐藏（后端原样返回） |
+| `POST /api/system/roles` | 建自定义角色 | 机器名强制 `custom.<slug>`；未知权限码 400 |
+| `PUT /api/system/roles/bindings?name=` | 整集替换角色↔权限绑定 | builtin 角色硬拒 403；写后按持有者失效判权缓存（撤销即强退） |
+| `DELETE /api/system/roles?name=` | 删角色 | builtin 硬拒 403；有持有者 409（`holders` 明细） |
+| `GET /api/system/permissions` | 权限点目录（含 deprecated 标记，UI 标灰） | 判权链不过滤 deprecated |
+| `PUT /api/system/users/roles?uid=` | 整集替换用户角色（`sys_user_role` 唯一权威源） | 写后失效该用户判权缓存 |
+
+**展示与多语言（「系统管理 → 角色权限」页，`/system/roles`）**：方案角色按当前语言实时渲染
+`t(title_key, { defaultValue: title })`；builtin 角色回退框架词典 `system:rolesPage.roleTitle.<name>`；
+custom 角色原样显示 title；权限点 tab 同理，title_key 不命中回退裸 code。
+`title_key` 引用的键须在方案 `web/locales/{zh-CN,en-US}.json` 双语落齐（打包校验项）。
+
+> 与前端路由权限的关系：路由级 `handle.roles` / `permissions` 与模块级
+> `config.requiredRoles` / `requiredPermissions`（§2.4）是**消费端**过滤；本节是**供给端**
+> 目录与管理面。判权本身在服务端按 `sys_user_role` → `sys_role_permission` 链路裁决。
 
 ---
 
@@ -2075,15 +2182,25 @@ flowchart LR
 ### 12.1 发布流程（作者侧，三步）
 
 ```bash
-# ① 一次性：生成 Ed25519 密钥对（私钥 ~/.ojm/keys/<id>/ 永不出目录——--out 指进工程树须 --yes）
-ojm keygen --id <publisher>.<key-name>
+# ① 一次性：拿发布身份。站点有「方案市场 → 发布管理」页时，用页面签发的一次性凭证兑换（key_id 由站点算好下发，
+#    CLI 不推导；兑换即作废；失败不落任何密钥文件；与 --id 互斥，同时给 exit 2）：
+ojm keygen --credential <token> [--site-url <站点>]
+OJM_PUBLISH_CREDENTIAL=<token> ojm keygen
 
-# ② 每次发布：签名（产物 = 同目录 <tgz>.sig；--check 离线自检，不必靠装失败发现签错）
-ojm sign dist/<name>-<version>.tgz --id <publisher>.<key-name> --check
+# ①' 旁路：只在没有「发布管理」页（纯自建/离线 CDN）或 CI 临时密钥时自建 key_id——
+#    站点侧没有这条身份记录，产品归属与申请人无从追溯，只能靠超管为陌生指纹手工放行：
+ojm keygen --id <publisher>.<key-name>   # 私钥 ~/.ojm/keys/<id>/ 永不出目录；--out 指进工程树须 --yes
+
+# ② 每次发布：签名（--id 填上一步拿到的 key_id；产物 = 同目录 <tgz>.sig；--check 离线自检）
+ojm sign dist/<name>-<version>.tgz --id <key_id> --check
 
 # ③ 安装/分发：.sig 自动探测随包上传
 ojm install dist/<name>-<version>.tgz --site-url <站点> --user superadmin --pass …
 ```
+
+凭证通道的站点地址：`--site-url` > `OJM_SITE_URL` > `http://127.0.0.1:9778`；兑换端点匿名可达，
+不需要 `--user/--pass`。key_id 形如 `<产品名>.<编码后用户名>`（例：`demo-solution.wecom-everpan`），
+由站点按申请时的产品名与账号算好。
 
 宿主验签六码（失败文案双语，`--locale` 切换）：`sig_missing`（缺签）/ `sig_alg`（算法
 不受接受）/ `sig_key`（key_id 命名空间违约）/ `tampered`（验签不过）/ `unknown_key`
@@ -2093,8 +2210,9 @@ ojm install dist/<name>-<version>.tgz --site-url <站点> --user superadmin --pa
 
 **TOFU = Trust On First Use（首次使用即信任）**：陌生发布方的第一个包，安装器无法判断
 该不该信，于是把公钥指纹摆出来让人核对——核对通过才入库，之后同一 key_id 直接放行。
-信任的建立因此有两条路：**第一方**走模板内置公钥免核对（§12.3），**第三方**走本节的
-人工核对。
+信任的建立因此有两条路：**模板内置的 oj-market 方案**用内置公钥免核对（§12.3），其余来源
+（含你自己 keygen 的身份、站点凭证下发的身份）一律走本节的人工核对——凭证只定 key_id 归属，
+站点在兑换时拿不到你的公钥，无法代为建立信任。
 
 - 信任库 = `.solutions/trusted-keys.yaml`（key_id → 公钥 + added_at；首次绑定不可改，
   轮换 = 新增 key_id）。
@@ -2148,7 +2266,7 @@ export default defineModule({
     handle: { title: "wiki:menu.main", layout: "container" },
     children: [
       { path: "space",       handle: { title: "wiki:menu.space",       layout: "parent" } },
-      { path: "admin",       handle: { title: "wiki:menu.admin", category: "admin", layout: "container" } },
+      { path: "admin",       handle: { title: "wiki:menu.admin", category: "admin" } },
       { path: "status/detail", handle: { title: "wiki:menu.statusDetail", category: "hidden" } },
     ],
   }],
@@ -2200,7 +2318,11 @@ const paths = createWikiPaths(getModuleRoutePrefix("wiki"));
 
 - 省略 / `""` / 旧 `"main"` → 普通可见菜单项。**`"main"` 不再产生合成父菜单**（扁平 main 归组已取消），新代码直接省略。
 - `"hidden"` → 有效路由但**不进菜单**（等价于 `hideInMenu: true`），用于详情页等。
-- `"admin"` → 路由层被 `rewriteAdminPaths` 真重写为 `/system/<模块 root path>/*`（运行时 URL 真正归到系统设置），菜单层再被 `groupSolutionMenus` 收进 `/system` 子组 `solgroup:admin:<模块>`。
+- `"admin"` → 路由层被 `rewriteAdminPaths` 真重写为 `/system/<模块 root path>/*`（运行时 URL 真正归到系统设置），菜单层再被 `groupSolutionMenus` 收进 `/system` 子组 `solgroup:admin:<模块>`；未声明 `layout` 时默认 `container`，显式配置优先。
+
+下游主动导航时调用公开纯函数 `resolveRoutePath(route)` 获取最终 path，不复制重写规则。相对 admin path 会从 `getRoutes()` 生成的绝对 `id` 补全模块根；普通路由 path 原样返回，已重写 path 不重复添加 `/system`。
+
+admin 子树内的后代路由自身不声明 `category`（继承自父级），调用时追加祖先链 `resolveRoutePath(child, moduleRoot, ..., parent)`（链从模块根到直接父级）：重写结果为 `/system + 原绝对路径`（与 admin 嵌套深度无关），原绝对路径优先取已生成的 `id`（index 路由含尾斜杠），无 id 按链拼接；链上无 admin 祖先时仅拼接绝对路径，已重写 id 幂等。
 
 > `/system` 是框架侧断言，方案只标 `category: "admin"`，挂载点交给框架；宿主缺 `/system` 时告警一次。
 
@@ -2216,7 +2338,7 @@ const paths = createWikiPaths(getModuleRoutePrefix("wiki"));
 
 - 在 `entry.ts` 路由 handle 直接声明归组/菜单元数据（**真源**）：
   `{ title: "wiki:menu.space", layout: "parent" }`、
-  `{ title: "wiki:menu.admin", category: "admin", layout: "container" }`
+  `{ title: "wiki:menu.admin", category: "admin" }`
 - 模块只设一个根路由，根 `title` 用 `<模块>:menu.main`；`manifest.yaml` 的 `routes[]` 不必手写（构建期从 handle 派生覆盖）。
 - 在 `locales/{zh-CN,en-US}.json` 里补嵌套的 `menu.main`。
 - `admin` 路由统一 `category: "admin"`；模块内路径走 `paths.ts` 助手，`currentActiveMenu` 写绝对路径且从助手派生。
@@ -2440,7 +2562,7 @@ LDAP 侧改名 / 删人后，`origin='ldap'` 的行跟着变，而 `origin='weco
 | §8 排查 | 五步排查法、症状速查表 | 任何「没生效」 |
 | §9 参考 | 可抄的工程内文件、oj-api-dev 手册指引 | 找范本 |
 | §10 CLI 子命令参考 | ojm 原生命令 vs oj 透传命令；`market` 子命令（本地模拟 CDN） | 查命令用法；`ojm <cmd> --help` 看单命令帮助 |
-| §11 方案包：打包与分发 | build --bundle、Form A/B、分发源、索引规范、引用式方案（api 段省略 tables/deps，引用包内原生 manifest） | 发布方案包 |
+| §11 方案包：打包与分发 | build --bundle、Form A/B、分发源、索引规范、引用式方案（api 段省略 tables/deps，引用包内原生 manifest）、**方案自管理角色/权限（声明/注册/管理面/多语言 §11.5）** | 发布方案包；方案要自带角色/权限目录 |
 | §12 签名与信任 | keygen/sign/install 发布流程、信任库、TOFU、bootstrap key | 首次签名发布；管理信任 |
 | §13 方案菜单归组规则 | 单根模块约定（根路由=第一级菜单）、自定义根路径 `web.route_prefix`（构建写 modules.json、运行时只改根段、getModuleRoutePrefix 单点消费）、category 三值（普通/hidden/admin）、admin 真重写 `/system/<模块 root>/*` + 视觉归组、menu.main 统一、模块内路径助手、开发者 DO/DON'T | 写方案要让菜单按模块分组、admin 归系统设置 |
 | §14 组织架构与通讯录 | 内置底座（两张租户表 + `users` 三列）、共享读面 7 端点与两级 `scope` 门禁、前端怎么「借壳」出自己端点、归属权四条规则与管理端 CRUD、源适配器接点与三条禁令（企微为范本，LDAP 前置）、通讯录与组织架构的分工 | 页面要选人/选部门、通知要按部门算收件人、要接新的组织数据来源 |

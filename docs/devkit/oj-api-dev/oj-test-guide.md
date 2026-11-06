@@ -29,7 +29,8 @@
    **WARN 并继续跑 default**——不静默，但测试会落在开发库上（见 §8 头号坑）。stderr
    打印 `oj test: using db "..."`；字面 `default` 的库调用**请求期重定向**到测试库，
    业务代码零改动。
-3. **数据准备**：迁移 → `seed.sql` 重放 → `fixtures/*.sql` 灌入，全部跟随测试库。
+3. **数据准备**：迁移 → seed 重放（`seed.<方言>.sql` 胜出，`seed.sql` 兜底）→
+   `fixtures/*.sql` 灌入，全部跟随测试库。
 4. **执行**：进程内起 App oneshot（零 TCP），按路径排序顺序收集执行收集到的用例。
 5. **报告**：`--format human`（默认）/ `tap` / `junit` / `json`；`--output` 落盘，
    省略打 stdout（机器格式保持 stdout 纯净）。**全绿退出码 0，任一失败 1**——可直接做
@@ -112,7 +113,7 @@ await ws.close();
 
 | 数据 | 灌入时机 | 要求 |
 |---|---|---|
-| 模块 `seed.sql` | **每次启动**重放（含 serve） | 幂等写法；按 `;` 切分，语句内不得含分号字面量（S006）；语句前置 `--` 注释行允许（v0.1.66 起） |
+| 模块 `seed.sql` / `seed.<方言>.sql` | **每次启动**重放（含 serve） | 方言件胜出、`seed.sql` 兜底，绝不双跑（v0.1.121）；幂等写法；按 `;` 切分，语句内不得含分号字面量（S006）；语句前置 `--` 注释行允许（v0.1.66 起） |
 | 模块 `fixtures/*.sql` | 仅 `oj test` / `oj test fixture` 灌入 | 演示/测试数据，**不进 release 产物**；v0.1.52 起**幂等门禁**：非幂等 INSERT（判据同 S006）灌入前报错——改 `INSERT OR IGNORE` / `ON CONFLICT DO NOTHING` 即可重复灌 |
 
 - 断言别依赖「fixtures 恰好只有我灌的行」：`oj test` 重复跑、多人共用一块测试库时

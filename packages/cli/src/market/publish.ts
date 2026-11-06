@@ -17,6 +17,7 @@ import process from "node:process";
 
 import { buildBundle } from "../bundle";
 import { createDeterministicTgz } from "../deterministic-tar";
+import { assertDefaultModulesUntouched } from "../scaffold-guard";
 import { signCommand } from "../sign";
 import { resolveCdnLayout } from "./cdn-layout";
 import { buildFixturePackage, parseFixtureSpec } from "./fixture";
@@ -38,6 +39,8 @@ export interface MarketPublishOptions {
 	check?: boolean
 	/** 签发方 registry 身份（REG-CS3 v2 防跨仓库重放；透传 signCommand --registry-id） */
 	registryId?: string
+	/** 命令层是否紧接着重建索引（仅用于措辞：true 时不打印「索引未重建」） */
+	rebuildIndex?: boolean
 }
 
 export interface MarketPublishResult {
@@ -88,7 +91,9 @@ export async function publishPackage(opts: MarketPublishOptions = {}): Promise<M
 		const size = fs.statSync(tgzPath).size;
 		console.log(`[ojm] 包已落 CDN → ${path.relative(projectRoot, tgzPath)}（${size} 字节）`);
 		console.log(`[ojm] 发布方 ${signed.keyId}；指纹 ${signed.fingerprint}`);
-		console.log("[ojm] 索引未重建：多人场景请由维护者跑 ojm market build-index");
+		// 带了 --rebuild-index 时由命令层紧接着重建索引，这里不能再报「未重建」（否则前后两句自相矛盾）
+		if (opts.rebuildIndex !== true)
+			console.log("[ojm] 索引未重建：多人场景请由维护者跑 ojm market build-index");
 
 		return {
 			name,
@@ -122,6 +127,8 @@ async function buildFixture(args: { fixture?: string, staging: string, cdnDir: s
 
 /** `--real`：走既有 ojm build --bundle，产物搬到 CDN 目录（一次只发一份：多方案工程请显式指定） */
 async function buildRealPackage(solutionRoot: string, staging: string, cdnDir: string): Promise<{ name: string, version: string, tgzPath: string, sha256: string, preExisted: boolean }> {
+	// 与 ojm build 同一道完整性门禁：发布链路同样不许携带被改过的默认模块
+	assertDefaultModulesUntouched(solutionRoot);
 	const builtList = await buildBundle(solutionRoot, { out: staging });
 	if (builtList.length !== 1) {
 		throw new Error(

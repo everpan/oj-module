@@ -12,7 +12,7 @@
 
 | 侧 | 位置 | 用户工程落点 | 分发链 |
 |---|---|---|---|
-| ojm 模块开发（前端模块、契约、前后端接线） | `devkit/` 顶层 10 个文件 | `.claude/skills/ojm-module-dev/` | `@oj-module/cli` 包 → `ojm init` 第 4b 步（分发其中 6 个） |
+| ojm 模块开发（前端模块、契约、前后端接线） | `devkit/` 顶层 11 个文件 | `.claude/skills/ojm-module-dev/` | `@oj-module/cli` 包 → `ojm init` 第 4b 步（分发其中 6 个） |
 | oj API 开发（后端 handler、全局对象、配置、测试） | `devkit/oj-api-dev/`（oj devkit 快照，仅本仓参考） | `.claude/skills/oj-api-dev/` | oj 二进制自带 → `ojm init` 第 4 步 |
 
 | 文件 | 面向谁 | 用途 |
@@ -67,6 +67,8 @@
 | [`migration/contract-to-openapi-schema.md`](migration/contract-to-openapi-schema.md) | 旧 `contract.ts` / `defineApi` 工程 → 新 `openapi.json` + handler `.schema` 流水线的迁移方法论与检查清单 |
 | [`migration/oj-requirement-response-outside-schema.md`](migration/oj-requirement-response-outside-schema.md) | 上游需求留档（✅ oj v0.1.72 已实现）：响应契约可声明在 `.schema` 之外（平级 `.response`），`.schema` 只承载入参 |
 | [`migration/oj-requirement-delete-method-key.md`](migration/oj-requirement-delete-method-key.md) | 上游需求留档（✅ oj v0.1.73 已实现）：`oj openapi` 把 `del` 动词归一为 `delete` 操作键（旧版产出非法 `"del"` 致 `--check` 漂移） |
+| [`migration/oj-requirement-mysql-two-step-id.md`](migration/oj-requirement-mysql-two-step-id.md) | 上游修复记录（✅ oj v0.1.120 已实现，`oj-bin@2550bd5`）：MySQL `returning(["id"])` 的 INSERT 与 `LAST_INSERT_ID()` 跨连接，返回值是别人的 id；含真库复现、根因坐标、两套修法、落地结果与回归用例 |
+| [`migration/oj-requirement-seed-dialect.md`](migration/oj-requirement-seed-dialect.md) | 上游需求提案（待排期，2026-11-05）：seed 按运行时方言选文件 `seed.<dialect>.sql`（方言件胜出、通用件兜底不双跑）；含三方言实踩、代码坐标、行为契约、BDD 验收与分期 |
 | [`guides/api-codegen-openapi.md`](guides/api-codegen-openapi.md) | 新口径总览：`.schema` 权威源 + `openapi.json` → `__client` 的日常用法与已知限制 |
 
 ---

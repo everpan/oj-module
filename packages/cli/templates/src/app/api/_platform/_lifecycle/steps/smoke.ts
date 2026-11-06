@@ -30,12 +30,6 @@ export interface SmokeContext extends InstallContext {
 	modulesJsonPath: string
 	/** 注册快照查询；缺省回落 queryRegistered（isolate db 全局；测试注入 stub） */
 	query?: (name: string) => Promise<SolutionSnapshot | null>
-	/**
-	 * 本次安装**新追加**进 config.yaml `auth.anonymous_paths` 的路径（reloading 段注入，带前导 /）。
-	 * 匿名接线属 restart_pending（reload 段已明示），本进程内尚未生效——探活对这些路径的
-	 * 401 判「待重启」而非失败；已在配置里却仍 401 才是真失败（说明接线或守卫有问题）。
-	 */
-	deferredAnonymous?: string[]
 }
 
 export interface StageResult {
@@ -138,17 +132,15 @@ export async function smoke(ctx: SmokeContext): Promise<StageResult> {
 		if (target !== undefined) {
 			const url = probeUrlOf(ctx.apiPrefix, target);
 			const res = await ctx.fetch(url, { headers: { [PROBE_TENANT_HEADER]: PROBE_TENANT } });
-			if (health !== undefined && !res.ok) {
-				// health 探针本就是「无凭证预期 401」（文件头注释：非匿名无凭证预期 401；D14/Q-A：health 不强制）。
-				// 租户化站点上安装/重装/升级后宿主需重启才能加载新配置（含匿名接线、路由），探针在重启前收 401
-				// 是 restart_pending 的常态，不是包或站点的问题——一律判 deferred，不计入失败（P2 深检可兜底真异常）。
-				// 非 401（如 500）仍视为真实失败，正常报错。
-				const deferred = res.status === 401;
-				if (deferred) {
-					notes.push(`探活 ${url} 返回 401：health 端点为无凭证探针，宿主重启加载新配置（路由/匿名接线）后即 2xx——属 restart_pending，重启宿主后生效，不计入失败`);
+			if (!res.ok) {
+				// 无凭证探针（含租户化站点强制 X-TENANT-ID，仍无业务凭证）收 401 是 restart_pending 常态——
+				// 宿主重启加载新配置（路由/匿名接线）后即 2xx，不是包或站点问题，一律判 deferred 不计入失败。
+				// 非 401（如 404/500）视为真实失败（P0 §3.5：首个路由 404/连通失败 = 冒烟失败，避免假成功）。
+				if (res.status === 401) {
+					notes.push(`探活 ${url} 返回 401：无凭证探针，宿主重启加载新配置（路由/匿名接线）后即 2xx——属 restart_pending，重启宿主后生效，不计入失败`);
 				}
 				else {
-					failures.push({ item: "探活", retryable: true, reason: `health 端点 ${url} 返回 HTTP ${res.status}（C2-33 冒烟探针要求 2xx）` });
+					failures.push({ item: "探活", retryable: true, reason: `探针 ${url} 返回 HTTP ${res.status}（期望 2xx；404/5xx 视为冒烟失败）` });
 				}
 			}
 		}

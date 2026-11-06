@@ -15,8 +15,13 @@
 | 框架开发完整指南（契约层/运行时/宿主/工具链四章） | `docs/prd/framework-development-guide.md` |
 | 端到端可重复验证流程 | `docs/prd/framework-verification-playbook.md` |
 | 某特性的设计与评审记录 | `docs/prd/<日期>-<特性>-design.md` |
-| 各阶段实战记录（骨架→注入→认证→CRUD→release） | `apps/playground-oj/docs/phase*.md` |
+| 各阶段实战记录（骨架→注入→认证→CRUD→发布） | `docs/prd/framework-verification-playbook.md` 附录 A 基线表（playground 已下线） |
 | 后端 handler 写法 | `docs/devkit/oj-api-dev/api-manual.md`（`oj-api-dev` skill 的本仓快照；用户工程侧在 `.claude/skills/oj-api-dev/`，随 oj 二进制分发） |
+
+> **路径口径**：上表除 `CLAUDE.md` 与 `docs/devkit/oj-api-dev/` 外，都是**框架仓库内**的路径，
+> 不随 `@oj-module/cli` 发货。本文件只对「能进框架仓库的人」有用——如果你是在 cli 包或
+> 业务工程里读到这里，说明没有仓库上下文，那些链接按设计不可达，**不是坏链**：业务开发
+> 请回 `SKILL.md` + `manual.md`。
 
 > ⚠️ 那两份 guide 有**已知陈旧处**，以源码为准：
 > dev 端口实际是 **3333**（guide 写的 5173 已过时；注意与 `ojm dev` 的前端 devServer
@@ -192,9 +197,10 @@ runtime → cli → registry 复核；`--dry-run` 只演练）。下面的手动
 
 ## 附：本 devkit 内容来源（维护者看）
 
-`docs/devkit/` 是**自包含**的交付文档（顶层 6 个文件，含
-`sql-builder-missing-capabilities-pr.md` 这份构造器能力缺口 PR 参考），业务工程拿到即可读懂，不依赖工程仓库里的其它文档。
-另有 `oj-api-dev/` 子目录是 oj 侧 devkit 的快照（10 文件，仅本仓参考、不发货），
+`docs/devkit/` 是**自包含**的交付文档（顶层 11 个文件，全部随 cli 包发货，其中 6 个随
+`ojm init` 进业务工程；含 `sql-builder-missing-capabilities-pr.md` 这份构造器能力缺口 PR 参考），
+业务工程拿到即可读懂，不依赖工程仓库里的其它文档。
+另有 `oj-api-dev/` 子目录是 oj 侧 devkit 的快照（oj v0.1.116 起 12 文件，仅本仓参考、不发货），
 结构说明见 `README.md`。
 下面的来源仅用于维护时追溯与同步，不参与交付：
 

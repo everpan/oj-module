@@ -13,6 +13,7 @@ tables:
   - sys_user_role
   - sys_refresh_token
   - market_history
+  - market_release
   - sys_rate_window
   - sys_login_throttle
   - reg_source_seq

@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { initProject, resolveVersionMatrix } from "../../packages/cli/src/init";
 import { readOjApiPrefix, readOjPort, readOjServerField } from "../../packages/cli/src/oj-config";
+import { collectDefaultModuleDrift } from "../../packages/cli/src/scaffold-guard";
 import { PROJECT_ROOT } from "../helpers/paths";
 
 // 桩 oj 用 vi.mock 进程内实现：shebang 脚本在 Windows 无法被 execFileSync spawn
@@ -78,18 +79,18 @@ function fakeOjInstall(binDir: string): Promise<void> {
 	fs.mkdirSync(path.join(binDir, "devkit"), { recursive: true });
 	fs.writeFileSync(path.join(binDir, "oj"), [
 		"#!/bin/sh",
-		"if [ \"$1\" = \"-V\" ]; then echo \"oj 0.1.86\"; exit 0; fi",
+		"if [ \"$1\" = \"-V\" ]; then echo \"oj 0.1.121\"; exit 0; fi",
 		"if [ \"$1\" = \"build\" ]; then echo \"      --module-root <MODULE_ROOT>  源码树根\"; exit 0; fi",
 		"echo oj",
 	].join("\n"));
 	fs.chmodSync(path.join(binDir, "oj"), 0o755);
-	fs.writeFileSync(path.join(binDir, ".oj-version"), "v0.1.86\n");
+	fs.writeFileSync(path.join(binDir, ".oj-version"), "v0.1.121\n");
 	fs.writeFileSync(path.join(binDir, "devkit/SKILL.md"), "skill\n");
 	fs.writeFileSync(path.join(binDir, "devkit/api-manual.md"), "manual\n");
 	fs.writeFileSync(path.join(binDir, "devkit/global.d.ts"), "types\n");
 	fs.writeFileSync(path.join(binDir, "devkit/sql-builder-guide.md"), "guide\n");
 	fs.writeFileSync(path.join(binDir, "devkit/oj-test-guide.md"), "guide\n");
-	fakeOj.registry.set(path.join(binDir, "oj"), { version: "oj 0.1.86", help: "      --module-root <MODULE_ROOT>  源码树根", secret: "none" });
+	fakeOj.registry.set(path.join(binDir, "oj"), { version: "oj 0.1.121", help: "      --module-root <MODULE_ROOT>  源码树根", secret: "none" });
 	return Promise.resolve();
 }
 
@@ -113,7 +114,10 @@ describe("initProject", () => {
 		// users 表归属 _platform 伪模块（§3-D2 归属图单源，参考 oj sample）；
 		// DDL 归 migrations（S006 seed 纪律：seed 只放数据，oj build 检查）
 		expect(fs.existsSync(path.join(dest, "src/app/api/_platform/seed.sql"))).toBe(true);
-		expect(fs.existsSync(path.join(dest, "src/app/api/_platform/migrations/0001__create_users.sql"))).toBe(true);
+		// _platform 的结构已压平成一条三方言基线（0001–0018 是发版前的演进中间态）
+		expect(fs.existsSync(path.join(dest, "src/app/api/_platform/migrations/0001__baseline.sql"))).toBe(true);
+		expect(fs.existsSync(path.join(dest, "src/app/api/_platform/migrations/0001__baseline.mysql.sql"))).toBe(true);
+		expect(fs.existsSync(path.join(dest, "src/app/api/_platform/migrations/0001__baseline.pg.sql"))).toBe(true);
 		expect(fs.existsSync(path.join(dest, "src/app/api/_platform/schema.yaml"))).toBe(true);
 		// auth 模块（§8：auth 端点是业务路由；anonymous_paths 显式匿名）
 		expect(fs.existsSync(path.join(dest, "src/app/api/auth/manifest.yaml"))).toBe(true);
@@ -150,7 +154,7 @@ describe("initProject", () => {
 		expect(fs.existsSync(oj)).toBe(true);
 		// Windows 的 statSync mode 不携带执行位（chmod 只影响只读位），按平台判定可执行语义
 		expect(process.platform === "win32" || (fs.statSync(oj).mode & 0o111) !== 0).toBe(true);
-		expect(fs.readFileSync(path.join(dest, "bin/.oj-version"), "utf-8").trim()).toBe("v0.1.86");
+		expect(fs.readFileSync(path.join(dest, "bin/.oj-version"), "utf-8").trim()).toBe("v0.1.121");
 
 		// devkit 拷贝
 		expect(fs.existsSync(path.join(dest, ".claude/skills/oj-api-dev/SKILL.md"))).toBe(true);
@@ -202,8 +206,7 @@ describe("initProject", () => {
 		expect(fs.existsSync(path.join(dest, "src/app/api/personal-center/contract.ts"))).toBe(false);
 		expect(fs.existsSync(path.join(dest, "src/app/api/personal-center/upload/api.ts"))).toBe(true);
 		expect(fs.existsSync(path.join(dest, "src/app/api/personal-center/routes.json"))).toBe(false);
-		// 头像上传链路（T3）：users 表补 avatar_base64 列，user-info 返回它
-		expect(fs.existsSync(path.join(dest, "src/app/api/_platform/migrations/0002__add_users_avatar_base64.sql"))).toBe(true);
+		// 头像上传链路（T3）：users 表补 avatar_base64 列（压平后并入 0001 基线），user-info 返回它
 		expect(fs.readFileSync(path.join(dest, "src/app/api/_platform/schema.yaml"), "utf-8")).toContain("avatar_base64");
 		expect(fs.readFileSync(path.join(dest, "src/app/api/web/user-info/api.ts"), "utf-8")).toContain("avatar_base64");
 		expect(fs.existsSync(path.join(dest, "web.config.ts"))).toBe(true);
@@ -287,14 +290,12 @@ describe("initProject", () => {
 		// 后端构建产物落点仍是扁平根 dist/api（layout.apiDist 恒为 <project>/dist/api）
 		expect(fs.existsSync(path.join(dest, "api"))).toBe(false);
 
-		// 工程根：config.yaml + config/ + 种子 + 后端 tsconfig / vitest / tests / 豁免清单
+		// 工程根：config.yaml + config/ + 后端 tsconfig / vitest / tests / 豁免清单
 		for (const rel of [
 			"config.yaml",
 			"config/private.pem",
 			"config/public.pem",
 			"config/cert.jws",
-			"seed.mysql.sql",
-			"seed.pg.sql",
 			"vitest.config.ts",
 			"src/tsconfig.json",
 			"tests",
@@ -572,12 +573,12 @@ describe("initProject", () => {
 			fs.mkdirSync(path.join(binDir, "devkit"), { recursive: true });
 			fs.writeFileSync(path.join(binDir, "oj"), [
 				"#!/bin/sh",
-				"if [ \"$1\" = \"-V\" ]; then echo \"oj 0.1.86\"; exit 0; fi",
+				"if [ \"$1\" = \"-V\" ]; then echo \"oj 0.1.121\"; exit 0; fi",
 				"if [ \"$1\" = \"build\" ]; then echo \"      --module-root <MODULE_ROOT>  源码树根\"; exit 0; fi",
 				"echo oj",
 			].join("\n"));
 			fs.chmodSync(path.join(binDir, "oj"), 0o755);
-			fs.writeFileSync(path.join(binDir, ".oj-version"), "v0.1.86\n");
+			fs.writeFileSync(path.join(binDir, ".oj-version"), "v0.1.121\n");
 			fs.writeFileSync(path.join(binDir, "devkit/SKILL.md"), "skill\n");
 			fs.writeFileSync(path.join(binDir, "devkit/api-manual.md"), "manual\n");
 			fs.writeFileSync(path.join(binDir, "devkit/global.d.ts"), "types\n");
@@ -605,6 +606,44 @@ describe("initProject", () => {
 		const yaml = fs.readFileSync(path.join(dest, "pnpm-workspace.yaml"), "utf-8");
 		expect(yaml).toMatch(/allowBuilds:\n\s+esbuild:\s*true/);
 	});
+
+	/**
+	 * 内置模块自治契约的基线：init 产物必须与 cli 包内模板逐字节一致（保护集内
+	 * 无占位符/demo 区间，scaffold-guard.test.ts 已钉），否则 `ojm build` 门禁对
+	 * 全新工程一上手就假阳性。
+	 */
+	it("门禁基线：刚 init 的工程与上游模板零漂移", async () => {
+		const dest = path.join(tmpRoot(), "guard-clean");
+		await initProject(dest, initOpts);
+		expect(collectDefaultModuleDrift(dest)).toEqual({ modified: [], missing: [], extra: [] });
+	});
+
+	/**
+	 * `--yes` = 默认方案的显式恢复入口：覆盖已改的默认文件、删除保护根内多出文件；
+	 * 下游自定义模块（src/crm）与工程级配置（config.yaml）不受影响。
+	 * 无 --yes：非空目录直接拒绝（既有语义，永不覆盖）。
+	 */
+	it("--yes 恢复默认模块：覆盖魔改、删除多出；自定义模块与 config.yaml 保留", async () => {
+		const dest = path.join(tmpRoot(), "guard-restore");
+		await initProject(dest, initOpts);
+
+		const entryPath = path.join(dest, "src/app/web/entry.ts");
+		fs.writeFileSync(entryPath, `${fs.readFileSync(entryPath, "utf-8")}\n// 本地魔改\n`);
+		fs.writeFileSync(path.join(dest, "src/app/web/extra-page.tsx"), "export default null;\n");
+		fs.mkdirSync(path.join(dest, "src/crm/web"), { recursive: true });
+		fs.writeFileSync(path.join(dest, "src/crm/web/entry.ts"), "export default null;\n");
+		const configPath = path.join(dest, "config.yaml");
+		const configTampered = `${fs.readFileSync(configPath, "utf-8")}# user config\n`;
+		fs.writeFileSync(configPath, configTampered);
+
+		await initProject(dest, initOpts);
+
+		expect(fs.readFileSync(entryPath, "utf-8")).not.toContain("本地魔改");
+		expect(fs.existsSync(path.join(dest, "src/app/web/extra-page.tsx"))).toBe(false);
+		expect(collectDefaultModuleDrift(dest)).toEqual({ modified: [], missing: [], extra: [] });
+		expect(fs.readFileSync(path.join(dest, "src/crm/web/entry.ts"), "utf-8")).toBe("export default null;\n");
+		expect(fs.readFileSync(configPath, "utf-8")).toBe(configTampered);
+	});
 });
 
 /**
@@ -619,7 +658,7 @@ describe("initProject 凭据密封", () => {
 			const bin = path.join(binDir, "oj");
 			fs.writeFileSync(bin, [
 				"#!/bin/sh",
-				"if [ \"$1\" = \"-V\" ]; then echo \"oj 0.1.86\"; exit 0; fi",
+				"if [ \"$1\" = \"-V\" ]; then echo \"oj 0.1.121\"; exit 0; fi",
 				"if [ \"$1\" = \"secret\" ] && [ \"$2\" = \"keygen\" ]; then",
 				"  printf 'PRIV\\n' > \"$4/secrets-private.pem\"",
 				"  printf 'PUB\\n' > \"$4/secrets-public.pem\"",
@@ -632,7 +671,7 @@ describe("initProject 凭据密封", () => {
 				"exit 0",
 			].join("\n"));
 			fs.chmodSync(bin, 0o755);
-			fakeOj.registry.set(bin, { version: "oj 0.1.86", help: "      --module-root <MODULE_ROOT>  源码树根", secret: "seal" });
+			fakeOj.registry.set(bin, { version: "oj 0.1.121", help: "      --module-root <MODULE_ROOT>  源码树根", secret: "seal" });
 		});
 	}
 

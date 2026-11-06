@@ -61,6 +61,12 @@ export interface IndexRow {
 	upgradable: boolean
 	/** 最新版许可（SPDX 简化式，来自分片条目的 manifest.license；未声明 → null） */
 	license?: string | null
+	/** 发布者（分片条目 archive.signature.key_id，经验签的签名身份；与后端 trust_state/key_id 同用 snake_case） */
+	publisher_key?: string | null
+	/** 方案简介（manifest.summary，C2-04 单行 1..200；索引未带该字段 → undefined/null） */
+	summary?: string | null
+	/** 方案详细描述（manifest.description，C2-05 ≤2000；索引未带该字段 → undefined/null） */
+	description?: string | null
 }
 
 /** 安装输入（POST /_platform/market/install） */
@@ -96,4 +102,28 @@ export interface UninstallImpact {
 	name: string
 	affectedRoles: number
 	affectedUsers: number
+}
+
+/** 发布历史一行（`market_release`；来源是签名索引，追加式记录） */
+export interface ReleaseRow {
+	id: number
+	product: string
+	version: string
+	key_id: string | null
+	sha256: string | null
+	size: number | null
+	published_at: number
+	/** file = 分发包 Last-Modified；index = 索引生成时间兜底 */
+	published_at_source: "file" | "index"
+	yanked: number
+}
+
+/** 发布历史分页结果 */
+export interface ReleasePage {
+	list: ReleaseRow[]
+	total: number
+	page: number
+	size: number
+	/** 本次同步索引失败的人话（页面照常显示已入库历史） */
+	syncError: string | null
 }

@@ -12,6 +12,7 @@ import type {
 	IndexRow,
 	InstallInput,
 	MarketHistory,
+	ReleasePage,
 	TaskRecord,
 	UninstallImpact,
 } from "../types";
@@ -24,6 +25,7 @@ import {
 	platformMarketHistoryGet,
 	platformMarketInstallPost,
 	platformMarketMetaGet,
+	platformMarketReleasesGet,
 	platformMarketTaskGet,
 	platformMarketTrustPost,
 	platformMarketUninstallImpactGet,
@@ -108,6 +110,9 @@ export const httpMarketClient: MarketClient = {
 	},
 	async history() {
 		return (await platformMarketHistoryGet()) as unknown as MarketHistory[];
+	},
+	async releases(input: { page?: number, limit?: number } = {}) {
+		return (await platformMarketReleasesGet(input as { page: number, limit: number })) as unknown as ReleasePage;
 	},
 	async uninstallImpact(name: string) {
 		return (await platformMarketUninstallImpactGet({ name })) as unknown as UninstallImpact;

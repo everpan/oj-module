@@ -19,7 +19,8 @@ description: 用 ojm 开发前后端一体工程时使用——新增/修改前�
    接管通知/上传/菜单 → §4；换布局或加插槽 → §5；排查 → §8；
    **组织架构 / 通讯录（选人、按部门算收件人、接 LDAP 等新来源）→ §14**；
    **接通企业微信（代开发 / 企业内部应用 / 两套共存）→ `wecom-daikaifa.md` + `wecom-internal-app.md`**；
-   **把方案包发出去（打包/签名/CDN/安装一条链，新手照敲）→ `publish-walkthrough.md`**。
+   **把方案包发出去（打包/签名/CDN/安装一条链，新手照敲）→ `publish-walkthrough.md`**
+   （发布身份走站点凭证见其 §2.1）。
 2. **建目录**：一个目录 = 一个模块——前端一侧 `src/<模块名>/web/`（`entry.ts` 必备，
    `pages/`、`locales/` 按需），后端一侧 `src/<模块名>/api/`（目录镜像路由的 `api.ts`，
    动词挂 `.schema`）。两侧可只存在一侧。
@@ -50,7 +51,7 @@ description: 用 ojm 开发前后端一体工程时使用——新增/修改前�
   历史布局漏登记 = 模块安静不加载；module-root 下登记是可选的，但**排序仍靠它**。
 - **`home` / `login` 模块必须保留**：shell 预构建把 `/` 重定向到 `/home`，且宿主只消费
   模块路由、不挂内置登录页。删掉它们 → 登录回跳落错误边界、`/login` 无路由可跳。
-- **布局级路由 handle 必写 `layout: "container"`**：不写页面会裸渲染（无侧边栏/页签），
+- **布局级路由 handle 必写 `layout: "container"`**（`category: "admin"` 除外，未声明时框架默认 `container`）：不写页面会裸渲染（无侧边栏/页签），
   且 `keepAlive` 失效。`"container" | "parent" | "none" | 自定义名`。
 - **注册时机**：一切 `ctx.register.*` 必须在 `lifecycle.onInit` 内、且在 onInit 返回前完成。
   拖到 `onActivate` 或某个异步回调里注册不保证生效。`onInit` 签名是 **async**（返回
@@ -140,14 +141,42 @@ description: 用 ojm 开发前后端一体工程时使用——新增/修改前�
   同步/事件增量与回调解密是**两条独立纪律**：回调必须回 `success`，而事件处理失败**也照样回 `success`**
   （重推补不回已判死的失败，兜底是下一轮全量同步）。
 
+## 发布身份（keygen 从哪来）
+
+签名前的第一件事是拿到一对 Ed25519 密钥。**两条路，二选一**：
+
+| 路径 | 命令 | 何时用 |
+|---|---|---|
+| 站点凭证（推荐） | `ojm keygen --credential <token>` | 站点有「方案市场 → 发布管理」页；key_id 由站点按产品名+账号下发（信任仍需首装核对） |
+| 离线自建（旁路） | `ojm keygen --id <publisher>.<key-name>` | 只在站点没有「发布管理」页（纯自建/离线 CDN）或 CI 临时密钥时用 |
+
+站点有「方案市场 → 发布管理」页时**不要自建 key_id**：站点侧没有这条身份记录，产品归属与申请人无从追溯，
+能不能装只能靠超管为陌生指纹手工放行。
+
+- 凭证是**一次性兑换令牌**：站点「方案市场 → 发布管理 → 申请发布凭证」填产品名 → 明文只显示一次 →
+  本机 `ojm keygen --credential <token>`（或 `OJM_PUBLISH_CREDENTIAL=<token> ojm keygen`，
+  免得令牌进 shell 历史）。兑换成功即作废，失败（已用/过期/撤销/网络不通）**不落任何密钥文件**。
+- 站点地址优先级：`--site-url` > `OJM_SITE_URL` > `http://127.0.0.1:9778`；兑换端点匿名可达，
+  **不需要 `--user/--pass`**。`--credential` 与 `--id` 互斥（同时给 exit 2）。
+- 下发的 key_id 形如 `<产品名>.<编码后用户名>`（例：`demo-solution.wecom-everpan`），CLI 不做推导；
+  它同时是 `~/.ojm/keys/<key_id>/` 的目录名——**不要拿它拼路径或改名**，否则签名侧找不到私钥。
+  凭证只解决「身份命名与归属」，**不预置信任**：公钥在本地生成，站点兑换时拿不到，首装照样
+  `needs_trust`，仍要核对指纹。
+- 两条路的私钥纪律完全一致：只活在 `~/.ojm/keys/<id>/`、不入仓不入包、一次发布固定一把。
+  签名/发布/安装全流程见 `publish-walkthrough.md`（§2 凭证、§2.1 离线旁路、§3 签名起）。
+
 ## 新模块 checklist
 
 - [ ] `src/<模块>/web/entry.ts` 默认导出 `defineModule({ name, version, routes, i18n?, lifecycle? })`
 - [ ] `web.config.ts` 的 `modules` 里已登记（`enabled` 缺省即启用；module-root 下扫描已能捡到，登记用于排序/覆盖）
 - [ ] 路由 `handle.layout` 选对了（有页面用 `"container"`；无页面模块 `routes: []`）
 - [ ] 菜单标题用命名空间语法 `"<模块名>:menu.<key>"`，且 `locales/<lang>.json` 里有这个 key
-- [ ] manifest 声明了 `roles[]` → 每个 `title_key` 用 `"<模块名>:role.<slug>"` 形状（ns 必须 = 模块名），
-      且双语 locale 里都有对应嵌套 key `{"role":{…}}`——安装时解析成 `sys_role.title`，缺失则存裸 key（不失败）
+- [ ] 角色/权限声明写在方案契约 `solution.yaml`，**不是** `api/manifest.yaml`（oj 原生七键白名单，
+      摆错位置安装直接拒「白名单外键」）；细则见 manual.md §11.5
+- [ ] 声明了 `roles[]` → 每个 `title_key` 用 `"<模块名>:role.<slug>"` 形状（ns 必须 = 模块名）；
+      声明了 `permissions[]` → 每个 `title_key` 用 `"<模块名>:perm.<slug>"`（必填）。
+      双语 locale 里都要有对应嵌套 key（`{"role":{…}}` / `{"perm":{…}}`）——安装时按站点语言
+      解析落库（`sys_role.title` / `sys_permission.title_key`），缺失则存裸 key（不失败）
 - [ ] 有接口 → handler 动词挂了 `.schema`（入参）+ 平级 `.response`（出参，oj v0.1.72+）→ `oj openapi` + `ojm api` 跑过 → onInit 里 `create<Module>Client(ctx)`
 - [ ] 接管了某功能 → provider 方法数与类型定义**一个不差**
 - [ ] 有后端 → handler 四红线过一遍（manual §1.7：respond 收口 / import 深度 / 无模块级状态 / 无模块级运行时全局）
@@ -203,6 +232,7 @@ description: 用 ojm 开发前后端一体工程时使用——新增/修改前�
 | dev 日志 route error（Cannot find module）/ 端点 404 | handler 相对 import 多一层——按**目录**解析 | 改用 `#/<模块名>/…` 别名（与深度无关）；存量代码按 manual §1.7 深度表改 |
 | 限速/节流/计数真实请求下永不累积（测试全绿） | 模块级 `Map`/`let` 不跨请求存活（每请求重建模块） | 状态落库（模板迁移 0009 先例）或 oj 持久面 |
 | `ojm build` 报 `introspect api.ts: jwt not configured` | 模块级语句碰运行时全局，introspect 空沙箱炸 | 移进 handler 函数体内（manual §1.7-4） |
+| `ojm build` 报「框架默认模块与上游模板不一致」并列出文件 | 内置模块自治门禁：`src/app`、`src/oj-market` 被本地改过/删过/多出文件（CLI 升级后旧版默认模块也算漂移） | 需求提交上游；确认放弃本地修改则 `ojm init --yes` 恢复（会丢弃这两个目录的本地改动，先备份）。无绕过开关（manual §1.9） |
 | `ojm build` 报「密封值解不开」/「本机没有能解开的私钥」 | 出包预检 fail-closed：合并产物兜底 + tracked 非 jwt 红线（manual §10.1） | jwt 坏了删 `config.local.yaml` 的 `auth.jwt_secret` 行重跑 `ojm dev`；非 jwt 取配对私钥或 local 覆盖该字段 |
 | 页签怎么点都关不掉、无报错提示 | `beforeClose` 守卫 fail-safe 否决（守卫抛错按取消处理） | 先查控制台 `[tabs] beforeClose` 报错；确认弹窗逻辑与 `resolve(true/false)` 收口（manual §6.4） |
 | 组织架构读面 403「该部门不在可见范围内」 | `scope` 默认 `self`，只看得到自己那条部门路径 | 换 `scope=all`（需权限点 `platform.org.read.all`），或改问自己所在部门（manual §14.2） |
@@ -229,3 +259,7 @@ description: 用 ojm 开发前后端一体工程时使用——新增/修改前�
 五项 `wecom_corp_*` 从哪取、回调为什么只填「通讯录同步」一处、「验证并接入」的四步自检、
 可见范围 / 可信 IP / 可信域名的处置、单企业私有化的边界（自建应用收不到成员变更事件）、
 以及和代开发共存时的配置与页面差异。**接自建应用时先读它**。
+
+另有 `publish-walkthrough.md`（同目录）：从「代码写完」到「装进站点」的一条命令链——
+构建/打包 → 拿发布身份（凭证或离线）→ 签名 → 落 CDN → 重建索引 → verify/trial → install/TOFU，
+每步带期望输出与通过判据。**第一次发包照着它敲**。

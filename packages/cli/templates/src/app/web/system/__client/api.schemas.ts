@@ -122,7 +122,8 @@ export const schemas = {
 	},
 	"systemLoginMethodsGet": {
 		data: z.object({
-	"methods": z.array(z.string())
+	"methods": z.array(z.string()),
+	"site_title": z.string()
 }),
 	},
 	"systemOplogGet": {
@@ -241,6 +242,8 @@ export const schemas = {
 	"display_name": z.string().nullable(),
 	"email": z.string().nullable(),
 	"position": z.string().nullable(),
+	"employee_no": z.string().nullable().optional(),
+	"phone_number": z.string().nullable().optional(),
 	"departments": z.array(z.object({
 	"id": z.number(),
 	"name": z.string().nullable(),

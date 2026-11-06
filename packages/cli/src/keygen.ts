@@ -10,6 +10,7 @@ import path from "node:path";
 import process from "node:process";
 import { generateKeyPair } from "./lifecycle/keygen";
 import { fingerprintOfPublicKey } from "./lifecycle/sign";
+import { DEFAULT_SITE_URL, tenantHeaders, unwrapEnvelope } from "./site";
 
 export interface KeygenOptions {
 	/** 发布方 key_id（C2-37：<publisher>.<id> 全小写，禁裸通用名） */
@@ -66,4 +67,57 @@ export function keygenCommand(opts: KeygenOptions = {}): KeygenResult {
 	console.log(`[ojm] 私钥文件：${privateKeyPath}（0600；永不入仓、永不入日志——P2-5 redact 钉面）`);
 	console.log(`[ojm] 下一步：ojm sign <pkg>.tgz --id ${keyId}（或 --key ${privateKeyPath} --id ${keyId}）`);
 	return { keyId, publicKeyHex: kp.publicKeyHex, fingerprint, dir, privateKeyPath, publicKeyPath };
+}
+
+/** 兑换结果：服务端下发身份（CLI 零推导——编码规则只在 templates 侧一份） */
+export interface ExchangedIdentity {
+	key_id: string
+	product: string
+	username: string
+	display_name: string | null
+}
+
+export interface ExchangeOptions {
+	/** 站点地址；flag > OJM_SITE_URL > DEFAULT_SITE_URL */
+	siteUrl?: string
+	/** 测试注入 */
+	fetchFn?: typeof fetch
+}
+
+/**
+ * 用一次性发布凭证换身份（匿名端点，不需要账号密码）。
+ *
+ * 只做「取回服务端算好的 key_id」——不做任何编码推导（规则漂移比多一次网络请求贵得多），
+ * 但**必须**校验拿回的 key_id 形状：它马上会被拼进 `~/.ojm/keys/<key_id>`，
+ * 一个被中间人改成 `../../x` 的响应就是任意路径写入。失败一律不落盘（调用方先兑换后生成）。
+ */
+export async function exchangePublishCredential(token: string, opts: ExchangeOptions = {}): Promise<ExchangedIdentity> {
+	const t = token.trim();
+	// 形状先挡：不是 64 位 hex 的输入连请求都不必发（与页面生成规则一致）
+	if (!/^[0-9a-f]{64}$/i.test(t))
+		throw new Error("[ojm] 发布凭证格式不对（应为 64 位十六进制）：请在站点「发布管理」页复制完整凭证");
+
+	const base = (opts.siteUrl ?? process.env.OJM_SITE_URL ?? DEFAULT_SITE_URL).replace(/\/+$/, "");
+	const fetchFn = opts.fetchFn ?? fetch;
+	let res: Response;
+	try {
+		res = await fetchFn(`${base}/api/publish/credential/exchange`, {
+			method: "POST",
+			headers: { "content-type": "application/json", ...tenantHeaders() },
+			body: JSON.stringify({ token: t }),
+		});
+	}
+	catch (e) {
+		throw new Error(`[ojm] 无法连接站点 ${base}：${e instanceof Error ? e.message : String(e)}——请确认站点地址（--site-url / OJM_SITE_URL）与网络`);
+	}
+	const data = await unwrapEnvelope(res) as Partial<ExchangedIdentity> | null;
+	const keyId = String(data?.key_id ?? "");
+	if (!isValidKeyId(keyId))
+		throw new Error(`[ojm] 站点返回的 key_id 非法（C2-37）：「${keyId}」——已中止，未写入任何密钥（请核对站点版本）`);
+	return {
+		key_id: keyId,
+		product: String(data?.product ?? ""),
+		username: String(data?.username ?? ""),
+		display_name: data?.display_name == null ? null : String(data.display_name),
+	};
 }

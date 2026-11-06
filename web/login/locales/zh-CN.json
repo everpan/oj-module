@@ -6,6 +6,8 @@
 		"local": "账号密码",
 		"ldap": "LDAP",
 		"sso": "SSO",
+		"wecom": "企业微信",
+		"wecomPending": "企业微信登录将在后续阶段提供",
 		"ldapPending": "LDAP 登录将在后续阶段提供",
 		"ssoPending": "SSO 登录将在后续阶段提供"
 	},

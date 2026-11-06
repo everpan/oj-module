@@ -81,11 +81,12 @@ export function deriveBuiltinModules(include: Iterable<string>): Set<string> {
 /**
  * init 接线：生成/回填 `src/.ojm-builtin.json`（copyIfAbsent 语义）。
  * 已存在 → 原样不动（用户手改权）；派生集为空 → 不写。
+ * `overwrite`（ojm init --yes 恢复语义）：已存在也重写为上游名单。
  * @returns "created" | "skipped" | "none"
  */
-export function writeBuiltinList(projectRoot: string, include: Iterable<string>): "created" | "skipped" | "none" {
+export function writeBuiltinList(projectRoot: string, include: Iterable<string>, opts: { overwrite?: boolean } = {}): "created" | "skipped" | "none" {
 	const target = builtinListPath(projectRoot);
-	if (fs.existsSync(target))
+	if (fs.existsSync(target) && !opts.overwrite)
 		return "skipped";
 	const modules = [...deriveBuiltinModules(include)].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
 	if (modules.length === 0)

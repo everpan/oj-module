@@ -9,6 +9,83 @@
 
 ### Added
 
+- **脚手架完整性门禁（内置模块自治契约）**：`ojm init` 搭出的工程里，框架默认模块
+  （`src/app` 内置模块与 `src/oj-market`）属上游自治，下游不得本地修改。`ojm build`（普通与
+  `--bundle`）与 `ojm market publish --real` 在任何产物写入前逐文件比对工程与**当前 cli 包内
+  模板**（上游模板即基线，不另立哈希 lock），内容修改 / 白名单文件缺失 / 保护目录内多出文件
+  三类漂移均 fail-fast：报错按类点名文件、说明「需求请提交上游」、给出 `ojm init --yes` 恢复
+  处置（不提供绕过开关）。门禁开关 = `src/.ojm-builtin.json` 存在（旧工程缺失则退化现状不拦；
+  删除开关文件同样退回旧行为——门禁不是安全边界，见 `templates/src/README.md` 的人话版契约）。
+  **「必须先同步上游」**：CLI 升级后工程里的旧版默认模块（即使非用户手改）与新模板必不一致 →
+  构建被拦，先跑 `ojm init --yes` 同步再 build。dev 不拦，允许本地试验。回归：
+  `tests/cli/scaffold-guard.test.ts`（12 条）、`init.test.ts` 零漂移基线与 `--yes` 恢复、
+  `cli.test.ts` 门禁失败零产物两条。
+
+- **`ojm init --yes` 恢复语义（限定范围）**：此前 `--yes` 只跳过非空目录确认；现追加为
+  默认方案的显式恢复/升级入口——仅覆盖 `src/app`、`src/oj-market` 内的白名单文件、删除这些
+  目录内模板没有的文件、重写 `src/.ojm-builtin.json` 为上游名单；下游自定义模块与工程级配置
+  （config.yaml / web.config.ts / package.json 等）不受影响。无 `--yes` 行为不变（幂等补缺、
+  已存在永不覆盖）。CLI 升级后先跑一次再 build。
+
+- **`resolveRoutePath(route)` 公开导出（runtime）**：单路由导航 path 计算——`handle.category
+  === "admin"` 时复用与框架相同的 `/system/<模块根>/*` 重写算法（对已重写路径幂等），普通路由
+  原样返回 `path`；相对 admin path 以已生成的绝对 `id` 补全模块根。admin 子树内的后代路由
+  （`category` 继承自父级、自身不声明）以 `resolveRoutePath(child, ...ancestors)` 传祖先链
+  （模块根到直接父级）计算，结果为 `/system + 原绝对路径`。下游导航不再需要自行维护
+  admin 路径映射。用法见 `packages/runtime/README.md` 与 devkit manual。
+
+### Changed
+
+- **`category: "admin"` 未显式声明 `layout` 时默认 `"container"`**：admin 子树提升为顶级路由后
+  未声明布局会丢失整站 chrome；显式声明（含 `"none"`）永远优先。模板 admin 示例已去掉冗余
+  `layout: "container"`。
+
+### Fixed
+
+- **方案声明权限点 `title_key` 落库断链（RBAC/多语言演练实测缺陷）**：C2-15 把
+  `permissions[].title_key` 定为必填并逐项校验，但 `declOf` 只取 `code`、`upsertSolutionPerms`
+  insert 不带 title_key → `sys_permission.title_key` 恒 NULL，权限点展示页永远回退裸 code，
+  声明的多语言文案形同虚设。现 title_key 随行落库、升级元数据覆写（R3），并顺手修复同根缺陷：
+  已标 `deprecated` 的权限点/角色被新版本**重声明**时此前不复位（settings/routes 注册面均有复位、
+  RBAC 两表没有）——现复位 `deprecated=0`。回归：`rbac-solution-perms.spec.ts`（R2 落库/R3 覆写/
+  重声明复位三例）+ `register.spec.ts` declOf 透传一例 + e2e `roles-perms-i18n.spec.ts`
+  （角色名/权限点中英文实时翻译、不直出键名）。已装站点的存量权限点行：重装同版本方案即触发
+  R3 元数据覆写补齐 title_key。
+- **`ojm new --api` 骨架 `solution.yaml` 补 `api.anonymous` 声明（市场线演练实测缺陷）**：
+  骨架 ping 端点匿名可达但契约漏声明，安装预检 `anonymous_residual` 拒装——合成 fixture 因声明了
+  `anonymous: ["<name>/ping"]` 而装得进，真骨架反而装不进。模板补声明一行，测试钉住；
+  已用旧模板生成的工程需手工补该行（或删目录重新 `ojm new`）。
+- **admin 路由重写后菜单选中态丢失（runtime 0.2.67 缺陷，下游反馈）**：`rewriteAdminPaths` 以
+  `{ ...route, path }` 改写路径但保留重写前的 `id`，菜单 key 与 `useMatches().id` 处于两个路径
+  空间 → 当前页面不高亮、「系统管理」菜单收起。现于重写单点对整个子树重算 id
+  （`addRouteIdByPath`，含 index 路由尾斜杠），id 与菜单 key 恒同处一个绝对路径空间，
+  下游无需任何补偿配置。
+- **侧边栏底部菜单展开遮挡主菜单（runtime）**：底部固定区 `shrink-0` 完全不收缩，视口矮时
+  主菜单滚动视口被压成 0px 且无法滚动。现主菜单区 `flex-1 min-h-10`（至少保留一个菜单项的
+  滚动视口）、底部区展开态可滚动，两面板几何零重叠。新增 300px 视口真实浏览器回归用例
+  `tests/e2e/templates/sidebar-menu-overflow.spec.ts`。
+
+
+- **发布历史（记录 + 查询页）**：`GET /api/_platform/market/releases` 每次读取先把签名索引
+  （catalog + 全部分片）里出现过的 `product@version` 幂等补进新表 `market_release`，再按发布时间
+  倒序分页返回产品 / 版本 / 发布身份 / 发布时间 / 在架状态。**不新增发版上报协议**：`ojm market
+  publish` 是纯本地离线操作，加一条上报链路只会多一套写端授权面与「上报成功但包里没有」的分叉，
+  而签名索引本身就是发版事实。发布时间优先 `HEAD` 分发包读 `Last-Modified`（真正的落 CDN 时刻），
+  取不到回落索引 `issued_at`，由 `published_at_source: "file" | "index"` 标明来源，页面给兜底行打
+  「索引时间」标签；`published_at` 首次写定后不再改写（历史是事实），`yanked` 跟随索引（在架是当前
+  状态）。索引读不到时返回已入库行 + `syncError`（观测面不阻断页面）。表与 `market_history` /
+  `publish_credential` 同为站点级共享表（`tenant.shared_allow`）。迁移三方言齐备
+  （`0002__market_release.{sql,mysql.sql,pg.sql}`）。回归：`market-api.spec.ts` 六条（索引落库 /
+  Last-Modified 优先 / 幂等 append-only / yanked 双向 / syncError 降级 / 401+分页）+
+  `publish-history-page.test.tsx` 四条。
+
+- **市场卡片展示方案简介与详细描述**：`GET /_platform/market/index` 每行新增 `summary`
+  （分片条目 `manifest.summary`，C2-04）与 `description`（`manifest.description`，C2-05），
+  与 publisher/license/changelog 同取自最新版条目，缺口/非字符串 → `null`。卡片在版本行上方
+  显示简介（单行）与详细描述（限 3 行，全文进 `title`），详情抽屉展示全文并保留换行；
+  未声明就不占位，不显示「未知」占位符。回归：`market-api.spec.ts` 精确行断言 + 模板 web
+  卡片/详情抽屉各两条用例（声明显示、未声明不占位）。
+
 - **模板 i18n 守卫（回归）**：`tests/cli/template-i18n.test.ts` 静态扫源码与 seed——`t("ns:key")`
   引用的键、seed 里写死的 `ns:key`（内置角色名、设置分组）、`InstallStage` 全部枚举值，都必须在
   `zh-CN` / `en-US` 两份 locale 里同时存在；namespace 列表从 `entry.ts` 的 `i18nNamespaces`
@@ -35,6 +112,38 @@
   `truncated=false`、越界页 list 为空但 total 不变）。
 
 ### Changed
+
+- **最低 oj 版本抬到 `0.1.121`，模板方言 seed 不再教手工覆盖**：模板的 `seed.mysql.sql` /
+  `seed.pg.sql` 依赖 oj 0.1.121 的「方言件胜出、`seed.sql` 兜底、绝不双跑」语义（oj-bin
+  `7d70b90`）；此前 oj 只读 `seed.sql`，同一份 sqlite 写法下发 mysql/pg 直接 1064 拒启，
+  devkit 手册因此写了一条「部署时把方言件覆盖成 `seed.sql`」的部署期约定。现 `MIN_OJ_VERSION`
+  0.1.86 → 0.1.121（`ojm vendor` / `ojm init` / `ojm info` 同一门禁），手册改为「方言件放好
+  即生效」并写明启动日志的 `file=` / `dialect=` 判据；`oj check` S003/S006 覆盖全部变体、
+  幂等判据按文件方言。回归：`tests/cli/vendor.test.ts` 新增 0.1.120 拒绝断言；
+  `tests/cli/init.test.ts` 的模拟 oj 版本同步到 0.1.121。
+
+- **方案市场收敛为单模单根，发布管理页并入 oj-market**：此前 `/oj-market`（市场）与 `/publish`
+  （发布管理）是两个一级菜单根，组织上割裂。现在 `src/oj-market/web/entry.ts` 只声明一个
+  `/oj-market` 根，子页用相对路径声明——`/oj-market`（方案清单）、`/oj-market/publish`
+  （发布管理）、`/oj-market/history`（发布历史），`layout: "container"` 只由根声明一次；发布管理
+  的 `routes/pages/locales/__client` 整体迁到 `src/oj-market/web/publish/`，`web.config.ts` 的
+  `clientOwners.publish` 指向 `oj-market`。`publish:menu.*` 命名空间保持不变（页面文案零改动），
+  新增 `oj-market:menu.list`。回归：`publish-page.test.tsx` 路径断言 + `module-client-wiring`
+  继续覆盖 client 落位 + 真浏览器菜单核查（一级「方案市场」下三项、点击落到对应 URL）。
+
+- **schema.yaml 新增方案表前缀（C2-12c）**：方案模块的 `schema.yaml` 必须声明
+  `prefix: <短前缀>_`（作者自选，小写字母开头、≤32 字符，如 `crm_`；不强制等于模块名，
+  长模块名可用短前缀），且每张表名以该前缀开头。表名在全库共享，两个独立方案都建 `note`
+  会在安装期撞 S002；前缀把归属编码进名字后，跨方案撞表被大幅压低。表名总长同步收紧到
+  **63**（PostgreSQL 标识符上限 63 字节且超长静默截断，MySQL 64 字符，取最严值）。
+  `ojm build --bundle` 构建期 fail-fast（缺 prefix / 格式或长度不符 / 表名未带前缀），
+  引用式方案只要有 schema.yaml 同样检查。夹具同步改名 `note` → `demo_solution_note`。
+
+- **C2-12c 补第一方保留前缀段**：`schema.yaml` 的 `prefix` 现禁止以 `oj_` / `ojm_` 开头
+  （整段留给 oj 引擎 / ojm CLI，含 `oj_crm_` 之类派生形式），构建期 fail-fast。框架表
+  （`users` / `sys_*` / `wecom_*` 等）保持裸名作为保留的框架命名空间，方案表名一律带
+  自选前缀后与框架表名天然不重叠——无需给框架表再加一轮前缀。回归：`manifest-contract.test.ts`
+  保留段四条 + 合法前缀对照 + 非法格式不重复报，`bundle.test.ts` 构建期一条。
 
 - **devkit 同步到 oj 0.1.118**：`docs/devkit/oj-api-dev/` 快照按「整目录覆盖、逐字节一致」
   刷新——`api-manual` 补「WS 握手走 HTTP/1.1」注 + 限制表新增「入站传输协议（h2c）」行；
@@ -107,6 +216,75 @@
   全量 `vitest run` 876 例、`test:cli` 615 例与 templates e2e 均通过。
 
 ### Fixed
+
+- **模板根不再有方言 seed 副本，`m-8` 守卫钉住真源唯一**：`packages/cli/templates/seed.mysql.sql` /
+  `seed.pg.sql` 是历史残留——只有 4 条 `sys_setting`（模块内真件 22 条），且 mysql 那份把保留字
+  `key` 裸写。照 devkit 手册的部署口径把它覆盖成 `seed.sql`，mysql 起服必
+  `1064 near 'key, module, ...'`；而 `m-5`/`m-6` 只扫 `src/<模块>/`，坏了大半年没人发现。
+  删除两份副本、`init.include.yaml` 不再分发（真源只在 `src/app/api/<模块>/`）、
+  `init.test.ts` 去断言、教程与 devkit 手册目录树同步并补「部署 mysql/pg 用模块内方言件、
+  不再需要工程根副本」。新增守卫 **m-8**：模板内 `seed*.sql` 只允许出现在 `src/app/api/` 下，
+  mysql 方言件 `INSERT` 列清单里的保留字必须反引号（带坏/好样本反证，避免恒绿）。
+
+- **seed 方言支持已向上游提案（U1）**：新文档
+  [`docs/migration/oj-requirement-seed-dialect.md`](docs/migration/oj-requirement-seed-dialect.md)
+  给出「`seed.<dialect>.sql` 存在即胜出、`seed.sql` 兜底不双跑」的完整契约——含三方言实踩取证、
+  上游代码坐标（`seed.rs:17` 常量 / `checks.rs:119,236` 只扫 `seed.sql` / `insert_is_idempotent`
+  不认原生 `INSERT IGNORE`）、11 条 BDD 验收、四期分档，以及与迁移 `{desc}.{dialect}.sql`
+  同构的命名理由；playbook §9 对应行与 §11 **U1** 已挂指针（未改动上游代码）。
+
+- **MySQL 两步取 id 缺陷已由上游 oj 0.1.120 修复，本仓口径同步**：`returning(["id"])` 在 mysql 上
+  拆成 `INSERT` + `SELECT LAST_INSERT_ID()` 两条语句、各自向池取连接，可能读到别的连接的上一次
+  插入（建号返回 59 真值 5；广播 `b:58` 真值 `b:1`）。上游 `oj-bin` 提交 `2550bd5`（tag `v0.1.120`）
+  新增 `Exec::Owned` 短事务臂，把两条语句钉在同一连接、失败整条回滚。模板无需改动（此前也没有绕行）。
+  本仓同步：playbook §9 对应行改为「已由上游修复」并给复验口径、§11 **U2** 标为已关闭（编号保留，
+  防旧引用悬空）、文首结论与附录 A 第三轮发现 ⑥ 加注后续状态；`docs/migration/oj-requirement-mysql-two-step-id.md`
+  补 §10 落地结果；`docs/devkit/oj-api-dev/` 快照按「整目录覆盖、逐字节一致」刷新到 oj 0.1.120
+  （连带补上此前缺的 0.1.119 压缩缓存分层行）。**MySQL 真库复验通过**（oj 0.1.120 + 模板 0.2.67）：
+  串行建号 3/3、并发建号 30/30、并发广播 10/10 返回 id 与库内真值一致；`_sql` 追踪显示
+  `INSERT` 与 `SELECT LAST_INSERT_ID()` **同为 `inTx: true`**（同一短事务）。
+
+- **模板在 MySQL / PostgreSQL 真库上起站即失败（方言迁移件缺失）**：`home`、`notification` 两个模块的
+  建表迁移只有 sqlite 基础件（`INTEGER PRIMARY KEY AUTOINCREMENT`），却已各自存在 `0002` / `0005`
+  的 `.mysql.sql` 覆盖——覆盖是**按版本号替换**，没写方言版的 `0001` 仍会执行基础件，MySQL 直接
+  `1064 near 'AUTOINCREMENT'`；pg 侧同样缺 `0001` / `0003` / `0004`。补齐
+  `home/{0001.mysql,0001.pg,0002.pg}`、`notification/{0001,0003,0004}.{mysql,pg}`、`0005.pg`
+  共 10 个方言迁移与 4 份方言 seed（`home`、`notification` 各两份）。回归：`templates-migration-schema-parity`
+  新增 **m-5**——任一模块按方言实际执行的迁移 + seed 文件里不得出现该方言不支持的语法
+  （`AUTOINCREMENT`、`INSERT OR IGNORE`、MySQL 的 `CREATE INDEX IF NOT EXISTS`）。
+
+- **`_platform` 的两份方言 seed 一条 `sys_setting` 都没有**：手抄基线时整段漏掉 8 条设置默认值
+  （`sys_setting` 的 `key` / `group` 列在 MySQL 要反引号、pg 要双引号，被跳过），部署到 mysql/pg 后
+  设置页与登录方式发现缺默认值；另有拼接产生 `VALUES (…); ON CONFLICT DO NOTHING;` 双终止符，
+  会被 seed 的朴素 `;` 切分器切出孤立语句（PG 报 `syntax error at or near "ON"`）。两份方言 seed
+  已补齐 8 条并去掉多余分号。回归 **m-6**：方言 seed 与基础 seed 的表×条数必须一致，且每行只允许
+  一个语句终止符。
+
+- **PostgreSQL 上登录恒 500 `db exec: integer out of range`**：`_platform` 的 pg 基线把毫秒 epoch
+  列声明成 `INTEGER`（int4 上限 2.1e9，`Date.now()` 是 1.7e12），写入 `sys_rate_window` 即溢出；
+  同病的还有 `sys_login_throttle.blocked_until`、`sys_oplog.create_time`、`sys_setting.update_time`
+  以及 `sys_refresh_token` / `sys_user_role` 的 `user_id`。统一改 `BIGINT`（MySQL 同名列本就是
+  BIGINT）。回归 **m-7**：mysql 为 `BIGINT` 的时间列，pg 不得收窄为 `INTEGER`。
+
+- **PostgreSQL 上通知列表 500 `UNION types integer and text cannot be matched`**：`noticesFor` 的
+  UNION 第 4 列左分支是整数 `is_read`、右分支取文本 `read_time`，sqlite/mysql 宽松放行，pg 严格
+  要求同型。广播分支改为 `CASE WHEN r.read_time IS NULL THEN 0 ELSE 1 END AS is_read`，
+  `mapItem` 统一按整数判已读——三方言共用同一份 SQL，不再按方言分叉。
+
+- **「方案清单」选中后一直高亮（切到兄弟页仍常亮）**：index 落地页的菜单 key 沿用了父路径，与父级
+  SubMenu 的 key 重复（antd Menu 要求 key 唯一）；父链 key 始终在 `selectedKeys` 里，落地页因同
+  key 被连带选中——点「方案清单」再点「发布历史」，两项同时高亮。现在落地页 key 取「父路径 + /」
+  （与 `addRouteIdByPath` 给 index 路由的 id 同形），`resolveSelectedKeys` 不再去掉 match.id 的尾
+  斜杠，选中态只会落在当前页；导航前统一去尾斜杠，URL 保持 `/oj-market` 形态。顺带给「方案清单」
+  补默认图标（`AppstoreOutlined`）。回归：`tests/runtime/menu-relative-path.test.ts`（key 唯一 /
+  落地页选中 / 兄弟页不选）+ 真浏览器点击三步核查。
+
+- **子菜单里的落地页（index 路由）不进菜单**：`generateMenuItemsFromRoutes` 一律过滤 index 子路由，
+  这在单页根（`/home`、`/about` 的菜单项就是根自身）是正确的，但父路由还有别的可见子页时，根会
+  渲染成子菜单，落地页就彻底消失——方案市场改成单根三子页后「方案清单」在菜单里看不见
+  （真浏览器实测）。现在按「有非 index 可见子页才收录落地页」判定：落地页以「父路径 + /」为 key
+  排在子菜单首位，单页根形态不变。回归：`tests/runtime/menu-relative-path.test.ts` 两条
+  （三子页含落地页 / 单页根仍是叶子）。
 
 - **脚手架模板里的漏译（页面整块直出键名）**：`/personal-center/my-profile` 整页（标题、头像、
   用户名、邮箱、手机号、简介、必填提示、更新成功/失败）、`/system/roles` 列头与四个内置角色名、

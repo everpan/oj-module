@@ -1,0 +1,33 @@
+# 声明式表结构（S006 纪律：结构真源是 migrations/0001__publish_credential*，本文件只负责
+# 「列集/主键/租户定性」的运行时元数据，与迁移逐列对齐；templates-migration-schema-parity 双双守着）。
+#
+# 定性（三处一致：这里 / config.yaml `tenant.shared_allow` / 迁移文件头注释）：
+# **共享表**（tenant: false）。凭证在 CLI 兑换那一跳被执行，此刻没有业务租户语义——
+# 若建成租户表，sql_guard: deny 会给按 token_hash 的查询强加 tenant_id 过滤，换个租户头即查不到。
+# 租户归属由 `owner_tenant` 列显式承载（语义同 wecom_login_ticket：共享表出现 tenant_id
+# 会被定性红线判为自相矛盾）。
+tables:
+  publish_credential:
+    tenant: false
+    pk: id
+    columns:
+      id: {type: integer, null: false, autoincrement: true}
+      # 只存 sha256(明文)：明文只在申请响应里出现一次
+      token_hash: {type: text, null: false}
+      # 明文前 8 位，仅供「发布管理」页识别是哪一张，不参与任何校验
+      token_hint: {type: text, null: false}
+      uid: {type: integer, null: false}
+      # 申请时快照：改名不影响已签发的凭证与已推导的 key_id
+      username: {type: text, null: false}
+      display_name: {type: text}
+      # 申请时填写的产品名（NAME_RE 校验，落库即定）
+      product: {type: text, null: false}
+      # 服务端推导并落库的发布身份；兑换时原样下发，CLI 零推导
+      key_id: {type: text, null: false}
+      owner_tenant: {type: text, null: false}
+      expires_at: {type: integer, null: false}
+      used: {type: integer, null: false}
+      used_at: {type: integer}
+      revoked: {type: integer, null: false}
+      created_at: {type: integer, null: false}
+      created_ip: {type: text}

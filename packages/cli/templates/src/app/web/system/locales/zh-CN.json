@@ -6,7 +6,6 @@
 		"roles": "角色权限",
 		"oplog": "操作日志",
 		"settings": "站点设置",
-		"loginMethods": "登录方式",
 		"wecom": "企微集成",
 		"departments": "组织架构"
 	},
@@ -129,13 +128,6 @@
 	"settingsPage": {
 		"secretHint": "敏感项不可在线修改",
 		"saved": "设置已保存"
-	},
-	"loginMethodsPage": {
-		"title": "当前启用的登录方式",
-		"methodLocal": "本地口令",
-		"methodLdap": "LDAP",
-		"methodSso": "SSO 单点登录",
-		"methodWecom": "企业微信"
 	},
 	"wecom": {
 		"title": "开通企业",
@@ -276,6 +268,7 @@
 			"login": "登录方式",
 			"ldap": "LDAP"
 		},
+		"loginMethods": "登录方式",
 		"site_title": "站点标题",
 		"market_cdn_url": "市场 CDN 地址",
 		"ldap_enabled": "启用 LDAP 登录",

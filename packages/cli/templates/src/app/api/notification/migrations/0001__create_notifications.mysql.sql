@@ -1,0 +1,11 @@
+-- 0001（mysql 方言）：通知表建表。口径同基础件。
+-- 方言差异：AUTOINCREMENT → BIGINT AUTO_INCREMENT；TEXT 不能带字面默认值 → 短文本收窄 VARCHAR，长文本用括号默认值。
+CREATE TABLE IF NOT EXISTS notifications (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  avatar VARCHAR(255) NOT NULL DEFAULT '',
+  `date` VARCHAR(64) NOT NULL DEFAULT '',
+  is_read INTEGER NOT NULL DEFAULT 0,
+  message TEXT NOT NULL DEFAULT (''),
+  title VARCHAR(255) NOT NULL DEFAULT ''
+);
+

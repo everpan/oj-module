@@ -456,14 +456,19 @@ function checkModuleManifest(built: string, name: string, version: string, _summ
 	return out;
 }
 
-/** api.tables ↔ schema.yaml 表集对照（C2-12a 构建列；schema 缺失/声明不一致均 fail-fast） */
+/**
+ * api.tables ↔ schema.yaml 表集对照（C2-12a）+ 表前缀（C2-12c）。
+ * 引用式方案（tables 缺省）只要 schema.yaml 存在也做前缀检查——表名冲突与打包形态无关。
+ */
 function checkTables(m: Record<string, unknown>, layout: ProjectLayout, name: string): string[] {
 	const api = m.api as Record<string, unknown> | undefined;
-	if (api === undefined || api.tables === undefined)
+	if (api === undefined)
 		return [];
 	const schemaPath = path.join(apiSrcOf(layout, name), "schema.yaml");
 	if (!fs.existsSync(schemaPath)) {
-		return [`【C2-12a】api.tables 已声明但缺少 ${path.relative(layout.projectRoot, schemaPath)}，无法对照表集（oj 冗余校验同源）`];
+		return api.tables === undefined
+			? []
+			: [`【C2-12a】api.tables 已声明但缺少 ${path.relative(layout.projectRoot, schemaPath)}，无法对照表集（oj 冗余校验同源）`];
 	}
 	return checkTablesAgainstSchema(m, fs.readFileSync(schemaPath, "utf8"));
 }

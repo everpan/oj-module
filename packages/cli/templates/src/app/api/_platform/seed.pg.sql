@@ -19,3 +19,13 @@ INSERT INTO sys_permission (code, module, title_key, deprecated) VALUES ('platfo
 -- 企微组织架构同步（B2）：触发同步是打上游的动作，挂权限点；admin/superadmin 天然通过，
 -- 只有自定义角色需要显式绑定（与 platform.org.read.all 同一条纪律：不落库就永远绑不上）。
 INSERT INTO sys_permission (code, module, title_key, deprecated) VALUES ('auth.wecom.sync', 'auth', 'system:perm.auth_wecom_sync', 0) ON CONFLICT DO NOTHING;
+
+-- 系统设置默认值（与基础 seed 逐条对应）：方言文件不得漏段，漏了会让设置页/登录方式发现静默缺默认值。
+INSERT INTO sys_setting (key, module, "group", type, value, default_value, label_key, secret, update_time) VALUES ('framework.site_title', 'framework', 'general', 'string', 'React Antd Admin', 'React Antd Admin', 'system:setting.site_title', 0, 0) ON CONFLICT DO NOTHING;
+INSERT INTO sys_setting (key, module, "group", type, value, default_value, label_key, secret, update_time) VALUES ('framework.market_cdn_url', 'framework', 'security', 'string', '/cdn', '/cdn', 'system:setting.market_cdn_url', 0, 0) ON CONFLICT DO NOTHING;
+INSERT INTO sys_setting (key, module, "group", type, value, default_value, label_key, secret, update_time) VALUES ('ldap.enabled', 'ldap', 'login', 'bool', '0', '0', 'system:setting.ldap_enabled', 0, 0) ON CONFLICT DO NOTHING;
+INSERT INTO sys_setting (key, module, "group", type, value, default_value, label_key, secret, update_time) VALUES ('sso.enabled', 'sso', 'login', 'bool', '0', '0', 'system:setting.sso_enabled', 0, 0) ON CONFLICT DO NOTHING;
+INSERT INTO sys_setting (key, module, "group", type, value, default_value, label_key, secret, update_time) VALUES ('wecom.enabled', 'wecom', 'login', 'bool', '0', '0', 'system:setting.wecom_enabled', 0, 0) ON CONFLICT DO NOTHING;
+INSERT INTO sys_setting (key, module, "group", type, value, default_value, label_key, secret, update_time) VALUES ('ldap_base_dn', 'ldap', 'ldap', 'string', '', '', 'system:setting.ldap_base_dn', 0, 0) ON CONFLICT DO NOTHING;
+INSERT INTO sys_setting (key, module, "group", type, value, default_value, label_key, secret, update_time) VALUES ('ldap_uid_attr', 'ldap', 'ldap', 'string', 'uid', 'uid', 'system:setting.ldap_uid_attr', 0, 0) ON CONFLICT DO NOTHING;
+INSERT INTO sys_setting (key, module, "group", type, value, default_value, label_key, secret, update_time) VALUES ('ldap_email_attr', 'ldap', 'ldap', 'string', 'mail', 'mail', 'system:setting.ldap_email_attr', 0, 0) ON CONFLICT DO NOTHING;

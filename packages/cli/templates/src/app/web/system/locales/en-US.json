@@ -6,7 +6,6 @@
 		"roles": "Roles & Permissions",
 		"oplog": "Audit Log",
 		"settings": "Site Settings",
-		"loginMethods": "Login Methods",
 		"wecom": "WeCom Integration",
 		"departments": "Departments"
 	},
@@ -129,13 +128,6 @@
 	"settingsPage": {
 		"secretHint": "Secret items cannot be edited online",
 		"saved": "Settings saved"
-	},
-	"loginMethodsPage": {
-		"title": "Enabled login methods",
-		"methodLocal": "Local password",
-		"methodLdap": "LDAP",
-		"methodSso": "SSO",
-		"methodWecom": "WeCom"
 	},
 	"wecom": {
 		"title": "Onboard a corporation",
@@ -276,6 +268,7 @@
 			"login": "Login Methods",
 			"ldap": "LDAP"
 		},
+		"loginMethods": "Login Methods",
 		"site_title": "Site Title",
 		"market_cdn_url": "Market CDN URL",
 		"ldap_enabled": "Enable LDAP login",

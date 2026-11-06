@@ -140,6 +140,8 @@ function solutionYaml(name: string, withApi: boolean | undefined): string {
 			"api:",
 			`  module: ${name}`,
 			`  prefix: /api/${name}`,
+			// ping 匿名可达必须在契约声明（fixture.ts 同形状）；漏声明安装预检 anonymous_residual 拒装
+			`  anonymous: ["${name}/ping"]`,
 			"",
 		].join("\n")
 		: "";

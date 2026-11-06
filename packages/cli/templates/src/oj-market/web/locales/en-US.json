@@ -1,6 +1,7 @@
 {
 	"menu": {
-		"main": "Market"
+		"main": "Market",
+		"list": "Solutions"
 	},
 	"perm": {
 		"view": "View solution market"
@@ -25,6 +26,9 @@
 		"retry": "Retry",
 		"version": "Version",
 		"license": "License",
+		"publisher": "Publisher",
+		"summary": "Summary",
+		"description": "Description",
 		"latest": "Latest",
 		"installed": "Installed",
 		"notInstalled": "Not installed",

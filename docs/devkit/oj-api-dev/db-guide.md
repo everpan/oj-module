@@ -816,8 +816,9 @@ const id = rows[0].id;
 - pg / sqlite：渲染 `INSERT ... RETURNING "id"`，**单语句一次往返**（不再需要
   「exec 之后查 `last_insert_rowid()`」这种会串号的写法）。
 - mysql：方言无 RETURNING，只接受**单列**（`mysql returning accepts exactly one column
-  (no RETURNING support)`），在同一连接上两步取 `LAST_INSERT_ID()`
-  ——并发请放 `db.tx` 内。
+  (no RETURNING support)`），两步取 `LAST_INSERT_ID()`——**宿主把这两条语句钉在同一连接**
+  （池路径自动包一次短事务，事务内则直接用会话），调用方无需为「取 id 串号」再包 `db.tx`。
+  取 id 或提交失败会回滚整条短事务并报错，不会留下「写进去了但没有 id」的半成品。
 
 同一 `resolve_target` 路由：有活跃事务走会话，否则走池——DML 与查询天然同事务。
 
@@ -2209,7 +2210,8 @@ const rows = await db.table("user").insert({ name: "neo", age: 1 }).returning(["
 - pg / sqlite：sea-query 渲染 `INSERT ... RETURNING "id"`，**单语句一次往返**取回——
   替代原先「exec 后再查 `last_insert_rowid()` 可能读到并发插入」的裸 SQL 写法。
 - mysql：方言无 RETURNING，`returning` 只接受**单列**；op 在同一执行目标上两步
-  （insert + `SELECT LAST_INSERT_ID()`），**并发下请放进 `db.tx`** 保证同连接。
+  （insert + `SELECT LAST_INSERT_ID()`），**两条语句由宿主钉在同一连接**（池路径自动包短事务），
+  无需为串号自行包 `db.tx`；任一步失败整条短事务回滚。
 
 **toSQL / toJSON / fromJSON**：
 
@@ -2513,7 +2515,10 @@ try {
   未装插件 → 启动报 `unknown db scheme`。
 - `DB("name")` 按名取库；查询构造器自动按库方言出 SQL；裸 SQL **统一用 `?` 占位符**
   （0.1.67 起，postgres 由宿主自动改写 `$n`；存量 `$n` 继续有效，见「统一占位符」节）。
-- `seed.sql` 启动时对 `default` 库重放，**三方言**（幂等靠 S006 门禁 + 引擎按方言改写）。
+- seed 启动时对 `default` 库重放，**三方言**（幂等靠 S006 门禁 + 引擎按方言改写）。
+  v0.1.121 起按文件名分方言：`seed.<sqlite|mysql|pg>.sql` 存在即胜出，`seed.sql` 兜底，
+  **绝不双跑**；方言件可直接用本方言原生幂等写法（`INSERT IGNORE` / `ON CONFLICT` /
+  `OR REPLACE`），S006 按文件方言判定。
 - mysql/pg 连不上启动 fail-fast（连接串错/库未建）。
 - **按库运维（v0.1.21）**：`oj migrate` / `oj test fixture` / `oj schema diff` 的 `--db <name>`
   即上方键名；缺省 `default`，未声明 fail-fast。账本 `_oj_migrations`、schema 收敛、

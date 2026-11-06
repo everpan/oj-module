@@ -156,7 +156,7 @@ function makeReq(overrides: Partial<InstallRequest> = {}): InstallRequest {
 		configPath: join(root, "config.yaml"),
 		fetch: async () => ({ ok: true, status: 200, arrayBuffer: async () => ARCHIVE.slice().buffer }),
 		exec: bundleExec(),
-		reload: { reloadConfig: async () => ({ generation: 1, unchanged: false, applied: ["vars"], restart_pending: [], kept_listener: [] }) },
+		reload: { reloadConfig: async () => ({ generation: 1, unchanged: false, applied: [`+demo-solution@${version}`], restart_pending: [], kept_listener: [] }) },
 		sha256Hex: d => createHash("sha256").update(d).digest("hex"),
 		verifyEd25519: nodeVerifyEd25519,
 		trustPath,
@@ -181,8 +181,8 @@ beforeEach(async () => {
 	modulesJsonPath = join(root, "dist", "modules.json");
 	dbPath = join(root, "db.sqlite");
 	await fsp.writeFile(dbPath, new TextEncoder().encode("sqlite-header\n"));
-	// 站点 config.yaml 夹具（reloading 段 vars.ojm_install_seq 自增消费面；模板 config.yaml 随发形态）
-	await fsp.writeFile(join(root, "config.yaml"), "mounts: []\nserver:\n  reload_api: true\nvars:\n  ojm_install_seq: 0\nauth:\n  anonymous_paths:\n    - /auth/login\n");
+	// 站点 config.yaml 夹具（reloading 段仅做 anonymous_paths 接线；模板 config.yaml 随发形态）
+	await fsp.writeFile(join(root, "config.yaml"), "mounts: []\nserver:\n  reload_api: true\nvars:\n  other: 1\nauth:\n  anonymous_paths:\n    - /auth/login\n");
 	g.fs = nodeFsFace();
 	g.yaml = { parse: async (t: string) => JSON.parse(t) };
 	g.http = {};
@@ -226,9 +226,8 @@ describe("runInstall 全绿路径（步骤 stub，register/smoke/audit 走真实
 		await fsp.access(join(versionDir, "routes.js"));
 		await fsp.access(join(versionDir, "migrations", "0001__init.sql"));
 		await expect(fsp.access(join(versionDir, "web"))).rejects.toThrow();
-		// reloading 段触发变更已落盘：vars.ojm_install_seq 自增（B-11，PRD E5 口径）
+		// reloading 段仅做 anonymous_paths 接线（幂等追加；不再依赖 vars 哨兵触发 reload）
 		const cfg = new TextDecoder().decode(await fsp.readFile(join(root, "config.yaml")));
-		expect(cfg).toContain("ojm_install_seq: 1");
 		// C2-26 anonymous 运行时接线（P2-15③）：方案匿名端点补进 auth.anonymous_paths（幂等追加）
 		expect(cfg).toContain("- /demo-solution/ping");
 		// web 产物落位 + modules.json 条目（R10 integrity 为包内容重算值）
@@ -260,10 +259,10 @@ describe("runInstall 全绿路径（步骤 stub，register/smoke/audit 走真实
 		expect(await getTask(taskDir, "nope")).toBeNull();
 	});
 
-	it("preview 形态：派生 .ojm-preview.yaml 存在时两份 config 一起自增（否则 reload 恒 unchanged）", async () => {
+	it("preview 形态：派生 .ojm-preview.yaml 存在时两份 config 一起接线（否则 reload 恒 unchanged）", async () => {
 		// ojm preview 派生出来的那份才是服务端在读的 config（spa 挂载 + platform.root 改写）
 		const derived = join(root, ".ojm-preview.yaml");
-		await fsp.writeFile(derived, "mounts: []\nserver:\n  reload_api: true\nvars:\n  ojm_install_seq: 0\nauth:\n  anonymous_paths:\n    - /auth/login\n");
+		await fsp.writeFile(derived, "mounts: []\nserver:\n  reload_api: true\nvars:\n  other: 1\nauth:\n  anonymous_paths:\n    - /auth/login\n");
 
 		const t = await runInstall(makeReq());
 		expect(t.status).toBe("done");
@@ -271,10 +270,8 @@ describe("runInstall 全绿路径（步骤 stub，register/smoke/audit 走真实
 		const source = new TextDecoder().decode(await fsp.readFile(join(root, "config.yaml")));
 		const preview = new TextDecoder().decode(await fsp.readFile(derived));
 		// 源 config 仍是真相（preview 重启后按它重建派生文件）
-		expect(source).toContain("ojm_install_seq: 1");
 		expect(source).toContain("- /demo-solution/ping");
 		// 派生文件也要变：reloadConfig 按它的文档 sha 判 unchanged
-		expect(preview).toContain("ojm_install_seq: 1");
 		expect(preview).toContain("- /demo-solution/ping");
 	});
 
@@ -1311,5 +1308,27 @@ describe("冒烟探活必须自报租户头（企微代开发多租户 v3 Phase 
 		}));
 		expect(t.status).toBe("partial");
 		expect(t.stage).toBe("smoke");
+	});
+});
+
+describe("Phase 3：无守护 partial 判定（P0 §3.6 / 验收 15）", () => {
+	it("热更返回待重启段非空 → 装完标 partial + restartRequired（不判 done，避免假成功）", async () => {
+		// 无守护形态（P4 supervisor 未实施）：匿名接线等 restart_pending 段需宿主重启才完全生效，
+		// 不应报 done 误导。reload 返回 restart_pending 非空即标 partial + restartRequired。
+		const t = await runInstall(makeReq({
+			reload: { reloadConfig: async () => ({ generation: 1, unchanged: false, applied: ["+demo-solution@0.1.0"], restart_pending: ["auth"], kept_listener: [] }) },
+		}));
+		expect(t.status).toBe("partial");
+		expect(t.restartRequired).toBe(true);
+		expect(t.message).toContain("待重启段");
+		expect(t.message).toContain("重启");
+		// 安装产物已落位（非失败语义②补偿）：锁/版本目录仍在，任务非 failed
+		expect(t.stage).not.toBe("failed");
+	});
+
+	it("热更待重启段为空 → 正常 done（restartRequired 不置位）", async () => {
+		const t = await runInstall(makeReq());
+		expect(t.status).toBe("done");
+		expect(t.restartRequired).toBeUndefined();
 	});
 });

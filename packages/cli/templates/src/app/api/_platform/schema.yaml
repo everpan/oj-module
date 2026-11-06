@@ -167,6 +167,24 @@ tables:
       operator: {type: text}
       message: {type: text}
       created_at: {type: integer, null: false}
+  # 发布历史（2026-11-05）：签名索引里出现过的每个 product@version 一行。
+  # 站点读发布历史时从索引同步（只补新行），published_at 首次写定后不改。
+  market_release:
+    # 共享表（B 组）：CDN 是站点级的，按租户隔离会把同一份市场索引割裂成互不可见的碎片。
+    tenant: false
+    pk: id
+    columns:
+      id: {type: integer, autoincrement: true}
+      product: {type: text, null: false}
+      version: {type: text, null: false}
+      key_id: {type: text}
+      sha256: {type: text}
+      size: {type: integer}
+      published_at: {type: integer, null: false}
+      # file = 分发包 Last-Modified（真正的落 CDN 时刻）；index = 索引 issued_at 兜底
+      published_at_source: {type: text, null: false}
+      yanked: {type: integer, null: false}
+      first_seen_at: {type: integer, null: false}
   # REG-CS2 索引新鲜度：站点按源记住见过的最大 seq（防回放/降级，回退即拒）。
   # 读写由 _lifecycle/source-seq.ts 落到本表；source_url 为业务主键（无自增 id）。
   reg_source_seq:

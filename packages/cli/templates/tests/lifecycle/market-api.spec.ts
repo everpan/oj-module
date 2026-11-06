@@ -108,10 +108,12 @@ const CATALOG = JSON.stringify({
 		{ name: "wiki", shards: [1] },
 	],
 });
+/** 最新版详细描述（C2-05；喂给 index 聚合断言，验证卡片能读到方案「提供什么」） */
+const LATEST_DESCRIPTION = "演示方案：提供示例 CRUD 与菜单路由，覆盖安装、升级、回滚与历史留痕全链路。";
 /** 分片正文（纯内容无 meta：版本条目即 Form B manifest——原 manifests.yaml 聚合清单并入分片） */
 const SHARD_1 = JSON.stringify({
 	solutions: [
-		{ name: "demo-solution", latest: "0.2.0", versions: [manifestFixture("0.2.0"), manifestFixture("0.1.0")] },
+		{ name: "demo-solution", latest: "0.2.0", versions: [{ ...manifestFixture("0.2.0"), description: LATEST_DESCRIPTION }, manifestFixture("0.1.0")] },
 		{ name: "wiki", latest: "1.3.0", versions: [{ name: "wiki", version: "1.3.0", archive: { file: "wiki-1.3.0.tgz", sha256: "x", size: 1 } }] },
 	],
 });
@@ -205,9 +207,15 @@ function bundleExec(): ExecFace {
 	};
 }
 
-const reloadStub: ReloadFace = {
-	reloadConfig: async () => ({ generation: 1, unchanged: false, applied: ["vars"], restart_pending: [], kept_listener: [] }),
-};
+// reload 桩：按被安装版本产出 applied 模块符号（+name@ver，v0.1.122 双符号契约），
+// 供 reloadAndAssert 终态校验（R18）。默认 0.1.0 覆盖绝大多数用例；跨片索引用例（REG-CS5）
+// 安装 1.0.2499 / 1.0.0，须按实装版本注入对应桩，否则符号不匹配 → reloading 段判 partial。
+function reloadStubFor(version: string): ReloadFace {
+	return {
+		reloadConfig: async () => ({ generation: 1, unchanged: false, applied: [`+demo-solution@${version}`], restart_pending: [], kept_listener: [] }),
+	};
+}
+const reloadStub: ReloadFace = reloadStubFor("0.1.0");
 
 function makeEnv(overrides: Partial<MarketEnv> = {}): MarketEnv {
 	return {
@@ -247,8 +255,8 @@ beforeEach(async () => {
 	modulesJsonPath = join(root, "dist", "modules.json");
 	dbPath = join(root, "db.sqlite");
 	await fsp.writeFile(dbPath, new TextEncoder().encode("sqlite-header\n"));
-	// 站点 config.yaml 夹具（reloading 段 vars.ojm_install_seq 自增消费面；模板 config.yaml 随发形态）
-	await fsp.writeFile(join(root, "config.yaml"), "mounts: []\nserver:\n  reload_api: true\nvars:\n  ojm_install_seq: 0\nauth:\n  anonymous_paths:\n    - /auth/login\n");
+	// 站点 config.yaml 夹具（reloading 段仅做 anonymous_paths 接线；模板 config.yaml 随发形态）
+	await fsp.writeFile(join(root, "config.yaml"), "mounts: []\nserver:\n  reload_api: true\nvars:\n  other: 1\nauth:\n  anonymous_paths:\n    - /auth/login\n");
 	g.fs = nodeFsFace();
 	dbo = installDb();
 	dbo.prepare("INSERT OR IGNORE INTO sys_user_role (user_id, role_name) VALUES (?, ?)").run(1, "superadmin");
@@ -819,7 +827,7 @@ describe("GET index（CDN catalog + shards 拉取 + 本地 state 对比）", () 
 		expect(String(last?.msg)).toContain("未配置市场地址");
 	});
 
-	it("聚合对比：CDN 最新版本 + 本地已装/enabled + upgradable + available/changelog/publisher/trust/key_id/operator（P2-11）；本地独有方案也列出；拉取不带 no-cache", async () => {
+	it("聚合对比：CDN 最新版本 + 本地已装/enabled + upgradable + available/changelog/publisher/publisher_key/license/summary/description/trust/key_id/operator（P2-11）；本地独有方案也列出；拉取不带 no-cache", async () => {
 		const env = makeEnv();
 		const state = await createStateStore(env.statePath);
 		await state.write({
@@ -835,9 +843,9 @@ describe("GET index（CDN catalog + shards 拉取 + 本地 state 对比）", () 
 		// REG-CS5④：读面不再发 cache-control: no-cache（服务端缓存头 + 条件请求承载新鲜度）
 		expect(fetchInits.every(i => (i as { headers?: Record<string, string> } | undefined)?.headers?.["cache-control"] === undefined)).toBe(true);
 		expect(last?.data).toEqual([
-			{ name: "demo-solution", latest: "0.2.0", installed: "0.1.0", enabled: true, upgradable: true, available: ["0.1.0", "0.2.0"], changelog: ["0.2.0 变更条目"], publisher: "oj-module", license: "MIT", trust_state: "trusted", key_id: "test.publisher", operator: null },
-			{ name: "wiki", latest: "1.3.0", installed: null, enabled: null, upgradable: false, available: ["1.3.0"], changelog: null, publisher: null, license: null, trust_state: null, key_id: null, operator: null },
-			{ name: "legacy", latest: null, installed: "9.9.9", enabled: false, upgradable: false, available: [], changelog: null, publisher: null, license: null, trust_state: null, key_id: null, operator: null },
+			{ name: "demo-solution", latest: "0.2.0", installed: "0.1.0", enabled: true, upgradable: true, available: ["0.1.0", "0.2.0"], changelog: ["0.2.0 变更条目"], publisher: "oj-module", publisher_key: "test.publisher", license: "MIT", summary: "演示方案", description: LATEST_DESCRIPTION, trust_state: "trusted", key_id: "test.publisher", operator: null },
+			{ name: "wiki", latest: "1.3.0", installed: null, enabled: null, upgradable: false, available: ["1.3.0"], changelog: null, publisher: null, publisher_key: null, license: null, summary: null, description: null, trust_state: null, key_id: null, operator: null },
+			{ name: "legacy", latest: null, installed: "9.9.9", enabled: false, upgradable: false, available: [], changelog: null, publisher: null, publisher_key: null, license: null, summary: null, description: null, trust_state: null, key_id: null, operator: null },
 		]);
 	});
 
@@ -1190,7 +1198,7 @@ describe("REG-CS5 三级索引（装箱分片 + 条件请求 + DIP 读取源 + �
 	}
 
 	it("BDD① 装箱分片：2500 版本跨 3 片，latest 安装只拉最高片（≤ 1 catalog + 1 shard）→ done", async () => {
-		const api = createMarketApi(makeEnv({ fetch: bigIndexFetch() }));
+		const api = createMarketApi(makeEnv({ fetch: bigIndexFetch(), reload: reloadStubFor("1.0.2499") }));
 		fetchCalls.length = 0;
 		g.http = { user: { id: 1 }, body: { name: "demo-solution", version: null, source: "cdn" } };
 		await api.install.post();
@@ -1208,7 +1216,7 @@ describe("REG-CS5 三级索引（装箱分片 + 条件请求 + DIP 读取源 + �
 	});
 
 	it("BDD① 回落低片：显式指定最低版本 → 先试最高片未中，逐片回落到 1 号片命中 → done", async () => {
-		const api = createMarketApi(makeEnv({ fetch: bigIndexFetch() }));
+		const api = createMarketApi(makeEnv({ fetch: bigIndexFetch(), reload: reloadStubFor("1.0.0") }));
 		fetchCalls.length = 0;
 		g.http = { user: { id: 1 }, body: { name: "demo-solution", version: "1.0.0", source: "cdn" } };
 		await api.install.post();
@@ -1552,5 +1560,149 @@ describe("P1-16 接线：marketEnv 生产口径 / exec opts 转发 / operator �
 		finally {
 			warn.mockRestore();
 		}
+	});
+});
+
+// ── 发布历史（GET /market/releases）────────────────────────────────────────────
+// 数据源是签名索引本身：每次读先把索引里出现过的 product@version 幂等补进 market_release，
+// 再按发布时间倒序分页。索引读不到不阻断查询（返回已入库行 + syncError）。
+
+interface ReleasePageData {
+	list: Array<{ id: number, product: string, version: string, published_at: number, published_at_source: string, yanked: number }>
+	total: number
+	page: number
+	size: number
+	syncError: string | null
+}
+
+/** HEAD 可读 Last-Modified 的 CDN 面（其余请求复用 cdnFetch 的完整夹具） */
+function headAwareFetch(lastModified: string): FetchFace {
+	return (async (url: string, init?: { method?: string }) => {
+		if (init?.method === "HEAD") {
+			return {
+				ok: true,
+				status: 200,
+				arrayBuffer: async () => new ArrayBuffer(0),
+				headers: { get: (name: string) => name.toLowerCase() === "last-modified" ? lastModified : null },
+			};
+		}
+		return cdnFetch(url);
+	}) as FetchFace;
+}
+
+/** 换一版分片正文（并按其字节重签，seq 与 catalog 同代），用于构造「索引说已下线」） */
+function shardWithYanked(): { body: string, sig: string } {
+	const body = JSON.stringify({
+		solutions: [{
+			name: "demo-solution",
+			latest: "0.2.0",
+			versions: [
+				{ ...manifestFixture("0.2.0"), description: LATEST_DESCRIPTION },
+				{ ...manifestFixture("0.1.0"), yanked: true },
+			],
+		}],
+	});
+	return { body, sig: JSON.stringify(signIndex("shard", SEQ, body, TEST_KEY.privateKeyPem, "test.publisher")) };
+}
+
+describe("GET /market/releases（发布历史：索引对账落库 + 分页）", () => {
+	it("首读把索引里全部 product@version 补进历史：产品/版本/发布时间齐全，无 HEAD 头时回落索引 issued_at（source=index）", async () => {
+		const api = createMarketApi(makeEnv());
+		g.http = { user: { id: 1 } };
+		await api.releases.get();
+		expect(last?.status).toBe(200);
+		const page = last?.data as ReleasePageData;
+		expect(page.syncError).toBeNull();
+		expect(page.total).toBe(3);
+		expect(page.list.map(r => `${r.product}@${r.version}`)).toEqual(["wiki@1.3.0", "demo-solution@0.1.0", "demo-solution@0.2.0"]);
+		expect(page.list.every(r => r.published_at === ISSUED_AT && r.published_at_source === "index")).toBe(true);
+		// 每行先试 HEAD（拿真正的落 CDN 时刻），失败才回落——不是完全不问源
+		expect(fetchInits.some(i => (i as { method?: string } | undefined)?.method === "HEAD")).toBe(true);
+	});
+
+	it("HEAD 拿得到 Last-Modified → 用文件时间并标 source=file（索引时间只作兜底，不冒充精确）", async () => {
+		const api = createMarketApi(makeEnv({ fetch: headAwareFetch("Wed, 01 Oct 2025 00:00:00 GMT") }));
+		g.http = { user: { id: 1 } };
+		await api.releases.get();
+		expect(last?.status).toBe(200);
+		const page = last?.data as ReleasePageData;
+		const expected = Math.floor(Date.parse("Wed, 01 Oct 2025 00:00:00 GMT") / 1000);
+		expect(page.list.every(r => r.published_at === expected && r.published_at_source === "file")).toBe(true);
+	});
+
+	it("幂等 + append-only：二次读不重复插入，已入库的 published_at 不被索引时间改写", async () => {
+		// 预置一行「上次记录的历史」：发布时间是事实，哪怕与本次索引的时间不同也不该被刷新
+		dbo.prepare("INSERT INTO market_release (product, version, published_at, published_at_source, yanked, first_seen_at) VALUES (?, ?, ?, ?, ?, ?)")
+			.run("demo-solution", "0.2.0", 1_600_000_000, "file", 0, 1_600_000_000);
+		const api = createMarketApi(makeEnv());
+		g.http = { user: { id: 1 } };
+		await api.releases.get();
+		await api.releases.get();
+		expect(last?.status).toBe(200);
+		const page = last?.data as ReleasePageData;
+		expect(page.total).toBe(3);
+		const rows = dbo.prepare("SELECT product, version, published_at FROM market_release ORDER BY product, version").all() as Array<{ product: string, version: string, published_at: number }>;
+		expect(rows).toHaveLength(3);
+		expect(rows.find(r => r.product === "demo-solution" && r.version === "0.2.0")?.published_at).toBe(1_600_000_000);
+	});
+
+	it("yanked 跟随索引（0→1 与 1→0 双向）：下线是当前状态，不是历史事实的改写", async () => {
+		// 1→0：库里记着已下线，索引又回到在架
+		dbo.prepare("INSERT INTO market_release (product, version, published_at, published_at_source, yanked, first_seen_at) VALUES (?, ?, ?, ?, ?, ?)")
+			.run("demo-solution", "0.2.0", ISSUED_AT, "index", 1, ISSUED_AT);
+		const api = createMarketApi(makeEnv());
+		g.http = { user: { id: 1 } };
+		await api.releases.get();
+		expect(last?.status).toBe(200);
+		expect((dbo.prepare("SELECT yanked FROM market_release WHERE product = ? AND version = ?").get("demo-solution", "0.2.0") as { yanked: number }).yanked).toBe(0);
+
+		// 0→1：换一版已签名的分片，其中 0.1.0 标了 yanked
+		const yanked = shardWithYanked();
+		const fetchFn = (async (url: string) => {
+			if (String(url).endsWith("shards/1.yaml.sig"))
+				return { ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode(yanked.sig).buffer as ArrayBuffer };
+			if (String(url).endsWith("shards/1.yaml"))
+				return { ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode(yanked.body).buffer as ArrayBuffer };
+			return cdnFetch(url);
+		}) as FetchFace;
+		const api2 = createMarketApi(makeEnv({ fetch: fetchFn }));
+		g.http = { user: { id: 1 } };
+		await api2.releases.get();
+		expect(last?.status).toBe(200);
+		expect((dbo.prepare("SELECT yanked FROM market_release WHERE product = ? AND version = ?").get("demo-solution", "0.1.0") as { yanked: number }).yanked).toBe(1);
+	});
+
+	it("索引读不到（验签失败）→ 200 + 已入库历史 + syncError 人话（观测面不阻断页面）", async () => {
+		const api = createMarketApi(makeEnv());
+		g.http = { user: { id: 1 } };
+		await api.releases.get();
+		expect((last?.data as ReleasePageData).total).toBe(3);
+
+		const brokenFetch = (async (url: string) => {
+			if (String(url).endsWith("shards/1.yaml.sig"))
+				return { ok: false, status: 503, arrayBuffer: async () => new ArrayBuffer(0) };
+			return cdnFetch(url);
+		}) as FetchFace;
+		const api2 = createMarketApi(makeEnv({ fetch: brokenFetch }));
+		g.http = { user: { id: 1 } };
+		await api2.releases.get();
+		expect(last?.status).toBe(200);
+		const page = last?.data as ReleasePageData;
+		expect(page.total).toBe(3);
+		expect(page.syncError).toContain("index_sig_missing");
+	});
+
+	it("门与分页：匿名 401；page/limit 透传并按发布时间倒序取页", async () => {
+		const api = createMarketApi(makeEnv());
+		g.http = {};
+		await api.releases.get();
+		expect(last?.status).toBe(401);
+
+		g.http = { user: { id: 1 }, query: { page: "2", limit: "1" } };
+		await api.releases.get();
+		expect(last?.status).toBe(200);
+		const page = last?.data as ReleasePageData;
+		expect(page).toMatchObject({ page: 2, size: 1, total: 3 });
+		expect(page.list).toHaveLength(1);
 	});
 });

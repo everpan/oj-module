@@ -99,6 +99,10 @@ export default function LoginPage() {
 		fetchLoginMethods()
 			.then((r) => {
 				setKnown(true);
+				// 站点标题（framework.site_title）经匿名端点回传，登录页即可设置浏览器标签；
+				// 其他已登录页保持随菜单（layout-effects 的路由标题），此处仅在登录页生效。
+				if (r.site_title)
+					document.title = r.site_title;
 				// 先按 string[] 看一眼：runtime 的返回类型把 wecom 排除在外，而这里恰恰要认它
 				const raw: string[] = r.methods;
 				// 按 KNOWN_METHODS 排序：企微是主入口，排第一个 tab 并默认选中，

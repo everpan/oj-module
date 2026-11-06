@@ -5,11 +5,17 @@
 // 管理市场未装时本页显示 ojm install 引导卡（R26 空态：管理区唯一必经页，消费 useSolutionRoutes）。
 // 保存语义（R20）：脏组增量提交——只提交有改动的设置项，按组聚合反馈（部分失败不静默）。
 import type { RbacSettingCard } from "@oj-module/runtime";
-import { BasicContent, fetchRbacSettings, fetchRbacUpdateSetting, groupSettingsByModule, useSolutionRoutes, useUserStore } from "@oj-module/runtime";
+import { BasicContent, fetchLoginMethods, fetchRbacSettings, fetchRbacUpdateSetting, groupSettingsByModule, useSolutionRoutes, useUserStore } from "@oj-module/runtime";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { App, Card, Form, Input } from "antd";
+import { App, Card, Form, Input, Tag } from "antd";
 import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
+
+/**
+ * 登录方式开关（ldap.enabled / sso.enabled / wecom.enabled）：不再作为可编辑设置项，
+ * 其开关数据源保留在 sys_setting，但展示收敛为「系统设置」内的只读卡片（与 /login 一致）。
+ */
+const LOGIN_METHOD_KEYS = new Set(["ldap.enabled", "sso.enabled", "wecom.enabled"]);
 
 function applySiteTitle(title: string) {
 	if (title)
@@ -25,7 +31,14 @@ export default function Settings() {
 	const [form] = Form.useForm();
 
 	const { data: groups } = useQuery({ queryKey: ["rbac-settings"], queryFn: fetchRbacSettings, initialData: [] });
-	const cards: RbacSettingCard[] = groupSettingsByModule((groups ?? []).flatMap(g => g.items));
+	// 登录方式开关（LOGIN_METHOD_KEYS）从可编辑设置中剔除——其展示收敛为下方只读卡片。
+	const cards: RbacSettingCard[] = groupSettingsByModule(
+		(groups ?? []).flatMap(g => g.items).filter(i => !LOGIN_METHOD_KEYS.has(i.key)),
+	).filter(c => c.items.length > 0);
+
+	// 当前登录方式（只读，与 /login 同源：listLoginMethods 按 ldap/sso/wecom 开关派生）。
+	const { data: loginMethodsData } = useQuery({ queryKey: ["settings-login-methods"], queryFn: fetchLoginMethods, retry: false, staleTime: 60_000 });
+	const loginMethodsList = loginMethodsData?.methods ?? ["local"];
 
 	// 服务端现值快照：脏组判定基准（保存成功后同步，避免回写刚保存的值再被判脏）
 	const savedRef = useRef<Record<string, string>>({});
@@ -98,6 +111,13 @@ export default function Settings() {
 		<BasicContent className="h-full">
 			<Form form={form} layout="vertical" initialValues={Object.fromEntries(cards.flatMap(c => c.items.map(i => [i.key, i.value ?? ""])))}>
 				{frameworkCards.map(renderCard)}
+				<Card className="mb-4" title={t("system:setting.loginMethods")}>
+					<div className="flex flex-wrap gap-2">
+						{loginMethodsList.map(m => (
+							<Tag key={m}>{t(`login:method.${m}`, { defaultValue: m })}</Tag>
+						))}
+					</div>
+				</Card>
 				{!marketInstalled && (
 					<Card className="mb-4" title={t("system:setting.marketAbsentTitle")}>
 						<div className="text-sm text-gray-500">

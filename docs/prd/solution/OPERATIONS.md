@@ -367,12 +367,18 @@ UPDATE sys_setting SET value = (SELECT value FROM mw_config WHERE key='ldap_emai
 - 权限码强制 `<name>.` 前缀；角色引用的权限不得悬空（C2-15/16）。多方案同名角色由 `module` 维度隔离，互不冲突。
 
 ```ts
-import { upsertSolutionPerms } from "../../_platform/_shared/service/solution-perms";
+import { upsertSolutionPerms } from "../../_platform/_shared/service/domain/solution-perms";
 await upsertSolutionPerms({
   module: "wiki",
   roles: [
-    { name: "wiki.admin", title: "wiki 管理员", permissions: ["wiki.doc.create","wiki.space.create"] },
-    { name: "wiki.editor", title: "wiki 编辑", permissions: ["wiki.doc.create"] },
+    // title 由 title_key 经包内 locale 按站点语言解析（R1）；UI 再按 title_key 实时翻译（R2）
+    { name: "wiki.admin", title: "wiki:role.admin", title_key: "wiki:role.admin", permissions: ["wiki.doc.create","wiki.space.create"] },
+    { name: "wiki.editor", title: "wiki:role.editor", title_key: "wiki:role.editor", permissions: ["wiki.doc.create"] },
+  ],
+  // 无角色的独立权限点也要在此声明，否则落不了库、管理面绑不上（C2-15）
+  permissions: [
+    { code: "wiki.doc.create", title_key: "wiki:perm.doc_create" },
+    { code: "wiki.space.create", title_key: "wiki:perm.space_create" },
   ],
 });
 ```

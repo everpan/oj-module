@@ -3308,7 +3308,7 @@ curl -X POST localhost:9778/v1/api/user/account/ -d '{"id":1,"name":"a"}'   # �
 | 存量写法 | 替换 |
 |---|---|
 | 拼占位符：`d === "postgres" ? sql.replace(/\?/g, () => `$${++i}`) : sql` | 一律写 `?`——宿主按能力位改写（`placeholder_dollar` → `$n`；`placeholder_colon` 由插件内部改写） |
-| 取自增 id：`d === "postgres" ? sql + " returning id" : …` | `await db.table("t").insert({...}).returning(["id"]).run()`——取 id 路线由构造器按**具体方言**决定（mysql 两步 `LAST_INSERT_ID()`，其余 `RETURNING`），不是按 `caps.id` 推的 |
+| 取自增 id：`d === "postgres" ? sql + " returning id" : …` | `await db.table("t").insert({...}).returning(["id"]).run()`——取 id 路线由构造器按**具体方言**决定（mysql 两步 `LAST_INSERT_ID()`，其余 `RETURNING`），不是按 `caps.id` 推的；两步已在**同一连接**（v0.1.120 起池路径自动包短事务），事务外也安全 |
 | 列目录：`d === "sqlite" ? "select name from sqlite_master …" : "select table_name from information_schema …"` | `await db.listTables("user_")`（三内置方言同口径，SQL 是引擎常量；其他方言 `OJ_DB_UNSUPPORTED`） |
 | 取号：`select max(id)+1`（并为此分支） | `await db.nextSeq("order_no")` |
 

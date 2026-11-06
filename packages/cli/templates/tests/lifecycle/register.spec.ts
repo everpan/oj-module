@@ -8,6 +8,7 @@
 /* eslint-disable test/prefer-lowercase-title -- 任务/AC 编号是验收锚点，保留大写（DB/P1-5） */
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
+import { declOf } from "../../src/app/api/_platform/_lifecycle/installer";
 import { checkOccupancy, queryAllRegistered, queryRegistered, registerSolution } from "../../src/app/api/_platform/_lifecycle/steps/register";
 import { installDb } from "../fixture";
 
@@ -190,5 +191,26 @@ describe("审计：auditOp 落 solution.register", () => {
 		expect(r.target).toBe("wiki");
 		expect(r.username).toBe("system");
 		expect(JSON.parse(String(r.detail))).toEqual({ routes: 2, settings: 2, deprecated: [] });
+	});
+});
+
+describe("C2 manifest → SolutionDecl 映射（declOf，installer 侧纯函数）", () => {
+	it("permissions[].title_key 透传为对象数组（R2 展示锚：C2-15 收藏的字段不得在数据面丢弃）", () => {
+		const decl = declOf({
+			name: "wiki",
+			version: "1.0.0",
+			manifest: {
+				permissions: [
+					{ code: "wiki.doc.read", title_key: "wiki:perm.doc_read" },
+					{ code: "wiki.doc.export", title_key: "wiki:perm.doc_export" },
+				],
+				roles: [{ name: "wiki.reader", title_key: "wiki:role.reader", permissions: ["wiki.doc.read"] }],
+			},
+		} as any);
+		expect(decl.permissions).toEqual([
+			{ code: "wiki.doc.read", title_key: "wiki:perm.doc_read" },
+			{ code: "wiki.doc.export", title_key: "wiki:perm.doc_export" },
+		]);
+		expect(decl.roles[0].title_key).toBe("wiki:role.reader");
 	});
 });

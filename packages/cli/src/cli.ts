@@ -130,6 +130,10 @@ function makeAction(def: HelpEntry, projectRoot: string, lang: Lang, exit: (code
 			};
 		case "build":
 			return async (opts: { bundle?: unknown, out?: string } = {}) => {
+				// 脚手架完整性门禁（内置模块自治契约）：普通与 --bundle 汇合前执行，
+				// 失败零产物——默认模块上游自治，本地修改不允许进包
+				const { assertDefaultModulesUntouched } = await import("./scaffold-guard");
+				assertDefaultModulesUntouched(projectRoot);
 				// mri 可选值：裸 --bundle 得到 ""，--bundle name / --bundle=name 得到字符串
 				const bundle = opts.bundle !== undefined;
 				const bundleName = typeof opts.bundle === "string" && opts.bundle !== "" ? opts.bundle : undefined;
@@ -223,9 +227,21 @@ function makeAction(def: HelpEntry, projectRoot: string, lang: Lang, exit: (code
 				await mergeManifests(out ?? "", inputs);
 			};
 		case "keygen":
-			return async (opts: { id?: string, out?: string, yes?: boolean } = {}) => {
-				const { keygenCommand } = await import("./keygen");
-				keygenCommand({ id: opts.id, out: opts.out, yes: opts.yes });
+			return async (opts: { id?: string, out?: string, yes?: boolean, credential?: string, siteUrl?: string } = {}) => {
+				const { exchangePublishCredential, keygenCommand } = await import("./keygen");
+				// 令牌解析：--credential > OJM_PUBLISH_CREDENTIAL；都没有则走原离线路径（逐字节不变）
+				const credential = (opts.credential ?? process.env.OJM_PUBLISH_CREDENTIAL ?? "").trim();
+				if (credential === "") {
+					keygenCommand({ id: opts.id, out: opts.out, yes: opts.yes });
+					return;
+				}
+				// 身份只来自凭证：--id 是另一条（离线）路径的入口，同时给必然有一方被静默忽略
+				if (opts.id !== undefined)
+					throw new UsageError("[ojm] --credential 与 --id 不能同时使用：凭证已绑定发布身份（要自定义身份请走离线 ojm keygen --id）");
+				const identity = await exchangePublishCredential(credential, { siteUrl: opts.siteUrl });
+				const who = identity.display_name === null ? identity.username : `${identity.display_name}（${identity.username}）`;
+				console.log(`[ojm] 凭证已兑换：产品 ${identity.product} / 申请人 ${who}`);
+				keygenCommand({ id: identity.key_id, out: opts.out, yes: opts.yes });
 			};
 		case "sign":
 			return async (file: string | undefined, opts: { id?: string, key?: string, check?: boolean, registryId?: string } = {}) => {
@@ -283,9 +299,9 @@ function makeAction(def: HelpEntry, projectRoot: string, lang: Lang, exit: (code
 					exit(EXIT_FAILURE);
 			};
 		case "install":
-			return async (target: string | undefined, opts: SiteOpts & { locale?: string, name?: string, version?: string, registry?: string } = {}) => {
+			return async (target: string | undefined, opts: SiteOpts & { locale?: string, name?: string, version?: string, registry?: string, force?: boolean } = {}) => {
 				const { installCommand } = await import("./install");
-				await installCommand(target ?? "", { siteUrl: opts.siteUrl, user: opts.user, pass: opts.pass, locale: opts.locale, name: opts.name, version: opts.version, registry: opts.registry });
+				await installCommand(target ?? "", { siteUrl: opts.siteUrl, user: opts.user, pass: opts.pass, locale: opts.locale, name: opts.name, version: opts.version, registry: opts.registry, force: opts.force });
 			};
 		case "list":
 			return async (opts: SiteOpts & { all?: boolean, json?: boolean } = {}) => {

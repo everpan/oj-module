@@ -93,6 +93,29 @@ export interface TaskLock {
 	release: () => Promise<void>
 }
 
+/**
+ * 回退锁到装前快照（D12 反向，与 setEnabled/cancelCleanup 同纪律）：装前存在 → 写回
+ * lockBefore；首装（装前无锁文件）→ 删锁文件（空锁拒启 S1-1.2）。失败上抛由调用方兜底
+ * （reconcile 对账 / 任务 partial）。cancelCleanup 与补偿清单共用此原语，避免两处各写一份锁回退。
+ */
+export async function revertLock(sharedRoot: string, lockBefore: Record<string, string>, lockExisted: boolean): Promise<void> {
+	const f = fsFace();
+	const lockPath = `${sharedRoot}/manifests.yaml`;
+	if (lockExisted) {
+		await writeLock(lockPath, lockBefore);
+	}
+	else {
+		try {
+			await f.remove(lockPath, { force: true });
+		}
+		catch (e) {
+			if (!isMissingPath(e)) {
+				throw e;
+			}
+		}
+	}
+}
+
 /** stale 阈值：与任务超时判 failed 同款 30min（R13/B9/R31 口径一致） */
 export const LOCK_STALE_MS = 30 * 60_000;
 

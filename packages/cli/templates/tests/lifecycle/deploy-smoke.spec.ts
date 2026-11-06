@@ -1,7 +1,7 @@
 // BDD：部署/热更/冒烟三步（P1-9，十阶段 stage 8~10）。
 // deploy-web = staging/web 产物树真复制到站点 modules 目录 + modules.json 读-改-原子写 upsert
 // （D13：读者永不见半截 JSON；R30：entry/css 路径 POSIX 分隔符序列化；同名整体替换、他条目原样保留）；
-// reload = 注入 reloadConfig 面（platform 特权 API），unchanged = 改写未生效判失败（R18 终态断言），
+// reload = 注入 reloadConfig 面（platform 特权 API），unchanged = 安装幂等成功 / 卸载恒严格（R18 修订——加载靠锁 diff 触发，不再依赖 vars 哨兵），
 // expected 段键（缺省 ["vars"]，B-11 reload 触发面）须逐一 ∈ applied；
 // smoke = 探活（health 2xx / 缺省首个非匿名路由连通即可）+ integrity（部署落位后重算 sha384 vs
 // modules.json 条目，R10 包内容口径；缺失 fail-closed）+ 注册一致性（升级态「包含非相等」：
@@ -19,7 +19,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { deployWeb, posixPath, upsertModulesJson } from "../../src/app/api/_platform/_lifecycle/steps/deploy-web";
-import { reloadAndAssert } from "../../src/app/api/_platform/_lifecycle/steps/reload";
+import { assertReloadApplied, reloadAndAssert } from "../../src/app/api/_platform/_lifecycle/steps/reload";
 import { probeUrlOf, smoke } from "../../src/app/api/_platform/_lifecycle/steps/smoke";
 
 const g = globalThis as any;
@@ -260,29 +260,40 @@ describe("deployWeb（stage=deploying：staging/web 树 → 站点 modules 目�
 	});
 });
 
-describe("reloadAndAssert（stage=reloading：R18 unchanged=失败）", () => {
+describe("reloadAndAssert（stage=reloading：R18 修订——安装 unchanged=幂等成功且默认不强制模块符号；卸载 unchanged/缺 -name@ver=严格失败；force+unchanged=失败）", () => {
 	function rlCtx(result?: ReloadResult, throws = false): ReloadContext {
 		const face: ReloadFace = {
 			reloadConfig: throws
 				? async () => {
 					throw new Error("server.reloadConfig: reload in progress (busy)");
 				}
-				: async () => result ?? { generation: 8, unchanged: false, applied: ["vars"], restart_pending: [], kept_listener: [] },
+				: async () => result ?? { generation: 8, unchanged: false, applied: ["+demo-solution@0.1.0"], restart_pending: [], kept_listener: [] },
 		};
 		return { manifest: solManifest(), name: "demo-solution", version: "0.1.0", state: stateStore(), reload: face };
 	}
 
-	it("成功：applied 含 vars（缺省 expected）→ ok=true，message 含 generation", async () => {
+	it("成功：applied 含 +name@ver（api 模块装配）→ ok=true，message 含 generation", async () => {
 		const r = await reloadAndAssert(rlCtx());
 		expect(r.stage).toBe("reloading");
 		expect(r.ok).toBe(true);
 		expect(r.message).toContain("8");
 	});
 
-	it("unchanged → ok=false（R18：幂等回显 = config 改写未生效）", async () => {
+	it("unchanged → ok=true（R18 修订：安装幂等成功 = 已是最新装配，不再视为失败）", async () => {
 		const r = await reloadAndAssert(rlCtx({ generation: 7, unchanged: true, applied: [] }));
+		expect(r.ok).toBe(true);
+	});
+
+	it("force + unchanged → ok=false（--force 要求强制重装配却无变更可重做）", async () => {
+		const r = await reloadAndAssert({ ...rlCtx({ generation: 7, unchanged: true, applied: [] }), force: true });
 		expect(r.ok).toBe(false);
 		expect(r.message).toContain("unchanged");
+	});
+
+	it("卸载 unchanged → ok=false（锁未摘除 = 卸载空转，恒严格）", async () => {
+		const r = assertReloadApplied({ generation: 7, unchanged: true, applied: [] }, { hasApi: true, kind: "uninstall", name: "demo-solution", version: "0.1.0" });
+		expect(r.ok).toBe(false);
+		expect(r.message).toContain("卸载空转");
 	});
 
 	it("face 抛错（并发 busy）→ ok=false retryable=true", async () => {
@@ -292,10 +303,15 @@ describe("reloadAndAssert（stage=reloading：R18 unchanged=失败）", () => {
 		expect(r.message).toContain("busy");
 	});
 
-	it("expected 段键未生效：applied 缺 vars → ok=false（R18 以实际生效值断言）", async () => {
-		const r = await reloadAndAssert({ ...rlCtx({ generation: 8, unchanged: false, applied: ["mounts"], restart_pending: [], kept_listener: [] }), expected: ["mounts", "vars"] });
+	it("安装不再强制 +name@ver（R18 修订：applied 空属正常幂等态，挂载真通交由 smoke 段行为化校验）", async () => {
+		const r = await reloadAndAssert(rlCtx({ generation: 8, unchanged: false, applied: ["mounts"], restart_pending: [], kept_listener: [] }));
+		expect(r.ok).toBe(true);
+	});
+
+	it("卸载缺 -name@ver → ok=false（卸载须显式拆装，锁未摘除即空转回归拦截点）", async () => {
+		const r = assertReloadApplied({ generation: 8, unchanged: false, applied: ["mounts"], restart_pending: [] }, { hasApi: true, kind: "uninstall", name: "demo-solution", version: "0.1.0" });
 		expect(r.ok).toBe(false);
-		expect(r.message).toContain("vars");
+		expect(r.message).toContain("demo-solution@0.1.0");
 	});
 
 	it("返回形状违约（applied 非数组）→ ok=false retryable=false", async () => {
@@ -337,15 +353,13 @@ describe("smoke 探活（D14/Q-A：health 不强制）", () => {
 		expect(r.message).toContain("不计入失败");
 	});
 
-	it("health 401 与否声明 anonymous 无关（统一 deferred，不放宽真失败靠非 401）", async () => {
-		// 旧语义按 deferredAnonymous 白名单区分是否 deferred；该字段从未被调用方赋值（死代码），
-		// 且设计明确「health 不强制、无凭证预期 401」，故改为 health 401 一律 deferred。
-		// 真失败仍由非 401（如 500，见下条）兜底，不靠 anonymous 白名单。
+	it("health 401 与是否声明 anonymous 无关（统一 deferred，真失败靠非 401 兜底）", async () => {
+		// 设计明确「health 不强制、无凭证预期 401」，故 health 401 一律 deferred，
+		// 真失败仍由非 401（如 500，见下条）兜底。
 		await seedDeployed();
 		const r = await smoke(smCtx({
 			manifest: solManifest({ health: "/demo-solution/ping" }),
 			fetch: async () => ({ ok: false, status: 401 }),
-			deferredAnonymous: ["/demo-solution/other"],
 		}));
 		expect(r.ok).toBe(true);
 		expect(r.message).toContain("restart_pending");
@@ -393,6 +407,16 @@ describe("smoke 探活（D14/Q-A：health 不强制）", () => {
 			query: async () => null,
 		}));
 		expect(r.ok).toBe(true);
+	});
+
+	it("无 health：首个非匿名路由 404 → 探活失败（P0 §3.5：首个路由 404/连通失败 = 冒烟失败，避免假成功）", async () => {
+		await seedDeployed();
+		const r = await smoke(smCtx({
+			fetch: async () => ({ ok: false, status: 404 }),
+		}));
+		expect(r.ok).toBe(false);
+		expect(r.message).toContain("探活");
+		expect(r.message).toContain("404");
 	});
 });
 

@@ -42,7 +42,8 @@ export default function LayoutSidebar({ children, computedSidebarWidth }: Layout
 				className="fixed top-0 bottom-0 left-0 flex flex-col overflow-x-hidden overflow-y-auto transition-all border-r border-r-colorBorderSecondary"
 			>
 				<Logo sidebarCollapsed={sidebarCollapsed} />
-				<div className="flex-1 min-h-0 overflow-hidden">
+				{/* 底部菜单超高时至少保留一个主菜单项的滚动视口 */}
+				<div className="flex-1 min-h-10 overflow-hidden">
 					<Scrollbar>
 						{children}
 					</Scrollbar>
@@ -52,7 +53,7 @@ export default function LayoutSidebar({ children, computedSidebarWidth }: Layout
 					 * SiderTrigger 之上；空表不渲染占位 */
 					bottomNavItems.length > 0
 						? (
-							<div className="shrink-0">
+							<div className={sidebarCollapsed ? "shrink-0" : "min-h-0 overflow-y-auto"}>
 								<LayoutMenu
 									autoExpandCurrentMenu
 									menus={bottomNavItems}

@@ -1,8 +1,7 @@
 # 方案包发布全流程——新手照做版
 
-适用 ojm ≥ 0.2.22（写作时 0.2.56）。本文自包含：从「代码写完了」到「装进站点」一条命令链照着敲，每步附期望输出与通过判据。
-字段规范与错误码全口径见 `manual.md` §11/§12；仓内深度过程视角另见
-`docs/guides/solution-dev-build-publish.md`（不随 cli 包发货）。
+适用 ojm ≥ 0.2.22（写作时 0.2.66）。本文自包含：从「代码写完了」到「装进站点」一条命令链照着敲，每步附期望输出与通过判据。
+字段规范与错误码全口径见同目录 `manual.md` §11/§12——**本文不引用包外文件**，照着读完即可完成发布。
 
 ---
 
@@ -11,7 +10,7 @@
 ```mermaid
 flowchart LR
   A["① 构建 ojm build"] --> B["② 打包 ojm build --bundle"]
-  B --> C["③ 身份 ojm keygen（一次性）"]
+  B --> C["③ 身份 方案市场→发布管理 申请凭证 → ojm keygen --credential"]
   C --> D["④ 签名 ojm sign --check"]
   D --> E["⑤ 发布 ojm market publish"]
   E --> F["⑥ 重建索引 ojm market build-index"]
@@ -20,18 +19,25 @@ flowchart LR
 ```
 
 信任链硬 fail-closed：未签、签错、key 不被信任的包一律拒装，没有「先装了再说」的开关。
-**开始前确认三件事**（缺一件打包就过不去）：
+**开始前确认三件事**：
 
 1. 方案契约在位：`src/<模块>/solution.yaml`（`name` / `version` / `summary`；纯前端可省 `api` 段，纯后端可省 `web` 段）；
-2. `web.config.ts` 的 `modules` 数组已登记该模块（否则构建不产出站点产物，打包报「缺少本方案的站点产物」）；
-3. 双语 locale 在位：`web/src/.../locales/zh-CN.json` 与 `en-US.json`。
+2. 前端入口在位：`src/<模块>/web/entry.ts`。module-root 布局（0.2.20+）以**扫描**为准，
+   `web.config.ts` 的 `modules` 登记只影响加载顺序，漏登记**不会**漏构建（登记了不存在的 entry 才会报错）；
+3. 双语 locale 在位：`src/<模块>/web/locales/{zh-CN,en-US}.json`（key 必须嵌套，如 `{"menu":{"main":"…"}}`）；
+4. **匿名端点已在契约声明**：凡不带 token 可访问的端点（`ojm new` 骨架的 `ping` 就是），必须在
+   `solution.yaml` 的 `api.anonymous` 里列出（如 `anonymous: ["<模块>/ping"]`，模块相对路径）——
+   漏声明安装预检 `anonymous_residual` 直接拒装（0.2.68 起 `ojm new --api` 骨架已自带这行；
+   自己加端点时记得同步维护这份清单）。
+5. **别把方案建进保护根**：`src/app`、`src/oj-market` 受完整性门禁保护（0.2.68+，见 `src/README.md`），
+   `ojm build` 会先比对上游模板、有漂移即拒；用户方案放 `src/<你的名字>/`。
 
 ---
 
 ## 1. 构建与打包
 
 ```bash
-ojm build               # ① 站点产物 web/dist/ + 后端产物 api/dist/
+ojm build               # ① 站点产物 dist/web/ + 后端产物 dist/api/
 ojm build --bundle      # ② 打包全部用户方案 → dist/<name>-<version>.tgz
 ojm build --bundle crm  #    只打 src/crm/ 这一份（多方案工程用）
 ```
@@ -40,7 +46,7 @@ ojm build --bundle crm  #    只打 src/crm/ 这一份（多方案工程用）
 
 ```
 [ojm] 方案包已生成 → dist/<name>-<version>.tgz
-[ojm] sha256：…（确定性打包：同源同字节）
+[ojm] sha256：…（N 字节；确定性打包：同输入两次打包哈希一致）
 ```
 
 三个要点：
@@ -53,19 +59,58 @@ ojm build --bundle crm  #    只打 src/crm/ 这一份（多方案工程用）
 
 ---
 
-## 2. 一次性：生成发布身份（keygen）
+## 2. 一次性：拿发布身份（站点凭证）
 
-每个开发者/每个环境**各自生成一把** Ed25519 密钥对，只需做一次：
+发布身份 = 一把 Ed25519 密钥 + 一个**站点认可**的身份名（`<产品名>.<账号>`）。
+身份名不自拟：站点要靠它在「发布管理」页留档，说清「谁、为哪个产品」发的包。
+所以主流程是「先申请凭证，再在本机兑换」：
+
+> 站点保证的是 **key_id 唯一**（同一产品名 + 同一账号 → 同一个身份，同一身份换机重申请是允许的），
+> 不是产品名独占：不同账号申请同名产品会各自得到 `<产品名>.<自己的账号>`。
+> 所以「谁有资格发这个方案」仍靠团队约定与市场侧的包名/版本冲突拦截，不能指望站点替你裁决。
+
+> 谁能申请：**任何登录用户**，不要求超管。但新建账号首次登录处于「必须先改密」状态，
+> 此时除改密外的写接口一律 `403 password change required`——先在页面或 `PUT /api/auth/password`
+> 改掉临时口令，再申请凭证。
+
+1. 浏览器进 **方案市场 → 发布管理 → 申请发布凭证**，填产品名（如 `demo-solution`）；
+2. 复制弹窗里的凭证或整条命令（**只显示这一次**，关闭后只能撤销重申请）；
+3. 本机执行其中一条：
+
+```bash
+ojm keygen --credential <token>
+OJM_PUBLISH_CREDENTIAL=<token> ojm keygen     # 或走环境变量，避免令牌进 shell 历史
+```
+
+- key_id 由站点按 `<产品名>.<编码后用户名>` 算好下发（例：`demo-solution.wecom-everpan`），
+  CLI 不做任何推导；落点 `~/.ojm/keys/<key_id>/`：`private.pem`（0600）+ `public.hex`。
+- 期望输出里有一行 **`指纹（sha256(publicKey)，公布给宿主核对）：…`**——抄下来，首装核对要用（§6）。
+- 凭证**一次性**：兑换成功即作废；兑换失败（已用/已过期/已撤销/网络不通）**不写入任何密钥文件**。
+- 站点地址：`--site-url` > `OJM_SITE_URL` > `http://127.0.0.1:9778`；兑换端点匿名可达，不需要 `--user/--pass`。
+- `--credential` 与 `--id` 互斥（同时给 exit 2）；`--out` / `--yes` 仍按离线版规则生效
+  （`--out <dir>` 相对路径按**进程 cwd** 解析，指进当前工程树会要求 `--yes`——私钥入仓即泄露）。
+- **它不替你建信任**：公钥是本地生成的，站点在兑换时拿不到，所以首装仍是陌生 key →
+  `needs_trust`，仍要按 §6 逐字核对指纹后 `trust confirm`。凭证解决的是「身份命名与归属」，
+  不是「信任免检」。
+- 兑换完成后，「方案市场 → 发布管理」该条记录变为**已兑换**并显示 key_id。
+- 发版之后，「方案市场 → 发布历史」（`/oj-market/history`）按发布时间倒序列出所有产品/版本：
+  数据由站点从签名索引对账落库，**不需要 CLI 额外上报**；发布时间优先取分发包落 CDN 的
+  `Last-Modified`，源不提供时回落索引生成时间并标「索引时间」标签。
+
+### 2.1 没有站点时：离线自建身份（旁路）
+
+站点不可达、或你维护的是纯自建/离线 CDN（根本没有「发布管理」页）时，才自己起 key_id：
 
 ```bash
 ojm keygen --id acme.alice.macbook     # 例：<团队/产品>.<人名>.<环境>
 ```
 
-- 期望输出里有一行 **fingerprint**（`sha256(公钥)`）——**抄下来发给运维**，TOFU 核对要用（§8）。
-- 落点 `~/.ojm/keys/<id>/`：`private.pem`（权限 0600）+ `public.hex`。
-- key_id 必须**全小写、至少两段**（`<publisher>.<id>`），禁裸通用名如 `mykey`——违约包能签出来但装不进（`sig_key` 拒装）。
+- **站点不知道这个身份**：发布管理页没有它的记录，产品归属与申请人无从追溯；能不能装，
+  完全取决于超管愿不愿意为这枚指纹手工放行。有站点的市场请走 §2 凭证，不要自建。
+- 其余规则与凭证通道一致：key_id 必须**全小写、至少两段**（`<publisher>.<id>`），
+  禁裸通用名如 `mykey`——违约包能签出来但装不进（`sig_key` 拒装）。
 
-私钥纪律（逐条照做，违者 = 任何人都能以你的身份发包）：
+私钥纪律（两条路都适用，逐条照做，违者 = 任何人都能以你的身份发包）：
 
 | 纪律 | 原因 |
 |---|---|
@@ -80,12 +125,15 @@ ojm keygen --id acme.alice.macbook     # 例：<团队/产品>.<人名>.<环境>
 
 ```bash
 ojm sign dist/<name>-<version>.tgz \
-  --id acme.alice.macbook \
-  --key ~/.ojm/keys/acme.alice.macbook/private.pem \
+  --id <key_id> \
   --registry-id oj-registry \
   --check
 ```
 
+- `<key_id>` 就是上一步拿到的身份：走凭证是站点下发的 `demo-solution.xxx`，走离线旁路是
+  §2.1 里 `--id` 填的那个。私钥缺省取 `~/.ojm/keys/<key_id>/private.pem`；只有把 key 放到了
+  别处（如 `--out ./keys`）才需要再加 `--key <path>/private.pem`，且此时 `--id` 仍必须给
+  （`.sig` 按它记发布方）。
 - `--registry-id` **必填**：发布仓库的自拟标识（同一市场的所有发布方用同一个值，如 `oj-registry`）。它进签名规范串防「把 A 仓库的包重放到 B 仓库」；站点若配置了自身 registry 身份则必须与之一致（默认模板未配置，不比对）。
 - 产物 = 同目录 `<tgz>.sig` 侧车文件。**签了再改包 = 签名作废**；重打包必须重签。
 - `--check` 离线自检（本地验一遍），不必等安装失败才发现签错。期望输出：`[ojm] 自检通过…`。
@@ -100,13 +148,20 @@ CDN 就是**一个装着固定命名文件的目录**：`<name>-<version>.tgz`�
 
 ```bash
 ojm market publish --real . \
-  --id acme.alice.macbook \
-  --key ~/.ojm/keys/acme.alice.macbook/private.pem \
+  --id <key_id> \
   --registry-id oj-registry \
   --rebuild-index
 ```
 
-期望输出：`[ojm] 包已落 CDN → cdn/<name>-<version>.tgz（N 字节）` + 发布方指纹。`cdn/` 下落齐六件：tgz / .tgz.sig / 索引两份 yaml（+ 各自 .sig）。
+期望输出：`[ojm] 包已落 CDN → cdn/<name>-<version>.tgz（N 字节）` + 发布方指纹。
+`cdn/` 是**三级索引**布局：`catalog.yaml`（+`.sig`）、`shards/<n>.yaml`（+`.sig`）、
+`<name>-<version>.tgz`（+`.tgz.sig`）；分片数随方案数增长，不要按固定文件数核对。
+
+> **`--real` 仅限单方案工程**（`src/` 下只有一份 `solution.yaml`）；`ojm new` 生成的方案长在宿主工程里
+> （宿主还自带 `app`/`oj-market`），多方案工程走 §4.2 显式四步。
+> **`--fixture` 不是发布通道**：`ojm market publish --fixture <name>@<ver>` / `trial` / `walkthrough`
+> 里的 fixture 是**现场合成的最小合法测试包**（固定 ping 形状），专供演练与隔离验证——
+> 它不会打包你的真实代码，别拿它发真方案。
 
 > 引用式方案（契约 `api` 段省略 `tables`/`deps`）会打印「引用式方案…非漏配」提示——那是合法形态，不是错误。
 
@@ -116,9 +171,8 @@ ojm market publish --real . \
 
 ```bash
 ojm build --bundle crm                                            # ① 打包指定方案
-ojm sign dist/crm-1.0.0.tgz --id acme.alice.macbook \
-  --key ~/.ojm/keys/acme.alice.macbook/private.pem \
-  --registry-id oj-registry --check                              # ② 签名
+ojm sign dist/crm-1.0.0.tgz --id <key_id> \
+  --registry-id oj-registry --check                               # ② 签名（私钥缺省取 ~/.ojm/keys/<key_id>/）
 cp dist/crm-1.0.0.tgz dist/crm-1.0.0.tgz.sig cdn/                # ③ tgz + .sig 放进 cdn/
 ojm market build-index --id <维护者key> --check                   # ④ 重建索引（见 §4.3）
 ```
@@ -137,10 +191,15 @@ ojm market build-index --id <维护者key> --check                   # ④ 重�
 ## 5. 验证发布（不起站点）
 
 ```bash
-ojm market verify --rebuild-index     # 五项自检：完整性/包级签/索引签×2/manifest 结构，全 ✓ 才算过
+ojm market verify --rebuild-index     # 逐项验：完整性 / 包级签 / manifest 结构 / 索引签（catalog+分片）/ 索引同代 / 索引时效 / 迁移一致性
 ojm market trial --fixture <name>@<version>       # 隔离站点跑完整安装，跑完即毁，不污染工程
-ojm market walkthrough --fixture <name>@<version> # 14 项 AC：主链 9 + 负向 5；报告落 logs/walkthrough-<ts>.md
+ojm market walkthrough --fixture <name>@0.1.0     # 14 项 AC：主链 9 + 负向 5；报告落 logs/walkthrough-<ts>.md
 ```
+
+- `verify` 的检查项数随包数与分片数变化，判据是**末行「全部校验通过（N 项）」且无未通过项**，
+  不要按固定条数核对。
+- `walkthrough` 的 fixture **必须是 `@0.1.0`**：主链的 upgrade/rollback 硬编码 0.1.0→0.2.0，
+  给别的版本这两项会 FAIL（是 fixture 选错，不是框架缺陷）。
 
 walkthrough 期望 `14 PASS / 0 FAIL`。负向 5 项是**预期失败口径**：防线没拦住（恶意包装成了）才算 FAIL。
 
@@ -149,24 +208,47 @@ walkthrough 期望 `14 PASS / 0 FAIL`。负向 5 项是**预期失败口径**：
 ## 6. 装到站点（运维侧）
 
 ```bash
+# ⓪ 先构建：release 形态服务的是产物，不先 build 会缺 dist/api（或装到旧产物）
+ojm build
+
 # ① 站点以 release 形态起（dev/preview 完不成安装的热更段）
+#    先把 config.yaml 的 platform.root 从 src 改成 dist/api——必须与 --api-path 同源，
+#    否则 oj serve 直接拒启：platform.root (...) must be mounted as an api mount
+#    再配 vars.canonical_origin（本地演练填 http://127.0.0.1:9778）：市场基址 /cdn 是相对路径，
+#    服务端要靠它补全成绝对 URL；缺了安装直接 503（REG-CS6 不读 Host 头，不会替你猜）
 oj serve -c config.yaml -b /api --api-path dist/api
 
-# ② 市场地址指向站点自供的 /cdn（默认即如此；外部真 CDN 才需要 setup 写绝对地址）
-ojm market setup --site-url http://127.0.0.1:9778 --user superadmin --pass … --new-pass <新口令>
+# ② 市场地址：本地自供 /cdn 是模板默认，**不需要 setup**；
+#    只有指向外部真 CDN 才要执行。注意 setup 不一定改密：账号不在「必须改密」悬挂期时
+#    （当前 seed 的 superadmin 就是），--new-pass 不生效、原口令继续可用——
+#    2026-11-06 演练实踩：setup 后拿新口令登录得 401。真触发了改密闭环才用新口令：
+#    ojm market setup --site-url http://127.0.0.1:9778 --user superadmin --pass <当前口令> --new-pass <新口令>
 
 # ③ 安装（从 CDN 拉：name[@version]；直传文件则给 tgz 路径，.sig 同目录自动随包）
-ojm install crm@1.0.0 --site-url http://127.0.0.1:9778 --user superadmin --pass <新口令>
+#    只对 release 站点装；别对着 `ojm dev` 装——dev 的文件监听会在安装器 reload 之前
+#    先吃掉 config 改动，安装器自己再 reload 时得到 unchanged，判 partial（reloading）
+ojm install crm@1.0.0 --site-url http://127.0.0.1:9778 --user superadmin --pass <口令>
 
 # ④ 首装陌生 key 必停在 needs_trust：响应 trust.fingerprint 与 §2 记下的指纹【逐字】核对
 #    核对通道用当面/电话/既有加密聊天——不要用 CDN 页面上的指纹（那正是攻击者能改的地方）
-ojm trust confirm --task <task-id> --site-url http://127.0.0.1:9778 --user superadmin --pass <新口令>
-ojm install crm@1.0.0 --site-url http://127.0.0.1:9778 --user superadmin --pass <新口令>   # 重跑续跑
+ojm trust confirm --task <task-id> --site-url http://127.0.0.1:9778 --user superadmin --pass <口令>
+ojm install crm@1.0.0 --site-url http://127.0.0.1:9778 --user superadmin --pass <口令>   # 重跑续跑
 ```
 
-通过判据：`dist/api/manifests.yaml` 出现 `<name>: <version>`；**重启一次 `oj serve`**（新方案路由要重启才注册，热更只覆盖 vars）后 `curl /api/<name>/ping` 返回 `code:0`。
+`<口令>` 就是登录站点用的那个：没跑过 `market setup` 时是脚手架种子口令（`superadmin / aA123456`）；
+跑过 setup 也不一定变——只在真触发了「必须改密」闭环时才用 `--new-pass` 的新口令（见 ②）。
 
-第一方方案走模板内置公钥（bootstrap key），首装免 TOFU；第三方走上面的人工核对。key 轮换 = 新 key_id 重发 + 站点 `trust add` 新公钥 + `trust revoke` 旧 key（吊销只阻断新装，不动已装方案）。
+**首装终态两段式（oj 0.1.122+ 正常语义）**：install 走完 11 段全 ok 但 `status=partial`——
+message 明示 `restart_pending`（新模块的路由/模块注册要宿主重启才生效，如「待重启段 [auth]」）。
+**重启一次 `oj serve`** 后再 retry 同一条 install → `status=done`、冒烟三项（探活/完整性/注册一致性）全过。
+
+通过判据：`dist/api/manifests.yaml` 出现 `<name>: <version>`；重启后
+`curl -H 'X-TENANT-ID: default' /api/<name>/ping` 返回 `code:0`——**不带租户头会 400 `missing tenant header`**，
+那是缺参数，不是装失败。
+
+TOFU 没有免检通道：**只有模板内置的 oj-market（第一方包）用内置 bootstrap 公钥首装免核对**；
+你自己 keygen 出来的任何身份——包括站点凭证下发的——首装都要人工核指纹。key 轮换 = 新 key_id
+重发 + 站点 `trust add` 新公钥 + `trust revoke` 旧 key（吊销只阻断新装，不动已装方案）。
 
 ---
 
@@ -176,15 +258,26 @@ ojm install crm@1.0.0 --site-url http://127.0.0.1:9778 --user superadmin --pass 
 |---|---|---|
 | `sig_missing` | 没签，或 `.sig` 没随包在同目录 | `ojm sign --check` 后确认 `.sig` 与 tgz 同目录再装 |
 | `tampered` | 签完又动过包，或传输损坏 | 重打包重签；核对 sha256 |
-| `sig_key` | key_id 不是 `<publisher>.<id>` 全小写两段式 | 重新 keygen 合规 id，用新 key 重签 |
+| `sig_key` | key_id 不是 `<publisher>.<id>` 全小写两段式 | 凭证通道回「发布管理」重申请（产品名须小写合规）；离线旁路换合规 id 重 keygen 再重签 |
+| `keygen --credential` 报「发布凭证无效或已失效」 | 一次性令牌已兑换/已过期/已撤销，或站点地址不对 | 回「发布管理」重新申请；同一 token 不能给第二台机器 |
+| 申请凭证 403 `password change required` | 新建账号首次登录还在「必须先改密」悬挂期 | 先改密（页面或 `PUT /api/auth/password`），再申请 |
+| 安装 503 `安装需要站点 canonical origin` | `config.yaml` 的 `vars.canonical_origin` 没配，而市场基址是相对路径 `/cdn` | 配成站点对外地址（本地演练 `http://127.0.0.1:9778`）后重启 |
+| 安装 partial（stage `reloading`，`reloadConfig 返回 unchanged`） | 对着 `ojm dev` 装：dev 的文件监听先吃掉了 config 改动 | 换成 `oj serve` release 形态再装；别在 dev 上验证安装 |
+| 安装 partial（11 段全 ok，message 含 `restart_pending` /「请重启 oj serve」） | **正常语义**（oj 0.1.122+）：新模块的路由/模块注册要宿主重启 | 重启 `oj serve` 后 retry 同一条 install → `done`（§6 首装终态两段式） |
+| 安装拒 `anonymous_residual`（preflight，不可自动重试） | 有端点实际匿名可达，但 `solution.yaml` 的 `api.anonymous` 没声明（换包时含上一版声明了、新包漏声明的残留比对） | 把该端点补进 `anonymous: ["<模块>/<路由>"]`（模块相对路径），重打包重签重发；`ojm new --api` 骨架 0.2.68 起自带 ping 声明 |
+| 安装拒「包内原生清单含白名单外键 `permissions、roles`…」（extracting 段，不可自动重试） | 角色/权限声明写进了 `api/manifest.yaml`（oj 原生七键清单） | 声明挪到方案契约 `solution.yaml`（上级目录那一份）；`api/manifest.yaml` 只留 oj 原生七键（2026-11-06 演练实踩） |
+| 安装 preflight 拒 RBAC 声明 | 声明形状不符：权限 code / 角色 name 没带 `<name>.` 前缀、`title_key` 缺失或 ns 不符、角色引用了未声明的权限（悬空） | 按报错条款改 `solution.yaml` 的 `permissions[]` / `roles[]`（字段细则见 devkit 手册 §11.5） |
+| 装完 `curl /api/<name>/ping` 返回 400 `missing tenant header` | 少了 `X-TENANT-ID` 头 | 加 `-H 'X-TENANT-ID: default'` 再探 |
 | `sig_alg` / `sig_format` | 签名算法/.sig 结构不符 | 用当前 ojm 重签（旧版本工具产物） |
 | `needs_trust`（第五终态，非成功） | 站点第一次见这个 key | 与发布方逐字核对指纹 → `trust confirm --task <id>` → 重跑 install |
 | publish 报「包冲突：…字节不一致」 | 同 name@version 已有字节不同的包 | **升 version 重发**；确需覆盖先删 CDN 旧 tgz |
 | publish 报「一次只发布一份方案」 | 多方案工程走了自动链路 | §4.2 显式四步 |
-| 打包报「缺少本方案的站点产物」 | `web.config.ts` 没登记 / 没先 `ojm build` | 登记后重跑构建再打包 |
+| 打包报「缺少本方案的站点产物」 | 没先 `ojm build`；或**卸载方案时把 `dist/api/<name>-<ver>` 一并移除了**（2026-11-06 实测：卸载四同删含版本目录，重发同版本前必须重建）；或前端入口不在 `src/<模块>/web/entry.ts` | 先 `ojm build` 再 `--bundle`；补 entry |
 | 打包报「缺少 bundle 级契约」 | 没有 `solution.yaml` | 补契约（§0 前提 1） |
-| 装不到刚发的包 | 索引没重建 | `ojm market build-index`（§4.3 纪律 2），确认 CDN 六文件同步 |
+| 装不到刚发的包 | 索引没重建 | `ojm market build-index`（§4.3 纪律 2），确认 `cdn/` 的 catalog + 分片 + tgz(+sig) 已同步 |
 | 装成后 404 | 方案路由没注册 | 重启 `oj serve`（§6 通过判据） |
+| `oj serve` 报 `platform.root (...) must be mounted as an api mount` | release 起站了，但 config 的 `platform.root` 还是 `src` | 改成 `dist/api`（与 `--api-path dist/api` 同源）后重启 |
+| `oj serve` 报 `lock points to missing version dir: dist/api/<name>-<ver>` | 锁文件记着某个已装版本，但那个版本目录不在了（清过 dist / 换过机器） | 先 `ojm build`；锁与目录对不上时按站点安装记录重装该方案，别手改锁 |
 | 私钥误入工程 | 打包自检拦下 / 被外部拷走 | 立即 `trust revoke` 该 key → 换新 key_id 重发 |
 
 ---
@@ -194,6 +287,8 @@ ojm install crm@1.0.0 --site-url http://127.0.0.1:9778 --user superadmin --pass 
 - [ ] `solution.yaml` 的 `version` 已升，与文件名一致；
 - [ ] `ojm build` + `ojm build --bundle` 均通过，sha256 记进发布单；
 - [ ] `ojm sign … --check` 通过，`.sig` 与 tgz 同目录；
-- [ ] 新 key 首次发布：fingerprint 已提前交给运维（免得卡在 needs_trust）；
-- [ ] `ojm market verify` 五项全 ✓；
+- [ ] 发布身份来自站点凭证（有发布管理页时），「方案市场 → 发布管理」页该条已变**已兑换**；
+- [ ] 发版后「方案市场 → 发布历史」能看到这次的 产品 / 版本 / 发布时间（时间来源为索引兜底时会标「索引时间」）；
+- [ ] 新 key 首次发布：指纹已提前交给运维（免得卡在 needs_trust）；
+- [ ] `ojm market verify` 末行「全部校验通过（N 项）」，无未通过项；
 - [ ] 多人团队：索引重建触发点已约定（维护者或 CI）。

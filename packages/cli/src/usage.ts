@@ -77,11 +77,11 @@ export const HELP_GROUPS: HelpGroup[] = [
 				zh: "前后端一体化工程脚手架（幂等补缺）",
 				en: "Full-stack project scaffolding (idempotent, fills gaps only)",
 				options: [
-					{ raw: "--yes", zh: "非交互：缺省回答一律 yes", en: "Non-interactive: default all answers to yes" },
+					{ raw: "--yes", zh: "非交互：跳过非空确认，并把框架自带模块（src/app、src/oj-market）恢复为当前版本（丢弃其中的本地修改）", en: "Non-interactive: skip the non-empty check and restore built-in modules (src/app, src/oj-market) to upstream (local edits there are discarded)" },
 				],
 				detail: {
-					zh: "ojm init [dir] [--yes]\n  前后端一体化工程脚手架（幂等补缺：重跑只补缺失文件，永不覆盖已有文件）",
-					en: "ojm init [dir] [--yes]\n  Full-stack project scaffolding (idempotent: re-runs only fill missing files, never overwrite existing ones)",
+					zh: "ojm init [dir] [--yes]\n  前后端一体化工程脚手架（重跑只补缺失文件；已有文件永不覆盖）\n  --yes 恢复模式：覆盖 src/app 与 src/oj-market 为当前 CLI 携带的上游版本，\n  并删除这些目录内多出的文件（会丢弃其中的本地修改，先备份；\n  下游自定义模块与工程配置不受影响）。CLI 升级后构建前需先跑一次。",
+					en: "ojm init [dir] [--yes]\n  Full-stack project scaffolding (re-runs only fill missing files; existing files are never overwritten)\n  --yes restore mode: overwrites src/app & src/oj-market with the upstream version\n  carried by this CLI and removes extra files there (local edits in those two\n  directories are discarded — back up first; your own modules and project config\n  are untouched). Run once after a CLI upgrade before building.",
 				},
 			},
 			{
@@ -135,8 +135,8 @@ export const HELP_GROUPS: HelpGroup[] = [
 					{ raw: "--out <dir>", zh: "--bundle 输出目录（缺省 dist/）", en: "Output directory for --bundle (default dist/)" },
 				],
 				detail: {
-					zh: "ojm build [--bundle [name]] [--out <dir>]\n  构建后端（oj build）与模块产物（含全站合并）\n  --bundle 产出 dist/<name>-<version>.tgz + sha256（市场安装器的上游产物）",
-					en: "ojm build [--bundle [name]] [--out <dir>]\n  Builds the backend (oj build) and module artifacts (including the site-wide merge)\n  --bundle produces dist/<name>-<version>.tgz + sha256 (upstream artifact for the marketplace installer)",
+					zh: "ojm build [--bundle [name]] [--out <dir>]\n  构建后端（oj build）与模块产物（含全站合并）\n  --bundle 产出 dist/<name>-<version>.tgz + sha256（市场安装器的上游产物）\n  构建前校验框架自带模块（src/app、src/oj-market）未被本地修改——\n  与上游模板不一致即拒绝构建（内置模块自治契约，见 src/README.md）",
+					en: "ojm build [--bundle [name]] [--out <dir>]\n  Builds the backend (oj build) and module artifacts (including the site-wide merge)\n  --bundle produces dist/<name>-<version>.tgz + sha256 (upstream artifact for the marketplace installer)\n  Before building, verifies the built-in modules (src/app, src/oj-market) are unmodified —\n  any drift from the upstream templates rejects the build (built-in module autonomy, see src/README.md)",
 				},
 			},
 			{
@@ -245,11 +245,13 @@ export const HELP_GROUPS: HelpGroup[] = [
 					{ raw: "--name <name>", zh: "覆盖文件名推导的方案名", en: "Override the solution name derived from the file name" },
 					{ raw: "--version <version>", zh: "覆盖文件名推导的版本", en: "Override the version derived from the file name" },
 					{ raw: "--registry <url>", zh: "从指定 registry 源安装（白名单在服务端；旧站点 API < 0.2.0 不支持）", en: "Install from the specified registry source (allowlist is server-side; sites with API < 0.2.0 are unsupported)" },
+					{ raw: "--force", zh: "强制重装配（oj 0.1.123+ reloadConfig(force)）：旁路 unchanged 幂等短路，强制宿主重做一次装配", en: "Force re-assembly (oj 0.1.123+ reloadConfig(force)): bypass the unchanged idempotent short-circuit and force a re-assembly" },
 					{ raw: "--locale <locale>", zh: "终态文案语言 zh-CN|en-US", en: "Language of the final status message zh-CN|en-US" },
+					{ raw: "--force", zh: "强制重装配（绕过「unchanged=已是最新装配」幂等短路，要求宿主重跑一次 reload；oj ≥ v0.1.123）", en: "Force a reload even if unchanged (bypass the idempotent short-circuit; requires oj ≥ v0.1.123)" },
 				],
 				detail: {
-					zh: "ojm install <file.tgz | name[@version] | @<scope>/<name>[@version]> [--site-url <u>] [--user <u>] [--pass <p>] [--name <n>] [--version <v>] [--registry <r>] [--locale <zh-CN|en-US>]\n  本地 tgz 走 file 上传（<name>-<version>.tgz 文件名推导身份，可 --name/--version 覆盖）；name[@version] 走 CDN 市场源；@<scope>/<name>[@version] --registry <url> 走外部 registry 源（目录键由 CLI 归一为物理名 slug，白名单在服务端）\n  登录 → 提交 → 轮询任务至终态并打印结果（失败附原因 + 指引）\n  站点寻址：--site-url/--user/--pass，或环境变量 OJM_SITE_URL / OJM_USER / OJM_PASS",
-					en: "ojm install <file.tgz | name[@version] | @<scope>/<name>[@version]> [--site-url <u>] [--user <u>] [--pass <p>] [--name <n>] [--version <v>] [--registry <r>] [--locale <zh-CN|en-US>]\n  Local tgz goes through file upload (identity derived from the <name>-<version>.tgz file name, overridable via --name/--version); name[@version] goes through the CDN marketplace; @<scope>/<name>[@version] --registry <url> goes through an external registry source (the directory key is normalized to the physical slug by the CLI; allowlist is server-side)\n  Login → submit → poll the task to a terminal state and print the result (failures include the reason + guidance)\n  Site addressing: --site-url/--user/--pass, or env vars OJM_SITE_URL / OJM_USER / OJM_PASS",
+					zh: "ojm install <file.tgz | name[@version] | @<scope>/<name>[@version]> [--site-url <u>] [--user <u>] [--pass <p>] [--name <n>] [--version <v>] [--registry <r>] [--force] [--locale <zh-CN|en-US>]\n  本地 tgz 走 file 上传（<name>-<version>.tgz 文件名推导身份，可 --name/--version 覆盖）；name[@version] 走 CDN 市场源；@<scope>/<name>[@version] --registry <url> 走外部 registry 源（目录键由 CLI 归一为物理名 slug，白名单在服务端）\n  登录 → 提交 → 轮询任务至终态并打印结果（失败附原因 + 指引）\n  --force：强制重装配（oj 0.1.123+），旁路「已是最新装配」幂等短路\n  站点寻址：--site-url/--user/--pass，或环境变量 OJM_SITE_URL / OJM_USER / OJM_PASS",
+					en: "ojm install <file.tgz | name[@version] | @<scope>/<name>[@version]> [--site-url <u>] [--user <u>] [--pass <p>] [--name <n>] [--version <v>] [--registry <r>] [--force] [--locale <zh-CN|en-US>]\n  Local tgz goes through file upload (identity derived from the <name>-<version>.tgz file name, overridable via --name/--version); name[@version] goes through the CDN marketplace; @<scope>/<name>[@version] --registry <url> goes through an external registry source (the directory key is normalized to the physical slug by the CLI; allowlist is server-side)\n  Login → submit → poll the task to a terminal state and print the result (failures include the reason + guidance)\n  --force: force re-assembly (oj 0.1.123+), bypassing the \"already latest assembly\" idempotent short-circuit\n  Site addressing: --site-url/--user/--pass, or env vars OJM_SITE_URL / OJM_USER / OJM_PASS",
 				},
 			},
 			{
@@ -364,12 +366,14 @@ export const HELP_GROUPS: HelpGroup[] = [
 				en: "Generate an Ed25519 signing key pair",
 				options: [
 					{ raw: "--id <id>", zh: "发布方 key id（形如 publisher.key）", en: "Publisher key id (e.g. publisher.key)" },
+					{ raw: "--credential <token>", zh: "在线兑换发布凭证（也读 OJM_PUBLISH_CREDENTIAL；与 --id 互斥）", en: "Redeem a publishing credential online (also reads OJM_PUBLISH_CREDENTIAL; mutually exclusive with --id)" },
+					{ raw: "--site-url <url>", zh: "兑换站点（缺省 OJM_SITE_URL / http://127.0.0.1:9778）", en: "Site for redemption (defaults to OJM_SITE_URL / http://127.0.0.1:9778)" },
 					{ raw: "--out <dir>", zh: "输出目录（缺省 ~/.ojm/keys/<id>/；指到工程树内须 --yes）", en: "Output directory (default ~/.ojm/keys/<id>/; pointing inside the project tree requires --yes)" },
 					{ raw: "--yes", zh: "确认私钥落盘到工程树内（私钥入仓即泄露）", en: "Acknowledge writing the private key inside the project tree (a private key in the repo is leaked)" },
 				],
 				detail: {
-					zh: "ojm keygen --id <publisher.id> [--out <dir>] [--yes]\n  私钥默认 ~/.ojm/keys/<id>/ 永不出目录；打印公钥 hex 供 ojm trust add / 模板回填",
-					en: "ojm keygen --id <publisher.id> [--out <dir>] [--yes]\n  The private key stays under ~/.ojm/keys/<id>/ by default; prints the public key hex for ojm trust add / template backfill",
+					zh: "ojm keygen --id <publisher.id> [--out <dir>] [--yes]\n  私钥默认 ~/.ojm/keys/<id>/ 永不出目录；打印公钥 hex 供 ojm trust add / 模板回填\n\nojm keygen --credential <token> [--site-url <url>] [--out <dir>] [--yes]\n  凭证兑换：key_id 由站点按「产品名.用户名」算好下发，CLI 不推导；凭证一次性，兑换即作废\n  失败（过期/已用/已撤销/网络）不落任何密钥文件；兑换成功再走与离线版完全相同的落盘流程",
+					en: "ojm keygen --id <publisher.id> [--out <dir>] [--yes]\n  The private key stays under ~/.ojm/keys/<id>/ by default; prints the public key hex for ojm trust add / template backfill\n\nojm keygen --credential <token> [--site-url <url>] [--out <dir>] [--yes]\n  Credential redemption: key_id is derived server-side as <product>.<username>, the CLI never re-derives it; the credential is single-use\n  Any failure (expired/used/revoked/network) writes no key files; on success the same keygen flow as the offline path runs",
 				},
 			},
 			{

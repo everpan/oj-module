@@ -50,25 +50,6 @@ export function ensureReloadApi(content: string): { content: string, changed: bo
 }
 
 /**
- * 安装序号自增（B-11 reload 触发面；PRD E5 实测先例：vars 段语义值改动可热生效，而
- * reloadConfig 的 unchanged 判定基于 config 文档 sha——不落盘变更则热更恒 unchanged）。
- * R18 同纪律：纯文本行操作，注释/缩进/键序逐字保留，`ojm_install_seq: N` 整行自增为 N+1
- * （行内尾注释原样保留）。键缺失/形状不符 = 可读报错不猜位置（键随模板 config.yaml 发布；
- * 用户删行 = 显式退出热更触发，安装器拒绝静默安装）。
- */
-export function bumpInstallSeq(content: string): { content: string, seq: number } {
-	const lines = content.split("\n");
-	const idx = lines.findIndex(l => /^\s*ojm_install_seq\s*:\s*\d+\s*(?:#.*)?$/.test(l));
-	if (idx === -1) {
-		throw new Error("text-edit: config.yaml 缺 ojm_install_seq: N 行（vars 安装序号，模板 config.yaml 随发，勿删）——reload 热更无变更可落（unchanged 恒真），安装终止于 reloading 段");
-	}
-	const m = /^(\s*ojm_install_seq\s*:\s*)(\d+)/.exec(lines[idx]!)!;
-	const seq = Number(m[2]) + 1;
-	lines[idx] = `${m[1]}${seq}${lines[idx]!.slice(m[0].length)}`;
-	return { content: lines.join("\n"), seq };
-}
-
-/**
  * C2-26 anonymous 运行时接线（P2-15③ 承载，观察项 6 收口）：把方案的匿名端点追加进
  * config.yaml `auth.anonymous_paths` 列表（oj 匿名模型 config 独占；热改属
  * restart_pending——reload 段消息已明示，重启后生效）。
@@ -107,4 +88,75 @@ export function appendAnonymousPaths(content: string, paths: string[]): { conten
 	const itemIndent = /^\s*-/.exec(lines[idx + 1] ?? "")?.[0]?.replace(/-.*/, "") ?? (`${/^\s*/.exec(lines[idx]!)?.[0] ?? ""}  `);
 	lines.splice(last + 1, 0, ...added.map(p => `${itemIndent}- ${p}`));
 	return { content: lines.join("\n"), added };
+}
+
+/**
+ * `appendAnonymousPaths` 的逆操作（P0 补偿清单 §3.5）：把指定匿名路径从 `auth.anonymous_paths`
+ * 列表移除。纯文本判定，与 append 同源——按行 `- <path>`（trim 匹配）删除，列表其余项/注释/空行
+ * 原样保留；幂等：路径不在列表内则 no-op、返回 removed=[]。键缺失（从未接线）= 没东西可删，no-op。
+ * `paths` 形态应与 append 传入一致（方案相对形态），本函数统一补前导 `/` 对齐写入形态。
+ */
+export function removeAnonymousPaths(content: string, paths: string[]): { content: string, removed: string[] } {
+	if (paths.length === 0) {
+		return { content, removed: [] };
+	}
+	const wanted = new Set(paths.map(p => (p.startsWith("/") ? p : `/${p}`)));
+	const lines = content.split("\n");
+	const idx = lines.findIndex(l => /^\s*anonymous_paths\s*:/.test(l));
+	if (idx === -1) {
+		return { content, removed: [] };
+	}
+	// 收集列表项行区间（键行之后连续 `- item`，跳过空行/注释，遇首个其他行即止）
+	const itemLines: number[] = [];
+	for (let i = idx + 1; i < lines.length; i++) {
+		const line = lines[i]!;
+		if (line.trim() === "" || /^\s*#/.test(line)) {
+			continue;
+		}
+		const stripped = line.replace(/#.*$/, "").trim();
+		if (!stripped.startsWith("- ")) {
+			break;
+		}
+		itemLines.push(i);
+	}
+	const removeSet = new Set<number>();
+	const removed: string[] = [];
+	for (const i of itemLines) {
+		const val = lines[i]!.replace(/#.*$/, "").trim().slice(2).trim();
+		if (wanted.has(val)) {
+			removeSet.add(i);
+			removed.push(val);
+		}
+	}
+	if (removed.length === 0) {
+		return { content, removed: [] };
+	}
+	const next = lines.filter((_, i) => !removeSet.has(i));
+	return { content: next.join("\n"), removed };
+}
+
+/**
+ * 纯文本解析 `auth.anonymous_paths` 列表（P0 §3.2 质辩1 / E8 残留检测消费面）：与 append/remove
+ * 同源的列表收集口径——从 `anonymous_paths:` 键行起，连续 `- item` 行（跳过空行/注释）逐行取值。
+ * 用于「读」已装站点的匿名条目，不修改文本。键缺失 = 返回 []。
+ */
+export function readAnonymousPaths(content: string): string[] {
+	const lines = content.split("\n");
+	const idx = lines.findIndex(l => /^\s*anonymous_paths\s*:/.test(l));
+	if (idx === -1) {
+		return [];
+	}
+	const out: string[] = [];
+	for (let i = idx + 1; i < lines.length; i++) {
+		const line = lines[i]!;
+		if (line.trim() === "" || /^\s*#/.test(line)) {
+			continue;
+		}
+		const stripped = line.replace(/#.*$/, "").trim();
+		if (!stripped.startsWith("- ")) {
+			break;
+		}
+		out.push(stripped.slice(2).trim());
+	}
+	return out;
 }

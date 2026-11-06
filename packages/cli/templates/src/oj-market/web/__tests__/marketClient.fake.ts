@@ -1,12 +1,13 @@
 import type { MarketClient } from "../api/client";
 // 内存实现 MarketClient（BDD 测试注入用，无需真实后端）。
-import type { EnableInput, IndexRow, InstallInput, MarketHistory, TaskRecord, UninstallImpact } from "../types";
+import type { EnableInput, IndexRow, InstallInput, MarketHistory, ReleasePage, TaskRecord, UninstallImpact } from "../types";
 
 export interface FakeState {
 	indexRows?: IndexRow[]
 	indexError?: Error
 	taskRecord?: TaskRecord
 	historyRows?: MarketHistory[]
+	releasePage?: ReleasePage
 	impact?: UninstallImpact
 	enableResult?: { ok: boolean, message: string }
 	uninstallResult?: { ok: boolean, message: string }
@@ -63,6 +64,11 @@ export class InMemoryMarketClient implements MarketClient {
 	async history() {
 		this.calls.push("history");
 		return this.state.historyRows ?? [];
+	}
+
+	async releases(input: { page?: number, limit?: number } = {}) {
+		this.calls.push(`releases:${input.page ?? 1}:${input.limit ?? 20}`);
+		return this.state.releasePage ?? { list: [], total: 0, page: 1, size: 20, syncError: null };
 	}
 
 	async uninstallImpact(name: string) {

@@ -78,6 +78,8 @@ describe("runtime 主入口出口白名单 (P3.1)", () => {
 		expect(Runtime.getRegisteredApiPrefix).toBeTypeOf("function");
 		expect(Runtime.getRegisteredStore).toBeTypeOf("function");
 		expect(Runtime.getRoutes).toBeTypeOf("function");
+		// 单路由导航 path：admin 与菜单/宿主建表共用重写算法
+		expect((Runtime as Record<string, unknown>).resolveRoutePath).toBeTypeOf("function");
 		// 宿主建表取口：admin 路由与菜单管线同源重写（2026-10 wiki admin 404 回归）
 		expect(Runtime.getHostRoutes).toBeTypeOf("function");
 		expect(Runtime.loadAll).toBeTypeOf("function");

@@ -5,7 +5,7 @@
 import * as fsp from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 
-import { appendAnonymousPaths, bumpInstallSeq, ensureReloadApi, hasAnchor, insertAnchor } from "../../src/app/api/_platform/_lifecycle/text-edit";
+import { appendAnonymousPaths, ensureReloadApi, hasAnchor, insertAnchor, removeAnonymousPaths } from "../../src/app/api/_platform/_lifecycle/text-edit";
 
 describe("insertAnchor（R18）", () => {
 	it("带注释的 config.yaml 插入后注释/缩进/空行/键序逐字保留", () => {
@@ -105,32 +105,6 @@ describe("ensureReloadApi（P1-10，D3 一次性注入集收口：S1-1 定稿无
 	});
 });
 
-describe("bumpInstallSeq（B-11 reload 触发面：vars 安装序号自增，PRD E5 实测 vars 改动可热生效）", () => {
-	it("0 → 1 自增，其余行（注释/缩进/键序）逐字保留", () => {
-		const content = "mounts: []\nvars:\n  ojm_install_seq: 0\n# 尾注释保留";
-		const r = bumpInstallSeq(content);
-		expect(r.seq).toBe(1);
-		expect(r.content).toBe("mounts: []\nvars:\n  ojm_install_seq: 1\n# 尾注释保留");
-	});
-
-	it("多次调用累加（N → N+1），行内尾注释原样保留", () => {
-		const content = "vars:\n  ojm_install_seq: 41 # 安装序号";
-		const r1 = bumpInstallSeq(content);
-		expect(r1.seq).toBe(42);
-		expect(r1.content).toBe("vars:\n  ojm_install_seq: 42 # 安装序号");
-		const r2 = bumpInstallSeq(r1.content);
-		expect(r2.seq).toBe(43);
-	});
-
-	it("键缺失 → 可读报错（用户删行 = 显式退出热更触发，安装器不猜位置）", () => {
-		expect(() => bumpInstallSeq("vars:\n  other: 1")).toThrowError(/ojm_install_seq/);
-	});
-
-	it("值非数字（行存在但形状不符）→ 视同缺失，可读报错不猜", () => {
-		expect(() => bumpInstallSeq("vars:\n  ojm_install_seq: abc")).toThrowError(/ojm_install_seq/);
-	});
-});
-
 describe("模板 config.yaml 随发锚点（P1-16 接线②：ensureReloadApi 键缺失插入路径的闭环依据）", () => {
 	it("模板 config.yaml 带整行 # ojm:reload 锚点；键在 → ensureReloadApi no-op", async () => {
 		const cfg = await fsp.readFile(new URL("../../config.yaml", import.meta.url), "utf8");
@@ -173,5 +147,49 @@ describe("p2-15③ C2-26 anonymous 运行时接线（appendAnonymousPaths：conf
 
 	it("键缺失 = 可读报错不猜位置（用户删键 = 显式退出匿名模型）", () => {
 		expect(() => appendAnonymousPaths("server:\n  reload_api: true\n", ["x/y"])).toThrow(/anonymous_paths/);
+	});
+});
+
+describe("removeAnonymousPaths（P0 §3.5 补偿清单：appendAnonymousPaths 逆操作）", () => {
+	const BASE = "auth:\n  anonymous_paths:\n    - /auth/login\n    # 行内注释保留\n    - /system/login-methods\n";
+
+	it("追加后移除 = 还原到追加前形态（注释/缩进/既有项逐字保留）", () => {
+		const added = appendAnonymousPaths(BASE, ["demo-solution/ping", "demo-solution/health"]);
+		const r = removeAnonymousPaths(added.content, ["demo-solution/ping", "demo-solution/health"]);
+		expect(r.removed).toEqual(["/demo-solution/ping", "/demo-solution/health"]);
+		expect(r.content).toBe(BASE);
+	});
+
+	it("只移除指定项，其余匿名条目不动", () => {
+		const added = appendAnonymousPaths(BASE, ["demo-solution/ping", "demo-solution/health"]);
+		const r = removeAnonymousPaths(added.content, ["demo-solution/ping"]);
+		expect(r.removed).toEqual(["/demo-solution/ping"]);
+		expect(r.content).toContain("- /demo-solution/health");
+		expect(r.content).toContain("- /auth/login");
+		expect(r.content).toContain("- /system/login-methods");
+	});
+
+	it("幂等：未含的路径不在列表内 → removed=[] 且内容不变", () => {
+		const added = appendAnonymousPaths(BASE, ["demo-solution/ping"]);
+		const r = removeAnonymousPaths(added.content, ["other/not-present"]);
+		expect(r.removed).toEqual([]);
+		expect(r.content).toBe(added.content);
+	});
+
+	it("连续两次移除同一批路径，第二次为 no-op（防重复副作用）", () => {
+		const added = appendAnonymousPaths(BASE, ["demo-solution/ping"]);
+		const once = removeAnonymousPaths(added.content, ["demo-solution/ping"]);
+		const twice = removeAnonymousPaths(once.content, ["demo-solution/ping"]);
+		expect(twice.removed).toEqual([]);
+		expect(twice.content).toBe(once.content);
+	});
+
+	it("键缺失 = 没东西可删，no-op（不报错）", () => {
+		const r = removeAnonymousPaths("server:\n  reload_api: true\n", ["x/y"]);
+		expect(r.removed).toEqual([]);
+	});
+
+	it("空路径列表 = no-op", () => {
+		expect(removeAnonymousPaths(BASE, []).removed).toEqual([]);
 	});
 });
