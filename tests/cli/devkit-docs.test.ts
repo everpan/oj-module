@@ -60,13 +60,13 @@ describe("devkit 自包含（零仓库内部代号 / 零包外路径）", () => 
  * devkit 目录结构（2026-10-20 合并 oj-api-dev 快照后；2026-10-21 增教学文档；
  * 2026-10-30 增企微代开发手册；2026-11-01 增企业内部应用手册；
  * 2026-11-03 增发布全流程 walkthrough）：
- * docs/devkit/ 一棵树覆盖前后端两侧，但两套分发链不变——顶层 10 个 ojm 侧文件
+ * docs/devkit/ 一棵树覆盖前后端两侧，但两套分发链不变——顶层 12 个 ojm 侧文件
  * 随 cli 包发货（→ .claude/skills/ojm-module-dev/），oj-api-dev/ 子目录是 oj 侧
  * devkit 的快照（与 ~/.local/share/oj/devkit/ 逐字节一致，仅本仓参考、不发货）。
  * 本守卫钉死这个结构：快照文件若被平铺进顶层，会误随 cli 包发货且与 oj 版本漂移。
  */
 describe("devkit 目录结构（ojm 侧发货 + oj-api-dev 快照子目录）", () => {
-	const OJM_FILES = ["SKILL.md", "manual.md", "README.md", "framework-dev.md", "sql-builder-missing-capabilities-pr.md", "module-dev-and-cdn-playground.md", "menu-rules.md", "wecom-daikaifa.md", "wecom-internal-app.md", "wecom-multi-corp-links.md", "publish-walkthrough.md"];
+	const OJM_FILES = ["SKILL.md", "manual.md", "README.md", "framework-dev.md", "sql-builder-missing-capabilities-pr.md", "module-dev-and-cdn-playground.md", "menu-rules.md", "wecom-customer-reauth-guide.md", "wecom-daikaifa.md", "wecom-internal-app.md", "wecom-multi-corp-links.md", "publish-walkthrough.md"];
 	const SNAPSHOT_FILES = [
 		"SKILL.md",
 		"README.md",
@@ -82,7 +82,7 @@ describe("devkit 目录结构（ojm 侧发货 + oj-api-dev 快照子目录）", 
 		"deploy-tunnel-recipe.md",
 	];
 
-	it("docs/devkit/ 顶层文件恰为 11 个 ojm 侧文件（快照不得平铺进同步源）", () => {
+	it("docs/devkit/ 顶层文件恰为 12 个 ojm 侧文件（快照不得平铺进同步源）", () => {
 		const top = readdirSync(join(ROOT, "docs/devkit"))
 			.filter(n => !n.startsWith(".") && statSync(join(ROOT, "docs/devkit", n)).isFile())
 			.sort();

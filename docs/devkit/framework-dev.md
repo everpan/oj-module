@@ -197,7 +197,7 @@ runtime → cli → registry 复核；`--dry-run` 只演练）。下面的手动
 
 ## 附：本 devkit 内容来源（维护者看）
 
-`docs/devkit/` 是**自包含**的交付文档（顶层 11 个文件，全部随 cli 包发货，其中 6 个随
+`docs/devkit/` 是**自包含**的交付文档（顶层 12 个文件，全部随 cli 包发货，其中 6 个随
 `ojm init` 进业务工程；含 `sql-builder-missing-capabilities-pr.md` 这份构造器能力缺口 PR 参考），
 业务工程拿到即可读懂，不依赖工程仓库里的其它文档。
 另有 `oj-api-dev/` 子目录是 oj 侧 devkit 的快照（oj v0.1.116 起 12 文件，仅本仓参考、不发货），
