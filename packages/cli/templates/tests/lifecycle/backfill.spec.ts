@@ -276,6 +276,111 @@ describe("场景：门禁与坏包分流", () => {
 		expect(report.skipped[0]!.reason).toContain("名实不符");
 	});
 
+	it("数据表 并发撞唯一键（select 与 insert 之间他方上传先落行，异字节）：该文件进 skipped 带冲突 reason，好包照常落库，扫描不中断（minor M2）", async () => {
+		await dropCdnPackage("race-solution", "0.1.0");
+		await dropCdnPackage("good-solution", "0.1.0");
+		// 拦截 market_release 的 insert：真正写入前先经裸 SQL 落一行他方并发行（异字节）→ 原 insert 撞唯一键
+		const origTable = g.db.table.bind(g.db);
+		let armed = true;
+		g.db.table = (name: string) => {
+			const t = origTable(name);
+			if (name !== "market_release" || !armed)
+				return t;
+			return new Proxy(t, {
+				get(target, prop) {
+					if (prop === "insert") {
+						return (row: { product?: string }) => ({
+							run: async () => {
+								if (row.product === "race-solution" && armed) {
+									armed = false;
+									dbo.prepare("INSERT INTO market_release (product,version,key_id,sha256,size,published_at,published_at_source,yanked,first_seen_at) VALUES (?,?,?,?,?,?,?,?,?)")
+										.run("race-solution", "0.1.0", "other.publisher", "racedeadbeef", 9, 1000, "upload", 0, 1000);
+								}
+								return target.insert(row).run(); // race 文件撞 (product,version) 唯一键抛错
+							},
+						});
+					}
+					const v = (target as never)[prop as never];
+					return typeof v === "function" ? v.bind(target) : v;
+				},
+			});
+		};
+		const api = createMarketApi(makeEnv());
+		await api.backfill.post();
+		g.db.table = origTable;
+		expect(last?.status).toBe(200);
+		// 好包照常落库；race 文件 skipped（reason 含冲突），全量扫描不中断
+		expect(rows().map(r => r.product).sort()).toEqual(["good-solution", "race-solution"]);
+		const report = last?.data as { skipped: Array<{ file: string, reason: string }>, scanned: number };
+		expect(report.scanned).toBe(2);
+		expect(report.skipped).toHaveLength(1);
+		expect(report.skipped[0]!.file).toBe("race-solution-0.1.0.tgz");
+		expect(String(report.skipped[0]!.reason)).toContain("冲突");
+		// 他方并发行原样保留（不被回填改写）
+		const raced = dbo.prepare("SELECT sha256 FROM market_release WHERE product='race-solution'").get();
+		expect(raced.sha256).toBe("racedeadbeef");
+	});
+
+	it("数据表 并发撞唯一键但同字节（他方上传同内容）：幂等判 unchanged，不重复落库（minor M2 同字节支路）", async () => {
+		const bytes = await dropCdnPackage("same-solution", "0.1.0");
+		const sha = shaOf(bytes);
+		const racedSig = signedArchiveFor(bytes, "same-solution", "0.1.0", { keyPair: TEST_KEY }).sig;
+		const racedManifest = JSON.stringify({ name: "same-solution", version: "0.1.0", summary: "存量回填包" });
+		const origTable = g.db.table.bind(g.db);
+		let armed = true;
+		g.db.table = (name: string) => {
+			const t = origTable(name);
+			if (name !== "market_release" || !armed)
+				return t;
+			return new Proxy(t, {
+				get(target, prop) {
+					if (prop === "insert") {
+						return (row: unknown) => ({
+							run: async () => {
+								armed = false;
+								dbo.prepare("INSERT INTO market_release (product,version,key_id,sha256,size,published_at,published_at_source,yanked,first_seen_at,sig_alg,sig_value,sig_public_key,sig_registry_id,manifest) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+									.run("same-solution", "0.1.0", racedSig.key_id, sha, bytes.byteLength, 1000, "upload", 0, 1000, racedSig.alg, racedSig.value, racedSig.public_key, racedSig.registry_id, racedManifest);
+								return target.insert(row).run();
+							},
+						});
+					}
+					const v = (target as never)[prop as never];
+					return typeof v === "function" ? v.bind(target) : v;
+				},
+			});
+		};
+		const api = createMarketApi(makeEnv());
+		await api.backfill.post();
+		g.db.table = origTable;
+		expect(last?.status).toBe(200);
+		expect(rows()).toHaveLength(1);
+		const report = last?.data as { unchanged: number, upserted: number };
+		expect(report).toMatchObject({ unchanged: 1, upserted: 0 });
+	});
+
+	it("数据表 insert 底层错误（非撞键，如 DB 故障）：原样上抛不吞（minor M2 不遮真故障）", async () => {
+		await dropCdnPackage("demo-solution", "0.1.0");
+		const origTable = g.db.table.bind(g.db);
+		g.db.table = (name: string) => {
+			const t = origTable(name);
+			if (name !== "market_release")
+				return t;
+			return new Proxy(t, {
+				get(target, prop) {
+					if (prop === "insert")
+						return () => ({ run: async () => { throw new Error("SQLITE_ERROR: disk I/O error"); } });
+					const v = (target as never)[prop as never];
+					return typeof v === "function" ? v.bind(target) : v;
+				},
+			});
+		};
+		const api = createMarketApi(makeEnv());
+		await api.backfill.post();
+		g.db.table = origTable;
+		expect(last?.status).toBe(500);
+		expect(rows()).toHaveLength(0);
+	});
+
 	it("给定 孤立 .sig（tgz 缺失），当 回填，则 忽略不报错（容忍口径，不加 GC）", async () => {
 		await fsp.writeFile(join(cdnDir, "lonely-1.0.0.tgz.sig"), "{}");
 		const api = createMarketApi(makeEnv());

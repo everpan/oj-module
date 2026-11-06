@@ -179,15 +179,37 @@ export async function backfillReleases(env: BackfillEnv): Promise<BackfillReport
 		}
 		if (prior === undefined) {
 			const now = env.now?.() ?? Math.floor(Date.now() / 1000);
-			await db.table("market_release").insert({
-				product: parsed.name,
-				version: parsed.version,
-				...content,
-				published_at: now,
-				published_at_source: "file",
-				yanked: 0,
-				first_seen_at: now,
-			}).run();
+			try {
+				await db.table("market_release").insert({
+					product: parsed.name,
+					version: parsed.version,
+					...content,
+					published_at: now,
+					published_at_source: "file",
+					yanked: 0,
+					first_seen_at: now,
+				}).run();
+			}
+			catch (e) {
+				// 唯一键并发仲裁（minor M2）：select 与 insert 之间他方上传先落行。重读定幂等/冲突——
+				// 同字节 → unchanged（他方行即真源）；异字节 → skipped 记冲突（他方行不可被回填改写），
+				// 全量扫描不中断；重跑回填即可再对账。非撞键的底层错误（DB 故障）原样上抛不吞。
+				const raced = (await db.table("market_release")
+					.select(["id", "sha256", "size", "key_id", "sig_alg", "sig_value", "sig_public_key", "sig_registry_id", "manifest"])
+					.where({ field: "product", op: "eq", value: parsed.name })
+					.where({ field: "version", op: "eq", value: parsed.version })
+					.limit(1)
+					.all()) as Array<Record<string, unknown>>;
+				const racedRow = raced[0];
+				if (racedRow === undefined)
+					throw e; // 非撞键错误：真故障不遮
+				if (contentEqual(racedRow, content)) {
+					report.unchanged++;
+					continue;
+				}
+				report.skipped.push({ file, reason: `并发冲突：扫描期间「${parsed.name}@${parsed.version}」已被他方上传占用且字节不同——重跑回填对账（他方行未被改写）` });
+				continue;
+			}
 		}
 		else {
 			// 对账/灾备重放：只重写内容列；published_at/published_at_source/first_seen_at/yanked 保留
