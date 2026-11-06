@@ -47,14 +47,14 @@ export interface RouteMeta {
 	keepAlive?: boolean
 
 	/**
-	 * 布局包裹方式（P2.2，设计文档 D9）。显式声明，不做隐式推导。
+	 * 布局包裹方式（P2.2，设计文档 D9）。普通路由显式声明；`category: "admin"` 未声明时默认 container。
 	 * - `"container"`：套完整 chrome（header / sidebar / tabbar / content）
 	 * - `"parent"`：套父级布局（自身含 Outlet，用于嵌套菜单场景）
 	 * - `"fullscreen"`：套全屏外壳（视口 + 品牌区 + 角落工具 + 页脚，无 chrome），登录页用（P1）
 	 * - `"none"`：不套任何布局，页面/子路由直接渲染
 	 * - 其他字符串：模块经 `ctx.register.layout` 登记的名字（含覆盖内建名）。
 	 *   模板联合保留内建名补全，未知名运行时 warn-once 并回落 Outlet（G1，评审 P2-6）
-	 * @default "container"（迁移期向后兼容，目标在 P2.7 补全显式声明后改为 `"none"`）
+	 * @default "none"；`category: "admin"` 未声明时为 `"container"`
 	 */
 	layout?: "container" | "parent" | "fullscreen" | "none" | (string & {})
 

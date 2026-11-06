@@ -93,6 +93,7 @@ export type {
 
 // 路由类型（模块声明 routes 时要用）
 export type { AppRouteRecordRaw, RouteMeta } from "./router/types";
+export { resolveRoutePath } from "./router/utils/rewrite-admin-paths";
 // 宿主链角色重登记用：shell hydrateUser 定角色后按新角色重跑 setAccessStore(getRoutes())
 export { useAccessStore } from "./store/access";
 // 系统/通知/上传 API provider 注入契约（D9）：模块经 ctx.register.{systemApi,
