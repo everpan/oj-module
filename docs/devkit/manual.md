@@ -425,7 +425,7 @@ export default defineModule({
 | `icon` | `createElement(XxxOutlined)` |
 | `keepAlive` | 页面缓存（多 tab 开启时有效；与 layout 解绑；相对/绝对声明均可，key 取路由绝对路径） |
 | `hideInMenu` | 不在菜单显示 |
-| `roles` / `permissions` | 路由级权限（页面级 / 按钮级） |
+| `roles` / `permissions` | 路由级权限（页面级 / 按钮级）；可绑定的角色/权限点目录由方案契约声明供给（§11.5） |
 | `iframeLink` | 内嵌 iframe 的外链地址 |
 
 > 另有**模块级** `config.requiredRoles` / `config.requiredPermissions`——它在路由
@@ -2071,6 +2071,8 @@ flowchart TD
   报 `unchanged` 时才是真失败（对着 dev 装的典型症状）。
 - **preflight 含匿名面检查（`anonymous_residual`）**：实际匿名可达的端点必须在方案契约
   `api.anonymous` 里声明（`ojm new --api` 骨架已自带 ping 的声明）；漏声明的包拒装且不可自动重试。
+- **preflight 含 RBAC 声明校验**：`permissions[]` / `roles[]` 的命名前缀、`title_key`
+  必填、悬空引用双端拒绝——形状细则与注册/管理面见 §11.5。
 
 ### 11.4 生命周期命令与站点寻址约定
 
@@ -2091,6 +2093,61 @@ flowchart TD
 
 > `enable`/`disable`/`uninstall` 失败多半是「站点地址/凭据没给对」或「站点没这个方案」——
 > 先 `ojm info` 贴出版本矩阵与模块清单，确认目标站点与方案名无误再重试。
+
+### 11.5 方案自管理角色/权限（声明 → 安装注册 → 管理面 → 多语言）
+
+方案可以自带角色与权限点目录，装进站点后由管理员在「系统管理 → 角色权限」页分配——
+**声明属方案契约（`solution.yaml`），不是 `api/manifest.yaml`**（后者是 oj 原生七键清单，
+写方案级字段安装期被白名单拒装；见 §1.2）。
+
+**声明面（`solution.yaml`，两段都可选）**：
+
+```yaml
+permissions:                       # code 强制 <name>. 前缀；title_key 必填 <name>:perm.*；包内唯一
+  - code: wiki.doc.create
+    title_key: wiki:perm.doc_create
+  - code: wiki.doc.read            # 无角色引用也合法（系统预置点，管理员在管理面自行分配）
+    title_key: wiki:perm.doc_read
+roles:                             # name 强制 <name>.<role>；title_key 必填 <name>:role.*；
+  - name: wiki.editor              # permissions ⊆ permissions[].code（悬空引用双端拒绝）
+    title_key: wiki:role.editor
+    permissions: [wiki.doc.create, wiki.doc.read]
+```
+
+**安装注册（registering 段，唯一出口 `upsertSolutionPerms`）**：
+
+- **title 安装期解析**：`title` 由 `title_key` 经包内
+  `web/modules/<name>/locales/<站点默认语言>.json` 解析落库（站点默认语言读 `sys_setting`
+  `site.language`，缺省 zh-CN）；ns ≠ 本方案名不越界读；任何解析失败保留原文、**绝不拒装**。
+- **title_key 随行落库（展示锚）**：`sys_role.title_key` / `sys_permission.title_key` 存原始 key，
+  展示页按当前语言实时翻译、`title`/`code` 兜底。
+- **升级即重解析**：新版本 locale 文案改进随升级覆写元数据（title/title_key）；
+  存量站点的权限点补 title_key 也是同一条路——**重装同版本方案即触发覆写**。
+- **只加法**：声明绑定 insert-if-absent（管理员撤过的绑定不复活）；声明消失 →
+  行保留标 `deprecated`（装机告警清单）；**重声明复位 `deprecated=0`**；
+  卸载双维级联清理。除该出口外不得直写 `sys_role`/`sys_permission`。
+- **落库不产生任何授权**：声明权限点只建目录行，判权仍走角色绑定——别以为把 code 写进
+  manifest 就等于拿到权限。
+
+**管理面（`/api/system/*`，需系统管理员——superadmin 或 admin，其余角色 403；`custom`/`wiki.*` 命名空间互斥）**：
+
+| 端点 | 作用 | 红线 |
+|---|---|---|
+| `GET /api/system/roles` | 角色清单（module 归属 / title+title_key / holders / 已绑权限） | `superadmin` 行前端展示层隐藏（后端原样返回） |
+| `POST /api/system/roles` | 建自定义角色 | 机器名强制 `custom.<slug>`；未知权限码 400 |
+| `PUT /api/system/roles/bindings?name=` | 整集替换角色↔权限绑定 | builtin 角色硬拒 403；写后按持有者失效判权缓存（撤销即强退） |
+| `DELETE /api/system/roles?name=` | 删角色 | builtin 硬拒 403；有持有者 409（`holders` 明细） |
+| `GET /api/system/permissions` | 权限点目录（含 deprecated 标记，UI 标灰） | 判权链不过滤 deprecated |
+| `PUT /api/system/users/roles?uid=` | 整集替换用户角色（`sys_user_role` 唯一权威源） | 写后失效该用户判权缓存 |
+
+**展示与多语言（「系统管理 → 角色权限」页，`/system/roles`）**：方案角色按当前语言实时渲染
+`t(title_key, { defaultValue: title })`；builtin 角色回退框架词典 `system:rolesPage.roleTitle.<name>`；
+custom 角色原样显示 title；权限点 tab 同理，title_key 不命中回退裸 code。
+`title_key` 引用的键须在方案 `web/locales/{zh-CN,en-US}.json` 双语落齐（打包校验项）。
+
+> 与前端路由权限的关系：路由级 `handle.roles` / `permissions` 与模块级
+> `config.requiredRoles` / `requiredPermissions`（§2.4）是**消费端**过滤；本节是**供给端**
+> 目录与管理面。判权本身在服务端按 `sys_user_role` → `sys_role_permission` 链路裁决。
 
 ---
 
@@ -2505,7 +2562,7 @@ LDAP 侧改名 / 删人后，`origin='ldap'` 的行跟着变，而 `origin='weco
 | §8 排查 | 五步排查法、症状速查表 | 任何「没生效」 |
 | §9 参考 | 可抄的工程内文件、oj-api-dev 手册指引 | 找范本 |
 | §10 CLI 子命令参考 | ojm 原生命令 vs oj 透传命令；`market` 子命令（本地模拟 CDN） | 查命令用法；`ojm <cmd> --help` 看单命令帮助 |
-| §11 方案包：打包与分发 | build --bundle、Form A/B、分发源、索引规范、引用式方案（api 段省略 tables/deps，引用包内原生 manifest） | 发布方案包 |
+| §11 方案包：打包与分发 | build --bundle、Form A/B、分发源、索引规范、引用式方案（api 段省略 tables/deps，引用包内原生 manifest）、**方案自管理角色/权限（声明/注册/管理面/多语言 §11.5）** | 发布方案包；方案要自带角色/权限目录 |
 | §12 签名与信任 | keygen/sign/install 发布流程、信任库、TOFU、bootstrap key | 首次签名发布；管理信任 |
 | §13 方案菜单归组规则 | 单根模块约定（根路由=第一级菜单）、自定义根路径 `web.route_prefix`（构建写 modules.json、运行时只改根段、getModuleRoutePrefix 单点消费）、category 三值（普通/hidden/admin）、admin 真重写 `/system/<模块 root>/*` + 视觉归组、menu.main 统一、模块内路径助手、开发者 DO/DON'T | 写方案要让菜单按模块分组、admin 归系统设置 |
 | §14 组织架构与通讯录 | 内置底座（两张租户表 + `users` 三列）、共享读面 7 端点与两级 `scope` 门禁、前端怎么「借壳」出自己端点、归属权四条规则与管理端 CRUD、源适配器接点与三条禁令（企微为范本，LDAP 前置）、通讯录与组织架构的分工 | 页面要选人/选部门、通知要按部门算收件人、要接新的组织数据来源 |

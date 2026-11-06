@@ -57,6 +57,10 @@
 > 解析数据源是包内 `web/modules/<name>/locales/`——`build --bundle` 自动从源码复制双语，
 > 作者零动作。key 缺失/文件缺失 → title 存裸 key，**安装永不因此失败**；改 locale 文案后重新
 > 打包升级，角色名即随升级更新。
+>
+> **权限点标题同理落库（0.2.68 起）**：`permissions[].title_key`（契约必填）随行落库
+> `sys_permission.title_key`（此前只校验不落库、展示页回退裸 code）；升级元数据覆写与
+> deprecated 重声明复位与角色同纪律。声明面/管理面/多语言全景见 devkit 手册 §11.5。
 
 ### 3.2 但同名再装会被直接拒
 

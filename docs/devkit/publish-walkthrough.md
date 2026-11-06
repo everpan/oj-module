@@ -265,6 +265,8 @@ TOFU 没有免检通道：**只有模板内置的 oj-market（第一方包）用
 | 安装 partial（stage `reloading`，`reloadConfig 返回 unchanged`） | 对着 `ojm dev` 装：dev 的文件监听先吃掉了 config 改动 | 换成 `oj serve` release 形态再装；别在 dev 上验证安装 |
 | 安装 partial（11 段全 ok，message 含 `restart_pending` /「请重启 oj serve」） | **正常语义**（oj 0.1.122+）：新模块的路由/模块注册要宿主重启 | 重启 `oj serve` 后 retry 同一条 install → `done`（§6 首装终态两段式） |
 | 安装拒 `anonymous_residual`（preflight，不可自动重试） | 有端点实际匿名可达，但 `solution.yaml` 的 `api.anonymous` 没声明（换包时含上一版声明了、新包漏声明的残留比对） | 把该端点补进 `anonymous: ["<模块>/<路由>"]`（模块相对路径），重打包重签重发；`ojm new --api` 骨架 0.2.68 起自带 ping 声明 |
+| 安装拒「包内原生清单含白名单外键 `permissions、roles`…」（extracting 段，不可自动重试） | 角色/权限声明写进了 `api/manifest.yaml`（oj 原生七键清单） | 声明挪到方案契约 `solution.yaml`（上级目录那一份）；`api/manifest.yaml` 只留 oj 原生七键（2026-11-06 演练实踩） |
+| 安装 preflight 拒 RBAC 声明 | 声明形状不符：权限 code / 角色 name 没带 `<name>.` 前缀、`title_key` 缺失或 ns 不符、角色引用了未声明的权限（悬空） | 按报错条款改 `solution.yaml` 的 `permissions[]` / `roles[]`（字段细则见 devkit 手册 §11.5） |
 | 装完 `curl /api/<name>/ping` 返回 400 `missing tenant header` | 少了 `X-TENANT-ID` 头 | 加 `-H 'X-TENANT-ID: default'` 再探 |
 | `sig_alg` / `sig_format` | 签名算法/.sig 结构不符 | 用当前 ojm 重签（旧版本工具产物） |
 | `needs_trust`（第五终态，非成功） | 站点第一次见这个 key | 与发布方逐字核对指纹 → `trust confirm --task <id>` → 重跑 install |
