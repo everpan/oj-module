@@ -45,6 +45,9 @@ export type { FetchInitFace };
 /** 平台编排面版本（镜像 _platform/manifest.yaml version；peerPlatform 预检口径，manifest 升版须同步） */
 const API_VERSION = "0.1.0";
 
+/** 目录协议版本（v4 §三：api_version 给契约演进留逃生门；跨站消费侧据此判可解析性） */
+const CATALOG_API_VERSION = "v1";
+
 export interface MarketEnv {
 	/** 共享根（manifests.yaml 所在目录 = 版本目录父级，D3 单 mount 形态） */
 	sharedRoot: string
@@ -1079,6 +1082,129 @@ async function syncReleases(env: MarketEnv): Promise<void> {
 	}
 }
 
+// ── v4 §三：目录 JSON API（匿名可读，DB 直读合成单协议 shape）────────────────────────────
+// 市场目录真源 = market_release 表（上传端点直写）；catalog 清单聚合 + detail 单包详情
+// 喂同一 Form B 条目 shape（与历史 shards 条目同构），远端市场走 HTTP、本站直读 DB——
+// 「单协议」指 shape 统一，非传输统一。Cache-Control: no-store（防中间代理缓存陈旧目录）。
+// 错误文案卫生：匿名读端点的 message 不得含路径/SQL/内部拓扑。
+
+/**
+ * 组表 Form B 版本条目：manifest 列（上传端点抽取物）为底，archive 由服务端组表——
+ *  存量 manifest 内嵌 archive.file 不可信（防旧行/直写行夹带路径穿越），逐字正名
+ *  <name>-<version>.tgz（P2-11 索引投毒加固同源）；签名 key_id 以行 key_id 为准
+ *  （发布者身份单一真相；加密学校验在 install verify 段用 public_key + canonical）。
+ */
+function formBEntryOf(product: string, row: Record<string, unknown>): Record<string, unknown> {
+	const file = `${product}-${String(row.version)}.tgz`;
+	let stored: Record<string, unknown> | null = null;
+	if (typeof row.manifest === "string" && row.manifest !== "") {
+		try {
+			const parsed: unknown = JSON.parse(row.manifest);
+			if (isObj(parsed))
+				stored = parsed;
+		}
+		catch {
+			stored = null; // 坏行不猜：回退最小形态（观测面降级，不整页 500）
+		}
+	}
+	const base: Record<string, unknown> = stored ?? { name: product, version: String(row.version) };
+	// archive 服务端组表（base 底展开后整体覆盖）：存量 manifest 内嵌 archive.file 是包作者
+	// 自报字段不可信（可能 stale/穿越形态）——file 逐字正名 <name>-<version>.tgz（构造即校验，
+	// P2-11 索引投毒加固的组表处承继）；sha256/size/签名取行列（上传端点服务端重算值）。
+	const archive: Record<string, unknown> = { file };
+	if (typeof row.sha256 === "string")
+		archive.sha256 = row.sha256;
+	if (typeof row.size === "number")
+		archive.size = row.size;
+	if (typeof row.sig_alg === "string" && row.sig_alg !== "")
+		archive.signature = { alg: row.sig_alg, key_id: row.key_id, public_key: row.sig_public_key, value: row.sig_value, canon: "v2" };
+	return { ...base, name: product, version: String(row.version), yanked: Number(row.yanked) === 1, archive };
+}
+
+/** market_release 行 → manifest 摘要对象（catalog 展示字段源；NULL/坏行 → null 降级） */
+function manifestSummaryOf(row: Record<string, unknown>): Record<string, unknown> | null {
+	if (typeof row.manifest !== "string" || row.manifest === "")
+		return null;
+	try {
+		const parsed: unknown = JSON.parse(row.manifest);
+		return isObj(parsed) ? parsed : null;
+	}
+	catch {
+		return null;
+	}
+}
+
+/**
+ * GET /market/catalog 主体：全量行内存聚合（规模小，真分页留待规模信号）+ 内存分页。
+ * 清单不含 yanked 行（全 yanked 的 product 整项消失）；latest = 未 yanked 的 semver max
+ * （API 计算，非存储列——index_latest_regressed 守卫随索引退役自然消失）；排序键钉死
+ * published_at desc, product asc（产品级 published_at 取其版本最大值 = 最近发布时刻；
+ * 键唯一确定性 ⇒ 翻页不重复不丢条目）；page/size 复用 pageArgs（非法收敛、size 钳 200、
+ * 默认 20）。响应 PageResult 惯例的 page/size 回显 + truncated 截断标记，items 为协议字段名。
+ */
+async function catalogBody(q: Record<string, unknown>): Promise<Record<string, unknown>> {
+	const { page, size, offset } = pageArgs({ page: q.page, size: q.size });
+	const rows = await db.table("market_release")
+		.select(["product", "version", "key_id", "published_at", "yanked", "manifest"])
+		.all() as Array<Record<string, unknown>>;
+	// 聚合：product → 未 yanked 行组（清单不含 yanked 行）
+	const byProduct = new Map<string, Array<Record<string, unknown>>>();
+	for (const r of rows) {
+		if (Number(r.yanked) === 1)
+			continue;
+		const list = byProduct.get(String(r.product)) ?? [];
+		list.push(r);
+		byProduct.set(String(r.product), list);
+	}
+	const items = [...byProduct.entries()].map(([product, list]) => {
+		const bySemver = [...list].sort((a, b) => compareVersions(String(a.version), String(b.version)));
+		const latestRow = bySemver[bySemver.length - 1]!;
+		const summary = manifestSummaryOf(latestRow);
+		return {
+			product,
+			latest: String(latestRow.version),
+			publisher: typeof latestRow.key_id === "string" ? latestRow.key_id : null,
+			versions_count: list.length,
+			...(typeof summary?.summary === "string" ? { summary: summary.summary } : {}),
+			_at: Math.max(...list.map(r => Number(r.published_at))),
+		};
+	});
+	items.sort((a, b) => (b._at - a._at) || (a.product < b.product ? -1 : a.product > b.product ? 1 : 0));
+	const total = items.length;
+	const slice = items.slice(offset, offset + size).map(({ _at: _ignoredAt, ...item }) => {
+		void _ignoredAt;
+		return item;
+	});
+	(json as { header: (k: string, v: string) => void }).header("Cache-Control", "no-store");
+	return { api_version: CATALOG_API_VERSION, page, size, total, truncated: offset + slice.length < total, items: slice };
+}
+
+/**
+ * GET /market/catalog/detail 主体：按 name 取全版本（详情**保留 yanked 条目**——安装侧
+ * 「精确版本拒装 409 人话」依赖条目可见 + yanked 标记；清单摘除/详情保留分离保全两侧
+ * 语义）。versions semver 降序；latest = 未 yanked semver max（全 yanked → null）；
+ * ?version= 精确过滤（无匹配 → 空数组，200；404 只对未知 name）。
+ */
+async function detailBody(q: Record<string, unknown>): Promise<Record<string, unknown>> {
+	const name = String(q.name ?? "").trim();
+	if (name === "")
+		fail(400, "name is required");
+	const rows = await db.table("market_release")
+		.select(["product", "version", "key_id", "sha256", "size", "yanked", "sig_alg", "sig_value", "sig_public_key", "manifest"])
+		.where({ field: "product", op: "eq", value: name })
+		.all() as Array<Record<string, unknown>>;
+	if (rows.length === 0)
+		fail(404, `市场目录中无方案「${name}」`);
+	const versionFilter = q.version == null || q.version === "" ? null : String(q.version);
+	const versions = rows
+		.filter(r => versionFilter === null || String(r.version) === versionFilter)
+		.map(r => formBEntryOf(name, r))
+		.sort((a, b) => compareVersions(String(b.version), String(a.version)));
+	const live = versions.filter(v => v.yanked !== true).map(v => String(v.version)).sort(compareVersions);
+	(json as { header: (k: string, v: string) => void }).header("Cache-Control", "no-store");
+	return { product: name, latest: live.length === 0 ? null : live[live.length - 1]!, versions };
+}
+
 /** 四端点组（oj v0.1.64 嵌套组：组名 = 路径段）；全业务体经 respond 收口（status 语义不落 500） */
 export function createMarketApi(env: MarketEnv) {
 	return {
@@ -1239,6 +1365,24 @@ export function createMarketApi(env: MarketEnv) {
 				});
 			},
 		},
+		// GET /api/_platform/market/catalog —— 市场目录清单（v4 §三：**匿名可读**，分页 JSON；
+		// DB 直读合成单协议 shape，远端市场消费同一 shape）。no-store 防中间代理缓存陈旧目录。
+		"catalog": {
+			async get() {
+				await respond(async () => {
+					return await catalogBody((http.query ?? {}) as Record<string, unknown>);
+				});
+			},
+			// GET /api/_platform/market/catalog/detail?name=[&version=] —— 单包详情（匿名可读；
+			// 保留 yanked 条目 + 服务端组表 archive 正名，安装解析数据源，§四）
+			detail: {
+				async get() {
+					await respond(async () => {
+						return await detailBody((http.query ?? {}) as Record<string, unknown>);
+					});
+				},
+			},
+		},
 		// GET /api/_platform/market/uninstall-impact?name= —— 卸载影响面预检（superadmin，R9）。
 		// 返回前端二次确认所需的影响计数（角色数 + 受影响用户数），不改动任何状态。
 		"uninstall-impact": {
@@ -1370,6 +1514,21 @@ marketApi.trust.key.post.response = { type: "object", additionalProperties: true
 marketApi.trust.key.del.schema = { query: { type: "object", required: ["key_id"], properties: { key_id: { type: "string" } } } };
 marketApi.trust.key.del.response = { type: "object", additionalProperties: true };
 marketApi.index.get.response = { type: "array", items: { type: "object", additionalProperties: true } };
+marketApi.catalog.get.schema = {
+	query: {
+		type: "object",
+		properties: { page: { type: "number", minimum: 1 }, size: { type: "number", minimum: 1, maximum: 200 } },
+	},
+};
+marketApi.catalog.get.response = { type: "object", additionalProperties: true };
+marketApi.catalog.detail.get.schema = {
+	query: {
+		type: "object",
+		required: ["name"],
+		properties: { name: { type: "string" }, version: { type: "string" } },
+	},
+};
+marketApi.catalog.detail.get.response = { type: "object", additionalProperties: true };
 marketApi["uninstall-impact"].get.schema = { query: { type: "object", required: ["name"], properties: { name: { type: "string" } } } };
 marketApi["uninstall-impact"].get.response = { type: "object", additionalProperties: true };
 marketApi.uninstall.post.schema = { body: { type: "object", required: ["name"], properties: { name: { type: "string" } } } };

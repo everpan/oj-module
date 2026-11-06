@@ -271,6 +271,7 @@ beforeEach(async () => {
 		fail: (status: number, msg: string) => {
 			last = { status, msg };
 		},
+		header: () => {},
 	};
 	last = null;
 	fetchCalls.length = 0;
@@ -331,6 +332,171 @@ describe("0003 迁移（market_release 扩列演化，v4 §一：表演化非新
 		// 既有九列不破坏（0002 形状原样保留，列名沿用 product 不改 name）
 		for (const c of ["id", "product", "version", "key_id", "sha256", "size", "published_at", "published_at_source", "yanked", "first_seen_at"])
 			expect(cols).toContain(c);
+	});
+});
+
+describe("GET catalog（v4 §三：匿名分页目录 JSON，DB 直读合成单协议 shape）", () => {
+	/** 直插 market_release 行（目录聚合数据源；上传链路见 cdn-upload.spec） */
+	function seedRelease(product: string, version: string, opts: { key_id?: string | null, published_at?: number, yanked?: number, manifest?: unknown } = {}) {
+		const at = opts.published_at ?? 1000;
+		dbo.prepare("INSERT INTO market_release (product,version,key_id,sha256,size,published_at,published_at_source,yanked,first_seen_at,manifest) VALUES (?,?,?,?,?,?,?,?,?,?)")
+			.run(product, version, "key_id" in opts ? opts.key_id : "test.publisher", SHA256, ARCHIVE.byteLength, at, "upload", opts.yanked ?? 0, at, opts.manifest === undefined ? null : JSON.stringify(opts.manifest));
+	}
+
+	it("25 包 ?page=2&size=10 → 第 11–20 条 + total=25 + page/size 回显 + api_version + items 形状", async () => {
+		for (let i = 1; i <= 25; i++)
+			seedRelease(`pkg-${String(i).padStart(2, "0")}`, "0.1.0", { published_at: 1000 + i, manifest: { name: `pkg-${String(i).padStart(2, "0")}`, version: "0.1.0", summary: `方案 ${i}` } });
+		const api = createMarketApi(makeEnv());
+		g.http = { query: { page: "2", size: "10" } };
+		await api.catalog.get();
+		expect(last?.status).toBe(200);
+		const d = last?.data as { api_version: string, page: number, size: number, total: number, truncated: boolean, items: Array<Record<string, unknown>> };
+		expect(d.api_version).toBe("v1");
+		expect(d.page).toBe(2);
+		expect(d.size).toBe(10);
+		expect(d.total).toBe(25);
+		expect(d.items).toHaveLength(10);
+		// 排序 published_at desc → 第 11–20 条 = pkg-15 … pkg-06（published_at 1025..1016 倒序）
+		expect((d.items[0] as { product: string }).product).toBe("pkg-15");
+		expect((d.items[9] as { product: string }).product).toBe("pkg-06");
+		// items 形状：product/latest/publisher(key_id)/versions_count/summary
+		expect(d.items[0]).toMatchObject({ product: "pkg-15", latest: "0.1.0", publisher: "test.publisher", versions_count: 1, summary: "方案 15" });
+		// 中间页截断标记
+		expect(d.truncated).toBe(true);
+	});
+
+	it("非法 page/size 收敛不报错（pageArgs 口径数据表）；末页 truncated=false", async () => {
+		seedRelease("pkg-a", "0.1.0");
+		const api = createMarketApi(makeEnv());
+		for (const [page, size, expectPage, expectSize] of [["0", "0", 1, 20], ["-1", "abc", 1, 20], ["abc", "500", 1, 200], ["2.9", "10", 2, 10]] as const) {
+			g.http = { query: { page, size } };
+			await api.catalog.get();
+			expect(last?.status).toBe(200);
+			const d = last?.data as { page: number, size: number };
+			expect(d.page).toBe(expectPage);
+			expect(d.size).toBe(expectSize);
+		}
+		g.http = { query: { page: "1", size: "20" } };
+		await api.catalog.get();
+		expect((last?.data as { truncated: boolean }).truncated).toBe(false);
+	});
+
+	it("排序稳定：同 published_at 按 product 升序（防翻页重复/丢条目）", async () => {
+		seedRelease("pkg-b", "0.1.0", { published_at: 5000 });
+		seedRelease("pkg-a", "0.1.0", { published_at: 5000 });
+		seedRelease("pkg-c", "0.1.0", { published_at: 5000 });
+		const api = createMarketApi(makeEnv());
+		g.http = { query: { size: "2", page: "1" } };
+		await api.catalog.get();
+		expect(((last?.data as { items: Array<{ product: string }> }).items).map(i => i.product)).toEqual(["pkg-a", "pkg-b"]);
+		g.http = { query: { size: "2", page: "2" } };
+		await api.catalog.get();
+		expect(((last?.data as { items: Array<{ product: string }> }).items).map(i => i.product)).toEqual(["pkg-c"]);
+	});
+
+	it("清单不含 yanked 行：yanked 版本不计入；全 yanked 的 product 整项消失", async () => {
+		seedRelease("live-pkg", "0.1.0");
+		seedRelease("live-pkg", "0.2.0", { yanked: 1 });
+		seedRelease("gone-pkg", "0.1.0", { yanked: 1 });
+		const api = createMarketApi(makeEnv());
+		g.http = { query: {} };
+		await api.catalog.get();
+		const items = (last?.data as { items: Array<{ product: string, latest: string, versions_count: number }> }).items;
+		expect(items.map(i => i.product)).toEqual(["live-pkg"]);
+		expect(items[0]).toMatchObject({ latest: "0.1.0", versions_count: 1 });
+	});
+
+	it("latest = 未 yanked 的 semver max（非存储列，API 计算）；summary 取 latest 版 manifest", async () => {
+		seedRelease("sem-pkg", "0.10.0", { published_at: 100, manifest: { summary: "旧" } });
+		seedRelease("sem-pkg", "0.9.0", { published_at: 300, manifest: { summary: "新" } });
+		seedRelease("no-manifest-pkg", "1.0.0", { key_id: null });
+		const api = createMarketApi(makeEnv());
+		g.http = { query: {} };
+		await api.catalog.get();
+		const items = (last?.data as { items: Array<Record<string, unknown>> }).items;
+		const sem = items.find(i => i.product === "sem-pkg")!;
+		expect(sem.latest).toBe("0.10.0"); // semver 序非字典序
+		expect(sem.summary).toBe("旧"); // latest 0.10.0 的 manifest
+		expect(sem.publisher).toBe("test.publisher");
+		// 遗留行（manifest NULL、key_id NULL）：summary 缺省、publisher null
+		const legacy = items.find(i => i.product === "no-manifest-pkg")!;
+		expect(legacy.summary).toBeUndefined();
+		expect(legacy.publisher).toBeNull();
+	});
+
+	it("匿名可读（无 user 也 200）+ Cache-Control: no-store 断言", async () => {
+		seedRelease("anon-pkg", "0.1.0");
+		const api = createMarketApi(makeEnv());
+		const headers: Array<[string, string]> = [];
+		g.json = {
+			ok: (data: unknown) => {
+				last = { status: 200, data };
+			},
+			fail: (status: number, msg: string) => {
+				last = { status, msg };
+			},
+			header: (k: string, v: string) => {
+				headers.push([k, v]);
+			},
+		};
+		g.http = { query: {} };
+		await api.catalog.get();
+		expect(last?.status).toBe(200);
+		expect(headers).toContainEqual(["Cache-Control", "no-store"]);
+	});
+});
+
+describe("GET catalog/detail（v4 §三：详情保留 yanked 条目，安装解析数据源）", () => {
+	function seedRelease(product: string, version: string, opts: { key_id?: string, yanked?: number, published_at?: number, manifest?: unknown } = {}) {
+		const at = opts.published_at ?? 1000;
+		dbo.prepare("INSERT INTO market_release (product,version,key_id,sha256,size,published_at,published_at_source,yanked,first_seen_at,manifest) VALUES (?,?,?,?,?,?,?,?,?,?)")
+			.run(product, version, opts.key_id ?? "test.publisher", SHA256, ARCHIVE.byteLength, at, "upload", opts.yanked ?? 0, at, opts.manifest === undefined ? null : JSON.stringify(opts.manifest));
+	}
+	const MANIFEST_010 = { name: "demo-solution", version: "0.1.0", summary: "演示", archive: { file: "demo-solution-0.1.0.tgz" } };
+
+	it("versions 全量含 yanked:true 条目、semver 降序；archive.file 正名 + signature 落位", async () => {
+		seedRelease("demo-solution", "0.1.0", { manifest: MANIFEST_010 });
+		seedRelease("demo-solution", "0.2.0", { yanked: 1, published_at: 2000, manifest: { name: "demo-solution", version: "0.2.0", archive: { file: "wrong-name.tgz" } } });
+		const api = createMarketApi(makeEnv());
+		g.http = { query: { name: "demo-solution" } };
+		await api.catalog.detail.get();
+		expect(last?.status).toBe(200);
+		const d = last?.data as { product: string, latest: string, versions: Array<Record<string, unknown>> };
+		expect(d.product).toBe("demo-solution");
+		expect(d.latest).toBe("0.1.0"); // yanked 不计入 latest
+		expect(d.versions.map(v => v.version)).toEqual(["0.2.0", "0.1.0"]); // semver 降序
+		expect(d.versions[0]).toMatchObject({ version: "0.2.0", yanked: true });
+		expect(d.versions[1]).toMatchObject({ version: "0.1.0", yanked: false, summary: "演示" });
+		// archive.file 由服务端组表正名（存量 manifest 内嵌 file 不可信，逐字 <name>-<version>.tgz）
+		for (const v of d.versions)
+			expect((v.archive as { file: string }).file).toBe(`demo-solution-${v.version}.tgz`);
+		expect((d.versions[0].archive as Record<string, unknown>).sha256).toBe(SHA256);
+	});
+
+	it("未知 name → 404；?version= 过滤；全 yanked 时 latest=null", async () => {
+		seedRelease("demo-solution", "0.1.0");
+		seedRelease("yanked-all", "0.1.0", { yanked: 1 });
+		const api = createMarketApi(makeEnv());
+		g.http = { query: { name: "nope" } };
+		await api.catalog.detail.get();
+		expect(last?.status).toBe(404);
+		g.http = { query: { name: "demo-solution", version: "0.1.0" } };
+		await api.catalog.detail.get();
+		expect((last?.data as { versions: unknown[] }).versions).toHaveLength(1);
+		g.http = { query: { name: "demo-solution", version: "9.9.9" } };
+		await api.catalog.detail.get();
+		expect((last?.data as { versions: unknown[] }).versions).toHaveLength(0);
+		g.http = { query: { name: "yanked-all" } };
+		await api.catalog.detail.get();
+		expect((last?.data as { latest: string | null }).latest).toBeNull();
+	});
+
+	it("匿名可读 + 错误文案卫生（404 message 不含路径/SQL/内部拓扑）", async () => {
+		const api = createMarketApi(makeEnv());
+		g.http = { query: { name: "nope" } };
+		await api.catalog.detail.get();
+		expect(last?.status).toBe(404);
+		expect(String(last?.msg)).not.toMatch(/\/|SELECT|sqlite|cdn\//i);
 	});
 });
 
