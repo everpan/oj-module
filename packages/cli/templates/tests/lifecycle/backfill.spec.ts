@@ -13,7 +13,7 @@ import * as fsp from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { defaultTestKey, signedArchiveFor } from "../../../src/lifecycle/__tests__/helpers";
+import { defaultTestKey, nodeVerifyEd25519, signedArchiveFor } from "../../../src/lifecycle/__tests__/helpers";
 import { createMarketApi, marketEnv } from "../../src/oj-market/api/api";
 import { installDb } from "../fixture";
 
@@ -92,6 +92,7 @@ function makeEnv(overrides: Partial<MarketEnv> = {}): MarketEnv {
 		cdnDir,
 		exec: tarExec(),
 		sha256Hex: d => createHash("sha256").update(d).digest("hex"),
+		verifyEd25519: nodeVerifyEd25519,
 		...overrides,
 	} as MarketEnv;
 }
@@ -176,6 +177,21 @@ describe("场景：回填（cdn/ 存量 → DB 目录行）", () => {
 		const rs = rows();
 		expect(rs).toHaveLength(1);
 		expect(rs[0]).toMatchObject({ sig_alg: null, sig_value: null, sig_public_key: null, sig_registry_id: null, key_id: null });
+		expect((last?.data as { sigMissing: string[] }).sigMissing).toEqual(["demo-solution-0.1.0.tgz"]);
+	});
+
+	it("数据表 旁车验签失败（形全但 sha 与字节不绑定，投毒旁车）：行照落库，sig 四列 NULL，进 sigMissing（fail-closed 与缺签同口径）", async () => {
+		const bytes = pkgBytes("demo-solution", "0.1.0");
+		// 形全实毒：对其它字节按同名同版本签出——结构合法、签名有效，唯与实收字节无绑定
+		const poisoned = signedArchiveFor(pkgBytes("evil", "9.9.9"), "demo-solution", "0.1.0", { keyPair: TEST_KEY });
+		await fsp.writeFile(join(cdnDir, "demo-solution-0.1.0.tgz"), bytes);
+		await fsp.writeFile(join(cdnDir, "demo-solution-0.1.0.tgz.sig"), JSON.stringify(poisoned.sig));
+		const api = createMarketApi(makeEnv());
+		await api.backfill.post();
+		expect(last?.status).toBe(200);
+		const rs = rows();
+		expect(rs).toHaveLength(1);
+		expect(rs[0]).toMatchObject({ sig_alg: null, sig_value: null, sig_public_key: null, sig_registry_id: null, key_id: null, sha256: shaOf(bytes) });
 		expect((last?.data as { sigMissing: string[] }).sigMissing).toEqual(["demo-solution-0.1.0.tgz"]);
 	});
 });

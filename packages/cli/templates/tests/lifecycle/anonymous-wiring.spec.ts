@@ -2,6 +2,8 @@
 // auth.anonymous_paths 与 tenant.anonymous_paths 双列（去 base 前缀形态）：
 //   /oj-market/catalog/**  目录匿名读（站点身份发现面 + CLI 2×2 矩阵探测：旧站点 404 → 人话）
 //   /oj-market/cdn/upload  签名推送端点（X-OJM-Key-Id/X-OJM-Signature 即凭证，不经 Bearer）
+//   /oj-market/yank        签名下线端点（全分支终审 C1：不经匿名列表则 oj-auth 守卫在
+//                          handler 前硬 401——文档承诺的签名制 yank 永远无法到达处理器）
 // 匹配语义（oj-auth v0.1.20，../oj-bin 只读核实）：字面精确；`*` 恰一段；`**` 跨段（≥0 段）——
 // `/oj-market/catalog/**` 同条覆盖 catalog 与 catalog/detail。
 // 生效口径：config.yaml 是启动冻结段，改后须重启（restart_pending），发版说明提醒。
@@ -12,7 +14,7 @@ import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 
 const TEMPLATES = join(dirname(fileURLToPath(import.meta.url)), "../..");
-const REQUIRED = ["/oj-market/catalog/**", "/oj-market/cdn/upload"];
+const REQUIRED = ["/oj-market/catalog/**", "/oj-market/cdn/upload", "/oj-market/yank"];
 
 function section(config: Record<string, unknown>, key: "auth" | "tenant"): string[] {
 	const anon = (config[key] as Record<string, unknown>)?.anonymous_paths;

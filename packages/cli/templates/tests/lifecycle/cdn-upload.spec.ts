@@ -121,6 +121,19 @@ async function pushSig(api: any, opts: { key?: typeof TEST_KEY, registryId?: str
 	await api.upload.post();
 }
 
+/** 以指定 keyId/key 推旁车（投毒场景：rival key 也在信任库，推送头身份须与之对应） */
+function pushSigAs(api: any, keyId: string, key: { privateKeyPem: string }, sigBytes: Uint8Array): Promise<void> {
+	const sha256 = createHash("sha256").update(sigBytes).digest("hex");
+	const canonical = `cdn-upload:${REGISTRY}:${SIG_FILE}:${sha256}`;
+	g.http = { query: { name: SIG_FILE }, headers: { "x-ojm-key-id": keyId, "x-ojm-signature": signCanonical(key.privateKeyPem, canonical) }, files: [{}], file: async () => sigBytes };
+	return api.upload.post();
+}
+
+/** 信任库加录一把 key（rivals 场景用） */
+async function trustKey(keyId: string, publicKeyHex: string) {
+	await createTrustStore(trustPath, { audit: () => {}, fingerprintOf: pk => createHash("sha256").update(hexToBytes(pk)).digest("hex") }).add(keyId, publicKeyHex);
+}
+
 beforeEach(async () => {
 	root = await fsp.mkdtemp(join(tmpdir(), "ojm-cdn-upload-"));
 	cdnDir = join(root, "cdn");
@@ -439,6 +452,57 @@ describe("POST upload（pair 约束：sig 先 tgz 后）", () => {
 		expect(last?.status).toBe(409);
 		// 盘上仍是原字节
 		expect(createHash("sha256").update(await fsp.readFile(join(cdnDir, FILE))).digest("hex")).toBe(SHA256);
+	});
+});
+
+describe("POST upload（pair 验签：旁车必须与实收字节密码学绑定，全分支终审 I2）", () => {
+	it("给定 竞争受信 key 预推「形全实毒」旁车（对自制字节签名，sha 与实收 tgz 不符），当 受害方推 tgz，则 409 拒配对、不写行、tgz 不落盘", async () => {
+		const rival = generateKeyPair();
+		await trustKey("rival.publisher", rival.publicKeyHex);
+		// 毒旁车：rival 对自己字节按 demo-solution@0.1.0 规范串签名——五字段全合法，唯 sha256 与受害方字节无关
+		const poisoned = signedArchiveFor(new TextEncoder().encode("poison-bytes"), "demo-solution", "0.1.0", { keyPair: rival, keyId: "rival.publisher" });
+		const poisonBytes = new TextEncoder().encode(JSON.stringify(poisoned.sig));
+		const { createCdnUploadApi } = await import("../../src/oj-market/api/cdn/api");
+		const api = createCdnUploadApi(makeEnv());
+		await pushSigAs(api, "rival.publisher", rival, poisonBytes);
+		expect(last?.status).toBe(200); // 旁车先行本身放行——验签推迟到 pair 时与实收字节绑定
+		g.http = httpFor(FILE, ARCHIVE);
+		await api.upload.post();
+		expect(last?.status).toBe(409);
+		expect(String(last?.msg)).toContain("验签");
+		expect(dbo.prepare("SELECT COUNT(*) c FROM market_release").all()[0].c).toBe(0);
+		expect(await fsp.readdir(cdnDir)).not.toContain(FILE);
+	});
+
+	it("给定 旁车由另一把受信 key 签出（字节绑定正确，但 key_id 与推送身份不符），当 推送 tgz，则 409 拒（一行一锚：行 key_id 即验签 key_id）", async () => {
+		const other = generateKeyPair();
+		await trustKey("other.publisher", other.publicKeyHex);
+		const foreign = signedArchiveFor(ARCHIVE, "demo-solution", "0.1.0", { keyPair: other, keyId: "other.publisher" });
+		const foreignBytes = new TextEncoder().encode(JSON.stringify(foreign.sig));
+		const { createCdnUploadApi } = await import("../../src/oj-market/api/cdn/api");
+		const api = createCdnUploadApi(makeEnv());
+		await pushSigAs(api, "other.publisher", other, foreignBytes);
+		expect(last?.status).toBe(200);
+		g.http = httpFor(FILE, ARCHIVE); // TEST_KEY 身份推 tgz
+		await api.upload.post();
+		expect(last?.status).toBe(409);
+		expect(String(last?.msg)).toContain("key");
+		expect(dbo.prepare("SELECT COUNT(*) c FROM market_release").all()[0].c).toBe(0);
+		expect(await fsp.readdir(cdnDir)).not.toContain(FILE);
+	});
+
+	it("给定 旁车 registry_id 与实收绑定正确，当 正常 pair，则 200（验签不误伤合法发布：canonical 首段 = 旁车自带签发方身份，非本站点 registry）", async () => {
+		// 防实现错把站点 registryId 塞进包级 canonical——包级 canonical 首段是签发方身份（跨站签发合法）
+		const foreignRegistry = signedArchiveFor(ARCHIVE, "demo-solution", "0.1.0", { keyPair: TEST_KEY, registryId: "upstream.registry" });
+		const sigBytes = new TextEncoder().encode(JSON.stringify(foreignRegistry.sig));
+		const { createCdnUploadApi } = await import("../../src/oj-market/api/cdn/api");
+		const api = createCdnUploadApi(makeEnv());
+		await pushSig(api, { sigBytes });
+		expect(last?.status).toBe(200);
+		g.http = httpFor(FILE, ARCHIVE);
+		await api.upload.post();
+		expect(last?.status).toBe(200);
+		expect(dbo.prepare("SELECT COUNT(*) c FROM market_release").all()[0].c).toBe(1);
 	});
 });
 

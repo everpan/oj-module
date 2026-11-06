@@ -32,7 +32,7 @@ import { MAX_PACKAGE_BYTES } from "#/_platform/_lifecycle/limits";
 
 import { manifestOfUpload } from "#/_platform/_lifecycle/manifest-of-upload";
 import { respond } from "#/_platform/_shared/respond";
-import { clampManifest, fail, parseSidecarSig, parseUploadFile } from "./shared";
+import { clampManifest, fail, packageCanonicalOf, parseSidecarSig, parseUploadFile } from "./shared";
 import { authenticateSignedKey, UPLOAD_RATE_LIMIT, verifyCanonicalSig } from "./signed-auth";
 
 // 既有引用面兼容（tests/lifecycle/cdn-upload.spec.ts 等从本文件取）
@@ -152,6 +152,18 @@ async function tgzUploadBody(env: CdnUploadEnv, file: ParsedUploadFile, rawName:
 	if (sigBytes === null)
 		fail(409, `pair 约束（sig 先 tgz 后）：请先上传 ${rawName}.sig 旁车，再推 ${rawName}——tgz 未配对不入库`);
 	const sig = parseSidecarSig(new TextDecoder().decode(sigBytes));
+	// pair 验签（终审 I2）：旁车必须与实收字节密码学绑定——受信 key 也可能作恶，预推
+	// 「形全实毒」旁车会让受害方 tgz 配对错签、该版本全部安装 fail-closed。验签在 pair
+	// 时做（sig 先行时 tgz 字节尚不存在，无法绑定）；包级 canonical 首段 = 旁车自带签发方
+	// 身份（跨站签发合法），与上传鉴权用的站点 canonical 是两串。
+	if (!verifyCanonicalSig(env, sig.public_key, packageCanonicalOf(sig.registry_id, file.name, file.version, sha256), sig.value)) {
+		await auditPublish({ name: file.name, version: file.version, keyId, status: "failed", message: "409 旁车验签失败：签名与实收字节不绑定" });
+		fail(409, `「${file.name}@${file.version}」的 .sig 旁车验签失败——签名与实收字节不绑定（cdn/ 若残留他人旁车，须站点 superadmin 清理后重推）`);
+	}
+	if (sig.key_id !== keyId) {
+		await auditPublish({ name: file.name, version: file.version, keyId, status: "failed", message: `409 旁车 key 不符：${sig.key_id} ≠ 推送身份 ${keyId}` });
+		fail(409, `「${file.name}@${file.version}」的 .sig 旁车 key_id「${sig.key_id}」与推送身份「${keyId}」不符——旁车与包体须同一把发布 key（一行一锚）`);
+	}
 
 	// ① 查库比对（不碰盘仲裁：异字节在此被拒，CDN 字节绝无被持久损坏的窗口）
 	const prior = (await db.table("market_release")

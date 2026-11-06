@@ -31,7 +31,9 @@
    （签名 canonical 首段 = 站点身份，防跨站重放；推送/下线都依赖它）。**改 config 须重启**
    （启动冻结段）。
 4. **匿名面**：`auth.anonymous_paths` 与 `tenant.anonymous_paths` 增加
-   `/oj-market/catalog/**` 与 `/oj-market/cdn/upload`（新模板自带；老工程手工补，**重启生效**）。
+   `/oj-market/catalog/**`、`/oj-market/cdn/upload` 与 `/oj-market/yank`
+   （新模板自带；老工程手工补，**重启生效**。yank 同签名制——漏列则 oj-auth 守卫在
+   handler 前硬 401，签名下线永远到不了处理器）。
 5. **回填存量**：升级后跑一次 `curl -X POST -H 'Authorization: Bearer <superadmin token>' \
    <站点>/api/oj-market/backfill`——扫描 `cdn/` 存量 tgz + 旁车 .sig，upsert 目录行
    （幂等可重入，兼作灾备恢复与对账）。`.sig` 缺失的存量包照常入库但签名四列为 NULL，

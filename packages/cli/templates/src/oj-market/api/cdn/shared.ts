@@ -83,6 +83,11 @@ export function parseSidecarSig(text: string): SidecarSig {
 	return { alg, key_id: keyId, public_key: publicKey, value, canon, registry_id: registryId };
 }
 
+/** 包级 canonical（REG-CS3 v2；与 packages/cli/src/lifecycle/sign.ts canonicalString 逐字一致——双端不可漂移） */
+export function packageCanonicalOf(registryId: string, name: string, version: string, sha256: string): string {
+	return `${registryId}:${name}@${version}:${sha256}`;
+}
+
 /** 入库钳制（catalog 展示字段）：summary ≤200 / description ≤2000 截断——全量 manifest 仍在包内 */
 export function clampManifest(m: Record<string, unknown>): Record<string, unknown> {
 	const out = { ...m };

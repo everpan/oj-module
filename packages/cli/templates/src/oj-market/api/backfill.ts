@@ -7,7 +7,7 @@
 //   · 已存在行（对账/灾备重放）：只重写内容列（key_id/sha256/size/sig 四列/manifest），
 //     published_at/published_at_source/first_seen_at/yanked 原样保留——审计连续、yank 不回魂。
 //   · 幂等可重入：重复跑行数不变，报告 unchanged 供对账。
-// 降级（数据表）：.sig 缺失/不可解析 → 行照落库但 sig 四列 NULL（安装验签 sig_missing
+// 降级（数据表）：.sig 缺失/不可解析/与实收字节验签不绑定 → 行照落库但 sig 四列 NULL（安装验签 sig_missing
 // fail-closed），文件名进 sigMissing；坏包（解不开/manifest 名实不符）进 skipped 带
 // reason，不阻断其它文件；孤立 .sig（tgz 缺失）容忍不加 GC（须受信 key 才能制造）。
 
@@ -16,7 +16,7 @@ import type { ExecFace } from "#/_platform/_lifecycle/steps/extract";
 import { fsFace } from "#/_platform/_lifecycle/atomic";
 import { manifestOfUpload } from "#/_platform/_lifecycle/manifest-of-upload";
 
-import { clampManifest, parseSidecarSig, parseUploadFile } from "./cdn/shared";
+import { clampManifest, packageCanonicalOf, parseSidecarSig, parseUploadFile } from "./cdn/shared";
 
 export interface BackfillEnv {
 	/** cdn/ 字节仓库目录（扫描源） */
@@ -26,6 +26,8 @@ export interface BackfillEnv {
 	/** 注入面（DIP）：缺省回落 isolate 全局 exec / crypto.sha256Hex */
 	exec?: ExecFace
 	sha256Hex?: (data: Uint8Array) => string
+	/** Ed25519 验签面（旁车与实收字节绑定校验；缺省回落 isolate 全局 crypto.verifyEd25519） */
+	verifyEd25519?: (publicKey: string, msg: string, sigBase64: string) => boolean
 	/** 当前时刻（epoch 秒；新行 published_at/first_seen_at；缺省 Date.now） */
 	now?: () => number
 }
@@ -60,6 +62,11 @@ function sha256Of(env: BackfillEnv): (data: Uint8Array) => string {
 	return env.sha256Hex ?? ((data: Uint8Array) => g.crypto!.sha256Hex!(data));
 }
 
+function verifyOf(env: BackfillEnv): (publicKey: string, msg: string, sigBase64: string) => boolean {
+	const g = globalThis as { crypto?: { verifyEd25519?: (pk: string, msg: string, sig: string) => boolean } };
+	return env.verifyEd25519 ?? ((pk, msg, sig) => g.crypto!.verifyEd25519!(pk, msg, sig));
+}
+
 function execOf(env: BackfillEnv): ExecFace {
 	const g = globalThis as { exec?: { run: ExecFace["run"] } };
 	return env.exec ?? { run: (argv, opts) => g.exec!.run(argv, opts) };
@@ -84,21 +91,22 @@ async function scanPackage(f: FsFace, env: BackfillEnv, file: string, parsed: { 
 	if (m.name !== parsed.name || m.version !== parsed.version)
 		throw new Error(`名实不符：文件名 ${parsed.name}-${parsed.version}，包内 manifest ${String(m.name)}-${String(m.version)}`);
 
-	// 旁车 .sig：缺失/损坏降级（sig 四列 NULL），不阻断落库
-	let sigMissing = false;
+	// 旁车 .sig：缺失/损坏/与实收字节不绑定一律降级（sig 四列 NULL，fail-closed 同口径）。
+	// 验签（终审 I2）：结构合法不等于绑定——投毒旁车五字段全对但签的是别家字节，照验才挡得住。
 	let sig: ReturnType<typeof parseSidecarSig> | null = null;
 	const sigBytes = await readFileOrNull(f, `${env.cdnDir}/${file}.sig`);
-	if (sigBytes === null) {
-		sigMissing = true;
-	}
-	else {
+	if (sigBytes !== null) {
 		try {
 			sig = parseSidecarSig(new TextDecoder().decode(sigBytes));
+			const canonical = packageCanonicalOf(sig.registry_id, parsed.name, parsed.version, sha256Of(env)(bytes));
+			if (!verifyOf(env)(sig.public_key, canonical, sig.value))
+				sig = null; // 验签不绑定 → 视同缺签
 		}
 		catch {
-			sigMissing = true;
+			sig = null;
 		}
 	}
+	const sigMissing = sig === null;
 	return {
 		content: {
 			key_id: sig?.key_id ?? null,

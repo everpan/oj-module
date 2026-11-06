@@ -162,10 +162,12 @@ auth:
     # —— 方案市场匿名面（v4 §五：签名制不经账号口令，企微用户无障碍）——
     # catalog 匿名读：站点身份发现面（registry_id）+ CLI 2×2 兼容矩阵探测（旧站点无此 API → 404 → 人话）
     # cdn/upload 签名推送：X-OJM-Key-Id / X-OJM-Signature 即凭证（信任库 + Ed25519），不经 Bearer
+    # yank 签名下线：同凭证制——漏列则 oj-auth 守卫在 handler 前硬 401，签名永无到达之日（终审 C1 修补）
     # `**` 跨段（≥0 段，oj-auth v0.1.20 语义）：一条同盖 catalog 与 catalog/detail
     # 生效口径：config.yaml 启动冻结段，改后须重启（restart_pending）
     - /oj-market/catalog/**
     - /oj-market/cdn/upload
+    - /oj-market/yank
 
 # 多租户（企微代开发 v3 Phase 0）：开启后所有 {base} 请求必须带 X-TENANT-ID，否则 400。
 # 前端由 tenantStore + headerProvider 统一注入（单租户部署恒为 default，UX 不变）。
@@ -204,9 +206,10 @@ tenant:
     - /auth/wecom/ticket # 一次性票据换会话：租户由票据行携带
     - /auth/wecom/event # 企微指令回调：验签+解密即认证，无租户语义
     - /publish/credential/exchange # 凭证兑换：CLI 的裸 fetch 不带租户头；表本身是共享表（B 组）
-    # 市场匿名面同列（CLI 推送/发现的裸 fetch 不带租户头；与 auth.anonymous_paths 同条目）
+    # 市场匿名面同列（CLI 推送/下线/发现的裸 fetch 不带租户头；与 auth.anonymous_paths 同条目）
     - /oj-market/catalog/**
     - /oj-market/cdn/upload
+    - /oj-market/yank
   # tenant.require_signed_claim：租户头的服务端绑定（平台级 fail-closed）。
   # 暂保持 false——上游 oj 的 jwt.sign 目前会静默丢弃自定义 claim（需求 R6），
   # 开启前无法把 tenant 放进 token。R6 落地后改 true，裸头即失去自证能力。

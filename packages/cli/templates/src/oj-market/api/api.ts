@@ -956,6 +956,7 @@ export function createMarketApi(env: MarketEnv) {
 						staging: env.staging,
 						exec: env.exec,
 						sha256Hex: env.sha256Hex,
+						verifyEd25519: env.verifyEd25519,
 						now: env.now,
 					});
 				});

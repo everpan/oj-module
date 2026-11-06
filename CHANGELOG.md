@@ -34,9 +34,13 @@
   `ojm market publish` 的 `--rebuild-index` 移除。旧站点（文件索引）+ 新 CLI 组合：探测
   404 显式报错。**迁移见 `docs/migration/market-remote-publish.md`**（含 2×2 兼容矩阵、
   信任库 `.solutions/trusted-keys.yaml` 迁移——key_id 断则全部历史包验签崩、匿名面
-  `/oj-market/catalog/**` + `/oj-market/cdn/upload` 须**重启生效**、回滚口径）。
+  `/oj-market/catalog/**` + `/oj-market/cdn/upload` + `/oj-market/yank` 须**重启生效**、回滚口径）。
 - 发布历史页「索引时间」标签改「回填时间」（`published_at_source` file=回填/upload=直写）。
-- 模板 config.yaml 匿名面增列市场两条（auth + tenant 双列）。
+- 模板 config.yaml 匿名面增列市场三条（catalog/upload/yank，auth + tenant 双列——yank 漏列则
+  签名下线被 oj-auth 守卫在 handler 前 401，全分支终审 C1 修补）。
+- 签名推送 pair 步新增包级验签：旁车须与实收 tgz 字节密码学绑定且 key_id 与推送身份一致
+  （一行一锚）——堵住「受信 key 预推形全实毒旁车砖掉竞品版本安装」；回填对盘上旁车同验，
+  验签失败按缺签降级（sig 四列 NULL，安装 fail-closed）。
 
 
 - **脚手架完整性门禁（内置模块自治契约）**：`ojm init` 搭出的工程里，框架默认模块
