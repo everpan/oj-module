@@ -388,25 +388,29 @@ describe("initProject", () => {
 			expect(fs.existsSync(path.join(dest, mod))).toBe(false);
 		expect(fs.existsSync(path.join(dest, "src/demo"))).toBe(false);
 
-		// 2) 默认模块照常在（oj-market 0.2.8 起默认下发：方案市场前端 +
-		//    _platform 市场编排面 /api/_platform/market/*）
-		for (const mod of ["src/app/web", "src/app/web/login", "src/app/web/notification", "src/oj-market/web"])
+		// 2) 默认模块照常在（src/app 前端 + 各内置 api）；oj-market **出厂未装**（Phase B T2）：
+		//    页面源码不拷（装后经方案包供给），但 api 编排面照拷（src/oj-market/api）+
+		//    两份 __client 生成物照拷（ojm api --check 面：openapi 里 /api/oj-market/*
+		//    与 publish 契约的生成物对账需要落点，同 app/web/_platform 先例）
+		for (const mod of ["src/app/web", "src/app/web/login", "src/app/web/notification", "src/oj-market/api", "src/oj-market/web/__client", "src/oj-market/web/publish/__client"])
 			expect(fs.existsSync(path.join(dest, mod))).toBe(true);
-		//    其 __tests__ 不进脚手架（用户工程无 web 侧 vitest 基建）
+		//    市场页面源码不进脚手架（其 __tests__ 随之不在；entry 不在 = 扫描不装 = 出厂未装）
 		expect(fs.existsSync(path.join(dest, "src/oj-market/web/__tests__"))).toBe(false);
-		expect(fs.existsSync(path.join(dest, "src/oj-market/web/entry.ts"))).toBe(true);
+		expect(fs.existsSync(path.join(dest, "src/oj-market/web/entry.ts"))).toBe(false);
+		expect(fs.existsSync(path.join(dest, "src/oj-market/web/pages"))).toBe(false);
 
 		// 3) web.config.ts：demo 条目与 #region 标记一并剥离（不留指向缺失文件的死条目）；
-		//    oj-market 条目保留（默认模块，不再走 demo-only 剥离）
+		//    oj-market 模块登记一并摘除（Phase B T2：出厂未装，改由方案包经安装器装载——
+		//    登记残留会报「entry 不存在」）；publish client 归属（clientOwners）不变
 		const config = fs.readFileSync(path.join(dest, "web.config.ts"), "utf-8");
 		for (const name of ["about", "access", "exception", "outside", "route-nest"])
 			expect(config).not.toContain(`"${name}"`);
-		expect(config).toContain("\"oj-market\"");
+		expect(config).not.toContain("src/oj-market/web/entry.ts");
 		expect(config).not.toContain("#region demo-only");
 		expect(config).not.toContain("#endregion");
 		// 剥离不能误伤默认条目
 		expect(config).toContain("src/app/web/entry.ts");
-		expect(config).toContain("src/oj-market/web/entry.ts");
+		expect(config).toContain("\"publish\": \"oj-market\"");
 
 		// 4) openapi.json：demo-only 模块（demo/home）的端点被裁掉——留着会让
 		//    新工程一上手跑 `ojm api --check` 就报「有契约无 handler」；白名单内

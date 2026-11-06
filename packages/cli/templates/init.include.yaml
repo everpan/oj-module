@@ -129,20 +129,16 @@ include:
   - src/app/web/notification
   - src/app/web/personal-center
   - src/app/web/system
-  # 解决方案市场：默认第一方能力。逐子路径收录——__tests__ 不进脚手架
-  # （用户工程无 web 侧 vitest 基建，拷了是死文件）
-  - src/oj-market/web/entry.ts
-  - src/oj-market/web/types.ts
-  # __client 是 ojm api 生成物：defaultClient.ts 直接 import "../__client"，
-  # 不下发则脚手架工程 ojm build 即解析失败（与 app/web/_platform 同理由）
+  # 解决方案市场（Phase B T2 起「出厂未装」分层）：api 编排面（install/catalog/
+  # yank/trust 推送/cdn upload/backfill）随脚手架内置——市场 UI 未装/已卸载时
+  # 端点仍在（方案 §2「安装入口（市场外）」），system 域安装入口经它接线。
+  # v4 api 迁移（42369d5b6）漏收白名单致脚手架零 /api/oj-market/*——本条补上。
+  - src/oj-market/api
+  # 市场 UI 是纯 web 方案包（src/oj-market/solution.yaml，ojm build --bundle oj-market），
+  # superadmin 首装后由安装器 deploy-web 供给——页面源码不进脚手架。
+  # 唯独两份 __client 生成物照拷：openapi.json 含 /api/oj-market/*（api 内置），
+  # ojm api --check 的生成物对账需要落点（同 app/web/_platform 先例；publish
+  # 契约的生成物归属 oj-market 随发布页走包，用户工程只需文件在场）
   - src/oj-market/web/__client
-  # 市场编排面 client 接线（entry onInit 创建 createOjMarketClient）
-  - src/oj-market/web/routes.ts
-  - src/oj-market/web/api
-  - src/oj-market/web/components
-  - src/oj-market/web/hooks
-  - src/oj-market/web/locales
-  - src/oj-market/web/pages
-  - src/oj-market/web/publish
-  - src/oj-market/web/utils
+  - src/oj-market/web/publish/__client
   - src/app/web/web
