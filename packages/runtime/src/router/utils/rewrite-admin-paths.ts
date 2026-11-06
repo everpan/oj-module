@@ -18,14 +18,45 @@ import { addRouteIdByPath } from "./add-route-id-by-path";
  */
 const SYSTEM_KEY = "/system";
 
-/** 单路由导航 path：admin 复用同一重写算法；相对 path 以已计算的绝对 id 补全模块根。 */
-export function resolveRoutePath(route: AppRouteRecordRaw & { id?: string }): string | undefined {
-	if (route.handle?.category !== "admin")
-		return route.path;
-	const sourcePath = route.id ?? route.path;
-	if (!sourcePath || sourcePath === SYSTEM_KEY || sourcePath.startsWith(`${SYSTEM_KEY}/`))
+/**
+ * 单路由导航 path：admin 复用同一重写算法；相对 path 以已计算的绝对 id 补全模块根。
+ *
+ * admin 子树内的后代路由（自身不声明 category，继承自父级）传祖先链获取重写后
+ * 路径：`resolveRoutePath(child, moduleRoot, ..., parent)`（链从模块根到直接父级）。
+ * 由重写前缀代数（systemKey + rootAbs + suffix，suffix 以模块 root 为基准），
+ * 后代重写结果恒为 `/system + 原绝对路径`，与 admin 嵌套深度无关；原绝对路径
+ * 优先取框架生成的 `id`（含 index 尾斜杠），无 id 时按链拼接。链上无 admin
+ * 祖先时仅拼接绝对路径，不做重写；已重写 id 不以原路径为前缀，自然幂等。
+ */
+export function resolveRoutePath(
+	route: AppRouteRecordRaw & { id?: string },
+	...ancestors: (AppRouteRecordRaw & { id?: string })[]
+): string | undefined {
+	if (ancestors.length === 0) {
+		if (route.handle?.category !== "admin")
+			return route.path;
+		const sourcePath = route.id ?? route.path;
+		if (!sourcePath || sourcePath === SYSTEM_KEY || sourcePath.startsWith(`${SYSTEM_KEY}/`))
+			return sourcePath;
+		return rewriteAdminPaths([{ ...route, path: sourcePath }])[0]?.path;
+	}
+
+	const chainAbs = ancestors.reduce((abs, node) => resolveAbs(node.path, abs), "/");
+	const sourcePath = route.index
+		? `${chainAbs}/`
+		: route.id ?? resolveAbs(route.path, chainAbs);
+	let adminPrefix: string | undefined;
+	{
+		let abs = "/";
+		for (const node of ancestors) {
+			abs = resolveAbs(node.path, abs);
+			if (node.handle?.category === "admin")
+				adminPrefix = abs; // 嵌套 admin 时取最近一个
+		}
+	}
+	if (!sourcePath || !adminPrefix || !sourcePath.startsWith(adminPrefix))
 		return sourcePath;
-	return rewriteAdminPaths([{ ...route, path: sourcePath }])[0]?.path;
+	return `${SYSTEM_KEY}${sourcePath}`;
 }
 
 /** 解析路由绝对路径（与 generate-menu-items-from-routes 同语义） */

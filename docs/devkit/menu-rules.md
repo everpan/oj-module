@@ -115,12 +115,17 @@ export default defineModule({
 
 下游需要主动导航时，从公开入口调用 `resolveRoutePath(route)`，不要复制这套映射规则。它接收单条 route 并返回最终 path：admin 添加 `/system`，普通路由原样返回，已重写 path 幂等；相对 admin path 使用 `getRoutes()` 生成的绝对 `id` 补全模块根。
 
+admin 子树内的后代路由（自身不声明 `category`，继承自父级）追加祖先链参数，链从模块根到直接父级：
+
 ```ts
 import { resolveRoutePath } from "@oj-module/runtime";
 
 const target = resolveRoutePath(route);
 if (target)
   navigate(target);
+
+// admin 子树后代
+const childTarget = resolveRoutePath(childRoute, moduleRootRoute, adminParentRoute);
 ```
 
 > 真重写 vs 旧视觉归组：旧版只在菜单层把 admin 挪到 /system，路由 URL 仍是 `/wiki/admin`，
