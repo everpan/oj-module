@@ -143,6 +143,56 @@ function parseSidecarSig(text: string): SidecarSig {
 	return { alg, key_id: keyId, public_key: publicKey, value, canon };
 }
 
+// ── 签名请求共享「验面」（上传端点与 market yank 端点同一鉴权序，勿各写一遍）────────────────
+// 顺序即计划钉死的 fail-fast 序：头 → 信任库（403，不消费 body）→ 限速（按 key_id）→
+// registry_id（503）。验签（verifyCanonicalSig）由调用方在拿到 canonical 后执行——
+// 上传端点的 canonical 依赖实收字节 sha256（body 后），yank 的 canonical 不依赖 body。
+
+export interface SignedAuthEnv {
+	trustPath: string
+	/** 本站点 registry 身份；缺省读 config vars.registry_id */
+	registryId?: string
+	configPath?: string
+	verifyEd25519?: (publicKey: string, msg: string, sigBase64: string) => boolean
+}
+
+/** 请求头读取（大小写不敏感——http.headers 键大小写随客户端，wecom/api.ts 同款） */
+function headerOf(headers: Record<string, unknown>, name: string): string {
+	const lower = name.toLowerCase();
+	for (const [k, v] of Object.entries(headers)) {
+		if (k.toLowerCase() === lower)
+			return String(v).trim();
+	}
+	return "";
+}
+
+/**
+ * 签名请求鉴权（pre-canonical）：返回签名身份三要素。错误口径：
+ * 缺头 401（签名制不经账号口令）；key 不受信 403（附 trust add 指引）；限速 429；
+ * registry_id 未配置 503（指向 vars.registry_id 设置项）。canonical 验签不在此——
+ * 调用方持 canonical 后调 verifyCanonicalSig。
+ */
+export async function authenticateSignedKey(env: SignedAuthEnv, rateBucket: string): Promise<{ keyId: string, publicKey: string, registryId: string, signature: string }> {
+	const headers = ((http as { headers?: Record<string, unknown> }).headers ?? {}) as Record<string, unknown>;
+	const keyId = headerOf(headers, "x-ojm-key-id");
+	const signature = headerOf(headers, "x-ojm-signature");
+	if (keyId === "" || signature === "")
+		fail(401, "缺 X-OJM-Key-Id / X-OJM-Signature 请求头——签名推送须经 ojm keygen --credential 兑换的发布身份（不经账号口令；403 指引的前提是手上已有 key_id）");
+	const publicKey = await createTrustStore(env.trustPath).get(keyId);
+	if (publicKey === null)
+		fail(403, `发布 key「${keyId}」不在本站点信任库——请站点 superadmin 经市场信任确认（或 ojm trust add）入录后重试`);
+	await rateLimit(`${rateBucket}:${keyId}`, UPLOAD_RATE_LIMIT.limit, UPLOAD_RATE_LIMIT.windowMs);
+	const registryId = await resolveRegistryId(env);
+	if (registryId === null)
+		fail(503, "站点未配置 registry_id（签名 canonical 首段 = 站点身份，防跨站重放）：请在 config.yaml vars 增加 registry_id: <站点身份> 后重试");
+	return { keyId, publicKey, registryId, signature };
+}
+
+/** canonical 验签（Ed25519；verifyEd25519 面注入优先，缺省 isolate 全局） */
+export function verifyCanonicalSig(env: SignedAuthEnv, publicKey: string, canonical: string, signature: string): boolean {
+	return verifyEd25519Of({ verifyEd25519: env.verifyEd25519 })(publicKey, canonical, signature);
+}
+
 // ── 注入面缺省回落 ─────────────────────────────────────────────────────────────────────────
 function execOf(env: CdnUploadEnv): ExecFace {
 	const g = globalThis as { exec?: { run: ExecFace["run"] } };
@@ -161,16 +211,6 @@ function verifyEd25519Of(env: CdnUploadEnv): (publicKey: string, msg: string, si
 
 function nowOf(env: CdnUploadEnv): number {
 	return env.now?.() ?? Math.floor(Date.now() / 1000);
-}
-
-/** 请求头读取（大小写不敏感——http.headers 键大小写随客户端，wecom/api.ts 同款） */
-function headerOf(headers: Record<string, unknown>, name: string): string {
-	const lower = name.toLowerCase();
-	for (const [k, v] of Object.entries(headers)) {
-		if (k.toLowerCase() === lower)
-			return String(v).trim();
-	}
-	return "";
 }
 
 /** 上传载荷字节（upload/api.ts 先例双路径：小文件字节在手，大文件已流式落 blob 须走 blob.get） */
@@ -339,19 +379,8 @@ async function uploadBody(env: CdnUploadEnv): Promise<Record<string, unknown>> {
 	if (file === null)
 		fail(400, `文件名非法：「${rawName}」——须为 <name>-<version>.tgz 或其 .sig 旁车（name ^[a-z][a-z0-9-]{0,63}$ 全小写、版本数字开头）；路径逃逸/绝对路径/反斜杠/错扩展名一律拒`);
 
-	// ① 先验头（403 fail-fast：信任库成员判定不消费 body）
-	const headers = ((http as { headers?: Record<string, unknown> }).headers ?? {}) as Record<string, unknown>;
-	const keyId = headerOf(headers, "x-ojm-key-id");
-	const signature = headerOf(headers, "x-ojm-signature");
-	if (keyId === "" || signature === "")
-		fail(401, "缺 X-OJM-Key-Id / X-OJM-Signature 请求头——签名推送须经 ojm keygen --credential 兑换的发布身份（不经账号口令；403 指引的前提是手上已有 key_id）");
-	const publicKey = await createTrustStore(env.trustPath).get(keyId);
-	if (publicKey === null)
-		fail(403, `发布 key「${keyId}」不在本站点信任库——请站点 superadmin 经市场信任确认（或 ojm trust add）入录后重推`);
-	await rateLimit(`cdn-upload:${keyId}`, UPLOAD_RATE_LIMIT.limit, UPLOAD_RATE_LIMIT.windowMs);
-	const registryId = await resolveRegistryId(env);
-	if (registryId === null)
-		fail(503, "站点未配置 registry_id（上传签名 canonical 首段 = 站点身份，防跨站重放）：请在 config.yaml vars 增加 registry_id: <站点身份> 后重推");
+	// ① 验面（403 fail-fast：信任库成员判定不消费 body）——共享序见 authenticateSignedKey
+	const { keyId, publicKey, registryId, signature } = await authenticateSignedKey(env, "cdn-upload");
 
 	// ② 消费 body（显式 413；反代 body cap 兜底是部署面责任）
 	const bytes = await uploadBytes();
@@ -363,7 +392,7 @@ async function uploadBody(env: CdnUploadEnv): Promise<Record<string, unknown>> {
 	// ③ 服务端重算 sha256 重构 canonical 验签（硬约束：不取 .sig 声明值——防签名-字节重绑）
 	const sha256 = sha256Of(env)(bytes);
 	const canonical = `cdn-upload:${registryId}:${rawName}:${sha256}`;
-	if (!verifyEd25519Of(env)(publicKey, canonical, signature))
+	if (!verifyCanonicalSig(env, publicKey, canonical, signature))
 		fail(401, "签名验签失败：服务端按实收字节重算 sha256 重构 canonical 验签——字节被换、registry 身份不符或签名无效，已拒（401）");
 
 	if (file.sig)

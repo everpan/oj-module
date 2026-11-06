@@ -11,7 +11,7 @@ declare const db: { exec: (sql: string, params: unknown[]) => Promise<unknown>, 
 export interface HistoryRow {
 	solution: string
 	version: string
-	action: "install" | "enable" | "disable" | "uninstall" | "publish" | "yank"
+	action: "install" | "enable" | "disable" | "uninstall" | "publish" | "yank" | "unyank"
 	status: string
 	/** 操作人（用户名；编排层可得则传，缺省 null） */
 	operator: string | null

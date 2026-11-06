@@ -21,6 +21,7 @@ import type { ReloadFace } from "../_lifecycle/steps/reload";
 import type { FetchInitFace } from "../_shared/site-facade";
 import type { IndexKind, IndexSource } from "./index-source";
 import { atomicWriteText, fsFace } from "../_lifecycle/atomic";
+import { recordHistory } from "../_lifecycle/history";
 import { latestAppliedSeqOf, reconcile, runInstall, setEnabled } from "../_lifecycle/installer";
 import { manifestOfUpload as sharedManifestOfUpload } from "../_lifecycle/manifest-of-upload";
 import { compareVersions } from "../_lifecycle/semver";
@@ -34,6 +35,7 @@ import { respond } from "../_shared/respond";
 import { assertSuperAdmin } from "../_shared/service/infra/access";
 import { pageArgs } from "../_shared/service/infra/query";
 import { journalHeadOf, readCanonicalOrigin, siteOrigin, withSiteOrigin } from "../_shared/site-facade";
+import { authenticateSignedKey, verifyCanonicalSig } from "../cdn/api";
 import { BOOTSTRAP_KEY, seedBootstrapKey } from "./bootstrap";
 import { httpIndexSource, indexPathOf } from "./index-source";
 
@@ -1205,6 +1207,56 @@ async function detailBody(q: Record<string, unknown>): Promise<Record<string, un
 	return { product: name, latest: live.length === 0 ? null : live[live.length - 1]!, versions };
 }
 
+// ── v4 §三：yank 端点（签名下线/恢复，目录行级）───────────────────────────────────────────
+// POST /market/yank：body { product, version, reason?, by?, restore? } + X-OJM 头签名。
+// canonical `market-yank:<registry_id>:<product>:<version>`（无内容哈希——重放退化为幂等，
+// 同上传端点推理）；授权 = key_id 须匹配行 key_id（发布者本人；不符 403，遗留 NULL 行
+// 走 superadmin 管理通道）；版本不存在 404；重复 yank/unyank 幂等 200。yank 不动已装方案
+// （G5 口径）——仅目录摘除 + 阻断新装/升级（安装解析的 yanked 精确版本拒装 409 人话，
+// §四）。审计 by/reason 落 market_history（operator = key_id）。
+const YANK_PRODUCT_RE = /^[a-z][a-z0-9-]{0,63}$/; // 与 cdn 上传白名单同源口径（C2-01）
+const YANK_VERSION_RE = /^\d[0-9A-Z.+-]{0,63}$/i;
+
+async function yankBody(env: MarketEnv): Promise<Record<string, unknown>> {
+	const body = isObj(http.body) ? http.body : {};
+	const product = String(body.product ?? "").trim();
+	const version = String(body.version ?? "").trim();
+	if (!YANK_PRODUCT_RE.test(product) || !YANK_VERSION_RE.test(version))
+		fail(400, `product/version 非法：「${product}@${version}」——product ^[a-z][a-z0-9-]{0,63}$、版本数字开头`);
+	const restore = body.restore === true;
+	const reason = typeof body.reason === "string" ? body.reason.slice(0, 200) : "";
+	const by = typeof body.by === "string" ? body.by.slice(0, 64) : "";
+	// 鉴权（与上传端点共享验面：头 → 信任库 → 限速 → registry_id）+ canonical 验签
+	const { keyId, publicKey, registryId, signature } = await authenticateSignedKey({ trustPath: env.trustPath, registryId: env.registryId, configPath: env.configPath, verifyEd25519: env.verifyEd25519 }, "market-yank");
+	const canonical = `market-yank:${registryId}:${product}:${version}`;
+	if (!verifyCanonicalSig({ verifyEd25519: env.verifyEd25519 }, publicKey, canonical, signature))
+		fail(401, "yank 签名验签失败：canonical 不符（字节级重放防护由内容寻址承载，yank 重放退化为幂等）——已拒");
+	const rows = await db.table("market_release")
+		.select(["id", "key_id", "yanked"])
+		.where({ field: "product", op: "eq", value: product })
+		.where({ field: "version", op: "eq", value: version })
+		.limit(1)
+		.all() as Array<{ id: unknown, key_id: unknown, yanked: unknown }>;
+	if (rows.length === 0)
+		fail(404, `市场目录中无「${product}@${version}」——无法下线/恢复不存在的版本`);
+	const row = rows[0]!;
+	const auditMsg = `by=${by === "" ? keyId : by}${reason === "" ? "" : ` reason=${reason}`}`;
+	if (row.key_id == null || row.key_id === "") {
+		await recordHistory({ solution: product, version, action: restore ? "unyank" : "yank", status: "failed", operator: keyId, message: `403 该行无发布者（遗留行）：${auditMsg}` });
+		fail(403, `「${product}@${version}」是遗留目录行（无发布者绑定）——yank/恢复请走 superadmin 管理通道`);
+	}
+	if (row.key_id !== keyId) {
+		await recordHistory({ solution: product, version, action: restore ? "unyank" : "yank", status: "failed", operator: keyId, message: `403 非发布者（行 key_id=${String(row.key_id)}）：${auditMsg}` });
+		fail(403, `key「${keyId}」不是「${product}@${version}」的发布者（发布 key = ${String(row.key_id)}）——仅发布者本人可下线/恢复，换主 = 站点 superadmin 操作`);
+	}
+	const target = restore ? 0 : 1;
+	if (Number(row.yanked) === target)
+		return { ok: true, product, version, yanked: target === 1, idempotent: true };
+	await db.table("market_release").update({ yanked: target }).where({ field: "id", op: "eq", value: row.id }).run();
+	await recordHistory({ solution: product, version, action: restore ? "unyank" : "yank", status: "success", operator: keyId, message: auditMsg });
+	return { ok: true, product, version, yanked: target === 1 };
+}
+
 /** 四端点组（oj v0.1.64 嵌套组：组名 = 路径段）；全业务体经 respond 收口（status 语义不落 500） */
 export function createMarketApi(env: MarketEnv) {
 	return {
@@ -1383,6 +1435,15 @@ export function createMarketApi(env: MarketEnv) {
 				},
 			},
 		},
+		// POST /api/_platform/market/yank —— 签名下线/恢复（v4 §三，发布者本人；清单摘除/详情保留）。
+		// yank 不动已装方案（G5），仅目录摘除 + 阻断新装/升级；重复操作幂等 200；legacy 行 403 指向 superadmin。
+		"yank": {
+			async post() {
+				await respond(async () => {
+					return await yankBody(env);
+				});
+			},
+		},
 		// GET /api/_platform/market/uninstall-impact?name= —— 卸载影响面预检（superadmin，R9）。
 		// 返回前端二次确认所需的影响计数（角色数 + 受影响用户数），不改动任何状态。
 		"uninstall-impact": {
@@ -1529,6 +1590,20 @@ marketApi.catalog.detail.get.schema = {
 	},
 };
 marketApi.catalog.detail.get.response = { type: "object", additionalProperties: true };
+marketApi.yank.post.schema = {
+	body: {
+		type: "object",
+		required: ["product", "version"],
+		properties: {
+			product: { type: "string" },
+			version: { type: "string" },
+			reason: { type: "string" },
+			by: { type: "string" },
+			restore: { type: "boolean" },
+		},
+	},
+};
+marketApi.yank.post.response = { type: "object", additionalProperties: true };
 marketApi["uninstall-impact"].get.schema = { query: { type: "object", required: ["name"], properties: { name: { type: "string" } } } };
 marketApi["uninstall-impact"].get.response = { type: "object", additionalProperties: true };
 marketApi.uninstall.post.schema = { body: { type: "object", required: ["name"], properties: { name: { type: "string" } } } };

@@ -21,6 +21,8 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { parse } from "yaml";
 import { defaultTestKey, nodeVerifyEd25519, signedArchiveFor } from "../../../src/lifecycle/__tests__/helpers";
+import { generateKeyPair } from "../../../src/lifecycle/keygen";
+import { signCanonical } from "../../../src/lifecycle/sign";
 import { signIndex } from "../../../src/publish";
 import { readLock, writeLock } from "../../src/app/api/_platform/_lifecycle/lock";
 import { compareVersions } from "../../src/app/api/_platform/_lifecycle/semver";
@@ -497,6 +499,108 @@ describe("GET catalog/detail（v4 §三：详情保留 yanked 条目，安装解
 		await api.catalog.detail.get();
 		expect(last?.status).toBe(404);
 		expect(String(last?.msg)).not.toMatch(/\/|SELECT|sqlite|cdn\//i);
+	});
+});
+
+describe("POST /market/yank（v4 §三：签名 yank，清单摘除/详情保留）", () => {
+	const REGISTRY = "test.registry";
+	function seedRelease(product: string, version: string, opts: { key_id?: string | null, yanked?: number, published_at?: number } = {}) {
+		const at = opts.published_at ?? 1000;
+		dbo.prepare("INSERT INTO market_release (product,version,key_id,sha256,size,published_at,published_at_source,yanked,first_seen_at) VALUES (?,?,?,?,?,?,?,?,?)")
+			.run(product, version, "key_id" in opts ? opts.key_id : "test.publisher", SHA256, ARCHIVE.byteLength, at, "upload", opts.yanked ?? 0, at);
+	}
+	/** yank 签名面：canonical `market-yank:<registry>:<product>:<version>`（服务端重算口径同上传） */
+	function yankSignature(product: string, version: string, key: typeof TEST_KEY = TEST_KEY, keyId = "test.publisher") {
+		return { "x-ojm-key-id": keyId, "x-ojm-signature": signCanonical(key.privateKeyPem, `market-yank:${REGISTRY}:${product}:${version}`) };
+	}
+
+	it("签名 + key 匹配行 key_id → 200：行 yanked=1、catalog 清单即摘除、detail 标 yanked:true", async () => {
+		seedRelease("demo-solution", "0.1.0");
+		const api = createMarketApi(makeEnv({ registryId: REGISTRY }));
+		g.http = { user: { id: 1 }, body: { product: "demo-solution", version: "0.1.0", by: "rel-ops", reason: "严重缺陷" }, headers: yankSignature("demo-solution", "0.1.0") };
+		await api.yank.post();
+		expect(last?.status).toBe(200);
+		expect(last?.data).toMatchObject({ ok: true, product: "demo-solution", version: "0.1.0", yanked: true });
+		expect(dbo.prepare("SELECT yanked FROM market_release WHERE product=? AND version=?").get("demo-solution", "0.1.0").yanked).toBe(1);
+		// 清单即摘除（匿名面直读）
+		g.http = { query: {} };
+		await api.catalog.get();
+		expect((last?.data as { items: unknown[] }).items).toHaveLength(0);
+		// 详情保留 + yanked 标记
+		g.http = { query: { name: "demo-solution" } };
+		await api.catalog.detail.get();
+		const d = last?.data as { latest: string | null, versions: Array<{ yanked: boolean }> };
+		expect(d.latest).toBeNull();
+		expect(d.versions[0]!.yanked).toBe(true);
+	});
+
+	it("审计：by/reason 落 market_history（action=yank，operator=key_id）", async () => {
+		seedRelease("demo-solution", "0.1.0");
+		const api = createMarketApi(makeEnv({ registryId: REGISTRY }));
+		g.http = { user: { id: 1 }, body: { product: "demo-solution", version: "0.1.0", by: "rel-ops", reason: "严重缺陷" }, headers: yankSignature("demo-solution", "0.1.0") };
+		await api.yank.post();
+		const rows = dbo.prepare("SELECT * FROM market_history WHERE action='yank'").all();
+		expect(rows).toHaveLength(1);
+		expect(rows[0]).toMatchObject({ solution: "demo-solution", version: "0.1.0", status: "success", operator: "test.publisher" });
+		expect(String(rows[0].message)).toContain("rel-ops");
+		expect(String(rows[0].message)).toContain("严重缺陷");
+	});
+
+	it("数据表：未信任 key 403 / 非该行发布者 403 / 未知版本 404 / 重复幂等 200", async () => {
+		seedRelease("demo-solution", "0.1.0");
+		seedRelease("other-pkg", "0.1.0", { key_id: "other.publisher" });
+		const foreign = generateKeyPair();
+		const api = createMarketApi(makeEnv({ registryId: REGISTRY }));
+		// 未信任 key
+		g.http = { body: { product: "demo-solution", version: "0.1.0" }, headers: { ...yankSignature("demo-solution", "0.1.0", foreign, "foreign.publisher") } };
+		await api.yank.post();
+		expect(last?.status).toBe(403);
+		// 受信但非该行发布者（other.publisher 未入信任库，先入再测——否则落 403 信任面）
+		await createTrustStore(join(sharedRoot, ".solutions", "trusted-keys.yaml"), { audit: () => {} }).add("other.publisher", foreign.publicKeyHex);
+		g.http = { body: { product: "demo-solution", version: "0.1.0" }, headers: { ...yankSignature("demo-solution", "0.1.0", foreign, "other.publisher") } };
+		await api.yank.post();
+		expect(last?.status).toBe(403);
+		expect(String(last?.msg)).toContain("发布者");
+		// 未知版本 404
+		g.http = { body: { product: "demo-solution", version: "9.9.9" }, headers: yankSignature("demo-solution", "9.9.9") };
+		await api.yank.post();
+		expect(last?.status).toBe(404);
+		// 重复 yank 幂等 200
+		g.http = { body: { product: "demo-solution", version: "0.1.0" }, headers: yankSignature("demo-solution", "0.1.0") };
+		await api.yank.post();
+		expect(last?.status).toBe(200);
+		g.http = { body: { product: "demo-solution", version: "0.1.0" }, headers: yankSignature("demo-solution", "0.1.0") };
+		await api.yank.post();
+		expect(last?.status).toBe(200);
+		expect((last?.data as { idempotent: boolean }).idempotent).toBe(true);
+	});
+
+	it("伪造签名（canonical 不符）→ 401", async () => {
+		seedRelease("demo-solution", "0.1.0");
+		const api = createMarketApi(makeEnv({ registryId: REGISTRY }));
+		g.http = { body: { product: "demo-solution", version: "0.1.0" }, headers: yankSignature("demo-solution", "0.2.0") };
+		await api.yank.post();
+		expect(last?.status).toBe(401);
+	});
+
+	it("unyank 恢复同模型：restore → 200、行 yanked=0、清单恢复；遗留行（key_id NULL）403 指向 superadmin 通道", async () => {
+		seedRelease("demo-solution", "0.1.0", { yanked: 1 });
+		seedRelease("legacy-pkg", "0.1.0", { key_id: null });
+		const api = createMarketApi(makeEnv({ registryId: REGISTRY }));
+		g.http = { body: { product: "demo-solution", version: "0.1.0", restore: true }, headers: yankSignature("demo-solution", "0.1.0") };
+		await api.yank.post();
+		expect(last?.status).toBe(200);
+		expect((last?.data as { yanked: boolean }).yanked).toBe(false);
+		expect(dbo.prepare("SELECT yanked FROM market_release WHERE product=? AND version=?").get("demo-solution", "0.1.0").yanked).toBe(0);
+		expect(dbo.prepare("SELECT COUNT(*) c FROM market_history WHERE action='unyank'").all()[0].c).toBe(1);
+		g.http = { query: {} };
+		await api.catalog.get();
+		expect((last?.data as { items: Array<{ product: string }> }).items.map(i => i.product)).toContain("demo-solution");
+		// 遗留行（无发布者）→ 403，superadmin 管理通道兜底
+		g.http = { body: { product: "legacy-pkg", version: "0.1.0" }, headers: yankSignature("legacy-pkg", "0.1.0") };
+		await api.yank.post();
+		expect(last?.status).toBe(403);
+		expect(String(last?.msg)).toContain("superadmin");
 	});
 });
 
