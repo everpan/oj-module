@@ -142,9 +142,9 @@
 - [x] **场景：安装链路照旧**：详情拿到包地址 → 下载/包级验签/解包原流程零改动（既有 installer 测试锚）；yanked 精确版本 409 人话语义保留
 - [x] **场景：yank 端点**：签名 + key 匹配 → 200（清单即摘除、详情标 yanked）；key 不符 403；未知版本 404；重复幂等 200；by/reason 审计落 market_history；unyank 恢复同模型；CLI 错误映射/exitCode 对齐
 - [x] **场景：origin 拼装数据表**：绝对基址剥 `/cdn`；相对基址走 canonical_origin；剥不出 → 503 指向设置项
-- [ ] **场景：匿名接线**：anonymous_paths 放行断言（catalog 两条 GET、upload）+ 重启生效口径
+- [x] **场景：匿名接线**：anonymous_paths 放行断言（catalog 两条 GET、upload）+ 重启生效口径
 - [x] **场景：parity（v4 重定义）**：CLI 推送响应（sha256/size/key_id）↔ DB 行 ↔ detail API 三方一致
-- [ ] **场景：回填命令**：cdn/ 存量扫描 → upsert 落库（幂等重入，重复跑行数不变）；灾备演练：清表 → 扫描恢复（数据表：含 .sig 缺失行的降级）
+- [x] **场景：回填命令**：cdn/ 存量扫描 → upsert 落库（幂等重入，重复跑行数不变）；灾备演练：清表 → 扫描恢复（数据表：含 .sig 缺失行的降级）
 
 ### 发版与文档
 - [ ] breaking 说明（纯静态市场源退出 + 2×2 矩阵 + 回滚口径 + 匿名面重启生效）+ 迁移指南（含信任库迁移）+ usage/help 同步 + `docs/guides/solution-dev-build-publish.md` + devkit 手册**双份拷贝**（docs/devkit/ 与 packages/cli/devkit/）+ failure-playbook 错误文案
