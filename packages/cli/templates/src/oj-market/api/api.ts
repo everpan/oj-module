@@ -32,7 +32,7 @@ import { assertSuperAdmin } from "#/_platform/_shared/service/infra/access";
 import { pageArgs } from "#/_platform/_shared/service/infra/query";
 import { journalHeadOf, readCanonicalOrigin, readSiteVar, siteOrigin, withSiteOrigin } from "#/_platform/_shared/site-facade";
 import { BOOTSTRAP_KEY, seedBootstrapKey } from "./bootstrap";
-import { authenticateSignedKey, verifyCanonicalSig } from "./cdn/api";
+import { authenticateSignedKey, verifyCanonicalSig } from "./cdn/signed-auth";
 
 // 站点编排面共享真源落 _shared/site-facade（P2-16 真机构建钉出：api.ts 是路由入口不可被模块内
 // import）；此处 re-export 保持既有引用面（market-api.spec / 历史 import 路径）不变。

@@ -133,6 +133,11 @@ include:
   # （用户工程无 web 侧 vitest 基建，拷了是死文件）
   - src/oj-market/web/entry.ts
   - src/oj-market/web/types.ts
+  # __client 是 ojm api 生成物：defaultClient.ts 直接 import "../__client"，
+  # 不下发则脚手架工程 ojm build 即解析失败（与 app/web/_platform 同理由）
+  - src/oj-market/web/__client
+  # 市场编排面 client 接线（entry onInit 创建 createOjMarketClient）
+  - src/oj-market/web/routes.ts
   - src/oj-market/web/api
   - src/oj-market/web/components
   - src/oj-market/web/hooks
