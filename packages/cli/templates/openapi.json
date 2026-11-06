@@ -201,6 +201,9 @@
 											"string",
 											"null"
 										]
+									},
+									"force": {
+										"type": "boolean"
 									}
 								}
 							}
@@ -6627,6 +6630,18 @@
 														]
 													},
 													"position": {
+														"type": [
+															"string",
+															"null"
+														]
+													},
+													"employee_no": {
+														"type": [
+															"string",
+															"null"
+														]
+													},
+													"phone_number": {
 														"type": [
 															"string",
 															"null"

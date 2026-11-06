@@ -31,7 +31,8 @@ export const schemas = {
 		body: z.object({
 	"source": z.enum(["cdn", "file"]),
 	"name": z.string(),
-	"version": z.string().nullable().optional()
+	"version": z.string().nullable().optional(),
+	"force": z.boolean().optional()
 }),
 		data: z.object({
 	"task_id": z.string().optional()

@@ -25,6 +25,9 @@ get.response = {
 			display_name: { type: ["string", "null"] },
 			email: { type: ["string", "null"] },
 			position: { type: ["string", "null"] },
+			// U3：users 表既有列透出（工号 tenant 内唯一）；未设置为 null，故为可选字段
+			employee_no: { type: ["string", "null"] },
+			phone_number: { type: ["string", "null"] },
 			// 所属部门（主部门在前）；未加入任何部门即空数组。带 id 供前端按部门筛选
 			departments: {
 				type: "array",
