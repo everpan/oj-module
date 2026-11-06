@@ -168,7 +168,7 @@ flowchart LR
 | permissions[] | ⬜ | `code` 必填 `^<name>\.[a-z0-9_]+(\.[a-z0-9_]+)*$`（`framework.*`/`system.*`/`market.*` 等不可达）；`title_key` 必填；本 manifest 内唯一 | C2-15 |
 | roles[] | ⬜ | `name` 必填 `^<name>\.[a-z0-9-]{1,64}$`；`title_key` 必填；`permissions[]` 须 ∈ permissions[].code（悬空引用双端拒绝）；本 manifest 内唯一 | C2-16 |
 
-升级稳定性（非校验项）：注册 upsert 只加法 + 元数据覆盖，声明消失标 `deprecated`（P1-8 语义）。
+升级稳定性（非校验项）：注册 upsert 只加法 + 元数据覆盖，声明消失标 `deprecated`（P1-8 语义）；**重声明复位 `deprecated=0`**（对齐 settings/routes 注册面纪律）。`title_key` 随行落库（`sys_role.title_key` / `sys_permission.title_key`，R2 展示锚）：展示页按当前语言实时翻译、`title`/`code` 兜底；升级即重解析覆写（R3，新包 locale 改进随升级传播）。
 
 ### 4.7 路由分类区块（D4 三值）
 
@@ -333,7 +333,7 @@ sequenceDiagram
 | 1 | 后端模块 | 共享根 `manifests.yaml`(`<module>:<version>`) + 物理目录 | 迁移后落锁 |
 | 2 | 路由分类 | `sys_solution_route`(category/path/order/title_key/enabled) | 注册 |
 | 3 | 业务设置 | `sys_setting`(`module=<name>`, group, items) | 注册 |
-| 4 | RBAC | `sys_role`/`sys_permission`(`module=<name>`) + 初始 `sys_role_permission` | 注册 |
+| 4 | RBAC | `sys_role`(title/title_key)/`sys_permission`(code/title_key, `module=<name>`) + 初始 `sys_role_permission` | 注册 |
 | 5 | 前端入口 | 站点 `modules.json`(name/entry/integrity/css/chunks/enabled) | 前端落位 |
 | 6 | 前端路由 | `entry.js` `defineModule.routes`（运行时事实源） | 宿主 getRoutes() |
 | 7 | 前端 i18n | `entry.js` `defineModule.i18n` → 命名空间 `<name>` | 宿主加载 entry |

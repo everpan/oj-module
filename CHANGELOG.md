@@ -42,6 +42,15 @@
 
 ### Fixed
 
+- **方案声明权限点 `title_key` 落库断链（RBAC/多语言演练实测缺陷）**：C2-15 把
+  `permissions[].title_key` 定为必填并逐项校验，但 `declOf` 只取 `code`、`upsertSolutionPerms`
+  insert 不带 title_key → `sys_permission.title_key` 恒 NULL，权限点展示页永远回退裸 code，
+  声明的多语言文案形同虚设。现 title_key 随行落库、升级元数据覆写（R3），并顺手修复同根缺陷：
+  已标 `deprecated` 的权限点/角色被新版本**重声明**时此前不复位（settings/routes 注册面均有复位、
+  RBAC 两表没有）——现复位 `deprecated=0`。回归：`rbac-solution-perms.spec.ts`（R2 落库/R3 覆写/
+  重声明复位三例）+ `register.spec.ts` declOf 透传一例 + e2e `roles-perms-i18n.spec.ts`
+  （角色名/权限点中英文实时翻译、不直出键名）。已装站点的存量权限点行：重装同版本方案即触发
+  R3 元数据覆写补齐 title_key。
 - **`ojm new --api` 骨架 `solution.yaml` 补 `api.anonymous` 声明（市场线演练实测缺陷）**：
   骨架 ping 端点匿名可达但契约漏声明，安装预检 `anonymous_residual` 拒装——合成 fixture 因声明了
   `anonymous: ["<name>/ping"]` 而装得进，真骨架反而装不进。模板补声明一行，测试钉住；

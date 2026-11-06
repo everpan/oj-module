@@ -51,8 +51,8 @@ function pmDecl(title: string) {
 	return {
 		module: "pm",
 		version: "1.0.0",
-		roles: [{ name: "pm.sales", title, title_key: title, permissions: ["pm.doc.create"] as string[] }],
-		permissions: ["pm.doc.create"],
+		roles: [{ name: "pm.sales", title, title_key: title, permissions: ["pm.doc.create"] }],
+		permissions: [{ code: "pm.doc.create" }],
 	};
 }
 

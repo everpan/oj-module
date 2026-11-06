@@ -132,6 +132,51 @@ describe("AC2-3/4：声明消失与重命名 → deprecated 保留（判决不�
 	});
 });
 
+describe("R2/R3：权限点 title_key 落库（多语言展示锚）与重声明复位", () => {
+	it("R2 title_key 随声明落库：permissions[{code,title_key}] → sys_permission.title_key（缺省→null）", async () => {
+		const r = await upsertSolutionPerms({
+			module: "wiki",
+			roles: [{ name: "wiki.reader", title: "wiki:role.reader", title_key: "wiki:role.reader", permissions: ["wiki.doc.read"] }],
+			permissions: [
+				{ code: "wiki.doc.read", title_key: "wiki:perm.doc_read" },
+				{ code: "wiki.doc.export" }, // 无角色引用的独立声明点；title_key 缺省 → null（宽松态合法）
+			],
+		});
+		expect(r.deprecated).toEqual([]);
+		expect(rows("SELECT title_key FROM sys_permission WHERE code = 'wiki.doc.read'")[0].title_key).toBe("wiki:perm.doc_read");
+		expect(rows("SELECT title_key FROM sys_permission WHERE code = 'wiki.doc.export'")[0].title_key).toBeNull();
+		// 角色侧同口径（既有行为再钉一次，防回归）
+		expect(rows("SELECT title_key FROM sys_role WHERE name = 'wiki.reader'")[0].title_key).toBe("wiki:role.reader");
+	});
+
+	it("R3 既有权限点行 title_key 元数据随升级覆盖（新包 locale 改进随升级传播）", async () => {
+		await upsertSolutionPerms({ module: "wiki", roles: [], permissions: [{ code: "wiki.doc.read", title_key: "wiki:perm.old" }] });
+		await upsertSolutionPerms({ module: "wiki", roles: [], permissions: [{ code: "wiki.doc.read", title_key: "wiki:perm.new" }] });
+		expect(rows("SELECT title_key FROM sys_permission WHERE code = 'wiki.doc.read'")[0].title_key).toBe("wiki:perm.new");
+	});
+
+	it("AC2-3 重声明复位 deprecated=0：权限点与角色行回归声明态（对齐 settings/routes 注册面同纪律）", async () => {
+		await installWikiV019();
+		await upsertSolutionPerms({
+			module: "wiki",
+			roles: [{ name: "wiki.admin", title: "管理员", permissions: ["wiki.doc.create"] }], // space.create 与 editor 消失
+		});
+		expect(Number(rows("SELECT deprecated FROM sys_permission WHERE code = 'wiki.space.create'")[0].deprecated)).toBe(1);
+		expect(Number(rows("SELECT deprecated FROM sys_role WHERE name = 'wiki.editor'")[0].deprecated)).toBe(1);
+		// 下一版本把两者重新声明回来 → deprecated 必须复位，装机告警消停
+		const r = await upsertSolutionPerms({
+			module: "wiki",
+			roles: [
+				{ name: "wiki.admin", title: "管理员", permissions: ["wiki.doc.create", "wiki.space.create"] },
+				{ name: "wiki.editor", title: "编辑", permissions: ["wiki.doc.create"] },
+			],
+		});
+		expect(r.deprecated).toEqual([]);
+		expect(Number(rows("SELECT deprecated FROM sys_permission WHERE code = 'wiki.space.create'")[0].deprecated)).toBe(0);
+		expect(Number(rows("SELECT deprecated FROM sys_role WHERE name = 'wiki.editor'")[0].deprecated)).toBe(0);
+	});
+});
+
 describe("AC2-6：卸载级联清理（唯一减法出口）", () => {
 	it("双维度删除：wiki 角色及其绑定 + 属 wiki 的权限点绑定（含 custom 角色上的）；custom 角色本体保留", async () => {
 		await installWikiV019();
@@ -177,7 +222,7 @@ describe("顶层 permissions[]：无角色的权限点也要落库", () => {
 		await upsertSolutionPerms({
 			module: "oj-registry",
 			roles: [],
-			permissions: ["oj-registry.publish", "oj-registry.admin"],
+			permissions: [{ code: "oj-registry.publish" }, { code: "oj-registry.admin", title_key: "oj-registry:perm.admin" }],
 		});
 
 		expect(rows("SELECT code, module FROM sys_permission ORDER BY code")).toEqual([
@@ -187,7 +232,7 @@ describe("顶层 permissions[]：无角色的权限点也要落库", () => {
 	});
 
 	it("AC2-6 卸载后无角色的权限点一并摘干净（含 custom 角色上的绑定）", async () => {
-		await upsertSolutionPerms({ module: "oj-registry", roles: [], permissions: ["oj-registry.publish"] });
+		await upsertSolutionPerms({ module: "oj-registry", roles: [], permissions: [{ code: "oj-registry.publish" }] });
 		dbo.exec("INSERT INTO sys_role (name, module, title) VALUES ('custom.dev', 'custom', '开发者')");
 		dbo.exec("INSERT INTO sys_role_permission (role_name, permission_code) VALUES ('custom.dev', 'oj-registry.publish')");
 
@@ -202,7 +247,7 @@ describe("顶层 permissions[]：无角色的权限点也要落库", () => {
 	it("G7 攻击者视角：声明权限点不等于拿到权限——落库不产生任何绑定", async () => {
 		// 使坏路径：以为「把 code 写进 manifest 就自动获权」。落库的只是权限点标签行，
 		// 判定仍要角色绑定；没有绑定，decideAccess 对该 code 恒 false。
-		await upsertSolutionPerms({ module: "oj-registry", roles: [], permissions: ["oj-registry.publish"] });
+		await upsertSolutionPerms({ module: "oj-registry", roles: [], permissions: [{ code: "oj-registry.publish" }] });
 
 		expect(rows("SELECT * FROM sys_role_permission WHERE permission_code = 'oj-registry.publish'").length).toBe(0);
 	});
