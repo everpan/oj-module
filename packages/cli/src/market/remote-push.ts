@@ -105,7 +105,7 @@ async function pushSignedFile(
 		env = JSON.parse(text) as { code?: number, msg?: string };
 	}
 	catch {}
-	const status = typeof env?.code === "number" && env.code !== 0 ? res.status : res.status;
+	const status = res.status;
 	if (!res.ok || (typeof env?.code === "number" && env.code !== 0)) {
 		const msg = env?.msg ?? text.slice(0, 200);
 		throw new RemotePushError(fileName.endsWith(".sig") ? "sig" : "tgz", status, `[ojm] 推送 ${fileName} 被拒（HTTP ${res.status}）：${msg}`);
