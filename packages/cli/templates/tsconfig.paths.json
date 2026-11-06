@@ -10,6 +10,7 @@
 			"#/auth/*": ["./src/app/api/auth/*"],
 			"#/home/*": ["./src/app/api/home/*"],
 			"#/notification/*": ["./src/app/api/notification/*"],
+			"#/oj-market/*": ["./src/oj-market/api/*"],
 			"#/personal-center/*": ["./src/app/api/personal-center/*"],
 			"#/publish/*": ["./src/app/api/publish/*"],
 			"#/system/*": ["./src/app/api/system/*"],

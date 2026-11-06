@@ -1,8 +1,8 @@
 // ojm trust（P2-2，C2-38/39，G3 双轨第一轨 / G5）：宿主信任库运维瘦客户端。
 // 子命令：
-//   ojm trust ls                                  —— 列表（GET  /api/_platform/market/trust）
-//   ojm trust add <key_id> <pubkey_hex>           —— 新增信任（POST /api/_platform/market/trust/key）
-//   ojm trust revoke <key_id>                     —— 吊销（DELETE /api/_platform/market/trust/key?key_id=）
+//   ojm trust ls                                  —— 列表（GET  /api/oj-market/trust）
+//   ojm trust add <key_id> <pubkey_hex>           —— 新增信任（POST /api/oj-market/trust/key）
+//   ojm trust revoke <key_id>                     —— 吊销（DELETE /api/oj-market/trust/key?key_id=）
 //   ojm trust confirm --task <task_id>            —— TOFU 确认（P2-3）：先展示指纹再调 POST /market/trust
 // 本地零状态，纯转发（uninstall.ts 同款）；operator 由站点侧按登录用户反查，CLI 不传。
 import { Buffer } from "node:buffer";
@@ -79,7 +79,7 @@ export async function trustCommand(sub: string, args: string[], opts: TrustOptio
 	const token = await login(fetchFn, base, user, pass);
 	switch (sub) {
 		case "ls": {
-			const result = await callApi<{ keys: TrustKeyRow[], note: string | null }>(fetchFn, base, token, "GET", "/api/_platform/market/trust");
+			const result = await callApi<{ keys: TrustKeyRow[], note: string | null }>(fetchFn, base, token, "GET", "/api/oj-market/trust");
 			if (result.note)
 				console.log(`[ojm] 注意：${result.note}`);
 			printRows(result.keys ?? []);
@@ -87,13 +87,13 @@ export async function trustCommand(sub: string, args: string[], opts: TrustOptio
 		}
 		case "add": {
 			const [keyId, publicKey] = args;
-			const result = await callApi<{ result: "added" | "exists_same" }>(fetchFn, base, token, "POST", "/api/_platform/market/trust/key", { key_id: keyId, public_key: publicKey });
+			const result = await callApi<{ result: "added" | "exists_same" }>(fetchFn, base, token, "POST", "/api/oj-market/trust/key", { key_id: keyId, public_key: publicKey });
 			console.log(result.result === "added" ? `[ojm] 已信任发布方：${keyId}` : `[ojm] 该 key_id 已在信任库且公钥一致（无需重复添加）：${keyId}`);
 			break;
 		}
 		case "revoke": {
 			const [keyId] = args;
-			const result = await callApi<{ revoked: boolean }>(fetchFn, base, token, "DELETE", `/api/_platform/market/trust/key?key_id=${encodeURIComponent(keyId)}`);
+			const result = await callApi<{ revoked: boolean }>(fetchFn, base, token, "DELETE", `/api/oj-market/trust/key?key_id=${encodeURIComponent(keyId)}`);
 			console.log(result.revoked ? `[ojm] 已吊销：${keyId}（已装方案继续运行，新装/升级将被拒）` : `[ojm] 信任库中无此 key_id：${keyId}`);
 			if (!result.revoked)
 				process.exitCode = 1;
@@ -102,13 +102,13 @@ export async function trustCommand(sub: string, args: string[], opts: TrustOptio
 		case "confirm": {
 			const taskId = opts.task!.trim();
 			// 先取任务记录展示指纹（防「确认 A、落 B」：人看到的与服务端入信任库的同源）
-			const rec = await callApi<{ id: string, status: string, name: string, version: string, trust?: { key_id: string, public_key: string, fingerprint: string } }>(fetchFn, base, token, "GET", `/api/_platform/market/task?id=${encodeURIComponent(taskId)}`);
+			const rec = await callApi<{ id: string, status: string, name: string, version: string, trust?: { key_id: string, public_key: string, fingerprint: string } }>(fetchFn, base, token, "GET", `/api/oj-market/task?id=${encodeURIComponent(taskId)}`);
 			if (rec.trust === undefined || rec.status !== "needs_trust")
 				throw new Error(`[ojm] 任务 ${taskId} 不在待信任确认状态（status=${rec.status}）——无需确认`);
 			console.log(`[ojm] 待信任发布方：${rec.trust.key_id}`);
 			console.log(`[ojm] 指纹（sha256(publicKey)，请与发布方公布值逐字核对）：${formatFingerprint(rec.trust.fingerprint)}`);
 			console.log("[ojm] 确认即把该公钥加入宿主信任库（首次绑定不可改；吊销只阻断新装/升级，不动已装方案）");
-			const result = await callApi<{ result: "added" | "exists_same", key_id: string }>(fetchFn, base, token, "POST", "/api/_platform/market/trust", { task_id: taskId });
+			const result = await callApi<{ result: "added" | "exists_same", key_id: string }>(fetchFn, base, token, "POST", "/api/oj-market/trust", { task_id: taskId });
 			console.log(result.result === "added" ? `[ojm] 已信任发布方：${result.key_id}——重试安装命令即可继续（CDN 源重试自动重下，file 源重传包体与 .sig）` : `[ojm] 该发布方已在信任库：${result.key_id}——直接重试安装即可`);
 			break;
 		}

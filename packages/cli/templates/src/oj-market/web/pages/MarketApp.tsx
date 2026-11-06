@@ -1,6 +1,6 @@
 import type { IndexRow, TaskRecord } from "../types";
 import { useUserStore } from "@oj-module/runtime";
-import { Alert, Typography } from "antd";
+import { Alert, Pagination, Typography } from "antd";
 import React, { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useMarketClient } from "../api/context";
@@ -16,7 +16,9 @@ import { useMarketIndex } from "../hooks/useMarket";
 export default function MarketApp() {
 	const { t } = useTranslation();
 	const client = useMarketClient();
-	const index = useMarketIndex();
+	const [page, setPage] = useState(1);
+	const [pageSize, setPageSize] = useState(20);
+	const index = useMarketIndex(page, pageSize);
 	// 管理权限 = superadmin（与后端 assertSuperAdmin 口径一致）。仅屏蔽写操作，浏览（详情/历史）对所有登录用户开放。
 	const roles = useUserStore(s => s.roles);
 	const canManage = roles.includes("superadmin");
@@ -30,7 +32,8 @@ export default function MarketApp() {
 	const [historyRow, setHistoryRow] = useState<IndexRow | null>(null);
 	const [busyName, setBusyName] = useState<string | null>(null);
 
-	const rows = index.status === "ok" ? index.data : [];
+	const pageData = index.status === "ok" ? index.data : null;
+	const rows = pageData?.list ?? [];
 
 	// 安装/升级：目标版本缺省（取 latest）；已装视为升级
 	const handleInstall = (row: IndexRow) => {
@@ -108,6 +111,20 @@ export default function MarketApp() {
 				onRollback={handleRollback}
 				onRetry={index.retry}
 			/>
+
+			{pageData != null && pageData.total > pageSize && (
+				<Pagination
+					style={{ marginTop: 16, textAlign: "right" }}
+					current={page}
+					pageSize={pageSize}
+					total={pageData.total}
+					onChange={(p, ps) => {
+						setPage(ps !== pageSize ? 1 : p);
+						setPageSize(ps);
+					}}
+					showSizeChanger
+				/>
+			)}
 
 			<DetailDrawer
 				row={detailRow}

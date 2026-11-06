@@ -1,6 +1,6 @@
 import process from "node:process";
 // BDD：ojm trust 瘦客户端（P2-2，C2-38/39）——纯转发（uninstall.test.ts 同范式）：
-// 登录 → GET/POST/DELETE /api/_platform/market/trust* → 打印人话；fetch 全 stub 不真发网络。
+// 登录 → GET/POST/DELETE /api/oj-market/trust* → 打印人话；fetch 全 stub 不真发网络。
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { formatFingerprint, trustCommand } from "../../trust";
 
@@ -44,10 +44,10 @@ describe("trustCommand · ls（P2-2）", () => {
 	it("登录后 GET /market/trust → 逐行打印 key_id + 分组指纹", async () => {
 		const { fetchFn, calls } = fetchStub({
 			"/api/auth/login": () => ok({ access_token: "tok", refresh_token: "r", expires_in: 1 }),
-			"/api/_platform/market/trust": () => ok({ keys: [KEY_A], note: null }),
+			"/api/oj-market/trust": () => ok({ keys: [KEY_A], note: null }),
 		});
 		await trustCommand("ls", [], { ...SITE, fetchFn });
-		expect(calls[1]?.url).toContain("/api/_platform/market/trust");
+		expect(calls[1]?.url).toContain("/api/oj-market/trust");
 		expect(calls[1]?.init?.method).toBe("GET");
 		expect((calls[1]?.init?.headers as Record<string, string>).authorization).toBe("Bearer tok");
 		const out = logs.join("\n");
@@ -58,7 +58,7 @@ describe("trustCommand · ls（P2-2）", () => {
 	it("空库 → 可读空态；note 在场（.bak 回落）→ 先打注意行", async () => {
 		const { fetchFn } = fetchStub({
 			"/api/auth/login": () => ok({ access_token: "tok", refresh_token: "r", expires_in: 1 }),
-			"/api/_platform/market/trust": () => ok({ keys: [], note: "x 损坏，已自动回落 x.bak" }),
+			"/api/oj-market/trust": () => ok({ keys: [], note: "x 损坏，已自动回落 x.bak" }),
 		});
 		await trustCommand("ls", [], { ...SITE, fetchFn });
 		expect(logs.join("\n")).toContain("已自动回落");
@@ -69,7 +69,7 @@ describe("trustCommand · add / revoke（P2-2）", () => {
 	it("add：POST {key_id, public_key}；added / exists_same 两种回显", async () => {
 		const added = fetchStub({
 			"/api/auth/login": () => ok({ access_token: "tok", refresh_token: "r", expires_in: 1 }),
-			"/api/_platform/market/trust/key": () => ok({ result: "added" }),
+			"/api/oj-market/trust/key": () => ok({ result: "added" }),
 		});
 		await trustCommand("add", ["ojm.test", "a".repeat(64)], { ...SITE, fetchFn: added.fetchFn });
 		const call = added.calls[1]!;
@@ -79,7 +79,7 @@ describe("trustCommand · add / revoke（P2-2）", () => {
 
 		const idem = fetchStub({
 			"/api/auth/login": () => ok({ access_token: "tok", refresh_token: "r", expires_in: 1 }),
-			"/api/_platform/market/trust/key": () => ok({ result: "exists_same" }),
+			"/api/oj-market/trust/key": () => ok({ result: "exists_same" }),
 		});
 		await trustCommand("add", ["ojm.test", "a".repeat(64)], { ...SITE, fetchFn: idem.fetchFn });
 		expect(logs.join("\n")).toContain("无需重复添加");
@@ -97,18 +97,18 @@ describe("trustCommand · add / revoke（P2-2）", () => {
 		try {
 			const yes = fetchStub({
 				"/api/auth/login": () => ok({ access_token: "tok", refresh_token: "r", expires_in: 1 }),
-				"/api/_platform/market/trust/key": () => ok({ revoked: true }),
+				"/api/oj-market/trust/key": () => ok({ revoked: true }),
 			});
 			await trustCommand("revoke", ["ojm.test"], { ...SITE, fetchFn: yes.fetchFn });
 			const call = yes.calls[1]!;
 			expect(call.init?.method).toBe("DELETE");
-			expect(call.url).toContain("/api/_platform/market/trust/key?key_id=ojm.test");
+			expect(call.url).toContain("/api/oj-market/trust/key?key_id=ojm.test");
 			expect(process.exitCode).toBe(0);
 
 			process.exitCode = 0;
 			const no = fetchStub({
 				"/api/auth/login": () => ok({ access_token: "tok", refresh_token: "r", expires_in: 1 }),
-				"/api/_platform/market/trust/key": () => ok({ revoked: false }),
+				"/api/oj-market/trust/key": () => ok({ revoked: false }),
 			});
 			await trustCommand("revoke", ["nope.key"], { ...SITE, fetchFn: no.fetchFn });
 			expect(process.exitCode).toBe(1);
@@ -138,14 +138,14 @@ describe("trustCommand · confirm（P2-3 TOFU 确认链）", () => {
 	it("先展示指纹再调端点：GET task → 打印 key_id + 分组指纹 → POST /market/trust {task_id}", async () => {
 		const { fetchFn, calls } = fetchStub({
 			"/api/auth/login": () => ok({ access_token: "tok", refresh_token: "r", expires_in: 1 }),
-			"/api/_platform/market/task": () => ok(needsTrustTask),
-			"/api/_platform/market/trust": () => ok({ result: "added", key_id: "stranger.pub" }),
+			"/api/oj-market/task": () => ok(needsTrustTask),
+			"/api/oj-market/trust": () => ok({ result: "added", key_id: "stranger.pub" }),
 		});
 		await trustCommand("confirm", [], { ...SITE, task: "install-1-abc", fetchFn });
 		// 调用序：登录 → GET task → POST trust
-		expect(calls[1]?.url).toContain("/api/_platform/market/task?id=install-1-abc");
+		expect(calls[1]?.url).toContain("/api/oj-market/task?id=install-1-abc");
 		expect(calls[2]?.init?.method).toBe("POST");
-		expect(calls[2]?.url).toContain("/api/_platform/market/trust");
+		expect(calls[2]?.url).toContain("/api/oj-market/trust");
 		expect(JSON.parse(String(calls[2]?.init?.body))).toEqual({ task_id: "install-1-abc" });
 		const out = logs.join("\n");
 		expect(out).toContain("stranger.pub");
@@ -157,7 +157,7 @@ describe("trustCommand · confirm（P2-3 TOFU 确认链）", () => {
 	it("任务非 needs_trust → 本地可读报错（不发确认请求）", async () => {
 		const { fetchFn, calls } = fetchStub({
 			"/api/auth/login": () => ok({ access_token: "tok", refresh_token: "r", expires_in: 1 }),
-			"/api/_platform/market/task": () => ok({ ...needsTrustTask, status: "done", trust: undefined }),
+			"/api/oj-market/task": () => ok({ ...needsTrustTask, status: "done", trust: undefined }),
 		});
 		await expect(trustCommand("confirm", [], { ...SITE, task: "install-1-abc", fetchFn })).rejects.toThrow(/不在待信任确认状态/);
 		expect(calls).toHaveLength(2); // 登录 + GET task，无 POST

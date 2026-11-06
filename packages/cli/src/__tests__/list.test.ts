@@ -53,7 +53,7 @@ describe("listCommand：已装清单", () => {
 	it("scenario: 缺省只列已装，按名字排序，upgradable / trust_state 原样透出", async () => {
 		const { fetchFn, calls } = fetchStub({
 			"/api/auth/login": LOGIN,
-			"/api/_platform/market/index": () => ok(ROWS),
+			"/api/oj-market/index": () => ok(ROWS),
 		});
 		const rows = await listCommand({ siteUrl: "http://x", user: "u", pass: "p", fetchFn });
 
@@ -67,7 +67,7 @@ describe("listCommand：已装清单", () => {
 			trustState: "trusted",
 		});
 		// 登录用的是站点寻址（Bearer 由 callApi 注入，这里只断言两次调用与顺序）
-		expect(calls).toEqual(["http://x/api/auth/login", "http://x/api/_platform/market/index"]);
+		expect(calls).toEqual(["http://x/api/auth/login", "http://x/api/oj-market/index"]);
 
 		const text = logs.join("\n");
 		expect(text).toContain("已装 2 个方案");
@@ -80,7 +80,7 @@ describe("listCommand：已装清单", () => {
 	it("scenario: --all 连未装行一起列（installed 显示 -），人话里给两个计数", async () => {
 		const { fetchFn } = fetchStub({
 			"/api/auth/login": LOGIN,
-			"/api/_platform/market/index": () => ok(ROWS),
+			"/api/oj-market/index": () => ok(ROWS),
 		});
 		const rows = await listCommand({ siteUrl: "http://x", user: "u", pass: "p", fetchFn, all: true });
 
@@ -94,7 +94,7 @@ describe("listCommand：已装清单", () => {
 	it("scenario: 站点上一个方案都没装 → 成功（exit 0 语义），人话指路 --all", async () => {
 		const { fetchFn } = fetchStub({
 			"/api/auth/login": LOGIN,
-			"/api/_platform/market/index": () => ok([ROWS[2]]),
+			"/api/oj-market/index": () => ok([ROWS[2]]),
 		});
 		const rows = await listCommand({ siteUrl: "http://x", user: "u", pass: "p", fetchFn });
 		expect(rows).toEqual([]);
@@ -140,7 +140,7 @@ describe("list：CLI 接线与信封", () => {
 	it("scenario: --json → stdout 只有一行信封，data.solutions 是过滤后的已装行", async () => {
 		const { fetchFn } = fetchStub({
 			"/api/auth/login": LOGIN,
-			"/api/_platform/market/index": () => ok(ROWS),
+			"/api/oj-market/index": () => ok(ROWS),
 		});
 		const r = await run(["list", "--site-url", "http://x", "--user", "u", "--pass", "p", "--json"], fetchFn);
 
@@ -156,7 +156,7 @@ describe("list：CLI 接线与信封", () => {
 	it("scenario: --all 也进信封（all = true 且包含未装行）", async () => {
 		const { fetchFn } = fetchStub({
 			"/api/auth/login": LOGIN,
-			"/api/_platform/market/index": () => ok(ROWS),
+			"/api/oj-market/index": () => ok(ROWS),
 		});
 		const r = await run(["list", "--site-url", "http://x", "--user", "u", "--pass", "p", "--all", "--json"], fetchFn);
 		const envelope = JSON.parse(r.out[0]!) as { data: { all: boolean, solutions: SolutionRow[] } };
@@ -167,7 +167,7 @@ describe("list：CLI 接线与信封", () => {
 	it("scenario: 站点报错（索引 503）→ 业务失败（1），错误话说清楚", async () => {
 		const { fetchFn } = fetchStub({
 			"/api/auth/login": LOGIN,
-			"/api/_platform/market/index": () => ({ ok: false, status: 503, text: async () => JSON.stringify({ code: 503, msg: "未配置市场地址" }) }),
+			"/api/oj-market/index": () => ({ ok: false, status: 503, text: async () => JSON.stringify({ code: 503, msg: "未配置市场地址" }) }),
 		});
 		const r = await run(["list", "--site-url", "http://x", "--user", "u", "--pass", "p"], fetchFn);
 		expect(r.exitCode).toBe(1);

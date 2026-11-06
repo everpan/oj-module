@@ -44,8 +44,8 @@ describe("站点客户端租户头（v3 Phase 0）", () => {
 	it("scenario: 带 Bearer 的 GET / POST 都带租户头，且不干扰原有头", async () => {
 		const { fetchFn, requests } = recordingFetch({ ok: true });
 
-		await callApi<{ ok: boolean }>(fetchFn, "http://x", "tok", "GET", "/api/_platform/market/trust");
-		await callApi<{ ok: boolean }>(fetchFn, "http://x", "tok", "POST", "/api/_platform/market/install", { name: "demo" });
+		await callApi<{ ok: boolean }>(fetchFn, "http://x", "tok", "GET", "/api/oj-market/trust");
+		await callApi<{ ok: boolean }>(fetchFn, "http://x", "tok", "POST", "/api/oj-market/install", { name: "demo" });
 
 		expect(headers(requests[0]!)).toEqual({ authorization: "Bearer tok", [TENANT_HEADER]: DEFAULT_TENANT });
 		expect(headers(requests[1]!)[TENANT_HEADER]).toBe(DEFAULT_TENANT);

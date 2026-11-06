@@ -286,7 +286,7 @@ export async function preflight(ctx: InstallContext): Promise<StageResult> {
 		else {
 			const host = ctx.hostApiVersion;
 			if (host === undefined) {
-				v.push({ clause: "C2-11", detail: `无法读取宿主平台 API 版本（GET /api/_platform/market/meta 不可用或本仓 API_VERSION 未注入），peerPlatform「${range}」强制比对失败（fail-closed）` });
+				v.push({ clause: "C2-11", detail: `无法读取宿主平台 API 版本（GET /api/oj-market/meta 不可用或本仓 API_VERSION 未注入），peerPlatform「${range}」强制比对失败（fail-closed）` });
 			}
 			else if (!rangeSatisfies(host, parsed[1], parsed[2])) {
 				const advice = caretUpgradeAdvice(host, parsed[1], parsed[2]);

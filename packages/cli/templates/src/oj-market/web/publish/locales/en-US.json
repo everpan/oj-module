@@ -8,7 +8,7 @@
 		"subtitle": "Every release recorded in the signed index, newest first. Product, version and publisher all come from the index itself.",
 		"empty": "No releases yet",
 		"syncFailed": "The market index is temporarily unreachable; showing records already stored",
-		"indexTime": "index time",
+		"backfillTime": "backfilled",
 		"publishedAtHint": "Uses the CDN file's Last-Modified when available; otherwise falls back to the index build time, tagged “index time”",
 		"total": "{{total}} in total",
 		"columns": {

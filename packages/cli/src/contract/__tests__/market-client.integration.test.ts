@@ -9,7 +9,7 @@ import type { ScopedRequestLike } from "@oj-module/runtime/contract/errors";
 // 不加载 @oj-module/runtime 重依赖（antd / pro-components 在 node 环境无法 import），仅桩 request、
 // 透传真实 zod（供生成 client 的 DEV 响应校验走真实路径）。ContractApiError 由轻量子路径提供。
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { bindRequest } from "../../../templates/src/app/web/_platform/__client";
+import { bindRequest } from "../../../templates/src/oj-market/web/__client";
 import { httpMarketClient } from "../../../templates/src/oj-market/web/api/defaultClient";
 
 // index() 直连 request（不走生成 client），故把桩 request 做成可变实现，测试内统一指向同一 mock。
@@ -78,39 +78,40 @@ describe("httpMarketClient · 统一委托生成 client 集成回归", () => {
 		bindMock(mock);
 	});
 
-	it("meta() → GET _platform/market/meta，返回 { apiVersion }", async () => {
+	it("meta() → GET oj-market/meta，返回 { apiVersion }", async () => {
 		mock = mockRequest(() => ({ data: { apiVersion: "1.2.3" } }));
 		bindMock(mock);
 		const r = await httpMarketClient.meta();
-		expect(mock.calls).toEqual([{ method: "get", url: "_platform/market/meta", opts: undefined }]);
+		expect(mock.calls).toEqual([{ method: "get", url: "oj-market/meta", opts: undefined }]);
 		expect(r).toEqual({ apiVersion: "1.2.3" });
 	});
 
-	it("index() → GET _platform/market/index，返回 IndexRow[]", async () => {
+	it("index() → GET oj-market/index，返回分页 IndexPage", async () => {
 		const rows = [{ name: "a", latest: "1.0", installed: "1.0", enabled: true, upgradable: false }];
-		mock = mockRequest(() => ({ data: rows }));
+		const page = { list: rows, total: 1, page: 1, size: 20 };
+		mock = mockRequest(() => ({ data: page }));
 		bindMock(mock);
 		const r = await httpMarketClient.index();
-		expect(mock.calls[0]).toMatchObject({ method: "get", url: "_platform/market/index" });
-		expect(r).toEqual(rows);
+		expect(mock.calls[0]).toMatchObject({ method: "get", url: "oj-market/index" });
+		expect(r).toEqual(page);
 	});
 
-	it("index() 遇 503（未配置市场地址）→ [] 空态，不抛（PRD §5.3）", async () => {
-		mock = mockRequest(c => (c.url === "_platform/market/index" ? { status: 503 } : { data: {} }));
+	it("index() 遇 503（未配置市场地址）→ 空分页空态，不抛（PRD §5.3）", async () => {
+		mock = mockRequest(c => (c.url === "oj-market/index" ? { status: 503 } : { data: {} }));
 		bindMock(mock);
 		const r = await httpMarketClient.index();
-		expect(r).toEqual([]);
+		expect(r).toEqual({ list: [], total: 0, page: 1, size: 20 });
 		// 503 是配置态而非故障：silentError 抑制全局 toast + retry:0 不重试（原
 		// market-client-unconfigured 用例的断言并入此处——工厂形态退役后唯一活口）
 		expect(mock.calls).toHaveLength(1);
 		expect(mock.calls[0].opts).toMatchObject({ silentError: true, retry: 0 });
 	});
 
-	it("install(input) → POST _platform/market/install，body 含 name/version/source", async () => {
+	it("install(input) → POST oj-market/install，body 含 name/version/source", async () => {
 		mock = mockRequest(() => ({ data: { task_id: "t-1" } }));
 		bindMock(mock);
 		const r = await httpMarketClient.install({ name: "alpha", version: "2.0", source: "file" });
-		expect(mock.calls[0]).toMatchObject({ method: "post", url: "_platform/market/install" });
+		expect(mock.calls[0]).toMatchObject({ method: "post", url: "oj-market/install" });
 		expect(mock.calls[0].opts?.json).toEqual({ name: "alpha", version: "2.0", source: "file" });
 		expect(r).toEqual({ task_id: "t-1" });
 	});
@@ -122,48 +123,48 @@ describe("httpMarketClient · 统一委托生成 client 集成回归", () => {
 		expect(mock.calls[0].opts?.json).toEqual({ name: "beta", version: null, source: "cdn" });
 	});
 
-	it("task(id) → GET _platform/market/task? 带 id", async () => {
+	it("task(id) → GET oj-market/task? 带 id", async () => {
 		const rec = { id: "t-1", name: "a", version: "1.0", status: "done", stage: "done", progress: 100, message: "ok", stages: [], startedAt: 1 };
 		mock = mockRequest(() => ({ data: rec }));
 		bindMock(mock);
 		const r = await httpMarketClient.task("t-1");
-		expect(mock.calls[0]).toMatchObject({ method: "get", url: "_platform/market/task" });
+		expect(mock.calls[0]).toMatchObject({ method: "get", url: "oj-market/task" });
 		expect(mock.calls[0].opts?.searchParams).toEqual({ id: "t-1" });
 		expect(r).toEqual(rec);
 	});
 
-	it("enable(input) → POST _platform/market/enable，body {name,enabled}", async () => {
+	it("enable(input) → POST oj-market/enable，body {name,enabled}", async () => {
 		mock = mockRequest(() => ({ data: { ok: true, message: "done" } }));
 		bindMock(mock);
 		const r = await httpMarketClient.enable({ name: "a", enabled: false });
-		expect(mock.calls[0]).toMatchObject({ method: "post", url: "_platform/market/enable" });
+		expect(mock.calls[0]).toMatchObject({ method: "post", url: "oj-market/enable" });
 		expect(mock.calls[0].opts?.json).toEqual({ name: "a", enabled: false });
 		expect(r).toEqual({ ok: true, message: "done" });
 	});
 
-	it("history() → GET _platform/market/history，返回 MarketHistory[]", async () => {
+	it("history() → GET oj-market/history，返回 MarketHistory[]", async () => {
 		const hist = [{ id: 1, solution: "a", version: "1.0", action: "install", status: "ok", operator: null, message: null, created_at: 1 }];
 		mock = mockRequest(() => ({ data: hist }));
 		bindMock(mock);
 		const r = await httpMarketClient.history();
-		expect(mock.calls[0]).toMatchObject({ method: "get", url: "_platform/market/history" });
+		expect(mock.calls[0]).toMatchObject({ method: "get", url: "oj-market/history" });
 		expect(r).toEqual(hist);
 	});
 
-	it("uninstallImpact(name) → GET _platform/market/uninstall-impact? 带 name", async () => {
+	it("uninstallImpact(name) → GET oj-market/uninstall-impact? 带 name", async () => {
 		mock = mockRequest(() => ({ data: { name: "a", affectedRoles: 2, affectedUsers: 5 } }));
 		bindMock(mock);
 		const r = await httpMarketClient.uninstallImpact("a");
-		expect(mock.calls[0]).toMatchObject({ method: "get", url: "_platform/market/uninstall-impact" });
+		expect(mock.calls[0]).toMatchObject({ method: "get", url: "oj-market/uninstall-impact" });
 		expect(mock.calls[0].opts?.searchParams).toEqual({ name: "a" });
 		expect(r).toEqual({ name: "a", affectedRoles: 2, affectedUsers: 5 });
 	});
 
-	it("uninstall(name) → POST _platform/market/uninstall，body {name}", async () => {
+	it("uninstall(name) → POST oj-market/uninstall，body {name}", async () => {
 		mock = mockRequest(() => ({ data: { ok: true, message: "removed" } }));
 		bindMock(mock);
 		const r = await httpMarketClient.uninstall("a");
-		expect(mock.calls[0]).toMatchObject({ method: "post", url: "_platform/market/uninstall" });
+		expect(mock.calls[0]).toMatchObject({ method: "post", url: "oj-market/uninstall" });
 		expect(mock.calls[0].opts?.json).toEqual({ name: "a" });
 		expect(r).toEqual({ ok: true, message: "removed" });
 	});

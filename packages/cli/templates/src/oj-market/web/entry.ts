@@ -6,7 +6,7 @@ import { createElement } from "react";
 import MarketApp from "./pages/MarketApp";
 import { onInit as publishOnInit, routes as publishRoutes } from "./publish/routes";
 
-// 方案市场前端模块（第一方专用，R29：消费 /api/_platform/market/* 编排面，第三方方案不得仿照此调用面）。
+// 方案市场前端模块（第一方专用，R29：消费 /api/oj-market/* 编排面，第三方方案不得仿照此调用面）。
 // 菜单标题走 i18next 命名空间语法 "<moduleName>:menu.<key>"（i18n 资源在 locales/，安装时随包注册）。
 //
 // **单模单根**（2026-11-05）：菜单只有一个「方案市场」根，下挂三个子页——

@@ -2,7 +2,7 @@ import type { TaskRecord } from "./site";
 // ojm install（P1-13，D6）：方案包安装瘦客户端。目标两种形态：
 //   · 本地 tgz 路径（<name>-<version>.tgz 文件名推导身份，--name/--version 可覆盖）→ file 源 multipart 上传；
 //   · name[@version] → cdn 源（站点侧 Form B 索引解析，安装器不拼 URL——市场侧职责，api.ts 同纪律）。
-// 流程：登录 → POST /api/_platform/market/install → 轮询 task?id= 至终态 → 渲染。
+// 流程：登录 → POST /api/oj-market/install → 轮询 task?id= 至终态 → 渲染。
 // 终态渲染（契约附录 A 同表取用，R28/DRY）：失败/partial 打 error.reason + retryable 标注 +
 // hintKey 对应双语指引（--locale zh-CN|en-US，缺省 zh-CN；文案真源为契约附录 A 表）。
 import fs from "node:fs";
@@ -285,11 +285,11 @@ export async function installCommand(target: string, opts: InstallOptions = {}):
 		if (opts.name !== undefined && opts.name !== slug)
 			throw new UsageError(`[ojm] --name「${opts.name}」与 registry 目标推导的物理名「${slug}」不一致——registry 源由目标推导身份，请二选一`);
 		// 旧站点拒：meta apiVersion < 0.2.0 不支持 registry 源（REG-R9② 升版反噬 F4 的人话面）
-		const meta = await callApi<{ apiVersion?: string }>(fetchFn, base, token, "GET", "/api/_platform/market/meta");
+		const meta = await callApi<{ apiVersion?: string }>(fetchFn, base, token, "GET", "/api/oj-market/meta");
 		if (!isSiteApiAtLeast(meta.apiVersion, "0.2.0"))
 			throw new Error(`[ojm] 目标站点平台 API 版本过低（需 ≥ 0.2.0 才支持 --registry 源安装，实为 ${meta.apiVersion ?? "未知"}）——请升级目标站点的 oj-module，或改用 CDN/file 源`);
 		const registryOrigin = originOf(src.url) ?? src.url;
-		response = await callApi<{ task_id: string }>(fetchFn, base, token, "POST", `/api/_platform/market/install${forceQ}`, {
+		response = await callApi<{ task_id: string }>(fetchFn, base, token, "POST", `/api/oj-market/install${forceQ}`, {
 			name: slug,
 			version: opts.version ?? version,
 			source: "registry",
@@ -321,7 +321,7 @@ export async function installCommand(target: string, opts: InstallOptions = {}):
 			else {
 				console.log(`[ojm] 未发现签名侧车（${path.basename(sigPath)}）——宿主验签硬 fail-closed，未签名包将被拒（sig_missing）；签名方法见 devkit「签名与信任」`);
 			}
-			const res = await fetchFn(`${base}/api/_platform/market/install${forceQ}`, {
+			const res = await fetchFn(`${base}/api/oj-market/install${forceQ}`, {
 				method: "POST",
 				headers: { authorization: `Bearer ${token}`, ...tenantHeaders() },
 				body: form,
@@ -331,7 +331,7 @@ export async function installCommand(target: string, opts: InstallOptions = {}):
 		else {
 			if (opts.name !== undefined && opts.name !== parsed.name)
 				throw new Error(`[ojm] --name「${opts.name}」与目标「${parsed.name}」不一致——请二选一`);
-			response = await callApi<{ task_id: string }>(fetchFn, base, token, "POST", `/api/_platform/market/install${forceQ}`, {
+			response = await callApi<{ task_id: string }>(fetchFn, base, token, "POST", `/api/oj-market/install${forceQ}`, {
 				name: parsed.name,
 				version: opts.version ?? parsed.version,
 				source: "cdn",

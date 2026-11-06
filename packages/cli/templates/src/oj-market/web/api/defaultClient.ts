@@ -9,7 +9,7 @@
 
 import type {
 	EnableInput,
-	IndexRow,
+	IndexPage,
 	InstallInput,
 	MarketHistory,
 	ReleasePage,
@@ -21,16 +21,16 @@ import type { MarketClient } from "./client";
 import { request } from "@oj-module/runtime";
 import {
 	bindRequest,
-	platformMarketEnablePost,
-	platformMarketHistoryGet,
-	platformMarketInstallPost,
-	platformMarketMetaGet,
-	platformMarketReleasesGet,
-	platformMarketTaskGet,
-	platformMarketTrustPost,
-	platformMarketUninstallImpactGet,
-	platformMarketUninstallPost,
-} from "../../../app/web/_platform/__client";
+	ojMarketEnablePost,
+	ojMarketHistoryGet,
+	ojMarketInstallPost,
+	ojMarketMetaGet,
+	ojMarketReleasesGet,
+	ojMarketTaskGet,
+	ojMarketTrustPost,
+	ojMarketUninstallImpactGet,
+	ojMarketUninstallPost,
+} from "../__client";
 
 // 绑定运行时 request 到生成 client 的模块级单槽（生成 client 是静态单例，必须由某处
 // bindRequest；此处兜底确保市场子应用无论挂载顺序都能拿到请求实例）。与 _platform 模块
@@ -55,8 +55,8 @@ interface OjEnvelope<T> {
 }
 
 // 第一方市场端点：相对前缀（无前导 /），由运行时 request 的 VITE_API_BASE_URL（/api）统一加前缀；
-// 与生成 client（platformMarket* 用 `_platform/...`）保持一致，避免 /api 叠加成 /api/api/（R29）。
-const MARKET = "_platform/market";
+// 与生成 client（ojMarket* 用 `oj-market/...`）保持一致，避免 /api 叠加成 /api/api/（R29）。
+const MARKET = "oj-market";
 
 /**
  * 503 = 服务端「未配置市场地址（framework.market_cdn_url）」，是**预期空态**而非故障
@@ -70,24 +70,30 @@ function isUnconfigured(e: unknown): boolean {
 export const httpMarketClient: MarketClient = {
 	async meta() {
 		// 生成 client 已解包信封 + DEV 校验；此处仅对齐领域类型。
-		return (await platformMarketMetaGet()) as { apiVersion: string };
+		return (await ojMarketMetaGet()) as { apiVersion: string };
 	},
-	async index() {
+	async index(input: { page?: number, size?: number } = {}) {
 		// 唯一需 silentError 的端点：直连 request 抑制「未配置市场地址」的全局 toast。
+		// v4 §四：分页数据源（{list,total,page,size}）；503（市场地址未配置）归空页——空态由卡片区文案承载。
 		try {
+			const params: Record<string, string> = {};
+			if (input.page != null)
+				params.page = String(input.page);
+			if (input.size != null)
+				params.size = String(input.size);
 			const r = await (request as unknown as HttpGetLike)
-				.get<OjEnvelope<IndexRow[]>>(`${MARKET}/index`, { silentError: true, retry: 0 });
+				.get<OjEnvelope<IndexPage>>(`${MARKET}/index`, { searchParams: params, silentError: true, retry: 0 });
 			const env = await r.json();
 			return env.data!;
 		}
 		catch (e) {
 			if (isUnconfigured(e))
-				return [];
+				return { list: [], total: 0, page: 1, size: 20 };
 			throw e;
 		}
 	},
 	async install(input: InstallInput) {
-		const data = await platformMarketInstallPost({
+		const data = await ojMarketInstallPost({
 			name: input.name,
 			version: input.version ?? null,
 			source: input.source ?? "cdn",
@@ -97,28 +103,28 @@ export const httpMarketClient: MarketClient = {
 	async task(id: string) {
 		// 生成 Data 为空 schema（仅 DEV catchall 校验），经 unknown 桥接领域类型；
 		// 运行时形状由服务端真源 + DEV zod 校验保证，TS 侧以领域类型为准。
-		return (await platformMarketTaskGet({ id })) as unknown as TaskRecord;
+		return (await ojMarketTaskGet({ id })) as unknown as TaskRecord;
 	},
 	async trust(taskId: string) {
 		// 服务端自任务记录重取公钥复算指纹比对（防混淆代理），前端只传 task_id，不传公钥
-		const data = await platformMarketTrustPost({ task_id: taskId });
+		const data = await ojMarketTrustPost({ task_id: taskId });
 		return data as { result: string, key_id: string, fingerprint: string };
 	},
 	async enable(input: EnableInput) {
-		const data = await platformMarketEnablePost({ name: input.name, enabled: input.enabled });
+		const data = await ojMarketEnablePost({ name: input.name, enabled: input.enabled });
 		return data as { ok: boolean, message: string };
 	},
 	async history() {
-		return (await platformMarketHistoryGet()) as unknown as MarketHistory[];
+		return (await ojMarketHistoryGet()) as unknown as MarketHistory[];
 	},
 	async releases(input: { page?: number, limit?: number } = {}) {
-		return (await platformMarketReleasesGet(input as { page: number, limit: number })) as unknown as ReleasePage;
+		return (await ojMarketReleasesGet(input as { page: number, limit: number })) as unknown as ReleasePage;
 	},
 	async uninstallImpact(name: string) {
-		return (await platformMarketUninstallImpactGet({ name })) as unknown as UninstallImpact;
+		return (await ojMarketUninstallImpactGet({ name })) as unknown as UninstallImpact;
 	},
 	async uninstall(name: string) {
-		const data = await platformMarketUninstallPost({ name });
+		const data = await ojMarketUninstallPost({ name });
 		return data as { ok: boolean, message: string };
 	},
 };

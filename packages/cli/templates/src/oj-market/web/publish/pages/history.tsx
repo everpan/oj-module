@@ -1,6 +1,6 @@
 import type { ReleaseRow } from "../../types";
 import { useQuery } from "@tanstack/react-query";
-import { Alert, Space, Table, Tag, Tooltip, Typography } from "antd";
+import { Space, Table, Tag, Tooltip, Typography } from "antd";
 import dayjs from "dayjs";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -54,7 +54,7 @@ export default function ReleaseHistoryPage() {
 			render: (value: number, row: ReleaseRow) => (
 				<Space size={4}>
 					<span>{formatSecs(value)}</span>
-					{row.published_at_source === "index" && <Tag color="default">{t("publish:history.indexTime")}</Tag>}
+					{row.published_at_source === "file" && <Tag color="default">{t("publish:history.backfillTime")}</Tag>}
 				</Space>
 			),
 		},
@@ -77,15 +77,6 @@ export default function ReleaseHistoryPage() {
 				</Typography.Title>
 				<Typography.Text type="secondary">{t("publish:history.subtitle")}</Typography.Text>
 			</Space>
-
-			{query.data?.syncError != null && (
-				<Alert
-					type="warning"
-					showIcon
-					message={t("publish:history.syncFailed")}
-					description={query.data.syncError}
-				/>
-			)}
 
 			<Table<ReleaseRow>
 				rowKey="id"

@@ -12,7 +12,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createTrustStore } from "../../src/app/api/_platform/_lifecycle/trust";
-import { BOOTSTRAP_KEY, seedBootstrapKey } from "../../src/app/api/_platform/market/bootstrap";
+import { BOOTSTRAP_KEY, seedBootstrapKey } from "../../src/oj-market/api/bootstrap";
 
 const g = globalThis as any;
 

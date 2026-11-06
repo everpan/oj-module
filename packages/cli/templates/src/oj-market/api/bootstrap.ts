@@ -5,8 +5,8 @@
 // 私钥入仓即信任根基烧毁（tests/lifecycle/bootstrap.spec 钉全仓 grep 私钥 pattern 零命中）。
 // 播种纪律：只在信任库文件尚不存在时播种一次——不与运维吊销对抗（remove 后不复活，G5 语义）。
 
-import { fsFace } from "../_lifecycle/atomic";
-import { createTrustStore } from "../_lifecycle/trust";
+import { fsFace } from "#/_platform/_lifecycle/atomic";
+import { createTrustStore } from "#/_platform/_lifecycle/trust";
 
 export interface BootstrapKey {
 	key_id: string
