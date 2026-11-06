@@ -7,6 +7,7 @@ import { useTranslation } from "react-i18next";
 import { systemPermissionsGet, systemRolesGet } from "../../__client";
 import { isForbidden } from "../errors";
 import { ForbiddenPanel } from "../forbidden";
+import { roleLabel } from "./role-label";
 import { visibleRoles } from "./visible-roles";
 
 type RoleRow = SystemRolesGetData[number];
@@ -41,16 +42,11 @@ export default function RolesPage() {
 		{
 			// R2：solution 角色带 title_key → 按当前语言实时翻译，title（安装期解析文本）兜底；
 			// 内置角色（builtin）的 title 是种子里的站点默认语言文本，按角色名再兜一层 locale；
-			// custom 角色无 key 原样显示 title（对齐下方权限点 title_key 的渲染先例）
+			// custom 角色无 key 原样显示 title（对齐下方权限点 title_key 的渲染先例）。
+			// 渲染口径与成员资格页共用 roleLabel（pages/roles/role-label.ts），改一处两处生效。
 			title: t("system:rolesPage.columns.title"),
 			dataIndex: "title",
-			render: (_: string, row: RoleRow) => {
-				if (row.title_key)
-					return t(row.title_key, { defaultValue: row.title ?? "" });
-				return row.builtin
-					? t(`system:rolesPage.roleTitle.${row.name}`, { defaultValue: row.title ?? row.name })
-					: row.title;
-			},
+			render: (_: string, row: RoleRow) => roleLabel(row, t),
 		},
 		{ title: t("system:rolesPage.holders"), dataIndex: "holders" },
 		{

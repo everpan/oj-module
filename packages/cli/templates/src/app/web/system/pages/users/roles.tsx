@@ -1,14 +1,16 @@
+import type { SystemRolesGetData } from "../../__client";
 import { useUserStore } from "@oj-module/runtime";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { App, Button, Card, Checkbox, Space } from "antd";
-import { useState } from "react";
+import { App, Button, Card, Checkbox, Divider, Space, Typography } from "antd";
+import { useMemo, useState } from "react";
+
 import { useTranslation } from "react-i18next";
 
 import { useNavigate, useParams } from "react-router";
-
 import { systemRolesGet, systemUsersGet, systemUsersRolesPut } from "../../__client";
 import { explainError, isForbidden } from "../errors";
 import { ForbiddenPanel } from "../forbidden";
+import { roleLabel } from "../roles/role-label";
 
 /**
  * 成员资格（AC1-7）：整集替换某用户角色。后端无 GET 单用户端点，
@@ -18,6 +20,9 @@ import { ForbiddenPanel } from "../forbidden";
  * 授予 admin 已下放到租户内，否则企业租户永远配不出管理员（平台 superadmin 因租户
  * 隔离查不到企业租户的用户）。但 **superadmin 仍只许 superadmin 授**——它握着跨租户
  * 权限，故这里对非 superadmin 直接把该选项置灰，比让他提交后吃 403 清楚。
+ *
+ * 展示（20261106-1811）：角色名按语言名称（key）解析（与角色页共用 roleLabel），
+ * 并按模块分组——角色行自带 module 字段，组标题显示模块名原文。
  */
 export default function UserRolesPage() {
 	const { t } = useTranslation();
@@ -34,6 +39,18 @@ export default function UserRolesPage() {
 
 	const usersQuery = useQuery({ queryKey: ["system", "users"], queryFn: systemUsersGet });
 	const rolesQuery = useQuery({ queryKey: ["system", "roles"], queryFn: systemRolesGet });
+
+	// 按模块分组（组内保持 listRoles 的 name 排序）；模块名原文作组标题。
+	// 位置在提前 return 之前——hooks 不得落在条件分支里
+	const groups = useMemo(() => {
+		const byModule = new Map<string, SystemRolesGetData>();
+		for (const r of rolesQuery.data ?? []) {
+			const list = byModule.get(r.module) ?? [];
+			list.push(r);
+			byModule.set(r.module, list);
+		}
+		return [...byModule.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+	}, [rolesQuery.data]);
 
 	const saveMut = useMutation({
 		mutationFn: (roles: string[]) => systemUsersRolesPut({ query: { uid: Number(uid) }, body: { roles } }),
@@ -55,18 +72,30 @@ export default function UserRolesPage() {
 
 	return (
 		<Card title={`${t("system:userRoles.title")}: ${user?.username ?? `#${uid}`}`}>
-			<Space direction="vertical">
-				<Checkbox.Group
-					options={(rolesQuery.data ?? []).map(r => ({
-						label: `${r.name}${r.deprecated ? t("system:userRoles.deprecated") : ""}`,
-						value: r.name,
-						// 非 superadmin 授不了平台级角色：置灰，提交后 403 太晚也太含糊
-						disabled: r.name === "superadmin" && !isSuper,
-					}))}
-					value={value}
-					onChange={v => setSelected(v)}
-				/>
+			<Space direction="vertical" style={{ width: "100%" }}>
+				{groups.map(([mod, rows]) => {
+					const names = new Set(rows.map(r => r.name));
+					return (
+						<div key={mod}>
+							<Typography.Text strong>{mod}</Typography.Text>
+							<div style={{ paddingLeft: 12, paddingTop: 4 }}>
+								<Checkbox.Group
+									options={rows.map(r => ({
+										label: `${roleLabel(r, t)}${r.deprecated ? t("system:userRoles.deprecated") : ""}`,
+										value: r.name,
+										// 非 superadmin 授不了平台级角色：置灰，提交后 403 太晚也太含糊
+										disabled: r.name === "superadmin" && !isSuper,
+									}))}
+									// 整集替换语义不变：每组只回显/改动本组名下的选中项
+									value={value.filter(v => names.has(v))}
+									onChange={vals => setSelected([...value.filter(v => !names.has(v)), ...vals])}
+								/>
+							</div>
+						</div>
+					);
+				})}
 				{value.length === 0 ? <span>{t("system:userRoles.none")}</span> : null}
+				<Divider style={{ margin: "8px 0" }} />
 				<Button
 					type="primary"
 					disabled={isSelf || selected === null}

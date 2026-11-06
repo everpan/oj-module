@@ -14,6 +14,7 @@ import { buildTreeData, subtreeIds } from "../departments/tree";
 import { explainError, isForbidden } from "../errors";
 import { ForbiddenPanel } from "../forbidden";
 import { canManageUser } from "./can-manage";
+import { matchUserKeyword } from "./match-keyword";
 
 type UserRow = SystemUsersGetData[number];
 
@@ -42,6 +43,7 @@ export default function UsersPage() {
 	const [pwdTarget, setPwdTarget] = useState<UserRow | null>(null);
 	const [pwdForm] = Form.useForm<{ password: string }>();
 	const [deptId, setDeptId] = useState<number | null>(null);
+	const [keyword, setKeyword] = useState("");
 
 	const usersQuery = useQuery({ queryKey: ["system", "users"], queryFn: systemUsersGet });
 	// 与部门页共用同一份缓存键：那边改完部门，这边的筛选树也跟着新
@@ -83,8 +85,9 @@ export default function UsersPage() {
 	const scope = useMemo(() => (deptId == null ? null : subtreeIds(deptRows, [deptId])), [deptRows, deptId]);
 	const visibleUsers = useMemo(() => {
 		const all = usersQuery.data ?? [];
-		return scope ? all.filter(u => u.departments.some(d => scope.has(d.id))) : all;
-	}, [usersQuery.data, scope]);
+		const scoped = scope ? all.filter(u => u.departments.some(d => scope.has(d.id))) : all;
+		return scoped.filter(u => matchUserKeyword(u, keyword));
+	}, [usersQuery.data, scope, keyword]);
 
 	if (usersQuery.error && isForbidden(usersQuery.error))
 		return <ForbiddenPanel t={t} error={usersQuery.error} />;
@@ -158,6 +161,13 @@ export default function UsersPage() {
 				<Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
 					{t("system:users.create")}
 				</Button>
+				<Input
+					allowClear
+					style={{ width: 220 }}
+					placeholder={t("system:users.searchPlaceholder")}
+					value={keyword}
+					onChange={e => setKeyword(e.target.value)}
+				/>
 				<TreeSelect
 					allowClear
 					showSearch
