@@ -130,16 +130,17 @@ async function auditPublish(row: { name: string, version: string, keyId: string,
 async function sigUploadBody(env: CdnUploadEnv, file: ParsedUploadFile, rawName: string, bytes: Uint8Array, sha256: string, keyId: string): Promise<Record<string, unknown>> {
 	const sigPath = `${env.cdnDir}/${rawName}`;
 	const existing = await readFileOrNull(sigPath);
-	if (existing !== null && sha256Of(env)(existing) === sha256)
+	if (existing !== null && sha256Of(env)(existing) === sha256) {
+		// 幂等重推留痕（minor M3）：重推不是发布动作，但发布留痕口径成败俱记——补一条 success 审计
+		await auditPublish({ name: file.name, version: file.version, keyId, status: "success", message: `幂等重推 .sig 旁车（${rawName} 内容未变，行未动）` });
 		return { ok: true, name: rawName, kind: "sig", sha256, idempotent: true };
-	const sig = parseSidecarSig(new TextDecoder().decode(bytes));
+	}
+	parseSidecarSig(new TextDecoder().decode(bytes)); // 结构校验（400 人话分流）；内容列在 tgz pair 时从盘上旁车读取
 	// 已配对（market_release 行在）后禁止换签：pair 完整是已发布事实，签名与 tgz 绑定不可拆换
 	const paired = await db.table("market_release").select(["id"]).where({ field: "product", op: "eq", value: file.name }).where({ field: "version", op: "eq", value: file.version }).limit(1).all() as unknown[];
 	if (paired.length > 0 && existing !== null && sha256Of(env)(existing) !== sha256)
 		fail(409, `「${file.name}@${file.version}」的 .sig 已与 tgz 配对入库，不接受换签——请升 version 重发`);
 	await atomicWriteBytes(sigPath, bytes);
-	void sig;
-	void keyId;
 	return { ok: true, name: rawName, kind: "sig", sha256 };
 }
 

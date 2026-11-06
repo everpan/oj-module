@@ -569,6 +569,27 @@ describe("POST upload（manifest 抽取 + 入库钳制）", () => {
 	});
 });
 
+describe("POST upload（旁车幂等重推留痕，minor M3）", () => {
+	it("给定 已配对发布，当 同字节 .sig 重推，则 200 幂等且 market_history 补一条 publish/success（message 含「幂等」）", async () => {
+		const { createCdnUploadApi } = await import("../../src/oj-market/api/cdn/api");
+		const api = createCdnUploadApi(makeEnv());
+		await pushSig(api);
+		g.http = httpFor(FILE, ARCHIVE);
+		await api.upload.post();
+		expect(last?.status).toBe(200);
+		const before = dbo.prepare("SELECT COUNT(*) c FROM market_history WHERE action='publish' AND status='success'").all()[0].c;
+		// 同字节重推旁车 → 幂等 200 + 留痕
+		g.http = httpFor(SIG_FILE, SIG_BYTES);
+		await api.upload.post();
+		expect(last?.status).toBe(200);
+		const after = dbo.prepare("SELECT COUNT(*) c FROM market_history WHERE action='publish' AND status='success'").all()[0].c;
+		expect(after).toBe(before + 1);
+		const row = dbo.prepare("SELECT * FROM market_history WHERE action='publish' AND status='success' ORDER BY rowid DESC LIMIT 1").get();
+		expect(row).toMatchObject({ solution: "demo-solution", version: "0.1.0", operator: KEY_ID });
+		expect(String(row.message)).toContain("幂等");
+	});
+});
+
 describe("POST upload（发布审计落 market_history）", () => {
 	it("发布成功 → action=publish status=success（operator=key_id）；409 冲突也记 failed", async () => {
 		const { createCdnUploadApi } = await import("../../src/oj-market/api/cdn/api");
