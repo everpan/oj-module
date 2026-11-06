@@ -4,7 +4,7 @@ INSERT IGNORE INTO users (username, password_hash, must_change) VALUES ('superad
 INSERT IGNORE INTO users (username, password_hash, must_change) VALUES ('admin', '$2y$10$9HEtASi9jG0VIBMMVqxAmOqrE4f6wiezhGmi50iPG1s1MXlncSO0e', 0);
 INSERT IGNORE INTO users (username, password_hash, must_change) VALUES ('editor', '$2y$10$9HEtASi9jG0VIBMMVqxAmOqrE4f6wiezhGmi50iPG1s1MXlncSO0e', 0);
 INSERT IGNORE INTO users (username, password_hash, must_change) VALUES ('viewer', '$2y$10$9HEtASi9jG0VIBMMVqxAmOqrE4f6wiezhGmi50iPG1s1MXlncSO0e', 0);
-DELETE FROM sys_user_role WHERE role_name = 'superadmin' AND user_id = (SELECT id FROM users WHERE username = 'admin');
+DELETE FROM sys_user_role WHERE role_name = 'superadmin' AND user_id IN (SELECT id FROM users WHERE username = 'admin');
 UPDATE users SET must_change = 0 WHERE username IN ('superadmin', 'admin', 'editor', 'viewer');
 INSERT IGNORE INTO sys_role (name, module, title, builtin) VALUES ('superadmin', 'framework', '超级管理员', 1);
 INSERT IGNORE INTO sys_role (name, module, title, builtin) VALUES ('admin', 'framework', '系统管理员', 1);

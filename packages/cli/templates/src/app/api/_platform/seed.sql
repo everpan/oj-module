@@ -11,7 +11,7 @@ INSERT OR IGNORE INTO users (username, password_hash, must_change) VALUES ('edit
 INSERT OR IGNORE INTO users (username, password_hash, must_change) VALUES ('viewer', '$2y$10$9HEtASi9jG0VIBMMVqxAmOqrE4f6wiezhGmi50iPG1s1MXlncSO0e', 0);
 -- 历史 seed 把 admin 绑在 superadmin 上；收敛为账号名=角色名（幂等 DELETE，每次重放生效）。
 -- 已存在库中 admin 行可能残留 must_change=1，UPDATE 统一收敛为 0（四个均为 seed 自有开发账号）
-DELETE FROM sys_user_role WHERE role_name = 'superadmin' AND user_id = (SELECT id FROM users WHERE username = 'admin');
+DELETE FROM sys_user_role WHERE role_name = 'superadmin' AND user_id IN (SELECT id FROM users WHERE username = 'admin');
 UPDATE users SET must_change = 0 WHERE username IN ('superadmin', 'admin', 'editor', 'viewer');
 -- 框架内置角色（ROLES 单一真相：superadmin 安全敏感项 / admin 日常管理 / editor、viewer 页面门）
 INSERT OR IGNORE INTO sys_role (name, module, title, builtin) VALUES ('superadmin', 'framework', '超级管理员', 1);

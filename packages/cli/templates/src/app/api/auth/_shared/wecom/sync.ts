@@ -400,6 +400,12 @@ async function runSlice(
 		for (const d of ordered) {
 			if (d.name)
 				continue;
+			// 受同片预算约束：预算耗尽就跳过剩余名字回源（名字留空非致命，下轮/事件增量会补）。
+			// 否则无名字的部门一多（每个 department/get 最多等 5s 软超时），departments 阶段会
+			// 跑出 12s 预算、甚至超过客户端/路由超时——外层切片本就为「可控时长」而设计，
+			// 这里若不拦，整片就失去时长上界（members 阶段有同款 deadline 守卫，这里原本漏了）。
+			if (deps.now() >= deadline)
+				continue;
 			try {
 				const detail = await deps.client.departmentDetail(corpId, agentId, secret, d.id);
 				if (detail.name)

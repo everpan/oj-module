@@ -37,6 +37,12 @@ const KEY = ["system", "wecom-sync"] as const;
 
 /** 单片推完到下一次 start 的最小间隔：后端限速 10 次/分，串行驱动别自己撞 429 */
 const MIN_GAP_MS = 6000;
+/**
+ * 同步请求超时：单条 `sync/start` 处理一片（预算 12s + 单次上游软超时 5s，最坏 ~17s），
+ * 远长于运行时 `request` 的默认 10s。不单独放宽，前端必然在「片还没推完」时先抛
+ * `Request timed out`。30s 与服务器默认路由超时对齐，留足余量。
+ */
+const SYNC_TIMEOUT_MS = 30_000;
 /** 一轮点击最多推多少片（12 秒/片 ≈ 12 分钟）：兜底防呆，正常企业两三次就到底 */
 const MAX_SLICES = 60;
 
@@ -61,21 +67,21 @@ function remember(view: SyncView): SyncView {
 }
 
 async function fetchStatus(): Promise<SyncView> {
-	const env = await request.get(withAgent("auth/wecom/sync/status")).json<{ code: number, data?: SyncView }>();
+	const env = await request.get(withAgent("auth/wecom/sync/status"), { timeout: SYNC_TIMEOUT_MS }).json<{ code: number, data?: SyncView }>();
 	if (!env.data)
 		throw new Error("企业微信同步状态读取失败");
 	return remember(env.data);
 }
 
 async function pushSlice(): Promise<SyncView> {
-	const env = await request.post("auth/wecom/sync/start", { json: agentBody() }).json<{ code: number, data?: SyncView }>();
+	const env = await request.post("auth/wecom/sync/start", { json: agentBody(), timeout: SYNC_TIMEOUT_MS }).json<{ code: number, data?: SyncView }>();
 	if (!env.data)
 		throw new Error("企业微信同步未能启动");
 	return remember(env.data);
 }
 
 async function cancelSync(): Promise<SyncView> {
-	const env = await request.post("auth/wecom/sync/cancel", { json: agentBody() }).json<{ code: number, data?: SyncView }>();
+	const env = await request.post("auth/wecom/sync/cancel", { json: agentBody(), timeout: SYNC_TIMEOUT_MS }).json<{ code: number, data?: SyncView }>();
 	if (!env.data)
 		throw new Error("取消同步失败");
 	return remember(env.data);
