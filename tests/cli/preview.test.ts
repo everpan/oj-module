@@ -256,8 +256,8 @@ describe("runPreview 编排", () => {
 		expect(startCalls[0]!.base).toBe("/api");
 		expect(startCalls[0]!.apiPath).toBe(apiDist);
 		expect(startCalls[0]!.extraArgs).toEqual([]);
-		// 横幅串保持（tests/integration 的 startRam 靠它抓端口）
-		expect(logs.some(l => l.includes("已启动：http://localhost:"))).toBe(true);
+		// 横幅串保持（tests/integration 的 startRam 靠它抓端口）；host 随 config（f54617162）
+		expect(logs.some(l => l.includes("已启动：http://127.0.0.1:"))).toBe(true);
 	});
 
 	it("migrate 非零退出 → 透传报错且不起 oj、不落派生文件", async () => {

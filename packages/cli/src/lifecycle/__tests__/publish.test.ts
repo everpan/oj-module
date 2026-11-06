@@ -205,17 +205,15 @@ describe("ojm publish 索引重算 + 签名（P3-5/6/7，REG-CS5 三级化）", 
 	it("索引写入只有 writeIndexFile 一条路径（源码级不变量，grep 可证）", () => {
 		const srcOf = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), "utf8");
 		const countOf = (text: string, re: RegExp) => text.split("\n").filter(line => re.test(line)).length;
-		// 生成侧：publish.ts 里唯一的 fs.writeFileSync 就在 writeIndexFile 体内（tmp+rename）；
-		// build-index.ts 零直写——索引文件全部经唯一写入口
+		// 生成侧：publish.ts 里唯一的 fs.writeFileSync 就在 writeIndexFile 体内（tmp+rename）
 		expect(countOf(srcOf("../../publish.ts"), /fs\.writeFileSync/)).toBe(1);
 		expect(countOf(srcOf("../../publish.ts"), /appendFileSync/)).toBe(0);
-		expect(countOf(srcOf("../../market/build-index.ts"), /fs\.writeFileSync|writeFileSync\(/)).toBe(0);
-		expect(countOf(srcOf("../../market/build-index.ts"), /appendFileSync/)).toBe(0);
-		// 全仓其余直写只剩 walkthrough 的负向演练：往 catalog 追加重码标记（drill 本身），
-		// 且回抄恢复走 writeIndexFile——除这一行 deliberate tamper 外没有第二个索引直写点
-		const walkthrough = srcOf("../../market/walkthrough.ts");
-		expect(countOf(walkthrough, /appendFileSync/)).toBe(1);
-		expect(countOf(walkthrough, /# tampered/)).toBe(1);
-		expect(countOf(walkthrough, /writeIndexFile\(catalog/)).toBe(1);
+		// A6：市场索引机制整建制退役——build-index/index-builder/sharding/yank-ledger 已删，
+		// 全仓不再有第二个索引写者（registry-* 文件面留档，唯一写入口仍是 writeIndexFile）
+		for (const rel of ["../../market/build-index.ts", "../../market/index-builder.ts", "../../market/sharding.ts", "../../market/yank-ledger.ts"])
+			expect(existsSync(fileURLToPath(new URL(rel, import.meta.url)))).toBe(false);
+		// walkthrough 的索引 tamper drill 随 neg-badindex 退役——不再有任何索引直写点
+		expect(countOf(srcOf("../../market/walkthrough.ts"), /appendFileSync/)).toBe(0);
+		expect(countOf(srcOf("../../market/walkthrough.ts"), /writeIndexFile/)).toBe(0);
 	});
 });

@@ -91,11 +91,11 @@ ojm dev
 #    ojm market setup --user superadmin --pass aA123456 --new-pass <你的口令>
 
 # 2) 发包：合成 fixture（或 --real 走 ojm build --bundle）→ 确定性 tgz → 包级签名
-#    --rebuild-index 顺带重建索引
-ojm market publish --fixture demo-solution@0.1.0 --id <发布方id> --rebuild-index
+#    本机演练走本地落盘面；对真站点发布加 --site-url 即远端签名推送
+ojm market publish --fixture demo-solution@0.1.0 --id <发布方id>
 
 # 3) 离线验包：不起站点、不装、不要凭据
-ojm market verify --rebuild-index
+ojm market verify --file cdn/demo-solution-0.1.0.tgz
 
 # 4) 浏览器打开市场页 → 看到卡片 → 点安装
 #    首次遇陌生发布方会停在「待信任」→ ojm trust confirm --task <id> → 重试即成
@@ -106,13 +106,16 @@ ojm market verify --rebuild-index
 | 命令 | 做什么 | **不**做什么 |
 |---|---|---|
 | `market setup` | 写系统设置 `framework.market_cdn_url`（**外部真 CDN 场景才需要**；脚手架缺省 /cdn 免 setup） | 不改写工程根 `config.yaml`（`/cdn` 挂载由模板自带） |
-| `market publish` | 落 `<name>-<version>.tgz` + 包级 `.tgz.sig` | **不碰索引**（索引是共享单文件，多人发布会互相覆盖） |
-| `market build-index` | 扫 `cdn/*.tgz` 提取包内 manifest，全量重建两份索引并签名 | 不落包 |
-| `market verify` | 完整性 / 包级签 / 索引签 / manifest 结构四类校验 + 漂移检出 | 不起站点、不装、不访问任何远端 |
+| `market publish` | 本机演练：落 `<name>-<version>.tgz` + 包级 `.tgz.sig`；加 `--site-url` 则远端签名推送（`.sig`/`.tgz` 按序推，pair 约束） | 不经账号口令（签名头 + 信任库）；同字节重传幂等 |
+| `market verify` | 单包校验：manifest 结构 / 包级签 / 契约-迁移一致性 | 不起站点、不装、不访问任何远端 |
 
-### 4.2 索引为什么是「扫描重建」而不是「增量合并」
+### 4.2 为什么目录归站点库而不是共享索引文件
 
-因为索引签名对不上多人协作：如果 publish 时读-改-写共享索引，后发者会把前者的签名覆盖掉，且存在竞态。而索引签名在运行期只是**完整性层**（防目录被改），不是信任锚——那就干脆把它降级成派生产物：**谁都能重建，重建结果只取决于目录里有什么**。这也是 `publish` 与 `build-index` 必须分成两个命令的原因。
+文件索引时代的教训：publish 读-改-写共享索引，后发者会覆盖前者的签名且有竞态；索引签名
+只是完整性层不是信任锚。现在的答案是把目录降级成站点的**派生数据**：签名推送完成时由
+服务端直写目录库（`market_release` 行），安装解析直读该库——没有共享可变文件，天然支持
+多人并发，重放同字节幂等；存量包/灾备恢复由站点 `POST /api/oj-market/backfill` 扫描
+`cdn/` 自愈。
 
 ### 4.3 信任模型（30 秒版）
 
@@ -127,9 +130,12 @@ ojm market verify --rebuild-index
 
 `ojm dev` 的 Node 服务在 **5174**，把 `/api` 与 `/cdn`（config 有 `/cdn` 挂载时）一并反代给 oj 子进程；`/cdn` 是 **oj 的挂载**，直出工程根 `cdn/`。`framework.market_cdn_url` 写成相对路径 `/cdn`（seed 缺省值）时，服务端按**请求源**补全同源绝对 URL 再拉取——dev 下请求走 5174，反代链路内透传，拿到的是真索引。2026-10-23 之前 dev 只反代 `/api`，相对基址会拿到静态层回落的 index.html（难懂的 YAML 解析错）——该坑已由 dev 反代 + 消费侧 `withSiteOrigin` 补全闭环。历史上下文：`market setup` 写绝对地址（`http://<host>:<config server.port>/cdn`）依旧兼容可用。
 
-### 5.2 CDN 里摆了 `.tgz.sig` 侧车，不等于能装
+### 5.2 安装验签的数据源是站点目录行
 
-安装器的验签段只认 `manifests.yaml` 里的 `archive.signature`。侧车文件在目录里摆着**不够**，索引不带过去就是 `sig_missing` 硬拒。`market build-index` 已负责把侧车读进索引——所以规范动作永远是 **publish → build-index**，两个都跑。
+安装器的验签段认目录库行里的签名四列（由签名推送完成时服务端从 `.sig` 旁车写入）。
+CDN 目录里只摆 `.tgz.sig` 侧车、库里没有对应行，就是 `sig_missing` 硬拒——所以规范动作是
+**publish 把 pair 推完整**（`.sig` 先行 `.tgz` 后至，服务端配对成功才写行）；
+存量包/灾备恢复由站点 `POST /api/oj-market/backfill` 扫描 `cdn/` 把旁车读进库补齐。
 
 > 附注：曾有一条「包内 `api/<mod>/manifest.yaml` 的 desc 必须逐字等于方案 summary」的校验，已于 2026-10-21 移除——那是构建期映射被当成安装期契约，而 desc 只是模块描述文本、非安全边界。现存相关校验只有：`summary` 必填、`desc` 必填非空。
 
@@ -171,8 +177,8 @@ node "$CLI_PKG/bin/ojm.mjs" sign dist/<name>-<version>.tgz --id demo.publisher -
 
 ```bash
 cd <host>
-node "$CLI_PKG/bin/ojm.mjs" market publish --real ../solution-demo --id demo.publisher --key ../keys/private.pem --rebuild-index
-node "$CLI_PKG/bin/ojm.mjs" market verify --rebuild-index
+node "$CLI_PKG/bin/ojm.mjs" market publish --real ../solution-demo --site-url http://127.0.0.1:9778 --id demo.publisher --registry-id <站点 registry_id>
+node "$CLI_PKG/bin/ojm.mjs" market verify --file cdn/<name>-<version>.tgz
 
 node "$CLI_PKG/bin/ojm.mjs" build                 # 生成 api/dist + web/dist（含 api/dist/versions.json）
 # config：platform.root 改成 api/dist（安装目标恒为 release 部署，root 必须与 --api-path 同源）
@@ -207,9 +213,9 @@ ls api/dist/<name>-<version>/                        # 安装产物目录
 写模块      → 源码直跑（ojm dev），不要装
 验证能装    → ojm market trial（隔离站点，12s），或 ojm install <tgz> 到另一个工程
 重复？      → 不会。注册面全 upsert；同名再装被前置校验直接拒
-市场链路    → setup → publish → build-index → verify → 市场页安装（release 形态：--api-path api/dist）
+市场链路    → setup（外部真 CDN 才需要）→ publish（远端签名推送）→ verify → 市场页安装（release 形态：--api-path api/dist）
 绝对 URL    → 市场地址端口取自 config（9778），不是 dev server 的 5174
-信任        → 包级签=锚，索引签=完整性，TOFU 管陌生发布方，verify 不背书内容安全
+信任        → 包级签=锚，目录行签名四列=完整性，TOFU 管陌生发布方，verify 不背书内容安全
 ```
 
 ## 8. 延伸阅读

@@ -9,7 +9,8 @@
  *   私钥只在内存，临时根内无 PEM（站点自己的开发证书走 mintDevCert，属站点身份）；
  * - **凭据**：隔离库是全新 seed，admin 口令即种子默认值，与真站点凭据零交集；
  * - **信任库**：`.solutions/trusted-keys.yaml` 只在安装器写入时生成，全新根内不存在；
- * - **CDN 目录**：临时根内 cdn/，由本模块自建（publish + build-index 直落）。
+ * - **CDN 目录**：临时根内 cdn/，由本模块自建（publish 落字节 + db-seed 直写 market_release
+ *   目录行——DB 目录化后安装解析直读目录表，索引机制已退役，v4 §五内部通道）。
  *
  * 提库来源：`scripts/verify-solution-smoke/bootstrap-host.mjs`（同手法，脚本形态）；
  * 本文件是它的 cli 内嵌版（计划 §9.1：phase1 从这里提库而非重写）。
@@ -31,7 +32,7 @@ import { exportRawPublicKeyHex, fingerprintOfPublicKey } from "../lifecycle/sign
 import { startOj } from "../oj";
 import { mintDevCert } from "../oj-cert";
 import { resolveOjBin } from "../vendor";
-import { buildIndex } from "./build-index";
+import { seedMarketRelease } from "./db-seed";
 import { parseFixtureSpec } from "./fixture";
 import { publishPackage } from "./publish";
 
@@ -205,10 +206,9 @@ export async function bootstrapIsolatedSite(opts: BootstrapOptions = {}): Promis
 	const keyId = "trial.publisher";
 	const publisher = derivePublisherKey(randomBytes(16).toString("hex"));
 
-	// 6) 隔离 CDN：落 fixture 包 + 重建索引（publish/buildIndex 直落临时根）
+	// 6) 隔离 CDN：落 fixture 包字节（publish 内部通道）——目录行在 oj 起站迁移后 seed（步骤 7b）
 	mkdirSync(cdnDir, { recursive: true });
-	await publishPackage({ projectRoot: root, fixture: opts.fixture, id: keyId, privateKeyPem: publisher.privateKeyPem, registryId: "trial.registry" });
-	await buildIndex({ projectRoot: root, id: keyId, privateKeyPem: publisher.privateKeyPem });
+	const published = await publishPackage({ projectRoot: root, fixture: opts.fixture, id: keyId, privateKeyPem: publisher.privateKeyPem, registryId: "trial.registry" });
 
 	// 7) 后端构建（dist/api + versions.json；安装与 reloading 都依赖它）
 	await buildBackend(root);
@@ -224,7 +224,11 @@ export async function bootstrapIsolatedSite(opts: BootstrapOptions = {}): Promis
 		rmSync(root, { recursive: true, force: true });
 		throw error;
 	}
-	log(`[ojm] 隔离站点就绪：http://127.0.0.1:${port}（根 ${root}）`);
+	// 7c) 目录行 seed（站点内部通道，v4 §五）：oj serve 起站已应用迁移——直写 market_release，
+	// 安装解析/index 卡片/releases 的目录真源；不走上传签名面（试车夹具不该依赖被测面之外
+	// 的签名/信任库/限速）。CLI 是本库唯一写者（隔离场景无并发）。
+	seedMarketRelease(dbPath, { tgzPath: published.tgzPath });
+	log(`[ojm] 隔离站点就绪：http://127.0.0.1:${port}（根 ${root}，目录行已 seed）`);
 
 	// 8) cleanup：停进程 → 按 keep 决定删不删根 → 摘信号；全程幂等
 	let done = false;
@@ -309,7 +313,8 @@ function teardownReport(root: string, port: number): string[] {
 		"  src/    后端模块源码树（src/<name>/api，拷自 cli 内置模板）",
 		"  dist/api/  构建产物（安装目标）",
 		"  bin/    oj 二进制与插件（拷贝自源工程）",
-		"  cdn/    隔离 CDN（fixture 包 + 两份索引 + 签名）",
+		"  cdn/    隔离 CDN（fixture 包 + .sig 旁车）",
+		"  db.sqlite  含 market_release 目录行（seed 直写）",
 		`监听端口：127.0.0.1:${port}（进程已停）`,
 		`手动清理：rm -rf ${root}`,
 	];

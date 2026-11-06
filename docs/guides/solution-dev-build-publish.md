@@ -14,7 +14,7 @@ flowchart LR
   B --> C["ojm build --bundle（组装 + 契约校验）"]
   C --> D["ojm keygen（一次性）"]
   D --> E["ojm sign（每次发布）"]
-  E --> F["ojm publish（CDN 索引 + .sig 侧车）"]
+  E --> F["ojm market publish（远端签名推送）"]
   F --> G["ojm install（站点十阶段状态机）"]
   G --> H{"信任库认识这个 key 吗"}
   H -->|"不认识"| I["needs_trust：核对指纹 → trust confirm → 重试"]
@@ -127,32 +127,40 @@ ojm install dist/<name>-<version>.tgz \
 
 适合内网/单站交付。`.sig` 同目录自动随包上传。
 
-### 4.2 CDN 源（多站点分发）
+### 4.2 远端站点源（多站点分发，缺省）
 
-发布目录约定三个文件：`bundles.yaml`（版本清单）、`manifests.yaml`（聚合清单）、分发包 `<name>-<version>.tgz`（+ `.sig`）。
+发布 = 远端**签名推送**：`ojm market publish` 构建 + 包级签名后，把 `.sig` 旁车与 `.tgz`
+按序推到目标站点的市场上传端点（`POST /api/oj-market/cdn/upload`）。不经账号口令——
+身份与完整性全靠 `X-OJM-Key-Id` / `X-OJM-Signature` 请求头（站点信任库 + Ed25519），
+CLI 没有账号也能发。站点收到配对的两件后把版本直写自己的目录库，安装解析直读该库。
 
 ```bash
-# 落包 + 包级 detached 签名 + 重建索引，一步到位（单方案工程；多方案工程见下文注）
+# 构建 + 包级签名 + 远端推送，一步到位（单方案工程；多方案工程见下文注）
 ojm market publish --real . \
-  --id demo.publisher --key ~/.ojm/keys/demo.publisher/private.pem --rebuild-index
-#   → cdn/ 下写齐六件套：<name>-<ver>.tgz / .tgz.sig /
-#     bundles.yaml(+.sig) / manifests.yaml(+.sig)
-#   → 引用式方案（api 段缺 tables/deps）会打印「引用式方案…非漏配」提示，安装期 C2-31 复核
+  --site-url https://your-site \
+  --id demo.publisher --registry-id <站点 registry_id>
+#   → 发布完成：<name>@<version> 已进 https://your-site 市场目录（DB 目录行 + cdn/ 字节）
+#   → 引用式方案（api 段缺 tables/deps）会打印「引用式方案…非漏配」提示，安装期复核
 ```
 
+- `--site-url` 缺省读 `OJM_SITE_URL`；都没有 → 人话报错。推送前 CLI 匿名探测站点目录 API：
+  旧站点 404 → 「站点版本过旧」+ 迁移指南指向；站点未配 `registry_id` → 指向 `config.yaml vars` 设置项。
 - `--real <方案工程>` 取方案工程路径（`.` 即当前工程）；发布方 key 与 `ojm sign` 同身份体系（`~/.ojm/keys`）。
 - **多方案工程**（`src/` 下多份 `solution.yaml`）走 `market publish --real .` 会被拒并提示显式链路：
-  `ojm build --bundle <name>` → `ojm sign dist/<name>-<ver>.tgz --id <pub> --key <pem> --registry-id <registry.id>` →
-  把 `tgz`+`.sig` 放进 `cdn/` → `ojm market build-index`。单方案工程或显式 `--real <某方案工程>` 才走自动发布。
-- CDN 推送与本地写回走同一发布面；索引有防投毒规范（`versions[].file` 必须逐字 `<name>-<version>.tgz`、下载段立即比对 size、恒 `no-cache`），详见手册 §11.2。
-- 站点侧消费：`ojm install <name>[@version]`，从 CDN 拉 Form B 索引再拉包。
+  `ojm build --bundle <name>` → `ojm sign dist/<name>-<ver>.tgz --id <pub> --registry-id <站点 registry_id>` →
+  `ojm market publish --real . --site-url <站点> --id <pub>`（同 §4.1 推送面）。单方案工程才走自动发布。
+- pair 约束：服务端只收「旁车在先」的包；同 `name@version` 同字节重传幂等，异字节 409
+  （升 version 重发）；方案名绑定首发 key（换主 = 站点 superadmin 操作）。
+- 下线/恢复：`ojm market yank <name> <version> --site-url <站点> --id <pub>`（`--restore` 恢复）——
+  仅发布者本人的 key 可操作；yank 不动已装站点，只摘除目录。
+- 站点侧消费：`ojm install <name>[@version]`，从站点目录库解析再拉包。
 
 ### 4.3 发布前 checklist
 
 - [ ] `ojm build` + `ojm build --bundle` 均通过，sha256 记录进发布单；
 - [ ] `ojm sign … --check` 通过，`.sig` 与 tgz 同目录；
 - [ ] 版本号已升（方案契约 `version` 与文件名一致）；
-- [ ] CDN 发布已跑 `ojm publish`（索引与侧车同步）；
+- [ ] 远端发布已跑 `ojm market publish`（`.sig`/`.tgz` 推送完成，目录行可见）；
 - [ ] 新 key 首次发布：提前把公钥指纹交给运维，避免安装卡在 needs_trust。
 
 ---
@@ -184,7 +192,7 @@ ojm trust revoke <key_id>        # 吊销
 | `needs_trust` 终态 | 站点第一次见这个 key | 逐字核对指纹 → `trust confirm --task <id>` → 重跑 install |
 | 打包报「缺少本方案的站点产物」 | `web.config.ts` 没登记模块，或没先 `ojm build` | 登记后重跑构建再打包 |
 | 打包报「缺少 bundle 级契约」 | 没有 `solution.yaml`（工程根或 `src/<模块>/`） | 补契约（§1.2） |
-| `ojm publish` 后站点装不到新版 | 索引没重算/没推上去 | 重跑 `ojm market build-index`（见 §4.2 显式链路）并确认 CDN 上六文件同步 |
+| `ojm market publish` 后站点装不到新版 | 推送半成功（`.sig` 成 `.tgz` 败） | 重跑同一条 publish（同字节幂等补齐 pair）；站点 superadmin 跑 `POST /api/oj-market/backfill` 对账 |
 
 ---
 
@@ -199,15 +207,15 @@ ojm trust revoke <key_id>        # 吊销
 ojm keygen --id demo.publisher
 #   记下输出的 fingerprint（sha256(publicKey)）——运维侧 TOFU 核对用
 
-# ② 落包 + 包级签名 + 重建索引（单方案工程；多方案工程会被拒，见 §4.2 注）
-ojm market publish --real . --id demo.publisher \
-  --key ~/.ojm/keys/demo.publisher/private.pem --rebuild-index
-#   → cdn/ 六件套齐（含 .tgz.sig 与两份 .yaml.sig）
+# ② 构建 + 包级签名 + 远端签名推送（单方案工程；多方案工程会被拒，见 §4.2 注）
+ojm market publish --real . --site-url https://your-site \
+  --id demo.publisher --registry-id <站点 registry_id>
+#   → 发布完成：<name>@<version> 已进站点市场目录（DB 目录行 + cdn/ 字节）
 #   → 引用式方案会打印「引用式方案…非漏配」提示
 
 # ③ 离线验包（不起站点、不装、不要凭据）
-ojm market verify --rebuild-index
-#   → 五项全 ✓（完整性 / 包级签 / 索引签 ×2 / manifest 结构）
+ojm market verify --file dist/<name>-<version>.tgz
+#   → 三项全 ✓（manifest 结构 / 包级签 / 契约-迁移一致性）
 ```
 
 ### 7.2 运维侧：起站（release）→ setup → install → TOFU

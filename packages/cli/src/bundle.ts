@@ -17,7 +17,7 @@
 //                     零份用户契约 → 友好报错指向 `ojm new`
 //   模块级契约强校验 name === 目录名（B8；跨契约查重因 B8 不可达已不实现，见计划文档 B7 决策）。
 //   两段式：全部校验（纯读零写盘）先于全部组装——校验失败 dist/ 零增量，
-//   发布者不会把半截批次扫进 CDN 索引（build-index 全量收目录）。
+//   发布者不会把半截批次直接推上市场（remote-push 整包推送，服务端 pair 校验落库）。
 //
 // 组装映射（对齐 P1-9 staging copy 源一层定版，unpack 布局即安装器 extract 段消费面）：
 //   <project>/solution.yaml | manifest.yaml          → 工程根契约（旧单方案写法）

@@ -6,9 +6,10 @@
  *
  * 输出是一张 AC 表 + 汇总行；有 FAIL 即退出码 1。`--strict` 首败即停（调试用）。
  *
- * T12 追加：upgrade / rollback（主链路）与 neg-tamper / nosig / badindex / stranger（负向）。
+ * T12 追加：upgrade / rollback（主链路）与 neg-tamper / nosig / stranger（负向）。
+ * A6：索引面负向（neg-badindex）随索引机制退役删除——写通道门禁（cdn-upload.spec）承接。
  * neg-* 统一用 0.0.9 版本（低于主链路 latest 0.2.0，永远成不了 latest）与主链路隔离；篡改的文件在 finally 里回抄原始字节（不重签），
- * 收尾摘包重铺索引——否则后续 op 全挂。
+ * 收尾摘包除目录行——否则后续 op 全挂。
  */
 
 import type { TaskRecord } from "../site";
@@ -20,11 +21,10 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { resolveLayout } from "../layout";
-import { writeIndexFile } from "../publish";
 import { signCommand } from "../sign";
 import { callApi, login, pollTask, tenantHeaders, unwrapEnvelope } from "../site";
 import { bootstrapIsolatedSite, derivePublisherKey } from "./bootstrap";
-import { buildIndex } from "./build-index";
+import { nullReleaseSig, removeMarketRelease, seedMarketRelease } from "./db-seed";
 import { FAILURE_PLAYBOOK } from "./failure-playbook";
 import { buildEvilZipSlipTgz, parseFixtureSpec } from "./fixture";
 import { publishPackage } from "./publish";
@@ -84,7 +84,7 @@ function installSucceeded(task: TaskRecord): boolean {
 /**
  * neg-* 专用版本：与主链路（0.1.0/0.2.0）完全隔离，收尾整包摘除。
  * 必须低于主链路 latest（0.2.0），否则发布后它会成为 latest，摘除时 REG-CS2 单调性守卫
- * 会把它判成「latest 回退」而拒建索引，导致负向用例的安装拒绝断言没机会跑（9.9.9 曾踩此坑）。
+ * 会让它成为 latest 干扰主链路，导致负向用例的安装拒绝断言没机会跑（9.9.9 曾踩此坑）。
  */
 const NEG_VERSION = "0.0.9";
 /** neg-* 独立方案名：与主链路 demo-solution 隔离，避免共享迁移账本（OJ-9 降级守卫会误拦 neg 包的低 seq 迁移）与 latest 守卫串扰 */
@@ -93,12 +93,13 @@ const NEG_NAME = "neg-solution";
 const OPS: Op[] = [
 	{
 		key: "index",
-		title: "市场索引出卡片",
+		title: "市场目录出卡片",
 		run: async (ctx) => {
-			const rows = await callApi<Array<Record<string, unknown>>>(fetch, ctx.base, ctx.token, "GET", "/api/oj-market/index");
-			const hit = (rows ?? []).find(r => r.name === ctx.name);
+			const page = await callApi<{ list?: Array<Record<string, unknown>> }>(fetch, ctx.base, ctx.token, "GET", "/api/oj-market/index");
+			const rows = page?.list ?? [];
+			const hit = rows.find(r => r.name === ctx.name);
 			return hit === undefined
-				? { ok: false, detail: `索引里没有 ${ctx.name}（拿到 ${(rows ?? []).length} 张卡）` }
+				? { ok: false, detail: `目录里没有 ${ctx.name}（拿到 ${rows.length} 张卡）` }
 				: { ok: true, detail: `${ctx.name} 在列，latest=${String(hit.latest)}，available=${JSON.stringify(hit.available ?? [])}` };
 		},
 	},
@@ -255,7 +256,7 @@ const OPS: Op[] = [
 				return {
 					ok,
 					detail: ok
-						? "failed@verifying（sha256 与索引不符，C2-29 fail-closed），零落盘"
+						? "failed@verifying（包体 sha256 与目录行不符，C2-29 fail-closed），零落盘"
 						: `status=${task.status} stage=${task.stage} noDrop=${noDrop}：${task.message}`,
 				};
 			}
@@ -267,47 +268,18 @@ const OPS: Op[] = [
 	},
 	{
 		key: "neg-nosig",
-		title: "负向：缺包级签名（sig_missing）",
+		title: "负向：目录行无签名（sig_missing）",
 		run: async (ctx) => {
 			await publishVersion(ctx, NEG_VERSION, NEG_NAME);
-			const tgz = path.join(ctx.site.cdnDir, `${NEG_NAME}-${NEG_VERSION}.tgz`);
-			const sig = `${tgz}.sig`;
-			const origSig = fs.readFileSync(sig);
 			try {
-				fs.rmSync(sig);
-				await buildIndex({ projectRoot: ctx.site.root, id: ctx.site.publisher.keyId, privateKeyPem: ctx.site.publisher.privateKeyPem }); // Form B 缺 archive.signature
+				// 遗留目录行形态（未经回填）：签名四列 NULL → 合成 Form B 缺 archive.signature
+				nullReleaseSig(ctx.site.dbPath, NEG_NAME, NEG_VERSION);
 				const task = await installOnce(ctx, NEG_VERSION, NEG_NAME);
 				const reason = task.error?.reason ?? task.message;
 				const ok = task.status === "failed" && reason.includes("sig_missing");
 				return { ok, detail: ok ? "failed，失败码 sig_missing（G4 硬 fail-closed）" : `status=${task.status}：${reason}` };
 			}
 			finally {
-				fs.writeFileSync(sig, origSig); // 回抄原始字节
-				await removeVersion(ctx, NEG_VERSION, NEG_NAME);
-			}
-		},
-	},
-	{
-		key: "neg-badindex",
-		title: "负向：索引篡改（验签拒载）",
-		run: async (ctx) => {
-			await publishVersion(ctx, NEG_VERSION, NEG_NAME);
-			const catalog = path.join(ctx.site.cdnDir, "catalog.yaml");
-			const orig = fs.readFileSync(catalog);
-			try {
-				fs.appendFileSync(catalog, "# tampered\n"); // 索引字节变、签名失配
-				let msg = "";
-				try {
-					await installOnce(ctx, NEG_VERSION, NEG_NAME);
-				}
-				catch (error) {
-					msg = (error as Error).message; // 预期：安装 POST 即 502，任务都未创建
-				}
-				const ok = msg.includes("签名校验失败");
-				return { ok, detail: ok ? "安装 POST 即 502 拒载（G4 fail-closed），任务未创建" : `未按预期拒装：${msg === "" ? "安装竟成功" : msg}` };
-			}
-			finally {
-				writeIndexFile(catalog, orig.toString("utf-8")); // 回抄原始字节（也走唯一写入口，不留下直写索引的路径）
 				await removeVersion(ctx, NEG_VERSION, NEG_NAME);
 			}
 		},
@@ -325,7 +297,7 @@ const OPS: Op[] = [
 			const before = await trustKeys(ctx); // 信任库快照（F3 diff 基线）
 			try {
 				signCommand(tgz, { id: "stranger.publisher", privateKeyPem: stranger.privateKeyPem, registryId: "trial.registry" }); // 覆盖侧车签名（REG-CS3 v2 规范串首段需 registry 身份）
-				await buildIndex({ projectRoot: ctx.site.root, id: "stranger.publisher", privateKeyPem: stranger.privateKeyPem });
+				seedMarketRelease(ctx.site.dbPath, { tgzPath: tgz }); // 重 seed：目录行换陌生 key（upsert 覆盖）
 				const first = await installOnce(ctx, NEG_VERSION, NEG_NAME);
 				if (first.status !== "needs_trust")
 					return { ok: false, detail: `未停 needs_trust：status=${first.status}：${first.message}` };
@@ -349,6 +321,9 @@ const OPS: Op[] = [
 			finally {
 				fs.writeFileSync(tgz, orig); // 回抄原始字节，不重签
 				fs.writeFileSync(sig, origSig);
+				// 目录行回滚为原发布者（摘除 + 重 seed 原字节），再走清场
+				removeMarketRelease(ctx.site.dbPath, NEG_NAME, NEG_VERSION);
+				seedMarketRelease(ctx.site.dbPath, { tgzPath: tgz });
 				await removeVersion(ctx, NEG_VERSION, NEG_NAME);
 			}
 		},
@@ -358,7 +333,7 @@ const OPS: Op[] = [
 		title: "负向：zip-slip 越界包（R1 拒收）",
 		run: async (ctx) => {
 			const evil = path.join(ctx.site.cdnDir, `${ctx.name}-evil.tgz`);
-			buildEvilZipSlipTgz(evil); // 成员含 ../evil.sql，无需发布进索引（file 源直传）
+			buildEvilZipSlipTgz(evil); // 成员含 ../evil.sql，无需进目录（file 源直传）
 			const distDir = resolveLayout(ctx.site.root).apiDist;
 			const before = fs.readdirSync(distDir).sort(); // 零副作用基线：0.0.9 目录可能是前序 neg-stranger 的合法产物
 			try {
@@ -463,7 +438,7 @@ async function installFile(ctx: Ctx, tgzPath: string, version: string): Promise<
 		headers: { authorization: `Bearer ${ctx.token}`, ...tenantHeaders() },
 		body: form,
 	});
-	await unwrapEnvelope(res); // 非 0 code 抛人话（400 zip-slip / 502 索引等）
+	await unwrapEnvelope(res); // 非 0 code 抛人话（400 zip-slip 等）
 }
 
 /** 信任库 key_id 快照（GET /market/trust；neg-stranger 的 diff 断言用） */
@@ -482,23 +457,23 @@ async function ensureInstalled(ctx: Ctx): Promise<void> {
 		throw new Error(`前置安装失败：status=${task.status}：${task.message}`);
 }
 
-/** 索引卡片（本方案一行；upgrade/rollback/uninstall 与 index op 同一消费面） */
+/** 目录卡片（本方案一行；upgrade/rollback/uninstall 与 index op 同一消费面） */
 async function indexCard(ctx: Ctx): Promise<Record<string, unknown> | undefined> {
-	const rows = await callApi<Array<Record<string, unknown>>>(fetch, ctx.base, ctx.token, "GET", "/api/oj-market/index");
-	return (rows ?? []).find(r => r.name === ctx.name);
+	const page = await callApi<{ list?: Array<Record<string, unknown>> }>(fetch, ctx.base, ctx.token, "GET", "/api/oj-market/index");
+	return (page?.list ?? []).find(r => r.name === ctx.name);
 }
 
-/** 发布某版本 fixture 进隔离 CDN 并重铺索引（upgrade/rollback/neg-* 的共用前置） */
+/** 发布某版本 fixture 进隔离站点（落字节 + seed 目录行——upgrade/rollback/neg-* 共用前置） */
 async function publishVersion(ctx: Ctx, version: string, name: string = ctx.name): Promise<void> {
-	await publishPackage({ projectRoot: ctx.site.root, fixture: `${name}@${version}`, id: ctx.site.publisher.keyId, privateKeyPem: ctx.site.publisher.privateKeyPem, registryId: "trial.registry" });
-	await buildIndex({ projectRoot: ctx.site.root, id: ctx.site.publisher.keyId, privateKeyPem: ctx.site.publisher.privateKeyPem });
+	const published = await publishPackage({ projectRoot: ctx.site.root, fixture: `${name}@${version}`, id: ctx.site.publisher.keyId, privateKeyPem: ctx.site.publisher.privateKeyPem, registryId: "trial.registry" });
+	seedMarketRelease(ctx.site.dbPath, { tgzPath: published.tgzPath });
 }
 
-/** neg op 收尾：整包摘除（tgz + 侧车签名）并重铺索引，恢复主链路原状 */
+/** neg op 收尾：整包摘除（tgz + 侧车签名 + 目录行），恢复主链路原状 */
 async function removeVersion(ctx: Ctx, version: string, name: string = ctx.name): Promise<void> {
 	for (const file of [`${name}-${version}.tgz`, `${name}-${version}.tgz.sig`])
 		fs.rmSync(path.join(ctx.site.cdnDir, file), { force: true });
-	await buildIndex({ projectRoot: ctx.site.root, id: ctx.site.publisher.keyId, privateKeyPem: ctx.site.publisher.privateKeyPem });
+	removeMarketRelease(ctx.site.dbPath, name, version);
 }
 
 export const WALKTHROUGH_OPS = OPS.map(op => op.key);

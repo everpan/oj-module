@@ -1,6 +1,6 @@
 # 方案包发布全流程——新手照做版
 
-适用 ojm ≥ 0.2.22（写作时 0.2.66）。本文自包含：从「代码写完了」到「装进站点」一条命令链照着敲，每步附期望输出与通过判据。
+适用 ojm ≥ 0.2.22（0.3.0 改写：发布改远端签名推送，索引机制退役）。本文自包含：从「代码写完了」到「装进站点」一条命令链照着敲，每步附期望输出与通过判据。
 字段规范与错误码全口径见同目录 `manual.md` §11/§12——**本文不引用包外文件**，照着读完即可完成发布。
 
 ---
@@ -12,10 +12,9 @@ flowchart LR
   A["① 构建 ojm build"] --> B["② 打包 ojm build --bundle"]
   B --> C["③ 身份 方案市场→发布管理 申请凭证 → ojm keygen --credential"]
   C --> D["④ 签名 ojm sign --check"]
-  D --> E["⑤ 发布 ojm market publish"]
-  E --> F["⑥ 重建索引 ojm market build-index"]
-  F --> G["⑦ 验证 market verify / trial"]
-  G --> H["⑧ 安装 ojm install + TOFU"]
+  D --> E["⑤ 发布 ojm market publish（签名推送远端站点）"]
+  E --> G["⑥ 验证 market verify / trial"]
+  G --> H["⑦ 安装 ojm install + TOFU"]
 ```
 
 信任链硬 fail-closed：未签、签错、key 不被信任的包一律拒装，没有「先装了再说」的开关。
@@ -94,8 +93,8 @@ OJM_PUBLISH_CREDENTIAL=<token> ojm keygen     # 或走环境变量，避免令�
   不是「信任免检」。
 - 兑换完成后，「方案市场 → 发布管理」该条记录变为**已兑换**并显示 key_id。
 - 发版之后，「方案市场 → 发布历史」（`/oj-market/history`）按发布时间倒序列出所有产品/版本：
-  数据由站点从签名索引对账落库，**不需要 CLI 额外上报**；发布时间优先取分发包落 CDN 的
-  `Last-Modified`，源不提供时回落索引生成时间并标「索引时间」标签。
+  数据由站点在签名推送完成时直写目录库，**不需要 CLI 额外上报**；经站点回填命令补录的存量包
+  `published_at` 取回填时刻并标「回填时间」标签（与推送直写的行区分）。
 
 ### 2.1 没有站点时：离线自建身份（旁路）
 
@@ -140,22 +139,34 @@ ojm sign dist/<name>-<version>.tgz \
 
 ---
 
-## 4. 发布到 CDN
+## 4. 发布到站点（远端签名推送）
 
-CDN 就是**一个装着固定命名文件的目录**：`<name>-<version>.tgz`（+ `.sig`）与索引。发布 = 把文件放进去 + 重建索引。推到远端真 CDN（OSS/S3）只是目录同步（rsync/工具上传），包文件名含版本、内容不可变，多人并发推不冲突。
+发布 = 把 `.sig` 旁车 + `.tgz` 包体**按序推到目标站点的市场上传端点**
+（`POST /api/oj-market/cdn/upload`）。不经账号口令：身份与完整性全靠
+`X-OJM-Key-Id` / `X-OJM-Signature` 请求头（信任库 + Ed25519）——站点信任库认这个 key，
+推送即被接受。CLI 可能根本没账号（CI/企微用户），推送链路为此设计。
 
 ### 4.1 单方案工程（一条命令）
 
 ```bash
 ojm market publish --real . \
+  --site-url https://your-site \
   --id <key_id> \
-  --registry-id oj-registry \
-  --rebuild-index
+  --registry-id <站点 registry_id>
 ```
 
-期望输出：`[ojm] 包已落 CDN → cdn/<name>-<version>.tgz（N 字节）` + 发布方指纹。
-`cdn/` 是**三级索引**布局：`catalog.yaml`（+`.sig`）、`shards/<n>.yaml`（+`.sig`）、
-`<name>-<version>.tgz`（+`.tgz.sig`）；分片数随方案数增长，不要按固定文件数核对。
+期望输出：`[ojm] 发布完成：<name>@<version> 已进 https://your-site 市场目录（DB 目录行 + cdn/ 字节）`。
+
+命令内部四步：构建 → 包级签名（同 §3）→ 目录探测（读站点 `registry_id`）→ 先推 `.sig` 再推 `.tgz`。
+**pair 约束**：服务端只有配对的 `.sig` 在手才收 `.tgz`——顺序由命令保证，无须人工干预。
+
+- `--site-url` 缺省读环境变量 `OJM_SITE_URL`；两个都没有 → 人话报错（不猜默认站点）。
+- 站点版本探测：推送前 CLI 先匿名 GET 目录 API——旧站点（文件索引时代）无此 API → 404 →
+  「站点版本过旧」人话 + 迁移指南指向；站点未配 `registry_id` → 明确指向 `config.yaml vars` 设置项。
+- **半成功自愈**：`.sig` 已推、`.tgz` 被拒（如网络中断）——报错会提示「重跑本命令幂等补齐」：
+  同字节重传幂等，pair 自动完成，无人工清场负担。
+- **目标站点要先信任你的 key**（`ojm trust add` 或市场页信任确认）——否则推送 403，
+  与安装的 `needs_trust` 同一信任库。
 
 > **`--real` 仅限单方案工程**（`src/` 下只有一份 `solution.yaml`）；`ojm new` 生成的方案长在宿主工程里
 > （宿主还自带 `app`/`oj-market`），多方案工程走 §4.2 显式四步。
@@ -172,32 +183,44 @@ ojm market publish --real . \
 ```bash
 ojm build --bundle crm                                            # ① 打包指定方案
 ojm sign dist/crm-1.0.0.tgz --id <key_id> \
-  --registry-id oj-registry --check                               # ② 签名（私钥缺省取 ~/.ojm/keys/<key_id>/）
-cp dist/crm-1.0.0.tgz dist/crm-1.0.0.tgz.sig cdn/                # ③ tgz + .sig 放进 cdn/
-ojm market build-index --id <维护者key> --check                   # ④ 重建索引（见 §4.3）
+  --registry-id <站点 registry_id> --check                          # ② 签名（私钥缺省取 ~/.ojm/keys/<key_id>/）
+ojm market publish --real . --site-url https://your-site \
+  --id <key_id> --registry-id <站点 registry_id>                    # ③ 远端签名推送（同 §4.1）
 ```
 
-### 4.3 多人协作纪律（同一仓库、不同开发者、不同环境各自发包）
+### 4.3 多人协作纪律（不同开发者、不同环境各自发包）
 
-`market publish` 的设计就是为多人并发而做的：**每人只写自己的 `<name>-<version>.tgz`**，没有共享可变文件，互不干扰。四条纪律：
+上传端点天然支持多人并发：**每人推自己的 `<name>-<version>`**，服务端按库仲裁。三条纪律：
 
-1. **落包并发安全**：谁都可以随时 `market publish` 落自己的包，不用排队。
-2. **索引重建要中心化**：publish 落包后**索引不自动重建**（日志会提示「多人场景请由维护者跑 `ojm market build-index`」）。包落了但没重建索引 = 站点装不到。约定一个触发点：维护者定期跑，或 CI 钩子。**不要两人同时对同一 cdn/ 跑 build-index**（重建本身设计为单执行者）。
-3. **同版本号字节冲突会被拒**：`crm@1.0.0` 已存在且字节不一致时 publish 直接报错——内容有变就升 version 重发，同一版本号全宇宙只允许一份字节。同源重发字节一致则幂等通过。
-4. **同名方案两把 key 是治理问题**：技术上可行（索引按名字聚合版本、信任按 key），但「这个方案名归谁」机制不裁决——不同人发**不同方案**随便；发**同一方案名**需团队事先约定（推荐：方案名归属唯一发布方，他人在该方案上协作走代码仓库而非另起 key 发布）。
+1. **并发安全**：谁都可以随时推自己的包；同一 `name@version` 同字节重传幂等通过。
+2. **同版本号字节冲突会被拒（409）**：`crm@1.0.0` 已存在且字节不一致 → 内容有变就升 version 重发，
+   同一版本号全宇宙只允许一份字节。
+3. **方案名所有权绑定首发 key（409）**：`crm` 的第一个上传者把名字绑定到自己的 key_id，
+   别的 key 推 `crm@*` 会被拒——换主是站点 superadmin 操作（端点不提供）。
 
----
+### 4.4 下线与恢复（yank）
+
+```bash
+ojm market yank crm 1.0.0 --site-url https://your-site --id <key_id>                     # 下线（仅发布者本人）
+ojm market yank crm 1.0.0 --site-url https://your-site --id <key_id> --restore          # 恢复
+```
+
+- 签名鉴权同推送（canonical = `market-yank:<站点 registry_id>:<产品>:<版本>`），
+  **只有行内记录的发布 key 可下线/恢复**（key 不符 403）；重复 yank/restore 幂等 200。
+- yank **不动已装站点**：只把版本从目录摘除（详情标 `yanked:true`），已装的方案照常运行；
+  精确版本安装被 409 人话拒。`--reason`/`--by` 留审计痕（发布历史可见）。
 
 ## 5. 验证发布（不起站点）
 
 ```bash
-ojm market verify --rebuild-index     # 逐项验：完整性 / 包级签 / manifest 结构 / 索引签（catalog+分片）/ 索引同代 / 索引时效 / 迁移一致性
-ojm market trial --fixture <name>@<version>       # 隔离站点跑完整安装，跑完即毁，不污染工程
-ojm market walkthrough --fixture <name>@0.1.0     # 14 项 AC：主链 9 + 负向 5；报告落 logs/walkthrough-<ts>.md
+ojm market verify --file dist/<name>-<version>.tgz  # 包级验证：结构 / 包级签 / 迁移一致性
+ojm market trial --fixture <name>@<version>         # 隔离站点跑完整安装，跑完即毁，不污染工程
+ojm market walkthrough --fixture <name>@0.1.0       # 14 项 AC：主链 9 + 负向 5；报告落 logs/walkthrough-<ts>.md
 ```
 
-- `verify` 的检查项数随包数与分片数变化，判据是**末行「全部校验通过（N 项）」且无未通过项**，
-  不要按固定条数核对。
+- `verify --file` 验**单个包**（发布前自检）：manifest 结构、包级 detached 签名、
+  契约-迁移一致性；末行「全部校验通过（N 项）」。市场目录的一致性由站点目录库自保证，
+  不再有「索引文件」这层需要人工重建/校验的东西。
 - `walkthrough` 的 fixture **必须是 `@0.1.0`**：主链的 upgrade/rollback 硬编码 0.1.0→0.2.0，
   给别的版本这两项会 FAIL（是 fixture 选错，不是框架缺陷）。
 
@@ -270,11 +293,17 @@ TOFU 没有免检通道：**只有模板内置的 oj-market（第一方包）用
 | 装完 `curl /api/<name>/ping` 返回 400 `missing tenant header` | 少了 `X-TENANT-ID` 头 | 加 `-H 'X-TENANT-ID: default'` 再探 |
 | `sig_alg` / `sig_format` | 签名算法/.sig 结构不符 | 用当前 ojm 重签（旧版本工具产物） |
 | `needs_trust`（第五终态，非成功） | 站点第一次见这个 key | 与发布方逐字核对指纹 → `trust confirm --task <id>` → 重跑 install |
-| publish 报「包冲突：…字节不一致」 | 同 name@version 已有字节不同的包 | **升 version 重发**；确需覆盖先删 CDN 旧 tgz |
+| publish 报「包冲突：…字节不一致」（409） | 同 name@version 已有字节不同的包 | **升 version 重发**；确需覆盖须站点侧删行（superadmin） |
+| publish 报「name 所有权：已由 key 首发绑定」（409） | 方案名绑定过别的发布 key | 换方案名；或站点 superadmin 换主 |
+| publish 报「站点版本过旧（无 /api/oj-market/catalog）」 | 目标站点是文件索引时代的旧版 | 站点先升级到 DB 目录版本（迁移指南见 docs/migration/ 市场远程发布篇） |
+| publish 报「站点未配置 registry_id」（503） | 站点 config.yaml 的 vars 缺 registry_id | 站点管理员补 `registry_id: <站点身份>` 后重启 |
+| 推送 401（签名不符） | 换字节/跨站重放，或 canonical 与站点重算不一致 | 原样重跑本命令（同字节幂等）；改过包则重签重推 |
+| 推送 403（key 不在信任库） | 站点还没信任你的发布 key | 站点 superadmin `ojm trust add` 或市场页信任确认 |
 | publish 报「一次只发布一份方案」 | 多方案工程走了自动链路 | §4.2 显式四步 |
+| yank 403 | 不是该版本的发布 key（行 key_id 仲裁） | 用首发 key 操作；换主是 superadmin 面 |
 | 打包报「缺少本方案的站点产物」 | 没先 `ojm build`；或**卸载方案时把 `dist/api/<name>-<ver>` 一并移除了**（2026-11-06 实测：卸载四同删含版本目录，重发同版本前必须重建）；或前端入口不在 `src/<模块>/web/entry.ts` | 先 `ojm build` 再 `--bundle`；补 entry |
 | 打包报「缺少 bundle 级契约」 | 没有 `solution.yaml` | 补契约（§0 前提 1） |
-| 装不到刚发的包 | 索引没重建 | `ojm market build-index`（§4.3 纪律 2），确认 `cdn/` 的 catalog + 分片 + tgz(+sig) 已同步 |
+| 装不到刚发的包 | 推送未完成（半成功）或 .sig/.tgz 顺序颠倒 | 重跑 publish（同字节幂等补齐）；站点 superadmin 可跑 `POST /api/oj-market/backfill` 对账自愈 |
 | 装成后 404 | 方案路由没注册 | 重启 `oj serve`（§6 通过判据） |
 | `oj serve` 报 `platform.root (...) must be mounted as an api mount` | release 起站了，但 config 的 `platform.root` 还是 `src` | 改成 `dist/api`（与 `--api-path dist/api` 同源）后重启 |
 | `oj serve` 报 `lock points to missing version dir: dist/api/<name>-<ver>` | 锁文件记着某个已装版本，但那个版本目录不在了（清过 dist / 换过机器） | 先 `ojm build`；锁与目录对不上时按站点安装记录重装该方案，别手改锁 |
@@ -288,7 +317,7 @@ TOFU 没有免检通道：**只有模板内置的 oj-market（第一方包）用
 - [ ] `ojm build` + `ojm build --bundle` 均通过，sha256 记进发布单；
 - [ ] `ojm sign … --check` 通过，`.sig` 与 tgz 同目录；
 - [ ] 发布身份来自站点凭证（有发布管理页时），「方案市场 → 发布管理」页该条已变**已兑换**；
-- [ ] 发版后「方案市场 → 发布历史」能看到这次的 产品 / 版本 / 发布时间（时间来源为索引兜底时会标「索引时间」）；
+- [ ] 发版后「方案市场 → 发布历史」能看到这次的 产品 / 版本 / 发布时间（回填补录的存量包标「回填时间」）；
 - [ ] 新 key 首次发布：指纹已提前交给运维（免得卡在 needs_trust）；
-- [ ] `ojm market verify` 末行「全部校验通过（N 项）」，无未通过项；
-- [ ] 多人团队：索引重建触发点已约定（维护者或 CI）。
+- [ ] `ojm market verify --file dist/<name>-<version>.tgz` 末行「全部校验通过（N 项）」，无未通过项；
+- [ ] 目标站点已在信任库（`ojm trust add` 或市场页确认），推送 403 预案已知。

@@ -30,9 +30,10 @@ import { computeUninstallImpact, runUninstall } from "#/_platform/_lifecycle/uni
 import { respond } from "#/_platform/_shared/respond";
 import { assertSuperAdmin } from "#/_platform/_shared/service/infra/access";
 import { pageArgs } from "#/_platform/_shared/service/infra/query";
-import { journalHeadOf, readCanonicalOrigin, siteOrigin, withSiteOrigin } from "#/_platform/_shared/site-facade";
+import { journalHeadOf, readCanonicalOrigin, readSiteVar, siteOrigin, withSiteOrigin } from "#/_platform/_shared/site-facade";
+import { backfillReleases } from "./backfill";
 import { BOOTSTRAP_KEY, seedBootstrapKey } from "./bootstrap";
-import { authenticateSignedKey, verifyCanonicalSig } from "./cdn/api";
+import { authenticateSignedKey, verifyCanonicalSig } from "./cdn/signed-auth";
 
 // 站点编排面共享真源落 _shared/site-facade（P2-16 真机构建钉出：api.ts 是路由入口不可被模块内
 // import）；此处 re-export 保持既有引用面（market-api.spec / 历史 import 路径）不变。
@@ -70,6 +71,8 @@ export interface MarketEnv {
 	canonicalOrigin?: string
 	/** CDN 基址（缺省读 sys_setting `framework.market_cdn_url`；测试注入） */
 	cdnBase?: () => Promise<string | null>
+	/** cdn/ 字节仓库目录（上传端点与回填命令共用；缺省 "cdn"） */
+	cdnDir?: string
 	/** 注入面（DIP）：缺省回落 isolate 全局 fetch / exec.run / server.reloadConfig / 本地 sha384（过渡实现） */
 	fetch?: FetchFace
 	exec?: ExecFace
@@ -157,6 +160,7 @@ export function marketEnv(): MarketEnv {
 		taskDir: "modules/.install-tasks",
 		statePath: "modules/.solutions/state.yaml",
 		trustPath: ".solutions/trusted-keys.yaml",
+		cdnDir: "cdn",
 		dbPath: "db.sqlite",
 		siteModulesDir: "dist/web/modules",
 		modulesJsonPath: "dist/web/modules.json",
@@ -727,7 +731,7 @@ function manifestSummaryOf(row: Record<string, unknown> | undefined): Record<str
  * 键唯一确定性 ⇒ 翻页不重复不丢条目）；page/size 复用 pageArgs（非法收敛、size 钳 200、
  * 默认 20）。响应 PageResult 惯例的 page/size 回显 + truncated 截断标记，items 为协议字段名。
  */
-async function catalogBody(q: Record<string, unknown>): Promise<Record<string, unknown>> {
+async function catalogBody(env: Pick<MarketEnv, "registryId" | "configPath">, q: Record<string, unknown>): Promise<Record<string, unknown>> {
 	const { page, size, offset } = pageArgs({ page: q.page, size: q.size });
 	const rows = await db.table("market_release")
 		.select(["product", "version", "key_id", "published_at", "yanked", "manifest"])
@@ -761,7 +765,10 @@ async function catalogBody(q: Record<string, unknown>): Promise<Record<string, u
 		return item;
 	});
 	(json as { header: (k: string, v: string) => void }).header("Cache-Control", "no-store");
-	return { api_version: CATALOG_API_VERSION, page, size, total, truncated: offset + slice.length < total, items: slice };
+	// registry_id（签名推送 canonical 首段 = 站点身份）随目录暴露——CLI 推送前发现面；
+	// 解析口径与上传/yank 端点验面同源（注入优先，回落 config vars.registry_id）
+	const registryId = env.registryId ?? await readSiteVar(env.configPath ?? "config.yaml", "registry_id");
+	return { api_version: CATALOG_API_VERSION, registry_id: registryId, page, size, total, truncated: offset + slice.length < total, items: slice };
 }
 
 /**
@@ -937,6 +944,24 @@ export function createMarketApi(env: MarketEnv) {
 		// DELETE /market/trust/key?key_id=  吊销（G5：只阻断新装/升级，不动已装方案）
 		// 端点只做门禁 + 取参 + operator 反查；读写/原子写/首次绑定/吊销语义全归 trust.ts（ISP，同 enable/uninstall 纪律）。
 		// del 动词（oj 运行期命名，devkit §http：DELETE 的方法名是 del 不是 delete）+ query 取参（system/roles del 同款先例）。
+		// POST /api/oj-market/backfill —— 站点侧目录回填（v4 §六，三用：回填=恢复=对账）。
+		// superadmin 一次性触发（升级后/灾备后）；扫 cdn/ 存量包 upsert market_release，
+		// 幂等可重入；无 CLI 依赖（远端纯站点经本端点自愈目录）。语义详见 backfill.ts。
+		"backfill": {
+			async post() {
+				await respond(async () => {
+					await assertSuperAdmin();
+					return await backfillReleases({
+						cdnDir: env.cdnDir ?? "cdn",
+						staging: env.staging,
+						exec: env.exec,
+						sha256Hex: env.sha256Hex,
+						verifyEd25519: env.verifyEd25519,
+						now: env.now,
+					});
+				});
+			},
+		},
 		"trust": {
 			async get() {
 				await respond(async () => {
@@ -1005,7 +1030,7 @@ export function createMarketApi(env: MarketEnv) {
 		"catalog": {
 			async get() {
 				await respond(async () => {
-					return await catalogBody((http.query ?? {}) as Record<string, unknown>);
+					return await catalogBody(env, (http.query ?? {}) as Record<string, unknown>);
 				});
 			},
 			// GET /api/oj-market/catalog/detail?name=[&version=] —— 单包详情（匿名可读；

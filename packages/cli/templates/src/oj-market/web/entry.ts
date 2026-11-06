@@ -5,6 +5,7 @@ import { defineModule, OutsidePageIcon } from "@oj-module/runtime";
 import { createElement } from "react";
 import MarketApp from "./pages/MarketApp";
 import { onInit as publishOnInit, routes as publishRoutes } from "./publish/routes";
+import { onInit as marketOnInit } from "./routes";
 
 // 方案市场前端模块（第一方专用，R29：消费 /api/oj-market/* 编排面，第三方方案不得仿照此调用面）。
 // 菜单标题走 i18next 命名空间语法 "<moduleName>:menu.<key>"（i18n 资源在 locales/，安装时随包注册）。
@@ -54,8 +55,9 @@ export default defineModule({
 	},
 	i18nNamespaces,
 	lifecycle: {
-		/** 发布页的契约前缀 /publish + scoped request 在这里接线（与市场自身的 client 互不影响） */
+		/** 市场编排面 client + 发布页契约前缀 /publish 在这里接线（两侧互不影响） */
 		async onInit(ctx: ModuleContext) {
+			marketOnInit(ctx);
 			publishOnInit(ctx);
 		},
 	},

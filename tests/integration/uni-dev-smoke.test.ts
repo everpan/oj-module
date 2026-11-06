@@ -125,7 +125,7 @@ describe.skipIf(process.env.CI || ojBusy)("uni-dev e2e 冒烟（真二进制）"
 			const started = Date.now();
 			const check = () => {
 				const text = Buffer.concat(chunks).toString();
-				const m = text.match(/已启动：http:\/\/localhost:(\d+)/);
+				const m = text.match(/已启动：http:\/\/[^/\s:]+:(\d+)/); // host 随 config（f54617162），不硬编 localhost
 				if (m)
 					resolve(Number(m[1]));
 				else if (Date.now() - started > 30_000)

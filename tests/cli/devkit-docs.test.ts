@@ -11,10 +11,11 @@ const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
 describe("devkit 手册两章节（P2-14：文档存在性）", () => {
 	const manual = read("docs/devkit/manual.md");
 
-	it("§11 方案包：打包与分发——build --bundle/Form B 索引规范/分发源", () => {
+	it("§11 方案包：打包与分发——build --bundle/目录库分发源/签名推送", () => {
 		expect(manual).toContain("## §11 方案包：打包与分发");
 		expect(manual).toContain("ojm build --bundle");
-		expect(manual).toContain("bundles.yaml");
+		expect(manual).toContain("market_release");
+		expect(manual).toContain("ojm market publish");
 		expect(manual).toContain("逐字");
 	});
 

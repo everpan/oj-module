@@ -77,6 +77,27 @@ function resolvesToFile(base: string): boolean {
 
 const MODULES = modules();
 
+/**
+ * ojm 生成的别名权威表（tsconfig.paths.json）：`#/<段>/*` → 实际目录。
+ * 嵌套模块（app 内的 _platform 等）不是 src/<dir>/api 形态，靠本表解析——
+ * 与 oj build 的 S008 同一口径（M1 市场 api 迁入 oj-market 时建立）。
+ */
+const PATHS_ALIASES: Map<string, string> = (() => {
+	// JSONC：先剥行/块注释再 parse
+	const raw = fs.readFileSync(path.join(TEMPLATES, "tsconfig.paths.json"), "utf-8")
+		.replace(/\/\*[\s\S]*?\*\//g, "")
+		.replace(/(^|\s)\/\/.*$/gm, "$1");
+	const doc = JSON.parse(raw) as
+		{ compilerOptions?: { paths?: Record<string, string[]> } };
+	const out = new Map<string, string>();
+	for (const [from, to] of Object.entries(doc.compilerOptions?.paths ?? {})) {
+		const m = /^#\/([^/]+)\/\*$/.exec(from);
+		if (m && to[0])
+			out.set(m[1]!, path.join(TEMPLATES, to[0]!.replace(/\*$/, "")));
+	}
+	return out;
+})();
+
 describe("跨模块引用走 oj 原生别名（#/<模块名>/…）", () => {
 	it("api 侧没有跨模块相对引用", () => {
 		const offenders: string[] = [];
@@ -106,12 +127,15 @@ describe("跨模块引用走 oj 原生别名（#/<模块名>/…）", () => {
 						continue;
 					const target = spec.slice(2).split("/")[0];
 					const where = `${path.relative(TEMPLATES, file)} → ${spec}`;
-					if (!byName.has(target)) {
+					// 首段解析：模块名（src/<dir>/api 形态）或 paths 映射的嵌套模块（如 _platform）
+					if (!byName.has(target) && !PATHS_ALIASES.has(target)) {
 						problems.push(`${where}：首段 ${target} 不是模块名（现有：${
-							[...byName.keys()].sort().join(", ")}）`);
+							[...byName.keys()].sort().join(", ")}；paths 别名：${[...PATHS_ALIASES.keys()].sort().join(", ")}）`);
 						continue;
 					}
-					if (target !== mod.name && !mod.deps.includes(target))
+					// deps 门禁（oj S008 同口径）只对模块名目标执行；paths 映射目标由
+					// oj build 按映射处 manifest 的 name 校验，此处不重复
+					if (byName.has(target) && target !== mod.name && !mod.deps.includes(target))
 						problems.push(`${where}：${mod.dir}/api/manifest.yaml 缺 deps.${target}`);
 				}
 			}
@@ -128,10 +152,11 @@ describe("跨模块引用走 oj 原生别名（#/<模块名>/…）", () => {
 					if (!spec.startsWith("#/"))
 						continue;
 					const [head, ...tail] = spec.slice(2).split("/");
+					const mapped = PATHS_ALIASES.get(head);
 					const target = byName.get(head);
-					if (!target)
+					if (!target && !mapped)
 						continue; // 上一用例负责报「不是模块」
-					const base = path.join(SRC, target.dir, "api", ...tail);
+					const base = mapped !== undefined ? path.join(mapped, ...tail) : path.join(SRC, target!.dir, "api", ...tail);
 					if (!resolvesToFile(base))
 						dead.push(`${path.relative(TEMPLATES, file)} → ${spec}`);
 				}

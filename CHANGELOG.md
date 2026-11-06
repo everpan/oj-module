@@ -9,6 +9,40 @@
 
 ### Added
 
+- **市场远程发布（DB 目录 + 签名推送）**：市场目录真源从 CDN 索引文件（`catalog.yaml` +
+  shards，`ojm market build-index` 维护）切换为**站点自己的目录库**（`market_release` 表，
+  新迁移 `0003__market_catalog.sql` 扩签名四列）。`ojm market publish` 缺省链路改为**远端
+  签名推送**：构建 + 包级签名后把 `.sig` 旁车与 `.tgz` 按序推到站点
+  `POST /api/oj-market/cdn/upload`（pair 约束：旁车先行；同字节重传幂等；半成功重跑补齐），
+  不经账号口令（`X-OJM-Key-Id`/`X-OJM-Signature` 头 + 站点信任库 + Ed25519），CLI 无账号
+  （企微用户/CI）可发。配套：
+  - 目录 API：`GET /api/oj-market/catalog`（分页 + 顶层 `registry_id` 发现面 + `api_version`）、
+    `GET /api/oj-market/catalog/detail`（versions 全量含 yanked；latest = 未 yanked 的 semver max）；
+  - `POST /api/oj-market/yank`：签名下线/恢复（canonical `market-yank:<站点 registry>:<产品>:<版本>`，
+    仅发布者 key 可操作，幂等；不动已装方案，精确版本安装 409）；CLI `ojm market yank` 同模型；
+  - `POST /api/oj-market/backfill`（superadmin）：扫 `cdn/` 存量包 + 旁车 upsert 目录行——
+    三用（回填=灾备恢复=对账），幂等可重入；`.sig` 缺失行降级（签名列 NULL，安装 sig_missing
+    fail-closed）；已 yank 行不回魂；
+  - CLI 推送前匿名探测 catalog：404 → 「站点版本过旧」人话 + 迁移指南指向；站点未配
+    `registry_id` → 指向 `config.yaml vars` 设置项；服务端从实收字节重算 sha256 重构
+    canonical 验签（换字节/跨站重放 401）；name 所有权绑定首发 key（409）。
+
+### Changed
+
+- **BREAKING**：`ojm market build-index` 与索引机制整建制退役（无替代命令——目录由站点库
+  承载）；`ojm market verify` 收窄为 `--file <tgz>` 单包验证（结构/包级签/迁移一致性）；
+  `ojm market publish` 的 `--rebuild-index` 移除。旧站点（文件索引）+ 新 CLI 组合：探测
+  404 显式报错。**迁移见 `docs/migration/market-remote-publish.md`**（含 2×2 兼容矩阵、
+  信任库 `.solutions/trusted-keys.yaml` 迁移——key_id 断则全部历史包验签崩、匿名面
+  `/oj-market/catalog/**` + `/oj-market/cdn/upload` + `/oj-market/yank` 须**重启生效**、回滚口径）。
+- 发布历史页「索引时间」标签改「回填时间」（`published_at_source` file=回填/upload=直写）。
+- 模板 config.yaml 匿名面增列市场三条（catalog/upload/yank，auth + tenant 双列——yank 漏列则
+  签名下线被 oj-auth 守卫在 handler 前 401，全分支终审 C1 修补）。
+- 签名推送 pair 步新增包级验签：旁车须与实收 tgz 字节密码学绑定且 key_id 与推送身份一致
+  （一行一锚）——堵住「受信 key 预推形全实毒旁车砖掉竞品版本安装」；回填对盘上旁车同验，
+  验签失败按缺签降级（sig 四列 NULL，安装 fail-closed）。
+
+
 - **脚手架完整性门禁（内置模块自治契约）**：`ojm init` 搭出的工程里，框架默认模块
   （`src/app` 内置模块与 `src/oj-market`）属上游自治，下游不得本地修改。`ojm build`（普通与
   `--bundle`）与 `ojm market publish --real` 在任何产物写入前逐文件比对工程与**当前 cli 包内

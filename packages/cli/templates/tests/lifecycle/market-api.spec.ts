@@ -329,6 +329,18 @@ describe("GET catalog（v4 §三：匿名分页目录 JSON，DB 直读合成单�
 		expect(d.truncated).toBe(true);
 	});
 
+	it("响应顶层带 registry_id（签名推送 canonical 首段 = 站点身份，CLI 发现面）；未配置 → null", async () => {
+		seedRelease("pkg-a", "0.1.0");
+		// 显式注入站点身份（生产 = config.yaml vars.registry_id，经 readSiteVar 同源回落）
+		g.http = { query: {} };
+		await createMarketApi(makeEnv({ registryId: "test.registry" })).catalog.get();
+		expect(last?.status).toBe(200);
+		expect((last?.data as { registry_id: string }).registry_id).toBe("test.registry");
+		// 未配置（注入缺省 + 无 config vars）→ null：CLI 侧据此给「站点未配置 registry_id」人话
+		await createMarketApi(makeEnv({ registryId: undefined })).catalog.get();
+		expect((last?.data as { registry_id: unknown }).registry_id).toBeNull();
+	});
+
 	it("非法 page/size 收敛不报错（pageArgs 口径数据表）；末页 truncated=false", async () => {
 		seedRelease("pkg-a", "0.1.0");
 		const api = createMarketApi(makeEnv());

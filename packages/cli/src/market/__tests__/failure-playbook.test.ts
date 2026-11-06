@@ -10,7 +10,6 @@ const REQUIRED_CODES = [
 	"tampered", // neg-tamper
 	"unknown_key", // neg-stranger
 	"rollback_guard", // rollback
-	"index_sig", // neg-badindex
 	"zip_slip", // neg-evil
 ] as const;
 

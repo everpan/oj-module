@@ -1932,8 +1932,10 @@ module-root 下数据源是「扫描 + `web.config.ts` 登记」并集（未登�
 
 ### 10.3 本地市场链路：`ojm market` 子命令
 
-`market` 是一组**本地模拟 CDN + 市场链路**工具，专供作者在本机验证「方案包能不能发、能不能装」，
-**不触碰真实生产 CDN**。所有产物落在工程根 `cdn/`（由 `config.yaml` 的 `/cdn` 挂载直出）。
+`market` 围绕两条链路：**发布**（`publish`/`yank`，缺省远端签名推送到目标站点的市场上传端点）
+与**本机演练**（`verify`/`trial`/`walkthrough`，隔离站点跑完整安装，跑完即毁）。
+演练产物落在工程根 `cdn/`（本地模拟），发布不经账号口令（签名头 + 信任库 + Ed25519），
+CLI 没账号也能发。目标站点的市场目录由站点自己的库承载——不再有索引文件这层人工面。
 **脚手架 seed 的 `framework.market_cdn_url` 缺省即相对路径 `/cdn`（本站点自供），起站即市场可用，
 无需 setup**；只有指向外部真 CDN 时才需要 `market setup` 改写设置。
 
@@ -1944,9 +1946,9 @@ module-root 下数据源是「扫描 + `web.config.ts` 登记」并集（未登�
 | 子命令 | 一句话 |
 |---|---|
 | `ojm market setup [--site-url <站点>] [--user <u> --pass <p>] [--new-pass <p>]` | **外部真 CDN 场景才需要**：把 `framework.market_cdn_url` 改写为绝对地址；账号须 **superadmin**（该设置安全组仅 superadmin 可写，admin 角色会被 403）；首跑若账号处于首次改密期会先自动改密再写入 |
-| `ojm market publish [--fixture <name>@<version>] [--real <方案工程>] [--id <key>] [--key <pem>] [--rebuild-index] [--check]` | 把方案包落进 `cdn/` 并做包级 detached 签名；**不碰索引**（索引由 `build-index` 重建，避免多人发布互相覆盖） |
-| `ojm market build-index [--id <key>] [--key <pem>] [--check]` | 扫描 `cdn/*.tgz`、提取包内 manifest，全量重建 `bundles.yaml` + `manifests.yaml` 并签名；结果只取决于目录内容，连续执行字节一致 |
-| `ojm market verify [--file <tgz>] [--rebuild-index]` | 离线验包（不起站点、不装、不要凭据）：sha256 完整性 / 包级 Ed25519 验签 / 索引验签 / manifest 结构分列输出；`--rebuild-index` 额外比对重建索引与盘上索引的漂移 |
+| `ojm market publish [--fixture <name>@<version>] [--real <方案工程>] [--site-url <站点>] [--id <key>] [--key <pem>] [--registry-id <身份>] [--check]` | **缺省链路 = 远端签名推送**：构建 + 包级签名后把 `.sig`/`.tgz` 按序推到站点 `/api/oj-market/cdn/upload`（pair 约束：旁车先行）；不经账号口令（`X-OJM-Key-Id`/`X-OJM-Signature` 头 + 信任库 + Ed25519）；同字节重传幂等，半成功重跑补齐；`--site-url` 缺省 `OJM_SITE_URL` |
+| `ojm market yank <name> <version> [--site-url <站点>] [--id <key>] [--reason <r>] [--by <人>] [--restore]` | 远端下线/恢复目录版本（签名鉴权，canonical `market-yank:<站点 registry>:<产品>:<版本>`；仅发布者本人的 key 可操作）；yank 不动已装方案，只摘除目录 + 精确版本安装 409；重复操作幂等 |
+| `ojm market verify --file <tgz>` | 离线验**单个包**（不起站点、不装、不要凭据）：manifest 结构 / 包级 Ed25519 验签 / 契约-迁移一致性分列输出 |
 | `ojm market trial [--fixture <name>@<version>] [--keep]` | 在一次性隔离站点里跑完整安装，跑完即毁；`--keep` 保留现场供排查 |
 | `ojm market walkthrough [--fixture <name>@<version>] [--only <op>] [--keep] [--strict]` | 隔离站点上 14 项全套自检（主链 9：index/install/reinstall/enable/verify/history/upgrade/rollback/uninstall；负向 5：tamper/nosig/badindex/stranger/evil——预期失败口径，防线没拦住才算 FAIL）；AC 表 + 失败文案脱敏落盘 `logs/walkthrough-<ts>.md`；`--only` 单跑验原子性 |
 
@@ -2023,25 +2025,28 @@ ojm build --bundle crm        # 只打 src/crm/ 这一份；--bundle=crm 等价
 | 源 | 形态 | 说明 |
 |---|---|---|
 | **file** | `ojm install dist/<name>-<version>.tgz` | multipart 直传（同目录 `<tgz>.sig` 自动探测随包上传，§12） |
-| **cdn** | `ojm install <name>[@version]` | 站点从 CDN 拉 Form B 索引：`bundles.yaml`（版本清单）+ `manifests.yaml`（聚合清单）+ 分发包 |
+| **cdn** | `ojm install <name>[@version]` | 站点从自己的**目录库**解析（`market_release` 表：product+version 唯一行，含 sha256/size/签名四列/内嵌 manifest），再拉 `cdn/` 字节 |
 
-Form B 索引规范（宿主侧强制，防索引投毒）：`versions[].file` 必须逐字
-`<name>-<version>.tgz`（禁 `../`、绝对路径、异名、异版本）；`archive.size` 在下载段立即
-比对；索引拉取恒 `Cache-Control: no-cache`。索引本身未签名（签名只保护分发包本身，
-`.sig` 侧车随包上传）。
+目录库是服务端在**签名推送完成时直写**的（发布方 `ojm market publish` 把 `.sig` 旁车与
+`.tgz` 按序推到 `POST /api/oj-market/cdn/upload`，pair 约束：旁车先行、配对成功才写行）——
+不再有索引文件这层人工面，也就没有「索引投毒/索引重建竞态」问题。同 `name@version`
+同字节重传幂等、异字节 409、方案名绑定首发 key。存量包与灾备恢复由站点
+`POST /api/oj-market/backfill` 扫 `cdn/` 自愈（superadmin，幂等可重入）；`.sig` 缺失的
+行签名列为 NULL，安装验签 `sig_missing` 硬拒。目录分页读 `GET /api/oj-market/catalog`
+（匿名可达），单方案全版本读 `GET /api/oj-market/catalog/detail`（含 yanked 标记）。
 
-**作者侧**：索引的产出/重签用 `ojm publish <发布目录>`——对 `bundles.yaml` +
-`manifests.yaml` 重算（确定性 stringify）→ detached 签名（`.sig` 侧车）→ 写回
-（本地文件目标；CDN 推送走同一 resolveCdn 面）。发布方 key 与 `ojm sign` 同身份体系
-（`~/.ojm/keys`）。
+**作者侧**：发布 = `ojm market publish --real <方案工程> --site-url <站点> --id <key>
+--registry-id <站点 registry_id>`（不经账号口令：签名请求头 + 站点信任库 + Ed25519）；
+下线/恢复 = `ojm market yank <name> <version> --site-url <站点> --id <key> [--restore]`。
+发布方 key 与 `ojm sign` 同身份体系（`~/.ojm/keys`）。
 
 ### 11.3 安装面速览
 
-`ojm install`（file/cdn 双源）→ 站点编排端点 `POST /api/_platform/market/install`
+`ojm install`（file/cdn 双源）→ 站点编排端点 `POST /api/oj-market/install`
 （需 superadmin）→ 十阶段状态机（§7 verify 闸语义的方案版，失败语义见下图）→
 任务记录 `.install-tasks/<id>.json`（保留 10 条，800ms 轮询消费面）。市场页族端点
 （install/task/index/meta/trust/uninstall…）已全量登记 openapi.json，
-前端经 `src/_platform/web/__client` 消费。
+前端经 `src/oj-market/web/__client` 消费。
 
 十阶段（阶段名如下）+ 失败语义：
 
