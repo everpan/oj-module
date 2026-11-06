@@ -1,3 +1,4 @@
+import { Buffer } from "node:buffer";
 // @vitest-environment node
 import fs from "node:fs";
 import os from "node:os";
@@ -749,5 +750,40 @@ describe("initProject 既有 bin/oj 能力闸门", () => {
 		await initProject(dest, { yes: true });
 		expect(fs.existsSync(path.join(dest, "config.yaml"))).toBe(true);
 		expect(fs.existsSync(path.join(dest, "src/app/web/entry.ts"))).toBe(true);
+	});
+});
+
+describe("init --yes：随站 bundle 落位（Phase B T3b）", () => {
+	function seedBundles(dir: string): void {
+		fs.mkdirSync(dir, { recursive: true });
+		fs.writeFileSync(path.join(dir, "oj-market-0.2.0.tgz"), Buffer.from([1, 2, 3]));
+		fs.writeFileSync(path.join(dir, "oj-market-0.2.0.tgz.sig"), JSON.stringify({ alg: "Ed25519" }));
+	}
+
+	it("--yes：tgz+sig 拷入 cdn/ 并写 bundles.json 意图标记（name/version 自文件名解析）", async () => {
+		const dest = path.join(tmpRoot(), "bundle-yes");
+		const bundles = path.join(tmpRoot(), "bundles-src");
+		seedBundles(bundles);
+		await initProject(dest, { ...initOpts, bundlesDir: bundles });
+		expect(fs.existsSync(path.join(dest, "cdn/oj-market-0.2.0.tgz"))).toBe(true);
+		expect(fs.existsSync(path.join(dest, "cdn/oj-market-0.2.0.tgz.sig"))).toBe(true);
+		const marker = JSON.parse(fs.readFileSync(path.join(dest, "cdn/bundles.json"), "utf-8"));
+		expect(marker.solutions).toEqual([{ name: "oj-market", version: "0.2.0", file: "oj-market-0.2.0.tgz" }]);
+	});
+
+	it("交互式（无 --yes）：零 bundle 动作（手动口径，决策 #1 两路径并存）", async () => {
+		const dest = path.join(tmpRoot(), "bundle-interactive");
+		const bundles = path.join(tmpRoot(), "bundles-src2");
+		seedBundles(bundles);
+		await initProject(dest, { ojInstaller: fakeOjInstall, bundlesDir: bundles });
+		expect(fs.existsSync(path.join(dest, "cdn/bundles.json"))).toBe(false);
+		expect(fs.existsSync(path.join(dest, "cdn/oj-market-0.2.0.tgz"))).toBe(false);
+	});
+
+	it("bundles 源缺失：warning 且不失败（市场保持出厂未装）", async () => {
+		const dest = path.join(tmpRoot(), "bundle-missing");
+		await initProject(dest, { ...initOpts, bundlesDir: path.join(tmpRoot(), "nope") });
+		expect(fs.existsSync(path.join(dest, "config.yaml"))).toBe(true);
+		expect(fs.existsSync(path.join(dest, "cdn/bundles.json"))).toBe(false);
 	});
 });

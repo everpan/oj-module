@@ -38,6 +38,8 @@ export interface InitOptions {
 	ojInstaller?: (binDir: string) => Promise<void>
 	/** 注入桩密封（测试）；缺省真跑 bin/oj secret keygen/seal */
 	seal?: Sealer
+	/** 随站第一方 bundle 源目录（测试注入）；缺省 <cliRoot>/shell-dist/bundles（prepack 同步面） */
+	bundlesDir?: string
 }
 
 interface InitReport {
@@ -148,6 +150,12 @@ export async function initProject(destDir: string, opts: InitOptions = {}): Prom
 		report.created.push(`src/${BUILTIN_LIST_FILE}`);
 	else if (builtinStatus === "skipped")
 		report.skipped.push(`${BUILTIN_LIST_FILE}（已存在，不覆盖用户手改）`);
+
+	// 1c) 随站第一方 bundle 落位（Phase B T3b，仅 --yes 自动化路径；交互式零动作——
+	//     决策 #1 两路径并存）：tgz+sig 拷入 cdn/ 并写 bundles.json 意图标记，
+	//     站点经 oj-market index 端点对账收敛（上拉不下拉，方案 §5）。
+	//     bundle 由发布流水线 built+signed 后收进 shell-dist/bundles（scripts/sync-bundles.mjs）。
+	placeBundledSolutions(destDir, opts, report, cliRoot);
 
 	// 1b) tsconfig.paths.json：把 oj 别名 `#/<模块名>/…` 投影成 TS 的 paths。
 	//     必须**现场生成**而不是随模板拷贝——模板兼作 demo 工程（多出 demo/home 两个
@@ -277,6 +285,43 @@ export async function initProject(destDir: string, opts: InitOptions = {}): Prom
 }
 
 /** 默认密封器：bin/oj secret keygen + seal（失败返回 null，不抛） */
+/**
+ * 随站第一方 bundle 落位（Phase B T3b）：`ojm init --yes` 把发布流水线收进
+ * shell-dist/bundles 的 <name>-<version>.tgz(+sig) 拷入工程 cdn/，并写
+ * bundles.json 意图标记（站点启动后经 oj-market index 端点对账收敛——上拉不下拉）。
+ * 仅 --yes 自动化路径执行（决策 #1：--yes = 无人值守授权；交互式保持手动口径）；
+ * bundle 源缺失是「发布未内置 bundle」的合法态（如源码仓直跑）——warning 不失败。
+ */
+function placeBundledSolutions(destDir: string, opts: InitOptions, report: InitReport, cliRoot: string): void {
+	if (!opts.yes)
+		return;
+	const srcDir = opts.bundlesDir ?? path.join(cliRoot, "shell-dist", "bundles");
+	if (!fs.existsSync(srcDir)) {
+		report.warnings.push("随站方案包缺失（shell-dist/bundles 不在——发布流水线未内置 bundle）：市场保持出厂未装，superadmin 可经 system 域「方案安装」首装");
+		return;
+	}
+	const files = fs.readdirSync(srcDir).filter(f => f.endsWith(".tgz")).sort();
+	if (files.length === 0) {
+		report.warnings.push("随站方案包目录为空（shell-dist/bundles 无 tgz）：市场保持出厂未装");
+		return;
+	}
+	const cdnDir = path.join(destDir, "cdn");
+	fs.mkdirSync(cdnDir, { recursive: true });
+	const entries: { name: string, version: string, file: string }[] = [];
+	for (const file of files) {
+		fs.copyFileSync(path.join(srcDir, file), path.join(cdnDir, file));
+		const sig = `${file}.sig`;
+		if (fs.existsSync(path.join(srcDir, sig)))
+			fs.copyFileSync(path.join(srcDir, sig), path.join(cdnDir, sig));
+		// name/version 自文件名解析（bundle 命名纪律 <name>-<version>.tgz，同 download 段正名口径）；
+		// version 以数字开头取最后一个连字符切分（name 本身可含连字符，如 oj-market）
+		const m = file.match(/^(.+)-(\d[0-9A-Za-z.+-]*)\.tgz$/);
+		entries.push({ name: m?.[1] ?? file.replace(/\.tgz$/, ""), version: m?.[2] ?? "", file });
+	}
+	fs.writeFileSync(path.join(cdnDir, "bundles.json"), `${JSON.stringify({ solutions: entries }, null, "\t")}\n`);
+	report.created.push(`cdn/ 随站方案包 ${files.length} 个 + 意图标记 bundles.json`);
+}
+
 const defaultSealer: Sealer = async (destDir, plainSecret) => {
 	const ojBin = resolveOjBin(destDir);
 	if (!fs.existsSync(ojBin))

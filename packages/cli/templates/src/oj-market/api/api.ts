@@ -1,3 +1,4 @@
+import type { BundledEntry } from "#/_platform/_lifecycle/bundle-converge";
 // 编排端点 + 市场目录（P1-12，R9/ISP；v4 §四：市场域 api 自 _platform 迁入本模块）：/api/oj-market/*
 // 端点族同文件嵌套 handler 组（oj v0.1.64 组形态，notification/api.ts 同款；组名 = 路径段）。
 // 门（R9）：install/task/index 全 assertSuperAdmin 独占（市场页是「市场即样例」的第一方特权
@@ -18,9 +19,10 @@ import type { ExecFace } from "#/_platform/_lifecycle/steps/extract";
 import type { ReloadFace } from "#/_platform/_lifecycle/steps/reload";
 import type { FetchInitFace } from "#/_platform/_shared/site-facade";
 import { atomicWriteText, fsFace } from "#/_platform/_lifecycle/atomic";
+import { convergeBundledSolutions } from "#/_platform/_lifecycle/bundle-converge";
 import { recordHistory } from "#/_platform/_lifecycle/history";
 import { latestAppliedSeqOf, reconcile, runInstall, setEnabled } from "#/_platform/_lifecycle/installer";
-import { manifestOfUpload as sharedManifestOfUpload } from "#/_platform/_lifecycle/manifest-of-upload";
+import { localArchiveManifestOf } from "#/_platform/_lifecycle/local-archive";
 import { compareVersions } from "#/_platform/_lifecycle/semver";
 import { sha384B64 } from "#/_platform/_lifecycle/sha384";
 import { createStateStore } from "#/_platform/_lifecycle/state";
@@ -399,15 +401,6 @@ async function uploadSig(): Promise<Record<string, unknown> | null> {
 }
 
 /**
- * file 源 manifest 提取：R1 三步范式 + 体积闸 + 解包扁平化 + manifest.yaml 解析——
- * 实现已上收 _lifecycle/manifest-of-upload.ts（v4：与 CDN 上传端点/回填命令共用同一抽取
- * 管线，勿各写一遍）；此处仅注入 env 参数保持既有调用面。
- */
-async function manifestOfUpload(env: MarketEnv, bytes: Uint8Array, exec: ExecFace): Promise<unknown> {
-	return sharedManifestOfUpload({ stagingDir: env.staging, bytes, exec });
-}
-
-/**
  * 取消安装文件握手（P3-12 端点接线，U5/P3-8 备案①落地）：oj isolate 按请求隔离，内存信号
  * 不共享——改走任务目录下标记文件 `${taskDir}/.cancel-<name>`（跨 isolate 唯一共享面 = FS）。
  * install/cancel 端点写标记（superadmin，R17 同名互斥保证按名寻址无歧义）；runInstall 的
@@ -439,37 +432,12 @@ async function installBody(env: MarketEnv): Promise<{ task_id: string }> {
 		const bytes = await uploadBytes();
 		if (bytes === null)
 			fail(400, "source=file 须随 multipart 上传分发包（http.files）");
-		const exec = execOf(env);
-		manifest = await manifestOfUpload(env, bytes, exec);
-		const m = isObj(manifest) ? manifest : {};
-		// 身份：body 权威、manifest 兜底；两者俱在且冲突即拒（防锁名/注册名分叉的坏装）
-		const mVersion = typeof m.version === "string" ? m.version : "";
-		if (reqVersion !== null && mVersion !== "" && mVersion !== reqVersion)
-			fail(400, `body.version「${reqVersion}」与包内 manifest.version「${mVersion}」不一致——请核对分发包`);
-		const mName = typeof m.name === "string" ? m.name : "";
-		if (mName !== "" && mName !== name)
-			fail(400, `body.name「${name}」与包内 manifest.name「${mName}」不一致——请核对分发包`);
-		if (reqVersion === null && mVersion === "")
-			fail(400, "version 不可得（body.version 与包内 manifest.version 均缺失）");
-		// Form A 补摘要（C2-29 布局消费点，P1-13 真机实测——附录 B-10）：ojm build --bundle 产物的
-		// 包内 manifest 是 Form A（archive 仅 file，sha256/size 由 P3 publish 填充于 Form B），而安装器
-		// verify 段对 archive.sha256 fail-closed。file 源字节在手——上传时点即算摘要补成可校验清单
-		// （verify 复核同批字节，R10 语义保持）；CDN 源不受影响（Form B 真源自带摘要）。
-		// 正名（P2-11 索引投毒加固）：archive.file 逐字 <name>-<version>.tgz——name(C2-01)/version
-		// （无路径分隔符）拼出的单文件名安全时即正名（download 段按其落盘）；否则退回常量名
-		// upload.tgz（此刻尚未过预检，恶意命名不提前 400 也不给穿越面——预检稍后照拒）。
-		const effectiveVersion = reqVersion ?? mVersion;
-		const namedFile = /^[a-z][a-z0-9-]{0,63}$/.test(name) && /^[0-9A-Z.-]+$/i.test(effectiveVersion) && !effectiveVersion.includes("..")
-			? `${name}-${effectiveVersion}.tgz`
-			: "upload.tgz";
-		m.archive = { file: namedFile, sha256: sha256Of(env)(bytes), size: bytes.byteLength };
-		// detached 侧车签名注入（P2-3，G4 补裁）：同目录 .sig 随 multipart 第二文件上传——
-		// 与 Form B archive.signature 同结构注入，verify 段统一验签（六码分流）
+		// Form A 补摘要 + 正名 + 侧车注入：local-archive.ts 共享管线（bundle 收敛同用；
+		// C2-29/P2-11/P2-3 口径注释全在该处，此处不重复）
 		const sig = await uploadSig();
-		if (sig !== null) {
-			m.archive = { ...(m.archive as Record<string, unknown>), signature: sig };
-		}
-		version = reqVersion ?? mVersion;
+		const local = await localArchiveManifestOf({ stagingDir: env.staging, exec: execOf(env), sha256Hex: sha256Of(env) }, { name, reqVersion, bytes, sig });
+		manifest = local.manifest;
+		version = local.version;
 		archiveUrl = `${env.staging}/upload.tgz`;
 		fetch = async () => ({ ok: true, status: 200, arrayBuffer: async () => bytes.slice().buffer as ArrayBuffer });
 	}
@@ -547,6 +515,66 @@ async function installBody(env: MarketEnv): Promise<{ task_id: string }> {
 	}
 }
 
+/**
+ * 随站 bundle 收敛执行（Phase B T3b）：读 cdn/bundles.json 意图标记，按上拉不下拉
+ * 规则对齐第一方包（纯编排在 _platform bundle-converge.ts）。本地归档安装与
+ * installBody 同纪律（Form A 补摘要共享管线 + runInstall 组装）；失败一律吞咽——
+ * 收敛是增强面，永不阻断消费端（方案 §5「失败降级不阻断」）。
+ */
+async function runBundleConverge(env: MarketEnv): Promise<void> {
+	try {
+		const cdnDir = env.cdnDir ?? "cdn";
+		await convergeBundledSolutions({
+			markerPath: `${cdnDir}/bundles.json`,
+			cdnDir,
+			statePath: env.statePath,
+			installLocal: (entry, archive) => installBundledArchive(env, entry, archive),
+		});
+	}
+	catch {
+		// marker 损坏/状态不可读等静默——下次对账再试
+	}
+}
+
+/** 本地归档安装：manifest 补全 → bootstrap 播种 → runInstall（operator=机器身份留痕） */
+async function installBundledArchive(env: MarketEnv, entry: BundledEntry, archive: { bytes: Uint8Array, sig: unknown | null }): Promise<void> {
+	const { manifest, version } = await localArchiveManifestOf(
+		{ stagingDir: env.staging, exec: execOf(env), sha256Hex: sha256Of(env) },
+		{ name: entry.name, reqVersion: entry.version, bytes: archive.bytes, sig: archive.sig },
+	);
+	await seedBootstrapKey(env.trustPath, env.bootstrapKey !== undefined ? env.bootstrapKey : BOOTSTRAP_KEY);
+	const bytes = archive.bytes;
+	await runInstall({
+		manifest,
+		name: entry.name,
+		version,
+		operator: "bundle-converge",
+		state: await createStateStore(env.statePath),
+		archiveUrl: `${env.staging}/bundle-${entry.name}.tgz`,
+		sharedRoot: env.sharedRoot,
+		staging: env.staging,
+		taskDir: env.taskDir,
+		dbPath: env.dbPath,
+		siteModulesDir: env.siteModulesDir,
+		modulesJsonPath: env.modulesJsonPath,
+		apiPrefix: env.apiPrefix,
+		configPath: env.configPath,
+		fetch: async () => ({ ok: true, status: 200, arrayBuffer: async () => bytes.slice().buffer as ArrayBuffer }),
+		exec: execOf(env),
+		reload: reloadOf(env),
+		sha384B64: sha384Of(env),
+		sha256Hex: env.sha256Hex,
+		verifyEd25519: env.verifyEd25519,
+		ledgerHead: env.ledgerHeadOf ? await env.ledgerHeadOf(entry.name) : (env.ledgerHead ?? null),
+		hostVersions: await hostVersionsOf(env),
+		hostApiVersion: API_VERSION,
+		capabilities: capabilitiesOf(),
+		trustPath: env.trustPath,
+		force: false,
+		registryId: env.registryId,
+	});
+}
+
 interface IndexRow {
 	name: string
 	latest: string | null
@@ -612,6 +640,10 @@ async function lastInstallOperatorsOf(names: string[]): Promise<Map<string, stri
  * 内存分页（catalog 同口径）；本地独有方案（DB 无行）殿后。对账即服务（P1-10 接线③）不变。
  */
 async function indexBody(env: MarketEnv, q: Record<string, unknown>): Promise<{ list: IndexRow[], total: number, page: number, size: number }> {
+	// 随站 bundle 收敛（Phase B T3b，「对账即服务」同源）：首装/升级 riding 首个 index 请求——
+	// oj 启动段 ext_boot 有 2s 看门狗（oj-bin runtime.rs BOOT_TIMEOUT），安装全程不可在 boot
+	// 内跑；此处幂等（已对齐即全 skip），失败吞咽不阻断索引（方案 §5 失败降级）
+	await runBundleConverge(env);
 	// 对账即服务（P1-10 接线③）：市场页刷新即对账时点——锁 ↔ 账本 head 自愈 + enabled 不一致
 	// 自动修复先行（失败只记日志，不阻断索引），失败站点的市场页每次打开都在尝试自愈
 	await reconcileOf(env);

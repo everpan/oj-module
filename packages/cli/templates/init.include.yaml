@@ -94,6 +94,8 @@ include:
   - tests/wecom-org-sync.spec.ts
   - tests/wecom-sync.spec.ts
   - tests/lifecycle/atomic-state.spec.ts
+  # bundle 启动收敛上拉不下拉规则（Phase B T3b）：纯函数零基建依赖
+  - tests/lifecycle/bundle-converge.spec.ts
   - tests/lifecycle/deploy-smoke.spec.ts
   - tests/lifecycle/migrate.spec.ts
   - tests/lifecycle/register.spec.ts
