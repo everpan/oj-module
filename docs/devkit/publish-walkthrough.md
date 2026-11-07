@@ -291,6 +291,8 @@ TOFU 没有免检通道：**只有模板内置的 oj-market（第一方包）用
 | 安装拒「包内原生清单含白名单外键 `permissions、roles`…」（extracting 段，不可自动重试） | 角色/权限声明写进了 `api/manifest.yaml`（oj 原生七键清单） | 声明挪到方案契约 `solution.yaml`（上级目录那一份）；`api/manifest.yaml` 只留 oj 原生七键（2026-11-06 演练实踩） |
 | 安装 preflight 拒 RBAC 声明 | 声明形状不符：权限 code / 角色 name 没带 `<name>.` 前缀、`title_key` 缺失或 ns 不符、角色引用了未声明的权限（悬空） | 按报错条款改 `solution.yaml` 的 `permissions[]` / `roles[]`（字段细则见 devkit 手册 §11.5） |
 | 装完 `curl /api/<name>/ping` 返回 400 `missing tenant header` | 少了 `X-TENANT-ID` 头 | 加 `-H 'X-TENANT-ID: default'` 再探 |
+| 安装/收敛卡在 reloading 段 `NotCapable`（市场编排端点） | 站点 config 缺市场编排模块授权：`platform.exec` 没有该模块的白名单条目，或 `platform.modules` 列表缺它（安装器热更 config / 写信任库需要这份特权） | 给市场编排模块配与 `_platform` 逐字相同的 exec 白名单并加入 `platform.modules`（新工程模板自带；**旧工程升级脚手架不会自动补**，需手工改 config 后重启宿主） |
+| 随站 bundle 反复装不上（打开「方案安装」没反应；审计表有收敛失败行） | 信任空窗（bootstrap key 未回填且信任库无发布 key），或刚失败过仍在收敛冷却期 | 先推发布公钥进信任库，再删冷却文件 `modules/.install-tasks/.bundle-converge-cooldown.json` 立即重试（冷却默认 10 分钟，自愈等待亦可） |
 | `sig_alg` / `sig_format` | 签名算法/.sig 结构不符 | 用当前 ojm 重签（旧版本工具产物） |
 | `needs_trust`（第五终态，非成功） | 站点第一次见这个 key | 与发布方逐字核对指纹 → `trust confirm --task <id>` → 重跑 install |
 | publish 报「包冲突：…字节不一致」（409） | 同 name@version 已有字节不同的包 | **升 version 重发**；确需覆盖须站点侧删行（superadmin） |
@@ -329,6 +331,24 @@ TOFU 没有免检通道：**只有模板内置的 oj-market（第一方包）用
   站点首个市场编排请求（如 superadmin 打开 system 域「方案安装」）自动收敛安装；
   **上拉不下拉**：未装→装、bundle 新→升级、bundle ≤ 已装（市场轨升过）→ 跳过不降级。
   交互式 init 零动作（保持手动口径）；bundle 缺失告警不失败。
+
+**运维须知（真机演练钉出的口径）**：
+
+- **部署面双授权，旧工程要手工补**：站点 config 里市场编排模块要有两样——exec 白名单里
+  有它的条目（与 `_platform` 逐字相同的解 tar / 跑迁移命令），`platform.modules` 列表同时
+  含它（安装器热更 config、写信任库需要这份特权）。新工程随 init 的模板 config 已自带；
+  **旧工程升级脚手架不会自动补**，收敛/安装会卡在 reloading 段报 NotCapable，补上重启即可。
+- **收敛失败可观测、有冷却**：自动收敛失败不静默——审计落 `market_history`（operator 记
+  `bundle-converge`），并写 10 分钟冷却文件 `modules/.install-tasks/.bundle-converge-cooldown.json`
+  防风暴。典型是信任空窗（bootstrap key 未回填 + 信任库无发布 key）：推公钥后删冷却文件，
+  下一次编排请求立即重试。
+- **卸载是墓碑不是暂离**：卸载第一方市场包会把 `cdn/bundles.json` 里的意图条目一并摘掉——
+  收敛不会再把它装回来；重装走 system 域「方案安装」页手动入口。
+- **纯 web 包的安装语义**：随站 bundle 是 web-only 包——安装时 api 锁零变更（版本目录整体
+  就位承载前端产物），市场内不提供降级入口（降级 = 站点产物回滚）。它与平台内建编排模块
+  同名（双轨同名）：api 锁/版本目录归平台轨，方案 sidecar 归方案轨，安装/卸载第一方包
+  都不碰内建面。
+- 端到端随站收敛演练步骤见框架仓《框架验证演练手册》§7.6（市场线）。
 
 ## 8. 发布前 checklist
 
