@@ -800,15 +800,27 @@ ls dist/api/ | grep -c "oj-market-0.1.0$"   # 内建编排模块目录存活（1
 前置：§7.6 站点（市场已装、发布方 key 已在信任库）+ 发布身份（§7.2；本机自签旁路 key 亦可，
 但须先把它的公钥推进站点信任库，否则 publish 403）。**起站基座钉 `/api`**：
 
-```bash
-./bin/oj serve --api-path dist/api -b /api --daemon
-# 判据：POST /api/auth/login 返回 JSON（401/400 都是 API 应答）；若返回 HTML doctype 或
-# 「web mounts serve GET/HEAD only」405 = 基座错了（§9 表首行新坑）
-# 注意：config 的 "/" web 挂载路径必须写绝对路径（相对路径 + -b 组合静态层落空，§9 表/U6）：
-#   - prefix: "/"
-#     web: /abs/path/dist/web
-#     spa: true
+**首选（config 挂载形态，零 CLI 旗标；2026-11-07 drill-dev 实证重启持久可达）**——config 做两处
+「手写部署」钦定改动（模板注释自带指引，非探索性改动）：`platform.root: dist/api` + 加 api 挂载：
+
+```yaml
+mounts:
+  - prefix: /api
+    api: dist/api      # 锁驱动装配：dist/api 整树含已装方案版本目录，重启后仍服务
+  - prefix: "/"
+    web: /abs/path/dist/web   # 页面静态要第三处改动；api 可达性不需要它
+    spa: true
 ```
+
+```bash
+./bin/oj serve -c config.yaml --daemon   # 无 -b 无 --api-path：基座 = 挂载前缀 /api，绕过 U4/U6
+```
+
+**备选（CLI 旗标形态）**：`oj serve --api-path dist/api -b /api --daemon`——config 零改动但旗标两枚，
+且 web 挂载必须绝对路径（相对路径 + -b 组合静态层落空，§9 表/U6）。判据同下。
+
+两形态共同判据：POST /api/auth/login 返回 JSON（401/400 都是 API 应答）；若返回 HTML doctype 或
+「web mounts serve GET/HEAD only」405 = 基座错了（§9 表首行新坑）。
 
 ### A. 作者侧：造方案 → 签名 → 发布进目录
 
@@ -850,7 +862,10 @@ ojm install books --site-url ... --user superadmin --pass <口令>   # retry 同
   「module 重复声明」，二选一（选 `-b /api`，勿写挂载）。属 oj 侧默认基座与框架约定错位，已列 §11 候选。
 - 本节点未覆盖：升级（发 0.2.0 包收敛/按名装）与 yank 后在架性——由 §7.4 walkthrough 的
   upgrade/rollback/yank 项与 §7.6 C 降级守护覆盖。
-- **module-root（dev）形态装包「装而不达」，不可作安装验证形态**（2026-11-07 drill-dev 实证）：
+- **`oj serve -c config.yaml` 纯 config 形态：模板零改动不可行（无 api 供给，拒启），但「手写部署」
+  两改动（api 挂载 + platform.root）即完全可达**（drill-dev 实证：file 直传不卡 canonical_origin、
+  重装 done、重启后 `/api/books/ping` 仍 200——api 挂载是锁驱动装配，与 CLI 旗标形态等价且更省心）；
+  页面静态另需解开 web 挂载（第三处）。**module-root（dev）形态装包「装而不达」，不可作安装验证形态**（2026-11-07 drill-dev 实证）：
   file 直传零配置改动可十阶段走到 done（file 源不卡 canonical_origin——503 只卡 cdn 源；
   preflight 需先 `pnpm build` 出 versions.json），落盘/锁/state 全就位；但 `--module-root src`
   只挂载 src 树，重启后 dist 装好的 api 不服务（`/api/books/ping` 404）、web 资产也需解开
