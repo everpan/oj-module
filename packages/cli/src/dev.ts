@@ -29,7 +29,7 @@ import { join, resolve } from "node:path";
 import process from "node:process";
 import readline from "node:readline";
 import { syncAliasPaths } from "./alias-paths";
-import { buildModules } from "./build";
+import { buildModules, materializeInstallerVersions } from "./build";
 import { loadContractMocks, resolveMock } from "./contract/mock";
 import { loadProjectMocks, mockStatusCode } from "./dev-mock";
 import { createReloadHub, proxyApi, proxyWsUpgrade, sseScript } from "./dev-proxy";
@@ -74,6 +74,12 @@ export async function devServer(projectRoot: string, opts: DevOptions = {}): Pro
 	// 1) 先把本地模块构建一次
 	console.log("[ojm] 构建本地模块…");
 	await build(projectRoot);
+
+	// 1a) dev 形态（platform.root: src）不经 oj build，没有 release 双落点——这里补第三落点：
+	// dist/api/versions.json 是方案安装器 C2-09 peerRuntime 比对的真源（B-11 与 manifests.yaml
+	// 同层），缺失则随站 bundle 收敛被 fail-closed 永久拒装（2026-11-07 /tmp/ojm-vv/drill 实锤）。
+	if (!materializeInstallerVersions(layout.apiDist))
+		console.warn("[ojm] ⚠️ 内置宿主 versions.json 缺失（shell-dist 未构建？）：方案安装将被 C2-09 fail-closed 拒绝。");
 
 	// 别名投影跟着模块清单走：dev 是「新增模块 → 立刻写 #/<新模块>/…」的主循环，
 	// 不刷新 paths 的话编辑器要把这条 import 报成 any/TS2307，直到下次 build。内容未变不写盘。

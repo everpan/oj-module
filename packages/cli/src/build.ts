@@ -10,7 +10,7 @@
 //   module-build.ts  前端模块构建（vite/rolldown + 产物完整性 + modules.json）
 //
 // 依赖方向无环：module-build → module-def / site-merge；其余互不依赖。
-export { buildBackend } from "./build/backend";
+export { buildBackend, materializeInstallerVersions } from "./build/backend";
 export type { BuiltModule, ChunkEntry } from "./build/module-build";
 export { buildModules } from "./build/module-build";
 export { readModuleDefinition } from "./build/module-def";
