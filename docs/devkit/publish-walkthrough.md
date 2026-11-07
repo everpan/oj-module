@@ -271,6 +271,12 @@ ojm install crm@1.0.0 --site-url http://127.0.0.1:9778 --user superadmin --pass 
 #    核对通道用当面/电话/既有加密聊天——不要用 CDN 页面上的指纹（那正是攻击者能改的地方）
 ojm trust confirm --task <task-id> --site-url http://127.0.0.1:9778 --user superadmin --pass <口令>
 ojm install crm@1.0.0 --site-url http://127.0.0.1:9778 --user superadmin --pass <口令>   # 重跑续跑
+
+# ⑤ 带 seed 的方案：装完数据面默认空（安装器迁移命令未带 --with-seed，oj 0.1.125 交付边界），
+#    验收种子数据前显式补跑一条（幂等、可重复；oj ≥ 0.1.125；`-d` 指 dist/api 聚合树，不是 dist）：
+oj migrate --with-seed -c config.yaml -d dist/api crm-1.0.0
+#    期望 `seed 重放 1/1 模块` + seed 表行数 = seed.sql 行数；非幂等语句会被门禁整轮拒绝（exit 非 0）。
+#    详情见 manual §1.6「安装期 seed 重放」与 oj-api-dev/api-manual §10。
 ```
 
 `<口令>` 就是登录站点用的那个：没跑过 `market setup` 时是脚手架种子口令（`superadmin / aA123456`）；

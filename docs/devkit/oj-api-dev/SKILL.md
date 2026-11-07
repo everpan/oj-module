@@ -103,6 +103,7 @@ oj（only-js）是一个低代码后端框架：你用 JS/TS 写 handler，框�
 
 | 症状 | 原因 |
 |---|---|
+| 想「强制重载配置」，却去改 config.yaml 凑 diff（如自增哨兵键）——改完还要担心污染用户配置 | **别凑 diff（v0.1.123）**：`POST {base}/_system/config?force=1` 或特权 JS `server.reloadConfig(true)` 直接跳过幂等闸门强制换代（零差异也装配，`applied` 可空；busy/空 body 校验不豁免；裸 `?force`——无 `=` 的旗——不算强制，值必须 `1`/`true`，v0.1.124 收紧）。反过来，`unchanged` 响应是「活代已与盘上一致」的**幂等成功**——调用方（如安装器）收到它应正常收尾，不是失败 |
 | 升级 v0.1.116 后响应多出 `Content-Encoding`/`Vary`/`Cache-Control` 头 / 静态资产被浏览器「永远」缓存 | v0.1.116 静态压缩与默认缓存**默认开**（CHANGELOG 行为变更）。回退：`server.static.compression: false` / `server.static.web_cache_policy: none`。未哈希资产（文件名无哈希段）恒 `no-cache` 是**特性**——要长缓存给 `mounts[].headers` 显式配；`config-production.js` 这类纯字母段名不会被误钉 immutable |
 | 前置 CDN/缓存层出现压缩体/明文体互串 | 缓存层没按 `Vary: Accept-Encoding` 分键（oj 恒带该头）。确认不了就 `server.static.compression: false` 让前置层独揽压缩；oj 之上再挂 nginx gzip 属双压冗余（nginx 见 `Content-Encoding` 会跳过，但缓存分键问题仍在） |
 | 升级后 HEAD 探针不再 405，但监控流量/副作用暴涨 | v0.1.116 起 HEAD **真实执行 GET handler**（含鉴权与副作用）——HEAD 不再是空操作。探针选轻路由、拉长间隔；按状态码族判活（受保护端点无 token → 401 是正常语义不是宕机；证书过期期 HEAD 同 403）。有副作用的「GET」应改成 POST 或自写 `head()` 顶掉镜像 |
@@ -130,7 +131,7 @@ oj（only-js）是一个低代码后端框架：你用 JS/TS 写 handler，框�
 | `#/m/x` 跨模块导入在 `--module-root` 下找不到（v0.1.85） | `m` 是 **manifest `name`** 不是目录名——嵌套布局下按 name 写（`#/user/_shared/x`），勿用目录名 |
 | postgres 占位符 | **0.1.67 起三引擎统一用 `?`**（宿主对 postgres 自动改写 `$n`）；存量 `$n` 继续有效（`$n`+`?` 混用按序号续接）。计数不匹配在 PG 上提前报 `placeholder count N != params M`；jsonb 存在性判断用 `jsonb_exists(doc,'key')`，**别写裸 `?` 运算符** |
 | 在 catch 里按 `e.message` 前缀判别错误类型（或升级 v0.1.88 后 `^ffi db ` 匹配失效） | db 的 reject 自带 `e.code` / `e.retryable` / `e.sessionDisposition` / `e.data`（v0.1.88）——**按 `e.code` 判别**（`OJ_DB_CONSTRAINT` / `OJ_DB_TIMEOUT` / `OJ_DB_UNSUPPORTED` …），引擎原始码看 `e.data.vendor_code`（mysql 数字 / pg SQLSTATE 串）。同时宿主去掉了重复的 `ffi <op>: ` 前缀：`ffi db query: db query: <原文>` → `db query: <原文>` |
-| 接了新方言插件后，构造器 / `listTables` / `nextSeq` / `search.*` / `oj migrate` / `oj seed` 报 `OJ_DB_UNSUPPORTED` 但 `db.query` 能用 | **预期（v0.1.88）**：宿主只对 `sqlite`/`mysql`/`postgres` 生成 SQL；其他方言上一期只开放裸 SQL 路径（`db.query`/`db.exec`/`db.stream`/`db.tx`）。`e.data.capability` 会点名是哪个 API（`query_build`/`query_sql`/`list_tables`/`next_seq`/`migrate`/`seed`）。别自己按 sqlite 语义拼 SQL 绕 |
+| 接了新方言插件后，构造器 / `listTables` / `nextSeq` / `search.*` / `oj migrate` / seed 重放（冷启动或 `oj migrate --with-seed`）报 `OJ_DB_UNSUPPORTED` 但 `db.query` 能用 | **预期（v0.1.88，v0.1.125 补 `--with-seed`）**：宿主只对 `sqlite`/`mysql`/`postgres` 生成 SQL；其他方言上一期只开放裸 SQL 路径（`db.query`/`db.exec`/`db.stream`/`db.tx`）。`e.data.capability` 会点名是哪个 API（`query_build`/`query_sql`/`list_tables`/`next_seq`/`migrate`/`seed`）。别自己按 sqlite 语义拼 SQL 绕 |
 | 用 `db.dialect()` 猜能力（`d === "mysql" ? A : B`） | 方言名是**开放集**（v0.1.88 起插件 `describe()` 声明什么就是什么），新方言接入后 `else` 分支会把错 SQL **静默**发给它（占位符/`ON DUPLICATE KEY` 全错，报错落在引擎侧）。能力问题**直接调用**并接 `OJ_DB_UNSUPPORTED`；确需方言特有 SQL 用白名单 + 未知方言 `throw`（api-manual「方言边界」/ 场景 45） |
 | `cargo xtask plugin <name>` 之后 `oj serve` 报 `plugin file not in plugins.lock.json: …` | 清单锁（v0.1.88）：`xtask plugin` 只拷单库、**不刷新** `plugins.lock.json`。新增/替换插件后跑 `cargo xtask build`（整体归置 + 重写锁）；部署时整体拷贝 `bin/`，禁止增量覆盖 |
 | `db.export` 重启后 taskId 报 not found | **有意语义**（非 bug）：id 内嵌 boot tag，跨重启一律 not found 不 failed——防把重启误读成 SQL 错。导出UI应在 not found 时引导重新发起，不是重试轮询 |
@@ -267,6 +268,11 @@ oj（only-js）是一个低代码后端框架：你用 JS/TS 写 handler，框�
 | `POST {base}/_system/config` 报 403 | 未配 `auth:` 时只允许**回环**调用；远程调度走 Bearer 守卫须先配 `auth:` 段 |
 | `POST {base}/_system/config` 报 409 | 上一次热更还在跑（串行锁占用）——等上一次完成再发 |
 | `POST {base}/_system/config` 报 400 且 body 非空 | 该端点**只接受空 body**，改配置请直接改落盘文件再 POST 触发 |
+| 热装模块报 400 `platform module '…' must not be hot-installed`（v0.1.122） | 装的是 `platform.modules` 特权名——热装特权名 = 继承特权，被抢注拦截（零副作用）。特权模块由部署方放入 `platform.root` 后**重启**生效 |
+| 只改了 `dist/manifests.yaml`（没动 config.yaml），POST reload 却返回了新 `applied` | **特性不是 bug**（v0.1.122）：锁纳入变化检测，装/卸/升级模块免重启；`applied` 里 `+name@ver`/`-name@ver` 就是模块条目（升级成对 `-旧 +新`）。空锁 = 卸载全部（reload 放行；冷启动空锁仍 fail-fast） |
+| 改 `vars:` 段 POST reload 后新模块没读到新值 / 返回里 `vars` 出现在 `restart_pending`（v0.1.122 行为修正） | `vars`/`oidc`/`db_query`/`db_trace`/`ws` 是**冻结段**——旧版误标进 `applied`（实际从未热生效），现如实报 `restart_pending`，须**重启**生效。模块热装（锁）与 vars 热生效是两回事 |
+| `tenant.anonymous_paths` 命中却还是 401 | 它只豁免**缺租户头 400**，**不免 Bearer 验签**——免验签只能配 `auth.anonymous_paths`（v0.1.122 起命中即在前置管线短路、不再调守卫 verify；清单随换代即时生效） |
+| `auth.anonymous_paths` 配了 `/_system/**`、`/tasks/**` 启动失败 | 保留段黑名单（v0.1.122）：`_platform`/`_system`/`_lifecycle`/`tasks` 前缀下的匿名条目 fail-fast 拒装——平台保留面有自己的守卫，匿名豁免进不来；`auth` 段不设限（`/auth/login` 本就是业务匿名路由） |
 | `--module-root` 下 WS 路由 404 / 握手 401（v0.1.87） | WS 与 api.ts **同口径**：`src/wiki/api/ws.ts`（manifest 在 `src/wiki/api/`）→ `GET {base}/wiki/ws`，`api` 是模块根（布局分隔符）不是路由段；`anonymous_paths` 按守卫面写 `/wiki/ws`。release 仍带版本段（`…/wiki-0.1.0/ws`），与 dev 不同源。新增/删除 `ws.ts` 要重启。**唯一权威面是启动打印的 `ws: N mount(s)` 清单**——别从目录结构推 |
 | WS 路由 404（文件明明在） | 文件名必须小写 `ws.ts`/`ws.js`——`WS.ts` 无效（v0.1.5 约定）；路径拿不准就看启动打印的挂载清单 |
 | （v0.1.9 已消除）旧帧循环的 const 重复声明 | 新契约为生命周期钩子：模块每 Worker 预载一次——无需处理；可变跨帧状态放 `sess.state`（模块作用域只是只读缓存），见 api-manual §ws.ts |
@@ -350,6 +356,9 @@ oj（only-js）是一个低代码后端框架：你用 JS/TS 写 handler，框�
 | Windows 上 exec 输出比对总差一个 `\r` | `cmd /c echo` 恒以 CRLF 收尾、`cmd /c type` 原样吐文件字节（不补行尾），oj **不做** CRLF→LF 归一（与 `Deno.Command.output` / Node 同口径）——跨平台文本比对用 `trimEnd()` / `split(/\r?\n/)`，别写死 `"\n"`（v0.1.79） |
 | Windows 上 `cmd /c echo` 同时配了 `${raw:word}` 和 `%${raw:NAME}%`，`echo %VAR%` 恒报 `exec template ambiguous` | 同一位置的**裸 raw 是 `%…%` 包裹 raw 的超集**：`%X%` 形态 argv 同时命中两条 → 歧义拒绝（不静默择一，报错只给命中条数不给模板原文）。错开办法：其中一条写成全字面模板（`cmd /c echo hello`），或换不同命令名 / 不同 literal 段落（v0.1.79） |
 | 安装器靠 `oj migrate --format json` 的 JSON 解析成功就当迁移成功 | json `error` 字段已脱敏（`<scheme>://***@host`，不漏密码），但**退出码**才是成败真源：任一模块失败 json 仍成功解析、只是 `results[]` 里 `ok=false` 且进程退非 0——安装器必须校验 exit code，不能只 `JSON.parse` 成功 |
+| 装完带 `seed.sql` 的模块，数据面是空的（要等重启才灌） | **预期（v0.1.125 前）**：seed 只在冷启动 `!reused` 时重放，安装器 `ojm install` 只跑迁移、不跑 seed。运维/CI 直跑 `oj migrate --with-seed -c config.yaml -d dist <module>` 把迁移+seed 一起做完（严格 migrate→seed、幂等可重跑）；安装器端到端接入（`buildMigrateCmd` 传旗标 + `platform.exec` 白名单 + `MIN_OJ_VERSION`）留待下游单独交付，别误以为装完即就绪 |
+| `oj migrate --with-seed` 报「语句类型 … 不在白名单」/「非幂等 INSERT」 | 新入口 fail-closed：只放行**幂等 INSERT**，拒绝 DDL / `UPDATE` / `DELETE` / `REPLACE` / `PRAGMA` / `ATTACH` / 事务控制 / `INSERT … SELECT` / 裸 `INSERT`（含 `/*x*/ DROP` 行首注释绕过）。执行前全量预扫、命中即零行落库——把 seed.sql 改成 `INSERT OR IGNORE` / `INSERT IGNORE` / `ON CONFLICT DO NOTHING` 后重跑；或去掉旗标交由下次冷启动 |
+| `oj migrate --with-seed` 迁移成功却退非 0 | seed 失败使**整条命令**退非 0（迁移已提交、seed 未灌）。看 stderr 前置诊断点名的模块/文件/语句，修复后重跑本命令（幂等、安全重试）；`--format json` 顶层 `seed.results[]` 的 `ok=false` 携脱敏原因。与 `--baseline` 互斥 |
 | 升级后 `crypto.sha256Hex(123)` / `sha256Hex(null)` 抛 TypeError | v0.1.75 行为变更（fail-loud）：非 string/二进制入参旧版经 `String()` 强转求摘要，现直接抛错——旧脚本显式 `String(x)` 再传，或改传 `Uint8Array` |
 | `crypto.md5Hex` 用在凭据/签名/完整性校验上 | MD5 已密码学破损——仅限**非安全场景**（缓存键/etag/旧系统兼容），安全用途改 `sha256Hex` 或 `bcrypt`（v0.1.75） |
 | 写 `http.module.name = "x"` 抛 `TypeError: Cannot assign to read only property` | 预期（v0.1.76）：`http.module` 是框架授信依据（归属守卫/bound_db/平台特权）故冻结只读。strict（ESM / api 文件 CJS 包装）下写/delete 抛错；`require()` 的 CJS 代码（sloppy）写它静默无效——两条路径都改不了框架状态。只读用即可；测试要伪造身份走真实路由 |
