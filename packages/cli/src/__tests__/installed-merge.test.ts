@@ -154,19 +154,19 @@ describe("restoreInstalledFaces", () => {
 		const versionDir = join(apiDist, "oj-market-0.2.0", "web", "modules", "oj-market", "0.2.0");
 		fs.mkdirSync(versionDir, { recursive: true });
 		fs.writeFileSync(join(versionDir, "entry.js"), "console.log(1);\n");
-		fs.writeFileSync(join(versionDir, ".ojm-module.json"), `${JSON.stringify({ name: "oj-market", entry: "modules/oj-market/0.2.0/entry.js", enabled: true, version: "0.2.0", chunks: [] })}\n`);
+		// 版本目录根旁车带 extras 标记：验证重物化走的是「根旁车随行」而非最小条目重建
+		const fullSidecar = { name: "oj-market", entry: "modules/oj-market/0.2.0/entry.js", enabled: true, version: "0.2.0", chunks: [], peerRuntime: ">=0.0.0" };
+		fs.writeFileSync(join(apiDist, "oj-market-0.2.0", ".ojm-module.json"), `${JSON.stringify(fullSidecar)}\n`);
 
 		const restored = restoreInstalledFaces(root, dist, apiDist);
 
 		expect(restored).toEqual(["oj-market"]);
 		expect(fs.existsSync(join(dist, "modules", "oj-market", "0.2.0", "entry.js"))).toBe(true);
-		// 旁车随重建落回版本目录根：release 每次擦除 dist/web，旁车必须有一次越过擦除的持久化
-		const versionRootSidecar = join(apiDist, "oj-market-0.2.0", ".ojm-module.json");
-		expect(fs.existsSync(versionRootSidecar)).toBe(true);
-		// 二次重物化（再擦除）带走旁车：不再走最小条目重建
+		expect(JSON.parse(fs.readFileSync(join(dist, "modules", "oj-market", "0.2.0", ".ojm-module.json"), "utf8"))).toEqual(fullSidecar);
+		// 二次重物化（再擦除）带走旁车：extras 不丢、不走最小条目重建
 		fs.rmSync(join(dist, "modules", "oj-market"), { recursive: true, force: true });
 		restoreInstalledFaces(root, dist, apiDist);
-		expect(fs.existsSync(join(dist, "modules", "oj-market", "0.2.0", ".ojm-module.json"))).toBe(true);
+		expect(JSON.parse(fs.readFileSync(join(dist, "modules", "oj-market", "0.2.0", ".ojm-module.json"), "utf8"))).toEqual(fullSidecar);
 	});
 
 	it("face 在盘 → 不重复恢复（幂等）", () => {

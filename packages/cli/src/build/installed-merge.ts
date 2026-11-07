@@ -125,9 +125,21 @@ export function restoreInstalledFaces(projectRoot: string, distDir: string, apiD
 		if (!fs.existsSync(versionDir))
 			continue;
 		fs.cpSync(versionDir, faceDir, { recursive: true });
+		// 版本目录根旁车随行入 face（旁车持久化在根、web 子树之外——不拷则 face 仍缺，
+		// 每次 release build 重复走最小条目重建降级）。
+		const rootSidecar = path.join(apiDist, `${name}-${e.version}`, ".ojm-module.json");
+		const faceSidecar = path.join(faceDir, ".ojm-module.json");
+		if (!fs.existsSync(faceSidecar) && fs.existsSync(rootSidecar)) {
+			try {
+				fs.copyFileSync(rootSidecar, faceSidecar);
+			}
+			catch {
+				// 拷不进则下方 ensureFaceSidecar 降级重建，告警有痕
+			}
+		}
 		// 旁车随重建落回版本目录根：release 每次 mergeShellSite 擦除 dist/web，
 		// 旁车只留 face 目录会被一并抹掉——版本目录（安装器私有面）是跨擦除的持久化位。
-		// 重建最小条目（旁车缺失时）后写两处；下次重物化旁车随行，不再走降级。
+		// （存在合法旁车时原样写回，幂等。）
 		const sidecar = ensureFaceSidecar(faceDir, name, e.version);
 		if (sidecar !== null) {
 			try {
