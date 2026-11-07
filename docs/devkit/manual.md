@@ -2083,23 +2083,26 @@ flowchart TD
   必填、悬空引用双端拒绝——形状细则与注册/管理面见 §11.5。
 
 **随站 bundle 自动收敛（对账即服务）运维口径**（第一方随站 bundle 场景，发布方流程见发布
-walkthrough §7.5）：
+walkthrough §7.5；**2026-11-07 策略变更：出厂即装**——市场方案默认安装好，升级走发布途径）：
 
-- 站点首个市场编排请求（如 superadmin 打开 system 域「方案安装」）触发收敛：bundle 比已装
-  新→升级、bundle ≤ 已装→跳过；**永不自动降级**（降级 = 站点产物回滚）。
+- 触发时点：`ojm dev` / `ojm preview` 后端就绪后自动触发一次（fire-and-forget，幂等）；
+  纯 `oj serve` 起站（无 ojm 在环）由首个市场编排请求触发（如 superadmin 打开方案市场页）。
+  收敛规则：bundle 比已装新→升级、bundle ≤ 已装→跳过；**永不自动降级**（降级 = 站点产物回滚）。
+- 出厂即装前提（全新脚手架自动齐备）：BOOTSTRAP_KEY 预置第一方发布方公钥（免信任确认）；
+  dev 形态自动补安装器版本比对真源 `dist/api/versions.json`；重建 modules.json 时自动合并
+  已装方案登记（web 面从版本目录重物化）——**例行 build/dev 不再冲掉已装方案的市场菜单**。
 - 收敛失败落 `market_history` 审计（operator 记 `bundle-converge`）+ 10 分钟冷却文件
   `modules/.install-tasks/.bundle-converge-cooldown.json`；处置完（如推信任 key）删冷却文件
   即立即重试。
 - 卸载第一方市场包会摘掉 `cdn/bundles.json` 意图条目（墓碑）——收敛不再自动装回，
-  重装走「方案安装」手动入口。
+  重装走方案市场页或 `ojm install <name>@<version>`。
 - 旧工程注意：市场编排模块需双授权——exec 白名单有它的条目（与 `_platform` 逐字相同）、
   `platform.modules` 列表含它。模板自带（脚手架 0.2.71 起）；旧 config 需手工补，否则
   收敛/安装卡 reloading 段 NotCapable。
 - 安装验证的起站形态：release 站点二选一——config 加 api 挂载（`platform.root: dist/api`
   + `- prefix: /api / api: dist/api`，零 CLI 旗标）或 CLI 旗标（`-b /api --api-path dist/api`，
   此形态 web 挂载必须绝对路径）。**不要**用 `--module-root`/dev 形态验证安装：十阶段可全
-  done 但重启后方案 api/页面 404（src 树供给不含 dist 产物，装而不达）。例行 `ojm build`
-  会冲掉已装方案的 web 登记（菜单消失，安装态完好）——backfill 补目录 + 重装同版本即愈合。
+  done 但重启后方案 api/页面 404（src 树供给不含 dist 产物，装而不达）。
 
 ### 11.4 生命周期命令与站点寻址约定
 

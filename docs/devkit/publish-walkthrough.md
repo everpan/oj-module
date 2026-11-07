@@ -247,8 +247,8 @@ ojm build
 #    （platform.root (...) must be mounted as an api mount）。
 #    注意 platform.root 是 dev/release 开关：改成 dist/api 后 `pnpm dev` 会同样拒启——
 #    dev 从 src 树供给 api；要开发就切回 src，要 release 起站就保持 dist/api（两形态互斥，
-#    同一份 config 不能同时喂 dev 和 release）。且 dev/例行 build 的模块重建都会冲掉
-#    已装方案的 web 登记（见 §7 速查「例行 build 后菜单消失」行）。
+#    同一份 config 不能同时喂 dev 和 release）。0.2.72+ 起 dev/例行 build 重建 modules.json
+#    会自动并入已装方案登记（web 面从版本目录重物化），不再冲掉菜单（见 §7 速查对应行）。
 #    另配 vars.canonical_origin（本地演练填 http://127.0.0.1:9778）：市场基址 /cdn 是相对路径，
 #    服务端要靠它补全成绝对 URL；缺了 cdn 源安装直接 503（不读 Host 头，不会替你猜）。
 #    file 直传安装不读 canonical_origin——只有按名从市场目录拉才需要。
@@ -309,8 +309,8 @@ TOFU 没有免检通道：**只有模板内置的 oj-market（第一方包）用
 | 安装/收敛卡在 reloading 段 `NotCapable`（市场编排端点） | 站点 config 缺市场编排模块授权：`platform.exec` 没有该模块的白名单条目，或 `platform.modules` 列表缺它（安装器热更 config / 写信任库需要这份特权） | 给市场编排模块配与 `_platform` 逐字相同的 exec 白名单并加入 `platform.modules`（新工程模板自带；**旧工程升级脚手架不会自动补**，需手工改 config 后重启宿主） |
 | `-b /api` 起站后 API 正常但静态文件全 404（`/modules/<name>/<ver>/entry.js` 返回 API 信封 `no route matched`；SPA 回落却正常） | web 挂载用了**相对路径**：`-b` 基座覆盖与相对路径组合时静态层解析落空（极具迷惑性） | web 挂载写绝对路径（`web: /abs/path/dist/web`）；或改用 config 挂载形态起站（§6 ① 形态 A，零 CLI 旗标、无此坑） |
 | `pnpm dev` 启动即退：`platform.root (...) must be mounted as an api mount` | config 处于 release 形态（platform.root 改成了 dist/api，见 §6 ①）——dev 从 src 树供给 api，与 release 互斥 | 要开发：platform.root 切回 `src` 再 `pnpm dev`；要 release 起站：保持 dist/api 用 §6 ① 的 serve 命令（别用 pnpm dev） |
-| 例行 `pnpm build`（`ojm build`）/跑过 `pnpm dev` 后，已装方案的市场菜单/页面全消失（`dist/web/modules.json` 只剩 app） | 两者都会重生成 `dist/web/` 且只收录**源码树模块**，安装器登记的方案 web 面被整体冲掉；安装态本身完好（方案状态/锁/api 版本目录都在） | 愈合两步：① `POST /api/oj-market/backfill` 扫 `cdn/` 补市场目录行（从市场目录装的方案需要）；② 逐方案 `ojm install <name>[@version]` 重装同名同版本——web-only 包 api 锁零变更，重装只补 web 面 |
-| 随站 bundle 反复装不上（打开「方案安装」没反应；审计表有收敛失败行） | 信任空窗（bootstrap key 未回填且信任库无发布 key），或刚失败过仍在收敛冷却期 | 先推发布公钥进信任库，再删冷却文件 `modules/.install-tasks/.bundle-converge-cooldown.json` 立即重试（冷却默认 10 分钟，自愈等待亦可） |
+| 例行 `pnpm build`（`ojm build`）/跑过 `pnpm dev` 后，已装方案的市场菜单/页面全消失（`dist/web/modules.json` 只剩 app） | **0.2.72+ 已根治**：重建 modules.json 时自动从版本目录重物化已装方案 web 面并并入（条目旁车 `.ojm-module.json` 双落点）。此症状只在旧版出现；旧版愈合两步：① `POST /api/oj-market/backfill` 扫 `cdn/` 补市场目录行（从市场目录装的方案需要）；② 逐方案 `ojm install <name>[@version]` 重装同名同版本——web-only 包 api 锁零变更，重装只补 web 面 | 升 0.2.72+ 后例行 build/dev 不再冲菜单，无需任何愈合动作 |
+| 随站 bundle 反复装不上（方案市场页不见 oj-market 条目/无安装动作；审计表有收敛失败行） | 信任空窗（BOOTSTRAP_KEY 被吊销且信任库无 platform.release 公钥），或刚失败过仍在收敛冷却期 | 先推发布公钥进信任库，再删冷却文件 `modules/.install-tasks/.bundle-converge-cooldown.json` 立即重试（冷却默认 10 分钟，自愈等待亦可）。出厂首装（信任库空）由 BOOTSTRAP_KEY 自动播种，正常不该落此格 |
 | `sig_alg` / `sig_format` | 签名算法/.sig 结构不符 | 用当前 ojm 重签（旧版本工具产物） |
 | `needs_trust`（第五终态，非成功） | 站点第一次见这个 key | 与发布方逐字核对指纹 → `trust confirm --task <id>` → 重跑 install |
 | publish 报「包冲突：…字节不一致」（409） | 同 name@version 已有字节不同的包 | **升 version 重发**；确需覆盖须站点侧删行（superadmin） |
@@ -366,9 +366,10 @@ TOFU 没有免检通道：**只有模板内置的 oj-market（第一方包）用
   就位承载前端产物），市场内不提供降级入口（降级 = 站点产物回滚）。它与平台内建编排模块
   同名（双轨同名）：api 锁/版本目录归平台轨，方案 sidecar 归方案轨，安装/卸载第一方包
   都不碰内建面。
-- **例行构建会冲掉已装方案的 web 面**：站点跑 `ojm build` 后 `dist/web/modules.json` 与
-  `dist/web/modules/` 只含源码树模块，已装方案的市场菜单/页面消失（安装态完好）。愈合 =
-  backfill 补目录行 + 逐方案重装同版本（见 §7 速查表对应行）。
+- **例行构建不再冲掉已装方案的 web 面**（0.2.72+ 出厂即装策略）：站点跑 `ojm build`/`pnpm dev`
+  重建 `dist/web/modules.json` 时，条目旁车（`.ojm-module.json`，deploy-web 双落点持久化）驱动
+  从版本目录重物化已装方案 web 面并并入登记——菜单/页面持续在位，零愈合动作。旧版症状与
+  backfill + 逐方案重装愈合法见 §7 速查表对应行。
 - 端到端随站收敛演练步骤见框架仓《框架验证演练手册》§7.6（市场线）。
 
 ## 8. 发布前 checklist

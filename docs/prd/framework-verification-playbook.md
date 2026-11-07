@@ -11,7 +11,7 @@
 | **快线** | 本仓 `packages/cli/templates/` 工程：版本矩阵 → 契约对账 → 构建 → dev 起服 → 登录/业务接口 → 发布凭证兑换 | ~5 min | 每次改 `templates/`、`runtime`、发布链路 | §0.3 |
 | **全量线** | 快线 + `pnpm pack` 发布包 → 新工程 `ojm init` → 依赖安装 → §1–§7 全套 | 15–20 min | 发版前、oj 升级后 | §0 → §0.5 → §1… |
 | **市场线** | §7.1–§7.5：方案骨架 → 发布 CDN → 安装/TOFU/升级 → walkthrough 14 项 | ~10 min | 动 `market`/安装器/签名时 | §7.1 |
-| **市场 Phase B 线** | §7.6：出厂未装态 → 随站 bundle 收敛首装 → 降级守护 → 卸载墓碑（动安装器/编排面/模板 config 时必跑——单测注入面绕不过平台授权与装配层，见文首） | ~10 min | 动安装器/`oj-market` 编排面/模板 config 时 | §7.6 |
+| **市场 Phase B 线** | §7.6：出厂即装态核对（dev/preview 就绪自动收敛）→ 降级守护 → 卸载墓碑（动安装器/编排面/模板 config 时必跑——单测注入面绕不过平台授权与装配层，见文首） | ~10 min | 动安装器/`oj-market` 编排面/模板 config 时 | §7.6 |
 | **市场闭环线** | §7.7：`ojm new` 造方案 → 签名发布进目录 → 按名从市场安装 → 两段式终态（复用 §7.6 装好市场的站点） | ~10 min | 动发布链路/安装器/市场目录时 | §7.7 |
 
 判据只有一条：**每节的检查点逐条打勾**——退出码 0 只是入场券，产物与响应体才算数。
@@ -25,7 +25,8 @@
 > `/v1/api`，而框架（web 应用 + market/install CLI）一律走 `/api`——必须 `-b /api` 起站（§7.7 / §9）。
 >
 > **上次演练结论（2026-11-07 第一轮，cli/runtime 0.2.71 工作区 / oj 0.1.124）**：**市场线 Phase B 增量演练（§7.6）通过**——
-> 发布形态 pack → `init --yes` 随站 bundle 落位 → 出厂未装态 → index 端点收敛首装（11 段全 ok）→
+> 发布形态 pack → `init --yes` 随站 bundle 落位 → 出厂未装态 → index 端点收敛首装（11 段全 ok——
+> 该轮仍是首装期口径；当日稍后策略已变更为出厂即装，见 §7.6）→
 > 页面/编排双活 → 降级守护 skip → 卸载墓碑闭环。演练实锤 **6 个真机缺陷**（单测全注入 exec/reload/fetch
 > 绕过平台授权与 oj 装配层，此前从未真机暴露）并全部 TDD 修复：exec 授权、platform 特权、web-only 部署
 > 段回落、web-only 锁零变更、卸载版本解析 sidecar 优先、双轨同名 reload 断言豁免（详见附录 A 首条与 §9）。
@@ -178,7 +179,7 @@ node "$CLI_PKG/bin/ojm.mjs" init my-books --yes
 **检查点**
 
 - [ ] 退出码 0，末行提示 `登录 superadmin / aA123456`（角色账号见 devkit 手册 §1.1）
-- [ ] 目录齐全（**module-root 布局，0.2.54+ 收敛到 `src/app`**）：`src/app/api/<name>`（六个后端模块：`_platform/auth/notification/personal-center/system/web`）+ `src/app/web`（六根）+ `src/oj-market/api`（编排面）+ `src/oj-market/web/{__client,publish/__client}`（**仅双 `__client` 生成物，无页面源码**——市场 UI 是第一方方案包出厂未装）；顶层不再有 `src/<name>/{api,web}`。工程根 `.ojm-api-exempt.json`、`config.yaml`、`web.config.ts`、`tsconfig.json`、`global.d.ts`、`env.d.ts`、`bin/{oj,.oj-version,plugins,devkit}`、`.claude/skills/{oj-api-dev,ojm-module-dev}/`
+- [ ] 目录齐全（**module-root 布局，0.2.54+ 收敛到 `src/app`**）：`src/app/api/<name>`（六个后端模块：`_platform/auth/notification/personal-center/system/web`）+ `src/app/web`（六根）+ `src/oj-market/api`（编排面）+ `src/oj-market/web/{__client,publish/__client}`（**仅双 `__client` 生成物，无页面源码**——市场 UI 是第一方方案包**出厂即装**，web 面经版本目录重物化并入 modules.json，不经源码树）；顶层不再有 `src/<name>/{api,web}`。工程根 `.ojm-api-exempt.json`、`config.yaml`、`web.config.ts`、`tsconfig.json`、`global.d.ts`、`env.d.ts`、`bin/{oj,.oj-version,plugins,devkit}`、`.claude/skills/{oj-api-dev,ojm-module-dev}/`
 - [ ] **（0.2.71+，Phase B）`init --yes` 随站 bundle 落位**：`cdn/<name>-<ver>.tgz` + `.sig` + `cdn/bundles.json` 意图标记（`{solutions:[{name,version,file}]}`）；交互式 init 零动作；bundle 源缺失告警不失败。发布后 cli 包内应有 `shell-dist/bundles/`（prepack `sync-bundles.mjs` 只收**已签名** tgz——`tar -tzf <cli-pkg>.tgz | grep bundles/` 核对）
 - [ ] **（0.2.71+）模板 config 双授权就位**：`platform.exec` 有 `_platform` 与 `oj-market` **同集合** allow 条目（YAML 锚点 `&INSTALLER_EXEC_ALLOW` 同源）；`platform.modules: [_platform, oj-market]`（编排面 reload 特权）。守卫：`tests/lifecycle/exec-grant.spec.ts`
 - [ ] **工程根有 `.gitignore`**（发布包不携带模板 `.gitignore`——npm/pnpm pack 剥离点文件，改由 init 现场生成，`ensureGitignore`；0.2.5 曾因 include 清单收录它而 fail-fast，见 §9）
@@ -710,11 +711,12 @@ node "$CLI_PKG/bin/ojm.mjs" market publish --real . --id demo.publisher
 > 全新 init --yes 工程 `pnpm dev` 数秒内 state.yaml 落 oj-market、modules.json 并入、目录可见；
 > dev 重启/重复 `pnpm build` 登记不丢、告警静默；`pnpm preview` SPA/face/index 全 200。
 >
-> 市场 UI（oj-market）自 Phase B 起是**第一方纯 web 方案包**：出厂未装，`api` 编排面随脚手架内置
-> （市场未装时 `/api/oj-market/*` 端点仍在）。`ojm init --yes` 把已签名 bundle 落位 `cdn/` 并写
-> `bundles.json` 意图标记；**首个市场编排请求（index 端点「对账即服务」）自动收敛安装**
-> （上拉不下拉：未装→装、bundle 新→升级、bundle ≤ 已装→跳过不降级）。superadmin 也可经
-> system 域「方案安装」页手动首装（同一 install 端点）。
+> 市场 UI（oj-market）自 Phase B 起是**第一方纯 web 方案包**：**出厂即装**（0.2.72+ 策略），`api`
+> 编排面随脚手架内置（市场方案未装时 `/api/oj-market/*` 端点仍在）。`ojm init --yes` 把已签名
+> bundle 落位 `cdn/` 并写 `bundles.json` 意图标记；**`ojm dev`/`ojm preview` 后端就绪后自动触发
+> 收敛安装**（上拉不下拉：未装→装、bundle 新→升级、bundle ≤ 已装→跳过不降级）；纯 `oj serve`
+> 起站（CLI 不在环）由首个市场编排请求（index 端点「对账即服务」）riding 收敛。卸载后重装走
+> 方案市场页或 `ojm install <name>@<version>`。
 >
 > **为什么单测不够**：编排/安装器单测全走 DIP 注入（exec/reload/fetch/fs stub），验证编排逻辑；
 > oj 的**授权层**（per-module exec、platform 特权）与**装配层**（锁驱动 parse_one）只在真机存在。
@@ -725,26 +727,37 @@ node "$CLI_PKG/bin/ojm.mjs" market publish --real . --id demo.publisher
 源码树演练时若 `templates/dist/<name>-<ver>.tgz` 无 `.sig` 旁车，先 `ojm sign <tgz> --id <kid>
 --key <pem> --registry-id <reg> --check` 再重新 pack。
 
-### A. 出厂未装态核对
+### A. 出厂即装态核对
 
 ```bash
 node -e "const m=require('./dist/web/modules.json');console.log(m.map(x=>x.name).join(','))"
-# 期望只有 app（无 oj-market）——市场 UI 未装；api 轨的 oj-market: 0.1.0 是平台编排面（双轨），
+# 期望含 oj-market——例行 build/dev 重建 modules.json 时从版本目录重物化 web 面并并入已装登记
+# （条目旁车 .ojm-module.json 双落点持久化）；api 轨的 oj-market: 0.1.0 是平台编排面（双轨），
 # dist/api/manifests.yaml 里 oj-market: 0.1.0 属预期，不是市场 UI
 ls cdn/   # bundles.json + <name>-<ver>.tgz + .sig（init --yes 落位）
+grep -A1 "oj-market:" modules/.solutions/state.yaml   # 出厂收敛后已装行在位（0.2.0、trusted）
 ```
 
-- [ ] `modules.json` 无 `oj-market`；`src/oj-market/web` 只有双 `__client`（无页面源码）
+- [ ] `modules.json` **含** `oj-market`（重建合并登记——例行 build/dev 不再冲掉已装方案的
+      市场菜单）；`src/oj-market/web` 仍只有双 `__client`（web 面重物化自版本目录，非源码树）
 - [ ] **编排端点出厂即在**：`GET /api/oj-market/index?page=1&size=5`（superadmin token + `X-TENANT-ID`）
-      返回 `code:0`（list 空属预期——本机自供 CDN 无 catalog.yaml）
+      返回 `code:0`，list 见 `oj-market installed=0.2.0 enabled=true trust_state=trusted`
+      （`ojm dev`/`ojm preview` 就绪即自动收敛；纯 oj serve 形态由首请求 riding 收敛，
+      收敛完成前 list 无该条目属预期）
 
-### B. 收敛首装（release 形态起站：§7.3 前置同——`platform.root: dist/api` + `vars.canonical_origin`；页面探活另需解开 config 的 `"/"` web 挂载三行，`spa: true`）
+### B. 收敛路径验证（release 形态起站：§7.3 前置同——`platform.root: dist/api` + `vars.canonical_origin`；页面探活另需解开 config 的 `"/"` web 挂载三行，`spa: true`）
+
+> 新策略下主路径已由文首「出厂即装」覆盖（dev/preview 就绪自动收敛，BOOTSTRAP_KEY 免 TOFU）。
+> 本节定位 = 纯 `oj serve` 形态（CLI 不在环）/ 收敛失败愈合 / 手工触发验证。needs_trust 信任空窗
+> 子路径现仅可达于 BOOTSTRAP_KEY 被运维吊销（G5 不复活语义）或旧工程信任库预置但缺
+> `platform.release` 的场景。
 
 ```bash
 # 起站（module-root release 形态；基座必须钉 /api——缺省 /v1/api 会让框架侧请求全打穿到 SPA，见 §9）：
 ./bin/oj serve --api-path dist/api -b /api --daemon
 
-# BOOTSTRAP_KEY 未回填（发布期才回填）→ 信任库空 → 首次收敛验签停在 needs_trust（预锁段即停）：
+# 信任空窗子路径（BOOTSTRAP_KEY 已被运维吊销，或旧工程信任库预置但缺 platform.release）→
+# 收敛验签停在 needs_trust（预锁段即停）：
 curl "http://127.0.0.1:9778/api/oj-market/index?page=1&size=5" -H "authorization: Bearer $TK" -H 'X-TENANT-ID: default'
 curl "http://127.0.0.1:9778/api/oj-market/history?page=1&size=3" -H "authorization: Bearer $TK" -H 'X-TENANT-ID: default'
 # 期望 index 仍 code:0（收敛失败吞咽）；任务文件 modules/.install-tasks/install-*.json 终态 needs_trust、
@@ -780,7 +793,7 @@ node -e "const fs=require('fs');const j=JSON.parse(fs.readFileSync('cdn/bundles.
 curl "http://127.0.0.1:9778/api/oj-market/index?page=1&size=1" -H "authorization: Bearer $TK" -H 'X-TENANT-ID: default' > /dev/null
 grep -A1 "oj-market:" modules/.solutions/state.yaml   # 版本仍 0.2.0；无新任务
 
-# 卸载墓碑：故意卸载 → marker 条目被摘除 → 收敛不再自动重装（spec 特性 2：重装只经 system 域入口）
+# 卸载墓碑：故意卸载 → marker 条目被摘除 → 收敛不再自动重装（spec 特性 2：重装只经方案市场页或 ojm install）
 curl -s -X POST http://127.0.0.1:9778/api/oj-market/uninstall \
   -H "authorization: Bearer $TK" -H 'X-TENANT-ID: default' -H 'content-type: application/json' \
   -d '{"name":"oj-market"}'
@@ -807,7 +820,7 @@ ls dist/api/ | grep -c "oj-market-0.1.0$"   # 内建编排模块目录存活（1
 ## 7.7 从市场安装解决方案（作者侧发布 → 目录 → 按名安装闭环；0.2.71+ 实证）
 
 > 覆盖「方案进市场目录 + 运维按名从市场拉装」整条业务闭环——§7.6 只装市场本身，本节装**第三方/用户方案**。
-> 复用 §7.6 B 收敛装好市场的站点（编排面、信任库、冷却语义全部在位）。2026-11-07 第二轮全绿。
+> 复用 §7.6 出厂即装站点（市场已装、编排面、信任库、冷却语义全部在位）。2026-11-07 第二轮全绿。
 
 前置：§7.6 站点（市场已装、发布方 key 已在信任库）+ 发布身份（§7.2；本机自签旁路 key 亦可，
 但须先把它的公钥推进站点信任库，否则 publish 403）。**起站基座钉 `/api`**：
@@ -908,8 +921,9 @@ ojm install books --site-url ... --user superadmin --pass <口令>   # retry 同
   - [ ] （§7.5，0.2.23 起）`ojm new` 守卫四拒零写入；`info` 默认折叠自带 / `--all` 平铺；
         `build --bundle` 无参只出用户方案（自带跳过有日志）、`--bundle <name>` 单份、
         坏契约两段式零增量、零方案报错指路 `ojm new`；重复打包 sha256 一致
-  - [ ] （§7.6，0.2.71+ Phase B）出厂未装态（modules.json 无 oj-market、编排端点 200）；init --yes
-        bundle 落位三件套（tgz + .sig + bundles.json）；收敛首装 11 段 done + **api 锁零变更**；
+  - [ ] （§7.6，0.2.72+ Phase B 出厂即装）modules.json **含** oj-market（重建合并登记，例行 build 不冲
+        掉）、state.yaml 已装行在位、编排端点 200；init --yes bundle 落位三件套（tgz + .sig +
+        bundles.json）；dev/preview 就绪自动收敛 11 段 done + **api 锁零变更**；
         信任空窗期 needs_trust 任务落盘（无冷却）/硬失败 failed+冷却；页面/编排双活；幂等零任务；
         降级守护不降级；卸载后内建编排面完好（目录 + 锁条目 + 端点 200）+ 墓碑零重装；
         模板 config 双授权（exec grant 同集合 + platform.modules 含 oj-market）
@@ -924,7 +938,7 @@ ojm install books --site-url ... --user superadmin --pass <口令>   # retry 同
 | --- | --- | --- |
 | release 起站后 CLI 推送/登录全打穿到 SPA（`Unexpected token '<'…`、POST 405「web mounts serve GET/HEAD only」、探活 200 但返回 index.html） | oj 0.1.124 `oj serve --api-path` 缺省把 API 绑在 `/v1/api`，而框架一律按 `/api` 寻址（U4） | 起站加 `-b /api`：`oj serve --api-path dist/api -b /api`；判据 = `POST /api/auth/login` 返回 JSON。config 手写 `- prefix: "/api" api: dist/api` 挂载与 `--api-path` 同给会报「module `_platform` declared in multiple places」——二选一，选 `-b /api` 勿写挂载 |
 | `-b /api` 起站后 API 正常但**静态文件全 404**（`/modules/<name>/<ver>/entry.js`、index.html 返回 API 信封 `no route matched`；去掉 `-b` 或换绝对路径即恢复） | oj 0.1.124：`-b` 基座覆盖与 web 挂载**相对路径**组合时静态层路径解析落空（web 挂载只接住 SPA 回落的 HTML 请求）；`ojm preview` 派生 config 一律写绝对路径 `web: /…/dist/web` 即为此规避 | web 挂载路径写**绝对路径**（照抄 `ojm preview` 运行期 `.ojm-preview.yaml` 的写法）；判据 = 起站后 `curl /modules/app/0.1.0/entry.js` 200 |
-| 站点例行 `pnpm build`（`ojm build`）或跑过 `pnpm dev` 后，已装方案的市场菜单/页面全消失（modules.json 只剩 app；`dist/web/modules/` 只剩 app） | 两者都会重生成 `dist/web/modules.json` 与 `dist/web/modules/` 且只收录**源码树模块**，安装器登记/部署的方案 web 面被整体冲掉；安装态本身完好（`modules/.solutions/state.yaml`、锁、api 版本目录都在） | 愈合两步：① `POST /api/oj-market/backfill` 扫 `cdn/` 补目录行（随站 bundle 包不在市场目录，backfill 会补录）；② 对 each 方案重装同名同版本（`ojm install <name>[@version]`）——web-only 包锁零变更，重装只补 web 面。**根因修复（build 合并已装方案登记）未做，列 §11 U5** |
+| 站点例行 `pnpm build`（`ojm build`）或跑过 `pnpm dev` 后，已装方案的市场菜单/页面全消失（modules.json 只剩 app；`dist/web/modules/` 只剩 app） | **0.2.72+ 已根治**（U5 修复，出厂即装支柱②：条目旁车 + 版本目录重物化 + 重建合并登记）——例行 build/dev 自动并入已装方案 web 面，症状不再出现。旧版根因：两者都会重生成 `dist/web/modules.json` 与 `dist/web/modules/` 且只收录**源码树模块**，安装器登记/部署的方案 web 面被整体冲掉；安装态本身完好（`modules/.solutions/state.yaml`、锁、api 版本目录都在） | 升 0.2.72+ 后零愈合动作。旧版愈合两步：① `POST /api/oj-market/backfill` 扫 `cdn/` 补目录行（随站 bundle 包不在市场目录，backfill 会补录）；② 对 each 方案重装同名同版本（`ojm install <name>[@version]`）——web-only 包锁零变更，重装只补 web 面 |
 | `oj serve` 启动报 `config uses removed server.* site keys (v0.1.58): api_prefix` | oj v0.1.58 起删除 `server.api_prefix`/`app_spa_fallback`/`app_path`/`app_prefix`/`static_sites`，改顶层 `mounts:`（出现旧键即 fail-fast，并输出迁移 YAML） | `api/config.yaml` 用 `mounts:`（ojm init 自本轮起已生成）；老工程把 `server.api_prefix: /api` 改为 `mounts: [{prefix: "/api", api: "src"}]`（devkit `api-manual.md` §10）；ojm dev/preview 的 SPA 深链回落由 ojm 自建静态层负责，无需旧 `app_spa_fallback` |
 | `Failed to initialize a JsRuntime: No such file or directory` | ≤ v0.1.11 的 release oj 二进制烤了构建机路径（v0.1.12 已修复） | 用 ≥ v0.1.12 的 release（`ojm vendor`）；旧版用自建 oj 覆盖 `bin/oj`（§3） |
 | `ojm init` / `ojm vendor` 末尾出现「oj 二进制自检失败」告警 | release 二进制缺陷，cli ≥ 0.1.4 的安装后冒烟主动暴露 | 同上；v0.1.12 起不应再出现。告警不阻断，`ojm init` 仍已产出工程 |
@@ -1061,7 +1075,7 @@ node "$CLI_PKG/bin/ojm.mjs" build && npx tsc --noEmit -p tsconfig.json && node "
 | U2 | **mysql `returning(["id"])` 两步取 id 钉同一连接**（✅ 已修复 oj `0.1.120`，2026-11-05） | 修复前：构造器 `.returning(["id"])` 在 mysql 上渲染为 `INSERT` + `SELECT LAST_INSERT_ID()` 两条独立 SQL，第二步在**连接池**上执行，可能落到别的连接 → 取到别人的 id（实测建号返回 59、真实 id 5；广播返回 `b:58`、真实 `b:1`）。修复后（`oj-bin` `2550bd5`）：`Exec::Owned` 短事务把两条语句钉在同一连接，取 id / commit 失败整条回滚；核心 `SqlxAccessor` 与 FFI 插件一处修两边 | 两条 SQL 在同一连接内执行；回归用例 `query_tests.rs` 三条（钉同连接 / 取 id 失败回滚 / insert 失败回滚）——移除修复必红 |
 | U3 | **构造器支持 `INSERT OR IGNORE ... SELECT`**（或给 `orIgnore` + `fromSelect` 补 sqlite 实现） | oj 0.1.81 起 sqlite 上 `orIgnore` 的 upsert 子句只跟随 VALUES，`fromSelect` 直接报 `orIgnore with fromSelect is not supported on sqlite`；模板「通知全部已读」只能退回裸 `db.exec` 三方言拼 SQL（§9 对应行） | `db.table(...).fromSelect(...).orIgnore()` 在 sqlite 可执行；或提供方言无关的 ignore-insert 表达式 |
 | U4 | **`oj serve --api-path` 缺省 API 基座与框架 `/api` 约定对齐**（2026-11-07 §7.7 实锤） | oj 0.1.124 `--api-path` 缺省绑 `/v1/api`（`server.base` 旧键 v0.1.58 已删，config 改不了）；而框架侧全部按 `/api` 寻址（web 应用请求 prefixUrl、`ojm market publish/install/trust` 瘦客户端、消费面）——module-root release 直起后，CLI 推送打穿到 SPA 兜底（返回 HTML doctype，报「Unexpected token '<'」），登录 POST 405「web mounts serve GET/HEAD only」。唯一正解 = 起站加 `-b /api`；config 手写 api 挂载与 `--api-path` 同给又报「module 重复声明」 | 两选一：① oj 缺省基座改 `/api`（或与 config `mounts` 的 api 前缀一致）；② `--api-path` 与 api 挂载同给时去重而非 fail。验收：module-root 工程 `oj serve --api-path dist/api` 直起后 `POST /api/auth/login` 得 JSON 应答 |
-| U5 | **`ojm build`/`ojm dev` 合并已装方案的 web 登记**（2026-11-07 实锤，本仓 cli 可修，列此跟踪） | 例行 `ojm build` 与 `ojm dev`（dev 启动即重建模块产物）都会重生成 `dist/web/modules.json` + `dist/web/modules/` 且只收录源码树模块，已装方案（含第一方 oj-market）的 web 面被整体冲掉——任何例行构建/开发态运行后市场菜单消失，愈合只能靠 backfill+逐方案重装（§9 对应行）。`--module-root`/`--api-path` 只解决 API 供给，不解决 web 面存续 | `ojm build` 产物合并 `modules/.solutions/state.yaml` 中 enabled 方案的 web 条目与资产（跳过缺失资产的并告警）；验收：装方案后 `pnpm build`，modules.json 仍含方案条目、`/modules/<name>/<ver>/entry.js` 200 |
+| U5 | **`ojm build`/`ojm dev` 合并已装方案的 web 登记**（✅ 已修复 oj-module cli `0.2.72`，2026-11-07 出厂即装支柱②，实现见 `docs/plans/20261107-1150-market-factory-install.md`） | 修复前：例行 `ojm build` 与 `ojm dev`（dev 启动即重建模块产物）都会重生成 `dist/web/modules.json` + `dist/web/modules/` 且只收录源码树模块，已装方案（含第一方 oj-market）的 web 面被整体冲掉——任何例行构建/开发态运行后市场菜单消失，愈合只能靠 backfill+逐方案重装（§9 对应行）。修复后：重建清单时 `restoreInstalledFaces`（版本目录重物化 web 面 + 条目旁车 `.ojm-module.json` 双落点持久化）+ `mergeInstalledModules`（state.yaml 真源并入、双轨同名 fail-fast），连续 build 告警静默 | 装方案后 `pnpm build`/`pnpm dev` 重启，modules.json 仍含方案条目、`/modules/<name>/<ver>/entry.js` 200、市场菜单不消失——2026-11-07 真机（/tmp/ojm-vv/drill）已验；守卫 `packages/cli/src/__tests__/installed-merge.test.ts` 9 例 |
 | U6 | **`-b` 基座覆盖下 web 挂载相对路径静态解析落空**（2026-11-07 实锤） | oj 0.1.124：`web: "./dist/web"` 相对路径 + `-b /api` 组合时静态层解析落空——非 HTML 请求全落进 API 路由报 `no route matched`，SPA 回落（HTML）却正常，极具迷惑性；`ojm preview` 派生 config 全写绝对路径故不踩 | 两选一：① `-b` 下相对路径按 config 目录解析（与无 `-b` 行为一致）；② 启动 fail-fast 校验 web 挂载目录可达。验收：`-b /api` 起站后 `curl /modules/app/0.1.0/entry.js` 200 |
 
 ---

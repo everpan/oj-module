@@ -113,3 +113,16 @@ devkit 两文档同步完成。关键过程：设计 1h → T1 30min → T2/T3 1
 三个真机缺陷最有价值：dev 形态 C2-09 死路（用户报告牵引）、build/dev 冲掉已装方案
 的根治、服务端无定时器导致的触发路线裁决。superadmin 安装页随策略退役，退役钉
 防复活。
+
+**T6 补记（2026-11-07 第二轮，用户要求「系统性改写而非只加横幅」）**：playbook 与
+docs/devkit 全部「出厂未装」旧口径逐处改写——playbook：先选一条线表 Phase B 行、§1
+检查点 oj-market 形态、§7.6 第二段引文（首个编排请求 riding 收敛 + 「方案安装」页
+入口两处过期指引）、A 节整节翻为「出厂即装态核对」（modules.json 含 oj-market 断言
+反转 + state.yaml 在位）、B 节改名「收敛路径验证」并加新定位注记（主路径已自动触发，
+本节 = 纯 oj serve 形态/愈合/手工触发；needs_trust 子路径收窄为 BOOTSTRAP_KEY 被吊销
+或旧工程场景）、C 节墓碑注释入口改市场页/`ojm install`、§8 汇总判据反转、§11 症状表
+与 U5 行翻为「已修复（0.2.72 支柱②）」；文首「上次演练结论（第一轮）」与 §9 历史行
+保留为史料，仅加「首装期口径」指引注记。devkit：manual §11.3 运维口径整段重写
+（触发时点/三前提/重装入口），publish-walkthrough §6 注释、§7 速查两行（build 冲菜单、
+bundle 装不上）、§7.5 尾段同步。守卫 `tests/cli/devkit-docs.test.ts` 21 例零代号通过。
+耗时 ~25min。
