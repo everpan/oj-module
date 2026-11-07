@@ -64,6 +64,16 @@ interface BundleTarget {
 	moduleDir?: string
 }
 
+// 方案包目录拷贝：排除点文件——dist 产物目录里的运行期旁车（.ojm-module.json，installed-merge
+// 写入）若被 swept 进包，装过的工程重发包字节即漂移（.sig canon 绑 sha256，服务端按换签 409 拒），
+// 「同字节重传幂等」承诺破裂（2026-11-07 drill3 实锤）。
+function copyPackageDir(src: string, dest: string): void {
+	fs.cpSync(src, dest, {
+		recursive: true,
+		filter: s => !path.basename(s).startsWith("."),
+	});
+}
+
 /**
  * 收集模块级契约（`src/<name>/` 根下，solution.yaml 优先于 manifest.yaml 回退；
  * 绝不进 `<模块>/api/`——与 oj 的 api 枚举撞车红线，§1.2）。按目录名排序保证确定性。
@@ -289,7 +299,7 @@ async function assembleBundle(projectRoot: string, layout: ProjectLayout, plan: 
 			if (layoutViolations.length > 0) {
 				throw new Error(`[ojm] 方案包构建失败：分层核对未通过（C2-31）：\n${layoutViolations.map(x => `- ${x}`).join("\n")}`);
 			}
-			fs.cpSync(built, path.join(root, "api", `${name}-${version}`), { recursive: true });
+			copyPackageDir(built, path.join(root, "api", `${name}-${version}`));
 		}
 
 		// web：只入包方案自己的模块产物（web 段缺省 = 纯后端方案，整段跳过）。
@@ -307,7 +317,7 @@ async function assembleBundle(projectRoot: string, layout: ProjectLayout, plan: 
 				throw new Error(`[ojm] 方案包构建失败：缺少本方案的站点产物 ${path.relative(projectRoot, ownWeb)}/（方案包只入包方案自己的模块；请确认 web.config.ts 已登记 ${name} 且本次 ojm build 已产出）`);
 			}
 			fs.mkdirSync(path.join(root, "web", "modules"), { recursive: true });
-			fs.cpSync(ownWeb, path.join(root, "web", "modules", name), { recursive: true });
+			copyPackageDir(ownWeb, path.join(root, "web", "modules", name));
 			// R1 数据源随包（计划 docs/plans/20261103-0948）：安装期角色 title 解析读
 			// <包>/web/modules/<name>/locales/<lang>.json——构建产物不含 locales（源码 JSON
 			// 被 vite 内联进 JS chunk），故从源码树复制双语；目录不存在（纯后端段缺 locales）静默跳过。

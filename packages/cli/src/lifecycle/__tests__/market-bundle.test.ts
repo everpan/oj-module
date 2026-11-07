@@ -63,6 +63,9 @@ describe("oj-market 方案包组装（T1，scratch 工程钉布局）", () => {
 		// 站点构建产物桩（版本段 === 0.2.0）
 		mkdirSync(join(project, "dist/web/modules/oj-market/0.2.0"), { recursive: true });
 		writeFileSync(join(project, "dist/web/modules/oj-market/0.2.0/entry.js"), "export default {};\n");
+		// 已安装工程的产物目录带运行期旁车（installed-merge 写入 .ojm-module.json）——
+		// 旁车入包会让同版本重发包字节漂移（.sig canon 绑 sha256 → 服务端按换签 409 拒）
+		writeFileSync(join(project, "dist/web/modules/oj-market/0.2.0/.ojm-module.json"), "{\"name\":\"oj-market\"}\n");
 	});
 
 	afterEach(() => {
@@ -80,6 +83,8 @@ describe("oj-market 方案包组装（T1，scratch 工程钉布局）", () => {
 		expect(names).toContain("oj-market-0.2.0/web/modules/oj-market/locales/zh-CN.json");
 		expect(names).toContain("oj-market-0.2.0/web/modules/oj-market/locales/en-US.json");
 		expect(names.some(n => n.includes("/api/"))).toBe(false);
+		// 运行期旁车不入包（装过的工程重发包字节不变，幂等重推才不撞换签 409）
+		expect(names.some(n => n.includes(".ojm-module.json"))).toBe(false);
 		// 确定性：同输入两次打包哈希一致（C2-32）
 		const [r2] = await buildBundle(project, { out, name: "oj-market" });
 		expect(r2!.sha256).toBe(r!.sha256);
