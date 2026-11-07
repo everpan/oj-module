@@ -124,11 +124,17 @@ export async function smoke(ctx: SmokeContext): Promise<StageResult> {
 	const m = isObj(ctx.manifest) ? ctx.manifest : {};
 	const web = isObj(m.web) ? m.web : undefined;
 
-	// ① 探活：health 优先（2xx），缺省首个非匿名路由（连通即可）
+	// ① 探活：health 优先（2xx），缺省首个非匿名路由（连通即可）。
+	// 探活只对有 api 面的方案成立：纯 web 包的 routes[] 是页面路由（如 /oj-market），
+	// 塞进 api 前缀必 404——2026-11-07 oj-market 重装实锤（误探 /api/oj-market → smoke 失败 +
+	// 全量补偿回滚含 modules.json → 重装死循环）。无 api 段 = 无 api 面可探，无事可验视为过。
 	const notes: string[] = [];
 	try {
+		const api = isObj(m.api) ? m.api : undefined;
 		const health = typeof m.health === "string" && m.health !== "" ? m.health : undefined;
-		const target = health ?? firstNonAnonymousRoute(m);
+		const target = api === undefined ? undefined : (health ?? firstNonAnonymousRoute(m));
+		if (target === undefined && api === undefined)
+			notes.push("纯 web 方案无 api 面，探活跳过");
 		if (target !== undefined) {
 			const url = probeUrlOf(ctx.apiPrefix, target);
 			const res = await ctx.fetch(url, { headers: { [PROBE_TENANT_HEADER]: PROBE_TENANT } });
