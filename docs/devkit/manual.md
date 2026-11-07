@@ -2094,6 +2094,11 @@ walkthrough §7.5）：
 - 旧工程注意：市场编排模块需双授权——exec 白名单有它的条目（与 `_platform` 逐字相同）、
   `platform.modules` 列表含它。模板自带（脚手架 0.2.71 起）；旧 config 需手工补，否则
   收敛/安装卡 reloading 段 NotCapable。
+- 安装验证的起站形态：release 站点二选一——config 加 api 挂载（`platform.root: dist/api`
+  + `- prefix: /api / api: dist/api`，零 CLI 旗标）或 CLI 旗标（`-b /api --api-path dist/api`，
+  此形态 web 挂载必须绝对路径）。**不要**用 `--module-root`/dev 形态验证安装：十阶段可全
+  done 但重启后方案 api/页面 404（src 树供给不含 dist 产物，装而不达）。例行 `ojm build`
+  会冲掉已装方案的 web 登记（菜单消失，安装态完好）——backfill 补目录 + 重装同版本即愈合。
 
 ### 11.4 生命周期命令与站点寻址约定
 

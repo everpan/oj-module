@@ -234,12 +234,21 @@ walkthrough 期望 `14 PASS / 0 FAIL`。负向 5 项是**预期失败口径**：
 # ⓪ 先构建：release 形态服务的是产物，不先 build 会缺 dist/api（或装到旧产物）
 ojm build
 
-# ① 站点以 release 形态起（dev/preview 完不成安装的热更段）
-#    先把 config.yaml 的 platform.root 从 src 改成 dist/api——必须与 --api-path 同源，
-#    否则 oj serve 直接拒启：platform.root (...) must be mounted as an api mount
-#    再配 vars.canonical_origin（本地演练填 http://127.0.0.1:9778）：市场基址 /cdn 是相对路径，
-#    服务端要靠它补全成绝对 URL；缺了安装直接 503（REG-CS6 不读 Host 头，不会替你猜）
-oj serve -c config.yaml -b /api --api-path dist/api
+# ① 站点以 release 形态起（dev/preview 完不成安装的热更段）。两种等价形态，**首选 A**：
+#    A. config 挂载形态（零 CLI 旗标；2026-11-07 实证重启持久可达）：config.yaml 做两处改动——
+#         platform.root: dist/api          # 从 src 改过来，必须与 api 供给同源
+#         mounts: 加一条  - prefix: /api
+#                         api: dist/api    # 锁驱动装配：已装方案的版本目录也进路由表
+#       然后：oj serve -c config.yaml      # API 基座 = 挂载前缀 /api
+#    B. CLI 旗标形态（config 不加 api 挂载）：oj serve -c config.yaml -b /api --api-path dist/api
+#       此形态下 "/" 的 web 挂载路径必须写绝对路径（web: /abs/.../dist/web）——相对路径 + -b
+#       组合会让静态文件全 404（SPA 回落正常，极具迷惑性）。
+#    两形态共同红线：platform.root 与 api 供给不同源，oj serve 直接拒启
+#    （platform.root (...) must be mounted as an api mount）。
+#    另配 vars.canonical_origin（本地演练填 http://127.0.0.1:9778）：市场基址 /cdn 是相对路径，
+#    服务端要靠它补全成绝对 URL；缺了 cdn 源安装直接 503（不读 Host 头，不会替你猜）。
+#    file 直传安装不读 canonical_origin——只有按名从市场目录拉才需要。
+oj serve -c config.yaml        # 形态 A（config 已加 api 挂载时）；或形态 B 的旗标命令见上
 
 # ② 市场地址：本地自供 /cdn 是模板默认，**不需要 setup**；
 #    只有指向外部真 CDN 才要执行。注意 setup 不一定改密：账号不在「必须改密」悬挂期时
@@ -247,9 +256,11 @@ oj serve -c config.yaml -b /api --api-path dist/api
 #    2026-11-06 演练实踩：setup 后拿新口令登录得 401。真触发了改密闭环才用新口令：
 #    ojm market setup --site-url http://127.0.0.1:9778 --user superadmin --pass <当前口令> --new-pass <新口令>
 
-# ③ 安装（从 CDN 拉：name[@version]；直传文件则给 tgz 路径，.sig 同目录自动随包）
-#    只对 release 站点装；别对着 `ojm dev` 装——dev 的文件监听会在安装器 reload 之前
-#    先吃掉 config 改动，安装器自己再 reload 时得到 unchanged，判 partial（reloading）
+# ③ 安装（从 CDN 拉：name[@version]；直传文件则给 tgz 路径，.sig 同目录自动随包）。
+#    只对 release 站点装；别对着 `ojm dev` 或 --module-root 形态装——src 树供给不含 dist 产物，
+#    十阶段可以全 done 但重启后 /api/<name>/ping 与方案页面全 404（装而不达，2026-11-07 实证）；
+#    也别对 `ojm dev` 装第二个理由：dev 的文件监听会在安装器 reload 之前先吃掉 config 改动，
+#    安装器再 reload 时得到 unchanged，判 partial（reloading）
 ojm install crm@1.0.0 --site-url http://127.0.0.1:9778 --user superadmin --pass <口令>
 
 # ④ 首装陌生 key 必停在 needs_trust：响应 trust.fingerprint 与 §2 记下的指纹【逐字】核对
@@ -292,6 +303,8 @@ TOFU 没有免检通道：**只有模板内置的 oj-market（第一方包）用
 | 安装 preflight 拒 RBAC 声明 | 声明形状不符：权限 code / 角色 name 没带 `<name>.` 前缀、`title_key` 缺失或 ns 不符、角色引用了未声明的权限（悬空） | 按报错条款改 `solution.yaml` 的 `permissions[]` / `roles[]`（字段细则见 devkit 手册 §11.5） |
 | 装完 `curl /api/<name>/ping` 返回 400 `missing tenant header` | 少了 `X-TENANT-ID` 头 | 加 `-H 'X-TENANT-ID: default'` 再探 |
 | 安装/收敛卡在 reloading 段 `NotCapable`（市场编排端点） | 站点 config 缺市场编排模块授权：`platform.exec` 没有该模块的白名单条目，或 `platform.modules` 列表缺它（安装器热更 config / 写信任库需要这份特权） | 给市场编排模块配与 `_platform` 逐字相同的 exec 白名单并加入 `platform.modules`（新工程模板自带；**旧工程升级脚手架不会自动补**，需手工改 config 后重启宿主） |
+| `-b /api` 起站后 API 正常但静态文件全 404（`/modules/<name>/<ver>/entry.js` 返回 API 信封 `no route matched`；SPA 回落却正常） | web 挂载用了**相对路径**：`-b` 基座覆盖与相对路径组合时静态层解析落空（极具迷惑性） | web 挂载写绝对路径（`web: /abs/path/dist/web`）；或改用 config 挂载形态起站（§6 ① 形态 A，零 CLI 旗标、无此坑） |
+| 例行 `pnpm build`（`ojm build`）后，已装方案的市场菜单/页面全消失（`dist/web/modules.json` 只剩 app） | 构建重生成 `dist/web/` 时只收录**源码树模块**，安装器登记的方案 web 面被整体冲掉；安装态本身完好（方案状态/锁/api 版本目录都在） | 愈合两步：① `POST /api/oj-market/backfill` 扫 `cdn/` 补市场目录行（从市场目录装的方案需要）；② 逐方案 `ojm install <name>[@version]` 重装同名同版本——web-only 包 api 锁零变更，重装只补 web 面 |
 | 随站 bundle 反复装不上（打开「方案安装」没反应；审计表有收敛失败行） | 信任空窗（bootstrap key 未回填且信任库无发布 key），或刚失败过仍在收敛冷却期 | 先推发布公钥进信任库，再删冷却文件 `modules/.install-tasks/.bundle-converge-cooldown.json` 立即重试（冷却默认 10 分钟，自愈等待亦可） |
 | `sig_alg` / `sig_format` | 签名算法/.sig 结构不符 | 用当前 ojm 重签（旧版本工具产物） |
 | `needs_trust`（第五终态，非成功） | 站点第一次见这个 key | 与发布方逐字核对指纹 → `trust confirm --task <id>` → 重跑 install |
@@ -348,6 +361,9 @@ TOFU 没有免检通道：**只有模板内置的 oj-market（第一方包）用
   就位承载前端产物），市场内不提供降级入口（降级 = 站点产物回滚）。它与平台内建编排模块
   同名（双轨同名）：api 锁/版本目录归平台轨，方案 sidecar 归方案轨，安装/卸载第一方包
   都不碰内建面。
+- **例行构建会冲掉已装方案的 web 面**：站点跑 `ojm build` 后 `dist/web/modules.json` 与
+  `dist/web/modules/` 只含源码树模块，已装方案的市场菜单/页面消失（安装态完好）。愈合 =
+  backfill 补目录行 + 逐方案重装同版本（见 §7 速查表对应行）。
 - 端到端随站收敛演练步骤见框架仓《框架验证演练手册》§7.6（市场线）。
 
 ## 8. 发布前 checklist
