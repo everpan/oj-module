@@ -177,7 +177,12 @@ describe("POST uninstall 卸载编排（superadmin，R9）", () => {
 		await fsp.writeFile(join(sharedRoot, "oj-market-0.2.0", "manifest.yaml"), "name: oj-market\nversion: 0.2.0\n");
 		await fsp.writeFile(modulesJsonPath, JSON.stringify([{ name: "oj-market", enabled: true }, { name: "other", enabled: true }]));
 		dbo.prepare("INSERT INTO sys_solution_route (path, module, category) VALUES (?, ?, ?)").run("/oj-market", "oj-market", "main");
-		const api = createMarketApi(makeEnv({ apiPrefix: "/api/oj-market" }));
+		const api = createMarketApi(makeEnv({
+			apiPrefix: "/api/oj-market",
+			// 双轨同名：内建锁条目保留 → oj 装配面无锁 diff，reload 报 unchanged 属预期
+			// （方案摘除发生在 modules.json/sidecar/route 面；断言不得按「卸载空转」拒）
+			reload: { reloadConfig: async () => ({ generation: 2, unchanged: true, applied: [], restart_pending: [], kept_listener: [] }) },
+		}));
 		g.http = { user: { id: 1 }, body: { name: "oj-market" } };
 		await api.uninstall.post();
 		expect(last?.status).toBe(200);

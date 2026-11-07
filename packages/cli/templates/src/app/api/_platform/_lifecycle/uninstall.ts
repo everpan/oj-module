@@ -261,7 +261,7 @@ export async function runUninstall(input: UninstallInput): Promise<UninstallResu
 		// 卸载空转回归守卫（§2.7）：reload 须真实摘除模块——unchanged 即「锁摘了但装配没掉挂载」，
 		// 正是本 PR 修复的回归；api 模块还须 applied 含 -name@ver（web-only 无 api 段，oj 不产模块条目，仅校验 unchanged）。
 		const hasApi = await uninstallHasApi(name, version, input.sharedRoot);
-		const a = assertReloadApplied(r, { hasApi, kind: "uninstall", name, version });
+		const a = assertReloadApplied(r, { hasApi, kind: "uninstall", name, version, lockRemoved: lockEntryIsSolution });
 		if (!a.ok) {
 			try {
 				await writeLock(input.lockPath, lock);
