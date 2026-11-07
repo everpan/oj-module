@@ -1,6 +1,6 @@
 # 市场方案默认安装（出厂即装，发布途径升级）设计
 
-> 日期：2026-11-07　状态：已定稿待实施　分支：`feat/market-factory-install`
+> 日期：2026-11-07　状态：已实施（T1–T5/T7 全绿，真机验收通过）　分支：`feat/market-factory-install`
 
 ## 1. 需求与背景（用户原话）
 
@@ -94,4 +94,22 @@
 
 ## 7. 实锤记录（演练后回填）
 
-（待 T5 回填）
+**T5 真机演练（2026-11-07，/tmp/ojm-vv/drill，全新 init --yes 工程，全绿）**：
+
+| 验收项 | 结果 |
+|---|---|
+| A1 dev 形态 C2-09 真源 | ✓ `pnpm dev` 后 `dist/api/versions.json` 在位（@oj-module/runtime=0.2.71），出厂对账触发成功 |
+| C1 出厂即装 | ✓ 无需打开任何页面：state.yaml 落 oj-market@0.2.0（trust_state: trusted，platform.release 验签通过，免 TOFU）；modules.json 并入；index 可见 |
+| B1 dev 重启 | ✓ 重建清单后 oj-market 登记仍在，收敛幂等 |
+| B2 release 重建 | ✓ `pnpm build` 从版本目录重物化 web 面并并入（演练中抓并修两缺陷：① 版本目录重物化不带旁车 → 最小条目降级重建；② 旁车须持久化进版本目录根 + 重物化时随行，否则每次 build 重复降级） |
+| preview | ✓ SPA 200、face 200、index installed=0.2.0、出厂对账触发 |
+| C2 升级路径 | 机制未动（市场轨 upgradable + 升级安装），由单测/集成与此前演练覆盖；本次未重跑发布升级全链（声明 skipped） |
+
+**任务状态（2026-11-07 收尾）**：T1–T5、T7 完成；T6 本文档 + playbook §7.6 策略注记 +
+devkit 两文档同步完成。关键过程：设计 1h → T1 30min → T2/T3 1.5h（含两轮真机抓缺陷）
+→ T4 1h（setTimeout 不可行走 CLI 触发路线）→ T7 30min → T5 演练 1.5h → T6 30min。
+
+**总结**：本阶段把市场策略从「出厂未装 + 首装仪式」翻转为「出厂即装 + 发布升级」。
+三个真机缺陷最有价值：dev 形态 C2-09 死路（用户报告牵引）、build/dev 冲掉已装方案
+的根治、服务端无定时器导致的触发路线裁决。superadmin 安装页随策略退役，退役钉
+防复活。

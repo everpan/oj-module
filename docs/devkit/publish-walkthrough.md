@@ -335,7 +335,7 @@ TOFU 没有免检通道：**只有模板内置的 oj-market（第一方包）用
 
 > 仅框架发布人需要；业务方案发布用 §1–§6 常规流程。oj-market 市场 UI 是第一方
 > **纯 web 方案包**（契约 `templates/src/oj-market/solution.yaml`，第一方专用，
-> 第三方方案不得仿照 `/api/oj-market/*` 调用面），**出厂未装**：
+> 第三方方案不得仿照 `/api/oj-market/*` 调用面）。**2026-11-07 策略变更：出厂即装**——随站 bundle 在 `ojm dev`/`ojm preview` 后端就绪后自动收敛安装（BOOTSTRAP_KEY 已回填 platform.release 免 TOFU；dev 补 `dist/api/versions.json` C2-09 真源；重建合并已装登记），superadmin「方案安装」首装页已退役：
 
 - **打包**：templates 工程 `pnpm build` → `ojm build --bundle oj-market`
   （产 `templates/dist/oj-market-<ver>.tgz`，版本基线 0.2.0 起；双轨版本：包版本随 entry.ts，平台 api 版本随脚手架）；
