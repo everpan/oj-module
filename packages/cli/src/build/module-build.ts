@@ -14,6 +14,7 @@ import { assertModuleList, loadSiteConfig, mergeModuleList, resolveModuleEntry }
 import { moduleDir, resolveLayout, scanModules } from "../layout";
 import { isPrebuiltDep, isSharedDep, SHARED_DEPS } from "../shared-deps";
 import { checkSharedVersions, resolveShellDist } from "../versions";
+import { mergeInstalledModules, restoreInstalledFaces } from "./installed-merge";
 import { readModuleDefinition } from "./module-def";
 import { mergeShellSite } from "./site-merge";
 
@@ -356,8 +357,12 @@ export async function buildModules(
 	}
 
 	const manifestPath = path.join(outDir, "modules.json");
+	// 支柱二 / U5 根治：release 擦除先重物化已装方案 web 面，清单写出前并入其登记——
+	// 否则例行 dev/build 把已装方案冲掉（2026-11-07 实锤：市场菜单消失需手工愈合）。
+	restoreInstalledFaces(projectRoot, outDir, layout.apiDist);
+	const merged = mergeInstalledModules(projectRoot, outDir, built);
 	fs.mkdirSync(outDir, { recursive: true });
-	fs.writeFileSync(manifestPath, `${JSON.stringify(built, null, 2)}\n`);
+	fs.writeFileSync(manifestPath, `${JSON.stringify(merged, null, 2)}\n`);
 	console.log(`[ojm] 清单已生成 → ${manifestPath}`);
 
 	return built;

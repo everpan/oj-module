@@ -250,6 +250,23 @@ describe("deployWeb（stage=deploying：staging/web 树 → 站点 modules 目�
 		expect(r.message).toContain("web");
 	});
 
+	it("落条目旁车 .ojm-module.json（重建合并登记的重建真源：dev/build 重建 modules.json 时读它恢复已装方案，enabled 以 sidecar state 为真源）", async () => {
+		await seedStagingWeb();
+		const r = await deployWeb(dwCtx());
+		expect(r.ok).toBe(true);
+		const sidecar = JSON.parse(await fsp.readFile(join(siteModulesDir, "demo-solution", "0.1.0", ".ojm-module.json"), "utf8"));
+		expect(sidecar).toEqual({
+			name: "demo-solution",
+			entry: "modules/demo-solution/0.1.0/entry.js",
+			enabled: true,
+			version: "0.1.0",
+			chunks: [],
+			css: ["modules/demo-solution/0.1.0/main.css"],
+			integrity: INT,
+			peerRuntime: ">=0.0.0",
+		});
+	});
+
 	it("modules.json 损坏：部署失败且清单不被半写", async () => {
 		await seedStagingWeb();
 		await fsp.mkdir(dist, { recursive: true });

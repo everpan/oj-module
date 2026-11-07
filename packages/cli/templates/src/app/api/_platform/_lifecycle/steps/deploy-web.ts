@@ -182,6 +182,22 @@ export async function deployWeb(ctx: DeployWebContext): Promise<StageResult> {
 			message: `部署失败：modules.json upsert 被拒（${String(e)}）——文件已复制、清单未被半写（D13 原子写保证读者无感）`,
 		};
 	}
+	// 条目旁车：dev/build 重建 modules.json 只收源码树模块，已装方案登记会被冲掉
+	// （2026-11-07 U5 实锤：例行 build 后市场菜单消失）。重建合并读这份旁车恢复完整
+	// 条目（dependencies/peerRuntime 等 extras 原样保留，不重推导）；enabled 以 sidecar
+	// state 为真源，旁车只记安装时形态。随 face 版本目录共存亡（卸载/重装整目录替换）。
+	const sidecarPath = `${ctx.siteModulesDir}/${ctx.name}/${ctx.version}/.ojm-module.json`;
+	try {
+		await atomicWriteText(sidecarPath, `${JSON.stringify(normalizeEntry(entry), null, 2)}\n`);
+	}
+	catch (e) {
+		return {
+			stage: "deploying",
+			ok: false,
+			retryable: true,
+			message: `部署失败：条目旁车 ${sidecarPath} 写出失败（${String(e)}）——清单已 upsert，重建合并将缺本方案登记，请重试`,
+		};
+	}
 	return {
 		stage: "deploying",
 		ok: true,
