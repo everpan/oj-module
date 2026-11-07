@@ -134,9 +134,13 @@ export function CardItem({ row, busy, canManage = true, onInstall, onEnableToggl
 					{row.publisher_key}
 				</div>
 			)}
-			{/* 动作区：flex 换行（Space wrap 的 6 按钮在窄卡上挤压难读），整行钉卡片底部对齐 */}
-			<div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: "auto", paddingTop: 4 }}>
+			{/* 动作区：不换行（需求钉死），窄卡横向滚动兜底；整行钉卡片底部，网格同行底边对齐 */}
+			<div
+				data-testid={`card-actions-${row.name}`}
+				style={{ display: "flex", flexWrap: "nowrap", gap: 8, marginTop: "auto", paddingTop: 4, overflowX: "auto" }}
+			>
 				<Button
+					style={{ flexShrink: 0 }}
 					type="primary"
 					size="small"
 					loading={busy}
@@ -147,24 +151,24 @@ export function CardItem({ row, busy, canManage = true, onInstall, onEnableToggl
 					{installed ? t("oj-market:card:upgrade") : t("oj-market:card:install")}
 				</Button>
 				{installed && (
-					<Button size="small" onClick={() => onEnableToggle(row)} disabled={busy || !canManage} title={manageTip}>
+					<Button style={{ flexShrink: 0 }} size="small" onClick={() => onEnableToggle(row)} disabled={busy || !canManage} title={manageTip}>
 						{enabled ? t("oj-market:card:disable") : t("oj-market:card:enable")}
 					</Button>
 				)}
 				{installed && (
-					<Button size="small" onClick={() => onRollback(row)} disabled={busy || !canManage} title={manageTip} data-testid={`card-rollback-${row.name}`}>
+					<Button style={{ flexShrink: 0 }} size="small" onClick={() => onRollback(row)} disabled={busy || !canManage} title={manageTip} data-testid={`card-rollback-${row.name}`}>
 						{t("oj-market:card:rollback")}
 					</Button>
 				)}
 				{installed && (
-					<Button size="small" danger onClick={() => onUninstall(row)} disabled={busy || !canManage} title={manageTip}>
+					<Button style={{ flexShrink: 0 }} size="small" danger onClick={() => onUninstall(row)} disabled={busy || !canManage} title={manageTip}>
 						{t("oj-market:card:uninstall")}
 					</Button>
 				)}
-				<Button size="small" onClick={() => onDetails(row)}>
+				<Button style={{ flexShrink: 0 }} size="small" onClick={() => onDetails(row)}>
 					{t("oj-market:card:details")}
 				</Button>
-				<Button size="small" onClick={() => onHistory(row)}>
+				<Button style={{ flexShrink: 0 }} size="small" onClick={() => onHistory(row)}>
 					{t("oj-market:card:history")}
 				</Button>
 			</div>
