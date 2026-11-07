@@ -418,6 +418,31 @@ describe("smoke 探活（D14/Q-A：health 不强制）", () => {
 		expect(r.message).toContain("探活");
 		expect(r.message).toContain("404");
 	});
+
+	it("纯 web 方案（无 api 段，routes 均为页面路由）：探活跳过、零探针请求（2026-11-07 实锤）", async () => {
+		// oj-market 0.2.0 重装现场：manifest 无 api 段、routes=[/oj-market]（页面路由），
+		// 旧逻辑把页面路由塞进 api 前缀探 /api/oj-market → 404 → smoke 失败 + 全量补偿回滚
+		// （含 modules.json）→ 重装死循环、市场菜单永久消失。纯 web 包无 api 面可探 = 无事可验视为过。
+		await seedDeployed();
+		const urls: string[] = [];
+		const r = await smoke(smCtx({
+			manifest: solManifest({
+				api: undefined,
+				routes: [{ path: "/oj-market", category: "main", order: 200, title_key: "oj-market:menu.main" }],
+				permissions: undefined,
+				roles: undefined,
+				settings: undefined,
+			}),
+			query: async () => ({ module: "demo-solution", routes: ["/oj-market"], settings: [], roles: [], permissions: [] }),
+			fetch: async (url) => {
+				urls.push(url);
+				return { ok: false, status: 404 };
+			},
+		}));
+		expect(urls).toEqual([]);
+		expect(r.ok).toBe(true);
+		expect(r.message).toContain("纯 web");
+	});
 });
 
 describe("smoke integrity（R10：部署落位后重算 sha384 vs modules.json）", () => {
