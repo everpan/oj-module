@@ -18,8 +18,25 @@ describe("uninstallConfirm 卸载二次确认（BDD）", () => {
 		);
 		await screen.findByTestId("uninstall-impact");
 		expect(screen.getByText("影响面预检")).toBeTruthy();
+		// 第一步：点击「确认卸载」进入二次确认（此时尚未真正卸载）
 		await userEvent.click(screen.getByRole("button", { name: "确认卸载" }));
+		expect(onConfirmed).not.toHaveBeenCalled();
+		// 第二步：再次确认（最终确认按钮）才真正卸载
+		await userEvent.click(screen.getByRole("button", { name: "确定卸载「alpha」" }));
 		expect(onConfirmed).toHaveBeenCalledWith(row);
+	});
+
+	it("given 第一步点击确认卸载 When 取消（返回） Then 不触发卸载回调", async () => {
+		const client = new InMemoryMarketClient({ impact: { name: "alpha", affectedRoles: 0, affectedUsers: 0 } });
+		const onConfirmed = vi.fn();
+		renderWithProviders(
+			<UninstallConfirm row={row} open onClose={() => {}} onConfirmed={onConfirmed} />,
+			client,
+		);
+		await screen.findByText("无受影响角色或用户（孤立方案）");
+		await userEvent.click(screen.getByRole("button", { name: "确认卸载" }));
+		await userEvent.click(screen.getByRole("button", { name: "返回" }));
+		expect(onConfirmed).not.toHaveBeenCalled();
 	});
 
 	it("given 孤立方案（无受影响）When 打开 Then 显示空影响面提示", async () => {

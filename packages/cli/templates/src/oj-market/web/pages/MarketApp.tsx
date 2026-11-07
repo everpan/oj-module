@@ -1,6 +1,6 @@
 import type { IndexRow, TaskRecord } from "../types";
 import { useUserStore } from "@oj-module/runtime";
-import { Alert, Pagination, Typography } from "antd";
+import { Alert, Button, Modal, Pagination, Typography } from "antd";
 import React, { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useMarketClient } from "../api/context";
@@ -31,6 +31,8 @@ export default function MarketApp() {
 	const [rollbackRow, setRollbackRow] = useState<IndexRow | null>(null);
 	const [historyRow, setHistoryRow] = useState<IndexRow | null>(null);
 	const [busyName, setBusyName] = useState<string | null>(null);
+	// 安装/升级/回滚完成后，前端资源需整页刷新才能加载新版本：弹出刷新提示（不自动刷新，由用户确认）
+	const [refreshPrompt, setRefreshPrompt] = useState<TaskRecord | null>(null);
 
 	const pageData = index.status === "ok" ? index.data : null;
 	const rows = pageData?.list ?? [];
@@ -79,8 +81,10 @@ export default function MarketApp() {
 		}
 	};
 
-	const handleInstallDone = (_rec: TaskRecord) => {
+	const handleInstallDone = (rec: TaskRecord) => {
 		index.retry();
+		// 安装/升级/回滚均改写站点已装模块；前端 SPA 仍是旧 bundle，需整页刷新才加载新版本
+		setRefreshPrompt(rec);
 	};
 
 	return (
@@ -163,6 +167,21 @@ export default function MarketApp() {
 			/>
 
 			<HistoryDrawer row={historyRow} open={historyRow != null} onClose={() => setHistoryRow(null)} />
+
+			<Modal
+				title={t("oj-market:card:refreshTitle")}
+				open={refreshPrompt != null}
+				closable={false}
+				maskClosable={false}
+				data-testid="refresh-prompt"
+				footer={[
+					<Button key="reload" type="primary" onClick={() => window.location.reload()}>
+						{t("oj-market:card:refreshNow")}
+					</Button>,
+				]}
+			>
+				<Typography.Paragraph>{t("oj-market:card:refreshBody")}</Typography.Paragraph>
+			</Modal>
 		</div>
 	);
 }

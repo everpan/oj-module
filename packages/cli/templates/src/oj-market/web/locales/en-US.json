@@ -44,7 +44,10 @@
 		"upgrade": "Upgrade",
 		"rollback": "Rollback",
 		"superOnly": "Only superadmins can install, upgrade, roll back, enable/disable or uninstall solutions; other users may browse only.",
-		"latestInstalled": "Latest version installed; nothing to upgrade"
+		"latestInstalled": "Latest version installed; nothing to upgrade",
+		"refreshTitle": "Page refresh required",
+		"refreshBody": "Install / upgrade has finished, but the front-end assets need a full page reload to load the new version. Click \"Refresh page\" to apply the changes.",
+		"refreshNow": "Refresh page"
 	},
 	"task": {
 		"installing": "Installing",
@@ -92,7 +95,11 @@
 		"impactTitle": "Impact pre-check",
 		"impactEmpty": "No affected roles or users (orphan solution)",
 		"cancel": "Cancel",
-		"ok": "Confirm uninstall"
+		"ok": "Confirm uninstall",
+		"cancelBack": "Back",
+		"okFinal": "Uninstall \"{{name}}\" for good",
+		"finalTitle": "Final confirmation",
+		"finalBody": "This cannot be undone and will permanently remove \"{{name}}\" and its configuration data. Please confirm again by clicking \"Uninstall for good\"."
 	},
 	"rollback": {
 		"title": "Rollback version",

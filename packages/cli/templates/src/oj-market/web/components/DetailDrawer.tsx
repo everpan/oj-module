@@ -19,6 +19,9 @@ export function DetailDrawer({ row, open, onClose, canManage = true, onInstall, 
 	const { t } = useTranslation();
 	// 非 superadmin：写操作禁用并解释原因，历史（只读）保持可用。
 	const manageTip = canManage ? undefined : t("oj-market:card:superOnly");
+	// 已装且无可升级发布版时，升级按钮无意义：与卡片一致禁用（upgradable 由服务端算好）
+	const upgradeBlocked = row != null && row.installed != null && !row.upgradable;
+	const installTip = manageTip ?? (upgradeBlocked ? t("oj-market:card:latestInstalled") : undefined);
 	return (
 		<Drawer
 			title={row ? row.name : t("oj-market:card:details")}
@@ -56,7 +59,7 @@ export function DetailDrawer({ row, open, onClose, canManage = true, onInstall, 
 						)}
 					</Descriptions>
 					<Space style={{ marginTop: 16 }}>
-						<Button type="primary" onClick={() => onInstall(row)} disabled={!canManage} title={manageTip}>
+						<Button type="primary" onClick={() => onInstall(row)} disabled={!canManage || upgradeBlocked} title={installTip}>
 							{row.installed ? t("oj-market:card:upgrade") : t("oj-market:card:install")}
 						</Button>
 						{row.installed != null && (

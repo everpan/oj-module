@@ -67,9 +67,16 @@ function verifyEd25519Of(env: { verifyEd25519?: SignedAuthEnv["verifyEd25519"] }
 	return env.verifyEd25519 ?? ((pk, msg, sig) => g.crypto!.verifyEd25519!(pk, msg, sig));
 }
 
-/** registry_id 解析：注入优先，缺省 config.yaml vars.registry_id；俱缺 → null（调用方 503） */
+/**
+ * registry_id 解析：注入优先，缺省 config 文件名无关的 vars 全局（oj 按真实加载配置文件注入），
+ * 回落旧 readSiteVar（依赖硬编码 configPath，文件名非 config.yaml 时读不到）；俱缺 → null（调用方 503）
+ */
 async function resolveRegistryId(env: SignedAuthEnv): Promise<string | null> {
 	if (env.registryId !== undefined)
 		return env.registryId;
+	// 优先 config 文件名无关的 vars 全局（`oj serve -c config-release.yaml` 之类任意命名也能读到）。
+	const fromVars = (globalThis as { vars?: { get?: (k: string) => string | null } }).vars?.get?.("registry_id") ?? null;
+	if (fromVars !== null)
+		return fromVars;
 	return await readSiteVar(env.configPath, "registry_id");
 }

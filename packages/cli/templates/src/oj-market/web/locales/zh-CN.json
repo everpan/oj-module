@@ -44,7 +44,10 @@
 		"upgrade": "升级",
 		"rollback": "回滚",
 		"superOnly": "仅超级管理员可安装、升级、回滚、启停或卸载方案；其余用户仅可浏览。",
-		"latestInstalled": "已安装最新版本，无需升级"
+		"latestInstalled": "已安装最新版本，无需升级",
+		"refreshTitle": "需要刷新页面",
+		"refreshBody": "安装 / 升级已完成，但前端资源需要整页刷新才能加载新版本。请点击「刷新页面」以应用变更。",
+		"refreshNow": "刷新页面"
 	},
 	"task": {
 		"installing": "安装中",
@@ -92,7 +95,11 @@
 		"impactTitle": "影响面预检",
 		"impactEmpty": "无受影响角色或用户（孤立方案）",
 		"cancel": "取消",
-		"ok": "确认卸载"
+		"ok": "确认卸载",
+		"cancelBack": "返回",
+		"okFinal": "确定卸载「{{name}}」",
+		"finalTitle": "最终确认",
+		"finalBody": "此操作不可撤销，将彻底移除「{{name}}」及其配置数据。请再次确认后点击「确定卸载」。"
 	},
 	"rollback": {
 		"title": "回滚版本",

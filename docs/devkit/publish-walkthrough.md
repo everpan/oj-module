@@ -33,6 +33,39 @@ flowchart LR
 
 ---
 
+## 0.5 站点侧前置条件（发布前必做，否则推送必败）
+
+远端签名推送对目标站点有三项硬前提，缺任何一项都会在某一步被拒。这些都在**站点 config**（不是 CLI 侧）配置，发布前先确认：
+
+1. **市场匿名面**：`oj serve` 实际加载的那份 config（见下「配置文件名」）的 `auth.anonymous_paths` 与 `tenant.anonymous_paths` 都必须含以下三条——
+
+   ```yaml
+   # auth.anonymous_paths（Bearer 守卫逃生口）
+   - /oj-market/catalog/**
+   - /oj-market/cdn/upload
+   - /oj-market/yank
+   # tenant.anonymous_paths（缺租户头守卫逃生口，同条目）
+   - /oj-market/catalog/**
+   - /oj-market/cdn/upload
+   - /oj-market/yank
+   ```
+
+   CLI 的目录探测（匿名 GET `/api/oj-market/catalog`）与上传/下线（裸 fetch，靠签名头鉴权）都**不带凭据**，漏列则 401 被守卫硬挡。改完须**重启站点**（config 是启动冻结段）。
+
+2. **registry_id**：站点实际加载的那份 config（`oj serve -c <文件>` 指向的任意文件名，常见 `config-release.yaml`）的 `vars` 下加 `registry_id: <站点身份>`（如 `oj-registry`）——推送 canonical 首段 = 站点身份，缺它 503「未配置 registry_id」。
+   **配置文件名无关**：市场模块读 `registry_id` / `canonical_origin` 已改为走 `vars` 全局（config-filename-agnostic），即 `oj serve` 实际加载的那份 config 的 `vars` 段，不论文件名是 `config.yaml` 还是 `config-release.yaml` 都能读到。**无需**再把配置额外抄进 `config.yaml`；只写进真正被 `-c` 加载的那一份 `vars` 即可。
+
+3. **信任库**：`keygen --credential` 兑换只分配 `key_id` + 生成本地私钥，**公钥不会回传站点**，所以站点信任库里没有这把 key。首次推送前，站点 superadmin 必须把公钥登记进去，否则上传 **403**（「发布 key 不在信任库」）：
+
+   ```bash
+   ojm trust add <key_id> <public.hex> \
+     --site-url https://your-site --user superadmin --pass <口令>
+   ```
+
+   `<public.hex>` 取 keygen 输出的 `public_key` 行（或 `~/.ojm/keys/<key_id>/public.hex`）；市场信任页也能做同样的事。
+
+---
+
 ## 1. 构建与打包
 
 ```bash
@@ -305,7 +338,7 @@ TOFU 没有免检通道：**只有模板内置的 oj-market（第一方包）用
 | `sig_key` | key_id 不是 `<publisher>.<id>` 全小写两段式 | 凭证通道回「发布管理」重申请（产品名须小写合规）；离线旁路换合规 id 重 keygen 再重签 |
 | `keygen --credential` 报「发布凭证无效或已失效」 | 一次性令牌已兑换/已过期/已撤销，或站点地址不对 | 回「发布管理」重新申请；同一 token 不能给第二台机器 |
 | 申请凭证 403 `password change required` | 新建账号首次登录还在「必须先改密」悬挂期 | 先改密（页面或 `PUT /api/auth/password`），再申请 |
-| 安装 503 `安装需要站点 canonical origin` | `config.yaml` 的 `vars.canonical_origin` 没配，而市场基址是相对路径 `/cdn` | 配成站点对外地址（本地演练 `http://127.0.0.1:9778`）后重启 |
+| 安装 503 `安装需要站点 canonical origin` | 站点实际加载的 config（`oj serve -c <文件>`，任意文件名）的 `vars.canonical_origin` 没配，而市场基址是相对路径 `/cdn` | 配成站点对外地址（本地演练 `http://127.0.0.1:9778`）后重启 |
 | 安装 partial（stage `reloading`，`reloadConfig 返回 unchanged`） | 对着 `ojm dev` 装：dev 的文件监听先吃掉了 config 改动 | 换成 `oj serve` release 形态再装；别在 dev 上验证安装 |
 | 安装 partial（11 段全 ok，message 含 `restart_pending` /「请重启 oj serve」） | **正常语义**（oj 0.1.122+）：新模块的路由/模块注册要宿主重启 | 重启 `oj serve` 后 retry 同一条 install → `done`（§6 首装终态两段式） |
 | 安装拒 `anonymous_residual`（preflight，不可自动重试） | 有端点实际匿名可达，但 `solution.yaml` 的 `api.anonymous` 没声明（换包时含上一版声明了、新包漏声明的残留比对） | 把该端点补进 `anonymous: ["<模块>/<路由>"]`（模块相对路径），重打包重签重发；`ojm new --api` 骨架 0.2.68 起自带 ping 声明 |
@@ -322,7 +355,7 @@ TOFU 没有免检通道：**只有模板内置的 oj-market（第一方包）用
 | publish 报「包冲突：…字节不一致」（409） | 同 name@version 已有字节不同的包 | **升 version 重发**；确需覆盖须站点侧删行（superadmin） |
 | publish 报「name 所有权：已由 key 首发绑定」（409） | 方案名绑定过别的发布 key | 换方案名；或站点 superadmin 换主 |
 | publish 报「站点版本过旧（无 /api/oj-market/catalog）」 | 目标站点是文件索引时代的旧版 | 站点先升级到 DB 目录版本（迁移指南见 docs/migration/ 市场远程发布篇） |
-| publish 报「站点未配置 registry_id」（503） | 站点 config.yaml 的 vars 缺 registry_id | 站点管理员补 `registry_id: <站点身份>` 后重启 |
+| publish 报「站点未配置 registry_id」（503） | 站点实际加载的 config（`oj serve -c <文件>`，任意文件名）的 `vars` 缺 `registry_id` | 站点管理员在「被 `-c` 加载的那份 config」的 `vars` 下补 `registry_id: <站点身份>` 后重启 |
 | 推送 401（签名不符） | 换字节/跨站重放，或 canonical 与站点重算不一致 | 原样重跑本命令（同字节幂等）；改过包则重签重推 |
 | 推送 403（key 不在信任库） | 站点还没信任你的发布 key | 站点 superadmin `ojm trust add` 或市场页信任确认 |
 | publish 报「一次只发布一份方案」 | 多方案工程走了自动链路 | §4.2 显式四步 |

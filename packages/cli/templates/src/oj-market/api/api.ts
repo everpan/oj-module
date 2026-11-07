@@ -34,7 +34,7 @@ import { computeUninstallImpact, runUninstall } from "#/_platform/_lifecycle/uni
 import { respond } from "#/_platform/_shared/respond";
 import { assertSuperAdmin, currentAccess } from "#/_platform/_shared/service/infra/access";
 import { pageArgs } from "#/_platform/_shared/service/infra/query";
-import { journalHeadOf, readCanonicalOrigin, readSiteVar, siteOrigin, withSiteOrigin } from "#/_platform/_shared/site-facade";
+import { journalHeadOf, readCanonicalOrigin, readDeploymentVar, siteOrigin, withSiteOrigin } from "#/_platform/_shared/site-facade";
 import { backfillReleases } from "./backfill";
 import { BOOTSTRAP_KEY, seedBootstrapKey } from "./bootstrap";
 import { authenticateSignedKey, verifyCanonicalSig } from "./cdn/signed-auth";
@@ -152,10 +152,16 @@ async function hostVersionsOf(env: MarketEnv): Promise<Record<string, string> | 
  * oj serve release 布局生产缺省（P1-16 B3/B4；全字段可覆盖）。
  *
  * 两处根在 `src/<name>/{api,web}` 布局下分流（2026-10-22 起收进工程根 dist/），
- * 且都相对 fs jail 根（= config.yaml 所在目录）：
+ * 且都相对 fs jail 根（= config 文件所在目录）：
  *   release 根 `dist/api` —— 版本目录 / manifests.yaml / versions.json / migrations（后端产物）
  *   站点根   `dist/web`   —— modules/ + modules.json（前端产物，安装器 upsert 的落点）
  * 暂存 / 任务 / 状态 / 信任库 / db 仍在 jail 根下：它们是安装器私有面，不属任何产物根。
+ *
+ * configPath 仅用于「安装器回写 config」（anonymous_paths 接线）这一写操作。读部署常量
+ * （registry_id / canonical_origin）已改为走 framework 注入的 `vars` 全局（config 文件名无关，
+ * `oj serve -c config-release.yaml` 任意命名都能读到），不再依赖此处硬编码路径——这是修
+ * marketEnv 硬编码 configPath 的本质：读面与文件名解耦，写面仍受限于 framework 未向模块
+ * 暴露「真实加载的 config 路径」（oj 只读，本仓不能改；见下方 fallback 注释）。
  */
 export function marketEnv(): MarketEnv {
 	return {
@@ -169,6 +175,9 @@ export function marketEnv(): MarketEnv {
 		siteModulesDir: "dist/web/modules",
 		modulesJsonPath: "dist/web/modules.json",
 		apiPrefix: "/api",
+		// fallback：installer 回写 config 用。framework 未向模块暴露真实加载的 config 路径，
+		// 故这里仍钉死默认名；站点用 `oj serve -c <任意名>` 时写面会落到错误文件（已知限制，
+		// 读面已用 vars 全局规避）。要彻底修写面需 framework 在模块运行时注入 config_path。
 		configPath: "config.yaml",
 		ledgerHeadOf: journalHeadOf,
 	};
@@ -185,12 +194,19 @@ function fail(status: number, msg: string): never {
 
 /**
  * canonical origin 惰性解析（REG-CS6）：env.canonicalOrigin 若已由测试/部署注入则直接用，
- * 否则读 config.yaml `vars.canonical_origin`（异步，隔离环境只有异步读盘面）。解析失败/缺省 → undefined
- * （withSiteOrigin = 不补全、相对 URL 原样透传，fail-closed 不回落请求头）。
+ * 否则读 `vars.canonical_origin`（优先 config 文件名无关的 vars 全局，回落旧 readCanonicalOrigin
+ * 依赖 configPath）。解析失败/缺省 → undefined（withSiteOrigin = 不补全、相对 URL 原样透传，
+ * fail-closed 不回落请求头）。
  */
 async function resolveCanonicalOrigin(env: MarketEnv): Promise<string | undefined> {
 	if (env.canonicalOrigin !== undefined) {
 		return env.canonicalOrigin;
+	}
+	// 优先 config 文件名无关的 vars 全局（oj 按真实加载的配置文件注入 vars: 段，
+	// `oj serve -c config-release.yaml` 之类任意命名也能读到）；回落旧 readCanonicalOrigin。
+	const fromVars = (globalThis as { vars?: { get?: (k: string) => string | null } }).vars?.get?.("canonical_origin") ?? null;
+	if (fromVars !== null) {
+		return fromVars;
 	}
 	if (!env.configPath) {
 		return undefined;
@@ -821,8 +837,9 @@ async function catalogBody(env: Pick<MarketEnv, "registryId" | "configPath">, q:
 	});
 	(json as { header: (k: string, v: string) => void }).header("Cache-Control", "no-store");
 	// registry_id（签名推送 canonical 首段 = 站点身份）随目录暴露——CLI 推送前发现面；
-	// 解析口径与上传/yank 端点验面同源（注入优先，回落 config vars.registry_id）
-	const registryId = env.registryId ?? await readSiteVar(env.configPath ?? "config.yaml", "registry_id");
+	// 解析口径与上传/yank 端点验面同源（注入优先，回落 config vars.registry_id）。
+	// 优先 config 文件名无关的 vars 全局（oj 按真实加载配置文件注入），回落旧 readSiteVar。
+	const registryId = env.registryId ?? await readDeploymentVar(env.configPath ?? "config.yaml", "registry_id");
 	return { api_version: CATALOG_API_VERSION, registry_id: registryId, page, size, total, truncated: offset + slice.length < total, items: slice };
 }
 

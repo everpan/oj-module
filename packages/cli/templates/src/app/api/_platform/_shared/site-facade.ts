@@ -83,6 +83,22 @@ export function withSiteOrigin(fetch: FetchInitFace, canonicalOrigin?: string | 
 }
 
 /**
+ * 读站点 `vars.<key>`（部署期常量；缺文件/缺字段/解析失败 → null）。
+ * 优先 framework 注入的 `vars` 全局（oj 已按**真实加载的配置文件**填充 vars: 段，文件名无关——
+ * `oj serve -c config-release.yaml` 之类任意命名也能读到）；回落旧 readSiteVar（依赖硬编码
+ * configPath，文件名非 config.yaml 时读不到，仅作兼容兜底）。
+ * 背景：marketEnv/solutionsEnv 曾把 configPath 钉死成 "config.yaml"，站点用 -c 换名后
+ * readSiteVar 全读不到 → registry_id / canonical_origin 恒 null（发布 503、目录缺 registry_id、
+ * 安装缺 canonical origin）。vars 全局是 config 文件名无关的唯一正确通道。
+ */
+export function readDeploymentVar(configPath: string | undefined, key: string): Promise<string | null> {
+	const fromVars = (globalThis as { vars?: { get?: (k: string) => string | null } }).vars?.get?.(key) ?? null;
+	if (fromVars !== null)
+		return Promise.resolve(fromVars);
+	return readSiteVar(configPath, key);
+}
+
+/**
  * 读站点 config.yaml `vars.<key>`（缺文件/缺字段/解析失败 → null）。
  * 与 readCanonicalOrigin 同机制（fsFace + yaml 异步面 + 按 configPath 进程级缓存）：
  * vars 下部署期常量皆走此口，勿各写一份读盘。
