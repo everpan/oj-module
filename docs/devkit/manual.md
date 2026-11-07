@@ -2081,6 +2081,20 @@ flowchart TD
 - **preflight 含 RBAC 声明校验**：`permissions[]` / `roles[]` 的命名前缀、`title_key`
   必填、悬空引用双端拒绝——形状细则与注册/管理面见 §11.5。
 
+**随站 bundle 自动收敛（对账即服务）运维口径**（第一方随站 bundle 场景，发布方流程见发布
+walkthrough §7.5）：
+
+- 站点首个市场编排请求（如 superadmin 打开 system 域「方案安装」）触发收敛：bundle 比已装
+  新→升级、bundle ≤ 已装→跳过；**永不自动降级**（降级 = 站点产物回滚）。
+- 收敛失败落 `market_history` 审计（operator 记 `bundle-converge`）+ 10 分钟冷却文件
+  `modules/.install-tasks/.bundle-converge-cooldown.json`；处置完（如推信任 key）删冷却文件
+  即立即重试。
+- 卸载第一方市场包会摘掉 `cdn/bundles.json` 意图条目（墓碑）——收敛不再自动装回，
+  重装走「方案安装」手动入口。
+- 旧工程注意：市场编排模块需双授权——exec 白名单有它的条目（与 `_platform` 逐字相同）、
+  `platform.modules` 列表含它。模板自带（脚手架 0.2.71 起）；旧 config 需手工补，否则
+  收敛/安装卡 reloading 段 NotCapable。
+
 ### 11.4 生命周期命令与站点寻址约定
 
 `install` / `enable` / `disable` / `uninstall` / `trust` 都是**瘦客户端**——它们把请求发到目标站点
