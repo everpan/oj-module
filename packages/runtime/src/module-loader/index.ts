@@ -103,9 +103,20 @@ function createModuleContext(definition: ModuleDefinition, routePrefix: string):
 	};
 }
 
+/**
+ * 条目 URL 归一（2026-11-07 hotfix）：浏览器裸 import(entry.entry) 只认根绝对
+ * 路径或外部 URL。安装器链历史产出无前导斜杠形态（preflight C2-27 包内相对
+ * 路径透传），加载前在此归一——旧产物免迁移即刻愈合。
+ */
+export function resolveModuleEntryUrl(entry: string): string {
+	if (/^[a-z][a-z\d+.-]*:/i.test(entry) || entry.startsWith("//"))
+		return entry;
+	return entry.startsWith("/") ? entry : `/${entry}`;
+}
+
 async function loadModuleEntry(entry: ManifestModuleEntry): Promise<ModuleDefinition | null> {
 	try {
-		const modImport = await import(/* @vite-ignore */ entry.entry);
+		const modImport = await import(/* @vite-ignore */ resolveModuleEntryUrl(entry.entry));
 		const mod: ModuleDefinition = modImport.default;
 
 		if (mod.name !== entry.name) {

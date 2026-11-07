@@ -235,7 +235,7 @@ describe("runInstall 全绿路径（步骤 stub，register/smoke/audit 走真实
 		const list = JSON.parse(await fsp.readFile(modulesJsonPath, "utf8"));
 		expect(list[0]).toMatchObject({
 			name: "demo-solution",
-			entry: "modules/demo-solution/0.1.0/entry.js",
+			entry: "/modules/demo-solution/0.1.0/entry.js", // 根绝对：浏览器裸 import 契约
 			enabled: true,
 			integrity: `sha384-${sha384b64(ENTRY)}`,
 			peerRuntime: ">=0.1.0",
@@ -287,7 +287,7 @@ describe("runInstall 全绿路径（步骤 stub，register/smoke/audit 走真实
 		// web 树落站点产物根 + 清单 upsert（integrity 为包内容重算值，R10）
 		await fsp.access(join(siteModulesDir, "demo-solution", "0.2.0", "entry.js"));
 		const list = JSON.parse(await fsp.readFile(modulesJsonPath, "utf8")) as any[];
-		expect(list[0]).toMatchObject({ name: "demo-solution", entry: "modules/demo-solution/0.2.0/entry.js", integrity: `sha384-${sha384b64(ENTRY)}` });
+		expect(list[0]).toMatchObject({ name: "demo-solution", entry: "/modules/demo-solution/0.2.0/entry.js", integrity: `sha384-${sha384b64(ENTRY)}` }); // 根绝对：浏览器裸 import 契约
 		// web-only 包 api 锁零变更：锁是 oj 装配真源（原生七键清单），写锁会让 oj 按 C2 清单装配
 		// （reload 400）并遮蔽同名内建模块（2026-11-07 演练实锤：双轨同名 oj-market 锁遮蔽编排面）。
 		// 版本目录仍归位（回滚素材/审计形态），生效面 = modules.json upsert + 注册 + sidecar。

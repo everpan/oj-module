@@ -137,9 +137,9 @@ async function seedDeployed(withIntegrity = true): Promise<void> {
 	await fsp.mkdir(dist, { recursive: true });
 	const entry: Record<string, unknown> = {
 		name: "demo-solution",
-		entry: "modules/demo-solution/0.1.0/entry.js",
+		entry: "/modules/demo-solution/0.1.0/entry.js",
 		enabled: true,
-		css: ["modules/demo-solution/0.1.0/main.css"],
+		css: ["/modules/demo-solution/0.1.0/main.css"],
 	};
 	if (withIntegrity) {
 		entry.integrity = INT;
@@ -166,8 +166,8 @@ describe("upsertModulesJson（R30 POSIX + D13 读-改-原子写）", () => {
 			css: ["modules\\demo-solution\\0.1.0\\main.css"],
 		}, { modulesJsonPath });
 		const list = JSON.parse(await fsp.readFile(modulesJsonPath, "utf8"));
-		expect(list[0].entry).toBe("modules/demo-solution/0.1.0/entry.js");
-		expect(list[0].css).toEqual(["modules/demo-solution/0.1.0/main.css"]);
+		expect(list[0].entry).toBe("/modules/demo-solution/0.1.0/entry.js");
+		expect(list[0].css).toEqual(["/modules/demo-solution/0.1.0/main.css"]);
 		expect(posixPath("a\\b\\c.js")).toBe("a/b/c.js");
 	});
 
@@ -175,7 +175,7 @@ describe("upsertModulesJson（R30 POSIX + D13 读-改-原子写）", () => {
 		await upsertModulesJson({ name: "demo-solution", entry: "modules/demo-solution/0.1.0/entry.js", enabled: true }, { modulesJsonPath });
 		const list = JSON.parse(await fsp.readFile(modulesJsonPath, "utf8"));
 		expect(list).toHaveLength(1);
-		expect(list[0]).toEqual({ name: "demo-solution", entry: "modules/demo-solution/0.1.0/entry.js", enabled: true });
+		expect(list[0]).toEqual({ name: "demo-solution", entry: "/modules/demo-solution/0.1.0/entry.js", enabled: true });
 	});
 
 	it("同名整体替换 + 他模块条目原样保留；重复 upsert 幂等", async () => {
@@ -190,7 +190,7 @@ describe("upsertModulesJson（R30 POSIX + D13 读-改-原子写）", () => {
 		expect(list.find((e: ModuleEntry) => e.name === "other")).toEqual(other);
 		const mine = list.filter((e: ModuleEntry) => e.name === "demo-solution");
 		expect(mine).toHaveLength(1);
-		expect(mine[0].entry).toBe("modules/demo-solution/9.9.9/entry.js");
+		expect(mine[0].entry).toBe("/modules/demo-solution/9.9.9/entry.js");
 	});
 
 	it("损坏 modules.json 拒绝 upsert（不覆盖丢失他模块条目）", async () => {
@@ -217,11 +217,11 @@ describe("deployWeb（stage=deploying：staging/web 树 → 站点 modules 目�
 		const list = JSON.parse(await fsp.readFile(modulesJsonPath, "utf8"));
 		expect(list[0]).toEqual({
 			name: "demo-solution",
-			entry: "modules/demo-solution/0.1.0/entry.js",
+			entry: "/modules/demo-solution/0.1.0/entry.js", // 根绝对：浏览器裸 import 契约
 			enabled: true,
 			version: "0.1.0", // P2-15②：完整条目 extras
 			chunks: [],
-			css: ["modules/demo-solution/0.1.0/main.css"],
+			css: ["/modules/demo-solution/0.1.0/main.css"],
 			integrity: INT,
 			peerRuntime: ">=0.0.0",
 		});
@@ -257,11 +257,11 @@ describe("deployWeb（stage=deploying：staging/web 树 → 站点 modules 目�
 		const sidecar = JSON.parse(await fsp.readFile(join(siteModulesDir, "demo-solution", "0.1.0", ".ojm-module.json"), "utf8"));
 		expect(sidecar).toEqual({
 			name: "demo-solution",
-			entry: "modules/demo-solution/0.1.0/entry.js",
+			entry: "/modules/demo-solution/0.1.0/entry.js",
 			enabled: true,
 			version: "0.1.0",
 			chunks: [],
-			css: ["modules/demo-solution/0.1.0/main.css"],
+			css: ["/modules/demo-solution/0.1.0/main.css"],
 			integrity: INT,
 			peerRuntime: ">=0.0.0",
 		});

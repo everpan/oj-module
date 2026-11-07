@@ -126,3 +126,65 @@ docs/devkit 全部「出厂未装」旧口径逐处改写——playbook：先选
 （触发时点/三前提/重装入口），publish-walkthrough §6 注释、§7 速查两行（build 冲菜单、
 bundle 装不上）、§7.5 尾段同步。守卫 `tests/cli/devkit-docs.test.ts` 21 例零代号通过。
 耗时 ~25min。
+
+## 8. Hotfix：modules.json 条目 entry 缺前导斜杠（0.2.72 出厂即装不可见，2026-11-07）
+
+**用户报告**：`pnpm dlx @oj-module/cli@0.2.72 init drill2 --yes` 生成项目 `pnpm dev` 后
+方案市场未出现。
+
+**根因（三层同源缺陷）**：modules.json 条目被浏览器裸 `import(entry.entry)` 消费
+（`packages/runtime/src/module-loader/index.ts:108`），**必须是根绝对路径
+`/modules/...`**。而安装器链全部产出无前导斜杠形态：
+
+1. preflight C2-27 强制的 manifest 形态就是 `^modules/<name>/<ver>/…\.js$`（无斜杠，
+   包内相对路径语义正确）；
+2. deploy-web `normalizeEntry` 原样透传 → 写进 modules.json 与 `.ojm-module.json` 旁车；
+3. installed-merge 旁车缺失降级重建的模板串同样无斜杠。
+
+源码树构建（module-build.ts）产出 `/modules/...` 带斜杠——所以 app 永远正常、
+**任何经安装器落地的方案（含出厂即装 oj-market）在浏览器端 module-loader 必失败**：
+`TypeError: Failed to resolve module specifier 'modules/oj-market/0.2.0/entry.js'`——
+无菜单、路由不注入、/oj-market 落 404 兜底。此前所有演练只探 HTTP（entry.js 200 /
+SPA 200 照样成立），浏览器加载面零覆盖（单测注入盲区同类）。
+
+**修复（TDD）**：① deploy-web normalizeEntry 补前导斜杠；② installed-merge 重建模板
+与并入输出归一；③ runtime loadModuleEntry 宽容归一（旧产物免迁移即刻愈合）。
+BDD 用例：deploy-smoke upsertModulesJson 形态、installed-merge 断言语态翻转、
+runtime module-loader 无斜杠条目可加载。验收 = drill2 复演 + headless Chrome
+菜单/市场页渲染判定（本次新增浏览器级判据，记入 playbook §7.6）。
+
+## 2026-11-07 下午：hotfix 发版 + 五点全链路真机演练（drill3，cli 0.2.73）
+
+**hotfix 收尾**：`fix/module-entry-root-path`（bd8effa5d + lockstep bump 03eb969d，
+cli/runtime 0.2.72→0.2.73，宿主 shell-dist 版本矩阵重建）——本轮已 merge --no-ff → feat/ojm、
+删分支、推 origin。
+
+**五点验收（站点 /tmp/ojm-vv/drill3，`ojm preview` release 形态 :9778，全部通过）**：
+
+1. **出厂即装菜单**：headless Chrome 真实表单登录 → 侧边栏「方案市场」、/oj-market 全按钮渲染、
+   console 零 module-loader 错误（0.2.72 修复的实证回归）。
+2. **授权码与密钥兑换**：`POST /api/publish/credential`（superadmin）→ 一次性 token；
+   `ojm keygen --credential <token>` 兑换落 `~/.ojm/keys/books.publisher01/`；同 token 重兑 exit 1。
+3. **签名发布**：books 方案 `ojm market publish --real . --site-url … --id books.publisher01
+   --registry-id oj-registry` → 进市场目录（DB 目录行 + cdn/ 字节 + .sig 旁车），verify 通过。
+4. **安装 + 迁移 + seed**：books@0.1.4 安装两段式终态 done；`_oj_migrations` books 两段
+   （init + books_books）；冷启动 `seed ok module="books-0.1.4"`，`books_books` 3 行；
+   `GET /api/books/list` 带 token 返回 3 行。
+5. **菜单与功能**：登录后侧边栏「books 方案」；/books 页 Table 渲染 3 行（书名/作者），
+   console 零错误。
+
+**演练新发现（均已记入 playbook）**：
+
+- **迁移不可变纪律**（方案侧）：0.1.2 原地改已应用的 `0001__init.sql` → 安装卡 migrating，
+  复现报 `applied migration V1__init is different than filesystem one V1__init`（oj migrate
+  对版本目录形态复现：`oj migrate -c config.yaml -d dist/api books-0.1.2`）。修法 = 恢复 0001
+  原字节（从已发布 0.1.1 包取回）+ 新增 `0002__books_books.sql` + 三处版本戳同源升版。
+- **seed 冷启动才重放**（框架侧，playbook §11 U7）：`oj-bin/oj/src/app.rs` `if !reused`
+  跳过热重放——安装触发热重载只跑 migrate 不跑 seed，新装方案数据要等下次冷启动。
+  本轮以重启 preview 完成 seed 实证（0.1.0 时代同机制）。
+- **ky v2 逐请求 prefixUrl 抛错**（方案侧，playbook §9 新增行）：scoped `request` 再传
+  `prefixUrl` 整页 ErrorBoundary；去掉第二参数即愈（0.1.3→0.1.4 重发实证）。
+
+**耗时**：hotfix 修复+测试约 40 min；五点演练约 90 min（其中 0.1.2 migrating 根因定位
+约 35 min——任务消息截断 + 手工 migrate 形态不对两次走进死胡同，最终 `-d dist/api
+<module>-<version>` 形态拿到真实报错）。

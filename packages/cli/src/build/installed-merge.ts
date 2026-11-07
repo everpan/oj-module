@@ -86,11 +86,11 @@ function ensureFaceSidecar(faceDir: string, name: string, version: string): Reco
 	const css = fs.readdirSync(faceDir)
 		.filter(f => f.endsWith(".css"))
 		.sort()
-		.map(f => `modules/${name}/${version}/${f}`);
+		.map(f => `/modules/${name}/${version}/${f}`); // 根绝对路径：浏览器裸 import 契约
 	console.warn(`[ojm] ⚠️ 已装方案「${name}@${version}」缺条目旁车 .ojm-module.json，重建最小条目并入（extras/integrity 失，重装可恢复完整形状）`);
 	const minimal: Record<string, unknown> = {
 		name,
-		entry: `modules/${name}/${version}/entry.js`,
+		entry: `/modules/${name}/${version}/entry.js`,
 		enabled: true,
 		version,
 		chunks: [],
@@ -157,6 +157,23 @@ export function restoreInstalledFaces(projectRoot: string, distDir: string, apiD
 }
 
 /**
+ * 条目路径根绝对归一（2026-11-07 hotfix）：modules.json 被宿主浏览器裸 import(entry)，
+ * entry/css 必须是根绝对路径。旁车可能是历史无前导斜杠形态（旧安装器透传 preflight
+ * C2-27 包内相对路径）——并入时归一，并把归一结果落回 face 旁车（一次愈合，不再回归）。
+ */
+function normalizeEntryPaths(entry: Record<string, unknown>): Record<string, unknown> {
+	const rootAbs = (p: unknown): unknown => {
+		if (typeof p !== "string" || p === "")
+			return p;
+		return p.startsWith("/") || /^[a-z][a-z\d+.-]*:/i.test(p) || p.startsWith("//") ? p : `/${p}`;
+	};
+	const out: Record<string, unknown> = { ...entry, entry: rootAbs(entry.entry) };
+	if (Array.isArray(entry.css))
+		out.css = entry.css.map(rootAbs);
+	return out;
+}
+
+/**
  * 清单写出前并入已装方案：sidecar 已装且 face 旁车在盘 → 条目并回（enabled 以 sidecar
  * 为真源）。face 缺失 → 跳过 + 告警（登记不凭空重建；愈合 = 重装该方案）。
  * 源码树同名 → 抛错 fail-fast（双轨同名红线）。
@@ -178,7 +195,16 @@ export function mergeInstalledModules(projectRoot: string, distDir: string, buil
 				`[ojm] 已装方案「${name}」与源码树模块同名（双轨同名红线）：请卸载该方案（ojm uninstall ${name}）或改源码模块名后重建。`,
 			);
 		}
-		merged.push({ ...entry, enabled: e.enabled } as BuiltModule);
+		const normalized = normalizeEntryPaths(entry);
+		if (JSON.stringify(normalized) !== JSON.stringify(entry)) {
+			try {
+				fs.writeFileSync(path.join(faceDir, ".ojm-module.json"), `${JSON.stringify(normalized, null, 2)}\n`);
+			}
+			catch {
+				// 旁车只读等极端形态：下次重建重归一，运行期有 resolveModuleEntryUrl 兜底
+			}
+		}
+		merged.push({ ...normalized, enabled: e.enabled } as BuiltModule);
 	}
 	return merged;
 }
