@@ -156,6 +156,14 @@ describe("cardGrid 卡片网格（BDD）", () => {
 		expect(btn.disabled).toBe(false);
 	});
 
+	it("given 任意卡片 When 渲染 Then 动作区不换行（nowrap）且按钮不收缩（钉死需求）", () => {
+		renderWithProviders(<CardGrid rows={[installed]} {...handlers} />, new InMemoryMarketClient());
+		const actions = screen.getByTestId("card-actions-alpha") as HTMLDivElement;
+		expect(actions.style.flexWrap).toBe("nowrap");
+		const btn = screen.getByRole("button", { name: "升级" }) as HTMLButtonElement;
+		expect(btn.style.flexShrink).toBe("0");
+	});
+
 	it("given loading=true When 渲染 Then 显示加载态", () => {
 		renderWithProviders(<CardGrid rows={[]} loading {...handlers} />, new InMemoryMarketClient());
 		expect(screen.getByTestId("card-grid-loading")).toBeTruthy();
