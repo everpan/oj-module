@@ -781,6 +781,10 @@ curl "http://127.0.0.1:9778/api/oj-market/index?page=1&size=5" -H "authorization
       内建 `oj-market: 0.1.0` 锁条目保留
 - [ ] 页面双活：`/modules/oj-market/0.2.0/entry.js` 200；`/oj-market`（带 `Accept: text/html`）200；
       编排端点仍 200（装方案不毁编排面）
+- [ ] **浏览器加载面零错误**（HTTP 探活不可见盲区，2026-11-07 drill3 实锤——U5 修复前
+      entry.js 200 / SPA 200 全绿但浏览器 `Failed to resolve module specifier`）：headless Chrome
+      真实表单登录后侧边栏出现「方案市场」、`/oj-market` 全按钮渲染、
+      console 零 module-loader 报错（脚本样例 /tmp/ojm-vv/ui-check.mjs）
 
 ### C. 对账语义（幂等 / 降级守护 / 墓碑）
 
@@ -821,6 +825,14 @@ ls dist/api/ | grep -c "oj-market-0.1.0$"   # 内建编排模块目录存活（1
 
 > 覆盖「方案进市场目录 + 运维按名从市场拉装」整条业务闭环——§7.6 只装市场本身，本节装**第三方/用户方案**。
 > 复用 §7.6 出厂即装站点（市场已装、编排面、信任库、冷却语义全部在位）。2026-11-07 第二轮全绿。
+> **第三轮（2026-11-07，cli 0.2.73 drill3）五点全链路验收通过**：①出厂即装菜单浏览器实证
+> （真机登录侧边栏「方案市场」+ 零 module-loader 错误）②发布凭证申请 → `keygen --credential`
+> 兑换落盘（一次性语义重兑 exit 1 实证）③books 0.1.x 签名发布进目录 ④安装迁移+seed 实证
+> （`_oj_migrations` 双段 + 冷启动 `seed ok module="books-0.1.4"` + 表内 3 行）⑤`/books` 页
+> Table 渲染 3 行、console 零错误。轮内两个新发现：**迁移不可变纪律**（改已应用的 0001 内容即
+> `applied migration V1__init is different than filesystem one`，修法 = 新增 0002，§9 表已载）与
+> **seed 冷启动才重放**（安装触发热重载不灌 seed，新装方案数据要等下次冷启动——已列 §11 U7）；
+> 方案页禁逐请求 `prefixUrl`（ky v2 已改名 `prefix`，scoped client 自带 apiPrefix，§9 表新增行）。
 
 前置：§7.6 站点（市场已装、发布方 key 已在信任库）+ 发布身份（§7.2；本机自签旁路 key 亦可，
 但须先把它的公钥推进站点信任库，否则 publish 403）。**起站基座钉 `/api`**：
@@ -986,6 +998,7 @@ ojm install books --site-url ... --user superadmin --pass <口令>   # retry 同
 | 安装返回 `503 安装需要站点 canonical origin` | `config.yaml` 缺 `vars.canonical_origin`，而市场基址是相对路径 `/cdn`；REG-CS6 不读 Host 头 | 本地演练填 `http://127.0.0.1:9778`（模板默认注释掉），重启后重试 |
 | 安装 partial：`reloading` 阶段 `reloadConfig 返回 unchanged` | 对着 `ojm dev` 装——dev 的文件监听先在安装器之前 reload 了 config，安装器自己 reload 时已无变化 | 安装验证只对 `oj serve` release 形态做（`ojm preview` 同理不行：它服务派生 config） |
 | 装完 `curl /api/<name>/ping` 返回 `400 missing tenant header` | 漏了 `X-TENANT-ID` | 探针加 `-H 'X-TENANT-ID: default'`；这是缺参数，不是安装失败 |
+| 方案页 ErrorBoundary：`Error: The 'prefixUrl' option has been renamed 'prefix' in v2 ...`（ky v2 抛错，页面整页崩） | 方案页代码对 runtime scoped `request` 再传逐请求 `prefixUrl`（ky v2 已改名 `prefix`）；D11/P6.3 本就禁止逐请求 prefix 覆盖——scoped client 出厂已带 apiPrefix | 去掉第二参数直写 `request.get("books/list")`（2026-11-07 drill3 0.1.4 实证：改后 Table 正常渲染、console 零错误） |
 | 两个账号用同一产品名各申请一张凭证都成功 | 站点只保证 **key_id 唯一**（`<product>.<username>`），产品名不是独占命名空间 | 文档不得宣称「站点替你裁决产品归属」；同名方案的发布权靠团队约定 + 市场包名/版本冲突拦截 |
 | MySQL 上 `ojm dev` 启动即退：`1064 ... near 'AUTOINCREMENT, category TEXT NOT NULL DEFAULT ...'`（`module=home`） | `home`/`notification` 的建表迁移只有 sqlite 基础件（`INTEGER PRIMARY KEY AUTOINCREMENT`），却各自已有 0002/0005 的 `.mysql.sql` 覆盖——覆盖是**按版本号替换**，0001 仍回落基础件；pg 侧同样缺 0001/0003/0004 | 已修（工作区，随下一版发布）：补齐 `home/{0001.mysql,0001.pg,0002.pg}`、`notification/{0001,0003,0004}.{mysql,pg}`、`0005.pg` 与四份方言 seed。守卫 `templates-migration-schema-parity` **m-5**：方言实际执行的迁移/seed 不得含 `AUTOINCREMENT`、`INSERT OR IGNORE`、mysql 的 `CREATE INDEX IF NOT EXISTS` |
 | MySQL/PG 上 `_platform` seed 报语法错，或整段设置不生效 | **oj 0.1.120 及以前只读 `seed.sql`**（`seed.rs:17` 是常量），不按方言回落 `seed.<dialect>.sql`（旧观察：把 `seed.sql` 移走后 `_platform` seed 被静默跳过、无告警）。当时方言 seed 只有**部署期手工替换**约定（devkit 手册树结构写着「部署到 mysql/pg 用」） | 已修（oj `0.1.121`，2026-11-05）：方言件存在即胜出、`seed.sql` 兜底且绝不双跑，起服日志打 `file=` / `dialect=`，缺匹配与错名都会 warn，`oj check` S003/S006 覆盖全部变体——**不再需要覆盖文件**。见 §11 **U1** 与 [`migration/oj-requirement-seed-dialect.md`](../migration/oj-requirement-seed-dialect.md) |
@@ -1077,6 +1090,7 @@ node "$CLI_PKG/bin/ojm.mjs" build && npx tsc --noEmit -p tsconfig.json && node "
 | U4 | **`oj serve --api-path` 缺省 API 基座与框架 `/api` 约定对齐**（2026-11-07 §7.7 实锤） | oj 0.1.124 `--api-path` 缺省绑 `/v1/api`（`server.base` 旧键 v0.1.58 已删，config 改不了）；而框架侧全部按 `/api` 寻址（web 应用请求 prefixUrl、`ojm market publish/install/trust` 瘦客户端、消费面）——module-root release 直起后，CLI 推送打穿到 SPA 兜底（返回 HTML doctype，报「Unexpected token '<'」），登录 POST 405「web mounts serve GET/HEAD only」。唯一正解 = 起站加 `-b /api`；config 手写 api 挂载与 `--api-path` 同给又报「module 重复声明」 | 两选一：① oj 缺省基座改 `/api`（或与 config `mounts` 的 api 前缀一致）；② `--api-path` 与 api 挂载同给时去重而非 fail。验收：module-root 工程 `oj serve --api-path dist/api` 直起后 `POST /api/auth/login` 得 JSON 应答 |
 | U5 | **`ojm build`/`ojm dev` 合并已装方案的 web 登记**（✅ 已修复 oj-module cli `0.2.72`，2026-11-07 出厂即装支柱②，实现见 `docs/plans/20261107-1150-market-factory-install.md`） | 修复前：例行 `ojm build` 与 `ojm dev`（dev 启动即重建模块产物）都会重生成 `dist/web/modules.json` + `dist/web/modules/` 且只收录源码树模块，已装方案（含第一方 oj-market）的 web 面被整体冲掉——任何例行构建/开发态运行后市场菜单消失，愈合只能靠 backfill+逐方案重装（§9 对应行）。修复后：重建清单时 `restoreInstalledFaces`（版本目录重物化 web 面 + 条目旁车 `.ojm-module.json` 双落点持久化）+ `mergeInstalledModules`（state.yaml 真源并入、双轨同名 fail-fast），连续 build 告警静默 | 装方案后 `pnpm build`/`pnpm dev` 重启，modules.json 仍含方案条目、`/modules/<name>/<ver>/entry.js` 200、市场菜单不消失——2026-11-07 真机（/tmp/ojm-vv/drill）已验；守卫 `packages/cli/src/__tests__/installed-merge.test.ts` 9 例 |
 | U6 | **`-b` 基座覆盖下 web 挂载相对路径静态解析落空**（2026-11-07 实锤） | oj 0.1.124：`web: "./dist/web"` 相对路径 + `-b /api` 组合时静态层解析落空——非 HTML 请求全落进 API 路由报 `no route matched`，SPA 回落（HTML）却正常，极具迷惑性；`ojm preview` 派生 config 全写绝对路径故不踩 | 两选一：① `-b` 下相对路径按 config 目录解析（与无 `-b` 行为一致）；② 启动 fail-fast 校验 web 挂载目录可达。验收：`-b /api` 起站后 `curl /modules/app/0.1.0/entry.js` 200 |
+| U7 | **安装触发热重载应重放新装方案的 seed**（2026-11-07 §7.7 drill3 实锤，oj 0.1.124） | 种子重放只在**冷启动**执行（`oj-bin/oj/src/app.rs`：`if !reused { seed::replay_all(...) }`，注释「热更复用时不重放，种子是一次性初始化」）；而安装器 migrating 段显式跑 `oj migrate`（迁移随装随生效），seed 却不跑——新装方案的 seed 数据要等**下次冷启动**才落库，期间方案页数据面空。与业界安装器预期不符（安装完成即应数据就绪）。模板侧绕不过（seed 时机在 oj 内核 boot 路径） | 两选一：① 安装 API（`_lifecycle` reload 编排）在热重载后对**新装模块**触发一次 seed 重放（幂等 seed 前提，S006 已强制）；② 保持现状但安装任务终态标注「seed 待冷启动生效」。验收：装带 seed 的方案后不重启，`select count(*)` 即得 seed 行 |
 
 ---
 
