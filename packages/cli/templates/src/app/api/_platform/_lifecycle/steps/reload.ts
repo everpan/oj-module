@@ -79,7 +79,7 @@ export function moduleSymbolOf(name: string, version: string, kind: "install" | 
  * - 附加段键（ctx.expected，如 mounts/tenant/tasks）逐一 ∈ applied（覆盖项保留）。
  * 返回 {ok, message?} 供调用方生成人话。
  */
-export function assertReloadApplied(r: ReloadResult, opts: { hasApi: boolean, kind: "install" | "uninstall", name: string, version: string, additional?: string[], /** 强制热更（oj 0.1.123+ reloadConfig(force)）：unchanged 时须失败（强制装配未生效） */ force?: boolean }): { ok: boolean, message?: string } {
+export function assertReloadApplied(r: ReloadResult, opts: { hasApi: boolean, kind: "install" | "uninstall", name: string, version: string, additional?: string[], /** 强制热更（oj 0.1.123+ reloadConfig(force)）：unchanged 时须失败（强制装配未生效） */ force?: boolean, /** 卸载侧：锁条目是否真随卸载摘除——双轨同名（内建模块锁条目保留，lockRemoved=false）时 oj 装配面无锁 diff，unchanged 属预期（方案摘除发生在 modules.json/sidecar/route 面） */ lockRemoved?: boolean }): { ok: boolean, message?: string } {
 	if (typeof r !== "object" || r === null || !Array.isArray(r.applied) || typeof r.unchanged !== "boolean") {
 		return {
 			ok: false,
@@ -93,6 +93,9 @@ export function assertReloadApplied(r: ReloadResult, opts: { hasApi: boolean, ki
 	}
 	if (r.unchanged) {
 		if (opts.kind === "uninstall") {
+			// 双轨同名（2026-11-07 演练实锤）：内建模块锁条目保留 → 装配面无锁 diff，unchanged 属预期。
+			if (opts.lockRemoved === false)
+				return { ok: true };
 			return {
 				ok: false,
 				message: "reloadConfig 返回 unchanged——卸载后锁未变化，疑似卸载空转（锁未摘除）；请确认宿主已开启 reload_api 且 oj ≥ v0.1.122",

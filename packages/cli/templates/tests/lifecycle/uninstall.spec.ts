@@ -165,6 +165,40 @@ describe("POST uninstall 卸载编排（superadmin，R9）", () => {
 		expect(String(hist[0].operator)).toBe("admin");
 	});
 
+	it("双轨同名（web-only 方案 vs 同名内建模块锁条目）：版本以 sidecar 为准——只删方案版本目录，内建锁条目与目录保留", async () => {
+		// 2026-11-07 市场线演练实锤：版本解析「锁优先」会把内建 oj-market 编排模块
+		// （锁 oj-market: 0.1.0，平台 api 轨）当成方案版本删——内建目录被移除、编排端点全灭。
+		// web-only 方案的真相在 sidecar（lock_commit 零锁变更），锁是 api 轨真源与方案版本可能同名不同轨。
+		await writeLock(join(sharedRoot, "manifests.yaml"), { "oj-market": "0.1.0", "other": "1.0.0" });
+		const st0 = await createStateStore(statePath);
+		await st0.write({ solutions: { "oj-market": { version: "0.2.0", enabled: true, installedAt: 1 } } });
+		await fsp.mkdir(join(sharedRoot, "oj-market-0.1.0"), { recursive: true }); // 内建编排模块目录（不可删）
+		await fsp.mkdir(join(sharedRoot, "oj-market-0.2.0"), { recursive: true }); // 方案版本目录（该删）
+		await fsp.writeFile(join(sharedRoot, "oj-market-0.2.0", "manifest.yaml"), "name: oj-market\nversion: 0.2.0\n");
+		await fsp.writeFile(modulesJsonPath, JSON.stringify([{ name: "oj-market", enabled: true }, { name: "other", enabled: true }]));
+		dbo.prepare("INSERT INTO sys_solution_route (path, module, category) VALUES (?, ?, ?)").run("/oj-market", "oj-market", "main");
+		const api = createMarketApi(makeEnv({
+			apiPrefix: "/api/oj-market",
+			// 双轨同名：内建锁条目保留 → oj 装配面无锁 diff，reload 报 unchanged 属预期
+			// （方案摘除发生在 modules.json/sidecar/route 面；断言不得按「卸载空转」拒）
+			reload: { reloadConfig: async () => ({ generation: 2, unchanged: true, applied: [], restart_pending: [], kept_listener: [] }) },
+		}));
+		g.http = { user: { id: 1 }, body: { name: "oj-market" } };
+		await api.uninstall.post();
+		expect(last?.status).toBe(200);
+		expect(last?.data).toMatchObject({ ok: true });
+		// 内建锁条目保留（api 轨不被方案卸载波及），other 亦保留
+		expect(await readLock(join(sharedRoot, "manifests.yaml"))).toEqual({ "oj-market": "0.1.0", "other": "1.0.0" });
+		// 方案版本目录删除；内建目录完好
+		await expect(fsp.readdir(join(sharedRoot, "oj-market-0.2.0"))).rejects.toBeTruthy();
+		await fsp.access(join(sharedRoot, "oj-market-0.1.0"));
+		// sidecar 删条目 + modules.json 删方案条目（other 保留）
+		expect((await createStateStore(statePath)).read().solutions["oj-market"]).toBeUndefined();
+		const list = JSON.parse(await fsp.readFile(modulesJsonPath, "utf8")) as Array<{ name: string }>;
+		expect(list.find(e => e.name === "oj-market")).toBeUndefined();
+		expect(list.find(e => e.name === "other")).toBeDefined();
+	});
+
 	it("未安装方案 → 404 资源缺失语义（P3-11：非 200 {ok:false}），人话在 message", async () => {
 		const api = createMarketApi(makeEnv());
 		g.http = { user: { id: 1 }, body: { name: "nope" } };

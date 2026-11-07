@@ -259,6 +259,42 @@ describe("runInstall 全绿路径（步骤 stub，register/smoke/audit 走真实
 		expect(await getTask(taskDir, "nope")).toBeNull();
 	});
 
+	it("web-only 方案包（无 api 段，extracting C2-31 放行面）：lock_commit 整体归位版本目录后，deploying_web 改从版本目录取 web 树 → done（2026-11-07 市场线演练实锤：staging 被 rename 后部署段读空）", async () => {
+		const m = manifestFixture("0.2.0");
+		delete m.api;
+		m.web = { entry: "modules/demo-solution/0.2.0/entry.js" };
+		m.archive = { file: "demo-solution-0.2.0.tgz", sha256: SHA256, size: ARCHIVE.byteLength, signature: signedArchiveFor(ARCHIVE, "demo-solution", "0.2.0", { keyPair: TEST_KEY }).sig };
+		// exec stub：web-only 产物树（单根 + 无 api/ 目录——lock_commit 回退「整体 rename」形态，
+		// 版本目录 = 包内容；web 树随之离开 staging）
+		const exec: ExecFace = {
+			run: async (argv) => {
+				if (argv[0] === "tar" && argv[1] === "-tvzf")
+					return { code: 0, stdout: "demo-solution-0.2.0/manifest.yaml\ndemo-solution-0.2.0/web/modules/demo-solution/0.2.0/entry.js\n", stderr: "" };
+				if (argv[0] === "tar" && argv[1] === "-xzf") {
+					const dest = argv[4]!;
+					const dir = join(dest, "demo-solution-0.2.0", "web", "modules", "demo-solution", "0.2.0");
+					await fsp.mkdir(dir, { recursive: true });
+					await fsp.writeFile(join(dir, "entry.js"), ENTRY);
+					await fsp.writeFile(join(dest, "demo-solution-0.2.0", "manifest.yaml"), new TextEncoder().encode(JSON.stringify(m)));
+					return { code: 0, stdout: "", stderr: "" };
+				}
+				return { code: 0, stdout: "", stderr: "" };
+			},
+		};
+		const t = await runInstall(makeReq({ manifest: m, version: "0.2.0", exec }));
+		expect(t.status).toBe("done");
+		expect(t.stages.find(s => s.stage === "deploying_web")?.ok).toBe(true);
+		// web 树落站点产物根 + 清单 upsert（integrity 为包内容重算值，R10）
+		await fsp.access(join(siteModulesDir, "demo-solution", "0.2.0", "entry.js"));
+		const list = JSON.parse(await fsp.readFile(modulesJsonPath, "utf8")) as any[];
+		expect(list[0]).toMatchObject({ name: "demo-solution", entry: "modules/demo-solution/0.2.0/entry.js", integrity: `sha384-${sha384b64(ENTRY)}` });
+		// web-only 包 api 锁零变更：锁是 oj 装配真源（原生七键清单），写锁会让 oj 按 C2 清单装配
+		// （reload 400）并遮蔽同名内建模块（2026-11-07 演练实锤：双轨同名 oj-market 锁遮蔽编排面）。
+		// 版本目录仍归位（回滚素材/审计形态），生效面 = modules.json upsert + 注册 + sidecar。
+		expect(parseLock(await fsp.readFile(lockPath, "utf8").catch(() => ""))).toEqual({});
+		await fsp.access(join(sharedRoot, "demo-solution-0.2.0", "manifest.yaml"));
+	});
+
 	it("preview 形态：派生 .ojm-preview.yaml 存在时两份 config 一起接线（否则 reload 恒 unchanged）", async () => {
 		// ojm preview 派生出来的那份才是服务端在读的 config（spa 挂载 + platform.root 改写）
 		const derived = join(root, ".ojm-preview.yaml");

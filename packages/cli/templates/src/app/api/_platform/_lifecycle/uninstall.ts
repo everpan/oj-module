@@ -187,14 +187,23 @@ export async function runUninstall(input: UninstallInput): Promise<UninstallResu
 	if (lock[name] === undefined && side === undefined) {
 		return { ok: false, reason: "not-installed", message: `卸载失败：「${name}」未安装（锁与 sidecar 均无记录）` };
 	}
-	const version = input.version ?? lock[name] ?? side?.version;
+	// 安装在哪：锁与 sidecar 均无记录 = 未安装（P3-11：细分 reason，端点据此回 404 资源缺失语义）
+	if (lock[name] === undefined && side === undefined) {
+		return { ok: false, reason: "not-installed", message: `卸载失败：「${name}」未安装（锁与 sidecar 均无记录）` };
+	}
+	// 版本解析 sidecar 优先（2026-11-07 市场线演练实锤：双轨同名——第一方 web-only 方案的锁
+	// 编排面）可能正占着锁的另一版本；「锁优先」会把内建版本当方案删，内建目录/锁条目被毁、
+	// 编排端点全灭。sidecar 是方案轨唯一真相；锁仅作 sidecar 缺失（旧工程/半残态）的兜底）。
+	const version = input.version ?? side?.version ?? lock[name];
 	if (version === undefined) {
 		return { ok: false, message: `卸载失败：「${name}」版本不可得（锁与 sidecar 均无版本）` };
 	}
-
-	// 空锁拒启（S1-1.2）：摘除后锁为空 → 拒绝卸载最后一个模块
+	// 锁条目归属裁决：sidecar 在 → 锁条目仅当与 sidecar 同版本才属本方案（api 轨锁随装写）；
+	// sidecar 缺失（旧形态/半残）→ 锁条目按旧语义归属方案。同名不同轨的锁条目（内建模块）不摘。
+	const lockEntryIsSolution = side !== undefined ? lock[name] === side.version : lock[name] !== undefined;
 	const remaining = { ...lock };
-	delete remaining[name];
+	if (lockEntryIsSolution)
+		delete remaining[name];
 	if (Object.keys(remaining).length === 0) {
 		return { ok: false, message: "卸载失败：摘除后锁为空（空锁拒启，S1-1.2）——站点至少保留一个已锁模块，不能卸载最后一个" };
 	}
@@ -252,7 +261,7 @@ export async function runUninstall(input: UninstallInput): Promise<UninstallResu
 		// 卸载空转回归守卫（§2.7）：reload 须真实摘除模块——unchanged 即「锁摘了但装配没掉挂载」，
 		// 正是本 PR 修复的回归；api 模块还须 applied 含 -name@ver（web-only 无 api 段，oj 不产模块条目，仅校验 unchanged）。
 		const hasApi = await uninstallHasApi(name, version, input.sharedRoot);
-		const a = assertReloadApplied(r, { hasApi, kind: "uninstall", name, version });
+		const a = assertReloadApplied(r, { hasApi, kind: "uninstall", name, version, lockRemoved: lockEntryIsSolution });
 		if (!a.ok) {
 			try {
 				await writeLock(input.lockPath, lock);

@@ -110,7 +110,10 @@ vars:
   wecom_base_url: ''
 
 platform:
-  modules: [_platform] # 安装器热更 config 需要 _platform 特权；删了会在装到最后一步报 NotCapable
+  # 安装器热更 config 需要 platform 特权（reloadConfig/信任库写面）；编排面自 Phase B 起在
+  # oj-market 模块（/api/oj-market/*），与 _platform 同权——缺 oj-market 时装到 reloading
+  # 段 NotCapable（2026-11-07 市场线演练实锤）。
+  modules: [_platform, oj-market]
   root: src # 后端模块源码根（src/<name>/api 的父目录）；preview 派生 config 时改写成 dist
   # ⚠️ 手写部署（不用 ojm，靠 mounts 起站）时：root 必须等于 api 挂载目录，
   # 否则 oj serve 直接拒启 `platform.root (…) must be mounted as an api mount`。
@@ -123,10 +126,14 @@ platform:
   # 下面三条命令与安装器逐字对齐（含每个空格），一个 token 都不能动：
   exec:
     _platform:
-      allow:
+      allow: &INSTALLER_EXEC_ALLOW
         - 'tar -tvzf ${path:archive}'
         - 'tar -xzf ${path:archive} -C ${path:dest}'
         - 'oj migrate --format json -d ${path:dir} ${raw:module}'
+    # 市场编排面（src/oj-market/api，端点在 /api/oj-market/*）与 _platform 用同一安装器，
+    # 请求模块上下文 = oj-market（oj exec 按模块逐条授权）——缺这条真机安装/收敛全 NotCapable。
+    oj-market:
+      allow: *INSTALLER_EXEC_ALLOW
 
 # 安装器落盘面：解包到 modules/.staging、写 dist/modules、备份 db.sqlite，全在 config 目录内。
 # 缺这段会 NotCapable，且症状很阴：安装提交返回 200，但 task 查询恒 404。

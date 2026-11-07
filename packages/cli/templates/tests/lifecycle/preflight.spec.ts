@@ -372,4 +372,22 @@ describe("p0 §3.2 质辩1 / E7·E8 匿名保留段与残留检测（写锁前�
 		const r = await preflight(ctx({ manifest: m, existingAnonymousPaths: ["/_platform/health", "/auth/login"] }));
 		expect(r.ok).toBe(true);
 	});
+
+	it("e8 第一方编排段 oj-market：config 出厂匿名条目（catalog/upload/yank）属脚手架内建编排面，非方案残留 → 放行", async () => {
+		// Phase B 演练实锤（2026-11-07）：市场编排面随脚手架内置（config 出厂即匿名
+		// /oj-market/catalog|cdn/upload|yank），第一方纯 web 包（无 api 段、无 anonymous
+		// 声明）收敛/首装会整段撞 anonymous_residual——编排段条目与 /auth/* 同为宿主内建。
+		const m = JSON.parse(JSON.stringify(VALID).replaceAll("demo-solution", "oj-market")) as typeof VALID;
+		delete m.api;
+		const r = await preflight(ctx({ manifest: m, existingAnonymousPaths: ["/oj-market/catalog/**", "/oj-market/cdn/upload", "/oj-market/yank"] }));
+		expect(r.ok, r.message).toBe(true);
+	});
+
+	it("e8 非编排段的同 prefix 残留仍拒（豁免不扩散）", async () => {
+		const m = JSON.parse(JSON.stringify(VALID).replaceAll("demo-solution", "other-solution")) as typeof VALID;
+		delete m.api;
+		const r = await preflight(ctx({ manifest: m, existingAnonymousPaths: ["/other-solution/legacy"] }));
+		expect(r.ok).toBe(false);
+		expect(r.code).toBe("anonymous_residual");
+	});
 });
