@@ -55,6 +55,14 @@ const ANONYMOUS_RE = /^[a-z0-9][a-z0-9\-_.]*(?:\/[a-z0-9][a-z0-9\-_.]*)*$/;
 /** P0 §3.2 匿名保留段黑名单（显式拒装清单；与 C2-26 段内收敛互补——C2-26 挡「跨段」，本清单挡「保留段本身」） */
 const ANON_RESERVED_PREFIXES = ["_platform", "_system", "auth", "_lifecycle"];
 
+/**
+ * 平台内建编排段（Phase B）：市场编排面 api 随脚手架内置，config 出厂即匿名
+ * /oj-market/catalog|cdn/upload|yank（方案 §2「市场未装时端点仍在」）。这些条目与
+ * /auth/* 同属宿主内建而非方案注入——第一方纯 web 包（无 anonymous 声明）收敛/首装
+ * 时不得在 anonymous_residual 被误判为「同 prefix 换装残留」（2026-11-07 市场线演练实锤）。
+ */
+const BUILTIN_ORCH_SEGMENTS = new Set(["oj-market"]);
+
 /** C2-17：路由 path 语法（首段首字符为字母；无参数段/通配符/尾斜杠） */
 const ROUTE_PATH_RE = /^\/[a-z][a-z0-9\-_]*(?:\/[a-z0-9\-_]+)*$/;
 
@@ -399,7 +407,9 @@ export async function preflight(ctx: InstallContext): Promise<StageResult> {
 	// **保留段条目不在此查**：config 里 /auth/*、/_platform/* 等属宿主内建（如 /auth/login），方案永不
 	// 能注入（C2-26 段内收敛已挡住方案声明保留段匿名），故保留段 config 条目绝不会是方案残留——
 	// 纳入比对只会误伤宿主内建匿名端点（F4 假阳性）。
-	{
+	// **平台内建编排段同样不在此查**（BUILTIN_ORCH_SEGMENTS）：编排面匿名条目出厂即在 config，
+	// 非任何方案注入；第一方纯 web 包（oj-market，无 anonymous 声明）依赖此豁免完成收敛/首装。
+	if (!BUILTIN_ORCH_SEGMENTS.has(apiSeg)) {
 		const existing = ctx.existingAnonymousPaths ?? [];
 		const residual: string[] = [];
 		// config 条目带前导斜杠（appendAnonymousPaths 统一补 /），归一去斜杠再取首段，

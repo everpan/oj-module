@@ -234,18 +234,27 @@ async function lockCommitStage(req: InstallRequest): Promise<StageResult> {
 	// 留在 staging（deploying_web 段消费）。无 api 段（web-only 包，extracting C2-31 已放行）
 	// 回退整体 rename——版本目录 = 包内容（无 serve 装配面的残留形态）。
 	let src = req.staging;
+	let hasApiModule = true;
 	try {
 		await f.readdir(`${req.staging}/api/${req.name}-${req.version}`);
 		src = `${req.staging}/api/${req.name}-${req.version}`;
 	}
 	catch {
-		// 无 api 段：整体 rename
+		hasApiModule = false; // 无 api 段：整体 rename
 	}
 	try {
 		await f.rename(src, versionDir);
 	}
 	catch (e) {
 		return { stage: "lock_commit", ok: false, retryable: true, message: `生效切换失败：${src} rename 失败（${String(e)}）——附录 A lock_commit：请稍后重试` };
+	}
+	if (!hasApiModule) {
+		// web-only 包 api 锁零变更（2026-11-07 市场线演练实锤）：锁是 oj 装配真源（按原生七键
+		// 清单 parse_one），写锁会让 oj 拿 C2 方案清单当模块清单装配（reload 400），且双轨同名
+		// （第一方 oj-market 方案 vs 平台内建 oj-market 编排模块）锁条目会遮蔽内建模块。
+		// 生效面 = modules.json upsert + 路由/角色注册 + sidecar；版本目录归位作回滚素材/审计形态
+		// （web-only 降级不走市场回滚——OJ-9：降级唯一入口 = 站点回滚，双轨裁决）。
+		return { stage: "lock_commit", ok: true, message: `生效切换完成：${src} → ${versionDir} 就位（web-only 包：api 锁零变更，不遮蔽同名内建模块）` };
 	}
 	const c = await commitLockEntry(`${req.sharedRoot}/manifests.yaml`, req.name, req.version);
 	if (!c.ok) {
@@ -337,15 +346,26 @@ async function deployWebStage(req: InstallRequest): Promise<StageResult> {
 	const web = isObj(m.web) ? m.web : undefined;
 	const entry = web !== undefined && typeof web.entry === "string" ? web.entry : undefined;
 	let integrity: string | undefined;
+	// web-only 包（无 api 段）：lock_commit 回退「staging 整体 rename → 版本目录」（版本目录 = 包内容
+	// 形态，B-11 注释面），web 树随之归位版本目录、staging 已不存在——部署段须从版本目录消费
+	// （2026-11-07 市场线演练实锤：整体 rename 后 staging/web 读空致 deploying_web 必败）。
+	let stagingDir = req.staging;
 	if (entry !== undefined) {
 		try {
-			integrity = `sha384-${req.sha384B64(await fsFace().readFile(`${req.staging}/web/${entry}`))}`;
+			integrity = `sha384-${req.sha384B64(await fsFace().readFile(`${stagingDir}/web/${entry}`))}`;
 		}
-		catch (e) {
-			return { stage: "deploying_web", ok: false, retryable: false, message: `部署失败：web.entry「${entry}」在 staging 不可读（${String(e)}）——manifest 与产物错配（R10）` };
+		catch {
+			const versionDir = `${req.sharedRoot}/${req.name}-${req.version}`;
+			try {
+				integrity = `sha384-${req.sha384B64(await fsFace().readFile(`${versionDir}/web/${entry}`))}`;
+				stagingDir = versionDir;
+			}
+			catch (e) {
+				return { stage: "deploying_web", ok: false, retryable: false, message: `部署失败：web.entry「${entry}」在 staging 与版本目录均不可读（${String(e)}）——manifest 与产物错配（R10）` };
+			}
 		}
 	}
-	return deployWeb({ ...req, stagingDir: req.staging, integrity });
+	return deployWeb({ ...req, stagingDir, integrity });
 }
 
 /** `ojm preview` 派生的 config 文件名（与 CLI 侧 preview-config.ts 的 PREVIEW_CONFIG_NAME 逐字一致） */
