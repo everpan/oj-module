@@ -12,11 +12,19 @@
 | **全量线** | 快线 + `pnpm pack` 发布包 → 新工程 `ojm init` → 依赖安装 → §1–§7 全套 | 15–20 min | 发版前、oj 升级后 | §0 → §0.5 → §1… |
 | **市场线** | §7.1–§7.5：方案骨架 → 发布 CDN → 安装/TOFU/升级 → walkthrough 14 项 | ~10 min | 动 `market`/安装器/签名时 | §7.1 |
 | **市场 Phase B 线** | §7.6：出厂未装态 → 随站 bundle 收敛首装 → 降级守护 → 卸载墓碑（动安装器/编排面/模板 config 时必跑——单测注入面绕不过平台授权与装配层，见文首） | ~10 min | 动安装器/`oj-market` 编排面/模板 config 时 | §7.6 |
+| **市场闭环线** | §7.7：`ojm new` 造方案 → 签名发布进目录 → 按名从市场安装 → 两段式终态（复用 §7.6 装好市场的站点） | ~10 min | 动发布链路/安装器/市场目录时 | §7.7 |
 
 判据只有一条：**每节的检查点逐条打勾**——退出码 0 只是入场券，产物与响应体才算数。
 历史演练记录集中在文末 [附录 A](#附录-a-历史基线从新到旧逐条可追溯)，日常执行不用读。
 
-> **上次演练结论（2026-11-07，cli/runtime 0.2.71 工作区 / oj 0.1.124）**：**市场线 Phase B 增量演练（§7.6）通过**——
+> **上次演练结论（2026-11-07 第二轮，cli/runtime 0.2.71 打包态 / oj 0.1.124）**：**市场全链路闭环通过**——
+> 发布形态 pack → `init --yes` → 收敛装市场（信任空窗 needs_trust → 推公钥 → 收敛 done、api 锁零变更、
+> 双轨目录并存）→ `ojm new` 造 books 方案 → `market publish --real` 进目录 → `ojm install books`
+> 按名从市场装（两段式：reloading partial → 重启 oj serve → retry → done）→ 锁/版本目录/ping/index
+> 四重落点核对全绿。实锤一个拓扑坑：module-root 工程 `oj serve --api-path dist/api` 缺省把 API 绑在
+> `/v1/api`，而框架（web 应用 + market/install CLI）一律走 `/api`——必须 `-b /api` 起站（§7.7 / §9）。
+>
+> **上次演练结论（2026-11-07 第一轮，cli/runtime 0.2.71 工作区 / oj 0.1.124）**：**市场线 Phase B 增量演练（§7.6）通过**——
 > 发布形态 pack → `init --yes` 随站 bundle 落位 → 出厂未装态 → index 端点收敛首装（11 段全 ok）→
 > 页面/编排双活 → 降级守护 skip → 卸载墓碑闭环。演练实锤 **6 个真机缺陷**（单测全注入 exec/reload/fetch
 > 绕过平台授权与 oj 装配层，此前从未真机暴露）并全部 TDD 修复：exec 授权、platform 特权、web-only 部署
@@ -721,24 +729,27 @@ ls cdn/   # bundles.json + <name>-<ver>.tgz + .sig（init --yes 落位）
 ### B. 收敛首装（release 形态起站：§7.3 前置同——`platform.root: dist/api` + `vars.canonical_origin`；页面探活另需解开 config 的 `"/"` web 挂载三行，`spa: true`）
 
 ```bash
-# BOOTSTRAP_KEY 未回填（发布期才回填）→ 信任库空 → 首次收敛验签 needs_trust 落 failed：
+# 起站（module-root release 形态；基座必须钉 /api——缺省 /v1/api 会让框架侧请求全打穿到 SPA，见 §9）：
+./bin/oj serve --api-path dist/api -b /api --daemon
+
+# BOOTSTRAP_KEY 未回填（发布期才回填）→ 信任库空 → 首次收敛验签停在 needs_trust（预锁段即停）：
 curl "http://127.0.0.1:9778/api/oj-market/index?page=1&size=5" -H "authorization: Bearer $TK" -H 'X-TENANT-ID: default'
 curl "http://127.0.0.1:9778/api/oj-market/history?page=1&size=3" -H "authorization: Bearer $TK" -H 'X-TENANT-ID: default'
-# 期望 history 出现 operator=bundle-converge / status=failed 行；冷却文件在
-# modules/.install-tasks/.bundle-converge-cooldown.json（10 分钟窗内不重试、窗内每请求留痕一条）
+# 期望 index 仍 code:0（收敛失败吞咽）；任务文件 modules/.install-tasks/install-*.json 终态 needs_trust、
+# stage=verifying（信任空窗属第五终态，**不写冷却文件**；冷却只在 failed 硬失败时写——次日六连修期
+# 首跑全是 NotCapable 硬失败，故有 failed 行 + 冷却，勿当唯一口径）
 
-# 信任播种（superadmin 推送发布方公钥）+ 清冷却 + 重触发：
+# 信任播种（superadmin 推送发布方公钥）+ 重触发（无冷却则无需清）：
 PUB=$(cat ~/.ojm/keys/<publisher>/public.hex)
 curl -s -X POST http://127.0.0.1:9778/api/oj-market/trust/key \
   -H "authorization: Bearer $TK" -H 'X-TENANT-ID: default' -H 'content-type: application/json' \
   -d "{\"key_id\":\"<publisher>\",\"public_key\":\"$PUB\"}"     # 期望 {"result":"added"}
-rm -f modules/.install-tasks/.bundle-converge-cooldown.json
 curl "http://127.0.0.1:9778/api/oj-market/index?page=1&size=5" -H "authorization: Bearer $TK" -H 'X-TENANT-ID: default'
 ```
 
-- [ ] 信任空窗期：收敛 failed 有痕（history operator=`bundle-converge`）+ 冷却文件出现；
-      **index 响应本身仍 `code:0`**（收敛失败吞咽，不阻断消费端）
-- [ ] 信任播种 + 清冷却后：index list 出现 `oj-market installed=0.2.0 enabled=true trust_state=trusted`；
+- [ ] 信任空窗期：收敛停在 needs_trust（任务落盘、stage=verifying）、index 响应仍 `code:0`
+      （不吞咽消费端）；**needs_trust 无冷却文件**（冷却仅 failed 硬失败写，二者别混判）
+- [ ] 信任播种后：index list 出现 `oj-market installed=0.2.0 enabled=true trust_state=trusted`；
       安装任务 11 段全 ok（`modules/.install-tasks/install-*.json` 的 stages 全 `ok`，终态 `done`）
 - [ ] **api 锁零变更**：`grep "oj-market: 0.2.0" dist/api/manifests.yaml` 恒 0 条（web-only 包不写
       api 锁——锁是 oj 装配真源，写锁会让 oj 拿 C2 清单装配 reload 400，且双轨同名遮蔽内建编排模块）；
@@ -778,7 +789,63 @@ ls dist/api/ | grep -c "oj-market-0.1.0$"   # 内建编排模块目录存活（1
 - 升级路径（bundle > installed → upgrade）与收敛失败冷却自愈由 `bundle-converge.spec` 数据表
   （10 用例）+ 市场线 §7.4 walkthrough（api 包升级）覆盖；第一方包升级演练需真发 0.3.0 包，发布期做。
 - web-only 方案的市场内**回滚**不可用（锁零变更设计使然）——符合双轨裁决：降级唯一入口 = 站点回滚。
-- 冷却窗内（10 分钟）收敛失败不重试；演练加速手段 = 删 `modules/.install-tasks/.bundle-converge-cooldown.json`。
+- 冷却窗内（10 分钟）收敛失败不重试；演练加速手段 = 删 `modules/.install-tasks/.bundle-converge-cooldown.json`
+  （信任空窗 needs_trust 无冷却，推公钥后直接重触发即可）。
+
+## 7.7 从市场安装解决方案（作者侧发布 → 目录 → 按名安装闭环；0.2.71+ 实证）
+
+> 覆盖「方案进市场目录 + 运维按名从市场拉装」整条业务闭环——§7.6 只装市场本身，本节装**第三方/用户方案**。
+> 复用 §7.6 B 收敛装好市场的站点（编排面、信任库、冷却语义全部在位）。2026-11-07 第二轮全绿。
+
+前置：§7.6 站点（市场已装、发布方 key 已在信任库）+ 发布身份（§7.2；本机自签旁路 key 亦可，
+但须先把它的公钥推进站点信任库，否则 publish 403）。**起站基座钉 `/api`**：
+
+```bash
+./bin/oj serve --api-path dist/api -b /api --daemon
+# 判据：POST /api/auth/login 返回 JSON（401/400 都是 API 应答）；若返回 HTML doctype 或
+# 「web mounts serve GET/HEAD only」405 = 基座错了（§9 表首行新坑）
+```
+
+### A. 作者侧：造方案 → 签名 → 发布进目录
+
+```bash
+ojm new books --api                      # 骨架：src/books/{solution.yaml, api/, web/}
+ojm build && ojm build --bundle books    # dist/books-0.1.0.tgz（sha256 确定性）
+ojm sign dist/books-0.1.0.tgz --id <kid> --key <pem> --registry-id <reg> --check
+ojm market publish --site-url http://127.0.0.1:9778 --real . \
+  --id <kid> --key <pem> --registry-id <reg>
+# 期望末行「发布完成：books@0.1.0 已进 … 市场目录（DB 目录行 + cdn/ 字节）」
+```
+
+- [ ] `GET /api/oj-market/catalog`（匿名可达）列出 books：`latest=0.1.0`、`publisher=<kid>`、
+      `versions_count=1`；`cdn/` 下 `books-0.1.0.tgz(+.sig)` 与 bundles.json 并存
+- [ ] publish 幂等：同字节重跑不 409（目录行唯一约束按 product+version）
+
+### B. 运维侧：按名从市场安装（cdn 源）→ 两段式终态
+
+```bash
+ojm install books --site-url http://127.0.0.1:9778 --user superadmin --pass <口令>
+# 首跑预期 partial（stage=reloading，restart_pending 段列出待重启模块）——oj 0.1.122+ 正常语义：
+./bin/oj serve --api-path dist/api -b /api --daemon   # 重启宿主
+ojm install books --site-url ... --user superadmin --pass <口令>   # retry 同一条
+# 期望「安装完成：books 0.1.0」
+```
+
+- [ ] 两段式：首跑 reloading partial（非失败）→ 重启 → retry → done；任务文件终态 `done`、stages 全 ok
+- [ ] **四重落点**：`dist/api/manifests.yaml` 出现 `books: 0.1.0`；`dist/api/books-0.1.0/` 版本目录在；
+      `curl -H "Authorization: Bearer $TK" -H 'X-TENANT-ID: default' /api/books/ping` →
+      `{"code":0,...,"data":{"pong":true,"module":"books"}}`；市场 index 视图 books `enabled: true`
+- [ ] 市场自身未受影响：`GET /api/oj-market/index` 仍 200、oj-market 仍 `enabled: true`
+      （装第三方方案不碰第一方市场轨）
+
+### C. 已知边界（本节演练裁决）
+
+- `--api-path` 缺省基座 `/v1/api` 与框架 `/api` 约定不符（web 应用请求 prefixUrl、
+  `ojm market/install/trust` 瘦客户端、消费面全部按 `/api` 寻址）——module-root release 起站必须
+  `-b /api`；config 里手写 `- prefix: "/api" api: dist/api` 挂载与 `--api-path` 同给会报
+  「module 重复声明」，二选一（选 `-b /api`，勿写挂载）。属 oj 侧默认基座与框架约定错位，已列 §11 候选。
+- 本节点未覆盖：升级（发 0.2.0 包收敛/按名装）与 yank 后在架性——由 §7.4 walkthrough 的
+  upgrade/rollback/yank 项与 §7.6 C 降级守护覆盖。
 
 ## 8. 一次通过判据（汇总清单）
 
@@ -805,14 +872,19 @@ ls dist/api/ | grep -c "oj-market-0.1.0$"   # 内建编排模块目录存活（1
         坏契约两段式零增量、零方案报错指路 `ojm new`；重复打包 sha256 一致
   - [ ] （§7.6，0.2.71+ Phase B）出厂未装态（modules.json 无 oj-market、编排端点 200）；init --yes
         bundle 落位三件套（tgz + .sig + bundles.json）；收敛首装 11 段 done + **api 锁零变更**；
-        信任空窗期 failed 有痕 + 冷却；页面/编排双活；幂等零任务；降级守护不降级；
-        卸载后内建编排面完好（目录 + 锁条目 + 端点 200）+ 墓碑零重装；
+        信任空窗期 needs_trust 任务落盘（无冷却）/硬失败 failed+冷却；页面/编排双活；幂等零任务；
+        降级守护不降级；卸载后内建编排面完好（目录 + 锁条目 + 端点 200）+ 墓碑零重装；
         模板 config 双授权（exec grant 同集合 + platform.modules 含 oj-market）
+  - [ ] （§7.7，0.2.71+ 闭环）起站 `-b /api` 基座正确（login 返回 JSON）；catalog 匿名列出方案
+        （latest/publisher/versions_count）；`market publish --real` 目录行 + cdn 字节就位；
+        按名安装两段式（reloading partial → 重启 → retry done）；四重落点（锁/版本目录/ping
+        `pong:true`/index 视图 enabled）；市场自身不受装方案影响
 
 ## 9. 已知坑与处置
 
 | 现象 | 根因 | 处置 |
 | --- | --- | --- |
+| release 起站后 CLI 推送/登录全打穿到 SPA（`Unexpected token '<'…`、POST 405「web mounts serve GET/HEAD only」、探活 200 但返回 index.html） | oj 0.1.124 `oj serve --api-path` 缺省把 API 绑在 `/v1/api`，而框架一律按 `/api` 寻址（U4） | 起站加 `-b /api`：`oj serve --api-path dist/api -b /api`；判据 = `POST /api/auth/login` 返回 JSON。config 手写 `- prefix: "/api" api: dist/api` 挂载与 `--api-path` 同给会报「module `_platform` declared in multiple places」——二选一，选 `-b /api` 勿写挂载 |
 | `oj serve` 启动报 `config uses removed server.* site keys (v0.1.58): api_prefix` | oj v0.1.58 起删除 `server.api_prefix`/`app_spa_fallback`/`app_path`/`app_prefix`/`static_sites`，改顶层 `mounts:`（出现旧键即 fail-fast，并输出迁移 YAML） | `api/config.yaml` 用 `mounts:`（ojm init 自本轮起已生成）；老工程把 `server.api_prefix: /api` 改为 `mounts: [{prefix: "/api", api: "src"}]`（devkit `api-manual.md` §10）；ojm dev/preview 的 SPA 深链回落由 ojm 自建静态层负责，无需旧 `app_spa_fallback` |
 | `Failed to initialize a JsRuntime: No such file or directory` | ≤ v0.1.11 的 release oj 二进制烤了构建机路径（v0.1.12 已修复） | 用 ≥ v0.1.12 的 release（`ojm vendor`）；旧版用自建 oj 覆盖 `bin/oj`（§3） |
 | `ojm init` / `ojm vendor` 末尾出现「oj 二进制自检失败」告警 | release 二进制缺陷，cli ≥ 0.1.4 的安装后冒烟主动暴露 | 同上；v0.1.12 起不应再出现。告警不阻断，`ojm init` 仍已产出工程 |
@@ -948,6 +1020,7 @@ node "$CLI_PKG/bin/ojm.mjs" build && npx tsc --noEmit -p tsconfig.json && node "
 | U1 | **seed 按 db 方言选择文件**：方言件 `seed.<dialect>.sql` 存在即胜出，通用 `seed.sql` 只兜底（✅ 已修复 oj `0.1.121`，2026-11-05，`oj-bin` 提交 `7d70b90`） | 修复前：oj 0.1.120 只读 `seed.sql`（`seed.rs:17` 是常量），不认 `seed.mysql.sql` / `seed.pg.sql`；`seed.sql` 移走后**静默跳过 seed 且无告警**，模板只能让方言 seed 走「部署期手工覆盖」约定（2026-11-05 已两次踩中，其中一次是根级坏副本只含 4 条设置且裸写 `key`）。修复后：`seed.<sqlite\|mysql\|pg>.sql` 存在即胜出、`seed.sql` 兜底、绝不双跑；只有别的方言件 → warn 点名，标签拼错（`seed.postgres.sql` / `Seed.Sql`）→ warn + 忽略 | 起服日志打 `file=` / `dialect=`；单测 8 条 + S006 3 条；`oj check` 的 S003/S006 覆盖全部变体且幂等判据按文件方言。**真库已验**（2026-11-05）：同一模块三份 seed，mysql 起服只落 `seed.mysql.sql` 的行、pg 只落 `seed.pg.sql` 的行，通用件零执行。`ojm` 的 `MIN_OJ_VERSION` 已同步抬到 0.1.121。**提案见 [`docs/migration/oj-requirement-seed-dialect.md`](../migration/oj-requirement-seed-dialect.md)（2026-11-05）** |
 | U2 | **mysql `returning(["id"])` 两步取 id 钉同一连接**（✅ 已修复 oj `0.1.120`，2026-11-05） | 修复前：构造器 `.returning(["id"])` 在 mysql 上渲染为 `INSERT` + `SELECT LAST_INSERT_ID()` 两条独立 SQL，第二步在**连接池**上执行，可能落到别的连接 → 取到别人的 id（实测建号返回 59、真实 id 5；广播返回 `b:58`、真实 `b:1`）。修复后（`oj-bin` `2550bd5`）：`Exec::Owned` 短事务把两条语句钉在同一连接，取 id / commit 失败整条回滚；核心 `SqlxAccessor` 与 FFI 插件一处修两边 | 两条 SQL 在同一连接内执行；回归用例 `query_tests.rs` 三条（钉同连接 / 取 id 失败回滚 / insert 失败回滚）——移除修复必红 |
 | U3 | **构造器支持 `INSERT OR IGNORE ... SELECT`**（或给 `orIgnore` + `fromSelect` 补 sqlite 实现） | oj 0.1.81 起 sqlite 上 `orIgnore` 的 upsert 子句只跟随 VALUES，`fromSelect` 直接报 `orIgnore with fromSelect is not supported on sqlite`；模板「通知全部已读」只能退回裸 `db.exec` 三方言拼 SQL（§9 对应行） | `db.table(...).fromSelect(...).orIgnore()` 在 sqlite 可执行；或提供方言无关的 ignore-insert 表达式 |
+| U4 | **`oj serve --api-path` 缺省 API 基座与框架 `/api` 约定对齐**（2026-11-07 §7.7 实锤） | oj 0.1.124 `--api-path` 缺省绑 `/v1/api`（`server.base` 旧键 v0.1.58 已删，config 改不了）；而框架侧全部按 `/api` 寻址（web 应用请求 prefixUrl、`ojm market publish/install/trust` 瘦客户端、消费面）——module-root release 直起后，CLI 推送打穿到 SPA 兜底（返回 HTML doctype，报「Unexpected token '<'」），登录 POST 405「web mounts serve GET/HEAD only」。唯一正解 = 起站加 `-b /api`；config 手写 api 挂载与 `--api-path` 同给又报「module 重复声明」 | 两选一：① oj 缺省基座改 `/api`（或与 config `mounts` 的 api 前缀一致）；② `--api-path` 与 api 挂载同给时去重而非 fail。验收：module-root 工程 `oj serve --api-path dist/api` 直起后 `POST /api/auth/login` 得 JSON 应答 |
 
 ---
 
@@ -955,6 +1028,19 @@ node "$CLI_PKG/bin/ojm.mjs" build && npx tsc --noEmit -p tsconfig.json && node "
 
 > 基线的价值是「某版本当时到底验了什么、踩了什么」，属于事实档案，不参与日常执行；
 > 新基线追加在本节最前面，最近一次的结果同时摘到文首「上次演练结论」。
+
+### 市场闭环基线（2026-11-07 第二轮，oj 0.1.124 / cli+runtime 0.2.71 **打包态**；新增 §7.7 的首轮实跑）
+
+| 项 | 值 |
+| --- | --- |
+| 日期 | 2026-11-07（feat/ojm @ f7fe8951e；发布形态 pack 直出，非工作区 bin——六连修后的模板首跑即打包态） |
+| 框架包版本 | 打包态（`pnpm pack` cli 0.2.71，prepack sync-bundles 收编已签名 oj-market-0.2.0；runtime 复用同日 tgz）；**六连修的真机首验**：首轮 §7.6 是手工 patch 的 cli 包，本轮 templates 与包内逐字节一致（diff 5 文件零漂移） |
+| oj | 0.1.124（init vendor 进 `bin/oj`） |
+| 范围 | §7.6 B 复跑（drill-site 全新 init --yes → bundle 三件套落位 → 信任空窗收敛 needs_trust 任务落盘 → 推 platform.release 公钥 → 收敛 done、锁零变更、内建 0.1.0/方案 0.2.0 双轨目录并存）+ **§7.7 新闭环**（`ojm new books --api` → build/--bundle/sign（drill.publisher）→ `market publish --real` 进目录 → `ojm install books` 按名 cdn 源装 → reloading partial → 重启 → retry done → 四重落点） |
+| 结果 | **通过**。① 收敛：needs_trust（verifying 预锁即停）→ trust added → 再触发 index `installed=0.2.0 enabled=true`；任务终态 done；`manifests.yaml` 无 `oj-market: 0.2.0`（锁零变更），内建 `oj-market: 0.1.0` 保留。② 闭环：catalog 匿名 `books latest=0.1.0 publisher=drill.publisher`；publish 末行「目录行 + cdn/ 字节」；install 首跑 partial（restart_pending）→ 重启 → retry「安装完成：books 0.1.0」；锁 `books: 0.1.0`、版本目录在、`/api/books/ping` `pong:true`、index 视图双方案 enabled；市场自身 index 仍 200 |
+| 本次发现并处置 | **拓扑坑（未修，已列 §11 U4）**：module-root `oj serve --api-path dist/api` 缺省基座 `/v1/api` ≠ 框架 `/api`——`market publish` 推送到 `<site>/api/oj-market/cdn/upload` 打穿 SPA 兜底（`Unexpected token '<'`）、登录 POST 405；正解 = `-b /api` 起站。config 手写 api 挂载 + `--api-path` 同给报「module `_platform` declared in multiple places」（fail-fast）。另修正 §7.6 B 信任空窗口径：needs_trust 第五终态**不写冷却文件**（冷却仅 failed 硬失败写）——六连修期首跑全是 NotCapable 硬失败故有冷却，两口径并存已分写 |
+| 手册同步 | 新增 **§7.7**（A 作者侧发布 / B 按名安装两段式 / C 边界）；§先选一条线表加市场闭环行；§7.6 B 补 `-b /api` 起站命令 + 信任空窗 needs_trust 无冷却口径修正；§8 汇总补 §7.7 判据；§9 表首行补基座坑；§11 增 U4；文首结论换本轮 |
+| 遗留 | ① 升级闭环（books 0.2.0 发包 → 收敛/按名装 upgrade）仍待验——本轮只验首装。② U4 待上游裁决，本仓文档层已双写正解。③ drill-site 起站形态 = `-b /api`（非 init 直出），init 直出 config 的完整 release 起站脚本待沉淀进 §7.6/§7.7 前置 |
 
 ### 市场线 Phase B 增量基线（2026-11-07，oj 0.1.124 / cli+runtime 工作区 0.2.71；新增 §7.6 的首轮实跑）
 
