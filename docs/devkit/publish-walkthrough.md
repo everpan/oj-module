@@ -245,6 +245,10 @@ ojm build
 #       组合会让静态文件全 404（SPA 回落正常，极具迷惑性）。
 #    两形态共同红线：platform.root 与 api 供给不同源，oj serve 直接拒启
 #    （platform.root (...) must be mounted as an api mount）。
+#    注意 platform.root 是 dev/release 开关：改成 dist/api 后 `pnpm dev` 会同样拒启——
+#    dev 从 src 树供给 api；要开发就切回 src，要 release 起站就保持 dist/api（两形态互斥，
+#    同一份 config 不能同时喂 dev 和 release）。且 dev/例行 build 的模块重建都会冲掉
+#    已装方案的 web 登记（见 §7 速查「例行 build 后菜单消失」行）。
 #    另配 vars.canonical_origin（本地演练填 http://127.0.0.1:9778）：市场基址 /cdn 是相对路径，
 #    服务端要靠它补全成绝对 URL；缺了 cdn 源安装直接 503（不读 Host 头，不会替你猜）。
 #    file 直传安装不读 canonical_origin——只有按名从市场目录拉才需要。
@@ -304,7 +308,8 @@ TOFU 没有免检通道：**只有模板内置的 oj-market（第一方包）用
 | 装完 `curl /api/<name>/ping` 返回 400 `missing tenant header` | 少了 `X-TENANT-ID` 头 | 加 `-H 'X-TENANT-ID: default'` 再探 |
 | 安装/收敛卡在 reloading 段 `NotCapable`（市场编排端点） | 站点 config 缺市场编排模块授权：`platform.exec` 没有该模块的白名单条目，或 `platform.modules` 列表缺它（安装器热更 config / 写信任库需要这份特权） | 给市场编排模块配与 `_platform` 逐字相同的 exec 白名单并加入 `platform.modules`（新工程模板自带；**旧工程升级脚手架不会自动补**，需手工改 config 后重启宿主） |
 | `-b /api` 起站后 API 正常但静态文件全 404（`/modules/<name>/<ver>/entry.js` 返回 API 信封 `no route matched`；SPA 回落却正常） | web 挂载用了**相对路径**：`-b` 基座覆盖与相对路径组合时静态层解析落空（极具迷惑性） | web 挂载写绝对路径（`web: /abs/path/dist/web`）；或改用 config 挂载形态起站（§6 ① 形态 A，零 CLI 旗标、无此坑） |
-| 例行 `pnpm build`（`ojm build`）后，已装方案的市场菜单/页面全消失（`dist/web/modules.json` 只剩 app） | 构建重生成 `dist/web/` 时只收录**源码树模块**，安装器登记的方案 web 面被整体冲掉；安装态本身完好（方案状态/锁/api 版本目录都在） | 愈合两步：① `POST /api/oj-market/backfill` 扫 `cdn/` 补市场目录行（从市场目录装的方案需要）；② 逐方案 `ojm install <name>[@version]` 重装同名同版本——web-only 包 api 锁零变更，重装只补 web 面 |
+| `pnpm dev` 启动即退：`platform.root (...) must be mounted as an api mount` | config 处于 release 形态（platform.root 改成了 dist/api，见 §6 ①）——dev 从 src 树供给 api，与 release 互斥 | 要开发：platform.root 切回 `src` 再 `pnpm dev`；要 release 起站：保持 dist/api 用 §6 ① 的 serve 命令（别用 pnpm dev） |
+| 例行 `pnpm build`（`ojm build`）/跑过 `pnpm dev` 后，已装方案的市场菜单/页面全消失（`dist/web/modules.json` 只剩 app） | 两者都会重生成 `dist/web/` 且只收录**源码树模块**，安装器登记的方案 web 面被整体冲掉；安装态本身完好（方案状态/锁/api 版本目录都在） | 愈合两步：① `POST /api/oj-market/backfill` 扫 `cdn/` 补市场目录行（从市场目录装的方案需要）；② 逐方案 `ojm install <name>[@version]` 重装同名同版本——web-only 包 api 锁零变更，重装只补 web 面 |
 | 随站 bundle 反复装不上（打开「方案安装」没反应；审计表有收敛失败行） | 信任空窗（bootstrap key 未回填且信任库无发布 key），或刚失败过仍在收敛冷却期 | 先推发布公钥进信任库，再删冷却文件 `modules/.install-tasks/.bundle-converge-cooldown.json` 立即重试（冷却默认 10 分钟，自愈等待亦可） |
 | `sig_alg` / `sig_format` | 签名算法/.sig 结构不符 | 用当前 ojm 重签（旧版本工具产物） |
 | `needs_trust`（第五终态，非成功） | 站点第一次见这个 key | 与发布方逐字核对指纹 → `trust confirm --task <id>` → 重跑 install |
