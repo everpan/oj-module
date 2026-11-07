@@ -137,6 +137,8 @@ describe("mergeInstalledModules", () => {
 		expect(inst.entry).toBe("modules/oj-market/0.2.0/entry.js");
 		expect(inst.css).toEqual(["modules/oj-market/0.2.0/main.css", "modules/oj-market/0.2.0/theme.css"]);
 		expect(warnings.join("\n")).toContain("最小条目"); // 降级有痕
+		// 重建结果落回旁车：下次重建静默（告警只出现一次）
+		expect(fs.existsSync(join(dist, "modules", "oj-market", "0.2.0", ".ojm-module.json"))).toBe(true);
 	});
 
 	it("无 state.yaml：原样返回（纯源码工程零动作）", () => {

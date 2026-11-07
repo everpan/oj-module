@@ -79,7 +79,7 @@ function reconstructMinimalEntry(faceDir: string, name: string, version: string)
 		.sort()
 		.map(f => `modules/${name}/${version}/${f}`);
 	console.warn(`[ojm] ⚠️ 已装方案「${name}@${version}」缺条目旁车 .ojm-module.json，重建最小条目并入（extras/integrity 失，重装可恢复完整形状）`);
-	return {
+	const minimal: Record<string, unknown> = {
 		name,
 		entry: `modules/${name}/${version}/entry.js`,
 		enabled: true,
@@ -87,6 +87,14 @@ function reconstructMinimalEntry(faceDir: string, name: string, version: string)
 		chunks: [],
 		...(css.length > 0 ? { css } : {}),
 	};
+	// 重建结果落回旁车：dist/web 是擦除重建产物，不写则每次 release build 重复告警
+	try {
+		fs.writeFileSync(path.join(faceDir, ".ojm-module.json"), `${JSON.stringify(minimal, null, 2)}\n`);
+	}
+	catch {
+		// 写不进（只读挂载等）不阻断——下次重建重走本降级，告警有痕
+	}
+	return minimal;
 }
 
 /**
