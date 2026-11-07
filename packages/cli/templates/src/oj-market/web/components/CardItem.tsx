@@ -22,6 +22,7 @@ export interface CardItemProps {
  * 详情就能判断方案提供什么；索引未声明这两项就不占位（与 license 同口径）。
  * 双版本展示（P1-15b）：已装且可升级时并列「已装 installed → 最新 latest」（upgradable 对比），
  * 否则单版本。已装方案提供回滚入口（RollbackDialog 选旧版降级安装）。
+ * 详情入口：点击卡片正文整块打开详情抽屉（详情按钮已移除，动作区只留写操作 + 历史）。
  */
 export function CardItem({ row, busy, canManage = true, onInstall, onEnableToggle, onDetails, onHistory, onUninstall, onRollback }: CardItemProps) {
 	const { t } = useTranslation();
@@ -52,92 +53,101 @@ export function CardItem({ row, busy, canManage = true, onInstall, onEnableToggl
 				</Space>
 			)}
 		>
-			{/* 方案「提供什么」：summary 单行、description 限 3 行；title 与详情抽屉给全文 */}
-			{typeof row.summary === "string" && row.summary.trim() !== "" && (
-				<div
-					data-testid={`card-summary-${row.name}`}
-					title={row.summary}
-					style={{ marginBottom: 8, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-				>
-					{row.summary}
-				</div>
-			)}
-			{typeof row.description === "string" && row.description.trim() !== "" && (
-				<div
-					data-testid={`card-description-${row.name}`}
-					title={row.description}
-					style={{
-						marginBottom: 12,
-						color: "var(--oo-text-secondary, #888)",
-						fontSize: 12,
-						lineHeight: 1.6,
-						display: "-webkit-box",
-						WebkitLineClamp: 3,
-						WebkitBoxOrient: "vertical",
-						overflow: "hidden",
-						whiteSpace: "pre-wrap",
-					}}
-				>
-					{row.description}
-				</div>
-			)}
-			<div style={{ minHeight: 40, color: "var(--oo-text-secondary, #888)", marginBottom: 12 }} data-testid={`card-versions-${row.name}`}>
-				{dualVersion
-					? (
-						<span>
-							{t("oj-market:card:installed")}
-							{" "}
-							{row.installed}
-							{" "}
-							→
-							{" "}
-							{t("oj-market:card:latest")}
-							{" "}
-							{row.latest}
-						</span>
-					)
-					: installed
+			{/* 卡片正文：点击整块打开详情抽屉（详情按钮已移除）。动作区是兄弟节点，点按钮不会冒泡到此处 */}
+			<div
+				data-testid={`card-body-${row.name}`}
+				onClick={() => onDetails(row)}
+				title={t("oj-market:card:details")}
+				style={{ flex: 1, cursor: "pointer" }}
+			>
+				{/* 方案「提供什么」：summary 单行、description 限 3 行；title 与详情抽屉给全文 */}
+				{typeof row.summary === "string" && row.summary.trim() !== "" && (
+					<div
+						data-testid={`card-summary-${row.name}`}
+						title={row.summary}
+						style={{ marginBottom: 8, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+					>
+						{row.summary}
+					</div>
+				)}
+				{typeof row.description === "string" && row.description.trim() !== "" && (
+					<div
+						data-testid={`card-description-${row.name}`}
+						title={row.description}
+						style={{
+							marginBottom: 12,
+							color: "var(--oo-text-secondary, #888)",
+							fontSize: 12,
+							lineHeight: 1.6,
+							display: "-webkit-box",
+							WebkitLineClamp: 3,
+							WebkitBoxOrient: "vertical",
+							overflow: "hidden",
+							whiteSpace: "pre-wrap",
+						}}
+					>
+						{row.description}
+					</div>
+				)}
+				<div style={{ minHeight: 40, color: "var(--oo-text-secondary, #888)", marginBottom: 12 }} data-testid={`card-versions-${row.name}`}>
+					{dualVersion
 						? (
 							<span>
-								{t("oj-market:card:version")}
-								:
+								{t("oj-market:card:installed")}
+								{" "}
 								{row.installed}
+								{" "}
+								→
+								{" "}
+								{t("oj-market:card:latest")}
+								{" "}
+								{row.latest}
 							</span>
 						)
-						: (
-							<span>
-								{t("oj-market:card:version")}
-								:
-								{row.latest ?? "-"}
-							</span>
-						)}
-			</div>
-			{/* 许可（P-2）：索引未声明就不占位，避免满屏「未知」 */}
-			{typeof row.license === "string" && row.license !== "" && (
-				<div style={{ marginBottom: 12 }} data-testid={`card-license-${row.name}`}>
-					<Tag color="blue">
-						{t("oj-market:card:license")}
+						: installed
+							? (
+								<span>
+									{t("oj-market:card:version")}
+									:
+									{row.installed}
+								</span>
+							)
+							: (
+								<span>
+									{t("oj-market:card:version")}
+									:
+									{row.latest ?? "-"}
+								</span>
+							)}
+				</div>
+				{/* 许可（P-2）：索引未声明就不占位，避免满屏「未知」 */}
+				{typeof row.license === "string" && row.license !== "" && (
+					<div style={{ marginBottom: 12 }} data-testid={`card-license-${row.name}`}>
+						<Tag color="blue">
+							{t("oj-market:card:license")}
+							:
+							{row.license}
+						</Tag>
+					</div>
+				)}
+				{/* 发布者：展示签出的 key_id（离线可验的发布身份）；无签名就不占位 */}
+				{typeof row.publisher_key === "string" && row.publisher_key.trim() !== "" && (
+					<div
+						data-testid={`card-publisher-${row.name}`}
+						title={row.publisher_key}
+						style={{ marginBottom: 12, color: "var(--oo-text-secondary, #888)", fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+					>
+						{t("oj-market:card:publisher")}
 						:
-						{row.license}
-					</Tag>
-				</div>
-			)}
-			{/* 发布者：展示签出的 key_id（离线可验的发布身份）；无签名就不占位 */}
-			{typeof row.publisher_key === "string" && row.publisher_key.trim() !== "" && (
-				<div
-					data-testid={`card-publisher-${row.name}`}
-					title={row.publisher_key}
-					style={{ marginBottom: 12, color: "var(--oo-text-secondary, #888)", fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-				>
-					{t("oj-market:card:publisher")}
-					:
-					{row.publisher_key}
-				</div>
-			)}
-			{/* 动作区：不换行（需求钉死），窄卡横向滚动兜底；整行钉卡片底部，网格同行底边对齐 */}
+						{row.publisher_key}
+					</div>
+				)}
+			</div>
+			{/* 动作区：不换行（需求钉死）。卡片宽度恢复 340px，详情按钮移除后 5 枚 small 按钮
+			    常态一行，故不设 overflowX——避免横向滚动条；整行钉卡片底部，网格同行底边对齐 */}
 			<div
 				data-testid={`card-actions-${row.name}`}
-				style={{ display: "flex", flexWrap: "nowrap", gap: 8, marginTop: "auto", paddingTop: 4, overflowX: "auto" }}
+				style={{ display: "flex", flexWrap: "nowrap", gap: 8, marginTop: "auto", paddingTop: 4 }}
 			>
 				<Button
 					style={{ flexShrink: 0 }}
@@ -165,9 +175,6 @@ export function CardItem({ row, busy, canManage = true, onInstall, onEnableToggl
 						{t("oj-market:card:uninstall")}
 					</Button>
 				)}
-				<Button style={{ flexShrink: 0 }} size="small" onClick={() => onDetails(row)}>
-					{t("oj-market:card:details")}
-				</Button>
 				<Button style={{ flexShrink: 0 }} size="small" onClick={() => onHistory(row)}>
 					{t("oj-market:card:history")}
 				</Button>

@@ -58,6 +58,8 @@ export function CardGrid(props: CardGridProps) {
 	return (
 		<div
 			data-testid="card-grid"
+			// 恢复 340px 列宽：详情按钮移除后动作区只剩 5 枚 small 按钮，常态一行放得下，
+			// 无需加宽卡片、也无需横向滚动兜底（需求：不应出现滚动条）。
 			style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))", gap: 16 }}
 		>
 			{rows.map(row => (

@@ -1,8 +1,10 @@
 import type { BundledEntry } from "#/_platform/_lifecycle/bundle-converge";
 // 编排端点 + 市场目录（P1-12，R9/ISP；v4 §四：市场域 api 自 _platform 迁入本模块）：/api/oj-market/*
 // 端点族同文件嵌套 handler 组（oj v0.1.64 组形态，notification/api.ts 同款；组名 = 路径段）。
-// 门（R9）：install/task/index 全 assertSuperAdmin 独占（市场页是「市场即样例」的第一方特权
-// 例外，R29；权限码不构成门）；meta 登录即可（peerPlatform 预检先于判权）。
+// 门（R9）：写面编排（install/task/enable/uninstall/trust/backfill 等）assertSuperAdmin 独占
+// （市场页是「市场即样例」的第一方特权例外，R29；权限码不构成门——admin 超集链恒通过）。
+// 读面（index/history/releases/catalog）登录即可：产品口径「admin 能看到入口与卡片，安装/
+// 回滚/卸载等敏感操作需 superadmin」（PRODUCT.md §4.1）；meta 登录即可（peerPlatform 预检先于判权）。
 // 职责边界（ISP）：端点只做 门禁 + 目录解析（安装器不拼 URL，installer.ts 同纪律）+
 // InstallRequest 组装；任务生命周期/失败三分/终态审计全归 runInstall 状态机（P1-10），端点不重复编排。
 // 目录真源 = market_release 表（DB 目录化 v4；签名索引机制整建制退役）——install 解析/index
@@ -30,7 +32,7 @@ import { getTask, readTasks } from "#/_platform/_lifecycle/tasks";
 import { createTrustStore } from "#/_platform/_lifecycle/trust";
 import { computeUninstallImpact, runUninstall } from "#/_platform/_lifecycle/uninstall";
 import { respond } from "#/_platform/_shared/respond";
-import { assertSuperAdmin } from "#/_platform/_shared/service/infra/access";
+import { assertSuperAdmin, currentAccess } from "#/_platform/_shared/service/infra/access";
 import { pageArgs } from "#/_platform/_shared/service/infra/query";
 import { journalHeadOf, readCanonicalOrigin, readSiteVar, siteOrigin, withSiteOrigin } from "#/_platform/_shared/site-facade";
 import { backfillReleases } from "./backfill";
@@ -1069,11 +1071,15 @@ export function createMarketApi(env: MarketEnv) {
 				},
 			},
 		},
-		// GET /api/oj-market/index —— 市场索引聚合（superadmin，R9）
+		// GET /api/oj-market/index —— 市场索引聚合（登录即可读；写面仍 superadmin，R9）。
+		// 用 currentAccess 而非裸放行：保留租户自洽（exists）、禁用（forbidden）、改密悬挂
+		// （must_change）三道检查，只去掉 superadmin 角色要求——产品口径「其余用户仅可浏览」。
+		// 注意 indexBody riding 随站 bundle 收敛与对账（幂等、fail-closed、以服务端系统身份
+		// 执行，不依赖请求者角色），任何登录用户打开市场页都会触发一次，属预期（2026-11-07 读面降级）。
 		"index": {
 			async get() {
 				await respond(async () => {
-					await assertSuperAdmin();
+					await currentAccess();
 					return await indexBody(env, (http.query ?? {}) as Record<string, unknown>);
 				});
 			},

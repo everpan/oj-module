@@ -19,7 +19,7 @@ export default function MarketApp() {
 	const [page, setPage] = useState(1);
 	const [pageSize, setPageSize] = useState(20);
 	const index = useMarketIndex(page, pageSize);
-	// 管理权限 = superadmin（与后端 assertSuperAdmin 口径一致）。仅屏蔽写操作，浏览（详情/历史）对所有登录用户开放。
+	// 管理权限 = superadmin（与后端写面 assertSuperAdmin 口径一致）。仅屏蔽写操作，浏览（卡片/详情/历史）对所有登录用户开放。
 	const roles = useUserStore(s => s.roles);
 	const canManage = roles.includes("superadmin");
 

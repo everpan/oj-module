@@ -19,7 +19,7 @@ import type {
 export interface MarketClient {
 	/** 登录即可：{ apiVersion }（peerPlatform 预检口径） */
 	meta: () => Promise<{ apiVersion: string }>
-	/** 卡片数据源（superadmin；v4 §四 DB 目录分页，行字段不变） */
+	/** 卡片数据源（登录即可读；写面仍 superadmin，R9。v4 §四 DB 目录分页，行字段不变） */
 	index: (input?: { page?: number, size?: number }) => Promise<IndexPage>
 	/** 触发安装，返回轮询用 task_id */
 	install: (input: InstallInput) => Promise<{ task_id: string }>

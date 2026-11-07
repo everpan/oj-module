@@ -744,6 +744,8 @@ grep -A1 "oj-market:" modules/.solutions/state.yaml   # 出厂收敛后已装行
       返回 `code:0`，list 见 `oj-market installed=0.2.0 enabled=true trust_state=trusted`
       （`ojm dev`/`ojm preview` 就绪即自动收敛；纯 oj serve 形态由首请求 riding 收敛，
       收敛完成前 list 无该条目属预期）
+- [ ] **读面降级（R9 修订，2026-11-07）**：非 superadmin（如 `admin`）token 打同一 `index` 亦返回
+      `code:0`；`GET /api/oj-market/task?id=__none__` 对非 superadmin 仍 403（写面 superadmin 独占不变）
 
 ### B. 收敛路径验证（release 形态起站：§7.3 前置同——`platform.root: dist/api` + `vars.canonical_origin`；页面探活另需解开 config 的 `"/"` web 挂载三行，`spa: true`）
 

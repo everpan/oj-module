@@ -119,7 +119,7 @@ describe("cardGrid 卡片网格（BDD）", () => {
 		expect(handlers.onRollback).toHaveBeenCalledWith(installed);
 	});
 
-	it("given canManage=false（非 superadmin）When 渲染 Then 安装/启停/回滚/卸载按钮禁用、详情/历史保持可用", () => {
+	it("given canManage=false（非 superadmin）When 渲染 Then 安装/启停/回滚/卸载按钮禁用、历史与正文详情保持可用", () => {
 		renderWithProviders(
 			<CardGrid rows={[installed]} canManage={false} {...handlers} />,
 			new InMemoryMarketClient(),
@@ -130,9 +130,9 @@ describe("cardGrid 卡片网格（BDD）", () => {
 		expect(btn("停用").disabled).toBe(true);
 		expect(btn("卸载").disabled).toBe(true);
 		expect((screen.getByTestId("card-rollback-alpha") as HTMLButtonElement).disabled).toBe(true);
-		// 只读操作不受影响
-		expect(btn("详情").disabled).toBe(false);
+		// 只读操作不受影响：历史按钮可用，详情由点击卡片正文触发
 		expect(btn("历史").disabled).toBe(false);
+		expect(screen.getByTestId("card-body-alpha")).toBeTruthy();
 		// 禁用时不应触发写回调
 		btn("卸载").click();
 		expect(handlers.onUninstall).not.toHaveBeenCalled();
@@ -156,12 +156,39 @@ describe("cardGrid 卡片网格（BDD）", () => {
 		expect(btn.disabled).toBe(false);
 	});
 
-	it("given 任意卡片 When 渲染 Then 动作区不换行（nowrap）且按钮不收缩（钉死需求）", () => {
+	it("given 任意卡片 When 渲染 Then 动作区不换行、按钮不收缩、无横向滚动条（钉死需求）", () => {
 		renderWithProviders(<CardGrid rows={[installed]} {...handlers} />, new InMemoryMarketClient());
 		const actions = screen.getByTestId("card-actions-alpha") as HTMLDivElement;
 		expect(actions.style.flexWrap).toBe("nowrap");
+		// 不应出现滚动条：overflowX 既不能是 auto 也不能是 scroll
+		expect(["auto", "scroll"]).not.toContain(actions.style.overflowX);
 		const btn = screen.getByRole("button", { name: "升级" }) as HTMLButtonElement;
 		expect(btn.style.flexShrink).toBe("0");
+	});
+
+	it("given 网格 When 渲染 Then 最小列宽恢复 340px（详情按钮移除后 5 按钮一行免滚动）", () => {
+		renderWithProviders(<CardGrid rows={[installed]} {...handlers} />, new InMemoryMarketClient());
+		const grid = screen.getByTestId("card-grid") as HTMLDivElement;
+		expect(grid.style.gridTemplateColumns).toContain("minmax(340px");
+	});
+
+	it("given 点击卡片正文 When 渲染 Then 触发 onDetails（详情入口）", () => {
+		handlers.onDetails.mockClear();
+		renderWithProviders(<CardGrid rows={[installed]} {...handlers} />, new InMemoryMarketClient());
+		screen.getByTestId("card-body-alpha").click();
+		expect(handlers.onDetails).toHaveBeenCalledWith(installed);
+	});
+
+	it("given 动作区 When 渲染 Then 不再有「详情」按钮（详情改由正文点击）", () => {
+		renderWithProviders(<CardGrid rows={[installed]} {...handlers} />, new InMemoryMarketClient());
+		expect(screen.queryByRole("button", { name: "详情" })).toBeNull();
+	});
+
+	it("given 点击动作区按钮 When 渲染 Then 不误触发详情（动作区是正文兄弟节点）", () => {
+		handlers.onDetails.mockClear();
+		renderWithProviders(<CardGrid rows={[installed]} {...handlers} />, new InMemoryMarketClient());
+		screen.getByRole("button", { name: "历史" }).click();
+		expect(handlers.onDetails).not.toHaveBeenCalled();
 	});
 
 	it("given loading=true When 渲染 Then 显示加载态", () => {

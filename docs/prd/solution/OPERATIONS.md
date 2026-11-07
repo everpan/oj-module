@@ -358,7 +358,7 @@ UPDATE sys_setting SET value = (SELECT value FROM mw_config WHERE key='ldap_emai
 ### 7.1 角色层级
 
 - `sys_role` 权威源（D10）：框架保留名 `admin` / `superadmin`；业务角色 `<name>.<role>`（如 `wiki.admin`）。
-- **判权面**：`assertSystemAdmin` / `assertSuperAdmin` 换掉旧 `isGlobalAdmin`（读 users.roles 含 "admin"）。`assertSuperAdmin` 独占编排端点（R9：admin 超集链恒通过一切权限码，权限码门控不成立）。
+- **判权面**：`assertSystemAdmin` / `assertSuperAdmin` 换掉旧 `isGlobalAdmin`（读 users.roles 含 "admin"）。`assertSuperAdmin` 独占**写面**编排端点（install/task/enable/uninstall/trust 等；R9：admin 超集链恒通过一切权限码，权限码门控不成立）。**读面**（index/history/releases/catalog）登录即可——产品口径「admin 能看到入口与卡片，安装/回滚/卸载等敏感操作需 superadmin」（PRODUCT.md §4.1）。`index` 用 `currentAccess()`：保留租户自洽/禁用/改密悬挂三道检查，只去掉 superadmin 角色要求（2026-11-07 读面降级）。
 - 空间特权（`space_user`）、外部联系人簿（`mw_contact`）属 wiki 业务面，**保留不动**（与框架权限点正交）。
 
 ### 7.2 新增角色 / 多方案冲突（纪律）
