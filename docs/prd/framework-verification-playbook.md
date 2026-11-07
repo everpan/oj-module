@@ -850,6 +850,13 @@ ojm install books --site-url ... --user superadmin --pass <口令>   # retry 同
   「module 重复声明」，二选一（选 `-b /api`，勿写挂载）。属 oj 侧默认基座与框架约定错位，已列 §11 候选。
 - 本节点未覆盖：升级（发 0.2.0 包收敛/按名装）与 yank 后在架性——由 §7.4 walkthrough 的
   upgrade/rollback/yank 项与 §7.6 C 降级守护覆盖。
+- **module-root（dev）形态装包「装而不达」，不可作安装验证形态**（2026-11-07 drill-dev 实证）：
+  file 直传零配置改动可十阶段走到 done（file 源不卡 canonical_origin——503 只卡 cdn 源；
+  preflight 需先 `pnpm build` 出 versions.json），落盘/锁/state 全就位；但 `--module-root src`
+  只挂载 src 树，重启后 dist 装好的 api 不服务（`/api/books/ping` 404）、web 资产也需解开
+  web 挂载才有。更隐蔽的是同进程安装时热更让探活短暂通过（重启即失效），且启动对
+  「src+dist 同名模块」fail-fast（重复声明）、「只在 dist 的模块」静默忽略——三种表现都不可用。
+  安装验证必须 release 形态（`--api-path dist/api` + `platform.root: dist/api`）。
 
 ## 8. 一次通过判据（汇总清单）
 
