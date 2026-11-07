@@ -1091,7 +1091,7 @@ node "$CLI_PKG/bin/ojm.mjs" build && npx tsc --noEmit -p tsconfig.json && node "
 | U4 | **`oj serve --api-path` 缺省 API 基座与框架 `/api` 约定对齐**（2026-11-07 §7.7 实锤） | oj 0.1.124 `--api-path` 缺省绑 `/v1/api`（`server.base` 旧键 v0.1.58 已删，config 改不了）；而框架侧全部按 `/api` 寻址（web 应用请求 prefixUrl、`ojm market publish/install/trust` 瘦客户端、消费面）——module-root release 直起后，CLI 推送打穿到 SPA 兜底（返回 HTML doctype，报「Unexpected token '<'」），登录 POST 405「web mounts serve GET/HEAD only」。唯一正解 = 起站加 `-b /api`；config 手写 api 挂载与 `--api-path` 同给又报「module 重复声明」 | 两选一：① oj 缺省基座改 `/api`（或与 config `mounts` 的 api 前缀一致）；② `--api-path` 与 api 挂载同给时去重而非 fail。验收：module-root 工程 `oj serve --api-path dist/api` 直起后 `POST /api/auth/login` 得 JSON 应答 |
 | U5 | **`ojm build`/`ojm dev` 合并已装方案的 web 登记**（✅ 已修复 oj-module cli `0.2.72`，2026-11-07 出厂即装支柱②，实现见 `docs/plans/20261107-1150-market-factory-install.md`） | 修复前：例行 `ojm build` 与 `ojm dev`（dev 启动即重建模块产物）都会重生成 `dist/web/modules.json` + `dist/web/modules/` 且只收录源码树模块，已装方案（含第一方 oj-market）的 web 面被整体冲掉——任何例行构建/开发态运行后市场菜单消失，愈合只能靠 backfill+逐方案重装（§9 对应行）。修复后：重建清单时 `restoreInstalledFaces`（版本目录重物化 web 面 + 条目旁车 `.ojm-module.json` 双落点持久化）+ `mergeInstalledModules`（state.yaml 真源并入、双轨同名 fail-fast），连续 build 告警静默 | 装方案后 `pnpm build`/`pnpm dev` 重启，modules.json 仍含方案条目、`/modules/<name>/<ver>/entry.js` 200、市场菜单不消失——2026-11-07 真机（/tmp/ojm-vv/drill）已验；守卫 `packages/cli/src/__tests__/installed-merge.test.ts` 9 例 |
 | U6 | **`-b` 基座覆盖下 web 挂载相对路径静态解析落空**（2026-11-07 实锤） | oj 0.1.124：`web: "./dist/web"` 相对路径 + `-b /api` 组合时静态层解析落空——非 HTML 请求全落进 API 路由报 `no route matched`，SPA 回落（HTML）却正常，极具迷惑性；`ojm preview` 派生 config 全写绝对路径故不踩 | 两选一：① `-b` 下相对路径按 config 目录解析（与无 `-b` 行为一致）；② 启动 fail-fast 校验 web 挂载目录可达。验收：`-b /api` 起站后 `curl /modules/app/0.1.0/entry.js` 200 |
-| U7 | **安装触发热重载应重放新装方案的 seed**（2026-11-07 §7.7 drill3 实锤，oj 0.1.124） | 种子重放只在**冷启动**执行（`oj-bin/oj/src/app.rs`：`if !reused { seed::replay_all(...) }`，注释「热更复用时不重放，种子是一次性初始化」）；而安装器 migrating 段显式跑 `oj migrate`（迁移随装随生效），seed 却不跑——新装方案的 seed 数据要等**下次冷启动**才落库，期间方案页数据面空。与业界安装器预期不符（安装完成即应数据就绪）。模板侧绕不过（seed 时机在 oj 内核 boot 路径） | 两选一：① 新增 `oj seed <module>` 子命令，安装器 migrating 段后对目标模块重放一次（方案 A，推荐）；② 热重载编排对新装模块触发一次 seed 重放，旧模块不重放。验收：装带 seed 的方案后不重启，`select count(*)` 即得 seed 行；重复执行行数不翻倍。**提案见 [`docs/migration/oj-requirement-seed-replay-on-install.md`](../migration/oj-requirement-seed-replay-on-install.md)（2026-11-07）** |
+| U7 | **安装触发热重载应重放新装方案的 seed**（2026-11-07 §7.7 drill3 实锤，oj 0.1.124） | 种子重放只在**冷启动**执行（`oj-bin/oj/src/app.rs`：`if !reused { seed::replay_all(...) }`，注释「热更复用时不重放，种子是一次性初始化」）；而安装器 migrating 段显式跑 `oj migrate`（迁移随装随生效），seed 却不跑——新装方案的 seed 数据要等**下次冷启动**才落库，期间方案页数据面空。与业界安装器预期不符（安装完成即应数据就绪）。模板侧绕不过（seed 时机在 oj 内核 boot 路径） | 两选一：① 新增 `oj seed <module>` 子命令，安装器 migrating 段后对目标模块重放一次（方案 A，推荐）；② 热重载编排对新装模块触发一次 seed 重放，旧模块不重放。验收：装带 seed 的方案后不重启，`select count(*)` 即得 seed 行；重复执行行数不翻倍。**上游已交付（oj 0.1.125，`oj migrate --with-seed`，2026-11-07 第四轮 drill3 实机验证通过：幂等重灌/门禁负例/安装链路边界均实证；ojm 安装器接线 = buildMigrateCmd 加旗标 + platform.exec 白名单 + MIN_OJ_VERSION 联动，仍待办）**。提案见 [`docs/migration/oj-requirement-seed-replay-on-install.md`](../migration/oj-requirement-seed-replay-on-install.md)（2026-11-07） |
 
 ---
 
@@ -1185,7 +1185,22 @@ node "$CLI_PKG/bin/ojm.mjs" build && npx tsc --noEmit -p tsconfig.json && node "
 | SQL 追踪 | 单条广播的 `_sql.events`：`INSERT INTO notifications_broadcast …` 与 `SELECT LAST_INSERT_ID() AS id` **均 `inTx: true`**（同一短事务，即 `Exec::Owned`）——旧版两条都是 `inTx: false` 且各自 acquire |
 | 结论 | **修复生效**：§9 中「所有依赖 insert 返回 id 的端点返回值不可信」可下线；模板无需改动 |
 
-### 最近一次基线（2026-11-05 第三轮，oj 0.1.118 / cli+runtime 工作区 0.2.67；MySQL 与 PostgreSQL 双真库演练）
+### 最近一次基线（2026-11-07 第四轮，oj 0.1.125；`oj migrate --with-seed` 安装期 seed 重放特性验证）
+
+| 项 | 值 |
+| --- | --- |
+| 日期 | 2026-11-07（第四轮，U7 上游特性落地后的专项验证） |
+| 框架包版本 | drill3 站点 = cli/runtime 0.2.73 发布态（feat/ojm @ `7a7a8657b`，机制未动，纯验证轮） |
+| oj | **0.1.125**（`~/.local/share/oj/oj`；drill 模板 bin/oj 仍 0.1.124——安装器链路用它，--with-seed 调用显式用 0.1.125） |
+| 验证动机 | U7 上游已交付 `oj migrate --with-seed`（v0.1.125，devkit api-manual §10）：迁移成功后对同一批模块同批重放 seed.sql。本轮验证特性行为契约 + 与 ojm 安装链路的衔接现状 |
+| 环境 | drill3（ojm preview :9778，superadmin/aA123456）；books 方案 canonical 源 `/tmp/ojm-vv/books-src` @ 0.1.5（seed.sql = 单条 `INSERT OR IGNORE` 3 行，gate 合规） |
+| 范围 | A. 特性直验（幂等基线 / 清库重灌 / fail-closed 门禁负例）；B. 安装全链路（卸载 → 清表 → 安装 → 验证边界 → --with-seed → API + 浏览器实证） |
+| A 结果 | **通过**。① 幂等基线：`oj migrate --with-seed --format json -c config.yaml -d dist/api books-0.1.5` → `applied:[]` + `seed.results[{ok,file:"seed.sql",dialect:"sqlite",stmts:1}]`，行数仍 3。② 清库重灌：`delete from books_books`（0 行）→ 重跑同命令 → 3 行种子回库（`seed 重放 1/1 模块`），**无需冷启动**。③ 门禁负例：临时模块 `gate-0.0.1` 的 seed.sql 含 `DELETE` + 合规 INSERT → stderr 前置诊断「第 0 条语句被 --with-seed 运行期门禁拒绝：语句类型 "DELETE" 不在白名单」+ 重试指引，**exit=1**，books_books 行数与内容零变化（预扫整轮拒绝、零副作用） |
+| B 结果 | **通过**。① 卸载 books@0.1.5（业务表 books_books 按设计保留）→ 手工 drop books/books_books 模拟全新环境 → POST /api/oj-market/install（source=cdn）→ 11 段全绿（verify 段 Ed25519 验签过 books.publisher01）。② **边界实证**：装完 books_books 存在但 **0 行**——安装器 `buildMigrateCmd` 未传 `--with-seed`（上游 v0.1.125 明确交付边界），「装完即数据就绪」闭环待 ojm 侧接线。③ `oj migrate --with-seed -d dist/api books-0.1.5` → 3 行落库。④ API `GET /api/books/list` → total=3；books-check.mjs 浏览器实证：books 菜单在栏、页面入框架 layout 容器、表格渲染 3 行种子 |
+| 本次发现并处置 | ① **schema.yaml reconcile 会替「账本已应用但表缺失」的模块建表**（oj migrate 单模块路径 `migrate_cmd.rs:146-173`：refinery 后接 schema reconcile，只进 apply 路径）：探针 drop books_books 后跑安装器同款 `oj migrate --format json -d <svc> books-0.1.5`，`applied:[]` 却重建出表（列序按声明规范化，非迁移 DDL 原文）。行为于安装链路有益（保表存在），但意味着「drop 表重跑 migrate」不等于「重放迁移」——数据重建仍须 seed。② 期间探针遗留空表，已重跑 --with-seed 恢复 3 行（幂等重试安全，佐证特性契约）。③ U7 提案文档的「临时绕行（重启 preview）」在 0.1.125 后应改写为「安装后跑一次 `oj migrate --with-seed -d dist/api <module>-<version>`」——ojm 侧接线（buildMigrateCmd 加旗标 + platform.exec 白名单 + MIN_OJ_VERSION 联动）仍是后续工作 |
+| 手册同步 | §11 U7 行追加「0.1.125 已交付 CLI 侧（2026-11-07 第四轮实机验证）；ojm 安装器接线待办」 |
+
+### 上一次基线（2026-11-05 第三轮，oj 0.1.118 / cli+runtime 工作区 0.2.67；MySQL 与 PostgreSQL 双真库演练）
 
 | 项 | 值 |
 | --- | --- |
