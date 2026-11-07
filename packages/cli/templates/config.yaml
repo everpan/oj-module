@@ -129,7 +129,13 @@ platform:
       allow: &INSTALLER_EXEC_ALLOW
         - 'tar -tvzf ${path:archive}'
         - 'tar -xzf ${path:archive} -C ${path:dest}'
-        - 'oj migrate --format json -d ${path:dir} ${raw:module}'
+        # oj migrate：逐平台启动器（bin/oj=Linux/macOS 打包启动器，oj.exe=Windows，oj=token 兜底），
+        # 必须与 buildMigrateCmd 逐字对齐。bin/oj 自带 glibc loader 前缀，绕开 `oj` 自举 token 在
+        # Linux 打包态解析到 ld-linux 丢 --library-path 前缀 → exit 127（35b60896 只分类没修根因）。
+        # -c ${path:configPath} 复用运行服务同一份 config（MySQL），规避回退 config.yaml（sqlite）。
+        - 'bin/oj migrate --format json -c ${path:configPath} -d ${path:dir} ${raw:module}'
+        - 'oj.exe migrate --format json -c ${path:configPath} -d ${path:dir} ${raw:module}'
+        - 'oj migrate --format json -c ${path:configPath} -d ${path:dir} ${raw:module}'
     # 市场编排面（src/oj-market/api，端点在 /api/oj-market/*）与 _platform 用同一安装器，
     # 请求模块上下文 = oj-market（oj exec 按模块逐条授权）——缺这条真机安装/收敛全 NotCapable。
     oj-market:

@@ -34,7 +34,7 @@ import { computeUninstallImpact, runUninstall } from "#/_platform/_lifecycle/uni
 import { respond } from "#/_platform/_shared/respond";
 import { assertSuperAdmin, currentAccess } from "#/_platform/_shared/service/infra/access";
 import { pageArgs } from "#/_platform/_shared/service/infra/query";
-import { journalHeadOf, readCanonicalOrigin, readDeploymentVar, siteOrigin, withSiteOrigin } from "#/_platform/_shared/site-facade";
+import { journalHeadOf, readCanonicalOrigin, readDeploymentVar, resolveDeploymentConfigPath, siteOrigin, withSiteOrigin } from "#/_platform/_shared/site-facade";
 import { backfillReleases } from "./backfill";
 import { BOOTSTRAP_KEY, seedBootstrapKey } from "./bootstrap";
 import { authenticateSignedKey, verifyCanonicalSig } from "./cdn/signed-auth";
@@ -497,7 +497,9 @@ async function installBody(env: MarketEnv): Promise<{ task_id: string }> {
 			siteModulesDir: env.siteModulesDir,
 			modulesJsonPath: env.modulesJsonPath,
 			apiPrefix: env.apiPrefix,
-			configPath: env.configPath,
+			// 复用运行服务同一份 config（如 config-release.yaml / MySQL）：经 _system/health 解析真实加载路径，
+			// 回落 env.configPath（默认 config.yaml）；规避 oj migrate 自动发现回退 config.yaml 造成库不一致。
+			configPath: (await resolveDeploymentConfigPath(env.apiPrefix)) ?? env.configPath,
 			fetch,
 			exec: execOf(env),
 			reload: reloadOf(env),
@@ -586,7 +588,8 @@ async function installBundledArchive(env: MarketEnv, entry: BundledEntry, archiv
 		siteModulesDir: env.siteModulesDir,
 		modulesJsonPath: env.modulesJsonPath,
 		apiPrefix: env.apiPrefix,
-		configPath: env.configPath,
+		// 复用运行服务同一份 config（见 POST install 同逻辑）
+		configPath: (await resolveDeploymentConfigPath(env.apiPrefix)) ?? env.configPath,
 		fetch: async () => ({ ok: true, status: 200, arrayBuffer: async () => bytes.slice().buffer as ArrayBuffer }),
 		exec: execOf(env),
 		reload: reloadOf(env),

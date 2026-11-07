@@ -146,7 +146,9 @@ function bundleExec(): ExecFace {
 				await fsp.writeFile(join(dir, "main.css"), CSS);
 				return { code: 0, stdout: "", stderr: "" };
 			}
-			if (argv[0] === "oj" && argv[1] === "migrate") {
+			// 迁移命令以子命令 "migrate" 标识（argv[1]），启动器名随平台变（bin/oj / oj.exe / oj），
+			// 不能锚定 argv[0] 为 "oj"——35b60896 修根因后 launcher 改为 bin/oj 绕开 Linux 打包态 exit 127。
+			if (argv[1] === "migrate") {
 				return { code: 0, stdout: `${MIGRATE_LINE}\n`, stderr: "" };
 			}
 			return { code: 0, stdout: "", stderr: "" };
@@ -791,7 +793,8 @@ describe("POST install（file：上传载荷，upload/api.ts 先例双路径）"
 					await fsp.writeFile(join(rootDir, "web", "modules", "demo-solution", "0.1.0", "main.css"), "/* demo */");
 					return { code: 0, stdout: "", stderr: "" };
 				}
-				if (argv[0] === "oj" && argv[1] === "migrate")
+				// launcher 名随平台变（bin/oj / oj.exe / oj），以子命令 "migrate" 标识（argv[1]）。
+				if (argv[1] === "migrate")
 					return { code: 0, stdout: `${MIGRATE_LINE}\n`, stderr: "" };
 				return { code: 0, stdout: "", stderr: "" };
 			},
@@ -1217,7 +1220,7 @@ describe("P1-16 接线：marketEnv 生产口径 / exec opts 转发 / operator �
 		expect(last?.status).toBe(200);
 		const taskId = (last?.data as { task_id?: unknown })?.task_id as string;
 		expect((await getTask(taskDir, taskId))?.status).toBe("done");
-		const mig = seen.find(c => c.argv[0] === "oj" && c.argv[1] === "migrate");
+		const mig = seen.find(c => c.argv[1] === "migrate");
 		expect(mig).toBeDefined();
 		expect(mig?.opts).toEqual({ timeoutMs: 600000 });
 	});

@@ -129,6 +129,48 @@ export function readSiteVar(configPath: string | undefined, key: string): Promis
 	return p;
 }
 
+/**
+ * 解析站点真实加载的 config 路径（跨平台、配置名无关；供 migrating 段 `oj migrate -c` 复用运行服务
+ * 同一份 config，规避自动发现回退 config.yaml（sqlite/密文）造成与运行服务库不一致——4bc4620b 修
+ * 读面、此处补写面）。
+ *
+ * 取值优先级：
+ * ① 操作员显式覆盖：config `vars.config_path`（最简、零网络，部署侧主动声明）。
+ * ② 回落：运行服务 `_system/health` 返回的 `config_path`（与 `_system/config` 同源；api-manual §10
+ *   明确 `ojInfo()` JS 不出此字段、framework 亦未向模块注入，仅 HTTP 端点出）。
+ *   经已配置的 canonical_origin 自拉（SSRF 安全：用部署侧可信 origin，绝不读请求 Host 头，REG-CS6），
+ *   取回后归一 `./` 前缀。
+ * ③ 俱缺（canonical_origin 未配 / 拉取失败 / 字段缺失）→ undefined，调用方回落默认 "config.yaml"。
+ */
+export async function resolveDeploymentConfigPath(apiPrefix: string): Promise<string | undefined> {
+	// ① 操作员显式覆盖（零网络）
+	const override = (globalThis as { vars?: { get?: (k: string) => string | null } }).vars?.get?.("config_path") ?? null;
+	if (override && override.trim() !== "") {
+		return override.trim();
+	}
+	// ② 自拉 _system/health（可信 origin，非请求 Host）
+	const origin = await readCanonicalOrigin(undefined);
+	if (!origin) {
+		return undefined;
+	}
+	try {
+		const res = await fetch(`${origin}${apiPrefix}/_system/health`);
+		if (!res.ok) {
+			return undefined;
+		}
+		const doc = await res.json() as { config_path?: unknown };
+		const p = typeof doc.config_path === "string" ? doc.config_path : undefined;
+		if (!p || p.trim() === "") {
+			return undefined;
+		}
+		const trimmed = p.trim();
+		return trimmed.startsWith("./") ? trimmed.slice(2) : trimmed;
+	}
+	catch {
+		return undefined;
+	}
+}
+
 /** 站点迁移账本 head（oj journal 真源 `_oj_migrations`；表缺失/查询失败 → null = 跳过禁降版判定，不猜） */
 export async function journalHeadOf(name: string): Promise<number | bigint | null> {
 	try {

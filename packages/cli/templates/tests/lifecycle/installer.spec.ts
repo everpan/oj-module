@@ -130,7 +130,9 @@ function bundleExec(): ExecFace & { calls: string[][] } {
 				await fsp.writeFile(join(dir, "main.css"), CSS);
 				return { code: 0, stdout: "", stderr: "" };
 			}
-			if (argv[0] === "oj" && argv[1] === "migrate") {
+			// 迁移命令以子命令 "migrate" 标识（argv[1]），启动器名随平台变（bin/oj / oj.exe / oj），
+			// 不能锚定 argv[0] 为 "oj"——35b60896 修根因后 launcher 改为 bin/oj 绕开 Linux 打包态 exit 127。
+			if (argv[1] === "migrate") {
 				return { code: 0, stdout: `${MIGRATE_LINE}\n`, stderr: "" };
 			}
 			return { code: 0, stdout: "", stderr: "" };
@@ -322,7 +324,9 @@ describe("runInstall 全绿路径（步骤 stub，register/smoke/audit 走真实
 		const exec: ExecFace = {
 			run: base.run,
 			spawn: async (argv) => {
-				if (argv[0] === "oj" && argv[1] === "migrate") {
+				// 迁移命令以子命令 "migrate" 标识（argv[1]），启动器名随平台变（bin/oj / oj.exe / oj），
+			// 不能锚定 argv[0] 为 "oj"——35b60896 修根因后 launcher 改为 bin/oj 绕开 Linux 打包态 exit 127。
+				if (argv[1] === "migrate") {
 					// S1-6 JSON 恰一行切成 3 块（migrate 段回调内自累积跨块拼接——installer 侧经 onMigrateOutput 捕获）
 					const bytes = new TextEncoder().encode(`${MIGRATE_LINE}\n`);
 					const chunks = [bytes.slice(0, 7), bytes.slice(7, 19), bytes.slice(19)];
@@ -460,8 +464,9 @@ describe("p3-11 宿主层 rollbackGuard 预锁拦截（OJ-9）：包内迁移 ma
 		expect(t.stage).toBe("migrating");
 		expect(t.error?.retryable).toBe(false);
 		expect(String(t.error?.reason)).toContain("禁降版");
-		// 零 exec：oj migrate 未被调用（tar list/extract 属包准备，允许发生）
-		expect(exec.calls.filter(c => c[0] === "oj")).toHaveLength(0);
+		// 零 exec：oj migrate 未被调用（tar list/extract 属包准备，允许发生）；以子命令 "migrate" 标识（argv[1]），
+		// 启动器名随平台变（bin/oj / oj.exe / oj），不锚定 argv[0] 为 "oj"。
+		expect(exec.calls.filter(c => c[1] === "migrate")).toHaveLength(0);
 		// 零备份：R14 前置备份未发生（宿主层在备份前拦截）
 		expect((await fsp.readdir(root)).filter(e => e.includes(".bak-"))).toHaveLength(0);
 		// 锁前清场（D11①）：staging 清空、零落锁零落位
@@ -482,7 +487,8 @@ describe("p3-11 宿主层 rollbackGuard 预锁拦截（OJ-9）：包内迁移 ma
 					await fsp.writeFile(join(apiDir, "routes.js"), "export {};\n");
 					return { code: 0, stdout: "", stderr: "" };
 				}
-				if (argv[0] === "oj" && argv[1] === "migrate")
+				// launcher 名随平台变（bin/oj / oj.exe / oj），以子命令 "migrate" 标识（argv[1]）。
+				if (argv[1] === "migrate")
 					return { code: 0, stdout: `${MIGRATE_LINE}\n`, stderr: "" };
 				return { code: 0, stdout: "", stderr: "" };
 			},
@@ -509,7 +515,9 @@ describe("U5 取消安装（P3-8）：cancel token → h.kill + staging 清场 +
 		const exec: ExecFace = {
 			run: (argv, opts) => base.run(argv, opts),
 			spawn: async (argv) => {
-				if (argv[0] === "oj" && argv[1] === "migrate") {
+				// 迁移命令以子命令 "migrate" 标识（argv[1]），启动器名随平台变（bin/oj / oj.exe / oj），
+			// 不能锚定 argv[0] 为 "oj"——35b60896 修根因后 launcher 改为 bin/oj 绕开 Linux 打包态 exit 127。
+				if (argv[1] === "migrate") {
 					spawnStarted = true;
 					const bytes = new TextEncoder().encode(`${MIGRATE_LINE}\n`);
 					const chunks = [bytes.slice(0, 5), bytes.slice(5)];
@@ -1265,7 +1273,7 @@ describe("P1-16 接线：reconcile 不一致自动修复（重跑 setEnabled）+
 		};
 		const t = await runInstall(makeReq({ exec }));
 		expect(t.status).toBe("done");
-		const mig = seen.find(c => c.argv[0] === "oj" && c.argv[1] === "migrate");
+		const mig = seen.find(c => c.argv[1] === "migrate");
 		expect(mig).toBeDefined();
 		expect(mig?.opts).toEqual({ timeoutMs: 600000 });
 	});

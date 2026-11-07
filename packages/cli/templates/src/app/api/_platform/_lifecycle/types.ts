@@ -17,6 +17,14 @@ export interface InstallContext {
 	/** 安装目标身份（与 manifest.name/version 同源；manifest 字段缺失/非字符串时兜底） */
 	name: string
 	version: string
+	/**
+	 * 站点真实加载的 config 路径（复用运行服务同一份 config，如 config-release.yaml / MySQL）。
+	 * 由调用方从启动 argv 的 -c/--config 反解注入（framework 未向模块暴露真实加载路径，见
+	 * site-facade.resolveDeploymentConfigPath）；缺省 undefined = 回落默认 "config.yaml"。
+	 * migrating 段据此给 `oj migrate` 带 -c，规避自动发现回退到 config.yaml（sqlite/密文）造成
+	 * 与运行服务库不一致（已知限制：4bc4620b 已修读面、此处补写面）。
+	 */
+	configPath?: string
 	/** 站点 sidecar 状态（.solutions/state.yaml）；占用检测真源：solutions 键 = 已装方案名 */
 	state: StateStore
 	/** 宿主 versions.json（C2-09 peerRuntime 比对真源；键 = 包名，runtime 取 @oj-module/runtime） */

@@ -1,7 +1,9 @@
 // BDD：迁移步骤（P1-7，十阶段 stage 5 migrating，D11 核心裁决：迁移成功后才允许后续落锁）。
 // 前置备份（R14）：sqlite 库 copy 为 <db>.bak-<ts>（fsFace.copyFile），无备份不迁移（fail-closed）；
 // 完成后清理仅保留最近 3 份 .bak-*（按时间戳后缀数值比较）。
-// S1-6 实测契约（oj 0.1.76）：exec.run(["oj","migrate","--format","json","-d",dir,module])，
+// S1-6 实测契约（oj 0.1.76 起）：exec.run([launcher,"migrate","--format","json","-c",configPath,"-d",dir,module])，
+// launcher 随平台变（Linux/macOS 打包=bin/oj，Windows=oj.exe；35b60896 修根因后绕开 `oj` token 在打包态 exit 127），
+// -c 复用运行服务同一份 config（MySQL），规避自动发现回退 config.yaml（sqlite/密文）造成库不一致。
 // stdout 恰一行 JSON {"results":[{module,ok,applied:[{version,name}],error?}]}（装配期全局失败
 // 顶层 error + results 空）；成败真源 = exit code（exit 0 = 全部成功），逐模块 continue-and-collect。
 // rollbackGuard 纯函数：目标产物 max seq < 账本 head = 降版部署，禁止（OJ-9/M003 同源红线）；
@@ -105,12 +107,14 @@ function mgCtx(overrides: Partial<MigrateContext> = {}): MigrateContext {
 }
 
 describe("命令构造纯函数（exec 白名单逐字对齐，S1-2/S1-6）", () => {
-	it("buildMigrateCmd 逐字：[oj, migrate, --format, json, -d, dir, module]", () => {
-		expect(buildMigrateCmd("/site/dist", "demo-solution")).toEqual([
-			"oj",
+	it("buildMigrateCmd 逐字：[launcher, migrate, --format, json, -c, configPath, -d, dir, module]", () => {
+		expect(buildMigrateCmd("bin/oj", "/site/dist", "demo-solution", "config.yaml")).toEqual([
+			"bin/oj",
 			"migrate",
 			"--format",
 			"json",
+			"-c",
+			"config.yaml",
 			"-d",
 			"/site/dist",
 			"demo-solution",
@@ -387,7 +391,7 @@ describe("migrate（stage=migrating：R14 备份 → exec → 解析 → 禁降�
 		const baks = (await fsp.readdir(root)).filter(n => n.startsWith("db.sqlite.bak-"));
 		expect(baks).toHaveLength(1);
 		expect(new Uint8Array(await fsp.readFile(join(root, baks[0]!)))).toEqual(DB_BYTES);
-		expect(exec.calls[0]).toEqual(buildMigrateCmd(migrateSvcDirOf(staging), "demo-solution"));
+		expect(exec.calls[0]).toEqual(buildMigrateCmd("bin/oj", migrateSvcDirOf(staging), "demo-solution", "config.yaml"));
 		// 超时显式取平台硬上限：oj exec.run timeoutMs 缺省 30s 会杀生产级长迁移（0.1.78 文档化口径）
 		expect(exec.opts[0]).toEqual({ timeoutMs: 600_000 });
 		expect(state.writes).toBe(0);
@@ -557,7 +561,8 @@ describe("迁移服务目录（B-11：-d 指向 release 形态 svc 目录，oj d
 		let lockSeen: Record<string, string> | null = null;
 		let modFilesSeen: string[] | null = null;
 		const exec = recordingExec(async (argv) => {
-			capturedDir = argv[5] ?? null;
+			// -d 在 launcher 后随平台变（bin/oj / oj.exe / oj），其索引不固定；按旗标定位 svc 目录最稳。
+			capturedDir = argv[argv.indexOf("-d") + 1] ?? null;
 			lockSeen = parseLock(await fsp.readFile(join(capturedDir!, "manifests.yaml"), "utf8"));
 			modFilesSeen = (await fsp.readdir(join(capturedDir!, "demo-solution-0.1.0"))).sort();
 			await fsp.access(join(capturedDir!, "demo-solution-0.1.0", "migrations", "0001__init.sql"));

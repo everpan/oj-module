@@ -2,8 +2,10 @@
 // R14：迁移前置备份——sqlite 库 copy 为 <db>.bak-<ts>（fsFace.copyFile，本任务补面），无备份不迁移
 // （fail-closed：备份不可用则不执行 oj migrate，库保持原状）；完成后清理仅保留最近 3 份 .bak-*
 // （按时间戳后缀数值比较；清理失败仅告警，多留备份无害，不阻断主流程）。
-// S1-6 实测契约（oj 0.1.76）：exec.run(["oj","migrate","--format","json","-d",dir,module])——"oj" 由
-// oj 特判解析为当前进程 exe，platform.exec 白名单逐字匹配，argv 不得增删改；stdout 恰一行 JSON
+// S1-6 实测契约（oj 0.1.76）：exec.run([launcher,"migrate","--format","json","-c",configPath,"-d",dir,module])——
+// launcher 由 ojLauncher() 解析（Linux 打包态=bin/oj，Windows=oj.exe，macOS=bin/oj），绕开 `oj` 自举
+// token 在 Linux 打包态解析到 ld-linux 丢 --library-path 前缀 → exit 127 的运行时缺陷；platform.exec
+// 白名单逐平台列出对应条目（bin/oj / oj.exe / oj），argv 不得增删改；stdout 恰一行 JSON
 // {"results":[{module,ok,applied:[{version,name}],error?}]}（装配期全局失败时顶层 error + results 空）；
 // 成败真源 = exit code（exit 0 = 全部成功），逐模块 continue-and-collect，一个模块失败不阻断其余。
 // 失败语义：StageResult{ok:false} + 可诊断摘要（含原始 error/results 截断入 message）——本步绝不触碰
@@ -70,9 +72,34 @@ export interface MigrateOutput {
 	error?: unknown
 }
 
-/** oj migrate 命令（逐字断言）：与 platform.exec 白名单逐字对齐（S1-2/S1-6 基座），不得增删旗标 */
-export function buildMigrateCmd(dir: string, module: string): string[] {
-	return ["oj", "migrate", "--format", "json", "-d", dir, module];
+/**
+ * oj migrate 命令（逐字断言）：与 platform.exec 白名单逐字对齐（S1-2/S1-6 基座），不得增删旗标。
+ * argv[0] 用 ojLauncher() 解析的跨平台启动器（Linux 打包 glibc loader=bin/oj / Windows=oj.exe /
+ * macOS=bin/oj），绕开 `oj` 自举 token 在 Linux 打包态解析到 ld-linux 并丢弃 --library-path 前缀
+ * → exit 127 的运行时缺陷（35b60896 只分类没修根因）；并补 -c <configPath> 复用运行服务同一份
+ * config（MySQL），规避自动发现回退 config.yaml（sqlite/密文）造成与运行服务库不一致（4bc4620b 修
+ * 读面、此处补写面）。configPath 恒带 -c（白名单逐字要求）；缺省由调用方回落 "config.yaml"。
+ */
+export function buildMigrateCmd(launcher: string, dir: string, module: string, configPath: string): string[] {
+	return [launcher, "migrate", "--format", "json", "-c", configPath, "-d", dir, module];
+}
+
+/**
+ * 跨平台 oj 启动器（migrate / 任意 oj 子命令的 argv[0]）。
+ * - Linux 打包态：宿主经 bin/oj（glibc loader 脚本）起站，进程 exe=ld-linux；runtime 的 `oj` 自举
+ *   token 解析到 /proc/self/exe=ld-linux 并丢弃 `--library-path bin/lib bin/oj.bin` 前缀 →
+ *   `ld-linux … migrate …` → loader 把 migrate 当共享对象 → exit 127（migrate: cannot open shared
+ *   object file）。bin/oj 启动器自带前缀，故 POSIX 一律走 bin/oj（macOS 为 Mach-O 二进制，同形态）。
+ * - Windows：启动器名 oj.exe（无 loader 包装）。
+ * 平台由 ojInfo().build.host_triple 判定（声明式 API，不依赖未声明的 Deno/process 全局）。
+ * ojInfo 缺失（测试/隔离运行时）回落 "oj" token（macOS/Windows 下 token 本就可用，仅 Linux 打包态
+ * 会 127，属已知运行时缺陷，待上游修复 token 解析）。
+ */
+export function ojLauncher(): string {
+	const triple = (globalThis as { ojInfo?: () => { build?: { host_triple?: string } } }).ojInfo?.()?.build?.host_triple ?? "";
+	if (triple.includes("windows"))
+		return "oj.exe";
+	return "bin/oj";
 }
 
 /**
@@ -256,7 +283,7 @@ export async function migrate(ctx: MigrateContext): Promise<StageResult> {
 		// 字节，回调内自累积跨块拼接（迁移输出恰一行非行对齐）并逐块上报段内进度；stdout/stderr
 		// 都须消费（有界通道背压：不消费则子进程阻塞）。B 缺失 → exec.run 缓冲态（stage 粒度，
 		// 进度不增量刷）。流式形态超时/超限不抛错只 code=137（v0.1.79 订正）——与非零统一按失败收口。
-		const argv = buildMigrateCmd(svcDir, ctx.name);
+		const argv = buildMigrateCmd(ojLauncher(), svcDir, ctx.name, ctx.configPath ?? "config.yaml");
 		let code: number;
 		let stdoutText: string;
 		let stderrTail = "";
