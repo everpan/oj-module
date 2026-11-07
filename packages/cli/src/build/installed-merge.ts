@@ -47,23 +47,46 @@ function readInstalledState(projectRoot: string): Record<string, { version: stri
 }
 
 /** face 版本目录的条目旁车（deploy-web 落）；缺失/损坏/name 不符 → null */
-function readFaceSidecar(faceDir: string, name: string): Record<string, unknown> | null {
+function readFaceSidecar(faceDir: string, name: string, version: string): Record<string, unknown> | null {
 	const sidecarPath = path.join(faceDir, ".ojm-module.json");
-	if (!fs.existsSync(sidecarPath))
-		return null;
 	let entry: unknown;
 	try {
 		entry = JSON.parse(fs.readFileSync(sidecarPath, "utf-8"));
 	}
 	catch {
-		return null;
+		return reconstructMinimalEntry(faceDir, name, version);
 	}
 	if (entry === null || typeof entry !== "object" || Array.isArray(entry))
-		return null;
+		return reconstructMinimalEntry(faceDir, name, version);
 	const e = entry as Record<string, unknown>;
 	if (e.name !== name || typeof e.entry !== "string" || e.entry === "")
-		return null;
+		return reconstructMinimalEntry(faceDir, name, version);
 	return e;
+}
+
+/**
+ * 旁车缺失降级（有两类正当形态）：release 从版本目录重物化的 face（旁车只落站点
+ * face 目录，不进包/版本目录）+ 旁车特性引入前的旧安装。entry.js 在盘 → 重建最小
+ * 条目并入（entry 路径按布局推导、css 顶层扫描）；integrity 不可知缺省省略（宿主
+ * 无 SRI 加载，旁车在场时恢复完整形状）。entry.js 也缺 → null，告警收口。
+ */
+function reconstructMinimalEntry(faceDir: string, name: string, version: string): Record<string, unknown> | null {
+	const entryFile = path.join(faceDir, "entry.js");
+	if (!fs.existsSync(entryFile))
+		return null;
+	const css = fs.readdirSync(faceDir)
+		.filter(f => f.endsWith(".css"))
+		.sort()
+		.map(f => `modules/${name}/${version}/${f}`);
+	console.warn(`[ojm] ⚠️ 已装方案「${name}@${version}」缺条目旁车 .ojm-module.json，重建最小条目并入（extras/integrity 失，重装可恢复完整形状）`);
+	return {
+		name,
+		entry: `modules/${name}/${version}/entry.js`,
+		enabled: true,
+		version,
+		chunks: [],
+		...(css.length > 0 ? { css } : {}),
+	};
 }
 
 /**
@@ -104,7 +127,7 @@ export function mergeInstalledModules(projectRoot: string, distDir: string, buil
 	const merged: BuiltModule[] = [...built];
 	for (const [name, e] of Object.entries(state)) {
 		const faceDir = path.join(distDir, "modules", name, e.version);
-		const entry = readFaceSidecar(faceDir, name);
+		const entry = readFaceSidecar(faceDir, name, e.version);
 		if (entry === null) {
 			console.warn(`[ojm] ⚠️ 已装方案「${name}@${e.version}」的 web 面/条目旁车缺失，重建清单不并入（愈合：ojm install ${name}@${e.version}）`);
 			continue;

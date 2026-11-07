@@ -112,6 +112,33 @@ describe("mergeInstalledModules", () => {
 		}
 	});
 
+	it("face 有 entry.js 但旁车缺失（版本目录重物化形态/旁车引入前旧装）→ 重建最小条目并入（css 扫描）", () => {
+		const { root, dist } = tempRoot();
+		writeState(root, { "oj-market": { version: "0.2.0", enabled: true } });
+		const faceDir = join(dist, "modules", "oj-market", "0.2.0");
+		fs.mkdirSync(faceDir, { recursive: true });
+		fs.writeFileSync(join(faceDir, "entry.js"), "console.log(1);\n");
+		fs.writeFileSync(join(faceDir, "main.css"), ".a{}\n");
+		fs.writeFileSync(join(faceDir, "theme.css"), ".b{}\n");
+
+		const warn = console.warn;
+		const warnings: string[] = [];
+		console.warn = (...args: unknown[]) => warnings.push(String(args[0]));
+		let merged: ReturnType<typeof mergeInstalledModules>;
+		try {
+			merged = mergeInstalledModules(root, dist, BUILT);
+		}
+		finally {
+			console.warn = warn;
+		}
+
+		expect(merged).toHaveLength(2);
+		const inst = merged[1] as unknown as Record<string, unknown>;
+		expect(inst.entry).toBe("modules/oj-market/0.2.0/entry.js");
+		expect(inst.css).toEqual(["modules/oj-market/0.2.0/main.css", "modules/oj-market/0.2.0/theme.css"]);
+		expect(warnings.join("\n")).toContain("最小条目"); // 降级有痕
+	});
+
 	it("无 state.yaml：原样返回（纯源码工程零动作）", () => {
 		const { root, dist } = tempRoot();
 		expect(mergeInstalledModules(root, dist, BUILT)).toEqual(BUILT);
