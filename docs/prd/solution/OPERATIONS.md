@@ -210,13 +210,13 @@ key 骨架：`lifecycle.stage.<stage>.reason` / `.hint` / `.retryable`。`retrya
 | downloading | 下载 | 下载失败：无法从分发源获取 {file} | ✓ | 检查网络与市场地址，稍后重试 |
 | verifying | 校验 | 校验失败：{file} 摘要与索引不符（P2 起含签名六码，见 4.3） | ✓ | 重试下载；持续失败联系发布方 |
 | extracting | 解压 | 解压失败：包内容未通过安全校验（{detail}） | ✓ | 零落盘；反复出现勿用该包并联系发布方 |
-| migrating | 迁移 | 数据库迁移失败：{detail} | ✓ | 数据保留原状，修复后重试，必要时回退上一版本 |
+| migrating | 迁移 | 数据库迁移失败：{detail} | ✓ | 数据保留原状，修复后重试；需回退见 §5.6（**种子数据须幂等插入**） |
 | lock_commit | 生效切换 | 生效切换失败：写入模块锁未通过读回校验 | ✓ | 存在并发构建/安装，稍后重试 |
 | registering | 注册 | 注册失败：{detail}（路由/设置/RBAC） | ✓ | 重试；多次失败检查站点 DB 状态 |
 | deploying_web | 前端落位 | 前端落位失败：{detail}（modules.json / 产物写入） | ✓ | 重试；已部分生效，持续失败请禁用该方案 |
 | reloading | 热更 | 热更失败：配置未生效（{detail}） | ✓ | 站点仍用旧配置服务，稍后重试或联系运维 |
 | smoke | 冒烟 | 冒烟检查未通过：{detail} | ✗ | 已部分生效，按详情排查；可先禁用恢复原状 |
-| done | 完成 | 安装完成：{name} {version} | — | 刷新页面即可使用 |
+| done | 完成 | 安装完成：{name} {version} | — | 若方案菜单/导航未出现，请刷新页面；无守护进程时请重启 oj serve 以完全生效（见 §5.6） |
 
 > 特殊提示：`lock_commit` 失败多因并发 `oj build`/`ojm install` 吞写（见 §5.2）；`smoke` 失败不可自动重试，因为方案可能已生效。
 
@@ -290,6 +290,32 @@ flowchart TD
 - 十阶段状态机跑在 `_platform` HTTP 路由内（请求作用域有模块归属 → exec/fs/reloadConfig 全可用）；进度落**状态文件**（`.install-tasks/`，单写者=oj 进程），前端 800ms 轮询。
 - 取消 = 置位状态文件阶段游标；崩溃续跑从游标推进一段，天然幂等分段。
 - 单段长耗时上限：`server.route_timeouts` 配 `timeout: 5m`；`exec.run timeoutMs` 硬上限 600s（生产包装须转发 opts）。
+
+### 5.6 迁移失败回滚指引（migrating 段失败）
+
+`migrating` 段 `oj migrate` 非零退出（三码：`migrate_tool_unavailable` 127/126、`migrate_timeout` 137、`migrate_failed` 其它；见契约附录 A.3）时：
+
+- **状态机已保底**：锁**保持指向旧版**（站点继续用旧版，可用）；新版目录与暂存保留供重试（账本去重重试幂等）；R14 前置备份 `db.sqlite.bak-<ts>` 已落盘——**失败即数据原状**，备份是安全网不是必选项。
+- **先判因再动手**：`exit 127/126` 是宿主运行环境（oj 二进制/依赖缺失），**不是方案问题** → 修 oj 安装/依赖后重试，勿回滚；`exit 137` 是超时/内存 → 稍后重试或运维调大超时/内存；仅当**迁移逻辑反复失败**才考虑回滚到上一版。
+
+回滚分两类场景：
+
+**A. DB 回退（从备份还原）——当怀疑 DB 已被部分改动时**
+
+- sqlite：`cp db.sqlite.bak-<ts> db.sqlite`（还原前停 oj serve 避免写入竞争）；备份文件名见失败原因 / task 详情。
+- mysql/pg：走市场页勾选确认门禁的 DB 级 dump，按各自 dump 还原。
+- 还原后重启 oj，用 `oj migrate --format json` 确认账本与产物一致（exit 0、无 `error`）。
+
+**B. 方案版本回退（回滚到上一版）——当迁移逻辑反复失败、需换版本时**
+
+- 前置约束（R12）：回滚仅放行「**迁移无差异**」——目标（旧）版本目录仍在站内（GC 保留最近 3，见 §1/§9；**别手工删旧目录**，回滚依赖它还在）+ 迁移差异校验通过 + 切换前复验（§4.1③）通过。
+- 市场 UI：方案卡片 → 版本历史 → 回滚到上一版；或 CLI `ojm install <solution>@<prev-version>` 重装旧版（同命令低 version = 降级，受 R12 约束）。
+- 复验失败拒切 → 现状不动，转人工（迁移有差异时禁止回滚）。
+
+> **红线**：
+> - **种子数据必须幂等插入**。迁移里的种子行（`INSERT` 初始数据/配置/菜单/权限点）一律写成幂等形态——sqlite 用 `INSERT OR IGNORE` / `ON CONFLICT (uk) DO NOTHING`；mysql/pg 用 `INSERT ... ON DUPLICATE KEY UPDATE` / `ON CONFLICT DO NOTHING`；或先 `SELECT` 判存在再插。原因：① `oj migrate` 是逐模块 continue-and-collect、按账本 seq 去重，但**部分失败后重跑**会把已落地的迁移再审一遍，非幂等种子会重复插入或报错；② 版本回滚再升级会**重新应用**同一批迁移，非幂等种子直接冲突；③ 备份还原后若重跑迁移，幂等是数据不双份的唯一保证。非幂等种子是迁移「看似成功却脏数据」的头号来源。
+> - 降版部署禁（OJ-9/M003）：目标产物最大 seq < 账本 head 一律拒；人工回退账本须**同步回退 DDL**、自担数据风险（见 §5.3 M003）。
+> - 迁移前置备份是硬步骤（§3.2），不要跳过；`.bak-*` 仅保留最近 3 份（按时间戳）。
 
 ---
 

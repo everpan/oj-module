@@ -206,6 +206,23 @@ describe("renderOutcome · 终态渲染（reason + retryable + hintKey 双语文
 	});
 });
 
+describe("renderOutcome · done 刷新提示（fix A 菜单断路：安装后菜单/路由需刷新页面才生效）", () => {
+	it("zh-CN done 文案含刷新提示，明确指出菜单需刷新页面后生效", () => {
+		const text = renderOutcome(rec(), "zh-CN");
+		expect(text).toContain("安装完成");
+		expect(text).toContain("刷新页面");
+		expect(text).toContain("菜单");
+	});
+
+	it("en-US done 文案含刷新提示（方言对齐，不再含中文）", () => {
+		const text = renderOutcome(rec(), "en-US");
+		expect(text).toContain("Install complete");
+		expect(text).toContain("refresh");
+		expect(text).toContain("menu");
+		expect(text).not.toContain("刷新页面");
+	});
+});
+
 describe("schemaVersion 旧记录兼容（P2-10 升版纪律读方侧：高版本降级提示 + 不误渲染成功）", () => {
 	let dir: string;
 
@@ -311,6 +328,55 @@ describe("renderOutcome · 六码双语（P2-5：reason 走 key，按 locale 取
 		}), "en-US");
 		expect(text).not.toContain("缺少签名");
 		expect(text).toContain("Missing signature");
+	});
+});
+
+describe("renderOutcome · migrating 失败码双语（fix：用户面友好 + 按 locale 出方言，不再裸抛中文/原始 stderr）", () => {
+	it("exit 127（运行环境不可用）：zh-CN 出人话原因 + 指引，标题 stage 干净为 migrating", () => {
+		const text = renderOutcome(rec({
+			status: "failed",
+			stage: "migrating",
+			error: { reason: "migrate_tool_unavailable", retryable: true, hintKey: "lifecycle.stage.migrating.migrate_tool_unavailable" },
+		}), "zh-CN");
+		expect(text).toContain("安装失败");
+		expect(text).toContain("运行环境不可用");
+		expect(text).toContain("重装或修复 oj 后重试");
+		expect(text).not.toContain("shared object file"); // 原始机器串不进用户面
+		expect(text).not.toContain("migrating.migrate_tool_unavailable)"); // 标题 stage 段不含 code
+		expect(text).toContain("lifecycle.stage.migrating.migrate_tool_unavailable");
+	});
+
+	it("exit 127：en-US 出英文（方言对齐），不再含中文", () => {
+		const text = renderOutcome(rec({
+			status: "failed",
+			stage: "migrating",
+			error: { reason: "migrate_tool_unavailable", retryable: true, hintKey: "lifecycle.stage.migrating.migrate_tool_unavailable" },
+		}), "en-US");
+		expect(text).toContain("Install failed");
+		expect(text).toContain("host runtime is unavailable");
+		expect(text).toContain("reinstall or repair oj");
+		expect(text).not.toContain("运行环境不可用");
+		expect(text).not.toContain("shared object file");
+	});
+
+	it("exit 137（被 SIGKILL 超时/内存）：zh-CN 出超时指引", () => {
+		const text = renderOutcome(rec({
+			status: "failed",
+			stage: "migrating",
+			error: { reason: "migrate_timeout", retryable: true, hintKey: "lifecycle.stage.migrating.migrate_timeout" },
+		}), "zh-CN");
+		expect(text).toContain("被系统终止");
+		expect(text).toContain("超时或内存超限");
+	});
+
+	it("其它非零（迁移逻辑失败）：zh-CN 指向任务详情输出摘要，而非裸抛 stderr", () => {
+		const text = renderOutcome(rec({
+			status: "failed",
+			stage: "migrating",
+			error: { reason: "migrate_failed", retryable: true, hintKey: "lifecycle.stage.migrating.migrate_failed" },
+		}), "zh-CN");
+		expect(text).toContain("迁移逻辑未通过");
+		expect(text).toContain("任务详情里的服务端输出摘要");
 	});
 });
 

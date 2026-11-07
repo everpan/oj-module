@@ -773,7 +773,9 @@ export async function runInstall(req: InstallRequest): Promise<TaskRecord> {
 				action: "install",
 				status: task.status,
 				operator: req.operator ?? null,
-				message: task.status === "done" ? `安装完成：${req.name}@${req.version}` : `安装部分生效（status=partial）：${req.name}@${req.version}`,
+				message: task.status === "done"
+					? `安装完成：${req.name}@${req.version}（若方案菜单/导航未出现，请刷新页面；无守护进程时请重启 oj serve 以完全生效）`
+					: `安装部分生效（status=partial）：${req.name}@${req.version}`,
 			});
 		}
 		// U5 取消安装（P3-8）：取消终态也须落终态审计（AC-P1-14 口径——取消/失败都要可观测）——审计末位、

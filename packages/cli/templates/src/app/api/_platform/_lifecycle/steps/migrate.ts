@@ -305,11 +305,35 @@ export async function migrate(ctx: MigrateContext): Promise<StageResult> {
 			stderrTail = r.stderr;
 		}
 		if (code !== 0) {
+			// 退出码分类（S1-6 实测：成败真源 = exit code），把「原始 stderr 机器串」翻译成人话原因，
+			// 并把结构化 code 透传给 CLI（install.ts 按 locale 出双语文案——这是「方言」对齐点，
+			// 否则 en-US 用户也会读到中文 reason）。原始 stderr 只留在服务端 task.message 诊断，不进用户面。
+			//   127/126 = oj 二进制或运行环境不可用（命令未找到 / 共享库缺失 / 不可执行）——环境类，非方案问题；
+			//   137 = 被 SIGKILL（超时或内存超限）；其余非 0 = 迁移逻辑失败（SQL/DSN 等，真因见服务端日志）。
+			const detail = (stderrTail || stdoutText).trim().slice(0, 500);
+			let failCode: string;
+			let summary: string;
+			if (code === 127 || code === 126) {
+				failCode = "migrate_tool_unavailable";
+				summary = code === 127
+					? "站点宿主运行环境不可用：oj 二进制或其依赖缺失/损坏（命令未找到或共享库缺失，exit 127）"
+					: "oj 二进制不可执行（权限或格式不符，exit 126）";
+			}
+			else if (code === 137) {
+				failCode = "migrate_timeout";
+				summary = "oj migrate 被系统终止（SIGKILL，exit 137），疑似超时或内存超限";
+			}
+			else {
+				failCode = "migrate_failed";
+				summary = `oj migrate 返回非零退出码（exit ${code}）`;
+			}
 			return {
 				stage: "migrating",
 				ok: false,
 				retryable: true,
-				message: `迁移失败：oj migrate exit ${code}（附录 A migrating：数据已保留原状，请修复后重试；备份 ${bak} 可供回退）——输出摘要：${(stderrTail || stdoutText).trim().slice(0, 500)}`,
+				code: failCode,
+				// 诊断摘要留服务端 task.message；用户面由 CLI 按 code 出本地化友好文案（install.ts STAGE_CODE_COPY）
+				message: `迁移失败：${summary}（附录 A migrating：数据已保留原状、未改动；备份 ${bak} 可供回退）——输出摘要：${detail}`,
 			};
 		}
 		// 第四步解析：exit 0 但输出违约属契约破坏，重试不自愈（retryable=false）

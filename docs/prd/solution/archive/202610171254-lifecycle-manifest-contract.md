@@ -369,13 +369,13 @@ stage 名 = 安装状态机 `InstallStage`（lifecycle 设计 §10.2）逐字；
 | downloading | 下载失败：无法从分发源获取 {file} | 请检查网络与市场地址（框架设置 → 市场源），稍后重试 | ✓ |
 | verifying | 校验失败：{file} 摘要与索引不符 | 分发包可能损坏，请重试下载；持续失败请联系发布方 | ✓ |
 | extracting | 解压失败：包内容未通过安全校验（{detail}） | 安装已终止且零落盘；若反复出现，请勿使用该分发包并联系发布方 | ✓ |
-| migrating | 数据库迁移失败：{detail} | 数据已保留原状，请修复后重试；必要时回退到上一版本 | ✓ |
+| migrating | 数据库迁移失败：{detail}（含子码，见附录 A.3） | 数据已保留原状、未改动，请修复后重试；必要时回退到上一版本（回滚指引见 OPERATIONS §5.6，种子数据须幂等插入） | ✓ |
 | lock_commit | 生效切换失败：写入模块锁未通过读回校验 | 存在并发构建或安装，请稍后重试 | ✓ |
 | registering | 注册失败：{detail}（路由/设置/RBAC） | 请重试；多次失败请检查站点数据库状态 | ✓ |
 | deploying_web | 前端落位失败：{detail}（modules.json / 产物写入） | 请重试；方案已部分生效，若持续失败请禁用该方案 | ✓ |
 | reloading | 热更失败：配置未生效（{detail}） | 站点仍在使用旧配置服务，请稍后重试或联系运维 | ✓ |
 | smoke | 冒烟检查未通过：{detail} | 方案已部分生效，请按详情排查；可先禁用该方案恢复原状 | ✗ |
-| done | 安装完成：{name} {version} | 刷新页面即可使用新方案 | — |
+| done | 安装完成：{name} {version} | 若方案菜单/导航未出现，请刷新页面；无守护进程时请重启 oj serve 以完全生效 | — |
 
 双语要求：每个 key 必须同时具备 zh-CN 与 en-US 值（T3 文案模板与 P1-13 CLI 渲染同表取用，缺失即测试红）。
 
@@ -391,6 +391,18 @@ stage 名 = 安装状态机 `InstallStage`（lifecycle 设计 §10.2）逐字；
 | `tampered` | `verifyEd25519` 返回 `false`（包体/key/value 任一不符） | `…verifying.tampered` | 与 sha256 比对失败（既有 `verifying` reason）分流 |
 | `unknown_key` | `key_id` 不在信任库（其余全合法） | `…verifying.unknown_key` | → 任务终态 `needs_trust` + `TaskRecord.trust{key_id,fingerprint}`；staging 不清场 |
 | `sig_format` | 编码违规：`public_key` 非 64hex、`value` 非标准 base64（含 `-`/`_`）、`canon` 非 `v1`；或 `verifyEd25519` 抛错（`verifyEd25519: ` 前缀，isolate 内 try/catch 转码） | `…verifying.sig_format` | 抛错与返回 false 同拒装但分码（双层语义） |
+
+### A.3 migrating 段失败三码（P3 市场安装提示修复；双语值由 P1-13 CLI `MIGRATE_CODE_COPY` 落安装端，缺失即测试红，同 C2-25 纪律）
+
+`oj migrate` 成败真源 = 退出码（S1-6 实测）；原 stderr 机器串**只留服务端 `task.message` 诊断，不再灌进用户面**，用户面由 CLI 按 locale 出下列人话。key 骨架：`lifecycle.stage.migrating.<code>`（reason/hint 同 §A 骨架）。retryable 恒 `true`（环境类修复后可重试；逻辑类修迁移脚本后可重试）。
+
+| code | 触发条件（逐字：oj migrate 退出码） | 文案 key | zh-CN reason（摘要） | 附加语义 |
+|---|---|---|---|---|
+| `migrate_tool_unavailable` | exit 127（命令未找到 / 共享库缺失）/ exit 126（oj 二进制不可执行） | `…migrating.migrate_tool_unavailable` | 站点宿主运行环境不可用——oj 二进制或其依赖缺失/损坏；通常不是方案问题 | 用户面引导修复宿主 oj 安装/依赖，而非改方案 |
+| `migrate_timeout` | exit 137（被 SIGKILL，超时/内存超限） | `…migrating.migrate_timeout` | oj migrate 被系统终止（SIGKILL），疑似超时或内存超限 | 用户面引导稍后重试 / 运维调大超时或内存 |
+| `migrate_failed` | 其它非零（迁移逻辑失败：SQL/DSN 等） | `…migrating.migrate_failed` | oj migrate 返回非零退出码，迁移逻辑未通过 | 具体错误见任务详情里的服务端输出摘要；引导修迁移脚本 |
+
+> 历史形态（仅 `lifecycle.stage.migrating.hint` 单 key、reason 直接塞原始 `oj migrate exit <code>` + stderr 摘要）已废弃：既不按 locale 出方言、又把机器串当原因，用户不可读。新形态经 code 透传 + 安装端双语文案对齐 verifying 六码。
 
 ---
 

@@ -439,6 +439,49 @@ describe("migrate（stage=migrating：R14 备份 → exec → 解析 → 禁降�
 		expect(state.writes).toBe(0);
 	});
 
+	describe("退出码分类（S1-6：成败真源 = exit code；用户面友好文案经 code 透传 CLI 本地化）", () => {
+		it("exit 127（命令未找到/共享库缺失）：code=migrate_tool_unavailable，message 含 exit 127 与备份路径，不把原始 stderr 当原因", async () => {
+			const exec = recordingExec(async () => ({ code: 127, stdout: "", stderr: "migrate: error while loading shared libraries: migrate: cannot open shared object file" }));
+			const r = await migrate(mgCtx({ exec }));
+			expect(r.ok).toBe(false);
+			expect(r.retryable).toBe(true);
+			expect(r.code).toBe("migrate_tool_unavailable");
+			expect(r.message).toContain("exit 127");
+			expect(r.message).toContain(".bak-");
+			// 原始机器串仍在诊断摘要中（服务端日志用），但归类为人话原因而非裸抛
+			expect(r.message).toContain("shared object file");
+		});
+
+		it("exit 126（oj 二进制不可执行）：code=migrate_tool_unavailable", async () => {
+			const exec = recordingExec(async () => ({ code: 126, stdout: "", stderr: "permission denied" }));
+			const r = await migrate(mgCtx({ exec }));
+			expect(r.ok).toBe(false);
+			expect(r.code).toBe("migrate_tool_unavailable");
+			expect(r.message).toContain("exit 126");
+		});
+
+		it("exit 137（SIGKILL 超时/内存）：code=migrate_timeout", async () => {
+			const exec = recordingExec(async () => ({ code: 137, stdout: "", stderr: "killed" }));
+			const r = await migrate(mgCtx({ exec }));
+			expect(r.ok).toBe(false);
+			expect(r.code).toBe("migrate_timeout");
+			expect(r.message).toContain("exit 137");
+		});
+
+		it("其它非零（迁移逻辑失败，如 SQL 错误）：code=migrate_failed，stderr 真因摘要入 message", async () => {
+			const exec = recordingExec(async () => ({
+				code: 1,
+				stdout: JSON.stringify({ results: [{ module: "demo-solution", ok: false, applied: [], error: "at seq 2: migration V2__broken" }] }),
+				stderr: "",
+			}));
+			const r = await migrate(mgCtx({ exec }));
+			expect(r.ok).toBe(false);
+			expect(r.code).toBe("migrate_failed");
+			expect(r.message).toContain("at seq 2");
+			expect(r.message).toContain(".bak-");
+		});
+	});
+
 	it("exit 0 但 stdout 非 JSON：ok=false retryable=false（输出契约破坏，重试不自愈）", async () => {
 		const exec = recordingExec(async () => ({ code: 0, stdout: "segmentation fault", stderr: "" }));
 		const r = await migrate(mgCtx({ exec }));

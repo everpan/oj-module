@@ -156,6 +156,54 @@ const VERIFY_CODE_COPY: Record<string, { reason: { zh: string, en: string }, hin
 	},
 };
 
+/**
+ * migrating 段失败码双语文案（契约附录 A；文案真源 = 契约附录 A，此处为渲染镜像，缺失即测试红）。
+ * 由模板侧 migrate.ts 按 oj migrate 退出码分类透传 code（127/126=运行环境不可用、137=被 SIGKILL、
+ * 其余=迁移逻辑失败），CLI 依 locale 出人话；原始 stderr 只留服务端 task.message 诊断，不再灌进用户面。
+ */
+const MIGRATE_CODE_COPY: Record<string, { reason: { zh: string, en: string }, hint: { zh: string, en: string } }> = {
+	migrate_tool_unavailable: {
+		reason: {
+			zh: "迁移失败：站点宿主的运行环境不可用——oj 二进制或其依赖缺失/损坏（命令未找到或共享库缺失，exit 127/126）。这通常不是方案本身的问题。",
+			en: "Migration failed: the host runtime is unavailable — the oj binary or its dependencies are missing or corrupted (command not found / shared library missing, exit 127/126). This is usually not a problem with the solution itself.",
+		},
+		hint: {
+			zh: "请检查宿主的 oj 安装是否完整、依赖库（*.so 等）是否齐全，重装或修复 oj 后重试；数据未改动，备份可供回退。持续失败请联系运维。",
+			en: "Check that oj is installed completely on the host and its shared libraries (*.so) are present; reinstall or repair oj, then retry. Data is intact and a backup is available. If it persists, contact ops.",
+		},
+	},
+	migrate_timeout: {
+		reason: {
+			zh: "迁移失败：oj migrate 被系统终止（SIGKILL，exit 137），疑似迁移超时或内存超限。",
+			en: "Migration failed: oj migrate was killed by the system (SIGKILL, exit 137), likely a timeout or out-of-memory during migration.",
+		},
+		hint: {
+			zh: "请稍后重试；若数据量较大，请联系运维调大迁移超时或内存上限。数据未改动，备份可供回退。",
+			en: "Retry later; if the dataset is large, ask ops to raise the migration timeout or memory limit. Data is intact and a backup is available.",
+		},
+	},
+	migrate_failed: {
+		reason: {
+			zh: "迁移失败：oj migrate 返回非零退出码，迁移逻辑未通过（SQL/DSN 等具体错误见任务详情里的服务端输出摘要）。",
+			en: "Migration failed: oj migrate exited non-zero — the migration logic did not pass (SQL/DSN errors are in the output summary of the task details).",
+		},
+		hint: {
+			zh: "请按任务详情中的输出摘要修复迁移脚本后重试；数据未改动，备份可供回退。",
+			en: "Fix the migration script using the output summary in the task details, then retry. Data is intact and a backup is available.",
+		},
+	},
+};
+
+/**
+ * 失败码本地化总表（契约附录 A / A.2）：verifying 六码 + migrating 三码，key = `<stage>.<code>`，
+ * 文案真源 = 契约附录 A，此处为渲染镜像（缺失即测试红，同 C2-25 纪律）。hintKey 形如
+ * `lifecycle.stage.<stage>.<code>`，渲染层据此取本表双语文案；未知 code 回落服务端可读串（不丢信息）。
+ */
+const STAGE_CODE_COPY: Record<string, { reason: { zh: string, en: string }, hint: { zh: string, en: string } }> = {
+	...Object.fromEntries(Object.entries(VERIFY_CODE_COPY).map(([c, v]) => [`verifying.${c}`, v])),
+	...Object.fromEntries(Object.entries(MIGRATE_CODE_COPY).map(([c, v]) => [`migrating.${c}`, v])),
+};
+
 function normalizeLocale(locale?: string): Locale {
 	return locale === "en-US" || locale === "en" ? "en-US" : "zh-CN";
 }
@@ -174,9 +222,14 @@ export function renderOutcome(record: TaskRecord, locale?: string): string {
 			: `[ojm] 任务记录 schema 版本 ${record.schemaVersion} 高于本 CLI 支持的版本（${TASK_SCHEMA_VERSION_KNOWN}）——字段可能缺失或语义漂移，请升级 ojm 后重试。`;
 	}
 	if (record.status === "done") {
+		// 断路口提示（P3 调查：浏览器 SPA 仅在 Boot 时一次性读 modules.json，安装后内存表不热更新——
+		// 新方案菜单/导航须刷新页面才出现；无守护进程时还须重启 oj serve）。
+		const refreshNote = lang === "en-US"
+			? "If the solution's menu/navigation does not appear, refresh the page; without a supervisor, restart oj serve to take full effect."
+			: "若方案菜单/导航未出现，请刷新页面；无守护进程时请重启 oj serve 以完全生效。";
 		return lang === "en-US"
-			? `[ojm] Install complete: ${record.name} ${record.version}`
-			: `[ojm] 安装完成：${record.name} ${record.version}`;
+			? `[ojm] Install complete: ${record.name} ${record.version}\n${refreshNote}`
+			: `[ojm] 安装完成：${record.name} ${record.version}\n${refreshNote}`;
 	}
 	if (record.status === "needs_trust") {
 		// 第五终态（P2-3，G3）：未知发布方待 TOFU 确认——**非成功态、非失败崩溃**；
@@ -198,16 +251,20 @@ export function renderOutcome(record: TaskRecord, locale?: string): string {
 			].join("\n");
 	}
 	const retryable = RETRYABLE_LABELS[lang][record.error?.retryable ? "yes" : "no"];
-	const stage = record.error?.hintKey?.replace(/^lifecycle\.stage\./, "").replace(/\.hint$/, "") ?? record.stage ?? "";
+	// hintKey 形如 lifecycle.stage.<stage>.<code>（六码/三码）或 lifecycle.stage.<stage>.hint；
+	// stage 取第一段，避免 code 段（如 verifying.sig_missing）混入标题
+	const stage = record.error?.hintKey?.replace(/^lifecycle\.stage\./, "").split(".")[0] ?? record.stage ?? "";
 	const en = lang === "en-US";
-	// 六码走 key：hintKey 形如 lifecycle.stage.verifying.<code>，按 locale 取本表（fail-fast 测试据此断言实际渲染）
-	const code = /^lifecycle\.stage\.verifying\.(sig_missing|sig_alg|sig_key|tampered|unknown_key|sig_format)$/
-		.exec(record.error?.hintKey ?? "")?.[1];
-	const reason = code
-		? (VERIFY_CODE_COPY[code]?.reason[en ? "en" : "zh"] ?? record.error?.reason ?? record.message)
+	// 失败码走 key：hintKey 形如 lifecycle.stage.<stage>.<code>，按 locale 取 STAGE_CODE_COPY 双语文案
+	// （fail-fast 测试据此断言实际渲染）。unknown_key 等六码 + migrating 三码统一收敛于此表。
+	const code = /^lifecycle\.stage\.(\w+)\.(\w+)$/.exec(record.error?.hintKey ?? "");
+	const stageCode = code ? `${code[1]}.${code[2]}` : null;
+	const localized = stageCode ? STAGE_CODE_COPY[stageCode] : undefined;
+	const reason = localized
+		? (localized.reason[en ? "en" : "zh"])
 		: (record.error?.reason ?? record.message);
-	const hint = code
-		? (VERIFY_CODE_COPY[code]?.hint[en ? "en" : "zh"] ?? STAGE_HINTS[stage]?.[en ? "en" : "zh"] ?? "")
+	const hint = localized
+		? (localized.hint[en ? "en" : "zh"])
 		: (STAGE_HINTS[stage]?.[en ? "en" : "zh"] ?? (en ? "Inspect the task details on the site for more information" : "请到站点任务详情页查看更多信息"));
 	const head = record.status === "partial"
 		? (lang === "en-US"
