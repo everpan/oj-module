@@ -37,7 +37,7 @@ flowchart LR
 
 远端签名推送对目标站点有三项硬前提，缺任何一项都会在某一步被拒。这些都在**站点 config**（不是 CLI 侧）配置，发布前先确认：
 
-1. **市场匿名面**：`oj serve` 实际加载的那份 config（见下「配置文件名」）的 `auth.anonymous_paths` 与 `tenant.anonymous_paths` 都必须含以下三条——
+1. **市场匿名面**：`oj serve -c <文件>` 实际加载的那份 config 的 `auth.anonymous_paths` 与 `tenant.anonymous_paths` 都必须含以下三条——
 
    ```yaml
    # auth.anonymous_paths（Bearer 守卫逃生口）
@@ -52,8 +52,8 @@ flowchart LR
 
    CLI 的目录探测（匿名 GET `/api/oj-market/catalog`）与上传/下线（裸 fetch，靠签名头鉴权）都**不带凭据**，漏列则 401 被守卫硬挡。改完须**重启站点**（config 是启动冻结段）。
 
-2. **registry_id**：站点实际加载的那份 config（`oj serve -c <文件>` 指向的任意文件名，常见 `config-release.yaml`）的 `vars` 下加 `registry_id: <站点身份>`（如 `oj-registry`）——推送 canonical 首段 = 站点身份，缺它 503「未配置 registry_id」。
-   **配置文件名无关**：市场模块读 `registry_id` / `canonical_origin` 已改为走 `vars` 全局（config-filename-agnostic），即 `oj serve` 实际加载的那份 config 的 `vars` 段，不论文件名是 `config.yaml` 还是 `config-release.yaml` 都能读到。**无需**再把配置额外抄进 `config.yaml`；只写进真正被 `-c` 加载的那一份 `vars` 即可。
+2. **registry_id**：`oj serve -c <文件>` 实际加载的那份 config（任意文件名，常见 `config-release.yaml`）的 `vars` 下加 `registry_id: <站点身份>`（如 `oj-registry`）——推送 canonical 首段 = 站点身份，缺它 503「未配置 registry_id」。
+   **配置名无关**：市场模块读 `registry_id` / `canonical_origin` 走 `vars` 全局（config-filename-agnostic），即被 `-c` 加载的那份 config 的 `vars` 段，不论文件名都能读到。**无需**再把配置额外抄进 `config.yaml`，只写进真正被 `-c` 加载的那一份 `vars` 即可。
 
 3. **信任库**：`keygen --credential` 兑换只分配 `key_id` + 生成本地私钥，**公钥不会回传站点**，所以站点信任库里没有这把 key。首次推送前，站点 superadmin 必须把公钥登记进去，否则上传 **403**（「发布 key 不在信任库」）：
 
@@ -195,7 +195,7 @@ ojm market publish --real . \
 
 - `--site-url` 缺省读环境变量 `OJM_SITE_URL`；两个都没有 → 人话报错（不猜默认站点）。
 - 站点版本探测：推送前 CLI 先匿名 GET 目录 API——旧站点（文件索引时代）无此 API → 404 →
-  「站点版本过旧」人话 + 迁移指南指向；站点未配 `registry_id` → 明确指向 `config.yaml vars` 设置项。
+  「站点版本过旧」人话 + 迁移指南指向；站点未配 `registry_id` → 明确指向「被 `-c` 加载的那份 config 的 `vars`」设置项（文件名任意，见 §0.5 前置 2）。
 - **半成功自愈**：`.sig` 已推、`.tgz` 被拒（如网络中断）——报错会提示「重跑本命令幂等补齐」：
   同字节重传幂等，pair 自动完成，无人工清场负担。
 - **目标站点要先信任你的 key**（`ojm trust add` 或市场页信任确认）——否则推送 403，
