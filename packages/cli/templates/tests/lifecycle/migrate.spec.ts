@@ -108,8 +108,8 @@ function mgCtx(overrides: Partial<MigrateContext> = {}): MigrateContext {
 
 describe("命令构造纯函数（exec 白名单逐字对齐，S1-2/S1-6）", () => {
 	it("buildMigrateCmd 逐字：[launcher, migrate, --format, json, -c, configPath, -d, dir, module]", () => {
-		expect(buildMigrateCmd("bin/oj", "/site/dist", "demo-solution", "config.yaml")).toEqual([
-			"bin/oj",
+		expect(buildMigrateCmd("oj", "/site/dist", "demo-solution", "config.yaml")).toEqual([
+			"oj",
 			"migrate",
 			"--format",
 			"json",
@@ -391,7 +391,7 @@ describe("migrate（stage=migrating：R14 备份 → exec → 解析 → 禁降�
 		const baks = (await fsp.readdir(root)).filter(n => n.startsWith("db.sqlite.bak-"));
 		expect(baks).toHaveLength(1);
 		expect(new Uint8Array(await fsp.readFile(join(root, baks[0]!)))).toEqual(DB_BYTES);
-		expect(exec.calls[0]).toEqual(buildMigrateCmd("bin/oj", migrateSvcDirOf(staging), "demo-solution", "config.yaml"));
+		expect(exec.calls[0]).toEqual(buildMigrateCmd("oj", migrateSvcDirOf(staging), "demo-solution", "config.yaml"));
 		// 超时显式取平台硬上限：oj exec.run timeoutMs 缺省 30s 会杀生产级长迁移（0.1.78 文档化口径）
 		expect(exec.opts[0]).toEqual({ timeoutMs: 600_000 });
 		expect(state.writes).toBe(0);
