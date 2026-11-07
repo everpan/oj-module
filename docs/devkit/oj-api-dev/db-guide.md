@@ -1049,7 +1049,7 @@ const rows = await DB("analytics").fromJSON(snap).all();   // 在另一个库上
 | `db.listTables` | ✅ | ✅ | ✅ | ❌ |
 | `db.nextSeq` | ✅ | ✅ | ✅ | ❌ |
 | `_shared/search.ts` / `_shared/versions.ts` | ✅ | ✅ | ✅ | ❌ |
-| `oj migrate` / `oj seed` | ✅ | ✅ | ✅ | ❌（迁移须用该方言自己的工具） |
+| `oj migrate` / seed 重放（冷启动或 `oj migrate --with-seed`，v0.1.125） | ✅ | ✅ | ✅ | ❌（迁移/seed 须用该方言自己的工具；`--with-seed` 同样 fail-loud 报 `OJ_DB_UNSUPPORTED`，不回落 sqlite） |
 
 > **`memory://` 不在上表三列里**：它是测试**假后端**（见 §1.1），`query`/`exec`/`stream`
 > 都直接回夹具行、不执行 SQL，`db.nextSeq` 因此拿不到返回值（`db.nextSeq: no value
@@ -1115,7 +1115,7 @@ postgres  placeholder=$ id=returning stream cancel
 | `query_build` / `query_sql` | `db.table(...).all()/run()` 与 `.toSQL()`（宿主生成 SQL） |
 | `list_tables` | `db.listTables()` |
 | `next_seq` | `db.nextSeq()` |
-| `migrate` / `seed` | `oj migrate` / `oj seed`（CLI 侧 fail-loud，不进 JS） |
+| `migrate` / `seed` | `oj migrate` / seed 重放（冷启动 / `oj migrate --with-seed`，CLI 侧 fail-loud，不进 JS） |
 | `stream` / `cancel` | 插件声明了该能力却回 unsupported（契约违规） |
 
 **业务代码要不要按方言分支？** 多半不需要，且 `db.dialect()` 不是判断能力的正确工具——

@@ -40,6 +40,40 @@ cp bin/devkit/global.d.ts bin/devkit/oj-modules.d.ts .                       # �
 手册与 skill 随 oj 版本一起发布。升级 oj 后，用新包里的 `devkit/` 覆盖旧拷贝即可。
 源文件与反馈入口在仓库 `docs/devkit/`。
 
+v0.1.125 已落地部分：**`oj migrate --with-seed`——迁移后同批重放 seed，补齐「装完数据面空」缺口**——
+为 `oj migrate` 增加 opt-in 旗标 `--with-seed`（与 `--baseline` 互斥）：迁移全部成功后，对同一批
+模块（含 `--module` 过滤）在同一命令、同一目标库连接上紧接着重放各自的 `seed.sql` /
+`seed.<方言>.sql`，严格 migrate→seed、幂等可重跑、逐模块作用域不串台。`--format json` 顶层新增
+可选 `seed` 对象（不污染 `results`），seed 失败使整条命令退非 0 并在 stderr 前置诊断。新入口有
+fail-closed 运行期白名单（只放行幂等 INSERT、执行前全量预扫零副作用）。本轮只交付 oj-bin CLI
+能力；下游 `ojm install` 接入（`buildMigrateCmd` / `platform.exec` 白名单 / `MIN_OJ_VERSION`）留待
+单独交付。见 api-manual §3「三层 SQL 文件」与 §10「`oj migrate --with-seed`」/ 命令与错误表、
+scenarios 场景 73、SKILL 陷阱速查。
+
+v0.1.124 已落地部分：**reload force 值口径收紧**——裸 `?force`（query 中无 `=` 的旗）
+视同**未强制**（fail-closed：未记载的输入绝不触发特权强制，对齐「值取 `1`/`true`」的
+既有契约）；并钉死 force+busy 串行——持锁下 `?force=1` 仍 409。契约不变，自动化工具
+请始终发 `force=1`/`force=true`。见 api-manual §10、SKILL 陷阱速查、scenarios 场景 72。
+
+v0.1.123 已落地部分：**reload force 旁路——强制热更不再需要凑 config diff**——
+`POST {base}/_system/config?force=1` 或特权 JS `server.reloadConfig(true)` 跳过 unchanged
+幂等闸门强制影子装配换代（零差异也换代，`applied` 可空；busy 409 与空 body 400 不豁免；
+force 不改变闸门基线）。`unchanged` 从此是**幂等成功**语义（活代已与盘上一致）——自动化
+调用方（如安装器）收到它应正常收尾。不传 force 行为逐字节不变。见 api-manual §10
+「配置热更新」/ §6 server、scenarios 场景 72、SKILL 陷阱速查。
+
+v0.1.122 已落地部分：**热装配——reload 覆盖 manifests 锁，release 装/卸模块免重启**——
+`server.reload_api: true` 时改 `dist/manifests.yaml` 锁（装/卸/升级）+ `POST
+{base}/_system/config` 即换代生效；`applied` 新增模块条目 `+name@ver`/`-name@ver`（升级
+成对、按名排序）；幂等判定升级为「config sha **与** 锁双双未变」；空锁 = 卸载全部（reload
+放行，冷启动仍 fail-fast）；特权名热装被抢注拦截（400 点名，零副作用）；`GET _system/config`
+新 `modules` 键、`ojInfo().build.capabilities` 三能力位。**行为修正两处如实登记**：①
+`vars`/`oidc`/`db_query`/`db_trace`/`ws` 冻结段改动由旧版误标 `applied` 改为如实报
+`restart_pending`（须重启）；② cron driver 迁独立线程随进程存活 + 换代 resume 闸（reload
+后 cron 仍触发且恰一次）。另：`auth.anonymous_paths` 命中即前置管线短路（不再调守卫
+verify）、保留段 `_platform`/`_system`/`_lifecycle`/`tasks` 匿名条目 fail-fast 拒装。
+见 api-manual §10「配置热更新」「匿名路径」、scenarios 场景 71、SKILL 陷阱速查。
+
 v0.1.121 已落地部分：**seed 按文件名分方言**——`seed.<sqlite|mysql|pg>.sql`（标签同迁移）
 存在即胜出、`seed.sql` 兜底，**绝不双跑**；只有别的方言的 seed → 跳过 + warn（不再全库静默
 不生效），标签写错（`seed.postgres.sql` / `Seed.Sql` / `seed..sql`）→ warn 提示规范名，`oj check`

@@ -204,8 +204,8 @@ src/<模块>/api/<路径...>/api.ts   →   /api/<模块>/<路径...>
 | 文件 | 何时生效 |
 |---|---|
 | `migrations/*.sql` | 启动（dev `migrate_on_start: auto`）；release 默认 `verify`，账本落后则**拒绝启动** |
-| `seed.sql` / `seed.<方言>.sql` | **每次启动都重放**——方言件（`.sqlite` / `.mysql` / `.pg`）存在即胜出、`seed.sql` 兜底、绝不双跑（oj ≥ 0.1.121）；必须幂等 |
-| `schema.yaml` | 声明；加可空列 / 加表 reconcile 能收敛，但**改类型与改名必须走 migrations** |
+| `seed.sql` / `seed.<方言>.sql` | **每次启动都重放**——方言件（`.sqlite` / `.mysql` / `.pg`）存在即胜出、`seed.sql` 兜底、绝不双跑（oj ≥ 0.1.121）；必须幂等；**安装期重放走 `oj migrate --with-seed`（oj ≥ 0.1.125，见下）** |
+| `schema.yaml` | 声明；加可空列 / 加表 reconcile 能收敛，但**改类型与改名必须走 migrations**；`oj migrate` 单模块路径会用 reconcile 把「账本已应用但表缺失」的表按声明重建（列序规范化，非迁移 DDL 原文）——**drop 表重跑 migrate ≠ 重放迁移，数据重建须 seed** |
 
 > `seed.sql` 按 `;` 朴素切分，**注释里不许出现分号字面量**，否则语法错。
 
@@ -216,6 +216,20 @@ src/<模块>/api/<路径...>/api.ts   →   /api/<模块>/<路径...>
 > 更早的 oj 只认字面 `seed.sql`（会把 sqlite 写法原样下发 mysql/pg → 1064），已低于门禁，
 > `ojm vendor` / `ojm info` 会直接拒绝。工程根**不再**有方言 seed 副本（历史上那份只含部分
 > 设置、且 mysql 侧裸写 `key`，已删除）。
+
+> **安装期 seed 重放：`oj migrate --with-seed`（oj ≥ 0.1.125，2026-11-07 drill3 实机验证）**。
+> 冷启动才灌 seed 的缺口补齐：迁移全部成功后对同一批模块同批重放各自 `seed.sql`，严格
+> migrate→seed、同一目标库连接；`--module` 定向过滤同样生效。要点（api-manual §10 为准）：
+> - **ojm preview/release 站点上 `-d` 指 `dist/api`**（release 锁聚合树）；`-d dist` 会把
+>   `dist/web` 资产目录当模块扫，报 `module 'web' missing manifest.yaml`（0.1.125 实测）。
+> - **幂等、可安全重试**：重复执行行数不翻倍；修复 seed.sql 后重跑即可。
+> - **fail-closed 门禁**：只放行幂等 INSERT（`INSERT OR IGNORE` / `INSERT IGNORE` /
+>   `ON CONFLICT DO NOTHING` 等），DDL / UPDATE / DELETE / REPLACE / 事务控制等语句头
+>   整轮拒绝（执行前全量预扫、零副作用）、exit 非 0 且 stderr 前置诊断。
+> - **ojm 安装器接线现状**：`ojm install` 的迁移命令暂未传 `--with-seed`（上游交付边界），
+>   装完带 seed 的方案后数据面仍空——验收/演练时显式补跑一条：
+>   `oj migrate --with-seed -c config.yaml -d dist/api <module>-<version>`（无需重启）。
+>   schema reconcile 保证目标表存在（见上表 `schema.yaml` 行），seed 落库即 API/页面可见。
 
 > **框架自带 `_platform` 模块的迁移已压平为单条基线**（`0001__baseline.sql` 及
 > `.mysql.sql` / `.pg.sql` 两个方言版）：新工程按基线一次建表，不再有 0002…0018 的增量链。

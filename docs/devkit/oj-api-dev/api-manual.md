@@ -310,7 +310,7 @@ tables:
 | 文件 | 时机 | 纪律 |
 |---|---|---|
 | `migrations/{seq:04}__{desc}[.方言].sql` | 启动（auto）/ `oj migrate` | 只前向；账本 `_oj_migrations`（`module` 列区分模块）；序列空洞/乱序 S007 报错 |
-| `seed.sql` / `seed.<方言>.sql`（模块级） | 每次启动重放 | 方言件（`.sqlite` / `.mysql` / `.pg`）胜出、`seed.sql` 兜底，**绝不双跑**（v0.1.121）；幂等 `INSERT OR IGNORE`（方言件可用本方言原生幂等写法）；按 `;` 切分，语句内不得含分号字面量（S006）；语句前置 `--` 注释行允许（v0.1.66 起，改写判定先剥注释） |
+| `seed.sql` / `seed.<方言>.sql`（模块级） | 每次启动重放 / `oj migrate --with-seed`（v0.1.125，随安装即时灌） | 方言件（`.sqlite` / `.mysql` / `.pg`）胜出、`seed.sql` 兜底，**绝不双跑**（v0.1.121）；幂等 `INSERT OR IGNORE`（方言件可用本方言原生幂等写法）；按 `;` 切分，语句内不得含分号字面量（S006）；语句前置 `--` 注释行允许（v0.1.66 起，改写判定先剥注释）。`--with-seed` 新入口另有 fail-closed 运行期白名单（只放行幂等 INSERT，见下节） |
 | `fixtures/*.sql` | 仅 `oj test` / `oj test fixture` 灌入 | 演示/测试数据，不进 release 产物 |
 
 ### 命令
@@ -318,6 +318,7 @@ tables:
 | 命令 | 用途 |
 |---|---|
 | `oj migrate -c config.yaml -d <dir>` | 应用待执行迁移（`--baseline`：存量库接入，≤head 记为已应用不执行） |
+| `oj migrate --with-seed -c config.yaml -d <dir> [module]` | （v0.1.125）迁移成功后，对同一批模块（含 `--module` 过滤）紧接着重放各自 `seed.sql`，严格 migrate→seed、同一目标库连接；opt-in，与 `--baseline` 互斥，详见下节 |
 | `oj schema diff -c config.yaml -d <dir>` | 声明 vs 实库对账（D001 漂移 / D002 未声明表），只读，漂移 exit 1 |
 | `oj test fixture -c config.yaml -d <dir>` | 灌 `fixtures/*.sql` 演示数据（dev/test 用，不进 release 产物）。v0.1.52 起有**幂等门禁**：非幂等 INSERT（判据同 S006）灌入前报错，改 `INSERT OR IGNORE` / `ON CONFLICT DO NOTHING` 写法即可重复灌 |
 | `oj openapi -c config.yaml [-d dir] [--base B] [-o out.json]` | 从路由表生成 OpenAPI 3.1（dev 内省 `.route` / release 读 `dist/routes.js`），打印或落盘（v0.1.43）；v0.1.52 起 dev 分支内省失败同样 fail-fast（对齐 release，不再静默缺路由）；**v0.1.70 起补齐响应侧**：`.schema.response`（v0.1.72 起亦可写平级 `.response`，优先级 动词 `.response` > 组 `.response` > 动词 `.schema.response` > 组 `.schema.response`）→ `responses.200`（外裹 `{code,msg,data}` 信封）、每个 operation 与 spec 根带 **`tags: [<module>]`**、生成前审计全部 `.schema`（非法契约不再原样进 spec）、`operationId` 重复即报错、**v0.1.73 起 `del` 动词归一为 `delete` 操作键**（OpenAPI 3.x 只认标准 HTTP 方法） |
@@ -356,6 +357,51 @@ tables:
 定向（release 锁聚合形态 `<dir>/<m>-<v>/`）。**不解析 `<m>-<v>` 字符串**（version 可含 `-` 如
 `0.1.0-beta`，拆分有歧义），直接对已发现目录名匹配：`--module modA` 与 `--module modA-1.0.0`
 在 release 下等价只动 modA。多库项目：`--db X --module M` 逐组合跑（场景 6）。
+
+### `oj migrate --with-seed`：迁移后同批重放 seed（v0.1.125）
+
+补 U7 缺口：过去 `ojm install` 装完带 seed 的模块，要等**下次冷启动**（`app.rs` 的
+`!reused` 门禁）才灌 seed 数据。加 `--with-seed` 后，一条命令把迁移与 seed 一起做完：
+
+```bash
+./bin/oj migrate --with-seed -c config.yaml -d dist              # 全模块
+./bin/oj migrate --with-seed -c config.yaml -d src --module books  # 定向单模块
+./bin/oj migrate --with-seed --format json -c config.yaml -d dist books  # 安装器/CI
+```
+
+- **执行顺序严格 migrate→seed**：迁移全部成功提交后，才在**同一条命令、同一目标库连接**
+  上重放 seed（seed 的 INSERT 目标表须由迁移先建好，与冷启动顺序一致）。迁移有任一模块
+  失败即**整轮跳过 seed**。
+- **作用域 = 迁移的同一批模块**：复用 `s.modules`（`--module` 过滤同样生效），每个模块
+  只在自己的模块根 `pick` 本模块的 `seed.sql` / `seed.<方言>.sql`；不整树扩散、不跨模块
+  串台、不递归子目录。无 seed 文件即 no-op。
+- **opt-in、缺省关**：不传旗标行为逐字节不变；与 `--baseline` 互斥（同参即 clap 报参数冲突）。
+- **幂等**：seed 走 `INSERT OR IGNORE` / `INSERT IGNORE` / `ON CONFLICT DO NOTHING` 等
+  幂等写法，重复执行不翻倍；修复 seed.sql 后重跑本命令即安全重试。
+- **fail-closed 运行期门禁（新入口纵深防御）**：`--with-seed` 只放行**幂等 INSERT**，拒绝
+  DDL / `UPDATE` / `DELETE` / `REPLACE` / `PRAGMA` / `ATTACH` / 事务控制 / `INSERT … SELECT`
+  等一切其它语句头（含 `/*x*/ DROP TABLE t` 这类行首注释绕过——语句头取
+  `code_tokens(stmt)[0]`）。执行前对全部 seed 文本**完整预扫**，任一语句不合规即整轮拒绝、
+  **零副作用**。方言以**目标库**为准；冷启动既有 S006 仍按文件方言，两者互不干扰。
+  这是 opt-in 新入口的纵深防御，不是针对已签名恶意包的完整沙箱。
+- **JSON 契约**：`--format json` 在保留 `results` 的前提下，顶层新增可选 `seed` 对象
+  （**不污染** `results`，顶层 `error` 仍只表迁移装配失败）：
+
+  ```json
+  { "results": [ { "module": "books", "ok": true, "applied": [ { "version": 1, "name": "0001__init" } ] } ],
+    "seed": { "results": [ { "module": "books", "ok": true, "file": "seed.sql", "dialect": "sqlite", "stmts": 3 } ] } }
+  ```
+
+  `seed.results[]` 逐模块一条：`ok` / `file`（仅文件名，不含绝对路径）/ `dialect` /
+  `stmts`（本轮执行语句数）/ `error`（失败原因，脱敏、裁剪）。**seed 失败使整条命令退非 0**，
+  并在 **stderr 前置人类可读诊断**（`oj migrate --with-seed 失败：…` + 重试指引）——下游
+  安装器以 `code !== 0` 为成败真源、先于 JSON 解析返回，故 stdout 的 `seed` 字段主要面向
+  运维 / CI 直跑；未加 `--with-seed` 时输出不含 `seed` 字段。
+
+> **交付边界**：本轮只交付 oj-bin 侧 CLI 能力。下游 `ojm install` 尚未在 `buildMigrateCmd`
+> 传入 `--with-seed`，`platform.exec` 白名单（argv 逐 token 精确模板）与 `MIN_OJ_VERSION`
+> 也需联动，装完即数据面就绪的安装端到端闭环留待下游单独交付——运维 / CI 直跑本命令
+> 不受影响。
 
 ### 门禁配置（第 10 章 server 表）
 
@@ -1047,7 +1093,7 @@ const n = await db.exec("update user set name = ? where id = ?", ["b", 1]);
 | `fs.readFile/readTextFile/writeFile/writeTextFile/mkdir/remove/rename/stat/readDir` | 本地文件系统（`fs:` 段启用，v0.1.53）；jail 到 `fs.root`，未配置/越界抛 `NotCapable` |
 | `exec.run(argv, opts?)` | 外部命令执行（v0.1.75，`platform.exec` 段授权）：argv 模板白名单 + 路径占位符校验，无 shell；未配置/未授权抛 `NotCapable`，见下「exec」 |
 | `yaml.parse(text)` / `yaml.stringify(value)` | YAML 读写原语（v0.1.75，无特权，始终可用）：三预算防炸弹解析（1 MiB 输入 / 10 万节点含 alias 展开 / 深度 128）+ Rust 阻塞池执行不卡 isolate；stringify 仅承诺机器产物往返，见下「yaml」 |
-| `server.reloadConfig()` | 进程内触发热更（v0.1.75，`platform.modules` 特权）：与 `POST {base}/_system/config` 同一 executor 与串行锁，返回恒定形状（`generation` + 三清单 `applied`/`restart_pending`/`kept_listener`，`unchanged` 时三清单空）；`oj test` / 嵌入式抛 `reload not available`，见下「server」 |
+| `server.reloadConfig(force?)` | 进程内触发热更（v0.1.75，`platform.modules` 特权；v0.1.123 起 `force` 参）：与 `POST {base}/_system/config` 同一 executor 与串行锁，返回恒定形状（`generation` + 三清单 `applied`/`restart_pending`/`kept_listener`，`unchanged` 时三清单空）；`force=true` 跳过幂等闸门强制换代（`unchanged` 恒 false、`applied` 可空）；`oj test` / 嵌入式抛 `reload not available`，见下「server」 |
 | `bus.publish / subscribe / kind` | 主题广播（HTTP 发布、WS 订阅） |
 | `es.search / index / del` | Elasticsearch 薄客户端（`es:` 段启用） |
 | `Mail(key)` / `mail` | 邮件投递（`smtp:` 段 + `oj-mail` 插件启用）：`send / sendSync / enqueue / result / sendRaw`，见下「mail」 |
@@ -1604,7 +1650,7 @@ yaml.stringify(value: object): Promise<string>;  // 仅承诺机器产物（mani
 ### server —— 平台级控制（v0.1.75，platform 特权）
 
 ```ts
-server.reloadConfig(): Promise<{
+server.reloadConfig(force?: boolean): Promise<{
   generation: number; unchanged: boolean;
   applied: string[]; restart_pending: string[]; kept_listener: string[];
 }>
@@ -1616,6 +1662,10 @@ server.reloadConfig(): Promise<{
 - **特权**：仅 `platform.modules` 名单内的模块可调（特权是请求级归属，见 `platform:`
   段说明）；tasks/WS 上下文无归属恒 `NotCapable`。
 - **返回形状恒定**：`unchanged=true` 时三清单为空数组，JS 无需分支。
+- **`force`（v0.1.123）**：`force=true` 跳过 unchanged 幂等闸门，零差异也照常影子装配
+  换代（`unchanged` 恒 false；无段 diff 时 `applied=[]`）。与 HTTP `?force=1` 同源；
+  busy（并发 409）与空 body 校验（HTTP 侧 400）**不豁免**；force 不改变闸门基线
+  （强制换代后，无 force 调用仍按幂等判定）。缺省/非布尔 = 未强制，行为与旧版一致。
 - **不可用形态**：`oj test` / 嵌入式（无热更执行器）抛 `reload not available`。
 - **并发**：与 HTTP POST 共享串行锁——撞锁一方抛 busy 错误，**不静默排队**。
 - **⚠️ actor 占用**：热更在独立线程跑影子装配（**秒级**：DB verify + 模块转译），
@@ -1629,6 +1679,9 @@ server.reloadConfig(): Promise<{
 | `reload not available (not running under oj serve)` | `oj test` / 嵌入式无执行器 |
 | `server.reloadConfig: reload in progress (busy)` | 并发触发撞串行锁（HTTP 侧同语义 409） |
 | `server.reloadConfig: HTTP 400: <原因>` | 归一/装配失败（旧代继续服务，不破坏在跑实例） |
+| `server.reloadConfig: HTTP 400: platform module '<name>' must not be hot-installed …`（v0.1.122） | 热装 `platform.modules` 特权名被抢注拦截——特权模块只能放入 `platform.root` 后重启（失败零副作用，代际不动） |
+| `server.reloadConfig: HTTP 500: old task pool did not stop within 10s — reload aborted`（v0.1.123） | 旧代任务池停滞超时——reload 拒绝、代际不动；已闭门装配的新代任务**就地收场**（置位换代 flag + 停池 join，不泄漏空转线程），旧代继续服务 |
+| `server.reloadConfig: HTTP 500: spawn cron-driver: …`（v0.1.123） | cron driver 线程拉起失败（线程资源耗尽）——装配中止、旧代继续服务（**不静默降级**为无 cron 运行） |
 
 ### bus —— 订阅发布
 
@@ -2052,7 +2105,8 @@ JS 出口：handler 里 `ojInfo()` **同步**返回五段诊断对象（装配�
 
 ```jsonc
 {
-  "build":   { "oj": "0.1.54", "profile": "release", "host_triple": "…", "v8": "…", "exe": "…" },  // config_path 仅 oj info CLI 出，JS ojInfo() 无此字段
+  "build":   { "oj": "0.1.54", "profile": "release", "host_triple": "…", "v8": "…", "exe": "…",
+               "capabilities": ["reload.assemble_modules","reload.anon_per_reload","reload.cron_survives"] },  // config_path 仅 oj info CLI 出，JS ojInfo() 无此字段；capabilities 为 v0.1.122 增量能力位（闭集，客户端按位探测）
   "abi":     { "abi_version": 12, "host_fingerprint": "…" },
   "plugins": [ { "name": "…", "semver": "…", "abi_version": 12, "fingerprint": "…",
                  "description": "…", "host_abi_version": 12,
@@ -2510,6 +2564,20 @@ CLI/MCP 继续用 Bearer，两者并存。
 「这一层是有意的」时改写成对象形态 `- { path: "/pub/*", one_layer: true }`（消音迁移
 WARN，见下）。`{base}` 之外的路径（静态站点）不设防。
 
+**保留段黑名单（v0.1.122）**：`auth.anonymous_paths` 条目落在保留前缀 `_platform` /
+`_system` / `_lifecycle` / `tasks` 之下 → **装配期 fail-fast**，报错点名：
+`auth.anonymous_paths: anonymous path "…" under reserved prefix /<seg> — denied`——
+平台保留面（`_system/config` 热更端点、任务管理 API 等）有自己的守卫（回环/Bearer），
+匿名豁免进不来。`auth` 段**不在**黑名单（`/auth/login` 这类端点本就是业务匿名路由）。
+`tenant.anonymous_paths` 不受此限（它只豁免租户头、不免验签，见下）。
+
+**命中即短路（v0.1.122）**：命中 `auth.anonymous_paths` 的请求在前置管线**直接放行**，
+不再调用守卫 `verify`（无 auth 插件往返）；未命中照常验签。语义对请求方不变（匿名照旧
+匿名），变化只有两点：守卫侧不再看到匿名请求的验签调用（自研守卫的调用计数会少）；
+清单随热更换代即时生效（`reload.anon_per_reload`）。**注意 `tenant.anonymous_paths`
+不免验签**——它只豁免「缺租户头 400」，Bearer 验签照走；免验签只能配
+`auth.anonymous_paths`。
+
 **用户表是业务约定，没有配置项**：框架不管用户表（不存在 `auth.user_table`），JS 端点
 按约定查询 `users` 表（`_platform` 伪模块持有归属），最小 schema：
 
@@ -2904,26 +2972,34 @@ mounts:
 
 > **保留路径**：`_system` 是平台保留前缀，业务模块勿占用；`{base}/_system/config`（`GET`/`POST`）与 `{base}/_system/health` 由外层 fallback 直接响应，不经业务路由，也不走证书过期门禁（运维换证窗口仍可探活）。
 
-**触发**：`POST {base}/_system/config`（**空 body**，非空 body 一律 400），或特权模块在 JS 侧调 `server.reloadConfig()`（同一 executor 实例与同一把串行锁，见「server」一节）。服务端重新 `load_cfg` → `fold_cli_mounts` 重放 CLI 覆盖 → 证书/公钥路径重放 → `admission_gate`，再与当前代做幂等/段 diff：
+**触发**：`POST {base}/_system/config`（**空 body**，非空 body 一律 400，`?force=1` 不豁免），或特权模块在 JS 侧调 `server.reloadConfig(force?)`（同一 executor 实例与同一把串行锁，见「server」一节）。**`?force=1`（v0.1.123）**：query 取 `force=1`/`force=true`（值不区分大小写，键名精确匹配；其余值 `force=0`/`force=yes` 等视同未强制；裸旗 `?force`——query 中只有键没有 `=`——同样视同未强制，v0.1.124 收紧：未记载的输入绝不触发特权强制）——跳过幂等闸门强制换代。服务端重新 `load_cfg` → `fold_cli_mounts` 重放 CLI 覆盖 → 证书/公钥路径重放 → `admission_gate`，再与当前代做幂等/段 diff：
 
-- **幂等**：归一后落盘文件 sha256 与当前代相同 → 返回 `{"code":0,"msg":"unchanged","generation":<n>}`，不装配、不 swap。
+- **幂等**：归一后落盘文件 sha256 **与 manifests 锁（`dist/manifests.yaml`，release 树）双双未变** → 返回 `{"code":0,"msg":"unchanged","generation":<n>}`，不装配、不 swap。（v0.1.122 起锁纳入变化检测：只改锁不改 config 也会触发装配——装/卸模块免重启的检测面。）`unchanged` 的语义是「**活代已与盘上一致**」（闸门状态只在 commit 成功时更新）——调用方（如安装器）应把它当**幂等成功**处理，要强制重装配用 `?force=1`，不要改 config 凑 diff。force 不改变闸门基线。
 - **段 diff 三清单**（每次成功 swap 返回）：
-  - `restart_pending`：后端段（`db`/`redis`/`blob`/`es`/`broker`/`smtp`/`ldap`/`auth`/`kafkas`/`rabbits`/`plugins`/`plugins_dir`/`secrets`）与**特权面段（`platform`/`fs`）**——已验证合法，但本代沿用旧连接池/旧插件后端/旧授权面，**重启后生效**。特权面段不热生效是安全语义：特权模块不能热改自己的 API/exec/fs 白名单（防自提权）。
+  - `restart_pending`：后端段（`db`/`redis`/`blob`/`es`/`broker`/`smtp`/`ldap`/`auth`/`kafkas`/`rabbits`/`plugins`/`plugins_dir`/`secrets`）、**特权面段（`platform`/`fs`）**与**冻结段（`vars`/`oidc`/`db_query`/`db_trace`/`ws`，v0.1.122 起）**——已验证合法，但本代沿用旧连接池/旧插件后端/旧授权面/旧装配期常量，**重启后生效**。特权面段不热生效是安全语义：特权模块不能热改自己的 API/exec/fs 白名单（防自提权）；冻结段不热生效是「装配期冻结」红线（**v0.1.122 行为修正**：旧版把 `vars` 等静默误标进 `applied`，实际并未热生效——现如实归入 `restart_pending`）。
   - `kept_listener`：`server` 段（port/host/证书路径）——listener 永生，本代沿旧，改了也**下个进程**才生效。
-  - `applied`：其余段（如 `vars` 部署期常量）——本代即生效。
+  - `applied`：其余段（`mounts`/`tenant`/`tasks`）——本代即生效；v0.1.122 起追加 **manifests 锁 diff 条目**（见下「热装配」）。
 
 成功响应：`{"code":0,"data":{"generation":<n>,"applied":[...],"restart_pending":[...],"kept_listener":[...]}}`。
+
+**热装配（v0.1.122，release 锁装/卸免重启）**：release 树（`oj build` 产 `dist/` + `manifests.yaml` 锁）运行中，部署方改锁（装/卸/升级模块的版本目录 + `manifests.yaml` 条目，即 ojm 安装器的落盘动作）后 `POST reload` 即生效，**无需重启**：
+
+- **`applied` 模块条目契约**：`+<name>@<ver>`（安装/升级后新版本上线）、`-<name>@<ver>`（卸载）；按模块名排序；**升级 = `-旧@v` + `+新@v` 成对出现**。段 diff 条目与模块条目同列一数组。
+- **空锁 = 卸载全部**：reload 路径放行空 `manifests.yaml`（合法空装配，模块路由全 404、health 仍 200）；**冷启动空锁仍 fail-fast**（忘跑 `oj build` 的报错不变）。
+- **抢注拦截**：`platform.modules` 名单内的模块名**不可热装**——新代新增的特权名（旧代没有）→ reload 返回 **400 点名**：`platform module '<name>' must not be hot-installed (deploy it in a platform-controlled directory under platform.root, then restart)`。特权模块只能由部署方放入 `platform.root` 后重启；失败零副作用（代际不动、路由不上树）。
+- **换代原子性**：registry/modules 白名单每请求钉住单一快照（卸载模块的在途请求按旧代语义 drain，不混代）；cron 任务跨换代**仍触发且恰一次**（换代闸：新代任务池 hold 到旧代收场统一放闸）。
+- **可观测**：`GET {base}/_system/config` 新增 **`modules`** 键——当前生效代挂载模块清单（`["a@0.1.0","b@1.0.0"]` 按名排序）；`ojInfo()` / `oj info` 的 `build` 段新增 **`capabilities`**：`reload.assemble_modules`（锁热装配）、`reload.anon_per_reload`（匿名清单随换代生效）、`reload.cron_survives`（cron 换代存活）——客户端按位探测再依赖。
 
 **守卫**：`server.reload_api` 开启后 `_system/config` 受保护——`auth:` 配置了 → 需 Bearer 验签（401 详情在响应体）；未配 `auth:` → 仅**回环地址**（loopback）可调，非回环 403（响应体 `"reload_api requires loopback or auth"`）。`GET` 同样受此守卫。
 
 **并发**：同一时刻只允许一个热更（HTTP POST 与 JS `server.reloadConfig()` 共享同一把串行锁）；第二个并发触发在拿不到锁时返回 **409 `reload in progress`**（JS 侧抛 `server.reloadConfig: reload in progress (busy)`）。
 
-**代际与可观测**：`GET {base}/_system/config` 返回 `{config_path, sha256, loaded_at, generation}`；`GET {base}/_system/health` 返回 `{status:"OK", generation, config_path}`（旧路径 `{base}/health` 仍可用，但会告警建议改用 `_system/health`）。
+**代际与可观测**：`GET {base}/_system/config` 返回 `{config_path, sha256, loaded_at, generation, modules}`（`modules` v0.1.122 起）；`GET {base}/_system/health` 返回 `{status:"OK", generation, config_path}`（旧路径 `{base}/health` 仍可用，但会告警建议改用 `_system/health`）。
 
 **限制（v1 边界）**：
 - 热更**复用首代已建立的连接池与插件后端**——不重建后端、不二次 `init` 插件、迁移强制 `verify`-only（dev 默认 `auto` 会打生产库，故热更路径强制 `verify`）、不重放 seed。需要新后端/新迁移的改动请走 `restart_pending` 提示并**重启进程**。
 - 触发源是**落盘配置文件**：进程生命周期内 CLI 覆盖（`--api-path`/`--cert-path`）不变，故以文件内容为热更真触发源。改文件 → `POST` 即生效。
-- 装配失败（如 `admission_gate` 不通过、新模块编译错）→ `POST` 返回 400 + 原因，**旧代继续服务**（失败不破坏在跑实例）；任务池交接为先建新池 fail-fast、再停旧池，新池建不起来则旧池仍跑（回滚完整）。
+- 装配失败（如 `admission_gate` 不通过、新模块编译错、热装特权名抢注）→ `POST` 返回 400 + 原因，**旧代继续服务**（失败不破坏在跑实例，代际不动）；任务池交接为先建新池 fail-fast（cron driver 拉起失败同样中止，不静默无 cron）、再停旧池，新池建不起来则旧池仍跑（回滚完整）；旧池 **10s** 内停不下来 / join 失败 → 500 `old task pool did not stop within 10s — reload aborted`，已闭门装配的新代任务**就地收场**（置位换代 flag + 停池 join，不泄漏空转线程），代际不动。
 
 | `reload_api` | `false` | （v1 配置热更新）开启后 `oj serve` 走「永生 listener + 外层单一 fallback」形态：监听 `POST {base}/_system/config` 触发热更、`GET {base}/_system/config` 看当前代际、`GET {base}/_system/health` 看健康 + 代际。详见下「配置热更新（reload_api）」。关闭则维持原 `serve_graceful` 行为（零变化） |
 
@@ -3403,6 +3479,7 @@ ldap:                            # 不透明段里的 bind_pw 同样支持
 | release 下迁移账本落后（verify 门禁） | M004 拒启，报错附 `oj migrate` 命令 |
 | `ext_boot.js` 存在但语法错/导入失败/顶层 await 抛错 | 启动期预热即 `ext_boot: …` 退出（服务不监听） |
 | crontab.yaml 坏行（非 5 字段 cron + 路径 / 路径不存在） | fail-fast 退出，报错带 `:行号:`（v0.1.28） |
+| cron driver 线程拉起失败（线程资源耗尽） | **不静默降级**：启动期 fail-fast 退出 / reload 500，报错 `spawn cron-driver: …`（下一版；旧版 eprintln 吞错会静默无 cron） |
 | `server.cors.credentials: true` 且 `server.cors.origins` 为空 | `cors: credentials requires explicit origins (wildcard '*' is rejected by browsers)` 退出（v0.1.35；带凭据的 `*` 非法）。其余字段缺省回落安全值 |
 | `platform.modules` 非空但 `platform.root` 缺失 / root 未列为 api mount / 与其他挂载树同径或父子 / 名单悬空 | platform 段装配 fail-fast 退出（v0.1.75，报错原文见 §10「platform」——抢注绊线必须在装配期生效，运行期拦截为时已晚） |
 | `platform.trusted_paths` 条目不存在 | `platform.trusted_paths canonicalize failed (…): …` 退出（v0.1.75） |
@@ -3729,6 +3806,9 @@ RUST_LOG=oj=info ./oj serve -c config.yaml --api-path dist
 | 500 报跨模块表访问被拒 | `ownership_guard: deny` 且未声明 deps | manifest 补 `deps:`；或临时 SQL 注释 `/* oj:allow-table=x */` |
 | `oj schema diff` exit 1 | 声明与实库漂移（D001/D002） | 按输出对齐 schema.yaml 或补迁移；存量库用 `oj migrate --baseline` |
 | `oj migrate` 报 `--db "x" not declared in config (db keys: [...])` | `--db` 的库名不在 config `db:` 段（工具**不**回落 default，防迁错库） | 按报错里的 `db keys` 核对拼写；多库逐 profile 各跑一遍 |
+| `oj migrate --with-seed` 报 `seed <模块>/<文件> 第 N 条语句被 --with-seed 运行期门禁拒绝：语句类型 … 不在白名单` / `非幂等 INSERT（… 方言）` | 新入口 fail-closed 白名单只放行幂等 INSERT；seed.sql 里有 DDL / UPDATE / DELETE / REPLACE / PRAGMA / ATTACH / 事务控制 / `INSERT … SELECT` / 裸 `INSERT`，或 INSERT 不带幂等写法（v0.1.125） | 把 seed.sql 改成幂等 INSERT（`INSERT OR IGNORE` / `INSERT IGNORE` / `ON CONFLICT DO NOTHING` / `ON DUPLICATE KEY` / `OR REPLACE`）后重跑 `oj migrate --with-seed`；或去掉 `--with-seed` 交由下次冷启动重放。全量预扫命中即零行落库 |
+| `oj migrate --with-seed 失败：…` / `--with-seed: seed 重放失败（详见上方 stderr 诊断）` | 迁移已成功提交但某模块 seed 执行失败（表不存在 / 约束冲突 / 方言不支持），整条命令退非 0 | 看 stderr 前置诊断点名的模块 / 文件 / 语句；修复后重跑本命令（幂等、安全重试），`--format json` 的 `seed.results[]` 里 `ok=false` 携脱敏、裁剪原因 |
+| 同时传 `--with-seed` 与 `--baseline` | clap 参数冲突（两者互斥：baseline 只记账不执行，不该连带灌 seed） | 去掉其中一个；存量库接入用 `--baseline`，要灌 seed 单独再跑 `oj migrate --with-seed` |
 | 启动报 `ext_boot: …` 并拒启 | ext_boot.js 语法错/导入失败/顶层 await 抛错 | 看报错定位；改完重启 |
 | 启动没打印 `ext_boot: loaded` | 文件不在 config.yaml 同目录，或文件名不是 `ext_boot.js` | 挪到 config 同级；核对文件名 |
 | 改了 `ext_boot.js` 没生效 | 不做热重载，装配期已冻结 spec | 重启进程 |
@@ -3905,6 +3985,8 @@ await db.query("select id from account where id = " + id, []);   // 禁止
 | `db_access.allow` 四维是并集，多维只会放宽（v0.1.89） | 「模块 X **且**角色 admin 才可访问」本阶段做不到：写两维 = 任一命中即过。需要「且」语义请在 handler 里自己判 |
 | 语句风险分类是 best-effort 词法（v0.1.89） | 不是 SQL 解析器：CTE / 窗口函数 / 存储过程体 / 串未闭合等复杂形态会落 `unknown` 并**按最严档拒**（fail-closed）。`deny` 档上线前先用 `warn` 灰度看日志，别直接 deny |
 | `db_access` 不约束平台自生成 SQL 与 CLI 通道（v0.1.89） | `db.nextSeq` 的序列表 DDL、`db.listTables` 的内省查询不适用；`oj migrate` / `oj schema` / `oj build` 不经 bridge，也不适用 |
+| `oj migrate --with-seed` 的门禁是词法白名单、非完整沙箱（v0.1.125） | 只放行幂等 INSERT、按语句头（`code_tokens[0]`）词法判定：复杂形态（CTE / 串未闭合 / 注释断词）会 fail-closed 按「拒绝」处理。它拦的是**不合规/误写的 seed.sql**，不是对抗已签名恶意包——模块包的完整性由安装侧 `verifyEd25519` 负责，别把这道门禁当签名校验替代品 |
+| `oj migrate --with-seed` 不自动接进 `ojm install`（v0.1.125，交付边界） | 本轮只交付 CLI 能力；安装器 `buildMigrateCmd` 未传 `--with-seed`、`platform.exec` 白名单（argv 逐 token 精确模板）与 `MIN_OJ_VERSION` 未联动，装完即数据面就绪的安装端到端闭环留待下游单独交付。运维 / CI 直接调 `oj migrate --with-seed` 不受影响 |
 | `sql_guard=deny` 下 raw SELECT 未登记表的敞口**原样保留**（v0.1.89） | 本策略只管「库别名 + 风险类别」，只读语句一律放行——不要把 `db_access` 读成「该敞口已修」 |
 | 结构内省默认钉在当前库 / 当前 schema；跨 schema 走 `forSchema`（v0.1.90 → v0.1.105 REQ-04） | 默认件 PG 走 `current_schema()`、mysql 走 `DATABASE()`；`db.forSchema(name)` 受限句柄（只读五件内视，scope 走绑定参数）可跨 schema/mysql 跨库。**边界**：sqlite 无 schema 概念（forSchema 各件 `OJ_DB_UNSUPPORTED`，capability=`for_schema`）；pg 的 forDatabase 视图同 unsupported（database=独立连接）——`listDatabases()` 只出清单。视图 / 触发器 / 数据类型字典 / CHECK 不在内省范围（待做） |
 | 内省是目录读，不是标识符白名单（v0.1.90） | `listColumns` 的列名不可回填构造器或裸 SQL；构造器只认 `SchemaRegistry`。`information_schema` 只返回**当前连接账号可见**的对象，不等于「库的完整结构」 |
