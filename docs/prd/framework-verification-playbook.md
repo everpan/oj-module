@@ -696,8 +696,20 @@ node "$CLI_PKG/bin/ojm.mjs" market publish --real . --id demo.publisher
 - [ ] 多方案工程给出明确拒绝与显式链路指路（`build --bundle <name>` → `sign` → `build-index`），
       不静默只发一份
 
-## 7.6 出厂未装与随站 bundle 收敛（Phase B，0.2.71+；动安装器/编排面/模板 config 时必跑）
+## 7.6 出厂即装与随站 bundle 收敛（Phase B，0.2.71+；**2026-11-07 策略变更：出厂即装**；动安装器/编排面/模板 config 时必跑）
 
+> **策略变更（2026-11-07， supersedes 本节下文「出厂未装」历史口径）**：市场方案**默认安装好**，
+> 后期经发布途径升级。三支柱（设计 docs/plans/20261107-1150-market-factory-install.md）：
+> ① `ojm dev` 物化 `dist/api/versions.json`（dev 形态补 C2-09 真源——此前 dev 下收敛被
+> preflight fail-closed 永久拒装，`ojm init --yes` 是死路）；② 重建合并已装方案登记
+> （deploy-web 落 `.ojm-module.json` 条目旁车，dev/build 重建 modules.json 时重物化 web 面
+> 并并入；双轨同名 fail-fast）——根治「例行 build/dev 冲掉已装方案 web 面」；③ 出厂安装时机：
+> `ojm dev`/`ojm preview` 后端就绪后 fire-and-forget 触发收敛（服务端 isolate 无定时器，只能
+> riding 请求）；BOOTSTRAP_KEY 已回填 platform.release，首装免 TOFU。superadmin「方案安装」
+> 首装页已整建制退役（出厂未装态 UI 随之退役）。真机验收基线（/tmp/ojm-vv/drill 全绿）：
+> 全新 init --yes 工程 `pnpm dev` 数秒内 state.yaml 落 oj-market、modules.json 并入、目录可见；
+> dev 重启/重复 `pnpm build` 登记不丢、告警静默；`pnpm preview` SPA/face/index 全 200。
+>
 > 市场 UI（oj-market）自 Phase B 起是**第一方纯 web 方案包**：出厂未装，`api` 编排面随脚手架内置
 > （市场未装时 `/api/oj-market/*` 端点仍在）。`ojm init --yes` 把已签名 bundle 落位 `cdn/` 并写
 > `bundles.json` 意图标记；**首个市场编排请求（index 端点「对账即服务」）自动收敛安装**

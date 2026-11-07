@@ -27,6 +27,7 @@ import path from "node:path";
 import process from "node:process";
 import { loadModulesConfig } from "./config";
 import { resolveConfigPath, resolveLayout } from "./layout";
+import { triggerFactoryConverge } from "./market/factory-converge";
 import { startOj } from "./oj";
 import { readOjApiPrefix, readOjServerField } from "./oj-config";
 import { hasRootApiMount, parseMounts, writePreviewConfig } from "./preview-config";
@@ -122,6 +123,9 @@ export async function runPreview(projectRoot: string, opts: PreviewOptions = {})
 	// 提示跟随 config 的 server.host（绑定是 oj 自己做的，提示不能再硬编码 localhost）
 	const host = readOjServerField(preview.configPath, "host") || "127.0.0.1";
 	console.log(`[ojm] oj 已就绪（release/js，单服务：${base} API + 静态 SPA 同进程）：http://${host}:${oj.port}`);
+	// 出厂即装（支柱三）：后端就绪后 fire-and-forget 触发一次随站 bundle 收敛
+	// （login → index riding 收敛，幂等；失败吞咽——不阻断 preview 启动）。
+	void triggerFactoryConverge({ port: oj.port, apiBase: base, host, log: console.log });
 	console.log(`\n[ojm] preview 已启动：http://${host}:${oj.port}${sitePrefix === "/" ? "" : sitePrefix}`);
 	console.log(`[ojm] 静态由 oj web 挂载直出（spa 深链回落）；派生 config ${path.basename(preview.configPath)} 为本进程临时产物，退出自动清理`);
 

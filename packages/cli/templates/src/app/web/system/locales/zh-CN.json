@@ -7,8 +7,7 @@
 		"oplog": "操作日志",
 		"settings": "站点设置",
 		"wecom": "企微集成",
-		"departments": "组织架构",
-		"solutions": "方案安装"
+		"departments": "组织架构"
 	},
 	"common": {
 		"confirm": "确认",
@@ -130,18 +129,6 @@
 	"settingsPage": {
 		"secretHint": "敏感项不可在线修改",
 		"saved": "设置已保存"
-	},
-	"solutionsPage": {
-		"title": "方案市场（oj-market）",
-		"absentTitle": "站点目录中暂无方案市场安装包",
-		"absentHint": "出厂未装态：请重新执行 ojm init --yes 补充随站分发的安装包，或由超管触发 POST /api/oj-market/backfill 回填本地目录后刷新本页。",
-		"latest": "目录最新版 {{version}}",
-		"installed": "已装 {{version}}",
-		"install": "安装",
-		"doneTitle": "安装完成",
-		"goMarket": "前往方案市场",
-		"upgradableHint": "目录有更新版本——经方案市场页内升级。",
-		"needsTrust": "发布方密钥待信任确认——首方包已预置平台信任，出现本态多为目录被第三方包占用，请核对后重试。"
 	},
 	"wecom": {
 		"title": "开通企业",

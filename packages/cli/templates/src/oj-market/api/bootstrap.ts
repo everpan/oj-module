@@ -15,10 +15,15 @@ export interface BootstrapKey {
 }
 
 /**
- * 第一方发布方 key（oj-market 首包）。发布时回填——回填前为 null（播种即 no-op，
- * 首装走 TOFU 双轨第二轨：needs_trust → ojm trust confirm）。
+ * 第一方发布方 key（oj-market 首包）。2026-11-07 已回填：出厂即装策略（市场方案默认安装好）
+ * 要求随站 bundle 收敛**免 TOFU 直接过验签**——否则全新脚手架首装 needs_trust 进冷却循环，
+ * 「默认安装好」落空。回填身份 = 本仓第一方发布密钥 platform.release（oj-market 随站包签名方，
+ * 市场线演练同身份；私钥永不出 ~/.ojm/keys/platform.release，模板只带公钥）。
  */
-export const BOOTSTRAP_KEY: BootstrapKey | null = null;
+export const BOOTSTRAP_KEY: BootstrapKey | null = {
+	key_id: "platform.release",
+	public_key: "af47abfea1c735e29ed1a00e367fbfbfdfc2264262202dc1185f9af79ede358a",
+};
 
 /**
  * 引导播种（installBody 接线，runInstall 之前）：信任库文件尚不存在且 bootstrap key 在场 →

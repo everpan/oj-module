@@ -12,6 +12,25 @@ import { resolveOjBin } from "../vendor";
 import { resolveShellDist } from "../versions";
 
 /**
+ * 物化安装器 C2-09 真源：把内置宿主 `versions.json` 拷入 apiDist（B-11 布局，
+ * 与 manifests.yaml 同层，方案安装器 peerRuntime 强制比对的读取面）。
+ *
+ * release（buildBackend 双落点）与 dev（ojm dev 第三落点，2026-11-07 支柱一：
+ * dev 形态 platform.root=src 不经 oj build，此前无此文件 → 随站 bundle 收敛被
+ * C2-09 fail-closed 永久拒装）共用本函数，两处必须同源。
+ * 已有文件覆盖——派生物非用户数据，cli 升级后 dev 重启即刷新；源缺失返回 false
+ * 不抛（shell-dist 未构建的合法态，告警归调用方）。
+ */
+export function materializeInstallerVersions(apiDist: string, shellDist: string = resolveShellDist()): boolean {
+	const versionsSrc = path.join(shellDist, "versions.json");
+	if (!fs.existsSync(versionsSrc))
+		return false;
+	fs.mkdirSync(apiDist, { recursive: true });
+	fs.copyFileSync(versionsSrc, path.join(apiDist, "versions.json"));
+	return true;
+}
+
+/**
  * 构建后端（api/src 存在时编排 `bin/oj build`，D8）。
  *
  * 绝不在此处跑 migrate：oj build 本身零磁盘副作用，`ojm build` 保持零 DB
@@ -84,11 +103,8 @@ export async function buildBackend(projectRoot: string): Promise<boolean> {
 	// 而方案安装器读的是 `dist/api/versions.json`（B-11：与 manifests.yaml 同层，用于
 	// peerRuntime 强制比对）。两处必须同源，否则新工程 `ojm build` 完仍装不上方案——
 	// preflight 直接 C2-09 fail-closed「无法读取宿主 runtime 版本」。
-	const versionsSrc = path.join(resolveShellDist(), "versions.json");
-	if (fs.existsSync(versionsSrc)) {
-		fs.mkdirSync(apiDist, { recursive: true });
-		fs.copyFileSync(versionsSrc, path.join(apiDist, "versions.json"));
-	}
+	if (!materializeInstallerVersions(apiDist))
+		console.warn("[ojm] ⚠️ 内置宿主 versions.json 缺失（shell-dist 未构建？）：方案安装将被 C2-09 fail-closed 拒绝。");
 	return true;
 }
 

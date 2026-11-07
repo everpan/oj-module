@@ -815,7 +815,8 @@ describe("POST install（file：上传载荷，upload/api.ts 先例双路径）"
 		const versionDir = join(root, "modules", "demo-solution-0.1.0");
 		expect(await fsp.readFile(join(versionDir, "manifest.yaml"), "utf8")).toContain("demo-solution");
 		expect(await fsp.readdir(join(versionDir))).toEqual(["manifest.yaml", "routes.js"]);
-		expect(await fsp.readdir(join(siteModulesDir, "demo-solution", "0.1.0"))).toEqual(["entry.js", "main.css"]);
+		// face 目录含条目旁车 .ojm-module.json（重建合并登记的重建真源，2026-11-07 支柱二）
+		expect(await fsp.readdir(join(siteModulesDir, "demo-solution", "0.1.0"))).toEqual([".ojm-module.json", "entry.js", "main.css"]);
 	});
 
 	it("缺文件 → 400 可读失败", async () => {
