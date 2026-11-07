@@ -47,8 +47,14 @@ export const NPM_PKG = "@oj-bin/oj";
  * 0.1.121 的「方言件胜出、`seed.sql` 兜底」选择语义（oj-bin 7d70b90）；更早的 oj
  * 只读 `seed.sql`，三方言执行同一份 sqlite 写法 → mysql/pg 上 1064 拒启。模板不再
  * 教「部署期手工覆盖」，门禁必须盖住这条链路（见 playbook §11 U1）。
+ * **0.2.75 抬到 0.1.126**：`_platform` 安装迁移经 `exec.run(["oj","migrate",...])` 触发，
+ * 而 `@oj-bin/oj` linux glibc 包的 `bin/oj` 启动器经 `ld-linux` 拉起 `oj.bin`，使 serve 进程
+ * 映像是加载器；旧版 `oj` 特判 token 把 `current_exe()`(=ld-linux) 当可执行体 spawn，
+ * 令 `migrate` 被 ld 当共享对象加载 → exit 127（OJ-10）。0.1.126 加双闸门（OJ_BUNDLED_LD 在
+ * 且 映像确为 loader）自动解析为随包 `ld-linux --library-path <bin>/lib <bin>/oj.bin`，根治该缺陷。
+ * 门禁须抬到 0.1.126，使 `ojm vendor` 自动分发含修复的二进制（不再需要消费方 `ojmig` 绕行）。
  */
-export const MIN_OJ_VERSION = "0.1.121";
+export const MIN_OJ_VERSION = "0.1.126";
 
 /** 按段数值比较（字符串比较会把 0.1.9 判成大于 0.1.69）；非数字段按 0 处理 */
 export function isSupportedOjVersion(version: string): boolean {

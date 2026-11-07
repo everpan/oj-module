@@ -104,4 +104,7 @@ ld-linux 作为程序被直接调用时，把后续参数当成「`[选项] 程�
 ## 对账记录 / 上游终裁
 
 - 2026-11-08 提交（oj `v0.1.125`，linux glibc `@oj-bin/oj` 包；部署实例 wecom1108 复现 exit 127 + `migrate: error while loading shared libraries`）。
-- 上游终裁：待填。
+- **上游终裁（2026-11-08）：已采纳并根治，发布 `@oj-bin/oj` v0.1.126（tag 已打并推送）。** 根因与修法：`src/bridge/exec.rs` 的 `"oj"` 特判 token 旧解析取 `current_exe()`（= ld-linux 加载器），使 `migrate` 被 ld 当共享对象加载 → exit 127。修法加双闸门：`OJ_BUNDLED_LD` 在 **且** 进程映像确为 `ld-linux*` / `ld-*.so*`（复用现成 env，未引入 `OJ_BIN_PATH`，未动打包侧）→ 自动解析为随包 `ld-linux --library-path <bin>/lib <bin>/oj.bin`；`oj.bin` 缺失回退 `<bin>/oj` 启动器，二者皆缺 fail-fast 点名（杜绝重放 127）；双闸门同时结构性排除测试进程内并发 `set_var("OJ_BUNDLED_LD")` 的 flake。`CommandResolver` 返回类型 `PathBuf → ResolvedCommand { prog, fixed }`，两个 spawn 点消费固定前缀——macOS / Windows / musl 走原分支，逐字节零回归。验收对账：`oj_token_packaged_layout` / `loader_image_detection` 单测覆盖验收 1/2；既有 `default_resolver_oj_and_path` 哨兵 + 全 workspace 测试绿（含 151s e2e）保证验收 3；验收 5（exec.allow 语义不变）未触碰模板面。clippy -D warnings + fmt + test 全绿，devkit 契约用例（`cargo test -p xtask`）通过。
+- **R1/R2 处置**：已按「现成 `OJ_BUNDLED_LD` 双闸门」根治，R1 中的 `OJ_BIN_PATH` 选项判为非必需（不改打包侧）。
+- **R3 处置**：`@oj-bin/oj`(0.1.x) ↔ `@oj-module/runtime`(0.2.x) 版本映射文档归 oj-module 文档面（消费方跟进）；`ojm vendor` 的 `MIN_OJ_VERSION` 已抬到 `0.1.126`（packages/cli/src/vendor.ts），使下游经 `ojm vendor` 自动收到含修复二进制。
+- **消费方处置**：部署实例 wecom1108 已 `ojm vendor` 升 0.1.126，并撤除 `bin/ojmig` wrapper + `config-release.yaml` / `src/.../migrate.ts` 的 `ojmig` 绕行、回归裸名 `oj`（与模板一致，`ojm build` 自治契约通过）。L1 缺陷在部署侧验证关闭（隔离复现：旧 spawn 形 `ld-linux … migrate` → exit 127；新形 `ld-linux --library-path … oj.bin migrate` → `oj.bin` 正常启动）。本条关闭。
