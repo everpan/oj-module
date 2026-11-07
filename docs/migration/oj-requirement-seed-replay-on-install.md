@@ -104,7 +104,18 @@ oj seed [OPTIONS] <module…>     # 一个或多个模块；缺省 = 全部（�
 4. 热重载（`reused=true`）后**旧模块**种子不被重灌（既有纪律不回归）；
 5. 安装任务终态语义不变：两段式终态下 retry 覆盖 seeding 段。
 
-## 6. 临时绕行（本仓文档口径，上游落地前）
+## 6. 临时绕行（本仓文档口径）
 
-演练/验收带 seed 的方案时，安装后重启一次宿主（冷启动触发全量重放），并以
+**2026-11-07 更新：上游已交付 `oj migrate --with-seed`（oj 0.1.125，devkit api-manual §10），
+首选绕行 = 安装后显式跑一次**（无需重启，playbook 第四轮 drill3 实证：幂等重灌、
+fail-closed 门禁、安装链路边界全过）：
+
+```bash
+oj migrate --with-seed -c config.yaml -d dist/api <module>-<version>
+```
+
+注意 seed 的 INSERT 目标表须存在——若该模块业务表是卸载残留或手工清理过的，
+先确认 `oj migrate`（含 schema.yaml reconcile）已把表建好（migrate_cmd.rs:146-173）。
+
+上游落地前（oj < 0.1.125）的旧口径：安装后重启一次宿主（冷启动触发全量重放），并以
 `seed ok module="<name>-<version>"` 日志 + 行数断言为准（playbook §7.7 第三轮即此口径）。
