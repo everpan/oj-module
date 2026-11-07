@@ -40,6 +40,12 @@ export interface StageResult {
 	ok: boolean
 	message: string
 	retryable?: boolean
+	/**
+	 * 结构化失败码（S1-6 实测：成败真源 = exit code，按 127/126/137/其余分类）。
+	 * 经 installer 汇成 hintKey `lifecycle.stage.migrating.<code>`，CLI 据 locale 出双语文案
+	 * （install.ts STAGE_CODE_COPY）。原始 stderr 仅留服务端 task.message 诊断，不进用户面。
+	 */
+	code?: string
 	/** 取消安装（U5，P3-8）：本段被用户中止——运行器据其走清场+回退装前语义 */
 	cancelled?: boolean
 }
