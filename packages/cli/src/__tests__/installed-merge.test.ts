@@ -72,7 +72,7 @@ describe("mergeInstalledModules", () => {
 		expect(merged).toHaveLength(2);
 		const inst = merged[1] as unknown as Record<string, unknown>;
 		expect(inst.name).toBe("oj-market");
-		expect(inst.entry).toBe("modules/oj-market/0.2.0/entry.js");
+		expect(inst.entry).toBe("/modules/oj-market/0.2.0/entry.js"); // 根绝对路径：浏览器裸 import 契约（legacy 无斜杠旁车并入时归一）
 		expect(inst.enabled).toBe(true);
 		expect(inst.peerRuntime).toBe(">=0.0.0"); // 旁车 extras 原样保留
 	});
@@ -134,8 +134,8 @@ describe("mergeInstalledModules", () => {
 
 		expect(merged).toHaveLength(2);
 		const inst = merged[1] as unknown as Record<string, unknown>;
-		expect(inst.entry).toBe("modules/oj-market/0.2.0/entry.js");
-		expect(inst.css).toEqual(["modules/oj-market/0.2.0/main.css", "modules/oj-market/0.2.0/theme.css"]);
+		expect(inst.entry).toBe("/modules/oj-market/0.2.0/entry.js"); // 根绝对路径：浏览器裸 import 契约（legacy 无斜杠旁车并入时归一）
+		expect(inst.css).toEqual(["/modules/oj-market/0.2.0/main.css", "/modules/oj-market/0.2.0/theme.css"]);
 		expect(warnings.join("\n")).toContain("最小条目"); // 降级有痕
 		// 重建结果落回旁车：下次重建静默（告警只出现一次）
 		expect(fs.existsSync(join(dist, "modules", "oj-market", "0.2.0", ".ojm-module.json"))).toBe(true);

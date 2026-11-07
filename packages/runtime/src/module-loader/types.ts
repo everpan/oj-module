@@ -120,7 +120,10 @@ export interface ModuleInstance {
 export interface ManifestModuleEntry {
 	/** 模块名称，需与 entry.ts 中 name 一致 */
 	name: string
-	/** 模块资源路径（本地相对路径或远程 URL） */
+	/**
+	 * 模块资源路径：根绝对路径（`/modules/...`，浏览器裸 import 契约）或外部 URL；
+	 *  无前导斜杠的历史条目在加载前经 resolveModuleEntryUrl 归一
+	 */
 	entry: string
 	/** 是否启用 */
 	enabled?: boolean

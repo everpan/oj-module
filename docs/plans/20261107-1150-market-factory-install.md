@@ -126,3 +126,29 @@ docs/devkit 全部「出厂未装」旧口径逐处改写——playbook：先选
 （触发时点/三前提/重装入口），publish-walkthrough §6 注释、§7 速查两行（build 冲菜单、
 bundle 装不上）、§7.5 尾段同步。守卫 `tests/cli/devkit-docs.test.ts` 21 例零代号通过。
 耗时 ~25min。
+
+## 8. Hotfix：modules.json 条目 entry 缺前导斜杠（0.2.72 出厂即装不可见，2026-11-07）
+
+**用户报告**：`pnpm dlx @oj-module/cli@0.2.72 init drill2 --yes` 生成项目 `pnpm dev` 后
+方案市场未出现。
+
+**根因（三层同源缺陷）**：modules.json 条目被浏览器裸 `import(entry.entry)` 消费
+（`packages/runtime/src/module-loader/index.ts:108`），**必须是根绝对路径
+`/modules/...`**。而安装器链全部产出无前导斜杠形态：
+
+1. preflight C2-27 强制的 manifest 形态就是 `^modules/<name>/<ver>/…\.js$`（无斜杠，
+   包内相对路径语义正确）；
+2. deploy-web `normalizeEntry` 原样透传 → 写进 modules.json 与 `.ojm-module.json` 旁车；
+3. installed-merge 旁车缺失降级重建的模板串同样无斜杠。
+
+源码树构建（module-build.ts）产出 `/modules/...` 带斜杠——所以 app 永远正常、
+**任何经安装器落地的方案（含出厂即装 oj-market）在浏览器端 module-loader 必失败**：
+`TypeError: Failed to resolve module specifier 'modules/oj-market/0.2.0/entry.js'`——
+无菜单、路由不注入、/oj-market 落 404 兜底。此前所有演练只探 HTTP（entry.js 200 /
+SPA 200 照样成立），浏览器加载面零覆盖（单测注入盲区同类）。
+
+**修复（TDD）**：① deploy-web normalizeEntry 补前导斜杠；② installed-merge 重建模板
+与并入输出归一；③ runtime loadModuleEntry 宽容归一（旧产物免迁移即刻愈合）。
+BDD 用例：deploy-smoke upsertModulesJson 形态、installed-merge 断言语态翻转、
+runtime module-loader 无斜杠条目可加载。验收 = drill2 复演 + headless Chrome
+菜单/市场页渲染判定（本次新增浏览器级判据，记入 playbook §7.6）。

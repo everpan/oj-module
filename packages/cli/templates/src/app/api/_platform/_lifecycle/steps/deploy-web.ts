@@ -53,11 +53,20 @@ function apiDepsOf(m: Record<string, unknown>, native?: unknown): string[] {
 	return Object.keys(deps).filter(k => k !== "_platform").sort();
 }
 
-/** 归一化条目：entry/css 路径 POSIX 化；其余字段（含构建器 extras）原样透传 */
+/**
+ * 根绝对路径归一（2026-11-07 hotfix）：modules.json 被宿主浏览器裸 import(entry)，
+ * 条目必须是根绝对路径；包内相对形态（preflight C2-27 的 `^modules/...`）补前导
+ * 斜杠，外部 URL 原样。
+ */
+export function rootAbs(p: string): string {
+	return p.startsWith("/") || /^[a-z][a-z\d+.-]*:/i.test(p) || p.startsWith("//") ? p : `/${p}`;
+}
+
+/** 归一化条目：entry/css 路径 POSIX 化 + 根绝对化；其余字段（含构建器 extras）原样透传 */
 function normalizeEntry(entry: ModuleEntry): ModuleEntry {
-	const out: ModuleEntry = { ...entry, entry: posixPath(entry.entry) };
+	const out: ModuleEntry = { ...entry, entry: rootAbs(posixPath(entry.entry)) };
 	if (Array.isArray(entry.css)) {
-		out.css = entry.css.map(c => posixPath(String(c)));
+		out.css = entry.css.map(c => rootAbs(posixPath(String(c))));
 	}
 	return out;
 }
