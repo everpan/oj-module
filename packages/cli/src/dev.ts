@@ -37,6 +37,7 @@ import { mergeConfigForDev } from "./dev-secrets";
 import { loadHtmlTransform } from "./html-transform";
 import { resolveConfigPath, resolveLayout } from "./layout";
 import { resolveCdnLayout } from "./market/cdn-layout";
+import { triggerFactoryConverge } from "./market/factory-converge";
 import { startOj } from "./oj";
 import { requireModuleRootCapability } from "./oj-caps";
 import { ensureDevCert } from "./oj-cert";
@@ -149,6 +150,10 @@ export async function devServer(projectRoot: string, opts: DevOptions = {}): Pro
 			throw error;
 		}
 		ojTarget = `http://127.0.0.1:${oj.port}`;
+		// 出厂即装（支柱三）：后端就绪后 fire-and-forget 触发一次随站 bundle 收敛
+		// （login → index riding 收敛，幂等；服务端 isolate 无定时器，只能 riding 请求）。
+		// 失败吞咽——不阻断 dev 启动，首个真实请求对账兜底。
+		void triggerFactoryConverge({ port: oj.port, apiBase, log: console.log });
 	}
 
 	const hub = createReloadHub();

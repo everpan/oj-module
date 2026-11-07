@@ -49,12 +49,16 @@ describe("seedBootstrapKey 播种机制（P2-12：G3 双轨第一轨）", () => 
 		expect(await createTrustStore(trustPath).get(KEY.key_id)).toBe(KEY.public_key);
 	});
 
-	it("key 为 null（发布时回填前的内置口径）→ no-op，不产生库文件", async () => {
+	it("seedBootstrapKey(trustPath, null) → no-op，不产生库文件（null 语义，与内置常量取值无关）", async () => {
 		const trustPath = join(dir, "trusted-keys.yaml");
 		await seedBootstrapKey(trustPath, null);
 		await expect(fsp.access(trustPath)).rejects.toThrow();
-		// 内置常量在回填前必须为 null（模板只带公钥机制、不带任何具体钥——发布时回填真钥）
-		expect(BOOTSTRAP_KEY).toBeNull();
+	});
+
+	it("内置常量已回填第一方 platform.release 身份（2026-11-07 出厂即装：随站 bundle 收敛免 TOFU 的前提）", () => {
+		expect(BOOTSTRAP_KEY).not.toBeNull();
+		expect(BOOTSTRAP_KEY!.key_id).toBe("platform.release");
+		expect(BOOTSTRAP_KEY!.public_key).toMatch(/^[0-9a-f]{64}$/);
 	});
 
 	it("信任库文件已存在（含空库 {}）→ 不播种：运维 remove 后不复活（G5）", async () => {

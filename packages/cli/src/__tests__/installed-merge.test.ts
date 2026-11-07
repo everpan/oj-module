@@ -70,7 +70,7 @@ describe("mergeInstalledModules", () => {
 		const merged = mergeInstalledModules(root, dist, BUILT);
 
 		expect(merged).toHaveLength(2);
-		const inst = merged[1] as Record<string, unknown>;
+		const inst = merged[1] as unknown as Record<string, unknown>;
 		expect(inst.name).toBe("oj-market");
 		expect(inst.entry).toBe("modules/oj-market/0.2.0/entry.js");
 		expect(inst.enabled).toBe(true);
@@ -84,7 +84,7 @@ describe("mergeInstalledModules", () => {
 
 		const merged = mergeInstalledModules(root, dist, BUILT);
 
-		expect((merged[1] as Record<string, unknown>).enabled).toBe(false);
+		expect((merged[1] as unknown as Record<string, unknown>).enabled).toBe(false);
 	});
 
 	it("源码树模块同名 → fail-fast（双轨同名红线）", () => {
