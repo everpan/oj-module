@@ -107,6 +107,9 @@ export type {
 export { useAuthStore } from "./store/auth";
 // 认证 provider 注入契约（P5）：模块经 ctx.register.authProvider 实现
 export type { AuthProvider } from "./store/auth-provider";
+// 站点标题 store：宿主启动 / 站点设置页注入 DB 的 framework.site_title，
+// Logo / 双列侧栏 / 全屏布局三处消费（DB 为权威，VITE_GLOB_APP_TITLE 仅兜底）
+export { useGlobalStore } from "./store/global";
 
 // 请求头 provider 注入契约（D-M9）：模块经 ctx.register.headerProvider 实现
 export type { HeaderProvider } from "./store/header-provider";

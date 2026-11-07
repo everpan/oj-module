@@ -15,6 +15,7 @@ import { usePreferences } from "#src/hooks/use-preferences";
 import LayoutFooter from "#src/layout/layout-footer";
 import { LanguageButton } from "#src/layout/layout-header/components/language-button";
 import { ThemeButton } from "#src/layout/layout-header/components/theme-button";
+import { useGlobalStore } from "#src/store/global";
 
 /**
  * 全屏布局（P1，login 模块化）：框架兜住「占满视口 + 无 chrome + 主题正确 +
@@ -26,6 +27,7 @@ import { ThemeButton } from "#src/layout/layout-header/components/theme-button";
  */
 export default function FullscreenLayout() {
 	const { isDark } = usePreferences();
+	const siteTitle = useGlobalStore(s => s.siteTitle);
 	const { token } = theme.useToken();
 	const { t } = useTranslation();
 	const screens = Grid.useBreakpoint();
@@ -45,7 +47,7 @@ export default function FullscreenLayout() {
 				>
 					<img alt="App Logo" src={logoUrl} className="mr-2 w-11" />
 					<h1 className="m-0 text-xl font-medium">
-						{import.meta.env.VITE_GLOB_APP_TITLE}
+						{siteTitle}
 					</h1>
 				</div>
 				<div className="flex items-center">

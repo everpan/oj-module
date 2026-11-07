@@ -5,6 +5,7 @@ import { theme as antdTheme, ConfigProvider, Typography } from "antd";
 import { Scrollbar } from "#src/components/scrollbar";
 
 import { usePreferences } from "#src/hooks/use-preferences";
+import { useGlobalStore } from "#src/store/global";
 
 import { sidebarTitleHeight, siderTriggerHeight } from "../constants";
 import LayoutMenu from "../layout-menu";
@@ -32,6 +33,7 @@ export default function LayoutMixedSidebar({
 	sideNavMenuKeyInSplitMode,
 }: LayoutMixedSidebarProps) {
 	const { isDark, sidebarTheme, sidebarCollapsed, firstColumnWidthInTwoColumnNavigation } = usePreferences();
+	const siteTitle = useGlobalStore(s => s.siteTitle);
 	const {
 		token: { Menu },
 	} = antdTheme.useToken();
@@ -58,7 +60,7 @@ export default function LayoutMixedSidebar({
 						!sidebarCollapsed
 							? (
 								<Typography.Title level={1} ellipsis className="flex items-center my-0 pl-2 text-lg mx-3" style={{ height: sidebarTitleHeight }}>
-									{import.meta.env.VITE_GLOB_APP_TITLE}
+									{siteTitle}
 								</Typography.Title>
 							)
 							: null

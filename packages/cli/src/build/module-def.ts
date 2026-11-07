@@ -98,6 +98,8 @@ export const permissionPrefix = "permission:button";
 // store
 export const useAccessStore = _fn;
 export const useAuthStore = _fn;
+// 站点标题（宿主启动 / 站点设置页注入 DB framework.site_title）
+export const useGlobalStore = _fn;
 // 方案路由归并 store（token 就绪自动重拉，R21）
 export const useSolutionRoutes = _fn;
 export const useUserStore = _fn;

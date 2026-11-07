@@ -21,7 +21,7 @@ INSERT IGNORE INTO sys_permission (code, module, title_key, deprecated) VALUES (
 INSERT IGNORE INTO sys_permission (code, module, title_key, deprecated) VALUES ('auth.wecom.sync', 'auth', 'system:perm.auth_wecom_sync', 0);
 
 -- 系统设置默认值（与基础 seed 逐条对应）：方言文件不得漏段，漏了会让设置页/登录方式发现静默缺默认值。
-INSERT IGNORE INTO sys_setting (`key`, module, `group`, type, value, default_value, label_key, secret, update_time) VALUES ('framework.site_title', 'framework', 'general', 'string', 'React Antd Admin', 'React Antd Admin', 'system:setting.site_title', 0, 0);
+INSERT IGNORE INTO sys_setting (`key`, module, `group`, type, value, default_value, label_key, secret, update_time) VALUES ('framework.site_title', 'framework', 'general', 'string', 'Omni Solutions', 'Omni Solutions', 'system:setting.site_title', 0, 0);
 INSERT IGNORE INTO sys_setting (`key`, module, `group`, type, value, default_value, label_key, secret, update_time) VALUES ('framework.market_cdn_url', 'framework', 'security', 'string', '/cdn', '/cdn', 'system:setting.market_cdn_url', 0, 0);
 INSERT IGNORE INTO sys_setting (`key`, module, `group`, type, value, default_value, label_key, secret, update_time) VALUES ('ldap.enabled', 'ldap', 'login', 'bool', '0', '0', 'system:setting.ldap_enabled', 0, 0);
 INSERT IGNORE INTO sys_setting (`key`, module, `group`, type, value, default_value, label_key, secret, update_time) VALUES ('sso.enabled', 'sso', 'login', 'bool', '0', '0', 'system:setting.sso_enabled', 0, 0);

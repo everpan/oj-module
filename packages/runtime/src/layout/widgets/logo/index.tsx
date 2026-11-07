@@ -4,6 +4,7 @@ import { clsx } from "clsx";
 import { useNavigate } from "react-router";
 import logo from "#src/assets/svg/logo.svg?url";
 
+import { useGlobalStore } from "../../../store/global";
 import { headerHeight } from "../../constants";
 
 const { Title } = Typography;
@@ -19,6 +20,7 @@ export interface LogoProps {
  */
 export function Logo({ sidebarCollapsed, className }: LogoProps) {
 	const navigate = useNavigate();
+	const siteTitle = useGlobalStore(s => s.siteTitle);
 
 	return (
 		<div
@@ -38,7 +40,7 @@ export function Logo({ sidebarCollapsed, className }: LogoProps) {
 				className={clsx("text-sm m-0", { hidden: sidebarCollapsed })}
 				ellipsis
 			>
-				{import.meta.env.VITE_GLOB_APP_TITLE}
+				{siteTitle}
 			</Title>
 
 		</div>

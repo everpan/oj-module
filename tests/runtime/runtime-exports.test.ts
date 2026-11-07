@@ -150,10 +150,23 @@ describe("runtime 主入口出口白名单 (P3.1)", () => {
 	it("store：user / auth / tabs", () => {
 		expect(Runtime.useUserStore).toBeTypeOf("function");
 		expect(Runtime.useAuthStore).toBeTypeOf("function");
+		// 站点标题 store：宿主启动 / 站点设置页注入 DB framework.site_title
+		expect(Runtime.useGlobalStore).toBeTypeOf("function");
 		// 模块自设页签标题（P3.5）：与 tabs store 的 setTableTitle/resetTableTitle 配对
 		expect(Runtime.useTabsStore).toBeTypeOf("function");
 		// 页签 key 唯一正确取口（keepAlive 下 useLocation 是激活页位置，0.1.21）
 		expect(Runtime.useTabKey).toBeTypeOf("function");
+	});
+
+	it("store：站点标题注入（DB framework.site_title → Logo / 双列侧栏 / 全屏布局）", () => {
+		const store = Runtime.useGlobalStore.getState();
+		const before = store.siteTitle;
+		expect(before).toBeTruthy(); // 构建期 VITE_GLOB_APP_TITLE 兜底，首帧不空白
+		store.setSiteTitle("__probe_title__");
+		expect(Runtime.useGlobalStore.getState().siteTitle).toBe("__probe_title__");
+		store.setSiteTitle(""); // 空值忽略，保留当前值
+		expect(Runtime.useGlobalStore.getState().siteTitle).toBe("__probe_title__");
+		store.setSiteTitle(before); // 恢复，避免污染同进程其它用例
 	});
 
 	it("图标：本地图标 + Ri 常用图标（构建期内联，声明零泄漏）", () => {

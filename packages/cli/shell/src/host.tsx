@@ -34,6 +34,7 @@ import {
 	setupI18n,
 	useAccessStore,
 	useAuthStore,
+	useGlobalStore,
 	usePreferences,
 	useUserStore,
 } from "@oj-module/runtime";
@@ -316,10 +317,23 @@ function Boot() {
 				// （layout e2e M3 深链接用例暴露）；子路径部署（/oj）下裸 "/"
 				// 同样会打到宿主机根，故 base 一律走 resolveSiteBase()。
 				const base = resolveSiteBase();
-				const [res, versionsRes] = await Promise.all([
+				const [res, versionsRes, siteRes] = await Promise.all([
 					fetch(`${base}modules.json`),
 					fetch(`${base}versions.json`).catch(() => null),
+					// 站点标题：匿名端点回传 DB 的 framework.site_title（站点设置页可改），
+					// 注入 runtime store 供 Logo / 双列侧栏 / 全屏布局三处展示。失败静默 fallback
+					// 构建期 VITE_GLOB_APP_TITLE，绝不阻断启动（与 versions.json 的 404 容忍同纪律）。
+					fetch(`${resolveApiBase()}/system/login-methods`).catch(() => null),
 				]);
+				if (siteRes?.ok) {
+					try {
+						const env = await siteRes.json() as { data?: { site_title?: unknown } };
+						const title = env?.data?.site_title;
+						if (typeof title === "string" && title.trim())
+							useGlobalStore.getState().setSiteTitle(title);
+					}
+					catch { /* 站点标题是增强面，解析失败不阻断启动 */ }
+				}
 				if (!res.ok)
 					throw new Error(`modules.json 加载失败：HTTP ${res.status}`);
 				// 站内绝对 URL 在此一次性补齐部署 base（entry / css / chunks），

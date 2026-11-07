@@ -2,6 +2,7 @@ import type { TFunction } from "i18next";
 
 import type { SystemSettingsGetData } from "../../__client";
 
+import { useGlobalStore } from "@oj-module/runtime";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { App, Button, Card, Input, Space, Switch, Tag, Tooltip } from "antd";
 import { useState } from "react";
@@ -80,9 +81,13 @@ export default function SettingsPage() {
 
 	const putMut = useMutation({
 		mutationFn: (body: { key: string, value: string }) => systemSettingsPut(body),
-		onSuccess: () => {
+		onSuccess: (_data, vars) => {
 			message.success(t("system:settingsPage.saved"));
 			queryClient.invalidateQueries({ queryKey: ["system", "settings"] });
+			// 站点标题即时生效：DB 为权威，写入 runtime store 后 Logo / 双列侧栏 / 全屏布局
+			// 三处立刻刷新，无需刷新页面（其他用户下次启动由 host 的匿名端点注入）。
+			if (vars.key === "framework.site_title")
+				useGlobalStore.getState().setSiteTitle(vars.value);
 		},
 		onError: e => message.error(explainError(e, t)),
 	});
