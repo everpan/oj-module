@@ -7,8 +7,7 @@
 		"oplog": "Audit Log",
 		"settings": "Site Settings",
 		"wecom": "WeCom Integration",
-		"departments": "Departments",
-		"solutions": "Solutions"
+		"departments": "Departments"
 	},
 	"common": {
 		"confirm": "Confirm",
@@ -130,18 +129,6 @@
 	"settingsPage": {
 		"secretHint": "Secret items cannot be edited online",
 		"saved": "Settings saved"
-	},
-	"solutionsPage": {
-		"title": "Solution Market (oj-market)",
-		"absentTitle": "No oj-market package in the site catalog",
-		"absentHint": "Factory state: re-run `ojm init --yes` to fetch the bundled installer package, or have a superadmin trigger POST /api/oj-market/backfill to rebuild the local catalog, then refresh this page.",
-		"latest": "Latest in catalog: {{version}}",
-		"installed": "Installed {{version}}",
-		"install": "Install",
-		"doneTitle": "Installed",
-		"goMarket": "Open Solution Market",
-		"upgradableHint": "A newer version is in the catalog — upgrade from within the market page.",
-		"needsTrust": "Publisher key awaits trust confirmation — first-party packages are pre-trusted, so this usually means a third-party package occupies the name. Verify and retry."
 	},
 	"wecom": {
 		"title": "Onboard a corporation",

@@ -17,7 +17,6 @@ const Roles = lazy(() => import("./pages/roles"));
 const Oplog = lazy(() => import("./pages/oplog"));
 const Settings = lazy(() => import("./pages/settings"));
 const WecomAdmin = lazy(() => import("./pages/wecom"));
-const Solutions = lazy(() => import("./pages/solutions"));
 
 /**
  * `/system` 根的角色门禁（对齐后端 assertSystemAdmin，access.ts:87）——
@@ -81,12 +80,6 @@ export const routes: AppRouteRecordRaw[] = [
 				handle: { title: "system:menu.settings", roles: ["superadmin"] },
 			},
 			{
-				// 方案安装（Phase B T3，出厂未装态的首装入口）：仅超管可见可访问
-				path: "/system/solutions",
-				Component: Solutions,
-				handle: { title: "system:menu.solutions", roles: ["superadmin"] },
-			},
-			{
 				// 企微代开发后台（服务商运营面）：仅超管可见（路由级 roles + 页面内二次判定）
 				path: "/system/wecom",
 				Component: WecomAdmin,
@@ -99,7 +92,8 @@ export const routes: AppRouteRecordRaw[] = [
 /**
  * 构造即接线：登记 /system 前缀 + 绑定 scoped request（D11 前缀收敛）；
  *  另登记 /oj-market（平台内置市场编排面，R29 第一方）并绑定其生成 client——
- *  方案安装页（/system/solutions）出厂未装态即经此调用安装端点。
+ *  方案市场默认安装（2026-11-07 策略变更）——安装/升级端点由方案市场页自身消费；
+ *  原「方案安装」首装页已整建制退役（2026-11-07，退役钉 tests/solutions-entry.spec）。
  */
 export async function onInit(ctx: ModuleContext) {
 	createSystemClient(ctx);
