@@ -29,6 +29,8 @@ export function CardItem({ row, busy, canManage = true, onInstall, onEnableToggl
 	const enabled = row.enabled === true;
 	const disabled = row.enabled === false;
 	const dualVersion = installed && row.upgradable && row.latest != null;
+	// 无可升级发布版时升级无意义：禁用并提示（upgradable = 存在 > 已装版本的在架发布，服务端已算好）
+	const upgradeBlocked = installed && !row.upgradable;
 	// 非 superadmin：所有写操作禁用并给出原因提示，只读（详情/历史）不受影响。
 	const manageTip = canManage ? undefined : t("oj-market:card:superOnly");
 
@@ -37,6 +39,10 @@ export function CardItem({ row, busy, canManage = true, onInstall, onEnableToggl
 			title={row.name}
 			size="small"
 			data-testid={`card-${row.name}`}
+			// 卡片体 flex 纵列：内容自然高度，按钮行 marginTop:auto 钉底——
+			// 网格同行卡片高度一致（grid stretch），按钮底边对齐
+			style={{ display: "flex", flexDirection: "column", height: "100%" }}
+			styles={{ body: { flex: 1, display: "flex", flexDirection: "column" } }}
 			extra={(
 				<Space size={4}>
 					{row.upgradable && <Tag color="gold">{t("oj-market:card:upgradable")}</Tag>}
@@ -128,8 +134,16 @@ export function CardItem({ row, busy, canManage = true, onInstall, onEnableToggl
 					{row.publisher_key}
 				</div>
 			)}
-			<Space wrap>
-				<Button type="primary" size="small" loading={busy} onClick={() => onInstall(row)} disabled={busy || !canManage} title={manageTip}>
+			{/* 动作区：flex 换行（Space wrap 的 6 按钮在窄卡上挤压难读），整行钉卡片底部对齐 */}
+			<div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: "auto", paddingTop: 4 }}>
+				<Button
+					type="primary"
+					size="small"
+					loading={busy}
+					onClick={() => onInstall(row)}
+					disabled={busy || !canManage || upgradeBlocked}
+					title={manageTip ?? (upgradeBlocked ? t("oj-market:card:latestInstalled") : undefined)}
+				>
 					{installed ? t("oj-market:card:upgrade") : t("oj-market:card:install")}
 				</Button>
 				{installed && (
@@ -153,7 +167,7 @@ export function CardItem({ row, busy, canManage = true, onInstall, onEnableToggl
 				<Button size="small" onClick={() => onHistory(row)}>
 					{t("oj-market:card:history")}
 				</Button>
-			</Space>
+			</div>
 		</Card>
 	);
 }

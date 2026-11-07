@@ -43,7 +43,8 @@
 		"disable": "Disable",
 		"upgrade": "Upgrade",
 		"rollback": "Rollback",
-		"superOnly": "Only superadmins can install, upgrade, roll back, enable/disable or uninstall solutions; other users may browse only."
+		"superOnly": "Only superadmins can install, upgrade, roll back, enable/disable or uninstall solutions; other users may browse only.",
+		"latestInstalled": "Latest version installed; nothing to upgrade"
 	},
 	"task": {
 		"installing": "Installing",

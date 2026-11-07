@@ -185,7 +185,12 @@ export default defineConfig({
 		// 单元测试只在 tests/（不含 tests/e2e）：避免 vitest 误收
 		// tests/e2e/layout/*.spec.ts（Playwright spec 会被 vitest 当测试文件加载而报错）
 		// uni-dev 真二进制冒烟放 tests/integration/（*.test.ts，CI 跳过）
-		include: ["tests/**/*.{test,spec}.?(c|m)[jt]s?(x)"],
+		include: [
+			"tests/**/*.{test,spec}.?(c|m)[jt]s?(x)",
+			// oj-market 前端组件测试（templates src 树下）：vitest 4 起子包 vitest.config
+			// include 不再被根收集（此前这批 tsx 测试无任何 runner 执行，守卫缺口）
+			"packages/cli/templates/src/**/*.{test,spec}.?(c|m)[jt]s?(x)",
+		],
 		exclude: [
 			"**/node_modules/**",
 			"**/dist/**",
