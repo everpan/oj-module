@@ -62,6 +62,8 @@ export interface DevOptions {
 	keymap?: boolean
 	/** 注入键盘输入流（测试）；默认 process.stdin */
 	inputStream?: NodeJS.ReadStream
+	/** 注入出厂对账触发（测试）；默认 triggerFactoryConverge（fire-and-forget） */
+	convergeTrigger?: (port: number, apiBase: string) => void
 	/** 注入浏览器打开实现（测试）；默认按平台 spawn open/xdg-open */
 	openBrowser?: (url: string) => void
 }
@@ -153,7 +155,7 @@ export async function devServer(projectRoot: string, opts: DevOptions = {}): Pro
 		// 出厂即装（支柱三）：后端就绪后 fire-and-forget 触发一次随站 bundle 收敛
 		// （login → index riding 收敛，幂等；服务端 isolate 无定时器，只能 riding 请求）。
 		// 失败吞咽——不阻断 dev 启动，首个真实请求对账兜底。
-		void triggerFactoryConverge({ port: oj.port, apiBase, log: console.log });
+		(opts.convergeTrigger ?? ((port: number, base: string) => void triggerFactoryConverge({ port, apiBase: base, log: console.log })))(oj.port, apiBase);
 	}
 
 	const hub = createReloadHub();

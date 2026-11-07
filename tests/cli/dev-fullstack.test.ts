@@ -185,6 +185,7 @@ describe("devServer 全栈接线", () => {
 				builds.push("initial");
 			},
 			ojStarter: up.starter(upPort, configPath),
+			convergeTrigger: () => {}, // 出厂对账触发不混入反代断言（factory-converge.test 单钉）
 		});
 		const devPort = (server.address() as AddressInfo).port;
 
@@ -211,6 +212,7 @@ describe("devServer 全栈接线", () => {
 			shellDist: path.join(root, "shell-dist"),
 			buildModulesFn: async () => {},
 			ojStarter: up.starter(upPort, configPath),
+			convergeTrigger: () => {},
 		});
 		const devPort = (server.address() as AddressInfo).port;
 
@@ -421,6 +423,7 @@ describe("devServer 全栈接线", () => {
 			shellDist: path.join(root, "shell-dist"),
 			buildModulesFn: async () => {},
 			ojStarter: up.starter(upPort, configPath),
+			convergeTrigger: () => {},
 		});
 		const devPort = (server.address() as AddressInfo).port;
 
@@ -557,6 +560,7 @@ describe("shutdownDev（前端终止 → 后端 oj 随之消亡）", () => {
 			shellDist: path.join(root, "shell-dist"),
 			buildModulesFn: async () => {},
 			ojStarter: up.starter(upPort, configPath),
+			convergeTrigger: () => {},
 		});
 		onSpy.mockRestore();
 		onceSpy.mockRestore();
