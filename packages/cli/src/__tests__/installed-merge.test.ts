@@ -160,6 +160,13 @@ describe("restoreInstalledFaces", () => {
 
 		expect(restored).toEqual(["oj-market"]);
 		expect(fs.existsSync(join(dist, "modules", "oj-market", "0.2.0", "entry.js"))).toBe(true);
+		// 旁车随重建落回版本目录根：release 每次擦除 dist/web，旁车必须有一次越过擦除的持久化
+		const versionRootSidecar = join(apiDist, "oj-market-0.2.0", ".ojm-module.json");
+		expect(fs.existsSync(versionRootSidecar)).toBe(true);
+		// 二次重物化（再擦除）带走旁车：不再走最小条目重建
+		fs.rmSync(join(dist, "modules", "oj-market"), { recursive: true, force: true });
+		restoreInstalledFaces(root, dist, apiDist);
+		expect(fs.existsSync(join(dist, "modules", "oj-market", "0.2.0", ".ojm-module.json"))).toBe(true);
 	});
 
 	it("face 在盘 → 不重复恢复（幂等）", () => {

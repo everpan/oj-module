@@ -46,31 +46,40 @@ function readInstalledState(projectRoot: string): Record<string, { version: stri
 	return Object.keys(out).length === 0 ? null : out;
 }
 
-/** face 版本目录的条目旁车（deploy-web 落）；缺失/损坏/name 不符 → null */
-function readFaceSidecar(faceDir: string, name: string, version: string): Record<string, unknown> | null {
+/** 原始旁车读取（无降级）：缺失/损坏/name 不符 → null（ensureFaceSidecar 与合并面共用） */
+function parseFaceSidecar(faceDir: string, name: string): Record<string, unknown> | null {
 	const sidecarPath = path.join(faceDir, ".ojm-module.json");
 	let entry: unknown;
 	try {
 		entry = JSON.parse(fs.readFileSync(sidecarPath, "utf-8"));
 	}
 	catch {
-		return reconstructMinimalEntry(faceDir, name, version);
+		return null;
 	}
 	if (entry === null || typeof entry !== "object" || Array.isArray(entry))
-		return reconstructMinimalEntry(faceDir, name, version);
+		return null;
 	const e = entry as Record<string, unknown>;
 	if (e.name !== name || typeof e.entry !== "string" || e.entry === "")
-		return reconstructMinimalEntry(faceDir, name, version);
+		return null;
 	return e;
 }
 
+/** face 版本目录的条目旁车（deploy-web 落）；缺失/损坏 → 降级重建最小条目 */
+function readFaceSidecar(faceDir: string, name: string, version: string): Record<string, unknown> | null {
+	return parseFaceSidecar(faceDir, name) ?? ensureFaceSidecar(faceDir, name, version);
+}
+
 /**
- * 旁车缺失降级（有两类正当形态）：release 从版本目录重物化的 face（旁车只落站点
- * face 目录，不进包/版本目录）+ 旁车特性引入前的旧安装。entry.js 在盘 → 重建最小
- * 条目并入（entry 路径按布局推导、css 顶层扫描）；integrity 不可知缺省省略（宿主
- * 无 SRI 加载，旁车在场时恢复完整形状）。entry.js 也缺 → null，告警收口。
+ * 确保 face 旁车在场：缺失/损坏（两类正当形态——release 从版本目录重物化的 face
+ * （旁车只落站点 face 目录，不进包/版本目录）+ 旁车特性引入前的旧安装）→ entry.js
+ * 在盘则重建最小条目（entry 路径按布局推导、css 顶层扫描；integrity 不可知缺省省略，
+ * 宿主无 SRI 加载）并落回 face 目录，告警有痕。在场且合法 → 原样返回。entry.js 也缺 → null。
  */
-function reconstructMinimalEntry(faceDir: string, name: string, version: string): Record<string, unknown> | null {
+function ensureFaceSidecar(faceDir: string, name: string, version: string): Record<string, unknown> | null {
+	// 在场且合法 → 原样返回（二次重物化旁车随版本目录同行，不重建不告警）
+	const existing = parseFaceSidecar(faceDir, name);
+	if (existing !== null)
+		return existing;
 	const entryFile = path.join(faceDir, "entry.js");
 	if (!fs.existsSync(entryFile))
 		return null;
@@ -116,6 +125,18 @@ export function restoreInstalledFaces(projectRoot: string, distDir: string, apiD
 		if (!fs.existsSync(versionDir))
 			continue;
 		fs.cpSync(versionDir, faceDir, { recursive: true });
+		// 旁车随重建落回版本目录根：release 每次 mergeShellSite 擦除 dist/web，
+		// 旁车只留 face 目录会被一并抹掉——版本目录（安装器私有面）是跨擦除的持久化位。
+		// 重建最小条目（旁车缺失时）后写两处；下次重物化旁车随行，不再走降级。
+		const sidecar = ensureFaceSidecar(faceDir, name, e.version);
+		if (sidecar !== null) {
+			try {
+				fs.writeFileSync(path.join(apiDist, `${name}-${e.version}`, ".ojm-module.json"), `${JSON.stringify(sidecar, null, 2)}\n`);
+			}
+			catch {
+				// 版本目录只读等极端形态：下轮重建重走降级，告警有痕
+			}
+		}
 		restored.push(name);
 	}
 	if (restored.length > 0)
