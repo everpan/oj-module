@@ -4,6 +4,7 @@
 // 后端编排见 backend.ts。
 import type { Plugin } from "vite";
 import type { ProjectLayout } from "../layout";
+import type { RouteDefinitionLike } from "../manifest-routes-derive";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -171,6 +172,33 @@ function assertResolvableSpecifiers(
  * opts.mergeSite 仅 `ojm build` 传 true：清场 + 拷 shell dist 全量；
  * devServer 热重建默认 false，只写模块产物。
  */
+/**
+ * 菜单路由布局守卫（纯函数，返回警告文案数组）：带菜单元数据（title + order≥0 主菜单区）的
+ * 路由若未声明 layout 或为 "none"，浏览器端将裸 Outlet 全屏渲染——菜单点进去没有侧边栏/顶栏。
+ * 方案页要框架外壳应显式 `layout: "container"`（内建模块与 ojm new 骨架的统一约定）；
+ * order<0（底部固定区，如 login 全屏）与无 title（不进菜单）的路由不告警。
+ */
+export function menuLayoutWarnings(routes: RouteDefinitionLike[], moduleName: string): string[] {
+	const warns: string[] = [];
+	const walk = (list: RouteDefinitionLike[]) => {
+		for (const r of list) {
+			const h = r.handle;
+			const isMenu = typeof h?.title === "string" && typeof h.order === "number" && h.order >= 0;
+			const noChrome = h?.layout == null || h.layout === "none";
+			if (isMenu && noChrome) {
+				warns.push(
+					`[ojm] 模块 ${moduleName} 的菜单路由 ${r.path ?? "(index)"} 未声明 layout（或为 "none"）：`
+					+ "菜单进入将全屏、不套框架外壳。方案页需要侧边栏/顶栏时请设 handle.layout = \"container\"。",
+				);
+			}
+			if (r.children?.length)
+				walk(r.children);
+		}
+	};
+	walk(routes);
+	return warns;
+}
+
 export async function buildModules(
 	projectRoot: string,
 	opts: { mergeSite?: boolean } = {},
@@ -209,6 +237,9 @@ export async function buildModules(
 				`模块名不一致：${layout.kind === "module-root" ? `src/${item.name}` : "web.config.ts"} 中为 "${item.name}"，entry.ts 中为 "${definition.name}"`,
 			);
 		}
+
+		for (const w of menuLayoutWarnings(definition.routes ?? [], definition.name))
+			console.warn(w);
 
 		const moduleOutDir = path.join(outDir, "modules", definition.name, definition.version);
 		const emitted = new Map<string, { fileName: string, type: "chunk" | "asset", isEntry: boolean, isDynamicEntry: boolean }>();

@@ -143,6 +143,19 @@ describe("cardGrid 卡片网格（BDD）", () => {
 		expect(screen.getByTestId("card-grid-empty")).toBeTruthy();
 	});
 
+	it("given 已装且无可升级发布版（upgradable=false）When 渲染 Then 升级按钮禁用并提示已是最新", () => {
+		renderWithProviders(<CardGrid rows={[disabledRow]} {...handlers} />, new InMemoryMarketClient());
+		const btn = screen.getByRole("button", { name: "升级" }) as HTMLButtonElement;
+		expect(btn.disabled).toBe(true);
+		expect(btn.getAttribute("title")).toContain("最新");
+	});
+
+	it("given 已装且存在更高发布版（upgradable=true）When 渲染 Then 升级按钮可用", () => {
+		renderWithProviders(<CardGrid rows={[installed]} {...handlers} />, new InMemoryMarketClient());
+		const btn = screen.getByRole("button", { name: "升级" }) as HTMLButtonElement;
+		expect(btn.disabled).toBe(false);
+	});
+
 	it("given loading=true When 渲染 Then 显示加载态", () => {
 		renderWithProviders(<CardGrid rows={[]} loading {...handlers} />, new InMemoryMarketClient());
 		expect(screen.getByTestId("card-grid-loading")).toBeTruthy();
