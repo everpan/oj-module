@@ -14,16 +14,8 @@ export default function Profile() {
 	const { t } = useTranslation();
 	const currentUser = useUserStore();
 	const { message } = App.useApp();
-	const getAvatarURL = () => {
-		if (currentUser) {
-			if (currentUser.avatar) {
-				return currentUser.avatar;
-			}
-			const url = "https://avatar.vercel.sh/blur.svg?text=2";
-			return url;
-		}
-		return "";
-	};
+	// 无头像时不造兜底图：FormAvatarItem 回退 UserOutlined 图标，与 header 一致
+	const getAvatarURL = () => currentUser?.avatar || undefined;
 
 	// 真实入库：POST /api/personal-center/profile（只传资料四字段，avatar 走 upload 通道），
 	// 成功后重拉 user-info 刷新全局 store（表单 initialValues 随之更新）。
@@ -63,18 +55,13 @@ export default function Profile() {
 				<Form.Item
 					name="avatar"
 					label={t("personal-center:profile.avatar")}
-					rules={[
-						{
-							required: true,
-							message: t("personal-center:profile.avatarRequired"),
-						},
-					]}
 				>
 					<FormAvatarItem />
 				</Form.Item>
 				<ProFormText
 					name="username"
 					label={t("personal-center:profile.username")}
+					disabled
 					rules={[
 						{
 							required: true,

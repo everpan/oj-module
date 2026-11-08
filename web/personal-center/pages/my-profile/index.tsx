@@ -9,16 +9,8 @@ import { Form, Input } from "antd";
 
 export default function Profile() {
 	const currentUser = useUserStore();
-	const getAvatarURL = () => {
-		if (currentUser) {
-			if (currentUser.avatar) {
-				return currentUser.avatar;
-			}
-			const url = "https://avatar.vercel.sh/blur.svg?text=2";
-			return url;
-		}
-		return "";
-	};
+	// 无头像时不造兜底图：FormAvatarItem 回退 UserOutlined 图标，与 header 一致
+	const getAvatarURL = () => currentUser?.avatar || undefined;
 
 	const handleFinish = async () => {
 		window.$message?.success("更新基本信息成功");
@@ -39,18 +31,13 @@ export default function Profile() {
 				<Form.Item
 					name="avatar"
 					label="头像"
-					rules={[
-						{
-							required: true,
-							message: "请输入您的昵称!",
-						},
-					]}
 				>
 					<FormAvatarItem />
 				</Form.Item>
 				<ProFormText
 					name="username"
 					label="用户名"
+					disabled
 					rules={[
 						{
 							required: true,

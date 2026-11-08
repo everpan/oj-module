@@ -15,6 +15,26 @@ test.describe("我的资料（templates）", () => {
 		await enterTemplateApp(page);
 	});
 
+	test("P1: 用户名只读不可修改", async ({ page }) => {
+		await page.goto("/personal-center/my-profile");
+		await expect(page.locator("form").first()).toBeVisible();
+
+		const usernameInput = page.getByLabel("用户名");
+		await expect(usernameInput).toBeVisible();
+		await expect(usernameInput).toBeDisabled();
+		await expect(usernameInput).toHaveValue("admin");
+	});
+
+	test("P1: 头像与 header 一致不出现 vercel 兜底图", async ({ page }) => {
+		await page.goto("/personal-center/my-profile");
+		await expect(page.locator("form").first()).toBeVisible();
+
+		// seed admin 无头像：header 与资料页都应回退到图标态，不出现凭空兜底图
+		// （限定 form 作用域：通知 seed 数据也用 vercel 图，但仅在通知弹层渲染）
+		await expect(page.locator("form img[src*='avatar.vercel.sh']")).toHaveCount(0);
+		await expect(page.locator(".ant-avatar .anticon-user").first()).toBeVisible();
+	});
+
 	test("P1: 编辑个人简介保存后持久化", async ({ page }) => {
 		const desc = `e2e-desc-${Date.now()}`;
 		await page.goto("/personal-center/my-profile");
