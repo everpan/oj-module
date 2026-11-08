@@ -5,8 +5,10 @@ import { useTranslation } from "react-i18next";
 import { useMatches, useNavigate } from "react-router";
 
 import { useCurrentRoute } from "#src/hooks/use-current-route";
+import { useDeviceType } from "#src/hooks/use-device-type";
 import { removeTrailingSlash } from "#src/router/utils/remove-trailing-slash";
 import { useAccessStore } from "#src/store/access";
+import { usePreferencesStore } from "#src/store/preferences";
 
 import { useLayout } from "../hooks";
 import { findDeepestFirstItem, findRootMenuByPath, translateMenus } from "./utils";
@@ -19,6 +21,8 @@ export function useMenu() {
 	const wholeMenus = useAccessStore(state => state.wholeMenus);
 	const bottomMenus = useAccessStore(state => state.bottomMenus);
 	const { isMixedNav, isTwoColumnNav } = useLayout();
+	const { isMobile } = useDeviceType();
+	const setPreferences = usePreferencesStore(state => state.setPreferences);
 	const navigate = useNavigate();
 	const { t } = useTranslation();
 	const translatedMenus = translateMenus(wholeMenus, t);
@@ -104,6 +108,12 @@ export function useMenu() {
 		/* 合成归组父键（solgroup:*）非真实路由，点击父标题不可导航，仅展开（§4.4） */
 		if (key.startsWith("solgroup:")) {
 			return;
+		}
+		/* 移动端菜单是「整屏高度 + 遮罩」的抽屉：点叶子项后必须收起，否则跳转
+		 * 后的页面仍被盖住（iPhone SE 375×667 实测）。同路由的重复点击也收起——
+		 * 用户点它正是为了回到页面看内容。 */
+		if (isMobile) {
+			setPreferences("sidebarCollapsed", false);
 		}
 		/* 落地页菜单 key 是「父路径 + /」（与 route id 同形）：导航前去掉尾斜杠，URL 保持规范 */
 		const targetPath = removeTrailingSlash(key);

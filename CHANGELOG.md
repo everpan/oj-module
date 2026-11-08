@@ -97,6 +97,13 @@
 
 ### Fixed
 
+- **移动端（375×667 等窄屏）点菜单项后抽屉不收起，目标页被整屏菜单盖住**：移动端菜单是
+  `sidebarCollapsed` 驱动的整屏 Drawer + 遮罩，`handleMenuSelect` 只做路由跳转、从未复位该
+  偏好，故跳转后抽屉仍压在页面上（同路由重复点击也一样被盖）。现 `isMobile` 下先收起再跳转；
+  `solgroup:` 合成父节点不收起（它只展开分组、不导航）。守卫：
+  `tests/runtime/mobile-menu-autoclose.test.tsx`（叶子点击收起 / 同路径点击收起 / solgroup 不收 /
+  桌面不受影响，4 例）+ `tests/e2e/templates/mobile-menu.spec.ts`（375×667 真实 shell：点
+  「个人中心 → 我的资料」后 URL 到位且遮罩隐藏）。
 - **首装失败残留锁 + 失败版本被记成已装版本（操作历史需求联调实测缺陷）**：`readLock` 对
   文件缺失返回 `{}` 而不抛，安装器据此把首装置为「有锁」→ 锁后失败（如 smoke 探活不过）补偿
   回滚走 `writeLock({})` 撞「空锁拒启」，失败版本的锁留在盘上（既不算生效、也没法按失败版本
