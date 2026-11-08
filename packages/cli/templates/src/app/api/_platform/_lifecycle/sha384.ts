@@ -181,7 +181,12 @@ export function bytesToBase64(bytes: Uint8Array): string {
 	return btoa(bin);
 }
 
-/** C2-28/R10 完整 integrity 值：`sha384-<base64(digest)>` */
+/**
+ * C2-28/R10 integrity 值的 base64 段（裸摘要，**不含** `sha384-` 前缀）。
+ * 完整性值 = `sha384-<此返回值>`，前缀由调用方拼接——安装器 / 冒烟 / 深检三处均按该形态
+ * 组装后再与 modules.json 比对；若此处自带前缀，落盘会成 `sha384-sha384-…`（2026-11-08
+ * 演练实锤：三处自洽比对互相掩护，单测又用裸摘要 stub，故一直未现形）。
+ */
 export function sha384B64(data: Uint8Array): string {
-	return `sha384-${bytesToBase64(sha384Bytes(data))}`;
+	return bytesToBase64(sha384Bytes(data));
 }

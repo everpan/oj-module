@@ -82,6 +82,12 @@
 
 ### Fixed
 
+- **安装方案落盘的 `web.integrity` 是 `sha384-sha384-…` 双前缀（全量线演练实测缺陷）**：
+  `_lifecycle/sha384.ts` 的 `sha384B64` 返回完整 `sha384-<b64>`，而安装器 / 冒烟 / 深检三处调用
+  又各自拼一次前缀；三方比对互相自洽（都错成一样）+ 单测注入 stub 用裸摘要，故历史演练全绿也未
+  暴露。现 `sha384B64` 回归裸 base64（名字本义），落盘值符合 C2-28 `^sha384-[A-Za-z0-9+/]{64}$`。
+  守卫：`sha384.spec`（裸摘要形态）+ `installer.spec`（落盘 C2-28 单前缀）。安装器代码随 `ojm init`
+  复制进工程，已有工程重新 init 即修复；已装方案重装/升级会重写该条目。
 - **方案声明权限点 `title_key` 落库断链（RBAC/多语言演练实测缺陷）**：C2-15 把
   `permissions[].title_key` 定为必填并逐项校验，但 `declOf` 只取 `code`、`upsertSolutionPerms`
   insert 不带 title_key → `sys_permission.title_key` 恒 NULL，权限点展示页永远回退裸 code，

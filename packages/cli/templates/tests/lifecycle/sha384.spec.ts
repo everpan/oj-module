@@ -34,12 +34,15 @@ describe("sha384Bytes（FIPS 180-4 向量）", () => {
 	});
 });
 
-describe("sha384B64（C2-28 integrity 形态）", () => {
-	it("与 node:crypto 的 base64 摘要拼接一致：sha384-<b64>", () => {
+describe("sha384B64（C2-28 integrity 的 base64 段）", () => {
+	// 2026-11-08 演练实锤：本函数曾自带 `sha384-` 前缀，而安装器/冒烟/深检三处又各拼一次，
+	// 落盘 modules.json 成了 `sha384-sha384-…`（三处互相自洽 + 单测 stub 是裸摘要，故长期未现形）。
+	it("返回 base64 裸摘要（不带前缀）；拼上前缀后正好是 C2-28 形态", () => {
 		const data = new TextEncoder().encode("demo-solution entry.js");
-		const expected = `sha384-${createHash("sha384").update(data).digest("base64")}`;
+		const expected = createHash("sha384").update(data).digest("base64");
 		expect(sha384B64(data)).toBe(expected);
-		expect(sha384B64(data)).toMatch(/^sha384-[A-Za-z0-9+/]{64}$/);
+		expect(sha384B64(data)).not.toContain("sha384-");
+		expect(`sha384-${sha384B64(data)}`).toMatch(/^sha384-[A-Za-z0-9+/]{64}$/);
 	});
 
 	it("bytesToBase64 与 Buffer base64 一致", () => {

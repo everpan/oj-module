@@ -290,6 +290,8 @@ describe("runInstall 全绿路径（步骤 stub，register/smoke/audit 走真实
 		await fsp.access(join(siteModulesDir, "demo-solution", "0.2.0", "entry.js"));
 		const list = JSON.parse(await fsp.readFile(modulesJsonPath, "utf8")) as any[];
 		expect(list[0]).toMatchObject({ name: "demo-solution", entry: "/modules/demo-solution/0.2.0/entry.js", integrity: `sha384-${sha384b64(ENTRY)}` }); // 根绝对：浏览器裸 import 契约
+		// C2-28 形态钉子：只许单前缀（sha384-<64 位 base64>）——曾因 sha384 面自带前缀而落成 sha384-sha384-…（2026-11-08 演练）
+		expect(String((list[0] as { integrity?: string }).integrity)).toMatch(/^sha384-[A-Za-z0-9+/]{64}$/);
 		// web-only 包 api 锁零变更：锁是 oj 装配真源（原生七键清单），写锁会让 oj 按 C2 清单装配
 		// （reload 400）并遮蔽同名内建模块（2026-11-07 演练实锤：双轨同名 oj-market 锁遮蔽编排面）。
 		// 版本目录仍归位（回滚素材/审计形态），生效面 = modules.json upsert + 注册 + sidecar。

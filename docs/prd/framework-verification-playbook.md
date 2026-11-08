@@ -17,6 +17,17 @@
 判据只有一条：**每节的检查点逐条打勾**——退出码 0 只是入场券，产物与响应体才算数。
 历史演练记录集中在文末 [附录 A](#附录-a-历史基线从新到旧逐条可追溯)，日常执行不用读。
 
+> **上次演练结论（2026-11-08 全量线，cli/runtime 0.2.76 打包态 / oj 0.1.126）**：**通过**——
+> §0.5 pack（prepack 收编已签名 oj-market-0.2.3，只留最高版本）→ §1 `init --yes`（bundle 三件套
+> cdn 落位）→ §2 依赖（本地 registry 滞后 → `pnpm-workspace.yaml` overrides 钉 cli+runtime 两个本地
+> tgz）→ §3 oj 探针 → build/info/api --check 全绿 → §6 dev（登录/通知/无 token 401/SPA/importmap/
+> 市场 entry 200）→ 浏览器实测市场卡（停用 + 卸载均 disabled 且带说明）→ §7 preview 单服务（迁移账本
+> / 静态 / 编排端点 / api --check 第三腿全绿）→ §7.6 A dev 出厂即装收敛（state 0.2.3 / trusted /
+> modules.json 并入 / api 锁零变更）、B 纯 `oj serve` 首请求 riding 收敛（全新工程，无 TOFU）、
+> C 幂等 + 降级守护 + 第一方卸载保护 → §7.4 walkthrough 13/13 → §6.5 `pnpm test` 992/992
+> + templates 1160/1160。实锤并修复 **1 个数据面缺陷**：安装落盘的 `web.integrity` 成了
+> `sha384-sha384-…`（sha384 面自带前缀 + 三处调用各拼一次，三方自洽互相掩护），见 §9。
+>
 > **上次演练结论（2026-11-07 第二轮，cli/runtime 0.2.71 打包态 / oj 0.1.124）**：**市场全链路闭环通过**——
 > 发布形态 pack → `init --yes` → 收敛装市场（信任空窗 needs_trust → 推公钥 → 收敛 done、api 锁零变更、
 > 双轨目录并存）→ `ojm new` 造 books 方案 → `market publish --real` 进目录 → `ojm install books`
@@ -166,6 +177,12 @@ pnpm install --dir "$CLI_PKG"                    # 发布包 manifest 已被 pnp
 ```
 
 后续所有 `ojm` 命令走 `$CLI_PKG/bin/ojm.mjs`（**不要**再走 `$OJM_REPO/packages/cli/bin/ojm.mjs`）。runtime 未发版时：在 my-books 里 `pnpm add -D <runtime 本地 tgz>`（同样先 `pnpm --dir packages/runtime pack`）——**务必 `-D` 装进 devDependencies**，否则 `ojm build` 的 C4/D12 门禁会拒（`@oj-module/runtime` 是硬共享依赖，禁止进 `dependencies`，由宿主 importmap 统一提供，自带产生双实例）；§0 旁路 2 的 symlink 仅作 store 不全时兜底。**pnpm ≥11 的 overrides 只认 `pnpm-workspace.yaml` 的 `overrides:` 段，写在 `package.json` 的 `pnpm.overrides` 会被忽略**（2026-11-02 实测：只改 package.json 仍去 npm 找 0.2.53 报 404）。整体通过后如需确认 registry 形态，再 `pnpm dlx @oj-module/cli@<ver> init` 复跑一次 §1。
+
+> **本机 registry 滞后时的最省事形态（2026-11-08 实测两次）**：`ojm init` 生成的 devDeps 和 cli 自身的
+> `dependencies` 都是**精确版本**，verdaccio/npm 没同步该版本时两处都会 `ERR_PNPM_NO_MATCHING_VERSION`。
+> 在工程 `pnpm-workspace.yaml` 的 `overrides:` 里**同时**钉住 `@oj-module/cli` 与 `@oj-module/runtime`
+> 指向本地 tgz 即可（`package.json` 的 `pnpm.overrides` 在 pnpm ≥11 被忽略）；只钉 runtime 不够——
+> 工程 devDeps 里的 cli 精确版本仍会去 registry 找。
 
 ## 1. 脚手架（`ojm init`）
 
@@ -378,7 +395,9 @@ curl -s http://127.0.0.1:9778/api/notifications -H "authorization: Bearer $TOKEN
 - [ ] 通知链路（module-root 模板口径，2026-10-23 起）：`notification` web 模块注册 `notificationsApi` provider → `GET /api/notification/notifications`（带 token）返回 `code:0` + 数组；旧判据「root 级 `/api/notifications` 兜底数组」随 root 级模块在 module-root 改写中移除，该路径 404 属预期（仅当 provider 未注册时通知铃才回落到它）
 - [ ] 无 token 返回 **401**
 - [ ] `http://localhost:5174/` 200，importmap 含 `@oj-module/runtime`，`/modules/books/0.1.0/entry.js` 200
-- [ ] `/modules/login/0.1.0/entry.js` 200，且 `/login` 能渲染模块登录页（登出后可跳回；缺 login 模块则落空）
+- [ ] `/login` 能渲染登录页（登出后可跳回）。**登录页属 `app` 多根模块**——0.2.7x 起
+      `/modules/login/0.1.0/entry.js` 是 404（旧稿判 200 已过时，实测 modules.json 只有
+      `app` + `oj-market`）；要探模块面就探 `/modules/app/0.1.0/entry.js`
 
 > **curl 打路由路径 404 不是缺陷**：SPA history 回落要求 `Accept: text/html`（浏览器天然带），
 > curl 默认 `*/*` 不触发回落。curl 验证请带 `-H 'Accept: text/html'`。
@@ -558,18 +577,19 @@ walkthrough——它在隔离站点上按固定形状（setup → act → assert
 收尾把报告（AC 表 + 失败文案表）脱敏后落盘 `logs/walkthrough-<ts>.md`。
 
 ```bash
-# fixture 必须是 <name>@0.1.0：主链硬编码 0.1.0→0.2.0（upgrade 自产 0.2.0、rollback 回装 0.1.0），
-# 给其它版本时 upgrade/rollback 两项必 FAIL（fixture 缺失，非框架缺陷）
-node "$CLI_PKG/bin/ojm.mjs" market walkthrough --fixture <name>@0.1.0
+# 无参数即可：walkthrough 自建隔离站点与合成 fixture（0.1.0 → 自产 0.2.0 做 upgrade/rollback）。
+# ⚠️ `--fixture` 是 publish / trial 的旗标，不是 walkthrough 的（2026-11-08 实测：help 里就有，
+#    旧稿把它写进 walkthrough 命令是错的）。
+node "$CLI_PKG/bin/ojm.mjs" market walkthrough
 # 主链路 9 项：✓ index / ✓ install / ✓ reinstall / ✓ enable / ✓ verify / ✓ history /
 #              ✓ upgrade（0.1.0→0.2.0）/ ✓ rollback（账本超前拦截）/ ✓ uninstall
-# 负向 5 项（预期失败口径，全 PASS = 每道防线都真的拦住了）：
+# 负向 4 项（预期失败口径，全 PASS = 每道防线都真的拦住了）：
 #   ✓ neg-tamper（翻转 tgz 1B → failed@verifying，零落盘）
 #   ✓ neg-nosig（删 .sig 重建索引 → sig_missing）
-#   ✓ neg-badindex（catalog.yaml 追加字节 → 安装 POST 即 502 拒载）
 #   ✓ neg-stranger（未登记 key → needs_trust → confirm → done；cleanup 显式 revoke + 信任库快照 diff 为空）
 #   ✓ neg-evil（手造 zip-slip tgz file 源上传 → 400 拒在解包前，R1 三步范式）
-# 全部通过（14 项）：14 PASS / 0 FAIL
+# 全部通过（13 项）：13 PASS / 0 FAIL
+#   · neg-badindex 已随索引机制退役删除（写通道门禁由 cdn-upload.spec 承接），旧稿的「14 项」作废
 
 node "$CLI_PKG/bin/ojm.mjs" market walkthrough --only neg-evil    # 单跑某项（setup 自建前置态）
 ```
@@ -732,18 +752,26 @@ node "$CLI_PKG/bin/ojm.mjs" market publish --real . --id demo.publisher
 ```bash
 node -e "const m=require('./dist/web/modules.json');console.log(m.map(x=>x.name).join(','))"
 # 期望含 oj-market——例行 build/dev 重建 modules.json 时从版本目录重物化 web 面并并入已装登记
-# （条目旁车 .ojm-module.json 双落点持久化）；api 轨的 oj-market: 0.1.0 是平台编排面（双轨），
-# dist/api/manifests.yaml 里 oj-market: 0.1.0 属预期，不是市场 UI
+# （条目旁车 .ojm-module.json 双落点持久化）
 ls cdn/   # bundles.json + <name>-<ver>.tgz + .sig（init --yes 落位）
-grep -A1 "oj-market:" modules/.solutions/state.yaml   # 出厂收敛后已装行在位（0.2.0、trusted）
+grep -A1 "oj-market:" modules/.solutions/state.yaml   # 出厂收敛后已装行在位（0.2.3、trusted）
 ```
 
+> **两轨版本互不相干，别拿一轨的号去要求另一轨**（2026-11-08 实测）：web/方案轨 = 随站 bundle
+> 版本（本基线 **0.2.3**，见 `cdn/bundles.json`）；api 轨 = **平台内置编排面**（本基线
+> **0.2.2**，`dist/api/oj-market-0.2.2/`），它随脚手架内置、不因方案包升降。
+> `dist/api/manifests.yaml` 出现 `oj-market: 0.2.2` 属预期，不是市场 UI 版本。
+
 - [ ] `modules.json` **含** `oj-market`（重建合并登记——例行 build/dev 不再冲掉已装方案的
-      市场菜单）；`src/oj-market/web` 仍只有双 `__client`（web 面重物化自版本目录，非源码树）
+      市场菜单）；`src/oj-market/web` 仍只有 `__client`（+ `publish` 空壳占位，web 面重物化自
+      版本目录，非源码树）
 - [ ] **编排端点出厂即在**：`GET /api/oj-market/index?page=1&size=5`（superadmin token + `X-TENANT-ID`）
-      返回 `code:0`，list 见 `oj-market installed=0.2.0 enabled=true trust_state=trusted`
+      返回 `code:0`，list 见 `oj-market installed=0.2.3 enabled=true trust_state=trusted`
       （`ojm dev`/`ojm preview` 就绪即自动收敛；纯 oj serve 形态由首请求 riding 收敛，
       收敛完成前 list 无该条目属预期）
+- [ ] **落盘 integrity 是 C2-28 单前缀形态**：`node -e "const it=require('./dist/web/modules.json').find(x=>x.name==='oj-market');console.log(it.integrity)"`
+      → 必须匹配 `^sha384-[A-Za-z0-9+/]{64}$`（`sha384-sha384-…` 是 2026-11-08 修掉的双前缀缺陷，
+      见 §9）
 - [ ] **读面降级（R9 修订，2026-11-07）**：非 superadmin（如 `admin`）token 打同一 `index` 亦返回
       `code:0`；`GET /api/oj-market/task?id=__none__` 对非 superadmin 仍 403（写面 superadmin 独占不变）
 
@@ -755,7 +783,10 @@ grep -A1 "oj-market:" modules/.solutions/state.yaml   # 出厂收敛后已装行
 > `platform.release` 的场景。
 
 ```bash
-# 起站（module-root release 形态；基座必须钉 /api——缺省 /v1/api 会让框架侧请求全打穿到 SPA，见 §9）：
+# 0) 先把 config.yaml 的 platform.root 从 `src` 改成 `dist/api`（与 api 挂载同源）。
+#    漏改则起站直接拒：`platform.root (…/src) must be mounted as an api mount …`（2026-11-08 实测；
+#    这不是缺陷，是装配层要求 root 与托管目录同源）。
+# 1) 起站（module-root release 形态；基座必须钉 /api——缺省 /v1/api 会让框架侧请求全打穿到 SPA，见 §9）：
 ./bin/oj serve --api-path dist/api -b /api --daemon
 
 # 信任空窗子路径（BOOTSTRAP_KEY 已被运维吊销，或旧工程信任库预置但缺 platform.release）→
@@ -776,19 +807,19 @@ curl "http://127.0.0.1:9778/api/oj-market/index?page=1&size=5" -H "authorization
 
 - [ ] 信任空窗期：收敛停在 needs_trust（任务落盘、stage=verifying）、index 响应仍 `code:0`
       （不吞咽消费端）；**needs_trust 无冷却文件**（冷却仅 failed 硬失败写，二者别混判）
-- [ ] 信任播种后：index list 出现 `oj-market installed=0.2.0 enabled=true trust_state=trusted`；
+- [ ] 信任播种后：index list 出现 `oj-market installed=0.2.3 enabled=true trust_state=trusted`；
       安装任务 11 段全 ok（`modules/.install-tasks/install-*.json` 的 stages 全 `ok`，终态 `done`）
-- [ ] **api 锁零变更**：`grep "oj-market: 0.2.0" dist/api/manifests.yaml` 恒 0 条（web-only 包不写
+- [ ] **api 锁零变更**：`grep "oj-market: 0.2.3" dist/api/manifests.yaml` 恒 0 条（web-only 包不写
       api 锁——锁是 oj 装配真源，写锁会让 oj 拿 C2 清单装配 reload 400，且双轨同名遮蔽内建编排模块）；
-      内建 `oj-market: 0.1.0` 锁条目保留
-- [ ] 页面双活：`/modules/oj-market/0.2.0/entry.js` 200；`/oj-market`（带 `Accept: text/html`）200；
+      内建 `oj-market: 0.2.2` 锁条目保留
+- [ ] 页面双活：`/modules/oj-market/0.2.3/entry.js` 200；`/oj-market`（带 `Accept: text/html`）200；
       编排端点仍 200（装方案不毁编排面）
 - [ ] **浏览器加载面零错误**（HTTP 探活不可见盲区，2026-11-07 drill3 实锤——U5 修复前
       entry.js 200 / SPA 200 全绿但浏览器 `Failed to resolve module specifier`）：headless Chrome
       真实表单登录后侧边栏出现「方案市场」、`/oj-market` 全按钮渲染、
       console 零 module-loader 报错（脚本样例 /tmp/ojm-vv/ui-check.mjs）
 
-### C. 对账语义（幂等 / 降级守护 / 墓碑）
+### C. 对账语义（幂等 / 降级守护 / 卸载保护）
 
 ```bash
 # 幂等：已对齐后再请求 index → 不产生新安装任务（.install-tasks 下 install-* 计数不变）
@@ -797,23 +828,29 @@ ls modules/.install-tasks/ | grep -c install
 # 降级守护：bundle 版本改低 → 不降级（OJ-9：降级唯一入口 = 站点回滚）
 node -e "const fs=require('fs');const j=JSON.parse(fs.readFileSync('cdn/bundles.json','utf8'));j.solutions[0].version='0.1.0';fs.writeFileSync('cdn/bundles.json',JSON.stringify(j,null,'\t'))"
 curl "http://127.0.0.1:9778/api/oj-market/index?page=1&size=1" -H "authorization: Bearer $TK" -H 'X-TENANT-ID: default' > /dev/null
-grep -A1 "oj-market:" modules/.solutions/state.yaml   # 版本仍 0.2.0；无新任务
+grep -A1 "oj-market:" modules/.solutions/state.yaml   # 版本仍 0.2.3；无新任务
 
-# 卸载墓碑：故意卸载 → marker 条目被摘除 → 收敛不再自动重装（spec 特性 2：重装只经方案市场页或 ojm install）
+# 第一方保护（0.2.3+）：oj-market 的卸载/停用一律拒绝（业务拒绝，HTTP 200 + code:0 + data.ok=false）
 curl -s -X POST http://127.0.0.1:9778/api/oj-market/uninstall \
   -H "authorization: Bearer $TK" -H 'X-TENANT-ID: default' -H 'content-type: application/json' \
   -d '{"name":"oj-market"}'
-cat cdn/bundles.json    # solutions 为空数组（墓碑）
-curl "http://127.0.0.1:9778/api/oj-market/index?page=1&size=1" -H "authorization: Bearer $TK" -H 'X-TENANT-ID: default' -o /dev/null -w "%{http_code}\n"
-ls dist/api/ | grep -c "oj-market-0.1.0$"   # 内建编排模块目录存活（1）
+# 期望 data.ok=false，message 含「禁止卸载」；锁/state/版本目录/modules.json 四态原样
 ```
 
 - [ ] 幂等：对齐后 index 不再产生安装任务；降级守护：改低 bundle 版本后 installed 仍高版、零任务
-- [ ] 卸载：`ok:true`；**内建编排面完好**——`dist/api/oj-market-0.1.0/` 目录在、锁 `oj-market: 0.1.0`
-      在、卸载后 `GET /api/oj-market/index` 仍 200；方案版本目录 `oj-market-0.2.0/` 被移除；
-      `modules.json` 回退为 `app`
-- [ ] 墓碑：卸载后 `cdn/bundles.json` solutions 为空；再请求 index **无重装**（任务计数不变、
-      modules.json 仍 `app`）
+- [ ] **卸载保护（0.2.3 起替代原「卸载墓碑」）**：`oj-market` 卸载被拒（`data.ok=false` +
+      「禁止卸载」），`cdn/bundles.json` 不被摘除、`modules/.solutions/state.yaml` 仍 0.2.3、
+      `dist/api/oj-market-0.2.3/` 仍在、内建 `dist/api/oj-market-0.2.2/` 与锁条目在、
+      `modules.json` 仍含 `oj-market`；前端卡片「卸载/停用」按钮 `disabled` 且带说明 tooltip
+      （headless 实测：`卸载 disabled=true`、`停用 disabled=true`）。
+- [ ] 墓碑语义（**第一方包已不可达**）：`pruneBundledMarker` 只在卸载成功时摘 `cdn/bundles.json`
+      条目；第三方方案没有 bundle 条目，故墓碑路径现由单测覆盖，真机走 §7.4 walkthrough 的
+      `uninstall` 项（第三方包卸载清场）。
+
+> **判据变更说明（2026-11-08）**：原检查点是「卸载 oj-market → 墓碑 → 不再重装」。0.2.3 起
+> oj-market 是**第一方市场自身**，卸载会让全站失去方案安装/启用/卸载能力且无法从市场装回，
+> 故后端硬拒（uninstall.ts / installer.ts 各一枚守卫，配 uninstall.spec 用例）。别再照旧脚本
+> 判「卸载成功」，那不是回归。
 
 ### D. 已知边界（本节演练裁决，勿当缺陷重复上报）
 
@@ -950,6 +987,7 @@ ojm install books --site-url ... --user superadmin --pass <口令>   # retry 同
 
 | 现象 | 根因 | 处置 |
 | --- | --- | --- |
+| 安装方案后 `dist/web/modules.json` 条目 integrity 是 `sha384-sha384-…`（双前缀，不匹配 C2-28 `^sha384-[A-Za-z0-9+/]{64}$`） | `_lifecycle/sha384.ts` 的 `sha384B64` 返回**完整** `sha384-<b64>`，而 installer / smoke / verify-checks 三处都写成 `` `sha384-${sha384B64(x)}` `` 又拼一次；三处互相比对自洽（都错成一样）+ 单测注入的 stub 是裸摘要，故 2026-11-07 全绿也未暴露（2026-11-08 全量线实锤） | 已修（0.2.76+ 模板源码）：`sha384B64` 回归裸 base64，三处调用保持拼前缀；守卫 = `sha384.spec`（裸摘要形态）+ `installer.spec`（落盘 C2-28 单前缀）。安装器代码随 init 复制进工程，旧工程重新 init 即修复；已有安装重装/升级会重写条目 |
 | release 起站后 CLI 推送/登录全打穿到 SPA（`Unexpected token '<'…`、POST 405「web mounts serve GET/HEAD only」、探活 200 但返回 index.html） | oj 0.1.124 `oj serve --api-path` 缺省把 API 绑在 `/v1/api`，而框架一律按 `/api` 寻址（U4） | 起站加 `-b /api`：`oj serve --api-path dist/api -b /api`；判据 = `POST /api/auth/login` 返回 JSON。config 手写 `- prefix: "/api" api: dist/api` 挂载与 `--api-path` 同给会报「module `_platform` declared in multiple places」——二选一，选 `-b /api` 勿写挂载 |
 | `-b /api` 起站后 API 正常但**静态文件全 404**（`/modules/<name>/<ver>/entry.js`、index.html 返回 API 信封 `no route matched`；去掉 `-b` 或换绝对路径即恢复） | oj 0.1.124：`-b` 基座覆盖与 web 挂载**相对路径**组合时静态层路径解析落空（web 挂载只接住 SPA 回落的 HTML 请求）；`ojm preview` 派生 config 一律写绝对路径 `web: /…/dist/web` 即为此规避 | web 挂载路径写**绝对路径**（照抄 `ojm preview` 运行期 `.ojm-preview.yaml` 的写法）；判据 = 起站后 `curl /modules/app/0.1.0/entry.js` 200 |
 | 站点例行 `pnpm build`（`ojm build`）或跑过 `pnpm dev` 后，已装方案的市场菜单/页面全消失（modules.json 只剩 app；`dist/web/modules/` 只剩 app） | **0.2.72+ 已根治**（U5 修复，出厂即装支柱②：条目旁车 + 版本目录重物化 + 重建合并登记）——例行 build/dev 自动并入已装方案 web 面，症状不再出现。旧版根因：两者都会重生成 `dist/web/modules.json` 与 `dist/web/modules/` 且只收录**源码树模块**，安装器登记/部署的方案 web 面被整体冲掉；安装态本身完好（`modules/.solutions/state.yaml`、锁、api 版本目录都在） | 升 0.2.72+ 后零愈合动作。旧版愈合两步：① `POST /api/oj-market/backfill` 扫 `cdn/` 补目录行（随站 bundle 包不在市场目录，backfill 会补录）；② 对 each 方案重装同名同版本（`ojm install <name>[@version]`）——web-only 包锁零变更，重装只补 web 面 |
@@ -1102,6 +1140,19 @@ node "$CLI_PKG/bin/ojm.mjs" build && npx tsc --noEmit -p tsconfig.json && node "
 > 基线的价值是「某版本当时到底验了什么、踩了什么」，属于事实档案，不参与日常执行；
 > 新基线追加在本节最前面，最近一次的结果同时摘到文首「上次演练结论」。
 
+### 全量线基线（2026-11-08，oj 0.1.126 / cli+runtime 0.2.76 **打包态**；§0.5 → §7.6 全链 + §7.4 walkthrough）
+
+| 项 | 值 |
+| --- | --- |
+| 日期 | 2026-11-08（feat/ojm；发布形态 `pnpm pack` 直出，含 prepack 的 sync-bundles 版本对账） |
+| 框架包版本 | 打包态 cli/runtime 0.2.76；随站 bundle = **oj-market 0.2.3**（签名者 `platform.release` / `oj-registry`，sha256 `98bd8a11…aedf`，20934 B）；内建 api 编排面 0.2.2 |
+| oj | 0.1.126（init vendor 进 `bin/oj`；`strings` 无构建机路径；JsRuntime 探针通过） |
+| 工程 | `/tmp/ojm-verify`：`cli-pkg`（0.2.76 解包）+ `my-books`（dev/preview 线）+ `book2`（纯 `oj serve` 线）+ `book3`（sha384 修复后复验） |
+| 范围 | §0.5 pack/解包/装依赖 → §1 init --yes → §2 依赖 → §3 oj 探针 → §4/§5 build 与 api --check → §6 dev 联调 + headless 浏览器 → §7 preview 单服务 → §7.6 A/B/C → §7.4 walkthrough → §6.5 仓库回归 |
+| 结果 | **通过**。① §1 检查点全绿（cdn 三件套 + bundles.json 0.2.3、`.ojm-builtin.json`、devDeps 0.2.76、`bin/oj` 0.1.126）。② §6 dev：`routes: 94 / input contracts: 89`、登录 200、通知 200、无 token 401、SPA 200 + importmap、`/modules/oj-market/0.2.3/entry.js` 200；headless 实测市场卡 `升级/停用/卸载 disabled=true`、`回滚/历史` 可用、无 module-loader 报错。③ §7 preview：migrate ok、9778 单服务、根/entry/SPA/编排端点全 200、`api --check` 0 error/0 warn（第三腿激活）。④ §7.6 A：dev 就绪数秒内 state.yaml 落 `0.2.3/trusted`、modules.json 并入、11 段全 ok 终态 done、内建锁 `oj-market: 0.2.2` 不变。⑤ §7.6 B：全新工程纯 `oj serve --api-path dist/api -b /api` 首请求 riding 收敛，index 即返 `installed=0.2.3/trusted`，无 TOFU。⑥ §7.6 C：幂等零新任务；bundle 改 0.1.0 不降级；oj-market 卸载被拒且四态原样。⑦ §7.4 walkthrough **13 PASS / 0 FAIL**。⑧ §6.5 `vitest run` 992/992 + templates 1160/1160 |
+| 本次发现并处置 | **① 数据面缺陷（已修）**：安装落盘 `modules.json` 的 `web.integrity` 为 `sha384-sha384-<b64>`——`sha384.ts` 的 `sha384B64` 自带前缀，而 installer / smoke / verify-checks 三处调用又各拼一次；三方互相自洽 + 单测 stub 用裸摘要，故历史演练全绿。修法 = `sha384B64` 回归裸 base64（名字本义），补 `sha384.spec` 形态断言与 `installer.spec` 的 C2-28 单前缀钉子；book3 真机复验 `integrity=sha384-88p421…`、`solutions/verify` 深检 ok。**② 手册漂移**：§7.6 旧稿 `0.2.0`/`0.1.0` → 0.2.3（bundle）/ 0.2.2（内建 api 面）；§7.6 C「卸载墓碑」已被第一方卸载保护替代（0.2.3 起硬拒）；§7.4 实为 13 项且 `--fixture` 不适用 walkthrough；§6 `/modules/login/0.1.0/entry.js` 404 属预期（登录页归 app 多根模块）；§7.6 B 漏写 `platform.root: dist/api` 前置（漏改即拒启）。**③ 环境**：本机 5174 被常驻服务占用 → dev 自动顺延 5175（检查点须用日志里的实际端口）。 |
+| 手册同步 | 文首结论换本轮；§6 登录模块判据；§7.4 项数与命令；§7.6 A/B/C 版本、前置与卸载保护；§9 增 sha384 双前缀行；附录 A 增本条 |
+| 遗留 | ① §7.7（发布 → 按名安装）本轮未重跑（2026-11-07 第二轮全绿，本轮只跑 §7.4 walkthrough 覆盖装/卸/升级/回滚/负向）。② `pnpm test:e2e` 未跑：5174 被常驻 oj-wiki 占用，playwright 的 reuseExistingServer 会挂到错误服务上。③ 本地 verdaccio 未同步 0.2.76 → 工程安装需在 `pnpm-workspace.yaml` 的 `overrides` 同时钉 cli 与 runtime 两个本地 tgz（建议补进 §0.5/§2）。 |
 ### 市场闭环基线（2026-11-07 第二轮，oj 0.1.124 / cli+runtime 0.2.71 **打包态**；新增 §7.7 的首轮实跑）
 
 | 项 | 值 |
