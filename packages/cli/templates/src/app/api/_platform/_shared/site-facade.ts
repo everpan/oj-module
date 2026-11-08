@@ -148,8 +148,12 @@ export async function resolveDeploymentConfigPath(apiPrefix: string): Promise<st
 	if (override && override.trim() !== "") {
 		return override.trim();
 	}
-	// ② 自拉 _system/health（可信 origin，非请求 Host）
-	const origin = await readCanonicalOrigin(undefined);
+	// ② 自拉 _system/health（可信 origin，非请求 Host）。
+	//    canonical_origin 是部署期常量、落在默认配置 config.yaml（oj 自动发现默认名，与 migrating 段
+	//    -c 回落默认一致）；readCanonicalOrigin 在 configPath 为空时直接返回 null，故此处必须显式传
+	//    默认配置名，否则 ② 永远走不到、恒回落 "config.yaml"（密封值解密失败）——这是原 80fad46b 的
+	//    隐性缺陷（readCanonicalOrigin 自 e0513a38 起对 undefined 即返回 null）。
+	const origin = await readCanonicalOrigin("config.yaml");
 	if (!origin) {
 		return undefined;
 	}
