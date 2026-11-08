@@ -74,6 +74,12 @@
   未声明布局会丢失整站 chrome；显式声明（含 `"none"`）永远优先。模板 admin 示例已去掉冗余
   `layout: "container"`。
 
+- **oj-market 升 0.2.3 并随 ojm 出厂**：危险操作二次确认补齐（部门「转为本地维护」、企微「取消同步」）；
+  市场自身卡片的「卸载」与「停用」同口径永久禁用（oj-market 的 API 编排面随平台内置，卸载会摘掉
+  全站方案的安装/启用/卸载入口且无法再从市场装回），前端按钮禁用 + 文案 + 后端 `runUninstall` 硬门
+  三处一致，后端拒绝记 level 4 审计。随站 bundle 签名身份回到 `platform.release`（bootstrap 内置
+  信任 key）——此前 0.2.1 随站包用 `oj-market.superadmin` 签名，全新站点首装会卡 `needs_trust` 冷却。
+
 ### Fixed
 
 - **方案声明权限点 `title_key` 落库断链（RBAC/多语言演练实测缺陷）**：C2-15 把
@@ -383,6 +389,17 @@
   `onResolve` 内排除入口（`args.kind === "entry-point"`）与 Windows 盘符绝对路径
   （`/^[a-zA-Z]:/`），裸导入桩只命中真正的裸包名。回归：`tests/cli/entry-meta.test.ts`
   （新增「入口不被裸导入桩误伤为 thenable 代理」用例）。
+
+- **`ojm build` 重建会写坏已装锁（`dist/api/manifests.yaml`）**：`oj build` 按源码清单**整份重写**
+  扁平锁（实测预置 `demo: 0.3.0` 被写回 `0.1.0`、`demo-0.3.0` 目录变孤儿），预构建 `_platform`
+  工程重建时有把已升级方案冲回源码版本的风险。现 `buildBackend` 构建前快照、构建后按数字段比较：
+  任一降版、或条目整行消失且旧版本目录仍在 → **还原锁文件并中止构建**，报错列出每条明细
+  （`name: from → to`）与处置指引。回归：`packages/cli/src/__tests__/build-backend.test.ts` 五例。
+- **随站 oj-market 包与模板源码版本漂移**：`prepack` 的 `sync-bundles.mjs` 此前把 `templates/dist`
+  里所有已签名包都收进 `shell-dist/bundles`——改源码不重签也能发出去（0.2.73 市场卡片修复即因此
+  发出旧 UI），历史版本同发还会让 `ojm init` 落位的 `cdn/` 里同时躺多版、启动收敛逐版安装。现
+  ①同一方案只收最高版本；②与 `templates/src/*/solution.yaml` 版本对账，不一致直接拒绝发布并打印
+  重建/重签命令；产物侧守卫再钉「只允许 `oj-market-<契约版本>.tgz`」与新版 UI 特征。
 
 ## [0.2.56] - 2026-11-02
 
