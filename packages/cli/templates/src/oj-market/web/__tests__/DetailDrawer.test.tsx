@@ -58,6 +58,19 @@ describe("detailDrawer 方案详情（BDD）", () => {
 		expect(pub.style.wordBreak).toBe("break-all");
 	});
 
+	it("given 打开详情 When 渲染 Then 标签列宽可容纳三个汉字且不折行", () => {
+		renderWithProviders(
+			<DetailDrawer row={row} open canManage {...handlers} />,
+			new InMemoryMarketClient(),
+		);
+		// bordered Descriptions 是 table-layout:auto：不给宽度时中文标签会被长值列压到 2 字宽。
+		// Drawer 走 portal 挂到 body，必须从 document 查。
+		const label = document.querySelector("th.ant-descriptions-item-label") as HTMLElement | null;
+		expect(label).toBeTruthy();
+		expect(label!.style.width).toBe("96px");
+		expect(label!.style.whiteSpace).toBe("nowrap");
+	});
+
 	it("given 未声明 publisher_key When 打开 Then 不出现发布者行（不显示占位符）", () => {
 		renderWithProviders(
 			<DetailDrawer row={{ ...row, publisher_key: undefined }} open canManage {...handlers} />,

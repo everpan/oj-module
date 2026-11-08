@@ -32,7 +32,18 @@ export function DetailDrawer({ row, open, onClose, canManage = true, onInstall, 
 		>
 			{row && (
 				<>
-					<Descriptions column={1} size="small" bordered>
+					{/*
+					 * 标签列固定宽度：bordered Descriptions 的表格是 table-layout:auto，值列有长文本时，
+					 * 中文标签会因「任意字符可断行」被压到 2 字宽（已启用/可升级/详细介绍 都折行）。
+					 * 96px = 3 个汉字（14px × 3）+ 左右内边距（16px × 2）+ 边框，留少量余量；
+					 * nowrap 兜住英文等更长的标签（表格自动布局会按需撑开该列，不会溢出）。
+					 */}
+					<Descriptions
+						column={1}
+						size="small"
+						bordered
+						styles={{ label: { width: 96, whiteSpace: "nowrap" } }}
+					>
 						<Descriptions.Item label={t("oj-market:card:latest")}>{row.latest ?? "-"}</Descriptions.Item>
 						<Descriptions.Item label={t("oj-market:card:installed")}>{row.installed ?? t("oj-market:card:notInstalled")}</Descriptions.Item>
 						<Descriptions.Item label={t("oj-market:card:enabled")}>
