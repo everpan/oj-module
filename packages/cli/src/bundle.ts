@@ -68,6 +68,9 @@ interface BundleTarget {
 // 写入）若被 swept 进包，装过的工程重发包字节即漂移（.sig canon 绑 sha256，服务端按换签 409 拒），
 // 「同字节重传幂等」承诺破裂（2026-11-07 drill3 实锤）。
 function copyPackageDir(src: string, dest: string): void {
+	// 点文件是运行期旁车（.ojm-module.json 等）不入包；但私钥/凭证是入包红线，
+	// 必须先硬拒再过滤——否则 .env 系被过滤器静默吞掉，红线形同虚设（P2-4）。
+	assertNoForbiddenMembers(src);
 	fs.cpSync(src, dest, {
 		recursive: true,
 		filter: s => !path.basename(s).startsWith("."),
