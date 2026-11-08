@@ -5,7 +5,7 @@
 # 无 DB 迁移（catalog/release 等表属平台，不随包）。
 # R29 红线随包：第一方专用，第三方方案不得仿照 /api/oj-market/* 调用面（包 README 同标注）。
 name: oj-market
-version: 0.2.3
+version: 0.2.4
 title: 方案市场
 summary: 官方 方案市场 UI——方案清单/发布管理/发布历史（第一方专用，R29）
 description: 第一方专用方案包（R29 红线）：第三方方案不得仿照 /api/oj-market/* 调用面。api 编排面（install/catalog/yank/trust）随站点脚手架内置，本包仅承载市场 UI（纯 web，无 DB 迁移）。出厂未装：superadmin 经 system 域「方案安装」首装；ojm init --yes 落位的随站 bundle 由首个市场编排请求自动收敛（上拉不下拉）。
@@ -14,9 +14,10 @@ changelog:
   - 0.2.1 卡片布局定稿：恢复 340px 列宽、动作区移除详情按钮（5 枚按钮一行、无横向滚动条）、卡片正文点击进入详情
   - 0.2.2 安装/升级/回滚完成后明确提示「刷新页面以加载新菜单」（修复 SPA 一次性读 modules.json 导致新方案菜单不出现的断路口）
   - 0.2.3 危险操作二次确认补齐（部门转本地维护、企微取消同步）；市场自身卡片「卸载」永久禁用（与「停用」同口径）并加文案
+  - 0.2.4 操作历史记录安装失败明细（阶段 + 原始报错，脱敏落表）并按结果显示标记；支持删除安装未成功的版本（失败/待确认信任/已取消），回滚候选只认安装成功版本
 peerRuntime: '>=0.0.0'
 web:
-  entry: modules/oj-market/0.2.3/entry.js
+  entry: modules/oj-market/0.2.4/entry.js
 routes:
   - path: /oj-market
     category: main
