@@ -142,6 +142,15 @@ export const schemas = {
 
 }).catchall(z.unknown())),
 	},
+	"ojMarketHistoryDelete": {
+		query: z.object({
+	"name": z.string(),
+	"version": z.string()
+}),
+		data: z.object({
+
+}).catchall(z.unknown()),
+	},
 	"ojMarketReleasesGet": {
 		query: z.object({
 	"page": z.number().min(1).optional(),

@@ -10,6 +10,7 @@ import type {
 	IndexPage,
 	InstallInput,
 	MarketHistory,
+	PurgeHistoryResult,
 	ReleasePage,
 	TaskRecord,
 	UninstallImpact,
@@ -34,6 +35,8 @@ export interface MarketClient {
 	enable: (input: EnableInput) => Promise<{ ok: boolean, message: string }>
 	/** 市场操作历史（_platform 只读端点 /oj-market/history） */
 	history: () => Promise<MarketHistory[]>
+	/** 删除「未安装成功」的版本（记录 + 残留版本目录；superadmin；领域拒绝 ok:false + 人话） */
+	purgeHistory: (input: { name: string, version: string }) => Promise<PurgeHistoryResult>
 	/** 发布历史（登录即可读；v4 §四 直读 market_release 上传行，零索引依赖） */
 	releases: (input?: { page?: number, limit?: number }) => Promise<ReleasePage>
 	/** 卸载影响面预检（P3 U1；服务端返回供二次确认，P1-15a 补齐后接通） */

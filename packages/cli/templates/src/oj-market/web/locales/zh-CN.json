@@ -123,8 +123,10 @@
 		"colVersion": "版本",
 		"colAction": "操作",
 		"colStatus": "状态",
+		"colMessage": "结果信息",
 		"colOperator": "操作人",
 		"colTime": "时间",
+		"colOps": "操作",
 		"action": {
 			"install": "安装",
 			"uninstall": "卸载",
@@ -136,7 +138,22 @@
 		"status": {
 			"done": "成功",
 			"failed": "失败",
-			"partial": "部分"
-		}
+			"partial": "部分",
+			"needs_trust": "待确认信任",
+			"cancelled": "已取消",
+			"success": "成功"
+		},
+		"result": {
+			"done": "安装成功",
+			"partial": "安装成功（待重启）",
+			"failed": "安装失败",
+			"needs_trust": "待确认信任",
+			"cancelled": "已取消"
+		},
+		"purge": "删除该版本",
+		"purgeConfirmTitle": "删除这次未成功的安装记录？",
+		"purgeConfirmBody": "将删除「{{name}}@{{version}}」的安装记录与残留版本目录，不影响当前生效版本。",
+		"purgeOk": "删除",
+		"purgeFailed": "删除失败"
 	}
 }

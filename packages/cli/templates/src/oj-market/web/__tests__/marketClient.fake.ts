@@ -1,6 +1,6 @@
 import type { MarketClient } from "../api/client";
 // 内存实现 MarketClient（BDD 测试注入用，无需真实后端）。
-import type { EnableInput, IndexPage, InstallInput, MarketHistory, ReleasePage, TaskRecord, UninstallImpact } from "../types";
+import type { EnableInput, IndexPage, InstallInput, MarketHistory, PurgeHistoryResult, ReleasePage, TaskRecord, UninstallImpact } from "../types";
 
 export interface FakeState {
 	indexPage?: IndexPage
@@ -13,6 +13,9 @@ export interface FakeState {
 	uninstallResult?: { ok: boolean, message: string }
 	installResult?: { task_id: string }
 	trustResult?: { result: string, key_id: string, fingerprint: string }
+	/** 删除「未安装成功版本」的返回；缺省为删除成功的常态 */
+	purgeResult?: PurgeHistoryResult
+	purgeError?: Error
 }
 
 export class InMemoryMarketClient implements MarketClient {
@@ -79,5 +82,12 @@ export class InMemoryMarketClient implements MarketClient {
 	async uninstall(name: string) {
 		this.calls.push(`uninstall:${name}`);
 		return this.state.uninstallResult ?? { ok: true, message: "ok" };
+	}
+
+	async purgeHistory(input: { name: string, version: string }) {
+		this.calls.push(`purgeHistory:${input.name}@${input.version}`);
+		if (this.state.purgeError)
+			throw this.state.purgeError;
+		return this.state.purgeResult ?? { ok: true, deleted: 1, removedDir: false, message: "ok" };
 	}
 }

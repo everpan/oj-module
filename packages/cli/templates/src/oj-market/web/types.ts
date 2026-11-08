@@ -97,6 +97,16 @@ export interface MarketHistory {
 	created_at: number
 }
 
+/** 删除「未安装成功版本」结果（DELETE /oj-market/history；领域拒绝走 ok:false + message） */
+export interface PurgeHistoryResult {
+	ok: boolean
+	/** 删除的安装记录条数 */
+	deleted: number
+	/** 是否清理了残留版本目录 */
+	removedDir: boolean
+	message: string
+}
+
 /** 卸载影响面预检（P3 U1 语义；服务端返回供前端二次确认） */
 export interface UninstallImpact {
 	name: string

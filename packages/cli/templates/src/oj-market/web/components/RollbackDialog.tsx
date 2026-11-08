@@ -3,6 +3,7 @@ import { Alert, Modal, Radio, Space, Spin, Typography } from "antd";
 import React, { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useMarketHistory } from "../hooks/useMarket";
+import { installSucceeded, latestInstallByVersion } from "../utils/history";
 import { compareVersions } from "../utils/semver";
 
 export interface RollbackDialogProps {
@@ -27,8 +28,11 @@ export function RollbackDialog({ row, open, onClose, onRollback }: RollbackDialo
 		if (!row || !installed)
 			return [] as string[];
 		const versions = new Set<string>();
-		for (const h of status === "ok" ? data : []) {
-			if (h.solution === row.name && compareVersions(h.version, installed) < 0)
+		// 只认「该版本最近一次安装成功」的版本：失败尝试现已写入历史（2026-11-08），
+		// 不筛会把装失败的版本误当回滚目标。
+		const latest = latestInstallByVersion((status === "ok" ? data : []).filter(h => h.solution === row.name));
+		for (const h of latest.values()) {
+			if (h.version !== installed && compareVersions(h.version, installed) < 0 && installSucceeded(h))
 				versions.add(h.version);
 		}
 		return [...versions].sort((a, b) => compareVersions(b, a)); // 较新的旧版在前

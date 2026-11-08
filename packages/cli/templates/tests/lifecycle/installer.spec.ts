@@ -645,17 +645,20 @@ describe("第五终态 needs_trust（P2-3，G3 TOFU：未知 key_id 待确认，
 	});
 });
 
-describe("失败语义②锁后 partial（D11：部分生效 + 回滚指引）", () => {
-	it("smoke 失败 → status partial + smoke 指引 key；锁/版本目录/sidecar 已生效，终态审计记 partial", async () => {
+describe("失败语义②锁后 partial（D11：补偿回滚 + 回滚指引）", () => {
+	it("smoke 失败 → status partial + smoke 指引 key；补偿把锁回退装前（首装=删锁）、sidecar 不写，版本目录留作残留", async () => {
 		const t = await runInstall(makeReq({ query: async () => null }));
 		expect(t.status).toBe("partial");
 		expect(t.stage).toBe("smoke");
 		expect(t.error?.hintKey).toBe("lifecycle.stage.smoke.hint");
 		expect(t.error?.retryable).toBe(false);
-		// 锁与版本目录已生效（partial 语义：部分生效，不回滚已落位产物）
-		expect(parseLock(await fsp.readFile(lockPath, "utf8"))).toEqual({ "demo-solution": "0.1.0" });
+		// 2026-11-08 修正：锁后失败会走 compensate 回退到装前代——首装装前无锁，故锁文件被清除
+		// （旧实现因 readLock 不抛而误判「有锁」，补偿走 writeLock({}) 撞空锁拒启，残锁留在盘上）。
+		await expect(fsp.access(lockPath)).rejects.toThrow();
+		// 版本目录是补偿不回退的残留素材（可在市场「操作历史」按失败版本删除）
 		await fsp.access(join(sharedRoot, "demo-solution-0.1.0", "manifest.yaml"));
-		expect(state.read().solutions["demo-solution"]).toMatchObject({ version: "0.1.0", enabled: true });
+		// sidecar 只在真正生效时写：失败版本不得被记成已装版本（否则 state 与锁互相矛盾）
+		expect(state.read().solutions).toEqual({});
 		// 终态审计（含失败，AC-P1-14）：status=partial + failedStage
 		const oplog = rows("SELECT detail FROM sys_oplog WHERE action = 'solution.install'");
 		expect(oplog).toHaveLength(1);
@@ -1392,5 +1395,93 @@ describe("Phase 3：无守护 partial 判定（P0 §3.6 / 验收 15）", () => {
 		const t = await runInstall(makeReq());
 		expect(t.status).toBe("done");
 		expect(t.restartRequired).toBeUndefined();
+	});
+});
+
+describe("安装失败留痕（2026-11-08：操作历史记最后一次错误 + 标记安装是否成功）", () => {
+	const histRows = () => rows("SELECT version, action, status, operator, message FROM market_history ORDER BY id");
+
+	it("migrating 失败 → install/failed，message 带失败阶段与原始明细（迁移报错可定位），operator 通道保留", async () => {
+		const t = await runInstall(makeReq({ ledgerHead: 5, operator: "alice" }));
+		expect(t.status).toBe("failed");
+		const hist = histRows();
+		expect(hist).toHaveLength(1);
+		expect(hist[0]).toMatchObject({ version: "0.1.0", action: "install", status: "failed", operator: "alice" });
+		const msg = String(hist[0]!.message);
+		expect(msg).toContain("安装失败（阶段 migrating）");
+		expect(msg).toContain("禁降版"); // 原始错误明细不被阶段名覆盖
+		expect(msg).toContain("未生效"); // 人话结论：可安全重试
+	});
+
+	it("smoke 失败（锁后补偿）→ install/failed + 补偿结果人话；锁回退装前、sidecar 不写", async () => {
+		const t = await runInstall(makeReq({ query: async () => null }));
+		expect(t.status).toBe("partial"); // 任务终态仍是 partial（产物已落位过）
+		const hist = histRows();
+		expect(hist).toHaveLength(1);
+		// 但对用户而言这个版本没装上——历史记 failed，市场据此显示「安装失败」并可删除
+		expect(hist[0]).toMatchObject({ version: "0.1.0", action: "install", status: "failed" });
+		const msg = String(hist[0]!.message);
+		expect(msg).toContain("安装失败（阶段 smoke）");
+		expect(msg).toContain("已补偿回滚到安装前状态");
+		await expect(fsp.access(lockPath)).rejects.toThrow();
+		expect(state.read().solutions).toEqual({});
+	});
+
+	it("needs_trust → install/needs_trust，message 点名待确认的 key id（确认后可重试）", async () => {
+		const { generateKeyPair } = await import("../../../src/lifecycle/keygen");
+		const { signedArchiveFor: signFor } = await import("../../../src/lifecycle/__tests__/helpers");
+		const stranger = signFor(ARCHIVE, "demo-solution", "0.1.0", { keyPair: generateKeyPair(), keyId: "stranger.pub" });
+		const m = manifestFixture("0.1.0");
+		m.archive = { ...m.archive, signature: stranger.sig };
+		const t = await runInstall(makeReq({ manifest: m }));
+		expect(t.status).toBe("needs_trust");
+		const hist = histRows();
+		expect(hist).toHaveLength(1);
+		expect(hist[0]).toMatchObject({ action: "install", status: "needs_trust" });
+		const msg = String(hist[0]!.message);
+		expect(msg).toContain("安装未完成（阶段 verifying）");
+		expect(msg).toContain("stranger.pub");
+		expect(msg).toContain("信任库");
+		// 未落盘：锁/sidecar 零改动
+		await expect(fsp.access(lockPath)).rejects.toThrow();
+		expect(state.read().solutions).toEqual({});
+	});
+
+	it("取消安装 → install/cancelled（取消不是失败也不是成功，前端单独标色）", async () => {
+		const t = await runInstall(makeReq({ cancel: () => true }));
+		expect(t.cancelled).toBe(true);
+		const hist = histRows();
+		expect(hist).toHaveLength(1);
+		expect(hist[0]).toMatchObject({ action: "install", status: "cancelled" });
+		expect(String(hist[0]!.message)).toContain("安装已取消");
+		expect(state.read().solutions).toEqual({});
+	});
+
+	it("留痕消息落表前脱敏（URL query / token 不进市场历史——迁移 stderr 可能带连接串口令）", async () => {
+		const { recordHistory } = await import("../../src/app/api/_platform/_lifecycle/history");
+		await recordHistory({
+			solution: "demo-solution",
+			version: "0.1.0",
+			action: "install",
+			status: "failed",
+			operator: null,
+			message: "安装失败（阶段 downloading）：拉取 https://cdn.example.com/a.tgz?token=secret123&sig=zzz 失败；password=hunter2",
+		});
+		const hist = histRows();
+		expect(hist).toHaveLength(1);
+		const msg = String(hist[0]!.message);
+		expect(msg).not.toContain("secret123");
+		expect(msg).not.toContain("hunter2");
+		expect(msg).toContain("安装失败（阶段 downloading）"); // 诊断信息保留
+	});
+
+	it("失败后重试成功 → 两条记录并存（failed 保留可追溯 + done 为最新），前端按最近一次判定该版本已装上", async () => {
+		const first = await runInstall(makeReq({ ledgerHead: 5 }));
+		expect(first.status).toBe("failed");
+		const second = await runInstall(makeReq());
+		expect(second.status).toBe("done");
+		const hist = histRows();
+		expect(hist.map(h => h.status)).toEqual(["failed", "done"]);
+		expect(String(hist[1]!.message)).toContain("安装完成：demo-solution@0.1.0");
 	});
 });

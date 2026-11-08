@@ -22,7 +22,7 @@ import type { ReloadFace } from "#/_platform/_lifecycle/steps/reload";
 import type { FetchInitFace } from "#/_platform/_shared/site-facade";
 import { atomicWriteText, fsFace } from "#/_platform/_lifecycle/atomic";
 import { convergeBundledSolutions, pruneBundledMarker } from "#/_platform/_lifecycle/bundle-converge";
-import { recordHistory } from "#/_platform/_lifecycle/history";
+import { purgeFailedInstall, recordHistory } from "#/_platform/_lifecycle/history";
 import { latestAppliedSeqOf, reconcile, runInstall, setEnabled } from "#/_platform/_lifecycle/installer";
 import { localArchiveManifestOf } from "#/_platform/_lifecycle/local-archive";
 import { compareVersions } from "#/_platform/_lifecycle/semver";
@@ -33,6 +33,7 @@ import { createTrustStore } from "#/_platform/_lifecycle/trust";
 import { computeUninstallImpact, runUninstall } from "#/_platform/_lifecycle/uninstall";
 import { respond } from "#/_platform/_shared/respond";
 import { assertSuperAdmin, currentAccess } from "#/_platform/_shared/service/infra/access";
+import { auditOp } from "#/_platform/_shared/service/infra/audit";
 import { pageArgs } from "#/_platform/_shared/service/infra/query";
 import { journalHeadOf, readCanonicalOrigin, readDeploymentVar, resolveDeploymentConfigPath, siteOrigin, withSiteOrigin } from "#/_platform/_shared/site-facade";
 import { backfillReleases } from "./backfill";
@@ -1191,11 +1192,36 @@ export function createMarketApi(env: MarketEnv) {
 		"history": {
 			async get() {
 				await respond(async () => {
+					// id 必须返回：前端 Table rowKey="id"（缺 id 会让所有行共用 undefined key）；
+					// created_at 是秒级，同秒内多次尝试（快速重试）需 id 兜底排序才能保证「首行即最新」
 					const rows = (await db.table("market_history")
-						.select(["solution", "version", "action", "status", "operator", "message", "created_at"])
-						.orderBy([{ field: "created_at", dir: "desc" }])
+						.select(["id", "solution", "version", "action", "status", "operator", "message", "created_at"])
+						.orderBy([{ field: "created_at", dir: "desc" }, { field: "id", dir: "desc" }])
 						.all()) as Array<Record<string, unknown>>;
 					return rows ?? [];
+				});
+			},
+			// DELETE /api/oj-market/history?name=&version= —— 删除「未安装成功」的版本（superadmin）。
+			// 记录清洗 + 残留版本目录清理归 purgeFailedInstall（_lifecycle/history.ts 同纪律，端点不
+			// 重复编排）；领域拒绝（曾成功/当前生效/平台内置）走 200 {ok:false} 人话，与 uninstall 同款。
+			async del() {
+				await respond(async () => {
+					await assertSuperAdmin();
+					const q = (http.query ?? {}) as Record<string, unknown>;
+					const name = String(q.name ?? "").trim();
+					const version = String(q.version ?? "").trim();
+					if (name === "" || version === "")
+						fail(400, "name and version are required");
+					const r = await purgeFailedInstall({
+						name,
+						version,
+						sharedRoot: env.sharedRoot,
+						lockPath: `${env.sharedRoot}/manifests.yaml`,
+						state: await createStateStore(env.statePath),
+					});
+					if (r.ok)
+						auditOp({ action: "solution.install.purge", module: name, target: `${name}@${version}`, detail: { deleted: r.deleted, removedDir: r.removedDir, message: r.message }, level: 4 });
+					return r;
 				});
 			},
 		},
@@ -1308,6 +1334,8 @@ marketApi["uninstall-impact"].get.response = { type: "object", additionalPropert
 marketApi.uninstall.post.schema = { body: { type: "object", required: ["name"], properties: { name: { type: "string" } } } };
 marketApi.uninstall.post.response = { type: "object", additionalProperties: true };
 marketApi.history.get.response = { type: "array", items: { type: "object", additionalProperties: true } };
+marketApi.history.del.schema = { query: { type: "object", required: ["name", "version"], properties: { name: { type: "string" }, version: { type: "string" } } } };
+marketApi.history.del.response = { type: "object", additionalProperties: true };
 marketApi.releases.get.schema = {
 	query: {
 		type: "object",

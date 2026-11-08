@@ -1355,3 +1355,144 @@ describe("GET /oj-market/releases（发布历史：DB 目录行直读 + 分页�
 		expect(d.list.map(r => r.product)).toEqual(["pkg-03", "pkg-02"]);
 	});
 });
+
+describe("DELETE /oj-market/history（删除未安装成功的版本；2026-11-08 用户需求）", () => {
+	function seedInstall(solution: string, version: string, status: string): void {
+		dbo.prepare("INSERT INTO market_history (solution, version, action, status, operator, message, created_at) VALUES (?,?,?,?,?,?,?)")
+			.run(solution, version, "install", status, "u1", `message-${status}`, 1000);
+	}
+	const countOf = (name: string, version: string): number => Number(
+		dbo.prepare("SELECT COUNT(*) c FROM market_history WHERE solution=? AND version=? AND action='install'").get(name, version).c,
+	);
+
+	it("门禁：非 superadmin 403；缺 name/version 400（判权先于取值）", async () => {
+		seedInstall("demo-solution", "0.1.0", "failed");
+		const api = createMarketApi(makeEnv());
+		g.http = { user: { id: 2 }, query: { name: "demo-solution", version: "0.1.0" } };
+		await api.history.del();
+		expect(last?.status).toBe(403);
+		g.http = { user: { id: 1 }, query: { name: "demo-solution" } };
+		await api.history.del();
+		expect(last?.status).toBe(400);
+		expect(countOf("demo-solution", "0.1.0")).toBe(1);
+	});
+
+	it("失败版本：清掉该版本全部 install 记录 + 删残留版本目录 + 审计落 oplog", async () => {
+		// 同一版本两次失败（用户重试过）→ 一次删除等于「这个版本从历史里清干净」
+		seedInstall("demo-solution", "0.2.0", "failed");
+		seedInstall("demo-solution", "0.2.0", "needs_trust");
+		seedInstall("demo-solution", "0.1.0", "done"); // 当前生效版本的记录不动
+		const staleDir = join(sharedRoot, "demo-solution-0.2.0");
+		await fsp.mkdir(join(staleDir, "migrations"), { recursive: true });
+		await fsp.writeFile(join(staleDir, "manifest.yaml"), "name: demo-solution\n");
+		const api = createMarketApi(makeEnv());
+		g.http = { user: { id: 1 }, query: { name: "demo-solution", version: "0.2.0" } };
+		await api.history.del();
+		expect(last?.status).toBe(200);
+		expect(last?.data).toMatchObject({ ok: true, deleted: 2, removedDir: true });
+		expect(countOf("demo-solution", "0.2.0")).toBe(0);
+		expect(countOf("demo-solution", "0.1.0")).toBe(1);
+		await expect(fsp.access(staleDir)).rejects.toThrow();
+		// 审计（fire-and-forget）：动作名带 purge，detail 记删除条数与目录清理结果
+		await new Promise(r => setTimeout(r, 20));
+		const oplog = dbo.prepare("SELECT action, target, detail FROM sys_oplog WHERE action = 'solution.install.purge'").all() as Array<Record<string, unknown>>;
+		expect(oplog).toHaveLength(1);
+		expect(oplog[0]).toMatchObject({ target: "demo-solution@0.2.0" });
+		expect(String(oplog[0]!.detail)).toContain("\"deleted\":2");
+	});
+
+	it("残留目录不存在也成功（锁前失败无目录可清）", async () => {
+		seedInstall("demo-solution", "0.3.0", "failed");
+		const api = createMarketApi(makeEnv());
+		g.http = { user: { id: 1 }, query: { name: "demo-solution", version: "0.3.0" } };
+		await api.history.del();
+		expect(last?.status).toBe(200);
+		expect(last?.data).toMatchObject({ ok: true, deleted: 1, removedDir: false });
+		expect(String((last?.data as { message: string }).message)).toContain("无残留版本目录");
+	});
+
+	it("曾安装成功（done / partial）拒删：那不是失败版本，要走卸载或回滚", async () => {
+		seedInstall("demo-solution", "1.0.0", "done");
+		seedInstall("demo-solution", "1.1.0", "partial");
+		const api = createMarketApi(makeEnv());
+		for (const version of ["1.0.0", "1.1.0"]) {
+			g.http = { user: { id: 1 }, query: { name: "demo-solution", version } };
+			await api.history.del();
+			expect(last?.status).toBe(200); // 领域拒绝走 200 + ok:false（与 uninstall 同款）
+			expect(last?.data).toMatchObject({ ok: false, deleted: 0 });
+			expect(String((last?.data as { message: string }).message)).toContain("曾安装成功");
+			expect(countOf("demo-solution", version)).toBe(1);
+		}
+	});
+
+	it("失败后重试成功：历史里既有 failed 也有 done → 拒删（该版本确实装上了）", async () => {
+		seedInstall("demo-solution", "2.0.0", "failed");
+		seedInstall("demo-solution", "2.0.0", "done");
+		const api = createMarketApi(makeEnv());
+		g.http = { user: { id: 1 }, query: { name: "demo-solution", version: "2.0.0" } };
+		await api.history.del();
+		expect(last?.data).toMatchObject({ ok: false });
+		expect(countOf("demo-solution", "2.0.0")).toBe(2);
+	});
+
+	it("当前生效保护：锁或 sidecar 指向该版本即拒删（即便历史全是 failed）", async () => {
+		seedInstall("demo-solution", "0.4.0", "failed");
+		const api = createMarketApi(makeEnv());
+		// 锁指向该版本（用户手改锁/回滚残留的极端态）
+		await writeLock(join(sharedRoot, "manifests.yaml"), { "demo-solution": "0.4.0", "auth": "0.1.0" });
+		g.http = { user: { id: 1 }, query: { name: "demo-solution", version: "0.4.0" } };
+		await api.history.del();
+		expect(last?.data).toMatchObject({ ok: false });
+		expect(String((last?.data as { message: string }).message)).toContain("当前仍在生效");
+		// sidecar 指向该版本（锁已回退但元数据未跟上的极端态）
+		await writeLock(join(sharedRoot, "manifests.yaml"), { auth: "0.1.0" });
+		await (await createStateStore(join(sharedRoot, ".solutions", "state.yaml")))
+			.write({ solutions: { "demo-solution": { version: "0.4.0", enabled: true, installedAt: 1000 } } });
+		await api.history.del();
+		expect(last?.data).toMatchObject({ ok: false });
+		expect(countOf("demo-solution", "0.4.0")).toBe(1);
+	});
+
+	it("平台内置模块与非法入参拒删：oj-market 不按方案版本删；版本含 ../ 过白名单即拒", async () => {
+		seedInstall("oj-market", "0.2.4", "failed");
+		seedInstall("demo-solution", "0.5.0", "failed");
+		const api = createMarketApi(makeEnv());
+		g.http = { user: { id: 1 }, query: { name: "oj-market", version: "0.2.4" } };
+		await api.history.del();
+		expect(last?.data).toMatchObject({ ok: false });
+		expect(String((last?.data as { message: string }).message)).toContain("第一方平台模块");
+		g.http = { user: { id: 1 }, query: { name: "demo-solution", version: "../../etc" } };
+		await api.history.del();
+		expect(last?.data).toMatchObject({ ok: false });
+		expect(String((last?.data as { message: string }).message)).toContain("非法");
+		expect(countOf("demo-solution", "0.5.0")).toBe(1);
+	});
+
+	it("没有该版本安装记录 → 人话拒绝（不误删其它版本）", async () => {
+		seedInstall("demo-solution", "0.6.0", "failed");
+		const api = createMarketApi(makeEnv());
+		g.http = { user: { id: 1 }, query: { name: "demo-solution", version: "9.9.9" } };
+		await api.history.del();
+		expect(last?.data).toMatchObject({ ok: false, deleted: 0 });
+		expect(String((last?.data as { message: string }).message)).toContain("没有");
+		expect(countOf("demo-solution", "0.6.0")).toBe(1);
+	});
+});
+
+describe("GET /oj-market/history（操作历史消费面：前端据此标记结果与是否可删）", () => {
+	it("返回 id（Table rowKey）且同秒多次尝试按 id 倒序（首行即最新，前端 latestInstallByVersion 依赖）", async () => {
+		const ins = dbo.prepare("INSERT INTO market_history (solution, version, action, status, operator, message, created_at) VALUES (?,?,?,?,?,?,?)");
+		ins.run("demo-solution", "0.1.0", "install", "failed", "u1", "第一次失败", 1000);
+		ins.run("demo-solution", "0.1.0", "install", "done", "u1", "安装完成", 1000);
+		const api = createMarketApi(makeEnv());
+		g.http = { user: { id: 2 } }; // 读面登录即可（产品口径：admin 能看历史）
+		await api.history.get();
+		expect(last?.status).toBe(200);
+		const rows = last?.data as Array<Record<string, unknown>>;
+		expect(rows).toHaveLength(2);
+		expect(rows[0]).toMatchObject({ status: "done", message: "安装完成" });
+		expect(rows[1]).toMatchObject({ status: "failed" });
+		expect(typeof rows[0]!.id).toBe("number");
+		expect(Number(rows[0]!.id)).toBeGreaterThan(Number(rows[1]!.id));
+	});
+});

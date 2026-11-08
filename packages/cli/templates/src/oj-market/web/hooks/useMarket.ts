@@ -84,8 +84,8 @@ export function useInstallTask(taskId: string | null): {
 	return { record, done };
 }
 
-/** 市场操作历史加载（只读消费本仓端点） */
-export function useMarketHistory(): LoadState<MarketHistory[]> & { retry: () => void } {
+/** 市场操作历史加载（只读消费本仓端点；reload 静默重取，retry 走加载态重试） */
+export function useMarketHistory(): LoadState<MarketHistory[]> & { retry: () => void, reload: () => void } {
 	const client = useMarketClient();
 	const [state, setState] = useState<LoadState<MarketHistory[]>>({ status: "loading" });
 	// 同 useMarketIndex：重试走 nonce 驱动，不在 effect 链路里同步 set
@@ -107,5 +107,8 @@ export function useMarketHistory(): LoadState<MarketHistory[]> & { retry: () => 
 		setNonce(n => n + 1);
 	}, []);
 
-	return { ...state, retry };
+	// 写后刷新（删除失败版本）：不闪加载态，保留旧表直至新数据到达
+	const reload = useCallback(() => setNonce(n => n + 1), []);
+
+	return { ...state, retry, reload };
 }

@@ -12,6 +12,7 @@ import type {
 	IndexPage,
 	InstallInput,
 	MarketHistory,
+	PurgeHistoryResult,
 	ReleasePage,
 	TaskRecord,
 	UninstallImpact,
@@ -22,6 +23,7 @@ import { request } from "@oj-module/runtime";
 import {
 	bindRequest,
 	ojMarketEnablePost,
+	ojMarketHistoryDelete,
 	ojMarketHistoryGet,
 	ojMarketInstallPost,
 	ojMarketMetaGet,
@@ -116,6 +118,10 @@ export const httpMarketClient: MarketClient = {
 	},
 	async history() {
 		return (await ojMarketHistoryGet()) as unknown as MarketHistory[];
+	},
+	async purgeHistory(input: { name: string, version: string }) {
+		const data = await ojMarketHistoryDelete({ name: input.name, version: input.version });
+		return data as unknown as PurgeHistoryResult;
 	},
 	async releases(input: { page?: number, limit?: number } = {}) {
 		return (await ojMarketReleasesGet(input as { page: number, limit: number })) as unknown as ReleasePage;

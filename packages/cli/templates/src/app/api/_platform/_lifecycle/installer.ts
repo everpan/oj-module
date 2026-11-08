@@ -591,16 +591,20 @@ export async function runInstall(req: InstallRequest): Promise<TaskRecord> {
 		// 对账时点纪律（R13/B9/R31）：残留 running 超时判 failed，再开新任务
 		await sweepTimedOut(req.taskDir, now);
 		await writeTask(req.taskDir, task);
-		// U5 取消安装（P3-8）：装前锁快照——取消回退的「装前态」真源（首装时锁文件尚不存在）
+		// U5 取消安装（P3-8）：装前锁快照——取消回退的「装前态」真源（首装时锁文件尚不存在）。
+		// 存在性必须单独探：readLock 对「文件缺失」返回 {} 而不抛（lock.ts:34-43），据此置位会把首装
+		// 误判成「有锁」——补偿回滚于是走 writeLock({}) 撞「空锁拒启」，首装失败后残锁留在盘上
+		// （2026-11-08 实测缺陷：首装 smoke 失败仍占锁，失败版本既非「生效」也无法清理）。
 		let lockBefore: Record<string, string> = {};
 		let lockExisted = false;
 		try {
-			lockBefore = await readLock(`${req.sharedRoot}/manifests.yaml`);
+			await fsFace().readFile(`${req.sharedRoot}/manifests.yaml`);
 			lockExisted = true;
 		}
 		catch {
 			lockExisted = false;
 		}
+		lockBefore = await readLock(`${req.sharedRoot}/manifests.yaml`);
 		// P0 §3.2 质辩1 / E8：写锁前读 config 的 auth.anonymous_paths，注入 preflight 做残留检测
 		// （preflight 保持只读 ctx 的纯校验段纪律，不自己读盘）。config 缺失/解析失败 → 视为无残留。
 		try {
@@ -613,6 +617,11 @@ export async function runInstall(req: InstallRequest): Promise<TaskRecord> {
 		// P2-13 段内进度：migrating 段 spawn 流式路径逐块触发；写链串行（回调 fire-and-forget
 		// 防交错），失败静默（进度观测面不阻断安装）
 		let progressChain: Promise<void> = Promise.resolve();
+		// 终态留痕（2026-11-08）：失败/取消/待信任要把「最后一次错误信息」（失败阶段 + 原始明细，
+		// 迁移失败含 stderr 摘要）写进 market_history——市场「操作历史」据此标记该版本未安装成功，
+		// 并提供删除入口。status 取**安装结论**而非 task.status（锁后失败以 partial 收尾，但对该
+		// 用户而言这个版本没装上，故记 failed）。
+		let terminalNote: { status: string, message: string } | null = null;
 		for (let i = 0; i < PIPELINE.length; i++) {
 			const def = PIPELINE[i]!;
 			// U5 取消入口一（区间外取消）：进入任一 stage 前先探测 cancel token——段间取消即时响应，
@@ -624,6 +633,7 @@ export async function runInstall(req: InstallRequest): Promise<TaskRecord> {
 				const postLock = !PRE_LOCK_STAGES.has(def.name);
 				task.status = postLock ? "partial" : "failed";
 				task.cancelled = true;
+				terminalNote = { status: "cancelled", message: `安装已取消（U5 取消安装，阶段 ${def.name}）：用户中止，站点已回退到安装前状态` };
 				req.outcome = { ...req.outcome, status: task.status, cancelled: true, failedStage: def.name };
 				await cancelCleanup(req, lockBefore, lockExisted);
 				task.error = { reason: "安装已被用户取消（U5 取消安装）", retryable: true, hintKey: "lifecycle.stage.cancelled" };
@@ -665,6 +675,7 @@ export async function runInstall(req: InstallRequest): Promise<TaskRecord> {
 				const postLock = !PRE_LOCK_STAGES.has(def.name);
 				task.status = postLock ? "partial" : "failed";
 				task.cancelled = true;
+				terminalNote = { status: "cancelled", message: `安装已取消（U5 取消安装，阶段 ${def.name}）：${r.message}` };
 				req.outcome = { ...req.outcome, status: task.status, cancelled: true, failedStage: def.name };
 				await cancelCleanup(req, lockBefore, lockExisted);
 				task.error = { reason: r.message, retryable: true, hintKey: "lifecycle.stage.cancelled" };
@@ -684,12 +695,20 @@ export async function runInstall(req: InstallRequest): Promise<TaskRecord> {
 					// 确认入信任库后原样重试即从 verifying 继续。
 					task.status = "needs_trust";
 					task.trust = r.trust;
+					terminalNote = {
+						status: "needs_trust",
+						message: `安装未完成（阶段 ${def.name}）：发布方签名 key「${r.trust.key_id}」不在信任库，需在方案市场确认信任后重试；本次未落盘（staging 保留，确认后可原样重试）`,
+					};
 					req.outcome = { ...req.outcome, status: "needs_trust", failedStage: def.name };
 					break;
 				}
 				if (PRE_LOCK_STAGES.has(def.name)) {
 					// 失败语义①：锁前清场重跑——staging 删除；锁/库表/清单/sidecar/审计零改动
 					task.status = "failed";
+					terminalNote = {
+						status: "failed",
+						message: `安装失败（阶段 ${def.name}）：${r.message}；本次安装未生效（未落锁、未改库表与配置），可直接重试`,
+					};
 					try {
 						await fsFace().remove(req.staging, { recursive: true });
 					}
@@ -716,8 +735,15 @@ export async function runInstall(req: InstallRequest): Promise<TaskRecord> {
 						task.stages.push({ stage: `compensate.${s.step}`, ok: s.ok, message: s.message });
 					}
 					task.status = "partial";
+					const compFailed = comp.steps.filter(s => !s.ok).map(s => s.step);
+					terminalNote = {
+						status: "failed",
+						message: `安装失败（阶段 ${def.name}）：${r.message}；${compFailed.length === 0
+							? "已补偿回滚到安装前状态（旧版本继续服务）"
+							: `补偿回滚有失败步（${compFailed.join("、")}），站点可能残留部分改动，请按明细排查后重试`}`,
+					};
 					if (!comp.allOk) {
-						task.message = `${r.message}；补偿回滚存在失败步（${comp.steps.filter(s => !s.ok).map(s => s.step).join("、")}），可重试`;
+						task.message = `${r.message}；补偿回滚存在失败步（${compFailed.join("、")}），可重试`;
 					}
 				}
 				req.outcome = { ...req.outcome, status: task.status, failedStage: def.name };
@@ -742,44 +768,37 @@ export async function runInstall(req: InstallRequest): Promise<TaskRecord> {
 			catch (e) {
 				task.stages.push({ stage: AUDIT_DEF.name, ok: true, message: `终态审计失败仅记日志：${String(e)}` });
 			}
-			// sidecar 同步（D12 元数据；done/partial 均记录——版本已实际落位，enabled 与锁一致；
+			// sidecar 同步（D12 元数据）：只有**真正生效**的安装才写（done，或 done 后因待重启翻 partial）。
+			// 锁后失败虽也以 partial 收尾（terminalNote 非空），但补偿已把锁/注册回退到装前——此时写
+			// sidecar 会把「失败版本」记成已装版本，state 与锁互相矛盾（2026-11-08 修正）。
 			// P2-6：archive 复验真源（sha256+签名记录）随装落，供切换前复验/同版本重装摘要比对；
 			// P3-2：history 版本时间序记录（供 GC 保留最近 N=3 + 锁版本保护）；写失败元数据滞后，
 			// 静默降级不阻断主流程——禁 console，Finding A）
-			try {
-				const prev = req.state.read().solutions[req.name];
-				const installedAt = Date.now();
-				const newHistory: Array<{ version: string, installedAt: number }> = [
-					{ version: req.version, installedAt },
-					...(prev?.history ?? []).filter(h => h.version !== req.version),
-				];
-				await req.state.write({ solutions: { [req.name]: { version: req.version, enabled: true, installedAt, ...(archiveRecordOf(req.manifest) !== undefined ? { archive: archiveRecordOf(req.manifest), trust_state: "trusted" as const } : {}), history: newHistory } } });
-				// P3-2 GC：保留最近 KEEP_VERSIONS 个版本目录（锁版本强制保留），多余清理（运维性动作，静默）
+			if (terminalNote === null) {
 				try {
-					await gcVersions(req.sharedRoot, req.name, req.state);
+					const prev = req.state.read().solutions[req.name];
+					const installedAt = Date.now();
+					const newHistory: Array<{ version: string, installedAt: number }> = [
+						{ version: req.version, installedAt },
+						...(prev?.history ?? []).filter(h => h.version !== req.version),
+					];
+					await req.state.write({ solutions: { [req.name]: { version: req.version, enabled: true, installedAt, ...(archiveRecordOf(req.manifest) !== undefined ? { archive: archiveRecordOf(req.manifest), trust_state: "trusted" as const } : {}), history: newHistory } } });
+					// P3-2 GC：保留最近 KEEP_VERSIONS 个版本目录（锁版本强制保留），多余清理（运维性动作，静默）
+					try {
+						await gcVersions(req.sharedRoot, req.name, req.state);
+					}
+					catch {
+						// GC 失败不阻断主流程
+					}
 				}
 				catch {
-					// GC 失败不阻断主流程
+					// 写失败静默：元数据滞后不影响安装主流程（下次操作再收敛）
 				}
 			}
-			catch {
-				// 写失败静默：元数据滞后不影响安装主流程（下次操作再收敛）
-			}
-			// market_history 留痕（P1-15a 缺口 A，history.ts 守卫式：表不存在/写失败静默，不阻断终态）。
-			// message 按终态生成人话（task.message 此时是末 stage 文案，对历史消费面不可读）
-			await recordHistory({
-				solution: req.name,
-				version: req.version,
-				action: "install",
-				status: task.status,
-				operator: req.operator ?? null,
-				message: task.status === "done"
-					? `安装完成：${req.name}@${req.version}（若方案菜单/导航未出现，请刷新页面；无守护进程时请重启 oj serve 以完全生效）`
-					: `安装部分生效（status=partial）：${req.name}@${req.version}`,
-			});
 		}
-		// U5 取消安装（P3-8）：取消终态也须落终态审计（AC-P1-14 口径——取消/失败都要可观测）——审计末位、
-		// market_history 留痕；**不写 sidecar**（锁/目录已回退装前，sidecar 维持装前态，不记录本次未生效安装）。
+		// U5 取消安装（P3-8）：取消终态也须落终态审计（AC-P1-14 口径——取消/失败都要可观测）——审计末位；
+		// **不写 sidecar**（锁/目录已回退装前，sidecar 维持装前态，不记录本次未生效安装）。
+		// market_history 统一在终态收尾处写（terminalNote 已带取消文案）。
 		if (task.cancelled === true) {
 			try {
 				const ar = await AUDIT_DEF.run(req);
@@ -788,14 +807,6 @@ export async function runInstall(req: InstallRequest): Promise<TaskRecord> {
 			catch (e) {
 				task.stages.push({ stage: AUDIT_DEF.name, ok: true, message: `终态审计失败仅记日志：${String(e)}` });
 			}
-			await recordHistory({
-				solution: req.name,
-				version: req.version,
-				action: "install",
-				status: task.status,
-				operator: req.operator ?? null,
-				message: `安装已取消（U5 取消安装）：${req.name}@${req.version}`,
-			});
 		}
 		if (task.status === "done") {
 			// 无守护形态部分生效判定（P0 §3.6 / 验收 15）：热更返回的待重启段非空，且无 supervisor
@@ -814,6 +825,32 @@ export async function runInstall(req: InstallRequest): Promise<TaskRecord> {
 				task.stage = "done";
 				task.progress = 100;
 			}
+		}
+		// —— 操作历史终态留痕（唯一出口）——
+		// status 是「这个版本装上没有」的结论：failed / needs_trust / cancelled 都算未成功；
+		// done 与 partial（restartRequired，产物已生效只差重启）算成功。message 带最后一次错误明细
+		// （失败阶段 + 原始输出，迁移失败含 stderr 摘要），市场「操作历史」直接展示并据此判定能否删除。
+		if (terminalNote !== null) {
+			await recordHistory({
+				solution: req.name,
+				version: req.version,
+				action: "install",
+				status: terminalNote.status,
+				operator: req.operator ?? null,
+				message: terminalNote.message,
+			});
+		}
+		else if (task.status === "done" || task.status === "partial") {
+			await recordHistory({
+				solution: req.name,
+				version: req.version,
+				action: "install",
+				status: task.status,
+				operator: req.operator ?? null,
+				message: task.status === "done"
+					? `安装完成：${req.name}@${req.version}（若方案菜单/导航未出现，请刷新页面；无守护进程时请重启 oj serve 以完全生效）`
+					: `安装已落位但需宿主重启才完全生效（status=partial）：${req.name}@${req.version}（待重启段：${(req.restartPending ?? []).join("、") || "-"}）`,
+			});
 		}
 		task.finishedAt = Date.now();
 		await writeTask(req.taskDir, task);

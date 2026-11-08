@@ -123,8 +123,10 @@
 		"colVersion": "Version",
 		"colAction": "Action",
 		"colStatus": "Status",
+		"colMessage": "Result detail",
 		"colOperator": "Operator",
 		"colTime": "Time",
+		"colOps": "Actions",
 		"action": {
 			"install": "Install",
 			"uninstall": "Uninstall",
@@ -136,7 +138,22 @@
 		"status": {
 			"done": "Done",
 			"failed": "Failed",
-			"partial": "Partial"
-		}
+			"partial": "Partial",
+			"needs_trust": "Needs trust",
+			"cancelled": "Cancelled",
+			"success": "Success"
+		},
+		"result": {
+			"done": "Installed",
+			"partial": "Installed (restart pending)",
+			"failed": "Install failed",
+			"needs_trust": "Trust required",
+			"cancelled": "Cancelled"
+		},
+		"purge": "Delete",
+		"purgeConfirmTitle": "Delete this failed install record?",
+		"purgeConfirmBody": "Removes install records and leftover version files for {{name}}@{{version}}. The currently active version is not affected.",
+		"purgeOk": "Delete",
+		"purgeFailed": "Delete failed"
 	}
 }

@@ -9,6 +9,21 @@
 
 ### Added
 
+- **方案市场「操作历史」记录安装失败明细并可清理失败版本**：安装终态（failed / needs_trust /
+  cancelled，以及锁后补偿回滚的 partial）统一经 `_lifecycle/history.ts` 落 `market_history`
+  ——status 取**安装结论**而非任务终态（锁后失败任务仍以 partial 收尾，但对用户而言该版本没装上），
+  message 带失败阶段 + 原始明细（迁移失败含 stderr 摘要），落表前统一脱敏（URL query / Bearer /
+  token 等与任务文件同口径——迁移 stderr 可能带连接串口令，历史对 admin 长期可见）。前端历史
+  抽屉新增「结果」标记（安装成功 / 安装成功（待重启）/ 安装失败 / 待确认信任 / 已取消）、
+  错误信息列，以及
+  「删除该版本」入口；`DELETE /api/oj-market/history?name=&version=`（superadmin，审计
+  `solution.install.purge`）由 `purgeFailedInstall` 收口——清掉该版本全部未成功 install 记录
+  + best-effort 删残留版本目录；曾成功（done/partial）、当前生效（锁或 sidecar 指向）、第一方
+  平台模块（oj-market/_platform）与非法 name/version 一律拒删（200 + ok:false 人话）。回滚候选
+  同步改为只认「该版本最近一次安装成功」，失败版本不再混进回滚列表。顺带修历史读面：
+  `GET /history` 补返回 `id`（前端 Table `rowKey` 依赖，此前多行共用 undefined key），
+  同秒多次尝试按 `id` 兜底倒序，保证「首行即该版本最近一次尝试」的判定前提成立。
+
 - **市场远程发布（DB 目录 + 签名推送）**：市场目录真源从 CDN 索引文件（`catalog.yaml` +
   shards，`ojm market build-index` 维护）切换为**站点自己的目录库**（`market_release` 表，
   新迁移 `0003__market_catalog.sql` 扩签名四列）。`ojm market publish` 缺省链路改为**远端
@@ -81,6 +96,15 @@
   信任 key）——此前 0.2.1 随站包用 `oj-market.superadmin` 签名，全新站点首装会卡 `needs_trust` 冷却。
 
 ### Fixed
+
+- **首装失败残留锁 + 失败版本被记成已装版本（操作历史需求联调实测缺陷）**：`readLock` 对
+  文件缺失返回 `{}` 而不抛，安装器据此把首装置为「有锁」→ 锁后失败（如 smoke 探活不过）补偿
+  回滚走 `writeLock({})` 撞「空锁拒启」，失败版本的锁留在盘上（既不算生效、也没法按失败版本
+  清理）；同时锁后失败虽以 partial 收尾，sidecar 仍被写入，把失败版本记成已装版本、state 与锁
+  互相矛盾。现锁存在性单独探 `fsFace().readFile`（不拿 readLock 抛不抛当判据），sidecar 仅在
+  安装真正生效时写。守卫：`installer.spec` 失败语义②用例改钉「锁回退装前 + sidecar 不写 +
+  版本目录留作残留」，并新增「安装失败留痕」5 例（迁移失败 / smoke 补偿 / needs_trust / 取消 /
+  失败后重试成功）。
 
 - **安装方案落盘的 `web.integrity` 是 `sha384-sha384-…` 双前缀（全量线演练实测缺陷）**：
   `_lifecycle/sha384.ts` 的 `sha384B64` 返回完整 `sha384-<b64>`，而安装器 / 冒烟 / 深检三处调用
