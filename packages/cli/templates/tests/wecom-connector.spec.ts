@@ -402,6 +402,48 @@ describe("P1-F：凭证链（client：缓存 + 失效重试 + 错误两态）", 
 		expect(http.calls).toHaveLength(4);
 	});
 
+	it("snsapi_privateinfo：code 换回 user_ticket，getuserdetail 取到头像", async () => {
+		const http = stubHttp([
+			{ access_token: "t", expires_in: 7200 },
+			{ errcode: 0, userid: "zhangsan", user_ticket: "UT_1" },
+			{ errcode: 0, avatar: "http://wx.qlogo.cn/x/0" },
+		]);
+		const client = createWecomClient({ http, cache: fakeCache() });
+		await expect(client.codeUserInfo("c", "a", "p", "CODE")).resolves.toEqual({ userid: "zhangsan", userTicket: "UT_1" });
+		// 原图 URL 末段 /0 → 同时给出 /100 缩略图（login 侧优先用它）
+		await expect(client.userDetailByTicket("c", "a", "p", "UT_1")).resolves.toEqual({
+			avatar: "http://wx.qlogo.cn/x/0",
+			thumbAvatar: "http://wx.qlogo.cn/x/100",
+		});
+	});
+
+	it("头像 URL 不是 .../0 形态 → thumbAvatar 为 null（回落原图）", async () => {
+		const client = createWecomClient({
+			http: stubHttp([{ access_token: "t", expires_in: 7200 }, { errcode: 0, avatar: "https://example.com/a.jpg" }]),
+			cache: fakeCache(),
+		});
+		await expect(client.userDetailByTicket("c", "a", "p", "UT_1")).resolves.toEqual({
+			avatar: "https://example.com/a.jpg",
+			thumbAvatar: null,
+		});
+	});
+
+	it("snsapi_base 回包没有 user_ticket → null（扫码/静默授权不取头像）", async () => {
+		const client = createWecomClient({
+			http: stubHttp([{ access_token: "t", expires_in: 7200 }, { errcode: 0, userid: "zhangsan" }]),
+			cache: fakeCache(),
+		});
+		await expect(client.codeUserInfo("c", "a", "p", "CODE")).resolves.toEqual({ userid: "zhangsan", userTicket: null });
+	});
+
+	it("getuserdetail 权限/票据失败 → null，不影响登录", async () => {
+		const client = createWecomClient({
+			http: stubHttp([{ access_token: "t", expires_in: 7200 }, { errcode: 60011, errmsg: "no privilege" }]),
+			cache: fakeCache(),
+		});
+		await expect(client.userDetailByTicket("c", "a", "p", "UT_1")).resolves.toBeNull();
+	});
+
 	it("code 无效 / 非企业成员（只有 openid）→ 统一 401，不泄露具体原因", async () => {
 		const invalid = createWecomClient({
 			http: stubHttp([{ access_token: "t", expires_in: 7200 }, { errcode: 40029, errmsg: "invalid code" }]),
@@ -704,11 +746,12 @@ describe("P1-G：事件分发（suite_ticket / 授权 / 解绑）", () => {
 });
 
 describe("P1-H：授权链接与 state（一次性）", () => {
-	it("企微内用 oauth2（snsapi_base + agentid + #wechat_redirect）；浏览器用 qrConnect", () => {
+	it("企微内用 oauth2（snsapi_privateinfo + agentid + #wechat_redirect）；浏览器用 qrConnect", () => {
 		const base = { corpId: "ww1", agentId: "100001", redirectUri: "https://s.example.com/cb?a=1&b=2", state: "st" };
 		const inApp = buildAuthorizeUrl({ ...base, inWecom: true });
 		expect(inApp).toContain("connect/oauth2/authorize");
-		expect(inApp).toContain("scope=snsapi_base");
+		// 头像只能靠 privateinfo 的 user_ticket（user/get 自 2022-06-20 起不回头像）
+		expect(inApp).toContain("scope=snsapi_privateinfo");
 		expect(inApp).toContain("agentid=100001");
 		expect(inApp.endsWith("#wechat_redirect")).toBe(true);
 		// redirect_uri 必须整串编码，否则企微把我们的参数当自己的解析

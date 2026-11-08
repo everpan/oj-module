@@ -3,7 +3,8 @@ import type { WecomStoreDeps } from "./store";
 // 企微登录领域服务：授权链接构造、state 一次性票据、code→userid、JIT 建档。
 //
 // 两条入口（都落在同一个回调上）：
-//   · 企微客户端内打开（UA 含 wxwork）→ 网页授权 snsapi_base，静默拿 code；
+//   · 企微客户端内打开（UA 含 wxwork）→ 网页授权 snsapi_privateinfo，拿 code + user_ticket；
+//     privateinfo 会弹一次企微授权页（成员敏感信息），换取本人头像等字段的读取权；
 //   · 普通浏览器 → qrConnect 扫码（appid=corpid + agentid）。
 // 二者换 userid 走同一个 `auth/getuserinfo`（代开发=自建应用口径，不是第三方应用口径）。
 //
@@ -41,8 +42,11 @@ export function isWecomUa(ua: string): boolean {
 
 /**
  * 授权链接。`redirect_uri` 必须整串 encode（含自己的 query），否则企微会把我们的参数当自己的解析。
- * 扫码用 qrConnect（`appid` + `agentid`）；企微内用 oauth2 授权（scope 固定 snsapi_base：
- * 只换 userid，不弹授权页，够 JIT 与身份识别；要姓名头像再加 snsapi_privateinfo，属 Phase 3）。
+ * 扫码用 qrConnect（`appid` + `agentid`）；企微内用 oauth2 授权。
+ *
+ * 为什么 scope = snsapi_privateinfo：2022-06-20 起企微不再通过 user/get 下发头像，
+ * 必须让成员在授权页确认「敏感信息」后拿 user_ticket，再换 auth/getuserdetail。
+ * 代价是企微内首次进入会看到授权页；扫码入口（qrConnect）没有该 scope，仍拿不到头像。
  */
 export function buildAuthorizeUrl(opts: {
 	corpId: string
@@ -56,7 +60,7 @@ export function buildAuthorizeUrl(opts: {
 	// 多应用未指定 agent 时省略 agentid：以 corp 维度授权（企微回跳只给 userid，不绑定具体应用）
 	const agent = opts.agentId ? `&agentid=${encodeURIComponent(opts.agentId)}` : "";
 	if (opts.inWecom) {
-		return `${AUTHORIZE_IN_APP}?appid=${appid}&redirect_uri=${redirect}&response_type=code&scope=snsapi_base&state=${encodeURIComponent(opts.state)}${agent}#wechat_redirect`;
+		return `${AUTHORIZE_IN_APP}?appid=${appid}&redirect_uri=${redirect}&response_type=code&scope=snsapi_privateinfo&state=${encodeURIComponent(opts.state)}${agent}#wechat_redirect`;
 	}
 	return `${AUTHORIZE_QRCODE}?appid=${appid}${agent}&redirect_uri=${redirect}&state=${encodeURIComponent(opts.state)}`;
 }
@@ -315,6 +319,40 @@ export async function applyMemberDetail(
 	const mainDept = byOrigin.get(mainOrigin);
 	if (mainDept != null)
 		await setMainDepartment(ctx.uid, mainDept, orgDeps);
+}
+
+/**
+ * 登录后同步本人企微头像（best-effort）。
+ *
+ * 图源只能来自 `snsapi_privateinfo` 的 user_ticket → auth/getuserdetail（见 client.ts），
+ * 与 user/get 的 24h 自更新节流无关：每次登录都能补，但只在本地为空时写一次。
+ * 任何失败静默——头像不是登录的必要条件。
+ */
+export async function applyLoginAvatar(
+	ctx: { uid: number, userid: string },
+	avatarUrl: string | null,
+	client: WecomClient,
+): Promise<boolean> {
+	// 返回 true = 本地已有头像或本次写入成功（调用方不必再试下一个 URL）；
+	// false = 这个 URL 没拿到字节，可以回落原图。
+	if (!avatarUrl)
+		return false;
+	try {
+		const rows = await db.table("users").select(["avatar_base64"]).where({ field: "id", op: "eq", value: ctx.uid }).all() as Array<{ avatar_base64: string | null }>;
+		if (!rows.length)
+			return false;
+		if (String(rows[0].avatar_base64 ?? ""))
+			return true;
+		const got = await client.avatarBytes(avatarUrl).catch(() => null);
+		if (!got)
+			return false;
+		await db.table("users").update({ avatar_base64: `data:${got.contentType};base64,${bytesToBase64(got.bytes)}` }).where({ field: "id", op: "eq", value: ctx.uid }).run();
+		return true;
+	}
+	catch (e) {
+		log.warn("wecom avatar sync skipped", "userid", ctx.userid, "reason", (e as Error).message);
+		return false;
+	}
 }
 
 async function wecomDeptIndex(originIds: string[]): Promise<Map<string, number>> {

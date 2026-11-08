@@ -4,7 +4,8 @@
 //   suite_ticket(企微推) + suite_secret → suite_access_token（套件级，2h）
 //   suite_access_token + auth_code → permanent_code（= 代开发应用的 secret，属于 (suite, corp)）
 //   permanent_code + corpid  → corp access_token（**与自建应用同一个 gettoken 接口**，2h）
-//   corp access_token + code → userid（网页授权 snsapi_base，与自建应用同一个 auth/getuserinfo）
+//   corp access_token + code → userid（网页授权 snsapi_base；要头像/敏感字段用 snsapi_privateinfo，
+//   同一个 auth/getuserinfo 额外回 user_ticket，再换 auth/getuserdetail）
 // 代开发与第三方应用的分叉点只有两处：取永久授权码走 `/service/v2/get_permanent_code`；
 // 企业 token 走 `gettoken` 而不是 `service/get_corp_token`。
 //
@@ -200,6 +201,22 @@ export interface WecomDept {
 }
 
 /** 通讯录成员（user/list 的形态）：`department` / `order` / `is_leader_in_dept` 逐位对应 */
+/**
+ * 头像缩略图 URL：企微 qlogo 的末段是边长（0 = 原图、100 = 官方 thumb_avatar 尺寸）。
+ * 只对形如 `.../0` 的 URL 改写；其他形态返回 null，调用方回落原图。
+ */
+export function thumbAvatarOf(url: string | null): string | null {
+	if (!url)
+		return null;
+	return /\/0$/.test(url) ? url.replace(/\/0$/, "/100") : null;
+}
+
+/** 网页授权 code 换回的身份 + 敏感字段票据（user_ticket 仅 snsapi_privateinfo 下发） */
+export interface CodeUserInfo {
+	userid: string
+	userTicket: string | null
+}
+
 export interface WecomMember {
 	userid: string
 	name: string | null
@@ -550,8 +567,13 @@ export function createWecomClient(deps: WecomClientDeps) {
 		return name || null;
 	}
 
-	/** 网页授权 code → userid（snsapi_base；非企业成员/超出可见范围 → 401） */
-	async function userIdByCode(corpId: string, agentId: string, secret: string, code: string): Promise<string> {
+	/**
+	 * 网页授权 code → 身份（非企业成员/超出可见范围 → 401）。
+	 *
+	 * scope=snsapi_privateinfo 时企微额外下发 user_ticket（30 分钟、一次性使用），
+	 * 用于换 auth/getuserdetail 的敏感字段（头像等）。snsapi_base 下为 null。
+	 */
+	async function codeUserInfo(corpId: string, agentId: string, secret: string, code: string): Promise<CodeUserInfo> {
 		for (let attempt = 0; attempt < 2; attempt++) {
 			const token = await corpAccessToken(corpId, agentId, secret);
 			const res = await http.getJson(`${API_BASE}/cgi-bin/auth/getuserinfo?access_token=${encodeURIComponent(token)}&code=${encodeURIComponent(code)}`);
@@ -572,9 +594,46 @@ export function createWecomClient(deps: WecomClientDeps) {
 				log.warn("wecom getuserinfo no userid", "keys", Object.keys(res).join(","));
 				rejectCode(); // 非企业成员（外部联系人）时企微只给 openid，不认作本应用用户
 			}
-			return userid;
+			return { userid, userTicket: res.user_ticket == null || String(res.user_ticket) === "" ? null : String(res.user_ticket) };
 		}
 		throw upstream("企微 token 反复失效（40001/42001）");
+	}
+
+	/** 兼容旧调用：只要 userid 的路径（扫码/事件等）用这个，别关心 user_ticket */
+	async function userIdByCode(corpId: string, agentId: string, secret: string, code: string): Promise<string> {
+		return (await codeUserInfo(corpId, agentId, secret, code)).userid;
+	}
+
+	/**
+	 * user_ticket → 成员敏感字段（头像等）。**best-effort**：权限未开（60011/48002）、
+	 * ticket 过期、上游抖动一律返回 null，绝不抛出——头像属于体验优化，不能把登录打成错。
+	 *
+	 * 背景（2022-06-20 企微安全升级）：新自建/代开发应用的 user/get 不再返回 avatar，
+	 * 只能走「成员 oauth2 授权 → user_ticket → getuserdetail」这一条路。
+	 */
+	async function userDetailByTicket(corpId: string, agentId: string, secret: string, userTicket: string): Promise<{ avatar: string | null, thumbAvatar: string | null } | null> {
+		try {
+			for (let attempt = 0; attempt < 2; attempt++) {
+				const token = await corpAccessToken(corpId, agentId, secret);
+				const res = await http.postJson(`${API_BASE}/cgi-bin/auth/getuserdetail?access_token=${encodeURIComponent(token)}`, { user_ticket: userTicket });
+				const errcode = Number(res.errcode ?? 0);
+				if (TOKEN_EXPIRED.has(errcode) && attempt === 0) {
+					await invalidateCorpToken(corpId, agentId);
+					continue;
+				}
+				if (errcode !== 0) {
+					log.warn("wecom getuserdetail rejected", "errcode", String(errcode), "errmsg", String(res.errmsg ?? ""));
+					return null;
+				}
+				const avatar = res.avatar == null || String(res.avatar) === "" ? null : String(res.avatar);
+				return { avatar, thumbAvatar: thumbAvatarOf(avatar) };
+			}
+			return null;
+		}
+		catch (e) {
+			log.warn("wecom getuserdetail failed", "reason", (e as Error).message);
+			return null;
+		}
 	}
 
 	return {
@@ -585,7 +644,9 @@ export function createWecomClient(deps: WecomClientDeps) {
 		customizedAuthUrl,
 		corpAccessToken,
 		invalidateCorpToken,
+		codeUserInfo,
 		userIdByCode,
+		userDetailByTicket,
 		userNameById,
 		userDetail,
 		/**

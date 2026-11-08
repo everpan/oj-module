@@ -34,6 +34,7 @@ import { handleContactChange } from "../_shared/wecom/contacts";
 import { sha1Hex, unwrapWecomMessage, wecomSignature } from "../_shared/wecom/crypt";
 import { handleSuiteEvent } from "../_shared/wecom/events";
 import {
+	applyLoginAvatar,
 	assertUserActive,
 	buildAuthorizeUrl,
 	ensureWecomUser,
@@ -262,7 +263,9 @@ const callback = {
 			ensureTenant(tenantOfCorp(profile.corpId));
 
 			const client = createWecomClient({ http: runtimeHttp(), cache });
-			const userid = await client.userIdByCode(profile.corpId, profile.agentId, profile.permanentCode, code);
+			// scope=snsapi_privateinfo 时 user_ticket 一并返回（snsapi_base/扫码为 null）
+			const codeUser = await client.codeUserInfo(profile.corpId, profile.agentId, profile.permanentCode, code);
+			const userid = codeUser.userid;
 			// 名字是惰性取的：只有首次建档才多打一次 user/get（老用户零开销），拿不到就用工号兜底
 			const { uid, forbidden } = await ensureWecomUser(profile.corpId, userid, () =>
 				client.userNameById(profile.corpId, profile.agentId, profile.permanentCode, userid));
@@ -277,6 +280,17 @@ const callback = {
 			);
 			if (self.blocked)
 				throw Object.assign(new Error("账号在企业微信中已被停用或已退出企业，请联系企业管理员"), { status: 403 });
+
+			// 轨一补：本人头像（user/get 自 2022-06-20 起不回头像，只能走 user_ticket）。
+			// 只补空值、失败静默；扫码入口没有 user_ticket，自然跳过。
+			if (codeUser.userTicket) {
+				const sensitive = await client.userDetailByTicket(profile.corpId, profile.agentId, profile.permanentCode, codeUser.userTicket);
+				// 优先 100px 缩略图（qlogo 末段 /0 → /100，约几 KB），拿不到再回落原图
+				for (const url of [sensitive?.thumbAvatar ?? null, sensitive?.avatar ?? null]) {
+					if (await applyLoginAvatar({ uid, userid }, url, client))
+						break;
+				}
+			}
 
 			// 票据而不是 token 进 URL：token 会留在浏览器历史/Referer/反代日志里
 			const ticket = crypto.randomHex(32);
