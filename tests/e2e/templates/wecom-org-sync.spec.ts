@@ -54,7 +54,7 @@ test.describe("企微组织架构同步状态条（templates）", () => {
 
 	test("S1: 没装企微的站点看不到任何同步痕迹", async ({ page }) => {
 		await enterTemplateApp(page);
-		await page.goto("/system/departments");
+		await page.goto("/system/framework/departments");
 		await expect(page.getByRole("button", { name: "新建" })).toBeVisible({ timeout: 15_000 });
 		await expect(page.getByRole("button", { name: "立即同步" })).toHaveCount(0);
 		await expect(page.getByText("尚未同步过企微组织架构")).toHaveCount(0);
@@ -63,7 +63,7 @@ test.describe("企微组织架构同步状态条（templates）", () => {
 	test("S2: 成员授权模式 → 明确文案，且不给同步按钮（点了也必然 400）", async ({ page }) => {
 		seedProfile(1);
 		await enterTemplateApp(page);
-		await page.goto("/system/departments");
+		await page.goto("/system/framework/departments");
 		await expect(page.getByText("该企业为「成员授权」模式，应用没有通讯录权限")).toBeVisible({ timeout: 15_000 });
 		await expect(page.getByText("请企业管理员在企微后台把授权模式改为「管理员授权」后重新授权")).toBeVisible();
 		await expect(page.getByRole("button", { name: "立即同步" })).toHaveCount(0);
@@ -72,7 +72,7 @@ test.describe("企微组织架构同步状态条（templates）", () => {
 	test("S3: 从没同步过 → 提示未同步 + 立即同步入口", async ({ page }) => {
 		seedProfile(0);
 		await enterTemplateApp(page);
-		await page.goto("/system/departments");
+		await page.goto("/system/framework/departments");
 		await expect(page.getByText("尚未同步过企微组织架构")).toBeVisible({ timeout: 15_000 });
 		await expect(page.getByRole("button", { name: "立即同步" })).toBeVisible();
 	});
@@ -81,7 +81,7 @@ test.describe("企微组织架构同步状态条（templates）", () => {
 		seedProfile(0);
 		seedJob("done", { departments: 3, members: 5, skipped: 2 });
 		await enterTemplateApp(page);
-		await page.goto("/system/departments");
+		await page.goto("/system/framework/departments");
 		await expect(page.getByText(/企微组织架构更新于/)).toBeVisible({ timeout: 15_000 });
 		await expect(page.getByText("自动同步")).toBeVisible();
 		await expect(page.getByText("2 个部门因权限被跳过")).toBeVisible();
@@ -92,7 +92,7 @@ test.describe("企微组织架构同步状态条（templates）", () => {
 		seedProfile(0, "disabled");
 		seedJob("done", { departments: 3, members: 5, skipped: 0 });
 		await enterTemplateApp(page);
-		await page.goto("/system/departments");
+		await page.goto("/system/framework/departments");
 		await expect(page.getByText("该企业已取消授权或应用已停用，同步已冻结")).toBeVisible({ timeout: 15_000 });
 		await expect(page.getByRole("button", { name: "立即同步" })).toHaveCount(0);
 	});

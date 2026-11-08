@@ -1,6 +1,7 @@
 {
 	"menu": {
 		"system": "系统管理",
+		"framework": "框架管理",
 		"users": "用户管理",
 		"userRoles": "成员资格",
 		"roles": "角色权限",

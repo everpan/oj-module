@@ -144,7 +144,7 @@ export default function UsersPage() {
 						</Button>
 						{canManageMembership
 							? (
-								<Button size="small" type="link" disabled={!manageable} onClick={() => navigate(`/system/users/${row.id}/roles`)}>
+								<Button size="small" type="link" disabled={!manageable} onClick={() => navigate(`/system/framework/users/${row.id}/roles`)}>
 									{t("system:users.membership")}
 								</Button>
 							)

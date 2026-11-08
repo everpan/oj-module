@@ -119,9 +119,9 @@ test.describe("企微登录（templates）", () => {
 });
 
 test.describe("代开发后台（templates）", () => {
-	test("W4: 非超管进入 /system/wecom 渲染「无权限」，不是空表", async ({ page }) => {
+	test("W4: 非超管进入 /system/framework/wecom 渲染「无权限」，不是空表", async ({ page }) => {
 		await enterTemplateApp(page);
-		await page.goto("/system/wecom");
+		await page.goto("/system/framework/wecom");
 		await expect(page.getByText("无权限")).toBeVisible({ timeout: 20_000 });
 		// 空表会让人以为「只是还没企业授权」，这里必须没有表格
 		await expect(page.getByRole("button", { name: "生成开通链接" })).toHaveCount(0);
@@ -129,7 +129,7 @@ test.describe("代开发后台（templates）", () => {
 
 	test("W5: 超管看到开通入口与已开通清单", async ({ page }) => {
 		await enterTemplateApp(page, { username: "superadmin" });
-		await page.goto("/system/wecom");
+		await page.goto("/system/framework/wecom");
 		await expect(page.getByRole("button", { name: "生成开通链接" })).toBeVisible({ timeout: 20_000 });
 		// exact：空表占位文案「暂无已开通企业」也含这四个字，模糊匹配会撞 strict mode
 		await expect(page.getByText("已开通企业", { exact: true })).toBeVisible();

@@ -75,7 +75,7 @@ test.describe("用户列表：所属部门与部门筛选（templates）", () =>
 	test("U1: 多部门的人标出「主部门」，没部门的人不画空 Tag", async ({ page }) => {
 		await seed(page);
 		await enterTemplateApp(page);
-		await page.goto("/system/users");
+		await page.goto("/system/framework/users");
 		await expect(page.getByRole("columnheader", { name: "所属部门" })).toBeVisible({ timeout: 15_000 });
 		// 主部门排在前，且带「· 主部门」后缀
 		await expect(page.getByText(`${ROOT} · 主部门`)).toBeVisible();
@@ -90,7 +90,7 @@ test.describe("用户列表：所属部门与部门筛选（templates）", () =>
 	test("U2: 按部门筛选带出子部门的人，其它部门的人被筛掉", async ({ page }) => {
 		const seeded = await seed(page);
 		await enterTemplateApp(page);
-		await page.goto("/system/users");
+		await page.goto("/system/framework/users");
 		await expect(page.getByText(seeded.zhang)).toBeVisible({ timeout: 15_000 });
 		await expect(page.getByText(seeded.wang)).toBeVisible();
 

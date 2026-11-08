@@ -5,7 +5,7 @@ import { enterTemplateApp } from "../fixtures/enter-template-app";
 /**
  * 角色/权限控制点多语言展示回归（2026-11-06）。
  *
- * /system/roles 页两块翻译来源：
+ * /system/framework/roles 页两块翻译来源：
  * · 角色 tab：builtin 角色名走 `system:rolesPage.roleTitle.<name>`（库内 title 是 seed 中文文本、
  *   title_key 为 null，UI 按 key 实时翻译——R2 的 builtin 分支）；
  * · 权限点 tab：seed 权限点带 title_key（system:perm.*），走 `t(title_key, { defaultValue: code })`
@@ -15,7 +15,7 @@ import { enterTemplateApp } from "../fixtures/enter-template-app";
 test.describe("角色/权限页 i18n（templates）", () => {
 	test("角色名与权限点在中英文下都渲染译文，不直出键名", async ({ page }) => {
 		await enterTemplateApp(page, { username: "superadmin" });
-		await page.goto("/system/roles");
+		await page.goto("/system/framework/roles");
 
 		// 中文：角色 tab（superadmin 被展示层隐去，admin 行走 roleTitle.admin 译文）
 		await expect(page.locator("body")).toContainText("系统管理员", { timeout: 10_000 });

@@ -13,7 +13,7 @@ import { enterTemplateApp } from "../fixtures/enter-template-app";
 test.describe("站点设置 i18n（templates）", () => {
 	test("框架设置组标题与设置项在中英文下都渲染译文，不直出键名", async ({ page }) => {
 		await enterTemplateApp(page, { username: "superadmin" });
-		await page.goto("/system/settings");
+		await page.goto("/system/framework/settings");
 
 		// 中文：组标题走 setting.group.*，设置项走 seed 的 label_key
 		await expect(page.locator("body")).toContainText("站点标题", { timeout: 10_000 });

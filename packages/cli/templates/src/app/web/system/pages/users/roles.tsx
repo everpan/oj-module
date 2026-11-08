@@ -57,7 +57,7 @@ export default function UserRolesPage() {
 		onSuccess: () => {
 			message.success(t("system:userRoles.saved"));
 			queryClient.invalidateQueries({ queryKey: ["system", "users"] });
-			navigate("/system/users");
+			navigate("/system/framework/users");
 		},
 		// 403 全局 toast 已被请求层抑制，页面须自行反馈（admin 非 superadmin 手输 URL 的场景）
 		onError: e => message.error(explainError(e, t)),
