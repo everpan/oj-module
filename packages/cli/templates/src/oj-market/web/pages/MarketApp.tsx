@@ -83,7 +83,11 @@ export default function MarketApp() {
 
 	const handleInstallDone = (rec: TaskRecord) => {
 		index.retry();
-		// 安装/升级/回滚均改写站点已装模块；前端 SPA 仍是旧 bundle，需整页刷新才加载新版本
+		// 仅成功终态才提示刷新：失败/部分完成/待信任时前端资源并未改变，刷新既无意义，
+		// 还会用「刷新页面」弹窗盖住正在展示的错误原因与重试入口（安装失败却被提示刷新）。
+		if (rec.status !== "done")
+			return;
+		// 安装/升级/回滚成功改写站点已装模块；前端 SPA 仍是旧 bundle，需整页刷新才加载新版本
 		setRefreshPrompt(rec);
 	};
 

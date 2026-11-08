@@ -43,4 +43,28 @@ describe("marketApp · 安装完成刷新提示（fix A 菜单断路：新方案
 		// 「刷新页面」按钮可点击（窗口.location.reload 由真实浏览器接管，测试只断言存在）
 		expect(screen.getByText("刷新页面")).toBeTruthy();
 	});
+
+	it("given 安装失败终态 When 任务结束 Then 不弹刷新提示（错误留在安装弹窗内）", async () => {
+		const failed = {
+			id: "t2",
+			name: "alpha",
+			version: "1.2.0",
+			status: "failed" as const,
+			stage: "migrating" as const,
+			progress: 36,
+			message: "迁移失败：oj migrate exit 1",
+			stages: [],
+			error: { reason: "迁移失败：oj migrate exit 1", retryable: true },
+			startedAt: 0,
+		};
+		const client = new InMemoryMarketClient({ indexPage, taskRecord: failed, installResult: { task_id: "t2" } });
+		renderWithProviders(<MarketApp />, client);
+
+		fireEvent.click(await screen.findByText("安装"));
+		// 等安装弹窗渲染失败终态（错误原因同时出现在 message 与 error 详情，按 testid 取以免多重匹配）
+		const msg = await screen.findByTestId("install-message", undefined, { timeout: 5000 });
+		expect(msg.textContent).toContain("迁移失败");
+		// 失败不是「完成」：不得弹出刷新提示盖住错误与重试入口
+		expect(screen.queryByTestId("refresh-prompt")).toBeNull();
+	});
 });

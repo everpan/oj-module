@@ -1,5 +1,5 @@
 import type { IndexRow } from "../types";
-import { Button, Card, Space, Tag } from "antd";
+import { Button, Card, Popconfirm, Space, Tag } from "antd";
 import React from "react";
 import { useTranslation } from "react-i18next";
 
@@ -34,6 +34,24 @@ export function CardItem({ row, busy, canManage = true, onInstall, onEnableToggl
 	const upgradeBlocked = installed && !row.upgradable;
 	// 非 superadmin：所有写操作禁用并给出原因提示，只读（详情/历史）不受影响。
 	const manageTip = canManage ? undefined : t("oj-market:card:superOnly");
+	// oj-market 是第一方方案市场自身：其 API 面随平台内置，停用会把它们从 API 锁摘除，
+	// 导致 /api/oj-market/* 全 404、方案市场整页不可用，故卡片上的「停用」永久禁用。
+	const isFirstPartyMarket = row.name === "oj-market";
+	const disableLocked = enabled && isFirstPartyMarket;
+	const toggleDisabled = busy || !canManage || disableLocked;
+	const toggleTip = disableLocked ? t("oj-market:card:disableLocked") : manageTip;
+	const toggleButton = (
+		<Button
+			style={{ flexShrink: 0 }}
+			size="small"
+			onClick={enabled ? undefined : () => onEnableToggle(row)}
+			disabled={toggleDisabled}
+			title={toggleTip}
+			data-testid={`card-toggle-${row.name}`}
+		>
+			{enabled ? t("oj-market:card:disable") : t("oj-market:card:enable")}
+		</Button>
+	);
 
 	return (
 		<Card
@@ -160,11 +178,20 @@ export function CardItem({ row, busy, canManage = true, onInstall, onEnableToggl
 				>
 					{installed ? t("oj-market:card:upgrade") : t("oj-market:card:install")}
 				</Button>
-				{installed && (
-					<Button style={{ flexShrink: 0 }} size="small" onClick={() => onEnableToggle(row)} disabled={busy || !canManage} title={manageTip}>
-						{enabled ? t("oj-market:card:disable") : t("oj-market:card:enable")}
-					</Button>
-				)}
+				{installed && (enabled && !isFirstPartyMarket
+					? (
+						<Popconfirm
+							title={t("oj-market:card:disableConfirmTitle", { name: row.name })}
+							description={t("oj-market:card:disableConfirmBody")}
+							okText={t("oj-market:card:disableConfirmOk")}
+							cancelText={t("oj-market:card:disableConfirmCancel")}
+							onConfirm={() => onEnableToggle(row)}
+							disabled={busy || !canManage}
+						>
+							{toggleButton}
+						</Popconfirm>
+					)
+					: toggleButton)}
 				{installed && (
 					<Button style={{ flexShrink: 0 }} size="small" onClick={() => onRollback(row)} disabled={busy || !canManage} title={manageTip} data-testid={`card-rollback-${row.name}`}>
 						{t("oj-market:card:rollback")}

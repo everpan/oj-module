@@ -45,6 +45,11 @@
 		"rollback": "回滚",
 		"superOnly": "仅超级管理员可安装、升级、回滚、启停或卸载方案；其余用户仅可浏览。",
 		"latestInstalled": "已安装最新版本，无需升级",
+		"disableConfirmTitle": "确认停用「{{name}}」？",
+		"disableConfirmBody": "停用后该方案的菜单与接口将立即不可用，可稍后重新启用。",
+		"disableConfirmOk": "确认停用",
+		"disableConfirmCancel": "取消",
+		"disableLocked": "oj-market 是方案市场自身，承载全站方案安装/启用/卸载能力，禁止停用",
 		"refreshTitle": "需要刷新页面以加载新菜单",
 		"refreshBody": "安装 / 升级 / 回滚已完成，但浏览器仍加载着旧的前端资源——新方案的菜单与导航不会出现，直到整页刷新。请点击「刷新页面」以应用变更（无守护进程时可能还需重启 oj serve 才完全生效）。",
 		"refreshNow": "刷新页面"

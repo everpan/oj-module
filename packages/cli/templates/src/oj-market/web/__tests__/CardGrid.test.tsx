@@ -1,5 +1,5 @@
 import type { IndexRow } from "../types";
-import { screen } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { CardGrid } from "../components/CardGrid";
 import { InMemoryMarketClient } from "./marketClient.fake";
@@ -136,6 +136,24 @@ describe("cardGrid 卡片网格（BDD）", () => {
 		// 禁用时不应触发写回调
 		btn("卸载").click();
 		expect(handlers.onUninstall).not.toHaveBeenCalled();
+	});
+
+	it("given oj-market 已启用 When 渲染 Then 停用按钮永久禁用且提示禁止停用", () => {
+		const ojMarket = { ...installed, name: "oj-market" };
+		renderWithProviders(<CardGrid rows={[ojMarket]} {...handlers} />, new InMemoryMarketClient());
+		const btn = screen.getByRole("button", { name: "停用" }) as HTMLButtonElement;
+		expect(btn.disabled).toBe(true);
+		expect(btn.getAttribute("title")).toContain("禁止停用");
+	});
+
+	it("given 普通方案已启用 When 点击停用 Then 先二次确认，确认后才触发 onEnableToggle", async () => {
+		handlers.onEnableToggle.mockClear();
+		renderWithProviders(<CardGrid rows={[installed]} {...handlers} />, new InMemoryMarketClient());
+		fireEvent.click(screen.getByRole("button", { name: "停用" }));
+		// 未确认前不得直接停用
+		expect(handlers.onEnableToggle).not.toHaveBeenCalled();
+		fireEvent.click(await screen.findByText("确认停用"));
+		expect(handlers.onEnableToggle).toHaveBeenCalledWith(installed);
 	});
 
 	it("given 空列表 When 渲染 Then 显示空态", () => {

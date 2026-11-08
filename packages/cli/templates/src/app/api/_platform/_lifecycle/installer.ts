@@ -1092,6 +1092,15 @@ export async function setEnabled(input: SetEnabledInput): Promise<{ ok: boolean,
 	const audit = (ok: boolean, detail: string): void => {
 		auditOp({ action: enabled ? "solution.enable" : "solution.disable", module: name, target: name, detail: { ok, detail, ...(trustNote !== null ? { trust: trustNote } : {}) }, level: ok ? 6 : 4 });
 	};
+	// 第一方方案市场模块保护（2026-11-08）：oj-market 的 API 面是平台内置（dist/api/oj-market-0.1.0），
+	// 禁用会把它从 API 锁（manifests.yaml）整行删除，导致 /api/oj-market/* 全 404、方案市场整页不可用
+	// （且 setEnabled 恢复时用的是方案/web 版本 0.2.x，并非内置 API 版本 0.1.0，会二次损坏）。
+	// 故 oj-market 禁止停用——这是「oj-market 不能被停用」的后端硬门禁，前端卡片禁用按钮同步隐藏。
+	if (!enabled && name === "oj-market") {
+		const msg = "禁用被拒：oj-market 是第一方方案市场模块，承载全站方案安装/启用/卸载能力，其 API 面随平台内置、禁用会导致方案市场不可用，故禁止停用。";
+		audit(false, msg);
+		return { ok: false, message: msg };
+	}
 	// ① 锁摘除/恢复
 	const lock = await readLock(input.lockPath);
 	let version: string;

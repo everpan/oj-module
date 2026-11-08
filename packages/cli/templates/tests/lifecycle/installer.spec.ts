@@ -1031,6 +1031,22 @@ describe("setEnabled 四处同写（D12/AC-P1-6）：锁摘除/恢复 + sidecar 
 		expect(r.message).toContain("空锁");
 		expect(await readLock(lockPath)).toEqual({ "demo-solution": "0.1.0" });
 	});
+
+	it("第一方 oj-market 禁止停用：拒绝并保持锁/sidecar/route/modules 不变", async () => {
+		await writeLock(lockPath, { "oj-market": "0.1.0", "auth": "0.1.0" });
+		await state.write({ solutions: { "oj-market": { version: "0.2.2", enabled: true, installedAt: 1000 } } });
+		dbo.exec("INSERT INTO sys_solution_route (path, module, category, \"order\", deprecated, enabled) VALUES ('/oj-market', 'oj-market', 'main', 200, 0, 1)");
+		await atomicWriteText(modulesJsonPath, `${JSON.stringify([{ name: "oj-market", entry: "modules/oj-market/0.2.2/entry.js", enabled: true }], null, 2)}\n`);
+		const r = await setEnabled({ name: "oj-market", enabled: false, sharedRoot, lockPath, state, modulesJsonPath });
+		expect(r.ok).toBe(false);
+		expect(r.message).toContain("禁止停用");
+		// 门禁在四处同写之前返回：锁/状态/路由/清单均保持原样
+		expect(await readLock(lockPath)).toEqual({ "oj-market": "0.1.0", "auth": "0.1.0" });
+		expect(state.read().solutions["oj-market"]).toMatchObject({ version: "0.2.2", enabled: true });
+		expect(Number(rows("SELECT enabled FROM sys_solution_route WHERE module = 'oj-market'")[0]!.enabled)).toBe(1);
+		const list = JSON.parse(await fsp.readFile(modulesJsonPath, "utf8"));
+		expect(list[0].enabled).toBe(true);
+	});
 });
 
 describe("market_history 留痕（P1-15a 缺口 A）：install/enable/disable/uninstall 四类动作齐", () => {
