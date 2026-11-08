@@ -30,6 +30,8 @@ const fakeOj = vi.hoisted(() => ({
 	invoked: [] as string[],
 	/** 假 oj build 写出的 manifests.yaml 内容（null = 不动既有锁）；模拟真实 oj 的全量重写 */
 	buildLock: null as string | null,
+	/** 假 oj build 会整目录重写的版本目录名（模拟真实 oj：先删后按源码重建 api.js） */
+	wipeDirs: [] as string[],
 }));
 
 vi.mock("node:child_process", async (importOriginal) => {
@@ -67,10 +69,18 @@ vi.mock("node:child_process", async (importOriginal) => {
 			return "oj 0.1.84";
 		// 真正的 oj build：记 argv（secret 调用不记，便于断言 build 是否真被叫起）
 		fakeOj.invoked.push(a.join(" "));
-		if (a[0] === "build" && fakeOj.buildLock !== null) {
+		if (a[0] === "build") {
 			const out = a[a.indexOf("-o") + 1]!;
 			mfs.mkdirSync(out, { recursive: true });
-			mfs.writeFileSync(mpath.join(out, "manifests.yaml"), fakeOj.buildLock);
+			// 真实 oj：版本目录整目录重写（旧 web 面/旁车随目录一起没了，只剩本次 api 产物）
+			for (const rel of fakeOj.wipeDirs) {
+				const dir = mpath.join(out, rel);
+				mfs.rmSync(dir, { recursive: true, force: true });
+				mfs.mkdirSync(dir, { recursive: true });
+				mfs.writeFileSync(mpath.join(dir, "api.js"), "export {};\n");
+			}
+			if (fakeOj.buildLock !== null)
+				mfs.writeFileSync(mpath.join(out, "manifests.yaml"), fakeOj.buildLock);
 		}
 		return "";
 	};
@@ -83,6 +93,7 @@ beforeEach(() => {
 	fakeOj.supportsModuleRoot = true;
 	fakeOj.invoked = [];
 	fakeOj.buildLock = null;
+	fakeOj.wipeDirs = [];
 });
 
 /** bin/oj 只需存在（buildBackend 的 fs 探测；真正执行走上面的进程内假 oj） */
@@ -150,6 +161,25 @@ describe("重建不得写坏已装锁（oj build 用源码 manifest 全量重写
 
 		await expect(buildBackend(root)).rejects.toThrow(/条目被移除/);
 		expect(fs.readFileSync(join(root, "dist", "api", "manifests.yaml"), "utf-8")).toBe("demo: 0.1.0\n");
+	});
+
+	it("given 同名同版本内建 api 目录被 oj build 整目录重写 When ojm build Then 已装方案 web 面与根旁车跨构建保留", async () => {
+		const root = newProject();
+		const versionDir = join(root, "dist", "api", "demo-0.1.0");
+		const faceDir = join(versionDir, "web", "modules", "demo", "0.1.0");
+		fs.mkdirSync(faceDir, { recursive: true });
+		fs.writeFileSync(join(faceDir, "entry.js"), "console.log(1);\n");
+		const sidecar = join(versionDir, ".ojm-module.json");
+		fs.writeFileSync(sidecar, "{\"name\":\"demo\",\"version\":\"0.1.0\",\"entry\":\"/modules/demo/0.1.0/entry.js\"}\n");
+		fakeOj.wipeDirs = ["demo-0.1.0"];
+		fakeOj.buildLock = "demo: 0.1.0\n";
+
+		expect(await buildBackend(root)).toBe(true);
+
+		// 本次构建的 api 产物在，同时旧 web 面/旁车被回填（installed-merge 才能恢复 modules.json 条目）
+		expect(fs.existsSync(join(versionDir, "api.js"))).toBe(true);
+		expect(fs.readFileSync(join(faceDir, "entry.js"), "utf-8")).toBe("console.log(1);\n");
+		expect(fs.readFileSync(sidecar, "utf-8")).toContain("\"name\":\"demo\"");
 	});
 
 	it("given 源码版本更高 When ojm build Then 正常放行（升级不受影响）", async () => {

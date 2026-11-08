@@ -3,6 +3,7 @@
 // 宿主 versions.json 双落点都在这一段，前端构建见 module-build.ts。
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { ALIAS_PATHS_FILE, syncAliasPaths } from "../alias-paths";
 import { mergeConfigForDev } from "../dev-secrets";
@@ -92,6 +93,59 @@ export function findLockRegressions(
 }
 
 /**
+ * 版本目录里的 web 面快照名（`<name>-<version>`）。
+ *
+ * 背景（2026-11-08 实锤）：内建 api 模块与已装 web-only 方案同名同版本时（如 oj-market
+ * api 0.2.4 + 市场 UI 0.2.4），两者的版本目录是同一个 `dist/api/<name>-<ver>`。`oj build`
+ * 按源码全量重写该目录，会把安装器合并进去的 `web/` 与根旁车 `.ojm-module.json` 一并清掉，
+ * 随后 installed-merge 找不到 web 面 → 已装方案从 modules.json 消失。构建前后做一次
+ * snapshot/restore，web-only 方案的 web 面跨构建保留。
+ */
+export interface WebFaceSnapshot {
+	name: string
+}
+
+/** 构建前快照 apiDist 下带 web/ 或根旁车的版本目录（无则返回空） */
+export function snapshotWebFaces(apiDist: string, tempRoot: string): WebFaceSnapshot[] {
+	if (!fs.existsSync(apiDist))
+		return [];
+	const out: WebFaceSnapshot[] = [];
+	for (const ent of fs.readdirSync(apiDist, { withFileTypes: true })) {
+		if (!ent.isDirectory())
+			continue;
+		const dir = path.join(apiDist, ent.name);
+		const webDir = path.join(dir, "web");
+		const sidecar = path.join(dir, ".ojm-module.json");
+		const hasWeb = fs.existsSync(webDir);
+		const hasSidecar = fs.existsSync(sidecar);
+		if (!hasWeb && !hasSidecar)
+			continue;
+		const dest = path.join(tempRoot, ent.name);
+		fs.mkdirSync(dest, { recursive: true });
+		if (hasWeb)
+			fs.cpSync(webDir, path.join(dest, "web"), { recursive: true });
+		if (hasSidecar)
+			fs.copyFileSync(sidecar, path.join(dest, ".ojm-module.json"));
+		out.push({ name: ent.name });
+	}
+	return out;
+}
+
+/** 构建后回填快照；目标目录已被构建移除（模块下线）则跳过，不复活孤儿目录 */
+export function restoreWebFaces(apiDist: string, tempRoot: string, snaps: WebFaceSnapshot[]): void {
+	for (const s of snaps) {
+		const target = path.join(apiDist, s.name);
+		if (!fs.existsSync(target))
+			continue;
+		const src = path.join(tempRoot, s.name);
+		if (fs.existsSync(path.join(src, "web")))
+			fs.cpSync(path.join(src, "web"), path.join(target, "web"), { recursive: true, force: true });
+		if (fs.existsSync(path.join(src, ".ojm-module.json")))
+			fs.copyFileSync(path.join(src, ".ojm-module.json"), path.join(target, ".ojm-module.json"));
+	}
+}
+
+/**
  * 构建后端（api/src 存在时编排 `bin/oj build`，D8）。
  *
  * 绝不在此处跑 migrate：oj build 本身零磁盘副作用，`ojm build` 保持零 DB
@@ -158,14 +212,28 @@ export async function buildBackend(projectRoot: string): Promise<boolean> {
 	// 或直接因「锁里目录缺失」整体报错，比构建失败难查得多。
 	const lockPath = path.join(apiDist, "manifests.yaml");
 	const lockBefore = fs.existsSync(lockPath) ? fs.readFileSync(lockPath, "utf-8") : null;
-	execFileSync(oj, [
-		"build",
-		...(effectiveConfigPath ? ["-c", effectiveConfigPath] : []),
-		...sourceArgs,
-		"-o",
-		apiDist,
-		"--no-minify",
-	], { stdio: "inherit" });
+	// oj build 会整目录重写版本目录：同名同版本的内建模块 + web-only 方案共存时，
+	// 已装方案的 web/ 与根旁车必须跨构建保留（否则 installed-merge 找不到 face，方案掉菜单）
+	const preserveRoot = fs.mkdtempSync(path.join(os.tmpdir(), "ojm-webfaces-"));
+	const preserved = snapshotWebFaces(apiDist, preserveRoot);
+	try {
+		execFileSync(oj, [
+			"build",
+			...(effectiveConfigPath ? ["-c", effectiveConfigPath] : []),
+			...sourceArgs,
+			"-o",
+			apiDist,
+			"--no-minify",
+		], { stdio: "inherit" });
+	}
+	finally {
+		try {
+			restoreWebFaces(apiDist, preserveRoot, preserved);
+		}
+		finally {
+			fs.rmSync(preserveRoot, { recursive: true, force: true });
+		}
+	}
 	if (lockBefore !== null) {
 		const lockAfter = fs.existsSync(lockPath) ? fs.readFileSync(lockPath, "utf-8") : "";
 		const regressions = findLockRegressions(

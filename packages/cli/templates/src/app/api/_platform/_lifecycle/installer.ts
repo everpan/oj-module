@@ -27,7 +27,7 @@ import { atomicWriteText, fsFace, randomId } from "./atomic";
 import { compensate } from "./compensate";
 import { recordHistory } from "./history";
 import { acquireTaskLock, commitLockEntry, readLock, revertLock, writeLock } from "./lock";
-import { deployWeb } from "./steps/deploy-web";
+import { copyTree, deployWeb } from "./steps/deploy-web";
 import { download } from "./steps/download";
 import { extract } from "./steps/extract";
 import { maxAppliedSeq, migrate, rollbackGuard } from "./steps/migrate";
@@ -221,14 +221,6 @@ async function lockCommitStage(req: InstallRequest): Promise<StageResult> {
 	catch (e) {
 		return { stage: "lock_commit", ok: false, retryable: true, message: `生效切换失败：共享根不可建（${String(e)}）——附录 A lock_commit：请稍后重试` };
 	}
-	// 同版本重装：目标已存在先移除（重装 = 目录内容 fresh copy，幂等）；不同版本目录共存
-	// （AC-P1-3：旧版本目录永不 prune——回滚保留，GC 属 P3）。fsp.rm 对缺失路径会抛，缺省即首装。
-	try {
-		await f.remove(versionDir, { recursive: true });
-	}
-	catch {
-		// 目标不存在 = 首装，正常路径
-	}
 	// B-11：发布面 = 包内 api 模块目录（oj 原生清单 + routes.js + migrations/，serve 装配
 	// parse_one 消费面——staging 整体发布会让版本目录缺模块清单/多 web 树）；web/ 与 C2 manifest
 	// 留在 staging（deploying_web 段消费）。无 api 段（web-only 包，extracting C2-31 已放行）
@@ -241,6 +233,38 @@ async function lockCommitStage(req: InstallRequest): Promise<StageResult> {
 	}
 	catch {
 		hasApiModule = false; // 无 api 段：整体 rename
+	}
+	// 双轨同名同版本（2026-11-08 实锤）：web-only 方案与内建 api 模块同名且同版本时，内建
+	// api 产物（api.js / routes.js / 原生清单）就住在 `<sharedRoot>/<name>-<version>`——上面
+	// 「先 remove 再整体 rename」会把它整目录端掉，oj 随后按锁装配即报
+	// `stat .../api.js: No such file or directory`。此时保留内建目录，只把包内 web/ 合并进去
+	// （版本目录仍是 web 回滚素材/审计形态），api 锁零变更。
+	if (!hasApiModule) {
+		let builtinApi = false;
+		try {
+			await f.readFile(`${versionDir}/api.js`);
+			builtinApi = true;
+		}
+		catch {
+			// 无同名内建 api 模块 = 常规 web-only 首装/重装
+		}
+		if (builtinApi) {
+			try {
+				await copyTree(`${req.staging}/web`, `${versionDir}/web`, f);
+			}
+			catch (e) {
+				return { stage: "lock_commit", ok: false, retryable: true, message: `生效切换失败：web 面合并到 ${versionDir}/web 失败（${String(e)}）——同名内建 api 产物保持原样，请重试` };
+			}
+			return { stage: "lock_commit", ok: true, message: `生效切换完成：web-only 包与同名内建 api 模块共存，仅合并 web 面（${versionDir}/web；api 产物/清单/锁保持不变）` };
+		}
+	}
+	// 同版本重装：目标已存在先移除（重装 = 目录内容 fresh copy，幂等）；不同版本目录共存
+	// （AC-P1-3：旧版本目录永不 prune——回滚保留，GC 属 P3）。fsp.rm 对缺失路径会抛，缺省即首装。
+	try {
+		await f.remove(versionDir, { recursive: true });
+	}
+	catch {
+		// 目标不存在 = 首装，正常路径
 	}
 	try {
 		await f.rename(src, versionDir);

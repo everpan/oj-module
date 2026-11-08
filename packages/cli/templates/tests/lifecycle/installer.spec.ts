@@ -299,6 +299,44 @@ describe("runInstall 全绿路径（步骤 stub，register/smoke/audit 走真实
 		await fsp.access(join(sharedRoot, "demo-solution-0.2.0", "manifest.yaml"));
 	});
 
+	it("双轨同名同版本（web-only 方案 vs 内建 api 模块）：保留内建 api 产物/原生清单，仅合并 web 面（2026-11-08 实锤：整目录替换致 oj stat api.js 失败）", async () => {
+		const m = manifestFixture("0.2.0");
+		delete m.api;
+		m.web = { entry: "modules/demo-solution/0.2.0/entry.js" };
+		m.archive = { file: "demo-solution-0.2.0.tgz", sha256: SHA256, size: ARCHIVE.byteLength, signature: signedArchiveFor(ARCHIVE, "demo-solution", "0.2.0", { keyPair: TEST_KEY }).sig };
+		// 预置同名同版本内建 api 模块目录（oj 装配面：api.js + 原生七键清单）
+		const versionDir = join(sharedRoot, "demo-solution-0.2.0");
+		await fsp.mkdir(versionDir, { recursive: true });
+		await fsp.writeFile(join(versionDir, "api.js"), "export const ping = 1;\n");
+		const apiManifest = JSON.stringify({ name: "demo-solution", desc: "内建 api 面", version: "0.2.0" });
+		await fsp.writeFile(join(versionDir, "manifest.yaml"), apiManifest);
+		const exec: ExecFace = {
+			run: async (argv) => {
+				if (argv[0] === "tar" && argv[1] === "-tvzf")
+					return { code: 0, stdout: "demo-solution-0.2.0/manifest.yaml\ndemo-solution-0.2.0/web/modules/demo-solution/0.2.0/entry.js\n", stderr: "" };
+				if (argv[0] === "tar" && argv[1] === "-xzf") {
+					const dest = argv[4]!;
+					const dir = join(dest, "demo-solution-0.2.0", "web", "modules", "demo-solution", "0.2.0");
+					await fsp.mkdir(dir, { recursive: true });
+					await fsp.writeFile(join(dir, "entry.js"), ENTRY);
+					await fsp.writeFile(join(dest, "demo-solution-0.2.0", "manifest.yaml"), new TextEncoder().encode(JSON.stringify(m)));
+					return { code: 0, stdout: "", stderr: "" };
+				}
+				return { code: 0, stdout: "", stderr: "" };
+			},
+		};
+		const t = await runInstall(makeReq({ manifest: m, version: "0.2.0", exec }));
+		expect(t.status).toBe("done");
+		// 内建 api 产物与原生清单原样保留（web-only 包不得整目录替换）
+		expect(new TextDecoder().decode(await fsp.readFile(join(versionDir, "api.js")))).toBe("export const ping = 1;\n");
+		expect(await fsp.readFile(join(versionDir, "manifest.yaml"), "utf8")).toBe(apiManifest);
+		// web 面合并进版本目录（回滚素材形态）+ 站点产物根
+		await fsp.access(join(versionDir, "web", "modules", "demo-solution", "0.2.0", "entry.js"));
+		await fsp.access(join(siteModulesDir, "demo-solution", "0.2.0", "entry.js"));
+		// web-only 包 api 锁零变更
+		expect(parseLock(await fsp.readFile(lockPath, "utf8").catch(() => ""))).toEqual({});
+	});
+
 	it("preview 形态：派生 .ojm-preview.yaml 存在时两份 config 一起接线（否则 reload 恒 unchanged）", async () => {
 		// ojm preview 派生出来的那份才是服务端在读的 config（spa 挂载 + platform.root 改写）
 		const derived = join(root, ".ojm-preview.yaml");
