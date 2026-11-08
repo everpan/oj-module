@@ -30,6 +30,67 @@ export function materializeInstallerVersions(apiDist: string, shellDist: string 
 	return true;
 }
 
+/** 锁条目下降/消失的判定结果（构建守卫用） */
+export interface LockRegression {
+	name: string
+	from: string
+	/** 构建后的版本；条目被整行移除时为 null */
+	to: string | null
+}
+
+/** 解析 manifests.yaml（扁平 `name: version` 锁，机器产物无注释） */
+export function parseLockVersions(text: string): Record<string, string> {
+	const out: Record<string, string> = {};
+	for (const raw of text.split("\n")) {
+		const m = /^([\w.@/-]+):\s*(\S+)\s*$/.exec(raw.trim());
+		if (m)
+			out[m[1]!] = m[2]!;
+	}
+	return out;
+}
+
+/** 按段数值比较（0.2.10 > 0.2.9；非数字段按 0）；返回负数/0/正数 */
+export function compareVersions(a: string, b: string): number {
+	const pa = a.split(/[.+-]/).slice(0, 3).map(n => Number.parseInt(n, 10) || 0);
+	const pb = b.split(/[.+-]/).slice(0, 3).map(n => Number.parseInt(n, 10) || 0);
+	for (let i = 0; i < 3; i++) {
+		const d = (pa[i] ?? 0) - (pb[i] ?? 0);
+		if (d !== 0)
+			return d;
+	}
+	return 0;
+}
+
+/**
+ * 找出「重建会把已装锁写坏」的条目。
+ *
+ * 背景（2026-11-08 实测 oj 0.1.125）：`oj build` 用源码 manifest **全量重写**
+ * `dist/api/manifests.yaml`——不在源码树里的条目直接消失，版本比源码低的条目被静默
+ * 改小，旧版本目录变成孤儿。线上跑预构建 `_platform`（源码快照较旧）时，重建会把
+ * 已升级的模块降级甚至整行摘掉，`oj serve` 下一代会加载旧模块或整体报错。
+ *
+ * 判定：①版本变小 → downgraded；②条目消失且 `dist/api/<name>-<旧版本>` 目录仍在
+ * （= 确实装过）→ dropped。只报告，处置交调用方（buildBackend 还原锁并 fail-closed）。
+ */
+export function findLockRegressions(
+	before: Record<string, string>,
+	after: Record<string, string>,
+	dirExists: (name: string, version: string) => boolean,
+): LockRegression[] {
+	const out: LockRegression[] = [];
+	for (const [name, from] of Object.entries(before)) {
+		const to = after[name];
+		if (to === undefined) {
+			if (dirExists(name, from))
+				out.push({ name, from, to: null });
+			continue;
+		}
+		if (compareVersions(to, from) < 0)
+			out.push({ name, from, to });
+	}
+	return out;
+}
+
 /**
  * 构建后端（api/src 存在时编排 `bin/oj build`，D8）。
  *
@@ -91,6 +152,12 @@ export async function buildBackend(projectRoot: string): Promise<boolean> {
 	// 出包前先自己确认 config 能读：读不动时 oj build 会静默关掉 sql_guard（见函数注释）
 	if (effectiveConfigPath)
 		assertSealedValuesOpenable(oj, effectiveConfigPath);
+	// 重建不得把已装模块写坏（2026-11-08 实测 oj 0.1.125：oj build 用源码 manifest 全量重写
+	// manifests.yaml）。先留底，构建后比对，出现降级/条目消失就还原锁并 fail-closed——
+	// 线上跑预构建 _platform（源码快照较旧）时，静默降级会让孩子下一代的 serve 加载旧模块
+	// 或直接因「锁里目录缺失」整体报错，比构建失败难查得多。
+	const lockPath = path.join(apiDist, "manifests.yaml");
+	const lockBefore = fs.existsSync(lockPath) ? fs.readFileSync(lockPath, "utf-8") : null;
 	execFileSync(oj, [
 		"build",
 		...(effectiveConfigPath ? ["-c", effectiveConfigPath] : []),
@@ -99,6 +166,26 @@ export async function buildBackend(projectRoot: string): Promise<boolean> {
 		apiDist,
 		"--no-minify",
 	], { stdio: "inherit" });
+	if (lockBefore !== null) {
+		const lockAfter = fs.existsSync(lockPath) ? fs.readFileSync(lockPath, "utf-8") : "";
+		const regressions = findLockRegressions(
+			parseLockVersions(lockBefore),
+			parseLockVersions(lockAfter),
+			(name, version) => fs.existsSync(path.join(apiDist, `${name}-${version}`)),
+		);
+		if (regressions.length > 0) {
+			// 还原锁：构建产物作废但线上装配面不受影响（旧版本目录仍在）
+			fs.writeFileSync(lockPath, lockBefore, "utf-8");
+			const lines = regressions.map(r => `  · ${r.name}: ${r.from} → ${r.to ?? "（条目被移除）"}`).join("\n");
+			throw new Error(
+				`[ojm] 构建中止：${lockPath} 会被这次重建写坏，已还原为构建前内容。\n${lines}\n`
+				+ "原因：oj build 用源码 manifest 全量重写锁——源码里的模块版本低于 dist/api 已装版本，\n"
+				+ "      或源码里没有该模块（预构建 _platform 的源码快照较旧时最常见）。\n"
+				+ "处置：把源码 src/<name>/api/manifest.yaml 的 version 抬到 >= 已装版本后重跑；\n"
+				+ "      确认要下线该模块时，先删 dist/api/<name>-<已装版本>/ 目录再构建（删目录 = 明确放弃该版本）。",
+			);
+		}
+	}
 	// 宿主 versions.json 双落点：站点壳从 shell-dist 拷进 dist/web（mergeShellSite），
 	// 而方案安装器读的是 `dist/api/versions.json`（B-11：与 manifests.yaml 同层，用于
 	// peerRuntime 强制比对）。两处必须同源，否则新工程 `ojm build` 完仍装不上方案——

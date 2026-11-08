@@ -16,7 +16,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { buildBackend } from "../build";
+import { buildBackend, compareVersions, findLockRegressions } from "../build";
 
 // 假 oj 的可控行为（vi.mock 工厂经此桥读取；工厂不能引用普通顶层变量）
 const fakeOj = vi.hoisted(() => ({
@@ -28,6 +28,8 @@ const fakeOj = vi.hoisted(() => ({
 	supportsModuleRoot: true,
 	/** 非 secret 调用的 argv 记录（真实 oj 的 bin/invoked 桩等价物） */
 	invoked: [] as string[],
+	/** 假 oj build 写出的 manifests.yaml 内容（null = 不动既有锁）；模拟真实 oj 的全量重写 */
+	buildLock: null as string | null,
 }));
 
 vi.mock("node:child_process", async (importOriginal) => {
@@ -65,6 +67,11 @@ vi.mock("node:child_process", async (importOriginal) => {
 			return "oj 0.1.84";
 		// 真正的 oj build：记 argv（secret 调用不记，便于断言 build 是否真被叫起）
 		fakeOj.invoked.push(a.join(" "));
+		if (a[0] === "build" && fakeOj.buildLock !== null) {
+			const out = a[a.indexOf("-o") + 1]!;
+			mfs.mkdirSync(out, { recursive: true });
+			mfs.writeFileSync(mpath.join(out, "manifests.yaml"), fakeOj.buildLock);
+		}
 		return "";
 	};
 	return { ...actual, execFileSync };
@@ -75,6 +82,7 @@ beforeEach(() => {
 	fakeOj.sealOutput = "ENC[FAKE]";
 	fakeOj.supportsModuleRoot = true;
 	fakeOj.invoked = [];
+	fakeOj.buildLock = null;
 });
 
 /** bin/oj 只需存在（buildBackend 的 fs 探测；真正执行走上面的进程内假 oj） */
@@ -123,6 +131,43 @@ describe("given 宿主工程有 api/src When ojm build 后端", () => {
 		const merged = join(root, "api", ".ojm-tmp-config.yaml");
 		expect(fs.existsSync(merged)).toBe(true);
 		expect(fakeOj.invoked[0]).toContain(`-c ${merged}`);
+	});
+});
+
+describe("重建不得写坏已装锁（oj build 用源码 manifest 全量重写 manifests.yaml）", () => {
+	it("given 源码版本低于已装 When ojm build Then fail-closed 并把锁还原", async () => {
+		const root = newProject(); // 既有锁 demo: 0.1.0
+		fakeOj.buildLock = "demo: 0.0.9\n";
+
+		await expect(buildBackend(root)).rejects.toThrow(/写坏/);
+		expect(fs.readFileSync(join(root, "dist", "api", "manifests.yaml"), "utf-8")).toBe("demo: 0.1.0\n");
+	});
+
+	it("given 已装条目在源码里消失 When ojm build Then fail-closed（版本目录仍在 = 确实装过）", async () => {
+		const root = newProject();
+		fs.mkdirSync(join(root, "dist", "api", "demo-0.1.0"), { recursive: true });
+		fakeOj.buildLock = "";
+
+		await expect(buildBackend(root)).rejects.toThrow(/条目被移除/);
+		expect(fs.readFileSync(join(root, "dist", "api", "manifests.yaml"), "utf-8")).toBe("demo: 0.1.0\n");
+	});
+
+	it("given 源码版本更高 When ojm build Then 正常放行（升级不受影响）", async () => {
+		const root = newProject();
+		fakeOj.buildLock = "demo: 0.2.0\n";
+
+		expect(await buildBackend(root)).toBe(true);
+		expect(fs.readFileSync(join(root, "dist", "api", "manifests.yaml"), "utf-8")).toBe("demo: 0.2.0\n");
+	});
+
+	it("compareVersions 按段数值比较（0.2.10 > 0.2.9）", () => {
+		expect(compareVersions("0.2.10", "0.2.9")).toBeGreaterThan(0);
+		expect(compareVersions("0.2.0", "0.2.0")).toBe(0);
+		expect(compareVersions("0.1.9", "0.2.0")).toBeLessThan(0);
+	});
+
+	it("findLockRegressions 忽略「从未装过」的条目消失（无版本目录不误报）", () => {
+		expect(findLockRegressions({ a: "1.0.0" }, {}, () => false)).toEqual([]);
 	});
 });
 

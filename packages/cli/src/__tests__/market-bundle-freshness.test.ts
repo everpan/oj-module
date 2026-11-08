@@ -21,7 +21,7 @@
  * 注意：本守卫只读，不重签。重签第一方包属发布流水线动作（私钥不入仓）。
  */
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gunzipSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
@@ -37,6 +37,7 @@ const REQUIRED_MARKERS = [
 	{ label: "动作区不换行", source: "flexWrap: \"nowrap\"", built: /flexWrap:\s*"nowrap"/ },
 	{ label: "按钮不收缩", source: "flexShrink: 0", built: /flexShrink:\s*0/ },
 	{ label: "卡片宽度恢复 340", source: "minmax(340px, 1fr)", built: /minmax\(340px/ },
+	{ label: "oj-market 卸载按钮禁用标记", source: "card-uninstall-", built: /card-uninstall-/ },
 ] as const;
 
 /** 需求「不应出现滚动条」+ 防宽度回退：源码与产物都不该出现 */
@@ -76,6 +77,15 @@ function bundledMarketTgzs(): string[] {
 }
 
 const tgzs = bundledMarketTgzs();
+
+/** 契约版本（单一真源）：随站包必须同版本在场，否则 ojm init 装到旧版 UI（2026-11-08） */
+const CONTRACT_VERSION = /^version:\s*(\S+)\s*$/m.exec(readFileSync(join(templatesRoot, "src/oj-market/solution.yaml"), "utf-8"))?.[1] ?? "";
+
+describe("随站 oj-market 版本与契约一致（防发布包带旧版）", () => {
+	it.skipIf(tgzs.length === 0)(`发布形态：shell-dist/bundles 只含 oj-market-${CONTRACT_VERSION}.tgz（历史版本不随站）`, () => {
+		expect(tgzs.map(t => basename(t)).sort()).toEqual([`oj-market-${CONTRACT_VERSION}.tgz`]);
+	});
+});
 
 describe("随站 oj-market 方案包与模板源码的不换行修复一致性", () => {
 	it("模板源码钉死宽度 340 + 正文可点 + 不换行 + 无横滚（防止改回 wrap / 480px / overflowX auto）", () => {

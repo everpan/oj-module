@@ -8,6 +8,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { initProject, resolveVersionMatrix } from "../../packages/cli/src/init";
 import { readOjApiPrefix, readOjPort, readOjServerField } from "../../packages/cli/src/oj-config";
 import { collectDefaultModuleDrift } from "../../packages/cli/src/scaffold-guard";
+import { MIN_OJ_VERSION } from "../../packages/cli/src/vendor";
 import { PROJECT_ROOT } from "../helpers/paths";
 
 // 桩 oj 用 vi.mock 进程内实现：shebang 脚本在 Windows 无法被 execFileSync spawn
@@ -80,18 +81,18 @@ function fakeOjInstall(binDir: string): Promise<void> {
 	fs.mkdirSync(path.join(binDir, "devkit"), { recursive: true });
 	fs.writeFileSync(path.join(binDir, "oj"), [
 		"#!/bin/sh",
-		"if [ \"$1\" = \"-V\" ]; then echo \"oj 0.1.121\"; exit 0; fi",
+		`if [ "$1" = "-V" ]; then echo "oj ${MIN_OJ_VERSION}"; exit 0; fi`,
 		"if [ \"$1\" = \"build\" ]; then echo \"      --module-root <MODULE_ROOT>  源码树根\"; exit 0; fi",
 		"echo oj",
 	].join("\n"));
 	fs.chmodSync(path.join(binDir, "oj"), 0o755);
-	fs.writeFileSync(path.join(binDir, ".oj-version"), "v0.1.121\n");
+	fs.writeFileSync(path.join(binDir, ".oj-version"), `v${MIN_OJ_VERSION}\n`);
 	fs.writeFileSync(path.join(binDir, "devkit/SKILL.md"), "skill\n");
 	fs.writeFileSync(path.join(binDir, "devkit/api-manual.md"), "manual\n");
 	fs.writeFileSync(path.join(binDir, "devkit/global.d.ts"), "types\n");
 	fs.writeFileSync(path.join(binDir, "devkit/sql-builder-guide.md"), "guide\n");
 	fs.writeFileSync(path.join(binDir, "devkit/oj-test-guide.md"), "guide\n");
-	fakeOj.registry.set(path.join(binDir, "oj"), { version: "oj 0.1.121", help: "      --module-root <MODULE_ROOT>  源码树根", secret: "none" });
+	fakeOj.registry.set(path.join(binDir, "oj"), { version: `oj ${MIN_OJ_VERSION}`, help: "      --module-root <MODULE_ROOT>  源码树根", secret: "none" });
 	return Promise.resolve();
 }
 
@@ -155,7 +156,7 @@ describe("initProject", () => {
 		expect(fs.existsSync(oj)).toBe(true);
 		// Windows 的 statSync mode 不携带执行位（chmod 只影响只读位），按平台判定可执行语义
 		expect(process.platform === "win32" || (fs.statSync(oj).mode & 0o111) !== 0).toBe(true);
-		expect(fs.readFileSync(path.join(dest, "bin/.oj-version"), "utf-8").trim()).toBe("v0.1.121");
+		expect(fs.readFileSync(path.join(dest, "bin/.oj-version"), "utf-8").trim()).toBe(`v${MIN_OJ_VERSION}`);
 
 		// devkit 拷贝
 		expect(fs.existsSync(path.join(dest, ".claude/skills/oj-api-dev/SKILL.md"))).toBe(true);
@@ -578,12 +579,12 @@ describe("initProject", () => {
 			fs.mkdirSync(path.join(binDir, "devkit"), { recursive: true });
 			fs.writeFileSync(path.join(binDir, "oj"), [
 				"#!/bin/sh",
-				"if [ \"$1\" = \"-V\" ]; then echo \"oj 0.1.121\"; exit 0; fi",
+				`if [ "$1" = "-V" ]; then echo "oj ${MIN_OJ_VERSION}"; exit 0; fi`,
 				"if [ \"$1\" = \"build\" ]; then echo \"      --module-root <MODULE_ROOT>  源码树根\"; exit 0; fi",
 				"echo oj",
 			].join("\n"));
 			fs.chmodSync(path.join(binDir, "oj"), 0o755);
-			fs.writeFileSync(path.join(binDir, ".oj-version"), "v0.1.121\n");
+			fs.writeFileSync(path.join(binDir, ".oj-version"), `v${MIN_OJ_VERSION}\n`);
 			fs.writeFileSync(path.join(binDir, "devkit/SKILL.md"), "skill\n");
 			fs.writeFileSync(path.join(binDir, "devkit/api-manual.md"), "manual\n");
 			fs.writeFileSync(path.join(binDir, "devkit/global.d.ts"), "types\n");
@@ -663,7 +664,7 @@ describe("initProject 凭据密封", () => {
 			const bin = path.join(binDir, "oj");
 			fs.writeFileSync(bin, [
 				"#!/bin/sh",
-				"if [ \"$1\" = \"-V\" ]; then echo \"oj 0.1.121\"; exit 0; fi",
+				`if [ "$1" = "-V" ]; then echo "oj ${MIN_OJ_VERSION}"; exit 0; fi`,
 				"if [ \"$1\" = \"secret\" ] && [ \"$2\" = \"keygen\" ]; then",
 				"  printf 'PRIV\\n' > \"$4/secrets-private.pem\"",
 				"  printf 'PUB\\n' > \"$4/secrets-public.pem\"",
@@ -676,7 +677,7 @@ describe("initProject 凭据密封", () => {
 				"exit 0",
 			].join("\n"));
 			fs.chmodSync(bin, 0o755);
-			fakeOj.registry.set(bin, { version: "oj 0.1.121", help: "      --module-root <MODULE_ROOT>  源码树根", secret: "seal" });
+			fakeOj.registry.set(bin, { version: `oj ${MIN_OJ_VERSION}`, help: "      --module-root <MODULE_ROOT>  源码树根", secret: "seal" });
 		});
 	}
 
