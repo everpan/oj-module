@@ -82,6 +82,10 @@ function stubHttp(reply: { errcode: number, errmsg?: string, payload?: Record<st
 			calls.push(url);
 			return data;
 		},
+		async getBytes(url) {
+			calls.push(url);
+			throw new Error("not stubbed");
+		},
 	};
 }
 
@@ -420,6 +424,112 @@ describe("B1-C：登录自更新（轨一）", () => {
 		const uid = mkUser("wecom:zhangsan");
 		const res = await selfUpdate({ ...ctx, uid }, { client: clientOf(new Error("上游炸了")), cache: memCache(), store: storeDeps() });
 		expect(res.blocked).toBe(false);
+	});
+});
+
+// 头像同步（方案 A：下载企微头像字节 → data URL 存 avatar_base64）。
+// 核心纪律是「补缺不覆盖」：用户自己在个人中心上传的头像不能被 24h 登录同步冲掉，
+// 所以只对本地为空的行发起下载；下载是 best-effort，失败静默跳过不阻塞登录。
+describe("B1-E：登录自更新-头像同步（补缺不覆盖）", () => {
+	function mkUser(username: string, extra: Record<string, unknown> = {}): number {
+		dbo.prepare("INSERT INTO users (username, password_hash, display_name, source, avatar_base64) VALUES (?, '!wecom', ?, ?, ?)")
+			.run(username, username, extra.source ?? "wecom", extra.avatarBase64 ?? "");
+		return (dbo.prepare("SELECT id FROM users WHERE username = ?").get(username) as { id: number }).id;
+	}
+
+	const ctx = { uid: 0, userid: "zhangsan", corpId: "ww_corp_a", agentId: "100001", permanentCode: "perm_a" };
+	// 4 字节假 PNG（0x89 50 4E 47 → base64 定值 iVBORw==，断言写库内容用，不引 Buffer 全局）
+	const PNG_BYTES = new Uint8Array([0x89, 0x50, 0x4E, 0x47]);
+	const PNG_DATA_URL = "data:image/png;base64,iVBORw==";
+	const AVATAR_URL = "https://wework.qpic.cn/headimg/zhangsan/0";
+
+	function clientOfAvatar(detail: unknown, fetch: { calls: string[], result: { bytes: Uint8Array, contentType: string } | null }) {
+		return {
+			async userDetail() {
+				return detail;
+			},
+			async avatarBytes(url: string) {
+				fetch.calls.push(url);
+				return fetch.result;
+			},
+		} as never;
+	}
+
+	function detailOf(extra: Record<string, unknown>) {
+		return { userid: "zhangsan", name: "张三", position: null, status: 1, departments: [], orders: [], leaderInDept: [], mainDepartment: null, ...extra };
+	}
+
+	function avatarOf(username: string): string {
+		return (dbo.prepare("SELECT avatar_base64 FROM users WHERE username = ?").get(username) as { avatar_base64: string }).avatar_base64;
+	}
+
+	it("D-AV1 首次同步：本地空头像下载企微头像，写为 data URL", async () => {
+		const uid = mkUser("wecom:zhangsan");
+		const fetch = { calls: [] as string[], result: { bytes: PNG_BYTES, contentType: "image/png" } };
+		await selfUpdate({ ...ctx, uid }, {
+			client: clientOfAvatar(detailOf({ avatar: AVATAR_URL }), fetch),
+			cache: memCache(),
+			store: storeDeps(),
+		});
+		expect(fetch.calls).toEqual([AVATAR_URL]);
+		expect(avatarOf("wecom:zhangsan")).toBe(PNG_DATA_URL);
+	});
+
+	it("D-AV2 补缺不覆盖：本地已有头像（用户自己上传）不下载、原值不动", async () => {
+		const mine = "data:image/png;base64,AAAA";
+		const uid = mkUser("wecom:zhangsan", { avatarBase64: mine });
+		const fetch = { calls: [] as string[], result: { bytes: PNG_BYTES, contentType: "image/png" } };
+		await selfUpdate({ ...ctx, uid }, {
+			client: clientOfAvatar(detailOf({ avatar: AVATAR_URL }), fetch),
+			cache: memCache(),
+			store: storeDeps(),
+		});
+		expect(fetch.calls).toEqual([]);
+		expect(avatarOf("wecom:zhangsan")).toBe(mine);
+	});
+
+	it("D-AV3 下载失败（null）：头像保持空、登录不被打断、节流键照写", async () => {
+		const uid = mkUser("wecom:zhangsan");
+		const cache = memCache();
+		const res = await selfUpdate({ ...ctx, uid }, {
+			client: clientOfAvatar(detailOf({ avatar: AVATAR_URL }), { calls: [], result: null }),
+			cache,
+			store: storeDeps(),
+		});
+		expect(res.blocked).toBe(false);
+		expect(avatarOf("wecom:zhangsan")).toBe("");
+		expect(await cache.get("wecom:self:ww_corp_a:zhangsan")).toBe("1");
+	});
+
+	it("D-AV4 回包未给 avatar（无通讯录权限口径）：不发起下载", async () => {
+		const uid = mkUser("wecom:zhangsan");
+		const fetch = { calls: [] as string[], result: { bytes: PNG_BYTES, contentType: "image/png" } };
+		await selfUpdate({ ...ctx, uid }, {
+			client: clientOfAvatar(detailOf({}), fetch),
+			cache: memCache(),
+			store: storeDeps(),
+		});
+		expect(fetch.calls).toEqual([]);
+		expect(avatarOf("wecom:zhangsan")).toBe("");
+	});
+
+	it("D-AV5 D13：source='local' 的行（管理员转为本地维护）连下载都不发起", async () => {
+		const uid = mkUser("wecom:zhangsan", { source: "local" });
+		const fetch = { calls: [] as string[], result: { bytes: PNG_BYTES, contentType: "image/png" } };
+		await selfUpdate({ ...ctx, uid }, {
+			client: clientOfAvatar(detailOf({ avatar: AVATAR_URL }), fetch),
+			cache: memCache(),
+			store: storeDeps(),
+		});
+		expect(fetch.calls).toEqual([]);
+		expect(avatarOf("wecom:zhangsan")).toBe("");
+	});
+
+	it("D-AV6 toMember 映射：user/get 回包的 avatar 字段进入 WecomMember", async () => {
+		const http = stubHttp({ errcode: 0, payload: { userid: "zhangsan", name: "张三", avatar: AVATAR_URL, department: [2], status: 1 } });
+		const client = createWecomClient({ http, cache: await cacheWithToken() });
+		const d = await client.userDetail("ww_corp_a", "100001", "perm", "zhangsan");
+		expect(d?.avatar).toBe(AVATAR_URL);
 	});
 });
 

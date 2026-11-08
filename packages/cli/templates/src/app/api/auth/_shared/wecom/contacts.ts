@@ -137,7 +137,7 @@ async function applyUserEvent(fields: CallbackFields, ctx: CorpCtx): Promise<voi
 		corpId: ctx.corpId,
 	});
 	// activated 不置位：建档 ≠ 用过本站（§9.1 的通讯录目录只收登录过的人）
-	await applyMemberDetail({ uid, userid: target }, detail ?? memberFromEvent(fields), { now: ctx.now });
+	await applyMemberDetail({ uid, userid: target }, detail ?? memberFromEvent(fields), { now: ctx.now, fetchAvatar: url => ctx.client.avatarBytes(url) });
 }
 
 /**

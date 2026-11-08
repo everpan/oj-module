@@ -16,6 +16,8 @@ import type { WecomStoreDeps } from "./store";
 // ④ 只加不摘：人调到新部门只加新的，旧部门由全量同步/事件摘除。
 // 落库只有**一个**函数（applyMemberDetail）：轨二（全量同步）、轨三（事件增量）也调它——
 // 三套写库逻辑必然长歪，而症状只在「某条路径走过来的人组织关系不对」时才暴露。
+import { bytesToBase64 } from "#/_platform/_shared/base64";
+
 import { setMainDepartment, upsertMember } from "#/_platform/_shared/service/domain/org";
 
 export const AUTHORIZE_IN_APP = "https://open.weixin.qq.com/connect/oauth2/authorize";
@@ -223,6 +225,8 @@ async function dbExternalStatus(userid: string): Promise<number | null> {
 export interface MemberDetail {
 	/** undefined = 这条数据源没给名字，保留原值（空串/空白的名字不写） */
 	name?: string | null
+	/** undefined = 没给（无通讯录权限时回包不含该字段），**不写**；string = 头像 CDN URL */
+	avatar?: string | null
 	/** undefined = 没给，**不写**（别把已知职务清成 null；null = 明确为空，写 null） */
 	position?: string | null
 	/** 同上：undefined = 不知道在职状态，不能覆盖 */
@@ -253,6 +257,12 @@ export async function applyMemberDetail(
 		activated?: boolean
 		/** 全量同步按片预取的「企微部门 origin_id → 本地 id」；缺省时按本次涉及的部门现查 */
 		deptByOrigin?: Map<string, number>
+		/**
+		 * 企微头像下载（best-effort，返回 null = 拿不到/超限，不写）。
+		 * **补缺不覆盖**：只对本地 avatar_base64 为空的行发起下载——用户自己在个人中心
+		 * 上传的头像不能被 24h 登录同步冲掉；D13 由下面的 SELECT（source='wecom'）一并挡掉。
+		 */
+		fetchAvatar?: (url: string) => Promise<{ bytes: Uint8Array, contentType: string } | null>
 	},
 ): Promise<void> {
 	const cols: Record<string, unknown> = {};
@@ -265,6 +275,18 @@ export async function applyMemberDetail(
 	const displayName = detail.name?.trim();
 	if (displayName)
 		cols.display_name = displayName;
+	const avatarUrl = typeof detail.avatar === "string" ? detail.avatar.trim() : "";
+	if (avatarUrl && opts.fetchAvatar) {
+		const local = await db.table("users").select(["avatar_base64"]).where({ and: [
+			{ field: "username", op: "eq", value: externalUsername(ctx.userid) },
+			{ field: "source", op: "eq", value: "wecom" },
+		] }).all() as Array<{ avatar_base64: string | null }>;
+		if (local.length && !String(local[0].avatar_base64 ?? "")) {
+			const got = await opts.fetchAvatar(avatarUrl).catch(() => null);
+			if (got)
+				cols.avatar_base64 = `data:${got.contentType};base64,${bytesToBase64(got.bytes)}`;
+		}
+	}
 	if (Object.keys(cols).length) {
 		await db.table("users").update(cols).where({ and: [
 			{ field: "username", op: "eq", value: externalUsername(ctx.userid) },
@@ -317,7 +339,7 @@ export async function selfUpdate(ctx: SelfUpdateCtx, deps: SelfUpdateDeps): Prom
 		if (!detail)
 			return { blocked: isBlockedStatus(await dbExternalStatus(ctx.userid)) };
 		// 真人刚扫码登录过 → 纳入通讯录目录（§9.1）；同步/事件建档的人不算
-		await applyMemberDetail(ctx, detail, { now: deps.store.now, activated: true });
+		await applyMemberDetail(ctx, detail, { now: deps.store.now, activated: true, fetchAvatar: url => deps.client.avatarBytes(url) });
 		await deps.cache.set(key, "1", SELF_UPDATE_TTL_SECS);
 		return { blocked: isBlockedStatus(detail.status) };
 	}

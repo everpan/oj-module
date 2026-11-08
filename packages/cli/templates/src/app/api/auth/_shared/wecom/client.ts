@@ -15,6 +15,8 @@
 
 const API_BASE = "https://qyapi.weixin.qq.com";
 const TIMEOUT_MS = 5000;
+/** 头像字节上限：企微头像最多几百 KB，5MB 是宽松闸——超限说明拿到的不是头像（防下载被劫持成大文件） */
+const AVATAR_MAX_BYTES = 5 * 1024 * 1024;
 /** 软超时的检查步长：主链路一结束，最坏再挂一个步长就收尾 */
 const TIMEOUT_STEP_MS = 50;
 const TOKEN_SKEW_SECS = 300;
@@ -22,6 +24,8 @@ const TOKEN_SKEW_SECS = 300;
 export interface WecomHttp {
 	getJson: (url: string) => Promise<Record<string, unknown>>
 	postJson: (url: string, body: unknown) => Promise<Record<string, unknown>>
+	/** 二进制下载（头像 CDN 用）：body 不进 JSON 解析 */
+	getBytes: (url: string) => Promise<{ bytes: Uint8Array, contentType: string }>
 }
 
 export interface WecomCache {
@@ -99,6 +103,21 @@ export function runtimeHttp(): WecomHttp {
 	return {
 		getJson: url => call(url, { method: "GET" }),
 		postJson: (url, body) => call(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body ?? {}) }),
+		async getBytes(url) {
+			let res: Response;
+			try {
+				res = await withSoftTimeout(fetch(url, { method: "GET" }), TIMEOUT_MS);
+			}
+			catch (e) {
+				throw upstream(`企微资源不可达：${(e as Error).message}`);
+			}
+			if (!res.ok)
+				throw upstream(`企微资源 HTTP ${res.status}`);
+			return {
+				bytes: new Uint8Array(await res.arrayBuffer()),
+				contentType: String(res.headers.get("content-type") || "").split(";")[0].trim(),
+			};
+		},
 	};
 }
 
@@ -184,6 +203,8 @@ export interface WecomDept {
 export interface WecomMember {
 	userid: string
 	name: string | null
+	/** 头像 URL（qpic CDN；无通讯录权限时回包不给该字段 → null） */
+	avatar: string | null
 	departments: string[]
 	orders: number[]
 	leaderInDept: number[]
@@ -474,6 +495,7 @@ export function createWecomClient(deps: WecomClientDeps) {
 		return {
 			userid: String(raw.userid ?? ""),
 			name: raw.name == null ? null : String(raw.name),
+			avatar: raw.avatar == null ? null : String(raw.avatar),
 			departments,
 			orders,
 			leaderInDept: leader,
@@ -566,6 +588,21 @@ export function createWecomClient(deps: WecomClientDeps) {
 		userIdByCode,
 		userNameById,
 		userDetail,
+		/**
+		 * 企微头像下载（best-effort，头像同步用）：非 image/*、超 AVATAR_MAX_BYTES 或
+		 * 任何网络/协议失败一律返回 null，绝不抛出——补头是体验优化，不能把登录/同步打成错。
+		 */
+		async avatarBytes(url) {
+			try {
+				const got = await http.getBytes(url);
+				if (!got.contentType.startsWith("image/") || got.bytes.byteLength === 0 || got.bytes.byteLength > AVATAR_MAX_BYTES)
+					return null;
+				return got;
+			}
+			catch {
+				return null;
+			}
+		},
 		departmentChildren,
 		departmentDetail,
 		departmentList,
