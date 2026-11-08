@@ -18,7 +18,7 @@
 import type { PageResult } from "../infra/query";
 import type { Department } from "./org";
 import { assertPermission, assertTenantSelf } from "../infra/access";
-import { pageArgs } from "../infra/query";
+import { allRows, pageArgs } from "../infra/query";
 import { rateLimit } from "../infra/rate";
 import { listDepartments, memberCounts } from "./org";
 
@@ -277,14 +277,19 @@ export async function pageDepartments(reader: OrgReader, opts: {
 async function collectMembers(idx: DeptIndex, deptIds: number[] | null): Promise<MemberItem[]> {
 	if (deptIds && deptIds.length === 0)
 		return [];
-	const links = await db.table("sys_dept_member")
-		.select(["user_id", "dept_id", "is_main"])
-		.whereIf(deptIds, { field: "dept_id", op: "in", value: deptIds })
-		.all() as Array<{ user_id: number, dept_id: number, is_main: number }>;
+	// 全量取数：构造器隐式 limit=100，组织同步后成员关系/用户都破百；截断会让人「查不到」。
+	const links = await allRows<{ user_id: number, dept_id: number, is_main: number }>(() =>
+		db.table("sys_dept_member")
+			.select(["user_id", "dept_id", "is_main"])
+			.whereIf(deptIds, { field: "dept_id", op: "in", value: deptIds })
+			.orderBy([{ field: "id" }]),
+	);
 	if (!links.length)
 		return [];
 	const ids = [...new Set(links.map(l => Number(l.user_id)))];
-	const users = await db.table("users").select(["id", "username", "display_name"]).where({ field: "id", op: "in", value: ids }).where({ field: "is_forbidden", op: "eq", value: 0 }).all() as Array<{ id: number, username: string, display_name: string | null }>;
+	const users = await allRows<{ id: number, username: string, display_name: string | null }>(() =>
+		db.table("users").select(["id", "username", "display_name"]).where({ field: "id", op: "in", value: ids }).where({ field: "is_forbidden", op: "eq", value: 0 }).orderBy([{ field: "id" }]),
+	);
 	const byId = new Map(users.map(u => [Number(u.id), u]));
 	const ordered = [...links].sort((a, b) =>
 		Number(b.is_main ?? 0) - Number(a.is_main ?? 0) || Number(a.dept_id) - Number(b.dept_id));
@@ -431,7 +436,9 @@ export async function resolveUserIds(reader: OrgReader, input: {
 		}
 		const list = [...scope];
 		if (list.length) {
-			const links = await db.table("sys_dept_member").select(["user_id"]).where({ field: "dept_id", op: "in", value: list }).all() as Array<{ user_id: number }>;
+			const links = await allRows<{ user_id: number }>(() =>
+				db.table("sys_dept_member").select(["user_id"]).where({ field: "dept_id", op: "in", value: list }).orderBy([{ field: "id" }]),
+			);
 			for (const l of links)
 				out.add(Number(l.user_id));
 		}

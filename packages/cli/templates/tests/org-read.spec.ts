@@ -265,6 +265,19 @@ describe("成员读面", () => {
 		const page = await pageMembers(await resolveReader(ADMIN, "all"), { dept: fe, keyword: "ali" });
 		expect(page.list.map(m => m.userId)).toEqual([a]);
 	});
+
+	it("⚡ 成员数破百不截断：pageMembers 取全量（构造器隐式 limit=100 回归）", async () => {
+		const { fe } = await mkOrg();
+		const ids: number[] = [];
+		for (let i = 0; i < 120; i++) {
+			const r = dbo.prepare("INSERT INTO users (username, password_hash) VALUES (?, 'x')").run(`bulk${i}`);
+			ids.push(Number(r.lastInsertRowid));
+		}
+		for (const uid of ids)
+			await addMember(fe, uid, {}, deps);
+		const page = await pageMembers(await resolveReader(ADMIN, "all"), { dept: fe, size: 200 });
+		expect(page.total).toBe(120);
+	});
 });
 
 describe("某人的部门", () => {

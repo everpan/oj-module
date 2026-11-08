@@ -221,4 +221,12 @@ describe("B7：列表（用户管理页数据源）", () => {
 		expect(users.find(u => u.username === "u_emp")).toMatchObject({ employee_no: "E001", phone_number: "13800000000" });
 		expect(users.find(u => u.username === "u_emp2")).toMatchObject({ employee_no: null, phone_number: null });
 	});
+
+	it("⚡ 用户数破百不截断：listUsers 取全量（构造器隐式 limit=100 回归）", async () => {
+		for (let i = 0; i < 120; i++)
+			dbo.prepare("INSERT INTO users (username, password_hash, is_forbidden) VALUES (?, 'x', 0)").run(`u_bulk_${String(i).padStart(3, "0")}`);
+		const users = await listUsers();
+		// 只数本次批量：afterEach 会按 u% 清理，不污染其它用例
+		expect(users.filter(u => u.username.startsWith("u_bulk_")).length).toBe(120);
+	});
 });

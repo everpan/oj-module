@@ -6,6 +6,7 @@
 // bcrypt 经注入（Node 侧全局不可 stub，同 session.ts 约定）。
 import { invalidateUser } from "../infra/access";
 import { recordOp } from "../infra/audit";
+import { allRows } from "../infra/query";
 
 export interface UserDeps {
 	bcryptHash: (pw: string) => Promise<string>
@@ -112,8 +113,14 @@ async function assertMembershipAllowed(actorId: number, nextRoles: string[]): Pr
 }
 
 export async function listUsers(): Promise<UserRow[]> {
-	const rows = await db.table("users").select(["id", "username", "display_name", "email", "position", "employee_no", "phone_number", "is_forbidden", "must_change"]).orderBy([{ field: "username" }]).all() as Array<Record<string, unknown>>;
-	const roleRows = await db.table("sys_user_role").select(["user_id", "role_name"]).all() as Array<{ user_id: number, role_name: string }>;
+	// 名单一页全量（前端只在内存里筛）：构造器不给显式 limit 会被 db_query.default_limit=100
+	// 静默截断——企微组织同步后用户数破百，第 101 个起的人在页面上「凭空消失」（2026-11-08 范荣）。
+	const rows = await allRows<Record<string, unknown>>(() =>
+		db.table("users").select(["id", "username", "display_name", "email", "position", "employee_no", "phone_number", "is_forbidden", "must_change"]).orderBy([{ field: "username" }]),
+	);
+	const roleRows = await allRows<{ user_id: number, role_name: string }>(() =>
+		db.table("sys_user_role").select(["user_id", "role_name"]).orderBy([{ field: "user_id" }]),
+	);
 	const roleMap = new Map<number, string[]>();
 	for (const r of roleRows)
 		(roleMap.get(Number(r.user_id)) ?? roleMap.set(Number(r.user_id), []).get(Number(r.user_id)))!.push(r.role_name);
@@ -135,10 +142,14 @@ export async function listUsers(): Promise<UserRow[]> {
 
 /** uid → 所属部门（主部门排前）。两次查询而非 join：构造器 join 带值条件有已知缺口。 */
 async function departmentsByUser(): Promise<Map<number, UserDeptRef[]>> {
-	const memberRows = await db.table("sys_dept_member").select(["user_id", "dept_id", "is_main"]).all() as Array<{ user_id: number, dept_id: number, is_main: number }>;
+	const memberRows = await allRows<{ user_id: number, dept_id: number, is_main: number }>(() =>
+		db.table("sys_dept_member").select(["user_id", "dept_id", "is_main"]).orderBy([{ field: "id" }]),
+	);
 	if (!memberRows.length)
 		return new Map();
-	const deptRows = await db.table("sys_department").select(["id", "name"]).where({ field: "deleted", op: "eq", value: 0 }).all() as Array<{ id: number, name: string | null }>;
+	const deptRows = await allRows<{ id: number, name: string | null }>(() =>
+		db.table("sys_department").select(["id", "name"]).where({ field: "deleted", op: "eq", value: 0 }).orderBy([{ field: "id" }]),
+	);
 	const nameOf = new Map(deptRows.map(d => [Number(d.id), d.name == null ? null : String(d.name)]));
 	const out = new Map<number, UserDeptRef[]>();
 	// 主部门先落：is_main=1 的行先排一遍，其余后追加

@@ -74,3 +74,21 @@ export function likePattern(keyword: unknown, opts: { minLen?: number, maxLen?: 
 		throw Object.assign(new Error(`keyword too long (max ${max})`), { status: 400 });
 	return `%${kw.replace(/[!%_]/g, m => `!${m}`)}%`;
 }
+
+/**
+ * 构造器全量取数（隐式 LIMIT 红线）：未显式 limit 的顶层查询会被 `db_query.default_limit`
+ * （默认 100）静默截断。名单类读面（用户列表 / 部门成员关系）在企微组织同步后很容易破百，
+ * 截断的表现是「某些人查不到」而不是报错，故由服务层分批取全。
+ *
+ * 100/页 = default_limit 的默认值：即使部署把 max_limit 调低，分页也不会被 clamp 成
+ * 大于页大小的结果而误判「已取完」（rows.length < pageSize 即终止）。
+ */
+export async function allRows<T>(mk: () => Builder, pageSize = 100): Promise<T[]> {
+	const out: T[] = [];
+	for (let offset = 0; ; offset += pageSize) {
+		const rows = await mk().limit(pageSize).offset(offset).all() as T[];
+		out.push(...rows);
+		if (rows.length < pageSize)
+			return out;
+	}
+}

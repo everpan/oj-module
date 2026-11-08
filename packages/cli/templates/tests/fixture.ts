@@ -41,6 +41,9 @@ export const ADMIN = 1;
 /** 部署默认租户（与运行时 store/tenant.ts 的 DEFAULT_TENANT 同值） */
 export const DEFAULT_TENANT = "default";
 
+/** 构造器隐式分页上限（与运行时 db_query.default_limit 缺省值同口径） */
+const DEFAULT_QUERY_LIMIT = 100;
+
 /**
  * 带 `tenant_id` 列的表 = 租户化表（A 组）。建库时按 PRAGMA 自省后填充，
  * 不在代码里抄一份清单——迁移口径变了这里跟着变。
@@ -425,8 +428,9 @@ class FakeQuery {
 		if (!inner) {
 			if (s.orders.length)
 				sql += ` ORDER BY ${s.orders.map(o => `${quoteIdent(o.field)}${o.dir === "desc" ? " DESC" : o.dir === "asc" ? " ASC" : ""}`).join(", ")}`;
-			if (s.limit !== null)
-				sql += ` LIMIT ${Number(s.limit)}`;
+			// 与运行时同口径：未显式 limit 的顶层查询由 db_query.default_limit 隐式加 LIMIT 100。
+			// 垫片不模拟这条会让「名单超过 100 行被静默截断」的 bug 在单测里假绿（2026-11-08 范荣）。
+			sql += ` LIMIT ${Number(s.limit ?? DEFAULT_QUERY_LIMIT)}`;
 			if (s.offset !== null)
 				sql += ` OFFSET ${Number(s.offset)}`;
 		}
