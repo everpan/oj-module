@@ -20,12 +20,10 @@ export default function App() {
 	const {
 		language,
 		isDark,
-		theme,
 		themeColorPrimary,
 		colorBlindMode,
 		colorGrayMode,
 		themeRadius,
-		changeSiteTheme,
 
 		enableCheckUpdates,
 		checkUpdatesInterval,
@@ -65,39 +63,6 @@ export default function App() {
 			dayjs.locale("zh-cn");
 		}
 	}, [language]);
-
-	/**
-	 * Change theme when the system theme changes
-	 */
-	const setEmulateTheme = useCallback(
-		// eslint-disable-next-line unused-imports/no-unused-vars
-		(dark?: boolean) => {
-			changeSiteTheme("auto");
-		},
-		[changeSiteTheme],
-	);
-
-	/**
-	 * Watch system theme change
-	 */
-	useEffect(() => {
-		if (theme === "auto") {
-			// https://developer.chrome.com/docs/devtools/rendering/emulate-css/
-			const darkModeMediaQuery = window.matchMedia(
-				"(prefers-color-scheme: dark)",
-			);
-
-			function matchMode(e: MediaQueryListEvent) {
-				setEmulateTheme(e.matches);
-			}
-
-			setEmulateTheme(darkModeMediaQuery.matches);
-			darkModeMediaQuery.addEventListener("change", matchMode);
-			return () => {
-				darkModeMediaQuery.removeEventListener("change", matchMode);
-			};
-		}
-	}, [theme, setEmulateTheme]);
 
 	/**
 	 * 更新页面颜色模式（灰色、色弱）

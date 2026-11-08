@@ -140,6 +140,18 @@ export const usePreferencesStore = create<
 				});
 			},
 		}),
-		{ name: getAppNamespace("preferences") },
+		{
+			name: getAppNamespace("preferences"),
+			/**
+			 * 2026-11-08：旧版本把用户点过的 light/dark 一直持久化，「跟随系统」只对
+			 * 新用户有效——系统换色时老用户永远停在旧值。升级到此版本时一次性把历史
+			 * 偏好归位 auto；用户之后再显式选 light/dark 会写入 version=1，不再被重置。
+			 */
+			version: 1,
+			migrate: persisted => ({
+				...(persisted as Partial<PreferencesState>),
+				theme: "auto",
+			}),
+		},
 	),
 );
