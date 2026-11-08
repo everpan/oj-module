@@ -197,6 +197,19 @@ function isObj(v: unknown): v is Record<string, unknown> {
 	return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
+/**
+ * 剥离 oj 运行时自打印的启动噪声（如 `[oj-serve] host ABI_VERSION…` / `[oj-serve] plugin …`），
+ * 这些行长且淹没有效信息，截断后把真正的 SQL/DSN 报错截掉，导致无法定位。真实错误通常在
+ * 输出末尾，故过滤后取尾部。跨平台：仅按 `[oj-serve]` 前缀过滤，与宿主 OS 无关。
+ */
+function stripRuntimeNoise(text: string): string {
+	return text
+		.split("\n")
+		.filter(l => !/^\s*\[oj-serve\]/i.test(l))
+		.join("\n")
+		.trim();
+}
+
 /** @returns 备份路径 + 清理失败 note（null = 清理正常；note 并入迁移 message，禁 console——Finding A） */
 async function backupDb(dbPath: string): Promise<{ bak: string, pruneNote: string | null }> {
 	const f = fsFace();
@@ -238,6 +251,32 @@ async function pruneBackups(dbPath: string, f: FsFace): Promise<string | null> {
 	return null;
 }
 
+/**
+ * 解析站点 config 的 db.default 方言（sqlite / mysql / postgres…），供 R14 备份决策：
+ * 仅 sqlite 有本地文件可 copy 备份；外部数据库（mysql/pg）无本地文件，备份无意义且
+ * copyFile 会因文件不存在 fail-closed 阻断迁移。解析失败/缺省保守按 sqlite 处理
+ * （旧行为：本地 db.sqlite 必存在）。读取 config 走全局 yaml 解析（ENC 密文只是
+ * 字符串值，不影响 db.default 提取）。跨平台纯函数，与宿主 OS 无关。
+ */
+async function readDbScheme(configPath: string | undefined): Promise<string> {
+	const p = configPath ?? "config.yaml";
+	try {
+		const g = globalThis as { yaml?: { parse: (text: string) => Promise<unknown> } };
+		const txt = new TextDecoder().decode(await fsFace().readFile(p));
+		const cfg = await g.yaml!.parse(txt);
+		const def = isObj(cfg) && isObj(cfg.db) ? cfg.db.default : undefined;
+		if (typeof def === "string") {
+			const m = /^([a-z0-9+]+):/i.exec(def);
+			// 无 scheme（裸路径）按文件型 sqlite 语义处理
+			return m ? m[1]!.toLowerCase() : "sqlite";
+		}
+	}
+	catch {
+		// 解析失败保守回落 sqlite（保持旧行为，不误伤本地库部署）
+	}
+	return "sqlite";
+}
+
 export async function migrate(ctx: MigrateContext): Promise<StageResult> {
 	const f = fsFace();
 	const modDir = `${ctx.staging}/api/${ctx.name}-${ctx.version}`;
@@ -249,14 +288,28 @@ export async function migrate(ctx: MigrateContext): Promise<StageResult> {
 		// api 段声明与包内容的一致性——这里零 exec 零备份直接放行
 		return { stage: "migrating", ok: true, message: `迁移跳过：包内无 api/${ctx.name}-${ctx.version}/ 段（web-only 方案无迁移，C2 §2.9）` };
 	}
-	// 第一步 R14：前置备份——备份不可用即不迁移（fail-closed，exec 零调用，库保持原状）
-	let bak: string;
+	// 第一步 R14：前置备份——仅 sqlite 有本地文件可备份；外部数据库（mysql/pg）无本地文件，
+	// 备份无意义且 copyFile 会因文件缺失 fail-closed 阻断迁移，故跳过并改用 DB 无关措辞。
+	// 备份不可用（sqlite 路径）即不迁移（fail-closed，exec 零调用，库保持原状）。
+	const scheme = await readDbScheme(ctx.configPath);
+	const isSqlite = scheme === "sqlite";
+	let bak: string | undefined;
 	let pruneNote: string | null = null;
-	try {
-		({ bak, pruneNote } = await backupDb(ctx.dbPath));
+	let backupInfo: string; // 替换各失败消息中的「备份 ${bak} 可供回退」
+	let backupClause: string; // 成功消息中的备份说明
+	if (isSqlite) {
+		try {
+			({ bak, pruneNote } = await backupDb(ctx.dbPath));
+		}
+		catch (e) {
+			return { stage: "migrating", ok: false, retryable: true, message: `迁移失败：前置备份不可用（${String(e)}）——无备份不迁移（R14），未执行 oj migrate，库保持原状` };
+		}
+		backupInfo = `备份 ${bak} 可供回退`;
+		backupClause = `备份 ${bak}，保留最近 ${KEEP_BACKUPS} 份`;
 	}
-	catch (e) {
-		return { stage: "migrating", ok: false, retryable: true, message: `迁移失败：前置备份不可用（${String(e)}）——无备份不迁移（R14），未执行 oj migrate，库保持原状` };
+	else {
+		backupInfo = `外部数据库（${scheme}）无需本地文件备份，数据已保留原状`;
+		backupClause = `外部数据库（${scheme}）无需本地文件备份`;
 	}
 	// 第二步物化迁移服务目录（B-11）：staging 兄弟目录、release 形态（扁平锁 + 模块目录拷贝）；
 	// 锁恰一条目——oj 只 discover 本模块
@@ -276,7 +329,7 @@ export async function migrate(ctx: MigrateContext): Promise<StageResult> {
 		await copyTree(modDir, `${svcDir}/${ctx.name}-${ctx.version}`, f);
 	}
 	catch (e) {
-		return { stage: "migrating", ok: false, retryable: true, message: `迁移失败：迁移服务目录物化失败（${String(e)}）——附录 A migrating；备份 ${bak} 可供回退` };
+		return { stage: "migrating", ok: false, retryable: true, message: `迁移失败：迁移服务目录物化失败（${String(e)}）——附录 A migrating；${backupInfo}` };
 	}
 	try {
 		// 第三步 exec：成败真源 = exit code（S1-6 实测；逐模块 continue-and-collect 由 oj 保证）。
@@ -345,7 +398,7 @@ export async function migrate(ctx: MigrateContext): Promise<StageResult> {
 			// 否则 en-US 用户也会读到中文 reason）。原始 stderr 只留在服务端 task.message 诊断，不进用户面。
 			//   127/126 = oj 二进制或运行环境不可用（命令未找到 / 共享库缺失 / 不可执行）——环境类，非方案问题；
 			//   137 = 被 SIGKILL（超时或内存超限）；其余非 0 = 迁移逻辑失败（SQL/DSN 等，真因见服务端日志）。
-			const detail = (stderrTail || stdoutText).trim().slice(0, 500);
+			const detail = stripRuntimeNoise(stderrTail || stdoutText).slice(-800);
 			let failCode: string;
 			let summary: string;
 			if (code === 127 || code === 126) {
@@ -368,13 +421,13 @@ export async function migrate(ctx: MigrateContext): Promise<StageResult> {
 				retryable: true,
 				code: failCode,
 				// 诊断摘要留服务端 task.message；用户面由 CLI 按 code 出本地化友好文案（install.ts STAGE_CODE_COPY）
-				message: `迁移失败：${summary}（附录 A migrating：数据已保留原状、未改动；备份 ${bak} 可供回退）——输出摘要：${detail}`,
+				message: `迁移失败：${summary}（附录 A migrating：数据已保留原状、未改动；${backupInfo}）——输出摘要：${detail}`,
 			};
 		}
 		// 第四步解析：exit 0 但输出违约属契约破坏，重试不自愈（retryable=false）
 		const parsed = parseMigrateOutput(stdoutText);
 		if (!parsed.ok) {
-			return { stage: "migrating", ok: false, retryable: false, message: `迁移失败：${parsed.message}（备份 ${bak} 可供回退；附录 A migrating）` };
+			return { stage: "migrating", ok: false, retryable: false, message: `迁移失败：${parsed.message}（${backupInfo}；附录 A migrating）` };
 		}
 		ctx.onMigrateOutput?.(parsed.output);
 		// 逐模块复核：exit 0 但含 ok=false 属输出自相矛盾，按失败处理（fail-closed）
@@ -384,7 +437,7 @@ export async function migrate(ctx: MigrateContext): Promise<StageResult> {
 				stage: "migrating",
 				ok: false,
 				retryable: true,
-				message: `迁移失败：${failed.length} 个模块迁移未通过（附录 A migrating：数据已保留原状；备份 ${bak} 可供回退）——${failed.map(x => `${x.module}: ${String(x.error ?? "ok=false")}`).join("；").slice(0, 500)}`,
+				message: `迁移失败：${failed.length} 个模块迁移未通过（附录 A migrating：数据已保留原状；${backupInfo}）——${failed.map(x => `${x.module}: ${String(x.error ?? "ok=false")}`).join("；").slice(0, 500)}`,
 			};
 		}
 		// 第五步禁降版红线（OJ-9，M003 同源）：目标产物 max seq < 账本 head 拒切；applied 为空
@@ -396,7 +449,7 @@ export async function migrate(ctx: MigrateContext): Promise<StageResult> {
 					stage: "migrating",
 					ok: false,
 					retryable: false,
-					message: `迁移失败：目标产物最大 seq ${target} 低于账本 head ${ctx.ledgerHead}——禁降版部署（OJ-9 红线，M003 同源）；锁与状态保持原样（D11），备份 ${bak} 可供回退`,
+					message: `迁移失败：目标产物最大 seq ${target} 低于账本 head ${ctx.ledgerHead}——禁降版部署（OJ-9 红线，M003 同源）；锁与状态保持原样（D11），${backupInfo}`,
 				};
 			}
 		}
@@ -404,11 +457,11 @@ export async function migrate(ctx: MigrateContext): Promise<StageResult> {
 		return {
 			stage: "migrating",
 			ok: true,
-			message: `迁移完成：${parsed.output.results.length} 个模块、共 ${appliedCount} 条迁移已应用（账据 = oj migrate --format json 的 applied[]；备份 ${bak}，保留最近 ${KEEP_BACKUPS} 份${pruneNote ? `；${pruneNote}` : ""}；迁移成功后才允许后续落锁，D11/R2）`,
+			message: `迁移完成：${parsed.output.results.length} 个模块、共 ${appliedCount} 条迁移已应用（账据 = oj migrate --format json 的 applied[]；${backupClause}${pruneNote ? `；${pruneNote}` : ""}；迁移成功后才允许后续落锁，D11/R2）`,
 		};
 	}
 	catch (e) {
-		return { stage: "migrating", ok: false, retryable: true, message: `迁移失败：${String(e)}（备份 ${bak} 可供回退；附录 A migrating）` };
+		return { stage: "migrating", ok: false, retryable: true, message: `迁移失败：${String(e)}（${backupInfo}；附录 A migrating）` };
 	}
 	finally {
 		// svc 目录运行后清场（成败皆清）：staging 本体原样保留（lock_commit 的 rename 源）

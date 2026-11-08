@@ -135,10 +135,17 @@ platform:
         # -c ${path:configPath} 复用运行服务同一份 config（MySQL），规避回退 config.yaml（sqlite）。
         - 'oj migrate --format json -c ${path:configPath} -d ${path:dir} ${raw:module}'
         - 'oj.exe migrate --format json -c ${path:configPath} -d ${path:dir} ${raw:module}'
+      # exec.run 清空子进程环境（仅放行 env 白名单），而 `oj` 特判 token 解析（OJ-10 双闸门）
+      # 依赖 OJ_BUNDLED_LD/OJ_BUNDLED_LIB 在子进程内存在才能解析成随包 ld-linux 启动器形态，
+      # 否则回落 current_exe()(=ld-linux) → 插件目录探测落到 bin/lib/plugins（空）→
+      # 「config declares [auth] but no auth plugin loaded」。故必须把这两个随包运行时变量
+      # 连同 PATH 透传给 oj migrate 子进程；其值由 serve 启动环境注入（bin/oj 启动器设定）。
+      env: [OJ_BUNDLED_LD, OJ_BUNDLED_LIB, PATH]
     # 市场编排面（src/oj-market/api，端点在 /api/oj-market/*）与 _platform 用同一安装器，
     # 请求模块上下文 = oj-market（oj exec 按模块逐条授权）——缺这条真机安装/收敛全 NotCapable。
     oj-market:
       allow: *INSTALLER_EXEC_ALLOW
+      env: [OJ_BUNDLED_LD, OJ_BUNDLED_LIB, PATH]
 
 # 安装器落盘面：解包到 modules/.staging、写 dist/modules、备份 db.sqlite，全在 config 目录内。
 # 缺这段会 NotCapable，且症状很阴：安装提交返回 200，但 task 查询恒 404。
