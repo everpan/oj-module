@@ -279,6 +279,7 @@ describe("devServer 全栈接线", () => {
 			port,
 			shellDist: path.join(root, "shell-dist"),
 			buildModulesFn: async () => {},
+			convergeTrigger: () => {}, // 出厂对账触发不混入 module-root 断言（factory-converge.test 单钉）
 			ojStarter: (cfg: string, base: string, apiSource: string | string[]): OjProcess => {
 				seen = apiSource;
 				return up.starter(upPort, configPath)(cfg, base, apiSource);

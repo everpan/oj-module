@@ -107,7 +107,11 @@ export function runtimeHttp(): WecomHttp {
 		async getBytes(url) {
 			let res: Response;
 			try {
-				res = await withSoftTimeout(fetch(url, { method: "GET" }), TIMEOUT_MS);
+				// 同 call()：用 RequestInit 变量而非内联字面量。模板 global.d.ts 另声明了一个
+				// 返回 OjFetchResponse 子集的 fetch 重载，内联对象会命中它、赋给 Response 报
+				// TS2740；走标准 RequestInit 重载才拿到运行时真实返回的 Response（headers.get 可用）。
+				const init: RequestInit = { method: "GET" };
+				res = await withSoftTimeout(fetch(url, init), TIMEOUT_MS);
 			}
 			catch (e) {
 				throw upstream(`企微资源不可达：${(e as Error).message}`);
@@ -653,7 +657,7 @@ export function createWecomClient(deps: WecomClientDeps) {
 		 * 企微头像下载（best-effort，头像同步用）：非 image/*、超 AVATAR_MAX_BYTES 或
 		 * 任何网络/协议失败一律返回 null，绝不抛出——补头是体验优化，不能把登录/同步打成错。
 		 */
-		async avatarBytes(url) {
+		async avatarBytes(url: string) {
 			try {
 				const got = await http.getBytes(url);
 				if (!got.contentType.startsWith("image/") || got.bytes.byteLength === 0 || got.bytes.byteLength > AVATAR_MAX_BYTES)

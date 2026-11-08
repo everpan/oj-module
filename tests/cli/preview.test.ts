@@ -1,4 +1,5 @@
 import type { OjProcess } from "../../packages/cli/src/oj";
+import type { PreviewOptions } from "../../packages/cli/src/preview";
 import fs from "node:fs";
 import path from "node:path";
 import { afterAll, describe, expect, it, vi } from "vitest";
@@ -66,6 +67,16 @@ function stubStarter(port: number, opts: { ready?: () => Promise<void> } = {}) {
 }
 
 /**
+ * 桩掉 fire-and-forget 的出厂对账触发：夹具只桩了 oj 进程、端口上没有真实后端，
+ * 默认 triggerFactoryConverge 会向 127.0.0.1:<port> 发 fetch → ECONNREFUSED 噪声。
+ * 该行为由 market/factory-converge.test.ts 单钉，编排测试不关心（同 dev-fullstack
+ * 的 convergeTrigger 注入口径）；用例要观测触发时自行传入 convergeTrigger 覆盖。
+ */
+function runPreviewQuiet(root: string, opts: PreviewOptions = {}) {
+	return runPreview(root, { convergeTrigger: () => {}, ...opts });
+}
+
+/**
  * 拦截 runPreview 的信号注册点（SIGINT 走 on、exit 走 once）供断言，不真
  * 注册（十几个用例会触发 MaxListenersExceededWarning）；其余事件一律透传
  * 真实 process——不吞被测代码之外任何监听器注册。
@@ -108,7 +119,7 @@ describe("runPreview fail-fast 四查", () => {
 			const { root } = makeFixture();
 			c.remove(root);
 			const once = stubProcessSignals();
-			await expect(runPreview(root, { execOj: () => {}, ojStarter: stubStarter(1).starter }))
+			await expect(runPreviewQuiet(root, { execOj: () => {}, ojStarter: stubStarter(1).starter }))
 				.rejects
 				.toThrowError(c.hint);
 			once.restore();
@@ -122,7 +133,7 @@ describe("runPreview 派生 config", () => {
 		const before = fs.readFileSync(configPath, "utf-8");
 		const once = stubProcessSignals();
 
-		const handle = await runPreview(root, {
+		const handle = await runPreviewQuiet(root, {
 			siteDir,
 			execOj: () => {},
 			ojStarter: stubStarter(port).starter,
@@ -161,7 +172,7 @@ describe("runPreview 派生 config", () => {
 		].join("\n"));
 		const once = stubProcessSignals();
 
-		await runPreview(root, {
+		await runPreviewQuiet(root, {
 			siteDir,
 			execOj: () => {},
 			ojStarter: stubStarter(port).starter,
@@ -180,7 +191,7 @@ describe("runPreview 派生 config", () => {
 		const { root, siteDir, port } = makeFixture();
 		const once = stubProcessSignals();
 
-		await runPreview(root, {
+		await runPreviewQuiet(root, {
 			port: 39999,
 			siteDir,
 			execOj: () => {},
@@ -196,7 +207,7 @@ describe("runPreview 派生 config", () => {
 		fs.writeFileSync(path.join(root, "api/config.yaml"), "server:\n  port: 19877\nmounts: api-src\n");
 		const once = stubProcessSignals();
 
-		await expect(runPreview(root, {
+		await expect(runPreviewQuiet(root, {
 			siteDir,
 			execOj: () => {},
 			ojStarter: stubStarter(1).starter,
@@ -211,7 +222,7 @@ describe("runPreview 派生 config", () => {
 		fs.writeFileSync(path.join(root, "api/config.yaml"), "server:\n  port: [unclosed\n");
 		const once = stubProcessSignals();
 
-		await expect(runPreview(root, {
+		await expect(runPreviewQuiet(root, {
 			siteDir,
 			execOj: () => {},
 			ojStarter: stubStarter(1).starter,
@@ -231,14 +242,16 @@ describe("runPreview 编排", () => {
 		const logSpy = vi.spyOn(console, "log").mockImplementation((...args: unknown[]) => {
 			logs.push(args.join(" "));
 		});
+		const converge = vi.fn();
 		const once = stubProcessSignals();
 
-		await runPreview(root, {
+		await runPreviewQuiet(root, {
 			siteDir,
 			execOj: (args) => {
 				calls.push(args);
 			},
 			ojStarter: starter,
+			convergeTrigger: converge,
 		});
 		once.restore();
 		logSpy.mockRestore();
@@ -258,6 +271,8 @@ describe("runPreview 编排", () => {
 		expect(startCalls[0]!.extraArgs).toEqual([]);
 		// 横幅串保持（tests/integration 的 startRam 靠它抓端口）；host 随 config（f54617162）
 		expect(logs.some(l => l.includes("已启动：http://127.0.0.1:"))).toBe(true);
+		// 出厂对账走注入点（测试不真发 fetch）；删掉注入点即会退回真实 fetch 打桩端口报错
+		expect(converge).toHaveBeenCalledWith(port, "/api");
 	});
 
 	it("migrate 非零退出 → 透传报错且不起 oj、不落派生文件", async () => {
@@ -265,7 +280,7 @@ describe("runPreview 编排", () => {
 		const started: unknown[] = [];
 		const once = stubProcessSignals();
 
-		await expect(runPreview(root, {
+		await expect(runPreviewQuiet(root, {
 			siteDir,
 			execOj: () => {
 				throw new Error("migrate boom: M004 ledger behind");
@@ -287,7 +302,7 @@ describe("runPreview 编排", () => {
 		const { root, siteDir } = makeFixture();
 		const once = stubProcessSignals();
 
-		await expect(runPreview(root, {
+		await expect(runPreviewQuiet(root, {
 			siteDir,
 			execOj: () => {},
 			ojStarter: () => {
@@ -304,7 +319,7 @@ describe("runPreview 编排", () => {
 		let stopped = false;
 		const once = stubProcessSignals();
 
-		await expect(runPreview(root, {
+		await expect(runPreviewQuiet(root, {
 			siteDir,
 			execOj: () => {},
 			ojStarter: () => ({
@@ -325,7 +340,7 @@ describe("runPreview 编排", () => {
 		const { root, siteDir, port } = makeFixture();
 		const once = stubProcessSignals();
 
-		await runPreview(root, {
+		await runPreviewQuiet(root, {
 			siteDir,
 			execOj: () => {},
 			ojStarter: stubStarter(port).starter,
@@ -355,7 +370,7 @@ describe("runPreview htmlTransform（单服务不生效）", () => {
 		});
 		const once = stubProcessSignals();
 
-		await runPreview(root, {
+		await runPreviewQuiet(root, {
 			siteDir,
 			execOj: () => {},
 			ojStarter: stubStarter(port).starter,
@@ -375,7 +390,7 @@ describe("runPreview htmlTransform（单服务不生效）", () => {
 		});
 		const once = stubProcessSignals();
 
-		await runPreview(root, {
+		await runPreviewQuiet(root, {
 			siteDir,
 			execOj: () => {},
 			ojStarter: stubStarter(port).starter,

@@ -43,6 +43,8 @@ export interface PreviewOptions {
 	execOj?: (args: string[]) => void
 	/** 注入桩 oj 进程；默认 startOj */
 	ojStarter?: (configPath: string, base: string, apiPath: string, extraArgs: string[]) => OjProcess
+	/** 注入出厂对账触发（测试）；默认 triggerFactoryConverge（fire-and-forget） */
+	convergeTrigger?: (port: number, apiBase: string) => void
 	/** 注入桩派生 config 落盘（测试）；默认 writePreviewConfig */
 	configWriter?: (projectRoot: string, opts: { siteDir: string, prefix?: string, port?: number, apiRoot?: string }) => PreviewConfigFiles
 }
@@ -125,7 +127,8 @@ export async function runPreview(projectRoot: string, opts: PreviewOptions = {})
 	console.log(`[ojm] oj 已就绪（release/js，单服务：${base} API + 静态 SPA 同进程）：http://${host}:${oj.port}`);
 	// 出厂即装（支柱三）：后端就绪后 fire-and-forget 触发一次随站 bundle 收敛
 	// （login → index riding 收敛，幂等；失败吞咽——不阻断 preview 启动）。
-	void triggerFactoryConverge({ port: oj.port, apiBase: base, host, log: console.log });
+	(opts.convergeTrigger ?? ((port: number, apiBase: string) =>
+		void triggerFactoryConverge({ port, apiBase, host, log: console.log })))(oj.port, base);
 	console.log(`\n[ojm] preview 已启动：http://${host}:${oj.port}${sitePrefix === "/" ? "" : sitePrefix}`);
 	console.log(`[ojm] 静态由 oj web 挂载直出（spa 深链回落）；派生 config ${path.basename(preview.configPath)} 为本进程临时产物，退出自动清理`);
 
