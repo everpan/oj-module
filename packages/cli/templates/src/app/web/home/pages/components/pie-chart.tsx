@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { echarts } from "./echarts-setup";
+import { useChartTheme } from "./use-chart-theme";
 
 /**
  * 饼图：按需注册的 `echarts` + `echarts-for-react/esm/core` + antd `Segmented` 联动
@@ -19,6 +20,7 @@ const VALUES: Record<string, number[]> = {
 
 export default function PieChart() {
 	const { t } = useTranslation();
+	const ct = useChartTheme();
 	const [channel, setChannel] = useState<string>("all");
 
 	const option: EChartsOption = useMemo(() => {
@@ -31,19 +33,28 @@ export default function PieChart() {
 		];
 		const values = VALUES[channel] ?? VALUES.all;
 		return {
-			tooltip: { trigger: "item", formatter: "{a} <br/>{b} : {c} ({d}%)" },
-			legend: { orient: "vertical", left: "left" },
+			tooltip: {
+				trigger: "item",
+				formatter: "{a} <br/>{b} : {c} ({d}%)",
+				backgroundColor: ct.tooltipBg,
+				borderColor: ct.tooltipBorder,
+				textStyle: { color: ct.tooltipText },
+			},
+			legend: { orient: "vertical", left: "left", textStyle: { color: ct.text } },
 			series: [
 				{
 					name: t("home:salesCategoryProportion"),
 					type: "pie",
 					radius: "55%",
 					center: ["50%", "60%"],
+					label: { color: ct.text },
+					labelLine: { lineStyle: { color: ct.axisLine } },
+					itemStyle: { borderColor: ct.containerBg, borderWidth: 1 },
 					data: names.map((name, i) => ({ name, value: values[i] })),
 				},
 			],
 		};
-	}, [channel, t]);
+	}, [channel, t, ct]);
 
 	const channelOptions = [
 		{ label: t("home:allChannels"), value: "all" },

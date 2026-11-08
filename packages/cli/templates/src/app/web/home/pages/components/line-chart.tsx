@@ -6,6 +6,7 @@ import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { echarts } from "./echarts-setup";
+import { useChartTheme } from "./use-chart-theme";
 
 /**
  * 折线图：按需注册的 `echarts` + `echarts-for-react/esm/core`（见 echarts-setup.ts）。
@@ -20,6 +21,7 @@ type Range = "week" | "month" | "year";
 
 export default function LineChart() {
 	const { t } = useTranslation();
+	const ct = useChartTheme();
 	const [range, setRange] = useState<Range>("week");
 
 	const { labels, data } = useMemo(() => {
@@ -50,9 +52,26 @@ export default function LineChart() {
 	}, [range, t]);
 
 	const option: EChartsOption = {
-		tooltip: { trigger: "axis", axisPointer: { type: "cross" } },
-		xAxis: { type: "category", boundaryGap: false, data: labels },
-		yAxis: { type: "value" },
+		tooltip: {
+			trigger: "axis",
+			axisPointer: { type: "cross", crossStyle: { color: ct.axisLine }, label: { color: ct.tooltipText, backgroundColor: ct.tooltipBg } },
+			backgroundColor: ct.tooltipBg,
+			borderColor: ct.tooltipBorder,
+			textStyle: { color: ct.tooltipText },
+		},
+		xAxis: {
+			type: "category",
+			boundaryGap: false,
+			data: labels,
+			axisLabel: { color: ct.text },
+			axisLine: { lineStyle: { color: ct.axisLine } },
+			axisTick: { lineStyle: { color: ct.axisLine } },
+		},
+		yAxis: {
+			type: "value",
+			axisLabel: { color: ct.text },
+			splitLine: { lineStyle: { color: ct.splitLine } },
+		},
 		series: [{ type: "line", smooth: true, areaStyle: {}, data }],
 	};
 

@@ -4,10 +4,12 @@ import ReactEChartsCore from "echarts-for-react/esm/core";
 import { useTranslation } from "react-i18next";
 
 import { echarts } from "./echarts-setup";
+import { useChartTheme } from "./use-chart-theme";
 
 /** 柱状图：按需注册的 `echarts` + `echarts-for-react/esm/core`（见 echarts-setup.ts）。 */
 export default function BarChart() {
 	const { t } = useTranslation();
+	const ct = useChartTheme();
 	const categories = [
 		t("home:directAccess"),
 		t("home:emailMarketing"),
@@ -15,9 +17,19 @@ export default function BarChart() {
 		t("home:videoAdvertise"),
 	];
 	const option: EChartsOption = {
-		tooltip: {},
-		xAxis: { type: "category", data: categories },
-		yAxis: { type: "value" },
+		tooltip: { backgroundColor: ct.tooltipBg, borderColor: ct.tooltipBorder, textStyle: { color: ct.tooltipText } },
+		xAxis: {
+			type: "category",
+			data: categories,
+			axisLabel: { color: ct.text },
+			axisLine: { lineStyle: { color: ct.axisLine } },
+			axisTick: { lineStyle: { color: ct.axisLine } },
+		},
+		yAxis: {
+			type: "value",
+			axisLabel: { color: ct.text },
+			splitLine: { lineStyle: { color: ct.splitLine } },
+		},
 		series: [
 			{
 				type: "bar",
