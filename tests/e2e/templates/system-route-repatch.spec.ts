@@ -66,6 +66,8 @@ test.describe("system 模块路由登录后重登记（templates）", () => {
 	test("superadmin SPA 登录后，站点设置 / 企微集成 可点开而非 404", async ({ page }) => {
 		await enterTemplateApp(page, { username: "superadmin" });
 		await page.getByText("系统管理", { exact: true }).first().click();
+		// 三级菜单（2026-11-08）：站点设置/企微集成 下沉到「框架管理」分组，先展开分组
+		await page.getByText("框架管理", { exact: true }).first().click();
 
 		const settings = page.getByText("站点设置", { exact: true }).first();
 		await expect(settings).toBeVisible({ timeout: 10_000 });
