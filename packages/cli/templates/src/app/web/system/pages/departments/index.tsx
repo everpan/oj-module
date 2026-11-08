@@ -299,9 +299,16 @@ export default function DepartmentsPage() {
 					? (
 						<Space>
 							<Typography.Text type="secondary">{t("system:departments.readonlyHint")}</Typography.Text>
-							<Button size="small" type="link" onClick={() => detachMut.mutate(editing.id)}>
-								{t("system:departments.detach")}
-							</Button>
+							<Popconfirm
+								title={t("system:departments.confirmDetach")}
+								okText={t("system:departments.detach")}
+								cancelText={t("system:common.cancel")}
+								onConfirm={() => detachMut.mutate(editing.id)}
+							>
+								<Button size="small" type="link" danger>
+									{t("system:departments.detach")}
+								</Button>
+							</Popconfirm>
 						</Space>
 					)
 					: null}

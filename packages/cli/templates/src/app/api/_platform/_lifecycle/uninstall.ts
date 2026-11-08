@@ -179,6 +179,15 @@ export async function computeUninstallImpact(input: UninstallInput): Promise<Uni
  */
 export async function runUninstall(input: UninstallInput): Promise<UninstallResult> {
 	const { name } = input;
+	// 第一方方案市场模块保护（2026-11-08）：oj-market 的 API 面随平台内置，它自身承载全站
+	// 方案安装/启用/卸载编排；卸载会摘除编排面（/api/oj-market/* 全 404），方案市场整页不可用，
+	// 且市场页再无入口把它装回来。与 setEnabled 的「禁止停用」同一处置：后端硬门禁（拦 CLI 与
+	// 任意直调），前端卡片「卸载」按钮同步禁用。
+	if (name === "oj-market") {
+		const msg = "卸载被拒：oj-market 是第一方方案市场模块，承载全站方案安装/启用/卸载能力，卸载会导致方案市场不可用且无法从市场恢复，故禁止卸载。";
+		(input.audit ?? auditOp)({ action: "solution.uninstall", module: name, target: name, detail: { ok: false, detail: msg }, level: 4 });
+		return { ok: false, message: msg };
+	}
 	const f = fsFace();
 	const lock = await readLock(input.lockPath);
 	const side = input.state.read().solutions[name];

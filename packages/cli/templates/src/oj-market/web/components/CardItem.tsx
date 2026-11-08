@@ -40,6 +40,9 @@ export function CardItem({ row, busy, canManage = true, onInstall, onEnableToggl
 	const disableLocked = enabled && isFirstPartyMarket;
 	const toggleDisabled = busy || !canManage || disableLocked;
 	const toggleTip = disableLocked ? t("oj-market:card:disableLocked") : manageTip;
+	// 卸载同理：oj-market 的 API 面随平台内置，卸载会摘除编排面（/api/oj-market/* 全 404），
+	// 方案市场整页不可用且再无入口装回，故卡片上的「卸载」同样永久禁用。
+	const uninstallLocked = isFirstPartyMarket;
 	const toggleButton = (
 		<Button
 			style={{ flexShrink: 0 }}
@@ -198,7 +201,15 @@ export function CardItem({ row, busy, canManage = true, onInstall, onEnableToggl
 					</Button>
 				)}
 				{installed && (
-					<Button style={{ flexShrink: 0 }} size="small" danger onClick={() => onUninstall(row)} disabled={busy || !canManage} title={manageTip}>
+					<Button
+						style={{ flexShrink: 0 }}
+						size="small"
+						danger
+						onClick={() => onUninstall(row)}
+						disabled={busy || !canManage || uninstallLocked}
+						title={uninstallLocked ? t("oj-market:card:uninstallLocked") : manageTip}
+						data-testid={`card-uninstall-${row.name}`}
+					>
 						{t("oj-market:card:uninstall")}
 					</Button>
 				)}

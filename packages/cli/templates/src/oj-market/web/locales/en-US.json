@@ -50,6 +50,7 @@
 		"disableConfirmOk": "Disable",
 		"disableConfirmCancel": "Cancel",
 		"disableLocked": "oj-market powers the solution market itself (install / enable / uninstall for the whole site) and cannot be disabled",
+		"uninstallLocked": "oj-market powers the solution market itself; uninstalling it would remove install / enable / uninstall for the whole site and cannot be restored from the market, so it cannot be uninstalled",
 		"refreshTitle": "Page refresh required",
 		"refreshBody": "Install / upgrade / rollback has finished, but the browser is still running the old front-end bundle — the solution's menu and navigation will not appear until a full page reload. Click \"Refresh page\" to apply the changes (without a supervisor, you may also need to restart oj serve to take full effect).",
 		"refreshNow": "Refresh page"

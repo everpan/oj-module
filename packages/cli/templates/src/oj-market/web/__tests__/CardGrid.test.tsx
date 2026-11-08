@@ -138,6 +138,17 @@ describe("cardGrid 卡片网格（BDD）", () => {
 		expect(handlers.onUninstall).not.toHaveBeenCalled();
 	});
 
+	it("given oj-market 已装 When 渲染 Then 卸载按钮永久禁用且提示禁止卸载", () => {
+		handlers.onUninstall.mockClear();
+		const ojMarket = { ...installed, name: "oj-market" };
+		renderWithProviders(<CardGrid rows={[ojMarket]} {...handlers} />, new InMemoryMarketClient());
+		const btn = screen.getByTestId("card-uninstall-oj-market") as HTMLButtonElement;
+		expect(btn.disabled).toBe(true);
+		expect(btn.getAttribute("title")).toContain("禁止卸载");
+		btn.click();
+		expect(handlers.onUninstall).not.toHaveBeenCalled();
+	});
+
 	it("given oj-market 已启用 When 渲染 Then 停用按钮永久禁用且提示禁止停用", () => {
 		const ojMarket = { ...installed, name: "oj-market" };
 		renderWithProviders(<CardGrid rows={[ojMarket]} {...handlers} />, new InMemoryMarketClient());

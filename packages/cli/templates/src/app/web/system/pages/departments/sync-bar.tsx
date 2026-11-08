@@ -7,7 +7,7 @@
 // 一直推到 done/failed」，中间按限速配额留最小间隔；暂停/失败后按钮变「继续同步」，进度不丢。
 import { request } from "@oj-module/runtime";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Alert, App, Button, Progress, Space, Typography } from "antd";
+import { Alert, App, Button, Popconfirm, Progress, Space, Typography } from "antd";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -277,9 +277,16 @@ export function WecomSyncBar({ onFinished }: { onFinished: () => void }) {
 							: view.status === "failed" ? t("system:wecom.sync.retry") : t("system:wecom.sync.syncNow")}
 					</Button>
 					{running && (
-						<Button size="small" type="text" danger loading={cancelling} onClick={stop}>
-							{t("system:wecom.sync.cancel")}
-						</Button>
+						<Popconfirm
+							title={t("system:wecom.sync.cancelConfirm")}
+							okText={t("system:wecom.sync.cancel")}
+							cancelText={t("system:common.cancel")}
+							onConfirm={stop}
+						>
+							<Button size="small" type="text" danger loading={cancelling}>
+								{t("system:wecom.sync.cancel")}
+							</Button>
+						</Popconfirm>
 					)}
 				</Space>
 			)}
