@@ -6,7 +6,6 @@
 	"profile": {
 		"title": "My Profile",
 		"avatar": "Avatar",
-		"avatarRequired": "Please upload an avatar!",
 		"username": "Username",
 		"usernameRequired": "Please enter your username!",
 		"displayName": "Display name",

@@ -6,7 +6,6 @@
 	"profile": {
 		"title": "我的资料",
 		"avatar": "头像",
-		"avatarRequired": "请上传头像!",
 		"username": "用户名",
 		"usernameRequired": "请输入您的用户名!",
 		"displayName": "显示名",

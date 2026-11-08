@@ -461,7 +461,7 @@ async function runSlice(
 				return paused();
 			}
 			for (const m of members)
-				await applyMember(m, corpId, deptByOrigin, orgDeps);
+				await applyMember(m, corpId, deptByOrigin, orgDeps, deps.client);
 			cursor.at++;
 		}
 		cursor.phase = "reconcile";
@@ -494,9 +494,9 @@ async function countMembers(corpId: string): Promise<number> {
  * 在 login.ts::applyMemberDetail 里，登录自更新与事件增量也调它。deptByOrigin 是本片预取的，
  * 逐人去查会把这个 500 部门的同步打成 N×M 次查询。
  */
-async function applyMember(m: WecomMember, corpId: string, deptByOrigin: Map<string, number>, orgDeps: { now: () => number }): Promise<void> {
+async function applyMember(m: WecomMember, corpId: string, deptByOrigin: Map<string, number>, orgDeps: { now: () => number }, client: WecomClient): Promise<void> {
 	const uid = await upsertSourceUser({ username: externalUsername(m.userid), displayName: m.name, source: ORIGIN, corpId });
-	await applyMemberDetail({ uid, userid: m.userid }, m, { ...orgDeps, deptByOrigin });
+	await applyMemberDetail({ uid, userid: m.userid }, m, { ...orgDeps, deptByOrigin, fetchAvatar: url => client.avatarBytes(url) });
 }
 
 /** 取消：清游标、置 cancelled（不回滚已写入的组织数据——同步幂等，重跑即可） */

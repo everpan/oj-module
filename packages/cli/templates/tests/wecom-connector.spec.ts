@@ -374,6 +374,9 @@ describe("P1-F：凭证链（client：缓存 + 失效重试 + 错误两态）", 
 				calls.push(url);
 				return next();
 			},
+			async getBytes() {
+				throw new Error("not stubbed");
+			},
 		};
 	}
 
@@ -419,6 +422,9 @@ describe("P1-F：凭证链（client：缓存 + 失效重试 + 错误两态）", 
 					throw Object.assign(new Error("企微接口不可达"), { status: 502 });
 				},
 				async postJson() {
+					throw Object.assign(new Error("企微接口不可达"), { status: 502 });
+				},
+				async getBytes() {
 					throw Object.assign(new Error("企微接口不可达"), { status: 502 });
 				},
 			},
@@ -500,6 +506,9 @@ describe("P1-F：凭证链（client：缓存 + 失效重试 + 错误两态）", 
 					throw new Error("unreachable");
 				},
 				async postJson() {
+					throw new Error("unreachable");
+				},
+				async getBytes() {
 					throw new Error("unreachable");
 				},
 			},

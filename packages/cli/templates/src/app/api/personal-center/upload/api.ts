@@ -6,24 +6,8 @@
 //   · 大文件（> max_upload）：服务端已流式直落 blob、字节不进 handler，此时
 //     http.file(0) 会**报错**，必须改走 files[0].key + blob.get(key)。
 // 头像通常远小于阈值，但别写成「只会一种」——换了上传组件/放开体积就会 500。
+import { bytesToBase64 } from "#/_platform/_shared/base64";
 import { isSelfTenant } from "#/_platform/_shared/service/infra/access";
-
-function toBase64(bytes: Uint8Array): string {
-	const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-	let out = "";
-	for (let i = 0; i < bytes.length; i += 3) {
-		const b0 = bytes[i];
-		const b1 = bytes[i + 1];
-		const b2 = bytes[i + 2];
-		out += chars[b0 >> 2];
-		out += chars[((b0 & 3) << 4) | (b1 !== undefined ? b1 >> 4 : 0)];
-		out += b1 !== undefined
-			? chars[((b1 & 15) << 2) | (b2 !== undefined ? b2 >> 6 : 0)]
-			: "=";
-		out += b2 !== undefined ? chars[b2 & 63] : "=";
-	}
-	return out;
-}
 
 const handler = {
 	async post() {
@@ -46,7 +30,7 @@ const handler = {
 			const meta = http.files[0];
 			// meta.key 非空 = 已被服务端流式落 blob（大文件），取字节只能走 blob
 			const bytes = meta.key ? await blob.get(meta.key) : await http.file(0);
-			const b64 = toBase64(bytes);
+			const b64 = bytesToBase64(bytes);
 			const dataUrl = `data:${meta.content_type || "application/octet-stream"};base64,${b64}`;
 			await db.table("users").update({ avatar_base64: dataUrl }).where({ field: "id", op: "eq", value: Number(uid) }).run();
 			// 大文件搬运/留档用 blob（v0.1.47）：搬走用 blob.move，别 get + put（字节进 V8）

@@ -1,4 +1,4 @@
-import { UploadOutlined } from "@ant-design/icons";
+import { UploadOutlined, UserOutlined } from "@ant-design/icons";
 
 import { Avatar, Button, Upload } from "antd";
 import ImgCrop from "antd-img-crop";
@@ -21,7 +21,8 @@ export function FormAvatarItem({ value, onChange }: FormAvatarItemProps) {
 	return (
 		<>
 			<div className="flex items-center gap-5">
-				<Avatar size={100} src={value} />
+				{/* 无头像时与 layout header（user-menu.tsx）同款 UserOutlined 默认图标 */}
+				<Avatar size={100} src={value} icon={<UserOutlined />} />
 				<ImgCrop
 					rotationSlider
 					aspectSlider
