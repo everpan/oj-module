@@ -282,4 +282,16 @@ describe("构造器红线防呆（垫片与上游契约对齐，放宽即假绿�
 			.rejects
 			.toThrow(/truncate does not accept where/);
 	});
+
+	it("写动词唯一：先 update/delete/truncate/insert(values) 再 fromSelect / 换动词一律响报（防静默翻成别的动词）", () => {
+		const src = () => db.table("users").select(["id"]);
+		// 评审发现：旧守卫只防 insert(values)→fromSelect，先 set 其它动词会静默翻成 INSERT
+		expect(() => db.table("users").update({ username: "x" }).fromSelect(src(), ["user_id"])).toThrow(/requires a fresh statement/);
+		expect(() => db.table("users").where({ field: "id", op: "eq", value: 1 }).delete().fromSelect(src(), ["user_id"])).toThrow(/requires a fresh statement/);
+		expect(() => db.table("users").truncate().fromSelect(src(), ["user_id"])).toThrow(/requires a fresh statement/);
+		// 对称面：values / fromSelect 已占位的语句也不许再换动词
+		expect(() => db.table("users").insert({ username: "x" }).fromSelect(src(), ["user_id"])).toThrow(/requires a fresh statement/);
+		expect(() => db.table("users").fromSelect(src(), ["user_id"]).update({ username: "x" })).toThrow(/requires a fresh statement/);
+		expect(() => db.table("users").insert({ username: "x" }).update({ username: "y" })).toThrow(/requires a fresh statement/);
+	});
 });
