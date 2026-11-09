@@ -2215,8 +2215,8 @@ flowchart LR
     VER -->|"签名缺失"| E1["sig_missing 拒装"]
     VER -->|"算法 / key_id 命名 / .sig 结构违约"| E2["sig_alg / sig_key / sig_format 拒装"]
     VER -->|"验签不过"| E3["tampered 拒装"]
-    VER -->|"信任库无此 key"| TOFU["needs_trust：指纹已随任务提交，待 superadmin 页面审核"]
-    TOFU -->|"方案市场页「待信任确认」弹窗通过（superadmin）"| LIB[".solutions/trusted-keys.yaml 入库"]
+    VER -->|"信任库无此 key"| TOFU["needs_trust：指纹已随任务提交，待 superadmin 审核"]
+    TOFU -->|"发布管理「信任审核」列表确认（superadmin）"| LIB[".solutions/trusted-keys.yaml 入库"]
     LIB --> INST
     VER -->|"验签通过"| NEXT["继续 installing 后续阶段（§11.3）"]
   end
@@ -2262,9 +2262,10 @@ ojm install dist/<name>-<version>.tgz --site-url <站点> --user superadmin --pa
 - 信任库 = `.solutions/trusted-keys.yaml`（key_id → 公钥 + added_at；首次绑定不可改，
   轮换 = 新增 key_id）。
 - **TOFU 审核流（2026-11-10 起）**：未知发布方首装 → 任务终态 `needs_trust`（非成功非
-  崩溃，staging 不清场），**指纹已随任务隐式提交，无需人工核对**；superadmin 登录方案
-  市场页，对同一方案点安装，在「待信任确认」弹窗中核对发布方与指纹后点「审核通过」
-  （仅 superadmin 可确认）——确认即入库并自动重试该安装；其余人重跑原安装命令续跑：
+  崩溃，staging 不清场），**指纹已随任务隐式提交，无需人工核对**；superadmin 打开
+  「方案市场 → 发布管理」，「信任审核」列表列出所有待确认的发布方指纹（方案/版本/
+  key_id/指纹），核对后点「确认信任」即入库（仅 superadmin 可见该区，服务端判权）；
+  安装人随后重跑原安装命令续跑：
 
 ```bash
 ojm trust ls                     # 列已信任 key（含 sha256 指纹分组）

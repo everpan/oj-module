@@ -17,7 +17,7 @@ flowchart LR
   E --> F["ojm market publish（远端签名推送）"]
   F --> G["ojm install（站点十阶段状态机）"]
   G --> H{"信任库认识这个 key 吗"}
-  H -->|"不认识"| I["needs_trust：指纹随任务提交 → superadmin 页面审核 → 重试"]
+  H -->|"不认识"| I["needs_trust：指纹随任务提交 → 发布管理信任审核 → 重试"]
   H -->|"认识"| J["done"]
 ```
 
@@ -176,8 +176,8 @@ ojm trust revoke <key_id>        # 吊销
 
 - 十阶段状态机（下载 → 验签 → 解包 → 迁移 → …→ 冒烟），失败语义三种：`failed`（锁前段，清场重跑）/ `partial`（锁后段，部分生效）/ `needs_trust`（第五终态，非成功）。
 - **TOFU（首次使用即信任）**：信任库不认识的 key，安装停在 `needs_trust` 并随任务提交公钥
-  指纹——**superadmin 在方案市场页审核**（对同一方案点安装，于「待信任确认」弹窗核对发布方
-  与指纹后点「审核通过」，仅超管可确认）即入库，重跑同一安装续跑。
+  指纹——**superadmin 在「方案市场 → 发布管理」的「信任审核」列表确认**（核对发布方与指纹后点
+  「确认信任」，仅超管可见该区，服务端判权）即入库，重跑同一安装续跑。
 - superadmin 核对指纹的可靠通道：当面/电话/已建立的加密聊天，**不要**用包的同一 CDN 页面
   上的指纹（那正是攻击者能篡改的地方）。
 - 第一方方案走模板内置公钥 bootstrap（首装免 TOFU）；模板内只有公钥，私钥只活在发行人 `~/.ojm/keys/`。
@@ -191,7 +191,7 @@ ojm trust revoke <key_id>        # 吊销
 | `sig_missing` 拒装 | 没签或 `.sig` 没随包 | `ojm sign --check` 后确认 `.sig` 与 tgz 同目录再装 |
 | `tampered` 拒装 | 签完又动过包，或传输损坏 | 重打包重签；核对 sha256 |
 | `sig_key` 拒装 | key_id 不是 `<publisher>.<id>` 全小写两段式 | 换合规 key_id 重新 keygen |
-| `needs_trust` 终态 | 站点第一次见这个 key | 指纹已随任务提交：superadmin 在市场页「待信任确认」弹窗审核通过 → 重跑 install |
+| `needs_trust` 终态 | 站点第一次见这个 key | 指纹已随任务提交：superadmin 在发布管理「信任审核」列表确认 → 重跑 install |
 | 打包报「缺少本方案的站点产物」 | `web.config.ts` 没登记模块，或没先 `ojm build` | 登记后重跑构建再打包 |
 | 打包报「缺少 bundle 级契约」 | 没有 `solution.yaml`（工程根或 `src/<模块>/`） | 补契约（§1.2） |
 | `ojm market publish` 后站点装不到新版 | 推送半成功（`.sig` 成 `.tgz` 败） | 重跑同一条 publish（同字节幂等补齐 pair）；站点 superadmin 跑 `POST /api/oj-market/backfill` 对账 |
@@ -234,8 +234,8 @@ ojm market setup --site-url http://127.0.0.1:9778 --user superadmin --pass aA123
 ojm install erp@0.1.0 --site-url http://127.0.0.1:9778 --user superadmin --pass <新口令>
 #   → 返回 task_id；轮询到 status=needs_trust，trust.fingerprint 与 ① 输出一致（已随任务提交待审）
 
-# ⑦ superadmin 在方案市场页对 erp 点安装，「待信任确认」弹窗核对发布方与指纹后审核通过
-#    （确认即入库并自动重试那一次安装）；CLI 侧随后重试同一安装续跑
+# ⑦ superadmin 打开「方案市场 → 发布管理」，「信任审核」列表中核对发布方与指纹后点「确认信任」
+#    （确认即入库）；CLI 侧随后重试同一安装续跑
 ojm install erp@0.1.0 --site-url http://127.0.0.1:9778 --user superadmin --pass <新口令>
 #   → status=done，十一个阶段全 ok：
 #     preflight / downloading / verifying / extracting / migrating /
@@ -254,4 +254,4 @@ ojm market walkthrough  --fixture erp@0.1.0   # 14 项 AC：主链 9 + 负向 5
 #   → 14 PASS / 0 FAIL；报告脱敏落盘 logs/walkthrough-<ts>.md（无 token/PEM 泄露）
 ```
 
-> 负向 5 项是**预期失败口径**：防线没拦住（装成了）才算 FAIL，比失败更严重。其中 zip-slip（neg-evil）在解包前被 R1 防护拒收；未登记 key（neg-stranger）走 TOFU 闭环（needs_trust → 页面审核通过 → done）。
+> 负向 5 项是**预期失败口径**：防线没拦住（装成了）才算 FAIL，比失败更严重。其中 zip-slip（neg-evil）在解包前被 R1 防护拒收；未登记 key（neg-stranger）走 TOFU 闭环（needs_trust → 发布管理信任审核确认 → done）。

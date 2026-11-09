@@ -76,5 +76,15 @@
 	"filter": {
 		"tenant": "Filter by tenant",
 		"tenantPlaceholder": "Leave empty for all tenants"
+	},
+	"trustReview": {
+		"title": "Trust review (superadmin)",
+		"desc": "A first install from an unknown publisher stops at needs_trust; the public-key fingerprint is submitted with the install task. Verify the publisher and fingerprint, then approve to add the key to the trust store so the installer can retry.",
+		"colSolution": "Solution",
+		"colKeyId": "Publisher key",
+		"colFingerprint": "Fingerprint",
+		"colAction": "Action",
+		"approve": "Approve & trust",
+		"empty": "No pending trust requests"
 	}
 }

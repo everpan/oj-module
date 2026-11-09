@@ -77,6 +77,16 @@ export const schemas = {
 
 }).catchall(z.unknown()),
 	},
+	"ojMarketTrustReviewGet": {
+		data: z.array(z.object({
+	"task_id": z.string(),
+	"name": z.string(),
+	"version": z.string(),
+	"key_id": z.string(),
+	"fingerprint": z.string(),
+	"started_at": z.number()
+})),
+	},
 	"ojMarketIndexGet": {
 		query: z.object({
 	"page": z.number().min(1).optional(),

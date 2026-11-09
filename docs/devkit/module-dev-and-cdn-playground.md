@@ -98,7 +98,7 @@ ojm market publish --fixture demo-solution@0.1.0 --id <发布方id>
 ojm market verify --file cdn/demo-solution-0.1.0.tgz
 
 # 4) 浏览器打开市场页 → 看到卡片 → 点安装
-#    首次遇陌生发布方会停在「待信任」→ superadmin 在市场页「待信任确认」弹窗审核通过 → 重试即成
+#    首次遇陌生发布方会停在「待信任」→ superadmin 在发布管理「信任审核」列表确认 → 重试即成
 ```
 
 每条命令的边界：
@@ -184,7 +184,7 @@ node "$CLI_PKG/bin/ojm.mjs" build                 # 生成 api/dist + web/dist�
 # config：platform.root 改成 api/dist（安装目标恒为 release 部署，root 必须与 --api-path 同源）
 (bin/oj serve -c config.yaml -b /api --api-path api/dist --console-log &)
 node "$CLI_PKG/bin/ojm.mjs" market setup --site-url http://127.0.0.1:9778 --user superadmin --pass aA123456 --new-pass <新口令>
-# 市场页点安装 → 首次停在「待信任」→ superadmin 在同一弹窗审核通过 → 重试 → done
+# 市场页点安装 → 首次停在「待信任」→ superadmin 在发布管理「信任审核」列表确认 → 重试 → done
 ```
 
 ### 6.3 七个坑（按撞见顺序）

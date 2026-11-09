@@ -33,6 +33,17 @@ export interface TaskTrust {
 	fingerprint: string
 }
 
+/** 信任审核行（GET /oj-market/trust/review；发布管理「信任审核」区数据源） */
+export interface TrustReviewItem {
+	/** 审批入参：POST /market/trust {task_id}（混淆代理防线自任务记录重取公钥） */
+	task_id: string
+	name: string
+	version: string
+	key_id: string
+	fingerprint: string
+	started_at: number
+}
+
 /** 安装任务记录（§10.2 + stages 明细日志；落 .install-tasks/<id>.json，800ms 轮询消费面） */
 export interface TaskRecord {
 	id: string

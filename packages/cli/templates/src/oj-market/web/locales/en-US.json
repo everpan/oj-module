@@ -83,7 +83,7 @@
 		"trustTitle": "Trust confirmation required: publisher key not in host trust store",
 		"trustBody": "The signing key of publisher \"{{keyId}}\" is not trusted by this host yet (first-use TOFU).",
 		"trustFingerprint": "Key fingerprint: ",
-		"trustHint": "Superadmin only: verify the publisher and the fingerprint below, then approve. Approving adds the key to the trust store and retries this install automatically (staged files are reused).",
+		"trustHint": "The publisher fingerprint is listed under Market → Publish management → Trust review. Superadmin only: verify the publisher and the fingerprint below, then approve. Approving adds the key to the trust store and retries this install automatically (staged files are reused).",
 		"trustConfirm": "Approve, trust and retry",
 		"reason": "Reason",
 		"retryable": "Retryable",

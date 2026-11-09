@@ -33,7 +33,7 @@ export function createOjMarketClient(ctx: ModuleContext) {
 	}
 	ctx.register.apiPrefix(API_PREFIX);
 	bindRequest(ctx.utils.request);
-	return { ojMarketInstallPost, ojMarketInstallCancelPost, ojMarketTaskGet, ojMarketEnablePost, ojMarketMetaGet, ojMarketBackfillPost, ojMarketTrustGet, ojMarketTrustPost, ojMarketTrustKeyPost, ojMarketTrustKeyDelete, ojMarketIndexGet, ojMarketCatalogGet, ojMarketCatalogDetailGet, ojMarketYankPost, ojMarketUninstallImpactGet, ojMarketUninstallPost, ojMarketHistoryGet, ojMarketHistoryDelete, ojMarketReleasesGet, ojMarketCdnUploadPost };
+	return { ojMarketInstallPost, ojMarketInstallCancelPost, ojMarketTaskGet, ojMarketEnablePost, ojMarketMetaGet, ojMarketBackfillPost, ojMarketTrustGet, ojMarketTrustPost, ojMarketTrustKeyPost, ojMarketTrustKeyDelete, ojMarketTrustReviewGet, ojMarketIndexGet, ojMarketCatalogGet, ojMarketCatalogDetailGet, ojMarketYankPost, ojMarketUninstallImpactGet, ojMarketUninstallPost, ojMarketHistoryGet, ojMarketHistoryDelete, ojMarketReleasesGet, ojMarketCdnUploadPost };
 }
 
 /**
@@ -285,6 +285,29 @@ export async function ojMarketTrustKeyDelete(query: OjMarketTrustKeyDeleteQuery)
 			const r = schemas["ojMarketTrustKeyDelete"].data.safeParse(data);
 			if (!r.success)
 				throw new ContractApiError(-1, `[契约违例] ojMarketTrustKeyDelete 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
+		}
+		return data;
+	}
+	catch (e) {
+		throw await toApiError(e);
+	}
+}
+
+export type OjMarketTrustReviewGetData = z.infer<(typeof schemas)["ojMarketTrustReviewGet"]["data"]>;
+
+export async function ojMarketTrustReviewGet(): Promise<OjMarketTrustReviewGetData> {
+	const client = ensureReq();
+	try {
+		const env = await client.get(`oj-market/trust/review`).json<OjEnvelope<OjMarketTrustReviewGetData>>();
+		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
+		if (typeof env.code === "number" && env.code !== 0)
+			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
+		const data = env.data as OjMarketTrustReviewGetData;
+		if (import.meta.env.DEV) {
+			const { schemas } = await import("./api.schemas");
+			const r = schemas["ojMarketTrustReviewGet"].data.safeParse(data);
+			if (!r.success)
+				throw new ContractApiError(-1, `[契约违例] ojMarketTrustReviewGet 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
 		}
 		return data;
 	}

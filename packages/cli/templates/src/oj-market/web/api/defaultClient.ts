@@ -15,6 +15,7 @@ import type {
 	PurgeHistoryResult,
 	ReleasePage,
 	TaskRecord,
+	TrustReviewItem,
 	UninstallImpact,
 } from "../types";
 import type { MarketClient } from "./client";
@@ -30,6 +31,7 @@ import {
 	ojMarketReleasesGet,
 	ojMarketTaskGet,
 	ojMarketTrustPost,
+	ojMarketTrustReviewGet,
 	ojMarketUninstallImpactGet,
 	ojMarketUninstallPost,
 } from "../__client";
@@ -111,6 +113,10 @@ export const httpMarketClient: MarketClient = {
 		// 服务端自任务记录重取公钥复算指纹比对（防混淆代理），前端只传 task_id，不传公钥
 		const data = await ojMarketTrustPost({ task_id: taskId });
 		return data as { result: string, key_id: string, fingerprint: string };
+	},
+	async trustReview() {
+		// 生成 client 已解包信封 + DEV 校验；此处仅对齐领域类型。
+		return (await ojMarketTrustReviewGet()) as TrustReviewItem[];
 	},
 	async enable(input: EnableInput) {
 		const data = await ojMarketEnablePost({ name: input.name, enabled: input.enabled });

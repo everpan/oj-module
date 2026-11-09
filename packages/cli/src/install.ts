@@ -140,8 +140,8 @@ const VERIFY_CODE_COPY: Record<string, { reason: { zh: string, en: string }, hin
 			en: "Unknown publisher (key_id not in the trust store): requires a trust review on the market page before install",
 		},
 		hint: {
-			zh: "指纹已随安装任务提交，superadmin 在方案市场页面审核通过后重试安装即可",
-			en: "The fingerprint is submitted with the install task; after a superadmin approves it on the market page, retry the install",
+			zh: "指纹已随安装任务提交，superadmin 在发布管理页的信任审核列表中确认后重试安装即可",
+			en: "The fingerprint is submitted with the install task; after a superadmin approves it in Publish management → Trust review, retry the install",
 		},
 	},
 	sig_format: {
@@ -241,13 +241,13 @@ export function renderOutcome(record: TaskRecord, locale?: string): string {
 			? [
 				`[ojm] Trust confirmation required (publisher: ${t?.key_id ?? "unknown"}) — install not completed`,
 				`Fingerprint (sha256 of public key, submitted with this task for review): ${fp}`,
-				"A trust review request has been submitted: a superadmin should open the market page, install the same solution, and approve it in the trust-confirmation dialog.",
+				"A trust review request has been submitted: a superadmin should open Market → Publish management and approve it in the Trust review list.",
 				"Once approved, retry this install command to continue.",
 			].join("\n")
 			: [
 				`[ojm] 待信任确认（发布方：${t?.key_id ?? "未知"}）——安装未完成`,
 				`指纹（公钥 sha256，已随本任务提交待审）：${fp}`,
-				"已提交信任审核：请 superadmin 登录方案市场页，对同一方案点安装，在「待信任确认」弹窗中审核通过。",
+				"已提交信任审核：请 superadmin 打开「方案市场 → 发布管理」，在「信任审核」列表中核对发布方与指纹后点「确认信任」。",
 				"审核入库后重试本安装命令即可继续。",
 			].join("\n");
 	}
