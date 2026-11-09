@@ -35,9 +35,10 @@ PG 的 `$N` 占位符自管）就会锁死到单一引擎，迁移时须逐条�
 | 聚合 / groupBy / having / distinct | `select([{fn,...}])/groupBy/having/distinct` | ✅ | |
 | count(distinct col) | `select([{fn:"count",distinct:true,field,as}])` | ✅ | v0.1.82；聚合一行、免拉行计数（受 LIMIT 钳制的 `distinct().all()+length` 是陷阱） |
 | 整表清空 | `.truncate().run()` | ✅ | v0.1.82；渲染 `DELETE FROM t`；**租户守卫照常注入**（租户表=清当前租户，整库清用 asSystem） |
+| 语句级租户覆盖 | `.forTenant(id)` | ✅ | 未发布版；只本条语句以 `id` 注入（防护照常），同请求其他语句仍当前租户；id 必须服务端派生；只许顶层语句，子查询/union/cte/fromSelect 源带它必报错；见 api-manual「语句级 forTenant」段 |
 | 子查询 / exists / union / with CTE | `subquery / exists / union / with` | ✅ | 嵌套 ≤ 4 |
 | 取回主键 | `.returning([...])` | ⚠️ | mysql 仅单列（两步取） |
-| 幂等写入 | `.orIgnore()` | ⚠️ | 见 §3；**与 fromSelect 组合在 sqlite 不支持** |
+| 幂等写入 | `.orIgnore()` | ⚠️ | 见 §3.2；VALUES / fromSelect 两形态 × 三方言全支持（v0.1.128），**语义宽度有方言差异** |
 | 批量写入（查询插入） | `.fromSelect(q, cols)` | ⚠️ | 见 §3 |
 | 目录自省 | `db.listTables(prefix?)` | ✅ | v0.1.82；当前库全部表名（含未登记 registry），替代按方言分支 `information_schema`/`sqlite_master` |
 | 流式读取 | `db.stream` | ⚠️ | 见 api-manual「db.stream」三档 |
@@ -84,21 +85,39 @@ DELETE 无此坑（删行必「变更」，匹配行 = 变更行），但归属�
 
 ### 3.2 `orIgnore()` 三方言差异
 
-| 引擎 | 渲染 | 命中重复键时 `run()` 返回值 |
-|---|---|---|
-| sqlite | `ON CONFLICT DO NOTHING` | `0` |
-| postgres | `ON CONFLICT DO NOTHING` | `0` |
-| mysql | `ON DUPLICATE KEY UPDATE <pk> = <pk>` | `1`（匹配行） |
+**VALUES 形态**（`insert({...}).orIgnore()`）：
+
+| 引擎 | 渲染 | 冲突处理宽度 | 命中重复键时 `run()` 返回值 |
+|---|---|---|---|
+| sqlite | `ON CONFLICT DO NOTHING` | 窄（只跳过唯一键冲突） | `0` |
+| postgres | `ON CONFLICT DO NOTHING` | 窄（只跳过唯一键冲突） | `0` |
+| mysql | `ON DUPLICATE KEY UPDATE <pk> = <pk>` | 窄（只吞唯一键冲突） | `1`（匹配行） |
+
+**fromSelect 形态**（`fromSelect(q, cols).orIgnore()`，v0.1.128 起三方言全支持）：
+
+| 引擎 | 渲染 | 冲突处理宽度 | 命中重复键时 `run()` 返回值 |
+|---|---|---|---|
+| sqlite | `INSERT OR IGNORE INTO … SELECT …` | **宽**（NOT NULL/CHECK 违例也静默跳过） | `0` |
+| postgres | `… SELECT … ON CONFLICT DO NOTHING` | 窄（只跳过唯一键冲突） | `0` |
+| mysql | `INSERT IGNORE INTO … SELECT …` | **宽**（NOT NULL/截断降级为告警静默丢行） | 实际写入行数 |
 
 - **不要用 `if (n === 1)` 判幂等**：pg/sqlite 返回 `0`。靠唯一约束 + 事务保证「不会重复写」，
   行数只读「写几条」。
-- mysql **无主键表**直接报错：`orIgnore on mysql requires a primary key on table '...'`。
+- mysql **无主键表**：仅 **VALUES 形态**报错（`orIgnore on mysql requires a primary key on
+  table '...'`）——恒等赋值需要主键列名；fromSelect 形态渲染 `INSERT IGNORE`，不要求主键。
+  mysql 两形态语义宽度不同是**有意保留**（VALUES 零回归，fromSelect 是方言上唯一合法出口）。
+- **故障模式跨方言相反**：pg 上 NOT NULL/CHECK 违例会**照常报错**，sqlite/mysql 的 fromSelect
+  形态对同样脏数据**静默丢行**——从 sqlite/mysql 迁 pg（或反向）时这条会咬人。
+- **只幂等唯一键冲突**：三形态都依赖目标表上真有唯一约束——无唯一键时冲突子句是空操作，
+  连跑两次产生重复行（真机验证）。
 - **mysql 上别组合 `orIgnore()` + `returning(['id'])`**：mysql 无 RETURNING，取 id 靠同连接
-  `SELECT LAST_INSERT_ID()`；而 `ON DUPLICATE KEY UPDATE <pk> = <pk>` 的恒等赋值不会刷新
+  `SELECT LAST_INSERT_ID()`；VALUES 形态恒等赋值、fromSelect 形态 ignored 行都不刷新
   `LAST_INSERT_ID()`，跳过重复行时拿到的是该连接上的旧值（首次则是 0）。要「幂等 + 拿 id」：
   先用唯一键 `select` 出 id，或普通 `insert` 后接 `OJ_DB_CONSTRAINT` 当已存在。
-- 实现**不用 `INSERT IGNORE`**：它会把 NOT NULL 违例 / 截断等**所有**错误降级为警告（静默数据
-  损坏面），且 sea-query 该路径上游零测试、组合后疑似产出非法 `ON DUPLICATE KEY IGNORE`。
+- 为什么 fromSelect 形态接受宽语义：sqlite 的 upsert 子句只能跟 VALUES（`ON CONFLICT` 是语法错），
+  `OR IGNORE` 是该方言上唯一合法的幂等 `INSERT…SELECT`；mysql 的 `VALUES()` 形态自 8.0.20
+  弃用、`ON DUPLICATE KEY UPDATE pk=pk` 在 SELECT 源含同名列时 1052 歧义，`INSERT IGNORE`
+  是唯一出口。代价是数据面比 `ON CONFLICT DO NOTHING` 宽，已由上表与陷阱速查明示。
 
 ### 3.3 `fromSelect(q, cols)` 注意点
 
@@ -109,20 +128,21 @@ DELETE 无此坑（删行必「变更」，匹配行 = 变更行），但归属�
   tenant 由服务端按当前租户注入，禁止 select 自带。
 - 源 select 的**租户收窄**继承到写入侧（跨租户读写被守卫拦截）；源 select 须 `select` 动词、
   深度 ≤ 4、禁 with/unions（见 api-manual「嵌套通用约束」）。
-- **sqlite 上 `orIgnore()` + `fromSelect()` 不可组合**（构造期显式拒绝，v0.1.82 明文）：
-  `orIgnore with fromSelect is not supported on sqlite (its upsert clause only follows VALUES)`。
-  根因：sqlite 的 upsert 子句只能跟在 VALUES 之后，`INSERT … SELECT … ON CONFLICT DO NOTHING`
-  是语法错；而 sqlite 原生的 `INSERT OR IGNORE … SELECT` 会把 NOT NULL / CHECK 违例**一并静默
-  跳过**（数据面比 ON CONFLICT 宽），与引擎「把静默损坏面收窄到唯一键冲突」的取向相悖，故不实现。
-  pg（ON CONFLICT）与 mysql（ON DUPLICATE KEY）的子句本就支持 SELECT 源，组合可用。sqlite 侧确需
-  该语义时退回裸 `db.exec("insert or ignore into … select …", [...])`，注释写明根因。
+- **sqlite 上 `orIgnore()` + `fromSelect()` 组合已支持**（v0.1.128；此前 v0.1.82 构造期拒绝）：
+  sqlite 渲染 `INSERT OR IGNORE INTO … SELECT …`，mysql 渲染 `INSERT IGNORE INTO … SELECT …`，
+  pg 渲染 `… SELECT … ON CONFLICT DO NOTHING`。根因备忘：sqlite 的 upsert 子句（`ON CONFLICT`）
+  只能跟在 VALUES 之后，但冲突**解决**子句（`OR IGNORE`）是另一个语法槽位、可以跟 SELECT。
+  语义注意见 §3.2 的宽度列：**只幂等唯一键冲突**（无唯一键时空操作连跑两次重复落），且
+  sqlite/mysql 的宽形态对 NOT NULL/CHECK 违例静默丢行（pg 照常报错）。
 
 ### 3.4 字面量列的方言 `CAST`
 
 `{ lit: v, as: "x" }` 值走绑定参数，按方言转：
 - sqlite：裸 `?`
 - mysql：`CAST(? AS CHAR)`
-- postgres：`CAST(? AS TEXT)`
+- postgres：`CAST(? AS TEXT)`——**例外（v0.1.128）**：select 作为 `fromSelect` 的**直接源**时
+  渲染裸 `$n`，类型由 INSERT 目标列推断（`lit(7)` 灌进 BIGINT 列不再报 TEXT→bigint 类型错，
+  真机 PREPARE 验证 bigint/text 混合可推断）；嵌套子查询里的 lit 保持 CAST（无推断上下文）。
 
 `lit` 必须是**标量**（数组/对象/嵌套报 `lit column '<as>' needs a scalar value
 (string/number/bool/null)`）；`as` 必填过别名形状
@@ -176,8 +196,8 @@ v0.1.81 前「别名混入真名」会让归属与租户两条守卫**同时静�
 1. **模糊搜索** `LIKE '%' || ? || '%' ESCAPE '!'` → `op: "contains"`。
 2. **join ON 带值条件** `... AND r.user_id = ?` → `join(t, [{left,right},{left:"r.user_id",op:"eq",value:id}])`。
 3. **字面量/标记列** `'svc' as scope` → `{ lit: "svc", as: "scope" }`；条件表达式 → `{ case: {...} }`。
-4. **INSERT OR IGNORE / INSERT … SELECT** → `.orIgnore()` / `.fromSelect(q, cols)`（sqlite 的
-   orIgnore+fromSelect 组合除外，见 §3.3）。
+4. **INSERT OR IGNORE / INSERT … SELECT** → `.orIgnore()` / `.fromSelect(q, cols)`
+   （v0.1.128 起含 sqlite 的 orIgnore+fromSelect 组合，见 §3.2/§3.3）。
 5. **动态 WHERE** `if (x) q.where(...)` → `q.whereIf(x, ...)`（空数组也自动跳过，避免 `IN ()` 静默 0 行）。
 6. **目录扫描**（v0.1.82）：`information_schema.tables` / `sqlite_master` 按方言分支 + `LIKE ? ESCAPE`
    手工转义 → `db.listTables(prefix?)` 一句（前缀转义引擎做，绑定参数）。

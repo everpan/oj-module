@@ -60,8 +60,14 @@ export const NPM_PKG = "@oj-bin/oj";
  * 模板不再退回裸 `db.exec`（mysql 1064 / pg 语法错），门禁必须盖住这条链路，否则下游
  * `ojm vendor` 装到旧 oj 会让「清除 / 全部已读」直接 500。闭环需求见
  * docs/devkit/sql-builder-missing-capabilities-pr.md §7。
+ * **0.2.80 抬到 0.1.129**：模板 wecom 认证域把「平台 superadmin 操作另一个企业租户」
+ * 从 `db.asSystem()`（请求级全关守卫）+ 裸 `db.exec("DELETE … WHERE tenant_id = ?")`
+ * 收敛为 `db.table(t).forTenant(id)` 语句级覆盖，而 `forTenant()` 是 oj v0.1.129 才有的
+ * 能力（v0.1.128 的 QueryBuilder 无此方法，调用即 TypeError）。门禁必须抬到 0.1.129，
+ * 否则下游 `ojm vendor` 装到旧 oj 会让「停用企业 / 开通租户管理员 / 改密」全线 500。
+ * 回归守卫见 packages/cli/templates/tests/sql-builder-guard.spec.ts。
  */
-export const MIN_OJ_VERSION = "0.1.128";
+export const MIN_OJ_VERSION = "0.1.129";
 
 /** 按段数值比较（字符串比较会把 0.1.9 判成大于 0.1.69）；非数字段按 0 处理 */
 export function isSupportedOjVersion(version: string): boolean {

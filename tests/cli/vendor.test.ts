@@ -240,5 +240,18 @@ fs.writeFileSync(path.join(bin,${JSON.stringify(ojBin)}),"#!/bin/sh\\necho oj\\n
 			expect(calls.some(c => c[0] === "install")).toBe(false);
 			fs.rmSync(dir, { recursive: true, force: true });
 		});
+
+		it("模板后端用了 forTenant → 门禁必须拒绝 0.1.128（该版本 QueryBuilder 无此方法）", () => {
+			// 跨包守卫：模板把跨租户读写收敛到 `forTenant()`（oj v0.1.129 起才有），
+			// 若有人把 MIN_OJ_VERSION 降回 0.1.128，下游 ojm vendor 装到的 oj 会让
+			// 「停用企业 / 开通租户管理员 / 改密」全线 TypeError。这里直接读模板源码，
+			// 不依赖 gitignored 的本地 .oj-version 标记（CI 干净克隆里不存在）。
+			const wecom = ["store.ts", "tenant-admin.ts"].map(name =>
+				fs.readFileSync(path.join(process.cwd(), "packages/cli/templates/src/app/api/auth/_shared/wecom", name), "utf8"));
+			const usesForTenant = wecom.some(src => src.split("\n")
+				.some(line => /\.forTenant\s*\(/.test(line) && !/^\s*(?:\/\/|\*)/.test(line)));
+			expect(usesForTenant, "模板已移除 forTenant 时请同步复核本门禁").toBe(true);
+			expect(isSupportedOjVersion("0.1.128")).toBe(false);
+		});
 	});
 });

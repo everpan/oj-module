@@ -71,6 +71,11 @@ interface QueryBuilder {
   ): QueryBuilder;
   // 基表别名：列限定写 "别名.列"；仅 select/join 生效，守卫按真名。
   as(alias: string): QueryBuilder;
+  // 语句级租户覆盖（未发布版）：只本条语句以租户 id 注入（防护照常，只换注入值），
+  // 同请求其他语句仍当前请求租户。id 必须服务端派生，绝不可取请求参数；
+  // 只许顶层语句（子查询/union/cte/fromSelect 源带它必报错）；命中记审计
+  // DB_TENANT_OVERRIDE。toSQL 产物不可经 db.query 回放，直接 run()。
+  forTenant(id: string): QueryBuilder;
   // DISTINCT / GROUP BY / HAVING / UNION / CTE（WITH）。
   distinct(): QueryBuilder;
   groupBy(cols?: string[]): QueryBuilder;

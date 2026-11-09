@@ -14,21 +14,21 @@
 //   admin = 租户级、每租户一个（本文件负责开的就是这个）。
 //
 // ─────────────────────────────────────────────────────────────────────────────
-// 【db.asSystem 例外说明 —— 全仓唯一，不得复制】
+// 【跨租户身份：语句级 forTenant，不用请求级 asSystem】（oj v0.1.129 起）
 //
-// 本文件是全代码库**唯一**使用 `db.asSystem()` 的地方。
+// 本文件所有读写都是「平台 superadmin 在 default 租户的请求里，操作另一个企业租户」，
+// 或「企微回调按 corp_id 推导出的目标租户」。用 `db.table(t).forTenant(id)`：只本条
+// 语句以 id 注入（防护照常，只换注入值），同请求其它语句仍注入当前请求租户，命中记
+// 审计 DB_TENANT_OVERRIDE。相比旧的 `db.asSystem()`（请求级**全关**、粒度太粗），
+// 不关闭结构化注入——全仓不再有请求级逃生口。
 //
-// 为什么必须用它：superadmin 的请求自带 `default` 租户头，而 `db.asTenant` 是
-// 「请求级、只能设一次，且要求当时还没有租户」。也就是说平台侧**没有任何正常通道**
-// 能往企业租户里写 users / sys_user_role。而「给新租户配管理员」是平台开通动作，
-// 不是业务写——正是逃生通道的用途（global.d.ts 原文："use db.asSystem() for system tasks"）。
-//
-// 框架红线：同一段注释紧接着写「业务 handler 不得使用」。所以这里是**有意识且被审计
-// 的单一例外**，代价与边界必须写清楚：
-//   · 范围：只在本文件，只服务「开通 / 重设租户管理员」这一件事；
-//   · 写操作必须显式带上 tenant_id 条件（asSystem 绕过自动注入，漏了就是跨租户脏写）；
-//   · 每个入口都在 admin/api.ts 走 recordOp 留痕（开通 level 2、改密 level 4）；
-//   · **不得在本文件之外任何地方复制 db.asSystem()**。
+// 红线（forTenant 的 id 吃什么都生效，防护照常只是换注入值）：
+//   · id 必须服务端派生。这里的 tenantId = corp_id，来自 superadmin 入口经
+//     assertSuperAdmin() 鉴权后显式指定的操作目标，或企微回调里由 corp_id 查表推导；
+//     绝不可把未经鉴权的请求租户参数直接喂给 forTenant（那就是跨租户泄露事故模板）。
+//   · 租户条件由 forTenant 自动注入，where / insert 里不要再手写 tenant_id：手写相同值
+//     只是冗余，与覆盖值不符时守卫直接报 `insert tenant_id mismatch`。
+//   · forTenant 只许顶层语句；本文件都是单表单语句，天然满足。
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** 租户管理员的固定账号名（每租户各一个，互不冲突——users 唯一键含 tenant_id） */
@@ -59,13 +59,12 @@ function randomPassword(): string {
 	return crypto.randomHex(10);
 }
 
-/** 跨租户读：指定租户下的管理员行（asSystem 例外，见文件头） */
+/** 跨租户读：指定租户下的管理员行（forTenant 语句级覆盖，见文件头） */
 async function adminRow(tenantId: string): Promise<{ id: number, must_change: number } | null> {
-	const rows = await db.asSystem().table("users").select(["id", "must_change"]).where({
-		and: [
-			{ field: "tenant_id", op: "eq", value: tenantId },
-			{ field: "username", op: "eq", value: TENANT_ADMIN_USERNAME },
-		],
+	const rows = await db.table("users").forTenant(tenantId).select(["id", "must_change"]).where({
+		field: "username",
+		op: "eq",
+		value: TENANT_ADMIN_USERNAME,
 	}).all() as Array<{ id: number, must_change: number | null }>;
 	if (!rows.length)
 		return null;
@@ -74,11 +73,10 @@ async function adminRow(tenantId: string): Promise<{ id: number, must_change: nu
 
 /** 跨租户读：该用户在本租户是否握着 admin 角色（账号存在 ≠ 有角色，可能被收回过） */
 async function hasAdminRole(tenantId: string, uid: number): Promise<boolean> {
-	const roles = await db.asSystem().table("sys_user_role").select(["role_name"]).where({
-		and: [
-			{ field: "tenant_id", op: "eq", value: tenantId },
-			{ field: "user_id", op: "eq", value: uid },
-		],
+	const roles = await db.table("sys_user_role").forTenant(tenantId).select(["role_name"]).where({
+		field: "user_id",
+		op: "eq",
+		value: uid,
 	}).all() as Array<{ role_name: string }>;
 	return roles.some(r => String(r.role_name) === TENANT_ADMIN_ROLE);
 }
@@ -106,9 +104,9 @@ export async function ensureTenantAdmin(tenantId: string): Promise<{ created: bo
 	let row = await adminRow(tenantId);
 
 	if (!row) {
-		// 与 ensureWecomUser 同形状：只填业务关心的列，其余走列默认值
-		await db.asSystem().table("users").insert({
-			tenant_id: tenantId,
+		// 与 ensureWecomUser 同形状：只填业务关心的列，其余走列默认值；
+		// tenant_id 由 forTenant 强制写入覆盖租户，不手写（见文件头）。
+		await db.table("users").forTenant(tenantId).insert({
 			username: TENANT_ADMIN_USERNAME,
 			display_name: "租户管理员",
 			password_hash: await bcrypt.hash(randomPassword()),
@@ -125,10 +123,9 @@ export async function ensureTenantAdmin(tenantId: string): Promise<{ created: bo
 		throw Object.assign(new Error("租户管理员建档失败"), { status: 500 });
 
 	if (!await hasAdminRole(tenantId, row.id)) {
-		await db.asSystem().table("sys_user_role").insert({
+		await db.table("sys_user_role").forTenant(tenantId).insert({
 			user_id: row.id,
 			role_name: TENANT_ADMIN_ROLE,
-			tenant_id: tenantId,
 		}).run();
 		return { created: true };
 	}
@@ -170,16 +167,14 @@ export async function setTenantAdminPassword(tenantId: string, password: string)
 	if (!row)
 		throw Object.assign(new Error("租户管理员建档失败"), { status: 500 });
 
-	await db.asSystem().table("users").update({ password_hash: await bcrypt.hash(password), must_change: 1 }).where({
-		and: [
-			{ field: "tenant_id", op: "eq", value: tenantId },
-			{ field: "username", op: "eq", value: TENANT_ADMIN_USERNAME },
-		],
-	}).run();
+	await db.table("users").forTenant(tenantId).update({
+		password_hash: await bcrypt.hash(password),
+		must_change: 1,
+	}).where({ field: "username", op: "eq", value: TENANT_ADMIN_USERNAME }).run();
 
-	// 改密后旧会话必须失效。跨租户删 refresh 走带 tenant_id 条件的裸 SQL
-	// （先例见 store.ts::revokeTenantSessions：守卫是 check-on-miss，带了租户条件即放行）
-	await db.exec("DELETE FROM sys_refresh_token WHERE tenant_id = ? AND user_id = ?", [tenantId, row.id]);
+	// 改密后旧会话必须失效：构造器删该租户该用户的 refresh token，tenant_id 由
+	// forTenant 注入（语句级覆盖、防护照常），user_id 是精确的业务条件。
+	await db.table("sys_refresh_token").forTenant(tenantId).delete().where({ field: "user_id", op: "eq", value: row.id }).run();
 
 	return await tenantAdminState(tenantId);
 }

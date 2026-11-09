@@ -126,12 +126,15 @@ function kindOfRow(r: Record<string, unknown>): WecomKind {
 /**
  * 吊销某租户的全部会话（refresh token）。
  *
- * 用带 `tenant_id` 的裸 SQL 而不是 `truncate()`：后者靠「守卫自动注入当前租户」生效，
- * 而 `db.asTenant` 一次请求只能设一次、且要求当时还没租户——本次请求是否处于匿名态
- * 决定了 truncate 的清理范围，边界交给了上游实现。条件写死在 SQL 里，范围自带。
+ * `forTenant(tenantId)`（oj v0.1.129 起）让这条语句以目标租户执行：语句级覆盖，防护照常，
+ * 只换注入值，不关守卫；`truncate()` 是构造器里唯一的无 where 写动词，在租户表上只清该
+ * 租户。两者合起来精确等价于旧的裸 `DELETE … WHERE tenant_id = ?`，但不绕开构造器、也不
+ * 依赖本次请求是否处于匿名态，同请求其它语句仍注入当前请求租户。
+ *
+ * 红线：tenantId 必须服务端派生（这里是 `tenantOfCorp(corpId)`），绝不可取请求参数。
  */
 export async function revokeTenantSessions(tenantId: string): Promise<number> {
-	return Number(await db.exec("DELETE FROM sys_refresh_token WHERE tenant_id = ?", [tenantId]));
+	return Number(await db.table("sys_refresh_token").forTenant(tenantId).truncate().run());
 }
 
 function isUniqueViolation(e: unknown): boolean {

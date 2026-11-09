@@ -119,7 +119,8 @@ beforeAll(() => {
 			throw new Error("tenant already set");
 		g.http = { ...(g.http ?? {}), tenantId: id };
 	};
-	g.db.asSystem = () => {};
+	// 不再给 db.asSystem 打空桩：fixture 默认让它抛错（模板生产代码已消除请求级逃生口），
+	// 这样任何路径重新调它都会当场失败，而不是被空实现吞掉。
 	g.log = { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} };
 });
 

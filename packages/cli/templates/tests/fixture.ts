@@ -19,6 +19,10 @@
 //   · 三条语义与 oj 对齐：insert 自动补 `tenant_id`、select/update/delete/truncate 自动加
 //     `tenant_id = ?` 谓词、裸 SQL（db.query/db.exec）触碰租户表却无 `tenant_id` 直接拒
 //     （近似 `sql_guard: deny`，是文本级判断，不是解析器）。
+//   · 语句级覆盖 `forTenant(id)`（oj v0.1.129）：只本条语句以 id 注入（防护照常，只换注入
+//     值），同请求其它语句仍用当前请求租户；空 id / 嵌套语句 / insert 手写 tenant_id 与覆盖
+//     值不符 / delete 无业务 where / truncate 带 where，一律按上游契约报错——垫片不能把
+//     越权写成假绿（这几条正是 L2 唯一能替真构造器守住的红线）。
 //
 // 分工不变：
 //   · L2（本目录 *.spec.ts）：构造器渲染出**语义等价**的 SQL 后在真 sqlite 上跑——服务层行为、
@@ -167,6 +171,8 @@ interface QueryState {
 	returning: string[] | null
 	union: { other: FakeQuery, kind: "all" | "distinct" } | null
 	fromSelect: { source: FakeQuery, cols: string[] } | null
+	/** 语句级租户覆盖（forTenant）；null = 用当前请求租户。per-instance，绝不泄漏到别的语句 */
+	forTenantId: string | null
 }
 
 /**
@@ -196,6 +202,7 @@ class FakeQuery {
 			returning: null,
 			union: null,
 			fromSelect: null,
+			forTenantId: null,
 			...seed,
 		};
 	}
@@ -302,6 +309,25 @@ class FakeQuery {
 		return this;
 	}
 
+	/**
+	 * 语句级租户覆盖（oj v0.1.129）：只本条语句以 id 注入租户谓词 / 写入列，防护照常
+	 * （只换注入值，不关闭守卫）。与请求级 `asSystem()` 全关不同——本实例之外不受影响。
+	 * 上游红线：id 必须服务端派生（这里不判来源，由静态守卫与用例覆盖）；空 id 拒绝。
+	 */
+	forTenant(id: string): this {
+		if (typeof id !== "string" || id.trim() === "")
+			throw new Error("[fixture] forTenant id must not be empty");
+		if (this.s.forTenantId !== null)
+			throw new Error("[fixture] forTenant only allowed once per statement");
+		this.s.forTenantId = id;
+		return this;
+	}
+
+	/** 本条语句注入的租户：覆盖优先，否则当前请求租户。 */
+	private effectiveTenant(): string {
+		return this.s.forTenantId ?? currentTenant();
+	}
+
 	orIgnore(): this {
 		this.s.orIgnore = true;
 		return this;
@@ -331,6 +357,10 @@ class FakeQuery {
 	/** 编译成 {sql, params}（供 union 复用内层 select） */
 	compile(inner = false): Compiled {
 		const s = this.s;
+		// 上游：forTenant 只许顶层语句（子查询 / union / cte / fromSelect 源带它必报错）。
+		// union(other) 与 fromSelect(source) 都走 compile(true)，这一处即覆盖全部嵌套形态。
+		if (inner && s.forTenantId !== null)
+			throw new Error("[fixture] forTenant only valid on the top-level statement");
 		if (s.verb === "insert")
 			return this.compileInsert();
 		if (s.verb === "update")
@@ -338,6 +368,8 @@ class FakeQuery {
 		if (s.verb === "delete")
 			return this.compileDelete();
 		if (s.verb === "truncate") {
+			if (s.wheres.length > 0)
+				throw new Error("[fixture] truncate does not accept where");
 			const tenant = this.tenantPredicate();
 			return {
 				sql: `DELETE FROM ${quoteIdent(s.table)}${tenant ? ` WHERE ${tenant.sql}` : ""}`,
@@ -355,10 +387,20 @@ class FakeQuery {
 		const raw = (Array.isArray(this.s.values) ? this.s.values : [this.s.values]) as Array<Record<string, unknown>>;
 		if (raw.length === 0)
 			throw new Error("[fixture] insert 至少需要一行");
-		// 租户化表：调用方不写 tenant_id 时自动补当前租户（oj 构造器同语义——
-		// 业务代码不该自己写 tenant_id，注入失效才是最危险的失败模式）
+		// 租户化表：调用方不写 tenant_id 时按本条语句的租户身份补（forTenant 覆盖优先，
+		// 否则当前请求租户；oj 构造器同语义——业务代码不该自己写 tenant_id，
+		// 注入失效才是最危险的失败模式）
 		const rows = isTenantScoped(this.s.table)
-			? raw.map(r => ("tenant_id" in r ? r : { ...r, tenant_id: currentTenant() }))
+			? raw.map((r) => {
+				if ("tenant_id" in r) {
+					// 上游：forTenant 覆盖语句里手写 tenant_id 与覆盖值不符 → insert tenant_id mismatch。
+					// 这条防的是「以为手写了就生效、其实写去了别家租户」的越权写入。
+					if (this.s.forTenantId !== null && String(r.tenant_id) !== this.s.forTenantId)
+						throw new Error("[fixture] insert tenant_id mismatch with forTenant override");
+					return r;
+				}
+				return { ...r, tenant_id: this.effectiveTenant() };
+			})
 			: raw;
 		const cols = Object.keys(rows[0]!);
 		for (const r of rows) {
@@ -398,7 +440,7 @@ class FakeQuery {
 			: src.sql;
 		return {
 			sql: `INSERT${this.s.orIgnore ? " OR IGNORE" : ""} INTO ${quoteIdent(this.s.table)} (${insertCols.map(quoteIdent).join(", ")}) ${selectSql}`,
-			params: [...(tenantCol ? [currentTenant()] : []), ...src.params],
+			params: [...(tenantCol ? [this.effectiveTenant()] : []), ...src.params],
 		};
 	}
 
@@ -414,6 +456,10 @@ class FakeQuery {
 	}
 
 	private compileDelete(): Compiled {
+		// 上游：delete 必须带显式业务 where，仅靠守卫注入的 tenant_id 不算数（否则
+		// forTenant(id).delete() 会变成「清掉该租户整张表」）。
+		if (this.s.wheres.length === 0)
+			throw new Error("[fixture] delete requires where");
 		const where = this.compileWhereClause([]);
 		return { sql: `DELETE FROM ${quoteIdent(this.s.table)}${where.sql}`, params: where.params };
 	}
@@ -422,7 +468,7 @@ class FakeQuery {
 	private tenantPredicate(): Compiled | null {
 		if (!isTenantScoped(this.s.table))
 			return null;
-		return { sql: `${quoteIdent(this.s.alias ?? this.s.table)}.tenant_id = ?`, params: [currentTenant()] };
+		return { sql: `${quoteIdent(this.s.alias ?? this.s.table)}.tenant_id = ?`, params: [this.effectiveTenant()] };
 	}
 
 	/** where 子句（追加进既有 params，返回拼接后的片段）；租户谓词始终参与 AND */
@@ -563,6 +609,18 @@ export function installDb(): any {
 	};
 
 	const g = globalThis as any;
-	g.db = { query, exec, tx, table, listTables: (prefix?: string) => listTables(dbo, prefix), dialect: () => "sqlite" };
+	g.db = {
+		query,
+		exec,
+		tx,
+		table,
+		listTables: (prefix?: string) => listTables(dbo, prefix),
+		dialect: () => "sqlite",
+		// 模板生产代码已彻底消除请求级逃生口（改用 forTenant 语句级覆盖）。夹具默认让它抛错：
+		// 任何被测路径一旦重新调 db.asSystem() 就立刻暴露，而不是被静默放行成假绿。
+		asSystem: () => {
+			throw new Error("[fixture] 模板生产代码已消除 db.asSystem()，请改用 forTenant() 语句级覆盖");
+		},
+	};
 	return dbo;
 }

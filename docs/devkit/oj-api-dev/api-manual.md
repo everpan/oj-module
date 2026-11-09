@@ -1467,6 +1467,13 @@ platform:
     命令名 / literal 段落错开。
 - **命令解析（模板首 token）**：必须是**裸名**——不接受占位符、不含 `/` `\` 路径分隔符。
   `"oj"` 特判解析为服务进程自身（`current_exe()`，serve 进程即 bin/oj，同版本自保证）；
+  **linux glibc 打包形态例外**（v0.1.126，OJ-10）：该形态启动器以「ld-linux 作程序」拉起
+  `oj.bin`（绕开宿主 glibc 版本限制），进程映像是随包加载器，`current_exe()` 不能当可执行体——
+  双闸门（启动器导出的 `OJ_BUNDLED_LD` 在 **且** 进程映像确为 `ld-linux*` / `ld-*.so*`）命中时
+  `"oj"` 自动重定向为 `随包 ld-linux --library-path <bin>/lib <bin>/oj.bin`（与 daemon re-exec
+  同一判定、候选序与理由），用户 argv 原样接在前缀之后；`oj.bin` 缺失回退 `<bin>/oj` 启动器
+  脚本，两者皆缺 → 解析期 fail-fast 点名（不静默回落，杜绝 ld 把子命令当共享对象加载的
+  exit 127）；非打包形态（macOS / Windows / musl）行为逐字节不变。
   其余裸名在**宿主侧**按父进程 PATH 解析为**绝对路径**后 spawn（子进程 env 已清空、不继承
   PATH，宿主侧解析消除 execvp 回落默认路径的不确定性）。**Windows 额外按 `PATHEXT`
   补全扩展名**（`tar` → `tar.exe`、`cmd` → `cmd.exe`；`PATHEXT` 缺失时回落系统默认列表；
@@ -1589,7 +1596,7 @@ Error）：
 | `exec template ambiguous: argv matches <N> authorized templates` | NotCapable | ≥2 条模板同时命中（不静默择一） |
 | `exec ${path:NAME}: path outside fs.root and trusted_paths: <p> (resolved <abs>)` | NotCapable | 路径占位符越出 `fs.root ∪ trusted_paths` |
 | `exec template parse failed (<raw>): <e>` | Error | 模板语法错（未知占位符类型 / 未闭合 / 非法名 / 首 token 含路径分隔符等） |
-| `exec: command resolve failed for '<name>': …` | Error | 命令名解析失败（含 `command '<name>' not found in PATH`） |
+| `exec: command resolve failed for '<name>': …` | Error | 命令名解析失败（含 `command '<name>' not found in PATH`；v0.1.126 起打包形态还含 `oj: packaged layout broken under <dir>: neither oj.bin nor oj launcher found`——`OJ_BUNDLED_LD` 在但 `<bin>` 下两个候选都缺，属部署破损，点名而非回落） |
 | `exec: spawn failed for '<abs>': <e>` | Error | 进程启动失败 |
 | `exec timed out after <N> ms (process group killed)` | Error | 超时到期（整组击杀）——**仅无回调的 `exec.run` 抛**；回调 / `exec.spawn` 形态不抛，只把 `code` 打成 137 并截断输出（v0.1.79 订正） |
 | `exec output limit exceeded (10485760 bytes cap, stdout+stderr combined)` | Error | 输出合计超 10MB——**仅无回调的 `exec.run` 抛**；回调 / `exec.spawn` 形态同上为 `code = 137` + 截断（v0.1.79 订正） |
@@ -2684,6 +2691,29 @@ tenant_id」时 warn 告警 / deny 拦截。guard 非 Off 时 schema.yaml 声明
 租户条件；**请求级且只能设一次**（已带租户头 / 已设过 → 抛错，防运行期切换身份）。
 典型用途：公开分享页、OIDC 回调等无头请求仍需按 URL 里的租户读取数据。
 
+**`db.table(t).forTenant(id)`（语句级，未发布版起）**：与上两个请求级逃生口不同，这是
+**语句级**身份——只让**这一条**构造器语句以租户 `id` 执行，同请求其他语句仍注入当前
+请求租户。租户条件**照常注入**（只是注入值换成 `id`）：where 收窄、insert 强制写、update
+sets 校验、join ON、fromSelect 常量列全走覆盖值。`id` 必须**服务端派生**（企微回调
+`corp_id`、租户管理员重设等），绝不可取请求参数——误用即跨租户数据泄露。典型用途：
+普通请求里对**非当前租户**做窄范围写（删该租户的 refresh token），又不想关整个请求的
+防护。语义与边界：
+- **无配置门**（与 `asSystem` 同信任模型：仍强制结构化注入，比请求级全关更严）；命中记
+  审计事件 `DB_TENANT_OVERRIDE`（`audit.query({kind:"DB_TENANT_OVERRIDE"})` 可检索，
+  detail 带 `from=<请求租户> to=<覆盖值> cross=<bool> verb=<动词>`）。
+- **只许顶层语句**：union 臂 / where 子查询 / exists / cte / fromSelect 源 / case-when
+  任一内层 req 自带 `tenant_id` → 报错
+  `tenant guard: forTenant is only valid on the top-level statement`（单条语句内不允许
+  出现两个租户身份）。
+- 空 / 空白 id → 报错 `tenant guard: forTenant id must not be empty`。
+- `db.asSystem()` 的请求里 forTenant 为 **no-op**（全关语义不变，不报错，warn 提示）。
+- `toJSON()` 快照**原样携带**覆盖（fromJSON 恢复后仍以该租户执行）——快照即语句语义的
+  延续，**跨租户持久化快照是危险动作**。
+- **限制**：forTenant 语句的 `toSQL()` 产物不可经 `db.query` 回放——裸 SQL 守卫要求
+  参数含当前请求租户，会 fail-closed 拒绝。要执行就直接 `.run()` / `.all()`。
+- `db_access` 的 `allow.tenants` 维只认**请求身份**，不约束 forTenant 语句实际读到的行
+  （与 asSystem 先例同构）——「这个库只有 A 的数据能被读」的正确手段是不开逃生口。
+
 两个逃生口都是**请求级**（`ReqState` 重置即失效）。注意 `tx.asSystem()` / `tx.asTenant(id)`
 返回的是**外层池句柄**（丢掉 `isTx` 标记）——别指望借它「离开事务」：执行路由按库名判定，
 语句仍在事务会话里跑，反倒是靠 `isTx` 认事务域的共享库（DDL 拒绝）会因此失明。要绕租户就
@@ -2994,7 +3024,7 @@ mounts:
 
 **并发**：同一时刻只允许一个热更（HTTP POST 与 JS `server.reloadConfig()` 共享同一把串行锁）；第二个并发触发在拿不到锁时返回 **409 `reload in progress`**（JS 侧抛 `server.reloadConfig: reload in progress (busy)`）。
 
-**代际与可观测**：`GET {base}/_system/config` 返回 `{config_path, sha256, loaded_at, generation, modules}`（`modules` v0.1.122 起）；`GET {base}/_system/health` 返回 `{status:"OK", generation, config_path}`（旧路径 `{base}/health` 仍可用，但会告警建议改用 `_system/health`）。
+**代际与可观测**：`GET {base}/_system/config` 返回 `{config_path, sha256, loaded_at, generation, modules}`（`modules` v0.1.122 起；`loaded_at` 为数值 epoch 秒，v0.1.127 起由字符串改为数值——按字符串解析该字段的消费方需适配）；`GET {base}/_system/health` 返回 `{status:"OK", generation, config_path, cfg_sha256, loaded_at, config_age_secs, uptime_secs, pid, cpus, modules}`（诊断字段：进程/运行时信息 + 热更代际指纹，均为低敏无凭据；首次启动 `cfg_sha256` 为空，首次热更后填入；旧路径 `{base}/health` 仍可用，但会告警建议改用 `_system/health`）。
 
 **限制（v1 边界）**：
 - 热更**复用首代已建立的连接池与插件后端**——不重建后端、不二次 `init` 插件、迁移强制 `verify`-only（dev 默认 `auto` 会打生产库，故热更路径强制 `verify`）、不重放 seed。需要新后端/新迁移的改动请走 `restart_pending` 提示并**重启进程**。
@@ -3771,6 +3801,11 @@ RUST_LOG=oj=info ./oj serve -c config.yaml --api-path dist
 
 访问日志目录见第 10 章 `logs_dir`。
 
+冷启动排障（v0.1.127）：serve 启动逐相位打印累计耗时到 `stderr`（不受 `RUST_LOG` 影响）——
+`oj: startup: migrate gate (auto|verify) …`、`seed replay …`、`fixtures …`、`ext_boot prewarm …`、
+`route tables …`，listening 行追加 `startup …` 总耗时（自进程装配起算）。排「重启越来越慢」先看这组数；
+`oj exec` 不打印启动横幅与 audit unrestricted 告警（`oj serve` / `oj test` / `oj migrate` 输出不变）。
+
 ### 排障表（高频条目）
 
 | 症状 | 原因 | 处置 |
@@ -3934,7 +3969,7 @@ await db.query("select id from account where id = " + id, []);   // 禁止
 | bus 二进制 wire 约定（v0.1.16） | JSON → record/信封文本帧；字节 → record payload = 原始字节、投递为 Binary 帧。消费侧启发式：UTF-8 且为含 `topic`+`data` 的 JSON 对象才按文本信封，否则按二进制透传——**恰为该形状 JSON 的二进制载荷会以文本帧投递**（无害，自辨） |
 | WS 二进制状态（Yjs awareness 等）不进 `sess.state` | `sess.state` 必须可 JSON 序列化；二进制状态走 base64 字符串存 `sess.state`/kv，或分片放 kv |
 | `WhereCond.and/or` 嵌套未展开 | 多个 `where()` 即 AND；复杂条件用 `db.query` 参数化 SQL |
-| `orIgnore()` + `fromSelect()` 组合在 **sqlite** 不支持（v0.1.82 明文，构造期拒绝） | sqlite 的 upsert 子句只能跟 VALUES；报 `orIgnore with fromSelect is not supported on sqlite (its upsert clause only follows VALUES)`。pg / mysql 支持 SELECT 源。绕行走裸 `db.exec("insert or ignore into … select …", [...])`（`OR IGNORE` 会把 NOT NULL/CHECK 违例一并静默跳过，数据面比 ON CONFLICT 宽）或先查后插 |
+| `orIgnore()` + `fromSelect()`（v0.1.128 起三方言全支持） | sqlite 渲染 `INSERT OR IGNORE INTO … SELECT …`、mysql 渲染 `INSERT IGNORE INTO … SELECT …`（不要求主键）、pg 渲染 `… ON CONFLICT DO NOTHING`。**只幂等唯一键冲突**——目标表须真有唯一约束，否则冲突子句是空操作、连跑两次重复落；**语义宽度跨方言相反**——pg 上 NOT NULL/CHECK 违例照常报错，sqlite/mysql 的宽形态（OR IGNORE / INSERT IGNORE）对同样脏数据静默丢行（降级为跳过/告警）。mysql VALUES 形态仍渲染 `ON DUPLICATE KEY UPDATE pk=pk`（要求主键）。渲染形态表见 `sql-builder-guide.md` §3.2 |
 | schema 回滚无自动机制 | 迁移只前向；破坏性变更前备份，反向变更写新 seq 迁移 |
 | fixtures/ 不进 release 产物 | 演示数据走 fixtures（oj test / oj test fixture）；参考数据走模块 seed（`seed.sql`，或分方言的 `seed.<方言>.sql`） |
 | `db param: u64 value … is not supported on this path`（v0.1.24） | 在 PG/SQLite 上用了 `toUBigInt()`——它们的 bigint 是 i64；改存 text，或把该列放到 MySQL `BIGINT UNSIGNED` |

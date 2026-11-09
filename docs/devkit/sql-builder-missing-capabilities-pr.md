@@ -1,11 +1,18 @@
 # 上游 PR 提案：SQL 构造器缺失能力清单
 
-> **最新状态（2026-11-09 二轮）**：§7 需求已由上游 `oj v0.1.128` 闭环；模板侧 `markAllRead` /
+> **最新状态（2026-11-09 三轮，oj v0.1.129）**：§8.5 需求 #5（语句级构造器跨租户身份）已由上游
+> `oj v0.1.129` 按「形态 2 修订版」落地：`db.table("t").forTenant(id).where(…).delete().run()`。
+> 模板 `store.ts` / `tenant-admin.ts` 两处跨租户裸 SQL 已收敛为构造器，`db.asSystem()` 在
+> `src/app/api` 全域归零，`MIN_OJ_VERSION` 抬至 0.1.129；行为回归 / 静态红线 / 跨包版本门禁
+> 三类防护用例已跑绿。上游回复全文、三方言一致性、已知限制与实测坑位见 **§8.7**；
+> 现状裸 SQL 计数（含可复现命令）亦在 §8.7。§8.1–§8.6 保留为二轮快照，不静默改写历史。
+>
+> **二轮状态（2026-11-09，历史留痕）**：§7 需求已由上游 `oj v0.1.128` 闭环；模板侧 `markAllRead` /
 > `clearNotices` 迁移、回执表唯一约束、`MIN_OJ_VERSION` 抬升三项待办**均已完成**，并通过
 > sqlite / MySQL 8.4.11 / PG 16.15 三方言真机验证，见 **§7.8**。本轮另新增
 > **§8：模板后端裸 SQL 残留普查与构造器统一性验证**（含新需求 #5）。
 > 下方更正段、§1、§6 为 2026-10-20 / 11-09 首轮**历史留痕**（各自带标注），按当时口径阅读；
-> 最新结论以 §7.8、§8 为准，不静默改写历史。
+> 该轮结论以 §7.8、§8 为准，不静默改写历史。
 
 > **更正（诚实账，2026-11-09）：第 4 项复开，未闭环。** 2026-10-20 的「7 项全部闭环」结论建立在
 > 一条错误前提上——当时认为上游 sanctioned 的裸 SQL 绕行 `INSERT OR IGNORE … SELECT` 是「三方言通用」的。
@@ -571,10 +578,10 @@ pg = `oj-test-postgres`(16.15)。探针以 `file://` 绝对路径加载**真实�
 
 | 项 | 值 |
 |---|---|
-| 状态 | **待上游（2026-11-09 提出）** |
+| 状态 | **已闭环（上游 oj v0.1.129，2026-11-09 三轮）**——按「形态 2 修订版」`db.table("t").forTenant(id)` 落地；提出时（二轮）为「待上游」，上游回复全文与闭环证据见 §8.7 |
 | 提交对象 | `oj` 运行时 SQL 构造器租户守卫（`DBInstance` / `QueryBuilder`） |
-| 关联 | 本文 §8.3 场景 A；playbook §9（`oj exec` 验证坑行） |
-| 优先级 | P2 增强（不阻塞现网：模板 2 处裸 SQL 当前工作正常且被注释论证） |
+| 关联 | 本文 §8.3 场景 A；playbook §9（`oj exec` / `forTenant` 验证坑行）、§11 U8 |
+| 优先级 | P2 增强（提出时不阻塞现网：模板 2 处裸 SQL 工作正常且被注释论证；三轮已闭环） |
 
 **场景**：服务端派生的租户 id（企微 `corp_id`、租户管理员重设）需要在**普通请求**里对「非当前请求租户」做窄范围写（删该租户的 refresh token），且不希望把整个请求的租户防护关掉。
 
@@ -582,11 +589,16 @@ pg = `oj-test-postgres`(16.15)。探针以 `file://` 绝对路径加载**真实�
 `asTenant(id)`（仅匿名请求且**不绕过**防护，租户条件照常注入）。缺一个「语句级 / 查询级」的
 构造器跨租户身份：让**单条**构造器语句以指定租户 id 执行、仍受结构化条件约束，其余语句照常注入当前租户。
 
-**诉求（任选其一形态即可）**：
+**诉求（任选其一形态即可，以下是二轮提出时的原文）**：
 
 1. `db.forTenant(id).table("t").where(…).delete().run()` —— 返回语句级作用域实例，本语句的租户注入值取 `id`（服务端派生），语句结束即失效；
 2. 或 `db.table("t").asTenant(id).where(…).delete().run()` —— 构造器链上的单语句租户覆盖；
 3. 或放宽 `asTenant` 的「仅匿名请求」门禁，允许「系统任务 + 服务端派生 id」在普通请求里声明，但仍**不关闭**租户条件注入（只换注入值，不关防护）。
+
+> **三轮补记（2026-11-09）**：上游实际选了**形态 2 的修订版**——租户覆盖不挂在 `db` 上，而是
+> 挂在 `db.table("t")` 返回的构造器链上：`db.table("t").forTenant(id).where(…).delete().run()`。
+> 语义与诉求一致（单条语句以服务端派生 id 注入租户、其余语句照常注入当前请求租户、结构化防护不关），
+> 详见 §8.7。本段诉求列表保留为提出时原文，不静默改写。
 
 **红线（必须保持）**：
 
@@ -601,6 +613,12 @@ pg = `oj-test-postgres`(16.15)。探针以 `file://` 绝对路径加载**真实�
 3. 上游落地后，模板可把 A1/A2 两处裸 `db.exec` 收敛为构造器，并删除 `store.ts:126-135` /
    `tenant-admin.ts:180-182` 的「保留裸 SQL」注释论证，达成模板后端**零原生 SQL**。
 
+> **三轮补记（2026-11-09）**：上述三条验收 **全部达成**（三方言行为一致、A1/A2 已收敛并删除
+> 「保留裸 SQL」注释论证、`db.asSystem()` 在 `src/app/api` 全域归零），逐条证据见 §8.7。
+> 唯一残留是 B 场景 `query.ts` 旧 `paged` 的 2 处裸 `db.query`（零生产调用方），故严格意义的
+> 「模板后端零原生 SQL」仍差这一步；按本轮「只统计 / 验证 / 提需求，不改实现代码」与
+> 「不擅自删残留」的约束留作开放项。
+
 ### 8.6 结论汇总
 
 | 场景 | 处数 | 能否用构造器统一 | 上游缺口 | 本轮动作 |
@@ -612,3 +630,77 @@ pg = `oj-test-postgres`(16.15)。探针以 `file://` 绝对路径加载**真实�
 > 本仓方法约束（用户裁定）：「db 构造器如果存在缺陷，需要向上游提出需求，不是自己绕开」。
 > 场景 A 现状是模板用裸 SQL 绕开构造器限制，故本节按该约束把缺口整理成 §8.5 需求提交上游，
 > **不在模板内增加方言分支 / 旁路 / 兼容 shim**。
+
+**三轮更新（2026-11-09，v0.1.129 落地后）**：上表是二轮（v0.1.128）当时的结论，保留作留痕。
+三轮里场景 A 已由上游 `forTenant()` 闭环——模板两处跨租户读写收敛为构造器、`asSystem()` 归零，
+「上游缺口」一列对 A 已消解；场景 B（`paged`，零生产调用方）状态不变。现状计数与验收见 §8.7。
+
+---
+
+### 8.7 需求 #5 闭环：上游 oj v0.1.129 回复与模板迁移（2026-11-09 三轮）
+
+**上游回复（用户转述，2026-11-09 三轮；本仓未直接读取上游仓库）**：状态「已落地（v0.1.129），
+语句级构造器跨租户身份按形态 2 修订版实现：`db.table("t").forTenant(id).where(…).delete().run()`」。要点逐条：
+
+| 维度 | 上游回复 |
+|---|---|
+| 语义 | 单条语句以**服务端派生**的租户 id 执行，只换注入值、不关闭防护（where 注入 / insert 强制写 / update sets 校验 / join ON / `fromSelect` 常量列全部照常）；同请求其他语句仍注入当前请求租户（字段随 `QueryReq` 逐语句传递，不碰 `ReqState`）；`tx` 会话路由同样生效 |
+| 三方言 | sqlite / mysql / pg 行为一致：注入发生在 AST 预变换、方言渲染之前；sqlite 常跑 8 条行为测试，PG/MySQL env-gated 真库腿本机容器亲跑通过、结果逐字节一致 |
+| 配置门 | 无（与 `asSystem` 同信任模型，仍强制结构化注入，故比请求级全关更严）；命中记审计事件 `DB_TENANT_OVERRIDE`（detail 带 from / to / cross / verb，`audit.query({kind})` 可检索，运维按 `cross=true` 过滤真跨租户） |
+| 防呆 | `forTenant` 只许顶层语句（子查询 / union / cte / `fromSelect` 源带它必报错，单语句内不允许两个租户身份）；空 / 空白 id 拒绝；`db.asSystem()` 请求内为 no-op + warn |
+| 已知限制 | 已进 api-manual 限制表：覆盖语句的 `toSQL()` 产物**不可经 `db.query` 回放**（裸 SQL 守卫按请求租户校验参数，fail-closed）——直接 `.run()`；`db_access.allow.tenants` 维授权的是请求身份，不约束覆盖语句实读的行（与 `asSystem` 先例同构） |
+| 验收 3 | 模板两处「保留裸 SQL」注释论证（`store.ts` / `tenant-admin.ts`）现可收敛为构造器并删除，模板后端达成零原生 SQL 的条件已就绪 |
+| 红线 | id 必须服务端派生，已写进 SKILL.md 最红陷阱行（`forTenant(请求参数)` = 跨租户泄露事故模板）；未引入第二个请求级 `asSystem` |
+
+**本仓落地（对照 §8.5 三条验收标准）**：
+
+1. **同请求内双身份并存、id 服务端派生**：`forTenant(tenantId)` 的实参在两处入口均由服务端派生
+   （入口鉴权后显式指定，或由 `corp_id` 查表推导）；静态红线守卫 `tests/sql-builder-guard.spec.ts`
+   扫 `src/app/api` 断言 `forTenant` 实参不含 `http.` / `req.` / `body.` / `query.` 等请求输入。
+2. **三方言一致 + 防版本回退**：行为回归 `tests/wecom-for-tenant.spec.ts` 对真实生产函数按夹具
+   渲染 SQL 断言语义；静态守卫钉死 `forTenant` 收敛形态（两处确实用 `forTenant`、不手写
+   `tenant_id`、`revokeTenantSessions` 用 `.truncate()`）；跨包门禁 `tests/cli/vendor.test.ts`
+   断言 `MIN_OJ_VERSION` 必须拒绝 0.1.128（该版本 `QueryBuilder` 无 `forTenant`），防止降版本后
+   「停用企业 / 开通租户管理员 / 改密」全线 TypeError。
+3. **两处裸 SQL 收敛**：`store.ts` 用 `forTenant(id).truncate()`，`tenant-admin.ts` 全量改构造器，
+   `db.asSystem()` 在 `src/app/api` 全域归零，两文件的「保留裸 SQL」注释论证已删除。
+
+> 口径说明：本仓 L2 夹具（`tests/fixture.ts`）是手写 JS 垫片，行为用例钉的是「夹具渲染 SQL
+> 语义等价」，真构造器在 oj 二进制里；故另有源码层静态守卫兜底，防止有人改回 `asSystem` /
+> 裸 `db.exec` 而夹具恰好还能跑造成假绿。三方言真库腿属上游交付内容（上表「三方言」行），
+> 本仓侧以「夹具行为 + 静态红线 + 跨包门禁」三层防回归。
+
+**实测坑位（如实记录，三轮探针 / 单测踩到）**：
+
+- `forTenant(id).delete()` **不带业务 where 会抛 `delete requires where`**：守卫注入的 `tenant_id`
+  不算业务条件；跨租户清表用 `.truncate()`（构造器里唯一的无 where 写动词），
+  `revokeTenantSessions` 已据此定型，静态守卫也钉死该形态。
+- `db.asSystem()` 请求内 `forTenant()` 是 **no-op + warn**（不会叠加出第二个逃生口）；
+  `oj exec` 无 HTTP 上下文，真机探针要么靠 `asSystem()` 起头、要么用真实 HTTP 带
+  `X-TENANT-ID`（playbook §9 已有同款坑）。
+- 手写 `tenant_id` 与覆盖值冲突时上游直接报 `tenant guard: insert tenant_id mismatch`；
+  故模板两处一律不手写租户列（静态守卫断言两文件不含 `tenant_id`）。
+- `forTenant` 覆盖语句的 `toSQL()` 产物不可经 `db.query` 回放，必须直接 `.run()` / `.all()`。
+
+**现状计数（三轮，可复现口径；§8.1 是二轮快照，保留不改）**：
+
+沿用 §8.1 的同一 pattern / 范围 / `-i` 口径（原命令用 `rg`，本机无 `rg`，改用等价
+`grep -rniE`；`\s*` 与 `[[:space:]]*` 等价）：
+
+```bash
+grep -rniE 'db\.(exec|query|dialect|raw)\s*\(' packages/cli/templates/src/app/api --include='*.ts'
+```
+
+三轮命中 **3 行** = 1 行注释（`rate.ts:79`） + 2 处真实调用
+（`query.ts:40` / `:41`，旧 `paged`）；排除注释后真实调用 **2**。
+二轮为 5 命中 / 4 真实调用，差额 2 正是 A1（`store.ts`）与 A2（`tenant-admin.ts`）收敛为构造器。
+`paged` 生产调用方计数（定义是 `paged<T>(` 带泛型，`\bpaged\s*\(` 会漏，须用 `paged(<|\()`）：
+
+```bash
+grep -rnE '(^|[^A-Za-z])paged(<|\()' packages/cli/templates/src --include='*.ts' \
+  | grep -v 'query.ts' | grep -vE ':\s*//' | wc -l   # → 0
+```
+
+结论：A1/A2 **已归零**，模板后端仅剩 B 场景 `paged` 的 2 处裸 `db.query`，且零生产调用方
+（所有列表接口走 `pagedFactory`）。删除 `paged` 以达成严格意义的「零原生 SQL」留作开放项，
+本轮不动实现代码。

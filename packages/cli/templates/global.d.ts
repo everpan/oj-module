@@ -61,7 +61,8 @@ interface QueryBuilder {
 	update: (sets: object) => QueryBuilder
 	delete: () => QueryBuilder
 	// 整表清空（v0.1.82）：唯一的无 where 写动词，明示使用——渲染 `DELETE FROM t`。
-	// 租户守卫照常注入：租户表上只清**当前租户**的行（清整库用 db.asSystem）。
+	// 租户守卫照常注入：租户表上只清**当前租户**的行（清整库用 db.asSystem；
+	// 只清某个指定租户用下面的 forTenant(id).truncate()，不关守卫）。
 	// 自带 where 报 `truncate does not accept where`；update 携带 truncate 报错。
 	truncate: () => QueryBuilder
 	returning: (cols?: string[]) => QueryBuilder
@@ -76,6 +77,14 @@ interface QueryBuilder {
 	// 基表别名（v0.1.81）：仅作用于列限定与 SQL 渲染；归属/租户守卫按真名生效。
 	// 仅 select/join 支持；insert/update/delete 带别名直接报错。
 	as: (alias: string) => QueryBuilder
+	// 语句级租户覆盖（v0.1.129）：只本条语句以租户 id 注入（防护照常，只换注入值，
+	// **不关闭**结构化注入），同请求其它语句仍注入当前请求租户；命中记审计
+	// DB_TENANT_OVERRIDE。与 asSystem 的请求级全关不同，粒度到语句。
+	// 红线：id 必须服务端派生，绝不可取请求参数；只许顶层语句（子查询 / union / cte /
+	// fromSelect 源带它必报错）；空/空白 id 拒绝；同一语句不允许两个身份。
+	// 限制：覆盖语句的 toSQL() 产物不可经 db.query 回放（裸 SQL 守卫按请求租户校验参数），
+	// 直接 run()/all()。租户表上 forTenant(id).truncate() 只清该 id 的行。
+	forTenant: (id: string) => QueryBuilder
 	// 条件化 where（v0.1.81）：test 为 undefined/null/false/空数组时整条跳过；0 与 "" 保留。
 	whereIf: (test: unknown, cond: WhereCond) => QueryBuilder
 	// DISTINCT / GROUP BY / HAVING / UNION / CTE（WITH）。

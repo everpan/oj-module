@@ -277,7 +277,8 @@ function parseColumns(body: string): Set<string> {
 }
 
 const DROP_TABLE_RE = /DROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?([`"\w]+)\s*;/gi;
-const ADD_COLUMN_RE = /ALTER\s+TABLE\s+([`"\w]+)\s+ADD\s+(?:COLUMN\s+)?([`"\w]+)/gi;
+/** ADD UNIQUE KEY / ADD CONSTRAINT 等是加约束不是加列，不能误判成名为 unique/constraint 的列 */
+const ADD_COLUMN_RE = /ALTER\s+TABLE\s+([`"\w]+)\s+ADD\s+(?!(?:UNIQUE|CONSTRAINT|PRIMARY|INDEX|KEY|FOREIGN|FULLTEXT|SPATIAL|CHECK)\b)(?:COLUMN\s+)?([`"\w]+)/gi;
 
 /**
  * 按文件序累积出「跑完这些迁移后的表 → 列集」。
