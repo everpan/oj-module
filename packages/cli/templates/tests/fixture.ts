@@ -272,9 +272,17 @@ class FakeQuery {
 		return this;
 	}
 
+	/**
+	 * 写动词唯一：已带写态（values/fromSelect/非 select 动词）再 set 动词 = 静默错误 SQL（如
+	 * update().fromSelect() 悄悄翻成 INSERT），垫片契约是响报不静默——调用形状不支持即抛。
+	 */
+	private assertFreshVerb(next: string): void {
+		if (this.s.values !== null || this.s.fromSelect || this.s.verb !== "select")
+			throw new Error(`[fixture] ${next} requires a fresh statement (write verb already set)`);
+	}
+
 	insert(values: unknown): this {
-		if (this.s.fromSelect)
-			throw new Error("[fixture] insert takes either values or fromSelect, not both");
+		this.assertFreshVerb("insert");
 		this.s.verb = "insert";
 		this.s.values = values;
 		return this;
@@ -286,25 +294,27 @@ class FakeQuery {
 	 * 源 SELECT 常量列），源 select 的租户收窄由 compileWhereClause 继承。
 	 */
 	fromSelect(source: FakeQuery, cols: string[]): this {
-		if (this.s.values !== null)
-			throw new Error("[fixture] insert takes either values or fromSelect, not both");
+		this.assertFreshVerb("fromSelect");
 		this.s.verb = "insert";
 		this.s.fromSelect = { source, cols };
 		return this;
 	}
 
 	update(sets: unknown): this {
+		this.assertFreshVerb("update");
 		this.s.verb = "update";
 		this.s.sets = sets;
 		return this;
 	}
 
 	delete(): this {
+		this.assertFreshVerb("delete");
 		this.s.verb = "delete";
 		return this;
 	}
 
 	truncate(): this {
+		this.assertFreshVerb("truncate");
 		this.s.verb = "truncate";
 		return this;
 	}

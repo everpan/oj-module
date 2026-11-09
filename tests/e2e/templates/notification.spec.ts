@@ -110,14 +110,18 @@ test.describe.serial("通知中心（templates）", () => {
 		const lightBg = await item.evaluate(el => getComputedStyle(el).backgroundColor);
 		expect(brightness(lightBg), `亮色 hover 基线=${lightBg}`).toBeGreaterThan(200);
 
-		await page.evaluate(() => document.documentElement.classList.add("dark"));
-		expect(await page.evaluate(() => document.documentElement.classList.contains("dark"))).toBe(true);
-		await item.hover(); // 重新触发 :hover 以应用 dark 规则
-		const darkBg = await item.evaluate(el => getComputedStyle(el).backgroundColor);
-		expect(darkBg, `dark hover 不得沿用亮色高亮 ${lightBg}`).not.toBe(lightBg);
-		expect(brightness(darkBg), `dark hover 平均亮度=${darkBg}`).toBeLessThan(128);
-
-		await page.evaluate(() => document.documentElement.classList.remove("dark"));
+		// finally 清理：serial describe 里断言失败也要摘掉 dark 类，否则后续用例在暗色模式下假红
+		try {
+			await page.evaluate(() => document.documentElement.classList.add("dark"));
+			expect(await page.evaluate(() => document.documentElement.classList.contains("dark"))).toBe(true);
+			await item.hover(); // 重新触发 :hover 以应用 dark 规则
+			const darkBg = await item.evaluate(el => getComputedStyle(el).backgroundColor);
+			expect(darkBg, `dark hover 不得沿用亮色高亮 ${lightBg}`).not.toBe(lightBg);
+			expect(brightness(darkBg), `dark hover 平均亮度=${darkBg}`).toBeLessThan(128);
+		}
+		finally {
+			await page.evaluate(() => document.documentElement.classList.remove("dark"));
+		}
 	});
 
 	// N4：清空——按人与广播全部消失（修复点：清空不起效——广播项残留）

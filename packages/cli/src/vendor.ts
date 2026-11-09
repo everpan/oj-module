@@ -23,49 +23,13 @@ export const NPM_PKG = "@oj-bin/oj";
  * 政策：ojm 以最新 oj 为准、不做版本兼容分支，所以门禁直接钉在最新发布版上，
  * 低于它的组合不保证可用（也不提供绕过开关）。oj 每发新版，同步抬高此常量。
  *
- * 历史（实测，逐个下 @oj-bin/oj@<v> 跑 `oj --help`）：
- *   0.1.13 / 0.1.16 / 0.1.19 / 0.1.24 / 0.1.26 / 0.1.28 → 启动子命令 `server`
- *   0.1.32 起 → `serve`
- * 即 `server` → `serve` 的改名落在 (0.1.28, 0.1.32]。改名刚发生时 npm 通道只到
- * 0.1.32，门禁曾暂定 0.1.32（否则 vendor/init 没有可用来源）；后随发布进度抬到
- * 0.1.69（含嵌套 handler 组 v0.1.64 等，迁移指引见
- * docs/superpowers/specs/2026-10-14-ojm-0.1.18-design.md）；**0.1.20 抬到 0.1.73**：
- * 平级 `.response` 出参声明位自 oj v0.1.72 起、`oj openapi` 的 `del`→`delete`
- * 操作键归一自 v0.1.73 起，`ojm api` 的 openapi 流水线以这两者为前提
- * （见 CHANGELOG 0.1.20 / docs/guides/api-codegen-openapi.md）。**0.2.13 抬到 0.1.81**：
- * 模板侧 `solution-perms.ts` 权限级联清理用 `startswith` 操作键（v0.1.81 补齐，
- * 构造器迁移收尾），oj < 0.1.81 时卸载方案报 `unknown variant startswith` fail-closed。
- * **本版抬到 0.1.85**：`src/<name>/{web,api}` 布局依赖 `--module-root <DIR>`（源码树根，
- * 与 `-d`/`--api-path` 互斥）；旧版收到该旗标即报错。0.1.85 同时落地了
- * `manifest.name` 与目录名脱钩、`#/m/x` 按 name 解析（见
- * docs/prd/202610220010-layout-module-root-design.md §5）。
- * **0.2.26 抬到 0.1.86**：openapi 的 dev 分支裸包解析截断（module-root 下预生成
- * `__client` 内省 fail-fast，`oj openapi --module-root` 契约链整体不可用）修复于
- * 0.1.86（oj-bin 0f8a6e2，第三次基线发布通道实证）；module-root 工程是 0.2.20 起
- * 的默认布局，门禁必须盖住契约链（见 playbook §9 与 2026-10-23 第三次基线）。
- * **0.2.68 抬到 0.1.121**：模板的方言 seed（`seed.mysql.sql` / `seed.pg.sql`）依赖
- * 0.1.121 的「方言件胜出、`seed.sql` 兜底」选择语义（oj-bin 7d70b90）；更早的 oj
- * 只读 `seed.sql`，三方言执行同一份 sqlite 写法 → mysql/pg 上 1064 拒启。模板不再
- * 教「部署期手工覆盖」，门禁必须盖住这条链路（见 playbook §11 U1）。
- * **0.2.75 抬到 0.1.126**：`_platform` 安装迁移经 `exec.run(["oj","migrate",...])` 触发，
- * 而 `@oj-bin/oj` linux glibc 包的 `bin/oj` 启动器经 `ld-linux` 拉起 `oj.bin`，使 serve 进程
- * 映像是加载器；旧版 `oj` 特判 token 把 `current_exe()`(=ld-linux) 当可执行体 spawn，
- * 令 `migrate` 被 ld 当共享对象加载 → exit 127（OJ-10）。0.1.126 加双闸门（OJ_BUNDLED_LD 在
- * 且 映像确为 loader）自动解析为随包 `ld-linux --library-path <bin>/lib <bin>/oj.bin`，根治该缺陷。
- * 门禁须抬到 0.1.126，使 `ojm vendor` 自动分发含修复的二进制（不再需要消费方 `ojmig` 绕行）。
- * **0.2.79 抬到 0.1.128**：模板通知模块 `markAllRead` / `clearNotices` 的两处
- * `INSERT … SELECT` 已迁到构造器 `fromSelect().orIgnore()`，而该组合在 sqlite 上被
- * v0.1.82~0.1.125 构造期拒绝（`orIgnore with fromSelect is not supported on sqlite`），
- * 上游 v0.1.128 才补齐三方言通用（并改 mysql 为 `INSERT IGNORE`、pg 裸 `$n` 类型推断）。
- * 模板不再退回裸 `db.exec`（mysql 1064 / pg 语法错），门禁必须盖住这条链路，否则下游
- * `ojm vendor` 装到旧 oj 会让「清除 / 全部已读」直接 500。闭环需求见
- * docs/devkit/sql-builder-missing-capabilities-pr.md §7。
- * **0.2.80 抬到 0.1.129**：模板 wecom 认证域把「平台 superadmin 操作另一个企业租户」
- * 从 `db.asSystem()`（请求级全关守卫）+ 裸 `db.exec("DELETE … WHERE tenant_id = ?")`
- * 收敛为 `db.table(t).forTenant(id)` 语句级覆盖，而 `forTenant()` 是 oj v0.1.129 才有的
- * 能力（v0.1.128 的 QueryBuilder 无此方法，调用即 TypeError）。门禁必须抬到 0.1.129，
- * 否则下游 `ojm vendor` 装到旧 oj 会让「停用企业 / 开通租户管理员 / 改密」全线 500。
- * 回归守卫见 packages/cli/templates/tests/sql-builder-guard.spec.ts。
+ * 抬版历史只维护一处：早期档（0.1.50 → 0.1.121）见 CHANGELOG；近期档（0.1.126 /
+ * 0.1.128 / 0.1.129，含实测依据）见 docs/devkit/sql-builder-missing-capabilities-pr.md。
+ * 此处只留当前底线，不再逐档复述（多份历史必然漂移）。
+ *
+ * 当前底线 0.1.129（0.2.80）：模板 wecom 跨租户读写收敛为 `forTenant()` 语句级覆盖——
+ * 该方法 v0.1.129 才有，旧版调用即 TypeError，门禁须盖住 `ojm vendor` 分发链
+ * （回归守卫：packages/cli/templates/tests/sql-builder-guard.spec.ts）。
  */
 export const MIN_OJ_VERSION = "0.1.129";
 
