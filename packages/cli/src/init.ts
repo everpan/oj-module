@@ -214,7 +214,9 @@ export async function initProject(destDir: string, opts: InitOptions = {}): Prom
 		//   · `wecom-daikaifa.md`  企业微信代开发（服务商模板）：凭据清单 + 用户/开发/部署三视角；
 		//   · `wecom-internal-app.md` 企业内部应用（自建）：五项 corp 凭据 + 验证并接入 + 共存。
 		//   · `publish-walkthrough.md` 方案包发布全流程（新手照做版）：打包/签名/CDN/安装一条链。
-		for (const name of ["SKILL.md", "manual.md", "README.md", "wecom-daikaifa.md", "wecom-internal-app.md", "publish-walkthrough.md"])
+		//   · `newcomer.md` 新人上路线：脚手架 → 建模块 → 自包含 → 编译 → 发布 → 升级主路径，
+		//     第一天到第一个方案包的顺序书，细节按章号指向 manual.md / publish-walkthrough.md。
+		for (const name of ["SKILL.md", "manual.md", "README.md", "wecom-daikaifa.md", "wecom-internal-app.md", "publish-walkthrough.md", "newcomer.md"])
 			copyIfAbsent(path.join(cliDevkit, name), path.join(ojmSkillDir, name), report);
 	}
 	else {

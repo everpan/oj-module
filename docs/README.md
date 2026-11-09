@@ -12,7 +12,7 @@
 
 | 侧 | 位置 | 用户工程落点 | 分发链 |
 |---|---|---|---|
-| ojm 模块开发（前端模块、契约、前后端接线） | `devkit/` 顶层 12 个文件 | `.claude/skills/ojm-module-dev/` | `@oj-module/cli` 包 → `ojm init` 第 4b 步（分发其中 6 个） |
+| ojm 模块开发（前端模块、契约、前后端接线） | `devkit/` 顶层 13 个文件 | `.claude/skills/ojm-module-dev/` | `@oj-module/cli` 包 → `ojm init` 第 4b 步（分发其中 7 个） |
 | oj API 开发（后端 handler、全局对象、配置、测试） | `devkit/oj-api-dev/`（oj devkit 快照，仅本仓参考） | `.claude/skills/oj-api-dev/` | oj 二进制自带 → `ojm init` 第 4 步 |
 
 | 文件 | 面向谁 | 用途 |

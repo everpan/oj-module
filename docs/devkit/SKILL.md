@@ -6,6 +6,8 @@ description: 用 ojm 开发前后端一体工程时使用——新增/修改前�
 # ojm 模块开发
 
 本 skill 与参考手册 `manual.md` 同目录。**按章节号按需读章，不要盲读全文。**
+**第一次上手 / 带新人：先读 `newcomer.md`（上路线）——搭建脚手架 → 建模块 → 自包含 →
+编译 → 发布 → 升级的主顺序书，细节按章号回本 skill 与手册。**
 
 后端 handler 本身的写法（`json` 信封、`db` 查询、`manifest.yaml`、`oj test`）、
 站点挂载（`mounts`）、密钥信封（`secrets`）、vars、cors、schema 校验、broker/tasks/oidc/ws 等
