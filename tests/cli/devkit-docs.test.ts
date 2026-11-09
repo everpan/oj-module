@@ -35,19 +35,19 @@ describe("devkit 手册两章节（P2-14：文档存在性）", () => {
  * 本守卫钉死「交付四件套零内部代号」；确需追溯的出处写在框架仓文档，不进 devkit。
  */
 describe("devkit 自包含（零仓库内部代号 / 零包外路径）", () => {
-	it("sKILL/manual/README/framework-dev/教学文档/企微两本手册/发布 walkthrough 不含设计与评审代号", () => {
+	it("sKILL/manual/README/新人手册/framework-dev/教学文档/企微两本手册/发布 walkthrough 不含设计与评审代号", () => {
 		const pattern = /\b(P\d+(-[0-9A-Z]+)?|C\d+(-\d+)?|AC-[A-Z]+-?\d*|S0\d{2}|R\d+|D1\d|B-\d+|G\d|M0\d{2})\b/;
-		for (const name of ["SKILL.md", "manual.md", "README.md", "framework-dev.md", "module-dev-and-cdn-playground.md", "menu-rules.md", "wecom-daikaifa.md", "wecom-internal-app.md", "publish-walkthrough.md"]) {
+		for (const name of ["SKILL.md", "manual.md", "README.md", "newcomer.md", "framework-dev.md", "module-dev-and-cdn-playground.md", "menu-rules.md", "wecom-daikaifa.md", "wecom-internal-app.md", "publish-walkthrough.md"]) {
 			const hit = read(`docs/devkit/${name}`).match(pattern);
 			expect(hit?.[0], `docs/devkit/${name} 含内部代号：${hit?.[0]}`).toBeUndefined();
 		}
 	});
 
-	it("随 ojm init 分发的 6 个文件不引用包外路径（docs/prd、docs/guides、../oj-api-dev）", () => {
+	it("随 ojm init 分发的 7 个文件不引用包外路径（docs/prd、docs/guides、../oj-api-dev）", () => {
 		// 分发清单的权威源是 init.ts 第 4b 步；这里按同一份名单反向校验，
 		// 任何一条指向框架仓的路径在业务工程里都是死链。
 		const init = read("packages/cli/src/init.ts");
-		const distributed = ["SKILL.md", "manual.md", "README.md", "wecom-daikaifa.md", "wecom-internal-app.md", "publish-walkthrough.md"];
+		const distributed = ["SKILL.md", "manual.md", "README.md", "wecom-daikaifa.md", "wecom-internal-app.md", "publish-walkthrough.md", "newcomer.md"];
 		for (const name of distributed) expect(init, `init.ts 未分发 ${name}`).toContain(`"${name}"`);
 		for (const name of distributed) {
 			const body = read(`docs/devkit/${name}`);
@@ -60,14 +60,14 @@ describe("devkit 自包含（零仓库内部代号 / 零包外路径）", () => 
 /**
  * devkit 目录结构（2026-10-20 合并 oj-api-dev 快照后；2026-10-21 增教学文档；
  * 2026-10-30 增企微代开发手册；2026-11-01 增企业内部应用手册；
- * 2026-11-03 增发布全流程 walkthrough）：
- * docs/devkit/ 一棵树覆盖前后端两侧，但两套分发链不变——顶层 12 个 ojm 侧文件
+ * 2026-11-03 增发布全流程 walkthrough；2026-11-09 增新人上路线）：
+ * docs/devkit/ 一棵树覆盖前后端两侧，但两套分发链不变——顶层 13 个 ojm 侧文件
  * 随 cli 包发货（→ .claude/skills/ojm-module-dev/），oj-api-dev/ 子目录是 oj 侧
  * devkit 的快照（与 ~/.local/share/oj/devkit/ 逐字节一致，仅本仓参考、不发货）。
  * 本守卫钉死这个结构：快照文件若被平铺进顶层，会误随 cli 包发货且与 oj 版本漂移。
  */
 describe("devkit 目录结构（ojm 侧发货 + oj-api-dev 快照子目录）", () => {
-	const OJM_FILES = ["SKILL.md", "manual.md", "README.md", "framework-dev.md", "sql-builder-missing-capabilities-pr.md", "module-dev-and-cdn-playground.md", "menu-rules.md", "wecom-customer-reauth-guide.md", "wecom-daikaifa.md", "wecom-internal-app.md", "wecom-multi-corp-links.md", "publish-walkthrough.md"];
+	const OJM_FILES = ["SKILL.md", "manual.md", "README.md", "newcomer.md", "framework-dev.md", "sql-builder-missing-capabilities-pr.md", "module-dev-and-cdn-playground.md", "menu-rules.md", "wecom-customer-reauth-guide.md", "wecom-daikaifa.md", "wecom-internal-app.md", "wecom-multi-corp-links.md", "publish-walkthrough.md"];
 	const SNAPSHOT_FILES = [
 		"SKILL.md",
 		"README.md",

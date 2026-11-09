@@ -58,7 +58,7 @@ describe("syncOjDevkit（vendor/init 共用同步出口）", () => {
 });
 
 describe("ojm init 集成（注入 ojInstaller 模拟 vendor 落盘）", () => {
-	it("R1/R5 init 后两侧 skill 都在：oj devkit 同步 + ojm devkit 六文件", async () => {
+	it("R1/R5 init 后两侧 skill 都在：oj devkit 同步 + ojm devkit 七文件", async () => {
 		await initProject(root, {
 			yes: true,
 			seal: async () => "ENC[test]",
@@ -68,7 +68,7 @@ describe("ojm init 集成（注入 ojInstaller 模拟 vendor 落盘）", () => {
 		});
 		expect(readFileSync(join(root, ".claude/skills/oj-api-dev/SKILL.md"), "utf-8")).toBe("# oj-api-dev skill v1\n");
 		expect(existsSync(join(root, ".claude/skills/oj-api-dev/scenarios.md"))).toBe(true);
-		for (const name of ["SKILL.md", "manual.md", "README.md", "wecom-daikaifa.md", "wecom-internal-app.md", "publish-walkthrough.md"])
+		for (const name of ["SKILL.md", "manual.md", "README.md", "wecom-daikaifa.md", "wecom-internal-app.md", "publish-walkthrough.md", "newcomer.md"])
 			expect(existsSync(join(root, ".claude/skills/ojm-module-dev", name)), name).toBe(true);
 	});
 

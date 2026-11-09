@@ -2,21 +2,21 @@
 
 > **你在哪读这份文件？** 两种视图，内容同一份：
 > - **业务工程里**（`.claude/skills/ojm-module-dev/`）：文件是随 `@oj-module/cli` 分发的**副本**，
->   直接读 `SKILL.md` / `manual.md` / 两本企微手册 / `publish-walkthrough.md` 即可闭环；
+>   直接读 `newcomer.md`（上路线）/ `SKILL.md` / `manual.md` / 两本企微手册 / `publish-walkthrough.md` 即可闭环；
 >   下文出现的 `docs/devkit/`、`packages/cli/` 是**框架仓库路径**，只用来解释文件怎么来的，
 >   你本地没有也不影响使用。
 > - **框架仓库里**（`docs/devkit/`）：这里才是源文件，改文档只改这一处。
 
 面向用 `ojm` 开发前后端一体工程的开发者与 AI agent。本目录是**源文件**，
 发布时由 cli 的 `prepack`（`packages/cli/scripts/sync-devkit.mjs`）把其中
-**ojm 侧的 12 个文件**同步进 `packages/cli/devkit/`，随 `@oj-module/cli`
+**ojm 侧的 13 个文件**同步进 `packages/cli/devkit/`，随 `@oj-module/cli`
 发布，再由 `ojm init` 分发到工程内。
 
 整棵树覆盖前后端两侧，但仍是**两套独立分发的 skill**（同名不同物，别混）：
 
 | 侧 | 本仓位置 | 用户工程里的落点 | 分发链 |
 |---|---|---|---|
-| ojm 模块开发（前端模块、契约、前后端对接） | 本目录顶层 12 个文件 | `.claude/skills/ojm-module-dev/` | `@oj-module/cli` 包（全部 11 个）→ `ojm init` 第 4b 步（只分发其中 6 个，见下） |
+| ojm 模块开发（前端模块、契约、前后端对接） | 本目录顶层 13 个文件 | `.claude/skills/ojm-module-dev/` | `@oj-module/cli` 包（全部 12 个）→ `ojm init` 第 4b 步（只分发其中 7 个，见下） |
 | oj API 开发（后端 handler、全局对象、配置、测试） | `oj-api-dev/` 子目录（快照） | `.claude/skills/oj-api-dev/` | **oj 二进制自带**（`bin/devkit/`）→ `ojm init` 第 4 步 / `ojm vendor` 装·升后同步（0.2.57 起共用 `syncOjDevkit`，全量 `.md` **覆盖**——文档始终与已装 oj 版本一致） |
 
 > **`oj-api-dev/` 子目录是快照，不是本仓维护的文档**：它与本机 oj 的
@@ -30,6 +30,7 @@
 
 | 文件 | 用途 |
 |---|---|
+| `newcomer.md` | **新人上路线**（onboarding 主路径）：搭建脚手架 → 创建模块 → 模块自包含 → 编译 → 发布 → 升级；细节按章号指向 manual.md / publish-walkthrough.md |
 | `SKILL.md` | Claude Code 等 agent 的 skill 入口：工作流、红线、新模块 checklist、陷阱速查，按章节号引用手册 |
 | `manual.md` | 模块开发手册（14 章）：工程结构（module-root 单树 + 两处产物根；含 §1.7 handler 四红线——oj 运行时实测钉出，后端必读；§1.8 `#` 别名与 TS 投影）、写模块、契约与代码生成（含 §3.10 旧 contract.ts 工程迁移指南）、provider 接管（覆盖框架内置功能）、布局、i18n、构建发布、排查、CLI 子命令参考（ojm 原生命令 vs oj 透传命令）、方案包打包与分发（含 §11.1.1 引用式方案）、签名与信任、§13.1.1 web.route_prefix 自定义根路径、**§14 组织架构与通讯录**（内置部门/成员底座 + 共享读面 7 端点 + `scope` 两级门禁 + 归属权四条规则 + 源适配器接点，选人与按部门算人都读它） |
 | `publish-walkthrough.md` | 方案包发布全流程（**新手照做版**）：构建打包 → **拿发布身份（「发布管理」申请凭证 → `ojm keygen --credential`；无站点才用离线 `--id`）** → 签名 → `market publish` 远端签名推送 → verify/trial 验证 → install + TOFU，含多人并发推送纪律、yank 下线与失败速查（手册 §11/§12 的过程版） |
@@ -42,9 +43,9 @@
 | `wecom-multi-corp-links.md` | **平台运维 / 服务商运营**：一套部署服务 N 家企业的**专属登录链接运维清单**（方案一，运维零代码改动）——前置检查、逐企业接入 6 步、链接格式与参数、员工四入口、逐企业验收打勾、故障速查、日常运维；含企微工作台内早跳透传 `corp`/`agent` 的修复说明 |
 | `wecom-customer-reauth-guide.md` | **客户企业微信管理员（可直接转发）**：站点重新部署后的**重新授权与数据恢复操作单**——服务商填写信息区、重新授权（管理员授权 / 可见范围全公司）、首次登录改密、组织架构同步、员工重新登录、角色权限重配、验收打勾、故障速查 |
 
-> 上表 11 项 + 本文件 `README.md` = 顶层 12 个文件，全部随 cli 包发货。
-> `ojm init` 第 4b 步**只分发其中 6 个**给业务工程：`SKILL.md` / `manual.md` / `README.md` /
-> `wecom-daikaifa.md` / `wecom-internal-app.md` / `publish-walkthrough.md`。
+> 上表 12 项 + 本文件 `README.md` = 顶层 13 个文件，全部随 cli 包发货。
+> `ojm init` 第 4b 步**只分发其中 7 个**给业务工程：`SKILL.md` / `manual.md` / `README.md` /
+> `newcomer.md` / `wecom-daikaifa.md` / `wecom-internal-app.md` / `publish-walkthrough.md`。
 > 其余 6 个（`framework-dev.md`、`menu-rules.md`、`module-dev-and-cdn-playground.md`、
 > `sql-builder-missing-capabilities-pr.md`、`wecom-multi-corp-links.md`、
 > `wecom-customer-reauth-guide.md`）是框架贡献者或专题材料，只在 cli 包内可取。
@@ -91,7 +92,7 @@
 ```sh
 # 本 devkit（ojm 模块开发）：拷入工程的 Claude Code skill 目录
 mkdir -p .claude/skills/ojm-module-dev
-cp SKILL.md manual.md README.md wecom-daikaifa.md wecom-internal-app.md .claude/skills/ojm-module-dev/
+cp SKILL.md manual.md README.md newcomer.md wecom-daikaifa.md wecom-internal-app.md .claude/skills/ojm-module-dev/
 
 # 后端 API 开发另装 oj 自带的 devkit（独立 skill）：
 # 权威源随 oj 二进制分发——本机安装在 ~/.local/share/oj/devkit/，
@@ -112,7 +113,7 @@ cp ~/.local/share/oj/devkit/SKILL.md ~/.local/share/oj/devkit/api-manual.md .cla
   `global.d.ts` → `.claude/skills/oj-api-dev/`；
 - **第 4b 步**：从 cli 包内置 `devkit/`（prepack 由本目录顶层同步）拷
   `SKILL.md` / `manual.md` / `README.md` / `wecom-daikaifa.md` / `wecom-internal-app.md` /
-  `publish-walkthrough.md` → `.claude/skills/ojm-module-dev/`。
+  `newcomer.md` / `publish-walkthrough.md` → `.claude/skills/ojm-module-dev/`。
 
 ```mermaid
 flowchart LR
@@ -131,6 +132,6 @@ flowchart LR
   框架贡献者要把本仓快照同步到新版：从 `~/.local/share/oj/devkit/` 整目录覆盖
   `docs/devkit/oj-api-dev/`（oj v0.1.116 起 12 个文件，保持逐字节一致以便对账）。
 
-> 本目录顶层 12 个文件是**自包含**的：业务工程拿到即可读懂，不需要工程仓库里的
+> 本目录顶层 13 个文件是**自包含**的：业务工程拿到即可读懂，不需要工程仓库里的
 > 其它文档。`oj-api-dev/` 子目录是 oj 侧快照，同样自包含（其自身 README 即索引），
 > 但不随 cli 包发货、仅本仓参考。维护者视角的内容来源整理在 `framework-dev.md`（仅本仓）。
