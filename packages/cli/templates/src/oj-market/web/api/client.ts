@@ -15,6 +15,7 @@ import type {
 	TaskRecord,
 	TrustReviewItem,
 	UninstallImpact,
+	UploadPackageResult,
 } from "../types";
 
 /** 市场客户端契约（组件/hooks 依赖此接口，而非具体 http 实现） */
@@ -34,6 +35,12 @@ export interface MarketClient {
 	trust: (taskId: string) => Promise<{ result: string, key_id: string, fingerprint: string }>
 	/** 信任审核列表（GET /oj-market/trust/review；superadmin，发布管理「信任审核」区数据源） */
 	trustReview: () => Promise<TrustReviewItem[]>
+	/**
+	 * 离线包上传（POST /oj-market/upload；superadmin，2026-11-10 round 3）：tgz + .sig 旁车
+	 * 一次入库（内网手动升级）。multipart 双文件顺序 [tgz, sig] 即协议（oj http 面不透出
+	 * 文件名，包名走 query.name）；trusted=false = 发布方指纹未入库（安装时将停待信任确认）。
+	 */
+	uploadPackage: (input: { name: string, tgz: Blob, sig: Blob }) => Promise<UploadPackageResult>
 	/** 生命周期开关（同步 setEnabled，无任务模型；{ok,message} 200 渲染 ok 位） */
 	enable: (input: EnableInput) => Promise<{ ok: boolean, message: string }>
 	/** 市场操作历史（_platform 只读端点 /oj-market/history） */

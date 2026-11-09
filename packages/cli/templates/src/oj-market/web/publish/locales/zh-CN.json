@@ -86,5 +86,18 @@
 		"colAction": "操作",
 		"approve": "确认信任",
 		"empty": "暂无待审核的信任请求"
+	},
+	"offlineUpload": {
+		"title": "离线包上传（内网升级）",
+		"desc": "内网环境无发布方私钥：携带已签名的分发包（.tgz + .sig 旁车）上传入库，服务端即时配对验签（旁车与包体字节绑定）。发布方指纹未入库的包也允许入库，安装时会停待信任确认，superadmin 审核后重试安装即可。",
+		"tgzLabel": "安装包（.tgz）",
+		"sigLabel": "签名旁车（.tgz.sig）",
+		"selectFile": "选择文件",
+		"submit": "上传入库",
+		"needBoth": "请选择安装包与签名旁车两个文件",
+		"pairMismatch": "两文件须同名配对：.sig 文件名应为「{{tgz}}.sig」",
+		"trusted": "发布方已入库",
+		"untrusted": "发布方未入库：安装时将停待信任确认，审核后重试安装即可",
+		"idempotent": "同字节重复上传已幂等处理（目录与文件自愈）"
 	}
 }

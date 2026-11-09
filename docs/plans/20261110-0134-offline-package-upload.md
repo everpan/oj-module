@@ -124,4 +124,8 @@ multipart 双文件（oj http 面不透出文件名——cdn 先例 query 传名
 
 ## 7. 总结
 
-（完成后回填：关键过程、耗时、门禁终值）
+- **关键过程**：服务端 TDD 12 例红 → `upload.ts`（对齐 backfill 输入接口纪律 + cdn 行写语义）一次实现转绿；web TDD 4 例红 → 组件/client/defaultClient/fake/locales 转绿；契约链四步（`oj openapi` 净增 50 行 + `eslint --fix` 归一 tab → `ojm api` 重写 2 文件 → `ojm build`）漂移守卫双绿。bump 0.2.81 触发宿主矩阵漂移，`pnpm --filter @oj-module/cli build:shell` 重建后 `ojm build` 过闸（版本纪律：runtime 升版必须重建宿主再 build）。
+- **有意不动**：oj-market 方案版本维持 0.2.4（惯例：随 `chore(release)` 出厂才 bump，0.2.80 与 round 1/2 同例）。
+- **耗时**：01:34 计划落盘 → 01:53 全门禁绿，约 20 分钟。
+- **门禁终值**：根 1019 ✓（+1 skipped）/ templates 1231 ✓ / cli 678 ✓（+1 skipped）/ 契约漂移守卫 2 ✓ / eslint 0 错（`login.tsx` 3 个预存 warning 非本轮）/ 根 + templates tsc 0。
+- 遗留注记：真机浏览器未走查（组件 4 例单测覆盖 + 服务端 12 例）；`server.max_upload_bytes` 默认 10MB 是部署面参数，大包需调值（已写入 OPERATIONS §3.4）。

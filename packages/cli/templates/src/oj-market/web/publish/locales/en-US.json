@@ -86,5 +86,18 @@
 		"colAction": "Action",
 		"approve": "Approve & trust",
 		"empty": "No pending trust requests"
+	},
+	"offlineUpload": {
+		"title": "Offline package upload (intranet upgrade)",
+		"desc": "No publisher private key inside the intranet: upload the signed package (.tgz + .sig sidecar) and the server verifies the pair on the spot (signature bound to the exact bytes). Packages whose publisher fingerprint is not in the trust store are still catalogued; installation pauses at needs_trust until a superadmin approves and the install is retried.",
+		"tgzLabel": "Package (.tgz)",
+		"sigLabel": "Signature sidecar (.tgz.sig)",
+		"selectFile": "Select file",
+		"submit": "Upload to catalog",
+		"needBoth": "Select both the package and the signature sidecar",
+		"pairMismatch": "The two files must pair by name: the .sig file should be \"{{tgz}}.sig\"",
+		"trusted": "Publisher in trust store",
+		"untrusted": "Publisher not in trust store: install pauses at needs_trust until approved, then retry",
+		"idempotent": "Same-byte re-upload handled idempotently (catalog and files self-healed)"
 	}
 }
