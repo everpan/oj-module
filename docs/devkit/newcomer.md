@@ -27,10 +27,20 @@
 前置：Node 18+、pnpm、网络（首次下载 oj 二进制与 npm 包）。
 
 ```bash
-pnpm dlx @oj-module/cli@latest init my-app --yes
+# 先查最新版号再钉住它：@latest 标签有缓存延迟，发版未满约 1 天时经常解析到旧版
+V=$(npm view @oj-module/cli version)      # 如 0.2.80
+pnpm dlx @oj-module/cli@$V init my-app --yes
 cd my-app && pnpm install
 pnpm dev        # 前端 5174 + 后端 9778；浏览器开 5174，登录 superadmin / aA123456
 ```
+
+> **不要用 `@latest`，钉精确版本号。** 两个常见滞后源：① registry 的 dist-tags 缓存，
+> 发版当天 `@latest` 仍指旧版；② 本机 pnpm 供应链策略 `minimum-release-age`（拒装
+> 发布未满 N 小时的包），新版的依赖解析会被挡回旧版。撞
+> `ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION` 时单次豁免：
+> `npm_config_minimum_release_age=0 pnpm dlx @oj-module/cli@$V init my-app --yes`
+> （只影响这一条命令，不改全局配置）。工程建好后 devDeps 已写死精确版本，
+> 后续 `pnpm install` 不再受标签缓存影响。
 
 `--yes` 落位的关键产物（逐项 `ls` 确认）：
 
@@ -209,7 +219,7 @@ bundle 收敛自动 upgrade；回滚 = 重装旧版本（账本超前会被 OJ-9
 
 | 要做什么 | 命令 |
 |---|---|
-| 建新工程 | `pnpm dlx @oj-module/cli@latest init <名> --yes` |
+| 建新工程 | `V=$(npm view @oj-module/cli version) && pnpm dlx @oj-module/cli@$V init <名> --yes`（勿用 `@latest`） |
 | 起开发（双进程） | `pnpm dev`（前端 5174 / 后端 9778） |
 | 建新模块 | `pnpm new <名> --layout container --api` |
 | 契约再生成 | `./bin/oj openapi -c config.yaml --module-root src -b /api -o openapi.json && pnpm exec ojm api` |
