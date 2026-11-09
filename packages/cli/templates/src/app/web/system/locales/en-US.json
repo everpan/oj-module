@@ -1,7 +1,7 @@
 {
 	"menu": {
 		"system": "System",
-		"framework": "Framework Management",
+		"framework": "Foundation Management",
 		"users": "Users",
 		"userRoles": "Membership",
 		"roles": "Roles & Permissions",

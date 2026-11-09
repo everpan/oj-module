@@ -53,8 +53,15 @@ export const NPM_PKG = "@oj-bin/oj";
  * 令 `migrate` 被 ld 当共享对象加载 → exit 127（OJ-10）。0.1.126 加双闸门（OJ_BUNDLED_LD 在
  * 且 映像确为 loader）自动解析为随包 `ld-linux --library-path <bin>/lib <bin>/oj.bin`，根治该缺陷。
  * 门禁须抬到 0.1.126，使 `ojm vendor` 自动分发含修复的二进制（不再需要消费方 `ojmig` 绕行）。
+ * **0.2.79 抬到 0.1.128**：模板通知模块 `markAllRead` / `clearNotices` 的两处
+ * `INSERT … SELECT` 已迁到构造器 `fromSelect().orIgnore()`，而该组合在 sqlite 上被
+ * v0.1.82~0.1.125 构造期拒绝（`orIgnore with fromSelect is not supported on sqlite`），
+ * 上游 v0.1.128 才补齐三方言通用（并改 mysql 为 `INSERT IGNORE`、pg 裸 `$n` 类型推断）。
+ * 模板不再退回裸 `db.exec`（mysql 1064 / pg 语法错），门禁必须盖住这条链路，否则下游
+ * `ojm vendor` 装到旧 oj 会让「清除 / 全部已读」直接 500。闭环需求见
+ * docs/devkit/sql-builder-missing-capabilities-pr.md §7。
  */
-export const MIN_OJ_VERSION = "0.1.126";
+export const MIN_OJ_VERSION = "0.1.128";
 
 /** 按段数值比较（字符串比较会把 0.1.9 判成大于 0.1.69）；非数字段按 0 处理 */
 export function isSupportedOjVersion(version: string): boolean {

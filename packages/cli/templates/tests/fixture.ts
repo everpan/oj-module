@@ -5,8 +5,9 @@
 // **构造器垫片（db.table / listTables）**：oj 的构造器是二进制内的 Rust 实现，Node 侧无可复用
 // 模块，故这里按手册契约（oj-api-dev api-manual「查询构造器」）写一层**最小 JS 渲染层**——
 // 只覆盖模板后端真正用到的面：select（含聚合 / distinct / lit）/ as / join（列对列 + 列对值）/
-// where / whereIf / groupBy / orderBy / limit / offset / union / insert（含 orIgnore、returning）/ update /
-// delete / truncate / all / run / listTables。子集外的调用**直接报「未实现」**，不静默返回空结果
+// where / whereIf / groupBy / orderBy / limit / offset / union / insert（含 orIgnore、returning）/
+// fromSelect（含 orIgnore、租户注入）/ update / delete / truncate / all / run / listTables。
+// 子集外的调用**直接报「未实现」**，不静默返回空结果
 // （静默空值会把「垫片缺能力」伪装成「业务没数据」，是最难查的一类假绿）。
 //
 // 已知边界（模板当前用不到，不模拟）：归属守卫（`owner_of`）——**租户已模拟**，见下。
@@ -165,6 +166,7 @@ interface QueryState {
 	orIgnore: boolean
 	returning: string[] | null
 	union: { other: FakeQuery, kind: "all" | "distinct" } | null
+	fromSelect: { source: FakeQuery, cols: string[] } | null
 }
 
 /**
@@ -193,6 +195,7 @@ class FakeQuery {
 			orIgnore: false,
 			returning: null,
 			union: null,
+			fromSelect: null,
 			...seed,
 		};
 	}
@@ -263,8 +266,23 @@ class FakeQuery {
 	}
 
 	insert(values: unknown): this {
+		if (this.s.fromSelect)
+			throw new Error("[fixture] insert takes either values or fromSelect, not both");
 		this.s.verb = "insert";
 		this.s.values = values;
+		return this;
+	}
+
+	/**
+	 * INSERT … SELECT（v0.1.128）：源构造器的 select 列与 cols 按位置对齐。
+	 * 与 oj 同口径：cols 显式不含 tenant_id（租户由服务端按当前租户注入到 INSERT 列 +
+	 * 源 SELECT 常量列），源 select 的租户收窄由 compileWhereClause 继承。
+	 */
+	fromSelect(source: FakeQuery, cols: string[]): this {
+		if (this.s.values !== null)
+			throw new Error("[fixture] insert takes either values or fromSelect, not both");
+		this.s.verb = "insert";
+		this.s.fromSelect = { source, cols };
 		return this;
 	}
 
@@ -330,6 +348,10 @@ class FakeQuery {
 	}
 
 	private compileInsert(): Compiled {
+		if (this.s.fromSelect)
+			return this.compileInsertFromSelect();
+		if (this.s.values === null)
+			throw new Error("[fixture] insert needs either values or fromSelect");
 		const raw = (Array.isArray(this.s.values) ? this.s.values : [this.s.values]) as Array<Record<string, unknown>>;
 		if (raw.length === 0)
 			throw new Error("[fixture] insert 至少需要一行");
@@ -351,6 +373,32 @@ class FakeQuery {
 		return {
 			sql: `INSERT${this.s.orIgnore ? " OR IGNORE" : ""} INTO ${quoteIdent(this.s.table)} (${cols.map(quoteIdent).join(", ")}) VALUES ${rows.map(() => tuple).join(", ")}${tail}`,
 			params,
+		};
+	}
+
+	private compileInsertFromSelect(): Compiled {
+		const { source, cols } = this.s.fromSelect!;
+		if (cols.length === 0)
+			throw new Error("[fixture] insert fromSelect needs insert columns");
+		if (cols.some(c => c.toLowerCase() === "tenant_id"))
+			throw new Error("[fixture] fromSelect must not declare tenant column 'tenant_id'");
+		if (source.s.verb !== "select")
+			throw new Error("[fixture] fromSelect source needs select verb");
+		const srcCols = source.s.cols;
+		if (!srcCols || srcCols.length === 0)
+			throw new Error("[fixture] fromSelect source needs explicit columns (no '*' / omission)");
+		if (srcCols.length !== cols.length)
+			throw new Error(`[fixture] insert declares ${cols.length} columns but the source select yields ${srcCols.length}`);
+		const src = source.compile(true);
+		// 租户注入：目标表租户化时，tenant_id 补进 INSERT 列 + 源 SELECT 首列常量（与 oj 同语义）。
+		const tenantCol = isTenantScoped(this.s.table);
+		const insertCols = tenantCol ? ["tenant_id", ...cols] : cols;
+		const selectSql = tenantCol
+			? src.sql.replace(/^SELECT(\s+DISTINCT)?\s+/i, (_m, distinct?: string) => `SELECT${distinct ?? ""} ?, `)
+			: src.sql;
+		return {
+			sql: `INSERT${this.s.orIgnore ? " OR IGNORE" : ""} INTO ${quoteIdent(this.s.table)} (${insertCols.map(quoteIdent).join(", ")}) ${selectSql}`,
+			params: [...(tenantCol ? [currentTenant()] : []), ...src.params],
 		};
 	}
 

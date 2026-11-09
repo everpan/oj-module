@@ -11,7 +11,7 @@ test.describe("侧边栏双菜单滚动", () => {
 		await page.setViewportSize({ width: 1280, height: 300 });
 		await enterTemplateApp(page);
 
-		for (const text of ["方案市场", "系统管理", "框架管理"])
+		for (const text of ["方案市场", "系统管理", "基础管理"])
 			await page.locator("aside .ant-menu-submenu-title", { hasText: text }).click();
 
 		const openSubmenus = page.locator("aside .ant-menu-submenu-open");

@@ -48,9 +48,8 @@ export interface PushBroadcastInput {
 interface Row {
 	[k: string]: unknown
 }
+// 本原语只用构造器（v0.1.128 起 fromSelect/orIgnore 三方言通用），不再用裸 db.exec/db.query。
 interface NotifyDb {
-	query: (sql: string, params?: unknown[]) => Promise<Row[]>
-	exec: (sql: string, params?: unknown[]) => Promise<number>
 	table: DBInstance["table"]
 }
 declare const db: NotifyDb;
@@ -216,28 +215,35 @@ export async function markAllRead(userId: string | number): Promise<void> {
 	const uid = Number(userId);
 	const now = nowStr();
 	await db.table("notifications").where({ field: "user_id", op: "eq", value: uid }).update({ is_read: 1 }).run();
-	// 保留 db.exec：INSERT OR IGNORE ... SELECT 在 sqlite 上构造器无法表达——
-	// oj 0.1.81 的 orIgnore 仅跟随 VALUES 的 upsert 子句，不与 fromSelect(SELECT 源) 组合
-	// （实测：code 500 "orIgnore with fromSelect is not supported on sqlite"）。原 SQL 三方言通用
-	// （sqlite OR IGNORE / pg ON CONFLICT DO NOTHING / mysql ON DUPLICATE KEY），退回裸 SQL。
-	// 多租户（0015）：裸 SQL 必须显式写 tenant_id 且把当前租户作为绑定参数传进去，
-	// 否则 sql_guard=deny 直接拒（缺列 / 参数不含租户值两种都会被拦）。
-	const tenant = http.tenantId;
-	await db.exec(
-		"INSERT OR IGNORE INTO notifications_broadcast_read (tenant_id, broadcast_id, user_id, read_time) SELECT tenant_id, id, ?, ? FROM notifications_broadcast WHERE tenant_id = ?",
-		[uid, now, tenant],
-	);
+	// 构造器（v0.1.128）：fromSelect().orIgnore() 是三方言通用的幂等 INSERT … SELECT——
+	// sqlite 渲染 INSERT OR IGNORE / mysql INSERT IGNORE / pg ON CONFLICT DO NOTHING。
+	// tenant_id 由服务端按当前租户注入（cols 与源 select 都不写 tenant_id），源 select 的
+	// 租户收窄自动继承；uid / now 用 { lit, as } 注入，类型由 INSERT 目标列推断。
+	// 注意 orIgnore **只幂等唯一键冲突**：去重靠 (tenant_id, broadcast_id, user_id) 唯一约束
+	// （0006 迁移），无唯一键时连跑两次会重复落。故障模式跨方言相反：pg 上 NOT NULL/CHECK
+	// 违例照常报错，sqlite/mysql 的宽形态对同样脏数据静默丢行。
+	await db.table("notifications_broadcast_read").fromSelect(
+		db.table("notifications_broadcast").select([
+			"id",
+			{ lit: uid, as: "user_id" },
+			{ lit: now, as: "read_time" },
+		]),
+		["broadcast_id", "user_id", "read_time"],
+	).orIgnore().run();
 }
 
 /** 清空：删按人项 + 广播逐条落「对我隐藏」标记（共享行不可物理删，他人不受影响） */
 export async function clearNotices(userId: string | number): Promise<void> {
 	const uid = Number(userId);
 	await db.table("notifications").where({ field: "user_id", op: "eq", value: uid }).delete().run();
-	// 保留 db.exec：INSERT OR IGNORE ... SELECT 同 markAllRead（构造器 orIgnore 不与
-	// fromSelect 组合，实测 500），原 SQL 三方言通用。多租户同上：tenant_id 显式 + 绑定参数。
-	const tenant = http.tenantId;
-	await db.exec(
-		"INSERT OR IGNORE INTO notifications_broadcast_hidden (tenant_id, broadcast_id, user_id, create_time) SELECT tenant_id, id, ?, ? FROM notifications_broadcast WHERE tenant_id = ?",
-		[uid, nowStr(), tenant],
-	);
+	// 同 markAllRead：构造器幂等 INSERT … SELECT（v0.1.128 三方言通用），tenant_id 由服务端
+	// 注入；只幂等唯一键冲突，靠 0006 唯一约束去重，跨方言故障模式相反。
+	await db.table("notifications_broadcast_hidden").fromSelect(
+		db.table("notifications_broadcast").select([
+			"id",
+			{ lit: uid, as: "user_id" },
+			{ lit: nowStr(), as: "create_time" },
+		]),
+		["broadcast_id", "user_id", "create_time"],
+	).orIgnore().run();
 }

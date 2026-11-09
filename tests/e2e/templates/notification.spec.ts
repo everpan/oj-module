@@ -89,6 +89,37 @@ test.describe.serial("通知中心（templates）", () => {
 		await expect(page.locator(".ant-list-item", { hasText: "e2e-类型-通知" }).first()).toBeVisible();
 	});
 
+	// N5：dark 主题下铃铛条目 hover 高亮为暗色（修复点：List.Item 只有 hover:bg-gray-100，
+	// dark 下沿用浅灰高亮把消息文字盖成白底不可读）。验 Tailwind dark: 契约——html.dark 即触发
+	// （与 layout-effects 的 toggleHtmlClass("dark") 同源），不依赖主题按钮的 view-transition 动画。
+	test("N5: dark 主题下铃铛条目 hover 高亮为暗色而非白色", async ({ page }) => {
+		// 自推一条：与 N4「清空」解耦，顺序无关
+		await page.request.post("/api/notification/push-broadcast", {
+			headers: apiHeaders(token),
+			data: { title: "e2e-dark-hover", message: "dark hover probe", category: "notice" },
+		});
+		const popover = await openBell(page);
+		const item = popover.locator(".ant-list-item").first();
+		const brightness = (bg: string) => {
+			const [r, g, b] = (bg.match(/[\d.]+/g) ?? []).map(Number);
+			return ((r ?? 0) + (g ?? 0) + (b ?? 0)) / 3;
+		};
+
+		// 亮色基线：hover 规则确实生效（浅灰），否则下面的暗色断言会假通过
+		await item.hover();
+		const lightBg = await item.evaluate(el => getComputedStyle(el).backgroundColor);
+		expect(brightness(lightBg), `亮色 hover 基线=${lightBg}`).toBeGreaterThan(200);
+
+		await page.evaluate(() => document.documentElement.classList.add("dark"));
+		expect(await page.evaluate(() => document.documentElement.classList.contains("dark"))).toBe(true);
+		await item.hover(); // 重新触发 :hover 以应用 dark 规则
+		const darkBg = await item.evaluate(el => getComputedStyle(el).backgroundColor);
+		expect(darkBg, `dark hover 不得沿用亮色高亮 ${lightBg}`).not.toBe(lightBg);
+		expect(brightness(darkBg), `dark hover 平均亮度=${darkBg}`).toBeLessThan(128);
+
+		await page.evaluate(() => document.documentElement.classList.remove("dark"));
+	});
+
 	// N4：清空——按人与广播全部消失（修复点：清空不起效——广播项残留）
 	test("N4: 清空后弹层与中心页均无残留", async ({ page }) => {
 		await page.goto("/notification-center");
