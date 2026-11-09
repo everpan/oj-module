@@ -50,3 +50,11 @@ export function errorText(e: unknown): string {
 		return msg;
 	return e instanceof Error ? e.message : String(e);
 }
+
+/**
+ * HTTP 状态提取（ky/ContractApiError 同形态，与 defaultClient isUnconfigured 同口径）：
+ * 403 = 可见范围探测的「整区不渲染」信号（可见范围由服务端决定，前端不重复判权）。
+ */
+export function statusOf(e: unknown): number | undefined {
+	return (e as { response?: { status?: number } } | null)?.response?.status;
+}

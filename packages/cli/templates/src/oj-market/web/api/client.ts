@@ -35,6 +35,8 @@ export interface MarketClient {
 	trust: (taskId: string) => Promise<{ result: string, key_id: string, fingerprint: string }>
 	/** 信任审核列表（GET /oj-market/trust/review；superadmin，发布管理「信任审核」区数据源） */
 	trustReview: () => Promise<TrustReviewItem[]>
+	/** 信任库列表（GET /oj-market/trust；superadmin）——离线上传区可见性探测面（403 → 整区不渲染） */
+	trustKeys: () => Promise<{ keys: Array<{ key_id: string, public_key: string }>, note: string | null }>
 	/**
 	 * 离线包上传（POST /oj-market/upload；superadmin，2026-11-10 round 3）：tgz + .sig 旁车
 	 * 一次入库（内网手动升级）。multipart 双文件顺序 [tgz, sig] 即协议（oj http 面不透出

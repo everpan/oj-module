@@ -39,4 +39,11 @@ describe("发布管理「信任审核」区", () => {
 		await waitFor(() => expect(client.calls).toContain("trustReview"));
 		expect(screen.queryByText("crm.author")).toBeNull();
 	});
+
+	it("非 403 失败（500/网络）：如实报错而非渲染成空态——待审项不被静默藏没", async () => {
+		const client = new InMemoryMarketClient({ trustReviewError: new Error("500 服务器开小差") });
+		renderWithProviders(<TrustReviewSection />, client);
+		await screen.findByText("500 服务器开小差");
+		expect(screen.queryByText("暂无待审核的信任请求")).toBeNull();
+	});
 });

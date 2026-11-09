@@ -34,6 +34,8 @@ function pick(input: Element, file: File) {
 
 async function renderAndPick(client: InMemoryMarketClient) {
 	renderWithProviders(<OfflineUploadSection />, client);
+	// 可见性探测（trustKeys）落地后才渲染表单
+	await screen.findByTestId("offline-upload");
 	const inputs = document.querySelectorAll("input[type=\"file\"]");
 	expect(inputs.length).toBeGreaterThanOrEqual(2);
 	pick(inputs[0]!, tgzFile());
@@ -70,11 +72,19 @@ describe("发布管理「离线包上传」区", () => {
 	it("配对不齐（.sig 与 tgz 不同名）：前端预校验拦截，不发请求", async () => {
 		const client = new InMemoryMarketClient({ uploadPackageResult: RESULT });
 		renderWithProviders(<OfflineUploadSection />, client);
+		await screen.findByTestId("offline-upload");
 		const inputs = document.querySelectorAll("input[type=\"file\"]");
 		pick(inputs[0]!, tgzFile());
 		pick(inputs[1]!, sigFile("other-9.9.9.tgz.sig"));
 		fireEvent.click(screen.getByText("上传入库"));
 		await waitFor(() => expect(screen.getByText("两文件须同名配对：.sig 文件名应为「demo-solution-0.2.0.tgz.sig」")).toBeTruthy());
 		expect(client.calls.filter(c => c.startsWith("uploadPackage"))).toHaveLength(0);
+	});
+
+	it("非 superadmin（探测 403）：整区不渲染——可见范围由服务端决定，前端不重复判权", async () => {
+		const client = new InMemoryMarketClient({ trustKeysError: Object.assign(new Error("forbidden"), { response: { status: 403 } }) });
+		renderWithProviders(<OfflineUploadSection />, client);
+		await waitFor(() => expect(client.calls).toContain("trustKeys"));
+		expect(screen.queryByTestId("offline-upload")).toBeNull();
 	});
 });

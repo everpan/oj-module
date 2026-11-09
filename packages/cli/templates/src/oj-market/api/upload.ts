@@ -19,7 +19,7 @@ import { MAX_PACKAGE_BYTES } from "#/_platform/_lifecycle/limits";
 import { manifestOfUpload } from "#/_platform/_lifecycle/manifest-of-upload";
 import { createTrustStore } from "#/_platform/_lifecycle/trust";
 
-import { clampManifest, fail, packageCanonicalOf, parseSidecarSig, parseUploadFile } from "./cdn/shared";
+import { clampManifest, fail, fingerprintOf, packageCanonicalOf, parseSidecarSig, parseUploadFile } from "./cdn/shared";
 import { verifyCanonicalSig } from "./cdn/signed-auth";
 
 /** 上传体积闸 = 分发包体积闸（单源 limits.ts，与 cdn/upload 同款） */
@@ -59,17 +59,6 @@ function sha256Of(env: OfflineUploadEnv): (data: Uint8Array) => string {
 
 function nowOf(env: OfflineUploadEnv): number {
 	return env.now?.() ?? Math.floor(Date.now() / 1000);
-}
-
-/** 指纹复算（POST /market/trust 同款口径：64hex 公钥 → 32B raw → sha256） */
-function fingerprintOf(env: OfflineUploadEnv): (publicKeyHex: string) => string {
-	const sha = sha256Of(env);
-	return (publicKeyHex) => {
-		const raw = new Uint8Array(32);
-		for (let i = 0; i < 32; i++)
-			raw[i] = Number.parseInt(publicKeyHex.slice(i * 2, i * 2 + 2), 16);
-		return sha(raw);
-	};
 }
 
 async function readFileOrNull(path: string): Promise<Uint8Array | null> {
@@ -138,6 +127,10 @@ export async function uploadPackageBody(env: OfflineUploadEnv): Promise<Record<s
 		fail(409, `「${file.name}@${file.version}」的 .sig 旁车验签失败——签名与实收字节不绑定（请重新导出分发包与签名，tgz 与 .sig 须同批字节）`);
 	}
 
+	// ③½ 指纹 / trusted 一次计算（幂等与成功两条返回路径同源；幂等短路径也要如实返回）
+	const fingerprint = fingerprintOf(sha256Of(env))(sig.public_key);
+	const trusted = Boolean(await createTrustStore(env.trustPath).get(sig.key_id));
+
 	// ④ 查库比对（不碰盘仲裁：异字节在此被拒，cdn 字节绝无被持久损坏的窗口）
 	const tgzPath = `${env.cdnDir}/${rawName}`;
 	const sigPath = `${tgzPath}.sig`;
@@ -151,7 +144,7 @@ export async function uploadPackageBody(env: OfflineUploadEnv): Promise<Record<s
 		if (String(prior[0]!.sha256) === sha256) {
 			await healIfMissing(tgzPath, bytes.tgz);
 			await healIfMissing(sigPath, bytes.sig);
-			return { ok: true, name: file.name, version: file.version, sha256, size: bytes.tgz.byteLength, key_id: sig.key_id, fingerprint: fingerprintOf(env)(sig.public_key), trusted: Boolean(await createTrustStore(env.trustPath).get(sig.key_id)), idempotent: true };
+			return { ok: true, name: file.name, version: file.version, sha256, size: bytes.tgz.byteLength, key_id: sig.key_id, fingerprint, trusted, idempotent: true };
 		}
 		await audit(env, file.name, file.version, sig.key_id, "failed", "409 异字节同版本：同一版本号只允许一份字节");
 		fail(409, `「${file.name}@${file.version}」已存在且字节不一致——同一版本号只允许一份字节，请升 version 重发（确需覆盖须站点侧删行，superadmin 操作）`);
@@ -171,15 +164,12 @@ export async function uploadPackageBody(env: OfflineUploadEnv): Promise<Record<s
 	if (m.name !== file.name || m.version !== file.version)
 		fail(400, `包内 manifest「${String(m.name)}@${String(m.version)}」与上传文件名「${file.name}@${file.version}」不一致——请核对分发包`);
 
-	// ⑦ trusted 探测（未审放行：目录 ≠ 信任，安装才是信任闸——verified 段 TOFU 闭环兜底）
-	const trusted = Boolean(await createTrustStore(env.trustPath).get(sig.key_id));
-
-	// ⑧ 原子落盘双文件（tmp+rename；此后任一步失败尽力回收本方字节，绝不改写他人文件）
+	// ⑦ 原子落盘双文件（tmp+rename；此后任一步失败尽力回收本方字节，绝不改写他人文件）
 	await atomicWriteBytes(tgzPath, bytes.tgz);
 	await atomicWriteBytes(sigPath, bytes.sig);
 	const now = nowOf(env);
 	try {
-		// ⑨ db.tx 写行（只包 DB 段；所有权事务内复核——并发竞态窗口由写事务内重读仲裁）
+		// ⑧ db.tx 写行（只包 DB 段；所有权事务内复核——并发竞态窗口由写事务内重读仲裁）
 		await db.tx(async (t) => {
 			const ownersNow = await t.table("market_release").select(["key_id"]).where({ field: "product", op: "eq", value: file.name }).limit(1).all() as Array<{ key_id: unknown }>;
 			const ownerNow = ownersNow[0]?.key_id;
@@ -216,13 +206,15 @@ export async function uploadPackageBody(env: OfflineUploadEnv): Promise<Record<s
 		if (status === undefined && again.length > 0 && String(again[0]!.sha256) === sha256) {
 			await healIfMissing(tgzPath, bytes.tgz);
 			await healIfMissing(sigPath, bytes.sig);
-			return { ok: true, name: file.name, version: file.version, sha256, size: bytes.tgz.byteLength, key_id: sig.key_id, fingerprint: fingerprintOf(env)(sig.public_key), trusted, idempotent: true };
+			return { ok: true, name: file.name, version: file.version, sha256, size: bytes.tgz.byteLength, key_id: sig.key_id, fingerprint, trusted, idempotent: true };
 		}
 		const f = fsFace();
+		// 双文件都按字节身份守卫后回收：并发败方绝不删除他人已落位的字节（否则胜方目录行指向无旁车包）
 		const onDisk = await readFileOrNull(tgzPath);
 		if (onDisk !== null && sha256Of(env)(onDisk) === sha256)
 			await f.remove(tgzPath, { force: true }).catch(() => {});
-		if (await readFileOrNull(sigPath) !== null)
+		const onDiskSig = await readFileOrNull(sigPath);
+		if (onDiskSig !== null && sha256Of(env)(onDiskSig) === sha256Of(env)(bytes.sig))
 			await f.remove(sigPath, { force: true }).catch(() => {});
 		if (typeof status === "number") {
 			await audit(env, file.name, file.version, sig.key_id, "failed", `409 并发复核拒绝：${(e as Error).message}`);
@@ -233,5 +225,5 @@ export async function uploadPackageBody(env: OfflineUploadEnv): Promise<Record<s
 	}
 
 	await audit(env, file.name, file.version, sig.key_id, "success", `离线上传成功（${rawName}，${bytes.tgz.byteLength} 字节${trusted ? "" : "；发布方未入库，安装时将停待信任确认"}）`);
-	return { ok: true, name: file.name, version: file.version, sha256, size: bytes.tgz.byteLength, key_id: sig.key_id, fingerprint: fingerprintOf(env)(sig.public_key), trusted, idempotent: false };
+	return { ok: true, name: file.name, version: file.version, sha256, size: bytes.tgz.byteLength, key_id: sig.key_id, fingerprint, trusted, idempotent: false };
 }

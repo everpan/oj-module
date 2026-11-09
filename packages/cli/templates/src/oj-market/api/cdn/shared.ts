@@ -102,3 +102,20 @@ export function clampManifest(m: Record<string, unknown>): Record<string, unknow
 export function fail(status: number, msg: string): never {
 	throw Object.assign(new Error(msg), { status });
 }
+
+/**
+ * 公钥指纹工厂（64hex → 32B raw → sha256）：POST /market/trust 混淆代理防线与离线包上传
+ * 响应共用——TOFU「指纹逐字核对」不变式的单源实现，勿在调用点各抄一遍 parseInt 循环。
+ * sha256 面由调用方注入（env.sha256Hex 回落运行时全局，与 verify 段同口径）。
+ */
+export function fingerprintOf(sha256Hex: (data: Uint8Array) => string): (publicKeyHex: string) => string {
+	return publicKeyHex => sha256Hex(hexToBytes32(publicKeyHex));
+}
+
+/** 64hex → 32B raw（Ed25519 公钥；输入非 64hex 时越界字节为 NaN——调用方已过结构校验） */
+function hexToBytes32(hex: string): Uint8Array {
+	const raw = new Uint8Array(32);
+	for (let i = 0; i < 32; i++)
+		raw[i] = Number.parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+	return raw;
+}
