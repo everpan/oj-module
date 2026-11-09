@@ -231,12 +231,13 @@ key 骨架：`lifecycle.stage.<stage>.reason` / `.hint` / `.retryable`。`retrya
 | `unknown_key` | `key_id` 不在信任库 | → 任务终态 `needs_trust` + 指纹展示；staging 不清场 |
 | `sig_format` | 编码违规（public_key 非 64hex、`value` 非标准 base64、canon 非 v1）；或 `verifyEd25519` 抛错 | 抛错与返回 false 同拒装但分码 |
 
-**TOFU 三态处置**（C2-38）：`trusted`（验签通过即装）/ `unknown`（任务停 `needs_trust`，展示指纹 `sha256Hex(publicKey)`，确认入库）/ `rejected`（不装，`trust_bound_mismatch`）。
+**TOFU 三态处置**（C2-38）：`trusted`（验签通过即装）/ `unknown`（任务停 `needs_trust`，指纹随任务提交，superadmin 页面审核确认入库）/ `rejected`（不装，`trust_bound_mismatch`）。
 
 ```bash
-# 首次信任确认（unknown_key 终态后）
+# 首次信任确认（unknown_key 终态后）：superadmin 在方案市场页对同一方案点安装，
+# 于「待信任确认」弹窗核对发布方与指纹后审核通过（POST /api/_platform/market/trust {task_id}）
+# 运维旁路亦可命令行确认：
 ojm trust confirm --task <task_id>
-# 或：POST /api/_platform/market/trust {task_id}
 ```
 
 ---

@@ -183,7 +183,7 @@ describe("renderOutcome · 终态渲染（reason + retryable + hintKey 双语文
 		expect(text).toContain("本次失败可重试");
 	});
 
-	it("needs_trust（P2-3 第五终态）：待信任确认渲染——非成功态、非失败崩溃，含指纹分组与确认命令", () => {
+	it("needs_trust（P2-3 第五终态）：待信任确认渲染——非成功态、非失败崩溃，含指纹分组与页面审核指引", () => {
 		const text = renderOutcome(rec({
 			status: "needs_trust",
 			stage: "verifying",
@@ -193,7 +193,10 @@ describe("renderOutcome · 终态渲染（reason + retryable + hintKey 双语文
 		}), "zh-CN");
 		expect(text).toContain("待信任确认");
 		expect(text).toContain("stranger.pub");
-		expect(text).toContain("ojm trust confirm --task install-1-abc");
+		// 新口径（2026-11-10）：指纹随任务隐式提交，只引导 superadmin 在方案市场页审核，不再教 CLI confirm
+		expect(text).toContain("方案市场");
+		expect(text).not.toContain("ojm trust confirm");
+		expect(text).not.toContain("逐字核对");
 		expect(text).toMatch(/01234567 89abcdef 01234567 89abcdef/); // 指纹 8 分组
 		expect(text).not.toContain("安装完成");
 		const en = renderOutcome(rec({

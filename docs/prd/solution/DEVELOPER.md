@@ -412,7 +412,7 @@ ojm sign dist/demo-market-0.1.0.tgz --id <publisher>.<key-name> --check
 
 签名规范串 = `<name>@<version>:<sha256>`（canon="v1"）；侧车字段 `alg/key_id/public_key/value/canon`。
 
-> 首次向陌生站点发布会落 `needs_trust`（TOFU 双轨第二轨）：把安装输出里的公钥指纹发给运维核对，运维 `ojm trust confirm --task <id>` 后重跑安装。
+> 首次向陌生站点发布会落 `needs_trust`（TOFU 双轨第二轨）：指纹已随任务隐式提交，superadmin 在方案市场页「待信任确认」弹窗审核通过（仅超管可确认）后重跑安装。
 
 ### 8.3 上传 bundles / CDN（分发）
 

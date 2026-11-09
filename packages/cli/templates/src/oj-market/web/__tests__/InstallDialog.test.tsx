@@ -124,7 +124,7 @@ describe("installDialog 安装进度（BDD）", () => {
 		};
 		const client = new InMemoryMarketClient({ taskRecord: pending, installResult: { task_id: "t1" } });
 		renderWithProviders(<InstallDialog row={row} open onClose={() => {}} />, client);
-		const button = await screen.findByText("指纹一致，信任并重试");
+		const button = await screen.findByText("审核通过，信任并重试");
 		expect(screen.getByTestId("install-trust-fingerprint").textContent).toContain("6afc".repeat(16));
 		fireEvent.click(button);
 		await waitFor(() => expect(client.calls).toContain("trust:t1"));

@@ -19,11 +19,13 @@ describe("devkit 手册两章节（P2-14：文档存在性）", () => {
 		expect(manual).toContain("逐字");
 	});
 
-	it("§12 签名与信任——keygen→sign→install 流程 + TOFU + bootstrap key", () => {
+	it("§12 签名与信任——keygen→sign→install 流程 + TOFU 页面审核 + bootstrap key", () => {
 		expect(manual).toContain("## §12 签名与信任");
 		expect(manual).toContain("ojm keygen --id");
 		expect(manual).toContain("ojm sign dist/");
-		expect(manual).toContain("ojm trust confirm --task");
+		// 2026-11-10 起首装只引导页面审核（方案市场 → 待信任确认弹窗），不再教 CLI confirm
+		expect(manual).toContain("方案市场");
+		expect(manual).not.toContain("ojm trust confirm --task");
 		expect(manual).toContain("BOOTSTRAP_KEY");
 		expect(manual).toContain("硬 fail-closed：未签名包拒装");
 	});

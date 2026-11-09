@@ -136,12 +136,12 @@ const VERIFY_CODE_COPY: Record<string, { reason: { zh: string, en: string }, hin
 	},
 	unknown_key: {
 		reason: {
-			zh: "未知发布方（key_id 不在信任库）：需经 TOFU 确认后方可安装",
-			en: "Unknown publisher (key_id not in the trust store): requires TOFU confirmation before install",
+			zh: "未知发布方（key_id 不在信任库）：需经页面信任审核后方可安装",
+			en: "Unknown publisher (key_id not in the trust store): requires a trust review on the market page before install",
 		},
 		hint: {
-			zh: "请与发布方核对指纹后执行 ojm trust confirm --task <id>",
-			en: "Verify the fingerprint with the publisher, then run `ojm trust confirm --task <id>`",
+			zh: "指纹已随安装任务提交，superadmin 在方案市场页面审核通过后重试安装即可",
+			en: "The fingerprint is submitted with the install task; after a superadmin approves it on the market page, retry the install",
 		},
 	},
 	sig_format: {
@@ -233,21 +233,22 @@ export function renderOutcome(record: TaskRecord, locale?: string): string {
 	}
 	if (record.status === "needs_trust") {
 		// 第五终态（P2-3，G3）：未知发布方待 TOFU 确认——**非成功态、非失败崩溃**；
-		// 指纹分组展示 + 确认命令 + 重试指引（契约附录 A.2 unknown_key）
+		// 2026-11-10 起改页面审核口径：安装尝试本身即隐式提交指纹（任务记录已携带三元组），
+		// 只引导 superadmin 在方案市场页审核（待信任确认弹窗），不再要求逐字核对指纹/CLI confirm
 		const t = record.trust;
 		const fp = t?.fingerprint ? (t.fingerprint.match(/.{1,8}/g) ?? []).join(" ") : "（未知）";
 		return lang === "en-US"
 			? [
-				`[ojm] Trust confirmation required (publisher: ${t?.key_id ?? "unknown"})`,
-				`Fingerprint (sha256 of public key): ${fp}`,
-				`Verify it with the publisher, then run: ojm trust confirm --task ${record.id}`,
-				"After confirming, retry the install command.",
+				`[ojm] Trust confirmation required (publisher: ${t?.key_id ?? "unknown"}) — install not completed`,
+				`Fingerprint (sha256 of public key, submitted with this task for review): ${fp}`,
+				"A trust review request has been submitted: a superadmin should open the market page, install the same solution, and approve it in the trust-confirmation dialog.",
+				"Once approved, retry this install command to continue.",
 			].join("\n")
 			: [
 				`[ojm] 待信任确认（发布方：${t?.key_id ?? "未知"}）——安装未完成`,
-				`指纹（公钥 sha256，请与发布方公布值逐字核对）：${fp}`,
-				`确认命令：ojm trust confirm --task ${record.id}`,
-				"确认入库后重试安装命令即可继续。",
+				`指纹（公钥 sha256，已随本任务提交待审）：${fp}`,
+				"已提交信任审核：请 superadmin 登录方案市场页，对同一方案点安装，在「待信任确认」弹窗中审核通过。",
+				"审核入库后重试本安装命令即可继续。",
 			].join("\n");
 	}
 	const retryable = RETRYABLE_LABELS[lang][record.error?.retryable ? "yes" : "no"];

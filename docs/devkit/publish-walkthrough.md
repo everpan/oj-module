@@ -122,7 +122,7 @@ OJM_PUBLISH_CREDENTIAL=<token> ojm keygen     # 或走环境变量，避免令�
 - `--credential` 与 `--id` 互斥（同时给 exit 2）；`--out` / `--yes` 仍按离线版规则生效
   （`--out <dir>` 相对路径按**进程 cwd** 解析，指进当前工程树会要求 `--yes`——私钥入仓即泄露）。
 - **它不替你建信任**：公钥是本地生成的，站点在兑换时拿不到，所以首装仍是陌生 key →
-  `needs_trust`，仍要按 §6 逐字核对指纹后 `trust confirm`。凭证解决的是「身份命名与归属」，
+  `needs_trust`，仍要按 §6 由 superadmin 在方案市场页审核指纹。凭证解决的是「身份命名与归属」，
   不是「信任免检」。
 - 兑换完成后，「方案市场 → 发布管理」该条记录变为**已兑换**并显示 key_id。
 - 发版之后，「方案市场 → 发布历史」（`/oj-market/history`）按发布时间倒序列出所有产品/版本：
@@ -300,9 +300,10 @@ oj serve -c config.yaml        # 形态 A（config 已加 api 挂载时）；或
 #    安装器再 reload 时得到 unchanged，判 partial（reloading）
 ojm install crm@1.0.0 --site-url http://127.0.0.1:9778 --user superadmin --pass <口令>
 
-# ④ 首装陌生 key 必停在 needs_trust：响应 trust.fingerprint 与 §2 记下的指纹【逐字】核对
-#    核对通道用当面/电话/既有加密聊天——不要用 CDN 页面上的指纹（那正是攻击者能改的地方）
-ojm trust confirm --task <task-id> --site-url http://127.0.0.1:9778 --user superadmin --pass <口令>
+# ④ 首装陌生 key 必停在 needs_trust：指纹已随任务隐式提交，无需人工核对。
+#    superadmin 登录方案市场页，对同一方案点安装，在「待信任确认」弹窗核对发布方与
+#    响应 trust.fingerprint（与 §2 记下的指纹比对即可）后点「审核通过」——确认即入库
+#    并自动重试那一次安装；其余人随后重跑 install 续跑：
 ojm install crm@1.0.0 --site-url http://127.0.0.1:9778 --user superadmin --pass <口令>   # 重跑续跑
 
 # ⑤ 带 seed 的方案：装完数据面默认空（安装器迁移命令未带 --with-seed，oj 0.1.125 交付边界），
@@ -351,7 +352,7 @@ TOFU 没有免检通道：**只有模板内置的 oj-market（第一方包）用
 | 例行 `pnpm build`（`ojm build`）/跑过 `pnpm dev` 后，已装方案的市场菜单/页面全消失（`dist/web/modules.json` 只剩 app） | **0.2.72+ 已根治**：重建 modules.json 时自动从版本目录重物化已装方案 web 面并并入（条目旁车 `.ojm-module.json` 双落点）。此症状只在旧版出现；旧版愈合两步：① `POST /api/oj-market/backfill` 扫 `cdn/` 补市场目录行（从市场目录装的方案需要）；② 逐方案 `ojm install <name>[@version]` 重装同名同版本——web-only 包 api 锁零变更，重装只补 web 面 | 升 0.2.72+ 后例行 build/dev 不再冲菜单，无需任何愈合动作 |
 | 随站 bundle 反复装不上（方案市场页不见 oj-market 条目/无安装动作；审计表有收敛失败行） | 信任空窗（BOOTSTRAP_KEY 被吊销且信任库无 platform.release 公钥），或刚失败过仍在收敛冷却期 | 先推发布公钥进信任库，再删冷却文件 `modules/.install-tasks/.bundle-converge-cooldown.json` 立即重试（冷却默认 10 分钟，自愈等待亦可）。出厂首装（信任库空）由 BOOTSTRAP_KEY 自动播种，正常不该落此格 |
 | `sig_alg` / `sig_format` | 签名算法/.sig 结构不符 | 用当前 ojm 重签（旧版本工具产物） |
-| `needs_trust`（第五终态，非成功） | 站点第一次见这个 key | 与发布方逐字核对指纹 → `trust confirm --task <id>` → 重跑 install |
+| `needs_trust`（第五终态，非成功） | 站点第一次见这个 key | 指纹已随任务提交：superadmin 在方案市场页对同一方案点装，于「待信任确认」弹窗审核通过 → 重跑 install |
 | publish 报「包冲突：…字节不一致」（409） | 同 name@version 已有字节不同的包 | **升 version 重发**；确需覆盖须站点侧删行（superadmin） |
 | publish 报「name 所有权：已由 key 首发绑定」（409） | 方案名绑定过别的发布 key | 换方案名；或站点 superadmin 换主 |
 | publish 报「站点版本过旧（无 /api/oj-market/catalog）」 | 目标站点是文件索引时代的旧版 | 站点先升级到 DB 目录版本（迁移指南见 docs/migration/ 市场远程发布篇） |
