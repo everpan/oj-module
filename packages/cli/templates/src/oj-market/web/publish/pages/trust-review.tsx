@@ -3,12 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, Button, Table, Tooltip, Typography } from "antd";
 import { useTranslation } from "react-i18next";
 import { useMarketClient } from "../../api/context";
-import { errorText } from "./model";
-
-/** HTTP 状态提取（ky/ContractApiError 同形态；与 defaultClient isUnconfigured 同口径） */
-function statusOf(e: unknown): number | undefined {
-	return (e as { response?: { status?: number } } | null)?.response?.status;
-}
+import { errorText, statusOf } from "./model";
 
 /**
  * 发布管理「信任审核」区（2026-11-10）：未知发布方首装停 needs_trust 终态，公钥指纹
@@ -37,6 +32,16 @@ export function TrustReviewSection() {
 
 	if (statusOf(query.error) === 403)
 		return null;
+
+	// 非 403 失败（500/网络/超时）如实报错：渲染成「暂无待审」会把待审项静默藏没
+	if (query.isError) {
+		return (
+			<section data-testid="trust-review" style={{ marginTop: 24 }}>
+				<Typography.Title level={5} style={{ marginTop: 0 }}>{t("publish:trustReview.title")}</Typography.Title>
+				<Alert type="error" showIcon message={errorText(query.error)} />
+			</section>
+		);
+	}
 
 	const rows = query.data ?? [];
 	return (

@@ -983,6 +983,29 @@ describe("GET /market/trust/review（发布管理「信任审核」区数据源�
 		await api.trust.review.get();
 		expect(last?.status).toBe(403);
 	});
+
+	it("已入库 key 的待审项不再回列表（审批/凭证表新增后列表即净，test.publisher 已在信任库）", async () => {
+		const api = createMarketApi(makeEnv());
+		await seedReviewTask("install-new", "newer.pub", 2000);
+		await writeTask(taskDir, {
+			id: "approved-1",
+			name: "demo-solution",
+			version: "0.1.0",
+			status: "needs_trust",
+			stage: "verifying",
+			progress: 30,
+			message: "待信任确认",
+			stages: [],
+			trust: { key_id: "test.publisher", public_key: TEST_KEY.publicKeyHex, fingerprint: createHash("sha256").update(hexToBytes(TEST_KEY.publicKeyHex)).digest("hex") },
+			startedAt: 3000,
+			finishedAt: 3000,
+		});
+		g.http = { user: { id: 1 } };
+		await api.trust.review.get();
+		expect(last?.status).toBe(200);
+		const rows = last?.data as Array<Record<string, unknown>>;
+		expect(rows.map(r => r.task_id)).toEqual(["install-new"]);
+	});
 });
 
 describe("GET task（§10.2 轮询消费面）", () => {

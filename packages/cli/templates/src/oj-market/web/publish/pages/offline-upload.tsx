@@ -1,5 +1,5 @@
 import type { UploadPackageResult } from "../../types";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { Alert, Button, Space, Tag, Typography, Upload } from "antd";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -10,7 +10,10 @@ import { errorText } from "./model";
  * 发布管理「离线包上传」区（2026-11-10 round 3）：内网手动上传升级——运维持已签分发包
  * （tgz + .sig 旁车）上传入库，服务端即时配对验签（旁车与包体字节绑定）。发布方指纹
  * 未入库的包也放行入库（trusted=false 如实展示），安装时才做信任判定（TOFU 闭环）。
- * 页面本身 superadmin 可见；前端不重复判权（同信任审核区口径）。
+ *
+ * 可见范围由服务端决定：发布页对普通用户开放（凭证自管），本区 superadmin 专属——
+ * 以 GET /oj-market/trust（superadmin 独占）为探测面，403 整区不渲染、未决不闪现
+ * （同信任审核区口径，前端不重复判权）。
  */
 export function OfflineUploadSection() {
 	const { t } = useTranslation();
@@ -18,9 +21,18 @@ export function OfflineUploadSection() {
 	const [tgz, setTgz] = useState<File | null>(null);
 	const [sig, setSig] = useState<File | null>(null);
 	const [formError, setFormError] = useState("");
+	const probe = useQuery({
+		queryKey: ["publish", "trust-keys"],
+		queryFn: () => client.trustKeys(),
+		retry: false,
+	});
 	const upload = useMutation({
 		mutationFn: (input: { name: string, tgz: Blob, sig: Blob }) => client.uploadPackage(input),
 	});
+
+	// 探测未决/失败（403 或其它）一律不渲染——上传面不应给无权者留可操作假象
+	if (!probe.isSuccess)
+		return null;
 
 	const pick = (which: "tgz" | "sig") => (file: File) => {
 		if (which === "tgz")

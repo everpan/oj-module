@@ -129,3 +129,19 @@ multipart 双文件（oj http 面不透出文件名——cdn 先例 query 传名
 - **耗时**：01:34 计划落盘 → 01:53 全门禁绿，约 20 分钟。
 - **门禁终值**：根 1019 ✓（+1 skipped）/ templates 1231 ✓ / cli 678 ✓（+1 skipped）/ 契约漂移守卫 2 ✓ / eslint 0 错（`login.tsx` 3 个预存 warning 非本轮）/ 根 + templates tsc 0。
 - 遗留注记：真机浏览器未走查（组件 4 例单测覆盖 + 服务端 12 例）；`server.max_upload_bytes` 默认 10MB 是部署面参数，大包需调值（已写入 OPERATIONS §3.4）。
+
+## 8. 评审修复（/code-review 9 条全处置）
+
+| # | 缺陷 | 处置 |
+|---|---|---|
+| 1 | 失败清理无条件删 `.sig`（并发败方删掉胜方已配对旁车） | 删除前按字节身份守卫（同 tgz 口径） |
+| 2 | 离线上传与 file 源安装共用 `env.staging`（manifestOfUpload 常量名 upload.tgz 并发互踩） | 路由改传 `${env.staging}-upload`（cdn 面 `.staging-upload` 同款纪律） |
+| 3 | 审批后任务不迁移出 needs_trust → 待审列表确认后同一行仍常驻 | review 列表过滤已入库 key（审批/凭证表新增后列表即净；不动任务记录状态机） |
+| 4 | trustReview 非 403 失败渲染成「暂无待审」空态（静默藏待审项） | 非 403 错误渲染 Alert errorText |
+| 5 | uploadPackage 走默认 10s 超时 + retry 3（上限 50MB 必超时且整包重传） | `timeout: false, retry: 0` |
+| 6 | 信封 code 非 0 / data 缺失时 `env.data!` 假成功 | 对齐生成 client 口径显式抛错 |
+| 7 | 发布页对普通用户开放，超管专属表单直渲染（403 提交后才暴露） | GET /market/trust 探测门：403/未决整区不渲染（同信任审核区口径） |
+| 8 | 指纹复算第四份拷贝 | 收编 `cdn/shared.ts` fingerprintOf（api.ts trust.post + upload.ts 共用；评审称 trust.ts 已有导出与实况不符——实为私有且可空，故落 shared 单源） |
+| 9 | 指纹/信任库重复计算 | ③½ 一次计算，幂等/成功两条返回路径复用 |
+
+测试 +3：已入库过滤（market-api.spec）/ 500 报错（TrustReviewSection）/ 403 整区不渲染（OfflineUploadSection）。门禁复跑全绿：templates 1232 / 根 1021 / cli 678 / 漂移守卫 2 / eslint 净 / templates tsc 0。

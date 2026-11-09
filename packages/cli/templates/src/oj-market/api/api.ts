@@ -38,6 +38,7 @@ import { pageArgs } from "#/_platform/_shared/service/infra/query";
 import { journalHeadOf, readCanonicalOrigin, readDeploymentVar, resolveDeploymentConfigPath, siteOrigin, withSiteOrigin } from "#/_platform/_shared/site-facade";
 import { backfillReleases } from "./backfill";
 import { BOOTSTRAP_KEY, seedBootstrapKey } from "./bootstrap";
+import { fingerprintOf } from "./cdn/shared";
 import { authenticateSignedKey, verifyCanonicalSig } from "./cdn/signed-auth";
 import { uploadPackageBody } from "./upload";
 
@@ -1050,7 +1051,9 @@ export function createMarketApi(env: MarketEnv) {
 					await assertSuperAdmin();
 					return await uploadPackageBody({
 						cdnDir: env.cdnDir ?? "cdn",
-						staging: env.staging,
+						// 与安装器 staging 分离（cdn 面 .staging-upload 同款纪律）：manifestOfUpload 常量名
+						// upload.tgz，共用会与 file 源安装并发互踩
+						staging: `${env.staging}-upload`,
 						trustPath: env.trustPath,
 						operator: (await operatorOf()) ?? undefined,
 						exec: env.exec,
@@ -1081,11 +1084,9 @@ export function createMarketApi(env: MarketEnv) {
 						fail(404, `任务不存在或已过期（任务文件保留最近 10 条）：${taskId}`);
 					if (rec.status !== "needs_trust" || rec.trust === undefined)
 						fail(409, `任务 ${taskId} 不在待信任确认状态（status=${rec.status}）——无需确认`);
-					// 混淆代理防线：公钥自任务记录重取，指纹复算逐字比对（记录疑被篡改即拒，信任库零变化）
-					const raw = new Uint8Array(32);
-					for (let i = 0; i < 32; i++)
-						raw[i] = Number.parseInt(rec.trust.public_key.slice(i * 2, i * 2 + 2), 16);
-					const fp = sha256Of(env)(raw);
+					// 混淆代理防线：公钥自任务记录重取，指纹复算逐字比对（记录疑被篡改即拒，信任库零变化；
+					// 复算走 shared.ts 单源 fingerprintOf——与离线上传响应同一实现）
+					const fp = fingerprintOf(sha256Of(env))(rec.trust.public_key);
 					if (fp !== rec.trust.fingerprint)
 						fail(409, "任务记录内指纹与公钥不一致——记录疑被篡改，拒绝确认（信任库零变化）");
 					const result = await createTrustStore(env.trustPath).add(rec.trust.key_id, rec.trust.public_key, { operator: await operatorOf() });
@@ -1122,8 +1123,11 @@ export function createMarketApi(env: MarketEnv) {
 					await respond(async () => {
 						await assertSuperAdmin();
 						const tasks = await readTasks(env.taskDir);
+						// 已入库 key 不再回列表：审批/凭证表新增后列表即净——否则确认成功后同一行仍带着
+						// 「确认信任」按钮常驻（TASK_KEEP 轮转才消失），超管无从分辨已审/待审
+						const inStore = new Set((await createTrustStore(env.trustPath).list()).map(k => k.key_id));
 						return tasks
-							.filter(t => t.status === "needs_trust" && t.trust !== undefined)
+							.filter(t => t.status === "needs_trust" && t.trust !== undefined && !inStore.has(t.trust.key_id))
 							.map(t => ({
 								task_id: t.id,
 								name: t.name,

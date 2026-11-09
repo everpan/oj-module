@@ -21,6 +21,10 @@ export interface FakeState {
 	uploadPackageResult?: UploadPackageResult
 	/** 离线包上传失败（Alert errorText 面） */
 	uploadPackageError?: Error
+	/** 信任库列表（离线上传区可见性探测面） */
+	trustKeysResult?: { keys: Array<{ key_id: string, public_key: string }>, note: string | null }
+	/** 非 superadmin 探测：403 → 整个上传区不渲染 */
+	trustKeysError?: Error
 	/** 删除「未安装成功版本」的返回；缺省为删除成功的常态 */
 	purgeResult?: PurgeHistoryResult
 	purgeError?: Error
@@ -72,6 +76,13 @@ export class InMemoryMarketClient implements MarketClient {
 		if (this.state.trustReviewError)
 			throw this.state.trustReviewError;
 		return this.state.trustReviewRows ?? [];
+	}
+
+	async trustKeys() {
+		this.calls.push("trustKeys");
+		if (this.state.trustKeysError)
+			throw this.state.trustKeysError;
+		return this.state.trustKeysResult ?? { keys: [], note: null };
 	}
 
 	async uploadPackage(input: { name: string, tgz: Blob, sig: Blob }) {
