@@ -6841,6 +6841,56 @@
 				}
 			}
 		},
+		"/api/oj-market/upload": {
+			"post": {
+				"operationId": "oj_market_upload_post",
+				"summary": "POST api/oj-market/upload",
+				"x-oj-file": "oj-market/api/api.ts",
+				"tags": [
+					"oj-market"
+				],
+				"parameters": [
+					{
+						"name": "name",
+						"in": "query",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"additionalProperties": true
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
 		"/api/oj-market/trust": {
 			"get": {
 				"operationId": "oj_market_trust_get",

@@ -17,6 +17,7 @@ import type {
 	TaskRecord,
 	TrustReviewItem,
 	UninstallImpact,
+	UploadPackageResult,
 } from "../types";
 import type { MarketClient } from "./client";
 
@@ -48,6 +49,14 @@ interface HttpGetLike {
 		// silentError：错误体由本客户端消化（未配置市场地址走空态），不弹全局 toast；
 		// retry: 0：503 是配置态而非抖动，默认重试 3 次只会刷出 4 条同样错误。
 		opts?: { searchParams?: Record<string, string>, silentError?: boolean, retry?: number },
+	) => Promise<{ json: <R = T>() => Promise<R> }>
+}
+
+/** ky 形态 post 子集（仅离线包上传 multipart 直连 request 时用；生成 client 只会 JSON body） */
+interface HttpPostLike {
+	post: <T = unknown>(
+		url: string,
+		opts?: { searchParams?: Record<string, string>, body?: unknown },
 	) => Promise<{ json: <R = T>() => Promise<R> }>
 }
 
@@ -117,6 +126,17 @@ export const httpMarketClient: MarketClient = {
 	async trustReview() {
 		// 生成 client 已解包信封 + DEV 校验；此处仅对齐领域类型。
 		return (await ojMarketTrustReviewGet()) as TrustReviewItem[];
+	},
+	async uploadPackage(input: { name: string, tgz: Blob, sig: Blob }) {
+		// multipart 手写（生成 client 只会 JSON body；index 同款直连 request）：files 顺序
+		// [tgz, sig] 即协议——oj http 面不透出文件名，包名走 query.name；信封手工解包。
+		const form = new FormData();
+		form.append("package", input.tgz, "package.tgz");
+		form.append("signature", input.sig, "package.tgz.sig");
+		const r = await (request as unknown as HttpPostLike)
+			.post(`${MARKET}/upload`, { searchParams: { name: input.name }, body: form });
+		const env = await r.json() as OjEnvelope<UploadPackageResult>;
+		return env.data!;
 	},
 	async enable(input: EnableInput) {
 		const data = await ojMarketEnablePost({ name: input.name, enabled: input.enabled });

@@ -243,6 +243,19 @@ ojm market yank crm 1.0.0 --site-url https://your-site --id <key_id> --restore  
 - yank **不动已装站点**：只把版本从目录摘除（详情标 `yanked:true`），已装的方案照常运行；
   精确版本安装被 409 人话拒。`--reason`/`--by` 留审计痕（发布历史可见）。
 
+### 4.5 内网交付：页面上传入库（无私钥场景，2026-11-10）
+
+内网站点拿不到发布方私钥（私钥不出安全区）时，`ojm market publish` 的头签名推送用不了。
+替代路径：外网完成构建 + 签名（§3），把 `<name>-<version>.tgz` 与 `<name>-<version>.tgz.sig`
+**成对**带入内网，superadmin 在「方案市场 → 发布管理 → 离线包上传」区上传：
+
+- 服务端即时配对验签：重算 sha256 重构包级 canonical（首段 = 旁车自带签发方 registry 身份），
+  不绑定 409 不碰盘；同版本同字节幂等（缺文件自愈）、异字节 409；name 所有权首发绑定同 cdn 推送。
+- **未审指纹放行**：发布方 key 不在站点信任库也入库（结果区 `trusted=false` 如实提示）；
+  信任判定在安装——verify 段 unknown_key 停 needs_trust，「信任审核」列表确认后重装即可。
+- 入库后升级 = 上传更高版本包，市场页对该方案点安装/升级（十阶段 + migrate 复用）。
+- 等价 HTTP：`POST /api/oj-market/upload?name=<n>-<v>.tgz`，multipart 双文件顺序 `[tgz, sig]`。
+
 ## 5. 验证发布（不起站点）
 
 ```bash

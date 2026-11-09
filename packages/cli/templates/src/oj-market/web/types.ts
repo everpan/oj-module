@@ -44,6 +44,20 @@ export interface TrustReviewItem {
 	started_at: number
 }
 
+/** 离线包上传结果（POST /oj-market/upload；trusted=false = 发布方指纹未入库，安装时将停待信任确认） */
+export interface UploadPackageResult {
+	ok: boolean
+	name: string
+	version: string
+	sha256: string
+	size: number
+	key_id: string
+	fingerprint: string
+	trusted: boolean
+	/** 同字节重传幂等（目录行未动、缺文件自愈） */
+	idempotent: boolean
+}
+
 /** 安装任务记录（§10.2 + stages 明细日志；落 .install-tasks/<id>.json，800ms 轮询消费面） */
 export interface TaskRecord {
 	id: string

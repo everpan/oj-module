@@ -9,6 +9,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { publishCredentialGet, publishCredentialPost, publishCredentialRevokePost } from "../__client";
 import { canRevoke, errorText, statusColor } from "./model";
+import { OfflineUploadSection } from "./offline-upload";
 import { TokenModal } from "./token-modal";
 import { TrustReviewSection } from "./trust-review";
 
@@ -166,6 +167,8 @@ export default function PublishPage() {
 					},
 				}}
 			/>
+
+			<OfflineUploadSection />
 
 			<TrustReviewSection />
 

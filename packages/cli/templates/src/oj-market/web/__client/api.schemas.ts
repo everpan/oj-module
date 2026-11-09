@@ -47,6 +47,14 @@ export const schemas = {
 	"apiVersion": z.string().optional()
 }).catchall(z.unknown()),
 	},
+	"ojMarketUploadPost": {
+		query: z.object({
+	"name": z.string()
+}),
+		data: z.object({
+
+}).catchall(z.unknown()),
+	},
 	"ojMarketTrustGet": {
 		data: z.object({
 

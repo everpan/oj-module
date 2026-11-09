@@ -1,6 +1,6 @@
 import type { MarketClient } from "../api/client";
 // 内存实现 MarketClient（BDD 测试注入用，无需真实后端）。
-import type { EnableInput, IndexPage, InstallInput, MarketHistory, PurgeHistoryResult, ReleasePage, TaskRecord, TrustReviewItem, UninstallImpact } from "../types";
+import type { EnableInput, IndexPage, InstallInput, MarketHistory, PurgeHistoryResult, ReleasePage, TaskRecord, TrustReviewItem, UninstallImpact, UploadPackageResult } from "../types";
 
 export interface FakeState {
 	indexPage?: IndexPage
@@ -17,6 +17,10 @@ export interface FakeState {
 	trustReviewRows?: TrustReviewItem[]
 	/** 非 superadmin 视角：403 → 整个区不渲染 */
 	trustReviewError?: Error
+	/** 离线包上传结果（trusted=false 渲染未入库 warning） */
+	uploadPackageResult?: UploadPackageResult
+	/** 离线包上传失败（Alert errorText 面） */
+	uploadPackageError?: Error
 	/** 删除「未安装成功版本」的返回；缺省为删除成功的常态 */
 	purgeResult?: PurgeHistoryResult
 	purgeError?: Error
@@ -68,6 +72,13 @@ export class InMemoryMarketClient implements MarketClient {
 		if (this.state.trustReviewError)
 			throw this.state.trustReviewError;
 		return this.state.trustReviewRows ?? [];
+	}
+
+	async uploadPackage(input: { name: string, tgz: Blob, sig: Blob }) {
+		this.calls.push(`uploadPackage:${input.name}`);
+		if (this.state.uploadPackageError)
+			throw this.state.uploadPackageError;
+		return this.state.uploadPackageResult ?? { ok: true, name: "demo-solution", version: "0.1.0", sha256: "a".repeat(64), size: 1, key_id: "demo.author", fingerprint: "f".repeat(64), trusted: true, idempotent: false };
 	}
 
 	async enable(input: EnableInput) {

@@ -1974,6 +1974,8 @@ CLI 没账号也能发。目标站点的市场目录由站点自己的库承载�
 - `--check`：离线自检签名（不必靠装失败发现签错）。
 - `verify` 的边界声明保留：**校验通过只说明来源与完整性，不构成内容安全性背书**。
 
+**离线包上传（2026-11-10，superadmin，内网手动升级）**：`POST /api/oj-market/upload?name=<n>-<v>.tgz`，multipart 双文件顺序 `[tgz, sig]` 即协议（oj http 面不透出文件名）。内网站点无私钥场景的入库面：门禁人（superadmin）+ 旁车绑定双锚（服务端重算 sha256 重构包级 canonical 验签，首段 = 旁车自带 registry 身份）；行写语义与 `cdn/upload` 同源（同版本幂等 heal / 异字节 409 不碰盘 / name 所有权首发绑定 / manifestOfUpload 同一管线）；**未审指纹放行入库**（响应 `trusted:false`——目录 ≠ 信任，安装才是信任闸，unknown_key 停 needs_trust 走「信任审核」闭环）。UI 入口：「方案市场 → 发布管理 → 离线包上传」。部署注记：oj `server.max_upload_bytes` 默认 10MB。
+
 ---
 
 ## §11 方案包：打包与分发

@@ -39,6 +39,7 @@ import { journalHeadOf, readCanonicalOrigin, readDeploymentVar, resolveDeploymen
 import { backfillReleases } from "./backfill";
 import { BOOTSTRAP_KEY, seedBootstrapKey } from "./bootstrap";
 import { authenticateSignedKey, verifyCanonicalSig } from "./cdn/signed-auth";
+import { uploadPackageBody } from "./upload";
 
 // 站点编排面共享真源落 _shared/site-facade（P2-16 真机构建钉出：api.ts 是路由入口不可被模块内
 // import）；此处 re-export 保持既有引用面（market-api.spec / 历史 import 路径）不变。
@@ -1038,6 +1039,28 @@ export function createMarketApi(env: MarketEnv) {
 				});
 			},
 		},
+		// POST /api/oj-market/upload?name=<n>-<v>.tgz —— 离线包上传（superadmin，2026-11-10 round 3）。
+		// 内网手动升级入库面：运维携带已签分发包（tgz + .sig 旁车）经发布管理页上传——门禁人 +
+		// 旁车绑定双锚；未审指纹放行（trusted 如实返回，目录 ≠ 信任，安装才是信任闸）。
+		// 行写语义与 cdn/upload 同源（幂等/409 不碰盘/所有权/manifestOfUpload），主体在 upload.ts
+		// （backfill.ts 同纪律：非路由入口件）；multipart 双文件顺序 [tgz, sig] 即协议。
+		"upload": {
+			async post() {
+				await respond(async () => {
+					await assertSuperAdmin();
+					return await uploadPackageBody({
+						cdnDir: env.cdnDir ?? "cdn",
+						staging: env.staging,
+						trustPath: env.trustPath,
+						operator: (await operatorOf()) ?? undefined,
+						exec: env.exec,
+						sha256Hex: env.sha256Hex,
+						verifyEd25519: env.verifyEd25519,
+						now: env.now,
+					});
+				});
+			},
+		},
 		"trust": {
 			async get() {
 				await respond(async () => {
@@ -1294,6 +1317,8 @@ marketApi.install.post.schema = {
 marketApi.install.post.response = { type: "object", properties: { task_id: { type: "string" } }, additionalProperties: true };
 marketApi.install.cancel.post.schema = { body: { type: "object", required: ["name"], properties: { name: { type: "string" } } } };
 marketApi.install.cancel.post.response = { type: "object", properties: { ok: { type: "boolean" }, name: { type: "string" }, requested: { type: "boolean" } }, additionalProperties: true };
+marketApi.upload.post.schema = { query: { type: "object", required: ["name"], properties: { name: { type: "string" } } } };
+marketApi.upload.post.response = { type: "object", additionalProperties: true };
 marketApi.task.get.schema = { query: { type: "object", required: ["id"], properties: { id: { type: "string" } } } };
 marketApi.task.get.response = { type: "object", additionalProperties: true };
 marketApi.enable.post.schema = { body: { type: "object", required: ["name", "enabled"], properties: { name: { type: "string" }, enabled: { type: "boolean" } } } };

@@ -188,6 +188,23 @@ ojm uninstall <name>                  # P3 起：影响面预检 + 二次确认 
 
 安装期冒烟的后端可达性探测：若 manifest 声明了 `health`（可选，C2-33），优先打该端点；缺省用首个非匿名路由兜底（D14/Q-A：health 不强制）。匿名 health 推荐直接用内建 `{base}/_system/health`（S1-5.3 实测匿名 200、含 generation）。
 
+### 3.4 离线包上传（内网升级，2026-11-10）
+
+内网站点拿不到发布方私钥时的手动升级入库面（「方案市场 → 发布管理 → 离线包上传」区）：
+
+```bash
+# 等价 HTTP（UI 之外）：multipart 双文件顺序 [tgz, sig] 即协议（oj http 面不透出文件名）
+POST /api/oj-market/upload?name=<name>-<version>.tgz   # files[0]=tgz、files[1]=.tgz.sig；superadmin
+```
+
+- 门禁人（superadmin 登录态）+ 包旁车绑定双锚：服务端重算 sha256 重构包级 canonical 验签
+  （首段 = 旁车自带签发方 registry 身份），不绑定 409 不碰盘。
+- 行写语义与 cdn 推送同源：同版本同字节幂等（缺文件自愈）、异字节 409、name 所有权首发绑定。
+- **未审指纹放行**：发布方 key 不在信任库也入库（响应/结果区 `trusted=false` 如实提示）；
+  信任判定在安装——unknown_key 停 needs_trust，按 §4.3 信任确认闭环走页面审核后重装。
+- 升级 = 上传更高版本包 → 市场页对该方案点安装/升级（十阶段 + migrate 复用）。
+- 大包部署注记：oj `server.max_upload_bytes` 默认 10MB，超出需部署面调值（反代 body cap 同理）。
+
 ---
 
 ## 4. 失败语义三分（D11）与十阶段失败码表
