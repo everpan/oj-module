@@ -34,7 +34,7 @@ export const FAILURE_PLAYBOOK: FailurePlaybookEntry[] = [
 		code: "unknown_key",
 		stage: "verifying",
 		cause: "发布方 key 不在宿主信任库，安装停在 needs_trust 待确认",
-		next: "核对指纹后 `ojm trust confirm --task <task_id>` 入库，再重装即可",
+		next: "指纹已随任务提交：superadmin 在方案市场页对同一方案点装，于「待信任确认」弹窗中审核通过后重装即可",
 	},
 	{
 		code: "rollback_guard",

@@ -167,8 +167,9 @@ pnpm exec ojm build --bundle books      # 只打一份；同输入重复打包 s
    走显式四步 `build --bundle <name>` → `sign` → `cp tgz+.sig cdn/` → `ojm market build-index`）。
 4. **验包**：`ojm market verify --rebuild-index`（离线，七项全 ✓）。
 5. **装上站点**：`ojm install <name>@<ver> --site-url … --user … --pass …`，或站点市场页点装。
-   首装必停 `needs_trust`——**逐字核对指纹**后超管 `ojm trust confirm --task <id> …`，
-   重试同一条到 `status=done`；oj 0.1.122+ 首装终态 `partial`（restart_pending）属正常语义：
+   首装必停 `needs_trust`——指纹已随任务隐式提交，**superadmin 在方案市场页对同一方案点安装，
+   于「待信任确认」弹窗审核通过**（仅超管可确认）后，重试同一条到 `status=done`；
+   oj 0.1.122+ 首装终态 `partial`（restart_pending）属正常语义：
    重启 `oj serve` 后 retry 即 done。新装方案的数据面（路由/seed）要冷启动才全量生效。
 
 ## 6. 升级

@@ -75,11 +75,11 @@ ojm install ../oj-wiki/dist/wiki-0.1.3.tgz \
   --site-url http://localhost:9779 --user superadmin --pass aA123456
 ```
 
-首次安装会停在「待信任确认」（TOFU）：终端打印发布方 key_id 和指纹，核对与 keygen 时打印的值一致后：
+首次安装会停在「待信任确认」（TOFU）：终端打印发布方 key_id 和指纹（已随任务隐式提交待审）。
+superadmin 在方案市场页对同一方案点安装，于「待信任确认」弹窗核对 key_id/指纹与 keygen 时
+打印的值一致后点「审核通过」（确认即入库并自动重试那一次安装）；CLI 侧随后重跑：
 
 ```bash
-ojm trust confirm --task install-<时间戳>-<随机串> \
-  --site-url http://localhost:9779 --user superadmin --pass aA123456
 ojm install ../oj-wiki/dist/wiki-0.1.3.tgz --site-url ...   # 重跑，完成
 ```
 
@@ -132,8 +132,8 @@ curl -o /dev/null -w "%{http_code}\n" http://localhost:9779/wiki/space   # 200
 **首次安装（会碰到信任确认）**：
 
 1. wiki 卡片点「安装」，弹窗自动发起安装并轮询进度；
-2. 未知发布方会停在「待信任确认：发布方密钥不在宿主信任库」，框里给出 key_id 和指纹；
-3. 跟发布方公布的指纹逐字核对，一致就点「指纹一致，信任并重试」；
+2. 未知发布方会停在「待信任确认：发布方密钥不在宿主信任库」，框里给出 key_id 和指纹（已随任务提交）；
+3. superadmin 核对发布方与指纹（与 keygen 时公布值一致）后点「审核通过，信任并重试」（仅超管可确认）；
 4. 弹窗自动续跑，进度条走完显示「done / 冒烟通过：探活、integrity、注册一致性三项全过」，关掉弹窗，卡片状态变成「已启用」。
 
 **自动化 e2e**（playwright，对本仓库 `@playwright/test` 直接写脚本跑，当天两轮通过）：
@@ -162,13 +162,13 @@ flowchart LR
         I -->|"install 拉取 catalog → 分片 → tgz"| V{"服务端验签"}
         V -->|"签名/sha256 不符"| REJ["拒装<br/>sig_missing / tampered"]
         V -->|"签名过但 key 未入库"| TOFU{{"needs_trust（TOFU）"}}
-        TOFU -->|"指纹逐字核对后"| TC["ojm trust confirm<br/>或页面「信任并重试」"]
+        TOFU -->|"superadmin 页面审核通过"| TC["方案市场「待信任确认」弹窗<br/>确认信任并重试"]
         TC --> V
         V -->|"通过"| OK["安装 + 冒烟<br/>enabled / trusted"]
     end
 ```
 
-要点：私钥只在发布方本机；宿主只存公钥，首次安装靠指纹人工核对建立信任（TOFU），之后同 key_id 的包直接放行。
+要点：私钥只在发布方本机；宿主只存公钥，首次安装把指纹随任务提交，由 superadmin 在页面审核建立信任（TOFU），之后同 key_id 的包直接放行。
 
 ## 7. 报错速查
 
@@ -181,7 +181,7 @@ flowchart LR
 | 预检 `C2-09 无法读取宿主 runtime 版本` | 服务端没跑过 `ojm build`，缺 `dist/api/versions.json` | 先 build 再起服 |
 | 冒烟 `/api/wiki/status` 404 | 用了 `ojm dev` | 换 `ojm preview`（第 2 节） |
 | 冒烟 `/api/wiki/status` 401（安装后匿名访问） | 匿名表只在进程启动时加载，运行中的安装写盘不热更 | 重启 preview（P6，2026-10-26 playbook 基线坐实） |
-| 待信任确认（TOFU） | 新发布方首次安装 | 核对指纹 → `ojm trust confirm --task <id>`（或页面点信任按钮）→ 重试 |
+| 待信任确认（TOFU） | 新发布方首次安装 | 指纹已随任务提交：superadmin 在市场页「待信任确认」弹窗审核通过 → 重试 |
 
 ## 8. 过程中的发现
 

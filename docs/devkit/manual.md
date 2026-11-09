@@ -2215,8 +2215,8 @@ flowchart LR
     VER -->|"签名缺失"| E1["sig_missing 拒装"]
     VER -->|"算法 / key_id 命名 / .sig 结构违约"| E2["sig_alg / sig_key / sig_format 拒装"]
     VER -->|"验签不过"| E3["tampered 拒装"]
-    VER -->|"信任库无此 key"| TOFU["needs_trust：展示公钥指纹，与发布方逐字核对"]
-    TOFU -->|"ojm trust confirm --task 安装任务id"| LIB[".solutions/trusted-keys.yaml 入库"]
+    VER -->|"信任库无此 key"| TOFU["needs_trust：指纹已随任务提交，待 superadmin 页面审核"]
+    TOFU -->|"方案市场页「待信任确认」弹窗通过（superadmin）"| LIB[".solutions/trusted-keys.yaml 入库"]
     LIB --> INST
     VER -->|"验签通过"| NEXT["继续 installing 后续阶段（§11.3）"]
   end
@@ -2253,20 +2253,22 @@ ojm install dist/<name>-<version>.tgz --site-url <站点> --user superadmin --pa
 ### 12.2 信任库与 TOFU（运维侧）
 
 **TOFU = Trust On First Use（首次使用即信任）**：陌生发布方的第一个包，安装器无法判断
-该不该信，于是把公钥指纹摆出来让人核对——核对通过才入库，之后同一 key_id 直接放行。
-信任的建立因此有两条路：**模板内置的 oj-market 方案**用内置公钥免核对（§12.3），其余来源
-（含你自己 keygen 的身份、站点凭证下发的身份）一律走本节的人工核对——凭证只定 key_id 归属，
-站点在兑换时拿不到你的公钥，无法代为建立信任。
+该不该信，于是首装停在 `needs_trust`，把公钥指纹随任务提交，由 **superadmin 在方案市场
+页面审核**——审核通过才入库，之后同一 key_id 直接放行。信任的建立因此有两条路：**模板
+内置的 oj-market 方案**用内置公钥免审核（§12.3），其余来源（含你自己 keygen 的身份、
+站点凭证下发的身份）一律走本节的页面审核——凭证只定 key_id 归属，站点在兑换时拿不到
+你的公钥，无法代为建立信任。
 
 - 信任库 = `.solutions/trusted-keys.yaml`（key_id → 公钥 + added_at；首次绑定不可改，
   轮换 = 新增 key_id）。
-- **TOFU 双轨**：未知发布方首装 → 任务终态 `needs_trust`（非成功非崩溃，staging 不清场），
-  展示公钥指纹；**与发布方逐字核对指纹后**确认入库并重试：
+- **TOFU 审核流（2026-11-10 起）**：未知发布方首装 → 任务终态 `needs_trust`（非成功非
+  崩溃，staging 不清场），**指纹已随任务隐式提交，无需人工核对**；superadmin 登录方案
+  市场页，对同一方案点安装，在「待信任确认」弹窗中核对发布方与指纹后点「审核通过」
+  （仅 superadmin 可确认）——确认即入库并自动重试该安装；其余人重跑原安装命令续跑：
 
 ```bash
 ojm trust ls                     # 列已信任 key（含 sha256 指纹分组）
-ojm trust confirm --task <id>    # 把 needs_trust 待确认 key 入库，然后重跑 install
-ojm trust add <key_id> <pubhex>  # 直接登记
+ojm trust add <key_id> <pubhex>  # 直接登记（离线旁路身份的人工放行入口）
 ojm trust revoke <key_id>        # 吊销：阻断新装/升级，不动已装方案
 ```
 

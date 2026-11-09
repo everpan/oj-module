@@ -184,10 +184,10 @@ async function verifySignature(ctx: VerifyContext, bytes: Uint8Array, sha256: st
 	const trustedKey = await createTrustStore(ctx.trustPath).get(sig.key_id);
 	const fingerprint = fingerprintOf(shaFace, sig.public_key);
 	if (trustedKey === null) {
-		// 未知 key_id：停 needs_trust（staging 不清场，确认后重试）
+		// 未知 key_id：停 needs_trust（staging 不清场，页面审核通过后重试）
 		return sigFail(
 			"unknown_key",
-			`待信任确认：发布方「${sig.key_id}」不在宿主信任库（unknown_key）。请核对指纹后执行 ojm trust confirm --task <task_id>（或市场页确认），确认入库即可重试安装`,
+			`待信任确认：发布方「${sig.key_id}」不在宿主信任库（unknown_key）。指纹已随本任务提交，请 superadmin 在方案市场页审核确认（对同一方案点安装，于「待信任确认」弹窗通过），入库后重试安装`,
 			{ key_id: sig.key_id, public_key: sig.public_key, fingerprint: fingerprint ?? "" },
 		);
 	}
