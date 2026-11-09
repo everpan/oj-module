@@ -13,6 +13,7 @@ import type {
 	PurgeHistoryResult,
 	ReleasePage,
 	TaskRecord,
+	TrustReviewItem,
 	UninstallImpact,
 } from "../types";
 
@@ -31,6 +32,8 @@ export interface MarketClient {
 	 * 公钥复算指纹比对，防混淆代理）。确认成功后重试同一安装即可续跑（staging 未清场）。
 	 */
 	trust: (taskId: string) => Promise<{ result: string, key_id: string, fingerprint: string }>
+	/** 信任审核列表（GET /oj-market/trust/review；superadmin，发布管理「信任审核」区数据源） */
+	trustReview: () => Promise<TrustReviewItem[]>
 	/** 生命周期开关（同步 setEnabled，无任务模型；{ok,message} 200 渲染 ok 位） */
 	enable: (input: EnableInput) => Promise<{ ok: boolean, message: string }>
 	/** 市场操作历史（_platform 只读端点 /oj-market/history） */

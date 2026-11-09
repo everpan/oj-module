@@ -1,6 +1,6 @@
 import type { MarketClient } from "../api/client";
 // 内存实现 MarketClient（BDD 测试注入用，无需真实后端）。
-import type { EnableInput, IndexPage, InstallInput, MarketHistory, PurgeHistoryResult, ReleasePage, TaskRecord, UninstallImpact } from "../types";
+import type { EnableInput, IndexPage, InstallInput, MarketHistory, PurgeHistoryResult, ReleasePage, TaskRecord, TrustReviewItem, UninstallImpact } from "../types";
 
 export interface FakeState {
 	indexPage?: IndexPage
@@ -13,6 +13,10 @@ export interface FakeState {
 	uninstallResult?: { ok: boolean, message: string }
 	installResult?: { task_id: string }
 	trustResult?: { result: string, key_id: string, fingerprint: string }
+	/** 信任审核区数据源（发布管理页「信任审核」列表） */
+	trustReviewRows?: TrustReviewItem[]
+	/** 非 superadmin 视角：403 → 整个区不渲染 */
+	trustReviewError?: Error
 	/** 删除「未安装成功版本」的返回；缺省为删除成功的常态 */
 	purgeResult?: PurgeHistoryResult
 	purgeError?: Error
@@ -57,6 +61,13 @@ export class InMemoryMarketClient implements MarketClient {
 	async trust(taskId: string) {
 		this.calls.push(`trust:${taskId}`);
 		return this.state.trustResult ?? { result: "added", key_id: "k1", fingerprint: "f".repeat(64) };
+	}
+
+	async trustReview() {
+		this.calls.push("trustReview");
+		if (this.state.trustReviewError)
+			throw this.state.trustReviewError;
+		return this.state.trustReviewRows ?? [];
 	}
 
 	async enable(input: EnableInput) {

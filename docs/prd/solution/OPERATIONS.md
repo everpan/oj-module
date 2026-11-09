@@ -234,8 +234,8 @@ key 骨架：`lifecycle.stage.<stage>.reason` / `.hint` / `.retryable`。`retrya
 **TOFU 三态处置**（C2-38）：`trusted`（验签通过即装）/ `unknown`（任务停 `needs_trust`，指纹随任务提交，superadmin 页面审核确认入库）/ `rejected`（不装，`trust_bound_mismatch`）。
 
 ```bash
-# 首次信任确认（unknown_key 终态后）：superadmin 在方案市场页对同一方案点安装，
-# 于「待信任确认」弹窗核对发布方与指纹后审核通过（POST /api/_platform/market/trust {task_id}）
+# 首次信任确认（unknown_key 终态后）：superadmin 在「方案市场 → 发布管理」的「信任审核」
+# 列表核对发布方与指纹后点「确认信任」（POST /api/_platform/market/trust {task_id}）；
 # 运维旁路亦可命令行确认：
 ojm trust confirm --task <task_id>
 ```

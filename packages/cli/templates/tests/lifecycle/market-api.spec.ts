@@ -944,6 +944,47 @@ describe("POST /market/trust {task_id}（P2-3 TOFU 确认：混淆代理防线�
 	});
 });
 
+describe("GET /market/trust/review（发布管理「信任审核」区数据源）", () => {
+	async function seedReviewTask(id: string, keyId: string, startedAt: number): Promise<void> {
+		const { generateKeyPair } = await import("../../../src/lifecycle/keygen");
+		const kp = generateKeyPair();
+		await writeTask(taskDir, {
+			id,
+			name: "demo-solution",
+			version: "0.1.0",
+			status: "needs_trust",
+			stage: "verifying",
+			progress: 30,
+			message: "待信任确认",
+			stages: [],
+			trust: { key_id: keyId, public_key: kp.publicKeyHex, fingerprint: createHash("sha256").update(hexToBytes(kp.publicKeyHex)).digest("hex") },
+			startedAt,
+			finishedAt: startedAt,
+		});
+	}
+
+	it("超管视角：待审 needs_trust 任务列出 trust 三元组，done 任务被过滤，按 started_at 倒序", async () => {
+		const api = createMarketApi(makeEnv());
+		await seedReviewTask("install-old", "older.pub", 1000);
+		await seedReviewTask("install-new", "newer.pub", 2000);
+		await writeTask(taskDir, { id: "done-1", name: "d", version: "1.0.0", status: "done", stage: "done", progress: 100, message: "x", stages: [], startedAt: 3, finishedAt: 4 });
+		g.http = { user: { id: 1 } };
+		await api.trust.review.get();
+		expect(last?.status).toBe(200);
+		const rows = last?.data as Array<Record<string, unknown>>;
+		expect(rows.map(r => r.task_id)).toEqual(["install-new", "install-old"]);
+		expect(rows[0]).toMatchObject({ name: "demo-solution", version: "0.1.0", key_id: "newer.pub" });
+		expect(String(rows[0]?.fingerprint)).toMatch(/^[0-9a-f]{64}$/);
+	});
+
+	it("门：非 superadmin 403（可见范围服务端决定，前端不重复判权）", async () => {
+		const api = createMarketApi(makeEnv());
+		g.http = { user: { id: 2 } };
+		await api.trust.review.get();
+		expect(last?.status).toBe(403);
+	});
+});
+
 describe("GET task（§10.2 轮询消费面）", () => {
 	it("脱敏断言：任务内容写侧已 redact，读侧无秘密可泄；缺 id 400 / 未知 id 404", async () => {
 		await writeTask(taskDir, {

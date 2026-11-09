@@ -7047,6 +7047,76 @@
 				}
 			}
 		},
+		"/api/oj-market/trust/review": {
+			"get": {
+				"operationId": "oj_market_trust_review_get",
+				"summary": "GET api/oj-market/trust/review",
+				"x-oj-file": "oj-market/api/api.ts",
+				"tags": [
+					"oj-market"
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "array",
+											"items": {
+												"type": "object",
+												"required": [
+													"task_id",
+													"name",
+													"version",
+													"key_id",
+													"fingerprint",
+													"started_at"
+												],
+												"properties": {
+													"task_id": {
+														"type": "string"
+													},
+													"name": {
+														"type": "string"
+													},
+													"version": {
+														"type": "string"
+													},
+													"key_id": {
+														"type": "string"
+													},
+													"fingerprint": {
+														"type": "string"
+													},
+													"started_at": {
+														"type": "number"
+													}
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
 		"/api/oj-market/index": {
 			"get": {
 				"operationId": "oj_market_index_get",

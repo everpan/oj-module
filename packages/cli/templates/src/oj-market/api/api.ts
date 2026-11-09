@@ -1091,6 +1091,28 @@ export function createMarketApi(env: MarketEnv) {
 					});
 				},
 			},
+			// GET /api/oj-market/trust/review —— 待信任审核列表（superadmin；发布管理页「信任审核」区数据源）。
+			// 安装尝试本身即隐式提交（needs_trust 任务记录已携带 trust 三元组），本端点把待审项摆到
+			// 超管面前：不必为审批再去触发一次安装。审批动作复用 POST /market/trust {task_id}。
+			review: {
+				async get() {
+					await respond(async () => {
+						await assertSuperAdmin();
+						const tasks = await readTasks(env.taskDir);
+						return tasks
+							.filter(t => t.status === "needs_trust" && t.trust !== undefined)
+							.map(t => ({
+								task_id: t.id,
+								name: t.name,
+								version: t.version,
+								key_id: t.trust!.key_id,
+								fingerprint: t.trust!.fingerprint,
+								started_at: t.startedAt ?? 0,
+							}))
+							.sort((a, b) => b.started_at - a.started_at);
+					});
+				},
+			},
 		},
 		// GET /api/oj-market/index —— 市场索引聚合（登录即可读；写面仍 superadmin，R9）。
 		// 用 currentAccess 而非裸放行：保留租户自洽（exists）、禁用（forbidden）、改密悬挂
@@ -1284,6 +1306,21 @@ marketApi.trust.key.post.schema = { body: { type: "object", required: ["key_id",
 marketApi.trust.key.post.response = { type: "object", additionalProperties: true };
 marketApi.trust.key.del.schema = { query: { type: "object", required: ["key_id"], properties: { key_id: { type: "string" } } } };
 marketApi.trust.key.del.response = { type: "object", additionalProperties: true };
+marketApi.trust.review.get.response = {
+	type: "array",
+	items: {
+		type: "object",
+		required: ["task_id", "name", "version", "key_id", "fingerprint", "started_at"],
+		properties: {
+			task_id: { type: "string" },
+			name: { type: "string" },
+			version: { type: "string" },
+			key_id: { type: "string" },
+			fingerprint: { type: "string" },
+			started_at: { type: "number" },
+		},
+	},
+};
 marketApi.index.get.schema = {
 	query: {
 		type: "object",
