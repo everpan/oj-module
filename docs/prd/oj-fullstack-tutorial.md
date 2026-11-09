@@ -261,11 +261,15 @@ tables:
 
 ```yaml
 # 声明本模块拥有的表（与 manifest.tables 双向一致，S005）
+# ⚠️ tenant.sql_guard（模板 config 默认 deny）下，业务表必须有 tenant_id 列，
+#    否则 oj build 拒：表 "books" 缺 tenant_id 列（tenant.sql_guard 启用中）。
+#    构造器 insert 自动注入当前租户值，handler 不用手写；查询自动追加租户条件。
 tables:
   books:
     pk: id
     columns:
       id: {type: integer, autoincrement: true}
+      tenant_id: {type: text, null: false}
       title: {type: text, null: false}
       author: {type: text, null: false}
       year: {type: integer, null: false}
@@ -276,8 +280,10 @@ tables:
 
 ```sql
 -- books 模块建表：DDL 只进 migrations（S006）。序号连续且唯一。
+-- tenant_id 与 schema.yaml 声明一致（sql_guard deny 的声明期硬约束）。
 CREATE TABLE IF NOT EXISTS books (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
+  tenant_id TEXT NOT NULL DEFAULT '',
   title TEXT NOT NULL DEFAULT '',
   author TEXT NOT NULL DEFAULT '',
   year INTEGER NOT NULL DEFAULT 0,
@@ -285,12 +291,12 @@ CREATE TABLE IF NOT EXISTS books (
 );
 ```
 
-`src/books/api/seed.sql`（幂等，注释里别写分号）：
+`src/books/api/seed.sql`（幂等，注释里别写分号；种子行也要带租户列）：
 
 ```sql
-INSERT OR IGNORE INTO books (id, title, author, year, create_time) VALUES (1, '深入理解计算机系统', 'Randal E. Bryant', 2016, 0);
-INSERT OR IGNORE INTO books (id, title, author, year, create_time) VALUES (2, '代码之美', 'Andy Oram', 2009, 0);
-INSERT OR IGNORE INTO books (id, title, author, year, create_time) VALUES (3, '设计数据密集型应用', 'Martin Kleppmann', 2017, 0);
+INSERT OR IGNORE INTO books (id, tenant_id, title, author, year, create_time) VALUES (1, 'default', '深入理解计算机系统', 'Randal E. Bryant', 2016, 0);
+INSERT OR IGNORE INTO books (id, tenant_id, title, author, year, create_time) VALUES (2, 'default', '代码之美', 'Andy Oram', 2009, 0);
+INSERT OR IGNORE INTO books (id, tenant_id, title, author, year, create_time) VALUES (3, 'default', '设计数据密集型应用', 'Martin Kleppmann', 2017, 0);
 ```
 
 ### 3.2 聚合端点 `src/books/api/api.ts`（单文件 DDD 形态）
