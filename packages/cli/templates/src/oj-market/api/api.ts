@@ -315,14 +315,31 @@ async function operatorOf(): Promise<string | null> {
 	}
 }
 
-/** sys_solution_route enabled（reconcile route 一致性面；无行/查询失败 → null 不猜） */
-async function routeEnabledOf(name: string): Promise<boolean | null> {
+/**
+ * 对账批查（2026-11-10）：2 条批查取代 reconcile 的 2N 条逐模块查询（N=锁内模块数；
+ * 市场页每次刷新都跑对账，原形态每刷新 2N 次往返随 N 线性涨）。批查失败 → null →
+ * 回调恒 null，与原逐条 catch 的「不猜」降级同口径。隐式 LIMIT 100（构造器
+ * default_limit 缺省）封顶——shortcut: >100 模块站点才需显式放宽。
+ */
+async function journalHeads(): Promise<Map<string, number> | null> {
 	try {
-		const rows = await db.table("sys_solution_route").select(["enabled"]).where({ field: "module", op: "eq", value: name }).where({ field: "deprecated", op: "eq", value: 0 }).limit(1).all() as Array<{ enabled: unknown }>;
-		if (rows.length === 0) {
-			return null;
+		const rows = await db.table("_oj_migrations").select([{ fn: "max", field: "version", as: "head" }, "module"]).groupBy(["module"]).all() as Array<{ module: string, head: unknown }>;
+		return new Map(rows.map(r => [r.module, Number(r.head)]));
+	}
+	catch {
+		return null;
+	}
+}
+
+async function routeEnabledMap(): Promise<Map<string, unknown> | null> {
+	try {
+		const rows = await db.table("sys_solution_route").select(["module", "enabled"]).where({ field: "deprecated", op: "eq", value: 0 }).all() as Array<{ module: string, enabled: unknown }>;
+		const m = new Map<string, unknown>();
+		for (const r of rows) {
+			if (!m.has(r.module))
+				m.set(r.module, r.enabled); // 同模块多行取首行，与原 LIMIT 1 无 ORDER BY 同语义
 		}
-		return Number(rows[0]!.enabled) === 1;
+		return m;
 	}
 	catch {
 		return null;
@@ -331,21 +348,28 @@ async function routeEnabledOf(name: string): Promise<boolean | null> {
 
 /**
  * 对账入口（P1-10 接线③，市场页刷新即对账时点）：锁 ↔ 账本 head 自愈 + enabled 不一致自动修复。
- * 账本 head 缺省 = oj journal 表查询（journalHeadOf），floor = 安装任务记录 appliedSeq（latestAppliedSeqOf）。
+ * 账本 head 缺省 = journal 批查真源（journalHeads，env.ledgerHeadOf 注入时保持注入语义不批查），
+ * floor = 安装任务记录 appliedSeq（latestAppliedSeqOf）。
  * 自愈失败静默降级不阻断市场页（禁 console——release isolate console 抛 BadResource 会把
  * 市场页打 500，Finding A；index 可用性优先，下次刷新重试）。
  */
 async function reconcileOf(env: MarketEnv): Promise<void> {
 	try {
+		const heads = env.ledgerHeadOf === undefined ? await journalHeads() : null;
+		const routes = await routeEnabledMap();
 		await reconcile({
 			lockPath: `${env.sharedRoot}/manifests.yaml`,
 			sharedRoot: env.sharedRoot,
 			taskDir: env.taskDir,
 			modulesJsonPath: env.modulesJsonPath,
 			state: await createStateStore(env.statePath),
-			ledgerHeadOf: env.ledgerHeadOf ?? journalHeadOf,
+			ledgerHeadOf: env.ledgerHeadOf ?? (heads === null
+				? async () => null
+				: async name => heads.has(name) ? heads.get(name)! : null),
 			headFloorOf: (name, version) => latestAppliedSeqOf(env.taskDir, name, version),
-			routeEnabledOf,
+			routeEnabledOf: routes === null
+				? async () => null
+				: async name => routes.has(name) ? Number(routes.get(name)) === 1 : null,
 			trustPath: env.trustPath,
 		});
 	}

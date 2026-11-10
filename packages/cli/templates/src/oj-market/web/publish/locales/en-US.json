@@ -1,6 +1,8 @@
 {
 	"menu": {
 		"publish": "Publishing",
+		"trustReview": "Trust review",
+		"offlineUpload": "Offline upload",
 		"history": "Release history"
 	},
 	"history": {

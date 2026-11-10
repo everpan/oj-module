@@ -26,7 +26,7 @@ const i18nNamespaces: Record<string, ModuleI18n> = {
 export default defineModule({
 	name: "oj-market",
 	description: "oj 方案市场应用——方案清单 / 发布管理 / 发布历史（第一方专用，R29）",
-	version: "0.2.6",
+	version: "0.2.7",
 	routes: [
 		{
 			path: "/oj-market",

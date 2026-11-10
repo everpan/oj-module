@@ -1,6 +1,8 @@
 {
 	"menu": {
 		"publish": "发布管理",
+		"trustReview": "信任审核",
+		"offlineUpload": "离线包上传",
 		"history": "发布历史"
 	},
 	"history": {

@@ -1371,6 +1371,42 @@ describe("P1-16 接线：marketEnv 生产口径 / exec opts 转发 / operator �
 			warn.mockRestore();
 		}
 	});
+
+	it("index 对账批查（2026-11-10）：锁 N 模块 → _oj_migrations/sys_solution_route 各恰 1 条批查（原 2N 条逐模块查询）", async () => {
+		await writeLock(join(sharedRoot, "manifests.yaml"), { "demo-solution": "0.1.0", "other": "1.0.0", "third": "2.0.0" });
+		dbo.exec("CREATE TABLE _oj_migrations (module TEXT NOT NULL, version INTEGER NOT NULL, name TEXT, applied_on TEXT, checksum TEXT, PRIMARY KEY (module, version))");
+		const ins = dbo.prepare("INSERT INTO _oj_migrations (module, version) VALUES (?, ?)");
+		for (const [m, v] of [["demo-solution", 3], ["demo-solution", 7], ["other", 1], ["third", 5], ["third", 2]] as const)
+			ins.run(m, v);
+		const insr = dbo.prepare("INSERT INTO sys_solution_route (path, module, category, deprecated, enabled) VALUES (?, ?, ?, ?, ?)");
+		insr.run("/demo-solution", "demo-solution", "solution", 0, 1);
+		insr.run("/other", "other", "solution", 0, 1);
+		insr.run("/third/a", "third", "solution", 0, 1);
+		insr.run("/third/b", "third", "solution", 0, 0); // 同模块多行：批查取首行，与原 LIMIT 1 无 ORDER BY 同语义
+		insr.run("/legacy", "legacy", "solution", 1, 0); // deprecated 行不入批查结果
+		// 观察点：FakeQuery.all / db.query 全走 dbo.prepare——包一层计数即可数清 SQL
+		const origPrepare = dbo.prepare.bind(dbo);
+		const sqls: string[] = [];
+		dbo.prepare = (sql: string) => {
+			sqls.push(String(sql));
+			return origPrepare(sql);
+		};
+		try {
+			const api = createMarketApi(makeEnv());
+			g.http = { user: { id: 1 } };
+			await api.index.get();
+		}
+		finally {
+			dbo.prepare = origPrepare;
+		}
+		expect(last?.status).toBe(200);
+		const mig = sqls.filter(s => s.includes("_oj_migrations"));
+		const route = sqls.filter(s => s.includes("sys_solution_route"));
+		expect(mig).toHaveLength(1);
+		expect(mig[0]).toContain("GROUP BY");
+		expect(route).toHaveLength(1);
+		expect(route[0]).not.toContain("\"module\" = ?");
+	});
 });
 
 // ── 发布历史（GET /oj-market/releases；v4 §四：数据源 = market_release 上传写入行，索引 syncReleases 退役）──
