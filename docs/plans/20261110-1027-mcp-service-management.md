@@ -301,8 +301,8 @@ agent 工具：
 | T2 | `text-edit.ts`：段内定界 `ensureMcpModule`/`removeMcpModule` 纯函数 + 单测（§4.2 全场景数据表：含 platform.modules 共存、flow 风格跳过、空表摘键、双轨同名、锚点缺失） | T1 | ✅ |
 | T3 | installer reloadStage 登记接线 + preview 双写；uninstall 摘除（`UninstallInput` +configPath、api.ts 调用点、reload 失败回滚对称加回）；compensate 对称回滚 | T2 | ✅ |
 | T4 | config.yaml 模板预置 `server.mcp:` 骨架 + 段内锚点 | T2 | ✅ |
-| T5 | oj-market API：`GET /mcp/catalog` 代理端点（归一+分组+静态统计+代际探测，无 audit 联查）+ 归一单测（§4.1 数据表，FetchFace stub） | T1 | ☐ |
-| T6 | `ojm api` 重生成 client；system 路由 + i18n | T5 | ☐ |
+| T5 | oj-market API：`GET /mcp/catalog` 代理端点（归一+分组+静态统计+代际探测，无 audit 联查）+ 归一单测（§4.1 数据表，FetchFace stub） | T1 | ✅ |
+| T6 | `ojm api` 重生成 client；system 路由 + i18n | T5 | ✅ |
 | T7 | 管理页（状态卡四态指引/常驻 Alert/分组工具表/质量标注/漂移/静态统计/接入配置含 client 实配/刷新；纯文本渲染断言）+ vitest（§4.3 场景） | T6 | ☐ |
 | T8 | 全量校验：`pnpm test`/`pnpm lint`/`pnpm typecheck`；真机演练钉死形态 = `ojm dev` 起真实 oj serve（reload 返回 generation 非 unchanged——dev embedded 无 server 时 reloadOf 回落 no-op，热更路径未被演练） | T7 | ☐ |
 | T9 | 收尾：更新本文档任务状态与总结段落；R3'/R4'/R2'/R1' 需求落 `docs/prd/` 提上游 | T8 | ☐ |
@@ -383,3 +383,26 @@ agent 工具：
   `mcpRegistered` 内部通道防误摘：升级失败（登记幂等 no-op）不回滚既有登记行。
 - 耗时：T3 阅读接线点 + 编码 + 审查约 25 分钟。
 - 遗留：无（Phase 3 消费面 T5/T6 直接依赖登记事实）。
+
+### Phase 3：消费面（T5/T6，阶段评审通过）— 2026-11-10 12:05
+
+- 交付（d662eab + 04c7a02）：① T5——`mcp-catalog.ts` 消费面（tools/list 代理 + `tags[0]`
+  分组归一 + annotations hints + params 三键子集 + `_system/config` 代际顺带探测）+ api.ts
+  端点管道（assertSuperAdmin → 取浏览器 JWT → `resolveCanonicalOrigin`，REG-CS6 不读 Host；
+  origin 未解析 fail-closed 归 unreachable 且零出站）+ `FetchInitFace` 加性扩 method/body
+  （出站 POST 面）；② T6——路由键嵌套化 `mcp.catalog`（对齐 trust/review 口径）+ 契约
+  response JSON-schema → `oj openapi` → `ojm api` 重生成 `__client`（`ojMarketMcpCatalogGet`），
+  `ojm api --check` 门禁 0 drift（dist 过期致首跑报缺路由，`ojm build` 刷新后过）；
+  MarketClient 增 `mcpCatalog()`（types/defaultClient/fake 三件套，trust-review 先例同款）；
+  `/system/framework/mcp` 路由（`roles: ["superadmin"]`）+ 页面骨架（T7 填实）+ `menu.mcp` zh/en。
+- BDD/TDD：T5 §4.1 数据表 8 用例先 RED 后 GREEN（含出站形态断言：显式 `Accept: application/json`
+  规避 F6 406 陷阱、JWT 原样透传、URL= canonical origin）；T6 注入缝 3 用例红→绿（状态透传/
+  错误面/未注入常态）。RED 期修正：api 级夹具误把 `installDb()` 裸句柄覆写 `globalThis.db`。
+- 全量绿：仓库根套件 1024 用例（含 oj-market 组件测试）+ templates 套件 1266 用例/66 文件；
+  typecheck/`ojm api --check`/lint 全过。
+- 关键判定：① `/mcp` 不走租户管线（F10），浏览器 JWT 原样透传即可，无需服务端换凭据；
+  ② unreachable 双文案刻意可区分（canonical_origin 未配置 ≠ 网络不可达），§4.3 页面据 message
+  分叉指引；③ system 页经 `useMarketClient()` 消费（context 缺省即 httpMarketClient，零 provider），
+  测试注入内存 fake——双数据源（catalog + 既有 index 漂移对账）走同一 seam。
+- 耗时：T5 编码 + 数据表用例约 20 分钟；T6 生成链 + 三件套 + 路由约 25 分钟。
+- 遗留：页面为骨架（T7 填实 §4.3 全场景）；真机演练形态钉死归 T8。
