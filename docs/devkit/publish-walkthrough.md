@@ -251,17 +251,23 @@ ojm market yank crm 1.0.0 --site-url https://your-site --id <key_id> --restore  
 
 - 服务端即时配对验签：重算 sha256 重构包级 canonical（首段 = 旁车自带签发方 registry 身份），
   不绑定 409 不碰盘；同版本同字节幂等（缺文件自愈）、异字节 409；name 所有权首发绑定同 cdn 推送。
+- **前端配对约束**：两个上传槽各选一个文件，`.sig` 文件名必须是 tgz 文件名 + `.sig`
+  （`<n>-<v>.tgz.sig`），不配对提交即拒（pairMismatch）；响应的 `key_id`/指纹与 §3 签名输出逐字比对。
 - **未审指纹放行**：发布方 key 不在站点信任库也入库（结果区 `trusted=false` 如实提示）；
   信任判定在安装——verify 段 unknown_key 停 needs_trust，「信任审核」列表确认后重装即可。
 - 入库后升级 = 上传更高版本包，市场页对该方案点安装/升级（十阶段 + migrate 复用）。
-- 等价 HTTP：`POST /api/oj-market/upload?name=<n>-<v>.tgz`，multipart 双文件顺序 `[tgz, sig]`。
+- 等价 HTTP：`POST /api/oj-market/upload?name=<n>-<v>.tgz`，multipart 双文件顺序 `[tgz, sig]`；
+  该区 superadmin 专属（普通账号探测 `GET /api/oj-market/trust` 得 403，页面整区不渲染）。
+- 真机演练判据（2026-11-10 全链 PASS）：上传 Alert 逐字核指纹 → 目录行出现（`installed:null`）→
+  TOFU 安装闭环（needs_trust 指纹逐字 → 信任确认 → 两段式重装 → done）→ 幂等重传 `idempotent:true`
+  （信任确认后 `trusted:true`）→ 篡改 1 字节同名重传 409 且在库包 sha256 不变。
 
 ## 5. 验证发布（不起站点）
 
 ```bash
 ojm market verify --file dist/<name>-<version>.tgz  # 包级验证：结构 / 包级签 / 迁移一致性
 ojm market trial --fixture <name>@<version>         # 隔离站点跑完整安装，跑完即毁，不污染工程
-ojm market walkthrough --fixture <name>@0.1.0       # 14 项 AC：主链 9 + 负向 5；报告落 logs/walkthrough-<ts>.md
+ojm market walkthrough --fixture <name>@0.1.0       # 13 项 AC：主链 9 + 负向 4；报告落 logs/walkthrough-<ts>.md
 ```
 
 - `verify --file` 验**单个包**（发布前自检）：manifest 结构、包级 detached 签名、
@@ -270,7 +276,8 @@ ojm market walkthrough --fixture <name>@0.1.0       # 14 项 AC：主链 9 + 负
 - `walkthrough` 的 fixture **必须是 `@0.1.0`**：主链的 upgrade/rollback 硬编码 0.1.0→0.2.0，
   给别的版本这两项会 FAIL（是 fixture 选错，不是框架缺陷）。
 
-walkthrough 期望 `14 PASS / 0 FAIL`。负向 5 项是**预期失败口径**：防线没拦住（恶意包装成了）才算 FAIL。
+walkthrough 期望 `13 PASS / 0 FAIL`。负向 4 项（tamper / nosig / stranger / evil）是**预期失败口径**：
+防线没拦住（恶意包装成了）才算 FAIL。（旧稿「14 项 / 负向 5」已随索引机制退役作废，勿再引用。）
 
 ---
 
@@ -373,6 +380,8 @@ TOFU 没有免检通道：**只有模板内置的 oj-market（第一方包）用
 | 推送 401（签名不符） | 换字节/跨站重放，或 canonical 与站点重算不一致 | 原样重跑本命令（同字节幂等）；改过包则重签重推 |
 | 推送 403（key 不在信任库） | 站点还没信任你的发布 key | 站点 superadmin `ojm trust add` 或市场页信任确认 |
 | publish 报「一次只发布一份方案」 | 多方案工程走了自动链路 | §4.2 显式四步 |
+| 页面上传（§4.5）报 409「.sig 旁车验签失败——签名与实收字节不绑定」 | 两个上传槽里的 tgz 与 .sig 不是同批字节（签完又动过包 / 两对不同批次的文件混选） | 重新成对导出（§1 打包 + §3 签名），两个槽选同批文件；在库同版本包不受影响（拒绝不覆盖，sha256 可证） |
+| 页面上传（§4.5）提交即拒 pairMismatch | `.sig` 文件名不是 tgz 文件名 + `.sig`（协议按文件名配对） | 旁车保持 `<n>-<v>.tgz.sig` 原名成对带入，别改名 |
 | yank 403 | 不是该版本的发布 key（行 key_id 仲裁） | 用首发 key 操作；换主是 superadmin 面 |
 | 打包报「缺少本方案的站点产物」 | 没先 `ojm build`；或**卸载方案时把 `dist/api/<name>-<ver>` 一并移除了**（2026-11-06 实测：卸载四同删含版本目录，重发同版本前必须重建）；或前端入口不在 `src/<模块>/web/entry.ts` | 先 `ojm build` 再 `--bundle`；补 entry |
 | 打包报「缺少 bundle 级契约」 | 没有 `solution.yaml` | 补契约（§0 前提 1） |

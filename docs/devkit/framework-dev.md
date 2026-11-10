@@ -65,6 +65,11 @@ pnpm --filter @oj-module/runtime build      # → dist/runtime.js + index.d.ts +
 pnpm --filter @oj-module/cli build:shell    # 含 runtime 构建 + host.js + importmap + 共享资产
 node packages/cli/scripts/sync-host-versions.mjs   # prepack 内容：同步 vendor/host-versions.json
 
+# ⚠️ 版本推进（bump cli/runtime 版本号）后同样必须跑 build:shell——
+# shell-dist/versions.json 里烤着 runtime 版本，templates 构建的漂移门禁会拿它对账：
+# 版本不一致直接拒（0.2.82 bump 实锤：`shell-dist runtime 0.2.81 ≠ 0.2.82`）。
+# prepack 不会替你补（它只校验）；漏跑会在发版流程中段才爆。
+
 # 定向测试
 pnpm test tests/runtime                     # 运行时单测
 pnpm test tests/runtime/runtime-exports.test.ts   # 出口冻结契约

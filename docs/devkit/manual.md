@@ -140,7 +140,7 @@
 | 文件 | 层级 | 身份 | 谁读它 | 写什么 |
 |---|---|---|---|---|
 | `src/<模块>/api/manifest.yaml` | **模块级**（每个后端模块一份） | oj **原生七键**清单（`name`/`desc`/`version`/`tables`/…） | **oj 运行时**——按 `manifest.yaml` 枚举发现并校验 api 后端模块 | 模块名、版本、表清单（与 `schema.yaml` 双向一致，§1.5） |
-| `solution.yaml`（`src/<模块>/` 或工程根） | **方案级**（整个方案一份） | 方案包契约（身份 / 路由 / api 段 / web 段 / 权限 / …） | **`ojm build --bundle`**——打包入口与契约校验 | 方案名、版本、`api` 段（模块+前缀+tables+deps+anonymous）、`web` 段（entry/css/integrity）、`routes`、`health` |
+| `solution.yaml`（`src/<模块>/` 或工程根） | **方案级**（整个方案一份） | 方案包契约（身份 / 路由 / api 段 / web 段 / 权限 / …） | **`ojm build --bundle`**——打包入口与契约校验 | 方案名、版本、`api` 段（模块+前缀+tables+deps+anonymous）、`web` 段（entry；`css` 手填已废弃 0.2.82——css 真源 = 安装器扫描包内版本目录顶层 `*.css` 自动登记，见 §11.1）、`routes`、`health` |
 
 关键区别与红线：
 
@@ -1715,6 +1715,8 @@ export default async (path: string, html: string) => {
 | `ojm build` 报「配置中 /… 是 ENC[...] 密文，但本机没有能解开的私钥」 | tracked config 里有**非 jwt** 的生产密文（如落库加密键；红线，dev 不会用随机密钥重封——否则破坏已加密数据） | 向团队取配对私钥放到 `config/secrets-private.pem`，或在 `config.local.yaml` 覆盖该字段为可解密的明文/ENC |
 | 点登录页「企业微信」后页面只闪一下、Network 里一个 auth 请求都没有 | 整页跳转拼成了**站点 base**（根部署下得到 `/auth/wecom/login`，被 SPA 兜底页吞掉） | 改用 `resolveApiBase()` 拼后端端点：`window.location.assign(resolveApiBase() + wecomAuthorizePath(corp))` |
 | 企微登录恒 400 `企业微信未配置：config vars 缺少 …` | 部署常量没填全（该来源的凭据任一为空即整体拒服务） | 代开发见 `wecom-daikaifa.md` §2.1，企业内部应用见 `wecom-internal-app.md` §2.1 的凭据表与缺项后果 |
+| 在工程里**裸跑 `./bin/oj build`**（绕过 ojm）后，已装方案（含 oj-market）的市场菜单/页面全消失 | ojm 才有「快照已装方案 web 面 → build → 还原」机制；裸 oj build 直写产物树，把已装方案的 `dist/web/modules/` 整体冲掉（安装态本身完好） | 工程内重建一律 `ojm build`；已被冲掉时：`POST /api/oj-market/backfill` 补目录行 → 对每个方案重装同名同版本（web-only 包锁零变更，只补 web 面） |
+| 对 `ojm init --yes` 落位的随站 bundle 包（出厂 tgz）按名安装报「市场目录中无方案」 | 随站 bundle 只落 `cdn/` 三件套（首装走 BOOTSTRAP_KEY 免信任），**不写市场目录库行**；按名安装（cdn 源）从目录库解析，查不到即拒 | 先 superadmin 调 `POST /api/oj-market/backfill` 扫 `cdn/` 补录目录行再装；经发布推送或页面上传入库的包无此问题（§11.2） |
 
 ---
 
@@ -1860,6 +1862,10 @@ pnpm dev                         # 看效果
 ojm build --bundle crm           # 打包
 ```
 
+> `--layout none` 不生成 `web/` 目录，但 solution.yaml 仍声明 `web.entry`（quirk，2026-11-10 实测）：
+> `--bundle` 的成品存在性复核（C2-27）按声明查 `web/dist/modules/<name>/`，须先全量
+> `ojm build`（站点构建为声明了 web 的方案合成 stub entry）再打包。
+
 
 > 生成的 `src/<name>/solution.yaml` 不再写出 `web.route_prefix: /<name>`（与缺省重复），只在
 > `web` 段留一行注释；要自定义根路径时取消注释改值即可（见 §13.1.1）。
@@ -1999,7 +2005,8 @@ ojm build --bundle crm        # 只打 src/crm/ 这一份；--bundle=crm 等价
 ```
 
 > `--bundle` 只**组装**，不重跑构建：入包内容取自 `api/dist/<name>-<version>/` 与
-> `web/dist/modules/<name>/`——先 `ojm build` 再打包。
+> `web/dist/modules/<name>/`——先 `ojm build` 再打包（`--layout none` 方案即靠这步合成
+> web.entry 声明的 stub entry，见 §10.1）。
 
 - **契约入口（按优先级）**：`src/<模块>/solution.yaml` ≻ 工程根 `solution.yaml` ≻
   `src/<模块>/manifest.yaml` ≻ 工程根 `manifest.yaml`（方案级；`manifest.yaml` 为旧方案回退）。
@@ -2016,6 +2023,10 @@ ojm build --bundle crm        # 只打 src/crm/ 这一份；--bundle=crm 等价
   该文件由 `ojm init` 从模板白名单派生，**可手改/删除**（删名 = 恢复参与打包），重跑 init 缺失才补写。
   它只是打包排除 / info 折叠提示，**不是安全边界**：文件永不入包，安装侧信任链（签名 + 信任库 + TOFU）与它无关。
 - **只出包不签名**——签名见 §12（关注点分离：作者签名是显式动作，不是构建副产品）。
+- **web.css 手填废弃（0.2.82，REQ-14）**：契约里 `web.css` 声明值被忽略、仅打印废弃告警——
+  安装器部署 web 面时统一**扫描包内版本目录顶层 `*.css`** 自动登记（与站点构建/installed-merge
+  同口径）。手填与 vite 产物名脱节是历史上「css 引用 404」的缺陷根源，故收走这层人工面；
+  请把该字段从契约删除。`web.entry` 声明的成品存在性复核（C2-27）不受影响，仍然硬校验。
 - 产物内 `manifest.yaml` 的 `archive` 段是 **Form A**（仅 `file`）；`sha256`/`size` 由
   file 源上传时点补齐（宿主安装器）或发布通道 Form B 自带。
 - **入包红线**：`*.pem` / `*.key` / `*.p12` / `*.pfx` / `.env` 系 / `id_ed25519` / `id_rsa`
@@ -2045,6 +2056,11 @@ ojm build --bundle crm        # 只打 src/crm/ 这一份；--bundle=crm 等价
 |---|---|---|
 | **file** | `ojm install dist/<name>-<version>.tgz` | multipart 直传（同目录 `<tgz>.sig` 自动探测随包上传，§12） |
 | **cdn** | `ojm install <name>[@version]` | 站点从自己的**目录库**解析（`market_release` 表：product+version 唯一行，含 sha256/size/签名四列/内嵌 manifest），再拉 `cdn/` 字节 |
+
+进目录库（cdn 源可达）有三条入库通道：发布方 `ojm market publish` 签名推送（首选，上文）；
+宿主侧 superadmin **页面上传入库**（内网/气隙交付，发布方包成对递入，见
+`publish-walkthrough.md` §4.5）；灾备/存量自愈 `POST /api/oj-market/backfill`（扫 `cdn/` 补录）。
+注意随站 bundle（`ojm init --yes` 落位的出厂包）**不在**目录库——按名安装前须先 backfill。
 
 目录库是服务端在**签名推送完成时直写**的（发布方 `ojm market publish` 把 `.sig` 旁车与
 `.tgz` 按序推到 `POST /api/oj-market/cdn/upload`，pair 约束：旁车先行、配对成功才写行）——

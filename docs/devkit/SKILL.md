@@ -166,6 +166,8 @@ description: 用 ojm 开发前后端一体工程时使用——新增/修改前�
   `needs_trust`，仍要核对指纹。
 - 两条路的私钥纪律完全一致：只活在 `~/.ojm/keys/<id>/`、不入仓不入包、一次发布固定一把。
   签名/发布/安装全流程见 `publish-walkthrough.md`（§2 凭证、§2.1 离线旁路、§3 签名起）。
+  另一条不经过 `ojm market publish` 的入库路：内网/气隙站点由 superadmin 在「发布管理 →
+  离线包上传」成对收包（`publish-walkthrough.md` §4.5）——发布方私钥不出安全区时用它。
 
 ## 新模块 checklist
 
