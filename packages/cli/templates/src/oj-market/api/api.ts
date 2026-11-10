@@ -40,6 +40,7 @@ import { backfillReleases } from "./backfill";
 import { BOOTSTRAP_KEY, seedBootstrapKey } from "./bootstrap";
 import { fingerprintOf } from "./cdn/shared";
 import { authenticateSignedKey, verifyCanonicalSig } from "./cdn/signed-auth";
+import { fetchMcpCatalog } from "./mcp-catalog";
 import { uploadPackageBody } from "./upload";
 
 // 站点编排面共享真源落 _shared/site-facade（P2-16 真机构建钉出：api.ts 是路由入口不可被模块内
@@ -1233,6 +1234,30 @@ export function createMarketApi(env: MarketEnv) {
 					if (r.ok)
 						await pruneBundledMarker(`${(env.cdnDir ?? "cdn")}/bundles.json`, name);
 					return r;
+				});
+			},
+		},
+
+		// GET /api/oj-market/mcp/catalog —— MCP 工具目录代理（superadmin，20261110-1027 §4.1/US-4）。
+		// 门禁 + 取 JWT + origin 解析在此；tools/list 代理、tags[0] 分组归一、代际探测全归
+		// mcp-catalog.ts（SRP 同 upload/trust 纪律）。/mcp 不走租户管线（F10），浏览器 JWT 原样
+		// 透传；Accept 显式 application/json（F6 406 陷阱在服务端规避）。v1 无 audit 联查（§10 #11）。
+		"mcp/catalog": {
+			async get() {
+				await respond(async () => {
+					await assertSuperAdmin();
+					const headers = (http.headers ?? {}) as Record<string, string>;
+					const auth = Object.entries(headers).find(([k]) => k.toLowerCase() === "authorization")?.[1] ?? "";
+					const token = auth.replace(/^Bearer\s+/i, "").trim();
+					if (token === "")
+						fail(401, "需要浏览器登录态 Bearer JWT——上游 {base}/mcp 与 _system/config 以同一凭据鉴权");
+					const co = await resolveCanonicalOrigin(env);
+					const origin = co === undefined ? null : siteOrigin(co);
+					return fetchMcpCatalog({
+						fetch: await fetchOf(env),
+						origin: origin === null ? "" : `${origin.proto}://${origin.host}`,
+						token,
+					});
 				});
 			},
 		},
