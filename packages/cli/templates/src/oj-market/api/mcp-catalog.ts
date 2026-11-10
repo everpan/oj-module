@@ -45,6 +45,12 @@ export interface McpCatalogDeps {
 	origin: string
 	/** 浏览器登录态 JWT（/mcp 与 _system/config 同一凭据面） */
 	token: string
+	/**
+	 * 磁盘当前 config 的 sha256（惰性：仅 404 分支两态判定用）。与 `_system/config` 返回的
+	 * 「已加载 sha256」对比：不等 = config 已改未触发热更；相等 = 尚未修改。缺省/失败/不可得
+	 * = 跳过区分，保持原「未挂载」文案（不猜不误报）。
+	 */
+	currentConfigSha256?: () => Promise<string | undefined>
 }
 
 function isObj(v: unknown): v is Record<string, unknown> {
@@ -110,19 +116,24 @@ function upstreamMsg(bodyText: string): string | undefined {
 	return raw.slice(0, 200);
 }
 
-/** 代际顺带探测（F7）：任何失败（reload_api 关闭 404 / 网络异常 / 形状违约）都静默省略 */
-async function probeGeneration(deps: McpCatalogDeps, headers: Record<string, string>): Promise<number | undefined> {
+/** `_system/config` 顺带探测（F7）：generation（mounted 态透出）+ sha256（unmounted 态两态判定）；任何失败都静默空对象 */
+async function probeSystemConfig(deps: McpCatalogDeps, headers: Record<string, string>): Promise<{ generation?: number, sha256?: string }> {
 	try {
 		const res = await deps.fetch(`${deps.origin}/_system/config`, { headers: { accept: "application/json", authorization: headers.authorization } });
 		if (res.status !== 200) {
-			return undefined;
+			return {};
 		}
 		const parsed: unknown = JSON.parse(new TextDecoder().decode(await res.arrayBuffer()));
-		const gen = isObj(parsed) ? parsed.generation : undefined;
-		return typeof gen === "number" ? gen : undefined;
+		if (!isObj(parsed)) {
+			return {};
+		}
+		return {
+			generation: typeof parsed.generation === "number" ? parsed.generation : undefined,
+			sha256: typeof parsed.sha256 === "string" && parsed.sha256 !== "" ? parsed.sha256 : undefined,
+		};
 	}
 	catch {
-		return undefined;
+		return {};
 	}
 }
 
@@ -159,6 +170,18 @@ export async function fetchMcpCatalog(deps: McpCatalogDeps): Promise<McpCatalogR
 		return { status: "unreachable", groups: [], message: `网络不可达：${String(e)}` };
 	}
 	if (status === 404) {
+		// §4.3 两态区分：磁盘 sha256 ≠ 已加载 sha256 = 已改未热更；相等 = 尚未修改。
+		// 任一依据不可得（reload_api 关闭/旧 oj/磁盘读失败/dep 缺省）→ 不猜，保持原文案。
+		const sys = await probeSystemConfig(deps, headers);
+		if (sys.sha256 !== undefined && deps.currentConfigSha256 !== undefined) {
+			const disk = await deps.currentConfigSha256().catch(() => undefined);
+			if (disk !== undefined) {
+				if (disk !== sys.sha256) {
+					return { status: "unmounted", groups: [], message: "config.yaml 已修改但未触发热更：server.mcp 改动尚未生效——请 POST {base}/_system/config 触发热更（回环地址或 Bearer 皆可），完成后刷新本页" };
+				}
+				return { status: "unmounted", groups: [], message: "尚未修改：在 config.yaml 现有 server.mcp 段内把 enabled 改为 true（模板已预置骨架），保存后 POST {base}/_system/config 触发热更（回环地址或 Bearer 皆可），刷新本页即见目录" };
+			}
+		}
 		return { status: "unmounted", groups: [], message: "{base}/mcp 未挂载（server.mcp 未启用，或 oj < 0.1.110）" };
 	}
 	if (status === 401 || status === 403) {
@@ -178,7 +201,7 @@ export async function fetchMcpCatalog(deps: McpCatalogDeps): Promise<McpCatalogR
 	if (!Array.isArray(tools)) {
 		return { status: "unreachable", groups: [], message: "tools/list 响应形状违约：期望 JSON-RPC result.tools 数组" };
 	}
-	const generation = await probeGeneration(deps, headers);
+	const generation = (await probeSystemConfig(deps, headers)).generation;
 	const base = { status: "mounted" as const, groups: groupTools(normalizeTools(tools)) };
 	return generation !== undefined ? { ...base, generation } : base;
 }

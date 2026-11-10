@@ -303,7 +303,7 @@ agent 工具：
 | T4 | config.yaml 模板预置 `server.mcp:` 骨架 + 段内锚点 | T2 | ✅ |
 | T5 | oj-market API：`GET /mcp/catalog` 代理端点（归一+分组+静态统计+代际探测，无 audit 联查）+ 归一单测（§4.1 数据表，FetchFace stub） | T1 | ✅ |
 | T6 | `ojm api` 重生成 client；system 路由 + i18n | T5 | ✅ |
-| T7 | 管理页（状态卡四态指引/常驻 Alert/分组工具表/质量标注/漂移/静态统计/接入配置含 client 实配/刷新；纯文本渲染断言）+ vitest（§4.3 场景） | T6 | ☐ |
+| T7 | 管理页（状态卡四态指引/常驻 Alert/分组工具表/质量标注/漂移/静态统计/接入配置含 client 实配/刷新；纯文本渲染断言）+ vitest（§4.3 场景） | T6 | ✅ |
 | T8 | 全量校验：`pnpm test`/`pnpm lint`/`pnpm typecheck`；真机演练钉死形态 = `ojm dev` 起真实 oj serve（reload 返回 generation 非 unchanged——dev embedded 无 server 时 reloadOf 回落 no-op，热更路径未被演练） | T7 | ☐ |
 | T9 | 收尾：更新本文档任务状态与总结段落；R3'/R4'/R2'/R1' 需求落 `docs/prd/` 提上游 | T8 | ☐ |
 
@@ -326,6 +326,15 @@ agent 工具：
   连键一起摘（§4.2）。
 - **静默类失效清单**：错层级键静默忽略（F10）、preview 形态单写静默不生效（F8）、
   手写 flow 风格坏 YAML 拒启、半失败幽灵登记空目录——四类均已在 §4.2/§5.3 闭合。
+- **脚手架裁剪陷阱（反常规，T7 真机烟囱钉出）**：`init.include.yaml` 把 `oj-market/web`
+  裁到 `__client`+`publish`（市场 UI 走方案包，源码不进脚手架）——框架页（system）消费
+  `useMarketClient` seam 时，`src/oj-market/web/{api,types.ts}` 不在白名单 → `ojm init`
+  工程构建 UNRESOLVED_IMPORT（vite/tsc 全绿也拦不住，只有真机 init+build 抓得到）。处置：
+  白名单补 `src/oj-market/web/api` + `src/oj-market/web/types.ts`（「client 消费面」随
+  `_platform` 先例下发，页面源码仍不进脚手架）。
+- **质量标注口径（T7 定案）**：「未声明契约」= 上游 `tags[0]` 缺失（归一后 `module===""`），
+  即 openapi 契约未做模块归属标注——契约级信号；与「无描述」（description 缺失，内容级）
+  分立。空串组同时是「非方案」折叠组的天然成员。
 - **观测缺口**：目录漂移（升级换 tool 名/同名 tool 指向变化）破坏已保存 agent 配置，
   v1 不观测（依赖 R3' 凭据面解耦），v2 以安装路径 tools/list 前后 diff 补齐，任务历史
   承载。
@@ -406,3 +415,24 @@ agent 工具：
   测试注入内存 fake——双数据源（catalog + 既有 index 漂移对账）走同一 seam。
 - 耗时：T5 编码 + 数据表用例约 20 分钟；T6 生成链 + 三件套 + 路由约 25 分钟。
 - 遗留：页面为骨架（T7 填实 §4.3 全场景）；真机演练形态钉死归 T8。
+
+### Phase 4：管理页（T7，阶段评审通过）— 2026-11-10 12:35
+
+- 交付：① 服务端 unmounted 两态判定——404 分支惰性取磁盘 config sha256（`resolveDeploymentConfigPath`
+  与 uninstall 同口径 + `crypto.sha256Hex`）对比 `_system/config` 已加载 sha256：不等=「已修改
+  未触发热更」、相等=「尚未修改」；任一依据不可得（reload_api 关闭/读盘失败/dep 缺省）不猜，
+  保持原「未挂载」文案。区分落 message 文案，零契约变更（§4.1 表不动）。② 管理页四态状态卡
+  （异常三态文案区分由服务端 message 承载，页面如实展示）+ mounted 常驻 Alert（fail-closed）
+  + 分组工具表（组头=方案名·工具数·只读/写/危险分布）+ 质量标注 Tag（只读/危险/无描述/
+  未声明契约）+ 漂移区（已装无分组→「无可见工具」）+ 非方案组折叠（antd Collapse 惰性渲染）
+  + 调用统计恒「—」+ 接入配置卡（URL+Bearer 说明+exp 警示+重连语义+path/query/body 三键+
+  Claude Code/Cursor 实配 JSON+线路 A 命令模板；剪贴板负载不含任何凭据值）+ 双查询刷新。
+- BDD/TDD：服务端两态 5 用例（it.each 数据表 + 三条负向守卫）红→绿；页面 11 用例红→绿
+  （含纯文本渲染断言：`<b>搜索</b>` 记号不生成元素）。RED 期修测试自身缺陷三处：
+  order 未入已装夹具被误归「非方案」、折叠行未展开、文案双出现处 getAllByText。
+- 全量绿：仓库根 1035 用例（含 uni-dev 真机烟囱）+ templates 1271 用例；typecheck/lint 0 error。
+- 真机烟囱钉出脚手架裁剪陷阱（§8 已记录）：init.include.yaml 补 `oj-market/web/{api,types.ts}`
+  ——真机 init+build 是唯一能抓白名单缺口的验证面，vite/tsc/单测全绿也拦不住。
+- 耗时：两态判定 15 分钟；页面+用例 30 分钟；脚手架陷阱定位与修复 25 分钟（真机烟囱首红
+  → 根因=include 白名单 → 全新脚手架复验闭环）。
+- 遗留：T8 全量校验 + 真机 reload generation 形态钉死；T9 收尾 + 上游需求落 PRD。

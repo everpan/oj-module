@@ -1258,6 +1258,21 @@ export function createMarketApi(env: MarketEnv) {
 							fetch: await fetchOf(env),
 							origin: origin === null ? "" : `${origin.proto}://${origin.host}`,
 							token,
+							// unmounted 两态判定（§4.3）：磁盘当前 config sha256（惰性）对比上游已加载
+							// sha256；config 路径与 uninstall 端点同口径（resolveDeploymentConfigPath，
+							// _system/health 真源——server 实际加载哪份就比哪份）。
+							currentConfigSha256: async () => {
+								const cp = (await resolveDeploymentConfigPath(env.apiPrefix)) ?? env.configPath;
+								if (!cp) {
+									return undefined;
+								}
+								try {
+									return sha256Of(env)(await fsFace().readFile(cp));
+								}
+								catch {
+									return undefined;
+								}
+							},
 						});
 					});
 				},

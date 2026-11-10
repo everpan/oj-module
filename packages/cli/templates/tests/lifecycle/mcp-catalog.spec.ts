@@ -65,7 +65,7 @@ function seqFetch(routes: Array<{ match: (url: string) => boolean, res: () => un
 
 const enc = (s: string) => new TextEncoder().encode(s).buffer as ArrayBuffer;
 const jsonRes = (status: number, body: unknown) => ({ ok: status >= 200 && status < 300, status, arrayBuffer: async () => enc(JSON.stringify(body)) });
-const GEN_OK = { match: (url: string) => url.includes("/_system/config"), res: () => jsonRes(200, { generation: 7, modules: ["wiki"] }) };
+const GEN_OK = { match: (url: string) => url.includes("/_system/config"), res: () => jsonRes(200, { generation: 7, sha256: "loaded-sha", modules: ["wiki"] }) };
 
 describe("fetchMcpCatalog：§4.1 数据表（HTTP → 归一）", () => {
 	it("当 {base}/mcp 对 tools/list 返回 200，则 status=mounted：tools 归一（tags[0]=模块名/hints/params 三键子集）+ 分组稳定 + generation 顺带探得", async () => {
@@ -151,6 +151,59 @@ describe("fetchMcpCatalog：§4.1 数据表（HTTP → 归一）", () => {
 		const r2 = await fetchMcpCatalog({ fetch: fn2, origin: ORIGIN, token: "tok" });
 		expect(r2.status).toBe("mounted");
 		expect(r2.generation).toBeUndefined();
+	});
+});
+
+describe("unmounted 两态判定（20261110-1027 §4.3：磁盘 config sha256 对比 _system/config 已加载 sha256）", () => {
+	it.each([
+		["磁盘 sha ≠ 已加载 sha → 「已修改未触发热更」", "changed-on-disk", "config.yaml 已修改", "热更"],
+		["磁盘 sha = 已加载 sha → 「尚未修改」", "loaded-sha", "尚未修改", "enabled 改为 true"],
+	])("当 404 且 _system/config 可达且 %s", async (_name, diskSha, ...needles) => {
+		const { fn } = seqFetch([
+			{ match: u => u.includes("/mcp"), res: () => jsonRes(404, { error: "not found" }) },
+			GEN_OK,
+		]);
+		const r = await fetchMcpCatalog({ fetch: fn, origin: ORIGIN, token: "tok", currentConfigSha256: async () => diskSha });
+		expect(r.status).toBe("unmounted");
+		for (const n of needles)
+			expect(r.message ?? "", needles.join("/")).toContain(n);
+	});
+
+	it("当 404 且 _system/config 不可达（reload_api 关闭）或磁盘 sha 不可得，则保持原「未挂载」文案不误报", async () => {
+		const { fn } = seqFetch([
+			{ match: u => u.includes("/mcp"), res: () => jsonRes(404, { error: "not found" }) },
+			{ match: u => u.includes("/_system/config"), res: () => jsonRes(404, { error: "disabled" }) },
+		]);
+		const r = await fetchMcpCatalog({ fetch: fn, origin: ORIGIN, token: "tok", currentConfigSha256: async () => "whatever" });
+		expect(r.message ?? "").toContain("未挂载");
+
+		const { fn: fn2 } = seqFetch([
+			{ match: u => u.includes("/mcp"), res: () => jsonRes(404, { error: "not found" }) },
+			GEN_OK,
+		]);
+		const r2 = await fetchMcpCatalog({ fetch: fn2, origin: ORIGIN, token: "tok", currentConfigSha256: async () => {
+			throw new Error("disk gone");
+		} });
+		expect(r2.message ?? "").toContain("未挂载");
+	});
+
+	it("当 currentConfigSha256 未注入（dep 缺省），则 404 文案不变——旧调用形态零变化", async () => {
+		const { fn } = seqFetch([
+			{ match: u => u.includes("/mcp"), res: () => jsonRes(404, { error: "not found" }) },
+			GEN_OK,
+		]);
+		const r = await fetchMcpCatalog({ fetch: fn, origin: ORIGIN, token: "tok" });
+		expect(r.message ?? "").toContain("未挂载");
+	});
+
+	it("当 mounted，则代际探测不受 sha256 字段影响（generation 照常透出）", async () => {
+		const { fn } = seqFetch([
+			{ match: u => u.includes("/mcp"), res: () => jsonRes(200, TOOLS_LIST) },
+			GEN_OK,
+		]);
+		const r = await fetchMcpCatalog({ fetch: fn, origin: ORIGIN, token: "tok", currentConfigSha256: async () => "loaded-sha" });
+		expect(r.status).toBe("mounted");
+		expect(r.generation).toBe(7);
 	});
 });
 
