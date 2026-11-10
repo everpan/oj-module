@@ -355,7 +355,8 @@ async function routeEnabledMap(): Promise<Map<string, unknown> | null> {
  */
 async function reconcileOf(env: MarketEnv): Promise<void> {
 	try {
-		const heads = env.ledgerHeadOf === undefined ? await journalHeads() : null;
+		// marketEnv() 缺省注入 journalHeadOf 本体，故「缺省」形态须按身份判，否则生产恒走逐条
+		const heads = env.ledgerHeadOf === undefined || env.ledgerHeadOf === journalHeadOf ? await journalHeads() : null;
 		const routes = await routeEnabledMap();
 		await reconcile({
 			lockPath: `${env.sharedRoot}/manifests.yaml`,
@@ -363,9 +364,11 @@ async function reconcileOf(env: MarketEnv): Promise<void> {
 			taskDir: env.taskDir,
 			modulesJsonPath: env.modulesJsonPath,
 			state: await createStateStore(env.statePath),
-			ledgerHeadOf: env.ledgerHeadOf ?? (heads === null
-				? async () => null
-				: async name => heads.has(name) ? heads.get(name)! : null),
+			ledgerHeadOf: env.ledgerHeadOf !== undefined && env.ledgerHeadOf !== journalHeadOf
+				? env.ledgerHeadOf
+				: heads === null
+					? async () => null
+					: async name => heads.has(name) ? heads.get(name)! : null,
 			headFloorOf: (name, version) => latestAppliedSeqOf(env.taskDir, name, version),
 			routeEnabledOf: routes === null
 				? async () => null

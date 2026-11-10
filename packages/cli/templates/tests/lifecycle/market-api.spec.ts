@@ -28,7 +28,7 @@ import { createStateStore } from "../../src/app/api/_platform/_lifecycle/state";
 import { getTask, writeTask } from "../../src/app/api/_platform/_lifecycle/tasks";
 import { createTrustStore } from "../../src/app/api/_platform/_lifecycle/trust";
 import { invalidateAllUsers } from "../../src/app/api/_platform/_shared/service/infra/access";
-import { createMarketApi, marketEnv, parseVersionsJson, versionsJsonPathOf } from "../../src/oj-market/api/api";
+import { createMarketApi, journalHeadOf, marketEnv, parseVersionsJson, versionsJsonPathOf } from "../../src/oj-market/api/api";
 import { installDb } from "../fixture";
 
 function hexToBytes(hex: string): Uint8Array {
@@ -1406,6 +1406,32 @@ describe("P1-16 接线：marketEnv 生产口径 / exec opts 转发 / operator �
 		expect(mig[0]).toContain("GROUP BY");
 		expect(route).toHaveLength(1);
 		expect(route[0]).not.toContain("\"module\" = ?");
+	});
+
+	it("index 对账批查：生产 env 形态（marketEnv 缺省 ledgerHeadOf=journalHeadOf，非 undefined）同样走批查（2026-11-10 真机复跑实锤：undefined 判据漏掉缺省值，批查只在测试夹具生效）", async () => {
+		await writeLock(join(sharedRoot, "manifests.yaml"), { "demo-solution": "0.1.0", "other": "1.0.0", "third": "2.0.0" });
+		dbo.exec("CREATE TABLE _oj_migrations (module TEXT NOT NULL, version INTEGER NOT NULL, name TEXT, applied_on TEXT, checksum TEXT, PRIMARY KEY (module, version))");
+		const ins = dbo.prepare("INSERT INTO _oj_migrations (module, version) VALUES (?, ?)");
+		for (const [m, v] of [["demo-solution", 3], ["other", 1], ["third", 5]] as const)
+			ins.run(m, v);
+		const origPrepare = dbo.prepare.bind(dbo);
+		const sqls: string[] = [];
+		dbo.prepare = (sql: string) => {
+			sqls.push(String(sql));
+			return origPrepare(sql);
+		};
+		try {
+			const api = createMarketApi(makeEnv({ ledgerHeadOf: journalHeadOf }));
+			g.http = { user: { id: 1 } };
+			await api.index.get();
+		}
+		finally {
+			dbo.prepare = origPrepare;
+		}
+		expect(last?.status).toBe(200);
+		const mig = sqls.filter(s => s.includes("_oj_migrations"));
+		expect(mig).toHaveLength(1);
+		expect(mig[0]).toContain("GROUP BY");
 	});
 });
 
