@@ -67,6 +67,8 @@ export interface McpCatalogResult {
 	status: McpCatalogStatus
 	message?: string
 	generation?: number
+	/** 站点租户（请求 X-TENANT-ID 透传）：接入配置给外部 MCP client 写全请求头（缺头 400） */
+	tenant?: string
 	groups: McpCatalogGroup[]
 }
 

@@ -42,6 +42,7 @@ function renderPage(client: InMemoryMarketClient) {
 const CATALOG_MOUNTED: McpCatalogResult = {
 	status: "mounted",
 	generation: 7,
+	tenant: "default",
 	groups: [
 		{
 			module: "wiki",
@@ -191,7 +192,11 @@ describe("mCP 服务管理页：接入配置与刷新（§4.3）", () => {
 
 		fireEvent.click(screen.getByText("复制接入配置"));
 		await waitFor(() => expect(copied).not.toBe(""));
-		expect(copied).toContain("/mcp");
+		// {base} = API 挂载前缀（默认 /api），非站点根——真机演练钉出
+		expect(copied).toContain("/api/mcp");
+		// F10 修正：外层 tenant 中间件要求 X-TENANT-ID（缺头 400）——接入配置写全请求头
+		expect(copied).toContain("X-TENANT-ID");
+		expect(copied).toContain("default");
 		expect(copied).toContain("Bearer");
 		expect(copied).toContain("24 小时");
 		expect(copied).toContain("mcpServers");

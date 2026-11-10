@@ -1252,22 +1252,32 @@ export function createMarketApi(env: MarketEnv) {
 						const token = auth.replace(/^Bearer\s+/i, "").trim();
 						if (token === "")
 							fail(401, "需要浏览器登录态 Bearer JWT——上游 {base}/mcp 与 _system/config 以同一凭据鉴权");
+						// F10 修正（真机演练钉出）：/api/mcp 在外层 tenant 中间件之后，缺 X-TENANT-ID
+						// 即 400「missing tenant header」——请求租户头原样透传出站，并随结果透出（页面
+						// 接入配置给外部 MCP client 写全请求头）。
+						const tenant = Object.entries(headers).find(([k]) => k.toLowerCase() === "x-tenant-id")?.[1] ?? "";
 						const co = await resolveCanonicalOrigin(env);
 						const origin = co === undefined ? null : siteOrigin(co);
 						return fetchMcpCatalog({
 							fetch: await fetchOf(env),
 							origin: origin === null ? "" : `${origin.proto}://${origin.host}`,
+							base: env.apiPrefix,
 							token,
-							// unmounted 两态判定（§4.3）：磁盘当前 config sha256（惰性）对比上游已加载
-							// sha256；config 路径与 uninstall 端点同口径（resolveDeploymentConfigPath，
-							// _system/health 真源——server 实际加载哪份就比哪份）。
-							currentConfigSha256: async () => {
+							tenant: tenant === "" ? undefined : tenant,
+							// unmounted 两态判定（§4.3 修订）：磁盘 config 的 server.mcp.enabled 直读
+							// （真机钉出 _system/config 的 sha256 = doc_sha 规范指纹 ≠ 文件字节 sha，
+							// sha 对比案作废）。config 路径取「运行服务实际加载的那份」：
+							// resolveDeploymentConfigPath（_system/health 真源，匿名可达）?? configPath。
+							diskMcpEnabled: async () => {
 								const cp = (await resolveDeploymentConfigPath(env.apiPrefix)) ?? env.configPath;
 								if (!cp) {
 									return undefined;
 								}
 								try {
-									return sha256Of(env)(await fsFace().readFile(cp));
+									const text = new TextDecoder().decode(await fsFace().readFile(cp));
+									const doc = await (globalThis as { yaml?: { parse: (t: string) => Promise<unknown> } }).yaml?.parse(text) as { server?: { mcp?: { enabled?: unknown } } } | undefined;
+									const enabled = doc?.server?.mcp?.enabled;
+									return typeof enabled === "boolean" ? enabled : undefined;
 								}
 								catch {
 									return undefined;

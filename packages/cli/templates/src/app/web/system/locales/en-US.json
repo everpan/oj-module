@@ -286,5 +286,55 @@
 	"perm": {
 		"platform_org_read_all": "Org directory: read all",
 		"auth_wecom_sync": "WeCom org sync"
+	},
+	"mcp": {
+		"title": "MCP Service Management",
+		"refresh": "Refresh",
+		"generation": "Generation",
+		"descriptionSource": "Tool descriptions are authored by solution publishers; whether to expose them to agents is the admin's call.",
+		"status": {
+			"mounted": "Enabled",
+			"unmounted": "Not Enabled",
+			"auth": "Auth Failed",
+			"unreachable": "Unreachable"
+		},
+		"guide": {
+			"unmounted": "Steps: 1) set enabled to true inside the existing server.mcp section of config.yaml (skeleton preinstalled); 2) trigger hot reload: POST {base}/_system/config (loopback or Bearer); 3) refresh this page.",
+			"auth": "Check the mcp auth settings: make sure the auth plugin and allow_anonymous match the browser login session — {base}/mcp shares the same JWT auth surface as this site's API.",
+			"unreachable": "If the message above says canonical_origin is missing: fill vars.canonical_origin in config.yaml with the site's real public address, then refresh; if it says the network is unreachable: check the oj service process and port."
+		},
+		"mountedAlert": "Whitelist enabled: only solution-module tools are exposed; installing a solution registers it automatically; tools from non-solution modules never appear in this catalog.",
+		"driftTitle": "Installed Solutions Without Tools",
+		"group": {
+			"toolCount": "{{count}} tools",
+			"readOnly": "read-only {{count}}",
+			"write": "write {{count}}",
+			"destructive": "destructive {{count}}",
+			"drift": "No visible tools (not whitelisted, or no api)",
+			"foreign": "non-solution",
+			"unattributed": "No contract"
+		},
+		"columns": {
+			"name": "Tool",
+			"description": "Description",
+			"quality": "Quality",
+			"params": "Params",
+			"calls": "Call Stats"
+		},
+		"tag": {
+			"readOnly": "read-only",
+			"destructive": "destructive",
+			"noDesc": "no description",
+			"noContract": "contract undeclared"
+		},
+		"accessTitle": "Access Config",
+		"copy": "Copy Access Config",
+		"copyNote": "contains no credential values",
+		"copyOk": "Access config copied to clipboard",
+		"accessUrl": "Server URL",
+		"tokenExp": "Credentials: the Bearer JWT comes from your browser login (expires in about 24 hours; expired calls return 401). Agent static config never refreshes it automatically — paste a fresh one when it expires. Long-lived credentials come in a later release.",
+		"reconnect": "How changes apply: the catalog is fixed at connection time — after install/upgrade/uninstall, agents must reconnect to see the latest tools; calling an old offline tool mid-session returns -32601.",
+		"paramsShape": "Argument shape: tool arguments are always nested path/query/body objects.",
+		"lineA": "Route A (offline codegen, an ops action outside the site): oj mcp -c config.yaml generates a dependency-free stdio server (env OJ_BASE / OJ_TOKEN / OJ_TENANT). It is a file snapshot — regenerate after solution changes."
 	}
 }

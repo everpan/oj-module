@@ -35,6 +35,8 @@ export interface McpCatalogResult {
 	message?: string
 	/** 热更代际（`GET {base}/_system/config` 顺带探测，F7）；reload_api 关闭/探测失败省略 */
 	generation?: number
+	/** 上游租户（请求 X-TENANT-ID 透传）；页面接入配置据此给外部 MCP client 写全请求头 */
+	tenant?: string
 	groups: McpCatalogGroup[]
 }
 
@@ -43,14 +45,25 @@ export interface McpCatalogDeps {
 	fetch: FetchInitFace
 	/** 站点 canonical origin（已解析）；空串 = 未配置（REG-CS6 fail-closed 不猜） */
 	origin: string
+	/** API 挂载前缀（= {base}，oj 按 mount prefix 分流 `/api/_system/*` 与 `/api/mcp`——reload.rs system_fallback 逐行核实；**不是站点根**） */
+	base: string
 	/** 浏览器登录态 JWT（/mcp 与 _system/config 同一凭据面） */
 	token: string
 	/**
-	 * 磁盘当前 config 的 sha256（惰性：仅 404 分支两态判定用）。与 `_system/config` 返回的
-	 * 「已加载 sha256」对比：不等 = config 已改未触发热更；相等 = 尚未修改。缺省/失败/不可得
-	 * = 跳过区分，保持原「未挂载」文案（不猜不误报）。
+	 * 站点租户（请求 X-TENANT-ID 原样透传）。F10 修正（真机演练钉出）：/api/mcp 在外层
+	 * tenant 中间件之后，缺头即 400「missing tenant header」——出站必须带。缺省/空串 =
+	 * 不带不猜（单租户默认站点可能仍要求显式头）。
 	 */
-	currentConfigSha256?: () => Promise<string | undefined>
+	tenant?: string
+	/**
+	 * 磁盘 config 的 server.mcp.enabled（惰性：仅 404 分支两态判定用；调用方自行择定
+	 * 「运行服务实际加载的那份」——resolveDeploymentConfigPath ?? configPath）。§4.3 修订
+	 * （真机钉出 sha 物理不符后重设计）：_system/config 的 sha256 = doc_sha(解析后 YAML
+	 * 规范指纹) 非文件字节 sha，磁盘 sha 对比永不相等——改为直读磁盘 enabled 联合 404 判定：
+	 * true = 已改未热更（或热更失败）；false = 尚未修改；undefined/失败/缺省 = 不猜，
+	 * 保持原「未挂载」文案。
+	 */
+	diskMcpEnabled?: () => Promise<boolean | undefined>
 }
 
 function isObj(v: unknown): v is Record<string, unknown> {
@@ -116,10 +129,14 @@ function upstreamMsg(bodyText: string): string | undefined {
 	return raw.slice(0, 200);
 }
 
-/** `_system/config` 顺带探测（F7）：generation（mounted 态透出）+ sha256（unmounted 态两态判定）；任何失败都静默空对象 */
-async function probeSystemConfig(deps: McpCatalogDeps, headers: Record<string, string>): Promise<{ generation?: number, sha256?: string }> {
+/** `_system/config` 顺带探测（F7）：仅消费 generation；任何失败都静默空对象 */
+async function probeSystemConfig(deps: McpCatalogDeps): Promise<{ generation?: number }> {
+	const headers: Record<string, string> = { accept: "application/json", authorization: `Bearer ${deps.token}` };
+	if (deps.tenant !== undefined && deps.tenant !== "") {
+		headers["x-tenant-id"] = deps.tenant;
+	}
 	try {
-		const res = await deps.fetch(`${deps.origin}/_system/config`, { headers: { accept: "application/json", authorization: headers.authorization } });
+		const res = await deps.fetch(`${deps.origin}${deps.base}/_system/config`, { headers });
 		if (res.status !== 200) {
 			return {};
 		}
@@ -127,10 +144,7 @@ async function probeSystemConfig(deps: McpCatalogDeps, headers: Record<string, s
 		if (!isObj(parsed)) {
 			return {};
 		}
-		return {
-			generation: typeof parsed.generation === "number" ? parsed.generation : undefined,
-			sha256: typeof parsed.sha256 === "string" && parsed.sha256 !== "" ? parsed.sha256 : undefined,
-		};
+		return { generation: typeof parsed.generation === "number" ? parsed.generation : undefined };
 	}
 	catch {
 		return {};
@@ -154,11 +168,16 @@ export async function fetchMcpCatalog(deps: McpCatalogDeps): Promise<McpCatalogR
 			message: "canonical_origin 未配置：无法定位站点 {base}（请在 config.yaml vars.canonical_origin 配置站点真实对外地址；REG-CS6 不读请求头 Host）",
 		};
 	}
-	const headers = { "content-type": "application/json", "accept": "application/json", "authorization": `Bearer ${deps.token}` };
+	const tenant = deps.tenant;
+	const headers: Record<string, string> = { "content-type": "application/json", "accept": "application/json", "authorization": `Bearer ${deps.token}` };
+	if (tenant !== undefined && tenant !== "") {
+		headers["x-tenant-id"] = tenant;
+	}
+	const withTenant = (r: McpCatalogResult): McpCatalogResult => (tenant !== undefined && tenant !== "" ? { ...r, tenant } : r);
 	let status: number;
 	let bodyText: string;
 	try {
-		const res = await deps.fetch(`${deps.origin}/mcp`, {
+		const res = await deps.fetch(`${deps.origin}${deps.base}/mcp`, {
 			method: "POST",
 			headers,
 			body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list", params: {} }),
@@ -167,41 +186,40 @@ export async function fetchMcpCatalog(deps: McpCatalogDeps): Promise<McpCatalogR
 		bodyText = new TextDecoder().decode(await res.arrayBuffer());
 	}
 	catch (e) {
-		return { status: "unreachable", groups: [], message: `网络不可达：${String(e)}` };
+		return withTenant({ status: "unreachable", groups: [], message: `网络不可达：${String(e)}` });
 	}
 	if (status === 404) {
-		// §4.3 两态区分：磁盘 sha256 ≠ 已加载 sha256 = 已改未热更；相等 = 尚未修改。
-		// 任一依据不可得（reload_api 关闭/旧 oj/磁盘读失败/dep 缺省）→ 不猜，保持原文案。
-		const sys = await probeSystemConfig(deps, headers);
-		if (sys.sha256 !== undefined && deps.currentConfigSha256 !== undefined) {
-			const disk = await deps.currentConfigSha256().catch(() => undefined);
-			if (disk !== undefined) {
-				if (disk !== sys.sha256) {
-					return { status: "unmounted", groups: [], message: "config.yaml 已修改但未触发热更：server.mcp 改动尚未生效——请 POST {base}/_system/config 触发热更（回环地址或 Bearer 皆可），完成后刷新本页" };
-				}
-				return { status: "unmounted", groups: [], message: "尚未修改：在 config.yaml 现有 server.mcp 段内把 enabled 改为 true（模板已预置骨架），保存后 POST {base}/_system/config 触发热更（回环地址或 Bearer 皆可），刷新本页即见目录" };
+		// §4.3 两态（修订版）：磁盘 server.mcp.enabled 直读（engine 无关，§8 真机钉出
+		// doc_sha ≠ 文件字节 sha 后重设计）。任一依据不可得 → 不猜，保持原文案。
+		if (deps.diskMcpEnabled !== undefined) {
+			const diskEnabled = await deps.diskMcpEnabled().catch(() => undefined);
+			if (diskEnabled === true) {
+				return withTenant({ status: "unmounted", groups: [], message: "config.yaml 已启用 server.mcp 但 {base}/mcp 未挂载——已修改未触发热更（或热更失败）：POST {base}/_system/config 触发热更（回环地址或 Bearer 皆可）后刷新本页；热更后仍未挂载请核对 oj 版本 ≥ 0.1.110" });
+			}
+			if (diskEnabled === false) {
+				return withTenant({ status: "unmounted", groups: [], message: "尚未修改：在 config.yaml 现有 server.mcp 段内把 enabled 改为 true（模板已预置骨架），保存后 POST {base}/_system/config 触发热更（回环地址或 Bearer 皆可），刷新本页即见目录" });
 			}
 		}
-		return { status: "unmounted", groups: [], message: "{base}/mcp 未挂载（server.mcp 未启用，或 oj < 0.1.110）" };
+		return withTenant({ status: "unmounted", groups: [], message: "{base}/mcp 未挂载（server.mcp 未启用，或 oj < 0.1.110）" });
 	}
 	if (status === 401 || status === 403) {
-		return { status: "auth", groups: [], message: upstreamMsg(bodyText) ?? `上游鉴权失败（HTTP ${status}）` };
+		return withTenant({ status: "auth", groups: [], message: upstreamMsg(bodyText) ?? `上游鉴权失败（HTTP ${status}）` });
 	}
 	if (status !== 200) {
-		return { status: "unreachable", groups: [], message: `上游 {base}/mcp 返回 HTTP ${status}` };
+		return withTenant({ status: "unreachable", groups: [], message: `上游 {base}/mcp 返回 HTTP ${status}` });
 	}
 	let parsed: unknown;
 	try {
 		parsed = JSON.parse(bodyText);
 	}
 	catch {
-		return { status: "unreachable", groups: [], message: `tools/list 响应形状违约：正文非 JSON（前 120 字节：${bodyText.slice(0, 120)}）` };
+		return withTenant({ status: "unreachable", groups: [], message: `tools/list 响应形状违约：正文非 JSON（前 120 字节：${bodyText.slice(0, 120)}）` });
 	}
 	const tools = isObj(parsed) && isObj(parsed.result) ? parsed.result.tools : undefined;
 	if (!Array.isArray(tools)) {
-		return { status: "unreachable", groups: [], message: "tools/list 响应形状违约：期望 JSON-RPC result.tools 数组" };
+		return withTenant({ status: "unreachable", groups: [], message: "tools/list 响应形状违约：期望 JSON-RPC result.tools 数组" });
 	}
-	const generation = (await probeSystemConfig(deps, headers)).generation;
+	const generation = (await probeSystemConfig(deps)).generation;
 	const base = { status: "mounted" as const, groups: groupTools(normalizeTools(tools)) };
-	return generation !== undefined ? { ...base, generation } : base;
+	return withTenant(generation !== undefined ? { ...base, generation } : base);
 }

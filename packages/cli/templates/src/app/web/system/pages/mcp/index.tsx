@@ -34,10 +34,18 @@ function isForeignGroup(module: string, installedNames: Set<string>): boolean {
 	return module === "" || !installedNames.has(module);
 }
 
-/** 接入配置文本（剪贴板负载）：URL+Bearer 说明+主流 client 实配+线路 A 模板；不含任何凭据值 */
-function buildAccessConfig(origin: string, t: (k: string, o?: Record<string, unknown>) => string): string {
-	const url = `${origin}/mcp`;
-	const json = JSON.stringify({ mcpServers: { oj: { url, headers: { Authorization: "Bearer <在浏览器粘贴你的登录 JWT>" } } } }, null, 2);
+/** API 挂载前缀（与运行时 request 同源）：{base}/mcp 的 {base} = 挂载前缀，非站点根 */
+const API_BASE = import.meta.env.VITE_API_BASE_URL || "/api";
+
+/** 接入配置文本（剪贴板负载）：URL+请求头说明+主流 client 实配+线路 A 模板；不含任何凭据值 */
+function buildAccessConfig(origin: string, tenant: string | undefined, t: (k: string, o?: Record<string, unknown>) => string): string {
+	const url = `${origin}${API_BASE}/mcp`;
+	// F10 修正：外层 tenant 中间件缺 X-TENANT-ID 即 400——外部 MCP client 请求头必须写全
+	const headers: Record<string, string> = { Authorization: "Bearer <在浏览器粘贴你的登录 JWT>" };
+	if (tenant !== undefined && tenant !== "") {
+		headers["X-TENANT-ID"] = tenant;
+	}
+	const json = JSON.stringify({ mcpServers: { oj: { url, headers } } }, null, 2);
 	return [
 		`${t("system:mcp.accessTitle")}（${t("system:mcp.copyNote")}）`,
 		"",
@@ -78,7 +86,7 @@ export function McpPage() {
 
 	const copyAccess = async () => {
 		try {
-			await navigator.clipboard.writeText(buildAccessConfig(window.location.origin, t as (k: string, o?: Record<string, unknown>) => string));
+			await navigator.clipboard.writeText(buildAccessConfig(window.location.origin, catalog.data?.tenant, t as (k: string, o?: Record<string, unknown>) => string));
 			setCopied(true);
 		}
 		catch {
@@ -196,7 +204,7 @@ export function McpPage() {
 				{copied && <Typography.Paragraph type="success" style={{ marginBottom: 8 }}>{t("system:mcp.copyOk")}</Typography.Paragraph>}
 				<Typography.Paragraph style={{ marginBottom: 8 }}>
 					{`${t("system:mcp.accessUrl")}: `}
-					<span>{`${window.location.origin}/mcp`}</span>
+					<span>{`${window.location.origin}${API_BASE}/mcp`}</span>
 				</Typography.Paragraph>
 				<Typography.Paragraph type="secondary" style={{ marginBottom: 8 }}>{t("system:mcp.tokenExp")}</Typography.Paragraph>
 				<Typography.Paragraph type="secondary" style={{ marginBottom: 8 }}>{t("system:mcp.reconnect")}</Typography.Paragraph>

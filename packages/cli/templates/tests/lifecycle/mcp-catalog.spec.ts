@@ -66,6 +66,7 @@ function seqFetch(routes: Array<{ match: (url: string) => boolean, res: () => un
 const enc = (s: string) => new TextEncoder().encode(s).buffer as ArrayBuffer;
 const jsonRes = (status: number, body: unknown) => ({ ok: status >= 200 && status < 300, status, arrayBuffer: async () => enc(JSON.stringify(body)) });
 const GEN_OK = { match: (url: string) => url.includes("/_system/config"), res: () => jsonRes(200, { generation: 7, sha256: "loaded-sha", modules: ["wiki"] }) };
+// sha256/modules 字段仅为真实响应形状备忘（真机 2026-11-10 演练）；两态判定已不消费 sha。
 
 describe("fetchMcpCatalog：§4.1 数据表（HTTP → 归一）", () => {
 	it("当 {base}/mcp 对 tools/list 返回 200，则 status=mounted：tools 归一（tags[0]=模块名/hints/params 三键子集）+ 分组稳定 + generation 顺带探得", async () => {
@@ -73,10 +74,16 @@ describe("fetchMcpCatalog：§4.1 数据表（HTTP → 归一）", () => {
 			{ match: u => u.includes("/mcp"), res: () => jsonRes(200, TOOLS_LIST) },
 			GEN_OK,
 		]);
-		const r = await fetchMcpCatalog({ fetch: fn, origin: ORIGIN, token: "tok" });
+		const r = await fetchMcpCatalog({ fetch: fn, origin: ORIGIN, token: "tok", base: "/api", tenant: "default" });
 
 		expect(r.status).toBe("mounted");
 		expect(r.generation).toBe(7);
+		// 上游事实修正（真机演练钉出，F10 作废）：/api/mcp 在外层 tenant 中间件之后——缺
+		// X-TENANT-ID 即 400「missing tenant header」。出站必须透传租户头。
+		expect(calls[0]!.init?.headers?.["x-tenant-id"]).toBe("default");
+		expect(calls[1]!.init?.headers?.["x-tenant-id"]).toBe("default");
+		// 结果透出 tenant（页面接入配置要给外部 MCP client 写全请求头）
+		expect(r.tenant).toBe("default");
 		// 分组：按 tags[0]，首现顺序稳定；无 tags 归空串组
 		expect(r.groups.map(g => g.module)).toEqual(["wiki", "order", ""]);
 		expect(r.groups[0]!.tools.map(t => t.name)).toEqual(["wiki_search", "wiki_delete"]);
@@ -86,10 +93,10 @@ describe("fetchMcpCatalog：§4.1 数据表（HTTP → 归一）", () => {
 		expect(r.groups[1]!.tools[0]).toMatchObject({ module: "order", params: ["path", "query", "body"] });
 		expect(r.groups[2]!.tools[0]).toMatchObject({ module: "", params: [] });
 		// 出站形态：POST {origin}/mcp；显式 Accept: application/json（F6 406 陷阱服务端规避）+ JWT 透传
-		expect(calls[0]!.url).toBe(`${ORIGIN}/mcp`);
+		expect(calls[0]!.url).toBe(`${ORIGIN}/api/mcp`);
 		expect(calls[0]!.init?.headers?.accept).toBe("application/json");
 		expect(calls[0]!.init?.headers?.authorization).toBe("Bearer tok");
-		expect(calls[1]!.url).toBe(`${ORIGIN}/_system/config`);
+		expect(calls[1]!.url).toBe(`${ORIGIN}/api/_system/config`);
 	});
 
 	it("当 上游各异常形态，则按数据表归一（404=unmounted / 401·403=auth 透传 msg / 5xx·形状违约=unreachable）", async () => {
@@ -105,7 +112,7 @@ describe("fetchMcpCatalog：§4.1 数据表（HTTP → 归一）", () => {
 				{ match: u => u.includes("/mcp"), res: () => jsonRes(c.status, c.body) },
 				GEN_OK,
 			]);
-			const r = await fetchMcpCatalog({ fetch: fn, origin: ORIGIN, token: "tok" });
+			const r = await fetchMcpCatalog({ fetch: fn, origin: ORIGIN, token: "tok", base: "/api" });
 			expect(r.status, c.name).toBe(c.status2);
 			expect(r.groups, c.name).toEqual([]);
 			if (c.msg !== undefined)
@@ -117,7 +124,7 @@ describe("fetchMcpCatalog：§4.1 数据表（HTTP → 归一）", () => {
 		const fn = async () => {
 			throw new TypeError("connection refused");
 		};
-		const r = await fetchMcpCatalog({ fetch: fn, origin: ORIGIN, token: "tok" });
+		const r = await fetchMcpCatalog({ fetch: fn, origin: ORIGIN, token: "tok", base: "/api" });
 		expect(r.status).toBe("unreachable");
 		expect(r.message ?? "").toContain("网络不可达");
 	});
@@ -139,7 +146,7 @@ describe("fetchMcpCatalog：§4.1 数据表（HTTP → 归一）", () => {
 			{ match: u => u.includes("/mcp"), res: () => jsonRes(200, TOOLS_LIST) },
 			{ match: u => u.includes("/_system/config"), res: () => jsonRes(404, { error: "disabled" }) },
 		]);
-		const r = await fetchMcpCatalog({ fetch: fn, origin: ORIGIN, token: "tok" });
+		const r = await fetchMcpCatalog({ fetch: fn, origin: ORIGIN, token: "tok", base: "/api" });
 		expect(r.status).toBe("mounted");
 		expect(r.generation).toBeUndefined();
 
@@ -148,62 +155,65 @@ describe("fetchMcpCatalog：§4.1 数据表（HTTP → 归一）", () => {
 				return jsonRes(200, TOOLS_LIST) as any;
 			throw new TypeError("config probe down");
 		};
-		const r2 = await fetchMcpCatalog({ fetch: fn2, origin: ORIGIN, token: "tok" });
+		const r2 = await fetchMcpCatalog({ fetch: fn2, origin: ORIGIN, token: "tok", base: "/api" });
 		expect(r2.status).toBe("mounted");
 		expect(r2.generation).toBeUndefined();
 	});
 });
 
-describe("unmounted 两态判定（20261110-1027 §4.3：磁盘 config sha256 对比 _system/config 已加载 sha256）", () => {
+describe("unmounted 两态判定（20261110-1027 §4.3 修订：磁盘 server.mcp.enabled 直读，§8 真机钉出 sha 物理不符后重设计）", () => {
+	// 真机事实（2026-11-10 演练）：_system/config 的 sha256 = doc_sha(解析后 YAML 规范指纹)，
+	// 非原始文件字节 sha——磁盘文件 sha 永不相等，sha 对比方案整案作废。改为：模块自读磁盘
+	// config 的 server.mcp.enabled（engine 无关），404 联合判定两态。
 	it.each([
-		["磁盘 sha ≠ 已加载 sha → 「已修改未触发热更」", "changed-on-disk", "config.yaml 已修改", "热更"],
-		["磁盘 sha = 已加载 sha → 「尚未修改」", "loaded-sha", "尚未修改", "enabled 改为 true"],
-	])("当 404 且 _system/config 可达且 %s", async (_name, diskSha, ...needles) => {
+		["磁盘 enabled=true 而 404 → 「已修改未触发热更」（或热更失败）", true, "已修改", "热更"],
+		["磁盘 enabled=false 而 404 → 「尚未修改」", false, "尚未修改", "enabled 改为 true"],
+	])("当 404 且 磁盘 config %s", async (_name, diskEnabled, ...needles) => {
 		const { fn } = seqFetch([
 			{ match: u => u.includes("/mcp"), res: () => jsonRes(404, { error: "not found" }) },
-			GEN_OK,
 		]);
-		const r = await fetchMcpCatalog({ fetch: fn, origin: ORIGIN, token: "tok", currentConfigSha256: async () => diskSha });
+		const r = await fetchMcpCatalog({ fetch: fn, origin: ORIGIN, token: "tok", base: "/api", diskMcpEnabled: async () => diskEnabled });
 		expect(r.status).toBe("unmounted");
 		for (const n of needles)
 			expect(r.message ?? "", needles.join("/")).toContain(n);
 	});
 
-	it("当 404 且 _system/config 不可达（reload_api 关闭）或磁盘 sha 不可得，则保持原「未挂载」文案不误报", async () => {
+	it("当 404 且 磁盘读失败或 dep 缺省，则保持原「未挂载」文案不误报（fail-closed 不猜）", async () => {
 		const { fn } = seqFetch([
 			{ match: u => u.includes("/mcp"), res: () => jsonRes(404, { error: "not found" }) },
-			{ match: u => u.includes("/_system/config"), res: () => jsonRes(404, { error: "disabled" }) },
 		]);
-		const r = await fetchMcpCatalog({ fetch: fn, origin: ORIGIN, token: "tok", currentConfigSha256: async () => "whatever" });
+		const r = await fetchMcpCatalog({ fetch: fn, origin: ORIGIN, token: "tok", base: "/api", diskMcpEnabled: async () => {
+			throw new Error("disk gone");
+		} });
 		expect(r.message ?? "").toContain("未挂载");
 
 		const { fn: fn2 } = seqFetch([
 			{ match: u => u.includes("/mcp"), res: () => jsonRes(404, { error: "not found" }) },
-			GEN_OK,
 		]);
-		const r2 = await fetchMcpCatalog({ fetch: fn2, origin: ORIGIN, token: "tok", currentConfigSha256: async () => {
-			throw new Error("disk gone");
-		} });
+		const r2 = await fetchMcpCatalog({ fetch: fn2, origin: ORIGIN, token: "tok", base: "/api" });
 		expect(r2.message ?? "").toContain("未挂载");
 	});
 
-	it("当 currentConfigSha256 未注入（dep 缺省），则 404 文案不变——旧调用形态零变化", async () => {
+	it("当 404 且 磁盘 enabled 键缺失（undefined），则保持「未挂载」不猜", async () => {
 		const { fn } = seqFetch([
 			{ match: u => u.includes("/mcp"), res: () => jsonRes(404, { error: "not found" }) },
-			GEN_OK,
 		]);
-		const r = await fetchMcpCatalog({ fetch: fn, origin: ORIGIN, token: "tok" });
+		const r = await fetchMcpCatalog({ fetch: fn, origin: ORIGIN, token: "tok", base: "/api", diskMcpEnabled: async () => undefined });
 		expect(r.message ?? "").toContain("未挂载");
 	});
 
-	it("当 mounted，则代际探测不受 sha256 字段影响（generation 照常透出）", async () => {
+	it("当 mounted，则不触发磁盘读取（目录态与磁盘无涉）", async () => {
+		let reads = 0;
 		const { fn } = seqFetch([
 			{ match: u => u.includes("/mcp"), res: () => jsonRes(200, TOOLS_LIST) },
 			GEN_OK,
 		]);
-		const r = await fetchMcpCatalog({ fetch: fn, origin: ORIGIN, token: "tok", currentConfigSha256: async () => "loaded-sha" });
+		const r = await fetchMcpCatalog({ fetch: fn, origin: ORIGIN, token: "tok", base: "/api", diskMcpEnabled: async () => {
+			reads++;
+			return true;
+		} });
 		expect(r.status).toBe("mounted");
-		expect(r.generation).toBe(7);
+		expect(reads).toBe(0);
 	});
 });
 
@@ -280,17 +290,38 @@ describe("gET /api/oj-market/mcp/catalog 端点管道（superadmin，R9）", () 
 	it("当 superadmin 带登录态 JWT，则转发站点 canonical origin 的 /mcp（REG-CS6 不读 Host）并返回目录", async () => {
 		const seen: string[] = [];
 		const fetchSpy = (async (url: string, init?: { headers?: Record<string, string> }) => {
-			seen.push(`${url}|${init?.headers?.authorization ?? ""}|${init?.headers?.accept ?? ""}`);
+			seen.push(`${url}|${init?.headers?.authorization ?? ""}|${init?.headers?.accept ?? ""}|${init?.headers?.["x-tenant-id"] ?? ""}`);
 			return MCP_FETCH(url, init);
 		}) as any;
 		const api = createMarketApi(makeEnv({ fetch: fetchSpy }));
 		// 头键大小写随客户端（wecom/api.ts 同款口径）
+		g.http = { user: { id: 1 }, headers: { "Authorization": "Bearer browser-jwt", "X-TENANT-ID": "default" } };
+		await api.mcp.catalog.get();
+		expect(last?.status).toBe(200);
+		// {base} = env.apiPrefix（API 挂载前缀，reload.rs system_fallback 口径）——出站 URL 是
+		// origin + 前缀 + /mcp，不是站点根 /mcp（真机演练钉出，§8）
+		expect(seen[0]).toContain("http://site.example:9781/api/demo-solution/mcp");
+		expect(seen[0]).toContain("Bearer browser-jwt");
+		expect(seen[0]).toContain("application/json");
+		// 租户头透传（F10 修正：/api/mcp 缺 X-TENANT-ID 即 400，真机演练钉出）
+		// seen 格式 url|auth|accept|tenant——末段为租户头值
+		expect(seen[0].split("|").pop()).toBe("default");
+		expect(seen[1].split("|").pop()).toBe("default");
+		expect((last?.data as { status?: string, tenant?: string })?.status).toBe("mounted");
+		expect((last?.data as { tenant?: string })?.tenant).toBe("default");
+	});
+
+	it("当 请求未带 X-TENANT-ID，则出站不带租户头、结果不透出 tenant（不猜租户）", async () => {
+		const seen: string[] = [];
+		const fetchSpy = (async (url: string, init?: { headers?: Record<string, string> }) => {
+			seen.push(`${url}|${init?.headers?.["x-tenant-id"] ?? ""}`);
+			return MCP_FETCH(url, init);
+		}) as any;
+		const api = createMarketApi(makeEnv({ fetch: fetchSpy }));
 		g.http = { user: { id: 1 }, headers: { Authorization: "Bearer browser-jwt" } };
 		await api.mcp.catalog.get();
 		expect(last?.status).toBe(200);
-		expect(seen[0]).toContain("http://site.example:9781/mcp");
-		expect(seen[0]).toContain("Bearer browser-jwt");
-		expect(seen[0]).toContain("application/json");
-		expect((last?.data as { status?: string })?.status).toBe("mounted");
+		expect(seen[0]).toContain("|");
+		expect((last?.data as { tenant?: string })?.tenant).toBeUndefined();
 	});
 });
