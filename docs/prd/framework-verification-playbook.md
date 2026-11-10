@@ -13,10 +13,22 @@
 | **市场线** | §7.1–§7.5：方案骨架 → 发布 CDN → 安装/TOFU/升级 → walkthrough 13 项 | ~10 min | 动 `market`/安装器/签名时 | §7.1 |
 | **市场 Phase B 线** | §7.6：出厂即装态核对（dev/preview 就绪自动收敛）→ 降级守护 → 卸载墓碑（动安装器/编排面/模板 config 时必跑——单测注入面绕不过平台授权与装配层，见文首） | ~10 min | 动安装器/`oj-market` 编排面/模板 config 时 | §7.6 |
 | **市场闭环线** | §7.7：`ojm new` 造方案 → 签名发布进目录 → 按名从市场安装 → 两段式终态（复用 §7.6 装好市场的站点） | ~10 min | 动发布链路/安装器/市场目录时 | §7.7 |
+| **离线上传线** | §7.8：发布管理页「离线包上传」浏览器真上传（tgz+.sig）→ 目录可见 → TOFU 按名安装 → 幂等/篡改负向（复用 §7.7 站点与已签包） | ~5 min | 动 upload 端点/信任库/安装器/发布管理页时 | §7.8 |
 
 判据只有一条：**每节的检查点逐条打勾**——退出码 0 只是入场券，产物与响应体才算数。
 历史演练记录集中在文末 [附录 A](#附录-a-历史基线从新到旧逐条可追溯)，日常执行不用读。
 
+> **上次演练结论（2026-11-10 市场线增量：新增 §7.8 离线上传，cli/runtime 0.2.82 工作区 / oj 0.1.129）**：**通过**——
+> §7.8 全链首跑：发布管理页「离线包上传」浏览器真上传（playwright 真机：选 tgz+.sig → Alert 断言
+> name@version + key_id drill.upload + 指纹逐字 + 未信任如实提示）→ curl 协议镜像 → index 入库行
+> （installed:null）→ 非 superadmin trust 探测 403 → TOFU 闭环（needs_trust 指纹逐字 → trust added →
+> retry partial/reloading → 重启 daemon → 再 retry done「冒烟三项全过」）→ 四重落点（ping `pong:true`、
+> manifests.yaml 锁行）→ 幂等重传 idempotent:true / TOFU 后 trusted:true → 负向两条（篡改 1B 同名上传
+> **409 拒且在库包 sha256 不变**、非法文件名 400）。§7.8 已沉淀为可重复演练节（页面 + curl 双形态）。
+> 轮内实锤三坑入 §9：① 裸 `./bin/oj build` 绕过 ojm snapshot/restore 冲掉已装市场 web 面（演练操作坑，
+> backfill + 重装愈合）；② 随站 bundle 不写 DB 目录行，直按名装前须 backfill；③ `ojm new --layout none`
+> 脚手架仍声明 web.entry，bundle 前须全量 build。
+>
 > **上次演练结论（2026-11-09 全量线，cli/runtime 0.2.80 打包态 / oj 0.1.129）**：**通过**——
 > §0.5 pack（prepack 收编已签名 oj-market-0.2.4）→ §1 `init --yes`（bundle 三件套 cdn 落位、
 > config 双授权、`.ojm-builtin.json`、devDeps 0.2.80）→ §2 依赖（registry 滞后 → `pnpm-workspace.yaml`
@@ -969,6 +981,86 @@ ojm install books --site-url ... --user superadmin --pass <口令>   # retry 同
   「src+dist 同名模块」fail-fast（重复声明）、「只在 dist 的模块」静默忽略——三种表现都不可用。
   安装验证必须 release 形态（`--api-path dist/api` + `platform.root: dist/api`）。
 
+## 7.8 离线上传入库（发布管理页「离线包上传」→ 目录 → 按名安装；0.2.4 实证 2026-11-10）
+
+> 覆盖「**离线拿到已签发布包，经页面（或 curl）上传入库，再按名安装**」整条链——与 §7.7 的差别：
+> 包不经过 `ojm market publish` 推送，而是**宿主侧 superadmin 手工收包入库**（气隙/离线交付场景：
+> 发布方把 `tgz+.sig` 用任意渠道递到运维手里，运维在发布管理页上传）。复用 §7.7 release 站点
+> （市场已装、config 挂载形态起站）。2026-11-10 全链实跑通过（cli/runtime 0.2.82 工作区 / oj 0.1.129 /
+> 站内 oj-market 0.2.4 含离线上传功能的工作区重打版）。
+
+前置：§7.7 站点（release 形态、superadmin 可登录）+ 发布身份（§7.2，本机自签旁路 key 亦可——
+上传不做身份归属校验，**验签配对**才是门）+ 已签好的 `<name>-<version>.tgz(+.sig)`（§7.1.1 产出）。
+
+### A. 页面上传（浏览器形态；主判据）
+
+```bash
+# 浏览器：superadmin 登录 → 方案市场 → 发布管理 → 「离线包上传」区
+# 选择 <name>-<version>.tgz 与 <name>-<version>.tgz.sig 两个文件 → 上传
+```
+
+- [ ] 「离线包上传」区渲染（superadmin 专属；探测面 `GET /api/oj-market/trust`，非 superadmin 403 即**整区不渲染**）
+- [ ] 上传结果 Alert：`<name>@<version>` + 发布方 key_id + **指纹逐字一致**（与 `ojm sign --check` 输出比对）
+- [ ] fresh key 未入库时如实提示「发布方未入库：安装时将停待信任确认」（trusted=false 如实返回，**不在上传时预置信任**）
+- [ ] 协议细节（前端已封装，排障时用）：`POST /api/oj-market/upload?name=<文件名>`，multipart 双文件
+      **顺序 [tgz, sig]** 即协议；sig 文件名须为 `<tgz 文件名>.sig`，不配对即拒（pairMismatch）
+
+### B. curl 协议镜像（无浏览器时的等价形态）
+
+```bash
+curl -X POST "http://127.0.0.1:9778/api/oj-market/upload?name=demo-solution-0.1.0.tgz" \
+  -H "authorization: Bearer $TK" -H 'X-TENANT-ID: default' \
+  -F "file=@dist/demo-solution-0.1.0.tgz;type=application/gzip" \
+  -F "file=@dist/demo-solution-0.1.0.tgz.sig;type=application/octet-stream"
+# 期望 code:0 + data:{ok:true, name, version, sha256, key_id, fingerprint, trusted:false, idempotent:false}
+```
+
+- [ ] 落位双处：`cdn/<name>-<version>.tgz(+.sig)` 在盘；市场 index（`GET /api/oj-market/index`）出现
+      该行（`latest=<version>`、`installed:null`——入库 ≠ 安装）
+
+### C. 权限探测（非 superadmin 整区不可达）
+
+- [ ] `GET /api/oj-market/trust` 用普通 admin token → **403**（页面据此整区不渲染）；写面
+      （upload/install/trust/backfill）同样 superadmin 独占（R9）
+
+### D. TOFU 安装闭环（上传的目的地；两段式 + 信任确认）
+
+```bash
+TK=<superadmin token>
+curl -X POST .../api/oj-market/install -d '{"name":"demo-solution","source":"cdn"}'   # → {task_id}
+# 轮询 GET /api/oj-market/task?id=<task_id> → needs_trust：trust.fingerprint 与上传 Alert 逐字一致
+curl -X POST .../api/oj-market/trust -d '{"task_id":"<task_id>"}'                     # → {result:"added"}
+# 重试 install（新 task_id）→ 预期 partial（stage=reloading，「需宿主重启才完全生效」）
+./bin/oj serve -c config.yaml --daemon   # 重启宿主（kill 旧 daemon pid → 同命令重起）
+# 再 retry → done（冒烟三项全过：探活 / integrity / 注册一致性）
+```
+
+- [ ] needs_trust 停靠时 `trust.fingerprint` 与上传结果**逐字一致**（不匹配即换包事故，停手排查）
+- [ ] trust confirm 返回 `{result:"added", key_id, fingerprint}`；原任务不自动恢复，**重发 install** 才继续
+- [ ] 两段式：retry → `partial/reloading`（restart_pending，非失败）→ 重启宿主 → 再 retry → `done`
+- [ ] 四重落点：`curl -H 'X-TENANT-ID: default' /api/<name>/ping` → `{"code":0,...,"pong":true}`；
+      `dist/api/manifests.yaml` 出现 `<name>: <version>` 锁行；index 行 `installed=<version>`；页面菜单在
+
+### E. 幂等重传（同包同 sig）
+
+- [ ] 同字节 tgz+.sig 重传 → `idempotent:true`；且 TOFU 之后 `trusted:true`（同指纹已入库——
+      上传响应的 trusted 是**实时**判定，不是上传时的快照）
+
+### F. 负向（防线实证）
+
+- [ ] 篡改 tgz 1 字节 + 旧 `.sig` 以**同名**上传 → **409**「.sig 旁车验签失败——签名与实收字节不绑定」，
+      且 `shasum -a 256 cdn/<原包>` 逐字不变（**拒绝时不覆盖在库包**）
+- [ ] 文件名不合 `<name>-<version>.tgz`（如 `tampered.tgz`）→ 400 文件名门（路径逃逸/绝对路径/错扩展名一律拒）
+
+### G. 已知边界（本节演练裁决，勿当缺陷重复上报）
+
+- 上传入库 `trusted=false` 是**如实语义**：信任判定统一推迟到安装时 TOFU（upload 与 §7.2 publish
+  都不做信任预置，两路入库的包安装语义一致）。
+- 本轮站点 oj-market 为**工作区重打版**（同号 0.2.4、字节不同——模板源码已含离线上传功能但未 bump）。
+  正式演练应用发版后的随站 bundle；版本推进后须重跑 `build:shell`（§9）。
+- 随站 bundle 包（init 落位的出厂三件套）**不写 DB 目录行**：不经 upload/publish 直按名装会报
+  「市场目录中无方案」——先 `POST /api/oj-market/backfill` 补录再装（§9 表）。
+
 ## 8. 一次通过判据（汇总清单）
 
 - [ ] `ojm init` 成功：devDeps 含 `@oj-module/{cli,runtime}`（非 `*`）、根级 `openapi.json` + `__client` 预生成、handler 为新约定（`.schema` 入参 + 平级 `.response`，无 `contract.ts`/`routes.json`/`openapi.yaml`）、`env.d.ts` 在 include
@@ -1002,6 +1094,11 @@ ojm install books --site-url ... --user superadmin --pass <口令>   # retry 同
         （latest/publisher/versions_count）；`market publish --real` 目录行 + cdn 字节就位；
         按名安装两段式（reloading partial → 重启 → retry done）；四重落点（锁/版本目录/ping
         `pong:true`/index 视图 enabled）；市场自身不受装方案影响
+  - [ ] （§7.8，0.2.4+ 页面上传）「离线包上传」区 superadmin 可见（trust 探测 403 整区不渲染）；
+        页面/curl 双形态上传 → Alert（或响应体）name@version + key_id + 指纹逐字 + trusted=false；
+        index 出现入库行（installed:null）；TOFU 闭环 needs_trust（指纹逐字）→ trust added →
+        两段式 retry → done + 四重落点；幂等重传 idempotent:true / TOFU 后 trusted:true；
+        篡改 1B 409 拒且在库包字节不变；非 superadmin 403
 
 ## 9. 已知坑与处置
 
@@ -1075,6 +1172,9 @@ ojm install books --site-url ... --user superadmin --pass <口令>   # retry 同
 | `forTenant(id).delete().run()` 抛 `delete requires where`，明明已经用 `forTenant` 指定了租户 | 构造器把守卫注入的 `tenant_id` 视为防护条件、不算业务 where；`forTenant` 只换注入值不关防护，无业务条件时拒绝全表删（fail-closed） | 跨租户清表用 `forTenant(id).truncate()`（构造器里唯一的无 where 写动词）；有业务条件时照常 `.where({…}).delete().run()`。静态红线守卫钉死 `revokeTenantSessions` 用 `.truncate()`（oj 0.1.129） |
 | 在 `db.asSystem()` 请求里调 `forTenant(id)` 不生效（只 warn）；手写 `tenant_id` 又报 `tenant guard: insert tenant_id mismatch` | `asSystem` 是请求级全关，上游把 `forTenant` 设计成该请求内 no-op（不叠加第二个逃生口）；覆盖语句的租户列由服务端注入，手写值冲突即拒 | 二选一不要混用：要么整段走 `forTenant`、其余语句照常注入当前租户，要么整段 `asSystem`；模板两处一律不手写 `tenant_id`（静态守卫断言）。真跨租户可按审计事件 `DB_TENANT_OVERRIDE` 的 `cross=true` 过滤 |
 | `forTenant` 覆盖语句 `toSQL()` 后交给 `db.query` 回放被拒；`oj exec` 里 `forTenant` 也拿不到请求租户上下文 | 裸 SQL 守卫按**当前请求租户**校验回放参数（fail-closed），覆盖身份不随 SQL 文本传递；`oj exec` 无 HTTP 请求上下文 | 覆盖语句直接 `.run()` / `.all()`，不要 `toSQL()` 再回放；真机验 `forTenant` 语义用真实 HTTP 带 `X-TENANT-ID`（同上 `oj exec` 坑）。另：`forTenant` 自 oj **0.1.129** 起才有，`MIN_OJ_VERSION` 降回 0.1.128 会让「停用企业 / 开通租户管理员 / 改密」全线 TypeError（跨包门禁守卫 `tests/cli/vendor.test.ts`） |
+| 宿主工程里**裸跑 `./bin/oj build --module-root src -o dist/api`** 后，已装方案（含 oj-market）的市场菜单/页面全消失（`dist/web/modules/` 整目录没了、modules.json 只剩源码树模块） | snapshot/restore 机制（快照 dist 下方案 web 面 + 旁车、build 后还原）只在 **`ojm build`** 的 backend 编排里有；裸 oj build 绕过 ojm 直写 dist，把已装 web 面当垃圾冲掉（2026-11-10 §7.8 演练实锤——属**演练操作坑**非框架回归） | 工程内重建一律走 `ojm build`；已冲掉时愈合两步：`POST /api/oj-market/backfill`（随站 bundle 不在 DB 目录，补录）→ 对每个方案重装同名同版本（web-only 锁零变更，只补 web 面） |
+| 对随站 bundle 包（`ojm init --yes` 落位的出厂 tgz）直接按名安装报「市场目录中无方案」 | 随站 bundle **不写 DB 目录行**（只落 cdn/ 三件套 + BOOTSTRAP_KEY 首装免 TOFU）；install-by-name 的 cdn 源走 DB 目录解析，查不到即拒 | 先 `POST /api/oj-market/backfill`（superadmin，扫 cdn/ 补目录行）再装；经 §7.8 upload 或 §7.2 publish 入库的包无此问题 |
+| `ojm new <name> --layout none --api` 后直接 `ojm build --bundle <name>` 报缺站点产物 | 脚手架 quirk：`--layout none` 不生成 web/ 但 solution.yaml 仍声明 `web.entry`；`--bundle` 的 C2-27 成品存在性复核按声明查 `dist/web/modules/<name>/<ver>/entry.js`（2026-11-10 §7.8 演练实锤） | bundle 前先全量 `ojm build`（站点构建会为声明了 web 的方案合成 stub entry）；根治待脚手架按 layout 裁剪 solution.yaml |
 
 ### 9.1 构造器迁移后的 L1/L2 边界与 vitest 190 红基线（2026-10-20）
 
@@ -1166,6 +1266,19 @@ node "$CLI_PKG/bin/ojm.mjs" build && npx tsc --noEmit -p tsconfig.json && node "
 
 > 基线的价值是「某版本当时到底验了什么、踩了什么」，属于事实档案，不参与日常执行；
 > 新基线追加在本节最前面，最近一次的结果同时摘到文首「上次演练结论」。
+
+### 市场线增量基线（2026-11-10，oj 0.1.129 / cli+runtime 0.2.82 工作区；新增 §7.8 离线上传的首轮实跑）
+
+| 项 | 值 |
+| --- | --- |
+| 日期 | 2026-11-10（feat/ojm @ 779404b13 之后；REQ-14 收尾同日，站点内 oj-market 为含离线上传功能的工作区重打版 0.2.4——同号不同字节，见边界） |
+| 框架包版本 | 工作区 cli/runtime 0.2.82；站内 oj-market 0.2.4（工作区重打，含「离线包上传」）；方案包 demo-solution 0.1.0（`ojm new --layout none --api` 骨架 + `demo-solution/ping`） |
+| oj | 0.1.129（复用 §7.7 站点 `/tmp/ojm-verify/my-books2`：config 挂载形态 release 起站 9778） |
+| 范围 | §7.8 全新：浏览器真上传（playwright）→ curl 镜像 → 目录/权限探测 → TOFU 安装闭环 → 幂等 → 负向两条 |
+| 结果 | **通过**。① 页面上传：superadmin 登录 → 发布管理页「离线包上传」区渲染 → 选 demo-solution-0.1.0.tgz+.sig → Alert `demo-solution@0.1.0` + `drill.upload` + 指纹 `b8fd0569…` 逐字 + 「发布方未入库：安装时将停待信任确认」。② curl 镜像 code:0（trusted:false / idempotent:false）；cdn/ 落位 + index 行 `latest=0.1.0 installed=null`。③ admin 探测 trust 403。④ TOFU：install source:cdn → needs_trust（trust.fingerprint 逐字）→ trust `{result:"added"}` → retry → `partial/reloading/91%`（restart_pending）→ kill daemon 重起 → ping 200 → 再 retry → **done**（冒烟探活/integrity/注册一致性三项全过）；`/api/demo-solution/ping` `pong:true`；manifests.yaml 锁行 `demo-solution: 0.1.0`。⑤ 幂等重传 idempotent:true 且 trusted:true。⑥ 负向：篡改 1B 同名上传 409「签名与实收字节不绑定」且 cdn 在库包 sha256 `9b708d71…` 不变；`tampered.tgz` 文件名门 400 |
+| 本次发现并处置 | **① 裸 oj build 冲已装 web 面（演练操作坑）**：中途 `./bin/oj build --module-root src -o dist/api` 绕过 ojm snapshot/restore，dist/web/modules/oj-market/ 整目录被冲（旁车随之丢）→ 页面上传区不渲染（entry 404）；愈合 = backfill（scanned:1 upserted:1）+ 重装 oj-market done。定性非框架回归（ojm build 才有 snapshot/restore），§9 增行。**② 随站 bundle 无 DB 目录行**：冲 face 后重装走 install-by-name 报「市场目录中无方案」→ backfill 补录后才可按名装；§9 增行。**③ 脚手架 quirk**：`ojm new --layout none --api` 的 solution.yaml 仍声明 `web.entry`，`--bundle` 须先全量 `ojm build` 合成 stub entry；§9 增行。**④ 流程观察（待裁决）**：模板源码加功能未 bump 版本 → 同号 0.2.4 重打字节不同——正式随站 bundle 须版本推进后重建（且 bump 后 templates build 门禁要求重跑 `build:shell`） |
+| 手册同步 | 新增 **§7.8**（A 页面上传 / B curl 镜像 / C 权限探测 / D TOFU 闭环 / E 幂等 / F 负向 / G 边界）；§先选一条线表加「离线上传线」；§8 汇总补 §7.8 判据；§9 增三行；文首结论换本轮；附录 A 增本条 |
+| 遗留 | ① 站点 oj-market 0.2.4 为工作区重打版，正式发版演练须换发版 bundle 重跑本节。② table-data 页导航条（对象详情页同款）「查询工作台置前」未同步改（oj-dbx 侧，用户已知情）。③ 升级形态（同方案 0.2.0 包经上传入库 → 按名 upgrade）未覆盖——§7.4 walkthrough upgrade 项仍为该形态主判据 |
 
 ### 全量线基线（2026-11-09，oj 0.1.129 / cli+runtime 0.2.80 **打包态**；§0.5 → §7.6 + §7.4 + §1.5 + §6.5 全链）
 
