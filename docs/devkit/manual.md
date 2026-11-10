@@ -1863,7 +1863,7 @@ ojm build --bundle crm           # 打包
 ```
 
 > `--layout none` 不生成 `web/` 目录，但 solution.yaml 仍声明 `web.entry`（quirk，2026-11-10 实测）：
-> `--bundle` 的成品存在性复核（C2-27）按声明查 `web/dist/modules/<name>/`，须先全量
+> `--bundle` 的成品存在性复核按声明查 `web/dist/modules/<name>/`，须先全量
 > `ojm build`（站点构建为声明了 web 的方案合成 stub entry）再打包。
 
 
@@ -2023,10 +2023,10 @@ ojm build --bundle crm        # 只打 src/crm/ 这一份；--bundle=crm 等价
   该文件由 `ojm init` 从模板白名单派生，**可手改/删除**（删名 = 恢复参与打包），重跑 init 缺失才补写。
   它只是打包排除 / info 折叠提示，**不是安全边界**：文件永不入包，安装侧信任链（签名 + 信任库 + TOFU）与它无关。
 - **只出包不签名**——签名见 §12（关注点分离：作者签名是显式动作，不是构建副产品）。
-- **web.css 手填废弃（0.2.82，REQ-14）**：契约里 `web.css` 声明值被忽略、仅打印废弃告警——
+- **web.css 手填废弃（0.2.82）**：契约里 `web.css` 声明值被忽略、仅打印废弃告警——
   安装器部署 web 面时统一**扫描包内版本目录顶层 `*.css`** 自动登记（与站点构建/installed-merge
   同口径）。手填与 vite 产物名脱节是历史上「css 引用 404」的缺陷根源，故收走这层人工面；
-  请把该字段从契约删除。`web.entry` 声明的成品存在性复核（C2-27）不受影响，仍然硬校验。
+  请把该字段从契约删除。`web.entry` 声明的成品存在性复核不受影响，仍然硬校验。
 - 产物内 `manifest.yaml` 的 `archive` 段是 **Form A**（仅 `file`）；`sha256`/`size` 由
   file 源上传时点补齐（宿主安装器）或发布通道 Form B 自带。
 - **入包红线**：`*.pem` / `*.key` / `*.p12` / `*.pfx` / `.env` 系 / `id_ed25519` / `id_rsa`
