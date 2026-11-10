@@ -200,7 +200,7 @@ flowchart LR
 | 字段 | 必填 | 校验要点 | 条款 |
 |---|---|---|---|
 | web.entry | web 段存在时 ✅ | `^modules\/<name>\/<version>\/[a-z0-9\-._\/]+\.js$`（版本段===version，POSIX 分隔符 R30） | C2-27 |
-| web.css[] | ⬜ | 同 entry 语法 `.css$` | C2-27 |
+| web.css[] | ⬜ | **已废弃（0.2.82）**：产物 css 由安装器扫描包内树顶层 `*.css` 自动登记（与 site build / installed-merge 同口径）；手填与 vite 产物名脱节（REQ-14），声明值忽略、构建期告警。形状规则保留（存量零破坏） | C2-27 |
 | web.integrity | ⬜ | `^sha384-[A-Za-z0-9+/]{64}$`；构建器计算，安装器重算比对（R10） | C2-28 |
 | archive.file | Form B ✅ | `^<name>-<version>\.tgz$` | C2-29 |
 | archive.sha256 | Form B ✅ | `^[a-f0-9]{64}$` | C2-29 |
