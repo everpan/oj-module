@@ -1042,6 +1042,31 @@ export function createMarketApi(env: MarketEnv) {
 				});
 			},
 		},
+		// POST /api/oj-market/converge —— 出厂收敛触发（ojm dev/preview 专用，2026-11-10 替代
+		// 账密登录：原 login（superadmin/aA123456）在密码被改后 401 被吞咽，「零首装仪式」
+		// 静默降级且无人察觉）。认证 = vars.ojm_converge_token（仅 dev/preview 派生 config 每次
+		// 启动随机注入；生产站点无此 var → 404 端点即死）+ 请求头 x-ojm-converge-token 的
+		// sha256 比对（无 timingSafeEqual 的 isolate 里的常量时间折中）。同
+		// /publish/credential/exchange 先例（凭证即持有型证明），已列 auth.anonymous_paths。
+		// 幂等：riding reconcileOf（与 index 对账同一逻辑），已对齐即全 skip。
+		"converge": {
+			async post() {
+				await respond(async () => {
+					const expectTok = await readDeploymentVar(env.configPath, "ojm_converge_token");
+					const headers = (http as { headers?: Record<string, string> }).headers ?? {};
+					const gotTok = Object.entries(headers).find(([k]) => k.toLowerCase() === "x-ojm-converge-token")?.[1] ?? "";
+					const sha256Hex = (globalThis as { crypto?: { sha256Hex?: (d: Uint8Array) => string } }).crypto?.sha256Hex;
+					// fail-closed：sha256Hex 缺失（非 oj 运行时）→ 404，绝不回落可绕过的比较
+					if (expectTok === null || gotTok === "" || !sha256Hex)
+						fail(404, "not found");
+					const sha = (s: string) => sha256Hex(new TextEncoder().encode(s));
+					if (sha(gotTok) !== sha(expectTok))
+						fail(404, "not found");
+					await reconcileOf(env);
+					return { ok: true };
+				});
+			},
+		},
 		// 信任库运维面（P2-2，C2-38/39，G3 双轨第一轨 / G5；全 superadmin，R9）：
 		// GET    /market/trust          列表（含 .bak 回落 note——损坏时运维可见）
 		// POST   /market/trust          TOFU 确认 {task_id}（P2-3）：自任务记录重取公钥复算指纹

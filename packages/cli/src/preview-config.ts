@@ -44,6 +44,11 @@ export interface DerivePreviewConfigOptions {
 	apiRoot?: string
 	/** 显式端口时覆盖 server.port；缺省沿用原 config（oj 代码默认 9778） */
 	port?: number
+	/**
+	 * 出厂收敛 token（ojm preview 每次启动随机生成；注入派生 config vars.ojm_converge_token，
+	 *  供 POST /oj-market/converge 持有型证明——替代早期账密登录。不传 = 不注入）
+	 */
+	convergeToken?: string
 	/** 原 config 文本（测试注入）；缺省读 config.yaml */
 	configText?: string
 }
@@ -147,6 +152,14 @@ export function derivePreviewConfigText(configText: string, opts: DerivePreviewC
 			: {};
 		server.port = opts.port;
 		doc.server = server;
+	}
+
+	if (opts.convergeToken !== undefined) {
+		const vars = doc.vars !== null && typeof doc.vars === "object" && !Array.isArray(doc.vars)
+			? { ...(doc.vars as Record<string, unknown>) }
+			: {};
+		vars.ojm_converge_token = opts.convergeToken;
+		doc.vars = vars;
 	}
 
 	return stringify(doc);

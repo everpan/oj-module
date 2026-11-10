@@ -22,6 +22,7 @@ import type { ModulesConfig } from "./config";
 import type { OjProcess } from "./oj";
 import type { PreviewConfigFiles } from "./preview-config";
 import { execFileSync } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
@@ -94,7 +95,8 @@ export async function runPreview(projectRoot: string, opts: PreviewOptions = {})
 	const base = readOjApiPrefix(configPath);
 	const writer = opts.configWriter ?? ((root: string, o: { siteDir: string, prefix?: string, port?: number, apiRoot?: string }) => writePreviewConfig(root, o));
 	// apiRoot 交给派生器：release 下 platform.root 必须指向 dist/api（与 --api-path 同源）
-	const preview = writer(projectRoot, { siteDir, prefix: sitePrefix, port: opts.port, apiRoot: apiDist });
+	const convergeToken = randomBytes(32).toString("hex");
+	const preview = writer(projectRoot, { siteDir, prefix: sitePrefix, port: opts.port, apiRoot: apiDist, convergeToken });
 
 	// / api 挂载与注入的 web 挂载配对时 oj 不开 SPA 回落（oj 语义，见 devkit 手册 §13）。
 	// 仅在站点挂根时成立：web 挂到 /oj 时两者不配对，深链回落正常。
@@ -126,9 +128,10 @@ export async function runPreview(projectRoot: string, opts: PreviewOptions = {})
 	const host = readOjServerField(preview.configPath, "host") || "127.0.0.1";
 	console.log(`[ojm] oj 已就绪（release/js，单服务：${base} API + 静态 SPA 同进程）：http://${host}:${oj.port}`);
 	// 出厂即装（支柱三）：后端就绪后 fire-and-forget 触发一次随站 bundle 收敛
-	// （login → index riding 收敛，幂等；失败吞咽——不阻断 preview 启动）。
+	// （POST /oj-market/converge，token 持有型证明——经派生 config vars 注入，随退出清理；
+	// 幂等；失败吞咽——不阻断 preview 启动）。
 	(opts.convergeTrigger ?? ((port: number, apiBase: string) =>
-		void triggerFactoryConverge({ port, apiBase, host, log: console.log })))(oj.port, base);
+		void triggerFactoryConverge({ port, apiBase, host, token: convergeToken, log: console.log })))(oj.port, base);
 	console.log(`\n[ojm] preview 已启动：http://${host}:${oj.port}${sitePrefix === "/" ? "" : sitePrefix}`);
 	console.log(`[ojm] 静态由 oj web 挂载直出（spa 深链回落）；派生 config ${path.basename(preview.configPath)} 为本进程临时产物，退出自动清理`);
 

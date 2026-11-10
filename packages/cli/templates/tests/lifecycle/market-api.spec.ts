@@ -1435,7 +1435,81 @@ describe("P1-16 接线：marketEnv 生产口径 / exec opts 转发 / operator �
 	});
 });
 
-// ── 发布历史（GET /oj-market/releases；v4 §四：数据源 = market_release 上传写入行，索引 syncReleases 退役）──
+// ── POST /oj-market/converge：出厂收敛触发（2026-11-10 替代账密登录）──
+// 背景：原 CLI 触发用硬编码 superadmin/aA123456 登录——密码被改则登录 401 被吞咽，
+// 「零首装仪式」静默降级为「首个管理员打开市场页才收敛」且无人察觉（用户实锤质疑）。
+// 新面：认证 = vars.ojm_converge_token（仅 ojm dev/preview 派生 config 每次启动随机注入）
+// + 请求头 x-ojm-converge-token 的 sha256 比对；生产站点无此 var → 404 端点即死。
+// 同 /publish/credential/exchange 先例（凭证即持有型证明），须列 auth.anonymous_paths。
+// BDD 用例表：
+// | vars 注入 | 请求头 token | 期望 |
+// | --- | --- | --- |
+// | 无（生产形态） | 任意 | 404（不泄露端点存在性） |
+// | 有 | 不符/缺省 | 404（与未配置同形态） |
+// | 有 | 相符 | 200 {ok:true} 且对账真跑（migrations GROUP BY 批查出现） |
+
+describe("P1-17 接线：POST /oj-market/converge 出厂收敛触发（token 持有型证明，替代账密登录）", () => {
+	const CONVERGE_TOKEN = "dev-run-token-20261110";
+
+	function withConvergeVar<T>(fn: () => Promise<T>): Promise<T> {
+		const prev = g.vars;
+		g.vars = { get: (k: string) => (k === "ojm_converge_token" ? CONVERGE_TOKEN : null) };
+		return fn().finally(() => {
+			g.vars = prev;
+		});
+	}
+
+	it("vars.ojm_converge_token 未配置（生产站点形态）→ 404，与「token 不符」同形态（不区分、不泄露存在性）", async () => {
+		const api = createMarketApi(makeEnv());
+		await withConvergeVar(async () => {
+			g.http = { headers: { "x-ojm-converge-token": "wrong" } };
+			await api.converge.post();
+			const wrongTokenStatus = last?.status;
+			g.vars = undefined;
+			g.http = { headers: { "x-ojm-converge-token": CONVERGE_TOKEN } };
+			await api.converge.post();
+			const noVarStatus = last?.status;
+			expect(wrongTokenStatus).toBe(404);
+			expect(noVarStatus).toBe(404);
+		});
+	});
+
+	it("token 相符 → 200 {ok:true} 且对账真跑（reconcileOf riding：migrations GROUP BY 批查出现 1 条）；不依赖登录态（无 http.user）", async () => {
+		await writeLock(join(sharedRoot, "manifests.yaml"), { "demo-solution": "0.1.0", "other": "1.0.0" });
+		dbo.exec("CREATE TABLE _oj_migrations (module TEXT NOT NULL, version INTEGER NOT NULL, name TEXT, applied_on TEXT, checksum TEXT, PRIMARY KEY (module, version))");
+		const prevCryptoDesc = Object.getOwnPropertyDescriptor(g, "crypto");
+		Object.defineProperty(g, "crypto", {
+			value: { sha256Hex: (d: Uint8Array) => createHash("sha256").update(d).digest("hex") },
+			configurable: true,
+			writable: true,
+		});
+		const origPrepare = dbo.prepare.bind(dbo);
+		const sqls: string[] = [];
+		dbo.prepare = (sql: string) => {
+			sqls.push(String(sql));
+			return origPrepare(sql);
+		};
+		try {
+			const api = createMarketApi(makeEnv());
+			await withConvergeVar(async () => {
+				g.http = { headers: { "x-ojm-converge-token": CONVERGE_TOKEN } };
+				await api.converge.post();
+			});
+		}
+		finally {
+			dbo.prepare = origPrepare;
+			if (prevCryptoDesc)
+				Object.defineProperty(g, "crypto", prevCryptoDesc);
+			else
+				delete (g as { crypto?: unknown }).crypto;
+		}
+		expect(last?.status).toBe(200);
+		expect(last?.data).toEqual({ ok: true });
+		const mig = sqls.filter(s => s.includes("_oj_migrations"));
+		expect(mig).toHaveLength(1);
+		expect(mig[0]).toContain("GROUP BY");
+	});
+});
 
 interface ReleasePageData {
 	list: Array<{ id: number, product: string, version: string, key_id: string | null, sha256: string | null, size: number | null, published_at: number, published_at_source: string, yanked: number }>

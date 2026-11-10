@@ -187,6 +187,7 @@ auth:
     - /auth/wecom/ticket # 一次性票据换 TokenBundle：票据本身就是「刚验过的登录证明」
     - /auth/wecom/event # 企微指令回调：靠 msg_signature 验签，不走 Bearer
     - /publish/credential/exchange # 凭证换发布身份：凭证自身即持有型证明，CLI 可能没有账号密码
+    - /oj-market/converge # 出厂收敛触发（ojm dev/preview 专用）：x-ojm-converge-token 即持有型证明；生产站点无 vars.ojm_converge_token → 端点 404 即死
     # —— 方案市场匿名面（v4 §五：签名制不经账号口令，企微用户无障碍）——
     # catalog 匿名读：站点身份发现面（registry_id）+ CLI 2×2 兼容矩阵探测（旧站点无此 API → 404 → 人话）
     # cdn/upload 签名推送：X-OJM-Key-Id / X-OJM-Signature 即凭证（信任库 + Ed25519），不经 Bearer

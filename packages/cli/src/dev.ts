@@ -22,6 +22,7 @@ import type { MockRoute } from "./dev-mock";
 import type { OjProcess } from "./oj";
 import { Buffer } from "node:buffer";
 import { spawn } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { existsSync, watch } from "node:fs";
 import http from "node:http";
 
@@ -138,7 +139,13 @@ export async function devServer(projectRoot: string, opts: DevOptions = {}): Pro
 		// tracked 里的 ENC[...] 仅作 prod 资产，dev 完全忽略；非 jwt 的 ENC 解不开则清晰报错
 		// （红线，防用 dev 随机密钥重封破坏已加密数据）。合并产物与 config.yaml 同目录，oj
 		// 相对路径解析不变。
-		const effectiveConfigPath = mergeConfigForDev(projectRoot, configPath);
+		// 出厂即装（支柱三）：后端就绪后 fire-and-forget 触发一次随站 bundle 收敛
+		// （POST /oj-market/converge，token 持有型证明；服务端 isolate 无定时器，只能 riding 请求）。
+		// token 每次启动随机生成——经派生 config vars.ojm_converge_token 注入服务端（.ojm-tmp-*
+		// gitignored），替代早期账密登录（密码被改则登录 401 被吞咽、零首装仪式静默失效）。
+		// 失败吞咽——不阻断 dev 启动，首个真实请求对账兜底。
+		const convergeToken = randomBytes(32).toString("hex");
+		const effectiveConfigPath = mergeConfigForDev(projectRoot, configPath, { extraVars: { ojm_converge_token: convergeToken } });
 		await ensureDevCert(effectiveConfigPath);
 		const fallbackStarter = (cfg: string, b: string, apiSrc: string | string[]) => startOj(cfg, b, apiSrc);
 		const starter: NonNullable<DevOptions["ojStarter"]> = opts.ojStarter ?? fallbackStarter;
@@ -153,9 +160,9 @@ export async function devServer(projectRoot: string, opts: DevOptions = {}): Pro
 		}
 		ojTarget = `http://127.0.0.1:${oj.port}`;
 		// 出厂即装（支柱三）：后端就绪后 fire-and-forget 触发一次随站 bundle 收敛
-		// （login → index riding 收敛，幂等；服务端 isolate 无定时器，只能 riding 请求）。
+		// （POST /oj-market/converge riding 收敛，幂等；服务端 isolate 无定时器，只能 riding 请求）。
 		// 失败吞咽——不阻断 dev 启动，首个真实请求对账兜底。
-		(opts.convergeTrigger ?? ((port: number, base: string) => void triggerFactoryConverge({ port, apiBase: base, log: console.log })))(oj.port, apiBase);
+		(opts.convergeTrigger ?? ((port: number, base: string) => void triggerFactoryConverge({ port, apiBase: base, token: convergeToken, log: console.log })))(oj.port, apiBase);
 	}
 
 	const hub = createReloadHub();

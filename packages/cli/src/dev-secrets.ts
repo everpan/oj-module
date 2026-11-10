@@ -260,6 +260,8 @@ export interface MergeDeps extends DevSecretsDeps {
 	redLine?: (projectRoot: string, configPath: string, d: DevSecretsDeps) => void
 	/** 注入合并落点（测试可改） */
 	mergedPath?: (configPath: string) => string
+	/** 额外注入派生产物 vars 段的键值（如出厂收敛 token；只进 gitignored 产物，绝不写回 tracked/local） */
+	extraVars?: Record<string, string>
 }
 
 /**
@@ -294,6 +296,10 @@ export function mergeConfigForDev(
 	// provision 已把本机密钥/jwt 写入 config.local.yaml；此处读回参与合并
 	const localDoc = readLocal(projectRoot, configPath);
 	const merged = deepMerge(trackedDoc, localDoc);
+	if (deps.extraVars) {
+		const vars = (merged.vars ?? {}) as Record<string, unknown>;
+		merged.vars = { ...vars, ...deps.extraVars };
+	}
 
 	const outPath = mergedPath(configPath);
 	assertOutputNotTracked(configPath, outPath);
