@@ -145,4 +145,9 @@ include:
   # 契约的生成物归属 oj-market 随发布页走包，用户工程只需文件在场）
   - src/oj-market/web/__client
   - src/oj-market/web/publish/__client
+  # 框架 system 模块的 MCP 服务管理页（20261110-1027 §4.3）消费市场 client seam
+  # （useMarketClient → defaultClient 委托 __client）：同 _platform「client 消费面」先例
+  # 下发 seam 四文件 + 领域 types——市场 UI 页面源码依旧不进脚手架（仍走方案包）。
+  - src/oj-market/web/api
+  - src/oj-market/web/types.ts
   - src/app/web/web

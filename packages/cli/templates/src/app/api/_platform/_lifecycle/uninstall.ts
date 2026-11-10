@@ -13,10 +13,11 @@ import type { ReloadFace, ReloadResult } from "./steps/reload";
 import { uninstallSolution } from "../_shared/service/domain/solution-perms";
 import { invalidateAllUsers } from "../_shared/service/infra/access";
 import { auditOp } from "../_shared/service/infra/audit";
-import { atomicWriteText, fsFace } from "./atomic";
+import { atomicWriteText, fsFace, isMissingPath } from "./atomic";
 import { recordHistory } from "./history";
 import { readLock, writeLock } from "./lock";
 import { assertReloadApplied } from "./steps/reload";
+import { ensureMcpModule, previewSiblingOf, removeMcpModule } from "./text-edit";
 
 // db 为 oj isolate 注入全局（同模板 service 层惯例，installer.ts 同款；测试由夹具装 globalThis.db）
 declare const db: {
@@ -131,6 +132,8 @@ export interface UninstallInput {
 	name: string
 	/** 可选显式版本；缺省回落锁/sidecar 版本 */
 	version?: string
+	/** config.yaml 路径（20261110-1027 T3：MCP 白名单摘除写面）；缺省 = 跳过 MCP 摘除（旧调用形态零变化） */
+	configPath?: string
 	sharedRoot: string
 	lockPath: string
 	state: StateStore
@@ -242,6 +245,51 @@ export async function runUninstall(input: UninstallInput): Promise<UninstallResu
 		return { ok: false, message: `卸载失败：锁写失败（${String(e)}）——DB 级联已回滚、sidecar/modules 未动（fail-closed）` };
 	}
 
+	// ①b MCP 白名单摘除（20261110-1027 §4.2）：锁摘除后、reload 前落盘——热更代同时吃到锁 diff
+	// 与白名单 diff。仅 lockEntryIsSolution 时摘（双轨同名：内建仍占名，内建工具还须对外暴露）；
+	// configPath 未传 = 旧调用形态，整体跳过。best-effort：写面失败只注记不阻断卸载（白名单是
+	// 暴露面管理，非装配可用性）；源 config + preview 派生双写（preview 缺失静默跳过）。
+	const mcpNotes: string[] = [];
+	let mcpRemoved = false;
+	if (input.configPath !== undefined && lockEntryIsSolution) {
+		for (const p of [input.configPath, previewSiblingOf(input.configPath)]) {
+			const isSource = p === input.configPath;
+			try {
+				const content = new TextDecoder().decode(await f.readFile(p));
+				const { content: next, removed, skipped } = removeMcpModule(content, name);
+				if (removed) {
+					await atomicWriteText(p, next);
+					if (isSource)
+						mcpRemoved = true;
+				}
+				else if (isSource && skipped === "flow") {
+					mcpNotes.push("MCP 白名单未摘除：server.mcp.modules 为 flow 风格（用户手写），请手工摘除");
+				}
+			}
+			catch (e) {
+				if (isMissingPath(e))
+					continue; // preview 派生缺失正常；源 config 缺失 = 未登记态，同样无可摘
+				mcpNotes.push(`MCP 白名单摘除失败：${String(e)}`);
+			}
+		}
+	}
+	// reload 失败回滚的对称加回（与锁一致回滚，无半卸态）：best-effort，失败不掩盖 reload 失败终态
+	const restoreMcpWhitelist = async (): Promise<void> => {
+		if (!mcpRemoved || input.configPath === undefined)
+			return;
+		for (const p of [input.configPath, previewSiblingOf(input.configPath)]) {
+			try {
+				const content = new TextDecoder().decode(await f.readFile(p));
+				const { content: next, changed } = ensureMcpModule(content, name);
+				if (changed)
+					await atomicWriteText(p, next);
+			}
+			catch {
+				// preview 缺失 / 加回失败：源 config 加回为准，残余下次卸载重试或重装自愈
+			}
+		}
+	};
+
 	// ② reload 触达装配以真正摘除模块（P0 §3.4 第5步：先失可达性）；缺省无 reload 面则跳过（依赖
 	// US-1 上游 manifests 摘要驱动才实际掉挂载）。reload 失败 / 返回 unchanged / 未真正摘除模块 →
 	// 锁写回 + 再 reload 回旧代——模块仍挂载，且此时 sidecar/modules.json/版本目录均未删（下面才删），
@@ -258,6 +306,7 @@ export async function runUninstall(input: UninstallInput): Promise<UninstallResu
 			catch {
 				// 锁写回失败不掩盖 reload 失败终态
 			}
+			await restoreMcpWhitelist();
 			try {
 				await input.reload.reloadConfig();
 			}
@@ -278,6 +327,7 @@ export async function runUninstall(input: UninstallInput): Promise<UninstallResu
 			catch {
 				// 锁写回失败不掩盖 reload 断言失败终态
 			}
+			await restoreMcpWhitelist();
 			try {
 				await input.reload.reloadConfig();
 			}
@@ -345,9 +395,11 @@ export async function runUninstall(input: UninstallInput): Promise<UninstallResu
 		message: `卸载完成：${name}@${version}`,
 	});
 
+	// MCP 注记（20261110-1027 §4.2）：摘除成功/失败/flow 跳过均随人话 message 留痕
+	const mcpSuffix = mcpRemoved ? "；MCP 白名单已摘除" : (mcpNotes.length > 0 ? `；${mcpNotes.join("；")}` : "");
 	return {
 		ok: true,
-		message: `卸载完成：锁摘除 + sidecar + sys_solution_route + modules.json 四处同删 + 权限级联清理 + 版本目录移除（${name}@${version}）；业务表 ${retained.length} 张已保留（未删除，需运维手工清理）`,
+		message: `卸载完成：锁摘除 + sidecar + sys_solution_route + modules.json 四处同删 + 权限级联清理 + 版本目录移除（${name}@${version}）；业务表 ${retained.length} 张已保留（未删除，需运维手工清理）${mcpSuffix}`,
 		retained,
 	};
 }

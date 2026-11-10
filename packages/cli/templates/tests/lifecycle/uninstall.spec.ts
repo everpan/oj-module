@@ -417,3 +417,84 @@ describe("P4-1 卸载业务表保留清单（P3-4#2）：moduleTablePrefix + db.
 		expect(retained).not.toContain("demo_solution_ghost"); // 声明但物理不存在 → 不回传
 	});
 });
+
+// MCP 白名单摘除（20261110-1027 §4.2，T3）：卸载时从 config.yaml server.mcp.modules 摘方案名，
+// 时机 = 锁摘除后、reload 前（热更代同时吃到锁 diff 与白名单 diff）；reload 失败回滚须对称加回
+// 登记行（与锁一致回滚）。双轨同名（内建仍占名）不摘——内建工具还须对外暴露。
+// configPath 未传（旧调用形态）→ 整个 MCP 摘除跳过，既有行为零变化。
+describe("MCP 白名单摘除（20261110-1027 T3）", () => {
+	const MCP_CONFIG = "mounts: []\nserver:\n  reload_api: true\n  mcp:\n    enabled: false\n    # ojm:mcp-modules\n    modules:\n      - demo-solution\n      - other-solution\n";
+
+	/** 预置白名单 config（源 + preview 派生）并给 env 补 configPath */
+	async function seedMcpConfig(config = MCP_CONFIG): Promise<Partial<MarketEnv>> {
+		const configPath = join(root, "config.yaml");
+		await fsp.writeFile(configPath, config);
+		return { configPath };
+	}
+
+	it("当 正常卸载 done，则 config + preview 摘除本方案名（other-solution 保留），message 注记", async () => {
+		await seedInstalled();
+		const overrides = await seedMcpConfig();
+		await fsp.writeFile(join(root, ".ojm-preview.yaml"), MCP_CONFIG);
+		const api = createMarketApi(makeEnv(overrides));
+		g.http = { user: { id: 1 }, body: { name: "demo-solution" } };
+		await api.uninstall.post();
+		expect(last?.status).toBe(200);
+		expect(last?.data).toMatchObject({ ok: true });
+		for (const p of [join(root, "config.yaml"), join(root, ".ojm-preview.yaml")]) {
+			const cfg = await fsp.readFile(p, "utf8");
+			expect(cfg).not.toContain("- demo-solution");
+			expect(cfg).toContain("- other-solution");
+			expect(cfg).toContain("# ojm:mcp-modules");
+		}
+		expect(String((last?.data as { message?: string } | undefined)?.message)).toContain("MCP 白名单");
+	});
+
+	it("当 白名单摘至空，则 modules: 键连摘（回缺省全暴露）、锚点保留", async () => {
+		await seedInstalled();
+		const overrides = await seedMcpConfig(MCP_CONFIG.replace("      - other-solution\n", ""));
+		const api = createMarketApi(makeEnv(overrides));
+		g.http = { user: { id: 1 }, body: { name: "demo-solution" } };
+		await api.uninstall.post();
+		expect(last?.data).toMatchObject({ ok: true });
+		const cfg = await fsp.readFile(join(root, "config.yaml"), "utf8");
+		expect(cfg).not.toContain("modules:");
+		expect(cfg).toContain("# ojm:mcp-modules");
+	});
+
+	it("当 reload 失败回滚，则锁写回且 config 登记行对称加回（一致回滚，无半卸态）", async () => {
+		await seedInstalled();
+		const overrides = await seedMcpConfig();
+		const api = createMarketApi(makeEnv({
+			...overrides,
+			reload: { reloadConfig: async () => { throw new Error("reload boom"); } },
+		}));
+		g.http = { user: { id: 1 }, body: { name: "demo-solution" } };
+		await api.uninstall.post();
+		expect(last?.data).toMatchObject({ ok: false });
+		expect(await readLock(join(sharedRoot, "manifests.yaml"))).toEqual({ "demo-solution": "0.1.0", "other": "1.0.0" });
+		const cfg = await fsp.readFile(join(root, "config.yaml"), "utf8");
+		expect(cfg).toContain("      - demo-solution");
+		expect(cfg).toContain("      - other-solution");
+	});
+
+	it("当 双轨同名（内建锁条目仍在），则不摘白名单（内建工具仍须对外暴露）", async () => {
+		await writeLock(join(sharedRoot, "manifests.yaml"), { "web-solution": "0.1.0", "other": "1.0.0" });
+		const st0 = await createStateStore(statePath);
+		await st0.write({ solutions: { "web-solution": { version: "0.2.0", enabled: true, installedAt: 1 } } });
+		await fsp.mkdir(join(sharedRoot, "web-solution-0.2.0"), { recursive: true });
+		await fsp.writeFile(join(sharedRoot, "web-solution-0.2.0", "manifest.yaml"), "name: web-solution\nversion: 0.2.0\n");
+		await fsp.writeFile(modulesJsonPath, JSON.stringify([{ name: "web-solution", enabled: true }, { name: "other", enabled: true }]));
+		const webCfg = "server:\n  mcp:\n    # ojm:mcp-modules\n    modules:\n      - web-solution\n";
+		const overrides = await seedMcpConfig(webCfg);
+		const api = createMarketApi(makeEnv({
+			...overrides,
+			apiPrefix: "/api/web-solution",
+			reload: { reloadConfig: async () => ({ generation: 2, unchanged: true, applied: [], restart_pending: [], kept_listener: [] }) },
+		}));
+		g.http = { user: { id: 1 }, body: { name: "web-solution" } };
+		await api.uninstall.post();
+		expect(last?.data).toMatchObject({ ok: true });
+		expect(await fsp.readFile(join(root, "config.yaml"), "utf8")).toContain("      - web-solution");
+	});
+});

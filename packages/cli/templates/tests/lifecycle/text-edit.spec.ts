@@ -5,7 +5,7 @@
 import * as fsp from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 
-import { appendAnonymousPaths, ensureReloadApi, hasAnchor, insertAnchor, removeAnonymousPaths } from "../../src/app/api/_platform/_lifecycle/text-edit";
+import { appendAnonymousPaths, ensureMcpModule, ensureReloadApi, hasAnchor, insertAnchor, removeAnonymousPaths, removeMcpModule } from "../../src/app/api/_platform/_lifecycle/text-edit";
 
 describe("insertAnchor（R18）", () => {
 	it("带注释的 config.yaml 插入后注释/缩进/空行/键序逐字保留", () => {
@@ -123,6 +123,41 @@ describe("模板 config.yaml 随发锚点（P1-16 接线②：ensureReloadApi �
 	});
 });
 
+describe("模板 config.yaml 随发 MCP 骨架（20261110-1027 T4：server.mcp 段 + 段内锚点）", () => {
+	it("模板带整行 # ojm:mcp-modules 锚点，且锚点位于 server.mcp 段内（缩进域校验——防错层级静默忽略，F10）", async () => {
+		const cfg = await fsp.readFile(new URL("../../config.yaml", import.meta.url), "utf8");
+		expect(hasAnchor(cfg, "# ojm:mcp-modules")).toBe(true);
+		const lines = cfg.split("\n");
+		const anchorIdx = lines.findIndex(l => l.trim() === "# ojm:mcp-modules");
+		// 段内判据：锚点上方最近的更浅缩进结构行是 `mcp:`（而非 server: 直子级）
+		const anchorIndent = (/^\s*/.exec(lines[anchorIdx]!) ?? [""])[0]!.length;
+		let parent = "";
+		for (let i = anchorIdx - 1; i >= 0; i--) {
+			const line = lines[i]!;
+			if (line.trim() === "" || /^\s*#/.test(line))
+				continue;
+			const il = (/^\s*/.exec(line) ?? [""])[0]!.length;
+			if (il < anchorIndent) {
+				parent = line.trim();
+				break;
+			}
+		}
+		expect(parent.startsWith("mcp:")).toBe(true);
+	});
+
+	it("骨架 enabled: false 且 ensureMcpModule 首装登记可直接落锚点（enabled 缺省行为中性，F10）", async () => {
+		const cfg = await fsp.readFile(new URL("../../config.yaml", import.meta.url), "utf8");
+		expect(cfg).toMatch(/^\s*mcp:\s*$/m);
+		expect(cfg).toMatch(/^\s*enabled:\s*false\s*$/m);
+		const r = ensureMcpModule(cfg, "wiki");
+		expect(r.changed).toBe(true);
+		expect(r.content).toContain("modules:");
+		expect(r.content).toContain("- wiki");
+		// 登记 must not 破坏 platform.modules（模板既有键，config.yaml 116 行附近）
+		expect(r.content).toContain("modules: [_platform, oj-market]");
+	});
+});
+
 describe("p2-15③ C2-26 anonymous 运行时接线（appendAnonymousPaths：config 独占模型文本手术）", () => {
 	const BASE = "auth:\n  anonymous_paths:\n    - /auth/login\n    # 行内注释（模板 config 真形态）\n    - /system/login-methods\n";
 
@@ -191,5 +226,137 @@ describe("removeAnonymousPaths（P0 §3.5 补偿清单：appendAnonymousPaths �
 
 	it("空路径列表 = no-op", () => {
 		expect(removeAnonymousPaths(BASE, []).removed).toEqual([]);
+	});
+});
+
+// MCP 白名单登记/摘除（20261110-1027 §4.2）：server.mcp.modules 锚点文本手术。
+// 红线：`modules:` 键名全局不唯一（模板 config.yaml 另有 platform.modules）——
+// 检测必须限定锚点缩进域；写入恒为块列表；flow 风格（用户手写）跳过不改写
+// （flow 列表后接块级项是坏 YAML，oj 拒启）。
+describe("ensureMcpModule（MCP 白名单登记：段内定界，防 platform.modules 误写）", () => {
+	const BASE = [
+		"server:",
+		"  port: 8080",
+		"  mcp:",
+		"    enabled: false",
+		"    # ojm:mcp-modules",
+		"  reload_api: true",
+		"platform:",
+		"  modules: [_platform, oj-market]",
+	].join("\n");
+
+	it("首个方案安装（锚点下无 modules 键）→ 插块列表，platform.modules 不受影响", () => {
+		const r = ensureMcpModule(BASE, "wiki");
+		expect(r.changed).toBe(true);
+		expect(r.skipped).toBeUndefined();
+		expect(r.content).toBe([
+			"server:",
+			"  port: 8080",
+			"  mcp:",
+			"    enabled: false",
+			"    # ojm:mcp-modules",
+			"    modules:",
+			"      - wiki",
+			"  reload_api: true",
+			"platform:",
+			"  modules: [_platform, oj-market]",
+		].join("\n"));
+	});
+
+	it("幂等：块列表 [wiki] 追加 order；同方案重复安装 no-op", () => {
+		const once = ensureMcpModule(BASE, "wiki");
+		const two = ensureMcpModule(once.content, "order");
+		expect(two.changed).toBe(true);
+		expect(two.content).toContain("      - wiki");
+		expect(two.content).toContain("      - order");
+		const again = ensureMcpModule(two.content, "order");
+		expect(again.changed).toBe(false);
+		expect(again.content).toBe(two.content);
+	});
+
+	it("flow 风格 modules: [wiki]（用户手写）→ 跳过不改写，skipped=flow", () => {
+		const content = BASE.replace("# ojm:mcp-modules", "# ojm:mcp-modules\n    modules: [wiki]");
+		const r = ensureMcpModule(content, "order");
+		expect(r.changed).toBe(false);
+		expect(r.skipped).toBe("flow");
+		expect(r.content).toBe(content);
+	});
+
+	it("锚点后紧跟其他 mcp 键（allow_anonymous）→ modules 仍插在锚点下方", () => {
+		const content = BASE.replace("# ojm:mcp-modules", "# ojm:mcp-modules\n    allow_anonymous: false");
+		const r = ensureMcpModule(content, "wiki");
+		expect(r.changed).toBe(true);
+		expect(r.content.indexOf("modules:")).toBeGreaterThan(r.content.indexOf("# ojm:mcp-modules"));
+		expect(r.content).toContain("    allow_anonymous: false");
+	});
+
+	it("列表中部有行内注释 → 追加在末项之后，注释逐字保留", () => {
+		const withComment = BASE.replace(
+			"# ojm:mcp-modules",
+			"# ojm:mcp-modules\n    modules:\n      - wiki # 首个方案\n      - order",
+		);
+		const r = ensureMcpModule(withComment, "extra");
+		expect(r.changed).toBe(true);
+		expect(r.content).toContain("      - extra");
+		expect(r.content).toContain("- wiki # 首个方案");
+	});
+
+	it("锚点缺失 → 可读报错（调用方先 hasAnchor 预判做跳过降级）", () => {
+		expect(() => ensureMcpModule("server:\n  port: 1", "wiki")).toThrowError(/# ojm:mcp-modules/);
+	});
+});
+
+describe("removeMcpModule（MCP 白名单摘除：空表连键摘、锚点保留）", () => {
+	const SEEDED = [
+		"server:",
+		"  mcp:",
+		"    enabled: false",
+		"    # ojm:mcp-modules",
+		"    modules:",
+		"      - wiki",
+		"      - order",
+	].join("\n");
+
+	it("摘除指定方案，其余项/缩进逐字保留", () => {
+		const r = removeMcpModule(SEEDED, "wiki");
+		expect(r.removed).toBe(true);
+		expect(r.content).toContain("      - order");
+		expect(r.content).not.toContain("- wiki");
+	});
+
+	it("摘至空 → modules 键行连摘（回缺省全暴露），锚点保留（后续安装仍可登记）", () => {
+		const r = removeMcpModule(SEEDED, "wiki");
+		const r2 = removeMcpModule(r.content, "order");
+		expect(r2.removed).toBe(true);
+		expect(r2.content).not.toContain("modules:");
+		expect(r2.content).toContain("# ojm:mcp-modules");
+	});
+
+	it("幂等：摘除不在列表中的方案 → removed=false 内容不变", () => {
+		const r = removeMcpModule(SEEDED, "not-there");
+		expect(r.removed).toBe(false);
+		expect(r.content).toBe(SEEDED);
+	});
+
+	it("键/锚点缺失 → no-op（从未登记，不报错）", () => {
+		const r = removeMcpModule("server:\n  port: 1", "wiki");
+		expect(r.removed).toBe(false);
+	});
+
+	it("flow 风格 → 跳过不改写，skipped=flow", () => {
+		const content = "server:\n  mcp:\n    # ojm:mcp-modules\n    modules: [wiki, order]";
+		const r = removeMcpModule(content, "wiki");
+		expect(r.removed).toBe(false);
+		expect(r.skipped).toBe("flow");
+		expect(r.content).toBe(content);
+	});
+
+	it("round-trip：登记两案再全摘 = 还原到锚点下无键的基线", () => {
+		const BASELINE = "server:\n  mcp:\n    # ojm:mcp-modules";
+		const a = ensureMcpModule(BASELINE, "wiki");
+		const b = ensureMcpModule(a.content, "order");
+		const r1 = removeMcpModule(b.content, "wiki");
+		const r2 = removeMcpModule(r1.content, "order");
+		expect(r2.content).toBe(BASELINE);
 	});
 });

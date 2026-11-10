@@ -40,6 +40,7 @@ import { backfillReleases } from "./backfill";
 import { BOOTSTRAP_KEY, seedBootstrapKey } from "./bootstrap";
 import { fingerprintOf } from "./cdn/shared";
 import { authenticateSignedKey, verifyCanonicalSig } from "./cdn/signed-auth";
+import { fetchMcpCatalog } from "./mcp-catalog";
 import { uploadPackageBody } from "./upload";
 
 // 站点编排面共享真源落 _shared/site-facade（P2-16 真机构建钉出：api.ts 是路由入口不可被模块内
@@ -1217,6 +1218,9 @@ export function createMarketApi(env: MarketEnv) {
 						lockPath: `${env.sharedRoot}/manifests.yaml`,
 						state: await createStateStore(env.statePath),
 						modulesJsonPath: env.modulesJsonPath,
+						// configPath 供 MCP 白名单摘除写面（20261110-1027 T3；同 install 端点解析口径：
+						// 部署真实 config 优先，回落 env.configPath；两者俱缺 = 跳过 MCP 摘除）
+						configPath: (await resolveDeploymentConfigPath(env.apiPrefix)) ?? env.configPath,
 						operator: (await operatorOf()) ?? undefined,
 						reload: reloadOf(env),
 					});
@@ -1231,6 +1235,57 @@ export function createMarketApi(env: MarketEnv) {
 						await pruneBundledMarker(`${(env.cdnDir ?? "cdn")}/bundles.json`, name);
 					return r;
 				});
+			},
+		},
+
+		// GET /api/oj-market/mcp/catalog —— MCP 工具目录代理（superadmin，20261110-1027 §4.1/US-4）。
+		// 门禁 + 取 JWT + origin 解析在此；tools/list 代理、tags[0] 分组归一、代际探测全归
+		// mcp-catalog.ts（SRP 同 upload/trust 纪律）。/mcp 不走租户管线（F10），浏览器 JWT 原样
+		// 透传；Accept 显式 application/json（F6 406 陷阱在服务端规避）。v1 无 audit 联查（§10 #11）。
+		"mcp": {
+			catalog: {
+				async get() {
+					await respond(async () => {
+						await assertSuperAdmin();
+						const headers = (http.headers ?? {}) as Record<string, string>;
+						const auth = Object.entries(headers).find(([k]) => k.toLowerCase() === "authorization")?.[1] ?? "";
+						const token = auth.replace(/^Bearer\s+/i, "").trim();
+						if (token === "")
+							fail(401, "需要浏览器登录态 Bearer JWT——上游 {base}/mcp 与 _system/config 以同一凭据鉴权");
+						// F10 修正（真机演练钉出）：/api/mcp 在外层 tenant 中间件之后，缺 X-TENANT-ID
+						// 即 400「missing tenant header」——请求租户头原样透传出站，并随结果透出（页面
+						// 接入配置给外部 MCP client 写全请求头）。
+						const tenant = Object.entries(headers).find(([k]) => k.toLowerCase() === "x-tenant-id")?.[1] ?? "";
+						const co = await resolveCanonicalOrigin(env);
+						const origin = co === undefined ? null : siteOrigin(co);
+						return fetchMcpCatalog({
+							fetch: await fetchOf(env),
+							origin: origin === null ? "" : `${origin.proto}://${origin.host}`,
+							base: env.apiPrefix,
+							token,
+							tenant: tenant === "" ? undefined : tenant,
+							// unmounted 两态判定（§4.3 修订）：磁盘 config 的 server.mcp.enabled 直读
+							// （真机钉出 _system/config 的 sha256 = doc_sha 规范指纹 ≠ 文件字节 sha，
+							// sha 对比案作废）。config 路径取「运行服务实际加载的那份」：
+							// resolveDeploymentConfigPath（_system/health 真源，匿名可达）?? configPath。
+							diskMcpEnabled: async () => {
+								const cp = (await resolveDeploymentConfigPath(env.apiPrefix)) ?? env.configPath;
+								if (!cp) {
+									return undefined;
+								}
+								try {
+									const text = new TextDecoder().decode(await fsFace().readFile(cp));
+									const doc = await (globalThis as { yaml?: { parse: (t: string) => Promise<unknown> } }).yaml?.parse(text) as { server?: { mcp?: { enabled?: unknown } } } | undefined;
+									const enabled = doc?.server?.mcp?.enabled;
+									return typeof enabled === "boolean" ? enabled : undefined;
+								}
+								catch {
+									return undefined;
+								}
+							},
+						});
+					});
+				},
 			},
 		},
 
@@ -1420,6 +1475,45 @@ marketApi.releases.get.response = {
 		page: { type: "number" },
 		size: { type: "number" },
 	},
+};
+// MCP 工具目录（20261110-1027 §4.1）：status 四态 + 分组工具视图（message/generation 可选）。
+// 工具条目出参宽松（additionalProperties:true）——上游 openapi 字段演进不破坏 client。
+marketApi.mcp.catalog.get.response = {
+	type: "object",
+	required: ["status", "groups"],
+	properties: {
+		status: { type: "string", enum: ["mounted", "unmounted", "auth", "unreachable"] },
+		message: { type: "string" },
+		generation: { type: "number" },
+		groups: {
+			type: "array",
+			items: {
+				type: "object",
+				required: ["module", "tools"],
+				properties: {
+					module: { type: "string" },
+					tools: {
+						type: "array",
+						items: {
+							type: "object",
+							required: ["name", "module", "readOnly", "destructive", "params"],
+							properties: {
+								name: { type: "string" },
+								description: { type: "string" },
+								module: { type: "string" },
+								readOnly: { type: "boolean" },
+								destructive: { type: "boolean" },
+								params: { type: "array", items: { type: "string" } },
+							},
+							additionalProperties: true,
+						},
+					},
+				},
+				additionalProperties: true,
+			},
+		},
+	},
+	additionalProperties: true,
 };
 
 export default marketApi;

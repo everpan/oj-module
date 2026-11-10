@@ -7549,6 +7549,120 @@
 				}
 			}
 		},
+		"/api/oj-market/mcp/catalog": {
+			"get": {
+				"operationId": "oj_market_mcp_catalog_get",
+				"summary": "GET api/oj-market/mcp/catalog",
+				"x-oj-file": "oj-market/api/api.ts",
+				"tags": [
+					"oj-market"
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"required": [
+												"status",
+												"groups"
+											],
+											"properties": {
+												"status": {
+													"type": "string",
+													"enum": [
+														"mounted",
+														"unmounted",
+														"auth",
+														"unreachable"
+													]
+												},
+												"message": {
+													"type": "string"
+												},
+												"generation": {
+													"type": "number"
+												},
+												"groups": {
+													"type": "array",
+													"items": {
+														"type": "object",
+														"required": [
+															"module",
+															"tools"
+														],
+														"properties": {
+															"module": {
+																"type": "string"
+															},
+															"tools": {
+																"type": "array",
+																"items": {
+																	"type": "object",
+																	"required": [
+																		"name",
+																		"module",
+																		"readOnly",
+																		"destructive",
+																		"params"
+																	],
+																	"properties": {
+																		"name": {
+																			"type": "string"
+																		},
+																		"description": {
+																			"type": "string"
+																		},
+																		"module": {
+																			"type": "string"
+																		},
+																		"readOnly": {
+																			"type": "boolean"
+																		},
+																		"destructive": {
+																			"type": "boolean"
+																		},
+																		"params": {
+																			"type": "array",
+																			"items": {
+																				"type": "string"
+																			}
+																		}
+																	},
+																	"additionalProperties": true
+																}
+															}
+														},
+														"additionalProperties": true
+													}
+												}
+											},
+											"additionalProperties": true
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
 		"/api/oj-market/history": {
 			"get": {
 				"operationId": "oj_market_history_get",

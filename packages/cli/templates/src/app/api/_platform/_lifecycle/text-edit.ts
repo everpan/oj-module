@@ -3,6 +3,18 @@
 // 因此只做文本级行操作：锚点是整行注释（如 `# ojm:mount`），块插入其下一行。
 // 匹配口径：整行 trim 后相等才算已存在（子串出现不算，防误判幂等）。
 
+/** `ojm preview` 派生的 config 文件名（与 CLI 侧 preview-config.ts 逐字一致）；纯函数收口于此，installer/compensate/uninstall 三面共用 */
+export const PREVIEW_CONFIG_NAME = ".ojm-preview.yaml";
+
+/** 与 config 同目录的 preview 派生路径（无目录分隔符 = 同目录裸名） */
+export function previewSiblingOf(configPath: string): string {
+	const cut = Math.max(configPath.lastIndexOf("/"), configPath.lastIndexOf("\\"));
+	return cut < 0 ? PREVIEW_CONFIG_NAME : `${configPath.slice(0, cut + 1)}${PREVIEW_CONFIG_NAME}`;
+}
+
+/** server.mcp.modules 段内锚点（20261110-1027 §4.2；锚点随模板 config.yaml 骨架发布） */
+export const MCP_ANCHOR = "# ojm:mcp-modules";
+
 export function hasAnchor(content: string, anchor: string): boolean {
 	const target = anchor.trim();
 	return content.split("\n").some(line => line.trim() === target);
@@ -159,4 +171,129 @@ export function readAnonymousPaths(content: string): string[] {
 		out.push(stripped.slice(2).trim());
 	}
 	return out;
+}
+
+/**
+ * MCP 白名单登记（20261110-1027 §4.2）：把方案 api 模块名登记进 config.yaml
+ * `server.mcp.modules` 列表（锚点 `# ojm:mcp-modules` 段内，锚点随模板骨架发布）。
+ * 红线（评审定稿 §5.3）：`modules:` 键名全局不唯一（模板另有 platform.modules）——
+ * 检测限定锚点缩进域（自锚点向下游走，遇缩进 < 锚点缩进即出段）；写入恒为块列表
+ * （键行 + `  - name` 行）；锚点下已是 flow 风格 `modules: [..]`（用户手写）→ 跳过
+ * 不改写（块级追加=坏 YAML，oj 拒启），skipped="flow" 由调用方记任务历史。
+ */
+export function ensureMcpModule(content: string, name: string): { content: string, changed: boolean, skipped?: "flow" } {
+	const lines = content.split("\n");
+	const scan = scanMcpModulesKey(lines);
+	if (scan.anchorIdx === -1) {
+		throw new Error(`text-edit: config.yaml 未找到锚点「${MCP_ANCHOR}」——存量站点缺失时调用方须先 hasAnchor 预判跳过（best-effort 降级），本函数 fail-fast 不猜位置`);
+	}
+	if (scan.flow) {
+		return { content, changed: false, skipped: "flow" };
+	}
+	if (scan.keyIdx === -1) {
+		return { content: insertAnchor(content, MCP_ANCHOR, `modules:\n  - ${name}`), changed: true };
+	}
+	const items = collectMcpItems(lines, scan.keyIdx);
+	if (items.vals.has(name)) {
+		return { content, changed: false };
+	}
+	const firstItemLine = lines[scan.keyIdx + 1] ?? "";
+	const itemIndent = /^\s*- /.test(firstItemLine) ? (/^\s*/.exec(firstItemLine)?.[0] ?? "") : `${scan.indent}  `;
+	lines.splice(items.lastIdx + 1, 0, `${itemIndent}- ${name}`);
+	return { content: lines.join("\n"), changed: true };
+}
+
+/**
+ * `ensureMcpModule` 的逆操作（卸载摘除）：从 `server.mcp.modules` 块列表摘除方案名。
+ * 空表连 `modules:` 键行一并摘（缺省全暴露恢复——留空表=全屏蔽陷阱），锚点行保留
+ * （后续安装仍可登记）。键/锚点缺失 = 没东西可摘，no-op；flow 风格 → skipped="flow"。
+ * 双轨同名守卫（内建模块仍占名则不摘）属调用方锁真值判断，本函数保持纯文本语义。
+ */
+export function removeMcpModule(content: string, name: string): { content: string, removed: boolean, skipped?: "flow" } {
+	const lines = content.split("\n");
+	const scan = scanMcpModulesKey(lines);
+	if (scan.flow) {
+		return { content, removed: false, skipped: "flow" };
+	}
+	if (scan.anchorIdx === -1 || scan.keyIdx === -1) {
+		return { content, removed: false };
+	}
+	const items = collectMcpItems(lines, scan.keyIdx);
+	const removeSet = new Set<number>();
+	for (const i of items.itemIdx) {
+		const val = lines[i]!.replace(/#.*$/, "").trim().slice(2).trim();
+		if (val === name) {
+			removeSet.add(i);
+		}
+	}
+	if (removeSet.size === 0) {
+		return { content, removed: false };
+	}
+	let next = lines.filter((_, i) => !removeSet.has(i));
+	const after = scanMcpModulesKey(next);
+	if (after.keyIdx !== -1 && collectMcpItems(next, after.keyIdx).itemIdx.length === 0) {
+		next = next.filter((_, i) => i !== after.keyIdx);
+	}
+	return { content: next.join("\n"), removed: true };
+}
+
+/** `# ojm:mcp-modules` 锚点定位 + 段内 `modules:` 键扫描（ensure/remove 共用）。 */
+interface McpKeyScan {
+	anchorIdx: number
+	/** 锚点行缩进（空格串，regex 安全） */
+	indent: string
+	/** 段内 modules 键行下标；-1 = 键不存在 */
+	keyIdx: number
+	/** 键行为 flow 内联值（`modules: [a]`）= 不可块级改写 */
+	flow: boolean
+}
+
+function scanMcpModulesKey(lines: string[]): McpKeyScan {
+	const anchorIdx = lines.findIndex(l => l.trim() === MCP_ANCHOR);
+	const indent = anchorIdx === -1 ? "" : (/^\s*/.exec(lines[anchorIdx]!)?.[0] ?? "");
+	const scan: McpKeyScan = { anchorIdx, indent, keyIdx: -1, flow: false };
+	if (anchorIdx === -1) {
+		return scan;
+	}
+	const keyRe = new RegExp(`^${indent}modules\\s*:`);
+	for (let i = anchorIdx + 1; i < lines.length; i++) {
+		const line = lines[i]!;
+		if (line.trim() === "") {
+			continue;
+		}
+		if ((/^\s*/.exec(line)?.[0] ?? "").length < indent.length) {
+			break;
+		}
+		if (/^\s*#/.test(line)) {
+			continue;
+		}
+		if (keyRe.test(line)) {
+			scan.keyIdx = i;
+			const inline = line.replace(/#.*$/, "").trim().replace(/^modules\s*:/, "").trim();
+			scan.flow = inline !== "";
+			break;
+		}
+	}
+	return scan;
+}
+
+/** modules 键行下的块列表项收集（appendAnonymousPaths 同款口径）：跳空行/注释，遇非 `- ` 行即止。 */
+function collectMcpItems(lines: string[], keyIdx: number): { vals: Set<string>, lastIdx: number, itemIdx: number[] } {
+	const vals = new Set<string>();
+	const itemIdx: number[] = [];
+	let lastIdx = keyIdx;
+	for (let i = keyIdx + 1; i < lines.length; i++) {
+		const line = lines[i]!;
+		if (line.trim() === "" || /^\s*#/.test(line)) {
+			continue;
+		}
+		const stripped = line.replace(/#.*$/, "").trim();
+		if (!stripped.startsWith("- ")) {
+			break;
+		}
+		vals.add(stripped.slice(2).trim());
+		itemIdx.push(i);
+		lastIdx = i;
+	}
+	return { vals, lastIdx, itemIdx };
 }

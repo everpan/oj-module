@@ -155,6 +155,24 @@ export const schemas = {
 
 }).catchall(z.unknown()),
 	},
+	"ojMarketMcpCatalogGet": {
+		data: z.object({
+	"status": z.enum(["mounted", "unmounted", "auth", "unreachable"]),
+	"message": z.string().optional(),
+	"generation": z.number().optional(),
+	"groups": z.array(z.object({
+	"module": z.string(),
+	"tools": z.array(z.object({
+	"name": z.string(),
+	"description": z.string().optional(),
+	"module": z.string(),
+	"readOnly": z.boolean(),
+	"destructive": z.boolean(),
+	"params": z.array(z.string())
+}).catchall(z.unknown()))
+}).catchall(z.unknown()))
+}).catchall(z.unknown()),
+	},
 	"ojMarketHistoryGet": {
 		data: z.array(z.object({
 

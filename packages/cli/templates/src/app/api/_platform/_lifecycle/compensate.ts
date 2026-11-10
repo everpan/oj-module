@@ -9,17 +9,8 @@ import type { ReloadFace } from "./steps/reload";
 import { atomicWriteText, fsFace, isMissingPath } from "./atomic";
 import { revertLock } from "./lock";
 import { removeModulesJsonEntry } from "./steps/deploy-web";
-import { removeAnonymousPaths } from "./text-edit";
+import { previewSiblingOf, removeAnonymousPaths, removeMcpModule } from "./text-edit";
 import { revertRegistrations } from "./uninstall";
-
-/** 本仓 preview 派生文件名（与 cli preview-config.ts / installer.ts 逐字一致） */
-const PREVIEW_CONFIG_NAME = ".ojm-preview.yaml";
-
-/** 与 config 同目录的 preview 派生路径（无目录分隔符 = 同目录裸名）；本地化避免与 installer.ts 循环依赖 */
-function previewSiblingOf(configPath: string): string {
-	const cut = Math.max(configPath.lastIndexOf("/"), configPath.lastIndexOf("\\"));
-	return cut < 0 ? PREVIEW_CONFIG_NAME : `${configPath.slice(0, cut + 1)}${PREVIEW_CONFIG_NAME}`;
-}
 
 function isObj(v: unknown): v is Record<string, unknown> {
 	return typeof v === "object" && v !== null && !Array.isArray(v);
@@ -34,6 +25,8 @@ export interface CompensateInput {
 	configPath: string
 	/** reloading 段真正新增的匿名路径（installer 已写入 req.deferredAnonymous）；空 = 未接线，config 步 no-op */
 	deferredAnonymous: string[]
+	/** 本次安装真把方案名登记进了 server.mcp.modules（installer 已写入 req.mcpRegistered）；true 才执行 config.mcp 回滚步——升级失败（登记幂等 no-op）不误摘既有登记（20261110-1027 §4.2） */
+	mcpRegistered?: boolean
 	/** 站点 sharedRoot（锁/版本目录所在） */
 	sharedRoot: string
 	/** 站点 modules.json 路径 */
@@ -53,7 +46,7 @@ export interface CompensateStep {
 }
 
 export interface CompensateResult {
-	/** 各步结果（逆序：config → lock → modules.json → db → reload） */
+	/** 各步结果（逆序：config.anonymous → config.mcp → lock → modules.json → db → reload；config.mcp 仅 mcpRegistered 时出现） */
 	steps: CompensateStep[]
 	/** 是否全部成功（任一步失败即 false，但其余步仍尽力执行） */
 	allOk: boolean
@@ -99,6 +92,30 @@ export async function compensate(input: CompensateInput): Promise<CompensateResu
 			}
 		}
 	});
+
+	// 1b. config MCP 白名单摘除（源 config + preview 派生，派生缺失即跳过；20261110-1027 §4.2）
+	// 仅本次真登记过才注册本步（升级失败不误摘既有登记）；只摘本方案名，锚点保留（后续安装
+	// 仍可登记）；摘至空由 removeMcpModule 连键摘（回缺省全暴露）
+	if (input.mcpRegistered === true) {
+		await run("config.mcp", async () => {
+			for (const p of [input.configPath, previewSiblingOf(input.configPath)]) {
+				let content: string;
+				try {
+					content = new TextDecoder().decode(await f.readFile(p));
+				}
+				catch (e) {
+					if (isMissingPath(e)) {
+						continue;
+					}
+					throw e;
+				}
+				const { content: next, removed } = removeMcpModule(content, input.name);
+				if (removed) {
+					await atomicWriteText(p, next);
+				}
+			}
+		});
+	}
 
 	// 2. lock 回写装前（首装则删锁；空锁拒启）
 	await run("lock", async () => {

@@ -13,7 +13,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { atomicWriteText } from "../../src/app/api/_platform/_lifecycle/atomic";
 import { compensate } from "../../src/app/api/_platform/_lifecycle/compensate";
 import { parseLock, writeLock } from "../../src/app/api/_platform/_lifecycle/lock";
-import { appendAnonymousPaths, removeAnonymousPaths } from "../../src/app/api/_platform/_lifecycle/text-edit";
+import { appendAnonymousPaths, ensureMcpModule, removeAnonymousPaths } from "../../src/app/api/_platform/_lifecycle/text-edit";
 import { installDb } from "../fixture";
 
 const g = globalThis as any;
@@ -44,9 +44,9 @@ let reloadThrow: boolean;
 
 const LOCK_BEFORE: Record<string, string> = { existing: "1.0.0" };
 
-/** 把站点摆成「demo-solution 已锁后落位」状态，返回本次新增的匿名路径（= 补偿的输入 deferredAnonymous） */
-async function seedInstalled(anonPaths: string[]): Promise<string[]> {
-	const added = appendAnonymousPaths(BASE_CONFIG, anonPaths);
+/** 把站点摆成「demo-solution 已锁后落位」状态，返回本次新增的匿名路径（= 补偿的输入 deferredAnonymous）；configContent 覆写默认夹具（MCP 用例传入带白名单的 config） */
+async function seedInstalled(anonPaths: string[], configContent?: string): Promise<string[]> {
+	const added = appendAnonymousPaths(configContent ?? BASE_CONFIG, anonPaths);
 	await atomicWriteText(configPath, added.content);
 	await atomicWriteText(previewPath, added.content);
 	// 锁：装前快照 + 本次模块条目
@@ -101,12 +101,13 @@ afterEach(async () => {
 	await fsp.rm(root, { recursive: true, force: true });
 });
 
-function makeInput(deferredAnonymous: string[]): any {
+function makeInput(deferredAnonymous: string[], mcpRegistered = false): any {
 	return {
 		name: "demo-solution",
 		version: "0.1.0",
 		configPath,
 		deferredAnonymous,
+		mcpRegistered,
 		sharedRoot,
 		modulesJsonPath,
 		lockBefore: LOCK_BEFORE,
@@ -203,5 +204,57 @@ describe("compensate 匿名面不随失败放大（验收 4）", () => {
 		const afterSecond = await fsp.readFile(configPath, "utf8");
 		expect(countAnon(afterSecond)).toBe(2); // 不增长
 		expect(removeAnonymousPaths(afterSecond, added).removed).toEqual([]); // 已无残留可删
+	});
+});
+
+// MCP 白名单对称回滚（20261110-1027 §4.2，T3）：本次安装真登记过（mcpRegistered=true）才摘，
+// 且只摘本方案名——升级失败（登记幂等 no-op，mcpRegistered=false）不得误摘既有登记行。
+// 源 config + preview 派生双写同 anonymous 口径；摘至空由 removeMcpModule 连键摘（锚点保留）。
+describe("compensate config.mcp 对称回滚（20261110-1027 T3）", () => {
+	const MCP_BASE = "mounts: []\nserver:\n  reload_api: true\n  mcp:\n    enabled: false\n    # ojm:mcp-modules\nauth:\n  anonymous_paths:\n    - /auth/login\n";
+
+	/** 摆成「已登记 demo-solution + 既有 other 方案 + 匿名接线」形态 */
+	async function seedMcpInstalled(anonPaths: string[]): Promise<string[]> {
+		let content = ensureMcpModule(MCP_BASE, "demo-solution").content;
+		content = ensureMcpModule(content, "other").content;
+		return seedInstalled(anonPaths, content);
+	}
+
+	it("当 本次安装登记过（mcpRegistered=true），则 config.mcp 步摘除本方案名（config + preview 双写，other 保留、锚点保留）", async () => {
+		const added = await seedMcpInstalled(["demo-solution/ping"]);
+		const r = await compensate(makeInput(added, true));
+
+		expect(r.allOk).toBe(true);
+		expect(r.steps.map(s => s.step)).toEqual(["config.anonymous", "config.mcp", "lock", "modules.json", "db.registrations", "reload"]);
+		for (const p of [configPath, previewPath]) {
+			const cfg = await fsp.readFile(p, "utf8");
+			expect(cfg).not.toContain("- demo-solution");
+			expect(cfg).toContain("- other");
+			expect(cfg).toContain("# ojm:mcp-modules");
+		}
+		// 其余回滚步照旧生效
+		expect(parseLock(await fsp.readFile(lockPath, "utf8"))).toEqual(LOCK_BEFORE);
+		expect(dbo.prepare("SELECT * FROM sys_solution_route WHERE module='demo-solution'").all()).toHaveLength(0);
+	});
+
+	it("当 登记非本次新增（mcpRegistered 缺省，升级失败场景），则无 config.mcp 步且白名单原样（不误摘既有登记）", async () => {
+		const added = await seedMcpInstalled(["demo-solution/ping"]);
+		const r = await compensate(makeInput(added));
+
+		expect(r.steps.some(s => s.step === "config.mcp")).toBe(false);
+		const cfg = await fsp.readFile(configPath, "utf8");
+		expect(cfg).toContain("- demo-solution");
+		expect(cfg).toContain("- other");
+	});
+
+	it("当 preview 派生文件缺失，则 config.mcp 步仍成功（源 config 摘除即可，不无中生有）", async () => {
+		const added = await seedMcpInstalled(["demo-solution/ping"]);
+		await fsp.rm(previewPath, { force: true });
+		const r = await compensate(makeInput(added, true));
+
+		expect(r.allOk).toBe(true);
+		const step = r.steps.find(s => s.step === "config.mcp")!;
+		expect(step.ok).toBe(true);
+		expect(await fsp.readFile(configPath, "utf8")).not.toContain("- demo-solution");
 	});
 });

@@ -8,6 +8,7 @@
 		"oplog": "操作日志",
 		"settings": "站点设置",
 		"wecom": "企微集成",
+		"mcp": "MCP 服务",
 		"departments": "组织架构"
 	},
 	"common": {
@@ -285,5 +286,55 @@
 	"perm": {
 		"platform_org_read_all": "组织架构全量读权限",
 		"auth_wecom_sync": "企业微信组织架构同步"
+	},
+	"mcp": {
+		"title": "MCP 服务管理",
+		"refresh": "刷新",
+		"generation": "代际",
+		"descriptionSource": "工具描述由方案作者提供；是否接入给 agent 使用由管理员决定。",
+		"status": {
+			"mounted": "已启用",
+			"unmounted": "未启用",
+			"auth": "鉴权失败",
+			"unreachable": "不可达"
+		},
+		"guide": {
+			"unmounted": "启用步骤：① 在 config.yaml 现有 server.mcp 段内把 enabled 改为 true（模板已预置骨架）；② 触发热更：POST {base}/_system/config（回环地址或 Bearer 皆可）；③ 刷新本页。",
+			"auth": "排查 mcp 段鉴权配置：确认 auth 插件与 allow_anonymous 设置与浏览器登录态一致——{base}/mcp 与本站 API 走同一 JWT 鉴权面。",
+			"unreachable": "若上方提示 canonical_origin 未配置：在 config.yaml vars.canonical_origin 填站点真实对外地址后刷新；若是网络不可达：检查 oj 服务进程与端口可达性。"
+		},
+		"mountedAlert": "已启用白名单：仅方案模块工具对外暴露，安装方案时自动登记；非方案模块工具不出现在本目录。",
+		"driftTitle": "已装方案未见工具",
+		"group": {
+			"toolCount": "{{count}} 个工具",
+			"readOnly": "只读 {{count}}",
+			"write": "写 {{count}}",
+			"destructive": "危险 {{count}}",
+			"drift": "无可见工具（未入白名单或无 api）",
+			"foreign": "非方案",
+			"unattributed": "未声明契约"
+		},
+		"columns": {
+			"name": "工具",
+			"description": "描述",
+			"quality": "质量标注",
+			"params": "入参",
+			"calls": "调用统计"
+		},
+		"tag": {
+			"readOnly": "只读",
+			"destructive": "危险",
+			"noDesc": "无描述",
+			"noContract": "未声明契约"
+		},
+		"accessTitle": "接入配置",
+		"copy": "复制接入配置",
+		"copyNote": "不含任何凭据值",
+		"copyOk": "接入配置已复制到剪贴板",
+		"accessUrl": "服务地址",
+		"tokenExp": "凭据说明：Bearer JWT 取自浏览器登录态（约 24 小时过期，过期即 401）；agent 静态配置不会自动刷新，过期后需重新粘贴；长效凭据将在后续版本提供。",
+		"reconnect": "生效方式：目录取定于连接建立——方案安装/升级/卸载后 agent 需重连才见最新工具；会话中调用已下线的旧工具返回 -32601。",
+		"paramsShape": "入参形状：工具入参固定为 path/query/body 三键嵌套对象。",
+		"lineA": "线路 A（离线 codegen，站点外运维动作）：oj mcp -c config.yaml 生成零依赖 stdio server（环境变量 OJ_BASE / OJ_TOKEN / OJ_TENANT）；它是文件快照，站点方案变更后须重跑生成。"
 	}
 }

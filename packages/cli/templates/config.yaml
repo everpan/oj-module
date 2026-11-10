@@ -42,6 +42,15 @@ server:
   # 整行必须逐字等于 `# ojm:reload`，不要删、不要加尾注。
   # ojm:reload
   reload_api: true
+  # MCP agent 接入端点（{base}/mcp，oj ≥ 0.1.110）：false ≡ 段缺失（行为中性）。
+  # 启用 = 把 enabled 改为 true 后触发热更；方案安装时会把方案名自动登记进 modules
+  # 白名单（fail-closed：白名单存在后仅方案工具对外暴露，非方案模块工具不出现）。
+  # enabled 且未装配 auth 插件时须显式 allow_anonymous: true，否则 oj 启动 fail-fast。
+  mcp:
+    enabled: false
+    # 下面这行是**安装器的文本锚点**（方案安装自动把方案名登记进 modules 白名单）：
+    # 整行必须逐字等于 `# ojm:mcp-modules`，不要删、不要加尾注。
+    # ojm:mcp-modules
   blob_upload_max_bytes: 1073741824 # PUT blob 单文件上限（默认 1GiB；与 multipart 的 10MB 是两道闸）
   cors:
     origins: [] # 空 = 放行任意源；要带凭据必须列具体源

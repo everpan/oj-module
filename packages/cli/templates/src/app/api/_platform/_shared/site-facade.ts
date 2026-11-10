@@ -5,8 +5,8 @@
 import type { FetchFace } from "../_lifecycle/steps/download";
 import { fsFace } from "../_lifecycle/atomic";
 
-/** 带缓存指令的拉取面（FetchFace 的超集：oj 全局 fetch/测试 stub 天然满足，少参函数可赋多参形） */
-export type FetchInitFace = (url: string, init?: { headers?: Record<string, string>, redirect?: string }) => Promise<{
+/** 带缓存指令的拉取面（FetchFace 的超集：oj 全局 fetch/测试 stub 天然满足，少参函数可赋多参形）；method/body 供出站 POST（mcp-catalog tools/list 代理，20261110-1027 §4.1） */
+export type FetchInitFace = (url: string, init?: { method?: string, headers?: Record<string, string>, body?: string, redirect?: string }) => Promise<{
 	ok: boolean
 	status: number
 	arrayBuffer: () => Promise<ArrayBuffer>

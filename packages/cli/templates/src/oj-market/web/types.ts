@@ -44,6 +44,34 @@ export interface TrustReviewItem {
 	started_at: number
 }
 
+/** MCP 工具目录条目（GET /oj-market/mcp/catalog 归一视图：tags[0]=模块名、annotations=hints、params=path/query/body 子集） */
+export interface McpToolView {
+	name: string
+	description?: string
+	module: string
+	readOnly: boolean
+	destructive: boolean
+	params: string[]
+}
+
+/** 按方案（上游 tags[0]）分组的工具组；module 空串 = 上游无 tags 的杂项工具 */
+export interface McpCatalogGroup {
+	module: string
+	tools: McpToolView[]
+}
+
+export type McpCatalogStatus = "mounted" | "unmounted" | "auth" | "unreachable";
+
+/** MCP 目录拉取结果（status 决定管理页状态卡形态；message 人话、generation 热更代际均可省略） */
+export interface McpCatalogResult {
+	status: McpCatalogStatus
+	message?: string
+	generation?: number
+	/** 站点租户（请求 X-TENANT-ID 透传）：接入配置给外部 MCP client 写全请求头（缺头 400） */
+	tenant?: string
+	groups: McpCatalogGroup[]
+}
+
 /** 离线包上传结果（POST /oj-market/upload；trusted=false = 发布方指纹未入库，安装时将停待信任确认） */
 export interface UploadPackageResult {
 	ok: boolean

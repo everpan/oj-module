@@ -17,6 +17,7 @@ const Roles = lazy(() => import("./pages/roles"));
 const Oplog = lazy(() => import("./pages/oplog"));
 const Settings = lazy(() => import("./pages/settings"));
 const WecomAdmin = lazy(() => import("./pages/wecom"));
+const Mcp = lazy(() => import("./pages/mcp"));
 
 /**
  * `/system` 根的角色门禁（对齐后端 assertSystemAdmin，access.ts:87）——
@@ -91,6 +92,12 @@ export const routes: AppRouteRecordRaw[] = [
 						path: "/system/framework/wecom",
 						Component: WecomAdmin,
 						handle: { title: "system:menu.wecom", roles: ["superadmin"] },
+					},
+					{
+						// MCP 服务管理（20261110-1027 §4.3）：本站已装方案的 mcp 工具目录只读展示
+						path: "/system/framework/mcp",
+						Component: Mcp,
+						handle: { title: "system:menu.mcp", roles: ["superadmin"] },
 					},
 				],
 			},

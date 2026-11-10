@@ -1523,3 +1523,93 @@ describe("安装失败留痕（2026-11-08：操作历史记最后一次错误 + 
 		expect(String(hist[1]!.message)).toContain("安装完成：demo-solution@0.1.0");
 	});
 });
+
+// MCP 白名单登记（20261110-1027 §4.2，T3）：带 api 段的方案在 reloading 段把名字登记进
+// config.yaml server.mcp.modules（锚点段内，preview 派生双写）。best-effort 语义刻意不同于
+// anonymous 接线的 fail-fast：锚点缺失/flow 风格 = 注记进 reloading 段 message，不阻塞安装。
+describe("reloading 段 MCP 白名单登记（20261110-1027 T3）", () => {
+	const MCP_CONFIG = [
+		"mounts: []",
+		"server:",
+		"  reload_api: true",
+		"  mcp:",
+		"    enabled: false",
+		"    # ojm:mcp-modules",
+		"platform:",
+		"  modules: [_platform, oj-market]",
+		"vars:",
+		"  other: 1",
+		"auth:",
+		"  anonymous_paths:",
+		"    - /auth/login",
+	].join("\n");
+
+	it("当 带 api 段方案安装 done，则 config.yaml server.mcp 段内登记 modules: - demo-solution（platform.modules 不受影响）", async () => {
+		await fsp.writeFile(join(root, "config.yaml"), MCP_CONFIG);
+		const t = await runInstall(makeReq());
+		expect(t.status).toBe("done");
+		const cfg = new TextDecoder().decode(await fsp.readFile(join(root, "config.yaml")));
+		expect(cfg).toContain("# ojm:mcp-modules\n    modules:\n      - demo-solution");
+		expect(cfg).toContain("modules: [_platform, oj-market]");
+	});
+
+	it("当 preview 派生文件在场，则源 config 与派生文件两份一起登记（preview reload 才看得到白名单差异）", async () => {
+		await fsp.writeFile(join(root, "config.yaml"), MCP_CONFIG);
+		await fsp.writeFile(join(root, ".ojm-preview.yaml"), MCP_CONFIG);
+		const t = await runInstall(makeReq());
+		expect(t.status).toBe("done");
+		const source = new TextDecoder().decode(await fsp.readFile(join(root, "config.yaml")));
+		const preview = new TextDecoder().decode(await fsp.readFile(join(root, ".ojm-preview.yaml")));
+		expect(source).toContain("modules:\n      - demo-solution");
+		expect(preview).toContain("modules:\n      - demo-solution");
+	});
+
+	it("当 存量站点 config 无 mcp 锚点，则安装仍 done（best-effort 降级）且 reloading 段注记可读", async () => {
+		// beforeEach 的默认夹具 config 无 mcp 段
+		const t = await runInstall(makeReq());
+		expect(t.status).toBe("done");
+		const cfg = new TextDecoder().decode(await fsp.readFile(join(root, "config.yaml")));
+		expect(cfg).not.toContain("modules:\n      - demo-solution");
+		expect(String(t.stages.find(s => s.stage === "reloading")?.message)).toContain("MCP 白名单");
+	});
+
+	it("当 用户手写 flow 风格 modules: [wiki]，则不改写（块级追加 = 坏 YAML）且注记 flow", async () => {
+		await fsp.writeFile(
+			join(root, "config.yaml"),
+			MCP_CONFIG.replace("# ojm:mcp-modules", "# ojm:mcp-modules\n    modules: [wiki]"),
+		);
+		const t = await runInstall(makeReq());
+		expect(t.status).toBe("done");
+		const cfg = new TextDecoder().decode(await fsp.readFile(join(root, "config.yaml")));
+		expect(cfg).toContain("modules: [wiki]");
+		expect(cfg).not.toContain("- demo-solution");
+		expect(String(t.stages.find(s => s.stage === "reloading")?.message)).toContain("flow");
+	});
+
+	it("当 web-only 方案（无 api 段）安装 done，则不登记（无 API 面 = 无 MCP 工具）", async () => {
+		await fsp.writeFile(join(root, "config.yaml"), MCP_CONFIG);
+		const m = manifestFixture("0.2.0");
+		delete m.api;
+		m.web = { entry: "modules/demo-solution/0.2.0/entry.js" };
+		m.archive = { file: "demo-solution-0.2.0.tgz", sha256: SHA256, size: ARCHIVE.byteLength, signature: signedArchiveFor(ARCHIVE, "demo-solution", "0.2.0", { keyPair: TEST_KEY }).sig };
+		const exec: ExecFace = {
+			run: async (argv) => {
+				if (argv[0] === "tar" && argv[1] === "-tvzf")
+					return { code: 0, stdout: "demo-solution-0.2.0/manifest.yaml\ndemo-solution-0.2.0/web/modules/demo-solution/0.2.0/entry.js\n", stderr: "" };
+				if (argv[0] === "tar" && argv[1] === "-xzf") {
+					const dest = argv[4]!;
+					const dir = join(dest, "demo-solution-0.2.0", "web", "modules", "demo-solution", "0.2.0");
+					await fsp.mkdir(dir, { recursive: true });
+					await fsp.writeFile(join(dir, "entry.js"), ENTRY);
+					await fsp.writeFile(join(dest, "demo-solution-0.2.0", "manifest.yaml"), new TextEncoder().encode(JSON.stringify(m)));
+					return { code: 0, stdout: "", stderr: "" };
+				}
+				return { code: 0, stdout: "", stderr: "" };
+			},
+		};
+		const t = await runInstall(makeReq({ manifest: m, version: "0.2.0", exec }));
+		expect(t.status).toBe("done");
+		const cfg = new TextDecoder().decode(await fsp.readFile(join(root, "config.yaml")));
+		expect(cfg).not.toContain("modules:\n      - demo-solution");
+	});
+});
