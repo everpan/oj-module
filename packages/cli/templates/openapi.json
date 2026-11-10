@@ -7895,6 +7895,22 @@
 					}
 				}
 			}
+		},
+		"/api/oj-market/converge": {
+			"post": {
+				"operationId": "postApiOjMarketConverge",
+				"summary": "POST api/oj-market/converge",
+				"x-oj-file": "oj-market/api/api.ts",
+				"tags": [
+					"oj-market"
+				],
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				},
+				"description": "出厂收敛触发（ojm dev/preview 专用）：x-ojm-converge-token 持有型证明（vars.ojm_converge_token 仅 dev/preview 派生 config 注入；生产站点无此 var → 404 即死）；幂等 riding reconcileOf"
+			}
 		}
 	},
 	"tags": [
