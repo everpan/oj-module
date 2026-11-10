@@ -11,8 +11,10 @@ import { errorText, statusOf } from "./model";
  * 「确认信任」即入信任库（服务端自任务记录重取公钥复算指纹，防混淆代理），安装人
  * 重跑原安装命令续跑（staging 不清场）。
  *
- * 可见范围由服务端决定：GET 403（非超管）时整区不渲染，前端不重复判权
- * （同凭证表 owner_tenant 先例）。
+ * 可见范围由服务端决定：非 superadmin **直接隐藏**——403 与权限未定的加载中
+ * 都不渲染区骨架（2026-11-10 口径收紧：原先仅 403 后隐藏，加载中会先闪
+ * 标题 + 表格 loading 再消失）；superadmin 首帧短暂空白由 Table loading 兜住。
+ * 非 403 失败（500/网络）仍如实报错，前端不重复判权（同凭证表 owner_tenant 先例）。
  */
 export function TrustReviewSection() {
 	const { t } = useTranslation();
@@ -30,7 +32,7 @@ export function TrustReviewSection() {
 		},
 	});
 
-	if (statusOf(query.error) === 403)
+	if (query.isPending || statusOf(query.error) === 403)
 		return null;
 
 	// 非 403 失败（500/网络/超时）如实报错：渲染成「暂无待审」会把待审项静默藏没

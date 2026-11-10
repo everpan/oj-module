@@ -56,5 +56,9 @@ export function errorText(e: unknown): string {
  * 403 = 可见范围探测的「整区不渲染」信号（可见范围由服务端决定，前端不重复判权）。
  */
 export function statusOf(e: unknown): number | undefined {
-	return (e as { response?: { status?: number } } | null)?.response?.status;
+	// 生成 client 把 403 归一为 ContractApiError（信封 code = HTTP status，无 response 属性）——
+	// 只读 response.status 恒 undefined，403「整区不渲染」永不命中（2026-11-10 真机实锤）。
+	// code ≤ 0 是未绑定/契约违例类（ContractApiError(-1,…)），不是 HTTP 状态，排除。
+	const err = e as { response?: { status?: number }, code?: number } | null;
+	return err?.response?.status ?? (typeof err?.code === "number" && err.code > 0 ? err.code : undefined);
 }
