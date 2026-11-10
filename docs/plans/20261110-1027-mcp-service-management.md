@@ -297,10 +297,10 @@ agent 工具：
 
 | # | 任务 | 依赖 | 状态 |
 |---|---|---|---|
-| T1 | 分支 `feat/mcp-service-management`；本设计文档随首提交入库 | - | ☐ |
-| T2 | `text-edit.ts`：段内定界 `ensureMcpModule`/`removeMcpModule` 纯函数 + 单测（§4.2 全场景数据表：含 platform.modules 共存、flow 风格跳过、空表摘键、双轨同名、锚点缺失） | T1 | ☐ |
-| T3 | installer reloadStage 登记接线 + preview 双写；uninstall 摘除（`UninstallInput` +configPath、api.ts 调用点、reload 失败回滚对称加回）；compensate 对称回滚 | T2 | ☐ |
-| T4 | config.yaml 模板预置 `server.mcp:` 骨架 + 段内锚点 | T2 | ☐ |
+| T1 | 分支 `feat/mcp-service-management`；本设计文档随首提交入库 | - | ✅ |
+| T2 | `text-edit.ts`：段内定界 `ensureMcpModule`/`removeMcpModule` 纯函数 + 单测（§4.2 全场景数据表：含 platform.modules 共存、flow 风格跳过、空表摘键、双轨同名、锚点缺失） | T1 | ✅ |
+| T3 | installer reloadStage 登记接线 + preview 双写；uninstall 摘除（`UninstallInput` +configPath、api.ts 调用点、reload 失败回滚对称加回）；compensate 对称回滚 | T2 | ✅ |
+| T4 | config.yaml 模板预置 `server.mcp:` 骨架 + 段内锚点 | T2 | ✅ |
 | T5 | oj-market API：`GET /mcp/catalog` 代理端点（归一+分组+静态统计+代际探测，无 audit 联查）+ 归一单测（§4.1 数据表，FetchFace stub） | T1 | ☐ |
 | T6 | `ojm api` 重生成 client；system 路由 + i18n | T5 | ☐ |
 | T7 | 管理页（状态卡四态指引/常驻 Alert/分组工具表/质量标注/漂移/静态统计/接入配置含 client 实配/刷新；纯文本渲染断言）+ vitest（§4.3 场景） | T6 | ☐ |
@@ -348,3 +348,38 @@ agent 工具：
 | AI agents 专家 | 无 blocker | 2 major 2 minor | #1 凭据生命周期→R3'+接入文案；#2 漂移破坏→§8 留档+文案；#3 per-tool 标注→§4.3；#4 注入红线→§3 反目标 |
 | MCP 协议专家 | 无 blocker | 1 major 4 minor | #1 重连语义→US-4/§8/文案；#2 分页→§6 备忘；#3 OAuth 偏离→§8；#4 三键形状→接入文案；#5 server_name+instructions→R4' |
 | AI 产品经理 | 无 blocker | 4 major 1 minor | M1 两态指引→§4.3；M2 生效方式→§4.3(F7 POST)；M3 凭据闭环→R3'/US-3；M4 fail-closed Alert→§4.3；m5 编号泄漏/价值主张→§0/§4.3；INVEST 裁剪→US-5 拆半 |
+
+## 11. 阶段记录
+
+### Phase 1：地基（T1/T2/T4，阶段评审通过）— 2026-11-10 11:11
+
+- 交付：特性分支 + 本文档入库（6a55a4f）；`ensureMcpModule`/`removeMcpModule` 纯函数
+  （锚点缩进域段内定界扫描、块列表写入、flow 风格跳过、空表连键摘除、锚点保留）；
+  模板 `config.yaml` 预置 `server.mcp:` 骨架（`enabled: false`）+ 段内锚点（8fc92b0）。
+- BDD/TDD：14 条新用例先 RED（`is not a function`/模板缺锚点）后 GREEN；全量 templates
+  套件 1246 用例/65 文件全绿；lint（if-newline 自动修复）/typecheck 通过。
+- 关键判定落码：`removeMcpModule` 保持纯文本语义——**双轨同名守卫归调用方**（锁真值），
+  设计稿签名中的 `remain` 参数去掉（§5.2 勘误）；段内定界 + flow 跳过两个评审 major
+  在纯函数层闭合。
+- 耗时：T2/T4 编码+审查约 20 分钟。
+- 遗留：无（Phase 2 接线直接消费）。
+
+### Phase 2：生命周期接线（T3，阶段评审通过）— 2026-11-10 11:35
+
+- 交付（49f0206d7）：三处接线全落——① installer `reloadStage`：带 `api` 段方案把名字登记进
+  `server.mcp.modules`（源 config + preview 派生双写；锚点缺失/flow 风格仅注记不阻塞安装的
+  best-effort 语义，注记随 reloading 段 message 进任务记录）；② uninstall：锁摘除后、reload
+  前摘除白名单（`lockEntryIsSolution` 双轨同名守卫；reload 失败/断言失败两条回滚路径对称加回
+  登记行，与锁一致回滚）；③ compensate：`config.mcp` 对称回滚步（仅本次真登记才注册该步）。
+- 附带收口：`previewSiblingOf`/`MCP_ANCHOR` 上收 text-edit.ts（纯函数叶模块，消 installer/
+  compensate 两处重复副本）；`oj-market` uninstall 端点补传 `configPath`（同 install 端点
+  `resolveDeploymentConfigPath` 解析口径；未传 = 跳过 MCP 摘除，旧调用形态零变化）。
+- BDD/TDD：12 条新用例先 RED 后 GREEN（其中 4 条为负向守卫：web-only 不登记、升级失败不误摘、
+  双轨同名不摘、reload 回滚加回）；RED 期修正两处用例自身缺陷（web-only 夹具缺 `m.web` 覆盖、
+  MCP_BASE 缺 anonymous_paths 基线）。全量 templates 套件 1258 用例/65 文件全绿；typecheck/
+  lint（0 error）通过。
+- 关键判定落码：登记/摘除时机对称——安装侧登记在 reload 前（热更代同时吃到锁 diff 与白名单
+  diff），卸载侧摘除同为锁后 reload 前；回滚语义双向对称（安装补偿摘除 ⇔ 卸载回滚加回）。
+  `mcpRegistered` 内部通道防误摘：升级失败（登记幂等 no-op）不回滚既有登记行。
+- 耗时：T3 阅读接线点 + 编码 + 审查约 25 分钟。
+- 遗留：无（Phase 3 消费面 T5/T6 直接依赖登记事实）。
