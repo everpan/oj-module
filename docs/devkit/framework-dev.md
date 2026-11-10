@@ -87,9 +87,11 @@ pnpm test tests/shell                       # 宿主全量
 1. **宿主共享依赖只能有一个版本**：安装走 `catalog:`，产物走宿主（cli 内置
    `shell-dist`）importmap 单例。私自写死 `react@18` 会导致「双 React」崩溃。
    （`bundle: true` 的自打包档不在其列——它们本就由各模块自带。）
-2. **`packages/runtime/dist`、`packages/cli/shell-dist` 随仓库提交**
-   （`.gitignore` 为它们开了例外）。**改了源码必须重建并提交产物**，
-   否则本地/CI 跑的是旧产物——历史上多次出现「方法不存在」。
+2. **`packages/runtime/dist`、`packages/cli/shell-dist` 是 gitignored 构建期产物**
+   （`.gitignore` 注释明载「构建期生成、不入库」；发布由 prepack 现场构建收编进包）。
+   **改了源码必须重建**（`pnpm --filter @oj-module/cli build:shell`，见 §3）再验证/提交，
+   否则本地跑的是旧产物——历史上多次出现「方法不存在」；版本 bump 后不重建会被
+   templates 漂移门禁拒（§3 ⚠️）。
 3. **不要绕过门禁**：宿主的导出完整性检查、动态 require 检查、版本矩阵校验
    都是硬门，失败要查根因，别 `--no-verify` 或注释掉断言。
 4. **改公开出口是破坏性变更**：runtime 出口有冻结契约测试
