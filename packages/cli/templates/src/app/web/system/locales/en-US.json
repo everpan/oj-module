@@ -8,6 +8,7 @@
 		"oplog": "Audit Log",
 		"settings": "Site Settings",
 		"wecom": "WeCom Integration",
+		"mcp": "MCP Services",
 		"departments": "Departments"
 	},
 	"common": {

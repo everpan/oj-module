@@ -1,6 +1,6 @@
 import type { MarketClient } from "../api/client";
 // 内存实现 MarketClient（BDD 测试注入用，无需真实后端）。
-import type { EnableInput, IndexPage, InstallInput, MarketHistory, PurgeHistoryResult, ReleasePage, TaskRecord, TrustReviewItem, UninstallImpact, UploadPackageResult } from "../types";
+import type { EnableInput, IndexPage, InstallInput, MarketHistory, McpCatalogResult, PurgeHistoryResult, ReleasePage, TaskRecord, TrustReviewItem, UninstallImpact, UploadPackageResult } from "../types";
 
 export interface FakeState {
 	indexPage?: IndexPage
@@ -28,6 +28,10 @@ export interface FakeState {
 	/** 删除「未安装成功版本」的返回；缺省为删除成功的常态 */
 	purgeResult?: PurgeHistoryResult
 	purgeError?: Error
+	/** MCP 工具目录（管理页状态卡/工具表数据源，20261110-1027 §4.3） */
+	mcpCatalogResult?: McpCatalogResult
+	/** catalog 拉取失败（页面错误面数据） */
+	mcpCatalogError?: Error
 }
 
 export class InMemoryMarketClient implements MarketClient {
@@ -122,5 +126,12 @@ export class InMemoryMarketClient implements MarketClient {
 		if (this.state.purgeError)
 			throw this.state.purgeError;
 		return this.state.purgeResult ?? { ok: true, deleted: 1, removedDir: false, message: "ok" };
+	}
+
+	async mcpCatalog() {
+		this.calls.push("mcpCatalog");
+		if (this.state.mcpCatalogError)
+			throw this.state.mcpCatalogError;
+		return this.state.mcpCatalogResult ?? { status: "unmounted" as const, groups: [] };
 	}
 }

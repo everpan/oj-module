@@ -1242,23 +1242,25 @@ export function createMarketApi(env: MarketEnv) {
 		// 门禁 + 取 JWT + origin 解析在此；tools/list 代理、tags[0] 分组归一、代际探测全归
 		// mcp-catalog.ts（SRP 同 upload/trust 纪律）。/mcp 不走租户管线（F10），浏览器 JWT 原样
 		// 透传；Accept 显式 application/json（F6 406 陷阱在服务端规避）。v1 无 audit 联查（§10 #11）。
-		"mcp/catalog": {
-			async get() {
-				await respond(async () => {
-					await assertSuperAdmin();
-					const headers = (http.headers ?? {}) as Record<string, string>;
-					const auth = Object.entries(headers).find(([k]) => k.toLowerCase() === "authorization")?.[1] ?? "";
-					const token = auth.replace(/^Bearer\s+/i, "").trim();
-					if (token === "")
-						fail(401, "需要浏览器登录态 Bearer JWT——上游 {base}/mcp 与 _system/config 以同一凭据鉴权");
-					const co = await resolveCanonicalOrigin(env);
-					const origin = co === undefined ? null : siteOrigin(co);
-					return fetchMcpCatalog({
-						fetch: await fetchOf(env),
-						origin: origin === null ? "" : `${origin.proto}://${origin.host}`,
-						token,
+		"mcp": {
+			catalog: {
+				async get() {
+					await respond(async () => {
+						await assertSuperAdmin();
+						const headers = (http.headers ?? {}) as Record<string, string>;
+						const auth = Object.entries(headers).find(([k]) => k.toLowerCase() === "authorization")?.[1] ?? "";
+						const token = auth.replace(/^Bearer\s+/i, "").trim();
+						if (token === "")
+							fail(401, "需要浏览器登录态 Bearer JWT——上游 {base}/mcp 与 _system/config 以同一凭据鉴权");
+						const co = await resolveCanonicalOrigin(env);
+						const origin = co === undefined ? null : siteOrigin(co);
+						return fetchMcpCatalog({
+							fetch: await fetchOf(env),
+							origin: origin === null ? "" : `${origin.proto}://${origin.host}`,
+							token,
+						});
 					});
-				});
+				},
 			},
 		},
 
@@ -1448,6 +1450,45 @@ marketApi.releases.get.response = {
 		page: { type: "number" },
 		size: { type: "number" },
 	},
+};
+// MCP 工具目录（20261110-1027 §4.1）：status 四态 + 分组工具视图（message/generation 可选）。
+// 工具条目出参宽松（additionalProperties:true）——上游 openapi 字段演进不破坏 client。
+marketApi.mcp.catalog.get.response = {
+	type: "object",
+	required: ["status", "groups"],
+	properties: {
+		status: { type: "string", enum: ["mounted", "unmounted", "auth", "unreachable"] },
+		message: { type: "string" },
+		generation: { type: "number" },
+		groups: {
+			type: "array",
+			items: {
+				type: "object",
+				required: ["module", "tools"],
+				properties: {
+					module: { type: "string" },
+					tools: {
+						type: "array",
+						items: {
+							type: "object",
+							required: ["name", "module", "readOnly", "destructive", "params"],
+							properties: {
+								name: { type: "string" },
+								description: { type: "string" },
+								module: { type: "string" },
+								readOnly: { type: "boolean" },
+								destructive: { type: "boolean" },
+								params: { type: "array", items: { type: "string" } },
+							},
+							additionalProperties: true,
+						},
+					},
+				},
+				additionalProperties: true,
+			},
+		},
+	},
+	additionalProperties: true,
 };
 
 export default marketApi;

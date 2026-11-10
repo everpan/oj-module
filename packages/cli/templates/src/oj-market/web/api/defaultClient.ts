@@ -12,6 +12,7 @@ import type {
 	IndexPage,
 	InstallInput,
 	MarketHistory,
+	McpCatalogResult,
 	PurgeHistoryResult,
 	ReleasePage,
 	TaskRecord,
@@ -28,6 +29,7 @@ import {
 	ojMarketHistoryDelete,
 	ojMarketHistoryGet,
 	ojMarketInstallPost,
+	ojMarketMcpCatalogGet,
 	ojMarketMetaGet,
 	ojMarketReleasesGet,
 	ojMarketTaskGet,
@@ -167,5 +169,9 @@ export const httpMarketClient: MarketClient = {
 	async uninstall(name: string) {
 		const data = await ojMarketUninstallPost({ name });
 		return data as { ok: boolean, message: string };
+	},
+	async mcpCatalog() {
+		// 生成 client 已解包信封 + DEV 校验；此处仅对齐领域类型。
+		return (await ojMarketMcpCatalogGet()) as unknown as McpCatalogResult;
 	},
 };

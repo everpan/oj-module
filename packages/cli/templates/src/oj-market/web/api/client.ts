@@ -10,6 +10,7 @@ import type {
 	IndexPage,
 	InstallInput,
 	MarketHistory,
+	McpCatalogResult,
 	PurgeHistoryResult,
 	ReleasePage,
 	TaskRecord,
@@ -55,4 +56,6 @@ export interface MarketClient {
 	uninstallImpact: (name: string) => Promise<UninstallImpact>
 	/** 卸载（P1-15a 补齐后接通） */
 	uninstall: (name: string) => Promise<{ ok: boolean, message: string }>
+	/** MCP 工具目录（GET /oj-market/mcp/catalog；superadmin，20261110-1027 §4.3 管理页数据源） */
+	mcpCatalog: () => Promise<McpCatalogResult>
 }

@@ -212,14 +212,14 @@ describe("gET /api/oj-market/mcp/catalog 端点管道（superadmin，R9）", () 
 	it("当 非 superadmin 访问，则 403（拒权不泄露存在性，R9 同款）", async () => {
 		const api = createMarketApi(makeEnv({ fetch: MCP_FETCH }));
 		g.http = { user: { id: 2 }, headers: { authorization: "Bearer tok" } };
-		await api["mcp/catalog"].get();
+		await api.mcp.catalog.get();
 		expect(last?.status).toBe(403);
 	});
 
 	it("当 superadmin 但无 Authorization 头，则 401 可读（/mcp 上游同样以该 JWT 鉴权）", async () => {
 		const api = createMarketApi(makeEnv({ fetch: MCP_FETCH }));
 		g.http = { user: { id: 1 }, headers: {} };
-		await api["mcp/catalog"].get();
+		await api.mcp.catalog.get();
 		expect(last?.status).toBe(401);
 		expect(String(last?.msg)).toContain("Bearer");
 	});
@@ -233,7 +233,7 @@ describe("gET /api/oj-market/mcp/catalog 端点管道（superadmin，R9）", () 
 		const api = createMarketApi(makeEnv({ fetch: fetchSpy }));
 		// 头键大小写随客户端（wecom/api.ts 同款口径）
 		g.http = { user: { id: 1 }, headers: { Authorization: "Bearer browser-jwt" } };
-		await api["mcp/catalog"].get();
+		await api.mcp.catalog.get();
 		expect(last?.status).toBe(200);
 		expect(seen[0]).toContain("http://site.example:9781/mcp");
 		expect(seen[0]).toContain("Bearer browser-jwt");
