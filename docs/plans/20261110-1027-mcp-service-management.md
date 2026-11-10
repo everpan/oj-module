@@ -38,10 +38,10 @@ agent 工具：
 | F4 | `mcp.enabled` 且无 auth 插件且未显式 `allow_anonymous: true` → **启动 fail-fast** | `api-manual.md` §14 |
 | F5 | **reload 热更覆盖 `server.mcp`**：`do_reload` 每代重读完整 config.yaml → `App::from_config(cfg)` 影子装配 → 重建内层 router（含 mcp 挂载决策与 modules 白名单）→ swap。`diff_configs` 将 `server` 段标 `kept_listener` 仅指 TCP listener 永生（端口/证书不重绑），不阻碍 mcp 配置热生效 | `oj/src/serve_cmd.rs:455-545,648-685` |
 | F6 | 浏览器直调陷阱：`Accept: */*` → 406，须显式 `Accept: application/json`；batch→-32600；非 JSON Content-Type→415 | `serve/src/mcp_http.rs` `accept_ok` |
-| F7 | `GET {base}/_system/config` 已存在：Bearer 验签或 loopback 门控，返回 config_path/sha256/loaded_at/generation/modules（刻意低敏，**无 mcp 配置字段**）；**POST 同路径 = 手动触发热更**（`?force=1`）——手工改 config 后的生效通道 | `serve/src/reload.rs` `handle_config` |
+| F7 | `GET {base}/_system/config` 已存在：Bearer 验签或 loopback 门控，返回 config_path/sha256/loaded_at/generation/modules（刻意低敏，**无 mcp 配置字段**）；**POST 同路径 = 手动触发热更**（`?force=1`）——手工改 config 后的生效通道。**T8 真机补钉**：① sha256 = `doc_sha(解析后 YAML 规范指纹)`（`serve_cmd.rs` `do_reload`），**非文件字节 sha**——磁盘文件 sha256 与之永不相等，不可作两态对比依据；② dev（`ojm dev` 派生临时配置 `.ojm-tmp-config.yaml`）启动代 sha256 恒空串、首次热更后才有值；③ `_system/health` 匿名可达（出 config_path）、`_system/config` 需 Bearer 但**免租户头**、`/api/mcp` 需 Bearer + 租户头三者门槛各异 | `serve/src/reload.rs` `handle_config`、T8 真机 |
 | F8 | 本仓安装器已有 config.yaml 文本锚点改写先例：anonymous_paths 接线（`fsFace().readFile` + `text-edit.ts` 整行锚点插入，注释逐字保留）→ reloadConfig 热更；**且源 config 与 preview 派生文件 `.ojm-preview.yaml` 双写**（preview 服务器只读派生文件） | `_lifecycle/installer.ts:412-456`、`_lifecycle/text-edit.ts`、`compensate.ts:85-99` |
 | F9 | 模板 config.yaml 随发布带锚点注释（P1-16 接线点先例：`# ojm:reload`）；模板 `config.yaml:116` 另有 `platform: modules: [_platform, oj-market]`——**`modules:` 键名不唯一** | `_lifecycle/text-edit.ts` D3 注释、模板 config.yaml |
-| F10 | `server:` 段无 `deny_unknown_fields`——错层级键（如 `server.modules`）被**静默忽略**；`{enabled: false}` ≡ 段缺失（挂载门 `enabled.then(...)`）；`/mcp` 是独立 axum 路由，admit 仅验 auth、不走租户管线，裸 `tools/list` 无需 initialize 握手 | `src/config.rs:895/1657`、`oj/src/app.rs:2322`、`serve/src/lib.rs:336` |
+| F10 | `server:` 段无 `deny_unknown_fields`——错层级键（如 `server.modules`）被**静默忽略**；`{enabled: false}` ≡ 段缺失（挂载门 `enabled.then(...)`）；`/mcp` 是独立 axum 路由，admit 仅验 auth、裸 `tools/list` 无需 initialize 握手。**勘误（T8 真机钉出）**：源码读面「不走租户管线」仅指 mcp 层自身——`/api/mcp` 仍在外层 tenant 中间件之后，租户中间件启用站点缺 `X-TENANT-ID` 即 400「missing tenant header」（服务端代理出站与外部 MCP client 同受影响，接入配置必须写全请求头） | `src/config.rs:895/1657`、`oj/src/app.rs:2322`、`serve/src/lib.rs:336`、T8 真机 400 复现 |
 | F11 | MCP 鉴权吃站点 JWT：上游 oj-auth 验 `exp` **leeway 0**（`plugins/oj-auth/src/lib.rs:172`），守卫只验签不签发，**无机器凭据/长期 token 面**；tool description **仅取 operation summary**（缺失=空串） | `oj-auth lib.rs`、`mcp.rs:110-117` |
 | F12 | initialize 回 `capabilities:{tools:{}}` **无 `listChanged`**，stateless 无 session 无从推送——agent 目录取定于连接建立，升级后须**重连**才见新目录，会话中调旧工具得 -32601；`serverInfo` 恒 `"oj"`+引擎版本、无 `instructions` 字段；裸 Bearer 无 `WWW-Authenticate`/OAuth 发现面（上游定案取舍） | `mcp_http.rs:273-287,504`、`serve/src/lib.rs:219-220` |
 
@@ -304,7 +304,7 @@ agent 工具：
 | T5 | oj-market API：`GET /mcp/catalog` 代理端点（归一+分组+静态统计+代际探测，无 audit 联查）+ 归一单测（§4.1 数据表，FetchFace stub） | T1 | ✅ |
 | T6 | `ojm api` 重生成 client；system 路由 + i18n | T5 | ✅ |
 | T7 | 管理页（状态卡四态指引/常驻 Alert/分组工具表/质量标注/漂移/静态统计/接入配置含 client 实配/刷新；纯文本渲染断言）+ vitest（§4.3 场景） | T6 | ✅ |
-| T8 | 全量校验：`pnpm test`/`pnpm lint`/`pnpm typecheck`；真机演练钉死形态 = `ojm dev` 起真实 oj serve（reload 返回 generation 非 unchanged——dev embedded 无 server 时 reloadOf 回落 no-op，热更路径未被演练） | T7 | ☐ |
+| T8 | 全量校验：`pnpm test`/`pnpm lint`/`pnpm typecheck`；真机演练钉死形态 = `ojm dev` 起真实 oj serve（reload 返回 generation 非 unchanged——dev embedded 无 server 时 reloadOf 回落 no-op，热更路径未被演练） | T7 | ✅ |
 | T9 | 收尾：更新本文档任务状态与总结段落；R3'/R4'/R2'/R1' 需求落 `docs/prd/` 提上游 | T8 | ☐ |
 
 ## 8. 调研问题记录（分类）
@@ -338,6 +338,27 @@ agent 工具：
 - **观测缺口**：目录漂移（升级换 tool 名/同名 tool 指向变化）破坏已保存 agent 配置，
   v1 不观测（依赖 R3' 凭据面解耦），v2 以安装路径 tools/list 前后 diff 补齐，任务历史
   承载。
+- **sha 物理不符（反常规，T8 真机钉出）**：`_system/config` 的 sha256 = `doc_sha(parsed YAML)`
+  值规范指纹（`serve_cmd.rs` do_reload），非原始文件字节 sha——真机实测同文件两侧
+  `7aaf6269…` vs `975a255f…` 永不相等。T7 落地的「磁盘文件 sha 对比已加载 sha」两态方案
+  物理不成立（恒误报「已修改未热更」），整案重设计为 `diskMcpEnabled` 直读磁盘 config 的
+  `server.mcp.enabled` 联合 404 判定（engine 无关、dev 临时配置与 release 同语义）。
+  教训：跨进程对比指纹前先实测两侧指纹的物理口径。
+- **租户头门槛分层（T8 真机钉出，F10 勘误）**：同一 `{base}` 下三个系统面鉴权门槛各异——
+  `_system/health` 全免（匿名）、`_system/config` 仅 Bearer、`/api/mcp` Bearer+X-TENANT-ID。
+  租户中间件启用的站点，服务端代理出站缺租户头即 400；外部 MCP client（Claude/Cursor
+  静态头实配）同受影响——接入配置必须写全两组请求头（tenant 值随 catalog 结果透出）。
+- **dev 临时配置语义（T8 真机钉出）**：`ojm dev` 跑派生临时配置 `.ojm-tmp-config.yaml`，
+  改源 config.yaml 须重启 dev 才生效；POST reload 只热临时配置。启动代 sha256 恒空串
+  （首热更后才有值）——两态判定已改磁盘 enabled 直读，不再依赖 sha，dev/release 同语义。
+- **白名单缺省 = 全暴露（T8 真机观测）**：脚手架零安装站点启用 mcp 后，tools/list 暴露
+  **全部已加载 api 模块**（实测 8 组 78 工具，含 `_platform`/`auth_login` 等框架自身端点）
+  ——F3 的 fail-open 缺省面。首个方案安装后白名单键生成即转 fail-closed。页面非方案
+  折叠组如实收纳这些组，Alert 文案「仅方案模块工具对外暴露」指白名单存在后的稳态。
+- **上游方案包债（环境记录，非本仓）**：oj-wiki 0.1.3（含 HEAD）`collection` 表缺
+  `tenant_id`，被新 oj 的 `tenant.sql_guard` 拒迁移——演练场无法装 wiki 拿「方案组」形态；
+  mounted/归一/分组已由 8 组 78 个真实工具钉死，方案组 vs 非方案折叠的分叉由 §4.3 单测
+  承载。oj-wiki 侧需补列（或显式 `tenant: false` 进 shared_allow）。
 
 ## 9. 备注
 
@@ -436,3 +457,27 @@ agent 工具：
 - 耗时：两态判定 15 分钟；页面+用例 30 分钟；脚手架陷阱定位与修复 25 分钟（真机烟囱首红
   → 根因=include 白名单 → 全新脚手架复验闭环）。
 - 遗留：T8 全量校验 + 真机 reload generation 形态钉死；T9 收尾 + 上游需求落 PRD。
+
+### Phase 5：真机演练与形态钉死（T8，阶段评审通过）— 2026-11-10 13:20
+
+- 交付（6749cbd）：真机 `ojm dev` 起真实 oj serve，钉出三处形态缺陷并修正（每处 spec 先
+  RED 后 GREEN）：① **{base} = API 挂载前缀**——出站 URL 为 `origin + /api + /mcp` 与
+  `/api/_system/config`，不是站点根（`reload.rs` system_fallback 在 mount prefix 集合分流；
+  初版误用站点根，日志 `POST /mcp 404` 实锤）；② **F10 勘误 + 租户头透传**——`/api/mcp`
+  在外层 tenant 中间件之后，缺 `X-TENANT-ID` 即 400；请求租户头透传出站 + 结果新增
+  `tenant` 字段，页面接入配置写全 Authorization+X-TENANT-ID（外部 client 同受影响）；
+  ③ **两态判定重设计**——真机实测 `_system/config` 的 sha256 = `doc_sha(解析后 YAML)`
+  规范指纹（7aaf…）≠ 文件字节 sha（975a…），T7 的磁盘 sha 对比案物理不成立；改为
+  `diskMcpEnabled` 直读磁盘 config 的 `server.mcp.enabled` 联合 404 判定，probe 收敛为
+  只取 generation，cfg_sha256/sha256 双字段兼容层随之删除。
+- 真机三段验证全过：磁盘 disabled+404 →「尚未修改」；磁盘 enabled 未热更+404 →「已修改
+  未触发热更」；POST `{base}/_system/config` → `generation:1`（非 unchanged）→ catalog
+  即刻透出 gen 1 + mounted + 8 组 78 个真实工具（F1 归一实锤：tags[0]=模块名、
+  readOnlyHint=GET、destructiveHint=DELETE、三键 params、description=summary）。
+- 全量绿：templates 1272 用例/66 文件 + 仓库根 1031 用例；typecheck/lint 0 error。
+- 排障路径存档：isolate 出站「无日志」系 grep pattern 漏了无前缀 path（请求真实到达 TCP
+  层）；演练场 404 系脚手架模块代码陈旧（同步仓内修复后复验）；wiki 安装尝试暴露上游
+  sql_guard 债（§8 留档，非本仓阻断项）。
+- 耗时：排障定位（陈旧代码→400→sha 物理→两态重设计）约 50 分钟；两态 RED→GREEN +
+  真机三段复验约 25 分钟；提交与文档回写约 15 分钟。
+- 遗留：T9 收尾（任务状态 + 总结段落）+ R3'/R4'/R2'/R1' 需求落 `docs/prd/` 提上游。
