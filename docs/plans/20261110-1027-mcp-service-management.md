@@ -305,7 +305,7 @@ agent 工具：
 | T6 | `ojm api` 重生成 client；system 路由 + i18n | T5 | ✅ |
 | T7 | 管理页（状态卡四态指引/常驻 Alert/分组工具表/质量标注/漂移/静态统计/接入配置含 client 实配/刷新；纯文本渲染断言）+ vitest（§4.3 场景） | T6 | ✅ |
 | T8 | 全量校验：`pnpm test`/`pnpm lint`/`pnpm typecheck`；真机演练钉死形态 = `ojm dev` 起真实 oj serve（reload 返回 generation 非 unchanged——dev embedded 无 server 时 reloadOf 回落 no-op，热更路径未被演练） | T7 | ✅ |
-| T9 | 收尾：更新本文档任务状态与总结段落；R3'/R4'/R2'/R1' 需求落 `docs/prd/` 提上游 | T8 | ☐ |
+| T9 | 收尾：更新本文档任务状态与总结段落；R3'/R4'/R2'/R1' 需求落 `docs/prd/` 提上游 | T8 | ✅ |
 
 ## 8. 调研问题记录（分类）
 
@@ -481,3 +481,33 @@ agent 工具：
 - 耗时：排障定位（陈旧代码→400→sha 物理→两态重设计）约 50 分钟；两态 RED→GREEN +
   真机三段复验约 25 分钟；提交与文档回写约 15 分钟。
 - 遗留：T9 收尾（任务状态 + 总结段落）+ R3'/R4'/R2'/R1' 需求落 `docs/prd/` 提上游。
+
+## 12. 总结（T9 定稿）— 2026-11-10 13:35
+
+- **全链交付**：T1-T9 九项全 ✅。模板层 `ensureMcpModule`/`removeMcpModule` 段内定界纯函数 →
+  安装登记/卸载摘除/补偿回滚三处对称接线 → `{base}/mcp` 目录代理端点（归一+分组+代际探测
+  +unmounted 两态指引）→ 生成 client 三件套 + `/system/framework/mcp` 路由（superadmin）→
+  管理页全场景（四态状态卡/常驻 Alert/分组工具表/质量标注/漂移对账/非方案折叠/接入配置）→
+  真机演练钉死三处形态缺陷并修正 → 上游需求 R3'/R4'/R5'/R2'/R1' 落
+  `docs/prd/202611101330-oj-mcp-upstream-requirements.md`。
+- **质量基线**：templates 套件 1272 用例/66 文件 + 仓库根 1031 用例全绿；typecheck/lint
+  0 error；`ojm api --check` 0 drift；uni-dev 真机烟囱（init+build）绿。
+- **关键过程与耗时**（累计约 5.5 小时）：
+  - Phase 1 地基（T2/T4）20 分钟：纯函数先 RED 后 GREEN，评审两个 major（段内定界/flow
+    跳过）在函数层闭合。
+  - Phase 2 生命周期接线（T3）25 分钟：登记/摘除/回滚三处对称，12 用例含 4 负向守卫。
+  - Phase 3 消费面（T5/T6）45 分钟：归一数据表 8 用例 + 生成链重跑 + 三件套。
+  - Phase 4 管理页（T7）70 分钟：页面 11 用例 + 服务端两态 5 用例；真机烟囱钉出 include
+    白名单裁剪陷阱（vite/tsc/单测全绿拦不住，只有 init+build 能抓）25 分钟定位修复。
+  - Phase 5 真机演练（T8）90 分钟：排障链「grep 漏配 → 脚手架代码陈旧 → 400 租户头 →
+    sha 物理不符」层层剥出三处形态缺陷；两态整案重设计为磁盘 enabled 直读；真机三段
+    （尚未修改/已修改未热更/热更 mounted gen 1）全过。
+  - Phase 6 收尾（T9）15 分钟：PRD 落地 + 本总结。
+- **方法论沉淀**（进 §8 与记忆）：① 跨进程对比指纹前先实测两侧指纹的物理口径（sha 案）；
+  ② 源码读面结论必须真机复核——「不走租户管线」在中间件层不成立（F10 勘误）；③ 真机
+  init+build 是脚手架裁剪陷阱的唯一验证面；④ 演练场的脚手架代码是 init 时刻快照，改仓内
+  源码后必须同步并重启才反映修复（本次排障第一环）。
+- **风险与未验证项**：① release 形态（`oj serve` 直接跑 config.yaml、无 dev 临时配置）未
+  演练——两态判定 dev 已三段验证，release 语义同构但未实测；② 方案组 vs 非方案折叠的
+  真机分叉未验（wiki 包被上游 sql_guard 拒，§8 留档），由 §4.3 单测承载；③ 多 api mount
+  站点按 §9 备忘单目录处理，留规模信号。
