@@ -113,16 +113,26 @@ function peekContractName(contractPath: string): string | undefined {
 }
 
 /**
+ * 契约文件枚举（静默，零日志）：工程根契约（solution.yaml 优先于 manifest.yaml）
+ * + 全部模块级契约 + 内置名单。消费方各自决定空集与提示的呈现——bundle 侧报错/hint，
+ * 普通 build 门禁静默跳过。
+ */
+function collectContractTargets(projectRoot: string): { root?: string, module: BundleTarget[], builtin: Set<string> } {
+	const builtin = readBuiltinModules(projectRoot);
+	const module = collectModuleContracts(projectRoot);
+	const rootSolution = path.join(projectRoot, "solution.yaml");
+	const rootManifest = path.join(projectRoot, "manifest.yaml");
+	const root = fs.existsSync(rootSolution) ? rootSolution : fs.existsSync(rootManifest) ? rootManifest : undefined;
+	return { root, module, builtin };
+}
+
+/**
  * 契约解析复数化（优先级矩阵见文件头注释）。
  * 内置排除只是便利机制不是安全边界：伪造/删除名单的最坏后果在打包侧，
  * 安装侧信任链（签名 + 信任库，fail-closed）与它无关。
  */
 function resolveContractTargets(projectRoot: string, name?: string): BundleTarget[] {
-	const builtin = readBuiltinModules(projectRoot);
-	const moduleContracts = collectModuleContracts(projectRoot);
-	const rootSolution = path.join(projectRoot, "solution.yaml");
-	const rootManifest = path.join(projectRoot, "manifest.yaml");
-	const rootContract = fs.existsSync(rootSolution) ? rootSolution : fs.existsSync(rootManifest) ? rootManifest : undefined;
+	const { root: rootContract, module: moduleContracts, builtin } = collectContractTargets(projectRoot);
 
 	// --bundle <name>：先按目录名选模块级契约，再比对根契约 name
 	if (name !== undefined) {
@@ -502,6 +512,40 @@ function checkLocales(m: Record<string, unknown>, layout: ProjectLayout, name: s
 		texts[lang] = fs.readFileSync(p, "utf8");
 	}
 	return [...out, ...checkLocalesComplete(m, texts["zh-CN"] ?? "", texts["en-US"] ?? "")];
+}
+
+/**
+ * 普通 `ojm build` 的文件面契约门禁（C2-12a 表集 / C2-12c 表前缀 / C2-25 locales）。
+ *
+ * 背景：契约 §4.1 构建列此前只锚在 `ojm build --bundle` 校验段（P1-11），普通 build
+ * 全链路零检查点——前缀违规要到打包第二步才暴露，第一步零报错即「门禁失效」观感。
+ * 此处对全部用户方案契约（工程根契约优先，与 bundle 同一优先级矩阵）执行与 bundle
+ * 校验段同源的 checkTables/checkLocales（同一块代码两处执行），违规聚合抛错（exit 1，
+ * 任何产物写入之前 fail-fast）。manifest 内在规则（validateContract）仍归 --bundle
+ * 校验段，不在本门禁重复。
+ */
+export async function assertSolutionFileContract(projectRoot: string): Promise<void> {
+	const { root, module, builtin } = collectContractTargets(projectRoot);
+	const targets = root ? [{ contractPath: root }] : module.filter(c => !builtin.has(c.moduleDir!));
+	if (targets.length === 0)
+		return; // 零用户契约（脚手架/纯前端工程）静默放行——普通 build 不因无方案而失败
+	const layout = resolveLayout(projectRoot);
+	const violations: string[] = [];
+	for (const t of targets) {
+		const parsed = parseManifest(fs.readFileSync(t.contractPath, "utf8"));
+		if (!parsed.ok) {
+			violations.push(`【${path.relative(projectRoot, t.contractPath)}】${parsed.error}`);
+			continue;
+		}
+		const name = parsed.manifest.name;
+		if (typeof name !== "string" || name === "")
+			continue; // name 缺失/非法归 validateContract 域（--bundle 校验段正式判罚）
+		for (const x of [...checkTables(parsed.manifest, layout, name), ...checkLocales(parsed.manifest, layout, name)])
+			violations.push(`【${name}】${x}`);
+	}
+	if (violations.length > 0) {
+		throw new Error(`[ojm] 方案构建失败：文件面契约未通过（${violations.length} 项，全量列出）：\n${violations.map(x => `- ${x}`).join("\n")}`);
+	}
 }
 
 /** 私钥/凭证文件名红线（P2-4 入包自检）：*.pem/*.key/*.p12/*.pfx、.env 系（.env/.env.*）、id_ed25519|id_rsa */
