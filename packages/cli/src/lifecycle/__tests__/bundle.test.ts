@@ -346,6 +346,33 @@ describe("buildBundle · 校验先于打包（fail-fast）", () => {
 		writeManifest(m);
 		await expect(pack()).rejects.toThrow(/C2-25/);
 	});
+
+	// REQ-14（202611101403 §D2）：手填 web.css 与 vite 产物名脱节（oj-dbx 0.1.0 实测阻断 --bundle），
+	// css 真源统一为安装器树扫描——bundle 侧不再对 css 对盘，改废弃告警。
+	it("c2-27 软化：web.css 幽灵声明不再失败，改废弃告警（REQ-14）", async () => {
+		const m = readManifest();
+		m.web.css = ["modules/demo-solution/0.1.0/oj-dbx.css"]; // 幽灵：dist 树无此文件
+		writeManifest(m);
+		const spy: string[] = [];
+		const orig = console.log;
+		console.log = (msg?: unknown) => {
+			spy.push(String(msg));
+		};
+		try {
+			await expect(pack()).resolves.toMatchObject({ name: "demo-solution" });
+		}
+		finally {
+			console.log = orig;
+		}
+		expect(spy.join("\n")).toMatch(/web\.css.*废弃/);
+	});
+
+	it("c2-27 保留：web.entry 声明产物缺失仍失败（entry 名固定确定性成立，守护既有行为）", async () => {
+		const m = readManifest();
+		m.web.entry = "modules/demo-solution/0.1.0/nope.js";
+		writeManifest(m);
+		await expect(pack()).rejects.toThrow(/C2-27/);
+	});
 });
 
 // ── 助手 ──

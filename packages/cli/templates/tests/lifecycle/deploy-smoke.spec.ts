@@ -275,6 +275,44 @@ describe("deployWeb（stage=deploying：staging/web 树 → 站点 modules 目�
 		expect(r.ok).toBe(false);
 		expect(await fsp.readFile(modulesJsonPath, "utf8")).toBe("not-json");
 	});
+
+	// REQ-14（202611101403 §D1）：css 真源统一为包内树扫描（与 site build/installed-merge 同口径），
+	// manifest 手填 web.css 废弃——手填与 vite 产物名脱节是 REQ-14 缺陷根源。
+	it("当 树内顶层含 *.css 且 manifest 未声明 web.css，则 modules.json 与旁车自动登记 css（字母序；修复「不声明即丢链接」反向缺陷）", async () => {
+		const src = await seedStagingWeb();
+		await fsp.writeFile(join(src, "theme.css"), CSS); // 第二个 css 验字母序；assets/ 子目录不扫
+		const r = await deployWeb(dwCtx({
+			manifest: solManifest({ web: { entry: "modules/demo-solution/0.1.0/entry.js" } }),
+		}));
+		expect(r.ok).toBe(true);
+		const expectCss = ["/modules/demo-solution/0.1.0/main.css", "/modules/demo-solution/0.1.0/theme.css"];
+		const list = JSON.parse(await fsp.readFile(modulesJsonPath, "utf8"));
+		expect(list[0].css).toEqual(expectCss);
+		const sidecar = JSON.parse(await fsp.readFile(join(siteModulesDir, "demo-solution", "0.1.0", ".ojm-module.json"), "utf8"));
+		expect(sidecar.css).toEqual(expectCss);
+	});
+
+	it("当 manifest 声明幽灵 css（树内无此文件），则 忽略不登记、安装成功（扫描值取代手填，不再透传 404 路径）", async () => {
+		await seedStagingWeb();
+		const r = await deployWeb(dwCtx({
+			manifest: solManifest({ web: { entry: "modules/demo-solution/0.1.0/entry.js", css: ["modules/demo-solution/0.1.0/oj-dbx.css"] } }),
+		}));
+		expect(r.ok).toBe(true);
+		const list = JSON.parse(await fsp.readFile(modulesJsonPath, "utf8"));
+		expect(list[0].css).toEqual(["/modules/demo-solution/0.1.0/main.css"]);
+		expect(JSON.stringify(list)).not.toContain("oj-dbx.css");
+	});
+
+	it("当 树内无 css 且 manifest 未声明，则 css 字段缺省（守护既有形态，双态皆过）", async () => {
+		await seedStagingWeb();
+		await fsp.rm(join(staging, "web", "modules", "demo-solution", "0.1.0", "main.css"));
+		const r = await deployWeb(dwCtx({
+			manifest: solManifest({ web: { entry: "modules/demo-solution/0.1.0/entry.js" } }),
+		}));
+		expect(r.ok).toBe(true);
+		const list = JSON.parse(await fsp.readFile(modulesJsonPath, "utf8"));
+		expect(list[0].css).toBeUndefined();
+	});
 });
 
 describe("reloadAndAssert（stage=reloading：R18 修订——安装 unchanged=幂等成功且默认不强制模块符号；卸载 unchanged/缺 -name@ver=严格失败；force+unchanged=失败）", () => {

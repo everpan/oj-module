@@ -166,6 +166,13 @@ export async function deployWeb(ctx: DeployWebContext): Promise<StageResult> {
 	const integrity = typeof ctx.integrity === "string" && ctx.integrity !== ""
 		? ctx.integrity
 		: typeof web.integrity === "string" ? web.integrity : undefined;
+	// REQ-14：css 真源 = 包内版本目录顶层 *.css 扫描（与 site build / installed-merge 同口径），
+	// manifest 手填 web.css 废弃（值忽略）——手填与 vite 产物名脱节即 REQ-14 缺陷根源。
+	// copyTree 刚写入本目录，readdir 不会失败；无 css = 字段缺省。
+	const css = (await f.readdir(`${ctx.siteModulesDir}/${ctx.name}/${ctx.version}`))
+		.filter(n => n.endsWith(".css"))
+		.sort()
+		.map(file => `modules/${ctx.name}/${ctx.version}/${file}`);
 	const entry: ModuleEntry = {
 		name: ctx.name,
 		entry: posixPath(web.entry),
@@ -176,7 +183,7 @@ export async function deployWeb(ctx: DeployWebContext): Promise<StageResult> {
 		// R2.2：引用式 solution 的 dependencies 据包内 native manifest 回读装配
 		...(apiDepsOf(m, ctx.nativeManifest).length > 0 ? { dependencies: apiDepsOf(m, ctx.nativeManifest) } : {}),
 		chunks: [], // 单 entry 产物无懒加载 chunk（宿主 collectPreloads 消费 `?? []`，字段形状齐备）
-		...(Array.isArray(web.css) ? { css: web.css.map(c => posixPath(String(c))) } : {}),
+		...(css.length > 0 ? { css } : {}),
 		...(integrity !== undefined ? { integrity } : {}),
 		...(typeof m.peerRuntime === "string" ? { peerRuntime: m.peerRuntime } : {}),
 	};
