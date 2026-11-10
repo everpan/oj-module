@@ -144,6 +144,10 @@ function makeAction(def: HelpEntry, projectRoot: string, lang: Lang, exit: (code
 						console.log(`[ojm] 共打包 ${results.length} 份方案包（逐包签名：ojm sign dist/<name>-<version>.tgz --id <publisher>.<key> --check）`);
 					return;
 				}
+				// 文件面契约门禁（C2-12a/12c/25）：表前缀/表集/locales 与 --bundle 校验段同源，
+				// 任何产物写入前 fail-fast——此前普通 build 零检查点，前缀违规到打包才暴露
+				const { assertSolutionFileContract } = await import("./bundle");
+				await assertSolutionFileContract(projectRoot);
 				const { buildBackend, buildModules } = await import("./build");
 				await buildBackend(projectRoot);
 				const built = await buildModules(projectRoot, { mergeSite: true });

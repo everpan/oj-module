@@ -20,7 +20,9 @@ let exitSpy: ReturnType<typeof vi.fn>;
 
 // 提升式 mock：vitest 测试体内注册的 vi.mock 拦不到 cli.ts 的 dynamic import，须 hoisted 顶层注册
 const buildBundleMock = vi.hoisted(() => vi.fn(async () => [{ file: "x.tgz" }]));
-vi.mock("../bundle", () => ({ buildBundle: buildBundleMock }));
+// 文件面契约门禁（C2-12a/12c/25，普通 build）：默认放行，门禁失败用例再改写
+const fileGateMock = vi.hoisted(() => vi.fn(async () => {}));
+vi.mock("../bundle", () => ({ buildBundle: buildBundleMock, assertSolutionFileContract: fileGateMock }));
 // 脚手架完整性门禁（scaffold-guard）：门禁失败必须先于一切产物写入
 const guardMock = vi.hoisted(() => vi.fn());
 vi.mock("../scaffold-guard", () => ({ assertDefaultModulesUntouched: guardMock }));
@@ -45,9 +47,12 @@ afterEach(() => {
 	buildBundleMock.mockClear();
 	vendorCommandMock.mockClear();
 	signCommandMock.mockClear();
-	guardMock.mockClear();
+	// mockClear 不清实现：guard 失败用例的 mockImplementation(throw) 若不重置会泄漏进后续用例
+	guardMock.mockReset();
 	buildBackendMock.mockClear();
 	buildModulesMock.mockClear();
+	fileGateMock.mockReset();
+	fileGateMock.mockImplementation(async () => {});
 });
 
 interface RunResult { out: string, unknown: string[], exitCode: number | undefined }
@@ -243,6 +248,22 @@ describe("脚手架完整性门禁", () => {
 		const r = await run(["build", "--bundle", "demo"], "zh-CN", tmp);
 		expect(buildBundleMock).not.toHaveBeenCalled();
 		expect(r.exitCode).toBe(1);
+	});
+
+	it("文件面契约门禁失败（C2-12c 表前缀）→ 普通 build 零产物、exit 1（先于 buildBackend）", async () => {
+		fileGateMock.mockRejectedValue(new Error("[ojm] 方案构建失败：文件面契约未通过（1 项，全量列出）：\n- 【demo】【C2-12c】schema.yaml 缺 prefix"));
+		const r = await run(["build"], "zh-CN", tmp, () => fileGateMock.mock.calls.length > 0);
+		expect(fileGateMock).toHaveBeenCalledWith(tmp);
+		expect(buildBackendMock).not.toHaveBeenCalled();
+		expect(buildModulesMock).not.toHaveBeenCalled();
+		expect(r.out).toContain("C2-12c");
+		expect(r.exitCode).toBe(1);
+	});
+
+	it("文件面契约门禁放行 → 普通 build 继续（buildBackend 执行）", async () => {
+		await run(["build"], "zh-CN", tmp, () => buildBackendMock.mock.calls.length > 0);
+		expect(fileGateMock).toHaveBeenCalledWith(tmp);
+		expect(buildBackendMock).toHaveBeenCalled();
 	});
 });
 
