@@ -342,10 +342,14 @@ async function assembleBundle(projectRoot: string, layout: ProjectLayout, plan: 
 				}
 			}
 			const web = m.web as Record<string, unknown>;
-			for (const rel of [web.entry, ...(Array.isArray(web.css) ? web.css : [])]) {
-				if (typeof rel === "string" && !fs.existsSync(path.join(root, "web", rel))) {
-					throw new Error(`[ojm] 方案包构建失败：web 声明的产物不存在：${rel}（C2-27 成品存在性复核；请核对该文件是否已在本次构建产出）`);
-				}
+			// C2-27（REQ-14 修订 0.2.82）：仅复核 entry——vite 产物 css 名作者无从预知，手填
+			// web.css 与产物必然脱节（oj-dbx 实测阻断出包）；css 真源统一为安装器 deployWeb
+			// 对包内树顶层扫描登记，声明值忽略、仅废弃告警。
+			if (typeof web.entry === "string" && !fs.existsSync(path.join(root, "web", web.entry))) {
+				throw new Error(`[ojm] 方案包构建失败：web 声明的产物不存在：${web.entry}（C2-27 成品存在性复核；请核对该文件是否已在本次构建产出）`);
+			}
+			if (Array.isArray(web.css)) {
+				console.log(`[ojm] ⚠️ ${name}：solution.yaml 的 web.css 手填已废弃（0.2.82）：产物 css 由安装器扫描包内树自动登记，请从契约删除该字段（本次忽略其值）`);
 			}
 		}
 
