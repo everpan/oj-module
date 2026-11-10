@@ -1217,6 +1217,9 @@ export function createMarketApi(env: MarketEnv) {
 						lockPath: `${env.sharedRoot}/manifests.yaml`,
 						state: await createStateStore(env.statePath),
 						modulesJsonPath: env.modulesJsonPath,
+						// configPath 供 MCP 白名单摘除写面（20261110-1027 T3；同 install 端点解析口径：
+						// 部署真实 config 优先，回落 env.configPath；两者俱缺 = 跳过 MCP 摘除）
+						configPath: (await resolveDeploymentConfigPath(env.apiPrefix)) ?? env.configPath,
 						operator: (await operatorOf()) ?? undefined,
 						reload: reloadOf(env),
 					});

@@ -3,6 +3,18 @@
 // 因此只做文本级行操作：锚点是整行注释（如 `# ojm:mount`），块插入其下一行。
 // 匹配口径：整行 trim 后相等才算已存在（子串出现不算，防误判幂等）。
 
+/** `ojm preview` 派生的 config 文件名（与 CLI 侧 preview-config.ts 逐字一致）；纯函数收口于此，installer/compensate/uninstall 三面共用 */
+export const PREVIEW_CONFIG_NAME = ".ojm-preview.yaml";
+
+/** 与 config 同目录的 preview 派生路径（无目录分隔符 = 同目录裸名） */
+export function previewSiblingOf(configPath: string): string {
+	const cut = Math.max(configPath.lastIndexOf("/"), configPath.lastIndexOf("\\"));
+	return cut < 0 ? PREVIEW_CONFIG_NAME : `${configPath.slice(0, cut + 1)}${PREVIEW_CONFIG_NAME}`;
+}
+
+/** server.mcp.modules 段内锚点（20261110-1027 §4.2；锚点随模板 config.yaml 骨架发布） */
+export const MCP_ANCHOR = "# ojm:mcp-modules";
+
 export function hasAnchor(content: string, anchor: string): boolean {
 	const target = anchor.trim();
 	return content.split("\n").some(line => line.trim() === target);
@@ -173,13 +185,13 @@ export function ensureMcpModule(content: string, name: string): { content: strin
 	const lines = content.split("\n");
 	const scan = scanMcpModulesKey(lines);
 	if (scan.anchorIdx === -1) {
-		throw new Error("text-edit: config.yaml 未找到锚点「# ojm:mcp-modules」——存量站点缺失时调用方须先 hasAnchor 预判跳过（best-effort 降级），本函数 fail-fast 不猜位置");
+		throw new Error(`text-edit: config.yaml 未找到锚点「${MCP_ANCHOR}」——存量站点缺失时调用方须先 hasAnchor 预判跳过（best-effort 降级），本函数 fail-fast 不猜位置`);
 	}
 	if (scan.flow) {
 		return { content, changed: false, skipped: "flow" };
 	}
 	if (scan.keyIdx === -1) {
-		return { content: insertAnchor(content, "# ojm:mcp-modules", `modules:\n  - ${name}`), changed: true };
+		return { content: insertAnchor(content, MCP_ANCHOR, `modules:\n  - ${name}`), changed: true };
 	}
 	const items = collectMcpItems(lines, scan.keyIdx);
 	if (items.vals.has(name)) {
@@ -237,7 +249,7 @@ interface McpKeyScan {
 }
 
 function scanMcpModulesKey(lines: string[]): McpKeyScan {
-	const anchorIdx = lines.findIndex(l => l.trim() === "# ojm:mcp-modules");
+	const anchorIdx = lines.findIndex(l => l.trim() === MCP_ANCHOR);
 	const indent = anchorIdx === -1 ? "" : (/^\s*/.exec(lines[anchorIdx]!)?.[0] ?? "");
 	const scan: McpKeyScan = { anchorIdx, indent, keyIdx: -1, flow: false };
 	if (anchorIdx === -1) {

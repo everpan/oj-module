@@ -37,7 +37,7 @@ import { reloadAndAssert } from "./steps/reload";
 import { smoke } from "./steps/smoke";
 import { verify } from "./steps/verify";
 import { getTask, readTasks, sweepTimedOut, writeTask } from "./tasks";
-import { appendAnonymousPaths, readAnonymousPaths } from "./text-edit";
+import { appendAnonymousPaths, ensureMcpModule, hasAnchor, MCP_ANCHOR, previewSiblingOf, readAnonymousPaths } from "./text-edit";
 import { createTrustStore } from "./trust";
 
 // db/http 为 oj isolate 注入全局（同模板 service 层惯例，register.ts/audit.ts 同款；测试由夹具装 globalThis.db）
@@ -94,6 +94,8 @@ export interface InstallRequest extends InstallContext {
 	outcome?: { taskId?: string, status?: TaskStatus, failedStage?: InstallStage, appliedSeq?: number | null, cancelled?: boolean }
 	/** 安装器内部通道（reloading → smoke）：本次新追加进 auth.anonymous_paths 的路径（restart_pending，探活对其 401 判待重启） */
 	deferredAnonymous?: string[]
+	/** 安装器内部通道（reloading → 补偿）：本次真把方案名登记进了 server.mcp.modules（20261110-1027 §4.2）——补偿据其精确摘除，升级失败（登记幂等 no-op）不误摘既有登记 */
+	mcpRegistered?: boolean
 	/**
 	 * 取消安装令牌（U5，P3-8）：运行期外部置位（端点 `?cancel=<taskId>` 或任务状态 `cancelling` 驱动的闭包），
 	 * 返回 true 即中止——PIPELINE 循环每段前探测 + migrating 段 spawn 流逐块探测；幂等、可重入
@@ -393,14 +395,6 @@ async function deployWebStage(req: InstallRequest): Promise<StageResult> {
 }
 
 /** `ojm preview` 派生的 config 文件名（与 CLI 侧 preview-config.ts 的 PREVIEW_CONFIG_NAME 逐字一致） */
-const PREVIEW_CONFIG_NAME = ".ojm-preview.yaml";
-
-/** 与 config 同目录的 preview 派生文件路径（无目录分隔符 = 同目录裸名） */
-function previewSiblingOf(configPath: string): string {
-	const cut = Math.max(configPath.lastIndexOf("/"), configPath.lastIndexOf("\\"));
-	return cut < 0 ? PREVIEW_CONFIG_NAME : `${configPath.slice(0, cut + 1)}${PREVIEW_CONFIG_NAME}`;
-}
-
 /**
  * 把「匿名端点接线」写到一份 config 文本上；`optional` 用于派生文件不存在即跳过。
  * 仅当匿名端点确有新增（added 非空）才落盘——无谓重写会改动 config 文档 sha，反而引发假阳性
@@ -426,6 +420,29 @@ async function patchConfigAt(configPath: string, anonymous: string[], optional =
 }
 
 /**
+ * 把「MCP 白名单登记」写到一份 config 文本上（20261110-1027 §4.2）；`optional` 用于 preview
+ * 派生文件不存在即跳过。同 patchConfigAt 口径：仅真登记（changed）才落盘；skipped（flow 风格）
+ * 透传给调用方注记。
+ */
+async function patchMcpAt(configPath: string, name: string, optional = false): Promise<{ changed: boolean, skipped?: "flow" }> {
+	let content: string;
+	try {
+		content = new TextDecoder().decode(await fsFace().readFile(configPath));
+	}
+	catch (e) {
+		if (optional)
+			return { changed: false };
+		throw e;
+	}
+	const patched = ensureMcpModule(content, name);
+	if (!patched.changed) {
+		return { changed: false, skipped: patched.skipped };
+	}
+	await atomicWriteText(configPath, patched.content);
+	return { changed: true };
+}
+
+/**
  * 热更段适配（B-11 reload 触发面，R18 修订）：先落盘 anonymous_paths 接线再 reloadAndAssert。
  * oj 0.1.122+ 的 `unchanged` 由 **manifests 锁 diff 自然触发**（安装/升级/降级即锁变化），
  * 不再依赖 config 文档 sha（旧的 vars.ojm_install_seq 哨兵已删）；本段只做 anonymous_paths
@@ -441,6 +458,7 @@ async function patchConfigAt(configPath: string, anonymous: string[], optional =
  */
 async function reloadStage(req: InstallRequest): Promise<StageResult> {
 	const path = req.configPath ?? "config.yaml";
+	let mcpNote = "";
 	try {
 		const m = isObj(req.manifest) ? req.manifest : {};
 		const api = isObj(m.api) ? m.api : {};
@@ -451,6 +469,31 @@ async function reloadStage(req: InstallRequest): Promise<StageResult> {
 		await patchConfigAt(previewSiblingOf(path), anonymous, true);
 		// 交接给 smoke：本次真正新增的匿名路径在重启前恒 401（restart_pending）
 		req.deferredAnonymous = added;
+		// MCP 白名单登记（20261110-1027 §4.2，best-effort）：带 api 段的方案把名字登记进
+		// server.mcp.modules（锚点段内；源 config + preview 派生双写）。语义刻意不同于 anonymous
+		// 接线的 fail-fast：MCP 暴露是增强面，锚点缺失/flow 风格只注记不阻塞安装（装配可用性不依赖
+		// 它）；req.mcpRegistered 交接给补偿——失败回滚时精确摘除本次登记。
+		if (isObj(m.api) && req.configPath !== undefined) {
+			try {
+				const src = new TextDecoder().decode(await fsFace().readFile(path));
+				if (!hasAnchor(src, MCP_ANCHOR)) {
+					mcpNote = "MCP 白名单未登记：config.yaml 缺锚点「# ojm:mcp-modules」（存量站点可手工把方案名登记进 server.mcp.modules，或升级站点骨架补锚点）";
+				}
+				else {
+					const r = await patchMcpAt(path, req.name);
+					if (r.changed) {
+						req.mcpRegistered = true;
+						await patchMcpAt(previewSiblingOf(path), req.name, true);
+					}
+					else if (r.skipped === "flow") {
+						mcpNote = "MCP 白名单未登记：server.mcp.modules 为 flow 风格（用户手写），安装器不做块级改写，请手工登记";
+					}
+				}
+			}
+			catch (e) {
+				mcpNote = `MCP 白名单登记失败：${String(e)}`;
+			}
+		}
 	}
 	catch (e) {
 		return { stage: "reloading", ok: false, retryable: true, message: `热更失败：config.yaml 匿名端点接线失败（${String(e)}）——reload 由锁 diff / 文档 sha 变化触发，接线本身失败则热更无变更可落` };
@@ -458,6 +501,10 @@ async function reloadStage(req: InstallRequest): Promise<StageResult> {
 	const rr = await reloadAndAssert(req);
 	// 捕获待重启段（P0 §3.6 / 验收 15）：非空 = 部分生效，installer 终态据其标 partial + restartRequired
 	req.restartPending = rr.restartPending;
+	// MCP 登记注记（best-effort 降级留痕）随 reloading 段 message 进任务记录
+	if (mcpNote !== "") {
+		return { ...rr, message: rr.message !== undefined ? `${rr.message}；${mcpNote}` : mcpNote };
+	}
 	return rr;
 }
 
@@ -749,6 +796,7 @@ export async function runInstall(req: InstallRequest): Promise<TaskRecord> {
 						version: req.version,
 						configPath: req.configPath ?? "config.yaml",
 						deferredAnonymous: req.deferredAnonymous ?? [],
+						mcpRegistered: req.mcpRegistered,
 						sharedRoot: req.sharedRoot,
 						modulesJsonPath: req.modulesJsonPath,
 						lockBefore,
