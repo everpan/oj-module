@@ -1,3 +1,4 @@
+import type { BuiltinAnonymous } from "./config-anonymous";
 /**
  * 开发态本地密钥/凭据自动供给（方案 A'，计划 docs/plans/20261103-1700）。
  *
@@ -18,10 +19,12 @@
 import { execFileSync } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
-import path from "node:path";
 
+import path from "node:path";
 import { parse, stringify } from "yaml";
+import { readBuiltinAnonymous, unionAnonymous } from "./config-anonymous";
 import { resolveCertDir } from "./layout";
+import { templatesRoot } from "./scaffold-guard";
 import { resolveOjBin } from "./vendor";
 
 /** `config.local.yaml` 落点（与 config.yaml 同目录，gitignored、可手编辑） */
@@ -262,6 +265,8 @@ export interface MergeDeps extends DevSecretsDeps {
 	mergedPath?: (configPath: string) => string
 	/** 额外注入派生产物 vars 段的键值（如出厂收敛 token；只进 gitignored 产物，绝不写回 tracked/local） */
 	extraVars?: Record<string, string>
+	/** 注入内置匿名面权威（测试可替换）；缺省读 cli 包内模板 config.yaml */
+	builtinAnonymous?: () => BuiltinAnonymous
 }
 
 /**
@@ -299,6 +304,14 @@ export function mergeConfigForDev(
 	if (deps.extraVars) {
 		const vars = (merged.vars ?? {}) as Record<string, unknown>;
 		merged.vars = { ...vars, ...deps.extraVars };
+	}
+	// 内置匿名面 force-union：模板 config.yaml 为权威源，用户手删/遗漏的条目在派生产物
+	// 补齐（幂等；原文件不动）。baseline 模块匿名面无安装器接线通道（C2-26 只覆盖市场方案）。
+	const builtin = (deps.builtinAnonymous ?? (() => readBuiltinAnonymous(templatesRoot())))();
+	for (const [section, required] of [["auth", builtin.auth], ["tenant", builtin.tenant]] as const) {
+		const s = merged[section];
+		if (s !== null && typeof s === "object" && !Array.isArray(s))
+			(s as Record<string, unknown>).anonymous_paths = unionAnonymous((s as Record<string, unknown>).anonymous_paths, required);
 	}
 
 	const outPath = mergedPath(configPath);

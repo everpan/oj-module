@@ -33,4 +33,25 @@ describe("derivePreviewConfigText convergeToken（出厂收敛 token 注入，pr
 		const doc = parse(out) as { vars: Record<string, string> };
 		expect(doc.vars).toEqual({ canonical_origin: "https://site.example.com" });
 	});
+
+	it("given 站点 config 手删内置匿名条目 When derive Then 输出按权威清单补齐、自定义项保留", () => {
+		const out = derivePreviewConfigText([
+			"auth:",
+			"  anonymous_paths:",
+			"    - /custom/x",
+			"    - /auth/login",
+			"tenant:",
+			"  anonymous_paths:",
+			"    - /custom/y",
+		].join("\n"), {
+			siteDir: "/tmp/site",
+			builtinAnonymous: () => ({
+				auth: ["/auth/login", "/auth/refresh"],
+				tenant: ["/system/login-methods"],
+			}),
+		});
+		const doc = parse(out) as { auth: { anonymous_paths: string[] }, tenant: { anonymous_paths: string[] } };
+		expect(doc.auth.anonymous_paths).toEqual(["/custom/x", "/auth/login", "/auth/refresh"]);
+		expect(doc.tenant.anonymous_paths).toEqual(["/custom/y", "/system/login-methods"]);
+	});
 });

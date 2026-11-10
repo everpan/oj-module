@@ -56,4 +56,30 @@ describe("mergeConfigForDev extraVars（出厂收敛 token 注入）", () => {
 		const merged = parse(fs.readFileSync(path.join(projectRoot, ".ojm-tmp-config.yaml"), "utf-8")) as { vars: Record<string, string> };
 		expect(merged.vars).toEqual({ canonical_origin: "https://site.example.com" });
 	});
+
+	it("given 用户 config 手删内置匿名条目 When merge Then 派生产物按权威清单补齐、原文件不动、自定义项保留", () => {
+		const projectRoot = newProject({
+			auth: { anonymous_paths: ["/custom/x", "/auth/login"] },
+			tenant: { anonymous_paths: ["/custom/y"] },
+		});
+
+		mergeConfigForDev(projectRoot, path.join(projectRoot, "config.yaml"), {
+			...noopDeps,
+			builtinAnonymous: () => ({
+				auth: ["/auth/login", "/auth/refresh", "/oj-market/converge"],
+				tenant: ["/system/login-methods"],
+			}),
+		});
+
+		const merged = parse(fs.readFileSync(path.join(projectRoot, ".ojm-tmp-config.yaml"), "utf-8")) as {
+			auth: { anonymous_paths: string[] }
+			tenant: { anonymous_paths: string[] }
+		};
+		// 原顺序 + 自定义项保留，缺失权威条目追加尾部（幂等：/auth/login 不重复）
+		expect(merged.auth.anonymous_paths).toEqual(["/custom/x", "/auth/login", "/auth/refresh", "/oj-market/converge"]);
+		expect(merged.tenant.anonymous_paths).toEqual(["/custom/y", "/system/login-methods"]);
+		// 原文件不被写回
+		const tracked = JSON.parse(fs.readFileSync(path.join(projectRoot, "config.yaml"), "utf-8")) as { auth: { anonymous_paths: string[] } };
+		expect(tracked.auth.anonymous_paths).toEqual(["/custom/x", "/auth/login"]);
+	});
 });

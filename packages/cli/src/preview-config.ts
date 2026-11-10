@@ -19,10 +19,13 @@
  * 前者可单测到「除注入点外 doc 与原 parse 深相等」，后者只做 IO。
  */
 
+import type { BuiltinAnonymous } from "./config-anonymous";
 import fs from "node:fs";
 import path from "node:path";
 import { parse, stringify } from "yaml";
+import { readBuiltinAnonymous, unionAnonymous } from "./config-anonymous";
 import { resolveConfigPath } from "./layout";
+import { templatesRoot } from "./scaffold-guard";
 
 /** 派生 config 文件名（与原 config 同目录；固定名 = 崩溃自愈，不积累残留） */
 export const PREVIEW_CONFIG_NAME = ".ojm-preview.yaml";
@@ -49,6 +52,8 @@ export interface DerivePreviewConfigOptions {
 	 *  供 POST /oj-market/converge 持有型证明——替代早期账密登录。不传 = 不注入）
 	 */
 	convergeToken?: string
+	/** 注入内置匿名面权威（测试可替换）；缺省读 cli 包内模板 config.yaml */
+	builtinAnonymous?: () => BuiltinAnonymous
 	/** 原 config 文本（测试注入）；缺省读 config.yaml */
 	configText?: string
 }
@@ -160,6 +165,15 @@ export function derivePreviewConfigText(configText: string, opts: DerivePreviewC
 			: {};
 		vars.ojm_converge_token = opts.convergeToken;
 		doc.vars = vars;
+	}
+
+	// 内置匿名面 force-union：模板 config.yaml 为权威源，用户手删/遗漏的条目在派生产物
+	// 补齐（幂等；原文件不动）。baseline 模块匿名面无安装器接线通道（C2-26 只覆盖市场方案）。
+	const builtin = (opts.builtinAnonymous ?? (() => readBuiltinAnonymous(templatesRoot())))();
+	for (const [section, required] of [["auth", builtin.auth], ["tenant", builtin.tenant]] as const) {
+		const s = doc[section];
+		if (s !== null && typeof s === "object" && !Array.isArray(s))
+			(s as Record<string, unknown>).anonymous_paths = unionAnonymous((s as Record<string, unknown>).anonymous_paths, required);
 	}
 
 	return stringify(doc);
