@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fetchAsyncRoutes, fetchLogin, fetchLogout, fetchRefreshToken, fetchUserInfo } from "#src/api/user";
 import { loginPath } from "#src/router/extra-info/route-path";
+import { DEFAULT_TENANT } from "#src/store/tenant";
 import { REFRESH_TOKEN_PATH } from "#src/utils/request/constants";
 
 /**
@@ -48,7 +49,7 @@ describe("ac-d16 端点映射", () => {
 		h.next.current = ojOk({ access_token: "at-1", refresh_token: "rt-1", expires_in: 3600 });
 		const res = await fetchLogin({ username: "admin", password: "x" });
 		expect(h.calls[0]).toMatchObject({ method: "post", url: "auth/login" });
-		expect(h.calls[0]!.json).toEqual({ username: "admin", password: "x" });
+		expect(h.calls[0]!.json).toEqual({ username: "admin", password: "x", tenant: DEFAULT_TENANT });
 		expect(res).toEqual({ token: "at-1", refreshToken: "rt-1" });
 		expect(res).not.toHaveProperty("result");
 	});
@@ -57,7 +58,7 @@ describe("ac-d16 端点映射", () => {
 		h.next.current = ojOk({ access_token: "at-2", refresh_token: "rt-2" });
 		const res = await fetchRefreshToken({ refreshToken: "rt-old" });
 		expect(h.calls[0]).toMatchObject({ method: "post", url: "auth/refresh" });
-		expect(h.calls[0]!.json).toEqual({ refresh_token: "rt-old" });
+		expect(h.calls[0]!.json).toEqual({ refresh_token: "rt-old", tenant: DEFAULT_TENANT });
 		expect(res).toEqual({ token: "at-2", refreshToken: "rt-2" });
 	});
 

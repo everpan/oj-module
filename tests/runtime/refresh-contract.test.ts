@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useAuthStore } from "#src/store/auth";
+import { DEFAULT_TENANT } from "#src/store/tenant";
 import { request } from "#src/utils/request";
 import { refreshTokenAndRetry } from "#src/utils/request/refresh";
 
@@ -95,7 +96,7 @@ describe("refresh 编排（refreshTokenAndRetry）", () => {
 		const refreshCall = calls.find(c => c.url.endsWith("/auth/refresh"));
 		expect(refreshCall, "应发出 auth/refresh 请求").toBeDefined();
 		expect(refreshCall!.method).toBe("POST");
-		expect(JSON.parse(refreshCall!.body)).toEqual({ refresh_token: "rt-old" });
+		expect(JSON.parse(refreshCall!.body)).toEqual({ refresh_token: "rt-old", tenant: DEFAULT_TENANT });
 
 		// ② 新对（access_token/refresh_token → token/refreshToken）写回 store
 		expect(useAuthStore.getState().token).toBe("at-new");
@@ -143,7 +144,7 @@ describe("afterResponse 401 触发刷新（端到端）", () => {
 		const refreshCall = calls.find(c => c.url.endsWith("/auth/refresh"));
 		expect(refreshCall).toBeDefined();
 		expect(refreshCall!.method).toBe("POST");
-		expect(JSON.parse(refreshCall!.body)).toEqual({ refresh_token: "rt-old" });
+		expect(JSON.parse(refreshCall!.body)).toEqual({ refresh_token: "rt-old", tenant: DEFAULT_TENANT });
 
 		// 原请求两次到达：首次 401（旧 Bearer），重放带新 Bearer
 		const tries = calls.filter(c => c.url.endsWith("/web/user-info"));

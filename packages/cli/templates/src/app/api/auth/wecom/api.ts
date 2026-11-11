@@ -321,7 +321,7 @@ const ticket = {
 			// 否则这里拿到的是默认租户头，ensureTenant 会以 403 明确拒绝（而不是悄悄落到 default）
 			ensureTenant(claimed.ownerTenant);
 			await assertUserActive(claimed.uid);
-			return createSession().issueExternal(claimed.uid);
+			return createSession().issueExternal(claimed.uid, claimed.ownerTenant);
 		});
 	},
 };

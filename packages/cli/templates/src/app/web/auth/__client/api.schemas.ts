@@ -7,7 +7,8 @@ export const schemas = {
 	"authLoginPost": {
 		body: z.object({
 	"username": z.string().min(1),
-	"password": z.string().min(1)
+	"password": z.string().min(1),
+	"tenant": z.string().optional()
 }),
 		data: z.object({
 	"access_token": z.string(),
@@ -26,13 +27,15 @@ export const schemas = {
 	},
 	"authLogoutPost": {
 		body: z.object({
-	"refresh_token": z.string().min(1)
+	"refresh_token": z.string().min(1),
+	"tenant": z.string().optional()
 }),
 		data: z.null(),
 	},
 	"authRefreshPost": {
 		body: z.object({
-	"refresh_token": z.string().min(1)
+	"refresh_token": z.string().min(1),
+	"tenant": z.string().optional()
 }),
 		data: z.object({
 	"access_token": z.string(),
@@ -72,7 +75,8 @@ export const schemas = {
 	"authLdapLoginPost": {
 		body: z.object({
 	"username": z.string().min(1),
-	"password": z.string().min(1)
+	"password": z.string().min(1),
+	"tenant": z.string().optional()
 }),
 		data: z.object({
 	"access_token": z.string(),

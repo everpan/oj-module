@@ -118,7 +118,7 @@ describe("B7/AC1-7：角色分配（sys_user_role 唯一权威源 + 写时失效
 describe("B7：口令重置与禁用（级联吊销）", () => {
 	it("管理员重置口令：must_change=1 + 该用户 refresh 全删 + 写时失效", async () => {
 		const uid = mkUser("u_reset");
-		const s = createSession({ ...bcryptDeps, randomHex: () => "rt-1", sha256Hex: (x: string) => `h(${x})`, signAccess: () => "jwt", accessTtlSecs: 900, refreshTtlSecs: 1000 } satisfies SessionDeps);
+		const s = createSession({ ...bcryptDeps, randomHex: () => "rt-1", sha256Hex: (x: string) => `h(${x})`, signAccess: (_sub: string, _tenant: string) => "jwt", accessTtlSecs: 900, refreshTtlSecs: 1000 } satisfies SessionDeps);
 		dbo.prepare("UPDATE users SET password_hash = 'hashed:pw12345', must_change = 0 WHERE id = ?").run(uid);
 		await s.localLogin("u_reset", "pw12345");
 		expect(dbo.prepare("SELECT COUNT(*) c FROM sys_refresh_token WHERE user_id = ?").get(uid)).toBeDefined();

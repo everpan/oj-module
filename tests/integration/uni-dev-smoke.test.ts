@@ -147,10 +147,13 @@ describe.skipIf(process.env.CI || ojBusy)("uni-dev e2e 冒烟（真二进制）"
 				path: reqPath,
 				method: init?.method ?? "GET",
 				headers: {
-					// 脚手架 config.yaml 默认 tenant.enable，除 anonymous_paths 白名单外缺
-					// `X-TENANT-ID` 即 400 `missing tenant header`；浏览器侧由运行时注入，
-					// 页外裸 http 调用（本冒烟）必须自己带，单租户场景用部署默认租户。
-					"X-TENANT-ID": "default",
+					// 强绑定（tenant.require_signed_claim: true）：`X-TENANT-ID` 必须与已签名的
+					// JWT claim 一致，而无 token 的匿名链路（登录/刷新/登出/ldap-login、静态 SPA）
+					// 根本拿不到 signed claim，注头反而 403 `tenant requires a signed claim`。
+					// 故这里只在携带 token（即有 signed claim）时注头；登录类请求不注头，
+					// 由后端 handler 经 body.tenant（缺省 default）经 db.asTenant 补身份——
+					// 与运行时 isTenantlessApi 豁免逻辑对齐。
+					...(init?.token ? { "X-TENANT-ID": "default" } : {}),
 					...(payload ? { "content-type": "application/json", "content-length": Buffer.byteLength(payload) } : {}),
 					...(init?.token ? { authorization: `Bearer ${init.token}` } : {}),
 				},

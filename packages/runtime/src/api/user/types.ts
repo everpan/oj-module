@@ -19,6 +19,11 @@ export interface LoginInfo {
 	 * 短时有效且只能兑换一次。口令字段此时留空。
 	 */
 	ticket?: string
+	/**
+	 * 强绑定（require_signed_claim）下登录类请求不注 X-TENANT-ID 头，改由请求体自报租户，
+	 * 后端 handler 经 db.asTenant 补身份。默认取运行时当前租户（单租户部署恒 "default"）。
+	 */
+	tenant?: string
 }
 
 export interface UserInfoType {

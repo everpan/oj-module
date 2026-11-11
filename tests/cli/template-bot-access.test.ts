@@ -84,9 +84,15 @@ describe("模板机器人接入管理端接线（线路 B 回归）", () => {
 
 		const schema = read("src/app/api/_platform/schema.yaml");
 		const config = read("config.yaml");
+		// 强绑定（require_signed_claim）下机器人凭据三表改为租户表：必须带 tenant_id、且不得再进 shared_allow
+		// （共享表双声明会让强绑定下的 tokenless 登录链失去租户隔离）。
 		for (const table of ["oj_svc_token", "oj_bot_binding", "oj_obo_audit"]) {
-			expect(schema, `schema.yaml 缺共享表 ${table}`).toContain(`${table}:`);
-			expect(config, `config.yaml shared_allow 缺 ${table}`).toContain(`- ${table}`);
+			expect(schema, `schema.yaml 缺表 ${table}`).toContain(`${table}:`);
+			// 租户表：声明 tenant_id 列，且不得残留 tenant: false（那会让它退回共享表语义）
+			expect(schema, `schema.yaml ${table} 必须带 tenant_id 列`).toMatch(new RegExp(`${table}:[\\s\\S]*?tenant_id:`));
+			expect(schema, `schema.yaml ${table} 不得标 tenant: false`).not.toMatch(new RegExp(`${table}:[\\s\\S]*?tenant:\\s*false`));
+			// 不再允许出现在共享表豁免清单
+			expect(config, `config.yaml shared_allow 不应含 ${table}（强绑定下须为租户表）`).not.toContain(`- ${table}`);
 		}
 		// 安装器文本锚点：删掉它方案安装不再登记 modules 白名单，机器人目录会空
 		expect(config, "config.yaml 丢了 # ojm:mcp-modules 安装器锚点").toContain("# ojm:mcp-modules");

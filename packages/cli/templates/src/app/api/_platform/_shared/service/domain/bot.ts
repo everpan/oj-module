@@ -1,5 +1,5 @@
 // 机器人凭据共享内核（mcp-bot-guide.md / api-manual §14，oj v0.1.130）。
-// 三张表 oj_svc_token / oj_bot_binding / oj_obo_audit 上收 _platform（共享表 tenant:false）：
+// 三张表 oj_svc_token / oj_bot_binding / oj_obo_audit 上收 _platform（租户表，带 tenant_id）：
 // system 运营端点与 auth/obo 换签都经 #/_platform 读写，冻结码/常量/审计/表访问只留一份真源。
 // 域函数只在这里碰这三张表（外加换签必需的 users / sys_user_role），handler 一律薄封装：
 // 判权 → respond(() => 域函数) → .schema/.response。表归属清晰，且全部 db.table 落在 _platform
@@ -112,7 +112,7 @@ export async function listSvcTokens(): Promise<SvcTokenRow[]> {
 }
 
 /** 明文 token 只在返回里出现一次（不落库不回显）；jti 登记行即吊销真相源。 */
-export async function issueSvcToken(name: string, scopes: string[], createdBy: string): Promise<{ token: string, jti: string }> {
+export async function issueSvcToken(name: string, scopes: string[], createdBy: string, tenant: string): Promise<{ token: string, jti: string }> {
 	if (!name.trim())
 		botFail(400, "name required");
 	if (!scopes.length)
@@ -124,7 +124,7 @@ export async function issueSvcToken(name: string, scopes: string[], createdBy: s
 	const token = jwt.sign({
 		sub: `svc:${name}`,
 		roles: ["bot"],
-		claims: { svc: name, jti, scopes },
+		claims: { svc: name, jti, scopes, tenant },
 		ttl_secs: SVC_TTL_SECS,
 	});
 	await db.table("oj_svc_token").insert({

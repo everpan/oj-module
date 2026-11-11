@@ -93,7 +93,7 @@ export async function runPreview(projectRoot: string, opts: PreviewOptions = {})
 
 	// 派生 config 在 migrate 成功后落盘：失败即退路径零残留
 	const base = readOjApiPrefix(configPath);
-	const writer = opts.configWriter ?? ((root: string, o: { siteDir: string, prefix?: string, port?: number, apiRoot?: string }) => writePreviewConfig(root, o));
+	const writer = opts.configWriter ?? ((root: string, o: { siteDir: string, prefix?: string, port?: number, apiRoot?: string, convergeToken?: string }) => writePreviewConfig(root, o));
 	// apiRoot 交给派生器：release 下 platform.root 必须指向 dist/api（与 --api-path 同源）
 	const convergeToken = randomBytes(32).toString("hex");
 	const preview = writer(projectRoot, { siteDir, prefix: sitePrefix, port: opts.port, apiRoot: apiDist, convergeToken });

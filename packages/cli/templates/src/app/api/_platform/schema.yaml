@@ -236,21 +236,21 @@ tables:
   # ---- 0007：MCP 机器人凭据三表（mcp-bot-guide.md / api-manual §14，oj v0.1.130）----
   # 列名即契约：oj serve 的 SvcGate（dispatch.rs）静态 SQL 直查 oj_svc_token.jti——
   # 改列必须三处同步（migrations/0007 / 本文件 / 消费端 _shared/service/domain/bot.ts）。
-  # 三表都是共享表（tenant:false，且 config.yaml tenant.shared_allow 双声明）：
-  # svc 凭据是部署级、绑定是平台↔本系统用户的全局映射、审计按站点归口，都不该按租户割裂。
+  # 三表自 v0.1.130 起为**租户表**（带 tenant_id，sql_guard 自动按当前租户注入）：
+  # svc 凭据按租户隔离（同 svc 名各租户可各自签发）、绑定/审计随租户归属，不再挂 shared_allow。
   oj_svc_token:
-    tenant: false
     pk: jti
     columns:
+      tenant_id: {type: text, null: false}
       jti: {type: text, null: false}
       name: {type: text, null: false}
       scopes: {type: text, null: false}
       created_by: {type: text, null: false}
       created_at: {type: integer, null: false}
   oj_bot_binding:
-    tenant: false
-    pk: [provider, external_sub]
+    pk: [tenant_id, provider, external_sub]
     columns:
+      tenant_id: {type: text, null: false}
       provider: {type: text, null: false}
       external_sub: {type: text, null: false}
       user_id: {type: text, null: false}
@@ -258,10 +258,10 @@ tables:
       created_by: {type: text, null: false}
       created_at: {type: integer, null: false}
   oj_obo_audit:
-    tenant: false
     pk: id
     columns:
       id: {type: integer, autoincrement: true}
+      tenant_id: {type: text, null: false}
       svc: {type: text, null: false}
       provider: {type: text, null: false}
       external_sub: {type: text, null: false}

@@ -11,11 +11,13 @@ const handler = {
 	async post() {
 		const body = http.body || {};
 		const username = String(body.username ?? "");
+		const tenant = String(body.tenant ?? "default");
 		const ip = await clientIp();
 		await respond(async () => {
 			try {
 				await guardLoginThrottle(ip, username);
-				const r = await createLdapLogin(createSession(), runtimeLdapGateway())(username, String(body.password ?? ""));
+				db.asTenant(tenant);
+				const r = await createLdapLogin(createSession(), runtimeLdapGateway(), tenant)(username, String(body.password ?? ""));
 				await noteLoginSucceeded(ip, username);
 				return r;
 			}
@@ -36,6 +38,7 @@ handler.post.schema = {
 		properties: {
 			username: { type: "string", minLength: 1 },
 			password: { type: "string", minLength: 1 },
+			tenant: { type: "string" },
 		},
 	},
 };

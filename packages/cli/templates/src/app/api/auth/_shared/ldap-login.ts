@@ -29,7 +29,7 @@ async function setting(key: string): Promise<string> {
 	return rows[0]?.value == null ? "" : String(rows[0].value);
 }
 
-export function createLdapLogin(session: Pick<Session, "issueExternal">, gateway: LdapGateway) {
+export function createLdapLogin(session: Pick<Session, "issueExternal">, gateway: LdapGateway, tenant: string = "default") {
 	/** 九步：enabled 闸 → 非空校验 → base_dn → 映射缺省 → search(esc) → bind → JIT → 禁号 → 签发。 */
 	return async function ldapLogin(rawUsername: unknown, rawPassword: unknown): Promise<TokenBundle> {
 		if ((await setting("ldap.enabled")) !== "1")
@@ -87,6 +87,6 @@ export function createLdapLogin(session: Pick<Session, "issueExternal">, gateway
 		}
 		if (Number(rows[0].is_forbidden) === 1)
 			fail(403, "account disabled");
-		return session.issueExternal(Number(rows[0].id));
+		return session.issueExternal(Number(rows[0].id), tenant);
 	};
 }

@@ -37,7 +37,7 @@ async function post() {
 		const b = (http.body || {}) as Record<string, unknown>;
 		const name = String(b.name ?? "").trim();
 		const scopes: string[] = Array.isArray(b.scopes) ? b.scopes.map(String) : ["read"];
-		return issueSvcToken(name, scopes, String(http.user?.id ?? ""));
+		return issueSvcToken(name, scopes, String(http.user?.id ?? ""), String((http.user?.claims as any)?.tenant ?? "default"));
 	});
 }
 post.schema = {

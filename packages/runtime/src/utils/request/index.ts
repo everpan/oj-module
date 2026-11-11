@@ -16,6 +16,37 @@ import { setHeaderSafe } from "./header-safe";
 import { refreshTokenAndRetry } from "./refresh";
 import { isAnonymousApi } from "./whitelist";
 
+// 租户头豁免清单：命中者**不**注入 X-TENANT-ID（强绑定下这些是无 token 链路，
+// 前端不注头、改由请求体自报 tenant，handler 内 db.asTenant 补身份）。清单与
+// config.yaml 的 tenant.anonymous_paths 对齐（含 `/**` 通配：匹配该路径及其下所有子路径）。
+const tenantlessApiPaths = [
+	"/system/login-methods",
+	"/auth/wecom/login",
+	"/auth/wecom/callback",
+	"/auth/wecom/ticket",
+	"/auth/wecom/event",
+	"/publish/credential/exchange",
+	"/oj-market/catalog/**",
+	"/oj-market/cdn/upload",
+	"/oj-market/yank",
+	"/auth/login",
+	"/auth/ldap-login",
+	"/auth/logout",
+	"/auth/refresh",
+	"/oj-market/converge",
+];
+
+/** 与 isAnonymousApi 平行：返回 true 表示本次请求不应注入 X-TENANT-ID 头。 */
+export function isTenantlessApi(url: string): boolean {
+	return tenantlessApiPaths.some((p) => {
+		if (p.endsWith("/**")) {
+			const prefix = p.slice(0, -2); // 保留末尾 "/"
+			return url.endsWith(prefix) || url.startsWith(prefix);
+		}
+		return url.endsWith(p);
+	});
+}
+
 // 请求超时时间
 const API_TIMEOUT = Number(import.meta.env.VITE_API_TIMEOUT) || 10000;
 
@@ -45,7 +76,12 @@ const defaultConfig: Options = {
 				// 租户头由运行时直接注入（不经模块 provider）：宿主 shell 的 hydrateUser /
 				// solution-routes 都在任何模块 onInit 之前发请求，靠模块注册必然晚一步
 				// （冷启动实测两个 400 missing tenant header）。见 store/tenant.ts 头注释。
-				setHeaderSafe(request.headers, TENANT_HEADER, currentTenant());
+				// 无 token 链路（登录/刷新/登出/ldap-login 与 oj-market 匿名面）在强绑定下
+				// 不注头——前端从请求体自报 tenant，handler 内 db.asTenant 补身份；若仍注头
+				// 则头必须与 token claim 一致，而这类请求无 token，故直接豁免注入。
+				if (!isTenantlessApi(request.url)) {
+					setHeaderSafe(request.headers, TENANT_HEADER, currentTenant());
+				}
 				// D-M9：模块注册的惰性请求头——追加式合并，未注册时请求照发
 				const headerProvider = currentHeaderProvider();
 				if (headerProvider) {

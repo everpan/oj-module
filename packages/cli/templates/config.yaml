@@ -222,14 +222,16 @@ tenant:
     - wecom_suite_ticket # 套件级凭证，按 suite_id 全局唯一
     - wecom_login_ticket # 一次性登录票据：跨「匿名 302 回跳」与「已认证换取」两段
     - publish_credential # 发布凭证：CLI 兑换那一跳没有业务租户语义，归属走 owner_tenant 列
-    # 0007 MCP 机器人凭据三表：部署级凭据 / 平台↔用户全局映射 / 站点归口审计，均非租户业务数据
-    - oj_svc_token
-    - oj_bot_binding
-    - oj_obo_audit
+  # 0007 MCP 机器人凭据三表（oj_svc_token / oj_bot_binding / oj_obo_audit）：
+  # 自 v0.1.130 起改为**租户表**（带 tenant_id，sql_guard 自动按当前租户注入）。
+  # 凭据按租户隔离（同 svc 名各租户可各自签发）、绑定/审计随租户归属，不再列进 shared_allow
+  # （双声明豁免）；改表定性见 schema.yaml 与 0007 迁移。
   # 豁免缺租户头的路径（去 base 前缀后的形态）。与 auth.anonymous_paths 同语义，
   # 但这是「没有租户头也不 400」的逃生口，只给**真的拿不到头**的端点。
-  # 登录类端点不在此列：前端 headerProvider 每请求都注头（单租户恒 default），
-  # 少了头应当直接 400 `missing tenant header`，而不是落进匿名态后被 sql_guard 兜成 500。
+  # 登录/刷新/登出/ldap-login 与 oj-market 收敛接口在此列：强绑定（require_signed_claim）
+  # 下这些是无 token 链路，前端不再注 X-TENANT-ID，改由请求体自报 tenant（handler 内
+  # db.asTenant 补身份），故必须豁免缺租户头；若强行注头则头必须与 token claim 一致，
+  # 而登录类无 token，只能走豁免 + 请求体自报。
   # `/auth/wecom/**` 是例外：企微回调与 302 回跳由浏览器发起，带不了自定义头，
   # 租户只能由服务端从 profile/票据推导（db.asTenant，见 store.ts::ensureTenant）。
   anonymous_paths:
@@ -243,7 +245,15 @@ tenant:
     - /oj-market/catalog/**
     - /oj-market/cdn/upload
     - /oj-market/yank
-  # tenant.require_signed_claim：租户头的服务端绑定（平台级 fail-closed）。
-  # 暂保持 false——上游 oj 的 jwt.sign 目前会静默丢弃自定义 claim（需求 R6），
-  # 开启前无法把 tenant 放进 token。R6 落地后改 true，裸头即失去自证能力。
-  require_signed_claim: false
+    # 登录类无 token 链路：强绑定下前端不注 X-TENANT-ID，请求体自报 tenant（见上注释）。
+    - /auth/login
+    - /auth/ldap-login
+    - /auth/logout
+    - /auth/refresh
+    # oj-market 收敛接口（裸 fetch 不带租户头）
+    - /oj-market/converge
+  # tenant.require_signed_claim：租户头的服务端绑定（平台级 fail-closed，开启后强绑定）。
+  # http.tenantId 只认「验签后的 JWT claim 顶层 tenant」：光带 X-TENANT-ID 头而无签名 claim
+  # → 403 tenant requires a signed claim；头的租户值与 claim 不符 → 403 tenant header does not match signed claim。
+  # R6（自定义 claim 平铺进 JWT 顶层）已在 oj 0.1.130 落地，tenant 已可随 token 下发，故开启强绑定。
+  require_signed_claim: true

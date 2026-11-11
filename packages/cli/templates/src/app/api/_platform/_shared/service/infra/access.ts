@@ -12,10 +12,10 @@ interface AccessSnapshot {
 	/**
 	 * token 的 sub 在本租户里是否存在。
 	 *
-	 * 这是「伪造 X-TENANT-ID」的唯一服务端拦截点（R6 `require_signed_claim` 落地前的兜底）：
-	 * token 只带 sub、不带租户，而 `users` 已租户化（构造器自动注入 `tenant_id = 当前头值`），
-	 * 于是「A 企业的人带 B 企业的头」表现为**查无此行**。若这里放行，只要求登录态的端点
-	 * （通知已读、个人资料等）就会带着伪造的租户头去读写别家数据。
+	 * 强绑定（`require_signed_claim`）开启后，伪造 `X-TENANT-ID` 已在**前置管线**被拦：
+	 * 头的租户值与 JWT claim 的 `tenant` 不符 → 403 `tenant header does not match signed claim`，
+	 * 根本到不了这里。本层是数据层防御兜底：即便 token 的 claim 与头一致，也再次校验
+	 * `users` 行（构造器自动注入 `tenant_id = 当前租户`）确实存在于该租户，避免越权读写别家数据。
 	 */
 	exists: boolean
 	roles: string[]

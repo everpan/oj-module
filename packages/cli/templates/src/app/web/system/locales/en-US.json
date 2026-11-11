@@ -444,7 +444,7 @@
 			}
 		},
 		"guide": {
-			"tenantNote": "Adaptation note (specific to this template): this template enables multi-tenancy (tenant.enable: true in config.yaml), so every /v1/api request — including the /auth/obo exchange and /mcp tools/call — must carry the X-TENANT-ID header (default: default). Omitting it returns 400 missing tenant header: X-TENANT-ID. The devkit mcp-bot-guide sample assumes a single-tenant setup without this header, so both the bot callback's exchange and its tool calls must add it.",
+			"tenantNote": "This template has tenant strong-binding enabled (require_signed_claim): the bot credential (svc token) is issued by this tenant's admin on this page, and the token already embeds this tenant's claim. The callback / OBO exchange (/auth/obo) / tool calls (/mcp tools/call) only need to present this Bearer credential — oj treats the token's tenant claim as the request tenant, so the X-TENANT-ID header must match it, or be omitted so the framework derives it from the token. The devkit mcp-bot-guide sample defaults to single-tenant with no such claim, so make sure you use the svc token issued by this tenant, otherwise it is rejected with 403 tenant header does not match signed claim.",
 			"mcpTitle": "1. Enable the MCP endpoint",
 			"mcpHint": "The template ships with server.mcp.enabled: false (fail-closed). Follow the enable steps on the MCP Services page to set it to true before the bot can reach {base}/mcp; installing a solution auto-registers its name into the modules allowlist, and only allowlisted tools are exposed.",
 			"configTitle": "config.yaml snippet",

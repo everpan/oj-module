@@ -39,11 +39,13 @@ const login = {
 	async post() {
 		const body = http.body || {};
 		const username = String(body.username ?? "");
+		const tenant = String(body.tenant ?? "default");
 		const ip = await clientIp();
 		await respond(async () => {
 			try {
 				await guardLoginThrottle(ip, username);
-				const r = await createSession().localLogin(username, String(body.password ?? ""));
+				db.asTenant(tenant);
+				const r = await createSession().localLogin(username, String(body.password ?? ""), tenant);
 				await noteLoginSucceeded(ip, username);
 				return r;
 			}
@@ -59,7 +61,10 @@ const login = {
 const logout = {
 	// POST /api/auth/logout —— 吊销当前 refresh 串（access 到期前仍有效，语义同旧版）。
 	async post() {
-		const token = String((http.body || {}).refresh_token ?? "");
+		const body = http.body || {};
+		const token = String(body.refresh_token ?? "");
+		const tenant = String(body.tenant ?? "default");
+		db.asTenant(tenant);
 		await db.table("sys_refresh_token").where({ field: "token_hash", op: "eq", value: crypto.sha256Hex(token) }).delete().run();
 		json.ok(null);
 	},
@@ -68,8 +73,13 @@ const logout = {
 const refresh = {
 	// POST /api/auth/refresh —— 轮换（旧串立即失效；reuse 检测在 service 内全族吊销+审计）。
 	async post() {
-		const token = String((http.body || {}).refresh_token ?? "");
-		await respond(async () => createSession().refresh(token));
+		const body = http.body || {};
+		const token = String(body.refresh_token ?? "");
+		const tenant = String(body.tenant ?? "default");
+		await respond(async () => {
+			db.asTenant(tenant);
+			return createSession().refresh(token);
+		});
 	},
 };
 
@@ -82,7 +92,8 @@ const password = {
 			return;
 		}
 		const body = http.body || {};
-		await respond(async () => createSession().changePassword(Number(uid), String(body.old_password ?? ""), String(body.new_password ?? "")));
+		const tenant = String((http.user?.claims as any)?.tenant ?? "default");
+		await respond(async () => createSession().changePassword(Number(uid), String(body.old_password ?? ""), String(body.new_password ?? ""), tenant));
 	},
 };
 // must_change 悬挂期唯一可用写端（AC1-27）；契约供 login/system 模板的改密 UI 使用
@@ -105,6 +116,7 @@ login.post.schema = {
 		properties: {
 			username: { type: "string", minLength: 1 },
 			password: { type: "string", minLength: 1 },
+			tenant: { type: "string" },
 		},
 	},
 };
@@ -115,7 +127,7 @@ logout.post.schema = {
 	body: {
 		type: "object",
 		required: ["refresh_token"],
-		properties: { refresh_token: { type: "string", minLength: 1 } },
+		properties: { refresh_token: { type: "string", minLength: 1 }, tenant: { type: "string" } },
 	},
 };
 logout.post.response = { type: "null" };
@@ -125,7 +137,7 @@ refresh.post.schema = {
 	body: {
 		type: "object",
 		required: ["refresh_token"],
-		properties: { refresh_token: { type: "string", minLength: 1 } },
+		properties: { refresh_token: { type: "string", minLength: 1 }, tenant: { type: "string" } },
 	},
 };
 refresh.post.response = tokenBundle;

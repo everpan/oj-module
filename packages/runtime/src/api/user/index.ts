@@ -2,6 +2,7 @@ import type { AppRouteRecordRaw } from "#src/router/types";
 import type { AuthType, LoginInfo, UserInfoType } from "./types";
 
 import { getRoutesApiProvider } from "#src/store/api-provider";
+import { currentTenant } from "#src/store/tenant";
 import { request } from "#src/utils/request";
 import { REFRESH_TOKEN_PATH } from "#src/utils/request/constants";
 
@@ -35,15 +36,17 @@ function mapAuthPayload(data?: { access_token?: string, refresh_token?: string }
 
 export function fetchLogin(data: LoginInfo): Promise<AuthType> {
 	// 按登录方式路由：ldap → auth/ldap-login（匿名，载荷同本地），其余 → auth/login。
+	// 强绑定下登录类请求不注 X-TENANT-ID 头，改由请求体自报 tenant（handler 内 db.asTenant 补身份）。
 	const path = data.method === "ldap" ? "auth/ldap-login" : "auth/login";
 	return request
-		.post(path, { json: data })
+		.post(path, { json: { ...data, tenant: currentTenant() } })
 		.json<OjEnvelope<{ access_token?: string, refresh_token?: string }>>()
 		.then(env => mapAuthPayload(env.data));
 }
 
 export function fetchLogout(data?: { readonly refreshToken?: string }): Promise<void> {
-	return request.post("auth/logout", { json: { refresh_token: data?.refreshToken ?? "" } }).json().then(() => {});
+	// 强绑定下登出不注 X-TENANT-ID 头，请求体自报 tenant。
+	return request.post("auth/logout", { json: { refresh_token: data?.refreshToken ?? "", tenant: currentTenant() } }).json().then(() => {});
 }
 
 // G2：消费点委托（与 #src/api/notifications 同模式）。未注册 routesApi
@@ -66,8 +69,9 @@ export function fetchUserInfo(): Promise<UserInfoType> {
 }
 
 export function fetchRefreshToken(data: { readonly refreshToken: string }): Promise<AuthType> {
+	// 强绑定下刷新不注 X-TENANT-ID 头，请求体自报 tenant。
 	return request
-		.post(REFRESH_TOKEN_PATH, { json: { refresh_token: data.refreshToken } })
+		.post(REFRESH_TOKEN_PATH, { json: { refresh_token: data.refreshToken, tenant: currentTenant() } })
 		.json<OjEnvelope<{ access_token?: string, refresh_token?: string }>>()
 		.then(env => mapAuthPayload(env.data));
 }

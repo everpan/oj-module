@@ -1320,6 +1320,9 @@
 									"password": {
 										"type": "string",
 										"minLength": 1
+									},
+									"tenant": {
+										"type": "string"
 									}
 								}
 							}
@@ -1439,6 +1442,9 @@
 									"refresh_token": {
 										"type": "string",
 										"minLength": 1
+									},
+									"tenant": {
+										"type": "string"
 									}
 								}
 							}
@@ -1497,6 +1503,9 @@
 									"refresh_token": {
 										"type": "string",
 										"minLength": 1
+									},
+									"tenant": {
+										"type": "string"
 									}
 								}
 							}
@@ -1745,6 +1754,9 @@
 									"password": {
 										"type": "string",
 										"minLength": 1
+									},
+									"tenant": {
+										"type": "string"
 									}
 								}
 							}
@@ -7908,8 +7920,7 @@
 					"200": {
 						"description": "OK"
 					}
-				},
-				"description": "出厂收敛触发（ojm dev/preview 专用）：x-ojm-converge-token 持有型证明（vars.ojm_converge_token 仅 dev/preview 派生 config 注入；生产站点无此 var → 404 即死）；幂等 riding reconcileOf"
+				}
 			}
 		},
 		"/api/auth/obo": {

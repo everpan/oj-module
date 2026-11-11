@@ -1,16 +1,20 @@
 // 会话与签发领域服务（设计 §3.1 + D14 + AC1-12/13/27）。
 // deps 注入：crypto/jwt/bcrypt 是 oj 运行时全局，Node 测试侧 crypto 只读不可 stub（设计 §9.1），
 // 随机/哈希/签名/口令原语全部经构造注入，默认实现回落运行时全局（runtimeDeps）。
-// B4：access JWT 仅载 sub（roles 走登录响应/资料接口，不进 claims）。
+// B4：access JWT 载 sub 与 tenant（tenant 经 claims.tenant 平铺进 JWT 顶层，强绑定下
+// 服务端只认 claim 里的 tenant；roles 走登录响应/资料接口，不进 claims）。
 // B3：refresh = 不透明随机串 + DB 存 SHA-256 哈希（sys_refresh_token，迁移 0008）；
 //     轮换作旧 + 滑动窗口（绝对 TTL 封顶 min(旧 exp, now+30d)）；reuse 检测全族吊销 + 审计。
 import { invalidateUser } from "#/_platform/_shared/service/infra/access";
 import { recordOp } from "#/_platform/_shared/service/infra/audit";
 
+/** 无租户上下文时的回落租户（与运行时 store/tenant 的 DEFAULT_TENANT 同值）。 */
+const DEFAULT_TENANT = "default";
+
 export interface SessionDeps {
 	randomHex: (bytes: number) => string
 	sha256Hex: (s: string) => string
-	signAccess: (sub: string) => string | Promise<string>
+	signAccess: (sub: string, tenant: string) => string | Promise<string>
 	accessTtlSecs: number
 	refreshTtlSecs: number
 	bcryptHash: (pw: string) => Promise<string>
@@ -18,13 +22,13 @@ export interface SessionDeps {
 	now?: () => number
 }
 
-/** 默认实现：回落 oj 运行时全局（jwt.sign 仅收 {sub}——B4 roles 不进 claims 的语法级保证）。 */
+/** 默认实现：回落 oj 运行时全局；access JWT 经 claims.tenant 承载租户（强绑定下服务端只认 claim 的 tenant）。 */
 export function runtimeDeps(): SessionDeps {
 	const g = globalThis as any;
 	return {
 		randomHex: (n: number) => g.crypto.randomHex(n),
 		sha256Hex: (s: string) => g.crypto.sha256Hex(s),
-		signAccess: (sub: string) => g.jwt.sign({ sub }),
+		signAccess: (sub: string, tenant: string) => g.jwt.sign({ sub, claims: { tenant } }),
 		accessTtlSecs: g.jwt.accessDuration,
 		refreshTtlSecs: g.jwt.refreshDuration,
 		bcryptHash: (pw: string) => g.bcrypt.hash(pw),
@@ -73,7 +77,7 @@ export function createSession(deps: SessionDeps = runtimeDeps()) {
 		};
 	}
 
-	async function issueFor(uid: number): Promise<TokenBundle> {
+	async function issueFor(uid: number, tenant: string): Promise<TokenBundle> {
 		const user = await profileOf(uid);
 		const refreshToken = deps.randomHex(32);
 		await db.table("sys_refresh_token").insert({
@@ -84,7 +88,7 @@ export function createSession(deps: SessionDeps = runtimeDeps()) {
 			created_at: now(),
 		}).run();
 		return {
-			access_token: await deps.signAccess(String(uid)),
+			access_token: await deps.signAccess(String(uid), tenant),
 			refresh_token: refreshToken,
 			expires_in: deps.accessTtlSecs,
 			restricted: user.must_change,
@@ -99,7 +103,7 @@ export function createSession(deps: SessionDeps = runtimeDeps()) {
 
 	return {
 		/** B1+D14：本地登录——先验口令后查禁用；号不存在/口令错/禁用统一 401（不泄露账号状态）。 */
-		async localLogin(username: string, password: string): Promise<TokenBundle> {
+		async localLogin(username: string, password: string, tenant: string = DEFAULT_TENANT): Promise<TokenBundle> {
 			const rows = await db.table("users").select(["id", "password_hash", "is_forbidden", "activated"]).where({ field: "username", op: "eq", value: String(username ?? "") }).all() as Array<Record<string, unknown>>;
 			const row = rows[0];
 			if (!row || !(await deps.bcryptVerify(String(password ?? ""), String(row.password_hash))))
@@ -110,7 +114,7 @@ export function createSession(deps: SessionDeps = runtimeDeps()) {
 			// 只在 0→1 时写一次，老用户登录不产生额外 UPDATE。
 			if (Number(row.activated) === 0)
 				await db.table("users").update({ activated: 1 }).where({ field: "id", op: "eq", value: Number(row.id) }).run();
-			return issueFor(Number(row.id));
+			return issueFor(Number(row.id), tenant);
 		},
 
 		/** B3：刷新——轮换作旧；reuse 检测（已吊销串二次出现）全族吊销 + 审计。 */
@@ -141,7 +145,7 @@ export function createSession(deps: SessionDeps = runtimeDeps()) {
 			}).run();
 			const user = await profileOf(uid);
 			return {
-				access_token: await deps.signAccess(String(uid)),
+				access_token: await deps.signAccess(String(uid), String(row.tenant_id)),
 				refresh_token: refreshToken,
 				expires_in: deps.accessTtlSecs,
 				restricted: user.must_change,
@@ -150,7 +154,7 @@ export function createSession(deps: SessionDeps = runtimeDeps()) {
 		},
 
 		/** AC1-27：自助改密——本人 + 旧口令校验；改密清 must_change、级联删 refresh、换发正式 token。 */
-		async changePassword(uid: number, oldPassword: string, newPassword: string): Promise<TokenBundle> {
+		async changePassword(uid: number, oldPassword: string, newPassword: string, tenant: string = DEFAULT_TENANT): Promise<TokenBundle> {
 			const rows = await db.table("users").select(["password_hash"]).where({ field: "id", op: "eq", value: uid }).all() as Array<{ password_hash: string }>;
 			if (!rows[0])
 				fail(404, "user not found");
@@ -164,14 +168,14 @@ export function createSession(deps: SessionDeps = runtimeDeps()) {
 				await t.table("sys_refresh_token").where({ field: "user_id", op: "eq", value: uid }).delete().run();
 			});
 			invalidateUser(uid);
-			return issueFor(uid);
+			return issueFor(uid, tenant);
 		},
 
 		revokeAll,
 
 		/** D1：外部登录（LDAP/未来 SSO）签发出口——JIT/禁号由登录链先行处理（D14：LDAP 先查号）。 */
-		async issueExternal(uid: number): Promise<TokenBundle> {
-			return issueFor(uid);
+		async issueExternal(uid: number, tenant: string): Promise<TokenBundle> {
+			return issueFor(uid, tenant);
 		},
 	};
 }

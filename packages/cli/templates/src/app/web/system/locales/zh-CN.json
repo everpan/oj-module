@@ -444,7 +444,7 @@
 			}
 		},
 		"guide": {
-			"tenantNote": "适配提示（本模板特有）：本模板开启了多租户（config.yaml tenant.enable: true），所有 /v1/api 请求——含 /auth/obo 换签与 /mcp 的 tools/call——都必须带 X-TENANT-ID 请求头（默认 default）；缺失会返回 400 missing tenant header: X-TENANT-ID。devkit mcp-bot-guide 的示例默认单租户、无此头，机器人回调里换签与工具调用都要补上这个头。",
+			"tenantNote": "本模板已开启租户强绑定（require_signed_claim）：机器人凭据（svc token）由本租户管理员在本页签发，token 内已嵌入本租户 claim。回调 / 换签（/auth/obo）/ 工具调用（/mcp tools/call）只需持此 Bearer 凭据，oj 会同时以 token 内的 tenant claim 作为请求租户——X-TENANT-ID 头须与其一致，或留空由框架从 token 推导。devkit mcp-bot-guide 的示例默认单租户、无此 claim，接入时务必确保使用的是本租户签发的 svc token，否则会被 403 tenant header does not match signed claim 拦截。",
 			"mcpTitle": "1. 开启 MCP 端点",
 			"mcpHint": "模板默认 server.mcp.enabled: false（fail-closed）。按「MCP 服务」页的启用步骤改为 true 后，机器人才能访问 {base}/mcp；安装方案时会自动把方案名登记进 modules 白名单，仅白名单内工具对外暴露。",
 			"configTitle": "config.yaml 参考片段",

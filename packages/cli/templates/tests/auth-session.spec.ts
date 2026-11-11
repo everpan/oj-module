@@ -13,14 +13,16 @@ const g = globalThis as any;
 
 let clock: number;
 let signedSubs: string[];
+let signedTenants: string[];
 let randomSeq: string[];
 
 function deps(): SessionDeps {
 	return {
 		randomHex: () => randomSeq.shift() ?? "rnd-fallback",
 		sha256Hex: (s: string) => `h(${s})`,
-		signAccess: (sub: string) => {
+		signAccess: (sub: string, tenant: string) => {
 			signedSubs.push(sub);
+			signedTenants.push(tenant);
 			return `jwt(${sub})`;
 		},
 		accessTtlSecs: 900,
@@ -46,6 +48,7 @@ beforeAll(() => {
 	dbo = installDb();
 	clock = 0;
 	signedSubs = [];
+	signedTenants = [];
 	randomSeq = [];
 });
 
@@ -87,12 +90,14 @@ describe("B1/D14：本地登录顺序与统一 401", () => {
 			.toMatchObject({ status: 401, message: "invalid credentials" });
 	});
 
-	it("B4：signAccess 仅收到 sub（roles 不进 claims）", async () => {
+	it("B4：signAccess 收到 (sub, tenant)，roles 不进 claims", async () => {
 		signedSubs = [];
+		signedTenants = [];
 		const uid = mkUser("s_dave", { pw: "secret1" });
 		dbo.prepare("INSERT INTO sys_user_role (user_id, role_name) VALUES (?, 'admin')").run(uid);
 		await createSession(deps()).localLogin("s_dave", "secret1");
 		expect(signedSubs).toEqual([String(uid)]);
+		expect(signedTenants).toEqual(["default"]); // 无租户上下文时回落 "default"
 	});
 });
 

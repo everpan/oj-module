@@ -2,6 +2,7 @@
 -- reason 不带 DEFAULT（TEXT 列禁字面量 DEFAULT）；自增用 BIGINT AUTO_INCREMENT。
 -- 与 sqlite 基础件 / schema.yaml 列名逐列一致（templates-migration-schema-parity 守 m-1/m-4）。
 CREATE TABLE IF NOT EXISTS oj_svc_token (
+  tenant_id VARCHAR(191) NOT NULL,
   jti VARCHAR(191) PRIMARY KEY,
   name VARCHAR(191) NOT NULL,
   scopes TEXT NOT NULL,
@@ -9,15 +10,18 @@ CREATE TABLE IF NOT EXISTS oj_svc_token (
   created_at BIGINT NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 CREATE TABLE IF NOT EXISTS oj_bot_binding (
+  tenant_id VARCHAR(191) NOT NULL,
   provider VARCHAR(191) NOT NULL,
   external_sub VARCHAR(191) NOT NULL,
   user_id VARCHAR(191) NOT NULL,
   last_used_at BIGINT NOT NULL DEFAULT 0,
   created_by VARCHAR(191) NOT NULL,
   created_at BIGINT NOT NULL,
-  PRIMARY KEY (provider, external_sub)
+  PRIMARY KEY (tenant_id, provider, external_sub),
+  KEY idx_binding_tenant (tenant_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 CREATE TABLE IF NOT EXISTS oj_obo_audit (
+  tenant_id VARCHAR(191) NOT NULL,
   id BIGINT AUTO_INCREMENT PRIMARY KEY,
   svc VARCHAR(191) NOT NULL,
   provider VARCHAR(191) NOT NULL,
