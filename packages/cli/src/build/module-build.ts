@@ -9,6 +9,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import tailwindcss from "@tailwindcss/vite";
+import { initSync, parse as lexModule } from "es-module-lexer";
 import { build } from "vite";
 import { parse as parseYaml } from "yaml";
 import { assertModuleList, loadSiteConfig, mergeModuleList, resolveModuleEntry } from "../config";
@@ -95,23 +96,45 @@ function warnUnsharedDeps(projectRoot: string) {
 	}
 }
 
+let lexReady = false;
+function lexForScan(source: string): ReturnType<typeof lexModule> {
+	if (!lexReady) {
+		initSync();
+		lexReady = true;
+	}
+	return lexModule(source);
+}
+
+/**
+ * 提取产物源码中的全部裸说明符（排除相对/绝对/# 路径）。
+ * 口径与 esm-exports.ts 相同：es-module-lexer 真词法扫描。原正则方案会被
+ * 字符串内容里的「…import"」邻接击穿——把紧随其后的压缩代码捕获成「库名」
+ * 打印（2026-11 告警乱码 + zod 误报的根因）。
+ */
+export function collectBareSpecifiersFromSource(source: string): string[] {
+	const specs = new Set<string>();
+	const [imports] = lexForScan(source);
+	for (const imp of imports) {
+		let spec: string;
+		if (imp.d === -1) { // 静态 import / import "x" / export … from "x"：s/e 即说明符
+			spec = source.slice(imp.s, imp.e);
+		}
+		else { // 动态 import：s/e 是实参表达式；仅认无转义的纯字符串字面量
+			const raw = source.slice(imp.s, imp.e);
+			const q = source[imp.s];
+			if (imp.s >= imp.e || (q !== "\"" && q !== "'") || raw.length < 2 || raw.includes("\\"))
+				continue;
+			spec = raw.slice(1, -1);
+		}
+		if (!spec.startsWith(".") && !spec.startsWith("/") && !spec.startsWith("#"))
+			specs.add(spec);
+	}
+	return [...specs];
+}
+
 /** 提取产物文件中的全部裸说明符（排除相对/绝对/# 路径） */
 function collectBareSpecifiers(file: string): string[] {
-	const source = fs.readFileSync(file, "utf-8");
-	const found = new Set<string>();
-	const patterns = [
-		/(?:import|export)\s[^'";]*?from\s*["']([^"']+)["']/g, // import/export ... from "x"
-		/import\s*["']([^"']+)["']/g, // 副作用导入 import "x"
-		/import\(\s*["']([^"']+)["']\s*\)/g, // 动态 import("x")
-	];
-	for (const pattern of patterns) {
-		for (const match of source.matchAll(pattern)) {
-			const spec = match[1]!;
-			if (!spec.startsWith(".") && !spec.startsWith("/") && !spec.startsWith("#"))
-				found.add(spec);
-		}
-	}
-	return [...found];
+	return collectBareSpecifiersFromSource(fs.readFileSync(file, "utf-8"));
 }
 
 /**
