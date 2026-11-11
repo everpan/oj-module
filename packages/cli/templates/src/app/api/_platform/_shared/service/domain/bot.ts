@@ -204,6 +204,16 @@ export async function deleteBinding(provider: string, externalSub: string): Prom
 	return { deleted: n };
 }
 
+/** 静默删：行不存在当作已删（返回 0），不抛 404。供企微 delete_user 事件回收绑定用—— */
+/** 成员离职权与本事件不一定成对到达，缺失即视为无需回收，绝不该让事件处理失败。 */
+export async function deleteBindingIfExists(provider: string, externalSub: string): Promise<{ deleted: number }> {
+	const n = affected(await db.table("oj_bot_binding").delete().where({ and: [
+		{ field: "provider", op: "eq", value: provider },
+		{ field: "external_sub", op: "eq", value: externalSub },
+	] }).run());
+	return { deleted: n };
+}
+
 /** CSV 批量导入：body.csv 全文，首行表头 provider,external_sub,user_id；最简 split（三元组不含逗号）。 */
 export async function importBindings(csv: string, by: string): Promise<{ imported: number, skipped: string[], total: number }> {
 	const lines = csv.split(/\r?\n/).filter(l => l.trim());

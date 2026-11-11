@@ -3,6 +3,7 @@ import type { WecomKind } from "./config";
 import type { MemberDetail } from "./login";
 import type { CallbackFields } from "./payload";
 import type { WecomStoreDeps } from "./store";
+import { deleteBindingIfExists } from "#/_platform/_shared/service/domain/bot";
 // 轨三：通讯录变更事件增量（`change_contact`）。
 //
 // 定位是**加速器，不是权威**（方案 §6.3）：权威永远是全量同步。事件只负责「管理员刚改完，
@@ -177,6 +178,9 @@ async function removeUserEvent(fields: CallbackFields): Promise<void> {
 	if (!rows.length)
 		return; // 没建过档就没什么可摘，等下一轮全量
 	const uid = Number(rows[0]!.id);
+	// 回收 bot 绑定（登录即授权写入的）：成员离职权与本事件不一定成对到达，缺失即视为
+	// 已无绑定，deleteBindingIfExists 静默忽略（不抛 404），绝不让事件处理失败。
+	await deleteBindingIfExists("wecom", userid);
 	await db.tx(async (t) => {
 		await t.table("sys_dept_member").where({ field: "user_id", op: "eq", value: uid }).delete().run();
 		await t.table("users").update({ external_status: 5 }).where({ field: "id", op: "eq", value: uid }).run();

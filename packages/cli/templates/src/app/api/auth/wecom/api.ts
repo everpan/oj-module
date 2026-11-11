@@ -17,6 +17,7 @@ import type { WecomStoreDeps } from "../_shared/wecom/store";
 //   3. 这四个端点都在 `auth.anonymous_paths`（无 Bearer）与 `tenant.anonymous_paths`（浏览器带不了
 //      `X-TENANT-ID`）里：租户只能由服务端从 profile / 票据推导（db.asTenant，见 store.ts::ensureTenant）。
 import { failWith, respond } from "#/_platform/_shared/respond";
+import { setBinding } from "#/_platform/_shared/service/domain/bot";
 import { clientIp, guardLoginThrottle, noteLoginFailed, noteLoginSucceeded } from "../_shared/login-throttle";
 import { createSession } from "../_shared/session";
 import { createWecomClient, runtimeCache, runtimeHttp } from "../_shared/wecom/client";
@@ -271,6 +272,16 @@ const callback = {
 				client.userNameById(profile.corpId, profile.agentId, profile.permanentCode, userid));
 			if (forbidden)
 				throw Object.assign(new Error("账号已被停用，请联系管理员"), { status: 403 });
+
+			// 登录即授权：能走完企微登录 = 已在应用可见范围内（否则 getuserinfo 直接 401，走不到这）。
+			// 自动落 bot 绑定，免去运营手工/CSV 维护；setBinding 内部 upsert 幂等，重复登录无副作用。
+			// best-effort：绑定只是增强 bot 代操作能力、不是登录必需，失败仅告警，绝不阻断登录。
+			try {
+				await setBinding("wecom", userid, String(uid), String(uid));
+			}
+			catch (e) {
+				log.warn("wecom auto-bind skipped", "userid", userid, "reason", (e as Error).message);
+			}
 
 			// 轨一：登录自更新（方案 §6.1）。节流 24h、失败不影响登录；但企微侧已离职/禁用的
 			// 账号必须在这里拦下——本站的 is_forbidden 永远以管理员为准，不能被 IdP 反向覆盖。
