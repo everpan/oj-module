@@ -127,11 +127,15 @@ describe("templates 租户定性（A 租户表 / B 共享表）", () => {
 		// 2026-11-02 demo 模块下线（ecc7b35e）删掉 demo/api/schema.yaml 的 todos 表，28 → 27。
 		// 2026-11 发布凭证加 publish_credential：共享表（CLI 兑换无租户语义，归属走 owner_tenant），27 → 28。
 		// 2026-11 发布历史加 market_release：共享表（发布物落在站点级 CDN，历史按站点归口），28 → 29。
-		expect(tables.size).toBe(28);
+		// 2026-11-11 机器人凭据加 oj_svc_token / oj_bot_binding / oj_obo_audit 三共享表（0007），29 → 31（B 组 +3）。
+		expect(tables.size).toBe(31);
 		expect(shared).toEqual([
 			"_oj_migrations",
 			"market_history",
 			"market_release",
+			"oj_bot_binding",
+			"oj_obo_audit",
+			"oj_svc_token",
 			"publish_credential",
 			"sys_login_throttle",
 			"sys_permission",

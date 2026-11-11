@@ -284,4 +284,14 @@ export const schemas = {
 	"updateTime": z.number()
 }),
 	},
+	"authOboPost": {
+		body: z.object({
+	"provider": z.string().min(1),
+	"external_sub": z.string().min(1)
+}),
+		data: z.object({
+	"access_token": z.string(),
+	"expires_in": z.number()
+}),
+	},
 };

@@ -33,7 +33,7 @@ export function createOjMarketClient(ctx: ModuleContext) {
 	}
 	ctx.register.apiPrefix(API_PREFIX);
 	bindRequest(ctx.utils.request);
-	return { ojMarketInstallPost, ojMarketInstallCancelPost, ojMarketTaskGet, ojMarketEnablePost, ojMarketMetaGet, ojMarketConvergePost, ojMarketBackfillPost, ojMarketUploadPost, ojMarketTrustGet, ojMarketTrustPost, ojMarketTrustKeyPost, ojMarketTrustKeyDelete, ojMarketTrustReviewGet, ojMarketIndexGet, ojMarketCatalogGet, ojMarketCatalogDetailGet, ojMarketYankPost, ojMarketUninstallImpactGet, ojMarketUninstallPost, ojMarketMcpCatalogGet, ojMarketHistoryGet, ojMarketHistoryDelete, ojMarketReleasesGet, ojMarketCdnUploadPost };
+	return { ojMarketInstallPost, ojMarketInstallCancelPost, ojMarketTaskGet, ojMarketEnablePost, ojMarketMetaGet, ojMarketBackfillPost, ojMarketUploadPost, ojMarketTrustGet, ojMarketTrustPost, ojMarketTrustKeyPost, ojMarketTrustKeyDelete, ojMarketTrustReviewGet, ojMarketIndexGet, ojMarketCatalogGet, ojMarketCatalogDetailGet, ojMarketYankPost, ojMarketUninstallImpactGet, ojMarketUninstallPost, ojMarketMcpCatalogGet, ojMarketHistoryGet, ojMarketHistoryDelete, ojMarketReleasesGet, ojMarketCdnUploadPost, ojMarketConvergePost };
 }
 
 /**
@@ -176,21 +176,6 @@ export async function ojMarketMetaGet(): Promise<OjMarketMetaGetData> {
 			if (!r.success)
 				throw new ContractApiError(-1, `[契约违例] ojMarketMetaGet 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
 		}
-		return data;
-	}
-	catch (e) {
-		throw await toApiError(e);
-	}
-}
-
-export async function ojMarketConvergePost(): Promise<unknown> {
-	const client = ensureReq();
-	try {
-		const env = await client.post(`oj-market/converge`).json<OjEnvelope<unknown>>();
-		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
-		if (typeof env.code === "number" && env.code !== 0)
-			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
-		const data = env.data as unknown;
 		return data;
 	}
 	catch (e) {
@@ -610,6 +595,21 @@ export async function ojMarketCdnUploadPost(query: OjMarketCdnUploadPostQuery): 
 			if (!r.success)
 				throw new ContractApiError(-1, `[契约违例] ojMarketCdnUploadPost 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
 		}
+		return data;
+	}
+	catch (e) {
+		throw await toApiError(e);
+	}
+}
+
+export async function ojMarketConvergePost(): Promise<unknown> {
+	const client = ensureReq();
+	try {
+		const env = await client.post(`oj-market/converge`).json<OjEnvelope<unknown>>();
+		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
+		if (typeof env.code === "number" && env.code !== 0)
+			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
+		const data = env.data as unknown;
 		return data;
 	}
 	catch (e) {

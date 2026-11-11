@@ -1,3 +1,4 @@
+import type { Buffer } from "node:buffer";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -33,6 +34,61 @@ const TAR_LOCAL: string[] = (() => {
 
 const outDir = fs.mkdtempSync(path.join(os.tmpdir(), "ojm-pack-guard-"));
 
+/**
+ * pnpm pack 会触发 cli 的 prepack：sync-devkit / sync-host-versions / sync-bundles。
+ * 前两者是幂等同步（devkit 目标 gitignored；host-versions 矩阵与 shell-dist 一致），
+ * 不留跨套件可见状态；但 sync-bundles.mjs 会无条件 rmSync 并重建
+ * packages/cli/shell-dist/bundles/：本地 templates/dist 只要留有已签名 tgz，pack 后
+ * 这个 gitignored 目录就从「源码仓应有的空态」变成「有随站包」。packages/cli 的
+ * market-bundle-freshness 守卫在模块加载时读它，于是「先跑根套件、再跑 packages/cli
+ * 套件」会误激活发布形态守卫并失败——顺序依赖就出在这份残留上。
+ *
+ * 修法：真实 pack 照跑（发布路径的验证价值不能丢），把 bundles/ 当测试夹具——跑前留
+ * 快照、每次 pack 后就地还原、afterAll 兜底。本测试对共享目录零残留，两个套件谁先谁后
+ * 结果一致。用「还原」而非让守卫跳过，是不绕过发布形态校验（守卫缺 entry.js 的报错
+ * 在真实发布形态下仍然有效）。
+ */
+const bundlesDir = path.join(PROJECT_ROOT, "packages/cli", "shell-dist", "bundles");
+
+interface BundlesState {
+	exists: boolean
+	/** sync-bundles 只往该目录平铺 *.tgz / *.sig，无子目录 */
+	files: Map<string, Buffer>
+}
+
+function readBundles(): BundlesState {
+	if (!fs.existsSync(bundlesDir))
+		return { exists: false, files: new Map() };
+	const files = new Map<string, Buffer>();
+	for (const name of fs.readdirSync(bundlesDir)) {
+		const p = path.join(bundlesDir, name);
+		if (fs.statSync(p).isFile())
+			files.set(name, fs.readFileSync(p));
+	}
+	return { exists: true, files };
+}
+
+function restoreBundles(s: BundlesState): void {
+	fs.rmSync(bundlesDir, { recursive: true, force: true });
+	if (!s.exists)
+		return; // 源码仓合法空态：prepack 生成的随站包一并清掉
+	fs.mkdirSync(bundlesDir, { recursive: true });
+	for (const [name, content] of s.files)
+		fs.writeFileSync(path.join(bundlesDir, name), content);
+}
+
+/** 内容指纹，供回归断言比较「跑 pack 前后 bundles 是否逐字一致」。 */
+function bundlesFingerprint(s: BundlesState): string {
+	if (!s.exists)
+		return "<absent>";
+	return [...s.files]
+		.sort(([a], [b]) => a.localeCompare(b))
+		.map(([name, buf]) => `${name}=${buf.toString("base64")}`)
+		.join(";");
+}
+
+const bundlesBaseline = readBundles();
+
 /** 源包版本（发布演练断言 tarball 版本与之相等，避免每次发版改测试） */
 function sourceVersion(pkgDir: string): string {
 	return (JSON.parse(fs.readFileSync(path.join(PROJECT_ROOT, pkgDir, "package.json"), "utf-8")) as { version: string }).version;
@@ -40,11 +96,14 @@ function sourceVersion(pkgDir: string): string {
 
 afterAll(() => {
 	fs.rmSync(outDir, { recursive: true, force: true });
+	restoreBundles(bundlesBaseline); // 兜底：即便某条用例在 pack 之外动过 bundles 也还原
 });
 
 /** 跑 pnpm pack 并返回 tarball 路径 */
 function pack(pkgDir: string, name: string): string {
 	execFileSync("pnpm", ["pack", "--pack-destination", outDir], { cwd: path.join(PROJECT_ROOT, pkgDir), stdio: "pipe", shell: true });
+	// prepack 已重建过 shell-dist/bundles，就地还原，不留跨套件可见的残留
+	restoreBundles(bundlesBaseline);
 	const tarball = fs.readdirSync(outDir).find(f => f.startsWith(name) && f.endsWith(".tgz"));
 	if (!tarball)
 		throw new Error(`pnpm pack 未产出 ${name} 的 tarball`);
@@ -129,5 +188,16 @@ describe("发布清单（走真实 pnpm pack 路径）", () => {
 		const missing = listed.filter(p =>
 			!inTarball.has(`templates/${p}`) && ![...inTarball].some(e => e.startsWith(`templates/${p}/`)));
 		expect(missing, "init.include.yaml 有条目未进 tarball（点文件会被 pack 剥离）").toEqual([]);
+	});
+
+	/**
+	 * 回归：本文件真跑 pnpm pack 会触发 prepack → sync-bundles 重建 shell-dist/bundles。
+	 * 若不还原，随后单独跑 packages/cli 套件时，market-bundle-freshness 守卫会在模块加载时
+	 * 误判「发布形态已有随站包」并因本地 backend-only 包缺 entry.js 而失败（顺序依赖）。
+	 * 走一次真实 cli pack，断言 bundles 与跑前逐字一致——删掉还原逻辑这条就会挂。
+	 */
+	it("prepack 的随站包副作用已就地还原（消除跨套件顺序依赖）", { timeout: 60_000 }, () => {
+		pack("packages/cli", "oj-module-cli-");
+		expect(bundlesFingerprint(readBundles()), "pack 后 shell-dist/bundles 应与跑前逐字一致").toBe(bundlesFingerprint(bundlesBaseline));
 	});
 });

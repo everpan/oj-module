@@ -172,7 +172,7 @@ oj（only-js）是一个低代码后端框架：你用 JS/TS 写 handler，框�
 | CI 里 `oj openapi --check` 非零退出 | 路由表生成的 OpenAPI 与已提交 `openapi.json` 漂移（加了路由/`.schema` 没重新生成）；跑 `oj openapi -c … -d … [--base …] [-o …]` 重新落盘提交即可。`.schema.params` 与路由 pattern 不一致也会在此步 fail-fast。**升 v0.1.70 必须重生成一次**：产物新增 `tags`（模块归属）、`responses.200` 落地、`x-oj-file` 改相对路径 |
 | `oj openapi` 报 `operationId … is derived from two different routes` | 两条路由（如 `/user/profile` 与 `/user-profile`）派生出同名 operationId —— 下游 codegen 按它命名符号会静默覆盖；给其中一条设显式 `.route` 改名 |
 | seed 没生效/语法错 | 先看启动日志：`seed ok module=… file=… dialect=…` 打的是**实际执行的文件**——只有 `seed.mysql.sql` 时 `seed.sql` 被跳过是预期（v0.1.121 起方言件胜出、兜底件绝不双跑）。语句按 `;` 切分，语句内不得含分号字面量；前置 `--` 注释行允许（v0.1.66 起，方言改写判定先剥注释——此前注释打头会让 `INSERT OR IGNORE` 原样下发 mysql → 1064）。方言相关的写法拆到 `seed.<sqlite\|mysql\|pg>.sql`，别混装进通用件。文件名不规范（`seed.postgres.sql` / `Seed.Sql`）会被忽略并 warn，`oj check` 报 S006 |
-| 模糊搜索想手写 `LIKE '%x%'` | **别手写**——用语义化 op：`contains` / `startswith` / `endswith`（v0.1.81），引擎自动转义 `%`/`_`/`!` 并渲染 `LIKE ? ESCAPE '!'`，业务零转义、零方言知识；`like` 只留作高级/框架内部逃生舱（其 `escape` 仅收单字符白名单 `! / \| ~ # @`，**显式拒 `\`**——mysql 默认 `sql_mode` 下 `ESCAPE '\'` 即 1064） |
+| 模糊搜索想手写 `LIKE '%x%'` | **别手写**——用语义化 op：`contains` / `startswith` / `endswith`（v0.1.81），引擎自动转义 `%`/`_`/转义符并渲染 `LIKE ? ESCAPE ?`（转义符为绑定参数，默认 `\`），业务零转义、零方言知识；`like` 只留作高级/框架内部逃生舱（其 `escape` 仅须单字符，多字符报错；不设白名单） |
 | `orIgnore()` 写完用 `if (n === 1)` 判幂等 | **错**：三方言 affected-rows 不一致——mysql 协商 `CLIENT_FOUND_ROWS` 命中重复键返回**匹配行 1**，pg/sqlite `ON CONFLICT DO NOTHING` 返回 **0**；应靠唯一约束/事务保证「不重复写」，行数只读「写几条」 |
 | `fromSelect` 列对不齐 / select 自带 tenant | 目标 `cols` 与源 select 列按位置一一对齐，列数不符报 `insert declares N columns but the source select yields M`；`cols` 含 `tenant_id` 直接拒（tenant 由服务端按当前租户注入）；`values` 与 `fromSelect` 二选一 |
 | mysql 上 `.returning(['id'])` 取回的 id 与库内真值不符 / 想包 `db.tx` 防串号 | v0.1.120 起已修：mysql 无 RETURNING，宿主把 insert 与 `SELECT LAST_INSERT_ID()` **钉在同一连接**（池路径自动包短事务，事务内直接用会话）——`LAST_INSERT_ID()` 是 session 级状态，旧版分两次 acquire 会读到别的连接的上一次插入。事务外也安全，无需再包 `db.tx`；取 id 或提交失败会整条回滚 |
@@ -280,7 +280,7 @@ oj（only-js）是一个低代码后端框架：你用 JS/TS 写 handler，框�
 | 查询被拦截 / 启动报 `tenant_id` 相关错（v0.1.15 sql_guard） | `sql_guard: "deny"` 拦截租户条件不匹配的查询（`"warn"` 只告警）：跨租户操作（对账/报表）走 `await db.asSystem()`（请求级 + 审计日志）；共享表须 schema.yaml `tenant: false` **且** config `tenant.shared_allow` 列出，双声明才豁免 |
 | 裸 SQL 被 deny 拦「遗漏 tenant_id」 | `db.query`/`db.exec` 的字面检查（best-effort）要求 SQL 显式带租户条件——优先改走 `db.table()` 构造器（自动注入），系统身份走 `db.asSystem()` |
 | `db.asTenant` 抛错（v0.1.20） | 三道门禁：`tenant.allow_as_tenant: true` 未开 / 请求不是匿名（未命中 `anonymous_paths` 或已带租户头）/ id 为空；且**请求级只能设一次**（防中途换身份）。公开页正确姿势见 `scenarios.md` 场景 1 |
-| **`forTenant(请求参数)` = 跨租户泄露事故**（语句级，未发布版） | `db.table(t).forTenant(id)` 的 `id` 吃什么都生效（防护照常、只是换注入值），**必须服务端派生**（企微回调 `corp_id` 查表、管理员重设等）——直接吃 `http.query`/`http.body` 的租户参数就是事故模板。同请求其他语句不受影响；只许顶层语句（子查询/union/cte/fromSelect 源带它必报错）；`toSQL()` 产物别经 `db.query` 回放（守卫按请求租户校验参数，会拒）；命中记审计 `DB_TENANT_OVERRIDE`（`cross=true` 即真跨租户） |
+| **`forTenant(请求参数)` = 跨租户泄露事故**（语句级，v0.1.129） | `db.table(t).forTenant(id)` 的 `id` 吃什么都生效（防护照常、只是换注入值），**必须服务端派生**（企微回调 `corp_id` 查表、管理员重设等）——直接吃 `http.query`/`http.body` 的租户参数就是事故模板。同请求其他语句不受影响；只许顶层语句（子查询/union/cte/fromSelect 源带它必报错）；`toSQL()` 产物别经 `db.query` 回放（守卫按请求租户校验参数，会拒）；命中记审计 `DB_TENANT_OVERRIDE`（`cross=true` 即真跨租户） |
 | 尾 `/*` 匿名路径收不到豁免（v0.1.20） | **auth 侧**尾 `/*` 已统一为**严格一层**（旧 oj-auth 是任意深度）；跨层改 `/x/**`。**租户侧自始就是严格一层，无此变更**。装配期只对 `auth.anonymous_paths` 里「旧式前缀形态（只有尾段一个 `*`、其余段全字面）且确实丢了面（有更深的已注册路由）」的条目打聚合迁移 WARN（v0.1.23 起，结构条目与仅差 `**` 零层的都不再点名）；确属有意一层可写 `- { path: "/x/*", one_layer: true }` 消音。`tenant.` 与 `auth.` 两条匿名列表独立，OIDC 跳转请求要都加 |
 | 要 302 跳转只会 `header`+`fail` 拼 | 拼出来的是**失败信封体**（非标准形态）。用 `json.redirect(url[, code])`（v0.1.26）：3xx + `Location` + RFC 9110 §15.4 注记（HEAD 为空 body）；`code` 非 3xx 回落 302 |
 | SPA 深链 404 / 只回 100 条数据 | 前者：web 挂载写 `spa: true`（v0.1.58 起逐挂载，默认关，api 挂载前缀下的 404 不被吞）；后者：没写 `limit()` 吃了 `db_query.default_limit`（默认 100，看 `X-OJ-Row-Limit` 头） |
@@ -431,6 +431,14 @@ oj（only-js）是一个低代码后端框架：你用 JS/TS 写 handler，框�
 | table 的 ddlDiff `to:null` 曾静默零语句（v0.1.113 已改为参数错误） | DROP TABLE 是独立高危语义，不进 ddlDiff——删表走显式迁移；objectType=view/index/sequence/routine/trigger 的 to:null 才是 drop |
 | MySQL 表改名语句序（v0.1.113） | 表 `previousName` 产 `ALTER TABLE old RENAME TO new`（**RENAME TO**，非 RENAME TABLE）恒首条；与列级 previousName 同 spec 时表 rename 在先、列 rename 用新表名 |
 | 直连想用 HTTP/2 但 curl/fetch 都跑成 1.1（v0.1.118） | 明文端口仅支持 **h2c prior knowledge**（无 `Upgrade: h2c`）——显式用 `curl --http2-prior-knowledge` / `node:http2`；升级式客户端静默按 1.1 完成，不是故障。**WS 必须走 HTTP/1.1**（无 RFC 8441）；浏览器 h2 由反代 ALPN 承担。见场景 70 |
+| read 档 svc token 打 `/mcp` 全 401 或全 403（v0.1.130） | 分清两道门：**守卫** 401（token 没验过/过期）与 **admit** 403（scopes 档位不符，文案 `missing scope: <tier>`）。端点级 POST 在 `/auth/obo`、`/mcp`、`/rpc` 是传输动词非业务动词——scopes **不做端点级判定**（按工具/路由以真实动词收口）；jti 门在这三个端点照常查 |
+| svc token 刚签发就 403 / 刚吊销还能用一会儿（v0.1.130） | jti 门走 30s TTL 缓存：签发后**最长 30s** 才可见、吊销后最长 30s 全网失效——测试/自动化要等窗口过（deadline 轮询，勿固定 sleep 猜）；查库失败恒 fail-closed 拒 |
+| 机器人直连工具判权限（客户端 scopes 解码）（v0.1.130） | **不要**——三档收口在服务端 admit 单点（`/mcp`、`/rpc`、直连 REST 三面同规则）；`tools/list` 裁剪只是展示面，调用面不裁（被裁 tool 直呼得 403 非 -32601）。客户端只管带 token 调，403 按 `[code=403] missing scope: <tier>` 提示换签发档位 |
+| 以为 svc 的 scopes 约束换签产物（v0.1.130） | **不约束**——scopes 收口机器人直连面；obo 换签出的受托 token 按**员工本人 roles** 生效（10min、`claims.act` 指回 svc 名）。想约束代操作面用 `server.mcp.act_mask_destructive: true`（act 会话拒 delete） |
+| `jwt.sign` 带 `claims` 后守卫读不到 / 报保留键（v0.1.130） | claims 是**平铺**进 JWT 顶层的（`http.user.claims` 读回全部）；`sub/roles/iat/exp` 是保留键不能进 `claims`（防伪造时效）。`ttl_secs` 上限 90 天，越界按上限钳不报错 |
+| obo 换签失败按 HTTP 状态分流（v0.1.130） | 四失败路径 HTTP 恒 500（code>599 钳制）——**按信封 `code` 分流**：40310 未绑定 / 40311 已吊销 / 40312 非 svc / 40313 员工停用。受托 token 401 → 重换签**一次**再试（10min 短时效设计），仍 401 告警 |
+| MCP 错误文案做等值断言（v0.1.130） | isError/message 带 `[code=<n>] ` 前缀且**文案冻结**——断言用前缀正则 `^\[code=(\d+)\] `，勿全文等值（msg 后续可能充实）。`tools/list` 结果勿跨会话缓存（scopes 裁剪因 token 而异） |
+| 给机器人开 WS 工具面（v0.1.130） | `/ws` 升级**不经** admit（scopes/jti/act_mask 均不查，只过守卫 verify）——敏感路由勿开 WS 面；线路 A 静态快照同样不经 scopes 展示裁剪（执行仍由服务端收口） |
 
 ## 手册
 

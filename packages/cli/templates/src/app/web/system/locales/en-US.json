@@ -9,6 +9,7 @@
 		"settings": "Site Settings",
 		"wecom": "WeCom Integration",
 		"mcp": "MCP Services",
+		"bot": "Bot Access",
 		"departments": "Departments"
 	},
 	"common": {
@@ -336,5 +337,127 @@
 		"reconnect": "How changes apply: the catalog is fixed at connection time — after install/upgrade/uninstall, agents must reconnect to see the latest tools; calling an old offline tool mid-session returns -32601.",
 		"paramsShape": "Argument shape: tool arguments are always nested path/query/body objects.",
 		"lineA": "Route A (offline codegen, an ops action outside the site): oj mcp -c config.yaml generates a dependency-free stdio server (env OJ_BASE / OJ_TOKEN / OJ_TENANT). It is a file snapshot — regenerate after solution changes."
+	},
+	"bot": {
+		"tab": {
+			"token": "Service Tokens",
+			"binding": "Employee Bindings",
+			"audit": "OBO Audit",
+			"guide": "Integration Guide"
+		},
+		"common": {
+			"copy": "Copy",
+			"copied": "Copied to clipboard",
+			"export": "Export CSV",
+			"import": "Import CSV",
+			"refresh": "Refresh",
+			"actions": "Actions",
+			"close": "Close"
+		},
+		"token": {
+			"hint": "A service token (svc token) is used only for OBO exchange: the bot trades it for a 10-minute delegated token. Real authority comes from the bound employee's own roles. The plaintext is shown only once, at issuance.",
+			"issue": "Issue Token",
+			"name": "Name",
+			"namePh": "e.g. wecom-bot",
+			"scopes": "Scopes",
+			"scopeHint": "read = GET; write = POST/PUT/PATCH; destructive = DELETE. Never grant destructive to a bot; also enable act_mask_destructive to mask delete tools.",
+			"issueOk": "Issued (jti {{jti}})",
+			"onceTitle": "Save the credential now",
+			"onceHint": "The plaintext token is shown only once and cannot be retrieved after closing. Copy it into the bot's server-side secret store (e.g. vars.WECOM_BOT_SVC_TOKEN) — never into code or logs.",
+			"tokenLabel": "Service token (Bearer)",
+			"revoke": "Revoke",
+			"revokeConfirm": "Revoking removes the jti from the registry immediately (cache settles in ~30s). Continue?",
+			"revoked": "Revoked",
+			"empty": "No service tokens",
+			"columns": {
+				"name": "Name",
+				"jti": "jti",
+				"scopes": "Scopes",
+				"createdBy": "Issued by",
+				"createdAt": "Issued at",
+				"actions": "Actions"
+			},
+			"scope": {
+				"read": "read",
+				"write": "write",
+				"destructive": "destructive"
+			}
+		},
+		"binding": {
+			"hint": "A binding maps an IM channel account to a site user. On OBO exchange the bot looks up the employee by (provider, external_sub); the delegated token carries that employee's own roles.",
+			"add": "Add Binding",
+			"edit": "Edit Binding",
+			"provider": "Provider",
+			"providerPh": "e.g. wecom",
+			"externalSub": "External sub (external_sub)",
+			"externalSubPh": "IM member UserId",
+			"userId": "Site user ID (user_id)",
+			"userIdPh": "users.id",
+			"saved": "Saved ({{op}})",
+			"delete": "Delete",
+			"deleteConfirm": "Delete this binding? The employee can no longer be represented by the bot.",
+			"deleted": "Deleted",
+			"importHint": "The CSV header must be provider,external_sub,user_id; a repeated (provider, external_sub) updates the row (upsert). The export button downloads the same format and can be imported back.",
+			"importOk": "Imported: {{imported}} succeeded, {{skipped}} skipped ({{total}} total)",
+			"importSkipped": "Skipped lines: {{lines}}",
+			"exportOk": "Exported {{count}} bindings",
+			"empty": "No bindings",
+			"columns": {
+				"provider": "Provider",
+				"externalSub": "External sub",
+				"userId": "User ID",
+				"lastUsedAt": "Last used",
+				"createdBy": "Created by",
+				"createdAt": "Created at",
+				"actions": "Actions"
+			}
+		},
+		"audit": {
+			"hint": "Every OBO exchange (success or failure) writes one audit row. Failure reasons help diagnose unbound accounts, revoked credentials, or disabled users.",
+			"filterSvc": "Service (contains)",
+			"filterOk": "Result",
+			"okAll": "All",
+			"okSuccess": "Success",
+			"okFail": "Failure",
+			"total": "{{total}} records",
+			"yes": "OK",
+			"no": "Failed",
+			"exporting": "Exporting…",
+			"exportOk": "Exported {{count}} records",
+			"empty": "No records",
+			"columns": {
+				"id": "ID",
+				"time": "Time",
+				"svc": "Service",
+				"provider": "Provider",
+				"externalSub": "External sub",
+				"userId": "User ID",
+				"ok": "Result",
+				"reason": "Reason"
+			},
+			"reason": {
+				"success": "—",
+				"not_svc": "Not a svc credential (missing bot role)",
+				"revoked": "Service credential revoked or missing",
+				"unbound": "Account not bound for bot delegation",
+				"disabled": "Account disabled"
+			}
+		},
+		"guide": {
+			"tenantNote": "Adaptation note (specific to this template): this template enables multi-tenancy (tenant.enable: true in config.yaml), so every /v1/api request — including the /auth/obo exchange and /mcp tools/call — must carry the X-TENANT-ID header (default: default). Omitting it returns 400 missing tenant header: X-TENANT-ID. The devkit mcp-bot-guide sample assumes a single-tenant setup without this header, so both the bot callback's exchange and its tool calls must add it.",
+			"mcpTitle": "1. Enable the MCP endpoint",
+			"mcpHint": "The template ships with server.mcp.enabled: false (fail-closed). Follow the enable steps on the MCP Services page to set it to true before the bot can reach {base}/mcp; installing a solution auto-registers its name into the modules allowlist, and only allowlisted tools are exposed.",
+			"configTitle": "config.yaml snippet",
+			"configCopy": "Copy config snippet",
+			"botTitle": "2. Group-chat scenario & callback skeleton",
+			"botHint": "\"Group chat\" is a usage scenario, not a new entity: an employee @-mentions the bot in a group and the bot reads/writes data on their behalf. No group-chat registry is needed. Handle callbacks in this order:",
+			"steps": "① Ack within 5 seconds to avoid IM timeout redelivery.\n② Deduplicate by MsgId (kv.incr) so a message is never processed twice.\n③ Read vars.WECOM_BOT_SVC_TOKEN and POST /v1/api/auth/obo (provider + external_sub) for a 10-minute delegated token.\n④ With that token, POST /v1/api/mcp to call tools/call: send Accept: application/json; arguments are always the path/query/body triple.\n⑤ Render the result into a Chinese reply template and post it back; business errors are isError: true with a [code=<n>] prefix, not JSON-RPC errors.\n⑥ On a 401 from the delegated token, exchange once more; never cache tools/list across sessions.",
+			"checklistTitle": "3. Pre-launch checklist",
+			"checklist": "□ An svc token is issued without the destructive scope.\n□ The plaintext credential is stored server-side, never in the DB or frontend.\n□ Bindings exist for the target employees (or were CSV-imported).\n□ server.mcp.enabled is on and the modules allowlist contains the needed solutions.\n□ act_mask_destructive: true is on so delete tools are masked for the bot.\n□ The callback is verified: 5s ack, MsgId dedupe, one re-exchange on 401.\n□ A real group-chat @-mention succeeded and shows a success row in OBO Audit.",
+			"codeTitle": "4. OBO exchange error codes",
+			"codes": "40310 Unbound: no binding row for (provider, external_sub).\n40311 Revoked: jti missing or absent from the oj_svc_token registry (fail-closed).\n40312 Not a svc credential: claims.svc missing, or token lacks the bot role.\n40313 Disabled: the bound user does not exist or has is_forbidden=1.",
+			"securityTitle": "5. Credential & authority boundaries",
+			"security": "The svc token only covers the exchange hop and grants no business authority by itself; the delegated token's roles are read live from sys_user_role (the employee's own roles) and expire in 10 minutes.\nRevocation uses the jti's presence in oj_svc_token as the source of truth, checked on every exchange (~30s cache).\nThe delegated token's claims.act.sub points back to the svc name; act_mask_destructive masks delete operations on that basis, and every exchange leaves an audit row."
+		}
 	}
 }

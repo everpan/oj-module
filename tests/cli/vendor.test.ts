@@ -243,7 +243,7 @@ fs.writeFileSync(path.join(bin,${JSON.stringify(ojBin)}),"#!/bin/sh\\necho oj\\n
 
 		it("模板后端用了 forTenant → 门禁必须拒绝 0.1.128（该版本 QueryBuilder 无此方法）", () => {
 			// 跨包守卫：模板把跨租户读写收敛到 `forTenant()`（oj v0.1.129 起才有），
-			// 若有人把 MIN_OJ_VERSION 降回 0.1.128，下游 ojm vendor 装到的 oj 会让
+			// 若有人把 MIN_OJ_VERSION 降到 0.1.129 以下，下游 ojm vendor 装到的 oj 会让
 			// 「停用企业 / 开通租户管理员 / 改密」全线 TypeError。这里直接读模板源码，
 			// 不依赖 gitignored 的本地 .oj-version 标记（CI 干净克隆里不存在）。
 			const wecom = ["store.ts", "tenant-admin.ts"].map(name =>
@@ -252,6 +252,14 @@ fs.writeFileSync(path.join(bin,${JSON.stringify(ojBin)}),"#!/bin/sh\\necho oj\\n
 				.some(line => /\.forTenant\s*\(/.test(line) && !/^\s*(?:\/\/|\*)/.test(line)));
 			expect(usesForTenant, "模板已移除 forTenant 时请同步复核本门禁").toBe(true);
 			expect(isSupportedOjVersion("0.1.128")).toBe(false);
+		});
+
+		it("机器人接入管理端依赖 oj v0.1.130 凭据三件套 → 门禁拒绝 0.1.129", () => {
+			// 模板 admin/service-token、auth/obo 依赖 oj v0.1.130 的 svc jti 在册核销、
+			// obo 换签四码与 act_mask_destructive 遮蔽；0.1.129 只有 forTenant，
+			// 装到它上面凭据签发/换签面会静默失效。
+			expect(isSupportedOjVersion("0.1.129")).toBe(false);
+			expect(isSupportedOjVersion("0.1.130")).toBe(true);
 		});
 	});
 });

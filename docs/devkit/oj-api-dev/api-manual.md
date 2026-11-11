@@ -2172,7 +2172,7 @@ secret / 算法 / 有效期由 config `auth:` 段在装配期注入，handler �
 
 | API | 签名 | 说明 |
 |---|---|---|
-| `jwt.sign` | `sign(payload: { sub: string; roles?: string[] }): string` | 签发 access token（payload 至少含 `sub`，`roles` 缺省空数组） |
+| `jwt.sign` | `sign(payload: { sub: string; roles?: string[]; claims?: object; ttl_secs?: number }): string` | 签发 access token（payload 至少含 `sub`，`roles` 缺省空数组）。v0.1.130：`claims` 对象**平铺**进 JWT 顶层（保留键 `{sub,roles,iat,exp}` 报错——不得伪造时效）；`ttl_secs` 指定有效期（秒），服务端钳制上限 **90 天**（越界按上限取，不报错） |
 | `jwt.verify` | `verify(token: string): { sub, roles, iat, exp }` | 验签 + 过期检查（leeway 0）；篡改 / 过期 / 算法不符直接抛错 |
 | `jwt.accessDuration` | `readonly number` | 配置的 access 有效期（秒；getter 惰性求值） |
 | `jwt.refreshDuration` | `readonly number` | 配置的 refresh 有效期（秒） |
@@ -2180,7 +2180,20 @@ secret / 算法 / 有效期由 config `auth:` 段在装配期注入，handler �
 ```ts
 const token = jwt.sign({ sub: user.id, roles: user.roles });   // 登录端点签发
 const claims = jwt.verify(token);                               // 受守卫保护的端点一般直接读 http.user
+// v0.1.130 自定义 claims + 可控 TTL：claims 平铺进 JWT 顶层，守卫侧 http.user.claims 读回
+const svc = jwt.sign({
+  sub: "svc:bot", roles: ["bot"],
+  claims: { svc: "bot", jti: "t-1234", scopes: ["read", "write"] },
+  ttl_secs: 3600,
+});
 ```
+
+> **claims 约定**（v0.1.130）：`svc`（机器凭据标记）/`jti`（凭据 id，admin 端点
+> 可吊销）/`scopes`（三档权限，见第 14 章）/`act`（代操作标记，obo 换签写入）/
+> `tenant`（租户门只认验签后 claim——`tenant.require_signed_claim: true` 部署下
+> 裸租户头不自证）。守卫把平铺字段孪生回 `http.user.claims`——旧 token（无自定义
+> claims）的 `http.user.claims` **仅含标准四键** `{sub,roles,iat,exp}`（不是空对象；
+> 有自定义 claims 时是全量孪生，勿硬编码键集假设），旧 token 行为零变化。
 
 ### bcrypt —— 密码哈希（始终可用）
 
@@ -2691,7 +2704,7 @@ tenant_id」时 warn 告警 / deny 拦截。guard 非 Off 时 schema.yaml 声明
 租户条件；**请求级且只能设一次**（已带租户头 / 已设过 → 抛错，防运行期切换身份）。
 典型用途：公开分享页、OIDC 回调等无头请求仍需按 URL 里的租户读取数据。
 
-**`db.table(t).forTenant(id)`（语句级，未发布版起）**：与上两个请求级逃生口不同，这是
+**`db.table(t).forTenant(id)`（语句级，v0.1.129 起）**：与上两个请求级逃生口不同，这是
 **语句级**身份——只让**这一条**构造器语句以租户 `id` 执行，同请求其他语句仍注入当前
 请求租户。租户条件**照常注入**（只是注入值换成 `id`）：where 收窄、insert 强制写、update
 sets 校验、join ON、fromSelect 常量列全走覆盖值。`id` 必须**服务端派生**（企微回调
@@ -3949,20 +3962,20 @@ await db.query("select id from account where id = " + id, []);   // 禁止
 | `db.session` 生命周期由 host 管，**不自动提交** | 空闲 `idle_timeout_secs`（默认 300s）/ 总寿命 `max_lifetime_secs`（默认 1800s）到期 → reaper 先 `ROLLBACK` 再丢弃（日志 `DB_SESSION_TIMEOUT`），连接**不归还**（状态不可信）。容量满时拒绝新会话，绝不驱逐他人会话。id 是 **bearer token**：未知 / 他人 / 畸形 id 一律同一文案，日志只打 `tx_ab12_…` 前缀 |
 | `db.stream` 仅非事务目标 + 后端能力分档（v0.1.37；v0.1.38 起插件后端真流式） | 在 `db.tx` 内调用报 `db.stream within an active transaction is not supported (streaming queries run on the connection pool only)`。核心 sqlite/mysql/postgres 连接与 `oj-db-mysql` / `oj-db-postgres` 插件后端**真流式**（逐行拉，内存恒定）；没有逐行能力的后端**回落 `db.query` 全量**（内容等价、不报错，仅失去内存优势）；彻底不支持时报 `backend does not support streaming`，改走 `db.query` 分页 |
 | 流式取消（`signal`）= 干净提前结束（v0.1.39；v0.1.42 起 pg/mysql 真取消） | abort 后**停止后端拉取**（有界行缓冲背压），缓冲行交付完即 done。**第一方插件 `oj-db-postgres`/`oj-db-mysql` 在 `postgres://`/`mysql://` DSN 下走专用连接，取消 = `pg_cancel_backend`/`KILL QUERY` + 断连 → 服务端查询立即终止（真取消）**；core（sqlite）与 Any 回退路径为协作式（批间生效）。已回调的行不回滚 |
-| `db.export` 任务式导出（U-18，v0.1.104）：发起即返 taskId，自驱消费任务落 blob | `await db.export({sql, params?, format:"csv"|"jsonl", fileName?, maxBytes?})` → `{taskId}`（开游标轻、查询下推异步，大结果集 200ms 内回执）；`db.exportStatus(taskId)` 轮询 `{taskId, state:"running"|"done"|"failed"|"cancelled", alias, rows, bytes, truncated, truncatedReason, startedAtMs, finishedAtMs, error, blobKey}`；`db.exportCancel(taskId)` 幂等（半成品经 put_stream_abort 清，防 s3 orphan parts）。配额：全局 4 / 每主体 2（`db_export:` 段，错误文案区分「全局满/本人满」）；**maxBytes 超限 → failed（不静默截断）**；`max_rows` 策略截断 → done + `truncated:true` + `truncatedReason:"max_rows"`（错误 ≠ 策略双轨）。产物 key = `export/<taskId>.<ext>`（随机不可预测），TTL 24h 宿主清扫（live 任务豁免，`db_export.ttl_secs/sweep_interval_secs` 可调）；local 首方下载带 Content-Disposition 原名（`fileName` 存 sidecar），s3 腿尽力（无此元数据）。重启后旧 taskId 一律 not found（不是 failed）；他人 id 不可见（bearer 语义，日志只出前 8 字符）；发起/终态落审计事件（SQL 全文不入审计） |
+| `db.export` 任务式导出（U-18，v0.1.104）：发起即返 taskId，自驱消费任务落 blob | `await db.export({sql, params?, format:"csv"\|"jsonl", fileName?, maxBytes?})` → `{taskId}`（开游标轻、查询下推异步，大结果集 200ms 内回执）；`db.exportStatus(taskId)` 轮询 `{taskId, state:"running"\|"done"\|"failed"\|"cancelled", alias, rows, bytes, truncated, truncatedReason, startedAtMs, finishedAtMs, error, blobKey}`；`db.exportCancel(taskId)` 幂等（半成品经 put_stream_abort 清，防 s3 orphan parts）。配额：全局 4 / 每主体 2（`db_export:` 段，错误文案区分「全局满/本人满」）；**maxBytes 超限 → failed（不静默截断）**；`max_rows` 策略截断 → done + `truncated:true` + `truncatedReason:"max_rows"`（错误 ≠ 策略双轨）。产物 key = `export/<taskId>.<ext>`（随机不可预测），TTL 24h 宿主清扫（live 任务豁免，`db_export.ttl_secs/sweep_interval_secs` 可调）；local 首方下载带 Content-Disposition 原名（`fileName` 存 sidecar），s3 腿尽力（无此元数据）。重启后旧 taskId 一律 not found（不是 failed）；他人 id 不可见（bearer 语义，日志只出前 8 字符）；发起/终态落审计事件（SQL 全文不入审计） |
 | `db.export` 与 REQ-05 护栏的分工（v0.1.104） | 导出是**长任务**：不吃 `statement_timeout_ms`（合法导出天然超语句窗口——超时竞速只罩「发起→开游标」的同步段）；`max_result_bytes` 是查询响应闸、导出自己的闸是 `maxBytes`（产物字节）。导出与 db.query 同门过 db_access 判权 + `max_rows` 策略截断可见化。`format` 只注册 csv/jsonl，未知格式报 `OJ_DB_UNSUPPORTED`（`e.data.capability="format"`，含 format 值）；xlsx/parquet = 格式注册表扩展位，本期不做 |
 | `db.cancel` 跨请求取消（v0.1.96；v0.1.114 起受理池执行） | `executionId` 来自 `db.stream` 的 `onOpen`/`executionId()`，或带 `onOpen` 回调的 `db.query`/`db.exec`；同一主体任意请求可消，重复取消幂等。流：取消后发起方**下一次拉取抛错** `db stream exec_… was cancelled via db.cancel`（不是静默 done）；池执行：reject `OJ_DB_CANCELLED`。未知/已结束/他人 id 一律 `execution exec_… not found`（不泄露存在性，日志/错误只出前 8 字符）。见 `db-guide.md` §3.1 |
 | REQ-11 执行回调面（v0.1.114）：`db.query`/`db.exec` 的 `opts.onOpen`/`onProgress` + `db.stream` 的 `opts.onProgress` | 进度相位 `sent`→`fetching`→`done`（done **恒发一次**、必含行数/受影响数；同相位 100ms 节流）。带 `onOpen`/`onProgress` 即走 begin/poll/take 登记模型（= 跨请求取消入口，`onOpen` 拿 executionId）；不带回调维持原直路返回形态（挂断联动登记面同样覆盖，见 G2 行）。`onOpen` 抛异常只记 warn、**不杀执行** |
 | REQ-11 G2 挂断即取消（v0.1.114，**尽力而为**） | HTTP 客户端断开（真 FIN）→ 按请求的执行登记尽力取消在飞执行。**已提交的结果不写回**（客户端已走）；pg/mysql in-flight 语句经 `pg_cancel_backend`/`KILL QUERY` 尽量真杀（被取消的连接报废、绝不回池）。v0.1.114 起**直连池 `db.query`/`db.exec` 全量登记**（含无回调直路）——挂断取消覆盖全部池执行；不覆盖 `db.tx`/`db.session` 会话内执行（无请求 token）与 WS/内部派发（不挂 guard）；sqlite 无服务端语句 = 客户端早停 |
 | REQ-11 取消的错误口径：`OJ_DB_CANCELLED` vs `OJ_DB_TIMEOUT`（v0.1.114） | CANCELLED = 主动取消（`db.cancel`/挂断联动）：`retryable=false`、`sessionDisposition=close`（连接报废）；TIMEOUT = 预算到点：`retryable=true`（重试合法）。分流按 `retryable`，勿按文案猜。插件轴 `exec`（DML）取消不可达——插件 `query_cancelable` 经宿主侧 stream vtable 真杀，exec 真杀记 **ABI 13 车**（见 `db-guide.md` §11.6.5 错误码表） |
-| `db.import` 任务式批量导入（REQ-12，v0.1.115）：发起即返 taskId，自驱 consumer 分批落库 | `await db.import({table, blobKey?|rows?, format:"csv"|"jsonl", columns?, mode?, conflictKeys?, batchSize?, header?, onError?, maxErrors?})` → `{taskId}`（`imp_` 前缀，与 `exp_`/`exec_` 隔离）；`db.importStatus(taskId)` 轮询 `{taskId, state:"running"|"done"|"failed"|"cancelled", alias, table, rows, errors, bytes, samples?, startedAtMs, finishedAtMs, error}`；`db.importCancel(taskId)` 幂等。源：`blobKey`（blob `read_range` 1MiB 窗口流式读）或内联 `rows`（≤ `db_import.max_rows`，登记前拒）。**守卫**：sql_guard 下目标表已登记且 tenant-scoped → fail-closed——Warn 档 `OJ_DB_UNSUPPORTED`（`e.data.capability="import_under_guard"`）、Deny 档报 `import_under_guard`；Deny + 未登记 → 拒（同裸 SQL「cannot verify tenant scope」）；放行绝不宽于等效裸 INSERT。replace = 先删后插，truncate 同档（`allow_ddl` + 危险写确认 token）。配额：全局 4 / 每主体 2 / max_rows 100 万 / max_bytes 512MiB（`db_import:` 段；超限 failed 点名键，不静默截断）。格式只注册 csv/jsonl。标识符只走 `quote_ident` + SchemaRegistry 白名单，csv 表头只用于列序匹配（与登记列名不符 → 参数错误 fail-fast）。审计 `db.import.start/done/failed/cancelled` 全量；他人 id 不可见（bearer，日志只出前缀）；重启后旧 taskId not found。见 `db-guide.md` §3.4 |
+| `db.import` 任务式批量导入（REQ-12，v0.1.115）：发起即返 taskId，自驱 consumer 分批落库 | `await db.import({table, blobKey?\|rows?, format:"csv"\|"jsonl", columns?, mode?, conflictKeys?, batchSize?, header?, onError?, maxErrors?})` → `{taskId}`（`imp_` 前缀，与 `exp_`/`exec_` 隔离）；`db.importStatus(taskId)` 轮询 `{taskId, state:"running"\|"done"\|"failed"\|"cancelled", alias, table, rows, errors, bytes, samples?, startedAtMs, finishedAtMs, error}`；`db.importCancel(taskId)` 幂等。源：`blobKey`（blob `read_range` 1MiB 窗口流式读）或内联 `rows`（≤ `db_import.max_rows`，登记前拒）。**守卫**：sql_guard 下目标表已登记且 tenant-scoped → fail-closed——Warn 档 `OJ_DB_UNSUPPORTED`（`e.data.capability="import_under_guard"`）、Deny 档报 `import_under_guard`；Deny + 未登记 → 拒（同裸 SQL「cannot verify tenant scope」）；放行绝不宽于等效裸 INSERT。replace = 先删后插，truncate 同档（`allow_ddl` + 危险写确认 token）。配额：全局 4 / 每主体 2 / max_rows 100 万 / max_bytes 512MiB（`db_import:` 段；超限 failed 点名键，不静默截断）。格式只注册 csv/jsonl。标识符只走 `quote_ident` + SchemaRegistry 白名单，csv 表头只用于列序匹配（与登记列名不符 → 参数错误 fail-fast）。审计 `db.import.start/done/failed/cancelled` 全量；他人 id 不可见（bearer，日志只出前缀）；重启后旧 taskId not found。见 `db-guide.md` §3.4 |
 | `db.import` 方言路径与事务语义（REQ-12，v0.1.115） | 全部多值 INSERT 全参数化。append 直插；upsert = PG `ON CONFLICT (keys) DO UPDATE` / MySQL `ON DUPLICATE KEY UPDATE`（**要求表上有唯一键**，缺 → 参数错误）/ sqlite `INSERT OR REPLACE` 仅 `conflictKeys=["rowid"]`；replace = 显式 `DELETE` + 多值 INSERT（单事务；不用 `REPLACE INTO`——FK 语义不同）。批收敛按方言变量上限/列数——PG/MySQL 65535、**sqlite 32766**（7 列宽表默认批压到 4680 行/批）。**sqlite append/upsert 全单事务**（性能关键）：cancel/fail 整回滚 `rows=0`、库空——**与网络方言「已提交批保留」语义不同，跨方言代码勿假设 rows>0**。skip 模式批内逐行 INSERT：坏行进 `samples`（≤20，`line`=源文件绝对行号含 header 偏移，1-based）行不落库继续，`errors > maxErrors`（默认 10）→ 整任务 Failed；abort（默认）批错 → 整批回滚 Failed，网络方言已提交前序批保留（`rows`=已提交）。cancel 批间协作：已提交批不回退。append 不误称幂等（重复导入 = 约束错照常）；幂等只由 upsert/replace 承担。实测 500k×10 CSV：PG 1.8s / MySQL 3.3s（预算 <60s） |
 | `db.client` 配额三件（U-7，v0.1.97） | ① 同主体登记数达 `db_client.max_per_owner` → register 报 `per-owner cap N reached`（delete 释放）；② 动态库全局流预算达 `db_client.max_streams` → `db.stream` 报 `stream budget exhausted`（随流结束自动释放，不排队）；③ `test/register/reRegister` 拨号 5s 超时，同主体**连续 8 次 connect 失败锁退 60s**（拨号前即拒，错误带 retry 秒数；成功清零）。拒绝落 `DB_CLIENT_DENY` 日志。详见 `db-guide.md` §11.6 |
 | G9 服务端防护门三件（v0.1.99，op 层强制——不经任何包 handler 直发 op 也拦得住） | ① **只读会话位**：`db.session.begin({readOnly: true})` → 该会话 Write/DDL 拒，错误 `db session on alias '…' is read-only; …`，`e.sessionDisposition === "keep"`（会话保留）；② **写拦截**即①的 op 层强制（attach 路径与 `db.session.query/exec` 双入口）+ 既有 `db_access.read_only` 文本级拦截（v0.1.112 起 `KILL` 语句分类为 Write——只读面/只读会话一律拒绝，不再漏过）；③ **危险语句确认门**：`db_access.<alias>.dangerous_confirm_token` 配置后，危险写（无 WHERE/恒真）须请求头 `x-oj-confirm` 精确匹配，否则报 `… requires confirmation for dangerous statements…`；放行即落 `DB_DANGEROUS_CONFIRM` 审计。见 `db-guide.md` §4.5 / §11.5 |
 | `db.catalog` 能力矩阵与 unsupported（v0.1.100；`ddl` 全量 v0.1.109；v0.1.112 扩 processlist/users/roles/triggers + truncated + ddl 路由） | kind × 方言不支持 → 结构化 `OJ_DB_UNSUPPORTED`（`e.data.capability` 点名），**不静默回落**。矩阵：sqlite 仅 `views`/`ddl`；mysql 全部（`sequences` 为 auto_increment 模拟）+ `processlist`/`users`/`roles`/`triggers`；pg 除 mysql 式 `sequences` 外全部 + 同四新 kind。信封新增 **`truncated` 旗标**（行数超 1000 上限为 true，截断不静默）。`ddl`（v0.1.109 全量；v0.1.112 对象路由）：pg 普通表 → **拼接器**（serial/identity/约束/索引/列注释+表注释还原，30s 整体预算，行数触顶 `OJ_DB_CAPACITY` 拒产不完整 DDL；best-effort 快照 5 查询无事务，Pool 臂可落不同连接），pg 视图/物化视图 → `pg_get_viewdef` **补壳**（`CREATE [OR REPLACE] VIEW`，可执行），pg 函数/过程 → `pg_get_functiondef` 兜底（`objectType` 透传 `"function"`/`"procedure"`），分区表（relkind 'p'）附 `PARTITION BY`（pg_get_partkeydef 尽力而为，子分区不产出），序列等其余对象 → 空结果；mysql → 按对象类型选 SHOW 动词（`SHOW CREATE TABLE/VIEW/FUNCTION/PROCEDURE`；**低权限账号 SHOW CREATE VIEW 可能拒**——报错 fail-loud，换高权限或 INFORMATION_SCHEMA 绕行；输出含 `AUTO_INCREMENT=<当前计数值>`，实时计数器非纯定义）。**scoped `forSchema`**：`processlist`/`users`/`roles`/`triggers` 拒绝 scope（`OJ_DB_UNSUPPORTED(for_schema)`，全实例/全库语义无范围谓词）；**仅 mysql `ddl` 放开**（两段白名单 `[A-Za-z0-9_$]` 内联 `` `schema`.`table` ``——零内联铁律唯一成文例外；类型探测恒查当前库，跨库视图回退 TABLE 动词 → MySQL 报错 fail-loud）。未知 kind → `db catalog: unknown kind …`（文案含全部 kind 名）。行数上限 1000；`stats` 只估算。见 `db-guide.md` §3.3 |
 | `secret.seal/open`（v0.1.101，U-10） | 装配无密钥 → `secret axis not configured`（fail-closed，**不静默当明文**）；只有公钥（seal-only）→ `open` 报 `no private key`；每次 `open` 落 `SECRET_OPEN` 审计；同一明文两次 seal 密文不同（**不能拿密文判等**，要比对先 `open`）。见 `db-guide.md` §11.9 |
 | `db.explain` 归一计划（G3，v0.1.108） | 跨方言执行计划归一：`{plan: PlanNode}`（`category` 枚举 + 原文 `operation` + 字段级 null 的 cost/rows/width）。授权面与 db.query 同门（守卫/REQ-05 配额/trace 复用同一通路），「能 explain」不蕴含「能真跑」（EXPLAIN 归只读，无 ANALYZE 不执行内层语句）；Deny 租户站点内层语句剥前缀过守卫；Tx 臂（attached session）无语句超时，opts.timeout_ms 不生效。sqlite/未知方言 → `OJ_DB_UNSUPPORTED`（`e.data.capability="explain"`）；版本错位用 `typeof db.explain === "function"` 探测。见 `db-guide.md` §3.2 |
-| `db.ddlDiff` 反向 DDL（U-14，v0.1.109；v0.1.112 加 rename/schema 定向；v0.1.113 REQ-09 剩余收口） | `{objectType:"table", name, from, to}` → `{diff, statements, warnings}`：结构化四维 diff（columns/constraints/indexes/foreignKeys × added/removed/changed）+ 有序可重放 statements（DROP：FK→约束→索引→列 → 列变更 → ADD → 约束/索引 → FK 最后；`from=null` → CREATE TABLE 主键内联）。**纯渲染零 DB I/O**，执行走 `db.exec` + `allow_ddl`。**缺省维度 = 不参与 diff；空数组 = DROP 全量**（省略 `indexes` 绝不生成 DROP INDEX 全家桶）。注入防线：标识符方言引号+翻倍（NUL/控制字符拒，不复用 charset 白名单）；verbatim 片段（nativeType/default/definition）拒含 `;`。方言差：pg 改类型 `USING col::type`；mysql 位置差 `AFTER`/`FIRST`（pg 无列位置 DDL → 忽略）；identity 翻转出 changed（field=`identity`）+ PG ADD/DROP IDENTITY（identity 为 pg-only，mysql 参数错误）；同名 changed 约束/索引/FK 先 DROP 再 ADD；mysql 约束 DROP 按类型（pk→DROP PRIMARY KEY / uq→DROP INDEX / ck→DROP CHECK）；建表路径 diff 同 alter 形状（四维 added/removed/changed）；列维度任一端缺省 = 不参与（不产全量 ADD/DROP COLUMN）；不生成序列对象。**列改名（REQ-13，v0.1.112）**：`to.columns[].previousName` 产单条 `RENAME COLUMN`（PG/MySQL 8.0+，改名不动数据，索引/约束成员自动跟随）——六类边界报错（from 找不到/一对多/目标冲突/占用旧名/两列互换/同名列跳过），`diff.columns.renamed` 恒在（含 `from`/`to`）；**不填 `previousName` 的同型一删一增 = 疑似改名 → `warnings`**（数据会按删+增丢失，告警不静默；多列场景按 removed 列聚类——一列一条，列名给出全部同型新增候选）；列定义比较时 definition 里的旧列名做词边界替换（窄窗：字符串字面量撞列名可能漏发 DDL）。**schema 定向（REQ-09-2）**：可选 `schema` 段 → 表引用渲染 `"schema"."name"` / `` `schema`.`name` ``（NUL/控制字符拒，报错点名 schema；diff 输出键仍裸名）。**建表保真（REQ-09 §4.2，v0.1.113）**：`to` 顶层 `partitionBy`（文本原样拼 `)` 后，两方言）+ `options`（仅 MySQL，`engine`/`charset`/`collate`/`comment` 固定序，comment 单引号翻倍；PG 出现 → 参数错误；非对象/非字符串值/NUL 同参数错误，不静默忽略）；与 `catalog("ddl")` 互为逆运算。**分区/表选项变更（§4.3）**：`from != null` 有差异 → `OJ_DB_UNSUPPORTED`（`capability="ddl_diff_partition"`/`"ddl_diff_table_options"`）。**非表对象（§4.4）**：`objectType` 扩 `"view"|"index"|"sequence"|"routine"|"trigger"`——view 支持 create/definition 文本 diff（PG `CREATE OR REPLACE VIEW`、MySQL `ALTER VIEW`，挂 `diff.definition`）/drop；其余四型 create（`definition` 原样）+ drop（MySQL index drop 需 `from.table`；routine drop 需 `from.type`+`from.args` 签名——MySQL 分支裸 `DROP FUNCTION/PROCEDURE name`（签名是 PG 专属语法）；MySQL 无序列，sequence 在任何路径都参数错误）；`definition`/`partitionBy` 是**语句体**——含 `;`/换行合法（拒 NUL/限 64 KiB），与列 default 等**嵌入片段**的 `;` 拒绝不同档。**表改名（§4.1）**：spec 顶层 `previousName` → `ALTER TABLE old RENAME TO new` 恒首条（RENAME TO 目标恒裸名，schema 段只限定旧引用；`diff.renamed` 恒在与 diff.columns 平级）。**table 的 `to:null` 参数错误**（不产 DROP TABLE）。**限制**：MySQL 分区 DDL 不受 prepared 协议支持——`db.exec` 重放含分区的建表语句会 1064，走迁移/raw 通道。create 路径不渲染 `FIRST`/`AFTER`（位置由声明序决定）。sqlite/未知方言 → `OJ_DB_UNSUPPORTED`（`capability="ddl_diff"`）；版本错位探 `typeof db.ddlDiff === "function"`。MySQL DDL 隐式提交（Tx 臂断事务，同 explain 表口径）。见 `db-guide.md` §3.3 |
+| `db.ddlDiff` 反向 DDL（U-14，v0.1.109；v0.1.112 加 rename/schema 定向；v0.1.113 REQ-09 剩余收口） | `{objectType:"table", name, from, to}` → `{diff, statements, warnings}`：结构化四维 diff（columns/constraints/indexes/foreignKeys × added/removed/changed）+ 有序可重放 statements（DROP：FK→约束→索引→列 → 列变更 → ADD → 约束/索引 → FK 最后；`from=null` → CREATE TABLE 主键内联）。**纯渲染零 DB I/O**，执行走 `db.exec` + `allow_ddl`。**缺省维度 = 不参与 diff；空数组 = DROP 全量**（省略 `indexes` 绝不生成 DROP INDEX 全家桶）。注入防线：标识符方言引号+翻倍（NUL/控制字符拒，不复用 charset 白名单）；verbatim 片段（nativeType/default/definition）拒含 `;`。方言差：pg 改类型 `USING col::type`；mysql 位置差 `AFTER`/`FIRST`（pg 无列位置 DDL → 忽略）；identity 翻转出 changed（field=`identity`）+ PG ADD/DROP IDENTITY（identity 为 pg-only，mysql 参数错误）；同名 changed 约束/索引/FK 先 DROP 再 ADD；mysql 约束 DROP 按类型（pk→DROP PRIMARY KEY / uq→DROP INDEX / ck→DROP CHECK）；建表路径 diff 同 alter 形状（四维 added/removed/changed）；列维度任一端缺省 = 不参与（不产全量 ADD/DROP COLUMN）；不生成序列对象。**列改名（REQ-13，v0.1.112）**：`to.columns[].previousName` 产单条 `RENAME COLUMN`（PG/MySQL 8.0+，改名不动数据，索引/约束成员自动跟随）——六类边界报错（from 找不到/一对多/目标冲突/占用旧名/两列互换/同名列跳过），`diff.columns.renamed` 恒在（含 `from`/`to`）；**不填 `previousName` 的同型一删一增 = 疑似改名 → `warnings`**（数据会按删+增丢失，告警不静默；多列场景按 removed 列聚类——一列一条，列名给出全部同型新增候选）；列定义比较时 definition 里的旧列名做词边界替换（窄窗：字符串字面量撞列名可能漏发 DDL）。**schema 定向（REQ-09-2）**：可选 `schema` 段 → 表引用渲染 `"schema"."name"` / `` `schema`.`name` ``（NUL/控制字符拒，报错点名 schema；diff 输出键仍裸名）。**建表保真（REQ-09 §4.2，v0.1.113）**：`to` 顶层 `partitionBy`（文本原样拼 `)` 后，两方言）+ `options`（仅 MySQL，`engine`/`charset`/`collate`/`comment` 固定序，comment 单引号翻倍；PG 出现 → 参数错误；非对象/非字符串值/NUL 同参数错误，不静默忽略）；与 `catalog("ddl")` 互为逆运算。**分区/表选项变更（§4.3）**：`from != null` 有差异 → `OJ_DB_UNSUPPORTED`（`capability="ddl_diff_partition"`/`"ddl_diff_table_options"`）。**非表对象（§4.4）**：`objectType` 扩 `"view"\|"index"\|"sequence"\|"routine"\|"trigger"`——view 支持 create/definition 文本 diff（PG `CREATE OR REPLACE VIEW`、MySQL `ALTER VIEW`，挂 `diff.definition`）/drop；其余四型 create（`definition` 原样）+ drop（MySQL index drop 需 `from.table`；routine drop 需 `from.type`+`from.args` 签名——MySQL 分支裸 `DROP FUNCTION/PROCEDURE name`（签名是 PG 专属语法）；MySQL 无序列，sequence 在任何路径都参数错误）；`definition`/`partitionBy` 是**语句体**——含 `;`/换行合法（拒 NUL/限 64 KiB），与列 default 等**嵌入片段**的 `;` 拒绝不同档。**表改名（§4.1）**：spec 顶层 `previousName` → `ALTER TABLE old RENAME TO new` 恒首条（RENAME TO 目标恒裸名，schema 段只限定旧引用；`diff.renamed` 恒在与 diff.columns 平级）。**table 的 `to:null` 参数错误**（不产 DROP TABLE）。**限制**：MySQL 分区 DDL 不受 prepared 协议支持——`db.exec` 重放含分区的建表语句会 1064，走迁移/raw 通道。create 路径不渲染 `FIRST`/`AFTER`（位置由声明序决定）。sqlite/未知方言 → `OJ_DB_UNSUPPORTED`（`capability="ddl_diff"`）；版本错位探 `typeof db.ddlDiff === "function"`。MySQL DDL 隐式提交（Tx 臂断事务，同 explain 表口径）。见 `db-guide.md` §3.3 |
 | `mgmt` 管理面（v0.1.100，M1 宿主面） | 缺省 disabled（`mgmt.*` 报 `mgmt is disabled…`）；`mgmt.axes` 收编的轴从 `axis()` 公开面消失（旁路封堵）；未声明 op → 结构化 `OJ_DB_UNSUPPORTED`（`e.data.capability` = op 名）；register 探活失败即拒；双档 allow（read/write，缺省 fail-closed，enabled 时 allow 全缺拒启）。**readOnly 是插件自报、宿主不可验证**（connector 须第一方）。mongo 真 connector（M2）未交付。见 `db-guide.md` §11.8 |
 | `http.file(i)` 对流式大文件报错（v0.1.38） | > `max_upload` 的 multipart 文件由服务端流式落 blob（字节不进 handler）——报错文案指路 `files[i].key`/`.url`；小文件行为不变 |
 | `bus` 缺省进程内，跨实例不互通 | 需要跨实例广播配 `broker.kind` |
@@ -4031,6 +4044,10 @@ await db.query("select id from account where id = " + id, []);   // 禁止
 | `db.access.revoke` 回落 config，非删 config（v0.1.93） | 撤销的是运行期表项，别名回到 config 兜底；对纯 config 兜底项 `revoke` 显式报错（不静默），防越权/DoS 撤销他人静态授权 |
 | 改 `db_access` / `db_client` 段须重启（v0.1.93） | 两段纳入热更 diff 的 `restart_pending`（不再误标 `applied` 静默盲区）；运行期零重启改授权请用 `db.access.grant/revoke` |
 | `db.epoch` 仅优化 JS 缓存新鲜度，正确性不依赖它（v0.1.93） | 查询 op 始终按名从 host registry 重解析 accessor；即便 JS 覆写缓存 epoch 跳过失效，也拿不到已删连接（host 直接报未登记） |
+| svc scopes 三档与 POST 档位（v0.1.130） | `claims.scopes` 三档按**动词**映射：get→read、post/put/patch→**write**（含按 POST 发查询的业务路由——POST 一律 write 档）、delete/del→destructive；缺席=全量随 roles（旧 token 零破坏）、`[]`=全拒、未知档=拒（`missing scope: <tier>`，MCP/RPC 面 `[code=403] ` 前缀）。绕行：查询路由改 GET+query，或签发时纳入 write。三面对 `/mcp`、`/rpc`、直连 REST 同规则（tools/list 只是展示裁剪，调用面不裁——被裁 tool 直呼得 403 非 -32601）；`/ws` 升级与线路 A 静态快照不经 scopes 门 |
+| `jwt.sign` 的 `ttl_secs` 上限 90 天（v0.1.130） | `claims` 平铺进 JWT 顶层（保留键 `{sub,roles,iat,exp}` 报错）；`ttl_secs` 越界按 90d 上限钳（不报错）——长时效凭据要可控吊销用 admin service-token（jti 在册核销，30s TTL 生效滞后双向成立） |
+| obo 换签错误码是信封 `code` 契约（v0.1.130） | 40310 未绑定 / 40311 jti 已吊销 / 40312 非 svc / 40313 员工停用；HTTP 状态恒 500（code>599 钳制）——**勿按 HTTP 状态分流**，按 code 分流。svc 的 scopes 不约束换签面：受托 token 按**员工本人 roles** 生效（10min、带 `claims.act`） |
+| `/mcp` isError 与 `/rpc` error 的 `[code=<n>] <msg>` 前缀已冻结（v0.1.130） | 业务信封错误与非 2xx 信封体统一前缀（非信封体原样）——agent 按正则 `^\[code=(\d+)\] ` 解析，**勿做文案等值断言**；`tools/list` 结果勿跨会话缓存（scopes 裁剪因 token 而异，展示面每请求实时算） |
 
 ### 常见陷阱清单
 
@@ -4112,6 +4129,9 @@ server:
     enabled: true          # 挂 {base}/mcp（缺省不挂）
     modules: [user, order] # 可选：模块 tag 白名单（fail-closed，无交集 = 空 catalog）
     allow_anonymous: false # enabled 且未装配 auth 插件时缺省拒启；显式 true 才放行
+    act_mask_destructive: true  # v0.1.130 代操作遮蔽（缺省 false；推荐开启）：
+                                # claims.act 存在的会话（obo 换签的机器人代员工）
+                                # 一律拒 delete 且 tools/list 隐藏 destructive tool
   rpc:
     enabled: true          # 挂 {base}/rpc（缺省 false）
     allow_anonymous: false # 与 mcp 同口径：enabled 且未装配 auth 插件时缺省拒启
@@ -4144,8 +4164,8 @@ path 参数键内恒必填（单段值 `encodeURIComponent`——含 `/` 会正�
 | 上游 | tools/call 结果 |
 |---|---|
 | 信封 `code==0` | `content`（text）+ `structuredContent`（= data） |
-| 信封 `code!=0`（业务错） | `isError: true` + 业务 `msg`（HTTP 200，**不**是 JSON-RPC error） |
-| 非 envelope（如 `json.raw`） | 原样 text content，无 structuredContent（raw 响应**豁免**信封检测——裸业务数据恰好带 code/msg/data 键也不误判） |
+| 信封 `code!=0`（业务错） | `isError: true` + `[code=<n>] <msg>` 前缀 text（HTTP 200，**不**是 JSON-RPC error；v0.1.130 起前缀**文案冻结**——agent 侧可程序化解析 `code`，正则 `^\[code=(\d+)\] `） |
+| 非 envelope（如 `json.raw`） | 原样 text content，无 structuredContent（raw 响应**豁免**信封检测——裸业务数据恰好带 code/msg/data 键也不误判）；非 2xx 信封体同样加前缀，非信封体原样 |
 | `json.stream`/`json.sse`（SSE） | `isError`「streaming endpoint, not supported via MCP」（不缓冲） |
 | 传输失败 / 超时（30s） | `isError` |
 
@@ -4154,7 +4174,8 @@ path 参数键内恒必填（单段值 `encodeURIComponent`——含 `/` 会正�
 method = operationId（如 `user_account_get`），params 形如
 `{"path": {...}, "query": {...}, "body": {...}}`（与 MCP arguments 同构）。成功：
 `result` = 信封 `data`；业务错误：JSON-RPC **error 对象**（code 取业务 code、message
-取业务 msg——MCP 用 isError 而裸 RPC 没有该概念，error 对象才是正确载体）。同一
+取业务 msg 带 `[code=<n>] ` 前缀（v0.1.130 冻结文案）——MCP 用 isError 而裸 RPC 没有该
+概念，error 对象才是正确载体）。同一
 `initialize`/`ping`/通知/batch 纪律。
 
 ```bash
@@ -4163,6 +4184,51 @@ curl -s http://localhost:9778/v1/api/rpc -H 'content-type: application/json' \
   '{"jsonrpc":"2.0","id":1,"method":"user_account_get","params":{"query":{"id":"1"}}}'
 # → {"jsonrpc":"2.0","id":1,"result":[...]}
 ```
+
+### 机器人凭据：svc 三档 scopes + obo 换签（v0.1.130）
+
+`claims.scopes` 非缺席时，凭据按**三档动词映射**收口（对 `/mcp`、`/rpc`、直连
+REST 三面同规则，服务端单点判定——客户端侧不判权限）：
+
+| 档位 | 动词 | 说明 |
+|---|---|---|
+| `read` | GET | 只读面 |
+| `write` | POST / PUT / PATCH | 含**按 POST 发查询**的业务路由（企业 admin 惯例）——POST 一律按 write 档判定 |
+| `destructive` | DELETE / DEL | 破坏面 |
+
+语义细则：**缺席** = 全量随 roles（旧 token 零破坏）；present-but-empty（`[]`）=
+全拒；显式 `null` 同 present-but-invalid 全拒（fail-closed）；未知档名 = 档位不符拒（文案逐字 `missing scope: <tier>`，HTTP 403 信封 /
+`[code=403] missing scope: <tier>` isError）。两条绕过 POST-as-query 判定的正路：
+① 查询类业务路由改 GET + query 参数（首选）；② 该机器人签发时纳入 `write` 档。
+`/ws`（WebSocket 升级）**不经** scopes/jti/act_mask 门（升级面只过守卫 verify）。
+
+**svc 凭据与 jti 吊销**：`claims.svc` 存在的凭据逐请求查 `oj_svc_token` 表核销
+（30s TTL 缓存——签发后**最长 30s** 才可过门；吊销后最长 30s 全网失效；查库
+失败/无行 fail-closed 恒拒）。运营走 admin 端点：
+`POST /v1/api/admin/service-token/`（`{name, scopes}` → `{token, jti}`，**明文
+token 仅此一次**，落库只存 jti）、`GET /v1/api/admin/service-token/`（列表，
+无明文）、`DELETE /v1/api/admin/service-token/{jti}`（吊销）、`bot-binding`
+（provider+external_sub ↔ 员工 id 绑定 CRUD + CSV）、`obo-audit`（换签审计
+分页 + CSV）。`svc` 的 scopes **不约束换签面**——scopes 收口的是机器人直连
+工具/路由的动词档位；换签产物（受托 token）按**员工本人 roles** 生效
+（"够用，最终以员工本身的权限为准"）。
+
+**obo 换签**：`POST /v1/api/auth/obo`（Bearer svc token + `{provider,
+external_sub}`）→ 员工受托 token（10 分钟，`claims.act.sub` 指回 svc 名——
+`act_mask_destructive` 据此遮蔽 delete）。错误码契约（信封 `code`，HTTP 500）：
+
+| code | 场景 |
+|---|---|
+| 40310 | 绑定缺失（该 external_sub 没有绑定行） |
+| 40311 | svc 凭据已吊销（jti 不在册） |
+| 40312 | 凭据非 svc（普通员工 token 打到 obo；或 claims.svc 在但 roles 不含 bot——双查纵深） |
+| 40313 | 员工已停用（users.disabled） |
+
+标准消费模式：捕获 code → 40311/40312 告警运营（凭据/绑定面问题）→ 40310 提示
+"未绑定，联系管理员" → 40313 提示 "账号已停用"；10min 过期（401）→ 重换签**一次**
+再试，仍 401 告警。端到端骨架见 `sample/src/bot/wecom/api.ts` +
+`scenarios.md` 场景 75；「从零到上线」任务导向路线图（选型 / 开通清单 /
+检查单 / 运维手册）见 `mcp-bot-guide.md`。
 
 ### 线路 A：`oj mcp` 生成 stdio server
 

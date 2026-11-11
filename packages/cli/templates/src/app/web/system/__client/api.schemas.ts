@@ -313,4 +313,93 @@ export const schemas = {
 }),
 		data: z.null(),
 	},
+	"systemBotBindingGet": {
+		data: z.array(z.object({
+	"provider": z.string(),
+	"external_sub": z.string(),
+	"user_id": z.string(),
+	"last_used_at": z.number(),
+	"created_by": z.string(),
+	"created_at": z.number()
+})),
+	},
+	"systemBotBindingPost": {
+		body: z.object({
+	"provider": z.string().min(1),
+	"external_sub": z.string().min(1),
+	"user_id": z.string().min(1)
+}),
+		data: z.object({
+	"op": z.enum(["insert", "update"])
+}),
+	},
+	"systemBotBindingDelete": {
+		query: z.object({
+	"provider": z.string().min(1),
+	"external_sub": z.string().min(1)
+}),
+		data: z.object({
+	"deleted": z.number()
+}),
+	},
+	"systemBotBindingImportPost": {
+		body: z.object({
+	"csv": z.string()
+}),
+		data: z.object({
+	"imported": z.number(),
+	"skipped": z.array(z.string()),
+	"total": z.number()
+}),
+	},
+	"systemOboAuditGet": {
+		query: z.object({
+	"svc": z.string().optional(),
+	"ok": z.string().optional(),
+	"pageSize": z.number().min(1).optional(),
+	"current": z.number().min(1).optional()
+}),
+		data: z.object({
+	"list": z.array(z.object({
+	"id": z.number(),
+	"svc": z.string(),
+	"provider": z.string(),
+	"external_sub": z.string(),
+	"user_id": z.string(),
+	"ok": z.number(),
+	"reason": z.string(),
+	"ts": z.number()
+})),
+	"total": z.number(),
+	"pageSize": z.number(),
+	"current": z.number()
+}),
+	},
+	"systemServiceTokenGet": {
+		data: z.array(z.object({
+	"jti": z.string(),
+	"name": z.string(),
+	"scopes": z.array(z.string()),
+	"created_by": z.string(),
+	"created_at": z.number()
+})),
+	},
+	"systemServiceTokenPost": {
+		body: z.object({
+	"name": z.string().min(1),
+	"scopes": z.array(z.enum(["read", "write", "destructive"])).optional()
+}),
+		data: z.object({
+	"token": z.string(),
+	"jti": z.string()
+}),
+	},
+	"systemServiceTokenDelete": {
+		query: z.object({
+	"jti": z.string().min(1)
+}),
+		data: z.object({
+	"revoked": z.number()
+}),
+	},
 };

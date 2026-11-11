@@ -7898,7 +7898,7 @@
 		},
 		"/api/oj-market/converge": {
 			"post": {
-				"operationId": "postApiOjMarketConverge",
+				"operationId": "oj_market_converge_post",
 				"summary": "POST api/oj-market/converge",
 				"x-oj-file": "oj-market/api/api.ts",
 				"tags": [
@@ -7910,6 +7910,738 @@
 					}
 				},
 				"description": "出厂收敛触发（ojm dev/preview 专用）：x-ojm-converge-token 持有型证明（vars.ojm_converge_token 仅 dev/preview 派生 config 注入；生产站点无此 var → 404 即死）；幂等 riding reconcileOf"
+			}
+		},
+		"/api/auth/obo": {
+			"post": {
+				"operationId": "auth_obo_post",
+				"summary": "POST api/auth/obo",
+				"x-oj-file": "app/api/auth/obo/api.ts",
+				"tags": [
+					"auth"
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"required": [
+									"provider",
+									"external_sub"
+								],
+								"properties": {
+									"provider": {
+										"type": "string",
+										"minLength": 1
+									},
+									"external_sub": {
+										"type": "string",
+										"minLength": 1
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"required": [
+												"access_token",
+												"expires_in"
+											],
+											"properties": {
+												"access_token": {
+													"type": "string"
+												},
+												"expires_in": {
+													"type": "number"
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/system/bot-binding": {
+			"get": {
+				"operationId": "system_bot_binding_get",
+				"summary": "GET api/system/bot-binding",
+				"x-oj-file": "app/api/system/bot-binding/api.ts",
+				"tags": [
+					"system"
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "array",
+											"items": {
+												"type": "object",
+												"required": [
+													"provider",
+													"external_sub",
+													"user_id",
+													"last_used_at",
+													"created_by",
+													"created_at"
+												],
+												"properties": {
+													"provider": {
+														"type": "string"
+													},
+													"external_sub": {
+														"type": "string"
+													},
+													"user_id": {
+														"type": "string"
+													},
+													"last_used_at": {
+														"type": "number"
+													},
+													"created_by": {
+														"type": "string"
+													},
+													"created_at": {
+														"type": "number"
+													}
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			},
+			"post": {
+				"operationId": "system_bot_binding_post",
+				"summary": "POST api/system/bot-binding",
+				"x-oj-file": "app/api/system/bot-binding/api.ts",
+				"tags": [
+					"system"
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"required": [
+									"provider",
+									"external_sub",
+									"user_id"
+								],
+								"properties": {
+									"provider": {
+										"type": "string",
+										"minLength": 1
+									},
+									"external_sub": {
+										"type": "string",
+										"minLength": 1
+									},
+									"user_id": {
+										"type": "string",
+										"minLength": 1
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"required": [
+												"op"
+											],
+											"properties": {
+												"op": {
+													"type": "string",
+													"enum": [
+														"insert",
+														"update"
+													]
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			},
+			"delete": {
+				"operationId": "system_bot_binding_delete",
+				"summary": "DELETE api/system/bot-binding",
+				"x-oj-file": "app/api/system/bot-binding/api.ts",
+				"tags": [
+					"system"
+				],
+				"parameters": [
+					{
+						"name": "provider",
+						"in": "query",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"minLength": 1
+						}
+					},
+					{
+						"name": "external_sub",
+						"in": "query",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"minLength": 1
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"required": [
+												"deleted"
+											],
+											"properties": {
+												"deleted": {
+													"type": "number"
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/system/bot-binding/export": {
+			"get": {
+				"operationId": "system_bot_binding_export_get",
+				"summary": "GET api/system/bot-binding/export",
+				"x-oj-file": "app/api/system/bot-binding/export/api.ts",
+				"tags": [
+					"system"
+				],
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				}
+			}
+		},
+		"/api/system/bot-binding/import": {
+			"post": {
+				"operationId": "system_bot_binding_import_post",
+				"summary": "POST api/system/bot-binding/import",
+				"x-oj-file": "app/api/system/bot-binding/import/api.ts",
+				"tags": [
+					"system"
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"required": [
+									"csv"
+								],
+								"properties": {
+									"csv": {
+										"type": "string"
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"required": [
+												"imported",
+												"skipped",
+												"total"
+											],
+											"properties": {
+												"imported": {
+													"type": "number"
+												},
+												"skipped": {
+													"type": "array",
+													"items": {
+														"type": "string"
+													}
+												},
+												"total": {
+													"type": "number"
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/system/obo-audit": {
+			"get": {
+				"operationId": "system_obo_audit_get",
+				"summary": "GET api/system/obo-audit",
+				"x-oj-file": "app/api/system/obo-audit/api.ts",
+				"tags": [
+					"system"
+				],
+				"parameters": [
+					{
+						"name": "svc",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "ok",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "pageSize",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "number",
+							"minimum": 1
+						}
+					},
+					{
+						"name": "current",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "number",
+							"minimum": 1
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"required": [
+												"list",
+												"total",
+												"pageSize",
+												"current"
+											],
+											"properties": {
+												"list": {
+													"type": "array",
+													"items": {
+														"type": "object",
+														"required": [
+															"id",
+															"svc",
+															"provider",
+															"external_sub",
+															"user_id",
+															"ok",
+															"reason",
+															"ts"
+														],
+														"properties": {
+															"id": {
+																"type": "number"
+															},
+															"svc": {
+																"type": "string"
+															},
+															"provider": {
+																"type": "string"
+															},
+															"external_sub": {
+																"type": "string"
+															},
+															"user_id": {
+																"type": "string"
+															},
+															"ok": {
+																"type": "number"
+															},
+															"reason": {
+																"type": "string"
+															},
+															"ts": {
+																"type": "number"
+															}
+														}
+													}
+												},
+												"total": {
+													"type": "number"
+												},
+												"pageSize": {
+													"type": "number"
+												},
+												"current": {
+													"type": "number"
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/system/obo-audit/export": {
+			"get": {
+				"operationId": "system_obo_audit_export_get",
+				"summary": "GET api/system/obo-audit/export",
+				"x-oj-file": "app/api/system/obo-audit/export/api.ts",
+				"tags": [
+					"system"
+				],
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				}
+			}
+		},
+		"/api/system/service-token": {
+			"get": {
+				"operationId": "system_service_token_get",
+				"summary": "GET api/system/service-token",
+				"x-oj-file": "app/api/system/service-token/api.ts",
+				"tags": [
+					"system"
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "array",
+											"items": {
+												"type": "object",
+												"required": [
+													"jti",
+													"name",
+													"scopes",
+													"created_by",
+													"created_at"
+												],
+												"properties": {
+													"jti": {
+														"type": "string"
+													},
+													"name": {
+														"type": "string"
+													},
+													"scopes": {
+														"type": "array",
+														"items": {
+															"type": "string"
+														}
+													},
+													"created_by": {
+														"type": "string"
+													},
+													"created_at": {
+														"type": "number"
+													}
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			},
+			"post": {
+				"operationId": "system_service_token_post",
+				"summary": "POST api/system/service-token",
+				"x-oj-file": "app/api/system/service-token/api.ts",
+				"tags": [
+					"system"
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"required": [
+									"name"
+								],
+								"properties": {
+									"name": {
+										"type": "string",
+										"minLength": 1
+									},
+									"scopes": {
+										"type": "array",
+										"items": {
+											"type": "string",
+											"enum": [
+												"read",
+												"write",
+												"destructive"
+											]
+										}
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"required": [
+												"token",
+												"jti"
+											],
+											"properties": {
+												"token": {
+													"type": "string"
+												},
+												"jti": {
+													"type": "string"
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			},
+			"delete": {
+				"operationId": "system_service_token_delete",
+				"summary": "DELETE api/system/service-token",
+				"x-oj-file": "app/api/system/service-token/api.ts",
+				"tags": [
+					"system"
+				],
+				"parameters": [
+					{
+						"name": "jti",
+						"in": "query",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"minLength": 1
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"required": [
+												"revoked"
+											],
+											"properties": {
+												"revoked": {
+													"type": "number"
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
 			}
 		}
 	},

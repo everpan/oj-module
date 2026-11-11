@@ -222,6 +222,10 @@ tenant:
     - wecom_suite_ticket # 套件级凭证，按 suite_id 全局唯一
     - wecom_login_ticket # 一次性登录票据：跨「匿名 302 回跳」与「已认证换取」两段
     - publish_credential # 发布凭证：CLI 兑换那一跳没有业务租户语义，归属走 owner_tenant 列
+    # 0007 MCP 机器人凭据三表：部署级凭据 / 平台↔用户全局映射 / 站点归口审计，均非租户业务数据
+    - oj_svc_token
+    - oj_bot_binding
+    - oj_obo_audit
   # 豁免缺租户头的路径（去 base 前缀后的形态）。与 auth.anonymous_paths 同语义，
   # 但这是「没有租户头也不 400」的逃生口，只给**真的拿不到头**的端点。
   # 登录类端点不在此列：前端 headerProvider 每请求都注头（单租户恒 default），

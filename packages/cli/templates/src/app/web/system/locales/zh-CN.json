@@ -9,6 +9,7 @@
 		"settings": "站点设置",
 		"wecom": "企微集成",
 		"mcp": "MCP 服务",
+		"bot": "机器人接入",
 		"departments": "组织架构"
 	},
 	"common": {
@@ -336,5 +337,127 @@
 		"reconnect": "生效方式：目录取定于连接建立——方案安装/升级/卸载后 agent 需重连才见最新工具；会话中调用已下线的旧工具返回 -32601。",
 		"paramsShape": "入参形状：工具入参固定为 path/query/body 三键嵌套对象。",
 		"lineA": "线路 A（离线 codegen，站点外运维动作）：oj mcp -c config.yaml 生成零依赖 stdio server（环境变量 OJ_BASE / OJ_TOKEN / OJ_TENANT）；它是文件快照，站点方案变更后须重跑生成。"
+	},
+	"bot": {
+		"tab": {
+			"token": "服务凭据",
+			"binding": "员工绑定",
+			"audit": "换签审计",
+			"guide": "接入指引"
+		},
+		"common": {
+			"copy": "复制",
+			"copied": "已复制到剪贴板",
+			"export": "导出 CSV",
+			"import": "导入 CSV",
+			"refresh": "刷新",
+			"actions": "操作",
+			"close": "关闭"
+		},
+		"token": {
+			"hint": "服务凭据（svc token）只用于代员工「换签」：机器人拿它换一张 10 分钟的受托 token，真正的权限来自被绑定员工自己的角色。明文只在签发时显示一次。",
+			"issue": "签发凭据",
+			"name": "名称",
+			"namePh": "如 wecom-bot",
+			"scopes": "档位",
+			"scopeHint": "read = GET；write = POST/PUT/PATCH；destructive = DELETE。不要给机器人 destructive，建议同时开启 act_mask_destructive 遮蔽删除类工具。",
+			"issueOk": "已签发（jti {{jti}}）",
+			"onceTitle": "请立即保存凭据",
+			"onceHint": "明文 token 只在此显示一次，关闭后无法再取回。请复制并存入机器人侧安全配置（如 vars.WECOM_BOT_SVC_TOKEN），不要写进代码或日志。",
+			"tokenLabel": "服务凭据（Bearer）",
+			"revoke": "吊销",
+			"revokeConfirm": "吊销后该凭据立即失效（jti 从登记表移除，约 30 秒缓存核销完成）。确定？",
+			"revoked": "已吊销",
+			"empty": "暂无服务凭据",
+			"columns": {
+				"name": "名称",
+				"jti": "jti",
+				"scopes": "档位",
+				"createdBy": "签发人",
+				"createdAt": "签发时间",
+				"actions": "操作"
+			},
+			"scope": {
+				"read": "read",
+				"write": "write",
+				"destructive": "destructive"
+			}
+		},
+		"binding": {
+			"hint": "员工绑定建立「IM 渠道账号 ↔ 站点用户」的映射：机器人换签时按 (provider, external_sub) 找到员工，受托 token 按该员工本人的角色生效。",
+			"add": "新增绑定",
+			"edit": "编辑绑定",
+			"provider": "渠道 provider",
+			"providerPh": "如 wecom",
+			"externalSub": "外部账号 external_sub",
+			"externalSubPh": "IM 侧成员 UserId",
+			"userId": "站点用户 ID user_id",
+			"userIdPh": "users.id",
+			"saved": "已保存（{{op}}）",
+			"delete": "删除",
+			"deleteConfirm": "删除该绑定？该员工将不能再被机器人代操作。",
+			"deleted": "已删除",
+			"importHint": "CSV 首行表头须为 provider,external_sub,user_id；重复的 (provider, external_sub) 为更新（upsert）。导出按钮会下载同样格式的文件，可直接回导。",
+			"importOk": "导入完成：成功 {{imported}} 条，跳过 {{skipped}} 条（共 {{total}} 条）",
+			"importSkipped": "跳过行：{{lines}}",
+			"exportOk": "已导出 {{count}} 条绑定",
+			"empty": "暂无绑定",
+			"columns": {
+				"provider": "渠道",
+				"externalSub": "外部账号",
+				"userId": "用户 ID",
+				"lastUsedAt": "最近使用",
+				"createdBy": "创建人",
+				"createdAt": "创建时间",
+				"actions": "操作"
+			}
+		},
+		"audit": {
+			"hint": "每次 obo 换签（成功或失败）都落一行审计。失败原因便于定位「未绑定 / 凭据吊销 / 账号停用」等问题。",
+			"filterSvc": "服务名（包含）",
+			"filterOk": "结果",
+			"okAll": "全部",
+			"okSuccess": "成功",
+			"okFail": "失败",
+			"total": "共 {{total}} 条",
+			"yes": "成功",
+			"no": "失败",
+			"exporting": "正在导出…",
+			"exportOk": "已导出 {{count}} 条记录",
+			"empty": "暂无记录",
+			"columns": {
+				"id": "ID",
+				"time": "时间",
+				"svc": "服务",
+				"provider": "渠道",
+				"externalSub": "外部账号",
+				"userId": "用户 ID",
+				"ok": "结果",
+				"reason": "原因"
+			},
+			"reason": {
+				"success": "—",
+				"not_svc": "非 svc 凭据（缺 bot 角色）",
+				"revoked": "服务凭据已吊销或不存在",
+				"unbound": "该账号未绑定机器人代操作",
+				"disabled": "该账号已停用"
+			}
+		},
+		"guide": {
+			"tenantNote": "适配提示（本模板特有）：本模板开启了多租户（config.yaml tenant.enable: true），所有 /v1/api 请求——含 /auth/obo 换签与 /mcp 的 tools/call——都必须带 X-TENANT-ID 请求头（默认 default）；缺失会返回 400 missing tenant header: X-TENANT-ID。devkit mcp-bot-guide 的示例默认单租户、无此头，机器人回调里换签与工具调用都要补上这个头。",
+			"mcpTitle": "1. 开启 MCP 端点",
+			"mcpHint": "模板默认 server.mcp.enabled: false（fail-closed）。按「MCP 服务」页的启用步骤改为 true 后，机器人才能访问 {base}/mcp；安装方案时会自动把方案名登记进 modules 白名单，仅白名单内工具对外暴露。",
+			"configTitle": "config.yaml 参考片段",
+			"configCopy": "复制配置片段",
+			"botTitle": "2. 群聊场景与回调骨架",
+			"botHint": "「群聊」只是使用场景，不是新实体：员工在群里 @ 机器人提问，机器人代该员工读/写业务数据。无需群聊注册表；回调按以下顺序处理即可：",
+			"steps": "① 5 秒内先 ack，避免 IM 超时重推。\n② 用 MsgId 去重（kv.incr），防止同一条消息被重复处理。\n③ 取 vars.WECOM_BOT_SVC_TOKEN，POST /v1/api/auth/obo（provider + external_sub）换 10 分钟受托 token。\n④ 用受托 token POST /v1/api/mcp 调 tools/call：带 Accept: application/json，arguments 固定为 path/query/body 三键。\n⑤ 把结果套中文模板回复到群里；业务错误是 isError: true，正文带 [code=<n>] 前缀，不是 JSON-RPC 错误。\n⑥ 受托 token 401 时重新换签一次；不要跨会话缓存 tools/list。",
+			"checklistTitle": "3. 上线检查单",
+			"checklist": "□ 已签发 svc token，且未授予 destructive 档位。\n□ 明文凭据已存入服务端安全配置，未落库、未写进前端。\n□ 已为目标员工逐条建立绑定（或 CSV 批量导入）。\n□ server.mcp.enabled 已开启，modules 白名单含所需方案。\n□ act_mask_destructive: true 已开启，机器人侧删除类工具被遮蔽。\n□ 回调已验证：5s ack、MsgId 去重、401 重换签一次。\n□ 用一次真实群聊 @ 机器人验证换签，并在「换签审计」看到成功记录。",
+			"codeTitle": "4. obo 换签错误码",
+			"codes": "40310 未绑定：(provider, external_sub) 查无绑定行。\n40311 凭据吊销：jti 缺失效或不在 oj_svc_token 登记表（fail-closed）。\n40312 非 svc 凭据：claims.svc 缺失，或 token 不含 bot 角色。\n40313 账号停用：绑定到的员工不存在或 is_forbidden=1。",
+			"securityTitle": "5. 凭据与权限边界",
+			"security": "svc token 只用于换签这一跳，本身不代表任何业务权限；受托 token 的 roles 实时取自 sys_user_role（员工本人角色），10 分钟过期。\n凭据吊销以 oj_svc_token 的 jti 在册为真相源，换签时逐次核销（约 30 秒缓存）。\n受托 token 的 claims.act.sub 指回 svc 名，act_mask_destructive 据此遮蔽删除类操作；审计表逐条留痕。"
+		}
 	}
 }

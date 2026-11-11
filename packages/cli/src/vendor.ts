@@ -27,11 +27,12 @@ export const NPM_PKG = "@oj-bin/oj";
  * 0.1.128 / 0.1.129，含实测依据）见 docs/devkit/sql-builder-missing-capabilities-pr.md。
  * 此处只留当前底线，不再逐档复述（多份历史必然漂移）。
  *
- * 当前底线 0.1.129（0.2.80）：模板 wecom 跨租户读写收敛为 `forTenant()` 语句级覆盖——
- * 该方法 v0.1.129 才有，旧版调用即 TypeError，门禁须盖住 `ojm vendor` 分发链
- * （回归守卫：packages/cli/templates/tests/sql-builder-guard.spec.ts）。
+ * 当前底线 0.1.130：模板机器人接入管理端依赖 oj v0.1.130 的机器人凭据三件套
+ * （svc token 的 jti 在册核销、obo 换签 40310-40313、act_mask_destructive 代操作遮蔽）。
+ * 再往下还有 0.1.129 的 `forTenant()` 语句级租户覆盖（0.2.80 起，回归守卫：
+ * packages/cli/templates/tests/sql-builder-guard.spec.ts）。门禁须盖住 `ojm vendor` 分发链。
  */
-export const MIN_OJ_VERSION = "0.1.129";
+export const MIN_OJ_VERSION = "0.1.130";
 
 /** 按段数值比较（字符串比较会把 0.1.9 判成大于 0.1.69）；非数字段按 0 处理 */
 export function isSupportedOjVersion(version: string): boolean {

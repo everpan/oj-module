@@ -44,7 +44,7 @@
 | [41](#场景-41通知回执合并--幂等写入构造器补齐能力v0181) | 通知回执合并 + 幂等写入：join ON 值条件 / 字面量列 `scope` / `orIgnore` / `fromSelect`（v0.1.81 补齐，替代手写 `db.query`） | §6 db / 查询构造器 |
 | [42](#场景-42运行期动态登记数据源-client-轴v0191) | 运行期把 DSN 登记为命名库：`db.client.register("rep", dsn)` → `DB("rep")` 直接可用（复用 L1 访问控制 + L2 内省）；未声明 `db_access.<name>` 的动态库默认 deny | §6 db / `db.client` |
 | [73](#场景-73装完部署后让-seed-随迁移即时灌oj-migrate---with-seedv01125) | 带 `seed.sql` 的模块装完数据面空：`oj migrate --with-seed` 把迁移+seed 一起做完（严格 migrate→seed、幂等、fail-closed 门禁、`--format json` 顶层 `seed`、exit code 成败真源） | §3 数据层 / §10 `oj migrate --with-seed` |
-| [74](#场景-74普通请求里对别的租户做窄范围写语句级-fortenantid未发布版) | 服务端派生别的租户 id（企微 `corp_id`），普通请求里只删**那一个租户**的 refresh token，又不想关掉整个请求的租户防护 | §8 鉴权与多租户 / §6 db |
+| [74](#场景-74普通请求里对别的租户做窄范围写语句级-fortenantidv01129) | 服务端派生别的租户 id（企微 `corp_id`），普通请求里只删**那一个租户**的 refresh token，又不想关掉整个请求的租户防护 | §8 鉴权与多租户 / §6 db |
 
 ---
 
@@ -4794,7 +4794,7 @@ platform:
 > 相关：§3「三层 SQL 文件」的 seed 行、`SKILL.md` 陷阱速查「装完带 seed 的模块数据面空」、
 > `api-manual.md` §13「门禁是词法白名单、非完整沙箱 / 不自动接进 ojm install」。
 
-## 场景 74：普通请求里对别的租户做窄范围写（语句级 `forTenant(id)`，未发布版）
+## 场景 74：普通请求里对别的租户做窄范围写（语句级 `forTenant(id)`，v0.1.129）
 
 > 何时抄我：服务端从**可信渠道**派生出另一个租户的 id（企微回调里的 `corp_id`、
 > 租户管理员重设后清旧会话），需要在**普通请求**里对那个租户做窄范围写（比如删它的
@@ -4846,3 +4846,60 @@ curl -s "{base}/_system/audit?kind=DB_TENANT_OVERRIDE"    # 或由平台 audit.q
 | `toSQL()` 产物经 `db.query` 回放被拒 | 裸 SQL 守卫按**请求租户**校验参数，fail-closed。要执行直接 `.run()` / `.all()`，别走裸路径 |
 | 想「asSystem 后再 forTenant 恢复限定」 | 不成立：`asSystem` 是请求级全关，其内 forTenant 为 no-op（warn 提示）。要限定就别 asSystem，用 forTenant |
 | toJSON 快照存库后 fromJSON 行为变了 | 快照**原样携带** forTenant（语句语义的延续）——跨租户持久化快照是危险动作，存之前想清楚 |
+
+## 场景 75：企微机器人端到端——回调→obo 换签→MCP 工具→中文回复（v0.1.130）
+
+> 何时抄我：给企业微信/钉钉/飞书类 IM 机器人接 oj 工具面——员工在群里 @机器人
+> 查数据、办业务，**权限按员工本人算**（机器人凭据不放大），删改类破坏面默认遮蔽。
+> `api-manual.md` §14「机器人凭据」、`SKILL.md` 陷阱速查（scopes/jti/obo 各行）、
+> 骨架源码 `sample/src/bot/wecom/api.ts`。
+
+全链五步（对应骨架 post() 的注释锚点）：
+
+1. **回调接入**：企微回调 5s 内必须 ack——骨架同步处理（示例任务量级 <1s）；
+   超过 5s 的重活搬 `tasks` 池异步 + `sendMessage` 主动推送。URL 校验（echostr）
+   原样 `json.raw` 回显。真实接入在 `parse()` 处补 AES 解密 + MsgSignature 验签。
+2. **MsgId 去重**：企微会重推——`kv.incr(dedupKey)` 原子判首见，键 TTL 1h
+   （重推窗口）。重复消息直接 ack 不再处理。
+3. **obo 换签**：svc token（admin `service-token` 端点签发，scopes 按机器人
+   职责给档位）+ `{provider:"wecom", external_sub:<企微userid>}` 打
+   `POST /v1/api/auth/obo` → 员工受托 token（10min，`claims.act` 指回 bot 名）。
+   四失败码分流：40310 未绑定（提示联系管理员绑定）/ 40311 凭据已吊销（告警）/ 
+   40312 非 svc（凭据配置错，告警）/ 40313 员工停用（提示账号问题）。
+4. **经 /mcp 调工具**：受托 token + `tools/call`——权限服务端收口（三档 scopes
+   按**员工 roles** 判；`act_mask_destructive: true` 时 act 会话拒 delete）。
+   `isError` 文本按 `[code=<n>] ` 前缀解析错误码；**401 → 重换签一次再试**
+   （10min 短时效设计），仍 401 告警。
+5. **中文模板回复**：企微 `sendMessage` API 主动推送（骨架随 ack 带回占位）。
+   模板放 `_shared` 里统一维护；首条消息带知情话术（"本机器人将以**你的**权限
+   执行操作并留痕"）。
+
+运营配置清单（一次性）：
+
+```bash
+# 1. 签发 svc token（明文只此一次，转存 vars/密管；scopes 按职责给档）
+curl -s -X POST {base}/v1/api/admin/service-token/ -H "authorization: Bearer <admin-jwt>" \
+  -H 'content-type: application/json' -d '{"name":"wecom-bot","scopes":["read","write"]}'
+# → {"code":0,"data":{"token":"<明文>","jti":"…"}}
+# 2. 员工绑定（企微 userid ↔ oj 用户 id）
+curl -s -X POST {base}/v1/api/admin/bot-binding/ -H "authorization: Bearer <admin-jwt>" \
+  -H 'content-type: application/json' -d '{"provider":"wecom","external_sub":"zhang","user_id":2}'
+# 3. sample/config.yaml 已示范：server.mcp.modules 白名单 + act_mask_destructive: true
+```
+
+指标口径登记（全走既有日志/审计表，零新系统）：
+
+| 指标 | 口径 | 来源 |
+|---|---|---|
+| description 覆盖率 | 带 `schema.description` 声明的路由数 / tools/list 总数 | `oj openapi` 产物按 description 键有无统计 |
+| obo 日换签数 | `oj_obo_audit` 表 `ok=1` 行数按天聚合 | admin `obo-audit` 端点 / 直查表 |
+| 绑定缺失错误占比 | `oj_obo_audit` 中 `reason='unbound'` 行占比（按 svc 分组） | 同上 |
+| scope 拒绝按档位分布 | 访问日志按 `missing scope: <tier>` 文案计数（read/write/destructive 三桶） | 日志 grep / 日志管道聚合 |
+
+| 坑 | 解 |
+|---|---|
+| 把 svc token 的 scopes 解码后在客户端判权限 | **不要**——三档收口在服务端 admit（三面同规则）；客户端判了也会被服务端再判一次，白维护两份逻辑。403 文案 `missing scope: <tier>` 是唯一权威信号 |
+| 换签 token 缓存进 kv 长期复用 | 受托 token 只有 **10min**——缓存超过时效必 401。正确姿势：401 才重换签（限一次），不预缓存 |
+| tools/list 结果存进机器人会话上下文复用 | 展示面按 token 的 scopes 裁剪——换人/换档后名单不同，**勿跨会话缓存**；每次对话实时拉或按需直呼 |
+| 机器人执行删除类操作 | `act_mask_destructive: true` 部署下 act 会话恒拒 delete（含 tools/list 不可见）——破坏面只留给人；确需自动清理用服务端 tasks 池（无 act，走系统身份+审计） |
+| 回调处理超 5s 被企微判超时重推 | MsgId 去重兜得住重推，但体验差——重活搬 `tasks` 池异步，回调只 ack +「已受理」回执 |

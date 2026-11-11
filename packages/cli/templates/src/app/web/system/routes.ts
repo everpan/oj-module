@@ -18,6 +18,7 @@ const Oplog = lazy(() => import("./pages/oplog"));
 const Settings = lazy(() => import("./pages/settings"));
 const WecomAdmin = lazy(() => import("./pages/wecom"));
 const Mcp = lazy(() => import("./pages/mcp"));
+const Bot = lazy(() => import("./pages/bot"));
 
 /**
  * `/system` 根的角色门禁（对齐后端 assertSystemAdmin，access.ts:87）——
@@ -98,6 +99,12 @@ export const routes: AppRouteRecordRaw[] = [
 						path: "/system/framework/mcp",
 						Component: Mcp,
 						handle: { title: "system:menu.mcp", roles: ["superadmin"] },
+					},
+					{
+						// 机器人接入管理端（mcp-bot-guide 线路 B）：svc 凭据 / 员工绑定 / 换签审计 / 接入指引
+						path: "/system/framework/bot",
+						Component: Bot,
+						handle: { title: "system:menu.bot", roles: ["superadmin"] },
 					},
 				],
 			},

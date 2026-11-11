@@ -16,7 +16,7 @@
 
 | 侧 | 本仓位置 | 用户工程里的落点 | 分发链 |
 |---|---|---|---|
-| ojm 模块开发（前端模块、契约、前后端对接） | 本目录顶层 13 个文件 | `.claude/skills/ojm-module-dev/` | `@oj-module/cli` 包（全部 12 个）→ `ojm init` 第 4b 步（只分发其中 7 个，见下） |
+| ojm 模块开发（前端模块、契约、前后端对接） | 本目录顶层 13 个文件 | `.claude/skills/ojm-module-dev/` | `@oj-module/cli` 包（全部 13 个）→ `ojm init` 第 4b 步（只分发其中 7 个，见下） |
 | oj API 开发（后端 handler、全局对象、配置、测试） | `oj-api-dev/` 子目录（快照） | `.claude/skills/oj-api-dev/` | **oj 二进制自带**（`bin/devkit/`）→ `ojm init` 第 4 步 / `ojm vendor` 装·升后同步（0.2.57 起共用 `syncOjDevkit`，全量 `.md` **覆盖**——文档始终与已装 oj 版本一致） |
 
 > **`oj-api-dev/` 子目录是快照，不是本仓维护的文档**：它与本机 oj 的
@@ -130,7 +130,7 @@ flowchart LR
   `.claude/skills/ojm-module-dev/` 再 init）。源文件只在仓库 `docs/devkit/` 顶层一处维护。
 - **oj 侧**：手册与 skill 随 oj 版本发布；升级 oj 后用新 `bin/devkit/` 覆盖旧拷贝。
   框架贡献者要把本仓快照同步到新版：从 `~/.local/share/oj/devkit/` 整目录覆盖
-  `docs/devkit/oj-api-dev/`（oj v0.1.116 起 12 个文件，保持逐字节一致以便对账）。
+  `docs/devkit/oj-api-dev/`（oj v0.1.130 起 13 个文件，保持逐字节一致以便对账）。
 
 > 本目录顶层 13 个文件是**自包含**的：业务工程拿到即可读懂，不需要工程仓库里的
 > 其它文档。`oj-api-dev/` 子目录是 oj 侧快照，同样自包含（其自身 README 即索引），

@@ -192,7 +192,7 @@ runtime → cli → registry 复核；`--dry-run` 只演练）。下面的手动
 `packages/cli/devkit/` 是发布副本、由 prepack 生成，已加进 `.gitignore` 不入库；
 源仍是仓库 `docs/devkit/` 顶层，改文档只动那里一处。
 
-> `docs/devkit/oj-api-dev/` 是 **oj 侧 devkit 的快照**（12 个文件，与
+> `docs/devkit/oj-api-dev/` 是 **oj 侧 devkit 的快照**（13 个文件，与
 > `~/.local/share/oj/devkit/` 逐字节一致），仅供本仓 grep 后端手册，
 > **不随 cli 包发货**（`sync-devkit.mjs` 只同步顶层文件）——用户工程的
 > `oj-api-dev` skill 由 oj 二进制分发。升级本机 oj 后要同步快照：
@@ -204,10 +204,10 @@ runtime → cli → registry 复核；`--dry-run` 只演练）。下面的手动
 
 ## 附：本 devkit 内容来源（维护者看）
 
-`docs/devkit/` 是**自包含**的交付文档（顶层 12 个文件，全部随 cli 包发货，其中 6 个随
+`docs/devkit/` 是**自包含**的交付文档（顶层 13 个文件，全部随 cli 包发货，其中 6 个随
 `ojm init` 进业务工程；含 `sql-builder-missing-capabilities-pr.md` 这份构造器能力缺口 PR 参考），
 业务工程拿到即可读懂，不依赖工程仓库里的其它文档。
-另有 `oj-api-dev/` 子目录是 oj 侧 devkit 的快照（oj v0.1.116 起 12 文件，仅本仓参考、不发货），
+另有 `oj-api-dev/` 子目录是 oj 侧 devkit 的快照（oj v0.1.130 起 13 文件，仅本仓参考、不发货），
 结构说明见 `README.md`。
 下面的来源仅用于维护时追溯与同步，不参与交付：
 

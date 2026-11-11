@@ -334,9 +334,11 @@ interface EsApi {
 
 // jwt.* ：JWT 签发/验签（secret/alg/durations 由 config auth: 注入；未配置调用报
 // jwt not configured）。iat/exp 由 Rust 补（JS 不可控有效期），exp 取 access 时长。
+// v0.1.130：claims 平铺进 JWT 顶层（保留键 sub/roles/iat/exp 报错）；ttl_secs 可控
+// 有效期，服务端钳制上限 90 天（越界按上限取不报错）。
 interface JwtApi {
 	// payload 至少含 sub；roles 可选（缺省空数组）。返回签名 token。
-	sign: (payload: { sub: string, roles?: string[] }) => string
+	sign: (payload: { sub: string, roles?: string[], claims?: Record<string, unknown>, ttl_secs?: number }) => string
 	// 验签 + exp（leeway 0）；篡改/过期/算法不符直接抛错。
 	verify: (token: string) => { sub: string, roles: string[], iat: number, exp: number }
 	// 配置的有效期（秒；getter 惰性求值）。

@@ -1,8 +1,8 @@
 # SQL 构造器专题指南（`db.table`）
 
-> 本文是 `docs/devkit/api-manual.md`「查询构造器」章的**专题指引**：集中收录「什么时候用构造器、
-> 能力矩阵、三方言差异、红线与逃生舱、从 `db.query` 迁移」等**解释性内容**。`api-manual` 同章只列
-> API 契约（签名、允许形态、报错文案），需要背景/口径/方言对照时来这里。两处交叉引用，不重复。
+> 本文是 `docs/devkit/db-guide.md` §5–§10.5（查询构造器 API 契约：签名、允许形态、报错文案）的
+> **专题指引**：集中收录「什么时候用构造器、能力矩阵、三方言差异、红线与逃生舱、从 `db.query`
+> 迁移」等**解释性内容**，需要背景/口径/方言对照时来这里。两处交叉引用，不重复。
 
 ## 1. 为什么优先用构造器
 
@@ -13,7 +13,7 @@
 PG 的 `$N` 占位符自管）就会锁死到单一引擎，迁移时须逐条改写。**仅当构造器不支持的语句
 （DDL、部分非 CRUD 语义）才退回 `db.query` / `db.exec`**，且仍须用 `?` 绑定参数、避免方言特有语法。
 
-## 2. 能力矩阵（v0.1.88）
+## 2. 能力矩阵（v0.1.88 起，v0.1.129 更新）
 
 > **适用范围（v0.1.88）**：构造器只为宿主认识的三种方言生成 SQL——`sqlite` / `mysql` /
 > `postgres`。接了新方言插件时构造器与 `toSQL()` 一律 `OJ_DB_UNSUPPORTED`
@@ -23,6 +23,7 @@ PG 的 `$N` 占位符自管）就会锁死到单一引擎，迁移时须逐条�
 | 能力 | 构造器写法 | 方言可移植 | 备注 |
 |---|---|---|---|
 | 基础 CRUD | `select/insert/update/delete/where/orderBy/limit` | ✅ | 全方言自动生成 |
+| 行数上限 | — | ✅ | 顶层 select 未写 `limit()` ⇒ 隐式 `db_query.default_limit`（默认 100）；显式 clamp 到 `max_limit`（默认 1000，可配硬顶 100000）；行数触顶响应带 `X-OJ-Row-Limit` 头（截断可观测，非静默）；嵌套/子查询不隐式截断 |
 | 条件树 | `and/or/not`、`db.leaf/and/or` | ✅ | 深度 ≤ 8、叶子 ≤ 64 |
 | 模糊搜索 | `op: contains / startswith / endswith` | ✅ | 引擎转义 `%`/`_`/`!`，业务零转义 |
 | 动态 WHERE | `whereIf(test, cond)` | ✅ | 假值/空数组跳过，`0`/`""` 保留 |
@@ -35,13 +36,14 @@ PG 的 `$N` 占位符自管）就会锁死到单一引擎，迁移时须逐条�
 | 聚合 / groupBy / having / distinct | `select([{fn,...}])/groupBy/having/distinct` | ✅ | |
 | count(distinct col) | `select([{fn:"count",distinct:true,field,as}])` | ✅ | v0.1.82；聚合一行、免拉行计数（受 LIMIT 钳制的 `distinct().all()+length` 是陷阱） |
 | 整表清空 | `.truncate().run()` | ✅ | v0.1.82；渲染 `DELETE FROM t`；**租户守卫照常注入**（租户表=清当前租户，整库清用 asSystem） |
-| 语句级租户覆盖 | `.forTenant(id)` | ✅ | 未发布版；只本条语句以 `id` 注入（防护照常），同请求其他语句仍当前租户；id 必须服务端派生；只许顶层语句，子查询/union/cte/fromSelect 源带它必报错；见 api-manual「语句级 forTenant」段 |
+| 语句级租户覆盖 | `.forTenant(id)` | ✅ | v0.1.129；只本条语句以 `id` 注入（防护照常），同请求其他语句仍当前租户；id 必须服务端派生；只许顶层语句，子查询/union/cte/fromSelect 源带它必报错；命中记审计 `DB_TENANT_OVERRIDE`；见 api-manual「语句级 forTenant」段 |
 | 子查询 / exists / union / with CTE | `subquery / exists / union / with` | ✅ | 嵌套 ≤ 4 |
 | 取回主键 | `.returning([...])` | ⚠️ | mysql 仅单列（两步取） |
 | 幂等写入 | `.orIgnore()` | ⚠️ | 见 §3.2；VALUES / fromSelect 两形态 × 三方言全支持（v0.1.128），**语义宽度有方言差异** |
 | 批量写入（查询插入） | `.fromSelect(q, cols)` | ⚠️ | 见 §3 |
+| SQL 预览 / 语句快照 | `toSQL()` / `toJSON()` + `db.fromJSON(snap)` | ✅ | toSQL 与执行同口径（limit 归一化一致，可先诊断再跑）；快照纯 JSON，可入库/入队/跨网络，`fromJSON` 重新绑定**恢复方**模块的库；快照即语句语义（forTenant 覆盖随快照携带）；见 `db-guide.md` §10 |
 | 目录自省 | `db.listTables(prefix?)` | ✅ | v0.1.82；当前库全部表名（含未登记 registry），替代按方言分支 `information_schema`/`sqlite_master` |
-| 流式读取 | `db.stream` | ⚠️ | 见 api-manual「db.stream」三档 |
+| 流式读取 | `db.stream` | ⚠️ | 见 `db-guide.md` §3.1 三档 |
 | 任意 SQL 表达式 / DDL | — | ❌ | 退回 `db.query` / `db.exec` |
 
 `✅` = 全方言一致可移植；`⚠️` = 语义有方言差异，使用时注意 §3；`❌` = 构造器不支持。
@@ -152,15 +154,19 @@ DELETE 无此坑（删行必「变更」，匹配行 = 变更行），但归属�
 
 ### 3.5 模糊搜索：用语义 op，别手写 `LIKE`
 
-`contains` / `startswith` / `endswith` 自动转义通配符并渲染 `LIKE ? ESCAPE '!'`：
+`contains` / `startswith` / `endswith` 自动转义通配符并渲染 `LIKE ? ESCAPE ?`（转义符是
+绑定参数，默认 `\`）：
 
 - 语义：`contains` ⇒ `%v%`、`startswith` ⇒ `v%`、`endswith` ⇒ `%v`。
-- 引擎内部统一把模式里的 `%` `_` `!` 三个字符转义（前缀 `!`），业务层**不该、也不需要**自己拼
-  `%`/`_`。`contains` 把 `value` 当**普通搜索词**（自动包通配 + 转义），而裸 `like` 把 `value`
-  当**已成形**的 LIKE 模式（不转义，写 `%a%` 就按 `%a%`）——绝大多数场景用三个语义 op 即可。
+- 引擎内部统一把模式里的 `%` `_` 与转义符本身转义（转义符前缀，默认 `\`），业务层**不该、
+  也不需要**自己拼 `%`/`_`。`contains` 把 `value` 当**普通搜索词**（自动包通配 + 转义），而裸
+  `like` 把 `value` 当**已成形**的 LIKE 模式（不转义，写 `%a%` 就按 `%a%`）——绝大多数场景用
+  三个语义 op 即可。
 - `like` 的 `escape` 逃生舱保留（高级/框架内部）：`{ op: "like", value: "a%", escape: "!" }`
-  渲染 `LIKE ? ESCAPE '!'`；`escape` 仅接受单字符且白名单 `! / | ~ # @`，**显式拒绝 `\`**
-  （mysql 默认 `sql_mode` 下 `ESCAPE '\'` 即 1064 语法错误）。业务层基本用不到。
+  渲染 `LIKE ? ESCAPE ?`；`escape` 仅须**单字符**（多字符报
+  `escape must be a single char, got '...'`），引擎**不设白名单、不拒 `\`**（默认转义符就是
+  `\`；旧文档「白名单 `! / | ~ # @`、显式拒 `\`」的说法实现从未执行，勿依赖被拒行为）。业务层
+  基本用不到。
 - `in` 的空数组守卫：`{ op: "in", value: [] }` 直接报 `in needs non-empty array`——引擎里 `IN ()`
   是永久假谓词，会静默返回 0 行、与「无匹配」无法区分，故早抛。
 
@@ -178,12 +184,12 @@ v0.1.81 前「别名混入真名」会让归属与租户两条守卫**同时静�
   面为零。
 - **不要**为「构造器不支持」而裸拼标识符进 `db.query`（表名/列名来自 JS 字符串 = 注入面）。
 - **逃生舱**：构造器确实不支持的语句（DDL、特殊方言语法）用 `db.query` / `db.exec`，但仍须 `?`
-  绑定值、避免方言特有语法；`like` 的 `escape` 是高级逃生舱（白名单 `! / | ~ # @`、显式拒 `\`）。
+  绑定值、避免方言特有语法；`like` 的 `escape` 是高级逃生舱（任意单字符，多字符报错）。
   **匹配字面 `%` / `_`** 用 `{op:"like", value:"a!_b", escape:"!"}`（模式原样成形 + 自选转义符）；
   纯模糊包含用 `contains` 即可（v0.1.82 起写进迁移清单第 7 条）。
 - **`truncate()` 是唯一无 where 的写动词**（v0.1.82）：命名式、可 grep 的「明示清空」，取代
   「退回裸 `db.exec("delete from t")`」。租户守卫照常注入——租户表上只清当前租户（构造性
-  fail-safe：永远清不出租户边界），整库清空在 `db.asSystem` 下执行；语义出处见 api-manual §6。
+  fail-safe：永远清不出租户边界），整库清空在 `db.asSystem` 下执行；语义出处见 `db-guide.md` §7。
 - **目录自省不再分支方言**（v0.1.82）：「枚举当前库的表」（卸载清理、按前缀扫表）用
   `db.listTables(prefix?)`——SQL 文本引擎常量 + 前缀绑定参数，能力面严格弱于 `db.query`，
   价值在跨方言可移植。返回名可含**未登记 registry** 的表；要拿它们的行数据仍须走裸 SQL
@@ -205,7 +211,7 @@ v0.1.81 前「别名混入真名」会让归属与租户两条守卫**同时静�
    （命名式明示、租户守卫不缺席）；**去重计数** `select distinct …` 拉行 `.length` →
    `select([{fn:"count",distinct:true,field,as}])`（聚合一行，免受 LIMIT 钳制静默漏算）。
 8. **字面 `%`/`_` 匹配**（v0.1.82 明文）：`{op:"like", value:"a!_b", escape:"!"}`——模式原样成形，
-   自选转义符（白名单 `! / | ~ # @`）；纯模糊搜仍用 `contains`。
+   自选转义符（任意单字符）；纯模糊搜仍用 `contains`。
 
 迁移后同一 handler 在**三内置方言**上跑通，无需按方言分支；新方言（插件声明名）上一期只有
 裸 SQL 路径，构造器报 `OJ_DB_UNSUPPORTED`——别为了「多一个方言」把 SQL 写成分支兜底

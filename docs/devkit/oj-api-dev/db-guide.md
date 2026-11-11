@@ -245,7 +245,7 @@ not allowed under sql_guard`）——都无法注入条件，deny 拒、warn 只
 `warn: db.asSystem() invoked (tenant guard bypass for this request)`，只给审计/运维类
 handler）；`db.asTenant(id)`（匿名请求声明租户，**不绕过**防护——租户条件照常注入，只是
 id 由 handler 给。三道门禁：`allow_as_tenant: true`、请求匿名且尚无租户头、`id` 非空）；
-`db.table(t).forTenant(id)`（**语句级**，未发布版——只让这一条构造器语句以 `id` 注入，
+`db.table(t).forTenant(id)`（**语句级**，v0.1.129——只让这一条构造器语句以 `id` 注入，
 同请求其他语句仍注入当前租户；id 必须服务端派生；命中记审计事件
 `DB_TENANT_OVERRIDE`；只许顶层语句，子查询/union/cte/fromSelect 源带它必报错）。
 报错文案：`db.asTenant is disabled: set tenant.allow_as_tenant=true to let anonymous handlers
@@ -2068,9 +2068,9 @@ await db.table("file").where({ field: "path", op: "endswith", value: ".log" }).a
 // → LIKE '%\.log' ESCAPE '!'  （注意 . 也被转义，不会匹配任意字符）
 ```
 
-- 语义：`contains` ⇒ `%v%`、`startswith` ⇒ `v%`、`endswith` ⇒ `%v`；引擎自动转义 `%`/`_`/`!`
-  并渲染 `LIKE ? ESCAPE '!'`，业务零转义、零方言知识。转义原理、`like` 的 `escape` 逃生舱
-  （白名单 `! / | ~ # @`、显式拒 `\`）、`in` 空数组守卫的口径，统一见
+- 语义：`contains` ⇒ `%v%`、`startswith` ⇒ `v%`、`endswith` ⇒ `%v`；引擎自动转义 `%`/`_`/转义符
+  并渲染 `LIKE ? ESCAPE ?`（转义符为绑定参数，默认 `\`），业务零转义、零方言知识。转义原理、
+  `like` 的 `escape` 逃生舱（任意单字符，多字符报错）、`in` 空数组守卫的口径，统一见
   `sql-builder-guide.md` §3.5。
 
 **join 联表（v0.1.81 支持表别名与 ON 值条件）**：

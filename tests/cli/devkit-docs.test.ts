@@ -75,6 +75,7 @@ describe("devkit 目录结构（ojm 侧发货 + oj-api-dev 快照子目录）", 
 		"README.md",
 		"api-manual.md",
 		"scenarios.md",
+		"mcp-bot-guide.md",
 		"sql-builder-guide.md",
 		"oj-test-guide.md",
 		"global.d.ts",
@@ -92,7 +93,7 @@ describe("devkit 目录结构（ojm 侧发货 + oj-api-dev 快照子目录）", 
 		expect(top).toEqual([...OJM_FILES].sort());
 	});
 
-	it("docs/devkit/oj-api-dev/ 恰为 12 个 oj 侧快照文件", () => {
+	it("docs/devkit/oj-api-dev/ 恰为 13 个 oj 侧快照文件", () => {
 		const snap = readdirSync(join(ROOT, "docs/devkit/oj-api-dev")).sort();
 		expect(snap).toEqual([...SNAPSHOT_FILES].sort());
 	});
