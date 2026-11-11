@@ -97,6 +97,26 @@
 
 ### Fixed
 
+- **ojm 探活迁到 `_system/health`，不再触发 oj 的 deprecated WARN**：`ojm dev/preview` 的
+  就绪轮询（`oj.ts` healthUrl）与 `ojm info` 的观测探针（`info.ts` probeOjHealth）此前仍打
+  旧路径 `{base}/health`——oj 自热更新 v1（2026-10-12）起对该路径每次告警
+  `deprecated health path … (use …/_system/health)`，每次起 dev/preview/info 都刷一条。
+  现两处探针迁到 `{base}/_system/health`（oj 的 fallback 匿名直答、不经内层证书门禁，判据
+  不变：状态码 <400）；oj 侧旧路径别名保留，真实遗留外部调用方仍会收到迁移提示。
+- **C8「共享表外三方库」构建告警把压缩源码当库名打印（乱码），并连带制造假三方库误报**：
+  产物 chunk 的裸说明符扫描原用三条正则对压缩文本匹配，字符串内容里的「…import"」邻接
+  （如提示语「跨模块请勿直接动态 import」后跟 `, r = e({\n name: "…` 这类压缩代码）会被
+  `import\s*["']` 捕成「库名」直到下一枚引号——告警正文因此是转译源码切片（用户实见
+  `, { json: e }).json(); if (typeof n.code == ` 等），无法定位触发库；同一机制还会把
+  文案里的 `import 'zod'` 示例字样捕成真实 specifier，误导用户把 zod 加进 SHARED_DEPS
+  （恰好违反 AC-D15 的 zod-free 契约承诺）。现改为 `es-module-lexer` 真词法扫描（与
+  `esm-exports.ts` 同口径）：字符串/注释/模板/正则字面量一律不产说明符，动态 import 仅认
+  纯字符串字面量实参；顺带修复紧缩 minify 形态（`import{a as b}from"x"`，关键字后无空白）
+  被漏扫的缺口。DEV 守卫（`import.meta.env.DEV` + 动态 `import("./api.schemas")`）在
+  生产构建被常量折叠剔除，本就不进产物——扫描口径变准后不再误伤（fixture 实测：schemas
+  直引 zod + junk 字符串样本的模块构建零告警、产物零 zod）。回归：
+  `src/__tests__/bare-specifier-scan.test.ts`（真语句提取含紧缩形态 / 字符串 import 字样
+  不捕获 / 注释与模板与 import.meta 不捕获 / 相对·绝对·# 不入集，4 例）。
 - **移动端（375×667 等窄屏）点菜单项后抽屉不收起，目标页被整屏菜单盖住**：移动端菜单是
   `sidebarCollapsed` 驱动的整屏 Drawer + 遮罩，`handleMenuSelect` 只做路由跳转、从未复位该
   偏好，故跳转后抽屉仍压在页面上（同路由重复点击也一样被盖）。现 `isMobile` 下先收起再跳转；

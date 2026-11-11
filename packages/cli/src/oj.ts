@@ -8,7 +8,7 @@
  * → unrecognized subcommand）。ojm 以最新 oj 为准，不做版本兼容分支——老版本 oj
  * 由 `ojm vendor` 的最低版本门禁挡住（见 src/vendor.ts 的 MIN_OJ_VERSION）。
  *
- * 健康判据：GET {base}/health 状态码 <400（oj 内置匿名健康端点；2xx/3xx 均视为就绪）。
+ * 健康判据：GET {base}/_system/health 状态码 <400（oj 内置匿名健康端点；2xx/3xx 均视为就绪）。
  * 秒退：ready 拒绝，错误信息优先带 stderr 尾部（证书缺失等常见错因可直接读出）；
  * 若 oj 把 FATAL 落盘到 logs/ 而未进 stderr（手册说 `--console-log` 会镜像到终端，但
  * 部分环境仍可能只落盘），再读 `<configDir>/logs/server-*.log` 最新文件兜底，绝不输出
@@ -129,7 +129,7 @@ export function startOj(
 	// clap 拒掉）：历史布局传目录 → `--api-path <dir>`；module-root 布局传**已拼好的
 	// 旗标数组** → `["--module-root", "<project>/src"]`。
 	const apiArgs = Array.isArray(apiSource) ? apiSource : ["--api-path", apiSource];
-	const healthUrl = `http://${healthHostOf(readOjServerField(configPath, "host"))}:${port}${base}/health`;
+	const healthUrl = `http://${healthHostOf(readOjServerField(configPath, "host"))}:${port}${base}/_system/health`;
 
 	// 插件目录发现显式化：oj 的 resolve_plugins_dir 依赖 current_exe() 启发式，而
 	// Linux glibc 发行包的 bin/oj 是 ld-linux 启动器（exec 加载器而非二进制），

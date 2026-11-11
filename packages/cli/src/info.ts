@@ -30,11 +30,11 @@ function readPkgVersion(pkgJsonPath: string): string {
 	}
 }
 
-/** oj 观测桩（测试注入）；默认实现分别跑 `bin/oj -V` 与 `GET {base}/health` */
+/** oj 观测桩（测试注入）；默认实现分别跑 `bin/oj -V` 与 `GET {base}/_system/health` */
 export interface OjObservability {
 	/** 现场版本（stdout 原文）；null = 不可探测 */
 	ojVersion: () => string | null
-	/** /health 响应体；null = 服务未运行或不可达 */
+	/** /_system/health 响应体；null = 服务未运行或不可达 */
 	ojHealth: () => Promise<Record<string, unknown> | null>
 }
 
@@ -48,10 +48,10 @@ function probeOjVersion(ojBin: string): string | null {
 	}
 }
 
-/** `GET http://127.0.0.1:{port}{base}/health`；任何失败 → null */
+/** `GET http://127.0.0.1:{port}{base}/_system/health`；任何失败 → null */
 function probeOjHealth(base: string, port: number): Promise<Record<string, unknown> | null> {
 	return new Promise((resolve) => {
-		const req = http.get({ host: "127.0.0.1", port, path: `${base}/health`, timeout: 2000 }, (res) => {
+		const req = http.get({ host: "127.0.0.1", port, path: `${base}/_system/health`, timeout: 2000 }, (res) => {
 			const chunks: Buffer[] = [];
 			res.on("data", chunk => chunks.push(chunk as Buffer));
 			res.on("end", () => {
