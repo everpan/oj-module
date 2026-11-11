@@ -27,9 +27,13 @@ export async function triggerFactoryConverge(opts: FactoryConvergeOptions): Prom
 	const f = opts.fetchImpl ?? fetch;
 	const log = opts.log ?? (() => {});
 	try {
+		// 强绑定（require_signed_claim: true）：converge 是无 token 匿名链路（已列
+		// tenant.anonymous_paths），CLI 侧持有型证明走 x-ojm-converge-token；若再带
+		// X-TENANT-ID 而无匹配 signed claim 会被 403。故不注租户头——与运行时
+		// isTenantlessApi 对 /oj-market/converge 的豁免对齐，后端按匿名路径自行决租户。
 		const res = await f(`${base}${apiBase}/oj-market/converge`, {
 			method: "POST",
-			headers: { "content-type": "application/json", "x-ojm-converge-token": opts.token, "X-TENANT-ID": "default" },
+			headers: { "content-type": "application/json", "x-ojm-converge-token": opts.token },
 		});
 		if (!res.ok)
 			throw new Error(`converge HTTP ${res.status}`);
