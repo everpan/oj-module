@@ -88,7 +88,7 @@ describe("templates 后端 schema.yaml 列白名单", () => {
 		expect(violations).toEqual([]);
 	});
 
-	it("s-2 回归锚点：_platform 基线为 0001、增量 0002（发布历史）/ 0003（市场目录扩列）/ 0004（退役 reg_source_seq）/ 0005（sig_registry_id）/ 0006（avatar_base64 扩容 MEDIUMTEXT）/ 0007（机器人凭据三表）三方言齐备，且基线里确有 users.employee_no", () => {
+	it("s-2 回归锚点：_platform 基线为 0001、增量 0002（发布历史）/ 0003（市场目录扩列）/ 0004（退役 reg_source_seq）/ 0005（sig_registry_id）/ 0006（avatar_base64 扩容 MEDIUMTEXT）/ 0007（机器人凭据三表）/ 0008（服务凭据过期列）/ 0009（服务凭据状态列）三方言齐备，且基线里确有 users.employee_no", () => {
 		const migDir = join(srcRoot, "app", "api", "_platform", "migrations");
 		for (const file of [
 			"0001__baseline.sql",
@@ -112,13 +112,19 @@ describe("templates 后端 schema.yaml 列白名单", () => {
 			"0007__mcp_svc_tables.sql",
 			"0007__mcp_svc_tables.mysql.sql",
 			"0007__mcp_svc_tables.pg.sql",
+			"0008__svc_token_expires.sql",
+			"0008__svc_token_expires.mysql.sql",
+			"0008__svc_token_expires.pg.sql",
+			"0009__svc_token_status.sql",
+			"0009__svc_token_status.mysql.sql",
+			"0009__svc_token_status.pg.sql",
 		])
 			expect(existsSync(join(migDir, file)), `缺迁移 ${file}`).toBe(true);
 
 		// 0001 是压平后的结构基线，已应用过的库不会重跑——新增结构只能追加新序号，
 		// 不得回改基线（否则老库拿不到）。序号必须从 0001 起连续、无空洞。
 		const seqs = [...new Set(readdirSync(migDir).map(f => f.slice(0, 4)))].sort();
-		expect(seqs).toEqual(["0001", "0002", "0003", "0004", "0005", "0006", "0007"]);
+		expect(seqs).toEqual(["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009"]);
 
 		const schema = parse(readFileSync(join(srcRoot, "app", "api", "_platform", "schema.yaml"), "utf-8")) as SchemaDoc;
 		expect(schema.tables?.users?.columns?.employee_no).toMatchObject({ type: "text" });
