@@ -191,7 +191,11 @@ export async function bootstrapIsolatedSite(opts: BootstrapOptions = {}): Promis
 	// 故用 lookahead 容忍尾注释；命中第一个 anonymous_paths 列表项（auth 守卫读取的那个，
 	// 与安装器 appendAnonymousPaths 同目标）即可——旧写法用 `$` 硬锚尾，注释使其失配导致预置
 	// 静默失效，安装器随后自己补匿名路径 → auth 进 restart_pending → 无守护形态判 partial。
-	const loginAnchor = /^(\s*)- \/system\/login-methods(?=\s*(?:#.*)?$)/m;
+	// 同名锚点有两处：`auth.anonymous_paths`（免 token）与 `tenant.anonymous_paths`（免租户头）。
+	// 强绑定（tenant.require_signed_claim: true，模板默认）下缺后者时，连**不带任何头**的裸探活
+	// 也 403（2026-11-12 演练实测：/api/<name>/ping 恒 403 → 安装 status=partial → walkthrough
+	// 8/13 级联失败）。故两处都预置，g 修饰符覆盖 auth 与 tenant 两个列表。
+	const loginAnchor = /^(\s*)- \/system\/login-methods(?=\s*(?:#.*)?$)/gm;
 	if (loginAnchor.test(cfg) && !cfg.includes(`- ${healthPath}`))
 		cfg = cfg.replace(loginAnchor, `$1- /system/login-methods\n$1- ${healthPath}`);
 	// fs 段：模板自 0.2.13 起已自带（安装器落盘面）；旧模板没有时才补，避免重复键

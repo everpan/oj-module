@@ -145,16 +145,19 @@ describe("模板 config.yaml 随发 MCP 骨架（20261110-1027 T4：server.mcp �
 		expect(parent.startsWith("mcp:")).toBe(true);
 	});
 
-	it("骨架 enabled: false 且 ensureMcpModule 首装登记可直接落锚点（enabled 缺省行为中性，F10）", async () => {
+	it("骨架显式 enabled: true 且 ensureMcpModule 首装登记可直接落锚点（enabled 缺省行为中性，F10）", async () => {
 		const cfg = await fsp.readFile(new URL("../../config.yaml", import.meta.url), "utf8");
 		expect(cfg).toMatch(/^\s*mcp:\s*$/m);
-		expect(cfg).toMatch(/^\s*enabled:\s*false\s*$/m);
+		// 94323a463 起随站默认开启：企微机器人员工代理（/api/wecom-bot/mcp）要在进程内访问
+		// {base}/mcp，关掉它等于机器人链路静默失效。骨架仍必须**显式**写这个键（不靠缺省）。
+		expect(cfg).toMatch(/^\s*enabled:\s*true\s*$/m);
 		const r = ensureMcpModule(cfg, "wiki");
 		expect(r.changed).toBe(true);
 		expect(r.content).toContain("modules:");
 		expect(r.content).toContain("- wiki");
-		// 登记 must not 破坏 platform.modules（模板既有键，config.yaml 116 行附近）
-		expect(r.content).toContain("modules: [_platform, oj-market]");
+		// 登记 must not 破坏 platform.modules（模板既有键，config.yaml 116 行附近；
+		// wecom-bot 自 94323a463 起随站内置——机器代理要平台内核的 bot 共享内核）
+		expect(r.content).toContain("modules: [_platform, oj-market, wecom-bot]");
 	});
 });
 
@@ -182,6 +185,36 @@ describe("p2-15③ C2-26 anonymous 运行时接线（appendAnonymousPaths：conf
 
 	it("键缺失 = 可读报错不猜位置（用户删键 = 显式退出匿名模型）", () => {
 		expect(() => appendAnonymousPaths("server:\n  reload_api: true\n", ["x/y"])).toThrow(/anonymous_paths/);
+	});
+
+	// 2026-11-12 演练：强绑定（tenant.require_signed_claim）下 oj 判租户读的是
+	// tenant.anonymous_paths；只补 auth 那份会让安装冒烟探活 /api/<name>/ping 恒 403，
+	// 安装落 status=partial，walkthrough 8/13 级联失败。故两块同补 / 同摘。
+	const DUAL = [
+		"auth:",
+		"  anonymous_paths:",
+		"    - /auth/login",
+		"tenant:",
+		"  require_signed_claim: true",
+		"  anonymous_paths:",
+		"    - /system/login-methods",
+		"",
+	].join("\n");
+
+	it("auth 与 tenant 两份 anonymous_paths 同步追加（强绑定冒烟探活）", () => {
+		const r = appendAnonymousPaths(DUAL, ["demo-solution/ping"]);
+		expect(r.added).toEqual(["/demo-solution/ping"]);
+		const authBlock = r.content.split("tenant:")[0]!;
+		const tenantBlock = r.content.split("tenant:")[1]!;
+		expect(authBlock).toContain("- /demo-solution/ping");
+		expect(tenantBlock).toContain("- /demo-solution/ping");
+	});
+
+	it("同步摘除：remove 后两份列表都不留残条目", () => {
+		const added = appendAnonymousPaths(DUAL, ["demo-solution/ping"]);
+		const r = removeAnonymousPaths(added.content, ["demo-solution/ping"]);
+		expect(r.removed).toEqual(["/demo-solution/ping"]);
+		expect(r.content).toBe(DUAL);
 	});
 });
 

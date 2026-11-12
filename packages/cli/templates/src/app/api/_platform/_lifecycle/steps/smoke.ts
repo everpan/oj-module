@@ -50,10 +50,15 @@ function isObj(v: unknown): v is Record<string, unknown> {
 }
 
 /**
- * 探活请求必须自报租户（企微代开发多租户 v3 Phase 0）：宿主 `tenant.enable: true` 时 oj 对每个
- * 请求强制要 `X-TENANT-ID`——**匿名健康端点也不豁免**，缺即 400（实测 curl 无头 400 / 带 default 200）。
- * 浏览器由 runtime 请求层注入；安装器是进程内自探，没人替它注入，只能自己带上，否则任何
- * 装到「带 health 的方案」上的站点都会卡在 smoke 段（`install/upgrade/reinstall` 全线 partial）。
+ * 探活请求头策略（2026-11-12 强绑定实测重订）：
+ * - **默认不带** `X-TENANT-ID`。强绑定（`tenant.require_signed_claim: true`，模板默认）下裸租户头
+ *   没有 claim 可复核，oj 直接 403 `tenant requires a signed claim`——带了这个头反而把自己挡在门外；
+ *   `tenant.anonymous_paths` 的豁免只认「**确实没带**租户头」的请求（未带头 → 标 anonymous 放行）。
+ *   装载阶段已把探针路径同时追加进 auth/tenant 两份匿名列表（text-edit），无头探活正是设计中的匿名面
+ *   （auth 命中即前置管线短路，租户门不再介入）。
+ * - 400/403 时**回退带默认租户头再探一次**：非强绑定宿主（`require_signed_claim: false`）的裸头仍可
+ *   自证，旧站点照旧通过；强绑定宿主二次仍 403 则判 restart_pending（匿名接线未生效，宿主重启加载
+ *   新配置后即 2xx），与 401 同口径，不计入冒烟失败。
  */
 const PROBE_TENANT_HEADER = "X-TENANT-ID";
 const PROBE_TENANT = "default";
@@ -137,13 +142,17 @@ export async function smoke(ctx: SmokeContext): Promise<StageResult> {
 			notes.push("纯 web 方案无 api 面，探活跳过");
 		if (target !== undefined) {
 			const url = probeUrlOf(ctx.apiPrefix, target);
-			const res = await ctx.fetch(url, { headers: { [PROBE_TENANT_HEADER]: PROBE_TENANT } });
+			// 先无头探（强绑定宿主唯一合法的匿名形态）；400/403 再回退裸租户头自证（非强绑定宿主）。
+			let res = await ctx.fetch(url);
+			if (!res.ok && (res.status === 400 || res.status === 403)) {
+				res = await ctx.fetch(url, { headers: { [PROBE_TENANT_HEADER]: PROBE_TENANT } });
+			}
 			if (!res.ok) {
-				// 无凭证探针（含租户化站点强制 X-TENANT-ID，仍无业务凭证）收 401 是 restart_pending 常态——
+				// 无凭证探针收 401 / 强绑定下 403（匿名接线未生效）都是 restart_pending 常态——
 				// 宿主重启加载新配置（路由/匿名接线）后即 2xx，不是包或站点问题，一律判 deferred 不计入失败。
-				// 非 401（如 404/500）视为真实失败（P0 §3.5：首个路由 404/连通失败 = 冒烟失败，避免假成功）。
-				if (res.status === 401) {
-					notes.push(`探活 ${url} 返回 401：无凭证探针，宿主重启加载新配置（路由/匿名接线）后即 2xx——属 restart_pending，重启宿主后生效，不计入失败`);
+				// 其余（如 404/500）视为真实失败（P0 §3.5：首个路由 404/连通失败 = 冒烟失败，避免假成功）。
+				if (res.status === 401 || res.status === 403) {
+					notes.push(`探活 ${url} 返回 ${res.status}：无凭证探针，宿主重启加载新配置（路由/匿名接线）后即 2xx——属 restart_pending，重启宿主后生效，不计入失败`);
 				}
 				else {
 					failures.push({ item: "探活", retryable: true, reason: `探针 ${url} 返回 HTTP ${res.status}（期望 2xx；404/5xx 视为冒烟失败）` });

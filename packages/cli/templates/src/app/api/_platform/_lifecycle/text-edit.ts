@@ -69,18 +69,14 @@ export function ensureReloadApi(content: string): { content: string, changed: bo
  * （键随模板 config.yaml 发布，用户删键 = 显式退出匿名模型，安装器不猜位置重建）。
  * paths 传方案相对形态（C2-26 anonymous 值，首段=apiSeg）；本函数统一补前导 `/`。
  */
-export function appendAnonymousPaths(content: string, paths: string[]): { content: string, added: string[] } {
-	const lines = content.split("\n");
-	const idx = lines.findIndex(l => /^\s*anonymous_paths\s*:/.test(l));
-	if (idx === -1) {
-		throw new Error("text-edit: config.yaml 缺 auth.anonymous_paths 键（oj 匿名模型 config 独占，键随模板 config.yaml 发布）——方案匿名端点无法接线，请恢复该键后重试安装");
-	}
-	// 列表项收集：键行之后连续的 `- item` 行（缩进任意）；空行/注释行跳过不中断
-	// （模板 config.yaml 列表中部有行内注释），遇首个其他内容行即止
-	const wanted = paths.map(p => (p.startsWith("/") ? p : `/${p}`));
+/** `anonymous_paths:` 键行判定（auth 与 tenant 两个块同名，靠出现序区分） */
+const ANON_KEY_RE = /^\s*anonymous_paths\s*:/;
+
+/** 扫一个 anonymous_paths 块的列表项：返回已有值集合、末项行号、项缩进 */
+function scanAnonymousList(lines: string[], keyIdx: number): { existing: Set<string>, last: number, itemIndent: string } {
 	const existing = new Set<string>();
-	let last = idx;
-	for (let i = idx + 1; i < lines.length; i++) {
+	let last = keyIdx;
+	for (let i = keyIdx + 1; i < lines.length; i++) {
 		const line = lines[i]!;
 		if (line.trim() === "" || /^\s*#/.test(line)) {
 			continue;
@@ -93,12 +89,37 @@ export function appendAnonymousPaths(content: string, paths: string[]): { conten
 		existing.add(stripped.slice(2).trim());
 		last = i;
 	}
-	const added = wanted.filter(p => !existing.has(p));
-	if (added.length === 0) {
-		return { content, added: [] };
+	const itemIndent = /^\s*-/.exec(lines[keyIdx + 1] ?? "")?.[0]?.replace(/-.*/, "") ?? (`${/^\s*/.exec(lines[keyIdx]!)?.[0] ?? ""}  `);
+	return { existing, last, itemIndent };
+}
+
+export function appendAnonymousPaths(content: string, paths: string[]): { content: string, added: string[] } {
+	const lines = content.split("\n");
+	// 同名键有两处：`auth.anonymous_paths`（免 token）与 `tenant.anonymous_paths`（免租户头）。
+	// 强绑定（tenant.require_signed_claim）下只补 auth 是不够的——oj 的租户中间件读的是
+	// tenant 那份，缺条目时连**不带任何头**的裸请求也 403（2026-11-12 演练实测：安装冒烟探活
+	// /api/<name>/ping 恒 403 → status=partial → walkthrough 8/13 级联失败）。故两处同补。
+	const keyIdxs = lines.reduce<number[]>((acc, l, i) => {
+		if (ANON_KEY_RE.test(l))
+			acc.push(i);
+		return acc;
+	}, []);
+	if (keyIdxs.length === 0) {
+		throw new Error("text-edit: config.yaml 缺 auth.anonymous_paths 键（oj 匿名模型 config 独占，键随模板 config.yaml 发布）——方案匿名端点无法接线，请恢复该键后重试安装");
 	}
-	const itemIndent = /^\s*-/.exec(lines[idx + 1] ?? "")?.[0]?.replace(/-.*/, "") ?? (`${/^\s*/.exec(lines[idx]!)?.[0] ?? ""}  `);
-	lines.splice(last + 1, 0, ...added.map(p => `${itemIndent}- ${p}`));
+	const wanted = paths.map(p => (p.startsWith("/") ? p : `/${p}`));
+	const added: string[] = [];
+	// 逆序处理：先改靠后的块，避免前面插入导致后续行号漂移
+	for (const idx of [...keyIdxs].reverse()) {
+		const { existing, last, itemIndent } = scanAnonymousList(lines, idx);
+		const toAdd = wanted.filter(p => !existing.has(p));
+		if (toAdd.length === 0)
+			continue;
+		lines.splice(last + 1, 0, ...toAdd.map(p => `${itemIndent}- ${p}`));
+		// 上报口径不变：只报 auth（首个）块的新增项
+		if (idx === keyIdxs[0])
+			added.push(...toAdd);
+	}
 	return { content: lines.join("\n"), added };
 }
 
@@ -114,30 +135,35 @@ export function removeAnonymousPaths(content: string, paths: string[]): { conten
 	}
 	const wanted = new Set(paths.map(p => (p.startsWith("/") ? p : `/${p}`)));
 	const lines = content.split("\n");
-	const idx = lines.findIndex(l => /^\s*anonymous_paths\s*:/.test(l));
-	if (idx === -1) {
+	// auth 与 tenant 两块同补（见 appendAnonymousPaths 注释），摘除也必须同步摘——
+	// 否则补偿后 tenant 块留残条目，下次安装/对账会看到「多出」的匿名面。
+	const keyIdxs = lines.reduce<number[]>((acc, l, i) => {
+		if (ANON_KEY_RE.test(l))
+			acc.push(i);
+		return acc;
+	}, []);
+	if (keyIdxs.length === 0) {
 		return { content, removed: [] };
-	}
-	// 收集列表项行区间（键行之后连续 `- item`，跳过空行/注释，遇首个其他行即止）
-	const itemLines: number[] = [];
-	for (let i = idx + 1; i < lines.length; i++) {
-		const line = lines[i]!;
-		if (line.trim() === "" || /^\s*#/.test(line)) {
-			continue;
-		}
-		const stripped = line.replace(/#.*$/, "").trim();
-		if (!stripped.startsWith("- ")) {
-			break;
-		}
-		itemLines.push(i);
 	}
 	const removeSet = new Set<number>();
 	const removed: string[] = [];
-	for (const i of itemLines) {
-		const val = lines[i]!.replace(/#.*$/, "").trim().slice(2).trim();
-		if (wanted.has(val)) {
-			removeSet.add(i);
-			removed.push(val);
+	for (const idx of keyIdxs) {
+		// 收集列表项行区间（键行之后连续 `- item`，跳过空行/注释，遇首个其他行即止）
+		for (let i = idx + 1; i < lines.length; i++) {
+			const line = lines[i]!;
+			if (line.trim() === "" || /^\s*#/.test(line)) {
+				continue;
+			}
+			const stripped = line.replace(/#.*$/, "").trim();
+			if (!stripped.startsWith("- ")) {
+				break;
+			}
+			const val = stripped.slice(2).trim();
+			if (wanted.has(val) && !removeSet.has(i)) {
+				removeSet.add(i);
+				if (!removed.includes(val))
+					removed.push(val);
+			}
 		}
 	}
 	if (removed.length === 0) {
