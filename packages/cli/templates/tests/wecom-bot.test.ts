@@ -39,6 +39,22 @@ function decodeTenant(token: string): string {
 	}
 }
 
+/**
+ * 运行时能力前置：换签用例必须走 bridge.call（进程内 dispatch），该全局自 **oj 0.1.131** 才有。
+ *
+ * 低于该版本时 handler 调用即抛，HTTP 落到 500——只看 "expected 200 but got 500" 看不出根因，
+ * 所以先点名：失败信息本身就是答案（§11 U9：@oj-bin/oj npm latest 仍 0.1.130）。
+ */
+function requireBridge(): void {
+	if (typeof bridge !== "object") {
+		throw new TypeError(
+			"wecom-bot 代理的 tools/call 依赖 oj >= 0.1.131 的 bridge.call（进程内 dispatch）；"
+			+ `当前 runtime 的 typeof bridge = ${typeof bridge}（0.1.130 无此全局）——`
+			+ "先 ojm vendor v0.1.131+ 再跑本组用例（手册 §11 U9）",
+		);
+	}
+}
+
 async function loginAsL1(): Promise<{ token: string, tenant: string }> {
 	const token = await client.login(L1.username, L1.password);
 	return { token, tenant: decodeTenant(token) };
@@ -98,6 +114,7 @@ describe("wecom-bot 代理：自守卫（fail-closed）", () => {
 
 describe("wecom-bot 代理：obo 换签失败映射为 JSON-RPC error（方案 §4.3#6）", () => {
 	it("未绑定员工 → 40310 映射（HTTP 200，帧不破）", async () => {
+		requireBridge();
 		const { bearer, tenant } = await sharedSvc();
 		const r = await client.post("/wecom-bot/mcp", {
 			headers: { "Authorization": bearer, "Content-Type": "application/json", "X-TENANT-ID": tenant, "X-WeCom-User-Id": "E_P5_UNBOUND_999" },
@@ -113,6 +130,7 @@ describe("wecom-bot 代理：obo 换签失败映射为 JSON-RPC error（方案 �
 	});
 
 	it("非 svc 凭据（access token 代员工换签）→ 40312 映射（HTTP 200，帧不破）", async () => {
+		requireBridge();
 		const { token } = await loginAsL1();
 		const r = await client.post("/wecom-bot/mcp", {
 			headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json", "X-WeCom-User-Id": "E_P5_ANYSVC_1" },
