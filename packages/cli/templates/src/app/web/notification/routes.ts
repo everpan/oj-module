@@ -56,8 +56,10 @@ export async function onInit(ctx: ModuleContext) {
 		fetchNotifications: () => notificationClient.notificationNotificationsGet(),
 		// id 为命名空间串（"u:<id>" / "b:<id>"），原样透传
 		markRead: id => notificationClient.notificationNotificationsReadPost({ id: String(id) }).then(() => {}),
-		markAllRead: () => notificationClient.notificationNotificationsReadAllPost().then(() => {}),
-		clearAll: () => notificationClient.notificationNotificationsClearPost().then(() => {}),
+		// 无入参端点但契约声明 required empty body（nullable object）——生成物签名要求传 {}，
+		// 省略会 TS2554（2026-11-12 演练 web typecheck 实测）。
+		markAllRead: () => notificationClient.notificationNotificationsReadAllPost({}).then(() => {}),
+		clearAll: () => notificationClient.notificationNotificationsClearPost({}).then(() => {}),
 		push: input => notificationClient
 			.notificationPushPost({ userId: input.userId, title: input.title, message: input.message, link: input.link, avatar: input.avatar, category: input.category })
 			.then(r => String((r as { id: string }).id)),

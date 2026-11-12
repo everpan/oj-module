@@ -39,14 +39,6 @@ export const schemas = {
 	"expires_at": z.number()
 }),
 	},
-	"publishCredentialRevokePost": {
-		body: z.object({
-	"id": z.number()
-}),
-		data: z.object({
-	"ok": z.boolean()
-}),
-	},
 	"publishCredentialExchangePost": {
 		body: z.object({
 	"token": z.string()
@@ -56,6 +48,14 @@ export const schemas = {
 	"product": z.string(),
 	"username": z.string(),
 	"display_name": z.string().nullable().optional()
+}),
+	},
+	"publishCredentialRevokePost": {
+		body: z.object({
+	"id": z.number()
+}),
+		data: z.object({
+	"ok": z.boolean()
 }),
 	},
 };

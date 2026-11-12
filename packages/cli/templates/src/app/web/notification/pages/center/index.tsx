@@ -46,12 +46,12 @@ export default function NotificationCenter() {
 		onError: e => message.error(String(e)),
 	});
 	const readAllMut = useMutation({
-		mutationFn: notificationNotificationsReadAllPost,
+		mutationFn: () => notificationNotificationsReadAllPost({}),
 		onSettled: invalidate,
 		onError: e => message.error(String(e)),
 	});
 	const clearMut = useMutation({
-		mutationFn: notificationNotificationsClearPost,
+		mutationFn: () => notificationNotificationsClearPost({}),
 		onSettled: invalidate,
 		onError: e => message.error(String(e)),
 	});

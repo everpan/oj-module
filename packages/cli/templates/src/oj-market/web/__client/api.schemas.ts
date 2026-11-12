@@ -4,6 +4,79 @@
 import { z } from "@oj-module/runtime";
 
 export const schemas = {
+	"ojMarketBackfillPost": {
+		body: z.object({
+
+}).strict().nullable(),
+	},
+	"ojMarketCatalogGet": {
+		query: z.object({
+	"page": z.number().min(1).optional(),
+	"size": z.number().min(1).max(200).optional()
+}),
+		data: z.object({
+
+}).catchall(z.unknown()),
+	},
+	"ojMarketCatalogDetailGet": {
+		query: z.object({
+	"name": z.string(),
+	"version": z.string().optional()
+}),
+		data: z.object({
+
+}).catchall(z.unknown()),
+	},
+	"ojMarketCdnUploadPost": {
+		query: z.object({
+	"name": z.string()
+}),
+		data: z.object({
+
+}).catchall(z.unknown()),
+	},
+	"ojMarketConvergePost": {
+		body: z.object({
+
+}).strict().nullable(),
+	},
+	"ojMarketEnablePost": {
+		body: z.object({
+	"name": z.string(),
+	"enabled": z.boolean()
+}),
+		data: z.object({
+
+}).catchall(z.unknown()),
+	},
+	"ojMarketHistoryDelete": {
+		query: z.object({
+	"name": z.string(),
+	"version": z.string()
+}),
+		data: z.object({
+
+}).catchall(z.unknown()),
+	},
+	"ojMarketHistoryGet": {
+		data: z.array(z.object({
+
+}).catchall(z.unknown())),
+	},
+	"ojMarketIndexGet": {
+		query: z.object({
+	"page": z.number().min(1).optional(),
+	"size": z.number().min(1).max(200).optional()
+}),
+		data: z.object({
+	"list": z.array(z.object({
+
+}).catchall(z.unknown())),
+	"total": z.number(),
+	"page": z.number(),
+	"size": z.number()
+}),
+	},
 	"ojMarketInstallPost": {
 		body: z.object({
 	"source": z.enum(["cdn", "file"]),
@@ -25,136 +98,6 @@ export const schemas = {
 	"requested": z.boolean().optional()
 }).catchall(z.unknown()),
 	},
-	"ojMarketTaskGet": {
-		query: z.object({
-	"id": z.string()
-}),
-		data: z.object({
-
-}).catchall(z.unknown()),
-	},
-	"ojMarketEnablePost": {
-		body: z.object({
-	"name": z.string(),
-	"enabled": z.boolean()
-}),
-		data: z.object({
-
-}).catchall(z.unknown()),
-	},
-	"ojMarketMetaGet": {
-		data: z.object({
-	"apiVersion": z.string().optional()
-}).catchall(z.unknown()),
-	},
-	"ojMarketUploadPost": {
-		query: z.object({
-	"name": z.string()
-}),
-		data: z.object({
-
-}).catchall(z.unknown()),
-	},
-	"ojMarketTrustGet": {
-		data: z.object({
-
-}).catchall(z.unknown()),
-	},
-	"ojMarketTrustPost": {
-		body: z.object({
-	"task_id": z.string()
-}),
-		data: z.object({
-
-}).catchall(z.unknown()),
-	},
-	"ojMarketTrustKeyPost": {
-		body: z.object({
-	"key_id": z.string(),
-	"public_key": z.string()
-}),
-		data: z.object({
-
-}).catchall(z.unknown()),
-	},
-	"ojMarketTrustKeyDelete": {
-		query: z.object({
-	"key_id": z.string()
-}),
-		data: z.object({
-
-}).catchall(z.unknown()),
-	},
-	"ojMarketTrustReviewGet": {
-		data: z.array(z.object({
-	"task_id": z.string(),
-	"name": z.string(),
-	"version": z.string(),
-	"key_id": z.string(),
-	"fingerprint": z.string(),
-	"started_at": z.number()
-})),
-	},
-	"ojMarketIndexGet": {
-		query: z.object({
-	"page": z.number().min(1).optional(),
-	"size": z.number().min(1).max(200).optional()
-}),
-		data: z.object({
-	"list": z.array(z.object({
-
-}).catchall(z.unknown())),
-	"total": z.number(),
-	"page": z.number(),
-	"size": z.number()
-}),
-	},
-	"ojMarketCatalogGet": {
-		query: z.object({
-	"page": z.number().min(1).optional(),
-	"size": z.number().min(1).max(200).optional()
-}),
-		data: z.object({
-
-}).catchall(z.unknown()),
-	},
-	"ojMarketCatalogDetailGet": {
-		query: z.object({
-	"name": z.string(),
-	"version": z.string().optional()
-}),
-		data: z.object({
-
-}).catchall(z.unknown()),
-	},
-	"ojMarketYankPost": {
-		body: z.object({
-	"product": z.string(),
-	"version": z.string(),
-	"reason": z.string().optional(),
-	"by": z.string().optional(),
-	"restore": z.boolean().optional()
-}),
-		data: z.object({
-
-}).catchall(z.unknown()),
-	},
-	"ojMarketUninstallImpactGet": {
-		query: z.object({
-	"name": z.string()
-}),
-		data: z.object({
-
-}).catchall(z.unknown()),
-	},
-	"ojMarketUninstallPost": {
-		body: z.object({
-	"name": z.string()
-}),
-		data: z.object({
-
-}).catchall(z.unknown()),
-	},
 	"ojMarketMcpCatalogGet": {
 		data: z.object({
 	"status": z.enum(["mounted", "unmounted", "auth", "unreachable"]),
@@ -173,18 +116,9 @@ export const schemas = {
 }).catchall(z.unknown()))
 }).catchall(z.unknown()),
 	},
-	"ojMarketHistoryGet": {
-		data: z.array(z.object({
-
-}).catchall(z.unknown())),
-	},
-	"ojMarketHistoryDelete": {
-		query: z.object({
-	"name": z.string(),
-	"version": z.string()
-}),
+	"ojMarketMetaGet": {
 		data: z.object({
-
+	"apiVersion": z.string().optional()
 }).catchall(z.unknown()),
 	},
 	"ojMarketReleasesGet": {
@@ -201,9 +135,85 @@ export const schemas = {
 	"size": z.number()
 }),
 	},
-	"ojMarketCdnUploadPost": {
+	"ojMarketTaskGet": {
+		query: z.object({
+	"id": z.string()
+}),
+		data: z.object({
+
+}).catchall(z.unknown()),
+	},
+	"ojMarketTrustGet": {
+		data: z.object({
+
+}).catchall(z.unknown()),
+	},
+	"ojMarketTrustPost": {
+		body: z.object({
+	"task_id": z.string()
+}),
+		data: z.object({
+
+}).catchall(z.unknown()),
+	},
+	"ojMarketTrustKeyDelete": {
+		query: z.object({
+	"key_id": z.string()
+}),
+		data: z.object({
+
+}).catchall(z.unknown()),
+	},
+	"ojMarketTrustKeyPost": {
+		body: z.object({
+	"key_id": z.string(),
+	"public_key": z.string()
+}),
+		data: z.object({
+
+}).catchall(z.unknown()),
+	},
+	"ojMarketTrustReviewGet": {
+		data: z.array(z.object({
+	"task_id": z.string(),
+	"name": z.string(),
+	"version": z.string(),
+	"key_id": z.string(),
+	"fingerprint": z.string(),
+	"started_at": z.number()
+})),
+	},
+	"ojMarketUninstallPost": {
+		body: z.object({
+	"name": z.string()
+}),
+		data: z.object({
+
+}).catchall(z.unknown()),
+	},
+	"ojMarketUninstallImpactGet": {
 		query: z.object({
 	"name": z.string()
+}),
+		data: z.object({
+
+}).catchall(z.unknown()),
+	},
+	"ojMarketUploadPost": {
+		query: z.object({
+	"name": z.string()
+}),
+		data: z.object({
+
+}).catchall(z.unknown()),
+	},
+	"ojMarketYankPost": {
+		body: z.object({
+	"product": z.string(),
+	"version": z.string(),
+	"reason": z.string().optional(),
+	"by": z.string().optional(),
+	"restore": z.boolean().optional()
 }),
 		data: z.object({
 

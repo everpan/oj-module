@@ -135,3 +135,35 @@ describe("irFromOpenapi", () => {
 		expect(ep.route).toBe("/collections/{id}");
 	});
 });
+
+/**
+ * 顺序归一回归（2026-11-12 演练实测）：__client 的字节序由 IR 数组序决定，而 IR 序原先继承
+ * openapi.json 的 paths 键序——oj openapi 改版后键序从「声明序」变「字典序」，导致同一份源码
+ * 在工程里重跑 ojm api 会改写内置模块生成物：ojm build 判「内容被修改」、ojm init --yes 后又
+ * 被 ojm api --check 判「生成物过期」，用户无解。IR 必须与输入键序无关。
+ */
+describe("irFromOpenapi 输出顺序与输入键序无关", () => {
+	const op = (tags: string[]): Record<string, unknown> => ({ tags, responses: { 200: { description: "OK" } } });
+	const doc = (reversed: boolean): OpenApiDoc => {
+		const entries: Array<[string, Record<string, unknown>]> = [
+			["/v1/api/sys/bot-binding", { get: op(["sys"]), post: op(["sys"]) }],
+			["/v1/api/sys/departments", { delete: op(["sys"]), get: op(["sys"]) }],
+		];
+		if (reversed)
+			entries.reverse();
+		return { openapi: "3.1.0", paths: Object.fromEntries(entries) } as OpenApiDoc;
+	};
+
+	it("字典序与声明序产出相同的端点序列", () => {
+		const key = (e: { method: string, fullPath: string }) => `${e.method} ${e.fullPath}`;
+		const forward = irFromOpenapi(doc(false)).map(key);
+		const reversed = irFromOpenapi(doc(true)).map(key);
+		expect(reversed).toEqual(forward);
+		expect(forward).toEqual([
+			"GET /sys/bot-binding",
+			"POST /sys/bot-binding",
+			"DELETE /sys/departments",
+			"GET /sys/departments",
+		]);
+	});
+});

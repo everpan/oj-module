@@ -4,6 +4,27 @@
 import { z } from "@oj-module/runtime";
 
 export const schemas = {
+	"authLdapLoginPost": {
+		body: z.object({
+	"username": z.string().min(1),
+	"password": z.string().min(1),
+	"tenant": z.string().optional()
+}),
+		data: z.object({
+	"access_token": z.string(),
+	"refresh_token": z.string(),
+	"expires_in": z.number(),
+	"restricted": z.boolean(),
+	"user": z.object({
+	"id": z.number(),
+	"username": z.string(),
+	"display_name": z.string().nullable(),
+	"avatar_base64": z.string().nullable(),
+	"must_change": z.boolean(),
+	"roles": z.array(z.string())
+})
+}),
+	},
 	"authLoginPost": {
 		body: z.object({
 	"username": z.string().min(1),
@@ -32,24 +53,14 @@ export const schemas = {
 }),
 		data: z.null(),
 	},
-	"authRefreshPost": {
+	"authOboPost": {
 		body: z.object({
-	"refresh_token": z.string().min(1),
-	"tenant": z.string().optional()
+	"provider": z.string().min(1),
+	"external_sub": z.string().min(1)
 }),
 		data: z.object({
 	"access_token": z.string(),
-	"refresh_token": z.string(),
-	"expires_in": z.number(),
-	"restricted": z.boolean(),
-	"user": z.object({
-	"id": z.number(),
-	"username": z.string(),
-	"display_name": z.string().nullable(),
-	"avatar_base64": z.string().nullable(),
-	"must_change": z.boolean(),
-	"roles": z.array(z.string())
-})
+	"expires_in": z.number()
 }),
 	},
 	"authPasswordPut": {
@@ -72,10 +83,9 @@ export const schemas = {
 })
 }),
 	},
-	"authLdapLoginPost": {
+	"authRefreshPost": {
 		body: z.object({
-	"username": z.string().min(1),
-	"password": z.string().min(1),
+	"refresh_token": z.string().min(1),
 	"tenant": z.string().optional()
 }),
 		data: z.object({
@@ -108,6 +118,27 @@ export const schemas = {
 	"update_time": z.number()
 })),
 	},
+	"authWecomAdminConnectPost": {
+		body: z.object({
+
+}).strict().nullable(),
+		data: z.object({
+	"corpId": z.string(),
+	"agentId": z.string(),
+	"departments": z.number(),
+	"members": z.number()
+}),
+	},
+	"authWecomAdminInstallGet": {
+		query: z.object({
+	"state": z.string().optional()
+}),
+		data: z.object({
+	"installUrl": z.string(),
+	"callbackUrl": z.string(),
+	"expiresIn": z.number()
+}),
+	},
 	"authWecomAdminOverviewGet": {
 		data: z.object({
 	"kinds": z.array(z.enum(["suite", "corp"])),
@@ -127,21 +158,6 @@ export const schemas = {
 		data: z.object({
 	"updated": z.number(),
 	"revokedSessions": z.number()
-}),
-	},
-	"authWecomAdminInstallGet": {
-		data: z.object({
-	"installUrl": z.string(),
-	"callbackUrl": z.string(),
-	"expiresIn": z.number()
-}),
-	},
-	"authWecomAdminConnectPost": {
-		data: z.object({
-	"corpId": z.string(),
-	"agentId": z.string(),
-	"departments": z.number(),
-	"members": z.number()
 }),
 	},
 	"authWecomAdminTenantAdminGet": {
@@ -167,23 +183,65 @@ export const schemas = {
 	"mustChange": z.boolean()
 }),
 	},
-	"authWecomTicketPost": {
+	"authWecomCallbackGet": {
+		query: z.object({
+	"code": z.string().optional(),
+	"state": z.string().optional()
+}),
+	},
+	"authWecomEventGet": {
+		query: z.object({
+	"msg_signature": z.string().optional(),
+	"timestamp": z.string().optional(),
+	"nonce": z.string().optional(),
+	"echostr": z.string().optional()
+}),
+	},
+	"authWecomEventPost": {
+		query: z.object({
+	"msg_signature": z.string().optional(),
+	"timestamp": z.string().optional(),
+	"nonce": z.string().optional()
+}),
+	},
+	"authWecomLoginGet": {
+		query: z.object({
+	"corp": z.string().optional(),
+	"agent": z.string().optional()
+}),
+	},
+	"authWecomSyncCancelPost": {
 		body: z.object({
-	"ticket": z.string().min(32).max(128)
+	"agent": z.string().optional()
 }),
 		data: z.object({
-	"access_token": z.string(),
-	"refresh_token": z.string(),
-	"expires_in": z.number(),
-	"restricted": z.boolean(),
-	"user": z.object({
-	"id": z.number(),
-	"username": z.string(),
-	"display_name": z.string().nullable(),
-	"avatar_base64": z.string().nullable(),
-	"must_change": z.boolean(),
-	"roles": z.array(z.string())
-})
+	"connected": z.boolean(),
+	"authMode": z.number(),
+	"profileStatus": z.string().nullable(),
+	"agentId": z.string().nullable(),
+	"credentialKind": z.union([z.literal("suite"), z.literal("corp"), z.literal(null)]).nullable(),
+	"status": z.enum(["idle", "running", "done", "failed", "cancelled"]),
+	"phase": z.enum(["departments", "members", "reconcile"]),
+	"stats": z.object({
+	"departments": z.number(),
+	"members": z.number(),
+	"skipped": z.number(),
+	"reconciled": z.boolean()
+}),
+	"progress": z.object({
+	"done": z.number(),
+	"total": z.number()
+}),
+	"errCode": z.string().nullable(),
+	"errDetail": z.object({
+	"errcode": z.number().optional(),
+	"phase": z.enum(["departments", "members", "reconcile"]).optional(),
+	"deptId": z.string().optional(),
+	"at": z.number().optional()
+}).nullable(),
+	"startedAt": z.number(),
+	"finishedAt": z.number(),
+	"updateTime": z.number()
 }),
 	},
 	"authWecomSyncStartPost": {
@@ -254,48 +312,23 @@ export const schemas = {
 	"updateTime": z.number()
 }),
 	},
-	"authWecomSyncCancelPost": {
+	"authWecomTicketPost": {
 		body: z.object({
-	"agent": z.string().optional()
-}),
-		data: z.object({
-	"connected": z.boolean(),
-	"authMode": z.number(),
-	"profileStatus": z.string().nullable(),
-	"agentId": z.string().nullable(),
-	"credentialKind": z.union([z.literal("suite"), z.literal("corp"), z.literal(null)]).nullable(),
-	"status": z.enum(["idle", "running", "done", "failed", "cancelled"]),
-	"phase": z.enum(["departments", "members", "reconcile"]),
-	"stats": z.object({
-	"departments": z.number(),
-	"members": z.number(),
-	"skipped": z.number(),
-	"reconciled": z.boolean()
-}),
-	"progress": z.object({
-	"done": z.number(),
-	"total": z.number()
-}),
-	"errCode": z.string().nullable(),
-	"errDetail": z.object({
-	"errcode": z.number().optional(),
-	"phase": z.enum(["departments", "members", "reconcile"]).optional(),
-	"deptId": z.string().optional(),
-	"at": z.number().optional()
-}).nullable(),
-	"startedAt": z.number(),
-	"finishedAt": z.number(),
-	"updateTime": z.number()
-}),
-	},
-	"authOboPost": {
-		body: z.object({
-	"provider": z.string().min(1),
-	"external_sub": z.string().min(1)
+	"ticket": z.string().min(32).max(128)
 }),
 		data: z.object({
 	"access_token": z.string(),
-	"expires_in": z.number()
+	"refresh_token": z.string(),
+	"expires_in": z.number(),
+	"restricted": z.boolean(),
+	"user": z.object({
+	"id": z.number(),
+	"username": z.string(),
+	"display_name": z.string().nullable(),
+	"avatar_base64": z.string().nullable(),
+	"must_change": z.boolean(),
+	"roles": z.array(z.string())
+})
 }),
 	},
 };

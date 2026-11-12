@@ -36,7 +36,7 @@ export function createSystemClient(ctx: ModuleContext) {
 	}
 	ctx.register.apiPrefix(API_PREFIX);
 	bindRequest(ctx.utils.request);
-	return { systemDepartmentsGet, systemDepartmentsPost, systemDepartmentsPut, systemDepartmentsDelete, systemDepartmentsDetachPost, systemDepartmentsMembersGet, systemDepartmentsMembersPost, systemDepartmentsMembersPut, systemDepartmentsMembersDelete, systemDepartmentsMovePut, systemLoginMethodsGet, systemOplogGet, systemOplogPost, systemPermissionsGet, systemRolesGet, systemRolesPost, systemRolesDelete, systemRolesBindingsPut, systemSettingsGet, systemSettingsPut, systemUsersGet, systemUsersPost, systemUsersDelete, systemUsersForbiddenPut, systemUsersPasswordPut, systemUsersProfilePut, systemUsersRolesPut, systemBotBindingGet, systemBotBindingPost, systemBotBindingDelete, systemBotBindingExportGet, systemBotBindingImportPost, systemBotCleanupPost, systemOboAuditGet, systemOboAuditExportGet, systemServiceTokenGet, systemServiceTokenPost, systemServiceTokenDelete };
+	return { systemBotBindingDelete, systemBotBindingGet, systemBotBindingPost, systemBotBindingExportGet, systemBotBindingImportPost, systemBotCleanupPost, systemDepartmentsDelete, systemDepartmentsGet, systemDepartmentsPost, systemDepartmentsPut, systemDepartmentsDetachPost, systemDepartmentsMembersDelete, systemDepartmentsMembersGet, systemDepartmentsMembersPost, systemDepartmentsMembersPut, systemDepartmentsMovePut, systemLoginMethodsGet, systemOboAuditGet, systemOboAuditExportGet, systemOplogGet, systemOplogPost, systemPermissionsGet, systemRolesDelete, systemRolesGet, systemRolesPost, systemRolesBindingsPut, systemServiceTokenDelete, systemServiceTokenGet, systemServiceTokenPost, systemSettingsGet, systemSettingsPut, systemUsersDelete, systemUsersGet, systemUsersPost, systemUsersForbiddenPut, systemUsersPasswordPut, systemUsersProfilePut, systemUsersRolesPut };
 }
 
 /**
@@ -65,6 +65,164 @@ async function toApiError(e: unknown): Promise<unknown> {
 	if (res instanceof Response && d && typeof d.code === "number")
 		return new ContractApiError(d.code, d.msg ?? res.statusText);
 	return e;
+}
+
+export type SystemBotBindingDeleteQuery = z.input<(typeof schemas)["systemBotBindingDelete"]["query"]>;
+export type SystemBotBindingDeleteData = z.infer<(typeof schemas)["systemBotBindingDelete"]["data"]>;
+
+export async function systemBotBindingDelete(query: SystemBotBindingDeleteQuery): Promise<SystemBotBindingDeleteData> {
+	const client = ensureReq();
+	try {
+		const env = await client.delete(`system/bot-binding`, { searchParams: query as Record<string, string | number | boolean> }).json<OjEnvelope<SystemBotBindingDeleteData>>();
+		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
+		if (typeof env.code === "number" && env.code !== 0)
+			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
+		const data = env.data as SystemBotBindingDeleteData;
+		if (import.meta.env.DEV) {
+			const { schemas } = await import("./api.schemas");
+			const r = schemas["systemBotBindingDelete"].data.safeParse(data);
+			if (!r.success)
+				throw new ContractApiError(-1, `[契约违例] systemBotBindingDelete 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
+		}
+		return data;
+	}
+	catch (e) {
+		throw await toApiError(e);
+	}
+}
+
+export type SystemBotBindingGetData = z.infer<(typeof schemas)["systemBotBindingGet"]["data"]>;
+
+export async function systemBotBindingGet(): Promise<SystemBotBindingGetData> {
+	const client = ensureReq();
+	try {
+		const env = await client.get(`system/bot-binding`).json<OjEnvelope<SystemBotBindingGetData>>();
+		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
+		if (typeof env.code === "number" && env.code !== 0)
+			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
+		const data = env.data as SystemBotBindingGetData;
+		if (import.meta.env.DEV) {
+			const { schemas } = await import("./api.schemas");
+			const r = schemas["systemBotBindingGet"].data.safeParse(data);
+			if (!r.success)
+				throw new ContractApiError(-1, `[契约违例] systemBotBindingGet 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
+		}
+		return data;
+	}
+	catch (e) {
+		throw await toApiError(e);
+	}
+}
+
+export type SystemBotBindingPostBody = z.input<(typeof schemas)["systemBotBindingPost"]["body"]>;
+export type SystemBotBindingPostData = z.infer<(typeof schemas)["systemBotBindingPost"]["data"]>;
+
+export async function systemBotBindingPost(body: SystemBotBindingPostBody): Promise<SystemBotBindingPostData> {
+	const client = ensureReq();
+	try {
+		const env = await client.post(`system/bot-binding`, { json: body }).json<OjEnvelope<SystemBotBindingPostData>>();
+		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
+		if (typeof env.code === "number" && env.code !== 0)
+			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
+		const data = env.data as SystemBotBindingPostData;
+		if (import.meta.env.DEV) {
+			const { schemas } = await import("./api.schemas");
+			const r = schemas["systemBotBindingPost"].data.safeParse(data);
+			if (!r.success)
+				throw new ContractApiError(-1, `[契约违例] systemBotBindingPost 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
+		}
+		return data;
+	}
+	catch (e) {
+		throw await toApiError(e);
+	}
+}
+
+export async function systemBotBindingExportGet(): Promise<unknown> {
+	const client = ensureReq();
+	try {
+		const env = await client.get(`system/bot-binding/export`).json<OjEnvelope<unknown>>();
+		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
+		if (typeof env.code === "number" && env.code !== 0)
+			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
+		const data = env.data as unknown;
+		return data;
+	}
+	catch (e) {
+		throw await toApiError(e);
+	}
+}
+
+export type SystemBotBindingImportPostBody = z.input<(typeof schemas)["systemBotBindingImportPost"]["body"]>;
+export type SystemBotBindingImportPostData = z.infer<(typeof schemas)["systemBotBindingImportPost"]["data"]>;
+
+export async function systemBotBindingImportPost(body: SystemBotBindingImportPostBody): Promise<SystemBotBindingImportPostData> {
+	const client = ensureReq();
+	try {
+		const env = await client.post(`system/bot-binding/import`, { json: body }).json<OjEnvelope<SystemBotBindingImportPostData>>();
+		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
+		if (typeof env.code === "number" && env.code !== 0)
+			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
+		const data = env.data as SystemBotBindingImportPostData;
+		if (import.meta.env.DEV) {
+			const { schemas } = await import("./api.schemas");
+			const r = schemas["systemBotBindingImportPost"].data.safeParse(data);
+			if (!r.success)
+				throw new ContractApiError(-1, `[契约违例] systemBotBindingImportPost 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
+		}
+		return data;
+	}
+	catch (e) {
+		throw await toApiError(e);
+	}
+}
+
+export type SystemBotCleanupPostBody = z.input<(typeof schemas)["systemBotCleanupPost"]["body"]>;
+export type SystemBotCleanupPostData = z.infer<(typeof schemas)["systemBotCleanupPost"]["data"]>;
+
+export async function systemBotCleanupPost(body: SystemBotCleanupPostBody): Promise<SystemBotCleanupPostData> {
+	const client = ensureReq();
+	try {
+		const env = await client.post(`system/bot-cleanup`, { json: body }).json<OjEnvelope<SystemBotCleanupPostData>>();
+		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
+		if (typeof env.code === "number" && env.code !== 0)
+			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
+		const data = env.data as SystemBotCleanupPostData;
+		if (import.meta.env.DEV) {
+			const { schemas } = await import("./api.schemas");
+			const r = schemas["systemBotCleanupPost"].data.safeParse(data);
+			if (!r.success)
+				throw new ContractApiError(-1, `[契约违例] systemBotCleanupPost 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
+		}
+		return data;
+	}
+	catch (e) {
+		throw await toApiError(e);
+	}
+}
+
+export type SystemDepartmentsDeleteQuery = z.input<(typeof schemas)["systemDepartmentsDelete"]["query"]>;
+export type SystemDepartmentsDeleteData = z.infer<(typeof schemas)["systemDepartmentsDelete"]["data"]>;
+
+export async function systemDepartmentsDelete(query: SystemDepartmentsDeleteQuery): Promise<SystemDepartmentsDeleteData> {
+	const client = ensureReq();
+	try {
+		const env = await client.delete(`system/departments`, { searchParams: query as Record<string, string | number | boolean> }).json<OjEnvelope<SystemDepartmentsDeleteData>>();
+		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
+		if (typeof env.code === "number" && env.code !== 0)
+			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
+		const data = env.data as SystemDepartmentsDeleteData;
+		if (import.meta.env.DEV) {
+			const { schemas } = await import("./api.schemas");
+			const r = schemas["systemDepartmentsDelete"].data.safeParse(data);
+			if (!r.success)
+				throw new ContractApiError(-1, `[契约违例] systemDepartmentsDelete 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
+		}
+		return data;
+	}
+	catch (e) {
+		throw await toApiError(e);
+	}
 }
 
 export type SystemDepartmentsGetData = z.infer<(typeof schemas)["systemDepartmentsGet"]["data"]>;
@@ -139,30 +297,6 @@ export async function systemDepartmentsPut(input: { query: SystemDepartmentsPutQ
 	}
 }
 
-export type SystemDepartmentsDeleteQuery = z.input<(typeof schemas)["systemDepartmentsDelete"]["query"]>;
-export type SystemDepartmentsDeleteData = z.infer<(typeof schemas)["systemDepartmentsDelete"]["data"]>;
-
-export async function systemDepartmentsDelete(query: SystemDepartmentsDeleteQuery): Promise<SystemDepartmentsDeleteData> {
-	const client = ensureReq();
-	try {
-		const env = await client.delete(`system/departments`, { searchParams: query as Record<string, string | number | boolean> }).json<OjEnvelope<SystemDepartmentsDeleteData>>();
-		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
-		if (typeof env.code === "number" && env.code !== 0)
-			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
-		const data = env.data as SystemDepartmentsDeleteData;
-		if (import.meta.env.DEV) {
-			const { schemas } = await import("./api.schemas");
-			const r = schemas["systemDepartmentsDelete"].data.safeParse(data);
-			if (!r.success)
-				throw new ContractApiError(-1, `[契约违例] systemDepartmentsDelete 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
-		}
-		return data;
-	}
-	catch (e) {
-		throw await toApiError(e);
-	}
-}
-
 export type SystemDepartmentsDetachPostQuery = z.input<(typeof schemas)["systemDepartmentsDetachPost"]["query"]>;
 export type SystemDepartmentsDetachPostData = z.infer<(typeof schemas)["systemDepartmentsDetachPost"]["data"]>;
 
@@ -179,6 +313,30 @@ export async function systemDepartmentsDetachPost(query: SystemDepartmentsDetach
 			const r = schemas["systemDepartmentsDetachPost"].data.safeParse(data);
 			if (!r.success)
 				throw new ContractApiError(-1, `[契约违例] systemDepartmentsDetachPost 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
+		}
+		return data;
+	}
+	catch (e) {
+		throw await toApiError(e);
+	}
+}
+
+export type SystemDepartmentsMembersDeleteQuery = z.input<(typeof schemas)["systemDepartmentsMembersDelete"]["query"]>;
+export type SystemDepartmentsMembersDeleteData = z.infer<(typeof schemas)["systemDepartmentsMembersDelete"]["data"]>;
+
+export async function systemDepartmentsMembersDelete(query: SystemDepartmentsMembersDeleteQuery): Promise<SystemDepartmentsMembersDeleteData> {
+	const client = ensureReq();
+	try {
+		const env = await client.delete(`system/departments/members`, { searchParams: query as Record<string, string | number | boolean> }).json<OjEnvelope<SystemDepartmentsMembersDeleteData>>();
+		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
+		if (typeof env.code === "number" && env.code !== 0)
+			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
+		const data = env.data as SystemDepartmentsMembersDeleteData;
+		if (import.meta.env.DEV) {
+			const { schemas } = await import("./api.schemas");
+			const r = schemas["systemDepartmentsMembersDelete"].data.safeParse(data);
+			if (!r.success)
+				throw new ContractApiError(-1, `[契约违例] systemDepartmentsMembersDelete 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
 		}
 		return data;
 	}
@@ -261,30 +419,6 @@ export async function systemDepartmentsMembersPut(input: { query: SystemDepartme
 	}
 }
 
-export type SystemDepartmentsMembersDeleteQuery = z.input<(typeof schemas)["systemDepartmentsMembersDelete"]["query"]>;
-export type SystemDepartmentsMembersDeleteData = z.infer<(typeof schemas)["systemDepartmentsMembersDelete"]["data"]>;
-
-export async function systemDepartmentsMembersDelete(query: SystemDepartmentsMembersDeleteQuery): Promise<SystemDepartmentsMembersDeleteData> {
-	const client = ensureReq();
-	try {
-		const env = await client.delete(`system/departments/members`, { searchParams: query as Record<string, string | number | boolean> }).json<OjEnvelope<SystemDepartmentsMembersDeleteData>>();
-		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
-		if (typeof env.code === "number" && env.code !== 0)
-			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
-		const data = env.data as SystemDepartmentsMembersDeleteData;
-		if (import.meta.env.DEV) {
-			const { schemas } = await import("./api.schemas");
-			const r = schemas["systemDepartmentsMembersDelete"].data.safeParse(data);
-			if (!r.success)
-				throw new ContractApiError(-1, `[契约违例] systemDepartmentsMembersDelete 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
-		}
-		return data;
-	}
-	catch (e) {
-		throw await toApiError(e);
-	}
-}
-
 export type SystemDepartmentsMovePutQuery = z.input<(typeof schemas)["systemDepartmentsMovePut"]["query"]>;
 export type SystemDepartmentsMovePutBody = z.input<(typeof schemas)["systemDepartmentsMovePut"]["body"]>;
 export type SystemDepartmentsMovePutData = z.infer<(typeof schemas)["systemDepartmentsMovePut"]["data"]>;
@@ -326,6 +460,45 @@ export async function systemLoginMethodsGet(): Promise<SystemLoginMethodsGetData
 			if (!r.success)
 				throw new ContractApiError(-1, `[契约违例] systemLoginMethodsGet 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
 		}
+		return data;
+	}
+	catch (e) {
+		throw await toApiError(e);
+	}
+}
+
+export type SystemOboAuditGetQuery = z.input<(typeof schemas)["systemOboAuditGet"]["query"]>;
+export type SystemOboAuditGetData = z.infer<(typeof schemas)["systemOboAuditGet"]["data"]>;
+
+export async function systemOboAuditGet(query: SystemOboAuditGetQuery): Promise<SystemOboAuditGetData> {
+	const client = ensureReq();
+	try {
+		const env = await client.get(`system/obo-audit`, { searchParams: query as Record<string, string | number | boolean> }).json<OjEnvelope<SystemOboAuditGetData>>();
+		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
+		if (typeof env.code === "number" && env.code !== 0)
+			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
+		const data = env.data as SystemOboAuditGetData;
+		if (import.meta.env.DEV) {
+			const { schemas } = await import("./api.schemas");
+			const r = schemas["systemOboAuditGet"].data.safeParse(data);
+			if (!r.success)
+				throw new ContractApiError(-1, `[契约违例] systemOboAuditGet 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
+		}
+		return data;
+	}
+	catch (e) {
+		throw await toApiError(e);
+	}
+}
+
+export async function systemOboAuditExportGet(): Promise<unknown> {
+	const client = ensureReq();
+	try {
+		const env = await client.get(`system/obo-audit/export`).json<OjEnvelope<unknown>>();
+		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
+		if (typeof env.code === "number" && env.code !== 0)
+			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
+		const data = env.data as unknown;
 		return data;
 	}
 	catch (e) {
@@ -404,6 +577,30 @@ export async function systemPermissionsGet(): Promise<SystemPermissionsGetData> 
 	}
 }
 
+export type SystemRolesDeleteQuery = z.input<(typeof schemas)["systemRolesDelete"]["query"]>;
+export type SystemRolesDeleteData = z.infer<(typeof schemas)["systemRolesDelete"]["data"]>;
+
+export async function systemRolesDelete(query: SystemRolesDeleteQuery): Promise<SystemRolesDeleteData> {
+	const client = ensureReq();
+	try {
+		const env = await client.delete(`system/roles`, { searchParams: query as Record<string, string | number | boolean> }).json<OjEnvelope<SystemRolesDeleteData>>();
+		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
+		if (typeof env.code === "number" && env.code !== 0)
+			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
+		const data = env.data as SystemRolesDeleteData;
+		if (import.meta.env.DEV) {
+			const { schemas } = await import("./api.schemas");
+			const r = schemas["systemRolesDelete"].data.safeParse(data);
+			if (!r.success)
+				throw new ContractApiError(-1, `[契约违例] systemRolesDelete 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
+		}
+		return data;
+	}
+	catch (e) {
+		throw await toApiError(e);
+	}
+}
+
 export type SystemRolesGetData = z.infer<(typeof schemas)["systemRolesGet"]["data"]>;
 
 export async function systemRolesGet(): Promise<SystemRolesGetData> {
@@ -451,30 +648,6 @@ export async function systemRolesPost(body: SystemRolesPostBody): Promise<System
 	}
 }
 
-export type SystemRolesDeleteQuery = z.input<(typeof schemas)["systemRolesDelete"]["query"]>;
-export type SystemRolesDeleteData = z.infer<(typeof schemas)["systemRolesDelete"]["data"]>;
-
-export async function systemRolesDelete(query: SystemRolesDeleteQuery): Promise<SystemRolesDeleteData> {
-	const client = ensureReq();
-	try {
-		const env = await client.delete(`system/roles`, { searchParams: query as Record<string, string | number | boolean> }).json<OjEnvelope<SystemRolesDeleteData>>();
-		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
-		if (typeof env.code === "number" && env.code !== 0)
-			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
-		const data = env.data as SystemRolesDeleteData;
-		if (import.meta.env.DEV) {
-			const { schemas } = await import("./api.schemas");
-			const r = schemas["systemRolesDelete"].data.safeParse(data);
-			if (!r.success)
-				throw new ContractApiError(-1, `[契约违例] systemRolesDelete 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
-		}
-		return data;
-	}
-	catch (e) {
-		throw await toApiError(e);
-	}
-}
-
 export type SystemRolesBindingsPutQuery = z.input<(typeof schemas)["systemRolesBindingsPut"]["query"]>;
 export type SystemRolesBindingsPutBody = z.input<(typeof schemas)["systemRolesBindingsPut"]["body"]>;
 export type SystemRolesBindingsPutData = z.infer<(typeof schemas)["systemRolesBindingsPut"]["data"]>;
@@ -492,6 +665,77 @@ export async function systemRolesBindingsPut(input: { query: SystemRolesBindings
 			const r = schemas["systemRolesBindingsPut"].data.safeParse(data);
 			if (!r.success)
 				throw new ContractApiError(-1, `[契约违例] systemRolesBindingsPut 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
+		}
+		return data;
+	}
+	catch (e) {
+		throw await toApiError(e);
+	}
+}
+
+export type SystemServiceTokenDeleteQuery = z.input<(typeof schemas)["systemServiceTokenDelete"]["query"]>;
+export type SystemServiceTokenDeleteData = z.infer<(typeof schemas)["systemServiceTokenDelete"]["data"]>;
+
+export async function systemServiceTokenDelete(query: SystemServiceTokenDeleteQuery): Promise<SystemServiceTokenDeleteData> {
+	const client = ensureReq();
+	try {
+		const env = await client.delete(`system/service-token`, { searchParams: query as Record<string, string | number | boolean> }).json<OjEnvelope<SystemServiceTokenDeleteData>>();
+		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
+		if (typeof env.code === "number" && env.code !== 0)
+			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
+		const data = env.data as SystemServiceTokenDeleteData;
+		if (import.meta.env.DEV) {
+			const { schemas } = await import("./api.schemas");
+			const r = schemas["systemServiceTokenDelete"].data.safeParse(data);
+			if (!r.success)
+				throw new ContractApiError(-1, `[契约违例] systemServiceTokenDelete 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
+		}
+		return data;
+	}
+	catch (e) {
+		throw await toApiError(e);
+	}
+}
+
+export type SystemServiceTokenGetData = z.infer<(typeof schemas)["systemServiceTokenGet"]["data"]>;
+
+export async function systemServiceTokenGet(): Promise<SystemServiceTokenGetData> {
+	const client = ensureReq();
+	try {
+		const env = await client.get(`system/service-token`).json<OjEnvelope<SystemServiceTokenGetData>>();
+		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
+		if (typeof env.code === "number" && env.code !== 0)
+			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
+		const data = env.data as SystemServiceTokenGetData;
+		if (import.meta.env.DEV) {
+			const { schemas } = await import("./api.schemas");
+			const r = schemas["systemServiceTokenGet"].data.safeParse(data);
+			if (!r.success)
+				throw new ContractApiError(-1, `[契约违例] systemServiceTokenGet 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
+		}
+		return data;
+	}
+	catch (e) {
+		throw await toApiError(e);
+	}
+}
+
+export type SystemServiceTokenPostBody = z.input<(typeof schemas)["systemServiceTokenPost"]["body"]>;
+export type SystemServiceTokenPostData = z.infer<(typeof schemas)["systemServiceTokenPost"]["data"]>;
+
+export async function systemServiceTokenPost(body: SystemServiceTokenPostBody): Promise<SystemServiceTokenPostData> {
+	const client = ensureReq();
+	try {
+		const env = await client.post(`system/service-token`, { json: body }).json<OjEnvelope<SystemServiceTokenPostData>>();
+		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
+		if (typeof env.code === "number" && env.code !== 0)
+			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
+		const data = env.data as SystemServiceTokenPostData;
+		if (import.meta.env.DEV) {
+			const { schemas } = await import("./api.schemas");
+			const r = schemas["systemServiceTokenPost"].data.safeParse(data);
+			if (!r.success)
+				throw new ContractApiError(-1, `[契约违例] systemServiceTokenPost 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
 		}
 		return data;
 	}
@@ -547,6 +791,30 @@ export async function systemSettingsPut(body: SystemSettingsPutBody): Promise<Sy
 	}
 }
 
+export type SystemUsersDeleteQuery = z.input<(typeof schemas)["systemUsersDelete"]["query"]>;
+export type SystemUsersDeleteData = z.infer<(typeof schemas)["systemUsersDelete"]["data"]>;
+
+export async function systemUsersDelete(query: SystemUsersDeleteQuery): Promise<SystemUsersDeleteData> {
+	const client = ensureReq();
+	try {
+		const env = await client.delete(`system/users`, { searchParams: query as Record<string, string | number | boolean> }).json<OjEnvelope<SystemUsersDeleteData>>();
+		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
+		if (typeof env.code === "number" && env.code !== 0)
+			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
+		const data = env.data as SystemUsersDeleteData;
+		if (import.meta.env.DEV) {
+			const { schemas } = await import("./api.schemas");
+			const r = schemas["systemUsersDelete"].data.safeParse(data);
+			if (!r.success)
+				throw new ContractApiError(-1, `[契约违例] systemUsersDelete 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
+		}
+		return data;
+	}
+	catch (e) {
+		throw await toApiError(e);
+	}
+}
+
 export type SystemUsersGetData = z.infer<(typeof schemas)["systemUsersGet"]["data"]>;
 
 export async function systemUsersGet(): Promise<SystemUsersGetData> {
@@ -586,30 +854,6 @@ export async function systemUsersPost(body: SystemUsersPostBody): Promise<System
 			const r = schemas["systemUsersPost"].data.safeParse(data);
 			if (!r.success)
 				throw new ContractApiError(-1, `[契约违例] systemUsersPost 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
-		}
-		return data;
-	}
-	catch (e) {
-		throw await toApiError(e);
-	}
-}
-
-export type SystemUsersDeleteQuery = z.input<(typeof schemas)["systemUsersDelete"]["query"]>;
-export type SystemUsersDeleteData = z.infer<(typeof schemas)["systemUsersDelete"]["data"]>;
-
-export async function systemUsersDelete(query: SystemUsersDeleteQuery): Promise<SystemUsersDeleteData> {
-	const client = ensureReq();
-	try {
-		const env = await client.delete(`system/users`, { searchParams: query as Record<string, string | number | boolean> }).json<OjEnvelope<SystemUsersDeleteData>>();
-		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
-		if (typeof env.code === "number" && env.code !== 0)
-			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
-		const data = env.data as SystemUsersDeleteData;
-		if (import.meta.env.DEV) {
-			const { schemas } = await import("./api.schemas");
-			const r = schemas["systemUsersDelete"].data.safeParse(data);
-			if (!r.success)
-				throw new ContractApiError(-1, `[契约违例] systemUsersDelete 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
 		}
 		return data;
 	}
@@ -710,250 +954,6 @@ export async function systemUsersRolesPut(input: { query: SystemUsersRolesPutQue
 			const r = schemas["systemUsersRolesPut"].data.safeParse(data);
 			if (!r.success)
 				throw new ContractApiError(-1, `[契约违例] systemUsersRolesPut 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
-		}
-		return data;
-	}
-	catch (e) {
-		throw await toApiError(e);
-	}
-}
-
-export type SystemBotBindingGetData = z.infer<(typeof schemas)["systemBotBindingGet"]["data"]>;
-
-export async function systemBotBindingGet(): Promise<SystemBotBindingGetData> {
-	const client = ensureReq();
-	try {
-		const env = await client.get(`system/bot-binding`).json<OjEnvelope<SystemBotBindingGetData>>();
-		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
-		if (typeof env.code === "number" && env.code !== 0)
-			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
-		const data = env.data as SystemBotBindingGetData;
-		if (import.meta.env.DEV) {
-			const { schemas } = await import("./api.schemas");
-			const r = schemas["systemBotBindingGet"].data.safeParse(data);
-			if (!r.success)
-				throw new ContractApiError(-1, `[契约违例] systemBotBindingGet 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
-		}
-		return data;
-	}
-	catch (e) {
-		throw await toApiError(e);
-	}
-}
-
-export type SystemBotBindingPostBody = z.input<(typeof schemas)["systemBotBindingPost"]["body"]>;
-export type SystemBotBindingPostData = z.infer<(typeof schemas)["systemBotBindingPost"]["data"]>;
-
-export async function systemBotBindingPost(body: SystemBotBindingPostBody): Promise<SystemBotBindingPostData> {
-	const client = ensureReq();
-	try {
-		const env = await client.post(`system/bot-binding`, { json: body }).json<OjEnvelope<SystemBotBindingPostData>>();
-		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
-		if (typeof env.code === "number" && env.code !== 0)
-			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
-		const data = env.data as SystemBotBindingPostData;
-		if (import.meta.env.DEV) {
-			const { schemas } = await import("./api.schemas");
-			const r = schemas["systemBotBindingPost"].data.safeParse(data);
-			if (!r.success)
-				throw new ContractApiError(-1, `[契约违例] systemBotBindingPost 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
-		}
-		return data;
-	}
-	catch (e) {
-		throw await toApiError(e);
-	}
-}
-
-export type SystemBotBindingDeleteQuery = z.input<(typeof schemas)["systemBotBindingDelete"]["query"]>;
-export type SystemBotBindingDeleteData = z.infer<(typeof schemas)["systemBotBindingDelete"]["data"]>;
-
-export async function systemBotBindingDelete(query: SystemBotBindingDeleteQuery): Promise<SystemBotBindingDeleteData> {
-	const client = ensureReq();
-	try {
-		const env = await client.delete(`system/bot-binding`, { searchParams: query as Record<string, string | number | boolean> }).json<OjEnvelope<SystemBotBindingDeleteData>>();
-		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
-		if (typeof env.code === "number" && env.code !== 0)
-			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
-		const data = env.data as SystemBotBindingDeleteData;
-		if (import.meta.env.DEV) {
-			const { schemas } = await import("./api.schemas");
-			const r = schemas["systemBotBindingDelete"].data.safeParse(data);
-			if (!r.success)
-				throw new ContractApiError(-1, `[契约违例] systemBotBindingDelete 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
-		}
-		return data;
-	}
-	catch (e) {
-		throw await toApiError(e);
-	}
-}
-
-export async function systemBotBindingExportGet(): Promise<unknown> {
-	const client = ensureReq();
-	try {
-		const env = await client.get(`system/bot-binding/export`).json<OjEnvelope<unknown>>();
-		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
-		if (typeof env.code === "number" && env.code !== 0)
-			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
-		const data = env.data as unknown;
-		return data;
-	}
-	catch (e) {
-		throw await toApiError(e);
-	}
-}
-
-export type SystemBotBindingImportPostBody = z.input<(typeof schemas)["systemBotBindingImportPost"]["body"]>;
-export type SystemBotBindingImportPostData = z.infer<(typeof schemas)["systemBotBindingImportPost"]["data"]>;
-
-export async function systemBotBindingImportPost(body: SystemBotBindingImportPostBody): Promise<SystemBotBindingImportPostData> {
-	const client = ensureReq();
-	try {
-		const env = await client.post(`system/bot-binding/import`, { json: body }).json<OjEnvelope<SystemBotBindingImportPostData>>();
-		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
-		if (typeof env.code === "number" && env.code !== 0)
-			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
-		const data = env.data as SystemBotBindingImportPostData;
-		if (import.meta.env.DEV) {
-			const { schemas } = await import("./api.schemas");
-			const r = schemas["systemBotBindingImportPost"].data.safeParse(data);
-			if (!r.success)
-				throw new ContractApiError(-1, `[契约违例] systemBotBindingImportPost 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
-		}
-		return data;
-	}
-	catch (e) {
-		throw await toApiError(e);
-	}
-}
-
-export type SystemBotCleanupPostBody = z.input<(typeof schemas)["systemBotCleanupPost"]["body"]>;
-export type SystemBotCleanupPostData = z.infer<(typeof schemas)["systemBotCleanupPost"]["data"]>;
-
-export async function systemBotCleanupPost(body: SystemBotCleanupPostBody): Promise<SystemBotCleanupPostData> {
-	const client = ensureReq();
-	try {
-		const env = await client.post(`system/bot-cleanup`, { json: body }).json<OjEnvelope<SystemBotCleanupPostData>>();
-		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
-		if (typeof env.code === "number" && env.code !== 0)
-			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
-		const data = env.data as SystemBotCleanupPostData;
-		if (import.meta.env.DEV) {
-			const { schemas } = await import("./api.schemas");
-			const r = schemas["systemBotCleanupPost"].data.safeParse(data);
-			if (!r.success)
-				throw new ContractApiError(-1, `[契约违例] systemBotCleanupPost 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
-		}
-		return data;
-	}
-	catch (e) {
-		throw await toApiError(e);
-	}
-}
-
-export type SystemOboAuditGetQuery = z.input<(typeof schemas)["systemOboAuditGet"]["query"]>;
-export type SystemOboAuditGetData = z.infer<(typeof schemas)["systemOboAuditGet"]["data"]>;
-
-export async function systemOboAuditGet(query: SystemOboAuditGetQuery): Promise<SystemOboAuditGetData> {
-	const client = ensureReq();
-	try {
-		const env = await client.get(`system/obo-audit`, { searchParams: query as Record<string, string | number | boolean> }).json<OjEnvelope<SystemOboAuditGetData>>();
-		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
-		if (typeof env.code === "number" && env.code !== 0)
-			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
-		const data = env.data as SystemOboAuditGetData;
-		if (import.meta.env.DEV) {
-			const { schemas } = await import("./api.schemas");
-			const r = schemas["systemOboAuditGet"].data.safeParse(data);
-			if (!r.success)
-				throw new ContractApiError(-1, `[契约违例] systemOboAuditGet 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
-		}
-		return data;
-	}
-	catch (e) {
-		throw await toApiError(e);
-	}
-}
-
-export async function systemOboAuditExportGet(): Promise<unknown> {
-	const client = ensureReq();
-	try {
-		const env = await client.get(`system/obo-audit/export`).json<OjEnvelope<unknown>>();
-		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
-		if (typeof env.code === "number" && env.code !== 0)
-			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
-		const data = env.data as unknown;
-		return data;
-	}
-	catch (e) {
-		throw await toApiError(e);
-	}
-}
-
-export type SystemServiceTokenGetData = z.infer<(typeof schemas)["systemServiceTokenGet"]["data"]>;
-
-export async function systemServiceTokenGet(): Promise<SystemServiceTokenGetData> {
-	const client = ensureReq();
-	try {
-		const env = await client.get(`system/service-token`).json<OjEnvelope<SystemServiceTokenGetData>>();
-		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
-		if (typeof env.code === "number" && env.code !== 0)
-			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
-		const data = env.data as SystemServiceTokenGetData;
-		if (import.meta.env.DEV) {
-			const { schemas } = await import("./api.schemas");
-			const r = schemas["systemServiceTokenGet"].data.safeParse(data);
-			if (!r.success)
-				throw new ContractApiError(-1, `[契约违例] systemServiceTokenGet 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
-		}
-		return data;
-	}
-	catch (e) {
-		throw await toApiError(e);
-	}
-}
-
-export type SystemServiceTokenPostBody = z.input<(typeof schemas)["systemServiceTokenPost"]["body"]>;
-export type SystemServiceTokenPostData = z.infer<(typeof schemas)["systemServiceTokenPost"]["data"]>;
-
-export async function systemServiceTokenPost(body: SystemServiceTokenPostBody): Promise<SystemServiceTokenPostData> {
-	const client = ensureReq();
-	try {
-		const env = await client.post(`system/service-token`, { json: body }).json<OjEnvelope<SystemServiceTokenPostData>>();
-		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
-		if (typeof env.code === "number" && env.code !== 0)
-			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
-		const data = env.data as SystemServiceTokenPostData;
-		if (import.meta.env.DEV) {
-			const { schemas } = await import("./api.schemas");
-			const r = schemas["systemServiceTokenPost"].data.safeParse(data);
-			if (!r.success)
-				throw new ContractApiError(-1, `[契约违例] systemServiceTokenPost 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
-		}
-		return data;
-	}
-	catch (e) {
-		throw await toApiError(e);
-	}
-}
-
-export type SystemServiceTokenDeleteQuery = z.input<(typeof schemas)["systemServiceTokenDelete"]["query"]>;
-export type SystemServiceTokenDeleteData = z.infer<(typeof schemas)["systemServiceTokenDelete"]["data"]>;
-
-export async function systemServiceTokenDelete(query: SystemServiceTokenDeleteQuery): Promise<SystemServiceTokenDeleteData> {
-	const client = ensureReq();
-	try {
-		const env = await client.delete(`system/service-token`, { searchParams: query as Record<string, string | number | boolean> }).json<OjEnvelope<SystemServiceTokenDeleteData>>();
-		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
-		if (typeof env.code === "number" && env.code !== 0)
-			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
-		const data = env.data as SystemServiceTokenDeleteData;
-		if (import.meta.env.DEV) {
-			const { schemas } = await import("./api.schemas");
-			const r = schemas["systemServiceTokenDelete"].data.safeParse(data);
-			if (!r.success)
-				throw new ContractApiError(-1, `[契约违例] systemServiceTokenDelete 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
 		}
 		return data;
 	}

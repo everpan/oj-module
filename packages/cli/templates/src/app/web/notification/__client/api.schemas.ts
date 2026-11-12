@@ -4,6 +4,13 @@
 import { z } from "@oj-module/runtime";
 
 export const schemas = {
+	"notificationDelPost": {
+		body: z.object({
+	"id": z.string(),
+	"userId": z.union([z.string(), z.number()]).optional()
+}),
+		data: z.null(),
+	},
 	"notificationNotificationsGet": {
 		data: z.array(z.object({
 	"id": z.string(),
@@ -17,6 +24,12 @@ export const schemas = {
 	"category": z.enum(["notice", "pm", "mention"]).optional()
 })),
 	},
+	"notificationNotificationsClearPost": {
+		body: z.object({
+
+}).strict().nullable(),
+		data: z.null(),
+	},
 	"notificationNotificationsReadPost": {
 		body: z.object({
 	"id": z.string()
@@ -24,9 +37,9 @@ export const schemas = {
 		data: z.null(),
 	},
 	"notificationNotificationsReadAllPost": {
-		data: z.null(),
-	},
-	"notificationNotificationsClearPost": {
+		body: z.object({
+
+}).strict().nullable(),
 		data: z.null(),
 	},
 	"notificationPushPost": {
@@ -53,12 +66,5 @@ export const schemas = {
 		data: z.object({
 	"id": z.string()
 }),
-	},
-	"notificationDelPost": {
-		body: z.object({
-	"id": z.string(),
-	"userId": z.union([z.string(), z.number()]).optional()
-}),
-		data: z.null(),
 	},
 };

@@ -141,5 +141,16 @@ export function irFromOpenapi(doc: OpenApiDoc, opts: IrFromOpenapiOptions = {}):
 			} as IrEndpoint);
 		}
 	}
+	// 顺序归一（2026-11-12 演练实测）：生成物（__client）的字节序直接由本数组决定，而本数组
+	// 的顺序又继承自 openapi.json 的 paths 键序。oj openapi 在不同版本/注入方式下 paths 键序
+	// 并不稳定（现版按路径字典序，历史提交件是声明顺序），于是同一份源码会生成两种 __client：
+	// 工程里重跑 ojm api 会改写默认模块生成物，撞上 ojm build 的内置模块自治门禁（「内容被修改」），
+	// 退回 ojm init --yes 又被 ojm api --check 判「生成物过期」——死循环。故此处显式排序
+	// （fullPath, method），使输出与输入 paths 键序无关。
+	out.sort((a, b) => {
+		if (a.fullPath !== b.fullPath)
+			return a.fullPath < b.fullPath ? -1 : 1;
+		return a.method < b.method ? -1 : a.method > b.method ? 1 : 0;
+	});
 	return out;
 }
