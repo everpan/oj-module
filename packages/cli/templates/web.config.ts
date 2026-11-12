@@ -61,5 +61,8 @@ export default {
 		"notification": "app",
 		"system": "app",
 		"web": "app",
+		// 企微机器人 MCP 代理面（/api/wecom-bot/*）是机器对机器端点，没有自己的页面；
+		// 生成物归 app 合并模块，避免回落 src/wecom-bot/ 造出无 entry 的假模块。
+		"wecom-bot": "app",
 	},
 };

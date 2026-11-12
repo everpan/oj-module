@@ -22,7 +22,9 @@ import { resolveCertDir, resolveConfigPath } from "./layout";
 import { probeOjCaps } from "./oj-caps";
 import { mintDevCert } from "./oj-cert";
 import {
+	assertInitIncludeComplete,
 	isProtectedRel,
+	isUpstreamTestFile,
 	readInitInclude,
 	removeExtraProtectedFiles,
 	cliRoot as resolveCliRoot,
@@ -129,6 +131,10 @@ export async function initProject(destDir: string, opts: InitOptions = {}): Prom
 	const jwtSecret = crypto.randomBytes(32).toString("hex");
 	const projectName = path.basename(destDir);
 	const include = readInitInclude(templatesDir);
+	// 白名单完整性闸门（2026-11-12 演练实锤）：模板新增模块目录却没在
+	// init.include.yaml 登记 → 当场拒，**先于任何写盘**。漏收不会报错——模块只是
+	// 不进新工程，api 模块的端点还会被下面的 prune 剪掉（等于从来没有该功能）。
+	assertInitIncludeComplete(templatesDir, include);
 	copyTemplates(templatesDir, destDir, {
 		__JWT_SECRET__: jwtSecret,
 		__PROJECT_NAME__: projectName,
@@ -415,6 +421,15 @@ function copyTemplates(
 		// 恢复判定用 srcRel（模板相对 == 工程相对，已归一正斜杠）；destRel 是相对
 		// 当前递归层 destDir 的短路径，只配做报告标签，做不了保护根判定
 		const destRel = path.relative(destDir, dest);
+		// 整目录收录时**夹带**的上游用例不随脚手架下发：它们 import vitest /
+		// @testing-library 与上游 __tests__ 夹具，用户工程不装这些依赖，
+		// pnpm typecheck 会整片报「找不到模块」（2026-11-12 演练实测：
+		// src/app/web/system/pages/mcp/index.test.tsx 一处 7 错）。显式列进
+		// 白名单的用例（tests/*.spec.ts）不受影响——那是随脚手架的回归资产。
+		if (!listed && isUpstreamTestFile(entry.name)) {
+			report.skipped.push(`${destRel}（上游用例）`);
+			continue;
+		}
 		if (fs.existsSync(dest)) {
 			if (restore && isProtectedRel(srcRel)) {
 				writeTemplateFile(src, dest, placeholders);

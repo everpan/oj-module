@@ -14,7 +14,8 @@
 			"#/personal-center/*": ["./src/app/api/personal-center/*"],
 			"#/publish/*": ["./src/app/api/publish/*"],
 			"#/system/*": ["./src/app/api/system/*"],
-			"#/web/*": ["./src/app/api/web/*"]
+			"#/web/*": ["./src/app/api/web/*"],
+			"#/wecom-bot/*": ["./src/app/api/wecom-bot/*"]
 		}
 	}
 }

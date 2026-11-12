@@ -8,6 +8,7 @@
 		"personal-center",
 		"publish",
 		"system",
-		"web"
+		"web",
+		"wecom-bot"
 	]
 }

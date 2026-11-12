@@ -117,11 +117,16 @@ include:
   - src/app/api/publish
   - src/app/api/system
   - src/app/api/web
+  # 企微机器人 MCP 代理（94323a463 随 app 下发）：漏收会连 openapi.json 的
+  # /api/wecom-bot/mcp 一起被 pruneUnincludedApiPaths 剪掉——新工程静默没有该端点。
+  - src/app/api/wecom-bot
   # —— web 前端模块 ——
   # 纯 client 归属目录（无页面模块）：_platform 的生成物被 oj-market 引用，
   # auth / web 的是各自后端契约的配套产物，一并下发保证 ojm api --check 开箱即过。
   - src/app/web/_platform
   - src/app/web/auth
+  # wecom-bot 是机器对 M2M 端点，无页面；生成物按 web.config clientOwners 归 app 模块
+  - src/app/web/wecom-bot
   # 框架内置页面聚合为一个多根模块（首页/登录/个人中心/通知/系统管理）。
   # home 只列 routes/locales/pages：其 api 模块是 demo-only 不进脚手架，__client
   # 留着会指向不存在的端点（见顶部说明），故逐子路径收录而不是整棵 src/app/web。
@@ -151,3 +156,22 @@ include:
   - src/oj-market/web/api
   - src/oj-market/web/types.ts
   - src/app/web/web
+
+# —— 显式不下发（完整性审计口径，必登记）——
+# init 会审计 `src/app/{api,web}` 下每个模块目录：必须在上面 include 里（整目录，
+# 或像 web/home 那样只列子路径），或在下面 exclude 里登记。两边都没有即拒 init ——
+# 防止「加了模块忘了收」静默丢功能：漏收的 api 模块连 openapi.json 里的端点都会被
+# pruneUnincludedApiPaths 一并剪掉（2026-11-12 演练实锤：wecom-bot 漏收 →
+# 新工程静默没有 /api/wecom-bot/mcp）。审计实现在 scaffold-guard.auditInitInclude。
+exclude:
+  # demo-only 后端模块：模板自演示用，新工程不需要
+  # （其 web 侧条目由 web.config.ts 的 `// #region demo-only` 整段剥离）
+  - src/app/api/home
+  # —— 平铺布局（src/<模块>/{api,web}）的 demo 模块 ——
+  # about / access / exception / outside / route-nest 都是模板自演示页（web-only，
+  # 无后端模块），不进脚手架；同样必须显式登记，否则审计会当成「漏收」。
+  - src/about/web
+  - src/access/web
+  - src/exception/web
+  - src/outside/web
+  - src/route-nest/web

@@ -71,6 +71,108 @@ export function readInitInclude(templatesDir: string): Set<string> {
 	return out;
 }
 
+/**
+ * 读取 `init.include.yaml` 的 `exclude` 段：**存在但不随脚手架下发**的模块目录。
+ *
+ * 与 include 反向——这里不参与拷贝，只作完整性审计的口径凭据（见 auditInitInclude）。
+ * 同样校验条目存在：拼错一个目录名不该让「有意排除」变成「其实没排除」。
+ */
+export function readInitExclude(templatesDir: string): Set<string> {
+	const yamlPath = path.join(templatesDir, "init.include.yaml");
+	if (!fs.existsSync(yamlPath))
+		throw new Error(`模板缺少 init.include.yaml：${yamlPath}（安装包损坏？）`);
+	const doc = yaml.parse(fs.readFileSync(yamlPath, "utf-8")) as { exclude?: string[] } | null;
+	const out = new Set<string>();
+	for (const raw of doc?.exclude ?? []) {
+		let p = raw.replaceAll("\\", "/");
+		while (p.startsWith("./"))
+			p = p.slice(2);
+		out.add(p);
+		if (!fs.existsSync(path.join(templatesDir, p)))
+			throw new Error(`init.include.yaml 的 exclude 收录了不存在的路径：${p}（拼写错误或模板缺文件？）`);
+	}
+	return out;
+}
+
+/** 完整性审计范围：框架内置模块的两个聚合容器（模板新增模块必落在这两处之一） */
+const AUDITED_MODULE_CONTAINERS = ["src/app/api", "src/app/web"] as const;
+
+export interface InitIncludeAudit {
+	/** 目录存在，却既不在 include（也无收录子孙）、也不在 exclude 里的模块目录 */
+	uncovered: string[]
+}
+
+/**
+ * 白名单完整性审计：`src/app/{api,web}/<模块>` 下每个目录必须「有归属」——
+ * 要么被 include 收录（整目录，或像 `web/home` 那样只收子路径），要么在 exclude 里
+ * 显式声明不下发。两边都没有 = 有人加了模块却忘了登记。
+ *
+ * 为什么必须拦：include 是 `init` 拷贝的唯一真源，漏收的目录**不会报错**——
+ * 它只是不进新工程；api 模块更隐蔽，`pruneUnincludedApiPaths` 会把它在
+ * openapi.json 里的端点一并剪掉，新工程等于从来没有这个模块
+ * （2026-11-12 演练实锤：`wecom-bot` 漏收 → `/api/wecom-bot/mcp` 静默消失）。
+ */
+export function auditInitInclude(
+	templatesDir: string,
+	include: Set<string> = readInitInclude(templatesDir),
+	exclude: Set<string> = readInitExclude(templatesDir),
+): InitIncludeAudit {
+	const covered = (rel: string): boolean => {
+		if (include.has(rel) || exclude.has(rel))
+			return true;
+		// 逐子路径收录（web/home 只收 routes/locales/pages）同样算「有归属」
+		const prefix = `${rel}/`;
+		for (const p of include) {
+			if (p.startsWith(prefix))
+				return true;
+		}
+		return false;
+	};
+	const uncovered: string[] = [];
+	const scan = (rel: string): void => {
+		if (fs.existsSync(path.join(templatesDir, rel)) && !covered(rel))
+			uncovered.push(rel);
+	};
+	// 聚合容器：src/app/{api,web}/<模块>
+	for (const container of AUDITED_MODULE_CONTAINERS) {
+		const abs = path.join(templatesDir, container);
+		if (!fs.existsSync(abs))
+			continue;
+		for (const entry of fs.readdirSync(abs, { withFileTypes: true })) {
+			if (entry.isDirectory())
+				scan(`${container}/${entry.name}`);
+		}
+	}
+	// 平铺布局：src/<模块>/{api,web}（如 src/oj-market）。同样「漏收即静默丢模块」——
+	// v4 api 迁移就漏过 src/oj-market/api，脚手架一度零 /api/oj-market/*。
+	for (const entry of fs.readdirSync(path.join(templatesDir, "src"), { withFileTypes: true })) {
+		if (!entry.isDirectory() || entry.name === "app")
+			continue;
+		for (const kind of ["api", "web"])
+			scan(`src/${entry.name}/${kind}`);
+	}
+	return { uncovered: uncovered.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)) };
+}
+
+/**
+ * 审计不过即拒 init（**先于任何写盘**，不留半成品工程）。
+ * 处置二选一：要下发 → 写进 include；不下发 → 写进 exclude 并写明理由。
+ */
+export function assertInitIncludeComplete(templatesDir: string, include?: Set<string>): void {
+	const { uncovered } = auditInitInclude(templatesDir, include);
+	if (uncovered.length === 0)
+		return;
+	const lines = uncovered.map(p => `  - ${p}`);
+	throw new Error([
+		`[ojm] 模板有模块目录未在 init.include.yaml 声明（${uncovered.length} 个）：`,
+		...lines,
+		"原因：白名单是 init 拷贝的唯一真源，漏收不会报错——模块只是不进新工程，api 模块的端点还会被 openapi 裁剪一并剪掉（新工程等于从来没有它）。",
+		"处置：在 packages/cli/templates/init.include.yaml 二选一登记",
+		"  · 要下发：include 里加 `- <目录>`（web 模块可只列需要的子路径）",
+		"  · 不下发：exclude 里加 `- <目录>` 并写明理由（demo-only / 模板自用）",
+	].join("\n"));
+}
+
 export interface ScaffoldDrift {
 	modified: string[]
 	missing: string[]
@@ -82,16 +184,31 @@ export function guardEnabled(projectRoot: string): boolean {
 	return fs.existsSync(builtinListPath(projectRoot));
 }
 
-/** 白名单中保护根条目展开成模板文件相对路径清单（正斜杠、去重、排序） */
+/**
+ * 文件名是否为上游用例（.test.* / .spec.*，含 tsx/mjs/cjs）。
+ *
+ * 用例是上游回归资产，不随脚手架下发（依赖 vitest/@testing-library 与上游夹具，
+ * 用户工程没装 → pnpm typecheck 整片报「找不到模块」）。init 拷贝与门禁**必须同口径**：
+ * 拷贝侧跳过、门禁侧也跳过，否则用户工程刚 init 完就报「缺失」。
+ * 白名单里**显式列出**的用例（tests/*.spec.ts）不受影响——那些在保护根之外。
+ */
+export function isUpstreamTestFile(name: string): boolean {
+	return /\.(?:test|spec)\.[cm]?[jt]sx?$/.test(name);
+}
+
+/** 白名单中保护根条目展开成模板文件相对路径清单（正斜杠、去重、排序；跳过上游用例） */
 export function protectedTemplateFiles(templatesDir: string, include: Set<string>): string[] {
 	const files = new Set<string>();
 	const walk = (abs: string): void => {
 		for (const entry of fs.readdirSync(abs, { withFileTypes: true })) {
 			const p = path.join(abs, entry.name);
-			if (entry.isDirectory())
+			if (entry.isDirectory()) {
 				walk(p);
-			else
-				files.add(path.relative(templatesDir, p).split(path.sep).join("/"));
+				continue;
+			}
+			if (isUpstreamTestFile(entry.name))
+				continue;
+			files.add(path.relative(templatesDir, p).split(path.sep).join("/"));
 		}
 	};
 	for (const rel of include) {
@@ -115,10 +232,14 @@ function walkProjectFiles(projectRoot: string, root: string, visit: (rel: string
 	const walk = (abs: string): void => {
 		for (const entry of fs.readdirSync(abs, { withFileTypes: true })) {
 			const p = path.join(abs, entry.name);
-			if (entry.isDirectory())
+			if (entry.isDirectory()) {
 				walk(p);
-			else
-				visit(path.relative(projectRoot, p).split(path.sep).join("/"), p);
+				continue;
+			}
+			// 与保护集同口径：夹带用例不在期望集，也不该算「多出」
+			if (isUpstreamTestFile(entry.name))
+				continue;
+			visit(path.relative(projectRoot, p).split(path.sep).join("/"), p);
 		}
 	};
 	walk(absRoot);
