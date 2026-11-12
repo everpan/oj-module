@@ -233,6 +233,10 @@ export function createSolutionsApi(env: SolutionsEnv) {
 			enabled: { type: "boolean" },
 		},
 	};
+	api.routes.get.schema = {
+		description: "平台方案路由读端点：下发全部未 deprecated 的路由行（module / category / order / 标题键 / 所需权限 / enabled），供前端归并菜单与深检共用。登录即可、只读、无权限点。",
+	};
+
 	api.routes.get.response = { type: "array", items: routeRow };
 
 	// 深检报告出参：VerifyReport（ok/checks/advise）
@@ -259,6 +263,7 @@ export function createSolutionsApi(env: SolutionsEnv) {
 	};
 	// verify：name 必填（端点门，缺参 400）
 	api.verify.post.schema = {
+		description: "方案深检（admin 域，全程不触 exec）：对已装方案跑路由可达性、RBAC 完整性、设置完整性、迁移账本、web 资源完整性、发布方可信性六类检查，返回 VerifyReport{ok,checks,advise} 并留存最近 10 份报告。探针只用配置里的 canonical origin，绝不读请求头 Host（防 SSRF）。",
 		query: {
 			type: "object",
 			required: ["name"],
@@ -267,6 +272,7 @@ export function createSolutionsApi(env: SolutionsEnv) {
 	};
 	api.verify.post.response = verifyReport;
 	api.verify.last.get.schema = {
+		description: "取某方案最近一次的深检报告（登录即可、只读）。从未跑过深检返回 404。",
 		query: {
 			type: "object",
 			required: ["name"],

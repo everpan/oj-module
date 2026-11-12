@@ -1419,6 +1419,7 @@ const marketApi = createMarketApi(marketEnv());
 // 同口径）。出参一律 additionalProperties:true 宽松，不约束运行期返回形状；入参对齐 handler 实际
 // 收口（source 枚举 / 必填项），oj 先校验、handler 仍自校验（双保险，不放松运行期语义）。
 marketApi.install.post.schema = {
+	description: "安装或升级一个解决方案（superadmin）。异步编排：立即返回 task_id，用 GET /oj-market/task?id= 轮询进度。包来源 source=cdn（市场目录）或 file（本机暂存）；发布方密钥未受信任时任务落 needs_trust，需先 POST /oj-market/trust 确认。force=true 可覆盖已装版本。",
 	body: {
 		type: "object",
 		required: ["source", "name"],
@@ -1426,22 +1427,27 @@ marketApi.install.post.schema = {
 	},
 };
 marketApi.install.post.response = { type: "object", properties: { task_id: { type: "string" } }, additionalProperties: true };
-marketApi.install.cancel.post.schema = { body: { type: "object", required: ["name"], properties: { name: { type: "string" } } } };
+marketApi.install.cancel.post.schema = { description: "请求取消进行中的安装任务（superadmin）。已完成的步骤不回滚；需要时重新安装即可（安装幂等）。", body: { type: "object", required: ["name"], properties: { name: { type: "string" } } } };
 marketApi.install.cancel.post.response = { type: "object", properties: { ok: { type: "boolean" }, name: { type: "string" }, requested: { type: "boolean" } }, additionalProperties: true };
-marketApi.upload.post.schema = { query: { type: "object", required: ["name"], properties: { name: { type: "string" } } } };
+marketApi.upload.post.schema = { description: "上传离线安装包（.tgz，superadmin）。query 的 name 传完整文件名 <名称>-<版本>.tgz；包体走 multipart。未受信任的发布方密钥会让任务落 needs_trust。", query: { type: "object", required: ["name"], properties: { name: { type: "string" } } } };
 marketApi.upload.post.response = { type: "object", additionalProperties: true };
-marketApi.task.get.schema = { query: { type: "object", required: ["id"], properties: { id: { type: "string" } } } };
+marketApi.task.get.schema = { description: "轮询安装任务进度与终态（superadmin）。任务记录只保留最近 10 条，过期查询返回 404。", query: { type: "object", required: ["id"], properties: { id: { type: "string" } } } };
 marketApi.task.get.response = { type: "object", additionalProperties: true };
-marketApi.enable.post.schema = { body: { type: "object", required: ["name", "enabled"], properties: { name: { type: "string" }, enabled: { type: "boolean" } } } };
+marketApi.enable.post.schema = { description: "启用或停用已安装的解决方案（superadmin）。停用只摘路由与入口，不删业务数据。", body: { type: "object", required: ["name", "enabled"], properties: { name: { type: "string" }, enabled: { type: "boolean" } } } };
 marketApi.enable.post.response = { type: "object", additionalProperties: true };
+marketApi.converge.post.schema = { body: { type: "object", nullable: true, properties: {}, additionalProperties: false }, description: "出厂收敛触发（仅 ojm dev/preview 派生的配置可用：靠请求头 x-ojm-converge-token 与部署变量比对，持有型证明）。生产站点无该变量时端点直接 404。幂等：与市场索引对账同一逻辑，已对齐即全 skip。" };
+marketApi.backfill.post.schema = { body: { type: "object", nullable: true, properties: {}, additionalProperties: false }, description: "站点侧市场目录回填（superadmin）：扫描 cdn/ 下的存量包 upsert 到 market_release。回填 = 恢复 = 对账三用同一逻辑，幂等可重入，不依赖 CLI。" };
+marketApi.meta.get.schema = { description: "市场元信息：仅返回 {apiVersion}，供 peerPlatform 做版本预检。登录即可读。" };
 marketApi.meta.get.response = { type: "object", properties: { apiVersion: { type: "string" } }, additionalProperties: true };
+marketApi.trust.get.schema = { description: "列出信任库中的发布方公钥（superadmin），并回传信任库损坏提示（note，无损坏为 null）。" };
 marketApi.trust.get.response = { type: "object", additionalProperties: true };
-marketApi.trust.post.schema = { body: { type: "object", required: ["task_id"], properties: { task_id: { type: "string" } } } };
+marketApi.trust.post.schema = { description: "确认信任某个待审任务携带的发布方公钥（superadmin）。公钥与指纹从任务记录重取并复算比对；记录疑被篡改则 409，信任库零变化。任务不在 needs_trust 状态返回 409。", body: { type: "object", required: ["task_id"], properties: { task_id: { type: "string" } } } };
 marketApi.trust.post.response = { type: "object", additionalProperties: true };
-marketApi.trust.key.post.schema = { body: { type: "object", required: ["key_id", "public_key"], properties: { key_id: { type: "string" }, public_key: { type: "string" } } } };
+marketApi.trust.key.post.schema = { description: "手工向信任库添加发布方公钥（superadmin）：key_id + public_key。适用于离线登记发布者。", body: { type: "object", required: ["key_id", "public_key"], properties: { key_id: { type: "string" }, public_key: { type: "string" } } } };
 marketApi.trust.key.post.response = { type: "object", additionalProperties: true };
-marketApi.trust.key.del.schema = { query: { type: "object", required: ["key_id"], properties: { key_id: { type: "string" } } } };
+marketApi.trust.key.del.schema = { description: "从信任库吊销一个发布方公钥（superadmin）。吊销后其已装方案仍可运行，但深检会报 untrusted。", query: { type: "object", required: ["key_id"], properties: { key_id: { type: "string" } } } };
 marketApi.trust.key.del.response = { type: "object", additionalProperties: true };
+marketApi.trust.review.get.schema = { description: "待信任审核列表（superadmin）：只列处于 needs_trust 且 key 尚未入库的任务，供发布管理页一次审批；审批动作复用 POST /oj-market/trust。" };
 marketApi.trust.review.get.response = {
 	type: "array",
 	items: {
@@ -1458,6 +1464,7 @@ marketApi.trust.review.get.response = {
 	},
 };
 marketApi.index.get.schema = {
+	description: "市场索引聚合（登录即可读）：把目录、已装、可升级、信任态合成一个视图；写面仍限 superadmin。",
 	query: {
 		type: "object",
 		properties: { page: { type: "number", minimum: 1 }, size: { type: "number", minimum: 1, maximum: 200 } },
@@ -1474,6 +1481,7 @@ marketApi.index.get.response = {
 	},
 };
 marketApi.catalog.get.schema = {
+	description: "市场目录清单（匿名可读，分页 JSON）：可按关键词检索可安装的解决方案。",
 	query: {
 		type: "object",
 		properties: { page: { type: "number", minimum: 1 }, size: { type: "number", minimum: 1, maximum: 200 } },
@@ -1481,6 +1489,7 @@ marketApi.catalog.get.schema = {
 };
 marketApi.catalog.get.response = { type: "object", additionalProperties: true };
 marketApi.catalog.detail.get.schema = {
+	description: "单个包的目录详情（匿名可读）；不传 version 即取最新版。",
 	query: {
 		type: "object",
 		required: ["name"],
@@ -1489,6 +1498,7 @@ marketApi.catalog.detail.get.schema = {
 };
 marketApi.catalog.detail.get.response = { type: "object", additionalProperties: true };
 marketApi.yank.post.schema = {
+	description: "签名下线或恢复某个版本（发布者本人）。下线只从目录清单摘除并阻断新装/升级，不动已装方案；重复操作幂等。",
 	body: {
 		type: "object",
 		required: ["product", "version"],
@@ -1502,19 +1512,21 @@ marketApi.yank.post.schema = {
 	},
 };
 marketApi.yank.post.response = { type: "object", additionalProperties: true };
-marketApi["uninstall-impact"].get.schema = { query: { type: "object", required: ["name"], properties: { name: { type: "string" } } } };
+marketApi["uninstall-impact"].get.schema = { description: "卸载影响面预检（superadmin）：返回受影响角色数与用户数，供前端二次确认；不改变任何状态。", query: { type: "object", required: ["name"], properties: { name: { type: "string" } } } };
 marketApi["uninstall-impact"].get.response = { type: "object", additionalProperties: true };
-marketApi.uninstall.post.schema = { body: { type: "object", required: ["name"], properties: { name: { type: "string" } } } };
+marketApi.uninstall.post.schema = { description: "卸载解决方案（superadmin）：只删代码/路由/权限/锁/sidecar，绝不删业务数据——受影响的业务表只回传名单供运维手工清理。", body: { type: "object", required: ["name"], properties: { name: { type: "string" } } } };
 marketApi.uninstall.post.response = { type: "object", additionalProperties: true };
+marketApi.history.get.schema = { description: "市场操作历史（登录即可读）：install / enable / disable / uninstall / upgrade / rollback 留痕，按时间与 id 倒序。历史表不可用时返回空数组，不阻断主流程。" };
 marketApi.history.get.response = { type: "array", items: { type: "object", additionalProperties: true } };
-marketApi.history.del.schema = { query: { type: "object", required: ["name", "version"], properties: { name: { type: "string" }, version: { type: "string" } } } };
+marketApi.history.del.schema = { description: "删除未安装成功的版本记录与残留目录（superadmin）。曾成功、当前生效或平台内置的版本会被拒绝，返回 {ok:false} 与原因。", query: { type: "object", required: ["name", "version"], properties: { name: { type: "string" }, version: { type: "string" } } } };
 marketApi.history.del.response = { type: "object", additionalProperties: true };
 marketApi.releases.get.schema = {
+	description: "发布历史（登录即可读，分页，按发布时间倒序）。数据源为 market_release 目录表。",
 	query: {
 		type: "object",
 		properties: {
-			page: { type: "number", minimum: 1 },
-			limit: { type: "number", minimum: 1, maximum: 200 },
+			page: { type: "number", minimum: 1, description: "页码，从 1 起。" },
+			limit: { type: "number", minimum: 1, maximum: 200, description: "每页条数，1~200。" },
 		},
 	},
 };
@@ -1530,6 +1542,7 @@ marketApi.releases.get.response = {
 };
 // MCP 工具目录（20261110-1027 §4.1）：status 四态 + 分组工具视图（message/generation 可选）。
 // 工具条目出参宽松（additionalProperties:true）——上游 openapi 字段演进不破坏 client。
+marketApi.mcp.catalog.get.schema = { description: "MCP 工具目录代理（superadmin）：用浏览器登录态 JWT 透传调用上游 /mcp 的 tools/list，按 tags[0] 分组归一，并回带 status（mounted/unmounted/auth/unreachable）。页面「MCP 接入」据此生成配置。" };
 marketApi.mcp.catalog.get.response = {
 	type: "object",
 	required: ["status", "groups"],

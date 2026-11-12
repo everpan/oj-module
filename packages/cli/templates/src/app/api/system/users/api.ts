@@ -14,6 +14,10 @@ async function get() {
 		return listUsers();
 	});
 }
+get.schema = {
+	description: "用户列表（不含口令哈希，service 已排除）。仅系统管理员。",
+};
+
 get.response = {
 	type: "array",
 	items: {
@@ -59,14 +63,15 @@ async function post() {
 	});
 }
 post.schema = {
+	description: "新建用户。用户名唯一；口令至少 6 位。仅系统管理员，且守卫禁止用本端点提权（改角色走 users/roles）。",
 	body: {
 		type: "object",
 		required: ["username", "password"],
 		properties: {
-			username: { type: "string", minLength: 1 },
-			password: { type: "string", minLength: 6 },
-			displayName: { type: "string" },
-			email: { type: "string" },
+			username: { type: "string", minLength: 1, description: "登录账号名，全局唯一。" },
+			password: { type: "string", minLength: 6, description: "初始口令，至少 6 位。" },
+			displayName: { type: "string", description: "显示名。" },
+			email: { type: "string", description: "邮箱。" },
 		},
 	},
 };
@@ -86,6 +91,7 @@ async function del() {
 	});
 }
 del.schema = {
+	description: "删除用户，级联清理部门成员、角色与会话。最后一名超级管理员拒删。仅系统管理员，且不能删自己。",
 	query: {
 		type: "object",
 		required: ["uid"],

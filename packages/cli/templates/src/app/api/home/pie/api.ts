@@ -19,6 +19,7 @@ const pie = {
 };
 
 pie.get.schema = {
+	description: "首页饼图数据：按 category 聚合 home_pie，返回 [{code, value}]。",
 	query: {
 		type: "object",
 		properties: { by: { type: ["string", "number"] } },

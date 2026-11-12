@@ -305,6 +305,7 @@ const cdnUploadApi = createCdnUploadApi(cdnEnv());
 
 // 契约 I/O（schema-first，oj v0.1.72+）：入参对齐 query 收口（name 必填），出参宽松。
 cdnUploadApi.upload.post.schema = {
+	description: "CDN 制品上传（发布者签名端点）。需用受信任的发布方私钥对 cdn-upload:<registryId>:<名称>:<sha256> 签名；服务端按实收字节重算 sha256 重构 canonical 验签，签名不符或超体积上限即拒。body 为 multipart 文件。",
 	query: { type: "object", required: ["name"], properties: { name: { type: "string" } } },
 };
 cdnUploadApi.upload.post.response = { type: "object", additionalProperties: true };

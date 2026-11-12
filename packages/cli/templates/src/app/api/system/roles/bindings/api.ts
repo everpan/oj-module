@@ -14,6 +14,7 @@ async function put() {
 	});
 }
 put.schema = {
+	description: "整集替换某角色的权限绑定（不是增量）。内置角色硬拒；摘掉绑定即等于对持有者紧急吊销权限（服务端会失效判权缓存）。仅系统管理员。",
 	query: {
 		type: "object",
 		required: ["name"],

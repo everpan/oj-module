@@ -12,6 +12,7 @@ async function put() {
 	});
 }
 put.schema = {
+	description: "整集替换用户角色（sys_user_role 权威源，写时失效判权缓存）。roles 传空数组即清空该用户全部角色。仅系统管理员。",
 	query: {
 		type: "object",
 		required: ["uid"],

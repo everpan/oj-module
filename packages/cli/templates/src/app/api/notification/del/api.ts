@@ -39,12 +39,13 @@ const handler = {
 };
 
 handler.post.schema = {
+	description: "删除一条通知（发射原语 HTTP 入口）。按人通知校验归属，非本人返回 403；广播通知只删本人回执，不影响他人。",
 	body: {
 		type: "object",
 		required: ["id"],
 		properties: {
-			id: { type: "string" },
-			userId: { type: ["string", "number"] },
+			id: { type: "string", description: "通知 id。" },
+			userId: { type: ["string", "number"], description: "通知归属 user_id（字符串或数字）；缺省为当前用户。" },
 		},
 	},
 };

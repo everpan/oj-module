@@ -48,6 +48,10 @@ const handler = {
 // 不在 .schema 白名单内（前端走 antd Upload 直连，不经 JSON client），故此处只声明出参。
 // oj v0.1.72 起出参走平级 .response（与 .schema 同级，动词级优先于组级），
 // .schema 只承载入参（params/query/body）。
+handler.post.schema = {
+	description: "上传头像（multipart/form-data，文件取 http.files[0]），返回 data: URL 字符串。浏览器端由 antd Upload 直连，不走 JSON client；MCP/tools-call 不能传 multipart，请勿用它上传文件。",
+};
+
 handler.post.response = {
 	type: "string",
 };

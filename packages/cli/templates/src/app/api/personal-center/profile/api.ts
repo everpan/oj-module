@@ -59,13 +59,14 @@ const handler = {
 
 // 入参：四字段均可选（部分保存允许），类型即字符串。
 handler.post.schema = {
+	description: "保存「我的资料」：只改本人行（以登录态为准，不接受 body 传 id）。username 全局唯一，重名返回 400。头像请走 /personal-center/upload。",
 	body: {
 		type: "object",
 		properties: {
-			username: { type: "string" },
-			email: { type: "string" },
-			phoneNumber: { type: "string" },
-			description: { type: "string" },
+			username: { type: "string", description: "新账号名（全局唯一；留空表示不改）。" },
+			email: { type: "string", description: "邮箱。" },
+			phoneNumber: { type: "string", description: "手机号。" },
+			description: { type: "string", description: "个人简介。" },
 		},
 	},
 };

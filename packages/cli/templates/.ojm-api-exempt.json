@@ -4,6 +4,7 @@
 		"web"
 	],
 	"paths": [
-		"/auth/*"
+		"/auth/*",
+		"/wecom-bot/*"
 	]
 }

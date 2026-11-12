@@ -37,6 +37,7 @@ async function get() {
 	});
 }
 get.schema = {
+	description: "列出某部门的成员（含是否主部门/负责人标记）。仅系统管理员。",
 	query: {
 		type: "object",
 		required: ["id"],
@@ -60,6 +61,7 @@ async function post() {
 	});
 }
 post.schema = {
+	description: "把用户加入部门。不看部门 origin——「谁在这个部门」本站始终可调，受 D13 限制的只有部门结构字段。仅系统管理员。",
 	query: {
 		type: "object",
 		required: ["id"],
@@ -69,10 +71,10 @@ post.schema = {
 		type: "object",
 		required: ["userId"],
 		properties: {
-			userId: { type: "number" },
-			isLeader: { type: "boolean" },
-			isMain: { type: "boolean" },
-			orderNo: { type: "number" },
+			userId: { type: "number", description: "要加入的用户 user_id。" },
+			isLeader: { type: "boolean", description: "是否部门负责人。" },
+			isMain: { type: "boolean", description: "是否设为其主部门。" },
+			orderNo: { type: "number", description: "部门内排序号。" },
 		},
 	},
 };
@@ -97,6 +99,7 @@ async function put() {
 	});
 }
 put.schema = {
+	description: "修改某成员在该部门的标记（负责人 / 是否主部门 / 排序）。仅系统管理员。",
 	query: {
 		type: "object",
 		required: ["id", "userId"],
@@ -105,9 +108,9 @@ put.schema = {
 	body: {
 		type: "object",
 		properties: {
-			isLeader: { type: "boolean" },
-			isMain: { type: "boolean" },
-			orderNo: { type: "number" },
+			isLeader: { type: "boolean", description: "是否部门负责人。" },
+			isMain: { type: "boolean", description: "是否设为其主部门。" },
+			orderNo: { type: "number", description: "部门内排序号。" },
 		},
 	},
 };
@@ -127,6 +130,7 @@ async function del() {
 	});
 }
 del.schema = {
+	description: "把用户移出部门。仅系统管理员。",
 	query: {
 		type: "object",
 		required: ["id", "userId"],

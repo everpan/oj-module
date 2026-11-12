@@ -8,6 +8,10 @@ const handler = {
 };
 
 // 出参：宿主 RouteObject 形状的数组（demo 恒空数组；页面路由由前端静态注入）
+handler.get.schema = {
+	description: "后端动态路由清单（宿主 RouteObject 形状）。本模板恒返回空数组——页面路由由前端静态注入；需要后端路由时按该形状返回。无入参。",
+};
+
 handler.get.response = {
 	type: "array",
 	items: {

@@ -343,7 +343,9 @@
 			"token": "服务凭据",
 			"binding": "员工绑定",
 			"audit": "换签审计",
-			"guide": "接入指引"
+			"guide": "接入指引",
+			"plugin": "插件配置",
+			"maintenance": "维护"
 		},
 		"common": {
 			"copy": "复制",
@@ -369,13 +371,24 @@
 			"revokeConfirm": "吊销后该凭据立即失效（jti 从登记表移除，约 30 秒缓存核销完成）。确定？",
 			"revoked": "已吊销",
 			"empty": "暂无服务凭据",
+			"expired": "已过期 {{d}} 天",
+			"daysLeftShort": "剩 {{d}} 天",
+			"daysLeftLong": "剩 {{d}} 天",
+			"exportDue": "导出待轮换 ({{n}})",
+			"emptyDue": "无待轮换凭据",
+			"exportDueOk": "已导出 {{n}} 条待轮换凭据",
+			"filterAll": "全部 ({{n}})",
+			"filterDue": "待轮换 ({{n}})",
 			"columns": {
 				"name": "名称",
 				"jti": "jti",
 				"scopes": "档位",
 				"createdBy": "签发人",
 				"createdAt": "签发时间",
-				"actions": "操作"
+				"actions": "操作",
+				"expiresAt": "到期时间",
+				"daysLeft": "剩余天数",
+				"status": "状态"
 			},
 			"scope": {
 				"read": "read",
@@ -446,18 +459,42 @@
 		"guide": {
 			"tenantNote": "本模板已开启租户强绑定（require_signed_claim）：机器人凭据（svc token）由本租户管理员在本页签发，token 内已嵌入本租户 claim。回调 / 换签（/auth/obo）/ 工具调用（/mcp tools/call）只需持此 Bearer 凭据，oj 会同时以 token 内的 tenant claim 作为请求租户——X-TENANT-ID 头须与其一致，或留空由框架从 token 推导。devkit mcp-bot-guide 的示例默认单租户、无此 claim，接入时务必确保使用的是本租户签发的 svc token，否则会被 403 tenant header does not match signed claim 拦截。",
 			"mcpTitle": "1. 开启 MCP 端点",
-			"mcpHint": "模板默认 server.mcp.enabled: false（fail-closed）。按「MCP 服务」页的启用步骤改为 true 后，机器人才能访问 {base}/mcp；安装方案时会自动把方案名登记进 modules 白名单，仅白名单内工具对外暴露。",
+			"mcpHint": "模板默认 server.mcp.enabled: false（fail-closed）。按「MCP 服务」页启用后，机器人才能访问 {base}/mcp；安装方案时自动把方案名登记进 modules 白名单，仅白名单内工具对外暴露。「普通模式插件配置」页签可一键生成企微侧插件配置。",
 			"configTitle": "config.yaml 参考片段",
 			"configCopy": "复制配置片段",
-			"botTitle": "2. 群聊场景与回调骨架",
-			"botHint": "「群聊」只是使用场景，不是新实体：员工在群里 @ 机器人提问，机器人代该员工读/写业务数据。无需群聊注册表；回调按以下顺序处理即可：",
-			"steps": "① 5 秒内先 ack，避免 IM 超时重推。\n② 用 MsgId 去重（kv.incr），防止同一条消息被重复处理。\n③ 取 vars.WECOM_BOT_SVC_TOKEN，POST /v1/api/auth/obo（provider + external_sub）换 10 分钟受托 token。\n④ 用受托 token POST /v1/api/mcp 调 tools/call：带 Accept: application/json，arguments 固定为 path/query/body 三键。\n⑤ 把结果套中文模板回复到群里；业务错误是 isError: true，正文带 [code=<n>] 前缀，不是 JSON-RPC 错误。\n⑥ 受托 token 401 时重新换签一次；不要跨会话缓存 tools/list。",
+			"botTitle": "2. 普通模式 MCP 插件接入",
+			"botHint": "企微普通模式机器人挂一个 MCP 插件即可让全员 @ 机器人调用站点工具。插件 URL 走本仓进程内代理 /api/wecom-bot/mcp（多租户共用同一路径，租户由 Bearer 选）。「普通模式插件配置」页签已按当前租户生成可复制的配置块。",
+			"steps": "① 在「服务凭据」页签为本租户签发一张 svc token（建议 read/write，不要 destructive）。\n② 切到「普通模式插件配置」页签，选刚签发的凭据，复制生成的插件配置。\n③ 在企微管理后台新建 MCP 插件：类型 MCP、传输 Streamable HTTP、URL = 该租户企业域名下的 /api/wecom-bot/mcp。\n④ 授权方式选 Service token（Header），Authorization 填入 Bearer <明文 token>；Content-Type 与 Accept 按配置块写死。\n⑤ X-WeCom-User-Id 由企微在企业域名下自动注入，勿手填；不要设置 X-TENANT-ID。\n⑥ 在企业微信里 @ 机器人对话，验证能列出工具并成功调用；换签审计可见成功记录。",
 			"checklistTitle": "3. 上线检查单",
-			"checklist": "□ 已签发 svc token，且未授予 destructive 档位。\n□ 明文凭据已存入服务端安全配置，未落库、未写进前端。\n□ 已为目标员工逐条建立绑定（或 CSV 批量导入）。\n□ server.mcp.enabled 已开启，modules 白名单含所需方案。\n□ act_mask_destructive: true 已开启，机器人侧删除类工具被遮蔽。\n□ 回调已验证：5s ack、MsgId 去重、401 重换签一次。\n□ 用一次真实群聊 @ 机器人验证换签，并在「换签审计」看到成功记录。",
+			"checklist": "□ 已为本租户签发 svc token，未授予 destructive，且已知 ttl_days（长期=90d，到期需轮换）。\n□ 已在企微后台建 MCP 插件：URL 落在企业域名下、传输 Streamable HTTP、Authorization=Bearer <token>。\n□ Content-Type=application/json、Accept=application/json, text/event-stream 已写死。\n□ server.mcp.enabled 已开启，modules 白名单含所需方案。\n□ act_mask_destructive: true 已开启，机器人侧删除类工具被遮蔽。\n□ 已在「到期看板」关注该凭据剩余天数，临近 30 天安排轮换（避免 K6 可用性风险）。\n□ 用一次真实 @ 机器人验证，并在「换签审计」看到成功记录。",
 			"codeTitle": "4. obo 换签错误码",
 			"codes": "40310 未绑定：(provider, external_sub) 查无绑定行。\n40311 凭据吊销：jti 缺失效或不在 oj_svc_token 登记表（fail-closed）。\n40312 非 svc 凭据：claims.svc 缺失，或 token 不含 bot 角色。\n40313 账号停用：绑定到的员工不存在或 is_forbidden=1。",
 			"securityTitle": "5. 凭据与权限边界",
 			"security": "svc token 只用于换签这一跳，本身不代表任何业务权限；受托 token 的 roles 实时取自 sys_user_role（员工本人角色），10 分钟过期。\n凭据吊销以 oj_svc_token 的 jti 在册为真相源，换签时逐次核销（约 30 秒缓存）。\n受托 token 的 claims.act.sub 指回 svc 名，act_mask_destructive 据此遮蔽删除类操作；审计表逐条留痕。"
+		},
+		"plugin": {
+			"tenantNote": "普通模式机器人（每租户一个）在企微后台挂 MCP 插件即可接入：URL 须落在本租户企业域名下，企微才会在 tools/call 注入员工身份。租户由下方 Bearer 选取，无需体现在 URL 中。",
+			"copied": "配置已复制",
+			"copyFail": "复制失败",
+			"pickerTitle": "选择本租户服务凭据",
+			"pickerHint": "选一张本租户签发的服务凭据（在「服务凭据」页签签发）。复制配置后，把明文 Bearer 填入 Authorization。一张凭据即一个租户的入口。",
+			"pickerPh": "选择服务凭据（jti）",
+			"selectedMeta": "档位：{{scopes}} ｜ 有效期：{{days}}",
+			"writeScopeWarn": "所选凭据不含 write 档位。企微机器人代员工调用工具属写面，网关对 /wecom-bot/mcp 要求 write scope，缺档会在真机静默 403。请改选或另签一张含 write 的凭据。",
+			"configTitle": "企微插件配置（粘贴到企微后台）",
+			"configHint": "按此文本逐项填入企微 MCP 插件配置；Authorization 的 Bearer 值请在复制后替换为「服务凭据」页签签发的明文 token。",
+			"headerNote": "注意：X-WeCom-User-Id 由企微在企业域名下自动注入，勿手填；不要设置 X-TENANT-ID（租户从 Bearer 推导，手填不一致会被 403 拦截）。若「Service token」不接受含空格前缀，退回「无需授权」并把 Authorization 放入请求头。"
+		},
+		"maintenance": {
+			"title": "危险操作：资源回收",
+			"desc": "卸载机器人接入或重置租户时，一次性清空本租户的三张机器人表。此操作不可撤销，且只影响当前租户。",
+			"list": "将删除：oj_svc_token（服务凭据，清空后所有插件立即失效）、oj_bot_binding（员工绑定）、oj_obo_audit（换签审计记录）。",
+			"limits": "不受影响：已签出的受托 token 是无状态 10 分钟 JWT，服务端无法单条吊销，最长 10 分钟内仍有效；网关对已删凭据的缓存最长 30 秒。模块代码、路由、权限不在此操作范围（走方案卸载）。",
+			"ack": "我已知晓上述数据将被永久删除",
+			"action": "清空本租户机器人数据",
+			"confirmTitle": "确认清空本租户机器人数据？",
+			"confirmDesc": "服务凭据、员工绑定与换签审计都会被删除，无法恢复。",
+			"cleanupOk": "已清理：服务凭据 {{svc_tokens}} 张 / 员工绑定 {{bindings}} 条 / 审计 {{audit_rows}} 行"
 		}
 	}
 }

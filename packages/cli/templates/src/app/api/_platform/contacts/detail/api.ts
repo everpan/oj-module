@@ -22,6 +22,7 @@ const handler = {
 
 // 入参：id 必填（详情按 id 取单条）
 handler.get.schema = {
+	description: "查单个人员详情（登录即可）。比目录多出 email 与 avatar_base64；这两项只在详情端点下发（安全评审 P2）。",
 	query: {
 		type: "object",
 		required: ["id"],

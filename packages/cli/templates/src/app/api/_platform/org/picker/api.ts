@@ -37,13 +37,14 @@ async function get() {
 	});
 }
 get.schema = {
+	description: "选人组件数据源：一次返回匹配的部门与人员（混合），免去前端两次请求。keyword 必填且至少 2 字符（枚举面红线，与通讯录同口径）。",
 	query: {
 		type: "object",
 		required: ["keyword"],
 		properties: {
-			scope: { type: "string", enum: ["self", "all"] },
-			keyword: { type: "string", minLength: 2 },
-			limit: { type: "number", minimum: 1, maximum: 50 },
+			scope: { type: "string", enum: ["self", "all"], description: "读取范围：self=仅本人可见范围；all=全租户。" },
+			keyword: { type: "string", minLength: 2, description: "搜索关键词，最少 2 字符。" },
+			limit: { type: "number", minimum: 1, maximum: 50, description: "每类结果条数上限，1~50。" },
 		},
 	},
 };

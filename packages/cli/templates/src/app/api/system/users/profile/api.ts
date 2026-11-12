@@ -21,6 +21,7 @@ async function put() {
 	});
 }
 put.schema = {
+	description: "修改用户资料（显示名 / 邮箱 / 职务）。用户名不在可改之列——它是外部身份的主键（如 wecom:<userid>），改名会让下次登录认错人。启停走 users/forbidden、改密走 users/password。仅系统管理员。",
 	query: {
 		type: "object",
 		required: ["uid"],
@@ -29,9 +30,9 @@ put.schema = {
 	body: {
 		type: "object",
 		properties: {
-			displayName: { type: ["string", "null"] },
-			email: { type: ["string", "null"] },
-			position: { type: ["string", "null"] },
+			displayName: { type: ["string", "null"], description: "显示名；传 null 表示清空。" },
+			email: { type: ["string", "null"], description: "邮箱；传 null 表示清空。" },
+			position: { type: ["string", "null"], description: "职务；传 null 表示清空。" },
 		},
 	},
 };

@@ -32,13 +32,14 @@ async function get() {
 	});
 }
 get.schema = {
+	description: "分页查询机器人换签（OBO）审计日志：每次 /api/auth/obo 调用无论成败都会留一行。仅 superadmin 可读。可按服务凭据名子串与成功/失败过滤。审计属安全敏感数据（D11），如需全量请走 /system/obo-audit/export。",
 	query: {
 		type: "object",
 		properties: {
-			svc: { type: "string" }, // 包含匹配（子串）
-			ok: { type: "string" }, // "0"/"1" 生效，其余忽略
-			pageSize: { type: "number", minimum: 1 },
-			current: { type: "number", minimum: 1 },
+			svc: { type: "string", description: "按服务凭据名做包含匹配（子串），留空为不过滤。" },
+			ok: { type: "string", description: "仅 \"1\"（成功）或 \"0\"（失败）生效，其他值忽略（不报错）。" },
+			pageSize: { type: "number", minimum: 1, description: "每页条数，默认 50。" },
+			current: { type: "number", minimum: 1, description: "页码，从 1 开始，默认 1。" },
 		},
 	},
 };
@@ -46,10 +47,10 @@ get.response = {
 	type: "object",
 	required: ["list", "total", "pageSize", "current"],
 	properties: {
-		list: { type: "array", items: auditItemSchema },
-		total: { type: "number" },
-		pageSize: { type: "number" },
-		current: { type: "number" },
+		list: { type: "array", items: auditItemSchema, description: "当前页审计行（按 id 倒序，最新在前）。" },
+		total: { type: "number", description: "满足过滤条件的总行数。" },
+		pageSize: { type: "number", description: "实际使用的每页条数。" },
+		current: { type: "number", description: "实际使用的页码。" },
 	},
 };
 

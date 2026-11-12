@@ -22,6 +22,9 @@ export const SVC_SCOPES = ["read", "write", "destructive"] as const;
 /** svc token 上限 90d（与 oj JWT_TTL_CAP_SECS 同值，越界按上限取不报错）。 */
 export const SVC_TTL_SECS = 90 * 86400;
 
+/** 翻旧行宽限 24h（与 oj R6 rotate 同值）：旧 bearer 在途仍可放行，过期由 SvcGate 自动移出有效集。 */
+export const SVC_GRACE_SECS = 24 * 86400;
+
 /** 受托 token 10 分钟（obo 换签产物，勿预缓存：401 才重换签、限一次）。 */
 export const OBO_TTL_SECS = 600;
 
@@ -86,11 +89,16 @@ export interface SvcTokenRow {
 	scopes: string[]
 	created_by: string
 	created_at: number
+	expires_at: number
+	// v0.1.132 SvcGate/rotate 契约：status ∈ {active,superseded}（缺省 active）；
+	// grace_until 为 epoch 秒，仅 superseded 宽限期内 > now（24h 活门票）。
+	status: string
+	grace_until: number
 }
 
 export async function listSvcTokens(): Promise<SvcTokenRow[]> {
 	const rows = await allRows<Record<string, unknown>>(() => db.table("oj_svc_token")
-		.select(["jti", "name", "scopes", "created_by", "created_at"])
+		.select(["jti", "name", "scopes", "created_by", "created_at", "expires_at", "status", "grace_until"])
 		// jti 作 tie-breaker：created_at 相同（秒级批量签发）时 offset 分批不重不漏。
 		.orderBy([{ field: "created_at", dir: "desc" }, { field: "jti", dir: "asc" }]));
 	return rows.map((r) => {
@@ -107,12 +115,51 @@ export async function listSvcTokens(): Promise<SvcTokenRow[]> {
 			scopes,
 			created_by: String(r.created_by),
 			created_at: Number(r.created_at),
+			expires_at: Number(r.expires_at ?? 0),
+			status: String(r.status ?? "active"),
+			grace_until: Number(r.grace_until ?? 0),
 		};
 	});
 }
 
-/** 明文 token 只在返回里出现一次（不落库不回显）；jti 登记行即吊销真相源。 */
-export async function issueSvcToken(name: string, scopes: string[], createdBy: string, tenant: string): Promise<{ token: string, jti: string }> {
+/**
+ * 同 (租户, name) 既有 active 或宽限期内 superseded 行，翻为 superseded 并给 24h 宽限
+ * （存量 active 直接置宽限；已在宽限内的保留原 grace_until）。保证每 (租户, name) 至多一行 active。
+ * oj_svc_token 是租户表，sql_guard 自动按当前租户注入，故按 name 匹配即可，无需显式带 tenant_id。
+ * 注：admin 并发重签发同名仍有极小竞态（两请求都读到「无 active」后各插一行）——属 oj R6 上游
+ * 已标注的「admin create 存量语义」边界（current 的 jti 字典序 tie-break 兜读侧）；高频重签发场景
+ * 应走轮换端点（本模板未暴露 oj 内置 rotate/current，因其会写明文列）。见 plan §9.2。
+ */
+async function supersedeActiveByName(name: string): Promise<number> {
+	const now = nowSecs();
+	const rows = await db.table("oj_svc_token")
+		.select(["jti", "status", "grace_until"])
+		.where({ field: "name", op: "eq", value: name })
+		.all() as Array<Record<string, unknown>>;
+	let n = 0;
+	for (const r of rows) {
+		const status = String(r.status ?? "active");
+		const grace = Number(r.grace_until ?? 0);
+		if (status === "active" || (status === "superseded" && grace > now)) {
+			const setGrace = status === "active" ? now + SVC_GRACE_SECS : grace;
+			await db.table("oj_svc_token")
+				.update({ status: "superseded", grace_until: setGrace })
+				.where({ field: "jti", op: "eq", value: String(r.jti) })
+				.run();
+			n++;
+		}
+	}
+	return n;
+}
+
+/**
+ * 明文 token 只在返回里出现一次（不落库不回显）；jti 登记行即吊销真相源。
+ * @param ttlDays Q-B 有效期契约（方案 §4.1）：缺省/`<=0` = 长期固定（系统上限 90d，到期轮换 SOP）；
+ *   `>0` = min(days,90) 天。oj 0.1.130 下 `jwt.sign` 把 ttl_secs 钳 ≤90d 且 `ttl_secs:0` 会令 `exp=now` 立即过期，
+ *   故本仓翻译为「签 90d」，绝不把 0 透传为 ttl_secs（字面永不过期需走 §8 R6 上游需求）。
+ * 同名重签发 = 轮换：插新 active 前先把同 (租户,name) 既有 active/宽限行翻 superseded（见 supersedeActiveByName）。
+ */
+export async function issueSvcToken(name: string, scopes: string[], createdBy: string, tenant: string, ttlDays?: number): Promise<{ token: string, jti: string }> {
 	if (!name.trim())
 		botFail(400, "name required");
 	if (!scopes.length)
@@ -120,19 +167,28 @@ export async function issueSvcToken(name: string, scopes: string[], createdBy: s
 	const bad = scopes.filter(s => !(SVC_SCOPES as readonly string[]).includes(s));
 	if (bad.length)
 		botFail(400, `scopes must be a subset of: ${SVC_SCOPES.join("/")}`);
+	const ttlSecs = ttlDays && ttlDays > 0 ? Math.min(ttlDays, 90) * 86400 : SVC_TTL_SECS;
 	const jti = crypto.randomHex(16);
 	const token = jwt.sign({
 		sub: `svc:${name}`,
 		roles: ["bot"],
 		claims: { svc: name, jti, scopes, tenant },
-		ttl_secs: SVC_TTL_SECS,
+		ttl_secs: ttlSecs,
 	});
+	const now = nowSecs();
+	// 插新 active 前先翻旧行，保证每 (租户,name) 至多一行 active（修复同名重复签发累积多 active 行）。
+	await supersedeActiveByName(name);
 	await db.table("oj_svc_token").insert({
 		jti,
 		name,
 		scopes: JSON.stringify(scopes),
 		created_by: createdBy,
-		created_at: nowSecs(),
+		created_at: now,
+		// 到期看板 / 批量轮换导出（K6 缓解）直接读列，不依赖解 JWT 取 exp。
+		expires_at: now + ttlSecs,
+		// v0.1.132 契约：新签发即 active；grace_until=0 表示不在宽限（SvcGate 判 grace_until>now）。
+		status: "active",
+		grace_until: 0,
 	}).run();
 	return { token, jti };
 }
@@ -401,4 +457,33 @@ export async function exchangeObo(ctx: OboContext): Promise<{ access_token: stri
 	});
 	await audit(uid, true, "");
 	return { access_token, expires_in: OBO_TTL_SECS };
+}
+
+// ---- 租户级资源回收（卸载机器人接入 / 租户重置）----
+
+export interface BotCleanupResult {
+	svc_tokens: number
+	bindings: number
+	audit_rows: number
+}
+
+/**
+ * 一次性清空当前租户的三张 bot 表（服务凭据 / 员工绑定 / 换签审计），返回各表删除行数（幂等，二次调用为 0）。
+ *
+ * 这是「卸载机器人接入」的唯一数据出口——**不要**挂到方案卸载流程：_platform 的卸载纪律是
+ * 「只删代码/锁/路由/权限，绝不删业务数据，业务表只回传名单供人工清理」（见 _lifecycle/uninstall.ts:36-38），
+ * 因此清数据必须是一次显式、带二次确认的运营操作。
+ *
+ * 租户边界由 sql_guard 注入的 tenant_id 谓词决定，调用方拿不到跨租户删除能力。
+ * 构造器表达不了「无条件删除」，故用各表 NOT NULL 列做恒真谓词（jti / provider / id）。
+ *
+ * 范围外：受托 token（obo 产物）是无状态 10min JWT，服务端无存储、无法单条吊销——卸载后已签出的
+ * 最长 10 分钟内仍有效；需即时止血时先 revokeSvcToken（阻断新换签）。SvcGate 正缓存 30s 内仍可能
+ * 放行已删 jti，与「吊销 ≤30s 生效」是同一窗口。
+ */
+export async function cleanupTenantBotResources(): Promise<BotCleanupResult> {
+	const svc_tokens = affected(await db.table("oj_svc_token").delete().where({ field: "jti", op: "ne", value: "" }).run());
+	const bindings = affected(await db.table("oj_bot_binding").delete().where({ field: "provider", op: "ne", value: "" }).run());
+	const audit_rows = affected(await db.table("oj_obo_audit").delete().where({ field: "id", op: "gt", value: 0 }).run());
+	return { svc_tokens, bindings, audit_rows };
 }

@@ -36,7 +36,7 @@ export function createSystemClient(ctx: ModuleContext) {
 	}
 	ctx.register.apiPrefix(API_PREFIX);
 	bindRequest(ctx.utils.request);
-	return { systemDepartmentsGet, systemDepartmentsPost, systemDepartmentsPut, systemDepartmentsDelete, systemDepartmentsDetachPost, systemDepartmentsMembersGet, systemDepartmentsMembersPost, systemDepartmentsMembersPut, systemDepartmentsMembersDelete, systemDepartmentsMovePut, systemLoginMethodsGet, systemOplogGet, systemOplogPost, systemPermissionsGet, systemRolesGet, systemRolesPost, systemRolesDelete, systemRolesBindingsPut, systemSettingsGet, systemSettingsPut, systemUsersGet, systemUsersPost, systemUsersDelete, systemUsersForbiddenPut, systemUsersPasswordPut, systemUsersProfilePut, systemUsersRolesPut, systemBotBindingGet, systemBotBindingPost, systemBotBindingDelete, systemBotBindingExportGet, systemBotBindingImportPost, systemOboAuditGet, systemOboAuditExportGet, systemServiceTokenGet, systemServiceTokenPost, systemServiceTokenDelete };
+	return { systemDepartmentsGet, systemDepartmentsPost, systemDepartmentsPut, systemDepartmentsDelete, systemDepartmentsDetachPost, systemDepartmentsMembersGet, systemDepartmentsMembersPost, systemDepartmentsMembersPut, systemDepartmentsMembersDelete, systemDepartmentsMovePut, systemLoginMethodsGet, systemOplogGet, systemOplogPost, systemPermissionsGet, systemRolesGet, systemRolesPost, systemRolesDelete, systemRolesBindingsPut, systemSettingsGet, systemSettingsPut, systemUsersGet, systemUsersPost, systemUsersDelete, systemUsersForbiddenPut, systemUsersPasswordPut, systemUsersProfilePut, systemUsersRolesPut, systemBotBindingGet, systemBotBindingPost, systemBotBindingDelete, systemBotBindingExportGet, systemBotBindingImportPost, systemBotCleanupPost, systemOboAuditGet, systemOboAuditExportGet, systemServiceTokenGet, systemServiceTokenPost, systemServiceTokenDelete };
 }
 
 /**
@@ -820,6 +820,30 @@ export async function systemBotBindingImportPost(body: SystemBotBindingImportPos
 			const r = schemas["systemBotBindingImportPost"].data.safeParse(data);
 			if (!r.success)
 				throw new ContractApiError(-1, `[契约违例] systemBotBindingImportPost 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
+		}
+		return data;
+	}
+	catch (e) {
+		throw await toApiError(e);
+	}
+}
+
+export type SystemBotCleanupPostBody = z.input<(typeof schemas)["systemBotCleanupPost"]["body"]>;
+export type SystemBotCleanupPostData = z.infer<(typeof schemas)["systemBotCleanupPost"]["data"]>;
+
+export async function systemBotCleanupPost(body: SystemBotCleanupPostBody): Promise<SystemBotCleanupPostData> {
+	const client = ensureReq();
+	try {
+		const env = await client.post(`system/bot-cleanup`, { json: body }).json<OjEnvelope<SystemBotCleanupPostData>>();
+		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
+		if (typeof env.code === "number" && env.code !== 0)
+			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
+		const data = env.data as SystemBotCleanupPostData;
+		if (import.meta.env.DEV) {
+			const { schemas } = await import("./api.schemas");
+			const r = schemas["systemBotCleanupPost"].data.safeParse(data);
+			if (!r.success)
+				throw new ContractApiError(-1, `[契约违例] systemBotCleanupPost 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
 		}
 		return data;
 	}

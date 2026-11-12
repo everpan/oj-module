@@ -11,6 +11,7 @@ async function put() {
 	});
 }
 put.schema = {
+	description: "禁用或解禁用户。禁用会级联删除其 refresh token（等于立即强退）。仅系统管理员，且不能操作自己。",
 	query: {
 		type: "object",
 		required: ["uid"],

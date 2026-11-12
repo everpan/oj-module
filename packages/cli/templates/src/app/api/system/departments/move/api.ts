@@ -18,6 +18,7 @@ async function put() {
 	});
 }
 put.schema = {
+	description: "调整部门的父级（拖拽排序的数据出口）。parentId=null 移到根下；自挂或挂到自己的子孙会判环后返回 400。仅系统管理员。",
 	query: {
 		type: "object",
 		required: ["id"],

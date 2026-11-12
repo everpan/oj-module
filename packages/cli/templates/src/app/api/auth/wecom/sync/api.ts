@@ -148,6 +148,7 @@ const start = {
 	},
 };
 start.post.schema = {
+	description: "启动企微组织架构全量同步（异步任务）。已同步过则按游标续跑；同一租户并发触发会被拒。返回同步任务视图，进度用 /auth/wecom/sync/status 轮询。",
 	body: {
 		type: "object",
 		properties: { agent: { type: "string" } },
@@ -173,6 +174,7 @@ const status = {
 	},
 };
 status.get.schema = {
+	description: "轮询企微组织同步进度。只读本地任务表 + 一次授权探针，不打上游、不占限速额度。本站未接入企微时是正常返回 connected=false（不是 400）。",
 	query: {
 		type: "object",
 		properties: { agent: { type: "string" } },
@@ -205,6 +207,7 @@ const cancel = {
 	},
 };
 cancel.post.schema = {
+	description: "取消进行中的企微组织同步：清游标并置 cancelled。不回滚已写入的组织数据——同步是幂等的，重跑只是覆盖。",
 	body: {
 		type: "object",
 		properties: { agent: { type: "string" } },

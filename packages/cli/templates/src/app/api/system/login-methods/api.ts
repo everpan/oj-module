@@ -8,6 +8,10 @@ async function get() {
 		return listLoginMethods();
 	});
 }
+get.schema = {
+	description: "登录方式发现（匿名端点，登录前调用）：返回已启用的登录方式与站点标题，登录页据此渲染入口。必须列在 config 的 auth.anonymous_paths，漏列会让登录页握手 401。",
+};
+
 get.response = {
 	type: "object",
 	required: ["methods", "site_title"],

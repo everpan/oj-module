@@ -1213,6 +1213,7 @@ L2 夹具没有 builder 面。这是结构性欠账，**不是本轮新增回归
 | 登录后打鉴权端点恒 403 `must_change` | 该账号处于强制改密悬挂（`must_change=1`，见 users 表）；`currentAccess()` 悬挂期全拒。seed 四个角色账号现均为 `must_change=0`（2026-10-22 口径），悬挂只可能来自「管理员重置口令 / 新建账号」路径；L1 用 fixtures 专用账号（`l1tester`，`must_change=0`，`src/_platform/fixtures/l1-test-user.sql`，仅 `oj test` 灌入、additive 不动 seed 账号） |
 | 口令正确却登录 401 `invalid credentials` | dev 库 admin 口令被首登改密流程改过（seed 重放 `INSERT OR IGNORE` 不复位既有行）；本地重置 `rm -f api/db.sqlite*` 后重跑（迁移+seed+fixtures 重建），或直接用 fixtures 账号 |
 | 重复跑 L1 断言飘 | `oj test` 每轮重放 迁移→seed→fixtures 且 INSERT 类只增不改；断言按**自己推的行**收敛（push→拿回 id→按 id 断言，样板见 `l1-builder.test.ts` 通知用例） |
+| L1 用例恒 404，但接口本来就没有 | 用例指向的路由已被删（demo 模块 2026-11-02 整体下线，`tests/l1-builder.test.ts` 里 3 条 `demo/todos` 于 2026-11-12 删除）。判定法：把用例里的 `client.*` 路径与 `openapi.json` 的 paths 对账，查不到即**删用例**而不是改断言——同时确认覆盖面是否由别处承担（whereIf/contains 现由 oplog 的 username 过滤覆盖） |
 | 可选过滤传 `""` 仍发出 `= ''` 条件 | `whereIf` 跳过集是 `undefined/null/false/[]`，**`""`/`0` 是合法值会保留**（api-manual §whereIf）；缺失值必须归一化为 `undefined`（`oplog.ts` 2026-10-20 修复同款坑） |
 
 ## 10. 复跑脚本（TL;DR）

@@ -32,13 +32,14 @@ const handler = {
 
 // 入参与本地登录同形（username/password）；出参同 TokenBundle
 handler.post.schema = {
+	description: "LDAP 目录账号登录（匿名端点）。编排与本地登录一致：限速守卫 → LDAP 校验 → 建会话；失败统一 401。成功返回 TokenBundle。",
 	body: {
 		type: "object",
 		required: ["username", "password"],
 		properties: {
-			username: { type: "string", minLength: 1 },
-			password: { type: "string", minLength: 1 },
-			tenant: { type: "string" },
+			username: { type: "string", minLength: 1, description: "目录账号名。" },
+			password: { type: "string", minLength: 1, description: "目录口令。" },
+			tenant: { type: "string", description: "租户标识，缺省 default。" },
 		},
 	},
 };

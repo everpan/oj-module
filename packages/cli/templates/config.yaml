@@ -47,7 +47,11 @@ server:
   # 白名单（fail-closed：白名单存在后仅方案工具对外暴露，非方案模块工具不出现）。
   # enabled 且未装配 auth 插件时须显式 allow_anonymous: true，否则 oj 启动 fail-fast。
   mcp:
-    enabled: false
+    enabled: true
+    # modules：非空 tool-tags 白名单（fail-closed，避免暴露全集）；方案安装由下方 # ojm:mcp-modules
+    # 锚点自动登记方案名，手动部署须按实际 tool tags 显式填充（须核验「方案名」与 tool `tags` 同口径）。
+    allow_anonymous: true # enabled 且未装配 auth 插件时 oj 启动 fail-fast；模板含 auth 插件下为兼容守卫
+    act_mask_destructive: true # 代操作遮蔽：受托会话拒 delete / 隐藏 destructive tool
     # 下面这行是**安装器的文本锚点**（方案安装自动把方案名登记进 modules 白名单）：
     # 整行必须逐字等于 `# ojm:mcp-modules`，不要删、不要加尾注。
     # ojm:mcp-modules
@@ -122,7 +126,7 @@ platform:
   # 安装器热更 config 需要 platform 特权（reloadConfig/信任库写面）；编排面自 Phase B 起在
   # oj-market 模块（/api/oj-market/*），与 _platform 同权——缺 oj-market 时装到 reloading
   # 段 NotCapable（2026-11-07 市场线演练实锤）。
-  modules: [_platform, oj-market]
+  modules: [_platform, oj-market, wecom-bot]
   root: src # 后端模块源码根（src/<name>/api 的父目录）；preview 派生 config 时改写成 dist
   # ⚠️ 手写部署（不用 ojm，靠 mounts 起站）时：root 必须等于 api 挂载目录，
   # 否则 oj serve 直接拒启 `platform.root (…) must be mounted as an api mount`。

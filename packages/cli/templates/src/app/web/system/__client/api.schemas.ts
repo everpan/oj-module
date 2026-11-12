@@ -352,6 +352,16 @@ export const schemas = {
 	"total": z.number()
 }),
 	},
+	"systemBotCleanupPost": {
+		body: z.object({
+	"confirm": z.union([z.literal(true)])
+}),
+		data: z.object({
+	"svc_tokens": z.number(),
+	"bindings": z.number(),
+	"audit_rows": z.number()
+}),
+	},
 	"systemOboAuditGet": {
 		query: z.object({
 	"svc": z.string().optional(),
@@ -381,13 +391,17 @@ export const schemas = {
 	"name": z.string(),
 	"scopes": z.array(z.string()),
 	"created_by": z.string(),
-	"created_at": z.number()
+	"created_at": z.number(),
+	"expires_at": z.number(),
+	"status": z.string(),
+	"grace_until": z.number()
 })),
 	},
 	"systemServiceTokenPost": {
 		body: z.object({
 	"name": z.string().min(1),
-	"scopes": z.array(z.enum(["read", "write", "destructive"])).optional()
+	"scopes": z.array(z.enum(["read", "write", "destructive"])).optional(),
+	"ttl_days": z.number().int().min(0).max(90).optional()
 }),
 		data: z.object({
 	"token": z.string(),

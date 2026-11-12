@@ -11,11 +11,12 @@ async function get() {
 	});
 }
 get.schema = {
+	description: "查某人的部门路径 / 主部门 / 职务。不传 uid 即查自己；scope=self 下问别人返回 403（不是 404——不泄露账号存在性）。",
 	query: {
 		type: "object",
 		properties: {
-			scope: { type: "string", enum: ["self", "all"] },
-			uid: { type: "number" },
+			scope: { type: "string", enum: ["self", "all"], description: "读取范围：self=仅本人可见范围；all=全租户。" },
+			uid: { type: "number", description: "要查的 user_id；不传即查自己。" },
 		},
 	},
 };

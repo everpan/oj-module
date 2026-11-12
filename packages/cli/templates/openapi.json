@@ -5,6 +5,58 @@
 		"version": "0.1.0"
 	},
 	"paths": {
+		"/api/wecom-bot/mcp": {
+			"post": {
+				"operationId": "wecom_bot_mcp_post",
+				"summary": "POST api/wecom-bot/mcp",
+				"x-oj-file": "app/api/wecom-bot/mcp/api.ts",
+				"tags": [
+					"wecom-bot"
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"description": "MCP JSON-RPC 帧，如 {\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{...}}；形态随方法变化，故此处不细化字段。"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"description": "MCP JSON-RPC 响应（由 /api/mcp 原样透传），通常为 {jsonrpc,id,result} 或 {jsonrpc,id,error}。"
+										}
+									}
+								}
+							}
+						}
+					}
+				},
+				"description": "企微机器人 MCP 代理入口：接收 MCP JSON-RPC 单帧并代理到本进程 /api/mcp（多租户 + 按员工权限）。initialize/ping/tools/list 用入站 svc Bearer 直接转发；tools/call 必须先带 X-WeCom-User-Id，代理会先换 10 分钟受托 token 再转发。请求体必须是 MCP 帧（jsonrpc/method/id/params）；响应 status 与字节原样透传（200 JSON / 202 空体 / 406·415 信封）。换签失败映射为 JSON-RPC error（HTTP 200，code 见 data.code 40310/40311/40312/40313）。"
+			}
+		},
 		"/api/_platform/contacts": {
 			"get": {
 				"operationId": "_platform_contacts_get",
@@ -20,7 +72,8 @@
 						"required": true,
 						"schema": {
 							"type": "string",
-							"minLength": 2
+							"minLength": 2,
+							"description": "搜索关键词，最少 2 字符，按姓名/账号子串匹配。"
 						}
 					},
 					{
@@ -28,7 +81,8 @@
 						"in": "query",
 						"required": false,
 						"schema": {
-							"type": "number"
+							"type": "number",
+							"description": "返回条数上限，服务端钳到 200。"
 						}
 					}
 				],
@@ -82,7 +136,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "人员目录搜索（登录即可，无权限点）。keyword 必填且至少 2 字符（防枚举整份名册）；只返回 id/username/display_name，不含邮箱与头像——要详情请用 /_platform/contacts/detail。每用户 60 次/分钟限速。"
 			}
 		},
 		"/api/_platform/contacts/detail": {
@@ -164,7 +219,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "查单个人员详情（登录即可）。比目录多出 email 与 avatar_base64；这两项只在详情端点下发（安全评审 P2）。"
 			}
 		},
 		"/api/_platform/org/departments": {
@@ -185,7 +241,8 @@
 							"enum": [
 								"self",
 								"all"
-							]
+							],
+							"description": "读取范围：self=仅本人可见范围；all=全租户。"
 						}
 					},
 					{
@@ -193,7 +250,8 @@
 						"in": "query",
 						"required": false,
 						"schema": {
-							"type": "number"
+							"type": "number",
+							"description": "父部门 id；0=只要根层；不传=跨层全查。"
 						}
 					},
 					{
@@ -201,7 +259,8 @@
 						"in": "query",
 						"required": false,
 						"schema": {
-							"type": "string"
+							"type": "string",
+							"description": "部门名关键词（子串匹配）。"
 						}
 					},
 					{
@@ -210,7 +269,8 @@
 						"required": false,
 						"schema": {
 							"type": "number",
-							"minimum": 1
+							"minimum": 1,
+							"description": "页码，从 1 起。"
 						}
 					},
 					{
@@ -220,7 +280,8 @@
 						"schema": {
 							"type": "number",
 							"minimum": 1,
-							"maximum": 200
+							"maximum": 200,
+							"description": "每页条数，1~200。"
 						}
 					}
 				],
@@ -315,7 +376,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "部门平铺分页（共享读面）。大企业别一次拉全树，按 parent / keyword 分片取；parent=0 只要根层，不传 parent 跨层全查（仍受 scope 收窄）。"
 			}
 		},
 		"/api/_platform/org/is-member": {
@@ -336,7 +398,8 @@
 							"enum": [
 								"self",
 								"all"
-							]
+							],
+							"description": "读取范围：self=仅本人可见范围；all=全租户。"
 						}
 					},
 					{
@@ -344,7 +407,8 @@
 						"in": "query",
 						"required": false,
 						"schema": {
-							"type": "number"
+							"type": "number",
+							"description": "要判断的 user_id；不传即问自己。"
 						}
 					},
 					{
@@ -352,7 +416,8 @@
 						"in": "query",
 						"required": true,
 						"schema": {
-							"type": "number"
+							"type": "number",
+							"description": "部门 id（含其子部门一起判断）。"
 						}
 					}
 				],
@@ -392,7 +457,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "判断某人是否在指定部门下（含子部门）。按部门做访问控制/路由时用它，不要自己拉树递归。scope=self 只能问自己，问别人返回 403。"
 			}
 		},
 		"/api/_platform/org/members": {
@@ -413,7 +479,8 @@
 							"enum": [
 								"self",
 								"all"
-							]
+							],
+							"description": "读取范围：self=仅本人可见范围；all=全租户。"
 						}
 					},
 					{
@@ -421,7 +488,8 @@
 						"in": "query",
 						"required": false,
 						"schema": {
-							"type": "number"
+							"type": "number",
+							"description": "部门 id；不传=可见范围内全部成员。"
 						}
 					},
 					{
@@ -429,7 +497,8 @@
 						"in": "query",
 						"required": false,
 						"schema": {
-							"type": "string"
+							"type": "string",
+							"description": "是否展开子部门：true / 1 视为展开（查询串为字符串形态）。"
 						}
 					},
 					{
@@ -437,7 +506,8 @@
 						"in": "query",
 						"required": false,
 						"schema": {
-							"type": "string"
+							"type": "string",
+							"description": "成员姓名/账号关键词。"
 						}
 					},
 					{
@@ -446,7 +516,8 @@
 						"required": false,
 						"schema": {
 							"type": "number",
-							"minimum": 1
+							"minimum": 1,
+							"description": "页码，从 1 起。"
 						}
 					},
 					{
@@ -456,7 +527,8 @@
 						"schema": {
 							"type": "number",
 							"minimum": 1,
-							"maximum": 200
+							"maximum": 200,
+							"description": "每页条数，1~200。"
 						}
 					}
 				],
@@ -548,7 +620,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "部门成员分页 + 部门路径（共享读面）。不传 dept 即查可见范围内全部成员（配合 keyword 检索）。includeSub 在 scope=self 下只对「我所在部门」生效；对上级部门展开等于绕过自身路径限制，故直接 400 而非静默截断。"
 			}
 		},
 		"/api/_platform/org/picker": {
@@ -569,7 +642,8 @@
 							"enum": [
 								"self",
 								"all"
-							]
+							],
+							"description": "读取范围：self=仅本人可见范围；all=全租户。"
 						}
 					},
 					{
@@ -578,7 +652,8 @@
 						"required": true,
 						"schema": {
 							"type": "string",
-							"minLength": 2
+							"minLength": 2,
+							"description": "搜索关键词，最少 2 字符。"
 						}
 					},
 					{
@@ -588,7 +663,8 @@
 						"schema": {
 							"type": "number",
 							"minimum": 1,
-							"maximum": 50
+							"maximum": 50,
+							"description": "每类结果条数上限，1~50。"
 						}
 					}
 				],
@@ -707,7 +783,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "选人组件数据源：一次返回匹配的部门与人员（混合），免去前端两次请求。keyword 必填且至少 2 字符（枚举面红线，与通讯录同口径）。"
 			}
 		},
 		"/api/_platform/org/resolve": {
@@ -743,16 +820,19 @@
 										"type": "array",
 										"items": {
 											"type": "number"
-										}
+										},
+										"description": "要展开的部门 id 数组；includeSub=true 时含其子部门。"
 									},
 									"userIds": {
 										"type": "array",
 										"items": {
 											"type": "number"
-										}
+										},
+										"description": "额外并入的 user_id 数组（去重后一起返回）。"
 									},
 									"includeSub": {
-										"type": "boolean"
+										"type": "boolean",
+										"description": "是否把子部门成员一并展开，默认 false。"
 									}
 								}
 							}
@@ -798,7 +878,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "把部门（含子部门）展开成 user_id 列表，供通知/审批按「某部门及其下级」定收件人。结果去重升序；显式传入的 userIds 原样并入。这是共享读面里唯一「算」型端点——需要收件人集合时用它，不要自己拉树递归。"
 			}
 		},
 		"/api/_platform/org/tree": {
@@ -890,7 +971,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "部门树（以平表返回，前端按 parentId 组装；契约 IR 不支持递归 schema）。只含存活且同步可见的部门——软删行与失去可见范围的行不出，那是管理端 /api/system/departments 的事。"
 			}
 		},
 		"/api/_platform/org/user": {
@@ -911,7 +993,8 @@
 							"enum": [
 								"self",
 								"all"
-							]
+							],
+							"description": "读取范围：self=仅本人可见范围；all=全租户。"
 						}
 					},
 					{
@@ -919,7 +1002,8 @@
 						"in": "query",
 						"required": false,
 						"schema": {
-							"type": "number"
+							"type": "number",
+							"description": "要查的 user_id；不传即查自己。"
 						}
 					}
 				],
@@ -1012,7 +1096,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "查某人的部门路径 / 主部门 / 职务。不传 uid 即查自己；scope=self 下问别人返回 403（不是 404——不泄露账号存在性）。"
 			}
 		},
 		"/api/_platform/solutions/routes": {
@@ -1097,7 +1182,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "平台方案路由读端点：下发全部未 deprecated 的路由行（module / category / order / 标题键 / 所需权限 / enabled），供前端归并菜单与深检共用。登录即可、只读、无权限点。"
 			}
 		},
 		"/api/_platform/solutions/verify": {
@@ -1194,7 +1280,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "方案深检（admin 域，全程不触 exec）：对已装方案跑路由可达性、RBAC 完整性、设置完整性、迁移账本、web 资源完整性、发布方可信性六类检查，返回 VerifyReport{ok,checks,advise} 并留存最近 10 份报告。探针只用配置里的 canonical origin，绝不读请求头 Host（防 SSRF）。"
 			}
 		},
 		"/api/_platform/solutions/verify/last": {
@@ -1291,7 +1378,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "取某方案最近一次的深检报告（登录即可、只读）。从未跑过深检返回 404。"
 			}
 		},
 		"/api/auth/login": {
@@ -1315,14 +1403,17 @@
 								"properties": {
 									"username": {
 										"type": "string",
-										"minLength": 1
+										"minLength": 1,
+										"description": "登录账号名。"
 									},
 									"password": {
 										"type": "string",
-										"minLength": 1
+										"minLength": 1,
+										"description": "登录口令（明文传输仅在 HTTPS 下）。"
 									},
 									"tenant": {
-										"type": "string"
+										"type": "string",
+										"description": "租户标识，缺省 default。"
 									}
 								}
 							}
@@ -1418,7 +1509,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "本地账号口令登录（匿名端点）。账号不存在、口令错、账号停用统一返回 401（不泄露账号状态）；同一 IP+账号连续失败会触发 429 与指数退避。成功后返回 TokenBundle（access + refresh + 用户信息）。"
 			}
 		},
 		"/api/auth/logout": {
@@ -1479,7 +1571,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "吊销传入的 refresh token。注意 access token 在到期前仍然有效——这是既定的无状态 JWT 语义。"
 			}
 		},
 		"/api/auth/refresh": {
@@ -1601,7 +1694,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "用 refresh token 换新会话（轮换：旧串立即失效）。服务层检测到旧串被复用会吊销整族并记审计。"
 			}
 		},
 		"/api/auth/password": {
@@ -1625,11 +1719,13 @@
 								"properties": {
 									"old_password": {
 										"type": "string",
-										"minLength": 1
+										"minLength": 1,
+										"description": "当前口令。"
 									},
 									"new_password": {
 										"type": "string",
-										"minLength": 6
+										"minLength": 6,
+										"description": "新口令，至少 6 位。"
 									}
 								}
 							}
@@ -1725,7 +1821,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "自助改密：改本人密码，必须提供旧口令。must_change（首次登录/管理员重置后）悬挂期这是唯一可用的写端点。"
 			}
 		},
 		"/api/auth/ldap-login": {
@@ -1749,14 +1846,17 @@
 								"properties": {
 									"username": {
 										"type": "string",
-										"minLength": 1
+										"minLength": 1,
+										"description": "目录账号名。"
 									},
 									"password": {
 										"type": "string",
-										"minLength": 1
+										"minLength": 1,
+										"description": "目录口令。"
 									},
 									"tenant": {
-										"type": "string"
+										"type": "string",
+										"description": "租户标识，缺省 default。"
 									}
 								}
 							}
@@ -1852,7 +1952,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "LDAP 目录账号登录（匿名端点）。编排与本地登录一致：限速守卫 → LDAP 校验 → 建会话；失败统一 401。成功返回 TokenBundle。"
 			}
 		},
 		"/api/auth/wecom/admin/apps": {
@@ -1952,7 +2053,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "列出全部已授权企业 × 应用（跨租户，仅超级管理员）。不含 permanent_code，应用 secret 不出库；同一家企业可能同时有代开发与自建两行（迁移期）。"
 			}
 		},
 		"/api/auth/wecom/admin/overview": {
@@ -2038,7 +2140,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "企微接入部署概览（跨租户，仅超级管理员）：已配置的接入形态、配置自检错误、回调地址、本企业 corpId/agentId、自建应用回调凭据是否配齐。配错时不报 400，而是把缺什么放进 configError，供后台页面展示。"
 			}
 		},
 		"/api/auth/wecom/admin/status": {
@@ -2063,18 +2166,21 @@
 								"properties": {
 									"corpId": {
 										"type": "string",
-										"minLength": 1
+										"minLength": 1,
+										"description": "企业 corpId。"
 									},
 									"agentId": {
 										"type": "string",
-										"minLength": 1
+										"minLength": 1,
+										"description": "应用 agentId。"
 									},
 									"status": {
 										"type": "string",
 										"enum": [
 											"active",
 											"disabled"
-										]
+										],
+										"description": "目标状态：active 启用 / disabled 停用（停用即强退）。"
 									}
 								}
 							}
@@ -2121,7 +2227,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "启用/停用某企业（corpId + agentId）的接入。停用会级联吊销该企业已签发的会话。跨租户的站点级操作，仅超级管理员。"
 			}
 		},
 		"/api/auth/wecom/admin/install": {
@@ -2176,7 +2283,19 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "生成代开发应用的安装链接（跨租户，仅超级管理员）。链接不缓存，每次调用现换；顺带返回需逐字填入服务商后台「指令回调」的 URL。仅代开发形态可用。",
+				"parameters": [
+					{
+						"name": "state",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "string",
+							"description": "可选的不透明状态串，原样带回安装回调。"
+						}
+					}
+				]
 			}
 		},
 		"/api/auth/wecom/admin/connect": {
@@ -2232,6 +2351,20 @@
 										}
 									}
 								}
+							}
+						}
+					}
+				},
+				"description": "把本部署的自建应用接入本站（跨租户，仅超级管理员）。四步校验全过才落库，幂等——换过 Secret 必须重新调用。未配置 corp 凭据的部署直接 400。",
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"properties": {},
+								"additionalProperties": false,
+								"nullable": true
 							}
 						}
 					}
@@ -2305,7 +2438,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "查询某企业（corpId）的租户管理员账号状态：固定账号名、是否已开通、是否仍须改密。"
 			}
 		},
 		"/api/auth/wecom/admin/tenant-admin/password": {
@@ -2329,11 +2463,13 @@
 								"properties": {
 									"corpId": {
 										"type": "string",
-										"minLength": 1
+										"minLength": 1,
+										"description": "企业 corpId。"
 									},
 									"password": {
 										"type": "string",
-										"minLength": 6
+										"minLength": 6,
+										"description": "初始口令，至少 6 位。"
 									}
 								}
 							}
@@ -2388,7 +2524,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "为指定企业（corpId）开通租户管理员或重置其口令。开通后 must_change=true，本人首次登录必须改密。"
 			}
 		},
 		"/api/auth/wecom/login": {
@@ -2403,7 +2540,28 @@
 					"200": {
 						"description": "OK"
 					}
-				}
+				},
+				"description": "【浏览器端点，非工具调用】发起企微 OAuth 授权：302 跳到企微授权页。企微内静默授权、浏览器扫码由 UA 决定。",
+				"parameters": [
+					{
+						"name": "corp",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "string",
+							"description": "企业 corpId；不传则从已安装档案自动解析（单企业部署可省略）。"
+						}
+					},
+					{
+						"name": "agent",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "string",
+							"description": "应用 agentId；多应用企业用它指定走哪个应用，不传取默认。"
+						}
+					}
+				]
 			}
 		},
 		"/api/auth/wecom/callback": {
@@ -2418,7 +2576,28 @@
 					"200": {
 						"description": "OK"
 					}
-				}
+				},
+				"description": "【浏览器端点，非工具调用】企微授权回跳处理：code → userid → JIT 建号 → 签发一次性票据 → 302 回 SPA。失败也走 302 带错误码，不返回 JSON 信封。",
+				"parameters": [
+					{
+						"name": "code",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "string",
+							"description": "企微授权码；用户点「拒绝」时不会下发，此时 handler 走失败回跳。"
+						}
+					},
+					{
+						"name": "state",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "string",
+							"description": "发起授权时写入的一次性 state，取即删（防重放）。"
+						}
+					}
+				]
 			}
 		},
 		"/api/auth/wecom/ticket": {
@@ -2442,7 +2621,8 @@
 									"ticket": {
 										"type": "string",
 										"minLength": 32,
-										"maxLength": 128
+										"maxLength": 128,
+										"description": "回调下发的一次性登录票据（32~128 字符）。"
 									}
 								}
 							}
@@ -2538,7 +2718,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "用企微登录回跳下发的一次性票据换 TokenBundle（token 不进 URL）。票据一次性且短时有效，重复使用即失败；请在拿到 ticket 后立即兑换。"
 			}
 		},
 		"/api/auth/wecom/event": {
@@ -2553,7 +2734,46 @@
 					"200": {
 						"description": "OK"
 					}
-				}
+				},
+				"description": "【企微回调端点，非工具调用】企微回调 URL 验证：解密 echostr 后以纯文本原样回写（JSON 信封会被判失败）。",
+				"parameters": [
+					{
+						"name": "msg_signature",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "string",
+							"description": "企微回调签名，校验不通过即拒。"
+						}
+					},
+					{
+						"name": "timestamp",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "string",
+							"description": "签名时间戳，与 nonce 一起做重放防护。"
+						}
+					},
+					{
+						"name": "nonce",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "string",
+							"description": "签名随机串。"
+						}
+					},
+					{
+						"name": "echostr",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "string",
+							"description": "URL 验证密文，解密后需原样纯文本回写。"
+						}
+					}
+				]
 			},
 			"post": {
 				"operationId": "auth_wecom_event_post",
@@ -2566,7 +2786,37 @@
 					"200": {
 						"description": "OK"
 					}
-				}
+				},
+				"description": "【企微回调端点，非工具调用】企微事件入口：代开发指令事件与自建应用通讯录变更。必须回纯文本 success，否则企微判失败并重推三次。",
+				"parameters": [
+					{
+						"name": "msg_signature",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "string",
+							"description": "企微回调签名，校验不通过即拒。"
+						}
+					},
+					{
+						"name": "timestamp",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "string",
+							"description": "签名时间戳，与 nonce 一起做重放防护。"
+						}
+					},
+					{
+						"name": "nonce",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "string",
+							"description": "签名随机串。"
+						}
+					}
+				]
 			}
 		},
 		"/api/auth/wecom/sync/start": {
@@ -2763,7 +3013,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "启动企微组织架构全量同步（异步任务）。已同步过则按游标续跑；同一租户并发触发会被拒。返回同步任务视图，进度用 /auth/wecom/sync/status 轮询。"
 			}
 		},
 		"/api/auth/wecom/sync/status": {
@@ -2955,7 +3206,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "轮询企微组织同步进度。只读本地任务表 + 一次授权探针，不打上游、不占限速额度。本站未接入企微时是正常返回 connected=false（不是 400）。"
 			}
 		},
 		"/api/auth/wecom/sync/cancel": {
@@ -3152,7 +3404,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "取消进行中的企微组织同步：清游标并置 cancelled。不回滚已写入的组织数据——同步是幂等的，重跑只是覆盖。"
 			}
 		},
 		"/api/home/line": {
@@ -3212,7 +3465,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "首页折线图数据：按 range 取窗口内逐日 SUM(value)，缺失日补 0；窗口内完全没有数据时回落确定式趋势，保证图表非空。返回与日序对齐的数字数组。"
 			}
 		},
 		"/api/home/pie": {
@@ -3279,7 +3533,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "首页饼图数据：按 category 聚合 home_pie，返回 [{code, value}]。"
 			}
 		},
 		"/api/notification/notifications": {
@@ -3370,7 +3625,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "当前用户的全部通知：按人通知与广播合并，命名空间 id（u: 按人 / b: 广播）。Bearer 守卫保护，只返回本人可见项。"
 			}
 		},
 		"/api/notification/notifications/read": {
@@ -3427,7 +3683,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "把一条通知标记为已读。按人通知会校验归属，非本人返回 403；广播通知只记本人回执。"
 			}
 		},
 		"/api/notification/notifications/read-all": {
@@ -3463,6 +3720,20 @@
 										}
 									}
 								}
+							}
+						}
+					}
+				},
+				"description": "把当前用户的全部通知标记为已读。无入参、无返回体。",
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"properties": {},
+								"additionalProperties": false,
+								"nullable": true
 							}
 						}
 					}
@@ -3505,6 +3776,20 @@
 							}
 						}
 					}
+				},
+				"description": "清空当前用户的通知：按人项物理删除，广播项逐条落「对我隐藏」标记（共享行不物理删，他人不受影响）。无入参、无返回体。",
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"properties": {},
+								"additionalProperties": false,
+								"nullable": true
+							}
+						}
+					}
 				}
 			}
 		},
@@ -3531,19 +3816,24 @@
 										"type": [
 											"string",
 											"number"
-										]
+										],
+										"description": "收件人 user_id（字符串或数字）；缺省回落为当前用户。"
 									},
 									"title": {
-										"type": "string"
+										"type": "string",
+										"description": "通知标题。"
 									},
 									"message": {
-										"type": "string"
+										"type": "string",
+										"description": "通知正文。"
 									},
 									"link": {
-										"type": "string"
+										"type": "string",
+										"description": "点击跳转地址。"
 									},
 									"avatar": {
-										"type": "string"
+										"type": "string",
+										"description": "头像 URL。"
 									},
 									"category": {
 										"type": "string",
@@ -3551,7 +3841,8 @@
 											"notice",
 											"pm",
 											"mention"
-										]
+										],
+										"description": "分类：notice 通知 / pm 私信 / mention 提及。"
 									}
 								}
 							}
@@ -3594,7 +3885,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "给指定用户推一条按人通知（发射原语 HTTP 入口）。收件人过滤是发送方责任——原语不做业务判断。同进程模块可直接 import _shared/notify 调用，无需走 HTTP。"
 			}
 		},
 		"/api/notification/push-broadcast": {
@@ -3617,16 +3909,20 @@
 								],
 								"properties": {
 									"title": {
-										"type": "string"
+										"type": "string",
+										"description": "通知标题。"
 									},
 									"message": {
-										"type": "string"
+										"type": "string",
+										"description": "通知正文。"
 									},
 									"link": {
-										"type": "string"
+										"type": "string",
+										"description": "点击跳转地址。"
 									},
 									"avatar": {
-										"type": "string"
+										"type": "string",
+										"description": "头像 URL。"
 									},
 									"category": {
 										"type": "string",
@@ -3634,7 +3930,8 @@
 											"notice",
 											"pm",
 											"mention"
-										]
+										],
+										"description": "分类：notice 通知 / pm 私信 / mention 提及。"
 									}
 								}
 							}
@@ -3677,7 +3974,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "广播一条通知（全员可见，只存一行 + 每人回执）。收件人范围由调用方保证；同进程模块可直接 import 原语。"
 			}
 		},
 		"/api/notification/del": {
@@ -3699,13 +3997,15 @@
 								],
 								"properties": {
 									"id": {
-										"type": "string"
+										"type": "string",
+										"description": "通知 id。"
 									},
 									"userId": {
 										"type": [
 											"string",
 											"number"
-										]
+										],
+										"description": "通知归属 user_id（字符串或数字）；缺省为当前用户。"
 									}
 								}
 							}
@@ -3740,7 +4040,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "删除一条通知（发射原语 HTTP 入口）。按人通知校验归属，非本人返回 403；广播通知只删本人回执，不影响他人。"
 			}
 		},
 		"/api/personal-center/profile": {
@@ -3759,16 +4060,20 @@
 								"type": "object",
 								"properties": {
 									"username": {
-										"type": "string"
+										"type": "string",
+										"description": "新账号名（全局唯一；留空表示不改）。"
 									},
 									"email": {
-										"type": "string"
+										"type": "string",
+										"description": "邮箱。"
 									},
 									"phoneNumber": {
-										"type": "string"
+										"type": "string",
+										"description": "手机号。"
 									},
 									"description": {
-										"type": "string"
+										"type": "string",
+										"description": "个人简介。"
 									}
 								}
 							}
@@ -3803,7 +4108,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "保存「我的资料」：只改本人行（以登录态为准，不接受 body 传 id）。username 全局唯一，重名返回 400。头像请走 /personal-center/upload。"
 			}
 		},
 		"/api/personal-center/upload": {
@@ -3842,7 +4148,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "上传头像（multipart/form-data，文件取 http.files[0]），返回 data: URL 字符串。浏览器端由 antd Upload 直连，不走 JSON client；MCP/tools-call 不能传 multipart，请勿用它上传文件。"
 			}
 		},
 		"/api/publish/credential": {
@@ -3860,7 +4167,8 @@
 						"required": false,
 						"schema": {
 							"type": "number",
-							"minimum": 1
+							"minimum": 1,
+							"description": "页码，从 1 起。"
 						}
 					},
 					{
@@ -3870,7 +4178,8 @@
 						"schema": {
 							"type": "number",
 							"minimum": 1,
-							"maximum": 200
+							"maximum": 200,
+							"description": "每页条数，1~200。"
 						}
 					},
 					{
@@ -3878,7 +4187,8 @@
 						"in": "query",
 						"required": false,
 						"schema": {
-							"type": "string"
+							"type": "string",
+							"description": "目标租户（仅超管可跨租户查看）。"
 						}
 					}
 				],
@@ -3982,7 +4292,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "列出本租户已签发的发布凭证（只回 token_hint，明文永不回显）。仅返回未 soft-delete 的行，按创建时间倒序。"
 			},
 			"post": {
 				"operationId": "publish_credential_post",
@@ -4060,7 +4371,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "签发一张发布凭证，供 CLI/CI 在无账号口令时兑换发布身份。明文 token 只在本次响应出现一次，务必当场保存；库内只存哈希与 hint。"
 			}
 		},
 		"/api/publish/credential/revoke": {
@@ -4125,7 +4437,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "撤销一张尚未兑换的发布凭证（本人或超管）。已兑换的不可撤销——凭证一旦换出身份就只能等它过期。"
 			}
 		},
 		"/api/publish/credential/exchange": {
@@ -4204,7 +4517,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "用发布凭证换取发布身份（匿名端点：凭证本身就是持有型证明）。token 一次性，用一条条件 UPDATE 原子抢所有权，并发双花只有一个成功；单 IP 每 10 分钟最多 20 次尝试。"
 			}
 		},
 		"/api/system/departments": {
@@ -4298,7 +4612,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "部门列表（管理端全量平表：含软删壳与同步不可见行，树由前端按 parentId 组装）。与共享读面 /_platform/org/tree 的口径不同：这里给管理员看全量。仅系统管理员。"
 			},
 			"post": {
 				"operationId": "system_departments_post",
@@ -4319,22 +4634,26 @@
 								"properties": {
 									"name": {
 										"type": "string",
-										"minLength": 1
+										"minLength": 1,
+										"description": "部门名称，必填。"
 									},
 									"parentId": {
 										"type": [
 											"number",
 											"null"
-										]
+										],
+										"description": "父部门 id；null 或不传=根层。"
 									},
 									"nameEn": {
 										"type": [
 											"string",
 											"null"
-										]
+										],
+										"description": "英文名。"
 									},
 									"orderNo": {
-										"type": "number"
+										"type": "number",
+										"description": "同级排序号，越小越靠前。"
 									}
 								}
 							}
@@ -4377,7 +4696,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "新建部门（管理端）。不给 parentId 即建在根下。仅系统管理员。"
 			},
 			"put": {
 				"operationId": "system_departments_put",
@@ -4405,16 +4725,19 @@
 								"properties": {
 									"name": {
 										"type": "string",
-										"minLength": 1
+										"minLength": 1,
+										"description": "新名称；不传表示不改。"
 									},
 									"nameEn": {
 										"type": [
 											"string",
 											"null"
-										]
+										],
+										"description": "新英文名；传 null 表示清空。"
 									},
 									"orderNo": {
-										"type": "number"
+										"type": "number",
+										"description": "新排序号。"
 									}
 								}
 							}
@@ -4457,7 +4780,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "修改部门名称/英文名/排序。部门归属为外部同步（origin!=local）时拒绝（D13）；需要改请先 detach 转为本地维护。仅系统管理员。"
 			},
 			"delete": {
 				"operationId": "system_departments_delete",
@@ -4512,7 +4836,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "删除部门：有子部门时拒绝；关联成员行一并清理。仅系统管理员。"
 			}
 		},
 		"/api/system/departments/detach": {
@@ -4569,7 +4894,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "把部门转为本地维护（origin → local）：此后可自由改名/移动/删除，且后续同步轮次不再改写它。这是外部源只给残缺数据（如未授权部门名）时的唯一出路；反向操作不提供（转回去下一次同步立刻被覆盖）。仅系统管理员。"
 			}
 		},
 		"/api/system/departments/members": {
@@ -4655,7 +4981,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "列出某部门的成员（含是否主部门/负责人标记）。仅系统管理员。"
 			},
 			"post": {
 				"operationId": "system_departments_members_post",
@@ -4685,16 +5012,20 @@
 								],
 								"properties": {
 									"userId": {
-										"type": "number"
+										"type": "number",
+										"description": "要加入的用户 user_id。"
 									},
 									"isLeader": {
-										"type": "boolean"
+										"type": "boolean",
+										"description": "是否部门负责人。"
 									},
 									"isMain": {
-										"type": "boolean"
+										"type": "boolean",
+										"description": "是否设为其主部门。"
 									},
 									"orderNo": {
-										"type": "number"
+										"type": "number",
+										"description": "部门内排序号。"
 									}
 								}
 							}
@@ -4737,7 +5068,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "把用户加入部门。不看部门 origin——「谁在这个部门」本站始终可调，受 D13 限制的只有部门结构字段。仅系统管理员。"
 			},
 			"put": {
 				"operationId": "system_departments_members_put",
@@ -4772,13 +5104,16 @@
 								"type": "object",
 								"properties": {
 									"isLeader": {
-										"type": "boolean"
+										"type": "boolean",
+										"description": "是否部门负责人。"
 									},
 									"isMain": {
-										"type": "boolean"
+										"type": "boolean",
+										"description": "是否设为其主部门。"
 									},
 									"orderNo": {
-										"type": "number"
+										"type": "number",
+										"description": "部门内排序号。"
 									}
 								}
 							}
@@ -4821,7 +5156,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "修改某成员在该部门的标记（负责人 / 是否主部门 / 排序）。仅系统管理员。"
 			},
 			"delete": {
 				"operationId": "system_departments_members_delete",
@@ -4884,7 +5220,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "把用户移出部门。仅系统管理员。"
 			}
 		},
 		"/api/system/departments/move": {
@@ -4962,7 +5299,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "调整部门的父级（拖拽排序的数据出口）。parentId=null 移到根下；自挂或挂到自己的子孙会判环后返回 400。仅系统管理员。"
 			}
 		},
 		"/api/system/login-methods": {
@@ -5016,7 +5354,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "登录方式发现（匿名端点，登录前调用）：返回已启用的登录方式与站点标题，登录页据此渲染入口。必须列在 config 的 auth.anonymous_paths，漏列会让登录页握手 401。"
 			}
 		},
 		"/api/system/oplog": {
@@ -5033,7 +5372,8 @@
 						"in": "query",
 						"required": false,
 						"schema": {
-							"type": "string"
+							"type": "string",
+							"description": "动作名过滤。"
 						}
 					},
 					{
@@ -5041,7 +5381,8 @@
 						"in": "query",
 						"required": false,
 						"schema": {
-							"type": "string"
+							"type": "string",
+							"description": "操作人账号，包含匹配（子串）而非精确。"
 						}
 					},
 					{
@@ -5049,7 +5390,8 @@
 						"in": "query",
 						"required": false,
 						"schema": {
-							"type": "string"
+							"type": "string",
+							"description": "模块过滤。"
 						}
 					},
 					{
@@ -5058,7 +5400,8 @@
 						"required": false,
 						"schema": {
 							"type": "number",
-							"minimum": 1
+							"minimum": 1,
+							"description": "页码，从 1 起；非法值回落 1。"
 						}
 					},
 					{
@@ -5068,7 +5411,8 @@
 						"schema": {
 							"type": "number",
 							"minimum": 1,
-							"maximum": 200
+							"maximum": 200,
+							"description": "每页条数 1~200；非法值服务端再钳一次。"
 						}
 					}
 				],
@@ -5172,7 +5516,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "查询操作日志（分页，按时间倒序）。仅系统管理员可查全量。"
 			},
 			"post": {
 				"operationId": "system_oplog_post",
@@ -5194,20 +5539,25 @@
 								"properties": {
 									"action": {
 										"type": "string",
-										"minLength": 1
+										"minLength": 1,
+										"description": "动作标识（如 order.create）。"
 									},
 									"module": {
 										"type": "string",
-										"minLength": 1
+										"minLength": 1,
+										"description": "所属模块名。"
 									},
 									"version": {
-										"type": "string"
+										"type": "string",
+										"description": "动作发生的模块版本。"
 									},
 									"target": {
-										"type": "string"
+										"type": "string",
+										"description": "操作对象标识。"
 									},
 									"level": {
-										"type": "number"
+										"type": "number",
+										"description": "重要级别，数值越大越重要。"
 									}
 								}
 							}
@@ -5250,7 +5600,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "写入一条操作日志（登录态即可，解决方案模块用它记录自身操作）。只有 action 与 module 必填。"
 			}
 		},
 		"/api/system/permissions": {
@@ -5315,7 +5666,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "权限点全量列表（含 deprecated 标记，角色绑定编辑器据此标灰）。仅系统管理员。"
 			}
 		},
 		"/api/system/roles": {
@@ -5409,7 +5761,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "角色列表：内置 + 自定义角色，含持有者计数与权限绑定，是权限管理页的数据源。仅系统管理员。"
 			},
 			"post": {
 				"operationId": "system_roles_post",
@@ -5431,17 +5784,20 @@
 								"properties": {
 									"name": {
 										"type": "string",
-										"pattern": "^custom\\.[a-z0-9][a-z0-9-]*$"
+										"pattern": "^custom\\.[a-z0-9][a-z0-9-]*$",
+										"description": "角色标识，必须匹配 ^custom.[a-z0-9][a-z0-9-]*$。"
 									},
 									"title": {
 										"type": "string",
-										"minLength": 1
+										"minLength": 1,
+										"description": "角色显示名。"
 									},
 									"permissions": {
 										"type": "array",
 										"items": {
 											"type": "string"
-										}
+										},
+										"description": "初始权限点 code 数组。"
 									}
 								}
 							}
@@ -5488,7 +5844,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "新建自定义角色。角色名必须形如 custom.<小写字母数字与连字符>（内置角色用内置名，不能借此创建）。仅系统管理员。"
 			},
 			"delete": {
 				"operationId": "system_roles_delete",
@@ -5536,7 +5893,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "删除角色。仍有用户持有该角色时返回 409 并带回 holders 名单（AC1-20 占用禁删）；内置角色不可删。仅系统管理员。"
 			}
 		},
 		"/api/system/roles/bindings": {
@@ -5607,7 +5965,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "整集替换某角色的权限绑定（不是增量）。内置角色硬拒；摘掉绑定即等于对持有者紧急吊销权限（服务端会失效判权缓存）。仅系统管理员。"
 			}
 		},
 		"/api/system/settings": {
@@ -5720,7 +6079,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "按组列出系统设置项。secret 类设置的值恒为 ***（明文永不回显）。仅超级管理员。"
 			},
 			"put": {
 				"operationId": "system_settings_put",
@@ -5742,10 +6102,12 @@
 								"properties": {
 									"key": {
 										"type": "string",
-										"minLength": 1
+										"minLength": 1,
+										"description": "设置键（sys_setting.key）。"
 									},
 									"value": {
-										"type": "string"
+										"type": "string",
+										"description": "新值（一律按字符串写入）。"
 									}
 								}
 							}
@@ -5780,7 +6142,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "写入一项系统设置的值（写审计）。secret 类设置写入后读取面恒为 ***。仅超级管理员。"
 			}
 		},
 		"/api/system/users": {
@@ -5908,7 +6271,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "用户列表（不含口令哈希，service 已排除）。仅系统管理员。"
 			},
 			"post": {
 				"operationId": "system_users_post",
@@ -5930,17 +6294,21 @@
 								"properties": {
 									"username": {
 										"type": "string",
-										"minLength": 1
+										"minLength": 1,
+										"description": "登录账号名，全局唯一。"
 									},
 									"password": {
 										"type": "string",
-										"minLength": 6
+										"minLength": 6,
+										"description": "初始口令，至少 6 位。"
 									},
 									"displayName": {
-										"type": "string"
+										"type": "string",
+										"description": "显示名。"
 									},
 									"email": {
-										"type": "string"
+										"type": "string",
+										"description": "邮箱。"
 									}
 								}
 							}
@@ -5983,7 +6351,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "新建用户。用户名唯一；口令至少 6 位。仅系统管理员，且守卫禁止用本端点提权（改角色走 users/roles）。"
 			},
 			"delete": {
 				"operationId": "system_users_delete",
@@ -6038,7 +6407,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "删除用户，级联清理部门成员、角色与会话。最后一名超级管理员拒删。仅系统管理员，且不能删自己。"
 			}
 		},
 		"/api/system/users/forbidden": {
@@ -6105,7 +6475,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "禁用或解禁用户。禁用会级联删除其 refresh token（等于立即强退）。仅系统管理员，且不能操作自己。"
 			}
 		},
 		"/api/system/users/password": {
@@ -6173,7 +6544,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "管理员重置用户口令：置 must_change=1 并级联吊销该用户 refresh token（强制其重新登录改密）。仅系统管理员。"
 			}
 		},
 		"/api/system/users/profile": {
@@ -6205,19 +6577,22 @@
 										"type": [
 											"string",
 											"null"
-										]
+										],
+										"description": "显示名；传 null 表示清空。"
 									},
 									"email": {
 										"type": [
 											"string",
 											"null"
-										]
+										],
+										"description": "邮箱；传 null 表示清空。"
 									},
 									"position": {
 										"type": [
 											"string",
 											"null"
-										]
+										],
+										"description": "职务；传 null 表示清空。"
 									}
 								}
 							}
@@ -6260,7 +6635,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "修改用户资料（显示名 / 邮箱 / 职务）。用户名不在可改之列——它是外部身份的主键（如 wecom:<userid>），改名会让下次登录认错人。启停走 users/forbidden、改密走 users/password。仅系统管理员。"
 			}
 		},
 		"/api/system/users/roles": {
@@ -6330,7 +6706,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "整集替换用户角色（sys_user_role 权威源，写时失效判权缓存）。roles 传空数组即清空该用户全部角色。仅系统管理员。"
 			}
 		},
 		"/api/web/get-async-routes": {
@@ -6386,7 +6763,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "后端动态路由清单（宿主 RouteObject 形状）。本模板恒返回空数组——页面路由由前端静态注入；需要后端路由时按该形状返回。无入参。"
 			}
 		},
 		"/api/web/hello": {
@@ -6440,7 +6818,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "演示端点：回显 hello 文案与当前登录用户 id，用于验证鉴权链路与 dev 热更是否生效。无入参。"
 			}
 		},
 		"/api/web/user-info": {
@@ -6529,7 +6908,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "当前登录用户的前端资料：id / username / 显示名 / 头像 / 邮箱 / 手机 / 职务 / must_change / 角色。角色取自 sys_user_role 权威源，不在 JWT claims 里；前端登录后用本端点刷新 store。无入参。"
 			}
 		},
 		"/api/oj-market/install": {
@@ -6609,7 +6989,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "安装或升级一个解决方案（superadmin）。异步编排：立即返回 task_id，用 GET /oj-market/task?id= 轮询进度。包来源 source=cdn（市场目录）或 file（本机暂存）；发布方密钥未受信任时任务落 needs_trust，需先 POST /oj-market/trust 确认。force=true 可覆盖已装版本。"
 			}
 		},
 		"/api/oj-market/install/cancel": {
@@ -6678,7 +7059,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "请求取消进行中的安装任务（superadmin）。已完成的步骤不回滚；需要时重新安装即可（安装幂等）。"
 			}
 		},
 		"/api/oj-market/task": {
@@ -6728,7 +7110,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "轮询安装任务进度与终态（superadmin）。任务记录只保留最近 10 条，过期查询返回 404。"
 			}
 		},
 		"/api/oj-market/enable": {
@@ -6790,7 +7173,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "启用或停用已安装的解决方案（superadmin）。停用只摘路由与入口，不删业务数据。"
 			}
 		},
 		"/api/oj-market/meta": {
@@ -6835,7 +7219,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "市场元信息：仅返回 {apiVersion}，供 peerPlatform 做版本预检。登录即可读。"
 			}
 		},
 		"/api/oj-market/backfill": {
@@ -6849,6 +7234,20 @@
 				"responses": {
 					"200": {
 						"description": "OK"
+					}
+				},
+				"description": "站点侧市场目录回填（superadmin）：扫描 cdn/ 下的存量包 upsert 到 market_release。回填 = 恢复 = 对账三用同一逻辑，幂等可重入，不依赖 CLI。",
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"properties": {},
+								"additionalProperties": false,
+								"nullable": true
+							}
+						}
 					}
 				}
 			}
@@ -6900,7 +7299,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "上传离线安装包（.tgz，superadmin）。query 的 name 传完整文件名 <名称>-<版本>.tgz；包体走 multipart。未受信任的发布方密钥会让任务落 needs_trust。"
 			}
 		},
 		"/api/oj-market/trust": {
@@ -6940,7 +7340,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "列出信任库中的发布方公钥（superadmin），并回传信任库损坏提示（note，无损坏为 null）。"
 			},
 			"post": {
 				"operationId": "oj_market_trust_post",
@@ -6996,7 +7397,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "确认信任某个待审任务携带的发布方公钥（superadmin）。公钥与指纹从任务记录重取并复算比对；记录疑被篡改则 409，信任库零变化。任务不在 needs_trust 状态返回 409。"
 			}
 		},
 		"/api/oj-market/trust/key": {
@@ -7058,7 +7460,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "手工向信任库添加发布方公钥（superadmin）：key_id + public_key。适用于离线登记发布者。"
 			},
 			"delete": {
 				"operationId": "oj_market_trust_key_delete",
@@ -7106,7 +7509,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "从信任库吊销一个发布方公钥（superadmin）。吊销后其已装方案仍可运行，但深检会报 untrusted。"
 			}
 		},
 		"/api/oj-market/trust/review": {
@@ -7176,7 +7580,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "待信任审核列表（superadmin）：只列处于 needs_trust 且 key 尚未入库的任务，供发布管理页一次审批；审批动作复用 POST /oj-market/trust。"
 			}
 		},
 		"/api/oj-market/index": {
@@ -7260,7 +7665,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "市场索引聚合（登录即可读）：把目录、已装、可升级、信任态合成一个视图；写面仍限 superadmin。"
 			}
 		},
 		"/api/oj-market/catalog": {
@@ -7321,7 +7727,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "市场目录清单（匿名可读，分页 JSON）：可按关键词检索可安装的解决方案。"
 			}
 		},
 		"/api/oj-market/catalog/detail": {
@@ -7379,7 +7786,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "单个包的目录详情（匿名可读）；不传 version 即取最新版。"
 			}
 		},
 		"/api/oj-market/yank": {
@@ -7450,7 +7858,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "签名下线或恢复某个版本（发布者本人）。下线只从目录清单摘除并阻断新装/升级，不动已装方案；重复操作幂等。"
 			}
 		},
 		"/api/oj-market/uninstall-impact": {
@@ -7500,7 +7909,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "卸载影响面预检（superadmin）：返回受影响角色数与用户数，供前端二次确认；不改变任何状态。"
 			}
 		},
 		"/api/oj-market/uninstall": {
@@ -7558,7 +7968,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "卸载解决方案（superadmin）：只删代码/路由/权限/锁/sidecar，绝不删业务数据——受影响的业务表只回传名单供运维手工清理。"
 			}
 		},
 		"/api/oj-market/mcp/catalog": {
@@ -7672,7 +8083,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "MCP 工具目录代理（superadmin）：用浏览器登录态 JWT 透传调用上游 /mcp 的 tools/list，按 tags[0] 分组归一，并回带 status（mounted/unmounted/auth/unreachable）。页面「MCP 接入」据此生成配置。"
 			}
 		},
 		"/api/oj-market/history": {
@@ -7715,7 +8127,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "市场操作历史（登录即可读）：install / enable / disable / uninstall / upgrade / rollback 留痕，按时间与 id 倒序。历史表不可用时返回空数组，不阻断主流程。"
 			},
 			"delete": {
 				"operationId": "oj_market_history_delete",
@@ -7771,7 +8184,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "删除未安装成功的版本记录与残留目录（superadmin）。曾成功、当前生效或平台内置的版本会被拒绝，返回 {ok:false} 与原因。"
 			}
 		},
 		"/api/oj-market/releases": {
@@ -7789,7 +8203,8 @@
 						"required": false,
 						"schema": {
 							"type": "number",
-							"minimum": 1
+							"minimum": 1,
+							"description": "页码，从 1 起。"
 						}
 					},
 					{
@@ -7799,7 +8214,8 @@
 						"schema": {
 							"type": "number",
 							"minimum": 1,
-							"maximum": 200
+							"maximum": 200,
+							"description": "每页条数，1~200。"
 						}
 					}
 				],
@@ -7855,7 +8271,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "发布历史（登录即可读，分页，按发布时间倒序）。数据源为 market_release 目录表。"
 			}
 		},
 		"/api/oj-market/cdn/upload": {
@@ -7905,7 +8322,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "CDN 制品上传（发布者签名端点）。需用受信任的发布方私钥对 cdn-upload:<registryId>:<名称>:<sha256> 签名；服务端按实收字节重算 sha256 重构 canonical 验签，签名不符或超体积上限即拒。body 为 multipart 文件。"
 			}
 		},
 		"/api/oj-market/converge": {
@@ -7919,6 +8337,20 @@
 				"responses": {
 					"200": {
 						"description": "OK"
+					}
+				},
+				"description": "出厂收敛触发（仅 ojm dev/preview 派生的配置可用：靠请求头 x-ojm-converge-token 与部署变量比对，持有型证明）。生产站点无该变量时端点直接 404。幂等：与市场索引对账同一逻辑，已对齐即全 skip。",
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"properties": {},
+								"additionalProperties": false,
+								"nullable": true
+							}
+						}
 					}
 				}
 			}
@@ -7944,11 +8376,13 @@
 								"properties": {
 									"provider": {
 										"type": "string",
-										"minLength": 1
+										"minLength": 1,
+										"description": "身份提供方标识；企微场景固定为 \"wecom\"。"
 									},
 									"external_sub": {
 										"type": "string",
-										"minLength": 1
+										"minLength": 1,
+										"description": "提供方侧的用户唯一标识；企微场景为该员工 userid（对应 X-WeCom-User-Id）。"
 									}
 								}
 							}
@@ -7983,10 +8417,12 @@
 											],
 											"properties": {
 												"access_token": {
-													"type": "string"
+													"type": "string",
+													"description": "受托 token，有效期 10 分钟。仅用于调用 /api/mcp，不要长期缓存；收到 401 再重换，且每次重试只换一次。"
 												},
 												"expires_in": {
-													"type": "number"
+													"type": "number",
+													"description": "剩余有效秒数（约 600）。"
 												}
 											}
 										}
@@ -7995,7 +8431,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "机器人以服务凭据（svc token，Bearer）代表某个员工换取 10 分钟受托 token（OBO，线路 B）。调用方必须是 svc 身份（roles 含 bot），不能用人 token。provider 固定传 wecom，external_sub 传企微 userid。失败返回信封 code 40310（未绑定）/40311（已吊销）/40312（非机器人凭据）/40313（凭据停用），HTTP 均为 500——请按 code 分支，不要按状态码判断。"
 			}
 		},
 		"/api/system/bot-binding": {
@@ -8040,22 +8477,28 @@
 												],
 												"properties": {
 													"provider": {
-														"type": "string"
+														"type": "string",
+														"description": "外部渠道标识（企微固定 wecom）。"
 													},
 													"external_sub": {
-														"type": "string"
+														"type": "string",
+														"description": "外部渠道内的成员标识；企微为成员账号（如 E001827）。"
 													},
 													"user_id": {
-														"type": "string"
+														"type": "string",
+														"description": "映射到的本系统用户 id（users.id）。"
 													},
 													"last_used_at": {
-														"type": "number"
+														"type": "number",
+														"description": "最近一次换签使用时间（epoch 秒，0=从未使用）。"
 													},
 													"created_by": {
-														"type": "string"
+														"type": "string",
+														"description": "创建人用户 id。"
 													},
 													"created_at": {
-														"type": "number"
+														"type": "number",
+														"description": "创建时间（epoch 秒）。"
 													}
 												}
 											}
@@ -8065,7 +8508,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "列出本租户全部员工绑定（provider + external_sub → 本系统 user_id）。绑定决定机器人能以哪个员工身份行事，仅 superadmin 可读；用于核对「谁能被机器人代表」。"
 			},
 			"post": {
 				"operationId": "system_bot_binding_post",
@@ -8088,15 +8532,18 @@
 								"properties": {
 									"provider": {
 										"type": "string",
-										"minLength": 1
+										"minLength": 1,
+										"description": "外部渠道标识，企微固定传 wecom。"
 									},
 									"external_sub": {
 										"type": "string",
-										"minLength": 1
+										"minLength": 1,
+										"description": "外部成员标识；企微为成员账号，须与 X-WeCom-User-Id 完全一致。"
 									},
 									"user_id": {
 										"type": "string",
-										"minLength": 1
+										"minLength": 1,
+										"description": "映射到的本系统用户 id（users.id，数字的字符串形式）。"
 									}
 								}
 							}
@@ -8134,7 +8581,8 @@
 													"enum": [
 														"insert",
 														"update"
-													]
+													],
+													"description": "insert=新建绑定；update=覆盖已有绑定的 user_id。"
 												}
 											}
 										}
@@ -8143,7 +8591,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "新增或更新一条员工绑定（按 provider+external_sub upsert）。机器人 tools/call 时用企微注入的 X-WeCom-User-Id 匹配 external_sub 换签；未绑定返回 40310。"
 			},
 			"delete": {
 				"operationId": "system_bot_binding_delete",
@@ -8159,7 +8608,8 @@
 						"required": true,
 						"schema": {
 							"type": "string",
-							"minLength": 1
+							"minLength": 1,
+							"description": "外部渠道标识（企微固定 wecom）。"
 						}
 					},
 					{
@@ -8168,7 +8618,8 @@
 						"required": true,
 						"schema": {
 							"type": "string",
-							"minLength": 1
+							"minLength": 1,
+							"description": "要解绑的外部成员标识（企微成员账号）。"
 						}
 					}
 				],
@@ -8199,7 +8650,8 @@
 											],
 											"properties": {
 												"deleted": {
-													"type": "number"
+													"type": "number",
+													"description": "删除行数（1=已解绑）。"
 												}
 											}
 										}
@@ -8208,7 +8660,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "删除一条员工绑定（provider+external_sub）。删除后该成员再调 tools/call 会返回 40310 未绑定；行不存在返回 404。"
 			}
 		},
 		"/api/system/bot-binding/export": {
@@ -8223,7 +8676,8 @@
 					"200": {
 						"description": "OK"
 					}
-				}
+				},
+				"description": "以 CSV 附件导出本租户全部员工绑定（provider,external_sub,user_id），列序与 /system/bot-binding/import 完全一致，可直接 roundtrip 回导。仅 superadmin 可调用。审计/备份导出属敏感操作，请妥善保管产物。"
 			}
 		},
 		"/api/system/bot-binding/import": {
@@ -8245,7 +8699,8 @@
 								],
 								"properties": {
 									"csv": {
-										"type": "string"
+										"type": "string",
+										"description": "完整 CSV 文本，首行为表头 provider,external_sub,user_id，后续每行一条绑定；请勿传文件二进制。"
 									}
 								}
 							}
@@ -8281,16 +8736,19 @@
 											],
 											"properties": {
 												"imported": {
-													"type": "number"
+													"type": "number",
+													"description": "成功写入（新增或覆盖）的绑定条数。"
 												},
 												"skipped": {
 													"type": "array",
 													"items": {
 														"type": "string"
-													}
+													},
+													"description": "被跳过行的行号/原因摘要，供人工核对。"
 												},
 												"total": {
-													"type": "number"
+													"type": "number",
+													"description": "解析到的数据行总数（不含表头）。"
 												}
 											}
 										}
@@ -8299,7 +8757,89 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "用 CSV 全文批量导入员工绑定（provider + external_sub → 本系统 user_id），按 provider+external_sub upsert。CSV 首行必须是表头 provider,external_sub,user_id。仅 superadmin 可调用。整体行数受上传体积上限约束（不另设行数限制）。返回成功条数、被跳过行（格式错误或缺列）与总行数。"
+			}
+		},
+		"/api/system/bot-cleanup": {
+			"post": {
+				"operationId": "system_bot_cleanup_post",
+				"summary": "POST api/system/bot-cleanup",
+				"x-oj-file": "app/api/system/bot-cleanup/api.ts",
+				"tags": [
+					"system"
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"required": [
+									"confirm"
+								],
+								"properties": {
+									"confirm": {
+										"type": "boolean",
+										"enum": [
+											true
+										],
+										"description": "恒传 true 表示确认清空（防误触）。"
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"required": [
+												"svc_tokens",
+												"bindings",
+												"audit_rows"
+											],
+											"properties": {
+												"svc_tokens": {
+													"type": "number",
+													"description": "删除的服务凭据行数。"
+												},
+												"bindings": {
+													"type": "number",
+													"description": "删除的员工绑定行数。"
+												},
+												"audit_rows": {
+													"type": "number",
+													"description": "删除的换签审计行数。"
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				},
+				"description": "【危险·不可逆】清空当前租户的机器人接入数据：服务凭据（oj_svc_token）、员工绑定（oj_bot_binding）、换签审计（oj_obo_audit）三张表的本租户全部行，返回各表删除行数。用于卸载机器人接入或租户重置。仅 superadmin 可调用；租户边界由服务端注入，无法跨租户。body 必须显式传 {\"confirm\":true}，缺省或 false 一律 400。重复调用安全（第二次返回全 0）。注意：已签发的 10 分钟受托 token 是无状态 JWT，删除行无法即时吊销，最多需等其自然过期。"
 			}
 		},
 		"/api/system/obo-audit": {
@@ -8316,7 +8856,8 @@
 						"in": "query",
 						"required": false,
 						"schema": {
-							"type": "string"
+							"type": "string",
+							"description": "按服务凭据名做包含匹配（子串），留空为不过滤。"
 						}
 					},
 					{
@@ -8324,7 +8865,8 @@
 						"in": "query",
 						"required": false,
 						"schema": {
-							"type": "string"
+							"type": "string",
+							"description": "仅 \"1\"（成功）或 \"0\"（失败）生效，其他值忽略（不报错）。"
 						}
 					},
 					{
@@ -8333,7 +8875,8 @@
 						"required": false,
 						"schema": {
 							"type": "number",
-							"minimum": 1
+							"minimum": 1,
+							"description": "每页条数，默认 50。"
 						}
 					},
 					{
@@ -8342,7 +8885,8 @@
 						"required": false,
 						"schema": {
 							"type": "number",
-							"minimum": 1
+							"minimum": 1,
+							"description": "页码，从 1 开始，默认 1。"
 						}
 					}
 				],
@@ -8415,16 +8959,20 @@
 																"type": "number"
 															}
 														}
-													}
+													},
+													"description": "当前页审计行（按 id 倒序，最新在前）。"
 												},
 												"total": {
-													"type": "number"
+													"type": "number",
+													"description": "满足过滤条件的总行数。"
 												},
 												"pageSize": {
-													"type": "number"
+													"type": "number",
+													"description": "实际使用的每页条数。"
 												},
 												"current": {
-													"type": "number"
+													"type": "number",
+													"description": "实际使用的页码。"
 												}
 											}
 										}
@@ -8433,7 +8981,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "分页查询机器人换签（OBO）审计日志：每次 /api/auth/obo 调用无论成败都会留一行。仅 superadmin 可读。可按服务凭据名子串与成功/失败过滤。审计属安全敏感数据（D11），如需全量请走 /system/obo-audit/export。"
 			}
 		},
 		"/api/system/obo-audit/export": {
@@ -8448,7 +8997,8 @@
 					"200": {
 						"description": "OK"
 					}
-				}
+				},
+				"description": "以 CSV 附件全量导出机器人换签审计日志（id,svc,provider,external_sub,user_id,ok,reason,ts，按 id 倒序，不分页）。仅 superadmin 可调用。审计数据含员工标识，属安全敏感物料，请勿外传。"
 			}
 		},
 		"/api/system/service-token": {
@@ -8488,26 +9038,46 @@
 													"name",
 													"scopes",
 													"created_by",
-													"created_at"
+													"created_at",
+													"expires_at",
+													"status",
+													"grace_until"
 												],
 												"properties": {
 													"jti": {
-														"type": "string"
+														"type": "string",
+														"description": "凭据唯一 id（登记行主键，吊销与轮换都按它定位）。"
 													},
 													"name": {
-														"type": "string"
+														"type": "string",
+														"description": "凭据名称；本租户内同名重复签发会轮换旧凭据。"
 													},
 													"scopes": {
 														"type": "array",
 														"items": {
 															"type": "string"
-														}
+														},
+														"description": "档位：read / write / destructive。"
 													},
 													"created_by": {
-														"type": "string"
+														"type": "string",
+														"description": "签发人用户 id。"
 													},
 													"created_at": {
-														"type": "number"
+														"type": "number",
+														"description": "签发时间（epoch 秒）。"
+													},
+													"expires_at": {
+														"type": "number",
+														"description": "到期时间（epoch 秒）。到期后该凭据不可用，需重新签发。"
+													},
+													"status": {
+														"type": "string",
+														"description": "active=当前有效；superseded=已被同名重签发替换（仅宽限期内仍可用）。"
+													},
+													"grace_until": {
+														"type": "number",
+														"description": "superseded 行的宽限截止（epoch 秒）；0 表示不在宽限期。过期即失效。"
 													}
 												}
 											}
@@ -8517,7 +9087,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "列出本租户全部服务凭据（svc token）：jti、名称、档位、签发人与时间、到期时间、状态（active/superseded）与宽限截止。明文 token 永不回显（只在签发响应出现一次）。用于盘点到期待轮换的凭据。"
 			},
 			"post": {
 				"operationId": "system_service_token_post",
@@ -8538,7 +9109,8 @@
 								"properties": {
 									"name": {
 										"type": "string",
-										"minLength": 1
+										"minLength": 1,
+										"description": "凭据名称（本租户内的语义键；同名重签发会轮换旧凭据）。"
 									},
 									"scopes": {
 										"type": "array",
@@ -8549,7 +9121,14 @@
 												"write",
 												"destructive"
 											]
-										}
+										},
+										"description": "档位白名单：read=GET；write=POST/PUT/PATCH（含按 POST 发查询的路由）；destructive=DELETE。机器人代员工执行 tools/call 需 write。"
+									},
+									"ttl_days": {
+										"type": "integer",
+										"minimum": 0,
+										"maximum": 90,
+										"description": "有效期天数：0 或省略=长期固定（系统上限 90 天，到期需轮换）；1..90=对应天数。超过 90 被拒（400）。"
 									}
 								}
 							}
@@ -8584,10 +9163,12 @@
 											],
 											"properties": {
 												"token": {
-													"type": "string"
+													"type": "string",
+													"description": "凭据明文（Bearer 值），仅此一次返回，立即转存。"
 												},
 												"jti": {
-													"type": "string"
+													"type": "string",
+													"description": "凭据 id，后续吊销/对账用。"
 												}
 											}
 										}
@@ -8596,7 +9177,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "签发一张本租户服务凭据（svc token），供机器人/agent 直连 {base}/mcp。同名重复签发＝轮换：旧行自动置 superseded 并保留 24h 宽限（在途旧 bearer 仍可用），保证每 (租户, name) 至多一行 active。返回的 token 明文仅此一次，请立即转存；泄漏时用 DELETE 吊销。"
 			},
 			"delete": {
 				"operationId": "system_service_token_delete",
@@ -8612,7 +9194,8 @@
 						"required": true,
 						"schema": {
 							"type": "string",
-							"minLength": 1
+							"minLength": 1,
+							"description": "要吊销的凭据 jti（来自列表或签发响应）。"
 						}
 					}
 				],
@@ -8643,7 +9226,8 @@
 											],
 											"properties": {
 												"revoked": {
-													"type": "number"
+													"type": "number",
+													"description": "实际删除的登记行数（1=已吊销；0 行会按 404 返回）。"
 												}
 											}
 										}
@@ -8652,7 +9236,8 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "吊销一张服务凭据（按 jti 删除登记行）。网关 SvcGate 最长 30 秒内全网失效（fail-closed）；已签出的受托 token 不受影响（无状态，最长 10 分钟自然过期）。"
 			}
 		}
 	},
@@ -8683,6 +9268,9 @@
 		},
 		{
 			"name": "web"
+		},
+		{
+			"name": "wecom-bot"
 		}
 	]
 }

@@ -110,6 +110,10 @@ const notifications = {
 
 // 通知列表出参（data payload）：命名空间 id + 按人/广播 scope + 已读态 + 分类。
 // oj v0.1.72 起出参走平级 .response（.schema 只放 body 等入参）。
+notifications.get.schema = {
+	description: "当前用户的全部通知：按人通知与广播合并，命名空间 id（u: 按人 / b: 广播）。Bearer 守卫保护，只返回本人可见项。",
+};
+
 notifications.get.response = {
 	type: "array",
 	items: {
@@ -131,6 +135,7 @@ notifications.get.response = {
 
 // POST /api/notification/notifications/read —— body 仅需 id。
 notifications.read.post.schema = {
+	description: "把一条通知标记为已读。按人通知会校验归属，非本人返回 403；广播通知只记本人回执。",
 	body: {
 		type: "object",
 		required: ["id"],
@@ -140,7 +145,17 @@ notifications.read.post.schema = {
 notifications.read.post.response = { type: "null" };
 
 // read-all / clear：无入参、无返回体（json.ok(null)）——只声明出参，入参留空。
+notifications["read-all"].post.schema = {
+	body: { type: "object", nullable: true, properties: {}, additionalProperties: false },
+	description: "把当前用户的全部通知标记为已读。无入参、无返回体。",
+};
+
 notifications["read-all"].post.response = { type: "null" };
+notifications.clear.post.schema = {
+	body: { type: "object", nullable: true, properties: {}, additionalProperties: false },
+	description: "清空当前用户的通知：按人项物理删除，广播项逐条落「对我隐藏」标记（共享行不物理删，他人不受影响）。无入参、无返回体。",
+};
+
 notifications.clear.post.response = { type: "null" };
 
 // POST /api/notification/push —— 给指定用户推一条按人通知（发射原语 HTTP 入口）。
@@ -190,16 +205,17 @@ const push = {
 };
 
 push.post.schema = {
+	description: "给指定用户推一条按人通知（发射原语 HTTP 入口）。收件人过滤是发送方责任——原语不做业务判断。同进程模块可直接 import _shared/notify 调用，无需走 HTTP。",
 	body: {
 		type: "object",
 		required: ["title", "message"],
 		properties: {
-			userId: { type: ["string", "number"] },
-			title: { type: "string" },
-			message: { type: "string" },
-			link: { type: "string" },
-			avatar: { type: "string" },
-			category: { type: "string", enum: ["notice", "pm", "mention"] },
+			userId: { type: ["string", "number"], description: "收件人 user_id（字符串或数字）；缺省回落为当前用户。" },
+			title: { type: "string", description: "通知标题。" },
+			message: { type: "string", description: "通知正文。" },
+			link: { type: "string", description: "点击跳转地址。" },
+			avatar: { type: "string", description: "头像 URL。" },
+			category: { type: "string", enum: ["notice", "pm", "mention"], description: "分类：notice 通知 / pm 私信 / mention 提及。" },
 		},
 	},
 };
@@ -251,15 +267,16 @@ push.post.response = {
 };
 
 broadcast.post.schema = {
+	description: "广播一条通知（全员可见，只存一行 + 每人回执）。收件人范围由调用方保证；同进程模块可直接 import 原语。",
 	body: {
 		type: "object",
 		required: ["title", "message"],
 		properties: {
-			title: { type: "string" },
-			message: { type: "string" },
-			link: { type: "string" },
-			avatar: { type: "string" },
-			category: { type: "string", enum: ["notice", "pm", "mention"] },
+			title: { type: "string", description: "通知标题。" },
+			message: { type: "string", description: "通知正文。" },
+			link: { type: "string", description: "点击跳转地址。" },
+			avatar: { type: "string", description: "头像 URL。" },
+			category: { type: "string", enum: ["notice", "pm", "mention"], description: "分类：notice 通知 / pm 私信 / mention 提及。" },
 		},
 	},
 };

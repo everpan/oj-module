@@ -676,6 +676,20 @@ declare global {
 	// 部署期常量（config `vars:` 段；未声明的键恒 null）。
 	const vars: VarsApi;
 
+	// bridge：进程内 dispatch（R7，oj 0.1.131）。代理/编排 handler 的进程内转发用它而不是
+	// `fetch` 回环（后者并发 ≥ pool_size 全池挂死）。目标在隔离内部分发池执行，不占公共
+	// actor 槽；深度恒 1（嵌套 → 503），非流式（64MiB/30s 缓冲上限）。详见 api-manual §bridge。
+	// 调用本仓另一 endpoint（业务路由 / {base}/mcp / {base}/rpc / {base}/health）并返回标准
+	// `Response`；path 以 `/` 开头、可带 ?query，走本进程路由表，不支持绝对 URL。
+	const bridge: {
+		call(req: {
+			method: string
+			path: string
+			headers?: Record<string, string>
+			body?: string | Uint8Array
+		}): Promise<Response>
+	};
+
 	// ---- 大整数（v0.1.22；u64 见 v0.1.24；详见 docs/numeric-limits.md）----
 	// DB 的 i64 超出安全整数范围（|v| > 2^53-1，雪花 id 常态）时，读出来是**十进制字符串**；
 	// 写回去必须用 toBigInt()（字符串是文本意图，PG 上写 bigint 列会直接报错）。

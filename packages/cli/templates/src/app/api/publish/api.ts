@@ -154,12 +154,13 @@ export function createPublishApi(deps: PublishDeps) {
 		});
 	};
 	get.schema = {
+		description: "列出本租户已签发的发布凭证（只回 token_hint，明文永不回显）。仅返回未 soft-delete 的行，按创建时间倒序。",
 		query: {
 			type: "object",
 			properties: {
-				page: { type: "number", minimum: 1 },
-				limit: { type: "number", minimum: 1, maximum: 200 },
-				tenant: { type: "string" },
+				page: { type: "number", minimum: 1, description: "页码，从 1 起。" },
+				limit: { type: "number", minimum: 1, maximum: 200, description: "每页条数，1~200。" },
+				tenant: { type: "string", description: "目标租户（仅超管可跨租户查看）。" },
 			},
 		},
 	};
@@ -233,6 +234,7 @@ export function createPublishApi(deps: PublishDeps) {
 		});
 	};
 	post.schema = {
+		description: "签发一张发布凭证，供 CLI/CI 在无账号口令时兑换发布身份。明文 token 只在本次响应出现一次，务必当场保存；库内只存哈希与 hint。",
 		body: {
 			type: "object",
 			required: ["product"],
@@ -279,6 +281,7 @@ export function createPublishApi(deps: PublishDeps) {
 		});
 	};
 	revoke.schema = {
+		description: "撤销一张尚未兑换的发布凭证（本人或超管）。已兑换的不可撤销——凭证一旦换出身份就只能等它过期。",
 		body: { type: "object", required: ["id"], properties: { id: { type: "number" } } },
 	};
 	revoke.response = { type: "object", required: ["ok"], properties: { ok: { type: "boolean" } } };
@@ -328,6 +331,7 @@ export function createPublishApi(deps: PublishDeps) {
 		});
 	};
 	exchange.schema = {
+		description: "用发布凭证换取发布身份（匿名端点：凭证本身就是持有型证明）。token 一次性，用一条条件 UPDATE 原子抢所有权，并发双花只有一个成功；单 IP 每 10 分钟最多 20 次尝试。",
 		body: { type: "object", required: ["token"], properties: { token: { type: "string" } } },
 	};
 	exchange.response = {

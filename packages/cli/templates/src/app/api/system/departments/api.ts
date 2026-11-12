@@ -29,6 +29,10 @@ async function get() {
 		return depts.map(d => ({ ...d, memberCount: counts.get(d.id) ?? 0 }));
 	});
 }
+get.schema = {
+	description: "部门列表（管理端全量平表：含软删壳与同步不可见行，树由前端按 parentId 组装）。与共享读面 /_platform/org/tree 的口径不同：这里给管理员看全量。仅系统管理员。",
+};
+
 get.response = {
 	type: "array",
 	items: {
@@ -64,15 +68,16 @@ async function post() {
 	});
 }
 post.schema = {
+	description: "新建部门（管理端）。不给 parentId 即建在根下。仅系统管理员。",
 	body: {
 		type: "object",
 		required: ["name"],
 		properties: {
-			name: { type: "string", minLength: 1 },
+			name: { type: "string", minLength: 1, description: "部门名称，必填。" },
 			// 不给 parentId 即建在根下
-			parentId: { type: ["number", "null"] },
-			nameEn: { type: ["string", "null"] },
-			orderNo: { type: "number" },
+			parentId: { type: ["number", "null"], description: "父部门 id；null 或不传=根层。" },
+			nameEn: { type: ["string", "null"], description: "英文名。" },
+			orderNo: { type: "number", description: "同级排序号，越小越靠前。" },
 		},
 	},
 };
@@ -97,6 +102,7 @@ async function put() {
 	});
 }
 put.schema = {
+	description: "修改部门名称/英文名/排序。部门归属为外部同步（origin!=local）时拒绝（D13）；需要改请先 detach 转为本地维护。仅系统管理员。",
 	query: {
 		type: "object",
 		required: ["id"],
@@ -105,9 +111,9 @@ put.schema = {
 	body: {
 		type: "object",
 		properties: {
-			name: { type: "string", minLength: 1 },
-			nameEn: { type: ["string", "null"] },
-			orderNo: { type: "number" },
+			name: { type: "string", minLength: 1, description: "新名称；不传表示不改。" },
+			nameEn: { type: ["string", "null"], description: "新英文名；传 null 表示清空。" },
+			orderNo: { type: "number", description: "新排序号。" },
 		},
 	},
 };
@@ -127,6 +133,7 @@ async function del() {
 	});
 }
 del.schema = {
+	description: "删除部门：有子部门时拒绝；关联成员行一并清理。仅系统管理员。",
 	query: {
 		type: "object",
 		required: ["id"],

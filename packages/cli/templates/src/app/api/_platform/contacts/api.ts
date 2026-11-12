@@ -26,12 +26,13 @@ const handler = {
 
 // 入参：keyword 必填（服务层红线 2~64 字符），limit 可选（钳 200）
 handler.get.schema = {
+	description: "人员目录搜索（登录即可，无权限点）。keyword 必填且至少 2 字符（防枚举整份名册）；只返回 id/username/display_name，不含邮箱与头像——要详情请用 /_platform/contacts/detail。每用户 60 次/分钟限速。",
 	query: {
 		type: "object",
 		required: ["keyword"],
 		properties: {
-			keyword: { type: "string", minLength: 2 },
-			limit: { type: "number" },
+			keyword: { type: "string", minLength: 2, description: "搜索关键词，最少 2 字符，按姓名/账号子串匹配。" },
+			limit: { type: "number", description: "返回条数上限，服务端钳到 200。" },
 		},
 	},
 };

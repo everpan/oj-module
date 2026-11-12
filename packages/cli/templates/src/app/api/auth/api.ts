@@ -98,25 +98,27 @@ const password = {
 };
 // must_change 悬挂期唯一可用写端（AC1-27）；契约供 login/system 模板的改密 UI 使用
 password.put.schema = {
+	description: "自助改密：改本人密码，必须提供旧口令。must_change（首次登录/管理员重置后）悬挂期这是唯一可用的写端点。",
 	body: {
 		type: "object",
 		required: ["old_password", "new_password"],
 		properties: {
-			old_password: { type: "string", minLength: 1 },
-			new_password: { type: "string", minLength: 6 },
+			old_password: { type: "string", minLength: 1, description: "当前口令。" },
+			new_password: { type: "string", minLength: 6, description: "新口令，至少 6 位。" },
 		},
 	},
 };
 
 // 入参：本地账号口令（两种失败统一 401，不泄露账号状态——D14）
 login.post.schema = {
+	description: "本地账号口令登录（匿名端点）。账号不存在、口令错、账号停用统一返回 401（不泄露账号状态）；同一 IP+账号连续失败会触发 429 与指数退避。成功后返回 TokenBundle（access + refresh + 用户信息）。",
 	body: {
 		type: "object",
 		required: ["username", "password"],
 		properties: {
-			username: { type: "string", minLength: 1 },
-			password: { type: "string", minLength: 1 },
-			tenant: { type: "string" },
+			username: { type: "string", minLength: 1, description: "登录账号名。" },
+			password: { type: "string", minLength: 1, description: "登录口令（明文传输仅在 HTTPS 下）。" },
+			tenant: { type: "string", description: "租户标识，缺省 default。" },
 		},
 	},
 };
@@ -124,6 +126,7 @@ login.post.response = tokenBundle;
 
 // 登出：吊销给定 refresh 串（无业务返回体）
 logout.post.schema = {
+	description: "吊销传入的 refresh token。注意 access token 在到期前仍然有效——这是既定的无状态 JWT 语义。",
 	body: {
 		type: "object",
 		required: ["refresh_token"],
@@ -134,6 +137,7 @@ logout.post.response = { type: "null" };
 
 // 刷新：旧串轮换（reuse 检测在 service 内）
 refresh.post.schema = {
+	description: "用 refresh token 换新会话（轮换：旧串立即失效）。服务层检测到旧串被复用会吊销整族并记审计。",
 	body: {
 		type: "object",
 		required: ["refresh_token"],

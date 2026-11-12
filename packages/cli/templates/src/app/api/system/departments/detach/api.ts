@@ -19,6 +19,7 @@ async function post() {
 	});
 }
 post.schema = {
+	description: "把部门转为本地维护（origin → local）：此后可自由改名/移动/删除，且后续同步轮次不再改写它。这是外部源只给残缺数据（如未授权部门名）时的唯一出路；反向操作不提供（转回去下一次同步立刻被覆盖）。仅系统管理员。",
 	query: {
 		type: "object",
 		required: ["id"],

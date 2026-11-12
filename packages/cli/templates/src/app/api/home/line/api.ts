@@ -42,6 +42,7 @@ const line = {
 };
 
 line.post.schema = {
+	description: "首页折线图数据：按 range 取窗口内逐日 SUM(value)，缺失日补 0；窗口内完全没有数据时回落确定式趋势，保证图表非空。返回与日序对齐的数字数组。",
 	body: {
 		type: "object",
 		required: ["range"],

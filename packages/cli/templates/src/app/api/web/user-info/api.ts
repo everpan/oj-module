@@ -37,6 +37,10 @@ const handler = {
 };
 
 // 出参：登录链用户资料（roles 出自 sys_user_role，permissions 预留恒空）
+handler.get.schema = {
+	description: "当前登录用户的前端资料：id / username / 显示名 / 头像 / 邮箱 / 手机 / 职务 / must_change / 角色。角色取自 sys_user_role 权威源，不在 JWT claims 里；前端登录后用本端点刷新 store。无入参。",
+};
+
 handler.get.response = {
 	type: "object",
 	required: ["id", "avatar", "username", "displayName", "email", "phoneNumber", "description", "roles", "mustChange", "permissions"],

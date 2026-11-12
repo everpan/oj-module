@@ -377,8 +377,8 @@ async function sealJwtSecret(destDir: string, report: InitReport, seal: Sealer =
  *
  * 白名单语义（init.include.yaml）：清单内路径整棵拷贝；清单外一律不拷、不计入
  * created/skipped（demo 模块/模板自运行产物/元数据的大头在清单外）。清单外的
- * 目录仅在「有收录子孙」时才穿行（如 `api/`、`web/src/`、`web/src/demo/`——
- * 只收录了后者底下的 entry/locales/pages），穿行时未收录的子项继续被挡下。
+ * 目录仅在「有收录子孙」时才穿行（如 `src/`、`src/app/web/`——只收录了后者底下的
+ * entry/locales/pages 等子项），穿行时未收录的子项继续被挡下。
  *
  * `restore`（--yes）：上游自治保护根（scaffold-guard.PROTECTED_ROOTS）内的
  * 已存在文件改为覆盖写入——这是默认方案的显式恢复入口，其余文件仍不覆盖。

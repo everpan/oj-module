@@ -337,11 +337,12 @@ const ticket = {
 	},
 };
 ticket.post.schema = {
+	description: "用企微登录回跳下发的一次性票据换 TokenBundle（token 不进 URL）。票据一次性且短时有效，重复使用即失败；请在拿到 ticket 后立即兑换。",
 	body: {
 		type: "object",
 		required: ["ticket"],
 		properties: {
-			ticket: { type: "string", minLength: 32, maxLength: 128 },
+			ticket: { type: "string", minLength: 32, maxLength: 128, description: "回调下发的一次性登录票据（32~128 字符）。" },
 		},
 	},
 };
@@ -463,6 +464,53 @@ const event = {
 			failWith(e);
 		}
 	},
+};
+
+login.get.schema = {
+	query: {
+		type: "object",
+		properties: {
+			corp: { type: "string", description: "企业 corpId；不传则从已安装档案自动解析（单企业部署可省略）。" },
+			agent: { type: "string", description: "应用 agentId；多应用企业用它指定走哪个应用，不传取默认。" },
+		},
+	},
+	description: "【浏览器端点，非工具调用】发起企微 OAuth 授权：302 跳到企微授权页。企微内静默授权、浏览器扫码由 UA 决定。",
+};
+
+callback.get.schema = {
+	query: {
+		type: "object",
+		properties: {
+			code: { type: "string", description: "企微授权码；用户点「拒绝」时不会下发，此时 handler 走失败回跳。" },
+			state: { type: "string", description: "发起授权时写入的一次性 state，取即删（防重放）。" },
+		},
+	},
+	description: "【浏览器端点，非工具调用】企微授权回跳处理：code → userid → JIT 建号 → 签发一次性票据 → 302 回 SPA。失败也走 302 带错误码，不返回 JSON 信封。",
+};
+
+event.get.schema = {
+	query: {
+		type: "object",
+		properties: {
+			msg_signature: { type: "string", description: "企微回调签名，校验不通过即拒。" },
+			timestamp: { type: "string", description: "签名时间戳，与 nonce 一起做重放防护。" },
+			nonce: { type: "string", description: "签名随机串。" },
+			echostr: { type: "string", description: "URL 验证密文，解密后需原样纯文本回写。" },
+		},
+	},
+	description: "【企微回调端点，非工具调用】企微回调 URL 验证：解密 echostr 后以纯文本原样回写（JSON 信封会被判失败）。",
+};
+
+event.post.schema = {
+	query: {
+		type: "object",
+		properties: {
+			msg_signature: { type: "string", description: "企微回调签名，校验不通过即拒。" },
+			timestamp: { type: "string", description: "签名时间戳，与 nonce 一起做重放防护。" },
+			nonce: { type: "string", description: "签名随机串。" },
+		},
+	},
+	description: "【企微回调端点，非工具调用】企微事件入口：代开发指令事件与自建应用通讯录变更。必须回纯文本 success，否则企微判失败并重推三次。",
 };
 
 export default { login, callback, ticket, event };

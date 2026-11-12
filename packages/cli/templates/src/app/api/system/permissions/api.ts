@@ -9,6 +9,10 @@ async function get() {
 		return listPermissions();
 	});
 }
+get.schema = {
+	description: "权限点全量列表（含 deprecated 标记，角色绑定编辑器据此标灰）。仅系统管理员。",
+};
+
 get.response = {
 	type: "array",
 	items: {

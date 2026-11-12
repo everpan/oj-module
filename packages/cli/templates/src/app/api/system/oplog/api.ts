@@ -12,17 +12,18 @@ async function get() {
 	});
 }
 get.schema = {
+	description: "查询操作日志（分页，按时间倒序）。仅系统管理员可查全量。",
 	query: {
 		type: "object",
 		properties: {
-			action: { type: "string" },
+			action: { type: "string", description: "动作名过滤。" },
 			// username 包含匹配（子串，service 走 contains），非精确
-			username: { type: "string" },
-			module: { type: "string" },
+			username: { type: "string", description: "操作人账号，包含匹配（子串）而非精确。" },
+			module: { type: "string", description: "模块过滤。" },
 			// 页码（1 起）；service 的 pageArgs 非法回落 1
-			page: { type: "number", minimum: 1 },
+			page: { type: "number", minimum: 1, description: "页码，从 1 起；非法值回落 1。" },
 			// 每页条数 1~200（schema 兜住；service 的 pageArgs 再钳一次）
-			limit: { type: "number", minimum: 1, maximum: 200 },
+			limit: { type: "number", minimum: 1, maximum: 200, description: "每页条数 1~200；非法值服务端再钳一次。" },
 		},
 	},
 };
@@ -76,15 +77,16 @@ async function post() {
 	});
 }
 post.schema = {
+	description: "写入一条操作日志（登录态即可，解决方案模块用它记录自身操作）。只有 action 与 module 必填。",
 	body: {
 		type: "object",
 		required: ["action", "module"],
 		properties: {
-			action: { type: "string", minLength: 1 },
-			module: { type: "string", minLength: 1 },
-			version: { type: "string" },
-			target: { type: "string" },
-			level: { type: "number" },
+			action: { type: "string", minLength: 1, description: "动作标识（如 order.create）。" },
+			module: { type: "string", minLength: 1, description: "所属模块名。" },
+			version: { type: "string", description: "动作发生的模块版本。" },
+			target: { type: "string", description: "操作对象标识。" },
+			level: { type: "number", description: "重要级别，数值越大越重要。" },
 		},
 	},
 };

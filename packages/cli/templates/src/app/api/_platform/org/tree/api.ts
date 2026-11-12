@@ -27,6 +27,7 @@ async function get() {
 	});
 }
 get.schema = {
+	description: "部门树（以平表返回，前端按 parentId 组装；契约 IR 不支持递归 schema）。只含存活且同步可见的部门——软删行与失去可见范围的行不出，那是管理端 /api/system/departments 的事。",
 	query: {
 		type: "object",
 		properties: { scope: { type: "string", enum: ["self", "all"] } },

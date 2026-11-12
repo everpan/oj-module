@@ -7,14 +7,17 @@
 //
 // 覆盖 0.1.81/0.1.82 构造器迁移的关键行为：
 //   ① settings 真构造器（IN + LIMIT）——vitest 侧同源码 5 个用例红海的对照面；
-//   ② demo/todos：whereIf 真跳过（无 keyword 不过滤）+ contains 真渲染（%kw% + 元字符转义）；
-//   ③ notification：join ON 值条件 + UNION ALL + 字面量列 {lit,as} 的真渲染（场景 41 同款）。
+//   ② notification：join ON 值条件 + UNION ALL + 字面量列 {lit,as} 的真渲染（场景 41 同款）。
+//
+// 已移除：原「demo/todos whereIf + contains」3 条——demo 模块 2026-11-02 整体下线
+// （ecc7b35e1），路由已不存在，用例恒 404；其覆盖面（whereIf 跳过 / contains 转义）
+// 现由 oplog 的 username 过滤承担，见 src/app/api/_platform/_shared/service/infra/oplog.ts。
 //
 // 登录账号：fixtures 的 l1tester（src/_platform/fixtures/l1-test-user.sql，仅 oj test 灌入）。
 // 不用 seed 的 admin 等开发账号：初始口令 aA123456 会随用户在 dev 库改密漂移——
 // L1 绑 seed 账号曾实测 401。l1tester 为 additive 专用账号（must_change=0）。
 //
-// 运行：cd packages/cli/templates/api && ~/.local/share/oj/oj test -c config.yaml -d src -t tests
+// 运行：cd packages/cli/templates && oj test --module-root src -c config.yaml
 
 const L1_USER = { username: "l1tester", password: "l1test1234" };
 const asL1 = async () => ({ Authorization: `Bearer ${await client.login(L1_USER.username, L1_USER.password)}` });
@@ -27,31 +30,6 @@ describe("l1：0.1.81/0.1.82 构造器迁移真执行面", () => {
 		expect(body.code).toBe(0);
 		expect(Array.isArray(body.data.methods)).toBeTruthy();
 		expect(body.data.methods).toContain("local");
-	});
-
-	it("demo/todos 无 keyword：whereIf 真跳过（不发射条件），全量 4 条", async () => {
-		const h = await asL1();
-		const r = await client.get("/demo/todos", { headers: h });
-		expect(r.status).toBe(200);
-		const body = JSON.parse(r.body);
-		expect(body.data.total).toBe(4);
-		expect(body.data.list.length).toBe(4); // L1 expect 无 toHaveLength（契约见 api-manual §9）
-	});
-
-	it("demo/todos keyword=契约：contains 真渲染（%kw%）精确命中 1 条", async () => {
-		const h = await asL1();
-		const r = await client.get(`/demo/todos?keyword=${encodeURIComponent("契约")}`, { headers: h });
-		expect(r.status).toBe(200);
-		const body = JSON.parse(r.body);
-		expect(body.data.total).toBe(1);
-		expect(String(body.data.list[0].title)).toContain("契约");
-	});
-
-	it("demo/todos keyword=%：LIKE 元字符经引擎转义不泛化（0 命中且不炸）", async () => {
-		const h = await asL1();
-		const r = await client.get(`/demo/todos?keyword=${encodeURIComponent("%")}`, { headers: h });
-		expect(r.status).toBe(200);
-		expect(JSON.parse(r.body).data.total).toBe(0);
 	});
 
 	it("notification 列表：join ON 值条件 + UNION + 字面量 scope 列真渲染，按人/广播分流", async () => {

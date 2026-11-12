@@ -15,6 +15,10 @@ async function get() {
 		return listRoles();
 	});
 }
+get.schema = {
+	description: "角色列表：内置 + 自定义角色，含持有者计数与权限绑定，是权限管理页的数据源。仅系统管理员。",
+};
+
 get.response = {
 	type: "array",
 	items: {
@@ -42,13 +46,14 @@ async function post() {
 	});
 }
 post.schema = {
+	description: "新建自定义角色。角色名必须形如 custom.<小写字母数字与连字符>（内置角色用内置名，不能借此创建）。仅系统管理员。",
 	body: {
 		type: "object",
 		required: ["name", "title"],
 		properties: {
-			name: { type: "string", pattern: "^custom\\.[a-z0-9][a-z0-9-]*$" },
-			title: { type: "string", minLength: 1 },
-			permissions: { type: "array", items: { type: "string" } },
+			name: { type: "string", pattern: "^custom\\.[a-z0-9][a-z0-9-]*$", description: "角色标识，必须匹配 ^custom.[a-z0-9][a-z0-9-]*$。" },
+			title: { type: "string", minLength: 1, description: "角色显示名。" },
+			permissions: { type: "array", items: { type: "string" }, description: "初始权限点 code 数组。" },
 		},
 	},
 };
@@ -66,6 +71,7 @@ async function del() {
 	});
 }
 del.schema = {
+	description: "删除角色。仍有用户持有该角色时返回 409 并带回 holders 名单（AC1-20 占用禁删）；内置角色不可删。仅系统管理员。",
 	query: {
 		type: "object",
 		required: ["name"],

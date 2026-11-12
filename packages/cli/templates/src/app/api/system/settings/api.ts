@@ -27,6 +27,10 @@ async function get() {
 		return listSettings();
 	});
 }
+get.schema = {
+	description: "按组列出系统设置项。secret 类设置的值恒为 ***（明文永不回显）。仅超级管理员。",
+};
+
 get.response = {
 	type: "array",
 	items: {
@@ -47,12 +51,13 @@ async function put() {
 	});
 }
 put.schema = {
+	description: "写入一项系统设置的值（写审计）。secret 类设置写入后读取面恒为 ***。仅超级管理员。",
 	body: {
 		type: "object",
 		required: ["key", "value"],
 		properties: {
-			key: { type: "string", minLength: 1 },
-			value: { type: "string" },
+			key: { type: "string", minLength: 1, description: "设置键（sys_setting.key）。" },
+			value: { type: "string", description: "新值（一律按字符串写入）。" },
 		},
 	},
 };

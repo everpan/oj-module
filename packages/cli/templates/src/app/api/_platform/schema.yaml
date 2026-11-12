@@ -247,6 +247,21 @@ tables:
       scopes: {type: text, null: false}
       created_by: {type: text, null: false}
       created_at: {type: integer, null: false}
+      # 到期时间戳（秒）：签发时 = created_at + ttl_secs；长期令牌 = created_at + 90d。
+      # 供前端到期看板 / 批量轮换导出（K6 缓解），不依赖解 JWT 取 exp。
+      expires_at: {type: integer, null: false}
+      # v0.1.132 SvcGate/rotate 契约列：status ∈ {active,superseded}，缺省=active；
+      # grace_until 为 epoch 秒，仅 superseded 宽限期内 > now（24h 活门票，止血用 DELETE 删行）。
+      # 改列须三处同步（migrations/0009 / 本文件 / 消费端 domain/bot.ts）。
+      status: {type: text, null: false}
+      grace_until: {type: integer, null: false}
+      # 注意：本模板**刻意不存** oj 规范表有的 `token` 明文列。oj 规范 `oj_svc_token`
+      # （sample/src/admin/schema.yaml）自 v0.1.132 起 `token` 落明文，供内置
+      # POST /v1/api/system/service-token/rotate · GET .../current 跨重启恢复——但本模板运行时
+      # 这两端点经 `system/service-token` 模块整段遮蔽（oj test 探针实测均 404），内置并不会写本表；
+      # 我们只在 POST 响应回明文一次、绝不落库，暴露面更小。若日后要接 R6 式自轮换，在本仓自实现
+      # rotate/current（沿用无明文落库姿态），勿为对齐 oj 规范而加 `token` 明文列。
+      # DB 导出/备份仍须按凭据物料管控：jti+status 即核销真相源，拿到库 = 可 DELETE 行即时吊销。
   oj_bot_binding:
     pk: [tenant_id, provider, external_sub]
     columns:

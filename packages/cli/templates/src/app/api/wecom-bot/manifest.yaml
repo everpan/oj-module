@@ -1,0 +1,6 @@
+name: wecom-bot
+desc: 企微普通模式机器人代理（/api/wecom-bot/*）：进程内代理访问 /api/mcp（多租户 + 按用户权限）。业务编排层，复用 _platform 的 bot 共享内核（obo 换签 / svc 凭据）。
+version: 0.1.0
+deps:
+  # 复用 _platform 的 bot 共享内核（#/_platform/_shared/service/domain/bot 三表访问 / obo 码表）。
+  _platform: ^0.1.0

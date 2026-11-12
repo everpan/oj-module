@@ -14,19 +14,22 @@ async function post() {
 	});
 }
 post.schema = {
+	description: "用 CSV 全文批量导入员工绑定（provider + external_sub → 本系统 user_id），按 provider+external_sub upsert。CSV 首行必须是表头 provider,external_sub,user_id。仅 superadmin 可调用。整体行数受上传体积上限约束（不另设行数限制）。返回成功条数、被跳过行（格式错误或缺列）与总行数。",
 	body: {
 		type: "object",
 		required: ["csv"],
-		properties: { csv: { type: "string" } },
+		properties: {
+			csv: { type: "string", description: "完整 CSV 文本，首行为表头 provider,external_sub,user_id，后续每行一条绑定；请勿传文件二进制。" },
+		},
 	},
 };
 post.response = {
 	type: "object",
 	required: ["imported", "skipped", "total"],
 	properties: {
-		imported: { type: "number" },
-		skipped: { type: "array", items: { type: "string" } },
-		total: { type: "number" },
+		imported: { type: "number", description: "成功写入（新增或覆盖）的绑定条数。" },
+		skipped: { type: "array", items: { type: "string" }, description: "被跳过行的行号/原因摘要，供人工核对。" },
+		total: { type: "number", description: "解析到的数据行总数（不含表头）。" },
 	},
 };
 

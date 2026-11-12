@@ -13,14 +13,15 @@ async function get() {
 	});
 }
 get.schema = {
+	description: "判断某人是否在指定部门下（含子部门）。按部门做访问控制/路由时用它，不要自己拉树递归。scope=self 只能问自己，问别人返回 403。",
 	query: {
 		type: "object",
 		required: ["dept"],
 		properties: {
-			scope: { type: "string", enum: ["self", "all"] },
+			scope: { type: "string", enum: ["self", "all"], description: "读取范围：self=仅本人可见范围；all=全租户。" },
 			// 不给 uid 即问自己
-			uid: { type: "number" },
-			dept: { type: "number" },
+			uid: { type: "number", description: "要判断的 user_id；不传即问自己。" },
+			dept: { type: "number", description: "部门 id（含其子部门一起判断）。" },
 		},
 	},
 };

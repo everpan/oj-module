@@ -10,6 +10,10 @@ const handler = {
 };
 
 // 出参：演示端点（hello 文案 + 当前用户 id）
+handler.get.schema = {
+	description: "演示端点：回显 hello 文案与当前登录用户 id，用于验证鉴权链路与 dev 热更是否生效。无入参。",
+};
+
 handler.get.response = {
 	type: "object",
 	required: ["message", "user"],

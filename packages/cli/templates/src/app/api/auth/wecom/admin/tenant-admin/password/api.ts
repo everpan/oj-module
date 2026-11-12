@@ -42,12 +42,13 @@ async function post() {
 }
 
 post.schema = {
+	description: "为指定企业（corpId）开通租户管理员或重置其口令。开通后 must_change=true，本人首次登录必须改密。",
 	body: {
 		type: "object",
 		required: ["corpId", "password"],
 		properties: {
-			corpId: { type: "string", minLength: 1 },
-			password: { type: "string", minLength: 6 },
+			corpId: { type: "string", minLength: 1, description: "企业 corpId。" },
+			password: { type: "string", minLength: 6, description: "初始口令，至少 6 位。" },
 		},
 	},
 };

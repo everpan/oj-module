@@ -17,6 +17,7 @@ async function get() {
 }
 
 get.schema = {
+	description: "查询某企业（corpId）的租户管理员账号状态：固定账号名、是否已开通、是否仍须改密。",
 	query: {
 		type: "object",
 		required: ["corpId"],

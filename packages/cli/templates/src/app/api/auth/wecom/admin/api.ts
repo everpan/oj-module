@@ -23,6 +23,10 @@ async function get() {
 		return listApps();
 	});
 }
+get.schema = {
+	description: "列出全部已授权企业 × 应用（跨租户，仅超级管理员）。不含 permanent_code，应用 secret 不出库；同一家企业可能同时有代开发与自建两行（迁移期）。",
+};
+
 get.response = {
 	type: "array",
 	items: {
@@ -86,6 +90,10 @@ const overview = {
 		});
 	},
 };
+overview.get.schema = {
+	description: "企微接入部署概览（跨租户，仅超级管理员）：已配置的接入形态、配置自检错误、回调地址、本企业 corpId/agentId、自建应用回调凭据是否配齐。配错时不报 400，而是把缺什么放进 configError，供后台页面展示。",
+};
+
 overview.get.response = {
 	type: "object",
 	required: ["kinds", "configError", "callbackUrl", "corpId", "agentId", "corpCallbackConfigured"],
@@ -134,13 +142,14 @@ const status = {
 	},
 };
 status.post.schema = {
+	description: "启用/停用某企业（corpId + agentId）的接入。停用会级联吊销该企业已签发的会话。跨租户的站点级操作，仅超级管理员。",
 	body: {
 		type: "object",
 		required: ["corpId", "agentId", "status"],
 		properties: {
-			corpId: { type: "string", minLength: 1 },
-			agentId: { type: "string", minLength: 1 },
-			status: { type: "string", enum: ["active", "disabled"] },
+			corpId: { type: "string", minLength: 1, description: "企业 corpId。" },
+			agentId: { type: "string", minLength: 1, description: "应用 agentId。" },
+			status: { type: "string", enum: ["active", "disabled"], description: "目标状态：active 启用 / disabled 停用（停用即强退）。" },
 		},
 	},
 };
@@ -171,6 +180,16 @@ const install = {
 		});
 	},
 };
+install.get.schema = {
+	query: {
+		type: "object",
+		properties: {
+			state: { type: "string", description: "可选的不透明状态串，原样带回安装回调。" },
+		},
+	},
+	description: "生成代开发应用的安装链接（跨租户，仅超级管理员）。链接不缓存，每次调用现换；顺带返回需逐字填入服务商后台「指令回调」的 URL。仅代开发形态可用。",
+};
+
 install.get.response = {
 	type: "object",
 	required: ["installUrl", "callbackUrl", "expiresIn"],
@@ -208,6 +227,11 @@ const connect = {
 		});
 	},
 };
+connect.post.schema = {
+	body: { type: "object", nullable: true, properties: {}, additionalProperties: false },
+	description: "把本部署的自建应用接入本站（跨租户，仅超级管理员）。四步校验全过才落库，幂等——换过 Secret 必须重新调用。未配置 corp 凭据的部署直接 400。",
+};
+
 connect.post.response = {
 	type: "object",
 	required: ["corpId", "agentId", "departments", "members"],

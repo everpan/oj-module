@@ -22,4 +22,9 @@ async function get(): Promise<void> {
 	s.end();
 }
 
+// 仅声明工具说明：json.stream 绕过信封，不能声明 .response（api-manual §14）。
+get.schema = {
+	description: "以 CSV 附件导出本租户全部员工绑定（provider,external_sub,user_id），列序与 /system/bot-binding/import 完全一致，可直接 roundtrip 回导。仅 superadmin 可调用。审计/备份导出属敏感操作，请妥善保管产物。",
+};
+
 export default { get };

@@ -343,7 +343,9 @@
 			"token": "Service Tokens",
 			"binding": "Employee Bindings",
 			"audit": "OBO Audit",
-			"guide": "Integration Guide"
+			"guide": "Integration Guide",
+			"plugin": "Plugin Config",
+			"maintenance": "Maintenance"
 		},
 		"common": {
 			"copy": "Copy",
@@ -369,13 +371,24 @@
 			"revokeConfirm": "Revoking removes the jti from the registry immediately (cache settles in ~30s). Continue?",
 			"revoked": "Revoked",
 			"empty": "No service tokens",
+			"expired": "Expired {{d}}d ago",
+			"daysLeftShort": "{{d}}d left",
+			"daysLeftLong": "{{d}}d left",
+			"exportDue": "Export due ({{n}})",
+			"emptyDue": "No credentials due for rotation",
+			"exportDueOk": "Exported {{n}} credentials due for rotation",
+			"filterAll": "All ({{n}})",
+			"filterDue": "Due ({{n}})",
 			"columns": {
 				"name": "Name",
 				"jti": "jti",
 				"scopes": "Scopes",
 				"createdBy": "Issued by",
 				"createdAt": "Issued at",
-				"actions": "Actions"
+				"actions": "Actions",
+				"expiresAt": "Expires at",
+				"daysLeft": "Days left",
+				"status": "Status"
 			},
 			"scope": {
 				"read": "read",
@@ -446,18 +459,42 @@
 		"guide": {
 			"tenantNote": "This template has tenant strong-binding enabled (require_signed_claim): the bot credential (svc token) is issued by this tenant's admin on this page, and the token already embeds this tenant's claim. The callback / OBO exchange (/auth/obo) / tool calls (/mcp tools/call) only need to present this Bearer credential — oj treats the token's tenant claim as the request tenant, so the X-TENANT-ID header must match it, or be omitted so the framework derives it from the token. The devkit mcp-bot-guide sample defaults to single-tenant with no such claim, so make sure you use the svc token issued by this tenant, otherwise it is rejected with 403 tenant header does not match signed claim.",
 			"mcpTitle": "1. Enable the MCP endpoint",
-			"mcpHint": "The template ships with server.mcp.enabled: false (fail-closed). Follow the enable steps on the MCP Services page to set it to true before the bot can reach {base}/mcp; installing a solution auto-registers its name into the modules allowlist, and only allowlisted tools are exposed.",
+			"mcpHint": "The template ships with server.mcp.enabled: false (fail-closed). Enable it on the MCP Services page before the bot can reach {base}/mcp; installing a solution auto-registers its name into the modules allowlist, and only allowlisted tools are exposed. The 'Plugin Config' tab generates the WeCom-side plugin config for you.",
 			"configTitle": "config.yaml snippet",
 			"configCopy": "Copy config snippet",
-			"botTitle": "2. Group-chat scenario & callback skeleton",
-			"botHint": "\"Group chat\" is a usage scenario, not a new entity: an employee @-mentions the bot in a group and the bot reads/writes data on their behalf. No group-chat registry is needed. Handle callbacks in this order:",
-			"steps": "① Ack within 5 seconds to avoid IM timeout redelivery.\n② Deduplicate by MsgId (kv.incr) so a message is never processed twice.\n③ Read vars.WECOM_BOT_SVC_TOKEN and POST /v1/api/auth/obo (provider + external_sub) for a 10-minute delegated token.\n④ With that token, POST /v1/api/mcp to call tools/call: send Accept: application/json; arguments are always the path/query/body triple.\n⑤ Render the result into a Chinese reply template and post it back; business errors are isError: true with a [code=<n>] prefix, not JSON-RPC errors.\n⑥ On a 401 from the delegated token, exchange once more; never cache tools/list across sessions.",
+			"botTitle": "2. Normal-mode MCP plugin onboarding",
+			"botHint": "A WeCom normal-mode bot becomes callable by everyone via one MCP plugin. The plugin URL goes through this template's in-process proxy /api/wecom-bot/mcp (the same path is shared across tenants; the tenant is chosen by the Bearer). The 'Plugin Config' tab already generates a copyable config block for the current tenant.",
+			"steps": "① On the Service Tokens tab, issue an svc token for this tenant (read/write, not destructive).\n② Switch to the Plugin Config tab, pick the token you just issued, and copy the generated plugin config.\n③ In the WeCom admin console, create an MCP plugin: type MCP, transport Streamable HTTP, URL = /api/wecom-bot/mcp under this tenant's enterprise domain.\n④ Auth method = Service token (Header); set Authorization to Bearer <plaintext token>; set Content-Type and Accept exactly as in the config block.\n⑤ X-WeCom-User-Id is auto-injected by WeCom under the enterprise domain — do not fill it; do not set X-TENANT-ID.\n⑥ @-mention the bot in WeCom and verify it lists tools and calls them successfully; an OBO Audit success row should appear.",
 			"checklistTitle": "3. Pre-launch checklist",
-			"checklist": "□ An svc token is issued without the destructive scope.\n□ The plaintext credential is stored server-side, never in the DB or frontend.\n□ Bindings exist for the target employees (or were CSV-imported).\n□ server.mcp.enabled is on and the modules allowlist contains the needed solutions.\n□ act_mask_destructive: true is on so delete tools are masked for the bot.\n□ The callback is verified: 5s ack, MsgId dedupe, one re-exchange on 401.\n□ A real group-chat @-mention succeeded and shows a success row in OBO Audit.",
+			"checklist": "□ An svc token is issued for this tenant, without destructive scope, with a known ttl_days (long-lived = 90d, rotate on expiry).\n□ An MCP plugin is created in WeCom: URL under the enterprise domain, transport Streamable HTTP, Authorization = Bearer <token>.\n□ Content-Type=application/json and Accept=application/json, text/event-stream are set exactly.\n□ server.mcp.enabled is on and the modules allowlist contains the needed solutions.\n□ act_mask_destructive: true is on so delete tools are masked for the bot.\n□ The token's days-left is watched on the expiry dashboard; rotate when within 30 days (avoids the K6 availability risk).\n□ A real @-mention succeeded and shows an OBO Audit success row.",
 			"codeTitle": "4. OBO exchange error codes",
 			"codes": "40310 Unbound: no binding row for (provider, external_sub).\n40311 Revoked: jti missing or absent from the oj_svc_token registry (fail-closed).\n40312 Not a svc credential: claims.svc missing, or token lacks the bot role.\n40313 Disabled: the bound user does not exist or has is_forbidden=1.",
 			"securityTitle": "5. Credential & authority boundaries",
 			"security": "The svc token only covers the exchange hop and grants no business authority by itself; the delegated token's roles are read live from sys_user_role (the employee's own roles) and expire in 10 minutes.\nRevocation uses the jti's presence in oj_svc_token as the source of truth, checked on every exchange (~30s cache).\nThe delegated token's claims.act.sub points back to the svc name; act_mask_destructive masks delete operations on that basis, and every exchange leaves an audit row."
+		},
+		"plugin": {
+			"tenantNote": "A normal-mode bot (one per tenant) is onboarded by adding an MCP plugin in the WeCom admin console: the URL must live under this tenant's enterprise domain, so WeCom injects the employee identity on tools/call. The tenant is chosen by the Bearer below, not encoded in the URL.",
+			"copied": "Config copied",
+			"copyFail": "Copy failed",
+			"pickerTitle": "Select this tenant's service token",
+			"pickerHint": "Pick a service token issued by this tenant (issue it on the Service Tokens tab). After copying the config, paste the plaintext Bearer into Authorization. One token = one tenant's entry point.",
+			"pickerPh": "Select service token (jti)",
+			"selectedMeta": "Scopes: {{scopes}} | Validity: {{days}}",
+			"writeScopeWarn": "The selected token has no write scope. The bot calls tools on behalf of employees (a write surface), and the gateway requires the write scope for /wecom-bot/mcp — without it the real plugin is silently rejected with 403. Pick another token or issue one that includes write.",
+			"configTitle": "WeCom plugin config (paste into WeCom console)",
+			"configHint": "Fill the WeCom MCP plugin config item by item from this text. Replace the Bearer value in Authorization with the plaintext token issued on the Service Tokens tab after copying.",
+			"headerNote": "Note: X-WeCom-User-Id is auto-injected by WeCom under the enterprise domain — do not fill it manually; do not set X-TENANT-ID (tenant is derived from the Bearer; a mismatch is rejected with 403). If 'Service token' rejects the space-prefixed value, fall back to 'No auth' and put Authorization in the request header."
+		},
+		"maintenance": {
+			"title": "Danger zone: resource cleanup",
+			"desc": "When uninstalling the bot integration or resetting a tenant, wipe this tenant's three bot tables in one call. This is irreversible and scoped to the current tenant only.",
+			"list": "Will delete: oj_svc_token (service tokens — every plugin stops working immediately), oj_bot_binding (employee bindings), oj_obo_audit (OBO audit records).",
+			"limits": "Not affected: already-issued OBO tokens are stateless 10-minute JWTs that cannot be revoked individually (valid up to 10 minutes); the gateway caches deleted credentials for up to 30 seconds. Module code, routes and permissions are out of scope (use solution uninstall).",
+			"ack": "I understand these records will be permanently deleted",
+			"action": "Wipe this tenant's bot data",
+			"confirmTitle": "Wipe this tenant's bot data?",
+			"confirmDesc": "Service tokens, employee bindings and OBO audit records will be deleted and cannot be restored.",
+			"cleanupOk": "Cleaned up: {{svc_tokens}} service tokens / {{bindings}} bindings / {{audit_rows}} audit rows"
 		}
 	}
 }

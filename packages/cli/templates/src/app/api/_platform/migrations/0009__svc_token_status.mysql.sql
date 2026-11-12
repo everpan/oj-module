@@ -1,0 +1,2 @@
+ALTER TABLE oj_svc_token ADD COLUMN status VARCHAR(32) NOT NULL DEFAULT 'active';
+ALTER TABLE oj_svc_token ADD COLUMN grace_until BIGINT NOT NULL DEFAULT 0;

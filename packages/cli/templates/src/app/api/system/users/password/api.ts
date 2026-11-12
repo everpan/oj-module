@@ -11,6 +11,7 @@ async function put() {
 	});
 }
 put.schema = {
+	description: "管理员重置用户口令：置 must_change=1 并级联吊销该用户 refresh token（强制其重新登录改密）。仅系统管理员。",
 	query: {
 		type: "object",
 		required: ["uid"],
