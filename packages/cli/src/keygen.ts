@@ -10,7 +10,7 @@ import path from "node:path";
 import process from "node:process";
 import { generateKeyPair } from "./lifecycle/keygen";
 import { fingerprintOfPublicKey } from "./lifecycle/sign";
-import { DEFAULT_SITE_URL, tenantHeaders, unwrapEnvelope } from "./site";
+import { DEFAULT_SITE_URL, unwrapEnvelope } from "./site";
 
 export interface KeygenOptions {
 	/** 发布方 key_id（C2-37：<publisher>.<id> 全小写，禁裸通用名） */
@@ -101,9 +101,11 @@ export async function exchangePublishCredential(token: string, opts: ExchangeOpt
 	const fetchFn = opts.fetchFn ?? fetch;
 	let res: Response;
 	try {
+		// 兑换是匿名端点（publish_credential 属共享表）：强绑定下裸租户头无 claim 可复核，
+		// 会被判 403，故不注头——租户语义不参与这一跳。
 		res = await fetchFn(`${base}/api/publish/credential/exchange`, {
 			method: "POST",
-			headers: { "content-type": "application/json", ...tenantHeaders() },
+			headers: { "content-type": "application/json" },
 			body: JSON.stringify({ token: t }),
 		});
 	}

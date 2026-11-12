@@ -69,8 +69,10 @@ export function apiHeaders(token: string): Record<string, string> {
 /** 用页外 request 直登 API，返回 Bearer token（给 push 端点造确定性数据用） */
 export async function apiLogin(page: Page): Promise<string> {
 	const res = await page.request.post("/api/auth/login", {
-		data: { username: "admin", password: "aA123456" },
-		headers: { "X-TENANT-ID": "default" },
+		// 登录无 token：强绑定（tenant.require_signed_claim）下裸租户头没有 claim 可复核，
+		// 会被 403 `tenant requires a signed claim`；租户改由请求体自报（与 runtime 前端、
+		// site.ts::login 同口径）。带 Bearer 的请求仍走 apiHeaders() 的 X-TENANT-ID。
+		data: { username: "admin", password: "aA123456", tenant: "default" },
 	});
 	const body = await res.json();
 	if (body.code !== 0)

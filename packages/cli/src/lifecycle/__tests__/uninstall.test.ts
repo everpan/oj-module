@@ -46,7 +46,8 @@ describe("uninstallCommand · 卸载瘦客户端（P1-15a 缺口 B）", () => {
 		});
 		await uninstallCommand("demo-solution", { siteUrl: "http://x", user: "u", pass: "p", fetchFn });
 		// 登录体 + uninstall JSON 体 + Bearer
-		expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({ username: "u", password: "p" });
+		// 登录无 token：强绑定下裸租户头 403，租户由请求体自报（site.ts::login 同口径）
+		expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({ username: "u", password: "p", tenant: "default" });
 		const call = calls[1]!;
 		expect(call.url).toContain("/api/oj-market/uninstall");
 		expect(call.init?.method).toBe("POST");

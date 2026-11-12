@@ -99,10 +99,13 @@ export async function unwrapEnvelope(res: { ok: boolean, status: number, text: (
 }
 
 export async function login(fetchFn: typeof fetch, base: string, user: string, pass: string): Promise<string> {
+	// 登录是**无 token**链路：强绑定（tenant.require_signed_claim）下裸租户头会被判
+	// `403 tenant requires a signed claim`（头无 claim 可复核）。故此处不注头，
+	// 改由请求体自报 tenant（handler 内 db.asTenant 补身份），与 runtime 前端同口径。
 	const data = await unwrapEnvelope(await fetchFn(`${base}/api/auth/login`, {
 		method: "POST",
-		headers: { "content-type": "application/json", ...tenantHeaders() },
-		body: JSON.stringify({ username: user, password: pass }),
+		headers: { "content-type": "application/json" },
+		body: JSON.stringify({ username: user, password: pass, tenant: DEFAULT_TENANT }),
 	})) as { access_token?: string };
 	const token = String(data?.access_token ?? "");
 	if (token === "")

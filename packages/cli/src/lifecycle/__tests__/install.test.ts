@@ -426,7 +426,9 @@ describe("installCommand · file 源端到端（stub fetch：登录 → multipar
 		await installCommand(tgz, { siteUrl: "http://x", user: "u", pass: "p", fetchFn, sleep: async () => {} });
 		// 登录体
 		const loginBody = JSON.parse(String(calls[0]?.init?.body));
-		expect(loginBody).toEqual({ username: "u", password: "p" });
+		// 登录无 token：强绑定（tenant.require_signed_claim）下裸租户头 403，租户只能由请求体自报
+		// （handler 内 db.asTenant 补身份）——与 runtime 前端、site.ts::login 同口径。
+		expect(loginBody).toEqual({ username: "u", password: "p", tenant: "default" });
 		// install：multipart 字段 + Bearer
 		const installCall = calls[1]!;
 		expect(installCall.init?.method).toBe("POST");

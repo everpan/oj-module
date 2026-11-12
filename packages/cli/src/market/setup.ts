@@ -15,7 +15,7 @@
 import { randomBytes } from "node:crypto";
 import process from "node:process";
 
-import { resolveSite, tenantHeaders } from "../site";
+import { DEFAULT_TENANT, resolveSite, tenantHeaders } from "../site";
 import { resolveCdnLayout } from "./cdn-layout";
 
 export const MARKET_CDN_URL_SETTING = "framework.market_cdn_url";
@@ -72,7 +72,7 @@ export function loginPasswordAfterSetup(result: SetupResult, newPass: string, or
 async function obtainToken(fetchFn: typeof fetch, base: string, user: string, pass: string, newPass: string | undefined, projectRoot: string): Promise<{ value: string, changedPassword: boolean, generatedPassword?: string }> {
 	let login: { access_token?: string, restricted?: boolean };
 	try {
-		login = await postJson(fetchFn, `${base}/api/auth/login`, { username: user, password: pass });
+		login = await postJson(fetchFn, `${base}/api/auth/login`, { username: user, password: pass, tenant: DEFAULT_TENANT });
 	}
 	catch (error) {
 		throw new Error(
@@ -117,9 +117,11 @@ async function putSetting(fetchFn: typeof fetch, base: string, token: string, ke
 }
 
 async function postJson(fetchFn: typeof fetch, url: string, body: unknown): Promise<Record<string, unknown>> {
+	// 只用于登录（无 token）：强绑定下不得注裸租户头（会被判 403 无签名 claim），
+	// tenant 由请求体自报（调用方已在 body 里带 tenant）。
 	const res = await fetchFn(url, {
 		method: "POST",
-		headers: { "content-type": "application/json", ...tenantHeaders() },
+		headers: { "content-type": "application/json" },
 		body: JSON.stringify(body),
 	});
 	return (await unwrap(res)) as Record<string, unknown>;

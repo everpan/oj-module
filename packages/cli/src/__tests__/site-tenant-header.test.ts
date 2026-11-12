@@ -1,11 +1,13 @@
-// BDD：CLI 作为站点客户端必须自带租户头（企微代开发多租户，v3 Phase 0）。
+// BDD：CLI 作为站点客户端与租户头的正确关系（企微代开发多租户，v3 Phase 0；
+// 2026-11-12 强绑定复盘后重订）。
 //
-// 宿主 `tenant.enable: true` 后 oj 对每个请求强制要 `X-TENANT-ID`——**登录这类
-// 匿名端点也不放过**，缺即 `400 missing tenant header`。浏览器侧由 runtime 请求层
-// 注入，CLI 是独立进程：2026-10-31 按 playbook 跑 `ojm market walkthrough` 时，
-// 隔离站点刚起服就卡在登录（400 missing tenant header），install/enable/list/
-// market setup/trial 同命运。本用例盯两件事：
-//   ① login（匿名）与 callApi（Bearer）都带 `X-TENANT-ID: default`；
+// 宿主 `tenant.enable: true` 后 oj 对每个请求都要租户身份，但取法分两条：
+//   · **带 Bearer 的运维请求**：带 `X-TENANT-ID: default`，与 token 里的 signed claim 复核；
+//   · **登录这类无 token 请求**：**不带**头——强绑定（`tenant.require_signed_claim: true`，
+//     模板默认）下裸头没有 claim 可复核，oj 直接 `403 tenant requires a signed claim`；
+//     正确走法是匿名路径 + 请求体自报 `tenant`（handler 内 db.asTenant 补身份），与前端同口径。
+// 本用例盯两件事：
+//   ① login 不注租户头而是把 tenant 放进请求体；callApi（Bearer）仍带 `X-TENANT-ID: default`；
 //   ② GET 无 body 时也不许因为拼头而漏掉 authorization / 误加 content-type。
 import { describe, expect, it } from "vitest";
 import { callApi, DEFAULT_TENANT, login, TENANT_HEADER } from "../site";
@@ -32,13 +34,14 @@ function recordingFetch(data: unknown): { fetchFn: typeof fetch, requests: Recor
 const headers = (r: RecordedRequest): Record<string, string> => r.init.headers as Record<string, string>;
 
 describe("站点客户端租户头（v3 Phase 0）", () => {
-	it("scenario: 登录（无 Bearer）也带租户头——否则服务端 400 missing tenant header", async () => {
+	it("scenario: 登录（无 Bearer）不带租户头，改由请求体自报 tenant——强绑定下裸头 403", async () => {
 		const { fetchFn, requests } = recordingFetch({ access_token: "tok" });
 
 		const token = await login(fetchFn, "http://x", "u", "p");
 
 		expect(token).toBe("tok");
-		expect(headers(requests[0]!)[TENANT_HEADER]).toBe(DEFAULT_TENANT);
+		expect(headers(requests[0]!)[TENANT_HEADER]).toBeUndefined();
+		expect(JSON.parse(String(requests[0]!.init.body))).toEqual({ username: "u", password: "p", tenant: DEFAULT_TENANT });
 	});
 
 	it("scenario: 带 Bearer 的 GET / POST 都带租户头，且不干扰原有头", async () => {
