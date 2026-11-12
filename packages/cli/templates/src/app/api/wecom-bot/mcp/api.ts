@@ -110,12 +110,11 @@ async function post() {
 // JSON-RPC 帧形态不定，仅放行对象；method 级分派在 handler 内。
 // 响应为进程内透传（json.stream / json.raw / json.fail），形态随 /mcp 与 obo 原样，故 response 仅声明为对象。
 post.schema = {
-	description: "企微机器人 MCP 代理入口：接收 MCP JSON-RPC 单帧并代理到本进程 /api/mcp（多租户 + 按员工权限）。initialize/ping/tools/list 用入站 svc Bearer 直接转发；tools/call 必须先带 X-WeCom-User-Id，代理会先换 10 分钟受托 token 再转发。请求体必须是 MCP 帧（jsonrpc/method/id/params）；响应 status 与字节原样透传（200 JSON / 202 空体 / 406·415 信封）。换签失败映射为 JSON-RPC error（HTTP 200，code 见 data.code 40310/40311/40312/40313）。",
-	body: { type: "object", description: "MCP JSON-RPC 帧，如 {\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{...}}；形态随方法变化，故此处不细化字段。" },
+	description: "企微机器人 MCP 代理入口：接收 MCP JSON-RPC 单帧并代理到本进程 /api/mcp（多租户 + 按员工权限）。initialize/ping/tools/list 用入站 svc Bearer 直接转发；tools/call 必须先带 X-WeCom-User-Id，代理会先换 10 分钟受托 token 再转发。请求体必须是 MCP 帧（jsonrpc/method/id/params，如 {'jsonrpc':'2.0','id':1,'method':'tools/call','params':{...}}）；响应 status 与字节原样透传（200 JSON / 202 空体 / 406·415 信封）。换签失败映射为 JSON-RPC error（HTTP 200，code 见 data.code 40310/40311/40312/40313）。",
+	body: { type: "object" },
 };
 post.response = {
 	type: "object",
-	description: "MCP JSON-RPC 响应（由 /api/mcp 原样透传），通常为 {jsonrpc,id,result} 或 {jsonrpc,id,error}。",
 };
 
 export default { post };

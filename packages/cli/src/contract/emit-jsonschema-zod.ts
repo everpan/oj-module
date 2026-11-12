@@ -18,9 +18,16 @@ import type { JsonSchema } from "./openapi-ir";
  *    取值前先判存在（缺失键直接跳过）。
  */
 
-/** oj `.schema` 白名单关键字（openapi-guide §2.6），其余 fail-fast */
+/**
+ * oj `.schema` 白名单关键字（openapi-guide §2.6），其余 fail-fast。
+ *
+ * `description` 虽未列入该文档的四通道示例，但 oj 实测接受且会写进 openapi
+ * （operation/参数/属性各级），MCP 工具说明也依赖它；它是纯文档元数据、不参与校验，
+ * 故在此放行并**不发射**任何 zod 代码（类型面零影响）。
+ */
 const ALLOWED_KEYWORDS = new Set([
 	"type",
+	"description",
 	"required",
 	"properties",
 	"items",
