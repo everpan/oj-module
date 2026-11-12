@@ -18,6 +18,34 @@
 判据只有一条：**每节的检查点逐条打勾**——退出码 0 只是入场券，产物与响应体才算数。
 历史演练记录集中在文末 [附录 A](#附录-a-历史基线从新到旧逐条可追溯)，日常执行不用读。
 
+> **上次演练结论（2026-11-12 全量线，cli/runtime 0.2.84 打包态 / oj 0.1.130）**：**通过（唯一红项：oj 0.1.131 未发版）**——
+> §0.5 `pnpm pack`（prepack 收编已签名 oj-market-0.2.7 **纯 web 包**）→ 解包 + runtime 依赖改指本地 tgz +
+> `rsync -a --delete -I`（tarball 内 mtime 是 1985-10-26，不加 `-I` 不覆盖）→ §1 `init --yes` 353 项
+> （跳过上游用例 `index.test.tsx`；oj 0.1.130 vendored；`src/.ojm-builtin.json` 10 模块含 `wecom-bot`；
+> `openapi.json` 里 `wecom-bot` 命中 5 处；cdn 三件套 = 25258 B 纯 web 包 + `bundles.json`）→ §3 oj 探针
+> → §4 契约（114 个操作全带 tool description、10 个端点走 `query`/`nullable` 空 body 契约、
+> `ojm api --check` 0/0）→ §5 build + 三份 `tsc --noEmit` 0 error → §7.5 新命令全跑（`build` 2 方案、
+> `--bundle` 两次 sha256 逐字节一致、5 条拒绝负例 exit 2/1 且零写入）→ §7.4 walkthrough **13 PASS / 0 FAIL**
+> （`--strict` 同）→ `market trial` 11 段全 ok → §6.5 `pnpm test:cli` **706/707**、模板 vitest **1282/1282**、
+> 根 `pnpm test` **1042/1043**、`pnpm test:e2e` **26 passed + 4 failed**（恰为既有 wecom W1/W6/W4/W5）。
+> 轮内实锤并修 **7 类缺陷**：① **强绑定探活自伤**——探针自带裸 `X-TENANT-ID`，在
+> `tenant.require_signed_claim: true`（模板默认）下被判 403，安装 status=partial，
+> `walkthrough` **8/13 级联失败**；改无头优先探活 + 401/403 归 `restart_pending`，并把探针路径同补
+> 进 `auth`/`tenant` 两份 `anonymous_paths`（§9 增行）。② **无 token 链路注裸租户头**——CLI 登录、
+> 发布凭证兑换、市场 setup、e2e 夹具皆 403 `tenant requires a signed claim`；改 body 自报 tenant。
+> ③ `irFromOpenapi` 输出继承 `paths` 键序 → 同一源码两种 `__client` 字节，`ojm build` 自治门禁与
+> `ojm api --check` 互相打脸（死循环）；显式按 `(fullPath, method)` 排序。④ `init` 整目录夹带上游
+> `.test.tsx` → 用户工程 `pnpm typecheck` 整片「找不到模块」；拷贝与门禁同口径跳过。⑤ `init.include.yaml`
+> 漏 `wecom-bot` → 上游 openapi 里的 `/api/wecom-bot/mcp` 被 prune 剪掉（新工程静默无该端点）；
+> 已加「模板有模块目录未登记就拒 `init`」的写盘前闸门（含 `exclude` 显式登记面，`scaffold-guard` + 7 例回归）。
+> ⑥ 模板缺 `system:bot.token.ttlDays*` 三条 i18n → 模板 i18n 守卫红。⑦ 迁移回归锚点未跟上 0008/0009。
+> **唯一红项（版本缺口，非代码缺陷）**：`oj test` 在 **oj 0.1.130** 上 **9/11**——`bridge` 是 **0.1.131**
+> 才有的全局（探针实测 `typeof globalThis.bridge === "undefined"`），`wecom-bot` 代理两条 `tools/call`
+> 用例因此 500；**同一份代码换 0.1.133（有 bridge）在同一个库上复跑 = 11/11 全绿**。`@oj-bin/oj` npm
+> **latest 仍 0.1.130**，`MIN_OJ_VERSION` 不能抬到未发布版本 → 记 §11 U9（发版前必须等 0.1.131）。
+> 本轮未重跑：§7.2 发布进 CDN、§7.3 安装/TOFU、§6 dev + 浏览器（最后一轮重打后未复跑）、§7.6–§7.8
+> （市场编排面未动，沿用 2026-11-10 基线）。
+>
 > **上次演练结论（2026-11-10 市场线增量：新增 §7.8 离线上传，cli/runtime 0.2.82 工作区 / oj 0.1.129）**：**通过**——
 > §7.8 全链首跑：发布管理页「离线包上传」浏览器真上传（playwright 真机：选 tgz+.sig → Alert 断言
 > name@version + key_id drill.upload + 指纹逐字 + 未信任如实提示）→ curl 协议镜像 → index 入库行
@@ -1175,6 +1203,14 @@ curl -X POST .../api/oj-market/trust -d '{"task_id":"<task_id>"}'               
 | 宿主工程里**裸跑 `./bin/oj build --module-root src -o dist/api`** 后，已装方案（含 oj-market）的市场菜单/页面全消失（`dist/web/modules/` 整目录没了、modules.json 只剩源码树模块） | snapshot/restore 机制（快照 dist 下方案 web 面 + 旁车、build 后还原）只在 **`ojm build`** 的 backend 编排里有；裸 oj build 绕过 ojm 直写 dist，把已装 web 面当垃圾冲掉（2026-11-10 §7.8 演练实锤——属**演练操作坑**非框架回归） | 工程内重建一律走 `ojm build`；已冲掉时愈合两步：`POST /api/oj-market/backfill`（随站 bundle 不在 DB 目录，补录）→ 对每个方案重装同名同版本（web-only 锁零变更，只补 web 面） |
 | 对随站 bundle 包（`ojm init --yes` 落位的出厂 tgz）直接按名安装报「市场目录中无方案」 | 随站 bundle **不写 DB 目录行**（只落 cdn/ 三件套 + BOOTSTRAP_KEY 首装免 TOFU）；install-by-name 的 cdn 源走 DB 目录解析，查不到即拒 | 先 `POST /api/oj-market/backfill`（superadmin，扫 cdn/ 补目录行）再装；经 §7.8 upload 或 §7.2 publish 入库的包无此问题 |
 | `ojm new <name> --layout none --api` 后直接 `ojm build --bundle <name>` 报缺站点产物 | 脚手架 quirk：`--layout none` 不生成 web/ 但 solution.yaml 仍声明 `web.entry`；`--bundle` 的 C2-27 成品存在性复核按声明查 `dist/web/modules/<name>/<ver>/entry.js`（2026-11-10 §7.8 演练实锤） | bundle 前先全量 `ojm build`（站点构建会为声明了 web 的方案合成 stub entry）；根治待脚手架按 layout 裁剪 solution.yaml |
+| 安装后 `status=partial`，报 `【探活】探针 /api/<name>/ping 返回 HTTP 403` → `ojm market walkthrough` **13 项里 8 项 FAIL**（index/install/reinstall/enable/verify/history/upgrade/rollback 连锁） | 模板默认 `tenant.require_signed_claim: true`（强绑定）：探针自带的裸 `X-TENANT-ID` 没有签名 claim 可复核，oj 判 **403 `tenant requires a signed claim`**；`tenant.anonymous_paths` 的豁免只认「**确实没带**租户头」的请求（带了就进签名复核）。2026-11-12 真机对照：同一 URL **无头 → 403 消失**、**带头 → 403** | 已修（0.2.84+ 模板）：`steps/smoke.ts` 改**无头优先**探活、仅 400/403 才回退裸租户头自证（非强绑定宿主照旧可过），401/403 统一归 `restart_pending`（宿主重启加载新配置后即 2xx，不计失败）；`text-edit.appendAnonymousPaths/removeAnonymousPaths` 与 `market/bootstrap` 的预置锚点（正则加 `g`）同补 `auth`+`tenant` 两份匿名列表。修后 walkthrough 13/13、`--strict` 13/13 |
+| `oj test` 两条 `wecom-bot` 代理用例 `expected 200 but got 500`（其余 9 条全绿） | `bridge.call`（进程内 dispatch，R7）是 **oj 0.1.131** 能力，而 `@oj-bin/oj` npm **latest = 0.1.130**：探针实测 `typeof globalThis.bridge === "undefined"`（0.1.130 二进制 `grep -a 'dispatch not available'` = 0 处，本地 0.1.133 = 3 处、`nested bridge.call` = 1 处），handler 一调即抛 → 500。**A/B 对照**：同一份代码、同一个库，0.1.130 = **9/11**（恰为这两条）、0.1.133 = **11/11** | 不可就地修：`MIN_OJ_VERSION` 抬到 0.1.131 会让当下所有 `ojm init` 直接拒（latest 未发版）；也不加 `fetch` 回环兜底（并发 ≥ pool_size 全池挂死，api-manual §bridge 明令）。等 0.1.131 发布后抬版复跑，见 §11 U9 |
+| 仓库内跑 `oj test --module-root src -c config.yaml` 直接拒：`invalid '.schema' on get /v1/api/_platform/contacts … unsupported channel 'description'` | 仓库 `bin/oj` 是 **0.1.129**，而 `.schema` 顶层 `description`（MCP 工具说明通道）自 **0.1.130** 才接受；模板 `MIN_OJ_VERSION` 已钉 0.1.130，仓库内二进制却没同步 vendor | 跑门前先把仓库 `bin/oj` 换成 ≥ 0.1.130（`ojm vendor v0.1.130`；该目录 gitignored、可再生成），或用工程内已 vendor 的同版本二进制。不要把 description 通道降回 0.1.129 兼容——工具说明是 114 个操作的硬要求 |
+| 刚 `ojm init --yes` 的工程跑一次 `ojm api` 就改写了内置模块生成物 → `ojm build` 拒「内置模块内容被修改」，照提示 `ojm init --yes` 回退又被 `ojm api --check` 判「生成物过期」——两个门禁互斥 | `irFromOpenapi` 输出数组顺序继承 `openapi.json` 的 `paths` 键序；oj 不同版本/不同注入方式键序不同（现版字典序、历史提交件是声明序），于是同一份源码能写出两种 `__client` 字节 | 已修（0.2.84+）：`irFromOpenapi` 末尾按 `(fullPath, method)` 显式排序，输出与输入键序无关；回归 `contract/__tests__/openapi-ir.test.ts` |
+| `ojm init` 出的工程 `pnpm typecheck` 整片 `Cannot find module 'vitest'` / `@testing-library/react` | 白名单整目录收录时**夹带**上游用例（如 `src/app/web/system/pages/mcp/index.test.tsx`），用户工程不装测试依赖 | 已修（0.2.84+）：`isUpstreamTestFile`（`.test/.spec.*`）在 `init` 拷贝与 `scaffold-guard` 期望集**同口径跳过**；显式白名单的 `tests/*.spec.ts` 不受影响，init 报告里如实列「（上游用例）」 |
+| 新工程 `openapi.json` 没有 `/api/wecom-bot/mcp`（静默缺失） | `init.include.yaml` 未收 `src/app/api/wecom-bot`，`pruneUnincludedApiPaths` 把上游 openapi 里的该端点剪掉；同时缺 `src/app/web/wecom-bot`（生成物归属）与 `.ojm-builtin.json` 的 `wecom-bot`（门禁对账） | 已修（0.2.84+）：三处同补；回归 `templates-builtin-list` + `text-edit.spec` 的平台模块清单。**并加完整性闸门防复发**：`init` 先审计 `src/app/{api,web}/<模块>` 与平铺 `src/<模块>/{api,web}` 每个目录——必须在 `init.include.yaml` 的 include（整目录或子路径）或 exclude（显式声明不下发）里有归属，否则**拒 init 且零写盘**（`scaffold-guard.assertInitIncludeComplete`，回归 `__tests__/init-include-audit.test.ts`，含真实模板树审计） |
+| CLI 登录 / 发布凭证兑换 / 市场 setup / e2e 夹具全 403 `tenant requires a signed claim (user.claims.tenant missing)` | 这些跳都是**无 token**链路，却统一注了 `X-TENANT-ID`（`tenantHeaders()`）；强绑定下头无 claim 可复核即 403 | 已修（0.2.84+）：登录与兑换不注租户头、改由 body 自报 `tenant`（与 runtime 前端同口径）；带 Bearer 的请求仍走 `X-TENANT-ID`。回归 `site-tenant-header.test.ts`、`lifecycle/{install,uninstall}.test.ts`、e2e 夹具 |
+| 连跑 `oj test`：第一轮全绿，同一命令紧接着再跑就从某条用例起成片 `Error: login failed: 429` | 登录/凭据节流是按**开发库**累计的：多次 `oj test` 共享 `packages/cli/templates/db.sqlite`，前一跑签发的 svc token 与登录次数把窗口打满（用例文件顶部「共享一张 svc token」注释即为此） | 断言前把状态归一：备份后删 `db.sqlite*`（gitignored，`oj test` 会重建 + seed），或等节流窗。**别把 429 读成版本回归**——本轮曾把 0.1.133 上的 429 误判成 0.1.133 缺陷，重置库后同一二进制 11/11 |
 
 ### 9.1 构造器迁移后的 L1/L2 边界与 vitest 190 红基线（2026-10-20）
 
@@ -1260,6 +1296,7 @@ node "$CLI_PKG/bin/ojm.mjs" build && npx tsc --noEmit -p tsconfig.json && node "
 | U6 | **`-b` 基座覆盖下 web 挂载相对路径静态解析落空**（2026-11-07 实锤） | oj 0.1.124：`web: "./dist/web"` 相对路径 + `-b /api` 组合时静态层解析落空——非 HTML 请求全落进 API 路由报 `no route matched`，SPA 回落（HTML）却正常，极具迷惑性；`ojm preview` 派生 config 全写绝对路径故不踩 | 两选一：① `-b` 下相对路径按 config 目录解析（与无 `-b` 行为一致）；② 启动 fail-fast 校验 web 挂载目录可达。验收：`-b /api` 起站后 `curl /modules/app/0.1.0/entry.js` 200 |
 | U7 | **安装触发热重载应重放新装方案的 seed**（2026-11-07 §7.7 drill3 实锤，oj 0.1.124） | 种子重放只在**冷启动**执行（`oj-bin/oj/src/app.rs`：`if !reused { seed::replay_all(...) }`，注释「热更复用时不重放，种子是一次性初始化」）；而安装器 migrating 段显式跑 `oj migrate`（迁移随装随生效），seed 却不跑——新装方案的 seed 数据要等**下次冷启动**才落库，期间方案页数据面空。与业界安装器预期不符（安装完成即应数据就绪）。模板侧绕不过（seed 时机在 oj 内核 boot 路径） | 两选一：① 新增 `oj seed <module>` 子命令，安装器 migrating 段后对目标模块重放一次（方案 A，推荐）；② 热重载编排对新装模块触发一次 seed 重放，旧模块不重放。验收：装带 seed 的方案后不重启，`select count(*)` 即得 seed 行；重复执行行数不翻倍。**上游已交付（oj 0.1.125，`oj migrate --with-seed`，2026-11-07 第四轮 drill3 实机验证通过：幂等重灌/门禁负例/安装链路边界均实证；ojm 安装器接线 = buildMigrateCmd 加旗标 + platform.exec 白名单 + MIN_OJ_VERSION 联动，仍待办）**。提案见 [`docs/migration/oj-requirement-seed-replay-on-install.md`](../migration/oj-requirement-seed-replay-on-install.md)（2026-11-07） |
 | U8 | **语句级构造器跨租户身份**（✅ 已闭环 oj `0.1.129`，2026-11-09 三轮；需求 #5 见 [`docs/devkit/sql-builder-missing-capabilities-pr.md` §8.5 / §8.7](../devkit/sql-builder-missing-capabilities-pr.md)） | 修复前：跨租户读写只有两极——`asSystem()` 请求级全关（模板纪律禁止复制）、`asTenant(id)` 仅匿名请求且不绕防护；模板 `store.ts` / `tenant-admin.ts` 只能用带 `tenant_id` 条件的裸 `db.exec` 绕开，依赖裸 SQL 守卫的文本级 best-effort 检查，无法收敛为构造器（非 bug 级缺失，属能力粒度缺口）。修复后：`db.table("t").forTenant(id)` 单语句覆盖租户注入值、结构化防护照常，同请求其余语句仍注入当前租户；无配置门、记审计 `DB_TENANT_OVERRIDE`；防呆含子查询 / union / cte / `fromSelect` 源禁用、空 id 拒绝、`asSystem` 请求内 no-op | ① 同一条构造器语句以服务端派生 id 精确读写、同请求另一条普通语句仍注入当前租户；② 三方言行为一致；③ 模板 A1/A2 两处裸 SQL 收敛为构造器、删除「保留裸 SQL」注释论证、`db.asSystem()` 在 `src/app/api` 全域归零。三条均于 2026-11-09 三轮达成（回归 = 夹具行为 + 静态红线 + 跨包版本门禁三层；模板单测 1216 / CLI 单测 437 全绿），逐条证据与实测坑位见 §8.7 / §9。**本仓未加方言分支 / 旁路 / 兼容 shim**（按裁定走上游需求） |
+| U9 | **把 oj 0.1.131（`bridge.call` 进程内 dispatch）发到 npm 通道** | 模板 `wecom-bot` 代理（`/api/wecom-bot/mcp`）的 `tools/call` 用 `bridge.call` 换签后进程内转发 `/api/mcp`——该全局 **0.1.131** 才有；`@oj-bin/oj` npm `dist-tags` 只有 `latest: 0.1.130`（2026-11-12 实测）。真机：0.1.130 `typeof globalThis.bridge === "undefined"` → handler 抛错 → **500**；本地 0.1.133 构建 `grep -a 'dispatch not available'` 3 处、`nested bridge.call` 1 处。影响：`ojm init` 出的每个工程机器人 `tools/call` 恒 500，`oj test` 9/11 | ① `npm view @oj-bin/oj dist-tags.latest` ≥ 0.1.131，`ojm vendor v0.1.131` 可装；② 本仓 `MIN_OJ_VERSION` 抬到 0.1.131 后 `ojm init` 全绿；③ `oj test` **11/11**（本仓已实测：oj 0.1.133 = 11/11，0.1.130 = 9/11 仅差两条 bridge 用例），真机未绑定员工 `tools/call` 返回 HTTP 200 的 JSON-RPC error（含 40310） |
 
 ---
 
@@ -1267,6 +1304,20 @@ node "$CLI_PKG/bin/ojm.mjs" build && npx tsc --noEmit -p tsconfig.json && node "
 
 > 基线的价值是「某版本当时到底验了什么、踩了什么」，属于事实档案，不参与日常执行；
 > 新基线追加在本节最前面，最近一次的结果同时摘到文首「上次演练结论」。
+
+### 全量线基线（2026-11-12，oj 0.1.130 / cli+runtime 0.2.84 **打包态**；§0.5 → §1–§5 + §7.5 + §7.4 + §6.5）
+
+| 项 | 值 |
+| --- | --- |
+| 日期 | 2026-11-12（feat/ojm @ 94323a463；发布形态 `pnpm --dir packages/cli pack` 直出，prepack 收编 oj-market-0.2.7） |
+| 框架包版本 | 打包态 cli/runtime **0.2.84**；随站 bundle = **oj-market 0.2.7 纯 web 包**（25258 B，key_id `platform.release`）；MIN_OJ_VERSION = 0.1.130 |
+| oj | **0.1.130**（init vendor 进工程 `bin/oj`）；仓库 `bin/oj` 仍是 0.1.129，低于门禁（见遗留②） |
+| 工程 | `/tmp/ojm-verify/cli-pkg`（0.2.84 解包）+ `my-books3`（本轮 fresh init，353 项）；§7.5 在 `my-books` 上跑 |
+| 范围 | §0.5 pack/解包/重指 runtime 依赖 → §1 init/info → §2 依赖 → §3 oj 探针 → §4 契约（openapi + 生成物 + `--check`）→ §5 build + 三份 tsc → §7.5 新命令（build/bundle/typecheck/5 条负例）→ §7.4 walkthrough（含 `--strict`）+ `market trial` → §6.5 仓库四套回归 |
+| 结果 | **通过，唯一红项 = §11 U9**。① §0.5 解包后必须 `rsync -a --delete -I`（tarball 内 mtime 1985-10-26，裸 `-a` 不覆盖）。② §1：353 项、跳过 1 个上游用例（`index.test.tsx`）、oj 0.1.130、内置 10 模块（含 `wecom-bot`）、`openapi.json` 里 `wecom-bot` 5 处、cdn 三件套 = 25258 B 纯 web 包 + `bundles.json`。③ §4 `ojm api --check` **0/0**，114 个操作全带 tool description，10 个端点 `query`/`nullable` 空 body 契约。④ §5 build 全绿，`tsc --noEmit` 三配置 **0 error**。⑤ §7.5：`build` 2 方案 + 缺契约 warning；`--bundle` 2 tgz、两次 sha256 `14230fb9…` **逐字节一致**、成员无 `*.pem/*.key/.env*`；门禁拒「多出（模板没有）」；坏契约 fail-fast 点名 `bad` 且 `tgz before=2 after=2`；零方案提示；`publish --real` 对多方案明确指路显式链路；5 条拒绝负例 exit **2**（用法）/ **1**（命名）且零写入。⑥ §7.4 walkthrough **13 PASS / 0 FAIL**（`--strict` 同）、`market trial` **11 段全 ok**。⑦ §6.5：`pnpm test:cli` **706/707**、模板 vitest **1282/1282**、根 `pnpm test` **1042/1043**、`pnpm test:e2e` **26 passed + 4 failed**（恰为既有 wecom W1/W6/W4/W5）。⑧ `oj test`：oj **0.1.130 = 9/11**（仅两条 bridge 用例）、oj **0.1.133 = 11/11**（同一份代码、同一个库的 A/B）。 |
+| 本次发现并处置 | 七类缺陷就地修（§9 新增 7 行）：① **强绑定探活自伤**——探针带裸 `X-TENANT-ID` 在 `tenant.require_signed_claim` 下被判 403 → 安装 partial → walkthrough **8/13**；改无头优先 + 403 归 `restart_pending`，`auth`/`tenant` 两份 `anonymous_paths` 同补（修后 13/13）。② **无 token 链路注裸租户头** 403（`site.ts::login`、市场 setup、`keygen` 兑换、e2e 夹具）→ 改 body 自报 tenant。③ `irFromOpenapi` 输出继承 `paths` 键序 → 同源码两种 `__client` 字节，`ojm build` 自治门禁与 `ojm api --check` 死循环 → 显式排序。④ init 夹带上游 `.test.tsx` 打爆用户 `pnpm typecheck` → 拷贝与门禁同口径跳过。⑤ `init.include.yaml` 漏 `wecom-bot` → `/api/wecom-bot/mcp` 被 prune 剪掉 → 三处同补，并加「未登记的模块目录一律拒 init」完整性闸门（含 exclude 显式登记面）。⑥ 缺 `system:bot.token.ttlDays*` 三条 i18n。⑦ 迁移回归锚点未跟上 0008/0009。**红项**：`oj test` 两条 `wecom-bot` 用例 `expected 200 but got 500`，根因 = `bridge` 在 oj 0.1.130 上是 `undefined`（`bridge.call` 属 0.1.131），同一份代码换 0.1.133 复跑 **11/11** → 版本缺口而非缺陷；`@oj-bin/oj` latest 仍 0.1.130 → 记 §11 U9，发版前须等 0.1.131。 |
+| 手册同步 | 文首结论换本轮；§9 增 8 行（7 类缺陷 + 1 条 `oj test` 连跑 429 的操作坑）；§11 增 U9；附录 A 增本条 |
+| 遗留 | ① §7.2 发布进 CDN / §7.3 安装→TOFU 未重跑——本轮改动集中在模板业务面与脚手架分发，市场编排面未动，闭环沿用 2026-11-10 基线。② 仓库 `bin/oj` = 0.1.129 < `MIN_OJ_VERSION` 0.1.130：仓库内 `oj test` 门禁需先 `ojm vendor v0.1.130`（该目录 gitignored）。③ §6 dev + 浏览器未单独手跑（最后一轮重打后未复跑）：同面由 §6.5 的 e2e **26 passed** 覆盖（真起服 + playwright，含登录/列表/弹层），下轮动前端路由或样式时补跑。 |
 
 ### 市场线增量基线（2026-11-10，oj 0.1.129 / cli+runtime 0.2.82 工作区；新增 §7.8 离线上传的首轮实跑）
 
