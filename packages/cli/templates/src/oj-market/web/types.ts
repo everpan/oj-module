@@ -58,6 +58,8 @@ export interface McpToolView {
 export interface McpCatalogGroup {
 	module: string
 	tools: McpToolView[]
+	/** 本组未取全（expose=routed 的检索枚举单组上限 50；上游声明数更大时为 true） */
+	truncated?: boolean
 }
 
 export type McpCatalogStatus = "mounted" | "unmounted" | "auth" | "unreachable";
@@ -69,8 +71,12 @@ export interface McpCatalogResult {
 	generation?: number
 	/** 站点租户（请求 X-TENANT-ID 透传）：接入配置给外部 MCP client 写全请求头（缺头 400） */
 	tenant?: string
+	/** 列表面模式（server.mcp.expose，oj 0.1.134+；mounted 时给出） */
+	expose?: McpExposeMode
 	groups: McpCatalogGroup[]
 }
+
+export type McpExposeMode = "flat" | "grouped" | "routed";
 
 /** 离线包上传结果（POST /oj-market/upload；trusted=false = 发布方指纹未入库，安装时将停待信任确认） */
 export interface UploadPackageResult {

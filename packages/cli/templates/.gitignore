@@ -1,6 +1,8 @@
 node_modules/
 bin/
 .ojm-tmp-*
+# e2e 临时把注释态 canonical_origin 解注后留下的备份（globalTeardown 会自动还原，崩溃残留防误签）
+config.yaml.e2e-bak
 # 本目录同时是可运行工程（pnpm dev/build），产物一律不签入、也不进发布包；
 # 未忽略会让 `pnpm pack` 把 dist/web 的 sourcemap 打进 tarball（发布清单测试钉面）
 # 布局：config.yaml 在工程根（`src/<name>/{api,web}`），故 db/日志/证书都相对工程根

@@ -293,6 +293,17 @@
 		"refresh": "刷新",
 		"generation": "代际",
 		"descriptionSource": "工具描述由方案作者提供；是否接入给 agent 使用由管理员决定。",
+		"searchPlaceholder": "搜索工具名 / 描述 / 方案",
+		"searchTotal": "共 {{count}} 个工具",
+		"searchSummary": "匹配 {{matched}} / 共 {{total}} 个工具",
+		"searchEmpty": "没有匹配「{{keyword}}」的工具",
+		"paginationTotal": "共 {{count}} 条",
+		"exposeLabel": "列表面 {{mode}}",
+		"expose": {
+			"flat": "flat（全量）",
+			"grouped": "grouped（按方案分组）",
+			"routed": "routed（检索发现）"
+		},
 		"status": {
 			"mounted": "已启用",
 			"unmounted": "未启用",
@@ -311,6 +322,8 @@
 			"readOnly": "只读 {{count}}",
 			"write": "写 {{count}}",
 			"destructive": "危险 {{count}}",
+			"matched": "匹配 {{matched}} / {{total}}",
+			"truncated": "仅显示前 50 个",
 			"drift": "无可见工具（未入白名单或无 api）",
 			"foreign": "非方案",
 			"unattributed": "未声明契约"

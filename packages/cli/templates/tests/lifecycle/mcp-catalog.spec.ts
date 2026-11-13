@@ -161,6 +161,123 @@ describe("fetchMcpCatalog：§4.1 数据表（HTTP → 归一）", () => {
 	});
 });
 
+// —— 列表面三态（server.mcp.expose，oj 0.1.134）：flat / grouped / routed 与 routed 枚举 ——
+const META_LIST = {
+	jsonrpc: "2.0",
+	id: 1,
+	result: { tools: [{ name: "oj_search_tools" }, { name: "oj_list_groups" }] },
+};
+const metaCall = (structured: unknown) => ({ jsonrpc: "2.0", id: 1, result: { content: [], structuredContent: structured } });
+const metaErr = (message: string) => ({ jsonrpc: "2.0", id: 1, error: { code: -32601, message } });
+
+/** 按 JSON-RPC method / tools-call name 分派的桩：routed 会对同一 URL 连打多次 */
+function rpcStub(handlers: { list?: () => unknown, tool: Record<string, (args: Record<string, unknown>) => unknown> }) {
+	const calls: Array<{ method: string, name?: string, args?: Record<string, unknown> }> = [];
+	const fn = async (url: string, init?: { body?: string }) => {
+		if (url.includes("/_system/config")) {
+			return jsonRes(200, { generation: 9 });
+		}
+		const req = JSON.parse(String(init?.body ?? "{}")) as { method?: string, params?: { name?: string, arguments?: Record<string, unknown> } };
+		const method = String(req.method);
+		const name = req.params?.name;
+		const args = req.params?.arguments;
+		calls.push({ method, name, args });
+		if (method === "tools/list") {
+			return jsonRes(200, handlers.list?.() ?? { jsonrpc: "2.0", id: 1, result: { tools: [] } });
+		}
+		const h = name === undefined ? undefined : handlers.tool[name];
+		return jsonRes(200, h === undefined ? metaErr(`unknown tool ${String(name)}`) : metaCall(h(args ?? {})));
+	};
+	return { fn, calls };
+}
+
+describe("列表面三态（server.mcp.expose，oj 0.1.134）", () => {
+	it("当 无 _meta 且 tools 非元工具，则 expose=flat、分组照 tags[0]", async () => {
+		const { fn } = rpcStub({ list: () => TOOLS_LIST });
+		const r = await fetchMcpCatalog({ fetch: fn as any, origin: ORIGIN, token: "tok", base: "/api" });
+		expect(r.expose).toBe("flat");
+		expect(r.groups.map(g => g.module)).toEqual(["wiki", "order", ""]);
+		expect(r.message).toBeUndefined();
+	});
+
+	it("当 result 带 _meta 分组面，则 expose=grouped 且 tools 仍按 tags[0] 全量归一", async () => {
+		const list = () => ({
+			jsonrpc: "2.0",
+			id: 1,
+			result: {
+				tools: (TOOLS_LIST.result.tools),
+				_meta: { "com.only-js.groups": [{ name: "wiki", tool_count: 2 }, { name: "order", tool_count: 1 }] },
+			},
+		});
+		const { fn } = rpcStub({ list });
+		const r = await fetchMcpCatalog({ fetch: fn as any, origin: ORIGIN, token: "tok", base: "/api" });
+		expect(r.expose).toBe("grouped");
+		expect(r.groups.map(g => g.module)).toEqual(["wiki", "order", ""]);
+	});
+
+	it("当 tools 恰好是两个元工具（routed），则经 oj_list_groups + 逐组 oj_search_tools 枚举，声明数更大时标 truncated", async () => {
+		const { fn, calls } = rpcStub({
+			list: () => META_LIST,
+			tool: {
+				oj_list_groups: () => ({ groups: [{ name: "wiki", tool_count: 3 }] }),
+				// 检索结果形状：group 字段（无 tags）+ annotations + inputSchema
+				oj_search_tools: () => ({
+					matches: [
+						{ name: "wiki_search", description: "搜索页面", group: "wiki", annotations: { readOnlyHint: true }, inputSchema: { properties: { query: {} } } },
+						{ name: "wiki_delete", group: "wiki", annotations: { destructiveHint: true }, inputSchema: { properties: { path: {}, body: {} } } },
+					],
+				}),
+			},
+		});
+		const r = await fetchMcpCatalog({ fetch: fn as any, origin: ORIGIN, token: "tok", base: "/api" });
+
+		expect(r.status).toBe("mounted");
+		expect(r.expose).toBe("routed");
+		expect(r.generation).toBe(9);
+		expect(r.groups).toHaveLength(1);
+		expect(r.groups[0]!.module).toBe("wiki");
+		expect(r.groups[0]!.tools.map(t => t.name)).toEqual(["wiki_search", "wiki_delete"]);
+		// group 字段回填 module（检索结果无 tags）；hints 与三键子集同口径
+		expect(r.groups[0]!.tools[0]).toMatchObject({ module: "wiki", readOnly: true, destructive: false, params: ["query"] });
+		expect(r.groups[0]!.tools[1]).toMatchObject({ destructive: true, params: ["path", "body"] });
+		// 上游声明 3 个、检索只回 2 个 → 本组未取全
+		expect(r.groups[0]!.truncated).toBe(true);
+		// 检索用「组名」当 query（子串必命中本组 group 维度）+ 精确 group 过滤 + limit 50
+		const search = calls.find(c => c.name === "oj_search_tools");
+		expect(search?.args).toEqual({ query: "wiki", group: "wiki", limit: 50 });
+		// routed 的说明文案随目录下发（页面原样展示）
+		expect(r.message ?? "").toContain("routed");
+		expect(r.message ?? "").toContain("50");
+	});
+
+	it("当 routed 下 oj_list_groups 失败，则 status=mounted 但 groups 空 + 人话说明（不误判为未启用）", async () => {
+		const { fn } = rpcStub({
+			list: () => META_LIST,
+			tool: { oj_list_groups: () => { throw new TypeError("boom"); } },
+		});
+		const r = await fetchMcpCatalog({ fetch: fn as any, origin: ORIGIN, token: "tok", base: "/api" });
+		expect(r.status).toBe("mounted");
+		expect(r.expose).toBe("routed");
+		expect(r.groups).toEqual([]);
+		expect(r.message ?? "").toContain("枚举失败");
+	});
+
+	it("当 routed 下某组检索失败，则该组按空组展示并计入说明（其余组不受影响）", async () => {
+		const { fn } = rpcStub({
+			list: () => META_LIST,
+			tool: {
+				oj_list_groups: () => ({ groups: [{ name: "wiki", tool_count: 1 }, { name: "order", tool_count: 1 }] }),
+				oj_search_tools: args => (args.group === "order" ? { matches: [{ name: "order_create", group: "order" }] } : (() => { throw new TypeError("down"); })()),
+			},
+		});
+		const r = await fetchMcpCatalog({ fetch: fn as any, origin: ORIGIN, token: "tok", base: "/api" });
+		expect(r.groups.map(g => g.module)).toEqual(["wiki", "order"]);
+		expect(r.groups[0]!.tools).toEqual([]);
+		expect(r.groups[1]!.tools.map(t => t.name)).toEqual(["order_create"]);
+		expect(r.message ?? "").toContain("1 个分组的工具枚举失败");
+	});
+});
+
 describe("unmounted 两态判定（20261110-1027 §4.3 修订：磁盘 server.mcp.enabled 直读，§8 真机钉出 sha 物理不符后重设计）", () => {
 	// 真机事实（2026-11-10 演练）：_system/config 的 sha256 = doc_sha(解析后 YAML 规范指纹)，
 	// 非原始文件字节 sha——磁盘文件 sha 永不相等，sha 对比方案整案作废。改为：模块自读磁盘

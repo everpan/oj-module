@@ -293,6 +293,17 @@
 		"refresh": "Refresh",
 		"generation": "Generation",
 		"descriptionSource": "Tool descriptions are authored by solution publishers; whether to expose them to agents is the admin's call.",
+		"searchPlaceholder": "Search tool name / description / solution",
+		"searchTotal": "{{count}} tools",
+		"searchSummary": "{{matched}} of {{total}} tools matched",
+		"searchEmpty": "No tool matches \"{{keyword}}\"",
+		"paginationTotal": "{{count}} rows",
+		"exposeLabel": "List mode {{mode}}",
+		"expose": {
+			"flat": "flat (full list)",
+			"grouped": "grouped (by solution)",
+			"routed": "routed (search-first)"
+		},
 		"status": {
 			"mounted": "Enabled",
 			"unmounted": "Not Enabled",
@@ -311,6 +322,8 @@
 			"readOnly": "read-only {{count}}",
 			"write": "write {{count}}",
 			"destructive": "destructive {{count}}",
+			"matched": "{{matched}} / {{total}} matched",
+			"truncated": "first 50 shown",
 			"drift": "No visible tools (not whitelisted, or no api)",
 			"foreign": "non-solution",
 			"unattributed": "No contract"

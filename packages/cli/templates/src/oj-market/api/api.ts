@@ -1542,7 +1542,7 @@ marketApi.releases.get.response = {
 };
 // MCP 工具目录（20261110-1027 §4.1）：status 四态 + 分组工具视图（message/generation 可选）。
 // 工具条目出参宽松（additionalProperties:true）——上游 openapi 字段演进不破坏 client。
-marketApi.mcp.catalog.get.schema = { description: "MCP 工具目录代理（superadmin）：用浏览器登录态 JWT 透传调用上游 /mcp 的 tools/list，按 tags[0] 分组归一，并回带 status（mounted/unmounted/auth/unreachable）。页面「MCP 接入」据此生成配置。" };
+marketApi.mcp.catalog.get.schema = { description: "MCP 工具目录代理（superadmin）：用浏览器登录态 JWT 透传调用上游 /mcp 的 tools/list，按 tags[0] 分组归一，并回带 status（mounted/unmounted/auth/unreachable）与列表面模式 expose（flat/grouped/routed，oj 0.1.134+）：routed 下上游只回 oj_search_tools/oj_list_groups 两个元工具，本端点经元工具检索枚举成全量分组（单组上限 50，超出标 truncated）。页面「MCP 接入」据此生成配置。" };
 marketApi.mcp.catalog.get.response = {
 	type: "object",
 	required: ["status", "groups"],
@@ -1550,6 +1550,7 @@ marketApi.mcp.catalog.get.response = {
 		status: { type: "string", enum: ["mounted", "unmounted", "auth", "unreachable"] },
 		message: { type: "string" },
 		generation: { type: "number" },
+		expose: { type: "string", enum: ["flat", "grouped", "routed"] },
 		groups: {
 			type: "array",
 			items: {
@@ -1557,6 +1558,7 @@ marketApi.mcp.catalog.get.response = {
 				required: ["module", "tools"],
 				properties: {
 					module: { type: "string" },
+					truncated: { type: "boolean" },
 					tools: {
 						type: "array",
 						items: {

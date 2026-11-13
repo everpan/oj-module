@@ -17,5 +17,16 @@
 		"descriptionPlaceholder": "个人简介",
 		"updated": "更新基本信息成功",
 		"updateFailed": "更新基本信息失败：{{message}}"
+	},
+	"password": {
+		"title": "修改密码",
+		"hint": "修改后当前所有会话都会失效，需要用新密码重新登录。",
+		"old": "当前密码",
+		"new": "新密码",
+		"confirm": "确认新密码",
+		"min": "新密码至少 6 位",
+		"mismatch": "两次输入的新密码不一致",
+		"submit": "修改密码",
+		"success": "密码已修改，请用新密码重新登录"
 	}
 }

@@ -25,9 +25,17 @@ export interface McpCatalogGroup {
 	/** 模块名（= 方案 api 模块名；空串 = 上游无 tags 的杂项工具） */
 	module: string
 	tools: McpToolView[]
+	/**
+	 * 本组工具未取全（仅 expose=routed 可能出现）：上游声明 tool_count 大于检索到的数量。
+	 * 成因 = routed 模式只能经 oj_search_tools 枚举，单次检索上游钳 50 条。
+	 */
+	truncated?: boolean
 }
 
 export type McpCatalogStatus = "mounted" | "unmounted" | "auth" | "unreachable";
+
+/** 列表面模式（上游 server.mcp.expose，oj ≥ 0.1.134）：flat 全量 / grouped 带 _meta 分组面 / routed 只回元工具 */
+export type McpExposeMode = "flat" | "grouped" | "routed";
 
 export interface McpCatalogResult {
 	status: McpCatalogStatus
@@ -37,6 +45,8 @@ export interface McpCatalogResult {
 	generation?: number
 	/** 上游租户（请求 X-TENANT-ID 透传）；页面接入配置据此给外部 MCP client 写全请求头 */
 	tenant?: string
+	/** 列表面模式（mounted 时给出；页面据它解释「为什么 routed 下工具是检索枚举来的」） */
+	expose?: McpExposeMode
 	groups: McpCatalogGroup[]
 }
 
@@ -85,10 +95,12 @@ export function normalizeTools(raw: unknown): McpToolView[] {
 		const annotations = isObj(o.annotations) ? o.annotations : {};
 		const inputSchema = isObj(o.inputSchema) ? o.inputSchema : {};
 		const props = isObj(inputSchema.properties) ? inputSchema.properties : {};
+		// 模块名：tools/list 元素用 tags[0]（openapi 生成口径）；routed 的检索结果改用 group 字段
+		const module = typeof tags[0] === "string" ? tags[0] : (typeof o.group === "string" ? o.group : "");
 		out.push({
 			name: o.name,
 			description: typeof o.description === "string" && o.description !== "" ? o.description : undefined,
-			module: typeof tags[0] === "string" ? tags[0] : "",
+			module,
 			readOnly: annotations.readOnlyHint === true,
 			destructive: annotations.destructiveHint === true,
 			params: ["path", "query", "body"].filter(k => k in props),
@@ -149,6 +161,112 @@ async function probeSystemConfig(deps: McpCatalogDeps): Promise<{ generation?: n
 	catch {
 		return {};
 	}
+}
+
+/** 元工具名（expose=routed 时 tools/list 只回这两个；业务工具经检索发现后直呼） */
+const META_TOOL_NAMES = new Set(["oj_search_tools", "oj_list_groups"]);
+/** routed 枚举单组检索上限（上游 limit 缺省 10、钳 50） */
+const ROUTED_GROUP_LIMIT = 50;
+
+/**
+ * 列表面模式判定（oj ≥ 0.1.134 的 server.mcp.expose 三态）：
+ * - grouped：result._meta["com.only-js.groups"] 存在（tools 仍是全量）；
+ * - routed：tools 恰好全是两个元工具（业务工具只能经 oj_search_tools 检索）；
+ * - flat：其余（缺省形态，全量 tools）。
+ */
+export function detectExpose(result: Record<string, unknown>, tools: unknown[]): McpExposeMode {
+	const meta = isObj(result._meta) ? result._meta : undefined;
+	if (meta !== undefined && Array.isArray(meta["com.only-js.groups"])) {
+		return "grouped";
+	}
+	const names = tools.filter(isObj).map(t => t.name);
+	return names.length > 0 && names.every(n => typeof n === "string" && META_TOOL_NAMES.has(n)) ? "routed" : "flat";
+}
+
+/** 一次 JSON-RPC POST（routed 枚举要多次调用：tools/list + 元工具） */
+async function postMcp(deps: McpCatalogDeps, headers: Record<string, string>, method: string, params: unknown): Promise<{ status: number, text: string }> {
+	const res = await deps.fetch(`${deps.origin}${deps.base}/mcp`, {
+		method: "POST",
+		headers,
+		body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+	});
+	return { status: res.status, text: new TextDecoder().decode(await res.arrayBuffer()) };
+}
+
+// 单行书写：本仓 no-mixed-spaces-and-tabs 与 tab 续行互斥（见 manifest-contract.ts:14），拆行必撞规则
+type McpMetaCall = { ok: true, structured: Record<string, unknown> } | { ok: false, message: string };
+
+/** 调一个元工具并取 structuredContent（routed 枚举的唯一取数面） */
+async function callMetaTool(deps: McpCatalogDeps, headers: Record<string, string>, name: string, args: Record<string, unknown>): Promise<McpMetaCall> {
+	let rpc: { status: number, text: string };
+	try {
+		rpc = await postMcp(deps, headers, "tools/call", { name, arguments: args });
+	}
+	catch (e) {
+		return { ok: false, message: `网络不可达：${String(e)}` };
+	}
+	if (rpc.status !== 200) {
+		return { ok: false, message: `${name} 返回 HTTP ${rpc.status}` };
+	}
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(rpc.text);
+	}
+	catch {
+		return { ok: false, message: `${name} 响应形状违约：正文非 JSON` };
+	}
+	if (isObj(parsed) && isObj(parsed.error)) {
+		const msg = typeof parsed.error.message === "string" ? parsed.error.message : "未知错误";
+		return { ok: false, message: `${name} JSON-RPC 错误：${msg}` };
+	}
+	const result = isObj(parsed) && isObj(parsed.result) ? parsed.result : undefined;
+	if (result === undefined) {
+		return { ok: false, message: `${name} 响应形状违约：缺 result` };
+	}
+	if (result.isError === true) {
+		return { ok: false, message: `${name} 执行失败（isError）` };
+	}
+	const structured = isObj(result.structuredContent) ? result.structuredContent : undefined;
+	return structured === undefined ? { ok: false, message: `${name} 响应缺 structuredContent` } : { ok: true, structured };
+}
+
+/**
+ * routed 模式枚举全量目录（上游只回元工具，管理页要展示人看的列表）：
+ * oj_list_groups 拿分组与声明计数 → 逐组 oj_search_tools 取工具。
+ * 检索是大小写不敏感子串匹配、group 为精确过滤：query 传组名可命中本组全部工具
+ * （group 维度计分），单次上限 50 —— 声明计数更大时该组标 truncated。
+ * 顺序调用（不并发）：本函数经 canonical origin 回环取数，并发会挤占服务端 actor 槽。
+ */
+async function enumerateRoutedGroups(deps: McpCatalogDeps, headers: Record<string, string>): Promise<{ groups: McpCatalogGroup[], note?: string }> {
+	const listed = await callMetaTool(deps, headers, "oj_list_groups", {});
+	if (!listed.ok) {
+		return { groups: [], note: `routed 列表面枚举失败：${listed.message}` };
+	}
+	const raw = Array.isArray(listed.structured.groups) ? listed.structured.groups : [];
+	const groups: McpCatalogGroup[] = [];
+	let failed = 0;
+	for (const item of raw) {
+		if (!isObj(item) || typeof item.name !== "string" || item.name === "") {
+			continue;
+		}
+		// 先固化为局部常量：await 之后属性收窄会失效（TS 不跨挂起保留索引签名收窄）
+		const moduleName = item.name;
+		const declared = typeof item.tool_count === "number" ? item.tool_count : undefined;
+		const found = await callMetaTool(deps, headers, "oj_search_tools", { query: moduleName, group: moduleName, limit: ROUTED_GROUP_LIMIT });
+		if (!found.ok) {
+			failed++;
+			groups.push({ module: moduleName, tools: [] });
+			continue;
+		}
+		const matches = Array.isArray(found.structured.matches) ? found.structured.matches : [];
+		const tools = normalizeTools(matches).map(t => ({ ...t, module: moduleName }));
+		groups.push(declared !== undefined && tools.length < declared ? { module: moduleName, tools, truncated: true } : { module: moduleName, tools });
+	}
+	const notes = ["该站点 server.mcp.expose = routed：工具经元工具检索枚举（单组上限 50 个）；要一次看全量可把 expose 改为 grouped"];
+	if (failed > 0) {
+		notes.push(`${failed} 个分组的工具枚举失败（按空组展示，可刷新重试）`);
+	}
+	return { groups, note: notes.join("；") };
 }
 
 /**
@@ -215,11 +333,26 @@ export async function fetchMcpCatalog(deps: McpCatalogDeps): Promise<McpCatalogR
 	catch {
 		return withTenant({ status: "unreachable", groups: [], message: `tools/list 响应形状违约：正文非 JSON（前 120 字节：${bodyText.slice(0, 120)}）` });
 	}
-	const tools = isObj(parsed) && isObj(parsed.result) ? parsed.result.tools : undefined;
-	if (!Array.isArray(tools)) {
+	const result = isObj(parsed) && isObj(parsed.result) ? parsed.result : undefined;
+	const tools = result?.tools;
+	if (result === undefined || !Array.isArray(tools)) {
 		return withTenant({ status: "unreachable", groups: [], message: "tools/list 响应形状违约：期望 JSON-RPC result.tools 数组" });
 	}
+	// 列表面三态（oj ≥ 0.1.134）：grouped/flat 的 tools 即全量；routed 只有元工具，须检索枚举。
+	const expose = detectExpose(result, tools);
 	const generation = (await probeSystemConfig(deps)).generation;
-	const base = { status: "mounted" as const, groups: groupTools(normalizeTools(tools)) };
+	let groups: McpCatalogGroup[];
+	let note: string | undefined;
+	if (expose === "routed") {
+		const enumerated = await enumerateRoutedGroups(deps, headers);
+		groups = enumerated.groups;
+		note = enumerated.note;
+	}
+	else {
+		groups = groupTools(normalizeTools(tools));
+	}
+	const base: McpCatalogResult = note !== undefined
+		? { status: "mounted", expose, groups, message: note }
+		: { status: "mounted", expose, groups };
 	return withTenant(generation !== undefined ? { ...base, generation } : base);
 }

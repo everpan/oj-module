@@ -27,12 +27,17 @@ export const NPM_PKG = "@oj-bin/oj";
  * 0.1.128 / 0.1.129，含实测依据）见 docs/devkit/sql-builder-missing-capabilities-pr.md。
  * 此处只留当前底线，不再逐档复述（多份历史必然漂移）。
  *
- * 当前底线 0.1.130：模板机器人接入管理端依赖 oj v0.1.130 的机器人凭据三件套
- * （svc token 的 jti 在册核销、obo 换签 40310-40313、act_mask_destructive 代操作遮蔽）。
- * 再往下还有 0.1.129 的 `forTenant()` 语句级租户覆盖（0.2.80 起，回归守卫：
- * packages/cli/templates/tests/sql-builder-guard.spec.ts）。门禁须盖住 `ojm vendor` 分发链。
+ * 当前底线 0.1.135：**0.1.134 是死版本**——它把「tool 名以 oj_ 开头」判为撞元工具并
+ * 启动 fail-fast，本站内建 oj-market 派生的 24 个 oj_market_* 工具全部撞线，模板默认配置
+ * （server.mcp.enabled: true）零改动拒启，且无任何逃生口（白名单/expose 三态均不豁免）。
+ * 0.1.135 按 docs/migration/oj-requirement-mcp-reserved-prefix.md §5 落地方案 A+B
+ * （保留名精确判定 / call 面同步收窄 / 扫描先经 modules 白名单裁剪）。
+ * 此前档位仍然成立：0.1.130 机器人凭据三件套（svc token jti 在册核销、obo 换签
+ * 40310-40313、act_mask_destructive 代操作遮蔽）、0.1.129 `forTenant()` 语句级租户覆盖
+ * （回归守卫 packages/cli/templates/tests/sql-builder-guard.spec.ts）。
+ * 门禁须盖住 `ojm vendor` 分发链：允许 0.1.134 进来等于发一个起不来的工程。
  */
-export const MIN_OJ_VERSION = "0.1.130";
+export const MIN_OJ_VERSION = "0.1.135";
 
 /** 按段数值比较（字符串比较会把 0.1.9 判成大于 0.1.69）；非数字段按 0 处理 */
 export function isSupportedOjVersion(version: string): boolean {

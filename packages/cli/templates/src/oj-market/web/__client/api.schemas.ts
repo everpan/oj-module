@@ -103,8 +103,10 @@ export const schemas = {
 	"status": z.enum(["mounted", "unmounted", "auth", "unreachable"]),
 	"message": z.string().optional(),
 	"generation": z.number().optional(),
+	"expose": z.enum(["flat", "grouped", "routed"]).optional(),
 	"groups": z.array(z.object({
 	"module": z.string(),
+	"truncated": z.boolean().optional(),
 	"tools": z.array(z.object({
 	"name": z.string(),
 	"description": z.string().optional(),

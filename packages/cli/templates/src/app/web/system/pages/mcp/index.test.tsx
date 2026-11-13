@@ -145,6 +145,84 @@ describe("mCP 服务管理页：mounted 态（§4.3）", () => {
 	});
 });
 
+// —— 工具检索 / 分页 / 列表面三态（oj 0.1.134 的 expose）——
+const MANY = Array.from({ length: 25 }, (_, i) => ({
+	name: `bulk_tool_${String(i + 1).padStart(2, "0")}`,
+	description: i % 5 === 0 ? "批量工具" : undefined,
+	module: "bulk",
+	readOnly: i % 2 === 0,
+	destructive: false,
+	params: ["query"],
+}));
+
+const CATALOG_BULK: McpCatalogResult = {
+	status: "mounted",
+	expose: "flat",
+	groups: [{ module: "bulk", tools: MANY }],
+};
+
+describe("mCP 服务管理页：检索与分页（工具过多时的浏览面）", () => {
+	it("当 输入检索词，则 只留命中工具 + 摘要计数（匹配 X / 共 Y）+ 组头标匹配数", async () => {
+		const client = new InMemoryMarketClient({ mcpCatalogResult: CATALOG_MOUNTED, indexPage: INDEX_WITH_GHOST });
+		renderPage(client);
+		await screen.findByText("wiki_search");
+		expect(screen.getByText("共 4 个工具")).toBeTruthy();
+
+		fireEvent.change(screen.getByPlaceholderText("搜索工具名 / 描述 / 方案"), { target: { value: "order" } });
+		await waitFor(() => expect(screen.queryByText("wiki_search")).toBeNull());
+		expect(screen.getByText("order_create")).toBeTruthy();
+		expect(screen.getByText("匹配 1 / 共 4 个工具")).toBeTruthy();
+		// 组头：匹配 1 / 1（该组共 1 个工具）
+		expect(screen.getByText("匹配 1 / 1")).toBeTruthy();
+	});
+
+	it("当 检索无命中，则 空态文案（不回落到全量）", async () => {
+		const client = new InMemoryMarketClient({ mcpCatalogResult: CATALOG_MOUNTED, indexPage: INDEX_WITH_GHOST });
+		renderPage(client);
+		await screen.findByText("wiki_search");
+
+		fireEvent.change(screen.getByPlaceholderText("搜索工具名 / 描述 / 方案"), { target: { value: "no-such-tool" } });
+		await screen.findByText("没有匹配「no-such-tool」的工具");
+		expect(screen.queryByText("wiki_search")).toBeNull();
+		expect(screen.getByText("匹配 0 / 共 4 个工具")).toBeTruthy();
+	});
+
+	it("当 单组工具超过一页，则 默认 10 行 + 分页条，翻页见后续工具（检索词变化回第 1 页）", async () => {
+		const client = new InMemoryMarketClient({ mcpCatalogResult: CATALOG_BULK, indexPage: { list: [{ name: "bulk", latest: "1.0.0", installed: "1.0.0", enabled: true, upgradable: false }], total: 1, page: 1, size: 20 } });
+		const { container } = renderPage(client);
+		await screen.findByText("bulk_tool_01");
+
+		// 第一页：01–10 可见，11 不在 DOM
+		expect(screen.getByText("bulk_tool_10")).toBeTruthy();
+		expect(screen.queryByText("bulk_tool_11")).toBeNull();
+		expect(screen.getByText("共 25 条")).toBeTruthy();
+
+		const page2 = [...container.querySelectorAll(".ant-pagination-item")].find(el => el.textContent === "2");
+		expect(page2).toBeTruthy();
+		fireEvent.click(page2!);
+		await screen.findByText("bulk_tool_11");
+		expect(screen.queryByText("bulk_tool_01")).toBeNull();
+	});
+
+	it("当 站点 expose=routed 且某组未取全，则 状态卡标 routed + 组头标「仅显示前 50 个」", async () => {
+		const client = new InMemoryMarketClient({
+			mcpCatalogResult: {
+				status: "mounted",
+				expose: "routed",
+				message: "该站点 server.mcp.expose = routed：工具经元工具检索枚举（单组上限 50 个）",
+				groups: [{ module: "bulk", tools: MANY.slice(0, 12), truncated: true }],
+			},
+			indexPage: { list: [{ name: "bulk", latest: "1.0.0", installed: "1.0.0", enabled: true, upgradable: false }], total: 1, page: 1, size: 20 },
+		});
+		renderPage(client);
+		await screen.findByText("bulk_tool_01");
+
+		expect(screen.getByText("列表面 routed（检索发现）")).toBeTruthy();
+		expect(screen.getByText("仅显示前 50 个")).toBeTruthy();
+		expect(screen.getByText(/单组上限 50 个/)).toBeTruthy();
+	});
+});
+
 describe("mCP 服务管理页：异常三态（§4.3，文案区分由服务端 message 承载）", () => {
 	it("当 status=unmounted，则 状态卡「未启用」+ 服务端 message（两态区分）+ 启用指引", async () => {
 		const client = new InMemoryMarketClient({ mcpCatalogResult: { status: "unmounted", groups: [], message: "尚未修改：在 config.yaml 现有 server.mcp 段内把 enabled 改为 true…" } });

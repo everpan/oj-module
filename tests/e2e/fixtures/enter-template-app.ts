@@ -29,7 +29,9 @@ export function execSql(sql: string): string {
 export function resetAdminFixture(): void {
 	const grep = execFileSync("grep", ["-oE", String.raw`\$2y\$10\$[A-Za-z0-9./]+`, SEED_PATH], { encoding: "utf-8" });
 	const hash = grep.split("\n")[0]!.trim();
-	execFileSync("sqlite3", [DB_PATH, `UPDATE users SET password_hash='${hash}', must_change=0 WHERE username='admin';`]);
+	// 归一全部种子账号（admin/superadmin/editor/viewer 口令均 aA123456），
+	// 任何用例改过口令后下一轮都能登回；清 must_change + 登录限流窗口。
+	execFileSync("sqlite3", [DB_PATH, `UPDATE users SET password_hash='${hash}', must_change=0 WHERE username IN ('admin','superadmin','editor','viewer');`]);
 	execFileSync("sqlite3", [DB_PATH, "DELETE FROM sys_login_throttle; DELETE FROM sys_rate_window;"]);
 }
 

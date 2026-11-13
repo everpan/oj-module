@@ -259,7 +259,16 @@ fs.writeFileSync(path.join(bin,${JSON.stringify(ojBin)}),"#!/bin/sh\\necho oj\\n
 			// obo 换签四码与 act_mask_destructive 遮蔽；0.1.129 只有 forTenant，
 			// 装到它上面凭据签发/换签面会静默失效。
 			expect(isSupportedOjVersion("0.1.129")).toBe(false);
-			expect(isSupportedOjVersion("0.1.130")).toBe(true);
+		});
+
+		it("0.1.134 是死版本（MCP 保留前缀致 oj-market 整站拒启）→ 门禁必须拒绝", () => {
+			// oj v0.1.134 把「MCP tool 净化名以 oj_ 开头」判为撞元工具并启动 fail-fast，
+			// 模板内建 oj-market 的 24 个 oj_market_* 工具全部撞线；该版本无逃生口
+			// （server.mcp.modules 白名单与 expose 三态均不豁免，只能关 mcp.enabled）。
+			// 0.1.135 按 migration/oj-requirement-mcp-reserved-prefix.md §5 落地 A+B 解除。
+			// 若有人把门禁降回 0.1.134，下游 ojm init 会装出一个起不来的工程。
+			expect(isSupportedOjVersion("0.1.134")).toBe(false);
+			expect(isSupportedOjVersion("0.1.135")).toBe(true);
 		});
 	});
 });

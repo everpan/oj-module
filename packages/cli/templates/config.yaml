@@ -48,6 +48,10 @@ server:
   # enabled 且未装配 auth 插件时须显式 allow_anonymous: true，否则 oj 启动 fail-fast。
   mcp:
     enabled: true
+    # expose：工具暴露面（oj ≥ 0.1.134）。flat（缺省）= tools/list 全量；grouped = 全量 +
+    # `_meta["com.only-js.groups"]` 分组面；routed = list 只回 oj_search_tools / oj_list_groups，
+    # 业务工具须经检索发现（单组检索上限 50，结果标 truncated）。系统域「MCP 服务」页按三态切换。
+    # expose: flat
     # modules：非空 tool-tags 白名单（fail-closed，避免暴露全集）；方案安装由下方 # ojm:mcp-modules
     # 锚点自动登记方案名，手动部署须按实际 tool tags 显式填充（须核验「方案名」与 tool `tags` 同口径）。
     allow_anonymous: true # enabled 且未装配 auth 插件时 oj 启动 fail-fast；模板含 auth 插件下为兼容守卫
@@ -65,7 +69,7 @@ db:
 vars:
   # 站点对外地址。装方案时服务端拿它把 /cdn 这类相对地址补全成绝对 URL（深检探针也用它）。
   # 故意不读请求头 Host（防伪造 Host 牵引出站）：不配 = fail-closed，不会替你猜。
-  # canonical_origin: "https://your-site.example.com"
+  # canonical_origin: "http://127.0.0.1:9778"  # 模板默认注释掉；本地演练/安装/真机验证时填本机地址后重启
 
   # ---- 企业微信（部署级常量，不进 DB）----
   # 两种应用来源，**可同时启用**（docs/plans/20261101-2044-wecom-internal-app-plan.md）：

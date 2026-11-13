@@ -16,6 +16,7 @@ export default defineConfig({
 	reporter: [["list"]],
 	expect: { timeout: 5_000 },
 	globalSetup: "./fixtures/reset-template-fixture.ts",
+	globalTeardown: "./fixtures/restore-template-fixture.ts",
 	webServer: {
 		command: "pnpm --filter @oj-module/template-demo dev",
 		url: "http://localhost:5174",

@@ -17,5 +17,16 @@
 		"descriptionPlaceholder": "Bio",
 		"updated": "Profile updated",
 		"updateFailed": "Failed to update profile: {{message}}"
+	},
+	"password": {
+		"title": "Change password",
+		"hint": "All current sessions will end after the change; sign in again with your new password.",
+		"old": "Current password",
+		"new": "New password",
+		"confirm": "Confirm new password",
+		"min": "At least 6 characters",
+		"mismatch": "The two passwords do not match",
+		"submit": "Change password",
+		"success": "Password updated. Please sign in again."
 	}
 }

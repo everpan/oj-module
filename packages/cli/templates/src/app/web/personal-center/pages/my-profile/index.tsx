@@ -4,16 +4,20 @@ import {
 	ProFormText,
 	ProFormTextArea,
 } from "@ant-design/pro-components";
-import { BasicContent, FormAvatarItem, useUserStore } from "@oj-module/runtime";
-import { App, Form, Input } from "antd";
+import { BasicContent, FormAvatarItem, useAuthStore, useUserStore } from "@oj-module/runtime";
+import { App, Form, Input, Typography } from "antd";
 import { useTranslation } from "react-i18next";
+import { useNavigate } from "react-router";
 
 import { personalCenterProfilePost } from "../../__client";
+import { ChangePasswordCard } from "./change-password-card";
 
 export default function Profile() {
 	const { t } = useTranslation();
 	const currentUser = useUserStore();
 	const { message } = App.useApp();
+	const logout = useAuthStore(s => s.logout);
+	const navigate = useNavigate();
 	// 无头像时不造兜底图：FormAvatarItem 回退 UserOutlined 图标，与 header 一致
 	const getAvatarURL = () => currentUser?.avatar || undefined;
 
@@ -37,6 +41,19 @@ export default function Profile() {
 		}
 		catch (e) {
 			message.error(t("personal-center:profile.updateFailed", { message: e instanceof Error ? e.message : String(e) }));
+		}
+	};
+
+	// 改密成功 = 后端已吊销该用户全部 refresh 并换发 token：本地会话必须一起收尾，
+	// 否则守卫会拿着已失效的 token 在首页与 401 之间打转
+	const handlePasswordChanged = async () => {
+		message.success(t("personal-center:password.success"));
+		try {
+			await logout();
+		}
+		finally {
+			// 登出的服务端吊销是尽力而为，本地清空后必须回登录页（否则停在已失效的会话里）
+			navigate("/login");
 		}
 	};
 
@@ -103,6 +120,13 @@ export default function Profile() {
 					placeholder={t("personal-center:profile.descriptionPlaceholder")}
 				/>
 			</ProForm>
+			<h4 style={{ marginTop: 32 }}>
+				{t("personal-center:password.title")}
+			</h4>
+			<Typography.Paragraph type="secondary">
+				{t("personal-center:password.hint")}
+			</Typography.Paragraph>
+			<ChangePasswordCard onDone={handlePasswordChanged} />
 		</BasicContent>
 	);
 };
