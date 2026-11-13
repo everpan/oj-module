@@ -260,6 +260,9 @@ tenant:
     - /auth/refresh
     # oj-market 收敛接口（裸 fetch 不带租户头）
     - /oj-market/converge
+    # 企微 MCP 插件：带不了 X-TENANT-ID，租户由已验签 svc Bearer claim 派生。强绑定下
+    # 本条冗余（claim 命中无头也放行）；弱绑定部署靠它豁免缺头 400，与上方 handler 注入配套。
+    - /wecom-bot/mcp
   # tenant.require_signed_claim：租户头的服务端绑定（平台级 fail-closed，开启后强绑定）。
   # http.tenantId 只认「验签后的 JWT claim 顶层 tenant」：光带 X-TENANT-ID 头而无签名 claim
   # → 403 tenant requires a signed claim；头的租户值与 claim 不符 → 403 tenant header does not match signed claim。

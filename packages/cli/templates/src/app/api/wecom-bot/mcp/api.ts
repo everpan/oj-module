@@ -10,8 +10,10 @@
 //  - 响应 status + body 字节原样透传（json.stream 全透传，覆盖 200 JSON / 202 空体 / 406·415 信封）
 //  - obo 失败 4031x → 映射为 JSON-RPC error（HTTP 200，避免破坏 MCP 帧；方案 §4.3#6）
 //
-// 头置换（§4.3#2）：剥 X-WeCom-User-Id / X-TENANT-ID / 原 svc Bearer，租户从 Bearer claim 推导
-// （不转租户头，防 403 tenant header does not match signed claim）；强制 content-type / accept。
+// 头置换（§4.3#2）：剥 X-WeCom-User-Id / 原 svc Bearer；强制 content-type / accept。
+// 租户头由**已验签 svc Bearer 的 claim.tenant** 服务端派生后注入 bridge.call：强绑定下与 claim
+// 一致（不触发 mismatch 403）；弱绑定（require_signed_claim:false）只认租户头，不注入则内层
+// /mcp 与 /auth/obo 各自 400，且入站路径须在 tenant.anonymous_paths 豁免缺头。绝不采信请求自报。
 //
 // 死锁差异：obo 与 /mcp 两步都用 bridge.call（目标在隔离内部分发池执行，不占公共 actor 槽），
 // 且两步是顺序调用、非嵌套，深度恒为 1（dispatch 目标再 call 才 503），故并发任意高也不死锁。
@@ -46,10 +48,14 @@ async function post() {
 		return;
 	}
 
+	// 服务端派生租户（取自已验签 token 的 claim，非请求头自报；弱绑定部署内层 bridge.call 需要）。
+	const tenant = String((http.user?.claims as { tenant?: unknown } | undefined)?.tenant ?? "");
 	const headersBase: Record<string, string> = {
 		"content-type": "application/json",
 		"accept": "application/json, text/event-stream",
 	};
+	if (tenant)
+		headersBase["x-tenant-id"] = tenant;
 
 	// tools/call 必须带 X-WeCom-User-Id（企微在企业域名下注入），缺则 fail-closed 400。
 	const userId = (http.headers["x-wecom-user-id"] ?? http.headers["X-WeCom-User-Id"] ?? "").trim();
@@ -64,7 +70,11 @@ async function post() {
 		const oboResp = await bridge.call({
 			method: "POST",
 			path: `${API_BASE}/auth/obo`,
-			headers: { "content-type": "application/json", "authorization": auth },
+			headers: {
+				"content-type": "application/json",
+				"authorization": auth,
+				...(tenant ? { "x-tenant-id": tenant } : {}),
+			},
 			body: JSON.stringify({ provider: "wecom", external_sub: userId }),
 		});
 		const oboText = await oboResp.text();
