@@ -28,7 +28,7 @@ function scopeLabel(scope: string, t: (k: string) => string): string {
 	return t("system:bot.token.scope.destructive");
 }
 
-/** 服务凭据面板：签发（明文只显示一次）/ 列表 / 吊销。全部端点后端为 assertSuperAdmin。 */
+/** 服务凭据面板：签发（明文只显示一次）/ 列表 / 吊销。全部端点后端为 assertSystemAdmin（每租户 admin 自助签发，Q-I）。 */
 export function ServiceTokenPanel() {
 	const { t } = useTranslation();
 	const { message } = App.useApp();

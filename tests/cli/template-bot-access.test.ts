@@ -103,6 +103,9 @@ describe("模板机器人接入管理端接线（线路 B 回归）", () => {
 		expect(routes).toContain("\"/system/framework/bot\"");
 		expect(routes).toContain("\"system:menu.bot\"");
 		expect(routes).toContain("roles: [\"superadmin\"]");
+		// Q-I 租户自助签发：bot 路由门禁须放行 admin（SYSTEM_ROLES），不能只剩 superadmin——
+		// 否则租户 admin 连页面都进不去，签出的 Bearer 只能带 superadmin 的 default 租户。
+		expect(routes).toContain("handle: { title: \"system:menu.bot\", roles: SYSTEM_ROLES }");
 		for (const f of WEB_FILES)
 			expect(has(f), `缺前端文件 ${f}`).toBe(true);
 

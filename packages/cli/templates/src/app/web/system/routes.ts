@@ -104,7 +104,7 @@ export const routes: AppRouteRecordRaw[] = [
 						// 机器人接入管理端（mcp-bot-guide 线路 B）：svc 凭据 / 员工绑定 / 换签审计 / 接入指引
 						path: "/system/framework/bot",
 						Component: Bot,
-						handle: { title: "system:menu.bot", roles: ["superadmin"] },
+						handle: { title: "system:menu.bot", roles: SYSTEM_ROLES },
 					},
 				],
 			},

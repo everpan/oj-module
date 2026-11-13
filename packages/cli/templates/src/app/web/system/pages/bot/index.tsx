@@ -11,8 +11,10 @@ import { WeComPluginConfigPanel } from "./WeComPluginConfig";
 /**
  * 机器人接入管理端（mcp-bot-guide「线路 B」运营面）：服务凭据 / 员工绑定 / 换签审计 /
  * 普通模式插件配置（P4a）/ 接入指引五块。挂载在 /system/framework/bot，路由级
- * roles:["superadmin"]，各面板后端亦为 assertSystemAdmin 双保险。各面板各自懒取数，
- * 切 tab 不互相阻塞。
+ * roles:SYSTEM_ROLES（admin + superadmin）：服务凭据签发是每租户 admin 自助面（Q-I，方案 §4.1），
+ * 签出的 Bearer 租户取自签发者签名 claim，须由对应租户管理员签发。
+ * 服务凭据面板后端 assertSystemAdmin；员工绑定/换签审计/清库仍 assertSuperAdmin（D11）。
+ * 各面板各自懒取数，切 tab 不互相阻塞；无权面板自带 ForbiddenPanel 降级。
  */
 export default function BotPage() {
 	const { t } = useTranslation();
