@@ -96,6 +96,30 @@ if (drifted.length > 0) {
 }
 
 const kept = [...byName.values()].sort((a, b) => (a.tgz < b.tgz ? -1 : a.tgz > b.tgz ? 1 : 0));
+
+// 签名规范闸门（2026-11-13，fail-closed）：站点 verify 按 REG-CS3 对 canon !== "v2"
+// 一律 canon_stale 拒装——0.2.91 曾把全局旧 ojm（0.2.25，恒产 v1）签出的随站包
+// 收编出站，升级即拒装。版本对账只管「新不新」，这里管「合规不合规」，两道缺一不可。
+const stale = [];
+for (const { sig } of kept) {
+	let canon;
+	try {
+		canon = JSON.parse(fs.readFileSync(path.join(templatesDist, sig), "utf-8")).canon;
+	}
+	catch {
+		canon = undefined;
+	}
+	if (canon !== "v2")
+		stale.push(`${sig}（canon=${String(canon)}）`);
+}
+if (stale.length > 0) {
+	console.error("[prepack] 随站方案包 .sig 签名规范版本过旧（站点按 REG-CS3 一律拒装）——拒绝发布：");
+	for (const s of stale)
+		console.error(`  · ${s}`);
+	console.error("  处置：用仓库内当前 ojm 重签（勿用全局旧版 ojm——它恒产 v1）：node packages/cli/bin/ojm.mjs sign packages/cli/templates/dist/<name>-<ver>.tgz --id platform.release --registry-id oj-registry --check");
+	process.exit(1);
+}
+
 fs.mkdirSync(bundlesDir, { recursive: true });
 for (const { tgz, sig } of kept) {
 	fs.copyFileSync(path.join(templatesDist, tgz), path.join(bundlesDir, tgz));
