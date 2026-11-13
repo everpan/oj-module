@@ -20,15 +20,14 @@
 
 > **版本红线（2026-11-13 更新）**：oj **0.1.134 是死版本**——MCP tool 名以 `oj_` 开头即启动 fail-fast，
 > 模板内建 `oj-market` 的 **24 个** `oj_market_*` 工具全撞线、默认配置（`mcp.enabled: true`）零改动拒启，
-> 且无逃生口。上游 **0.1.135** 按方案 A+B 解除（§11 **U10** 已闭环），本仓 **`MIN_OJ_VERSION` 已抬到 0.1.135**
-> → 演练一律用 **≥ 0.1.135**，0.1.134 会被 vendor 门禁直接挡下（这也是抬版的第二个理由）。
-> **过渡期注意**：0.1.135 / 0.1.136 都未打 npm tag（latest 仍 0.1.134），`ojm vendor`/`ojm init`（无 tag 走 latest）会停在门禁；
-> 本机演练须先把 `bin/oj` + `.oj-version` 预置进工程（做法见 §9「`ojm init`/`ojm vendor` 报 latest 低于门禁」行）。
-> **0.1.136 已本地落盘**（`~/.local/share/oj`，2026-11-13）但**未上 npm**，`MIN_OJ_VERSION` **维持 0.1.135**（不能抬到未发布版本——
-> 否则 `ojm vendor v0.1.136` 会在 npm 安装步 404）。本轮三个新特性（MCP 服务页 expose 三态 / 个人中心改密卡 / 0.1.135 门禁）
-> 已在 **oj 0.1.136** 下复验全绿：e2e 4/4（mcp-service 3 + change-password 1）、`oj test` wecom-bot 11/11、单测 mcp-catalog 19/19 +
-> change-password-card 4/4 + cli vendor 3/3；唯一未过 `mcp/index.test.tsx` 是 antd6/pro-components 3.x 预发版 CJS-in-ESM 工具链坑
-> （与 oj 无关，功能已由 e2e + 逻辑单测覆盖）。`config.yaml` 的 `vars.canonical_origin` 已恢复为模板默认注释态（本地验证时再填）。
+> 且无逃生口。上游 **0.1.135** 按方案 A+B 解除（§11 **U10** 已闭环），当前 **`MIN_OJ_VERSION = 0.1.137`**
+> （= 上游最新发布版，按「门禁钉最新发布版」策略同步抬高）→ 演练一律用 **≥ 0.1.137**，
+> 0.1.134~0.1.136 会被 vendor 门禁直接挡下（不能回落到死版本，也不低于当前发布底线）。
+> 本轮三个新特性（MCP 服务页 expose 三态 / 个人中心改密卡 / 0.1.135 门禁）已在 **oj 0.1.136** 下复验全绿、
+> 现随 **0.1.137** 发布整体抬版：e2e 4/4（mcp-service 3 + change-password 1）、`oj test` wecom-bot 11/11、单测
+> mcp-catalog 19/19 + change-password-card 4/4 + cli vendor 3/3；唯一未过 `mcp/index.test.tsx` 是 antd6/pro-components
+> 3.x 预发版 CJS-in-ESM 工具链坑（与 oj 无关，功能已由 e2e + 逻辑单测覆盖）。`ojm vendor`/`ojm init` 走 npm latest
+> 即可装到 0.1.137（无需再预置 `bin/oj`）。`config.yaml` 的 `vars.canonical_origin` 已恢复为模板默认注释态（本地验证时再填）。
 
 > **上次演练结论（2026-11-12 全量线，cli/runtime 0.2.84 打包态 / oj 0.1.130）**：**通过（唯一红项：oj 0.1.131 未发版）**——
 > §0.5 `pnpm pack`（prepack 收编已签名 oj-market-0.2.7 **纯 web 包**）→ 解包 + runtime 依赖改指本地 tgz +
@@ -224,6 +223,47 @@ node ../bin/ojm.mjs sign dist/web-0.1.0.tgz --id quickline-demo.publisher01 \
 
 > 快线覆盖不到打包差异（prepack 同步 devkit、`.gitignore` 被 pack 剥离、shell-dist 无 sourcemap）——
 > 这些只在 §0.5 的 tarball 形态里才现形，所以发版前仍必须走全量线。
+
+## 0.4 方言真库演练（MySQL / PostgreSQL；sqlite 之外的三方言兜底）
+
+> §0.3 默认跑在 sqlite 上，**方言 seed / 迁移件只有在真库上才会被执行**。要回答「模板换库到底能不能起站」，
+> 用本机容器里的两个真库各跑一遍 §0.3 快线。日常 sqlite 回归不覆盖这条线——**换 db 驱动 / 改方言 seed / 升 oj 方言能力时必须重跑**。
+
+**发现本机真库**（`container list` 列出正在跑的容器，挑出 mysql / postgres 实例与其 IP:PORT、账号）：
+
+```bash
+container list -a
+# 期望看到 oj-test-mysql（mysql:8.4，root/root）与 oj-test-postgres（PostgreSQL 16，postgres/postgres）
+# 记下各自 IP:PORT（如 192.168.64.2:3306 / 192.168.64.3:5432）
+```
+
+**逐库冷库 + 指向**（两条线各一遍，互不干扰）：
+
+```bash
+# mysql 线
+mysql -h <IP> -P <PORT> -uroot -proot -e "DROP DATABASE IF EXISTS ojtest; CREATE DATABASE ojtest;"
+# pg 线
+PGPASSWORD=postgres psql -h <IP> -p <PORT> -U postgres -c "DROP DATABASE IF EXISTS ojtest;" -c "CREATE DATABASE ojtest;"
+
+# 在 packages/cli/templates/ 下建 config.local.yaml，只覆盖 db.default（不要在源码 config.yaml 上改）
+#   db:
+#     default: "mysql://root:root@<IP>:<PORT>/ojtest"      # 或 postgres://postgres:postgres@<IP>:<PORT>/ojtest
+```
+
+**跑 §0.3 快线**（每条线独立一遍）：删库重建 `ojm dev` → 迁移与 seed → 超管登录 → 建普通用户 → 首登改密 →
+申请发布凭证 → `keygen --credential` → `sign --check` → 通知列表 / 广播 / 已读。
+
+**通过判据（两条线都须满足）**：
+- 迁移账本一致：`_platform 9 / auth 3 / home 2 / notification 6 / publish 1`（2026-11-13 真机实测；2026-11-05 基线写的 `_platform 2 / notification 5` 已随模板迁移文件增长而过时），两库均 **31 张表**、`sys_setting` **8 条**（2026-11-05 基线的「29 张表」亦随之变为 31，两方言一致）。
+- 起服 `routes` 行数与 sqlite 线一致（实测 **114 method-row / 93 pattern / 53 api file**，mysql 与 pg 两条线一致）；`GET /api/auth/login` → **405**（路由在）。
+- 发布凭证：超管登录后 `POST /api/publish/credential` 申请成功，`key_id=<产品>.<账号>`（实测 `oj-module.superadmin`）、TTL **7 天**（实测 `expires_at − now ≈ 604756s ≈ 604800s`）。
+  > 注：本版超管首次登录 `must_change=false`，**未触发**「改密前申请凭证 403 `password change required`」门禁——该判据与当前 seed 行为不符，已不具可执行性，保留作历史对照。
+- 通知列表可列、广播 + 已读在 **PG** 上 `isRead:true`（实测 `POST push-broadcast` → 列表 `isRead:false` → `POST read` → 列表 `isRead:true`；PG 对 `UNION` 异型 / `int4` 溢出最挑剔，是这条线的主要价值）。
+- 方言 seed 与基础 seed 表×条数一致（守卫 **m-5/m-6/m-7**）；保留字列（`key`/`group`）在 mysql/pg 上不 1064（实测两方言 seed 均零报错，`key`/`group` 列共 2 个已落位）。
+
+> **2026-11-13 真机演练记录**：容器 `oj-test-mysql`（mysql:8.4，192.168.64.2）/ `oj-test-postgres`（postgres:16-alpine，192.168.64.3）经 `container start` 拉起；`templates/bin/oj` 经 `ojm vendor v0.1.137` 升到 0.1.137（此前本地是 0.1.136，低于门禁，无法起服——即本演练的前置卡点）；`config.local.yaml` 仅覆盖 `db.default` 分别指向两库；逐线跑 `ojm dev` → 迁移 + 方言 seed 全绿 → 超管登录 → 申请发布凭证 → 通知广播 + 已读。两线均通过，结论：模板换库（mysql/pg）可正常起站。
+
+> 已知坑与回归守卫见 §9（MySQL 1064 / 方言 seed 缺 sys_setting / PG int4 溢出 / PG UNION 异型 / MySQL 两步取 id / 保留字 seed）与 §11（U1 seed 方言回落、U2 mysql 两步取 id 钉连接）。完整实测记录见 [附录 A](#附录-a-历史基线从新到旧逐条可追溯) 2026-11-05 第三轮基线。
 
 ## 0.5 发布形态准备（默认；与发包逐字节一致）
 

@@ -1,4 +1,4 @@
-import type { SystemUsersGetData } from "../../__client";
+import type { SystemRolesGetData, SystemUsersGetData } from "../../__client";
 
 import { PlusOutlined } from "@ant-design/icons";
 import { useUserStore } from "@oj-module/runtime";
@@ -9,10 +9,11 @@ import { useTranslation } from "react-i18next";
 
 import { useNavigate } from "react-router";
 
-import { systemDepartmentsGet, systemUsersForbiddenPut, systemUsersGet, systemUsersPasswordPut, systemUsersPost } from "../../__client";
+import { systemDepartmentsGet, systemRolesGet, systemUsersForbiddenPut, systemUsersGet, systemUsersPasswordPut, systemUsersPost } from "../../__client";
 import { buildTreeData, subtreeIds } from "../departments/tree";
 import { explainError, isForbidden } from "../errors";
 import { ForbiddenPanel } from "../forbidden";
+import { roleLabel } from "../roles/role-label";
 import { canManageUser } from "./can-manage";
 import { matchUserKeyword } from "./match-keyword";
 
@@ -48,6 +49,15 @@ export default function UsersPage() {
 	const usersQuery = useQuery({ queryKey: ["system", "users"], queryFn: systemUsersGet });
 	// 与部门页共用同一份缓存键：那边改完部门，这边的筛选树也跟着新
 	const deptQuery = useQuery({ queryKey: ["system", "departments"], queryFn: systemDepartmentsGet });
+	// 角色展示名（语言名）解析：与角色页/成员资格页共用同一份 ["system","roles"] 缓存，
+	// 按角色名建索引，渲染时走 roleLabel 做多语言转换（title_key → 内置 locale → title → name）
+	const rolesQuery = useQuery({ queryKey: ["system", "roles"], queryFn: systemRolesGet });
+	const roleRowMap = useMemo(() => {
+		const m = new Map<string, SystemRolesGetData[number]>();
+		for (const r of rolesQuery.data ?? [])
+			m.set(r.name, r);
+		return m;
+	}, [rolesQuery.data]);
 
 	const invalidate = () => queryClient.invalidateQueries({ queryKey: ["system", "users"] });
 
@@ -112,7 +122,12 @@ export default function UsersPage() {
 		{
 			title: t("system:users.columns.roles"),
 			dataIndex: "roles",
-			render: (roles: string[]) => roles.map(r => <Tag key={r}>{r}</Tag>),
+			render: (roles: string[]) => roles.map((r) => {
+				// 按角色名取角色元数据做多语言展示名解析；未知角色（如已清理的 deprecated）
+				// 回退原样显示机器名，避免空白
+				const row = roleRowMap.get(r);
+				return <Tag key={r}>{row ? roleLabel(row, t) : r}</Tag>;
+			}),
 		},
 		{
 			title: t("system:users.columns.status"),

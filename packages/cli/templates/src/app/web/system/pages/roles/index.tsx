@@ -2,6 +2,7 @@ import type { SystemPermissionsGetData, SystemRolesGetData } from "../../__clien
 
 import { useQuery } from "@tanstack/react-query";
 import { Alert, Space, Table, Tabs, Tag } from "antd";
+import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 
 import { systemPermissionsGet, systemRolesGet } from "../../__client";
@@ -22,6 +23,16 @@ export default function RolesPage() {
 	const rolesQuery = useQuery({ queryKey: ["system", "roles"], queryFn: systemRolesGet });
 	const permsQuery = useQuery({ queryKey: ["system", "permissions"], queryFn: systemPermissionsGet });
 	const rows = visibleRoles(rolesQuery.data ?? []);
+
+	// 权限点展示名解析：按 code 建索引，渲染时按 title_key 做多语言转换；
+	// 与下方「权限点」页 title_key 列同口径（title_key 命中 locale → 译文，否则回退原键值 code）
+	// 必须放在提前 return 之前，遵守 Hooks 调用顺序不变的约束
+	const permRowMap = useMemo(() => {
+		const m = new Map<string, SystemPermissionsGetData[number]>();
+		for (const p of permsQuery.data ?? [])
+			m.set(p.code, p);
+		return m;
+	}, [permsQuery.data]);
 
 	if ((rolesQuery.error && isForbidden(rolesQuery.error)) || (permsQuery.error && isForbidden(permsQuery.error)))
 		return <ForbiddenPanel t={t} error={rolesQuery.error ?? permsQuery.error} />;
@@ -52,7 +63,12 @@ export default function RolesPage() {
 		{
 			title: t("system:rolesPage.permissions"),
 			dataIndex: "permissions",
-			render: (perms: string[]) => perms.map(p => <Tag key={p}>{p}</Tag>),
+			render: (perms: string[]) => perms.map((p) => {
+				// 权限点按 title_key 做多语言展示名解析；未配置 title_key（或当前语言无译文）
+				// 时回退原键值 code，与下方「权限点」页 title_key 列同口径
+				const perm = permRowMap.get(p);
+				return <Tag key={p}>{perm?.title_key ? t(perm.title_key, { defaultValue: p }) : p}</Tag>;
+			}),
 		},
 	];
 

@@ -15,6 +15,8 @@ export default defineConfig({
 	test: {
 		include: [
 			"src/app/web/system/pages/mcp/index.test.tsx",
+			"src/app/web/system/pages/roles/index.test.tsx",
+			"src/app/web/system/pages/users/index.test.tsx",
 			"src/app/web/personal-center/pages/my-profile/change-password-card.test.tsx",
 		],
 		environment: "jsdom",
