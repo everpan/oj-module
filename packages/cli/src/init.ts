@@ -222,7 +222,9 @@ export async function initProject(destDir: string, opts: InitOptions = {}): Prom
 		//   · `publish-walkthrough.md` 方案包发布全流程（新手照做版）：打包/签名/CDN/安装一条链。
 		//   · `newcomer.md` 新人上路线：脚手架 → 建模块 → 自包含 → 编译 → 发布 → 升级主路径，
 		//     第一天到第一个方案包的顺序书，细节按章号指向 manual.md / publish-walkthrough.md。
-		for (const name of ["SKILL.md", "manual.md", "README.md", "wecom-daikaifa.md", "wecom-internal-app.md", "publish-walkthrough.md", "newcomer.md"])
+		//   · `runtime-api-reference.md` `@oj-module/runtime` 导出 API 专题：按用途列全导出符号
+		//     （认证/用户/RBAC/组件/hooks/store/工具），模块作者速查用什么、避什么红线。
+		for (const name of ["SKILL.md", "manual.md", "README.md", "runtime-api-reference.md", "wecom-daikaifa.md", "wecom-internal-app.md", "publish-walkthrough.md", "newcomer.md"])
 			copyIfAbsent(path.join(cliDevkit, name), path.join(ojmSkillDir, name), report);
 	}
 	else {

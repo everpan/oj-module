@@ -590,6 +590,8 @@ return <ReactEChartsCore echarts={echarts} option={option} opts={{ height: 320, 
 - `useAuthStore`：`token`、登录/登出（`login` / `logout`）；
 - `useAccess` + `AccessControl` 组件：基于 `roles` / `permissions` 的按钮/菜单门禁，别自己拿 `roles` 数组手算；
 - 其它：`usePreferences`、`useTabsStore`、`useSlotNodes`（§5.5）等。
+- 完整导出清单（含 `fetchUserInfosByIDs` 等批量 API、组件、工具与红线）见同目录的
+  `runtime-api-reference.md` 专题。
 
 ```ts
 import { useUserStore, useAccess, AccessControl } from "@oj-module/runtime";

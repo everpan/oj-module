@@ -68,7 +68,11 @@ curl -s -X POST {base}/v1/api/admin/service-token/ \
 # → {"code":0,"data":{"token":"<明文>","jti":"…"}}
 ```
 
-- **明文 token 仅此一次**（落库只存 jti）——立即转存密管/vars。
+- **明文面**（v0.1.132 起）：`oj_svc_token.token` 列**落明文**——`GET …/system/
+  service-token/current`（svc 自认证）靠它跨重启恢复最新 bearer。明文只在
+  create 响应与该 current 响应出现；**admin list 永不选择 token 列**。
+  推论：`oj_svc_token` 表整表即凭据——**库导出/备份须按凭据物料管控**，
+  拿到库文件 = 拿到全部活跃 bearer（可立刻 DELETE 吊销止血）。
 - `scopes` 按机器人职责给档：纯查询 `["read"]`；要办事加 `"write"`；
   **永远不给 `"destructive"`**（配了 `act_mask_destructive` 后代操作也删不了）。
 - scopes 只约束机器人**直连**工具/路由的动词档位；**不约束换签面**
@@ -88,7 +92,9 @@ api-manual §14「svc 凭据与 jti 吊销」。
 ### 3.4 凭据注入机器人
 
 骨架经 `vars`（部署期常量）读取：`vars.get("WECOM_BOT_SVC_TOKEN")`。
-真实接入建议存 kv 并定期轮换（轮换 = 签发新 token + 吊销旧 jti，见 §7）。
+真实接入建议存 kv 并定期轮换——**原生自轮换**（v0.1.132 R6）：svc bearer
+自己打 `POST /system/service-token/rotate` 即换新 bearer（旧 jti 24h 宽限
+自动过期），消费方进程重启后经 `GET …/current` 取回最新，见 §7。
 
 ## 4. 凭据模型速览（判 403 时心里有数）
 
@@ -103,8 +109,11 @@ api-manual §14「svc 凭据与 jti 吊销」。
 语义细则（fail-closed）：scopes **缺席** = 全量随 roles（旧 token 零破坏）；
 present-but-empty `[]` = 全拒；显式 `null` = 全拒；未知档名 = 拒。
 
-**jti 吊销**：svc 凭据逐请求核销 `oj_svc_token` 表（30s TTL 缓存）——
-签发后最长 30s 才可过门；吊销后最长 30s 全网失效；查库失败/无行恒拒。
+**jti 吊销**：svc 凭据逐请求核销 `oj_svc_token` 表（30s TTL 正缓存 + miss 穿透 v0.1.132、
+穿透仍 miss 开**全局 2s 负缓存窗** v0.1.133——所有未知 jti 共享，窗内一律不打库
+直接拒，整窗至多 1 次真查）——新签发/轮换的 jti **即时**可过门（miss
+穿透重查）；吊销/宽限移出最长 30s 全网失效；伪造/未知 jti 在负缓存窗内不打库
+直接拒（探测量与 DB 查询解耦）；查库失败/无行恒拒。
 
 **POST-as-query 的两条正路**：查询类业务路由改 GET + query 参数（首选）；
 或该机器人签发时纳入 `write` 档。不要在客户端绕。
@@ -163,13 +172,22 @@ const r = await fetch(`${OJ_ORIGIN}/v1/api/mcp`, {
   （不是 -32601——调用面不裁）。
 - `tools/list` 按 token 的 scopes 裁剪展示面：read 档不见写 tool、act 会话
   不见 destructive tool——**名单因人而异，勿跨会话缓存**。
+- 工具上百后（多方案模块安装）：`server.mcp.expose`（v0.1.134）——`grouped`
+  让 list 在 `_meta.com.only-js.groups` 带模块分组面；`routed` 只回
+  `oj_search_tools`/`oj_list_groups` 两元工具，bot 走「`oj_search_tools`
+  检索（`{query, group?, limit?}`，子串匹配、match 带完整 inputSchema）→
+  直呼 name」两步流（spec 允许 call 名不在 list 内；调用面不变）。bot 侧
+  建议：固定高频工具直呼 + 低频走检索；空 matches = 无可见匹配（无权同
+  形状，直呼被裁工具得 403 不是 -32601）。详见 api-manual §14「工具分组
+  与检索路由」与 scenarios.md 场景 78。
 
 ## 7. 运维手册
 
 | 动作 | 操作 |
 |---|---|
-| 轮换凭据 | 签发新 token（新 jti）→ 机器人切流 → `DELETE /v1/api/admin/service-token/{旧jti}` |
-| 紧急止血 | 直接 DELETE 旧 jti——最长 30s 全网失效（TTL 设计内） |
+| **自动轮换（R6，v0.1.132 起首选）** | 机器人惰性自愈：临期/40311 → `POST /v1/api/system/service-token/rotate`（旧 bearer 自身认证）→ 回写内存；重启恢复 `GET /v1/api/system/service-token/current`。零 admin 介入，见场景 77 |
+| 轮换凭据（手动兜底） | 签发新 token（新 jti）→ 机器人切流 → `DELETE /v1/api/admin/service-token/{旧jti}` |
+| 紧急止血 | 直接 DELETE 旧 jti——最长 30s 全网失效（TTL 设计内）；R6 宽限提示：rotate 后的旧 jti 有 24h 宽限，止血仍用 DELETE（删行立即生效） |
 | 审计换签 | `GET /v1/api/admin/obo-audit/`（分页）/ `/export`（CSV）：svc、provider、user_id、reason、成败 |
 | 绑定维护 | `bot-binding` CRUD + CSV import/export |
 | 指标口径 | description 覆盖率（openapi 产物统计）/ obo 日换签数（`oj_obo_audit` ok=1 按天）/ 绑定缺失占比（reason='unbound'）/ scope 拒绝分布（日志 `missing scope: <tier>` 三桶）——详见场景 75 指标表 |

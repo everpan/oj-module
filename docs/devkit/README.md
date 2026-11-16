@@ -2,21 +2,22 @@
 
 > **你在哪读这份文件？** 两种视图，内容同一份：
 > - **业务工程里**（`.claude/skills/ojm-module-dev/`）：文件是随 `@oj-module/cli` 分发的**副本**，
->   直接读 `newcomer.md`（上路线）/ `SKILL.md` / `manual.md` / 两本企微手册 / `publish-walkthrough.md` 即可闭环；
+>   直接读 `newcomer.md`（上路线）/ `SKILL.md` / `manual.md` / `runtime-api-reference.md`（导出 API 速查）
+>   / 两本企微手册 / `publish-walkthrough.md` 即可闭环；
 >   下文出现的 `docs/devkit/`、`packages/cli/` 是**框架仓库路径**，只用来解释文件怎么来的，
 >   你本地没有也不影响使用。
 > - **框架仓库里**（`docs/devkit/`）：这里才是源文件，改文档只改这一处。
 
 面向用 `ojm` 开发前后端一体工程的开发者与 AI agent。本目录是**源文件**，
 发布时由 cli 的 `prepack`（`packages/cli/scripts/sync-devkit.mjs`）把其中
-**ojm 侧的 13 个文件**同步进 `packages/cli/devkit/`，随 `@oj-module/cli`
+**ojm 侧的 14 个文件**同步进 `packages/cli/devkit/`，随 `@oj-module/cli`
 发布，再由 `ojm init` 分发到工程内。
 
 整棵树覆盖前后端两侧，但仍是**两套独立分发的 skill**（同名不同物，别混）：
 
 | 侧 | 本仓位置 | 用户工程里的落点 | 分发链 |
 |---|---|---|---|
-| ojm 模块开发（前端模块、契约、前后端对接） | 本目录顶层 13 个文件 | `.claude/skills/ojm-module-dev/` | `@oj-module/cli` 包（全部 13 个）→ `ojm init` 第 4b 步（只分发其中 7 个，见下） |
+| ojm 模块开发（前端模块、契约、前后端对接） | 本目录顶层 14 个文件 | `.claude/skills/ojm-module-dev/` | `@oj-module/cli` 包（全部 14 个）→ `ojm init` 第 4b 步（只分发其中 8 个，见下） |
 | oj API 开发（后端 handler、全局对象、配置、测试） | `oj-api-dev/` 子目录（快照） | `.claude/skills/oj-api-dev/` | **oj 二进制自带**（`bin/devkit/`）→ `ojm init` 第 4 步 / `ojm vendor` 装·升后同步（0.2.57 起共用 `syncOjDevkit`，全量 `.md` **覆盖**——文档始终与已装 oj 版本一致） |
 
 > **`oj-api-dev/` 子目录是快照，不是本仓维护的文档**：它与本机 oj 的
@@ -37,15 +38,17 @@
 | `framework-dev.md` | 框架贡献者路线（**仅框架仓库**）：改 `packages/runtime`、`packages/cli` 时的入口与红线 |
 | `module-dev-and-cdn-playground.md` | 教学文档：开发态 ≠ 分发态、「怎么安装自己的模块 / 会不会重复」、本地 CDN 市场链路跑通（setup → publish → verify → 安装） |
 | `sql-builder-missing-capabilities-pr.md` | 构造器能力缺口 PR 参考（**仅框架仓库**）：7 项诉求的闭环记录 |
+| `runtime-api-reference.md` | **`@oj-module/runtime` 导出 API 专题**：按用途列全主入口导出的符号（模块契约/认证/用户信息/`fetchUserInfosByIDs` 批量反 N+1/RBAC/组件/hooks/store/租户/URL 与请求/树工具/图标/类型），每个给「做什么 / 谁用 / 红线」，附常见误用速查表 |
 | `menu-rules.md` | 方案菜单归组规则专题：单根模块约定、自定义根路径 `web.route_prefix`、`category` 三值语义、admin 重写与视觉归组（手册 §13 的展开版） |
 | `wecom-daikaifa.md` | 企业微信代开发集成：**凭据清单**（8 项 `vars`，按 Tier A/B/C 分层的来源与必填时序 + 可信域名/可信 IP 备案）、首次开通顺序（含 `suite_ticket` 依赖与引导期死锁的破法）、**用户 / 开发 / 部署三角色手册**、错误文案速查、与自建应用共存的语义变化 |
 | `wecom-internal-app.md` | 企业微信**企业内部应用（自建应用）**集成：5 项 `wecom_corp_*` 凭据 + 2 项复用、回调只填「通讯录同步」一处、「验证并接入」四步自检、可见范围与可信 IP/域名、单企业私有化的边界（自建应用收不到成员变更事件）、共存配置、故障速查 |
 | `wecom-multi-corp-links.md` | **平台运维 / 服务商运营**：一套部署服务 N 家企业的**专属登录链接运维清单**（方案一，运维零代码改动）——前置检查、逐企业接入 6 步、链接格式与参数、员工四入口、逐企业验收打勾、故障速查、日常运维；含企微工作台内早跳透传 `corp`/`agent` 的修复说明 |
 | `wecom-customer-reauth-guide.md` | **客户企业微信管理员（可直接转发）**：站点重新部署后的**重新授权与数据恢复操作单**——服务商填写信息区、重新授权（管理员授权 / 可见范围全公司）、首次登录改密、组织架构同步、员工重新登录、角色权限重配、验收打勾、故障速查 |
 
-> 上表 12 项 + 本文件 `README.md` = 顶层 13 个文件，全部随 cli 包发货。
-> `ojm init` 第 4b 步**只分发其中 7 个**给业务工程：`SKILL.md` / `manual.md` / `README.md` /
-> `newcomer.md` / `wecom-daikaifa.md` / `wecom-internal-app.md` / `publish-walkthrough.md`。
+> 上表 13 项 + 本文件 `README.md` = 顶层 14 个文件，全部随 cli 包发货。
+> `ojm init` 第 4b 步**只分发其中 8 个**给业务工程：`SKILL.md` / `manual.md` / `README.md` /
+> `runtime-api-reference.md` / `newcomer.md` / `wecom-daikaifa.md` /
+> `wecom-internal-app.md` / `publish-walkthrough.md`。
 > 其余 6 个（`framework-dev.md`、`menu-rules.md`、`module-dev-and-cdn-playground.md`、
 > `sql-builder-missing-capabilities-pr.md`、`wecom-multi-corp-links.md`、
 > `wecom-customer-reauth-guide.md`）是框架贡献者或专题材料，只在 cli 包内可取。

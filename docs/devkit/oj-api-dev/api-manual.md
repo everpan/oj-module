@@ -834,14 +834,20 @@ get.schema = { query: { type: "object" } }; // 现在只放入参
 3. `required` 里的项**可能不在 `properties` 中**（JSON Schema 允许「只声明必填、不约束
    类型」），codegen 取值前先判存在。
 
-#### `.schema` 顶层只允许四个通道（v0.1.70，行为收紧）
+#### `.schema` 顶层通道白名单（v0.1.70 收紧；v0.1.130 起含 `description`）
 
-顶层键白名单 = `params` / `query` / `body` / `response`；其余键（`param` / `bodys` /
+顶层键白名单 = `params` / `query` / `body` / `response` / `description`（v0.1.130 起，string-only 组级说明，见下）；其余键（`param` / `bodys` /
 `responce` / `title` / `$schema` …）**装配期硬失败**（报错带 method / pattern /
 handler 链 / 文件）。以前这类键被**静默忽略**——拼错的通道意味着接口一直在裸奔，
 而「声明了但没生效」是本项目最重的缺陷类。报 `unsupported channel` 就改名或删除。
 （v0.1.72 的平级 `.response` 不在此列：它在 `.schema` 之外，胜出者会被写回
 `schema.response` 通道，同样过这道审计。）
+
+`description`（spec 2026-11-11 P1，v0.1.130+）：**组级说明，string-only**（写成对象/
+数组即 `description must be a string` 拒装），声明后由 `oj openapi` 透传为
+`operation.description`，并经 `spec_to_tools` 成为 MCP 工具 description（未声明则
+回落合成 summary）——想让工具目录带可读说明，就在 `.schema` 顶层写它。误删它会让
+MCP 工具失去描述；已有业务工程因此误删 197 条后恢复（2026-11-13）。
 
 ### ws.ts（WebSocket 生命周期钩子）
 
@@ -1078,7 +1084,7 @@ const n = await db.exec("update user set name = ? where id = ?", ["b", 1]);
   **铁律：PG 下 jsonb 存在性判断一律写 `jsonb_exists(doc, 'key')`**（PG 内建同名函数），
   不写裸 `?` 运算符——它无法与占位符区分。
 
-### 总表（35 组）
+### 总表（36 组）
 
 | 全局 | 说明 |
 |---|---|
@@ -1103,6 +1109,7 @@ const n = await db.exec("update user set name = ? where id = ?", ["b", 1]);
 | `tasks.stopping() / tasks.sleep(ms)` | 长任务上下文：停机信号 + 等待原语（见下「命名 MQ 客户端与长任务」） |
 | `log.debug / info / warn / error` | 结构化日志 |
 | `fetch(url, options?)` | WHATWG fetch（deno 官方实现，v0.1.8；真 `Response`/`Headers`，https 无需额外配置） |
+| `bridge.call({method, path, headers?, body?})` | **进程内 dispatch**（v0.1.131）：调用本进程另一 endpoint（业务路由/`{base}/mcp`/`{base}/rpc`/`{base}/health`/`{base}/plugins`）并返回标准 `Response`；目标 handler 在**隔离的内部分发池**上执行，不占公共 actor 槽——代理/编排 handler 的进程内转发**用它而不是 `fetch` 回环**（后者并发 ≥ pool_size 全池挂死），见下「bridge」 |
 | `ws.send / close` | WebSocket 帧控制（HTTP 路径下 no-op） |
 | `sess.id / sess.state` | WS 连接 id 与会话状态（仅 ws.ts 钩子内；state 须可 JSON 序列化） |
 | `new WebSocket(url)` | WHATWG 出站 WS 客户端（任务与 handler 均可用，见下「WebSocket —— 出站客户端」） |
@@ -1993,6 +2000,73 @@ if (r.ok) {
   json.ok(await r.json());
 }
 ```
+
+### bridge —— 进程内 dispatch（v0.1.131，代理/编排 handler 必读）
+
+`bridge.call` 把一次「虚拟 HTTP 请求」派发给**本进程**的另一 endpoint，返回标准
+WHATWG `Response`。语义与外部 HTTP 完全一致（准入/租户头/超时/`.schema` 契约/
+MCP 协议处理走同一管线），但目标 handler 在**独立内部分发池**（单独一组
+JsActor 线程，`server.dispatch_pool_size` 配置，缺省 = `pool_size`）上执行，
+**不占公共 actor 槽**。
+
+**为什么存在**：handler 作为代理/编排层在进程内转发（典型：bot 代理完成 obo
+换签后把 `tools/call` 转给 `POST {base}/mcp`）时，若用 `fetch` 回环本进程，
+内层 handler 还要占一个公共槽——并发 ≥ pool_size 时全池互相等待、永久挂死
+（看门狗熔断不了 host 侧 await）。`bridge.call` 内层不占公共槽，自环并发任意
+高也不死锁。
+
+| API | 签名 | 说明 |
+|---|---|---|
+| `bridge.call` | `call(req: { method: string; path: string; headers?: Record<string, string>; body?: string \| Uint8Array }): Promise<Response>` | 进程内派发。`path` 以 `/` 开头、可带 `?query`（走本进程路由表，不支持绝对 URL）。返回真 `Response`：`status / headers.get() / json() / text() / arrayBuffer()` |
+
+```ts
+// 代理 handler：obo 换签后进程内转发 tools/call（完整可照抄场景见 scenarios.md）
+export default {
+  post: async () => {
+    const obo = /* ...换签得员工 token... */;
+    const body = await http.bodyBytes();
+    const r = await bridge.call({
+      method: "POST",
+      path: "/v1/api/mcp",
+      headers: {
+        "content-type": "application/json",
+        accept: "application/json, application/json-seq",
+        authorization: `Bearer ${obo.accessToken}`,
+      },
+      body,
+    });
+    const text = await r.text(); // 原样透传（含 content-type）
+    json.header("content-type", r.headers.get("content-type") ?? "application/json");
+    json.ok(JSON.parse(text));   // 或按状态码分支处理
+  },
+};
+```
+
+限制与报错（fail-closed，均点名）：
+
+- **可用形态**：`oj serve` 与 **`oj test` 均可用**——后者同样经 `App::from_config`
+  装配 dispatch hook，测试里 `bridge.call` 走真实管线（与测试 SDK `client.*`
+  同哲学；有真实副作用，测试数据自理）。裸嵌入式（不经 App 自建
+  `Bridge`）槽空，调用抛
+  `dispatch not available (not running under an App — oj serve / oj test)`。
+- **二级嵌套 503**：已在内部分发池上运行的 handler（即 `bridge.call` 的目标）
+  再 `bridge.call` → 目标侧 503 `nested bridge.call is not supported`。
+  编排链请压扁为深度 1：代理一次 `bridge.call` 直达最终端点。
+- **内部池禁 loopback fetch**：已在内部分发池上运行的 handler（dispatch
+  目标）`fetch` loopback 地址（`localhost` / `127.*` / `::1` / `0.0.0.0`，
+  v0.1.136 补 IPv6 全形 `0:0:0:0:0:0:0:1`/`::ffff:127.0.0.1`，input 归一化
+  支持 `URL`/`Request` 对象）在发真实请求前即被拒（TypeError 点名
+  `fetch to loopback is not supported on the internal dispatch pool (use bridge.call for in-process endpoints)`）——否则外层公共槽等内部池 handler、内部 handler 又
+  占公共槽，与公共池 fetch 回环死锁同构重现。runtime 不知自身监听地址，故
+  loopback 一律拦（其他本地端口服务同受此限）；同进程端点请用 `bridge.call`，
+  出进程转发走对外地址。
+- **非流式**：响应体整体缓冲（上限 64 MiB、缓冲等待 30s；请求体同限 64 MiB，
+  v0.1.136），SSE / 长下载类端点不适合经它转发（超限/超时收敛 502
+  `dispatch response is streamed or exceeds the body cap`；请求超限抛
+  `bridge.call: request body exceeds the 64 MiB dispatch cap`）。
+- body 经 base64 载体过 op 边界：大 body 有内存放大（约 4/3），超大上报类
+  转发请走 `fetch` 出进程或 blob 中转。
+- 非法 method / 非 `/` 起始路径 → 400 信封（不抛）。
 
 ### ws —— WebSocket 帧控制
 
@@ -2989,6 +3063,7 @@ mounts:
 | `timeout` | `"30s"` | 单请求执行超时（超时熔断 → 408）；单位支持 `s/sec/secs/ms/m/min/h/d`。路由级覆盖见 `route_timeouts` |
 | `route_timeouts` | `[]` | （v0.1.30）路由级超时覆盖：`[{pattern: "/v1/api/convert/**", timeout: "5m"}]`；pattern 段语义同匿名路径（字面 / `*` 一段 / `**` 跨段），按声明序首个命中，匹配**含 base 全路径**；超时语义同全局（408）。pattern 空/时长非法 → 启动 fail-fast。（v0.1.102）装配期校验 fail-fast：pattern **匹配不到任何已注册路由** → 拒启动并点名（保留路径 `/health`、`/plugins` 与 WS 挂载不经此机制、不受约束）；pattern 含 `{param}` 段 → 拒（匹配的是真实请求路径，请用 `*`/`**`）；热更后悬空同样拒绝该次 reload。**粒度**：看门狗 25ms 轮询，短于 ~25ms 的 timeout 不保证精确（验收探针 ≥100ms）。**边界**：管得住 JS 忙循环；已下推到数据库的慢语句**跑完后**才回 408——慢 SQL 护栏须等语句级真取消（上游 REQ-05） |
 | `pool_size` | `4` | JS 执行线程数 = 并行请求上限 |
+| `dispatch_pool_size` | 无（= `pool_size`） | （v0.1.131）`bridge.call` 内部分发池线程数：进程内 dispatch 的目标 handler 在该独立池上执行，不占公共槽；显式配置时最小生效 1 |
 | `max_upload_bytes` | `10485760`（10MB） | handler 面（multipart 进 `http.file`）上传体积上限；超限 413。axum 层对非 blob 路径再乘 2 做硬顶（双闸，见第 13 章）。**不经 handler 的直传不受它管**——见 `blob_upload_max_bytes` |
 | `blob_upload_max_bytes` | `1073741824`（1 GiB） | （v0.1.30）直传路由 `PUT {base}/blob/{key}` 的体积上限（过鉴权守卫、不经 JsActor/30s）；超限 413 信封 |
 | `response_headers` | `{}` | （v0.1.30）全局自定义响应头 `{name: value}`，施加动态信封/静态站点/blob 响应面；**框架自有头永远优先**（只补缺，Content-Type/Location 等不可覆盖）；默认空 = 行为不变 |
@@ -3930,6 +4005,10 @@ await db.query("select id from account where id = " + id, []);   // 禁止
 
 | 限制 | 说明 / 绕行 |
 |---|---|
+| `bridge.call`（v0.1.131）非流式 + 深度 1 + `oj test` 同样可用 | 进程内 dispatch 整体缓冲（响应 64 MiB / 30s，超限 502）；**请求体同限 64 MiB**（v0.1.136，超限抛 `bridge.call: request body exceeds the 64 MiB dispatch cap`——dispatch 是第三条入站通路，不得绕开入站 413）；打保留端点（health/plugins/mcp/rpc）方法不匹配回 **405 + `Allow` 头**、HEAD 按 GET 语义空体（v0.1.136，与 HTTP 面一致）；嵌套（dispatch 目标再 call）503；`oj test` 走 `App::from_config` 真管线可用（有真副作用）；只有裸嵌入式 Bridge 才抛 `dispatch not available`。SSE/长下载转发走 `fetch` 出进程；编排链压扁成一次直达 |
+| svc 凭据自动轮换（R6，v0.1.132；评审收口 v0.1.133）边界 | 宽限 24h 固定（无配置项）；服务端主动续签（`rotates_at`/`rotation_policy`）未做——消费方惰性 rotate 已覆盖诉求；「永不过期」另立 R 项；新 jti 过 SvcGate **即时可见**（miss 穿透重查——否则轮换后新 bearer 要等满 30s TTL，"无感知续期"不成立）；伪造/未知 jti 记 2s 负缓存（v0.1.136 细化：**窗内只抑全量扫描**、miss 走 PK 点查
+`WHERE jti = ?`/`$1`（方言感知占位符，绑定参数）——探测不放大全表扫，窗内新签发 jti
+即时可见；并发 miss 经单飞锁双检，全窗至多一次全扫）；吊销/宽限移出仍 ≤30s 生效；并发 rotate 由条件 UPDATE 栅栏收口（行锁串行化，后到者 0 行 → 409，不产生两行 active）；明文 token 落库后暴露面 = create 响应 + svc 自认证 `current`（**只认当前 active bearer**，v0.1.136——宽限中的旧 bearer 也 40311，被轮换凭据无权读出新令牌；admin list 永不回显）——**整表即凭据，库导出/备份按凭据物料管控** |
 | ~~相对 `require("./x")` 不支持~~（v0.1.30 已支持） | 相对 require / JSON 模块 / 循环 require 均可用；`exports`/`conditions` 与 pnpm 布局完整支持。残留限制：`exports` 的 `types`/`browser` 条件不命中；CJS `module.exports` 替换函数式写法启发式识别 |
 | blob multipart 预签名（v0.1.30） | `blob.uploadUrl` 的 multipart 形态暂返回 Err（object_store 无 multipart presign API）；单发 PUT 预签名 + `PUT {base}/blob/{key}` 直传路由（≤1 GiB）已覆盖大文件场景，>100MB 分片需求出现再补 |
 | build 剥 `.route` 仅识别语句起始的标准赋值写法 | `fn.route = "…"` 顶层标准写法可用；花式写法可能漏剥 |
@@ -3955,6 +4034,8 @@ await db.query("select id from account where id = " + id, []);   // 禁止
 | 动态 meta 每次 HTML 请求**多派发一次 JS** | `server.html_meta_handler`（v0.1.25）：每次送 HTML 都调一次该 handler（无缓存层）。高流量站点请让 handler 只读缓存/轻查询，并用返回的 `cache_control` 让中间层替你挡住重复请求 |
 | release 下 WS URL 含版本段（v0.2） | `…/news-0.1.0/ws`，与 dev 的 `…/news/ws` **不同源**；客户端发现 WS 地址时按环境拼（勿硬编码）。WS 路径不做 `_name_` → `{param}` 转换（`_id_/ws.ts` 是字面段）；新增/删除 `ws.ts` 需重启（dev 无文件监听）。WS 不在路由表与 `openapi.json` 内，唯一权威面是启动打印的 `ws: N mount(s)` 清单 |
 | `{base}/mcp`、线路 A 产物的已知边界（v0.1.110） | stateless 子集：无 session 恢复/sampling/roots；SSE 流式 handler（`json.stream`/`json.sse`）经 MCP 调用恒 isError「streaming endpoint」；tool 名 = 净化 operationId（`[^a-zA-Z0-9_-]`→`_`，>64 截断 + 散列后缀），契约任意深度 `$ref` → 生成失败（须内联）；线路 A 是文件型快照——路由变更须重跑 `oj mcp`，线路 B 则每次请求读活路由表 |
+| expose 三态的客户端策略（v0.1.134） | `routed` 下 `tools/list` 只回 `oj_search_tools`/`oj_list_groups` 两个元工具——**spec 允许 call 名不在 list 内**，但只认 list 白名单的客户端看不到业务工具（warden/Codex 先例；调用面业务直呼不变）。`grouped` 的分组面在 `_meta` 扩展位（反域名点分键），result 顶层**无**新键——严格客户端 `FAIL_ON_UNKNOWN` 安全 |
+| `oj_search_tools` 检索口径（v0.1.134） | 大小写不敏感**子串**匹配（非分词/语义检索）：score = name 2 / description 1 / group 1，score desc + name asc；limit 缺省 10 钳 50；检索与 tools/list 同一**展示裁剪后**集合——无权≡不存在同形状（防探测；隐藏上下文占用，不隐藏存在性：被裁 tool 直呼 403、未知名 -32601）。线路 A 快照面为全量 tools（无 per-request 裁剪，act/scopes 仍在执行侧拦） |
 | `db.tx` 每请求至多一个；嵌套报错 | 合并事务回调 |
 | `db.session` 缺省**关闭**（v0.1.95） | `db_session.enabled: false` 时该能力不存在——`db.session.begin()` 直接报错点名怎么开（兼容优先，不做隐式放行）。开启须过装配期 fail-loud：`allow` 四维不能全空、`max_sessions`/`max_per_owner` 非 0、`max_per_owner ≤ max_sessions`、`idle_timeout_secs` 非 0、`max_lifetime_secs ≥ idle_timeout_secs` |
 | `db.session` = 一个 id 锁**一个别名**的一条连接 | attach 后跨别名查询报 `attached to db 'x', not 'y' (detach first)`；换别名须先 detach。会话内**禁止**事务控制/会话状态 SQL（`BEGIN/COMMIT/ROLLBACK/SAVEPOINT/RELEASE/START/SET/USE/ATTACH/DETACH/PRAGMA`）——MySQL 的隐式提交会让 `rollback()` 变成假回滚，故一律拒绝而不是"尽力而为" |
@@ -4044,8 +4125,8 @@ await db.query("select id from account where id = " + id, []);   // 禁止
 | `db.access.revoke` 回落 config，非删 config（v0.1.93） | 撤销的是运行期表项，别名回到 config 兜底；对纯 config 兜底项 `revoke` 显式报错（不静默），防越权/DoS 撤销他人静态授权 |
 | 改 `db_access` / `db_client` 段须重启（v0.1.93） | 两段纳入热更 diff 的 `restart_pending`（不再误标 `applied` 静默盲区）；运行期零重启改授权请用 `db.access.grant/revoke` |
 | `db.epoch` 仅优化 JS 缓存新鲜度，正确性不依赖它（v0.1.93） | 查询 op 始终按名从 host registry 重解析 accessor；即便 JS 覆写缓存 epoch 跳过失效，也拿不到已删连接（host 直接报未登记） |
-| svc scopes 三档与 POST 档位（v0.1.130） | `claims.scopes` 三档按**动词**映射：get→read、post/put/patch→**write**（含按 POST 发查询的业务路由——POST 一律 write 档）、delete/del→destructive；缺席=全量随 roles（旧 token 零破坏）、`[]`=全拒、未知档=拒（`missing scope: <tier>`，MCP/RPC 面 `[code=403] ` 前缀）。绕行：查询路由改 GET+query，或签发时纳入 write。三面对 `/mcp`、`/rpc`、直连 REST 同规则（tools/list 只是展示裁剪，调用面不裁——被裁 tool 直呼得 403 非 -32601）；`/ws` 升级与线路 A 静态快照不经 scopes 门 |
-| `jwt.sign` 的 `ttl_secs` 上限 90 天（v0.1.130） | `claims` 平铺进 JWT 顶层（保留键 `{sub,roles,iat,exp}` 报错）；`ttl_secs` 越界按 90d 上限钳（不报错）——长时效凭据要可控吊销用 admin service-token（jti 在册核销，30s TTL 生效滞后双向成立） |
+| svc scopes 三档与 POST 档位（v0.1.130；R6 豁免 v0.1.132） | `claims.scopes` 三档按**动词**映射：get→read、post/put/patch→**write**（含按 POST 发查询的业务路由——POST 一律 write 档）、delete/del→destructive；缺席=全量随 roles（旧 token 零破坏）、`[]`=全拒、未知档=拒（`missing scope: <tier>`，MCP/RPC 面 `[code=403] ` 前缀）。绕行：查询路由改 GET+query，或签发时纳入 write。三面对 `/mcp`、`/rpc`、直连 REST 同规则（tools/list 只是展示裁剪，调用面不裁——被裁 tool 直呼得 403 非 -32601）；`/ws` 升级与线路 A 静态快照不经 scopes 门。**v0.1.132 豁免**：`/system/service-token/rotate`·`/current`（svc 自轮换端点，凭 bearer 自身认证；jti 门照常） |
+| `jwt.sign` 的 `ttl_secs` 上限 90 天（v0.1.130） | `claims` 平铺进 JWT 顶层（保留键 `{sub,roles,iat,exp}` 报错）；`ttl_secs` 越界按 90d 上限钳（不报错）——长时效凭据要可控吊销用 admin service-token（jti 在册核销，吊销 ≤30s 生效滞后；新签发 jti 即时可见——miss 穿透重查） |
 | obo 换签错误码是信封 `code` 契约（v0.1.130） | 40310 未绑定 / 40311 jti 已吊销 / 40312 非 svc / 40313 员工停用；HTTP 状态恒 500（code>599 钳制）——**勿按 HTTP 状态分流**，按 code 分流。svc 的 scopes 不约束换签面：受托 token 按**员工本人 roles** 生效（10min、带 `claims.act`） |
 | `/mcp` isError 与 `/rpc` error 的 `[code=<n>] <msg>` 前缀已冻结（v0.1.130） | 业务信封错误与非 2xx 信封体统一前缀（非信封体原样）——agent 按正则 `^\[code=(\d+)\] ` 解析，**勿做文案等值断言**；`tools/list` 结果勿跨会话缓存（scopes 裁剪因 token 而异，展示面每请求实时算） |
 
@@ -4121,6 +4202,61 @@ oj 从 OpenAPI 链一键出 agent 接口，两条线路共享同一份 tool 定�
 | **B：serve 内建** | `server.mcp.enabled: true` → `{base}/mcp`（MCP streamable HTTP）；`server.rpc.enabled: true` → `{base}/rpc` | 服务在线、client 可直连 | **自动**——端点每次请求读活路由表（热更/reload 代际即时生效；dev 裸新增目录路由不进 RouteTable，与 HTTP 直访同口径） |
 | **A：离线 codegen** | `oj mcp` 生成零依赖 Node.js stdio server | 服务在别处 / 不给直连 / 要经 MCP client 配置分发 | 须**重跑 `oj mcp`**（文件型快照，头注释带 spec_hash 可比对） |
 
+### 运作方式：从路由表到一次工具调用
+
+单一来源：**没有独立的「MCP 层」**——tool 定义就是路由表的投影，链路为：
+
+```
+路由表（src/ 目录镜像或 dist manifests）
+  → serve::openapi::generate            # 与 oj openapi 同一份 spec
+  → serve::mcp::spec_to_tools           # spec → tool 数组（净化名 + 嵌套三键 inputSchema + tags）
+  → 线路 B：每请求现算                   # 热更/reload 即时生效
+     线路 A：oj mcp 时内嵌进 JS 快照     # 路由变更须重跑 oj mcp
+```
+
+**tool 定义怎么来**：每个路由一行 tool。`name` = 净化 operationId
+（`[^a-zA-Z0-9_-]`→`_`，>64 截断 + 散列后缀；v0.1.134 起 `oj_` 前缀保留——
+撞名启动 fail-fast）；`inputSchema` 恒为嵌套三键 `{path?, query?, body?}`
+（path 键内全必填；未声明契约的端点 description 标注
+`(no declared input contract — inspect source)`）；`tags[0]` = 模块名
+（分组/检索的 group 维度）；`annotations` 由动词派生（GET →
+`readOnlyHint`，DELETE → `destructiveHint`——agent 的确认链靠它生效）。
+
+**tools/list 的决策点**（线路 B `handle()`；线路 A 模板同逻辑）：
+
+```
+tools_for（openapi→spec_to_tools，modules 白名单 fail-closed 过滤）
+  → filter_tools_for_display（scopes 档位 + act_mask 只裁**可见性**）
+  → expose 三态分面：
+       flat    → { tools }
+       grouped → { tools, _meta["com.only-js.groups"] }   # 分组面同一裁剪后集合
+       routed  → { tools: [oj_search_tools, oj_list_groups] }
+```
+
+**tools/call 的执行链**（两线零语义漂移）：`oj_` 前缀**先**短路进元工具
+（不经 tools_for——catalog 生成错误不得误报 -32601）→ 业务名进
+`tools_for` 全集查找（**调用面不裁**，展示裁剪只影响 list/search）→
+raw pattern 填充（单段 `encodeURIComponent`；catch-all 逐段编码、跨段 `/`
+保留）→ normalize → 路由表 lookup（命中行必须即本 tool 的行，防
+catch-all 阴影穿越）→ **admit 单点**以 scopes 三档动词映射终审（被裁
+tool 直呼 403，未知名 -32601）→ handler 执行 → Capture 映射
+（`code==0` → content+structuredContent；`code!=0` → isError +
+`[code=<n>]` 冻结前缀；SSE → isError 不缓冲）。
+
+**元工具执行**（routed 模式）：`run_meta_tool` 内部重跑
+`tools_for` + 同一 `filter_tools_for_display`——**search/list/groups 三个
+面共享同一集合**：无权工具在三面都不存在（命中/无命中/未授权同形状，
+防探测；隐藏的是上下文占用，不是存在性）。检索为纯本地全量扫描
+（大小写不敏感子串；name 2 / description 1 / group 1 叠加；score desc +
+name asc；limit 缺省 10 钳 50），每次记 INFO 命中率日志
+（`mcp search: query=.. group=.. limit=.. returned=.. zero=.. elapsed_ms=..`
+——线路 A 模板走 stderr 同字段）。结果经统一封装
+`{content:[{type:"text",text:JSON}], structuredContent}`——两线同形状。
+
+**响应缓存**：`/mcp`、`/rpc` 全部响应（含 JSON-RPC error）统一
+`cache-control: no-store`——list 按凭据裁剪，防共享中介缓存把甲的
+可见集回给乙。
+
 ### 配置
 
 ```yaml
@@ -4132,6 +4268,8 @@ server:
     act_mask_destructive: true  # v0.1.130 代操作遮蔽（缺省 false；推荐开启）：
                                 # claims.act 存在的会话（obo 换签的机器人代员工）
                                 # 一律拒 delete 且 tools/list 隐藏 destructive tool
+    expose: flat           # v0.1.134 列表面三态：flat（缺省）/ grouped / routed，见下
+                          # 「工具分组与检索路由」。`oj mcp --expose` 覆盖 config 值
   rpc:
     enabled: true          # 挂 {base}/rpc（缺省 false）
     allow_anonymous: false # 与 mcp 同口径：enabled 且未装配 auth 插件时缺省拒启
@@ -4169,6 +4307,59 @@ path 参数键内恒必填（单段值 `encodeURIComponent`——含 `/` 会正�
 | `json.stream`/`json.sse`（SSE） | `isError`「streaming endpoint, not supported via MCP」（不缓冲） |
 | 传输失败 / 超时（30s） | `isError` |
 
+### 工具分组与检索路由（expose 三态，v0.1.134）
+
+工具数量膨胀后（方案市场多模块安装），`tools/list` 全量枚举既吃 client 上下文
+又难找工具。`server.mcp.expose`（线路 A 同形：`oj mcp --expose`，CLI 覆盖
+config）给列表面三态：
+
+| 模式 | tools/list 形态 | 适用 |
+|---|---|---|
+| `flat`（缺省） | 全量 tools，零变化 | 工具少（几十个内） |
+| `grouped` | 全量 tools + `_meta["com.only-js.groups"]` 分组面 | 人浏览/按模块折叠 |
+| `routed` | 只回两个**元工具**（见下）；业务工具经检索发现后直呼 | 工具多、client 支持检索流 |
+
+- **grouped**：`_meta` 是 MCP 协议**扩展位**（反域名点分键），不是 result 顶层
+  新键——严格客户端（如 Jackson `FAIL_ON_UNKNOWN`）不炸；groups 为
+  `[{name, tool_count}]`（模块 tag 首现序），与 tools **同一展示裁剪后集合**
+  （scopes/act_mask 裁掉的工具不进组——分组信息不放大暴露面）。
+- **routed**：list 恰好两个元工具——
+  `oj_search_tools`（args：`query` 必填**且非空**——空串是任意串子串，不拦则一次
+  call 拉平整个目录、routed 不枚举形同虚设，v0.1.135 起 -32602 两线同拒；
+  `group`/`limit` 选填）与
+  `oj_list_groups`。检索语义：对**展示裁剪后**集合大小写不敏感子串匹配，
+  score = name 2 / description 1 / group 1 可叠加，score desc + name asc；
+  limit 缺省 10、上限 50，**仅 JSON 整数参与钳制**（`3.5`/`"5"` 按缺省 10，
+  两线一致——v0.1.135 对齐；下限钳 1 防 `limit=0` 伪造命中假零信号）；match 项带完整 `inputSchema`（直呼所需契约）+
+  `group` + `annotations`（destructiveHint 透传不丢）。返回
+  `content` + `structuredContent`（两线同形状）。**call 面不变**：list 之外的
+  业务 tool 名照呼（spec 允许 call 名不在 list 内——客户端策略差异，
+  warden/Codex 先例；e2e 钉）。
+- **防探测口径**：search 与 tools/list 跑**同一**裁剪后集合——无权/不存在/无命中
+  同形状（`matches: []`）。隐藏的是**上下文占用**，不是工具存在性：已知工具名
+  直呼被 scopes 裁 → 403（`[code=403] `），未知名 → -32601（存在性 oracle 是
+  有意保留的文档化策略）。
+- **元工具保留名（v0.1.135 由前缀收窄为精确名）**：业务 tool 净化名**恰好等于**
+  `oj_search_tools` / `oj_list_groups` 才启动 fail-fast（装配与 `oj mcp` 双路扫描；
+  报错列 sanitized name + operationId + method + oa_path）。`oj_` 前缀本身不再有
+  特殊含义——模块名以 `oj` 开头（如 `oj-market` → `oj_market_*`）合法，call 面
+  直呼照常；派生 operationId 恒带 `_<method>` 后缀，精确撞名仅可能来自未来的
+  operationId 覆盖能力。扫描先经 `server.mcp.modules` 白名单裁剪——**被排除的
+  模块不参与校验**（不暴露就不阻断启动）。
+- **命中率日志**：每次检索记 INFO
+  `mcp search: query=.. group=.. limit=.. returned=.. zero=.. elapsed_ms=..`
+  （线路 A 模板走 stderr 同字段）——零命中与耗时突增是后续排序/索引优化信号源。
+- **线路 A 已知分歧**：`oj mcp` 产物在**生成期**应用 `server.mcp.modules` 白名单
+  （静态固化，v0.1.135 起——此前产物含全量模块，配置的暴露限制被静默放大；
+  保留名检查亦在裁剪后集合上跑，与 serve 装配同口径）；无 per-request user，
+  分组/检索面聚合**全量（白名单内）** tools（act/scopes 仍在执行侧拦，仅分组
+  统计预可见——名称/计数级）；`searchTools` 本地实现与 serve 侧**共享一致性
+  向量**钉语义（`serve/src/fixtures/mcp_search_vectors.json`）；元工具名单经
+  `META` 单源派生（与 serve `meta_tool_defs` 同源注入，新增元工具无需改模板
+  拦截逻辑）。
+- **缓存**：`/mcp`、`/rpc` 响应统一 `cache-control: no-store`（tools/list 按凭据
+  裁剪，防中介缓存把甲的可见集回给乙）。
+
 ### `{base}/rpc`：裸 JSON-RPC 2.0
 
 method = operationId（如 `user_account_get`），params 形如
@@ -4203,15 +4394,45 @@ REST 三面同规则，服务端单点判定——客户端侧不判权限）：
 `/ws`（WebSocket 升级）**不经** scopes/jti/act_mask 门（升级面只过守卫 verify）。
 
 **svc 凭据与 jti 吊销**：`claims.svc` 存在的凭据逐请求查 `oj_svc_token` 表核销
-（30s TTL 缓存——签发后**最长 30s** 才可过门；吊销后最长 30s 全网失效；查库
-失败/无行 fail-closed 恒拒）。运营走 admin 端点：
-`POST /v1/api/admin/service-token/`（`{name, scopes}` → `{token, jti}`，**明文
-token 仅此一次**，落库只存 jti）、`GET /v1/api/admin/service-token/`（列表，
-无明文）、`DELETE /v1/api/admin/service-token/{jti}`（吊销）、`bot-binding`
-（provider+external_sub ↔ 员工 id 绑定 CRUD + CSV）、`obo-audit`（换签审计
-分页 + CSV）。`svc` 的 scopes **不约束换签面**——scopes 收口的是机器人直连
-工具/路由的动词档位；换签产物（受托 token）按**员工本人 roles** 生效
-（"够用，最终以员工本身的权限为准"）。
+（30s TTL 正缓存 + miss 穿透 v0.1.132、2s 负缓存 v0.1.133——吊销/宽限移出后最长 30s
+全网失效；**新签发/轮换的 jti 即时可过门**，miss 穿透重查；穿透仍 miss 的
+伪造/未知 jti 开**全局 2s 负缓存窗**（所有未知 jti 共享：窗内一律不打库直接
+fail-closed，整窗至多 1 次真查——探测量与 DB 查询解耦；shortcut 不变：窗内
+新签发 jti 最长拖 2s 才可见）；
+查库失败/无行 fail-closed 恒拒）。行有效判定（v0.1.132）：无 `status`（存量行）/
+`active` 恒有效；`superseded` 仅在 `grace_until`（epoch 秒）未过时有效——宽限
+过期**自动移出有效集**（= 吊销，40311 同路径，无需删行）。运营走 admin 端点：
+`POST /v1/api/admin/service-token/`（`{name, scopes}` → `{token, jti, expires_at}`，
+v0.1.132 起明文落库——暴露面不变：admin list 永不回显 token，明文只在 create
+响应与 svc 自认证的 `current`）、`GET /v1/api/admin/service-token/`（列表含
+status/grace_until/expires_at，无明文）、`DELETE /v1/api/admin/service-token/{jti}`
+（吊销=删行，立即生效）、`bot-binding`（provider+external_sub ↔ 员工 id 绑定
+CRUD + CSV）、`obo-audit`（换签审计分页 + CSV）。`svc` 的 scopes **不约束换签
+面**——scopes 收口的是机器人直连工具/路由的动词档位；换签产物（受托 token）
+按**员工本人 roles** 生效（"够用，最终以员工本身的权限为准"）。
+
+**svc 凭据自动轮换（R6，v0.1.132）**：90d 定长凭据的到期续签**不需要 admin 重
+配**——由「当前有效 svc bearer 自身」认证的两个端点完成（新 token 仍由
+`jwt.sign` 同一 secret 签发，密钥不出 oj；消费方零 admin 介入、零密钥暴露）：
+
+| 端点 | 认证 | 行为 |
+|---|---|---|
+| `POST /v1/api/system/service-token/rotate` | 该 name **active** 的 svc bearer（守卫验签 + jti 门 + claims.svc/jti） | 旧行置 `superseded` + **24h 宽限**（宽限内旧 bearer 在途仍放行，过期自动 40311）→ 同 name/scopes 签新 token（新 jti，exp 重新计 90d）落库 → 返回 `{token, jti, expires_at}`。**幂等护栏**：宽限内的旧 bearer 再 rotate → 409；**并发栅栏**：两个并发 rotate 持同一 active bearer 时，条件 UPDATE（仅 active/存量 NULL 行可翻转，按影响行数判胜负）经行锁串行化——后到者命中 0 行 → 同一 409，不产生两行 active；翻转 + 插入 **同事务**（`db.tx`）——insert 失败整事务回滚，旧 bearer 仍 active，宽限窗内可重试恢复（瞬态故障不卡死账号） |
+| `GET /v1/api/system/service-token/current` | 该 name **当前 active** 的 svc bearer（v0.1.136：宽限内的旧 bearer 也 40311 `bearer superseded`——被轮换凭据无权读出新令牌；jti 字节级比对） | 返回该 name 最新 active bearer `{token, jti, expires_at, scopes}`——消费方**跨重启恢复**最新令牌（用共享存储里 rotator 回写的最新 bearer 调），避免重新人工配置；全丢则 admin 重签 |
+
+两端点 **scopes 豁免**（read 档 bot 也必须能自轮换——强制 write 档反而是提权
+面；同 `/auth/obo` 先例），但 **jti 门照常**：吊销/宽限移出的旧 bearer 换不动。
+可见性语义：新签发/轮换的 jti **即时**可过门（SvcGate miss 穿透重查，v0.1.132——
+否则轮换后新 bearer 要等满 30s 缓存 TTL，"无感知续期"不成立）；吊销与宽限
+移出仍 ≤30s 全网生效；穿透仍 miss 的伪造/未知 jti 开**全局 2s 负缓存窗**
+（所有未知 jti 共享，窗内一律不打库直接 fail-closed，整窗至多 1 次真查——
+探测量与 DB 查询解耦；shortcut：窗内新签发 jti 最长拖 2s 才可见——128bit
+随机 jti 先探后签的概率可忽略）；查库失败恒 fail-closed 拒。
+消费接法（惰性自愈轮换）：启动时 `GET current` 载入内存 → 临近 `expires_at`
+或收到 40311 时 `POST rotate` 换新回写。参考实现
+`sample/src/system/service-token/`（rotate/current）+ 集成测试
+`sample/tests/svc-rotation.test.ts`。范围外：服务端主动续签
+（`rotates_at`/`rotation_policy`）与「永不过期」另立 R 项。
 
 **obo 换签**：`POST /v1/api/auth/obo`（Bearer svc token + `{provider,
 external_sub}`）→ 员工受托 token（10 分钟，`claims.act.sub` 指回 svc 名——
@@ -4220,7 +4441,7 @@ external_sub}`）→ 员工受托 token（10 分钟，`claims.act.sub` 指回 sv
 | code | 场景 |
 |---|---|
 | 40310 | 绑定缺失（该 external_sub 没有绑定行） |
-| 40311 | svc 凭据已吊销（jti 不在册） |
+| 40311 | svc 凭据已吊销（jti 不在册）——**换签面同步点查，revoke 立即 40311**（v0.1.137；不受 admit 30s 吊销缓存影响，该缓存只滞后 /mcp、/rpc 直连面） |
 | 40312 | 凭据非 svc（普通员工 token 打到 obo；或 claims.svc 在但 roles 不含 bot——双查纵深） |
 | 40313 | 员工已停用（users.disabled） |
 

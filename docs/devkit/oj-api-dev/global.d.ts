@@ -1333,6 +1333,34 @@ declare global {
     headers?: Record<string, string>;
     body?: string | null;
   }): Promise<OjFetchResponse>;
+  // bridge.call 返回的 Response：与 OjFetchResponse 同读法，但 headers 是
+  // WHATWG Headers 实例——用 .get(name) 取下标（Record 形态是错的，下标取值
+  // 运行时为 undefined）。异常状态码（1xx/204/304-with-body/>599）回落普通对象：
+  // 其余方法同面，但 headers 是 [name, value][] 对列表、无 .get()。
+  interface OjBridgeCallResponse {
+    ok: boolean;
+    status: number;
+    statusText: string;
+    headers: { get(name: string): string | null };
+    json(): Promise<Json | null>;
+    text(): Promise<string>;
+    arrayBuffer(): Promise<Uint8Array>;
+    clone(): OjBridgeCallResponse;
+  }
+  // 进程内 dispatch（v0.1.131）：bridge.call 把虚拟 HTTP 请求派发给本进程另一
+  // endpoint（业务路由/{base}/mcp/{base}/rpc/{base}/health/{base}/plugins），目标
+  // handler 在隔离内部分发池执行，不占公共 actor 槽（fetch 回环并发 ≥ pool_size
+  // 会全池挂死）。oj serve 与 oj test 均可用（后者经真实管线派发，注意副作用）；
+  // 深度限 1（目标再 call → 503）；非流式（体缓冲 64 MiB/30s）；裸嵌入式
+  //（不经 App 的 Bridge）抛 `dispatch not available`。
+  const bridge: {
+    call(req: {
+      method: string;
+      path: string;
+      headers?: Record<string, string>;
+      body?: string | Uint8Array;
+    }): Promise<OjBridgeCallResponse>;
+  };
   // 已加载插件自省：[{name, semver, abi_version, fingerprint, host_abi_version}]。
   function plugins(): any[];
   // 泛型插件轴调用面：axis("cache").get("k")——任意方法名 = 该轴的一个 op，
