@@ -31,9 +31,9 @@ export async function refreshTokenAndRetry(request: Request, options: Options, r
 			onRefreshed(fresh.token);
 
 			// 设置请求的 Authorization 头部为新的 token
-			// 重试当前请求
+			// 重试当前请求（ky 对 Request 入参使用 normalized options，不含 hooks——重放不会再过
+			// afterResponse，故不会二次刷新；这里直接沿用 options 即可）
 			setHeaderSafe(request.headers, AUTH_HEADER, `Bearer ${fresh.token}`);
-			// 使用新的 token 重新发起请求
 			return ky(request, options);
 		}
 		catch (error) {

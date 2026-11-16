@@ -28,6 +28,8 @@ export interface FakeState {
 	/** 删除「未安装成功版本」的返回；缺省为删除成功的常态 */
 	purgeResult?: PurgeHistoryResult
 	purgeError?: Error
+	/** 按页返回 index（MCP 页拉全已装方案的分页测试用）；提供时覆盖 indexPage 的单调返回 */
+	indexPageFor?: (page: number, size: number) => IndexPage
 	/** MCP 工具目录（管理页状态卡/工具表数据源，20261110-1027 §4.3） */
 	mcpCatalogResult?: McpCatalogResult
 	/** catalog 拉取失败（页面错误面数据） */
@@ -44,9 +46,13 @@ export class InMemoryMarketClient implements MarketClient {
 	}
 
 	async index(input: { page?: number, size?: number } = {}) {
-		this.calls.push(`index:${input.page ?? 1}:${input.size ?? 20}`);
+		const page = input.page ?? 1;
+		const size = input.size ?? 20;
+		this.calls.push(`index:${page}:${size}`);
 		if (this.state.indexError)
 			throw this.state.indexError;
+		if (this.state.indexPageFor)
+			return this.state.indexPageFor(page, size);
 		return this.state.indexPage ?? { list: [], total: 0, page: 1, size: 20 };
 	}
 

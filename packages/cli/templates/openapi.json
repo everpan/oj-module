@@ -9248,6 +9248,103 @@
 				},
 				"description": "吊销一张服务凭据（按 jti 删除登记行）。网关 SvcGate 最长 30 秒内全网失效（fail-closed）；已签出的受托 token 不受影响（无状态，最长 10 分钟自然过期）。"
 			}
+		},
+		"/api/_platform/users/info": {
+			"get": {
+				"operationId": "_platform_users_info_get",
+				"summary": "GET api/_platform/users/info",
+				"x-oj-file": "app/api/_platform/users/info/api.ts",
+				"tags": [
+					"_platform"
+				],
+				"parameters": [
+					{
+						"name": "ids",
+						"in": "query",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"description": "用户 id 列表，逗号分隔，最多 200 个（如 ids=1,2,3）。"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"x-oj-response-enforced": false,
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"code",
+										"msg",
+										"data"
+									],
+									"properties": {
+										"code": {
+											"type": "integer"
+										},
+										"msg": {
+											"type": "string"
+										},
+										"data": {
+											"type": "array",
+											"items": {
+												"type": "object",
+												"required": [
+													"id",
+													"username",
+													"displayName",
+													"avatar",
+													"email",
+													"phoneNumber",
+													"description",
+													"roles",
+													"mustChange"
+												],
+												"properties": {
+													"id": {
+														"type": "number"
+													},
+													"username": {
+														"type": "string"
+													},
+													"displayName": {
+														"type": "string"
+													},
+													"avatar": {
+														"type": "string"
+													},
+													"email": {
+														"type": "string"
+													},
+													"phoneNumber": {
+														"type": "string"
+													},
+													"description": {
+														"type": "string"
+													},
+													"roles": {
+														"type": "array",
+														"items": {
+															"type": "string"
+														}
+													},
+													"mustChange": {
+														"type": "boolean"
+													}
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				},
+				"description": "批量按 id 取用户完整展示信息（登录即可，租户隔离）：id / username / displayName / avatar / email / phoneNumber / description / roles / mustChange。一次 IN 批量查询、无 N+1；ids 逗号分隔（或重复传），单次上限 200。缺失/跨租户 id 不返回。每用户 60 次/分钟限速。解决方案模块请用 runtime 的 fetchUserInfosByIDs。"
+			}
 		}
 	},
 	"tags": [

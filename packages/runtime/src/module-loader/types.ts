@@ -51,6 +51,16 @@ export interface ModuleContext {
 		layout: (name: string, component: React.ComponentType) => void
 		/** 接管后端动态路由拉取（G2）；先到先得，模块卸载时自动注销 */
 		routesApi: (provider: RoutesApiProvider) => void
+		/**
+		 * 取壳持有的 portal 挂载点（P4b / Q7）：弹层 portal 到此节点，
+		 * 不再 portal 到 document.body 与壳 antd 弹层互盖。
+		 *
+		 * 返回稳定节点——模块生命周期早于布局挂载，beforeInit/onInit 中调用也安全
+		 * （布局挂载前 portal 进去的节点暂不可见，挂载后显现）。该节点有独立 z-index
+		 * 栈（避开壳 overlay 与 View Transition），由壳统一清理。
+		 * 不调用即不改变现有行为——本能力纯追加。
+		 */
+		portalContainer: () => HTMLElement
 	}
 	/** 注册布局插槽节点（US-8 L2），卸载模块时自动清理 */
 	registerSlot: (slotName: string, node: React.ReactNode) => void

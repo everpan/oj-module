@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fetchAsyncRoutes, fetchLogin, fetchLogout, fetchRefreshToken, fetchUserInfo } from "#src/api/user";
+import { fetchAsyncRoutes, fetchLogin, fetchLogout, fetchRefreshToken, fetchUserInfo, fetchUserInfosByIDs } from "#src/api/user";
 import { loginPath } from "#src/router/extra-info/route-path";
 import { DEFAULT_TENANT } from "#src/store/tenant";
 import { REFRESH_TOKEN_PATH } from "#src/utils/request/constants";
@@ -84,6 +84,39 @@ describe("ac-d16 端点映射", () => {
 		const res = await fetchAsyncRoutes();
 		expect(h.calls[0]).toMatchObject({ method: "get", url: "web/get-async-routes" });
 		expect(res).toEqual([{ path: "/demo", component: "demo/index" }]);
+	});
+});
+
+describe("fetchUserInfosByIDs 批量用户资料（反 N+1）", () => {
+	it("归一化 ids 后一次 GET _platform/users/info，逗号分隔，直返数组", async () => {
+		const data = [
+			{ id: 2, username: "b", displayName: "李四", avatar: "", email: "", phoneNumber: "", description: "", roles: [], mustChange: false },
+		];
+		h.next.current = ojOk(data);
+		const res = await fetchUserInfosByIDs([1, 2]);
+		expect(h.calls[0]).toMatchObject({ method: "get", url: "_platform/users/info?ids=1%2C2" });
+		expect(res).toEqual(data);
+	});
+
+	it("去重 + 非法 id 静默丢弃；全非法不发请求", async () => {
+		h.next.current = ojOk([]);
+		await fetchUserInfosByIDs([3, 3, 0, -1, "x"]);
+		expect(h.calls).toHaveLength(1);
+		expect(h.calls[0]!.url).toBe("_platform/users/info?ids=3");
+		h.calls.length = 0;
+		expect(await fetchUserInfosByIDs([0, "x"])).toEqual([]);
+		expect(h.calls).toHaveLength(0);
+	});
+
+	it("超过 200 个 id 自动分块，保持块顺序", async () => {
+		const ids = Array.from({ length: 401 }, (_, i) => i + 1);
+		h.next.current = ojOk([]);
+		expect(await fetchUserInfosByIDs(ids)).toEqual([]);
+		expect(h.calls.map(c => c.url)).toEqual([
+			`_platform/users/info?ids=${encodeURIComponent(ids.slice(0, 200).join(","))}`,
+			`_platform/users/info?ids=${encodeURIComponent(ids.slice(200, 400).join(","))}`,
+			`_platform/users/info?ids=${encodeURIComponent(ids.slice(400).join(","))}`,
+		]);
 	});
 });
 

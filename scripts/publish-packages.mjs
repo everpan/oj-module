@@ -356,9 +356,44 @@ function checkLoggedIn() {
 }
 
 /** 2. 产物重建（runtime 构建 + cli 宿主外壳预打包） */
+/** 随站方案包的源码真源（templates 源码 → 确定性 tgz → 人工签名 → 收编） */
+const TEMPLATES_DIR = path.join(ROOT, "packages/cli/templates");
+const OJM_BIN = path.join(ROOT, "packages/cli/bin/ojm.mjs");
+const BUNDLE_NAME = "oj-market";
+
+function readBundleVersion() {
+	const contract = path.join(TEMPLATES_DIR, "src", BUNDLE_NAME, "solution.yaml");
+	const m = /^version:\s*(\S+)\s*$/m.exec(fs.readFileSync(contract, "utf8"));
+	if (m === null)
+		fail(`随站方案包契约缺 version 字段：${path.relative(ROOT, contract)}`);
+	return m[1];
+}
+
 function rebuildArtifacts() {
 	run(["--filter", "@oj-module/runtime", "build"]);
+	// build:shell 有意清空 shell-dist/bundles：发布包绝不能夹带上一次的旧随站包。
+	// 新鲜度由此后的重建链路负责，不靠「拷回旧目录」补 warning。
 	run(["--filter", "@oj-module/cli", "build:shell"]);
+
+	// 从当前模板源码重建 web 资产与方案包（确定性 tgz，同输入哈希一致）。
+	sh("pnpm", ["build"], { cwd: TEMPLATES_DIR, stdio: "inherit" });
+	sh("node", [OJM_BIN, "build", "--bundle", BUNDLE_NAME], { cwd: TEMPLATES_DIR, stdio: "inherit" });
+
+	// 签名仍由发布人手工完成（私钥在 ~/.ojm/keys，脚本不碰）。但重建后的 tgz
+	// 可能与旧 .sig 不再匹配（源码变了却没重签）→ 用 market verify 验签 fail-closed，
+	// 杜绝「新包 + 旧签」装到用户站上才发现 signature_mismatch。
+	const tgz = path.join(TEMPLATES_DIR, "dist", `${BUNDLE_NAME}-${readBundleVersion()}.tgz`);
+	try {
+		sh("node", [OJM_BIN, "market", "verify", "--fixture", tgz], { cwd: TEMPLATES_DIR, stdio: "inherit" });
+	}
+	catch {
+		const hint = `  node ${path.relative(ROOT, OJM_BIN)} sign ${path.relative(ROOT, tgz)} --id platform.release --registry-id oj-registry --check`;
+		fail(`随站方案包 ${path.basename(tgz)} 重建后签名不匹配——请用当前 ojm 重签后再发布：\n${hint}`);
+	}
+
+	// 收编进 shell-dist/bundles：prepack（实发）还会跑一次，幂等且自带版本/canon 闸门；
+	// 这里先收编使 dry-run 的 init 守卫也拿到真实 bundle，不再批量降级为 warning。
+	sh("node", [path.join(ROOT, "packages/cli/scripts/sync-bundles.mjs")], { stdio: "inherit" });
 }
 
 /** 3. 守卫测试（真跑 pnpm pack 的发布清单守护） */

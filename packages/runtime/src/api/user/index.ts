@@ -1,5 +1,5 @@
 import type { AppRouteRecordRaw } from "#src/router/types";
-import type { AuthType, LoginInfo, UserInfoType } from "./types";
+import type { AuthType, BatchUserInfoType, LoginInfo, UserInfoType } from "./types";
 
 import { getRoutesApiProvider } from "#src/store/api-provider";
 import { currentTenant } from "#src/store/tenant";
@@ -68,10 +68,36 @@ export function fetchUserInfo(): Promise<UserInfoType> {
 		.then(env => env.data as UserInfoType);
 }
 
+/** 单次请求 ids 上限，与后端 MAX_BATCH_IDS（_platform/users/info）对齐。 */
+const INFO_IDS_PER_REQUEST = 200;
+
+/**
+ * 批量按 id 取用户完整信息（登录即可，租户隔离）。反 N+1：一次/多次 IN 批量请求，
+ * 而非逐行 fetchRbacContactDetail。缺失/跨租户 id 不返回；自动去重、分块、保持入参顺序。
+ */
+export function fetchUserInfosByIDs(ids: readonly (number | string)[]): Promise<BatchUserInfoType[]> {
+	const normalized = [...new Set(ids.map(Number).filter(n => Number.isInteger(n) && n > 0))];
+	if (!normalized.length)
+		return Promise.resolve([]);
+	const chunks: number[][] = [];
+	for (let i = 0; i < normalized.length; i += INFO_IDS_PER_REQUEST)
+		chunks.push(normalized.slice(i, i + INFO_IDS_PER_REQUEST));
+	return Promise
+		.all(chunks.map(chunk =>
+			request
+				.get(`_platform/users/info?ids=${encodeURIComponent(chunk.join(","))}`)
+				.json<OjEnvelope<BatchUserInfoType[]>>()
+				.then(env => env.data ?? []),
+		))
+		.then(groups => groups.flat());
+}
+
 export function fetchRefreshToken(data: { readonly refreshToken: string }): Promise<AuthType> {
 	// 强绑定下刷新不注 X-TENANT-ID 头，请求体自报 tenant。
+	// skipAuthRefresh：refresh 自身的 401 绝不能重入刷新链——否则 isRefreshing 已 true，
+	// 递归进订阅者队列自等待，外层 await 永不返回 → 页面永久 loading（页面久开后 refresh 过期即此路径）。
 	return request
-		.post(REFRESH_TOKEN_PATH, { json: { refresh_token: data.refreshToken, tenant: currentTenant() } })
+		.post(REFRESH_TOKEN_PATH, { json: { refresh_token: data.refreshToken, tenant: currentTenant() }, skipAuthRefresh: true })
 		.json<OjEnvelope<{ access_token?: string, refresh_token?: string }>>()
 		.then(env => mapAuthPayload(env.data));
 }

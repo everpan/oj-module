@@ -541,6 +541,19 @@ describe("initProject", () => {
 		expect(fs.readFileSync(path.join(dest2, ".gitignore"), "utf-8")).toBe("custom-rules\n");
 	});
 
+	/**
+	 * 脚手架与模板功能对齐（含 .gitignore）：两者由不同来源落盘——模板随 source
+	 * 走，脚手架由 init 现场生成（npm/pnpm pack 剥离 .gitignore，不能拷）——
+	 * 任何一侧单改都会让新工程少忽略一条规则。字节级钉死，发布守卫随 tests/cli 跑。
+	 */
+	it("脚手架 .gitignore 与模板逐字节一致", async () => {
+		const dest = path.join(tmpRoot(), "proj-gitignore-align");
+		await initProject(dest, initOpts);
+		const generated = fs.readFileSync(path.join(dest, ".gitignore"), "utf-8");
+		const template = fs.readFileSync(path.join(PROJECT_ROOT, "packages/cli/templates/.gitignore"), "utf-8");
+		expect(generated).toBe(template);
+	});
+
 	it("pnpm-workspace.yaml 无 allowBuilds 段 → 追加；显式 false → 尊重不动", async () => {
 		const destA = path.join(tmpRoot(), "proj-a");
 		fs.mkdirSync(destA, { recursive: true });

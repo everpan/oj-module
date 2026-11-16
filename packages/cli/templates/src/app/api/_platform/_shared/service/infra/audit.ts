@@ -22,6 +22,8 @@ export interface OpEntry {
 async function usernameOf(userId: number): Promise<string> {
 	if (!userId)
 		return "system";
+	// 落库仍存账号名（审计快照稳定、供 username 过滤）。展示用的 display_name
+	// 由读面 searchOplog 一次批量 JOIN 回填——不在这里逐条查用户（N+1）。
 	const rows = await db.table("users").select(["username"]).where({ field: "id", op: "eq", value: userId }).all();
 	return rows[0] ? String(rows[0].username) : "unknown";
 }

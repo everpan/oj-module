@@ -121,6 +121,7 @@ describe("runtime 主入口出口白名单 (P3.1)", () => {
 			"fetchLogin",
 			"fetchLogout",
 			"fetchUserInfo",
+			"fetchUserInfosByIDs",
 			"fetchRoleList",
 			"fetchAddRoleItem",
 			"fetchUpdateRoleItem",

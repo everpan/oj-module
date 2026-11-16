@@ -3,6 +3,7 @@
 // 「以为在演练、实际在真发布」的事故路径。现在 --help/-h 打印用法退出 0，
 // 未知参数 fail-fast 退出 1，两者都先于 main()（无任何校验/构建/网络动作）。
 import { execFileSync } from "node:child_process";
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -88,5 +89,32 @@ describe("publish-packages 帮助与参数守卫", () => {
 		const { status, stderr } = run(["--dryrun=x"]);
 		expect(status).toBe(1);
 		expect(stderr).toContain("未知参数：--dryrun=x");
+	});
+});
+
+describe("随站 bundle 每次发布从源码重建（不清旧包补缺口）", () => {
+	const source = fs.readFileSync(SCRIPT, "utf-8");
+	const start = source.indexOf("function rebuildArtifacts");
+	const end = source.indexOf("守卫测试（真跑 pnpm pack", start);
+	const rebuild = source.slice(start, end);
+
+	it("链路顺序：build:shell 清空 → 模板 build → bundle 重建 → 验签 → 收编", () => {
+		expect(start).toBeGreaterThan(-1);
+		expect(end).toBeGreaterThan(start);
+		const steps = ["build:shell", "pnpm\", [\"build\"", "--bundle", "market\", \"verify", "sync-bundles.mjs"];
+		let cursor = -1;
+		for (const step of steps) {
+			const at = rebuild.indexOf(step, cursor + 1);
+			expect(at, `重建链路缺步骤或顺序错：${step}`).toBeGreaterThan(cursor);
+			cursor = at;
+		}
+	});
+
+	it("验签失败 fail-closed：签名是人工动作，脚本不自动签（私钥红线）", () => {
+		expect(rebuild).toContain("market\", \"verify");
+		expect(rebuild).toContain("catch");
+		expect(rebuild).toContain("重签");
+		// 不应在发布脚本里调用 sign（私钥只在本机 ~/.ojm/keys，发布人不交给脚本）
+		expect(rebuild).not.toMatch(/["']sign["']/);
 	});
 });

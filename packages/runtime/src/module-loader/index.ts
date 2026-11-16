@@ -28,6 +28,7 @@ import { registerHeaderProvider, unregisterHeaderProvider } from "#src/store/hea
 import { useUserStore } from "#src/store/user";
 import { createScopedRequest } from "#src/utils/request/scoped";
 import { getAllRoutePaths, getKeepAliveExcludes } from "./keep-alive";
+import { getPortalContainer } from "./portal-container";
 import { satisfiesSemver } from "./semver";
 import { registerSlot, removeModuleSlots } from "./slots";
 
@@ -37,7 +38,7 @@ const registeredStores = new Map<string, unknown>();
 // 因此按模块存集合而非单值；登记顺序即数组顺序（getRegisteredApiPrefix 取首个）
 const registeredApiPrefixes = new Map<string, string[]>();
 
-function createModuleContext(definition: ModuleDefinition, routePrefix: string): ModuleContext {
+export function createModuleContext(definition: ModuleDefinition, routePrefix: string): ModuleContext {
 	return {
 		module: {
 			name: definition.name,
@@ -96,6 +97,10 @@ function createModuleContext(definition: ModuleDefinition, routePrefix: string):
 			layout: (name: string, component: React.ComponentType) => {
 				registerLayout(definition.name, name, component);
 			},
+			// P4b：壳持有的稳定挂载点；模块把弹层 portal 到此节点而非 document.body。
+			// 纯读取、无模块副作用，不需要在 unloadModule 中清理——portal 节点随
+			// 模块组件卸载由 React 自动摘除，壳挂载点本身长期驻留。
+			portalContainer: () => getPortalContainer(),
 		},
 		registerSlot: (slotName: string, node: React.ReactNode) => {
 			registerSlot(definition.name, slotName, node);

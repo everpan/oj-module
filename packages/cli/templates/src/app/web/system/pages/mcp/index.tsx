@@ -1,5 +1,6 @@
 import type { TableProps } from "antd";
-import type { McpCatalogResult, McpToolView } from "../../../../../oj-market/web/types";
+import type { MarketClient } from "../../../../../oj-market/web/api/client";
+import type { IndexPage, McpCatalogResult, McpToolView } from "../../../../../oj-market/web/types";
 import { ReloadOutlined, SearchOutlined } from "@ant-design/icons";
 import { useQuery } from "@tanstack/react-query";
 import { Alert, Button, Card, Collapse, Empty, Input, Space, Spin, Table, Tag, Typography } from "antd";
@@ -22,12 +23,16 @@ interface GroupStats {
 }
 
 function statsOf(tools: McpToolView[]): GroupStats {
-	return {
-		total: tools.length,
-		readOnly: tools.filter(x => x.readOnly).length,
-		write: tools.filter(x => !x.readOnly).length,
-		destructive: tools.filter(x => x.destructive).length,
-	};
+	let readOnly = 0;
+	let destructive = 0;
+	for (const tool of tools) {
+		if (tool.readOnly)
+			readOnly++;
+		if (tool.destructive)
+			destructive++;
+	}
+	const total = tools.length;
+	return { total, readOnly, write: total - readOnly, destructive };
 }
 
 /** 组分类：方案组正常铺开；非方案组（不在已装列表/空串）折叠 +「非方案」标 */
@@ -35,13 +40,37 @@ function isForeignGroup(module: string, installedNames: Set<string>): boolean {
 	return module === "" || !installedNames.has(module);
 }
 
-/** 工具检索：名称/描述/模块三处大小写不敏感子串（与上游 oj_search_tools 同口径，纯前端过滤） */
-function matchesKeyword(tool: McpToolView, keyword: string): boolean {
-	if (keyword === "") {
+/**
+ * 工具检索：名称/描述/模块三处大小写不敏感子串（与上游 oj_search_tools 同口径，纯前端过滤）。
+ * lowerQuery 由调用方预先小写（query 已在渲染前 lowerCase）——这里逐工具不再重复 lowercase、
+ * 也不分配临时数组；三项用短路判断，命中即返回。
+ */
+function matchesKeyword(tool: McpToolView, lowerQuery: string): boolean {
+	if (lowerQuery === "") {
 		return true;
 	}
-	const k = keyword.toLowerCase();
-	return [tool.name, tool.description ?? "", tool.module].some(v => v.toLowerCase().includes(k));
+	if (tool.name.toLowerCase().includes(lowerQuery))
+		return true;
+	if (tool.module.toLowerCase().includes(lowerQuery))
+		return true;
+	return (tool.description ?? "").toLowerCase().includes(lowerQuery);
+}
+
+/**
+ * 拉全已装方案清单用于对账：index 单页上限 200（服务端 pageArgs 钳），故按 total 翻页收齐。
+ * 固定取一页会让第 201 个起的已装方案漏报（drift 与「非方案组」分类都会误判）。
+ */
+const INDEX_PAGE_SIZE = 200;
+
+async function fetchAllInstalled(client: Pick<MarketClient, "index">): Promise<IndexPage> {
+	const first = await client.index({ page: 1, size: INDEX_PAGE_SIZE });
+	const pages = Math.ceil(first.total / INDEX_PAGE_SIZE);
+	if (pages <= 1)
+		return first;
+	const tail = await Promise.all(
+		Array.from({ length: pages - 1 }, (_, i) => client.index({ page: i + 2, size: INDEX_PAGE_SIZE })),
+	);
+	return { ...first, list: [...first.list, ...tail.flatMap(p => p.list)], page: pages, size: INDEX_PAGE_SIZE };
 }
 
 type ToolColumns = NonNullable<TableProps<McpToolView>["columns"]>;
@@ -114,16 +143,21 @@ export function McpPage() {
 	const query = keyword.trim().toLowerCase();
 
 	const catalog = useQuery({ queryKey: ["mcp-catalog"], queryFn: () => client.mcpCatalog() });
-	const index = useQuery({ queryKey: ["market-index"], queryFn: () => client.index({ size: 200 }) });
+	const index = useQuery({ queryKey: ["market-index"], queryFn: () => fetchAllInstalled(client) });
 
 	// 漂移对账（§4.3）：已装方案（installed 非 null）但目录无同名分组 →「无可见工具」提示
 	const installedNames = useMemo(
 		() => new Set((index.data?.list ?? []).filter(r => r.installed != null).map(r => r.name)),
 		[index.data],
 	);
+	// 分组 module 建 Set：drift 从 O(已装×分组) 的嵌套 some 降为 O(已装+分组)
+	const catalogModules = useMemo(
+		() => new Set((catalog.data?.groups ?? []).map(g => g.module)),
+		[catalog.data],
+	);
 	const drift = useMemo(
-		() => (index.data?.list ?? []).filter(r => r.installed != null && !catalog.data?.groups.some(g => g.module === r.name)),
-		[index.data, catalog.data],
+		() => (index.data?.list ?? []).filter(r => r.installed != null && !catalogModules.has(r.name)),
+		[index.data, catalogModules],
 	);
 
 	// 检索过滤（纯前端）：分组随匹配结果收敛，0 匹配的组整组隐藏

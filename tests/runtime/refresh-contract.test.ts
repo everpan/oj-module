@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useAuthStore } from "#src/store/auth";
+import { useGlobalStore } from "#src/store/global";
 import { DEFAULT_TENANT } from "#src/store/tenant";
 import { request } from "#src/utils/request";
 import { refreshTokenAndRetry } from "#src/utils/request/refresh";
@@ -118,6 +119,64 @@ describe("refresh 编排（refreshTokenAndRetry）", () => {
 		expect(resp.ok).toBe(true);
 		expect(useAuthStore.getState().token).toBe("at-new");
 		expect(useAuthStore.getState().refreshToken).toBe("rt-new");
+	});
+});
+
+describe("刷新链防自死循环（页面久开后 refresh 失败不再永久 loading）", () => {
+	it("refresh 端点自身返回 401 → 只发一次刷新、跳登录，不重入刷新链自等待", async () => {
+		vi.stubGlobal("fetch", vi.fn(async (input: Request | string, init?: RequestInit) => {
+			const req = input instanceof Request ? input : new Request(input, init);
+			calls.push({ url: req.url, method: req.method, auth: req.headers.get("Authorization"), body: await req.clone().text().catch(() => "") });
+			if (req.url.endsWith("/auth/refresh"))
+				return new Response(JSON.stringify({ code: 401, msg: "expired refresh token" }), { status: 401, headers: { "Content-Type": "application/json" } });
+			return ojOk({});
+		}));
+
+		const original = new Request("http://localhost/api/workspaces", { method: "GET" });
+		await expect(refreshTokenAndRetry(original, {}, "rt-old")).rejects.toBeDefined();
+
+		// 关键：refresh 只发一次。若重入刷新链，会卡在订阅者队列自等待（永久 loading）。
+		expect(calls.filter(c => c.url.endsWith("/auth/refresh"))).toHaveLength(1);
+		expect(useAuthStore.getState().token).toBe("");
+		expect(useAuthStore.getState().refreshToken).toBe("");
+	});
+
+	it("refresh 网络失败（页面久开后 upstream 抖动）→ 全局 loading 归零，不留死转圈", async () => {
+		vi.stubGlobal("fetch", vi.fn(async (input: Request | string, init?: RequestInit) => {
+			const req = input instanceof Request ? input : new Request(input, init);
+			calls.push({ url: req.url, method: req.method, auth: req.headers.get("Authorization"), body: await req.clone().text().catch(() => "") });
+			if (req.url.endsWith("/auth/refresh"))
+				throw new TypeError("network down");
+			return ojOk({});
+		}));
+
+		const original = new Request("http://localhost/api/workspaces", { method: "GET" });
+		await expect(refreshTokenAndRetry(original, {}, "rt-old")).rejects.toBeDefined();
+
+		// refresh 请求超时/网络错时 afterResponse 不触发，globalProgress 计数残留会让页面一直转圈。
+		// goLogin 里的 forceFinish 必须在跳登录前把全局 loading 清掉。
+		expect(useGlobalStore.getState().globalSpin).toBe(false);
+	});
+
+	it("刷新后重放再次 401 → 不二次刷新，直接跳登录（杜绝无限刷新循环）", async () => {
+		let originalAttempts = 0;
+		stubFetch((url) => {
+			if (url.endsWith("/web/still-denied")) {
+				originalAttempts++;
+				return new Response(JSON.stringify({ code: 401, msg: "unauthorized" }), { status: 401, headers: { "Content-Type": "application/json" } });
+			}
+			return undefined;
+		});
+
+		const settled = await Promise.race([
+			request.get("web/still-denied").then(() => "resolved", () => "rejected"),
+			new Promise<string>(resolve => setTimeout(resolve, 1000, "hang")),
+		]);
+		expect(settled, "刷新后重放 401 必须立即失败，不能永久 loading").toBe("rejected");
+
+		// 重放仍 401 时不应继续刷新（否则 401→refresh→重放→401 无限循环）
+		expect(calls.filter(c => c.url.endsWith("/auth/refresh"))).toHaveLength(1);
+		expect(originalAttempts).toBe(2); // 首请求 401 + 重放 401
 	});
 });
 

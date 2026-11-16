@@ -44,6 +44,7 @@ export const fetchLogin = _fn;
 export const fetchLogout = _fn;
 export const fetchAsyncRoutes = _fn;
 export const fetchUserInfo = _fn;
+export const fetchUserInfosByIDs = _fn;
 export const fetchRefreshToken = _fn;
 export const fetchRoleList = _fn;
 export const fetchAddRoleItem = _fn;

@@ -157,6 +157,73 @@ describe("AC1-29：操作日志分页（真库切片 + total）", () => {
 		expect(r.list).toHaveLength(2);
 		expect(r.list.every(x => x.action === "test.page")).toBe(true);
 	});
+
+	it("username 展示 display_name（真名）而非落库账号名（用户反馈：列表显示的是 id）", async () => {
+		// 落库仍是账号名（审计快照稳定），展示时才回填 display_name。
+		dbo.exec("UPDATE users SET display_name = '超级管理员' WHERE id = 1");
+		try {
+			g.http = { user: { id: 1 } };
+			await recordOp({ action: "test.page", module: "framework" });
+			const stored = dbo.prepare("SELECT username FROM sys_oplog").get() as { username: string };
+			expect(stored.username).toBe("admin"); // 落库账号名不变
+
+			const r = await searchOplog({ action: "test.page" });
+			expect(r.list[0]!.username).toBe("超级管理员"); // 展示真名
+		}
+		finally {
+			dbo.exec("UPDATE users SET display_name = NULL WHERE id = 1");
+		}
+	});
+});
+
+describe("AC1-29：display_name 批量回填（一次 IN，非逐行 N+1）", () => {
+	it("一页多个 uid → users 表只查一次，按 id 映射回各行", async () => {
+		const tables: string[] = [];
+		const prevDb = g.db;
+		let phase = 0;
+		g.db = {
+			table: (name: string) => {
+				tables.push(name);
+				if (name === "users") {
+					return {
+						select: () => ({
+							where: () => ({
+								all: async () => [
+									{ id: 1, display_name: "超级管理员" },
+									{ id: 2, display_name: "管理员" },
+								],
+							}),
+						}),
+					};
+				}
+				const b: any = {
+					whereIf: () => b,
+					select: () => b,
+					orderBy: () => b,
+					limit: () => b,
+					offset: () => b,
+					all: async () => {
+						phase++;
+						return phase === 1
+							? [{ c: 2 }]
+							: [
+								{ id: 2, user_id: 2, username: "admin" },
+								{ id: 1, user_id: 1, username: "superadmin" },
+							];
+					},
+				};
+				return b;
+			},
+		};
+		try {
+			const r = await searchOplog({});
+			expect(r.list.map(x => x.username)).toEqual(["管理员", "超级管理员"]);
+			expect(tables.filter(t => t === "users")).toHaveLength(1); // 批量一次，不是每个 uid 一次
+		}
+		finally {
+			g.db = prevDb;
+		}
+	});
 });
 
 describe("PRD §4.3：系统设置", () => {

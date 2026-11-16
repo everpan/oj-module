@@ -44,6 +44,24 @@ export interface UserInfoType {
 	menus?: AppRouteRecordRaw[]
 }
 
+/**
+ * 批量用户信息（fetchUserInfosByIDs 返回项；后端 _platform/users/info）。
+ *
+ * 与当前登录用户的 UserInfoType 不同：跨人读不含 permissions（恒空、无意义），
+ * id 为 number（与业务行里的 user_id 同型，便于按 id 建 Map）。缺失 id 不返回。
+ */
+export interface BatchUserInfoType {
+	id: number
+	username: string
+	displayName: string
+	avatar: string
+	email: string
+	phoneNumber: string
+	description: string
+	roles: Array<string>
+	mustChange: boolean
+}
+
 export interface AuthListProps {
 	label: string
 	name: string

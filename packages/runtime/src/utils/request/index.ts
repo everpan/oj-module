@@ -100,8 +100,11 @@ const defaultConfig: Options = {
 				// request error
 				if (!response.ok) {
 					if (response.status === 401) {
-						// 防止刷新 refresh-token 继续接收到的 401 错误，出现死循环
-						if ([`/${REFRESH_TOKEN_PATH}`].some(url => request.url.endsWith(url))) {
+						// 防止刷新链自死循环：① refresh 端点自身的 401（刷新串过期）；
+						// ② 刷新后的重放请求再次 401（新 token 仍不被接收，如会话被吊销）。
+						// 二者都带 skipAuthRefresh 显式标记——不再只靠 URL endsWith：后者在
+						// 查询串/尾斜杠/部署 base 变化下会漏判，让请求重入刷新链自等待，页面永久 loading。
+						if (options.skipAuthRefresh || [`/${REFRESH_TOKEN_PATH}`].some(url => request.url.endsWith(url))) {
 							goLogin();
 							return response;
 						}

@@ -80,6 +80,9 @@ function isObj(v: unknown): v is Record<string, unknown> {
 	return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
+/** 工具入参固定三键（F1）：提到循环外复用，避免逐工具新建字面量数组 */
+const PARAM_KEYS = ["path", "query", "body"] as const;
+
 /** tools/list 元素归一（宽容：畸形元素跳过，不炸整表） */
 export function normalizeTools(raw: unknown): McpToolView[] {
 	if (!Array.isArray(raw)) {
@@ -103,7 +106,7 @@ export function normalizeTools(raw: unknown): McpToolView[] {
 			module,
 			readOnly: annotations.readOnlyHint === true,
 			destructive: annotations.destructiveHint === true,
-			params: ["path", "query", "body"].filter(k => k in props),
+			params: PARAM_KEYS.filter(k => k in props),
 		});
 	}
 	return out;
@@ -113,9 +116,13 @@ export function normalizeTools(raw: unknown): McpToolView[] {
 export function groupTools(tools: McpToolView[]): McpCatalogGroup[] {
 	const groups = new Map<string, McpToolView[]>();
 	for (const t of tools) {
-		const list = groups.get(t.module) ?? [];
+		// 仅首次插入写 Map；list 是引用，后续 push 无需再 set（去掉逐工具冗余写）
+		let list = groups.get(t.module);
+		if (list === undefined) {
+			list = [];
+			groups.set(t.module, list);
+		}
 		list.push(t);
-		groups.set(t.module, list);
 	}
 	return [...groups].map(([module, ts]) => ({ module, tools: ts }));
 }

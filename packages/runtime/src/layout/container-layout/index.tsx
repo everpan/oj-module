@@ -1,10 +1,11 @@
 import { RocketOutlined } from "@ant-design/icons";
 import { FloatButton, Grid, Watermark } from "antd";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { JSSThemeProvider } from "#src/components/jss-theme-provider";
 import { useDeviceType } from "#src/hooks/use-device-type";
-
 import { useLayoutFooterStyle, useLayoutHeaderStyle } from "#src/hooks/use-layout-style";
+
+import { mountPortalContainer } from "#src/module-loader/portal-container";
 import { usePreferencesStore } from "#src/store/preferences";
 import { useTabsStore } from "#src/store/tabs";
 import { cn } from "#src/utils/cn";
@@ -45,6 +46,8 @@ export default function ContainerLayout() {
 
 	const { setLayoutHeaderHeight } = useLayoutHeaderStyle();
 	const { setLayoutFooterHeight } = useLayoutFooterStyle();
+	// P4b / Q7：壳持 portal 挂载点。布局挂载时把稳定节点接入 section，卸载时摘除。
+	const portalHostRef = useRef<HTMLElement>(null);
 
 	useEffect(() => {
 		/* iPad */
@@ -111,10 +114,20 @@ export default function ContainerLayout() {
 		// eslint-disable-next-line react/exhaustive-deps
 	}, []);
 
+	// P4b / Q7：模块弹层统一 portal 到壳挂载点（独立 z-index 栈），
+	// 避免与 antd 弹层（overlay 150）/ View Transition（999999999）互盖。
+	useEffect(() => {
+		const host = portalHostRef.current;
+		if (!host)
+			return;
+		return mountPortalContainer(host);
+	}, []);
+
 	return (
 		<JSSThemeProvider>
 			<Watermark content={watermark ? watermarkContent : ""}>
 				<section
+					ref={portalHostRef}
 					style={{
 						paddingLeft: computedSidebarWidth,
 					}}

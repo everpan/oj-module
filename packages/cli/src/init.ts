@@ -555,28 +555,37 @@ function copyIfAbsent(src: string, dest: string, report: InitReport): void {
 /**
  * 新工程 .gitignore：不存在则生成；已存在则幂等跳过（用户规则永不覆盖）。
  *
- * 内容与 templates/.gitignore 对齐（模板兼作可运行 demo，ignore 的是同一套
- * 现场产物）：dev 下载的 bin/oj、sqlite/日志/现场签发的私钥与证书、构建产物。
- * 它不能随模板拷贝——npm/pnpm pack 剥离 `.gitignore`，详见 initProject 5c。
+ * 必须与 templates/.gitignore **逐字节一致**（模板兼作可运行 demo，ignore 的是
+ * 同一套现场产物）。不随模板拷贝——npm/pnpm pack 剥离 `.gitignore`，详见
+ * initProject 5c；改模板 .gitignore 时同步改这里，守卫：
+ * tests/cli/init.test.ts「脚手架 .gitignore 与模板逐字节一致」。
  */
-const SCAFFOLD_GITIGNORE = `# 由 ojm init 生成。
-node_modules/
+const SCAFFOLD_GITIGNORE = `node_modules/
 bin/
 .ojm-tmp-*
 # ojm preview 的派生 config（临时产物，进程退出即删；见 preview-config.ts）
 .ojm-preview.yaml
-# 本地 sqlite 与运行日志（config.yaml 在工程根，路径都相对工程根）
+# e2e 临时把注释态 canonical_origin 解注后留下的备份（globalTeardown 会自动还原，崩溃残留防误签）
+config.yaml.e2e-bak
+# 本目录同时是可运行工程（pnpm dev/build），产物一律不签入、也不进发布包；
+# 未忽略会让 \`pnpm pack\` 把 dist/web 的 sourcemap 打进 tarball（发布清单测试钉面）
+# 布局：config.yaml 在工程根（\`src/<name>/{api,web}\`），故 db/日志/证书都相对工程根
 db.sqlite
 db.sqlite-shm
 db.sqlite-wal
 logs/
-# 现场签发的开发证书与凭据私钥（ojm dev 缺证时自动签发，见 oj-cert.ts）；私钥绝不入仓
+# 现场签发的开发证书（ojm dev 缺证时自动签发，见 oj-cert.ts）；私钥绝不入仓
 config/*.pem
 config/cert.jws
 # 开发态本地覆盖层（方案 A'）：dev 自动供给的本机密钥 + dev jwt_secret；git 不跟踪
 config.local.yaml
-# 构建产物（ojm build：站点 dist/web + 后端 release dist/api）
+# ojm build 产物：站点 dist/web + 后端 release dist/api
 dist/
+# 本地模拟 CDN 的产物一律不签入、不进发布包；cdn/README.md 是唯一例外（随模板发布）
+cdn/*.tgz
+cdn/*.sig
+cdn/bundles.yaml
+cdn/manifests.yaml
 `;
 
 function ensureGitignore(destDir: string, report: InitReport): void {

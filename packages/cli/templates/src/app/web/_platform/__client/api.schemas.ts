@@ -194,4 +194,20 @@ export const schemas = {
 	"advise": z.array(z.string())
 }),
 	},
+	"platformUsersInfoGet": {
+		query: z.object({
+	"ids": z.string()
+}),
+		data: z.array(z.object({
+	"id": z.number(),
+	"username": z.string(),
+	"displayName": z.string(),
+	"avatar": z.string(),
+	"email": z.string(),
+	"phoneNumber": z.string(),
+	"description": z.string(),
+	"roles": z.array(z.string()),
+	"mustChange": z.boolean()
+})),
+	},
 };

@@ -6,6 +6,7 @@ export interface OplogRow {
 	id: number
 	create_time: number
 	user_id: number
+	/** 展示名：优先当前 display_name，空则回落落库时的账号名（见 searchOplog 回填） */
 	username: string
 	action: string
 	module: string
@@ -38,5 +39,17 @@ export async function searchOplog(filter: { action?: unknown, username?: unknown
 	// page/limit 成对：limit 是每页条数（pageArgs 钳 200），缺省第 1 页 / 20 条。
 	// total 由 count 查询单独给出，页面按 total 算页数——不再靠 truncated 提示「结果被截断」。
 	const r = await pagedFactory<OplogRow>(mk, { page: filter.page, size: filter.limit });
-	return { list: r.list, total: r.total, truncated: r.truncated };
+	// 展示名回填：sys_oplog.username 落的是账号名（外部号形如 wecom:<userid>，看着像串 id）。
+	// 一次 IN 批量把本页所有 uid 的 display_name 查回（不是逐行查用户，避免 N+1），
+	// 缺名/空名回落落库快照。落库字段不动——过滤语义与审计快照保持稳定。
+	const ids = [...new Set(r.list.map(x => Number(x.user_id)).filter(id => Number.isFinite(id) && id > 0))];
+	if (!ids.length)
+		return { list: r.list, total: r.total, truncated: r.truncated };
+	const users = await db.table("users").select(["id", "display_name"]).where({ field: "id", op: "in", value: ids }).all() as Array<{ id: number, display_name: string | null }>;
+	const displayOf = new Map(users.map(u => [Number(u.id), u.display_name == null ? "" : String(u.display_name).trim()]));
+	return {
+		list: r.list.map(row => ({ ...row, username: displayOf.get(Number(row.user_id)) || row.username })),
+		total: r.total,
+		truncated: r.truncated,
+	};
 }

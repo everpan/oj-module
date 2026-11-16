@@ -221,6 +221,41 @@ describe("mCP 服务管理页：检索与分页（工具过多时的浏览面）
 		expect(screen.getByText("仅显示前 50 个")).toBeTruthy();
 		expect(screen.getByText(/单组上限 50 个/)).toBeTruthy();
 	});
+
+	it("当 检索词含大写，则 仍大小写不敏感命中（lowerQuery 预小写的语义不变）", async () => {
+		const client = new InMemoryMarketClient({ mcpCatalogResult: CATALOG_MOUNTED, indexPage: INDEX_WITH_GHOST });
+		renderPage(client);
+		await screen.findByText("wiki_search");
+
+		fireEvent.change(screen.getByPlaceholderText("搜索工具名 / 描述 / 方案"), { target: { value: "WIKI_SEARCH" } });
+		await waitFor(() => expect(screen.queryByText("order_create")).toBeNull());
+		expect(screen.getByText("wiki_search")).toBeTruthy();
+	});
+
+	it("当 已装方案超过单页上限 200，则 按 total 翻页收齐——第 201 个起的漂移也能对账", async () => {
+		const many = Array.from({ length: 205 }, (_, i) => ({
+			name: `sol_${String(i).padStart(3, "0")}`,
+			latest: "1.0.0",
+			installed: "1.0.0",
+			enabled: true,
+			upgradable: false,
+		}));
+		const client = new InMemoryMarketClient({
+			mcpCatalogResult: { status: "mounted", groups: [] },
+			indexPageFor: (page, size) => ({
+				list: many.slice((page - 1) * size, page * size),
+				total: many.length,
+				page,
+				size,
+			}),
+		});
+		renderPage(client);
+		await waitFor(() => expect(client.calls.filter(c => c.startsWith("index")).length).toBe(2));
+
+		// sol_204 只在第 2 页——证明不是只取前 200（旧实现固定 size:200 会漏报）
+		expect(screen.getByText("sol_204")).toBeTruthy();
+		expect(screen.getAllByText(/无可见工具（未入白名单或无 api）/).length).toBe(205);
+	});
 });
 
 describe("mCP 服务管理页：异常三态（§4.3，文案区分由服务端 message 承载）", () => {
