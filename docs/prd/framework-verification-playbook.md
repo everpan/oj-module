@@ -307,7 +307,7 @@ node "$CLI_PKG/bin/ojm.mjs" init my-books --yes
 
 - [ ] 退出码 0，末行提示 `登录 superadmin / aA123456`（角色账号见 devkit 手册 §1.1）
 - [ ] 目录齐全（**module-root 布局，0.2.54+ 收敛到 `src/app`**）：`src/app/api/<name>`（六个后端模块：`_platform/auth/notification/personal-center/system/web`）+ `src/app/web`（六根）+ `src/oj-market/api`（编排面）+ `src/oj-market/web/{__client,publish/__client}`（**仅双 `__client` 生成物，无页面源码**——市场 UI 是第一方方案包**出厂即装**，web 面经版本目录重物化并入 modules.json，不经源码树）；顶层不再有 `src/<name>/{api,web}`。工程根 `.ojm-api-exempt.json`、`config.yaml`、`web.config.ts`、`tsconfig.json`、`global.d.ts`、`env.d.ts`、`bin/{oj,.oj-version,plugins,devkit}`、`.claude/skills/{oj-api-dev,ojm-module-dev}/`
-- [ ] **（0.2.71+，Phase B）`init --yes` 随站 bundle 落位**：`cdn/<name>-<ver>.tgz` + `.sig` + `cdn/bundles.json` 意图标记（`{solutions:[{name,version,file}]}`）；交互式 init 零动作；bundle 源缺失告警不失败。发布后 cli 包内应有 `shell-dist/bundles/`（prepack `sync-bundles.mjs` 只收**已签名** tgz——`tar -tzf <cli-pkg>.tgz | grep bundles/` 核对）
+- [ ] **（0.2.71+，Phase B）随站 bundle 落位**：`cdn/<name>-<ver>.tgz` + `.sig` + `cdn/bundles.json` 意图标记（`{solutions:[{name,version,file}]}`）；交互式与 `--yes` 都落位（默认 init 即保证 oj-market 出厂即装）；bundle 源缺失告警不失败。发布后 cli 包内应有 `shell-dist/bundles/`（prepack `sync-bundles.mjs` 只收**已签名** tgz——`tar -tzf <cli-pkg>.tgz | grep bundles/` 核对）
 - [ ] **（0.2.71+）模板 config 双授权就位**：`platform.exec` 有 `_platform` 与 `oj-market` **同集合** allow 条目（YAML 锚点 `&INSTALLER_EXEC_ALLOW` 同源）；`platform.modules: [_platform, oj-market]`（编排面 reload 特权）。守卫：`tests/lifecycle/exec-grant.spec.ts`
 - [ ] **工程根有 `.gitignore`**（发布包不携带模板 `.gitignore`——npm/pnpm pack 剥离点文件，改由 init 现场生成，`ensureGitignore`；0.2.5 曾因 include 清单收录它而 fail-fast，见 §9）
 - [ ] **工程根有 `openapi.json`**（新流水线唯一事实源，模板随附）+ `src/app/web/<root>/__client/` 预生成（`ojm api --check` 开箱即过）

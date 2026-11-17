@@ -212,6 +212,7 @@
 
 - 场景：init --yes 安装失败降级：given 安装失败 when `init --yes` then 建站不失败（warning 上报，superadmin 手动面兜底）
 - 场景：交互式 init 不动：无 `--yes` 时零安装动作（保持手动口径）
+  - **更正（2026-11-17，诚实账）**：本条为 Phase B T3 历史口径，已作废。当时交互式 init 零 bundle 落位，导致默认脚手架漏装 oj-market；现已改为交互式与 `--yes` 都落位随站 bundle（`placeBundledSolutions` 去掉 `--yes` 门控），默认 init 即保证出厂即装。以本更正为准。
 
 **特性 2：市场自卸载与重装闭环**
 

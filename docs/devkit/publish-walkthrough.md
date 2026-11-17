@@ -407,10 +407,12 @@ TOFU 没有免检通道：**只有模板内置的 oj-market（第一方包）用
   的 tgz+.sig 收进 `shell-dist/bundles/` 随 cli 包发布（未签名不收；dist 未构建则告警跳过）；
 - **信任根基**：把签名公钥（64 hex）+ key_id 回填 `templates/src/oj-market/api/bootstrap.ts`
   的 `BOOTSTRAP_KEY`（模板内只有公钥；不回填则首装落 needs_trust 走 TOFU）；
-- **分发**：`ojm init --yes` 把 bundle 拷入新工程 `cdn/` 并写 `bundles.json` 意图标记——
-  站点首个市场编排请求（如 superadmin 打开 system 域「方案安装」）自动收敛安装；
+- **分发**：`ojm init`（交互式与 `--yes` 都执行）把 bundle 拷入新工程 `cdn/` 并写
+  `bundles.json` 意图标记——`ojm dev`/`ojm preview` 后端就绪后触发 converge 自动收敛安装；
   **上拉不下拉**：未装→装、bundle 新→升级、bundle ≤ 已装（市场轨升过）→ 跳过不降级。
-  交互式 init 零动作（保持手动口径）；bundle 缺失告警不失败。
+  bundle 缺失告警不失败。
+  市场 UI 是随站第一方方案包、不进脚手架源码——不落 bundle 则市场永远「出厂未装」，
+  故默认 init 必须落位（这是交互式曾漏装 oj-market 的根因）。
 
 **运维须知（真机演练钉出的口径）**：
 

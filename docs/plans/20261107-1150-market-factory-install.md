@@ -63,7 +63,7 @@
 | B1 | dev 重建不丢登记 | 已装 oj-market 的 dev 工程 | 重启 `pnpm dev`（重建 modules.json） | 市场菜单仍在；modules.json 含 oj-market 条目；state.yaml 不变 |
 | B2 | release 重建不丢登记 | 已装 oj-market 的 release 工程 | `pnpm build`（site-merge 擦除后） | dist/web 重建后市场菜单仍在（面从版本目录重物化） |
 | B3 | 同名冲突 fail-fast | 源码树模块与已装方案同名 | 重建合并 | 构建失败并报双轨同名（不静默覆盖） |
-| C1 | 出厂即装 | 全新 init --yes 工程 | 首次启动（dev 或 release）后数秒内 | 无需打开任何页面：oj-market 已装（state.yaml 有行、菜单可见） |
+| C1 | 出厂即装 | 全新 init 工程（交互式与 `--yes` 都落随站 bundle） | 首次启动（dev 或 release）后数秒内 | 无需打开任何页面：oj-market 已装（state.yaml 有行、菜单可见） |
 | C2 | 升级路径不变 | 出厂已装 0.2.0，发布 0.3.0 上传目录 | index 对账 | upgradable=true；升级安装后版本切换、菜单不丢 |
 | C3 | 出厂未装态兜底 | 收敛失败（如包损坏） | 打开方案安装页 | 仍显示出厂未装态文案 + 重试指引（冷却观测不变） |
 
