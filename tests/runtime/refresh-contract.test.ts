@@ -180,6 +180,40 @@ describe("刷新链防自死循环（页面久开后 refresh 失败不再永久 
 	});
 });
 
+describe("全局 loading 计数配对（网络层失败无响应）", () => {
+	it("普通请求网络失败（fetch 抛错，无响应）→ afterResponse 不触发，计数也必须归零，蒙版不残留", async () => {
+		// 页面静置后再次激活：某个普通数据请求在网络层失败（超时/断网/abort），
+		// ky 不跑 afterResponse → 若 done() 只挂在 afterResponse，start() 的计数永不归还，
+		// globalSpin 永久 true：菜单内容照常渲染但 Spin 蒙版无法消除（切换菜单也不消失）。
+		vi.stubGlobal("fetch", vi.fn(async () => {
+			throw new TypeError("network down");
+		}));
+
+		useGlobalStore.getState().closeGlobalSpin();
+		await expect(request.get("web/will-fail")).rejects.toBeDefined();
+
+		expect(useGlobalStore.getState().globalSpin, "网络失败后 loading 蒙版必须消除").toBe(false);
+	});
+
+	it("并发：一请求网络失败 + 一请求成功 → 计数不串台，最终蒙版消除", async () => {
+		vi.stubGlobal("fetch", vi.fn(async (input: Request | string) => {
+			const req = input instanceof Request ? input : new Request(input);
+			if (req.url.endsWith("/web/flaky"))
+				throw new TypeError("network down");
+			return ojOk({});
+		}));
+
+		useGlobalStore.getState().closeGlobalSpin();
+		const results = await Promise.allSettled([
+			request.get("web/flaky"),
+			request.get("web/ok"),
+		]);
+		expect(results[0]!.status).toBe("rejected");
+		expect(results[1]!.status).toBe("fulfilled");
+		expect(useGlobalStore.getState().globalSpin, "并发下计数须平衡，蒙版消除").toBe(false);
+	});
+});
+
 describe("afterResponse 401 触发刷新（端到端）", () => {
 	it("业务请求 401 → 自动 refresh → 重放 200，全程对 oj 后端契约成立", async () => {
 		let attempts = 0;

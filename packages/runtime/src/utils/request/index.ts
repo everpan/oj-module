@@ -91,11 +91,25 @@ const defaultConfig: Options = {
 				}
 			},
 		],
+		// 无响应失败（网络错/超时/abort）的唯一计数出口：ky 这类失败不跑
+		// afterResponse，只跑 beforeError。不在这里归还 start() 的计数就会泄漏——
+		// 页面静置后再激活时某个数据请求在网络层失败，globalSpin 永久 true，
+		// 菜单内容照常渲染但 Spin 蒙版无法消除（0.2.95 的 forceFinish 只覆盖 401 路径）。
+		// 传 options 作幂等键：HTTP 错误先跑 afterResponse 已 done，这里再调会被去重，
+		// 不会多减导致并发下提前关蒙版。beforeError 钩子须回传 error 原样。
+		beforeError: [
+			({ options, error }) => {
+				if (!options.ignoreLoading) {
+					globalProgress.done(options);
+				}
+				return error;
+			},
+		],
 		afterResponse: [
 			async ({ request, options, response }) => {
 				const ignoreLoading = options.ignoreLoading;
 				if (!ignoreLoading) {
-					globalProgress.done();
+					globalProgress.done(options);
 				}
 				// request error
 				if (!response.ok) {
