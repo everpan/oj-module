@@ -212,6 +212,41 @@ describe("全局 loading 计数配对（网络层失败无响应）", () => {
 		expect(results[1]!.status).toBe("fulfilled");
 		expect(useGlobalStore.getState().globalSpin, "并发下计数须平衡，蒙版消除").toBe(false);
 	});
+
+	it("beforeError 清理幂等：有响应的 HTTP 错误同时触发 afterResponse 与 beforeError，不得多减导致在途请求的蒙版提前关闭", async () => {
+		// ky 对「有响应」的错误（4xx/5xx）：先跑 afterResponse（done 一次），再因
+		// throwHttpErrors 跑 beforeError（再调 done）。globalProgress.done(options) 用
+		// normalized options 作 WeakSet 幂等键，保证同一请求只归还一次计数。
+		// 若不去重：错误请求会减两次，把仍在途的慢请求的计数压到 0 → 蒙版提前消失。
+		let releaseSlow!: () => void;
+		const slowGate = new Promise<void>((resolve) => {
+			releaseSlow = resolve;
+		});
+
+		vi.stubGlobal("fetch", vi.fn(async (input: Request | string) => {
+			const req = input instanceof Request ? input : new Request(input);
+			if (req.url.endsWith("/web/slow")) {
+				await slowGate; // 持有计数，直到测试放行
+				return ojOk({});
+			}
+			if (req.url.endsWith("/web/http-error"))
+				return new Response(JSON.stringify({ code: 500, msg: "boom" }), { status: 500, headers: { "Content-Type": "application/json" } });
+			return ojOk({});
+		}));
+
+		useGlobalStore.getState().closeGlobalSpin();
+		// retry limit 0：隔离单次请求的两个钩子，排除 ky 重试干扰
+		const opts = { retry: { limit: 0 } };
+		const slow = request.get("web/slow", opts);
+		const failed = request.get("web/http-error", opts);
+
+		await expect(failed).rejects.toBeDefined(); // HTTP 500 走完双钩子并失败
+		expect(useGlobalStore.getState().globalSpin, "慢请求仍在途，蒙版不得因错误请求双减而提前关闭").toBe(true);
+
+		releaseSlow();
+		await expect(slow).resolves.toBeDefined();
+		expect(useGlobalStore.getState().globalSpin, "全部结束后蒙版消除").toBe(false);
+	});
 });
 
 describe("afterResponse 401 触发刷新（端到端）", () => {
