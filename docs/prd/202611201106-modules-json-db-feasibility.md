@@ -229,6 +229,8 @@ sequenceDiagram
 | 反常规 | **Phase 2 交付物自漏对账门禁**：sys_module_overlay 三方言迁移 + 运行时读写都齐了，却没人把它声明进 schema.yaml（oj SQL 构造器的列白名单）与 config.yaml tenant.shared_allow——是 cli 侧的 C2-12c parity 测试和租户定性测试在 Phase 3 联调时拦下来的，不是人查出来的。「加表」在 oj 体系是三处同步（迁移/schema.yaml/shared_allow），漏一处要到对账测试才现形 |
 | 反常识 | **同一纯函数两套语义是有意分叉**：materialize 在运行面（templates/site-materialize.ts）与构建面（cli/installed-merge.ts）互为双生复制，红线语义不同——构建面基线是源码树清单（同名即双轨红线，fail-fast）；运行面基线是已合并清单（face 行必须原位替换/追加，否则重装/升级无处安放）。DRY 的有意违反，报错文案逐字钉防双边漂移 |
 | 反常识 | oj 构造器没有 db.tx：「一个事务写 overlay + 物化」落地为顺序补偿步骤 + 部分唯一索引兜底（先停后启，最坏残留零启用）+ 幂等原语（补偿可安全重试），一致性靠 verify/catch-up 对账收敛而非事务隔离 |
+| 与业界不符 | **「安装读包内 modules.json 录库」认知不成立**（2026-11-21 逐过程追踪实锤，docs/guides/20261121-2250-overlay-process-trace.md）：C2-31 禁 modules.json 入 bundle，安装侧无读它的分支；录库内容由安装器从包内 manifest.yaml/web 产物 + face 旁车自行组装 |
+| 落地缺口 | **backfillOverlay 无生产调用方**（同上追踪）：三路 backfill（含 legacy 清单 builtin 停用 → overlay 第三路）只在 spec 里绿，升级路径未接线——老站点升级后 DB 面为空，靠构建面 sidecar 掩码兜清单层。接线建议：表空首探或 oj migrate 后的一次性命令 |
 
 ## 8. 验证记录（2026-11-20，测试 + 真机双轨）
 
