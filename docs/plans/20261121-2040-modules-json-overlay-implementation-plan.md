@@ -300,8 +300,8 @@ sys_module_overlay
 | P1-T1~T5 | Phase 1 | ✅ 完成（2026-11-21，约 1h） | materialize 纯函数 + 7 单测；mergeInstalledModules 改为读盘外壳；全测试绿（merge --no-ff 795ecdbb2），分支已删 |
 | P2-T1~T5 | Phase 2 | ✅ 完成（2026-11-21，约 2.5h） | 三方言 DDL + 部分唯一索引；overlay.ts 8/8 spec 绿（拒双启用/原子换版/三路 backfill 幂等）；**P3 用例转绿**（merge --no-ff 8b26bda5a），分支已删 |
 | P3-T1~T6 | Phase 3 | ✅ 完成（2026-11-21，约 2h） | 单写者收敛（site-materialize 唯一运行面写者 + legacy 回落）；catch-up 自愈 BDD 绿；verify 默认只读 + repair 自愈；离线 fail-stale 3 例绿（merge --no-ff 3a6ba200c），分支已删 |
-| P4-T1~T5 | Phase 4 | ✅ 完成（2026-11-21，约 1h） | site-materialize 结构化日志（actor/db_seq/lag_sec）+ catch-up 失败计数告警（达 5 报 site-materialize-alarm）；C2-31 双名过渡（bundle.ts + tgz-guard 同拒 overlay-cache.json/modules.json）；基线只读探针 = baseline-readonly.spec 源码扫描门禁；回滚剧本 docs/runbooks/overlay-rollback.md（merge --no-ff 待填） |
-| P5-T1~T3 | Phase 5 | ✅ 完成（2026-11-21，约 30min） | seq 仲裁端到端 spec（拒写→补齐→DB 为准放行）；站长须知 docs/guides/overlay-webmaster.md；主文档 §11 收官（merge --no-ff 待填），分支已删 |
+| P4-T1~T5 | Phase 4 | ✅ 完成（2026-11-21，约 1h） | site-materialize 结构化日志（actor/db_seq/lag_sec）+ catch-up 失败计数告警（达 5 报 site-materialize-alarm）；C2-31 双名过渡（bundle.ts + tgz-guard 同拒 overlay-cache.json/modules.json）；基线只读探针 = baseline-readonly.spec 源码扫描门禁；回滚剧本 docs/runbooks/overlay-rollback.md（merge --no-ff 3194dc238），分支已删 |
+| P5-T1~T3 | Phase 5 | ✅ 完成（2026-11-21，约 30min） | seq 仲裁端到端 spec（拒写→补齐→DB 为准放行）；站长须知 docs/guides/overlay-webmaster.md；主文档 §11 收官（merge --no-ff 78b818896），分支已删 |
 
 ## 2. 风险登记
 
