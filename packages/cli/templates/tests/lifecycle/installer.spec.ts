@@ -1264,7 +1264,7 @@ describe("P2-10 TaskRecord schemaVersion：写方盖章 + 读方回填（旧记�
 });
 
 describe("P1-16 接线：reconcile 不一致自动修复（重跑 setEnabled）+ operator 通道 + migrate opts 转发", () => {
-	it("route enabled=0 / modules.json enabled=false 分歧 + 注入 state → 自动重跑 setEnabled(true) 收敛（healed 记 enable）", async () => {
+	it("route enabled=0 / modules.json enabled=false 分歧 + repair:true → 自动重跑 setEnabled(true) 收敛（healed 记 enable；P3-T4 缺省只报不修）", async () => {
 		await writeLock(lockPath, { "demo-solution": "0.1.0", "auth": "0.1.0" });
 		await state.write({ solutions: { "demo-solution": { version: "0.1.0", enabled: true, installedAt: 1000 } } });
 		dbo.exec("INSERT INTO sys_solution_route (path, module, category, \"order\", deprecated, enabled) VALUES ('/demo-solution', 'demo-solution', 'main', 200, 0, 0)");
@@ -1279,8 +1279,12 @@ describe("P1-16 接线：reconcile 不一致自动修复（重跑 setEnabled）+
 			ledgerHeadOf: async () => null,
 			headFloorOf: async () => null,
 			state,
+			repair: true, // P3-T4：repair=true 才自愈（缺省只报不修）；市场页对账时点恒 repair
 		});
-		expect(report.healed).toEqual([expect.objectContaining({ name: "demo-solution", action: "enable" })]);
+		expect(report.healed).toEqual([
+			expect.objectContaining({ name: "demo-solution", action: "enable" }),
+			expect.objectContaining({ action: "materialize" }), // setEnabled 的物化已写 cache；检测先于修复落的 stale 项随之收敛（repair 幂等）
+		]);
 		// 四处一致收敛：route=1、modules.json enabled=true、sidecar enabled=true、锁条目原样
 		expect(dbo.prepare("SELECT enabled FROM sys_solution_route WHERE module = ?").get("demo-solution")).toMatchObject({ enabled: 1 });
 		const list = JSON.parse(await fsp.readFile(modulesJsonPath, "utf8")) as Array<{ name: string, enabled: boolean }>;

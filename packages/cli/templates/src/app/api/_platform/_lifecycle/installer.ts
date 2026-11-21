@@ -11,8 +11,9 @@
 // 终态审计（AC-P1-14）：audit 恒末位，done/partial 都跑；audit 失败仅日志不阻断任务终态（附录 B-5）。
 // reconcile() 入口对账自愈（D11）：锁 ↔ 账本 head——锁指新版但账本落后 → 回指旧版（.bak + 旧版本
 // 目录俱在）或摘除记 failed；超时 running 判 failed 同点执行（R13/B9/R31）。
-// setEnabled 四处同写（D12/AC-P1-6）：锁摘除/恢复 + sidecar + sys_solution_route.enabled +
-// modules.json enabled；启用从 sidecar 摘除前记录恢复版本。db 为 isolate 全局（同模板 service 层）。
+// setEnabled 写面切换（Phase 3，D12/AC-P1-6 语义不变）：锁摘除/恢复 + sidecar + sys_solution_route.enabled +
+// sys_module_overlay 行 + 站点物化（modules.json 唯一写者 = site-materialize；overlay 表不可达时 legacy
+// 直写回落，P2-T4 混合态）；启用从 sidecar 摘除前记录恢复版本。db 为 isolate 全局（同模板 service 层）。
 
 import type { OpEntry } from "../_shared/service/infra/audit";
 import type { TaskLock } from "./lock";
@@ -27,6 +28,8 @@ import { atomicWriteText, fsFace, randomId } from "./atomic";
 import { compensate } from "./compensate";
 import { recordHistory } from "./history";
 import { acquireTaskLock, commitLockEntry, readLock, revertLock, writeLock } from "./lock";
+import { readOverlayDbSeq, swapEnabledVersion, upsertOverlayRow } from "./overlay";
+import { readOverlayCacheOf, siteMaterialize } from "./site-materialize";
 import { copyTree, deployWeb } from "./steps/deploy-web";
 import { download } from "./steps/download";
 import { extract } from "./steps/extract";
@@ -391,7 +394,41 @@ async function deployWebStage(req: InstallRequest): Promise<StageResult> {
 			}
 		}
 	}
-	return deployWeb({ ...req, stagingDir, integrity });
+	// 写面切换（Phase 3）：overlay 表可达 → 清单不直写（writeManifest=false），部署后由
+	// overlay 行 + 站点物化收敛；表不可达（老平台/DB 离线）→ deployWeb 内部 legacy upsert 回落。
+	const dbSeq = await readOverlayDbSeq();
+	const r = await deployWeb({ ...req, stagingDir, integrity, writeManifest: dbSeq === null });
+	if (!r.ok || dbSeq === null) {
+		return r;
+	}
+	// 在线：登记 overlay 行（先置停用，再由 swap 原子换版——直接插启用行会撞
+	// ux_overlay_one_enabled 部分唯一索引：旧版本行还启用着）+ 物化。swap 同批「置旧停新」，
+	// 唯一索引兜底绝不双启用。失败即 stage 失败（锁后语义②），补偿回滚按名删行 + 重跑物化收敛。
+	try {
+		await upsertOverlayRow({
+			name: req.name,
+			version: req.version,
+			enabled: 0,
+			source: "solution",
+			face_ref: entry !== undefined ? `modules/${req.name}/${req.version}` : null, // api-only：无 face，掩码/孤儿语义
+			actor: req.operator ?? "deployWeb",
+			old_state: null,
+		});
+		const swap = await swapEnabledVersion({ name: req.name, version: req.version, actor: req.operator ?? "deployWeb" });
+		if (!swap.ok) {
+			return { stage: "deploying_web", ok: false, retryable: true, message: `部署失败：${swap.message}——产物与旁车已落位，重试即收敛` };
+		}
+	}
+	catch (e) {
+		return { stage: "deploying_web", ok: false, retryable: true, message: `部署失败：sys_module_overlay 登记被拒（${String(e)}）——产物与旁车已落位，重试即收敛` };
+	}
+	try {
+		const m = await siteMaterialize({ modulesJsonPath: req.modulesJsonPath, sharedRoot: req.sharedRoot, state: req.state, actor: req.operator ?? "deployWeb" });
+		return { ...r, message: `${r.message}；${m.message}` };
+	}
+	catch (e) {
+		return { stage: "deploying_web", ok: false, retryable: true, message: `部署失败：站点物化失败（${String(e)}）——产物/旁车/overlay 已落位，catch-up 或重试即收敛` };
+	}
 }
 
 /** `ojm preview` 派生的 config 文件名（与 CLI 侧 preview-config.ts 的 PREVIEW_CONFIG_NAME 逐字一致） */
@@ -958,13 +995,19 @@ export interface ReconcileInput {
 	state?: StateStore
 	/** 信任库路径（P3-9 live 信任核对：注入后 reconcile 自愈末位触发一次实时信任库核对，吊销 key 标 untrusted；缺省跳过） */
 	trustPath?: string
+	/**
+	 * 修复开关（Phase 3 verify 只读/--repair 语义重设计，P3-T4）：true 才执行不一致自愈
+	 * （重跑 setEnabled / catch-up 物化）；缺省 false = 只报不修（接线④的 kind 语义化替代
+	 * ——不再按文案 detail.includes 匹配，直接按 kind 路由）。
+	 */
+	repair?: boolean
 	now?: number
 }
 
 export interface ReconcileReport {
 	checked: string[]
-	healed: { name: string, action: "repoint" | "remove" | "enable", from: string, to: string | null, reason: string }[]
-	inconsistencies: { name: string, kind: "lock_corrupt" | "modules_json" | "route_disabled", detail: string }[]
+	healed: { name: string, action: "repoint" | "remove" | "enable" | "materialize", from: string, to: string | null, reason: string }[]
+	inconsistencies: { name: string, kind: "lock_corrupt" | "modules_json" | "modules_json_disabled" | "modules_json_stale" | "route_disabled", detail: string }[]
 }
 
 async function dirExists(path: string): Promise<boolean> {
@@ -998,9 +1041,9 @@ async function writeReconcileFailed(taskDir: string, name: string, version: stri
 /**
  * 入口对账自愈（D11）：锁条目 ↔ 账本 head 一致性检查 + 自愈。锁指新版但账本 head 低于该版本
  * 要求的 floor（M004 账本落后拒启形态）→ 有 .bak 且旧版本目录俱在则回指旧版；无旧版可指则摘除
- * 条目并记 failed 任务。modules.json / route enabled 检查报告；注入 state 时对 enabled=false
- * 不一致项自动重跑 setEnabled(true) 四处同写收敛（P1-16 接线④；缺条目 = web 未部署不可自愈，保留报告）。
- * 对账时点顺带执行超时 running 判 failed（R13/B9/R31）。坏锁 fail-closed：只报告不猜。
+ * 条目并记 failed 任务。modules.json / route enabled / 物化滞后检查报告；repair=true 时对
+ * enabled=false 不一致项自动重跑 setEnabled(true)、滞后项 catch-up 物化收敛（P3-T4 kind 语义路由；
+ * 缺省只报不修）。对账时点顺带执行超时 running 判 failed（R13/B9/R31）。坏锁 fail-closed：只报告不猜。
  */
 export async function reconcile(input: ReconcileInput): Promise<ReconcileReport> {
 	const report: ReconcileReport = { checked: [], healed: [], inconsistencies: [] };
@@ -1064,7 +1107,7 @@ export async function reconcile(input: ReconcileInput): Promise<ReconcileReport>
 						report.inconsistencies.push({ name, kind: "modules_json", detail: "锁有条目而 modules.json 缺条目（web 侧未部署或被清）" });
 					}
 					else if (e.enabled === false) {
-						report.inconsistencies.push({ name, kind: "modules_json", detail: "锁在而 modules.json enabled=false（三处同写不齐，建议重跑 setEnabled 修复）" });
+						report.inconsistencies.push({ name, kind: "modules_json_disabled", detail: "锁在而 modules.json enabled=false（写面不齐，建议 verify --repair 重跑 setEnabled 修复）" });
 					}
 				}
 			}
@@ -1073,21 +1116,32 @@ export async function reconcile(input: ReconcileInput): Promise<ReconcileReport>
 			report.inconsistencies.push({ name: "*", kind: "modules_json", detail: "modules.json 不可读或损坏" });
 		}
 	}
+	// 物化滞后检测（Phase 3 catch-up 对账面）：overlay-cache.json 的 db_seq 落后当前 DB seq
+	// （或标记丢失）→ modules.json 处于 crash 窗口/物化未跑——只报；repair 时 catch-up 物化收敛。
+	if (input.modulesJsonPath !== undefined) {
+		const dbSeq = await readOverlayDbSeq();
+		if (dbSeq !== null) {
+			const cache = await readOverlayCacheOf(input.sharedRoot).catch(() => null);
+			if (cache === null || cache.db_seq < dbSeq) {
+				report.inconsistencies.push({ name: "*", kind: "modules_json_stale", detail: `modules.json 物化滞后（cache seq=${cache?.db_seq ?? "缺失"} < DB seq=${dbSeq}）——crash 窗口或物化未跑，verify --repair 即收敛` });
+			}
+		}
+	}
 	// route enabled 一致性（只报不修，同上）
 	if (input.routeEnabledOf !== undefined) {
 		for (const name of Object.keys(lock)) {
 			const en = await input.routeEnabledOf(name).catch(() => null);
 			if (en === false) {
-				report.inconsistencies.push({ name, kind: "route_disabled", detail: "锁在而 sys_solution_route.enabled=0（建议重跑 setEnabled(true) 修复）" });
+				report.inconsistencies.push({ name, kind: "route_disabled", detail: "锁在而 sys_solution_route.enabled=0（建议 verify --repair 重跑 setEnabled(true) 修复）" });
 			}
 		}
 	}
-	// route/modules enabled=false 不一致自动修复（P1-16 接线④）：注入 state 时重跑 setEnabled(true)
-	// 四处同写收敛（锁/sidecar/route/modules）。不可自愈项（缺条目 = web 未部署、坏锁、空锁拒启、
-	// 版本目录缺失）保留报告不猜；未注入 state（缺省）维持只报不修。
-	if (input.state !== undefined && input.modulesJsonPath !== undefined) {
+	// 不一致自愈（P1-16 接线④ 重设计，P3-T4）：repair=true 才执行——route/modules enabled=false
+	// 重跑 setEnabled(true) 收敛；物化滞后跑 catch-up 物化。kind 语义路由（不再按文案匹配）；
+	// 不可自愈项（缺条目 = web 未部署、坏锁、空锁拒启、版本目录缺失）保留报告不猜。
+	if (input.repair === true && input.state !== undefined && input.modulesJsonPath !== undefined) {
 		const fixable = new Set(report.inconsistencies
-			.filter(i => i.name !== "*" && (i.kind === "route_disabled" || (i.kind === "modules_json" && i.detail.includes("enabled=false"))))
+			.filter(i => i.name !== "*" && (i.kind === "route_disabled" || i.kind === "modules_json_disabled"))
 			.map(i => i.name));
 		for (const name of fixable) {
 			if (lock[name] === undefined) {
@@ -1097,8 +1151,18 @@ export async function reconcile(input: ReconcileInput): Promise<ReconcileReport>
 			if (!r.ok) {
 				continue;
 			}
-			report.inconsistencies = report.inconsistencies.filter(i => !(i.name === name && (i.kind === "modules_json" || i.kind === "route_disabled")));
+			report.inconsistencies = report.inconsistencies.filter(i => !(i.name === name && (i.kind === "modules_json" || i.kind === "modules_json_disabled" || i.kind === "route_disabled")));
 			report.healed.push({ name, action: "enable", from: "disabled", to: "enabled", reason: `route/modules enabled 不一致已重跑 setEnabled(true) 收敛：${r.message}` });
+		}
+		if (report.inconsistencies.some(i => i.kind === "modules_json_stale")) {
+			try {
+				const m = await siteMaterialize({ modulesJsonPath: input.modulesJsonPath, sharedRoot: input.sharedRoot, state: input.state });
+				report.inconsistencies = report.inconsistencies.filter(i => i.kind !== "modules_json_stale");
+				report.healed.push({ name: "*", action: "materialize", from: "stale", to: "current", reason: `物化滞后已 catch-up 收敛：${m.message}` });
+			}
+			catch {
+				// 物化失败保留 stale 报告（下次对账重试）
+			}
 		}
 	}
 	// P3-9 live 信任核对（P2-6#1，G5 口径）：reconcile 自愈末位触发一次实时信任库核对——
@@ -1284,23 +1348,54 @@ export async function setEnabled(input: SetEnabledInput): Promise<{ ok: boolean,
 		audit(false, `route enabled 写失败：${String(e)}`);
 		return { ok: false, message: `禁用/启用失败：sys_solution_route 写失败（${String(e)}）——锁与 sidecar 已更新，路由开关滞后` };
 	}
-	// ④ modules.json enabled（条目不存在 = api-only 方案，该项天然一致）
-	try {
-		const list = JSON.parse(new TextDecoder().decode(await f.readFile(input.modulesJsonPath))) as unknown[];
-		if (!Array.isArray(list)) {
-			throw new TypeError("modules.json 顶层不是数组");
+	// ④ 清单生效面（写面切换，Phase 3）：overlay 表可达 → 写 sys_module_overlay 行 +
+	// 站点物化（modules.json 唯一写者 = site-materialize，单写者铁律）；表不存在（老平台/
+	// DB 离线，P2-T4 混合态）→ legacy 直写回落，行为与旧版逐字一致。
+	const dbSeq = await readOverlayDbSeq();
+	if (dbSeq !== null) {
+		const faceSidecar = `${input.modulesJsonPath.replace(/\/modules\.json$/, "")}/modules/${name}/${version}/.ojm-module.json`;
+		let faceRef: string | null = null;
+		try {
+			await f.readFile(faceSidecar);
+			faceRef = `modules/${name}/${version}`;
 		}
-		let hit = false;
-		const next = list.map(e => (isObj(e) && e.name === name) ? ((hit = true), { ...e, enabled }) : e);
-		if (hit) {
-			await atomicWriteText(input.modulesJsonPath, `${JSON.stringify(next, null, 2)}\n`);
+		catch {
+			faceRef = null; // 无 face（api-only 或旁车缺失）→ 掩码语义
+		}
+		try {
+			await upsertOverlayRow({ name, version, enabled: enabled ? 1 : 0, source: "solution", face_ref: faceRef, actor: input.operator ?? "setEnabled", old_state: null });
+		}
+		catch (e) {
+			audit(false, `overlay 写失败：${String(e)}`);
+			return { ok: false, message: `禁用/启用失败：sys_module_overlay 写失败（${String(e)}）——锁/sidecar/route 已更新，overlay 未落（重试即收敛）` };
+		}
+		try {
+			await siteMaterialize({ modulesJsonPath: input.modulesJsonPath, sharedRoot: input.sharedRoot, state: input.state, actor: input.operator ?? "setEnabled" });
+		}
+		catch (e) {
+			audit(false, `物化失败：${String(e)}`);
+			return { ok: false, message: `禁用/启用失败：modules.json 物化失败（${String(e)}）——锁/sidecar/route/overlay 已更新，catch-up 将自愈` };
 		}
 	}
-	catch (e) {
-		audit(false, `modules.json 写失败：${String(e)}`);
-		return { ok: false, message: `禁用/启用失败：modules.json 写失败（${String(e)}）——锁/sidecar/route 已更新，前端开关滞后` };
+	else {
+		// legacy 回落（老平台无 overlay 表）：直写 modules.json enabled（条目不存在 = api-only 方案，天然一致）
+		try {
+			const list = JSON.parse(new TextDecoder().decode(await f.readFile(input.modulesJsonPath))) as unknown[];
+			if (!Array.isArray(list)) {
+				throw new TypeError("modules.json 顶层不是数组");
+			}
+			let hit = false;
+			const next = list.map(e => (isObj(e) && e.name === name) ? ((hit = true), { ...e, enabled }) : e);
+			if (hit) {
+				await atomicWriteText(input.modulesJsonPath, `${JSON.stringify(next, null, 2)}\n`);
+			}
+		}
+		catch (e) {
+			audit(false, `modules.json 写失败：${String(e)}`);
+			return { ok: false, message: `禁用/启用失败：modules.json 写失败（${String(e)}）——锁/sidecar/route 已更新，前端开关滞后` };
+		}
 	}
-	const msg = `${enabled ? "启用" : "禁用"}完成：锁${enabled ? "恢复" : "摘除"} + sidecar + sys_solution_route.enabled + modules.json enabled 四处同写（D12/AC-P1-6）${trustNote !== null ? `；⚠ ${trustNote}` : ""}`;
+	const msg = `${enabled ? "启用" : "禁用"}完成：锁${enabled ? "恢复" : "摘除"} + sidecar + sys_solution_route.enabled + sys_module_overlay${dbSeq !== null ? " + 物化" : " + modules.json enabled（legacy 回落）"}（D12/AC-P1-6 写面切换）${trustNote !== null ? `；⚠ ${trustNote}` : ""}`;
 	audit(true, msg);
 	// market_history 留痕（P1-15a 缺口 A，history.ts 守卫式：表不存在/写失败静默，不阻断开关结果）
 	await recordHistory({ solution: name, version, action: enabled ? "enable" : "disable", status: "success", operator: input.operator ?? null, message: msg });

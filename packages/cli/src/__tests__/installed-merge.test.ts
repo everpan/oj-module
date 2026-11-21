@@ -145,6 +145,62 @@ describe("mergeInstalledModules", () => {
 		const { root, dist } = tempRoot();
 		expect(mergeInstalledModules(root, dist, BUILT)).toEqual(BUILT);
 	});
+
+	describe("离线 fail-stale（断网不用过期货，P3-T6 BDD）", () => {
+		function writeStateWithSeq(root: string, solutions: Record<string, { version: string, enabled: boolean, overlaySeq?: number }>): void {
+			const dir = join(root, "modules", ".solutions");
+			fs.mkdirSync(dir, { recursive: true });
+			const lines = ["solutions:"];
+			for (const [name, e] of Object.entries(solutions)) {
+				lines.push(`  ${name}:`, `    version: "${e.version}"`, `    enabled: ${e.enabled}`, "    installedAt: 1730000000000");
+				if (e.overlaySeq !== undefined)
+					lines.push(`    overlay_seq: ${e.overlaySeq}`);
+			}
+			fs.writeFileSync(join(dir, "state.yaml"), `${lines.join("\n")}\n`);
+		}
+		function writeCache(root: string, dbSeq: number): void {
+			const dir = join(root, "modules", ".solutions");
+			fs.mkdirSync(dir, { recursive: true });
+			fs.writeFileSync(join(dir, "overlay-cache.json"), `${JSON.stringify({ db_seq: dbSeq, at: 1, actor: "spec" })}\n`);
+		}
+
+		it("例子: sidecar seq=7 < 已知 DB seq=8 → 拒绝覆盖 + 报警（fail-stale）", () => {
+			const { root, dist } = tempRoot();
+			writeStateWithSeq(root, { "oj-market": { version: "0.2.0", enabled: true, overlaySeq: 7 } });
+			writeFace(dist, "oj-market", "0.2.0", {});
+			writeCache(root, 8);
+
+			const errors: string[] = [];
+			const error = console.error;
+			console.error = (...args: unknown[]) => errors.push(String(args[0]));
+			try {
+				expect(() => mergeInstalledModules(root, dist, BUILT)).toThrow(/fail-stale/);
+			}
+			finally {
+				console.error = error;
+			}
+			expect(errors.join("\n")).toContain("oj-market");
+		});
+
+		it("例子: sidecar seq=8 = 已知 DB seq=8 → 正常计算（信息完备）", () => {
+			const { root, dist } = tempRoot();
+			writeStateWithSeq(root, { "oj-market": { version: "0.2.0", enabled: false, overlaySeq: 8 } });
+			writeFace(dist, "oj-market", "0.2.0", {});
+			writeCache(root, 8);
+
+			const merged = mergeInstalledModules(root, dist, BUILT);
+			expect(merged).toHaveLength(2);
+			expect((merged[1] as unknown as Record<string, unknown>).enabled).toBe(false);
+		});
+
+		it("无 overlay-cache.json（从未在线物化）→ 无从判 stale，legacy 照跑", () => {
+			const { root, dist } = tempRoot();
+			writeStateWithSeq(root, { "oj-market": { version: "0.2.0", enabled: true } });
+			writeFace(dist, "oj-market", "0.2.0", {});
+
+			expect(mergeInstalledModules(root, dist, BUILT)).toHaveLength(2);
+		});
+	});
 });
 
 describe("restoreInstalledFaces", () => {

@@ -27,6 +27,7 @@ import { latestAppliedSeqOf, reconcile, runInstall, setEnabled } from "#/_platfo
 import { localArchiveManifestOf } from "#/_platform/_lifecycle/local-archive";
 import { compareVersions } from "#/_platform/_lifecycle/semver";
 import { sha384B64 } from "#/_platform/_lifecycle/sha384";
+import { catchUpSiteModules } from "#/_platform/_lifecycle/site-materialize";
 import { createStateStore } from "#/_platform/_lifecycle/state";
 import { getTask, readTasks } from "#/_platform/_lifecycle/tasks";
 import { createTrustStore } from "#/_platform/_lifecycle/trust";
@@ -355,6 +356,20 @@ async function routeEnabledMap(): Promise<Map<string, unknown> | null> {
  */
 async function reconcileOf(env: MarketEnv): Promise<void> {
 	try {
+		// 崩溃窗自愈（Phase 3 catch-up）：DB 已提交但物化未跑的滞后文件，在市场页对账时点重算收敛。
+		// 先于 reconcile——repair 的 stale 检测读同一 cache，先收敛则 reconcile 报「已对齐」。
+		// 独立 try/catch：catch-up 是增强面，失败绝不阻断下方对账主流程（best-effort 口径）。
+		try {
+			await catchUpSiteModules({
+				modulesJsonPath: env.modulesJsonPath,
+				sharedRoot: env.sharedRoot,
+				state: await createStateStore(env.statePath),
+				actor: "catch-up",
+			});
+		}
+		catch {
+			// 静默：下次刷新重试
+		}
 		// marketEnv() 缺省注入 journalHeadOf 本体，故「缺省」形态须按身份判，否则生产恒走逐条
 		const heads = env.ledgerHeadOf === undefined || env.ledgerHeadOf === journalHeadOf ? await journalHeads() : null;
 		const routes = await routeEnabledMap();

@@ -271,6 +271,10 @@ function parseColumns(body: string): Set<string> {
 			.trim();
 		if (seg === "" || isConstraintLine(seg))
 			continue;
+		// GENERATED 列是方言唯一索引技巧的实现细节（mysql _one_enabled 表达式列），
+		// 基线/其他方言不存在、schema.yaml 无从声明——比对双方都剔除
+		if (/\bGENERATED\b/i.test(seg))
+			continue;
 		cols.add(seg.split(/\s+/)[0].replace(/[`"]/g, "").toLowerCase());
 	}
 	return cols;

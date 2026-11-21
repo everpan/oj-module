@@ -20,11 +20,11 @@ import { materialize } from "./materialize";
 
 /** sidecar state 的最小消费形状（完整条目见 templates state.ts SolutionEntry） */
 interface StateDoc {
-	solutions?: Record<string, { version?: unknown, enabled?: unknown }>
+	solutions?: Record<string, { version?: unknown, enabled?: unknown, overlay_seq?: unknown }>
 }
 
 /** 读 sidecar 已装方案（无文件/损坏/无 solutions 段 → null，调用方零动作） */
-function readInstalledState(projectRoot: string): Record<string, { version: string, enabled: boolean }> | null {
+function readInstalledState(projectRoot: string): Record<string, { version: string, enabled: boolean, overlaySeq?: number }> | null {
 	const statePath = path.join(projectRoot, "modules", ".solutions", "state.yaml");
 	if (!fs.existsSync(statePath))
 		return null;
@@ -37,15 +37,50 @@ function readInstalledState(projectRoot: string): Record<string, { version: stri
 	}
 	if (doc === null || typeof doc !== "object" || doc.solutions === null || typeof doc.solutions !== "object")
 		return null;
-	const out: Record<string, { version: string, enabled: boolean }> = {};
+	const out: Record<string, { version: string, enabled: boolean, overlaySeq?: number }> = {};
 	for (const [name, e] of Object.entries(doc.solutions)) {
 		if (e === null || typeof e !== "object")
 			continue;
 		if (typeof e.version !== "string" || e.version === "")
 			continue;
-		out[name] = { version: e.version, enabled: e.enabled !== false };
+		out[name] = {
+			version: e.version,
+			enabled: e.enabled !== false,
+			...(typeof e.overlay_seq === "number" ? { overlaySeq: e.overlay_seq } : {}),
+		};
 	}
 	return Object.keys(out).length === 0 ? null : out;
+}
+
+/**
+ * 离线 fail-stale 仲裁（Phase 3 / P3-T6，BDD「断网不用过期货」）：overlay-cache.json 记
+ * 本节点最近一次在线物化时的 DB seq（site-materialize 落）。DB 已知走到 cache.db_seq，
+ * 而 sidecar 条目携带的 overlay_seq 落后（或无 seq 可判）→ 这份缓存是过期货——拒绝覆盖
+ * modules.json + 报警（throw），宁可构建失败也不静默复活错误启停态。愈合：联网跑一次
+ * 构建/任意生命周期 API（catch-up 重跑物化并补 sidecar seq），序号对齐后自然放行。
+ */
+function assertOverlayCacheFresh(projectRoot: string, state: Record<string, { overlaySeq?: number }>): void {
+	const cachePath = path.join(projectRoot, "modules", ".solutions", "overlay-cache.json");
+	if (!fs.existsSync(cachePath))
+		return; // 从未在线物化：无已知 DB seq，无从判 stale（legacy 形态照跑）
+	let cache: { db_seq?: unknown };
+	try {
+		cache = JSON.parse(fs.readFileSync(cachePath, "utf-8")) as { db_seq?: unknown };
+	}
+	catch {
+		return; // cache 损坏不阻断（等同缺失）
+	}
+	const dbSeq = typeof cache.db_seq === "number" ? cache.db_seq : 0;
+	if (dbSeq <= 0)
+		return;
+	const stale = Object.entries(state)
+		.filter(([, e]) => e.overlaySeq === undefined || e.overlaySeq < dbSeq)
+		.map(([name]) => name);
+	if (stale.length === 0)
+		return;
+	const msg = `[ojm] ⚠️ 离线构建拒写（fail-stale）：sidecar 缓存序号落后已知 DB seq ${dbSeq}（方案：${stale.join("、")}）——断网不用过期货。请联网执行一次 ojm build / 任意生命周期操作（catch-up 补齐缓存序号）后重试。`;
+	console.error(msg);
+	throw new Error(msg);
 }
 
 /** 原始旁车读取（无降级）：缺失/损坏/name 不符 → null（ensureFaceSidecar 与合并面共用） */
@@ -189,6 +224,7 @@ export function mergeInstalledModules(projectRoot: string, distDir: string, buil
 	const state = readInstalledState(projectRoot);
 	if (state === null)
 		return built;
+	assertOverlayCacheFresh(projectRoot, state);
 	// 读盘组装叠加层（face 缺失 → 掩码或告警，不凭空重建）
 	const overlay: OverlayEntry[] = [];
 	const writebacks: Array<{ faceDir: string, entry: Record<string, unknown>, normalized: Record<string, unknown> }> = [];
