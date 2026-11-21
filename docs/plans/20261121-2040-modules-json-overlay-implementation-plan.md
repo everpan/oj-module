@@ -83,11 +83,11 @@
 
 ### 任务
 
-- [ ] P1-T1 抽 `OverlayRow` 类型（name/version/enabled/source/faceRef/seq——字段先齐，Phase 2 才填真值）
-- [ ] P1-T2 写 `materialize(base: BaseEntry[], overlay: OverlayRow[]): BuiltModule[]` 纯函数 + 单元测试（无 FS 依赖）
-- [ ] P1-T3 现有 `mergeInstalledModules` 改为「读 sidecar → 调 materialize → 调用方做归一化回写」，**外部行为不变**
-- [ ] P1-T4 全量回归：cli 测试 + templates 生命周期 spec 全绿
-- [ ] P1-T5 Phase 0 的 RED 用例仍红（预期——转绿在 Phase 2/3）
+- [x] P1-T1 抽 `OverlayRow` 类型（name/version/enabled/source/faceRef/seq——字段先齐，Phase 2 才填真值）
+- [x] P1-T2 写 `materialize(base: BaseEntry[], overlay: OverlayRow[]): BuiltModule[]` 纯函数 + 单元测试（无 FS 依赖）
+- [x] P1-T3 现有 `mergeInstalledModules` 改为「读 sidecar → 调 materialize → 调用方做归一化回写」，**外部行为不变**
+- [x] P1-T4 全量回归：cli 测试 + templates 生命周期 spec 全绿
+- [x] P1-T5 Phase 0 的 RED 用例仍红（预期——转绿在 Phase 2/3）
 
 ### BDD 用例
 
@@ -143,11 +143,11 @@ sys_module_overlay
 
 ### 任务
 
-- [ ] P2-T1 DDL + 迁移脚本（oj 模块 `api/manifest.yaml` 注册迁移，沿用现有迁移管线 steps/migrate.ts 模式）
-- [ ] P2-T2 三路 backfill：① 锁 → solution 登记；② sidecar → solution enabled；③ **legacy modules.json 的 enabled=false → overlay（含 builtin）**
-- [ ] P2-T3 原子换版事务（新启用行 + 旧行停用 + seq+1，单事务；违反唯一索引 → 人话报错）
-- [ ] P2-T4 混合态定义：新表已建、老模板未升级期间，旧机制照常跑、新表只追写（不反向驱动文件）
-- [ ] P2-T5 **Phase 0 RED 用例转绿**（停用状态经 overlay 存活于重建）
+- [x] P2-T1 DDL + 迁移脚本（oj 模块 `api/manifest.yaml` 注册迁移，沿用现有迁移管线 steps/migrate.ts 模式）
+- [x] P2-T2 三路 backfill：① 锁 → solution 登记；② sidecar → solution enabled；③ **legacy modules.json 的 enabled=false → overlay（含 builtin）**
+- [x] P2-T3 原子换版事务（新启用行 + 旧行停用 + seq+1，单事务；违反唯一索引 → 人话报错）
+- [x] P2-T4 混合态定义：新表已建、老模板未升级期间，旧机制照常跑、新表只追写（不反向驱动文件）
+- [x] P2-T5 **Phase 0 RED 用例转绿**（停用状态经 overlay 存活于重建）
 
 ### BDD 用例
 
@@ -297,8 +297,8 @@ sys_module_overlay
 | 任务 | 阶段 | 状态 | 验收 |
 |---|---|---|---|
 | P0-T1/T2 | Phase 0 | ✅ 完成（2026-11-21，约 1h） | 用例在未改动代码上 2/2 红；合入 feat/ojm（merge --no-ff bd5155cf3），分支已删 |
-| P1-T1~T5 | Phase 1 | ⬜ 未开始 | 提纯后全测试绿，P0 用例仍红 |
-| P2-T1~T5 | Phase 2 | ⬜ 未开始 | 单启用索引拒双启用；三路 backfill 用例绿；**P0 用例转绿** |
+| P1-T1~T5 | Phase 1 | ✅ 完成（2026-11-21，约 1h） | materialize 纯函数 + 7 单测；mergeInstalledModules 改为读盘外壳；全测试绿（merge --no-ff 795ecdbb2），分支已删 |
+| P2-T1~T5 | Phase 2 | ✅ 完成（2026-11-21，约 2.5h） | 三方言 DDL + 部分唯一索引；overlay.ts 8/8 spec 绿（拒双启用/原子换版/三路 backfill 幂等）；**P3 用例转绿**（merge --no-ff 8b26bda5a），分支已删 |
 | P3-T1~T6 | Phase 3 | ⬜ 未开始 | 写面切换 + catch-up + verify 只读用例绿 |
 | P4-T1~T5 | Phase 4 | ⬜ 未开始 | 不变量测试常驻；红线双名过渡落地 |
 | P5-T1~T3 | Phase 5 | ⬜ 未开始 | 端到端仲裁验证 + 文档收官 |
@@ -315,4 +315,6 @@ sys_module_overlay
 ## 3. 变更记录
 
 - 2026-11-21 20:40 初版（依据主文档 §6.5 行动项 A1-A6 与单启用版本新需求拆分）。
+- 2026-11-21 约 21:15 Phase 1 完成：materialize 纯函数提纯（行为不变，报错文案逐字沿用），7 单测；mergeInstalledModules 副作用归调用方（合入 795ecdbb2）。同期 bump 0.2.97 lockstep（d443d43c，含 shell-dist 重建）。
+- 2026-11-21 约 21:30 Phase 2 完成：overlay 表三方言迁移 + manifest.yaml 注册 + _lifecycle/overlay.ts（upsert/swap/setEnabled/backfill 三分支，内存 db 桩 8/8 绿）；materialize 扩展无 face 行掩码语义；修复 ensureFaceSidecar 把源码树刚构建 entry.js 误判方案 face 触发双轨红线误报（基线同名先试真旁车，真方案仍 fail-fast）；P3 RED 用例转绿。关键过程与耗时：fixtures 调参 + 真机双跑全量门禁约 40min，误报根因排查约 1h（合入 8b26bda5a）。
 - 2026-11-21 21:05 Phase 0 完成：`tests/cli/overlay-p3-disabled-survives-rebuild.test.ts` 2/2 红实锤（merge bd5155cf3）。实跑补充发现：① setEnabled 对纯源码树模块拒绝（「未安装」installer.ts:1249）；② 强行给源码树模块名写 sidecar solutions 记录 → restoreInstalledFaces 从版本目录重物化 face → 双轨同名红线**硬失败**（installed-merge.ts:194）——即「停用源码树模块」当前体系无路可走，P3 从静默复活修正为「机制性无处安放」。已记入主文档 §7。耗时约 1h（含 fixture 调参与 commitlint 撞坑 1 次）。
