@@ -200,6 +200,21 @@ describe("mergeInstalledModules", () => {
 
 			expect(mergeInstalledModules(root, dist, BUILT)).toHaveLength(2);
 		});
+
+		it("断网拒写 → 恢复联网（catch-up 补齐 sidecar 序号）→ 以 DB 为准重算放行（seq 仲裁端到端）", () => {
+			const { root, dist } = tempRoot();
+			// 断网期间管理员在别处停用（DB seq 推进到 8），本机 sidecar 停在 7 → 拒写
+			writeStateWithSeq(root, { "oj-market": { version: "0.2.0", enabled: true, overlaySeq: 7 } });
+			writeFace(dist, "oj-market", "0.2.0", {});
+			writeCache(root, 8);
+			expect(() => mergeInstalledModules(root, dist, BUILT)).toThrow(/fail-stale/);
+
+			// 恢复联网：下一生命周期操作 catch-up 以 DB 为准补齐 sidecar（enabled=false/seq=8）
+			writeStateWithSeq(root, { "oj-market": { version: "0.2.0", enabled: false, overlaySeq: 8 } });
+			const merged = mergeInstalledModules(root, dist, BUILT);
+			expect(merged).toHaveLength(2);
+			expect((merged[1] as unknown as Record<string, unknown>).enabled).toBe(false); // DB 真源生效，非本机断网期旧态
+		});
 	});
 });
 
