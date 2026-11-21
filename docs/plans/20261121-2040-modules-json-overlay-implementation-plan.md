@@ -39,8 +39,8 @@
 
 ### 任务
 
-- [ ] P0-T1 写 RED 用例（见下 §1.1），在**当前未改动代码**上跑出红
-- [ ] P0-T2 用例合入 `feat/ojm`（红着合入，标注 `@fixme overlay-phase1`），Phase 1 转绿
+- [x] P0-T1 写 RED 用例（见下 §1.1），在**当前未改动代码**上跑出红
+- [x] P0-T2 用例合入 `feat/ojm`（红着合入，标注 `@fixme overlay-phase1`），Phase 1 转绿
 
 ### BDD 用例
 
@@ -296,7 +296,7 @@ sys_module_overlay
 
 | 任务 | 阶段 | 状态 | 验收 |
 |---|---|---|---|
-| P0-T1/T2 | Phase 0 | ⬜ 未开始 | 用例在未改动代码上跑出红 |
+| P0-T1/T2 | Phase 0 | ✅ 完成（2026-11-21，约 1h） | 用例在未改动代码上 2/2 红；合入 feat/ojm（merge --no-ff bd5155cf3），分支已删 |
 | P1-T1~T5 | Phase 1 | ⬜ 未开始 | 提纯后全测试绿，P0 用例仍红 |
 | P2-T1~T5 | Phase 2 | ⬜ 未开始 | 单启用索引拒双启用；三路 backfill 用例绿；**P0 用例转绿** |
 | P3-T1~T6 | Phase 3 | ⬜ 未开始 | 写面切换 + catch-up + verify 只读用例绿 |
@@ -315,3 +315,4 @@ sys_module_overlay
 ## 3. 变更记录
 
 - 2026-11-21 20:40 初版（依据主文档 §6.5 行动项 A1-A6 与单启用版本新需求拆分）。
+- 2026-11-21 21:05 Phase 0 完成：`tests/cli/overlay-p3-disabled-survives-rebuild.test.ts` 2/2 红实锤（merge bd5155cf3）。实跑补充发现：① setEnabled 对纯源码树模块拒绝（「未安装」installer.ts:1249）；② 强行给源码树模块名写 sidecar solutions 记录 → restoreInstalledFaces 从版本目录重物化 face → 双轨同名红线**硬失败**（installed-merge.ts:194）——即「停用源码树模块」当前体系无路可走，P3 从静默复活修正为「机制性无处安放」。已记入主文档 §7。耗时约 1h（含 fixture 调参与 commitlint 撞坑 1 次）。
