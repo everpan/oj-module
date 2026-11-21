@@ -174,6 +174,11 @@ describe("buildBundle · 正路径", () => {
 		await expect(pack()).rejects.toThrow(/modules\.json/);
 	});
 
+	it("产物树混入 overlay-cache.json → 打包自检拒绝（C2-31 红线·新名双名过渡：派生清单都禁入）", async () => {
+		writeFileSync(join(project, "dist/web/modules/demo-solution/0.1.0/overlay-cache.json"), "{}");
+		await expect(pack()).rejects.toThrow(/overlay-cache\.json/);
+	});
+
 	it("私钥/凭证混入包树 → 打包自检拒绝（P2-4 入包红线：*.pem/*.key/.env(.local…)/id_ed25519/id_rsa/*.p12/*.pfx）", async () => {
 		writeFileSync(join(project, "dist/api/demo-solution-0.1.0/signing.pem"), "-----BEGIN PRIVATE KEY-----\n");
 		await expect(pack()).rejects.toThrow(/私钥\/凭证/);

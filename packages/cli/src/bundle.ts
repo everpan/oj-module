@@ -555,7 +555,14 @@ export async function assertSolutionFileContract(projectRoot: string): Promise<v
 /** 私钥/凭证文件名红线（P2-4 入包自检）：*.pem/*.key/*.p12/*.pfx、.env 系（.env/.env.*）、id_ed25519|id_rsa */
 const FORBIDDEN_MEMBER = /\.(?:pem|key|p12|pfx)$|^\.env(?:\.|$)|^id_(?:ed25519|rsa)$/;
 
-/** staging 全树扫描：modules.json 禁入（C2-31 红线）+ 私钥/凭证禁入（P2-4 红线） */
+/**
+ * 宿主派生清单禁入（C2-31 红线，双名过渡一个版本周期——新名 overlay-cache.json 与
+ * 旧名 modules.json 都拒，过渡期后单名化收编）。这些文件是目标站点物化产物/序号缓存，
+ * 由安装器在目标站点 upsert，入包即覆盖宿主清单。
+ */
+const DERIVED_MANIFEST = /^(?:modules\.json|overlay-cache\.json)$/;
+
+/** staging 全树扫描：派生清单禁入（C2-31 红线）+ 私钥/凭证禁入（P2-4 红线） */
 function assertNoForbiddenMembers(root: string): void {
 	const visit = (dir: string) => {
 		for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -564,8 +571,8 @@ function assertNoForbiddenMembers(root: string): void {
 				visit(p);
 				continue;
 			}
-			if (e.isFile() && e.name === "modules.json") {
-				throw new Error(`[ojm] 打包自检失败（C2-31）：modules.json 禁入方案包（该清单由安装器在目标站点 upsert，防覆盖宿主清单）——位置：${p}`);
+			if (e.isFile() && DERIVED_MANIFEST.test(e.name)) {
+				throw new Error(`[ojm] 打包自检失败（C2-31）：宿主派生清单「${e.name}」禁入方案包（overlay-cache.json/modules.json 由安装器在目标站点物化落盘，防覆盖宿主清单——双名过渡期内两名同拒）——位置：${p}`);
 			}
 			if (e.isFile() && FORBIDDEN_MEMBER.test(e.name)) {
 				throw new Error(`[ojm] 打包自检失败（P2-4 入包红线）：私钥/凭证文件「${e.name}」禁入方案包（*.pem / *.key / *.p12 / *.pfx / .env 系 / id_ed25519 / id_rsa）——签名私钥永不入包，签名经 detached .sig 侧车随包分发（包内只含产物与公钥）。位置：${p}`);

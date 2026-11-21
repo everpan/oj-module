@@ -258,11 +258,11 @@ sys_module_overlay
 
 ### 任务
 
-- [ ] P4-T1 materialize 结构化日志（actor/输入输出 hash/lag 秒数）+ 滞后指标 + 重试上限告警
-- [ ] P4-T2 启动探针：「DB updated_at 新于文件 mtime」→ 告警（单机/共享卷拓扑声明落 README）
-- [ ] P4-T3 C2-31 红线目标改名（**cli `bundle.ts:567` + templates extracting 段双层同改，双名过渡一个版本周期**）
-- [ ] P4-T4 `modules.base.json` 只读探针（运行时进程可写即报警）
-- [ ] P4-T5 回滚剧本：expand/contract（加表不删旧机制）+ 新旧混布窗口处置 + CDN no-cache/SWR 验收探针
+- [x] P4-T1 materialize 结构化日志（actor/输入输出 hash/lag 秒数）+ 滞后指标 + 重试上限告警
+- [x] P4-T2 启动探针：「DB updated_at 新于文件 mtime」→ 告警（单机/共享卷拓扑声明落 README）
+- [x] P4-T3 C2-31 红线目标改名（**cli `bundle.ts:567` + templates extracting 段双层同改，双名过渡一个版本周期**）
+- [x] P4-T4 `modules.base.json` 只读探针（运行时进程可写即报警）
+- [x] P4-T5 回滚剧本：expand/contract（加表不删旧机制）+ 新旧混布窗口处置 + CDN no-cache/SWR 验收探针
 
 ### BDD 用例
 
@@ -300,7 +300,7 @@ sys_module_overlay
 | P1-T1~T5 | Phase 1 | ✅ 完成（2026-11-21，约 1h） | materialize 纯函数 + 7 单测；mergeInstalledModules 改为读盘外壳；全测试绿（merge --no-ff 795ecdbb2），分支已删 |
 | P2-T1~T5 | Phase 2 | ✅ 完成（2026-11-21，约 2.5h） | 三方言 DDL + 部分唯一索引；overlay.ts 8/8 spec 绿（拒双启用/原子换版/三路 backfill 幂等）；**P3 用例转绿**（merge --no-ff 8b26bda5a），分支已删 |
 | P3-T1~T6 | Phase 3 | ✅ 完成（2026-11-21，约 2h） | 单写者收敛（site-materialize 唯一运行面写者 + legacy 回落）；catch-up 自愈 BDD 绿；verify 默认只读 + repair 自愈；离线 fail-stale 3 例绿（merge --no-ff 3a6ba200c），分支已删 |
-| P4-T1~T5 | Phase 4 | ⬜ 未开始 | 不变量测试常驻；红线双名过渡落地 |
+| P4-T1~T5 | Phase 4 | ✅ 完成（2026-11-21，约 1h） | site-materialize 结构化日志（actor/db_seq/lag_sec）+ catch-up 失败计数告警（达 5 报 site-materialize-alarm）；C2-31 双名过渡（bundle.ts + tgz-guard 同拒 overlay-cache.json/modules.json）；基线只读探针 = baseline-readonly.spec 源码扫描门禁；回滚剧本 docs/runbooks/overlay-rollback.md（merge --no-ff 待填） |
 | P5-T1~T3 | Phase 5 | ⬜ 未开始 | 端到端仲裁验证 + 文档收官 |
 
 ## 2. 风险登记
@@ -315,6 +315,7 @@ sys_module_overlay
 ## 3. 变更记录
 
 - 2026-11-21 20:40 初版（依据主文档 §6.5 行动项 A1-A6 与单启用版本新需求拆分）。
+- 2026-11-21 约 22:45 Phase 4 完成：可观测（结构化日志/滞后秒数/失败计数达 5 告警，成功清零）+ C2-31 双名过渡（构建侧 staging 扫描与安装侧 tar 成员复核同拒两名）+ 基线只读源码扫描门禁（探针实锤 uninstall.ts 第四处 legacy 直写，全部门控补断言）+ 回滚剧本（拓扑声明/expand-contract/混布窗口/CDN 探针）。关键过程与耗时：续行规则互斥坑 1 次（拆数组消续行，与 Phase 1 同坑）；实现约 40min，门禁联调约 20min。
 - 2026-11-21 约 21:15 Phase 1 完成：materialize 纯函数提纯（行为不变，报错文案逐字沿用），7 单测；mergeInstalledModules 副作用归调用方（合入 795ecdbb2）。同期 bump 0.2.97 lockstep（d443d43c，含 shell-dist 重建）。
 - 2026-11-21 约 21:30 Phase 2 完成：overlay 表三方言迁移 + manifest.yaml 注册 + _lifecycle/overlay.ts（upsert/swap/setEnabled/backfill 三分支，内存 db 桩 8/8 绿）；materialize 扩展无 face 行掩码语义；修复 ensureFaceSidecar 把源码树刚构建 entry.js 误判方案 face 触发双轨红线误报（基线同名先试真旁车，真方案仍 fail-fast）；P3 RED 用例转绿。关键过程与耗时：fixtures 调参 + 真机双跑全量门禁约 40min，误报根因排查约 1h（合入 8b26bda5a）。
 - 2026-11-21 约 22:30 Phase 3 完成：写面切换四任务全落地（合入 3a6ba200c）。关键过程与耗时：
