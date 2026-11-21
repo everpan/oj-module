@@ -23,3 +23,5 @@ tables:
   - oj_svc_token
   - oj_bot_binding
   - oj_obo_audit
+  # 0010 模块启停 overlay 真源（主文档 §4.3；单启用部分唯一索引，原子换版；指纹永不进表）
+  - sys_module_overlay

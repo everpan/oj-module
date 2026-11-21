@@ -5,25 +5,16 @@ import { buildModules } from "../../packages/cli/src/build";
 import { PROJECT_ROOT } from "../helpers/paths";
 
 /**
- * @fixme overlay-phase1 —— P3 RED 用例（实施计划 Phase 0 / docs/plans/20261121-2040）。
+ * P3 回归用例（实施计划 Phase 0→2，docs/plans/20261121-2040）。
  *
- * 缺陷实锤（主文档 §2-P3，代码推导 2026-11-20；本用例 2026-11-21 复现）：
- *   源码树模块条目在 modules.json 里的 enabled=false 会被下次 `ojm build` **静默复活**——
- *   `module-build.ts` 对所有构建条目写死 enabled=true，installed-merge 只把 sidecar
- *   里**有 face 旁车**的已装方案的状态叠回去；源码树模块的停用标记没有任何
- *   状态源承载，老 modules.json 本身就是唯一存留点，而例行构建整个重写它。
+ * 历史（2026-11-20 RED → 2026-11-21 GREEN）：
+ *   源码树模块的停用状态没有任何状态源承载——写 modules.json 会被例行构建整表
+ *   重写复活；写 sidecar 同名记录会触发双轨同名红线硬失败（详见当日提交记录）。
+ *   overlay 化后：sidecar solutions 行（无 face）经 materialize 按名叠停用掩码，
+ *   停用状态跨构建存活（本用例 2026-11-21 转绿，@fixme overlay-phase1 已兑现）。
  *
- * 实跑补充发现（反常识）：setEnabled 对纯源码树模块会拒绝（「未安装」，
- * installer.ts:1249）；且若强行给源码树模块名写 sidecar solutions 记录，
- * 下次构建不是 warn 跳过而是被 restoreInstalledFaces 从版本目录重物化 face
- * 后触发「双轨同名红线」硬失败（installed-merge.ts:194）。也就是说**停用
- * 源码树模块在当前体系里无路可走**——这正是 overlay 表要把 enabled 变成
- * 按 name 承载的状态的原因。
- *
- * 本用例直接写文件面（modules.json enabled=false）复现最小复活机制。
- *
- * 当前代码预期：**红**（app 被复活为 enabled=true）。
- * Phase 2（overlay 表接管状态真源）完成后转绿。
+ * 本用例模拟「管理员停用源码树模块 app」的新状态源写入：sidecar 行
+ * （enabled=false，无 face——builtin 无 face），例行重建后断言停用存活。
  */
 
 const TEMPLATE = path.join(PROJECT_ROOT, "packages/cli/templates");
@@ -40,14 +31,14 @@ function readManifest(): ModuleManifest[] {
 	return JSON.parse(fs.readFileSync(path.join(DIST, "modules.json"), "utf-8")) as ModuleManifest[];
 }
 
-/** 复现「源码树模块条目被停用」的最小文件面：modules.json enabled=false */
-function simulateDisabledEntry(name: string) {
-	const manifestPath = path.join(DIST, "modules.json");
-	const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf-8")) as ModuleManifest[];
-	const entry = manifest.find(m => m.name === name);
-	expect(entry, `清单中应有 ${name}`).toBeTruthy();
-	entry!.enabled = false;
-	fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+/** 模拟「停用源码树模块」的 overlay 状态源写入：sidecar 行（无 face） */
+function simulateDisableBuiltin(name: string, version: string) {
+	const dir = path.join(WORK, "modules", ".solutions");
+	fs.mkdirSync(dir, { recursive: true });
+	fs.writeFileSync(
+		path.join(dir, "state.yaml"),
+		`solutions:\n  ${name}:\n    version: "${version}"\n    enabled: false\n`,
+	);
 }
 
 describe("停用的内建模块在例行构建后保持停用（P3 RED）", () => {
@@ -64,8 +55,8 @@ describe("停用的内建模块在例行构建后保持停用（P3 RED）", () =
 		// 首次构建（正常全启用）
 		await buildModules(WORK);
 
-		// 管理员停用源码树模块 app（文件面停用标记），随后例行重建
-		simulateDisabledEntry("app");
+		// 管理员停用源码树模块 app（sidecar overlay 行），随后例行重建
+		simulateDisableBuiltin("app", "0.1.0");
 		await buildModules(WORK);
 	}, 300_000);
 
@@ -73,10 +64,10 @@ describe("停用的内建模块在例行构建后保持停用（P3 RED）", () =
 		fs.rmSync(WORK, { recursive: true, force: true });
 	});
 
-	it("停用状态跨构建存活（当前代码必红：被静默复活）", () => {
+	it("停用状态跨构建存活（2026-11-20 红 → 2026-11-21 绿）", () => {
 		const app = readManifest().find(m => m.name === "app");
 		expect(app, "清单中应有 app").toBeTruthy();
-		expect(app!.enabled, "停用的内建模块不应被例行构建复活（@fixme overlay-phase1）").toBe(false);
+		expect(app!.enabled, "sidecar 停用的源码树模块应跨构建存活（materialize 按名叠掩码）").toBe(false);
 	});
 
 	it("停用语义完整：停用的是构建条目本身而非仅 sidecar", () => {
