@@ -11,10 +11,12 @@
 //
 // sidecar state 是受限 YAML 子集（两层 map + 标量），与 templates state.ts 读写格式同纪律。
 
+import type { InstalledFaceEntry } from "./materialize";
 import type { BuiltModule } from "./module-build";
 import fs from "node:fs";
 import path from "node:path";
 import { parse as parseYaml } from "yaml";
+import { materialize } from "./materialize";
 
 /** sidecar state 的最小消费形状（完整条目见 templates state.ts SolutionEntry） */
 interface StateDoc {
@@ -177,12 +179,17 @@ function normalizeEntryPaths(entry: Record<string, unknown>): Record<string, unk
  * 清单写出前并入已装方案：sidecar 已装且 face 旁车在盘 → 条目并回（enabled 以 sidecar
  * 为真源）。face 缺失 → 跳过 + 告警（登记不凭空重建；愈合 = 重装该方案）。
  * 源码树同名 → 抛错 fail-fast（双轨同名红线）。
+ *
+ * 本函数只是「读盘组装 + 副作用落盘」的外壳：合并语义在 materialize() 纯函数
+ * （Phase 1 / A1 重构，行为不变——报错文案逐字沿用，spec 无需改）。
  */
 export function mergeInstalledModules(projectRoot: string, distDir: string, built: BuiltModule[]): BuiltModule[] {
 	const state = readInstalledState(projectRoot);
 	if (state === null)
 		return built;
-	const merged: BuiltModule[] = [...built];
+	// 读盘组装叠加层（face 缺失 → 跳过 + 告警，不凭空重建）
+	const installed: InstalledFaceEntry[] = [];
+	const writebacks: Array<{ faceDir: string, entry: Record<string, unknown>, normalized: Record<string, unknown> }> = [];
 	for (const [name, e] of Object.entries(state)) {
 		const faceDir = path.join(distDir, "modules", name, e.version);
 		const entry = readFaceSidecar(faceDir, name, e.version);
@@ -190,21 +197,20 @@ export function mergeInstalledModules(projectRoot: string, distDir: string, buil
 			console.warn(`[ojm] ⚠️ 已装方案「${name}@${e.version}」的 web 面/条目旁车缺失，重建清单不并入（愈合：ojm install ${name}@${e.version}）`);
 			continue;
 		}
-		if (merged.some(m => m.name === name)) {
-			throw new Error(
-				`[ojm] 已装方案「${name}」与源码树模块同名（双轨同名红线）：请卸载该方案（ojm uninstall ${name}）或改源码模块名后重建。`,
-			);
-		}
 		const normalized = normalizeEntryPaths(entry);
-		if (JSON.stringify(normalized) !== JSON.stringify(entry)) {
-			try {
-				fs.writeFileSync(path.join(faceDir, ".ojm-module.json"), `${JSON.stringify(normalized, null, 2)}\n`);
-			}
-			catch {
-				// 旁车只读等极端形态：下次重建重归一，运行期有 resolveModuleEntryUrl 兜底
-			}
+		if (JSON.stringify(normalized) !== JSON.stringify(entry))
+			writebacks.push({ faceDir, entry, normalized });
+		installed.push({ name, version: e.version, manifest: normalized, enabled: e.enabled });
+	}
+	const merged = materialize(built, installed);
+	// 归一化回写（唯一保留的写副作用：一次愈合，不再回归）
+	for (const w of writebacks) {
+		try {
+			fs.writeFileSync(path.join(w.faceDir, ".ojm-module.json"), `${JSON.stringify(w.normalized, null, 2)}\n`);
 		}
-		merged.push({ ...normalized, enabled: e.enabled } as BuiltModule);
+		catch {
+			// 旁车只读等极端形态：下次重建重归一，运行期有 resolveModuleEntryUrl 兜底
+		}
 	}
 	return merged;
 }
