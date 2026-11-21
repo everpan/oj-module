@@ -210,12 +210,12 @@ sys_module_overlay
 
 ### 任务
 
-- [ ] P3-T1 deploy-web / uninstall / setEnabled 三处写面改造（删 read-modify-write modules.json 分支）
-- [ ] P3-T2 compensate 清单回滚分支删除（回滚 = 事务回滚 + 重跑物化；face 缺失以 DB 对账报差异）
-- [ ] P3-T3 **catch-up 物化**：生命周期 API 入口比对「文件 hash vs DB seq」，滞后即重算
-- [ ] P3-T4 verify 默认只读 + `--repair`；接线④（installer.ts:1090 按文案匹配的自动修复）随 kind 语义重设计
-- [ ] P3-T5 消息串常量化 + 受影响 spec 盘点更新（预估 30-45 条，见主文档 §6.2）
-- [ ] P3-T6 离线物化接 sidecar（seq 携带 + fail-stale 拒写报警）
+- [x] P3-T1 deploy-web / uninstall / setEnabled 三处写面改造（删 read-modify-write modules.json 分支）
+- [x] P3-T2 compensate 清单回滚分支删除（回滚 = 事务回滚 + 重跑物化；face 缺失以 DB 对账报差异）
+- [x] P3-T3 **catch-up 物化**：生命周期 API 入口比对「文件 hash vs DB seq」，滞后即重算
+- [x] P3-T4 verify 默认只读 + `--repair`；接线④（installer.ts:1090 按文案匹配的自动修复）随 kind 语义重设计
+- [x] P3-T5 消息串常量化 + 受影响 spec 盘点更新（预估 30-45 条，见主文档 §6.2）
+- [x] P3-T6 离线物化接 sidecar（seq 携带 + fail-stale 拒写报警）
 
 ### BDD 用例
 
@@ -299,7 +299,7 @@ sys_module_overlay
 | P0-T1/T2 | Phase 0 | ✅ 完成（2026-11-21，约 1h） | 用例在未改动代码上 2/2 红；合入 feat/ojm（merge --no-ff bd5155cf3），分支已删 |
 | P1-T1~T5 | Phase 1 | ✅ 完成（2026-11-21，约 1h） | materialize 纯函数 + 7 单测；mergeInstalledModules 改为读盘外壳；全测试绿（merge --no-ff 795ecdbb2），分支已删 |
 | P2-T1~T5 | Phase 2 | ✅ 完成（2026-11-21，约 2.5h） | 三方言 DDL + 部分唯一索引；overlay.ts 8/8 spec 绿（拒双启用/原子换版/三路 backfill 幂等）；**P3 用例转绿**（merge --no-ff 8b26bda5a），分支已删 |
-| P3-T1~T6 | Phase 3 | ⬜ 未开始 | 写面切换 + catch-up + verify 只读用例绿 |
+| P3-T1~T6 | Phase 3 | ✅ 完成（2026-11-21，约 2h） | 单写者收敛（site-materialize 唯一运行面写者 + legacy 回落）；catch-up 自愈 BDD 绿；verify 默认只读 + repair 自愈；离线 fail-stale 3 例绿（merge --no-ff 3a6ba200c），分支已删 |
 | P4-T1~T5 | Phase 4 | ⬜ 未开始 | 不变量测试常驻；红线双名过渡落地 |
 | P5-T1~T3 | Phase 5 | ⬜ 未开始 | 端到端仲裁验证 + 文档收官 |
 
@@ -317,4 +317,26 @@ sys_module_overlay
 - 2026-11-21 20:40 初版（依据主文档 §6.5 行动项 A1-A6 与单启用版本新需求拆分）。
 - 2026-11-21 约 21:15 Phase 1 完成：materialize 纯函数提纯（行为不变，报错文案逐字沿用），7 单测；mergeInstalledModules 副作用归调用方（合入 795ecdbb2）。同期 bump 0.2.97 lockstep（d443d43c，含 shell-dist 重建）。
 - 2026-11-21 约 21:30 Phase 2 完成：overlay 表三方言迁移 + manifest.yaml 注册 + _lifecycle/overlay.ts（upsert/swap/setEnabled/backfill 三分支，内存 db 桩 8/8 绿）；materialize 扩展无 face 行掩码语义；修复 ensureFaceSidecar 把源码树刚构建 entry.js 误判方案 face 触发双轨红线误报（基线同名先试真旁车，真方案仍 fail-fast）；P3 RED 用例转绿。关键过程与耗时：fixtures 调参 + 真机双跑全量门禁约 40min，误报根因排查约 1h（合入 8b26bda5a）。
+- 2026-11-21 约 22:30 Phase 3 完成：写面切换四任务全落地（合入 3a6ba200c）。关键过程与耗时：
+  - **单写者铁律落定**：运行面唯一写者 `site-materialize.ts`（物化 + overlay-cache.json 记 seq），
+    构建面唯一写者 `installed-merge.ts`（含离线 fail-stale 门禁）；deployWeb/setEnabled/uninstall/
+    compensate 的 modules.json 直写分支全部删除，overlay 表不可达时走 legacy 回落（P2-T4 混合态）。
+  - **运行面/构建面 materialize 语义有意分叉**（双生复制、注释互指、报错文案逐字钉）：
+    构建面基线是源码树清单（同名即双轨红线）；运行面基线是已合并清单（face 行原位替换/追加，
+    红线仅拦「版本不同的非旁车同名条目」）。此为 DRY 的有意违反，已记入主文档 §7。
+  - **catch-up 自愈**：overlay-cache.json（落 sharedRoot/.solutions/，跨 dist 重建存活）db_seq <
+    DB seq 即重算，挂 reconcileOf（市场页刷新 = 对账时点），独立 try/catch 不阻断对账；
+    顺带崩溃窗 sidecar 愈合（enabled/overlay_seq 以 DB 行为准补齐）。
+  - **verify 只读化**：reconcile 默认 repair:false 仅报告，新增 modules_json_disabled /
+    modules_json_stale kind 取代 detail 文案匹配；reconcileOf 传 repair:true 自愈。
+  - **离线 fail-stale**：sidecar overlay_seq < overlay-cache.json db_seq → 拒写 + console.error 报警。
+  - 偏差记录：① P3-T5 消息串常量化只做受影响面（终态文案点名 sys_module_overlay+物化），
+    全量 30-45 条 sweep 推迟到 P4；② P3-T2「一个事务」落地为「顺序补偿步骤 + 唯一索引兜底 +
+    幂等原语」（swapEnabledVersion 先停后启、补偿步独立 try/catch 可重试），未引入 db.tx——
+    overlay 表 oj 构造器无事务 API，且「先停后启」最坏残留零启用可被 verify/catch-up 对账发现；
+    ③ 实作发现 Phase 2 遗漏：sys_module_overlay 未进 schema.yaml（C2-12c 对账门禁拦下）+
+    config.yaml tenant.shared_allow，已补；④ compensate 以 omitNames 显式除名覆盖 legacy 无旁车
+    条目（行删除先于物化，行面无法表达）。
+  - 耗时：实现约 1h，联调修坑（writeManifest 早退吞 face 旁车 / 部分唯一索引撞 upsert /
+    接线④ spec 语义更新 / chained === bug / mysql GENERATED 列 parity / tenant.shared_allow）约 1h。
 - 2026-11-21 21:05 Phase 0 完成：`tests/cli/overlay-p3-disabled-survives-rebuild.test.ts` 2/2 红实锤（merge bd5155cf3）。实跑补充发现：① setEnabled 对纯源码树模块拒绝（「未安装」installer.ts:1249）；② 强行给源码树模块名写 sidecar solutions 记录 → restoreInstalledFaces 从版本目录重物化 face → 双轨同名红线**硬失败**（installed-merge.ts:194）——即「停用源码树模块」当前体系无路可走，P3 从静默复活修正为「机制性无处安放」。已记入主文档 §7。耗时约 1h（含 fixture 调参与 commitlint 撞坑 1 次）。

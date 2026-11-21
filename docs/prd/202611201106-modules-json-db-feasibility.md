@@ -226,6 +226,9 @@ sequenceDiagram
 | 反常规 | vite 会把 PWA 的 `public/manifest.json` 覆盖同名文件导致网站起不来——靠起奇怪的名字躲着它，没有机制性解决 |
 | 反常识 | 「manifest」一词三个意思（浏览器清单 / Rust 那边的构建版本锁 / PWA 清单），三个仓库交界处撞名高发 |
 | 反常识 | 内建模块停用后会被下次构建悄悄复活（P3）——「状态错放在了会被重写的文件里」。本方案从根上消灭这类问题。2026-11-21 RED 用例实锤并修正认知：**停用源码树模块当前体系无路可走**——setEnabled 直接拒（「未安装」installer.ts:1249）；强行写 sidecar 同名记录则触发「双轨同名红线」硬失败（installed-merge.ts:194，经 restoreInstalledFaces 从版本目录重物化 face）。P3 定性从「静默复活」修正为「机制性无处安放」 |
+| 反常规 | **Phase 2 交付物自漏对账门禁**：sys_module_overlay 三方言迁移 + 运行时读写都齐了，却没人把它声明进 schema.yaml（oj SQL 构造器的列白名单）与 config.yaml tenant.shared_allow——是 cli 侧的 C2-12c parity 测试和租户定性测试在 Phase 3 联调时拦下来的，不是人查出来的。「加表」在 oj 体系是三处同步（迁移/schema.yaml/shared_allow），漏一处要到对账测试才现形 |
+| 反常识 | **同一纯函数两套语义是有意分叉**：materialize 在运行面（templates/site-materialize.ts）与构建面（cli/installed-merge.ts）互为双生复制，红线语义不同——构建面基线是源码树清单（同名即双轨红线，fail-fast）；运行面基线是已合并清单（face 行必须原位替换/追加，否则重装/升级无处安放）。DRY 的有意违反，报错文案逐字钉防双边漂移 |
+| 反常识 | oj 构造器没有 db.tx：「一个事务写 overlay + 物化」落地为顺序补偿步骤 + 部分唯一索引兜底（先停后启，最坏残留零启用）+ 幂等原语（补偿可安全重试），一致性靠 verify/catch-up 对账收敛而非事务隔离 |
 
 ## 8. 验证记录（2026-11-20，测试 + 真机双轨）
 
