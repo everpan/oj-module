@@ -11,7 +11,7 @@
 //
 // sidecar state 是受限 YAML 子集（两层 map + 标量），与 templates state.ts 读写格式同纪律。
 
-import type { InstalledFaceEntry } from "./materialize";
+import type { OverlayEntry } from "./materialize";
 import type { BuiltModule } from "./module-build";
 import fs from "node:fs";
 import path from "node:path";
@@ -176,22 +176,40 @@ function normalizeEntryPaths(entry: Record<string, unknown>): Record<string, unk
 }
 
 /**
- * 清单写出前并入已装方案：sidecar 已装且 face 旁车在盘 → 条目并回（enabled 以 sidecar
- * 为真源）。face 缺失 → 跳过 + 告警（登记不凭空重建；愈合 = 重装该方案）。
- * 源码树同名 → 抛错 fail-fast（双轨同名红线）。
+ * 清单写出前并入已装方案 + 叠加停用掩码：sidecar 已装且 face 旁车在盘 → 条目并回
+ * （enabled 以 sidecar 为真源）；无 face 且基线含同名 → 按名叠 enabled 掩码
+ * （builtin 停用由此跨构建存活，P3 修复）；无 face 且基线无此名 → 跳过 + 告警
+ * （登记不凭空重建；愈合 = 重装该方案）。源码树同名（有 face）→ 抛错 fail-fast
+ * （双轨同名红线）。
  *
  * 本函数只是「读盘组装 + 副作用落盘」的外壳：合并语义在 materialize() 纯函数
- * （Phase 1 / A1 重构，行为不变——报错文案逐字沿用，spec 无需改）。
+ * （Phase 1/2 / A1 重构，行为不变——报错文案逐字沿用，spec 无需改）。
  */
 export function mergeInstalledModules(projectRoot: string, distDir: string, built: BuiltModule[]): BuiltModule[] {
 	const state = readInstalledState(projectRoot);
 	if (state === null)
 		return built;
-	// 读盘组装叠加层（face 缺失 → 跳过 + 告警，不凭空重建）
-	const installed: InstalledFaceEntry[] = [];
+	// 读盘组装叠加层（face 缺失 → 掩码或告警，不凭空重建）
+	const overlay: OverlayEntry[] = [];
 	const writebacks: Array<{ faceDir: string, entry: Record<string, unknown>, normalized: Record<string, unknown> }> = [];
 	for (const [name, e] of Object.entries(state)) {
 		const faceDir = path.join(distDir, "modules", name, e.version);
+		if (built.some(m => m.name === name)) {
+			// 基线含同名：先试真旁车（真方案 face → 双轨同名红线 fail-fast），
+			// 无旁车则按名叠启停掩码——绝不走 ensureFaceSidecar（它会把刚构建出的
+			// entry.js 误判为方案 face 合成假条目，触发红线误报；builtin 停用
+			// 由此跨构建存活，P3 修复）。
+			const sidecar = parseFaceSidecar(faceDir, name);
+			if (sidecar === null) {
+				overlay.push({ name, version: e.version, enabled: e.enabled });
+				continue;
+			}
+			const normalized = normalizeEntryPaths(sidecar);
+			if (JSON.stringify(normalized) !== JSON.stringify(sidecar))
+				writebacks.push({ faceDir, entry: sidecar, normalized });
+			overlay.push({ name, version: e.version, manifest: normalized, enabled: e.enabled });
+			continue;
+		}
 		const entry = readFaceSidecar(faceDir, name, e.version);
 		if (entry === null) {
 			console.warn(`[ojm] ⚠️ 已装方案「${name}@${e.version}」的 web 面/条目旁车缺失，重建清单不并入（愈合：ojm install ${name}@${e.version}）`);
@@ -200,9 +218,9 @@ export function mergeInstalledModules(projectRoot: string, distDir: string, buil
 		const normalized = normalizeEntryPaths(entry);
 		if (JSON.stringify(normalized) !== JSON.stringify(entry))
 			writebacks.push({ faceDir, entry, normalized });
-		installed.push({ name, version: e.version, manifest: normalized, enabled: e.enabled });
+		overlay.push({ name, version: e.version, manifest: normalized, enabled: e.enabled });
 	}
-	const merged = materialize(built, installed);
+	const merged = materialize(built, overlay);
 	// 归一化回写（唯一保留的写副作用：一次愈合，不再回归）
 	for (const w of writebacks) {
 		try {
