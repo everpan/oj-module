@@ -117,7 +117,12 @@ interface OverlayCache {
 	db_seq: number
 	at: number
 	actor: string
+	/** catch-up 连续失败计数（P4-T1 重试上限告警；成功清零） */
+	fail_count?: number
 }
+
+/** catch-up 连续失败告警上限（达限 console.error 报警；计数仍累计） */
+const CATCH_UP_ALARM_THRESHOLD = 5;
 
 /** 读 cache（reconcile 滞后检测共用）；缺失/损坏 → null（= 从未物化/标记丢失 → 视为滞后） */
 export async function readOverlayCacheOf(sharedRoot: string): Promise<{ db_seq: number, at: number, actor: string } | null> {
@@ -264,6 +269,7 @@ export async function siteMaterialize(input: SiteMaterializeInput): Promise<Site
 	}
 	const merged = materialize(baseline, overlay, await solutionTrackNamesOf(webRoot, baseline), input.omitNames !== undefined ? new Set(input.omitNames) : undefined);
 	const next = `${JSON.stringify(merged, null, 2)}\n`;
+	const prevCache = await readOverlayCache(input.sharedRoot); // 滞后指标：距上次物化的秒数
 	let changed = false;
 	try {
 		const cur = new TextDecoder().decode(await f.readFile(input.modulesJsonPath));
@@ -277,6 +283,15 @@ export async function siteMaterialize(input: SiteMaterializeInput): Promise<Site
 	}
 	await healSidecarFromOverlay(rows, input.state);
 	await writeOverlayCache(input.sharedRoot, { db_seq: dbSeq, at: Date.now(), actor: input.actor ?? "site-materialize" });
+	// 结构化日志（P4-T1 可观测）：actor/db_seq/changed/lag_sec/entries——滞后秒数 = 上次物化至今
+	console.log(JSON.stringify({
+		event: "site-materialize",
+		actor: input.actor ?? "site-materialize",
+		db_seq: dbSeq,
+		changed,
+		lag_sec: prevCache === null ? null : Math.round((Date.now() - prevCache.at) / 1000),
+		entries: merged.length,
+	}));
 	return { ok: true, changed, dbSeq, message: `物化完成：${overlay.length} 行 overlay${changed ? "，modules.json 已重写" : "，清单已是最新（零写入）"}（DB seq=${dbSeq}）` };
 }
 
@@ -291,8 +306,30 @@ export async function catchUpSiteModules(input: SiteMaterializeInput): Promise<S
 		return null; // DB 不可达：无从判定滞后，legacy 形态不动作
 	}
 	const cache = await readOverlayCache(input.sharedRoot);
-	if (cache !== null && cache.db_seq >= dbSeq) {
+	// fail_count>0 = 上次物化失败（cache db_seq 是失败时回写的旧值，不代表文件已对齐）→ 不算对齐
+	if (cache !== null && cache.db_seq >= dbSeq && (cache.fail_count ?? 0) === 0) {
 		return { ok: true, changed: false, dbSeq, message: `catch-up：清单已对齐（cache seq=${cache.db_seq} >= DB seq=${dbSeq}）` };
 	}
-	return await siteMaterialize(input);
+	try {
+		const r = await siteMaterialize(input);
+		return r;
+	}
+	catch (e) {
+		// 重试上限告警（P4-T1）：连续失败计数持久化进 cache，达限报警（仍上抛由调用方消化）
+		const failCount = (cache?.fail_count ?? 0) + 1;
+		try {
+			await writeOverlayCache(input.sharedRoot, { db_seq: cache?.db_seq ?? 0, at: cache?.at ?? 0, actor: cache?.actor ?? "unknown", fail_count: failCount });
+		}
+		catch { /* cache 写不进：计数丢失则下次从头累计，告警可能延迟——可接受（best-effort 口径） */ }
+		if (failCount >= CATCH_UP_ALARM_THRESHOLD) {
+			console.error(JSON.stringify({
+				event: "site-materialize-alarm",
+				reason: "catch-up 连续失败达上限",
+				fail_count: failCount,
+				db_seq: dbSeq,
+				error: String(e),
+			}));
+		}
+		throw e;
+	}
 }

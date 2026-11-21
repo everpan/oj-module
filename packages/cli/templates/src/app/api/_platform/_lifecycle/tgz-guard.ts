@@ -17,9 +17,16 @@ function extractMemberName(line: string): string {
 	return fields[fields.length - 1];
 }
 
+// 宿主派生清单禁入（C2-31 安装期复核，与构建侧 bundle.ts DERIVED_MANIFEST 双端同红线、
+// 双名过渡一个版本周期）：物化产物/序号缓存入包即覆盖目标站点清单。
+const DERIVED_MANIFEST_MEMBER = /(?:^|\/)(?:modules\.json|overlay-cache\.json)$/;
+
 export function validateTarListing(lines: string[]): { ok: true } | { ok: false, offender: string } {
 	for (const line of lines) {
 		const name = extractMemberName(line);
+		if (DERIVED_MANIFEST_MEMBER.test(name)) {
+			return { ok: false, offender: name };
+		}
 		// 空成员名：退化行（空行/无名字段）一律拒绝，安全边界不做容错
 		if (name === "")
 			return { ok: false, offender: "" };

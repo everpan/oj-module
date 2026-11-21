@@ -8,7 +8,7 @@ import type { StateStore } from "../../src/app/api/_platform/_lifecycle/state";
 import * as fsp from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { reconcile } from "../../src/app/api/_platform/_lifecycle/installer";
 import { catchUpSiteModules, materialize, siteMaterialize } from "../../src/app/api/_platform/_lifecycle/site-materialize";
 import { createStateStore } from "../../src/app/api/_platform/_lifecycle/state";
@@ -207,5 +207,51 @@ describe("siteMaterialize 写盘纪律", () => {
 		await fsp.writeFile(modulesJsonPath, "not-json");
 		await expect(siteMaterialize({ modulesJsonPath, sharedRoot, state })).rejects.toThrow(/物化失败：modules\.json 不可读或损坏/);
 		expect(await fsp.readFile(modulesJsonPath, "utf8")).toBe("not-json");
+	});
+});
+
+// BDD：物化可观测（实施计划 Phase 4 / P4-T1+P4-T2）——结构化日志带 actor/db_seq/lag，
+// catch-up 连续失败计数达上限告警（启动探针 = catch-up 滞后检测，拓扑声明见 runbook）。
+describe("功能: 物化可观测（结构化日志 + 滞后指标 + 重试上限告警）", () => {
+	it("物化落结构化日志：event/actor/db_seq/changed/lag_sec/entries 字段齐", async () => {
+		const logs: string[] = [];
+		const spy = vi.spyOn(console, "log").mockImplementation((...a: unknown[]) => logs.push(a.map(String).join(" ")));
+		try {
+			await seedFace("wiki", "0.2.0", {});
+			await seedOverlayRow({ name: "wiki", version: "0.2.0", enabled: 0, face_ref: "modules/wiki/0.2.0", seq: 5 });
+			await fsp.writeFile(join(sharedRoot, ".solutions", "overlay-cache.json"), `${JSON.stringify({ db_seq: 3, at: Date.now() - 60_000, actor: "old" })}\n`);
+			await catchUpSiteModules({ modulesJsonPath, sharedRoot, state, actor: "catch-up" });
+		}
+		finally {
+			spy.mockRestore();
+		}
+		const line = logs.find(l => l.includes("\"site-materialize\""));
+		expect(line, "应有 site-materialize 结构化日志").toBeTruthy();
+		const evt = JSON.parse(line!) as Record<string, unknown>;
+		expect(evt).toMatchObject({ event: "site-materialize", actor: "catch-up", db_seq: 5, changed: true });
+		expect(typeof evt.lag_sec).toBe("number"); // 滞后指标：cache.at 距本次物化的秒数
+		expect(evt.entries).toBe(1);
+	});
+
+	it("catch-up 连续失败累计计数，达 5 次告警（site-materialize-alarm），成功后清零", async () => {
+		await fsp.writeFile(modulesJsonPath, "not-json"); // 基线损坏：物化必 fail-loud
+		const errors: string[] = [];
+		const spy = vi.spyOn(console, "error").mockImplementation((...a: unknown[]) => errors.push(a.map(String).join(" ")));
+		try {
+			for (let i = 1; i <= 5; i++) {
+				await expect(catchUpSiteModules({ modulesJsonPath, sharedRoot, state })).rejects.toThrow();
+				const cache = JSON.parse(await fsp.readFile(join(sharedRoot, ".solutions", "overlay-cache.json"), "utf8")) as { fail_count?: number };
+				expect(cache.fail_count ?? 0).toBe(i); // 计数持久化（跨请求累计）
+			}
+			expect(errors.some(e => e.includes("site-materialize-alarm")), "第 5 次失败应告警").toBe(true);
+			// 修复基线 → 成功 → 计数清零
+			await fsp.writeFile(modulesJsonPath, "[]\n");
+			await catchUpSiteModules({ modulesJsonPath, sharedRoot, state });
+			const cache = JSON.parse(await fsp.readFile(join(sharedRoot, ".solutions", "overlay-cache.json"), "utf8")) as { fail_count?: number };
+			expect(cache.fail_count ?? 0).toBe(0);
+		}
+		finally {
+			spy.mockRestore();
+		}
 	});
 });

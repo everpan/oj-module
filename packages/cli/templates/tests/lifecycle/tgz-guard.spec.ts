@@ -95,6 +95,13 @@ describe("validateTarListing（R1）", () => {
 		])).toEqual({ ok: false, offender: "../evil" });
 	});
 
+	it("宿主派生清单成员禁入（C2-31 安装期复核·双名过渡：modules.json 与 overlay-cache.json 都拒）", () => {
+		const line = "-rw-r--r-- 0 0 0 2 Jan 01 00:00 pkg/web/modules.json";
+		expect(validateTarListing([line])).toEqual({ ok: false, offender: "pkg/web/modules.json" });
+		const line2 = "-rw-r--r-- 0 0 0 2 Jan 01 00:00 pkg/.solutions/overlay-cache.json";
+		expect(validateTarListing([line2])).toEqual({ ok: false, offender: "pkg/.solutions/overlay-cache.json" });
+	});
+
 	it("多个坏成员时报第一个 offender", () => {
 		expect(validateTarListing([
 			"-rw-r--r--  0 ever staff    7 10 17 12:00 /abs",
