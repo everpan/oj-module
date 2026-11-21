@@ -65,6 +65,29 @@ export async function readOverlayRows(): Promise<OverlayRow[]> {
 	}
 }
 
+/**
+ * overlay 表当前最大 seq（catch-up 滞后判定 + 离线 fail-stale 仲裁真源）。
+ * null = 表不存在/不可达（DB 离线或老平台）——调用方据此回落 legacy 路径（P2-T4 混合态）。
+ */
+export async function readOverlayDbSeq(): Promise<number | null> {
+	try {
+		const rows = await db().table("sys_module_overlay").select([{ fn: "max", field: "seq", as: "m" }]).all() as Array<{ m: unknown }>;
+		return rows[0]?.m == null ? 0 : Number(rows[0].m);
+	}
+	catch {
+		return null;
+	}
+}
+
+/** 按名删全部行（卸载/补偿回滚出口）；返回删除行数（0 = 本无记录，幂等）。 */
+export async function deleteOverlayRows(name: string): Promise<number> {
+	const rows = (await readOverlayRows()).filter(r => r.name === name);
+	for (const r of rows) {
+		await db().table("sys_module_overlay").where({ field: "id", op: "eq", value: r.id }).delete().run();
+	}
+	return rows.length;
+}
+
 async function nextSeq(): Promise<number> {
 	const rows = await readOverlayRows();
 	return rows.reduce((m, r) => Math.max(m, Number(r.seq) || 0), 0) + 1;
@@ -103,7 +126,7 @@ export interface SwapInput {
  * 先停后启：即使中途失败，唯一索引也保证绝不出现双启用；
  * 最坏残留「零启用」，由 verify/catch-up 以 DB 对账发现并报警（fail-visible）。
  */
-export async function swapEnabledVersion(input: SwapInput): Promise<{ ok: boolean, message: string }> {
+export async function swapEnabledVersion(input: SwapInput): Promise<{ ok: boolean, message: string, seq?: number }> {
 	const rows = (await readOverlayRows()).filter(r => r.name === input.name);
 	if (rows.length === 0)
 		return { ok: false, message: `换版失败：「${input.name}」无 overlay 记录（先经安装登记）` };
@@ -111,28 +134,28 @@ export async function swapEnabledVersion(input: SwapInput): Promise<{ ok: boolea
 	if (!target)
 		return { ok: false, message: `换版失败：「${input.name}@${input.version}」无 overlay 记录（先经安装登记）` };
 	if (Number(target.enabled) === 1 && rows.filter(r => Number(r.enabled) === 1).length === 1)
-		return { ok: true, message: `「${input.name}@${input.version}」已是唯一启用版本（幂等）` };
+		return { ok: true, message: `「${input.name}@${input.version}」已是唯一启用版本（幂等）`, seq: Number(target.seq) };
 	const seq = await nextSeq();
 	const at = nowSeconds();
 	for (const r of rows.filter(r => Number(r.enabled) === 1 && r.version !== input.version)) {
 		await db().table("sys_module_overlay").update({ enabled: 0, seq, actor: input.actor, changed_at: at, old_state: JSON.stringify({ enabled: 1 }) }).where({ field: "id", op: "eq", value: r.id }).run();
 	}
 	await db().table("sys_module_overlay").update({ enabled: 1, seq, actor: input.actor, changed_at: at, old_state: JSON.stringify({ enabled: Number(target.enabled) }) }).where({ field: "id", op: "eq", value: target.id }).run();
-	return { ok: true, message: `「${input.name}」已换版至 ${input.version}（原子换版，旧版本已停用）` };
+	return { ok: true, message: `「${input.name}」已换版至 ${input.version}（原子换版，旧版本已停用）`, seq };
 }
 
 /**
  * 启停「当前启用版本」：按 name 找到启用行（无启用行则找唯一一行），置目标态。
  * 唯一索引兜底：启用时若已有他行启用，DB 层拒绝（双启用不可能）。
  */
-export async function setOverlayEnabled(input: { name: string, enabled: boolean, actor: string }): Promise<{ ok: boolean, message: string }> {
+export async function setOverlayEnabled(input: { name: string, enabled: boolean, actor: string }): Promise<{ ok: boolean, message: string, seq?: number }> {
 	const rows = (await readOverlayRows()).filter(r => r.name === input.name);
 	if (rows.length === 0)
 		return { ok: false, message: `启停失败：「${input.name}」无 overlay 记录` };
 	const current = rows.find(r => Number(r.enabled) === 1) ?? rows[0];
 	const seq = await nextSeq();
 	await db().table("sys_module_overlay").update({ enabled: input.enabled ? 1 : 0, seq, actor: input.actor, changed_at: nowSeconds(), old_state: JSON.stringify({ enabled: Number(current.enabled) }) }).where({ field: "id", op: "eq", value: current.id }).run();
-	return { ok: true, message: `「${input.name}」已${input.enabled ? "启用" : "停用"}` };
+	return { ok: true, message: `「${input.name}」已${input.enabled ? "启用" : "停用"}`, seq };
 }
 
 /**

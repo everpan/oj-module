@@ -219,6 +219,7 @@ tenant:
     - _oj_migrations # oj 迁移 journal（自建自管）
     - sys_setting # 登录方式发现是未登录端点，此刻无租户上下文（D8）
     - sys_solution_route # 站点级路由/启用注册表（安装是站点操作）
+    - sys_module_overlay # 站点级模块启停真源（overlay 化改造，同 sys_solution_route 口径）
     - sys_role # 框架角色目录
     - sys_permission # 权限码目录
     - sys_role_permission # 角色→权限映射（同上，分配关系在 sys_user_role）

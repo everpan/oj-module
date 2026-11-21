@@ -115,6 +115,12 @@ export interface DeployWebContext extends InstallContext {
 	modulesJsonPath: string
 	/** P1-10 对验签后包内容重算的 sha384（sha384-<base64>，R10）；缺省回落 manifest.web.integrity */
 	integrity?: string
+	/**
+	 * 清单 upsert 开关（Phase 3 写面切换）：true/缺省 = 直写 modules.json（legacy 回落与
+	 * 老平台路径）；false = 不碰清单（face 旁车照落），由调用方写 sys_module_overlay +
+	 * 站点物化收敛（modules.json 唯一写者 = site-materialize，单写者铁律）。
+	 */
+	writeManifest?: boolean
 }
 
 export interface StageResult {
@@ -187,21 +193,24 @@ export async function deployWeb(ctx: DeployWebContext): Promise<StageResult> {
 		...(integrity !== undefined ? { integrity } : {}),
 		...(typeof m.peerRuntime === "string" ? { peerRuntime: m.peerRuntime } : {}),
 	};
-	try {
-		await upsertModulesJson(entry, { modulesJsonPath: ctx.modulesJsonPath });
-	}
-	catch (e) {
-		return {
-			stage: "deploying",
-			ok: false,
-			retryable: false,
-			message: `部署失败：modules.json upsert 被拒（${String(e)}）——文件已复制、清单未被半写（D13 原子写保证读者无感）`,
-		};
+	if (ctx.writeManifest !== false) {
+		try {
+			await upsertModulesJson(entry, { modulesJsonPath: ctx.modulesJsonPath });
+		}
+		catch (e) {
+			return {
+				stage: "deploying",
+				ok: false,
+				retryable: false,
+				message: `部署失败：modules.json upsert 被拒（${String(e)}）——文件已复制、清单未被半写（D13 原子写保证读者无感）`,
+			};
+		}
 	}
 	// 条目旁车：dev/build 重建 modules.json 只收源码树模块，已装方案登记会被冲掉
 	// （2026-11-07 U5 实锤：例行 build 后市场菜单消失）。重建合并读这份旁车恢复完整
 	// 条目（dependencies/peerRuntime 等 extras 原样保留，不重推导）；enabled 以 sidecar
 	// state 为真源，旁车只记安装时形态。随 face 版本目录共存亡（卸载/重装整目录替换）。
+	// 写面切换（Phase 3）：旁车两种模式都落——overlay 行 + 站点物化从它恢复条目形状。
 	const sidecarPath = `${ctx.siteModulesDir}/${ctx.name}/${ctx.version}/.ojm-module.json`;
 	try {
 		await atomicWriteText(sidecarPath, `${JSON.stringify(normalizeEntry(entry), null, 2)}\n`);
@@ -211,7 +220,14 @@ export async function deployWeb(ctx: DeployWebContext): Promise<StageResult> {
 			stage: "deploying",
 			ok: false,
 			retryable: true,
-			message: `部署失败：条目旁车 ${sidecarPath} 写出失败（${String(e)}）——清单已 upsert，重建合并将缺本方案登记，请重试`,
+			message: `部署失败：条目旁车 ${sidecarPath} 写出失败（${String(e)}）——${ctx.writeManifest === false ? "物化将缺条目形状" : "清单已 upsert"}，重建合并将缺本方案登记，请重试`,
+		};
+	}
+	if (ctx.writeManifest === false) {
+		return {
+			stage: "deploying",
+			ok: true,
+			message: `部署完成：staging web/ → ${ctx.siteModulesDir}/，条目旁车已落 ${ctx.name}（清单不直写：overlay 行 + 站点物化收敛，单写者铁律）`,
 		};
 	}
 	return {

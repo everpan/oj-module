@@ -33,6 +33,8 @@ export interface SolutionEntry {
 	trust_state?: "trusted" | "untrusted" | "absent"
 	/** P3-2 版本时间序记录（GC 依据）：成功安装的版本按 installedAt 倒序（最新在前），保留最近 N=3 + 锁版本强制保留 */
 	history?: Array<{ version: string, installedAt: number }>
+	/** 该条目最近一次 overlay 变更的 DB seq（离线 fail-stale 仲裁：cli 构建对账 overlay-cache.json 的 db_seq） */
+	overlay_seq?: number
 }
 
 export interface SolutionState {
@@ -147,6 +149,9 @@ function serializeState(state: SolutionState): string {
 		if (e.history !== undefined) {
 			lines.push(`    history: ${JSON.stringify(JSON.stringify(e.history))}`);
 		}
+		if (e.overlay_seq !== undefined) {
+			lines.push(`    overlay_seq: ${e.overlay_seq}`);
+		}
 	}
 	return `${lines.join("\n")}\n`;
 }
@@ -247,6 +252,12 @@ function parseState(text: string): SolutionState {
 			catch {
 				throw new Error(`方案「${name}」history 行不是合法版本时间序 JSON`);
 			}
+			j += 1;
+		}
+		// overlay_seq 可选行（固定整数标量；缺即无——P3 前条目无此字段）
+		const overlaySeq = /^ {4}overlay_seq: (\d+)$/.exec(lines[j] ?? "")?.[1];
+		if (overlaySeq !== undefined) {
+			entry.overlay_seq = Number(overlaySeq);
 			j += 1;
 		}
 		solutions[name] = entry;

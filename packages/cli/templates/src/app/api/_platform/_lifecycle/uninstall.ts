@@ -1,7 +1,7 @@
 // 卸载编排器（P1-15a，SRP/OCP）：与 installer.ts 对称——安装 = runInstall，卸载 = runUninstall。
 // 端点（market/api.ts）只做门禁 + 取参 + 调本编排器，不重复编排（与 install 同纪律）。
-// 删除纪律（D12 反向，与 setEnabled 四处同写对称）：①锁摘除 ②sidecar 删条目 ③sys_solution_route 删
-// ④modules.json 删条目；另：权限唯一减法出口 uninstallSolution（双维度级联，solution-perms.ts）；
+// 删除纪律（D12 反向，与 setEnabled 写面切换对称）：①锁摘除 ②sidecar 删条目 ③sys_solution_route 删
+// ④sys_module_overlay 删行 + 站点物化（表不可达时 legacy 直写 modules.json 回落）；另：权限唯一减法出口 uninstallSolution（双维度级联，solution-perms.ts）；
 // 版本目录移除；终态审计 + 全用户失效（权限已变，D10 撤销即强退）+ market_history 留痕。
 // 空锁拒启（S1-1.2）：摘除后锁为空 → 拒绝卸载最后一个模块（站点至少保留一个已锁模块）。
 // 任一步失败返回 {ok:false, message}（与 setEnabled 同纪律）；部分残差由 admin 重试或重装自愈。
@@ -16,6 +16,8 @@ import { auditOp } from "../_shared/service/infra/audit";
 import { atomicWriteText, fsFace, isMissingPath } from "./atomic";
 import { recordHistory } from "./history";
 import { readLock, writeLock } from "./lock";
+import { deleteOverlayRows, readOverlayDbSeq } from "./overlay";
+import { siteMaterialize } from "./site-materialize";
 import { assertReloadApplied } from "./steps/reload";
 import { ensureMcpModule, previewSiblingOf, removeMcpModule } from "./text-edit";
 
@@ -349,18 +351,33 @@ export async function runUninstall(input: UninstallInput): Promise<UninstallResu
 		return { ok: false, message: `卸载失败：sidecar 写失败（${String(e)}）——锁已摘、reload 已生效，模块已停装配；sidecar 残留待重装自愈` };
 	}
 
-	// modules.json 删条目（条目不存在 = api-only 方案，天然一致）
-	try {
-		const list = JSON.parse(new TextDecoder().decode(await f.readFile(input.modulesJsonPath))) as unknown[];
-		if (!Array.isArray(list)) {
-			throw new TypeError("modules.json 顶层不是数组");
+	// 清单生效面（写面切换，Phase 3）：overlay 表可达 → 按名删 overlay 行 + 站点物化
+	// （modules.json 唯一写者 = site-materialize）；表不可达 → legacy 直写回落（P2-T4 混合态）。
+	const dbSeq = await readOverlayDbSeq();
+	if (dbSeq !== null) {
+		try {
+			await deleteOverlayRows(name);
+			await siteMaterialize({ modulesJsonPath: input.modulesJsonPath, sharedRoot: input.sharedRoot, state: input.state, omitNames: [name], actor: input.operator ?? "uninstall" });
 		}
-		const next = list.filter(e => !(isObj(e) && e.name === name));
-		await atomicWriteText(input.modulesJsonPath, `${JSON.stringify(next, null, 2)}\n`);
+		catch (e) {
+			audit(false, `物化失败：${String(e)}`);
+			return { ok: false, message: `卸载失败：modules.json 物化失败（${String(e)}）——锁已摘、reload 已生效、sidecar/overlay 已删，catch-up 将自愈` };
+		}
 	}
-	catch (e) {
-		audit(false, `modules.json 写失败：${String(e)}`);
-		return { ok: false, message: `卸载失败：modules.json 写失败（${String(e)}）——锁已摘、reload 已生效、sidecar 已删，modules.json 残留待重装自愈` };
+	else {
+		// legacy 回落（老平台无 overlay 表）：直写 modules.json 删条目（条目不存在 = api-only 方案，天然一致）
+		try {
+			const list = JSON.parse(new TextDecoder().decode(await f.readFile(input.modulesJsonPath))) as unknown[];
+			if (!Array.isArray(list)) {
+				throw new TypeError("modules.json 顶层不是数组");
+			}
+			const next = list.filter(e => !(isObj(e) && e.name === name));
+			await atomicWriteText(input.modulesJsonPath, `${JSON.stringify(next, null, 2)}\n`);
+		}
+		catch (e) {
+			audit(false, `modules.json 写失败：${String(e)}`);
+			return { ok: false, message: `卸载失败：modules.json 写失败（${String(e)}）——锁已摘、reload 已生效、sidecar 已删，modules.json 残留待重装自愈` };
+		}
 	}
 
 	// ④ 版本目录移除（缺失不报错，幂等）；再失文件（P0 §3.4：先失可达性再失文件）
@@ -399,7 +416,7 @@ export async function runUninstall(input: UninstallInput): Promise<UninstallResu
 	const mcpSuffix = mcpRemoved ? "；MCP 白名单已摘除" : (mcpNotes.length > 0 ? `；${mcpNotes.join("；")}` : "");
 	return {
 		ok: true,
-		message: `卸载完成：锁摘除 + sidecar + sys_solution_route + modules.json 四处同删 + 权限级联清理 + 版本目录移除（${name}@${version}）；业务表 ${retained.length} 张已保留（未删除，需运维手工清理）${mcpSuffix}`,
+		message: `卸载完成：锁摘除 + sidecar + sys_solution_route + sys_module_overlay + 物化 + 权限级联清理 + 版本目录移除（${name}@${version}）；业务表 ${retained.length} 张已保留（未删除，需运维手工清理）${mcpSuffix}`,
 		retained,
 	};
 }
