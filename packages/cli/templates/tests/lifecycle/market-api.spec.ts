@@ -1509,6 +1509,49 @@ describe("P1-17 接线：POST /oj-market/converge 出厂收敛触发（token 持
 		expect(mig).toHaveLength(1);
 		expect(mig[0]).toContain("GROUP BY");
 	});
+
+	// 回归（2026-11-22）：converge 端点原先只调 reconcileOf，漏了 runBundleConverge——
+	// CLI 启动发的 POST converge 只做对账不装包，而装包只挂在 GET index，形成「菜单要等装包、
+	// 装包要等打开市场页」死锁，出厂即装（零首装仪式）静默失效。本例钉死 converge 必须真跑
+	// 随站 bundle 收敛：marker 声明一个未装的包，converge 后必须留下 operator=bundle-converge
+	// 的安装尝试痕迹（成功走 installer 留痕，失败走 runBundleConverge 的 failed 留痕——两者都
+	// 证明收敛真的执行了，而非只对账）。
+	it("marker 声明未装的包 → converge 真跑随站 bundle 收敛（留下 bundle-converge 安装痕迹，不依赖打开市场页）", async () => {
+		const cdnDir = join(root, "cdn");
+		await fsp.mkdir(cdnDir, { recursive: true });
+		await fsp.writeFile(join(cdnDir, "bundles.json"), `${JSON.stringify({ solutions: [
+			{ name: "demo-solution", version: "0.1.0", file: "demo-solution-0.1.0.tgz" },
+		] })}\n`);
+		await fsp.writeFile(join(cdnDir, "demo-solution-0.1.0.tgz"), ARCHIVE);
+		await fsp.writeFile(join(cdnDir, "demo-solution-0.1.0.tgz.sig"), SIG_BYTES);
+
+		const prevCryptoDesc = Object.getOwnPropertyDescriptor(g, "crypto");
+		Object.defineProperty(g, "crypto", {
+			value: {
+				sha256Hex: (d: Uint8Array) => createHash("sha256").update(d).digest("hex"),
+				randomUUID: () => createHash("sha256").update(`${Date.now()}-${Math.random()}`).digest("hex").slice(0, 32),
+			},
+			configurable: true,
+			writable: true,
+		});
+		try {
+			const api = createMarketApi(makeEnv({ cdnDir }));
+			await withConvergeVar(async () => {
+				g.http = { headers: { "x-ojm-converge-token": CONVERGE_TOKEN } };
+				await api.converge.post();
+			});
+			expect(last?.status).toBe(200);
+			// 收敛真执行：留下 operator=bundle-converge 的 install 痕迹（成功/失败皆可，关键是「真跑了」）
+			const rows = dbo.prepare("SELECT action, operator FROM market_history WHERE solution='demo-solution' AND action='install' AND operator='bundle-converge'").all() as Array<{ action: string, operator: string }>;
+			expect(rows.length).toBeGreaterThan(0);
+		}
+		finally {
+			if (prevCryptoDesc)
+				Object.defineProperty(g, "crypto", prevCryptoDesc);
+			else
+				delete (g as { crypto?: unknown }).crypto;
+		}
+	});
 });
 
 interface ReleasePageData {

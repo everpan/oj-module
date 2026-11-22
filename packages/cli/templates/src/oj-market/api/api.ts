@@ -1153,7 +1153,10 @@ export function createMarketApi(env: MarketEnv) {
 		// 启动随机注入；生产站点无此 var → 404 端点即死）+ 请求头 x-ojm-converge-token 的
 		// sha256 比对（无 timingSafeEqual 的 isolate 里的常量时间折中）。同
 		// /publish/credential/exchange 先例（凭证即持有型证明），已列 auth.anonymous_paths。
-		// 幂等：riding reconcileOf（与 index 对账同一逻辑），已对齐即全 skip。
+		// 幂等：riding 随站 bundle 收敛 + reconcileOf（与 index 端点同一对账逻辑），已对齐即全 skip。
+		// 2026-11-22 修：本端点原先只调 reconcileOf，漏了 runBundleConverge——CLI 启动发的
+		// POST converge 只做对账不装包，而装包只挂在 GET index，形成「菜单要等装包、装包要等
+		// 打开菜单」死锁，出厂即装（零首装仪式）静默失效。补齐后启动即对账+装包一步到位。
 		"converge": {
 			async post() {
 				await respond(async () => {
@@ -1167,6 +1170,9 @@ export function createMarketApi(env: MarketEnv) {
 					const sha = (s: string) => sha256Hex(new TextEncoder().encode(s));
 					if (sha(gotTok) !== sha(expectTok))
 						fail(404, "not found");
+					// 与 indexBody 同序：先随站 bundle 收敛（未装→装），再锁/账本对账 + 物化。
+					// 两者均幂等且失败吞咽，失败留给下次请求/启动重试，不阻断 converge 200。
+					await runBundleConverge(env);
 					await reconcileOf(env);
 					return { ok: true };
 				});
