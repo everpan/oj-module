@@ -14,6 +14,8 @@ tables:
   - sys_refresh_token
   - market_history
   - market_release
+  # 0011 方案归属绑定（key 属主是站点级事实，与 market_release 同口径）
+  - market_owner_key
   - sys_rate_window
   - sys_login_throttle
   # 0016 组织架构领域（CRUD 基线 + 外部源适配器的落点；两张都是租户表）

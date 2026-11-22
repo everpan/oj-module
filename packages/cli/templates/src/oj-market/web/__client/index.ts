@@ -33,7 +33,7 @@ export function createOjMarketClient(ctx: ModuleContext) {
 	}
 	ctx.register.apiPrefix(API_PREFIX);
 	bindRequest(ctx.utils.request);
-	return { ojMarketBackfillPost, ojMarketCatalogGet, ojMarketCatalogDetailGet, ojMarketCdnUploadPost, ojMarketConvergePost, ojMarketEnablePost, ojMarketHistoryDelete, ojMarketHistoryGet, ojMarketIndexGet, ojMarketInstallPost, ojMarketInstallCancelPost, ojMarketMcpCatalogGet, ojMarketMetaGet, ojMarketReleasesGet, ojMarketTaskGet, ojMarketTrustGet, ojMarketTrustPost, ojMarketTrustKeyDelete, ojMarketTrustKeyPost, ojMarketTrustReviewGet, ojMarketUninstallPost, ojMarketUninstallImpactGet, ojMarketUploadPost, ojMarketYankPost };
+	return { ojMarketBackfillPost, ojMarketCatalogGet, ojMarketCatalogDetailGet, ojMarketCdnUploadPost, ojMarketConvergePost, ojMarketEnablePost, ojMarketHistoryDelete, ojMarketHistoryGet, ojMarketIndexGet, ojMarketInstallPost, ojMarketInstallCancelPost, ojMarketMcpCatalogGet, ojMarketMetaGet, ojMarketOwnerKeyDelete, ojMarketOwnerKeyPost, ojMarketReleasesGet, ojMarketTaskGet, ojMarketTrustGet, ojMarketTrustPost, ojMarketTrustKeyDelete, ojMarketTrustKeyPost, ojMarketTrustReviewGet, ojMarketUninstallPost, ojMarketUninstallImpactGet, ojMarketUploadPost, ojMarketYankPost };
 }
 
 /**
@@ -351,6 +351,54 @@ export async function ojMarketMetaGet(): Promise<OjMarketMetaGetData> {
 			const r = schemas["ojMarketMetaGet"].data.safeParse(data);
 			if (!r.success)
 				throw new ContractApiError(-1, `[契约违例] ojMarketMetaGet 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
+		}
+		return data;
+	}
+	catch (e) {
+		throw await toApiError(e);
+	}
+}
+
+export type OjMarketOwnerKeyDeleteQuery = z.input<(typeof schemas)["ojMarketOwnerKeyDelete"]["query"]>;
+export type OjMarketOwnerKeyDeleteData = z.infer<(typeof schemas)["ojMarketOwnerKeyDelete"]["data"]>;
+
+export async function ojMarketOwnerKeyDelete(query: OjMarketOwnerKeyDeleteQuery): Promise<OjMarketOwnerKeyDeleteData> {
+	const client = ensureReq();
+	try {
+		const env = await client.delete(`oj-market/owner-key`, { searchParams: query as Record<string, string | number | boolean> }).json<OjEnvelope<OjMarketOwnerKeyDeleteData>>();
+		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
+		if (typeof env.code === "number" && env.code !== 0)
+			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
+		const data = env.data as OjMarketOwnerKeyDeleteData;
+		if (import.meta.env.DEV) {
+			const { schemas } = await import("./api.schemas");
+			const r = schemas["ojMarketOwnerKeyDelete"].data.safeParse(data);
+			if (!r.success)
+				throw new ContractApiError(-1, `[契约违例] ojMarketOwnerKeyDelete 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
+		}
+		return data;
+	}
+	catch (e) {
+		throw await toApiError(e);
+	}
+}
+
+export type OjMarketOwnerKeyPostBody = z.input<(typeof schemas)["ojMarketOwnerKeyPost"]["body"]>;
+export type OjMarketOwnerKeyPostData = z.infer<(typeof schemas)["ojMarketOwnerKeyPost"]["data"]>;
+
+export async function ojMarketOwnerKeyPost(body: OjMarketOwnerKeyPostBody): Promise<OjMarketOwnerKeyPostData> {
+	const client = ensureReq();
+	try {
+		const env = await client.post(`oj-market/owner-key`, { json: body }).json<OjEnvelope<OjMarketOwnerKeyPostData>>();
+		// 2xx + code!==0 也是业务错误（§6.2 通道 a）：oj 不会这么发，但契约机制的价值恰是防漂移
+		if (typeof env.code === "number" && env.code !== 0)
+			throw new ContractApiError(env.code, env.msg ?? "业务错误（信封 code 非 0）");
+		const data = env.data as OjMarketOwnerKeyPostData;
+		if (import.meta.env.DEV) {
+			const { schemas } = await import("./api.schemas");
+			const r = schemas["ojMarketOwnerKeyPost"].data.safeParse(data);
+			if (!r.success)
+				throw new ContractApiError(-1, `[契约违例] ojMarketOwnerKeyPost 响应与契约不符：${r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`);
 		}
 		return data;
 	}

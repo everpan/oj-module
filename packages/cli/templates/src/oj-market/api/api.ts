@@ -30,7 +30,7 @@ import { sha384B64 } from "#/_platform/_lifecycle/sha384";
 import { catchUpSiteModules } from "#/_platform/_lifecycle/site-materialize";
 import { createStateStore } from "#/_platform/_lifecycle/state";
 import { getTask, readTasks } from "#/_platform/_lifecycle/tasks";
-import { createTrustStore } from "#/_platform/_lifecycle/trust";
+import { createTrustStore, isValidKeyId } from "#/_platform/_lifecycle/trust";
 import { computeUninstallImpact, runUninstall } from "#/_platform/_lifecycle/uninstall";
 import { respond } from "#/_platform/_shared/respond";
 import { assertSuperAdmin, currentAccess } from "#/_platform/_shared/service/infra/access";
@@ -314,6 +314,49 @@ async function operatorOf(): Promise<string | null> {
 	catch {
 		return null;
 	}
+}
+
+/** 当前登录用户 id（无登录态 → null） */
+function currentUserId(): number | null {
+	const uid = (http as { user?: { id?: unknown } }).user?.id;
+	return typeof uid === "number" ? uid : null;
+}
+
+/** 我绑定的发布 key 集合（market_owner_key；表缺失/不可达 → 空集不炸，判权自然落 403） */
+async function ownedKeyIdsOf(userId: number): Promise<Set<string>> {
+	try {
+		const rows = await db.table("market_owner_key").select(["key_id"]).where({ field: "user_id", op: "eq", value: userId }).all() as Array<{ key_id: unknown }>;
+		return new Set(rows.map(r => String(r.key_id)));
+	}
+	catch {
+		return new Set();
+	}
+}
+
+/** 方案归属判定（计划 20261122-1155）：market_release 中该 product 任一行 key_id 属于我的绑定 */
+async function ownsSolution(userId: number, name: string): Promise<boolean> {
+	const owned = await ownedKeyIdsOf(userId);
+	if (owned.size === 0)
+		return false;
+	const rows = await db.table("market_release").select(["key_id"]).where({ field: "product", op: "eq", value: name }).all() as Array<{ key_id: unknown }>;
+	return rows.some(r => r.key_id != null && owned.has(String(r.key_id)));
+}
+
+/**
+ * 装/卸判权（计划 20261122-1155）：superadmin 恒过；否则该方案归属者过（目录任一行
+ * 发布 key 绑定属于当前用户）。file 源安装无目录行 → 无归属 → 非 superadmin 403（有意设计）。
+ */
+async function assertSolutionOperator(name: string): Promise<void> {
+	const { roles } = await currentAccess();
+	if (roles.includes("superadmin"))
+		return;
+	// 无 name 无从判归属：非 superadmin 一律 403（不泄露参数形状——拒权先于取参，R9 旧口径保持）
+	if (name === "")
+		fail(403, "forbidden");
+	const uid = currentUserId();
+	if (uid !== null && await ownsSolution(uid, name))
+		return;
+	fail(403, `「${name}」的安装/卸载仅限方案归属者或 superadmin（归属 key 绑定：ojm market bind-key）`);
 }
 
 /**
@@ -666,6 +709,8 @@ interface IndexRow {
 	publisher: string | null
 	/** 最新版包级签名 key_id（Form B archive.signature.key_id，经 Ed25519 验签的发布身份；缺签名 → null） */
 	publisher_key: string | null
+	/** 归属标记（20261122-1155）：最新行发布 key 已绑定属于当前登录用户 → true（前端按行放开装/卸） */
+	mine: boolean
 	/** 最新版许可（manifest license，C2-07 SPDX 简化式；分片条目缺/非字符串 → null） */
 	license: string | null
 	/** 方案简介（manifest summary，C2-04 单行 1..200；分片条目缺/非字符串 → null） */
@@ -736,6 +781,10 @@ async function indexBody(env: MarketEnv, q: Record<string, unknown>): Promise<{ 
 		byProduct.set(product, list);
 	}
 	const local = (await createStateStore(env.statePath)).read().solutions;
+	// 归属标记（计划 20261122-1155）：我绑定的发布 key 集合一次批取，行级 mine = 最新行
+	// publisher_key 属于我的绑定（无登录态 → 全 false；未绑定 → 全 false）
+	const uid = currentUserId();
+	const ownedKeys = uid === null ? new Set<string>() : await ownedKeyIdsOf(uid);
 	// 本地独有（DB 无行）也列出：目录表空 ≠ 本地没装（回填前旧世界）
 	for (const name of Object.keys(local)) {
 		if (!byProduct.has(name))
@@ -764,6 +813,7 @@ async function indexBody(env: MarketEnv, q: Record<string, unknown>): Promise<{ 
 			changelog: m?.changelog ?? null,
 			publisher: typeof m?.author === "string" ? m.author : null,
 			publisher_key: latestRow?.key_id != null ? String(latestRow.key_id) : null,
+			mine: latestRow?.key_id != null && ownedKeys.has(String(latestRow.key_id)),
 			license: typeof m?.license === "string" ? m.license : null,
 			summary: typeof m?.summary === "string" ? m.summary : null,
 			description: typeof m?.description === "string" ? m.description : null,
@@ -971,11 +1021,16 @@ async function yankBody(env: MarketEnv): Promise<Record<string, unknown>> {
 /** 四端点组（oj v0.1.64 嵌套组：组名 = 路径段）；全业务体经 respond 收口（status 语义不落 500） */
 export function createMarketApi(env: MarketEnv) {
 	return {
-		// POST /api/oj-market/install —— 安装编排（superadmin，R9）
+	// POST /api/oj-market/install —— 安装编排（superadmin 或方案归属者，R9 + 20261122-1155）。
+	// 归属判定需要 name 先行：端点薄解析（400 守卫）→ 判权 → installBody 完整校验（重复解析无害）。
 		"install": {
 			async post() {
 				await respond(async () => {
-					await assertSuperAdmin();
+					const rawName = String((isObj(http.body) ? http.body : {}).name ?? "").trim();
+					// 判权先于取参（无 name 时非 superadmin 一律 403，R9 旧口径）；superadmin 缺 name 给 400
+					await assertSolutionOperator(rawName);
+					if (rawName === "")
+						fail(400, "name is required");
 					return await installBody(env);
 				});
 			},
@@ -987,13 +1042,13 @@ export function createMarketApi(env: MarketEnv) {
 			cancel: {
 				async post() {
 					await respond(async () => {
-						await assertSuperAdmin();
 						const body = isObj(http.body) ? http.body : {};
 						const name = String(body.name ?? "").trim();
 						if (name === "")
 							fail(400, "name is required");
 						if (!/^[a-z][a-z0-9-]{0,63}$/.test(name))
 							fail(400, `name 非法（须 ^[a-z][a-z0-9-]{0,63}$）：${name}`);
+						await assertSolutionOperator(name);
 						const running = (await readTasks(env.taskDir)).some(t => t.name === name && t.status === "running");
 						if (!running)
 							fail(404, `「${name}」当前没有进行中的安装任务（取消只对 running 态有效）`);
@@ -1003,18 +1058,22 @@ export function createMarketApi(env: MarketEnv) {
 				},
 			},
 		},
-		// GET /api/oj-market/task?id= —— 任务轮询消费面（superadmin，§10.2 800ms 轮询）。
-		// 简报 `task/:id` 段参数形态在模板 http 面无先例，照 contacts/detail?id= 惯例走 query（报告备案）。
+		// GET /api/oj-market/task?id= —— 任务轮询消费面（superadmin 或该方案归属者；§10.2 800ms 轮询）。
+		// 判权按任务名（rec.name）归属判定：先取任务（不存在 404）再判权——owner 装完必须能轮到自己
+		// 任务的终态，判权先行会把合法轮询挡在任务创建之前（取不到 rec.name 无从判）。
 		"task": {
 			async get() {
 				await respond(async () => {
-					await assertSuperAdmin();
 					const id = String((http as { query?: Record<string, unknown> }).query?.id ?? "").trim();
+					if (id === "")
+						// 判权先于取参：无 id 无从按名判归属（非 superadmin 一律 403，同 install 口径）
+						await assertSolutionOperator("");
 					if (id === "")
 						fail(400, "id is required");
 					const rec = await getTask(env.taskDir, id);
 					if (rec === null)
 						fail(404, `任务不存在或已过期（任务文件保留最近 10 条）：${id}`);
+					await assertSolutionOperator(rec.name);
 					return rec;
 				});
 			},
@@ -1079,6 +1138,59 @@ export function createMarketApi(env: MarketEnv) {
 						fail(404, "not found");
 					await reconcileOf(env);
 					return { ok: true };
+				});
+			},
+		},
+		// 归属 key 绑定面（计划 20261122-1155；market_owner_key 表，0011 迁移）：
+		// POST   /market/owner-key          绑定 {key_id, public_key, signature}——登录即可（任意有效
+		//                                   账号绑自己的 key），持钥自证：Ed25519 canonical
+		//                                   `market-owner-key:<registryId>:<keyId>` 验签通过才落库，
+		//                                   否则任何人可抢注他人 key_id。key_id 全站唯一：已属他人 409，
+		//                                   重复自绑幂等 200。绑定后 install/uninstall/task 按归属放行。
+		// DELETE /market/owner-key?key_id=  解绑——绑定者本人或 superadmin。
+		"owner-key": {
+			async post() {
+				await respond(async () => {
+					const uid = currentUserId();
+					if (uid === null)
+						fail(401, "unauthorized");
+					const body = isObj(http.body) ? http.body : {};
+					const keyId = String(body.key_id ?? "").trim();
+					const publicKey = String(body.public_key ?? "").trim();
+					const signature = String(body.signature ?? "").trim();
+					if (keyId === "" || publicKey === "" || signature === "")
+						fail(400, "key_id / public_key / signature 均必填");
+					if (!isValidKeyId(keyId))
+						fail(400, `key_id 非法：「${keyId}」——须 <publisher>.<id> 全小写（C2-37 同口径）`);
+					const canonical = `market-owner-key:${env.registryId ?? ""}:${keyId}`;
+					if (!verifyCanonicalSig({ verifyEd25519: env.verifyEd25519 }, publicKey, canonical, signature))
+						fail(401, "归属绑定验签失败：canonical 不符——须以该 key 的私钥签 market-owner-key:<registryId>:<keyId>（ojm market bind-key）");
+					const existing = await db.table("market_owner_key").select(["id", "user_id"]).where({ field: "key_id", op: "eq", value: keyId }).limit(1).all() as Array<{ id: unknown, user_id: unknown }>;
+					if (existing.length > 0) {
+						if (Number(existing[0]!.user_id) !== uid)
+							fail(409, `key「${keyId}」已绑定到其他用户——一把发布 key 全站一个属主（换主 = 解绑后重绑）`);
+						return { ok: true, key_id: keyId, idempotent: true };
+					}
+					await db.table("market_owner_key").insert({ user_id: uid, key_id: keyId, public_key: publicKey, created_at: Math.floor(Date.now() / 1000) }).run();
+					return { ok: true, key_id: keyId };
+				});
+			},
+			async del() {
+				await respond(async () => {
+					const uid = currentUserId();
+					if (uid === null)
+						fail(401, "unauthorized");
+					const keyId = String((http as { query?: Record<string, unknown> }).query?.key_id ?? "").trim();
+					if (keyId === "")
+						fail(400, "key_id is required");
+					const existing = await db.table("market_owner_key").select(["id", "user_id"]).where({ field: "key_id", op: "eq", value: keyId }).limit(1).all() as Array<{ id: unknown, user_id: unknown }>;
+					if (existing.length === 0)
+						fail(404, `key「${keyId}」无绑定记录`);
+					const { roles } = await currentAccess();
+					if (Number(existing[0]!.user_id) !== uid && !roles.includes("superadmin"))
+						fail(403, "仅绑定者本人或 superadmin 可解绑归属 key");
+					await db.table("market_owner_key").where({ field: "id", op: "eq", value: existing[0]!.id }).delete().run();
+					return { ok: true, key_id: keyId, unbound: true };
 				});
 			},
 		},
@@ -1268,17 +1380,17 @@ export function createMarketApi(env: MarketEnv) {
 				});
 			},
 		},
-		// POST /api/oj-market/uninstall —— 卸载编排（superadmin，R9）。
+		// POST /api/oj-market/uninstall —— 卸载编排（superadmin 或方案归属者，R9 + 20261122-1155）。
 		// 端点只做门禁 + 取参 + operator 反查（历史留痕），四处同删全归 runUninstall（uninstall.ts 同纪律）；
 		// 领域拒绝（未装/空锁拒启）返回 {ok:false, message} 200——人话在 message，CLI/市场页照 ok 位渲染。
 		"uninstall": {
 			async post() {
 				await respond(async () => {
-					await assertSuperAdmin();
 					const body = isObj(http.body) ? http.body : {};
 					const name = String(body.name ?? "").trim();
 					if (name === "")
 						fail(400, "name is required");
+					await assertSolutionOperator(name);
 					const r = await runUninstall({
 						name,
 						sharedRoot: env.sharedRoot,
@@ -1434,7 +1546,7 @@ const marketApi = createMarketApi(marketEnv());
 // 同口径）。出参一律 additionalProperties:true 宽松，不约束运行期返回形状；入参对齐 handler 实际
 // 收口（source 枚举 / 必填项），oj 先校验、handler 仍自校验（双保险，不放松运行期语义）。
 marketApi.install.post.schema = {
-	description: "安装或升级一个解决方案（superadmin）。异步编排：立即返回 task_id，用 GET /oj-market/task?id= 轮询进度。包来源 source=cdn（市场目录）或 file（本机暂存）；发布方密钥未受信任时任务落 needs_trust，需先 POST /oj-market/trust 确认。force=true 可覆盖已装版本。",
+	description: "安装或升级一个解决方案（superadmin 或方案归属者——归属 key 经 POST /oj-market/owner-key 持钥自证绑定，CLI：ojm market bind-key）。异步编排：立即返回 task_id，用 GET /oj-market/task?id= 轮询进度。包来源 source=cdn（市场目录）或 file（本机暂存，无目录行即无归属，非 superadmin 403）；发布方密钥未受信任时任务落 needs_trust，需先 POST /oj-market/trust 确认。force=true 可覆盖已装版本。",
 	body: {
 		type: "object",
 		required: ["source", "name"],
@@ -1442,11 +1554,11 @@ marketApi.install.post.schema = {
 	},
 };
 marketApi.install.post.response = { type: "object", properties: { task_id: { type: "string" } }, additionalProperties: true };
-marketApi.install.cancel.post.schema = { description: "请求取消进行中的安装任务（superadmin）。已完成的步骤不回滚；需要时重新安装即可（安装幂等）。", body: { type: "object", required: ["name"], properties: { name: { type: "string" } } } };
+marketApi.install.cancel.post.schema = { description: "请求取消进行中的安装任务（superadmin 或方案归属者）。已完成的步骤不回滚；需要时重新安装即可（安装幂等）。", body: { type: "object", required: ["name"], properties: { name: { type: "string" } } } };
 marketApi.install.cancel.post.response = { type: "object", properties: { ok: { type: "boolean" }, name: { type: "string" }, requested: { type: "boolean" } }, additionalProperties: true };
 marketApi.upload.post.schema = { description: "上传离线安装包（.tgz，superadmin）。query 的 name 传完整文件名 <名称>-<版本>.tgz；包体走 multipart。未受信任的发布方密钥会让任务落 needs_trust。", query: { type: "object", required: ["name"], properties: { name: { type: "string" } } } };
 marketApi.upload.post.response = { type: "object", additionalProperties: true };
-marketApi.task.get.schema = { description: "轮询安装任务进度与终态（superadmin）。任务记录只保留最近 10 条，过期查询返回 404。", query: { type: "object", required: ["id"], properties: { id: { type: "string" } } } };
+marketApi.task.get.schema = { description: "轮询安装任务进度与终态（superadmin 或该方案归属者，按任务名归属判定）。任务记录只保留最近 10 条，过期查询返回 404。", query: { type: "object", required: ["id"], properties: { id: { type: "string" } } } };
 marketApi.task.get.response = { type: "object", additionalProperties: true };
 marketApi.enable.post.schema = { description: "启用或停用已安装的解决方案（superadmin）。停用只摘路由与入口，不删业务数据。", body: { type: "object", required: ["name", "enabled"], properties: { name: { type: "string" }, enabled: { type: "boolean" } } } };
 marketApi.enable.post.response = { type: "object", additionalProperties: true };
@@ -1455,6 +1567,10 @@ marketApi.backfill.post.schema = { body: { type: "object", nullable: true, prope
 marketApi.meta.get.schema = { description: "市场元信息：仅返回 {apiVersion}，供 peerPlatform 做版本预检。登录即可读。" };
 marketApi.meta.get.response = { type: "object", properties: { apiVersion: { type: "string" } }, additionalProperties: true };
 marketApi.trust.get.schema = { description: "列出信任库中的发布方公钥（superadmin），并回传信任库损坏提示（note，无损坏为 null）。" };
+marketApi["owner-key"].post.schema = { description: "绑定发布 key 到当前登录用户（任意有效账号绑自己的 key；方案归属者凭此免 superadmin 安装/卸载归属方案）。持钥自证：body.signature 须为 Ed25519 对 canonical `market-owner-key:<registryId>:<keyId>` 的签名（CLI：ojm market bind-key）。key_id 全站唯一：已属他人 409，重复自绑幂等 200。", body: { type: "object", required: ["key_id", "public_key", "signature"], properties: { key_id: { type: "string" }, public_key: { type: "string" }, signature: { type: "string" } } } };
+marketApi["owner-key"].post.response = { type: "object", properties: { ok: { type: "boolean" }, key_id: { type: "string" }, idempotent: { type: "boolean" } }, additionalProperties: true };
+marketApi["owner-key"].del.schema = { description: "解绑发布 key（绑定者本人或 superadmin）；无绑定记录 404。", query: { type: "object", required: ["key_id"], properties: { key_id: { type: "string" } } } };
+marketApi["owner-key"].del.response = { type: "object", properties: { ok: { type: "boolean" }, key_id: { type: "string" }, unbound: { type: "boolean" } }, additionalProperties: true };
 marketApi.trust.get.response = { type: "object", additionalProperties: true };
 marketApi.trust.post.schema = { description: "确认信任某个待审任务携带的发布方公钥（superadmin）。公钥与指纹从任务记录重取并复算比对；记录疑被篡改则 409，信任库零变化。任务不在 needs_trust 状态返回 409。", body: { type: "object", required: ["task_id"], properties: { task_id: { type: "string" } } } };
 marketApi.trust.post.response = { type: "object", additionalProperties: true };
@@ -1529,7 +1645,7 @@ marketApi.yank.post.schema = {
 marketApi.yank.post.response = { type: "object", additionalProperties: true };
 marketApi["uninstall-impact"].get.schema = { description: "卸载影响面预检（superadmin）：返回受影响角色数与用户数，供前端二次确认；不改变任何状态。", query: { type: "object", required: ["name"], properties: { name: { type: "string" } } } };
 marketApi["uninstall-impact"].get.response = { type: "object", additionalProperties: true };
-marketApi.uninstall.post.schema = { description: "卸载解决方案（superadmin）：只删代码/路由/权限/锁/sidecar，绝不删业务数据——受影响的业务表只回传名单供运维手工清理。", body: { type: "object", required: ["name"], properties: { name: { type: "string" } } } };
+marketApi.uninstall.post.schema = { description: "卸载解决方案（superadmin 或方案归属者）：只删代码/路由/权限/锁/sidecar，绝不删业务数据——受影响的业务表只回传名单供运维手工清理。", body: { type: "object", required: ["name"], properties: { name: { type: "string" } } } };
 marketApi.uninstall.post.response = { type: "object", additionalProperties: true };
 marketApi.history.get.schema = { description: "市场操作历史（登录即可读）：install / enable / disable / uninstall / upgrade / rollback 留痕，按时间与 id 倒序。历史表不可用时返回空数组，不阻断主流程。" };
 marketApi.history.get.response = { type: "array", items: { type: "object", additionalProperties: true } };

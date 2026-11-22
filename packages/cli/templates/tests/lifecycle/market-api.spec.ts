@@ -1121,9 +1121,9 @@ describe("GET index（v4 §四：DB 目录分页 + 本地 state 对比；索引�
 		expect(d.page).toBe(1);
 		expect(d.size).toBe(20);
 		expect(d.list).toEqual([
-			{ name: "demo-solution", latest: "0.2.0", installed: "0.1.0", enabled: true, upgradable: true, available: ["0.1.0", "0.2.0"], changelog: ["0.2.0 变更条目"], publisher: "oj-module", publisher_key: "test.publisher", license: "MIT", summary: "演示方案", description: LATEST_DESCRIPTION, trust_state: "trusted", key_id: "test.publisher", operator: null },
-			{ name: "legacy", latest: null, installed: "9.9.9", enabled: false, upgradable: false, available: [], changelog: null, publisher: null, publisher_key: null, license: null, summary: null, description: null, trust_state: null, key_id: null, operator: null },
-			{ name: "wiki", latest: "1.3.0", installed: null, enabled: null, upgradable: false, available: ["1.3.0"], changelog: null, publisher: null, publisher_key: "test.publisher", license: null, summary: null, description: null, trust_state: null, key_id: null, operator: null },
+			{ name: "demo-solution", latest: "0.2.0", installed: "0.1.0", enabled: true, upgradable: true, available: ["0.1.0", "0.2.0"], changelog: ["0.2.0 变更条目"], publisher: "oj-module", publisher_key: "test.publisher", license: "MIT", summary: "演示方案", description: LATEST_DESCRIPTION, trust_state: "trusted", key_id: "test.publisher", operator: null, mine: false },
+			{ name: "legacy", latest: null, installed: "9.9.9", enabled: false, upgradable: false, available: [], changelog: null, publisher: null, publisher_key: null, license: null, summary: null, description: null, trust_state: null, key_id: null, operator: null, mine: false },
+			{ name: "wiki", latest: "1.3.0", installed: null, enabled: null, upgradable: false, available: ["1.3.0"], changelog: null, publisher: null, publisher_key: "test.publisher", license: null, summary: null, description: null, trust_state: null, key_id: null, operator: null, mine: false },
 		]);
 	});
 
@@ -1694,5 +1694,226 @@ describe("GET /oj-market/history（操作历史消费面：前端据此标记结
 		expect(rows[1]).toMatchObject({ status: "failed" });
 		expect(typeof rows[0]!.id).toBe("number");
 		expect(Number(rows[0]!.id)).toBeGreaterThan(Number(rows[1]!.id));
+	});
+});
+
+// ── 功能: 方案归属者免 superadmin 装/卸（计划 20261122-1155，market_owner_key 0011）──────────
+// 归属判定：market_release 中该 product 任一行 key_id 属于我的绑定 → install/uninstall/task
+// 放行（superadmin 恒过）；file 源无目录行 → 无归属 → 403。enable 启停仍 superadmin（回归钉）。
+// 闸口验证技巧：归属放行后用 yanked=1 的行让 installBody 快死 404（证明过了闸且不真跑编排）。
+describe("功能: 方案归属者免 superadmin 装/卸（归属矩阵）", () => {
+	const REGISTRY = "test.registry";
+	function seedUser(id: number, name: string): void {
+		dbo.prepare("INSERT INTO users (id, username, password_hash) VALUES (?, ?, 'x')").run(id, name);
+		invalidateAllUsers(); // 快照缓存：同测内先 403 后补绑定的顺序必须手动失效
+	}
+	function bindKey(userId: number, keyId: string): void {
+		dbo.prepare("INSERT INTO market_owner_key (user_id, key_id, public_key, created_at) VALUES (?, ?, '00', 1000)").run(userId, keyId);
+	}
+	function apiOf() {
+		return createMarketApi(makeEnv({ registryId: REGISTRY }));
+	}
+
+	it("场景: 归属矩阵——superadmin 恒过、属主过、非属主/未绑定/file 源无行 403", async () => {
+		// yanked=1：闸后 installBody 必 404（无在架版本），既证明过闸又不真跑编排
+		seedRelease("acme", "0.1.0", { key_id: "alice.main", yanked: 1 });
+		seedUser(2, "alice");
+		seedUser(3, "carol");
+		bindKey(2, "alice.main");
+		const api = apiOf();
+		// superadmin（user 1，已播种角色）：过闸 → 404（无在架版本）
+		g.http = { user: { id: 1 }, body: { name: "acme", source: "cdn" } };
+		await api.install.post();
+		expect(last?.status).not.toBe(403); // 过闸（yanked 目录行 resolveFromDb 拒 409/404）
+		// 属主 alice：过闸 → 同样非 403
+		g.http = { user: { id: 2 }, body: { name: "acme", source: "cdn" } };
+		await api.install.post();
+		expect(last?.status).not.toBe(403);
+		// carol（未绑定）：403 且文案点名归属
+		g.http = { user: { id: 3 }, body: { name: "acme", source: "cdn" } };
+		await api.install.post();
+		expect(last?.status).toBe(403);
+		expect(String(last?.msg)).toContain("归属者或 superadmin");
+		// carol 绑了别的 key（bob.x）仍 403——归属按行 key_id 精确匹配
+		bindKey(3, "bob.x");
+		await api.install.post();
+		expect(last?.status).toBe(403);
+		// file 源无目录行（"ghost" 无 release 行）：连 alice 也 403——目录行是归属唯一依据
+		g.http = { user: { id: 2 }, body: { name: "ghost", source: "file" } };
+		await api.install.post();
+		expect(last?.status).toBe(403);
+		// name 缺失 + 非 superadmin：判权先于取参（无 name 无从判归属）→ 403 不泄露参数形状
+		g.http = { user: { id: 3 }, body: {} };
+		await api.install.post();
+		expect(last?.status).toBe(403);
+	});
+
+	it("场景: uninstall 同口径——属主过闸（领域 404 not-installed），非属主 403", async () => {
+		seedRelease("acme", "0.1.0", { key_id: "alice.main", yanked: 1 });
+		seedUser(2, "alice");
+		seedUser(3, "carol");
+		bindKey(2, "alice.main");
+		const api = apiOf();
+		g.http = { user: { id: 2 }, body: { name: "acme", source: "cdn" } };
+		await api.uninstall.post();
+		expect(last?.status).toBe(404); // 过闸后 runUninstall 领域拒绝（未装）
+		g.http = { user: { id: 3 }, body: { name: "acme", source: "cdn" } };
+		await api.uninstall.post();
+		expect(last?.status).toBe(403);
+	});
+
+	it("场景: task 轮询按任务名归属判权——属主 200、非属主 403、无任务 404 先于判权", async () => {
+		seedRelease("acme", "0.1.0", { key_id: "alice.main", yanked: 1 });
+		seedUser(2, "alice");
+		seedUser(3, "carol");
+		bindKey(2, "alice.main");
+		await writeTask(taskDir, { id: "t-1", name: "acme", version: "0.1.0", status: "running", stage: "downloading", progress: 10, message: "x", stages: [], startedAt: 1 });
+		const api = apiOf();
+		g.http = { user: { id: 3 }, query: { id: "nope" } };
+		await api.task.get();
+		expect(last?.status).toBe(404); // 任务不存在 → 404 先于判权（取不到 name 无从判）
+		g.http = { user: { id: 2 }, query: { id: "t-1" } };
+		await api.task.get();
+		expect(last?.status).toBe(200);
+		expect(last?.data).toMatchObject({ id: "t-1" });
+		g.http = { user: { id: 3 }, query: { id: "t-1" } };
+		await api.task.get();
+		expect(last?.status).toBe(403);
+	});
+
+	it("场景: install/cancel 按名归属——属主可取消自己进行中的任务，非属主 403", async () => {
+		seedRelease("acme", "0.1.0", { key_id: "alice.main", yanked: 1 });
+		seedUser(2, "alice");
+		seedUser(3, "carol");
+		bindKey(2, "alice.main");
+		await writeTask(taskDir, { id: "t-2", name: "acme", version: "0.1.0", status: "running", stage: "downloading", progress: 10, message: "x", stages: [], startedAt: 1 });
+		const api = apiOf();
+		g.http = { user: { id: 3 }, body: { name: "acme", source: "cdn" } };
+		await api.install.cancel.post();
+		expect(last?.status).toBe(403);
+		g.http = { user: { id: 2 }, body: { name: "acme", source: "cdn" } };
+		await api.install.cancel.post();
+		expect(last?.status).toBe(200);
+		expect(last?.data).toMatchObject({ ok: true, name: "acme" });
+	});
+
+	it("场景: enable 启停仍 superadmin 独占（回归钉：本特性不放开启停）", async () => {
+		seedRelease("acme", "0.1.0", { key_id: "alice.main", yanked: 1 });
+		seedUser(2, "alice");
+		bindKey(2, "alice.main");
+		const api = apiOf();
+		g.http = { user: { id: 2 }, body: { name: "acme", enabled: false } };
+		await api.enable.post();
+		expect(last?.status).toBe(403);
+	});
+});
+
+// BDD：owner-key 绑定端点（持钥自证：Ed25519 canonical 签名过才落库，防抢注）。
+describe("功能: owner-key 绑定（POST/DELETE /market/owner-key，持钥自证）", () => {
+	const REGISTRY = "test.registry";
+	const KEY_ID = "alice.main";
+	function seedUser(id: number, name: string): void {
+		dbo.prepare("INSERT INTO users (id, username, password_hash) VALUES (?, ?, 'x')").run(id, name);
+		invalidateAllUsers();
+	}
+	/** 持钥自证载荷：canonical 签名（与 bind-key CLI 同串） */
+	function bindBody(key: typeof TEST_KEY) {
+		return {
+			key_id: KEY_ID,
+			public_key: key.publicKeyHex,
+			signature: signCanonical(key.privateKeyPem, `market-owner-key:${REGISTRY}:${KEY_ID}`),
+		};
+	}
+
+	it("场景: 登录 + 签名正确 → 绑定；重复自绑幂等 200；他人绑定同 key 409", async () => {
+		const key = generateKeyPair();
+		seedUser(2, "alice");
+		seedUser(3, "carol");
+		const api = createMarketApi(makeEnv({ registryId: REGISTRY }));
+		g.http = { user: { id: 2 }, body: bindBody(key) };
+		await api["owner-key"].post();
+		expect(last?.status).toBe(200);
+		expect(last?.data).toMatchObject({ ok: true, key_id: KEY_ID });
+		// 重复自绑 → 幂等
+		await api["owner-key"].post();
+		expect(last?.status).toBe(200);
+		expect(last?.data).toMatchObject({ idempotent: true });
+		// carol 持同一公钥+自签也来绑 → 409（已属他人；carol 的签名其实验得过，但属主唯一）
+		g.http = { user: { id: 3 }, body: bindBody(key) };
+		await api["owner-key"].post();
+		expect(last?.status).toBe(409);
+		// 绑定真生效：alice 成为 acme 属主（行 key_id = alice.main）
+		dbo.prepare("INSERT INTO market_release (product,version,key_id,sha256,size,published_at,published_at_source,yanked,first_seen_at) VALUES ('acme','0.1.0','alice.main',?,?,'1','upload','1','1')").run(SHA256, ARCHIVE.byteLength);
+		g.http = { user: { id: 2 }, body: { name: "acme", source: "cdn" } };
+		await api.install.post();
+		expect(last?.status).not.toBe(403); // 过闸（yanked 目录行 resolveFromDb 拒 409/404）
+	});
+
+	it("场景: 签名与公钥不匹配 / key_id 非法 / 匿名 → 401 / 400 / 401", async () => {
+		const key = generateKeyPair();
+		const other = generateKeyPair();
+		seedUser(2, "alice");
+		const api = createMarketApi(makeEnv({ registryId: REGISTRY }));
+		// 签名是 other 的、公钥是 key 的 → 验签失败 401
+		g.http = { user: { id: 2 }, body: { key_id: KEY_ID, public_key: key.publicKeyHex, signature: signCanonical(other.privateKeyPem, `market-owner-key:${REGISTRY}:${KEY_ID}`) } };
+		await api["owner-key"].post();
+		expect(last?.status).toBe(401);
+		// key_id 非法（C2-37 口径）→ 400
+		g.http = { user: { id: 2 }, body: { ...bindBody(key), key_id: "NoDots" } };
+		await api["owner-key"].post();
+		expect(last?.status).toBe(400);
+		// 匿名 → 401
+		g.http = { body: bindBody(key) };
+		await api["owner-key"].post();
+		expect(last?.status).toBe(401);
+	});
+
+	it("场景: 解绑——本人 200、非本人 403、superadmin 200、无绑定 404", async () => {
+		const key = generateKeyPair();
+		seedUser(2, "alice");
+		seedUser(3, "carol");
+		const api = createMarketApi(makeEnv({ registryId: REGISTRY }));
+		g.http = { user: { id: 2 }, body: bindBody(key) };
+		await api["owner-key"].post();
+		expect(last?.status).toBe(200);
+		// carol 解绑 alice 的 key → 403
+		g.http = { user: { id: 3 }, query: { key_id: KEY_ID } };
+		await api["owner-key"].del();
+		expect(last?.status).toBe(403);
+		// superadmin 解绑 → 200
+		g.http = { user: { id: 1 }, query: { key_id: KEY_ID } };
+		await api["owner-key"].del();
+		expect(last?.status).toBe(200);
+		// 再解绑 → 404（已解）
+		g.http = { user: { id: 1 }, query: { key_id: KEY_ID } };
+		await api["owner-key"].del();
+		expect(last?.status).toBe(404);
+	});
+});
+
+// BDD：方案清单 mine 标记（index 行级归属透出，前端按行放开装/卸按钮的数据源）。
+describe("功能: 方案清单 mine 标记（GET /market/index 行级归属）", () => {
+	function seedUser(id: number, name: string): void {
+		dbo.prepare("INSERT INTO users (id, username, password_hash) VALUES (?, ?, 'x')").run(id, name);
+		invalidateAllUsers();
+	}
+
+	it("场景: 绑定者行 mine=true，他人 false，无绑定全 false", async () => {
+		seedRelease("acme", "0.1.0", { key_id: "alice.main", manifest: manifestFixture() });
+		seedRelease("demo", "0.1.0", { key_id: "test.publisher", manifest: manifestFixture() });
+		seedUser(2, "alice");
+		seedUser(3, "carol");
+		dbo.prepare("INSERT INTO market_owner_key (user_id, key_id, public_key, created_at) VALUES (2, 'alice.main', '00', 1000)").run();
+		const api = createMarketApi(makeEnv());
+		g.http = { user: { id: 2 } };
+		await api.index.get();
+		expect(last?.status).toBe(200);
+		const list = (last?.data as { list: Array<{ name: string, mine: boolean, publisher_key: string | null }> }).list;
+		expect(list.find(r => r.name === "acme")).toMatchObject({ mine: true, publisher_key: "alice.main" });
+		expect(list.find(r => r.name === "demo")).toMatchObject({ mine: false });
+		g.http = { user: { id: 3 } };
+		await api.index.get();
+		const list2 = (last?.data as { list: Array<{ name: string, mine: boolean }> }).list;
+		expect(list2.find(r => r.name === "acme")).toMatchObject({ mine: false });
 	});
 });

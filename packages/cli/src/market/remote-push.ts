@@ -17,8 +17,8 @@ import type { MarketPublishOptions } from "./publish";
 import { createHash } from "node:crypto";
 
 import process from "node:process";
-import { signCanonical } from "../lifecycle/sign";
-import { unwrapEnvelope } from "../site";
+import { exportRawPublicKeyHex, signCanonical } from "../lifecycle/sign";
+import { login, resolveSite, tenantHeaders, unwrapEnvelope } from "../site";
 import { buildSignedPackage, resolveSigningIdentity } from "./publish";
 
 /** 站点目录探测结果（catalog 响应顶层字段） */
@@ -233,4 +233,43 @@ export async function remoteYank(opts: RemoteYankOptions): Promise<RemoteYankRes
 		yanked: data.yanked === true,
 		idempotent: data.idempotent === true,
 	};
+}
+
+/**
+ * 归属 key 绑定（计划 20261122-1155）：POST /api/oj-market/owner-key。
+ * 站点登录（任意有效账号，--user/--pass）+ 持钥自证：Ed25519 对 canonical
+ * `market-owner-key:<站点 registry_id>:<keyId>` 签名（服务端用 body.public_key 验）——
+ * 不经过信任库（自己的 key 未入信任库也要能绑），签名即所有权证明，防抢注。
+ * 绑定后该用户即其发布方案的归属者：install/uninstall/task 免 superadmin。
+ */
+export interface RemoteBindKeyOptions {
+	siteUrl?: string
+	user?: string
+	pass?: string
+	id?: string
+	key?: string
+	privateKeyPem?: string
+	/** 测试注入 fetch；缺省全局 fetch */
+	fetchFn?: typeof fetch
+}
+
+export interface RemoteBindKeyResult {
+	key_id: string
+	idempotent: boolean
+}
+
+export async function remoteBindKey(opts: RemoteBindKeyOptions): Promise<RemoteBindKeyResult> {
+	const { base, user, pass } = resolveSite(opts);
+	const fetchFn = opts.fetchFn ?? fetch;
+	const discovery = await discoverMarket(fetchFn, base);
+	const { keyId, privateKeyPem } = resolveSigningIdentity({ id: opts.id, key: opts.key, privateKeyPem: opts.privateKeyPem });
+	const signature = signCanonical(privateKeyPem, `market-owner-key:${discovery.registryId}:${keyId}`);
+	const token = await login(fetchFn, base, user, pass);
+	const res = await fetchFn(`${base}/api/oj-market/owner-key`, {
+		method: "POST",
+		headers: { "content-type": "application/json", "authorization": `Bearer ${token}`, ...tenantHeaders() },
+		body: JSON.stringify({ key_id: keyId, public_key: exportRawPublicKeyHex(privateKeyPem), signature }),
+	});
+	const data = await unwrapEnvelope(res) as { key_id?: string, idempotent?: boolean };
+	return { key_id: String(data.key_id ?? keyId), idempotent: data.idempotent === true };
 }

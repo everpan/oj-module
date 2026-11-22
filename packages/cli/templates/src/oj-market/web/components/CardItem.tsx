@@ -33,6 +33,8 @@ export function CardItem({ row, busy, canManage = true, onInstall, onEnableToggl
 	// 无可升级发布版时升级无意义：禁用并提示（upgradable = 存在 > 已装版本的在架发布，服务端已算好）
 	const upgradeBlocked = installed && !row.upgradable;
 	// 非 superadmin：所有写操作禁用并给出原因提示，只读（详情/历史）不受影响。
+	// 归属放行（20261122-1155）：row.mine（发布 key 绑定属于我）→ 装/卸/回滚可用；启停仍 superadmin 独占
+	const canOperate = canManage || row.mine === true;
 	const manageTip = canManage ? undefined : t("oj-market:card:superOnly");
 	// oj-market 是第一方方案市场自身：其 API 面随平台内置，停用会把它们从 API 锁摘除，
 	// 导致 /api/oj-market/* 全 404、方案市场整页不可用，故卡片上的「停用」永久禁用。
@@ -176,7 +178,7 @@ export function CardItem({ row, busy, canManage = true, onInstall, onEnableToggl
 					size="small"
 					loading={busy}
 					onClick={() => onInstall(row)}
-					disabled={busy || !canManage || upgradeBlocked}
+					disabled={busy || !canOperate || upgradeBlocked}
 					title={manageTip ?? (upgradeBlocked ? t("oj-market:card:latestInstalled") : undefined)}
 				>
 					{installed ? t("oj-market:card:upgrade") : t("oj-market:card:install")}
@@ -196,7 +198,7 @@ export function CardItem({ row, busy, canManage = true, onInstall, onEnableToggl
 					)
 					: toggleButton)}
 				{installed && (
-					<Button style={{ flexShrink: 0 }} size="small" onClick={() => onRollback(row)} disabled={busy || !canManage} title={manageTip} data-testid={`card-rollback-${row.name}`}>
+					<Button style={{ flexShrink: 0 }} size="small" onClick={() => onRollback(row)} disabled={busy || !canOperate} title={manageTip} data-testid={`card-rollback-${row.name}`}>
 						{t("oj-market:card:rollback")}
 					</Button>
 				)}
@@ -206,7 +208,7 @@ export function CardItem({ row, busy, canManage = true, onInstall, onEnableToggl
 						size="small"
 						danger
 						onClick={() => onUninstall(row)}
-						disabled={busy || !canManage || uninstallLocked}
+						disabled={busy || !canOperate || uninstallLocked}
 						title={uninstallLocked ? t("oj-market:card:uninstallLocked") : manageTip}
 						data-testid={`card-uninstall-${row.name}`}
 					>

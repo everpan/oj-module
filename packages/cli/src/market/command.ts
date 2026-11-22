@@ -10,7 +10,7 @@
 
 import process from "node:process";
 
-import { remotePublish, remoteYank } from "./remote-push";
+import { remoteBindKey, remotePublish, remoteYank } from "./remote-push";
 import { setupMarketUrl } from "./setup";
 import { trialCommand } from "./trial";
 import { verifyMarket } from "./verify";
@@ -105,6 +105,21 @@ export async function marketCommand(sub: string, argv: string[]): Promise<void> 
 			console.log(flags.restore === true
 				? (r.idempotent ? `[ojm] ${name}@${version} 此前已恢复，幂等跳过` : `[ojm] 已恢复 ${name}@${version}（重新在架）`)
 				: (r.idempotent ? `[ojm] ${name}@${version} 此前已下线，幂等跳过` : `[ojm] 已下线 ${name}@${version}——清单已摘除，新装/升级被阻断（已装方案不受影响）`));
+			return;
+		}
+		case "bind-key": {
+			// 归属绑定（20261122-1155）：任意有效站点账号把**自己的**发布 key 绑到该账号——
+			// 持钥自证（canonical 签名），绑定后 install/uninstall/task 对其发布方案免 superadmin
+			const r = await remoteBindKey({
+				siteUrl: flags.siteUrl,
+				user: flags.user,
+				pass: flags.pass,
+				id: flags.id,
+				key: flags.key,
+			});
+			console.log(r.idempotent
+				? `[ojm] key「${r.key_id}」此前已绑定到你的账号，幂等跳过`
+				: `[ojm] 已绑定发布 key「${r.key_id}」到你的账号——该 key 发布的方案你可免 superadmin 安装/卸载`);
 			return;
 		}
 		case "publish": {

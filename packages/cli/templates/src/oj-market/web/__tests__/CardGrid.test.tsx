@@ -138,6 +138,28 @@ describe("cardGrid 卡片网格（BDD）", () => {
 		expect(handlers.onUninstall).not.toHaveBeenCalled();
 	});
 
+	it("given 归属行（mine=true）且 canManage=false When 渲染 Then 装/卸/回滚可用、启停仍禁用（20261122-1155 按行放行）", () => {
+		renderWithProviders(
+			<CardGrid rows={[{ ...installed, mine: true }]} canManage={false} {...handlers} />,
+			new InMemoryMarketClient(),
+		);
+		const btn = (name: string) => screen.getByRole("button", { name }) as HTMLButtonElement;
+		expect(btn("升级").disabled).toBe(false);
+		expect(btn("卸载").disabled).toBe(false);
+		expect((screen.getByTestId("card-rollback-alpha") as HTMLButtonElement).disabled).toBe(false);
+		expect(btn("停用").disabled).toBe(true); // 启停仍 superadmin 独占
+	});
+
+	it("given 非归属行（mine 缺省）且 canManage=false When 渲染 Then 写操作全禁用", () => {
+		renderWithProviders(
+			<CardGrid rows={[installed]} canManage={false} {...handlers} />,
+			new InMemoryMarketClient(),
+		);
+		const btn = (name: string) => screen.getByRole("button", { name }) as HTMLButtonElement;
+		expect(btn("升级").disabled).toBe(true);
+		expect(btn("卸载").disabled).toBe(true);
+	});
+
 	it("given oj-market 已装 When 渲染 Then 卸载按钮永久禁用且提示禁止卸载", () => {
 		handlers.onUninstall.mockClear();
 		const ojMarket = { ...installed, name: "oj-market" };

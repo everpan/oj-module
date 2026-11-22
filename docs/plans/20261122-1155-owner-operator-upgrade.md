@@ -73,18 +73,18 @@
 
 ## 任务（INVEST 切分）
 
-- [ ] T1 版本推进 oj-market 0.2.7→0.2.8：solution.yaml（version/archive.file/web.entry/changelog
+- [x] T1 版本推进 oj-market 0.2.7→0.2.8：solution.yaml（version/archive.file/web.entry/changelog
       行）+ api/manifest.yaml + web/entry.ts
-- [ ] T2 迁移 `0011__market_owner_key.{sql,mysql.sql,pg.sql}` + `_platform/schema.yaml` 登记
+- [x] T2 迁移 `0011__market_owner_key.{sql,mysql.sql,pg.sql}` + `_platform/schema.yaml` 登记
       （tenant: false，与 market_release 同口径：key 属主是站点级事实）
-- [ ] T3 api.ts：bind/unbind 端点 + `assertSolutionOperator` + install/install.cancel/task/
+- [x] T3 api.ts：bind/unbind 端点 + `assertSolutionOperator` + install/install.cancel/task/
       uninstall 换闸 + index 行 mine
-- [ ] T4 api 测试：归属矩阵/file 源/task 按名/bind 自证/解绑/mine 标记（Vitest 直调 handler，
+- [x] T4 api 测试：归属矩阵/file 源/task 按名/bind 自证/解绑/mine 标记（Vitest 直调 handler，
       沿用既有 oj-market api 测试范式）
-- [ ] T5 CLI `ojm market bind-key`（site.ts 登录 + signCanonical 签名推送）+ 单测
-- [ ] T6 web：IndexRow.mine + CardItem/CardGrid/DetailDrawer 按行放开（canManage 平权 +
+- [x] T5 CLI `ojm market bind-key`（site.ts 登录 + signCanonical 签名推送）+ 单测
+- [x] T6 web：IndexRow.mine + CardItem/CardGrid/DetailDrawer 按行放开（canManage 平权 +
       canOperate=canManage||row.mine，启停仍 canManage）
-- [ ] T7 门禁（templates 生命周期/oj-market 测试 + cli 单测 + typecheck + lint）→ merge
+- [x] T7 门禁（templates 生命周期/oj-market 测试 + cli 单测 + typecheck + lint）→ merge
       --no-ff 回 feat/ojm → 更新本文档状态与总结
 
 ## 风险与备注
@@ -96,3 +96,30 @@
   属主链并存不冲突：yank 管目录下线，本特性管装/卸。
 - file 源安装不产生 market_release 行 → 非 superadmin 永远 403，是有意设计（归属无法判定）。
 - `ojm uninstall` CLI 瘦客户端同走 /uninstall 端点，服务端换闸后自动获得归属放行。
+
+## 总结（2026-11-22 回填）
+
+- **关键过程**：
+  - T1-T5 按计划推进（版本推进 → 0011 迁移三方言 + schema/manifest 双登记 → api.ts
+    判权助手 + owner-key 端点 → spec 归属矩阵/bind/unbind/mine → CLI bind-key）。
+  - T6 web 按行放开：`canOperate = canManage || row.mine === true` 作用于装/卸/回滚，
+    启停（toggle + Popconfirm）**有意保持 canManage**（superadmin 独占）。
+  - T7 门禁发现并修复四类连带面（单测全绿后真闸才暴露，与「演练注入盲区」记忆同型）：
+    1. S005 归属图双源：market_owner_key 漏登记 `_platform/manifest.yaml` tables
+       （schema.yaml 已登，manifest 未登）→ `ojm build` 拒构建；
+    2. 三张守卫锚点漂移：s-2 迁移序号 0011、 t-2 shared_allow、 t-4 表数 32→33
+       + B 组清单补 market_owner_key；
+    3. 契约漂移：`oj openapi` + `ojm api` 重新生成 openapi.json / __client
+       （owner-key 两个新端点进契约），生成物须再经 `lint:fix` 才能过 eslint
+       （--check 是语义比对，格式化后零漂移仍成立）；
+    4. 随站 bundle 重建：0.2.8 tgz + platform.release 重签（canon v2 +
+       registry_id oj-registry）+ sync-bundles 收编（裁 6 个历史版）。
+  - 反常识追加：`ojm build` 不识别 `--no-minify`（内建于 backend.ts 调 oj 时）；
+    eslint quote-props consistent 策略下，连字符 key（"bind-key"）会强制同对象
+    全部 key 加引号——help 对象大，人工对齐易错位（本次曾把块插进 verify 内部）。
+- **测试面**：templates 生命周期 1334 全绿（market-api.spec 87 例，新增归属矩阵 /
+  bind 自证 / unbind / mine 标记）；cli 单测 740 全绿（remote-push 16 例，新增
+  bind-key canonical + 409 面）；根仓 1077 全绿（CardGrid 26 例，新增 mine=true
+  按行放行 + 非归属全禁）；typecheck / eslint 零错误（6 警告为存量）。
+- **耗时**：实现+单测 ≈90min；T7 门禁连带修复（S005/守卫/契约/bundle/usage
+  排版）≈40min。

@@ -18,6 +18,8 @@ export interface DetailDrawerProps {
 export function DetailDrawer({ row, open, onClose, canManage = true, onInstall, onHistory, onRollback }: DetailDrawerProps) {
 	const { t } = useTranslation();
 	// 非 superadmin：写操作禁用并解释原因，历史（只读）保持可用。
+	// 归属放行（20261122-1155）：row.mine → 装/回滚可用；启停不在本抽屉（卡片 toggle，仍 superadmin）
+	const canOperate = canManage || row?.mine === true;
 	const manageTip = canManage ? undefined : t("oj-market:card:superOnly");
 	// 已装且无可升级发布版时，升级按钮无意义：与卡片一致禁用（upgradable 由服务端算好）
 	const upgradeBlocked = row != null && row.installed != null && !row.upgradable;
@@ -70,11 +72,11 @@ export function DetailDrawer({ row, open, onClose, canManage = true, onInstall, 
 						)}
 					</Descriptions>
 					<Space style={{ marginTop: 16 }}>
-						<Button type="primary" onClick={() => onInstall(row)} disabled={!canManage || upgradeBlocked} title={installTip}>
+						<Button type="primary" onClick={() => onInstall(row)} disabled={!canOperate || upgradeBlocked} title={installTip}>
 							{row.installed ? t("oj-market:card:upgrade") : t("oj-market:card:install")}
 						</Button>
 						{row.installed != null && (
-							<Button onClick={() => onRollback(row)} data-testid="detail-rollback" disabled={!canManage} title={manageTip}>
+							<Button onClick={() => onRollback(row)} data-testid="detail-rollback" disabled={!canOperate} title={manageTip}>
 								{t("oj-market:card:rollback")}
 							</Button>
 						)}

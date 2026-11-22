@@ -122,6 +122,8 @@ export interface IndexRow {
 	license?: string | null
 	/** 发布者（分片条目 archive.signature.key_id，经验签的签名身份；与后端 trust_state/key_id 同用 snake_case） */
 	publisher_key?: string | null
+	/** 归属标记（20261122-1155）：发布 key 已绑定属于当前登录用户 → 装/卸/回滚按行放行（启停仍 superadmin） */
+	mine?: boolean
 	/** 方案简介（manifest.summary，C2-04 单行 1..200；索引未带该字段 → undefined/null） */
 	summary?: string | null
 	/** 方案详细描述（manifest.description，C2-05 ≤2000；索引未带该字段 → undefined/null） */
