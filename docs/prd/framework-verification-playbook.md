@@ -1374,6 +1374,36 @@ node "$CLI_PKG/bin/ojm.mjs" build && npx tsc --noEmit -p tsconfig.json && node "
 | 手册同步 | 文首结论换本轮；§9 增 8 行（7 类缺陷 + 1 条 `oj test` 连跑 429 的操作坑）；§11 增 U9；附录 A 增本条 |
 | 遗留 | ① §7.2 发布进 CDN / §7.3 安装→TOFU 未重跑——本轮改动集中在模板业务面与脚手架分发，市场编排面未动，闭环沿用 2026-11-10 基线。② 仓库 `bin/oj` = 0.1.129 < `MIN_OJ_VERSION` 0.1.130：仓库内 `oj test` 门禁需先 `ojm vendor v0.1.130`（该目录 gitignored）。③ §6 dev + 浏览器未单独手跑（最后一轮重打后未复跑）：同面由 §6.5 的 e2e **26 passed** 覆盖（真起服 + playwright，含登录/列表/弹层），下轮动前端路由或样式时补跑。 |
 
+### overlay 线真机基线（2026-11-22，oj 0.1.138 / cli+runtime 0.2.97 **打包态**；§7.6 出厂收敛 + §7.7 闭环 + 升级/卸载/重装 + DB 内容逐动作核验）
+
+| 项 | 值 |
+| --- | --- |
+| 日期 | 2026-11-22（feat/ojm @ 0f14ccfac；演练目录 /tmp/ojm-overlay-drill/my-books，端口 9781——9778 被 oj-wiki-docs 陈旧实例占用，e2e 单实例纪律下让端口） |
+| 框架包版本 | §0.5 打包态 cli/runtime 0.2.97（本地 tgz + overrides 双钉）；站点 oj-market 0.2.7（随站 bundle） |
+| 范围 | §0.5 → §1(init --yes) → 构建/签名 → release 起站（--api-path dist/api -b /api）→ 出厂收敛（riding index）→ 作者造包 books 0.1.0 → curl 协议入库 → 按名安装 → **升级 0.2.1** → 卸载（软删）→ 重装 → setEnabled 往返；**每个动作后核验 sys_module_overlay 行 + modules.json + 探活** |
+| 结果 | 全链路绿（详见下表）；抓 1 个真机缺陷已 TDD 修复合入（fix/site-materialize-log-guard，0f14ccfac） |
+
+**DB 内容逐动作核验（sys_module_overlay，sqlite 真库 db.sqlite）**：
+
+| 动作 | 行状态 | seq | 观测 |
+| --- | --- | --- | --- |
+| 出厂收敛（首跑，缺陷未修） | oj-market enabled=0 actor=compensate | 3 | deploying_web 抛 BadResource → compensate 软删（软删语义本身首跑即验证） |
+| 出厂收敛（修复后） | oj-market enabled=1 actor=bundle-converge old_state={enabled:0} | 17 | modules.json 并入 oj-market；overlay-cache.json db_seq=17 对齐；jsonl 结构化日志落 dist/api/.solutions/ |
+| 安装 books 0.1.0 | enabled=1 old_state={enabled:0} | 21 | 先登记 enabled=0 再 swap；两段式 reloading partial → 重启宿主 → retry done |
+| 升级 0.2.1（swap 原子换版） | 0.1.0→enabled=0；0.2.1→enabled=1 **同 seq=25** | 25 | 同名多行各保留；modules.json 单次一条换代；oj-market 行不受扰 |
+| 卸载（软删） | 两行俱在、全 enabled=0 | 26 | modules.json 剔除 books；/api/books/ping 404；**行不删** |
+| 重装 0.2.1 | 0.2.1 enabled=1（**原位更新无新行**） | 28 | ping 200，modules.json 并回 |
+| setEnabled 停用/启用往返 | enabled 0↔1 | 29→30 | seq 单调 |
+
+**本次新发现与处置**：
+
+1. **真机缺陷（已修）**：oj serve 的 converge riding index 请求 detached 续跑，console 随请求关闭——P4 给 siteMaterialize 加的结构化 `console.log(JSON)` 抛 `BadResource: Bad resource ID`，物化在写完清单后仍失败 → 安装 partial + compensate 软删回滚。单测全绿但真机必炸（注入盲区实锤）。修复 = emitStructuredLog（console best-effort + 同条 JSON 持久化 `<sharedRoot>/.solutions/site-materialize.jsonl`），commit 974c46967。**教训：isolate 里 console 不是安全通道，观测落文件**。
+2. **排查技法（可复用）**：`oj exec -c config.probe.yaml probe.js`（config 剥掉 platform 段绕 platform.root 挂载校验；fs 面全键可探：readFile 缺失=TypeError invalid_argument、rename/tmp 原子写可用）；站点侧 step 追踪用「fsFace 写 modules/.solutions/matDbg.log」（注意 writeFile 覆盖写，最后一次成功即瓶颈点后界）。
+3. **审计小缺口（待修）**：setEnabled 的 upsertOverlayRow 传 `old_state: null`（installer.ts:1366 硬编码），启停往返的旧值审计丢失；换版/软删的 old_state 均正常。
+4. **版本推进摩擦（用户体验）**：`ojm new` 骨架升版本要同步 4 处（solution.yaml version/archive.file/web.entry、api/manifest.yaml version、web/entry.ts version）——漏一处即 C2-27/C2-29 拒打；0.2.0 被畸形包占号后同版本不可覆盖（409 同版本一份字节），只能再升号。
+5. **边界重申**：`/api/books/ping` 带 `X-TENANT-ID` 头反而 403 `tenant requires a signed claim`（oj 侧 signed claim 纪律，smoke.ts:55 同口径）——不带租户头即通；C2-26 anonymous_residual 在**畸形包**（缺 manifest 声明）场景会误报，manifest 正常时同模块升级不触发。
+6. **自治门禁与演练的张力**：下游改 _platform（如本次热修验证）会触发内置模块自治门禁拒构建；演练 workaround = 打包原始文件 → ojm build → 换回补丁 → `oj build --no-minify`（memory：swc minify 跨 await 缺陷）——门禁本身行为正确，但意味着**热修验证必须走「补丁 src + 重建 dist/api」两步**。
+
 ### 市场线增量基线（2026-11-10，oj 0.1.129 / cli+runtime 0.2.82 工作区；新增 §7.8 离线上传的首轮实跑）
 
 | 项 | 值 |
