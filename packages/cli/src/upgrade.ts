@@ -286,10 +286,14 @@ export async function upgradeProject(projectRoot: string, opts: UpgradeOptions =
 		throw new Error(`[ojm] 升级失败（阶段 ${stageNo}）：${msg}\n已回滚至升级前状态（备份保留在 ${backupDir}）`);
 	};
 
-	// S3 换版
+	// S3 换版（显式 --registry 时转发给 pnpm add：用户的 registry 意图必须贯穿全链路，
+	// 否则升级看得见版本却装不上——2026-11-22 真机实锤）
 	try {
 		log(`安装 ${SCOPE_CLI}@${target} + ${SCOPE_RT}@${runtimeVersion}…`);
-		runCmd("pnpm", ["add", "-D", `${SCOPE_CLI}@${target}`, `${SCOPE_RT}@${runtimeVersion}`], projectRoot);
+		const addArgs = ["add", "-D", `${SCOPE_CLI}@${target}`, `${SCOPE_RT}@${runtimeVersion}`];
+		if (opts.registry !== undefined)
+			addArgs.push("--registry", registry);
+		runCmd("pnpm", addArgs, projectRoot);
 	}
 	catch (e) {
 		rollback("S3", e);
