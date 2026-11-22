@@ -235,15 +235,17 @@ describe("功能: 物化可观测（结构化日志 + 滞后指标 + 重试上�
 
 	it("catch-up 连续失败累计计数，达 5 次告警（site-materialize-alarm），成功后清零", async () => {
 		await fsp.writeFile(modulesJsonPath, "not-json"); // 基线损坏：物化必 fail-loud
-		const errors: string[] = [];
-		const spy = vi.spyOn(console, "error").mockImplementation((...a: unknown[]) => errors.push(a.map(String).join(" ")));
+		const logs: string[] = [];
+		const spy = vi.spyOn(console, "log").mockImplementation((...a: unknown[]) => logs.push(a.map(String).join(" ")));
 		try {
 			for (let i = 1; i <= 5; i++) {
 				await expect(catchUpSiteModules({ modulesJsonPath, sharedRoot, state })).rejects.toThrow();
 				const cache = JSON.parse(await fsp.readFile(join(sharedRoot, ".solutions", "overlay-cache.json"), "utf8")) as { fail_count?: number };
 				expect(cache.fail_count ?? 0).toBe(i); // 计数持久化（跨请求累计）
 			}
-			expect(errors.some(e => e.includes("site-materialize-alarm")), "第 5 次失败应告警").toBe(true);
+			expect(logs.some(e => e.includes("site-materialize-alarm")), "第 5 次失败应告警（console 通道）").toBe(true);
+			const jsonl = await fsp.readFile(join(sharedRoot, ".solutions", "site-materialize.jsonl"), "utf8");
+			expect(jsonl.includes("site-materialize-alarm"), "告警同条持久化 jsonl").toBe(true);
 			// 修复基线 → 成功 → 计数清零
 			await fsp.writeFile(modulesJsonPath, "[]\n");
 			await catchUpSiteModules({ modulesJsonPath, sharedRoot, state });
@@ -253,5 +255,23 @@ describe("功能: 物化可观测（结构化日志 + 滞后指标 + 重试上�
 		finally {
 			spy.mockRestore();
 		}
+	});
+
+	it("console 通道不可用（oj serve detached 上下文 BadResource）→ 物化不受影响，日志落 jsonl 文件", async () => {
+		await seedFace("wiki", "0.2.0", {});
+		await seedOverlayRow({ name: "wiki", version: "0.2.0", enabled: 1, face_ref: "modules/wiki/0.2.0", seq: 5 });
+		const spy = vi.spyOn(console, "log").mockImplementation(() => {
+			throw new Error("BadResource: Bad resource ID"); // 真机 oj serve 实证形态
+		});
+		try {
+			const r = await siteMaterialize({ modulesJsonPath, sharedRoot, state, actor: "drill" });
+			expect(r.ok).toBe(true); // 日志绝不允许反噬物化主流程
+		}
+		finally {
+			spy.mockRestore();
+		}
+		const jsonl = await fsp.readFile(join(sharedRoot, ".solutions", "site-materialize.jsonl"), "utf8");
+		const evt = JSON.parse(jsonl.trim().split("\n").at(-1)!) as Record<string, unknown>;
+		expect(evt).toMatchObject({ event: "site-materialize", actor: "drill", db_seq: 5 });
 	});
 });

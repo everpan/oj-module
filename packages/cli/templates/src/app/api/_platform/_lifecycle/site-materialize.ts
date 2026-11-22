@@ -124,6 +124,36 @@ interface OverlayCache {
 /** catch-up 连续失败告警上限（达限 console.error 报警；计数仍累计） */
 const CATCH_UP_ALARM_THRESHOLD = 5;
 
+/**
+ * 结构化日志发射（P4-T1 可观测）：console 通道 best-effort——oj serve 的 converge 在
+ * 请求响应后 detached 续跑，console 资源随请求关闭，调用即抛 BadResource（2026-11-22
+ * 真机实锤），日志绝不允许反噬物化主流程；同条 JSON 持久化到
+ * `<sharedRoot>/.solutions/site-materialize.jsonl`（读-追加-写，best-effort）。
+ */
+async function emitStructuredLog(sharedRoot: string, rec: Record<string, unknown>): Promise<void> {
+	const line = JSON.stringify(rec);
+	try {
+		console.log(line);
+	}
+	catch {
+		// console 资源已关闭（detached 上下文）：忽略，文件通道兜底
+	}
+	try {
+		const p = `${sharedRoot}/.solutions/site-materialize.jsonl`;
+		let prev = "";
+		try {
+			prev = new TextDecoder().decode(await fsFace().readFile(p));
+		}
+		catch {
+			// 文件缺失 = 首条
+		}
+		await fsFace().writeFile(p, new TextEncoder().encode(`${prev}${line}\n`));
+	}
+	catch {
+		// 持久化也失败：观测丢失可接受，物化已完成
+	}
+}
+
 /** 读 cache（reconcile 滞后检测共用）；缺失/损坏 → null（= 从未物化/标记丢失 → 视为滞后） */
 export async function readOverlayCacheOf(sharedRoot: string): Promise<{ db_seq: number, at: number, actor: string } | null> {
 	return await readOverlayCache(sharedRoot);
@@ -283,15 +313,14 @@ export async function siteMaterialize(input: SiteMaterializeInput): Promise<Site
 	}
 	await healSidecarFromOverlay(rows, input.state);
 	await writeOverlayCache(input.sharedRoot, { db_seq: dbSeq, at: Date.now(), actor: input.actor ?? "site-materialize" });
-	// 结构化日志（P4-T1 可观测）：actor/db_seq/changed/lag_sec/entries——滞后秒数 = 上次物化至今
-	console.log(JSON.stringify({
+	await emitStructuredLog(input.sharedRoot, {
 		event: "site-materialize",
 		actor: input.actor ?? "site-materialize",
 		db_seq: dbSeq,
 		changed,
 		lag_sec: prevCache === null ? null : Math.round((Date.now() - prevCache.at) / 1000),
 		entries: merged.length,
-	}));
+	});
 	return { ok: true, changed, dbSeq, message: `物化完成：${overlay.length} 行 overlay${changed ? "，modules.json 已重写" : "，清单已是最新（零写入）"}（DB seq=${dbSeq}）` };
 }
 
@@ -322,13 +351,13 @@ export async function catchUpSiteModules(input: SiteMaterializeInput): Promise<S
 		}
 		catch { /* cache 写不进：计数丢失则下次从头累计，告警可能延迟——可接受（best-effort 口径） */ }
 		if (failCount >= CATCH_UP_ALARM_THRESHOLD) {
-			console.error(JSON.stringify({
+			await emitStructuredLog(input.sharedRoot, {
 				event: "site-materialize-alarm",
 				reason: "catch-up 连续失败达上限",
 				fail_count: failCount,
 				db_seq: dbSeq,
 				error: String(e),
-			}));
+			});
 		}
 		throw e;
 	}
