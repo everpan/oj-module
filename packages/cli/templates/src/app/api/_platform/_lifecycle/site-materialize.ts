@@ -220,8 +220,14 @@ async function readFaceManifest(webRoot: string, row: OverlayRow): Promise<Recor
  * 崩溃窗愈合（catch-up 同函数顺带执行）：sidecar 条目滞后于 DB 行（enabled 或
  * overlay_seq 不一致）→ 以 DB 行为准补齐。仅触碰有 overlay 行的方案，backfill 前
  * 无行的方案不动（P2-T4 混合态不反向驱动）。best-effort：写失败静默（下次物化重试）。
+ *
+ * overlay_seq 写的是**本次物化的全局 dbSeq（overlay 表 max(seq)）**，不是该行的 row.seq：
+ * 行 seq 是「该行上次变更时的全局序号」，多方案站点各行 seq 必然参差不齐；而
+ * cli 离线 fail-stale（installed-merge.assertOverlayCacheFresh）把 sidecar.overlay_seq 与
+ * overlay-cache.json.db_seq（同为全局 max）比对——两者必须同口径，否则一次正常物化后
+ * 较早安装的行就「小于 db_seq」，离线构建被误判为过期货而拒写。
  */
-async function healSidecarFromOverlay(rows: OverlayRow[], state: StateStore | undefined): Promise<void> {
+async function healSidecarFromOverlay(rows: OverlayRow[], state: StateStore | undefined, dbSeq: number): Promise<void> {
 	if (state === undefined) {
 		return;
 	}
@@ -231,11 +237,11 @@ async function healSidecarFromOverlay(rows: OverlayRow[], state: StateStore | un
 			continue;
 		}
 		const entry = side[row.name];
-		if (entry === undefined || (entry.version === row.version && entry.enabled === (Number(row.enabled) === 1) && entry.overlay_seq === Number(row.seq))) {
+		if (entry === undefined || (entry.version === row.version && entry.enabled === (Number(row.enabled) === 1) && entry.overlay_seq === dbSeq)) {
 			continue;
 		}
 		try {
-			await state.write({ solutions: { [row.name]: { ...entry, version: row.version, enabled: Number(row.enabled) === 1, overlay_seq: Number(row.seq) } } });
+			await state.write({ solutions: { [row.name]: { ...entry, version: row.version, enabled: Number(row.enabled) === 1, overlay_seq: dbSeq } } });
 		}
 		catch {
 			// best-effort：下次物化重试
@@ -311,7 +317,7 @@ export async function siteMaterialize(input: SiteMaterializeInput): Promise<Site
 	if (changed) {
 		await atomicWriteText(input.modulesJsonPath, next);
 	}
-	await healSidecarFromOverlay(rows, input.state);
+	await healSidecarFromOverlay(rows, input.state, dbSeq);
 	await writeOverlayCache(input.sharedRoot, { db_seq: dbSeq, at: Date.now(), actor: input.actor ?? "site-materialize" });
 	await emitStructuredLog(input.sharedRoot, {
 		event: "site-materialize",

@@ -58,6 +58,13 @@ function readInstalledState(projectRoot: string): Record<string, { version: stri
  * 而 sidecar 条目携带的 overlay_seq 落后（或无 seq 可判）→ 这份缓存是过期货——拒绝覆盖
  * modules.json + 报警（throw），宁可构建失败也不静默复活错误启停态。愈合：联网跑一次
  * 构建/任意生命周期 API（catch-up 重跑物化并补 sidecar seq），序号对齐后自然放行。
+ *
+ * 口径纪律：sidecar.overlay_seq 必须是**物化时的全局 dbSeq**（overlay 表 max(seq)），
+ * 由 site-materialize.healSidecarFromOverlay 写入，与 overlay-cache.json.db_seq 同口径。
+ * 绝不能是该行的 row.seq（行 seq 是各行上次变更时的全局序号，多方案站点必然参差）——
+ * 若回退成 row.seq，则一次正常物化后较早安装的行 overlay_seq < db_seq，离线构建会被
+ * 误判为过期货而拒写（详见 site-materialize.healSidecarFromOverlay 注释）。本函数据此
+ * 直接比较 overlaySeq 与 dbSeq，两者同为全局序号，比较成立。
  */
 function assertOverlayCacheFresh(projectRoot: string, state: Record<string, { overlaySeq?: number }>): void {
 	const cachePath = path.join(projectRoot, "modules", ".solutions", "overlay-cache.json");

@@ -193,6 +193,21 @@ describe("mergeInstalledModules", () => {
 			expect((merged[1] as unknown as Record<string, unknown>).enabled).toBe(false);
 		});
 
+		it("多方案 sidecar：每条 overlay_seq 都=全局 dbSeq（site-materialize 口径）→ 不误判 stale", () => {
+			const { root, dist } = tempRoot();
+			// 多 overlay 行的行 seq 参差（3/7），但 site-materialize 统一把全局 dbSeq=7
+			// 写进每条 sidecar 的 overlay_seq——离线构建直接比 overlaySeq 与 dbSeq 成立。
+			writeStateWithSeq(root, {
+				"oj-market": { version: "0.2.0", enabled: true, overlaySeq: 7 },
+				"notes": { version: "1.1.0", enabled: false, overlaySeq: 7 },
+			});
+			writeFace(dist, "oj-market", "0.2.0", {});
+			writeFace(dist, "notes", "1.1.0", {});
+			writeCache(root, 7);
+
+			expect(mergeInstalledModules(root, dist, BUILT)).toHaveLength(3);
+		});
+
 		it("无 overlay-cache.json（从未在线物化）→ 无从判 stale，legacy 照跑", () => {
 			const { root, dist } = tempRoot();
 			writeStateWithSeq(root, { "oj-market": { version: "0.2.0", enabled: true } });

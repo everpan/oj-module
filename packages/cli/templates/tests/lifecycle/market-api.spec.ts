@@ -1708,7 +1708,9 @@ describe("功能: 方案归属者免 superadmin 装/卸（归属矩阵）", () =
 		invalidateAllUsers(); // 快照缓存：同测内先 403 后补绑定的顺序必须手动失效
 	}
 	function bindKey(userId: number, keyId: string): void {
-		dbo.prepare("INSERT INTO market_owner_key (user_id, key_id, public_key, created_at) VALUES (?, ?, '00', 1000)").run(userId, keyId);
+		// 归属判权按绑定公钥与 market_release.sig_public_key 比对（非仅 key_id 标签）；
+		// 夹具用 seedRelease 的签名公钥 TEST_KEY，故绑定同一把公钥才算真属主。
+		dbo.prepare("INSERT INTO market_owner_key (user_id, key_id, public_key, created_at) VALUES (?, ?, ?, 1000)").run(userId, keyId, TEST_KEY.publicKeyHex);
 	}
 	function apiOf() {
 		return createMarketApi(makeEnv({ registryId: REGISTRY }));
@@ -1842,11 +1844,74 @@ describe("功能: owner-key 绑定（POST/DELETE /market/owner-key，持钥自�
 		g.http = { user: { id: 3 }, body: bindBody(key) };
 		await api["owner-key"].post();
 		expect(last?.status).toBe(409);
-		// 绑定真生效：alice 成为 acme 属主（行 key_id = alice.main）
-		dbo.prepare("INSERT INTO market_release (product,version,key_id,sha256,size,published_at,published_at_source,yanked,first_seen_at) VALUES ('acme','0.1.0','alice.main',?,?,'1','upload','1','1')").run(SHA256, ARCHIVE.byteLength);
+		// 绑定真生效：alice 成为 acme 属主（行 key_id = alice.main，且发布公钥 = 所绑公钥）。
+		// 预绑定（绑定时该 key 尚无发布行）→ 发布后按公钥比对即生效，无需重绑。
+		dbo.prepare("INSERT INTO market_release (product,version,key_id,sha256,size,published_at,published_at_source,yanked,first_seen_at,sig_public_key) VALUES ('acme','0.1.0','alice.main',?,?,'1','upload','1','1',?)").run(SHA256, ARCHIVE.byteLength, key.publicKeyHex);
 		g.http = { user: { id: 2 }, body: { name: "acme", source: "cdn" } };
 		await api.install.post();
 		expect(last?.status).not.toBe(403); // 过闸（yanked 目录行 resolveFromDb 拒 409/404）
+	});
+
+	it("场景: 抢注——自造密钥对签正确 canonical 也绑不上已发布 key_id → 401（公钥须与 sig_public_key 一致）", async () => {
+		// key_id 只是自报标签；canonical 验签只证明「持有一把私钥」，不证明是该 key 的发布私钥。
+		seedRelease("acme", "0.1.0", { key_id: KEY_ID }); // 该 key 已由 TEST_KEY 发布
+		seedUser(2, "attacker");
+		const attacker = generateKeyPair();
+		const api = createMarketApi(makeEnv({ registryId: REGISTRY }));
+		// 自造密钥对，canonical 签名本身有效——但公钥与发布记录不符
+		g.http = { user: { id: 2 }, body: bindBody(attacker) };
+		await api["owner-key"].post();
+		expect(last?.status).toBe(401);
+		expect(String(last?.msg)).toContain("发布记录不符");
+		// 库内无绑定
+		const row = dbo.prepare("SELECT user_id FROM market_owner_key WHERE key_id = ?").get(KEY_ID);
+		expect(row).toBeUndefined();
+	});
+
+	it("场景: 真发布钥夺回被预绑定的 key_id → 200 且属主改写（防预绑定抢注永久 DoS）", async () => {
+		seedUser(2, "alice");
+		seedUser(3, "squatter");
+		const api = createMarketApi(makeEnv({ registryId: REGISTRY }));
+		// 抢注者在 key 尚无发布行时预绑定成功（本特性明确支持预绑定）
+		const squatter = generateKeyPair();
+		g.http = { user: { id: 3 }, body: bindBody(squatter) };
+		await api["owner-key"].post();
+		expect(last?.status).toBe(200);
+		// 真发布钥持有者发布该 key
+		seedRelease("acme", "0.1.0", { key_id: KEY_ID }); // sig_public_key = TEST_KEY
+		// 真属主持 TEST_KEY 绑定 → 夺回（user_id 改写为 alice）
+		g.http = { user: { id: 2 }, body: bindBody(TEST_KEY) };
+		await api["owner-key"].post();
+		expect(last?.status).toBe(200);
+		const row = dbo.prepare("SELECT user_id, public_key FROM market_owner_key WHERE key_id = ?").get(KEY_ID) as { user_id: number, public_key: string };
+		expect(Number(row.user_id)).toBe(2);
+		expect(row.public_key.toLowerCase()).toBe(TEST_KEY.publicKeyHex.toLowerCase());
+		// 夺回后真属主获得归属放行
+		g.http = { user: { id: 2 }, body: { name: "acme", source: "cdn" } };
+		await api.install.post();
+		expect(last?.status).not.toBe(403);
+	});
+
+	it("场景: 预绑定填错公钥 → 发布后本人重绑正解 → 库内公钥刷新，归属生效", async () => {
+		seedUser(2, "alice");
+		const api = createMarketApi(makeEnv({ registryId: REGISTRY }));
+		// 预绑定时填了错误公钥（尚无发布行，放行）
+		const wrong = generateKeyPair();
+		g.http = { user: { id: 2 }, body: bindBody(wrong) };
+		await api["owner-key"].post();
+		expect(last?.status).toBe(200);
+		// 该 key 由真发布钥 TEST_KEY 发布
+		seedRelease("acme", "0.1.0", { key_id: KEY_ID });
+		// 本人持真发布钥重绑 → 公钥被刷新（不是幂等空转）
+		g.http = { user: { id: 2 }, body: bindBody(TEST_KEY) };
+		await api["owner-key"].post();
+		expect(last?.status).toBe(200);
+		const row = dbo.prepare("SELECT public_key FROM market_owner_key WHERE key_id = ?").get(KEY_ID) as { public_key: string };
+		expect(row.public_key.toLowerCase()).toBe(TEST_KEY.publicKeyHex.toLowerCase());
+		// 公钥对齐后归属判定生效
+		g.http = { user: { id: 2 }, body: { name: "acme", source: "cdn" } };
+		await api.install.post();
+		expect(last?.status).not.toBe(403);
 	});
 
 	it("场景: 签名与公钥不匹配 / key_id 非法 / 匿名 → 401 / 400 / 401", async () => {
@@ -1903,7 +1968,7 @@ describe("功能: 方案清单 mine 标记（GET /market/index 行级归属）",
 		seedRelease("demo", "0.1.0", { key_id: "test.publisher", manifest: manifestFixture() });
 		seedUser(2, "alice");
 		seedUser(3, "carol");
-		dbo.prepare("INSERT INTO market_owner_key (user_id, key_id, public_key, created_at) VALUES (2, 'alice.main', '00', 1000)").run();
+		dbo.prepare("INSERT INTO market_owner_key (user_id, key_id, public_key, created_at) VALUES (2, 'alice.main', ?, 1000)").run(TEST_KEY.publicKeyHex);
 		const api = createMarketApi(makeEnv());
 		g.http = { user: { id: 2 } };
 		await api.index.get();
@@ -1915,6 +1980,20 @@ describe("功能: 方案清单 mine 标记（GET /market/index 行级归属）",
 		await api.index.get();
 		const list2 = (last?.data as { list: Array<{ name: string, mine: boolean }> }).list;
 		expect(list2.find(r => r.name === "acme")).toMatchObject({ mine: false });
+	});
+
+	it("场景: 公钥不匹配（只抢注 key_id 标签）→ mine=false（前端不放开装/卸按钮）", async () => {
+		seedRelease("acme", "0.1.0", { key_id: "alice.main", manifest: manifestFixture() }); // sig_public_key = TEST_KEY
+		seedUser(2, "squatter");
+		// 绑定同 key_id 但公钥是一把自造的 key（与发布公钥不符）
+		const rogue = generateKeyPair();
+		dbo.prepare("INSERT INTO market_owner_key (user_id, key_id, public_key, created_at) VALUES (2, 'alice.main', ?, 1000)").run(rogue.publicKeyHex);
+		const api = createMarketApi(makeEnv());
+		g.http = { user: { id: 2 } };
+		await api.index.get();
+		expect(last?.status).toBe(200);
+		const list = (last?.data as { list: Array<{ name: string, mine: boolean }> }).list;
+		expect(list.find(r => r.name === "acme")).toMatchObject({ mine: false });
 	});
 });
 

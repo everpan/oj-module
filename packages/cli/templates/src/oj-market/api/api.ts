@@ -322,24 +322,54 @@ function currentUserId(): number | null {
 	return typeof uid === "number" ? uid : null;
 }
 
-/** 我绑定的发布 key 集合（market_owner_key；表缺失/不可达 → 空集不炸，判权自然落 403） */
-async function ownedKeyIdsOf(userId: number): Promise<Set<string>> {
+/** 公钥归一（hex 大小写/空白不敏感；只用于比对，不改写落库值） */
+function normPublicKey(value: unknown): string {
+	return String(value ?? "").trim().toLowerCase();
+}
+
+/**
+ * 我绑定的 key（key_id → public_key）。
+ *
+ * 判权必须比公钥，不能只比 key_id 标签：key_id 是 `<publisher>.<id>` 的自报命名空间，
+ * canonical 验签只证明「持有一把私钥」，不证明「持有该 key_id 的发布私钥」。只比标签
+ * 会让任何登录用户自造密钥对、签同一串 canonical 后抢注他人 key_id（见 owner-key POST）。
+ * 站点权威的「key_id ↔ 公钥」来源是 market_release.sig_public_key。
+ */
+async function ownedKeysOf(userId: number): Promise<Map<string, string>> {
 	try {
-		const rows = await db.table("market_owner_key").select(["key_id"]).where({ field: "user_id", op: "eq", value: userId }).all() as Array<{ key_id: unknown }>;
-		return new Set(rows.map(r => String(r.key_id)));
+		const rows = await db.table("market_owner_key").select(["key_id", "public_key"]).where({ field: "user_id", op: "eq", value: userId }).all() as Array<{ key_id: unknown, public_key: unknown }>;
+		return new Map(rows.map(r => [String(r.key_id), normPublicKey(r.public_key)]));
 	}
 	catch {
-		return new Set();
+		return new Map();
 	}
 }
 
-/** 方案归属判定（计划 20261122-1155）：market_release 中该 product 任一行 key_id 属于我的绑定 */
+/** 该 key_id 已发布版本的权威公钥集合（market_release.sig_public_key；表不可达 → 空 = 未发布，允许预绑定） */
+async function publishedPublicKeysOf(keyId: string): Promise<string[]> {
+	try {
+		const rows = await db.table("market_release").select(["sig_public_key"]).where({ field: "key_id", op: "eq", value: keyId }).all() as Array<{ sig_public_key: unknown }>;
+		return [...new Set(rows.map(r => normPublicKey(r.sig_public_key)).filter(pk => pk !== ""))];
+	}
+	catch {
+		return [];
+	}
+}
+
+/**
+ * 方案归属判定（计划 20261122-1155）：该 product 发布行的 key_id ∈ 我的绑定，
+ * **且**绑定公钥与该行 sig_public_key 一致——防止只凭自报 key_id 标签抢归属。
+ * 预绑定（尚无发布行）自然判 false，待发布后按公钥比对即生效，无需改绑定。
+ */
 async function ownsSolution(userId: number, name: string): Promise<boolean> {
-	const owned = await ownedKeyIdsOf(userId);
+	const owned = await ownedKeysOf(userId);
 	if (owned.size === 0)
 		return false;
-	const rows = await db.table("market_release").select(["key_id"]).where({ field: "product", op: "eq", value: name }).all() as Array<{ key_id: unknown }>;
-	return rows.some(r => r.key_id != null && owned.has(String(r.key_id)));
+	const rows = await db.table("market_release").select(["key_id", "sig_public_key"]).where({ field: "product", op: "eq", value: name }).all() as Array<{ key_id: unknown, sig_public_key: unknown }>;
+	return rows.some((r) => {
+		const publisher = normPublicKey(r.sig_public_key);
+		return r.key_id != null && publisher !== "" && owned.get(String(r.key_id)) === publisher;
+	});
 }
 
 /**
@@ -769,7 +799,7 @@ async function indexBody(env: MarketEnv, q: Record<string, unknown>): Promise<{ 
 	await reconcileOf(env);
 	const { page, size, offset } = pageArgs({ page: q.page, size: q.size });
 	const rows = await allRows(() => db.table("market_release")
-		.select(["product", "version", "key_id", "yanked", "manifest"])) as Array<Record<string, unknown>>;
+		.select(["product", "version", "key_id", "yanked", "manifest", "sig_public_key"])) as Array<Record<string, unknown>>;
 	const byProduct = new Map<string, Array<Record<string, unknown>>>();
 	for (const r of rows) {
 		const product = String(r.product);
@@ -778,10 +808,11 @@ async function indexBody(env: MarketEnv, q: Record<string, unknown>): Promise<{ 
 		byProduct.set(product, list);
 	}
 	const local = (await createStateStore(env.statePath)).read().solutions;
-	// 归属标记（计划 20261122-1155）：我绑定的发布 key 集合一次批取，行级 mine = 最新行
-	// publisher_key 属于我的绑定（无登录态 → 全 false；未绑定 → 全 false）
+	// 归属标记（计划 20261122-1155）：我绑定的 key 一次批取（key_id → 公钥）；行级 mine
+	// 除 key_id 相同外还须公钥与该行 sig_public_key 一致——与 ownsSolution 同口径，否则
+	// 前端会为抢注了 key_id 标签的人放开装/卸按钮（无登录态 → 全 false）。
 	const uid = currentUserId();
-	const ownedKeys = uid === null ? new Set<string>() : await ownedKeyIdsOf(uid);
+	const ownedKeys = uid === null ? new Map<string, string>() : await ownedKeysOf(uid);
 	// 本地独有（DB 无行）也列出：目录表空 ≠ 本地没装（回填前旧世界）
 	for (const name of Object.keys(local)) {
 		if (!byProduct.has(name))
@@ -810,7 +841,12 @@ async function indexBody(env: MarketEnv, q: Record<string, unknown>): Promise<{ 
 			changelog: m?.changelog ?? null,
 			publisher: typeof m?.author === "string" ? m.author : null,
 			publisher_key: latestRow?.key_id != null ? String(latestRow.key_id) : null,
-			mine: latestRow?.key_id != null && ownedKeys.has(String(latestRow.key_id)),
+			mine: (() => {
+				if (latestRow?.key_id == null)
+					return false;
+				const publisher = normPublicKey(latestRow.sig_public_key);
+				return publisher !== "" && ownedKeys.get(String(latestRow.key_id)) === publisher;
+			})(),
 			license: typeof m?.license === "string" ? m.license : null,
 			summary: typeof m?.summary === "string" ? m.summary : null,
 			description: typeof m?.description === "string" ? m.description : null,
@@ -1138,9 +1174,14 @@ export function createMarketApi(env: MarketEnv) {
 		},
 		// 归属 key 绑定面（计划 20261122-1155；market_owner_key 表，0011 迁移）：
 		// POST   /market/owner-key          绑定 {key_id, public_key, signature}——登录即可（任意有效
-		//                                   账号绑自己的 key），持钥自证：Ed25519 canonical
-		//                                   `market-owner-key:<registryId>:<keyId>` 验签通过才落库，
-		//                                   否则任何人可抢注他人 key_id。key_id 全站唯一：已属他人 409，
+		//                                   账号绑自己的 key，支持发布前预绑定）。持钥自证两层：
+		//                                   ① Ed25519 canonical 验签（防重放/防签名与公钥不匹配）；
+		//                                   ② 该 key_id 已有发布记录时，公钥须与 market_release.sig_public_key
+		//                                      一致（防自造密钥对抢注他人 key_id 标签——canonical 验签
+		//                                      只证明持有某把私钥，不证明是该 key_id 的发布私钥）。
+		//                                   判权（ownsSolution/index.mine）同样按绑定公钥比对，故预绑定
+		//                                   一个他人 key_id 标签在对方发布后也不会获得归属。
+		//                                   key_id 全站唯一：已属他人 409（真发布钥持有者可夺回），
 		//                                   重复自绑幂等 200。绑定后 install/uninstall/task 按归属放行。
 		// DELETE /market/owner-key?key_id=  解绑——绑定者本人或 superadmin。
 		"owner-key": {
@@ -1160,11 +1201,32 @@ export function createMarketApi(env: MarketEnv) {
 					const canonical = `market-owner-key:${env.registryId ?? ""}:${keyId}`;
 					if (!verifyCanonicalSig({ verifyEd25519: env.verifyEd25519 }, publicKey, canonical, signature))
 						fail(401, "归属绑定验签失败：canonical 不符——须以该 key 的私钥签 market-owner-key:<registryId>:<keyId>（ojm market bind-key）");
-					const existing = await db.table("market_owner_key").select(["id", "user_id"]).where({ field: "key_id", op: "eq", value: keyId }).limit(1).all() as Array<{ id: unknown, user_id: unknown }>;
+					// ② 权威 key_id ↔ 公钥绑定：已发布版本以 market_release.sig_public_key 为准。
+					// 无发布记录 = 预绑定（本特性明确支持），放行但按下文公钥口径判权。
+					const pubNorm = normPublicKey(publicKey);
+					const publishedKeys = await publishedPublicKeysOf(keyId);
+					if (publishedKeys.length > 0 && !publishedKeys.includes(pubNorm))
+						fail(401, `公钥与 key「${keyId}」的发布记录不符——key_id 只是自报标签，须用该发布 key 的公钥绑定（ojm market bind-key）`);
+					const existing = await db.table("market_owner_key").select(["id", "user_id", "public_key"]).where({ field: "key_id", op: "eq", value: keyId }).limit(1).all() as Array<{ id: unknown, user_id: unknown, public_key: unknown }>;
+					const isPublisherKey = publishedKeys.length > 0 && publishedKeys.includes(pubNorm);
 					if (existing.length > 0) {
-						if (Number(existing[0]!.user_id) !== uid)
-							fail(409, `key「${keyId}」已绑定到其他用户——一把发布 key 全站一个属主（换主 = 解绑后重绑）`);
-						return { ok: true, key_id: keyId, idempotent: true };
+						const holder = Number(existing[0]!.user_id);
+						if (holder === uid) {
+							// 重复自绑：凡是库内公钥与本次提交（已验签 + 已对发布记录）不一致就刷新——
+							// 覆盖「预绑定时填错公钥、发布后重绑正解」以及「发布记录换钥后重新绑定」两种
+							// 情形；若已一致则零写入，保持幂等。
+							if (normPublicKey(existing[0]!.public_key) !== pubNorm) {
+								await db.table("market_owner_key").where({ field: "id", op: "eq", value: existing[0]!.id }).update({ public_key: publicKey, created_at: Math.floor(Date.now() / 1000) }).run();
+							}
+							return { ok: true, key_id: keyId, idempotent: true };
+						}
+						// 他人持有：只有真发布钥持有者（公钥与发布记录一致）可夺回——
+						// 否则预绑定抢注者会让真属主永远拿不回自己的 key_id（DoS）
+						if (isPublisherKey) {
+							await db.table("market_owner_key").where({ field: "id", op: "eq", value: existing[0]!.id }).update({ user_id: uid, public_key: publicKey, created_at: Math.floor(Date.now() / 1000) }).run();
+							return { ok: true, key_id: keyId };
+						}
+						fail(409, `key「${keyId}」已绑定到其他用户——一把发布 key 全站一个属主（换主 = 解绑后重绑）`);
 					}
 					await db.table("market_owner_key").insert({ user_id: uid, key_id: keyId, public_key: publicKey, created_at: Math.floor(Date.now() / 1000) }).run();
 					return { ok: true, key_id: keyId };

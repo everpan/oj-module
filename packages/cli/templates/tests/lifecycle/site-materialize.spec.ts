@@ -144,6 +144,28 @@ describe("功能: 崩溃窗口自愈（DB 写好文件没算就崩，下一 API 
 		expect(healed.overlay_seq).toBe(7);
 	});
 
+	it("场景: 多 overlay 行（各行 seq 参差）→ 愈合后每条 sidecar.overlay_seq 都=全局 dbSeq（非行 seq，离线 fail-stale 不误判）", async () => {
+		// 回归：曾把行 seq 写进 sidecar，较早安装的行 overlay_seq(3) < cache.db_seq(7)，
+		// 一次正常物化后离线构建就被误判过期货拒写。修复后统一写全局 dbSeq。
+		await seedFace("wiki", "0.2.0", {});
+		await seedFace("notes", "1.1.0", {});
+		await seedOverlayRow({ name: "wiki", version: "0.2.0", enabled: 1, face_ref: "modules/wiki/0.2.0", seq: 3 });
+		await seedOverlayRow({ name: "notes", version: "1.1.0", enabled: 0, face_ref: "modules/notes/1.1.0", seq: 7 });
+		await state.write({
+			solutions: {
+				wiki: { version: "0.2.0", enabled: true, installedAt: 1 },
+				notes: { version: "1.1.0", enabled: true, installedAt: 1 },
+			},
+		});
+
+		const r = await siteMaterialize({ modulesJsonPath, sharedRoot, state });
+		expect(r.dbSeq).toBe(7);
+
+		const healed = state.read().solutions;
+		expect(healed.wiki!.overlay_seq).toBe(7); // 不是行 seq=3
+		expect(healed.notes!.overlay_seq).toBe(7); // 全局 max
+	});
+
 	it("场景: overlay 表不可达（老平台）→ catch-up 不动作（null，legacy 回落）", async () => {
 		g.db = undefined;
 		const r = await catchUpSiteModules({ modulesJsonPath, sharedRoot, state });
