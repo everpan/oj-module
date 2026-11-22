@@ -249,10 +249,9 @@ function walkProjectFiles(projectRoot: string, root: string, visit: (rel: string
  * 收集工程默认模块相对当前 cli 模板的漂移。
  * 门禁未启用（无 `.ojm-builtin.json`）→ null；已启用 → 三类清单（可为空）。
  */
-export function collectDefaultModuleDrift(projectRoot: string): ScaffoldDrift | null {
+export function collectDefaultModuleDrift(projectRoot: string, templatesDir: string = templatesRoot()): ScaffoldDrift | null {
 	if (!guardEnabled(projectRoot))
 		return null;
-	const templatesDir = templatesRoot();
 	// 工程即 cli 包内 templates 自身（上游源仓）：基线 == 自身，比较无意义
 	// （白名单外的 demo-only 文件在 extra 轴上必误报），直接放行
 	if (path.resolve(projectRoot) === path.resolve(templatesDir))

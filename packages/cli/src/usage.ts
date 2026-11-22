@@ -85,6 +85,21 @@ export const HELP_GROUPS: HelpGroup[] = [
 				},
 			},
 			{
+				key: "upgrade",
+				name: "upgrade",
+				zh: "框架升级（评估 → 备份 → 换版 → 新 CLI 重跑 init --yes，失败自动回滚）",
+				en: "Framework upgrade (assess → backup → switch versions → re-init via new CLI, auto-rollback on failure)",
+				options: [
+					{ raw: "--yes", zh: "非交互：评估后直接执行（无则只打印评估，零写入）", en: "Non-interactive: execute after assessment (without it, assessment only, zero writes)" },
+					{ raw: "--to <version>", zh: "钉目标版本（缺省 registry dist-tags.latest）", en: "Pin target version (default: registry dist-tags.latest)" },
+					{ raw: "--registry <url>", zh: "registry 地址（缺省 https://registry.npmjs.org）", en: "Registry URL (default https://registry.npmjs.org)" },
+				],
+				detail: {
+					zh: "ojm upgrade [--yes] [--to <version>] [--registry <url>]\n  以已发布最新版本为准（用户侧不需要源码）。改动面只有 package.json 两个\n  devDep + node_modules + 保护根（src/app、src/oj-market，由新 CLI 的 init --yes 恢复）；\n  config.yaml、自定义模块、站点 DB（已装方案及 enabled 状态）不受影响。\n  执行前备份到 .ojm-upgrade/backup-<ts>/（sha256 清单，保留最近 3 份）；\n  任一阶段失败自动回滚并报告失败阶段 + 原始错误 + 备份路径。",
+					en: "ojm upgrade [--yes] [--to <version>] [--registry <url>]\n  Upgrades to the latest published version (no source needed on user side). Touches only\n  two devDeps in package.json + node_modules + protected roots (src/app, src/oj-market,\n  restored by the new CLI's init --yes); config.yaml, custom modules and the site DB\n  (installed solutions and enabled states) are unaffected.\n  Backs up to .ojm-upgrade/backup-<ts>/ (sha256 manifest, keeps last 3) before executing;\n  any failure rolls back and reports stage + original error + backup path.",
+				},
+			},
+			{
 				key: "new",
 				name: "new [name] [...extra]",
 				zh: "脚手架内生成用户方案骨架（src/<name>/{api,web} + solution.yaml）",
