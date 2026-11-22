@@ -8,7 +8,7 @@
 import type { ReloadFace } from "./steps/reload";
 import { atomicWriteText, fsFace, isMissingPath } from "./atomic";
 import { revertLock } from "./lock";
-import { deleteOverlayRows, readOverlayDbSeq } from "./overlay";
+import { readOverlayDbSeq, softDeleteOverlayRows } from "./overlay";
 import { siteMaterialize } from "./site-materialize";
 import { removeModulesJsonEntry } from "./steps/deploy-web";
 import { previewSiblingOf, removeAnonymousPaths, removeMcpModule } from "./text-edit";
@@ -124,12 +124,12 @@ export async function compensate(input: CompensateInput): Promise<CompensateResu
 		await revertLock(input.sharedRoot, input.lockBefore, input.lockExisted);
 	});
 
-	// 3. modules.json 回滚（写面切换 Phase 3）：overlay 表可达 → 按名删 overlay 行 + 站点物化
+	// 3. modules.json 回滚（写面切换 Phase 3）：overlay 表可达 → 按名软删 overlay 行（enabled=0，审计保留）+ 站点物化
 	// （唯一写者收敛；方案轨残留条目随物化剔除）；表不可达 → legacy removeModulesJsonEntry 回落。
 	// 步名保持 "modules.json"（清单面回滚语义不变，spec 步序钉不扰动）。
 	await run("modules.json", async () => {
 		if (await readOverlayDbSeq() !== null) {
-			await deleteOverlayRows(input.name);
+			await softDeleteOverlayRows(input.name, "compensate");
 			await siteMaterialize({ modulesJsonPath: input.modulesJsonPath, sharedRoot: input.sharedRoot, omitNames: [input.name], actor: "compensate" });
 		}
 		else {
