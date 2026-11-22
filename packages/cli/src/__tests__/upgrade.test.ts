@@ -155,8 +155,8 @@ describe("功能: 升级成功路径", () => {
 
 		expect(r.status).toBe("upgraded");
 		expect(r.to).toBe("0.2.98");
-		// S3：pnpm add 精确钉版 cli + runtime（lockstep 同版本）
-		expect(runCmd).toHaveBeenCalledWith("pnpm", ["add", "-D", "@oj-module/cli@0.2.98", "@oj-module/runtime@0.2.98"], proj);
+		// S3：pnpm add 精确钉版 cli + runtime（lockstep 同版本；显式 --registry 转发给 pnpm）
+		expect(runCmd).toHaveBeenCalledWith("pnpm", ["add", "-D", "@oj-module/cli@0.2.98", "@oj-module/runtime@0.2.98", "--registry", "https://reg.example"], proj);
 		// S4：新 cli 的 bin/ojm.mjs 跑 init --yes
 		expect(spawnInit).toHaveBeenCalledTimes(1);
 		const [binArg, binArgs, cwdArg] = spawnInit.mock.calls[0]! as unknown[];
@@ -181,8 +181,15 @@ describe("功能: 升级成功路径", () => {
 		const fetchFn = registryStub("0.2.98", { runtimeVersions: ["0.2.97"] }).fetchFn;
 		const runCmd = vi.fn();
 		await upgradeProject(proj, opts({ fetchFn, runCmd }));
-		expect(runCmd).toHaveBeenCalledWith("pnpm", ["add", "-D", "@oj-module/cli@0.2.98", "@oj-module/runtime@0.2.97"], proj);
+		expect(runCmd).toHaveBeenCalledWith("pnpm", ["add", "-D", "@oj-module/cli@0.2.98", "@oj-module/runtime@0.2.97", "--registry", "https://reg.example"], proj);
 		expect(logs.join("\n")).toContain("runtime");
+	});
+
+	it("场景: 未显式给 --registry → pnpm add 不转发 registry（尊重工程自身 pnpm 配置）", async () => {
+		makeProject();
+		const runCmd = vi.fn();
+		await upgradeProject(proj, opts({ runCmd, registry: undefined }));
+		expect(runCmd).toHaveBeenCalledWith("pnpm", ["add", "-D", "@oj-module/cli@0.2.98", "@oj-module/runtime@0.2.98"], proj);
 	});
 });
 
