@@ -4,7 +4,7 @@
 // 部分唯一索引：enabled=1 的行同 name 至多一行，违反即抛（与 sqlite/pg DDL 同语义）。
 import type { OverlayRow } from "../../src/app/api/_platform/_lifecycle/overlay";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { backfillOverlay, readOverlayRows, setOverlayEnabled, swapEnabledVersion, upsertOverlayRow } from "../../src/app/api/_platform/_lifecycle/overlay";
+import { backfillOverlay, readOverlayRows, setOverlayEnabled, softDeleteOverlayRows, swapEnabledVersion, upsertOverlayRow } from "../../src/app/api/_platform/_lifecycle/overlay";
 
 const g = globalThis as any;
 
@@ -109,6 +109,49 @@ describe("原子换版", () => {
 		const r = await swapEnabledVersion({ name: "wiki", version: "0.2.0", actor: "ops" });
 		expect(r.ok).toBe(true);
 		expect(r.message).toContain("幂等");
+	});
+});
+
+describe("软删除（卸载不删行，只置 enabled=0 作软删标识）", () => {
+	it("卸载保留全部行，只置 enabled=0：同批 seq、审计落库、行数不减", async () => {
+		await upsertOverlayRow(row("wiki", "0.1.3", 1));
+		await upsertOverlayRow(row("wiki", "0.2.0", 0));
+		const seqBefore = Math.max(...(await readOverlayRows()).map(r => r.seq));
+
+		const n = await softDeleteOverlayRows("wiki", "uninstall");
+		expect(n).toBe(2);
+
+		const rows = await readOverlayRows();
+		expect(rows).toHaveLength(2); // 行保留 = 软删
+		expect(rows.every(r => Number(r.enabled) === 0)).toBe(true);
+		expect(Math.max(...rows.map(r => r.seq))).toBe(seqBefore + 1); // 同批一个 seq
+		expect(rows.find(r => r.version === "0.1.3")!.old_state).toBe(JSON.stringify({ enabled: 1 }));
+		expect(rows.find(r => r.version === "0.1.3")!.actor).toBe("uninstall");
+	});
+
+	it("幂等：对已全停用的模块重复软删不再 bump seq", async () => {
+		await upsertOverlayRow(row("wiki", "0.1.3", 1));
+		await softDeleteOverlayRows("wiki", "uninstall");
+		const seqAfterFirst = Math.max(...(await readOverlayRows()).map(r => r.seq));
+		await softDeleteOverlayRows("wiki", "uninstall");
+		expect(Math.max(...(await readOverlayRows()).map(r => r.seq))).toBe(seqAfterFirst);
+	});
+
+	it("软删后可重装：upsert 走更新分支 + 原子换版重启（唯一索引无残留冲突）", async () => {
+		await upsertOverlayRow(row("wiki", "0.2.0", 1));
+		await softDeleteOverlayRows("wiki", "uninstall");
+
+		// 重装同版本：登记（更新既有行）→ 换版（行仍在，swap 找得到目标）
+		await upsertOverlayRow(row("wiki", "0.2.0", 0));
+		const swap = await swapEnabledVersion({ name: "wiki", version: "0.2.0", actor: "deployWeb" });
+		expect(swap.ok).toBe(true);
+		const rows = await readOverlayRows();
+		expect(rows).toHaveLength(1); // 无残留新行
+		expect(Number(rows[0].enabled)).toBe(1);
+	});
+
+	it("无该行 → 零动作返 0", async () => {
+		expect(await softDeleteOverlayRows("ghost", "uninstall")).toBe(0);
 	});
 });
 

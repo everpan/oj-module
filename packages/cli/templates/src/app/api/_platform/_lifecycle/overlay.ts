@@ -80,10 +80,20 @@ export async function readOverlayDbSeq(): Promise<number | null> {
 }
 
 /** 按名删全部行（卸载/补偿回滚出口）；返回删除行数（0 = 本无记录，幂等）。 */
-export async function deleteOverlayRows(name: string): Promise<number> {
+/**
+ * 软删除（卸载语义）：不删行，只把该模块全部行置 enabled=0——行是「装过/卸过」的
+ * 审计事实（who/when/old_state），重装走 upsert 更新分支 + swap 重启，无残留冲突。
+ * 已停用的行跳过（幂等，不 bump seq）；同批改动共用一个 seq。返回触及行数。
+ */
+export async function softDeleteOverlayRows(name: string, actor: string): Promise<number> {
 	const rows = (await readOverlayRows()).filter(r => r.name === name);
-	for (const r of rows) {
-		await db().table("sys_module_overlay").where({ field: "id", op: "eq", value: r.id }).delete().run();
+	const live = rows.filter(r => Number(r.enabled) !== 0);
+	if (live.length === 0)
+		return rows.length;
+	const seq = await nextSeq();
+	const at = nowSeconds();
+	for (const r of live) {
+		await db().table("sys_module_overlay").update({ enabled: 0, seq, actor, changed_at: at, old_state: JSON.stringify({ enabled: r.enabled }) }).where({ field: "id", op: "eq", value: r.id }).run();
 	}
 	return rows.length;
 }

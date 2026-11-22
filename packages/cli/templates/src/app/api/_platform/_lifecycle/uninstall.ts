@@ -16,7 +16,7 @@ import { auditOp } from "../_shared/service/infra/audit";
 import { atomicWriteText, fsFace, isMissingPath } from "./atomic";
 import { recordHistory } from "./history";
 import { readLock, writeLock } from "./lock";
-import { deleteOverlayRows, readOverlayDbSeq } from "./overlay";
+import { readOverlayDbSeq, softDeleteOverlayRows } from "./overlay";
 import { siteMaterialize } from "./site-materialize";
 import { assertReloadApplied } from "./steps/reload";
 import { ensureMcpModule, previewSiblingOf, removeMcpModule } from "./text-edit";
@@ -351,17 +351,17 @@ export async function runUninstall(input: UninstallInput): Promise<UninstallResu
 		return { ok: false, message: `卸载失败：sidecar 写失败（${String(e)}）——锁已摘、reload 已生效，模块已停装配；sidecar 残留待重装自愈` };
 	}
 
-	// 清单生效面（写面切换，Phase 3）：overlay 表可达 → 按名删 overlay 行 + 站点物化
+	// 清单生效面（写面切换，Phase 3）：overlay 表可达 → 按名软删 overlay 行（enabled=0，审计保留）+ 站点物化
 	// （modules.json 唯一写者 = site-materialize）；表不可达 → legacy 直写回落（P2-T4 混合态）。
 	const dbSeq = await readOverlayDbSeq();
 	if (dbSeq !== null) {
 		try {
-			await deleteOverlayRows(name);
+			await softDeleteOverlayRows(name, input.operator ?? "uninstall");
 			await siteMaterialize({ modulesJsonPath: input.modulesJsonPath, sharedRoot: input.sharedRoot, state: input.state, omitNames: [name], actor: input.operator ?? "uninstall" });
 		}
 		catch (e) {
 			audit(false, `物化失败：${String(e)}`);
-			return { ok: false, message: `卸载失败：modules.json 物化失败（${String(e)}）——锁已摘、reload 已生效、sidecar/overlay 已删，catch-up 将自愈` };
+			return { ok: false, message: `卸载失败：modules.json 物化失败（${String(e)}）——锁已摘、reload 已生效、sidecar 已删、overlay 行已停用，catch-up 将自愈` };
 		}
 	}
 	else {
