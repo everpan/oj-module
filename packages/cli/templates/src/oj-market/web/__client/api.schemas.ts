@@ -123,6 +123,28 @@ export const schemas = {
 	"apiVersion": z.string().optional()
 }).catchall(z.unknown()),
 	},
+	"ojMarketOwnerKeyDelete": {
+		query: z.object({
+	"key_id": z.string()
+}),
+		data: z.object({
+	"ok": z.boolean().optional(),
+	"key_id": z.string().optional(),
+	"unbound": z.boolean().optional()
+}).catchall(z.unknown()),
+	},
+	"ojMarketOwnerKeyPost": {
+		body: z.object({
+	"key_id": z.string(),
+	"public_key": z.string(),
+	"signature": z.string()
+}),
+		data: z.object({
+	"ok": z.boolean().optional(),
+	"key_id": z.string().optional(),
+	"idempotent": z.boolean().optional()
+}).catchall(z.unknown()),
+	},
 	"ojMarketReleasesGet": {
 		query: z.object({
 	"page": z.number().min(1).optional(),

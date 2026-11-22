@@ -14,7 +14,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { generateKeyPair } from "../../lifecycle/keygen";
 import { verifyCanonical } from "../../lifecycle/sign";
-import { discoverMarket, remotePublish, remoteYank } from "../remote-push";
+import { discoverMarket, remoteBindKey, remotePublish, remoteYank } from "../remote-push";
 
 interface RecordedCall {
 	url: string
@@ -224,5 +224,49 @@ describe("remotePublish 错误映射数据表（401/403/409/413 + 半成功幂�
 			fetchFn: fn,
 		});
 		expect(calls).toHaveLength(3);
+	});
+});
+
+describe("remoteBindKey（归属绑定：market-owner-key canonical + 站点登录面）", () => {
+	it("canonical = market-owner-key:<站点 registry>:<keyId> 可验签；Bearer + body 三字段齐", async () => {
+		const { fn, calls } = mockFetch(call => (call.url.includes("/owner-key")
+			? { status: 200, body: { ok: true, key_id: "test.publisher" } }
+			: call.url.includes("/auth/login")
+				? { status: 200, body: { access_token: "tok-1" } }
+				: { status: 200, body: { api_version: "v1", registry_id: "site.registry" } }));
+		const r = await remoteBindKey({
+			siteUrl: SITE,
+			user: "alice",
+			pass: "pw",
+			id: "test.publisher",
+			privateKeyPem: kp.privateKeyPem,
+			fetchFn: fn,
+		});
+		// catalog 探测 + 登录 + owner-key POST
+		expect(calls).toHaveLength(3);
+		const bind = calls[2]!;
+		expect(bind.url).toBe(`${SITE}/api/oj-market/owner-key`);
+		expect(bind.method).toBe("POST");
+		const body = JSON.parse(new TextDecoder().decode(bind.bytes)) as Record<string, unknown>;
+		expect(body.key_id).toBe("test.publisher");
+		expect(verifyCanonical(kp.publicKeyHex, "market-owner-key:site.registry:test.publisher", String(body.signature))).toBe(true);
+		expect(String(body.public_key)).toBe(kp.publicKeyHex);
+		expect(r).toMatchObject({ key_id: "test.publisher", idempotent: false });
+	});
+
+	it("服务端 409（key 已属他人）→ 人话透出；幂等重入视为成功", async () => {
+		const { fn } = mockFetch(call => (call.url.includes("/owner-key")
+			? { status: 409, body: { message: "key「test.publisher」已绑定到其他用户" } }
+			: call.url.includes("/auth/login")
+				? { status: 200, body: { access_token: "tok-1" } }
+				: { status: 200, body: { api_version: "v1", registry_id: "site.registry" } }));
+		await expect(remoteBindKey({
+			siteUrl: SITE,
+			user: "alice",
+			pass: "pw",
+			id: "test.publisher",
+			privateKeyPem: kp.privateKeyPem,
+			fetchFn: fn,
+		})).rejects.toThrow(/已绑定到其他用户/);
 	});
 });

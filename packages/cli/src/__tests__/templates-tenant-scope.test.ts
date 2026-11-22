@@ -115,7 +115,7 @@ describe("templates 租户定性（A 租户表 / B 共享表）", () => {
 		expect(unknown).toEqual([]);
 	});
 
-	it("t-4 28 张表的 A/B 分组与方案 v3 §5.2 一致（新增表须先定性）", () => {
+	it("t-4 33 张表的 A/B 分组与方案 v3 §5.2 一致（新增表须先定性）", () => {
 		const { tables } = loadSchemaTables();
 		const shared = [...tables].filter(([, d]) => d.tenant === false).map(([n]) => n).sort();
 		// Phase 0 落地 21 张（11 A + 10 B）；Phase 1 加企微三表，全部 B 组（D9：查它们时必然还没有租户上下文）
@@ -132,10 +132,12 @@ describe("templates 租户定性（A 租户表 / B 共享表）", () => {
 		// 移除 tenant:false 与 shared_allow 双声明），B 组 17 → 14，A 组随之 +3。强绑定下 tokenless 登录链
 		// 走 body 自报 tenant + db.asTenant，由 signed JWT 的 claims.tenant 决定服务端租户，不再依赖共享表。
 		// 2026-11-21 overlay 化加 sys_module_overlay：站点级模块启停真源（同 sys_solution_route 口径），31 → 32。
-		expect(tables.size).toBe(32);
+		// 2026-11-22 方案归属加 market_owner_key：共享表（key 属主是站点级事实，同 market_release 口径），32 → 33。
+		expect(tables.size).toBe(33);
 		expect(shared).toEqual([
 			"_oj_migrations",
 			"market_history",
+			"market_owner_key",
 			"market_release",
 			"publish_credential",
 			"sys_login_throttle",

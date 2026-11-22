@@ -495,32 +495,37 @@ export const HELP_GROUPS: HelpGroup[] = [
 					{ raw: "--check", zh: "离线自检签名", en: "Offline signature self-check" },
 				],
 				subs: {
-					setup: {
+					"setup": {
 						short: { zh: "framework.market_cdn_url 指向外部真 CDN（脚手架缺省 /cdn 免 setup）", en: "Point framework.market_cdn_url at an external CDN (scaffold defaults to /cdn, no setup needed)" },
 						zh: "ojm market setup [--site-url <站点地址>] [--user <u> --pass <p>] [--new-pass <p>]\n  把系统设置 framework.market_cdn_url 改写为绝对地址（外部真 CDN 场景；脚手架 seed 缺省 /cdn = 本站点自供，免 setup）。首跑若账号处于首次改密期（seed admin must_change=1），会自动改密换全权 token 后再写入",
 						en: "ojm market setup [--site-url <site>] [--user <u> --pass <p>] [--new-pass <p>]\n  Rewrite the framework.market_cdn_url system setting to an absolute URL (external CDN scenario; the scaffold seed defaults to /cdn = site-served, no setup needed). On first run, if the account is in the forced password-reset period (seed admin must_change=1), it resets the password to obtain a full-privilege token before writing",
 					},
-					publish: {
+					"publish": {
 						short: { zh: "远端签名推送发布到目标站点市场（不经账号口令）", en: "Publish to a target site's market via signed push (no account credentials)" },
 						zh: "ojm market publish --site-url <url> [--fixture <name@version> | --real <方案工程>] --id <key> [--key <pem>] --registry-id <registry> [--check]\n  构建 + 包级签名后经签名推送发进目标站点市场：catalog 探测站点身份（registry_id）→ 先推 .sig 旁车再推 .tgz（pair 约束）→ 服务端重算 sha256 验签落库（market_release 目录行 + cdn/ 字节）。半成功（sig 已推 tgz 被拒）重跑本命令幂等补齐。签名身份 = ojm keygen --credential 兑换的发布 key（须经站点信任库）",
 						en: "ojm market publish --site-url <url> [--fixture <name@version> | --real <project>] --id <key> [--key <pem>] --registry-id <registry> [--check]\n  Build + package-sign, then signed-push into the target site's market: discover the site identity via catalog (registry_id) → push the .sig sidecar before the .tgz (pair constraint) → the server recomputes sha256, verifies the signature and lands the row (market_release catalog row + cdn/ bytes). Half-success (sig pushed, tgz rejected): re-run this command to idempotently complete. Signing identity = publish key exchanged via ojm keygen --credential (must be in the site trust store)",
 					},
-					yank: {
+					"yank": {
 						short: { zh: "签名下线/恢复某版本（仅发布者本人）", en: "Signed yank/restore of a version (publisher only)" },
 						zh: "ojm market yank <name>@<version> --site-url <url> --id <key> [--key <pem>] [--reason <原因>] [--by <操作人>] [--restore]\n  签名下线（或 --restore 恢复）目标站点市场目录里的某版本：清单即摘除、详情保留 yanked 标记、阻断新装/升级；不动已装方案。仅该行发布者本人可操作（服务端按行 key_id 仲裁）；重复下线幂等",
 						en: "ojm market yank <name>@<version> --site-url <url> --id <key> [--key <pem>] [--reason <reason>] [--by <operator>] [--restore]\n  Signed-yank (or --restore) a version in the target site's market catalog: removed from listing, kept in detail with yanked flag, new installs/upgrades blocked; already-installed solutions untouched. Only the row's publisher may operate (server arbitrates by row key_id); repeated yank is idempotent",
 					},
-					verify: {
+					"bind-key": {
+						short: { zh: "把发布 key 绑定到登录账号（方案归属者免 superadmin 装/卸）", en: "Bind a publish key to your account (owner installs/uninstalls without superadmin)" },
+						zh: "ojm market bind-key --site-url <url> --user <u> --pass <p> --id <publisher.key> [--key <pem>]\n  持钥自证绑定（Ed25519 canonical 签名，不经过信任库）：绑定后该 key 发布的方案，你的账号可免 superadmin 安装/卸载/轮询任务（install/uninstall/task 端点按归属放行）。一把 key 全站一个属主：已属他人 409，重复自绑幂等",
+						en: "ojm market bind-key --site-url <url> --user <u> --pass <p> --id <publisher.key> [--key <pem>]\n  Possession-proof binding (Ed25519 canonical signature, no trust store needed): afterwards, solutions published with that key can be installed/uninstalled/task-polled by your account without superadmin (install/uninstall/task endpoints authorize by ownership). One owner per key site-wide: 409 if taken, idempotent on self re-bind",
+					},
+					"verify": {
 						short: { zh: "离线验包（包级验签 + manifest 结构）", en: "Offline bundle verification (package signature + manifest structure)" },
 						zh: "ojm market verify [--file <tgz>]\n  离线验包（不起站点、不装、不要凭据）：包级 Ed25519 detached 验签（信任锚）+ manifest 结构（必填字段 / 原生清单 desc / 0001 迁移跨版本一致）。注意：校验通过只说明来源与完整性，不构成内容安全性背书",
 						en: "ojm market verify [--file <tgz>]\n  Offline bundle verification (no site, no install, no credentials): package-level Ed25519 detached signature (trust anchor) + manifest structure (required fields / native manifest desc / 0001 migration consistency across versions). Note: passing only proves origin and integrity — it is not an endorsement of content safety",
 					},
-					trial: {
+					"trial": {
 						short: { zh: "一次性隔离站点试装，跑完即毁", en: "Full install trial in a throwaway isolated site" },
 						zh: "ojm market trial [--fixture <name@version>] [--keep]\n  在一次性隔离站点（随机端口 + 一次性 DB/密钥/凭据/信任库/CDN）里跑完整安装，跑完即毁；--keep 保留现场供排查",
 						en: "ojm market trial [--fixture <name@version>] [--keep]\n  Run a full install in a throwaway isolated site (random port + throwaway DB/keys/credentials/trust store/CDN), destroyed right after; --keep preserves the scene for debugging",
 					},
-					walkthrough: {
+					"walkthrough": {
 						short: { zh: "隔离站点跑全套市场操作并出 AC 表", en: "Run the full marketplace operation set in an isolated site, print an AC table" },
 						zh: "ojm market walkthrough [--only <op>] [--strict] [--keep]\n  隔离站点跑全套市场操作并出 AC 表",
 						en: "ojm market walkthrough [--only <op>] [--strict] [--keep]\n  Run the full marketplace operation set in an isolated site and print an AC table",
