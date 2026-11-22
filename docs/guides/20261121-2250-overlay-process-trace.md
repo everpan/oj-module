@@ -79,9 +79,9 @@
 - setEnabled（`installer.ts:1351-1397`）：① 锁 → ② sidecar → ③ sys_solution_route.enabled →
   ④ readOverlayDbSeq → **先写 DB**（upsertOverlayRow `:1366`）→ **后写文件**（siteMaterialize `:1373`）。
   物化失败 → 返回「catch-up 将自愈」。DB 不可达 → legacy 直写清单 enabled。
-- uninstall（`uninstall.ts:354-381`）：sidecar 删 → readOverlayDbSeq → DB deleteOverlayRows（`:359`）→
+- uninstall（`uninstall.ts:354-381`）：sidecar 删 → readOverlayDbSeq → DB softDeleteOverlayRows（`:359`，**软删：只置 enabled=0 不删行**，审计保留可重装）→
   siteMaterialize({omitNames})（`:360`）。DB 不可达 → legacy filter 直写。
-- compensate（`compensate.ts:130-151`）：DB 可达 → deleteOverlayRows + siteMaterialize(omitNames)；
+- compensate（`compensate.ts:130-151`）：DB 可达 → softDeleteOverlayRows + siteMaterialize(omitNames)；
   否则 legacy removeModulesJsonEntry。
 
 ### 1.9 离线构建 fail-stale
