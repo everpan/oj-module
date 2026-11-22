@@ -566,6 +566,8 @@ function copyIfAbsent(src: string, dest: string, report: InitReport): void {
 const SCAFFOLD_GITIGNORE = `node_modules/
 bin/
 .ojm-tmp-*
+# ojm upgrade 的备份目录（升级前 tracked 文件快照，供回滚；绝不入仓）
+.ojm-upgrade/
 # ojm preview 的派生 config（临时产物，进程退出即删；见 preview-config.ts）
 .ojm-preview.yaml
 # e2e 临时把注释态 canonical_origin 解注后留下的备份（globalTeardown 会自动还原，崩溃残留防误签）
