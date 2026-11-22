@@ -2138,6 +2138,25 @@ walkthrough §7.5；**2026-11-07 策略变更：出厂即装**——市场方案
   此形态 web 挂载必须绝对路径）。**不要**用 `--module-root`/dev 形态验证安装：十阶段可全
   done 但重启后方案 api/页面 404（src 树供给不含 dist 产物，装而不达）。
 
+**启停/卸载的 overlay 口径（0.2.97+）**——modules.json 是**物化产物，不是真源，勿手改**：
+
+- `dist/web/modules.json` = 构建基线（源码树模块，构建期产物）+ `sys_module_overlay` DB 表
+  （运行时启停/安装/卸载状态）经物化计算出的派生物。**唯一合法写者**：构建面 `ojm build`/
+  `ojm dev` 的清单重建；运行面站点物化（site-materialize）。手改会被下次物化整表重算覆盖，
+  且手改后缓存序号对不上会被判滞后重算——要停用模块用 `ojm disable`/市场页开关，不是改文件。
+- **写序 = 先 DB 后文件**：enable/disable/uninstall 先改 `sys_module_overlay` 行，再触发
+  物化重算 modules.json（无 db.tx，顺序补偿 + 唯一索引兜底；中途崩溃残留不一致由下一次
+  市场页刷新 riding catch-up 自愈，管理员无感）。
+- **卸载是软删**：overlay 行不删，只置 `enabled=0`（审计保留 who/when/old_state）；
+  重装走原位更新 + 原子换版，不残留重复行。版本目录与 sidecar 登记仍按原样清理。
+- **升级 = 原子换版**：新版本的行启用与旧版本的行停用是同一批次（两行同 seq），
+  部分唯一索引保证同名至多一行 `enabled=1`——不存在「双启用」中间态。
+- **离线构建 fail-stale**：构建面重建清单时发现 sidecar 的序号落后于
+  `dist/api/.solutions/overlay-cache.json` 记录的 DB 序号（上次在线物化的水位）→
+  拒绝写 modules.json 并报警——断网不用过期货，联网任一生命周期动作即刷新水位。
+- **物化观测**：结构化日志落 `dist/api/.solutions/site-materialize.jsonl`
+  （event/actor/db_seq/changed/lag_sec/entries；catch-up 连续失败 5 次有 alarm 事件）。
+
 ### 11.4 生命周期命令与站点寻址约定
 
 `install` / `enable` / `disable` / `uninstall` / `trust` 都是**瘦客户端**——它们把请求发到目标站点
@@ -2151,8 +2170,8 @@ walkthrough §7.5；**2026-11-07 策略变更：出厂即装**——市场方案
 | 命令 | 作用 | 注意 |
 |---|---|---|
 | `ojm install <file.tgz \| name[@version]> [--name <n>] [--version <v>]` | 安装方案包（file 直传 / cdn 拉取，见 §11.2），十阶段状态机见 §11.3 | `<name>-<version>.tgz` 文件名推导身份，可用 `--name`/`--version` 覆盖 |
-| `ojm enable <name>` / `ojm disable <name>` | 启用 / 禁用已装方案 | 四处同写：锁 / sidecar / 路由清单 / 模块清单 |
-| `ojm uninstall <name>` | 卸载已装方案 | 四处同删 + 权限级联清理 + 版本目录移除；**站点至少保留一个已锁模块** |
+| `ojm enable <name>` / `ojm disable <name>` | 启用 / 禁用已装方案 | 先写 `sys_module_overlay` 行（DB）后物化；崩溃窗由下次市场页刷新 catch-up 自愈 |
+| `ojm uninstall <name>` | 卸载已装方案 | DB 软删（行留 `enabled=0`）+ 锁/sidecar/route 清理 + 版本目录移除 + 权限级联；**站点至少保留一个已锁模块** |
 | `ojm trust ls\|add\|revoke\|confirm` | 站点信任库管理（§12.2） | `confirm --task <id>` 把 needs_trust 待确认 key 入库 |
 
 > `enable`/`disable`/`uninstall` 失败多半是「站点地址/凭据没给对」或「站点没这个方案」——
