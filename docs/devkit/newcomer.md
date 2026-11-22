@@ -174,7 +174,11 @@ pnpm exec ojm build --bundle books      # 只打一份；同输入重复打包 s
 
 ## 6. 升级
 
-**A. 脚手架升级**（cli/runtime 必须同号动）：
+**A. 脚手架升级**（cli/runtime 必须同号动）：**首选 `pnpm exec ojm upgrade`**——
+评估 → 备份（.ojm-upgrade/，留 3 份）→ 换版 → 新 CLI 重跑 init --yes → 漂移检，
+失败自动回滚；只动 package.json 两个 devDep + node_modules + 保护根，
+config.yaml / 自定义模块 / 站点 DB 都不受影响（manual §10.1）。手动四步
+（upgrade 的内部语义，备查）：
 
 ```bash
 pnpm up -D @oj-module/cli@<新版本> @oj-module/runtime@<新版本>   # 精确版本，勿用 latest/*

@@ -1772,7 +1772,7 @@ export default async (path: string, html: string) => {
 
 | 类别 | 命令 | 谁实现 | 一句话 |
 |---|---|---|---|
-| **ojm 原生** | `init` / `dev` / `build` / `preview` / `api` / `info` / `vendor` / `merge` / `install` / `list` / `enable` / `disable` / `uninstall` / `trust` / `view` / `keygen` / `sign` / `publish` / `registry` | `ojm` 自己 | 前后端一体工程的脚手架、开发、构建、契约生成、版本/清单、oj 分发、清单合并；方案包安装面与签名信任（install/list/enable/disable/uninstall 见 §11，trust/keygen/sign 见 §12，publish 见 §11.2）；`registry` 是索引/吊销清单/离线包的外置签名与流转；整条 registry 链路（发版 / 安装 / 运维 / 查询）的图文流程见 [`prd/20261026-registry-cli-commands-design.md`](../prd/20261026-registry-cli-commands-design.md) |
+| **ojm 原生** | `init` / `dev` / `build` / `preview` / `api` / `info` / `vendor` / `upgrade` / `merge` / `install` / `list` / `enable` / `disable` / `uninstall` / `trust` / `view` / `keygen` / `sign` / `publish` / `registry` | `ojm` 自己 | 前后端一体工程的脚手架、开发、构建、契约生成、版本/清单、oj 分发、清单合并；方案包安装面与签名信任（install/list/enable/disable/uninstall 见 §11，trust/keygen/sign 见 §12，publish 见 §11.2）；`registry` 是索引/吊销清单/离线包的外置签名与流转；整条 registry 链路（发版 / 安装 / 运维 / 查询）的图文流程见 [`prd/20261026-registry-cli-commands-design.md`](../prd/20261026-registry-cli-commands-design.md) |
 | **oj 透传** | `test` / `exec` / `openapi` / `migrate` / `schema` | `oj`（ojm 仅转发） | 这 5 个**就是 oj 的同名子命令**，ojm 只负责定位 `bin/oj` 并补上 `-c config.yaml` |
 
 > **为什么只有这 5 个走透传？** oj 还有 `serve` / `build` / `secret`（`keygen`/`seal` 等）
@@ -1922,6 +1922,31 @@ module-root 下数据源是「扫描 + `web.config.ts` 登记」并集（未登�
 
 `ojm init` 与 `ojm vendor` 都受最低版本门禁约束（`src/vendor.ts` 的 `MIN_OJ_VERSION`）——
 老版本 oj 装不上，保证与最新 oj 对齐。
+
+#### `ojm upgrade [--yes] [--to <version>] [--registry <url>]`
+
+**框架升级（脚手架升级的一站式入口）**：以已发布最新版本为准（用户侧不需要源码），
+按「评估 → 备份 → 换版 → 新 CLI 重跑 init --yes → 后置漂移检」五段执行，
+任一阶段失败自动回滚并报告失败阶段 + 原始错误 + 备份路径。
+
+- **改动面只有**：`package.json` 里 `@oj-module/cli` / `@oj-module/runtime` 两个
+  devDep（lockstep 精确版本）+ `node_modules` + 保护根（`src/app`、`src/oj-market`，
+  由新 CLI 的 `init --yes` 恢复）。
+- **不受影响**：`config.yaml` 等工程配置、自定义模块、站点 DB（已装方案及其
+  enabled 状态都在）。
+- S1 评估**只读**（拉 registry packument + 目标版本 tgz 解到临时目录做漂移预览），
+  零工程写入；S2 备份到 `.ojm-upgrade/backup-<ts>/`（sha256 清单，保留最近 3 份），
+  备份失败即中止（此时零改动）；S3-S5 失败回滚备份 + 补 `pnpm install`。
+- `--to`：锁目标版本（缺省追 `latest`；不在已发布版本里直接报错）。
+- `--registry`：私仓场景**显式**传才会转发给内部的 `pnpm add`——缺省尊重工程
+  自身的 registry 配置，不替你猜。
+- `bin/`（oj 二进制）不在回滚面：升级后 `ojm init --yes` 会按新 CLI 的
+  `MIN_OJ_VERSION` 门禁收敛 oj 版本。
+- 必须在**工程根**（package.json 所在目录）执行——projectRoot 取 cwd。
+
+升级完成后用 `ojm info` 核对版本矩阵（cli === runtime）、`ojm build` 零漂移收口。
+这同时就是 newcomer.md §6.A 的手动四步（`pnpm up` → `pnpm install` →
+`init --yes` → `info`/`build`）的自动化封装，手动步骤留作理解升级语义用。
 
 #### `ojm merge <out.json> <in1.json> [in2.json ...]`
 
