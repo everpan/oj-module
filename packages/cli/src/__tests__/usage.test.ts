@@ -49,7 +49,7 @@ describe("usageText 分组（cac 渲染）", () => {
 	it("两种语言均含全部命令语法行", () => {
 		for (const lang of ["zh-CN", "en-US"] as const) {
 			const text = usageText(lang);
-			for (const cmd of ["ojm init [dir]", "ojm dev [port]", "ojm build", "ojm preview [port]", "ojm api [dir]", "ojm info", "ojm merge", "ojm vendor", "ojm install", "ojm trust", "ojm keygen", "ojm sign", "ojm publish", "ojm market verify", "ojm test", "ojm migrate"])
+			for (const cmd of ["ojm init [dir]", "ojm upgrade", "ojm dev [port]", "ojm build", "ojm preview [port]", "ojm api [dir]", "ojm info", "ojm merge", "ojm vendor", "ojm install", "ojm trust", "ojm keygen", "ojm sign", "ojm publish", "ojm market verify", "ojm test", "ojm migrate"])
 				expect(text, `${lang} ${cmd}`).toContain(cmd);
 		}
 	});

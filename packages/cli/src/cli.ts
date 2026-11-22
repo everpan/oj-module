@@ -115,6 +115,11 @@ function makeAction(def: HelpEntry, projectRoot: string, lang: Lang, exit: (code
 				const { initProject } = await import("./init");
 				await initProject(dir ? path.resolve(dir) : projectRoot, { yes: !!opts.yes });
 			};
+		case "upgrade":
+			return async (opts: { yes?: boolean, to?: string, registry?: string } = {}) => {
+				const { upgradeProject } = await import("./upgrade");
+				await upgradeProject(projectRoot, { yes: !!opts.yes, to: opts.to, registry: opts.registry });
+			};
 		case "dev":
 			return async (port?: string) => {
 				const { devServer } = await import("./dev");
