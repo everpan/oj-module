@@ -256,6 +256,14 @@ ojm market yank crm 1.0.0 --site-url https://your-site --id <key_id> --restore  
 - **未审指纹放行**：发布方 key 不在站点信任库也入库（结果区 `trusted=false` 如实提示）；
   信任判定在安装——verify 段 unknown_key 停 needs_trust，「信任审核」列表确认后重装即可。
 - 入库后升级 = 上传更高版本包，市场页对该方案点安装/升级（十阶段 + migrate 复用）。
+  **升版本要同步 4 处**（漏一处即被契约校验拒打：`web.entry` 的版本段必须等于 `version`、
+  `archive.file` 必须名为 `<name>-<version>.tgz`）：
+  ① `solution.yaml` 的 `version` + `archive.file`（`<name>-<version>.tgz`）+ `web.entry`
+  （`modules/<name>/<version>/entry.js`）；② `api/manifest.yaml` 的 `version`；
+  ③ `web/entry.ts` 的 `version` 字段；④ `changelog` 加一行。
+  同一版本号只允许一份字节（异字节重传 409）——发坏的包占号后只能再升版本，**发版前
+  `ojm market verify` 验包**。升级安装即原子换版：DB 里旧版本行 `enabled=0`、新版本行
+  `enabled=1`，两行同 seq；重装/回滚候选在市场页版本列表。
 - 等价 HTTP：`POST /api/oj-market/upload?name=<n>-<v>.tgz`，multipart 双文件顺序 `[tgz, sig]`；
   该区 superadmin 专属（普通账号探测 `GET /api/oj-market/trust` 得 403，页面整区不渲染）。
 - 真机演练判据（2026-11-10 全链 PASS）：上传 Alert 逐字核指纹 → 目录行出现（`installed:null`）→
@@ -375,7 +383,7 @@ TOFU 没有免检通道：**只有模板内置的 oj-market（第一方包）用
 | `needs_trust`（第五终态，非成功） | 站点第一次见这个 key | 指纹已随任务提交：superadmin 在发布管理「信任审核」列表确认 → 重跑 install |
 | publish 报「包冲突：…字节不一致」（409） | 同 name@version 已有字节不同的包 | **升 version 重发**；确需覆盖须站点侧删行（superadmin） |
 | publish 报「name 所有权：已由 key 首发绑定」（409） | 方案名绑定过别的发布 key | 换方案名；或站点 superadmin 换主 |
-| publish 报「站点版本过旧（无 /api/oj-market/catalog）」 | 目标站点是文件索引时代的旧版 | 站点先升级到 DB 目录版本（迁移指南见 docs/migration/ 市场远程发布篇） |
+| publish 报「站点版本过旧（无 /api/oj-market/catalog）」 | 目标站点是文件索引时代的旧版 | 站点先升级脚手架到新版本（重跑 `ojm init --yes` 同步内置模块 + 重启宿主）再发布 |
 | publish 报「站点未配置 registry_id」（503） | 站点实际加载的 config（`oj serve -c <文件>`，任意文件名）的 `vars` 缺 `registry_id` | 站点管理员在「被 `-c` 加载的那份 config」的 `vars` 下补 `registry_id: <站点身份>` 后重启 |
 | 推送 401（签名不符） | 换字节/跨站重放，或 canonical 与站点重算不一致 | 原样重跑本命令（同字节幂等）；改过包则重签重推 |
 | 推送 403（key 不在信任库） | 站点还没信任你的发布 key | 站点 superadmin `ojm trust add` 或市场页信任确认 |
