@@ -34,7 +34,7 @@ import { computeUninstallImpact, runUninstall } from "#/_platform/_lifecycle/uni
 import { respond } from "#/_platform/_shared/respond";
 import { assertSuperAdmin, currentAccess } from "#/_platform/_shared/service/infra/access";
 import { auditOp } from "#/_platform/_shared/service/infra/audit";
-import { pageArgs } from "#/_platform/_shared/service/infra/query";
+import { allRows, pageArgs } from "#/_platform/_shared/service/infra/query";
 import { journalHeadOf, readCanonicalOrigin, readDeploymentVar, resolveDeploymentConfigPath, siteOrigin, withSiteOrigin } from "#/_platform/_shared/site-facade";
 import { backfillReleases } from "./backfill";
 import { BOOTSTRAP_KEY, seedBootstrapKey } from "./bootstrap";
@@ -333,7 +333,7 @@ async function journalHeads(): Promise<Map<string, number> | null> {
 
 async function routeEnabledMap(): Promise<Map<string, unknown> | null> {
 	try {
-		const rows = await db.table("sys_solution_route").select(["module", "enabled"]).where({ field: "deprecated", op: "eq", value: 0 }).all() as Array<{ module: string, enabled: unknown }>;
+		const rows = await allRows(() => db.table("sys_solution_route").select(["module", "enabled"]).where({ field: "deprecated", op: "eq", value: 0 })) as Array<{ module: string, enabled: unknown }>;
 		const m = new Map<string, unknown>();
 		for (const r of rows) {
 			if (!m.has(r.module))
@@ -395,10 +395,9 @@ interface ResolvedBundle {
  * 分发包 URL = CDN 基址 + file（包字节仍静态拉，不变）。
  */
 async function resolveFromDb(base: string, name: string, reqVersion: string | null): Promise<ResolvedBundle> {
-	const rows = await db.table("market_release")
+	const rows = await allRows(() => db.table("market_release")
 		.select(["product", "version", "key_id", "sha256", "size", "yanked", "sig_alg", "sig_value", "sig_public_key", "sig_registry_id", "manifest"])
-		.where({ field: "product", op: "eq", value: name })
-		.all() as Array<Record<string, unknown>>;
+		.where({ field: "product", op: "eq", value: name })) as Array<Record<string, unknown>>;
 	if (rows.length === 0)
 		fail(404, `市场目录中无方案「${name}」——若为存量分发包，请站点 superadmin 先执行目录回填（扫描 cdn/ 存量补录 market_release）后再安装`);
 	const live = rows.filter(r => Number(r.yanked) !== 1).map(r => String(r.version)).sort(compareVersions);
@@ -674,12 +673,11 @@ async function lastInstallOperatorsOf(names: string[]): Promise<Map<string, stri
 	if (names.length === 0)
 		return map;
 	try {
-		const rows = await db.table("market_history")
+		const rows = await allRows(() => db.table("market_history")
 			.select(["solution", "operator"])
 			.where({ field: "action", op: "eq", value: "install" })
 			.where({ field: "solution", op: "in", value: names })
-			.orderBy([{ field: "created_at", dir: "desc" }, { field: "rowid", dir: "desc" }])
-			.all() as Array<{ solution: unknown, operator: unknown }>;
+			.orderBy([{ field: "created_at", dir: "desc" }, { field: "rowid", dir: "desc" }])) as Array<{ solution: unknown, operator: unknown }>;
 		for (const r of rows) {
 			const name = String(r.solution);
 			if (!map.has(name))
@@ -710,9 +708,8 @@ async function indexBody(env: MarketEnv, q: Record<string, unknown>): Promise<{ 
 	// 自动修复先行（失败只记日志，不阻断索引），失败站点的市场页每次打开都在尝试自愈
 	await reconcileOf(env);
 	const { page, size, offset } = pageArgs({ page: q.page, size: q.size });
-	const rows = await db.table("market_release")
-		.select(["product", "version", "key_id", "yanked", "manifest"])
-		.all() as Array<Record<string, unknown>>;
+	const rows = await allRows(() => db.table("market_release")
+		.select(["product", "version", "key_id", "yanked", "manifest"])) as Array<Record<string, unknown>>;
 	const byProduct = new Map<string, Array<Record<string, unknown>>>();
 	for (const r of rows) {
 		const product = String(r.product);
@@ -838,9 +835,8 @@ function manifestSummaryOf(row: Record<string, unknown> | undefined): Record<str
  */
 async function catalogBody(env: Pick<MarketEnv, "registryId" | "configPath">, q: Record<string, unknown>): Promise<Record<string, unknown>> {
 	const { page, size, offset } = pageArgs({ page: q.page, size: q.size });
-	const rows = await db.table("market_release")
-		.select(["product", "version", "key_id", "published_at", "yanked", "manifest"])
-		.all() as Array<Record<string, unknown>>;
+	const rows = await allRows(() => db.table("market_release")
+		.select(["product", "version", "key_id", "published_at", "yanked", "manifest"])) as Array<Record<string, unknown>>;
 	// 聚合：product → 未 yanked 行组（清单不含 yanked 行）
 	const byProduct = new Map<string, Array<Record<string, unknown>>>();
 	for (const r of rows) {
@@ -887,10 +883,9 @@ async function detailBody(q: Record<string, unknown>): Promise<Record<string, un
 	const name = String(q.name ?? "").trim();
 	if (name === "")
 		fail(400, "name is required");
-	const rows = await db.table("market_release")
+	const rows = await allRows(() => db.table("market_release")
 		.select(["product", "version", "key_id", "sha256", "size", "yanked", "sig_alg", "sig_value", "sig_public_key", "sig_registry_id", "manifest"])
-		.where({ field: "product", op: "eq", value: name })
-		.all() as Array<Record<string, unknown>>;
+		.where({ field: "product", op: "eq", value: name })) as Array<Record<string, unknown>>;
 	if (rows.length === 0)
 		fail(404, `市场目录中无方案「${name}」`);
 	const versionFilter = q.version == null || q.version === "" ? null : String(q.version);
@@ -1350,10 +1345,9 @@ export function createMarketApi(env: MarketEnv) {
 				await respond(async () => {
 					// id 必须返回：前端 Table rowKey="id"（缺 id 会让所有行共用 undefined key）；
 					// created_at 是秒级，同秒内多次尝试（快速重试）需 id 兜底排序才能保证「首行即最新」
-					const rows = (await db.table("market_history")
+					const rows = (await allRows(() => db.table("market_history")
 						.select(["id", "solution", "version", "action", "status", "operator", "message", "created_at"])
-						.orderBy([{ field: "created_at", dir: "desc" }, { field: "id", dir: "desc" }])
-						.all()) as Array<Record<string, unknown>>;
+						.orderBy([{ field: "created_at", dir: "desc" }, { field: "id", dir: "desc" }]))) as Array<Record<string, unknown>>;
 					return rows ?? [];
 				});
 			},

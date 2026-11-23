@@ -20,6 +20,23 @@ const failedRows: MarketHistory[] = [
 ];
 
 describe("historyDrawer 操作历史（BDD）", () => {
+	it("given 历史超过一页 When 打开 Then 表格带分页控件（历史破百后仍可翻页查看）", async () => {
+		const many: MarketHistory[] = Array.from({ length: 25 }, (_, i) => ({
+			id: i + 1,
+			solution: "alpha",
+			version: `1.0.${i}`,
+			action: "install",
+			status: "done",
+			operator: "u1",
+			message: null,
+			created_at: 1700000000 + i,
+		}));
+		const client = new InMemoryMarketClient({ historyRows: many });
+		renderWithProviders(<HistoryDrawer row={row} open onClose={() => {}} />, client);
+		await screen.findByTestId("history-table");
+		expect(document.querySelector(".ant-pagination")).not.toBeNull();
+	});
+
 	it("given 历史记录 When 打开 Then 按当前方案过滤并展示", async () => {
 		const client = new InMemoryMarketClient({ historyRows: rows });
 		renderWithProviders(<HistoryDrawer row={row} open onClose={() => {}} />, client);

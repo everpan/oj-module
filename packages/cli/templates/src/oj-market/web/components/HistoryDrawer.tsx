@@ -156,7 +156,7 @@ export function HistoryDrawer({ row, open, onClose }: HistoryDrawerProps) {
 				rowKey="id"
 				dataSource={rows}
 				columns={columns}
-				pagination={false}
+				pagination={{ pageSize: 10, showSizeChanger: true }}
 				scroll={{ x: 900 }}
 				locale={{ emptyText: t("oj-market:history:empty") }}
 				data-testid="history-table"
