@@ -1917,3 +1917,45 @@ describe("功能: 方案清单 mine 标记（GET /market/index 行级归属）",
 		expect(list2.find(r => r.name === "acme")).toMatchObject({ mine: false });
 	});
 });
+
+// 构造器隐式 LIMIT 100（db_query.default_limit 缺省）：未显式 limit 的顶层查询被静默截断。
+// 夹具第 535 行已模拟这一行为；这三例钉住市场读面用 allRows 分页取全，否则「历史只显示
+// 100 条」「第 101 个方案（如 wiz-plant@3.0.0）卡片消失」且无任何报错（2026-11-23 实锤）。
+describe("构造器隐式 LIMIT 100 回归（市场历史 / index 卡片 / catalog 目录破百）", () => {
+	it("history 返回全部 150 行（不被截断；前端 Table 分页可翻到旧记录）", async () => {
+		const ins = dbo.prepare("INSERT INTO market_history (solution, version, action, status, operator, message, created_at) VALUES (?,?,?,?,?,?,?)");
+		for (let i = 0; i < 150; i++)
+			ins.run(`sol-${String(i).padStart(3, "0")}`, "1.0.0", "install", "done", "tester", "", 1000 + i);
+		g.http = { user: { id: 2 } };
+		await createMarketApi(makeEnv()).history.get();
+		expect(last?.status).toBe(200);
+		const rows = last?.data as Array<{ solution: string }>;
+		expect(rows).toHaveLength(150);
+		expect(rows[0]!.solution).toBe("sol-149");
+		expect(rows[149]!.solution).toBe("sol-000");
+	});
+
+	it("index 列出第 101 个产品（market_release 破百后卡片仍在）", async () => {
+		for (let i = 0; i < 101; i++)
+			seedRelease(`sol-${String(i).padStart(3, "0")}`, "1.0.0", { signed: false, published_at: 1000 + i });
+		g.http = { user: { id: 1 }, query: { page: "1", size: "200" } };
+		await createMarketApi(makeEnv()).index.get();
+		expect(last?.status).toBe(200);
+		const d = last?.data as { total: number, list: Array<{ name: string }> };
+		expect(d.total).toBe(101);
+		expect(d.list).toHaveLength(101);
+		expect(d.list.some(r => r.name === "sol-100")).toBe(true);
+	});
+
+	it("catalog 列出第 101 个产品（匿名目录不丢破百行）", async () => {
+		for (let i = 0; i < 101; i++)
+			seedRelease(`sol-${String(i).padStart(3, "0")}`, "1.0.0", { signed: false, published_at: 1000 + i });
+		g.http = { query: { page: "1", size: "200" } };
+		await createMarketApi(makeEnv()).catalog.get();
+		expect(last?.status).toBe(200);
+		const d = last?.data as { total: number, items: Array<{ product: string }> };
+		expect(d.total).toBe(101);
+		expect(d.items).toHaveLength(101);
+		expect(d.items.some(i => i.product === "sol-100")).toBe(true);
+	});
+});
