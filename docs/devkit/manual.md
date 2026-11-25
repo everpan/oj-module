@@ -1932,8 +1932,10 @@ module-root 下数据源是「扫描 + `web.config.ts` 登记」并集（未登�
 - **改动面只有**：`package.json` 里 `@oj-module/cli` / `@oj-module/runtime` 两个
   devDep（lockstep 精确版本）+ `node_modules` + 保护根（`src/app`、`src/oj-market`，
   由新 CLI 的 `init --yes` 恢复）。
-- **不受影响**：`config.yaml` 等工程配置、自定义模块、站点 DB（已装方案及其
-  enabled 状态都在）。
+- **不受影响（有边界）**：`config.yaml`、自定义模块、站点 DB 的**数据行**（已装方案及其
+  enabled 状态都在；迁移照常应用，schema 可能新增表/列）。**文档偏移修正**：升级备份的
+  `TOP_FILES` 只含 `config.yaml`——手写 release 部署的 `config-release.yaml`、`src/.ojm-builtin.json`、
+  `.solutions/trusted-keys.yaml`、`dist/` 都不在备份/回滚面；这些要在升级前自行快照。
 - S1 评估**只读**（拉 registry packument + 目标版本 tgz 解到临时目录做漂移预览），
   零工程写入；S2 备份到 `.ojm-upgrade/backup-<ts>/`（sha256 清单，保留最近 3 份），
   备份失败即中止（此时零改动）；S3-S5 失败回滚备份 + 补 `pnpm install`。
@@ -1947,6 +1949,42 @@ module-root 下数据源是「扫描 + `web.config.ts` 登记」并集（未登�
 升级完成后用 `ojm info` 核对版本矩阵（cli === runtime）、`ojm build` 零漂移收口。
 这同时就是 newcomer.md §6.A 的手动四步（`pnpm up` → `pnpm install` →
 `init --yes` → `info`/`build`）的自动化封装，手动步骤留作理解升级语义用。
+
+**实战：release 站点从 0.2.95 升到 0.2.100（本仓编译产物 + 本地 registry）**
+
+真实部署（手写 `config-release.yaml`、MySQL、`dist/api/<name>-<ver>/` 布局、已装 wiz-pm /
+wiz-plant / oj-market）上的完整顺序；这是文档与实操的偏移清单，照做即可复现：
+
+1. **自备备份**：`ojm upgrade` 只备份 `TOP_FILES` + 保护根，不含手写 `config-release.yaml`、
+   `.solutions/trust`、`dist/web`、`manifests.yaml`。先整树快照到工程外（如 `/data/oj/_backups/`）。
+2. **本地编译发布，别直接装 npmjs 同号包**：npmjs 可能已有目标版本但**不含本仓未发修复**。
+   用 `scripts/publish-verdaccio.mjs --publish`（runtime build + cli `build:shell` + 守卫测试 +
+   `pnpm publish` + 复核）；启动 verdaccio 时**对 `@oj-module/*` 不配 `proxy`**，否则它会代理
+   npmjs 的同名版本，脚本判「已发布，跳过」，站点装到的就是上游包。发布后核对 tarball 内
+   `templates/` 与 `shell-dist/` 的修复标记。
+3. **换版前置**：停 `oj serve`（先停站再动 `bin/`/`node_modules`，规避 ETXTBSY）；工程
+   `pnpm-workspace.yaml` 的 `minimumReleaseAgeExclude` 加新版本两条，外层用
+   `PNPM_CONFIG_MINIMUM_RELEASE_AGE=0`（`npm_config_*` 不生效），否则 pnpm 12 供应链策略
+   拒装刚发布的包。
+4. **驱动命令**：老实例自带 CLI 可能没有 `upgrade` 子命令——用新仓 CLI、以实例为 cwd：
+   `node <repo>/packages/cli/bin/ojm.mjs upgrade --to 0.2.100 --registry <本地> --yes`。
+   `bin/ojm.mjs` 自解析 tsx，不依赖 cwd 的 node_modules。先跑不带 `--yes` 的评估，确认
+   `extra=0` 再执行。
+5. **`ojm build` 前恢复已装方案面**：`build` 会 `rmSync(dist/web)`，只从
+   `dist/api/<name>-<ver>/web/modules/<name>/<ver>` + 根 `.ojm-module.json` 重物化；
+   wiz-pm/wiz-plant 等版本目录常缺这两样，须先从 `cdn/<name>-<ver>.tgz` 补 `web/`、
+   从 `dist/web/modules/<name>/<ver>/.ojm-module.json` 拷旁车（tgz 内没有旁车）。
+   `locales/` 不在恢复范围，build 后从备份回拷；`manifests.yaml` 与 `.bak` 同时对齐。
+6. **跨 overlay 化升级的硬坑（0.2.97 分水岭）**：老库没有 `sys_module_overlay` 行时，
+   重启后 catch-up 物化会把方案轨条目全删，`modules.json` 只剩内置 `app`，菜单/卡片全丢。
+   **补 overlay 行**（name/version/enabled=1/source=solution/face_ref=modules/<name>/<ver>/
+   seq 递增/actor/changed_at）后再请求一次市场 `index` 触发物化，确认
+   `dist/api/.solutions/overlay-cache.json` 的 `db_seq` 对齐，重启复核清单不再回退。
+   也可用 `ojm enable <name>` 生成行，但它会把 oj-market 的 API 锁改回 sidecar 的 web 版本，
+   需额外纠正锁版本与 `.bak`。
+
+收尾验收：`/versions.json` = 目标版本、四模块 entry 与 locales 200、市场历史破百取全、
+无租户头登录 401（非 400/500）、日志无 ERROR。
 
 #### `ojm merge <out.json> <in1.json> [in2.json ...]`
 

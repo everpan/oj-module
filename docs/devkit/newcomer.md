@@ -189,6 +189,10 @@ pnpm exec ojm build          # 门禁零漂移才算升完
 ```
 
 - oj 二进制：`pnpm exec ojm vendor`（低于 cli 门禁会被 init/vendor 拦）。
+- **老部署实战**：手写 `config-release.yaml` / 已装方案 release 布局的站点，升级前必须自备
+  完整快照（upgrade 的备份不含手写配置、trust 与 `dist/`）；跨 0.2.97 overlay 化升级还要
+  补 `sys_module_overlay` 行，否则重启后 `modules.json` 只剩 `app`。本地编译产物 + 私有
+  registry 的完整七步顺序见 manual §10.1「实战」小节。
 - 市场自身（oj-market 方案包）**随站 bundle 上拉**：出站 bundle 比已装新 → 自动升级；
   比已装旧 → 跳过不降级（降级唯一入口 = 站点回滚）。
 

@@ -237,6 +237,9 @@ description: 用 ojm 开发前后端一体工程时使用——新增/修改前�
 | 限速/节流/计数真实请求下永不累积（测试全绿） | 模块级 `Map`/`let` 不跨请求存活（每请求重建模块） | 状态落库（模板迁移 0009 先例）或 oj 持久面 |
 | `ojm build` 报 `introspect api.ts: jwt not configured` | 模块级语句碰运行时全局，introspect 空沙箱炸 | 移进 handler 函数体内（manual §1.7-4） |
 | `ojm upgrade` 报「package.json 未钉 @oj-module/cli」 | 在工程根（package.json 所在目录）之外执行——projectRoot 取 cwd | cd 进工程根再跑（manual §10.1） |
+| `ojm upgrade` 到 0.2.97+ 后站点 `modules.json` 只剩 `app`，菜单/卡片全丢 | 老库无 `sys_module_overlay` 行，catch-up 物化把方案轨条目当残留删掉；`modules.json` 是物化产物不是真源 | 用 `oj exec`（临时干净树）补 overlay 行（enabled=1、face_ref、seq 递增），再请求市场 `index` 触发物化；核对 overlay-cache 的 db_seq，重启复核（manual §10.1 实战） |
+| 本地 verdaccio 发新包被脚本判「已发布，跳过」，站点装到上游包 | `@oj-module/*` 配了 `proxy: npmjs`，npmjs 已有同名版本 → packument 命中 | 本地 config 对该 scope **不配 proxy**；发布后核对 tarball 内修复标记（manual §10.1 实战） |
+| `ojm upgrade` 的 `pnpm add` 报 `ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION` | pnpm 12 供应链年龄策略拒装刚发布的包；实例 `pnpm-workspace.yaml` 的 exclude 还是旧版本 | workspace 的 `minimumReleaseAgeExclude` 加新版本两条 + 外层 `PNPM_CONFIG_MINIMUM_RELEASE_AGE=0`（`npm_config_*` 无效） |
 | `ojm build` 报「框架默认模块与上游模板不一致」并列出文件 | 内置模块自治门禁：`src/app`、`src/oj-market` 被本地改过/删过/多出文件（CLI 升级后旧版默认模块也算漂移） | 需求提交上游；确认放弃本地修改则 `ojm init --yes` 恢复（会丢弃这两个目录的本地改动，先备份）。无绕过开关（manual §1.9） |
 | `ojm build` 报「密封值解不开」/「本机没有能解开的私钥」 | 出包预检 fail-closed：合并产物兜底 + tracked 非 jwt 红线（manual §10.1） | jwt 坏了删 `config.local.yaml` 的 `auth.jwt_secret` 行重跑 `ojm dev`；非 jwt 取配对私钥或 local 覆盖该字段 |
 | 页签怎么点都关不掉、无报错提示 | `beforeClose` 守卫 fail-safe 否决（守卫抛错按取消处理） | 先查控制台 `[tabs] beforeClose` 报错；确认弹窗逻辑与 `resolve(true/false)` 收口（manual §6.4） |
