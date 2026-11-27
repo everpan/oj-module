@@ -65,6 +65,33 @@ export function currentTenant(): string {
 	return useTenantStore.getState().tenant || DEFAULT_TENANT;
 }
 
+/**
+ * 登录后把租户 store 与 access token 的 tenant claim 对齐。
+ *
+ * 为什么需要：租户头（X-TENANT-ID）取值来自 oj-tenant 持久化 store，而令牌里的
+ * tenant 才是服务端认可的租户。多账号切换（企微租户 admin → 平台 superadmin）
+ * 时 store 可能残留上一账号的值，后续请求带着旧租户头 → `currentAccess()`
+ * 在当前租户查不到用户 → 403，市场安装/管理等写面被误拒。
+ *
+ * 只对齐、不拒绝：企微登录的 tenant 是 corp_id，服务端解析成 tenant_key 后
+ * 签进令牌；此处以令牌为准恰好抹平这层差异。畸形/非 JWT 令牌不阻断登录。
+ */
+export function syncTenantWithToken(token: string): void {
+	try {
+		const payload = token.split(".")[1];
+		if (!payload || typeof atob !== "function")
+			return;
+		const base64 = payload.replace(/-/g, "+").replace(/_/g, "/");
+		const claims = JSON.parse(atob(base64.padEnd(Math.ceil(base64.length / 4) * 4, "="))) as { tenant?: unknown };
+		const claimed = typeof claims.tenant === "string" ? claims.tenant.trim() : "";
+		if (claimed)
+			useTenantStore.getState().setTenant(claimed);
+	}
+	catch {
+		// 非 JWT / 解码失败：租户头维持现状，登录流程继续
+	}
+}
+
 // 模块作用域执行 `?tenant=` 引导：请求层首次请求就可能早于任何模块 onInit，
 // 引导必须同样早。浏览器环境才执行（vitest/Node 下无 location，跳过）。
 if (typeof window !== "undefined")

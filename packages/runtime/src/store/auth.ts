@@ -7,6 +7,7 @@ import { useAccessStore } from "#src/store/access";
 import { getAuthProvider } from "#src/store/auth-provider";
 import { useTabsStore } from "#src/store/tabs";
 
+import { syncTenantWithToken, useTenantStore } from "#src/store/tenant";
 import { useUserStore } from "#src/store/user";
 import { getAppNamespace } from "#src/utils/get-app-namespace";
 
@@ -32,18 +33,15 @@ export const useAuthStore = create<AuthState & AuthAction>()(
 			/**
 			 * 模块接管认证时（P5）：provider 只负责换取凭证，写库仍由 runtime
 			 * 统一做，避免模块直接碰 store 造成两套写入路径。
+			 * provider 路径不做 success/字段校验、不弹错误：校验与错误 UX 由 provider
+			 * 自管（见 auth-provider.ts 契约），runtime 仅透传 rejection、统一写库。
 			 */
 			const provider = getAuthProvider();
-			if (provider) {
-				// provider 路径不做 success/字段校验、不弹错误：校验与错误 UX 由 provider
-				// 自管（见 auth-provider.ts 契约），runtime 仅透传 rejection、统一写库。
-				set(await provider.login(loginPayload));
-				return;
-			}
-
-			// AC-D16：业务失败已是 HTTPError（error-response 统一吐司），
-			// fetchLogin 直返 { token, refreshToken }，无 success 信封分支
-			set(await fetchLogin(loginPayload));
+			const auth = provider ? await provider.login(loginPayload) : await fetchLogin(loginPayload);
+			// 令牌 tenant 才是服务端认可的租户：必须先对齐再写 token——
+			// solution-routes 等 token 订阅者在 set() 后会立即发请求，晚对齐会带旧租户头。
+			syncTenantWithToken(auth.token);
+			set(auth);
 		},
 
 		logout: async () => {
@@ -62,6 +60,9 @@ export const useAuthStore = create<AuthState & AuthAction>()(
 			}
 			finally {
 				get().reset();
+				// 只在显式登出时清租户：401 跳登录（goLogin → reset）要保留租户，
+				// 否则租户本地账号重新登录时会按 default 租户找用户而 401。
+				useTenantStore.getState().clear();
 			}
 		},
 
