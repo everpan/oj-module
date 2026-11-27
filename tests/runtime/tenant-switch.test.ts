@@ -8,7 +8,8 @@ import { DEFAULT_TENANT, syncTenantWithToken, useTenantStore } from "#src/store/
 /**
  * 多账号切换的租户上下文：oj-tenant 是持久化 store，而令牌 tenant claim 才是服务端
  * 认可的租户。旧值残留会让 superadmin 带企微租户头访问写面 → currentAccess() 403。
- * 这里守住两处修复：① 登录后按令牌对齐；② 登出/401 reset 时清空。
+ * 这里守住两处修复：① 登录后按令牌对齐（先对齐再写 token）；② 仅显式登出时清空，
+ * 401 跳登录的 reset 保留租户以保证租户本地账号可重新登录。
  */
 vi.hoisted(() => {
 	const mem = new Map<string, string>();
